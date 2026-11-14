@@ -1,0 +1,28 @@
+// State shared by project surfaces. HTTP/file effects remain installed services.
+#load "../../coax/lib/project/wire.coax";
+#load "../../components/core/json-fields.coax";
+ProjectApp :: struct {
+ slug:[64]u8;ns:int;title:[256]u8;nt:int;key:[64]u8;nk:int;private_project:bool;
+ data:[262144]u8;nd:int;starts:[2048]int;ends:[2048]int;rows:int;
+ talk:[131072]u8;nc:int;ts:[512]int;te:[512]int;turns:int;tools:[512]bool;agent:bool;busy:bool;wait:int;
+ article:[131072]u8;na:int;note:[512]u8;nn:int;uncertain:bool;
+ drops:[65536]u8;nl:int;drop:[24]u8;ndrop:int;drop_info:[65536]u8;ninfo:int;
+ draft:[262144]u8;ndraft:int;fields:[1]JsonFields;field:int= -1;field_at:int;
+ edit:[20000]u8;ne:int;notes:[20000]u8;nnotes:int;confirm:int;
+ token:[64]u8;nToken:int;file:[256]u8;nfile:int;bytes:int;file_id:[24]u8;nfile_id:int;upload:[4096]u8;nu:int;
+ grow:bool;may:bool;loaded:bool;request:int;mutation:bool;chats:[1]ChatHistory;
+ message:[1500]u8;nm:int;last:[1500]u8;nlast:int;
+}
+pja_copy :: (out:[]u8,value:string)->int {if value.count>out.count {return -1;}for c,i:value {out[i]=c;}return value.count;}
+pja_note :: (p:[]ProjectApp,value:string) {p[0].nn=pja_copy(p[0].note[..],value);}
+pja_slug :: (p:[]ProjectApp)->string {return cast(string)p[0].slug[0..<p[0].ns];}
+pja_drop :: (p:[]ProjectApp)->string {return cast(string)p[0].drop[0..<p[0].ndrop];}
+pja_path :: (project:bool,id:string,op:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],ifx project then "/projects/" else "/api/drops/");jo_put(o[..],id);if op.count>0 {jo_put(o[..],ifx project then "/api/" else "/");jo_put(o[..],op);}return jo_text(o[..]);}
+pja_load_draft :: (p:[]ProjectApp,raw:string)->bool {
+ d:[1]Jv;nodes:[4096]JvNode;if raw.count>p[0].draft.count || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];if jv_kind(v,0)!=JV_OBJECT || jv_get(v,0,"status")<0 {return false;}
+ root:=jv_get(v,0,"draft");if jv_raw(v,jv_get(v,0,"status"))=="ready" && jv_kind(v,root)!=JV_OBJECT {return false;}p[0].fields[0]=JsonFields.{};if jv_kind(v,root)==JV_OBJECT {jf_build(v,root,p[0].fields[..]);}if p[0].fields[0].overflow {return false;}p[0].ndraft=pja_copy(p[0].draft[..],raw);kept:=0;grow:=jv_kind(v,jv_path(v,root,"grow"))==JV_OBJECT;for i:0..<p[0].fields[0].n {f:=p[0].fields[0].fields[i];key:=cast(string)f.keys[0][0..<f.sizes[0]];allowed:=false;for section:[7]string.["card","mechanics","design","roadmap","engine_needs","assets","to_make"] {if key==section {allowed=true;}}if grow && key=="card" && (f.depth<2 || cast(string)f.keys[1][0..<f.sizes[1]]!="line") {allowed=false;}if allowed {p[0].fields[0].fields[kept]=f;kept+=1;}}p[0].fields[0].n=kept;return true;
+}
+#test "project drafts retain complete values and paginate their editable leaves" {
+ p:[1]ProjectApp;#assert pja_load_draft(p[..],"{\"status\":\"ready\",\"draft\":{\"card\":{\"name\":\"Moon\",\"slug\":\"moon\"},\"mechanics\":[\"Walk\"]}}");#assert p[0].fields[0].n==4;
+ #assert !pja_load_draft(p[..],"<html>error</html>") && pja_slug(p[..])=="";
+}

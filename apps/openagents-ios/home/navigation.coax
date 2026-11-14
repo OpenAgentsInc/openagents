@@ -41,6 +41,7 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
   if s[0].flight!=0 || e[0].flight || e[0].random || s[0].action!=0 {n[0].np=ea_copy(n[0].pending[..],id);return true;}
   na_request(s,ifx id=="account.logout" then 5 else ifx id=="app.updates" then 6 else 7,"");return true;
  }
+ if na_project_press(s,id) {return true;}
  if na_shell_press(s,id) {return true;}
  if id=="nav.history" {n[0].history_open = !n[0].history_open;return true;}
  if id=="nav.toggle" {n[0].open = !n[0].open;n[0].creating=false;return true;}
@@ -67,7 +68,7 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
  if e[0].flight && cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="ReadSession" && !e[0].uncertain {n[0].np=ea_copy(n[0].pending[..],id);return true;}
  if e[0].uncertain || e[0].random || e[0].flight || e[0].action!=0 && e[0].action!=12 {nav_note(n,"Wait for the current request, or reconnect before changing chats.");return true;}
  if s[0].flight!=0 {if s[0].purpose==70 || s[0].purpose==71 {n[0].np=ea_copy(n[0].pending[..],id);}else {nav_note(n,"Wait for the current turn before changing chats.");}return true;}
- s[0].usage[0].active=false;na_nav_keep(s);
+ s[0].usage[0].active=false;na_nav_keep(s);s[0].project_thread_n=0;s[0].project_link_pending=false;
  if host>=0 {
   e[0]=EnvironmentApp.{};e[0].active=true;e[0].workspace=true;e[0].page=2;e[0].selected=host;e[0].catalog[0]=n[0].browser[0].catalog[0];e[0].offer[0]=n[0].groups[host].offer;s[0].page=4;
   if row>=0 {summary:=n[0].rows[row].session;e[0].ns=ea_copy(e[0].session[..],cast(string)summary.id[0..<summary.ni]);e[0].view[0].sessions[0]=summary;e[0].view[0].ns=1;eu_request(e,"ReadSession");eu_http(e,false);}
@@ -82,7 +83,7 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
 na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  n:=s[0].navigation[..];b:=n[0].browser[..];x:=k_side(t,"nav.sidebar","Navigation");tr_attr(t,x,AT_STATE,ifx n[0].open then "open" else "closed");
  x=k_side_head(t,"nav.header","OpenAgents","/");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.close",IC_X,"Close navigation");tr_close(t);
- x=k_side_places(t,"nav.sidebar");x=k_row(t,u,"nav.home","Chat","",s[0].page!=5);x=k_row(t,u,"nav.projects","Projects","",s[0].page==5);if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",false);}tr_close(t);
+ x=k_side_places(t,"nav.sidebar");x=k_row(t,u,"nav.home","Chat","",s[0].page<5);x=k_row(t,u,"nav.projects","Projects","",s[0].page>=5);if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",false);}tr_close(t);
  x=tr_open(t,"nav.history.header",TG_HEADER,"navigation-search");x=k_link(t,"nav.history","Recent chats");tr_attr(t,x,AT_EXPANDED,ifx n[0].history_open then "true" else "false");x=k_icon_button(t,"nav.compose",IC_PLUS,"New chat");x=k_icon_button(t,"nav.refresh",IC_ARROW_ROTATE_CW,"Refresh chats");tr_close(t);
  if n[0].history_open {
  x=tr_open(t,"nav.search-wrap",TG_DIV,"navigation-search");x=k_input(t,u,"nav.search","Search chats","Search chats","search","off");tr_close(t);

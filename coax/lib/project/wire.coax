@@ -1,0 +1,13 @@
+// Existing private-project page lines and drops JSON, shared by native clients.
+#load "../json/json.coax";
+#load "../repo/lines.coax";
+#test "private rows preserve empty cells and refuse an overfull index" {
+ a:[4]int;b:[4]int;n:=pj_index("P|Title|Summary|3\nZ|0|10|1\n",a[..],b[..]);#assert n==2 && pj_cell("P|Title|Summary|3",2)=="Summary" && pj_cell("G|g||",2)=="";
+ one:[1]int;#assert pj_index("P|a\nP|b\n",one[..],one[..])== -1;
+}
+pj_index :: (raw:string,starts:[]int,ends:[]int)->int {n:=0;at:=0;while at<raw.count {end:=at;while end<raw.count && raw[end]!='\n' {end+=1;}if end>at+1 && raw[at+1]=='|' {if n>=starts.count || n>=ends.count {return -1;}starts[n]=at;ends[n]=end;n+=1;}at=end+1;}return n;}
+pj_cell :: (row:string,col:int)->string {at:=0;c:=0;while at<row.count && c<col {if row[at]=='|' {c+=1;}at+=1;}if c!=col {return "";}end:=at;while end<row.count && row[end]!='|' {end+=1;}return row[at..<end];}
+pj_slug :: (value:string)->bool {if value.count<1 || value.count>64 || value[0]=='-' {return false;}for c:value {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}return true;}
+pj_object :: (v:Jv,node:int,out:[]u8)->int {o:[1]Jo;jo_start(o[..],out);jv_write(v,node,o[..]);return ifx o[0].bad then -1 else o[0].n;}
+pj_text :: (v:Jv,node:int,out:[]u8)->string {n:=jv_str(v,node,out);return ifx n<0 then "" else cast(string)out[0..<n];}
+pj_body :: (key:string,value:string,out:[]u8)->int {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],key);jo_str(o[..],value);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;}

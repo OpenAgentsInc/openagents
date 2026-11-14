@@ -19,9 +19,16 @@ bool chat_history_route(const request *q) {
     ") own ORDER BY updated_ms DESC,id DESC LIMIT 60",
     1,NULL,values,NULL,NULL,0);
   if (PQresultStatus(r)!=PGRES_TUPLES_OK) {PQclear(r);api_error(q->fd,503,"History unavailable.");return true;}
+  return chat_history_rows(q,r);
+}
+
+// A caller hands only its bounded, authorized rows to the one history codec.
+bool chat_history_rows(const request *q,PGresult *r) {
+  const auth_principal *principal=auth_principal_of(q);
+  if (!principal || PQntuples(r)>60) {PQclear(r);api_error(q->fd,503,"History unavailable.");return true;}
   coax_t_ChatHistoryRow rows[60]={0};int count=PQntuples(r);
   for (int i=0;i<count;i++) {rows[i]=(coax_t_ChatHistoryRow){.owner=hs(PQgetvalue(r,i,0)),.id=hs(PQgetvalue(r,i,1)),.title=hs(PQgetvalue(r,i,2)),.model=hs(PQgetvalue(r,i,3)),.folder=hs(PQgetvalue(r,i,4)),.updated_ms=strtoll(PQgetvalue(r,i,5),NULL,10),.busy=!strcmp(PQgetvalue(r,i,6),"true")};}
-  unsigned char out[131072];int64_t n=chh_write(p->kind,hs(p->account),(coax_v_t_ChatHistoryRow){rows,count},(coax_v_u8){out,sizeof out});
+  unsigned char out[131072];int64_t n=chh_write(principal->kind,hs(principal->account),(coax_v_t_ChatHistoryRow){rows,count},(coax_v_u8){out,sizeof out});
   PQclear(r);if (n<0) {api_error(q->fd,503,"History unavailable.");return true;}
   api_respond(q->fd,200,"application/json","Cache-Control: no-store\r\nVary: Cookie, Authorization\r\n",(const char *)out,(size_t)n);return true;
 }

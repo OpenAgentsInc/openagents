@@ -1,0 +1,21 @@
+#load "../../lib/project/wire.coax";
+#authority;
+#test "project chat needs an exact owned person thread and current project membership" {
+ #assert pc_access(2,"a","a",true) && !pc_access(2,"a","b",true) && !pc_access(2,"a","a",false) && !pc_access(2,"","",true);
+ for k:0..<6 {if k!=2 {#assert !pc_access(k,"a","a",true);}}
+ #assert pc_relink("","one") && pc_relink("one","one") && !pc_relink("two","one") && !pc_relink("","");
+}
+pc_access :: (kind:int,account:string,owner:string,member:bool)->bool #export_c #effects(all) {return kind==2 && account.count>0 && account==owner && member;}
+pc_relink :: (before:string,after:string)->bool #export_c #effects(all) {return pj_slug(after) && (before.count==0 || before==after);}
+#test "canonical project membership and existing exact binding gate inference" {
+ #assert pc_member("a","a","") && pc_member("a","","a") && !pc_member("","","") && !pc_member("","a","") && !pc_member("a","","b");
+ #assert pc_bound("one","one") && !pc_bound("one","") && !pc_bound("one","two") && !pc_bound("","");
+}
+pc_member :: (key:string,member:string,owner:string)->bool #export_c #effects(all) {return key.count>0 && (member.count>0 || owner==key);}
+pc_bound :: (project:string,linked:string)->bool #export_c #effects(all) {return pj_slug(project) && project==linked;}
+
+#test "only a verified person session resolves an account project owner" {
+ #assert pc_principal(2,true,"a") && pc_principal(2,true,"acct_one") && !pc_principal(2,false,"acct_one") && !pc_principal(2,true,"");
+ for kind:0..<6 {if kind!=2 {#assert !pc_principal(kind,true,"acct_one");}}
+}
+pc_principal :: (kind:int,session:bool,account:string)->bool #export_c #effects(all) {return kind==2 && session && account.count>0;}

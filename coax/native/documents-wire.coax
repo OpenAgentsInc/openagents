@@ -1,0 +1,5 @@
+#load "documents.coax";
+nd_pick_body :: (name:string,text:string,out:[]u8)->int {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);if name.count>0 {jo_key(o[..],"name");jo_str(o[..],name);jo_key(o[..],"text");jo_str(o[..],text);}jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;}
+nd_put_body :: (token:string,url:string,out:[]u8)->int {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"token");jo_str(o[..],token);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;}
+
+#test "document effect bodies preserve exact file tokens and note bytes" {b:[256]u8;n:=nd_pick_body("notes.md","a\n\"b\"",b[..]);#assert cast(string)b[0..<n]=="{\"name\":\"notes.md\",\"text\":\"a\\n\\\"b\\\"\"}";n=nd_pick_body("","",b[..]);#assert cast(string)b[0..<n]=="{}";n=nd_put_body("t","https://storage.googleapis.com/x",b[..]);#assert n>0;small:[1]u8;#assert nd_put_body("t","u",small[..])<0;}

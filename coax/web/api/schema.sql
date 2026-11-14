@@ -20645,6 +20645,18 @@ ALTER SEQUENCE chat.events_id_seq OWNED BY chat.events.id;
 
 
 --
+-- Name: project_threads_v1; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.project_threads_v1 (
+    account text NOT NULL,
+    thread text NOT NULL,
+    project text NOT NULL,
+    CONSTRAINT project_threads_v1_project_check CHECK ((project ~ '^[a-z0-9][a-z0-9-]{0,63}$'::text))
+);
+
+
+--
 -- Name: turns; Type: TABLE; Schema: chat; Owner: -
 --
 
@@ -24078,6 +24090,14 @@ ALTER TABLE ONLY chat.events
 
 
 --
+-- Name: project_threads_v1 project_threads_v1_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.project_threads_v1
+    ADD CONSTRAINT project_threads_v1_pkey PRIMARY KEY (account, thread);
+
+
+--
 -- Name: turns turns_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
 --
 
@@ -25654,6 +25674,13 @@ CREATE INDEX events_turn ON chat.events USING btree (turn, id);
 
 
 --
+-- Name: project_threads_lookup_v1; Type: INDEX; Schema: chat; Owner: -
+--
+
+CREATE INDEX project_threads_lookup_v1 ON chat.project_threads_v1 USING btree (account, project);
+
+
+--
 -- Name: turns_conv; Type: INDEX; Schema: chat; Owner: -
 --
 
@@ -26671,6 +26698,14 @@ ALTER TABLE ONLY chat.environment_connections_v1
 
 ALTER TABLE ONLY chat.events
     ADD CONSTRAINT events_turn_fkey FOREIGN KEY (turn) REFERENCES chat.turns(id) ON DELETE CASCADE;
+
+
+--
+-- Name: project_threads_v1 project_threads_v1_account_thread_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.project_threads_v1
+    ADD CONSTRAINT project_threads_v1_account_thread_fkey FOREIGN KEY (account, thread) REFERENCES chat.account_threads_v1(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --

@@ -255,6 +255,8 @@ static bool who(const request *q, PGconn *db, char pk[65], bool *signed_req) {
   // An admin logged in with a session of ours (auth.c: /login, or the admin page's signed link).
   const auth_principal *p = auth_principal_of(q);
   if (p && p->session[0] && p->pubkey[0] && admin_is(p->pubkey)) { memcpy(pk, p->pubkey, 65); return true; }
+  if (project_subject(q,db,pk)) return true;
+  if (p && p->session[0] && p->pubkey[0]) { memcpy(pk,p->pubkey,65);return true; }
   return false;
 }
 

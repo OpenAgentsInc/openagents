@@ -1,0 +1,24 @@
+// A JSON document's editable leaves. The one JSON parser/writer owns escaping.
+#load "../../coax/lib/json/json.coax";
+JF_MAX :: 768; JF_DEPTH :: 8;
+JsonField :: struct {node:int;parent:int;kind:int;depth:int;keys:[JF_DEPTH][80]u8;sizes:[JF_DEPTH]int;}
+JsonFields :: struct {fields:[JF_MAX]JsonField;n:int;overflow:bool;}
+#test "nested draft fields retain exact paths, booleans and string-array append slots" {
+ d:[1]Jv;n:[48]JvNode;f:[1]JsonFields;#assert jv_parse(d[..],"{\"card\":{\"name\":\"A\"},\"checks\":[\"x\"],\"reuse\":true}",n[..]);jf_build(d[0],0,f[..]);#assert f[0].n==4 && !f[0].overflow;
+ b:[256]u8;k:=jf_path(f[0].fields[2],b[..]);#assert cast(string)b[0..<k]=="[\"checks\",\"1\"]";
+ #assert f[0].fields[3].kind==JV_TRUE;
+}
+jf_path :: (field:JsonField,out:[]u8)->int {f:=field;o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);for i:0..<f.depth {jo_str(o[..],cast(string)f.keys[i][0..<f.sizes[i]]);}jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;}
+jf_add :: (out:[]JsonFields,f:JsonField) {if out[0].n==JF_MAX {out[0].overflow=true;return;}out[0].fields[out[0].n]=f;out[0].n+=1;}
+jf_walk :: (v:Jv,node:int,path:JsonField,out:[]JsonFields) {
+ kind:=jv_kind(v,node);
+ if kind!=JV_OBJECT && kind!=JV_ARRAY {if kind!=JV_STRING && kind!=JV_TRUE && kind!=JV_FALSE {return;}f:=path;f.node=node;f.kind=kind;jf_add(out,f);return;}
+ if path.depth==JF_DEPTH {out[0].overflow=true;return;}
+ strings:=kind==JV_ARRAY;
+ for i:0..<jv_len(v,node) {c:=jv_at(v,node,i);f:=path;key:[80]u8;o:[1]Jo;jo_start(o[..],key[..]);jo_int(o[..],i);size:=ifx kind==JV_ARRAY then o[0].n else jv_unescape(jv_key(v,c),key[..]);if size<0 {out[0].overflow=true;continue;}text:=cast(string)key[0..<size];f.sizes[f.depth]=size;for b,k:text {f.keys[f.depth][k]=b;}f.depth+=1;f.parent=node;jf_walk(v,c,f,out);if jv_kind(v,c)!=JV_STRING {strings=false;}}
+ if strings {f:=path;o:[1]Jo;jo_start(o[..],f.keys[f.depth][..]);jo_int(o[..],jv_len(v,node));f.sizes[f.depth]=o[0].n;f.depth+=1;f.node= -1;f.parent=node;f.kind=JV_STRING;jf_add(out,f);}
+}
+jf_build :: (v:Jv,root:int,out:[]JsonFields) {out[0]=JsonFields.{};f:JsonField;jf_walk(v,root,f,out);}
+jf_label :: (field:JsonField,out:[]u8)->string {f:=field;at:=0;for i:0..<f.depth {if i>0 && at<out.count {out[at]=' ';at+=1;}for c:cast(string)f.keys[i][0..<f.sizes[i]] {if at<out.count {out[at]=ifx c=='_' then ' ' else c;at+=1;}}}return cast(string)out[0..<at];}
+
+#test "form paths decode JSON object keys once" {d:[1]Jv;n:[8]JvNode;f:[1]JsonFields;#assert jv_parse(d[..],"{\"a\\\"b\":\"value\"}",n[..]);jf_build(d[0],0,f[..]);b:[64]u8;k:=jf_path(f[0].fields[0],b[..]);#assert cast(string)b[0..<k]=="[\"a\\\"b\"]";}

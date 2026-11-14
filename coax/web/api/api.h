@@ -231,3 +231,8 @@ void lnaddr_init(void);                   // checks lnaddr.c's numbers against t
 typedef struct { char pr[2100]; char payment_hash[65]; char verify[1100]; long long expires; } lnaddr_quote;
 int64_t lnaddr_invoice_of(PGconn *db, const char *to, long long msat, lnaddr_quote *q);
 bool lnaddr_settled(const char *verify_url, const char *payment_hash, char preimage[65]);
+
+// Shared projection for account/project saved-history reads.
+bool chat_history_rows(const request *q, PGresult *rows);
+
+bool project_subject(const request *q,PGconn *db,char out[65]);

@@ -2,12 +2,13 @@
 import UIKit
 import UniformTypeIdentifiers
 
-@MainActor final class NativeWorldLibrary:UIViewController,UIDocumentPickerDelegate {
+@MainActor final class NativeWorldLibrary:UIViewController {
     private let program:NativeProgram,controls=NativeControls(),network=NativeWorldNetwork()
     private let service:(String,[String:Any])async throws->Any
     private let finished:()->Void
     private var job:Task<Void,Never>?
     private var documentTarget="",documentFields:[String:Any]=[:]
+    private let documents=NativeDocuments()
     init(directory:URL,service:@escaping(String,[String:Any])async throws->Any,finished:@escaping()->Void)throws {
         program=try NativeProgram(directory:directory,module:"worlds");self.service=service;self.finished=finished;super.init(nibName:nil,bundle:nil)
     }
@@ -27,7 +28,7 @@ import UniformTypeIdentifiers
             try program.frame();controls.render(program.elements());let (op,body)=try program.action();guard op != 0 else {return}
             if op==31 {
                 let parts=body.split(separator:"\n",maxSplits:1).map(String.init);documentTarget=parts.first ?? "";documentFields=parts.count==2 ? ((try? JSONSerialization.jsonObject(with:Data(parts[1].utf8))) as? [String:Any] ?? [:]):[:]
-                let picker=UIDocumentPickerViewController(forOpeningContentTypes:[.plainText,.pdf,UTType(filenameExtension:"docx") ?? .data,UTType(filenameExtension:"md") ?? .plainText],asCopy:true);picker.delegate=self;present(picker,animated:true);return
+                job=Task { [weak self] in await self?.pickDocument() };return
             }
             let args=(try JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] ?? [:]
             if op==4,let path=args["path"] as? String,path.withCString({nwp_account(coax_string(data:$0,count:Int64(path.utf8.count)))}) {
@@ -45,17 +46,18 @@ import UniformTypeIdentifiers
             } else {throw NativeFailure.refused("Unsupported world operation")}
         }catch {failure(error)}
     }
-    func documentPicker(_ controller:UIDocumentPickerViewController,didPickDocumentsAt urls:[URL]) {
-        guard let url=urls.first,documentTarget.withCString({nwp_account(coax_string(data:$0,count:Int64(documentTarget.utf8.count)))}) else {return}
+    private func pickDocument()async {
+        guard documentTarget.withCString({nwp_account(coax_string(data:$0,count:Int64(documentTarget.utf8.count)))}) else {return}
         do {
-            let size=try url.resourceValues(forKeys:[.fileSizeKey]).fileSize ?? 0
-            if size>360*1024 {try program.event(54,0,"413\ntoo large");pump();return}
-            try program.event(54,0,"1\n\(url.lastPathComponent)");pump()
-            var fields=documentFields;fields["name"]=url.lastPathComponent;fields["data"]=try Data(contentsOf:url).base64EncodedString()
+            let chosen=try await documents.pick(self,types:[.plainText,.pdf,UTType(filenameExtension:"docx") ?? .data,UTType(filenameExtension:"md") ?? .plainText],limit:360*1024)
+            defer {documents.release()}
+            if chosen["cancelled"] as? Bool == true {try program.event(55,0,"");pump();return}
+            guard let token=chosen["token"] as? String,let data=documents.data(token),let name=chosen["name"] as? String else {throw NativeFailure.refused("The document is unavailable.")}
+            try program.event(54,0,"1\n\(name)");pump()
+            var fields=documentFields;fields["name"]=name;fields["data"]=data.base64EncodedString()
             var q=URLRequest(url:URL(string:AppAuth.defaultOrigin+documentTarget)!);q.httpMethod="POST";q.httpBody=try JSONSerialization.data(withJSONObject:fields);q.setValue("application/json",forHTTPHeaderField:"Content-Type");q.setValue(AppAuth.defaultOrigin,forHTTPHeaderField:"Origin")
             network.perform(q) { [weak self] data,response,error in guard let self else {return};do {try program.event(54,0,"\(error==nil ? (response as? HTTPURLResponse)?.statusCode ?? 0:0)\n"+String(decoding:data ?? Data(),as:UTF8.self));pump()}catch {failure(error)}}
-        }catch {failure(error)}
+        }catch {do {try program.event(54,0,"413\n"+error.localizedDescription);pump()}catch {failure(error)}}
     }
-    func documentPickerWasCancelled(_ controller:UIDocumentPickerViewController) {do {try program.event(55,0,"");pump()}catch {failure(error)}}
     private func leave() {job?.cancel();network.close();dismiss(animated:true,completion:finished)}
 }

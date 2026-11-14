@@ -10,9 +10,15 @@ p = argparse.ArgumentParser()
 p.add_argument("directory", type=Path)
 p.add_argument("--port", type=int, default=13491)
 p.add_argument("--environment-transcript", action="store_true")
+p.add_argument("--projects", action="store_true")
 a = p.parse_args()
 manifest = json.loads((a.directory / "manifest.json").read_text())
 objects = {f["sha256"]: a.directory / "Starter" / f["path"] for f in manifest["files"]}
+project_published=False
+project_asks=[]
+project_links={}
+project_draft={"status":"ready","draft":{"card":{"name":"Moon Villa","slug":"moon-villa","line":"A place to grow","owner":"Ada","art_direction":"Soft light"},"mechanics":["Walk"],"design":{"markdown":"A complete design document.","open_questions":["What next?"]},"roadmap":{"initiative":{"slug":"first","title":"First steps","body":"Start small"},"milestones":[{"slug":"garden","title":"Garden","body":"Plant things","tasks":[{"slug":"walk","title":"Walk","body":"Walk around","size":"S","acceptance":["Can walk"]}]}]},"engine_needs":[],"assets":[],"to_make":[]},"edits":0,"approved":False}
+project_calls=[]
 threads = {}
 if a.environment_transcript:
     threads["m_00000000000000000001"] = dict(schema="openagents.chat.thread.v1", id="m_00000000000000000001", revision=1, model="google/gemini-4-hydrogen", messages=[dict(role="user", content="Account fixture"), dict(role="assistant", content="Saved account answer.")])
@@ -62,9 +68,26 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if a.projects and (self.path.startswith("/projects/") or self.path.startswith("/api/drops") or self.path.startswith("/api/chat/project")):
+            if self.headers.get("Authorization") != "Bearer oa_at_fixture":return self.answer(401,{})
+            if self.path=="/projects/mobile-kit/api/state":return self.answer(200,b"Y|Ada|member\nP|Mobile Kit|Native project fixture|1|now|Ada\nG|g1|proposed||Build the garden\nD|2026-11-14|Today\nM|2026-11-14|m1|todo|Ada|Plant flowers|\n")
+            if self.path=="/projects/mobile-kit/api/talk":
+                rows=["Z|0|10|0|1","G|g1|Ada"]
+                for i,prompt in enumerate(project_asks,1):rows += [f"U|{i}|ask|done|now|Ada|{prompt}|**Done.** Your project is updated.||abc1234|1|1||||",f"E|{i}|{i}|agent.edit|Updated the milestone."]
+                return self.answer(200,"\n".join(rows).encode()+b"\n")
+            if self.path=="/projects/moon-villa/api/state":return self.answer(404,{"error":"not found"})
+            if self.path=="/projects/moon-villa/index.md":return self.answer(200,("# "+project_draft["draft"]["card"]["name"]+"\n\nA native project. Its tasks are on Nostr: relay, kind 30621 by "+"a"*64+", d moon-villa.\n\n## Design\n\nA place to grow.").encode())
+            if self.path=="/api/drops/me":return self.answer(200,dict(may=True,pubkey="a"*64,limits=dict(file=67108864,files=40)))
+            if self.path=="/api/drops":return self.answer(200,dict(drops=[dict(id="d_fixture",status="open",files=1,project=None)]))
+            if self.path=="/api/drops/d_fixture":return self.answer(200,dict(id="d_fixture",status="open",files=[dict(id="f_fixture",name="notes.md",status="scanned",bytes=120,kind="text",note="")]))
+            if self.path.endswith("/draft"):return self.answer(200,project_draft)
+            if self.path.startswith("/api/chat/project/v1?"):
+                chats=[dict(id=k,title=threads[k]["messages"][0]["content"][:80],model="google/gemini-4-hydrogen",folder="moon-villa",updated_ms=1,busy=False) for k,v in project_links.items() if v=="moon-villa"]
+                return self.answer(200,dict(schema="openagents.chat.history.v1",chats=chats))
+            return self.answer(404,{"error":"not found"})
         if self.path == "/api/projects":
             if self.headers.get("Authorization") != "Bearer oa_at_fixture":return self.answer(401,{})
-            return self.answer(200,b"project mobile-kit Mobile Kit\n")
+            return self.answer(200,b"project mobile-kit Mobile Kit\n"+(b"project moon-villa Moon Villa\n" if project_published else b""))
         if a.environment_transcript and self.path.startswith("/api/chat/environment"):
             if self.headers.get("Authorization") != "Bearer oa_at_fixture":
                 return self.answer(401, {})
@@ -102,11 +125,31 @@ class Handler(BaseHTTPRequestHandler):
                 dict(id="42", title="My first saved chat", model="m", folder="openagents", updated_ms=2, busy=False),
                 dict(id="41", title="Another saved chat", model="m", folder="openagents", updated_ms=1, busy=False)]})
         if self.path == "/report":
-            return self.answer(200, counts)
+            return self.answer(200, dict(counts,project_calls=project_calls))
         return self.answer(404, {})
 
     def do_POST(self):
+        global project_published
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+        if a.projects and (self.path.startswith("/projects/") or self.path.startswith("/api/drops") or self.path.startswith("/api/chat/project")):
+            if self.headers.get("Authorization")!="Bearer oa_at_fixture":return self.answer(401,{})
+            project_calls.append(self.path)
+            if self.path=="/projects/mobile-kit/api/ask":project_asks.append(body["text"]);return self.answer(200,dict(turn=len(project_asks)))
+            if self.path.startswith("/projects/mobile-kit/api/"):return self.answer(200,dict(ok=True))
+            if self.path.endswith("/draft/edit"):
+                target=project_draft["draft"];path=body["path"]
+                for part in path[:-1]:target=target[int(part)] if isinstance(target,list) else target[part]
+                if isinstance(target,list):target[int(path[-1])]=body["value"]
+                else:target[path[-1]]=body["value"]
+                project_draft["edits"]+=1;return self.answer(200,project_draft)
+            if self.path.endswith("/publish"):project_published=True;return self.answer(200,dict(published=dict(page="/projects/moon-villa")))
+            if self.path=="/api/chat/project/v1":
+                assert body["schema"]=="openagents.chat.project-link.v1" and body["thread"] in threads
+                project_links[body["thread"]]=body["project"];return self.answer(200,dict(linked=True))
+            if self.path=="/api/chat/project/complete/v1":
+                assert project_links[body["thread"]["id"]]==body["project"]
+                return self.answer(200,dict(choices=[dict(message=dict(role="assistant",content="The project chat stays in the app."),finish_reason="stop")]))
+            return self.answer(200,project_draft)
         if urlparse(self.path).path=="/api/chat/environment/accounts/v1":
             if self.headers.get("Authorization")!="Bearer oa_at_fixture":return self.answer(401,{})
             return self.answer(200,provider_view(parse_qs(urlparse(self.path).query)["host"][0],body))

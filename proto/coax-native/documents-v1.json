@@ -1,0 +1,12 @@
+{
+  "schema":"coax.native.documents.v1",
+  "transport":"Installed services 14 documents.pick, 15 documents.upload, 16 documents.release; replies 114/115/116, failures 214/215/216",
+  "pick":"{} opens the system picker; {name,text} stages UTF-8 notes. One ephemeral lease per native program owner; replacing/releasing it forgets bytes.",
+  "picked":{"token":"opaque host UUID","name":"notes.md","bytes":12,"cancelled":false},
+  "cancelled":{"cancelled":true},
+  "upload":{"token":"opaque host UUID","url":"https://storage.googleapis.com/upload/storage/v1/b/a?upload_id=x"},
+  "uploaded":{"status":200},
+  "release":{},
+  "released":{"released":true},
+  "limits":"1..67108864 bytes; storage.googleapis.com HTTPS only; no credentials/cookies, redirects refused. File bytes never enter UI/Coax message memory. Host restart drops leases. Upload failure requires explicit retry; never publish automatically."
+}
