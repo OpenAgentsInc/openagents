@@ -62,6 +62,7 @@ engine shaders for several minutes; later runs take about a minute.
 | `AethyrBridge/` | The Unreal plugin: manifest asset, collision box, marker, and the editor checks Python cannot do |
 | `project/` | A bare host project that receives an export |
 | `import.py` | The importer and its checks |
+| `kits.py` | Which kit slots a `kit.NAME` row replaces, where, and which groups it drops |
 | `aethyr_script.c` | Runs a script against a world through the host interface; the bridge compiles the same file |
 | `web-fixtures.json` | Browser runs for the engine's web harness |
 | `probe/make_overrides.py` | Stands in for a designer: a replacement model and a sound |
@@ -99,12 +100,26 @@ row's name says what is replaced and its Asset is the replacement:
 | `thing.raider` | Every raider, drawn by Unreal at the world's place and yaw | A static mesh |
 | `thing.raider_v1` | One variant (here, a raider in a fight) | A static mesh |
 | `world.w_m00_x127_z127` | One world mesh group | A static mesh |
+| `kit.garage_bay` | A kit slot's grey blockout, at every place the slot stands | A static mesh |
 | `material.cel`, `material.sky` | The look | A material |
 | `event.pickup` | Nothing: adds a sound to the event | A sound |
 
 Kinds and events are listed in the bundle's `manifest.json` (`things`,
 `events`). Layout is Aethyr's: the import report lists generated actors that
 were moved by hand, then rebuilds them.
+
+A kit slot (`kits` in the manifest) lists its places and the world groups
+that hold its blockout (named `kTT_...`, the slot's triangles grouped apart).
+For a `kit.NAME` row the importer drops those groups and stands the row's
+mesh at each place, in the level's `Kits` folder, after the reference shots
+(they are of the world as exported). Build the mesh in the slot's own space:
+its origin is the place, and its +Y is the slot's +z (into a garage bay, to
+its back wall). A place with `open` above 0 is a bay whose back wall has a
+way through that wide each side of its middle; leave it open. `kits.py` is
+the plan, checked without Unreal: `python3 -I
+metaverse-engine/export/unreal/kits.py BUNDLE/manifest.json`. The report's
+`kits` lists the slots replaced and, with the reason, those still drawing
+the blockout.
 
 ## What the importer checks
 

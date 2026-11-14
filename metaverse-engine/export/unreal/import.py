@@ -22,9 +22,13 @@ import math
 import os
 import shutil
 import struct
+import sys
 import zlib
 
 import unreal
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import kits as kit_slots   # the kit slots' plan (kits.py), checked without Unreal
 
 BUNDLE = os.environ["AETHYR_BUNDLE"]
 REPORT = os.environ["AETHYR_REPORT"]
@@ -640,6 +644,10 @@ for key, current in (("material.cel", "cel"), ("material.sky", "sky")):
                 sky_material = replacement
             applied.append(key)
 applied += sorted(k for k in overrides if k.startswith("thing.") or k.startswith("event."))   # the bridge applies these as the game runs
+# kit.NAME: the row's mesh at each of the slot's places, the slot's blockout groups dropped. Planned
+# here, done after the reference shots, which are of the world as exported
+kit_plan = kit_slots.plan(manifest, overrides)
+check(not kit_plan["unknown"], "overrides rows name no kit slot of the manifest: " + ", ".join(kit_plan["unknown"]))
 report["overrides"] = {"table": OVERRIDES_TABLE, "created": created_overrides, "rows": sorted(overrides), "applied": sorted(applied)}
 
 # the host: the actor that runs the world's rules, and the game mode that gives it the screen
@@ -753,6 +761,31 @@ for s in shots["list"]:
 report["shots"] = shot_rows
 actors.destroy_actor(camera)
 host.sky.set_visibility(True)
+
+# ---- the kit slots a kit.NAME row dresses (kits.py): its mesh at each place, the blockout groups gone
+kit_replaced = []
+kit_blockout = list(kit_plan["blockout"])
+by_label = {a.get_actor_label(): a for a in actors.get_all_level_actors() if isinstance(a, unreal.StaticMeshActor)}
+for r in kit_plan["replace"]:
+    mesh = assets.load_asset(r["asset"].split(".")[0])
+    if not check(isinstance(mesh, unreal.StaticMesh), "override kit.%s is not a static mesh: %s" % (r["slot"], r["asset"])):
+        kit_blockout.append({"slot": r["slot"], "why": "its row is not a static mesh"})
+        continue
+    missing = [g for g in r["drop"] if g not in by_label]
+    check(not missing, "kit.%s: the level has no world group %s" % (r["slot"], ", ".join(missing[:4])))
+    for g in r["drop"]:
+        if g in by_label:
+            actors.destroy_actor(by_label.pop(g))
+    for i, (at, yaw, _open) in enumerate(r["places"]):
+        a = actors.spawn_actor_from_object(mesh, unreal.Vector(*at), unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw))
+        a.set_actor_label("kit_%s_%02d" % (r["slot"], i))
+        a.set_folder_path("Kits")
+    placed = sum(1 for a in actors.get_all_level_actors() if a.get_actor_label().startswith("kit_%s_" % r["slot"]))
+    check(placed == len(r["places"]), "kit.%s: %d pieces stand, the manifest lists %d places" % (r["slot"], placed, len(r["places"])))
+    kit_replaced.append({"slot": r["slot"], "asset": r["asset"], "places": len(r["places"]), "dropped_groups": len(r["drop"])})
+    applied.append("kit." + r["slot"])
+report["overrides"]["applied"] = sorted(applied)
+report["kits"] = {"replaced": kit_replaced, "blockout": sorted(kit_blockout, key=lambda b: b["slot"])}
 
 # the ink pass covers the whole level. A volume's settings come back as a copy: change it, then
 # put it back, or the volume never has the material.

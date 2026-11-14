@@ -14,6 +14,7 @@
 #load "content.coax";
 #load "layer.coax";
 #load "garage.coax";             // the raider mine garage: the ring of lettered bays, the hallway and the lab (#13505)
+#load "kits.coax";               // the level's kit slots: their places, and the blockout a slot's dressing replaces (#13565)
 #load "buildings.coax";          // how the buildings look: printed concrete, the garage's shell and bay, raider banners (#13552)
 #load "camera.coax";             // the follow camera behind her (playtest 2)
 #load "drive.coax";              // the drive from the solar farm to the garage, and the rover's room (#13505)
@@ -109,6 +110,7 @@ SpGame :: struct {
   layer: [1] SlLayer;         // the edit layer: placed pieces, as typed edits (layer.coax)
   c: [1] SpContent;           // the content tables (content.coax): outlive a reset
   imp: [1] SpImports;         // the world's import pack's meshes (pieces.coax): outlive a reset
+  kit: [1] KsMarks;           // where g_world drew each kit slot's blockout (kits.coax)
   at: SpPlaces;               // the landmarks the game reads, from them
   gray: bool;                 // graybox (G): the world in grays, orange, yellow and cyan kept; outlives a reset
   mode: int; zone: int; phase: int; t: f32;
@@ -906,6 +908,7 @@ g_stage_set :: (g: [] SpGame, n: int) {
 dn :: (g: [] SpGame, x: f32, y: f32, z: f32) -> Point { return v3(g[0].at.dance_x + x + 1.6, y, g[0].at.dance_z + z + 51.2); }
 dn_block :: (g: [] SpGame, buf: [] u32, p: [] Pen, x: f32, y0: f32, z: f32, hx: f32, h: f32, hz: f32) { c := dn(g, x, y0, z); block(buf, p, c.x, y0, c.z, hx, h, hz); }
 g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  g[0].kit[0] = KsMarks.{};   // the kit slots' blockout, marked as it is drawn (kits.coax)
   mr_draw(g, buf, p);   // the metrics room (metrics.coax)
   pl_draw(g, buf, p);   // the ground, the three landmark rocks, the mountain and the plain's edge (plain.coax)
   room := dv_room(g);

@@ -12,25 +12,9 @@
 #load "splice-game.coax";
 #load "../../metaverse-engine/export/bundle.coax";
 
-// The level's kit slots (#13552, layout per the level spec): the one named table of the pieces a level
-// designer swaps in for the grey blockout, by name, through the host's overrides table (a row kit.NAME;
-// metaverse-engine/export/unreal/README.md "Replacing things"). Each slot: its name, then what it is
-// now and where it is drawn. Block out first; dress by name after.
-SX_KIT_N :: 13;
-SX_KITS :: [SX_KIT_N * 2] string.[
-  "garage_bay", "a bay of the ring: floor, back wall, roof and its band, the pier after it (garage.coax ga_draw)",
-  "section_sign", "a section's letters on the rim's white panel, named from GA_NAMES (garage.coax)",
-  "rock_wall", "the raiders' rock wall across the old entrance bay, which Digger drills (the rubble)",
-  "mountain_hallway", "the hallway north into the mountain and its barricade, which only the drill mech breaks (garage.coax, splice-game.coax)",
-  "solar_row", "a line of solar banks in the farm's rows (farm.coax ff_mesh)",
-  "charger", "a charging post: Sniper's, and one at each Imperial pad (pieces kind 121)",
-  "sniper_interior", "Sniper's cabin and its furniture (drive.coax dv_room_draw, the shipped pieces)",
-  "raider_mech", "the raider mech on the drive (splice-battle.coax)",
-  "drill_mech", "the drill mech in the empty section (splice-battle.coax, kit_mech)",
-  "imperial_robot", "an Imperial robot (the foes' draw)",
-  "boss_lab", "the old-world lab and the boss in it (garage.coax, kit_dino)",
-  "landmark_rock", "one of the three landmark rocks (plain.coax, kit_mound)",
-  "mountain", "the mountain's two peaks north of the garage (plain.coax, land_peak)"];
+// The level's kit slots are kits.coax's (KS_ROWS): the manifest's `kits` names each, lists its places
+// and the world groups that hold its blockout (the marked triangles, grouped apart), so the importer
+// can put a kit.NAME row's mesh at the places and drop those groups.
 
 ceil :: (x: f64) -> f64 #foreign #effects(all);   // libm's, for the PNG writer (coax/lib/image/pillow.coax)
 
@@ -176,7 +160,12 @@ tool_main :: () -> int #export_c #effects(all) {
   vertices := pen[0].n;
 
   glb: [16777216] u8; scratch: [16777216] u8; groups: [GLB_GROUPS] GlbGroup;   // things.glb holds the Digger twice at about 90,000 vertices
-  w := glb_world(world[..], vertices, EX_CELL, glb[..], scratch[..], groups[..]);
+  // each kit slot's blockout, as g_world marked it, grouped apart: slot k is tag k + 1 (kits.coax)
+  marks := g[0].kit[0];
+  if marks.over { print("splice-export: the world marked more kit slot runs than kits.coax KS_MARKS\n"); return 1; }
+  tags: [KS_MARKS] GlbTag;
+  for i: 0..<marks.n { tags[i] = GlbTag.{first = marks.m[i].first, count = marks.m[i].count, tag = marks.m[i].slot + 1}; }
+  w := glb_world_tagged(world[..], vertices, EX_CELL, tags[0..<marks.n], glb[..], scratch[..], groups[..]);
   if !w.ok { print("splice-export: the glTF writer refused the world\n"); return 1; }
 
   path: [4096] u8; name: [64] u8; hex: [64] u8;
@@ -201,7 +190,7 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_key(j, "groups"); jo_arr(j);
   for gi: 0..<w.groups {
     gr := groups[gi];
-    jo_obj(j); ex_str(j, "name", glb_name(gr, name[..])); ex_str(j, "material", sx_mat_name(gr.mat)); ex_int(j, "material_id", gr.mat); ex_int(j, "cell_x", gr.cx); ex_int(j, "cell_z", gr.cz);
+    jo_obj(j); ex_str(j, "name", glb_name(gr, name[..])); if gr.tag > 0 { ex_str(j, "kit", ks_name(gr.tag - 1)); } ex_str(j, "material", sx_mat_name(gr.mat)); ex_int(j, "material_id", gr.mat); ex_int(j, "cell_x", gr.cx); ex_int(j, "cell_z", gr.cz);
     ex_int(j, "vertices", gr.vertices); ex_int(j, "triangles", gr.triangles); ex_p3(j, "min", gr.lo[0], gr.lo[1], gr.lo[2]); ex_p3(j, "max", gr.hi[0], gr.hi[1], gr.hi[2]);
     jo_end(j);
   }
@@ -297,9 +286,20 @@ tool_main :: () -> int #export_c #effects(all) {
     }
     jo_end(j); jo_end(j);
   }
-  // the level's kit slots (SX_KITS): an overrides row kit.NAME names the kit piece that replaces that slot's grey blockout
+  // the level's kit slots (kits.coax): an overrides row kit.NAME puts its mesh at each of the slot's places,
+  // and the slot's blockout (its groups) is dropped. A slot with no places is not placed yet.
   jo_key(j, "kits"); jo_obj(j);
-  for k: 0..<SX_KIT_N { ex_str(j, SX_KITS[k * 2], SX_KITS[k * 2 + 1]); }
+  pl: [KS_PLACE_MAX] KsPlace;
+  for k: 0..<KS_N {
+    jo_key(j, ks_name(k)); jo_obj(j); ex_str(j, "about", ks_about(k));
+    jo_key(j, "places"); jo_arr(j);
+    for i: 0..<ks_places(g[..], k, pl[..]) { jo_obj(j); ex_p3(j, "at", pl[i].x, pl[i].y, pl[i].z); ex_num(j, "yaw", pl[i].yaw); ex_num(j, "open", pl[i].open); jo_end(j); }
+    jo_end(j);
+    jo_key(j, "groups"); jo_arr(j);
+    for gi: 0..<w.groups { if groups[gi].tag == k + 1 { jo_str(j, glb_name(groups[gi], name[..])); } }
+    jo_end(j);
+    jo_end(j);
+  }
   jo_end(j);
   // what aethyr_events reports, by number
   jo_key(j, "events"); jo_obj(j);

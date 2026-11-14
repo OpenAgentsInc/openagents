@@ -88,3 +88,27 @@ SIT_ROW :: "201|Rock|pack/rock|1000|1|50|25|200";
   #assert b.ok && b.rev == 4 && b.n == 1 && e[0].op == WE_CELL && e[0].id == 201 && cast(string) e[0].table[0..<e[0].table_n] == "pieces" && cast(string) e[0].name[0..<e[0].name_n] == "*" && cast(string) e[0].text[0..<e[0].text_n] == "201|rock|pack/rock|1000|1|50|25|200";
   #assert !spw_import_kind(p[..], "mesh post 100 100 4000") && f[0].refused_n > 0;
 }
+
+#test "a kit slot dressed from the import pack: the pack's mesh by the slot's name stands at each of the slot's places, in one draw" #steps 8000000000 #traversal 4000000000 {
+  k: [1] SitPack; dd: [1] PiDid;
+  k[0].n = pi_import("", "splice", PiFile.{name = "garage_bay.glb", data = pit_box(3, 1, 0.5, 1, 0.25, k[0].glb[..]), licence = 0}, PIT, pit_room(k[0].w[..]), k[0].pack[..], dd[..]);
+  pack := cast(string) k[0].pack[0..<ifx k[0].n < 0 then 0 else k[0].n];
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]); b: [1] LcDraw; d := b[0].d[..];
+  sd_meshes(d, g[..], b[0].pieces[..], ""); sd_places(d, g[..], b[0].places[..]);
+  #assert d[0].ks_count[KS_GARAGE_BAY] == 0 && d[0].ks_rows[KS_GARAGE_BAY] == 0 && sd_kit_draws(d, b[0].draws[..], 2) == 2;
+  #assert pack.count > 0 && sp_imports_read(g[0].imp[..], pack) && ks_dressed(g[..], KS_GARAGE_BAY);
+  sd_meshes(d, g[..], b[0].pieces[..], pack); sd_places(d, g[..], b[0].places[..]);
+  #assert d[0].ks_count[KS_GARAGE_BAY] == 36 && d[0].ks_rows[KS_GARAGE_BAY] == GA_SECTIONS && sd_kit_draws(d, b[0].draws[..], 2) == 3;
+  #assert b[0].draws[8] == cast(u32) d[0].ks_first[KS_GARAGE_BAY] && b[0].draws[11] == cast(u32) GA_SECTIONS;
+  // each row stands the mesh at a place: its point at the mouth of bay s, turned into the bay
+  pl: [KS_PLACE_MAX] KsPlace; _ := ks_places(g[..], KS_GARAGE_BAY, pl[..]);
+  for s: 0..<GA_SECTIONS {
+    row := b[0].places[(d[0].ks_row0[KS_GARAGE_BAY] + s) * SD_ROW..<(d[0].ks_row0[KS_GARAGE_BAY] + s + 1) * SD_ROW];
+    p := sd_apply(v3(0, 0, 1), row);
+    #assert abs(p.x - (pl[s].x + sin(pl[s].yaw))) < 0.001 && abs(p.z - (pl[s].z + cos(pl[s].yaw))) < 0.001;
+  }
+  // the pack loses the mesh: the slot's draw goes, and its rows
+  #assert sp_imports_read(g[0].imp[..], "");
+  sd_meshes(d, g[..], b[0].pieces[..], ""); sd_places(d, g[..], b[0].places[..]);
+  #assert d[0].ks_rows[KS_GARAGE_BAY] == 0 && sd_kit_draws(d, b[0].draws[..], 2) == 2;
+}

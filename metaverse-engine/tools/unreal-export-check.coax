@@ -100,6 +100,32 @@ tool_main :: () -> int #export_c #effects(all) {
   if triangles != jv_int(m, jv_get(m, mw, "triangles"), -1) || vertices != jv_int(m, jv_get(m, mw, "vertices"), -1) { return xc_fail("totals differ from the manifest", "world.glb"); }
   wlo := jv_get(m, mw, "min"); whi := jv_get(m, mw, "max");
   for e: 0..<3 { if !xc_near(lo[e], jv_raw(m, jv_at(m, wlo, e))) || !xc_near(hi[e], jv_raw(m, jv_at(m, whi, e))) { return xc_fail("world bounds differ from the manifest", "world.glb"); } }
+  // the kit slots (#13565): every group a slot lists is a world group of that slot, every world group a
+  // slot holds is listed by it, and each place is a point and a turn
+  kits := jv_get(m, 0, "kits"); tagged := 0; listed := 0; places := 0;
+  for k: 0..<jv_len(m, mgroups) { if jv_get(m, jv_at(m, mgroups, k), "kit") >= 0 { tagged += 1; } }
+  for s: 0..<jv_len(m, kits) {
+    slot := jv_at(m, kits, s); sname := jv_key(m, slot); sgroups := jv_get(m, slot, "groups"); splaces := jv_get(m, slot, "places");
+    if sgroups < 0 || splaces < 0 { return xc_fail("a kit slot has no places or groups", sname); }
+    for i: 0..<jv_len(m, splaces) {
+      p := jv_at(m, splaces, i);
+      if jv_len(m, jv_get(m, p, "at")) != 3 || jv_get(m, p, "yaw") < 0 { return xc_fail("a kit slot's place is not a point and a turn", sname); }
+    }
+    places += jv_len(m, splaces);
+    for i: 0..<jv_len(m, sgroups) {
+      gl := jv_str(m, jv_at(m, sgroups, i), name[..]); found := false;
+      for k: 0..<jv_len(m, mgroups) {
+        mg := jv_at(m, mgroups, k); mm := jv_str(m, jv_get(m, mg, "name"), mname[..]);
+        if mm != gl || cast(string) mname[0..<mm] != cast(string) name[0..<gl] { continue; }
+        kn := jv_str(m, jv_get(m, mg, "kit"), mname[..]);
+        found = kn > 0 && jv_raw_eq(sname, cast(string) mname[0..<kn]);
+      }
+      if !found { return xc_fail("a kit slot lists a group that is not its world group", sname); }
+      listed += 1;
+    }
+  }
+  if tagged != listed { return xc_fail("world groups hold a kit slot's blockout but no slot lists them", "manifest.json kits"); }
+  print("unreal-export-check: % kit slots, % places, % blockout groups\n", jv_len(m, kits), places, listed);
   print("unreal-export-check: ok, % meshes, % triangles, % vertices, bounds (% % %) to (% % %)\n", meshes, triangles, vertices, lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]);
   return 0;
 }

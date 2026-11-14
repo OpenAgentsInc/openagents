@@ -29,6 +29,7 @@ Splice :: struct {
   fixture: int;               // ?layer=fixture on the dev server: 1 asked for, 2 loaded
   shipped_in: bool;           // the shipped pieces put in the layer until the world's own document comes (#13505)
   built_gray: bool;           // the world store was built in graybox
+  built_pack: int;            // and from this import pack (pieces.coax SpImports gen)
   scene: int;                 // ?scene=N in the page's URL: which scene (SP_SCENES)
   built_scene: int = -1;
   world_gen: int;             // counts the world's writes: the page copies the store when it changes
@@ -397,6 +398,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   g := s[0].game[..];
   if !s[0].started { s[0].started = true; s[0].time = 0; g_reset(g); }
   if !s[0].gallery && s[0].built_gray != g[0].gray { s[0].world_built = false; s[0].built_gray = g[0].gray; }
+  if !s[0].gallery && s[0].built_pack != g[0].imp[0].gen { s[0].world_built = false; s[0].built_pack = g[0].imp[0].gen; }   // a kit slot the pack dresses draws no blockout (kits.coax)
   if !s[0].world_built || (s[0].gallery && s[0].built_scene != s[0].scene) {
     pen := [1] Pen.[Pen.{graybox = !s[0].gallery && g[0].gray}];
     if s[0].gallery { #if BUILD_DEBUG { sp_build_world(world, pen[..], s[0].scene); } } else { g_world(g, world, pen[..]); }
@@ -480,6 +482,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   s[0].draw_n = sd_draws(s[0].ld[..], g, s[0].draws[..], 2);
   s[0].draw_n = fr_player(g, s[0].ld[..], pieces, places, s[0].draws[..], s[0].draw_n);   // you, as your character (front.coax)
   s[0].draw_n = ff_draws(g, s[0].ld[..], s[0].draws[..], s[0].draw_n);   // the solar farm's field, one draw of its banks (farm.coax)
+  s[0].draw_n = sd_kit_draws(s[0].ld[..], s[0].draws[..], s[0].draw_n);   // a kit slot the import pack dresses, one draw at its places (kits.coax)
   n := g_overlay(g, out, u, width, height);
   // the selected piece is outlined where it stands, or where a drag would leave it
   if s[0].edit {

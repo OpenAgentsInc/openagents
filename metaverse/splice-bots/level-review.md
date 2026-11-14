@@ -107,12 +107,13 @@ North is -z and east +x, as the compass shows (`hud.coax`).
 - **Change.** The deck's floor ends where it is drawn (`DECK_W`, 4 m).
 - **Playtest.** Walking behind the deck, her feet stay on the floor.
 
-## 9. Kit slots by name (BUILT, the swap PROPOSED)
+## 9. Kit slots by name (BUILT; the garage bay swaps, #13565)
 
 - **Experience.** A designer dresses the grey blockout piece by piece without touching layout code.
-- **Change.** One named table of the level's kit slots (`SX_KITS`, `splice-export.coax`), in the
-  bundle's manifest as `kits`; a `kit.NAME` row of the host's overrides table names the replacement.
-  The importer honouring those rows is the follow-up.
+- **Change.** One named table of the level's kit slots (`KS_ROWS`, `kits.coax`), in the bundle's
+  manifest as `kits` with each slot's places and blockout groups; a `kit.NAME` row of the host's
+  overrides table, or a mesh of that name in the world's import pack, replaces the blockout. Only the
+  garage bay lists its places so far.
 - **Playtest.** A dressed bay drops in for every bay at once, and the walk and the checks still pass.
 
 ## 10. A rim overlook into the garage (PROPOSED)

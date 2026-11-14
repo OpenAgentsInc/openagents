@@ -663,11 +663,21 @@ draw your character.
 
 #### Kit slots
 
-The level is blocked out in grey kit shapes first and dressed after. `SX_KITS` in `splice-export.coax` is
-the one named table of the level's kit slots (garage bay, section sign, rock wall, mountain hallway, solar
-row, charger, Sniper's interior, the raider mech, the drill mech, an Imperial robot, the boss lab, a
-landmark rock, the mountain), written into the bundle's `manifest.json` as `kits`. A row `kit.NAME` of the
-host's overrides table names the kit piece for that slot. The importer does not swap them yet.
+The level is blocked out in grey kit shapes first and dressed after. `KS_ROWS` in `kits.coax` is the one
+named table of the level's kit slots (garage bay, section sign, rock wall, mountain hallway, solar row,
+charger, Sniper's interior, the raider mech, the drill mech, an Imperial robot, the boss lab, a landmark
+rock, the mountain). A slot has places (`ks_places`): where its blockout stands, a point and a turn. Only
+the garage bay has them so far: the middle of each of the 24 bays' mouths, turned into the bay.
+
+A slot is dressed by its name, two ways:
+
+- On the page: when the world's import pack has a mesh named after the slot (`garage_bay`), that mesh
+  stands at each place, one instanced draw (`layer-draw.coax`), and the world is written again without
+  the slot's blockout.
+- In Unreal: the export writes each slot's places and the world groups that hold its blockout into the
+  bundle's `manifest.json` as `kits`. A row `kit.NAME` of the host's overrides table drops those groups
+  and stands its mesh at each place; the import report lists the slots replaced and those still drawing
+  the blockout (`metaverse-engine/export/unreal/README.md`, "Replacing things").
 
 #### The jam build
 

@@ -191,6 +191,7 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   for k: 0..<GA_SECTIONS {
     a := ga_angle(k); a0 := a - h; a1 := a + h;
     gap := ga_gap(k) / rb;
+    bay := ks_begin(p);   // the bay, to the pier after it: the kit slot garage_bay (kits.coax)
     // the bay's floor, its back wall (around the gap, if any) and the way out at its back
     kit_pen(p, 202, MAT_WORLD, GA_CONCRETE());
     ga_strip(g, buf, p, a0, a1, rf, 0.012, rb, 0.012, 3, false);
@@ -228,6 +229,7 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     box(buf, p, frame_move(pf, ga_pt(g, b, pr, (GA_PASS_H + GA_ROOF + 2) * 0.5)), GA_PIER, (GA_ROOF + 2 - GA_PASS_H) * 0.5, GA_PASS);
     kit_pen(p, 212, MAT_FLAT, GA_YELLOW());
     box(buf, p, frame_move(pf, ga_pt(g, b, rf - 1.55, 1.2)), GA_PIER + 0.1, 1.2, 0.1);   // on the pier's face to the field
+    ks_end(g, KS_GARAGE_BAY, p, bay);
     // the rim's wall over the bays, set back, with the section's letters on a white panel
     kit_pen(p, 213 + k % 2, MAT_WORLD, ifx k % 4 == 1 then GA_RUST() else kit_tint(0.50, 0.50, 0.50));
     ga_strip(g, buf, p, a0, a1, rf + GA_SET, GA_ROOF + GA_LEDGE, rf + GA_SET, GA_RIM, 3, false);

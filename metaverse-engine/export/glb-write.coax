@@ -133,17 +133,24 @@ GLB_TABLE :: 262144;
 GLB_MAX_VERTICES :: 450000;   // the most vertices glb_parts takes (Splice Bots' things: the Digger twice at about 90,000)
 
 // One mesh of the world: a material class inside one ground cell. Its name is w_mMM_xXXX_zZZZ,
-// the cell numbers offset by 128 so they are never negative.
-GlbGroup :: struct { mat: int; cx: int; cz: int; vertices: int; triangles: int; lo: [3] f32; hi: [3] f32; vertex_at: int; index_at: int; }
+// the cell numbers offset by 128 so they are never negative. A tagged run of triangles (GlbTag) is
+// grouped apart from the rest, its meshes named kTT_mMM_xXXX_zZZZ for tag TT, so a host can tell them apart.
+GlbGroup :: struct { mat: int; cx: int; cz: int; tag: int; vertices: int; triangles: int; lo: [3] f32; hi: [3] f32; vertex_at: int; index_at: int; }
+// A run of whole triangles' vertices, first and count, carrying tag 1 to 99.
+GlbTag :: struct { first: int; count: int; tag: int; }
+GLB_TAG_MAX :: 99;
 GlbWorld :: struct { ok: bool; bytes: int; groups: int; vertices: int; triangles: int; welded: int; lo: [3] f32; hi: [3] f32; }
 
 glb_name :: (g: GlbGroup, out: [] u8) -> string {
-  t := "w_m00_x000_z000"; for c, k: t { out[k] = c; }
-  out[3] = cast,trunc(u8) (48 + (g.mat / 10) % 10); out[4] = cast,trunc(u8) (48 + g.mat % 10);
+  at := 0;   // the last letter of the prefix: w, or kTT
+  if g.tag > 0 { out[0] = 'k'; out[1] = cast,trunc(u8) (48 + (g.tag / 10) % 10); out[2] = cast,trunc(u8) (48 + g.tag % 10); at = 2; } else { out[0] = 'w'; }
+  out[at + 1] = '_'; out[at + 2] = 'm'; o := at + 3;
+  out[o] = cast,trunc(u8) (48 + (g.mat / 10) % 10); out[o + 1] = cast,trunc(u8) (48 + g.mat % 10); out[o + 2] = '_'; out[o + 3] = 'x';
   x := g.cx + 128; z := g.cz + 128;
-  out[7] = cast,trunc(u8) (48 + (x / 100) % 10); out[8] = cast,trunc(u8) (48 + (x / 10) % 10); out[9] = cast,trunc(u8) (48 + x % 10);
-  out[12] = cast,trunc(u8) (48 + (z / 100) % 10); out[13] = cast,trunc(u8) (48 + (z / 10) % 10); out[14] = cast,trunc(u8) (48 + z % 10);
-  return cast(string) out[0..<15];
+  out[o + 4] = cast,trunc(u8) (48 + (x / 100) % 10); out[o + 5] = cast,trunc(u8) (48 + (x / 10) % 10); out[o + 6] = cast,trunc(u8) (48 + x % 10);
+  out[o + 7] = '_'; out[o + 8] = 'z';
+  out[o + 9] = cast,trunc(u8) (48 + (z / 100) % 10); out[o + 10] = cast,trunc(u8) (48 + (z / 10) % 10); out[o + 11] = cast,trunc(u8) (48 + z % 10);
+  return cast(string) out[0..<o + 12];
 }
 // An sRGB byte as a linear value (IEC 61966-2-1).
 glb_linear :: (b: u32) -> f32 {
@@ -187,13 +194,21 @@ glb_hash :: (buf: [] u32, v: int) -> int {
 // while the JSON is written and must be as large as it; `groups` receives one entry a mesh.
 // The same input gives the same bytes. Not ok when anything does not fit.
 glb_world :: (buf: [] u32, vertices: int, cell: f32, out: [] u8, scratch: [] u8, groups: [] GlbGroup) -> GlbWorld #effects(all) {
+  none: [1] GlbTag;
+  return glb_world_tagged(buf, vertices, cell, none[0..<0], out, scratch, groups);
+}
+// The same, with tagged runs of triangles grouped apart: a triangle in a run takes its tag (each run
+// whole triangles, tags 1 to GLB_TAG_MAX; a triangle in two runs takes the first's). Not ok when a run is not.
+glb_world_tagged :: (buf: [] u32, vertices: int, cell: f32, tags: [] GlbTag, out: [] u8, scratch: [] u8, groups: [] GlbGroup) -> GlbWorld #effects(all) {
   r: GlbWorld;
   if vertices < 3 || vertices % 3 != 0 || vertices * VERTEX_WORDS > buf.count || !(cell > 0) { return r; }
+  for m: tags { if m.first < 0 || m.first % 3 != 0 || m.count % 3 != 0 || m.first + m.count > vertices || m.tag < 1 || m.tag > GLB_TAG_MAX { return r; } }
   tris := vertices / 3;
   keys: [50000] int; if tris > 50000 { return r; }
   distinct: [GLB_GROUPS] int; n := 0;
   for t: 0..<tris {
     k := glb_key(buf, t, cell); if k < 0 { return r; }
+    for m: tags { if t * 3 >= m.first && t * 3 < m.first + m.count { k = k | (m.tag << 24); break; } }
     keys[t] = k;
     at := 0; while at < n && distinct[at] < k { at += 1; }
     if at < n && distinct[at] == k { continue; }
@@ -228,7 +243,7 @@ glb_meshes :: (buf: [] u32, vertices: int, keys: [] int, distinct: [] int, parts
   for gi: 0..<n {
     k := distinct[gi];
     g: GlbGroup; g.vertex_at = bin;
-    if parts.count == 0 { g.mat = k >> 16; g.cx = ((k >> 8) & 255) - 128; g.cz = (k & 255) - 128; }
+    if parts.count == 0 { g.tag = k >> 24; g.mat = (k >> 16) & 255; g.cx = ((k >> 8) & 255) - 128; g.cz = (k & 255) - 128; }
     for s: 0..<GLB_TABLE { table[s] = -1; }
     // welded vertices first, in the order the triangles first use them
     for t: 0..<tris {
@@ -272,7 +287,7 @@ glb_meshes :: (buf: [] u32, vertices: int, keys: [] int, distinct: [] int, parts
     }
     r.welded += g.vertices; r.triangles += g.triangles;
   }
-  json: [1048576] u8; o: [1] Jo; jo_start(o[..], json[..]); name: [16] u8;
+  json: [1048576] u8; o: [1] Jo; jo_start(o[..], json[..]); name: [24] u8;
   jo_obj(o[..]);
   jo_key(o[..], "asset"); jo_obj(o[..]); jo_key(o[..], "version"); jo_str(o[..], "2.0"); jo_key(o[..], "generator"); jo_str(o[..], "metaverse-engine/export/glb-write.coax"); jo_end(o[..]);
   jo_key(o[..], "scene"); jo_int(o[..], 0);
@@ -376,6 +391,20 @@ glb_meshes :: (buf: [] u32, vertices: int, keys: [] int, distinct: [] int, parts
   rb := glb_world(buf[..], 108, 64, b[..], scratch[..], groups[..]);
   #assert rb.bytes == ra.bytes;
   for k: 0..<ra.bytes { #assert a[k] == b[k]; }
+}
+#test "a tagged run is grouped apart from the same material and cell, after the untagged groups, and named by its tag" {
+  buf: [108 * VERTEX_WORDS] u32; p: [1] Pen;
+  pen_set(p[..], 1, MAT_WORLD, 1, 0, 0); box(buf[..], p[..], frame_at(v3(5, 0.5, 5), 0), 0.5, 0.5, 0.5);
+  pen_set(p[..], 2, MAT_WORLD, 1, 0, 0); box(buf[..], p[..], frame_at(v3(10, 0.5, 5), 0), 0.5, 0.5, 0.5);
+  pen_set(p[..], 3, MAT_WORLD, 1, 0, 0); box(buf[..], p[..], frame_at(v3(20, 0.5, 5), 0), 0.5, 0.5, 0.5);
+  a: [32768] u8; scratch: [32768] u8; groups: [8] GlbGroup; name: [24] u8;
+  #assert glb_world(buf[..], 108, 64, a[..], scratch[..], groups[..]).groups == 1;
+  tags := [2] GlbTag.[GlbTag.{first = 36, count = 36, tag = 7}, GlbTag.{first = 72, count = 36, tag = 7}];
+  r := glb_world_tagged(buf[..], 108, 64, tags[..], a[..], scratch[..], groups[..]);
+  #assert r.ok && r.groups == 2 && r.triangles == 36 && groups[0].tag == 0 && groups[0].triangles == 12 && groups[1].tag == 7 && groups[1].triangles == 24 && groups[1].mat == MAT_WORLD;
+  #assert glb_name(groups[0], name[..]) == "w_m00_x128_z128" && glb_name(groups[1], name[..]) == "k07_m00_x128_z128";
+  bad := [1] GlbTag.[GlbTag.{first = 1, count = 36, tag = 7}]; zero := [1] GlbTag.[GlbTag.{first = 0, count = 36, tag = 0}];
+  #assert !glb_world_tagged(buf[..], 108, 64, bad[..], a[..], scratch[..], groups[..]).ok && !glb_world_tagged(buf[..], 108, 64, zero[..], a[..], scratch[..], groups[..]).ok;
 }
 #test "the world writer refuses a run that is not whole triangles and a buffer too small" {
   buf: [36 * VERTEX_WORDS] u32; p: [1] Pen; pen_set(p[..], 1, MAT_FLAT, 1, 0, 0);

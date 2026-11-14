@@ -1,0 +1,95 @@
+// The level's kit slots (#13552, #13565): the one named table of the pieces a level designer swaps in
+// for the grey blockout, by name. Block out first; dress by name after. A slot has places: where its
+// blockout stands, each a point on the ground and a turn (a piece's own +z is (sin yaw, cos yaw), as
+// frame_at turns it). A slot is dressed two ways, by the same name:
+//   - on the page, when the world's import pack has a mesh named after the slot: that mesh stands at
+//     each place (layer-draw.coax sd_kits) and the slot's blockout is not drawn;
+//   - in Unreal, by a row kit.NAME of the host's overrides table (metaverse-engine/export/unreal/README.md
+//     "Replacing things"): the exporter writes each slot's places and its blockout's world groups into the
+//     bundle's manifest (splice-export.coax), and the importer puts the row's mesh at the places and
+//     drops those groups (metaverse-engine/export/unreal/kits.py).
+// A slot's blockout is marked where it is drawn (ks_begin, ks_end): the exporter groups the marked
+// triangles apart from the rest of the world, so Unreal can drop them.
+//   coax/bin/coax test metaverse/splice-bots/splice-game.coax
+KS_N :: 13;
+KS_GARAGE_BAY :: 0;
+// Each slot: its name, then what it is now and where it is drawn.
+KS_ROWS :: [KS_N * 2] string.[
+  "garage_bay", "a bay of the ring: floor, back wall, roof and its band, the lamps, the pier after it (garage.coax ga_draw)",
+  "section_sign", "a section's letters on the rim's white panel, named from GA_NAMES (garage.coax)",
+  "rock_wall", "the raiders' rock wall across the old entrance bay, which Digger drills (the rubble)",
+  "mountain_hallway", "the hallway north into the mountain and its barricade, which only the drill mech breaks (garage.coax, splice-game.coax)",
+  "solar_row", "a line of solar banks in the farm's rows (farm.coax ff_mesh)",
+  "charger", "a charging post: Sniper's, and one at each Imperial pad (pieces kind 121)",
+  "sniper_interior", "Sniper's cabin and its furniture (drive.coax dv_room_draw, the shipped pieces)",
+  "raider_mech", "the raider mech on the drive (splice-battle.coax)",
+  "drill_mech", "the drill mech in the empty section (splice-battle.coax, kit_mech)",
+  "imperial_robot", "an Imperial robot (the foes' draw)",
+  "boss_lab", "the old-world lab and the boss in it (garage.coax, kit_dino)",
+  "landmark_rock", "one of the three landmark rocks (plain.coax, kit_mound)",
+  "mountain", "the mountain's two peaks north of the garage (plain.coax, land_peak)"];
+ks_name :: (k: int) -> string { return ifx k >= 0 && k < KS_N then KS_ROWS[k * 2] else ""; }
+ks_about :: (k: int) -> string { return ifx k >= 0 && k < KS_N then KS_ROWS[k * 2 + 1] else ""; }
+
+KS_PLACE_MAX :: 32;   // places one slot may have
+// A place: where the slot's piece stands on the ground, its turn, and the half width of an opening its
+// back leaves clear for a way through (0: none). A bay's place is the middle of its mouth on the field's
+// edge, its +z into the bay to the back wall; the bay is GA_BAY deep and a 24th of the ring wide.
+KsPlace :: struct { x: f32; y: f32; z: f32; yaw: f32; open: f32; }
+// Slot k's places into out: how many. A slot with none here is not placed yet: its blockout stays.
+ks_places :: (g: [] SpGame, k: int, out: [] KsPlace) -> int {
+  if k != KS_GARAGE_BAY { return 0; }
+  n := 0;
+  for s: 0..<GA_SECTIONS {
+    if n >= out.count { break; }
+    a := ga_angle(s); p := ga_pt(g, a, g[0].at.gar_r, 0);
+    out[n] = KsPlace.{x = p.x, y = 0, z = p.z, yaw = a, open = ga_gap(s)}; n += 1;
+  }
+  return n;
+}
+// Whether the world's import pack dresses slot k: it has a mesh by the slot's name.
+ks_dressed :: (g: [] SpGame, k: int) -> bool { return sp_import(g[0].imp[..], ks_name(k)) >= 0; }
+
+// ---- the blockout, marked as it is drawn
+KS_MARKS :: 64;
+KsMark :: struct { slot: int; first: int; count: int; }   // a run of whole triangles' vertices in the world's store
+KsMarks :: struct { m: [KS_MARKS] KsMark; n: int; over: bool; }
+ks_begin :: (p: [] Pen) -> int { return p[0].n; }
+// The vertices drawn since `first` are slot k's blockout: marked, or taken back when the import pack
+// dresses the slot (its mesh stands there instead).
+ks_end :: (g: [] SpGame, k: int, p: [] Pen, first: int) {
+  t := g[0].kit[..];
+  if p[0].n <= first { return; }
+  if ks_dressed(g, k) { p[0].n = first; return; }
+  if t[0].n >= KS_MARKS { t[0].over = true; return; }
+  t[0].m[t[0].n] = KsMark.{slot = k, first = first, count = p[0].n - first}; t[0].n += 1;
+}
+
+#test "the garage bay slot has a place at each of the 24 bays' mouths, turned into the bay, and the two openings are named" {
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]);
+  pl: [KS_PLACE_MAX] KsPlace;
+  #assert ks_places(g[..], KS_GARAGE_BAY, pl[..]) == GA_SECTIONS && ks_name(KS_GARAGE_BAY) == "garage_bay" && ks_name(KS_N) == "";
+  for s: 0..<GA_SECTIONS {
+    m := ga_pt(g[..], ga_angle(s), g[0].at.gar_r + GA_BAY, 0);   // the back wall's middle: GA_BAY ahead of the place
+    ahead := v3(pl[s].x + sin(pl[s].yaw) * GA_BAY, 0, pl[s].z + cos(pl[s].yaw) * GA_BAY);
+    #assert abs(ahead.x - m.x) < 0.01 && abs(ahead.z - m.z) < 0.01;
+    #assert (pl[s].open > 0) == (s == GA_ENTRY || s == GA_HALLWAY);
+  }
+  for k: 1..<KS_N { #assert ks_places(g[..], k, pl[..]) == 0; }
+}
+#test "the world marks each of the 24 bays' blockout once, and draws none of it when the import pack dresses the slot" {
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]);
+  world: [150000 * VERTEX_WORDS] u32; pen := [1] Pen.[Pen.{}];
+  g_world(g[..], world[..], pen[..]);
+  #assert !pen[0].over && !g[0].kit[0].over && g[0].kit[0].n == GA_SECTIONS;
+  whole := pen[0].n; bays := 0;
+  for i: 0..<g[0].kit[0].n { mk := g[0].kit[0].m[i]; #assert mk.slot == KS_GARAGE_BAY && mk.first % 3 == 0 && mk.count % 3 == 0 && mk.first + mk.count <= whole; bays += mk.count; }
+  #assert !ks_dressed(g[..], KS_GARAGE_BAY);
+  // a pack with a mesh named garage_bay: the world is written again without the bays
+  e := SpImport.{n = 10}; for c, i: "garage_bay" { e.name[i] = c; }
+  g[0].imp[0].m[0] = e; g[0].imp[0].n = 1;
+  #assert ks_dressed(g[..], KS_GARAGE_BAY);
+  pen[0] = Pen.{};
+  g_world(g[..], world[..], pen[..]);
+  #assert g[0].kit[0].n == 0 && pen[0].n == whole - bays;
+}

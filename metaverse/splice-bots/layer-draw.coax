@@ -8,7 +8,8 @@ SD_ROW :: 8;            // words a placed piece: x, y, z, squash, cos turn, sin 
 SD_BASE :: 2;           // a placed piece's instance number is SD_BASE + its row: 0 and 1 are the world's and the live store's
 SD_PIECE_WORDS :: (SD_KIND_VERTS + FR_POSES * CW_BUDGET) * VERTEX_WORDS;   // the piece store: every kind's mesh, then the player's walk poses (front.coax)
 SD_KIND_VERTS :: 100000;   // the kinds' meshes' share of it: the shipped kinds (the solar farm's and Sniper's room's with them, #13505) and one of each kit at size 1 take about 82,000 vertices (#13485)
-SD_PLACE_WORDS :: (SL_ITEMS + 1 + FF_BANKS) * SD_ROW;   // the place store: a row a placed piece, the player's, then the solar farm's field (farm.coax)
+SD_KIT_ROWS :: KS_PLACE_MAX * 2;   // the dressed kit slots' places (kits.coax): rows for all of them together
+SD_PLACE_WORDS :: (SL_ITEMS + 1 + FF_BANKS + SD_KIT_ROWS) * SD_ROW;   // the place store: a row a placed piece, the player's, the solar farm's field (farm.coax), then the dressed kit slots
 
 SpLayerDraw :: struct {
   first: [SC_PIECE_MAX] int; count: [SC_PIECE_MAX] int;   // each kind's vertices in the piece store, by its row of the pieces table
@@ -24,6 +25,9 @@ SpLayerDraw :: struct {
   place_gen: int;         // counts the place store's writes
   ff_first: int; ff_count: int;   // the solar farm's bank mesh in the piece store, after the kinds' (farm.coax)
   ff_row0: int; ff_n: int;        // and the field's rows in the place store, after the player's row (0 rows: they did not fit)
+  ks_first: [KS_N] int; ks_count: [KS_N] int;   // each dressed kit slot's mesh from the import pack, after the field's (kits.coax; 0: not dressed)
+  ks_row0: [KS_N] int; ks_rows: [KS_N] int;     // and its places' rows, after the field's
+  place_pack: int = -1;   // the import pack the kit slots' rows were written from (pieces.coax SpImports gen)
 }
 
 // Every kind's mesh into the piece store, standing at the origin and facing +z. It writes only
@@ -42,6 +46,12 @@ sd_meshes :: (d: [] SpLayerDraw, g: [] SpGame, pieces: [] u32, pack: string) {
     d[0].count[r] = pen[0].n - d[0].first[r];
   }
   d[0].ff_first = pen[0].n; ff_mesh(pieces, pen[..]); d[0].ff_count = pen[0].n - d[0].ff_first;   // the solar farm's bank (farm.coax)
+  // a kit slot the import pack dresses: the pack's mesh by the slot's name, at size 1 in its own colours (kits.coax)
+  for k: 0..<KS_N {
+    d[0].ks_first[k] = pen[0].n;
+    if ks_dressed(g, k) { _ := sp_mesh_write(pieces, pen[..], pack, ks_name(k), 1, PIECE_OBJ + 4 + k, kit_tint(1, 1, 1)); }
+    d[0].ks_count[k] = pen[0].n - d[0].ks_first[k];
+  }
   d[0].mesh_n = pen[0].n; d[0].over = pen[0].over;
   d[0].meshed = true; d[0].meshed_gray = g[0].gray; d[0].meshed_pack = g[0].imp[0].gen; d[0].mesh_gen += 1;
 }
@@ -49,7 +59,7 @@ sd_meshes :: (d: [] SpLayerDraw, g: [] SpGame, pieces: [] u32, pack: string) {
 // kind. It writes only when the layer's revision is not the one the rows were written from.
 sd_places :: (d: [] SpLayerDraw, g: [] SpGame, places: [] u32) {
   hid := dv_hidden(g);
-  if d[0].place_rev == g[0].layer[0].rev && d[0].place_shown == g[0].layer[0].shown && d[0].place_hid == hid { return; }
+  if d[0].place_rev == g[0].layer[0].rev && d[0].place_shown == g[0].layer[0].shown && d[0].place_hid == hid && d[0].place_pack == g[0].imp[0].gen { return; }
   c := g[0].c[..]; n := 0;
   for r: 0..<c[0].piece_n {
     d[0].row0[r] = n;
@@ -65,6 +75,21 @@ sd_places :: (d: [] SpLayerDraw, g: [] SpGame, places: [] u32) {
     d[0].rows[r] = n - d[0].row0[r];
   }
   d[0].ff_row0 = n + 1; d[0].ff_n = ff_rows(places, n + 1);   // the field after the player's row (front.coax fr_player writes row n)
+  // the dressed kit slots' places, after the field's room
+  at := n + 1 + FF_BANKS; pl: [KS_PLACE_MAX] KsPlace;
+  for k: 0..<KS_N {
+    d[0].ks_row0[k] = at; d[0].ks_rows[k] = 0;
+    if !ks_dressed(g, k) { continue; }
+    m := ks_places(g, k, pl[..]);
+    if m == 0 || (at + m) * SD_ROW > places.count || at + m > n + 1 + FF_BANKS + SD_KIT_ROWS { continue; }
+    for i: 0..<m {
+      o := (at + i) * SD_ROW;
+      places[o] = f32_bits(pl[i].x); places[o + 1] = f32_bits(pl[i].y); places[o + 2] = f32_bits(pl[i].z); places[o + 3] = 0;
+      places[o + 4] = f32_bits(cos(pl[i].yaw)); places[o + 5] = f32_bits(sin(pl[i].yaw)); places[o + 6] = 0; places[o + 7] = 0;
+    }
+    d[0].ks_rows[k] = m; at += m;
+  }
+  d[0].place_pack = g[0].imp[0].gen;
   d[0].place_n = n; d[0].place_rev = g[0].layer[0].rev; d[0].place_shown = g[0].layer[0].shown; d[0].place_hid = hid; d[0].place_gen += 1;
 }
 // The layer's draws into `draws` from record `at` (four words a record: first vertex, vertices,
@@ -76,6 +101,17 @@ sd_draws :: (d: [] SpLayerDraw, g: [] SpGame, draws: [] u32, at: int) -> int {
     if d[0].rows[r] == 0 || d[0].count[r] == 0 || (n + 1) * 4 > draws.count { continue; }
     draws[n * 4] = cast(u32) d[0].first[r]; draws[n * 4 + 1] = cast(u32) d[0].count[r];
     draws[n * 4 + 2] = 0x80000000 | cast(u32) (SD_BASE + d[0].row0[r]); draws[n * 4 + 3] = cast(u32) d[0].rows[r];
+    n += 1;
+  }
+  return n;
+}
+// The dressed kit slots' draws from record `at`: one a slot whose pack mesh drew and whose places fit.
+sd_kit_draws :: (d: [] SpLayerDraw, draws: [] u32, at: int) -> int {
+  n := at;
+  for k: 0..<KS_N {
+    if d[0].ks_rows[k] == 0 || d[0].ks_count[k] == 0 || (n + 1) * 4 > draws.count { continue; }
+    draws[n * 4] = cast(u32) d[0].ks_first[k]; draws[n * 4 + 1] = cast(u32) d[0].ks_count[k];
+    draws[n * 4 + 2] = 0x80000000 | cast(u32) (SD_BASE + d[0].ks_row0[k]); draws[n * 4 + 3] = cast(u32) d[0].ks_rows[k];
     n += 1;
   }
   return n;
