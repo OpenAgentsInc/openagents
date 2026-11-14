@@ -41,6 +41,7 @@
 #load "../../metaverse-engine/character/material.coax" as cmat;   // the characters' material table (#13012)
 #load "cull.coax";   // what the host's instance cull reads each frame (#13050)
 #load "../../metaverse-engine/render/frame-plan.coax";   // the frame's order, as words for the host (#13303)
+#load "../../metaverse-engine/render/retained-rows.coax";   // which records changed since the host last sent them (#13540)
 #load "cell-view.coax";  // the world's cells as the frame reads them; the controller is everglade/client/cells.coax, in the step's unit (#13280)
 #load "../world/cell-content.coax";   // a cell's content as the pack carries it: its planting put in and taken out, the ground's record (#13280)
 #load "../../metaverse-engine/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
@@ -108,7 +109,8 @@ E2 :: struct {
   mats: [cmat.CM_MAX * cmat.CM_FLOATS] f32; mat_table: [cmat.CM_MAX] cmat.CharMaterial; mats_n: int; mats_v: int;
   film: bool; maps_off: bool;   // ?film, ?maps=0 (e2_material_facts)
   inst: [E2_VISIBLE] u32; inst_n: int;   // the pieces drawn this frame, a word each: its row of items and its fade code (everglade2.coax e2_vis_word)
-  rec_n: int;                            // the records this frame wrote (the span the host uploads)
+  rec_n: int;                            // the records this frame wrote
+  rec_marks: [E2_RECORDS] u64; rec_count: [RS_COUNTERS] int; rec_taken: int;   // what the GPU was last given of each record, the span changed since and the one taken (e2_record_span)
   fly: trk.CamTrack; fly_from: f32;   // #fly=PATH: the flyover benchmark flies the camera (e2_hash)
   draws: [E2_DRAWS * 4] u32; draw_n: int;
   shadow: [E2_DRAWS * 4] u32; shadow_n: int;
@@ -1848,6 +1850,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   d = e2rv_draw(s, d, bdt);          // the zone's mounts (everglade/client/ride-view.coax)
   d = e2rg_draw(s, d);               // the Archery Range (everglade/client/range.coax)
   rec = d.rec; n = d.n; sn = d.sn; s[0].rec_n = rec;
+  _ := retained_rows_mark(e2_record_rows(s), s[0].records[..], rec);   // a still glade's records change nothing
   n = e2_pieces(s, s[0].draws[..], n, false);
   n = e2_field(s, s[0].draws[..], n);
   sn = e2_pieces(s, s[0].shadow[..], sn, true);
@@ -1874,7 +1877,26 @@ e2_frame_plan :: (s: [] E2, features: u32, w: int, h: int, hud: int, runs: int, 
 // What a frame sends the GPU of the scene (the retained scene, #13303): the records this frame wrote
 // (a record past them is drawn by nothing), one word a piece drawn, and the planted pieces' rows
 // once, when they are planted (e2_items_version moves only then).
-e2_record_bytes :: (s: [] E2) -> int #export_c #effects(all) { n := ifx s[0].rec_n > E2_RECORDS then E2_RECORDS else s[0].rec_n; return n * 24 * 4; }
+// The records' whole bytes are every record the GPU was ever given (a buffer's first copy holds them
+// all); a host with the span sends after that only the records that changed (e2_record_span).
+e2_record_bytes :: (s: [] E2) -> int #export_c #effects(all) {
+  n := ifx s[0].rec_n > s[0].rec_count[RS_KNOWN] then s[0].rec_n else s[0].rec_count[RS_KNOWN];
+  if n > E2_RECORDS { n = E2_RECORDS; }
+  return n * 24 * 4;
+}
+// The records as a plain row array of the retained scene (metaverse-engine/render/retained-rows.coax),
+// taken on first use.
+e2_record_rows :: (s: [] E2) -> RetainedRows #effects(all) {
+  r := RetainedRows.{width = 24, marks = s[0].rec_marks[..], n = s[0].rec_count[..]};
+  if s[0].rec_count[RS_READY] != 1 { _ := retained_rows_init(r); }
+  return r;
+}
+// The face's coaxial_store_span_v1 for the records: field 0 takes the span of records changed since
+// the host last took it and answers its first byte, field 1 its bytes (0: nothing changed).
+e2_record_span :: (s: [] E2, field: int) -> int #export_c #effects(all) {
+  if field == 0 { sp := retained_rows_take(e2_record_rows(s)); s[0].rec_taken = sp.count; return sp.first * 24 * 4; }
+  return s[0].rec_taken * 24 * 4;
+}
 e2_inst_bytes :: (s: [] E2) -> int #export_c #effects(all) { return s[0].inst_n * 4; }
 e2_items_bytes :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].plant_done then s[0].planted * E2_ITEM_FLOATS * 4 else 0; }
 e2_items_version :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].plant_done then 1 + s[0].plant_route else 0; }
@@ -1885,6 +1907,19 @@ e2_items_version :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].
   #assert e2_items_bytes(s[..]) == 32000 && e2_items_version(s[..]) == 2;
   #assert e2_record_bytes(s[..]) == 3840 && e2_inst_bytes(s[..]) == 20760;
   s[0].rec_n = E2_RECORDS + 9; #assert e2_record_bytes(s[..]) == E2_RECORDS * 96;
+}
+#test "the retained scene: a still glade sends no records; a record that changed is sent alone" {
+  s: [1] E2;
+  for i: 0..<5 * 24 { s[0].records[i] = f32(i); }
+  s[0].rec_n = 5; _ := retained_rows_mark(e2_record_rows(s[..]), s[0].records[..], 5);
+  #assert e2_record_span(s[..], 0) == 0 && e2_record_span(s[..], 1) == 5 * 96;   // the first time: all of them
+  _ = retained_rows_mark(e2_record_rows(s[..]), s[0].records[..], 5);
+  #assert e2_record_span(s[..], 0) == 0 && e2_record_span(s[..], 1) == 0;        // nothing moved
+  s[0].records[3 * 24 + 23] = -1; _ = retained_rows_mark(e2_record_rows(s[..]), s[0].records[..], 5);
+  #assert e2_record_span(s[..], 0) == 3 * 96 && e2_record_span(s[..], 1) == 96;  // one record, alone
+  // fewer records this frame: a buffer's first copy still holds every record the GPU was given
+  s[0].rec_n = 2; _ = retained_rows_mark(e2_record_rows(s[..]), s[0].records[..], 2);
+  #assert e2_record_bytes(s[..]) == 5 * 96 && e2_record_span(s[..], 0) == 0 && e2_record_span(s[..], 1) == 0;
 }
 // The host action this frame (everglade2-face.c coaxial_action): its code, its bytes; done clears it.
 e2_action :: (s: [] E2) -> int #export_c #effects(all) { return s[0].action; }

@@ -452,6 +452,16 @@ records it wrote. The kit stage reads `items[inst[instance - base]]`; the instan
 not rows, and takes the rows' store from `coaxial_cull_v1` field 8. `coaxial.storeUploads()` says
 what a frame sent each store. At 60 m up the path that is 19.6 KB a frame, where it was 150.8 KB.
 
+Of the records (store 0) a host sends only those that changed (GitHub #13540). A face may export
+`uint32_t coaxial_store_span_v1(state, int32_t k, int32_t field)`: field 0 takes store `k`'s span and
+answers its first byte, field 1 its length in bytes (0: nothing changed; `0xFFFFFFFF`: the store has
+no span and goes whole). A host sends a buffer whole the first time, then only the span, at that
+offset of the buffer and of the store (`host.js`, `apple/PageHost.m`, `metaverse/gpu/vk-realm.c`).
+The page keeps the span with [`retained-rows.coax`](../render/retained-rows.coax): a 64-bit mark
+a record of what the GPU was last given. In the glade, standing, the records went from 3,936 bytes
+a frame to none (golden mode) or 1,344 (your body's and the idle speakers' animated parts); walking
+the path, from 1,344 to 768 (your body alone).
+
 ### The frame plan
 
 A page's engine may export `uint32_t coaxial_frame_plan_v1(state, uint32_t features, uint32_t *out, uint32_t cap)`

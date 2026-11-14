@@ -26,23 +26,13 @@
 //   coax/bin/coax test metaverse-engine/render/retained.coax
 #module "metaverse.engine.render.retained";
 #load "../core/world.coax";
+#load "retained-rows.coax";   // the dirty span and its counters (RS_*), shared with a plain row array
 #load "tests/retained-checks.coax" #test;
 
 RETAINED_ROW :: 12;
 RR_X :: 0; RR_Y :: 1; RR_Z :: 2; RR_YAW :: 3; RR_SCALE :: 4; RR_MESH :: 5; RR_MATERIAL :: 6; RR_LIVE :: 7;
 RR_PX :: 8; RR_PY :: 9; RR_PZ :: 10; RR_PYAW :: 11;
 RETAINED_REBASE_FAR :: 2048.0;   // metres between the base and the page's origin before the rows are rebased
-
-// The counters, at these places in `n`.
-RS_READY :: 0;      // 1 once retained_init took the storage
-RS_SYSTEM :: 1;     // this system's id in the World's list
-RS_LO :: 2;         // the dirty span: the first row changed since the span was taken
-RS_HI :: 3;         //   and one past the last (lo >= hi: nothing to upload)
-RS_WRITTEN :: 4;    // rows written by the last run
-RS_RUNS :: 5;       // runs so far
-RS_REBASES :: 6;    // times every row was written again from a new base
-RS_UPLOADED :: 7;   // rows a host has taken, all told (a check's measure of what a frame costs)
-RS_COUNTERS :: 8;
 
 RetainedStore :: struct {
   rows: [] f32;        // RETAINED_ROW floats a slot, the World's cap of them
@@ -52,7 +42,6 @@ RetainedStore :: struct {
   base: [] f64;        // 3: the origin the rows are metres from
   n: [] int;
 }
-RetainedSpan :: struct { first: int; count: int; }   // rows
 
 retained_cap :: (r: RetainedStore) -> int #effects(all) { return r.mesh.count; }
 // Takes the storage whole or refuses it: every column the World's cap long.
@@ -86,11 +75,6 @@ retained_set :: (r: RetainedStore, slot: int, mesh: int, material: int, scale: f
   r.mesh[slot] = mesh; r.material[slot] = material; r.scale[slot] = scale;
   return true;
 }
-rt_dirty :: (r: RetainedStore, slot: int) #effects(all) {
-  if r.n[RS_LO] >= r.n[RS_HI] { r.n[RS_LO] = slot; r.n[RS_HI] = slot + 1; return; }
-  if slot < r.n[RS_LO] { r.n[RS_LO] = slot; }
-  if slot + 1 > r.n[RS_HI] { r.n[RS_HI] = slot + 1; }
-}
 // The run, inside the World's step, after every other system. It begins and ends itself in the
 // World's list. The rows written; -1 when it is not the last system or the World refuses it now
 // (no step open, or an earlier system has not run), and then nothing is written.
@@ -107,7 +91,7 @@ retained_system :: (w: World, r: RetainedStore, ox: f64, oy: f64, oz: f64) -> in
     at := slot * RETAINED_ROW;
     drawn := world_alive(w, world_at(w, slot)) && world_has(w, slot, WORLD_TRANSFORM | WORLD_KIND) && r.mesh[slot] > 0;
     if !drawn {
-      if r.rows[at + RR_LIVE] != 0 { for k: 0..<RETAINED_ROW { r.rows[at + k] = 0; } rt_dirty(r, slot); written += 1; }
+      if r.rows[at + RR_LIVE] != 0 { for k: 0..<RETAINED_ROW { r.rows[at + k] = 0; } rt_dirty(r.n, slot); written += 1; }
       continue;
     }
     now := [4] f32.[cast(f32) (cast(f64) world_f(w, WF_X, slot) - r.base[0]), cast(f32) (cast(f64) world_f(w, WF_Y, slot) - r.base[1]),
@@ -121,24 +105,16 @@ retained_system :: (w: World, r: RetainedStore, ox: f64, oy: f64, oz: f64) -> in
     if same { continue; }
     for k: 0..<4 { r.rows[at + k] = now[k]; r.rows[at + RR_PX + k] = was[k]; }
     r.rows[at + RR_SCALE] = r.scale[slot]; r.rows[at + RR_MESH] = f32(r.mesh[slot]); r.rows[at + RR_MATERIAL] = f32(r.material[slot]); r.rows[at + RR_LIVE] = 1;
-    rt_dirty(r, slot); written += 1;
+    rt_dirty(r.n, slot); written += 1;
   }
   world_system_end(w);
   r.n[RS_WRITTEN] = written; r.n[RS_RUNS] += 1;
   return written;
 }
 // The rows a host has still to upload, and they are taken: the next span starts empty.
-retained_take :: (r: RetainedStore) -> RetainedSpan #effects(all) {
-  if r.n[RS_READY] != 1 || r.n[RS_LO] >= r.n[RS_HI] { return RetainedSpan.{}; }
-  s := RetainedSpan.{first = r.n[RS_LO], count = r.n[RS_HI] - r.n[RS_LO]};
-  r.n[RS_LO] = 0; r.n[RS_HI] = 0; r.n[RS_UPLOADED] += s.count;
-  return s;
-}
-// The span without taking it (the face's coaxial_store_span_v1 asks for the offset, then the length).
-retained_span :: (r: RetainedStore) -> RetainedSpan #effects(all) {
-  if r.n[RS_READY] != 1 || r.n[RS_LO] >= r.n[RS_HI] { return RetainedSpan.{}; }
-  return RetainedSpan.{first = r.n[RS_LO], count = r.n[RS_HI] - r.n[RS_LO]};
-}
+retained_take :: (r: RetainedStore) -> RetainedSpan #effects(all) { return rt_take(r.n); }
+// The span without taking it (the face's coaxial_store_span_v1 takes it when the host uploads).
+retained_span :: (r: RetainedStore) -> RetainedSpan #effects(all) { return rt_span(r.n); }
 // The frame's origin uniform: what the GPU adds to a row's place to stand it from the page's
 // origin (ox, oy, oz), and the fourth word the rebases so far (a pass that caches by origin reads it).
 retained_origin :: (r: RetainedStore, ox: f64, oy: f64, oz: f64, out: [] f32) -> bool #effects(all) {

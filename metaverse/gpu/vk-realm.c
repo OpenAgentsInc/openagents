@@ -134,6 +134,7 @@ __attribute__((weak)) int32_t coaxial_net_probe(cx_face_addr state,int32_t field
 __attribute__((weak)) int32_t coaxial_wants_text(cx_face_addr state);
 __attribute__((weak)) cx_face_addr coaxial_field(cx_face_addr state);
 __attribute__((weak)) uint32_t coaxial_host_copy_span(uint64_t,uint64_t,uint64_t,uint64_t);
+__attribute__((weak)) uint32_t coaxial_store_span_v1(cx_face_addr state,int32_t k,int32_t field);   // of a store only what changed (host.js)
 static VkQueryPool benchmark_queries;
 static int benchmark_timestamps=1;
 static FILE *benchmark_file;
@@ -383,7 +384,7 @@ static uint32_t produce_frame(float width,float height,float scale,float dt){
 
 static uint32_t hud_vertices;   // the last frame's own vertices (rh_frame's count)
 #ifndef ENGINE_RENDER_TYPED
-typedef struct { VkcBuffer *buf; uint32_t version; size_t cap; } Store;
+typedef struct { VkcBuffer *buf; uint32_t version; size_t cap; bool sent; } Store;
 static Store stores[4];
 static VkcBuffer *uniforms, *puffs, *hud;
 
@@ -400,10 +401,16 @@ static void update(VkSpec *s) {
     if (!st->buf) continue;
     uint32_t version = coaxial_store_version(H.state, k);
     if (version == st->version) continue;
-    size_t bytes = coaxial_store_bytes(H.state, k) & ~3u;
+    size_t at = 0, bytes = coaxial_store_bytes(H.state, k) & ~3u;
     if (bytes > st->cap) bytes = st->cap;
-    memcpy(st->buf->map, rh_ptr(coaxial_store(H.state, k)), bytes);
-    st->version = version;
+    // a store with a span sends only the rows that changed once its buffer was sent whole
+    // (host.js, metaverse-engine/render/retained-rows.coax)
+    if (coaxial_store_span_v1) {
+      uint32_t from = coaxial_store_span_v1(H.state, k, 0), length = coaxial_store_span_v1(H.state, k, 1);
+      if (length != 0xFFFFFFFFu && st->sent) { at = from & ~3u; if (at > st->cap) at = st->cap; bytes = length; if (bytes > st->cap - at) bytes = st->cap - at; bytes &= ~(size_t)3; }
+    }
+    if (bytes) memcpy((uint8_t *)st->buf->map + at, (const uint8_t *)rh_ptr(coaxial_store(H.state, k)) + at, bytes);
+    st->version = version; st->sent = true;
   }
   if (puffs) {
     size_t bytes = coaxial_particle_bytes(H.state) & ~3u, cap = coaxial_particle_cap();
@@ -717,6 +724,7 @@ int main(int argc, char **argv) {
     stores[k].buf = vk_spec_buffer_of(s, store_file);
     stores[k].version = coaxial_store_version(H.state, k);
     stores[k].cap = coaxial_store_cap(k);
+    stores[k].sent = false;
   }
   if (!uniforms) { fprintf(stderr, "vk-realm: the spec has no u\n"); return 1; }
   int nlast;

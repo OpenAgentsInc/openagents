@@ -416,6 +416,13 @@ EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr state, i
   if (k == 4) return (uint32_t)sizeof(((coax_t_E2 *)0)->eg.e[0].gpu.e);
   uint32_t n = (uint32_t)e2_inst_bytes(at(state)); return n ? n : 4u;
 }
+/* Of store 0, the records, only those that changed since the host last took them (host.js
+   coaxial_store_span_v1, metaverse-engine/render/retained-rows.coax, #13540): field 0 takes the span and
+   answers its first byte, field 1 its bytes. Every other store has no span: it goes whole. */
+EXPORT("coaxial_store_span_v1") uint32_t coaxial_store_span_v1(cx_face_addr state, int32_t k, int32_t field) {
+  if (k != 0) return field == 1 ? 0xFFFFFFFFu : 0u;
+  return (uint32_t)e2_record_span(at(state), field);
+}
 /* store 1 goes again when the people's clips are baked and when the dragon's frames come */
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr state, int32_t k) { return k == 1 ? baked + (uint32_t)e2_at(state)->rv.e[0].streamed : k == 3 ? (uint32_t)e2_at(state)->mats_v : k == 4 ? (uint32_t)e2_at(state)->eg.e[0].gpu_v : k == 5 ? (uint32_t)e2_items_version(at(state)) : frames; }
 

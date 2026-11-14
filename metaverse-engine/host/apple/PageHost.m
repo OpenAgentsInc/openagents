@@ -44,7 +44,7 @@ typedef uintptr_t A;
  F(A,draws,(A)) F(uint32_t,draw_count,(A)) F(A,shadow_draws_v1,(A)) F(uint32_t,shadow_draw_count_v1,(A)) \
  F(uint32_t,shadow_atlas_v1,(A,int32_t,int32_t)) F(int32_t,shadow_v1,(A,int32_t)) F(void,shadow_event_v1,(A,int32_t,int32_t)) \
  F(uint32_t,layers_side_v1,(A)) F(uint32_t,data_layers_v1,(void)) F(uint32_t,bloom_passes_v1,(A)) F(uint32_t,fx_alpha_v1,(void)) \
- F(uint32_t,stores,(void)) F(uint32_t,store_cap,(int32_t)) F(A,store,(A,int32_t)) F(uint32_t,store_bytes,(A,int32_t)) F(uint32_t,store_version,(A,int32_t)) \
+ F(uint32_t,stores,(void)) F(uint32_t,store_cap,(int32_t)) F(A,store,(A,int32_t)) F(uint32_t,store_bytes,(A,int32_t)) F(uint32_t,store_version,(A,int32_t)) F(uint32_t,store_span_v1,(A,int32_t,int32_t)) \
  F(uint32_t,frame_store_cap,(void)) F(A,frame_store,(A)) F(uint32_t,frame_store_bytes,(A)) \
  F(uint32_t,particle_cap,(void)) F(A,particles,(A)) F(uint32_t,particle_bytes,(A)) F(uint32_t,particle_instances,(A)) \
  F(int32_t,action,(A)) F(A,outbox,(A)) F(uint32_t,outbox_len,(A)) F(uint32_t,outbox_capacity,(A)) F(void,action_done,(A)) \
@@ -90,7 +90,7 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
  AEPageConfig *config; id<MTLDevice> device; id<MTLCommandQueue> queue; id<MTLCommandBuffer> last;
  NSData *packBytes; const uint8_t *packVertices, *packIndices; size_t packVertexBytes, packIndexBytes;
  id<MTLBuffer> uniformBuffer, frameBuffer, vertexBuffer, storageBuffer, indexBuffer, particleBuffer, fxBuffer;
- NSMutableArray<id<MTLBuffer>> *stores; NSMutableArray<NSNumber *> *storeVersions;
+ NSMutableArray<id<MTLBuffer>> *stores; NSMutableArray<NSNumber *> *storeVersions, *storeSent;
  id<MTLTexture> sheets, dataLayers, sans, shadowMap, light, aux, depth, q0, q1, e0, e1, screen, bloomSource;
  BOOL shadowTiles, shadowFresh; float bloomStep[4];
  id<MTLSamplerState> sheetSampler, sansSampler, shadowSampler, linear;
@@ -486,7 +486,7 @@ static id<MTLTexture> phBlockLayers(id<MTLDevice> device, const EngineCorePack *
 - (NSString *)open:(AEPageConfig *)c device:(id<MTLDevice>)d queue:(id<MTLCommandQueue>)q {
  config = c; device = d; queue = q; opened = CACurrentMediaTime();
  shaders = [NSMutableDictionary dictionary]; pipes = [NSMutableDictionary dictionary]; sceneNames = [NSMutableDictionary dictionary];
- media = [NSMutableDictionary dictionary]; boxPipes = [NSMutableDictionary dictionary]; events = [NSMutableArray array]; stores = [NSMutableArray array]; storeVersions = [NSMutableArray array]; fingers = [NSMutableDictionary dictionary]; fingerDown = [NSMutableDictionary dictionary];
+ media = [NSMutableDictionary dictionary]; boxPipes = [NSMutableDictionary dictionary]; events = [NSMutableArray array]; stores = [NSMutableArray array]; storeVersions = [NSMutableArray array]; storeSent = [NSMutableArray array]; fingers = [NSMutableDictionary dictionary]; fingerDown = [NSMutableDictionary dictionary];
  library = dlopen(c.producer.fileSystemRepresentation, RTLD_NOW | RTLD_LOCAL);
  if (!library) return [NSString stringWithFormat:@"the realm's library did not load: %s", dlerror()];
 #define PH_LOAD(result,name,args) x.name = (result (*) args)dlsym(library, "coaxial_" #name);
@@ -540,7 +540,7 @@ static id<MTLTexture> phBlockLayers(id<MTLDevice> device, const EngineCorePack *
  size_t fc = x.frame_store_cap ? x.frame_store_cap() : 16;
  frameBuffer = [device newBufferWithLength:(MAX(fc, 16) + 15) & ~(size_t)15 options:MTLResourceStorageModeShared];
  for (uint32_t k = 0; k < (x.stores ? x.stores() : 0); k++) {
-  [stores addObject:[device newBufferWithLength:(MAX(x.store_cap(k), 16u) + 15) & ~15u options:MTLResourceStorageModeShared]]; [storeVersions addObject:@(-1)];
+  [stores addObject:[device newBufferWithLength:(MAX(x.store_cap(k), 16u) + 15) & ~15u options:MTLResourceStorageModeShared]]; [storeVersions addObject:@(-1)]; [storeSent addObject:@NO];
  }
  if (x.particles && x.particle_cap) particleBuffer = [device newBufferWithLength:(MAX(x.particle_cap(), 16u) + 15) & ~15u options:MTLResourceStorageModeShared];
 
@@ -1037,8 +1037,13 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  if (draws || shadowDraws) for (uint32_t k = 0; k < stores.count; k++) {
   int64_t version = x.store_version ? (int64_t)x.store_version(state, (int32_t)k) : -2;
   if (version != -2 && storeVersions[k].longLongValue == version) continue;
-  size_t bytes = MIN((size_t)x.store_bytes(state, (int32_t)k), stores[k].length) & ~(size_t)3;
-  if (bytes) { memcpy(stores[k].contents, (void *)x.store(state, (int32_t)k), bytes); storeVersions[k] = @(version); }
+  size_t at = 0, bytes = MIN((size_t)x.store_bytes(state, (int32_t)k), stores[k].length) & ~(size_t)3;
+  // a store with a span sends only the rows that changed once its buffer was sent whole (host.js, metaverse-engine/render/retained-rows.coax)
+  if (x.store_span_v1) {
+   uint32_t from = x.store_span_v1(state, (int32_t)k, 0), length = x.store_span_v1(state, (int32_t)k, 1);
+   if (length != 0xFFFFFFFFu && storeSent[k].boolValue) { at = MIN((size_t)(from & ~3u), stores[k].length); bytes = MIN((size_t)length, stores[k].length - at) & ~(size_t)3; }
+  }
+  if (bytes) { memcpy((uint8_t *)stores[k].contents + at, (const uint8_t *)(uintptr_t)x.store(state, (int32_t)k) + at, bytes); storeVersions[k] = @(version); storeSent[k] = @YES; }
  }
  const uint32_t *list = draws ? (const uint32_t *)x.draws(state) : NULL;
  const uint32_t *shadowList = separate && shadowDraws ? (const uint32_t *)x.shadow_draws_v1(state) : list;

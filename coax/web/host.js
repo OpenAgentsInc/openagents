@@ -187,6 +187,10 @@
 //                             memory copied each frame to storage buffers; an app with
 //   coaxial_store_version(state, k)  has store k copied only when that number changes (a
 //                             generation: bump it when the store is rewritten)
+//   coaxial_store_span_v1(state, k, field)  optional: of store k only the bytes that changed. Field
+//                             0 takes the span and answers its offset, field 1 its length (0: nothing
+//                             changed; 0xFFFFFFFF: no span, send the store whole). A buffer's first
+//                             copy is whole (metaverse-engine/render/retained-rows.coax)
 //   coaxial_sounds(state), coaxial_sounds_len(state)  sounds to play now, a line each: NAME GAIN PAN
 //                             [DELAY], or ~NAME GAIN PAN for a looping bed, or a mixed voice and the
 //                             bus's lines (metaverse-engine/audio/mix.coax; playSoundText)
@@ -2435,7 +2439,7 @@ function bindScene() {
     if (!a.buffer && x.coaxial_asset_optional_v1?.(a.i)) a.buffer = device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.INDEX|GPUBufferUsage.COPY_DST});
     resources.push({ buffer: a.buffer });
   }
-  if (!gpu.stores) {gpu.stores = [];gpu.storeVersions = [];for (let k = 0; k < (x.coaxial_stores?.() || 0); k++) gpu.stores.push(device.createBuffer({size:align(Math.max(x.coaxial_store_cap(k),16),16),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST}));}
+  if (!gpu.stores) {gpu.stores = [];gpu.storeVersions = [];gpu.storeSent = [];for (let k = 0; k < (x.coaxial_stores?.() || 0); k++) gpu.stores.push(device.createBuffer({size:align(Math.max(x.coaxial_store_cap(k),16),16),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST}));}
   for (const buffer of gpu.stores) resources.push({buffer});
   const layers = assets.find((a) => a.kind === "layers");
   if (layers) {
@@ -3250,8 +3254,14 @@ function draw(now) {
   if (draws || shadowDraws) gpu.stores.forEach((buffer, k) => {
     const version = x.coaxial_store_version?.(arena.state, k);
     if (version !== undefined && gpu.storeVersions[k] === version) return;
-    const bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
-    if (bytes) { device.queue.writeBuffer(buffer, 0, memory.buffer, x.coaxial_store(arena.state, k), bytes); gpu.storeVersions[k] = version; storeUploads.last[k] = bytes; storeUploads.total += bytes; }
+    let at = 0, bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
+    // a store with a span (coaxial_store_span_v1, metaverse-engine/render/retained-rows.coax) sends only
+    // the rows that changed, once this buffer has been sent whole; taking the span empties it
+    if (x.coaxial_store_span_v1) {
+      const from = x.coaxial_store_span_v1(arena.state, k, 0) >>> 0, length = x.coaxial_store_span_v1(arena.state, k, 1) >>> 0;
+      if (length !== 0xFFFFFFFF && gpu.storeSent[k]) { at = Math.min(from & ~3, buffer.size); bytes = Math.min(length, buffer.size - at) & ~3; }
+    }
+    if (bytes) { device.queue.writeBuffer(buffer, at, memory.buffer, x.coaxial_store(arena.state, k) + at, bytes); gpu.storeVersions[k] = version; gpu.storeSent[k] = true; storeUploads.last[k] = bytes; storeUploads.total += bytes; }
   });
   if ((gpu.scene || gpu.surface) && (!gpu.depth || gpu.depth.width !== w || gpu.depth.height !== h || !!gpu.post !== !!gpu.postGroup
       || (gpu.post && !!gpu.waterCopy !== !!gpu.waterCopyGroup))) {

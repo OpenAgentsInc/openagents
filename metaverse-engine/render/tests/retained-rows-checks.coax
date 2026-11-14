@@ -1,0 +1,70 @@
+// Checks for metaverse-engine/render/retained-rows.coax, which loads this file with #test.
+//   coax/bin/coax test metaverse-engine/render/retained-rows.coax
+
+RRC_ROWS :: 8; RRC_W :: 4;
+RrcStore :: struct { rows: [RRC_ROWS * RRC_W] f32; marks: [RRC_ROWS] u64; n: [RS_COUNTERS] int; }
+rrc_of :: (b: [] RrcStore) -> RetainedRows #effects(all) { return RetainedRows.{width = RRC_W, marks = b[0].marks[..], n = b[0].n[..]}; }
+
+#test "retained rows: storage is taken whole or refused; nothing is marked before it is" {
+  b: [1] RrcStore; r := rrc_of(b[..]);
+  #assert retained_rows_mark(r, b[0].rows[..], 3) == -1 && retained_rows_take(r).count == 0;
+  #assert !retained_rows_init(RetainedRows.{width = RRC_W, marks = b[0].marks[..], n = b[0].n[0..<RS_COUNTERS - 1]});
+  #assert !retained_rows_init(RetainedRows.{width = 0, marks = b[0].marks[..], n = b[0].n[..]}) && b[0].n[RS_READY] == 0;
+  #assert !retained_rows_init(RetainedRows.{width = RRC_W, marks = b[0].marks[0..<0], n = b[0].n[..]}) && b[0].n[RS_READY] == 0;
+  b[0].marks[2] = 9; b[0].n[RS_LO] = 4; b[0].n[RS_HI] = 6;
+  #assert retained_rows_init(r) && b[0].n[RS_READY] == 1 && b[0].marks[2] == 0 && b[0].n[RS_LO] == 0 && b[0].n[RS_HI] == 0 && b[0].n[RS_KNOWN] == 0;
+}
+
+#test "retained rows: the first mark sends every row it sees; a still frame sends none" {
+  b: [1] RrcStore; r := rrc_of(b[..]); _ := retained_rows_init(r);
+  for i: 0..<RRC_ROWS * RRC_W { b[0].rows[i] = f32(i); }
+  // rows of zeros are sent too: the GPU was never given them
+  #assert retained_rows_mark(r, b[0].rows[..], 3) == 3 && b[0].n[RS_KNOWN] == 3;
+  sp := retained_rows_take(r); #assert sp.first == 0 && sp.count == 3 && retained_rows_take(r).count == 0 && b[0].n[RS_UPLOADED] == 3;
+  for k: 0..<4 { #assert retained_rows_mark(r, b[0].rows[..], 3) == 0 && retained_rows_span(r).count == 0; }
+  #assert b[0].n[RS_RUNS] == 5 && b[0].n[RS_WRITTEN] == 0;
+  // the frame writes more rows: only the new ones
+  #assert retained_rows_mark(r, b[0].rows[..], 5) == 2 && b[0].n[RS_WRITTEN] == 2;
+  sp = retained_rows_take(r); #assert sp.first == 3 && sp.count == 2;
+  // fewer rows: the ones past the count are drawn by nothing and stay as the GPU has them
+  #assert retained_rows_mark(r, b[0].rows[..], 2) == 0 && b[0].n[RS_KNOWN] == 5;
+  b[0].rows[3 * RRC_W] = -1;
+  #assert retained_rows_mark(r, b[0].rows[..], 2) == 0 && retained_rows_mark(r, b[0].rows[..], 4) == 1 && retained_rows_take(r).first == 3;
+}
+
+#test "retained rows: one changed word sends its row alone; the span covers the first and the last changed" {
+  b: [1] RrcStore; r := rrc_of(b[..]); _ := retained_rows_init(r);
+  for i: 0..<RRC_ROWS * RRC_W { b[0].rows[i] = 1.5; }
+  _ = retained_rows_mark(r, b[0].rows[..], RRC_ROWS); _ = retained_rows_take(r);
+  b[0].rows[5 * RRC_W + 3] = 2;   // the last word of row 5
+  #assert retained_rows_mark(r, b[0].rows[..], RRC_ROWS) == 1;
+  sp := retained_rows_span(r); #assert sp.first == 5 && sp.count == 1;
+  // the host sends nothing this frame: row 5 stays in the span, and row 1 joins it
+  b[0].rows[1 * RRC_W] = 0;
+  #assert retained_rows_mark(r, b[0].rows[..], RRC_ROWS) == 1;
+  sp = retained_rows_take(r); #assert sp.first == 1 && sp.count == 5 && b[0].n[RS_UPLOADED] == RRC_ROWS + 5;
+  // back to what the GPU had last frame is still a change: the mark is the last sent, not the first
+  b[0].rows[1 * RRC_W] = 1.5;
+  #assert retained_rows_mark(r, b[0].rows[..], RRC_ROWS) == 1 && retained_rows_take(r).first == 1;
+  // -0 is not 0 to the GPU's bytes
+  b[0].rows[7 * RRC_W] = 0; _ = retained_rows_mark(r, b[0].rows[..], RRC_ROWS); _ = retained_rows_take(r);
+  b[0].rows[7 * RRC_W] = -0.0;
+  #assert retained_rows_mark(r, b[0].rows[..], RRC_ROWS) == 1 && retained_rows_take(r).first == 7;
+}
+
+#test "retained rows: a count past the storage is held to the marks and the rows" {
+  b: [1] RrcStore; r := rrc_of(b[..]); _ := retained_rows_init(r);
+  #assert retained_rows_mark(r, b[0].rows[..], RRC_ROWS + 9) == RRC_ROWS && b[0].n[RS_KNOWN] == RRC_ROWS;
+  #assert retained_rows_take(r).count == RRC_ROWS;
+  short := RetainedRows.{width = RRC_W, marks = b[0].marks[0..<3], n = b[0].n[..]};
+  b[0].rows[4 * RRC_W] = 7;
+  #assert retained_rows_mark(short, b[0].rows[..], RRC_ROWS) == 0;
+  #assert retained_rows_mark(r, b[0].rows[0..<2 * RRC_W + 1], RRC_ROWS) == 0 && retained_rows_mark(r, b[0].rows[..], RRC_ROWS) == 1;
+}
+
+#test "retained rows: a row's mark is FNV-1a over its words' bits" {
+  rows := [3] f32.[1, 0, -2];
+  seed: u64 = 14695981039346656037; h := seed;
+  for k: 0..<3 { h = mul_wrap(h ^ cast(u64) f32_bits(rows[k]), RR_MARK_PRIME); }
+  #assert retained_row_mark(rows[..], 0, 3) == h && retained_row_mark(rows[..], 1, 2) != h && retained_row_mark(rows[..], 0, 0) == seed;
+}
