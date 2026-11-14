@@ -14,6 +14,7 @@ final class WorldsUITests:XCTestCase {
             XCTAssertEqual(app.webViews.count,0)
             XCTAssertFalse(app.navigationBars[name].exists)
             let menu=app.buttons["world.menu"];XCTAssertTrue(menu.exists);XCTAssertLessThanOrEqual(menu.frame.width,44);XCTAssertLessThanOrEqual(menu.frame.height,44)
+            XCTAssertLessThanOrEqual(menu.frame.minY,10);XCTAssertGreaterThan(menu.frame.minX,canvas.frame.midX)
             XCTAssertFalse(app.buttons["world.close"].exists)
             XCTAssertLessThanOrEqual(canvas.frame.minY,1);XCTAssertGreaterThanOrEqual(canvas.frame.maxY,app.frame.maxY-1)
             let shot=XCTAttachment(screenshot:app.screenshot());shot.name="Installed \(name), downloaded assets";shot.lifetime = .keepAlways;add(shot)
