@@ -244,6 +244,13 @@ ack_fight :: (g: [] SpGame, engage: bool, secs: f32) -> AckFight {
   t[0].fight[0].sides[1].bots[0].stun_until = t[0].fight[0].now + deed_tick(1.0); t[0].think = 10;
   until := sb_boss(g[..]).stun_until; w := sb_weak_at(g[..], 0); g[0].px = w.x + 0.3; g[0].pz = w.z + 0.3;
   #assert sb_open(g[..]) && g_key(g[..], 'f', true) && g[0].stun[0] > 0 && sb_boss(g[..]).stun_until == until;
-  // TODO(#13578): the whole fight played out with ack_fight (it won in about 30 s, two sweeps and a charge, no
-  // heart lost, against about 12 s before) runs out of the dev build's traversal budget; bring it back as a lighter check.
+}
+// The first 14 s of the fight (the whole of it played out, about 30 s, ran past the dev build's traversal budget):
+// it used to fall in about 12 s without a sweep; now it is still up, has swept, and she lost no heart at the mouth.
+#test "#13578: the boss is still standing after 14 s of the fight, and it has swept" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 10); for i: 0..<3 { g[0].stun[i] = 0; }
+  g_step(g[..], 0.02);
+  f := ack_fight(g[..], true, 14);
+  #assert !f.won && !f.lost && f.sweeps >= 1 && f.hearts == T_HEARTS && !g[0].boss_down;
 }
