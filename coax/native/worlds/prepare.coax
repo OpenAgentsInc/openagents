@@ -1,0 +1,14 @@
+// Signed inventories are update payloads. Installed producer hashes remain in
+// the native bundle; a catalog cannot replace a native producer via an update.
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ if !fs_mkdir("apps/openagents-ios/Starter/worlds") {return 1;}
+ for realm:[4]string.["splice-bots","everglade","everglade2","myrealm"] {
+  name:[128]u8;n:=0;for c:realm {name[n]=c;n+=1;}for c:".json" {name[n]=c;n+=1;}
+  p:[4096]u8;q:[4096]u8;data:[524288]u8;
+  bytes:=fs_read(fs_join("apps/openagents-ios/build/world-assets/manifests",cast(string)name[0..<n],p[..]),data[..]);
+  if bytes<0 || !fs_write(fs_join("apps/openagents-ios/Starter/worlds",cast(string)name[0..<n],q[..]),cast(string)data[0..<bytes]) {return 1;}
+ }
+ return 0;
+}

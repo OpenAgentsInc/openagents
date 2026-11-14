@@ -1,0 +1,15 @@
+// The native-width profile of coax/web/STORAGE.md. Bytes and reply fields are
+// identical to the browser contract; SDK effects keep the opaque record.
+#load "../../coax/lib/crypto/bytes.coax";
+#test "byte storage envelopes preserve token bits, exact data, missing and capacity" {
+ out:[20]u8;n:=bsw_reply(4294967295,0,"abc",3,out[..]);#assert n==19 && cb_load_le32(out[..],0).value==4294967295 && cb_load_le32(out[..],8).value==3 && out[18]=='c';
+ #assert bsw_reply(1,1,"",0,out[..])==16 && cb_load_le32(out[..],4).value==1;
+ short:[17]u8;#assert bsw_reply(1,0,"abc",3,short[..])==16 && cb_load_le32(short[..],4).value==9 && cb_load_le32(short[..],12).value==3;
+ #assert bsw_reply(1,0,"",0,short[0..<15])== -1;
+}
+bsw_reply :: (token:u32,status:int,payload:string,needed:int,out:[]u8)->int #export_c #effects(all) {
+ if out.count<16 || status<0 || status>10 || needed<0 || needed>2147483647 {return -1;}
+ code:=status;n:=payload.count;if n>1048576 {code=4;n=0;}else if n>out.count-16 {code=9;n=0;}
+ if !cb_store_le32(out[0..<16],0,token) || !cb_store_le32(out[0..<16],4,cast(u32)code) || !cb_store_le32(out[0..<16],8,cast(u32)n) || !cb_store_le32(out[0..<16],12,cast(u32)needed) {return -1;}
+ for i:0..<n {out[16+i]=payload[i];}return 16+n;
+}

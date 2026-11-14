@@ -1,5 +1,19 @@
 // Account transcript ownership and the explicitly team-funded mobile beta.
 #authority;
+#test "world player binding uses the verified session and never takes another account's player" {
+ #assert act_bind(2,true,"a","",true,false,false) && !act_bind(2,true,"account","a",true,false,false) && act_bind_guest("g-a");
+ #assert act_bind(2,true,"account","",true,false,false) && act_bind(2,true,"account","g-guest",true,false,false) && act_bind(2,true,"account","account",true,false,false);
+ #assert !act_bind(2,true,"account","other",true,false,false) && !act_bind(2,true,"","",true,false,false);
+ #assert !act_bind(2,true,"account","",false,false,false) && !act_bind(2,false,"account","",true,false,false);
+ #assert !act_bind(2,true,"account","",true,true,false) && !act_bind(2,true,"account","",true,false,true);
+ for kind:0..<6 {if kind!=2 {#assert !act_bind(kind,true,"account","",true,false,false);}}
+ #assert !act_bind(2,true,"account","g",true,false,false) && !act_bind(2,true,"account","g-",true,false,false);
+ #assert act_bind_guest("g-guest") && !act_bind_guest("") && !act_bind_guest("g-") && !act_bind_guest("other");
+}
+act_bind_guest :: (previous:string)->bool #export_c #effects(all) {return previous.count>2 && previous[0..<2]=="g-";}
+act_bind :: (kind:int,session:bool,account:string,previous:string,found:bool,limited:bool,frozen:bool)->bool #export_c #effects(all) {
+ return kind==2 && session && account.count>0 && found && !limited && !frozen && (previous.count==0 || previous==account || act_bind_guest(previous));
+}
 #test "only a nonempty exact person owner can access an account thread" {
   #assert act_owns(2,"a","a");#assert !act_owns(2,"a","b") && !act_owns(2,"","");
   #assert !act_owns(2,"a","") && !act_owns(2,"","a");

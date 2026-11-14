@@ -9,6 +9,7 @@
 #load "../../../coax/native/text-link-policy.coax";
 #load "../../../coax/web/api/chat-history-wire.coax"; // shared account-history codec
 #load "../../shared/environment-app.coax";
+#load "../../../coax/native/worlds/open-wire.coax";
 
 Starter :: struct {
   ready:bool;dirty:bool=true;time:f32;action:int;flight:int;purpose:int;page:int= -1;
@@ -18,11 +19,20 @@ Starter :: struct {
   thread:[1]AccountThread;draft:[4096]u8;draft_n:int;wire:[65536]u8;retry:bool;
   markdown:[1]MdDoc;copied:[96]u8;copied_n:int;text_busy:bool;
   environments:[1]EnvironmentApp;
-  local_available:bool;account_ready:bool;
+  local_available:bool;account_ready:bool;worlds_available:bool;
+  world_mode:bool;world:[1]WorldTurn;world_flight:[1]WorldTurn;world_wire:[WT_BYTES]u8;world_n:int;world_plan:[WP_BYTES]u8;world_plan_n:int;
   tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;css:[24576]u8;
 }
 na_copy :: (out:[]u8,text:string)->int {n:=ifx text.count<out.count then text.count else out.count;for i:0..<n {out[i]=text[i];}return n;}
 na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[0].dirty=true;}
+#test "native worlds launch through the registered service and preserve the current account surface" {
+ s:[1]Starter;s[0].page=2;na_world(s[..],"splice-bots","/worlds/splice-bots",false);q:[1]NwOpen;
+ #assert s[0].action==13 && s[0].flight==13 && s[0].page==2 && nwo_read(cast(string)s[0].outbox[0..<s[0].out_n],q[..]);
+ na_reply(s[..],13,0,"{\"closed\":true}",false);#assert s[0].flight==0 && s[0].page==2;
+}
+na_world :: (s:[]Starter,realm:string,path:string,edit:bool) {
+ if s[0].flight!=0 {return;}n:=nwo_write(realm,path,edit,s[0].outbox[..]);if n<0 {na_note(s,"This world is unavailable.");return;}s[0].out_n=n;s[0].action=13;s[0].flight=13;s[0].dirty=true;
+}
 na_history_clear :: (s:[]Starter) {empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
 na_secrets_clear :: (s:[]Starter) {
   for i:0..<s[0].email.count {s[0].email[i]=0;}s[0].email_n=0;
@@ -72,6 +82,10 @@ na_save :: (s:[]Starter,purpose:int) {
   na_http(s,"/api/chat/thread/v1",cast(string)s[0].wire[0..<n],purpose);
 }
 na_complete :: (s:[]Starter) {
+  if s[0].world_mode {
+    n:=awc_write(s[0].thread[..],cast(string)s[0].world_wire[0..<s[0].world_n],s[0].wire[..]);if n<1 {na_note(s,"This world conversation is full. Start a new chat.");return;}
+    s[0].world_flight[0]=s[0].world[0];na_http(s,"/api/chat/world/complete/v1",cast(string)s[0].wire[0..<n],5);s[0].retry=false;return;
+  }
   n:=act_write(s[0].thread[..],s[0].wire[..]);if n<1 {return;}
   na_http(s,"/api/chat/complete/v1",cast(string)s[0].wire[0..<n],5);na_note(s,"");s[0].retry=false;
 }
@@ -95,6 +109,13 @@ na_send :: (s:[]Starter) {
   #assert s[0].draft_n==5 && s[0].thread[0].n==0 && s[0].flight==0;
   s[0].flight=4;s[0].purpose=5;na_reply(s[..],4,429,"{}",false);#assert s[0].retry && s[0].flight==0;
 }
+#test "world inference captures the world revision and an expired session keeps a usable way back" {
+ s:[1]Starter;s[0].world_mode=true;s[0].page=3;s[0].thread[0].n=1;s[0].thread[0].messages[0].n=na_copy(s[0].thread[0].messages[0].text[..],"Move the crate");
+ s[0].world_n=na_copy(s[0].world_wire[..],"world.turn.v1 splice dev 7 0\nk 1001 Crate\ne 1 1001 0 0 0\n");scratch:[WT_BYTES]u8;#assert wt_read(s[0].world[..],cast(string)s[0].world_wire[0..<s[0].world_n],scratch[..]);
+ na_complete(s[..]);#assert s[0].world_flight[0].rev==7 && s[0].purpose==5 && s[0].flight==4;
+ s[0].world[0].rev=8;#assert s[0].world_flight[0].rev==7;
+ na_reply(s[..],4,401,"{}",false);#assert s[0].page==3 && s[0].world_mode && s[0].flight==0 && !s[0].retry;
+}
 // Text effects may complete alongside a model request; they never replace its
 // flight/purpose or trigger a model retry.
 na_text_effect :: (s:[]Starter,link:bool,value:string,id:string) {
@@ -110,6 +131,7 @@ na_text_effect :: (s:[]Starter,link:bool,value:string,id:string) {
   na_reply(s[..],9,0,"{}",false);#assert !s[0].text_busy && s[0].flight==4 && s[0].purpose==5;
 }
 na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
+  if op==13 && s[0].flight==13 {s[0].flight=0;na_note(s,ifx failed then "The world could not open. Check your connection and try again." else "");return;}
   if op==11 || op==12 || op==14 || (op==4 && s[0].environments[0].active && s[0].environments[0].flight) {
     eu_reply(s[0].environments[..],op,status,raw,failed);s[0].dirty=true;
     dm_value(s[0].dom[..],"env.composer",cast(string)s[0].environments[0].draft[0..<s[0].environments[0].nd]);return;
@@ -121,7 +143,7 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
   if op==8 {s[0].purpose=0;s[0].retry=true;na_note(s,"Stopped. You can retry this turn.");return;}
   if op==4 && s[0].purpose>=3 {
     purpose:=s[0].purpose;s[0].purpose=0;
-    if status==401 {na_history_clear(s);na_new(s);s[0].page=0;na_secrets_clear(s);na_note(s,"Log in again to continue.");return;}
+    if status==401 {if s[0].world_mode {s[0].retry=false;na_note(s,"Close the world and log in again to continue.");return;}na_history_clear(s);na_new(s);s[0].page=0;na_secrets_clear(s);na_note(s,"Log in again to continue.");return;}
     if failed || status!=200 {
       if purpose==4 && s[0].thread[0].n>0 {s[0].thread[0].n-=1;}
       if purpose==5 {s[0].retry=true;}
@@ -131,9 +153,18 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
     if purpose==5 {
       t:=s[0].thread[..];i:=t[0].n;n:=ifx i<32 then act_answer(raw,t[0].messages[i].text[..]) else -1;
       if n<1 {s[0].retry=true;na_note(s,"The agent did not return an answer. Retry this turn.");return;}
+      if s[0].world_mode {
+        p:[1]WorldPlan;if !wp_reply(p[..],s[0].world_flight[..],cast(string)t[0].messages[i].text[0..<n]) {s[0].retry=true;na_note(s,"The agent returned an invalid world plan. No edits were sent.");return;}
+        if p[0].nopen>0 {na_note(s,"The agent needs an attachment. Open it in the Files pane before continuing.");}
+        else if p[0].edit {plan:=wp_write(p[..],s[0].world_plan[..]);s[0].world_plan_n=plan.count;}
+        n=na_copy(t[0].messages[i].text[..],cast(string)p[0].say[0..<p[0].say_n]);if n==0 {n=na_copy(t[0].messages[i].text[..],"The world plan is ready.");}
+      }
       t[0].messages[i].n=n;t[0].messages[i].assistant=true;t[0].n+=1;na_save(s,6);return;
     }
     if !act_read(raw,s[0].thread[..]) {na_note(s,"The chat service returned an unreadable conversation.");return;}
+    if purpose==6 && s[0].world_mode && s[0].world_plan_n>0 {
+      s[0].out_n=na_copy(s[0].outbox[..],cast(string)s[0].world_plan[0..<s[0].world_plan_n]);s[0].world_plan_n=0;s[0].action=520;s[0].dirty=true;return;
+    }
     if purpose==4 {s[0].draft_n=0;dm_value(s[0].dom[..],"chat.composer","");na_complete(s);return;}
     s[0].page=3;s[0].retry=false;na_note(s,"");return;
   }
@@ -144,6 +175,7 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
     if op==4 {s[0].purpose=2;na_request(s,1,"");}return;
   }
   if op==1 {
+    s[0].worlds_available=ok && jv_bool(v,jv_get(v,0,"worldsAvailable"));
     s[0].local_available=ok && jv_bool(v,jv_get(v,0,"localEnvironment"));s[0].account_ready=ok && jv_bool(v,jv_get(v,0,"loggedIn"));
     if ok && jv_bool(v,jv_get(v,0,"loggedIn")) {if s[0].purpose==2 {s[0].purpose=0;s[0].page=2;}else {na_list(s);}}else {s[0].page=0;na_history_clear(s);na_secrets_clear(s);}return;
   }
@@ -210,6 +242,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     x=k_text(t,u,"login.title",TG_H1,"","Log in");x=k_text(t,u,"login.about",TG_P,"","Use the same email as openagents.com. We'll send you a 6-digit code.");
     x=k_input(t,u,"login.email","you@example.com","Email address","email","email");if busy {tr_attr(t,x,AT_DISABLED,"disabled");}
     x=k_button(t,u,"login.send",ifx busy then "Sending code…" else "Send code",ifx busy then BS_DISABLED else BS_PRIMARY);
+    if s[0].worlds_available {x=k_button(t,u,"world.library","Worlds",ifx busy then BS_DISABLED else BS_PRIMARY);}
     if s[0].local_available {x=k_button(t,u,"environments.local","Use this computer",ifx busy then BS_DISABLED else BS_PLAIN);}
   } else if s[0].page==1 {
     x=k_text(t,u,"login.title",TG_H1,"","Check your email");x=k_text(t,u,"login.sent",TG_P,"",cast(string)s[0].email[0..<s[0].email_n]);
@@ -222,7 +255,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     eu_render(s[0].environments[..],t,u,s[0].markdown[..]);
   } else if s[0].page==3 {
     x=tr_open(t,"chat.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");
-    x=k_button(t,u,"chat.back","Your chats",ifx busy then BS_DISABLED else BS_PLAIN);x=k_text(t,u,"chat.name",TG_SPAN,"","OpenAgents");tr_close(t);
+    x=k_button(t,u,"chat.back",ifx s[0].world_mode then "Back to editor" else "Your chats",ifx busy then BS_DISABLED else BS_PLAIN);x=k_text(t,u,"chat.name",TG_SPAN,"",ifx s[0].world_mode then "World agent" else "OpenAgents");tr_close(t);
     x=tr_open(t,"chat.messages",TG_SECTION,"transcript");tr_attr(t,x,AT_STATE,ifx s[0].thread[0].id_n>0 then cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n] else "new");
     if s[0].thread[0].n==0 {x=k_text(t,u,"chat.welcome",TG_P,"","What would you like to work on?");}
     for k:0..<s[0].thread[0].n {id:[96]u8;m:=s[0].thread[0].messages[k];
@@ -236,6 +269,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     k_composer_end(t,u,"chat.composer",ifx s[0].purpose==5 && busy then "Stop" else "Send",(s[0].purpose==5 && busy) || (!busy && s[0].draft_n>0 && s[0].purpose!=6));frame:=tr_find(t,"chat.composer.frame");if frame>=0 {tr_attr(t,frame,AT_TITLE,"Gemini 4 Hydrogen");}
   } else {
     x=k_text(t,u,"chats.title",TG_H1,"","Your chats");
+    if s[0].worlds_available {x=k_button(t,u,"world.library","Worlds",ifx busy then BS_DISABLED else BS_PRIMARY);}
     x=k_button(t,u,"environments.open","Your computers",ifx busy then BS_DISABLED else BS_PRIMARY);
     if s[0].local_available {x=k_button(t,u,"environments.local","This computer · offline access",ifx busy then BS_DISABLED else BS_PLAIN);}
     x=k_button(t,u,"chats.refresh",ifx busy then "Loading chats…" else "Refresh chats",ifx busy then BS_DISABLED else BS_PLAIN);
@@ -256,6 +290,15 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   ui_end(u);s[0].dirty=false;return dm_flush(d,t,s[0].sets[..]);
 }
 st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
+  if kind==17 && s[0].world_mode && n>0 && n<=16384 && s[0].thread[0].n<32 {
+    i:=s[0].thread[0].n;s[0].thread[0].messages[i].assistant=true;s[0].thread[0].messages[i].n=na_copy(s[0].thread[0].messages[i].text[..],cast(string)s[0].inbox[0..<n]);s[0].thread[0].n+=1;s[0].dirty=true;return;
+  }
+  if kind==16 && n>=0 && n<=WT_BYTES {
+    scratch:[WT_BYTES]u8;context:[1]WorldTurn;if !wt_read(context[..],cast(string)s[0].inbox[0..<n],scratch[..]) {return;}
+    if !s[0].world_mode {s[0].ready=true;_:=mono_frames(s[0].sets[..]);na_new(s);s[0].world_mode=true;}
+    s[0].world[0]=context[0];s[0].world_n=na_copy(s[0].world_wire[..],cast(string)s[0].inbox[0..<n]);s[0].dirty=true;return;
+  }
+  if kind==1 && s[0].world_mode && dm_slot_id(s[0].dom[..],slot)=="chat.back" {s[0].action=529;return;}
   if kind>=100 && kind<215 {op:=ifx kind>=200 then kind-200 else kind-100;if n>=0 && n<=1048576 {na_reply(s,op,slot,cast(string)s[0].inbox[0..<n],kind>=200);}return;}
   i:= -1;for k:0..<s[0].tree[0].n {if s[0].dom[0].of[k]==slot {i=k;break;}}id:=tr_id(s[0].tree[..],i);
   if s[0].environments[0].active && (kind==1 || kind==2) {
@@ -280,6 +323,9 @@ st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
   }
   if kind==1 && id=="chat.composer.send" && s[0].purpose==5 && s[0].flight==4 {s[0].flight=0;na_request(s,8,"");return;}
   if kind==1 && s[0].flight==0 {
+    if id=="world.library" {na_world(s,"catalog","/worlds",false);return;}
+  if id=="world.play.splice" {na_world(s,"splice-bots","/worlds/splice-bots",false);}
+    if id=="world.play.everglade" {na_world(s,"everglade","/worlds/everglade",false);}
     if id=="environments.open" {eu_enter(s[0].environments[..]);s[0].page=4;na_note(s,"");}
     if id=="environments.local" && s[0].local_available {eu_enter_local(s[0].environments[..]);s[0].page=4;na_note(s,"");}
     if id=="chat.new" {na_new(s);}if id=="chat.back" {na_list(s);}

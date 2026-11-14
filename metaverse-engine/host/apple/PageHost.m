@@ -52,9 +52,12 @@ typedef uintptr_t A;
  F(A,sounds,(A)) F(uint32_t,sounds_capacity,(A)) F(A,sound_bank,(A)) F(uint32_t,sound_bank_len,(A)) F(uint32_t,sound_bank_capacity,(A)) \
  F(A,sound_bank_storage,(A)) F(uint32_t,sound_bank_storage_bytes,(A)) F(A,mesh_bounds_v1,(A)) \
  F(A,rig_v1,(A,uint32_t)) F(void,rig_ready_v1,(A,uint32_t)) F(uint32_t,frame_plan_v1,(A,uint32_t,uint32_t *,uint32_t))
+// Optional browser editor exports. Counts remain u32; addresses are native.
+#define PH_EDITOR(F) F(int32_t,edit_rev,(A)) F(A,edit_model,(A)) F(uint32_t,edit_model_len,(A)) F(uint32_t,edit_own,(A)) F(void,page,(A,int32_t))
 typedef struct {
 #define PH_FN(result,name,args) result (*name) args;
  PH_FACE(PH_FN)
+ PH_EDITOR(PH_FN)
 #undef PH_FN
 } PHFace;
 
@@ -65,7 +68,7 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
 @interface PHPipe : NSObject { @public id<MTLRenderPipelineState> state; PHUse uses[32]; int count; }
 @end
 @implementation PHPipe @end
-@interface PHShader : NSObject { @public id<MTLLibrary> library; NSString *vertex, *fragment; PHUse uses[32]; int count; int attributes; }
+@interface PHShader : NSObject { @public id<MTLLibrary> library; NSString *vertex, *fragment; PHUse uses[32]; int count; int attributes; BOOL writesDepth; }
 @end
 @implementation PHShader @end
 @interface PHMedia : NSObject { @public id<MTLTexture> texture; int w, h; BOOL ready, failed; int unseen; }
@@ -78,6 +81,9 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
 @interface PHEvent : NSObject { @public int kind; NSData *bytes; id owner; BOOL closes; }
 @end
 @implementation PHEvent @end
+@interface PHHttp : NSObject { @public dispatch_block_t cancel; coax_t_HostOwner owner; }
+@end
+@implementation PHHttp @end
 
 @class AEPageHost;
 @interface PHNet : NSObject <NSURLSessionWebSocketDelegate, NSURLSessionTaskDelegate>
@@ -94,13 +100,15 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
  id<MTLTexture> sheets, dataLayers, sans, shadowMap, light, aux, depth, q0, q1, e0, e1, screen, bloomSource;
  BOOL shadowTiles, shadowFresh; float bloomStep[4];
  id<MTLSamplerState> sheetSampler, sansSampler, shadowSampler, linear;
- id<MTLDepthStencilState> depthAlways, depthLess, depthRead, depthClear;
+ id<MTLDepthStencilState> depthAlways, depthBackground, depthLess, depthRead, depthClear;
  NSMutableDictionary<NSString *, PHShader *> *shaders; NSMutableDictionary<NSString *, PHPipe *> *pipes;
  NSMutableDictionary<NSString *, NSNumber *> *sceneNames;   // a scene resource's name -> its place in group 1
  id<MTLRenderPipelineState> clearPipe; NSMutableDictionary<NSNumber *, id<MTLRenderPipelineState>> *boxPipes; id<MTLLibrary> glue;
  NSMutableDictionary<NSString *, PHMedia *> *media; NSString *mediaSaid;
  NSMutableData *soundsTaken, *soundsGiven;   // the sound packets the face said, until the audio host takes them
  PHNet *net; NSURLSession *session; PHSocket *sockets[4]; id http[8];
+ coax_t_HostTransport transport;
+ uint32_t storageTokens[8];
  NSMutableArray<PHEvent *> *events; NSString *playerKey, *playerId, *playerAccount;
  NSMutableDictionary<NSNumber *, NSValue *> *fingers; NSMutableDictionary<NSNumber *, NSNumber *> *fingerDown;   // a touch's start and the time it began, by its number
  int width, height; float dpr; CGSize points; int quality; double opened; BOOL closed;
@@ -114,7 +122,7 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
 - (void)socketSend:(int32_t)id text:(NSString *)text;
 - (void)socketSend:(int32_t)id data:(NSData *)data;
 - (void)socketClose:(int32_t)id;
-- (int32_t)http:(NSString *)path body:(NSData *)body flags:(int32_t)flags;
+- (int32_t)http:(NSString *)path body:(NSData *)body flags:(int32_t)flags timeout:(int64_t)timeout bounded:(BOOL)bounded;
 - (void)after;
 - (id<MTLRenderPipelineState>)boxPipe:(MTLPixelFormat)format;
 @end
@@ -185,7 +193,7 @@ static NSData *phInflate(NSData *gz) {
 }
 - (void)readPlayer {
  playerKey = playerId = playerAccount = nil;
- NSData *d = [[self kept:@"verse.player"] dataUsingEncoding:NSUTF8StringEncoding];
+ NSData *d = [(config.player ?: [self kept:@"verse.player"]) dataUsingEncoding:NSUTF8StringEncoding];
  NSDictionary *p = d.length ? [NSJSONSerialization JSONObjectWithData:d options:0 error:nil] : nil;
  if (![p isKindOfClass:NSDictionary.class] || ![p[@"key"] isKindOfClass:NSString.class]) return;
  playerKey = p[@"key"];
@@ -242,6 +250,7 @@ static NSData *phInflate(NSData *gz) {
  else if (code == 13) [self keep:@"verse.sound" text:[text substringToIndex:MIN(text.length, 16)]];
  else if (code == 14) [self keep:@"verse.settings" text:[text substringToIndex:MIN(text.length, 256)]];
  else if (code == 15) [self keep:@"verse.gyro" text:[text substringToIndex:MIN(text.length, 32)]];
+ else if (config.action) config.action(code,text);
  // 1 (go to another page), 2 (the clipboard), 3 and 19 (the address bar) and the rest have no
  // effect here: a page in this host has no address bar and opens no other page.
 }
@@ -271,6 +280,7 @@ static NSData *phInflate(NSData *gz) {
  put(@"player", playerId ?: @""); put(@"account", playerAccount ?: @"");
  put(@"realm", config.realm ?: @""); put(@"slot", config.slot ?: @"");
  put(@"style", config.style ?: @""); put(@"clock", config.clock ?: @"");
+ put(@"variant",config.variant ?: @"");
  NSDateComponents *c = [NSCalendar.currentCalendar components:NSCalendarUnitHour | NSCalendarUnitMinute | NSCalendarUnitSecond fromDate:NSDate.date];
  put(@"day", [NSString stringWithFormat:@"%.5f", (c.hour * 3600 + c.minute * 60 + c.second) / 86400.0]);
  return s;
@@ -284,6 +294,10 @@ static NSData *phInflate(NSData *gz) {
  id<MTLLibrary> lib = [device newLibraryWithURL:[NSURL fileURLWithPath:[base stringByAppendingPathExtension:@"metallib"]] error:nil];
  if (!bind || !lib) return nil;
  s = [PHShader new]; s->library = lib;
+ // Like host.js's frag_depth check: a plain sky must not overwrite the
+ // scene's cleared depth with its fullscreen triangle's depth of zero.
+ NSString *source=[NSString stringWithContentsOfFile:[base stringByAppendingPathExtension:@"metal"] encoding:NSUTF8StringEncoding error:nil];
+ s->writesDepth=[source containsString:@"[[depth("];
  for (NSString *line in [bind componentsSeparatedByString:@"\n"]) {
   NSArray<NSString *> *w = [line componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
   if (w.count == 3 && [w[0] isEqual:@"entry"]) { if ([w[1] isEqual:@"vertex"]) s->vertex = w[2]; else s->fragment = w[2]; }
@@ -485,12 +499,14 @@ static id<MTLTexture> phBlockLayers(id<MTLDevice> device, const EngineCorePack *
 }
 - (NSString *)open:(AEPageConfig *)c device:(id<MTLDevice>)d queue:(id<MTLCommandQueue>)q {
  config = c; device = d; queue = q; opened = CACurrentMediaTime();
+ coax_default_t_HostTransport(&transport);
  shaders = [NSMutableDictionary dictionary]; pipes = [NSMutableDictionary dictionary]; sceneNames = [NSMutableDictionary dictionary];
  media = [NSMutableDictionary dictionary]; boxPipes = [NSMutableDictionary dictionary]; events = [NSMutableArray array]; stores = [NSMutableArray array]; storeVersions = [NSMutableArray array]; storeSent = [NSMutableArray array]; fingers = [NSMutableDictionary dictionary]; fingerDown = [NSMutableDictionary dictionary];
  library = dlopen(c.producer.fileSystemRepresentation, RTLD_NOW | RTLD_LOCAL);
  if (!library) return [NSString stringWithFormat:@"the realm's library did not load: %s", dlerror()];
 #define PH_LOAD(result,name,args) x.name = (result (*) args)dlsym(library, "coaxial_" #name);
  PH_FACE(PH_LOAD)
+ PH_EDITOR(PH_LOAD)
 #undef PH_LOAD
  if (!x.state_size || !x.state_init || !x.frame || !x.max_vertices || !x.vertex_floats || !x.uniform_floats || !x.inbox || !x.inbox_cap || !x.message) return @"the realm's library lacks the page's face";
  phCurrent = self;
@@ -531,8 +547,9 @@ static id<MTLTexture> phBlockLayers(id<MTLDevice> device, const EngineCorePack *
  [self message:600 text:[self facts]];
  text = [self kept:[slot stringByAppendingString:@".place"]]; if (text.length) [self message:11 text:text];
  text = [self kept:[slot stringByAppendingString:@".bar"]]; if (text.length) [self message:12 text:text];
- [self message:606 text:@""];   // nobody is logged in to the site here
+ [self message:606 text:c.viewer ?: @""];
  [self message:613 text:@"gpu_vendor=apple\ngpu_arch=metal-3\ngpu_fallback=0"];
+ if (x.page) {x.page(state,0);[self after];}
 
  // Buffers the face fills.
  uniformBuffer = [device newBufferWithLength:MAX(uniformBytes.length, 16) options:MTLResourceStorageModeShared];
@@ -559,6 +576,7 @@ static id<MTLTexture> phBlockLayers(id<MTLDevice> device, const EngineCorePack *
  linear = [device newSamplerStateWithDescriptor:sd];
  MTLDepthStencilDescriptor *dd = [MTLDepthStencilDescriptor new];
  dd.depthCompareFunction = MTLCompareFunctionAlways; dd.depthWriteEnabled = YES; depthAlways = [device newDepthStencilStateWithDescriptor:dd];
+ dd.depthWriteEnabled=NO;depthBackground=[device newDepthStencilStateWithDescriptor:dd];dd.depthWriteEnabled=YES;
  dd.depthCompareFunction = MTLCompareFunctionLess; depthLess = [device newDepthStencilStateWithDescriptor:dd];
  dd.depthWriteEnabled = NO; depthRead = [device newDepthStencilStateWithDescriptor:dd];
  sans = [self atlas];
@@ -610,6 +628,8 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  return phBlockLayers(device, &pack, &first);
 }
 - (NSString *)loadPack {
+ // Procedural worlds (Splice Bots) use their own stores and have no base pack.
+ if (!config.pack.length) return nil;
  packBytes = phPackImage(config.pack, device);
  const uint8_t *b = packBytes.bytes; size_t n = packBytes.length;
  // The host core sorts the pack's entries through the one pack reader (metaverse-engine/host/pack-table.coax
@@ -753,16 +773,15 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  [s->task cancelWithCloseCode:NSURLSessionWebSocketCloseCodeNormalClosure reason:nil];
  [self push:256 + 4 * id + 2 bytes:nil owner:nil closes:NO];
 }
-- (int32_t)http:(NSString *)path body:(NSData *)body flags:(int32_t)flags {
+- (int32_t)http:(NSString *)path body:(NSData *)body flags:(int32_t)flags timeout:(int64_t)timeout bounded:(BOOL)bounded {
  // same site only: a path from its root, with nothing that could name another host
- if (!path.length || ![path hasPrefix:@"/"] || [path hasPrefix:@"//"] || [path containsString:@"\\"]) return -1;
- for (NSUInteger i = 0; i < path.length; i++) { unichar ch = [path characterAtIndex:i]; if (ch < 32 || ch == 127) return -1; }
+ NSData *raw=[path dataUsingEncoding:NSUTF8StringEncoding];if (!htr_http_path((coax_string){raw.bytes,(int64_t)raw.length})) return -1;
  BOOL post = flags & 1, beacon = (flags & 2) != 0, wanted = (flags & 4) != 0;
- int slot = 0; id token = nil;
- if (wanted) {
-  slot = -1; for (int i = 0; i < 8 && slot < 0; i++) if (!http[i]) slot = i;
+ int slot = 0; PHHttp *token = nil;
+ if (wanted || bounded) {
+  coax_t_HostOwner owner=ht_http_reserve((coax_v_t_HostTransport){&transport,1},flags,bounded,timeout,phMillis(),x.inbox_cap());slot=(int)owner.id;
   if (slot < 0) return -1;
-  token = [NSObject new]; http[slot] = token;
+  token = [PHHttp new];token->owner=owner;http[slot] = token;
  }
  if (!session) {   // offline: an answer that is wanted is the failure every host gives, "0\n"
   if (wanted) [self push:512 + slot bytes:[@"0\n" dataUsingEncoding:NSUTF8StringEncoding] owner:token closes:NO];
@@ -771,20 +790,21 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  NSString *auth = nil;
  if ((flags & 16) && body.length) {
   const uint8_t *b = body.bytes; const uint8_t *nl = memchr(b, '\n', body.length);
-  if (!nl) { if (wanted) http[slot] = nil; return -1; }
+  if (!nl) { if (wanted) {ht_http_cancel((coax_v_t_HostTransport){&transport,1},slot);http[slot] = nil;} return -1; }
   auth = [[NSString alloc] initWithBytes:b length:(size_t)(nl - b) encoding:NSUTF8StringEncoding];
   body = [body subdataWithRange:NSMakeRange((size_t)(nl - b) + 1, body.length - (size_t)(nl - b) - 1)];
  }
  NSURL *u = [NSURL URLWithString:[config.origin stringByAppendingString:[path stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~:/?#[]@!$&'()*+,;=%"]]]];
- if (!u) { if (wanted) http[slot] = nil; return -1; }
+ if (!u) { if (wanted) {ht_http_cancel((coax_v_t_HostTransport){&transport,1},slot);http[slot] = nil;} return -1; }
  NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:u];
+ if (timeout>0) r.timeoutInterval=(double)timeout/1000.0;
  r.HTTPMethod = post ? @"POST" : @"GET"; r.HTTPShouldHandleCookies = NO;
  if (post) { r.HTTPBody = body ?: [NSData data]; [r setValue:@"application/json" forHTTPHeaderField:@"Content-Type"]; }
  [r setValue:config.origin forHTTPHeaderField:@"Origin"];
  if ((flags & 8) && playerKey) [r setValue:playerKey forHTTPHeaderField:@"X-Verse-Player"];
  if (auth) [r setValue:auth forHTTPHeaderField:@"Authorization"];
- __weak AEPageHost *weak = self; size_t cap = x.inbox_cap();
- [[session dataTaskWithRequest:r completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+ __weak AEPageHost *weak = self;
+ void (^answer)(NSData *,NSURLResponse *,NSError *) = ^(NSData *data, NSURLResponse *response, NSError *error) {
   AEPageHost *me = weak; if (!me || !wanted || beacon) return;
   NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
   phLog(@"%@ %@ answered %ld, %lu bytes", post ? @"POST" : @"GET", u.path, (long)status, (unsigned long)data.length);
@@ -792,23 +812,45 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
   if (error || status == 301 || status == 302 || status == 303 || status == 307 || status == 308) [out appendBytes:"0\n" length:2];
   else {
    char head[16]; int hn = snprintf(head, sizeof head, "%ld\n", (long)status); [out appendBytes:head length:(size_t)hn];
-   // an answer larger than the inbox arrives as its status alone, as the browser host gives it
-   if (data.length <= cap - MIN(cap, (size_t)hn)) [out appendData:data];
+   [out appendData:data];
   }
   [me push:512 + slot bytes:out owner:token closes:NO];
- }] resume];
+ };
+ if (config.request) {dispatch_block_t cancel=config.request(r,answer);if (token) token->cancel=cancel;}
+ else {NSURLSessionDataTask *task=[session dataTaskWithRequest:r completionHandler:answer];if (token) token->cancel=^{[task cancel];};[task resume];}
  return slot;
 }
+// Editor messages use the same bounded inbox, never direct state mutation.
+- (NSData *)editorModel {
+ if (closed || !x.edit_model || !x.edit_model_len) return nil;
+ phCurrent=self;uint32_t n=x.edit_model_len(state);A p=x.edit_model(state);
+ return p && n && n<=65536 ? [NSData dataWithBytes:(void *)p length:n] : nil;
+}
+- (int32_t)editorRevision {return !closed && x.edit_rev ? x.edit_rev(state) : -1;}
+- (BOOL)editorOwned {return !closed && x.edit_own && x.edit_own(state)!=0;}
+- (BOOL)deliverAsset:(int32_t)i bytes:(NSData *)bytes {
+ if (closed || !x.asset || !x.asset_capacity || !x.asset_ready || bytes.length>UINT32_MAX || bytes.length>x.asset_capacity(state,i)) return NO;
+ phCurrent=self;A p=x.asset(state,i,(uint32_t)bytes.length);if (!p && bytes.length) return NO;
+ if (bytes.length) memcpy((void *)p,bytes.bytes,bytes.length);x.asset_ready(state,i,(uint32_t)bytes.length);[self after];return YES;
+}
+- (void)assetsChanged {for (NSString *key in media.allKeys) {if (media[key]->failed) [media removeObjectForKey:key];}}
 // The events that arrived since the last frame, in order, for a few milliseconds at most.
 - (void)drain {
  int64_t began = phMillis();
+ for (int i=0;i<8;i++) {PHHttp *request=http[i];if (!request) continue;coax_t_HostDelivery d=ht_http_timeout((coax_v_t_HostTransport){&transport,1},request->owner,began);if(d.deliver){http[i]=nil;if(request->cancel)request->cancel();[self message:(int)d.kind bytes:"0\n" length:2];}}
  for (;;) {
   PHEvent *e = nil;
   @synchronized (events) { if (events.count) { e = events[0]; [events removeObjectAtIndex:0]; } }
   if (!e) return;
-  if (e->kind >= 512) {
+ if (e->kind >= 768 && e->kind < 776) {
+  storageTokens[e->kind-768]=0;[self message:e->kind bytes:e->bytes.bytes length:e->bytes.length];
+ } else if (e->kind >= 512 && e->kind < 520) {
    int id = e->kind - 512; if (http[id] != e->owner) continue;   // an answer for a request that was given up
-   http[id] = nil; [self message:e->kind bytes:e->bytes.bytes length:e->bytes.length];
+   PHHttp *request=http[id];http[id]=nil;coax_v_t_HostTransport state={&transport,1};
+   ht_http_chunk(state,request->owner,(int64_t)e->bytes.length);
+   BOOL utf8=[[NSString alloc] initWithData:e->bytes encoding:NSUTF8StringEncoding]!=nil;
+   coax_t_HostDelivery d=ht_http_finish(state,request->owner,phMillis(),YES,utf8);
+   if(d.deliver) [self message:(int)d.kind bytes:d.failure?"0\n":e->bytes.bytes length:d.failure?2:MIN(e->bytes.length,(NSUInteger)x.inbox_cap())];
   } else {
    int id = (e->kind - 256) / 4;
    if (e->owner) {   // a live socket's: nothing from one the face closed, and its slot frees when it hears the close
@@ -851,7 +893,7 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
   [m->texture replaceRegion:MTLRegionMake2D(0, 0, w, h) mipmapLevel:0 withBytes:pixels bytesPerRow:(NSUInteger)w * 4];
   m->w = w; m->h = h; m->ready = m->texture != nil; m->failed = !m->ready;
   if (same) CGImageRelease(same); CGContextRelease(g); CGColorSpaceRelease(space); free(pixels); CGImageRelease(image);
- } else m->failed = YES;
+ } else {m->failed = YES;if (!d && ![path containsString:@".."] && config.assetNeeded) config.assetNeeded([@"web" stringByAppendingString:path]);}
  if (src) CFRelease(src);
  return m;
 }
@@ -952,7 +994,7 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
   } break;
   case ENGINE_FP_PASS_BACKGROUND: {
    PHPipe *bg = [self pipe:post ? @"bg-lit" : @"bg" role:@"bg" targets:post ? lit : flat count:post ? 2 : 1 depth:pf.scene];
-   if (bg) { [self bind:bg to:e]; if (pf.scene) [e setDepthStencilState:depthAlways]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:op->count]; }
+   if (bg) { [self bind:bg to:e]; if (pf.scene) [e setDepthStencilState:[self shader:@"bg"]->writesDepth ? depthAlways:depthBackground]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:op->count]; }
   } break;
   case ENGINE_FP_PASS_SCENE: {
    PHPipe *sc = [self pipe:post ? @"scene-lit" : @"scene" role:@"scene" targets:post ? lit : flat count:post ? 2 : 1 depth:YES];
@@ -1030,7 +1072,7 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  memcpy(uniformBuffer.contents, uniformBytes.bytes, uniformBytes.length);
  if (x.frame_store && x.frame_store_bytes) { size_t bytes = MIN((size_t)x.frame_store_bytes(state), frameBuffer.length) & ~(size_t)3; if (bytes) memcpy(frameBuffer.contents, (void *)x.frame_store(state), bytes); }
  if (n) memcpy(fxBuffer.contents, vertexBytes.bytes, (size_t)n * x.vertex_floats() * 4);
- BOOL scene = x.draws && x.draw_count && storageBuffer && sheets;
+ BOOL scene = x.draws && x.draw_count && (storageBuffer || stores.count);
  uint32_t draws = scene ? x.draw_count(state) : 0;
  BOOL separate = x.shadow_draws_v1 && x.shadow_draw_count_v1;
  uint32_t shadowDraws = scene && separate ? x.shadow_draw_count_v1(state) : draws;
@@ -1129,7 +1171,7 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  if (scene) { pd.depthAttachment.texture = depth; pd.depthAttachment.loadAction = MTLLoadActionClear; pd.depthAttachment.clearDepth = 1; pd.depthAttachment.storeAction = post ? MTLStoreActionStore : MTLStoreActionDontCare; }
  id<MTLRenderCommandEncoder> e = [cmd renderCommandEncoderWithDescriptor:pd];
  PHPipe *bg = [self pipe:post ? @"bg-lit" : @"bg" role:@"bg" targets:post ? lit : flat count:post ? 2 : 1 depth:scene];
- if (bg) { [self bind:bg to:e]; if (scene) [e setDepthStencilState:depthAlways]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3]; }
+ if (bg) { [self bind:bg to:e]; if (scene) [e setDepthStencilState:[self shader:@"bg"]->writesDepth ? depthAlways:depthBackground]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3]; }
  if (draws) {
   PHPipe *sc = [self pipe:post ? @"scene-lit" : @"scene" role:@"scene" targets:post ? lit : flat count:post ? 2 : 1 depth:YES];
   if (sc) { [self bind:sc to:e]; [e setDepthStencilState:depthLess]; [self drawList:e words:list count:draws]; }
@@ -1263,6 +1305,8 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  if (closed) return;
  closed = YES; [last waitUntilCompleted]; last = nil;
  for (int i = 0; i < 4; i++) { if (sockets[i]) [sockets[i]->task cancel]; sockets[i] = nil; }
+ for (int i=0;i<8;i++) {PHHttp *request=http[i];if (request && request->cancel) request->cancel();http[i]=nil;}
+ ht_reset((coax_v_t_HostTransport){&transport,1});
  [session invalidateAndCancel]; session = nil;
  if (phCurrent == self) phCurrent = nil;
  // the library stays loaded: its code may still be on a worker's stack, and a page opens once a run
@@ -1287,9 +1331,50 @@ PH_IMPORT int32_t coaxial_http(uintptr_t url, uint32_t length, uintptr_t body, u
  AEPageHost *h = phCurrent; if (!h || !url) return -1;
  NSString *path = [[NSString alloc] initWithBytes:(void *)url length:length encoding:NSUTF8StringEncoding];
  if (!path) return -1;
- return [h http:path body:body && body_length ? [NSData dataWithBytes:(void *)body length:body_length] : nil flags:flags];
+ return [h http:path body:body && body_length ? [NSData dataWithBytes:(void *)body length:body_length] : nil flags:flags timeout:0 bounded:NO];
 }
+PH_IMPORT int32_t guard_http(uintptr_t url,uint32_t length,uintptr_t body,uint32_t body_length,uint32_t flags,int64_t timeout) {
+ AEPageHost *h=phCurrent;if (!h || !url) return -1;NSString *path=[[NSString alloc] initWithBytes:(void *)url length:length encoding:NSUTF8StringEncoding];
+ return path?[h http:path body:body && body_length?[NSData dataWithBytes:(void *)body length:body_length]:nil flags:(int32_t)flags timeout:timeout bounded:YES]:-1;
+}
+PH_IMPORT int32_t guard_cancel(int32_t slot) {AEPageHost *h=phCurrent;if (!h || !ht_http_cancel((coax_v_t_HostTransport){&h->transport,1},slot)) return 0;PHHttp *request=h->http[slot];h->http[slot]=nil;if(request && request->cancel)request->cancel();return 1;}
+PH_IMPORT int64_t guard_now_ms(void) {return phMillis();}
+PH_IMPORT int32_t coaxial_http_bounded(uintptr_t u,uint32_t n,uintptr_t b,uint32_t bn,uint32_t f,int64_t t) {return guard_http(u,n,b,bn,f,t);}
+PH_IMPORT int32_t coaxial_http_cancel(int32_t slot) {return guard_cancel(slot);}
 PH_IMPORT int64_t coaxial_now_ms(void) { return phMillis(); }
+PH_IMPORT double coaxial_measure_ms(void) {return CACurrentMediaTime()*1000.0;}
+
+// Native storage uses the browser's exact reply envelope. SDK byte copies and
+// atomic files only; namespaces/versions/content remain the realm's choices.
+static int32_t phStorage(int32_t slot,int32_t token,uintptr_t space,int32_t ns,int32_t version,uintptr_t key,int32_t nk,uintptr_t bytes,int32_t count,BOOL write) {
+ AEPageHost *h=phCurrent;
+ if (!h || h->closed) return 2;
+ if (slot<0 || slot>7 || !token || !space || !key || ns<1 || ns>64 || nk<1 || nk>128 || version<1 || count<0 || (count && !bytes)) return 5;
+ if (count>1048576) return 4;
+ if (h->storageTokens[slot]) return 6;
+ if (h->x.inbox_cap()<16) return 9;
+ NSString *name=[[NSString alloc] initWithBytes:(void *)space length:ns encoding:NSUTF8StringEncoding],*record=[[NSString alloc] initWithBytes:(void *)key length:nk encoding:NSUTF8StringEncoding];
+ if (!name || !record) return 5;
+ NSString *(^part)(NSString *)=^NSString *(NSString *s) {return [[[s dataUsingEncoding:NSUTF8StringEncoding] base64EncodedStringWithOptions:0] stringByReplacingOccurrencesOfString:@"/" withString:@"_"];};
+ NSString *folder=[h->config.store stringByAppendingPathComponent:[NSString stringWithFormat:@"bytes/%@/%d",part(name),version]],*path=[folder stringByAppendingPathComponent:part(record)];
+ int status=0;NSData *payload=nil;
+ if (write) {
+  NSData *copy=[NSData dataWithBytes:(void *)bytes length:count];
+  if (![NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:nil] || ![copy writeToFile:path options:NSDataWritingAtomic error:nil]) status=7;
+  else chmod(path.fileSystemRepresentation,0600);
+ } else {
+  NSDictionary *attrs=[NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+  if (!attrs) status=1;
+  else if (![attrs[NSFileType] isEqual:NSFileTypeRegular]) status=10;
+  else if ([attrs[NSFileSize] unsignedLongLongValue]>1048576) status=4;
+  else {payload=[NSData dataWithContentsOfFile:path];if (!payload) status=7;}
+ }
+ NSMutableData *reply=[NSMutableData dataWithLength:MIN((size_t)1048592,(size_t)h->x.inbox_cap())];
+ int64_t n=bsw_reply((uint32_t)token,status,(coax_string){payload.bytes,(int64_t)payload.length},(int64_t)payload.length,(coax_v_u8){reply.mutableBytes,(int64_t)reply.length});
+ if (n<0) return 9;reply.length=(NSUInteger)n;h->storageTokens[slot]=(uint32_t)token;[h push:768+slot bytes:reply owner:nil closes:NO];return 0;
+}
+PH_IMPORT int32_t coaxial_storage_get(int32_t slot,int32_t token,uintptr_t space,int32_t ns,int32_t version,uintptr_t key,int32_t nk) {return phStorage(slot,token,space,ns,version,key,nk,0,0,NO);}
+PH_IMPORT int32_t coaxial_storage_put(int32_t slot,int32_t token,uintptr_t space,int32_t ns,int32_t version,uintptr_t key,int32_t nk,uintptr_t bytes,int32_t count) {return phStorage(slot,token,space,ns,version,key,nk,bytes,count,YES);}
 
 // ---- the page's sound, for the Apple audio host (audio-host.h; PageAudio.swift): its bank and its packets
 const uint8_t *mf_sound_bank(void *host, size_t *count) {

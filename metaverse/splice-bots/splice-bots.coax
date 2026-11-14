@@ -10,6 +10,7 @@
 #load "../../apps/openagents-web/animelab.coax";
 #load "../../metaverse-engine/kit/land.coax";
 #load "splice-game.coax";
+#load "../../metaverse-engine/core/sticks.coax";
 #load "../../metaverse-engine/host/realm-frame.coax";   // the messages a realm in the site's sandboxed frame takes (#13432)
 
 SP_WORLD_WORDS :: 150000;
@@ -21,6 +22,8 @@ Splice :: struct {
   world_n: int;
   live_n: int;
   time: f32;
+  touched: bool; touch_width:f32; touch_height:f32; touch_scale:f32=1;
+  thumbs:Sticks; touch_fingers:[10]int; touch_keys:[10]int;
   over: bool;
   draws: [4 * (2 + SC_PIECE_MAX)] u32;   // the world's store, the live store, then one draw a kind of placed piece
   draw_n: int;
@@ -273,6 +276,7 @@ splice_imports :: (s: [] Splice, incoming: string, kept: [] u8) -> bool #export_
   return true;
 }
 splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all) {
+  if (kind==601 || kind==603) && s.count>0 {s[0].thumbs=metaverse_sticks_reset();for i:0..<10 {if s[0].touch_fingers[i]!=0 {_:=g_key(s[0].game[..],s[0].touch_keys[i],false);}s[0].touch_fingers[i]=0;}splice_touch_step(s);}
   // this browser's storage answers (coax/web/STORAGE.md): slot 0 your character, slot 1 the kept run (front.coax)
   if (kind == 768 || kind == 769) && s.count > 0 && !s[0].gallery { fr_stored(s[0].game[..], kind - 768, body); return; }
   if kind == 700 && s.count > 0 { s[0].frame_answer = false; splice_drive(s, body); return; }
@@ -328,6 +332,7 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
     return;
   }
   if kind != 600 || s.count < 1 { return; }
+  s[0].touched=sp_has(body,"coarse=1");
   // the dev server's page (coax serve: this computer's address) may ask for the fixture layer,
   // ?layer=fixture, to see placed pieces in the world; no other address loads it
   s[0].dev = sp_has(body, "://127.0.0.1") || sp_has(body, "://localhost");
@@ -396,6 +401,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
                  world: [] u32, live: [] u32, pieces: [] u32, places: [] u32, style: [] f32, imports: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || u.count < UNIFORM_FLOATS || !(width >= 1) || !(height >= 1) { return 0; }
   g := s[0].game[..];
+  s[0].touch_width=width;s[0].touch_height=height;s[0].touch_scale=dpr;
   if !s[0].started { s[0].started = true; s[0].time = 0; g_reset(g); }
   if !s[0].gallery && s[0].built_gray != g[0].gray { s[0].world_built = false; s[0].built_gray = g[0].gray; }
   if !s[0].gallery && s[0].built_pack != g[0].imp[0].gen { s[0].world_built = false; s[0].built_pack = g[0].imp[0].gen; }   // a kit slot the pack dresses draws no blockout (kits.coax)
@@ -439,6 +445,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
       }
     }
     s[0].sdt = vp_run_dt(vp, step);
+    if s[0].touched {splice_touch_step(s);}
     g_step(g, s[0].sdt);
     view = g_camera(g); key = g_key_light(g); flash = g[0].flash; cm_seen(g, view);
     seen := VpView.{ex = view.eye.x, ey = view.eye.y, ez = view.eye.z, ax = view.at.x, ay = view.at.y, az = view.at.z, fov = view.fov, w = width, h = height};
@@ -484,6 +491,12 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   s[0].draw_n = ff_draws(g, s[0].ld[..], s[0].draws[..], s[0].draw_n);   // the solar farm's field, one draw of its banks (farm.coax)
   s[0].draw_n = sd_kit_draws(s[0].ld[..], s[0].draws[..], s[0].draw_n);   // a kit slot the import pack dresses, one draw at its places (kits.coax)
   n := g_overlay(g, out, u, width, height);
+  if s[0].touched && !s[0].gallery && (g[0].mode==M_PLAY || g[0].mode==M_RIDE) && (!s[0].edit || vp_hands(s[0].vp[..])) {
+    k:=hi(dpr,0.5);size:=44*k;gap:=8*k;left:=width-size-gap;bottom:=height-gap;
+    for touch_key,i:[4]int.['e','f',-15,' '] {label:=[4]string.["USE","STUN","BAY","JUMP"];y:=bottom-(cast(f32)i+1)*(size+gap);n=ui_button(g,out,n,label[i],left,y,left+size,y+size,1,touch_key);}
+    n=ui_box(out,n,16*k,height-112*k,128*k,height-16*k,2*k,INK());
+    n=ui_title_mid(out,n,"MOVE",72*k,height-64*k,12*k,INK());
+  }
   // the selected piece is outlined where it stands, or where a drag would leave it
   if s[0].edit {
     mark := spv_mark(g, s[0].page[..], s[0].vp[..], s[0].vview);
@@ -524,6 +537,31 @@ splice_pointer :: (s: [] Splice, x: f32, y: f32, phase: int) -> bool #export_c #
   if s[0].gallery || !s[0].started { return false; }
   if s[0].edit && !vp_hands(s[0].vp[..]) { spv_pointer(s[0].game[..], s[0].page[..], s[0].vp[..], s[0].vw[..], s[0].vview, x, y, phase); return true; }
   return g_pointer(s[0].game[..], x, y, phase);
+}
+
+#test "Splice mobile thumbs reuse the shared sticks, keep two fingers independent, and cancel without held keys" {
+ s:[1]Splice;s[0].started=true;s[0].touched=true;s[0].game[0].mode=M_PLAY;s[0].touch_width=800;s[0].touch_height=400;
+ #assert splice_touch(s[..],100,300,0,31);#assert splice_touch(s[..],100,240,1,31);splice_touch_step(s[..]);#assert s[0].game[0].fwd && !s[0].game[0].back;
+ #assert splice_touch(s[..],600,200,0,32);#assert splice_touch(s[..],650,210,1,32);before:=s[0].game[0].yaw;splice_touch_step(s[..]);#assert before!=s[0].game[0].yaw && s[0].game[0].fwd;
+ #assert splice_touch(s[..],100,240,3,31);splice_touch_step(s[..]);#assert !s[0].game[0].fwd && s[0].thumbs.look_on;
+ splice_message(s[..],601,"");#assert !s[0].thumbs.look_on && !s[0].game[0].right;
+}
+splice_touch_step :: (s:[]Splice) {
+ if !s[0].touched {return;}g:=s[0].game[..];c:=s[0].thumbs;
+ g[0].fwd=c.pad_y>0.15;g[0].back=c.pad_y< -0.15;g[0].left=c.pad_x< -0.15;g[0].right=c.pad_x>0.15;
+ g_look(g,-c.dyaw/T_LOOK,c.dpitch/T_LOOK);
+ if c.jump {_:=g_key(g,' ',true);_:=g_key(g,' ',false);}
+ s[0].thumbs=metaverse_sticks_used(c);
+}
+splice_touch :: (s:[]Splice,x:f32,y:f32,phase:int,finger:int)->bool #export_c #effects(all) {
+ if s.count!=1 || finger<=0 || !s[0].started {return false;}
+ for i:0..<10 {if s[0].touch_fingers[i]==finger {if phase>=2 {_:=g_key(s[0].game[..],s[0].touch_keys[i],false);s[0].touch_fingers[i]=0;}return true;}}
+ g:=s[0].game[..];
+ if !s[0].gallery && (!s[0].edit || vp_hands(s[0].vp[..])) && (g[0].mode==M_PLAY || g[0].mode==M_RIDE) {
+  if phase==0 {for i:0..<g[0].btn_n {if in_box(g[0].btn[..],i*4,x,y) {for k:0..<10 {if s[0].touch_fingers[k]==0 {s[0].touch_fingers[k]=finger;s[0].touch_keys[k]=g[0].btn_key[i];return g_key(g,g[0].btn_key[i],true);}}return true;}}}
+  s[0].thumbs=metaverse_sticks_world_touch(s[0].thumbs,finger,phase,x,y,s[0].touch_width,s[0].touch_height,s[0].touch_scale,f64(s[0].time));return true;
+ }
+ return splice_pointer(s,x,y,phase);
 }
 
 // ---- realm scripts (#13467; scripts.coax; coax/web/host.js "A realm's scripts")

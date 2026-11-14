@@ -1,0 +1,52 @@
+// One codec for the signed update's world asset inventory. The native SDK
+// performs file/network effects; this admits the complete inventory first.
+#load "../updates-wire.coax";
+NW_SCHEMA :: "coax.native.world.assets.v1";
+NW_FILES :: 2048; NW_JSON :: 524288;
+NwFile :: struct {path:[128]u8;np:int;hash:[64]u8;bytes:int;required:bool;}
+NwManifest :: struct {ok:bool;realm:[32]u8;nr:int;runtime:[64]u8;files:[NW_FILES]NwFile;n:int;}
+nw_copy :: (out:[]u8,s:string)->int {if s.count>out.count {return -1;}for c,i:s {out[i]=c;}return s.count;}
+nw_hash_valid :: (s:string)->bool #export_c #effects(all) {return cnu_hex(s);}
+#test "world inventory roundtrips exact bytes and refuses duplicate paths and unsafe names" {
+  m:[1]NwManifest;m[0].nr=nw_copy(m[0].realm[..],"splice-bots");m[0].n=1;
+  for i:0..<64 {m[0].runtime[i]='a';m[0].files[0].hash[i]='b';}
+  m[0].files[0].np=nw_copy(m[0].files[0].path[..],"fonts/reading.ttf");m[0].files[0].bytes=42;m[0].files[0].required=true;
+  out:[2048]u8;n:=nw_write(m[..],out[..]);r:[1]NwManifest;#assert n>0 && nw_read(cast(string)out[0..<n],r[..]) && r[0].n==1 && r[0].files[0].required;
+  #assert cast(string)out[0..<n]=="{\"schema\":\"coax.native.world.assets.v1\",\"realm\":\"splice-bots\",\"runtime\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"files\":[{\"path\":\"fonts/reading.ttf\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"bytes\":42,\"required\":true}]}";
+  m[0].files[1]=m[0].files[0];m[0].n=2;#assert nw_write(m[..],out[..])<0;
+  m[0].n=1;m[0].files[0].np=nw_copy(m[0].files[0].path[..],"../escape");#assert nw_write(m[..],out[..])<0;
+  #assert !nw_read("{}",r[..]) && !nw_read(cast(string)out[0..<1],r[..]);
+}
+nw_read :: (raw:string,m:[]NwManifest)->bool #export_c #effects(all) {
+  if m.count!=1 {return false;}m[0]=NwManifest.{};
+  if raw.count>NW_JSON {return false;}nodes:[32768]JvNode;doc:[1]Jv;
+  if !jv_parse(doc[..],raw,nodes[..]) {return false;}d:=doc[0];
+  if jv_kind(d,0)!=JV_OBJECT || jv_len(d,0)!=4 || jv_raw(d,jv_get(d,0,"schema"))!=NW_SCHEMA {return false;}
+  realm:=jv_raw(d,jv_get(d,0,"realm"));runtime:=jv_raw(d,jv_get(d,0,"runtime"));list:=jv_get(d,0,"files");
+  if jv_kind(d,jv_get(d,0,"schema"))!=JV_STRING || jv_kind(d,jv_get(d,0,"realm"))!=JV_STRING || jv_kind(d,jv_get(d,0,"runtime"))!=JV_STRING {return false;}
+  if realm.count<1 || realm.count>32 || !cnu_path(realm) || !cnu_hex(runtime) || jv_kind(d,list)!=JV_ARRAY {return false;}
+  n:=jv_len(d,list);if n<1 || n>NW_FILES {return false;}
+  m[0].nr=nw_copy(m[0].realm[..],realm);k:=nw_copy(m[0].runtime[..],runtime);m[0].n=n;total:=0;needed:=false;
+  for i:0..<n {
+    row:=jv_at(d,list,i);if jv_kind(d,row)!=JV_OBJECT || jv_len(d,row)!=4 {return false;}
+    path:=jv_raw(d,jv_get(d,row,"path"));hash:=jv_raw(d,jv_get(d,row,"sha256"));bytes:=jv_int(d,jv_get(d,row,"bytes"),-1);req:=jv_get(d,row,"required");
+    if jv_kind(d,jv_get(d,row,"path"))!=JV_STRING || jv_kind(d,jv_get(d,row,"sha256"))!=JV_STRING || jv_kind(d,jv_get(d,row,"bytes"))!=JV_NUMBER {return false;}
+    if !cnu_path(path) || !cnu_hex(hash) || bytes<0 || bytes>67108864 || (jv_kind(d,req)!=JV_TRUE && jv_kind(d,req)!=JV_FALSE) {return false;}
+    total+=bytes;if total>201326592 {return false;}
+    for j:0..<i {if cast(string)m[0].files[j].path[0..<m[0].files[j].np]==path {return false;}}
+    m[0].files[i].np=nw_copy(m[0].files[i].path[..],path);k=nw_copy(m[0].files[i].hash[..],hash);m[0].files[i].bytes=bytes;m[0].files[i].required=jv_bool(d,req);needed=needed || m[0].files[i].required;
+  }
+  m[0].ok=needed;return needed;
+}
+nw_write :: (m:[]NwManifest,out:[]u8)->int {
+  if m.count!=1 || m[0].n<1 || m[0].n>NW_FILES {return -1;}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NW_SCHEMA);jo_key(o[..],"realm");jo_str(o[..],cast(string)m[0].realm[0..<m[0].nr]);jo_key(o[..],"runtime");jo_str(o[..],cast(string)m[0].runtime[..]);jo_key(o[..],"files");jo_arr(o[..]);
+  for i:0..<m[0].n {f:=m[0].files[i];jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],cast(string)f.path[0..<f.np]);jo_key(o[..],"sha256");jo_str(o[..],cast(string)f.hash[..]);jo_key(o[..],"bytes");jo_int(o[..],f.bytes);jo_key(o[..],"required");jo_bool(o[..],f.required);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);
+  check:[1]NwManifest;return ifx !o[0].bad && nw_read(jo_text(o[..]),check[..]) then o[0].n else -1;
+}
+nw_text :: (m:[]NwManifest,row:int,field:int,out:[]u8)->int #export_c #effects(all) {
+  if m.count!=1 || !m[0].ok || row< -1 || row>=m[0].n || field<0 || field>1 {return -1;}
+  text:=ifx row== -1 then ifx field==0 then cast(string)m[0].realm[0..<m[0].nr] else cast(string)m[0].runtime[..] else ifx field==0 then cast(string)m[0].files[row].path[0..<m[0].files[row].np] else cast(string)m[0].files[row].hash[..];return nw_copy(out,text);
+}
+nw_bytes :: (m:[]NwManifest,row:int)->int #export_c #effects(all) {return ifx m.count==1 && m[0].ok && row>=0 && row<m[0].n then m[0].files[row].bytes else -1;}
+nw_required :: (m:[]NwManifest,row:int)->bool #export_c #effects(all) {return m.count==1 && m[0].ok && row>=0 && row<m[0].n && m[0].files[row].required;}

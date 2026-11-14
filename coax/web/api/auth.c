@@ -177,6 +177,8 @@ static const auth_rule RULES[] = {
   R("*",    "/api/chat/runner/", true, AP_PUBLIC, "the chat runner's key, checked there"),
   R("*",    "/api/chat/thread/v1", false, AP_HUMAN, "account-owned mobile transcripts"),
   R("*",    "/api/chat/complete/v1", false, AP_HUMAN, "team-funded account chat; Coax admission and existing quotas"),
+  R("*",    "/api/chat/world/complete/v1", false, AP_HUMAN, "team-funded typed world turn; same account quotas, no write grant"),
+  R("*",    "/api/chat/world/player/v1", false, AP_HUMAN, "bind this guest player to this verified session's game account"),
   R("GET",  "/api/chat/history/v1", false, AP_ACCOUNT, "the account's own saved chat list, including an email session"),
   R("GET",  "/api/chat/environments/v1", false, AP_ACCOUNT, "the account's enrolled computers"),
   R("GET",  "/api/chat/environment/v1", false, AP_ACCOUNT, "read-only admitted environment methods"),

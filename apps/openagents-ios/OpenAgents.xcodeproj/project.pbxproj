@@ -13,31 +13,55 @@
 		0F64B5AFCEDD256C035DF6D8 /* ChatUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B07580CC0A27104C07B9B5C /* ChatUITests.swift */; };
 		103180BD57D2AA2E93F4A6B7 /* SharedAppDeviceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */; };
 		1654B08E3C265E5E8E899CA8 /* NativeText.c in Sources */ = {isa = PBXBuildFile; fileRef = 2863347EB50F2C00D1ED1869 /* NativeText.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
+		171CE627CDE58FB3A075E4EA /* WorldShaders in Resources */ = {isa = PBXBuildFile; fileRef = C975A4FE2A0E54E394405786 /* WorldShaders */; };
+		1A28B8DC4FECD39D3063F83A /* Grid.c in Sources */ = {isa = PBXBuildFile; fileRef = D95AEE2F92F9B46112435148 /* Grid.c */; };
 		1B762FE26821A2D99402DDAF /* NativeTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8477A24ADD8E8A749294EEEE /* NativeTypes.swift */; };
+		1BF8C242B23F9A6C68D40893 /* Animelab-style.c in Sources */ = {isa = PBXBuildFile; fileRef = 92371BD49223030DA0F34E84 /* Animelab-style.c */; };
+		1C9FDDF2D7EDAF07C3B72930 /* PhoneTurn.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5CDBC2AEE9079B64FC914A /* PhoneTurn.swift */; };
+		1D0337B9726567A98B8B64D2 /* everglade2.face.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E25630DE3187426472CC12 /* everglade2.face.c */; };
+		1DE975734DFC2118F8DA6120 /* NativeWorldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EE12087F6CBB97147B8BD05 /* NativeWorldTests.swift */; };
 		1F3972F80AD727788C1649CC /* NostrSign.c in Sources */ = {isa = PBXBuildFile; fileRef = 0B12460F6D71E6EC127D760A /* NostrSign.c */; };
 		2423078B067528A80731C519 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BAFA692F7A2D8501CD6985F /* BIP39.swift */; };
+		25D77A06C2C3817884BE22C4 /* Sticks.c in Sources */ = {isa = PBXBuildFile; fileRef = 6859E9B70EB7323043C45276 /* Sticks.c */; };
 		2C15AE18F335A39F71D3ECC5 /* NativeMarkdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */; };
 		2CC0D955E1B50A311219BE38 /* SparkHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F41D56BF7ED365348CE324E /* SparkHost.swift */; };
 		335ACC89190205BA908FF0D1 /* DMSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 31159A6F8D0AE4A71EC70DB3 /* DMSans-Regular.ttf */; };
+		33F85B946B4265C65AEDD9E8 /* Guard-guide-policy.c in Sources */ = {isa = PBXBuildFile; fileRef = CE9324D75198B7D6E3A84F99 /* Guard-guide-policy.c */; settings = {COMPILER_FLAGS = "-Dinput_runs=guard_guide_input_runs"; }; };
+		3624F02116295A64E7E4CCAE /* EvergladeRuntime.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43575EA619337B30779C47AD /* EvergladeRuntime.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		370177B40FC83B533F660A4C /* NostrKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0083B1697095508B0B534B8B /* NostrKey.swift */; };
+		388C74DDAF1E79D078022159 /* NativeWorldAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76CCABCDB810512F41B3CB4 /* NativeWorldAssets.swift */; };
 		3EEE9F6858832B4BED499CC2 /* NativeWire.c in Sources */ = {isa = PBXBuildFile; fileRef = 5DE15337BAC2E10225C3C1CB /* NativeWire.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		43A5D1535C05B29C381D5FFF /* NativeUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */; };
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
 		444324321690C6F700CD79A2 /* SparkBalanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */; };
 		47402381B8C043A601D16232 /* BalanceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */; };
+		49F8835C3DE10B3EADC4F251 /* Everglade5e-rules.c in Sources */ = {isa = PBXBuildFile; fileRef = 33E1E497155B2D430266283A /* Everglade5e-rules.c */; };
 		4D59620F5B373646C05FC2A4 /* NativeComposer-T3-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 12732C0F80796C53136B0DC3 /* NativeComposer-T3-LICENSE.txt */; };
+		559E7996A52A688D46F340D0 /* Deep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92AE2C66797D94AFC4EAF484 /* Deep.swift */; };
+		5B8D020538856B59C5413D67 /* NativeAudioUnit.c in Sources */ = {isa = PBXBuildFile; fileRef = 87B62191D8926016DED19A04 /* NativeAudioUnit.c */; };
+		5CE5990EB9BF682AAAB22BAD /* EvergladeRuntime.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43575EA619337B30779C47AD /* EvergladeRuntime.framework */; };
+		5D0BF1EA9B7BD485D8260C0D /* everglade5e.c in Sources */ = {isa = PBXBuildFile; fileRef = 9CF10D05CEBE1FF96A9E94F6 /* everglade5e.c */; };
+		5DC336D026702B482A075377 /* MadeRealmRuntime.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */; };
 		5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */ = {isa = PBXBuildFile; productRef = 6A07344B6842FB168B7EEED5 /* BreezSdkSpark */; };
 		5FCD0C43CB70DA62BB5DE214 /* precomputed_ecmult.c in Sources */ = {isa = PBXBuildFile; fileRef = FA482D60928E6CCB2F0BDDA5 /* precomputed_ecmult.c */; settings = {COMPILER_FLAGS = "-DECMULT_WINDOW_SIZE=8"; }; };
 		6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */ = {isa = PBXBuildFile; fileRef = BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */; settings = {COMPILER_FLAGS = "-DECMULT_WINDOW_SIZE=8"; }; };
 		647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */; };
 		658B4C2F5F7EABC4715EB1E4 /* Native.plist in Resources */ = {isa = PBXBuildFile; fileRef = DA6976CE4AA8C31947C48C5D /* Native.plist */; };
+		6E4F46ED9C56AD62BC8565FE /* SpliceBotsRuntime.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2F6D9D49955FFFB825E5D9DF /* SpliceBotsRuntime.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		6E5DC168044EA02417ED816B /* StarterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3236A8315C98ABF86224CB /* StarterApp.swift */; };
 		6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0AAC9508FA4369A9715A69 /* AppAuth.swift */; };
+		704C961857BA052BD602FE8A /* MadeRealmRuntime.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		77214AC5E50DDE33A8E5057E /* NativeWorldHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE6F7A293A2BF2130273E7A /* NativeWorldHost.swift */; };
+		779081F79FEB0B672F96D633 /* NativeWorldProgramTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D793A86BE329BE62C7A776E /* NativeWorldProgramTests.swift */; };
 		790A92BCF9A5C6628FA9E10E /* NativeControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A32BEE57050EF541CA1A16 /* NativeControls.swift */; };
 		7AF8A667DDA6EC805E8356D3 /* OpenagentsAppUnit.c in Sources */ = {isa = PBXBuildFile; fileRef = A06EC60CB2CB2474370174C3 /* OpenagentsAppUnit.c */; };
+		7D441B27658C4A69B117A6C0 /* NativeWorldDownloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BE16B2ACBC2D76219700427 /* NativeWorldDownloadTests.swift */; };
 		7D6894FC51AC087B87D7926C /* DMSans-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B041C1F00C1751C3053A0E44 /* DMSans-BoldItalic.ttf */; };
 		7D945870E3AD12214ABA574E /* DMSans-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E6BDE16B17DBA408B5A72A1F /* DMSans-Italic.ttf */; };
+		7FFD4ECD2F77851EF905BDBA /* native-audio.c in Sources */ = {isa = PBXBuildFile; fileRef = 1FA713933D36CAF22171CD05 /* native-audio.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"; }; };
 		8E4F97485AF1AF831DCB39E9 /* bip39-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = 131BDA8ADB97609206195533 /* bip39-english.txt */; };
+		991835023F6FB1D8E2D27BE8 /* Everglade-step.c in Sources */ = {isa = PBXBuildFile; fileRef = BC347727510CEB5F0963D925 /* Everglade-step.c */; };
+		992FD07438E96D6B06B01D6C /* MetalAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7444B08092B9624B2F186F /* MetalAudio.swift */; };
 		9B9E8E3B6C3F29DF2B6A3CCB /* WalletKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE5C04823E6E6E322FD7E33C /* WalletKeychain.swift */; };
 		9EDFF85EEFA09C5E405F0C99 /* Starter in Resources */ = {isa = PBXBuildFile; fileRef = 312A9EE9333FE46FFAED3D6F /* Starter */; };
 		A05D687346C45546701CEFF7 /* SharedAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */; };
@@ -47,26 +71,73 @@
 		AAFF31B0E8810A7429EE6DA8 /* BreezKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9B32CD7EF30EADCBFE18124 /* BreezKey.swift */; };
 		AC281939C157CCA54F84DD2A /* NativeComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00F077C1C17712C38E9F58E /* NativeComposer.swift */; };
 		AF77409D07EA217012468952 /* DMSans-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3462DD345AFA66B75FD4E0DE /* DMSans-Medium.ttf */; };
+		AF9268D3718198DF3C9A447F /* splice-bots.face.c in Sources */ = {isa = PBXBuildFile; fileRef = EE83E3BBB4A5E7F30389A371 /* splice-bots.face.c */; };
+		B8F46A110910EFA234713835 /* myrealm.face.c in Sources */ = {isa = PBXBuildFile; fileRef = 0AACACD5A7200A22E0D99877 /* myrealm.face.c */; };
 		B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C83152B91DFEEF873AAD56 /* NativeHost.swift */; };
+		BBCD33281D47033AC1DB4BF7 /* PageHost.m in Sources */ = {isa = PBXBuildFile; fileRef = 02972CD305F4FD3F384DE808 /* PageHost.m */; };
 		BFE34625B35451186BA445E4 /* NativeMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7284237748CD21A99F8480AC /* NativeMessage.swift */; };
 		C0B0BC79860337C450B78A5D /* PhoneSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */; };
+		C1CD4FE3E08EAA35C1A45124 /* NativeWorldUnit.c in Sources */ = {isa = PBXBuildFile; fileRef = 460986BD3808434A301E2974 /* NativeWorldUnit.c */; };
+		C378479D5A66B8CE7518A401 /* Everglade-step.c in Sources */ = {isa = PBXBuildFile; fileRef = E83CC85136FF56D90258CB5E /* Everglade-step.c */; };
+		C5714B16C1D38C98556E313A /* River.c in Sources */ = {isa = PBXBuildFile; fileRef = 1AF7AD81A684A2291C02A25A /* River.c */; };
+		C6D0F1DC49DA862E1E6CD25D /* NativeWorldEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77B06C5399D3C53DAFA386F6 /* NativeWorldEditor.swift */; };
 		C77117B7CBCFC4CC0576E57C /* phone-drive.c in Sources */ = {isa = PBXBuildFile; fileRef = D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function"; }; };
+		CBE2D32B4CEC2202EDDCBE1E /* everglade5e.face.c in Sources */ = {isa = PBXBuildFile; fileRef = 439DDA8E07F1EF881E469B46 /* everglade5e.face.c */; };
+		CC168229BF9EF7F11593D749 /* EvergladeForestRuntime.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F67E8831801F1502315023B7 /* EvergladeForestRuntime.framework */; };
+		CC4C79CE4851522F8DCA5F91 /* splice-bots.c in Sources */ = {isa = PBXBuildFile; fileRef = ED0BF4D0079AFBF3E14D42FB /* splice-bots.c */; };
 		D038A28C391888C7188F57E5 /* WalletBalance.c in Sources */ = {isa = PBXBuildFile; fileRef = BE3E54671A8869C147608A21 /* WalletBalance.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */; };
+		DAA575C085B9488C732C376C /* client.c in Sources */ = {isa = PBXBuildFile; fileRef = 69E87B7AE608F14798614E2E /* client.c */; };
 		DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */; };
+		DBD87711A3DEE68D3778D505 /* EvergladeForestRuntime.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = F67E8831801F1502315023B7 /* EvergladeForestRuntime.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		DC5537790C17AE594AEEEDDA /* NativeProgram.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C29607A719DC46C635E2BB /* NativeProgram.swift */; };
+		DD81534B0F0F15B73270C06B /* WorldRuntimes.plist in Resources */ = {isa = PBXBuildFile; fileRef = E3ADDDE39510B15815C9C133 /* WorldRuntimes.plist */; };
+		DE56E2C6256E7DF31BC84955 /* NativeWorldConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D6F9ED8D49C3CB4C705C0A7 /* NativeWorldConversation.swift */; };
 		E04C681B8BB7D9243AFB2BAE /* NativeComposer.c in Sources */ = {isa = PBXBuildFile; fileRef = D1522134FBE4A368E4ED10E6 /* NativeComposer.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		ECDFE75FB85014389B5354CF /* EmailLoginUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */; };
+		F1758E0384C0E7DF3B886192 /* myrealm.c in Sources */ = {isa = PBXBuildFile; fileRef = DBD3A25436338CDD9D50E691 /* myrealm.c */; };
+		F4823961AAF48A24E645C16A /* SpliceBotsRuntime.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2F6D9D49955FFFB825E5D9DF /* SpliceBotsRuntime.framework */; };
 		F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EB43B9790841620D29A9F92 /* PhoneSignin.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
+		F80124EC8D6E6171038CFD25 /* PageAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0329FFDFC7803A74D7062508 /* PageAudio.swift */; };
+		F904EDFD21E27FC0910AF4DB /* NativeWorldLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A2B0C65879F6AE1128ACF0 /* NativeWorldLibrary.swift */; };
+		F9ED72543EBFA15EB2EE96F0 /* engine-core-face.c in Sources */ = {isa = PBXBuildFile; fileRef = F1D217C6F37EE5CCCA813BE7 /* engine-core-face.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex"; }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		297D7F2D9959D1F532BB7DE0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D73FDB66A38EC188DC701EB0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5C1D9957C52F396928A5AF91;
+			remoteInfo = MadeRealmRuntime;
+		};
+		39080464D2F25A7526A9CC06 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D73FDB66A38EC188DC701EB0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F0A49F671BAAD36E923D675C;
+			remoteInfo = EvergladeForestRuntime;
+		};
+		538DB5B0A2C3E6BB14EC9DBA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D73FDB66A38EC188DC701EB0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4FB3FECE99FD373863B465AD;
+			remoteInfo = SpliceBotsRuntime;
+		};
 		9B8ACC96B13D559B69CD8EFE /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = D73FDB66A38EC188DC701EB0 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 037A81F78D877520A602A5C1;
 			remoteInfo = OpenAgents;
+		};
+		C574AE2AE4EEAEBFE168D3D9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D73FDB66A38EC188DC701EB0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BE5085EF48B6A9FCBA3531C0;
+			remoteInfo = EvergladeRuntime;
 		};
 		D0665F73E8E58F5928328084 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -77,57 +148,113 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		657EAAF76C23D24AF316F0B6 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				6E4F46ED9C56AD62BC8565FE /* SpliceBotsRuntime.framework in Embed Frameworks */,
+				3624F02116295A64E7E4CCAE /* EvergladeRuntime.framework in Embed Frameworks */,
+				DBD87711A3DEE68D3778D505 /* EvergladeForestRuntime.framework in Embed Frameworks */,
+				704C961857BA052BD602FE8A /* MadeRealmRuntime.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		0083B1697095508B0B534B8B /* NostrKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrKey.swift; sourceTree = "<group>"; };
 		01C83152B91DFEEF873AAD56 /* NativeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHost.swift; sourceTree = "<group>"; };
+		02972CD305F4FD3F384DE808 /* PageHost.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PageHost.m; sourceTree = "<group>"; };
+		02A2B0C65879F6AE1128ACF0 /* NativeWorldLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldLibrary.swift; sourceTree = "<group>"; };
+		0329FFDFC7803A74D7062508 /* PageAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageAudio.swift; sourceTree = "<group>"; };
 		09C29607A719DC46C635E2BB /* NativeProgram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProgram.swift; sourceTree = "<group>"; };
 		09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAppDeviceUITests.swift; sourceTree = "<group>"; };
+		0AACACD5A7200A22E0D99877 /* myrealm.face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = myrealm.face.c; sourceTree = "<group>"; };
 		0B12460F6D71E6EC127D760A /* NostrSign.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NostrSign.c; sourceTree = "<group>"; };
 		0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceUITests.swift; sourceTree = "<group>"; };
 		12732C0F80796C53136B0DC3 /* NativeComposer-T3-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "NativeComposer-T3-LICENSE.txt"; sourceTree = "<group>"; };
 		131BDA8ADB97609206195533 /* bip39-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bip39-english.txt"; sourceTree = "<group>"; };
+		1AF7AD81A684A2291C02A25A /* River.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = River.c; sourceTree = "<group>"; };
+		1B7444B08092B9624B2F186F /* MetalAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalAudio.swift; sourceTree = "<group>"; };
 		1EB43B9790841620D29A9F92 /* PhoneSignin.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = PhoneSignin.c; sourceTree = "<group>"; };
+		1FA713933D36CAF22171CD05 /* native-audio.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "native-audio.c"; sourceTree = "<group>"; };
 		25D8936BC22A37E1214E454F /* NativeProgramTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProgramTests.swift; sourceTree = "<group>"; };
 		285CD8F8F9EFEFB6BCC6933D /* OpenAgentsTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2863347EB50F2C00D1ED1869 /* NativeText.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeText.c; sourceTree = "<group>"; };
 		29CE2F09F9A0B3457456014E /* secp256k1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = secp256k1.c; sourceTree = "<group>"; };
 		2BAFA692F7A2D8501CD6985F /* BIP39.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39.swift; sourceTree = "<group>"; };
 		2C3236A8315C98ABF86224CB /* StarterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterApp.swift; sourceTree = "<group>"; };
+		2F6D9D49955FFFB825E5D9DF /* SpliceBotsRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = SpliceBotsRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUpdates.swift; sourceTree = "<group>"; };
 		31159A6F8D0AE4A71EC70DB3 /* DMSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-Regular.ttf"; sourceTree = "<group>"; };
 		312A9EE9333FE46FFAED3D6F /* Starter */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Starter; sourceTree = SOURCE_ROOT; };
+		33E1E497155B2D430266283A /* Everglade5e-rules.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Everglade5e-rules.c"; sourceTree = "<group>"; };
 		3462DD345AFA66B75FD4E0DE /* DMSans-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-Medium.ttf"; sourceTree = "<group>"; };
+		3D6F9ED8D49C3CB4C705C0A7 /* NativeWorldConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldConversation.swift; sourceTree = "<group>"; };
+		3DE6F7A293A2BF2130273E7A /* NativeWorldHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldHost.swift; sourceTree = "<group>"; };
 		3F41D56BF7ED365348CE324E /* SparkHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkHost.swift; sourceTree = "<group>"; };
+		43575EA619337B30779C47AD /* EvergladeRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = EvergladeRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		439DDA8E07F1EF881E469B46 /* everglade5e.face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = everglade5e.face.c; sourceTree = "<group>"; };
+		460986BD3808434A301E2974 /* NativeWorldUnit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeWorldUnit.c; sourceTree = "<group>"; };
+		4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MadeRealmRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		5D793A86BE329BE62C7A776E /* NativeWorldProgramTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldProgramTests.swift; sourceTree = "<group>"; };
 		5DE15337BAC2E10225C3C1CB /* NativeWire.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeWire.c; sourceTree = "<group>"; };
 		60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMarkdownTests.swift; sourceTree = "<group>"; };
+		6859E9B70EB7323043C45276 /* Sticks.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Sticks.c; sourceTree = "<group>"; };
 		68A32BEE57050EF541CA1A16 /* NativeControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeControls.swift; sourceTree = "<group>"; };
+		69E87B7AE608F14798614E2E /* client.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = client.c; sourceTree = "<group>"; };
 		7284237748CD21A99F8480AC /* NativeMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessage.swift; sourceTree = "<group>"; };
 		7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePackageTests.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		77B06C5399D3C53DAFA386F6 /* NativeWorldEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldEditor.swift; sourceTree = "<group>"; };
 		8229C5D27BC40A99010E48D9 /* OpenAgents.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenAgents.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8477A24ADD8E8A749294EEEE /* NativeTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTypes.swift; sourceTree = "<group>"; };
 		84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAppUITests.swift; sourceTree = "<group>"; };
+		87B62191D8926016DED19A04 /* NativeAudioUnit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeAudioUnit.c; sourceTree = "<group>"; };
 		88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterUITests.swift; sourceTree = "<group>"; };
 		8B07580CC0A27104C07B9B5C /* ChatUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatUITests.swift; sourceTree = "<group>"; };
+		90E25630DE3187426472CC12 /* everglade2.face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = everglade2.face.c; sourceTree = "<group>"; };
 		910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		92371BD49223030DA0F34E84 /* Animelab-style.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Animelab-style.c"; sourceTree = "<group>"; };
+		92AE2C66797D94AFC4EAF484 /* Deep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deep.swift; sourceTree = "<group>"; };
 		9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSignIn.swift; sourceTree = "<group>"; };
 		9BD4840ED2FA15B3276B9A93 /* SharedAppViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAppViewController.swift; sourceTree = "<group>"; };
+		9BE16B2ACBC2D76219700427 /* NativeWorldDownloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldDownloadTests.swift; sourceTree = "<group>"; };
+		9CF10D05CEBE1FF96A9E94F6 /* everglade5e.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = everglade5e.c; sourceTree = "<group>"; };
 		9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
+		9EE12087F6CBB97147B8BD05 /* NativeWorldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldTests.swift; sourceTree = "<group>"; };
 		A06EC60CB2CB2474370174C3 /* OpenagentsAppUnit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = OpenagentsAppUnit.c; sourceTree = "<group>"; };
+		A76CCABCDB810512F41B3CB4 /* NativeWorldAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldAssets.swift; sourceTree = "<group>"; };
+		AB5CDBC2AEE9079B64FC914A /* PhoneTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneTurn.swift; sourceTree = "<group>"; };
 		ABE3F6DB32D91F73A83323E9 /* AppAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAnalytics.swift; sourceTree = "<group>"; };
 		ACCC09AD9788F1149290D2CE /* DMSans-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-Bold.ttf"; sourceTree = "<group>"; };
 		B041C1F00C1751C3053A0E44 /* DMSans-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-BoldItalic.ttf"; sourceTree = "<group>"; };
+		BC347727510CEB5F0963D925 /* Everglade-step.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Everglade-step.c"; sourceTree = "<group>"; };
 		BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = precomputed_ecmult_gen.c; sourceTree = "<group>"; };
 		BE3E54671A8869C147608A21 /* WalletBalance.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = WalletBalance.c; sourceTree = "<group>"; };
 		BE5C04823E6E6E322FD7E33C /* WalletKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletKeychain.swift; sourceTree = "<group>"; };
 		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
 		C00F077C1C17712C38E9F58E /* NativeComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeComposer.swift; sourceTree = "<group>"; };
+		C975A4FE2A0E54E394405786 /* WorldShaders */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WorldShaders; path = Generated/WorldShaders; sourceTree = SOURCE_ROOT; };
+		CE9324D75198B7D6E3A84F99 /* Guard-guide-policy.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Guard-guide-policy.c"; sourceTree = "<group>"; };
 		D1522134FBE4A368E4ED10E6 /* NativeComposer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeComposer.c; sourceTree = "<group>"; };
 		D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "phone-drive.c"; sourceTree = "<group>"; };
+		D95AEE2F92F9B46112435148 /* Grid.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Grid.c; sourceTree = "<group>"; };
 		DA6976CE4AA8C31947C48C5D /* Native.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Native.plist; sourceTree = "<group>"; };
+		DBD3A25436338CDD9D50E691 /* myrealm.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = myrealm.c; sourceTree = "<group>"; };
 		DCD62FA8D277D57B999CBF47 /* NativePolicy.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativePolicy.c; sourceTree = "<group>"; };
+		E3ADDDE39510B15815C9C133 /* WorldRuntimes.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = WorldRuntimes.plist; sourceTree = "<group>"; };
 		E6BDE16B17DBA408B5A72A1F /* DMSans-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-Italic.ttf"; sourceTree = "<group>"; };
+		E83CC85136FF56D90258CB5E /* Everglade-step.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Everglade-step.c"; sourceTree = "<group>"; };
 		E9B32CD7EF30EADCBFE18124 /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
+		ED0BF4D0079AFBF3E14D42FB /* splice-bots.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "splice-bots.c"; sourceTree = "<group>"; };
+		EE83E3BBB4A5E7F30389A371 /* splice-bots.face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "splice-bots.face.c"; sourceTree = "<group>"; };
+		F1D217C6F37EE5CCCA813BE7 /* engine-core-face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "engine-core-face.c"; sourceTree = "<group>"; };
+		F67E8831801F1502315023B7 /* EvergladeForestRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = EvergladeForestRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		FA482D60928E6CCB2F0BDDA5 /* precomputed_ecmult.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = precomputed_ecmult.c; sourceTree = "<group>"; };
 		FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkBalanceTests.swift; sourceTree = "<group>"; };
 		FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailLoginUITests.swift; sourceTree = "<group>"; };
@@ -139,12 +266,37 @@
 			buildActionMask = 2147483647;
 			files = (
 				5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */,
+				F4823961AAF48A24E645C16A /* SpliceBotsRuntime.framework in Frameworks */,
+				5CE5990EB9BF682AAAB22BAD /* EvergladeRuntime.framework in Frameworks */,
+				CC168229BF9EF7F11593D749 /* EvergladeForestRuntime.framework in Frameworks */,
+				5DC336D026702B482A075377 /* MadeRealmRuntime.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0D74ACE8D1983E05C4020491 /* myrealm */ = {
+			isa = PBXGroup;
+			children = (
+				DBD3A25436338CDD9D50E691 /* myrealm.c */,
+				0AACACD5A7200A22E0D99877 /* myrealm.face.c */,
+			);
+			name = myrealm;
+			path = Generated/Worlds/myrealm;
+			sourceTree = "<group>";
+		};
+		45340D2B8E725CB0B0DB38F7 /* splice-bots */ = {
+			isa = PBXGroup;
+			children = (
+				92371BD49223030DA0F34E84 /* Animelab-style.c */,
+				ED0BF4D0079AFBF3E14D42FB /* splice-bots.c */,
+				EE83E3BBB4A5E7F30389A371 /* splice-bots.face.c */,
+			);
+			name = "splice-bots";
+			path = "Generated/Worlds/splice-bots";
+			sourceTree = "<group>";
+		};
 		45BCF8879F8A49E40240BBF7 /* SignIn */ = {
 			isa = PBXGroup;
 			children = (
@@ -158,12 +310,15 @@
 		5B366C12F710C7D176CACD52 /* Generated */ = {
 			isa = PBXGroup;
 			children = (
+				F1D217C6F37EE5CCCA813BE7 /* engine-core-face.c */,
+				1FA713933D36CAF22171CD05 /* native-audio.c */,
 				D1522134FBE4A368E4ED10E6 /* NativeComposer.c */,
 				DCD62FA8D277D57B999CBF47 /* NativePolicy.c */,
 				2863347EB50F2C00D1ED1869 /* NativeText.c */,
 				5DE15337BAC2E10225C3C1CB /* NativeWire.c */,
 				1EB43B9790841620D29A9F92 /* PhoneSignin.c */,
 				BE3E54671A8869C147608A21 /* WalletBalance.c */,
+				E3ADDDE39510B15815C9C133 /* WorldRuntimes.plist */,
 			);
 			path = Generated;
 			sourceTree = "<group>";
@@ -171,12 +326,11 @@
 		61353A3754B849E19D09A2E0 /* apple */ = {
 			isa = PBXGroup;
 			children = (
-				BF0AAC9508FA4369A9715A69 /* AppAuth.swift */,
-				9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */,
-				D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */,
+				0329FFDFC7803A74D7062508 /* PageAudio.swift */,
+				02972CD305F4FD3F384DE808 /* PageHost.m */,
 			);
 			name = apple;
-			path = ../shared/host/apple;
+			path = "../../metaverse-engine/host/apple";
 			sourceTree = "<group>";
 		};
 		71A2ECE12A4F32216053EEC0 /* StarterTests */ = {
@@ -185,9 +339,27 @@
 				60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */,
 				7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */,
 				25D8936BC22A37E1214E454F /* NativeProgramTests.swift */,
+				9BE16B2ACBC2D76219700427 /* NativeWorldDownloadTests.swift */,
+				5D793A86BE329BE62C7A776E /* NativeWorldProgramTests.swift */,
+				9EE12087F6CBB97147B8BD05 /* NativeWorldTests.swift */,
 				FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */,
 			);
 			path = StarterTests;
+			sourceTree = "<group>";
+		};
+		80AB543A3ACB5F683CB189FA /* everglade */ = {
+			isa = PBXGroup;
+			children = (
+				BC347727510CEB5F0963D925 /* Everglade-step.c */,
+				33E1E497155B2D430266283A /* Everglade5e-rules.c */,
+				9CF10D05CEBE1FF96A9E94F6 /* everglade5e.c */,
+				439DDA8E07F1EF881E469B46 /* everglade5e.face.c */,
+				D95AEE2F92F9B46112435148 /* Grid.c */,
+				CE9324D75198B7D6E3A84F99 /* Guard-guide-policy.c */,
+				1AF7AD81A684A2291C02A25A /* River.c */,
+			);
+			name = everglade;
+			path = Generated/Worlds/everglade;
 			sourceTree = "<group>";
 		};
 		882357AF20ADF9EB870C07F6 /* Platform */ = {
@@ -224,6 +396,18 @@
 			path = Vendor/secp256k1/src;
 			sourceTree = "<group>";
 		};
+		915D4404F5534B1D855E4317 /* everglade2 */ = {
+			isa = PBXGroup;
+			children = (
+				69E87B7AE608F14798614E2E /* client.c */,
+				E83CC85136FF56D90258CB5E /* Everglade-step.c */,
+				90E25630DE3187426472CC12 /* everglade2.face.c */,
+				6859E9B70EB7323043C45276 /* Sticks.c */,
+			);
+			name = everglade2;
+			path = Generated/Worlds/everglade2;
+			sourceTree = "<group>";
+		};
 		980C20719E4EAD0DDDFF2531 /* Wallet */ = {
 			isa = PBXGroup;
 			children = (
@@ -239,9 +423,13 @@
 		A399D11B8F0035506E68EDB0 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				F67E8831801F1502315023B7 /* EvergladeForestRuntime.framework */,
+				43575EA619337B30779C47AD /* EvergladeRuntime.framework */,
+				4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */,
 				8229C5D27BC40A99010E48D9 /* OpenAgents.app */,
 				285CD8F8F9EFEFB6BCC6933D /* OpenAgentsTests.xctest */,
 				910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */,
+				2F6D9D49955FFFB825E5D9DF /* SpliceBotsRuntime.framework */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -265,6 +453,19 @@
 			path = OpenAgents/Shared;
 			sourceTree = "<group>";
 		};
+		AA7F4CD3989AEBEF7F73EE60 /* apple */ = {
+			isa = PBXGroup;
+			children = (
+				BF0AAC9508FA4369A9715A69 /* AppAuth.swift */,
+				92AE2C66797D94AFC4EAF484 /* Deep.swift */,
+				9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */,
+				D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */,
+				AB5CDBC2AEE9079B64FC914A /* PhoneTurn.swift */,
+			);
+			name = apple;
+			path = ../shared/host/apple;
+			sourceTree = "<group>";
+		};
 		ABD48D4B1B28A57624675E53 /* native */ = {
 			isa = PBXGroup;
 			children = (
@@ -276,6 +477,11 @@
 				09C29607A719DC46C635E2BB /* NativeProgram.swift */,
 				8477A24ADD8E8A749294EEEE /* NativeTypes.swift */,
 				303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */,
+				A76CCABCDB810512F41B3CB4 /* NativeWorldAssets.swift */,
+				3D6F9ED8D49C3CB4C705C0A7 /* NativeWorldConversation.swift */,
+				77B06C5399D3C53DAFA386F6 /* NativeWorldEditor.swift */,
+				3DE6F7A293A2BF2130273E7A /* NativeWorldHost.swift */,
+				02A2B0C65879F6AE1128ACF0 /* NativeWorldLibrary.swift */,
 			);
 			name = native;
 			path = ../shared/native;
@@ -294,6 +500,15 @@
 			path = StarterUITests;
 			sourceTree = "<group>";
 		};
+		D411ABA85AD90CB7E64D6DB3 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				1B7444B08092B9624B2F186F /* MetalAudio.swift */,
+			);
+			name = Sources;
+			path = "../metaverse-engine-desktop/Sources";
+			sourceTree = "<group>";
+		};
 		EBA77022E6429671290CDE34 /* OpenAgents */ = {
 			isa = PBXGroup;
 			children = (
@@ -306,17 +521,26 @@
 			isa = PBXGroup;
 			children = (
 				DA6976CE4AA8C31947C48C5D /* Native.plist */,
+				87B62191D8926016DED19A04 /* NativeAudioUnit.c */,
+				460986BD3808434A301E2974 /* NativeWorldUnit.c */,
 				312A9EE9333FE46FFAED3D6F /* Starter */,
 				2C3236A8315C98ABF86224CB /* StarterApp.swift */,
+				C975A4FE2A0E54E394405786 /* WorldShaders */,
 				61353A3754B849E19D09A2E0 /* apple */,
+				AA7F4CD3989AEBEF7F73EE60 /* apple */,
+				80AB543A3ACB5F683CB189FA /* everglade */,
+				915D4404F5534B1D855E4317 /* everglade2 */,
 				89D0EDCD22386A706365DFDC /* fonts */,
 				5B366C12F710C7D176CACD52 /* Generated */,
+				0D74ACE8D1983E05C4020491 /* myrealm */,
 				ABD48D4B1B28A57624675E53 /* native */,
 				EBA77022E6429671290CDE34 /* OpenAgents */,
 				882357AF20ADF9EB870C07F6 /* Platform */,
 				A897E627F1493C3BC04958D1 /* Resources */,
 				A9D443F63BB17301BE398B98 /* Shared */,
 				45BCF8879F8A49E40240BBF7 /* SignIn */,
+				D411ABA85AD90CB7E64D6DB3 /* Sources */,
+				45340D2B8E725CB0B0DB38F7 /* splice-bots */,
 				8A366ADC38979696589B7858 /* src */,
 				71A2ECE12A4F32216053EEC0 /* StarterTests */,
 				C9674C796927111E3430D894 /* StarterUITests */,
@@ -335,10 +559,15 @@
 				3021F9601449A7901737DC0B /* Sources */,
 				9EB07DEE9BD5341EBD04A0A2 /* Resources */,
 				EAD68FE7753AB46CBC2F55C3 /* Frameworks */,
+				657EAAF76C23D24AF316F0B6 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				866C338E98111E5C079229BE /* PBXTargetDependency */,
+				3433B5083A93085F4A4B8404 /* PBXTargetDependency */,
+				2C9EF5FD952BE49791B9D963 /* PBXTargetDependency */,
+				4393DF4FBF33B8BEFAF0F10C /* PBXTargetDependency */,
 			);
 			name = OpenAgents;
 			packageProductDependencies = (
@@ -347,6 +576,57 @@
 			productName = OpenAgents;
 			productReference = 8229C5D27BC40A99010E48D9 /* OpenAgents.app */;
 			productType = "com.apple.product-type.application";
+		};
+		4FB3FECE99FD373863B465AD /* SpliceBotsRuntime */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 42C53A4C46874C045A17D91C /* Build configuration list for PBXNativeTarget "SpliceBotsRuntime" */;
+			buildPhases = (
+				B18B88CADE415ECB19B56AD0 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SpliceBotsRuntime;
+			packageProductDependencies = (
+			);
+			productName = SpliceBotsRuntime;
+			productReference = 2F6D9D49955FFFB825E5D9DF /* SpliceBotsRuntime.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		5C1D9957C52F396928A5AF91 /* MadeRealmRuntime */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0F7F2037D4633112AA158754 /* Build configuration list for PBXNativeTarget "MadeRealmRuntime" */;
+			buildPhases = (
+				CE1F3B52A1823EF4BB87E769 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MadeRealmRuntime;
+			packageProductDependencies = (
+			);
+			productName = MadeRealmRuntime;
+			productReference = 4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		BE5085EF48B6A9FCBA3531C0 /* EvergladeRuntime */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 49E157142CD40AF863A5807D /* Build configuration list for PBXNativeTarget "EvergladeRuntime" */;
+			buildPhases = (
+				509ED95E672D923EFD5ED85B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EvergladeRuntime;
+			packageProductDependencies = (
+			);
+			productName = EvergladeRuntime;
+			productReference = 43575EA619337B30779C47AD /* EvergladeRuntime.framework */;
+			productType = "com.apple.product-type.framework";
 		};
 		D6306D13CC52B0771CBD18E6 /* OpenAgentsUITests */ = {
 			isa = PBXNativeTarget;
@@ -365,6 +645,23 @@
 			productName = OpenAgentsUITests;
 			productReference = 910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		F0A49F671BAAD36E923D675C /* EvergladeForestRuntime */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 002FE58A3CCED9AA2DD6D62F /* Build configuration list for PBXNativeTarget "EvergladeForestRuntime" */;
+			buildPhases = (
+				6015A6119B06A11F2C8725EE /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EvergladeForestRuntime;
+			packageProductDependencies = (
+			);
+			productName = EvergladeForestRuntime;
+			productReference = F67E8831801F1502315023B7 /* EvergladeForestRuntime.framework */;
+			productType = "com.apple.product-type.framework";
 		};
 		FAB980B9658225CB7383114B /* OpenAgentsTests */ = {
 			isa = PBXNativeTarget;
@@ -397,10 +694,26 @@
 						DevelopmentTeam = HQWSG26L43;
 						ProvisioningStyle = Automatic;
 					};
+					4FB3FECE99FD373863B465AD = {
+						DevelopmentTeam = HQWSG26L43;
+						ProvisioningStyle = Automatic;
+					};
+					5C1D9957C52F396928A5AF91 = {
+						DevelopmentTeam = HQWSG26L43;
+						ProvisioningStyle = Automatic;
+					};
+					BE5085EF48B6A9FCBA3531C0 = {
+						DevelopmentTeam = HQWSG26L43;
+						ProvisioningStyle = Automatic;
+					};
 					D6306D13CC52B0771CBD18E6 = {
 						DevelopmentTeam = HQWSG26L43;
 						ProvisioningStyle = Automatic;
 						TestTargetID = 037A81F78D877520A602A5C1;
+					};
+					F0A49F671BAAD36E923D675C = {
+						DevelopmentTeam = HQWSG26L43;
+						ProvisioningStyle = Automatic;
 					};
 					FAB980B9658225CB7383114B = {
 						DevelopmentTeam = HQWSG26L43;
@@ -426,6 +739,10 @@
 			projectRoot = "";
 			targets = (
 				037A81F78D877520A602A5C1 /* OpenAgents */,
+				4FB3FECE99FD373863B465AD /* SpliceBotsRuntime */,
+				F0A49F671BAAD36E923D675C /* EvergladeForestRuntime */,
+				BE5085EF48B6A9FCBA3531C0 /* EvergladeRuntime */,
+				5C1D9957C52F396928A5AF91 /* MadeRealmRuntime */,
 				FAB980B9658225CB7383114B /* OpenAgentsTests */,
 				D6306D13CC52B0771CBD18E6 /* OpenAgentsUITests */,
 			);
@@ -446,6 +763,8 @@
 				658B4C2F5F7EABC4715EB1E4 /* Native.plist in Resources */,
 				4D59620F5B373646C05FC2A4 /* NativeComposer-T3-LICENSE.txt in Resources */,
 				9EDFF85EEFA09C5E405F0C99 /* Starter in Resources */,
+				DD81534B0F0F15B73270C06B /* WorldRuntimes.plist in Resources */,
+				171CE627CDE58FB3A075E4EA /* WorldShaders in Resources */,
 				8E4F97485AF1AF831DCB39E9 /* bip39-english.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -461,7 +780,10 @@
 				6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */,
 				2423078B067528A80731C519 /* BIP39.swift in Sources */,
 				AAFF31B0E8810A7429EE6DA8 /* BreezKey.swift in Sources */,
+				559E7996A52A688D46F340D0 /* Deep.swift in Sources */,
 				D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */,
+				992FD07438E96D6B06B01D6C /* MetalAudio.swift in Sources */,
+				5B8D020538856B59C5413D67 /* NativeAudioUnit.c in Sources */,
 				E04C681B8BB7D9243AFB2BAE /* NativeComposer.c in Sources */,
 				AC281939C157CCA54F84DD2A /* NativeComposer.swift in Sources */,
 				790A92BCF9A5C6628FA9E10E /* NativeControls.swift in Sources */,
@@ -473,16 +795,27 @@
 				1B762FE26821A2D99402DDAF /* NativeTypes.swift in Sources */,
 				43A5D1535C05B29C381D5FFF /* NativeUpdates.swift in Sources */,
 				3EEE9F6858832B4BED499CC2 /* NativeWire.c in Sources */,
+				388C74DDAF1E79D078022159 /* NativeWorldAssets.swift in Sources */,
+				DE56E2C6256E7DF31BC84955 /* NativeWorldConversation.swift in Sources */,
+				C6D0F1DC49DA862E1E6CD25D /* NativeWorldEditor.swift in Sources */,
+				77214AC5E50DDE33A8E5057E /* NativeWorldHost.swift in Sources */,
+				F904EDFD21E27FC0910AF4DB /* NativeWorldLibrary.swift in Sources */,
+				C1CD4FE3E08EAA35C1A45124 /* NativeWorldUnit.c in Sources */,
 				370177B40FC83B533F660A4C /* NostrKey.swift in Sources */,
 				1F3972F80AD727788C1649CC /* NostrSign.c in Sources */,
 				7AF8A667DDA6EC805E8356D3 /* OpenagentsAppUnit.c in Sources */,
+				F80124EC8D6E6171038CFD25 /* PageAudio.swift in Sources */,
+				BBCD33281D47033AC1DB4BF7 /* PageHost.m in Sources */,
 				C0B0BC79860337C450B78A5D /* PhoneSignIn.swift in Sources */,
 				F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */,
+				1C9FDDF2D7EDAF07C3B72930 /* PhoneTurn.swift in Sources */,
 				A547AE3F03D7EADA997DE696 /* SharedAppViewController.swift in Sources */,
 				2CC0D955E1B50A311219BE38 /* SparkHost.swift in Sources */,
 				6E5DC168044EA02417ED816B /* StarterApp.swift in Sources */,
 				D038A28C391888C7188F57E5 /* WalletBalance.c in Sources */,
 				9B9E8E3B6C3F29DF2B6A3CCB /* WalletKeychain.swift in Sources */,
+				F9ED72543EBFA15EB2EE96F0 /* engine-core-face.c in Sources */,
+				7FFD4ECD2F77851EF905BDBA /* native-audio.c in Sources */,
 				C77117B7CBCFC4CC0576E57C /* phone-drive.c in Sources */,
 				5FCD0C43CB70DA62BB5DE214 /* precomputed_ecmult.c in Sources */,
 				6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */,
@@ -503,6 +836,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		509ED95E672D923EFD5ED85B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				991835023F6FB1D8E2D27BE8 /* Everglade-step.c in Sources */,
+				49F8835C3DE10B3EADC4F251 /* Everglade5e-rules.c in Sources */,
+				1A28B8DC4FECD39D3063F83A /* Grid.c in Sources */,
+				33F85B946B4265C65AEDD9E8 /* Guard-guide-policy.c in Sources */,
+				C5714B16C1D38C98556E313A /* River.c in Sources */,
+				5D0BF1EA9B7BD485D8260C0D /* everglade5e.c in Sources */,
+				CBE2D32B4CEC2202EDDCBE1E /* everglade5e.face.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		50F756062D7ED0894535DCE8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -510,17 +857,70 @@
 				2C15AE18F335A39F71D3ECC5 /* NativeMarkdownTests.swift in Sources */,
 				DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */,
 				095EEDDBD0F5949696F6B490 /* NativeProgramTests.swift in Sources */,
+				7D441B27658C4A69B117A6C0 /* NativeWorldDownloadTests.swift in Sources */,
+				779081F79FEB0B672F96D633 /* NativeWorldProgramTests.swift in Sources */,
+				1DE975734DFC2118F8DA6120 /* NativeWorldTests.swift in Sources */,
 				444324321690C6F700CD79A2 /* SparkBalanceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6015A6119B06A11F2C8725EE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C378479D5A66B8CE7518A401 /* Everglade-step.c in Sources */,
+				25D77A06C2C3817884BE22C4 /* Sticks.c in Sources */,
+				DAA575C085B9488C732C376C /* client.c in Sources */,
+				1D0337B9726567A98B8B64D2 /* everglade2.face.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B18B88CADE415ECB19B56AD0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1BF8C242B23F9A6C68D40893 /* Animelab-style.c in Sources */,
+				CC4C79CE4851522F8DCA5F91 /* splice-bots.c in Sources */,
+				AF9268D3718198DF3C9A447F /* splice-bots.face.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE1F3B52A1823EF4BB87E769 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F1758E0384C0E7DF3B886192 /* myrealm.c in Sources */,
+				B8F46A110910EFA234713835 /* myrealm.face.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		2C9EF5FD952BE49791B9D963 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F0A49F671BAAD36E923D675C /* EvergladeForestRuntime */;
+			targetProxy = 39080464D2F25A7526A9CC06 /* PBXContainerItemProxy */;
+		};
+		3433B5083A93085F4A4B8404 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BE5085EF48B6A9FCBA3531C0 /* EvergladeRuntime */;
+			targetProxy = C574AE2AE4EEAEBFE168D3D9 /* PBXContainerItemProxy */;
+		};
+		4393DF4FBF33B8BEFAF0F10C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5C1D9957C52F396928A5AF91 /* MadeRealmRuntime */;
+			targetProxy = 297D7F2D9959D1F532BB7DE0 /* PBXContainerItemProxy */;
+		};
 		8385342C6684E3ABF6A1D7E3 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 037A81F78D877520A602A5C1 /* OpenAgents */;
 			targetProxy = D0665F73E8E58F5928328084 /* PBXContainerItemProxy */;
+		};
+		866C338E98111E5C079229BE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4FB3FECE99FD373863B465AD /* SpliceBotsRuntime */;
+			targetProxy = 538DB5B0A2C3E6BB14EC9DBA /* PBXContainerItemProxy */;
 		};
 		90A33034A8968FE01C8E0041 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -530,13 +930,97 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		1B67D3BAA2C3CAB6F0427A29 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"COAXIAL_NATIVE_ADDRESS=1",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Generated/Worlds/everglade",
+				);
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wno-unknown-attributes",
+					"-Wno-unused-function",
+					"-ffp-contract=off",
+					"-fno-fast-math",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-undefined,dynamic_lookup",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.runtime.everglade;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		4003AC2F9871B429E407F3DC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"COAXIAL_NATIVE_ADDRESS=1",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Generated/Worlds/everglade2",
+				);
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wno-unknown-attributes",
+					"-Wno-unused-function",
+					"-ffp-contract=off",
+					"-fno-fast-math",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-undefined,dynamic_lookup",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.openagents.runtime.everglade-forest";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
 		65B71FE1D64AD5C6482CDC4A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1074;
+				CURRENT_PROJECT_VERSION = 1075;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -557,8 +1041,13 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-export_dynamic",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app;
 				PRODUCT_NAME = OpenAgents;
+				PROVISIONING_PROFILE_SPECIFIER = "$(OA_APP_PROVISIONING_PROFILE)";
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) COAX_NATIVE_BALANCE";
 				SWIFT_OBJC_BRIDGING_HEADER = NativeBridge.h;
@@ -580,6 +1069,132 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenAgents.app/OpenAgents";
+			};
+			name = Release;
+		};
+		6D877435F750FF90BA1063BC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"COAXIAL_NATIVE_ADDRESS=1",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Generated/Worlds/splice-bots",
+				);
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wno-unknown-attributes",
+					"-Wno-unused-function",
+					"-ffp-contract=off",
+					"-fno-fast-math",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-undefined,dynamic_lookup",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.openagents.runtime.splice-bots";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		7250800E4BBABFEC3F5D42B0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"COAXIAL_NATIVE_ADDRESS=1",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Generated/Worlds/everglade",
+				);
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wno-unknown-attributes",
+					"-Wno-unused-function",
+					"-ffp-contract=off",
+					"-fno-fast-math",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-undefined,dynamic_lookup",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.runtime.everglade;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		766447E4EB3A4418E0841C94 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"COAXIAL_NATIVE_ADDRESS=1",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Generated/Worlds/splice-bots",
+				);
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wno-unknown-attributes",
+					"-Wno-unused-function",
+					"-ffp-contract=off",
+					"-fno-fast-math",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-undefined,dynamic_lookup",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.openagents.runtime.splice-bots";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
 		};
@@ -665,7 +1280,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1074;
+				CURRENT_PROJECT_VERSION = 1075;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -686,12 +1301,143 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-export_dynamic",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app;
 				PRODUCT_NAME = OpenAgents;
+				PROVISIONING_PROFILE_SPECIFIER = "$(OA_APP_PROVISIONING_PROFILE)";
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) COAX_NATIVE_BALANCE";
 				SWIFT_OBJC_BRIDGING_HEADER = NativeBridge.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AFFC39DC22663857B9158B5E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"COAXIAL_NATIVE_ADDRESS=1",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Generated/Worlds/everglade2",
+				);
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wno-unknown-attributes",
+					"-Wno-unused-function",
+					"-ffp-contract=off",
+					"-fno-fast-math",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-undefined,dynamic_lookup",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.openagents.runtime.everglade-forest";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		C2DBC77F956BDA9EE0D8F279 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"COAXIAL_NATIVE_ADDRESS=1",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Generated/Worlds/myrealm",
+				);
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wno-unknown-attributes",
+					"-Wno-unused-function",
+					"-ffp-contract=off",
+					"-fno-fast-math",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-undefined,dynamic_lookup",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.runtime.myrealm;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		DA1FD916DDD2AB5B2C729DFC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"COAXIAL_NATIVE_ADDRESS=1",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Generated/Worlds/myrealm",
+				);
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wno-unknown-attributes",
+					"-Wno-unused-function",
+					"-ffp-contract=off",
+					"-fno-fast-math",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-undefined,dynamic_lookup",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.runtime.myrealm;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
 		};
@@ -798,6 +1544,24 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		002FE58A3CCED9AA2DD6D62F /* Build configuration list for PBXNativeTarget "EvergladeForestRuntime" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AFFC39DC22663857B9158B5E /* Debug */,
+				4003AC2F9871B429E407F3DC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		0F7F2037D4633112AA158754 /* Build configuration list for PBXNativeTarget "MadeRealmRuntime" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C2DBC77F956BDA9EE0D8F279 /* Debug */,
+				DA1FD916DDD2AB5B2C729DFC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		253E4EC9238928672F45C092 /* Build configuration list for PBXNativeTarget "OpenAgents" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -812,6 +1576,24 @@
 			buildConfigurations = (
 				FECA90DFAD0FCC86E2415902 /* Debug */,
 				EBFDDAABD7DBAE2254A77B70 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		42C53A4C46874C045A17D91C /* Build configuration list for PBXNativeTarget "SpliceBotsRuntime" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6D877435F750FF90BA1063BC /* Debug */,
+				766447E4EB3A4418E0841C94 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		49E157142CD40AF863A5807D /* Build configuration list for PBXNativeTarget "EvergladeRuntime" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7250800E4BBABFEC3F5D42B0 /* Debug */,
+				1B67D3BAA2C3CAB6F0427A29 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

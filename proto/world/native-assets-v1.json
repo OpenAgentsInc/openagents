@@ -1,0 +1,8 @@
+{
+  "id": "coax.native.world.assets.v1",
+  "description": "Assets for an installed native realm producer. The manifest is an artifact of the signed Coax Native update, never a free-standing trust root.",
+  "fields": {"schema":"coax.native.world.assets.v1","realm":"installed realm profile","runtime":"64 lowercase hex SHA-256 of installed producer and shader inputs","files":[{"path":"relative cache path, shared package path grammar","sha256":"64 lowercase hex","bytes":"0..67108864","required":"boolean; complete before first frame"}]},
+  "limits": {"manifest_bytes":524288,"files":2048,"total_bytes":201326592},
+  "rules": ["Exact object keys; no duplicate paths", "Every file is downloaded from the fixed public object origin by its hash", "Whole size and SHA-256 precede atomic cache publication", "Required failure refuses opening; cancellation cannot publish a partial file", "A runtime mismatch requires a native app update"],
+  "golden": "{\"schema\":\"coax.native.world.assets.v1\",\"realm\":\"splice-bots\",\"runtime\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"files\":[{\"path\":\"fonts/reading.ttf\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"bytes\":42,\"required\":true}]}"
+}

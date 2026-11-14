@@ -13,7 +13,7 @@ if [[ -z "${ASC_API_KEY_ID:-}" ]]; then
 fi
 : "${ASC_API_KEY_ID:?}" "${ASC_API_ISSUER_ID:?}" "${ASC_API_PRIVATE_KEY_PATH:?}"
 mkdir -p "$out"
-./generate.sh
+WORLDS_SDK=iphoneos ./generate.sh
 node ../../coax/native/tests/runtime-oracle.cjs Starter
 xcodegen generate
 cert="${OPENAGENTS_CERT_ID:-GCN7Q59Y27}"
@@ -29,7 +29,7 @@ cp Generated/runtime.txt "$out/runtime.txt"
 ../../coax/remote/remote.sh run --local -- xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Release \
   -destination generic/platform=iOS -derivedDataPath "$out/dd" -archivePath "$out/OpenAgents.xcarchive" \
   DEVELOPMENT_TEAM=HQWSG26L43 CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$sha1" \
-  PROVISIONING_PROFILE_SPECIFIER="OpenAgents App Store" archive
+  OA_APP_PROVISIONING_PROFILE="OpenAgents App Store" archive
 python3 - "$out/ExportOptions.plist" "$sha1" <<'PY'
 import plistlib,sys
 with open(sys.argv[1],'wb') as file:

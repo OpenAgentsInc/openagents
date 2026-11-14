@@ -1,0 +1,19 @@
+// Relative native API paths: reuse the signed-package path grammar for the
+// pathname, with a separately bounded printable query. No URL normalization.
+#load "updates-wire.coax";
+#authority;
+#test "rooted pathname admission is independent of an endpoint allowlist" {
+ #assert cnp_path("/a") && cnp_path("/api/worlds/x?lane=dev&rev=7") && cnp_path("/a?x?y");
+ for p:[12]string.["","/","aa","a/b","/!a","/a/../b","/a/./b","/a//b","/a%2fb","/?x","/a/","//a"] {#assert !cnp_path(p);}
+ #assert cnp_stem("/a?x?y")=="/a" && cnp_stem("/a")=="/a";
+}
+#forall "every query byte has the explicit printable alphabet" byte:0..<256 {
+ p:=[6]u8.['/','a','?','x','=',0];p[5]=cast(u8)byte;
+ #assert cnp_path(cast(string)p[..])==(byte>=33 && byte<=126 && byte!=92 && byte!=35 && byte!=37);
+}
+cnp_stem :: (path:string)->string #effects(all) {for c,i:path {if c=='?' {return path[0..<i];}}return path;}
+cnp_path :: (path:string)->bool #export_c #effects(all) {
+ if path.count<2 || path[0]!='/' {return false;}stem:=cnp_stem(path);
+ if !cnu_path(stem[1..<stem.count]) {return false;}
+ for c:path[stem.count..<path.count] {if c<33 || c>126 || c=='\\' || c=='#' || c=='%' {return false;}}return true;
+}

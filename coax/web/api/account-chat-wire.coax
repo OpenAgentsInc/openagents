@@ -2,10 +2,32 @@
 #load "../../lib/json/json.coax";
 #load "../../lib/gateway/types.coax";
 #load "../../lib/gateway/chat.coax";
+#load "../../lib/agent/world/turn.coax";
 ACT_SCHEMA :: "openagents.chat.thread.v1";
 ACT_MODEL :: "google/gemini-4-hydrogen";
+AWC_SCHEMA :: "openagents.world.account-turn.v1";
+AWB_SCHEMA :: "openagents.world.player-bind.v1";
 AccountMessage :: struct {assistant:bool;text:[16384]u8;n:int;}
 AccountThread :: struct {ok:bool;id:[24]u8;id_n:int;revision:int;n:int;messages:[32]AccountMessage;}
+#test "account world inference is a distinct closed version and uses the web's typed world tools" {
+ t:[1]AccountThread;t[0].n=1;t[0].messages[0].text[0]='H';t[0].messages[0].n=1;out:[98304]u8;request:[98304]u8;
+ n:=awc_write(t[..],"world.turn.v1 my-world dev 7 0\n",request[..]);#assert n>0;
+ #assert awc_completion(cast(string)request[0..<n],out[..])>0 && awc_completion("{}",out[..])<0;
+ #assert awb_read("{\"schema\":\"openagents.world.player-bind.v1\"}") && !awb_read("{\"schema\":\"openagents.world.player-bind.v1\",\"account\":\"other\"}");
+}
+awb_read :: (raw:string)->bool #export_c #effects(all) {d:[1]Jv;nodes:[4]JvNode;return raw.count<128 && jv_parse(d[..],raw,nodes[..]) && jv_kind(d[0],0)==JV_OBJECT && jv_len(d[0],0)==1 && jv_raw(d[0],jv_get(d[0],0,"schema"))==AWB_SCHEMA;}
+awc_write :: (t:[]AccountThread,world:string,out:[]u8)->int {
+ thread:[65536]u8;n:=act_write(t,thread[..]);if n<0 {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],AWC_SCHEMA);jo_key(o[..],"world");jo_str(o[..],world);jo_key(o[..],"thread");jo_put(o[..],cast(string)thread[0..<n]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+awc_completion :: (raw:string,out:[]u8)->int #export_c #effects(all) {
+ d:[1]Jv;nodes:[320]JvNode;if raw.count>98304 || !jv_parse(d[..],raw,nodes[..]) {return -1;}v:=d[0];
+ if jv_kind(v,0)!=JV_OBJECT || jv_len(v,0)!=3 || jv_raw(v,jv_get(v,0,"schema"))!=AWC_SCHEMA {return -1;}
+ wire:[WT_BYTES]u8;wn:=jv_str(v,jv_get(v,0,"world"),wire[..]);t:[1]WorldTurn;scratch:[WT_BYTES]u8;thread:[1]AccountThread;
+ if wn<0 || !wt_read(t[..],cast(string)wire[0..<wn],scratch[..]) || !act_read(jv_raw(v,jv_get(v,0,"thread")),thread[..]) {return -1;}
+ msgs:[32]GwMessage;for i:0..<thread[0].n {msgs[i]=GwMessage.{role=ifx thread[0].messages[i].assistant then "assistant" else "user",text=cast(string)thread[0].messages[i].text[0..<thread[0].messages[i].n]};}
+ prompt:[WP_PROMPT]u8;schema:[1024]u8;
+ return gw_chat_body(GwRequest.{model=ACT_MODEL,system=wp_system(t[..],scratch[..],prompt[..]),messages=msgs[0..<thread[0].n],schema=wp_schema(schema[..]),schema_name="world_turn",max_tokens=4096,effort="low",stream=false},GW_CHAT_LEGACY_MAX_TOKENS,out);
+}
 act_read :: (raw:string,t:[]AccountThread)->bool #export_c #effects(all) {
   t[0].ok=false;nodes:[256]JvNode;d:[1]Jv;
   if raw.count>65536 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];

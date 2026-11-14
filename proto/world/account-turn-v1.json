@@ -1,0 +1,8 @@
+{
+  "schema": "openagents.world.account-turn.v1",
+  "transport": "POST /api/chat/world/complete/v1",
+  "authentication": "Verified person account, existing team funding, account inference quotas. Does not grant world write rights.",
+  "request": {"schema": "literal openagents.world.account-turn.v1", "world": "world.turn.v1 text, <=24576 UTF-8 bytes", "thread": "openagents.chat.thread.v1 object"},
+  "limits": "98304 encoded request bytes. Same hosted world tools, system instructions and JSON response schema as the web. Fixed account model. No direct mutations: the client validates a world.plan.v1 and the world server checks its revision and ownership.",
+  "response": "Existing gateway chat response; assistant content is the shared world turn tool response. No credentials, source execution or file bytes in world context."
+}

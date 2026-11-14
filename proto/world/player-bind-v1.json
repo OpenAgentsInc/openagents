@@ -1,0 +1,8 @@
+{
+  "schema": "openagents.world.player-bind.v1",
+  "transport": "POST /api/chat/world/player/v1 with the SDK-owned X-Verse-Player key",
+  "request": {"schema": "literal openagents.world.player-bind.v1"},
+  "authentication": "Verified person cookie/bearer session, not limited or frozen. The player must be a guest or already belong to this exact account. Never accepts an account ID from the body.",
+  "response": "The existing playtest player JSON record {key,id,account}. The key remains in the native SDK's protected file, never the editor or model.",
+  "effect": "Attach the guest to the session's game account, preserving the existing login attachment semantics for worlds and progress. Does not grant creator or admin rights."
+}

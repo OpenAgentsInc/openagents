@@ -94,7 +94,7 @@ EdShell :: struct {
   group: [PL_PARTS] int; ngroup: int;    // the things gathered to save as a template, by ID
   tname: [EM_NAME] u8; tname_n: int;     // the name typed for it
   held: bool;                            // the site's side is the app shell's, around this page: the dock has no column for it
-  agent: bool; agent_made: bool;         // the foot with the chat's conversation is open; it was opened once (it is then kept, put away)
+  native:bool; agent: bool; agent_made: bool;         // the foot with the chat's conversation is open; it was opened once (it is then kept, put away)
   turn_due: bool;                        // the conversation has not been told of the world as it now is
   said: [EM_WORDS] u8; said_n: int;      // the shell's own word about what was typed, until the next action
   draft: [WE_COLS] [ES_DRAFT] u8; draft_n: [WE_COLS] int;
@@ -501,7 +501,7 @@ es_build :: (s: [] EdShell) {
   // visitors' proposals waiting (#13527) are turns of the conversation in the foot: the button says how many
   waiting := ifx m[0].q_all > 0 then m[0].q_all else m[0].nq;
   wl: [40] u8; wn: [48] u8;
-  alabel := ifx s[0].agent then "Hide agent" else ifx waiting == 1 then "Agent: 1 idea waits" else ifx waiting > 1 then tr_cat(wn[..], tr_join(wl[..], "Agent: ", waiting), " ideas wait") else "Agent";
+  alabel := ifx s[0].native then "Agent" else ifx s[0].agent then "Hide agent" else ifx waiting == 1 then "Agent: 1 idea waits" else ifx waiting > 1 then tr_cat(wn[..], tr_join(wl[..], "Agent: ", waiting), " ideas wait") else "Agent";
   agent := k_button(t, u, "agent", alabel, BS_PLAIN);
   // assets: only where the world's server answered with its list. Closed, its button still takes a dropped file
   asseting := s[0].assets && s[0].as_have;
@@ -618,7 +618,7 @@ es_build :: (s: [] EdShell) {
   }
   // the foot: the chat's own conversation, which the page's host puts in the slot (coax/web/host.js). Once
   // opened it is kept and only put away, so the conversation stays as it was
-  if s[0].agent_made {
+  if s[0].agent_made && !s[0].native {
     foot := k_pane(t, u, "agent.pane", DK_BOTTOM, "Agent");
     k_pane_shut(t, foot, !s[0].agent);
     slot := k_slot(t, "agent.slot");
@@ -730,6 +730,7 @@ es_click :: (s: [] EdShell, id: string) {
     _ := es_act(s, ES_VIEW, cast(string) words[0..<n]);
     return;
   }
+  if id == "agent" && s[0].native {s[0].agent_made=true;s[0].turn_due=true;return;}
   if id == "agent" { s[0].agent = !s[0].agent; if !s[0].agent_made { s[0].turn_due = true; } s[0].agent_made = true; return; }
   if es_index(id, "count.") >= 0 && es_index(id, "count.") < ES_COUNTS { s[0].count = es_index(id, "count."); return; }
   // the group: a row's control gathers its thing or lets it go
@@ -1020,6 +1021,7 @@ coaxial_editor_event :: (s: [] EdShell, kind: int, slot: int, length: int) #expo
   if s[0].agent_made && s[0].have && s[0].turn_due && es_turn(s) { s[0].turn_due = false; }
 }
 es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
+  if kind==16 {s[0].native=true;s[0].held=true;s[0].dirty=true;return;}
   if kind == ES_MODEL { es_model(s, length); return; }
   if kind == ES_HELD { s[0].held = true; s[0].dirty = true; return; }
   if kind == ES_FULLSCREEN { s[0].full = slot == 1; return; }
@@ -1650,6 +1652,11 @@ es_test_templates :: (h: [] EsTest, rev: int, things: int) {
   #assert wt_read(turn[..], cast(string) a[0..<coaxial_editor_act_len(s)], scratch[..]) && turn[0].nq == 2;
   es_test_frames(h[..], 1);
   #assert tr_text_of(t, tr_find(t, "agent.l")) == "Hide agent";
+}
+#test "native Agent presses request a turn each time without building a browser conversation" {
+ h:[1]EsTest;s:=h[0].s[..];coaxial_editor_event(s,16,0,0);es_test_model(h[..],1,7,0,"");es_test_frames(h[..],1);
+ es_test_press(h[..],"agent");#assert s[0].native && coaxial_editor_act_kind(s)==ES_TURN;coaxial_editor_act_done(s);
+ es_test_press(h[..],"agent");#assert coaxial_editor_act_kind(s)==ES_TURN;
 }
 es_test_plan :: (h: [] EsTest, plan: string) {
   s := h[0].s[..];

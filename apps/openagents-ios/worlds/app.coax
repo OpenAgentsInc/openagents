@@ -1,0 +1,113 @@
+// Mobile projection of the web's saved-world builder. The planner, feature
+// board, setup, invite gate and make transitions are the same Builder value.
+#load "../../openagents-web/builder.coax";
+#load "../../../metaverse-engine/editor/world-list.coax";
+#load "../../../components/kit/frames.coax";
+#load "../../../components/backend/dom.coax";
+#load "../../../coax/native/worlds/open-wire.coax";
+
+Starter :: struct {ready:bool;dirty:bool=true;page:int;flight:int;action:int;outbox:[8192]u8;out_n:int;inbox:[8192]u8;builder:[1]Builder;track:[1]Track;worlds:[SS_WORLDS_MAX]SsWorld;nworlds:int;tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;prompt:[400]u8;np:int;note:[256]u8;nn:int;}
+wl_request :: (s:[]Starter,path:string,body:string) {
+ o:[1]Jo;jo_start(o[..],s[0].outbox[..]);jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],path);jo_key(o[..],"method");jo_str(o[..],ifx body.count>0 then "POST" else "GET");jo_key(o[..],"body");jo_str(o[..],body);jo_end(o[..]);if !o[0].bad {s[0].out_n=o[0].n;s[0].action=4;}
+}
+wl_open :: (s:[]Starter,realm:string,path:string,edit:bool) {n:=nwo_write(realm,path,edit,s[0].outbox[..]);if n>0 {s[0].out_n=n;s[0].action=13;s[0].flight=13;}}
+wl_list :: (s:[]Starter) {if s[0].flight==0 {wl_request(s,"/api/worlds","");s[0].flight=1;}}
+wl_pump :: (s:[]Starter) {
+ b:=s[0].builder[..];if s[0].flight!=0 {return;}
+ if b[0].req_ready {wl_request(s,cast(string)b[0].req_url[0..<b[0].req_url_n],cast(string)b[0].req_body[0..<b[0].req_body_n]);builder_requested(b,0);s[0].flight=2;return;}
+ if b[0].action==ACT_DOC {s[0].out_n=put(s[0].outbox[..],0,cast(string)b[0].outbox[0..<b[0].out_n]);s[0].action=31;s[0].flight=31;builder_action_done(b);b[0].action=0;return;}
+ if b[0].action==ACT_NAVIGATE {
+  raw:=cast(string)b[0].outbox[0..<b[0].out_n];end:=0;while end<raw.count && raw[end]!='?' && raw[end]!='#' {end+=1;}
+  wl_open(s,"myrealm",raw[0..<end],true);builder_action_done(b);b[0].action=0;return;
+ }
+}
+#test "mobile builder uses the same setup and board request as the web and lists saved worlds" {
+ s:[1]Starter;builder_reset(s[0].builder[..]);choose(s[0].builder[..],s[0].track[..],0,"tap");#assert s[0].builder[0].q==Q_CAMERA;
+ for i:0..<4 {choose_skip(s[0].builder[..],s[0].track[..]);}
+ ask_plan(s[0].builder[..],s[0].track[..],"A forest with a dragon","typed");wl_pump(s[..]);#assert s[0].flight==2 && s[0].action==4 && s[0].builder[0].req_id==0;
+ #assert ss_worlds_read("world my-forest My forest\nworld ../bad Nope\n",s[0].worlds[..])==1;
+}
+#test "a private made world opens its own slug once and returning clears the making phase" {
+ s:[1]Starter;builder_reset(s[0].builder[..]);s[0].ready=true;s[0].page=1;s[0].flight=2;s[0].builder[0].req_what=REQ_MAKE;s[0].builder[0].req_id=0;s[0].builder[0].phase=PH_MAKING;
+ raw:="slug moonlit-marsh\npath /worlds/moonlit-marsh\npage 0\n";for c,i:raw {s[0].inbox[i]=c;}st_event(s[..],104,200,raw.count);
+ #assert s[0].action==13 && s[0].flight==13 && s[0].builder[0].action==0;
+ opened:[1]NwOpen;#assert nwo_read(cast(string)s[0].outbox[0..<s[0].out_n],opened[..]) && cast(string)opened[0].path[0..<opened[0].np]=="/worlds/moonlit-marsh";
+ st_done(s[..]);wl_pump(s[..]);#assert s[0].action==0;
+ st_event(s[..],113,0,0);#assert s[0].page==0 && s[0].builder[0].phase==PH_SETUP && s[0].flight==1;
+}
+#test "returning from play preserves setup and document cancellation clears its flight" {
+ s:[1]Starter;s[0].ready=true;s[0].builder[0].q=Q_CAMERA;s[0].builder[0].phase=PH_SETUP;wl_open(s[..],"splice-bots","/worlds/splice-bots",false);st_done(s[..]);st_event(s[..],113,0,0);
+ #assert s[0].builder[0].q==Q_CAMERA && s[0].flight==0;
+ s[0].flight=31;st_event(s[..],55,0,0);#assert s[0].flight==0;
+}
+st_done :: (s:[]Starter) #export_c #effects(all) {s[0].action=0;s[0].out_n=0;}
+st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
+ if !s[0].ready {s[0].ready=true;builder_reset(s[0].builder[..]);_:=mono_frames(s[0].sets[..]);wl_list(s);}
+ wl_pump(s);if !s[0].dirty {return 0;}s[0].dirty=false;t:=s[0].tree[..];u:=s[0].ui[..];b:=s[0].builder[..];ui_begin(u,0,true);tr_begin(t);root:=tr_open(t,"worlds.library",TG_MAIN,"");x:=k_text(t,u,"worlds.title",TG_H1,"",ifx s[0].page==0 then "Worlds" else "Create a world");held:=s[0].flight!=0;
+ if s[0].page==0 {
+  x=k_button(t,u,"worlds.splice","Splice Bots",ifx held then BS_DISABLED else BS_PRIMARY);x=k_button(t,u,"worlds.everglade","Everglade",ifx held then BS_DISABLED else BS_PRIMARY);
+  x=k_text(t,u,"worlds.download",TG_P,"","World assets download when you open a world and are cached for later visits.");
+  x=k_button(t,u,"worlds.create","Create a world",ifx held then BS_DISABLED else BS_PRIMARY);x=k_button(t,u,"worlds.refresh","Refresh your worlds",ifx held then BS_DISABLED else BS_PLAIN);
+  x=k_text(t,u,"worlds.mine",TG_H2,"","Worlds you can edit");
+  for i:0..<s[0].nworlds {row:=s[0].worlds[i];name:=cast(string)row.name[0..<row.name_n];id:[96]u8;x=k_button(t,u,tr_join(id[..],"worlds.edit.",i),name,ifx held then BS_DISABLED else BS_PLAIN);id2:[96]u8;x=k_button(t,u,tr_join(id2[..],"worlds.play.",i),"Play",ifx held then BS_DISABLED else BS_PLAIN);}
+  if s[0].nworlds==0 && !held {x=k_text(t,u,"worlds.empty",TG_P,"","No editable worlds were returned. Create one, or sign in with an account that owns one.");}
+ } else {
+  if b[0].phase==PH_SETUP {
+   q:=b[0].q;x=k_text(t,u,"worlds.question",TG_H2,"",Q_ASK[q]);
+   for i:0..<Q_COUNT[q] {id:[96]u8;x=k_button(t,u,tr_join(id[..],"worlds.choice.",i),Q_SHOWN[q*CHOICES+i],BS_PLAIN);}
+   x=k_button(t,u,"worlds.skip","Let the planner choose",BS_PLAIN);if q>0 {x=k_button(t,u,"worlds.previous","Previous question",BS_PLAIN);}
+  } else if b[0].phase==PH_INVITE {
+   x=k_text(t,u,"worlds.invite",TG_P,"","World creation is invite only for this account. Your existing worlds remain available.");
+   x=k_field(t,u,"worlds.invite.code","Invite code","Invite code");x=k_button(t,u,"worlds.invite.use","Use code",ifx held then BS_DISABLED else BS_PRIMARY);
+   x=k_field(t,u,"worlds.invite.note","What would you like to make?","Access request");x=k_button(t,u,"worlds.invite.ask","Request access",ifx held then BS_DISABLED else BS_PLAIN);
+   if note_text(b).count>0 {x=k_text(t,u,"worlds.invite.result",TG_P,"",note_text(b));}
+  } else {
+   if b[0].plan>0 {
+    x=k_text(t,u,"worlds.plan.name",TG_H2,"",name_text(b));x=k_field(t,u,"worlds.description","Description","World description");dm_value(s[0].dom[..],"worlds.description",desc_text(b));
+    for i:0..<b[0].feat_n {id:[96]u8;label:[96]u8;n:=put(label[..],0,ifx b[0].on[i] then "✓ " else "○ ");n=put(label[..],n,label_of(b,i));x=k_button(t,u,tr_join(id[..],"worlds.feature.",i),cast(string)label[0..<n],ifx held then BS_DISABLED else BS_PLAIN);}
+    for i:0..<b[0].wants {id:[96]u8;x=k_text(t,u,tr_join(id[..],"worlds.pending.",i),TG_P,"",want_of(b,i));}
+    if b[0].wants>0 {x=k_text(t,u,"worlds.pending.note",TG_P,"","The requests above are not implemented by this feature board yet.");}
+    x=k_button(t,u,"worlds.make",ifx held then "Working…" else "Make this world",ifx held then BS_DISABLED else BS_PRIMARY);
+    x=k_button(t,u,"worlds.setup","Change setup",ifx held then BS_DISABLED else BS_PLAIN);
+   }
+   x=k_field(t,u,"worlds.prompt","Describe a world or revise the board","World description or revision");dm_value(s[0].dom[..],"worlds.prompt",cast(string)s[0].prompt[0..<s[0].np]);
+   x=k_button(t,u,"worlds.plan",ifx held then "Planning…" else ifx b[0].plan>0 then "Revise the board" else "Plan my world",ifx held || s[0].np==0 then BS_DISABLED else BS_PRIMARY);
+   x=k_button(t,u,"worlds.document","Plan from a document",ifx held then BS_DISABLED else BS_PLAIN);
+   if note_text(b).count>0 {x=k_text(t,u,"worlds.builder.note",TG_P,"",note_text(b));}
+  }
+  x=k_button(t,u,"worlds.back","Back to worlds",ifx held then BS_DISABLED else BS_PLAIN);
+ }
+ if s[0].nn>0 {x=k_text(t,u,"worlds.note",TG_P,"",cast(string)s[0].note[0..<s[0].nn]);}
+ tr_close(t);return dm_flush(s[0].dom[..],t,s[0].sets[..]);
+}
+st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
+ if n<0 || n>s[0].inbox.count {return;}s[0].dirty=true;text:=cast(string)s[0].inbox[0..<n];b:=s[0].builder[..];id:=dm_slot_id(s[0].dom[..],slot);
+ if kind==55 {s[0].flight=0;b[0].note_n=0;return;}
+ if kind==54 {if status_of(text)!=1 {s[0].flight=0;}builder_message(b,s[0].track[..],MSG_DOC,text);wl_pump(s);return;}
+ if kind==104 || kind==204 {
+  f:=s[0].flight;s[0].flight=0;
+  if f==1 {s[0].nworlds=ifx slot==200 then ss_worlds_read(text,s[0].worlds[..]) else 0;s[0].nn=ifx slot==200 then 0 else put(s[0].note[..],0,"Your worlds could not be loaded. Refresh to retry.");}
+  if f==2 {making:=b[0].req_what==REQ_MAKE;raw:[8192]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_int(o[..],slot);jo_put(o[..],"\n");jo_put(o[..],text);builder_message(b,s[0].track[..],HTTP_ANSWER_KIND,jo_text(o[..]));
+   if making && slot==200 {made:[1]EditorMade;made[0]=editor_read_made(text);if made[0].ok {p:[128]u8;pn:=put(p[..],0,"/worlds/");pn=put(p[..],pn,editor_made_slug(made[..]));builder_action_done(b);b[0].action=0;wl_open(s,"myrealm",cast(string)p[0..<pn],true);}}
+  }
+  wl_pump(s);return;
+ }
+ if kind==113 || kind==213 {s[0].flight=0;if b[0].phase==PH_GOING {b[0]=Builder.{};builder_reset(b);s[0].page=0;wl_list(s);}if kind==213 {s[0].nn=put(s[0].note[..],0,"The world could not open. Refresh your worlds and try again.");}return;}
+ if kind==2 {if id=="worlds.prompt" {s[0].np=copy_into(s[0].prompt[..],text);}if id=="worlds.description" {b[0].desc_n=copy_into(b[0].desc[..],text);}if id=="worlds.invite.code" {b[0].code_n=copy_into(b[0].code[..],text);}if id=="worlds.invite.note" {b[0].inote_n=copy_into(b[0].inote[..],text);}return;}
+ if kind!=1 || s[0].flight!=0 {return;}
+ if id=="worlds.splice" {wl_open(s,"splice-bots","/worlds/splice-bots",false);}
+ if id=="worlds.everglade" {wl_open(s,"everglade","/worlds/everglade",false);}
+ if id=="worlds.refresh" {wl_list(s);}
+ if id=="worlds.create" {s[0].page=1;}
+ if id=="worlds.back" {s[0].page=0;wl_list(s);}
+ if id=="worlds.skip" {choose_skip(b,s[0].track[..]);}if id=="worlds.previous" {prev_question(b);}if id=="worlds.setup" {open_setup(b);}
+ if id=="worlds.plan" {ask_plan(b,s[0].track[..],cast(string)s[0].prompt[0..<s[0].np],"typed");}
+ if id=="worlds.make" {make_it(b,s[0].track[..]);}
+ if id=="worlds.document" {pick_doc(b);}
+ if id=="worlds.invite.use" {use_code(b,s[0].track[..]);}if id=="worlds.invite.ask" {ask_access(b,s[0].track[..]);}
+ for i:0..<CHOICES {buf:[96]u8;if id==tr_join(buf[..],"worlds.choice.",i) {choose(b,s[0].track[..],i,"tap");}}
+ for i:0..<b[0].feat_n {buf:[96]u8;if id==tr_join(buf[..],"worlds.feature.",i) {b[0].on[i]=!b[0].on[i];}}
+ for i:0..<s[0].nworlds {a:[96]u8;c:[96]u8;edit:=id==tr_join(a[..],"worlds.edit.",i);play:=id==tr_join(c[..],"worlds.play.",i);if edit || play {row:=s[0].worlds[i];slug:=cast(string)row.id[0..<row.id_n];p:[96]u8;pn:=put(p[..],0,"/worlds/");pn=put(p[..],pn,slug);wl_open(s,ifx slug=="splice-bots" then "splice-bots" else "myrealm",cast(string)p[0..<pn],edit);}}
+ wl_pump(s);
+}
+st_size :: (s:[]Starter,slot:int,w:f32,h:f32) #export_c #effects(all) {_:=dm_size(s[0].dom[..],slot,w,h);}

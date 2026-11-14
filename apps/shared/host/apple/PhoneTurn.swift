@@ -1,6 +1,6 @@
 // Firm reason: 6 (CoreMotion has no C API; this holds no product logic).
 // The phone's turn (the gyro) as camera look, from the OpenAgents app
-// (apps/openagents-ios/OpenAgents/PhoneTurn.swift), without its analytics. In radians, the same
+// and the Everglade app, shared by both native shells. In radians, the same
 // way a right-thumb drag looks: yaw about the world's up (a turn to the right is negative, as a
 // drag to the right), pitch about the screen's across (tilting the top back to look up is
 // positive, as a drag up).
@@ -11,6 +11,7 @@ final class PhoneTurn {
   private let motion = CMMotionManager()
   private var yaw = 0.0, pitch = 0.0
   weak var view: UIView?
+  var moved:(()->Void)?
   var available: Bool { motion.isDeviceMotionAvailable }
   var running: Bool { motion.isDeviceMotionActive }
 
@@ -31,6 +32,7 @@ final class PhoneTurn {
     let r = m.rotationRate, g = m.gravity, dt = motion.deviceMotionUpdateInterval
     let len = (g.x * g.x + g.y * g.y + g.z * g.z).squareRoot()
     guard len > 0.1 else { return }
+    if abs(r.x)+abs(r.y)+abs(r.z)>0.6 {moved?()}
     let up = (x: -g.x / len, y: -g.y / len, z: -g.z / len)
     yaw += (r.x * up.x + r.y * up.y + r.z * up.z) * dt
     // The screen's across, in the phone's own axes, for how it's held.

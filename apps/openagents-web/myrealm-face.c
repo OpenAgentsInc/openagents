@@ -7,38 +7,39 @@
 #include "edit-face.h"
 #include <stdbool.h>
 #include <stddef.h>
+#include "face-address.h"
 
 #define EXPORT(name) __attribute__((export_name(name)))
 
-static coax_t_MyRealm *state_at(uint32_t state) { return (coax_t_MyRealm *)(uintptr_t)state; }
-static coax_v_t_MyRealm at(uint32_t state) { return (coax_v_t_MyRealm){state_at(state), 1}; }
+static coax_t_MyRealm *state_at(cx_face_addr state) { return (coax_t_MyRealm *)(uintptr_t)state; }
+static coax_v_t_MyRealm at(cx_face_addr state) { return (coax_v_t_MyRealm){state_at(state), 1}; }
 static coax_t_Track track_state;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
-static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){state_at(state)->ed.e, 1}; }
+static coax_v_t_RealmEdit ed(cx_face_addr state) { return (coax_v_t_RealmEdit){state_at(state)->ed.e, 1}; }
 static uint8_t inbox[65536];   // a relay frame with a page of a job's steps fits
 static uint8_t catalog[32768];
 
 static void start_track(void) { if (!track_state.page_n) track_init(tr(), track_cstr("realm-made")); }
-static void drain(uint32_t state) {
+static void drain(cx_face_addr state) {
   coax_t_MyRealm *s = state_at(state);
   if (s->req_ready) {
-    int32_t id = coaxial_http((uint32_t)(uintptr_t)s->req_url.e, (uint32_t)s->req_url_n,
-                              (uint32_t)(uintptr_t)s->req_body.e, (uint32_t)s->req_body_n, (int32_t)s->req_flags);
+    int32_t id = coaxial_http((cx_face_addr)(uintptr_t)s->req_url.e, (uint32_t)s->req_url_n,
+                              (cx_face_addr)(uintptr_t)s->req_body.e, (uint32_t)s->req_body_n, (int32_t)s->req_flags);
     realm_requested(at(state), id);
   }
   // the realm's room (myrealm-room.coax): where you are, about every second, with the player key (13: POST, answer, key)
   if (realm_room_ask(at(state)))
-    realm_room_sent(at(state), coaxial_http((uint32_t)(uintptr_t)s->room_url.e, (uint32_t)s->room_url_n,
-                                            (uint32_t)(uintptr_t)s->room_body.e, (uint32_t)s->room_body_n, 13));
+    realm_room_sent(at(state), coaxial_http((cx_face_addr)(uintptr_t)s->room_url.e, (uint32_t)s->room_url_n,
+                                            (cx_face_addr)(uintptr_t)s->room_body.e, (uint32_t)s->room_body_n, 13));
   // who may make a realm (access.coax): asked once
   if (realm_access_wants(at(state))) {
     static const char access_url[] = "/api/playtest/access";
-    realm_access_sent(at(state), coaxial_http((uint32_t)(uintptr_t)access_url, sizeof access_url - 1, 0, 0, 12));
+    realm_access_sent(at(state), coaxial_http((cx_face_addr)(uintptr_t)access_url, sizeof access_url - 1, 0, 0, 12));
   }
   // the realm's world (metaverse/edit/realm-page.coax, #13496): its one request, with the player key
   if (realm_world_wants(at(state))) {
     coax_string url = realm_world_url(at(state)), body = realm_world_body(at(state));
-    realm_world_sent(at(state), coaxial_http((uint32_t)(uintptr_t)url.data, (uint32_t)url.count, (uint32_t)(uintptr_t)body.data, (uint32_t)body.count, (int32_t)realm_world_flags(at(state))));
+    realm_world_sent(at(state), coaxial_http((cx_face_addr)(uintptr_t)url.data, (uint32_t)url.count, (cx_face_addr)(uintptr_t)body.data, (uint32_t)body.count, (int32_t)realm_world_flags(at(state))));
   }
   edit_face_drain(ed(state));
   track_drain(&track_state);
@@ -51,7 +52,7 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_MyRealm); }
 // A new state's declared defaults (its forge documents' moves and ops declare some), from the
 // compiler's coax_default_T, on the zeroed memory the host hands it (coax/web/state-defaults.coax).
-EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_MyRealm(state_at(state)); }
+EXPORT("coaxial_state_init") void coaxial_state_init(cx_face_addr state) { coax_default_t_MyRealm(state_at(state)); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_myrealm_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_myrealm_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_myrealm_uniform_floats(); }
@@ -60,7 +61,7 @@ static uint32_t golden;
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0u; }
 
 EXPORT("coaxial_frame")
-uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float width, float height, float dpr, float dt, uint32_t still) {
+uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr uniforms, float width, float height, float dpr, float dt, uint32_t still) {
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_myrealm_max_vertices() * coaxial_myrealm_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_myrealm_uniform_floats()};
   start_track();
@@ -71,50 +72,50 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   return n < 0 ? 0u : (uint32_t)n;
 }
 
-EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
+EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) {
   (void)mods; start_track();
   track_key(tr(), key, false);
   uint32_t used = realm_key(at(state), tr(), key, true) ? 1u : 0u;
   drain(state);
   return used;
 }
-EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) {
+EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) {
   (void)mods; track_key_up(tr(), key);
   return realm_key(at(state), tr(), key, false) ? 1u : 0u;
 }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { track_blur(tr()); realm_blur(at(state)); }
-EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
+EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { track_blur(tr()); realm_blur(at(state)); }
+EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   start_track();
   track_pointer(tr(), x, y, phase, kind, realm_label(at(state), x, y));
   uint32_t used = realm_pointer(at(state), tr(), x, y, phase, kind, id) ? 1u : 0u;
   drain(state);
   return used;
 }
-EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return realm_wants_text(at(state)) ? 1u : 0u; }
-EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->field.e; }
+EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(cx_face_addr state) { return realm_wants_text(at(state)) ? 1u : 0u; }
+EXPORT("coaxial_field") cx_face_addr coaxial_field(cx_face_addr state) { return (cx_face_addr)(uintptr_t)state_at(state)->field.e; }
 // What a check reads (realm_probe): host.js's coaxial.guardProbe(field).
-EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_t field) { return (int32_t)realm_probe(at(state), field); }
-EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)realm_cursor(at(state)); }
+EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(cx_face_addr state, int32_t field) { return (int32_t)realm_probe(at(state), field); }
+EXPORT("coaxial_cursor") int32_t coaxial_cursor(cx_face_addr state) { return (int32_t)realm_cursor(at(state)); }
 // The accessible layer (myrealm-a11y.coax): the controls as lines host.js mirrors as DOM
 // controls, and the one pressed there; a controller's stick and first button, once a frame.
 static char a11y_text[8192];
-EXPORT("coaxial_a11y_buf") uint32_t coaxial_a11y_buf(void) { return (uint32_t)(uintptr_t)a11y_text; }
-EXPORT("coaxial_a11y") int32_t coaxial_a11y(uint32_t state) {
+EXPORT("coaxial_a11y_buf") cx_face_addr coaxial_a11y_buf(void) { return (cx_face_addr)(uintptr_t)a11y_text; }
+EXPORT("coaxial_a11y") int32_t coaxial_a11y(cx_face_addr state) {
   coax_v_u8 out = {(uint8_t *)a11y_text, sizeof a11y_text};
   int64_t n = realm_a11y(at(state), out);
   return n < 0 ? 0 : (int32_t)n;
 }
-EXPORT("coaxial_a11y_do") uint32_t coaxial_a11y_do(uint32_t state, int32_t id) {
+EXPORT("coaxial_a11y_do") uint32_t coaxial_a11y_do(cx_face_addr state, int32_t id) {
   start_track();
   uint32_t used = realm_a11y_do(at(state), tr(), id) ? 1u : 0u;
   drain(state);
   return used;
 }
-EXPORT("coaxial_pad") void coaxial_pad(uint32_t state, float x, float y, int32_t jump) { realm_pad(at(state), x, y, jump != 0); }
+EXPORT("coaxial_pad") void coaxial_pad(cx_face_addr state, float x, float y, int32_t jump) { realm_pad(at(state), x, y, jump != 0); }
 
-EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
+EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
-EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int32_t length) {
+EXPORT("coaxial_message") void coaxial_message(cx_face_addr state, int32_t kind, int32_t length) {
   if (length < 0 || (uint32_t)length > sizeof inbox) return;
   start_track();
   coax_string bytes = {(const char *)inbox, length};
@@ -126,44 +127,44 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int
 }
 
 // The host calls this as each engine starts (coax/web/host.js loadEngine): the world's request out is asked again.
-EXPORT("coaxial_page") void coaxial_page(uint32_t state, int32_t page) { (void)page; realm_engine_started(at(state)); }
+EXPORT("coaxial_page") void coaxial_page(cx_face_addr state, int32_t page) { (void)page; realm_engine_started(at(state)); }
 // The editor shell's model of the realm's world, for its owner and admins on ?edit (coax/web/host.js editorOpen, #13496).
-EXPORT("coaxial_edit_rev") int32_t coaxial_edit_rev(uint32_t state) { return (int32_t)realm_edit_rev(at(state)); }
-EXPORT("coaxial_edit_model") uint32_t coaxial_edit_model(uint32_t state) { return (uint32_t)(uintptr_t)realm_edit_model(at(state)).data; }
-EXPORT("coaxial_edit_model_len") uint32_t coaxial_edit_model_len(uint32_t state) { return (uint32_t)realm_edit_model(at(state)).count; }
-EXPORT("coaxial_edit_own") uint32_t coaxial_edit_own(uint32_t state) { return realm_edit_own(at(state)) ? 1u : 0u; }
+EXPORT("coaxial_edit_rev") int32_t coaxial_edit_rev(cx_face_addr state) { return (int32_t)realm_edit_rev(at(state)); }
+EXPORT("coaxial_edit_model") cx_face_addr coaxial_edit_model(cx_face_addr state) { return (cx_face_addr)(uintptr_t)realm_edit_model(at(state)).data; }
+EXPORT("coaxial_edit_model_len") uint32_t coaxial_edit_model_len(cx_face_addr state) { return (uint32_t)realm_edit_model(at(state)).count; }
+EXPORT("coaxial_edit_own") uint32_t coaxial_edit_own(cx_face_addr state) { return realm_edit_own(at(state)) ? 1u : 0u; }
 // Realm scripts (#13496): the scripts the world names, the frame out and the result in (coax/web/host.js, "A realm's scripts").
 static uint8_t script_frame[36864];
-EXPORT("coaxial_script_wants") uint32_t coaxial_script_wants(uint32_t state) { return (uint32_t)(uintptr_t)realm_script_wants(at(state)).data; }
-EXPORT("coaxial_script_wants_len") uint32_t coaxial_script_wants_len(uint32_t state) { return (uint32_t)realm_script_wants(at(state)).count; }
-EXPORT("coaxial_script_frame") uint32_t coaxial_script_frame(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)script_frame; }
-EXPORT("coaxial_script_frame_len") uint32_t coaxial_script_frame_len(uint32_t state) { return (uint32_t)realm_script_frame(at(state), (coax_v_u8){script_frame, sizeof script_frame}); }
-EXPORT("coaxial_script_result") uint32_t coaxial_script_result(uint32_t state, uint32_t length) {
+EXPORT("coaxial_script_wants") cx_face_addr coaxial_script_wants(cx_face_addr state) { return (cx_face_addr)(uintptr_t)realm_script_wants(at(state)).data; }
+EXPORT("coaxial_script_wants_len") uint32_t coaxial_script_wants_len(cx_face_addr state) { return (uint32_t)realm_script_wants(at(state)).count; }
+EXPORT("coaxial_script_frame") cx_face_addr coaxial_script_frame(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)script_frame; }
+EXPORT("coaxial_script_frame_len") uint32_t coaxial_script_frame_len(cx_face_addr state) { return (uint32_t)realm_script_frame(at(state), (coax_v_u8){script_frame, sizeof script_frame}); }
+EXPORT("coaxial_script_result") uint32_t coaxial_script_result(cx_face_addr state, uint32_t length) {
   if (length > sizeof inbox) return 0;
   return realm_script_result(at(state), (coax_v_u8){inbox, (int64_t)length}) ? 1u : 0u;
 }
 
-EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)realm_action(at(state)); }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->outbox.e; }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)state_at(state)->out_n; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { realm_action_done(at(state)); }
+EXPORT("coaxial_action") int32_t coaxial_action(cx_face_addr state) { return (int32_t)realm_action(at(state)); }
+EXPORT("coaxial_outbox") cx_face_addr coaxial_outbox(cx_face_addr state) { return (cx_face_addr)(uintptr_t)state_at(state)->outbox.e; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(cx_face_addr state) { return (uint32_t)state_at(state)->out_n; }
+EXPORT("coaxial_action_done") void coaxial_action_done(cx_face_addr state) { realm_action_done(at(state)); }
 
-EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
+EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr state, int32_t i, uint32_t bytes) {
   (void)state;
-  return i == 0 && bytes <= sizeof catalog ? (uint32_t)(uintptr_t)catalog : 0u;
+  return i == 0 && bytes <= sizeof catalog ? (cx_face_addr)(uintptr_t)catalog : 0u;
 }
 // Physical destination allocation observation; the typed host admits its
 // requested byte span before copying into this existing asset buffer.
-EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state, int32_t i) {
+EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr state, int32_t i) {
   (void)state;return i == 0 ? (uint32_t)sizeof catalog : 0u;
 }
-EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
+EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) realm_catalog(at(state), (coax_string){(const char *)catalog, (int64_t)bytes});
   if (i >= 0 && i <= 3 && bytes == 0) realm_pack_failed(at(state));
 }
-EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->draws.e; }
-EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)realm_draw_count(at(state)); }
+EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return (cx_face_addr)(uintptr_t)state_at(state)->draws.e; }
+EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { return (uint32_t)realm_draw_count(at(state)); }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 1u; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { (void)k; return (uint32_t)sizeof(((coax_t_MyRealm *)0)->objects); }
-EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)k; return (uint32_t)(uintptr_t)state_at(state)->objects.e; }
-EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)k; return (uint32_t)(realm_object_count(at(state)) * 16 * sizeof(float)); }
+EXPORT("coaxial_store") cx_face_addr coaxial_store(cx_face_addr state, int32_t k) { (void)k; return (cx_face_addr)(uintptr_t)state_at(state)->objects.e; }
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr state, int32_t k) { (void)k; return (uint32_t)(realm_object_count(at(state)) * 16 * sizeof(float)); }

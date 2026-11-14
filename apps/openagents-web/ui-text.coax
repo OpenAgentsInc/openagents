@@ -1,0 +1,14 @@
+// The shared legacy GPU text adapter, independent of the splash UI state.
+#load "../../metaverse-engine/ui/font.coax";
+ink :: (core: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> Ink {
+  return Ink.{core = core, light = light, glow = glow, red = red, green = green, blue = blue, mode = 0};
+}
+
+// Draws text (font.coax draw_text) at d device pixels per CSS pixel, so
+// small text is drawn sharp (font.md "Small sizes").
+write :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, gap: f32, space: f32,
+          k: Ink, rich: bool, bold: bool) -> int {
+  s := k; s.scale = d;
+  return draw_text(out, at, text, x, base, cap, gap, space, s, rich, bold);
+}
+

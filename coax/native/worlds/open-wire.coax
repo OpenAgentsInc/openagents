@@ -1,0 +1,23 @@
+#load "../updates-wire.coax";
+NWO_SCHEMA :: "coax.native.world.open.v1";
+NwOpen :: struct {ok:bool;realm:[32]u8;nr:int;path:[128]u8;np:int;edit:bool;}
+nwo_read :: (raw:string,q:[]NwOpen)->bool #export_c #effects(all) {
+ if q.count!=1 {return false;}q[0]=NwOpen.{};d:[1]Jv;nodes:[16]JvNode;
+ if raw.count>512 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];
+ if jv_kind(v,0)!=JV_OBJECT || jv_len(v,0)!=4 || jv_raw(v,jv_get(v,0,"schema"))!=NWO_SCHEMA {return false;}
+ realm:=jv_raw(v,jv_get(v,0,"realm"));path:=jv_raw(v,jv_get(v,0,"path"));mode:=jv_raw(v,jv_get(v,0,"mode"));
+ if realm.count>32 || path.count>128 || (mode!="play" && mode!="edit") {return false;}
+ for c,i:realm {q[0].realm[i]=c;}q[0].nr=realm.count;for c,i:path {q[0].path[i]=c;}q[0].np=path.count;q[0].edit=mode=="edit";q[0].ok=true;return true;
+}
+nwo_write :: (realm:string,path:string,edit:bool,out:[]u8)->int {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NWO_SCHEMA);jo_key(o[..],"realm");jo_str(o[..],realm);jo_key(o[..],"path");jo_str(o[..],path);jo_key(o[..],"mode");jo_str(o[..],ifx edit then "edit" else "play");jo_end(o[..]);q:[1]NwOpen;return ifx !o[0].bad && nwo_read(jo_text(o[..]),q[..]) then o[0].n else -1;
+}
+nwo_part :: (q:[]NwOpen,field:int,out:[]u8)->int #export_c #effects(all) {
+ if q.count!=1 || !q[0].ok || field<0 || field>1 {return -1;}s:=ifx field==0 then cast(string)q[0].realm[0..<q[0].nr] else cast(string)q[0].path[0..<q[0].np];if s.count>out.count {return -1;}for c,i:s {out[i]=c;}return s.count;
+}
+#test "native world presentation request has pinned bytes and closed fields" {
+ out:[512]u8;n:=nwo_write("splice-bots","/worlds/splice-bots",false,out[..]);q:[1]NwOpen;
+ #assert n>0 && nwo_read(cast(string)out[0..<n],q[..]) && !q[0].edit;
+ #assert cast(string)out[0..<n]=="{\"schema\":\"coax.native.world.open.v1\",\"realm\":\"splice-bots\",\"path\":\"/worlds/splice-bots\",\"mode\":\"play\"}";
+ #assert !nwo_read("{}",q[..]);
+}

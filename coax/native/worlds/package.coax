@@ -1,0 +1,67 @@
+// Build content-addressed download inventories from the existing public assets.
+// Nothing here imports or repacks source artwork; original pack provenance stays.
+#load "assets-wire.coax";
+#load "profiles.coax";
+#load "../../lib/crypto/sha256-kernel.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+NwpWork :: struct {data:[67108864]u8;json:[NW_JSON]u8;manifest:[1]NwManifest;objects:[4096]u8;no:int;}
+nwp_add :: (w:[]NwpWork,source:string,path:string,required:bool)->bool {
+ m:=w[0].manifest[..];for i:0..<m[0].n {if cast(string)m[0].files[i].path[0..<m[0].files[i].np]==path {return true;}}
+ n:=fs_read(source,w[0].data[..]);if n<0 || m[0].n>=NW_FILES {tool_errln(source);return false;}
+ hash:[64]u8;if !S_hex(S_hash(cast(string)w[0].data[0..<n]),hash[..]) {return false;}
+ dst:[4096]u8;object:=fs_join(cast(string)w[0].objects[0..<w[0].no],cast(string)hash[..],dst[..]);
+ if !fs_exists(object) && !fs_write(object,cast(string)w[0].data[0..<n]) {return false;}
+ i:=m[0].n;m[0].n+=1;m[0].files[i].np=nw_copy(m[0].files[i].path[..],path);m[0].files[i].hash=hash;m[0].files[i].bytes=n;m[0].files[i].required=required;return true;
+}
+nwp_walk :: (w:[]NwpWork,source:string,path:string,depth:int)->bool {
+ if depth>8 {return false;}if fs_kind(source)==FS_FILE {return nwp_add(w,source,path,false);}
+ if fs_kind(source)!=FS_DIR {return true;}
+ list:[1]FsList;if fs_list(source,list[..])<0 || list[0].full {return false;}
+ for i:0..<list[0].n {name:=fs_entry(list[..],i);if name.count==0 || name[0]=='.' {continue;}a:[4096]u8;b:[4096]u8;if !nwp_walk(w,fs_join(source,name,a[..]),fs_join(path,name,b[..]),depth+1) {return false;}}return true;
+}
+nwp_identity :: (directory:string,out:[]u8)->bool {
+ // The generated sources and reflection are the exact installed code inputs.
+ list:[1]FsList;if fs_list(directory,list[..])<0 || list[0].full {return false;}
+ data:[33554432]u8;text:[65536]u8;hex:[64]u8;at:=0;
+ for i:0..<list[0].n {name:=fs_entry(list[..],i);if name.count<2 || name[name.count-2]!='.' || (name[name.count-1]!='c' && name[name.count-1]!='h') {continue;}
+  p:[4096]u8;n:=fs_read(fs_join(directory,name,p[..]),data[..]);if n<0 || !S_hex(S_hash(cast(string)data[0..<n]),hex[..]) || at+64>text.count {return false;}
+  for c:hex {text[at]=c;at+=1;}
+ }
+ shadepath:[4096]u8;dir:=fs_join(directory,"shaders",shadepath[..]);if fs_list(dir,list[..])<0 || list[0].full {return false;}
+ for i:0..<list[0].n {name:=fs_entry(list[..],i);if name.count<4 || name[name.count-4..<name.count]==".air" || name[name.count-4..<name.count]=="llib" {continue;}
+  p:[4096]u8;n:=fs_read(fs_join(dir,name,p[..]),data[..]);if n<0 || !S_hex(S_hash(cast(string)data[0..<n]),hex[..]) || at+64>text.count {return false;}for c:hex {text[at]=c;at+=1;}
+ }
+ return at>0 && S_hex(S_hash(cast(string)text[0..<at]),out);
+}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("package OUTPUT (from repository root)");return 2;}
+ root:=args_at(a[..],0);if !fs_mkdir(root) {return 1;}paths:[6][4096]u8;objects:=fs_join(root,"objects",paths[0][..]);manifests:=fs_join(root,"manifests",paths[1][..]);
+ if !fs_mkdir(objects) || !fs_mkdir(manifests) {return 1;}
+ plist:[4096]u8;po:[1]Jo;jo_start(po[..],plist[..]);jo_put(po[..],"<?xml version=\"1.0\"?><plist version=\"1.0\"><dict>");
+ for realm:[4]string.["splice-bots","everglade","everglade2","myrealm"] {
+  w:[1]NwpWork;w[0].no=nw_copy(w[0].objects[..],objects);m:=w[0].manifest[..];m[0].nr=nw_copy(m[0].realm[..],realm);profile:=nwr_profile(realm);dir:=fs_join("apps/openagents-ios/Generated/Worlds",realm,paths[2][..]);
+  if !nwp_identity(dir,m[0].runtime[..]) {tool_errln("world identity missing");return 1;}
+  if !fs_write(fs_join(dir,"identity.txt",paths[3][..]),cast(string)m[0].runtime[..]) {return 1;}
+  jo_put(po[..],"<key>");jo_put(po[..],realm);jo_put(po[..],"</key><string>");jo_put(po[..],cast(string)m[0].runtime[..]);jo_put(po[..],"</string>");
+  fontdir:=fs_join("apps/openagents-web",profile.font_dir,paths[3][..]);
+  if !nwp_add(w[..],fs_join(fontdir,profile.reading,paths[4][..]),"fonts/reading.ttf",true) || !nwp_add(w[..],fs_join(fontdir,profile.heading,paths[4][..]),"fonts/title.ttf",true) {return 1;}
+  if profile.pack!="" && !nwp_add(w[..],fs_join("apps/openagents-web",profile.pack,paths[3][..]),"base.pack",true) {return 1;}
+  // Existing base packs already have their required entry; skip them in the
+  // optional tree by walking only the public sounds/images folders below.
+  if realm=="splice-bots" {
+   if !nwp_walk(w[..],"apps/openagents-web/realms/splice-bots/assets/sounds","web/realms/splice-bots/assets/sounds",0) {return 1;}
+  } else {
+   for folder:[4]string.["realms/everglade/sfx","realms/everglade/pcm-v1","realms/everglade/hotbar","realms/5e-mmo/hotbar"] {
+    if !nwp_walk(w[..],fs_join("apps/openagents-web",folder,paths[3][..]),fs_join("web",folder,paths[4][..]),0) {return 1;}
+   }
+  }
+  if realm=="everglade2" && !nwp_add(w[..],"apps/openagents-web/realms/everglade2/assets/dragon.frames","dragon.frames",false) {return 1;}
+  n:=nw_write(m,w[0].json[..]);if n<0 {tool_errln("world inventory refused");return 1;}
+  name:[128]u8;o:[1]Jo;jo_start(o[..],name[..]);jo_put(o[..],realm);jo_put(o[..],".json");
+  if !fs_write(fs_join(manifests,jo_text(o[..]),paths[5][..]),cast(string)w[0].json[0..<n]) {return 1;}
+  print("world package: %, % files\n",realm,m[0].n);
+ }
+ jo_put(po[..],"</dict></plist>");if po[0].bad || !fs_write("apps/openagents-ios/Generated/WorldRuntimes.plist",jo_text(po[..])) {return 1;}return 0;
+}

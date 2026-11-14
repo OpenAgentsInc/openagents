@@ -1,0 +1,8 @@
+{
+  "id":"coax.native.world.open.v1",
+  "service":13,
+  "fields":{"schema":"coax.native.world.open.v1","realm":"splice-bots|everglade2|worldbuilder|myrealm","path":"installed profile's site path; myrealm takes a plain world slug","mode":"play|edit"},
+  "reply":{"closed":"boolean; resolves when the native world is dismissed"},
+  "golden":"{\"schema\":\"coax.native.world.open.v1\",\"realm\":\"splice-bots\",\"path\":\"/worlds/splice-bots\",\"mode\":\"play\"}",
+  "rules":["An installed native producer is required; this service never downloads a Mach-O executable", "No arbitrary origin, query, fragment, filesystem path or credential in the request", "Edit admission remains the world's server decision"]
+}

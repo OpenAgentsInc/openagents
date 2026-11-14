@@ -36,6 +36,7 @@ import JavaScriptCore
             let shape:[String]
             switch op {
             case 1:shape=["n","n","s","s"]
+            case 12:shape=["n"]
             case 2,11:shape=["n","n"]
             case 3:shape=["n","n","n","n"]
             case 4,5,7,10:shape=["n","n","s"]
@@ -51,6 +52,7 @@ import JavaScriptCore
         }
         for c in commands {
             let op=(c[0] as! NSNumber).intValue
+            if op==12 {nodes=[:];roots=[];focus=nil;continue}
             func num(_ i:Int)->Int {(c[i] as! NSNumber).intValue}
             func str(_ i:Int)->String {c[i] as! String}
             if op==1 {guard nodes.count<4096 else {throw NativeFailure.refused("Too many controls")};nodes[num(1)]=Node(id:str(3),tag:str(2))}
@@ -84,6 +86,7 @@ import JavaScriptCore
         }
         func visit(_ slot:Int,_ inside:Bool) {
             guard seen.insert(slot).inserted,let n=nodes[slot] else {return}
+            if n.attrs["hidden"] != nil || n.attrs["aria-hidden"]=="true" {return}
             let isDialog=inside || n.attrs["role"]=="dialog"
             if isDialog==dialog {
                 if n.classes.split(separator:" ").contains("transcript") {result.append(NativeElement(id:n.id,role:"transcript",label:"Conversation",value:n.attrs["data-state"] ?? "new"))}
@@ -105,7 +108,7 @@ import JavaScriptCore
                 let field=n.tag=="input" || n.tag=="textarea"
                 let role=n.tag=="button" ? "button" : field ? "field" : n.tag=="h1" || n.tag=="h2" ? "heading" : "text"
                 if field || n.tag=="button" || !n.text.isEmpty {
-                    result.append(NativeElement(id:n.id,role:role,label:field ? n.attrs["aria-label"] ?? n.attrs["placeholder"] ?? "" : n.tag=="button" ? text(slot):n.text,value:n.value,disabled:n.attrs["disabled"] != nil,complete:n.attrs["autocomplete"] ?? "",type:n.tag.hasPrefix("h") ? n.tag:n.attrs["type"] ?? ""))
+                    result.append(NativeElement(id:n.id,role:role,label:field ? n.attrs["aria-label"] ?? n.attrs["placeholder"] ?? "" : n.tag=="button" ? text(slot):n.text,value:n.value,disabled:n.attrs["disabled"] != nil,complete:n.attrs["autocomplete"] ?? "",type:n.tag.hasPrefix("h") ? n.tag:n.tag=="textarea" ? "multiline":n.attrs["type"] ?? "",classes:n.classes,attrs:n.attrs))
                 }
             }
             if n.tag=="button" || n.tag=="input" {return}

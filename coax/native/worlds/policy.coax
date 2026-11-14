@@ -1,0 +1,50 @@
+// Installed SDK admission. Sharing an origin does not permit credentials to
+// follow an arbitrary request, redirect, download or realm navigation.
+#load "open-wire.coax";
+#load "../path-policy.coax";
+#load "../../lib/net/uri.coax";
+#authority;
+#forall "native saved-world names have the shared 48 byte ID bound" length:0..<52 {
+ name:[60]u8;for i:0..<8 {name[i]="/worlds/"[i];}for i:0..<length {name[8+i]='a';}
+ #assert nwp_open("myrealm",cast(string)name[0..<8+length])==(length>=1 && length<=48);
+}
+#forall "world name characters have a closed ASCII alphabet" byte:0..<128 {
+ name:=[11]u8.['/','w','o','r','l','d','s','/','a',0,'z'];name[9]=cast(u8)byte;
+ #assert nwp_open("myrealm",cast(string)name[..])==((byte>=97 && byte<=122) || (byte>=48 && byte<=57) || byte==45);
+}
+#test "world navigation resolves installed pages and never an external address" {
+ #assert nwp_route("/worlds/everglade")=="everglade" && nwp_route("/worlds/splice-bots")=="splice-bots" && nwp_route("/worlds/everglade2")=="everglade2" && nwp_route("/worlds")=="catalog" && nwp_route("/worlds/my-forest")=="myrealm";
+ #assert nwp_route("https://evil.test/worlds/x")=="" && nwp_route("/worlds/a?key=x")=="";
+}
+nwp_route :: (path:string)->string #export_c #effects(all) {for realm:[5]string.["catalog","splice-bots","everglade","everglade2","myrealm"] {if nwp_open(realm,path) {return realm;}}return "";}
+#test "world presentation admits only installed profiles and plain world paths" {
+ #assert nwp_open("splice-bots","/worlds/splice-bots") && nwp_open("everglade2","/worlds/everglade2") && nwp_open("catalog","/worlds") && nwp_open("myrealm","/worlds/my-world");
+ for p:[7]string.["https://evil.test","/worlds/a?token=x","/worlds/../x","/worlds/a/b","/worlds/","//worlds/a","/worlds/a#x"] {#assert !nwp_open("myrealm",p);}
+ #assert !nwp_open("unknown","/worlds/x") && !nwp_open("splice-bots","/worlds/a") && !nwp_open("everglade2","/create-world");
+ #assert !nwp_open("myrealm","/worlds/-a") && !nwp_open("myrealm","/worlds/!a");
+}
+nwp_open :: (realm:string,path:string)->bool #export_c #effects(all) {
+ if realm=="splice-bots" {return path=="/worlds/splice-bots";}
+ if realm=="everglade" {return path=="/worlds/everglade";}
+ if realm=="everglade2" {return path=="/worlds/everglade2";}
+ if realm=="catalog" {return path=="/worlds";}
+ if realm!="myrealm" || path.count<9 || path.count>56 || path[0..<8]!="/worlds/" || path[8]=='-' {return false;}
+ for c:path[8..<path.count] {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}return true;
+}
+#test "a complete world object is published only under its admitted exact identity" {
+ a:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";b:="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+ #assert nwp_received(42,42,a,a,false) && nwp_received(0,0,a,a,false);
+ #assert !nwp_received(42,41,a,a,false) && !nwp_received(42,43,a,a,false) && !nwp_received(42,42,a,b,false) && !nwp_received(42,42,a,a,true) && !nwp_received(-1,-1,a,a,false);
+ #assert nwp_received(67108864,67108864,a,a,false) && !nwp_received(67108865,67108865,a,a,false) && !nwp_received(0,0,"","",false);
+}
+nwp_received :: (expected:int,actual:int,hash:string,observed:string,cancelled:bool)->bool #export_c #effects(all) {return !cancelled && expected>=0 && expected<=67108864 && actual==expected && cnu_hex(hash) && hash==observed;}
+#test "native world account authorization stays on the site's named API families" {
+ #assert nwp_account("/api/worlds") && nwp_account("/api/auth/account");
+ #assert nwp_account("/api/worlds/splice-bots?lane=dev") && nwp_account("/api/playtest/player") && nwp_account("/api/auth/viewer") && nwp_account("/api/projects/coax/files") && nwp_account("/api/chat/complete/v1");
+ for p:[10]string.["https://evil.test/api/worlds/x","//evil.test/api/worlds/x","/api/worldsx","/api/admin/keys","/api/worlds/x#y","/api/worlds/x\n","/api/worlds/x\\y","/api/worlds/x%2fy","/api/worlds/../admin","/api/worlds/./x"] {#assert !nwp_account(p);}
+}
+nwp_account :: (path:string)->bool #export_c #effects(all) {
+ if !cnp_path(path) {return false;}stem:=cnp_stem(path);
+ if stem=="/api/worlds" || stem=="/api/auth/viewer" || stem=="/api/auth/account" {return true;}
+ for root:[4]string.["/api/worlds/","/api/playtest/","/api/projects/","/api/chat/"] {if uri_prefix(stem,root) {return true;}}return false;
+}

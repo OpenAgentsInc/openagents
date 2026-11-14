@@ -30,7 +30,9 @@
 //   coax/bin/coax test apps/openagents-web/builder.coax
 
 #load "../../metaverse-engine/ui/font.coax";
-#load "ui.coax";
+#load "ui-core.coax";
+#load "ui-input.coax";
+#load "ui-text.coax";
 #load "../../coax/web/analytics.coax";
 #load "access.coax";
 #load "../../metaverse-engine/core/budget.coax";

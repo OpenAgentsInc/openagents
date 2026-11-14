@@ -1,0 +1,30 @@
+// The one reader for GET /api/worlds and /api/projects line lists.
+swl_put :: (out:[]u8,at:int,s:string)->int {n:=at;for c:s {if n>=out.count {break;}out[n]=c;n+=1;}return n;}
+SS_WORLDS_MAX :: 24;   // as many as /api/worlds and /api/projects send
+SsWorld :: struct { id: [48] u8; id_n: int; name: [48] u8; name_n: int; }
+ss_world_id_ok :: (id: string) -> bool {
+  if id.count == 0 || id.count > 48 || id[0] == '-' { return false; }
+  for c: id { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+ss_worlds_read :: (body: string, out: [] SsWorld) -> int { return ss_lines_read(body, "world ", out); }
+ss_projects_read :: (body: string, out: [] SsWorld) -> int { return ss_lines_read(body, "project ", out); }
+ss_lines_read :: (body: string, word: string, out: [] SsWorld) -> int {
+  at := 0; n := 0; w := word.count;
+  while at < body.count && n < out.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line.count < w + 1 || cast(string) line[0..<w] != word { continue; }
+    i := w;
+    while i < line.count && line[i] != ' ' { i += 1; }
+    id := cast(string) line[w..<i];
+    if !ss_world_id_ok(id) { continue; }
+    name := ifx i + 1 < line.count then cast(string) line[i + 1..<line.count] else id;
+    out[n].id_n = swl_put(out[n].id[..], 0, id);
+    out[n].name_n = swl_put(out[n].name[..], 0, name);
+    n += 1;
+  }
+  return n;
+}

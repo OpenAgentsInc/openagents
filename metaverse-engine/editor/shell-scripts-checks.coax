@@ -188,6 +188,10 @@ ess_status :: (k: [] EssTest, text: string) {
   es_sc_build(s);
   #assert coaxial_editor_fetching(s) == 0 && s[0].sc.flight == ES_SC_NONE;
 }
+#test "the native Scripts pane explains where downloaded scripts execute" {
+ k:[1]EssTest;s:=k[0].h[0].s[..];s[0].native=true;ess_open(k[..],0,ess_list(k[..],"splice",true,false,false));
+ #assert ess_text(k[..],"scripts.native")=="This iOS build saves and builds scripts for web players. Downloaded scripts do not execute on this device yet.";
+}
 
 #test "Build sends the source to the compile job under the name typed; the answer is what the script is, read from its build, or the refusal's words" {
   k: [1] EssTest; h := k[0].h[..]; s := h[0].s[..]; t := s[0].tree[..];

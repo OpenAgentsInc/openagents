@@ -36,6 +36,18 @@ chh_api_checks :: (t:[]Ap,dir:string) {
   // The history fixture above deliberately attached a strong key. Preserve
   // that limited-email write gate; the mobile send fixture is email-only.
   sb_clear(q[..]);sb(q[..],"DELETE FROM auth.nostr_keys WHERE account='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+  bind_body:="{\"schema\":\"openagents.world.player-bind.v1\"}";
+  ap_check(t,"world player binding requires verified account",ac_call(t,"POST","/api/chat/world/player/v1",bind_body,"","","")==401,ap_body(t));
+  st=ac_call(t,"POST","/api/playtest/player","{}","","","");playerb:[160]u8;pidb:[160]u8;
+  player:=ap_member(ap_body(t),"key",playerb[..]);pid:=ap_member(ap_body(t),"id",pidb[..]);ph:[1]Sb;sb(ph[..],"X-Verse-Player: ");sb(ph[..],player);
+  ap_check(t,"native world fixture has a guest player",st==200 && player.count>0,"");
+  st=ac_call(t,"POST","/api/chat/world/player/v1",bind_body,sb_text(c[..]),sb_text(ph[..]),"");
+  ap_check(t,"email account attaches its guest without gaining admin",st==200 && ap_has(ap_body(t),player),ifx st==200 then "" else ap_body(t));
+  st=ac_call(t,"POST","/api/chat/world/player/v1",bind_body,sb_text(c[..]),sb_text(ph[..]),"");
+  ap_check(t,"world player binding is idempotent",st==200,ap_body(t));
+  sb_clear(q[..]);sb(q[..],"INSERT INTO verse.accounts(id,created_ms) VALUES ('world-bind-other',0) ON CONFLICT DO NOTHING; UPDATE verse.players SET account='world-bind-other' WHERE id='");sb(q[..],pid);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+  st=ac_call(t,"POST","/api/chat/world/player/v1",bind_body,sb_text(c[..]),sb_text(ph[..]),"");
+  ap_check(t,"possessing another account player key cannot rebind its worlds",st==403,ap_body(t));
   thread:[1]AccountThread;wire:[65536]u8;thread[0].n=1;thread[0].messages[0].text[0]='H';thread[0].messages[0].n=1;
   wn:=act_write(thread[..],wire[..]);body:=cast(string)wire[0..<wn];
   st=ac_call(t,"POST","/api/chat/complete/v1",body,sb_text(c[..]),"","");
@@ -63,6 +75,12 @@ chh_api_checks :: (t:[]Ap,dir:string) {
   sb_clear(q[..]);sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
   st=ac_call(t,"POST","/api/chat/complete/v1",body,sb_text(c[..]),"","");
   ap_check(t,"team email login reaches the existing metered model adapter",st==200 && ap_has(ap_body(t),"choices"),ap_body(t));
+  world_request:[98304]u8;world_n:=awc_write(thread[..],"world.turn.v1 my-world dev 7 0\n",world_request[..]);
+  st=ac_call(t,"POST","/api/chat/world/complete/v1",cast(string)world_request[0..<world_n],sb_text(c[..]),"","");
+  ap_check(t,"team email world turn uses the existing metered model",st==200 && ap_has(ap_body(t),"choices"),ap_body(t));
+  st=ac_call(t,"POST","/api/chat/world/complete/v1","{}",sb_text(c[..]),"","");
+  ap_check(t,"malformed world turns do not reach inference",st==400,ap_body(t));
+
 
 }
 

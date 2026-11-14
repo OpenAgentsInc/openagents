@@ -24,11 +24,19 @@
 @property (copy) NSString *origin;     // the site: https://openagents.com
 @property (copy) NSString *path;       // the page's path and query on it
 @property (copy) NSString *realm, *slot, *style, *clock;
+@property (copy) NSString *variant;
 @property BOOL offline;                // no socket and no HTTP leave this machine (a shot)
 @property BOOL automated;              // nobody is at the keys: said in the page's facts, as a browser under a driver says it
 @property BOOL touch;                  // a touch screen (a phone or a tablet): said in the page's facts, as a browser's coarse pointer is, so the realm draws its touch controls
 @property CGSize screen;               // the screen in points (a browser's screen.width), for the page's facts; zero on a Mac, where the host reads the main display
 @property (copy) int32_t (^layerSide)(int32_t declared);   // the side the pack's layers are drawn to, from the one the realm declares (metaverse-engine/render/texture-format.coax tf_side); nil keeps it
+// Optional installed account/network adapter. It owns authentication and SDK
+// cancellation; credentials never enter the realm or its editor model.
+@property (copy) dispatch_block_t (^request)(NSURLRequest *,void (^)(NSData *,NSURLResponse *,NSError *));
+@property (copy) void (^action)(int32_t,NSString *);
+@property (copy) NSString *viewer;
+@property (copy) NSString *player;   // opaque SDK-owned player record, never part of an editor model
+@property (copy) void (^assetNeeded)(NSString *);
 @end
 
 @interface AEPageHost : NSObject
@@ -77,6 +85,13 @@
 - (void)tilt:(float)yaw pitch:(float)pitch;
 - (void)motionStatus:(int32_t)status;
 - (BOOL)wantsText;
+// The existing editor-model wire and message boundary, shared with host.js.
+- (NSData *)editorModel;
+- (int32_t)editorRevision;
+- (BOOL)editorOwned;
+- (void)message:(int32_t)kind text:(NSString *)text;
+- (BOOL)deliverAsset:(int32_t)asset bytes:(NSData *)bytes;
+- (void)assetsChanged;
 // 0 the arrow, 1 a hand, 2 a crosshair, 3 a text bar, 4 none.
 - (int32_t)cursor;
 - (void)close;

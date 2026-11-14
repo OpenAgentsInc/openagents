@@ -670,6 +670,7 @@ es_build_scripts :: (s: [] EdShell) {
   // plans first
   plain := m[0].at_once && m[0].na == 0;   // a made realm's characters have no plans: they keep their places
   first := k_meta(t, "scripts.plan", ifx plain then "Everyone here keeps their place. A script says where the ones it drives walk and the way they face." else "A plan says where someone walks, how far they see and what they do on seeing you, by time of day. A script is for what a plan cannot say.");
+  if s[0].native { native_note := k_meta(t, "scripts.native", "This iOS build saves and builds scripts for web players. Downloaded scripts do not execute on this device yet."); }
   if m[0].na > 0 { go := k_link(t, "scripts.plans", "Set plans in the Actors list"); }
   // the limits, before anything is built
   lim := k_card(t, u, "scripts.limits", "Limits");
@@ -754,7 +755,7 @@ es_build_scripts :: (s: [] EdShell) {
     building := s[0].sc.flight == ES_SC_BUILD;
     can := s[0].sc.flight == ES_SC_NONE && !current;
     bb := k_button(t, u, "scripts.build", "Build", ifx can then BS_PRIMARY else BS_DISABLED);
-    if current && tg.ok { rb := k_button(t, u, "scripts.run", "Run it", BS_PRIMARY); }
+    if current && tg.ok { rb := k_button(t, u, "scripts.run", ifx s[0].native then "Use in web players" else "Run it", BS_PRIMARY); }
     if building { bs := tr_leaf(t, "scripts.state", TG_SPAN, "meta", "Building"); }
     tr_close(t);
   } else { nc := k_meta(t, "scripts.nocompiler", "Compiling is not available on this server."); }

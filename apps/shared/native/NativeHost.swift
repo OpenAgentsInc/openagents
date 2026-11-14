@@ -87,9 +87,10 @@ import Security
             let (op,body)=try p.action()
             if op==0 {continue}
             let owner=epoch,extra=(p === programs.last)
-            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open","environment.commandIDs","environment.wait"]
+            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open","environment.commandIDs","environment.wait","world.open"]
             guard extra || op>0 && op<ops.count else {throw NativeFailure.refused("Unsupported service")}
-            let args=(try? JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] ?? [:]
+            var args=(try? JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] ?? [:]
+            if !extra && op==13 {args["nativeWire"]=body}
             if !extra && op==8 {httpEpoch=UUID();httpTask?.cancel();httpTask=nil}
             let requestOwner=httpEpoch
             services += 1
@@ -115,6 +116,28 @@ import Security
     }
     func call(_ op:String,_ b:[String:Any]) async throws -> Any {
         switch op {
+        case "world.open":
+            let wire=b["nativeWire"] as? String ?? ""
+            let q=UnsafeMutablePointer<coax_t_NwOpen>.allocate(capacity:1);q.initialize(to:coax_t_NwOpen());defer {q.deinitialize(count:1);q.deallocate()}
+            let record=coax_v_t_NwOpen(data:q,count:1)
+            guard wire.withCString({nwo_read(coax_string(data:$0,count:Int64(wire.utf8.count)),record)}) else {throw NativeFailure.refused("Invalid world request")}
+            func part(_ field:Int64)->String {var bytes=[UInt8](repeating:0,count:128);let n=bytes.withUnsafeMutableBufferPointer {nwo_part(record,field,coax_v_u8(data:$0.baseAddress,count:Int64($0.count)))};return n<0 ? "":String(decoding:bytes.prefix(Int(n)),as:UTF8.self)}
+            let realm=part(0),path=part(1),edit=q.pointee.edit
+            let allowed=realm.withCString {r in path.withCString {p in nwp_open(coax_string(data:r,count:Int64(realm.utf8.count)),coax_string(data:p,count:Int64(path.utf8.count)))}}
+            let presenter=b["worldPresenter"] as? UIViewController ?? self
+            guard allowed,presenter.presentedViewController==nil else {throw NativeFailure.refused("This world is unavailable")}
+            if realm=="catalog" {
+                return try await withCheckedThrowingContinuation {continuation in
+                    do {
+                        let library=try NativeWorldLibrary(directory:updates.current.map(updates.directory) ?? updates.embedded,service:{ [weak self] op,args in guard let self else {throw CancellationError()};return try await self.call(op,args) }) {continuation.resume(returning:["closed":true])}
+                        let nav=UINavigationController(rootViewController:library);nav.modalPresentationStyle = .fullScreen;presenter.present(nav,animated:true)
+                    }catch {continuation.resume(throwing:error)}
+                }
+            }
+            return await withCheckedContinuation {continuation in
+                let world=NativeWorldHost(directory:updates.current.map(updates.directory) ?? updates.embedded,realm:realm,path:path,edit:edit) {continuation.resume(returning:["closed":true])}
+                let nav=UINavigationController(rootViewController:world);nav.modalPresentationStyle = .fullScreen;presenter.present(nav,animated:true)
+            }
         case "environment.commandIDs":
             var bytes=[UInt8](repeating:0,count:32)
             guard SecRandomCopyBytes(kSecRandomDefault,bytes.count,&bytes)==errSecSuccess else {throw NativeFailure.refused("Random identities unavailable")}
@@ -153,7 +176,7 @@ import Security
             let n=out.withUnsafeMutableBufferPointer {wb_encode(observation.status,observation.sats,coax_v_u8(data:$0.baseAddress,count:Int64($0.count)))}
             guard n>0 else {throw NativeFailure.refused("Balance unavailable")}
             return ["record":String(decoding:out.prefix(Int(n)),as:UTF8.self)]
-        case "auth.state": return ["loggedIn":AppAuth.shared.loggedIn]
+        case "auth.state": return ["loggedIn":AppAuth.shared.loggedIn,"worldsAvailable":true]
         case "auth.emailStart": return ["pending":try await AppAuth.shared.emailStart(b["email"] as? String ?? "")]
         case "auth.emailVerify": _ = try await AppAuth.shared.emailVerify(code:b["code"] as? String ?? "",pending:b["pending"] as? String ?? ""); return ["loggedIn":true]
         case "auth.keyLogin": _ = try await AppAuth.shared.keyLogin(); return ["loggedIn":true]
@@ -172,10 +195,10 @@ import Security
         case "http.cancel": return ["cancelled":true]
         case "http":
             let path=b["path"] as? String ?? "", method=b["method"] as? String ?? "GET", body=b["body"] as? String ?? ""
-            let allowed=path.withCString { cn_api(coax_string(data:$0,count:Int64(path.utf8.count))) }
+            let allowed=path.withCString { cn_api(coax_string(data:$0,count:Int64(path.utf8.count))) || nwp_account(coax_string(data:$0,count:Int64(path.utf8.count))) }
             guard allowed, ["GET","POST"].contains(method), body.utf8.count<=65536 else { throw NativeFailure.refused("Native request refused") }
             var request=URLRequest(url:URL(string:AppAuth.defaultOrigin+path)!,timeoutInterval:60); request.httpMethod=method
-            if method == "POST" { request.httpBody=Data(body.utf8); request.setValue("application/json",forHTTPHeaderField:"Content-Type") }
+            if method == "POST" { request.httpBody=Data(body.utf8); request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.setValue(AppAuth.defaultOrigin,forHTTPHeaderField:"Origin") }
             if AppAuth.shared.loggedIn { request=try await AppAuth.shared.authorize(request) }
             let (stream,response)=try await URLSession.shared.bytes(for:request); var data=Data()
             guard response.url?.host == URL(string:AppAuth.defaultOrigin)?.host else { throw NativeFailure.refused("Native request redirect refused") }

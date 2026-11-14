@@ -1,0 +1,4 @@
+// The installed native world's codec and admission exports, generated as one unit.
+#load "assets-wire.coax";
+#load "policy.coax";
+#load "profiles.coax";

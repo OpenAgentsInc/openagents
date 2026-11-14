@@ -24,6 +24,22 @@ targets:
       - ../shared/native
       - ../shared/host/apple/AppAuth.swift
       - ../shared/host/apple/DeviceKey.swift
+      - ../shared/host/apple/Deep.swift
+      - ../shared/host/apple/PhoneTurn.swift
+      - ../../metaverse-engine/host/apple/PageHost.m
+      - NativeWorldUnit.c
+      - NativeAudioUnit.c
+      - path: Generated/native-audio.c
+        compilerFlags: "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"
+      - ../../metaverse-engine/host/apple/PageAudio.swift
+      - ../metaverse-engine-desktop/Sources/MetalAudio.swift
+      - path: Generated/engine-core-face.c
+        compilerFlags: "-Wno-unused-function -Wno-unused-variable -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex"
+      - path: Generated/WorldShaders
+        type: folder
+        buildPhase: resources
+      - path: Generated/WorldRuntimes.plist
+        buildPhase: resources
       - OpenAgents/SignIn/PhoneSignIn.swift
       - OpenAgents/SignIn/NostrKey.swift
       - OpenAgents/Platform/AppAnalytics.swift
@@ -76,12 +92,22 @@ targets:
         buildPhase: resources
     dependencies:
       - package: BreezSdkSpark
+      - target: SpliceBotsRuntime
+        embed: true
+      - target: EvergladeRuntime
+        embed: true
+      - target: EvergladeForestRuntime
+        embed: true
+      - target: MadeRealmRuntime
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app
         PRODUCT_NAME: OpenAgents
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1074"
+        CURRENT_PROJECT_VERSION: "1075"
+        PROVISIONING_PROFILE_SPECIFIER: "$(OA_APP_PROVISIONING_PROFILE)"
+        OTHER_LDFLAGS: ["$(inherited)", "-Wl,-export_dynamic"]
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COAX_NATIVE_BALANCE"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
@@ -99,6 +125,79 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: NativeBridge.h
         HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated"]
         GCC_OPTIMIZATION_LEVEL: "2"
+  SpliceBotsRuntime:
+    type: framework
+    platform: iOS
+    sources:
+      - Generated/Worlds/splice-bots/splice-bots.c
+      - Generated/Worlds/splice-bots/Animelab-style.c
+      - Generated/Worlds/splice-bots/splice-bots.face.c
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.runtime.splice-bots
+        GENERATE_INFOPLIST_FILE: YES
+        DEFINES_MODULE: NO
+        GCC_SYMBOLS_PRIVATE_EXTERN: NO
+        GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "COAXIAL_NATIVE_ADDRESS=1"]
+        OTHER_CFLAGS: ["$(inherited)", "-Wno-unknown-attributes", "-Wno-unused-function", "-ffp-contract=off", "-fno-fast-math"]
+        OTHER_LDFLAGS: ["$(inherited)", "-Wl,-undefined,dynamic_lookup"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated/Worlds/splice-bots"]
+  EvergladeForestRuntime:
+    type: framework
+    platform: iOS
+    sources:
+      - Generated/Worlds/everglade2/client.c
+      - Generated/Worlds/everglade2/Everglade-step.c
+      - Generated/Worlds/everglade2/Sticks.c
+      - Generated/Worlds/everglade2/everglade2.face.c
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.runtime.everglade-forest
+        GENERATE_INFOPLIST_FILE: YES
+        DEFINES_MODULE: NO
+        GCC_SYMBOLS_PRIVATE_EXTERN: NO
+        GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "COAXIAL_NATIVE_ADDRESS=1"]
+        OTHER_CFLAGS: ["$(inherited)", "-Wno-unknown-attributes", "-Wno-unused-function", "-ffp-contract=off", "-fno-fast-math"]
+        OTHER_LDFLAGS: ["$(inherited)", "-Wl,-undefined,dynamic_lookup"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated/Worlds/everglade2"]
+  EvergladeRuntime:
+    type: framework
+    platform: iOS
+    sources:
+      - Generated/Worlds/everglade/everglade5e.c
+      - Generated/Worlds/everglade/Everglade-step.c
+      - Generated/Worlds/everglade/Grid.c
+      - Generated/Worlds/everglade/River.c
+      - path: Generated/Worlds/everglade/Guard-guide-policy.c
+        compilerFlags: "-Dinput_runs=guard_guide_input_runs"
+      - Generated/Worlds/everglade/Everglade5e-rules.c
+      - Generated/Worlds/everglade/everglade5e.face.c
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.runtime.everglade
+        GENERATE_INFOPLIST_FILE: YES
+        DEFINES_MODULE: NO
+        GCC_SYMBOLS_PRIVATE_EXTERN: NO
+        GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "COAXIAL_NATIVE_ADDRESS=1"]
+        OTHER_CFLAGS: ["$(inherited)", "-Wno-unknown-attributes", "-Wno-unused-function", "-ffp-contract=off", "-fno-fast-math"]
+        OTHER_LDFLAGS: ["$(inherited)", "-Wl,-undefined,dynamic_lookup"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated/Worlds/everglade"]
+  MadeRealmRuntime:
+    type: framework
+    platform: iOS
+    sources:
+      - Generated/Worlds/myrealm/myrealm.c
+      - Generated/Worlds/myrealm/myrealm.face.c
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.runtime.myrealm
+        GENERATE_INFOPLIST_FILE: YES
+        DEFINES_MODULE: NO
+        GCC_SYMBOLS_PRIVATE_EXTERN: NO
+        GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "COAXIAL_NATIVE_ADDRESS=1"]
+        OTHER_CFLAGS: ["$(inherited)", "-Wno-unknown-attributes", "-Wno-unused-function", "-ffp-contract=off", "-fno-fast-math"]
+        OTHER_LDFLAGS: ["$(inherited)", "-Wl,-undefined,dynamic_lookup"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated/Worlds/myrealm"]
   OpenAgentsTests:
     type: bundle.unit-test
     platform: iOS
@@ -157,3 +256,12 @@ schemes:
           selectedTests: [NativeMarkdownTests]
         - name: OpenAgentsUITests
           selectedTests: [ChatUITests]
+
+  CoaxNativeWorlds:
+    build:
+      targets:
+        OpenAgents: all
+    test:
+      targets:
+        - name: OpenAgentsTests
+          selectedTests: [NativeWorldTests, NativeWorldDownloadTests, NativeWorldProgramTests]

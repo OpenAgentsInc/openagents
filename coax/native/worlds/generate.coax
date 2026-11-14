@@ -1,0 +1,46 @@
+// Generate native realm producers and the same shader entry pairs as the web.
+// Apple SDK compilation happens separately, on the Mac's build slots.
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/crypto/sha256-kernel.coax";
+nwg_run :: (argv:[]string,out:[]u8,err:[]u8)->bool {
+ r:=proc_run(argv,600000,out,err);if r.started!=0 || r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return false;}return true;
+}
+nwg_pair :: (coax:string,dir:string,role:string,source:string,vs:string,ps:string)->bool {
+ paths:[4][4096]u8;metal:=fs_join(dir,role,paths[0][..]);file:[4096]u8;n:=nwgen_cat(file[..],metal,".metal");binding:[4096]u8;bn:=nwgen_cat(binding[..],metal,".bind");
+ args:=[9]string.[coax,"metal",source,"--vertex",vs,"--fragment",ps,"-o",cast(string)file[0..<n]];out:[65536]u8;err:[65536]u8;r:=proc_run(args[..],120000,out[..],err[..]);
+ if r.started!=0 || r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return false;}
+ return fs_write(cast(string)binding[0..<bn],cast(string)err[0..<r.err_n]);
+}
+nwgen_cat :: (out:[]u8,a:string,b:string)->int {if a.count+b.count>out.count {return -1;}for c,i:a {out[i]=c;}for c,i:b {out[a.count+i]=c;}return a.count+b.count;}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) {return 2;}coax:="coax/bin/coax";root:="apps/openagents-ios/Generated/Worlds";p:[4096]u8;
+ if !fs_mkdir(root) {return 1;}
+ for realm:[4]string.["splice-bots","everglade","everglade2","myrealm"] {
+  dir:=fs_join(root,realm,p[..]);if !fs_remove(dir) || !fs_mkdir(dir) {return 1;}
+  out:[65536]u8;err:[65536]u8;args:=[6]string.["env","COAXIAL_REALM_EMIT_ONLY=1","bash","metaverse/native/build.sh",ifx realm=="everglade" then "everglade5e" else realm,dir];
+  if !nwg_run(args[..],out[..],err[..]) {return 1;}
+  shaderpath:[4096]u8;shaders:=fs_join(dir,"shaders",shaderpath[..]);if !fs_mkdir(shaders) {return 1;}
+  source:=ifx realm=="splice-bots" then "metaverse/splice-bots/gpu/splice-bots.coax" else ifx realm=="everglade" then "apps/openagents-web/gpu/everglade-v1/gpu.coax" else ifx realm=="everglade2" then "everglade/client/gpu/everglade2.coax" else "apps/openagents-web/gpu/myrealm.coax";
+  prefix:=ifx realm=="everglade" then "eg" else realm;
+  names:[8][128]u8;nv:=nwgen_cat(names[0][..],prefix,"_bg_vs");nf:=nwgen_cat(names[1][..],prefix,"_bg_fs");sv:=nwgen_cat(names[2][..],prefix,"_scene_vs");sf:=nwgen_cat(names[3][..],prefix,"_scene_fs");fv:=nwgen_cat(names[4][..],prefix,"_fx_vs");ff:=nwgen_cat(names[5][..],prefix,"_fx_fs");
+  if !nwg_pair(coax,shaders,"bg",source,ifx realm=="splice-bots" then "animelab_bg_vs" else cast(string)names[0][0..<nv],ifx realm=="splice-bots" then "animelab_bg_fs" else cast(string)names[1][0..<nf]) {return 1;}
+  if !nwg_pair(coax,shaders,"scene",source,ifx realm=="splice-bots" then "scene_vs" else cast(string)names[2][0..<sv],ifx realm=="splice-bots" then "animelab_scene_fs" else cast(string)names[3][0..<sf]) {return 1;}
+  if !nwg_pair(coax,shaders,"fx",source,ifx realm=="splice-bots" then "animelab_fx_vs" else cast(string)names[4][0..<fv],ifx realm=="splice-bots" then "fx_fs" else cast(string)names[5][0..<ff]) {return 1;}
+  if realm=="splice-bots" || realm=="everglade2" || realm=="everglade" {
+   sn:=nwgen_cat(names[6][..],prefix,"_shadow_vs");fn:=nwgen_cat(names[7][..],prefix,"_shadow_fs");
+   if !nwg_pair(coax,shaders,"shadow",source,ifx realm=="splice-bots" then "shadow_vs" else cast(string)names[6][0..<sn],ifx realm=="splice-bots" then "animelab_shadow_fs" else cast(string)names[7][0..<fn]) {return 1;}
+   for role:[2]string.["bloom","post"] {
+    count:=nwgen_cat(names[6][..],prefix,ifx role=="bloom" then "_bloom_fs" else "_post_fs");
+    if !nwg_pair(coax,shaders,role,source,ifx realm=="splice-bots" then "animelab_bg_vs" else cast(string)names[0][0..<nv],ifx realm=="splice-bots" then ifx role=="bloom" then "animelab_bloom_fs" else "post_fs" else cast(string)names[6][0..<count]) {return 1;}
+   }
+  }
+  if realm=="everglade2" {for role:[2]string.["particle","particle_over"] {if !nwg_pair(coax,shaders,role,"everglade/client/gpu/everglade2-fx.coax","e2fx_particle_vs",ifx role=="particle" then "e2fx_particle_fs" else "e2fx_particle_over_fs") {return 1;}}}
+  if realm=="everglade" {for role:[2]string.["particle","particle_over"] {if !nwg_pair(coax,shaders,role,"everglade/client/gpu/gpu-fx.coax",ifx role=="particle" then "egfx_particle_vs" else "egfx_particle_over_vs",ifx role=="particle" then "egfx_particle_fs" else "egfx_particle_over_fs") {return 1;}}}
+  sourcepath:[4096]u8;bind:[4096]u8;bytes:[32768]u8;nb:=nwgen_cat(sourcepath[..],source[0..<source.count-5],".bindings");n:=fs_read(cast(string)sourcepath[0..<nb],bytes[..]);
+  if n<0 || !fs_write(fs_join(shaders,"page.bindings",bind[..]),cast(string)bytes[0..<n]) {return 1;}
+  print("native world generated: %\n",realm);
+ }
+ return 0;
+}

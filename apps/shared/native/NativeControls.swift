@@ -3,11 +3,12 @@ import UIKit
 
 /// The shared UIKit projection: keyed controls survive updates, including their
 /// caret/selection. Coax owns what exists, its value and the meaning of input.
-final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecognizerDelegate {
+final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecognizerDelegate,UITextViewDelegate {
     let stack = UIStackView()
     private(set) var controls: [String:UIView] = [:]
     var press: ((String)->Void)?
     var edit: ((String,String)->Void)?
+    var submit: ((String)->Void)?
     private let dock=UIStackView()
     private var composer:NativeComposer?
     private let scroll=UIScrollView()
@@ -77,14 +78,18 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         } else {composer?.removeFromSuperview();composer=nil}
         for e in ordinary {
             let old=controls[e.id]
-            let matches = e.role == "message" ? old is NativeMessage : e.role == "button" ? old is UIButton : e.role == "field" ? old is UITextField : old is UILabel
+            let matches = e.role == "message" ? old is NativeMessage : e.role == "button" ? old is UIButton : e.role == "field" ? (e.type=="multiline" ? old is UITextView:old is UITextField) : old is UILabel
             let control = matches ? old! : make(e)
             if let message=control as? NativeMessage {message.press={ [weak self] id in self?.press?(id) };message.render(e)}
             else if let b=control as? UIButton { b.configuration?.title=e.label; b.isEnabled = !e.disabled }
-            else if let f=control as? UITextField {
+            else if let text=control as? UITextView {
+                text.accessibilityLabel=e.label;text.isEditable = !e.disabled
+                if text.text != e.value {let selection=text.selectedRange;text.text=e.value;text.selectedRange=NSRange(location:min(selection.location,(e.value as NSString).length),length:0)}
+                text.font=e.attrs["data-lang"] != nil ? .monospacedSystemFont(ofSize:15,weight:.regular):.preferredFont(forTextStyle:.body)
+            } else if let f=control as? UITextField {
                 f.placeholder=e.label; f.accessibilityLabel=e.label; f.isEnabled = !e.disabled
                 if f.text != e.value { f.text=e.value }
-                f.keyboardType = e.type == "email" ? .emailAddress : e.type == "tel" ? .numberPad : .default
+                f.keyboardType = e.type == "email" ? .emailAddress : e.type == "tel" ? .numberPad : e.type=="number" ? .decimalPad:.default
                 f.textContentType = e.complete == "one-time-code" ? .oneTimeCode : e.complete == "email" ? .emailAddress : nil
             } else if let l=control as? UILabel {
                 l.text=e.label
@@ -109,12 +114,17 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             b.addAction(UIAction { [weak self] _ in self?.press?(e.id) },for:.primaryActionTriggered)
             b.heightAnchor.constraint(greaterThanOrEqualToConstant:44).isActive=true
             control=b
+        } else if e.role == "field" && e.type=="multiline" {
+            let text=UITextView();text.delegate=self;text.font = .preferredFont(forTextStyle:.body);text.adjustsFontForContentSizeCategory=true
+            text.backgroundColor = .secondarySystemBackground;text.layer.cornerRadius=8;text.textContainerInset=UIEdgeInsets(top:10,left:8,bottom:10,right:8)
+            text.heightAnchor.constraint(equalToConstant:e.attrs["data-lang"] != nil ? 240:100).isActive=true;control=text
         } else if e.role == "field" {
             let f=UITextField(); f.borderStyle = .roundedRect
             f.autocapitalizationType = .none; f.autocorrectionType = .no
             f.font = .preferredFont(forTextStyle:.body); f.adjustsFontForContentSizeCategory=true
             f.heightAnchor.constraint(greaterThanOrEqualToConstant:44).isActive=true
             f.addAction(UIAction { [weak self,weak f] _ in self?.edit?(e.id,f?.text ?? "") },for:.editingChanged)
+            f.addAction(UIAction { [weak self] _ in self?.submit?(e.id) },for:e.type=="number" ? .editingDidEnd:.editingDidEndOnExit)
             control=f
         } else {
             let l=UILabel(); l.numberOfLines=0; l.adjustsFontForContentSizeCategory=true
@@ -125,6 +135,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         return control
     }
     @objc private func dismissKeyboard() {view.endEditing(true)}
+    func textViewDidChange(_ textView:UITextView) {if let id=textView.accessibilityIdentifier {edit?(id,textView.text)}}
     func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldReceive touch:UITouch)->Bool {
         if let composer,touch.view?.isDescendant(of:composer)==true {return false}
         var target=touch.view
