@@ -48,11 +48,17 @@
 //                                       server, where the thing would stand in whole centimetres, and what it is
 //   from WHO                            who proposed the card on the line above, as people read it
 //   cards N                             how many proposals wait in all, when the model lists fewer
+//   chars LORE QUESTS                   the content tables a realm's characters' lore and quests are rows of (#13526,
+//                                       metaverse/edit/realm-world.coax): a row is edited whole, by a cell edit of "*"
+//   char WHO NAME                       the character the player is by: its key and its name (left out: none)
+//   cl ID [TEXT]                        its lore: the row's ID (the next one when it has none) and its text, if any
+//   cq ID [ASK|STEP|STEP|STEP|REWARD]   its quest the same way: the ask, three steps and the reward, any but the ask empty
 //   here X Z                            the last point tapped on the ground, whole centimetres (E8, #13417);
 //                                       left out until a point is tapped
 //   no WORDS                            the last refusal, in words
 // Lines come in the order they are listed in, the `templates` line after `table`, each `tp` after its `t`, `atonce`
-// after `local`, each list's `sw` lines after its `list`, the `q` lines after `asks`, and each `from` after its `card`.
+// after `local`, each list's `sw` lines after its `list`, the `q` lines after `asks`, each `from` after its `card`, and `char`,
+// `cl` and `cq` together after `chars`.
 // (The lists above are in the order the lines were added to the shape.) Every number is whole. A name and a value are one line of printable
 // bytes. em_read refuses any bytes but the ones em_write writes (it writes what it read and
 // compares).
@@ -84,6 +90,9 @@ EM_CARDS :: 16;        // proposals waiting for the owner a model lists (#13527)
 EM_ASKS :: 24;         // asks a model lists (world.turn.v1 WT_ASKS)
 EM_QWORDS :: 120;      // bytes of an ask's words (WT_QWORDS)
 EM_QSTATE :: [3] string.["applied", "waiting", "removing"];
+EM_WHO :: 32;          // bytes in a character's key (realm-world.coax rw_who_ok)
+EM_LORE :: 1600;       // bytes in a character's lore (400 characters)
+EM_QUEST :: 2244;      // bytes in its quest: an ask of 160 characters, three steps and a reward of 100, and the bars
 
 EdModel :: struct {
   ok: bool;
@@ -123,6 +132,10 @@ EdModel :: struct {
   // a realm's asks (#13528): whether the world keeps them, and each one
   asks: bool;
   naq: int; aq_id: [EM_ASKS] int; aq_state: [EM_ASKS] int; aq_words: [EM_ASKS] [EM_QWORDS] u8; aq_words_n: [EM_ASKS] int;
+  // a realm's characters' lore and quests (#13526): the tables, and the character the player is by
+  chars: bool; ch_lore: [WE_NAME] u8; ch_lore_n: int; ch_quests: [WE_NAME] u8; ch_quests_n: int;
+  ch: bool; ch_who: [EM_WHO] u8; ch_who_n: int; ch_name: [EM_NAME] u8; ch_name_n: int;
+  cl_id: int; cl_text: [EM_LORE] u8; cl_text_n: int; cq_id: int; cq_text: [EM_QUEST] u8; cq_text_n: int;
   here: bool; here_x: int; here_z: int;
   no: [EM_WORDS] u8; no_n: int;
 }
@@ -136,65 +149,66 @@ em_text_ok :: (s: string, most: int) -> bool {
 
 // ---- the writer, a line at a time (n: bytes written so far; past out.count when it does not fit)
 
+// The writers' pieces: a space and then the words, or the number.
+em_sp :: (out: [] u8, n: int, s: string) -> int { return ct_put(out, ct_put(out, n, " "), s); }
+em_spi :: (out: [] u8, n: int, v: int) -> int { return ct_put_int(out, ct_put(out, n, " "), v); }
+// A line of its head and a content table's name.
+em_named :: (out: [] u8, at: int, head: string, name: string) -> int {
+  if !ct_name_ok(name) { return out.count + 1; }
+  return ct_put(out, ct_put(out, ct_put(out, at, head), name), "\n");
+}
+// A line of its head, an ID and a name.
+em_idn :: (out: [] u8, at: int, head: string, id: int, name: string) -> int { return ct_put(out, em_sp(out, ct_put_int(out, ct_put(out, at, head), id), name), "\n"); }
 em_begin :: (out: [] u8, world: string, lane: int, rev: int, undo: int, redo: int, sel: int) -> int {
   lanes := WE_LANE;
   if !we_world_ok(world) || lane < 0 || lane > 1 || rev < 0 || undo < 0 || redo < 0 || sel < 0 { return out.count + 1; }
-  n := ct_put(out, 0, EM_SCHEMA); n = ct_put(out, n, " "); n = ct_put(out, n, world);
-  n = ct_put(out, n, " "); n = ct_put(out, n, lanes[lane]);
-  n = ct_put(out, n, " "); n = ct_put_int(out, n, rev);
-  n = ct_put(out, n, " "); n = ct_put_int(out, n, undo);
-  n = ct_put(out, n, " "); n = ct_put_int(out, n, redo);
-  n = ct_put(out, n, " "); n = ct_put_int(out, n, sel);
+  n := ct_put(out, 0, EM_SCHEMA); n = em_sp(out, n, world);
+  n = em_sp(out, n, lanes[lane]);
+  n = em_spi(out, n, rev);
+  n = em_spi(out, n, undo);
+  n = em_spi(out, n, redo);
+  n = em_spi(out, n, sel);
   return ct_put(out, n, "\n");
 }
 em_cols :: (out: [] u8, at: int, cols: [] bool) -> int {
   names := WE_COL;
   n := ct_put(out, at, "cols");
-  for k: 0..<WE_COLS { if k < cols.count && cols[k] { n = ct_put(out, n, " "); n = ct_put(out, n, names[k]); } }
+  for k: 0..<WE_COLS { if k < cols.count && cols[k] { n = em_sp(out, n, names[k]); } }
   return ct_put(out, n, "\n");
 }
-em_table :: (out: [] u8, at: int, name: string) -> int {
-  if !ct_name_ok(name) { return out.count + 1; }
-  n := ct_put(out, at, "table "); n = ct_put(out, n, name);
-  return ct_put(out, n, "\n");
-}
-em_templates :: (out: [] u8, at: int, name: string) -> int {
-  if !ct_name_ok(name) { return out.count + 1; }
-  n := ct_put(out, at, "templates "); n = ct_put(out, n, name);
-  return ct_put(out, n, "\n");
-}
+em_table :: (out: [] u8, at: int, name: string) -> int { return em_named(out, at, "table ", name); }
+em_templates :: (out: [] u8, at: int, name: string) -> int { return em_named(out, at, "templates ", name); }
 // A template: its name line, then its parts line.
 em_template :: (out: [] u8, at: int, id: int, name: string, parts: string) -> int {
   if id < 1 || !em_text_ok(name, EM_NAME) || !em_text_ok(parts, EM_PARTS) { return out.count + 1; }
-  n := ct_put(out, at, "t "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, name);
-  n = ct_put(out, n, "\ntp "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, parts);
+  n := ct_put(out, at, "t "); n = ct_put_int(out, n, id); n = em_sp(out, n, name);
+  n = ct_put(out, n, "\ntp "); n = ct_put_int(out, n, id); n = em_sp(out, n, parts);
   return ct_put(out, n, "\n");
 }
 em_kind :: (out: [] u8, at: int, id: int, name: string) -> int {
   if id < 0 || !em_text_ok(name, EM_NAME) { return out.count + 1; }
-  n := ct_put(out, at, "k "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, name);
-  return ct_put(out, n, "\n");
+  return em_idn(out, at, "k ", id, name);
 }
 em_entity :: (out: [] u8, at: int, id: int, kind: int, x: int, y: int, z: int, yaw: int, scale: int) -> int {
   if id < 1 || kind < 0 { return out.count + 1; }
   n := ct_put(out, at, "e "); n = ct_put_int(out, n, id);
-  n = ct_put(out, n, " "); n = ct_put_int(out, n, kind);
-  n = ct_put(out, n, " "); n = ct_put_int(out, n, x);
-  n = ct_put(out, n, " "); n = ct_put_int(out, n, y);
-  n = ct_put(out, n, " "); n = ct_put_int(out, n, z);
-  n = ct_put(out, n, " "); n = ct_put_int(out, n, yaw);
-  n = ct_put(out, n, " "); n = ct_put_int(out, n, scale);
+  n = em_spi(out, n, kind);
+  n = em_spi(out, n, x);
+  n = em_spi(out, n, y);
+  n = em_spi(out, n, z);
+  n = em_spi(out, n, yaw);
+  n = em_spi(out, n, scale);
   return ct_put(out, n, "\n");
 }
 em_cell :: (out: [] u8, at: int, kind: int, col: string, value: string) -> int {
   if kind < 0 || !ct_name_ok(col) || !em_text_ok(value, EM_VALUE) { return out.count + 1; }
   n := ct_put(out, at, "c "); n = ct_put_int(out, n, kind);
-  n = ct_put(out, n, " "); n = ct_put(out, n, col); n = ct_put(out, n, " "); n = ct_put(out, n, value);
+  n = em_sp(out, n, col); n = em_sp(out, n, value);
   return ct_put(out, n, "\n");
 }
 em_all :: (out: [] u8, at: int, n_all: int, cap: int) -> int {
   if n_all < 0 || cap < n_all { return out.count + 1; }
-  n := ct_put(out, at, "all "); n = ct_put_int(out, n, n_all); n = ct_put(out, n, " "); n = ct_put_int(out, n, cap);
+  n := ct_put(out, at, "all "); n = ct_put_int(out, n, n_all); n = em_spi(out, n, cap);
   return ct_put(out, n, "\n");
 }
 em_kinds_all :: (out: [] u8, at: int, n_all: int) -> int {
@@ -205,34 +219,28 @@ em_kinds_all :: (out: [] u8, at: int, n_all: int) -> int {
 em_local :: (out: [] u8, at: int) -> int { return ct_put(out, at, "local\n"); }
 em_land :: (out: [] u8, at: int, lo: int, hi: int) -> int {
   if lo < 1 || hi < lo || hi > WE_REACH { return out.count + 1; }
-  n := ct_put(out, at, "land "); n = ct_put_int(out, n, lo); n = ct_put(out, n, " "); n = ct_put_int(out, n, hi);
+  n := ct_put(out, at, "land "); n = ct_put_int(out, n, lo); n = em_spi(out, n, hi);
   return ct_put(out, n, "\n");
 }
 em_mat :: (out: [] u8, at: int, id: int, name: string) -> int {
   if id < 0 || id > 255 || !em_text_ok(name, EM_NAME) { return out.count + 1; }
-  n := ct_put(out, at, "m "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, name);
-  return ct_put(out, n, "\n");
+  return em_idn(out, at, "m ", id, name);
 }
-em_plans :: (out: [] u8, at: int, name: string) -> int {
-  if !ct_name_ok(name) { return out.count + 1; }
-  n := ct_put(out, at, "plans "); n = ct_put(out, n, name);
-  return ct_put(out, n, "\n");
-}
+em_plans :: (out: [] u8, at: int, name: string) -> int { return em_named(out, at, "plans ", name); }
 em_clock :: (out: [] u8, at: int, name: string, when: string) -> int {
   if !ct_name_ok(name) || !ct_name_ok(when) { return out.count + 1; }
-  n := ct_put(out, at, "clock "); n = ct_put(out, n, name); n = ct_put(out, n, " "); n = ct_put(out, n, when);
+  n := ct_put(out, at, "clock "); n = ct_put(out, n, name); n = em_sp(out, n, when);
   return ct_put(out, n, "\n");
 }
 em_actor :: (out: [] u8, at: int, id: int, name: string) -> int {
   if id < 1 || !em_text_ok(name, EM_NAME) { return out.count + 1; }
-  n := ct_put(out, at, "a "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, name);
-  return ct_put(out, n, "\n");
+  return em_idn(out, at, "a ", id, name);
 }
 em_plan :: (out: [] u8, at: int, id: int, when: string, act: string, speed: int, notice: int, on: string, route: string) -> int {
   if id < 1 || speed < 0 || notice < 0 || !ct_name_ok(when) || !ct_name_ok(act) || !ct_name_ok(on) || !em_text_ok(route, EM_ROUTE) { return out.count + 1; }
-  n := ct_put(out, at, "p "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, when); n = ct_put(out, n, " "); n = ct_put(out, n, act);
-  n = ct_put(out, n, " "); n = ct_put_int(out, n, speed); n = ct_put(out, n, " "); n = ct_put_int(out, n, notice); n = ct_put(out, n, " "); n = ct_put(out, n, on);
-  n = ct_put(out, n, " "); n = ct_put(out, n, route);
+  n := ct_put(out, at, "p "); n = ct_put_int(out, n, id); n = em_sp(out, n, when); n = em_sp(out, n, act);
+  n = em_spi(out, n, speed); n = em_spi(out, n, notice); n = em_sp(out, n, on);
+  n = em_sp(out, n, route);
   return ct_put(out, n, "\n");
 }
 em_asel :: (out: [] u8, at: int, id: int) -> int {
@@ -240,15 +248,10 @@ em_asel :: (out: [] u8, at: int, id: int) -> int {
   n := ct_put(out, at, "as "); n = ct_put_int(out, n, id);
   return ct_put(out, n, "\n");
 }
-em_scripts :: (out: [] u8, at: int, name: string) -> int {
-  if !ct_name_ok(name) { return out.count + 1; }
-  n := ct_put(out, at, "scripts "); n = ct_put(out, n, name);
-  return ct_put(out, n, "\n");
-}
+em_scripts :: (out: [] u8, at: int, name: string) -> int { return em_named(out, at, "scripts ", name); }
 em_script_kind :: (out: [] u8, at: int, kind: int, name: string) -> int {
   if kind < 0 || kind > 255 || !em_text_ok(name, EM_NAME) { return out.count + 1; }
-  n := ct_put(out, at, "sk "); n = ct_put_int(out, n, kind); n = ct_put(out, n, " "); n = ct_put(out, n, name);
-  return ct_put(out, n, "\n");
+  return em_idn(out, at, "sk ", kind, name);
 }
 // Whom a script drives, as its row says it: "kind K" (0 to 255) or "who N" (1 to 99), written one way.
 em_for_ok :: (target: string) -> bool {
@@ -274,14 +277,14 @@ em_hash_ok :: (hash: string) -> bool {
 }
 em_script :: (out: [] u8, at: int, id: int, name: string, hash: string, target: string) -> int {
   if id < 1 || id > EM_SCRIPTS || !em_sname_ok(name) || !em_hash_ok(hash) || !em_for_ok(target) { return out.count + 1; }
-  n := ct_put(out, at, "s "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, name); n = ct_put(out, n, " "); n = ct_put(out, n, hash);
-  n = ct_put(out, n, " "); n = ct_put(out, n, target);
+  n := ct_put(out, at, "s "); n = ct_put_int(out, n, id); n = em_sp(out, n, name); n = em_sp(out, n, hash);
+  n = em_sp(out, n, target);
   return ct_put(out, n, "\n");
 }
 em_at_once :: (out: [] u8, at: int) -> int { return ct_put(out, at, "atonce\n"); }
 em_list :: (out: [] u8, at: int, table: string, col: string, title: string) -> int {
   if !ct_name_ok(table) || !ct_name_ok(col) || !em_text_ok(title, EM_NAME) { return out.count + 1; }
-  n := ct_put(out, at, "list "); n = ct_put(out, n, table); n = ct_put(out, n, " "); n = ct_put(out, n, col); n = ct_put(out, n, " "); n = ct_put(out, n, title);
+  n := ct_put(out, at, "list "); n = ct_put(out, n, table); n = em_sp(out, n, col); n = em_sp(out, n, title);
   return ct_put(out, n, "\n");
 }
 em_switch :: (out: [] u8, at: int, row: int, on: bool, label: string) -> int { return em_switch_as(out, at, "sw ", row, on, label); }
@@ -294,8 +297,8 @@ em_switch_as :: (out: [] u8, at: int, head: string, row: int, on: bool, label: s
 // A visitor's proposal waiting for the owner: its ID, where the thing would stand, what it is, and who proposed it.
 em_card :: (out: [] u8, at: int, id: int, x: int, z: int, thing: string, who: string) -> int {
   if id < 1 || x < -WE_REACH || x > WE_REACH || z < -WE_REACH || z > WE_REACH || !em_text_ok(thing, EM_NAME) || !em_text_ok(who, EM_NAME) { return out.count + 1; }
-  n := ct_put(out, at, "card "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put_int(out, n, x); n = ct_put(out, n, " "); n = ct_put_int(out, n, z);
-  n = ct_put(out, n, " "); n = ct_put(out, n, thing); n = ct_put(out, n, "\nfrom "); n = ct_put(out, n, who);
+  n := ct_put(out, at, "card "); n = ct_put_int(out, n, id); n = em_spi(out, n, x); n = em_spi(out, n, z);
+  n = em_sp(out, n, thing); n = ct_put(out, n, "\nfrom "); n = ct_put(out, n, who);
   return ct_put(out, n, "\n");
 }
 // How many proposals wait in all, when the model lists fewer.
@@ -309,12 +312,36 @@ em_asks :: (out: [] u8, at: int) -> int { return ct_put(out, at, "asks\n"); }
 em_ask :: (out: [] u8, at: int, id: int, state: int, words: string) -> int {
   if id < 1 || state < 0 || state > 2 || !em_text_ok(words, EM_QWORDS) { return out.count + 1; }
   states := EM_QSTATE;
-  n := ct_put(out, at, "q "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, states[state]); n = ct_put(out, n, " "); n = ct_put(out, n, words);
+  n := ct_put(out, at, "q "); n = ct_put_int(out, n, id); n = em_sp(out, n, states[state]); n = em_sp(out, n, words);
+  return ct_put(out, n, "\n");
+}
+// The content tables a realm's characters' lore and quests are rows of.
+em_chars :: (out: [] u8, at: int, lore: string, quests: string) -> int {
+  if !ct_name_ok(lore) || !ct_name_ok(quests) { return out.count + 1; }
+  n := ct_put(out, at, "chars "); n = ct_put(out, n, lore); n = em_sp(out, n, quests);
+  return ct_put(out, n, "\n");
+}
+// A character's key: a lowercase letter or a digit, then those or '-', EM_WHO bytes at most.
+em_who_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > EM_WHO { return false; }
+  for c, i: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c == '-' && i > 0)) { return false; } }
+  return true;
+}
+// A quest as its row's cells say it, after its giver: "ASK|STEP|STEP|STEP|REWARD", the ask not empty.
+em_quest_ok :: (q: string) -> bool { return em_text_ok(q, EM_QUEST) && ct_parts(q, '|') == 5 && ct_part(q, '|', 0).count > 0; }
+// The character the player is by: its key and name, then its lore's row and text ("" for none), then its quest's.
+em_char :: (out: [] u8, at: int, who: string, name: string, lore_id: int, lore: string, quest_id: int, quest: string) -> int {
+  if !em_who_ok(who) || !em_text_ok(name, EM_NAME) || lore_id < 1 || quest_id < 1 || (lore.count > 0 && !em_text_ok(lore, EM_LORE)) || (quest.count > 0 && !em_quest_ok(quest)) { return out.count + 1; }
+  n := ct_put(out, at, "char "); n = ct_put(out, n, who); n = em_sp(out, n, name);
+  n = ct_put(out, n, "\ncl "); n = ct_put_int(out, n, lore_id);
+  if lore.count > 0 { n = em_sp(out, n, lore); }
+  n = ct_put(out, n, "\ncq "); n = ct_put_int(out, n, quest_id);
+  if quest.count > 0 { n = em_sp(out, n, quest); }
   return ct_put(out, n, "\n");
 }
 em_here :: (out: [] u8, at: int, x: int, z: int) -> int {
   if x < -WE_REACH || x > WE_REACH || z < -WE_REACH || z > WE_REACH { return out.count + 1; }
-  n := ct_put(out, at, "here "); n = ct_put_int(out, n, x); n = ct_put(out, n, " "); n = ct_put_int(out, n, z);
+  n := ct_put(out, at, "here "); n = ct_put_int(out, n, x); n = em_spi(out, n, z);
   return ct_put(out, n, "\n");
 }
 em_no :: (out: [] u8, at: int, words: string) -> int {
@@ -358,6 +385,11 @@ em_write :: (m: [] EdModel, out: [] u8) -> string {
   for k: 0..<m[0].naq { n = em_ask(out, n, m[0].aq_id[k], m[0].aq_state[k], cast(string) m[0].aq_words[k][0..<m[0].aq_words_n[k]]); }
   for k: 0..<m[0].nq { n = em_card(out, n, m[0].q_id[k], m[0].q_x[k], m[0].q_z[k], cast(string) m[0].q_thing[k][0..<m[0].q_thing_n[k]], cast(string) m[0].q_who[k][0..<m[0].q_who_n[k]]); }
   if m[0].q_all > 0 { n = em_cards_all(out, n, m[0].q_all); }
+  if m[0].chars { n = em_chars(out, n, cast(string) m[0].ch_lore[0..<m[0].ch_lore_n], cast(string) m[0].ch_quests[0..<m[0].ch_quests_n]); }
+  if m[0].chars && m[0].ch {
+    n = em_char(out, n, cast(string) m[0].ch_who[0..<m[0].ch_who_n], cast(string) m[0].ch_name[0..<m[0].ch_name_n], m[0].cl_id, cast(string) m[0].cl_text[0..<m[0].cl_text_n],
+                m[0].cq_id, cast(string) m[0].cq_text[0..<m[0].cq_text_n]);
+  }
   if m[0].here { n = em_here(out, n, m[0].here_x, m[0].here_z); }
   if m[0].no_n > 0 { n = em_no(out, n, cast(string) m[0].no[0..<m[0].no_n]); }
   if n > out.count { return ""; }
@@ -367,6 +399,11 @@ em_write :: (m: [] EdModel, out: [] u8) -> string {
 // ---- the reader
 
 // The rest of a line after its first `skip` words.
+// The line's part k as a number, and part k (or the rest of the line from it) copied into `to`: em_read's
+// readers of a line.
+em_num :: (line: string, k: int) -> int { return ct_num(ct_part(line, ' ', k)).v; }
+em_word :: (to: [] u8, line: string, k: int) -> int { return em_copy(to, ct_part(line, ' ', k)); }
+em_tail :: (to: [] u8, line: string, k: int) -> int { return em_copy(to, em_rest(line, k)); }
 em_rest :: (line: string, skip: int) -> string {
   at := 0; seen := 0;
   while at < line.count && seen < skip { if line[at] == ' ' { seen += 1; } at += 1; }
@@ -384,6 +421,7 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
   m[0].ptable_n = 0; m[0].ctable_n = 0; m[0].clock_n = 0; m[0].na = 0; m[0].np = 0; m[0].asel = 0;
   m[0].stable_n = 0; m[0].nsk = 0; m[0].ns = 0;
   m[0].at_once = false; m[0].nl = 0; m[0].nw = 0; m[0].nq = 0; m[0].q_all = 0; m[0].asks = false; m[0].naq = 0;
+  m[0].chars = false; m[0].ch_lore_n = 0; m[0].ch_quests_n = 0; m[0].ch = false; m[0].ch_who_n = 0; m[0].ch_name_n = 0; m[0].cl_id = 0; m[0].cl_text_n = 0; m[0].cq_id = 0; m[0].cq_text_n = 0;
   for k: 0..<WE_COLS { m[0].cols[k] = false; }
   if text.count < EM_SCHEMA.count || text.count > EM_BYTES { return false; }
   lines := ct_parts(text, '\n');
@@ -400,112 +438,120 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
     if word == "cols" {
       for k: 1..<ct_parts(line, ' ') { c := we_col(ct_part(line, ' ', k)); if c >= 0 { m[0].cols[c] = true; } }
     } else if word == "table" {
-      m[0].table_n = em_copy(m[0].table[..], em_rest(line, 1));
+      m[0].table_n = em_tail(m[0].table[..], line, 1);
     } else if word == "templates" {
-      m[0].ttable_n = em_copy(m[0].ttable[..], em_rest(line, 1));
+      m[0].ttable_n = em_tail(m[0].ttable[..], line, 1);
     } else if word == "t" && m[0].nt < EM_TEMPLATES {
       k := m[0].nt;
-      m[0].t_id[k] = ct_num(ct_part(line, ' ', 1)).v;
-      m[0].t_name_n[k] = em_copy(m[0].t_name[k][..], em_rest(line, 2));
+      m[0].t_id[k] = em_num(line, 1);
+      m[0].t_name_n[k] = em_tail(m[0].t_name[k][..], line, 2);
       m[0].t_parts_n[k] = 0;
       m[0].nt += 1;
     } else if word == "tp" && m[0].nt > 0 {
       // the parts of the template named on the line before
-      m[0].t_parts_n[m[0].nt - 1] = em_copy(m[0].t_parts[m[0].nt - 1][..], em_rest(line, 2));
+      m[0].t_parts_n[m[0].nt - 1] = em_tail(m[0].t_parts[m[0].nt - 1][..], line, 2);
     } else if word == "k" && m[0].nk < EM_KINDS {
       k := m[0].nk;
-      m[0].kind_id[k] = ct_num(ct_part(line, ' ', 1)).v;
-      m[0].kind_n[k] = em_copy(m[0].kind_name[k][..], em_rest(line, 2));
+      m[0].kind_id[k] = em_num(line, 1);
+      m[0].kind_n[k] = em_tail(m[0].kind_name[k][..], line, 2);
       m[0].nk += 1;
     } else if word == "e" && m[0].ne < EM_ENTS {
       k := m[0].ne;
-      m[0].e_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].e_kind[k] = ct_num(ct_part(line, ' ', 2)).v;
-      m[0].e_x[k] = ct_num(ct_part(line, ' ', 3)).v; m[0].e_y[k] = ct_num(ct_part(line, ' ', 4)).v; m[0].e_z[k] = ct_num(ct_part(line, ' ', 5)).v;
-      m[0].e_yaw[k] = ct_num(ct_part(line, ' ', 6)).v; m[0].e_scale[k] = ct_num(ct_part(line, ' ', 7)).v;
+      m[0].e_id[k] = em_num(line, 1); m[0].e_kind[k] = em_num(line, 2);
+      m[0].e_x[k] = em_num(line, 3); m[0].e_y[k] = em_num(line, 4); m[0].e_z[k] = em_num(line, 5);
+      m[0].e_yaw[k] = em_num(line, 6); m[0].e_scale[k] = em_num(line, 7);
       m[0].ne += 1;
     } else if word == "c" && m[0].nc < EM_CELLS {
       k := m[0].nc;
-      m[0].c_kind[k] = ct_num(ct_part(line, ' ', 1)).v;
-      m[0].c_col_n[k] = em_copy(m[0].c_col[k][..], ct_part(line, ' ', 2));
-      m[0].c_val_n[k] = em_copy(m[0].c_val[k][..], em_rest(line, 3));
+      m[0].c_kind[k] = em_num(line, 1);
+      m[0].c_col_n[k] = em_word(m[0].c_col[k][..], line, 2);
+      m[0].c_val_n[k] = em_tail(m[0].c_val[k][..], line, 3);
       m[0].nc += 1;
     } else if word == "all" {
-      m[0].all = true; m[0].all_n = ct_num(ct_part(line, ' ', 1)).v; m[0].all_cap = ct_num(ct_part(line, ' ', 2)).v;
+      m[0].all = true; m[0].all_n = em_num(line, 1); m[0].all_cap = em_num(line, 2);
     } else if word == "kinds" {
-      m[0].kinds_all = ct_num(ct_part(line, ' ', 1)).v;
+      m[0].kinds_all = em_num(line, 1);
     } else if word == "local" {
       m[0].local = true;
     } else if word == "land" {
-      m[0].land = true; m[0].land_lo = ct_num(ct_part(line, ' ', 1)).v; m[0].land_hi = ct_num(ct_part(line, ' ', 2)).v;
+      m[0].land = true; m[0].land_lo = em_num(line, 1); m[0].land_hi = em_num(line, 2);
     } else if word == "m" && m[0].nm < EM_MATS {
       k := m[0].nm;
-      m[0].mat_id[k] = ct_num(ct_part(line, ' ', 1)).v;
-      m[0].mat_n[k] = em_copy(m[0].mat_name[k][..], em_rest(line, 2));
+      m[0].mat_id[k] = em_num(line, 1);
+      m[0].mat_n[k] = em_tail(m[0].mat_name[k][..], line, 2);
       m[0].nm += 1;
     } else if word == "plans" {
-      m[0].ptable_n = em_copy(m[0].ptable[..], em_rest(line, 1));
+      m[0].ptable_n = em_tail(m[0].ptable[..], line, 1);
     } else if word == "clock" {
-      m[0].ctable_n = em_copy(m[0].ctable[..], ct_part(line, ' ', 1)); m[0].clock_n = em_copy(m[0].clock[..], em_rest(line, 2));
+      m[0].ctable_n = em_word(m[0].ctable[..], line, 1); m[0].clock_n = em_tail(m[0].clock[..], line, 2);
     } else if word == "a" && m[0].na < EM_ACTORS {
       k := m[0].na;
-      m[0].a_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].a_name_n[k] = em_copy(m[0].a_name[k][..], em_rest(line, 2));
+      m[0].a_id[k] = em_num(line, 1); m[0].a_name_n[k] = em_tail(m[0].a_name[k][..], line, 2);
       m[0].na += 1;
     } else if word == "p" && m[0].np < EM_PLANS {
       k := m[0].np;
-      m[0].p_id[k] = ct_num(ct_part(line, ' ', 1)).v;
-      m[0].p_when_n[k] = em_copy(m[0].p_when[k][..], ct_part(line, ' ', 2)); m[0].p_do_n[k] = em_copy(m[0].p_do[k][..], ct_part(line, ' ', 3));
-      m[0].p_speed[k] = ct_num(ct_part(line, ' ', 4)).v; m[0].p_notice[k] = ct_num(ct_part(line, ' ', 5)).v;
-      m[0].p_on_n[k] = em_copy(m[0].p_on[k][..], ct_part(line, ' ', 6)); m[0].p_route_n[k] = em_copy(m[0].p_route[k][..], em_rest(line, 7));
+      m[0].p_id[k] = em_num(line, 1);
+      m[0].p_when_n[k] = em_word(m[0].p_when[k][..], line, 2); m[0].p_do_n[k] = em_word(m[0].p_do[k][..], line, 3);
+      m[0].p_speed[k] = em_num(line, 4); m[0].p_notice[k] = em_num(line, 5);
+      m[0].p_on_n[k] = em_word(m[0].p_on[k][..], line, 6); m[0].p_route_n[k] = em_tail(m[0].p_route[k][..], line, 7);
       m[0].np += 1;
     } else if word == "as" {
-      m[0].asel = ct_num(ct_part(line, ' ', 1)).v;
+      m[0].asel = em_num(line, 1);
     } else if word == "scripts" {
-      m[0].stable_n = em_copy(m[0].stable[..], em_rest(line, 1));
+      m[0].stable_n = em_tail(m[0].stable[..], line, 1);
     } else if word == "sk" && m[0].nsk < EM_SKINDS {
       k := m[0].nsk;
-      m[0].sk_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].sk_name_n[k] = em_copy(m[0].sk_name[k][..], em_rest(line, 2));
+      m[0].sk_id[k] = em_num(line, 1); m[0].sk_name_n[k] = em_tail(m[0].sk_name[k][..], line, 2);
       m[0].nsk += 1;
     } else if word == "s" && m[0].ns < EM_SCRIPTS {
       k := m[0].ns; hash := ct_part(line, ' ', 3);
-      m[0].s_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].s_name_n[k] = em_copy(m[0].s_name[k][..], ct_part(line, ' ', 2));
+      m[0].s_id[k] = em_num(line, 1); m[0].s_name_n[k] = em_word(m[0].s_name[k][..], line, 2);
       for j: 0..<64 { m[0].s_hash[k][j] = ifx j < hash.count then hash[j] else cast(u8) ' '; }
-      m[0].s_for_n[k] = em_copy(m[0].s_for[k][..], em_rest(line, 4));
+      m[0].s_for_n[k] = em_tail(m[0].s_for[k][..], line, 4);
       m[0].ns += 1;
     } else if word == "atonce" {
       m[0].at_once = true;
     } else if word == "list" && m[0].nl < EM_LISTS {
       l := m[0].nl;
-      m[0].l_table_n[l] = em_copy(m[0].l_table[l][..], ct_part(line, ' ', 1)); m[0].l_col_n[l] = em_copy(m[0].l_col[l][..], ct_part(line, ' ', 2));
-      m[0].l_title_n[l] = em_copy(m[0].l_title[l][..], em_rest(line, 3));
+      m[0].l_table_n[l] = em_word(m[0].l_table[l][..], line, 1); m[0].l_col_n[l] = em_word(m[0].l_col[l][..], line, 2);
+      m[0].l_title_n[l] = em_tail(m[0].l_title[l][..], line, 3);
       m[0].nl += 1;
     } else if word == "sw" && m[0].nl > 0 && m[0].nw < EM_SWITCHES {
       // a row of the list named on the nearest `list` line above
       k := m[0].nw;
-      m[0].w_list[k] = m[0].nl - 1; m[0].w_row[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].w_on[k] = ct_part(line, ' ', 2) == "1";
-      m[0].w_label_n[k] = em_copy(m[0].w_label[k][..], em_rest(line, 3));
+      m[0].w_list[k] = m[0].nl - 1; m[0].w_row[k] = em_num(line, 1); m[0].w_on[k] = ct_part(line, ' ', 2) == "1";
+      m[0].w_label_n[k] = em_tail(m[0].w_label[k][..], line, 3);
       m[0].nw += 1;
     } else if word == "card" && m[0].nq < EM_CARDS {
       k := m[0].nq;
-      m[0].q_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].q_x[k] = ct_num(ct_part(line, ' ', 2)).v; m[0].q_z[k] = ct_num(ct_part(line, ' ', 3)).v;
-      m[0].q_thing_n[k] = em_copy(m[0].q_thing[k][..], em_rest(line, 4)); m[0].q_who_n[k] = 0;
+      m[0].q_id[k] = em_num(line, 1); m[0].q_x[k] = em_num(line, 2); m[0].q_z[k] = em_num(line, 3);
+      m[0].q_thing_n[k] = em_tail(m[0].q_thing[k][..], line, 4); m[0].q_who_n[k] = 0;
       m[0].nq += 1;
     } else if word == "from" && m[0].nq > 0 {
       // who proposed the card named on the line before
-      m[0].q_who_n[m[0].nq - 1] = em_copy(m[0].q_who[m[0].nq - 1][..], em_rest(line, 1));
+      m[0].q_who_n[m[0].nq - 1] = em_tail(m[0].q_who[m[0].nq - 1][..], line, 1);
     } else if word == "cards" {
-      m[0].q_all = ct_num(ct_part(line, ' ', 1)).v;
+      m[0].q_all = em_num(line, 1);
     } else if word == "asks" && line == "asks" {
       m[0].asks = true;
     } else if word == "q" && m[0].naq < EM_ASKS {
       k := m[0].naq; states := EM_QSTATE;
-      m[0].aq_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].aq_state[k] = -1;
+      m[0].aq_id[k] = em_num(line, 1); m[0].aq_state[k] = -1;
       for j: 0..<3 { if ct_part(line, ' ', 2) == states[j] { m[0].aq_state[k] = j; } }   // none: em_ask writes nothing, and the read fails
-      m[0].aq_words_n[k] = em_copy(m[0].aq_words[k][..], em_rest(line, 3));
+      m[0].aq_words_n[k] = em_tail(m[0].aq_words[k][..], line, 3);
       m[0].naq += 1;
+    } else if word == "chars" {
+      m[0].chars = true; m[0].ch_lore_n = em_word(m[0].ch_lore[..], line, 1); m[0].ch_quests_n = em_tail(m[0].ch_quests[..], line, 2);
+    } else if word == "char" {
+      m[0].ch = true; m[0].ch_who_n = em_word(m[0].ch_who[..], line, 1); m[0].ch_name_n = em_tail(m[0].ch_name[..], line, 2);
+    } else if word == "cl" {
+      m[0].cl_id = em_num(line, 1); m[0].cl_text_n = em_tail(m[0].cl_text[..], line, 2);
+    } else if word == "cq" {
+      m[0].cq_id = em_num(line, 1); m[0].cq_text_n = em_tail(m[0].cq_text[..], line, 2);
     } else if word == "here" {
-      m[0].here = true; m[0].here_x = ct_num(ct_part(line, ' ', 1)).v; m[0].here_z = ct_num(ct_part(line, ' ', 2)).v;
+      m[0].here = true; m[0].here_x = em_num(line, 1); m[0].here_z = em_num(line, 2);
     } else if word == "no" {
-      m[0].no_n = em_copy(m[0].no[..], em_rest(line, 1));
+      m[0].no_n = em_tail(m[0].no[..], line, 1);
     }
   }
   // only the bytes the writer writes
@@ -795,4 +841,47 @@ em_test_cards :: (out: [] u8) -> string {
   #assert em_read(m, cast(string) o[0..<n], h[0].scratch[..]) && m[0].nq == EM_CARDS;
   n = em_card(o, n, EM_CARDS + 1, 0, 0, "barrel", "V");
   #assert !em_read(m, cast(string) o[0..<n], h[0].scratch[..]);
+}
+// A realm's characters' lore and quests (#13526): the tables, and the character the player is by. The fixture
+// proto/world/model-v1.json holds as "chars".
+em_test_chars :: (out: [] u8) -> string {
+  none: [WE_COLS] bool;
+  n := em_begin(out, "fairy-forest", 0, 9, 2, 0, 0);
+  n = em_cols(out, n, none[..]);
+  n = em_at_once(out, n);
+  n = em_chars(out, n, "lore", "quests");
+  n = em_char(out, n, "old-mott", "Old Mott", 2, "He kept the bridge, and the oar.", 1, "Bring my oar|Find the oar||Bring it back|A lantern");
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+#test "a realm's characters: the lore and quests tables, then the character the player is by, its lore and its quest" {
+  h: [1] EmTest; m := h[0].m[..];
+  text := em_test_chars(h[0].out[..]);
+  #assert text == "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\natonce\nchars lore quests\nchar old-mott Old Mott\ncl 2 He kept the bridge, and the oar.\ncq 1 Bring my oar|Find the oar||Bring it back|A lantern\n";
+  #assert em_read(m, text, h[0].scratch[..]) && m[0].chars && m[0].ch && m[0].cl_id == 2 && m[0].cq_id == 1;
+  lt := m[0].ch_lore; qt := m[0].ch_quests; wh := m[0].ch_who; nm := m[0].ch_name; cl := m[0].cl_text; cq := m[0].cq_text;
+  #assert cast(string) lt[0..<m[0].ch_lore_n] == "lore" && cast(string) qt[0..<m[0].ch_quests_n] == "quests" && cast(string) wh[0..<m[0].ch_who_n] == "old-mott" && cast(string) nm[0..<m[0].ch_name_n] == "Old Mott";
+  #assert cast(string) cl[0..<m[0].cl_text_n] == "He kept the bridge, and the oar." && cast(string) cq[0..<m[0].cq_text_n] == "Bring my oar|Find the oar||Bring it back|A lantern";
+  // a character with neither: the rows they would be
+  o := h[0].out[..];
+  n := em_char(o, 0, "ana", "Ana", 3, "", 2, "");
+  #assert cast(string) o[0..<n] == "char ana Ana\ncl 3\ncq 2\n";
+  head := "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\nchars lore quests\n";
+  b: [512] u8; k := ct_put(b[..], 0, head); k = ct_put(b[..], k, "char ana Ana\ncl 3\ncq 2\n");
+  #assert em_read(m, cast(string) b[0..<k], h[0].scratch[..]) && m[0].ch && m[0].cl_text_n == 0 && m[0].cq_text_n == 0;
+  // tables and no character: the player is by none
+  #assert em_read(m, head, h[0].scratch[..]) && m[0].chars && !m[0].ch;
+  // what is not one is not written or read
+  #assert em_chars(o, 0, "Lore", "quests") > EM_BYTES && em_chars(o, 0, "lore", "") > EM_BYTES;
+  #assert em_char(o, 0, "Ana", "Ana", 1, "", 1, "") > EM_BYTES && em_char(o, 0, "-a", "Ana", 1, "", 1, "") > EM_BYTES && em_char(o, 0, "ana", "", 1, "", 1, "") > EM_BYTES;
+  #assert em_char(o, 0, "ana", "Ana", 0, "", 1, "") > EM_BYTES && em_char(o, 0, "ana", "Ana", 1, "", 0, "") > EM_BYTES && em_char(o, 0, "ana", "Ana", 1, " x", 1, "") > EM_BYTES;
+  #assert em_char(o, 0, "ana", "Ana", 1, "", 1, "|a|||") > EM_BYTES && em_char(o, 0, "ana", "Ana", 1, "", 1, "a|b") > EM_BYTES && em_char(o, 0, "ana", "Ana", 1, "", 1, "a||||") < EM_BYTES;
+  #assert em_who_ok("a") && em_who_ok("a-1") && !em_who_ok("") && !em_who_ok("a_b") && em_quest_ok("a||||") && !em_quest_ok("||||");
+  for bad: [6] string.["char ana Ana\n", "char ana Ana\ncl 3\n", "char ana Ana\ncq 2\ncl 3\n", "char ana Ana\ncl 3 \ncq 2\n", "char ana Ana\ncl 0\ncq 2\n", "chars lore\n"] {
+    k = ct_put(b[..], 0, "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\n");
+    if bad != "chars lore\n" { k = ct_put(b[..], k, "chars lore quests\n"); }
+    k = ct_put(b[..], k, bad);
+    #assert !em_read(m, cast(string) b[0..<k], h[0].scratch[..]);
+  }
+  // a character's line with no tables is no model's
+  #assert !em_read(m, "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\nchar ana Ana\ncl 3\ncq 2\n", h[0].scratch[..]);
 }

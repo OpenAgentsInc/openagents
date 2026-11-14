@@ -25,6 +25,7 @@
 #load "shell-files.coax";                       // the Files pane: the world's and its project's attachments, never a player's (#13468)
 #load "shell-scripts.coax";                     // the Scripts pane: a realm script written, built, run, swapped, published and reported (#13467)
 #load "shell-lists.coax";                       // lists of switches: a realm's board and its tools (#13478)
+#load "shell-chars.coax";                       // a realm's characters: the lore and the quest of the one the player is by (#13526)
 #load "shell-revs.coax";                        // the revisions: what the newest step changed, in the bar, and the Revisions list (#13485)
 
 ES_INBOX :: 200704;    // a model (EM_BYTES), a field's text, or a file of code as typed (RC_TEXT, and room to see that it is longer), from the host
@@ -102,6 +103,8 @@ EdShell :: struct {
   shown_sel: int; shown_rev: int;        // the thing and the revision the fields were last filled for
   pdraft: [ES_PLAN_COLS] [EM_ROUTE] u8; pdraft_n: [ES_PLAN_COLS] int;   // what is typed into the shown plan's fields (shell-actors.coax)
   pshown: int = -2; pshown_rev: int = -1;  // the actor and time, and the revision, the plan's fields were last filled for
+  cdraft: [ES_CHAR_FIELDS] [EM_LORE] u8; cdraft_n: [ES_CHAR_FIELDS] int;   // what is typed into the character's fields (shell-chars.coax)
+  cshown: [EM_WHO] u8; cshown_n: int = -1; cshown_rev: int = -1;         // the character, and the revision, they were last filled for
   acts: [ES_ACTS] [ES_ACT] u8; act_n: [ES_ACTS] int; act_kind: [ES_ACTS] int; nacts: int;
   // code: the page's module as the dev server knows it (none: no code here), the realm's files, and the one open
   code_page: [RC_PAGE] u8; code_page_n: int;
@@ -407,6 +410,17 @@ es_build_more :: (s: [] EdShell, plain: bool, filing: bool, scripting: bool, cod
   k_select_end(t, open);
   tr_attr(t, tr_find(t, "more.anchor"), AT_STATE, "end");   // near the strip's right end: its menu opens leftward
 }
+// A select of fixed choices: `names` (and `notes`, when it has them) as rows "ID.K", the current one marked; open
+// while the shell's open select is `which`.
+es_pick :: (s: [] EdShell, id: string, label: string, hint: string, which: int, names: [] string, notes: [] string, current: int) {
+  t := s[0].tree[..]; u := s[0].ui[..]; open := s[0].open == which;
+  k_select_begin(t, u, id, label, hint, open);
+  if open {
+    pre: [UI_ID] u8; buf: [UI_ID] u8; head := tr_cat(pre[..], id, ".");
+    for k: 0..<names.count { r := k_row(t, u, tr_join(buf[..], head, k), names[k], ifx k < notes.count then notes[k] else "", k == current); }
+  }
+  k_select_end(t, open);
+}
 es_build :: (s: [] EdShell) {
   t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..];
   buf: [UI_ID] u8; buf2: [UI_ID] u8; name: [EM_NAME] u8; line: [EM_WORDS] u8;
@@ -431,9 +445,7 @@ es_build :: (s: [] EdShell) {
   if !m[0].local && !m[0].at_once {
     pub := k_button(t, u, "publish", "Publish", BS_PRIMARY);
     whens := ES_WHEN; notes := ES_WHEN_NOTE;
-    k_select_begin(t, u, "when", whens[s[0].when], "When a publish reaches people", s[0].open == ES_OPEN_WHEN);
-    if s[0].open == ES_OPEN_WHEN { for k: 0..<2 { r := k_row(t, u, tr_join(buf[..], "when.", k), whens[k], notes[k], k == s[0].when); } }
-    k_select_end(t, s[0].open == ES_OPEN_WHEN);
+    es_pick(s, "when", whens[s[0].when], "When a publish reaches people", ES_OPEN_WHEN, whens[..], notes[..], s[0].when);
   }
   // the viewport: the tool the pointer is, the grid a move snaps to, a new thing at the point last tapped, the camera and the clock.
   // A world that is only lists of switches has no thing to pick or move: it has none of these (shell-lists.coax)
@@ -450,9 +462,7 @@ es_build :: (s: [] EdShell) {
   // the land's brush: its kind, what it paints, how wide it is and how hard it presses
   if landing {
     brushes := ES_BRUSH; bnotes := ES_BRUSH_NOTE;
-    k_select_begin(t, u, "brush", brushes[s[0].brush], "What the brush does to the ground", s[0].open == ES_OPEN_BRUSH);
-    if s[0].open == ES_OPEN_BRUSH { for k: 0..<WE_BRUSHES { r := k_row(t, u, tr_join(buf[..], "brush.", k), brushes[k], bnotes[k], k == s[0].brush); } }
-    k_select_end(t, s[0].open == ES_OPEN_BRUSH);
+    es_pick(s, "brush", brushes[s[0].brush], "What the brush does to the ground", ES_OPEN_BRUSH, brushes[..], bnotes[..], s[0].brush);
     if s[0].brush == 0 && m[0].nm > 0 {
       at := ifx s[0].mat < m[0].nm then s[0].mat else 0;
       mn := m[0].mat_name[at];
@@ -467,9 +477,7 @@ es_build :: (s: [] EdShell) {
     ss := k_stepper(t, "strength", "Strength", cast(string) line[0..<n0], s[0].strength > 0, s[0].strength < ES_STRENGTHS - 1);
   }
   if !landing {
-    k_select_begin(t, u, "grid", grids[s[0].grid], "The grid a moved thing snaps to", s[0].open == ES_OPEN_GRID);
-    if s[0].open == ES_OPEN_GRID { for k: 0..<ES_GRIDS { r := k_row(t, u, tr_join(buf[..], "grid.", k), grids[k], "", k == s[0].grid); } }
-    k_select_end(t, s[0].open == ES_OPEN_GRID);
+    es_pick(s, "grid", grids[s[0].grid], "The grid a moved thing snaps to", ES_OPEN_GRID, grids[..], grids[0..<0], s[0].grid);
   }
   if m[0].here && m[0].nk > 0 {
     k_select_begin(t, u, "add", "Add", "Place a new thing at the point you last tapped", s[0].open == ES_OPEN_ADD);
@@ -490,9 +498,7 @@ es_build :: (s: [] EdShell) {
     }
     k_select_end(t, s[0].open == ES_OPEN_ADD);
     counts := ES_COUNT_NAME;
-    k_select_begin(t, u, "count", counts[s[0].count], "How many of a kind Add places", s[0].open == ES_OPEN_COUNT);
-    if s[0].open == ES_OPEN_COUNT { for k: 0..<ES_COUNTS { r := k_row(t, u, tr_join(buf[..], "count.", k), counts[k], "", k == s[0].count); } }
-    k_select_end(t, s[0].open == ES_OPEN_COUNT);
+    es_pick(s, "count", counts[s[0].count], "How many of a kind Add places", ES_OPEN_COUNT, counts[..], counts[0..<0], s[0].count);
   }
   es_build_clock(s);
   fly := k_button(t, u, "fly", ifx s[0].fly then "Stop flying" else "Fly", BS_PLAIN);
@@ -536,6 +542,7 @@ es_build :: (s: [] EdShell) {
   es_fl_build_pin(s);   // a picture pinned beside the scene (shell-files.coax)
   es_build_said(s);
   es_build_lists(s);    // a realm's board and its tools, each row a switch (shell-lists.coax)
+  es_build_chars(s);    // the lore and the quest of the character the player is by (shell-chars.coax)
   if !plain {
   if s[0].ngroup > 0 {
     grp := k_card(t, u, "group", "Group");
@@ -995,7 +1002,7 @@ coaxial_editor_frame :: (s: [] EdShell, dt: f32, reduced: bool) -> int #export_c
       dm_value(d, tr_join(buf[..], "cell.", k), cast(string) val[0..<m[0].c_val_n[k]]);
     }
   }
-  if s[0].have { es_plan_fill(s, d); es_fl_fill(s, d); es_sc_fill(s, d); }
+  if s[0].have { es_plan_fill(s, d); es_char_fill(s, d); es_fl_fill(s, d); es_sc_fill(s, d); }
   s[0].animating = s[0].ui[0].busy;
   s[0].dirty = false;
   bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
@@ -1006,7 +1013,7 @@ coaxial_editor_frame :: (s: [] EdShell, dt: f32, reduced: bool) -> int #export_c
     if with > 0 { bytes = with; }
   }
   bytes = es_sc_fill_after(s, d, bytes);
-  if d[0].overflow { dm_reset(d); s[0].dirty = true; s[0].shown_sel = -1; s[0].pshown = -2; s[0].code_fill = s[0].code && s[0].code_at >= 0; s[0].sc.fill = s[0].scripts; return -1; }
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; s[0].shown_sel = -1; s[0].pshown = -2; s[0].cshown_n = -1; s[0].code_fill = s[0].code && s[0].code_at >= 0; s[0].sc.fill = s[0].scripts; return -1; }
   return bytes;
 }
 coaxial_editor_busy :: (s: [] EdShell) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
@@ -1044,14 +1051,10 @@ es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   if kind == ES_SUBMIT && id == "files.url" { _ := es_fl_click(s, "files.link"); return; }
   if id == "tname" {
     if kind == ES_INPUT {
-      lo := 0; hi := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
-      while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
-      while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
-      n := ifx hi - lo > EM_NAME then 0 else hi - lo;
-      ok := true;
-      for i: 0..<n { if s[0].inbox[lo + i] < 32 || s[0].inbox[lo + i] == 127 { ok = false; } }
-      s[0].tname_n = ifx ok then n else 0;
-      for i: 0..<s[0].tname_n { s[0].tname[i] = s[0].inbox[lo + i]; }
+      v := es_typed(s, length);
+      ok := v.count <= EM_NAME;
+      for b: v { if b < 32 || b == 127 { ok = false; } }
+      s[0].tname_n = ifx ok then em_copy(s[0].tname[..], v) else 0;
     }
     if kind == ES_SUBMIT { es_template_save(s); }
     return;
@@ -1059,25 +1062,23 @@ es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   cell := es_index(id, "cell.");
   if cell >= 0 && cell < EM_CELLS {
     if kind == ES_INPUT {
-      lo := 0; hi := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
-      while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
-      while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
-      n := ifx hi - lo > EM_VALUE then 0 else hi - lo;   // longer than a cell holds: not one
-      for i: 0..<n { s[0].cell[cell][i] = s[0].inbox[lo + i]; }
-      s[0].cell_n[cell] = n;
+      v := es_typed(s, length);
+      s[0].cell_n[cell] = ifx v.count > EM_VALUE then 0 else em_copy(s[0].cell[cell][..], v);   // longer than a cell holds: not one
     }
     if kind == ES_SUBMIT { es_submit_cell(s, cell); }
+    return;
+  }
+  ch := es_index(id, "chars.");
+  if ch >= 0 && ch < ES_CHAR_FIELDS {
+    if kind == ES_INPUT { s[0].cdraft_n[ch] = em_copy(s[0].cdraft[ch][..], es_typed(s, length)); }   // kept for its Enter
+    if kind == ES_SUBMIT { es_char_submit(s, ch); }
     return;
   }
   pc := es_index(id, "plan.");
   if pc >= 0 && pc < ES_PLAN_COLS {
     if kind == ES_INPUT {
-      lo := 0; hi := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
-      while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
-      while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
-      n := ifx hi - lo > EM_ROUTE then 0 else hi - lo;   // longer than a route holds: not one
-      for i: 0..<n { s[0].pdraft[pc][i] = s[0].inbox[lo + i]; }
-      s[0].pdraft_n[pc] = n;
+      v := es_typed(s, length);
+      s[0].pdraft_n[pc] = ifx v.count > EM_ROUTE then 0 else em_copy(s[0].pdraft[pc][..], v);   // longer than a route holds: not one
     }
     if kind == ES_SUBMIT { es_plan_submit(s, pc); }
     return;
@@ -1086,14 +1087,17 @@ es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   if col < 0 || col >= WE_COLS { return; }
   if kind == ES_INPUT {
     // spaces round a number are not part of it
-    lo := 0; hi := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
-    while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
-    while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
-    n := ifx hi - lo > ES_DRAFT then 0 else hi - lo;   // longer than any number: not one
-    for i: 0..<n { s[0].draft[col][i] = s[0].inbox[lo + i]; }
-    s[0].draft_n[col] = n;
+    v := es_typed(s, length);
+    s[0].draft_n[col] = ifx v.count > ES_DRAFT then 0 else em_copy(s[0].draft[col][..], v);   // longer than any number: not one
   }
   if kind == ES_SUBMIT { es_submit(s, col); }
+}
+// What the host put in the inbox for a field, `length` bytes, without the spaces and line breaks round it.
+es_typed :: (s: [] EdShell, length: int) -> string {
+  lo := 0; hi := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+  while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
+  while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
+  return cast(string) s[0].inbox[lo..<hi];
 }
 coaxial_editor_size :: (s: [] EdShell, slot: int, w: f32, h: f32) #export_c #effects(all) {
   if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
@@ -1968,4 +1972,5 @@ es_test_local :: (h: [] EsTest, listed: int, in_all: int) {
 #load "shell-actors-checks.coax" #test;   // the actors (#13466)
 #load "shell-scripts-checks.coax" #test;  // the Scripts pane (#13467)
 #load "shell-lists-checks.coax" #test;    // lists of switches (#13478)
+#load "shell-chars-checks.coax" #test;    // a realm's characters' lore and quests (#13526)
 #load "shell-revs-checks.coax" #test;     // the revisions (#13485)

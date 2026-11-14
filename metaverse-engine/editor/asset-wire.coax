@@ -71,6 +71,8 @@ was_num :: (s: string) -> int {
   return n;
 }
 // Field i of a line split by single spaces ("" past the last), and the line from field i on.
+// Field i of a line, as a number (-1 when it is not one).
+was_nf :: (line: string, i: int) -> int { return was_num(was_field(line, i)); }
 was_field :: (line: string, i: int) -> string {
   at := 0; f := 0;
   for k: 0..<line.count + 1 {
@@ -178,7 +180,7 @@ was_upload_read :: (body: string) -> WasUpload {
   end := -1;
   for k: 0..<body.count { if k > WAS_UPLOAD.count + 32 + WAS_FILE_NAME { break; } if body[k] == '\n' { end = k; break; } }
   if end < 0 || body.count != end + 66 || body[body.count - 1] != '\n' { return WasUpload.{}; }
-  line := body[0..<end]; name := was_rest(line, 3); lic := was_field(line, 1); bytes := was_num(was_field(line, 2)); hash := body[end + 1..<end + 65];
+  line := body[0..<end]; name := was_rest(line, 3); lic := was_field(line, 1); bytes := was_nf(line, 2); hash := body[end + 1..<end + 65];
   if was_field(line, 0) != WAS_UPLOAD || name.count < 1 || name.count > WAS_FILE_NAME || name[0] == ' ' || name[name.count - 1] == ' ' || (lic != "-" && was_num(lic) < 0) || bytes < 0 || !was_hex(hash) { return WasUpload.{}; }
   for c: name { if c < ' ' || c > '~' { return WasUpload.{}; } }
   return WasUpload.{ok = true, licence = ifx lic == "-" then -1 else was_num(lic), bytes = bytes, name = name, hash = hash};
@@ -202,7 +204,7 @@ was_uploaded_read :: (text: string) -> WasUploaded {
   line := text[0..<text.count - 1];
   for c: line { if c == '\n' { return WasUploaded.{}; } }
   word := was_field(line, 1); how := ifx word == "put" then WU_PUT else ifx word == "kept" then WU_KEPT else 0;
-  hash := was_field(line, 2); bytes := was_num(was_field(line, 3)); url := was_field(line, 4);
+  hash := was_field(line, 2); bytes := was_nf(line, 3); url := was_field(line, 4);
   if was_field(line, 0) != WAS_UPLOAD || was_fields(line) != 5 || how == 0 || !was_hex(hash) || bytes < 1 || (how == WU_PUT && !was_url(url)) || (how == WU_KEPT && url != "-") { return WasUploaded.{}; }
   return WasUploaded.{ok = true, how = how, hash = hash, bytes = bytes, url = ifx how == WU_PUT then url else ""};
 }
@@ -268,20 +270,20 @@ was_read :: (l: [] WasList, text: string) -> bool {
       l[0].world_n = was_field(line, 1).count;
       hash := was_field(line, 2);
       if hash != "-" { if !was_hex(hash) { return false; } l[0].packed = true; for c, k: hash { l[0].hash[k] = c; } }
-      l[0].bytes = was_num(was_field(line, 3)); l[0].budget = was_num(was_field(line, 4)); l[0].file = was_num(was_field(line, 5)); l[0].triangles = was_num(was_field(line, 6)); l[0].side = was_num(was_field(line, 7));
+      l[0].bytes = was_nf(line, 3); l[0].budget = was_nf(line, 4); l[0].file = was_nf(line, 5); l[0].triangles = was_nf(line, 6); l[0].side = was_nf(line, 7);
       if l[0].bytes < 0 || l[0].budget < 1 || l[0].file < 1 || l[0].triangles < 1 || l[0].side < 1 || l[0].bytes > l[0].budget || l[0].packed != (l[0].bytes > 0) { return false; }
       continue;
     }
     if what == "l" {
       name := was_rest(line, 2);
-      if stage != 0 || l[0].licences == WAS_LICENCES || was_num(was_field(line, 1)) != l[0].licences || !was_licence(name) { return false; }
+      if stage != 0 || l[0].licences == WAS_LICENCES || was_nf(line, 1) != l[0].licences || !was_licence(name) { return false; }
       for c, k: name { l[0].licence[l[0].licences][k] = c; }
       l[0].licence_n[l[0].licences] = name.count; l[0].licences += 1;
       continue;
     }
     if what == "a" {
-      a := WasAsset.{kind = was_kind(was_field(line, 1)), licence = was_num(was_field(line, 3)), file = was_num(was_field(line, 4)), bytes = was_num(was_field(line, 5)),
-                    hx = was_num(was_field(line, 7)), hz = was_num(was_field(line, 8)), top = was_num(was_field(line, 9))};
+      a := WasAsset.{kind = was_kind(was_field(line, 1)), licence = was_nf(line, 3), file = was_nf(line, 4), bytes = was_nf(line, 5),
+                    hx = was_nf(line, 7), hz = was_nf(line, 8), top = was_nf(line, 9)};
       name := was_field(line, 2); hash := was_field(line, 6);
       if stage > 1 || l[0].n == WAS_ASSETS || was_fields(line) != 10 || a.kind == 0 || !was_name(name) || !was_hex(hash) || a.licence < 0 || a.licence >= l[0].licences || a.file < 1 || a.bytes < 1 { return false; }
       if a.hx < 0 || a.hz < 0 || a.top < 0 || ((a.kind == PIP_MESH) != (a.hx > 0 && a.hz > 0 && a.top > 0)) || (a.kind != PIP_MESH && a.hx + a.hz + a.top != 0) { return false; }

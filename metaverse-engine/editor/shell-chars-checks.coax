@@ -1,0 +1,78 @@
+// The checks of the shell's characters card (shell-chars.coax, GitHub #13526). shell.coax loads this file
+// with `#load ... #test;`.
+
+// A realm's world as its page tells it: one list, the lore and quests tables, and (who not "") the
+// character the player is by, with its lore and quest rows.
+es_test_chars :: (h: [] EsTest, rev: int, who: string, lore: string, quest: string) {
+  s := h[0].s[..]; out := h[0].text[..];
+  none: [WE_COLS] bool;
+  n := em_begin(out, "fairy-forest", 0, rev, 1, 0, 0);
+  n = em_cols(out, n, none[..]);
+  n = em_at_once(out, n);
+  n = em_list(out, n, "rows", "on", "Features");
+  n = em_switch(out, n, 1, true, "Glowing mushrooms");
+  n = em_chars(out, n, "lore", "quests");
+  if who.count > 0 { n = em_char(out, n, who, "Old Mott", 2, lore, 3, quest); }
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n);
+}
+// Text typed into a field, with no Enter.
+es_test_input :: (h: [] EsTest, id: string, text: string) {
+  s := h[0].s[..];
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  coaxial_editor_event(s, ES_INPUT, dm_find(s[0].dom[..], id), text.count);
+}
+
+#test "a realm's characters: by none, a hint; by one, a card of its lore and its quest, filled from the model" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  es_test_chars(h[..], 5, "", "", ""); es_test_frames(h[..], 1);
+  #assert es_lists_only(s[0].model[..]) && tr_find(t, "chars.card") > 0 && tr_find(t, "chars.hint") > 0 && tr_find(t, "chars.0") < 0;
+  #assert t[0].nodes[tr_find(t, "chars.card")].parent == tr_find(t, "one.b");
+  es_test_chars(h[..], 5, "old-mott", "He kept the bridge.", "Bring my oar|Find the oar||Bring it back|A lantern"); es_test_frames(h[..], 1);
+  #assert tr_find(t, "chars.hint") < 0 && tr_find(t, "chars.quest") > 0;
+  for c: 0..<ES_CHAR_FIELDS { b: [UI_ID] u8; #assert tr_find(t, tr_join(b[..], "chars.", c)) > 0; }
+  // the fields hold the rows as the model says them
+  #assert cast(string) s[0].cdraft[0][0..<s[0].cdraft_n[0]] == "He kept the bridge." && cast(string) s[0].cdraft[1][0..<s[0].cdraft_n[1]] == "Bring my oar";
+  #assert s[0].cdraft_n[3] == 0 && cast(string) s[0].cdraft[5][0..<s[0].cdraft_n[5]] == "A lantern";
+  // a realm with no lore and quests tables shows no card
+  es_test_lists(h[..], 6, false); es_test_frames(h[..], 1);
+  #assert tr_find(t, "chars.card") < 0;
+}
+#test "Enter in a character's field sends its whole row as one edit; what the row holds already sends nothing" {
+  h: [1] EsTest; s := h[0].s[..]; o: [600] u8;
+  es_test_chars(h[..], 5, "old-mott", "He kept the bridge.", "Bring my oar|Find the oar||Bring it back|A lantern"); es_test_frames(h[..], 1);
+  // the lore: its row, by its ID in the model
+  es_test_type(h[..], "chars.0", "  He keeps the bridge now. ");
+  #assert es_test_cell(h[..], 5, o[..]) == "lore 2 * 2|old-mott|He keeps the bridge now."; coaxial_editor_act_done(s);
+  // a step typed, then Enter in another field: the whole quest goes, with the step
+  es_test_input(h[..], "chars.3", "Mend it");
+  es_test_type(h[..], "chars.5", "A lantern and a map");
+  #assert es_test_cell(h[..], 5, o[..]) == "quests 3 * 3|old-mott|Bring my oar|Find the oar|Mend it|Bring it back|A lantern and a map"; coaxial_editor_act_done(s);
+  // the model again: the fields hold what it says, and Enter on what it holds sends nothing
+  es_test_chars(h[..], 6, "old-mott", "He kept the bridge.", "Bring my oar|Find the oar||Bring it back|A lantern"); es_test_frames(h[..], 1);
+  es_test_type(h[..], "chars.1", "Bring my oar");
+  #assert coaxial_editor_act_kind(s) == 0;
+  // an empty lore forgets it; every quest field empty takes the quest away
+  es_test_type(h[..], "chars.0", "");
+  #assert es_test_cell(h[..], 6, o[..]) == "lore 2 * 2|old-mott|"; coaxial_editor_act_done(s);
+  for c: 1..<ES_CHAR_FIELDS - 1 { b: [UI_ID] u8; es_test_input(h[..], tr_join(b[..], "chars.", c), ""); }
+  es_test_type(h[..], "chars.5", "");
+  #assert es_test_cell(h[..], 6, o[..]) == "quests 3 * 3|old-mott|||||"; coaxial_editor_act_done(s);
+}
+#test "a quest with steps and no ask, a bar, or too much is said in words and not sent" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  es_test_chars(h[..], 5, "old-mott", "", ""); es_test_frames(h[..], 1);
+  #assert s[0].cdraft_n[0] == 0 && s[0].cdraft_n[1] == 0;
+  es_test_type(h[..], "chars.2", "Find the oar");
+  #assert coaxial_editor_act_kind(s) == 0 && cast(string) s[0].said[0..<s[0].said_n] == "Write what they ask first.";
+  es_test_frames(h[..], 1); #assert tr_find(t, "said") > 0;
+  es_test_type(h[..], "chars.0", "a | b");
+  #assert coaxial_editor_act_kind(s) == 0 && cast(string) s[0].said[0..<s[0].said_n] == "Write it on one line, with no |.";
+  long: [WE_TEXT] u8; for i: 0..<long.count { long[i] = 'x'; }
+  es_test_type(h[..], "chars.0", cast(string) long[..]);
+  #assert coaxial_editor_act_kind(s) == 0 && cast(string) s[0].said[0..<s[0].said_n] == "That is longer than a character's lore holds.";
+  // a new lore for a character with none goes as the row the model names for it
+  o: [200] u8;
+  es_test_type(h[..], "chars.0", "New here.");
+  #assert es_test_cell(h[..], 5, o[..]) == "lore 2 * 2|old-mott|New here.";
+}

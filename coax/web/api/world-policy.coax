@@ -416,6 +416,8 @@ wr_card :: (world: string, rev: int, things: int, name: string, out: [] u8) -> i
   e: [1] WorldEdit; body: [WE_BATCH_BODY] u8; did: [WE_BATCH_BODY] u8; inv: [WE_BATCH_BODY] u8; acts: [RW_ACTS] u8; why: [240] u8; sc: [RW_SCRIPTS] u8; n: [7] int;
   e[0] = rw_test_cell("tools", 2, "1");
   #assert wr_realm_batch(RW_SPEC_FIXTURE, "", we_batch_write(3, WB_APPLY, e[..], 1, body[..]), true, did[..], inv[..], acts[..], why[..], sc[..], n[..]) == RW_OK && cast(string) acts[0..<n[2]] == "tool build 1\n" && n[6] == 0;
+  e[0] = rw_test_row("lore", 1, "1|ana|She keeps the gate.");
+  #assert wr_realm_batch(RW_SPEC_FIXTURE, "", we_batch_write(3, WB_APPLY, e[..], 1, body[..]), true, did[..], inv[..], acts[..], why[..], sc[..], n[..]) == RW_OK && cast(string) acts[0..<n[2]] == "lore ana|She keeps the gate.\n";
   e[0] = rw_test_script(1, "");
   #assert wr_realm_batch(RW_SPEC_FIXTURE, "", we_batch_write(3, WB_APPLY, e[..], 1, body[..]), true, did[..], inv[..], acts[..], why[..], sc[..], n[..]) == RW_REFUSED;
   for st: 0..<5 { #assert wr_realm_status(st) == rw_status(st) && wr_realm_words(st) == rw_words(st); }

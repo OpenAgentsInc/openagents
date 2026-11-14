@@ -1,0 +1,74 @@
+// The editor shell's characters (GitHub #13526): a realm whose world keeps its characters' lore and
+// quests (the content tables `lore` and `quests`, metaverse/edit/realm-world.coax) shows the lore and
+// the quest of the character the player is by as a card of fields: its lore, then its quest's ask,
+// three steps and reward. The model says all of it (shell-model.coax: chars, char, cl, cq). shell.coax
+// loads this file; it is kit components like the rest of the shell and names no colour, face or size.
+//
+// Enter in a field sends the character's whole row as one cell edit ("*") of its table, so it is one
+// undo step and the world's server answers it: the lore's "ID|WHO|TEXT", or the quest's
+// "ID|GIVER|ASK|STEP|STEP|STEP|REWARD". An empty lore forgets it; a quest with every field empty is
+// taken away. The fields show what the next model says the row holds.
+
+ES_CHAR_FIELDS :: 6;   // the lore, then the quest's ask, three steps and reward
+ES_CHAR_LABEL :: [ES_CHAR_FIELDS] string.["Lore", "Asks", "Step 1", "Step 2", "Step 3", "Reward"];
+ES_CHAR_HINT :: [ES_CHAR_FIELDS] string.["Who they are and what they know", "What they ask of you", "A step on the way", "A step on the way", "A step on the way", "What you get for it"];
+
+// The card: a hint while the player is by no character; else the character's name, its lore and its quest.
+es_build_chars :: (s: [] EdShell) {
+  t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..]; buf: [UI_ID] u8;
+  if !m[0].chars { return; }
+  if !m[0].ch {
+    card := k_card(t, u, "chars.card", "Characters");
+    hint := k_meta(t, "chars.hint", "Walk up to a character to write its lore and its quest.");
+    tr_close(t);
+    return;
+  }
+  nm := m[0].ch_name;
+  card := k_card(t, u, "chars.card", cast(string) nm[0..<m[0].ch_name_n]);
+  labels := ES_CHAR_LABEL; hints := ES_CHAR_HINT;
+  lore := k_prop(t, u, "chars.0", labels[0], hints[0]);
+  quest := k_meta(t, "chars.quest", "Their quest. Leave every field empty to take it away.");
+  for c: 1..<ES_CHAR_FIELDS { f := k_prop(t, u, tr_join(buf[..], "chars.", c), labels[c], hints[c]); }
+  tr_close(t);
+}
+// What field c holds in the model: the lore, or a part of the quest.
+es_char_value :: (m: [] EdModel, c: int) -> string {
+  if c == 0 { return cast(string) m[0].cl_text[0..<m[0].cl_text_n]; }
+  return ct_part(cast(string) m[0].cq_text[0..<m[0].cq_text_n], '|', c - 1);
+}
+// Enter in field c: the character's lore, or its whole quest, as one edit of its row; nothing when it is what
+// the row holds.
+es_char_submit :: (s: [] EdShell, c: int) {
+  m := s[0].model[..];
+  if !m[0].chars || !m[0].ch || c < 0 || c >= ES_CHAR_FIELDS { return; }
+  lore := c == 0;
+  id := ifx lore then m[0].cl_id else m[0].cq_id;
+  wh := m[0].ch_who; row: [WE_TEXT + 1] u8;
+  n := ct_put_int(row[..], 0, id); n = ct_put(row[..], n, "|"); n = ct_put(row[..], n, cast(string) wh[0..<m[0].ch_who_n]);
+  same := true;
+  for k: (ifx lore then 0 else 1)..<(ifx lore then 1 else ES_CHAR_FIELDS) {
+    v := cast(string) s[0].cdraft[k][0..<s[0].cdraft_n[k]];
+    if v != es_char_value(m, k) { same = false; }
+    for b: v { if b == '|' || b < 32 || b == 127 { es_say(s, "Write it on one line, with no |."); return; } }
+    if !lore && k > 1 && v.count > 0 && s[0].cdraft_n[1] == 0 { es_say(s, "Write what they ask first."); return; }
+    n = ct_put(row[..], n, "|"); n = ct_put(row[..], n, v);
+  }
+  if same { s[0].said_n = 0; return; }
+  if n > WE_TEXT { es_say(s, ifx lore then "That is longer than a character's lore holds." else "That is longer than a quest holds."); return; }
+  tb := ifx lore then m[0].ch_lore else m[0].ch_quests;
+  es_cell_go(s, cast(string) tb[0..<(ifx lore then m[0].ch_lore_n else m[0].ch_quests_n)], id, "*", cast(string) row[0..<n]);
+}
+// The fields hold what the model says: filled when the character or the revision changes.
+es_char_fill :: (s: [] EdShell, d: [] Dom) {
+  m := s[0].model[..];
+  if !m[0].chars || !m[0].ch { s[0].cshown_n = -1; return; }
+  wh := m[0].ch_who; who := cast(string) wh[0..<m[0].ch_who_n];
+  if s[0].cshown_n == who.count && cast(string) s[0].cshown[0..<s[0].cshown_n] == who && m[0].rev == s[0].cshown_rev { return; }
+  s[0].cshown_n = ct_copy(s[0].cshown[..], who); s[0].cshown_rev = m[0].rev;
+  buf: [UI_ID] u8;
+  for c: 0..<ES_CHAR_FIELDS {
+    v := es_char_value(m, c);
+    s[0].cdraft_n[c] = em_copy(s[0].cdraft[c][..], v);
+    dm_value(d, tr_join(buf[..], "chars.", c), v);
+  }
+}

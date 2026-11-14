@@ -17,7 +17,7 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 
-ESC_FILES :: [22] string.[
+ESC_FILES :: [23] string.[
   "apps/openagents-web/site-side.coax",       // the site's side: its rules only; its look is the kit's (#13471)
   "apps/openagents-web/crew-pane.coax",       // Crew's pane has no look of its own either (#13462)
   "apps/openagents-web/crew-pane-face.c",
@@ -32,6 +32,7 @@ ESC_FILES :: [22] string.[
   "metaverse-engine/editor/shell-files.coax",    // the Files pane: a world's and its project's attachments (#13468)
   "metaverse-engine/editor/shell-scripts.coax",  // the Scripts pane: a realm script written, built, run and reported (#13467)
   "metaverse-engine/editor/shell-lists.coax",    // lists of switches: a realm's board and its tools (#13478)
+  "metaverse-engine/editor/shell-chars.coax",    // a realm's characters: the lore and the quest of the one the player is by (#13526)
   "metaverse-engine/editor/file-wire.coax",
   "metaverse-engine/editor/asset-wire.coax",
   "metaverse-engine/editor/code-wire.coax",

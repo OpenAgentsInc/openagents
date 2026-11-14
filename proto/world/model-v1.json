@@ -28,7 +28,10 @@
     "label_bytes": 48,
     "cards": 16,
     "asks": 24,
-    "ask_bytes": 120
+    "ask_bytes": 120,
+    "who_bytes": 32,
+    "lore_bytes": 1600,
+    "quest_bytes": 2244
   },
   "lines": [
     "editor.model.v1 WORLD LANE REV UNDO REDO SELECTED",
@@ -61,6 +64,10 @@
     "card ID X Z THING",
     "from WHO",
     "cards N",
+    "chars LORE QUESTS",
+    "char WHO NAME",
+    "cl ID [TEXT]",
+    "cq ID [ASK|STEP|STEP|STEP|REWARD]",
     "here X Z",
     "no WORDS"
   ],
@@ -152,5 +159,12 @@
     "wire": "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\natonce\ncard 31 0 380 barrel\nfrom Visitor ab12\ncard 32 -250 1200 Glowing mushroom\nfrom Visitor 4f2a\ncards 3\n",
     "cards": 2,
     "all": 3
+  },
+  "chars": {
+    "about": "A realm's characters' lore and quests (#13526): the two content tables, and the character the player is by, with its lore's row and its quest's. A row is edited whole: a cell edit of * whose text is the row.",
+    "wire": "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\natonce\nchars lore quests\nchar old-mott Old Mott\ncl 2 He kept the bridge, and the oar.\ncq 1 Bring my oar|Find the oar||Bring it back|A lantern\n",
+    "who": "old-mott",
+    "lore_row": 2,
+    "quest_row": 1
   }
 }

@@ -442,7 +442,7 @@ static bool batch_save(PGconn *db, const char *id, const world_row *w, int64_t w
 
 // A realm's world (#13422): the batch is the realm's switches and places, checked on its board by
 // metaverse/edit/realm-world.coax and carried out one by one by the realm's own SQL (verse.edit_switch,
-// verse.edit_settings), whose rules and words are the ones the realm's page meets, and its places written by
+// verse.edit_settings, and for its characters' lore and quests verse.edit_lore and verse.edit_quest, #13526), whose rules and words are the ones the realm's page meets, and its places written by
 // 0193's verse.realm_thing_add and verse.realm_thing_mark (their rules are realm-place-policy.coax's, asked in
 // wr_realm_batch); a refusal takes the whole batch back. While it runs, verse.world_edit is on, so a made
 // realm's own undo log takes no step: the world's is the one log (#13506). The row is locked; the transaction is open.
@@ -472,13 +472,35 @@ static void realm_post(const request *q, PGconn *db, const char *id, world_row *
     if (fenced && !scripts_publish_ok(q, db, id, scripts, was)) { rollback(db); goto done; }
   }
   // each switch and place by the realm's own SQL, in order: "switch KEY 0|1", "tool NAME 0|1", "place ID THING X Z YAW",
-  // "spawn ID THING X Z YAW" or "despawn ID" (realm-world.coax rw_batch). A thing placed must get the ID the batch as
+  // "spawn ID THING X Z YAW", "despawn ID", "lore WHO|TEXT" or "quest GIVER|ASK|STEP|STEP|STEP|REWARD" (realm-world.coax rw_batch). A thing placed must get the ID the batch as
   // taken gave it, or the realm changed since the board was read: the batch is refused and the page reads it again.
   if (!run(db, "SELECT set_config('verse.world_edit', 'on', true)", 0, NULL)) { rollback(db); refuse(q->fd, 500, cs("not saved"), -1); goto done; }
   int edit = 0;
   for (char *line = acts; *line; edit++) {
     char *end = strchr(line, '\n'); if (!end) break;
     *end = 0;
+    if (!strncmp(line, "lore ", 5) || !strncmp(line, "quest ", 6)) {
+      // "lore WHO|TEXT" or "quest GIVER|ASK|STEP|STEP|STEP|REWARD" (#13526): carried out by verse.edit_lore or
+      // verse.edit_quest, which say who may; an empty TEXT forgets the lore and an empty ASK takes the quest away
+      bool lore = line[0] == 'l';
+      char *f[6] = {0}; int nf = 0;
+      for (char *p = line + (lore ? 5 : 6); nf < 6; nf++) { f[nf] = p; char *bar = strchr(p, '|'); if (!bar) { nf++; break; } *bar = 0; p = bar + 1; }
+      if (nf != (lore ? 2 : 6)) { rollback(db); refuse(q->fd, 500, cs("not read"), edit); goto done; }
+      const char *lv[5] = {id, f[0], f[1], a->key, a->admin ? "true" : "false"};
+      const char *qv[9] = {id, f[0], f[1], f[2], f[3], f[4], f[5], a->key, a->admin ? "true" : "false"};
+      PGresult *r = lore
+        ? PQexecParams(db, "SELECT (x->>'status')::int, coalesce(x->>'error', '') FROM verse.edit_lore($1, jsonb_build_object('who', $2::text, 'text', $3::text), $4, $5::boolean) x", 5, NULL, lv, NULL, NULL, 0)
+        : PQexecParams(db, "SELECT (x->>'status')::int, coalesce(x->>'error', '') FROM verse.edit_quest($1, jsonb_build_object('giver', $2::text, 'ask', $3::text, "
+                           "'steps', jsonb_build_array($4::text, $5::text, $6::text), 'reward', $7::text), $8, $9::boolean) x", 9, NULL, qv, NULL, NULL, 0);
+      bool read = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+      int http = read ? atoi(PQgetvalue(r, 0, 0)) : 500;
+      char said[200]; snprintf(said, sizeof said, "%s", read ? PQgetvalue(r, 0, 1) : "not saved");
+      if (!read) api_log("worlds: %s", PQerrorMessage(db));
+      PQclear(r);
+      if (http != 200) { rollback(db); refuse(q->fd, http, cs(said[0] ? said : "not saved"), edit); goto done; }
+      line = end + 1;
+      continue;
+    }
     char verb[8] = "", name[64] = "", on[2] = "", num[12] = "", xs[12] = "", zs[12] = "", ys[12] = "";
     bool place = !strncmp(line, "place ", 6) || !strncmp(line, "spawn ", 6), gone = !strncmp(line, "despawn ", 8);
     int got = place ? sscanf(line, "%7s %11s %63s %11s %11s %11s", verb, num, name, xs, zs, ys) : gone ? sscanf(line, "%7s %11s", verb, num) : sscanf(line, "%7s %63s %1s", verb, name, on);

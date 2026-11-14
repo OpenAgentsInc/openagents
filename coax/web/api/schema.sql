@@ -15761,6 +15761,17 @@ END $$;
 CREATE FUNCTION verse.realm_world_spec(s text, k text, site_admin boolean) RETURNS text
     LANGUAGE sql STABLE
     AS $$
+  SELECT CASE WHEN out IS NULL THEN NULL ELSE out || coalesce(verse.edit_panes(s, k, site_admin), '') END
+  FROM (SELECT verse.realm_world_spec_0195(s, k, site_admin) AS out) x $$;
+
+
+--
+-- Name: realm_world_spec_0195(text, text, boolean); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.realm_world_spec_0195(s text, k text, site_admin boolean) RETURNS text
+    LANGUAGE sql STABLE
+    AS $$
   SELECT CASE WHEN out IS NULL THEN out
               ELSE out || CASE WHEN verse.edit_made(s) THEN E'made 1\n' || coalesce((SELECT string_agg('thing ' || t, E'\n' ORDER BY o) || E'\n'
                                                                                    FROM unnest(verse.builder_things()) WITH ORDINALITY AS x(t, o)), '')

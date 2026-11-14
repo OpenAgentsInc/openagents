@@ -36,8 +36,8 @@ All under `/api/playtest/realms/<slug>`, for a made or a hand-built realm:
 | `POST /revise {prompt}` | talking or typing revises the board: the model answers under a schema whose enums are this realm's row ids (a made realm: the builder's catalogue), and its answer is the realm now. `?as=lines` answers the rows as lines |
 | `GET /proposals`, `POST /proposals/<id>/accept\|decline` | the cards; ACCEPT places the thing as the owner's own world edit (one step of the world's undo log, #13515). The editor shell's agent strip reads and decides them (below, "A visitor's idea in the agent strip") |
 | `GET /panes` | everyone: `lore WHO\|TEXT` and `quest GIVER\|ASK\|STEP\|STEP\|STEP\|REWARD`, a line each |
-| `POST /lore {who, text}` | a character's lore (400 characters; `""` forgets it) |
-| `POST /quest {giver, ask, steps, reward}` | the quest a character gives, one each (`""` ask takes it away) |
+| `POST /lore {who, text}` | a character's lore (400 characters; `""` forgets it). The CLI's `realm lore` still posts it; the editor writes lore as a world edit (below) |
+| `POST /quest {giver, ask, steps, reward}` | the quest a character gives, one each (`""` ask takes it away). The CLI's `realm quest` still posts it; the editor writes quests as world edits |
 
 A made realm keeps the rows switched off in `made_realms.off`, so they can come back on.
 Revisions are rows in `verse.realm_plans` (with its `slug`), under the builder's daily cap and its
@@ -132,7 +132,7 @@ What is left of the layer's EDIT, and where each goes (#13515):
 | A visitor's proposal | a pending world batch the owner accepts in the shell's agent strip | built: a visitor's spawns on the realm's world are kept as cards (202, `rpp_propose`: building on, fewer than 50 waiting), and ACCEPT is the owner's own spawn in the world (0195). A world UNDO of it takes the thing away; the card stays decided. Each card is a turn of the agent strip (#13527, below) |
 | The asks (ADD, revise, DELETE, a document) | tools of the shell's agent strip: `ask`, `revise`, `unask`, `unrow`, and a document opened first | built (#13528): below, "The asks and the voice in the agent strip" |
 | The realm's voice (HOLD TO TALK, the selector) | the agent strip's composer, with Talk | built (#13528): a spoken switch is a `switch` step, a `cell` edit of the rows table; show and look are tools of the turn |
-| A character's lore and quests | content tables of the realm's world and `cell` edits, as the rows are | follow-up |
+| A character's lore and quests | content tables of the realm's world and `cell` edits, as the rows are | built (#13526): the world's `lore` and `quests` tables, a row edited whole by its cell `*` (`verse.edit_lore`, `verse.edit_quest`; one step of the world's undo log), and the shell's Characters card for the character the player is by. The layer's LORE and QUEST panes are gone. Left: the CLI's `realm lore` and `realm quest` still post `/lore` and `/quest`, and those routes stay until they move |
 | YOUR COMPUTER, YOUR AGENT | Settings, This machine, beside the local agents' switch | built (#13529): "Your computer" below, and docs/metaverse/realm-seat.md "The agent pane" |
 
 ### A visitor's idea in the agent strip
@@ -224,12 +224,14 @@ panes"): FEATURES (the board's rows, below, and OPEN THE EDITOR). A visitor's pr
 the editor's agent strip, not in EDIT (#13527).
 Your computer and Your agent are in Settings, This machine (below, "Your computer").
 
-The panes for what you work on (ff-panes, migration 0055): a realm says, each frame, which of its
-characters you are by (`redit_near(ed, key, name)`). With EDIT open, coming to one brings up its
-LORE (written, SAVE, and it comes back the next time); QUEST turns that pane into the form (ASK,
-STEP 1-3, REWARD) and SAVE QUEST makes the quest. A realm that plays them calls
+Lore and quests (ff-panes, migration 0055; #13526): a realm says, each frame, which of its
+characters you are by (`redit_near(ed, key, name)`), and the layer hands it to the realm's world
+page (`rp_near`). The editor shell then shows that character's lore and quest as a card of fields
+(Lore, Asks, Step 1-3, Reward); Enter in one saves the character's whole row as one world edit, so
+one UNDO takes it back. EDIT by a character opens the board. A realm that plays them calls
 `redit_read_panes_too(ed)` and reads `redit_lore(ed, key)`, `redit_quest(ed, key)` and
-`redit_quest_part(ed, q, part)`. Fairy Forest is the first (apps/openagents-web/fairy/fairyquest.coax):
+`redit_quest_part(ed, q, part)`; the layer reads `/panes` again when the world's lore or quests
+change. Fairy Forest is the first (apps/openagents-web/fairy/fairyquest.coax):
 its creatures know their lore when you talk to them, and give their quests when you come near.
 
 ## What each realm can switch

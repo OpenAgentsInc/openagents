@@ -692,7 +692,7 @@ rs_scripts_json :: (d: [] Jv, h: SsHead, mf: [] ScriptManifest, why: [] u8, out:
     m := mf[0];
     jo_obj(o[..]);
     jo_key(o[..], "name"); jo_str(o[..], cast(string) m.name[0..<m.name_n]); jo_key(o[..], "hash"); jo_str(o[..], cast(string) m.hash[..]); jo_key(o[..], "bytes"); jo_int(o[..], m.bytes);
-    ss_bits_write(o[..], "handlers", m.handlers, 0); ss_bits_write(o[..], "powers", m.powers, 1); ss_bits_write(o[..], "calls", m.calls, 2);
+    sm_bits_write(o[..], "handlers", m.handlers, 0); sm_bits_write(o[..], "powers", m.powers, 1); sm_bits_write(o[..], "calls", m.calls, 2);
     jo_key(o[..], "off"); jo_bool(o[..], e.off); jo_key(o[..], "why"); jo_str(o[..], cast(string) why[0..<e.why_n]); jo_key(o[..], "source"); jo_bool(o[..], e.source);
     jo_end(o[..]);
   }

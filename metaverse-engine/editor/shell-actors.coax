@@ -41,9 +41,7 @@ es_build_clock :: (s: [] EdShell) {
   t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..]; buf: [UI_ID] u8;
   if m[0].ctable_n == 0 { return; }
   names := ES_CLOCK_NAME; notes := ES_CLOCK_NOTE; at := es_clock_at(m);
-  k_select_begin(t, u, "clock", names[at], "The time of day the actors keep and the light is", s[0].open == ES_OPEN_CLOCK);
-  if s[0].open == ES_OPEN_CLOCK { for k: 0..<ES_CLOCKS { r := k_row(t, u, tr_join(buf[..], "clock.", k), names[k], notes[k], k == at); } }
-  k_select_end(t, s[0].open == ES_OPEN_CLOCK);
+  es_pick(s, "clock", names[at], "The time of day the actors keep and the light is", ES_OPEN_CLOCK, names[..], notes[..], at);
 }
 // The Actors list, under the things: each actor and what it does at the time shown.
 es_build_actors :: (s: [] EdShell) {
@@ -72,12 +70,8 @@ es_build_plan :: (s: [] EdShell) {
   card := k_card(t, u, "plan.card", cast(string) line[0..<n]);
   ld := NPL_DO; lo := NPL_ON; dn := ES_DO_NAME; dnote := ES_DO_NOTE; on := ES_ON_NAME; onote := ES_ON_NOTE;
   act := npl_word(ld[..], cast(string) m[0].p_do[p][0..<m[0].p_do_n[p]]); noticed := npl_word(lo[..], cast(string) m[0].p_on[p][0..<m[0].p_on_n[p]]);
-  k_select_begin(t, u, "pdo", ifx act >= 0 then dn[act] else "Does", "What it does", s[0].open == ES_OPEN_DO);
-  if s[0].open == ES_OPEN_DO { for k: 0..<NPL_DOS { r := k_row(t, u, tr_join(buf[..], "pdo.", k), dn[k], dnote[k], k == act); } }
-  k_select_end(t, s[0].open == ES_OPEN_DO);
-  k_select_begin(t, u, "pon", ifx noticed >= 0 then on[noticed] else "On noticing", "What it does when it notices you", s[0].open == ES_OPEN_ON);
-  if s[0].open == ES_OPEN_ON { for k: 0..<NPL_ONS { r := k_row(t, u, tr_join(buf[..], "pon.", k), on[k], onote[k], k == noticed); } }
-  k_select_end(t, s[0].open == ES_OPEN_ON);
+  es_pick(s, "pdo", ifx act >= 0 then dn[act] else "Does", "What it does", ES_OPEN_DO, dn[..], dnote[..], act);
+  es_pick(s, "pon", ifx noticed >= 0 then on[noticed] else "On noticing", "What it does when it notices you", ES_OPEN_ON, on[..], onote[..], noticed);
   labels := ES_PLAN_LABEL; hints := ES_PLAN_HINT;
   for c: 0..<ES_PLAN_COLS { f := k_prop(t, u, tr_join(buf[..], "plan.", c), labels[c], hints[c]); }
   off := k_icon_button(t, "actor.0", IC_X, "Show no actor");

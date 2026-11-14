@@ -46,6 +46,10 @@ The model is lines of text, in this order.
 | `card ID X Z THING` | A visitor's proposal waiting for the owner (#13527): its ID on the realm's server, where the thing would stand in whole centimetres, and what it is. The shell's Agent button counts them, and the shell tells each to the conversation in its foot, which shows Accept and Decline. |
 | `from WHO` | Who proposed the card on the line above, as people read it ("Visitor ab12"). Every `card` has one. |
 | `cards N` | How many proposals wait in all, when the model lists fewer. Left out, it lists them all. |
+| `chars LORE QUESTS` | The world keeps its characters' lore and quests (a realm's world, #13526): the two content tables. A row is edited whole, by a `cell` edit of `*` whose text is the row (`ID|WHO|TEXT`, `ID|GIVER|ASK|S1|S2|S3|REWARD`). The shell then shows a Characters card. |
+| `char WHO NAME` | The character the player is by: its key and its name. Left out: none, and the card says to walk up to one. |
+| `cl ID [TEXT]` | That character's lore: its row's ID (the next free one when it has none) and its text, if any. |
+| `cq ID [ASK\|STEP\|STEP\|STEP\|REWARD]` | Its quest the same way: the ask, three steps and the reward, any but the ask empty. The shell shows a field for each; Enter in one sends the whole row. |
 | `here X Z` | The last point tapped on the ground, in whole centimetres. Left out until a point is tapped. The shell places a new thing there. |
 | `no WORDS` | The last refusal, in words. The shell shows it as a notice. |
 
@@ -78,6 +82,9 @@ but the ones the writer writes: it writes what it read and compares.
 | Bytes in a proposal's thing, and in who proposed it | 40 |
 | Asks | 24 |
 | Bytes in an ask's words | 120 |
+| Bytes in a character's key | 32 |
+| Bytes in a character's lore | 1,600 |
+| Bytes in a character's quest | 2,244 |
 | Bytes in a model | 65,536 |
 
 ## What the shell sends back
@@ -108,7 +115,7 @@ A made realm (`apps/openagents-web/myrealm.coax`) and the realm pages that load 
 `metaverse/edit/realm-page.coax` (`rp_model`): the realm's kinds (`k`) and each placed thing that
 stands (`e`, its ID the thing's place in the realm's list), `atonce`, the scripts table, the board and
 the tools as lists of switches, the realm's asks (`asks`, `q`; the edit layer reads them once the
-page tells the shell its world, `redit_asks_to`), and `here`, where the player stands in whole metres, and for its owner and admins the visitors' proposals waiting (`card`, `from`, `cards`: read from `GET /api/playtest/realms/SLUG/proposals`, [realm-edit.md](../metaverse/realm-edit.md)). The page takes
+page tells the shell its world, `redit_asks_to`), the lore and quest of the character the player is by (`chars`, `char`, `cl`, `cq`), and `here`, where the player stands in whole metres, and for its owner and admins the visitors' proposals waiting (`card`, `from`, `cards`: read from `GET /api/playtest/realms/SLUG/proposals`, [realm-edit.md](../metaverse/realm-edit.md)). The page takes
 520, 521 and 523 (`rp_message`) and 530 (the edit layer, `redit_realm`); its Add plans from `here` (#13506). They export `coaxial_edit_own(state)` (below), which answers 1 once the
 realm's server has said this visitor is its owner or an admin; the host asks again every frame until
 it does.

@@ -813,7 +813,7 @@ h_playing_facts :: (f: [] f32) {
 // ---------------------------------------------------------------------------------------------
 // The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of Ice Cream Man may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
-ICE_BUDGET :: FrameBudget.{steps = 8, vertices = 3000, draws = 0, bytes = 1179648};
+ICE_BUDGET :: FrameBudget.{steps = 8, vertices = 3000, draws = 0, bytes = 1210368};   // + 30,720 for the realm's world's lore and quests in the edit layer (realm-page.coax, #13526)
 
 // A round with its HUD: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.

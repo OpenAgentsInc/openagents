@@ -201,51 +201,38 @@ said_is :: (e: [] RealmEdit, text: string) -> bool {
   #assert e[0].row_shown[0];
 }
 
-#test "by a character, EDIT brings up its lore; the quest form's save makes the quest; everyone reads both" {
+#test "everyone reads the lore and quests; EDIT by a character opens the board, and the shell shows its lore" {
   e: [1] RealmEdit;
   out: [60000] f32;
   opened(e[..], "fairy-forest", "200\nrealm fairy-forest\nrole admin\nowner 1\nwaiting 0\n");
+  redit_read_panes_too(e[..]);
   redit_near(e[..], "bramble", "Bramble");
-  #assert e[0].pane == REDIT_SHUT;
-  // EDIT by Bramble: his lore, and the panes asked for
-  redit_toggle(e[..]);
-  #assert e[0].pane == REDIT_LORE_PANE && cast(string) e[0].focus_name[0..<e[0].focus_name_n] == "BRAMBLE";
+  #assert e[0].pane == REDIT_SHUT && cast(string) e[0].near[0..<e[0].near_n] == "bramble";
+  // the panes are read for the realm's characters, by a GET
   redit_step(e[..], 2, 1440, 900, 1);
   #assert url_is(e[..], "/api/playtest/realms/fairy-forest/panes") && (e[0].req_flags & HTTP_POST) == 0;
   #assert answer(e[..], 1, "200\nlore bramble|Hoards acorns.\nquest pip|Find my lily pad|Look by the reeds|||A song\n");
-  #assert redit_draft(e[..], RF_LORE) == "Hoards acorns." && redit_lore(e[..], "bramble") == "Hoards acorns." && !e[0].dirty;
+  #assert redit_lore(e[..], "bramble") == "Hoards acorns." && redit_lore(e[..], "pip") == "";
   #assert redit_quest(e[..], "pip") == 0 && redit_quest_part(e[..], 0, 1) == "Look by the reeds" && redit_quest_part(e[..], 0, 4) == "A song" && redit_quest(e[..], "bramble") < 0;
-  // tap the lore, type more, Enter, SAVE
-  _ := redit_hud(e[..], out[..], 0, ANCHOR);
-  #assert e[0].fshown[RF_LORE] && !e[0].fshown[RF_ASK];
-  #assert tap(e[..], e[0].fbox[RF_LORE]) && redit_typing(e[..]) && e[0].field == RF_LORE + 1;
-  #assert redit_message(e[..], REDIT_MSG_TEXT, " Fears owls|.") && e[0].dirty;
-  #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1 && !redit_typing(e[..]);
-  _ = redit_hud(e[..], out[..], 0, ANCHOR);
-  #assert tap(e[..], e[0].boxes[RB_SAVE]);
+  // the world's lore and quests changed (an edit in the shell): the panes are read again
+  redit_world_chars(e[..], 1);
+  #assert e[0].panes_due;
+  redit_world_chars(e[..], 1);
   redit_step(e[..], 3, 1440, 900, 1);
-  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/lore") && body_is(e[..], "{\"who\":\"bramble\",\"text\":\"Hoards acorns. Fears owls.\"}");
-  #assert answer(e[..], 2, "200\n{\"who\":\"bramble\",\"saved\":true}") && !e[0].dirty && e[0].panes_due;
-  // QUEST: the form, its fields, SAVE QUEST makes it
-  _ = redit_hud(e[..], out[..], 0, ANCHOR);
-  #assert tap(e[..], e[0].boxes[RB_SWAP]) && e[0].pane == REDIT_QUEST_PANE;
-  _ = redit_hud(e[..], out[..], 0, ANCHOR);
-  #assert e[0].fshown[RF_ASK] && e[0].fshown[RF_REWARD] && !e[0].fshown[RF_LORE];
-  #assert tap(e[..], e[0].fbox[RF_ASK]) && redit_message(e[..], REDIT_MSG_TEXT, "Find acorns") && redit_key(e[..], REDIT_KEY_ENTER, true) == 1;
-  #assert tap(e[..], e[0].fbox[RF_STEP + 1]) && redit_message(e[..], REDIT_MSG_TEXT, "Fill the basket");
-  #assert tap(e[..], e[0].fbox[RF_REWARD]) && e[0].field == RF_REWARD + 1 && redit_message(e[..], REDIT_MSG_TEXT, "A lucky acorn");
-  _ = redit_hud(e[..], out[..], 0, ANCHOR);
-  #assert tap(e[..], e[0].boxes[RB_SAVE]) && !redit_typing(e[..]);
-  redit_step(e[..], 4, 1440, 900, 1);
-  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/quest") && body_is(e[..], "{\"giver\":\"bramble\",\"ask\":\"Find acorns\",\"steps\":[\"\",\"Fill the basket\",\"\"],\"reward\":\"A lucky acorn\"}");
-  #assert answer(e[..], 3, "200\n{\"giver\":\"bramble\",\"saved\":true}");
-  redit_step(e[..], 5, 1440, 900, 1);
-  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/panes");
-  // walking to Pip with nothing being typed brings up Pip's lore
-  redit_near(e[..], "", "");
-  redit_near(e[..], "pip", "Pip");
-  #assert e[0].pane == REDIT_LORE_PANE && cast(string) e[0].focus[0..<e[0].focus_n] == "pip" && redit_draft(e[..], RF_ASK) == "Find my lily pad";
-  // a visitor gets no panes, but reads the quests
+  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/panes") && answer(e[..], 2, "200\nlore bramble|Hoards acorns. Fears owls.\n");
+  #assert redit_lore(e[..], "bramble") == "Hoards acorns. Fears owls." && redit_quest(e[..], "pip") < 0 && !e[0].panes_due;
+  redit_world_chars(e[..], 1);
+  #assert !e[0].panes_due;
+  // EDIT by a character opens the board: its lore and quest are the editor shell's to write
+  redit_toggle(e[..]);
+  #assert e[0].pane == REDIT_BOARD;
+  _ := redit_hud(e[..], out[..], 0, ANCHOR);
+  // a realm that reads no panes is not made to by a change
+  n: [1] RealmEdit;
+  opened(n[..], "fairy-forest", "200\nrealm fairy-forest\nrole admin\nowner 1\nwaiting 0\n");
+  redit_world_chars(n[..], 4);
+  #assert !n[0].panes_due;
+  // a visitor gets no EDIT, but reads the quests
   v: [1] RealmEdit;
   opened(v[..], "fairy-forest", "200\nrealm fairy-forest\nrole visitor\nowner 0\n");
   redit_read_panes_too(v[..]);
@@ -255,6 +242,23 @@ said_is :: (e: [] RealmEdit, text: string) -> bool {
   redit_step(v[..], 2, 1440, 900, 1);
   #assert url_is(v[..], "/api/playtest/realms/fairy-forest/panes") && answer(v[..], 1, "200\nquest bramble|Find acorns||Fill the basket||A lucky acorn\n");
   #assert redit_quest(v[..], "bramble") == 0 && redit_quest_part(v[..], 0, 0) == "Find acorns" && redit_quest_part(v[..], 0, 1) == "";
+}
+#test "the character the player is by goes to the realm's world page, and the shell's model says its lore and quest" {
+  e: [1] RealmEdit;
+  redit_start(e[..], "moonlit-marsh");
+  wstep(e[..], 0);
+  #assert answer(e[..], 3, MADE) && redit_edit_own(e[..]);
+  wstep(e[..], 0.016); redit_world_sent(e[..], 6);
+  st: [512] u8; n := ct_put(st[..], 0, "200\n");
+  made := we_state_write(WorldState.{lane = WL_DEV, rev = 2, dev = 2, undo = 1}, "moonlit-marsh", "", "", st[n..<st.count]);
+  #assert wmsg(e[..], HTTP_KIND + 6, cast(string) st[0..<n + made.count]);
+  wstep(e[..], 0.032); redit_world_sent(e[..], 7);
+  redit_near(e[..], "bramble", "Bramble");
+  #assert wmsg(e[..], HTTP_KIND + 7, "200\naethyr.content.v1 realm 1\nreach 40000\ntable kinds id name:text\ntable lore id who:text text:text\n1|bramble|Hoards acorns.\ntable quests id giver:text ask:text s1:text s2:text s3:text reward:text\ntable rows id key:text on:int label:text\n1|water|1|Large pond\ntable tools id name:text on:int\n");
+  #assert redit_has(redit_edit_model(e[..]), "\nchars lore quests\nchar bramble Bramble\ncl 1 Hoards acorns.\ncq 1\n");
+  // walking away: the tables alone
+  redit_near(e[..], "", "");
+  #assert redit_has(redit_edit_model(e[..]), "\nchars lore quests\n") && !redit_has(redit_edit_model(e[..]), "\nchar ");
 }
 #test "the panel speaks plainly: IN IT, NOT IN IT YET, IDEAS for visitors' cards" {
   #assert redit_tag(true) == "IN IT" && redit_tag(false) == "NOT IN IT YET";

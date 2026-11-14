@@ -190,6 +190,8 @@ wt_rest :: (line: string, k: int) -> string {
   for i: 0..<line.count { if line[i] == ' ' { n += 1; if n == k { return line[i + 1..<line.count]; } } }
   return "";
 }
+// Part k of a line, as a number.
+wt_n :: (line: string, k: int) -> int { return wt_num(wt_part(line, ' ', k)).v; }
 wt_num :: (s: string) -> WtNum {
   r: WtNum;
   if s.count == 0 || s.count > 11 { return r; }
@@ -355,21 +357,21 @@ wt_read :: (t: [] WorldTurn, text: string, scratch: [] u8) -> bool {
   if wt_part(head, ' ', 0) != WT_SCHEMA || wt_parts(head, ' ') != 5 { return false; }
   t[0].world_n = wt_copy(t[0].world[..], wt_part(head, ' ', 1));
   t[0].live = wt_part(head, ' ', 2) == "live";
-  t[0].rev = wt_num(wt_part(head, ' ', 3)).v; t[0].sel = wt_num(wt_part(head, ' ', 4)).v;
+  t[0].rev = wt_n(head, 3); t[0].sel = wt_n(head, 4);
   lines := wt_parts(text, '\n');
   for i: 1..<lines {
     line := wt_part(text, '\n', i);
     word := wt_part(line, ' ', 0);
-    if word == "here" { t[0].here = true; t[0].here_x = wt_num(wt_part(line, ' ', 1)).v; t[0].here_z = wt_num(wt_part(line, ' ', 2)).v; }
+    if word == "here" { t[0].here = true; t[0].here_x = wt_n(line, 1); t[0].here_z = wt_n(line, 2); }
     else if word == "k" && t[0].nk < WT_KINDS {
       k := t[0].nk;
-      t[0].kind_id[k] = wt_num(wt_part(line, ' ', 1)).v;
+      t[0].kind_id[k] = wt_n(line, 1);
       t[0].kind_n[k] = wt_copy(t[0].kind_name[k][..], wt_rest(line, 2));
       t[0].nk += 1;
     } else if word == "e" && t[0].nt < WT_THINGS {
       k := t[0].nt;
-      t[0].t_id[k] = wt_num(wt_part(line, ' ', 1)).v; t[0].t_kind[k] = wt_num(wt_part(line, ' ', 2)).v;
-      t[0].t_x[k] = wt_num(wt_part(line, ' ', 3)).v; t[0].t_z[k] = wt_num(wt_part(line, ' ', 4)).v; t[0].t_yaw[k] = wt_num(wt_part(line, ' ', 5)).v;
+      t[0].t_id[k] = wt_n(line, 1); t[0].t_kind[k] = wt_n(line, 2);
+      t[0].t_x[k] = wt_n(line, 3); t[0].t_z[k] = wt_n(line, 4); t[0].t_yaw[k] = wt_n(line, 5);
       t[0].nt += 1;
     } else if word == "a" && t[0].nf < WT_FILES {
       k := t[0].nf; kinds := WT_FKIND;
@@ -377,7 +379,7 @@ wt_read :: (t: [] WorldTurn, text: string, scratch: [] u8) -> bool {
       if id.count != WT_FID { return false; }
       for c, j: id { t[0].f_id[k][j] = c; }
       t[0].f_kind[k] = 0; for j: 1..<4 { if wt_part(line, ' ', 2) == kinds[j] { t[0].f_kind[k] = j; } }
-      t[0].f_bytes[k] = wt_num(wt_part(line, ' ', 3)).v;
+      t[0].f_bytes[k] = wt_n(line, 3);
       t[0].f_name_n[k] = wt_copy(t[0].f_name[k][..], wt_rest(line, 4)); t[0].f_note_n[k] = 0; t[0].f_tags_n[k] = 0;
       t[0].nf += 1;
     } else if (word == "an" || word == "at") && t[0].nf > 0 {
@@ -389,25 +391,25 @@ wt_read :: (t: [] WorldTurn, text: string, scratch: [] u8) -> bool {
       t[0].nl += 1;
     } else if word == "w" && t[0].nl > 0 && t[0].nw < WT_SWS {
       k := t[0].nw;
-      t[0].w_list[k] = t[0].nl - 1; t[0].w_row[k] = wt_num(wt_part(line, ' ', 1)).v; t[0].w_on[k] = wt_part(line, ' ', 2) == "1";
+      t[0].w_list[k] = t[0].nl - 1; t[0].w_row[k] = wt_n(line, 1); t[0].w_on[k] = wt_part(line, ' ', 2) == "1";
       t[0].w_label_n[k] = wt_copy(t[0].w_label[k][..], wt_rest(line, 3));
       t[0].nw += 1;
     } else if word == "asks" && line == "asks" { t[0].asks = true; }
     else if word == "q" && t[0].naq < WT_ASKS {
       k := t[0].naq; states := WT_STATE;
-      t[0].aq_id[k] = wt_num(wt_part(line, ' ', 1)).v;
+      t[0].aq_id[k] = wt_n(line, 1);
       t[0].aq_state[k] = -1; for j: 0..<3 { if wt_part(line, ' ', 2) == states[j] { t[0].aq_state[k] = j; } }
       if t[0].aq_state[k] < 0 { return false; }
       t[0].aq_words_n[k] = wt_copy(t[0].aq_words[k][..], wt_rest(line, 3));
       t[0].naq += 1;
-    } else if word == "more" { t[0].more = wt_num(wt_part(line, ' ', 1)).v; }
+    } else if word == "more" { t[0].more = wt_n(line, 1); }
     else if word == "card" && t[0].nq < WT_CARDS {
       k := t[0].nq;
-      t[0].q_id[k] = wt_num(wt_part(line, ' ', 1)).v; t[0].q_x[k] = wt_num(wt_part(line, ' ', 2)).v; t[0].q_z[k] = wt_num(wt_part(line, ' ', 3)).v;
+      t[0].q_id[k] = wt_n(line, 1); t[0].q_x[k] = wt_n(line, 2); t[0].q_z[k] = wt_n(line, 3);
       t[0].q_thing_n[k] = wt_copy(t[0].q_thing[k][..], wt_rest(line, 4)); t[0].q_who_n[k] = 0;
       t[0].nq += 1;
     } else if word == "from" && t[0].nq > 0 { t[0].q_who_n[t[0].nq - 1] = wt_copy(t[0].q_who[t[0].nq - 1][..], wt_rest(line, 1)); }
-    else if word == "cards" { t[0].q_all = wt_num(wt_part(line, ' ', 1)).v; }
+    else if word == "cards" { t[0].q_all = wt_n(line, 1); }
     else if line.count > 0 || i + 1 < lines { return false; }
   }
   t[0].ok = wt_write(t, scratch) == text;
@@ -530,7 +532,7 @@ wp_read :: (p: [] WorldPlan, text: string, scratch: [] u8) -> bool {
   head := wt_part(text, '\n', 0);
   if wt_part(head, ' ', 0) != WP_SCHEMA || wt_parts(head, ' ') != 3 { return false; }
   p[0].world_n = wt_copy(p[0].world[..], wt_part(head, ' ', 1));
-  p[0].rev = wt_num(wt_part(head, ' ', 2)).v;
+  p[0].rev = wt_n(head, 2);
   lines := wt_parts(text, '\n'); tools := WT_TOOL;
   for i: 1..<lines {
     line := wt_part(text, '\n', i);
@@ -538,7 +540,7 @@ wp_read :: (p: [] WorldPlan, text: string, scratch: [] u8) -> bool {
     if p[0].n >= WP_STEPS { return false; }
     s: WorldStep; s.tool = -1;
     for k: 0..<WT_TOOLS { if wt_part(line, ' ', 0) == tools[k] { s.tool = k; } }
-    a := wt_num(wt_part(line, ' ', 1)).v; b := wt_num(wt_part(line, ' ', 2)).v; c := wt_num(wt_part(line, ' ', 3)).v; e := wt_num(wt_part(line, ' ', 4)).v;
+    a := wt_n(line, 1); b := wt_n(line, 2); c := wt_n(line, 3); e := wt_n(line, 4);
     if s.tool == WT_ASK || s.tool == WT_REVISE || s.tool == WT_LOOK { s.words_n = wt_copy(s.words[..], wt_rest(line, 1)); }
     else if s.tool == WT_SHOW { panes := WT_PANE; s.pane = -1; for k: 0..<WT_PANES { if wt_rest(line, 1) == panes[k] { s.pane = k; } } }
     else if s.tool == WT_SWITCH || s.tool == WT_UNROW { s.list = a; s.id = b; s.on = c; }   // an unrow has no third number: c is 0
@@ -744,7 +746,7 @@ wc_read :: (c: [] WorldCard, text: string, scratch: [] u8) -> bool {
   head := wt_part(text, '\n', 0);
   if wt_part(head, ' ', 0) != WC_SCHEMA || wt_parts(head, ' ') != 4 { return false; }
   c[0].world_n = wt_copy(c[0].world[..], wt_part(head, ' ', 1));
-  c[0].rev = wt_num(wt_part(head, ' ', 2)).v; c[0].things = wt_num(wt_part(head, ' ', 3)).v;
+  c[0].rev = wt_n(head, 2); c[0].things = wt_n(head, 3);
   lines := wt_parts(text, '\n');
   for i: 1..<lines {
     line := wt_part(text, '\n', i);

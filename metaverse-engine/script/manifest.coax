@@ -59,6 +59,14 @@ sm_of :: (s: [] ScriptSlot, name: string, layout: ScriptLayout) -> ScriptManifes
   mf.ok = true;
   return mf;
 }
+// Bits as a JSON array of names under `key`: kind 0 the handlers (RH_NAMES), 1 the powers, 2 the calls.
+sm_bits_write :: (o: [] Jo, key: string, bits: int, kind: int) {
+  jo_key(o, key); jo_arr(o);
+  if kind == 0 { for name, h: RH_NAMES { if (bits & (1 << h)) != 0 { jo_str(o, name); } } }
+  if kind == 1 { for name, p: SM_POWERS { if (bits & (1 << p)) != 0 { jo_str(o, name); } } }
+  if kind == 2 { for c, r: SCRIPT_API { if (bits & (1 << r)) != 0 { jo_str(o, c.name); } } }
+  jo_end(o);
+}
 sm_write :: (given: ScriptManifest, out: [] u8) -> string {
   mf := given;
   if !mf.ok { return ""; }
@@ -83,15 +91,7 @@ sm_write :: (given: ScriptManifest, out: [] u8) -> string {
     jo_end(o[..]);
   }
   jo_end(o[..]); jo_end(o[..]);
-  jo_key(o[..], "handlers"); jo_arr(o[..]);
-  for name, h: RH_NAMES { if (mf.handlers & (1 << h)) != 0 { jo_str(o[..], name); } }
-  jo_end(o[..]);
-  jo_key(o[..], "powers"); jo_arr(o[..]);
-  for name, p: SM_POWERS { if (mf.powers & (1 << p)) != 0 { jo_str(o[..], name); } }
-  jo_end(o[..]);
-  jo_key(o[..], "calls"); jo_arr(o[..]);
-  for c, r: SCRIPT_API { if (mf.calls & (1 << r)) != 0 { jo_str(o[..], c.name); } }
-  jo_end(o[..]);
+  sm_bits_write(o[..], "handlers", mf.handlers, 0); sm_bits_write(o[..], "powers", mf.powers, 1); sm_bits_write(o[..], "calls", mf.calls, 2);
   jo_end(o[..]);
   if o[0].bad { return ""; }
   return jo_text(o[..]);
@@ -123,13 +123,17 @@ sm_from_compiler :: (text: string, name: [] u8, layout: [] ScriptLayout) -> int 
   if !sm_fields(d[0], jv_path(d[0], 0, "state.fields"), layout) { return -1; }
   return n;
 }
-sm_bits :: (d: Jv, at: int, rows: bool) -> int {
+// A JSON array of names as bits: SM_POWERS' (SM_BITS_POWERS), the script API's rows (SM_BITS_CALLS) or the
+// handlers' (SM_BITS_HANDLERS, RH_NAMES). -1 for anything else.
+SM_BITS_POWERS :: 0; SM_BITS_CALLS :: 1; SM_BITS_HANDLERS :: 2;
+sm_bits :: (d: Jv, at: int, of: int) -> int {
   bits := 0; word: [SH_NAME] u8;
   if jv_kind(d, at) != JV_ARRAY { return -1; }
   for i: 0..<jv_len(d, at) {
     n := jv_str(d, jv_at(d, at, i), word[..]); found := -1;
     if n < 1 { return -1; }
-    if rows { found = sa_row(cast(string) word[0..<n]); }
+    if of == SM_BITS_CALLS { found = sa_row(cast(string) word[0..<n]); }
+    else if of == SM_BITS_HANDLERS { for name, h: RH_NAMES { if name == cast(string) word[0..<n] { found = h; } } }
     else { for name, p: SM_POWERS { if name == cast(string) word[0..<n] { found = p; } } }
     // In order, each once: one form.
     if found < 0 || (bits >> found) != 0 { return -1; }
@@ -157,17 +161,9 @@ sm_read :: (text: string, mf: [] ScriptManifest) -> bool {
   layout: [1] ScriptLayout;
   if !sm_fields(v, jv_path(v, 0, "state.fields"), layout[..]) { return false; }
   r.layout = layout[0];
-  handlers := jv_get(v, 0, "handlers");
-  if jv_kind(v, handlers) != JV_ARRAY { return false; }
-  for i: 0..<jv_len(v, handlers) {
-    n = jv_str(v, jv_at(v, handlers, i), word[..]); found := -1;
-    if n < 1 { return false; }
-    for name, h: RH_NAMES { if name == cast(string) word[0..<n] { found = h; } }
-    if found < 0 || (r.handlers >> found) != 0 { return false; }
-    r.handlers = r.handlers | (1 << found);
-  }
-  r.powers = sm_bits(v, jv_get(v, 0, "powers"), false); r.calls = sm_bits(v, jv_get(v, 0, "calls"), true);
-  if r.handlers == 0 || r.powers < 0 || r.calls < 0 { return false; }
+  r.handlers = sm_bits(v, jv_get(v, 0, "handlers"), SM_BITS_HANDLERS);
+  r.powers = sm_bits(v, jv_get(v, 0, "powers"), SM_BITS_POWERS); r.calls = sm_bits(v, jv_get(v, 0, "calls"), SM_BITS_CALLS);
+  if r.handlers <= 0 || r.powers < 0 || r.calls < 0 { return false; }
   r.ok = true;
   again: [SM_TEXT] u8;
   if sm_write(r, again[..]) != text { return false; }

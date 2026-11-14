@@ -165,15 +165,18 @@ site's admins write it; a player of the game is known by `X-Verse-Player`, as
 on the realm routes. A realm hidden from the caller is no world to them.
 
 - Its document is empty. `GET /api/worlds/ID/content` (`reach 40000`) is
-  its board, its settings and its places as five content tables: `kinds`
-  (`id name:text`, the things the realm places, in its own order), `rows`
-  (`id key:text on:int label:text`, in the board's order), `scripts` (`id
-  name:text hash:text for:text`, the scripts it runs), `things` (`id
-  kind:ref.kinds x:cm z:cm turn:int size:int`, each placed thing that
-  stands) and `tools` (`id name:text on:int`).
+  its board, its settings, its characters' words and its places as seven
+  content tables: `kinds` (`id name:text`, the things the realm places, in
+  its own order), `lore` (`id who:text text:text`, a character's lore),
+  `quests` (`id giver:text ask:text s1:text s2:text s3:text reward:text`, the
+  quest a character gives), `rows` (`id key:text on:int label:text`, in the
+  board's order), `scripts` (`id name:text hash:text for:text`, the scripts
+  it runs), `things` (`id kind:ref.kinds x:cm z:cm turn:int size:int`, each
+  placed thing that stands) and `tools` (`id name:text on:int`).
 - A batch is `cell` edits of `on`, `0` or `1`, of a script row whole
   (the cell `*` of a row of `scripts`: `NAME|HASH|FOR`, or empty to take it
-  away), and `spawn` and `despawn` of placed things (#13506, below).
+  away), of a lore or quest row whole (#13526, below), and `spawn` and
+  `despawn` of placed things (#13506, below).
   The realm's own SQL (`verse.edit_switch`, `verse.edit_settings`) carries out
   each switch, so its refusals are the ones the realm's page meets. The
   script rows are kept with the world (`verse.world_docs.dev_tables`) under
@@ -187,6 +190,30 @@ on the realm routes. A realm hidden from the caller is no world to them.
 - Undo and redo take a batch back as switches, spawns and despawns. It has
   one lane: a read of live is answered with dev, and a publish is refused,
   since a switch reaches everyone at once.
+
+### Lore and quests (#13526)
+
+A realm keeps each character's lore and quest by the character's key
+(`verse.realm_lore` and `verse.realm_quests` for a hand-built realm,
+`verse.made_realms.lore` and `.quests` for a made one), and the spec says them
+as `lore WHO|TEXT` and `quest GIVER|ASK|S1|S2|S3|REWARD` lines in key order
+(`verse.edit_panes`, migration 0197). The tables number them in that order.
+
+- A row is known by its character's key (`who`, `giver`), not by its ID. The
+  ID is the row's place when the page read the tables, so an edit names the
+  row it means by the key it writes.
+- An edit is the cell `*` of a row, whole: `ID|WHO|TEXT` for lore and
+  `ID|GIVER|ASK|S1|S2|S3|REWARD` for a quest, its ID the edit's row. A key
+  with no row adds one at the end.
+- An empty TEXT forgets the lore. A quest with an empty ask and every part
+  empty is taken away; a quest with steps or a reward and no ask is refused.
+- Each part is printable, with no `|` and no space at either end. Lore is 400
+  characters at most, an ask 160, a step or a reward 100. A realm keeps lore
+  for 40 characters and 40 quests.
+- The inverse is the old row, or an empty one, so one undo takes the edit back.
+- The realm's own SQL (`verse.edit_lore`, `verse.edit_quest`) carries out each
+  edit, so its refusals are the ones the realm's page meets. Visitors may not
+  edit a realm's lore or quests.
 
 ### Placed things (#13506)
 
@@ -235,7 +262,8 @@ realm's page's own UNDO still takes back that page's own saves and placings;
 
 A realm's page follows this world when someone who may edit it opens the page with `?edit`
 (`metaverse/edit/realm-page.coax`, #13478), and the editor shell shows the board and the tools as lists of
-switches ([editor-model-v1.md](editor-model-v1.md): `atonce`, `list`, `sw`).
+switches ([editor-model-v1.md](editor-model-v1.md): `atonce`, `list`, `sw`), and the lore and quest
+of the character the player is by as a card of fields (`chars`, `char`, `cl`, `cq`).
 
 ## The server checks with the page's code
 

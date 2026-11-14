@@ -131,6 +131,8 @@ fw_copy :: (dst: [] u8, s: string) -> int {
 
 // ---- words on a line
 
+// Field i of a line, as a number (-1 when it is not one).
+fw_nf :: (line: string, i: int) -> int { return fw_num(fw_field(line, i)); }
 fw_field :: (line: string, i: int) -> string {
   at := 0; f := 0;
   for k: 0..<line.count + 1 {
@@ -358,8 +360,8 @@ fw_read :: (l: [] FwList, text: string, scratch: [] u8) -> bool {
   w := fw_field(head, 1); p := fw_field(head, 2);
   l[0].world_n = ifx w == "-" then 0 else fw_copy(l[0].world[..], w);
   l[0].project_n = ifx p == "-" then 0 else fw_copy(l[0].project[..], p);
-  l[0].count = fw_num(fw_field(head, 3)); l[0].bytes = fw_num(fw_field(head, 4));
-  l[0].file = fw_num(fw_field(head, 5)); l[0].files = fw_num(fw_field(head, 6)); l[0].total = fw_num(fw_field(head, 7));
+  l[0].count = fw_nf(head, 3); l[0].bytes = fw_nf(head, 4);
+  l[0].file = fw_nf(head, 5); l[0].files = fw_nf(head, 6); l[0].total = fw_nf(head, 7);
   if l[0].count < 0 || l[0].bytes < 0 || l[0].file != FW_FILE_MAX || l[0].files != FW_FILES_MAX || l[0].total != FW_TOTAL_MAX { return false; }
   lines := fw_parts(text, '\n');
   for i: 1..<lines {
@@ -376,11 +378,11 @@ fw_read :: (l: [] FwList, text: string, scratch: [] u8) -> bool {
       f.scope = ifx fw_field(line, 2) == "project" then FW_SCOPE_PROJECT else ifx fw_field(line, 2) == "world" then FW_SCOPE_WORLD else -1;
       kw := fw_field(line, 3);
       f.kind = 0; for k: 1..<4 { if FW_KINDS[k] == kw { f.kind = k; } }
-      f.bytes = fw_num(fw_field(line, 4));
+      f.bytes = fw_nf(line, 4);
       hash := fw_field(line, 5);
       f.hashed = hash != "-";
       if f.hashed { if hash.count != 64 { return false; } for c, k: hash { f.hash[k] = c; } }
-      f.at = fw_num(fw_field(line, 6));
+      f.at = fw_nf(line, 6);
       f.by_n = fw_copy(f.by[..], fw_field(line, 7));
       f.name_n = fw_copy(f.name[..], fw_rest(line, 8));
       l[0].f[l[0].n] = f;
@@ -437,10 +439,10 @@ fw_ask_read :: (a: [] FwAsk, body: string) -> bool {
   scope := "";
   if a[0].what == FW_Q_ATTACH {
     if fw_fields(head) < 5 { return false; }
-    scope = fw_field(head, 1); a[0].bytes = fw_num(fw_field(head, 2)); a[0].from = fw_num(fw_field(head, 3)); a[0].name_n = fw_copy(a[0].name[..], fw_rest(head, 4));
+    scope = fw_field(head, 1); a[0].bytes = fw_nf(head, 2); a[0].from = fw_nf(head, 3); a[0].name_n = fw_copy(a[0].name[..], fw_rest(head, 4));
   } else if a[0].what == FW_Q_UPLOAD {
     if fw_fields(head) < 4 { return false; }
-    scope = fw_field(head, 1); a[0].bytes = fw_num(fw_field(head, 2)); a[0].name_n = fw_copy(a[0].name[..], fw_rest(head, 3));
+    scope = fw_field(head, 1); a[0].bytes = fw_nf(head, 2); a[0].name_n = fw_copy(a[0].name[..], fw_rest(head, 3));
   } else if a[0].what == FW_Q_LINK {
     if fw_fields(head) != 3 { return false; }
     scope = fw_field(head, 1); a[0].url_n = fw_copy(a[0].url[..], fw_field(head, 2));
@@ -542,7 +544,7 @@ fw_part_read :: (text: string) -> FwPart {
   line := fw_part(text, '\n', 0);
   if fw_field(line, 0) != FW_PART || fw_fields(line) != 3 || !fw_hex(fw_field(line, 1), 64) || text.count != line.count + 1 { return r; }
   for c, k: fw_field(line, 1) { r.hash[k] = c; }
-  r.got = fw_num(fw_field(line, 2));
+  r.got = fw_nf(line, 2);
   r.ok = r.got >= 0;
   return r;
 }
@@ -560,7 +562,7 @@ fw_uploaded_read :: (text: string) -> FwUploaded {
   how := fw_field(line, 1); url := fw_field(line, 4);
   r.how = ifx how == "put" then FW_PUT else ifx how == "kept" then FW_KEPT else 0;
   for c, k: fw_field(line, 2) { r.hash[k] = c; }
-  r.bytes = fw_num(fw_field(line, 3));
+  r.bytes = fw_nf(line, 3);
   if r.how == FW_PUT { if url.count < 8 || url.count > 2048 || !(url[0..<7] == "http://" || url[0..<8] == "https://") { return r; } r.url_n = fw_copy(r.url[..], url); }
   else if url != "-" { return r; }
   r.ok = r.how > 0 && r.bytes >= 1;

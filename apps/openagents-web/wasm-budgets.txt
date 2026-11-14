@@ -72,6 +72,9 @@ kit 160000
 # world-changes.coax and shell-revs.coax): 309,748 bytes measured 2026-11-13 on a build host; about 3% room.
 # With Run it on a world with one lane (#13496: the row's batch sent by the shell, its question and the realm's starter): 320,065
 # bytes measured 2026-11-13 on a Mac; about 3% room.
+# With a realm's characters' lore and quests as a card of fields (#13526, shell-chars.coax), paid for by one reader of a
+# model line's parts, one writer of its pieces, one select of fixed choices and one name-bits reader: 328,926 bytes measured
+# 2026-11-14 on a build host; the budget unchanged.
 editor-shell 330000
 agents 120000
 # Crew, character creation (#13462): the body, the wardrobe and the document (metaverse-engine/kit/crew-*.coax) on the cel lofts and

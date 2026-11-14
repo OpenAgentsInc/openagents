@@ -539,6 +539,12 @@ tool_main :: () -> int #export_c #effects(all) {
 // ---- a realm's world (#13422): a hand-built realm with a board, The Grid (migrations 0050, 0082, 0185), at
 // /api/worlds/the-grid. Its rows and tools are content tables; a switch is a cell edit the realm's own SQL carries out.
 WC_REALM :: "/api/worlds/the-grid";
+WC_ROWS_HEAD :: "table rows id key:text on:int label:text";
+// The line after the line `head` of a body; "" when there is none.
+wc_line_after :: (body: string, head: string) -> string {
+  for k: 0..<ct_parts(body, '\n') { if ct_part(body, '\n', k) == head { return ct_part(body, '\n', k + 1); } }
+  return "";
+}
 wc_realm_checks :: (t: [] Ap, w: [] Wc) {
   edit: [1] int; q: [400] u8; b: [1] Sb;
   st := ap_call(t, "GET", "/api/worlds/the-grid?lane=dev", "", t[0].no[0..<0]);
@@ -548,8 +554,8 @@ wc_realm_checks :: (t: [] Ap, w: [] Wc) {
   ap_check(t, "realm world: its switches reach everyone at once, so its live is its dev", st == 200 && we_state_read(ap_body(t), w[0].doc[..], w[0].did[..], w[0].scratch[..]).lane == WL_DEV, ap_body(t));
   st = ap_call(t, "GET", "/api/worlds/the-grid/content", "", t[0].no[0..<0]);
   body := ap_body(t);
-  ap_check(t, "realm world: the board and the settings are content tables", st == 200 && ap_starts(body, "aethyr.content.v1 realm 1\nreach 40000\ntable kinds id name:text\ntable rows id key:text on:int label:text\n1|") && ap_has(body, "\ntable things id kind:ref.kinds x:cm z:cm turn:int size:int\ntable tools id name:text on:int\n"), body);
-  row := ct_part(body, '\n', 4);
+  ap_check(t, "realm world: the board and the settings are content tables", st == 200 && ap_starts(body, "aethyr.content.v1 realm 1\nreach 40000\ntable kinds id name:text\ntable lore id who:text text:text\n") && ap_has(body, "\ntable rows id key:text on:int label:text\n1|") && ap_has(body, "\ntable things id kind:ref.kinds x:cm z:cm turn:int size:int\ntable tools id name:text on:int\n"), body);
+  row := wc_line_after(body, WC_ROWS_HEAD);
   key: [64] u8; kn := ct_copy(key[..], ct_part(row, '|', 1));
   was := ct_part(row, '|', 2) == "1";
   turn := ifx was then "0" else "1";
@@ -566,7 +572,7 @@ wc_realm_checks :: (t: [] Ap, w: [] Wc) {
   now := ap_sql(t, sb_text(ks[..]), q[..]);
   ap_check(t, "realm world: an admin's switch is the realm's: its board changes, the revision moves one, one event", st == 200 && w[0].st.rev == 1 && w[0].st.undo == 1 && now == (ifx was then "false" else "true") && ap_sql(t, "SELECT count(*) FROM verse.world_outbox WHERE world = 'the-grid'", q[..]) == "1", ap_body(t));
   st = ap_call(t, "GET", "/api/worlds/the-grid/content", "", t[0].no[0..<0]);
-  ap_check(t, "realm world: the tables read as switched", st == 200 && ct_part(ct_part(ap_body(t), '\n', 4), '|', 2) == turn, ap_body(t));
+  ap_check(t, "realm world: the tables read as switched", st == 200 && ct_part(wc_line_after(ap_body(t), WC_ROWS_HEAD), '|', 2) == turn, ap_body(t));
   // an undo sets it back, through the same SQL
   st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 1, "undo", "");
   ap_check(t, "realm world: an undo switches it back as an edit of its own", st == 200 && w[0].st.rev == 2 && w[0].st.undo == 0 && w[0].st.redo == 1 && ap_sql(t, sb_text(ks[..]), q[..]) == (ifx was then "true" else "false"), ap_body(t));
@@ -608,4 +614,38 @@ wc_realm_places :: (t: [] Ap, w: [] Wc) {
   st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 7, "apply", "{\"op\":\"spawn\",\"id\":0,\"kind\":1,\"x\":40001,\"y\":0,\"z\":0,\"yaw\":0,\"scale\":100}");
   ap_check(t, "realm places: one too far is the place rules' refusal (realm-place-policy.coax), in words", st == 422 && wc_refusal(t, w, edit[..]) == "a thing stands within 400 m of the middle" && ap_sql(t, "SELECT jsonb_array_length(placed) FROM verse.realm_edit WHERE slug = 'the-grid'", q[..]) == "2", ap_body(t));
   ap_do(t, "UPDATE verse.realm_rights SET things = ARRAY[]::text[] WHERE slug = 'the-grid'; UPDATE verse.realm_edit SET placed = '[]' WHERE slug = 'the-grid';");
+  wc_realm_lore(t, w);
+}
+// ---- lore and quests as world edits (#13526, migration 0196): rows of the world's lore and quests tables, carried out by
+// verse.edit_lore and verse.edit_quest, taken back by the world's undo
+wc_realm_lore :: (t: [] Ap, w: [] Wc) {
+  edit: [1] int; q: [400] u8;
+  ap_do(t, "DELETE FROM verse.realm_lore WHERE slug = 'the-grid'; DELETE FROM verse.realm_quests WHERE slug = 'the-grid';");
+  lore := "SELECT coalesce((SELECT text FROM verse.realm_lore WHERE slug = 'the-grid' AND who = 'wc-mott'), 'none')";
+  quest := "SELECT coalesce((SELECT ask || '/' || array_to_string(steps, ',') || '/' || reward FROM verse.realm_quests WHERE slug = 'the-grid' AND giver = 'wc-mott'), 'none')";
+  rev := 7;   // the places' last step (a refusal leaves no state to read it from)
+  both := "{\"op\":\"cell\",\"table\":\"lore\",\"row\":1,\"col\":\"*\",\"v\":\"1|wc-mott|He kept the bridge.\"},{\"op\":\"cell\",\"table\":\"quests\",\"row\":1,\"col\":\"*\",\"v\":\"1|wc-mott|Bring my oar|Find it||Bring it back|A lantern\"}";
+  st := wc_post_to(t, w, t[0].admin_key, WC_REALM, rev, "apply", both);
+  ap_check(t, "realm lore: a lore and a quest edit are the realm's, through its SQL, one revision each",
+           st == 200 && w[0].st.rev == rev + 2 && ap_sql(t, lore, q[..]) == "He kept the bridge." && ap_sql(t, quest, q[..]) == "Bring my oar/Find it,,Bring it back/A lantern", ap_body(t));
+  st = ap_call(t, "GET", "/api/worlds/the-grid/content", "", t[0].no[0..<0]);
+  ap_check(t, "realm lore: the lore and the quests are tables", st == 200 && ap_has(ap_body(t), "table lore id who:text text:text\n1|wc-mott|He kept the bridge.\ntable quests id giver:text ask:text s1:text s2:text s3:text reward:text\n1|wc-mott|Bring my oar|Find it||Bring it back|A lantern\ntable rows"), ap_body(t));
+  // one undo takes both back; the redo makes them again
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, rev + 2, "undo", "");
+  ap_check(t, "realm lore: one undo forgets the lore and takes the quest away", st == 200 && w[0].st.rev == rev + 4 && ap_sql(t, lore, q[..]) == "none" && ap_sql(t, quest, q[..]) == "none", ap_body(t));
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, rev + 4, "redo", "");
+  ap_check(t, "realm lore: the redo writes them again", st == 200 && w[0].st.rev == rev + 6 && ap_sql(t, lore, q[..]) == "He kept the bridge." && ap_sql(t, quest, q[..]) != "none", ap_body(t));
+  // an edit of the lore as it is now: its undo sets the old text back
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, rev + 6, "apply", "{\"op\":\"cell\",\"table\":\"lore\",\"row\":1,\"col\":\"*\",\"v\":\"1|wc-mott|He keeps the bridge.\"}");
+  changed := st == 200 && ap_sql(t, lore, q[..]) == "He keeps the bridge.";
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, rev + 7, "undo", "");
+  ap_check(t, "realm lore: an edit's undo sets the lore back as it was", changed && st == 200 && ap_sql(t, lore, q[..]) == "He kept the bridge.", ap_body(t));
+  // the world's words, at the edit, and the realm's own
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, rev + 8, "apply", "{\"op\":\"cell\",\"table\":\"lore\",\"row\":1,\"col\":\"*\",\"v\":\"1|wc-mott| x\"}");
+  ap_check(t, "realm lore: a part with a space at its end is refused in words, at its edit", st == 422 && wc_refusal(t, w, edit[..]) == "lore and quests have no space at either end" && edit[0] == 0, ap_body(t));
+  hv := [2] string.["Content-Type: application/json", "X-Verse-Player: wc-a-visitor-of-the-grid"];
+  b: [1] Sb;
+  st = ap_call(t, "POST", WC_REALM, wc_batch(b[..], rev + 8, "apply", "{\"op\":\"cell\",\"table\":\"lore\",\"row\":1,\"col\":\"*\",\"v\":\"1|wc-mott|\"}"), hv[..]);
+  ap_check(t, "realm lore: a visitor may not forget it", st == 403 && ap_sql(t, lore, q[..]) == "He kept the bridge.", ap_body(t));
+  ap_do(t, "DELETE FROM verse.realm_lore WHERE slug = 'the-grid'; DELETE FROM verse.realm_quests WHERE slug = 'the-grid';");
 }

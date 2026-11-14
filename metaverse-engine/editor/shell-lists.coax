@@ -6,10 +6,10 @@
 // A press is a cell edit of the list's table and column, to 0 or 1, so it is one undo step and the
 // world's server answers it. The switch moves when the next model says the row did.
 
-// A world that is lists and nothing else: no thing to pick, place or move, so the shell leaves out the
-// viewport's tools and the Things list.
+// A world that is lists (and a realm's characters' lore and quests, shell-chars.coax) and nothing else: no
+// thing to pick, place or move, so the shell leaves out the viewport's tools and the Things list.
 es_lists_only :: (m: [] EdModel) -> bool {
-  if m[0].nl == 0 || m[0].ne > 0 || m[0].nk > 0 || m[0].all || m[0].land || m[0].na > 0 { return false; }
+  if (m[0].nl == 0 && !m[0].chars) || m[0].ne > 0 || m[0].nk > 0 || m[0].all || m[0].land || m[0].na > 0 { return false; }
   for c: 0..<WE_COLS { if m[0].cols[c] { return false; } }
   return true;
 }

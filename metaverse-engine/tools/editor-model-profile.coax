@@ -73,6 +73,13 @@ emp_check :: (profile_json: string, w: [] EmpWork) -> bool {
   cw := emp_str(d, jv_get(d, crd, "wire"), w[0].wire[..]);
   if cw.count == 0 || !em_read(m, cw, w[0].scratch[..]) || em_write(m, w[0].out[..]) != cw { return false; }
   if jv_int(d, jv_get(d, crd, "cards"), -1) != m[0].nq || jv_int(d, jv_get(d, crd, "all"), -1) != m[0].q_all { return false; }
+  // a realm's characters' lore and quests (#13526)
+  if jv_int(d, jv_get(d, lim, "who_bytes"), 0) != EM_WHO || jv_int(d, jv_get(d, lim, "lore_bytes"), 0) != EM_LORE || jv_int(d, jv_get(d, lim, "quest_bytes"), 0) != EM_QUEST { return false; }
+  chs := jv_get(d, 0, "chars");
+  cw = emp_str(d, jv_get(d, chs, "wire"), w[0].wire[..]);
+  if cw.count == 0 || !em_read(m, cw, w[0].scratch[..]) || em_write(m, w[0].out[..]) != cw || !m[0].chars || !m[0].ch { return false; }
+  who := m[0].ch_who;
+  if emp_str(d, jv_get(d, chs, "who"), nb[..]) != cast(string) who[0..<m[0].ch_who_n] || jv_int(d, jv_get(d, chs, "lore_row"), -1) != m[0].cl_id || jv_int(d, jv_get(d, chs, "quest_row"), -1) != m[0].cq_id { return false; }
   empty := emp_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);
   if empty.count == 0 || !em_read(m, empty, w[0].scratch[..]) || m[0].ne != 0 || m[0].lane != 1 { return false; }
   rej := jv_get(d, 0, "rejected");

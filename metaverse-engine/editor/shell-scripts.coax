@@ -605,10 +605,7 @@ es_sc_typed :: (s: [] EdShell, id: string, length: int) -> bool {
     return true;
   }
   if id != "scripts.name" && id != "scripts.reason" { return false; }
-  lo := 0; hi := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
-  while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
-  while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
-  typed := cast(string) s[0].inbox[lo..<hi];
+  typed := es_typed(s, length);
   if id == "scripts.name" {
     // a build is of a name: another name is another script
     s[0].sc.name_n = ifx typed.count > EM_SNAME then 0 else em_copy(s[0].sc.name[..], typed);

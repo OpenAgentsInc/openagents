@@ -13,7 +13,9 @@
 //     `things`; an entity's ID is the thing's world ID, its place in the realm's list), `atonce`, the
 //     scripts table with the kind a script drives here (kind 1: the realm's characters) and its rows, the
 //     board and the tools as lists of switches, the realm's asks where the edit layer hands them over (rp_asks,
-//     #13528: the agent strip's turn is told them), and `here`, the player's spot (rp_here, in whole metres);
+//     #13528: the agent strip's turn is told them), `here`, the player's spot (rp_here, in whole metres), and
+//     the realm's characters' lore and quests (#13526: the tables `lore` and `quests`), with the lore and
+//     quest of the character the player is by (rp_near, which the realm says);
 //   - the scripts the tables name, as the page's script loader reads them (metaverse-engine/script/loader.coax):
 //     the world's script list, then "SLOT HASH" a row;
 //   - which loaded script drives a character (srw_pick: a row for that one wins over a row for the kind).
@@ -37,7 +39,7 @@
 
 RP_KIND_CHARACTERS :: 1;   // "kind 1": the realm's characters; "who N": the Nth of them (1 and up)
 RP_CHARACTERS_NAME :: "Characters";
-RP_MODEL :: 24576;         // bytes of the shell's model (a board of 64 rows and 16 tools, 8 scripts and 200 things fit)
+RP_MODEL :: 32768;         // bytes of the shell's model (a board of 64 rows and 16 tools, 8 scripts, 200 things and a character's lore and quest fit)
 RP_KINDS :: 16;            // kinds a realm places (realm-world.coax RW_KINDS)
 RP_THINGS :: 256;          // placed things the model lists (editor-model-v1 EM_ENTS)
 RP_SELECT :: 521;          // the editor shell's: select an entity, 0 for none
@@ -52,6 +54,8 @@ RP_BATCH_KIND :: 520;      // the editor shell's: a world.edit.v1 batch
 RP_CARDS_POLL :: 5.0f32;   // seconds between reads of the visitors' proposals (a proposal is no world event)
 RP_CARDS_LATE :: 10.0f32;  // seconds a read of them may take before it is asked again
 RP_ASK_APPLIED :: 0; RP_ASK_WAITING :: 1; RP_ASK_REMOVING :: 2;   // an ask's state, as editor.model.v1 writes it
+RP_CHARS :: 40;            // characters with lore, and with a quest (realm-world.coax RW_CHARS)
+RP_CHARS_TEXT :: 24576;    // bytes of their rows the page keeps: "WHO|TEXT" a lore, "GIVER|ASK|STEP|STEP|STEP|REWARD" a quest
 
 RealmPage :: struct {
   on: bool;
@@ -78,6 +82,12 @@ RealmPage :: struct {
   // the realm's asks (#13528): whether the edit layer handed them over, at which of its reads, and each one
   asks: bool; asks_v: int;
   naq: int; aq_id: [EM_ASKS] int; aq_state: [EM_ASKS] int; aq_words: [EM_ASKS] [EM_QWORDS] u8; aq_words_n: [EM_ASKS] int;
+  // the characters' lore and quests (#13526): whether the tables have them, each row's ID and its bytes in lq
+  // (lore first, then quests), how often they changed, and the character the player is by
+  chars: bool; lq: [RP_CHARS_TEXT] u8; lq_n: int; chars_rev: int;
+  lores: int; l_id: [RP_CHARS] int; l_at: [RP_CHARS] int; l_end: [RP_CHARS] int;
+  quests: int; qu_id: [RP_CHARS] int; qu_at: [RP_CHARS] int; qu_end: [RP_CHARS] int;
+  near_who: [EM_WHO] u8; near_n: int; near_name: [EM_NAME] u8; near_name_n: int;
 }
 
 rp_world_id :: (p: [] RealmPage) -> string { return wf_id(p[0].f[..]); }
@@ -92,6 +102,7 @@ rp_open :: (p: [] RealmPage, slug: string) -> bool {
   n := ct_put(p[0].cards_url[..], 0, "/api/playtest/realms/"); n = ct_put(p[0].cards_url[..], n, slug); n = ct_put(p[0].cards_url[..], n, "/proposals");
   p[0].cards_url_n = ifx n > p[0].cards_url.count then 0 else n;
   p[0].asks = false; p[0].naq = 0;
+  p[0].chars = false; p[0].lq_n = 0; p[0].lores = 0; p[0].quests = 0;
   rp_remodel(p);
   return true;
 }
@@ -164,7 +175,8 @@ rp_metres :: (w: string) -> f32 {
 rp_tables :: (p: [] RealmPage, text: string) {
   d: [1] ContentDoc; bad: [2] int;
   p[0].tabled = true; p[0].rows_n = 0; p[0].part_n = 0; p[0].kinds = 0; p[0].things = 0;
-  if !ct_read(d[..], text) { return; }
+  if !ct_read(d[..], text) { rp_chars_read(p, d[..], false); return; }
+  rp_chars_read(p, d[..], true);
   tk := ct_table(d[..], "kinds"); nm := ct_col(d[..], tk, "name");
   for r: 0..<ct_rows(d[..], tk) {
     line: [EM_NAME] u8; k := rp_line(line[..], ct_str(d[..], tk, r, nm));
@@ -185,6 +197,64 @@ rp_tables :: (p: [] RealmPage, text: string) {
   p[0].rows_n = ifx n < 0 then 0 else n;
   k := rp_part_write(p, d[..], p[0].part[..]);
   p[0].part_n = ifx k > p[0].part.count then 0 else k;
+}
+// The lore and quests tables' rows, kept by their IDs; chars_rev moves when what they hold does.
+rp_chars_read :: (p: [] RealmPage, d: [] ContentDoc, read: bool) {
+  was: [RP_CHARS_TEXT] u8; wn := p[0].lq_n; for i: 0..<wn { was[i] = p[0].lq[i]; }
+  had := p[0].chars; hl := p[0].lores; hq := p[0].quests;
+  p[0].lq_n = 0; p[0].lores = 0; p[0].quests = 0;
+  tl := ifx read then ct_table(d, "lore") else -1; tq := ifx read then ct_table(d, "quests") else -1;
+  p[0].chars = tl >= 0 && tq >= 0 && ct_col(d, tl, "who") == 1 && ct_col(d, tl, "text") == 2 && ct_col(d, tq, "giver") == 1 && ct_col(d, tq, "reward") == 6;
+  if p[0].chars {
+    for lore: [2] bool.[true, false] {
+      t := ifx lore then tl else tq;
+      for r: 0..<ct_rows(d, t) {
+        if (ifx lore then p[0].lores else p[0].quests) >= RP_CHARS { break; }
+        at := p[0].lq_n;
+        n := ct_put(p[0].lq[..], at, ct_str(d, t, r, 1));
+        for k: 2..<(ifx lore then 3 else 7) { n = ct_put(p[0].lq[..], n, "|"); n = ct_put(p[0].lq[..], n, ct_str(d, t, r, k)); }
+        if n > p[0].lq.count { break; }
+        p[0].lq_n = n;
+        if lore { k := p[0].lores; p[0].l_id[k] = ct_get(d, t, r, 0); p[0].l_at[k] = at; p[0].l_end[k] = n; p[0].lores += 1; } else { k := p[0].quests; p[0].qu_id[k] = ct_get(d, t, r, 0); p[0].qu_at[k] = at; p[0].qu_end[k] = n; p[0].quests += 1; }
+      }
+    }
+  }
+  if had != p[0].chars || hl != p[0].lores || hq != p[0].quests || wn != p[0].lq_n || cast(string) was[0..<wn] != cast(string) p[0].lq[0..<p[0].lq_n] { p[0].chars_rev += 1; }
+}
+// How often the lore and quests the page holds changed: a page that shows them reads them again when it moves.
+rp_chars_rev :: (p: [] RealmPage) -> int { return p[0].chars_rev; }
+// The character the player is by, as the realm says it ("" for none): the shell shows its lore and quest.
+rp_near :: (p: [] RealmPage, who: string, name: string) {
+  ok := em_who_ok(who);
+  nm: [EM_NAME] u8; nn := ifx ok then rp_line(nm[..], name) else 0;
+  if p[0].near_n == (ifx ok then who.count else 0) && cast(string) p[0].near_who[0..<p[0].near_n] == (ifx ok then who else "") && cast(string) p[0].near_name[0..<p[0].near_name_n] == cast(string) nm[0..<nn] { return; }
+  p[0].near_n = ifx ok then ct_copy(p[0].near_who[..], who) else 0;
+  p[0].near_name_n = ct_copy(p[0].near_name[..], cast(string) nm[0..<nn]);
+  if p[0].on { rp_remodel(p); }
+}
+// Character `who`'s row of the lore (or the quests): its place among the page's, or -1.
+rp_char_at :: (p: [] RealmPage, lore: bool, who: string) -> int {
+  for k: 0..<(ifx lore then p[0].lores else p[0].quests) {
+    row := ifx lore then cast(string) p[0].lq[p[0].l_at[k]..<p[0].l_end[k]] else cast(string) p[0].lq[p[0].qu_at[k]..<p[0].qu_end[k]];
+    if ct_part(row, '|', 0) == who { return k; }
+  }
+  return -1;
+}
+// The model's lines of the characters: the tables, then the one the player is by, with its lore's row and its
+// quest's (the next ID for a character with none).
+rp_chars_write :: (p: [] RealmPage, out: [] u8, at: int) -> int {
+  if !p[0].chars { return at; }
+  n := em_chars(out, at, "lore", "quests");
+  if p[0].near_n == 0 { return n; }
+  who := cast(string) p[0].near_who[0..<p[0].near_n];
+  name: [EM_NAME] u8; nn := ct_copy(name[..], cast(string) p[0].near_name[0..<p[0].near_name_n]);
+  if nn == 0 { nn = ct_copy(name[..], ifx who.count > EM_NAME then who[0..<EM_NAME] else who); }
+  l := rp_char_at(p, true, who); q := rp_char_at(p, false, who);
+  lrow := ifx l < 0 then "" else cast(string) p[0].lq[p[0].l_at[l]..<p[0].l_end[l]];
+  qrow := ifx q < 0 then "" else cast(string) p[0].lq[p[0].qu_at[q]..<p[0].qu_end[q]];
+  k := em_char(out, n, who, cast(string) name[0..<nn], ifx l < 0 then p[0].lores + 1 else p[0].l_id[l], ifx l < 0 then "" else lrow[who.count + 1..<lrow.count],
+               ifx q < 0 then p[0].quests + 1 else p[0].qu_id[q], ifx q < 0 then "" else qrow[who.count + 1..<qrow.count]);
+  return ifx k > out.count then n else k;
 }
 // An answer from the host (kind 512 + its id): whether it was the follower's.
 rp_answer :: (p: [] RealmPage, host_id: int, text: string) -> bool {
@@ -345,6 +415,7 @@ rp_model_write :: (p: [] RealmPage, out: [] u8) -> int {
   }
   for k: 0..<p[0].nq { n = em_card(out, n, p[0].q_id[k], p[0].q_x[k], p[0].q_z[k], cast(string) p[0].q_thing[k][0..<p[0].q_thing_n[k]], cast(string) p[0].q_who[k][0..<p[0].q_who_n[k]]); }
   if p[0].q_all > 0 { n = em_cards_all(out, n, p[0].q_all); }
+  n = rp_chars_write(p, out, n);
   if p[0].here { n = em_here(out, n, p[0].here_x, p[0].here_z); }
   if p[0].no_n > 0 { n = em_no(out, n, cast(string) p[0].no[0..<p[0].no_n]); }
   return n;
@@ -527,4 +598,44 @@ rp_test_state :: (rev: int, out: [] u8) -> string {
   long: [EM_QWORDS + 8] u8; for i: 0..<long.count { long[i] = 'a'; } long[EM_QWORDS - 1] = 0xC3; long[EM_QWORDS] = 0xA9;
   rp_asks_begin(p[..], 4); rp_ask(p[..], 9, RP_ASK_WAITING, cast(string) long[..]); rp_asks_end(p[..]);
   #assert p[0].naq == 1 && p[0].aq_words_n[0] == EM_QWORDS - 1 && em_read(em[..], rp_model(p[..]), sc[..]);
+}
+#test "a realm's page holds its characters' lore and quests, and tells the shell the one the player is by" {
+  p: [1] RealmPage; o: [4096] u8; t: [4096] u8; b: [4096] u8;
+  #assert rp_open(p[..], "fairy-forest");
+  rp_step(p[..], 0.016); rp_sent(p[..], 0);
+  k := ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_state(4, o[..]));
+  #assert rp_answer(p[..], 0, cast(string) b[0..<k]);
+  // the realm says who the player is by before the tables are read: nothing to tell yet
+  rp_near(p[..], "old-mott", "Old  Mott");
+  #assert !rp_test_has_line(rp_model(p[..]), "chars lore quests");
+  rp_step(p[..], 0.016); rp_sent(p[..], 1);
+  n := ct_put(t[..], 0, "aethyr.content.v1 realm 1\nreach 40000\ntable kinds id name:text\n");
+  n = ct_put(t[..], n, "table lore id who:text text:text\n1|ana|She keeps the gate.\n2|old-mott|He kept the bridge, and the oar.\n");
+  n = ct_put(t[..], n, "table quests id giver:text ask:text s1:text s2:text s3:text reward:text\n1|old-mott|Bring my oar|Find the oar||Bring it back|A lantern\n");
+  n = ct_put(t[..], n, "table rows id key:text on:int label:text\ntable tools id name:text on:int\n");
+  k = ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, cast(string) t[0..<n]);
+  cr := rp_chars_rev(p[..]);
+  #assert rp_answer(p[..], 1, cast(string) b[0..<k]) && p[0].chars && p[0].lores == 2 && p[0].quests == 1 && rp_chars_rev(p[..]) == cr + 1;
+  #assert rp_model(p[..]) == "editor.model.v1 fairy-forest dev 4 1 0 0\ncols\natonce\nchars lore quests\nchar old-mott Old Mott\ncl 2 He kept the bridge, and the oar.\ncq 1 Bring my oar|Find the oar||Bring it back|A lantern\n";
+  m: [1] EdModel; sc: [EM_BYTES] u8;
+  #assert em_read(m[..], rp_model(p[..]), sc[..]) && m[0].ch && m[0].cl_id == 2;
+  // a character with no quest: the next row; with neither: the next of each
+  rp_near(p[..], "ana", "Ana");
+  #assert ct_part(rp_model(p[..]), '\n', 5) == "cl 1 She keeps the gate." && ct_part(rp_model(p[..]), '\n', 6) == "cq 2";
+  rp_near(p[..], "cy", "");
+  #assert ct_part(rp_model(p[..]), '\n', 4) == "char cy cy" && ct_part(rp_model(p[..]), '\n', 5) == "cl 3" && ct_part(rp_model(p[..]), '\n', 6) == "cq 2";
+  // by none, or by a key that is not one: the tables alone
+  rp_near(p[..], "", ""); #assert ct_parts(rp_model(p[..]), '\n') == 5;
+  rp_near(p[..], "Old Mott", "x"); #assert ct_parts(rp_model(p[..]), '\n') == 5 && p[0].near_n == 0;
+  // the same tables again: the lore and quests did not change; tables without them: no lines, and they changed
+  cr = rp_chars_rev(p[..]); p[0].f[0].tabled = false;
+  rp_step(p[..], 0.016); rp_sent(p[..], 2); #assert rp_answer(p[..], 2, cast(string) b[0..<k]) && rp_chars_rev(p[..]) == cr;
+  k = ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_tables("", t[..]));
+  p[0].f[0].tabled = false; rp_step(p[..], 0.016); rp_sent(p[..], 3);
+  #assert rp_answer(p[..], 3, cast(string) b[0..<k]) && !p[0].chars && rp_chars_rev(p[..]) == cr + 1 && !rp_test_has_line(rp_model(p[..]), "chars lore quests");
+}
+// Whether one of text's lines is `line`.
+rp_test_has_line :: (text: string, line: string) -> bool {
+  for k: 0..<ct_parts(text, '\n') { if ct_part(text, '\n', k) == line { return true; } }
+  return false;
 }

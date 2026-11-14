@@ -2856,10 +2856,12 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
     if s[0].talk_p >= s[0].people || !may_talk(s) || sqrt(dx * dx + dz * dz) > TALK_FAR { talk_close(s); }
   }
   if !may_voice(s) { talk_let_go(s); }
-  // the owner's EDIT brings up the lore of the character you are by
+  // the editor shell shows the lore and quest of the character you are by (#13526); the panes everyone reads
+  // are read again when the world's lore and quests change
   np := near_person(s);
-  if np >= 0 { who: [PERSON] u8; wn := who_of(s, np, who[..]); redit_near(s[0].ed[..], cast(string) who[0..<wn], person_name(s, np)); }
-  else { redit_near(s[0].ed[..], "", ""); }
+  if np >= 0 { who: [PERSON] u8; wn := who_of(s, np, who[..]); redit_near(s[0].ed[..], cast(string) who[0..<wn], person_name(s, np)); rp_near(s[0].world[..], cast(string) who[0..<wn], person_name(s, np)); }
+  else { redit_near(s[0].ed[..], "", ""); rp_near(s[0].world[..], "", ""); }
+  redit_world_chars(s[0].ed[..], rp_chars_rev(s[0].world[..]));
   s[0].plate_n = 0;
   for i: 0..<BUTTONS { s[0].shown[i] = false; }
   for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
