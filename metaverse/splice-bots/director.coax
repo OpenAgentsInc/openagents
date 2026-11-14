@@ -299,6 +299,7 @@ d_pause :: (g: [] SpGame) {
   d[0].st = Stance.{since = d[0].st.since};
 }
 d_resume :: (g: [] SpGame) { g[0].dr[0].paused = false; g[0].look_free = false; }
+d_map_close :: (g: [] SpGame) { g[0].dr[0].map = false; g[0].look_free = false; }
 // A battle move key, handed to the battle once (part C's battles take them here).
 d_take_move :: (g: [] SpGame) -> int { d := g[0].dr[..]; if d[0].moves == 0 { return 0; } d[0].moves -= 1; return d[0].move; }
 // A key of the Director's: 1 it is taken, 0 it is ignored, -1 it is the game's.
@@ -308,6 +309,7 @@ d_key :: (g: [] SpGame, key: int, down: bool) -> int {
     if down && (key == -1 || key == -2 || key == 'p' || key == 'P') { d_resume(g); }
     return ifx down then 1 else -1;
   }
+  if d[0].map && down && (key == 'm' || key == 'M' || key == -1 || key == 'e' || key == 'E') { d_map_close(g); return 1; }   // the map closes with M, Esc or E
   if key == -13 { d[0].st = stance_sneak(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }
   if key == -14 { d[0].st = stance_hold(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }   // Ctrl: very fast on the board
   if key == 'w' || key == 'W' || key == -6 { d[0].st = stance_forward(d[0].st, down); return -1; }   // a double tap of W: very fast on the board; W still walks
@@ -401,8 +403,9 @@ d_use :: (g: [] SpGame) -> bool {
 }
 // The pointer in play: true when the Director's systems took it.
 d_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
-  if g[0].mode != M_PLAY { return false; }
   d := g[0].dr[..];
+  if d[0].map { if phase == 0 { d_map_close(g); } return true; }   // a click closes the map
+  if g[0].mode != M_PLAY { return false; }
   if d[0].paused { if phase == 0 { d_resume(g); } return true; }
   if d[0].bag {
     if phase != 0 { return true; }
@@ -416,6 +419,7 @@ d_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
 // The pointer let go while she plays (Escape frees it in a browser): pause.
 d_lock :: (g: [] SpGame, status: int) {
   d := g[0].dr[0];
+  if status == 0 && d.map { d_map_close(g); return; }   // Esc frees the pointer in a browser before its key arrives: it closes the map
   if status == 0 && g[0].mode == M_PLAY && !g[0].look_free && !d.bag && !d.map { d_pause(g); }
 }
 // A step in play, before the walk: the stance's time, the board's speed, the toast.
@@ -540,8 +544,9 @@ d_bag :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
 d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   n := at; k := q.k; ink := INK(); paper := PAPER();
   if g[0].zone != Z_MINE {
-    ui_panel(g, u, q.w * 0.5 - 220 * k, q.h * 0.5 - 40 * k, q.w * 0.5 + 220 * k, q.h * 0.5 + 40 * k, paper, 0.98);
-    return ui_mid(out, n, "The map shows the garage. You're not there yet.", q.w * 0.5, q.h * 0.5 + 4 * k, 9 * k, ink);
+    ui_panel(g, u, q.w * 0.5 - 220 * k, q.h * 0.5 - 40 * k, q.w * 0.5 + 220 * k, q.h * 0.5 + 64 * k, paper, 0.98);
+    n = ui_mid(out, n, "The map shows the garage. You're not there yet.", q.w * 0.5, q.h * 0.5 + 4 * k, 9 * k, ink);
+    return d_map_hint(out, n, q.w * 0.5, q.h * 0.5 + 38 * k, k);
   }
   // the bounds: every wall but the map's edge
   lx := 1e9f32; hx := -1e9f32; lz := 1e9f32; hz := -1e9f32;
@@ -556,6 +561,7 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   ui_panel(g, u, x0 - 30 * k, y0 - 70 * k, x0 + mw + 30 * k, y0 + mh + 50 * k, paper, 0.98);
   n = ui_box(out, n, x0 - 30 * k, y0 - 70 * k, x0 + mw + 30 * k, y0 + mh + 50 * k, 3 * k, ink);
   n = ui_title(out, n, "DEEP GARAGE MAP", x0, y0 - 36 * k, 13 * k, ink);
+  n = d_map_hint(out, n, x0 + mw - 70 * k, y0 - 40 * k, k);
   // north (lower z) is up: x right, z down the page reversed
   for i: 0..<g[0].wall_n {
     o := i * 5; if g[0].walls[o + 4] <= 0 { continue; }
@@ -595,8 +601,18 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
     n = ui_seg(out, n, px, pz, px, pz, 6 * k, HEAT(), 1);
     n = ui_seg(out, n, px, pz, px + sin(g[0].yaw) * 14 * k, pz - cos(g[0].yaw) * 14 * k, 1.5 * k, HEAT(), 1);
   }
-  n = ui_mid(out, n, "You (orange) · Digger (blue) · M closes", q.w * 0.5, y0 + mh + 32 * k, 8 * k, ink);
+  n = ui_mid(out, n, "You (orange) · Digger (blue) · M, Esc, E or a click closes", q.w * 0.5, y0 + mh + 32 * k, 8 * k, ink);
   return n;
+}
+// The map's close hint, centred on cx: the keys on a dark chip (the HUD's key chip, hud.coax) and CLOSE.
+D_MAP_HINT :: "M / ESC";
+d_map_hint :: (out: [] f32, at: int, cx: f32, cy: f32, k: f32) -> int {
+  n := at; kc := 8 * k; vc := 9 * k;
+  kw := ui_w(F_TITLE, D_MAP_HINT, kc) + 16 * k; vw := ui_w(F_TITLE, "CLOSE", vc);
+  x0 := cx - (kw + 10 * k + vw) * 0.5;
+  n = hv_rect(out, n, x0, cy - 12 * k, x0 + kw, cy + 12 * k, HV_PANEL(), 1);
+  n = hv_mid(out, n, F_TITLE, D_MAP_HINT, x0 + kw * 0.5, cy + 4 * k, kc, HV_CREAM(), 1);
+  return hv_text(out, n, F_TITLE, "CLOSE", x0 + kw + 10 * k, cy + 4.5 * k, vc, HV_PANEL(), 1);
 }
 // The controls, as the sheet maps them: shown on the pause screen.
 D_KEYS :: 17;

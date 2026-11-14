@@ -2218,6 +2218,25 @@ FlowTest :: struct { o: [5] [CT_BODY] u8; }
   n := d_map(g[..], out[..], u[..], Ui.{w = 1440, h = 900, k = 1}, 0);
   #assert n > 24 * 2 * 6;
 }
+sp_map_up :: (g: [] SpGame) -> bool { g[0].dr[0].map = true; g[0].look_free = false; return g[0].dr[0].map; }
+#test "the deep-garage map closes with M, Esc, E, a click, or Esc freeing the pointer, and says so on it (playtest 2)" #steps 200000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); #assert spw_shipped(g[..]) == SPW_SHIPPED_N;
+  g_begin(g[..]); fr_start(g[..]);
+  #assert sp_map_up(g[..]) && g_key(g[..], 'm', true) && !g[0].dr[0].map && !g[0].dr[0].paused;
+  #assert sp_map_up(g[..]) && g_key(g[..], -1, true) && !g[0].dr[0].map && !g[0].dr[0].paused;
+  #assert sp_map_up(g[..]) && g_key(g[..], 'e', true) && !g[0].dr[0].map && g[0].mode == M_PLAY;
+  #assert sp_map_up(g[..]) && g_pointer(g[..], 300, 300, 0) && !g[0].dr[0].map;
+  #assert sp_map_up(g[..]); g_lock(g[..], 0); #assert !g[0].dr[0].map && !g[0].dr[0].paused;
+  // in the drive's mode too: the map is never stuck open
+  #assert sp_map_up(g[..]); g[0].mode = M_RIDE; #assert g_key(g[..], 'm', true) && !g[0].dr[0].map; g[0].mode = M_PLAY;
+  // the hint is on it, in the garage and before it
+  out: [60000] f32; u: [UNIFORM_FLOATS] f32;
+  g[0].dr[0].map = true;
+  a := d_map(g[..], out[..], u[..], Ui.{w = 1440, h = 900, k = 1}, 0);
+  b := d_map_hint(out[..], 0, 700, 400, 1);
+  #assert b > 0 && a >= b;
+}
 #test "the drive: the rover you boarded and Sniper parked at the garage are hidden while it drives you; you step out facing the way in (#13505)" #steps 200000000 {
   g := [1] SpGame.[SpGame.{}];
   g_reset(g[..]); #assert spw_shipped(g[..]) == SPW_SHIPPED_N;
