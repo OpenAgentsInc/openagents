@@ -59,6 +59,7 @@ sd_meshes :: (d: [] SpLayerDraw, g: [] SpGame, pieces: [] u32, pack: string) {
 // kind. It writes only when the layer's revision is not the one the rows were written from.
 sd_places :: (d: [] SpLayerDraw, g: [] SpGame, places: [] u32) {
   hid := dv_hidden(g);
+  if hid < 0 && cm_faded(g) { hid = dv_train(g); }   // the farm's rover, drawn live while the camera fades it (camera.coax)
   if d[0].place_rev == g[0].layer[0].rev && d[0].place_shown == g[0].layer[0].shown && d[0].place_hid == hid && d[0].place_pack == g[0].imp[0].gen { return; }
   c := g[0].c[..]; n := 0;
   for r: 0..<c[0].piece_n {

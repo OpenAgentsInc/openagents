@@ -440,7 +440,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
     }
     s[0].sdt = vp_run_dt(vp, step);
     g_step(g, s[0].sdt);
-    view = g_camera(g); key = g_key_light(g); flash = g[0].flash;
+    view = g_camera(g); key = g_key_light(g); flash = g[0].flash; cm_seen(g, view);
     seen := VpView.{ex = view.eye.x, ey = view.eye.y, ez = view.eye.z, ax = view.at.x, ay = view.at.y, az = view.at.z, fov = view.fov, w = width, h = height};
     if vp[0].fly {
       k := s[0].vkeys;

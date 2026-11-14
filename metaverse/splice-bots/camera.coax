@@ -33,6 +33,21 @@ CM_FOOT_TIME :: 0.15f32; // s: the spring's time for the height it follows (land
 CM_ZOOM_NEAR :: 3.0f32;  // m: the nearest the wheel brings the eye to her head; she stays in view, never first person
 CM_ZOOM_FAR :: 1.6f32;   // the furthest the wheel takes the boom, times its rest
 CM_ZOOM_STEP :: 0.0012f32; // the boom's change a CSS pixel of wheel
+CM_BLEND :: 0.6f32;      // s: one camera eases into the next (on foot, the drive, the bay, a scripted shot)
+CM_BLEND_FAR :: 25.0f32; // m: an eye further than this from the last is a cut (a door, the desk to the road)
+CM_RUN_FOV :: 0.035f32;  // radians wider at her walking speed (T_WALK)
+CM_DRIVE_FOV :: 0.1f32;  // radians wider at Sniper's top speed
+CM_FOV_TIME :: 0.35f32;  // s: the speed's widening eases in and out over about this
+CM_KICK_HARD :: 10.0f32; // m/s down: a landing harder than this kicks (a normal jump lands at 9)
+CM_KICK_LAND :: 0.025f32; // m of kick per m/s past CM_KICK_HARD, at most CM_KICK_MAX
+CM_KICK_HIT :: 0.09f32;  // m: a hit on her, sideways
+CM_KICK_CLAW :: 0.16f32; // m: a claw on Sniper, sideways (the drive's camera is 13 m out)
+CM_KICK_MAX :: 0.14f32;
+CM_KICK_TIME :: 0.32f32; // s a kick lasts
+CM_KICK_RATE :: 34.0f32; // radians a second it swings
+CM_FADE_TIME :: 0.2f32;  // s: Sniper's shell fades out of the camera's way, or back
+CM_FADE_LEFT :: 0.0f32;  // of the shell left at most fade: none, since at the lens any speck is a blot
+CM_GHOST_GAIN :: 0.2f32; // radians lower the boom must sit to see through the shell rather than go over it
 
 // The camera's eased state, in the game (SpGame.cam).
 SpCam :: struct {
@@ -43,6 +58,12 @@ SpCam :: struct {
   x: f32; z: f32; yaw: f32; // where she was and faced at the last step
   yaw_v: f32;               // how fast she turns (radians a second), eased
   foot: f32; foot_v: f32;   // the height it follows (cm_feet), eased
+  ghost: bool; fade: f32;   // it sees through Sniper's shell, and how faded the shell is (0 to 1)
+  src: int; bl: f32; bl_from: CamNow;   // which camera was last drawn (g_cam_src), the blend's share left and where it started
+  last: CamNow; seen: bool;             // the view last drawn
+  run: f32;                             // the speed's widening, eased (radians)
+  kick: f32; kick_t: f32; kick_side: bool;   // the impact kick: its size, its time and whether it is sideways
+  hearts: int; snip: f32;               // her hearts and Sniper's health at the last step
 }
 
 // One spring step of `time` seconds: the engine's critically damped spring, whose time is 0.1 s,
@@ -56,7 +77,8 @@ cm_ease :: (cur: f32, vel: [] f32, dest: f32, dt: f32, time: f32) -> f32 {
 
 // Her height the camera follows: the jump's third, sinking as she sneaks, the board's hover.
 cm_foot_goal :: (g: [] SpGame) -> f32 {
-  y := g_cam_y(g) - d_crouch(g);
+  // with reduced motion it holds her take-off height through a jump, so a landing has nothing to settle
+  y := (ifx g[0].calm && g_airborne(g) then lo(g_feet_y(g), g[0].air_from) else g_cam_y(g)) - d_crouch(g);
   if g_riding(g) { y += board_lift(g[0].board[0]); }
   return y;
 }
@@ -98,7 +120,7 @@ cm_blocked :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32, roof: f32) -> boo
   if g[0].zone == Z_VILLAGE && g_inside(g, x, z) { return true; }
   q := ga_push(g, x, z, pad); if q.x != x || q.z != z { return true; }
   if g[0].zone == Z_MINE { q = ga_lab_push(g, x, z, pad); if q.x != x || q.z != z { return true; } }   // the lab's round wall
-  if sl_inside_at(g, x, y, z, pad) { return true; }
+  if sl_inside_at(g, x, y, z, pad) && !(g[0].cam[0].ghost && cm_rover_has(g, x, y, z, pad)) { return true; }
   return cm_body_at(g, x, y, z, pad);
 }
 // The bodies that move: Digger beside her, the drill mech, and in its chamber the boss.
@@ -254,7 +276,16 @@ cm_step :: (g: [] SpGame, dt: f32) {
   // how fast she turns, eased, for the look ahead
   turn := ifx cut then 0.0f32 else atan2(sin(g[0].yaw - c[0].yaw), cos(g[0].yaw - c[0].yaw)) / hi(dt, 0.001);
   c[0].yaw_v = ifx cut then 0.0f32 else c[0].yaw_v + (turn - c[0].yaw_v) * lo(1, dt * 12);
-  aim := cm_aim(g, c[0].over, ifx cut then -1.0f32 else c[0].rise, clamp(c[0].yaw_v * CM_LOOK_AHEAD, -0.8, 0.8));
+  now := ifx cut then -1.0f32 else c[0].rise; ahead := clamp(c[0].yaw_v * CM_LOOK_AHEAD, -0.8, 0.8);
+  was := c[0].ghost; c[0].ghost = false;
+  aim := cm_aim(g, c[0].over, now, ahead);
+  // her back to Sniper's shell: rather than go over her head and look down, the boom stays low and the shell fades
+  if aim.rise > CM_STEEP - (ifx was then 0.25f32 else 0.0f32) && cm_rover_near(g) {
+    c[0].ghost = true;
+    low := cm_aim(g, c[0].over, now, ahead);
+    if low.rise < aim.rise - CM_GHOST_GAIN || (was && low.rise < aim.rise) { aim = low; } else { c[0].ghost = false; }
+  }
+  c[0].fade = clamp(c[0].fade + (ifx c[0].ghost then dt else -dt) / CM_FADE_TIME, 0, 1);
   if cut {
     c[0].rise = aim.rise; c[0].dist = aim.dist; c[0].rise_v = 0; c[0].dist_v = 0;
   } else {
@@ -301,6 +332,7 @@ cm_follow :: (g: [] SpGame) -> CamNow {
   if g_riding(g) {
     // the sense of speed: a wider view and a shake, from the engine's board
     bd := g[0].board[0]; s := board_shake(bd, g[0].t);
+    if g[0].calm { return CamNow.{eye = eye, at = at, fov = CM_FOV}; }   // reduced motion: no shake, no widening
     return CamNow.{eye = v3(eye.x + s[0], eye.y + s[1], eye.z + s[2]), at = at, fov = board_fov(bd, CM_FOV)};
   }
   return CamNow.{eye = eye, at = at, fov = CM_FOV};
@@ -342,6 +374,81 @@ cm_stage :: (g: [] SpGame, n: int) {
   g[0].bot_x = g[0].px + 6; g[0].bot_z = g[0].pz + 8;   // Digger's body waits where the core came out
   t := g[0].bt[..]; t[0].mech_core = true; t[0].mech_used = true;
   h := sb_mech_spot(g); t[0].mech_x = h.x; t[0].mech_z = h.z; t[0].mech_yaw = g[0].yaw;
+}
+
+// ---- Sniper's shell is seen through, not climbed over (#13552): with her back to it the boom stays
+// low and the shell dissolves (the cel shader's smoke material) instead of the view going overhead.
+CmRover :: struct { ok: bool; x: f32; y: f32; z: f32; yaw: f32; row: int; }
+// Sniper as it stands while she is on foot: parked where she left it, or the farm's rover.
+cm_rover :: (g: [] SpGame) -> CmRover {
+  row := sc_piece(g[0].c[..], SP_ROVER_KIND);
+  if g[0].zone != Z_MINE || g[0].mode == M_DRIVE || row < 0 { return CmRover.{}; }
+  if dv_away(g) { return CmRover.{ok = true, x = g[0].at.rover_x, z = g[0].at.rover_z, yaw = g[0].at.rover_yaw, row = row}; }
+  id := dv_train(g); i := ifx id < 0 then -1 else sl_item(g, id);
+  if i < 0 { return CmRover.{}; }
+  e := g[0].layer[0].items[i];
+  return CmRover.{ok = true, x = e.x, y = e.y, z = e.z, yaw = e.yaw, row = row};
+}
+cm_rover_near :: (g: [] SpGame) -> bool { r := cm_rover(g); return r.ok && cm_rover_has(g, g[0].px, g_feet_y(g) + 1, g[0].pz, 2.5); }
+// Whether (x, y, z), padded, is inside the shell as it is drawn.
+cm_rover_has :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32) -> bool {
+  r := cm_rover(g);
+  if !r.ok || y > r.y + g[0].c[0].pieces[r.row].top + pad { return false; }
+  o := sl_foot(g, r.row, r.x, r.z, r.yaw);
+  return sl_seg_seg(SlSeg.{ax = x, az = z, bx = x, bz = z, r = pad}, o) < pad + o.r;
+}
+cm_faded :: (g: [] SpGame) -> bool { return g[0].cam[0].fade > 0.01; }
+// The shell's vertices from..<to in the live store, dissolved as far as the camera has faded it.
+cm_dissolve :: (g: [] SpGame, buf: [] u32, from: int, to: int) {
+  if !cm_faded(g) { return; }
+  left := f32_bits(1 - g[0].cam[0].fade * (1 - CM_FADE_LEFT));
+  for i: from..<to { o := i * VERTEX_WORDS; buf[o + 4] = (buf[o + 4] & 0xFFFFFF) | (cast(u32) MAT_SMOKE << 24); buf[o + 5] = left; }
+}
+
+// ---- One camera blends into the next, the speed widens the view, and impacts kick it (#13552)
+// Each step before the run moves: a change of camera starts a blend from the view last drawn (a cut
+// when that view is further than CM_BLEND_FAR); her hearts, Sniper's health and her landing kick it.
+cm_tick :: (g: [] SpGame, dt: f32) {
+  c := g[0].cam[..]; src := g_cam_src(g);
+  if src != c[0].src && c[0].seen && length(sub(c[0].last.eye, g_camera_raw(g).eye)) < CM_BLEND_FAR { c[0].bl = 1; c[0].bl_from = c[0].last; }
+  c[0].src = src; c[0].bl = hi(0, c[0].bl - dt / CM_BLEND); c[0].kick_t += dt;
+  j := g[0].air[0];
+  if j.landed && j.impact > CM_KICK_HARD && g[0].mode == M_PLAY { cm_kick(g, (j.impact - CM_KICK_HARD) * CM_KICK_LAND, false); }
+  if g[0].hearts < c[0].hearts { cm_kick(g, CM_KICK_HIT, true); }
+  hp := g[0].bt[0].bots[SB_SNIPER].vit.hp;
+  if hp < c[0].snip && g[0].mode == M_DRIVE { cm_kick(g, CM_KICK_CLAW, true); }
+  c[0].hearts = g[0].hearts; c[0].snip = hp;
+  // the widening: at her walking speed on foot, at Sniper's top speed on the drive (the board has its own)
+  want := ifx g[0].calm then 0.0f32 else ifx g[0].mode == M_DRIVE then CM_DRIVE_FOV * clamp(abs(dv_speed(g)) / DV_TOP, 0, 1) else ifx g[0].mode == M_PLAY && !g_riding(g) then CM_RUN_FOV * clamp(g[0].fl[0].speed / T_WALK, 0, 1) else 0.0f32;
+  c[0].run += (want - c[0].run) * lo(1, dt * 3 / CM_FOV_TIME);
+}
+// A kick of `size` metres, down (a landing) or sideways (a hit); none with reduced motion.
+cm_kick :: (g: [] SpGame, size: f32, side: bool) {
+  c := g[0].cam[..];
+  if g[0].calm || (c[0].kick_t < CM_KICK_TIME && c[0].kick > size) { return; }
+  c[0].kick = lo(size, CM_KICK_MAX * (ifx side then 1.2f32 else 1.0f32)); c[0].kick_t = 0; c[0].kick_side = side;
+}
+// The drawn view: the blend from the last camera, the widening and the kick on the camera's own view.
+cm_mix :: (g: [] SpGame, raw: CamNow) -> CamNow {
+  c := g[0].cam[0]; v := raw;
+  if c.bl > 0 { k := 1 - c.bl; k = k * k * (3 - 2 * k); v = CamNow.{eye = mix(c.bl_from.eye, v.eye, k), at = mix(c.bl_from.at, v.at, k), fov = lerp(c.bl_from.fov, v.fov, k)}; }
+  v.fov += c.run;
+  if c.kick_t < CM_KICK_TIME && !g[0].calm {
+    u := 1 - c.kick_t / CM_KICK_TIME; a := c.kick * u * u * sin(c.kick_t * CM_KICK_RATE);
+    d := sub(v.at, v.eye); s := unit_or(v3(d.z, 0, -d.x), v3(1, 0, 0));
+    off := ifx c.kick_side then times(s, a) else v3(0, -a, 0);
+    v.eye = add(v.eye, off); v.at = add(v.at, off);
+  }
+  return v;
+}
+// The page drew view v: the next change of camera blends from it.
+cm_seen :: (g: [] SpGame, v: CamNow) { g[0].cam[0].last = v; g[0].cam[0].seen = true; }
+// Reduced motion on the pause screen: a click on its row switches it (hud.coax hv_pause).
+CM_CALM_KEY :: 2001;
+cm_calm_click :: (g: [] SpGame, x: f32, y: f32) -> bool {
+  i := hv_btn(g, CM_CALM_KEY);
+  if i < 0 || !in_box(g[0].btn[..], i * 4, x, y) { return false; }
+  g[0].calm = !g[0].calm; return true;
 }
 
 // ---- What walks with her keeps out of the camera's way (owner's rule, playtest 2): Digger and the

@@ -171,6 +171,7 @@ SpGame :: struct {
   snd: [1] SpSound;            // what sounds, and what the page is told to play (sound.coax)
   cam: [1] SpCam;             // the follow camera's eased boom (camera.coax)
   zoom: f32 = 1;              // the wheel's scale on the boom (camera.coax cm_wheel); the viewer's, outlives a reset
+  calm: bool;                 // reduced motion, the pause screen's setting: no kicks, shake or speed widening (camera.coax)
   hv: [1] SpHud;               // the HUD: hidden or not, the toasts, the gauges' fades, the edit bay's picked item (hud.coax)
 }
 
@@ -309,7 +310,7 @@ g_respawn :: (g: [] SpGame) {
   sb_respawn(g);   // the boss whole again, the mech repaired (splice-battle.coax)
 }
 g_reset :: (g: [] SpGame) {
-  gray := g[0].gray; zoom := g[0].zoom;   // the graybox toggle and the wheel are the viewer's, not the run's
+  gray := g[0].gray; zoom := g[0].zoom; calm := g[0].calm;   // the graybox toggle and the wheel are the viewer's, not the run's
   hide: [TK_KINDS] bool; for k: 0..<TK_KINDS { hide[k] = g[0].hide[k]; }   // and what a host draws is the host's
   hview := g[0].hview; hview_on := g[0].hview_on; haim := g[0].haim; haim_on := g[0].haim_on;   // and so is the view it places
   tables := g[0].c[0];   // the content tables are read once
@@ -323,7 +324,7 @@ g_reset :: (g: [] SpGame) {
   g[0].snd[0] = sound; g[0].snd[0].ready = false;
   g[0].view = view; g[0].shown = shown; g[0].unseen = unseen;
   g[0].imp[0] = imports;
-  g[0].gray = gray; g[0].zoom = zoom;
+  g[0].gray = gray; g[0].zoom = zoom; g[0].calm = calm;
   if tables.ok { g[0].c[0] = tables; } else { _ := sc_load(g[0].c[..], SC_SHIPPED); }
   _ := g_places(g);
   g[0].layer[0] = layer;
@@ -594,6 +595,7 @@ g_step :: (g: [] SpGame, dt: f32) {
   fl_demo(g, dt);    // the movement demo's keys, when it plays (feel.coax)
   snd_tick(g, dt);   // what sounds: what changed since the last step, and the loops for where you are (sound.coax)
   g[0].t += dt;
+  cm_tick(g, dt);   // a change of camera blends; kicks and the speed's widening (camera.coax)
   // off the board when play stops (the edit bay, the rail, a banner, the front screens) or the world takes it away
   if g_riding(g) && (g[0].mode != M_PLAY || !g_board_given(g)) { board_down(g[0].board[..]); }
   fr_autosave(g, dt);   // the run this browser keeps (front.coax)
@@ -1064,7 +1066,9 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   t := g[0].t; blue := GLOW();
   g[0].thing_n = 0;
   // Sniper parked where she left it, once it has left the farm, except while she drives it (drive.coax): one rover, not two
-  if g[0].mode != M_DRIVE && dv_away(g) { g_rover_at(g, buf, p, frame_at(v3(g[0].at.rover_x, 0, g[0].at.rover_z), g[0].at.rover_yaw), 180, 1); }
+  // and the farm's rover drawn here too while the camera fades it (camera.coax cm_dissolve)
+  rv := cm_rover(g);
+  if rv.ok && (dv_away(g) || cm_faded(g)) { n0 := p[0].n; g_rover_at(g, buf, p, frame_at(v3(rv.x, rv.y, rv.z), rv.yaw), 180, 1); cm_dissolve(g, buf, n0, p[0].n); }
   if fr_front(g) { fr_live(g, buf, p); return; }
   if g[0].mode == M_MEMORY { sb_memory_live(g, buf, p); return; }   // the hologram (splice-battle.coax)
   if g[0].mode != M_DRIVE { _ := sd_cables(g, buf, p); }   // chargers plugged into the parked rover train (layer-draw.coax)
@@ -1239,7 +1243,16 @@ g_plan_marks :: (g: [] SpGame, buf: [] u32, p: [] Pen, i: int) {
 }
 
 // ---- The camera and the look
-g_camera :: (g: [] SpGame) -> CamNow {
+// The drawn view: the camera for the moment, blended from the last one and kicked (camera.coax cm_mix).
+g_camera :: (g: [] SpGame) -> CamNow { return cm_mix(g, g_camera_raw(g)); }
+// Which camera shows: 0 behind her, 1 the bay, 2 the memory, 3 the front screens, 4 the drive, 5 the rail.
+g_cam_src :: (g: [] SpGame) -> int {
+  if g[0].mode == M_BAY { return 1; }
+  if g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { return 2; }
+  if fr_front(g) { return 3; }
+  return ifx g[0].mode == M_DRIVE then 4 else ifx g[0].mode == M_RIDE then 5 else 0;
+}
+g_camera_raw :: (g: [] SpGame) -> CamNow {
   if g[0].mode == M_BAY { return CamNow.{eye = v3(g[0].at.bay_x + 3.4, 2.4, g[0].at.bay_z + 8.6), at = v3(g[0].at.bay_x, 0.6, g[0].at.bay_z), fov = 0.62}; }
   if g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { return sb_memory_camera(g); }
   if fr_front(g) { return fr_camera(g); }   // the rover on the rail and the dolly past it (front.coax)

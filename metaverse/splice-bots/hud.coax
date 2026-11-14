@@ -603,6 +603,12 @@ hv_pause :: (g: [] SpGame, out: [] f32, u: [] f32, at: int, q: Ui) -> int {
   n = hv_rect(out, n, 46 * k, 120 * k, pw - 40 * k, 164 * k, HV_CREAM(), 1);
   n = hv_text(out, n, F_TITLE, "RESUME", 64 * k, 147 * k, 9.5 * k, HV_DARK(), 1);
   n = hv_right(out, n, F_MONO, "CLICK OR ESC", pw - 56 * k, 146 * k, 6 * k, HV_PANEL(), 1);
+  // reduced motion (camera.coax): a click on the row switches it, and it says which it is
+  n = hv_frame(out, n, 46 * k, 180 * k, pw - 40 * k, 232 * k, 1.5 * k, ifx g[0].calm then HV_ORANGE() else HV_DIM(), 1);
+  n = hv_text(out, n, F_TITLE, "REDUCED MOTION", 64 * k, 203 * k, 8 * k, HV_CREAM(), 1);
+  n = hv_text(out, n, F_MONO, "NO CAMERA SHAKE, KICKS OR SPEED FOV", 64 * k, 221 * k, 5.5 * k, HV_DIM(), 1);
+  n = hv_right(out, n, F_TITLE, ifx g[0].calm then "ON" else "OFF", pw - 56 * k, 203 * k, 9 * k, ifx g[0].calm then HV_ORANGE() else HV_CREAM(), 1);
+  g_hot(g, 46 * k, 180 * k, pw - 40 * k, 232 * k, CM_CALM_KEY);
   n = hv_text(out, n, F_MONO, hv_reel(g, buf[..]), 46 * k, q.h - 96 * k, 6.5 * k, HV_CREAM(), 1);
   n = hv_text(out, n, F_MONO, num(buf[..], "HEARTS ", g[0].hearts, num(b2[..], " / ", T_HEARTS, "")), 46 * k, q.h - 76 * k, 6.5 * k, HV_CREAM(), 1);
   n = hv_text(out, n, F_MONO, "LAST CHECKPOINT · ROVER", 46 * k, q.h - 56 * k, 6.5 * k, HV_CREAM(), 1);

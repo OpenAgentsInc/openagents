@@ -159,3 +159,75 @@ cc_farm :: (g: [] SpGame) { g_reset(g); _ := spw_shipped(g); g_begin(g); }
   w := cc_watch(g[..], 300, CcWatch.{});
   #assert !w.in_body && w.near >= CM_MIN - 0.1;   // as it swings into the boom, the boom eases out from it a few centimetres late
 }
+
+#test "#13552: her back to Sniper's shell, the camera stays low behind her and the shell fades; walking off, it comes back" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  cc_farm(g[..]);
+  rv := cm_rover(g[..]); #assert rv.ok;
+  hx := g[0].c[0].pieces[rv.row].hx;
+  g[0].px = rv.x + cos(rv.yaw) * (hx + 0.6); g[0].pz = rv.z - sin(rv.yaw) * (hx + 0.6); g[0].yaw = rv.yaw + PI * 0.5;   // facing away from its side
+  g[0].cam[0].ready = false;
+  w := cc_watch(g[..], 90, CcWatch.{});
+  c := g_camera(g[..]); p := cm_pivot(g[..]); r := length(sub(c.eye, p));
+  #assert g[0].cam[0].ghost && g[0].cam[0].fade == 1 && (c.eye.y - p.y) / r < 0.8 && w.near >= CM_MIN - CC_SLACK;   // low, not overhead
+  // the shell is drawn live, dissolved, and not also in the place store
+  buf: [400000] u32; pen := [1] Pen.[Pen.{}];
+  g_live(g[..], buf[..], pen[..]);
+  smoke := 0; for i: 0..<pen[0].n { if buf[i * VERTEX_WORDS + 4] >> 24 == cast(u32) MAT_SMOKE && f32_from_bits(buf[i * VERTEX_WORDS + 5]) < 0.3 { smoke += 1; } }
+  #assert smoke > 100;
+  d := [1] SpLayerDraw.[SpLayerDraw.{}]; places: [SD_PLACE_WORDS] u32; sd_places(d[..], g[..], places[..]);
+  low := 0; for k: 0..<d[0].place_n { if f32_from_bits(places[k * SD_ROW + 1]) < -100 { low += 1; } }
+  #assert low == 1;
+  // a few steps away from it: the camera no longer sees through it, and it fades back in
+  g[0].fwd = true; _ = cc_watch(g[..], 60, CcWatch.{}); g[0].fwd = false;
+  _ = cc_watch(g[..], 30, CcWatch.{});
+  #assert !g[0].cam[0].ghost && g[0].cam[0].fade == 0;
+}
+#test "#13552: a change of camera blends from the view last drawn, a far one cuts; walking widens the view a little, a hit kicks it, and reduced motion keeps it still" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  cc_farm(g[..]); g[0].have[H_DRILL] = true;
+  tr := g_shipped_at(g[..], 123); g[0].px = tr.x + 2.2; g[0].pz = tr.z;
+  #assert g_key(g[..], 'e', true) && sp_in_room(g[..]);
+  dk := g_shipped_at(g[..], 125); g[0].px = dk.x - 1.2; g[0].pz = dk.z;
+  for i: 0..<3 { g_step(g[..], 1.0f32 / 60); cm_seen(g[..], g_camera(g[..])); }
+  g[0].dr[0].map = false;
+  #assert g_key(g[..], 'e', true) && g[0].mode == M_DRIVE;
+  g_step(g[..], 1.0f32 / 60);
+  #assert g[0].cam[0].bl == 0;   // the cabin's desk to the road outside: a cut
+  _ = g_key(g[..], 'w', true);
+  for i: 0..<150 { g_step(g[..], 1.0f32 / 60); cm_seen(g[..], g_camera(g[..])); }
+  _ = g_key(g[..], 'w', false);
+  #assert g_camera(g[..]).fov > 0.8 + CM_DRIVE_FOV * 0.2;   // at speed the drive's view is wider
+  for i: 0..<120 { _ = g_key(g[..], 's', true); g_step(g[..], 1.0f32 / 60); cm_seen(g[..], g_camera(g[..])); }
+  _ = g_key(g[..], 's', false);
+  // E parks Sniper and she steps out: the drive's camera eases round to hers, no snap
+  was := g_camera(g[..]).eye;
+  #assert g_key(g[..], 'e', true) && g[0].mode == M_PLAY;
+  g_step(g[..], 1.0f32 / 60);
+  #assert g[0].cam[0].bl > 0.9 && length(sub(g_camera(g[..]).eye, was)) < 1;
+  most := 0.0f32; e0 := g_camera(g[..]).eye;
+  for i: 0..<45 { g_step(g[..], 1.0f32 / 60); e := g_camera(g[..]).eye; most = hi(most, length(sub(e, e0))); e0 = e; cm_seen(g[..], g_camera(g[..])); }
+  #assert g[0].cam[0].bl == 0 && most < 1;
+  // walking: a little wider; a hit kicks the view sideways for a moment, then it is still again
+  g[0].fwd = true; for i: 0..<60 { g_step(g[..], 1.0f32 / 60); } g[0].fwd = false;
+  #assert g_camera(g[..]).fov > CM_FOV + CM_RUN_FOV * 0.5;
+  for i: 0..<90 { g_step(g[..], 1.0f32 / 60); }
+  #assert g_camera(g[..]).fov < CM_FOV + 0.002;
+  a := g_camera(g[..]).eye; g[0].hit_cool = 0; g_hurt(g[..]);
+  for i: 0..<3 { g_step(g[..], 1.0f32 / 60); }
+  #assert length(sub(g_camera(g[..]).eye, a)) > 0.02;
+  for i: 0..<30 { g_step(g[..], 1.0f32 / 60); }
+  #assert length(sub(g_camera(g[..]).eye, a)) < 0.001;
+  // reduced motion, switched on the pause screen: no kick, no widening, and a new run keeps it
+  hv: [1] HvCheck; d_pause(g[..]); _ := hv_draw(g[..], hv[..]);
+  i := hv_btn(g[..], CM_CALM_KEY); #assert i >= 0 && !g[0].calm;
+  bx := (g[0].btn[i * 4] + g[0].btn[i * 4 + 2]) * 0.5; by := (g[0].btn[i * 4 + 1] + g[0].btn[i * 4 + 3]) * 0.5;
+  #assert g_pointer(g[..], bx, by, 0) && g[0].calm && g[0].dr[0].paused;   // the click switches it and the game stays paused
+  #assert g_pointer(g[..], bx, by + 400, 0) && !g[0].dr[0].paused;          // a click anywhere else resumes
+  a = g_camera(g[..]).eye; g[0].hit_cool = 0; g_hurt(g[..]);
+  g[0].fwd = true; for k: 0..<3 { g_step(g[..], 1.0f32 / 60); } g[0].fwd = false;
+  #assert g[0].cam[0].kick_t >= CM_KICK_TIME || g[0].cam[0].kick == 0;
+  for k: 0..<60 { g_step(g[..], 1.0f32 / 60); }
+  #assert g_camera(g[..]).fov == CM_FOV;
+  cc_farm(g[..]); #assert g[0].calm;
+}

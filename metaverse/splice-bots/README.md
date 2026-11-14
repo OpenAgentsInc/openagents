@@ -186,6 +186,23 @@ stays low. The boss meets the camera as its real body, a capsule along the way i
 3.7 m top. Under the lab's 9 m ceiling, the hallway's 10 m one and the rover cabin's, the eye stays
 inside.
 
+With her back to Sniper's shell, where the boom would have to swing up over her head and look down,
+it stays low behind her instead and the shell fades out of the way: the rover is drawn live in the
+cel shader's dissolve (smoke) material until none of it is left (any speck that close to the lens
+is a blot over her), and it dissolves back in as she walks off.
+Everything else still moves the camera rather than fading.
+
+Changing cameras never snaps. Getting out of Sniper, the edit bay, the memory, the rail and the front
+screens each blend from the view last drawn over 0.6 s; a change whose eye is more than 25 m from the
+last (a door into the cabin, the cabin's desk to the road) is a cut. The view widens a little with
+speed, on foot and while driving (the hoverboard has its own widening and shake), and impacts kick it
+for a third of a second: a landing harder than a normal jump's, a hit on her, a claw on Sniper.
+
+Reduced motion is on the pause screen (Esc): a click on its row switches it, and the row says ON or
+OFF. With it on there are no kicks, no board shake and no speed widening, and the camera holds her
+take-off height through a jump instead of rising with it, so a landing has nothing to settle. Like
+the zoom, it is yours: a respawn or a new run keeps it.
+
 ### Tunables
 
 Every camera timing and distance is a constant at the top of `camera.coax`:
@@ -217,6 +234,17 @@ Every camera timing and distance is a constant at the top of `camera.coax`:
 | `CM_BOSS_LOOK` | 0.6 | How far the look turns toward the point between her and the boss |
 | `CM_BOSS_RISE` | 0.2 rad | How far the boom swings up by the boss while coming in still leaves `CM_MIN` |
 | `CM_LAB_ROOF`, `CM_HALL_ROOF` | 9 m, 10 m | The lab's and the hallway's ceilings |
+| `CM_BLEND` | 0.6 s | One camera easing into the next: long enough to follow, short enough that getting out of Sniper is not a wait |
+| `CM_BLEND_FAR` | 25 m | Further than this between the two views is a cut (a door, the desk to the road): a blend that long would fly through walls |
+| `CM_RUN_FOV` | 0.035 rad | How much wider at her walking speed: felt, not seen, since the walk is only 5.6 m/s |
+| `CM_DRIVE_FOV` | 0.1 rad | How much wider at Sniper's top speed (24 m/s), where speed is the point |
+| `CM_FOV_TIME` | 0.35 s | How fast the widening follows the speed |
+| `CM_KICK_HARD` | 10 m/s | A landing harder than this kicks; a normal jump lands at 9, so only a double jump or a fall does |
+| `CM_KICK_LAND`, `CM_KICK_MAX` | 0.025 m per m/s, 0.14 m | The landing kick's size, down, and the most any kick moves the view |
+| `CM_KICK_HIT`, `CM_KICK_CLAW` | 0.09 m, 0.16 m | A hit on her and a claw on Sniper, sideways (the drive's camera is 13 m out, so its kick is bigger) |
+| `CM_KICK_TIME`, `CM_KICK_RATE` | 0.32 s, 34 rad/s | How long a kick lasts and how fast it swings: about two swings, dying out |
+| `CM_FADE_TIME`, `CM_FADE_LEFT` | 0.2 s, 0 | How fast Sniper's shell fades out of the camera's way and back, and how much of it is left |
+| `CM_GHOST_GAIN` | 0.2 rad | How much lower the boom must sit to see through the shell rather than go over it |
 
 ## Controls
 

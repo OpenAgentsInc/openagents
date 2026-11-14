@@ -445,7 +445,7 @@ d_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
   d := g[0].dr[..];
   if d[0].map { if phase == 0 { d_map_close(g); } return true; }   // a click closes the map
   if g[0].mode != M_PLAY { return false; }
-  if d[0].paused { if phase == 0 { d_resume(g); } return true; }
+  if d[0].paused { if phase == 0 && !cm_calm_click(g, x, y) { d_resume(g); } return true; }   // a click on reduced motion switches it
   if d[0].bag {
     if phase != 0 { return true; }
     i := carry_hit(T_ROOM, 3, d[0].bag_x, d[0].bag_y, d[0].bag_s, d[0].bag_gap, x, y);
