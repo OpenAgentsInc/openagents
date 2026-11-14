@@ -22,6 +22,7 @@ for people and agents who change the code.
 | `gpu/splice-bots.coax` | The shaders: Anime Lab's cel pass, the placed pieces' instances, and the ink overlay |
 | `splice-face.c`, `splice-ue-face.c` | The C faces for the browser and for a native host |
 | `content/splice.content`, `content.coax` | The content tables and their reader |
+| `buildings.coax` | How the buildings look (#13552): printed concrete from `metaverse-engine/kit/printed.coax`. The garage's outer shell steps down to the desert in printed courses, its entry is a bay with a raised roll-up door, raider banners with a cog hang over the rim, and the village's ring wall is printed. Stills 40 to 42 (the entry, the shell, the village). It only draws; where things stand is the level's |
 | `farm.coax` | The solar farm's field: 540 long solar banks in regular lines east and west to the edge of the ground, one instanced draw (`metaverse-engine/kit/props.coax` `kit_solar_bank`), held out of like walls; the low sun, its long shadows and the dust haze at the farm by day (playtest 2) |
 | `pieces.coax` | Which engine kit piece a row draws, and its measured footprint |
 | `layer.coax` | The colliders (a World of entities) and the edit layer |

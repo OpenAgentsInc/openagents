@@ -1,0 +1,100 @@
+// How Splice's buildings look (GitHub #13552, the feel pass): printed concrete, laid up in courses by
+// a gantry printer (metaverse-engine/kit/printed.coax), in warm greys, dark brown, cream and rust. The
+// garage's outer shell steps down to the desert in printed courses, its entry is a bay with a raised
+// roll-up door, and raider banners with a cog hang over the rim; the village's ring wall is printed.
+// Where each thing stands is the level's (the landmarks and garage.coax); this file only draws.
+//   coax/bin/coax test metaverse/splice-bots/splice-game.coax
+
+BL_COURSES :: 6;            // the outer shell's courses, from the rim down to the desert
+BL_BEAD :: 0.35f32;         // m: how far a course's waist stands out of its riser
+BL_DOOR_Y :: 9.0f32;        // m: the raised roll-up door's foot over the entry
+BL_BANNER_W :: 5.0f32; BL_BANNER_H :: 11.0f32;   // m: a raider banner over the rim
+BL_STONE :: () -> KitTint { return kit_tint(0.52, 0.47, 0.43); }   // printed concrete: warm grey
+BL_TREAD :: () -> KitTint { return kit_tint(0.40, 0.34, 0.30); }   // a course's top, dusted brown
+BL_BROWN :: () -> KitTint { return kit_tint(0.20, 0.16, 0.14); }   // frames, doors, bars
+BL_RED :: () -> KitTint { return kit_tint(0.72, 0.18, 0.14); }     // the raiders' banner cloth
+BL_CREAM :: () -> KitTint { return kit_tint(0.93, 0.88, 0.80); }
+
+// The outer shell of section k from angle a0 to a1, left open by `cut` either side of a (the entry): from
+// the rim's edge ro, BL_COURSES courses step down to the desert GA_BERM out, each a dusted tread and a
+// riser that bulges out at its waist.
+bl_course :: (g: [] SpGame, buf: [] u32, p: [] Pen, a0: f32, a1: f32, ro: f32) {
+  run := GA_BERM / cast(f32) BL_COURSES; rise := GA_RIM / cast(f32) BL_COURSES;
+  for j: 0..<BL_COURSES {
+    r := ro + run * cast(f32) (j + 1); y := GA_RIM - rise * cast(f32) j;
+    kit_pen(p, 218, MAT_WORLD, BL_TREAD());
+    ga_strip(g, buf, p, a0, a1, r - run, y, r, y, 3, false);
+    kit_pen(p, 228, MAT_WORLD, BL_STONE());
+    ga_strip(g, buf, p, a0, a1, r, y, r + BL_BEAD, y - rise * 0.5, 3, false);
+    ga_strip(g, buf, p, a0, a1, r + BL_BEAD, y - rise * 0.5, r, y - rise, 3, false);
+  }
+}
+bl_shell :: (g: [] SpGame, buf: [] u32, p: [] Pen, k: int, a0: f32, a1: f32, ro: f32) {
+  a := ga_angle(k); cut := ifx k == GA_ENTRY then GA_DOOR / ro else 0.0f32;
+  run := GA_BERM / cast(f32) BL_COURSES; rise := GA_RIM / cast(f32) BL_COURSES;
+  if cut > 0 { bl_course(g, buf, p, a0, a - cut, ro); bl_course(g, buf, p, a + cut, a1, ro); } else { bl_course(g, buf, p, a0, a1, ro); }
+  // a raider banner over every third section and either side of the entry, on the first riser
+  for i: 0..<3 {
+    want := ifx k == GA_ENTRY then i != 1 else i == 1 && k % 3 == 1;
+    if !want { continue; }
+    b := a + cast(f32) (i - 1) * (GA_DOOR + 5) / ro;
+    kit_cog_banner(buf, p, frame_at(ga_pt(g, b, ro + run + BL_BEAD + 0.2, GA_RIM - 0.4), b), 229, BL_BANNER_W, BL_BANNER_H, BL_RED(), BL_CREAM(), BL_BROWN());
+  }
+  if cut <= 0 { return; }
+  // the entry: its two side walls printed, stepping down with the courses, from the back wall out
+  kit_pen(p, 227, MAT_WORLD, BL_STONE());
+  rb := ga_back(g);
+  for j: 0..<BL_COURSES + 1 {
+    r0 := ifx j == 0 then rb else ro + run * cast(f32) (j - 1); r1 := ifx j == 0 then ro else r0 + run;
+    hy := ifx j == 0 then GA_RIM else GA_RIM - rise * cast(f32) (j - 1);
+    for side: 0..<2 {
+      o := ifx side == 0 then -1.0f32 else 1.0f32; m := (r0 + r1) * 0.5;
+      f := frame_turn(frame_at(ga_pt(g, a + o * (GA_DOOR + 0.6) / m, m, 0), a), 1, PI * 0.5);
+      kit_print_slab(buf, p, f, (r1 - r0) * 0.5, 0, hy, 0.6, cast(int) (hy / 1.6), 0.12);
+    }
+  }
+  // the bay's roll-up door, raised: a dark slatted drum and a yellow and black lintel over the way in
+  df := frame_at(ga_pt(g, a, ro + run - 0.4, 0), a);
+  kit_pen(p, 205, MAT_FLAT, BL_BROWN());
+  for i: 0..<4 { box(buf, p, kit_at(df, 0, BL_DOOR_Y + 0.5 + cast(f32) i * 0.9, -0.1 * cast(f32) (i % 2)), GA_DOOR, 0.42, 0.2); }
+  for j: 0..<8 {
+    kit_pen(p, 208 + j % 2, MAT_FLAT, ifx j % 2 == 0 then GA_YELLOW() else GA_DARK());
+    box(buf, p, kit_at(df, (cast(f32) j - 3.5) * GA_DOOR / 4, BL_DOOR_Y, 0.25), GA_DOOR / 8, 0.35, 0.12);
+  }
+  kit_pen(p, 210, MAT_GLOW, kit_tint(1.0, 0.82, 0.48));
+  for i: 0..<2 { box(buf, p, kit_at(df, (cast(f32) i - 0.5) * GA_DOOR * 1.2, BL_DOOR_Y - 0.5, 0.3), 0.6, 0.12, 0.12); }
+}
+
+// The village's ring wall: printed panels round the landmark, one left open for the gate, with a
+// dark-framed window in every third.
+bl_village :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  for i: 1..<12 {
+    a := cast(f32) i * TAU / 12;
+    f := frame_at(v3(g[0].at.vil_x + sin(a) * g[0].at.vil_r, 0, g[0].at.vil_z + cos(a) * g[0].at.vil_r), a);
+    kit_pen(p, 46 + (i % 2), MAT_WORLD, ifx i % 2 == 0 then t3(0.93, 0.88, 0.78) else t3(0.88, 0.82, 0.72));
+    kit_print_slab(buf, p, f, 1.95, 0, 3.4, 0.2, 8, 0.05);
+    if i % 3 == 1 { kit_print_window(buf, p, kit_at(f, 0, 1.9, 0.2), 44, 1.8, 1.1, 0.1, BL_BROWN(), t3(0.30, 0.26, 0.24)); }
+  }
+}
+
+// Stills of the buildings (g_stage, the page's message 610): 40 the garage's entry from the desert at
+// dusk, 41 its shell from the desert a quarter way round, 42 the village's printed wall by day.
+bl_stage :: (g: [] SpGame, n: int) {
+  if n < 40 || n > 42 { return; }
+  g_stage_set(g, 7); g_foes(g);
+  if n == 42 { g[0].phase = PH_DAY; g[0].px = g[0].at.vil_x - 12; g[0].pz = g[0].at.vil_z - 12; }
+  else {
+    s := ifx n == 40 then GA_ENTRY else GA_ENTRY + 3;
+    c := ga_at(g, s, ga_back(g) + GA_BERM + (ifx n == 40 then 20.0f32 else 110.0f32));
+    g[0].px = c.x; g[0].pz = c.z;
+  }
+  tx := ifx n == 42 then g[0].at.vil_x else g[0].at.gar_x; tz := ifx n == 42 then g[0].at.vil_z else g[0].at.gar_z;
+  g[0].yaw = angle_atan2(tx - g[0].px, tz - g[0].pz); g[0].pitch = ifx n == 40 then -0.35f32 else -0.2f32; g_bot_home(g);
+}
+
+#test "the garage's outer shell steps down from the rim to the desert, and the entry's door hangs clear over the way in" {
+  // the courses reach from the rim down to the ground, each riser's waist out from its foot and top
+  #assert abs(GA_RIM / cast(f32) BL_COURSES * cast(f32) BL_COURSES - GA_RIM) < 0.001 && BL_BEAD > 0;
+  // the raised door's lowest slat clears a rover train (2.85 m) and the drill mech's reach
+  #assert BL_DOOR_Y - 0.35 > 6;
+}

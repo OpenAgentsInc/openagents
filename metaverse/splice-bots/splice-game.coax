@@ -14,6 +14,7 @@
 #load "content.coax";
 #load "layer.coax";
 #load "garage.coax";             // the raider mine garage: the ring of lettered bays, the hallway and the lab (#13505)
+#load "buildings.coax";          // how the buildings look: printed concrete, the garage's shell and bay, raider banners (#13552)
 #load "camera.coax";             // the follow camera behind her (playtest 2)
 #load "drive.coax";              // the drive from the solar farm to the garage, and the rover's room (#13505)
 #load "farm.coax";               // the solar farm's field: long lines of banks to the edge of the ground, the low sun and the haze (playtest 2)
@@ -836,7 +837,7 @@ g_look :: (g: [] SpGame, dx: f32, dy: f32) {
 g_lock :: (g: [] SpGame, status: int) { d_lock(g, status); g[0].look_free = status != 1; }
 
 // A moment of the run to stand in (the page's message 610, "N"): for stills and checks of each beat.
-g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); }
+g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); bl_stage(g, n); }
 g_stage_set :: (g: [] SpGame, n: int) {
   g_reset(g); g[0].mode = M_PLAY;
   if n == 0 { g[0].mode = M_TITLE; return; }
@@ -949,11 +950,7 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   // the dome village: a ring of wall panels (one left open for the gate), a faceted roof, a bed,
   // and the gate's corridor with its scanner beam
   wall := t3(0.93, 0.88, 0.78); trim := t3(0.55, 0.72, 0.62);
-  for i: 1..<12 {
-    a := cast(f32) i * TAU / 12;
-    kit_pen(p, 46 + (i % 2), MAT_WORLD, ifx i % 2 == 0 then wall else t3(0.88, 0.82, 0.72));
-    box(buf, p, frame_at(v3(g[0].at.vil_x + sin(a) * g[0].at.vil_r, 1.7, g[0].at.vil_z + cos(a) * g[0].at.vil_r), a), 1.95, 1.7, 0.2);
-  }
+  bl_village(g, buf, p);   // its printed ring wall (buildings.coax)
   kit_pen(p, 48, MAT_SKIN, trim);
   tube(buf, p, frame_at(v3(g[0].at.vil_x, 3.4, g[0].at.vil_z), 0), 3.6, g[0].at.vil_r + 0.5, g[0].at.vil_r + 0.5, 0.6, 0.6, 12, true);
   kit_pen(p, 49, MAT_FLOOR, t3(0.80, 0.70, 0.58));
