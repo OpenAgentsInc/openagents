@@ -259,3 +259,49 @@ cm_stage :: (g: [] SpGame, n: int) {
   t := g[0].bt[..]; t[0].mech_core = true; t[0].mech_used = true;
   h := sb_mech_spot(g); t[0].mech_x = h.x; t[0].mech_z = h.z; t[0].mech_yaw = g[0].yaw;
 }
+
+// ---- What walks with her keeps out of the camera's way (owner's rule, playtest 2): Digger and the
+// drill mech follow at her side or a little ahead, never between the camera and her.
+CM_LINE_PAD :: 0.4f32;   // m kept between a body and the camera's line to her
+// The camera's line to her, on the ground: from her to under the eye, and its length.
+CmLine :: struct { x: f32; z: f32; dx: f32; dz: f32; span: f32; }
+cm_line :: (g: [] SpGame) -> CmLine {
+  c := g[0].cam[0];
+  out := ifx c.ready then c.dist * cos(c.rise) else cm_want(g);   // the eased boom, flat
+  dx := -sin(g[0].yaw) * out; dz := -cos(g[0].yaw) * out; span := sqrt(dx * dx + dz * dz);
+  if span < 0.0001 { return CmLine.{x = g[0].px, z = g[0].pz}; }
+  return CmLine.{x = g[0].px, z = g[0].pz, dx = dx / span, dz = dz / span, span = span};
+}
+// How far along the line and to its side (positive to its left, seen from her) a point is.
+cm_along :: (l: CmLine, x: f32, z: f32) -> f32 { return (x - l.x) * l.dx + (z - l.z) * l.dz; }
+cm_side :: (l: CmLine, x: f32, z: f32) -> f32 { return (x - l.x) * l.dz - (z - l.z) * l.dx; }
+// Whether a body of radius r at (x, z) stands in the camera's line to her.
+cm_in_line :: (l: CmLine, x: f32, z: f32, r: f32) -> bool {
+  if l.span < 0.0001 { return false; }   // the camera at her head: no line to stand in
+  a := cm_along(l, x, z);
+  if a < 0 || a > l.span + r { return false; }
+  return abs(cm_side(l, x, z)) < r + CM_LINE_PAD;
+}
+// Where a body of radius r at (bx, bz) goes to follow her: `side` metres to her left and `ahead`
+// ahead, or as far to her right when it is on her right, so it never crosses her or the line to
+// reach a spot; the other side when its own spot is in the line. A body standing in the line first
+// steps out of it, sideways and up toward her, to the side it is on.
+cm_follow_spot :: (g: [] SpGame, bx: f32, bz: f32, r: f32, side: f32, ahead: f32) -> Point {
+  y := g[0].yaw; l := cm_line(g);
+  left := v3(g[0].px + sin(y) * ahead + cos(y) * side, 0, g[0].pz + cos(y) * ahead - sin(y) * side);
+  right := v3(g[0].px + sin(y) * ahead - cos(y) * side, 0, g[0].pz + cos(y) * ahead + sin(y) * side);
+  if l.span < 0.0001 { return left; }
+  s := cm_side(l, bx, bz);
+  if cm_in_line(l, bx, bz, r) {
+    // out past the line by more than a follower stops short of its spot, and up toward her as it goes
+    a := cm_along(l, bx, bz) * 0.5; k := ifx s >= 0 then 1.0f32 else -1.0f32; out := r + CM_LINE_PAD + CM_HAND * 2;
+    return v3(l.x + l.dx * a + l.dz * out * k, 0, l.z + l.dz * a - l.dx * out * k);
+  }
+  // the spot on the side it is on, so it never crosses her or the line to reach the other
+  on_left := (s >= 0) == (cm_side(l, left.x, left.z) >= 0);
+  pick := ifx on_left || abs(s) < 0.05 then left else right;
+  if cm_in_line(l, pick.x, pick.z, r) { pick = ifx pick.x == left.x && pick.z == left.z then right else left; }
+  return pick;
+}
+// How fast a follower goes, times its pace: as fast as it can while it stands in the camera's line.
+cm_follow_pace :: (g: [] SpGame, bx: f32, bz: f32, r: f32, pace: f32) -> f32 { return ifx cm_in_line(cm_line(g), bx, bz, r) then 1.6f32 else pace; }

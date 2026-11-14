@@ -85,3 +85,25 @@ cc_farm :: (g: [] SpGame) { g_reset(g); _ := spw_shipped(g); g_begin(g); }
   for i: 0..<120 { g_step(g[..], 1.0f32 / 30); }
   h := sb_mech_spot(g[..]); #assert dist2(t[0].mech_x, t[0].mech_z, h.x, h.z) < 0.5;
 }
+
+#test "owner's rule: Digger and the drill mech follow at her side, never between the camera and her, as she turns" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 7); g[0].px = 0; g[0].pz = -48; g_bot_home(g[..]);
+  in_line := 0; frames := 0;
+  for leg: 0..<4 {
+    g[0].turn_l = leg % 2 == 0; g[0].turn_r = leg % 2 == 1; g[0].fwd = leg >= 2;
+    for i: 0..<90 {
+      g_step(g[..], 1.0f32 / 60); frames += 1;
+      if cm_in_line(cm_line(g[..]), g[0].bot_x, g[0].bot_z, T_BOT_R) { in_line += 1; }
+      #assert dist2(g[0].bot_x, g[0].bot_z, g[0].px, g[0].pz) >= T_BOT_R + T_RADIUS;
+    }
+  }
+  #assert in_line * 20 < frames;   // he steps out of the line at once: under a twentieth of the time, while she spins
+  // standing, the drill mech a few metres straight behind her steps out to her side
+  t := g[0].bt[..]; t[0].mech_core = true; t[0].mech_used = true;
+  g[0].turn_l = false; g[0].turn_r = false; g[0].fwd = false;
+  t[0].mech_x = g[0].px - sin(g[0].yaw) * 4.5; t[0].mech_z = g[0].pz - cos(g[0].yaw) * 4.5;
+  #assert cm_in_line(cm_line(g[..]), t[0].mech_x, t[0].mech_z, SB_MECH_R);
+  for i: 0..<120 { g_step(g[..], 1.0f32 / 60); }
+  #assert !cm_in_line(cm_line(g[..]), t[0].mech_x, t[0].mech_z, SB_MECH_R) && dist2(t[0].mech_x, t[0].mech_z, g[0].px, g[0].pz) >= SB_MECH_R + T_RADIUS;
+}

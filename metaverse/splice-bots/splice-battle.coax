@@ -431,8 +431,8 @@ sb_mech_step :: (g: [] SpGame, dt: f32) {
   } else if t[0].mech_core && g[0].zone == Z_MINE && !(sb_fighting(g) && sb_fielded(g) == SB_MECH) {
     // at your left, its own width and a stride out, a little ahead (playtest 2: behind you it stood on
     // top of you and in the camera's way)
-    h := sb_mech_spot(g); tx := h.x; tz := h.z;
-    _ := sb_toward(mx[..], mz[..], my[..], tx, tz, SB_MECH_SPEED * clamp(dist2(mx[0], mz[0], tx, tz) / 3, 0.2, 1.6), 0.3, dt);
+    h := cm_follow_spot(g, mx[0], mz[0], SB_MECH_R, SB_MECH_R + SB_MECH_GAP, SB_MECH_AHEAD); tx := h.x; tz := h.z;   // never between the camera and her (camera.coax)
+    _ := sb_toward(mx[..], mz[..], my[..], tx, tz, SB_MECH_SPEED * cm_follow_pace(g, mx[0], mz[0], SB_MECH_R, clamp(dist2(mx[0], mz[0], tx, tz) / 3, 0.2, 1.6)), 0.3, dt);
     q := cm_keep_off(g, mx[0], mz[0], SB_MECH_R); mx[0] = q.x; mz[0] = q.z;
   }
   if dist2(mx[0], mz[0], t[0].mech_x, t[0].mech_z) > 0.001 { t[0].mech_step += dt * 5; }
