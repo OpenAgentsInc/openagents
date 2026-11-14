@@ -1,0 +1,137 @@
+{
+  "release": {
+    "build": "1083",
+    "runtime": "92b7d596bd17e80017473157c7428f36e6ee212aeaac098fc40d1c64e1716f78",
+    "files": 20,
+    "ipa_bytes": 18189961,
+    "ipa_sha256": "bdb0a46b97a2f69f6d796ec71ed4d064547105eeebc9dd303b68b7cf97d8e4de",
+    "source_commit": "2e216d69f4eceafa6bac435aaa602b9332c9a457",
+    "bundle": "com.openagents.app",
+    "version": "1.0.0",
+    "generation": 1,
+    "source_tag": "openagents-ios-1083",
+    "native_links": "archive and exported IPA: four producers, zero missing",
+    "codesign": "deep/strict passed",
+    "world_producers": {
+      "everglade2": "ce82d1086659535bb971f18d69d7658a9a29cd6f5f97f73711befc6c7ed5edc5",
+      "myrealm": "61ae59f4b00e20e198f2befc44fcfdb3aa95959f25144dbea83f41555b4ff18c",
+      "splice-bots": "179388b81b5dc84b349b32dd3c4b7c31c2b7589ee7396141d32c819856c26b71",
+      "everglade": "48208ef47e47b23040121384dfc7068b9137a6aef2a37e540bc16d9fad676f0f"
+    },
+    "world_producer_baseline": "openagents-ios-1082",
+    "bundled_world_packs": 0,
+    "recorded_at": "2026-11-14T19:23:50.500550+00:00",
+    "upload": "altool completed successfully; upload exit 0",
+    "apple_state": "VALID",
+    "internal_beta_state": "IN_BETA_TESTING",
+    "verified_group": "Owner",
+    "verified_at": "2026-11-14T19:27:01.873546+00:00"
+  },
+  "behavior": [
+    "Phone drawer: Chat, Projects, Worlds; recent computer/account conversations, search and Settings. Narrow rail with a dismissible backdrop, left-edge open, swipe close and VoiceOver escape; regular layouts retain the sidebar column.",
+    "Home: existing account composer, centered Splice Bots/Everglade/world-library shortcuts. Everglade targets everglade2. Existing streamed assets and all four frozen world producers are preserved.",
+    "Projects uses the existing /api/projects member list and single world-list codec. Explicit project actions open their openagents.com pages.",
+    "Existing drafts, model/effort controls, collapsed tools, unresolved-command reconciliation and Usage are preserved.",
+    "Empty UIKit docks reserve zero height, including after switching away from the composer. Welcome content centers within a scrollable viewport."
+  ],
+  "verification": {
+    "coax_app": {
+      "passed": 535,
+      "failed": 0
+    },
+    "workspace_layout": {
+      "passed": 3,
+      "failed": 0
+    },
+    "web_sidebar": {
+      "passed": 18,
+      "failed": 0
+    },
+    "projects_request_policy": {
+      "mutants": 58,
+      "killed": 58,
+      "survived": 0
+    },
+    "native_program": "five installed-interpreter checks passed; existing navigation/draft/pagination checks passed; final attached-window home/projects/world-shortcut check passed",
+    "installed_ui": {
+      "devicesAndConfigurations": [
+        {
+          "device": {
+            "architecture": "arm64",
+            "deviceId": "E05572F4-80EE-4A27-A672-688527A30D5E",
+            "deviceName": "Coax Native Starter",
+            "modelName": "iPhone 17 Pro",
+            "osBuildNumber": "23F77",
+            "osVersion": "26.5",
+            "platform": "iOS Simulator"
+          },
+          "expectedFailures": 0,
+          "failedTests": 0,
+          "passedTests": 4,
+          "skippedTests": 0,
+          "testPlanConfiguration": {
+            "configurationId": "1",
+            "configurationName": "Test Scheme Action"
+          }
+        }
+      ],
+      "failedTests": 0,
+      "passedTests": 4,
+      "result": "Passed"
+    },
+    "public_feed": {
+      "runtime": "92b7d596bd17e80017473157c7428f36e6ee212aeaac098fc40d1c64e1716f78",
+      "generation": 1,
+      "endpoints": 2,
+      "objects": 20,
+      "all_hashes_match": true,
+      "envelope_sha256": "40fb7b16db5adbdd3cecee4487e2239b0f4239da06ba0acf6ce674d9b29052f7"
+    },
+    "gates": [
+      "components-check",
+      "tools-check",
+      "wire-check",
+      "layer-check",
+      "native stock-style",
+      "normal pre-push (23 seconds)"
+    ],
+    "symbols": "all five dSYMs kept by UUID in private symbol bucket",
+    "screenshots": "Home, drawer, Projects, account chat and Usage retained with private archive and inspected; result attachments retained",
+    "fresh_install": {
+      "summary": {
+        "devicesAndConfigurations": [
+          {
+            "device": {
+              "architecture": "arm64",
+              "deviceId": "E05572F4-80EE-4A27-A672-688527A30D5E",
+              "deviceName": "Coax Native Starter",
+              "modelName": "iPhone 17 Pro",
+              "osBuildNumber": "23F77",
+              "osVersion": "26.5",
+              "platform": "iOS Simulator"
+            },
+            "expectedFailures": 0,
+            "failedTests": 0,
+            "passedTests": 1,
+            "skippedTests": 0,
+            "testPlanConfiguration": {
+              "configurationId": "1",
+              "configurationName": "Test Scheme Action"
+            }
+          }
+        ],
+        "failedTests": 0,
+        "passedTests": 1,
+        "result": "Passed"
+      },
+      "cache": {
+        "files": [
+          "highwater.cnu"
+        ],
+        "envelope_matches_public": true
+      },
+      "coverage": "Fresh install of matching simulator resources; live signed production feed; automatic check, manual check, relaunch and second check; no redundant Update ready offer."
+    }
+  },
+  "owner_followup": "Install 1083 and confirm physical-phone navigation/world shortcuts. Recorded in NEEDS_OWNER.md."
+}

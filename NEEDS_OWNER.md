@@ -2,7 +2,8 @@
 
 ## Mobile drawer and home, build 1083
 
-Install 1083 from TestFlight once available. Check the menu’s Chat, Projects
+1083 is **VALID / IN_BETA_TESTING**, verified in the existing **Owner** group.
+Install 1083 from TestFlight. Check the menu’s Chat, Projects
 and Worlds destinations, tap outside the drawer to close it, and reopen it
 with a left-edge swipe. Type a draft, switch places/chats, and return to it.
 Try both home world shortcuts; Everglade opens the current Everglade II world.

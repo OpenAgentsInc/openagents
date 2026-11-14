@@ -3,7 +3,7 @@ import XCTest
 final class StarterUITests:XCTestCase {
     // Select explicitly with a published feed matching this build's resources.
     func testIdenticalLivePackageDoesNotPrompt() {
-        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES"];app.launch()
+        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13493"];app.launch()
         if !app.buttons["Check for updates"].waitForExistence(timeout:3) {app.showAppSettings()}
         let check=app.buttons["Check for updates"]
         XCTAssertTrue(check.waitForExistence(timeout:20))

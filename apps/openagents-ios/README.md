@@ -275,3 +275,9 @@ labelled action opens its page on openagents.com. World shortcuts use the
 existing native streamed-world service; Everglade opens `everglade2`.
 The drawer geometry and welcome layout require installing 1083. Future
 compatible screen changes continue through signed Updates.
+
+1083 is **VALID / IN_BETA_TESTING**, verified in **Owner**.
+The [1083 release record](../../docs/verification/2026-11-14-native-drawer-1083.json)
+keeps the archive/runtime identities, installed UI checks and live-feed evidence.
+The fresh-install feed check uses the independent email/environment oracle on
+port 13493 for account calls while fetching Updates from the public endpoints.
