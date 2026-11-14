@@ -568,7 +568,7 @@ g_step :: (g: [] SpGame, dt: f32) {
   if g[0].msg_t > 0 { g[0].msg_t -= dt; if g[0].msg_t <= 0 { g[0].msg = MSG_NONE; } }
   if g[0].flash > 0 { g[0].flash = hi(0, g[0].flash - dt * 1.6); }
   if g[0].hit_cool > 0 { g[0].hit_cool = hi(0, g[0].hit_cool - dt); }   // the hit cooldown counts down everywhere: the mine, the desert, the drive
-  if g[0].mode == M_BANNER { g[0].banner_t -= dt; if g[0].banner_t <= 0 { g_respawn(g); g[0].mode = M_PLAY; } return; }
+  if g[0].mode == M_BANNER { if g[0].banner == B_CUT { return; } g[0].banner_t -= dt; if g[0].banner_t <= 0 { g_respawn(g); g[0].mode = M_PLAY; } return; }   // BAD CUT waits for RESPAWN AT ROVER or QUIT TO TITLE (hud.coax)
   sb_end_step(g, dt);   // SCENE RESTORED, then the mission's teaser
   if g[0].mode == M_MEMORY { g[0].mem_t += dt; if g[0].mem_t >= T_MEMORY { g[0].mode = M_RESTORED; g_event(g, EV_RESTORED); } return; }
   if g[0].mode == M_BAY { if g[0].heat > 0 { g[0].heat = hi(0, g[0].heat - T_HEAT_COOL * dt); } return; }
@@ -761,6 +761,11 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
   if sb_restored_key(g, key) { return true; }   // SCENE RESTORED goes on to the mission's teaser
   if g[0].mode == M_RESTORED { if enter || key == 'r' || key == 'R' { g_reset(g); g_begin(g); return true; } return false; }
   if g[0].mode == M_MEMORY { g[0].mode = M_RESTORED; return true; }
+  if g[0].mode == M_BANNER && g[0].banner == B_CUT {   // BAD CUT: respawn at the rover, or quit to the title
+    if enter || key == 'e' || key == 'E' { g_respawn(g); g[0].mode = M_PLAY; return true; }
+    if key == -1 { g_reset(g); return true; }
+    return false;
+  }
   if g[0].mode == M_BAY {
     if key == -15 || key == -1 || key == 'e' || key == 'E' { g[0].mode = M_PLAY; g[0].look_free = false; return true; }
     if key == '1' { g_place(g, H_MOVE, -1); return true; }
@@ -1479,10 +1484,7 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
       n = ui_title_mid(out, n, "IMPERIAL SWEEP", w * 0.5, h * 0.46, 40 * k, paper);
       n = ui_mid(out, n, "Heat hit 100. Back at Sniper.", w * 0.5, h * 0.56, 12 * k, paper);
     } else {
-      for i: 0..<3 { n = ui_heart(out, n, w * 0.5 + (cast(f32) i - 1) * 70 * k, h * 0.32, 52 * k, false, ink); }
-      n = ui_title_mid(out, n, "YOU WENT DOWN", w * 0.5, h * 0.5, 40 * k, paper);
-      n = ui_mid(out, n, "Back at Sniper with what you had when you last left it.", w * 0.5, h * 0.585, 12 * k, paper);
-      n = ui_mid(out, n, "Banned pieces since then are lost.", w * 0.5, h * 0.625, 12 * k, paper);
+      return hv_death(g, out, u, q);   // BAD CUT (hud.coax)
     }
     return n;
   }
@@ -1612,7 +1614,7 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
 }
 // The hoverboard (#13485): only when the world's board table gives it; everything on Q (#13505).
 sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', false); return t; }
-#test "the board: Q calls it only when the world gives one, Q switches casual and fast, Q Q is super fast, holding Q steps off; Ctrl and W W do nothing" #steps 60000000 {
+#test "the board: Q calls it only when the world gives one, Q switches casual and fast, Q Q is super fast, holding Q steps off; Ctrl held or W W rides very fast" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 5);
   g[0].c[0].board = board_row_read(1, "off", 700, 2200);
@@ -1627,9 +1629,12 @@ sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', fa
   // the rubble stops it head on, and its speed goes into the wall
   for i: 0..<600 { g_step(g[..], 1.0f32 / 60); }
   #assert g[0].pz >= g[0].at.rubble_z + 1 + T_RADIUS - 0.01 && g[0].board[0].m.speed < 1;
-  // Ctrl and a double tap of W are no longer the board's
-  _ = g_key(g[..], -14, true); _ = g_key(g[..], 'w', false); _ = g_key(g[..], 'w', true); _ = g_key(g[..], 'w', false); _ = g_key(g[..], 'w', true);
-  g_step(g[..], 1.0f32 / 60); #assert !g[0].board[0].fast; _ = g_key(g[..], -14, false);
+  // Ctrl held rides very fast, and so does a double tap of W held; letting go is casual again
+  #assert g_key(g[..], -14, true); g_step(g[..], 1.0f32 / 60); #assert g[0].board[0].fast;
+  _ = g_key(g[..], -14, false); g_step(g[..], 1.0f32 / 60); #assert !g[0].board[0].fast;
+  _ = g_key(g[..], 'w', false); _ = g_key(g[..], 'w', true); _ = g_key(g[..], 'w', false); _ = g_key(g[..], 'w', true);
+  g_step(g[..], 1.0f32 / 60); #assert g[0].board[0].fast;
+  _ = g_key(g[..], 'w', false); g_step(g[..], 1.0f32 / 60); #assert !g[0].board[0].fast;
   // Q: fast, and the view widens
   #assert sp_q(g[..]); g_step(g[..], 1.0f32 / 60);
   #assert g[0].board[0].fast && !g[0].dr[0].super && g_camera(g[..]).fov == board_fov(g[0].board[0], 0.82);
@@ -1809,6 +1814,9 @@ sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', fa
   for i: 0..<T_HEARTS { g[0].hit_cool = 0; g_hurt(g[..]); }
   #assert g[0].mode == M_BANNER && g[0].banner == B_CUT;
   for i: 0..<200 { g_step(g[..], 0.02); }
+  #assert g[0].mode == M_BANNER;   // BAD CUT waits for you
+  lostbuf: [64] u8; #assert hv_lost(g[..], lostbuf[..]) == "1 banned piece · 1 other piece";
+  #assert g_key(g[..], -2, true);   // RESPAWN AT ROVER
   #assert g[0].mode == M_PLAY && g[0].px == g[0].at.rover_x - 3 && g[0].pz == g[0].at.rover_z && g[0].hearts == T_HEARTS;
   #assert !g[0].have[H_PLUS] && !g[0].taken[PICK_PLUS] && g[0].cells == 0 && g[0].have[H_MOVE] && g[0].strip_n == 2;
 }
@@ -2294,12 +2302,21 @@ hv_drop_on :: (g: [] SpGame, d: int) -> bool {
   hv_tick(g[..], b[..], 40);
   #assert g[0].hv[0].toasts[0].n == 0;
   // the objective on the compass, its distance, and the reel line
-  buf: [32] u8;
+  buf: [64] u8;
   #assert hv_far(buf[..], 2400) == "2.4 KM" && hv_far(buf[..], 240) == "240 M" && hv_reel(g[..], buf[..]) == "REEL 03 · NIGHT";
   g_stage(g[..], 7);
   #assert hv_goal(g[..]).name == "BLUE GLOW" && hv_goal(g[..]).ok;
   g[0].have[H_PLUS] = true;
   #assert hv_goal(g[..]).rover;
+  // the hoverboard's panel and its keys
+  #assert HV_BOARD_HINT == "Q board · hold Ctrl or double-tap W: very fast";
+  // BAD CUT: Esc quits to the title; its buttons are RESPAWN AT ROVER and QUIT TO TITLE
+  g_stage(g[..], 14); _ = hv_draw(g[..], b[..]);
+  #assert hv_btn(g[..], -2) >= 0 && hv_btn(g[..], -1) >= 0 && hv_kept(g[..], buf[..]) == "Digger · drill arm · treads · battery · 2 cards";
+  #assert g_key(g[..], -1, true) && g[0].mode == M_TITLE;
+  // the wheel and the pause screen draw in the same frame
+  g_stage(g[..], 8); g[0].dr[0].wheel = wheel_open(DW_N); #assert hv_draw(g[..], b[..]) > 0;
+  g[0].dr[0].wheel = Wheel.{}; d_pause(g[..]); #assert hv_draw(g[..], b[..]) > 0;
   // the prompt: the verb in capitals, what it is for after it
   #assert hv_upper(buf[..], "Tow") == "TOW";
 }
@@ -2567,6 +2584,7 @@ g_key_wheel_follow :: (g: [] SpGame) { _ := g_key(g, 'r', true); _ = g_key(g, '4
   #assert bb_strike(t[0].fight[..], 0, 100);
   g_step(g[..], 0.02);
   #assert g[0].mode == M_BANNER && g[0].banner == B_CUT && !sb_fighting(g[..]);
+  #assert g_key(g[..], ' ', true);   // RESPAWN AT ROVER
   for i: 0..<200 { g_step(g[..], 0.02); }
   #assert g[0].mode == M_PLAY && t[0].bots[SB_BOSS].vit.hp == 70 && t[0].bots[SB_MECH].vit.hp == 45 && t[0].mech_core && g[0].wall_gone;
 }

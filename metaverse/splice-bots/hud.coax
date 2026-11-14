@@ -223,6 +223,19 @@ hv_gauges :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   n = hv_gauge(out, n, cx, cy, r, g[0].heat / T_HEAT_MAX, warm, "HEAT", k, a);
   return hv_mid(out, n, F_TITLE, hv_band(g[0].heat), cx, cy + 3 * k, ifx g[0].heat >= 66 then 4 * k else 5.5 * k, ifx warm then HV_ORANGE() else HV_CREAM(), a);
 }
+// The hoverboard, when the world gives one: what it is doing, its speed, and its keys. Over the gauges.
+HV_BOARD_HINT :: "Q board · hold Ctrl or double-tap W: very fast";
+hv_board :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  n := at; k := q.k;
+  if !g_board_given(g) || g[0].mode != M_PLAY { return n; }
+  bd := g[0].board[0]; on := g_riding(g); buf: [32] u8;
+  x0 := 30 * k; x1 := x0 + 330 * k; y1 := q.h - 140 * k; y0 := y1 - 48 * k;
+  n = hv_rect(out, n, x0, y0, x1, y1, HV_PANEL(), 0.94);
+  what := ifx !on then "BOARD OFF" else ifx g[0].dr[0].super then "BOARD · SUPER FAST" else ifx bd.fast then "BOARD · VERY FAST" else "BOARD · CASUAL";
+  n = hv_text(out, n, F_TITLE, what, x0 + 14 * k, y0 + 20 * k, 7.5 * k, ifx on && bd.fast then HV_ORANGE() else HV_CREAM(), 1);
+  if on { n = hv_right(out, n, F_MONO, num(buf[..], "", cast(int) (abs(bd.m.speed) * 3.6 + 0.5), " KM/H"), x1 - 14 * k, y0 + 20 * k, 7 * k, HV_CREAM(), 1); }
+  return hv_text(out, n, F_MONO, HV_BOARD_HINT, x0 + 14 * k, y0 + 38 * k, 6.5 * k, HV_DIM(), 1);
+}
 // The bot slots: Digger on 1, two empty, then the stun on F.
 hv_slots :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   n := at; k := q.k; sw := 271 * k; sh := 69 * k; x0 := q.w * 0.5 - sw * 0.5; y1 := q.h - 28 * k; y0 := y1 - sh;
@@ -331,9 +344,11 @@ hv_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   if g[0].dr[0].paused { return d_hud(g, out, u, q, n); }
   if g[0].hv[0].hidden { return d_hud(g, out, u, q, n); }   // H: only what an open window, the wheel or a line from Digger needs
   open := g[0].dr[0].bag || g[0].dr[0].map;
+  if g[0].dr[0].wheel.open { return d_hud(g, out, u, q, n); }   // the wheel takes the screen (hv_wheel)
   n = hv_compass(g, out, n, q);
   n = hv_toasts(g, out, n, q);
   n = hv_gauges(g, out, n, q);
+  n = hv_board(g, out, n, q);
   if !sb_fighting(g) { n = hv_slots(g, out, n, q); }   // a battle's own panel takes the bottom centre (splice-battle.coax)
   n = hv_card(g, out, n, q);
   n = sb_hud(g, out, u, q, n);   // health bars over the bots, and a battle's panels
@@ -509,4 +524,118 @@ hv_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
     n = hv_mid(out, n, F_TITLE, dt, g[0].drag_x, g[0].drag_y + 4 * k, 8 * k, HV_DARK(), 1);
   }
   return n;
+}
+
+// ---- the bot wheel (Hold R), in the same frame: four choices round a dark ring, the lit one cream,
+// what it does in the middle, Digger's cards and battery to the right
+HV_WHEEL_SAYS :: [DW_N] string.["Digs the rubble you point at", "Fetches a part in his range", "Fights the nearest robot", "Stays at your side"];
+hv_wheel :: (g: [] SpGame, out: [] f32, u: [] f32, at: int, q: Ui) -> int {
+  n := at; k := q.k; w := g[0].dr[0].wheel; cx := q.w * 0.5; cy := q.h * 0.5; r := 205 * k; buf: [48] u8;
+  lit := wheel_pick(w);
+  ui_panel(g, u, -20, -20, q.w + 20, q.h + 20, HV_PANEL(), 0.82);   // the world dimmed behind the wheel
+  n = hv_text(out, n, F_MONO, "HOLD R", 42 * k, 42 * k, 6.5 * k, HV_ORANGE(), 1);
+  n = hv_text(out, n, F_TITLE, "CREW", 42 * k, 72 * k, 15 * k, HV_CREAM(), 1);
+  n = ui_seg(out, n, cx, cy, cx, cy, r, HV_PANEL(), 0.92);
+  n = ui_seg(out, n, cx, cy, cx, cy, r * 0.43, HV_DARK(), 0.95);
+  n = hv_mid(out, n, F_MONO, "DIGGER", cx, cy - 30 * k, 6 * k, HV_DIM(), 1);
+  n = hv_mid(out, n, F_TITLE, ifx lit >= 0 then DW_WORDS[lit] else "PICK ONE", cx, cy + 2 * k, 12 * k, HV_CREAM(), 1);
+  n = hv_mid(out, n, F_MONO, ifx lit >= 0 then HV_WHEEL_SAYS[lit] else "Move the mouse", cx, cy + 26 * k, 6.5 * k, HV_CREAM(), 1);
+  for i: 0..<DW_N {
+    p := wheel_at(DW_N, i, cx, cy, r * 0.72); on := i == lit; bw := 66 * k; bh := 31 * k;
+    n = hv_rect(out, n, p[0] - bw, p[1] - bh, p[0] + bw, p[1] + bh, ifx on then HV_CREAM() else HV_DARK(), 1);
+    n = hv_mid(out, n, F_TITLE, DW_WORDS[i], p[0], p[1] + 2 * k, 9 * k, ifx on then HV_DARK() else HV_CREAM(), 1);
+    n = hv_mid(out, n, F_MONO, ifx on then "SELECTED" else num(buf[..], "KEY ", i + 1, ""), p[0], p[1] + 18 * k, 5.5 * k, ifx on then HV_PANEL() else HV_DIM(), 1);
+  }
+  // the loadout: Digger's cards, his battery
+  x1 := q.w - 50 * k; x0 := x1 - 240 * k; y0 := cy - 40 * k;
+  n = hv_rect(out, n, x0, y0, x1, y0 + 80 * k, HV_DARK(), 0.95);
+  n = hv_text(out, n, F_MONO, "LOADOUT", x0 + 14 * k, y0 + 20 * k, 6 * k, HV_DIM(), 1);
+  x := x0 + 14 * k;
+  if g[0].strip_n == 0 { n = hv_text(out, n, F_TITLE, "NO CARDS", x, y0 + 44 * k, 8.5 * k, HV_DIM(), 1); }
+  for i: 0..<g[0].strip_n {
+    c := card_name(g[0].strip[i]); if i > 0 { n = hv_text(out, n, F_TITLE, "·", x, y0 + 44 * k, 8.5 * k, HV_CREAM(), 1); x += 12 * k; }
+    n = hv_text(out, n, F_TITLE, c, x, y0 + 44 * k, 8.5 * k, ifx g[0].strip[i] == H_PLUS then HV_ORANGE() else HV_CREAM(), 1); x += ui_w(F_TITLE, c, 8.5 * k) + 8 * k;
+  }
+  n = hv_text(out, n, F_MONO, num(buf[..], "BATTERY ", hv_battery(g), ""), x0 + 14 * k, y0 + 64 * k, 6.5 * k, HV_CREAM(), 1);
+  return hv_right(out, n, F_TITLE, "MOUSE AIM    RELEASE R CONFIRM    1-4 PICK", q.w - 50 * k, q.h - 30 * k, 6 * k, HV_CREAM(), 1);
+}
+
+// ---- the pause screen: a dark panel down the left (the front screens' format), the run's facts,
+// and the keys on paper to the right
+hv_pause :: (g: [] SpGame, out: [] f32, u: [] f32, at: int, q: Ui) -> int {
+  n := at; k := q.k; buf: [48] u8; b2: [16] u8; pw := 360 * k;
+  ui_panel(g, u, -20, -20, pw, q.h + 20, HV_DARK(), 0.97);
+  ui_panel(g, u, pw, -20, q.w + 20, q.h + 20, kit_tint(0.07, 0.068, 0.062), 0.8);
+  n = hv_text(out, n, F_MONO, num(buf[..], "PAUSED · REEL 0", g[0].zone + 1, ""), 46 * k, 54 * k, 6.5 * k, HV_ORANGE(), 1);
+  n = hv_text(out, n, F_TITLE, "INTERMISSION", 46 * k, 86 * k, 15 * k, HV_CREAM(), 1);
+  n = hv_rect(out, n, 46 * k, 120 * k, pw - 40 * k, 164 * k, HV_CREAM(), 1);
+  n = hv_text(out, n, F_TITLE, "RESUME", 64 * k, 147 * k, 9.5 * k, HV_DARK(), 1);
+  n = hv_right(out, n, F_MONO, "CLICK OR ESC", pw - 56 * k, 146 * k, 6 * k, HV_PANEL(), 1);
+  n = hv_text(out, n, F_MONO, hv_reel(g, buf[..]), 46 * k, q.h - 96 * k, 6.5 * k, HV_CREAM(), 1);
+  n = hv_text(out, n, F_MONO, num(buf[..], "HEARTS ", g[0].hearts, num(b2[..], " / ", T_HEARTS, "")), 46 * k, q.h - 76 * k, 6.5 * k, HV_CREAM(), 1);
+  n = hv_text(out, n, F_MONO, "LAST CHECKPOINT · ROVER", 46 * k, q.h - 56 * k, 6.5 * k, HV_CREAM(), 1);
+  // the keys
+  x0 := pw + 50 * k; x1 := q.w - 50 * k; y0 := 50 * k; y1 := q.h - 50 * k;
+  n = hv_rect(out, n, x0, y0, x1, y1, HV_CREAM(), 1);
+  n = hv_text(out, n, F_TITLE, "CONTROLS", x0 + 26 * k, y0 + 38 * k, 11 * k, HV_DARK(), 1);
+  keys := d_controls(); y := y0 + 76 * k; kx := x0 + 200 * k;
+  for i: 0..<D_KEYS {
+    n = hv_right(out, n, F_TITLE, keys[i * 2], kx, y, 7.5 * k, HV_DARK(), 1);
+    n = hv_text(out, n, F_MONO, keys[i * 2 + 1], kx + 22 * k, y, 8 * k, HV_PANEL(), 1);
+    y += 27 * k;
+  }
+  return n;
+}
+
+// ---- BAD CUT: hearts at zero. What you keep (what you had when you last left the rover) and what
+// is lost since; RESPAWN AT ROVER (Enter, Space or E) or QUIT TO TITLE (Esc)
+HV_DEATH_TIP :: "TIP · HOLD SHIFT TO SNEAK: ROBOTS SENSE YOU FROM HALF AS FAR";
+hv_kept :: (g: [] SpGame, buf: [] u8) -> string {
+  n := tput(buf, 0, "Digger");
+  names := [3] string.["drill arm", "treads", "battery"];
+  for i: 0..<3 { if g[0].save.have[i] { n = tput(buf, n, " · "); n = tput(buf, n, names[i]); } }
+  c := 0; for i: H_MOVE..<H_CORE { if g[0].save.have[i] { c += 1; } }
+  if c > 0 { n = tput(buf, n, " · "); n = tput_int(buf, n, c); n = tput(buf, n, ifx c == 1 then " card" else " cards"); }
+  return cast(string) buf[0..<n];
+}
+hv_lost :: (g: [] SpGame, buf: [] u8) -> string {
+  banned := 0; other := 0;
+  for i: 0..<HAVES { if g[0].have[i] && !g[0].save.have[i] { if i == H_PLUS || i == H_CORE { banned += 1; } else { other += 1; } } }
+  other += cast(int) hi(0, cast(f32) (g[0].cells - g[0].save.cells)) + cast(int) hi(0, cast(f32) (g[0].scrap - g[0].save.scrap));
+  if banned + other == 0 { return "Nothing"; }
+  n := 0;
+  if banned > 0 { n = tput_int(buf, n, banned); n = tput(buf, n, ifx banned == 1 then " banned piece" else " banned pieces"); }
+  if other > 0 { if n > 0 { n = tput(buf, n, " · "); } n = tput_int(buf, n, other); n = tput(buf, n, ifx other == 1 then " other piece" else " other pieces"); }
+  return cast(string) buf[0..<n];
+}
+hv_death :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
+  n := 0; k := q.k; w := q.w; h := q.h; cx := w * 0.5; buf: [64] u8; b2: [64] u8;
+  ui_panel(g, u, -20, -20, w + 20, h + 20, kit_tint(0.115, 0.108, 0.098), 0.97);
+  sy0 := h * 0.28; sy1 := sy0 + 196 * k;
+  n = hv_rect(out, n, -10, sy0, w + 10, sy1, kit_tint(0.06, 0.057, 0.052), 1);
+  n = ui_sprockets(out, n, 0, w, sy0 + 12 * k, 7 * k, HV_PANEL());
+  n = ui_sprockets(out, n, 0, w, sy1 - 12 * k, 7 * k, HV_PANEL());
+  n = hv_mid(out, n, F_MONO, hv_reel(g, buf[..]), cx, sy0 + 48 * k, 6.5 * k, HV_ORANGE(), 1);
+  n = hv_mid(out, n, F_TITLE, "BAD CUT", cx, sy0 + 112 * k, 38 * k, HV_CREAM(), 1);
+  n = hv_mid(out, n, F_MONO, "Re-edit at the rover.", cx, sy0 + 148 * k, 9 * k, HV_CREAM(), 1);
+  // what you keep, what is lost
+  cw := 300 * k; gap := 10 * k; ty := sy1 + 40 * k; th := 60 * k;
+  ax0 := cx - cw - gap * 0.5; bx0 := cx + gap * 0.5;
+  n = hv_frame(out, n, ax0, ty, ax0 + cw, ty + th, 1 * k, HV_LINE(), 1);
+  n = hv_text(out, n, F_MONO, "YOU KEEP", ax0 + 14 * k, ty + 20 * k, 5.5 * k, HV_DIM(), 1);
+  kept := hv_kept(g, buf[..]); kc := 7.5 * k; while ui_w(F_MONO, kept, kc) > cw - 28 * k && kc > 5 * k { kc -= 0.25 * k; }
+  n = hv_text(out, n, F_MONO, kept, ax0 + 14 * k, ty + 42 * k, kc, HV_CREAM(), 1);
+  n = ui_dash(out, n, bx0, ty, bx0 + cw, ty + th, 1 * k, HV_ORANGE());
+  n = hv_text(out, n, F_MONO, "LOST SINCE CHECKPOINT", bx0 + 14 * k, ty + 20 * k, 5.5 * k, HV_ORANGE(), 1);
+  n = hv_text(out, n, F_MONO, hv_lost(g, b2[..]), bx0 + 14 * k, ty + 42 * k, 7.5 * k, HV_ORANGE(), 1);
+  // the two choices
+  by := ty + th + 22 * k; bh := 52 * k;
+  n = hv_rect(out, n, ax0, by, ax0 + cw, by + bh, HV_CREAM(), 1);
+  n = hv_mid(out, n, F_TITLE, "RESPAWN AT ROVER", ax0 + cw * 0.5, by + bh * 0.5 + 4 * k, 9.5 * k, HV_DARK(), 1);
+  g_hot(g, ax0, by, ax0 + cw, by + bh, -2);
+  n = hv_frame(out, n, bx0, by, bx0 + cw, by + bh, 1.5 * k, HV_DIM(), 1);
+  n = hv_mid(out, n, F_TITLE, "QUIT TO TITLE", bx0 + cw * 0.5, by + bh * 0.5 + 4 * k, 9.5 * k, HV_CREAM(), 1);
+  g_hot(g, bx0, by, bx0 + cw, by + bh, -1);
+  n = hv_mid(out, n, F_MONO, "ENTER RESPAWN    ESC QUIT", cx, by + bh + 22 * k, 6 * k, HV_DIM(), 1);
+  return hv_mid(out, n, F_MONO, HV_DEATH_TIP, cx, by + bh + 44 * k, 6 * k, HV_DIM(), 1);
 }

@@ -73,6 +73,7 @@ SpDir :: struct {
   move: int; moves: int;                  // the last battle move key (1 to 4) and presses not yet taken
   q_held: bool; q_since: f32 = 1000; q_hold: f32 = -1;   // Q is down, seconds since its last press, how long held (-1: this press won't step off)
   super: bool;                            // the board rides super fast (a double tap of Q)
+  q_fast: bool;                           // Q has the board fast (Q switches it); Ctrl held or a double tap of W rides very fast too
   wheel: Wheel;                           // Hold R: the bot wheel, open while R is held (metaverse-engine/ui/wheel.coax)
   sw: f32 = 1280; sh: f32 = 800;          // the screen at the last frame: the pointer's crosshair
   bag_x: f32; bag_y: f32; bag_s: f32; bag_gap: f32;   // the grid as last drawn, for a click
@@ -308,6 +309,8 @@ d_key :: (g: [] SpGame, key: int, down: bool) -> int {
     return ifx down then 1 else -1;
   }
   if key == -13 { d[0].st = stance_sneak(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }
+  if key == -14 { d[0].st = stance_hold(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }   // Ctrl: very fast on the board
+  if key == 'w' || key == 'W' || key == -6 { d[0].st = stance_forward(d[0].st, down); return -1; }   // a double tap of W: very fast on the board; W still walks
   if key == 'q' || key == 'Q' { return d_board_q(g, down); }
   if key == 'r' || key == 'R' { return d_wheel_key(g, down); }
   if d[0].wheel.open && down && key >= '1' && key <= '4' { d[0].wheel = wheel_set(d[0].wheel, key - '1'); return 1; }
@@ -331,10 +334,11 @@ d_board_q :: (g: [] SpGame, down: bool) -> int {
   d[0].q_held = true;
   if g[0].mode != M_PLAY || !g_board_given(g) { return 0; }
   b := g[0].board[..];
-  if !g_riding(g) { g_board_key(g); b[0].fast = false; d[0].super = false; d[0].q_since = 0; d[0].q_hold = -1; return 1; }
-  if d[0].q_since <= T_Q_TAP { d[0].super = true; b[0].fast = true; }
-  else if b[0].fast { b[0].fast = false; d[0].super = false; }
-  else { b[0].fast = true; }
+  if !g_riding(g) { g_board_key(g); d[0].q_fast = false; b[0].fast = false; d[0].super = false; d[0].q_since = 0; d[0].q_hold = -1; return 1; }
+  if d[0].q_since <= T_Q_TAP { d[0].super = true; d[0].q_fast = true; }
+  else if d[0].q_fast { d[0].q_fast = false; d[0].super = false; }
+  else { d[0].q_fast = true; }
+  b[0].fast = d[0].q_fast || stance_fast(d[0].st);
   d[0].q_since = 0; d[0].q_hold = 0;
   return 1;
 }
@@ -386,23 +390,8 @@ d_order :: (g: [] SpGame, pick: int) {
   }
 }
 // The wheel, in the middle of the screen: four choices round a ring, the one picked lit.
-d_wheel_draw :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
-  n := at; k := q.k; w := g[0].dr[0].wheel; cx := q.w * 0.5; cy := q.h * 0.5; r := 120 * k;
-  lit := wheel_pick(w);
-  ui_panel(g, u, cx - r - 90 * k, cy - r - 46 * k, cx + r + 90 * k, cy + r + 46 * k, PAPER(), 0.9);
-  n = ui_box(out, n, cx - r - 90 * k, cy - r - 46 * k, cx + r + 90 * k, cy + r + 46 * k, 3 * k, INK());
-  n = ui_mid(out, n, "DIGGER", cx, cy + 4 * k, 10 * k, INK());
-  for i: 0..<DW_N {
-    p := wheel_at(DW_N, i, cx, cy, r); on := i == lit; c := ifx on then HEAT() else INK();
-    hw := 64 * k;
-    if on { n = ui_seg(out, n, p[0] - hw + 10 * k, p[1], p[0] + hw - 10 * k, p[1], 16 * k, HEAT(), 0.25); }
-    n = ui_box(out, n, p[0] - hw, p[1] - 18 * k, p[0] + hw, p[1] + 18 * k, ifx on then 3 * k else 1.5 * k, c);
-    n = ui_mid(out, n, DW_WORDS[i], p[0], p[1] + 4 * k, 9 * k, c);
-    buf: [8] u8; n = ui_mid(out, n, num(buf[..], "", i + 1, ""), p[0], p[1] - 24 * k, 7 * k, c);
-  }
-  n = ui_mid(out, n, "Move the mouse to pick · let go of R", cx, cy + r + 34 * k, 8 * k, INK());
-  return n;
-}
+// The wheel, in the middle of the screen, in the HUD's frame (hud.coax).
+d_wheel_draw :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int { return hv_wheel(g, out, u, at, q); }
 // E at a powered-down Digger: tow him (or let him go).
 d_use :: (g: [] SpGame) -> bool {
   if !g[0].bot || !d_down(g) || dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > T_TOW_REACH { return false; }
@@ -436,9 +425,10 @@ d_pre :: (g: [] SpGame, dt: f32) {
   if d[0].q_since < 1000 { d[0].q_since += dt; }
   if d[0].q_held && d[0].q_hold >= 0 && g_riding(g) {
     d[0].q_hold += dt;
-    if d[0].q_hold >= T_Q_OFF { g_board_key(g); d[0].q_hold = -1; d[0].super = false; g[0].board[0].fast = false; }
+    if d[0].q_hold >= T_Q_OFF { g_board_key(g); d[0].q_hold = -1; d[0].super = false; d[0].q_fast = false; g[0].board[0].fast = false; }
   }
-  if !g_riding(g) { d[0].super = false; }
+  if !g_riding(g) { d[0].super = false; d[0].q_fast = false; }
+  else { g[0].board[0].fast = d[0].q_fast || stance_fast(d[0].st); }   // Q's fast, or Ctrl held, or a double tap of W held
   if d[0].say_t > 0 { d[0].say_t -= dt; if d[0].say_t <= 0 { d[0].say = DS_NONE; } }
 }
 // After the walk: Heat's floor and Digger.
@@ -613,25 +603,12 @@ D_KEYS :: 17;
 d_controls :: () -> [D_KEYS * 2] string {
   return [D_KEYS * 2] string.[
     "W A S D", "Walk", "Mouse", "Look", "Space", "Jump", "Hold Shift", "Sneak: slower, harder to sense",
-    "Q", "Hoverboard on, then casual or fast", "Q Q, hold Q", "Hoverboard super fast; hold Q to step off",
+    "Q", "Hoverboard on, then casual or fast", "Hold Ctrl or W W", "Hoverboard very fast; Q Q super fast, hold Q off",
     "E", "Interact, enter the rover, swap a core, tow Digger", "Tab", "Edit bay, inside Sniper", "I", "Inventory",
     "Left click", "Point Digger: dig, pick up, attack", "F", "Stun a robot within 2 m", "1 2 3 4", "Battle moves",
     "Hold R", "Bot wheel: dig, pick up, attack, follow", "M", "Map", "O", "Change outfit, inside Sniper", "Esc", "Pause", "G", "Graybox"];
 }
-d_pause_screen :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
-  n := at; k := q.k; ink := INK(); paper := PAPER();
-  ui_panel(g, u, -20, -20, q.w + 20, q.h + 20, ink, 0.86);
-  n = ui_title_mid(out, n, "PAUSED", q.w * 0.5, q.h * 0.16, 30 * k, paper);
-  n = ui_mid(out, n, "Click or press Esc to play", q.w * 0.5, q.h * 0.16 + 32 * k, 10 * k, GLOW());
-  keys := d_controls();
-  y := q.h * 0.16 + 80 * k; kx := q.w * 0.5 - 260 * k;
-  for i: 0..<D_KEYS {
-    n = ui_right(out, n, keys[i * 2], kx + 150 * k, y, 10 * k, GLOW());
-    n = ui_text(out, n, keys[i * 2 + 1], kx + 172 * k, y, 10 * k, paper);
-    y += 27 * k;
-  }
-  return n;
-}
+d_pause_screen :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int { return hv_pause(g, out, u, at, q); }   // hud.coax
 // The Director's HUD: her panel top left, the bars over the bots, her line, and the grid, the map
 // or the pause screen when one is open. The game's HUD draws the rest.
 d_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
