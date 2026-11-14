@@ -97,7 +97,10 @@ fl_walk :: (g: [] SpGame, go: f32, side: f32, pace: f32, dt: f32) {
   // the stride follows the ground covered; standing, it settles into the nearest standing pose
   if !air {
     long := ifx g[0].fr[0].stride_m > 0.5 then g[0].fr[0].stride_m else FL_STRIDE;
-    if speed > FL_STOP || n > 0 { g[0].stride += speed * dt * TAU / long; }
+    if speed > FL_STOP || n > 0 {
+      was := floor(g[0].stride / PI); g[0].stride += speed * dt * TAU / long;
+      if floor(g[0].stride / PI) != was && speed > FL_STOP { snd_play(g, SND_STEP); }   // a foot meets the ground (sound.coax)
+    }
     else { rest := floor(g[0].stride / PI + 0.5) * PI; g[0].stride += (rest - g[0].stride) * lo(1, FL_SETTLE * dt); }
   }
   // she turns to face the way you steer, never walking backwards (#13505 playtest)
@@ -121,7 +124,7 @@ fl_after_jump :: (g: [] SpGame, dt: f32) {
   if air && !f[0].was_air && j.jumped { f[0].up_t = 0; f[0].second = false; f[0].land_t = 0; }
   if air && j.air_used > f[0].air_used { f[0].up_t = 0; f[0].second = true; }
   if air { f[0].up_t += dt; }
-  if j.landed && j.impact > FL_SOFT { f[0].land_t = FL_LAND; f[0].squash = lo(FL_SQUASH_MAX, j.impact * FL_SQUASH); }
+  if j.landed && j.impact > FL_SOFT { f[0].land_t = FL_LAND; f[0].squash = lo(FL_SQUASH_MAX, j.impact * FL_SQUASH); snd_play(g, SND_LAND); }
   else if f[0].land_t > 0 { f[0].land_t = hi(0, f[0].land_t - dt); }
   f[0].was_air = air; f[0].air_used = j.air_used;
 }
