@@ -226,8 +226,13 @@ untracked folder stays as it is, unused.
 
 In the after-landing watcher's sparse checkout (only `coax/remote`), the hook
 finds no `coax/web/tool.sh` and lets the integrator's pushes go unchecked;
-the integrator checks them itself. A fresh worktree with no compiler uses the
-newest one in `~/.cache/coax-release`. If the tool can't build or run, the
+the integrator checks them itself. `agent-reference` and `wgsl` run with the
+checkout's own `coax/bin/coax` only when it was built from the checkout's
+compiler sources: its `provenance.record` names the tree's fingerprint
+(`coax/provenance.sh fingerprint`) and the binary's hash. Otherwise they use
+the build in `~/.cache/coax-release` for that fingerprint, or else the newest
+one there, with a warning. On 2026-11-14 a Nov 12 `coax/bin/coax` copied into
+a worktree made `wgsl` refuse 61 current shaders (#13571). If the tool can't build or run, the
 hook prints a warning and lets the push go: a broken check never stops
 every agent. The hook stops after 300 seconds whatever happens.
 

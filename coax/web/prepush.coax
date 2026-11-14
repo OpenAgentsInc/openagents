@@ -589,11 +589,14 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   hb: [64] u8;
   if proc_getenv("OA_PREPUSH_TESTS", hb[..]) == "0" { tests = false; print("prepush: OA_PREPUSH_TESTS=0: no coax test\n"); }
   has_compiler := fs_exists("coax/bin/coax");
-  // agent-reference and wgsl need only a compiler, not the tree's own: in a checkout with no
-  // coax/bin/coax (a fresh worktree) the hook sets $COAX to a cached build, which they use.
+  // agent-reference and wgsl need only a compiler, not the tree's own: the hook sets $COAX to
+  // the tree's coax/bin/coax when it was built from this tree's compiler sources, or else to a
+  // cached build (a fresh worktree has none; one copied from elsewhere can be days old).
   cxb: [4096] u8; cached := proc_getenv("COAX", cxb[..]);
+  sb: [8] u8; own_stale := proc_getenv("OA_PREPUSH_COAX_OWN_STALE", sb[..]) == "1";
   some_compiler := has_compiler || (cached.count > 0 && fs_exists(cached));
-  if !has_compiler && some_compiler { print("prepush: agent-reference and wgsl use the cached compiler % (no coax/bin/coax here)%\n", cached, ifx pp_exact() then ", built from this tree's compiler sources" else "; it was built from other compiler sources, so a wgsl failure after a change under coax/lib/compiler/ may be the compiler's: run coax/build.sh"); }
+  where := ifx !has_compiler then " (no coax/bin/coax here)" else ifx own_stale then " (this checkout's coax/bin/coax was not built from its compiler sources: coax/build.sh rebuilds it)" else "";
+  if (!has_compiler || own_stale) && some_compiler { print("prepush: agent-reference and wgsl use the compiler %", cached); print("%", where); print("%\n", ifx pp_exact() then ", built from this tree's compiler sources" else "; it was built from other compiler sources, so a wgsl failure after a change under coax/lib/compiler/ may be the compiler's: run coax/build.sh"); }
   run := pp_plan(has_compiler, tests);
   if !has_compiler { print("prepush: wire-check and coax test skipped: this checkout has no coax/bin/coax (coax/build.sh installs it in seconds); the after-landing check runs them\n"); }
   ok := pp_start(jobs[0..<1], "tools-check", tc[..], none);

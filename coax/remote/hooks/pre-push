@@ -11,14 +11,29 @@ if command -v git-lfs > /dev/null 2>&1; then
   printf '%s' "${refs:+$refs$'\n'}" | git lfs pre-push "$@" || exit $?
 fi
 [[ -x coax/web/tool.sh ]] || { echo "prepush: no coax/web/tool.sh in this checkout (a sparse one); no check" >&2; exit 0; }
-# A fresh worktree has no compiler until coax/build.sh: use the one this machine keeps for this
-# tree's compiler sources (their fingerprint), or else the newest. agent-reference and wgsl run
-# with it, so they check a push from a fresh worktree too.
-if [[ ! -x "${COAX:-coax/bin/coax}" ]]; then
+# The compiler agent-reference and wgsl run with: this tree's own coax/bin/coax only when it was
+# built from this tree's compiler sources (its provenance.record names this tree's fingerprint,
+# coax/provenance.sh, and the binary's own hash), else the build this machine keeps for that
+# fingerprint, else the newest kept one. A fresh worktree has no coax/bin/coax until
+# coax/build.sh; one copied from another checkout can be days old, and an old compiler writes
+# other shaders, so the wgsl check refused current ones (61 on 2026-11-14, #13571).
+if [[ -z "${COAX:-}" ]]; then
   cache="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}"
   fp="$(coax/provenance.sh fingerprint "$PWD" 2> /dev/null)"
-  if [[ -n "$fp" && -x "$cache/$fp/coax" ]]; then export COAX="$cache/$fp/coax" OA_PREPUSH_COAX_EXACT=1
-  else export COAX="$(ls -t "$cache"/*/coax 2> /dev/null | head -n 1)"; fi
+  own=""
+  if [[ -n "$fp" && -x coax/bin/coax && -f coax/bin/provenance.record ]]; then
+    { IFS= read -r schema; IFS= read -r input; IFS= read -r binary; } < coax/bin/provenance.record
+    if [[ "${schema:-}" == coax-provenance-v1 && "${input:-}" == "$fp" ]] \
+      && [[ "$(shasum -a 256 < coax/bin/coax 2> /dev/null | cut -d ' ' -f 1)" == "${binary:-}" ]]; then own=1; fi
+  fi
+  if [[ -n "$own" ]]; then export COAX="$PWD/coax/bin/coax" OA_PREPUSH_COAX_EXACT=1
+  elif [[ -n "$fp" && -x "$cache/$fp/coax" ]]; then export COAX="$cache/$fp/coax" OA_PREPUSH_COAX_EXACT=1
+  else
+    newest="$(ls -t "$cache"/*/coax 2> /dev/null | head -n 1)"
+    if [[ -n "$newest" ]]; then export COAX="$newest"
+    elif [[ -x coax/bin/coax ]]; then export COAX="$PWD/coax/bin/coax"; fi
+  fi
+  [[ -z "$own" && -x coax/bin/coax ]] && export OA_PREPUSH_COAX_OWN_STALE=1
 fi
 [[ -x "${COAX:-coax/bin/coax}" ]] || { echo "prepush: no Coax compiler (run coax/build.sh); no check" >&2; exit 0; }
 limit=(); ! command -v timeout > /dev/null 2>&1 || limit=(timeout 300)
