@@ -22,6 +22,9 @@ chh_api_checks :: (t:[]Ap,dir:string) {
   ap_check(t,"the old admin chat gate still requires stronger login",st!=200,"");
   st=ac_call(t,"POST","/api/chat/history/v1","{}",sb_text(c[..]),"","");
   ap_check(t,"the email history grant cannot write",st!=200,"");
+  // The history fixture above deliberately attached a strong key. Preserve
+  // that limited-email write gate; the mobile send fixture is email-only.
+  sb_clear(q[..]);sb(q[..],"DELETE FROM auth.nostr_keys WHERE account='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
   thread:[1]AccountThread;wire:[65536]u8;thread[0].n=1;thread[0].messages[0].text[0]='H';thread[0].messages[0].n=1;
   wn:=act_write(thread[..],wire[..]);body:=cast(string)wire[0..<wn];
   st=ac_call(t,"POST","/api/chat/complete/v1",body,sb_text(c[..]),"","");
