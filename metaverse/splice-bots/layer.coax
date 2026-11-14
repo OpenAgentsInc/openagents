@@ -262,7 +262,14 @@ sl_floors :: (g: [] SpGame, x: f32, z: f32, out: [] f32) -> int {
     mx := (e.ax + e.bx) * 0.5; mz := (e.az + e.bz) * 0.5;
     // corner, the side along the stadium, the side across it (to its right: (dz, -dx))
     ox := mx - dx * half - dz * e.r; oz := mz - dz * half + dx * e.r;
-    stand_put_quad(out, k, ox, oz, dx * half * 2, dz * half * 2, dz * e.r * 2, -dx * e.r * 2, sl_f(g, WF_Y, s) + sl_f(g, WF_HEIGHT, s), 0, 0);
+    top := sl_f(g, WF_Y, s) + sl_f(g, WF_HEIGHT, s); y0 := top; rise := 0.0f32;
+    row := sc_piece(g[0].c[..], sl_i(g, WI_KIND, s));
+    if row >= 0 && g[0].c[0].pieces[row].kit == PK_SOLAR {
+      // a solar row's top is its tilted panels: rising across it to its back (its own -z), as kit_solar draws them
+      yaw := sl_f(g, WF_YAW, s); up := ifx dz * sin(yaw) - dx * cos(yaw) < 0 then 1.0f32 else -1.0f32;
+      rise = up * 2 * e.r * sin(SOLAR_TILT) / cos(SOLAR_TILT); y0 = ifx up > 0 then top - rise else top;
+    }
+    stand_put_quad(out, k, ox, oz, dx * half * 2, dz * half * 2, dz * e.r * 2, -dx * e.r * 2, y0, 0, rise);
     k += 1;
   }
   return k;

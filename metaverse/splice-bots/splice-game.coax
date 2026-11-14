@@ -2043,6 +2043,25 @@ fl_open :: (g: [] SpGame) { g_stage(g, 5); g[0].mode = M_PLAY; g[0].px = 20; g[0
   #assert g[0].pz < z - 0.02;
   _ = g_key(g[..], 'w', false);
 }
+#test "feel: one jump lands her on a solar row's tilted panels, from either side, and she stands on the panel's slope; walking only stops at it" #steps 120000000 {
+  for side: 0..<2 {
+    g := [1] SpGame.[SpGame.{}]; fl_open(g[..]);
+    // a solar row across her way 2 m south (its own front, the panels' low edge, faces north); from the far side she comes north
+    #assert sl_place(g[..], 120, 2000, 1000, ifx side == 0 then 0 else 180).ok;
+    _ = g_key(g[..], 'w', true);
+    for i: 0..<40 { g_step(g[..], 1.0f32 / 60); }
+    #assert g[0].pz > 10.55 && g_feet_y(g[..]) == 0;   // walking: stopped by its side
+    _ = g_key(g[..], ' ', true);
+    for i: 0..<60 { g_step(g[..], 1.0f32 / 60); if i == 1 { _ = g_key(g[..], ' ', false); } if g[0].pz < 10.1 { _ = g_key(g[..], 'w', false); } }
+    _ = g_key(g[..], 'w', false);
+    for i: 0..<30 { g_step(g[..], 1.0f32 / 60); }
+    y := g_feet_y(g[..]);
+    #assert g[0].air[0].on_ground && g[0].pz < 10.6 && g[0].pz > 9.4 && y > 0.75 && y < 1.36;
+    // on the slope: 1.34 m at the row's back edge (its own -z: south for side 0), 0.53 m lower at its front
+    back := ifx side == 0 then g[0].pz - 9.45 else 10.55 - g[0].pz;
+    #assert abs(y - (1.34 - 1.1 * sin(SOLAR_TILT) / cos(SOLAR_TILT) * back / 1.1)) < 0.06;
+  }
+}
 // The whole run with the keys a player presses; long walks are stood in for by placing the smuggler.
 // 0 when it plays from the title to SCENE RESTORED and back, else the number of the beat that failed.
 // The game keeps its edit layer through the run's reset, so this plays whatever layer g holds: it needs
