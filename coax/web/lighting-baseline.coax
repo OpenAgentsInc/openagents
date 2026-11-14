@@ -692,7 +692,7 @@ lb_build_arg :: (line: string, i: int, root: string, o: [] LbBuf) -> string {
   o: [1] LbBuf;
   #assert lb_build_arg(LB_BUILDS[8], 0, "/r", o[..]) == "coax/web/wasm.sh" && lb_build_arg(LB_BUILDS[8], 3, "/r", o[..]) == "/r/apps/openagents-web/build/everglade2.wasm";
   for i: 0..<LB_BUILDS.count { #assert lb_fields(LB_BUILDS[i], '|') >= 3 && lb_fields(LB_BUILDS[i], '|') <= 8; }
-  #assert lb_build_arg(LB_BUILDS[10], 2, "/r", o[..]) == "/r/coax/web/wasm.sh";
+  #assert lb_build_arg(LB_BUILDS[10], 0, "/r", o[..]) == "coax/web/wasm.sh" && lb_build_arg(LB_BUILDS[10], 1, "/r", o[..]) == "/r/apps/openagents-web/myrealm.coax" && lb_build_arg(LB_BUILDS[10], 3, "/r", o[..]) == "/r/apps/openagents-web/build/myrealm.wasm";
 }
 lb_build :: () -> bool {
   rb: [4096] u8; root := fs_realpath(".", rb[..]);
