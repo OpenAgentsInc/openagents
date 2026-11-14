@@ -8,7 +8,9 @@
 //   coax/web/tool.sh suites --list             # the suites and their budgets (and "#authority" when one loads such a file); nothing runs
 //   coax/web/tool.sh suites --list --authority-units  # and after "#authority", the #authority files whose mutants the nightly
 //                                              # sweep runs under that suite: each file under the suite with the smallest
-//                                              # #load closure that reaches it (the cheapest baseline), comma-separated
+//                                              # #load closure that reaches it (the cheapest baseline), comma-separated;
+//                                              # then the #authority files no suite reaches (su_sweep_scope), each under
+//                                              # the smallest file with checks that reaches it, often itself (#13586)
 //   coax/web/tool.sh suites --only PATH,PATH   # these suites (paths from the repo root)
 //   coax/web/tool.sh suites --jobs N           # suites side by side (default 6)
 //   coax/web/tool.sh suites --part I/N         # the I-th of N parts: suites I, I+N, I+2N... (after --since and --only)
@@ -285,6 +287,29 @@ su_in :: (path: string) -> bool {
   for r: roots { if su_starts(path, 0, r) { return !su_contains(path, "/."); } }
   return false;
 }
+// The nightly mutation sweep (--authority-units, #13586) also takes the #authority files no suite
+// above reaches: apps/openagents-cli/, os/, nostr/relay/, tools/coax-nostr/ and the like. It leaves
+// out docs/ (verification records: frozen copies of old inputs), coax/tests/ (the compiler's own
+// fixtures, some red or weak on purpose), coax/book/ and coax/examples/ (listings whose survivors
+// the book shows), psionic/ (psionic/check.sh mutates each of its units to zero survivors) and
+// projects/ (other people's code). su_sweep_owner: where a file that runs such a file's checks may be.
+su_sweep_scope :: (path: string) -> bool {
+  if !su_sweep_owner(path) { return false; }
+  out := [5] string.["coax/tests/", "coax/book/", "coax/examples/", "psionic/", "docs/"];
+  for r: out { if su_starts(path, 0, r) { return false; } }
+  return true;
+}
+su_sweep_owner :: (path: string) -> bool {
+  return !su_starts(path, 0, "docs/") && !su_starts(path, 0, "projects/") && !su_contains(path, "/.") && !su_starts(path, 0, ".");
+}
+#test "the sweep takes #authority files outside the suites' folders, and not records, fixtures, listings or Psionic" {
+  #assert su_sweep_scope("apps/openagents-cli/rules.coax") && su_sweep_scope("os/battlenet-policy.coax") && su_sweep_scope("nostr/relay/store_file.coax");
+  #assert !su_sweep_scope("docs/verification/x/combined.coax") && !su_sweep_scope("coax/tests/fail/authority_red.coax");
+  #assert !su_sweep_scope("coax/book/examples/ch22_spend1.coax") && !su_sweep_scope("coax/examples/money.coax") && !su_sweep_scope("psionic/lib/text.coax");
+  #assert !su_sweep_scope("projects/repos/x/a.coax") && !su_sweep_scope("apps/.scratch/a.coax") && !su_sweep_scope(".dev/a.coax");
+  #assert su_sweep_owner("coax/tests/bitcoin/coinscache-native.coax") && su_sweep_owner("psionic/tests/a.coax") && !su_sweep_owner("docs/a.coax");
+}
+
 // Whether a changed file that isn't Coax can change a suite's result. A
 // suite's checks run at compile time, and the compiler reads only #load
 // (Coax), #import_proto (a .pb descriptor) and itself. So: a descriptor, the

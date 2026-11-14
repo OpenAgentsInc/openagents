@@ -45,8 +45,14 @@ mutate-since`, the green-main pipeline's mutation report, #13601): it never
 holds main-green, goes on the red list, reverts or counts as flaky, and the
 `since` jobs run the suites alone. The
 full sweep of every `#authority` file is a nightly report
-(`coax/remote/mutation-sweep.sh`, one tracking issue) and blocks nothing; a
-unit's first pass still goes to zero survivors or marked equivalents. Shipped
+(`coax/remote/mutation-sweep.sh`) and blocks nothing. It covers each
+`#authority` file a suite reaches and each one outside the suites' folders,
+except `docs/` (verification records), `coax/tests/` (compiler fixtures),
+`coax/book/` and `coax/examples/` (book listings) and `psionic/`
+(`psionic/check.sh` mutates its units to zero survivors). It keeps one
+tracking issue: open while a night finds a survivor, an undecided mutant or
+a part that did not run, closed with the night's summary when one is clean
+(#13586). A unit's first pass still goes to zero survivors or marked equivalents. Shipped
 code is not rewritten only so a mutant stops being equivalent. Checks:
 `coax/tests/mutation_scope.py` (`--changed`: comment-only edits, one changed
 body, new units, `--unit`, a bad REF), `coax/tests/mutation_parallel.py`

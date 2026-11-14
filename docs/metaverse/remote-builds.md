@@ -985,49 +985,80 @@ two slots, 13 minutes for the longer, about $0.08 a run (782 s and 220 s of slot
 ## The nightly mutation sweep
 
 `coax/remote/mutation-sweep.sh` mutates every `#authority` file once a
-night (#13583). The gate on a change mutates only the procedures it touched
-(`coax mutate --changed`); this sweep is the report that finds what the
-gates missed, and it blocks nothing.
+night (#13583, #13586). The gate on a change mutates only the procedures it
+touched (`coax mutate --changed`); this sweep is the report that finds what
+the gates missed, and it blocks nothing.
 
 The script keeps its own checkout of `origin/main` at
 `~/.openagents/mutation-sweep/checkout`, moves it to main's tip, builds the
 compiler there and runs `coax/web/tool.sh mutation-sweep`
-([mutation-sweep.coax](../../coax/web/mutation-sweep.coax)):
+([mutation-sweep.coax](../../coax/web/mutation-sweep.coax)). One sweep runs
+at a time; a second one says which is running and stops.
 
 1. `suites --list --authority-units` puts each `#authority` file under one
    suite: the one whose `#load` closure reaching it is smallest, so its
-   baseline is the cheapest.
+   baseline is the cheapest. A file no suite reaches (`apps/openagents-cli/`,
+   `os/`, `nostr/relay/`, `tools/coax-nostr/` and the like) goes under the
+   smallest file with checks that reaches it, usually itself. It leaves out
+   `docs/` (verification records: frozen copies of old inputs),
+   `coax/tests/` (the compiler's fixtures, some red or weak on purpose),
+   `coax/book/` and `coax/examples/` (listings whose survivors the book
+   shows) and `psionic/` (`psionic/check.sh` mutates each of its units to
+   zero survivors). On 2026-11-14 that was 1,264 of the repo's 1,953
+   `#authority` files, under 611 suites.
 2. Each suite's files are split into one part per eight files, at most
    four. A part is one `coax mutate SUITE --unit A --unit B ... --native
    --mutation-stats` on a host through `remote.sh run`, so its files share
    one baseline; every part repeats it, which is why a suite splits only
    when it has many files. Native code finds each mutant's killer and the
    evaluator confirms it (`coax/docs/native-mutants.md`). At
-   most six parts run at once (`--jobs`). The first run, on 2026-11-14,
-   took parts of 3 to 12 minutes for the web app's suites.
+   most six parts run at once (`--jobs`). A part stops after
+   `--part-minutes` (180 by default, through `OA_REMOTE_TIMEOUT`) and the
+   report says so; a part ran only when it reported every file it was given.
 3. Each part reads and rewrites its killers file in the checkout's
    untracked `mutation-sweep/killers/`, which `remote.sh` sends with the
    snapshot and brings back, so the next night tries last night's killers
-   first.
-4. The parts' reports become one table, a row a file, with each file's
-   survivors under it, and one line of native counts summed over the files:
-   `limits=` (mutants where only native ticks and evaluator steps differ)
-   and `disagree=` (a coax bug in the native path), with each such mutant
-   listed, so a drift between the two shows. Neither changes a verdict. The script replaces the body of one open issue,
-   "Nightly mutation sweep: survivors in #authority files", and files it the
-   first night. `mutation-sweep/report.md` keeps the whole report and
-   `sweep.log` beside the checkout keeps every night's output.
+   first. `coax mutate --native` writes the native kills into it as soon as
+   its native pass ends, so a part stopped at its limit starts the next night
+   from them.
+4. The parts' reports become one table, a row a file and a row for each
+   part that did not run (why, and which files), with each file's survivors
+   under it, and one line of native counts summed over the files: `limits=`
+   (mutants where only native ticks and evaluator steps differ) and
+   `disagree=` (a coax bug in the native path), with each such mutant
+   listed, so a drift between the two shows. Neither changes a verdict.
+5. One issue, "Nightly mutation sweep: survivors in #authority files": a
+   clean night (every part ran, no survivor, no undecided mutant) replaces
+   its body and closes it with the night's summary as the closing comment; a
+   night that isn't clean reopens it, or files it when there is none, and
+   replaces its body. The issue is the number in `mutation-sweep/issue`, else
+   the newest issue with that title in any state, so a lost state folder
+   never files a second one. `mutation-sweep/report.md` keeps the whole
+   report and `sweep.log` beside the checkout keeps every night's output.
 
 The parts spend the pool's own budget (`OA_REMOTE_DAILY_USD`) and use its
-hosts; nothing raises either. `--dry-run` prints the report instead of
-writing the issue, `--only SUITE,...` sweeps some suites, and `--local` runs
-the parts on this computer.
+hosts; nothing raises either. `OA_REMOTE_HOST=NAME` keeps every part on one
+running host. `--dry-run` prints the report instead of touching the issue,
+`--only SUITE,...` sweeps some suites, and `--local` runs the parts on this
+computer.
 
-The timer that starts it each night, at 02:00 Chicago time:
+### The timer
+
+The sweep runs on `coderos-4080`, beside the green-main watcher, from
+02:00 Chicago time each night, as the systemd user timer
+`com.openagents.mutation-sweep` (coderos has no cron). Install it there with
+the pipeline's host key and ledger:
 
 ```shell
-( crontab -l 2> /dev/null; echo '0 2 * * * cd ~/work/openagents && coax/remote/mutation-sweep.sh > /dev/null 2>&1' ) | crontab -
+OA_REMOTE_STATE=$HOME/.openagents/pipeline/remote coax/remote/mutation-sweep.sh install
+systemctl --user list-timers com.openagents.mutation-sweep.timer
+coax/remote/mutation-sweep.sh uninstall    # stop it
 ```
+
+The timer's service moves the sweep's checkout to `origin/main` before it
+starts, so each night runs that night's script. Its output is
+`~/.openagents/mutation-sweep/timer.out`. On macOS `install` prints the
+crontab line instead.
 
 ## What stays on the Mac
 

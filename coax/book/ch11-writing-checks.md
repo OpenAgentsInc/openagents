@@ -936,8 +936,8 @@ suite that loads an `#authority` file. After landing, the same mutants run
 beside the checks as a report (`check.sh mutate-since`), which names each
 survivor and blocks nothing. The full
 sweep of every `#authority` file runs nightly on the build pool
-(`coax/remote/mutation-sweep.sh`), keeps one issue current with its
-survivors, and blocks nothing. A unit's first pass still goes to zero
+(`coax/remote/mutation-sweep.sh`), keeps one issue open while it finds
+survivors, closes it on a night with none, and blocks nothing. A unit's first pass still goes to zero
 survivors or marked equivalents.
 
 ### Running mutants in parallel

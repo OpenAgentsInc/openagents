@@ -60,6 +60,8 @@ tool_main :: () -> int #export_c #effects(all) {
   authority: [SU_FILES] bool;  // that file, or one it loads at any depth, is #authority
   own_authority: [SU_FILES] bool;  // that file itself is #authority
   cand: [SU_SUITES] Suite; heads: [SU_SUITES] bool; cand_file: [SU_SUITES] int; nc := 0;
+  sweep_units := list_only && args_has(a[..], "--authority-units");
+  extra: [SU_SUITES] Suite; extra_file: [SU_SUITES] int; nx := 0;   // --authority-units: files with checks outside the suites' folders
   pb: [4096] u8;
   for f: 0..<nf {
     path := files[f];
@@ -79,9 +81,17 @@ tool_main :: () -> int #export_c #effects(all) {
       // without a main of its own it is checked as a library: `coax test` asks a program for its main (E0336)
       cand[nc] = Suite.{path = path, steps = su_keep(arena[..], h.steps), run_steps = su_keep(arena[..], h.run_steps), traversal = su_keep(arena[..], h.traversal), library = h.library || !su_has_main(text), root_only = h.root_only, native = su_keep(arena[..], h.native), missing = missing, only = su_keep(arena[..], h.only)};
       heads[nc] = h.found; cand_file[nc] = f; nc += 1;
+    } else if sweep_units && !su_in(path) && su_sweep_owner(path) && nx < SU_SUITES {
+      // --authority-units: a file outside the suites' folders that runs checks, which may own an
+      // #authority file no suite reaches (#13586); its own `coax test` line's flags, as a suite's
+      hx := su_head(text, su_base(path));
+      if (su_has_tests(text) || hx.found) && hx.native.count == 0 {
+        extra[nx] = Suite.{path = path, steps = su_keep(arena[..], hx.steps), run_steps = su_keep(arena[..], hx.run_steps), traversal = su_keep(arena[..], hx.traversal), library = hx.library || !su_has_main(text), root_only = hx.root_only, only = su_keep(arena[..], hx.only), authority = true};
+        extra_file[nx] = f; nx += 1;
+      }
     }
   }
-  if arena[0].full || nl >= SU_LOADS || nf >= SU_FILES || nc >= SU_SUITES { tool_errln("suites: more files than it keeps; raise SU_*"); return 2; }
+  if arena[0].full || nl >= SU_LOADS || nf >= SU_FILES || nc >= SU_SUITES || nx >= SU_SUITES { tool_errln("suites: more files than it keeps; raise SU_*"); return 2; }
 
   // A file runs inside a suite here that loads it, directly or through files
   // without checks: covered, from the loads, until nothing changes.
@@ -274,6 +284,31 @@ tool_main :: () -> int #export_c #effects(all) {
         for k: first_e[f]..<first_e[f + 1] { to := edges_e[k]; if to >= 0 && seen_e[to] != s + 1 { seen_e[to] = s + 1; todo_e[sp] = to; sp += 1; } }
       }
       for r: 0..<nr { f := reach[r]; if own_authority[f] && (owner[f] < 0 || nr < best[f]) { owner[f] = s; best[f] = nr; } }
+    }
+    // An #authority file no suite reaches, where the sweep looks (su_sweep_scope), goes to the file
+    // with checks whose closure reaching it is smallest, often itself (#13586); listed after the suites.
+    xowner: [SU_FILES] int; xbest: [SU_FILES] int;
+    for f: 0..<nf { xowner[f] = -1; }
+    for x: 0..<nx {
+      if lacks[extra_file[x]].count > 0 { continue; }
+      mark := SU_SUITES + x + 1; start := extra_file[x];
+      sp := 1; todo_e[0] = start; seen_e[start] = mark; nr := 0;
+      while sp > 0 {
+        sp -= 1; f := todo_e[sp]; reach[nr] = f; nr += 1;
+        for k: first_e[f]..<first_e[f + 1] { to := edges_e[k]; if to >= 0 && seen_e[to] != mark { seen_e[to] = mark; todo_e[sp] = to; sp += 1; } }
+      }
+      for r: 0..<nr {
+        f := reach[r];
+        if own_authority[f] && owner[f] < 0 && su_sweep_scope(files[f]) && (xowner[f] < 0 || nr < xbest[f]) { xowner[f] = x; xbest[f] = nr; }
+      }
+    }
+    for x: 0..<nx {
+      owns := false;
+      for f: 0..<nf { if xowner[f] == x { owns = true; break; } }
+      if !owns || ns >= SU_SUITES { continue; }
+      suites[ns] = extra[x];
+      for f: 0..<nf { if xowner[f] == x { owner[f] = ns; } }
+      ns += 1;
     }
   }
   if list_only {

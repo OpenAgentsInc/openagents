@@ -80,8 +80,8 @@ Character Create's frozen save keys. Do not add new app-private source copies.
   (`coax mutate FILE --changed origin/main`), and a survivor there blocks
   the change (`coax/remote/check.sh` runs it on every touched `#authority`
   suite). The whole sweep runs nightly on the build pool
-  (`coax/remote/mutation-sweep.sh`), keeps one issue of survivors current
-  and blocks nothing. Mark an equivalent mutant (`// mutant: equivalent`)
+  (`coax/remote/mutation-sweep.sh`), keeps one issue open while it finds
+  survivors, closes it on a clean night, and blocks nothing. Mark an equivalent mutant (`// mutant: equivalent`)
   with a reason a reviewer can check; don't mark one to make a run pass,
   and don't rewrite shipped code only to suit the tool (#13583).
 - **No GitHub Actions.** Checks run locally or on our own machines.
