@@ -356,12 +356,7 @@ es_sc_build :: (s: [] EdShell) {
 // A row's cells as one cell edit of the scripts table: `text` is "ID|NAME|HASH|FOR", or none to take the row away.
 es_sc_row_edit :: (s: [] EdShell, id: int, text: string) -> WorldEdit {
   m := s[0].model[..];
-  e := WorldEdit.{ok = true, op = WE_CELL, id = id};
-  tb := m[0].stable;
-  e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].stable_n]);
-  e.name[0] = '*'; e.name_n = 1;
-  e.text_n = ct_copy(e.text[..], text);
-  return e;
+  return es_cell(cast(string) m[0].stable[0..<m[0].stable_n], id, "*", text);
 }
 es_sc_row :: (s: [] EdShell, id: int, text: string) -> bool {
   if s[0].model[0].stable_n == 0 { return false; }

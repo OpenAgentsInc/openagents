@@ -485,8 +485,7 @@ wp_step_ok :: (s: WorldStep) -> bool {
   if s.tool == WT_UNDO || s.tool == WT_REDO { return true; }
   if s.tool == WT_SHOW { return s.pane >= 0 && s.pane < WT_PANES; }
   if s.tool == WT_ASK || s.tool == WT_REVISE || s.tool == WT_LOOK { w := s.words; return wt_text_ok(cast(string) w[0..<s.words_n], WP_WORDS); }
-  if s.tool == WT_SWITCH { return s.list >= 0 && s.list < WT_LISTS && s.id >= 1 && (s.on == 0 || s.on == 1); }
-  if s.tool == WT_UNROW { return s.list >= 0 && s.list < WT_LISTS && s.id >= 1; }
+  if s.tool == WT_SWITCH || s.tool == WT_UNROW { return s.list >= 0 && s.list < WT_LISTS && s.id >= 1 && (s.tool == WT_UNROW || s.on == 0 || s.on == 1); }
   if s.id < 1 { return false; }
   if s.tool == WT_MOVE { return wt_place_ok(s.x, s.z); }
   if s.tool == WT_TURN { return wt_yaw_ok(s.yaw); }
@@ -542,14 +541,12 @@ wp_read :: (p: [] WorldPlan, text: string, scratch: [] u8) -> bool {
     a := wt_num(wt_part(line, ' ', 1)).v; b := wt_num(wt_part(line, ' ', 2)).v; c := wt_num(wt_part(line, ' ', 3)).v; e := wt_num(wt_part(line, ' ', 4)).v;
     if s.tool == WT_ASK || s.tool == WT_REVISE || s.tool == WT_LOOK { s.words_n = wt_copy(s.words[..], wt_rest(line, 1)); }
     else if s.tool == WT_SHOW { panes := WT_PANE; s.pane = -1; for k: 0..<WT_PANES { if wt_rest(line, 1) == panes[k] { s.pane = k; } } }
-    else if s.tool == WT_SWITCH { s.list = a; s.id = b; s.on = c; }
-    else if s.tool == WT_UNROW { s.list = a; s.id = b; }
-    else if s.tool == WT_UNASK { s.id = a; }
+    else if s.tool == WT_SWITCH || s.tool == WT_UNROW { s.list = a; s.id = b; s.on = c; }   // an unrow has no third number: c is 0
+    else if s.tool == WT_UNASK || s.tool == WT_REMOVE { s.id = a; }
     else if s.tool == WT_PLACE { s.kind = a; s.x = b; s.z = c; s.yaw = e; }
     else if s.tool == WT_MOVE { s.id = a; s.x = b; s.z = c; }
     else if s.tool == WT_TURN { s.id = a; s.yaw = b; }
     else if s.tool == WT_SIZE { s.id = a; s.percent = b; }
-    else if s.tool == WT_REMOVE { s.id = a; }
     else if s.tool < 0 { return false; }
     p[0].steps[p[0].n] = s; p[0].n += 1;
   }

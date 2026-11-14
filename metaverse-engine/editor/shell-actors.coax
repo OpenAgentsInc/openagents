@@ -95,12 +95,7 @@ es_plan_cell :: (s: [] EdShell, col: string, value: string) {
   p := es_plan_shown(m);
   if p < 0 || m[0].ptable_n == 0 { return; }
   lw := NPL_WHEN; w := npl_word(lw[..], es_plan_when(m));
-  e := WorldEdit.{ok = true, op = WE_CELL, id = npl_id(m[0].asel, w)};
-  tb := m[0].ptable;
-  e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].ptable_n]);
-  e.name_n = ct_copy(e.name[..], col);
-  e.text_n = ct_copy(e.text[..], value);
-  es_batch(s, WB_APPLY, e);
+  es_cell_go(s, cast(string) m[0].ptable[0..<m[0].ptable_n], npl_id(m[0].asel, w), col, value);
 }
 // A press on the actors' controls: true when it was one.
 es_actors_click :: (s: [] EdShell, id: string) -> bool {
@@ -109,12 +104,7 @@ es_actors_click :: (s: [] EdShell, id: string) -> bool {
     k := es_index(id, "clock.");
     if k == es_clock_at(m) { return true; }
     cw := ES_CLOCK_WORD;
-    e := WorldEdit.{ok = true, op = WE_CELL, id = 1};
-    tb := m[0].ctable;
-    e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].ctable_n]);
-    e.name_n = ct_copy(e.name[..], "when");
-    e.text_n = ct_copy(e.text[..], cw[k]);
-    es_batch(s, WB_APPLY, e);
+    es_cell_go(s, cast(string) m[0].ctable[0..<m[0].ctable_n], 1, "when", cw[k]);
     return true;
   }
   if id == "actor.0" || (es_index(id, "actor.") > 0 && em_actor_at(m, es_index(id, "actor.")) >= 0) {

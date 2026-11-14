@@ -34,13 +34,8 @@ es_build_lists :: (s: [] EdShell) {
 es_lists_click :: (s: [] EdShell, id: string) -> bool {
   m := s[0].model[..];
   k := es_index(id, "sw.");
-  if k < 0 || k >= m[0].nw || m[0].w_list[k] < 0 || m[0].w_list[k] >= m[0].nl { return false; }
+  if k < 0 || k >= m[0].nw { return false; }   // a row's list is always one of the model's (em_read)
   l := m[0].w_list[k];
-  e := WorldEdit.{ok = true, op = WE_CELL, id = m[0].w_row[k]};
-  tb := m[0].l_table[l]; col := m[0].l_col[l];
-  e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].l_table_n[l]]);
-  e.name_n = ct_copy(e.name[..], cast(string) col[0..<m[0].l_col_n[l]]);
-  e.text_n = ct_copy(e.text[..], ifx m[0].w_on[k] then "0" else "1");
-  es_batch(s, WB_APPLY, e);
+  es_batch(s, WB_APPLY, es_switch_edit(m, l, m[0].w_row[k], !m[0].w_on[k]));
   return true;
 }

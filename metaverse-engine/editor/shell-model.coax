@@ -284,9 +284,11 @@ em_list :: (out: [] u8, at: int, table: string, col: string, title: string) -> i
   n := ct_put(out, at, "list "); n = ct_put(out, n, table); n = ct_put(out, n, " "); n = ct_put(out, n, col); n = ct_put(out, n, " "); n = ct_put(out, n, title);
   return ct_put(out, n, "\n");
 }
-em_switch :: (out: [] u8, at: int, row: int, on: bool, label: string) -> int {
+em_switch :: (out: [] u8, at: int, row: int, on: bool, label: string) -> int { return em_switch_as(out, at, "sw ", row, on, label); }
+// A switch's line after its head: the model's "sw ", or world.turn.v1's "w ", which is the same line.
+em_switch_as :: (out: [] u8, at: int, head: string, row: int, on: bool, label: string) -> int {
   if row < 1 || !em_text_ok(label, EM_LABEL) { return out.count + 1; }
-  n := ct_put(out, at, "sw "); n = ct_put_int(out, n, row); n = ct_put(out, n, ifx on then " 1 " else " 0 "); n = ct_put(out, n, label);
+  n := ct_put(out, at, head); n = ct_put_int(out, n, row); n = ct_put(out, n, ifx on then " 1 " else " 0 "); n = ct_put(out, n, label);
   return ct_put(out, n, "\n");
 }
 // A visitor's proposal waiting for the owner: its ID, where the thing would stand, what it is, and who proposed it.
@@ -497,8 +499,7 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
     } else if word == "q" && m[0].naq < EM_ASKS {
       k := m[0].naq; states := EM_QSTATE;
       m[0].aq_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].aq_state[k] = -1;
-      for j: 0..<3 { if ct_part(line, ' ', 2) == states[j] { m[0].aq_state[k] = j; } }
-      if m[0].aq_state[k] < 0 { return false; }
+      for j: 0..<3 { if ct_part(line, ' ', 2) == states[j] { m[0].aq_state[k] = j; } }   // none: em_ask writes nothing, and the read fails
       m[0].aq_words_n[k] = em_copy(m[0].aq_words[k][..], em_rest(line, 3));
       m[0].naq += 1;
     } else if word == "here" {

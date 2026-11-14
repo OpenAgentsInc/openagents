@@ -172,6 +172,19 @@ es_batch_of :: (s: [] EdShell, what: int, edits: [] WorldEdit, n: int) {
   s[0].said_n = 0;
   if !es_act(s, ES_BATCH, text) { es_say(s, "That did not go: the page is still busy with the last change. Try again."); }
 }
+// A cell edit: a row of a content table, one column of it (or "*", the whole row) set to text. Every
+// cell edit the shell makes is made here, so the struct is built in one place (#13559).
+es_cell :: (table: string, row: int, name: string, text: string) -> WorldEdit {
+  e := WorldEdit.{ok = true, op = WE_CELL, id = row};
+  e.table_n = ct_copy(e.table[..], table); e.name_n = ct_copy(e.name[..], name); e.text_n = ct_copy(e.text[..], text);
+  return e;
+}
+// A cell edit applied as a batch of one.
+es_cell_go :: (s: [] EdShell, table: string, row: int, name: string, text: string) { es_batch(s, WB_APPLY, es_cell(table, row, name, text)); }
+// A row of list l switched on or off: the list's table, the row, the list's column set to 1 or 0.
+es_switch_edit :: (m: [] EdModel, l: int, row: int, on: bool) -> WorldEdit {
+  return es_cell(cast(string) m[0].l_table[l][0..<m[0].l_table_n[l]], row, cast(string) m[0].l_col[l][0..<m[0].l_col_n[l]], ifx on then "1" else "0");
+}
 // A batch of one kind (undo, redo, a publish) or of one edit.
 es_batch :: (s: [] EdShell, what: int, e: WorldEdit) {
   edits: [1] WorldEdit; edits[0] = e;
@@ -641,15 +654,10 @@ es_template_save :: (s: [] EdShell) {
   if text.count == 0 { es_say(s, "That group can't be saved as one template: its things are too many or too far apart."); return; }
   id := 1;
   for k: 0..<m[0].nt { if m[0].t_id[k] >= id { id = m[0].t_id[k] + 1; } }
-  e := WorldEdit.{ok = true, op = WE_CELL, id = id};
-  tb := m[0].ttable;
-  e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].ttable_n]);
-  e.name[0] = '*'; e.name_n = 1;
   row: [WE_TEXT + 64] u8;
   rn := ct_put_int(row[..], 0, id); rn = ct_put(row[..], rn, "|"); rn = ct_put(row[..], rn, name); rn = ct_put(row[..], rn, "|"); rn = ct_put(row[..], rn, text);
   if rn > WE_TEXT { es_say(s, "That group can't be saved as one template: its things are too many or too far apart."); return; }
-  e.text_n = ct_copy(e.text[..], cast(string) row[0..<rn]);
-  es_batch(s, WB_APPLY, e);
+  es_cell_go(s, cast(string) m[0].ttable[0..<m[0].ttable_n], id, "*", cast(string) row[0..<rn]);
   s[0].ngroup = 0; s[0].tname_n = 0;
   dm_value(s[0].dom[..], "tname", "");
 }
@@ -801,12 +809,7 @@ es_submit_cell :: (s: [] EdShell, k: int) {
     es_say(s, "A cell takes one line of words or a number, and may not be empty.");
     return;
   }
-  e := WorldEdit.{ok = true, op = WE_CELL, id = m[0].c_kind[k]};
-  tb := m[0].table; cn := m[0].c_col[k];
-  e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].table_n]);
-  e.name_n = ct_copy(e.name[..], cast(string) cn[0..<m[0].c_col_n[k]]);
-  e.text_n = ct_copy(e.text[..], text);
-  es_batch(s, WB_APPLY, e);
+  es_cell_go(s, cast(string) m[0].table[0..<m[0].table_n], m[0].c_kind[k], cast(string) m[0].c_col[k][0..<m[0].c_col_n[k]], text);
 }
 // The model the page sent is in the inbox.
 // The world as the conversation's next turn is told it: the selection, the point last tapped, the
@@ -815,9 +818,11 @@ es_turn :: (s: [] EdShell) -> bool {
   m := s[0].model[..];
   out: [ES_ACT] u8; room := out[0..<ES_ACT - 24];
   n := wt_begin(room, cast(string) m[0].world[0..<m[0].world_n], m[0].lane == 1, m[0].rev, ifx em_entity_at(m, m[0].sel) >= 0 then m[0].sel else 0);
-  if m[0].here { n = wt_here(room, n, m[0].here_x, m[0].here_z); }
-  for k: 0..<m[0].nk { if k < WT_KINDS { n = wt_kind(room, n, m[0].kind_id[k], cast(string) m[0].kind_name[k][0..<m[0].kind_n[k]]); } }
-  if n < 0 { return true; }   // a world whose kinds alone do not fit is not told: the turn goes without it
+  if n < 0 { return true; }
+  // the `here` and `k` lines are the model's own, so the model's writers write them (#13559)
+  if m[0].here { n = em_here(room, n, m[0].here_x, m[0].here_z); }
+  for k: 0..<m[0].nk { if k < WT_KINDS { n = em_kind(room, n, m[0].kind_id[k], cast(string) m[0].kind_name[k][0..<m[0].kind_n[k]]); } }
+  if n > room.count { return true; }   // a world whose kinds alone do not fit is not told: the turn goes without it
   // the attachments the world's server listed (shell-files.coax): their names, notes and tags, never their bytes
   if s[0].fl.have {
     l := s[0].fl.l[..];
@@ -828,26 +833,20 @@ es_turn :: (s: [] EdShell) -> bool {
       n = next;
     }
   }
-  // the lists of switches and a realm's asks (#13528): what the turn may switch, add to and delete
+  // the lists of switches and a realm's asks (#13528): what the turn may switch, add to and delete. Their
+  // lines are the model's own, which em_read checked, so they are written as they are (#13559); lists
+  // and asks that do not fit are left out
+  at := n;
   for l: 0..<m[0].nl {
-    if l >= WT_LISTS { break; }
-    next := wt_list(room, n, cast(string) m[0].l_table[l][0..<m[0].l_table_n[l]], cast(string) m[0].l_title[l][0..<m[0].l_title_n[l]]);
-    if next < 0 { break; }
-    n = next;
-    for k: 0..<m[0].nw {
-      if m[0].w_list[k] != l || k >= WT_SWS { continue; }
-      next = wt_switch(room, n, m[0].w_row[k], m[0].w_on[k], cast(string) m[0].w_label[k][0..<m[0].w_label_n[k]]);
-      if next >= 0 { n = next; }
-    }
+    n = ct_put(room, n, "l "); n = ct_put(room, n, cast(string) m[0].l_table[l][0..<m[0].l_table_n[l]]);
+    n = ct_put(room, n, " "); n = ct_put(room, n, cast(string) m[0].l_title[l][0..<m[0].l_title_n[l]]); n = ct_put(room, n, "\n");
+    for k: 0..<m[0].nw { if m[0].w_list[k] == l { n = em_switch_as(room, n, "w ", m[0].w_row[k], m[0].w_on[k], cast(string) m[0].w_label[k][0..<m[0].w_label_n[k]]); } }
   }
   if m[0].asks {
-    n = wt_asks(room, n);
-    for k: 0..<m[0].naq {
-      if k >= WT_ASKS { break; }
-      next := wt_ask(room, n, m[0].aq_id[k], m[0].aq_state[k], cast(string) m[0].aq_words[k][0..<m[0].aq_words_n[k]]);
-      if next >= 0 { n = next; }
-    }
+    n = em_asks(room, n);
+    for k: 0..<m[0].naq { n = em_ask(room, n, m[0].aq_id[k], m[0].aq_state[k], cast(string) m[0].aq_words[k][0..<m[0].aq_words_n[k]]); }
   }
+  if n > room.count { n = at; }
   if n < 0 { return true; }
   listed := 0;
   for k: 0..<m[0].ne {
@@ -858,88 +857,89 @@ es_turn :: (s: [] EdShell) -> bool {
     n = next; listed += 1;
   }
   if listed < m[0].ne { n = wt_more(out[..], n, m[0].ne - listed); }
-  // visitors' proposals waiting for the owner (#13527): the conversation shows each as a turn with Accept and Decline
-  for k: 0..<m[0].nq {
-    if k >= WT_CARDS { break; }
-    next := wt_card(out[..], n, m[0].q_id[k], m[0].q_x[k], m[0].q_z[k], cast(string) m[0].q_thing[k][0..<m[0].q_thing_n[k]], cast(string) m[0].q_who[k][0..<m[0].q_who_n[k]]);
-    if next < 0 { break; }
-    n = next;
+  // visitors' proposals waiting for the owner (#13527): the conversation shows each as a turn with Accept and Decline.
+  // The `card`, `from` and `cards` lines are the model's own, so the model's writers write them (#13559).
+  if n >= 0 {
+    at = n;
+    for k: 0..<m[0].nq { n = em_card(out[..], n, m[0].q_id[k], m[0].q_x[k], m[0].q_z[k], cast(string) m[0].q_thing[k][0..<m[0].q_thing_n[k]], cast(string) m[0].q_who[k][0..<m[0].q_who_n[k]]); }
+    if m[0].q_all > 0 { n = em_cards_all(out[..], n, m[0].q_all); }
+    if n > out.count { n = at; }
   }
-  if n >= 0 && m[0].q_all > 0 { n = wt_cards(out[..], n, m[0].q_all); }
   return n < 0 || es_act(s, ES_TURN, cast(string) out[0..<n]);
 }
 // A hosted turn's `show`: one of the shell's panes opened, as its button in the strip opens it (#13528).
 // The panes are the shell's own: the world's files, scripts, code, revisions and assets. One the
-// world does not have is said so.
-es_show :: (s: [] EdShell, pane: int) {
-  ids := [WT_PANES] string.["files", "scripts", "code", "bar.revs", "assets"];
-  none := [WT_PANES] string.["This world has no files to show.", "This world has no scripts to show.", "This world has no code to show.", "This world has no revisions to show yet.", "This world has no assets to show."];
-  if pane < 0 || pane >= WT_PANES { return; }
+// world does not have is said so. It names the button to press, or "" when there is none to press:
+// es_event presses it where it presses a person's, so es_click keeps one caller and stays inlined (#13559).
+es_show :: (s: [] EdShell, pane: int) -> string {
+  names := WT_PANE;
+  if pane < 0 || pane >= WT_PANES { return ""; }
   have := false; open := false;
   if pane == 0 { have = s[0].fl.have; open = s[0].files; }
   else if pane == 1 { have = s[0].sc.have; open = s[0].scripts; }
   else if pane == 2 { have = s[0].nfiles > 0; open = s[0].code; }
   else if pane == 3 { have = s[0].rv.have; open = s[0].revs; }
   else { have = s[0].as_have; open = s[0].assets; }
-  if !have { es_say(s, none[pane]); return; }
-  if !open { es_click(s, ids[pane]); }
+  if !have {
+    w: [40] u8; n := ct_put(w[..], 0, "This world has no "); n = ct_put(w[..], n, names[pane]); n = ct_put(w[..], n, " to show.");
+    es_say(s, cast(string) w[0..<n]); return "";
+  }
+  return ifx open then "" else ifx pane == 3 then "bar.revs" else names[pane];
 }
 // A hosted turn's plan: the world's steps as one batch of edits made from the model's revision, so one
 // undo takes the turn back and the server's rules answer it as they answer a person's edit; a switch
 // is a cell edit of its list's table. A pane to show opens; a realm's words (an ask, a revision, an
 // ask or a row deleted, a look) go to the page as one ES_REALM action.
-es_plan :: (s: [] EdShell, length: int) {
+es_plan :: (s: [] EdShell, length: int) -> string {
   m := s[0].model[..];
   n := ifx length < 0 then 0 else ifx length > WP_BYTES then 0 else length;
   plan: [1] WorldPlan; scratch: [WP_BYTES] u8;
-  if !s[0].have || !wp_read(plan[..], cast(string) s[0].inbox[0..<n], scratch[..]) { es_say(s, "The agent's change could not be read."); return; }
-  if wp_word(plan[..]) != cast(string) m[0].world[0..<m[0].world_n] { es_say(s, "The world changed while the agent worked. Ask it again."); return; }
-  world := false;
-  for k: 0..<plan[0].n { if wp_world_step(plan[0].steps[k].tool) { world = true; } }
-  if world && plan[0].rev != m[0].rev { es_say(s, "The world changed while the agent worked. Ask it again."); return; }
-  none: WorldEdit;
-  if plan[0].steps[0].tool == WT_UNDO { es_batch(s, WB_UNDO, none); return; }
-  if plan[0].steps[0].tool == WT_REDO { es_batch(s, WB_REDO, none); return; }
+  if !s[0].have || !wp_read(plan[..], cast(string) s[0].inbox[0..<n], scratch[..]) { es_say(s, "The agent's change could not be read."); return ""; }
+  // a step of the world's own is made from the model's revision; the panes and a realm's words are not
+  changed := "The world changed while the agent worked. Ask it again.";
+  stale := plan[0].rev != m[0].rev;
+  if wp_word(plan[..]) != cast(string) m[0].world[0..<m[0].world_n] { es_say(s, changed); return ""; }
+  first := plan[0].steps[0].tool;
+  if first == WT_UNDO || first == WT_REDO {
+    none: WorldEdit;
+    if stale { es_say(s, changed); } else { es_batch(s, ifx first == WT_UNDO then WB_UNDO else WB_REDO, none); }
+    return "";
+  }
   edits: [WP_STEPS] WorldEdit; ne := 0;
   realm: [WP_BYTES] u8; rn := 0;
+  no := "";   // why the plan is not made, said once
   for k: 0..<plan[0].n {
     st := plan[0].steps[k];
     if st.tool == WT_SHOW { continue; }
+    // a switch and a row deleted name a row of one of the lists (em_switch_at finds none under a list the model lacks)
+    rowed := st.tool == WT_SWITCH || st.tool == WT_UNROW;
+    if rowed && em_switch_at(m, st.list, st.id) < 0 { no = "The agent named a row that is no longer here. Ask it again."; break; }
     if !wp_world_step(st.tool) {
-      // a realm's words, a line each; a row deleted names its list's table
-      if st.tool == WT_UNROW {
-        if st.list >= m[0].nl || em_switch_at(m, st.list, st.id) < 0 { es_say(s, "The agent named a row that is no longer here. Ask it again."); return; }
-        tb := m[0].l_table[st.list];
-        rn = ct_put(realm[..], rn, "unrow "); rn = ct_put(realm[..], rn, cast(string) tb[0..<m[0].l_table_n[st.list]]); rn = ct_put(realm[..], rn, " "); rn = ct_put_int(realm[..], rn, st.id);
-      } else { rn = wp_step_write(realm[..], rn, st); }
+      // a realm's words, a line each
+      if st.tool == WT_UNROW { rn = ct_put(realm[..], rn, "unrow "); rn = ct_put(realm[..], rn, cast(string) m[0].l_table[st.list][0..<m[0].l_table_n[st.list]]); rn = ct_put(realm[..], rn, " "); rn = ct_put_int(realm[..], rn, st.id); }
+      else { rn = wp_step_write(realm[..], rn, st); }
       rn = ct_put(realm[..], rn, "\n");
       continue;
     }
-    if st.tool == WT_SWITCH {
-      at := em_switch_at(m, st.list, st.id);
-      if st.list >= m[0].nl || at < 0 { es_say(s, "The agent named a row that is no longer here. Ask it again."); return; }
-      e := WorldEdit.{ok = true, op = WE_CELL, id = st.id};
-      tb := m[0].l_table[st.list]; col := m[0].l_col[st.list];
-      e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].l_table_n[st.list]]);
-      e.name_n = ct_copy(e.name[..], cast(string) col[0..<m[0].l_col_n[st.list]]);
-      e.text_n = ct_copy(e.text[..], ifx st.on == 1 then "1" else "0");
-      edits[ne] = e; ne += 1;
-      continue;
-    }
-    at := em_entity_at(m, st.id);
-    if st.tool != WT_PLACE && at < 0 { es_say(s, "The agent named a thing that is no longer here. Ask it again."); return; }
-    if st.tool == WT_PLACE { edits[ne] = WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = st.kind, x = st.x, z = st.z, yaw = st.yaw}; }
-    else if st.tool == WT_MOVE { edits[ne] = WorldEdit.{ok = true, op = WE_MOVE, id = st.id, x = st.x, y = m[0].e_y[at], z = st.z}; }
-    else if st.tool == WT_TURN { edits[ne] = WorldEdit.{ok = true, op = WE_ROTATE, id = st.id, yaw = st.yaw}; }
-    else if st.tool == WT_SIZE { edits[ne] = WorldEdit.{ok = true, op = WE_SCALE, id = st.id, scale = st.percent}; }
-    else { edits[ne] = WorldEdit.{ok = true, op = WE_DESPAWN, id = st.id}; }
-    if !we_valid(edits[ne]) { es_say(s, "The agent asked for a change this world does not take."); return; }
-    ne += 1;
+    if stale { no = changed; break; }
+    at := ifx rowed then 0 else em_entity_at(m, st.id);
+    if st.tool != WT_PLACE && at < 0 { no = "The agent named a thing that is no longer here. Ask it again."; break; }
+    e := ifx st.tool == WT_SWITCH then es_switch_edit(m, st.list, st.id, st.on == 1) else WorldEdit.{ok = true, op = WE_DESPAWN, id = st.id};
+    if st.tool == WT_PLACE { e.op = WE_SPAWN; e.id = 0; e.kind = st.kind; e.x = st.x; e.z = st.z; e.yaw = st.yaw; }
+    else if st.tool == WT_MOVE { e.op = WE_MOVE; e.x = st.x; e.y = m[0].e_y[at]; e.z = st.z; }
+    else if st.tool == WT_TURN { e.op = WE_ROTATE; e.yaw = st.yaw; }
+    else if st.tool == WT_SIZE { e.op = WE_SCALE; e.scale = st.percent; }
+    if st.tool != WT_SWITCH && !we_valid(e) { no = "The agent asked for a change this world does not take."; break; }
+    edits[ne] = e; ne += 1;
   }
-  if rn > 0 && !m[0].asks { es_say(s, "This world keeps no asks."); return; }
+  if no.count == 0 && rn > 0 && !m[0].asks { no = "This world keeps no asks."; }
+  if no.count > 0 { es_say(s, no); return ""; }
   if ne > 0 { es_batch_of(s, WB_APPLY, edits[..], ne); }
   if rn > 0 && rn <= WP_BYTES && !es_act(s, ES_REALM, cast(string) realm[0..<rn]) { es_say(s, "That did not go: the page is still busy with the last change. Try again."); }
-  for k: 0..<plan[0].n { if plan[0].steps[k].tool == WT_SHOW { es_show(s, plan[0].steps[k].pane); } }
+  // the last pane to show is the one left open
+  press := "";
+  for k: 0..<plan[0].n { if plan[0].steps[k].tool == WT_SHOW { press = es_show(s, plan[0].steps[k].pane); } }
+  return press;
 }
 es_model :: (s: [] EdShell, length: int) {
   n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
@@ -1024,7 +1024,6 @@ es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   if kind == ES_HELD { s[0].held = true; s[0].dirty = true; return; }
   if kind == ES_FULLSCREEN { s[0].full = slot == 1; return; }
   if kind == ES_AGENT { s[0].agent = true; s[0].agent_made = true; s[0].turn_due = true; return; }
-  if kind == ES_PLANNED { es_plan(s, length); return; }
   if kind == ES_CODE_HERE { es_code_here(s, length); return; }
   if kind == ES_PIECE { es_code_piece(s, length); return; }
   if kind == ES_END { es_code_end(s, slot); return; }
@@ -1032,9 +1031,11 @@ es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   if kind == ES_SENT { if s[0].rv.flight != ES_RV_NONE { es_rv_sent(s, slot, length); } else if s[0].sc.flight != ES_SC_NONE { es_sc_sent(s, slot, length); } else if s[0].fl.flight != ES_FL_NONE { es_fl_sent(s, slot, length); } else { es_as_sent(s, slot, length); } return; }
   if kind == ES_VIEWER { s[0].sc.logged = true; return; }
   if kind == ES_STATUS { es_sc_status(s, length); return; }
-  id := dm_slot_id(s[0].dom[..], slot);
+  // a hosted turn's plan names the pane it shows, pressed here as a person's press is (es_show)
+  id := ifx kind == ES_PLANNED then es_plan(s, length) else dm_slot_id(s[0].dom[..], slot);
   if id.count == 0 { return; }
-  if kind == ES_CLICK { es_click(s, id); }
+  if kind == ES_CLICK || kind == ES_PLANNED { es_click(s, id); }
+  if kind == ES_PLANNED { return; }
   if id == "code.text" { if kind == ES_INPUT { es_code_typed(s, length); } return; }
   if kind == ES_INPUT && es_id_is(id, "files.") && es_fl_typed(s, id, length) { return; }
   if es_id_is(id, "scripts.") && (id == "scripts.text" || id == "scripts.name" || id == "scripts.reason") { if kind == ES_INPUT { _ := es_sc_typed(s, id, length); } return; }
