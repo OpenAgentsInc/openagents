@@ -6,7 +6,7 @@
 F_Limits :: struct {descriptor:int;runtime:int;source:int;}
 F_Result :: struct {written:int;provenance:int;error:string;}
 F_Writer :: struct {out:[] u8;at:int;error:string;}
-F_capacities :: ()->F_Limits #export_c #effects(all) {return F_Limits.{descriptor=8388608,runtime=1048576,source=8388608};}
+F_capacities :: ()->F_Limits #export_c #effects(all) {return F_Limits.{descriptor=8388608,runtime=1048576,source=16777216};}
 F_write :: (w:[] F_Writer,text:string) #effects(all) {
   if text.count>w[0].out.count-w[0].at {w[0].error="fingerprint output budget";return;}
   for c:text {w[0].out[w[0].at]=c;w[0].at+=1;}
@@ -39,7 +39,7 @@ F_package :: (raw:string,prefix:string,compiler:string,runtime:string,importer:s
 }
 
 #test "writer, runtime boundary and capacity policy" {
-  c:=F_capacities();#assert c.descriptor==8388608 && c.runtime==1048576 && c.source==8388608;
+  c:=F_capacities();#assert c.descriptor==8388608 && c.runtime==1048576 && c.source==16777216;
   #assert S_seed(-1).error==1 && S_seed(2305843009213693952).error==1 && S_seed(0).error==0;
   out:[128] u8;writer:=[1] F_Writer.[F_Writer.{out=out[0..<3]}];
   F_write(writer[..],"abc");#assert writer[0].error=="" && writer[0].at==3 && cast(string)out[0..<3]=="abc";

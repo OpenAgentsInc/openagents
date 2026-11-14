@@ -2,6 +2,9 @@
 // The same procedures execute in checks and in the native compiler.
 #authority;
 D_MAX_BYTES :: 8388608;
+// The generated source one import may write: the per-compilation cap on imported source
+// (coax/src/main.cpp, 16 MiB), so the whole owned set imports alone (#13534).
+D_OUTPUT_MAX :: 16777216;
 // Must match PB_MAX_BYTES in wire.coax; importer tests check the shared cap.
 D_WIRE_MAX_BYTES :: 1048576;
 D_tighter_message_limit :: (n:u64)->bool #effects(all) {return n>0 && n<cast(u64)D_WIRE_MAX_BYTES;}
@@ -22,7 +25,7 @@ D_State :: struct {
 }
 #test "all admission policy endpoints" {
   c:=D_capacities();
-  #assert c.types==512 && c.fields==2048 && c.values==8192 && c.groups==65536 && c.files==256 && c.deps==8192 && c.symbols==65536 && c.arena==134217728 && c.output==8388608;
+  #assert c.types==2048 && c.fields==16384 && c.values==8192 && c.groups==65536 && c.files==256 && c.deps==8192 && c.symbols==65536 && c.arena==134217728 && c.output==16777216;
   #assert D_input(8388608,"P") && !D_input(8388609,"P") && !D_input(0,"bad-");
   #assert D_type_count(0) && D_type_count(255) && !D_type_count(256) && !D_type_count(-1);
   #assert D_depth(0) && D_depth(31) && !D_depth(32) && !D_depth(-1);
@@ -30,7 +33,7 @@ D_State :: struct {
   #assert D_work(40000,400000) && !D_work(40001,400000) && !D_work(40000,400001);
   #assert D_wire_number(1) && D_wire_number(536870911) && !D_wire_number(0) && !D_wire_number(536870912);
   #assert D_field_number(1) && D_field_number(18999) && !D_field_number(19000) && !D_field_number(19999) && D_field_number(20000);
-  #assert G_output_room(8388608,0,8388608) && !G_output_room(8388608,1,8388609);
+  #assert G_output_room(16777216,0,16777216) && !G_output_room(16777216,1,16777217);
   #assert G_output_room(8388607,1,8388608) && !G_output_room(0,2,1);
 }
 #test "exact arena fit, invalid scalar, template edge and symbol collisions" {
@@ -160,13 +163,13 @@ D_depth :: (count:int)->bool #effects(all) {return count>=0 && count<32;}
 D_work :: (count:int,total:int)->bool #effects(all) {return count<=40000 && total<=400000;}
 D_wire_number :: (n:u64)->bool #effects(all) {return n>=1 && n<=536870911;}
 D_field_number :: (n:u64)->bool #effects(all) {return D_wire_number(n) && !(n>=19000 && n<=19999);}
-G_output_room :: (written:int,size:int,capacity:int)->bool #effects(all) {return size<=capacity-written && size<=D_MAX_BYTES-written;}
+G_output_room :: (written:int,size:int,capacity:int)->bool #effects(all) {return size<=capacity-written && size<=D_OUTPUT_MAX-written;}
 D_input :: (count:int,prefix:string)->bool #effects(all) {return D_small(count,D_MAX_BYTES) && D_identifier(prefix);}
 D_Capacities :: struct {types:int;fields:int;values:int;groups:int;files:int;deps:int;symbols:int;arena:int;output:int;}
 // symbols is the generated-name table: twice as many slots as the 32768-name
 // budget (D_symbol). arena is the scratch ceiling; the host starts smaller.
 D_capacities :: ()->D_Capacities #export_c #effects(all) {
-  return D_Capacities.{types=512,fields=2048,values=8192,groups=65536,files=256,deps=8192,symbols=65536,arena=D_ARENA_MAX,output=D_MAX_BYTES};
+  return D_Capacities.{types=2048,fields=16384,values=8192,groups=65536,files=256,deps=8192,symbols=65536,arena=D_ARENA_MAX,output=D_OUTPUT_MAX};
 }
 D_ARENA_MAX :: 134217728;
 D_SCRATCH_EXHAUSTED :: "importer scratch budget";
