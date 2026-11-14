@@ -8,7 +8,7 @@ SD_ROW :: 8;            // words a placed piece: x, y, z, 0, cos turn, sin turn,
 SD_BASE :: 2;           // a placed piece's instance number is SD_BASE + its row: 0 and 1 are the world's and the live store's
 SD_PIECE_WORDS :: (SD_KIND_VERTS + FR_POSES * CW_BUDGET) * VERTEX_WORDS;   // the piece store: every kind's mesh, then the player's walk poses (front.coax)
 SD_KIND_VERTS :: 100000;   // the kinds' meshes' share of it: the shipped kinds (the solar farm's and Sniper's room's with them, #13505) and one of each kit at size 1 take about 82,000 vertices (#13485)
-SD_PLACE_WORDS :: (SL_ITEMS + 1) * SD_ROW;   // the place store: a row a placed piece, and the player's
+SD_PLACE_WORDS :: (SL_ITEMS + 1 + FF_BANKS) * SD_ROW;   // the place store: a row a placed piece, the player's, then the solar farm's field (farm.coax)
 
 SpLayerDraw :: struct {
   first: [SC_PIECE_MAX] int; count: [SC_PIECE_MAX] int;   // each kind's vertices in the piece store, by its row of the pieces table
@@ -22,6 +22,8 @@ SpLayerDraw :: struct {
   place_shown: int = -1;  // and the count of arrival steps (layer.coax sl_rise): a rising piece's row is written each frame
   place_hid: int = -1;    // and the piece hidden then (drive.coax dv_hidden: the rover that drives you)
   place_gen: int;         // counts the place store's writes
+  ff_first: int; ff_count: int;   // the solar farm's bank mesh in the piece store, after the kinds' (farm.coax)
+  ff_row0: int; ff_n: int;        // and the field's rows in the place store, after the player's row (0 rows: they did not fit)
 }
 
 // Every kind's mesh into the piece store, standing at the origin and facing +z. It writes only
@@ -39,6 +41,7 @@ sd_meshes :: (d: [] SpLayerDraw, g: [] SpGame, pieces: [] u32, pack: string) {
     else { sp_piece_write(pieces, pen[..], p.kit, p.scale, frame_at(v3(0, 0, 0), 0), PIECE_OBJ + (r % 8) * 8, sp_tint(p.a), sp_tint(p.b), sp_tint(p.c), INK()); }
     d[0].count[r] = pen[0].n - d[0].first[r];
   }
+  d[0].ff_first = pen[0].n; ff_mesh(pieces, pen[..]); d[0].ff_count = pen[0].n - d[0].ff_first;   // the solar farm's bank (farm.coax)
   d[0].mesh_n = pen[0].n; d[0].over = pen[0].over;
   d[0].meshed = true; d[0].meshed_gray = g[0].gray; d[0].meshed_pack = g[0].imp[0].gen; d[0].mesh_gen += 1;
 }
@@ -61,6 +64,7 @@ sd_places :: (d: [] SpLayerDraw, g: [] SpGame, places: [] u32) {
     }
     d[0].rows[r] = n - d[0].row0[r];
   }
+  d[0].ff_row0 = n + 1; d[0].ff_n = ff_rows(places, n + 1);   // the field after the player's row (front.coax fr_player writes row n)
   d[0].place_n = n; d[0].place_rev = g[0].layer[0].rev; d[0].place_shown = g[0].layer[0].shown; d[0].place_hid = hid; d[0].place_gen += 1;
 }
 // The layer's draws into `draws` from record `at` (four words a record: first vertex, vertices,

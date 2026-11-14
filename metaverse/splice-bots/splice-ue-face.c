@@ -24,7 +24,7 @@ static uint32_t live[LIVE_WORDS];
 // placed piece's mesh, written once, then your walk poses; store 3 a row for each placed piece and
 // one for you. aethyr_instanced hands a host the draws of them.
 #define PIECE_WORDS ((80000u + 10u * 30000u) * 6u)    /* layer-draw.coax SD_PIECE_WORDS */
-#define PLACE_WORDS (65u * 8u)                        /* layer-draw.coax SD_PLACE_WORDS */
+#define PLACE_WORDS ((65u + 540u) * 8u)   /* layer-draw.coax SD_PLACE_WORDS: a row a placed piece, the player's, then the solar farm's 540 banks (farm.coax FF_BANKS) */
 static uint32_t pieces[PIECE_WORDS];
 static uint32_t places[PLACE_WORDS];
 // The world's import pack: a native host reads none yet, so a kind whose mesh is in the pack draws nothing.

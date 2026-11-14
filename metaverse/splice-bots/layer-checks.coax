@@ -195,6 +195,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   n := 0;
   for r: 0..<c[0].piece_n { n += sp_piece_measure(w[..], c[0].pieces[r].kit, c[0].pieces[r].scale).n; }
   for k: 0..<PK_KITS { n += sp_piece_measure(w[..], k, 1).n; }
+  buf: [24000 * VERTEX_WORDS] u32; pen := [1] Pen.[Pen.{}]; ff_mesh(buf[..], pen[..]); n += pen[0].n;   // and the solar farm's bank
   #assert n <= SD_KIND_VERTS && SD_KIND_VERTS * VERTEX_WORDS < SD_PIECE_WORDS;
 }
 
@@ -208,7 +209,8 @@ LcDraw :: struct { d: [1] SpLayerDraw; pieces: [SD_PIECE_WORDS] u32; places: [SD
   #assert d[0].mesh_gen == 1 && !d[0].over && d[0].place_gen == 1 && d[0].place_n == 0 && sd_draws(d, g[..], b[0].draws[..], 2) == 2;
   at := 0;
   for r: 0..<g[0].c[0].piece_n { #assert d[0].first[r] == at && d[0].count[r] >= 3 && d[0].count[r] % 3 == 0; at += d[0].count[r]; }
-  #assert at == d[0].mesh_n && d[0].mesh_n * VERTEX_WORDS <= SD_PIECE_WORDS;
+  #assert d[0].ff_first == at && d[0].ff_count >= 3 && at + d[0].ff_count == d[0].mesh_n && d[0].mesh_n * VERTEX_WORDS <= SD_PIECE_WORDS;
+  #assert d[0].ff_row0 == 1 && d[0].ff_n == FF_BANKS;   // the farm's field after the player's row
   // two palms and a rover: the rover's kind comes first in the pieces table, so its row does
   #assert sl_place(g[..], 113, 2000, 1000, 0).ok && sl_place(g[..], 101, 2600, 1400, 90).ok && sl_place(g[..], 113, 2000, 1400, 0).ok;
   sd_meshes(d, g[..], b[0].pieces[..], ""); sd_places(d, g[..], b[0].places[..]);
@@ -228,7 +230,7 @@ LcDraw :: struct { d: [1] SpLayerDraw; pieces: [SD_PIECE_WORDS] u32; places: [SD
   #assert d[0].mesh_gen == 1 && d[0].place_gen == 3 && f32_from_bits(b[0].places[8]) == 20.5;
   g[0].gray = true; sd_meshes(d, g[..], b[0].pieces[..], ""); #assert d[0].mesh_gen == 2;
   // a layer with more pieces than the place store has rows draws what fits, and no more
-  small: [SD_ROW * 2] u32; d[0].place_rev = -1; sd_places(d, g[..], small[..]); #assert d[0].place_n == 2 && d[0].rows[palm] == 1;
+  small: [SD_ROW * 2] u32; d[0].place_rev = -1; sd_places(d, g[..], small[..]); #assert d[0].place_n == 2 && d[0].rows[palm] == 1 && d[0].ff_n == 0;   // and no field
 }
 // An instance is the mesh at the origin put through its row. For a kit piece built wholly on its
 // frame (a crate, a dome house) every vertex lands where the kit writes it when it draws the piece

@@ -14,7 +14,8 @@
 #load "content.coax";
 #load "layer.coax";
 #load "garage.coax";             // the raider mine garage: the ring of lettered bays, the hallway and the lab (#13505)
-#load "drive.coax";              // the drive from the solar farm to the garage, and the rover's room (#13505)
+#load "drive.coax";
+#load "farm.coax";               // the solar farm's field: long lines of banks to the edge of the ground, the low sun and the haze (playtest 2)              // the drive from the solar farm to the garage, and the rover's room (#13505)
 #load "walk.coax";
 #load "layer-fixture.coax";
 #load "layer-draw.coax";
@@ -369,6 +370,7 @@ g_collide :: (g: [] SpGame) {
   }
   q := sl_push_over(g, g[0].px, g[0].pz, T_RADIUS, false, g_feet_y(g)); g[0].px = q.x; g[0].pz = q.z;   // a piece under your feet lets you over it
   q = ga_push(g, g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z;   // the garage's round back wall (garage.coax)
+  if g[0].zone == Z_MINE { q = ff_push(g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z; }   // the solar farm's lines (farm.coax)
 }
 g_inside :: (g: [] SpGame, x: f32, z: f32) -> bool {
   if g[0].zone == Z_VILLAGE && dist2(x, z, g[0].at.vil_x, g[0].at.vil_z) > g[0].at.vil_r - 0.5 && !(z > g[0].at.vil_z + 5 && abs(x - g[0].at.vil_x) < 1.5) { return true; }
@@ -1283,6 +1285,7 @@ g_clock :: (g: [] SpGame) -> f32 {
 g_key_light :: (g: [] SpGame) -> Point {
   v := g_variant(g);
   if v == 0 && g_phase(g) == PH_DAWN && g[0].mode != M_BAY && !g_indoors(g) { return unit_or(v3(0.7, 0.28, 0.6), v3(0, 1, 0)); }
+  if v == 0 && ff_day(g) { return FF_SUN(); }   // the solar farm by day: a low sun and long shadows (farm.coax)
   if v == 0 { return unit_or(v3(-0.45, 0.66, 0.6), v3(0, 1, 0)); }
   if v == 2 { return unit_or(v3(-0.6, 0.3, 0.74), v3(0, 1, 0)); }
   return unit_or(v3(0.4, 0.5, 0.77), v3(0, 1, 0));

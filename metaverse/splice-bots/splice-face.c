@@ -16,7 +16,7 @@ static coax_v_t_Splice at(uint32_t state) { return (coax_v_t_Splice){splice_stat
 static uint32_t world[WORLD_WORDS];
 static uint32_t live[LIVE_WORDS];
 #define PIECE_WORDS ((80000u + 10u * 30000u) * 6u)    /* layer-draw.coax SD_PIECE_WORDS: every kind of placed piece's mesh, written once (SD_KIND_VERTS), then the player's ten walk poses */
-#define PLACE_WORDS (65u * 8u)        /* layer-draw.coax SD_PLACE_WORDS: a row a placed piece, and the player's */
+#define PLACE_WORDS ((65u + 540u) * 8u)   /* layer-draw.coax SD_PLACE_WORDS: a row a placed piece, the player's, then the solar farm's 540 banks (farm.coax FF_BANKS) */
 static uint32_t pieces[PIECE_WORDS];
 static uint32_t places[PLACE_WORDS];
 #define IMPORT_BYTES 1048576u         /* pieces.coax SP_IMPORT_PACK: the world's import pack, as it arrives and as it was last read whole */

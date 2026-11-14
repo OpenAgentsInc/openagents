@@ -21,6 +21,7 @@ for people and agents who change the code.
 | `gpu/splice-bots.coax` | The shaders: Anime Lab's cel pass, the placed pieces' instances, and the ink overlay |
 | `splice-face.c`, `splice-ue-face.c` | The C faces for the browser and for a native host |
 | `content/splice.content`, `content.coax` | The content tables and their reader |
+| `farm.coax` | The solar farm's field: 540 long solar banks in regular lines east and west to the edge of the ground, one instanced draw (`metaverse-engine/kit/props.coax` `kit_solar_bank`), held out of like walls; the low sun, its long shadows and the dust haze at the farm by day (playtest 2) |
 | `pieces.coax` | Which engine kit piece a row draws, and its measured footprint |
 | `layer.coax` | The colliders (a World of entities) and the edit layer |
 | `world.coax`, `world-api.coax` | Splice Bots as the world `splice-bots` (once `splice`): its document, its edits as the wire carries them, and what the API calls |

@@ -38,6 +38,35 @@ kit_solar :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glass: KitTint
   }
 }
 
+// A long bank of solar panels for a field seen from far off (Splice Bots' solar farm draws hundreds as
+// instances): `panels` panels side by side under one tilted sheet of glass in a thin frame, a line
+// between each two, on posts ahead and behind at every second panel, joined by two rails. The rows'
+// rhythm in a fraction of kit_solar's triangles: 2.1 m a panel, 1.2 m deep, 1.35 m tall at s 1.
+// It stands on the ground facing the frame's z, centred on the frame's x.
+kit_solar_bank :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glass: KitTint, frame: KitTint, dark: KitTint, panels: int) {
+  n := ifx panels < 1 then 1 else panels;
+  y := 1.05f32; c := cos(SOLAR_TILT); sn := sin(SOLAR_TILT);
+  fy := y - 0.08 * c - 0.45 * sn; fz := -0.08 * sn + 0.45 * c;
+  by := y - 0.08 * c + 0.45 * sn; bz := -0.08 * sn - 0.45 * c;
+  half := cast(f32) n * SOLAR_PITCH * 0.5;
+  kit_pen(p, obj, MAT_CLOTH, dark);
+  box(buf, p, kit_at(f, 0, fy * s, fz * s), half * s, 0.04 * s, 0.04 * s);
+  box(buf, p, kit_at(f, 0, by * s, bz * s), half * s, 0.04 * s, 0.04 * s);
+  for i: 0..<n / 2 + 1 {
+    x := -half + 0.1 + (2 * half - 0.2) * cast(f32) i / cast(f32) (n / 2);
+    box(buf, p, kit_at(f, x * s, fy * 0.5 * s, fz * s), 0.04 * s, fy * 0.5 * s, 0.04 * s);
+    box(buf, p, kit_at(f, x * s, by * 0.5 * s, bz * s), 0.04 * s, by * 0.5 * s, 0.04 * s);
+  }
+  g := frame_turn(kit_at(f, 0, y * s, 0), 0, SOLAR_TILT);
+  kit_pen(p, obj + 1, MAT_FLAT, frame);
+  box(buf, p, g, (half - 0.05) * s, 0.03 * s, 0.6 * s);
+  kit_pen(p, obj + 2, MAT_WINDOW, glass);
+  box(buf, p, kit_at(g, 0, 0.02 * s, 0), (half - 0.09) * s, 0.02 * s, 0.56 * s);
+  kit_pen(p, obj + 3, MAT_FLAT, frame);
+  for i: 1..<n { box(buf, p, kit_at(g, (cast(f32) i * SOLAR_PITCH - half) * s, 0.042 * s, 0), 0.03 * s, 0.004 * s, 0.56 * s); }
+  box(buf, p, kit_at(g, 0, 0.042 * s, 0), (half - 0.09) * s, 0.004 * s, 0.008 * s);
+}
+
 // A charging post: a plinth, a tall body with a screen and a glow strip, a cap with a light on top,
 // and a cable from an outlet low on its side, looping down near the ground and up to its plug hung
 // in a holster. 2.6 m tall at s 1.
@@ -326,6 +355,17 @@ kit_prop_write :: (buf: [] u32, p: [] Pen, k: int, s: f32) {
     #assert r.low > -0.06 && r.low < 0.05;
     #assert abs(r.hx - want[k * 3]) < want[k * 3] * 0.1 && abs(r.hz - want[k * 3 + 1]) < want[k * 3 + 1] * 0.15 && abs(r.top - want[k * 3 + 2]) < want[k * 3 + 2] * 0.05;
   }
+}
+#test "a solar bank is as long as its panels, as deep and tall as a row of them, and far lighter than as many rows" {
+  buf: [24000 * VERTEX_WORDS] u32; t := kit_tint(0.5, 0.5, 0.5); f := frame_at(v3(0, 0, 0), 0);
+  pen := [1] Pen.[Pen.{}];
+  kit_solar_bank(buf[..], pen[..], f, 1, 40, t, t, t, 10);
+  r := kit_reach(buf[..], pen[0].n); bank := pen[0].n;
+  #assert !pen[0].over && bank % 3 == 0 && r.low > -0.06 && r.low < 0.05 && abs(r.hx - 10.5) < 0.2 && abs(r.hz - 0.55) < 0.1 && abs(r.top - 1.34) < 0.07;
+  #assert bank / 3 < 2000;   // under the web budget's 2,000 triangles a kit piece
+  rows := [1] Pen.[Pen.{}];
+  kit_solar(buf[..], rows[..], f, 1, 40, t, t, t);
+  #assert bank * 3 < rows[0].n * 2;   // ten panels in a third of what two rows of five take
 }
 #test "a prop is twice as big at twice the size, and the same at the same size" {
   a: [24000 * VERTEX_WORDS] u32; b: [24000 * VERTEX_WORDS] u32;

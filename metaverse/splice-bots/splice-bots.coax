@@ -495,11 +495,11 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
 }
 
 // Shadows follow what the camera looks at (Anime Lab's are fixed on its courtyard).
-sp_shadow_rows :: (u: [] f32, l: Point, c: Point) {
+sp_shadow_rows :: (u: [] f32, l: Point, c: Point, half: f32) {
   z := unit_or(l, v3(0, 1, 0));
   r := unit_or(cross(v3(0, 1, 0), z), v3(1, 0, 0));
   up := cross(z, r);
-  k := 1 / SHADOW_HALF;
+  k := 1 / half;
   put4(u, U_SHADOW, r.x * k, r.y * k, r.z * k, -dot(r, c) * k);
   put4(u, U_SHADOW + 4, up.x * k, up.y * k, up.z * k, -dot(up, c) * k);
   d := -0.5 / SHADOW_DEEP;
@@ -576,7 +576,9 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   }
   view_rows(u, view, width / height);
   if style.count >= STYLE_FLOATS { u[U_STYLE + SU_KEY_DIR] = key.x; u[U_STYLE + SU_KEY_DIR + 1] = key.y; u[U_STYLE + SU_KEY_DIR + 2] = key.z; u[U_STYLE + SU_KEY_DIR + 3] = 0; }
-  if s[0].gallery { shadow_rows(u, key); } else { sp_shadow_rows(u, key, view.at); }
+  farm := !s[0].gallery && ff_day(g);   // the solar farm by day: the shadow map widened for the long shadows, and the dust haze (farm.coax)
+  if farm { ff_style(u[U_STYLE..<U_STYLE + STYLE_FLOATS]); }
+  if s[0].gallery { shadow_rows(u, key); } else { sp_shadow_rows(u, key, view.at, ifx farm then FF_SHADOW_HALF else SHADOW_HALF); }
   put4(u, U_SIZE, width, height, t, dpr);
   ink := hi(1, lo(width, height) / 720);
   // a hit or a breakthrough flashes; speed lines only on the hoverboard at speed (#13485), and a speed
@@ -595,6 +597,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   sd_meshes(s[0].ld[..], g, pieces, cast(string) imports[0..<ifx s[0].imports_n > imports.count then 0 else s[0].imports_n]); sd_places(s[0].ld[..], g, places);
   s[0].draw_n = sd_draws(s[0].ld[..], g, s[0].draws[..], 2);
   s[0].draw_n = fr_player(g, s[0].ld[..], pieces, places, s[0].draws[..], s[0].draw_n);   // you, as your character (front.coax)
+  s[0].draw_n = ff_draws(g, s[0].ld[..], s[0].draws[..], s[0].draw_n);   // the solar farm's field, one draw of its banks (farm.coax)
   n := g_overlay(g, out, u, width, height);
   // the selected piece is outlined where it stands, or where a drag would leave it
   if s[0].edit {
@@ -690,7 +693,7 @@ splice_draw_count :: (s: [] Splice) -> int #export_c #effects(all) { return ifx 
 // After the kinds' meshes, the player's walk poses; after the placed pieces' rows, the player's row (front.coax fr_player).
 splice_piece_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].mesh_n + s[0].game[0].fr[0].pose_n; }
 splice_piece_version :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].mesh_gen + s[0].game[0].fr[0].pose_gen; }
-splice_place_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].place_n + (ifx s[0].game[0].fr[0].row then 1 else 0); }
+splice_place_n :: (s: [] Splice) -> int #export_c #effects(all) { d := s[0].ld[0]; return ifx d.ff_n > 0 then d.ff_row0 + d.ff_n else d.place_n + (ifx s[0].game[0].fr[0].row then 1 else 0); }   // the farm's field rows last (farm.coax)
 splice_place_version :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].place_gen + s[0].game[0].fr[0].row_gen; }
 // This browser's storage (coax/web/STORAGE.md; front.coax): what to ask the host next (0 nothing,
 // 1 read your character, 2 keep it, 3 read the kept run, 4 keep it), the bytes to keep, and whether the host took it.
@@ -767,13 +770,13 @@ sp_check_frame :: (b: [] SpFrameCheck) -> int #effects(all) {
   #assert !s[0].dev && s[0].fixture == 0;
   _ := sp_check_frame(b[..]);
   // until a world's document comes, the layer holds the shipped pieces (#13505)
-  #assert s[0].game[0].layer[0].st[0].n == SPW_SHIPPED_N && splice_place_n(s) == SPW_SHIPPED_N && splice_piece_n(s) > 20000 && splice_piece_version(s) == 1 && !s[0].ld[0].over;
+  #assert s[0].game[0].layer[0].st[0].n == SPW_SHIPPED_N && splice_place_n(s) == SPW_SHIPPED_N + 1 + FF_BANKS && splice_piece_n(s) > 20000 && splice_piece_version(s) == 1 && !s[0].ld[0].over;
   world := splice_world_version(s); #assert world == 1;
   // the dev server's does
   splice_message(s, 600, "http://127.0.0.1:8800/worlds/splice-bots?layer=fixture");
   #assert s[0].dev && s[0].fixture == 1;
   _ = sp_check_frame(b[..]);
-  #assert s[0].fixture == 2 && s[0].game[0].layer[0].st[0].n == SPW_SHIPPED_N + SL_FIXTURE_N && splice_place_n(s) == SPW_SHIPPED_N + SL_FIXTURE_N && splice_place_version(s) == 2;
+  #assert s[0].fixture == 2 && s[0].game[0].layer[0].st[0].n == SPW_SHIPPED_N + SL_FIXTURE_N && splice_place_n(s) == SPW_SHIPPED_N + SL_FIXTURE_N + 1 + FF_BANKS && splice_place_version(s) == 2;
   kinds := 0; inst := 0;
   for r: 0..<s[0].game[0].c[0].piece_n { if s[0].ld[0].rows[r] > 0 { kinds += 1; inst += s[0].ld[0].rows[r]; } }
   #assert kinds >= 6 && inst == SPW_SHIPPED_N + SL_FIXTURE_N && splice_draw_count(s) == 2 + kinds;
@@ -784,7 +787,7 @@ sp_check_frame :: (b: [] SpFrameCheck) -> int #effects(all) {
   // an edit writes the rows, and only them
   #assert sl_remove(s[0].game[..], 3).ok;
   _ = sp_check_frame(b[..]);
-  #assert splice_world_version(s) == world && splice_piece_version(s) == 1 && splice_place_version(s) == 3 && splice_place_n(s) == SPW_SHIPPED_N + SL_FIXTURE_N - 1;
+  #assert splice_world_version(s) == world && splice_piece_version(s) == 1 && splice_place_version(s) == 3 && splice_place_n(s) == SPW_SHIPPED_N + SL_FIXTURE_N - 1 + 1 + FF_BANKS;   // the farm's field after the player's row
   splice_message(s, 600, "http://localhost:8800/worlds/splice-bots?x=1&layer=fixture"); #assert s[0].fixture == 2;
   #assert sp_has("abc", "bc") && sp_has("abc", "") && !sp_has("ab", "abc") && !sp_has("abc", "bd");
 }
