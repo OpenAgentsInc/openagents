@@ -116,7 +116,8 @@ chh_api_checks :: (t:[]Ap,dir:string) {
 // Real API/DB checks, isolated to the disposable harness database.
 pc_api_checks :: (t:[]Ap,account:string,auth:string) {
  st:=ac_call(t,"GET","/api/drops/me","",auth,"","");ap_check(t,"email creator can open native project creation without a Nostr key",st==200 && (ap_has(ap_body(t),"\"may\": true") || ap_has(ap_body(t),"\"may\":true")),ap_body(t));
- st=ac_call(t,"POST","/api/drops","{}",auth,"","");ap_check(t,"email creator starts its own project drop",st==200 && ap_has(ap_body(t),"d-"),ap_body(t));
+ st=ac_call(t,"POST","/api/drops","{}",auth,"Origin: https://openagents.com","");ap_check(t,"email creator starts its own project drop",st==200 && ap_has(ap_body(t),"d-"),ap_body(t));
+ dropid:[24]u8;kept_drop:=ap_member(ap_body(t),"id",dropid[..]);
  q:[1]Sb;sb(q[..],"INSERT INTO auth.nostr_keys(account,pubkey) VALUES ('");sb(q[..],account);sb(q[..],"',repeat('cd',32)); UPDATE auth.sessions SET level='L2',l2_at=now() WHERE account='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
  ap_do(t,"INSERT INTO projects.docs(slug,version,doc,updated_ms,updated_by) SELECT slug,1,jsonb_build_object('v','openagents.private-project.v1','slug',slug,'title','Native project','members',jsonb_build_array(jsonb_build_object('name','Ada','pubkey',repeat('cd',32)))),0,repeat('cd',32) FROM unnest(ARRAY['native-project-a','native-project-b']) slug");
  st=ac_call(t,"GET","/api/chat/project/v1?project=native-project-a","",auth,"","");ap_check(t,"project chat history is account scoped and initially empty",st==200 && chh_read(ap_body(t)).n==0,ap_body(t));
@@ -129,6 +130,10 @@ pc_api_checks :: (t:[]Ap,account:string,auth:string) {
  n=pc_turn_body("native-project-b",thread[..],wire[..]);ap_check(t,"inference refuses a transcript linked to a different project",ac_call(t,"POST","/api/chat/project/complete/v1",cast(string)wire[0..<n],auth,"","")==409,ap_body(t));
  n=pc_turn_body("native-project-a",thread[..],wire[..]);st=ac_call(t,"POST","/api/chat/project/complete/v1",cast(string)wire[0..<n],auth,"","");ap_check(t,"project context reaches the same funded model adapter",st==200 && ap_has(ap_body(t),"choices"),ap_body(t));
  ap_do(t,"UPDATE projects.docs SET doc=jsonb_set(doc,'{members}','[]') WHERE slug='native-project-a'");ap_check(t,"revoked project membership also revokes saved project history",ac_call(t,"GET","/api/chat/project/v1?project=native-project-a","",auth,"","")==404,ap_body(t));
+ sb_clear(q[..]);sb(q[..],"SELECT (SELECT owner FROM drops.account_owners_v1 WHERE account='");sb(q[..],account);sb(q[..],"') = ANY(auth.life_values('");sb(q[..],account);sb(q[..],"','pubkey'))");out:[128]u8;ap_check(t,"account project handles are included in export and purge resolution",ap_sql(t,sb_text(q[..]),out[..])=="t","");
+ sb_clear(q[..]);sb(q[..],"SELECT auth.life_delete('drops.drops'::regclass,'owner',auth.life_values('");sb(q[..],account);sb(q[..],"','pubkey'),0)");ap_do(t,sb_text(q[..]));
+ sb_clear(q[..]);sb(q[..],"SELECT count(*) FROM drops.drops WHERE id='");sb(q[..],kept_drop);sb(q[..],"'");ap_check(t,"the existing purge path deletes account-owned project drops",ap_sql(t,sb_text(q[..]),out[..])=="0","");
+
 }
 
 tool_main :: ()->int #export_c #effects(all) {
