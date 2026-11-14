@@ -1,6 +1,7 @@
 // The same Coax Native application as iPhone, executed as C on Linux.
 // Only this projection knows the component tree's identifiers and semantics.
 #load "../../openagents-ios/home/app.coax";
+#load "../../../components/skin/mono-native.coax";
 nd_size :: ()->int #export_c #effects(all) {return size_of(Starter);}
 nd_frame :: (s:[]Starter)->int #export_c #effects(all) {_ = st_frame(s,0.016,true);return s[0].tree[0].n;}
 nd_kind :: (s:[]Starter,i:int)->int #export_c #effects(all) {
@@ -32,3 +33,67 @@ nd_action :: (s:[]Starter)->int #export_c #effects(all) {return s[0].action;}
 nd_body :: (s:[]Starter)->string #export_c #effects(all) {return cast(string)s[0].outbox[0..<s[0].out_n];}
 nd_done :: (s:[]Starter) #export_c #effects(all) {st_done(s);}
 nd_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) #export_c #effects(all) {na_reply(s,op,status,raw,failed);}
+// The mono skin on GTK (#13580). GTK draws its own widgets from a style sheet, so the skin is given to it as one:
+// every colour, line style and height below is mono_button's, mono_field's or a token of mono_native's. A button
+// is styled by a class named for its variant (v0 the default, v1 primary...). GTK's style sheet has no cut
+// corner and no upper case: the label is put in upper case here, and the frames' cuts are not drawn.
+nd_variant :: (s:[]Starter,i:int)->int #export_c #effects(all) {
+  t:=s[0].tree[..];if i<0 || i>=t[0].n {return MB_DEFAULT;}
+  cls:=tr_class(t,i);state:=tr_attr_of(t,i,AT_STATE);
+  if cls=="lk" || cls=="sel" {return MB_QUIET;}
+  if cls=="row" {return MB_ROW;}
+  if state=="primary" {return MB_PRIMARY;}
+  if state=="destructive" {return MB_DESTRUCTIVE;}
+  return MB_DEFAULT;
+}
+nd_busy :: (s:[]Starter,i:int)->bool #export_c #effects(all) {t:=s[0].tree[..];return i>=0 && i<t[0].n && tr_attr_of(t,i,AT_STATE)=="busy";}
+// A button's label as it is drawn: in upper case when its variant's is. What a screen reader says stays nd_text.
+nd_label :: (s:[]Starter,i:int,out:[]u8)->int #export_c #effects(all) {
+  n:=nd_text(s,i,out);if n<=0 || !mono_button(nd_variant(s,i),MS_REST).upper {return n;}
+  for k:0..<n {if out[k]>='a' && out[k]<='z' {out[k]=out[k]-32;}}
+  return n;
+}
+nd_css_color :: (out:[]u8,at:int,c:u32)->int {
+  if (c&255)==0 {return mc(out,at,"transparent");}
+  b:[8]u8;k:=mn_hex(c,b[..]);return mc(out,at,cast(string)b[0..<k]);
+}
+nd_css_number :: (out:[]u8,at:int,v:f64)->int {b:[24]u8;return mc(out,at,tr_join(b[..],"",cast(int)v));}
+nd_css_button :: (out:[]u8,at:int,variant:int,state:int,suffix:string)->int {
+  b:=mono_button(variant,state);n:=mc(out,at,"button.oa.v");n=nd_css_number(out,n,cast(f64)variant);n=mc(out,n,suffix);
+  n=mc(out,n,"{background-image:none;background-color:");n=nd_css_color(out,n,b.bg);
+  n=mc(out,n,";color:");n=nd_css_color(out,n,b.ink);
+  n=mc(out,n,ifx variant==MB_ROW then ";border-style:none none solid none;border-width:1px;border-color:" else ifx b.dashed then ";border:1px dashed " else ";border:1px solid ");
+  n=nd_css_color(out,n,ifx variant==MB_ROW && state!=MS_CURRENT then MONO_LINE_DIM else b.line);
+  n=mc(out,n,";min-height:");n=nd_css_number(out,n,b.height);n=mc(out,n,"px;padding:0 ");n=nd_css_number(out,n,b.pad);
+  n=mc(out,n,"px;font-size:");n=nd_css_number(out,n,b.type);n=mc(out,n,"px;letter-spacing:");n=nd_css_number(out,n,b.type*b.track);
+  n=mc(out,n,ifx b.upper then "px;font-family:monospace}" else "px}");
+  return n;
+}
+nd_style :: (out:[]u8)->int #export_c #effects(all) {
+  t:=mono_native();f:=mono_field(false,false);lit:=mono_field(true,false);
+  n:=mc(out,0,"window,scrolledwindow,viewport{background-color:");n=nd_css_color(out,n,t.ground);n=mc(out,n,"}label{color:");n=nd_css_color(out,n,t.ink);
+  n=mc(out,n,"}button.oa{border-radius:0;box-shadow:none;text-shadow:none;outline-offset:2px}button.oa label{color:inherit}");
+  variants:=[5]int.[MB_DEFAULT,MB_PRIMARY,MB_QUIET,MB_DESTRUCTIVE,MB_ROW];
+  for k:0..<variants.count {
+    n=nd_css_button(out,n,variants[k],MS_REST,"");n=nd_css_button(out,n,variants[k],MS_PRESSED,":active");
+    n=nd_css_button(out,n,variants[k],MS_DISABLED,":disabled");n=nd_css_button(out,n,variants[k],MS_BUSY,".busy");
+  }
+  n=mc(out,n,"entry.oa{border-radius:0;box-shadow:none;outline:none;border-style:none none solid none;border-width:1px;background-color:");n=nd_css_color(out,n,f.bg);
+  n=mc(out,n,";color:");n=nd_css_color(out,n,f.ink);n=mc(out,n,";caret-color:");n=nd_css_color(out,n,f.ink);n=mc(out,n,";border-color:");n=nd_css_color(out,n,f.line);
+  n=mc(out,n,";min-height:");n=nd_css_number(out,n,f.height);n=mc(out,n,"px}entry.oa:focus-within{border-color:");n=nd_css_color(out,n,lit.line);
+  n=mc(out,n,"}textview.oa,textview.oa text{background-color:");n=nd_css_color(out,n,t.surface);n=mc(out,n,";color:");n=nd_css_color(out,n,t.ink);n=mc(out,n,";caret-color:");n=nd_css_color(out,n,t.ink);
+  n=mc(out,n,"}");
+  return n;
+}
+#test "the GTK style sheet is the mono skin's: its tokens, each variant and state, and no hue" {
+  css:[8192]u8;n:=nd_style(css[..]);text:=cast(string)css[0..<n];
+  #assert n>1500 && n<8000 && nd_style(css[0..<n])==n;
+  #assert mn_has(text,"window,scrolledwindow,viewport{background-color:#000}") && mn_has(text,"label{color:#f2f2f2}");
+  #assert mn_has(text,"button.oa.v1{background-image:none;background-color:#c8c8c8;color:#000;border:1px solid #c8c8c8;min-height:44px");
+  #assert mn_has(text,"button.oa.v0:disabled{background-image:none;background-color:transparent;color:#5c5c5c;border:1px dashed #2a2a2a");
+  #assert mn_has(text,"button.oa.v0:active{background-image:none;background-color:#262626;color:#fff;border:1px solid #fff");
+  #assert mn_has(text,"button.oa.v2{") && mn_has(text,"button.oa.v4{") && mn_has(text,"button.oa.v5{") && mn_has(text,"entry.oa:focus-within{border-color:#fff}");
+  for i:0..<n {if css[i]=='#' {j:=i+1;while j<n && ((css[j]>='0' && css[j]<='9') || (css[j]>='a' && css[j]<='f')) {j+=1;}
+    if j-i-1==3 {#assert css[i+1]==css[i+2] && css[i+2]==css[i+3];}
+    if j-i-1==6 {#assert css[i+1]==css[i+3] && css[i+3]==css[i+5] && css[i+2]==css[i+4] && css[i+4]==css[i+6];}}}
+}

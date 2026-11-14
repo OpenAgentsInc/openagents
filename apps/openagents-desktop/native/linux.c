@@ -12,7 +12,9 @@ typedef struct {void *data;int64_t count;} Span;
 typedef struct {unsigned char *data;int64_t count;} Bytes;
 extern int64_t nd_size(void),ls_size(void),nd_frame(Span),nd_kind(Span,int64_t),nd_text(Span,int64_t,Bytes),nd_action(Span),ls_status(Span);
 extern Text nd_id(Span,int64_t),nd_value(Span,int64_t),nd_body(Span);
-extern _Bool nd_enabled(Span,int64_t);
+extern _Bool nd_enabled(Span,int64_t),nd_busy(Span,int64_t);
+// The mono skin, given to GTK as a style sheet and a class per button variant (program.coax, #13580).
+extern int64_t nd_style(Bytes),nd_variant(Span,int64_t),nd_label(Span,int64_t,Bytes);
 extern void nd_input(Span,Text,Text,_Bool),nd_done(Span),nd_reply(Span,int64_t,int64_t,Text,_Bool);
 extern int64_t ls_call(Span,int64_t,Text,Bytes);
 static Span state,services;
@@ -21,7 +23,7 @@ static GHashTable *controls;
 static int rendering,working;
 static GtkApplication *application;
 static int inspect_ui,inspection_passed,inspection_stage,inspection_ticks;
-typedef struct {char *id;GtkWidget *widget;int kind;unsigned seen;} Control;
+typedef struct {char *id;GtkWidget *widget;int kind;unsigned seen;int variant,busy;} Control;
 typedef struct {int op,status;char *body,*result;int64_t n;} Job;
 static unsigned frame;
 static Text text(const char *s) {return (Text){s,(int64_t)strlen(s)};}
@@ -62,11 +64,18 @@ static void render(void) {
       else if(kind==2) {c->widget=gtk_entry_new();g_signal_connect(c->widget,"changed",G_CALLBACK(changed),c);}
       else if(kind==4) {c->widget=gtk_text_view_new();gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(c->widget),GTK_WRAP_WORD_CHAR);gtk_widget_set_size_request(c->widget,-1,100);g_signal_connect(gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->widget)),"changed",G_CALLBACK(buffer_changed),c);}
       else {c->widget=gtk_label_new("");gtk_label_set_wrap(GTK_LABEL(c->widget),1);gtk_label_set_wrap_mode(GTK_LABEL(c->widget),PANGO_WRAP_WORD_CHAR);gtk_label_set_xalign(GTK_LABEL(c->widget),0);gtk_label_set_selectable(GTK_LABEL(c->widget),1);}
+      gtk_widget_add_css_class(c->widget,"oa");c->variant=-1;
       gtk_widget_set_hexpand(c->widget,1);gtk_widget_set_name(c->widget,id);g_hash_table_insert(controls,c->id,c);gtk_box_append(GTK_BOX(box),c->widget);
     }
     c->seen=frame;gtk_widget_set_sensitive(c->widget,nd_enabled(state,i));
     gtk_accessible_update_property(GTK_ACCESSIBLE(c->widget),GTK_ACCESSIBLE_PROPERTY_LABEL,(const char *)label,-1);
-    if(kind==1)gtk_button_set_label(GTK_BUTTON(c->widget),(char *)label);
+    if(kind==1) {
+      // The label is drawn as its variant draws it; the accessible label above stays the words as given.
+      unsigned char drawn[32769];int64_t m=nd_label(state,i,(Bytes){drawn,32768});if(m<0)m=0;drawn[m]=0;gtk_button_set_label(GTK_BUTTON(c->widget),(char *)drawn);
+      int variant=(int)nd_variant(state,i),busy=nd_busy(state,i);char name[16];
+      if(variant!=c->variant) {if(c->variant>=0) {snprintf(name,sizeof name,"v%d",c->variant);gtk_widget_remove_css_class(c->widget,name);}snprintf(name,sizeof name,"v%d",variant);gtk_widget_add_css_class(c->widget,name);c->variant=variant;}
+      if(busy!=c->busy) {if(busy)gtk_widget_add_css_class(c->widget,"busy");else gtk_widget_remove_css_class(c->widget,"busy");c->busy=busy;}
+    }
     else if(kind==2) {char *value=owned(nd_value(state,i));if(strcmp(value,gtk_editable_get_text(GTK_EDITABLE(c->widget))))gtk_editable_set_text(GTK_EDITABLE(c->widget),value);gtk_entry_set_placeholder_text(GTK_ENTRY(c->widget),(char *)label);g_free(value);}
     else if(kind==4) {
       char *value=owned(nd_value(state,i));GtkTextBuffer *buffer=gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->widget));GtkTextIter a,b;gtk_text_buffer_get_bounds(buffer,&a,&b);char *old=gtk_text_buffer_get_text(buffer,&a,&b,0);
@@ -90,7 +99,11 @@ static void pump(void) {
   if(pthread_create(&thread,&attr,worker,j)!=0) {j->n=-1;completed(j);}else pthread_detach(thread);pthread_attr_destroy(&attr);
 }
 static void activate(GtkApplication *app,gpointer unused) {
-  (void)unused;GtkWidget *window=gtk_application_window_new(app);gtk_window_set_title(GTK_WINDOW(window),"OpenAgents");gtk_window_set_default_size(GTK_WINDOW(window),680,850);
+  (void)unused;static unsigned char css[16384];int64_t length=nd_style((Bytes){css,sizeof css-1});css[length>0 ? length:0]=0;
+  GtkCssProvider *skin=gtk_css_provider_new();gtk_css_provider_load_from_data(skin,(const char *)css,-1);
+  gtk_style_context_add_provider_for_display(gdk_display_get_default(),GTK_STYLE_PROVIDER(skin),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+  g_object_set(gtk_settings_get_default(),"gtk-application-prefer-dark-theme",TRUE,NULL);
+  GtkWidget *window=gtk_application_window_new(app);gtk_window_set_title(GTK_WINDOW(window),"OpenAgents");gtk_window_set_default_size(GTK_WINDOW(window),680,850);
   GtkWidget *scroll=gtk_scrolled_window_new();box=gtk_box_new(GTK_ORIENTATION_VERTICAL,14);gtk_widget_set_margin_start(box,24);gtk_widget_set_margin_end(box,24);gtk_widget_set_margin_top(box,24);gtk_widget_set_margin_bottom(box,24);gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll),box);gtk_window_set_child(GTK_WINDOW(window),scroll);pump();gtk_window_present(GTK_WINDOW(window));
   if(inspect_ui)g_timeout_add(50,inspect,NULL);
 }
