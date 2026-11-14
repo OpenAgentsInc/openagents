@@ -21,6 +21,8 @@ chh_api_checks :: (t:[]Ap,dir:string) {
   ap_check(t,"a host reference is not an account grant",st==404,ap_body(t));
   st=ac_call(t,"GET","/api/chat/environment/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&method=SendMessage","",sb_text(c[..]),"","");
   ap_check(t,"a read route cannot dispatch a mutation",st==400,ap_body(t));
+  st=ac_call(t,"GET","/api/chat/environment/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&method=ListSessions","",sb_text(c[..]),"","");
+  ap_check(t,"email login reaches the broker after production startup ignored SIGCHLD",st==200 && ap_has(ap_body(t),"Fixture computer") && ap_has(ap_body(t),"ListSessions"),ap_body(t));
   sb_clear(q[..]);
   sb(q[..],"INSERT INTO auth.nostr_keys(account,pubkey) VALUES ('");sb(q[..],account);sb(q[..],"',repeat('cd',32)); INSERT INTO chat.conversations(owner,model,title,created_ms,updated_ms) VALUES (repeat('cd',32),'claude-opus-5-5','Phone-owned history',1,2),(repeat('ef',32),'claude-opus-5-5','Someone else private chat',1,3)");
   ap_do(t,sb_text(q[..]));

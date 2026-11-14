@@ -151,10 +151,12 @@ api_sources "$here" "$work" "$cli_coax"
 # A production worker inherits SIGCHLD=SIG_IGN from the realm-page refresher.
 # Exercise the actual process adapter under that disposition, without relay
 # access, credentials or a model. The oracle also checks it is restored.
-if [[ $serve == 0 ]] && runs checks; then
+if [[ $serve == 0 ]]; then
   "$cli_coax" c "$here/environment-broker-fixture.coax" --library > "$work/environment-fixture.c"
   "$cc" -std=c11 -O1 -g -D_DEFAULT_SOURCE -I"$repo_root/coax/platform" \
     "$work/environment-fixture.c" "$repo_root/coax/platform/tool-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -o "$work/environment-fixture"
+fi
+if [[ $serve == 0 ]] && runs checks; then
   "$cc" -std=c11 -O1 -g -D_DEFAULT_SOURCE -fsanitize=address,undefined -I"$work" -I"$here" -I"$repo_root/coax/platform" \
     "$here/tests/environment_proxy.c" "$here/environment-wire-unit.c" "$repo_root/coax/platform/process-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -o "$work/environment-proxy"
   "$work/environment-proxy" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
@@ -411,6 +413,7 @@ if [[ $serve == 0 && -n "$script_job" ]]; then
   for _ in $(seq 100); do curl -s -m 1 "http://127.0.0.1:$SCRIPT_JOB_PORT/healthz" > /dev/null && { script_job_url="http://127.0.0.1:$SCRIPT_JOB_PORT"; break; }; sleep 0.1; done
   [[ -n "$script_job_url" ]] || { echo "test.sh: the compile service didn't start" >&2; cat "$work/script-job.log" >&2; exit 1; }
 fi
+environment_model=();[[ $serve != 0 ]] || environment_model=("OA_ENV_BROKER_PROGRAM=$work/environment-fixture" "OA_ENV_BROKER_KEY_FILE=/unused")
 OA_SCRIPT_JOB="$script_job" OA_SCRIPT_JOB_URL="$script_job_url" OA_SCRIPT_JOB_TOKEN=test-script-job COAX="$cli_coax" \
 OA_CHAT_RUNNER_URL="http://127.0.0.1:$CHAT_PORT" OA_CHAT_DAILY_USD=1 \
 OA_AGENT_PROJECTS=agent-proj OA_AGENT_WAKE_URL="http://127.0.0.1:$WAKE_PORT/wake" OA_AGENT_WAKE_TOKEN=test-wake \
@@ -427,7 +430,7 @@ OA_TOKENINFO_URL="http://127.0.0.1:$TOKENINFO_PORT/tokeninfo" OA_JOBS_CALLER=job
 OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAILY_CAP=5 OA_NPC_KEY_10M=3 OA_NPC_ADDR_10M=5 OA_NPC_RUNNING=3 OA_NPC_RUNNING_KEY=1 OA_PIECE_URL="http://127.0.0.1:$PIECE_PORT/model" OA_PIECE_DAILY_CAP=40 OA_EDIT_URL="http://127.0.0.1:$PIECE_PORT/edit-model" OA_EDIT_TIMEOUT_MS=1500 OA_BUILDER_URL="http://127.0.0.1:$BUILDER_PORT/model" OA_BUILDER_TIMEOUT_MS=1200 OA_BUILDER_PER_DAY=6 \
 OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 OA_WORLDBUILDER_URL="http://127.0.0.1:$WORLDBUILDER_PORT/model" \
   OA_BUILD_SHA=1111111111111111111111111111111111111111 OA_RELEASE_ID=123e4567-e89b-42d3-a456-426614174000 K_SERVICE=oa-api-staging K_REVISION=oa-api-staging-00002-new \
-  OA_ROOM_CHECKPOINTS=1 OA_API_ORIGIN="$api_origin" env ${local_model[@]+"${local_model[@]}"} "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
+  OA_ROOM_CHECKPOINTS=1 OA_API_ORIGIN="$api_origin" env ${local_model[@]+"${local_model[@]}"} ${environment_model[@]+"${environment_model[@]}"} "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
 # The API listens once its migrations are in, and on a busy host they take longer than any fixed wait
 # (5 s was not enough, #13376): wait for its answer for as long as its process lives. Ten minutes with
 # the process there and no answer is a hung API, and the run says so.
