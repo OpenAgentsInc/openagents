@@ -120,6 +120,9 @@ Build 1078 includes that repair and corrects the Everglade choice to the current
 `everglade2` producer and `/worlds/everglade2` path, both from the library and
 the account program. Its native title is **Everglade**. The library choice is
 portable Coax and can also be corrected over Updates on compatible builds.
+1078 is **VALID / IN_BETA_TESTING**, verified in **Owner**; its signed feed
+matches all twenty archived resources. See the
+[crash and release record](../../docs/verification/2026-11-14-native-world-crash-1078.json).
 
 `apps/openagents-ios/build.sh` generates on a remote build host and builds
 with Xcode on this Mac's slots. XcodeGen is required. No simulator window

@@ -10,6 +10,11 @@ preserves the explicit host exports and adds an archive-level link gate. Build
 1078 also makes **Everglade** open the current Everglade II forest/path instead
 of the deprecated town. Install 1078 for both corrections.
 
+1078 is **VALID / IN_BETA_TESTING**, verified in **Owner**. The
+[release record](docs/verification/2026-11-14-native-world-crash-1078.json)
+includes the retrieved 1076 crash, exact matching symbols and the Release
+simulator gameplay check. The phone's physical acceptance remains outstanding.
+
 Install the corrected TestFlight build and open **Worlds**. Open Splice
 Bots and Everglade; the first visit downloads their assets. Check portrait
 and landscape touch controls, sound after a gesture, suspension and reopening
@@ -18,6 +23,10 @@ account, create a world and open it from **Worlds you can edit**. Check the
 inspector, a transform plus Undo, and an Agent change with the world visible
 behind its sheet. Existing ownership and admin rules apply. Physical touch, motion,
 audio and the actual account's acceptance remain owner observations.
+
+If the isolated **Worlds Check** test icon is still on the phone, delete it.
+It is `com.openagents.app.worlds1076probe`, separate from OpenAgents and its
+login/Keychain; it was installed during the earlier disconnected device test.
 
 The owner approved creator access for `chris@openagents.com` on November 14.
 The verified account's creator grant is live and independently read back;
