@@ -138,7 +138,8 @@ wm_module :: (file: string, into: string, options: string, check: bool) -> int {
   if on < 0 { tool_err("wgsl-module: no options file "); tool_errln(options); return WM_FAILED; }
   // coax wgsl FILE and the file's options
   argv: [16] string;
-  argv[0] = "coax/bin/coax"; argv[1] = "wgsl"; argv[2] = file;
+  cb: [4096] u8;
+  argv[0] = wm_compiler(cb[..]); argv[1] = "wgsl"; argv[2] = file;
   m := wm_words(cast(string) ob[0..<on], argv[3..<16]);
   if m < 0 { tool_errln("wgsl-module: too many options"); return WM_FAILED; }
   out: [WM_PAGE] u8; err: [65536] u8;
@@ -168,6 +169,13 @@ wm_module :: (file: string, into: string, options: string, check: bool) -> int {
   wm_live(file, into, options, argv[3..<m + 3], true);
   return WM_WRITTEN;
 }
+// The compiler that writes the modules: $COAX when set (what coax/web/tool.sh builds this tool
+// with: the pre-push hook sets it to a cached build in a checkout with no coax/bin/coax), or else
+// the checkout's own coax/bin/coax.
+wm_compiler :: (buf: [] u8) -> string {
+  c := proc_getenv("COAX", buf);
+  return ifx c.count > 0 then c else "coax/bin/coax";
+}
 // The module's dependency list for coax serve, in development only. Written again when the
 // module was (its Coax changed, so its loads may have), or when the list is missing or older
 // than the module's Coax. A list that can't be made is said, and the module still counts.
@@ -182,7 +190,8 @@ wm_live :: (file: string, into: string, options: string, words: [] string, writt
   if cwd.count == 0 || live.count == 0 || at < 0 { tool_err("wgsl-module: no dependency list for coax serve: "); tool_errln(into); return; }
   list := cast(string) pb[0..<at];
   if !written && fs_kind(list) == FS_FILE && fs_mtime_ns(list) >= fs_mtime_ns(file) { return; }
-  argv := [5] string.["coax/bin/coax", "deps", file, "--library", ""];
+  xb: [4096] u8;
+  argv := [5] string.[wm_compiler(xb[..]), "deps", file, "--library", ""];
   out: [262144] u8; err: [16384] u8;
   r := proc_run(argv[0..<4], WM_TIMEOUT_MS, out[..], err[..]);
   page: [524288] u8;

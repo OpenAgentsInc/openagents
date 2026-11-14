@@ -545,6 +545,10 @@ pp_shaders :: (changed: string) -> bool {
   #assert !pp_shaders("coax/web/host.js\ndocs/a.md\n") && !pp_shaders("");
 }
 
+// Whether the hook's cached compiler is the build for this tree's compiler sources (its
+// fingerprint, coax/provenance.sh), which the hook says with OA_PREPUSH_COAX_EXACT=1.
+pp_exact :: () -> bool { b: [8] u8; return proc_getenv("OA_PREPUSH_COAX_EXACT", b[..]) == "1"; }
+
 // The checks for a push whose merge base with main is base and whose changes are `changed`;
 // Which checks run (PP_RUN_* bits). wire-check reads the tree's compiler (registry rows name
 // coax/bin/coax), and the suites need it too, so a checkout without one (a fresh worktree before
@@ -585,6 +589,11 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   hb: [64] u8;
   if proc_getenv("OA_PREPUSH_TESTS", hb[..]) == "0" { tests = false; print("prepush: OA_PREPUSH_TESTS=0: no coax test\n"); }
   has_compiler := fs_exists("coax/bin/coax");
+  // agent-reference and wgsl need only a compiler, not the tree's own: in a checkout with no
+  // coax/bin/coax (a fresh worktree) the hook sets $COAX to a cached build, which they use.
+  cxb: [4096] u8; cached := proc_getenv("COAX", cxb[..]);
+  some_compiler := has_compiler || (cached.count > 0 && fs_exists(cached));
+  if !has_compiler && some_compiler { print("prepush: agent-reference and wgsl use the cached compiler % (no coax/bin/coax here)%\n", cached, ifx pp_exact() then ", built from this tree's compiler sources" else "; it was built from other compiler sources, so a wgsl failure after a change under coax/lib/compiler/ may be the compiler's: run coax/build.sh"); }
   run := pp_plan(has_compiler, tests);
   if !has_compiler { print("prepush: wire-check and coax test skipped: this checkout has no coax/bin/coax (coax/build.sh installs it in seconds); the after-landing check runs them\n"); }
   ok := pp_start(jobs[0..<1], "tools-check", tc[..], none);
@@ -592,9 +601,9 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   if (run & PP_RUN_WIRE) != 0 { ok = pp_start(jobs[2..<3], "wire-check", wc[..], none) && ok; }
   ok = pp_start(jobs[3..<4], "layer-check", lc[..], none) && ok;
   ok = pp_start(jobs[7..<8], "state-keep", sk[..], none) && ok;
-  if has_compiler { ok = pp_start(jobs[8..<9], "agent-reference", ar[..], none) && ok; }
+  if some_compiler { ok = pp_start(jobs[8..<9], "agent-reference", ar[..], none) && ok; }
   if has_compiler && pp_drives(changed) { ok = pp_start(jobs[9..<10], "drive-hit-check", dh[..], none) && ok; }
-  if has_compiler && pp_shaders(changed) { ok = pp_start(jobs[10..<11], "wgsl", wg[..], none) && ok; }
+  if some_compiler && pp_shaders(changed) { ok = pp_start(jobs[10..<11], "wgsl", wg[..], none) && ok; }
   tests = (run & PP_RUN_SUITES) != 0;
   if tests {
     ok = pp_start(jobs[4..<5], "suites --list", sl[..], none) && ok;

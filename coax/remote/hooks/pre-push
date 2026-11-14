@@ -11,8 +11,15 @@ if command -v git-lfs > /dev/null 2>&1; then
   printf '%s' "${refs:+$refs$'\n'}" | git lfs pre-push "$@" || exit $?
 fi
 [[ -x coax/web/tool.sh ]] || { echo "prepush: no coax/web/tool.sh in this checkout (a sparse one); no check" >&2; exit 0; }
-# A fresh worktree has no compiler until coax/build.sh: use the newest one this machine keeps.
-[[ -x "${COAX:-coax/bin/coax}" ]] || export COAX="$(ls -t "$HOME"/.cache/coax-release/*/coax 2> /dev/null | head -n 1)"
+# A fresh worktree has no compiler until coax/build.sh: use the one this machine keeps for this
+# tree's compiler sources (their fingerprint), or else the newest. agent-reference and wgsl run
+# with it, so they check a push from a fresh worktree too.
+if [[ ! -x "${COAX:-coax/bin/coax}" ]]; then
+  cache="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}"
+  fp="$(coax/provenance.sh fingerprint "$PWD" 2> /dev/null)"
+  if [[ -n "$fp" && -x "$cache/$fp/coax" ]]; then export COAX="$cache/$fp/coax" OA_PREPUSH_COAX_EXACT=1
+  else export COAX="$(ls -t "$cache"/*/coax 2> /dev/null | head -n 1)"; fi
+fi
 [[ -x "${COAX:-coax/bin/coax}" ]] || { echo "prepush: no Coax compiler (run coax/build.sh); no check" >&2; exit 0; }
 limit=(); ! command -v timeout > /dev/null 2>&1 || limit=(timeout 300)
 # shellcheck disable=SC2086 # the refs are words: LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA per line
