@@ -11,9 +11,9 @@
 //   mcp__openagents__realm_show   {slug}                  a realm tool: the spec is the answer
 //   Bash                          {command: touch MARK}   must be refused by a read ceiling
 //   Write                         {file_path: CWD/note.txt}   must be refused too
-//   mcp__openagents__realm_place  {slug, thing: crate, x: 4, z: -2}
+//   mcp__openagents__realm_world_place  {slug, thing: crate, x: 4, z: -2}
 //
-// What a call is allowed to do, it does: realm_place is the realm tool's
+// What a call is allowed to do, it does: realm_world_place is the realm tool's
 // write as the server keeps it (the spec's rev goes up by one and a
 // `placed crate 4 -2 0` line is added to $CLAUDE_STANDIN_SPEC); Bash
 // touches $CLAUDE_STANDIN_MARK; Write writes the file. Each decision is a
@@ -239,7 +239,7 @@ si_call :: (s: [] St, k: int, name: string, input: string, spec: string) {
   si_note(s, jo_text(nb[..]));
   if verdict != "allow" { si_result_of(id, "Refused by Coder's policy.", true); return; }
   if name == "mcp__openagents__realm_show" { sb: [65536] u8; sn := fs_read(spec, sb[..]); si_result_of(id, ifx sn > 0 then cast(string) sb[0..<sn] else "", sn <= 0); return; }
-  if name == "mcp__openagents__realm_place" { si_result_of(id, ifx si_place(spec) then "Placed a crate at 4, -2." else "could not place", false); return; }
+  if name == "mcp__openagents__realm_world_place" { si_result_of(id, ifx si_place(spec) then "Placed a crate at 4, -2." else "could not place", false); return; }
   mb: [1024] u8;
   if name == "Bash" { ok := fs_write(proc_getenv("CLAUDE_STANDIN_MARK", mb[..]), "ran\n"); si_result_of(id, "", false); return; }
   if name == "Write" { pb: [1100] u8; n := 0; for c: cast(string) s[0].cwd[0..<s[0].ncwd] { pb[n] = c; n += 1; } for c: "/note.txt" { pb[n] = c; n += 1; } ok := fs_write(cast(string) pb[0..<n], "hi\n"); si_result_of(id, "written", false); return; }
@@ -312,7 +312,7 @@ tool_main :: () -> int #export_c #effects(all) {
     si_call(s, 3, "Write", jo_text(wq[..]), spec);
     pq: [1] Jo; pqb: [512] u8; jo_start(pq[..], pqb[..]); jo_obj(pq[..]); jo_key(pq[..], "slug"); jo_str(pq[..], slug);
     jo_key(pq[..], "thing"); jo_str(pq[..], "crate"); jo_key(pq[..], "x"); jo_int(pq[..], 4); jo_key(pq[..], "z"); jo_int(pq[..], -2); jo_end(pq[..]);
-    si_call(s, 4, "mcp__openagents__realm_place", jo_text(pq[..]), spec);
+    si_call(s, 4, "mcp__openagents__realm_world_place", jo_text(pq[..]), spec);
     si_assistant("text", "m-done", "", "", "I placed a crate at 4, -2. Coder refused the shell command and the file write.");
     si_result(true, "I placed a crate at 4, -2.");
   }

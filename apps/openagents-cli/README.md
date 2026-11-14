@@ -288,15 +288,15 @@ openagents realm publish SLUG [--rev N]            # visitors see this revision
 openagents realm fork SLUG [--name NAME]           # a copy you own, private
 openagents realm doc SLUG                          # the versioned document and SHA-256
 openagents realm asks SLUG | proposals SLUG | panes SLUG
-openagents realm switch SLUG ROW on|off [--rev N]
+openagents realm world-switch SLUG ROW on|off      # a board row: a cell edit of the realm's world (one undo step)
 openagents realm revise SLUG "WORDS" [--rev N]
 openagents realm ask SLUG "WORDS" [--rev N]         # or --doc FILE, at most 360 KiB
 openagents realm ask-delete SLUG ID [--rev N]
 openagents realm ask-done SLUG ID --commit HASH [--rev N]
 openagents realm row-delete SLUG ROW [--rev N]
 openagents realm move SLUG ENTITY X Z [--rev N]     # trees:3; metres within +/-40, up to two decimals
-openagents realm place SLUG THING X Z [--yaw DEG] [--rev N]
-openagents realm settings SLUG --tools build,talk [--rev N]
+openagents realm world-place SLUG KIND X Z [--yaw DEG]   # KIND from realm world SLUG's kinds table; centimetres
+openagents realm world-tools SLUG --tools build,talk   # the tools visitors get: cell edits of the world's tools table
 openagents realm lore SLUG WHO "TEXT" [--rev N]     # empty forgets it; at most 400 bytes
 openagents realm quest SLUG GIVER --ask A --step S1 --step S2 --reward R [--rev N]
 openagents realm accept SLUG ID | decline SLUG ID [--rev N]

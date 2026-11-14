@@ -119,13 +119,14 @@ def realm_fork_checks():
           m.get("fork") == ["1"] and m.get("from") == ["everglade|Everglade"] and m.get("owner") == ["1"] and m.get("published") == ["0"]
           and "night 1 Always night" in m.get("rule", []) and "lowgrav 0 Low gravity" in m.get("rule", []), m)
     check("and not anyone else's", line_map(b_call("GET", R + "doomglade/fork", key=other)[1]).get("owner") == ["0"])
-    check("a visitor can't switch its rules", b_call("POST", R + "doomglade/switch", {"row": "nodestroy", "on": True}, other)[0] == 403)
-    st, sw = b_call("POST", R + "doomglade/switch", {"row": "nodestroy", "on": True}, owner)
-    check("its owner switches a rule on", st == 200 and sw == {"row": "nodestroy", "on": True}
+    # a row switched is a cell edit of the realm's world (#13514)
+    check("a visitor can't switch its rules", w_switch("doomglade", "nodestroy", True, other)[0] == 403)
+    st, sw = w_switch("doomglade", "nodestroy", True, owner)
+    check("its owner switches a rule on", st == 200
           and "nodestroy 1 No destruction" in line_map(b_call("GET", R + "doomglade/fork")[1]).get("rule", []), (st, sw))
-    st, sw = b_call("POST", R + "doomglade/switch", {"row": "flock", "on": False}, owner)
+    st, sw = w_switch("doomglade", "flock", False, owner)
     check("and one of Everglade's rows off", st == 200 and "row flock 0 " in b_call("GET", R + "doomglade", key=owner)[1], sw)
-    check("a row it hasn't is a 404", b_call("POST", R + "doomglade/switch", {"row": "robots", "on": True}, owner)[0] == 404)
+    check("a row it hasn't is refused in words", w_switch("doomglade", "robots", True, owner)[0] == 422)
 
     # talking revises it: the model answers under the fork's row ids, and only those are kept
     builder_seen.clear()
@@ -207,9 +208,9 @@ def realm_fork_checks():
     st, stale = b_call("POST", R + "forge-court/save", {"rev": 1, "moved": []}, maker)
     check("a save from an older revision is refused with the revision there now: newer never just wins", st == 409 and stale == {"error": "changed since", "rev": 2}
           and "moved trees:2 3.26 -4.50" in b_call("GET", R + "forge-court", key=maker)[1], (st, stale))
-    check("any change to what it is makes a new revision (a row switched off)", b_call("POST", R + "forge-court/switch", {"row": "trees", "on": False}, maker)[0] == 200
+    check("any change to what it is makes a new revision (a row switched off, a world edit since #13514)", w_switch("forge-court", "trees", False, maker)[0] == 200
           and line_map(b_call("GET", R + "forge-court", key=maker)[1]).get("rev") == ["3"])
-    b_call("POST", R + "forge-court/switch", {"row": "trees", "on": True}, maker)
+    w_switch("forge-court", "trees", True, maker)
     check("so a save read before it is refused too", b_call("POST", R + "forge-court/save", {"rev": 2, "moved": []}, maker) == (409, {"error": "changed since", "rev": 4}))
     check("a publish names its revision", b_call("POST", R + "forge-court/publish", {"rev": 3}, maker) == (409, {"error": "changed since", "rev": 4})
           and b_call("POST", R + "forge-court/publish", {}, maker)[0] == 400 and b_call("POST", R + "forge-court/publish", {"rev": 4}, rival)[0] == 403)
@@ -270,30 +271,42 @@ def realm_fork_checks():
     st, u = b_call("POST", R + "forge-court/undo", {"rev": 5}, maker)
     check("UNDO takes the save back as a new revision, with the moves before it", st == 200 and u == {"rev": 6, "undo": steps - 1, "redo": 1}
           and b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["moved"] == d4["doc"]["moved"], (st, u, steps))
-    st, pl = b_call("POST", R + "forge-court/place", {"thing": "crate", "x": 2, "z": -3, "yaw": 0}, maker)
+    # a thing placed, a row switched and a card accepted are world edits (#13514, #13515): steps of the world's one
+    # log, which the world's UNDO takes back; the realm's own UNDO keeps its saves
+    def w_back(do):
+        return w_post("forge-court", w_batch("forge-court", do, [], maker), maker)
+    kinds = w_ids("forge-court", "kinds", maker)
+    st, pl = w_apply("forge-court", [w_spawn(kinds["crate"], 2, -3)], maker)
     placed = b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["placed"]
-    st2, u = b_call("POST", R + "forge-court/undo", {"rev": 7}, maker)
-    check("a thing placed is one step: UNDO takes it out", st == 200 and len(placed) == 1 and st2 == 200 and u["rev"] == 8
-          and b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["placed"] == [], (st, pl, placed, st2, u))
-    b_call("POST", R + "forge-court/switch", {"row": "trees", "on": False}, maker)
+    own = int(line_map(b_call("GET", R + "forge-court", key=maker)[1])["undo"][0])
+    st2, u = w_back("undo")
+    shaped = b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"].get("shaped", [])
+    check("a thing placed is one step of the world's log: its UNDO takes it away, and the realm's own log has no step for it", st == 200 and len(placed) == 1 and st2 == 200
+          and any(e.get("entity") == "placed:0" and e.get("gone") for e in shaped) and int(line_map(b_call("GET", R + "forge-court", key=maker)[1])["undo"][0]) == own, (st, pl, placed, st2, u, shaped))
+    w_switch("forge-court", "trees", False, maker)
     off = line_map(b_call("GET", R + "forge-court", key=maker)[1]).get("row")
-    st, u = b_call("POST", R + "forge-court/undo", {"rev": 9}, maker)
-    check("a row switched is one step: UNDO switches it back", off == ["trees 0 Six round trees"] and st == 200
+    st, u = w_back("undo")
+    check("a row switched is one step: the world's UNDO switches it back", off == ["trees 0 Six round trees"] and st == 200
           and line_map(b_call("GET", R + "forge-court", key=maker)[1]).get("row") == ["trees 1 Six round trees"], (off, st, u))
-    b_call("POST", R + "forge-court/settings", {"tools": {"build": True}}, maker)
-    rev = int(line_map(b_call("GET", R + "forge-court", key=maker)[1])["rev"][0])
-    pid = b_call("POST", R + "forge-court/place", {"thing": "barrel", "x": 1, "z": 1, "yaw": 0}, rival)[1].get("proposed")
+    w_tools("forge-court", {"build": True}, maker)
+    st0, pr = w_apply("forge-court", [w_spawn(kinds["barrel"], 1, 1)], rival)
+    pid = int(b_call("GET", R + "forge-court/proposals", key=maker)[1].split("|")[0][2:])
     st, dec = b_call("POST", R + "forge-court/proposals/" + str(pid) + "/accept", {}, maker)
     acc = b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]
-    st2, u = b_call("POST", R + "forge-court/undo", {"rev": rev + 1}, maker)
+    st2, u = w_back("undo")
     cards = b_call("GET", R + "forge-court/proposals", key=maker)[1]
-    check("a card accepted is one step: UNDO takes its thing out and the card waits again", st == 200 and acc["rev"] == rev + 1 and len(acc["placed"]) == 1
-          and st2 == 200 and b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["placed"] == [] and ("P " + str(pid) + "|") in cards, (st, dec, acc, st2, u, cards))
-    rev = u["rev"]
+    after = b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]
+    check("a card accepted is one step of the world's log: its UNDO takes the thing away; the card stays decided", st0 == 202 and st == 200 and len(acc["placed"]) == 2
+          and st2 == 200 and any(e.get("entity") == "placed:1" and e.get("gone") for e in after.get("shaped", [])) and ("P " + str(pid) + "|") not in cards, (st0, st, dec, acc, st2, u, cards))
+    st, again = w_back("redo")
+    check("and its REDO brings the same thing back under its number", st == 200 and not any(e.get("entity") == "placed:1" and e.get("gone") for e in b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"].get("shaped", [])), (st, again))
+    w_apply("forge-court", [w_spawn(kinds["rock"], -1, 1)], rival)
+    pid = int(b_call("GET", R + "forge-court/proposals", key=maker)[1].split("|")[0][2:])
+    rev = int(line_map(b_call("GET", R + "forge-court", key=maker)[1])["rev"][0])
     st, dec = b_call("POST", R + "forge-court/proposals/" + str(pid) + "/decline", {}, maker)
     gone = b_call("GET", R + "forge-court/proposals", key=maker)[1]
     st2, u = b_call("POST", R + "forge-court/undo", {"rev": rev}, maker)
-    check("a card declined is a step too, though nothing in the realm changes", st == 200 and ("P " + str(pid) + "|") not in gone and st2 == 200
+    check("a card declined is a step of the realm's own log, though nothing in the realm changes", st == 200 and ("P " + str(pid) + "|") not in gone and st2 == 200
           and u["rev"] == rev and ("P " + str(pid) + "|") in b_call("GET", R + "forge-court/proposals", key=maker)[1], (st, dec, st2, u))
     check("every revision is kept, an edit's and an undo's too", int(sql("select count(*) from verse.realm_revisions where slug = 'forge-court' and why in ('edit', 'undo')")) >= 6
           and sql("select why from verse.realm_revisions where slug = 'forge-court' and rev = 6") == "undo")

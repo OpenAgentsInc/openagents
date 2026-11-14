@@ -158,8 +158,8 @@ work as it happens:
 |---|---|
 | Say or type a world | `openagents realm new "WORDS"` |
 | Keep talking | `openagents realm revise SLUG "WORDS"` |
-| Tap a row | `openagents realm switch SLUG ROW on|off` |
-| Drag, rotate, size, remove | `realm move`, `realm place`, `realm apply FILE.jsonl` (rotate, resize, remove ops added) |
+| Tap a row | `openagents realm world-switch SLUG ROW on|off` |
+| Drag, rotate, size, remove | `realm move`, `realm world-place`, `realm apply FILE.jsonl` (rotate, resize, remove ops added) |
 | UNDO | `openagents realm undo SLUG` |
 | ASKED FOR, BUILD IT | `openagents realm asks SLUG`, then the agent's own edits, `realm ask-done` |
 | PLAY | `openagents realm play SLUG` and `look`, `go`, `say`, `use` |

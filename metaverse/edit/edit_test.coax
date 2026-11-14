@@ -404,8 +404,22 @@ heard_trip :: (e: [] RealmEdit, t: f32, url: string, p_body: string, reply: stri
   #assert redit_reply_of(e[..]) == "Large pond: off.";
   a := redit_take_action(e[..], ob[..]);
   #assert a.kind == REDIT_ACT_VOICE_SAY && cast(string) ob[0..<a.n] == "Large pond: off.";
+  // the switch is a cell edit of the realm's world (#13514): its revision read, then the batch from it; a batch
+  // another change passed (409) is made once more from the revision there now
   redit_step(e[..], 3, 1440, 900, 1);
-  #assert url_is(e[..], "/api/playtest/realms/moonlit-marsh/switch") && answer(e[..], 2, "200\n{}");
+  #assert url_is(e[..], "/api/worlds/moonlit-marsh?lane=dev") && (e[0].req_flags & HTTP_POST) == 0 && (e[0].req_flags & TRACK_KEY) != 0;
+  sb: [2048] u8; st: [1024] u8; bb: [1024] u8;
+  #assert answer(e[..], 2, cast(string) sb[0..<ct_put(sb[..], ct_put(sb[..], 0, "200\n"), rp_test_state(7, st[..]))]);
+  cell := WorldEdit.{ok = true, op = WE_CELL, id = 1};
+  cell.table_n = ct_copy(cell.table[..], "rows"); cell.name_n = ct_copy(cell.name[..], "on"); cell.text_n = ct_copy(cell.text[..], "0");
+  cells := [1] WorldEdit.[cell];
+  redit_step(e[..], 3.1, 1440, 900, 1);
+  #assert url_is(e[..], "/api/worlds/moonlit-marsh") && (e[0].req_flags & HTTP_POST) != 0 && body_is(e[..], we_batch_write(7, WB_APPLY, cells[..], 1, bb[..]));
+  #assert answer(e[..], 2, "409\n{\"error\":\"changed since\"}") && e[0].switch_row == 0;
+  redit_step(e[..], 3.2, 1440, 900, 1);
+  #assert url_is(e[..], "/api/worlds/moonlit-marsh?lane=dev") && answer(e[..], 2, cast(string) sb[0..<ct_put(sb[..], ct_put(sb[..], 0, "200\n"), rp_test_state(8, st[..]))]);
+  redit_step(e[..], 3.3, 1440, 900, 1);
+  #assert body_is(e[..], we_batch_write(8, WB_APPLY, cells[..], 1, bb[..])) && answer(e[..], 2, "200\n{}") && e[0].spec_due && e[0].switch_row == -1;
   e[0].spec_due = false;
   // show: the editing screen opens
   #assert redit_hear(e[..], "open the edit panel");

@@ -9,8 +9,8 @@
 //        (migrations/0049_realm_builder_setup.sql); 400, 429, 503
 //   POST /api/playtest/realms {plan?, board}           -> 200 {slug, path, name, page}; 400, 401, 429
 //   GET  /api/playtest/realms/<slug>                   -> text/plain, the spec a line each; 404
-//   POST /api/playtest/realms/<slug>/settings {tools}  -> 200 {tools}; 403 not an owner or admin
-//   POST /api/playtest/realms/<slug>/switch {row, on}  -> 200 {row, on}; 403, 404 (one row of the board)
+//   (a row switched, the tools visitors get and a thing placed are edits of the realm's world, /api/worlds/<slug>:
+//   worlds.c, #13514; the routes /settings, /switch and /place went with migration 0194)
 //   POST /api/playtest/realms/<slug>/revise {prompt}   -> 200 {plan, changed}; 400, 403, 429, 502, 503
 // Its link preview (migrations/0071_made_realm_share.sql, docs/web/og-tags.md): its line and its own picture.
 //   POST /api/playtest/realms/<slug>/describe {description}   -> 200 {description}; 400, 403, 404
@@ -45,9 +45,10 @@
 // verse-automation) is unlisted: off /og's rows and noindex.
 // Any realm: a made one or a hand-built one from realms.json (migrations/0050_realm_edit.sql decides
 // who is its owner, an admin or a visitor; a site admin, admin_who, is an admin of every realm).
-//   POST /api/playtest/realms/<slug>/place {thing, x, z, yaw}   -> 200 {placed} | {proposed}; 403
 //   GET  /api/playtest/realms/<slug>/proposals         -> text/plain, the owner's cards ("" for anyone else)
 //   POST /api/playtest/realms/<slug>/proposals/<id>/accept|decline   -> 200 {state}; 403, 404, 409
+//        (a visitor proposes with a batch of spawns on the realm's world, 202, and ACCEPT places it there as the owner's
+//        own world edit: worlds.c realm_propose and world_realm_accept, #13515)
 // The panes edit mode brings up (migrations/0055_realm_panes.sql): a character's lore and a quest's form.
 //   GET  /api/playtest/realms/<slug>/panes             -> text/plain: "lore WHO|TEXT", "quest GIVER|ASK|S|S|S|REWARD"
 //   POST /api/playtest/realms/<slug>/lore {who, text}  -> 200 {who, saved}; 400, 403, 409
@@ -902,8 +903,7 @@ bool realms_route(const request *q) {
   if (!strncmp(what, "edit-v1/", 8)) {
     edit_v1 = true;
     what += 8;
-    bool known = !strcmp(what, "switch") || !strcmp(what, "settings") || !strcmp(what, "place")
-              || !strcmp(what, "lore") || !strcmp(what, "quest") || !strcmp(what, "visibility") || !strcmp(what, "publish")
+    bool known = !strcmp(what, "lore") || !strcmp(what, "quest") || !strcmp(what, "visibility") || !strcmp(what, "publish")
               || !strcmp(what, "revise") || !strcmp(what, "asks") || !strncmp(what, "asks/", 5)
               || !strncmp(what, "rows/", 5) || !strncmp(what, "proposals/", 10);
     if (!known) { refuse(q->fd, 404, "unknown edit"); return true; }
@@ -1064,10 +1064,6 @@ bool realms_route(const request *q) {
     realm_edit_call(q, db, slug, key, admin, what, "");
     return true;
   }
-  if (!strcmp(what, "settings") || !strcmp(what, "place") || !strcmp(what, "switch")) {
-    realm_edit_call(q, db, slug, key, admin, what, "");
-    return true;
-  }
   // DELETE an ask, an agent's done for one, or DELETE a board's row (0078)
   static const char asks[] = "asks/", rows[] = "rows/";
   if (!strncmp(what, asks, sizeof asks - 1) || !strncmp(what, rows, sizeof rows - 1)) {
@@ -1096,6 +1092,9 @@ bool realms_route(const request *q) {
     for (size_t i = 0; ok && i < k; i++) ok = id[i] >= '0' && id[i] <= '9';
     if (!ok) { refuse(q->fd, 404, "unknown"); return true; }
     memcpy(num, id, k); num[k] = 0;
+    // ACCEPT is the owner's own world edit (#13515): the thing placed in the realm's world, one step of its undo log;
+    // a realm with no world (Everglade's board, #13477) decides it as before
+    if (!strcmp(end, "/accept") && world_realm_accept(q, db, slug, num)) return true;
     realm_edit_call(q, db, slug, key, admin, !strcmp(end, "/accept") ? "accept" : "decline", num);
     return true;
   }

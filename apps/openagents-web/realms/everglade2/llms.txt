@@ -10,7 +10,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - page: `/worlds/everglade2` (module `everglade2`, source `apps/openagents-web/realms/everglade2/`)
 - wire: 7 (`everglade/shared/everglade-wire.coax` `WIRE_VERSION`). A room also seats a page one version behind, 6, for one release. A frame written for any other version is refused with `r 0 version`
 - pins: engine 1, rules 1, content 1 (`WIRE_ENGINE`, `WIRE_RULES`, `WIRE_CONTENT`). A page says them before its hello. A room refuses a hello whose pins are neither its own nor the release before's (`r 0 version`)
-- content: `everglade/content/everglade.content`, revision 2, sha256 `f28973a9fb76eb0add9e1eaa8e48aa326fa17d654272d92dc3f04200d31c8568`; on the wire its pin is 2
+- content: `everglade/content/everglade.content`, revision 3, sha256 `c2418370fb6622e65614907ee1df7ea7a5c23a2ca95b5bbf79688160af5e93dd`; on the wire its pin is 3
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -41,7 +41,7 @@ From `metaverse-engine/editor/authority.coax` (INVARIANTS.md, "Authoring never w
 
 - format: `aethyr.content.v1` (docs/protocol/aethyr-content-v1.md): one text document; a `table NAME COLUMNS` line, then a row a line, cells split by `|`
 - document: everglade
-- revision: 2
+- revision: 3
 - reach, cm: 100000
 
 | Table | Columns | Rows |
@@ -204,4 +204,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: 43b723b591aae7f15e5d692c3d2742a2b0d9285d484f890b4529c5dc62533b09
+reference sha256: 854a6b8fca55e223c56db033948d8c0b4d6730ad401e8c16a695d2d3c449422b

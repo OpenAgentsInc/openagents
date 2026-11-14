@@ -211,11 +211,21 @@ it as `placed THING X Z YAW` lines in that order. The world numbers them by it:
   `verse.builder_things()` for a made realm, `verse.realm_rights.things` for a
   hand-built one. A thing stands on the ground at its own size, so `y` must be
   0 and `scale` 100.
-- The realm's own SQL carries each out (`verse.realm_spawn`,
-  `verse.realm_despawn`, migration 0190) and keeps the realm's rules: 200
-  things at most, within 40 m of the middle on a made realm and 400 m on a
-  hand-built one, and only its owner and admins. Its refusals come back in
-  words at the edit.
+- The realm's rules decide whether each may stand: only its owner and
+  admins, 200 things at most (gone ones too), within 40 m of the middle on a
+  made realm and 400 m on a hand-built one, and on a made realm at most 64
+  things moved, turned, resized or taken away (0109's limit). They are
+  `coax/web/api/realm-place-policy.coax` (`#authority`, #13514), asked by
+  `metaverse/edit/realm-world.coax` for each edit in order on the facts of the
+  realm's spec (its `role` line, `made 1`, its `moved` and `shaped` lines). Its
+  refusals come back in words at the edit. SQL only writes the rows
+  (`verse.realm_thing_add`, `verse.realm_thing_mark`, migration 0193).
+
+A visitor's batch of new things (spawns with ID 0) on a realm's world is not carried
+out: where the owner lets visitors build, each is kept as a proposal for the owner
+(`rpp_propose`, 50 waiting at most; migration 0195) and the answer is 202 with the
+words "sent to the owner". The owner's ACCEPT (`/api/playtest/realms/SLUG/proposals/ID/accept`)
+places it as the owner's own batch, one step of the world's log (#13515).
 
 One undo log: a world edit sets `verse.world_edit` for its transaction, so a
 made realm's own undo (`made_realms_undo`, 0111) records no step for it. The

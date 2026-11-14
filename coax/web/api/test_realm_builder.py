@@ -70,6 +70,65 @@ def b_call(method, path, body=None, key=None, origin=None):
 
 
 
+# A realm's world (/api/worlds/SLUG, #13514): a row switched, the tools visitors get and a thing placed are world.edit.v1
+# batches from the revision the world stands at; its tables name the rows, tools and kinds by number.
+def w_rev(slug, key=None):
+    st, state = b_call("GET", "/api/worlds/%s?lane=dev" % slug, key=key)
+    return state.get("rev", -1) if st == 200 and isinstance(state, dict) else -1
+
+
+def w_ids(slug, table, key=None):
+    """The rows of one of the world's tables: {name or key: ID}."""
+    st, text = b_call("GET", "/api/worlds/%s/content?lane=dev" % slug, key=key)
+    ids, inside = {}, False
+    for line in (text if st == 200 and isinstance(text, str) else "").splitlines():
+        if line.startswith("table "):
+            inside = line.split(" ")[1] == table
+        elif inside and "|" in line:
+            cells = line.split("|")
+            ids[cells[1]] = int(cells[0])
+    return ids
+
+
+def w_batch(slug, do, edits, key=None):
+    """A batch's bytes as world-edit.coax writes them (its reader takes no other), from the revision the world stands at."""
+    return json.dumps({"schema": "world.edit.v1", "rev": max(w_rev(slug, key), 0), "do": do, "edits": edits}, separators=(",", ":"))
+
+
+def w_post(slug, text, key=None):
+    h = {"Content-Type": "application/json"}
+    if key:
+        h["X-Verse-Player"] = key
+    status, raw, _ = call("POST", "/api/worlds/%s" % slug, text.encode(), h)
+    try:
+        return status, json.loads(raw)
+    except Exception:
+        return status, raw.decode()
+
+
+def w_apply(slug, edits, key=None):
+    return w_post(slug, w_batch(slug, "apply", edits, key), key)
+
+
+def w_spawn(kind, x_m, z_m, yaw_deg=0):
+    return {"op": "spawn", "id": 0, "kind": kind, "x": int(round(x_m * 100)), "y": 0, "z": int(round(z_m * 100)), "yaw": yaw_deg, "scale": 100}
+
+
+def w_cell(table, row, on):
+    return {"op": "cell", "table": table, "row": row, "col": "on", "v": "1" if on else "0"}
+
+
+def w_tools(slug, tools, key=None):
+    """The visitors' tools switched as `tools` says ({name: bool}); the rest kept."""
+    ids = w_ids(slug, "tools", key)
+    return w_apply(slug, [w_cell("tools", ids[t], on) for t, on in tools.items() if t in ids], key)
+
+
+def w_switch(slug, row, on, key=None):
+    ids = w_ids(slug, "rows", key)
+    return w_apply(slug, [w_cell("rows", ids.get(row, 999), on)], key)
+
+
 def realm_builder_checks():
     # the fake bucket test_project_drops.py served, served again for this file
     threading.Thread(target=gcs_server.serve_forever, daemon=True).start()
@@ -213,39 +272,46 @@ def realm_builder_checks():
     check("MAKE IT may send its own line", 'content="Our camp by the sea, under three moons."' in site.get("realms/spare-0", {}).get("data", b"").decode())
     check("a player makes at most OA_BUILDER_PER_DAY realms a day", b_call("POST", "/api/playtest/realms", {"board": {"name": "One more", "features": []}}, owner)[0] == 429)
 
-    # the owner decides what visitors get
+    # the owner decides what visitors get: cell edits of the realm's world (#13514)
     visitor = b_player()
-    check("a visitor can't change the settings", b_call("POST", "/api/playtest/realms/moonlit-marsh/settings", {"tools": {"fly": True}}, visitor)[0] == 403)
-    check("nor can someone without a key", b_call("POST", "/api/playtest/realms/moonlit-marsh/settings", {"tools": {"fly": True}})[0] == 403)
-    check("a visitor can't build while build is off", b_call("POST", "/api/playtest/realms/moonlit-marsh/place", {"thing": "crate", "x": 1, "z": 2}, visitor)[0] == 403)
-    st, s = b_call("POST", "/api/playtest/realms/moonlit-marsh/settings", {"tools": {"build": True, "fly": True, "talk": "yes", "teleport": True}}, owner)
-    check("the owner switches tools on; a value that isn't true or false keeps what was", st == 200 and s["tools"]["build"] and s["tools"]["fly"]
-          and s["tools"]["talk"] is True and "teleport" not in s["tools"], s)
+    kinds = w_ids("moonlit-marsh", "kinds", owner)
+    check("a visitor can't change the settings", w_tools("moonlit-marsh", {"fly": True}, visitor)[0] == 403)
+    check("nor can someone without a key", w_tools("moonlit-marsh", {"fly": True})[0] in (401, 403))
+    check("a visitor can't build while build is off", w_apply("moonlit-marsh", [w_spawn(kinds["crate"], 1, 2)], visitor)[0] == 403)
+    st, s = w_tools("moonlit-marsh", {"build": True, "fly": True}, owner)
+    tools_now = b_call("GET", "/api/playtest/realms/moonlit-marsh", key=owner)[1]
+    check("the owner switches tools on, as world edits", st == 200 and "tool build 1" in tools_now and "tool fly 1" in tools_now, s)
 
-    # what others build waits for the owner as a card
-    st, p = b_call("POST", "/api/playtest/realms/moonlit-marsh/place", {"thing": "barrel", "x": 3, "z": -4, "yaw": 0.5}, visitor)
-    check("a visitor's thing is proposed, not placed", st == 200 and isinstance(p.get("proposed"), int), p)
-    check("a thing not in the list is refused", b_call("POST", "/api/playtest/realms/moonlit-marsh/place", {"thing": "dragon", "x": 0, "z": 0}, visitor)[0] == 400)
-    check("so is one off the ground", b_call("POST", "/api/playtest/realms/moonlit-marsh/place", {"thing": "crate", "x": 99, "z": 0}, visitor)[0] == 400)
+    # what others build waits for the owner as a card: a visitor's spawns are kept, not carried out (#13515)
+    st, p = w_apply("moonlit-marsh", [w_spawn(kinds["barrel"], 3, -4, 29)], visitor)
+    check("a visitor's thing is proposed, not placed", st == 202 and p.get("error") == "sent to the owner", p)
+    check("a thing not in the list is refused", w_apply("moonlit-marsh", [w_spawn(99, 0, 0)], visitor)[0] == 422)
+    check("so is one off the ground", w_apply("moonlit-marsh", [w_spawn(kinds["crate"], 99, 0)], visitor)[0] == 422)
     st, spec = b_call("GET", "/api/playtest/realms/moonlit-marsh", key=owner)
     check("nothing changes until the owner accepts; the owner is told one waits", "placed" not in spec and "waiting 1" in spec, spec)
     st, cards = b_call("GET", "/api/playtest/realms/moonlit-marsh/proposals", key=owner)
-    check("the owner's card: who, what, where, before and after", st == 200 and cards.startswith("P %d|Visitor " % p["proposed"]) and "|barrel|3|-4|0.5|0|1" in cards, cards)
+    card = int(cards.split("|")[0][2:]) if cards.startswith("P ") else 0
+    check("the owner's card: who, what, where, before and after", st == 200 and card > 0 and "|barrel|3|-4|0.506|0|1" in cards, cards)
     check("anyone else sees no cards", b_call("GET", "/api/playtest/realms/moonlit-marsh/proposals", key=visitor)[1] == "")
-    check("a visitor can't accept", b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/accept" % p["proposed"], {}, visitor)[0] == 403)
-    st, d = b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/accept" % p["proposed"], {}, owner)
-    check("ACCEPT places it: its owner sees it at once, visitors once it is published (0094)", st == 200 and d["state"] == "accepted"
-          and "placed barrel 3 -4 0.5" in b_call("GET", "/api/playtest/realms/moonlit-marsh", key=owner)[1]
+    check("a visitor can't accept", b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/accept" % card, {}, visitor)[0] == 403)
+    steps = sql("SELECT steps FROM verse.world_docs WHERE id = 'moonlit-marsh'")
+    st, d = b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/accept" % card, {}, owner)
+    check("ACCEPT places it as the owner's world edit, one step of the world's log: its owner sees it at once, visitors once it is published (0094)",
+          st == 200 and d["state"] == "accepted" and int(sql("SELECT steps FROM verse.world_docs WHERE id = 'moonlit-marsh'")) == int(steps) + 1
+          and "placed barrel 3 -4 0.506" in b_call("GET", "/api/playtest/realms/moonlit-marsh", key=owner)[1]
           and "placed barrel" not in b_call("GET", "/api/playtest/realms/moonlit-marsh")[1], d)
-    check("a card is decided once", b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/decline" % p["proposed"], {}, owner)[0] == 409)
-    st, p2 = b_call("POST", "/api/playtest/realms/moonlit-marsh/place", {"thing": "rock", "x": -2, "z": 1}, visitor)
-    st, d = b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/decline" % p2["proposed"], {}, owner)
+    check("a card is decided once", b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/decline" % card, {}, owner)[0] == 409
+          and b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/accept" % card, {}, owner)[0] == 409)
+    st, p2 = w_apply("moonlit-marsh", [w_spawn(kinds["rock"], -2, 1)], visitor)
+    card2 = int(b_call("GET", "/api/playtest/realms/moonlit-marsh/proposals", key=owner)[1].split("|")[0][2:])
+    st, d = b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/decline" % card2, {}, owner)
     check("DECLINE changes nothing", st == 200 and d["state"] == "declined" and "placed rock" not in b_call("GET", "/api/playtest/realms/moonlit-marsh")[1], d)
     check("an unknown card is a 404", b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/999999/accept", {}, owner)[0] == 404)
-    st, o = b_call("POST", "/api/playtest/realms/moonlit-marsh/place", {"thing": "lantern", "x": 0.5, "z": -3, "yaw": 0}, owner)
-    check("the owner's own thing goes in at once", st == 200 and o.get("placed") is True and "placed lantern 0.5 -3" in b_call("GET", "/api/playtest/realms/moonlit-marsh", key=owner)[1], o)
-    st, _ = b_call("POST", "/api/playtest/realms/moonlit-marsh/settings", {"tools": {"build": False}}, owner)
-    check("build switched off again stops visitors at once", b_call("POST", "/api/playtest/realms/moonlit-marsh/place", {"thing": "crate", "x": 1, "z": 1}, visitor)[0] == 403)
+    st, o = w_apply("moonlit-marsh", [w_spawn(kinds["lantern"], 0.5, -3)], owner)
+    check("the owner's own thing goes in at once", st == 200 and "placed lantern 0.5 -3" in b_call("GET", "/api/playtest/realms/moonlit-marsh", key=owner)[1], o)
+    st, _ = w_tools("moonlit-marsh", {"build": False}, owner)
+    check("build switched off again stops visitors at once", w_apply("moonlit-marsh", [w_spawn(kinds["crate"], 1, 1)], visitor)[0] == 403)
+    check("the routes that did these are gone (#13514)", all(b_call("POST", "/api/playtest/realms/moonlit-marsh/" + r, {}, owner)[0] == 404 for r in ("switch", "settings", "place")))
     check("a GET of the make route is a 405", b_call("GET", "/api/playtest/realms")[0] == 405)
 
     # the builder page reads lines, and sends back only which features are on

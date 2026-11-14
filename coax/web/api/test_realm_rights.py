@@ -10,6 +10,14 @@
 RETIRED_RIGHTS = {"everglade-5e"}
 
 
+# A site admin's NIP-98 signature on a world batch: the signed URL is the world's (/api/worlds/SLUG), not under P.
+def w_signed(slug, body):
+    f = tempfile.NamedTemporaryFile(delete=False)
+    f.write(body)
+    f.close()
+    return "Nostr " + subprocess.run([os.environ["SIGN"], "--key", os.environ["ADMIN_KEY"], "POST", API + "/api/worlds/" + slug, f.name], capture_output=True, text=True, check=True).stdout.strip()
+
+
 def realm_rights_checks():
     here = os.path.dirname(os.path.abspath(__file__))
     realms = json.load(open(os.path.join(here, "..", "..", "..", "apps", "openagents-web", "realms.json")))
@@ -39,27 +47,30 @@ def realm_rights_checks():
         + "{\"id\":\"fog\",\"label\":\"Fog\",\"says\":\"a low fog\"}]')")
     roles = [b_call("GET", "/api/playtest/realms/test-hand", key=k)[1].split("\n")[1] for k in (owner, friend, visitor)]
     check("the owner, an admin account and anyone else", roles == ["role owner", "role admin", "role visitor"], roles)
-    path = "/api/playtest/realms/test-hand/switch"
-    body = json.dumps({"row": "robots", "on": False}).encode()
-    st, raw, _ = call("POST", path, body, {"Content-Type": "application/json", "Authorization": nip98(os.environ["ADMIN_KEY"], "POST", "realms/test-hand/switch", body)})
-    check("a site admin switches a row of a hand-built realm", st == 200 and json.loads(raw)["on"] is False, (st, raw))
+    # its board and its tools are its world's tables, and a switch a cell edit of them (#13514)
+    rows = w_ids("test-hand", "rows", owner)
+    body = w_batch("test-hand", "apply", [w_cell("rows", rows["robots"], False)], owner).encode()
+    st, raw, _ = call("POST", "/api/worlds/test-hand", body, {"Content-Type": "application/json", "Authorization": w_signed("test-hand", body)})
+    check("a site admin switches a row of a hand-built realm", st == 200, (st, raw))
     st, spec = b_call("GET", "/api/playtest/realms/test-hand", key=visitor)
     check("everyone's spec has it off: rows, the tools its code honours, what may be placed; no cards for a visitor",
           "row robots 0 Robots on their rounds\n" in spec and "row fog 1 Fog\n" in spec and "tool build 1\ntool jump 1\n" in spec
           and "thing crate\nthing lantern\n" in spec and "waiting" not in spec and "owner 0" in spec, spec)
     for who, k in (("a visitor", visitor),):
         check(who + " may not switch, change settings, see or settle cards",
-              b_call("POST", path, {"row": "fog", "on": False}, k)[0] == 403
-              and b_call("POST", "/api/playtest/realms/test-hand/settings", {"tools": {"jump": False}}, k)[0] == 403
+              w_switch("test-hand", "fog", False, k)[0] == 403
+              and w_tools("test-hand", {"jump": False}, k)[0] == 403
               and b_call("GET", "/api/playtest/realms/test-hand/proposals", key=k)[1] == "")
-    check("the owner and an admin account switch rows", b_call("POST", path, {"row": "fog", "on": False}, owner)[0] == 200
-          and b_call("POST", path, {"row": "robots", "on": True}, friend)[0] == 200)
-    check("an unknown row is a 404", b_call("POST", path, {"row": "dragons", "on": True}, owner)[0] == 404)
-    st, got = b_call("POST", "/api/playtest/realms/test-hand/settings", {"tools": {"jump": False, "fly": True}}, friend)
-    check("an admin changes the settings, only the tools its code honours", st == 200 and got["tools"] == {"build": True, "jump": False}, got)
-    st, got = b_call("POST", "/api/playtest/realms/test-hand/place", {"thing": "crate", "x": 2, "z": -3}, visitor)
-    check("a visitor's thing waits as a card", st == 200 and "proposed" in got, got)
-    check("a thing the realm doesn't place is refused", b_call("POST", "/api/playtest/realms/test-hand/place", {"thing": "dragon", "x": 2, "z": 3}, visitor)[0] == 400)
+    check("the owner and an admin account switch rows", w_switch("test-hand", "fog", False, owner)[0] == 200
+          and w_switch("test-hand", "robots", True, friend)[0] == 200)
+    check("an unknown row is refused in words", w_switch("test-hand", "dragons", True, owner)[0] == 422)
+    st, got = w_tools("test-hand", {"jump": False, "fly": True}, friend)
+    check("an admin changes the settings, only the tools its code honours", st == 200 and "tool build 1\ntool jump 0\n" in b_call("GET", "/api/playtest/realms/test-hand", key=friend)[1]
+          and "tool fly" not in b_call("GET", "/api/playtest/realms/test-hand", key=friend)[1], got)
+    kinds = w_ids("test-hand", "kinds", owner)
+    st, got = w_apply("test-hand", [w_spawn(kinds["crate"], 2, -3)], visitor)
+    check("a visitor's thing waits as a card (#13515)", st == 202, (st, got))
+    check("a thing the realm doesn't place is refused", w_apply("test-hand", [w_spawn(9, 2, 3)], visitor)[0] == 422)
     st, cards = b_call("GET", "/api/playtest/realms/test-hand/proposals", key=friend)
     pid = cards.split("|")[0][2:] if isinstance(cards, str) and cards.startswith("P ") else "0"
     check("an admin sees the card", "|crate|2|-3|0|0|1" in cards, cards)
@@ -69,11 +80,12 @@ def realm_rights_checks():
           and b_call("POST", "/api/playtest/realms/test-hand/proposals/" + pid + "/decline", key=owner)[0] == 409)
     st, spec = b_call("GET", "/api/playtest/realms/test-hand", key=owner)
     check("accepted, it is placed; the owner is told nothing waits", "placed crate 2 -3 0\n" in spec and "waiting 0" in spec and "tool jump 0" in spec, spec)
-    check("the owner places at once", b_call("POST", "/api/playtest/realms/test-hand/place", {"thing": "lantern", "x": 1, "z": 1}, owner)[1].get("placed") is True)
-    b_call("POST", "/api/playtest/realms/test-hand/settings", {"tools": {"build": False}}, owner)
-    check("build off stops a visitor's card", b_call("POST", "/api/playtest/realms/test-hand/place", {"thing": "crate", "x": 2, "z": 3}, visitor)[0] == 403)
+    check("the owner places at once", w_apply("test-hand", [w_spawn(kinds["lantern"], 1, 1)], owner)[0] == 200
+          and "placed lantern 1 1 0" in b_call("GET", "/api/playtest/realms/test-hand", key=owner)[1])
+    w_tools("test-hand", {"build": False}, owner)
+    check("build off stops a visitor's card", w_apply("test-hand", [w_spawn(kinds["crate"], 2, 3)], visitor)[0] == 403)
     check("a realm nobody has is a 404", b_call("GET", "/api/playtest/realms/no-such-realm")[0] == 404
-          and b_call("POST", "/api/playtest/realms/no-such-realm/switch", {"row": "x", "on": True}, owner)[0] == 404)
+          and w_switch("no-such-realm", "x", True, owner)[0] in (401, 403, 404))
 
     # a hand-built realm's admin account publishes its world (Everglade's edits) as a site admin does
     edits = {"everglade": 1, "edits": "eg-edit 1\nt 1 4.50 -10.00 0.79 1.00\n"}
@@ -119,15 +131,15 @@ def realm_rights_checks():
     slug = made.get("slug", "")
     st, spec = b_call("GET", "/api/playtest/realms/" + slug, key=maker)
     check("a made realm's spec has its role and its board's rows", "role owner\n" in spec and "row water 1 Small pond\n" in spec and "row props:wagon 1 Wagons\n" in spec, spec)
-    check("a visitor can't switch a made realm's row", b_call("POST", "/api/playtest/realms/" + slug + "/switch", {"row": "rocks", "on": False}, visitor)[0] == 403)
-    check("its owner switches one off", b_call("POST", "/api/playtest/realms/" + slug + "/switch", {"row": "rocks", "on": False}, maker)[0] == 200)
+    check("a visitor can't switch a made realm's row", w_switch(slug, "rocks", False, visitor)[0] == 403)
+    check("its owner switches one off", w_switch(slug, "rocks", False, maker)[0] == 200)
     st, spec = b_call("GET", "/api/playtest/realms/" + slug, key=maker)
     check("off, it is gone from the realm and kept on the board", "feature rocks" not in spec and "row rocks 0 4 rocks\n" in spec and "role owner" in spec, spec)
     st, spec = b_call("GET", "/api/playtest/realms/" + slug)
     check("a visitor still gets the revision published, rocks and all (0094)", "feature rocks 4" in spec and "role visitor" in spec and "rev 1\n" in spec, spec)
     adm = {"Content-Type": "application/json"}
-    body = json.dumps({"row": "rocks", "on": True}).encode()
-    st, raw, _ = call("POST", "/api/playtest/realms/" + slug + "/switch", body, dict(adm, Authorization=nip98(os.environ["ADMIN_KEY"], "POST", "realms/" + slug + "/switch", body)))
+    body = w_batch(slug, "apply", [w_cell("rows", w_ids(slug, "rows", maker)["rocks"], True)], maker).encode()
+    st, raw, _ = call("POST", "/api/worlds/" + slug, body, dict(adm, Authorization=w_signed(slug, body)))
     st2, spec = b_call("GET", "/api/playtest/realms/" + slug, key=maker)
     check("a site admin switches it back on", st == 200 and "feature rocks 4" in spec, (st, raw, spec))
     builder_mode["text"] = json.dumps({"name": "ignored", "style": "painterly", "ground": "snow", "time": "night", "features": [

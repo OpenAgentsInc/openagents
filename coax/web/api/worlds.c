@@ -442,12 +442,16 @@ static bool batch_save(PGconn *db, const char *id, const world_row *w, int64_t w
 
 // A realm's world (#13422): the batch is the realm's switches and places, checked on its board by
 // metaverse/edit/realm-world.coax and carried out one by one by the realm's own SQL (verse.edit_switch,
-// verse.edit_settings, and 0190's verse.realm_spawn and verse.realm_despawn), whose rules and words are the ones the
-// realm's page meets; a refusal there takes the whole batch back. While it runs, verse.world_edit is on, so a made
+// verse.edit_settings), whose rules and words are the ones the realm's page meets, and its places written by
+// 0193's verse.realm_thing_add and verse.realm_thing_mark (their rules are realm-place-policy.coax's, asked in
+// wr_realm_batch); a refusal takes the whole batch back. While it runs, verse.world_edit is on, so a made
 // realm's own undo log takes no step: the world's is the one log (#13506). The row is locked; the transaction is open.
-static void realm_post(const request *q, PGconn *db, const char *id, world_row *w, int64_t what, const world_asker *a) {
-  int64_t step; size_t text_n; bool fenced;
-  char *text = batch_text(q, db, id, what, w, &step, &text_n, &fenced);
+// given: a batch the server made (the owner's yes to proposal `pid`, #13515), carried out as the caller's own and
+// answered {state: accepted}; NULL for the request's own batch.
+static void realm_post(const request *q, PGconn *db, const char *id, world_row *w, int64_t what, const world_asker *a, const char *given, const char *pid) {
+  int64_t step = -1; size_t text_n = 0; bool fenced = true;
+  char *text = given ? strdup(given) : batch_text(q, db, id, what, w, &step, &text_n, &fenced);
+  if (given && text) text_n = strlen(text);
   bool hidden = true; char role[16]; char *spec = NULL;
   char *did = malloc(WORLD_BATCH + 1), *inv = malloc(WORLD_BATCH + 1), *acts = malloc(WORLD_BATCH + 1), *scripts = malloc(WORLD_TABLES + 1);
   char *was = realm_scripts_of(w->dev_tables);
@@ -484,28 +488,38 @@ static void realm_post(const request *q, PGconn *db, const char *id, world_row *
       ? "SELECT (x->>'status')::int, coalesce(x->>'error', ''), '' FROM verse.edit_switch($1, jsonb_build_object('row', $2::text, 'on', $3::boolean), $4, $5::boolean) x"
       : "SELECT (x->>'status')::int, coalesce(x->>'error', ''), '' FROM verse.edit_settings($1, jsonb_build_object('tools', jsonb_build_object($2::text, $3::boolean)), $4, $5::boolean) x";
     int nv = 5;
-    if (place) {
-      const char *pv[8] = {id, !strcmp(verb, "place") ? "0" : num, name, xs, zs, ys, a->key, a->admin ? "true" : "false"};
-      memcpy(v, pv, sizeof pv); nv = 8;
-      sql = "SELECT (x->>'status')::int, coalesce(x->>'error', ''), coalesce(x->>'id', '') FROM verse.realm_spawn($1, $2::int, $3, $4::int, $5::int, $6::int, $7, $8::boolean) x";
-    } else if (gone) {
-      const char *dv[4] = {id, num, a->key, a->admin ? "true" : "false"};
-      memcpy(v, dv, sizeof dv); nv = 4;
-      sql = "SELECT (x->>'status')::int, coalesce(x->>'error', ''), coalesce(x->>'id', '') FROM verse.realm_despawn($1, $2::int, $3, $4::boolean) x";
+    // a place's rules were realm-place-policy.coax's, in rw_batch; SQL only writes the row (0193), and answers the
+    // thing's ID: 0 when the list has no such thing, which the batch, as taken, said it had
+    if (!strcmp(verb, "place")) {
+      const char *pv[6] = {id, name, xs, zs, ys, a->key};
+      memcpy(v, pv, sizeof pv); nv = 6;
+      sql = "SELECT CASE WHEN x > 0 THEN 200 ELSE 409 END, '', x::text FROM verse.realm_thing_add($1, $2, $3::int, $4::int, $5::int, $6) x";
+    } else if (place || gone) {
+      const char *dv[3] = {id, num, gone ? "true" : "false"};
+      memcpy(v, dv, sizeof dv); nv = 3;
+      sql = "SELECT CASE WHEN x > 0 THEN 200 ELSE 409 END, '', x::text FROM verse.realm_thing_mark($1, $2::int, $3::boolean) x";
     }
     PGresult *r = PQexecParams(db, sql, nv, NULL, v, NULL, NULL, 0);
     bool read = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
     int http = read ? atoi(PQgetvalue(r, 0, 0)) : 500;
     char said[200]; snprintf(said, sizeof said, "%s", read ? PQgetvalue(r, 0, 1) : "not saved");
-    bool numbered = !read || strcmp(verb, "place") || !strcmp(PQgetvalue(r, 0, 2), num);
+    bool numbered = !read || !(place || gone) || !strcmp(PQgetvalue(r, 0, 2), num);
     if (!read) api_log("worlds: %s", PQerrorMessage(db));
     PQclear(r);
-    if (http != 200) { rollback(db); refuse(q->fd, http, cs(said[0] ? said : "not saved"), edit); goto done; }
+    if (http != 200 && !(place || gone)) { rollback(db); refuse(q->fd, http, cs(said[0] ? said : "not saved"), edit); goto done; }
     if (!numbered) { rollback(db); refuse(q->fd, 409, cs("the realm changed since: read it again"), edit); goto done; }
     line = end + 1;
   }
+  if (pid) {
+    // the proposal the batch carries out is settled in the same transaction: accepted once
+    const char *pv[2] = {id, pid};
+    PGresult *r = PQexecParams(db, "SELECT verse.realm_proposal_settle($1, $2::bigint)", 2, NULL, pv, NULL, NULL, 0);
+    bool settled = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && atoi(PQgetvalue(r, 0, 0)) == 1;
+    PQclear(r);
+    if (!settled) { rollback(db); refuse(q->fd, 409, cs("that card is decided already"), -1); goto done; }
+  }
   char dry[4] = "";
-  if (api_query(q, "dry", dry, sizeof dry) && dry[0] == '1') {
+  if (!pid && api_query(q, "dry", dry, sizeof dry) && dry[0] == '1') {
     // a dry run: the realm's SQL carried it out in the transaction, which is taken back; nothing is saved
     rollback(db);
     long long none[4] = {0, 0, 0, 0};
@@ -516,10 +530,82 @@ static void realm_post(const request *q, PGconn *db, const char *id, world_row *
   const char *tv[2] = {id, scripts};
   bool kept = n[6] <= 0 || run(db, "UPDATE verse.world_docs SET dev_tables = $2 WHERE id = $1", 2, tv);
   if (!kept || !batch_save(db, id, w, what, step, "", did, (size_t)n[0], inv, n[4], &rev, &done_at, &steps)) { rollback(db); refuse(q->fd, 500, cs("not saved"), -1); goto done; }
+  if (pid) { coax_string ok = wr_card_accepted(); api_respond(q->fd, 200, "application/json", NULL, ok.data, (size_t)ok.count); goto done; }
   long long none[4] = {0, 0, 0, 0};
   answer_state(q, id, (int)wr_lane(cs("dev")), rev, none, w, rev, w->live_rev, done_at, steps, "", 0, did, (size_t)n[0]);
 done:
   free(text); free(spec); free(did); free(inv); free(acts); free(scripts); free(was);
+}
+
+// A visitor's batch on a realm's world (#13515): each new thing kept as a proposal the owner decides (verse.realm_proposals,
+// written by 0195's verse.realm_propose), never carried out; its rules are realm-place-policy.coax's (rw_propose). The row
+// is locked; the transaction is open. 202 in words when kept.
+static void realm_propose(const request *q, PGconn *db, const char *id, const world_asker *a, int64_t verdict) {
+  bool hidden = true; char role[16]; char *spec = NULL;
+  char *acts = malloc(WORLD_BATCH + 1); char why[240]; int64_t n[5] = {0, 0, 0, 0, -1};
+  if (!acts || !realm_facts(db, id, a, &hidden, role, &spec)) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); goto done; }
+  if (hidden || !spec) { rollback(db); refuse_verdict(q->fd, wr_read(false, 0, 0)); goto done; }
+  int64_t status = wr_realm_propose(cs(spec), csn(q->body, q->body_len), (coax_v_u8){(uint8_t *)acts, WORLD_BATCH}, (coax_v_u8){(uint8_t *)why, sizeof why}, (coax_v_s64){n, 5});
+  if (status != 0) {
+    rollback(db);
+    // a batch that is not all new things is no proposal: the world's own refusal of a visitor
+    if (n[2] > 0 && wr_place_status(n[3]) == 403 && !wr_proposal_words(n[3])) refuse_verdict(q->fd, verdict);
+    else refuse(q->fd, n[2] > 0 ? (int)wr_place_status(n[3]) : (int)wr_realm_status(status), n[2] > 0 ? csn(why, (size_t)n[2]) : wr_realm_words(status), (int)n[4]);
+    goto done;
+  }
+  acts[n[0]] = 0;
+  int edit = 0;
+  for (char *line = acts; *line; edit++) {
+    char *end = strchr(line, '\n'); if (!end) break;
+    *end = 0;
+    char verb[8] = "", name[64] = "", xs[12] = "", zs[12] = "", ys[12] = "";
+    if (sscanf(line, "%7s %63s %11s %11s %11s", verb, name, xs, zs, ys) != 5) { rollback(db); refuse(q->fd, 500, cs("not read"), edit); goto done; }
+    const char *v[6] = {id, name, xs, zs, ys, a->key};
+    PGresult *r = PQexecParams(db, "SELECT verse.realm_propose($1, $2, $3::int, $4::int, $5::int, $6)", 6, NULL, v, NULL, NULL, 0);
+    bool kept = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && atoll(PQgetvalue(r, 0, 0)) > 0;
+    bool read = PQresultStatus(r) == PGRES_TUPLES_OK;
+    if (!read) api_log("worlds: propose: %s", PQerrorMessage(db));
+    PQclear(r);
+    if (!kept) { rollback(db); refuse(q->fd, read ? 401 : 500, cs(read ? "a visitor proposes as a player: open the realm's page first" : "not saved"), edit); goto done; }
+    line = end + 1;
+  }
+  if (!run(db, "COMMIT", 0, NULL)) { rollback(db); refuse(q->fd, 500, cs("not saved"), -1); goto done; }
+  refuse(q->fd, 202, wr_proposed_words(), -1);
+done:
+  free(acts); free(spec);
+}
+
+// The owner's yes to a visitor's proposal `pid` on realm `slug` (POST /api/playtest/realms/SLUG/proposals/ID/accept,
+// realms.c): the proposal's thing placed as the owner's own world edit, one step of the world's undo log, with the
+// proposal settled in the same transaction (#13515). False when the realm has no world (the route answers 404).
+bool world_realm_accept(const request *q, PGconn *db, const char *slug, const char *pid) {
+  world_asker a;
+  if (!who_asks(q, db, &a)) { refuse(q->fd, 500, cs("not read"), -1); return true; }
+  PQclear(PQexec(db, "BEGIN"));
+  world_row w;
+  if (!row_read(db, slug, true, &w)) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); return true; }
+  bool hidden = false; char role[16] = ""; char *spec = NULL;
+  if (!w.exists || !wr_at_once(cs(w.kind)) || !realm_facts(db, slug, &a, &hidden, role, &spec) || hidden || !spec) { rollback(db); row_free(&w); free(spec); return false; }
+  bool shown = kind_known(w.kind) && wr_authored(cs(slug), cs(w.kind), wr_apply());
+  int64_t verdict = wr_write(auth_same_site(q), wr_known(cs(w.kind), a.signed_in, a.player), wr_may(cs(slug), cs(w.kind), a.admin, cs(role)), shown, true, wr_apply(), w.dev_rev, w.dev_rev, w.done, w.steps);
+  char *text = NULL;
+  if (verdict != 0) { rollback(db); refuse_verdict(q->fd, verdict); goto done; }
+  {
+    const char *v[2] = {slug, pid};
+    PGresult *r = PQexecParams(db, "SELECT state, change->>'thing', change->>'x', change->>'z', coalesce(change->>'yaw', '0') FROM verse.realm_proposals WHERE slug = $1 AND id = $2::bigint FOR UPDATE", 2, NULL, v, NULL, NULL, 0);
+    bool read = PQresultStatus(r) == PGRES_TUPLES_OK;
+    // no such card, or one decided already: the card route answers it in its own words (verse.edit_decide)
+    if (!read || PQntuples(r) != 1 || strcmp(PQgetvalue(r, 0, 0), "waiting")) { PQclear(r); rollback(db); free(spec); row_free(&w); return false; }
+    text = malloc(WORLD_BATCH + 1);
+    coax_string made = text ? wr_realm_accept(cs(spec), w.dev_rev, cs(PQgetvalue(r, 0, 1)), cs(PQgetvalue(r, 0, 2)), cs(PQgetvalue(r, 0, 3)), cs(PQgetvalue(r, 0, 4)), (coax_v_u8){(uint8_t *)text, WORLD_BATCH}) : (coax_string){"", 0};
+    PQclear(r);
+    if (made.count == 0) { rollback(db); refuse(q->fd, 422, cs("the realm no longer places that kind of thing"), -1); goto done; }
+    text[made.count] = 0;
+  }
+  realm_post(q, db, slug, &w, wr_apply(), &a, text, pid);
+done:
+  free(text); free(spec); row_free(&w);
+  return true;
 }
 
 static void world_post(const request *q, PGconn *db, const char *id) {
@@ -537,10 +623,12 @@ static void world_post(const request *q, PGconn *db, const char *id) {
   free(spec);
   bool shown = w.exists && kind_known(w.kind) && !hidden && wr_authored(cs(id), cs(w.kind), what);
   int64_t verdict = wr_write(auth_same_site(q), wr_known(cs(w.kind), a.signed_in, a.player), wr_may(cs(id), cs(w.kind), a.admin, cs(role)), shown, batch_ok, what, head[0], w.dev_rev, w.done, w.steps);
+  // a visitor's batch of new things on a realm's world is kept for the owner, where the owner lets visitors build (#13515)
+  if (verdict != 0 && shown && batch_ok && wr_proposes(verdict, cs(w.kind), what)) { realm_propose(q, db, id, &a, verdict); row_free(&w); return; }
   if (verdict != 0) { rollback(db); refuse_verdict(q->fd, verdict); row_free(&w); return; }
   if (wr_at_once(cs(w.kind))) {
     if (wr_publishes(what)) { rollback(db); refuse(q->fd, 422, wr_at_once_words(), -1); }
-    else realm_post(q, db, id, &w, what, &a);
+    else realm_post(q, db, id, &w, what, &a, NULL, NULL);
     row_free(&w);
     return;
   }

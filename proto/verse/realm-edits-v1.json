@@ -1,5 +1,5 @@
 {
- "about": "A realm's edits (edits.proto, GitHub #13250): the bodies that change a realm through coax/web/api/realms.c, as the realm edit layer and My Realm send them (no revision) and as the CLI sends them under .../edit-v1/ (the revision first), with the status and body the server answers today. \"rev\" names the realm whose revision the body's \"rev\":41 stands for: the check reads it from the realm's spec, and the revision in the answer is the run's (\"vary\"). \"bodies\" are requests the planner's model answers (an ask, a revision, an ask marked done): only their bodies are held here. metaverse-engine/editor/change.coax writes every body; metaverse-engine/editor/change-goldens.coax holds them and the answers' keys; coax/web/api/tests/realm_record_checks.coax makes the calls.",
+ "about": "A realm's edits (edits.proto, GitHub #13250): the bodies that change a realm through coax/web/api/realms.c (a row switched, the visitors' tools and a thing placed are world edits since #13514, /api/worlds/SLUG: their routes and steps are gone), as the realm edit layer and My Realm send them (no revision) and as the CLI sends them under .../edit-v1/ (the revision first), with the status and body the server answers today. \"rev\" names the realm whose revision the body's \"rev\":41 stands for: the check reads it from the realm's spec, and the revision in the answer is the run's (\"vary\"). \"bodies\" are requests the planner's model answers (an ask, a revision, an ask marked done): only their bodies are held here. metaverse-engine/editor/change.coax writes every body; metaverse-engine/editor/change-goldens.coax holds them and the answers' keys; coax/web/api/tests/realm_record_checks.coax makes the calls.",
  "schema": "proto/openagents/verse/doc/v1alpha1/edits.proto",
  "realm": {
   "slug": "edit-fixture",
@@ -9,39 +9,6 @@
   "clean": "CREATE TEMP TABLE ef AS SELECT m.slug FROM verse.made_realms m JOIN verse.worlds w ON w.id = m.world WHERE w.owner_player = 'p-edit-fixture'; DELETE FROM verse.realm_publications WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.realm_revisions WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.realm_proposals WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.realm_lore WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.realm_quests WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.made_realms WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.worlds WHERE owner_player = 'p-edit-fixture'; DELETE FROM verse.players WHERE id = 'p-edit-fixture';"
  },
  "steps": [
-  {
-   "name": "the page sets the tools",
-   "method": "POST",
-   "path": "/edit-fixture/settings",
-   "as": "owner",
-   "body": "{\"tools\":{\"build\":true,\"fly\":false,\"jump\":true,\"map\":false,\"talk\":false,\"voice\":false}}",
-   "status": 200,
-   "reply": "{\"tools\": {\"fly\": false, \"map\": false, \"jump\": true, \"talk\": false, \"build\": true, \"voice\": false}}",
-   "message": "SettingsReply",
-   "request": "SettingsRequest"
-  },
-  {
-   "name": "the page places a barrel",
-   "method": "POST",
-   "path": "/edit-fixture/place",
-   "as": "owner",
-   "body": "{\"thing\":\"barrel\",\"x\":0.00,\"z\":3.80,\"yaw\":0.00}",
-   "status": 200,
-   "reply": "{\"placed\": true}",
-   "message": "PlaceReply",
-   "request": "PlaceRequest"
-  },
-  {
-   "name": "a thing the realm has not",
-   "method": "POST",
-   "path": "/edit-fixture/place",
-   "as": "owner",
-   "body": "{\"thing\":\"dragon\",\"x\":0.00,\"z\":3.80,\"yaw\":0.00}",
-   "status": 400,
-   "reply": "{\"error\": \"not a thing here\"}",
-   "message": "RouteError",
-   "request": "PlaceRequest"
-  },
   {
    "name": "lore for a name that is no key",
    "method": "POST",
@@ -109,28 +76,6 @@
    "request": "DescribeRequest"
   },
   {
-   "name": "a row the board has not",
-   "method": "POST",
-   "path": "/edit-fixture/switch",
-   "as": "owner",
-   "body": "{\"row\":\"night\",\"on\":true}",
-   "status": 404,
-   "reply": "{\"error\": \"no such row\"}",
-   "message": "RouteError",
-   "request": "SwitchRequest"
-  },
-  {
-   "name": "a stranger changes nothing",
-   "method": "POST",
-   "path": "/edit-fixture/settings",
-   "as": "stranger",
-   "body": "{\"tools\":{\"build\":true}}",
-   "status": 404,
-   "reply": "{\"error\":\"no such world\"}",
-   "message": "ErrorReply",
-   "request": "SettingsRequest"
-  },
-  {
    "name": "a proposal that is not there",
    "method": "POST",
    "path": "/edit-fixture/proposals/999/accept",
@@ -169,36 +114,6 @@
    "status": 404,
    "reply": "{\"error\":\"unknown edit\"}",
    "message": "ErrorReply",
-   "rev": "edit-fixture",
-   "vary": [
-    "rev"
-   ]
-  },
-  {
-   "name": "the CLI sets the tools from the revision read",
-   "method": "POST",
-   "path": "/edit-fixture/edit-v1/settings",
-   "as": "owner",
-   "body": "{\"rev\":41,\"tools\":{\"build\":false,\"fly\":true,\"jump\":true,\"map\":true,\"talk\":false,\"voice\":false}}",
-   "status": 200,
-   "reply": "{\"rev\": 4, \"tools\": {\"fly\": true, \"map\": true, \"jump\": true, \"talk\": false, \"build\": false, \"voice\": false}}",
-   "message": "SettingsReply",
-   "request": "SettingsRequest",
-   "rev": "edit-fixture",
-   "vary": [
-    "rev"
-   ]
-  },
-  {
-   "name": "the CLI places a crate",
-   "method": "POST",
-   "path": "/edit-fixture/edit-v1/place",
-   "as": "owner",
-   "body": "{\"rev\":41,\"thing\":\"crate\",\"x\":-2.25,\"z\":1.00,\"yaw\":-90}",
-   "status": 200,
-   "reply": "{\"rev\": 5, \"placed\": true}",
-   "message": "PlaceReply",
-   "request": "PlaceRequest",
    "rev": "edit-fixture",
    "vary": [
     "rev"
@@ -288,32 +203,6 @@
    "reply": "slug edit-glade\npath /worlds/edit-glade\npage 0\n",
    "message": "MadeLines",
    "request": "ForkRequest"
-  },
-  {
-   "name": "the page switches a rule on",
-   "method": "POST",
-   "path": "/edit-glade/switch",
-   "as": "owner",
-   "body": "{\"row\":\"night\",\"on\":true}",
-   "status": 200,
-   "reply": "{\"on\": true, \"row\": \"night\"}",
-   "message": "SwitchReply",
-   "request": "SwitchRequest"
-  },
-  {
-   "name": "the CLI switches it off from the revision read",
-   "method": "POST",
-   "path": "/edit-glade/edit-v1/switch",
-   "as": "owner",
-   "body": "{\"rev\":41,\"row\":\"night\",\"on\":false}",
-   "status": 200,
-   "reply": "{\"on\": false, \"rev\": 3, \"row\": \"night\"}",
-   "message": "SwitchReply",
-   "request": "SwitchRequest",
-   "rev": "edit-glade",
-   "vary": [
-    "rev"
-   ]
   },
   {
    "name": "the CLI deletes a row that is not there",

@@ -17,8 +17,8 @@
 //   POST /api/playtest/world/everglade/reset  the designed city back: {doc: null, version: 0}
 //   GET  /api/playtest/realms/everglade    the realm's edit spec (verse.edit_spec): its role, tools,
 //                                          things and the board's rows (migrations 0050_realm_edit.sql)
-//   POST /api/playtest/realms/everglade/switch    {row, on}: a board row on or off, an admin's
-//   POST /api/playtest/realms/everglade/settings  {tools}: the tools visitors get, an admin's
+//                                          (a row switched and the visitors' tools are edits of a realm's world,
+//                                          /api/worlds/SLUG, since #13514; Everglade's board has none here, #13477)
 //   GET  /api/playtest/realms/everglade/proposals, /asks, /panes   none waiting (empty)
 //   GET  /api/auth/viewer                  "A|1": the local player is the realm's admin, so EDIT and
 //                                          the realm editor work as production's do for an admin (on by default
@@ -50,8 +50,6 @@ RmDev :: struct {
   named_pid: [DEV_NAMED][TICKET_PID] u8; named_pid_n: [DEV_NAMED] int; named: [DEV_NAMED][24] u8; named_n: [DEV_NAMED] int; named_count: int;
   admin: bool;               // the viewer is the realm's admin (rm_dev_start: on unless OA_ROOM_DEV_ADMIN=0)
   minted: int;               // players made (each key's number)
-  row_off: [4] bool;         // the board's rows switched off (DEV_ROWS), in memory for the room's life
-  tool_off: [2] bool;        // the tools visitors don't get (DEV_TOOLS)
   out: [DEV_OUT] u8;         // the answer: "STATUS\n" then the JSON body
   ck: [DEV_CK] DevCheckpoint; ck_n: int; ck_dirty: bool;   // the checkpoint store (#13057)
   store: [DEV_STORE] u8;     // the store as the host keeps it on disk (rm_dev_store)
@@ -473,34 +471,16 @@ dv_realm :: (v: [] RmServer, req: string) -> int {
     b: [DEV_OUT] u8;
     n := dv_put(b[..], 0, "realm everglade\nrole "); n = dv_put(b[..], n, ifx admin then "admin" else "visitor");
     n = dv_put(b[..], n, ifx admin then "\nowner 1\n" else "\nowner 0\n");
-    for t: 0..<DEV_TOOLS.count { n = dv_put(b[..], n, "tool "); n = dv_put(b[..], n, DEV_TOOLS[t]); n = dv_put(b[..], n, ifx v[0].dev.tool_off[t] then " 0\n" else " 1\n"); }
+    for t: 0..<DEV_TOOLS.count { n = dv_put(b[..], n, "tool "); n = dv_put(b[..], n, DEV_TOOLS[t]); n = dv_put(b[..], n, " 1\n"); }
     for t: 0..<DEV_THINGS.count { n = dv_put(b[..], n, "thing "); n = dv_put(b[..], n, DEV_THINGS[t]); n = dv_put(b[..], n, "\n"); }
     for r: 0..<DEV_ROWS.count {
-      n = dv_put(b[..], n, "row "); n = dv_put(b[..], n, DEV_ROWS[r]); n = dv_put(b[..], n, ifx v[0].dev.row_off[r] then " 0 " else " 1 ");
+      n = dv_put(b[..], n, "row "); n = dv_put(b[..], n, DEV_ROWS[r]); n = dv_put(b[..], n, " 1 ");
       n = dv_put(b[..], n, DEV_ROW_LABELS[r]); n = dv_put(b[..], n, "\n");
     }
     if admin { n = dv_put(b[..], n, "waiting 0\n"); }
     return dv_answer(v, "200", cast(string) b[0..<n]);
   }
   if req[0] == 'G' && (tail == "/proposals" || tail == "/asks" || tail == "/panes") { return dv_answer(v, "200", ""); }
-  if req[0] == 'P' && (tail == "/switch" || tail == "/settings") {
-    if !admin { return dv_refuse(v, "403", "only its owner and admins"); }
-    body := dv_body(req);
-    if tail == "/switch" {
-      key := dv_json_text(body, "row"); on := dv_json_flag(body, "on");
-      if key.count == 0 || on < 0 { return dv_refuse(v, "404", "a row and on"); }
-      for r: 0..<DEV_ROWS.count {
-        if DEV_ROWS[r] != key { continue; }
-        v[0].dev.row_off[r] = on == 0;
-        b: [96] u8;
-        n := pan_row(b[..], key, on == 1);
-        return dv_wrote(v, "200", b[..], n);
-      }
-      return dv_refuse(v, "404", "no such row");
-    }
-    for t: 0..<DEV_TOOLS.count { f := dv_json_flag(body, DEV_TOOLS[t]); if f >= 0 { v[0].dev.tool_off[t] = f == 0; } }
-    return dv_ok(v);
-  }
   return dv_refuse(v, "404", "not in the local API");
 }
 // A request's body: after its blank line.
@@ -538,21 +518,16 @@ dv_json_at :: (t: string, name: string) -> int {
   return -1;
 }
 
-#test "dev: the realm's edit spec says the local admin's role, tools, things and rows; a switch and the settings stick; a visitor may not" {
+#test "dev: the realm's edit spec says the local admin's role, tools, things and rows; a switch is no route here; a visitor's spec says so" {
   v: [1] RmServer;
   rm_init(v[..]);
   rm_dev_start(v[..]);
   spec := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/playtest/realms/everglade HTTP/1.1\r\n\r\n")];
   #assert spec == "200\nrealm everglade\nrole admin\nowner 1\ntool map 1\ntool build 1\nthing crate\nthing barrel\nthing bench\nthing fence\nthing stall\nrow flock 1 The flock that follows you\nrow floats 1 Ducks and lily pads\nrow undergrowth 1 Bushes, ferns and rocks\nrow daycycle 1 Day turning to night\nwaiting 0\n";
-  sw := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/realms/everglade/switch HTTP/1.1\r\nContent-Length: 30\r\n\r\n{\"row\":\"daycycle\",\"on\":false}")];
-  #assert sw == "200\n{\"row\":\"daycycle\",\"on\":false}" && v[0].dev.row_off[3];
-  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/realms/everglade/switch HTTP/1.1\r\n\r\n{\"row\":\"moon\",\"on\":true}")][0..<4] == "404\n";
-  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/realms/everglade/settings HTTP/1.1\r\n\r\n{\"tools\":{\"map\":true,\"build\":false}}")][0..<4] == "200\n";
-  spec2 := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/playtest/realms/everglade?x=1 HTTP/1.1\r\n\r\n")];
-  #assert spec2 == "200\nrealm everglade\nrole admin\nowner 1\ntool map 1\ntool build 0\nthing crate\nthing barrel\nthing bench\nthing fence\nthing stall\nrow flock 1 The flock that follows you\nrow floats 1 Ducks and lily pads\nrow undergrowth 1 Bushes, ferns and rocks\nrow daycycle 0 Day turning to night\nwaiting 0\n";
+  // a row switched is a world edit (#13514), which the stand-in does not serve
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/realms/everglade/switch HTTP/1.1\r\nContent-Length: 30\r\n\r\n{\"row\":\"daycycle\",\"on\":false}")][0..<4] == "404\n";
   #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/playtest/realms/everglade/proposals HTTP/1.1\r\n\r\n")] == "200\n";
   v[0].dev.admin = false;
-  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/realms/everglade/switch HTTP/1.1\r\n\r\n{\"row\":\"flock\",\"on\":false}")][0..<4] == "403\n";
   vs := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/playtest/realms/everglade HTTP/1.1\r\n\r\n")];
   #assert vs[0..<33] == "200\nrealm everglade\nrole visitor\n";
 }

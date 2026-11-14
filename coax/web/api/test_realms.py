@@ -37,18 +37,22 @@ def guest_claim_checks():
     other = fresh.get("player", {}).get("key", "")
     check("a fresh browser logging in to the same account gets its own key", st == 200 and other != guest and fresh["player"]["account"] == acct, fresh)
     check("the account owns the realm there too", "owner 1" in b_call("GET", "/api/playtest/realms/" + slug, key=other)[1])
-    st, s = b_call("POST", "/api/playtest/realms/" + slug + "/settings", {"tools": {"build": True}}, other)
-    check("the account changes its settings", st == 200 and s["tools"]["build"] is True, s)
+    # the tools and a visitor's build are edits of the realm's world (#13514, #13515)
+    st, s = w_tools(slug, {"build": True}, other)
+    check("the account changes its settings", st == 200 and "tool build 1" in b_call("GET", "/api/playtest/realms/" + slug, key=other)[1], s)
     visitor = b_player()
-    check("a visitor still may not", b_call("POST", "/api/playtest/realms/" + slug + "/settings", {"tools": {"build": False}}, visitor)[0] == 403)
-    st, p = b_call("POST", "/api/playtest/realms/" + slug + "/place", {"thing": "barrel", "x": 2, "z": 1}, visitor)
-    check("a visitor's build waits as a card", st == 200 and isinstance(p.get("proposed"), int), p)
+    check("a visitor still may not", w_tools(slug, {"build": False}, visitor)[0] == 403)
+    kinds = w_ids(slug, "kinds", other)
+    st, p = w_apply(slug, [w_spawn(kinds["barrel"], 2, 1)], visitor)
+    check("a visitor's build waits as a card", st == 202, p)
     st, cards = b_call("GET", "/api/playtest/realms/" + slug + "/proposals", key=other)
-    check("the account sees the card", isinstance(cards, str) and cards.startswith("P %s|" % p.get("proposed")), cards)
-    st, d = b_call("POST", "/api/playtest/realms/%s/proposals/%s/accept" % (slug, p.get("proposed")), {}, other)
+    pid = cards.split("|")[0][2:] if isinstance(cards, str) and cards.startswith("P ") else "0"
+    check("the account sees the card", isinstance(cards, str) and "|barrel|2|1|" in cards, cards)
+    st, d = b_call("POST", "/api/playtest/realms/%s/proposals/%s/accept" % (slug, pid), {}, other)
     check("the account accepts it", st == 200 and d["state"] == "accepted" and "placed barrel 2 1" in b_call("GET", "/api/playtest/realms/" + slug, key=other)[1], d)
-    st, p2 = b_call("POST", "/api/playtest/realms/" + slug + "/place", {"thing": "crate", "x": -2, "z": 1}, visitor)
-    st, d = b_call("POST", "/api/playtest/realms/%s/proposals/%s/decline" % (slug, p2.get("proposed")), {}, guest)
+    w_apply(slug, [w_spawn(kinds["crate"], -2, 1)], visitor)
+    pid2 = b_call("GET", "/api/playtest/realms/" + slug + "/proposals", key=other)[1].split("|")[0][2:]
+    st, d = b_call("POST", "/api/playtest/realms/%s/proposals/%s/decline" % (slug, pid2), {}, guest)
     check("and declines one from the first browser", st == 200 and d["state"] == "declined", d)
 
     # someone else logging in on a browser that never made it gains nothing
@@ -56,7 +60,7 @@ def guest_claim_checks():
     subprocess.run([os.environ["SIGN"], "--new", stranger_key], capture_output=True, text=True, check=True)
     st, s2 = log_in(stranger_key, b_player())
     check("another account doesn't own it", "owner 0" in b_call("GET", "/api/playtest/realms/" + slug, key=s2["player"]["key"])[1]
-          and b_call("POST", "/api/playtest/realms/" + slug + "/settings", {"tools": {"fly": True}}, s2["player"]["key"])[0] == 403)
+          and w_tools(slug, {"fly": True}, s2["player"]["key"])[0] == 403)
 
 
 guest_claim_checks()
@@ -101,7 +105,7 @@ def talk_checks():
 
     visitor = b_player()
     sql("delete from verse.npc_day")   # the day's cap (five in test.sh) is test_npc.py's to spend
-    b_call("POST", "/api/playtest/realms/" + slug + "/settings", {"tools": {"talk": True}}, owner)
+    w_tools(slug, {"talk": True}, owner)
     st, a = ask(visitor)
     check("with TALK on a visitor's question is answered in character", st == 200 and a.get("text"), a)
     check("and kept in the realm's name", sql("select world||'|'||npc from verse.npc_log order by id desc limit 1") == "Talking Hollow|Old Mott")
@@ -111,7 +115,7 @@ def talk_checks():
           and "You live in Talking Hollow, a world on the Verse" in system and " Fern, the ferry, lives here too." in system
           and "night" not in system and "night" in talk_seen[-1]["contents"][-1]["parts"][0]["text"], system)
     check("a character the realm doesn't have is a 404", ask(visitor, npc="nobody")[0] == 404)
-    b_call("POST", "/api/playtest/realms/" + slug + "/settings", {"tools": {"talk": False}}, owner)
+    w_tools(slug, {"talk": False}, owner)
     used = sql("select n from verse.npc_day where day = current_date")
     st, a = ask(visitor)
     check("with TALK off a visitor gets no answer", st == 403, a)

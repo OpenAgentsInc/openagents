@@ -606,6 +606,6 @@ wc_realm_places :: (t: [] Ap, w: [] Wc) {
   st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 7, "apply", "{\"op\":\"despawn\",\"id\":1}");
   ap_check(t, "realm places: a thing gone already is refused in words, at its edit", st == 422 && wc_refusal(t, w, edit[..]) == "that thing is gone already" && edit[0] == 0, ap_body(t));
   st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 7, "apply", "{\"op\":\"spawn\",\"id\":0,\"kind\":1,\"x\":40001,\"y\":0,\"z\":0,\"yaw\":0,\"scale\":100}");
-  ap_check(t, "realm places: one too far is the realm's SQL's refusal, in words", st == 422 && wc_refusal(t, w, edit[..]) == "a thing stands within 400 m of the middle" && ap_sql(t, "SELECT jsonb_array_length(placed) FROM verse.realm_edit WHERE slug = 'the-grid'", q[..]) == "2", ap_body(t));
+  ap_check(t, "realm places: one too far is the place rules' refusal (realm-place-policy.coax), in words", st == 422 && wc_refusal(t, w, edit[..]) == "a thing stands within 400 m of the middle" && ap_sql(t, "SELECT jsonb_array_length(placed) FROM verse.realm_edit WHERE slug = 'the-grid'", q[..]) == "2", ap_body(t));
   ap_do(t, "UPDATE verse.realm_rights SET things = ARRAY[]::text[] WHERE slug = 'the-grid'; UPDATE verse.realm_edit SET placed = '[]' WHERE slug = 'the-grid';");
 }

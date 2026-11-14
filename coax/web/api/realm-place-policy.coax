@@ -1,0 +1,196 @@
+// A realm's placed things (COAX.md "Where API rules go", #13514): whether a `spawn` or a `despawn` of a
+// realm's world may stand. These were verse.realm_spawn's and verse.realm_despawn's rules in plpgsql
+// (migrations/0190_realm_places.sql); migration 0193 leaves SQL only the rows' writes (verse.realm_thing_add,
+// verse.realm_thing_mark). metaverse/edit/realm-world.coax reads the facts from the realm's spec and asks
+// here for each edit of a batch, in order, so a batch's own earlier edits count; worlds.c carries out what
+// is taken, and a refusal takes the whole batch back. Placing on a realm's page goes through the same
+// world edits (#13514), so these are the only rules for a placed thing.
+//
+//   only its owner and admins   the spec's role (verse.edit_role's: a site admin is an admin of every realm)
+//   a kind it places            a kind is the thing's name's place in the realm's thing list, from 1; a
+//                               thing brought back keeps its own kind, which the list must still have
+//   its own size                a realm places a thing at its own size: scale 100
+//   within reach                a made realm's things stand within 40 m of the middle, a hand-built
+//                               realm's within 400 m (whole centimetres either way, the edge in)
+//   200 things                  the list holds 200 at most, gone ones too, since the list only grows
+//   the 64-change limit         a made realm keeps at most 64 things moved, turned, resized or taken away
+//                               (0109's rule): a despawn of a thing not yet among them makes one more
+//   one at a time               a thing brought back must be gone; one taken away must stand
+// A visitor's spawn is no place but a proposal (#13515): the world keeps it for the owner, who accepts it as a world
+// edit of their own. It is taken only where the owner lets visitors build (the realm's `build` tool on), of a kind
+// the realm places at its own size and within its reach, while fewer than 50 wait.
+//   coax/bin/coax test coax/web/api/realm-place-policy.coax --library
+//   coax/bin/coax mutate coax/web/api/realm-place-policy.coax
+#authority;
+
+RPP_OK :: 0;
+RPP_NOT_YOURS :: 1; RPP_NO_KIND :: 2; RPP_SIZE :: 3; RPP_FAR :: 4; RPP_FULL :: 5; RPP_NO_THING :: 6;
+RPP_OTHER_KIND :: 7; RPP_STANDS :: 8; RPP_GONE :: 9; RPP_OLD_KIND :: 10; RPP_CHANGES :: 11;
+RPP_NO_BUILD :: 12; RPP_ENOUGH :: 13;
+RPP_WAITING_MOST :: 50;       // proposals that wait for the owner at once
+RPP_MOST :: 200;              // things a realm's list holds
+RPP_MADE_REACH :: 4000;       // centimetres either way a made realm's thing may stand
+RPP_HAND_REACH :: 40000;      // and a hand-built realm's
+RPP_CHANGED_MOST :: 64;       // things a made realm keeps moved, turned, resized or taken away
+
+// Whether the asker may place in the realm at all: its owner or an admin.
+rpp_may :: (role: string) -> bool #effects(all) { return role == "owner" || role == "admin"; }
+// How far either way a thing may stand.
+rpp_reach :: (made: bool) -> int #effects(all) { return ifx made then RPP_MADE_REACH else RPP_HAND_REACH; }
+
+// A new thing (spawn with ID 0): of kind `kind` (from 1) among `kinds` the realm places, at scale percent,
+// at (x, z) centimetres, onto a list of `placed` things.
+rpp_spawn :: (role: string, made: bool, kinds: int, kind: int, scale: int, x: int, z: int, placed: int) -> int #effects(all) {
+  if !rpp_may(role) { return RPP_NOT_YOURS; }
+  if kind < 1 || kind > kinds { return RPP_NO_KIND; }
+  if scale != 100 { return RPP_SIZE; }
+  r := rpp_reach(made);
+  if x < -r || x > r || z < -r || z > r { return RPP_FAR; }
+  if placed >= RPP_MOST { return RPP_FULL; }
+  return RPP_OK;
+}
+// Thing `id` (from 1) brought back (spawn with ID N) as kind `kind`: the list has `placed` things; the
+// thing's own kind is `own` (0: one the realm no longer places) and it is gone or stands.
+rpp_back :: (role: string, kinds: int, kind: int, id: int, placed: int, own: int, gone: bool) -> int #effects(all) {
+  if !rpp_may(role) { return RPP_NOT_YOURS; }
+  if kind < 1 || kind > kinds { return RPP_NO_KIND; }
+  if id < 1 || id > placed { return RPP_NO_THING; }
+  if own != kind { return RPP_OTHER_KIND; }
+  if !gone { return RPP_STANDS; }
+  return RPP_OK;
+}
+// Thing `id` taken away (despawn): the list has `placed` things, the thing's kind is `own` (0: one the
+// realm no longer places) and it is gone or stands. On a made realm, `changed` things are moved, turned,
+// resized or taken away already, and `counted` says whether this thing is among them.
+rpp_despawn :: (role: string, made: bool, id: int, placed: int, own: int, gone: bool, changed: int, counted: bool) -> int #effects(all) {
+  if !rpp_may(role) { return RPP_NOT_YOURS; }
+  if id < 1 || id > placed { return RPP_NO_THING; }
+  if gone { return RPP_GONE; }
+  if own == 0 { return RPP_OLD_KIND; }
+  if made && !counted && changed >= RPP_CHANGED_MOST { return RPP_CHANGES; }
+  return RPP_OK;
+}
+// A visitor's new thing kept as a proposal: the realm's `build` tool on, `waiting` proposals already, and the
+// spawn's kind, size and place as rpp_spawn takes them. The realm's owner and admins place instead.
+rpp_propose :: (role: string, made: bool, build_on: bool, waiting: int, kinds: int, kind: int, scale: int, x: int, z: int) -> int #effects(all) {
+  if role != "visitor" { return RPP_NOT_YOURS; }
+  if !build_on { return RPP_NO_BUILD; }
+  if kind < 1 || kind > kinds { return RPP_NO_KIND; }
+  if scale != 100 { return RPP_SIZE; }
+  r := rpp_reach(made);
+  if x < -r || x > r || z < -r || z > r { return RPP_FAR; }
+  if waiting >= RPP_WAITING_MOST { return RPP_ENOUGH; }
+  return RPP_OK;
+}
+// The HTTP status of a verdict: 200 for none; 403 for one the asker may not make; 404 for no such thing; 409 for the
+// realm full or a thing already so; 429 for proposals enough; 422 for the rest.
+rpp_status :: (verdict: int) -> int #effects(all) {
+  if verdict == RPP_OK { return 200; }
+  if verdict == RPP_NOT_YOURS || verdict == RPP_NO_BUILD { return 403; }
+  if verdict == RPP_NO_THING { return 404; }
+  if verdict == RPP_FULL || verdict == RPP_STANDS || verdict == RPP_GONE || verdict == RPP_CHANGES { return 409; }
+  if verdict == RPP_ENOUGH { return 429; }
+  return 422;
+}
+// A refusal in words, as the editor shows it at the edit ("" for none).
+rpp_words :: (verdict: int, made: bool) -> string #effects(all) {
+  if verdict == RPP_NOT_YOURS { return "only its owner and admins"; }
+  if verdict == RPP_NO_KIND { return "no such kind of thing here"; }
+  if verdict == RPP_SIZE { return "a realm places a thing at its own size"; }
+  if verdict == RPP_FAR { return ifx made then "a thing stands within 40 m of the middle" else "a thing stands within 400 m of the middle"; }
+  if verdict == RPP_FULL { return "the realm is full: 200 things"; }
+  if verdict == RPP_NO_THING { return "no such thing"; }
+  if verdict == RPP_OTHER_KIND { return "that thing is of another kind"; }
+  if verdict == RPP_STANDS { return "that thing stands already"; }
+  if verdict == RPP_GONE { return "that thing is gone already"; }
+  if verdict == RPP_OLD_KIND { return "that thing is of a kind this realm no longer places"; }
+  if verdict == RPP_CHANGES { return "at most 64 things moved, turned, resized or taken away"; }
+  if verdict == RPP_NO_BUILD { return "the owner hasn't let visitors build"; }
+  if verdict == RPP_ENOUGH { return "the owner has enough to look at"; }
+  return "";
+}
+
+// ---- checks
+
+#test "only its owner and admins place, bring back or take away" {
+  for role: [4] string.["visitor", "", "Owner", "admins"] {
+    #assert rpp_spawn(role, true, 8, 1, 100, 0, 0, 0) == RPP_NOT_YOURS;
+    #assert rpp_back(role, 8, 1, 1, 1, 1, true) == RPP_NOT_YOURS;
+    #assert rpp_despawn(role, true, 1, 1, 1, false, 0, false) == RPP_NOT_YOURS;
+  }
+  for role: [2] string.["owner", "admin"] {
+    #assert rpp_spawn(role, true, 8, 1, 100, 0, 0, 0) == RPP_OK && rpp_back(role, 8, 1, 1, 1, 1, true) == RPP_OK;
+    #assert rpp_despawn(role, true, 1, 1, 1, false, 0, false) == RPP_OK && rpp_may(role);
+  }
+  #assert !rpp_may("visitor") && !rpp_may("");
+}
+#test "a new thing is of a kind the realm places, at its own size" {
+  #assert rpp_spawn("owner", false, 2, 0, 100, 0, 0, 0) == RPP_NO_KIND && rpp_spawn("owner", false, 2, 3, 100, 0, 0, 0) == RPP_NO_KIND;
+  #assert rpp_spawn("owner", false, 2, -1, 100, 0, 0, 0) == RPP_NO_KIND && rpp_spawn("owner", false, 0, 1, 100, 0, 0, 0) == RPP_NO_KIND;
+  #assert rpp_spawn("owner", false, 2, 1, 100, 0, 0, 0) == RPP_OK && rpp_spawn("owner", false, 2, 2, 100, 0, 0, 0) == RPP_OK;
+  #assert rpp_spawn("owner", false, 2, 2, 99, 0, 0, 0) == RPP_SIZE && rpp_spawn("owner", false, 2, 2, 101, 0, 0, 0) == RPP_SIZE;
+}
+#test "a made realm's thing stands within 40 m, a hand-built realm's within 400 m, the edge in" {
+  #assert rpp_reach(true) == 4000 && rpp_reach(false) == 40000;
+  #assert rpp_spawn("owner", true, 1, 1, 100, 4000, -4000, 0) == RPP_OK && rpp_spawn("owner", true, 1, 1, 100, -4000, 4000, 0) == RPP_OK;
+  #assert rpp_spawn("owner", true, 1, 1, 100, 4001, 0, 0) == RPP_FAR && rpp_spawn("owner", true, 1, 1, 100, -4001, 0, 0) == RPP_FAR;
+  #assert rpp_spawn("owner", true, 1, 1, 100, 0, 4001, 0) == RPP_FAR && rpp_spawn("owner", true, 1, 1, 100, 0, -4001, 0) == RPP_FAR;
+  #assert rpp_spawn("owner", false, 1, 1, 100, 40000, -40000, 0) == RPP_OK && rpp_spawn("owner", false, 1, 1, 100, -40000, 40000, 0) == RPP_OK;
+  #assert rpp_spawn("owner", false, 1, 1, 100, 40001, 0, 0) == RPP_FAR && rpp_spawn("owner", false, 1, 1, 100, -40001, 0, 0) == RPP_FAR;
+  #assert rpp_spawn("owner", false, 1, 1, 100, 0, 40001, 0) == RPP_FAR && rpp_spawn("owner", false, 1, 1, 100, 0, -40001, 0) == RPP_FAR;
+}
+#test "the list holds 200 things, gone ones too" {
+  #assert rpp_spawn("owner", true, 1, 1, 100, 0, 0, 199) == RPP_OK;
+  #assert rpp_spawn("owner", true, 1, 1, 100, 0, 0, 200) == RPP_FULL && rpp_spawn("admin", false, 1, 1, 100, 0, 0, 201) == RPP_FULL;
+}
+#test "a thing brought back is one of the list's, of its own kind, and gone" {
+  #assert rpp_back("owner", 2, 2, 3, 3, 2, true) == RPP_OK && rpp_back("owner", 2, 1, 1, 3, 1, true) == RPP_OK;
+  #assert rpp_back("owner", 2, 3, 1, 3, 3, true) == RPP_NO_KIND && rpp_back("owner", 2, 0, 1, 3, 0, true) == RPP_NO_KIND;
+  #assert rpp_back("owner", 2, 1, 0, 3, 1, true) == RPP_NO_THING && rpp_back("owner", 2, 1, 4, 3, 1, true) == RPP_NO_THING;
+  #assert rpp_back("owner", 2, 1, 2, 3, 2, true) == RPP_OTHER_KIND && rpp_back("owner", 2, 1, 2, 3, 0, true) == RPP_OTHER_KIND;
+  #assert rpp_back("owner", 2, 1, 2, 3, 1, false) == RPP_STANDS;
+}
+#test "a thing taken away is one of the list's that stands, of a kind the realm still places" {
+  #assert rpp_despawn("owner", false, 3, 3, 1, false, 0, false) == RPP_OK && rpp_despawn("owner", false, 1, 3, 1, false, 0, false) == RPP_OK;
+  #assert rpp_despawn("owner", false, 0, 3, 1, false, 0, false) == RPP_NO_THING && rpp_despawn("owner", false, 4, 3, 1, false, 0, false) == RPP_NO_THING;
+  #assert rpp_despawn("owner", false, 2, 3, 1, true, 0, false) == RPP_GONE && rpp_despawn("owner", false, 2, 3, 0, false, 0, false) == RPP_OLD_KIND;
+}
+#test "a made realm keeps at most 64 things changed: one more is refused, one among them already is not" {
+  #assert rpp_despawn("owner", true, 1, 1, 1, false, 63, false) == RPP_OK;
+  #assert rpp_despawn("owner", true, 1, 1, 1, false, 64, false) == RPP_CHANGES && rpp_despawn("owner", true, 1, 1, 1, false, 65, false) == RPP_CHANGES;
+  #assert rpp_despawn("owner", true, 1, 1, 1, false, 64, true) == RPP_OK;
+  // a hand-built realm keeps no such limit
+  #assert rpp_despawn("owner", false, 1, 1, 1, false, 64, false) == RPP_OK && rpp_despawn("owner", false, 1, 1, 1, false, 500, false) == RPP_OK;
+}
+#test "each refusal has its words" {
+  #assert rpp_words(RPP_OK, true) == "" && rpp_words(14, false) == "" && rpp_words(-1, true) == "";
+  #assert rpp_words(RPP_NO_BUILD, true) == "the owner hasn't let visitors build" && rpp_words(RPP_ENOUGH, false) == "the owner has enough to look at";
+  #assert rpp_words(RPP_NOT_YOURS, true) == "only its owner and admins" && rpp_words(RPP_NO_KIND, true) == "no such kind of thing here";
+  #assert rpp_words(RPP_SIZE, false) == "a realm places a thing at its own size";
+  #assert rpp_words(RPP_FAR, true) == "a thing stands within 40 m of the middle" && rpp_words(RPP_FAR, false) == "a thing stands within 400 m of the middle";
+  #assert rpp_words(RPP_FULL, false) == "the realm is full: 200 things" && rpp_words(RPP_NO_THING, false) == "no such thing";
+  #assert rpp_words(RPP_OTHER_KIND, false) == "that thing is of another kind" && rpp_words(RPP_STANDS, false) == "that thing stands already";
+  #assert rpp_words(RPP_GONE, false) == "that thing is gone already";
+  #assert rpp_words(RPP_OLD_KIND, false) == "that thing is of a kind this realm no longer places";
+  #assert rpp_words(RPP_CHANGES, true) == "at most 64 things moved, turned, resized or taken away";
+  #assert RPP_OK == 0 && RPP_NOT_YOURS == 1 && RPP_CHANGES == 11 && RPP_MOST == 200 && RPP_CHANGED_MOST == 64;
+}
+#test "a visitor's spawn is a proposal where building is on, of a kind, size and place the realm takes, while fewer than 50 wait" {
+  #assert rpp_propose("visitor", true, true, 0, 2, 1, 100, 0, 0) == RPP_OK && rpp_propose("visitor", false, true, 49, 2, 2, 100, -40000, 40000) == RPP_OK;
+  #assert rpp_propose("owner", true, true, 0, 2, 1, 100, 0, 0) == RPP_NOT_YOURS && rpp_propose("admin", true, true, 0, 2, 1, 100, 0, 0) == RPP_NOT_YOURS;
+  #assert rpp_propose("", true, true, 0, 2, 1, 100, 0, 0) == RPP_NOT_YOURS;
+  #assert rpp_propose("visitor", true, false, 0, 2, 1, 100, 0, 0) == RPP_NO_BUILD;
+  #assert rpp_propose("visitor", true, true, 0, 2, 0, 100, 0, 0) == RPP_NO_KIND && rpp_propose("visitor", true, true, 0, 2, 3, 100, 0, 0) == RPP_NO_KIND;
+  #assert rpp_propose("visitor", true, true, 0, 2, 1, 99, 0, 0) == RPP_SIZE && rpp_propose("visitor", true, true, 0, 2, 1, 101, 0, 0) == RPP_SIZE;
+  #assert rpp_propose("visitor", true, true, 0, 2, 1, 100, 4000, -4000) == RPP_OK && rpp_propose("visitor", true, true, 0, 2, 1, 100, -4000, 4000) == RPP_OK;
+  #assert rpp_propose("visitor", true, true, 0, 2, 1, 100, 4001, 0) == RPP_FAR && rpp_propose("visitor", true, true, 0, 2, 1, 100, -4001, 0) == RPP_FAR;
+  #assert rpp_propose("visitor", true, true, 0, 2, 1, 100, 0, 4001) == RPP_FAR && rpp_propose("visitor", true, true, 0, 2, 1, 100, 0, -4001) == RPP_FAR;
+  #assert rpp_propose("visitor", false, true, 0, 2, 1, 100, 40001, 0) == RPP_FAR && rpp_propose("visitor", false, true, 0, 2, 1, 100, 0, -40001) == RPP_FAR;
+  #assert rpp_propose("visitor", true, true, 50, 2, 1, 100, 0, 0) == RPP_ENOUGH && rpp_propose("visitor", true, true, 51, 2, 1, 100, 0, 0) == RPP_ENOUGH;
+}
+#test "each verdict has its status" {
+  #assert rpp_status(RPP_OK) == 200 && rpp_status(RPP_NOT_YOURS) == 403 && rpp_status(RPP_NO_BUILD) == 403 && rpp_status(RPP_NO_THING) == 404;
+  #assert rpp_status(RPP_FULL) == 409 && rpp_status(RPP_STANDS) == 409 && rpp_status(RPP_GONE) == 409 && rpp_status(RPP_CHANGES) == 409;
+  #assert rpp_status(RPP_ENOUGH) == 429 && rpp_status(RPP_NO_KIND) == 422 && rpp_status(RPP_SIZE) == 422 && rpp_status(RPP_FAR) == 422;
+  #assert rpp_status(RPP_OTHER_KIND) == 422 && rpp_status(RPP_OLD_KIND) == 422 && rpp_status(14) == 422 && rpp_status(-1) == 422;
+}

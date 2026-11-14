@@ -33,11 +33,8 @@ All under `/api/playtest/realms/<slug>`, for a made or a hand-built realm:
 | | |
 |---|---|
 | `GET` | the spec, a line each: `role`, `owner 0/1`, `tool NAME 0/1`, `thing NAME`, `row KEY 0/1 LABEL`, `placed THING X Z YAW`, `waiting N` (owners and admins) |
-| `POST /switch {row, on}` | one row on or off, for everyone |
 | `POST /revise {prompt}` | talking or typing revises the board: the model answers under a schema whose enums are this realm's row ids (a made realm: the builder's catalogue), and its answer is the realm now. `?as=lines` answers the rows as lines |
-| `POST /settings {tools}` | the tools visitors get (only those the realm honours) |
-| `POST /place {thing, x, z, yaw}` | an owner's or admin's goes in; a visitor's becomes a card |
-| `GET /proposals`, `POST /proposals/<id>/accept\|decline` | the cards |
+| `GET /proposals`, `POST /proposals/<id>/accept\|decline` | the cards; ACCEPT places the thing as the owner's own world edit (one step of the world's undo log, #13515) |
 | `GET /panes` | everyone: `lore WHO\|TEXT` and `quest GIVER\|ASK\|STEP\|STEP\|STEP\|REWARD`, a line each |
 | `POST /lore {who, text}` | a character's lore (400 characters; `""` forgets it) |
 | `POST /quest {giver, ask, steps, reward}` | the quest a character gives, one each (`""` ask takes it away) |
@@ -64,7 +61,7 @@ The realm reads `redit_row_on(ed, "robots")` where its code draws the thing, `re
 server's answer changed it.
 
 An owner's or admin's page reads the spec again every second (`REDIT_WATCH`), so a row switched
-from the CLI (`openagents realm switch SLUG ROW off`), Coder or another tab shows up in about a
+from the CLI (`openagents realm world-switch SLUG ROW off`), Coder or another tab shows up in about a
 second. An unchanged spec changes nothing (`redit_same_spec`).
 
 ## The editor shell on a realm's page
@@ -114,11 +111,28 @@ the visitors' tools are switched in the shell. FEATURES shows OPEN THE EDITOR, w
 again with `?edit`, and a spoken "open the settings" does the same. The layer's own placing
 (`redit_place`, which posted to `/place`) is gone; no realm called it.
 
-What has no world edit stays in the layer's EDIT: the asks (ADD, revise, DELETE, a document), a
-visitor's proposals, lore and quests, the realm's voice, YOUR COMPUTER and YOUR AGENT. The routes
-`/switch`, `/settings` and `/place` stay for their other callers (the realm CLI, the voice's switch,
-a made realm's own placing) until those move onto the world (#13514). Which of the rest become turns of
-the shell's agent strip is #13515.
+A row switched, the visitors' tools and a thing placed are world edits only (#13514): the routes
+`/switch`, `/settings` and `/place` are gone (migration 0194). The layer's voice switch reads the
+world's revision and sends a `cell` edit of the `rows` table (`redit_world_ask`); a made realm's
+BUILD sends a `spawn` through its world follower, and its UNDO and REDO take the newest step this
+page made from the log it went to (the world's for places, the realm document's own for saves; with
+none of its own, the realm's own log first). The CLI's are `realm world-switch`, `realm world-tools`
+and `realm world-place`. Whether a spawn or a despawn may stand (owners and admins, 200 things, 40 m
+on a made realm and 400 m on a hand-built one, a made realm's 64 changes) is
+`coax/web/api/realm-place-policy.coax`; SQL only writes the rows (0193). Everglade has no realm
+world, so its board's voice switch has no route until its board moves into its own world (#13477).
+
+What is left of the layer's EDIT, and where each goes (#13515):
+
+| Item | Becomes | State |
+|---|---|---|
+| A visitor's proposal | a pending world batch the owner accepts | built: a visitor's spawns on the realm's world are kept as cards (202, `rpp_propose`: building on, fewer than 50 waiting), and ACCEPT is the owner's own spawn in the world (0195). A world UNDO of it takes the thing away; the card stays decided |
+| The asks (ADD, revise, DELETE, a document) | turns of the shell's agent strip: words to an agent | follow-up |
+| The realm's voice (HOLD TO TALK, the selector) | the agent strip's input | follow-up |
+| A character's lore and quests | content tables of the realm's world and `cell` edits, as the rows are | follow-up |
+| YOUR COMPUTER, YOUR AGENT | the shell's agent strip | follow-up |
+
+The IDEAS cards still show in the layer's EDIT until the strip shows pending batches.
 
 Spoken and typed commands about the editing screen go to `redit_heard(ed, word, row, on, pane,
 out)` (migration 0104's `switch` and `show` edits): it switches one of the realm's rows by its id,

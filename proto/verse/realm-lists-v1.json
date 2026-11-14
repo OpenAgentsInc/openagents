@@ -1,6 +1,6 @@
 {
  "profile": "realm-lists-v1",
- "about": "A realm's other text answers (GitHub #13250): the feature list and what adding to it answers, a revision's answer, the edit panes, the proposals, the listed realms, the made realms' rows for /og, and the card's want. \"lines\" names every line. \"steps\" are calls to a seeded public realm as its owner and as a visitor (the fixture's second key is a player's) with the status and body the server answers today: \"vary_line\" names a line's start whose number the run decides, and \"has_line\" says the answer lists every realm in the database and the fixture's line is one of them. \"model_steps\" need the planner's model: coax/web/api/test_realm_builder.py makes them as the owner of the realm proto/verse/realm-board-v1.json made (fixture-marsh), with the ask's and the plan's numbers written 41. metaverse-engine/editor/lists.coax, spec.coax and listed.coax read the lines; metaverse-engine/editor/lists-goldens.coax holds them through those files; coax/web/api/tests/realm_record_checks.coax makes the calls.",
+ "about": "A realm's other text answers (GitHub #13250): the feature list and what adding to it answers, a revision's answer, the edit panes, the proposals, the listed realms, the made realms' rows for /og, and the card's want. \"lines\" names every line. A visitor's card is seeded (a visitor proposes with a batch of spawns on the realm's world since #13515, /api/worlds/SLUG). \"steps\" are calls to a seeded public realm as its owner and as a visitor (the fixture's second key is a player's) with the status and body the server answers today: \"vary_line\" names a line's start whose number the run decides, and \"has_line\" says the answer lists every realm in the database and the fixture's line is one of them. \"model_steps\" need the planner's model: coax/web/api/test_realm_builder.py makes them as the owner of the realm proto/verse/realm-board-v1.json made (fixture-marsh), with the ask's and the plan's numbers written 41. metaverse-engine/editor/lists.coax, spec.coax and listed.coax read the lines; metaverse-engine/editor/lists-goldens.coax holds them through those files; coax/web/api/tests/realm_record_checks.coax makes the calls.",
  "check": "coax/web/tool.sh metaverse-engine/editor/lists-goldens.coax proto/verse/realm-lists-v1.json",
  "codec": "metaverse-engine/editor/lists.coax",
  "lines": [
@@ -87,7 +87,7 @@
   "slug": "list-fixture",
   "player_key": "list-fixture-player-key-0001",
   "stranger_key": "list-fixture-visitor-key-0002",
-  "seed": "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-list-fixture', encode(sha256(convert_to('list-fixture-player-key-0001', 'UTF8')), 'hex'), 1), ('p-list-visitor', encode(sha256(convert_to('list-fixture-visitor-key-0002', 'UTF8')), 'hex'), 1); INSERT INTO verse.worlds (id, owner_player, created_ms) VALUES ('made-list-fixture', 'p-list-fixture', 1); INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms, visibility) VALUES ('list-fixture', 'made-list-fixture', 'List Fixture', 'lowpoly', 'grass', 'day', '[{\"feature\":\"trees\",\"variant\":\"pine\",\"count\":6},{\"feature\":\"character\",\"name\":\"Old Mott\",\"role\":\"the ferryman\"}]', '{\"build\":true,\"jump\":true}', 4102444800000, 'public');",
+  "seed": "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-list-fixture', encode(sha256(convert_to('list-fixture-player-key-0001', 'UTF8')), 'hex'), 1), ('p-list-visitor', encode(sha256(convert_to('list-fixture-visitor-key-0002', 'UTF8')), 'hex'), 1); INSERT INTO verse.worlds (id, owner_player, created_ms) VALUES ('made-list-fixture', 'p-list-fixture', 1); INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms, visibility) VALUES ('list-fixture', 'made-list-fixture', 'List Fixture', 'lowpoly', 'grass', 'day', '[{\"feature\":\"trees\",\"variant\":\"pine\",\"count\":6},{\"feature\":\"character\",\"name\":\"Old Mott\",\"role\":\"the ferryman\"}]', '{\"build\":true,\"jump\":true}', 4102444800000, 'public'); INSERT INTO verse.realm_proposals (slug, ms, by_player, change) VALUES ('list-fixture', 1, 'p-list-visitor', '{\"kind\":\"place\",\"thing\":\"barrel\",\"x\":0,\"z\":3.8,\"yaw\":1.57}');",
   "clean": "DELETE FROM verse.realm_proposals WHERE slug = 'list-fixture'; DELETE FROM verse.realm_lore WHERE slug = 'list-fixture'; DELETE FROM verse.realm_quests WHERE slug = 'list-fixture'; DELETE FROM verse.realm_publications WHERE slug = 'list-fixture'; DELETE FROM verse.realm_revisions WHERE slug = 'list-fixture'; DELETE FROM verse.made_realms WHERE slug = 'list-fixture'; DELETE FROM verse.worlds WHERE id = 'made-list-fixture'; DELETE FROM verse.players WHERE id IN ('p-list-fixture', 'p-list-visitor');"
  },
  "steps": [
@@ -142,20 +142,6 @@
    "status": 405,
    "reply": "{\"error\":\"GET the panes\"}",
    "message": "ErrorReply"
-  },
-  {
-   "name": "a visitor's placed thing is proposed",
-   "method": "POST",
-   "path": "/list-fixture/place",
-   "as": "stranger",
-   "body": "{\"thing\":\"barrel\",\"x\":0.00,\"z\":3.80,\"yaw\":1.57}",
-   "status": 200,
-   "reply": "{\"proposed\": 1}",
-   "message": "PlaceReply",
-   "request": "PlaceRequest",
-   "vary": [
-    "proposed"
-   ]
   },
   {
    "name": "the proposals, to its owner",

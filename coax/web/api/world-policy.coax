@@ -106,6 +106,19 @@ wr_realm_batch :: (spec: string, scripts: string, body: string, fenced: bool, ou
 }
 wr_realm_status :: (status: int) -> int #export_c #effects(all) { return rw_status(status); }
 wr_realm_words :: (status: int) -> string #export_c #effects(all) { return rw_words(status); }
+// A visitor's batch on a realm's world (#13515): not the author's, so it is not carried out, but a batch of new things
+// there may be kept for the owner as proposals (realm-world.coax rw_propose; realm-place-policy.coax's rules).
+wr_proposes :: (verdict: int, kind: string, what: int) -> bool #export_c #effects(all) { return verdict == WR_NOT_ADMIN && kind == REALM_KIND && what == WB_APPLY; }
+wr_realm_propose :: (spec: string, body: string, out_acts: [] u8, out_why: [] u8, n: [] int) -> int #export_c #effects(all) { return rw_propose(spec, body, out_acts, out_why, n); }
+wr_place_status :: (verdict: int) -> int #export_c #effects(all) { return rpp_status(verdict); }
+// Whether a proposal's refusal is its own (building off), not the world's refusal of a visitor (who may not edit).
+wr_proposal_words :: (verdict: int) -> bool #export_c #effects(all) { return verdict == RPP_NO_BUILD; }
+// The words a kept proposal is answered with (202), and the answer to the owner's yes, as the card routes answer.
+wr_apply :: () -> int #export_c #effects(all) { return WB_APPLY; }   // a batch of the caller's own edits (world-edit.coax)
+wr_proposed_words :: () -> string #export_c #effects(all) { return "sent to the owner"; }
+wr_card_accepted :: () -> string #export_c #effects(all) { return "{\"state\": \"accepted\"}"; }   // as verse.edit_decide's jsonb answers it
+// The owner's yes to a proposal: the spawn of their own, from revision `rev` (rw_accept_batch).
+wr_realm_accept :: (spec: string, rev: int, thing: string, x: string, z: string, yaw: string, out: [] u8) -> string #export_c #effects(all) { return rw_accept_batch(spec, rev, thing, x, z, yaw, out); }
 // A read of lane `lane`. join: wl_join's answer for the page's pins (WJ_LIVE when it sent none).
 wr_read :: (exists: bool, lane: int, join: int) -> int #export_c #effects(all) {
   if !exists { return WR_NO_WORLD; }
@@ -407,4 +420,13 @@ wr_card :: (world: string, rev: int, things: int, name: string, out: [] u8) -> i
   #assert wr_realm_batch(RW_SPEC_FIXTURE, "", we_batch_write(3, WB_APPLY, e[..], 1, body[..]), true, did[..], inv[..], acts[..], why[..], sc[..], n[..]) == RW_REFUSED;
   for st: 0..<5 { #assert wr_realm_status(st) == rw_status(st) && wr_realm_words(st) == rw_words(st); }
   #assert wr_realm_scripts_none() == RW_SCRIPTS_EMPTY;
+  // a visitor's batch of new things may be proposals; nothing else is (#13515)
+  #assert wr_proposes(WR_NOT_ADMIN, "realm", WB_APPLY) && !wr_proposes(WR_NOT_ADMIN, "splice-bots", WB_APPLY) && !wr_proposes(WR_NOT_ADMIN, "realm", WB_UNDO);
+  #assert !wr_proposes(WR_OK, "realm", WB_APPLY) && !wr_proposes(WR_LOG_IN, "realm", WB_APPLY);
+  e[0] = WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = 1, x = 100, z = 200};
+  pn: [5] int;
+  #assert wr_realm_propose("role visitor\nbuilding 1\nthing crate\n", we_batch_write(3, WB_APPLY, e[..], 1, body[..]), acts[..], why[..], pn[..]) == RW_OK && cast(string) acts[0..<pn[0]] == "propose crate 100 200 0\n";
+  #assert wr_apply() == WB_APPLY && wr_proposed_words() == "sent to the owner" && wr_card_accepted() == "{\"state\": \"accepted\"}" && wr_proposal_words(RPP_NO_BUILD) && !wr_proposal_words(RPP_NOT_YOURS);
+  #assert wr_place_status(RPP_NO_BUILD) == 403 && wr_place_status(RPP_ENOUGH) == 429 && wr_place_status(RPP_OK) == 200;
+  #assert wr_realm_accept("role owner\nthing crate\n", 4, "crate", "1", "2", "0", body[..]) == "{\"schema\":\"world.edit.v1\",\"rev\":4,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":1,\"x\":100,\"y\":0,\"z\":200,\"yaw\":0,\"scale\":100}]}";
 }

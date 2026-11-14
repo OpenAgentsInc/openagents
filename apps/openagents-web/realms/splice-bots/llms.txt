@@ -124,6 +124,8 @@ Every limit is shown here and none is hidden. Past one, the engine refuses or dr
 
 | Command | What it does |
 | --- | --- |
+| `openagents realm world-switch ID ROW on\|off [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | turn a realm's board row ROW (its key, as realm world lists the rows table) on or off: a cell edit, one undo step |
+| `openagents realm world-tools ID --tools build,fly,jump,map,talk,voice [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | the tools a realm's visitors get: those named are on, the rest of its tools table off; cell edits, one undo step |
 | `openagents realm world ID [--lane dev\|live]` | a world with an ID, as you need it to aim an edit: its revision and build, its placed things by number, its content tables (pieces, landmarks, kept-clear zones) and its reference page |
 | `openagents realm world-place ID KIND X Z [--yaw DEG] [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | place a thing of content ID KIND at X Z centimetres; the answer has its number, the new revision, and any refusal in words |
 | `openagents realm world-move ID N X Z [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | move placed thing N to X Z centimetres |
@@ -204,4 +206,4 @@ table actors id name:text
 1|Raider 1
 ```
 
-reference sha256: 24bf9bff3d344d70dd4e7ba7db6f2b5ccefabe689cfb4553e678d04f21ad68fc
+reference sha256: 05b023b6def4aeba9af8b257b694ad18d9ffd8327d0ec940c9500edb9487a641

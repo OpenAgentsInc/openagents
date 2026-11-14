@@ -8,6 +8,9 @@
 //   realm world ID                       the world as an agent needs it to aim an edit
 //   realm world-place ID KIND X Z        a spawn; KIND is a content ID from `realm world`
 //   realm world-move ID N X Z, world-turn ID N DEG, world-set ID N COLUMN VALUE, world-remove ID N
+//   realm world-switch ID ROW on|off, world-tools ID --tools a,b
+//                                        a realm's board row, the tools its visitors get: cell edits of its
+//                                        rows and tools tables (metaverse/edit/realm-world.coax, #13514)
 //   realm world-undo ID, world-redo ID, world-original ID
 //   realm world-apply ID FILE            edits as JSON lines, one batch: all are saved or none
 //   realm world-publish ID now|next --yes
@@ -167,6 +170,62 @@ rw_holds :: (content: string, edit: WorldEdit) -> bool #effects(all) {
   head := ct_part(table, '\n', 0);
   for k: 2..<ct_parts(head, ' ') { if ct_part(ct_part(head, ' ', k), ':', 0) == col { return ct_part(row, '|', k - 2) == text; } }
   return false;
+}
+// A realm's board, its things and its settings as world edits (#13514; metaverse/edit/realm-world.coax's tables):
+//   world-switch ID ROW on|off    the cell `on` of the rows table's row whose key is ROW
+//   world-tools ID --tools a,b    the cell `on` of each row of the tools table: on for a tool named, off for the rest
+// (a thing is placed with world-place, by its kind's ID in the kinds table)
+// The edits into e, from the dev tables as read: how many (0: each is so already), or -N with the words when
+// the realm has no such row or no tools table.
+rw_realm_edits :: (a: [] Args, verb: string, content: string, e: [] WorldEdit, words: [] u8) -> int {
+  p3 := positional(a, 3);
+  switching := verb == "world-switch";
+  table := rw_table(content, ifx switching then "rows" else "tools");
+  n := 0;
+  for k: 1..<ct_parts(table, '\n') {
+    line := ct_part(table, '\n', k);
+    id := ct_num(ct_part(line, '|', 0)); name := ct_part(line, '|', 1); on := ct_part(line, '|', 2);
+    if !id.ok { continue; }
+    if switching && name == p3 {
+      e[0] = rw_cell("rows", id.v, "on", ifx cli_onoff(positional(a, 4)) == 1 then "1" else "0");
+      return ifx rw_holds(content, e[0]) then 0 else 1;
+    }
+    if !switching && n < e.count {
+      want := rw_named(rc_option(a, verb, "--tools", ""), name);
+      if (on == "1") != want { e[n] = rw_cell("tools", id.v, "on", ifx want then "1" else "0"); n += 1; }
+    }
+  }
+  if !switching && table.count > 0 { return n; }
+  m := editor_put(words, 0, ifx switching then "the realm has no row " else "the realm has no tools");
+  if switching { m = editor_put(words, m, p3); }
+  m = editor_put(words, m, ": realm world "); m = editor_put(words, m, positional(a, 2)); m = editor_put(words, m, " lists what it has");
+  return ifx m < 2 then -1 else -m;
+}
+// Whether a comma list ("build,talk") names `name`.
+rw_named :: (list: string, name: string) -> bool #effects(all) {
+  for k: 0..<ct_parts(list, ',') { if ct_part(list, ',', k) == name { return true; } }
+  return false;
+}
+#test "a realm's switch and its visitors' tools are cell edits of its tables" {
+  t := "aethyr.content.v1 realm 1\nreach 40000\ntable kinds id name:text\n1|crate\n2|barrel\ntable rows id key:text on:int label:text\n1|trees|1|Trees\n2|robots|0|Robots\ntable scripts id name:text hash:text for:text\ntable things id kind:ref.kinds x:cm z:cm turn:int size:int\ntable tools id name:text on:int\n1|build|0\n2|fly|1\n3|jump|1\n";
+  a: [1] Args; e: [8] WorldEdit; w: [200] u8; o: [400] u8;
+  for s: [5] string.["realm","world-switch","garden","robots","on"] { #assert args_add(a[..], s); }
+  #assert rw_realm_edits(a[..], "world-switch", t, e[..], w[..]) == 1 && we_write(e[0], o[..]) == "{\"op\":\"cell\",\"table\":\"rows\",\"row\":2,\"col\":\"on\",\"v\":\"1\"}";
+  b: [1] Args; for s: [5] string.["realm","world-switch","garden","trees","on"] { #assert args_add(b[..], s); }
+  #assert rw_realm_edits(b[..], "world-switch", t, e[..], w[..]) == 0;   // already on
+  b2: [1] Args; for s: [5] string.["realm","world-switch","garden","trees","off"] { #assert args_add(b2[..], s); }
+  #assert rw_realm_edits(b2[..], "world-switch", t, e[..], w[..]) == 1 && we_write(e[0], o[..]) == "{\"op\":\"cell\",\"table\":\"rows\",\"row\":1,\"col\":\"on\",\"v\":\"0\"}";
+  c: [1] Args; for s: [5] string.["realm","world-switch","garden","lake","on"] { #assert args_add(c[..], s); }
+  m := rw_realm_edits(c[..], "world-switch", t, e[..], w[..]);
+  #assert m < 0 && cast(string) w[0..<-m] == "the realm has no row lake: realm world garden lists what it has";
+  g: [1] Args; for s: [5] string.["realm","world-tools","garden","--tools","build,jump"] { #assert args_add(g[..], s); }
+  #assert rw_realm_edits(g[..], "world-tools", t, e[..], w[..]) == 2 && we_write(e[0], o[..]) == "{\"op\":\"cell\",\"table\":\"tools\",\"row\":1,\"col\":\"on\",\"v\":\"1\"}";
+  #assert we_write(e[1], o[..]) == "{\"op\":\"cell\",\"table\":\"tools\",\"row\":2,\"col\":\"on\",\"v\":\"0\"}";
+  h: [1] Args; for s: [5] string.["realm","world-tools","garden","--tools","fly,jump"] { #assert args_add(h[..], s); }
+  #assert rw_realm_edits(h[..], "world-tools", t, e[..], w[..]) == 0;
+  m = rw_realm_edits(h[..], "world-tools", "aethyr.content.v1 realm 1\n", e[..], w[..]);
+  #assert m < 0 && cast(string) w[0..<-m] == "the realm has no tools: realm world garden lists what it has";
+  #assert rw_named("build,talk", "talk") && !rw_named("build,talk", "tal") && !rw_named("", "build");
 }
 // world-board: the board table's row 1 as the world's dev tables hold it, with what the arguments change
 // (on or off, --casual, --fast), written as its whole row. 1, or -N with the words when the world has no
@@ -411,17 +470,19 @@ rw_write :: (a: [] Args, r: [] Rep, profile: string, verb: string, slug: string,
   words := OpWords.{verb = verb, realm = slug, effect = c.effect, page = rw_page(slug, w[0].page[..]), key = rc_option(a, verb, "--key", "")};
   n := rw_edits(a, verb, w[0].e[..]);
   same := false;
-  if verb == "world-plan" || verb == "world-route" || verb == "world-time" || verb == "world-script-run" || verb == "world-board" {
+  realm := verb == "world-switch" || verb == "world-tools";
+  if verb == "world-plan" || verb == "world-route" || verb == "world-time" || verb == "world-script-run" || verb == "world-board" || realm {
     // the plan or the clock as the dev tables hold it now, changed by the arguments
     cres := api_call(a, profile, "GET", rw_path(slug, "/content?lane=dev", w[0].path[..]), "", w[0].content[..]);
     if !api_ok(cres) { words.words = api_why(cast(string) w[0].content[0..<cres.n], w[0].words[..]); return rw_answer(r, w, or_of_status(ifx cres.error == HTTP_OK then cres.status else 0, 0), words); }
     content := cast(string) w[0].content[0..<cres.n];
     if verb == "world-script-run" { n = rw_script_row(a, content, w[0].e[..], w[0].words[..]); }
     else if verb == "world-board" { n = rw_board_edit(a, content, w[0].e[..], w[0].words[..]); }
+    else if realm { n = rw_realm_edits(a, verb, content, w[0].e[..], w[0].words[..]); }
     else if verb != "world-time" { n = rw_plan_edit(a, verb, content, w[0].e[..], w[0].words[..]); }
     if n < -1 { words.words = cast(string) w[0].words[0..<-n]; return rw_answer(r, w, OpResult.{state = OR_REFUSED, code = ORC_BAD_REQUEST}, words); }
     // already so: done, at the revision it stands at, with nothing sent (an agent that sets what is there is not refused)
-    same = n == 1 && rw_holds(content, w[0].e[0]);
+    same = (n == 1 && rw_holds(content, w[0].e[0])) || (realm && n == 0);
   }
   if verb == "world-apply" {
     file := positional(a, 3);

@@ -66,6 +66,7 @@ REQ_E_NONE :: 0; REQ_E_SPEC :: 1; REQ_E_SWITCH :: 2; REQ_E_CARDS :: 4; REQ_E_DEC
 REQ_E_PANES :: 8; REQ_E_LORE :: 9; REQ_E_QUEST :: 10; REQ_E_ASKS :: 11; REQ_E_ADD :: 12; REQ_E_DELETE :: 13;
 REQ_E_HEAR :: 14; REQ_E_LOOK :: 15;   // the realm's voice: the selector, then a look with the frame
 REQ_E_AGENT :: 16;   // YOUR AGENT: its seat opened, a verb, closed (agent.coax)
+REQ_E_SWITCH_REV :: 17;   // a row switched: the realm's world's revision first, then the cell edit (#13514)
 // buttons: EDIT, the tabs (FEATURES and IDEAS), TALK, TYPE IT, ACCEPT, DECLINE, SAVE, LORE <-> QUEST, and MORE (the feature list's next page)
 RB_EDIT :: 0; RB_TAB :: 1; RB_TALK :: 4; RB_TYPE :: 5; RB_ACCEPT :: 6; RB_DECLINE :: 7; RB_SAVE :: 8; RB_SWAP :: 9; RB_MORE :: 10; RB_DOC :: 11;
 // YOUR COMPUTER: its tab, the pane's main button, FORGET (or CANCEL), COPY (the command), and the field you type in
@@ -127,7 +128,7 @@ RealmEdit :: struct {
   watched_at: f32; spec_sum: int; spec_sum2: int; spec_len: int;   // the last spec read: an unchanged one changes nothing
   // the card last accepted, once the server says so (redit_took): a realm whose things are its own lays it out
   deciding: bool; decided_thing: [REDIT_THING] u8; decided_thing_n: int; decided_x: f32; decided_z: f32; took: bool;
-  switch_row: int; switch_on: bool; decide_due: int; revise: [REDIT_TYPED] u8; revise_n: int;
+  switch_row: int; switch_on: bool; switch_rev: int; switch_tries: int; switch_last: int; decide_due: int; revise: [REDIT_TYPED] u8; revise_n: int;
   page: [REDIT_URL] u8; page_n: int; go_due: bool;   // this page's path (the url fact), and OPEN THE EDITOR asked
   out: [REDIT_OUT] u8; out_n: int;
   // the panes for what you work on: who you are by, whose panes are up, what everyone reads, the drafts
@@ -374,7 +375,7 @@ redit_note :: (e: [] RealmEdit, text: string) { e[0].note_n = redit_copy(e[0].no
 redit_start :: (e: [] RealmEdit, slug: string) {
   if !redit_slug_ok(slug) || cast(string) e[0].slug[0..<e[0].slug_n] == slug { return; }
   e[0].slug_n = redit_copy(e[0].slug[..], slug);
-  e[0].req_id = -1; e[0].press = -1; e[0].finger = -1; e[0].switch_row = -1; e[0].decide_due = 0;
+  e[0].req_id = -1; e[0].press = -1; e[0].finger = -1; e[0].switch_row = -1; e[0].switch_rev = -1; e[0].switch_last = -1; e[0].decide_due = 0;
   e[0].spec_due = true; e[0].field = 0; e[0].field_press = 0;
   e[0].del_press = -1; e[0].armed = -1; e[0].del_row = -1; e[0].del_ask = 0;
   rc_start(e[0].pc[..], slug);
@@ -488,6 +489,17 @@ redit_ask :: (e: [] RealmEdit, what: int, tail: string, body_n: int, p_post: boo
   e[0].req_flags = (ifx p_post then HTTP_POST else 0) | HTTP_ANSWER | TRACK_KEY;
   e[0].req_what = what; e[0].req_ready = true; e[0].req_at = e[0].time;
 }
+// A request to the realm's world, /api/worlds/SLUG then `tail`, with the player's key (a made realm's maker may
+// have no account); a body that did not fit is not sent.
+redit_world_ask :: (e: [] RealmEdit, what: int, tail: string, body_n: int, p_post: bool) {
+  if body_n < 0 { e[0].switch_row = -1; redit_note(e, "Not switched. Try again."); return; }
+  n := redit_put(e[0].req_url[..], 0, "/api/worlds/");
+  n = redit_put(e[0].req_url[..], n, cast(string) e[0].slug[0..<e[0].slug_n]);
+  e[0].req_url_n = redit_put(e[0].req_url[..], n, tail);
+  e[0].req_body_n = body_n;
+  e[0].req_flags = (ifx p_post then HTTP_POST else 0) | HTTP_ANSWER | TRACK_KEY;
+  e[0].req_what = what; e[0].req_ready = true; e[0].req_at = e[0].time;
+}
 // An edit's body from metaverse-engine/editor/change.coax (edits.proto) goes out; one too long for the page's
 // buffer is not sent.
 redit_send :: (e: [] RealmEdit, what: int, tail: string, body_n: int) {
@@ -543,8 +555,18 @@ redit_next :: (e: [] RealmEdit) {
     return;
   }
   if e[0].switch_row >= 0 {
-    r := e[0].switch_row; e[0].switch_row = -1;
-    redit_send(e, REQ_E_SWITCH, "/switch", editor_switch_body(0, redit_key_of(e, r), e[0].switch_on, true, b));
+    // a row switched is a cell edit of the realm's world (/api/worlds/SLUG, metaverse/edit/realm-world.coax): the
+    // rows table is the board in the spec's order, so row r is the table's row r + 1. Its revision is read first;
+    // a batch from a revision another change passed is read and sent once more.
+    r := e[0].switch_row;
+    if e[0].switch_rev < 0 { redit_world_ask(e, REQ_E_SWITCH_REV, "?lane=dev", 0, false); return; }
+    e[0].switch_row = -1; e[0].switch_last = r;
+    edit := WorldEdit.{ok = true, op = WE_CELL, id = r + 1};
+    edit.table_n = ct_copy(edit.table[..], "rows"); edit.name_n = ct_copy(edit.name[..], "on"); edit.text_n = ct_copy(edit.text[..], ifx e[0].switch_on then "1" else "0");
+    ed := [1] WorldEdit.[edit];
+    batch := we_batch_write(e[0].switch_rev, WB_APPLY, ed[..], 1, b);
+    e[0].switch_rev = -1;
+    redit_world_ask(e, REQ_E_SWITCH, "", ifx batch.count == 0 then -1 else batch.count, true);
     return;
   }
   if e[0].del_row >= 0 || e[0].del_ask > 0 {
@@ -629,7 +651,22 @@ redit_answer :: (e: [] RealmEdit, text: string) {
   }
   if what == REQ_E_HEAR || what == REQ_E_LOOK { redit_heard_answer(e, what, status, p_body); return; }
   if what == REQ_E_AGENT { ra_answer(e[0].ag[..], status, p_body); return; }
-  if what == REQ_E_SWITCH { if status != 200 { redit_note(e, "Not switched. Try again."); } e[0].spec_due = true; return; }
+  if what == REQ_E_SWITCH_REV {
+    // the world's state (world.state.v1, its one codec); the page's world buffers are scratch between its answers
+    w := e[0].world[..];
+    v := ifx status == 200 then we_state_read(p_body, w[0].sdoc[..], w[0].sdid[..], w[0].sscratch[..]) else WorldState.{};
+    if v.ok && v.rev >= 0 { e[0].switch_rev = v.rev; return; }
+    e[0].switch_row = -1; e[0].switch_tries = 0; redit_note(e, "Not switched. Try again."); e[0].spec_due = true;
+    return;
+  }
+  if what == REQ_E_SWITCH {
+    // changed since its revision was read (409): once more from the revision there now
+    if status == 409 && e[0].switch_tries < 1 && e[0].switch_last >= 0 { e[0].switch_tries += 1; e[0].switch_row = e[0].switch_last; return; }
+    e[0].switch_tries = 0; e[0].switch_last = -1;
+    if status != 200 { redit_note(e, "Not switched. Try again."); }
+    e[0].spec_due = true;
+    return;
+  }
   if what == REQ_E_ADD {
     if status == 200 {
       redit_read_rows(e, p_body);

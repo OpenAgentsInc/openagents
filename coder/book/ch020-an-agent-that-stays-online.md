@@ -550,7 +550,7 @@ job on the echo engine first. Then it serves the same host on the claude
 engine, with [claude_standin.coax](../../coder/tui/claude_standin.coax)
 first on `PATH` as `claude`. The stand-in speaks Claude Code's stream-json
 control protocol with no login and no model. Its realm job calls
-`realm_show`, a shell command, a file write and `realm_place`. The smoke
+`realm_show`, a shell command, a file write and `realm_world_place`. The smoke
 checks that the realm tools run and the edit reaches the realm's spec,
 that the ceiling refuses the command and the write and the browser's steps
 say so, and that nothing refused ran. It then starts a long job and stops

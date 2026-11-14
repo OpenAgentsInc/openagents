@@ -110,6 +110,7 @@ int world_files_turn(const request *q, PGconn *db, char **out, char *words, size
 void world_refuse(int fd, int status, const char *words);
 bool world_scripts_world(PGconn *db, const char *id, bool lock, char *tables[3]);
 bool world_scripts_asker(const request *q, PGconn *db, const char *id, bool *shown, char role[16]);   // worlds.c: who asks about its scripts (#13496)
+bool world_realm_accept(const request *q, PGconn *db, const char *slug, const char *pid);   // worlds.c: the owner's yes to a proposal, as a world edit (#13515)
 // scripts.c: a world's realm scripts (script-policy.coax, #13467)
 bool scripts_route(const request *q, PGconn *db, const char *id, const char *tail);   // /api/worlds/<id>/scripts...
 bool scripts_admin_route(const request *q);                                           // /api/admin/scripts/...: reports and the switch

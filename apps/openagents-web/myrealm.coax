@@ -259,6 +259,12 @@ MyRealm :: struct {
   moving: int;             // the entity picked to move, -1 none
   server_undo: int;        // steps the server can undo (the spec's "undo N"; book chapter 52)
   server_redo: int;        // steps the server can redo (the spec's "redo N"; migration 0111)
+  // a place, an undo or a redo sent to the realm's world (#13514: its one write at a time, s.world), until answered
+  world_post: int;
+  // which log this page's own steps went to, newest last ('W' the world's, 'R' the realm document's own /save), and
+  // the steps it undid; UNDO takes back the newest, REDO the last undone. With none of its own, the realm's own log
+  // first (its saves), then the world's. Moves stay /save steps until a laid-out thing is a world edit (#13514's follow-up).
+  steps_log: [64] u8; steps_n: int; undone_log: [64] u8; undone_n: int;
   pad_x: f32; pad_y: f32; pad_mended: int; pad_jump: InputPress;   // a controller, through metaverse-engine/core/input.coax (realm_pad)
   base: [1] EditorDoc;      // the server's document as last taken: a save's revision moves on past changes that left the moves alone
   kept: [OUTBOX] u8; kept_n: int; kept_seen: bool; kept_due: bool;   // unsaved moves kept in this browser (host.js action 4)
@@ -666,12 +672,7 @@ take_answer :: (s: [] MyRealm, t: [] Track, text: string) {
   }
   if what == REQ_TALK { talk_answered(s, status, body); return; }
   if what == REQ_SAVE || what == REQ_PUBLISH || what == REQ_FORK || what == REQ_UNDO || what == REQ_REDO { editor_answered(s, what, status, body); return; }
-  if what == REQ_PLACE {
-    if status != 200 { set_note(s, ifx status == 403 then "The owner hasn't let visitors build." else "Not placed. Try again."); return; }
-    if s[0].owner { ask_spec(s); } else { set_note(s, "Sent to the owner."); }
-    if track_begin(t, "realm-place") { track_bool(t, "owner", s[0].owner); track_end(t); }
-    return;
-  }
+
 }
 
 // ---- the realm editor: the owner moves a tree, takes it back, saves the document, publishes it; anyone forks it
@@ -753,7 +754,7 @@ put_clear :: (s: [] MyRealm, e: int, x: f32, z: f32) -> bool {
 }
 // UNDO: the page's last unsaved step first; then the server's newest (a save, a row switched, a
 // thing placed, a card settled), from the revision there now.
-may_undo :: (s: [] MyRealm) -> bool { return editor_owner(s) && (editor_can_undo(s[0].fd[..]) || (s[0].server_undo > 0 && !editor_dirty(s[0].fd[..]))); }
+may_undo :: (s: [] MyRealm) -> bool { return editor_owner(s) && (editor_can_undo(s[0].fd[..]) || (step_log(s, false) != 0 && !editor_dirty(s[0].fd[..]))); }
 undo_press :: (s: [] MyRealm) {
   if !editor_owner(s) { return; }
   s[0].moving = -1;
@@ -762,11 +763,12 @@ undo_press :: (s: [] MyRealm) {
     return;
   }
   if !may_undo(s) || held(s, BTN_UNDO) { return; }
+  if step_log(s, false) == 'W' { world_step_back(s, REQ_UNDO); return; }
   n := editor_rev_body(s[0].server_rev, s[0].req_body[..]);   // realm.proto's RevRequest
   ask(s, REQ_UNDO, "/undo", n, true);
 }
 // REDO: the page's step last undone first; then the server's (0111), when nothing is unsaved.
-may_redo :: (s: [] MyRealm) -> bool { return editor_owner(s) && (editor_can_redo(s[0].fd[..]) || (s[0].server_redo > 0 && !editor_dirty(s[0].fd[..]))); }
+may_redo :: (s: [] MyRealm) -> bool { return editor_owner(s) && (editor_can_redo(s[0].fd[..]) || (step_log(s, true) != 0 && !editor_dirty(s[0].fd[..]))); }
 redo_press :: (s: [] MyRealm) {
   if !editor_owner(s) { return; }
   s[0].moving = -1;
@@ -775,6 +777,7 @@ redo_press :: (s: [] MyRealm) {
     return;
   }
   if !may_redo(s) || held(s, BTN_REDO) { return; }
+  if step_log(s, true) == 'W' { world_step_back(s, REQ_REDO); return; }
   n := editor_rev_body(s[0].server_rev, s[0].req_body[..]);   // realm.proto's RevRequest
   ask(s, REQ_REDO, "/redo", n, true);
 }
@@ -802,7 +805,7 @@ editor_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
   if what == REQ_SAVE {
     if status == 200 {
       rev := r.rev;
-      if rev > 0 && rev != s[0].server_rev { editor_commit(s[0].fd[..], rev); s[0].server_rev = rev; s[0].server_undo += 1; s[0].base[0] = s[0].fd[0]; }
+      if rev > 0 && rev != s[0].server_rev { editor_commit(s[0].fd[..], rev); s[0].server_rev = rev; s[0].server_undo += 1; s[0].base[0] = s[0].fd[0]; step_logged(s, 'R', false); s[0].undone_n = 0; }
       else if rev > 0 { editor_saved(s[0].fd[..], rev); }   // the server had these moves already
       s[0].kept_due = true; set_note(s, "Saved."); return;
     }
@@ -811,13 +814,13 @@ editor_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
     return;
   }
   if what == REQ_UNDO {
-    if status == 200 { s[0].server_undo = hi_int(r.undo, 0); s[0].server_redo = hi_int(r.redo, 0); set_note(s, "Undone."); ask_spec(s); return; }
+    if status == 200 { s[0].server_undo = hi_int(r.undo, 0); s[0].server_redo = hi_int(r.redo, 0); step_logged(s, 'R', true); set_note(s, "Undone."); ask_spec(s); return; }
     set_note(s, ifx status == 409 then changed else "Not undone. Try again.");
     ask_spec(s);
     return;
   }
   if what == REQ_REDO {
-    if status == 200 { s[0].server_undo = hi_int(r.undo, 0); s[0].server_redo = hi_int(r.redo, 0); set_note(s, "Redone."); ask_spec(s); return; }
+    if status == 200 { s[0].server_undo = hi_int(r.undo, 0); s[0].server_redo = hi_int(r.redo, 0); if s[0].undone_n > 0 { s[0].undone_n -= 1; } step_logged(s, 'R', false); set_note(s, "Redone."); ask_spec(s); return; }
     set_note(s, ifx status == 409 then changed else "Not redone. Try again.");
     ask_spec(s);
     return;
@@ -1880,15 +1883,68 @@ can_build :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0
 leave :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds"); s[0].action = ACT_NAVIGATE; } }
 go_new :: (s: [] MyRealm) { if s[0].action == 0 && !access_hides_make(s[0].acc[..]) { s[0].out_n = put(s[0].outbox[..], 0, "/worlds/new"); s[0].action = ACT_NAVIGATE; } }
 
-// A thing placed two metres in front of you.
+// A thing placed two metres in front of you: a spawn in the realm's world (#13514), of the kind its kinds table
+// names so; the server's place rules answer (coax/web/api/realm-place-policy.coax). A visitor's spawn, where the
+// owner lets visitors build, is kept for the owner as a proposal (#13515): the world answers 202.
 place_thing :: (s: [] MyRealm, t: [] Track, thing: int) {
-  if !can_build(s) || busy(s) || thing < 0 || thing >= THINGS { return; }
+  if !can_build(s) || busy(s) || thing < 0 || thing >= THINGS || s[0].world_post != 0 { return; }
+  w := s[0].world[..];
+  kind := 0;
+  for k: 0..<w[0].kinds { if cast(string) w[0].kind[k][0..<w[0].kind_n[k]] == THING_NAMES[thing] { kind = k + 1; } }
+  if kind == 0 || w[0].f[0].rev < 0 { set_note(s, "Not placed. Try again."); return; }
   x := s[0].x + 2.2 * sin(s[0].yaw); z := s[0].z - 2.2 * cos(s[0].yaw);
-  xb: [24] u8; zb: [24] u8; yb: [24] u8;
-  xn := put_cm(xb[..], 0, x); zn := put_cm(zb[..], 0, z); yn := put_cm(yb[..], 0, s[0].yaw - 6.2831853 * floor_f(s[0].yaw / 6.2831853));
-  n := editor_place_body(0, THING_NAMES[thing], cast(string) xb[0..<xn], cast(string) zb[0..<zn], cast(string) yb[0..<yn], false, s[0].req_body[..]);   // edits.proto's PlaceRequest (metaverse-engine/editor/change.coax)
-  if n < 0 { return; }
-  ask(s, REQ_PLACE, "/place", n, true);
+  e := [1] WorldEdit.[WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = kind, x = we_cm(x), z = we_cm(z), yaw = we_deg(s[0].yaw), scale = 100}];
+  body: [WE_BATCH_BODY] u8;
+  if !rp_batch(w, we_batch_write(w[0].f[0].rev, WB_APPLY, e[..], 1, body[..])) { return; }
+  s[0].world_post = REQ_PLACE;
+  if track_begin(t, "realm-place") { track_bool(t, "owner", s[0].owner); track_end(t); }
+}
+// The world's answer to the page's place, undo or redo, once it came (s.world's one write is no longer on its way).
+world_posted :: (s: [] MyRealm) {
+  what := s[0].world_post;
+  if what == 0 || s[0].world[0].f[0].body_n > 0 { return; }
+  s[0].world_post = 0;
+  status := s[0].world[0].f[0].refused_status;   // 0: taken (200)
+  words := wf_refused(s[0].world[0].f[..]);
+  if what == REQ_PLACE {
+    if status == 202 { set_note(s, "Sent to the owner."); return; }
+    if status != 0 { set_note(s, ifx status == 403 then "The owner hasn't let visitors build." else ifx words.count > 0 then words else "Not placed. Try again."); return; }
+    step_logged(s, 'W', false); s[0].undone_n = 0; ask_spec(s);
+    return;
+  }
+  if status != 0 { set_note(s, ifx what == REQ_UNDO then "Not undone. Try again." else "Not redone. Try again."); ask_spec(s); return; }
+  if what == REQ_REDO && s[0].undone_n > 0 { s[0].undone_n -= 1; }
+  step_logged(s, 'W', what == REQ_UNDO);
+  set_note(s, ifx what == REQ_UNDO then "Undone." else "Redone."); ask_spec(s);
+}
+// A step this page made (or took back, `undid`) in a log: 'W' the world's, 'R' its own; the oldest goes when full.
+step_logged :: (s: [] MyRealm, which: u8, undid: bool) {
+  if undid {
+    if s[0].undone_n >= 64 { for i: 1..<64 { s[0].undone_log[i - 1] = s[0].undone_log[i]; } s[0].undone_n = 63; }
+    s[0].undone_log[s[0].undone_n] = which; s[0].undone_n += 1;
+    if s[0].steps_n > 0 { s[0].steps_n -= 1; }
+    return;
+  }
+  if s[0].steps_n >= 64 { for i: 1..<64 { s[0].steps_log[i - 1] = s[0].steps_log[i]; } s[0].steps_n = 63; }
+  s[0].steps_log[s[0].steps_n] = which; s[0].steps_n += 1;
+}
+// Which log UNDO (or REDO) takes from: this page's newest step's (or last undone's), else the realm's own while it
+// has one, else the world's. 0: neither has one.
+step_log :: (s: [] MyRealm, redo: bool) -> u8 {
+  n := ifx redo then s[0].undone_n else s[0].steps_n;
+  if n > 0 { return ifx redo then s[0].undone_log[n - 1] else s[0].steps_log[n - 1]; }
+  own := ifx redo then s[0].server_redo else s[0].server_undo;
+  world := ifx redo then s[0].world[0].f[0].redo else s[0].world[0].f[0].undo;
+  if own > 0 { return 'R'; }
+  if world > 0 && s[0].world[0].f[0].rev >= 0 { return 'W'; }
+  return 0;
+}
+// The world's undo or redo, from the revision the page stands at: the page's one write.
+world_step_back :: (s: [] MyRealm, what: int) {
+  w := s[0].world[..];
+  body: [WE_BATCH_BODY] u8; none: [1] WorldEdit;
+  if s[0].world_post != 0 || !rp_batch(w, we_batch_write(w[0].f[0].rev, ifx what == REQ_UNDO then WB_UNDO else WB_REDO, none[..], 0, body[..])) { return; }
+  s[0].world_post = what;
 }
 floor_f :: (v: f32) -> f32 { i := cast(f32) (cast(int) v); return ifx i > v then i - 1 else i; }
 // a number with two decimals: -3.25
@@ -2785,6 +2841,7 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { s[0].req_id = -1; s[0].req_what = REQ_NONE; if !s[0].spec_ready { s[0].spec_failed = true; } }
   if s[0].spec_ready && s[0].slug_n > 0 { _ := rp_open(s[0].world[..], slug_text(s)); }
   rp_step(s[0].world[..], dt);
+  world_posted(s);
   rp_here(s[0].world[..], s[0].x, s[0].z);   // where the shell's Add places things
   walk_x0 := s[0].x; walk_z0 := s[0].z;
   realm_step(s, dt);
@@ -3251,7 +3308,12 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
   redit_toggle(s[0].ed[..]);
   redit_switch(s[0].ed[..], 1);
   m2 := frame_of(s[..], t[..], 2560, 1600);
-  #assert s[0].ed[0].req_ready && cast(string) s[0].ed[0].req_body[0..<s[0].ed[0].req_body_n] == "{\"row\":\"props:wagon\",\"on\":true}" && !s[0].req_ready;
+  // a cell edit of the realm's world (#13514): its revision first, then the batch
+  #assert s[0].ed[0].req_ready && cast(string) s[0].ed[0].req_url[0..<s[0].ed[0].req_url_n] == "/api/worlds/moonlit-marsh?lane=dev" && !s[0].req_ready;
+  sb: [2048] u8; st: [1024] u8;
+  redit_requested(s[0].ed[..], 1); got := redit_message(s[0].ed[..], HTTP_KIND + 1, cast(string) sb[0..<ct_put(sb[..], ct_put(sb[..], 0, "200\n"), rp_test_state(4, st[..]))]);
+  m2b := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].ed[0].req_ready && cast(string) s[0].ed[0].req_url[0..<s[0].ed[0].req_url_n] == "/api/worlds/moonlit-marsh" && has_text(cast(string) s[0].ed[0].req_body[0..<s[0].ed[0].req_body_n], "{\"op\":\"cell\",\"table\":\"rows\",\"row\":2,\"col\":\"on\",\"v\":\"1\"}");
   redit_requested(s[0].ed[..], 1); used := redit_message(s[0].ed[..], HTTP_KIND + 1, "200\n{}");
   m3 := frame_of(s[..], t[..], 2560, 1600);
   redit_requested(s[0].ed[..], 1); used2 := redit_message(s[0].ed[..], HTTP_KIND + 1, EDIT_SPEC);
@@ -3261,24 +3323,47 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
   m5 := frame_of(s[..], t[..], 2560, 1600);
   #assert s[0].req_ready && url_is(s[..], "/api/playtest/realms/moonlit-marsh");
 }
-#test "BUILD: the owner places at once; a visitor's goes to the owner, only when building is on" #steps 30000000 {
+#test "BUILD: the owner places at once; a visitor's goes to the owner, only when building is on" #steps 60000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "moonlit-marsh", SPEC);
   n := frame_of(s[..], t[..], 2560, 1600);
   tap_box(s[..], t[..], s[0].boxes[BTN_BUILD]);
   m := frame_of(s[..], t[..], 2560, 1600);
   #assert s[0].pane == PANE_BUILD && s[0].cell_shown[1];
+  // a spawn in the realm's world (#13514), of the kind its kinds table names barrel, from the revision it stands at
+  o: [4096] u8; tb: [2048] u8; bb: [1024] u8;
+  world_answer(s[..], t[..], "200", rp_test_state(3, o[..]));
+  n = frame_of(s[..], t[..], 2560, 1600);
+  world_answer(s[..], t[..], "200", rp_test_tables("", tb[..]));
   tap_box(s[..], t[..], s[0].cells[1]);
-  #assert url_is(s[..], "/api/playtest/realms/moonlit-marsh/place") && body_is(s[..], "{\"thing\":\"barrel\",\"x\":0.00,\"z\":3.80,\"yaw\":0.00}");
+  n = frame_of(s[..], t[..], 2560, 1600);
+  spawn := [1] WorldEdit.[WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = 2, x = 0, z = 380, yaw = 0, scale = 100}];
+  #assert realm_world_wants(s[..]) && realm_world_url(s[..]) == "/api/worlds/moonlit-marsh" && realm_world_body(s[..]) == we_batch_write(3, WB_APPLY, spawn[..], 1, bb[..]);
+  #assert s[0].world_post == REQ_PLACE;
+  world_answer(s[..], t[..], "200", rp_test_state(4, o[..]));
+  n = frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].world_post == 0 && s[0].steps_n == 1 && s[0].steps_log[0] == 'W' && step_log(s[..], false) == 'W';
+  // UNDO takes it back through the world: the page's own newest step was the world's
+  #assert may_undo(s[..]);
+  s[0].world[0].f[0].rev = 4;
+  undo_press(s[..]);
+  #assert s[0].world_post == REQ_UNDO && cast(string) s[0].world[0].batch[0..<s[0].world[0].f[0].body_n] == we_batch_write(4, WB_UNDO, spawn[..], 0, bb[..]);
+  // the page reads the world once more after its place, then sends the undo
+  world_settle(s[..], t[..], 4, 5);
+  #assert s[0].world_post == 0 && s[0].steps_n == 0 && s[0].undone_n == 1 && step_log(s[..], true) == 'W' && note_is(s[..], "Undone.");
   q: [1] MyRealm; u: [1] Track;
   opened(q[..], u[..], "built", SAMPLE);
   #assert !can_build(q[..]);
   r: [1] MyRealm; v: [1] Track;
   opened(r[..], v[..], "open-yard", "realm open-yard\nname Open Yard\nstyle lowpoly\nground meadow\ntime day\nowner 0\ntool build 1\n");
   #assert can_build(r[..]);
+  world_settle(r[..], v[..], 3, 3);
   place_thing(r[..], v[..], 0);
-  realm_requested(r[..], 5);
-  realm_message(r[..], v[..], HTTP_ANSWER_KIND + 5, "200\n{\"proposed\":4}");
+  // a visitor's spawn is kept for the owner as a proposal (#13515): the world answers 202 in words
+  rb: [256] u8;
+  for i: 0..<4 { if !(realm_world_wants(r[..]) && realm_world_url(r[..]) == "/api/worlds/moonlit-marsh") { rn := frame_of(r[..], v[..], 2560, 1600); } }
+  world_answer(r[..], v[..], "202", we_refusal_write("sent to the owner", 0, rb[..]));
+  rn := frame_of(r[..], v[..], 2560, 1600);
   #assert cast(string) r[0].note[0..<r[0].note_n] == "Sent to the owner.";
 }
 
@@ -4169,6 +4254,21 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
 
 // The realm's world and its scripts (#13496): the page follows the world, tells the shell, names the
 // script, hands the script module its characters and walks them where the script says.
+// A few frames in which every read the page's world asks for is answered (its state at `rev`, its tables), and a
+// batch it sends with the state at `after`.
+world_settle :: (s: [] MyRealm, t: [] Track, rev: int, after: int) {
+  o: [4096] u8; tb: [2048] u8;
+  for i: 0..<6 {
+    if realm_world_wants(s) {
+      url := realm_world_url(s);
+      if url == "/api/worlds/moonlit-marsh" || url == "/api/worlds/open-yard" { world_answer(s, t, "200", rp_test_state(after, o[..])); }
+      else if has_text(url, "/content") { world_answer(s, t, "200", rp_test_tables("", tb[..])); }
+      else if has_text(url, "/events") { world_answer(s, t, "200", ""); }
+      else { world_answer(s, t, "200", rp_test_state(rev, o[..])); }
+    }
+    n := frame_of(s, t, 2560, 1600);
+  }
+}
 world_answer :: (s: [] MyRealm, t: [] Track, status: string, body: string) {
   #assert realm_world_wants(s);
   realm_world_sent(s, 5);

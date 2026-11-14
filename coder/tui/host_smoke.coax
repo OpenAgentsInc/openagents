@@ -380,8 +380,8 @@ tool_main :: () -> int #export_c #effects(all) {
   done := sm_follow(s, steps, bk, r2[..]);
   sb2: [65536] u8; st2 := sm_steps(steps, sb2[..]);
   sm_check2(s, done && rp_is(steps, "result.outcome.state", "finished"), "the realm job finishes", rp_s(steps, "result.outcome.state", b1[..]));
-  sm_check(s, sm_has(st2, "tool: mcp__openagents__realm_show") && sm_has(st2, "tool: mcp__openagents__realm_place"), "its steps show the realm tools it called");
-  sm_check(s, sm_has(st2, "approval: mcp__openagents__realm_place: run"), "the ceiling lets the realm edit run (--realm-tools)");
+  sm_check(s, sm_has(st2, "tool: mcp__openagents__realm_show") && sm_has(st2, "tool: mcp__openagents__realm_world_place"), "its steps show the realm tools it called");
+  sm_check(s, sm_has(st2, "approval: mcp__openagents__realm_world_place: run"), "the ceiling lets the realm edit run (--realm-tools)");
   sm_check(s, sm_has(st2, "approval: Bash(touch") && sm_has(st2, "): refuse") && sm_has(st2, "approval: Write(note.txt): refuse"), "the ceiling refuses its shell command and its file write, and the browser sees it");
   spb: [4096] u8; spn := fs_read(spec, spb[..]); spt := ifx spn > 0 then cast(string) spb[0..<spn] else "";
   sm_check(s, sm_has(spt, "rev 2\n") && sm_has(spt, "placed crate 4 -2 0"), "the realm's spec has the edit (rev 2, a crate placed)");

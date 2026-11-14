@@ -130,7 +130,7 @@ mcp_find_tool :: (name: string) -> int {
 // ---- find, then call (#13439) ------------------------------------------------------
 
 // The rows tools/list offers without a find: what a session reads, makes and edits most.
-MCP_LOADED :: [16] string.["list","show","new","doc","shot","move","place","world","world-place","world-move","world-remove","world-undo","play","look","go","say"];
+MCP_LOADED :: [16] string.["list","show","new","doc","shot","move","world-switch","world","world-place","world-move","world-remove","world-undo","play","look","go","say"];
 MCP_AREAS :: [4] string.["realm","seat","world","files"];
 MCP_EFFECTS :: [6] string.["read","write","spend","publish","destructive","player-facing"];
 MCP_FIND_FULL :: 8;   // a find of more rows than this answers with names and descriptions only
@@ -578,9 +578,9 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   #assert acct_has(s, "\\\"count\\\":1") && acct_has(s, "\\\"name\\\":\\\"realm_detach\\\"") && !acct_has(s, "realm_attach");
   // many rows: names and descriptions, and how to narrow
   s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\",\"arguments\":{\"area\":\"world\"}}}", cfg, out[..], false);
-  #assert acct_has(s, "\\\"count\\\":23") && acct_has(s, "narrow") && acct_has(s, "\\\"name\\\":\\\"realm_world_script_run\\\"") && !acct_has(s, "inputSchema");
+  #assert acct_has(s, "\\\"count\\\":25") && acct_has(s, "narrow") && acct_has(s, "\\\"name\\\":\\\"realm_world_script_run\\\"") && !acct_has(s, "inputSchema");
   s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\"}}", cfg, out[..], false);
-  #assert acct_has(s, "\\\"count\\\":65") && !acct_has(s, "inputSchema");
+  #assert acct_has(s, "\\\"count\\\":64") && !acct_has(s, "inputSchema");
   // one row by its name, and rows by a property
   s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\",\"arguments\":{\"name\":\"realm_world_plan\"}}}", cfg, out[..], false);
   #assert acct_has(s, "\\\"count\\\":1") && acct_has(s, "\\\"daytime\\\":{") && acct_has(s, "\\\"required\\\":[\\\"slug\\\",\\\"foe\\\",\\\"daytime\\\",\\\"act\\\"]");

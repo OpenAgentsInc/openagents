@@ -3,7 +3,7 @@
 // Do not edit: each realm_* MCP tool's name, effect, label and many, for the chat's tool rows (#13481), and its
 // help, method, route and required properties, for the hosted agent's tools on /chat.
 RealmTool :: struct { name: string; effect: string; label: string; many: string; help: string; method: string; route: string; props: string; }
-REALM_TOOLS :: [65] RealmTool.[
+REALM_TOOLS :: [64] RealmTool.[
   RealmTool.{name="realm_list",effect="read",label="List your realms",many="List your realms",help="your realms, and the worlds you may edit as the side lists them",method="GET",route="/mine",props=""},
   RealmTool.{name="realm_show",effect="read",label="Show realm {slug}",many="Show realms",help="the realm's spec and page",method="GET",route="",props="slug"},
   RealmTool.{name="realm_new",effect="spend",label="Make a realm[: {words}]",many="Make realms",help="plan words and make a private realm; --from PLAN makes an existing plan",method="POST",route="/plan",props="words"},
@@ -15,7 +15,7 @@ REALM_TOOLS :: [65] RealmTool.[
   RealmTool.{name="realm_asks",effect="read",label="Read {slug}'s asks",many="Read asks",help="the feature asks",method="GET",route="/asks",props="slug"},
   RealmTool.{name="realm_proposals",effect="read",label="Read {slug}'s proposals",many="Read proposals",help="visitors' proposals",method="GET",route="/proposals",props="slug"},
   RealmTool.{name="realm_panes",effect="read",label="Read {slug}'s lore and quests",many="Read lore and quests",help="lore and quests",method="GET",route="/panes",props="slug"},
-  RealmTool.{name="realm_switch",effect="write",label="Turn row {row} {on}",many="Turn rows on or off",help="turn a row on or off",method="POST",route="/switch",props="slug|row|on"},
+  RealmTool.{name="realm_world_switch",effect="write",label="Turn row {row} {on}",many="Turn rows on or off",help="turn a realm's board row ROW (its key, as realm world lists the rows table) on or off: a cell edit, one undo step",method="LOCAL",route="world",props="slug|row|on"},
   RealmTool.{name="realm_revise",effect="spend",label="Revise {slug}'s board",many="Revise boards",help="ask the planner to revise the board",method="POST",route="/revise",props="slug|words"},
   RealmTool.{name="realm_ask",effect="spend",label="Add an ask to {slug}",many="Add asks",help="add words, or a design document, to the feature list",method="POST",route="/asks",props="slug|words"},
   RealmTool.{name="realm_ask_delete",effect="destructive",label="Delete ask {id}",many="Delete asks",help="delete an ask",method="POST",route="/asks/:id/delete",props="slug|id"},
@@ -25,8 +25,7 @@ REALM_TOOLS :: [65] RealmTool.[
   RealmTool.{name="realm_rotate",effect="write",label="Turn {entity} {yaw} degrees",many="Turn things",help="turn a thing DEGREES from its laid-out way (0 puts it back); one save",method="POST",route="/save",props="slug|entity|yaw"},
   RealmTool.{name="realm_resize",effect="write",label="Size {entity} to {percent} percent",many="Size things",help="size a thing to PERCENT (25 to 400) of its laid-out size; one save",method="POST",route="/save",props="slug|entity|percent"},
   RealmTool.{name="realm_remove",effect="write",label="Remove {entity}",many="Remove things",help="take a thing away (undo brings it back); one save",method="POST",route="/save",props="slug|entity"},
-  RealmTool.{name="realm_place",effect="write",label="Place {row} at {x}, {z}",many="Place things",help="place a thing at X Z metres",method="POST",route="/place",props="slug|row|x|z"},
-  RealmTool.{name="realm_settings",effect="write",label="Set {slug}'s visitor tools",many="Set visitor tools",help="the tools visitors get",method="POST",route="/settings",props="slug"},
+  RealmTool.{name="realm_world_tools",effect="write",label="Set {slug}'s visitor tools",many="Set visitor tools",help="the tools a realm's visitors get: those named are on, the rest of its tools table off; cell edits, one undo step",method="LOCAL",route="world",props="slug"},
   RealmTool.{name="realm_lore",effect="write",label="Set {who}'s lore",many="Set lore",help="set WHO's lore; \"\" forgets it",method="POST",route="/lore",props="slug|who|text"},
   RealmTool.{name="realm_quest",effect="write",label="Set {who}'s quest",many="Set quests",help="set a giver's quest, up to three steps",method="POST",route="/quest",props="slug|who"},
   RealmTool.{name="realm_accept",effect="write",label="Accept proposal {id}",many="Accept proposals",help="accept a visitor's proposal",method="POST",route="/proposals/:id/accept",props="slug|id"},

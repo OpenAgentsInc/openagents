@@ -52,7 +52,7 @@ def realm_asks_checks():
     # a later change owns what it changed: DELETE leaves that alone
     st, text = add("lights off", {"features": [{"id": "lights", "on": False}, {"id": "owls", "on": True}]})
     lights = text.split()[1]
-    b_call("POST", base + "/switch", {"row": "lights", "on": True}, owner)
+    w_switch("test-asks", "lights", True, owner)   # a world edit (#13514)
     st, got = b_call("POST", base + "/asks/" + lights + "/delete", key=owner)
     check("an ask whose change was undone by hand since puts nothing back", st == 200 and got["reverted"] == 0 and "row lights 1" in b_call("GET", base, key=owner)[1], got)
     check("a waiting ask's DELETE just takes it off", b_call("POST", base + "/asks/" + dragon + "/delete", key=owner)[1].get("deleted") == int(dragon) and asks() == "")

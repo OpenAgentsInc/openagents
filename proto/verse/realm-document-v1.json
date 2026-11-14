@@ -180,38 +180,6 @@
    "restores": "mara's quest"
   },
   {
-   "name": "switch the trees off",
-   "ops": [
-    {
-     "op": "switch",
-     "row": "trees",
-     "on": false
-    }
-   ],
-   "route": "/edit-v1/switch",
-   "body": "{\"rev\":10,\"row\":\"trees\",\"on\":false}",
-   "status": 200,
-   "reply": "{\"on\": false, \"rev\": 11, \"row\": \"trees\"}",
-   "doc": "{\"doc\": \"aethyr.realm\", \"off\": [{\"count\": 4, \"feature\": \"trees\"}], \"rev\": 11, \"base\": null, \"lore\": {\"mara\": \"She keeps the lighthouse.\"}, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"quests\": {\"mara\": {\"ask\": \"Light the lamp\", \"steps\": [\"Find oil\", \"\", \"Climb\"], \"reward\": \"A map\"}}, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}, {\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"rocks:1\"}, {\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}], \"version\": 1, \"features\": [{\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
-   "sha256": "eee631c3d560d8215980d82a109dc32ed133bc105b517e69b18a895d2a2e3555",
-   "logged": "{\"to\": 10, \"ops\": [{\"slot\": \"row:0\", \"after\": {\"count\": 4, \"feature\": \"trees\"}, \"before\": null}, {\"slot\": \"feature:0\", \"after\": {\"count\": 2, \"feature\": \"rocks\"}, \"before\": {\"count\": 4, \"feature\": \"trees\"}}, {\"slot\": \"feature:1\", \"after\": null, \"before\": {\"count\": 2, \"feature\": \"rocks\"}}], \"card\": null}"
-  },
-  {
-   "name": "undo the switch",
-   "ops": [
-    {
-     "op": "undo"
-    }
-   ],
-   "route": "/undo",
-   "body": "{\"rev\":11}",
-   "status": 200,
-   "reply": "{\"rev\": 12, \"redo\": 1, \"undo\": 5}",
-   "doc": "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 12, \"base\": null, \"lore\": {\"mara\": \"She keeps the lighthouse.\"}, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"quests\": {\"mara\": {\"ask\": \"Light the lamp\", \"steps\": [\"Find oil\", \"\", \"Climb\"], \"reward\": \"A map\"}}, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}, {\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"rocks:1\"}, {\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
-   "sha256": "40c5227652e0a65c683c94d23a1fb2f1083bf78028e49489719cbe5440f034fa",
-   "restores": "redo the quest"
-  },
-  {
    "name": "a save from a stale revision",
    "ops": [
     {
@@ -222,7 +190,7 @@
    "route": "/save",
    "body": "{\"rev\":3,\"moved\":[{\"entity\":\"trees:1\",\"x\":1.25,\"z\":-2.50}],\"shaped\":[{\"entity\":\"rocks:0\",\"yaw\":0,\"scale\":150,\"gone\":false},{\"entity\":\"rocks:1\",\"yaw\":0,\"scale\":100,\"gone\":true},{\"entity\":\"trees:1\",\"yaw\":90,\"scale\":100,\"gone\":false}]}",
    "status": 409,
-   "reply": "{\"rev\": 12, \"error\": \"changed since\"}"
+   "reply": "{\"rev\": 10, \"error\": \"changed since\"}"
   }
  ]
 }

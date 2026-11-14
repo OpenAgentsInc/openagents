@@ -144,27 +144,9 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
   // edits.proto's bodies, the revision first (metaverse-engine/editor/change.coax writes each)
   v := rc_pos(a,verb,3);
   bn := -1;
-  if verb == "switch" { bn = editor_switch_body(rev,v,cli_onoff(rc_pos(a,verb,4)) == 1,false,buf[..]); }
-  else if verb == "revise" { bn = editor_words_body(rev,"prompt",v,false,buf[..]); }
+  if verb == "revise" { bn = editor_words_body(rev,"prompt",v,false,buf[..]); }
   else if verb == "ask" { bn = editor_words_body(rev,"words",v,false,buf[..]); }
   else if verb == "ask-done" { bn = editor_words_body(rev,"commit",rc_option(a,verb,"--commit",""),false,buf[..]); }
-  else if verb == "place" {
-    xb: [24] u8; zb: [24] u8; yb: [24] u8;
-    xn := editor_put_cm(xb[..],0,cli_edit_cm(rc_pos(a,verb,4))); zn := editor_put_cm(zb[..],0,cli_edit_cm(rc_pos(a,verb,5)));
-    y := rc_option(a,verb,"--yaw","0");
-    neg := y.count > 0 && y[0] == '-';
-    amount := cli_count(ifx neg then y[1..<y.count] else y,0,360);
-    yn := editor_put_int(yb[..],0,ifx neg then -amount else amount);
-    bn = editor_place_body(rev,v,cast(string) xb[0..<xn],cast(string) zb[0..<zn],cast(string) yb[0..<yn],false,buf[..]);
-  }
-  else if verb == "settings" {
-    enabled := rc_option(a,verb,"--tools",""); names := [6] string.["build","fly","jump","map","talk","voice"]; tools_on: [6] bool;
-    for i: 0..<6 {
-      at := 0;
-      for end: 0..<enabled.count+1 { if end == enabled.count || enabled[end] == ',' { if enabled[at..<end] == names[i] { tools_on[i]=true; } at=end+1; } }
-    }
-    bn = editor_settings_body(rev,names[..],tools_on[..],buf[..]);
-  }
   else if verb == "lore" { bn = editor_lore_body(rev,v,rc_pos(a,verb,4),false,buf[..]); }
   else if verb == "quest" {
     steps: [3] string; sn := 0;

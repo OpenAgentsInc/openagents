@@ -420,7 +420,7 @@ cli_edit_read_moves :: (spec: string, d: [] EditorDoc) -> bool #effects(all) {
 #load "../../coax/lib/sys/args.coax";
 
 #test "the realm catalogue covers reads and revisioned writes with unique verbs" {
-  #assert REALM_COMMANDS.count == 65;
+  #assert REALM_COMMANDS.count == 64;
   for i: 0..<REALM_COMMANDS.count {
     c := REALM_COMMANDS[i];
     #assert c.domain == "realm" && c.verb.count > 0 && c.help.count > 0;
@@ -463,10 +463,10 @@ cli_edit_read_moves :: (spec: string, d: [] EditorDoc) -> bool #effects(all) {
   #assert args_add(a[..], "--rev") && args_add(a[..], "7") && rc_validate(a[..], "move") == "";
   #assert args_add(a[..], "--rev") && args_add(a[..], "8") && rc_validate(a[..], "move") != "";
   b: [1] Args;
-  #assert args_add(b[..], "realm") && args_add(b[..], "switch") && args_add(b[..], "garden") && args_add(b[..], "trees");
-  #assert rc_validate(b[..], "switch") != "";
-  #assert args_add(b[..], "on") && rc_validate(b[..], "switch") == "";
-  #assert args_add(b[..], "unexpected") && rc_validate(b[..], "switch") != "";
+  #assert args_add(b[..], "realm") && args_add(b[..], "world-switch") && args_add(b[..], "garden") && args_add(b[..], "trees");
+  #assert rc_validate(b[..], "world-switch") != "";
+  #assert args_add(b[..], "on") && rc_validate(b[..], "world-switch") == "";
+  #assert args_add(b[..], "unexpected") && rc_validate(b[..], "world-switch") != "";
   c: [1] Args;
   #assert args_add(c[..], "realm") && args_add(c[..], "undo") && args_add(c[..], "garden") && args_add(c[..], "--other");
   #assert rc_validate(c[..], "undo") != "";
@@ -500,10 +500,10 @@ cli_edit_read_moves :: (spec: string, d: [] EditorDoc) -> bool #effects(all) {
 }
 
 #test "realm routes and methods match the published command contract" {
-  routes := [65] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","/redo","batch","seat","seat","seat","seat","seat","seat","seat","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","files","files","files","files","files"];
+  routes := [64] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","world","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","world","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","/redo","batch","seat","seat","seat","seat","seat","seat","seat","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","files","files","files","files","files"];
   for i: 0..<REALM_COMMANDS.count {
     #assert REALM_COMMANDS[i].route == routes[i];
-    method := ifx i == 6 || i >= 29 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
+    method := ifx i == 6 || i == 11 || i == 21 || i >= 28 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
     #assert REALM_COMMANDS[i].method == method;
   }
   #assert REALM_COMMANDS[rc_find("new")].arguments == "newwords";
@@ -574,9 +574,9 @@ cli_edit_read_moves :: (spec: string, d: [] EditorDoc) -> bool #effects(all) {
   #assert rc_option_at(b[..],"quest","--step",3) == "" && !rc_has(b[..],"quest","--reward");
   #assert args_add(b[..],"--step") && args_add(b[..],"fourth") && rc_validate(b[..],"quest") != "";
   c: [1] Args;
-  for s: [3] string.["realm","settings","garden"] { #assert args_add(c[..],s); }
-  #assert rc_validate(c[..],"settings") != "";
-  #assert args_add(c[..],"--tools") && args_add(c[..],"build,talk") && rc_validate(c[..],"settings") == "";
+  for s: [3] string.["realm","world-tools","garden"] { #assert args_add(c[..],s); }
+  #assert rc_validate(c[..],"world-tools") != "";
+  #assert args_add(c[..],"--tools") && args_add(c[..],"build,talk") && rc_validate(c[..],"world-tools") == "";
   d: [1] Args;
   for s: [4] string.["realm","quest","garden","Bram"] { #assert args_add(d[..],s); }
   #assert rc_validate(d[..],"quest") != "";
@@ -700,7 +700,7 @@ rc_effect_note :: (c: CliCommand, out: [] u8) -> string #effects(all) {
 CliCommand :: struct { domain: string = "realm"; verb: string; effect: string; approval: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; label: string; many: string; }
 // The seat rows (route "seat") drive one realm open in headless Chrome on this computer, as a
 // visitor (apps/openagents-cli/realm-play.coax, docs/metaverse/realm-seat.md).
-REALM_COMMANDS :: [65] CliCommand.[
+REALM_COMMANDS :: [64] CliCommand.[
   CliCommand.{verb="list",effect="read",approval="none",method="GET",route="/mine",help="your realms, and the worlds you may edit as the side lists them",label="List your realms",many="List your realms"},
   CliCommand.{verb="show",effect="read",approval="none",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page",label="Show realm {slug}",many="Show realms"},
   CliCommand.{verb="new",effect="spend",approval="owner",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan",label="Make a realm[: {words}]",many="Make realms"},
@@ -712,7 +712,7 @@ REALM_COMMANDS :: [65] CliCommand.[
   CliCommand.{verb="asks",effect="read",approval="none",method="GET",route="/asks",arguments="slug",usage="SLUG",help="the feature asks",label="Read {slug}'s asks",many="Read asks"},
   CliCommand.{verb="proposals",effect="read",approval="none",method="GET",route="/proposals",arguments="slug",usage="SLUG",help="visitors' proposals",label="Read {slug}'s proposals",many="Read proposals"},
   CliCommand.{verb="panes",effect="read",approval="none",method="GET",route="/panes",arguments="slug",usage="SLUG",help="lore and quests",label="Read {slug}'s lore and quests",many="Read lore and quests"},
-  CliCommand.{verb="switch",effect="write",approval="owner",method="POST",route="/switch",arguments="slug|row|onoff",flags="--rev:id",usage="SLUG ROW on|off [--rev N]",help="turn a row on or off",label="Turn row {row} {on}",many="Turn rows on or off"},
+  CliCommand.{verb="world-switch",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|row|onoff",flags="--rev:id|--shot:shotfile",usage="ID ROW on|off [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="turn a realm's board row ROW (its key, as realm world lists the rows table) on or off: a cell edit, one undo step",label="Turn row {row} {on}",many="Turn rows on or off"},
   CliCommand.{verb="revise",effect="spend",approval="owner",method="POST",route="/revise",arguments="slug|words",flags="--rev:id",usage="SLUG \"WORDS\" [--rev N]",help="ask the planner to revise the board",label="Revise {slug}'s board",many="Revise boards"},
   CliCommand.{verb="ask",effect="spend",approval="owner",method="POST",route="/asks",arguments="slug|words",flags="--rev:id|--doc:file",usage="SLUG \"WORDS\" | SLUG --doc FILE [--rev N]",help="add words, or a design document, to the feature list",label="Add an ask to {slug}",many="Add asks"},
   CliCommand.{verb="ask-delete",effect="destructive",approval="confirm",method="POST",route="/asks/:id/delete",arguments="slug|id",flags="--rev:id|--yes:bool",usage="SLUG ID [--rev N] [--yes]",help="delete an ask",label="Delete ask {id}",many="Delete asks"},
@@ -722,8 +722,7 @@ REALM_COMMANDS :: [65] CliCommand.[
   CliCommand.{verb="rotate",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity|yaw",flags="--rev:id",usage="SLUG ENTITY DEGREES [--rev N]",help="turn a thing DEGREES from its laid-out way (0 puts it back); one save",label="Turn {entity} {yaw} degrees",many="Turn things"},
   CliCommand.{verb="resize",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity|percent",flags="--rev:id",usage="SLUG ENTITY PERCENT [--rev N]",help="size a thing to PERCENT (25 to 400) of its laid-out size; one save",label="Size {entity} to {percent} percent",many="Size things"},
   CliCommand.{verb="remove",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity",flags="--rev:id",usage="SLUG ENTITY [--rev N]",help="take a thing away (undo brings it back); one save",label="Remove {entity}",many="Remove things"},
-  CliCommand.{verb="place",effect="write",approval="owner",method="POST",route="/place",arguments="slug|row|metres|metres",flags="--rev:id|--yaw:yaw",usage="SLUG THING X Z [--yaw DEG] [--rev N]",help="place a thing at X Z metres",label="Place {row} at {x}, {z}",many="Place things"},
-  CliCommand.{verb="settings",effect="write",approval="owner",method="POST",route="/settings",arguments="slug",flags="--rev:id|--tools:tools",usage="SLUG --tools build,fly,jump,map,talk,voice [--rev N]",help="the tools visitors get",label="Set {slug}'s visitor tools",many="Set visitor tools"},
+  CliCommand.{verb="world-tools",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--tools:tools|--shot:shotfile",usage="ID --tools build,fly,jump,map,talk,voice [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="the tools a realm's visitors get: those named are on, the rest of its tools table off; cell edits, one undo step",label="Set {slug}'s visitor tools",many="Set visitor tools"},
   CliCommand.{verb="lore",effect="write",approval="owner",method="POST",route="/lore",arguments="slug|who|lore",flags="--rev:id",usage="SLUG WHO \"TEXT\" [--rev N]",help="set WHO's lore; \"\" forgets it",label="Set {who}'s lore",many="Set lore"},
   CliCommand.{verb="quest",effect="write",approval="owner",method="POST",route="/quest",arguments="slug|who",flags="--rev:id|--ask:ask|--step:step|--reward:step",usage="SLUG GIVER --ask \"TEXT\" [--step \"TEXT\"]... [--reward \"TEXT\"] [--rev N]",help="set a giver's quest, up to three steps",label="Set {who}'s quest",many="Set quests"},
   CliCommand.{verb="accept",effect="write",approval="owner",method="POST",route="/proposals/:id/accept",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="accept a visitor's proposal",label="Accept proposal {id}",many="Accept proposals"},
@@ -1322,7 +1321,7 @@ rc_validate :: (a: [] Args, verb: string) -> string #effects(all) {
   if verb == "ask-done" && !rc_has(a,verb,"--commit") { return "ask-done needs --commit HASH"; }
   if verb == "use" && pn == expected - 1 && p[3] == "build" { return "use build takes a THING: crate, barrel, tree, rock, plant, lantern, fence or chest"; }
   if verb == "use" && pn == expected && p[3] != "build" { return "only build takes a THING"; }
-  if verb == "settings" && !rc_has(a,verb,"--tools") { return "settings needs --tools build,talk,..."; }
+  if verb == "world-tools" && !rc_has(a,verb,"--tools") { return "world-tools needs --tools build,talk,..."; }
   if verb == "quest" && !rc_has(a,verb,"--ask") { return "quest needs --ask TEXT (empty removes it)"; }
   if (verb == "world-script-compile" || verb == "world-script-put") && !rc_has(a,verb,"--name") { return "the script needs --name NAME: its name, as its source's #script says"; }
   if verb == "world-script-run" && !(rc_has(a,verb,"--script") && rc_has(a,verb,"--name") && rc_has(a,verb,"--for")) { return "world-script-run needs --script HASH, --name NAME and --for \"kind K\" or \"who N\""; }
@@ -1523,16 +1522,13 @@ rc_help_line :: (c: CliCommand, out: [] u8) -> string #effects(all) {
 // validates for a person. No effects, implicit revisions or semantic routing.
 
 #test "batch edits map every supported operation to the exact command arguments" {
-  lines := [16] string.[
+  lines := [13] string.[
     "{\"op\":\"move\",\"entity\":\"trees:3\",\"x\":4.5,\"z\":-2}",
-    "{\"op\":\"switch\",\"row\":\"trees\",\"on\":true}",
-    "{\"op\":\"place\",\"thing\":\"barrel\",\"x\":2,\"z\":3,\"yaw\":90}",
     "{\"op\":\"revise\",\"prompt\":\"add a pond\"}",
     "{\"op\":\"ask\",\"words\":\"more trees\"}",
     "{\"op\":\"ask-delete\",\"id\":7}",
     "{\"op\":\"ask-done\",\"id\":8,\"commit\":\"abcdef0\"}",
     "{\"op\":\"row-delete\",\"row\":\"trees\"}",
-    "{\"op\":\"settings\",\"tools\":\"build,talk\"}",
     "{\"op\":\"lore\",\"who\":\"Bram\",\"text\":\"\"}",
     "{\"op\":\"quest\",\"giver\":\"Bram\",\"ask\":\"find it\",\"steps\":[\"first\",\"--reward\",\"third\"],\"reward\":\"a hat\"}",
     "{\"op\":\"accept\",\"id\":9}",
@@ -1541,14 +1537,14 @@ rc_help_line :: (c: CliCommand, out: [] u8) -> string #effects(all) {
     "{\"op\":\"publish\",\"listed\":true}",
     "{\"op\":\"visibility\",\"visibility\":\"unlisted\"}"
   ];
-  want := [16] string.[
-    "realm|move|garden|trees:3|4.5|-2", "realm|switch|garden|trees|on", "realm|place|garden|barrel|2|3|--yaw|90",
+  want := [13] string.[
+    "realm|move|garden|trees:3|4.5|-2",
     "realm|revise|garden|add a pond", "realm|ask|garden|more trees", "realm|ask-delete|garden|7", "realm|ask-done|garden|8|--commit|abcdef0",
-    "realm|row-delete|garden|trees", "realm|settings|garden|--tools|build,talk", "realm|lore|garden|Bram|",
+    "realm|row-delete|garden|trees", "realm|lore|garden|Bram|",
     "realm|quest|garden|Bram|--ask|find it|--step|first|--step|--reward|--step|third|--reward|a hat",
     "realm|accept|garden|9", "realm|decline|garden|10", "realm|undo|garden", "realm|publish|garden|--listed", "realm|visibility|garden|unlisted"
   ];
-  counts := [16] int.[6,5,8,4,4,4,6,4,5,5,14,4,4,3,4,4];
+  counts := [13] int.[6,4,4,4,6,4,5,14,4,4,3,4,4];
   a: [1] Args;
   for i: 0..<lines.count {
     #assert rb_args(lines[i], "garden", a[..]) && a[0].n == counts[i] && !a[0].full;
@@ -1557,8 +1553,10 @@ rc_help_line :: (c: CliCommand, out: [] u8) -> string #effects(all) {
 }
 #test "batch optional fields preserve false zero empty strings and decoded copies" {
   a: [1] Args;
-  #assert rb_args("{\"op\":\"switch\",\"row\":\"trees\",\"on\":false}", "garden", a[..]) && args_at(a[..],4) == "off";
-  #assert rb_args("{\"op\":\"place\",\"thing\":\"barrel\",\"x\":0,\"z\":0}", "garden", a[..]) && a[0].n == 6;
+  // a row switched, a thing placed and the visitors' tools are world edits (#13514): no line of a realm's apply
+  for w: [3] string.["{\"op\":\"switch\",\"row\":\"trees\",\"on\":false}", "{\"op\":\"place\",\"thing\":\"barrel\",\"x\":0,\"z\":0}", "{\"op\":\"settings\",\"tools\":\"build\"}"] {
+    #assert !rb_args(w, "garden", a[..]) && rb_read(w, "garden", a[..]).why == RB_OPS;
+  }
   #assert rb_args("{\"op\":\"publish\",\"listed\":false}", "garden", a[..]) && a[0].n == 3;
   #assert rb_args("{\"op\":\"publish\"}", "garden", a[..]) && a[0].n == 3;
   #assert rb_args("{\"op\":\"ask\",\"doc\":\"scene.md\"}", "garden", a[..]) && a[0].n == 5 && args_at(a[..],3) == "--doc" && args_at(a[..],4) == "scene.md";
@@ -1647,19 +1645,16 @@ RbField :: struct { key: string; kind: int = 1; flag: string; optional: bool; }
 RbSpec :: struct { verb: string; fields: [4] RbField; }
 // kind: 1 string, 2 JSON number, 3 on/off boolean, 4 ordered string array,
 // 5 a boolean flag (false means omit it). The catalogue owns value bounds.
-RB_SPECS :: [20] RbSpec.[
+RB_SPECS :: [17] RbSpec.[
   RbSpec.{verb="move",fields=[4] RbField.[RbField.{key="entity"},RbField.{key="x",kind=2},RbField.{key="z",kind=2},RbField.{}]},
   RbSpec.{verb="rotate",fields=[4] RbField.[RbField.{key="entity"},RbField.{key="yaw",kind=2},RbField.{},RbField.{}]},
   RbSpec.{verb="resize",fields=[4] RbField.[RbField.{key="entity"},RbField.{key="scale",kind=2},RbField.{},RbField.{}]},
   RbSpec.{verb="remove",fields=[4] RbField.[RbField.{key="entity"},RbField.{},RbField.{},RbField.{}]},
-  RbSpec.{verb="switch",fields=[4] RbField.[RbField.{key="row"},RbField.{key="on",kind=3},RbField.{},RbField.{}]},
-  RbSpec.{verb="place",fields=[4] RbField.[RbField.{key="thing"},RbField.{key="x",kind=2},RbField.{key="z",kind=2},RbField.{key="yaw",kind=2,flag="--yaw",optional=true}]},
   RbSpec.{verb="revise",fields=[4] RbField.[RbField.{key="prompt"},RbField.{},RbField.{},RbField.{}]},
   RbSpec.{verb="ask",fields=[4] RbField.[RbField.{key="words",optional=true},RbField.{key="doc",flag="--doc",optional=true},RbField.{},RbField.{}]},
   RbSpec.{verb="ask-delete",fields=[4] RbField.[RbField.{key="id",kind=2},RbField.{},RbField.{},RbField.{}]},
   RbSpec.{verb="ask-done",fields=[4] RbField.[RbField.{key="id",kind=2},RbField.{key="commit",flag="--commit"},RbField.{},RbField.{}]},
   RbSpec.{verb="row-delete",fields=[4] RbField.[RbField.{key="row"},RbField.{},RbField.{},RbField.{}]},
-  RbSpec.{verb="settings",fields=[4] RbField.[RbField.{key="tools",flag="--tools"},RbField.{},RbField.{},RbField.{}]},
   RbSpec.{verb="lore",fields=[4] RbField.[RbField.{key="who"},RbField.{key="text"},RbField.{},RbField.{}]},
   RbSpec.{verb="quest",fields=[4] RbField.[RbField.{key="giver"},RbField.{key="ask",flag="--ask"},RbField.{key="steps",kind=4,flag="--step"},RbField.{key="reward",flag="--reward",optional=true}]},
   RbSpec.{verb="accept",fields=[4] RbField.[RbField.{key="id",kind=2},RbField.{},RbField.{},RbField.{}]},
@@ -1697,7 +1692,7 @@ rb_emit :: (d: Jv, at: int, f: RbField, a: [] Args) -> bool #effects(all) {
 // Why a line is refused: field names the JSON field ("" for the whole line;
 // a slice of the line or of RB_SPECS), why says what it must be. why "" is admitted.
 RbWhy :: struct { field: string; why: string; }
-RB_OPS :: "is not an edit: move, rotate, resize, remove, switch, place, revise, ask, ask-delete, ask-done, row-delete, settings, lore, quest, accept, decline, undo, publish or visibility";
+RB_OPS :: "is not an edit: move, rotate, resize, remove, revise, ask, ask-delete, ask-done, row-delete, lore, quest, accept, decline, undo, publish or visibility (a row switched, a thing placed and the visitors' tools are world edits: realm world-apply)";
 rb_kind_why :: (kind: int) -> string #effects(all) {
   if kind == 2 { return "must be a JSON number"; }
   if kind == 3 || kind == 5 { return "must be true or false"; }
@@ -1763,11 +1758,11 @@ rb_check :: (line: string, slug: string, a: [] Args) -> RbWhy #effects(all) {
   a: [1] Args;
   cases := [12] string.[
     "[1]", "{\"x\":1}", "{\"op\":\"fly\"}", "{\"op\":\"undo\",\"op\":\"undo\"}",
-    "{\"op\":\"undo\",\"rev\":3}", "{\"op\":\"switch\",\"row\":\"a\",\"row\":\"b\",\"on\":true}",
+    "{\"op\":\"undo\",\"rev\":3}", "{\"op\":\"lore\",\"who\":\"a\",\"who\":\"b\",\"text\":\"\"}",
     "{\"op\":\"ask\"}", "{\"op\":\"move\",\"entity\":\"trees:0\",\"x\":0}",
-    "{\"op\":\"move\",\"entity\":\"trees:0\",\"x\":\"0\",\"z\":0}", "{\"op\":\"switch\",\"row\":\"a\",\"on\":1}",
+    "{\"op\":\"move\",\"entity\":\"trees:0\",\"x\":\"0\",\"z\":0}", "{\"op\":\"publish\",\"listed\":1}",
     "{\"op\":\"move\",\"entity\":\"enclosure\",\"x\":1,\"z\":1}", "{\"op\":\"quest\",\"giver\":\"B\",\"ask\":\"x\",\"steps\":{}}"];
-  fields := [12] string.["", "op", "op", "op", "rev", "row", "words", "z", "x", "on", "", "steps"];
+  fields := [12] string.["", "op", "op", "op", "rev", "who", "words", "z", "x", "listed", "", "steps"];
   whys := [12] string.["is not one JSON object such as {\"op\":\"undo\"}", "is missing or not a string", RB_OPS, "is given twice",
     "is not a field of this op (a revision goes in --rev, not in a line)", "is given twice", "ask takes words or doc, exactly one", "is missing",
     "must be a JSON number", "must be true or false", rc_why("entity"), "must be an array of at most three strings"];
@@ -1788,7 +1783,7 @@ rb_check :: (line: string, slug: string, a: [] Args) -> RbWhy #effects(all) {
 #test "the batch format help lists every op with its fields" {
   out: [1024] u8;
   h := rb_help(out[..]);
-  #assert cli_prefix(h, "move entity x z; rotate entity yaw; resize entity scale; remove entity; switch row on; place thing x z yaw?; revise prompt; ask words?|doc?; ask-delete id; ask-done id commit; ");
+  #assert cli_prefix(h, "move entity x z; rotate entity yaw; resize entity scale; remove entity; revise prompt; ask words?|doc?; ask-delete id; ask-done id commit; ");
   #assert rc_contains(h, "quest giver ask steps reward?; accept id; decline id; undo; redo; publish listed?; visibility visibility") && !rc_contains(h, "  ");
   #assert rb_help(out[0..<10]) == "";
 }
