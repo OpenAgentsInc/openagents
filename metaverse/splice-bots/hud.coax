@@ -545,7 +545,7 @@ hv_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   n = hv_text(out, n, F_MONO, "PLAY TEST", sx0, 141 * k, 6.5 * k, dim, 1);
   n = hv_frame(out, n, sx0, sy0, sx1, sy1, 1.2 * k, line, 1);
   state := hv_bay_state(g);
-  n = hv_text(out, n, F_MONO, state, sx0 + 14 * k, sy0 + 22 * k, 6.5 * k, ifx state == "DIGGER · READY" then HV_DARK() else kit_tint(0.72, 0.33, 0.12), 1);   // on the stage's paper
+  n = hv_text(out, n, F_MONO, state, sx0 + 14 * k, sy0 + 22 * k, 6.5 * k, ifx g_cut_ok(g) && !d_down(g) then HV_DARK() else kit_tint(0.72, 0.33, 0.12), 1);   // on the stage's paper
   if fract(g[0].t) < 0.6 { n = ui_seg(out, n, sx1 - 40 * k, sy0 + 19 * k, sx1 - 40 * k, sy0 + 19 * k, 3.5 * k, orange, 1); }
   n = hv_text(out, n, F_MONO, "REC", sx1 - 32 * k, sy0 + 22 * k, 6.5 * k, HV_DARK(), 1);
   px1 := sx1 - 14 * k; px0 := px1 - 140 * k; py1 := sy1 - 14 * k; py0 := py1 - 42 * k;
@@ -733,12 +733,16 @@ hv_death :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   return hv_mid(out, n, F_MONO, HV_DEATH_TIP, cx, by + bh + 44 * k, 6 * k, HV_DIM(), 1);
 }
 
-// The stage's line over Digger: READY only once he has his hardware and a card on his strip to run
-// (#13578: with the strip empty, PLAY TEST has him do nothing, so it says what is missing).
+// The stage's line over Digger: what is missing (#13578), else whether this cut will do the job at hand, in
+// plain words (playtest 3: she wanted to know it would work while she spliced).
 hv_bay_state :: (g: [] SpGame) -> string {
   if d_down(g) { return "DIGGER · POWERED DOWN"; }
   if !(g[0].slot[0] && g[0].slot[1] && g[0].slot[2]) { return "DIGGER · NEEDS HARDWARE"; }
-  return ifx g[0].strip_n == 0 then "DIGGER · NEEDS CARDS" else "DIGGER · READY";
+  if g[0].strip_n == 0 { return "DIGGER · NEEDS CARDS"; }
+  j := g_job(g);
+  if j == 3 { return "WON'T DRILL THE HALLWAY: THE DRILL MECH DOES"; }
+  if g_cut_ok(g) { return ifx j == 1 then "WILL WORK: DIGS OUT THE SENSOR" else ifx j == 2 then "WILL WORK: DRILLS THE ROCK WALL" else "DIGGER · READY"; }
+  return ifx g_spliced(g) then "WON'T REACH: PUT MOVE BEFORE DRILL" else "WON'T DIG: ADD THE DRILL CARD";
 }
 
 #test "each inventory item names the slot it goes into, as the bay's slots are named (playtest 2)" {
@@ -753,8 +757,20 @@ hv_bay_state :: (g: [] SpGame) -> string {
   g[0].slot[0] = false; #assert hv_bay_state(g[..]) == "DIGGER · NEEDS HARDWARE";
   g[0].slot[0] = true; g[0].slot[1] = true; g[0].slot[2] = true; g[0].strip_n = 0;
   #assert hv_bay_state(g[..]) == "DIGGER · NEEDS CARDS";
+  // playtest 3: whether the cut does the job at hand. The hallway is the mech's; with every job done, READY
   g[0].strip[0] = H_MOVE; g[0].strip_n = 1;
-  #assert hv_bay_state(g[..]) == "DIGGER · READY";
+  #assert g_job(g[..]) == 3 && hv_bay_state(g[..]) == "WON'T DRILL THE HALLWAY: THE DRILL MECH DOES";
+  g[0].wall_gone = true; #assert hv_bay_state(g[..]) == "DIGGER · READY";
+  // the rock wall: MOVE alone can't dig, DRILL before MOVE drills air, MOVE then DRILL works, and closing the bay offers the order
+  g[0].wall_gone = false; g[0].rubble_gone = false; g[0].dr[0].sensor = true; g[0].mode = M_BAY;
+  #assert g_job(g[..]) == 2 && hv_bay_state(g[..]) == "WON'T DIG: ADD THE DRILL CARD";
+  g[0].strip[0] = H_DRILL; g[0].strip[1] = H_MOVE; g[0].strip_n = 2; #assert hv_bay_state(g[..]) == "WON'T REACH: PUT MOVE BEFORE DRILL";
+  #assert g_key(g[..], -1, true) && g[0].msg != MSG_OFFER; g[0].mode = M_BAY;
+  g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL; #assert hv_bay_state(g[..]) == "WILL WORK: DRILLS THE ROCK WALL";
+  #assert g_key(g[..], -1, true) && g[0].msg == MSG_OFFER && g[0].mode == M_PLAY;
+  // the buried sensor: any drill card digs it out
+  g[0].dr[0].sensor = false; g[0].dv[0].away = false; g[0].phase = PH_DAY; g[0].strip[0] = H_DRILL; g[0].strip_n = 1;
+  #assert g_job(g[..]) == 1 && hv_bay_state(g[..]) == "WILL WORK: DIGS OUT THE SENSOR";
 }
 #test "playtest 3: Digger's body is on the compass while the mech has his core, E beside it puts the core back, and far from her he is marked too" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];

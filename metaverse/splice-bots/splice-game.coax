@@ -795,6 +795,22 @@ g_place :: (g: [] SpGame, item: int, at: int) {
   if g[0].strip_n < 3 { g[0].strip[g[0].strip_n] = item; g[0].strip_n += 1; }
 }
 // Digger is spliced for the dig: his three slots filled and a drill card on his strip.
+// The job Digger's cut is for now (playtest 3): 1 the buried sensor at the farm, 2 the raiders' rock wall, 3 the
+// blocked hallway, which only the drill mech breaks, 0 none left.
+g_job :: (g: [] SpGame) -> int {
+  if d_sensor_here(g) && !dv_away(g) && g[0].phase == PH_DAY { return 1; }   // as the objective has it
+  if !g[0].rubble_gone { return 2; }
+  return ifx g[0].wall_gone then 0 else 3;
+}
+// Whether the cut as it stands does that job: any drill card digs the sensor out; the rock wall needs MOVE
+// before a drill card, or he drills air (g_bot).
+g_cut_ok :: (g: [] SpGame) -> bool {
+  j := g_job(g); moved := j == 1;
+  if !(g[0].slot[0] && g[0].slot[1] && g[0].slot[2]) || j == 3 { return false; }
+  for i: 0..<g[0].strip_n { if g[0].strip[i] == H_MOVE { moved = true; } else if moved { return true; } }
+  return j == 0 && g[0].strip_n > 0;
+}
+MSG_OFFER :: 44;   // the edit bay closed on a cut that will do the job: the order, and its key
 g_spliced :: (g: [] SpGame) -> bool {
   if !(g[0].slot[0] && g[0].slot[1] && g[0].slot[2]) { return false; }
   for i: 0..<g[0].strip_n { if g[0].strip[i] == H_DRILL || g[0].strip[i] == H_PLUS { return true; } }
@@ -859,7 +875,11 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
     return false;
   }
   if g[0].mode == M_BAY {
-    if key == -15 || key == -1 || key == 'e' || key == 'E' { g[0].mode = M_PLAY; g[0].look_free = false; return true; }
+    if key == -15 || key == -1 || key == 'e' || key == 'E' {
+      g[0].mode = M_PLAY; g[0].look_free = false;
+      if g_job(g) > 0 && g_cut_ok(g) && !d_down(g) { g[0].msg = MSG_OFFER; g[0].msg_t = 6; }   // the order and its key, not left to guess (playtest 3)
+      return true;
+    }
     if key == '1' { g_place(g, H_MOVE, -1); return true; }
     if key == '2' { g_place(g, H_DRILL, -1); return true; }
     if key == '3' { g_place(g, H_PLUS, -1); return true; }
@@ -1532,6 +1552,7 @@ msg_text :: (g: [] SpGame) -> string {
   if m == MSG_NO_DRILL { return "The rover: not without a drill. Find the DRILL card first."; }
   if m == MSG_MAP { return "The rover: the garage goes deeper than anyone mapped. Here's how deep."; }
   if m == MSG_OUTFIT { return "Outfit changed."; }
+  if m == MSG_OFFER { return ifx g_job(g) == 1 then "Digger can dig out the sensor now. Outside, look at it and click." else "Digger can drill the rock wall now. Look at it and click."; }
   if m == MSG_PICK {
     i := g[0].last_pick;
     return ifx i == H_ARM then "Drill Arm found." else ifx i == H_TREADS then "Treads found." else ifx i == H_BATTERY then "Battery found." else ifx i == H_MOVE then "Card found: MOVE." else ifx i == H_DRILL then "Card found: DRILL." else "DRILL+ found. +25 Heat.";

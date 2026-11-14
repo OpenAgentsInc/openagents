@@ -329,6 +329,7 @@ d_select_hud :: (g: [] SpGame, out: [] f32, q: Ui, at: int, cx: f32, cy: f32) ->
   }
   t := d_label(d.sel, why); w := ui_w(F_MONO, t, 8 * k) * 0.5 + 8 * k; y := cy + 30 * k;
   n = ui_seg(out, n, cx - w + 7 * k, y, cx + w - 7 * k, y, 9 * k, INK(), 0.85);
+  if why == DS_NONE { n = ui_mid(out, n, "CLICK", cx, y + 17 * k, 6 * k, c); }   // the order's key, under its name (playtest 3)
   return ui_mid(out, n, t, cx, y + 3.5 * k, 8 * k, c);
 }
 
