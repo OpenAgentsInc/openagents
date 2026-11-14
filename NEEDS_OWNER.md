@@ -2,6 +2,11 @@
 
 ## Full-screen worlds and camera, build 1080
 
+1080 is **VALID / IN_BETA_TESTING**, verified in the existing **Owner** group.
+Its signed generation-1 feed matches all twenty archived resources; a fresh
+install records only its generation, with no duplicate update prompt. See the
+[release record](docs/verification/2026-11-14-native-world-controls-1080.json).
+
 Install 1080 for the native world controls. Splice Bots and Everglade fill
 the screen with one small floating **World menu** button. Open that menu to
 close the world or use its editor; loading failures offer Retry there.

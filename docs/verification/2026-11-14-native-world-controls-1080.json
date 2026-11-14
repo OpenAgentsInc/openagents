@@ -1,0 +1,111 @@
+{
+  "recorded_at": "2026-11-14T15:29:42.377360+00:00",
+  "release": {
+    "build": 1080,
+    "bundle": "com.openagents.app",
+    "version": "1.0.0",
+    "runtime": "6d0681a6394d7f57c346f3d844d576d37f3d15af2406dfd182e25bd92402ef3a",
+    "ipa_bytes": 17952847,
+    "ipa_sha256": "383344b21c2a8e264f97743793f4c25c8375c429f0a3223b06fd769ccaa7ed66",
+    "framework_versions": {
+      "breez_sdk_sparkFFI.framework": "1",
+      "MadeRealmRuntime.framework": "1",
+      "EvergladeForestRuntime.framework": "1",
+      "EvergladeRuntime.framework": "1",
+      "SpliceBotsRuntime.framework": "1"
+    },
+    "bundled_world_packs": 0,
+    "portable_files": 20,
+    "exported_starter_files_verified": 49,
+    "world_producers": {
+      "everglade": "48208ef47e47b23040121384dfc7068b9137a6aef2a37e540bc16d9fad676f0f",
+      "everglade2": "ce82d1086659535bb971f18d69d7658a9a29cd6f5f97f73711befc6c7ed5edc5",
+      "myrealm": "61ae59f4b00e20e198f2befc44fcfdb3aa95959f25144dbea83f41555b4ff18c",
+      "splice-bots": "179388b81b5dc84b349b32dd3c4b7c31c2b7589ee7396141d32c819856c26b71"
+    },
+    "codesign": "deep/strict verified",
+    "native_links": "4 producers, 0 missing on archive and exported IPA",
+    "splice_asset_records_preserved": 26,
+    "source_commit": "f40d362b6438d6fd9b7e10a246ccc038c5e6638a",
+    "source_tag": "openagents-ios-1080",
+    "apple_state": "VALID",
+    "producer_note": "Splice Bots regenerated from the tagged source. Other three producers and all device shaders retain 1079 inputs. Exact generated C/headers and device shaders are kept beside the private archive.",
+    "internal_beta_state": "IN_BETA_TESTING",
+    "verified_group": "Owner"
+  },
+  "behavior": [
+    "Native worlds fill the view; the navigation/status bars are hidden. One 44-point floating menu sits in the upper-right corner, above the realm title.",
+    "Close world is available while loading and playing; the existing editor is offered where the world exposes it, and a loading failure offers Retry. Opening the menu clears held game input.",
+    "The shared Splice touch adapter converts positive-up engine pitch to the game\u2019s positive-down mouse delta. Upward drag looks up and downward drag looks down. Horizontal look and mouse input are unchanged.",
+    "The existing inventory codec rebinds the rebuilt Splice producer to the same 26 immutable asset records. No game packs are bundled.",
+    "1079\u2019s compact transcripts and main\u2019s model/effort controls are retained."
+  ],
+  "verification": {
+    "coax_host": {
+      "passed": 99,
+      "failed": 0,
+      "host": "remote oa-build-3"
+    },
+    "coax_touch": {
+      "passed": 2,
+      "failed": 0,
+      "selected": "Splice mobile",
+      "host": "remote oa-build-3",
+      "coverage": "Two independent fingers, movement, cancellation, up/down pitch and unchanged horizontal yaw."
+    },
+    "native_program": {
+      "passed": 5,
+      "failed": 0,
+      "result_bundle": "/tmp/oa-ios1080-program-fixed.xcresult",
+      "note": "Includes library/current Everglade selection, builder, editor/typed-plan fencing, world chat and initial floating-menu layout. Later placement-only changes use the focused check below."
+    },
+    "final_chrome": {
+      "passed": 1,
+      "failed": 0,
+      "result_bundle": "/tmp/oa-ios1080-chrome-final.xcresult",
+      "coverage": "Actual native world/navigation controllers, hidden navigation/status bars, single 44-point menu at the upper-right edge and exit available before assets load."
+    },
+    "installed_worlds": {
+      "passed": 1,
+      "failed": 0,
+      "result_bundle": "/tmp/oa-ios1080-corner.xcresult",
+      "configuration": "Ad-hoc signed Debug iOS Simulator app; actual public assets",
+      "coverage": "Both real worlds reach a presented Metal frame, full-screen bounds, one small upper-right menu, menu opens and Close returns to the library. Splice camera gestures and current Everglade II movement; screenshots inspected."
+    },
+    "camera_visuals": {
+      "result_bundle": "/tmp/oa-ios1080-worlds-live.xcresult",
+      "coverage": "Fresh Splice New run and character confirmation, then upward/downward touch drags. Inspected images show more sky when looking up and more ground when looking down. Same camera code as the released source."
+    },
+    "package": "Exported IPA deep/strict codesign and all four native producer callback gates passed. Every bundled Starter file matches the archive. All world inventory identities match the installed catalogue; Splice assets differ only in producer identity.",
+    "tools": "2020 tracked tool files, 0 missing firm reasons.",
+    "prepush": "Normal hooks passed on bb5a58c3a7 and f40d362b64. First push ran the complete touched host and Splice Coax suites; parity, wire, layer, state-keep, agent-reference and shader checks passed.",
+    "physical_device": "No physical-phone acceptance claimed. Steps are in NEEDS_OWNER.md.",
+    "symbols": "All five app/producer dSYMs retained in the private symbols bucket.",
+    "fresh_live_updates": {
+      "passed": 1,
+      "failed": 0,
+      "result_bundle": "/tmp/oa-ios1080-dedup.xcresult",
+      "state_files": [
+        "highwater.cnu"
+      ],
+      "verification": "Fresh install and relaunch on the actual 1080 runtime. Signed generation high-water mark only, byte-equal to published generation 1; no pending/current package, resources, trial or duplicate prompt."
+    },
+    "after_landing": "After-landing state reported zero open red entries; the newest source commits are still awaiting the downstream green run."
+  },
+  "updates": {
+    "generation": 1,
+    "files": 20,
+    "runtime": "6d0681a6394d7f57c346f3d844d576d37f3d15af2406dfd182e25bd92402ef3a",
+    "envelope_sha256": "bf6d5270a0b45f649ad8bd6b6a1df4170f333769cfb470ac5d6b443cd0b53ee0",
+    "origins": [
+      "https://updates.openagents.com",
+      "https://oa-updates-157437760789.us-central1.run.app"
+    ],
+    "exact_artifact_checks": 40,
+    "verified_at": "2026-11-14T15:27:02.983586+00:00",
+    "scope": "1080 runtime only; 1079/1078 feeds unchanged. Native chrome and producer changes require TestFlight.",
+    "portable_changes_from_1079": [
+      "worlds/splice-bots.json"
+    ]
+  }
+}

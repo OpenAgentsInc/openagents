@@ -145,7 +145,10 @@ editor and Retry after a loading failure. Opening the menu releases held
 game input. Splice Bots' shared touch adapter now converts the engine's
 positive-up look pitch into the game's positive-down mouse-delta convention,
 correcting inverted vertical drag without changing mouse or horizontal look.
-These native host/producer corrections require TestFlight.
+These native host/producer corrections require TestFlight. 1080 is
+**VALID / IN_BETA_TESTING**, verified in **Owner**. Its matching generation-1
+feed passes the fresh-install deduplication check. See the
+[release record](../../docs/verification/2026-11-14-native-world-controls-1080.json).
 
 The release can retain a frozen world's exact immutable asset records while
 rebinding its inventory to a rebuilt producer:
