@@ -366,7 +366,9 @@ tool_main :: () -> int #export_c #effects(all) {
     rules := fs_join(dir, "rules", r0[..]);
     exe := fs_join(rules, "aethyr-script.tmp", r1[..]);
     inc: [4200] u8; n := 0; for c: "-I" { inc[n] = c; n += 1; } for c: rules { inc[n] = c; n += 1; }
-    cc := [16] string.["/usr/bin/clang", "-std=c11", "-O1", "-ffp-contract=off", "-fno-fast-math", "-w", "-DAETHYR_SCRIPT_MAIN", cast(string) inc[0..<n],
+    cb: [4096] u8; clang := fs_clang(proc_getenv("CLANG", cb[..]));
+    if clang == "" { print("splice-export: no clang (set CLANG to one, or install /usr/bin/clang)\n"); return 1; }
+    cc := [16] string.[clang, "-std=c11", "-O1", "-ffp-contract=off", "-fno-fast-math", "-w", "-DAETHYR_SCRIPT_MAIN", cast(string) inc[0..<n],
                        fs_join(rules, "splice.c", r2[..]), fs_join(rules, "animelab-style.c", r3[..]), fs_join(rules, "splice-ue-face.c", r4[..]), fs_join(rules, "aethyr_script.c", r5[..]), "-o", exe, "-lm", "-Wno-everything"];
     built := proc_run(cc[..], 600000, work[..], err[..]);
     if built.started != 0 || built.status != 0 { print("splice-export: clang could not build the rules for the reference run\n%\n", cast(string) err[0..<built.err_n]); return 1; }

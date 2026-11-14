@@ -3,7 +3,8 @@
 // It stages what the project needs, builds it, and runs metaverse-engine/export/unreal/import.py in a
 // headless editor. The checks themselves are the script's; this tool only reads its verdict.
 //   coax/web/tool.sh metaverse-engine/tools/unreal-import.coax BUNDLE_DIR PROJECT.uproject ENGINE_DIR
-// Run from the repository root, on a Mac. PROJECT.uproject may not exist yet when it is named
+// Run from the repository root, on a Mac or Linux (on NixOS, inside steam-run, with nss and nspr on
+// LD_LIBRARY_PATH for the editor). PROJECT.uproject may not exist yet when it is named
 // AethyrHost.uproject: the bare host project (metaverse-engine/export/unreal/project) is copied there.
 // The AethyrBridge plugin's source is copied into the project's Plugins/ every time.
 // The report is PROJECT_DIR/Saved/aethyr-import-report.json, the rendered shots are beside it.
@@ -88,22 +89,23 @@ tool_main :: () -> int #export_c #effects(all) {
     if ui_run(rules_copy[..], none, 60000) != 0 { return ui_fail("could not copy the rules into the plugin"); }
   }
 
-  print("unreal-import: building %Editor\n", stem);
+  platform := ifx tool_os() == TOOL_LINUX then "Linux" else "Mac";
+  print("unreal-import: building %Editor for %\n", stem, platform);
   t0: [256] u8; t1: [4200] u8;
-  build := [8] string.["/bin/bash", ubt, ui_cat(stem, "Editor", t0[..]), "Mac", "Development", ui_cat("-project=", project, t1[..]), "-NoHotReload", "-NoHotReloadFromIDE"];
+  build := [8] string.["/bin/bash", ubt, ui_cat(stem, "Editor", t0[..]), platform, "Development", ui_cat("-project=", project, t1[..]), "-NoHotReload", "-NoHotReloadFromIDE"];
   if ui_run(build[..], none, 3600000) != 0 { return ui_fail("the project did not build (run RunUBT.sh by hand to see why)"); }
 
   report := fs_join(fs_join(dir, "Saved", b8[..]), "aethyr-import-report.json", b9[..]);
   removed := fs_remove(report);
-  e0: [4200] u8; e1: [4200] u8; e2: [4200] u8; e3: [4200] u8; e4: [4200] u8; e5: [4200] u8;
+  e0: [4200] u8; e1: [4200] u8; e2: [4200] u8; e3: [4200] u8; e4: [4200] u8; e5: [4200] u8; e6: [64] u8; e7: [4200] u8;
   env := [3] string.[ui_cat("AETHYR_BUNDLE=", bundle, e0[..]), ui_cat("AETHYR_REPORT=", report, e1[..]), ui_cat("AETHYR_SHOTS=", fs_join(fs_join(dir, "Saved", e3[..]), "aethyr-import-shots", e4[..]), e2[..])];
-  editor := fs_join(engine, "Engine/Binaries/Mac/UnrealEditor-Cmd", e5[..]);
+  editor := fs_join(engine, ui_cat(ui_cat("Engine/Binaries/", platform, e6[..]), "/UnrealEditor-Cmd", e7[..]), e5[..]);
   s0: [4200] u8;
   run := [6] string.[editor, project, ui_cat("-ExecutePythonScript=", script, s0[..]), "-unattended", "-nosplash", "-RenderOffscreen"];
   print("unreal-import: importing in a headless editor\n");
   status := ui_run(run[..], env[..], 3600000);
   text: [1048576] u8; n := fs_read(report, text[..]);
-  if n < 1 { print("unreal-import: the editor wrote no report (exit status %); see ~/Library/Logs/Unreal Engine/%Editor/\n", status, stem); return 1; }
+  if n < 1 { print("unreal-import: the editor wrote no report (exit status %); see ~/Library/Logs/Unreal Engine/%Editor/ on a Mac, the project's Saved/Logs/ on Linux\n", status, stem); return 1; }
   body := cast(string) text[0..<n];
   if !ui_has(body, "\"ok\": true") { print("%", body); return ui_fail("a check failed; the report is above"); }
   print("unreal-import: imported, report %\n", report);

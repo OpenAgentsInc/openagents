@@ -123,6 +123,20 @@ fs_append_durable :: (path: string, data: string) -> bool {
 // FS_NONE, FS_FILE, FS_DIR or FS_OTHER; -1 when the path cannot be asked about.
 fs_kind :: (path: string) -> int { return ifx fs_push(path) then cxfs_kind() else -1; }
 fs_exists :: (path: string) -> bool { return fs_kind(path) > 0; }
+// The first of paths that is a regular file; "" when none is.
+fs_first_file :: (paths: [] string) -> string {
+  for p: paths { if fs_kind(p) == FS_FILE { return p; } }
+  return "";
+}
+// The host's clang by its full path. given (a tool passes $CLANG, from proc_getenv) when it is a
+// file, else the Mac's and most Linux systems' /usr/bin/clang, else /usr/local/bin/clang; "" when
+// none is. NixOS has no /usr/bin/clang, and its system clang has no C headers: there, set CLANG to
+// a wrapped clang (nix build --print-out-paths nixpkgs#clang, then /bin/clang). A tool that starts
+// clang asks here instead of naming /usr/bin/clang.
+fs_clang :: (given: string) -> string {
+  where := [3] string.[given, "/usr/bin/clang", "/usr/local/bin/clang"];
+  return fs_first_file(where[..]);
+}
 fs_size :: (path: string) -> int { return ifx fs_push(path) then cxfs_size() else -1; }
 // Shortens an existing regular file and syncs it. Never extends a file.
 fs_truncate :: (path: string, size: int) -> bool { return size >= 0 && fs_push(path) && cxfs_truncate(size) == 0; }
