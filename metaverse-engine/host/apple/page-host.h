@@ -19,6 +19,7 @@
 @property (copy) NSString *fonts;      // the HUD's faces: READING.ttf and TITLE.ttf
 @property (copy) NSString *reading, *title;   // their file names without .ttf
 @property double titleWeight;
+@property double titleScale;       // same title-atlas scale as the browser; zero keeps 1
 @property (copy) NSString *web;        // the site's files, for the pictures a page names (/worlds/NAME/... is realms/NAME/...)
 @property (copy) NSString *store;      // where this page keeps what a browser keeps in its storage
 @property (copy) NSString *origin;     // the site: https://openagents.com

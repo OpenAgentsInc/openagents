@@ -123,7 +123,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
             c.producer=Bundle.main.privateFrameworksURL!.appendingPathComponent("\(framework).framework/\(framework)").path
             c.shaders=Bundle.main.resourceURL!.appendingPathComponent("WorldShaders/\(realm)").path
             c.pack=Self.text(profile.pack).isEmpty ? "":root.appendingPathComponent("base.pack").path
-            c.fonts=root.appendingPathComponent("fonts").path;c.reading="reading";c.title="title";c.titleWeight=realm=="splice-bots" ? 400:600
+            c.fonts=root.appendingPathComponent("fonts").path;c.reading="reading";c.title="title";c.titleWeight=realm=="splice-bots" ? 400:600;c.titleScale=Double(profile.title_scale)
             c.web=root.appendingPathComponent("web").path;c.store=URL(fileURLWithPath:NSHomeDirectory()).appendingPathComponent(".openagents/world-state/\(path.split(separator:"/").last ?? "world")").path
             c.origin=AppAuth.defaultOrigin;c.path=path+(editRequested ? "?edit":"");c.realm=realm;c.slot=realm;c.style=Self.text(profile.style);c.clock=Self.text(profile.clock);c.variant=Self.text(profile.variant)
             c.touch=true;c.screen=view.bounds.size;c.automated=UserDefaults.standard.bool(forKey:"OAAutomation");c.viewer=viewer

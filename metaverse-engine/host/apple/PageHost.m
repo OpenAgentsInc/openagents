@@ -463,7 +463,8 @@ static id<MTLTexture> phBlockLayers(id<MTLDevice> device, const EngineCorePack *
    CGContextRef g = CGBitmapContextCreate(NULL, w, h, 8, w, gray, (CGBitmapInfo)kCGImageAlphaNone);
    CGContextSetGrayFillColor(g, 0, 1); CGContextFillRect(g, CGRectMake(0, 0, w, h));
    CGContextSetShouldSmoothFonts(g, false); CGContextSetAllowsAntialiasing(g, true); CGContextSetTextMatrix(g, CGAffineTransformIdentity);
-   CTFontRef font = CTFontCreateWithFontDescriptor(faces[f], 64 / scale, NULL);
+   CGFloat titleScale=f==1 && config.titleScale>0 ? config.titleScale:1;
+   CTFontRef font = CTFontCreateWithFontDescriptor(faces[f], 64 * titleScale / scale, NULL);
    CGColorRef white = CGColorCreateGenericGray(1, 1);
    NSDictionary *attrs = @{(id)kCTFontAttributeName: (__bridge id)font, (id)kCTForegroundColorAttributeName: (__bridge id)white};
    for (int i = 0; i < count; i++) {

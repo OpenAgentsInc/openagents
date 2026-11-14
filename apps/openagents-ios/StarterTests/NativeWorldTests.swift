@@ -15,7 +15,7 @@ import MetalKit
             let web=repo.appendingPathComponent("apps/openagents-web")
             c.pack=NativeWorldHost.text(profile.pack).isEmpty ? "":web.appendingPathComponent(NativeWorldHost.text(profile.pack)).path
             c.fonts=web.appendingPathComponent(NativeWorldHost.text(profile.font_dir)).path
-            c.reading=(NativeWorldHost.text(profile.reading) as NSString).deletingPathExtension;c.title=(NativeWorldHost.text(profile.heading) as NSString).deletingPathExtension;c.titleWeight=600
+            c.reading=(NativeWorldHost.text(profile.reading) as NSString).deletingPathExtension;c.title=(NativeWorldHost.text(profile.heading) as NSString).deletingPathExtension;c.titleWeight=600;c.titleScale=Double(profile.title_scale)
             c.path=realm=="myrealm" ? "/worlds/test-native":"/worlds/\(realm)";c.origin="https://openagents.com";c.web=web.path
             c.realm=realm;c.slot=realm;c.style=NativeWorldHost.text(profile.style);c.clock=NativeWorldHost.text(profile.clock);c.variant=NativeWorldHost.text(profile.variant)
             c.store=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path;c.offline=true;c.automated=true;c.touch=true;c.screen=CGSize(width:780,height:420)
@@ -26,7 +26,7 @@ import MetalKit
                 for _ in 0..<3 {_ = page.frame(CGSize(width:780,height:420),scale:1,dt:0.016,wait:true)}
                 if realm=="splice-bots" {
                     // Walk the shipped front door: New game, then Use this
-                    // character. The historical stage 1 is an obsolete spawn.
+                    // character, with the same front door as a player.
                     for _ in 0..<2 {_ = page.key(-2,mods:0,down:true);_ = page.key(-2,mods:0,down:false);_ = page.frame(CGSize(width:780,height:420),scale:1,dt:0.016,wait:true)}
                 }
                 page.touch(CGPoint(x:120,y:280),phase:0,finger:11);page.touch(CGPoint(x:120,y:200),phase:1,finger:11)

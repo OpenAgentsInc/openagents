@@ -555,6 +555,10 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   n := net_of(g[..]);
   net_ticket(g[..], "200\n{\"ticket\":\"v2.x\",\"id\":\"p1\",\"account\":false,\"name\":\"Mossy Heron\",\"expires\":1}");
   #assert join_picking(g[..]) && n[0].join[0].hold && !jn_ready(n);
+  // All glyphs draw above HUD plates: nameplates must stand aside while
+  // CHARACTER is open, rather than appearing across its class controls.
+  label_out:[120]f32;label_u:[UNIFORM_FLOATS]f32;
+  #assert labels(g[..],label_out[..],label_u[..],7,v3(0,0,0))==7;
   #assert cast(string) n[0].join[0].name[0..<n[0].join[0].name_n] == "Mossy Heron";
   // the socket waits
   pipe_drained(n[0].pipe[..]);

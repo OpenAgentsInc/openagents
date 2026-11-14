@@ -1332,6 +1332,11 @@ ui_w :: (face: int, t: string, cap: f32) -> f32 {
   while i < t.count { d := decode(t, i); i += d.len; w += face_advance(face, d.code, em); }
   return w;
 }
+#test "Splice's measured text fits a phone row and a 44 point action without changing its touch box" {
+ for word:[3]string.["USE THIS CHARACTER","CHARACTER","JUMP"] {c:=ui_fit_cap(F_TITLE,word,30,180);#assert c>0 && c<=30 && ui_w(F_TITLE,word,c)<=180.001;}
+ #assert ui_fit_cap(F_MONO,"JUMP",12,36)>10 && ui_w(F_MONO,"JUMP",ui_fit_cap(F_MONO,"JUMP",12,36))<=36.001;
+}
+ui_fit_cap :: (face:int,t:string,cap:f32,width:f32)->f32 {return lo(cap,hi(width,0)/hi(ui_w(face,t,1),0.001));}
 // One textured quad a glyph, as font.coax draw_sans lays them out, with this face's widths.
 ui_put :: (out: [] f32, n: int, face: int, t: string, x: f32, base: f32, cap: f32, c: KitTint, a: f32) -> int {
   em := face_em(face, cap);
@@ -1440,7 +1445,9 @@ ui_button :: (g: [] SpGame, out: [] f32, n: int, t: string, x0: f32, y0: f32, x1
     m = ui_fill(out, m, x0, y0, x1, y1, line);
     if kind != 0 { m = ui_fill(out, m, x0 + half * 0.14, y0 + half * 0.14, x1 - half * 0.14, y1 - half * 0.14, PAPER()); }
   }
-  m = ui_title_mid(out, m, t, (x0 + x1) * 0.5, cy + half * 0.25, half * 0.5, ifx kind == 0 then PAPER() else line);
+  face:=ifx x1-x0<=(y1-y0)*1.2 then F_MONO else F_TITLE;
+  cap:=ui_fit_cap(face,t,half*0.55,x1-x0-half*0.4);
+  m=ui_put(out,m,face,t,(x0+x1)*0.5-ui_w(face,t,cap)*0.5,cy+cap*0.5,cap,ifx kind==0 then PAPER() else line,1);
   if key != 0 && kind != 3 { g_hot(g, x0, y0, x1, y1, key); }
   return m;
 }

@@ -3707,6 +3707,7 @@ tag :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, text: string, p: Point,
 LABELS_MAX :: EG_PLACES + EG_BUILDINGS + EG_SPOTS + ROOM_OTHERS;
 Label :: struct { text: string; p: Point; cap: f32; light: f32; gold: bool; d: f32; done: bool; person: bool; who: string; }   // who: a player's id (their nameplate can be tapped)
 labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
+  if join_picking(s) {return n;}
   k := hi(s[0].dpr, 0.5);
   overview := s[0].lift > 0.5;
   film := rp_hud_off(s);   // the raid preview's flight: people's names only, no place's or house's

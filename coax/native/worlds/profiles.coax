@@ -1,13 +1,14 @@
 // Installed producer catalogue. The tool and SDK consume these same records.
-NwProfile :: struct {realm:string;framework:string;title:string;page:string;pack:string;font_dir:string;reading:string;heading:string;style:string;clock:string;variant:string;}
+NwProfile :: struct {realm:string;framework:string;title:string;page:string;pack:string;font_dir:string;reading:string;heading:string;title_scale:f32=1;style:string;clock:string;variant:string;}
 nwr_profile :: (realm:string)->NwProfile #export_c #effects(all) {
- if realm=="splice-bots" {return NwProfile.{realm="splice-bots",framework="SpliceBotsRuntime",title="Splice Bots",page="/worlds/splice-bots",font_dir="realms/splice-bots/assets/fonts",reading="IBMPlexMono-Medium.ttf",heading="Michroma-Regular.ttf",style="anime",clock="fixed:0.78",variant="dusk"};}
+ if realm=="splice-bots" {return NwProfile.{realm="splice-bots",framework="SpliceBotsRuntime",title="Splice Bots",page="/worlds/splice-bots",font_dir="realms/splice-bots/assets/fonts",reading="IBMPlexMono-Medium.ttf",heading="Michroma-Regular.ttf",title_scale=0.7,style="anime",clock="fixed:0.78",variant="dusk"};}
  if realm=="everglade" {return NwProfile.{realm="everglade",framework="EvergladeRuntime",title="Everglade",page="/worlds/everglade",pack="realms/everglade/assets/everglade-zone.pack",font_dir="realms/everglade2/assets/fonts",reading="Spectral-Medium.ttf",heading="Cinzel.ttf",style="painterly",clock="cycle"};}
  if realm=="everglade2" {return NwProfile.{realm="everglade2",framework="EvergladeForestRuntime",title="Everglade Forest",page="/worlds/everglade2",pack="realms/everglade2/assets/everglade2.pack",font_dir="realms/everglade2/assets/fonts",reading="Spectral-Medium.ttf",heading="Cinzel.ttf",style="painterly",clock="fixed:0.5"};}
  if realm=="myrealm" {return NwProfile.{realm="myrealm",framework="MadeRealmRuntime",title="Your world",pack="realms/fixture/assets/fixture.pack",font_dir="realms/everglade2/assets/fonts",reading="Spectral-Medium.ttf",heading="Cinzel.ttf",style="painterly",clock="cycle"};}
  return NwProfile.{};
 }
 #test "installed realm catalogue keeps the two games and the saved-world producer distinct" {
+ #assert nwr_profile("splice-bots").title_scale==0.7f32 && nwr_profile("everglade").title_scale==1;
  #assert nwr_profile("splice-bots").framework=="SpliceBotsRuntime" && nwr_profile("everglade2").pack=="realms/everglade2/assets/everglade2.pack";
  #assert nwr_profile("myrealm").framework=="MadeRealmRuntime" && nwr_profile("unknown").realm=="";
 }

@@ -416,9 +416,11 @@ fr_head :: (g: [] SpGame, out: [] f32, u: [] f32, n: int, f: ScrFrame, kicker: s
   ui_panel(g, u, f.panel.x0 - 2, f.panel.y0 - 2, f.panel.x1, f.panel.y1 + 2, FR_PANEL(), 0.95);
   m = ui_seg(out, m, f.panel.x1, 0, f.panel.x1, f.h, 0.5 * k, FR_RULE(), 1);
   m = fr_tracked(out, m, kicker, f.left, f.top + 9 * k, 8.4 * k, 3 * k, FR_ORANGE());
-  base := f.top + 22 * k + em * k * 0.86;
-  m = ui_put(out, m, F_TITLE, title, f.left, base, em * TITLE_CAP * k, FR_CREAM(), 1);
-  if second.count > 0 { base += em * k * 0.93; m = ui_put(out, m, F_TITLE, second, f.left, base, em * TITLE_CAP * k, FR_CREAM(), 1); }
+  cap:=ui_fit_cap(F_TITLE,title,em*TITLE_CAP*k,f.width);
+  if second.count>0 {cap=lo(cap,ui_fit_cap(F_TITLE,second,em*TITLE_CAP*k,f.width));}
+  line_em:=cap/TITLE_CAP;base := f.top + 22 * k + line_em * 0.86;
+  m = ui_put(out, m, F_TITLE, title, f.left, base, cap, FR_CREAM(), 1);
+  if second.count > 0 { base += line_em * 0.93; m = ui_put(out, m, F_TITLE, second, f.left, base, cap, FR_CREAM(), 1); }
   m = ui_seg(out, m, f.left + 1.5 * k, base + 11 * k, f.left + 62.5 * k, base + 11 * k, 1.5 * k, FR_ORANGE(), 1);
   return m;
 }
@@ -437,7 +439,7 @@ fr_row :: (g: [] SpGame, out: [] f32, u: [] f32, n: int, f: ScrFrame, b: ScrBox,
   k := f.k; m := n;
   if focused { ui_panel(g, u, b.x0, b.y0, b.x1, b.y1, FR_CREAM(), 1); }
   else { m = ui_box(out, m, b.x0, b.y0, b.x1, b.y1, 1 * k, FR_EDGE()); }
-  cap := 12.5 * k;
+  cap := ui_fit_cap(F_TITLE,label,12.5*k,b.x1-b.x0-40*k);
   return ui_put(out, m, F_TITLE, label, b.x0 + 20 * k, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, ifx focused then FR_PANEL() else FR_CREAM(), 1);
 }
 // The key hints at the bottom right: a cream cap with the key in dark type, and its word.
