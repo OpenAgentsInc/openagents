@@ -44,7 +44,7 @@ fixture's `args`) in the web build:
 | `-AethyrStage=N` | Starts at a moment of the run (the game's stages) |
 | `-AethyrNativeThings` | Unreal draws every kind of thing from its exported model |
 | `-AethyrGray` | Starts in graybox |
-| `-AethyrShot=FILE` `-AethyrShotAfter=N` | Saves a screenshot after N frames and quits |
+| `-AethyrShot=FILE` `-AethyrShotAfter=N` | Saves a screenshot after N frames and quits. Keys and the mouse are ignored, as with `-AethyrNoInput`, so the desktop's mouse cannot turn an offscreen still |
 | `-AethyrNoInput` | Ignores keys and the mouse |
 | `-AethyrWorld=URL` | The page's address: the world follows its saved edit layer from that site, and its placed pieces are drawn |
 | `-AethyrExit` | Quits when a script ends |

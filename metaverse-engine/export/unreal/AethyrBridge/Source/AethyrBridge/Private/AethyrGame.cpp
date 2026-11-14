@@ -201,7 +201,9 @@ void AAethyrGame::BeginPlay()
 		Flags.SetLensFlares(false);
 		Flags.SetAntiAliasing(!FParse::Param(FCommandLine::Get(), TEXT("AethyrNoAA")));
 	}
-	bInput = !FParse::Param(FCommandLine::Get(), TEXT("AethyrNoInput"));
+	// a still (-AethyrShot) ignores input too: an offscreen run still reads the desktop's mouse, which turned the view
+	FString StillPath;
+	bInput = !FParse::Param(FCommandLine::Get(), TEXT("AethyrNoInput")) && !FParse::Value(FCommandLine::Get(), TEXT("AethyrShot="), StillPath);
 	ReadCameraSettings();
 	if (LiveMaterial) { Live->SetMaterial(0, LiveMaterial); }
 }
