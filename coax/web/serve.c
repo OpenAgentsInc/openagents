@@ -424,7 +424,9 @@ static void proxy_api(client *c) {
   int fd = private_fd(socket(AF_INET, SOCK_STREAM, 0));
   struct sockaddr_in a = {0};
   int port = api_port;
-  { char m[8], u[1024]; if (room_port && sscanf(c->buf, "%7s %1023s", m, u) == 2 && !strncmp(u, "/api/room/", 10)) port = room_port; }
+  // The room's socket and its seat tickets: the local room is the API's stand-in for both, as local.coax runs it
+  // (room-dev.coax), so the ticket names the room this server has and is signed with the key it checks (#13589).
+  { char m[8], u[1024]; if (room_port && sscanf(c->buf, "%7s %1023s", m, u) == 2 && (!strncmp(u, "/api/room/", 10) || !strncmp(u, "/api/playtest/room-ticket/", 26))) port = room_port; }
   a.sin_family = AF_INET; a.sin_port = htons((uint16_t)port);
   inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
   if (fd < 0 || connect(fd, (struct sockaddr *)&a, sizeof a)) {
