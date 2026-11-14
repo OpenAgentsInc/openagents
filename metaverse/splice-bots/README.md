@@ -68,8 +68,8 @@ picks).
 | Character | Body, outfit, height, skin, hair and face on the crew document, shown on a turntable (drag off the rows to turn it by hand). USE THIS CHARACTER keeps it in the crew page's record (`/worlds/crew` reads the same one) and starts a run |
 | Credits | The `credits` table's lines |
 
-There is no SETTINGS row: nothing a setting would change yet. Sound has no volume control; it
-starts with your first click or key on the title screen (the browser's rule).
+There is no SETTINGS row: nothing a setting would change yet. Every sound is off for now (below); a sound
+that is on starts with your first click or key on the title screen (the browser's rule).
 
 You play as your character. `metaverse-engine/kit/crew-player.coax` writes ten poses of a walk
 cycle from the crew document (the legs and arms swing at the hips and shoulders) into the piece
@@ -180,6 +180,10 @@ page plays each by its name from `apps/openagents-web/realms/splice-bots/assets/
 (`apps/openagents-web/realms.json` lists each as a `sound:` asset). The files there now are
 placeholders from the Metaverse Engine's synthesizer (`metaverse-engine/audio/sfx.coax`), each a few
 KB. To use a real sound, replace the file and keep its name.
+
+Every sound is off for now. `SND_PLAYS` in `sound.coax` is the switch for each row: false keeps the
+sound from the page and from a native host's event, while its moment still runs and is logged for
+the checks. Turn a row on to plug its sound back in.
 
 | Sound | When it plays |
 | --- | --- |

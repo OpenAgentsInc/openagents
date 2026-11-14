@@ -49,7 +49,7 @@ sck_in :: (name: string, phase: int) -> SndAt { return sck_at(name, M_BAY, Z_MIN
 }
 
 #test "the board hums casual and whines fast, and stops when she steps off" #steps 60000000 {
-  g := [1] SpGame.[SpGame.{}];
+  g := [1] SpGame.[SpGame.{}]; g[0].snd[0].all_on = true;
   g_stage(g[..], 5); g[0].c[0].board = board_row_read(1, "on", 700, 2200);
   g_step(g[..], 0.02);
   #assert sp_q(g[..]); g_step(g[..], 0.02);   // Q: on the board, casual
@@ -97,7 +97,7 @@ sck_in :: (name: string, phase: int) -> SndAt { return sck_at(name, M_BAY, Z_MIN
 }
 
 #test "a bad cut sounds the glitch, and a native host hears it by its event" #steps 60000000 {
-  g := [1] SpGame.[SpGame.{}];
+  g := [1] SpGame.[SpGame.{}]; g[0].snd[0].all_on = true;
   g_say(g[..], MSG_BAD_CUT);
   #assert sck_heard(g[..], "glitch") == 1 && g[0].events[1] == SND_EVENT_BASE + SND_GLITCH;
 }

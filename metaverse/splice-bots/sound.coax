@@ -51,6 +51,14 @@ SND_ROWS :: [SND_COUNT] SndRow.[
 ];
 SND_DIR :: "/realms/splice-bots/assets/sounds/";
 
+// The switch for each sound: true plays it on the page and as its event on a native host. Every sound is
+// off for now (playtest 2): the moments still run and are logged, so a new sound plugs back in by
+// turning its row on here.
+SND_PLAYS :: [SND_COUNT] bool.[
+  false, false, false, false, false, false, false, false, false, false,   // pickup .. raider-mech
+  false, false, false, false, false, false, false, false, false, false    // boss-wake .. rave-loop
+];
+
 snd_id :: (name: string) -> int { for i: 0..<SND_COUNT { if SND_ROWS[i].name == name { return i; } } return -1; }
 snd_loop :: (id: int) -> bool { return id >= SND_FIRST_BED; }
 
@@ -80,15 +88,18 @@ SpSound :: struct {
   beds_due: bool; beds_at: f32;
   log: [SND_LOG] SndLog; log_n: int; fired: [SND_COUNT] int;
   t: f32; hit_at: f32 = -1;
+  all_on: bool;                                 // for the checks: play every sound whatever SND_PLAYS says
   // what the step saw last: the rover, the robots, the Digger's card, a bot battle's health
   ready: bool; aboard: bool; host: [FOES] bool; bot_state: int; bot_step: int; kind: int; mine: f32; foe: f32;
 }
 
+// Whether sound `id` reaches the page and a native host now.
+snd_plays :: (g: [] SpGame, id: int) -> bool { return g[0].snd[0].all_on || SND_PLAYS[id]; }
 snd_note :: (g: [] SpGame, id: int) {
   s := g[0].snd[..];
   s[0].fired[id] += 1;
   if s[0].log_n < SND_LOG { s[0].log[s[0].log_n] = SndLog.{id = id, mode = g[0].mode, zone = g[0].zone, phase = g[0].phase}; s[0].log_n += 1; }
-  g_event(g, SND_EVENT_BASE + id);   // a native host plays it by its name
+  if snd_plays(g, id) { g_event(g, SND_EVENT_BASE + id); }   // a native host plays it by its name
 }
 // A one-shot now.
 snd_play :: (g: [] SpGame, id: int) {
@@ -96,7 +107,7 @@ snd_play :: (g: [] SpGame, id: int) {
   s := g[0].snd[..];
   if id == SND_HIT { if s[0].hit_at >= 0 && s[0].t - s[0].hit_at < SND_HIT_GAP { return; } s[0].hit_at = s[0].t; }
   snd_note(g, id);
-  if s[0].q_n < SND_QUEUE { s[0].q[s[0].q_n] = id; s[0].q_n += 1; }
+  if snd_plays(g, id) && s[0].q_n < SND_QUEUE { s[0].q[s[0].q_n] = id; s[0].q_n += 1; }
 }
 // An event the game raised (g_event): a message's sound.
 snd_event :: (g: [] SpGame, e: int) { if e < SND_EVENT_BASE { snd_play(g, snd_for_message(e)); } }
@@ -172,7 +183,7 @@ snd_text :: (g: [] SpGame, out: [] u8) -> int {
   s[0].q_n = 0;
   if s[0].beds_due {
     for id: SND_FIRST_BED..<SND_COUNT {
-      if !s[0].on[id] && !s[0].heard[id] { continue; }
+      if !snd_plays(g, id) || (!s[0].on[id] && !s[0].heard[id]) { continue; }
       s[0].heard[id] = true;
       n = snd_line(out, n, "~", id, ifx s[0].on[id] then SND_ROWS[id].gain else 0);
     }
@@ -311,7 +322,7 @@ snd_render :: (id: int, mix: [] int, out: [] u8) -> SfxRender {
   }
 }
 #test "a message plays its sound and its event; a sound's own event plays nothing more" {
-  g := [1] SpGame.[SpGame.{}];
+  g := [1] SpGame.[SpGame.{}]; g[0].snd[0].all_on = true;
   g_say(g[..], MSG_PICK);
   #assert g[0].snd[0].fired[SND_PICKUP] == 1 && g[0].snd[0].q_n == 1 && g[0].event_n == 2 && g[0].events[0] == MSG_PICK && g[0].events[1] == SND_EVENT_BASE + SND_PICKUP;
   g_say(g[..], MSG_NEED);
@@ -325,7 +336,7 @@ snd_render :: (id: int, mix: [] int, out: [] u8) -> SfxRender {
   #assert g[0].snd[0].fired[SND_HIT] == 2;
 }
 #test "a bed is said once when it starts, and the page is told its level again now and then" {
-  g := [1] SpGame.[SpGame.{}];
+  g := [1] SpGame.[SpGame.{}]; g[0].snd[0].all_on = true;
   g_stage(g[..], 5); g[0].zone = Z_RAIL; g[0].mode = M_PLAY;
   snd_tick(g[..], 0.02);
   #assert g[0].snd[0].on[SND_DESERT_MUSIC] && g[0].snd[0].fired[SND_DESERT_MUSIC] == 1;
@@ -335,4 +346,15 @@ snd_render :: (id: int, mix: [] int, out: [] u8) -> SfxRender {
   snd_tick(g[..], 2.5); n = snd_text(g[..], o[..]); #assert cast(string) o[0..<n] == "~desert-music 0.320 0\n";
   g[0].zone = Z_MINE; snd_tick(g[..], 0.02); n = snd_text(g[..], o[..]);
   #assert cast(string) o[0..<n] == "~desert-music 0.000 0\n" && g[0].snd[0].fired[SND_DESERT_MUSIC] == 1;
+}
+#test "with every switch off the page and a native host hear nothing, and the moments still run" {
+  for i: 0..<SND_COUNT { #assert !SND_PLAYS[i]; }
+  g := [1] SpGame.[SpGame.{}];
+  g_say(g[..], MSG_PICK);
+  #assert g[0].snd[0].fired[SND_PICKUP] == 1 && g[0].snd[0].q_n == 0 && g[0].event_n == 1 && g[0].events[0] == MSG_PICK;
+  g_stage(g[..], 5); g[0].zone = Z_RAIL; g[0].mode = M_PLAY;
+  snd_tick(g[..], 0.02);
+  #assert g[0].snd[0].on[SND_DESERT_MUSIC] && g[0].snd[0].fired[SND_DESERT_MUSIC] == 1;
+  o: [512] u8; #assert snd_text(g[..], o[..]) == 0;
+  snd_tick(g[..], 2.5); #assert snd_text(g[..], o[..]) == 0;
 }
