@@ -1,13 +1,14 @@
 {
-  "base_sha256": "1c3fcbd6af5bac6b05639cab360725b798c3eb2ff16df0f71512ea68cf7433bc",
+  "base_sha256": "c0ab739a5ccc93c8c8897db97527a91aebaf5b0ba04c3195b2e9e669a4092a5c",
   "source_sha256": "7e4d70674892266fde6895b16e757f2de0bf6e0ec399e05a175151ab7de02740",
   "people_skin": "#13563: everglade/model/tools/people-kind.coax --into gave the 734 people/female-ranger vertices on T_Regular_Female_Dark_BaseColor.png the skin kind (1); before it the pack was 65a9d471559f6b6189c72f5e033dab6e047da58720961b51aaa8a0efd8179ea1",
   "garment_skin": "#13577: everglade/model/tools/people-kind.coax --like gave the 7133 vertices of the Ranger, Peasant and Wizard arms' bare skin (material MI_Regular_<Body>) the body's T_Regular_<Body>_Dark_BaseColor.png layer and the skin kind (1), as the fixed pack_fantasy_source.py writes them; before it the pack was 35431bbc302d3046d716542a8c8cd6a57fe0457d766adc96ddeced5d7cfec431",
-  "output_sha256": "4becb2f166ee0ea7dc886b73a9602b9555b0b572117fc94808a597a54318ecb9",
-  "output_bytes": 20914460,
+  "rigs": "#13579: everglade/model/tools/rig-pack.coax --into everglade/model/rigs.vrg with the sets people two-hand gave this pack the rig entry (kind 7, 169768 bytes) everglade.pack has carried since #13508, so the pack is again everglade.pack plus the wardrobe; before it the pack was 4becb2f166ee0ea7dc886b73a9602b9555b0b572117fc94808a597a54318ecb9 and its base 1c3fcbd6af5bac6b05639cab360725b798c3eb2ff16df0f71512ea68cf7433bc",
+  "output_sha256": "a25ccca91c30cedb0b345949f7ae0c363ce1445db5b095d7c098673c2794eb04",
+  "output_bytes": 21084284,
   "garments": 76,
   "garment_triangles": 206565,
   "original_catalog_vertices_indices_and_images_preserved": true,
   "local_indices_joints_weights_and_extents_valid": true,
-  "wardrobe_texture_layers_verified": 15
+  "wardrobe_texture_layers_verified": 21
 }

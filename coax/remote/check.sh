@@ -311,7 +311,7 @@ pack_reader_c() {
 rig_checks() {
   step rig-source coax/web/tool.sh everglade/model/tools/rig-pack.coax --check everglade/model/rigs.vrg || status=1
   step rig-poses coax/web/tool.sh everglade/model/tools/rig-poses.coax everglade/model/rigs.vrg || status=1
-  step rig-packs bash -c 'set -e; t="$(mktemp -d)"; r=0; h() { coax/web/tool.sh everglade/model/tools/rig-pack.coax --holds everglade/model/rigs.vrg "$1" || r=1; }; a=apps/openagents-web/realms; h $a/everglade2/assets/everglade2.pack; h $a/everglade/assets/everglade.pack; h $a/everglade/assets/everglade-zone.pack; gzip -dc $a/everglade-experimental/assets/glade.pack.gz > "$t/glade.pack"; h "$t/glade.pack"; rm -f "$t/glade.pack"; rmdir "$t"; exit $r' || status=1
+  step rig-packs bash -c 'set -e; t="$(mktemp -d)"; r=0; h() { coax/web/tool.sh everglade/model/tools/rig-pack.coax --holds everglade/model/rigs.vrg "$1" || r=1; }; a=apps/openagents-web/realms; h $a/everglade2/assets/everglade2.pack; h $a/everglade/assets/everglade.pack; h $a/everglade/assets/everglade-avatar.pack; h $a/everglade/assets/everglade-zone.pack; gzip -dc $a/everglade-experimental/assets/glade.pack.gz > "$t/glade.pack"; h "$t/glade.pack"; rm -f "$t/glade.pack"; rmdir "$t"; exit $r' || status=1
 }
 # The packs the Mac and iPhone apps ship are packs the admission takes as they are (#13304): Everglade
 # II's, and Experimental's once inflated. A pack tool that leaves its working form fails here; the
@@ -326,6 +326,9 @@ packs_admitted() {
   # and the Fantasy Source garments' bare arms and hands are on the body's skin layer with the skin kind, as many as the
   # packer writes and as Character Create's fantasy.pack has them, in every pack built on it (#13577)
   step people-skin bash -c 'set -e; t="$(mktemp -d)"; r=0; a=apps/openagents-web/realms; f=$a/character-creator/assets/fantasy.pack; h() { coax/web/tool.sh everglade/model/tools/people-kind.coax --holds "$1" || r=1; coax/web/tool.sh everglade/model/tools/people-kind.coax --holds-like "$f" "$1" || r=1; }; for p in everglade/assets/everglade.pack everglade/assets/everglade-avatar.pack everglade/assets/everglade-zone.pack everglade2/assets/everglade2.pack character-creator/assets/fantasy.pack character-creator/assets/glade.pack; do h $a/$p; done; for g in everglade-experimental/assets/glade.pack.gz character-creator/assets/fantasy.pack.gz; do gzip -dc $a/$g > "$t/p.pack"; h "$t/p.pack"; rm -f "$t/p.pack"; done; rmdir "$t"; exit $r' || status=1
+  # and Everglade's avatar pack is its pack plus the whole Fantasy wardrobe: every entry of everglade.pack kept, the
+  # garments' indices, joints, weights and texture layers as fantasy.pack has them (an independent Python oracle, #13579)
+  step wardrobe-pack python3 metaverse/tools/assets/wardrobe_pack_oracle.py apps/openagents-web/realms/everglade/assets/everglade.pack apps/openagents-web/realms/character-creator/assets/fantasy.pack apps/openagents-web/realms/everglade/assets/everglade-avatar.pack || status=1
 }
 # The one C host core (metaverse-engine/host/core, #13304) does what the engine says: its conformance
 # driver, built here with face addresses as pointers and as 32-bit offsets, over fixtures Coax
