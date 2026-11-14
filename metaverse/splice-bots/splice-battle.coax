@@ -75,6 +75,8 @@ SB_BLOW_REACH :: 1.6f32; SB_BLOW_HALF :: 0.75f32;   // m and radians to each sid
 SB_JUMP_CLEAR :: 0.45f32;   // m: feet this high clear the tail sweep
 SB_TAIL_W :: 0.7f32;        // m to each side of the tail's line that it hits her: its drawn width plus her body
 SB_CLAW_R :: 2.4f32;        // m: the claw's ring round where it locked on Sniper
+SB_CLAW_PACE :: 2.0f32;     // m/s: on the drive, Sniper's speed changed this much from lock to impact dodges a claw
+SB_CLAW_TURN :: 0.08f32;    // radians: on the drive, Sniper turned this far off its locked heading dodges a claw
 SB_CHARGE_W :: 2.4f32;      // m: the charge's half width, its reach on her
 SB_CUE :: 0.9f32;           // s: HIT or DODGED shows over her
 
@@ -84,6 +86,7 @@ SB_CUE :: 0.9f32;           // s: HIT or DODGED shows over her
 // was aimed at her and landed, and the last attack on her, landed or dodged, with where it came from.
 SpAttacks :: struct {
   lane: [1] TgLane; ft: [FOES] f32; fa: [FOES] f32; claw_t: f32 = -1; claw_x: f32; claw_z: f32; was_x: f32; was_z: f32;
+  lock_v: f32; lock_yaw: f32;   // on the drive: Sniper's speed and heading as a claw locked
   card_t: f32 = -1; card_k: int; sweep_aim: bool; sweep_hit: bool;
   cue_t: f32; cue_hit: bool; cue_x: f32; cue_z: f32;
 }
@@ -496,8 +499,11 @@ sb_claws :: (g: [] SpGame, s: Point, rx: f32, rz: f32, dt: f32) {
     lead := tg_release(SB_CLAW, ifx now.phase == TG_HOLD then now.k + 1 else 0) - b;
     g[0].ak[0].claw_x = s.x + vx * lead; g[0].ak[0].claw_z = s.z + vz * lead;
   }
+  if now.phase == TG_LOCK && tg_at(SB_CLAW, a).phase != TG_LOCK {
+    k := g[0].ak[..]; k[0].lock_v = sb_claw_pace(g); k[0].lock_yaw = g[0].dv[0].syaw;
+  }
   if tg_struck(SB_CLAW, a, b) >= 0 {
-    if dist2(s.x, s.z, g[0].ak[0].claw_x, g[0].ak[0].claw_z) < SB_CLAW_R {
+    if sb_claw_lands(g, s) {
       // outrunning is the default: out of a battle its claws scratch, but never take Sniper below a third of
       // its health; only a battle she starts with E can put Sniper down (#13505 playtest)
       dmg := sb_card(SBC_CLAW, SB_RAIDER).power;
@@ -507,6 +513,19 @@ sb_claws :: (g: [] SpGame, s: Point, rx: f32, rz: f32, dt: f32) {
     } else { sb_cue(g, false, rx, rz); }
   }
   if b >= tg_len(SB_CLAW) { g[0].ak[0].claw_t = -1; }
+}
+// Sniper's speed for a claw's dodge: the drive's vehicle (drive.coax), or the rail's pace.
+sb_claw_pace :: (g: [] SpGame) -> f32 { return ifx g[0].mode == M_DRIVE then dv_speed(g) else g[0].rail_v; }
+// Whether a claw lands on Sniper at s. On the rail, Sniper inside the ring round where it locked. On the drive
+// (the engine's vehicle, which can't jump its speed in a lock's time) the claw keeps on Sniper unless it
+// changed pace by SB_CLAW_PACE (W, S or Space pressed or let go) or swerved SB_CLAW_TURN off its heading
+// (a hard steer turns it about 0.12 rad by the impact, but moves it only 0.2 to 0.4 m sideways).
+sb_claw_lands :: (g: [] SpGame, s: Point) -> bool {
+  if g[0].mode != M_DRIVE { return dist2(s.x, s.z, g[0].ak[0].claw_x, g[0].ak[0].claw_z) < SB_CLAW_R; }
+  k := g[0].ak[0];
+  turn := g[0].dv[0].syaw - k.lock_yaw;
+  while turn > PI { turn -= TAU; } while turn < -PI { turn += TAU; }
+  return abs(sb_claw_pace(g) - k.lock_v) <= SB_CLAW_PACE && abs(turn) <= SB_CLAW_TURN;
 }
 // The boss. Its battle begins when you and the mech with Digger's core are in its chamber. Phase one: it
 // sweeps its arm round. Below half health, phase two: it winds up, charges, and is dazed after. Its own

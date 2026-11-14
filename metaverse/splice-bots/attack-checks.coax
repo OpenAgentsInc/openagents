@@ -86,28 +86,44 @@ ack_blow :: (g: [] SpGame, i: int, s: f32) { for k: 0..<cast(int) (s / 0.02 + 0.
   for i: 0..<200 { g_step(g[..], 0.02); if t[0].daze > 0 { break; } }
   #assert t[0].daze > 0 && g[0].hearts == hearts && abs(t[0].rush_dx - dx) < 0.001 && abs(t[0].rush_dz - dz) < 0.001;
 }
-#test "the raider mech's claws on the drive: two, locked on where Sniper is heading; the same pace is a hit, a change of pace a miss" #steps 400000000 {
+// One step of driving toward the drive's garage end at a steady `want` m/s: W tops the speed up, A and D
+// hold the heading. `dodge` 1 brakes (S), 2 swerves away from the raider mech, instead of all that.
+ak_drive :: (g: [] SpGame, want: f32, dodge: int) {
+  d := g[0].dv[0]; t := g[0].bt[0];
+  turn := atan2(d.bx - d.sx, d.bz - d.sz) - d.syaw;
+  while turn > PI { turn -= TAU; } while turn < -PI { turn += TAU; }
+  side := (t.rm_x - d.sx) * cos(d.syaw) - (t.rm_z - d.sz) * sin(d.syaw);   // > 0: the mech is on the side A turns to
+  left := ifx dodge == 2 then side < 0 else turn > 0.05;
+  right := ifx dodge == 2 then side > 0 else turn < -0.05;
+  _ := g_key(g, 'w', dodge != 1 && dv_speed(g) < want); _ = g_key(g, 's', dodge == 1);
+  _ = g_key(g, 'a', left); _ = g_key(g, 'd', right);
+  g_step(g, 0.02);
+}
+#test "the raider mech's claws on the drive: two, locked on Sniper's pace and heading; steady driving is a hit, braking with S or swerving away at the lock a miss" #steps 800000000 {
   g := [1] SpGame.[SpGame.{}];
-  for k: 0..<2 {
+  for k: 0..<3 {
     g[0] = SpGame.{};
     g_reset(g[..]); _ := spw_shipped(g[..]);
     g_begin(g[..]); g[0].have[H_DRILL] = true;
     tr := g_shipped_at(g[..], 123); g[0].px = tr.x + 2.2; g[0].pz = tr.z; _ = g_key(g[..], 'e', true);
     dk := g_shipped_at(g[..], 125); g[0].px = dk.x - 1.2; g[0].pz = dk.z; #assert g_key(g[..], 'e', true) && g[0].mode == M_DRIVE;
     t := g[0].bt[..]; a := g[0].ak[..];
-    for i: 0..<3000 { g_step(g[..], 0.02); if a[0].claw_t >= 0 || g[0].mode != M_DRIVE { break; } }
-    #assert a[0].claw_t >= 0;   // beside Sniper it winds up its first claw
+    // she drives off at a steady 8 m/s; the raider mech comes up beside Sniper on the hunt
+    for i: 0..<250 { ak_drive(g[..], 8, 0); }
+    #assert abs(dv_speed(g[..]) - 8) < 1;
+    b := sb_road_beside(g[..], SB_RM_SIDE); t[0].rm_x = b.x; t[0].rm_z = b.z; t[0].rm_hunt = true; t[0].rm_gone = false; t[0].rm_claw = SB_RM_CLAW_EVERY;
+    for i: 0..<300 { ak_drive(g[..], 8, 0); if a[0].claw_t >= 0 || g[0].mode != M_DRIVE { break; } }
+    #assert a[0].claw_t >= 0 && g[0].mode == M_DRIVE;   // beside Sniper it winds up its first claw
     hp := t[0].bots[SB_SNIPER].vit.hp; dodged := 0; landed := 0;
     for i: 0..<300 {
       ph := tg_at(SB_CLAW, a[0].claw_t).phase;
-      if k == 1 { _ = g_key(g[..], 'w', ph == TG_LOCK || ph == TG_HIT); }   // W just as each claw locks
       cue := a[0].cue_t;
-      g_step(g[..], 0.02);
+      ak_drive(g[..], 8, ifx ph == TG_LOCK || ph == TG_HIT then k else 0);   // the dodge, just as each claw locks
       if a[0].cue_t > cue { if a[0].cue_hit { landed += 1; } else { dodged += 1; } }
       if a[0].claw_t < 0 { break; }
     }
     if k == 0 { #assert landed == 2 && t[0].bots[SB_SNIPER].vit.hp < hp; }
-    if k == 1 { #assert dodged == 2 && t[0].bots[SB_SNIPER].vit.hp == hp; }
+    if k > 0 { #assert dodged == 2 && t[0].bots[SB_SNIPER].vit.hp == hp; }
   }
 }
 #test "a foe's card in a bot battle winds up before it lands" #steps 60000000 {
