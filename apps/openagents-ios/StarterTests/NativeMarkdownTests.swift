@@ -27,7 +27,9 @@ import UIKit
         XCTAssertTrue(bold.fontName.contains("Bold"));XCTAssertTrue(italic.fontDescriptor.symbolicTraits.contains(.traitItalic))
         XCTAssertNotNil(body.attributedText.attribute(.strikethroughStyle,at:raw.range(of:"gone").location,effectiveRange:nil))
         XCTAssertNotNil(body.attributedText.attribute(.link,at:raw.range(of:"Docs").location,effectiveRange:nil))
-        XCTAssertTrue(texts.contains {$0.text.hasPrefix("☑")});XCTAssertTrue(texts.contains {$0.text=="x := 1;"})
+        // The checkbox includes VS15 to request text presentation. Swift's
+        // grapheme-prefix comparison does not match its bare scalar.
+        XCTAssertTrue(texts.contains {$0.text.unicodeScalars.first?.value==0x2611});XCTAssertTrue(texts.contains {$0.text=="x := 1;"})
         XCTAssertFalse(body.isEditable);XCTAssertTrue(body.isSelectable)
         body.selectedRange=NSRange(location:0,length:4)
         try p.input("chat.composer","next draft");try p.frame();surface.render(p.elements())

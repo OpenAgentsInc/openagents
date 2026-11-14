@@ -3,6 +3,12 @@ import AppKit
 
 @main struct NativeDesktopApp {
     @MainActor static func main() {
+        if CommandLine.arguments.contains("--inspect-controls") {
+            NSApplication.shared.setActivationPolicy(.prohibited)
+            do {let url=Bundle.main.url(forResource:"Starter",withExtension:nil)!;let controller=try EnvironmentWindow(directory:url);try controller.inspectControls()}
+            catch {fputs(("Native controls inspection failed: "+error.localizedDescription+"\n"),stderr);exit(1)}
+            return
+        }
         if CommandLine.arguments.contains("--inspect-program") {
             do {
                 let url=Bundle.main.url(forResource:"Starter",withExtension:nil)!

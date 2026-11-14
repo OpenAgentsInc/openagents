@@ -233,7 +233,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     if s[0].retry {x=k_button(t,u,"chat.retry","Retry this turn",ifx busy then BS_DISABLED else BS_PLAIN);}
     if s[0].purpose==6 && !busy {x=k_button(t,u,"chat.save","Save reply",BS_PRIMARY);}
     f:=k_composer_begin(t,u,"chat.composer","Message");if busy {tr_attr(t,f,AT_DISABLED,"disabled");}
-    k_composer_end(t,u,"chat.composer",ifx s[0].purpose==5 && busy then "Stop" else "Send",(s[0].purpose==5 && busy) || (!busy && s[0].draft_n>0 && s[0].purpose!=6));
+    k_composer_end(t,u,"chat.composer",ifx s[0].purpose==5 && busy then "Stop" else "Send",(s[0].purpose==5 && busy) || (!busy && s[0].draft_n>0 && s[0].purpose!=6));frame:=tr_find(t,"chat.composer.frame");if frame>=0 {tr_attr(t,frame,AT_TITLE,"Gemini 4 Hydrogen");}
   } else {
     x=k_text(t,u,"chats.title",TG_H1,"","Your chats");
     x=k_button(t,u,"environments.open","Your computers",ifx busy then BS_DISABLED else BS_PRIMARY);

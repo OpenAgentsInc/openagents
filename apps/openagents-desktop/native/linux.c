@@ -19,12 +19,32 @@ static Span state,services;
 static GtkWidget *box;
 static GHashTable *controls;
 static int rendering,working;
+static GtkApplication *application;
+static int inspect_ui,inspection_passed,inspection_stage,inspection_ticks;
 typedef struct {char *id;GtkWidget *widget;int kind;unsigned seen;} Control;
 typedef struct {int op,status;char *body,*result;int64_t n;} Job;
 static unsigned frame;
 static Text text(const char *s) {return (Text){s,(int64_t)strlen(s)};}
 static char *owned(Text t) {return g_strndup(t.data,(gsize)t.count);}
 static void pump(void);
+static gboolean inspect(gpointer unused) {
+  (void)unused;if(++inspection_ticks>200) {fputs("Native Linux control inspection timed out\n",stderr);g_application_quit(G_APPLICATION(application));return G_SOURCE_REMOVE;}
+  if(working)return G_SOURCE_CONTINUE;
+  if(inspection_stage==0) {
+    Control *entry=g_hash_table_lookup(controls,"login.email"),*local=g_hash_table_lookup(controls,"environments.local");
+    if(!entry || !local)return G_SOURCE_CONTINUE;
+    gtk_editable_set_text(GTK_EDITABLE(entry->widget),"fixture@example.test");
+    if(strcmp(gtk_editable_get_text(GTK_EDITABLE(entry->widget)),"fixture@example.test"))return G_SOURCE_CONTINUE;
+    inspection_stage=1;g_signal_emit_by_name(local->widget,"clicked");
+  }else if(inspection_stage==1) {
+    Control *create=g_hash_table_lookup(controls,"env.new");if(!create)return G_SOURCE_CONTINUE;inspection_stage=2;g_signal_emit_by_name(create->widget,"clicked");
+  }else {
+    Control *composer=g_hash_table_lookup(controls,"env.composer"),*send=g_hash_table_lookup(controls,"env.composer.send");if(!composer || !send || !GTK_IS_TEXT_VIEW(composer->widget) || gtk_widget_get_width(composer->widget)<1)return G_SOURCE_CONTINUE;
+    gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(composer->widget)),"An unsent native draft",-1);
+    if(!gtk_widget_get_sensitive(send->widget))return G_SOURCE_CONTINUE;
+    inspection_passed=1;puts("Coax Native Linux: GTK controls, local service catalog and multiline draft passed; no turn sent");g_application_quit(G_APPLICATION(application));return G_SOURCE_REMOVE;
+  }return G_SOURCE_CONTINUE;
+}
 static void pressed(GtkButton *button,gpointer raw) { (void)button;Control *c=raw;nd_input(state,text(c->id),text(""),1);pump();}
 static void changed(GtkEditable *field,gpointer raw) {if(rendering)return;Control *c=raw;nd_input(state,text(c->id),text(gtk_editable_get_text(field)),0);pump();}
 static void buffer_changed(GtkTextBuffer *buffer,gpointer raw) {
@@ -72,9 +92,11 @@ static void pump(void) {
 static void activate(GtkApplication *app,gpointer unused) {
   (void)unused;GtkWidget *window=gtk_application_window_new(app);gtk_window_set_title(GTK_WINDOW(window),"OpenAgents");gtk_window_set_default_size(GTK_WINDOW(window),680,850);
   GtkWidget *scroll=gtk_scrolled_window_new();box=gtk_box_new(GTK_ORIENTATION_VERTICAL,14);gtk_widget_set_margin_start(box,24);gtk_widget_set_margin_end(box,24);gtk_widget_set_margin_top(box,24);gtk_widget_set_margin_bottom(box,24);gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll),box);gtk_window_set_child(GTK_WINDOW(window),scroll);pump();gtk_window_present(GTK_WINDOW(window));
+  if(inspect_ui)g_timeout_add(50,inspect,NULL);
 }
 int main(int argc,char **argv) {
   state=(Span){calloc(1,(size_t)nd_size()),1};services=(Span){calloc(1,(size_t)ls_size()),1};controls=g_hash_table_new(g_str_hash,g_str_equal);
   if(argc==2 && !strcmp(argv[1],"--inspect-program")) {int64_t n=nd_frame(state);nd_done(state);nd_reply(state,1,0,text("{\"loggedIn\":false,\"localEnvironment\":true}"),0);n=nd_frame(state);int found=0;for(int64_t i=0;i<n;i++){char *id=owned(nd_id(state,i));if(!strcmp(id,"environments.local"))found=1;g_free(id);}puts(found?"Coax Native Linux: generated program and local access semantics passed":"Native program inspection failed");return found?0:2;}
-  GtkApplication *app=gtk_application_new("com.openagents.desktop",G_APPLICATION_DEFAULT_FLAGS);g_signal_connect(app,"activate",G_CALLBACK(activate),NULL);int status=g_application_run(G_APPLICATION(app),argc,argv);g_object_unref(app);return status;
+  if(argc==2 && !strcmp(argv[1],"--inspect-ui")) {inspect_ui=1;argc=1;}
+  GtkApplication *app=gtk_application_new(inspect_ui ? "com.openagents.desktop.qualifier":"com.openagents.desktop",G_APPLICATION_DEFAULT_FLAGS);application=app;g_signal_connect(app,"activate",G_CALLBACK(activate),NULL);int status=g_application_run(G_APPLICATION(app),argc,argv);g_object_unref(app);return inspect_ui ? (inspection_passed?0:2):status;
 }

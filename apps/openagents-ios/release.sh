@@ -14,6 +14,7 @@ fi
 : "${ASC_API_KEY_ID:?}" "${ASC_API_ISSUER_ID:?}" "${ASC_API_PRIVATE_KEY_PATH:?}"
 mkdir -p "$out"
 ./generate.sh
+node ../../coax/native/tests/runtime-oracle.cjs Starter
 xcodegen generate
 cert="${OPENAGENTS_CERT_ID:-GCN7Q59Y27}"
 sha1="$(python3 tools/app_store.py cert-sha1 "$cert")"

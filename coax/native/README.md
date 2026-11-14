@@ -51,12 +51,12 @@ function decodes UTF-8 bytes through Foundation.
 | `link.open` | Explicit tap, `url`; installed Coax policy admits HTTP(S) documents only, no account headers |
 | `environment.commandIDs` (11) | OS-random128-bit command/session IDs and wall-clock milliseconds; no provider credential |
 | `environment.wait` (12) | Cancelable one-second wake for the shared app's poll owner |
+| `http.cancel` | Cancels the active request and invalidates its callback generation |
+| `http` | `path`, `method`, `body`; returns `status`, `body`, `contentType` |
 
 Build1074 installs11/12 for the computer-backed Claude surface. The desktop
 host additionally provides14, the protected local adapter carrying the same
 registered environment request/view. See [the runtime contract](../../docs/protocol/environment-runtime-v1alpha1.md).
-| `http.cancel` | Cancels the active request and invalidates its callback generation |
-| `http` | `path`, `method`, `body`; returns `status`, `body`, `contentType` |
 
 The numeric account action profile exposes the operations above. Native key
 and passkey adapters remain in host source; exposing further operations to

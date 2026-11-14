@@ -12,7 +12,7 @@ import CoreText
     private let provider=UIImageView(image:UIImage(systemName:"sparkles")),chevron=UIImageView(image:UIImage(systemName:"chevron.down")),modelLabel=UILabel()
     private let glass:UIVisualEffectView
     var changed:((String)->Void)?,press:((String)->Void)?
-    var fieldID="",sendID="",modelName="Gemini 4 Hydrogen"
+    var fieldID="",sendID="",modelName=""
     private var height:CGFloat=48
     private var active=false,enabled=false,editingAllowed=true
     override init(frame:CGRect) {
@@ -40,7 +40,7 @@ import CoreText
         for v in [provider,chevron,modelLabel] {v.isUserInteractionEnabled=false;model.addSubview(v)}
         provider.contentMode = .scaleAspectFit;chevron.contentMode = .scaleAspectFit
         provider.tintColor=UIColor(white:0.96,alpha:1);chevron.tintColor=UIColor(white:0.96,alpha:1)
-        modelLabel.textColor=UIColor(white:0.96,alpha:1);modelLabel.font=UIFont(name:"DMSans-Medium",size:14);modelLabel.text="Gemini 4 Hydrogen"
+        modelLabel.textColor=UIColor(white:0.96,alpha:1);modelLabel.font=UIFont(name:"DMSans-Medium",size:14)
         send.addSubview(circle);circle.addSubview(arrow);circle.isUserInteractionEnabled=false
         send.addAction(UIAction { [weak self] _ in guard let self else{return};self.press?(self.sendID) },for:.primaryActionTriggered)
         NotificationCenter.default.addObserver(self,selector:#selector(typeChanged),name:UIContentSizeCategory.didChangeNotification,object:nil)
@@ -53,6 +53,7 @@ import CoreText
     func render(_ e:NativeElement) {
         guard let field=e.children.first(where:{$0.role=="field"}),let action=e.children.last(where:{$0.role=="button"}) else{return}
         fieldID=field.id;sendID=action.id
+        modelName=e.attrs["title"] ?? "";modelLabel.text=modelName
         editor.accessibilityIdentifier=field.id;editor.accessibilityLabel=field.label;placeholder.text=field.label
         // Do not replace the buffer on a frame/keystroke: selection and marked
         // text survive. A Coax clear/load is a deliberate controlled-value edit.

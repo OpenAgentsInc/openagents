@@ -26,6 +26,16 @@ import Security
         try pump()
     }
     required init?(coder:NSCoder) {fatalError()}
+    // SDK qualification only: construct/layout actual controls without ever
+    // showing a window or sending a login request.
+    func inspectControls()throws {
+        try program.event(101,0,"{\"loggedIn\":false,\"localEnvironment\":true}");try pump()
+        window?.contentView?.layoutSubtreeIfNeeded()
+        guard let field=controls["login.email"] as? NSTextField,controls["environments.local"] as? NSButton != nil else {throw NativeFailure.refused("Native login/local controls missing")}
+        try program.input("login.email","fixture@example.test");try pump()
+        guard field === controls["login.email"],field.stringValue=="fixture@example.test" else {throw NativeFailure.refused("Native field continuity failed")}
+        print("Coax Native macOS: hidden AppKit controls, local access and field continuity passed")
+    }
     func windowWillClose(_ notification:Notification) {lifetime=UUID();for task in tasks.values {task.cancel()};tasks=[:];EnvironmentWindow.current=nil}
     private func input(_ id:String,_ value:String?=nil) {
         do {try program.input(id,value);try pump()}catch {showError(error)}

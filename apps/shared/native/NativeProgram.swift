@@ -100,7 +100,7 @@ import JavaScriptCore
                     var children:[NativeElement]=[];var collected:Set<Int>=[]
                     func collect(_ key:Int) {guard collected.insert(key).inserted,let c=nodes[key] else{return};if ["textarea","button"].contains(c.tag) {children.append(NativeElement(id:c.id,role:c.tag=="textarea" ? "field":"button",label:c.tag=="textarea" ? c.attrs["aria-label"] ?? c.attrs["placeholder"] ?? "Message":text(key),value:c.value,disabled:c.attrs["disabled"] != nil))}else {for key in c.children {collect(key)}}}
                     for child in n.children {collect(child)}
-                    result.append(NativeElement(id:n.id,role:"composer",label:"Message",children:children));return
+                    result.append(NativeElement(id:n.id,role:"composer",label:"Message",children:children,attrs:n.attrs));return
                 }
                 let field=n.tag=="input" || n.tag=="textarea"
                 let role=n.tag=="button" ? "button" : field ? "field" : n.tag=="h1" || n.tag=="h2" ? "heading" : "text"

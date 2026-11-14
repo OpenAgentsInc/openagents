@@ -2,16 +2,29 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleIdentifier</key><string>com.openagents.desktop</string>
-  <key>CFBundleName</key><string>OpenAgents</string>
-  <key>CFBundleDisplayName</key><string>OpenAgents</string>
-  <key>CFBundleExecutable</key><string>OpenAgents</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
-  <key>LSMinimumSystemVersion</key><string>14.0</string>
-  <key>NSHighResolutionCapable</key><true/>
-  <key>NSMicrophoneUsageDescription</key><string>Local dictation uses the microphone while enabled and this window is active. Parakeet processes audio on this Mac and inserts an editable draft; it never sends a message.</string>
-  <key>NSPrincipalClass</key><string>NSApplication</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.openagents.desktop</string>
+	<key>CFBundleName</key>
+	<string>OpenAgents</string>
+	<key>CFBundleDisplayName</key>
+	<string>OpenAgents</string>
+	<key>CFBundleExecutable</key>
+	<string>OpenAgents</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>28829</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Local dictation uses the microphone while enabled and this window is active. Parakeet processes audio on this Mac and inserts an editable draft; it never sends a message.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>CFBundleIconFile</key>
+	<string>OpenAgents</string>
 </dict>
 </plist>

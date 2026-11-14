@@ -20,6 +20,7 @@ coax/remote/remote.sh run --local -- xcrun swiftc -O -swift-version 5 -suppress-
   -framework AppKit -framework JavaScriptCore -framework CryptoKit -framework Security -framework UserNotifications \
   -o "$app/Contents/MacOS/OpenAgents"
 cp apps/openagents-desktop/Info.plist "$app/Contents/Info.plist"
+cp apps/openagents-desktop/native/OpenAgents.icns "$app/Contents/Resources/OpenAgents.icns"
 rm -rf "$app/Contents/Resources/Starter"
 cp -R apps/openagents-ios/Starter "$app/Contents/Resources/Starter"
 codesign --force --sign - "$app"
