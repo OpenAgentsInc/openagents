@@ -60,9 +60,11 @@ exactly as before.
   a rock, a wall or a hill. The engine asks its visibility service
   (`hud_sight_look`) and fades the plate over 0.15 s (`hud_sight_step`).
 - **The frame rate.** The frame rate and the GFX control sit on a small plaque
-  in the bottom-right corner. On a phone it sits above the action bar and the
-  side bar, and in the studio it sits clear of the sheet (`e2_fps`,
-  `e2_fps_clear`).
+  in the bottom-right corner, on one line. When the action bar reaches that
+  corner, the plaque gets smaller and puts the control over the rate on two
+  lines. When even that does not fit, it sits at the right edge just above the
+  bar's end and above any words said over the bar. In the studio it sits clear
+  of the sheet (`e2_fps`, `everglade/hud/frame.coax` `eg_frame_badge`).
 
 ## The checks
 

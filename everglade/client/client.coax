@@ -1002,14 +1002,15 @@ e2_pixel_budget :: (s: [] E2, w: f32, h: f32, dpr: f32) -> int #export_c #effect
   d := e2_quality_device(s, w, h, dpr);
   return quality_start_pixels(d, s[0].q_mode);
 }
-// The control, left of the frame rate on its line: "GFX AUTO · MED", or the tier the player picked.
-// A tap or a click on it picks the next (quality_next), and the host keeps it (action 6).
-e2_gfx_control :: (s: [] E2, out: [] f32, at: int, right: f32, base: f32) -> int {
+// The control by the frame rate: its words t ("GFX AUTO · MED", or the tier the player picked; e2_fps
+// says which) at cap, right-aligned at right. A tap or a click on it picks the next (quality_next),
+// and the host keeps it (action 6).
+e2_gfx_control :: (s: [] E2, out: [] f32, at: int, t: string, right: f32, base: f32, cap: f32) -> int {
   s[0].q_box = cc.Box.{};
   if s[0].golden || !s[0].q_ready { return at; }
-  k := s[0].k; l: [32] u8; t := quality_label(s[0].q[..], l[..]); bx: [1] cc.Box;
-  // e2_fps keeps its line clear of the bar (e2_fps_clear); Everglade's control (everglade/hud/windows.coax eg_gfx)
-  n := eg_gfx(s[0].creator[0].ui, out, at, t, e2c_text_w(t, 13 * k), right, base, k, s[0].q_finger >= 0, bx[..]);
+  k := s[0].k; bx: [1] cc.Box;
+  // e2_fps puts it clear of the bar (everglade/hud/frame.coax eg_frame_badge); Everglade's control (everglade/hud/windows.coax eg_gfx)
+  n := eg_gfx(s[0].creator[0].ui, out, at, t, e2c_text_w(t, cap), right, base, cap, k, s[0].q_finger >= 0, bx[..]);
   s[0].q_box = bx[0];
   return n;
 }
@@ -1166,13 +1167,13 @@ e2_bloom_passes :: (s: [] E2) -> int #export_c #effects(all) {
   e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\nvw=1280\nvh=800\ndpr=1\ncoarse=1\ntouch=5\ncores=2\nsw=800\nsh=600\nquality=low");
   for i: 0..<600 { e2_quality_frame(s[..], 0.05, 1280, 800, 1, true); }
   #assert s[0].q[0].rung == QUALITY_RUNGS - 1;
-  out: [4096] f32; #assert e2_gfx_control(s[..], out[..], 0, 1200, 780) == 0 && s[0].q_box.x1 <= s[0].q_box.x0;
+  out: [4096] f32; #assert e2_gfx_control(s[..], out[..], 0, "GFX LOW", 1200, 780, 13) == 0 && s[0].q_box.x1 <= s[0].q_box.x0;
 }
 #test "e2 quality: the GFX control beside the frame rate, a finger's size; a tap picks the next and the host keeps it" {
   s: [1] E2; s[0].width = 1170; s[0].height = 2532; s[0].k = 3;
   e2_message(s[..], E2_HOST_PAGE, QUALITY_FACTS_IPHONE); e2_quality_frame(s[..], 0, 1170, 2532, 3, false);
   out: [4096] f32;
-  n := e2_gfx_control(s[..], out[..], 0, 1000, 2480);
+  gl: [32] u8; n := e2_gfx_control(s[..], out[..], 0, quality_label(s[0].q[..], gl[..]), 1000, 2480, 13 * 3);
   b := s[0].q_box;
   #assert n > 0 && b.x1 > b.x0 && b.x1 <= 1020 && b.y1 - b.y0 >= 44 * 3 - 0.01;
   cx := (b.x0 + b.x1) / 2; cy := (b.y0 + b.y1) / 2;
@@ -1188,41 +1189,51 @@ e2_bloom_passes :: (s: [] E2) -> int #export_c #effects(all) {
 }
 // ---- the frame rate, bottom right, always shown: frames over the last half second or so
 e2_fps_count :: (s: [] E2, dt: f32) {cc.fps_count(s[0].fps_counter[..],dt);}
+E2_FPS_CAP :: 13.0;     // CSS px: the frame rate and the GFX control on one line in the corner
+E2_FPS_SMALL :: 9.0;    // on two lines where the bar leaves the corner too little room: the bar's own key size
 e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
- e2_fps_count(s,dt);h:=s[0].height;k:=s[0].k;s[0].q_box=cc.Box.{};
+ e2_fps_count(s,dt);w:=s[0].width;h:=s[0].height;k:=s[0].k;s[0].q_box=cc.Box.{};
  // on a phone's studio held upright it sits over the sheet, clear of its tabs (e2c_layout)
  if s[0].cz[0].mobile && !s[0].cz[0].wide && e2c_shown(s)>0.003 {h=s[0].cz[0].sheet.y0-2*k;}
  if s[0].cz[0].arriving && e2c_shown(s)<0.5 {return at;}   // through the portal: with the wardrobe
- // the GFX control to its left, on its line (cc.fps_draw's: "NN FPS" at 13 px, 16 px in from the corner)
  v:=cast(int)(s[0].fps_counter[0].fps+0.5);if v>999 {v=999;}buf:[8]u8;m:=0;
  if v>=100 {buf[m]=cast(u8)(48+v/100);m+=1;}if v>=10 {buf[m]=cast(u8)(48+v/10%10);m+=1;}buf[m]=cast(u8)(48+v%10);m+=1;
- m=quality_put(buf[..],m," FPS");
- // both on a dark plaque, so they read over the bright glade
- fw:=e2c_text_w(cast(string)buf[0..<m],13*k);gl:[32]u8;gw:=ifx s[0].golden || !s[0].q_ready then 0.0f32 else e2c_text_w(quality_label(s[0].q[..],gl[..]),13*k)+24*k;
- base:=e2_fps_clear(s,s[0].width-16*k-fw-14*k-gw,s[0].width-8*k,h-16*k);
- // an open class menu on a short page reaches over it: it steps aside under the menu
- if e2k_on(s) && cc.eg_meets(eg_menu_cover(e2k_facts(s),e2k_side_geo(s),e2k_side_st(s)),cc.hud_box(s[0].width-16*k-fw-14*k-gw,base-13*k-9*k,s[0].width-8*k,base+9*k)) {return at;}
- // a slot's card is up over the corner: the plaque steps aside under it
+ m=quality_put(buf[..],m," FPS");rate:=cast(string)buf[0..<m];
+ // the GFX control: "GFX AUTO · MED" beside the rate on one line, or "AUTO" (or the tier picked) over it on two
+ gfx:=!s[0].golden && s[0].q_ready;gl:[32]u8;long:=ifx gfx then quality_label(s[0].q[..],gl[..]) else "";
+ short:=ifx !gfx then "" else ifx quality_auto(s[0].q[..]) then "AUTO" else QUALITY_NAMES[quality_tier(s[0].q[..])];
+ big:=f32(E2_FPS_CAP);small:=f32(E2_FPS_SMALL);
+ gw:=ifx gfx then e2c_text_w(long,big)+24 else 0.0f32;sw:=e2c_text_w(short,small);rw:=e2c_text_w(rate,small);
+ two:=ifx sw>rw then sw else rw;
+ // where it stands (everglade/hud/frame.coax eg_frame_badge): clear of the bar, its end diamonds and the words over it
+ bd:=cc.eg_frame_badge(w/k,h/k,e2c_text_w(rate,big)+gw+22,31,two+16,ifx gfx then 34.0f32 else 21.0f32,e2_fps_bar(s,w,s[0].height,k));
+ b:=cc.hud_box(bd.box.x0*k,bd.box.y0*k,bd.box.x1*k,bd.box.y1*k);
+ // an open class menu on a short page, or a slot's card, reaches over it: it steps aside under them
+ if e2k_on(s) && cc.eg_meets(eg_menu_cover(e2k_facts(s),e2k_side_geo(s),e2k_side_st(s)),b) {return at;}
  hv:=s[0].casts[0].hover;
- if e2k_on(s) && hv>=0 && hv<s[0].casts[0].bar_n {cb:=e2k_card_box(s[0].casts[..],hv,s[0].width,s[0].height,k);
-  if cc.eg_meets(cc.hud_box(cb[0],cb[1],cb[2],cb[3]),cc.hud_box(s[0].width-16*k-fw-14*k-gw-10*k,base-44*k,s[0].width-8*k,base+16*k)) {return at;}}
- p:=cc.eg_plaque(out,at,s[0].width-16*k-fw-14*k-gw,base-13*k-9*k,s[0].width-8*k,base+9*k,k);
- n:=e2_gfx_control(s,out,p,s[0].width-16*k-fw-14*k,base);
- return cc.fps_draw(s[0].creator[0].ui,s[0].fps_counter[0],out,n,s[0].width,base+16*k,k);
+ if e2k_on(s) && hv>=0 && hv<s[0].casts[0].bar_n {cb:=e2k_card_box(s[0].casts[..],hv,w,s[0].height,k);
+  if cc.eg_meets(cc.hud_box(cb[0],cb[1],cb[2],cb[3]),cc.hud_box(b.x0-10*k,b.y0-13*k,b.x1,b.y1+7*k)) {return at;}}
+ p:=cc.eg_plaque(out,at,b.x0,b.y0,b.x1,b.y1,k);right:=b.x1-8*k;
+ if !bd.small {   // one line, baseline 9 px over the plaque's foot: the rate, and the control 14 px to its left
+  base:=b.y1-9*k;n:=p;rx:=right-e2c_text_w(rate,big*k);
+  if gfx {n=e2_gfx_control(s,out,p,long,rx-14*k,base,big*k);}
+  return cc.fps_draw_at(s[0].creator[0].ui,cc.UIT_NONE,s[0].fps_counter[0],out,n,right,base,big*k,k);
+ }
+ // two lines: the control over the rate, and the rate a part of the control (a finger's room takes in both)
+ base:=b.y1-6*k;n:=p;g:=cc.UIT_NONE;
+ if gfx {g=cc.uit_next(s[0].creator[0].ui);n=e2_gfx_control(s,out,p,short,right,base-13*k,small*k);}
+ return cc.fps_draw_at(s[0].creator[0].ui,g,s[0].fps_counter[0],out,n,right,base,small*k,k);
 }
-// The plaque's baseline, from y up: clear of the class bar's slots, and over the middle of its
-// emblem and the words over it (a refusal, "Not connected", everglade/hud/windows.coax eg_bar_refused),
-// wherever they share its width (x0..x1). On a phone the bar spans the page, so the plaque sits over
-// all of it.
-e2_fps_clear :: (s: [] E2, x0: f32, x1: f32, y: f32) -> f32 {
-  k := s[0].k; base := y; if !e2k_on(s) { return base; }
-  w := s[0].width; h := s[0].height; top := y + 1000;
-  for i: 0..<s[0].casts[0].bar_n { b := e2k_box(s[0].casts[..], i, w, h, k);
-    if b[2] > b[0] && b[2] > x0 - 8 * k && b[0] < x1 + 8 * k {
-      t := b[1] - 8 * k; mid := w * 0.5; if x0 < mid + 30 * k && x1 > mid - 30 * k { t = b[1] - f32(EG_BAR_WORDS) * k; }   // the emblem's medallion and the words over it
-      if t < top { top = t; } } }
-  if top < y + 1000 && base + 16 * k > top { base = top - 16 * k; }
-  return base;
+// The bar as the frame rate keeps clear of it (CSS px): its tray with the end diamonds (everglade/hud/parts.coax
+// eg_bar_reach), its slots' top, and half the words said over it (everglade/hud/windows.coax eg_bar_refused).
+e2_fps_bar :: (s: [] E2, w: f32, h: f32, k: f32) -> cc.EgBar {
+  n := s[0].casts[0].bar_n; if !e2k_on(s) || n <= 0 { return cc.EgBar.{}; }
+  boxes: [XC_SLOTS * 4] f32;
+  for i: 0..<n { b := e2k_box(s[0].casts[..], i, w, h, k); for q: 0..<4 { boxes[i * 4 + q] = b[q] / k; } }
+  r := cc.eg_bar_reach(boxes[..], n, 1);
+  said := e2k_refused(s); warn := cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_WARN);
+  half := ifx said.count > 0 then cc.face_width(said, 8 * warn.scale, warn.face) * 0.5 + 8 else 0.0f32;
+  return cc.EgBar.{tray = cc.EgBox.{x0 = r.x0, y0 = r.y0, x1 = r.x1, y1 = r.y1}, slots_top = e2k_bar_top(s) / k, words_half = half};
 }
 // ---- the world's HUD (Everglade's FANTASY style, everglade/hud/parts.coax): your portrait plate top left,
 // the map ring top right with the place and the time of day, and a place's banner as you come to it.

@@ -145,6 +145,16 @@ eg_portrait :: (ui: [] UitTrace, out: [] f32, at: int, x: f32, y: f32, wide: f32
   b := eg_portrait_box(12, 12, EG_PORTRAIT_W, 1); #assert b.x0 == 12 && b.x1 == 12 + EG_PORTRAIT_W && b.y1 - b.y0 == 76;
 }
 
+// The action bar's tray round its slots' boxes b (x0, y0, x1, y1, 4 a slot; n of them): 9 px round
+// them and 10 more at each end. eg_bar_reach adds the diamonds on its ends (hud_tray_round's).
+eg_bar_tray :: (b: [] f32, n: int, k: f32) -> HudPrim {
+  x0 := b[0]; x1 := b[2]; y0 := b[1]; y1 := b[3];
+  for i: 0..<n { if b[i * 4] < x0 { x0 = b[i * 4]; } if b[i * 4 + 2] > x1 { x1 = b[i * 4 + 2]; } if b[i * 4 + 1] < y0 { y0 = b[i * 4 + 1]; } if b[i * 4 + 3] > y1 { y1 = b[i * 4 + 3]; } }
+  m := 9 * k; return hud_box(x0 - m - 10 * k, y0 - m, x1 + m + 10 * k, y1 + m);
+}
+eg_bar_reach :: (b: [] f32, n: int, k: f32) -> HudPrim {
+  t := eg_bar_tray(b, n, k); s := (t.y1 - t.y0) * 0.36; return hud_box(t.x0 - s, t.y0, t.x1 + s, t.y1);
+}
 // The action bar's tray round its slots: iron strips that leave each slot's picture clear, a sunk
 // frame round each, and the class's emblem over the middle. b holds each slot's box (x0, y0, x1,
 // y1, 4 a slot). Returns the end; the realm then draws the pictures, the keys and the counts. With a
@@ -153,9 +163,7 @@ eg_portrait :: (ui: [] UitTrace, out: [] f32, at: int, x: f32, y: f32, wide: f32
 eg_bar_frame :: (ui: [] UitTrace, out: [] f32, at: int, b: [] f32, n: int, k: f32, initial: u8, a: f32) -> int {
   if n <= 0 { return at; }
   t := eg_tokens(); l: [1] HudList;
-  x0 := b[0]; x1 := b[2]; y0 := b[1]; y1 := b[3];
-  for i: 0..<n { if b[i * 4] < x0 { x0 = b[i * 4]; } if b[i * 4 + 2] > x1 { x1 = b[i * 4 + 2]; } if b[i * 4 + 1] < y0 { y0 = b[i * 4 + 1]; } if b[i * 4 + 3] > y1 { y1 = b[i * 4 + 3]; } }
-  m := 9 * k; tray := hud_box(x0 - m - 10 * k, y0 - m, x1 + m + 10 * k, y1 + m);
+  tray := eg_bar_tray(b, n, k); x0 := tray.x0 + 19 * k; x1 := tray.x1 - 19 * k; y0 := tray.y0 + 9 * k; y1 := tray.y1 - 9 * k;
   sx: [64] f32; c := ifx n > 32 then 32 else n;
   for i: 0..<c { sx[2 * i] = b[i * 4] - 1; sx[2 * i + 1] = b[i * 4 + 2] + 1; }
   hud_tray_round(l[..], t, tray, y0 - 1, y1 + 1, sx[..], c, k);
@@ -201,6 +209,10 @@ eg_vignette :: (out: [] f32, at: int, v: HudVignette, w: f32, h: f32) -> int {
   // traced: the tray, then each slot in it
   tr: [1] UitTrace; at := uit_next(tr[..]);
   #assert eg_bar_frame(tr[..], out[..], 0, b[..], 3, 1, 'D', 1) == n && tr[0].n == 5 && eg_bar_slot_at(tr[..], at, 2) == 3 && tr[0].rects[3].parent == at;
+  // its tray 9 px round the slots and 10 more at each end; its reach adds the end diamonds (#13594)
+  tb := eg_bar_tray(b[..], 3, 1); #assert tb.x0 == 81 && tb.x1 == 291 && tb.y0 == 491 && tb.y1 == 561;
+  tb = eg_bar_tray(b[..], 3, 2); #assert tb.x0 == 62 && tb.y1 == 570;
+  rb := eg_bar_reach(b[..], 3, 1); #assert abs(rb.x0 - (81 - 70 * 0.36)) < 0.01 && abs(rb.x1 - (291 + 70 * 0.36)) < 0.01 && rb.y0 == 491 && rb.y1 == 561;
 }
 // Slot i's index in the trace, from the tray's (uit_next before eg_bar_frame); UIT_NONE when it isn't there.
 eg_bar_slot_at :: (ui: [] UitTrace, tray: int, i: int) -> int {

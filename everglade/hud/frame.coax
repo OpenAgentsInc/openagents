@@ -68,6 +68,30 @@ eg_frame_banner :: (W: f32, H: f32, half: f32) -> f32 {
   }
   return y;
 }
+// The action bar as the frame-rate badge keeps clear of it: its tray with the end diamonds, its slots'
+// top, and half the width of the words said over its middle (a refusal, "Not connected"; the emblem's
+// EG_BAR_EMBLEM at least). An empty tray (x1 <= x0): no bar.
+EG_BAR_WORDS :: 58.0;   // CSS px over the slots' top: the words' letters' tops, and a little room
+EG_BAR_EMBLEM :: 30.0;  // half the emblem's width over the middle, and a little room
+EgBar :: struct { tray: EgBox; slots_top: f32; words_half: f32; }
+eg_frame_bar_words :: (W: f32, bar: EgBar) -> EgBox {
+  half := ifx bar.words_half > EG_BAR_EMBLEM then bar.words_half else EG_BAR_EMBLEM;   // mutant: equivalent (equal, either side is the same)
+  return EgBox.{x0 = W * 0.5 - half, y0 = bar.slots_top - EG_BAR_WORDS, x1 = W * 0.5 + half, y1 = bar.slots_top};
+}
+// Where the frame rate and the graphics control stand: the bottom right corner, on one line (one_w by
+// one_h), where that is clear of the bar; else the same corner smaller, on two lines (two_w by two_h);
+// else that small badge at the right edge just over the bar, and over the words said there.
+EgBadge :: struct { box: EgBox; small: bool; }
+eg_frame_badge :: (W: f32, H: f32, one_w: f32, one_h: f32, two_w: f32, two_h: f32, bar: EgBar) -> EgBadge {
+  none := bar.tray.x1 <= bar.tray.x0; words := eg_frame_bar_words(W, bar);
+  a := EgBox.{x0 = W - 8 - one_w, y0 = H - 7 - one_h, x1 = W - 8, y1 = H - 7};
+  if none || (!eg_frame_meets(a, bar.tray) && !eg_frame_meets(a, words)) { return EgBadge.{box = a}; }
+  b := EgBox.{x0 = W - 8 - two_w, y0 = H - 7 - two_h, x1 = W - 8, y1 = H - 7};
+  if !eg_frame_meets(b, bar.tray) && !eg_frame_meets(b, words) { return EgBadge.{box = b, small = true}; }
+  c := EgBox.{x0 = b.x0, y0 = bar.tray.y0 - 6 - two_h, x1 = b.x1, y1 = bar.tray.y0 - 6};
+  if eg_frame_meets(c, words) { c.y1 = words.y0 - 6; c.y0 = c.y1 - two_h; }
+  return EgBadge.{box = c, small = true};
+}
 
 #test "eg frame: a desktop's parts in the corners, a phone's smaller, and a short page's column at the top" {
   d := eg_frame(1280, 800);
@@ -104,4 +128,19 @@ eg_frame_banner :: (W: f32, H: f32, half: f32) -> f32 {
   #assert eg_frame_banner(640, 400, 178) == eg_frame(640, 400).map.y1 + 29;     // past the plate's lines, then the map
   #assert eg_frame_banner(1280, 400, 100) == 400 * 0.22;     // a wide short page: clear of both where it is
   b := eg_frame_banner(390, 844, 150); #assert b >= 844 * 0.22 && b - 21 >= eg_frame_plate(eg_frame(390, 844)).y1;
+}
+#test "eg frame: the frame rate in the bottom right corner, smaller where the bar reaches it, else over the bar's end" {
+  // a bar of seven as eg_bar_frame draws it: slots 412 px wide, its tray and end diamonds 44 px past them
+  d := eg_frame_badge(1280, 800, 338, 31, 75, 34, EgBar.{tray = EgBox.{x0 = 390, y0 = 709, x1 = 890, y1 = 779}, slots_top = 718});
+  #assert !d.small && d.box.x0 == 934 && d.box.x1 == 1272 && d.box.y0 == 762 && d.box.y1 == 793;
+  r := eg_frame_badge(800, 400, 338, 31, 75, 34, EgBar.{tray = EgBox.{x0 = 150, y0 = 309, x1 = 650, y1 = 379}, slots_top = 318});
+  #assert r.small && r.box.x0 == 717 && r.box.y0 == 359 && r.box.y1 == 393;     // the small one fits the corner beside it
+  m := eg_frame_badge(640, 400, 338, 31, 75, 34, EgBar.{tray = EgBox.{x0 = 70, y0 = 309, x1 = 570, y1 = 379}, slots_top = 318, words_half = 155});
+  #assert m.small && m.box.x1 == 632 && m.box.y0 == 269 && m.box.y1 == 303;     // over the bar's end, beside the words
+  p := eg_frame_badge(390, 844, 338, 31, 75, 34, EgBar.{tray = EgBox.{x0 = 0, y0 = 693, x1 = 390, y1 = 823}, slots_top = 702, words_half = 156});
+  #assert p.small && p.box.x1 == 382 && p.box.y1 == 702 - 58 - 6 && p.box.y1 - p.box.y0 == 34;     // the words reach it: over them
+  #assert !eg_frame_badge(640, 400, 338, 31, 75, 34, EgBar.{}).small;     // no bar: the corner
+  #assert !eg_frame_badge(640, 400, 338, 31, 75, 34, EgBar.{tray = EgBox.{x0 = 600, y0 = 309, x1 = 600, y1 = 379}, slots_top = 318}).small;     // nor a bar with no width
+  // with no words said the emblem still holds the middle
+  e := eg_frame_bar_words(640, EgBar.{slots_top = 318}); #assert e.x0 == 290 && e.x1 == 350 && e.y0 == 260 && e.y1 == 318;
 }

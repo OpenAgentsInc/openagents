@@ -271,9 +271,9 @@ eg_slot_card :: (boxes: [] f32, n: int, hover: int, w: f32, k: f32) -> [4] f32 {
 }
 // A refusal over the bar, centred at x: top is the slots' top, and the words stand clear of the
 // emblem (eg_bar_frame: 32 px over top) and the class resource bar (eg_resource_draw: 38 px), #13263.
-// EG_BAR_WORDS is how far over the slots they reach: what stays clear of them (the frame rate, #13594).
+// everglade/hud/frame.coax EG_BAR_WORDS is how far over the slots they reach: what the frame rate
+// stays clear of (eg_frame_badge, #13594).
 EG_BAR_SAID :: 46.0;    // CSS px over the slots' top: the refusal's baseline
-EG_BAR_WORDS :: 58.0;   // its letters' tops, and a little room
 eg_bar_refused :: (ui: [] cc.UitTrace, out: [] f32, at: int, said: string, x: f32, top: f32, k: f32) -> int {
   if said.count == 0 { return at; }
   cc.uit_part(ui, "bar");
@@ -290,11 +290,11 @@ eg_bar_refused :: (ui: [] cc.UitTrace, out: [] f32, at: int, said: string, x: f3
 }
 
 // ---- small controls and lines
-// The graphics control on the frame rate's line: its words right-aligned at right on baseline base,
-// a finger's size round them (44 CSS px tall at least); held while a finger is on it. box gets
-// where a tap or a click takes it.
-eg_gfx :: (ui: [] cc.UitTrace, out: [] f32, at: int, t: string, wide: f32, right: f32, base: f32, k: f32, held: bool, box: [] cc.Box) -> int {
-  cap := 13 * k; x0 := right - wide; y := base;
+// The graphics control on the frame rate's line: its words at cap (device px) right-aligned at right
+// on baseline base, a finger's size round them (44 CSS px tall at least); held while a finger is on
+// it. box gets where a tap or a click takes it.
+eg_gfx :: (ui: [] cc.UitTrace, out: [] f32, at: int, t: string, wide: f32, right: f32, base: f32, cap: f32, k: f32, held: bool, box: [] cc.Box) -> int {
+  x0 := right - wide; y := base;
   pad := ifx (44 * k - cap) * 0.5 > 8 * k then (44 * k - cap) * 0.5 else 8 * k;
   box[0] = cc.Box.{x0 = x0 - 10 * k, y0 = y - cap - pad, x1 = right + 6 * k, y1 = y + pad};
   f := ifx held then 1.0f32 else 0.8f32;
@@ -364,6 +364,7 @@ eg_float_over :: (out: [] f32, at: int, v: EgView, x: f32, y: f32, z: f32, t: st
   #assert eg_float_over(out[..], 0, v, 0, 1, 5, "-4", 1, cc.EG_FLOAT_DEALT, 1) == 0 && eg_float_over(out[..], 0, v, 0, 1, -5, "-4", 1, cc.EG_FLOAT_DEALT, 1) > 0;
   #assert eg_down_line(out[..], 3, "", 1280, 720, 1) == 3 && eg_down_line(out[..], 0, "SUCCESSES 1", 1280, 720, 1) > 0;
   nt: [] cc.UitTrace; bx: [1] cc.Box; l := [2] string.["A", "B"];
-  #assert eg_gfx(nt, out[..], 0, "GFX AUTO", 60, 900, 700, 1, false, bx[..]) > 0 && bx[0].x1 == 906 && bx[0].y1 - bx[0].y0 >= 44;
+  #assert eg_gfx(nt, out[..], 0, "GFX AUTO", 60, 900, 700, 13, 1, false, bx[..]) > 0 && bx[0].x1 == 906 && bx[0].y1 - bx[0].y0 >= 44;
+  #assert eg_gfx(nt, out[..], 0, "AUTO", 30, 900, 700, 9, 1, false, bx[..]) > 0 && bx[0].x0 == 860 && bx[0].y1 - bx[0].y0 >= 44 && bx[0].y1 == 700 + 17.5;   // smaller words, the same finger's room
   #assert eg_readout(nt, out[..], 0, "light", "LIGHT", "AMBIENT", l[..], 1) > 0;
 }
