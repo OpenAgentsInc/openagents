@@ -17,6 +17,13 @@ RELEASE_DOCUMENTS=('README.md','spec.md','ROADMAP.md','STATUS.md','release-statu
  'generated/current.md','generated/version-example.md')
 BUILD_ARTIFACTS=('lexer.c','lexer.h','parser.c','parser.h','checker.c','checker.h','sources.c','sources.h',
  'proto_runtime.inc','proto_importer.c','proto_importer.h')
+# The bootstrap test's waits on build.sh order its steps by files, not by time: each wait ends
+# when the file appears or build.sh exits. HANG only stops a build.sh that hangs. After its stub
+# bootstrap, build.sh still fingerprints the tree, checks the release documents with the real
+# compiler (two coax c and two cc -O1) and keeps the build: about 6 s on an idle Mac, and past
+# the old 20 s bound on a pipeline host whose other slots were busy (#13595). A short bound made
+# the test measure the host's load, not the build.
+HANG=600
 class ProvenanceTests(unittest.TestCase):
  @classmethod
  def setUpClass(cls):
@@ -204,15 +211,15 @@ while [[ ! -e "$TEST_FINISH" ]]; do sleep 0.05; done
   proc=subprocess.Popen([str(self.tree/'coax/build.sh')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,
                         text=True,env=env,start_new_session=True)
   try:
-   deadline=time.monotonic()+10
+   deadline=time.monotonic()+HANG
    while not ready.exists() and proc.poll() is None and time.monotonic()<deadline: time.sleep(.05)
    self.assertTrue(ready.exists(),'private bootstrap did not start')
    source.write_text('transient incompatible source');start.touch()
-   deadline=time.monotonic()+10
+   deadline=time.monotonic()+HANG
    while not read.exists() and proc.poll() is None and time.monotonic()<deadline: time.sleep(.05)
    self.assertTrue(read.exists(),'private bootstrap did not read its snapshot')
    source.write_bytes(original);finish.touch()
-   stdout,stderr=proc.communicate(timeout=20)
+   stdout,stderr=proc.communicate(timeout=HANG)
    self.assertEqual(proc.returncode,0,stdout+stderr)
    self.assertTrue((self.tree/'coax/bin/coax').read_bytes().endswith(original))
    # The checked build was kept: another tree with the same inputs installs it, verified, without a bootstrap.
@@ -220,7 +227,7 @@ while [[ ! -e "$TEST_FINISH" ]]; do sleep 0.05; done
    self.assertTrue((cache/identity/'provenance.record').exists())
    other=Path(self.tmp.name)/'other-tree';shutil.copytree(self.tree,other,ignore=shutil.ignore_patterns('bin'))
    ready.unlink()
-   result=subprocess.run([str(other/'coax/build.sh')],capture_output=True,text=True,timeout=30,env=env)
+   result=subprocess.run([str(other/'coax/build.sh')],capture_output=True,text=True,timeout=HANG,env=env)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
    self.assertFalse(ready.exists(),'a cached build was bootstrapped again')
    self.assertEqual((other/'coax/bin/coax').read_bytes(),(self.tree/'coax/bin/coax').read_bytes())
@@ -228,7 +235,7 @@ while [[ ! -e "$TEST_FINISH" ]]; do sleep 0.05; done
    # A cached compiler that doesn't match its record is refused, and the tree is built instead.
    (cache/identity/'coax').write_bytes(b'substituted')
    shutil.rmtree(other/'coax/bin')
-   result=subprocess.run([str(other/'coax/build.sh')],capture_output=True,text=True,timeout=30,env=env)
+   result=subprocess.run([str(other/'coax/build.sh')],capture_output=True,text=True,timeout=HANG,env=env)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
    self.assertTrue(ready.exists(),'a substituted cached compiler was installed')
    self.assertTrue((other/'coax/bin/coax').read_bytes().endswith(original))
