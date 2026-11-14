@@ -11,6 +11,10 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 //   coax/bin/coax test --library rules/srd/battle.coax --traversal 16000000000
+// Its records and loads; its code is in its units (battle-*.coax), each #authority (#13287). Its own
+// procedures are the checks' helpers:
+//   coax/bin/coax mutate rules/srd/battle.coax --library --root-only --traversal 16000000000
+#authority;
 #load "spells.coax";
 #load "ability-record.coax";
 #load "prone-movement.coax";
@@ -690,8 +694,8 @@ RsRoom :: struct { c: [RS_MAX] RsCreature; occ: [RS_SQUARES] int; zone: [RS_ZONE
 }
 
 // Whether an event since `seq` says `needle` (the tests' look at the log).
-rs_saw :: (b: [] RsBattle, seq: int, needle: string) -> bool {
-  for e: 0..<rs_min(b[0].book[0].seq - seq, RS_EVENTS) {
+rs_saw :: (b: [] RsBattle, seq: int, needle: string) -> bool #effects(all) {
+  for e: 0..<rs_min(b[0].book[0].seq - seq, b[0].book[0].count) {   // no more than the log keeps
     ev := rs_recent(b[0].book[0], e);
     t := cast(string) ev.text[0..<ev.text_n];
     if ev.text_n < needle.count { continue; }
@@ -700,7 +704,7 @@ rs_saw :: (b: [] RsBattle, seq: int, needle: string) -> bool {
   return false;
 }
 // A fresh turn for i (its action, Bonus Action and slot unspent), without the clock moving.
-rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_left = 6}; b[0].c[i].reacted = false; }
+rs_fresh :: (b: [] RsBattle, i: int) #effects(all) { b[0].who = i; b[0].turn = RsTurn.{move_left = 6}; b[0].c[i].reacted = false; }
 
 #test "Bardic Inspiration: a Bonus Action gives an ally the d6, spent on its next failed attack roll" {
   b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 3;
@@ -1232,9 +1236,9 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
 
 // The saves against spell sp told since `seq` (the log's count then): each one's creature in to[], how
 // many in all.
-rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int {
+rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int #effects(all) {
   n := 0;
-  m := rs_min(b[0].book[0].seq - seq, RS_EVENTS);
+  m := rs_min(b[0].book[0].seq - seq, b[0].book[0].count);
   for q: 0..<m {
     e := rs_recent_at(b[0].book[..], q);
     if e.kind == RS_EV_SAVE && e.spell.value == sp && n < to.count { to[n] = e.to.value; n += 1; }
@@ -1324,7 +1328,7 @@ rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int {
 // small battle has of its own. Nothing in a cast, an attack, a lasting effect or a turn counts to RS_MAX.
 // ---- the procedures #13287 found with no check of their own
 // The movement a turn has left, in feet.
-rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_feet; }
+rs_turn_feet :: (t: RsTurn) -> int #effects(all) { return t.move_left * RS_SQUARE + t.move_feet; }
 #test "standing up: on its own turn a Prone creature spends half its Speed and is Prone no more; no other creature, turn or state stands it" {
   b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
   a := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 2); f := rs_add(b[..], rs_fighter("Foe", 1, 3), 8, 2);
@@ -1810,7 +1814,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 #load "battle-cast-checks.coax" #test;   // battle-cast.coax's own checks (#13287)
 
 // ---- the feature program (#13285): rs_feature's rows, written out a second time, and rs_feature_use
-rs_fs_is :: (f: RsFeature, k: int, kind: int, a: int, b: int, c: int, t: string) -> bool { st := f.st[k]; return k < f.n && st.kind == kind && st.a == a && st.b == b && st.c == c && st.t == t; }
+rs_fs_is :: (f: RsFeature, k: int, kind: int, a: int, b: int, c: int, t: string) -> bool #effects(all) { st := f.st[k]; return k < f.n && st.kind == kind && st.a == a && st.b == b && st.c == c && st.t == t; }
 #test "features: every row holds its steps in order, each with its numbers and its line; no other kind has a row" {
   f_rs_ab_rage := rs_feature(RS_AB_RAGE); #assert f_rs_ab_rage.n == 9;
   #assert rs_fs_is(f_rs_ab_rage, 0, RS_FS_N_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_rage, 1, RS_FS_N_USE, RS_USE_RAGE, 0, 0, "") && rs_fs_is(f_rs_ab_rage, 2, RS_FS_N_NO_STATE, EF_RAGE, 0, 0, "");
@@ -1876,4 +1880,28 @@ rs_fs_is :: (f: RsFeature, k: int, kind: int, a: int, b: int, c: int, t: string)
     #assert (rs_feature(kind).n > 0) == has;
   }
   #assert RS_FS_DO == 40 && RS_FS_N_BLOODIED < RS_FS_DO && RS_FS_BONUS == RS_FS_DO && RS_FEAT_STEPS == 10 && RS_FP_FONT == 100 && RS_FP_RESURGE_SLOT == 101;
+}
+
+#test "the checks' helpers: a line seen since a point, the saves told, a turn's feet, a feature step's every field" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 10; b[0].h = 4;
+  a := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 1); t := rs_add(b[..], rs_fighter("Brand", 1, 3), 2, 1);
+  l: [1] RsLine; rs_add_text(l[..], "needle here");
+  rs_tell(b[..], RS_EV_SAVE, SP_BLESS, a, t, 0, 0, l[..]);
+  seq := b[0].book[0].seq;
+  #assert rs_saw(b[..], seq - 1, "needle") && rs_saw(b[..], seq - 1, "here") && !rs_saw(b[..], seq, "needle") && !rs_saw(b[..], seq - 1, "needle here, longer");
+  // past what the log keeps, nothing is looked at again
+  for k: 0..<b[0].book[0].ev.count { m: [1] RsLine; rs_add_text(m[..], "x"); rs_tell(b[..], RS_EV_TEXT, -1, a, a, 0, 0, m[..]); }
+  #assert !rs_saw(b[..], seq - 1, "needle");
+  to: [1] int;
+  rs_tell(b[..], RS_EV_SAVE, SP_BLESS, a, t, 0, 0, l[..]); rs_tell(b[..], RS_EV_SAVE, SP_BLESS, a, a, 0, 0, l[..]); rs_tell(b[..], RS_EV_SAVE, SP_HEX, a, a, 0, 0, l[..]);
+  s2 := b[0].book[0].seq - 3;
+  #assert rs_test_saves(b[..], s2, SP_BLESS, to[..]) == 1 && to[0] == a;   // the newest first, and no more than to holds
+  two: [2] int; #assert rs_test_saves(b[..], s2, SP_BLESS, two[..]) == 2 && two[0] == a && two[1] == t;
+  #assert rs_test_saves(b[..], seq - 1, SP_BLESS, two[..]) == 2;   // past what the log keeps
+  #assert rs_turn_feet(RsTurn.{move_left = 3, move_feet = 2}) == 17;
+  rs_fresh(b[..], t); #assert b[0].who == t && b[0].turn.move_left == 6 && !b[0].turn.action && !b[0].c[t].reacted;
+  f: RsFeature; f.n = 1; f.st[0] = RsFeatStep.{kind = 3, a = 4, b = 5, c = 6, t = "x"};
+  #assert rs_fs_is(f, 0, 3, 4, 5, 6, "x");
+  #assert !rs_fs_is(f, 0, 9, 4, 5, 6, "x") && !rs_fs_is(f, 0, 3, 9, 5, 6, "x") && !rs_fs_is(f, 0, 3, 4, 9, 6, "x") && !rs_fs_is(f, 0, 3, 4, 5, 9, "x") && !rs_fs_is(f, 0, 3, 4, 5, 6, "y");
+  f.st[1] = f.st[0]; #assert !rs_fs_is(f, 1, 3, 4, 5, 6, "x");   // past its steps
 }
