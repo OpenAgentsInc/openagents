@@ -3888,6 +3888,9 @@ function playBarActs() {
     bx.dom_act_done(st);
     if (kind === 529) fullscreen(body === "fullscreen on");
   }
+  // the pressed button gives focus back, or every key after it would stay out of the game (inEditor) until a
+  // Tab moved it on: Esc never closed Splice Bots' edit bay, and Space pressed the button again (playtest 3)
+  if (document.activeElement?.closest?.("#coaxial-play")) document.activeElement.blur();
 }
 // The space between a pane and the scene's frame: the dock's own gap.
 function editorGap() {
