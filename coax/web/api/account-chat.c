@@ -2,6 +2,8 @@
 // metered Vertex adapter. All ownership/funding/shape decisions are Coax.
 #include "api.h"
 #include "account-chat-wire.generated.h"
+#include "auth-internal.h"
+#include "auth-identity-policy.generated.h"
 #include <openssl/sha.h>
 #include <openssl/rand.h>
 #include <stdlib.h>
@@ -37,9 +39,8 @@ static void ac_player(const request *q,const auth_principal *p) {
 // Resolve account ownership separately from legacy Nostr member identity.
 bool project_subject(const request *q,PGconn *db,char out[65]) {
  const auth_principal *p=auth_principal_of(q);out[0]=0;
- if (!p || !pc_principal(p->kind,p->session[0]!=0,acs(p->account))) return false;
- unsigned char owner[64];if (!pc_owner(acs(p->account),(coax_v_u8){owner,64})) return false;
- char value[65];memcpy(value,owner,64);value[64]=0;
+ if (!p || !pc_principal(p->kind,p->session[0]!=0,acs(p->account)) || !ai_project(p->kind,p->session[0]!=0,p->limited,p->frozen!=0)) return false;
+ char value[65];if (auth_identity_ensure(db,p->account,value)<1) return false;
  const char *v[]={p->account,value};
  PGresult *r=PQexecParams(db,"INSERT INTO drops.account_owners_v1(account,owner) VALUES($1,$2) ON CONFLICT(account) DO UPDATE SET account=EXCLUDED.account RETURNING owner",2,NULL,v,NULL,NULL,0);
  bool ok=PQresultStatus(r)==PGRES_TUPLES_OK && PQntuples(r)==1;if(ok) snprintf(out,65,"%s",PQgetvalue(r,0,0));PQclear(r);return ok;

@@ -1,0 +1,40 @@
+// Identity provisioning is not enrollment of a login authenticator.
+#authority;
+AI_SKIP :: 0; AI_LINKED :: 1; AI_MANAGED :: 2; AI_CREATE :: 3;
+
+#test "provisioning results keep the host and public codec ABI" {
+ #assert AI_SKIP==0 && AI_LINKED==1 && AI_MANAGED==2 && AI_CREATE==3;
+}
+#test "a live keyless account receives one identity; existing identities win" {
+ #assert ai_plan(true,false,false,false)==AI_CREATE;
+ #assert ai_plan(true,false,true,false)==AI_MANAGED;
+ #assert ai_plan(true,false,false,true)==AI_LINKED;
+ #assert ai_plan(true,false,true,true)==AI_MANAGED;
+}
+#test "frozen and deleted accounts never provision, even with existing key facts" {
+ for managed:[2]bool.[false,true] {for linked:[2]bool.[false,true] {
+  #assert ai_plan(false,false,managed,linked)==AI_SKIP;
+  #assert ai_plan(true,true,managed,linked)==AI_SKIP;
+  #assert ai_plan(false,true,managed,linked)==AI_SKIP;
+ }}
+}
+#test "only an unrestricted human session can use an account project alias" {
+ #assert ai_project(2,true,false,false);
+ #assert !ai_project(2,false,false,false) && !ai_project(2,true,true,false) && !ai_project(2,true,false,true);
+ for kind:[5]int.[0,1,3,4,99] {#assert !ai_project(kind,true,false,false);}
+}
+#test "a linked project membership wins; an eligible account alias is the fallback" {
+ #assert ai_project_alias(2,true,false,false,false);
+ #assert !ai_project_alias(2,true,false,false,true);
+ #assert !ai_project_alias(1,true,false,false,false) && !ai_project_alias(3,true,false,false,false);
+ #assert !ai_project_alias(2,false,false,false,false) && !ai_project_alias(2,true,true,false,false) && !ai_project_alias(2,true,false,true,false);
+}
+ai_plan :: (live:bool,frozen:bool,managed:bool,linked:bool)->int #export_c #effects(all) {
+ if !live || frozen {return AI_SKIP;}if managed {return AI_MANAGED;}if linked {return AI_LINKED;}return AI_CREATE;
+}
+ai_project :: (kind:int,session:bool,limited:bool,frozen:bool)->bool #export_c #effects(all) {
+ return kind==2 && session && !limited && !frozen;
+}
+ai_project_alias :: (kind:int,session:bool,limited:bool,frozen:bool,member:bool)->bool #export_c #effects(all) {
+ return ai_project(kind,session,limited,frozen) && !member;
+}

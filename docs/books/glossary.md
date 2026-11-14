@@ -111,7 +111,8 @@ that already touches the file (#13267 to #13269, #13280).
 
 | Word | Meaning | Owner |
 | --- | --- | --- |
-| Key | A secp256k1 key pair. One seed gives a person or an agent both a Nostr identity and Bitcoin keys. | Bitcoin 121 |
+| Key | A secp256k1 key pair. Nostr identity keys and wallet keys have separate custody by default ([auth decisions](../auth/decisions.md)). | Bitcoin 121 |
+| Account identity key | An existing linked Nostr public key or a server-encrypted keypair automatically provisioned for a keyless account. A managed identity is not a login authenticator or wallet seed. | [Identity v1](../protocol/account-identity-v1.md) |
 | Event | A signed Nostr record with an ID that is the hash of its contents. | Nostr 21 |
 | Relay | A server that stores and forwards events. | Nostr Part V |
 | NIP | A Nostr protocol document. OpenAgents follows the official set and adds its own. | Nostr Part VI |

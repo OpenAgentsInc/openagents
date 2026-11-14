@@ -1,0 +1,10 @@
+// Compare the protocol's frozen public JSON with the product codec's bytes.
+#load "auth-identity-wire.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ raw:[1024]u8;out:[512]u8;n:=fs_read("proto/verse/account-identity-v1.json",raw[..]);
+ k:=aiw_write("acct_example",AIW_G,2,out[..]);
+ if n!=k+1 || k<1 || raw[k]!='\n' || cast(string)raw[0..<k]!=cast(string)out[0..<k] {return 1;}
+ print("account identity: exact public JSON golden passes\n");return 0;
+}

@@ -22,6 +22,7 @@
 // doesn't exist get the same answer: 404, the same body, after the same
 // queries. Nothing private is ever logged: no tokens, cookies or contents.
 #include "api.h"
+#include "auth-identity-policy.generated.h"
 #include "nostr.h"
 #include <ctype.h>
 #include <curl/curl.h>
@@ -271,6 +272,14 @@ bool private_route(const request *q) {
   if (!signed_req && page_api) {
     const auth_principal *sp = auth_principal_of(q);
     if (sp && sp->session[0] && sp->pubkey[0]) snprintf(site, sizeof site, "%s", sp->pubkey);
+    if (sp) {
+      const char *facts[]={slug,site};
+      PGresult *member=PQexecParams(db,"SELECT projects.member_of($1,$2) IS NOT NULL",2,NULL,facts,NULL,NULL,0);
+      bool read=PQresultStatus(member)==PGRES_TUPLES_OK && PQntuples(member)==1;
+      bool linked=read && !strcmp(PQgetvalue(member,0,0),"t");PQclear(member);
+      if (!read) {api_error_with(q->fd,503,PRIVATE_HEADERS,"Project unavailable.");return true;}
+      if (ai_project_alias(sp->kind,sp->session[0]!=0,sp->limited,sp->frozen!=0,linked)) project_subject(q,db,site);
+    }
   }
   if (post && pubkey[0] && !allowed("key", pubkey, runner_key(pubkey) ? 600 : 30)) {
     api_error_with(q->fd, 429, PRIVATE_HEADERS "Retry-After: 60\r\n", "slow down"); return true;

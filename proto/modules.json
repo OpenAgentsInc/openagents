@@ -233,6 +233,9 @@
     "environment-access": [
       "openagents/environment/access/v1alpha1/runtime.proto",
       "openagents/environment/accounts/v1/accounts.proto"
+    ],
+    "account-identity": [
+      "openagents/account/identity/v1/identity.proto"
     ]
   },
   "profile_namespaces": {
@@ -405,6 +408,9 @@
     ],
     "environment-access": [
       "openagents.environment.access.v1alpha1"
+    ],
+    "account-identity": [
+      "openagents.account.identity.v1"
     ]
   }
 }

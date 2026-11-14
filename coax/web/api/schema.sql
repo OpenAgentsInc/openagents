@@ -1877,13 +1877,16 @@ $$;
 CREATE FUNCTION auth.life_values(acct text, holds_ text) RETURNS text[]
     LANGUAGE sql STABLE
     AS $$
-  SELECT CASE holds_
-    WHEN 'account' THEN ARRAY[acct]
-    WHEN 'verse' THEN (SELECT array_agg(a.verse_account) FROM auth.accounts a WHERE a.id = acct)
-    WHEN 'player' THEN (SELECT array_agg(p.id) FROM verse.players p JOIN auth.accounts a ON a.verse_account = p.account WHERE a.id = acct)
-    WHEN 'pubkey' THEN (SELECT array_agg(x.owner) FROM (SELECT k.pubkey AS owner FROM auth.nostr_keys k WHERE k.account=acct UNION SELECT o.owner FROM drops.account_owners_v1 o WHERE o.account=acct) x)
-    WHEN 'world' THEN (SELECT array_agg(w.id) FROM verse.worlds w JOIN auth.accounts a ON a.verse_account = w.owner_account WHERE a.id = acct)
-  END
+ SELECT CASE holds_
+  WHEN 'account' THEN ARRAY[acct]
+  WHEN 'verse' THEN (SELECT array_agg(a.verse_account) FROM auth.accounts a WHERE a.id=acct)
+  WHEN 'player' THEN (SELECT array_agg(p.id) FROM verse.players p JOIN auth.accounts a ON a.verse_account=p.account WHERE a.id=acct)
+  WHEN 'pubkey' THEN (SELECT array_agg(x.pk) FROM (
+    SELECT k.pubkey AS pk FROM auth.nostr_keys k WHERE k.account=acct
+    UNION SELECT o.owner FROM drops.account_owners_v1 o WHERE o.account=acct
+    UNION SELECT k.pubkey FROM auth.account_identity_keys_v1 k WHERE k.account=acct) x)
+  WHEN 'world' THEN (SELECT array_agg(w.id) FROM verse.worlds w JOIN auth.accounts a ON a.verse_account=w.owner_account WHERE a.id=acct)
+ END
 $$;
 
 
@@ -19757,6 +19760,21 @@ ALTER SEQUENCE anime.calls_id_seq OWNED BY anime.calls.id;
 
 
 --
+-- Name: account_identity_keys_v1; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.account_identity_keys_v1 (
+    account text NOT NULL,
+    pubkey text NOT NULL,
+    sealed text NOT NULL,
+    created_ms bigint DEFAULT ((EXTRACT(epoch FROM clock_timestamp()) * (1000)::numeric))::bigint NOT NULL,
+    CONSTRAINT account_identity_keys_v1_created_ms_check CHECK ((created_ms >= 0)),
+    CONSTRAINT account_identity_keys_v1_pubkey_check CHECK ((pubkey ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT account_identity_keys_v1_sealed_check CHECK ((sealed ~ '^[0-9a-f]{210}$'::text))
+);
+
+
+--
 -- Name: accounts; Type: TABLE; Schema: auth; Owner: -
 --
 
@@ -23703,6 +23721,14 @@ ALTER TABLE ONLY anime.calls
 
 
 --
+-- Name: account_identity_keys_v1 account_identity_keys_v1_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.account_identity_keys_v1
+    ADD CONSTRAINT account_identity_keys_v1_pkey PRIMARY KEY (pubkey);
+
+
+--
 -- Name: accounts accounts_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
 --
 
@@ -25472,6 +25498,13 @@ CREATE INDEX anime_calls_started ON anime.calls USING btree (started);
 
 
 --
+-- Name: account_identity_keys_v1_account_created_ms_pubkey_idx; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE INDEX account_identity_keys_v1_account_created_ms_pubkey_idx ON auth.account_identity_keys_v1 USING btree (account, created_ms, pubkey);
+
+
+--
 -- Name: accounts_purge; Type: INDEX; Schema: auth; Owner: -
 --
 
@@ -26471,6 +26504,14 @@ CREATE TRIGGER pets_keep_held BEFORE UPDATE OF status ON villa.pets FOR EACH ROW
 
 ALTER TABLE ONLY access.redemptions
     ADD CONSTRAINT redemptions_invite_fkey FOREIGN KEY (invite) REFERENCES access.invites(id);
+
+
+--
+-- Name: account_identity_keys_v1 account_identity_keys_v1_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.account_identity_keys_v1
+    ADD CONSTRAINT account_identity_keys_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
 
 
 --

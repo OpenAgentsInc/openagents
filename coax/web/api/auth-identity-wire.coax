@@ -1,0 +1,44 @@
+// The one codec for account identity metadata and its sealed scalar store.
+// proto/openagents/account/identity/v1/identity.proto; no secret in Identity.
+#load "api-wire.coax";
+AIW_SCHEMA :: "openagents.account.identity.v1";
+AIW_G :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+#test "identity JSON is public metadata only and preserves its exact contract" {
+ b:[512]u8;
+ n:=aiw_write("acct_example",AIW_G,2,b[..]);
+ #assert n>0 && cast(string)b[0..<n]=="{\"schema\":\"openagents.account.identity.v1\",\"account\":\"acct_example\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"source\":\"account\"}";
+ n=aiw_write("acct_example",AIW_G,1,b[..]);
+ #assert n>0 && cast(string)b[n-9..<n]=="\"linked\"}";
+ #assert aiw_write("",AIW_G,2,b[..])<0 && aiw_write("acct_example","bad",2,b[..])<0;
+ #assert aiw_write("acct_example",AIW_G,0,b[..])<0 && aiw_write("acct_example",AIW_G,3,b[..])<0;
+ #assert aiw_write("acct_example",AIW_G,2,b[0..<20])<0;
+}
+#test "the immutable public key binds the sealed store; malformed records refuse" {
+ b:[160]u8;n:=aiw_ad(AIW_G,b[..]);
+ #assert n>0 && cast(string)b[0..<n]=="auth.account_identity_keys_v1|sealed|79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert aiw_ad("bad",b[..])<0 && aiw_ad(AIW_G,b[0..<20])<0;
+ seal:[210]u8;for i:0..<210 {seal[i]='a';}seal[0]='0';seal[1]='1';
+ #assert aiw_record("acct_example",AIW_G,cast(string)seal[..],1);
+ #assert !aiw_record("",AIW_G,cast(string)seal[..],1) && !aiw_record("acct_example",AIW_G,cast(string)seal[..],-1);
+ #assert !aiw_record("acct_example","bad",cast(string)seal[..],1);
+ #assert !aiw_record("acct_example",AIW_G,cast(string)seal[0..<209],1);
+ seal[2]='z';#assert !aiw_record("acct_example",AIW_G,cast(string)seal[..],1);
+ #assert !aiw_hex("AA",2) && !aiw_hex("0-",2);
+}
+aiw_hex :: (s:string,n:int)->bool #effects(all) {
+ if s.count!=n {return false;}for c:s {if !(c>='0' && c<='9') && !(c>='a' && c<='f') {return false;}}return true;
+}
+aiw_record :: (account:string,pubkey:string,sealed:string,created_ms:int)->bool #export_c #effects(all) {
+ return account.count>0 && aiw_hex(pubkey,64) && aiw_hex(sealed,210) && created_ms>=0;
+}
+aiw_ad :: (pubkey:string,out:[]u8)->int #export_c #effects(all) {
+ if !aiw_hex(pubkey,64) {return -1;}o:[1]Jo;aw_at(o[..],out,0);
+ jo_put(o[..],"auth.account_identity_keys_v1|sealed|");jo_put(o[..],pubkey);return aw_len(o[..]);
+}
+aiw_write :: (account:string,pubkey:string,source:int,out:[]u8)->int #export_c #effects(all) {
+ if account.count==0 || !aiw_hex(pubkey,64) || (source!=1 && source!=2) {return -1;}
+ o:[1]Jo;aw_at(o[..],out,0);jo_put(o[..],"{\"schema\":");jo_quoted(o[..],AIW_SCHEMA);
+ jo_put(o[..],",\"account\":");jo_quoted(o[..],account);jo_put(o[..],",\"pubkey\":");jo_quoted(o[..],pubkey);
+ jo_put(o[..],",\"source\":");jo_quoted(o[..],ifx source==2 then "account" else "linked");jo_put(o[..],"}");return aw_len(o[..]);
+}

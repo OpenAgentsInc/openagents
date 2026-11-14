@@ -180,7 +180,26 @@ ARC_G_X :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
   #assert arc_wrap(zero[..], rx[..], 1, arc_text("x", cb[..]), fresh[..], work[..], out[..]) == -1;
 }
 
-// ---------------------------------------------------------------- the API's four
+// Account identities reuse this unit's fixed-flow scalar validation/projection.
+#test "account identity public projection uses BIP-340 and refuses invalid scalars" #steps 600000000 {
+ key:[32]u8;pub:[64]u8;key[31]=1;
+ #assert arc_public(key[..],pub[..]);
+ #assert cast(string)pub[..]=="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ key[31]=2;#assert arc_public(key[..],pub[..]);
+ #assert cast(string)pub[..]=="c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+ #assert !arc_public(key[0..<31],pub[..]) && !arc_public(key[..],pub[0..<63]);
+ key[31]=0;#assert !arc_public(key[..],pub[..]);
+ for i:0..<32 {key[i]=255;}#assert !arc_public(key[..],pub[..]);
+}
+arc_public :: (key:[]u8,out:[]u8)->bool #export_c #effects(all) {
+ if key.count!=32 || out.count!=64 {return false;}
+ work:[1]SignWork;
+ if sw_key(key,work[..])!=SIGN_MORE {return false;}
+ encoded:=hex_encode_checked(cast(string)work[0].prep[0].public_key[..],out,false);
+ cleared:=sw_clear(work[..]);return encoded.error==NC_OK;
+}
+
+// ---------------------------------------------------------------- the API's exports
 // The phrase's length, or a negative refusal.
 arc_words :: (entropy: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if entropy.count != ARC_ENTROPY { return -1; }

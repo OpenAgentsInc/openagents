@@ -1,0 +1,19 @@
+syntax = "proto3";
+package openagents.account.identity.v1;
+
+// GET /api/auth/identity/v1. Public metadata only; never a private key.
+message Identity {
+  string schema = 1; // openagents.account.identity.v1
+  string account = 2;
+  string pubkey = 3; // 64 lowercase hex, BIP-340 x-only public key
+  string source = 4; // account (server-managed) or linked (existing authenticator)
+}
+
+// The independently sealed scalar columns in auth.account_identity_keys_v1.
+// The ciphertext reuses the existing version/nonce/XChaCha20-Poly1305 envelope.
+message StoredKey {
+  string account = 1;
+  string pubkey = 2;
+  string sealed = 3; // never exported or included in Identity
+  int64 created_ms = 4;
+}

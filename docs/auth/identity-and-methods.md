@@ -349,3 +349,12 @@ app opens on email with "Log in with a key" beside it. Once passkeys
 ship, right after the first login it asks once: "Save a passkey so you
 can log in with Face ID next time." Every method is our own system, which
 keeps the app inside Apple's own-system exemption.
+
+## Account-managed identity
+
+Email login also provisions a real Nostr identity for an account with no key.
+Its secret is encrypted on our server, separate from wallet keys. This identity
+is not an authenticator and does not raise L1, count as a strong way in, or grant
+creator/admin access. Existing linked keys and project aliases are preserved.
+See [the v1 contract](../protocol/account-identity-v1.md) for custody, lifecycle
+and the public metadata endpoint.

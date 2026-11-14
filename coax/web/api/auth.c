@@ -81,6 +81,7 @@ static const auth_rule RULES[] = {
   R("GET",  "/api/playtest/old-link", false, AP_PUBLIC, "the old playtest's links move"),
   // ---- our own authentication (this file)
   R("GET",  "/api/auth/account", false, AP_PUBLIC, "who is logged in, or nobody"),
+  R("GET",  "/api/auth/identity/v1", false, AP_ACCOUNT, "this account's public Nostr identity; no private key"),
   R("GET",  "/api/auth/limits", false, AP_PUBLIC, "every limit"),
   R("GET",  "/api/auth/viewer", false, AP_PUBLIC, "who is logged in, as every page reads it"),
   R("GET",  "/api/auth/me", false, AP_PUBLIC, "the viewer's lines; nobody is a 401"),
@@ -871,6 +872,8 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
   // An app's device key (#13216), checked before there is a session: one we can't hold refuses the login.
   auth_device_ask device;
   if (!auth_device_login(q, db, acct, app, &device)) return;
+  char identity[65];
+  if (auth_identity_ensure(db, acct, identity) < 0) { refuse(q, 503, "Identity unavailable. Try again."); return; }
   device_name(q, name, sizeof name);
   api_header(q, "X-Client-Region", country, sizeof country);
   if (app) { if (!random_hex(tok, 32)) { refuse(q, 503, "No randomness here. Try again."); return; } sha_hex(tok, dig); }
@@ -1411,6 +1414,8 @@ static void me(const request *q, PGconn *db) {
     answer_n(q, 200, NULL, json, auw_nobody_write(OUT(json)), lines, auw_nobody_lines(OUT(lines)));
     return;
   }
+  char identity[65];
+  if (auth_identity_ensure(db, p->account, identity) < 0) { refuse(q, 503, "Identity unavailable. Try again."); return; }
   const char *v[1] = {p->account};
   PGresult *r = PQexecParams(db, "SELECT x->>'kind', x->'emails', x->'keys', (x->>'team')::boolean FROM auth.me_of($1) x", 1, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); refuse(q, 500, "That didn't work. Try again."); return; }
@@ -1644,6 +1649,7 @@ static bool local_admin(const request *q, PGconn *db, auth_principal *p) {
 bool auth_api_route(const request *q) {
   if (strncmp(q->path, "/api/auth/", 10)) return false;
   const char *op = q->path + 10;
+  if (auth_identity_route(q, api_db(), op)) return true;
   api_route_at("auth_recover_route");
   if (auth_recover_route(q, api_db(), op)) return true;
   api_route_at("auth_life_route");
@@ -1699,6 +1705,7 @@ const char *auth_json_str(const char *body, size_t n, const char *key, char *out
   return auw_body_str((coax_string){body, (int64_t)strnlen(body, n)}, cs(key), (coax_v_u8){(uint8_t *)out, (int64_t)cap}) >= 0 ? out : NULL;
 }
 void auth_json_esc(const char *s, char *out, size_t cap) { json_esc(s, out, cap); }
+bool auth_seal(const char *ad, const char *text, char *out, size_t cap) { return seal(ad, text, out, cap); }
 bool auth_limit_hit(const request *q, PGconn *db, int which, const char *key) {
   long long until = 0;
   if (limit_hit(db, which, key, &until)) return true;

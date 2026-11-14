@@ -270,12 +270,14 @@ al_checks :: (t: [] Ap, dir: string) {
   shb: [160] u8; SH := al_email(t, dir, "life-h@example.com", shb[..]);
   hb: [64] u8; H := ap_sql(t, "SELECT account FROM auth.emails WHERE id = (SELECT max(id) FROM auth.emails)", hb[..]);
   st = al_with(t, "POST", "/api/auth/delete", "{}", SH);
+  ap_check(t,"an email account had a managed identity before deletion",al_count(t,q[..],"SELECT count(*) FROM auth.account_identity_keys_v1 WHERE account='",H,"'")==1,"");
   ap_do(t, al_q(q[..], "UPDATE auth.accounts SET delete_asked_at = delete_asked_at - interval '31 days', purge_at = purge_at - interval '31 days' WHERE id = '", H, "'"));
   ap_do(t, "SELECT auth.purge_due()");
   ap_check(t, "the purge leaves a tombstone: the id, deleted, nothing else", al_count(t, q[..], "SELECT count(*) FROM auth.accounts WHERE id = '", H, "' AND deleted_at IS NOT NULL AND display_name IS NULL") == 1
            && al_count(t, q[..], "SELECT count(*) FROM auth.emails WHERE account = '", H, "'") == 0
            && al_count(t, q[..], "SELECT count(*) FROM auth.sessions WHERE account = '", H, "'") == 0, "");
   ap_check(t, "the purge forgets the audit's link to the person", al_count(t, q[..], "SELECT count(*) FROM auth.audit WHERE account = '", H, "'") == 0, "");
+  ap_check(t,"the purge permanently removes the managed identity ciphertext",al_count(t,q[..],"SELECT count(*) FROM auth.account_identity_keys_v1 WHERE account='",H,"'")==0,"");
   sh2b: [160] u8; SH2 := al_email(t, dir, "life-h@example.com", sh2b[..]);
   h2b: [64] u8; H2 := ap_sql(t, "SELECT account FROM auth.emails WHERE id = (SELECT max(id) FROM auth.emails)", h2b[..]);
   ap_check(t, "a purged account's id is never reused: the same email makes a new account", ap_starts(SH2, "oas_") && H2.count > 0 && H2 != H, H2);

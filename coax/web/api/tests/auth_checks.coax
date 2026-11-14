@@ -9,6 +9,57 @@
 // tool.sh: tls
 #load "auth_harness.coax";
 
+// Disposable legacy/keyless account: race provisioning through real HTTP workers,
+// then exercise ciphertext faults. No test secret or session is printed.
+ac_identity_faults :: (t:[]Ap,dir:string) {
+ pb:[128]u8;code:[6]u8;link:[64]u8;c:[1]Sb;body:[1]Sb;eb:[512]u8;out:[8192]u8;
+ st:=ac_start(t,"identity-race@example.com","203.0.113.122",false,pb[..]);pending:=ac_cookie(t,"__Host-oa_pending",pb[..]);
+ if st!=200 || !ac_mail(dir,code[..],link[..]) {ap_check(t,"identity race fixture receives its code",false,"");return;}
+ sb(body[..],"{\"code\":\"");sb(body[..],cast(string)code[..]);sb(body[..],"\"}");
+ st=ac_call(t,"POST","/api/auth/email/verify",sb_text(body[..]),ac_cookie_header("__Host-oa_pending",pending,c[..]),"","");
+ ab:[64]u8;acct:=ap_member(ap_body(t),"account",ab[..]);s:[160]u8;session:=ac_cookie(t,"__Host-oa_session",s[..]);
+ ap_check(t,"identity race fixture logs in",st==200 && acct.count>0 && session.count>0,"");if st!=200 {return;}
+ q:[1]Sb;sb(q[..],"DELETE FROM auth.account_identity_keys_v1 WHERE account='");sb(q[..],acct);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+ // An insert fault must not leave a half-created identity.
+ ap_do(t,"CREATE FUNCTION auth.identity_test_fail() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RAISE EXCEPTION 'identity test failure'; END$$; CREATE TRIGGER identity_test_fail BEFORE INSERT ON auth.account_identity_keys_v1 FOR EACH ROW EXECUTE FUNCTION auth.identity_test_fail()");
+ auth:=ac_cookie_header("__Host-oa_session",session,c[..]);st=ac_call(t,"GET","/api/auth/identity/v1","",auth,"","");
+ ap_check(t,"storage failure refuses provisioning without a replacement identity",st==503 && !ap_has(ap_body(t),"pubkey"),ap_body(t));
+ ap_do(t,"DROP TRIGGER identity_test_fail ON auth.account_identity_keys_v1; DROP FUNCTION auth.identity_test_fail()");
+ paths:[4][4096]u8;pn:[4]int;hs:[4]int;url:[1]Sb;sb(url[..],t[0].api);sb(url[..],"/api/auth/identity/v1");
+ for i:0..<4 {
+  name:[1]Sb;sb(name[..],"identity-");sb_int(name[..],i);path:=fs_join(dir,sb_text(name[..]),paths[i][..]);pn[i]=path.count;
+  h:=proc_new();ok:=h>=0;args:=[9]string.["curl","-fsS","--max-time","30","-H",auth,"-o",path,sb_text(url[..])];
+  for a:args {ok=ok && proc_arg(h,a);}if !ok || proc_start(h)!=0 {hs[i]=-1;}else {hs[i]=h;}
+ }
+ first:[512]u8;first_n:=0;all:=true;
+ for i:0..<4 {
+  h:=hs[i];if h<0 {all=false;continue;}status:=proc_wait(h,35000);released:=proc_release(h);bytes:[512]u8;n:=fs_read(cast(string)paths[i][0..<pn[i]],bytes[..]);
+  if i==0 && n>0 {first_n=n;for k:0..<n {first[k]=bytes[k];}}
+  all=all && status==0 && n>0 && cast(string)bytes[0..<ifx n>0 then n else 0]==cast(string)first[0..<first_n];
+ }
+ sb_clear(q[..]);sb(q[..],"SELECT count(*) FROM auth.account_identity_keys_v1 WHERE account='");sb(q[..],acct);sb(q[..],"'");
+ ap_check(t,"four concurrent requests create exactly one cross-device identity",all && ap_sql(t,sb_text(q[..]),out[..])=="1","");
+ // Tamper with an actual encrypted row, retaining only ciphertext in scratch.
+ sb_clear(q[..]);sb(q[..],"SELECT sealed FROM auth.account_identity_keys_v1 WHERE account='");sb(q[..],acct);sb(q[..],"'");seal:[256]u8;kept:=ap_sql(t,sb_text(q[..]),seal[..]);
+ sb_clear(q[..]);sb(q[..],"UPDATE auth.account_identity_keys_v1 SET sealed=repeat('0',210) WHERE account='");sb(q[..],acct);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+ st=ac_call(t,"GET","/api/auth/identity/v1","",auth,"","");ap_check(t,"a corrupt seal fails closed instead of rotating the identity",st==503 && !ap_has(ap_body(t),"pubkey"),ap_body(t));
+ sb_clear(q[..]);sb(q[..],"UPDATE auth.account_identity_keys_v1 SET sealed=(SELECT sealed FROM auth.account_identity_keys_v1 WHERE account<>'");sb(q[..],acct);sb(q[..],"' ORDER BY created_ms LIMIT 1) WHERE account='");sb(q[..],acct);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+ st=ac_call(t,"GET","/api/auth/identity/v1","",auth,"","");ap_check(t,"valid ciphertext from another identity cannot be substituted",st==503 && !ap_has(ap_body(t),"pubkey"),ap_body(t));
+ sb_clear(q[..]);sb(q[..],"UPDATE auth.account_identity_keys_v1 SET sealed='");sb(q[..],kept);sb(q[..],"' WHERE account='");sb(q[..],acct);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+ st=ac_call(t,"GET","/api/auth/identity/v1","",auth,"","");ap_check(t,"restoring the ciphertext restores the same identity",st==200 && ap_body(t)==cast(string)first[0..<first_n],ap_body(t));
+ // Exercise the existing lifecycle merge effect with two actual sealed keys.
+ st=ac_start(t,"identity-merge@example.com","203.0.113.123",false,pb[..]);pending=ac_cookie(t,"__Host-oa_pending",pb[..]);
+ got:=ac_mail(dir,code[..],link[..]);sb_clear(body[..]);sb(body[..],"{\"code\":\"");sb(body[..],cast(string)code[..]);sb(body[..],"\"}");
+ st=ac_call(t,"POST","/api/auth/email/verify",sb_text(body[..]),ac_cookie_header("__Host-oa_pending",pending,c[..]),"","");
+ dstb:[64]u8;dst:=ap_member(ap_body(t),"account",dstb[..]);dsts:[160]u8;dstsession:=ac_cookie(t,"__Host-oa_session",dsts[..]);
+ ap_check(t,"merge fixture has its own identity and session",got && st==200 && dst.count>0,"");if st!=200 {return;}
+ sb_clear(q[..]);sb(q[..],"SELECT auth.merge('");sb(q[..],dst);sb(q[..],"','");sb(q[..],acct);sb(q[..],"',false) IS NOT NULL");ap_check(t,"the existing merge effect accepts the disposable identity fixtures",ap_sql(t,sb_text(q[..]),out[..])=="t","");
+ sb_clear(q[..]);sb(q[..],"SELECT count(*) FROM auth.account_identity_keys_v1 WHERE account='");sb(q[..],dst);sb(q[..],"'");ap_check(t,"a merge retains both managed key aliases",ap_sql(t,sb_text(q[..]),out[..])=="2","");
+ st=ac_call(t,"GET","/api/auth/identity/v1","",ac_cookie_header("__Host-oa_session",dstsession,c[..]),"","");
+ pkb:[65]u8;pk:=ap_member(cast(string)first[0..<first_n],"pubkey",pkb[..]);
+ ap_check(t,"the oldest identity still decrypts after its account changes in a merge",st==200 && ap_member(ap_body(t),"account",eb[..])==dst && ap_member(ap_body(t),"pubkey",eb[..])==pk,ap_body(t));
+}
+
 ac_checks :: (t: [] Ap, dir: string) {
   out: [8192] u8; eb: [1024] u8;
   c1: [1] Sb; c2: [1] Sb; c3: [1] Sb;
@@ -49,6 +100,19 @@ ac_checks :: (t: [] Ap, dir: string) {
            && ap_starts(acct, "acct_") && ap_member(ap_body(t), "new", eb[..]) == "true", ap_body(t));
   ap_check(t, "the session cookie is __Host-, HttpOnly, Secure", ap_has(ac_head(t), "__Host-oa_session=oas_") && ap_has(ac_head(t), "HttpOnly; Secure"), ac_head(t));
   S := ses;
+  // A managed identity is stable public metadata, not a strong authenticator.
+  ih:[1]Sb;sb(ih[..],"Cookie: __Host-oa_session=");sb(ih[..],S);
+  ib:[65]u8;st=ac_call(t,"GET","/api/auth/identity/v1","",sb_text(ih[..]),"","");
+  identity:=ap_member(ap_body(t),"pubkey",ib[..]);
+  ap_check(t,"email login provisions a real managed identity without revealing a secret",st==200 && identity.count==64 && ap_member(ap_body(t),"source",eb[..])=="account" && !ap_has(ap_body(t),"sealed") && !ap_has(ap_body(t),"secret"),ap_body(t));
+  ap_check(t,"the identity endpoint is private and never cached",ap_has(ac_head(t),"private, no-store"),ac_head(t));
+  st=ac_call(t,"GET","/api/auth/identity/v1","",sb_text(ih[..]),"","");
+  ap_check(t,"reopening decrypts the same identity across requests",st==200 && ap_member(ap_body(t),"pubkey",eb[..])==identity,ap_body(t));
+  iq:[1]Sb;sb(iq[..],"SELECT count(*)=1 AND bool_and(length(sealed)=210) FROM auth.account_identity_keys_v1 WHERE account='");sb(iq[..],acct);sb(iq[..],"'");
+  ap_check(t,"the account has exactly one encrypted identity",ap_sql(t,sb_text(iq[..]),out[..])=="t","");
+  sb_clear(iq[..]);sb(iq[..],"SELECT auth.strong_ways('");sb(iq[..],acct);sb(iq[..],"')=0 AND NOT EXISTS(SELECT 1 FROM auth.nostr_keys WHERE account='");sb(iq[..],acct);sb(iq[..],"')");
+  ap_check(t,"managed custody never enrolls a login key or increases strong ways",ap_sql(t,sb_text(iq[..]),out[..])=="t","");
+  st=ac_call(t,"GET","/api/auth/identity/v1","","","","");ap_check(t,"an anonymous caller cannot request any account identity",st==401,ap_body(t));
   st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", P, c1[..]), "", "");
   ap_check(t, "a code logs in once", st == 409 || st == 410, ap_body(t));
   st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", S, c1[..]), "", "");
@@ -75,6 +139,8 @@ ac_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "the link in the browser that asked logs in to the same account", st == 200 && ap_member(ap_body(t), "account", eb[..]) == acct
            && ap_member(ap_body(t), "new", eb[..]) == "false", ap_body(t));
   l2b: [160] u8; L2 := ac_cookie(t, "__Host-oa_session", l2b[..]);
+  st=ac_call(t,"GET","/api/auth/identity/v1","",ac_cookie_header("__Host-oa_session",L2,c1[..]),"","");
+  ap_check(t,"a second email login gets the same cross-device identity",st==200 && ap_member(ap_body(t),"pubkey",eb[..])==identity,ap_body(t));
   st = ac_call(t, "POST", "/api/auth/logout", "", ac_cookie_header("__Host-oa_session", L2, c1[..]), "", "");
   ap_check(t, "logging out ends the session and clears its cookie", st == 200 && ap_has(ac_head(t), "__Host-oa_session=; Path=/; Max-Age=0"), ac_head(t));
   st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", L2, c1[..]), "", "");
@@ -108,6 +174,11 @@ ac_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "two credentials at once are refused", st == 400, ap_body(t));
   st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", K, c1[..]), "", "");
   ap_check(t, "the key's session is L2 and names its key", st == 200 && ap_has(ap_body(t), "\"level\":\"L2\"") && ap_has(ap_body(t), "\"pubkey\""), ap_body(t));
+  linkedb:[65]u8;linked:=ap_sql(t,"SELECT pubkey FROM auth.nostr_keys ORDER BY id DESC LIMIT 1",linkedb[..]);
+  st=ac_call(t,"GET","/api/auth/identity/v1","",ac_cookie_header("__Host-oa_session",K,c1[..]),"","");
+  ap_check(t,"existing independently held Nostr keys are preserved and accounts isolated",st==200 && ap_member(ap_body(t),"source",eb[..])=="linked" && ap_member(ap_body(t),"pubkey",eb[..])==linked && linked!=identity,ap_body(t));
+  sb_clear(iq[..]);sb(iq[..],"SELECT count(*) FROM auth.account_identity_keys_v1 WHERE account='");sb(iq[..],kacct);sb(iq[..],"'");
+  ap_check(t,"a linked-key account receives no replacement managed secret",ap_sql(t,sb_text(iq[..]),out[..])=="0","");
 
   // ---- sessions: a new token each day of use, the old one 60 seconds more; idle ends them
   sb_clear(q[..]); sb(q[..], "UPDATE auth.sessions SET rotated_at = now() - interval '25 hours', created_at = now() - interval '25 hours' WHERE account = '"); sb(q[..], kacct); sb(q[..], "'");
@@ -191,6 +262,7 @@ ac_checks :: (t: [] Ap, dir: string) {
   // ---- every rule the gate keeps is on a route that exists; Origin is checked on writes
   st = ac_call(t, "POST", "/api/auth/nostr/challenge", "{}", "Origin: https://evil.example", "", "");
   ap_check(t, "a write from another site's page is refused", st == 403, ap_body(t));
+  ac_identity_faults(t,dir);
 }
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
