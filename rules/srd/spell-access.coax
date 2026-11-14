@@ -64,7 +64,13 @@
     #assert rs_spell_access(rs_bard("Bard", 0, level), SP_FIREBALL) == (level >= 6);
     #assert rs_spell_access(rs_paladin("Paladin", 0, level), SP_SACRED_FLAME) == (level >= 2);
     #assert rs_spell_access(rs_sorcerer("Sorcerer", 0, level), SP_COMMAND) == (level >= 3);
+    // each spell a Paladin's and a Life Cleric's features grant, at its level
+    p := rs_paladin("Paladin", 0, level); l := rs_cleric("Cleric", 0, level);
+    #assert rs_class_spell_granted(p, SP_GUIDANCE) == (level >= 2) && rs_class_spell_granted(p, SP_PROTECTION_GOOD_EVIL) == (level >= 3);
+    #assert rs_class_spell_granted(p, SP_AID) == (level >= 5) && rs_class_spell_granted(p, SP_ZONE_OF_TRUTH) == (level >= 5);
+    #assert rs_class_spell_granted(l, SP_LESSER_RESTORATION) == (level >= 3) && rs_class_spell_granted(l, SP_AID) == (level >= 3);
   }
+  #assert !rs_spell_at_will(rs_warlock("Warlock", 0, 5, SP_ELDRITCH_BLAST), -1) && !rs_spell_at_will(rs_warlock("Warlock", 0, 5, SP_ELDRITCH_BLAST), RS_MORE_END);
   mage := rs_mage("Mage", 0); priest := rs_priest("Priest", 0); fanatic := rs_fanatic("Fanatic", 0);
   #assert rs_spell_access(mage, SP_FIREBALL) && !rs_spell_access(mage, SP_ENTANGLE);
   #assert rs_spell_access(priest, SP_HEALING_WORD) && !rs_spell_access(priest, SP_FIREBALL);

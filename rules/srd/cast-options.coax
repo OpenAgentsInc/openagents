@@ -41,6 +41,8 @@ RsCastOptions :: struct {
   #assert rs_option_at(options[0..<0],99).blindness == RS_BLINDED && rs_option_at(options[..],1).blindness == RS_DEAFENED;
   restore:=RsCastOptions.{restoration=RS_POISONED};
   #assert rs_option_valid(SP_LESSER_RESTORATION,restore) && !rs_option_valid(SP_BLESS,restore);
+  for cond: RS_RESTORABLE { #assert rs_option_valid(SP_LESSER_RESTORATION,RsCastOptions.{restoration=cond}); }
+  #assert !rs_option_valid(SP_LESSER_RESTORATION,RsCastOptions.{restoration=RS_PRONE}) && !rs_option_valid(SP_LESSER_RESTORATION,RsCastOptions.{restoration=RS_CHARMED});
   for skill:-1..<RS_SKILLS+1 {
     #assert rs_option_valid(SP_GUIDANCE,RsCastOptions.{guidance=skill})==(skill>=0 && skill<RS_SKILLS);
     #assert rs_option_valid(SP_BLESS,RsCastOptions.{guidance=skill})==(skill==SK_PERCEPTION);
@@ -119,7 +121,7 @@ rs_spell_variant :: (base: RsSpell, sp: int, slot: int, option: RsCastOptions) -
   }
   // a spell that lasts longer from a higher slot (Hex): 4, 8 and 24 hours from its record's levels
   hours := [3] int.[14400, 28800, 86400];
-  for band: 0..<3 { if s.lasts_from[band] > 0 && slot >= s.lasts_from[band] { s.duration_s = hours[band]; } }
+  for band: 0..<3 { if s.lasts_from[band] != 0 && slot >= s.lasts_from[band] { s.duration_s = hours[band]; } }   // 0: no band
   return s;
 }
 // Caller has validated list shape and actor/target identities. Repeated picks
@@ -136,4 +138,12 @@ rs_options_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: in
     if rs_effect_room(b[0].c[target],s.concentration,i,b[0].c[i].conc) < need { return false; }
   }
   return true;
+}
+
+#test "Aid's variant: 5 more Hit Points a slot level above 1st; a spell with no duration bands keeps its own" {
+  aid := rs_spell(SP_AID); k := rs_step_at(aid, RS_S_AID); #assert k >= 0 && aid.steps[k].a == 5;
+  for slot: 2..<10 { #assert rs_spell_variant(aid, SP_AID, slot, RsCastOptions.{}).steps[k].b == 5 * (slot - 1); }
+  bless := rs_spell(SP_BLESS);
+  for slot: 0..<10 { #assert rs_spell_variant(bless, SP_BLESS, slot, RsCastOptions.{}).duration_s == bless.duration_s; }
+  for q: 0..<bless.step_n { #assert rs_spell_variant(bless, SP_BLESS, 3, RsCastOptions.{}).steps[q].b == bless.steps[q].b; }
 }
