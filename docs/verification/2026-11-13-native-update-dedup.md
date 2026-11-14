@@ -40,9 +40,17 @@ repair build 1072's updater through application OTA.
   Existing signature/runtime/app/path refusal and interrupted-trial recovery
   tests also passed.
 - `tools-check` passed with zero new tools missing a firm reason.
+- Fresh-device live-feed UI regression passed: launch with no update prompt,
+  manual check reports the latest compatible update, relaunch and check again
+  with no activation alert. This used a new headless simulator and the actual
+  published production-key feed, not an empty/missing feed.
+  After the run, its update store contained only the verified generation-1
+  `highwater.cnu`: no downloaded objects, pending/active package or trial files.
 
 Native test evidence: `/private/tmp/oa-update-prompt-tests.xcresult` and its
-companion log. Release artifacts are kept under
+companion log; live UI evidence: `/private/tmp/oa-update-prompt-live.xcresult`.
+Copies of both result bundles and release/test logs are retained with the release.
+Release artifacts are kept under
 `~/.openagents/releases/openagents-ios-1073/`.
 
 ## Release
