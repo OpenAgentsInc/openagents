@@ -31,6 +31,7 @@
 #load "sound-checks.coax" #test;
 #load "layer-checks.coax" #test;   // the colliders' and the layer's checks
 #load "walk-checks.coax" #test;
+#load "attack-checks.coax" #test;  // the enemies' attacks: wind-up, lock, impact, recovery, the shared lane (#13552)
 #load "camera-checks.coax" #test;  // the follow camera's checks (playtest 2)    // the walk replay's, the fixture layer's and the kept-clear zones' checks
 #load "replay.coax";
 #load "replay-checks.coax" #test;   // the outcome replay's checks, and each check's broken variant
@@ -161,6 +162,7 @@ SpGame :: struct {
   dv: [1] SpDrive;             // the drive to the garage (drive.coax)
   dr: [1] SpDir;               // the Director's systems (director.coax): her stance, Digger's errands and health, the grid, the map, pause
   bt: [1] SpBattle;            // the bots' battles, the drill mech, the raider mech, the boss and the ending (splice-battle.coax)
+  ak: [1] SpAttacks;           // the enemies' attacks: their beats, the lane they share, what she saw of the last (splice-battle.coax, #13552)
   snd: [1] SpSound;            // what sounds, and what the page is told to play (sound.coax)
   cam: [1] SpCam;             // the follow camera's eased boom (camera.coax)
   hv: [1] SpHud;               // the HUD: hidden or not, the toasts, the gauges' fades, the edit bay's picked item (hud.coax)
@@ -482,7 +484,9 @@ g_foe_walls :: (g: [] SpGame, i: int) {
   q = ga_push(g, q.x, q.z, 0.45);
   g[0].fx[i] = q.x; g[0].fz[i] = q.z;
 }
-boss_arm :: (g: [] SpGame) -> f32 { if g[0].boss_t <= T_SWEEP_EVERY { return 2.6; } return 2.6 + (g[0].boss_t - T_SWEEP_EVERY) / T_SWEEP_TIME * TAU; }
+// The tail's angle round the boss (2.6 is ahead of it): behind it until the sweep, then half way round, over its
+// left side to its head, and lying there while it rests (#13552; the lab's map: a half-circle arc).
+boss_arm :: (g: [] SpGame) -> f32 { return 2.6 + PI + clamp((g[0].boss_t - T_SWEEP_EVERY) / T_SWEEP_TIME, 0, 1) * PI; }
 g_walk :: (g: [] SpGame, dt: f32) {
   turn := (ifx g[0].turn_l then 1.0f32 else 0.0f32) - (ifx g[0].turn_r then 1.0f32 else 0.0f32);
   go := (ifx g[0].fwd then 1.0f32 else 0.0f32) - (ifx g[0].back then 1.0f32 else 0.0f32);
@@ -652,7 +656,7 @@ g_foes_step :: (g: [] SpGame, dt: f32) {
       }
       if out { continue; }
     }
-    if g[0].fstag[i] > 0 { g[0].fstag[i] -= dt; continue; }
+    if g[0].fstag[i] > 0 { g[0].fstag[i] -= dt; g[0].ak[0].ft[i] = 0; continue; }   // a stun or a knock breaks off its blow
     imperial := i >= F_RAIDERS;
     pl := sc_plan(g[0].c[..], i, g_phase(g));
     d := dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]);
@@ -666,6 +670,8 @@ g_foes_step :: (g: [] SpGame, dt: f32) {
     if !spoke && g[0].fhost[i] && (safe || d > T_GIVE_UP || g[0].unseen) { g[0].fhost[i] = false; }
     if !spoke && g[0].fflee[i] && (d > T_GIVE_UP || g[0].unseen) { g[0].fflee[i] = false; }
     if !spoke && g[0].fhost[i] && pl.act == NPD_GUARD && pl.n > 0 && dist2(g[0].fx[i], g[0].fz[i], mp_m(pl.x[0]), mp_m(pl.z[0])) > hi(2 * see, 4) { g[0].fhost[i] = false; }
+    // near enough, it strikes: wind-up, lock, blow, recovery, standing its ground (splice-battle.coax sb_blow, #13552)
+    if sb_blow(g, i, d, spoke, dt) { g_foe_walls(g, i); continue; }
     lead := ifx pl.act == NPD_FOLLOW && pl.lead >= 1 && pl.lead <= FOES then pl.lead - 1 else i;
     gl := mp_goal(pl, g[0].t, cast(f32) i * 1.7, i, g[0].fx[lead], g[0].fz[lead], g[0].fyaw[lead]);
     tx := gl.x; tz := gl.z; sp := gl.speed;
@@ -681,7 +687,6 @@ g_foes_step :: (g: [] SpGame, dt: f32) {
       if sp * dt > 0.0001 { g[0].fyaw[i] = atan2(ex, ez); }
     } else if gl.look { g[0].fyaw[i] = atan2(gl.look_x - g[0].fx[i], gl.look_z - g[0].fz[i]); }
     g_foe_walls(g, i);
-    if g[0].fhost[i] && d < T_RAIDER_REACH && (!spoke || g[0].sstrike[i] == g[0].steps) { g_hurt(g); }
   }
 }
 
@@ -1172,7 +1177,8 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       // its back, standing, or walking where it faces
       dance := !g[0].fhost[i] && !g[0].fflee[i] && pose == MP_DANCE;
       beat := t * 7.5 + cast(f32) i * 1.3;
-      f := frame_at(v3(g[0].fx[i] + reel, fy + (ifx dance then abs(sin(beat)) * 0.22 else 0.0f32), g[0].fz[i]), ifx dance then sin(beat * 0.5) * 0.9 + cast(f32) i else ifx g[0].fhost[i] then face else g[0].fyaw[i]);
+      f := frame_at(v3(g[0].fx[i] + reel, fy + (ifx dance then abs(sin(beat)) * 0.22 else 0.0f32), g[0].fz[i]), ifx dance then sin(beat * 0.5) * 0.9 + cast(f32) i else ifx g[0].fhost[i] then sb_face(g, i, face) else g[0].fyaw[i]);
+      f = sb_blow_pose(g, i, f);   // winding up, locked, striking or open (splice-battle.coax, #13552)
       if pose == MP_SLEEP && !g[0].fhost[i] && !g[0].fflee[i] { f = g_lying(v3(g[0].fx[i], fy + 0.18, g[0].fz[i]), g[0].fyaw[i]); }
       still := pose == MP_SLEEP || pose == MP_STAND;
       fk := g_thing(g, p, TK_RAIDER, ifx g[0].fhost[i] then 1 else 0, f, 0.95, ifx dance then beat else ifx still then 0.0f32 else t * 9);
@@ -1181,7 +1187,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       g_thing_end(g, p, fk); }
     } else {
       // an Imperial robot: white plates, an orange band, a red eye once it has seen you; it faces where it walks
-      f := frame_at(v3(g[0].fx[i] + reel, fy, g[0].fz[i]), ifx g[0].fhost[i] then face else g[0].fyaw[i]);
+      f := sb_blow_pose(g, i, frame_at(v3(g[0].fx[i] + reel, fy, g[0].fz[i]), ifx g[0].fhost[i] then sb_face(g, i, face) else g[0].fyaw[i]));
       if pose == MP_SLEEP && !g[0].fhost[i] && !g[0].fflee[i] { f = g_lying(v3(g[0].fx[i], fy + 0.2, g[0].fz[i]), g[0].fyaw[i]); }
       ik := g_thing(g, p, TK_IMPERIAL, ifx g[0].fhost[i] then 1 else 0, f, 0.8, t);
       if ik >= 0 {

@@ -240,7 +240,7 @@ built, the rubble ahead of you.
   route a third of the way from the rail stop to the garage). Outrunning it is the default: out of a battle
   its claws never take Sniper below a third of its health. When Sniper passes within 16 m it gives
   chase at 16 m/s: faster than Sniper's cruise, slower than its top speed, so holding W outruns it
-  (20 m behind, it gives up for the drive). Beside Sniper it claws it every 1.3 s. E while it is
+  (20 m behind, it gives up for the drive). Beside Sniper it claws twice every 1.3 s or so (below). E while it is
   within 12 m starts a battle with Sniper fielded; in the battle Sniper drives at its slow speed and
   1 to 4 are its cards. 12 m before the garage it turns back. On foot nothing hunts you.
 - **The boss.** A dinosaur-shaped bot glowing blue. Its collider is a body in the engine's World that
@@ -248,7 +248,7 @@ built, the rubble ahead of you.
   with the mech. The mech fights on its own when you leave it be (its strongest ready card every
   couple of seconds); 1 to 4 pick its moves. A hit landing jolts the boss and flashes it, and the
   prompt names her part: when it reels, run to a glowing weak point and press F. Phase one: its tail
-  sweeps. Below half health, phase two: it winds up, charges and
+  sweeps a half circle over its left side. Below half health, phase two: it winds up, charges and
   is dazed after. Its three weak points open while it reels from a stunning hit, is dazed, or has no
   health left; stun all three with F (each stays down 12 s) and it powers down, drops its banned core,
   and night falls. You lose if your health or the mech's runs out: back at the checkpoint, the boss
@@ -260,6 +260,55 @@ built, the rubble ahead of you.
   the walk replay's walker, and the run takes the shortcut.
 - **The ending.** SPLICE CORE in Sniper's edit bay plays the 15-second memory hologram with its
   three captions, then SCENE RESTORED, then the mission's teaser with RESTART.
+
+### Enemy attacks
+
+Every attack on her or her bots is a timeline of four beats (#13552), on the engine's
+`metaverse-engine/action/telegraph.coax`:
+
+1. **Wind-up.** The attacker rears back or raises its arm, and its warning shape appears on the ground,
+   dashed, with an inner outline growing to its edge. It still turns to follow you.
+2. **Lock.** It braces and stops turning; the outline turns solid. A dodge from here on works.
+3. **Impact.** The blow is live, only inside the shape shown.
+4. **Recovery.** It slumps, its arm or tail down: the opening. It does not attack again until this ends.
+
+A combo (the raider mech's two claws) holds between its strikes with the arm still up, so a pause in a
+combo looks different from its end, when the arm drops and it leans slack.
+
+| Attack | Warning shape (the real hit area) | How to dodge |
+| --- | --- | --- |
+| A raider's or Imperial robot's blow on foot | A wedge ahead of it, 1.6 m, 43° to each side | Step out of the wedge, or back off, once it locks |
+| The boss's tail sweep (phase one) | A half circle of 6.2 m over its left side | Jump over the tail, or leave the half circle |
+| The boss's charge (phase two) | A lane 4.8 m wide, to the chamber's wall | Step out of the lane once it locks; it is dazed after |
+| The raider mech's claws (the drive) | A ring of 2.4 m round where Sniper is heading | Change pace as it locks: press W, or let go of it |
+| A foe's card in a bot battle | A ring round the bot it is for | Its wind-up shows which card is coming |
+
+All foes share one lane (`tg_claim`): an attack begins only when its first impact comes at least
+`SB_GAP` after the last impact already promised, so attacks never land together and there is
+always time to react. An attack winding up off screen puts a marker on the screen's edge toward it
+(`tg_edge`) before it can land. A blow that lands says HIT over her, with the `hit` sound from where
+the blow came; one that misses says DODGED, with `attack-miss`. A wind-up sounds `attack-wind` from
+the attacker. Sounds are panned to where they come from (`snd_play_at`) and stay off behind
+`SND_PLAYS`. A hit's flash is kept short so it never hides the next warning.
+
+The tunables, in one table at the top of `splice-battle.coax` (seconds unless named):
+
+| Constant | Start | Why |
+| --- | --- | --- |
+| `SB_BLOW` | wind 0.6, lock 0.25, impact 0.15, recovery 0.9 | A foe's blow is the most common attack, so it reads at a glance: 0.6 s is long enough to see the rear-back at a walk, and the 0.25 s lock is a short step's time (about 1.4 m at her walk) |
+| `SB_SWEEP` | wind `T_SWEEP_WARN` 0.9, lock 0.3, impact `T_SWEEP_TIME` 1.3, recovery 1.1 | The boss is the tough fight: a longer wind-up gives time to read the half circle and choose jump or step |
+| `SB_CHARGE` | wind 0.7, lock 0.4, impact `SB_CHARGE_TIME` 1.2, recovery `SB_DAZE` 2.6 | The charge is the big hit, so its lock is the longest; its daze is the opening for F on the weak points |
+| `SB_CLAW` | wind 0.55, lock 0.25, impact 0.12, hold 0.4, recovery 1.3, two strikes | A pace change at the rover's speed moves Sniper several metres in 0.25 s, so the claw is beatable but asks for timing |
+| `SB_CARD` | wind 0.5, lock 0.2, impact 0.1, recovery 0.3 | Battle moves stay brisk: enough to see the card coming without slowing the battle |
+| `SB_GAP` | 0.45 | About two reaction times between two impacts, so even overlapping foes never trap her |
+| `SB_BLOW_START`, `SB_BLOW_REACH`, `SB_BLOW_HALF` | 1.7 m, 1.6 m, 0.75 rad | It starts just outside its reach, so backing off during the wind-up always works |
+| `SB_JUMP_CLEAR` | 0.45 m | A single jump (about 1.1 m) clears it for most of its arc |
+| `SB_CLAW_R`, `SB_CHARGE_W` | 2.4 m, 2.4 m | The hit areas the warnings draw |
+| `SB_CUE` | 0.9 | HIT or DODGED shows long enough to read, short enough to clear before the next wind-up |
+
+How far an Imperial robot senses her: its plan's `notice` (the `plans` table) plus `T_NOTICE_HEAT`
+(0.07 m) for each point of Heat (`splice-game.coax`), halved while she sneaks (`stance_noticed`). With
+two banned pieces (Heat 50) a 5 m notice is 8.5 m. `T_NOTICE` (5 m) is the notice of a foe with no plan.
 
 ## Sound
 

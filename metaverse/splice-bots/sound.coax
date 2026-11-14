@@ -14,13 +14,15 @@
 // (snd_tick, first thing in g_step): a door in or out of the rover, a robot turning on you, a drill
 // card starting, a blow landing in a bot battle, and the loops (the beds) for where you are.
 #load "../../metaverse-engine/audio/sfx.coax";
+#load "../../metaverse-engine/audio/space.coax";   // a one-shot's pan from where it is (au_place)
 
 SND_PICKUP :: 0; SND_DRILL :: 1; SND_GLITCH :: 2; SND_SUCCESS :: 3; SND_HIT :: 4; SND_SENSOR_PING :: 5;
 SND_SLOT_CLICK :: 6; SND_FILM_WHIR :: 7; SND_ROVER_DOOR :: 8; SND_ROBOT_ALERT :: 9; SND_RAIDER_MECH :: 10;
 SND_BOSS_WAKE :: 11; SND_BOSS_CHARGE :: 12; SND_BOSS_REEL :: 13; SND_BOSS_FALL :: 14;
 SND_STEP :: 15; SND_LAND :: 16;   // her feet (feel.coax): each footfall of her stride (counted, never logged: there are hundreds), and a landing
-SND_HOVER_CASUAL :: 17; SND_HOVER_FAST :: 18; SND_ROVER_LOFI :: 19; SND_DESERT_MUSIC :: 20; SND_RAVE :: 21;
-SND_COUNT :: 22;
+SND_ATTACK_WIND :: 17; SND_ATTACK_MISS :: 18;   // a foe winds up a blow; a blow that missed her (splice-battle.coax, #13552)
+SND_HOVER_CASUAL :: 19; SND_HOVER_FAST :: 20; SND_ROVER_LOFI :: 21; SND_DESERT_MUSIC :: 22; SND_RAVE :: 23;
+SND_COUNT :: 24;
 SND_FIRST_BED :: SND_HOVER_CASUAL;   // from here on each sound is a loop: a bed that plays while its place holds
 SND_EVENT_BASE :: 200;               // a sound's event for a native host: SND_EVENT_BASE + id (below 100 a message, 100 on the game's own)
 
@@ -46,6 +48,8 @@ SND_ROWS :: [SND_COUNT] SndRow.[
   SndRow.{name = "boss-fall", file = "boss-fall.wav", gain = 500},         // it powers down and drops the core; night falls
   SndRow.{name = "footstep", file = "footstep.wav", gain = 180},           // a footfall: twice a gait, as her feet meet the ground
   SndRow.{name = "land", file = "land.wav", gain = 300},                   // a landing from a jump or a fall, louder the harder it is
+  SndRow.{name = "attack-wind", file = "attack-wind.wav", gain = 420},     // a foe winds up a blow, heard from where it stands
+  SndRow.{name = "attack-miss", file = "attack-miss.wav", gain = 380},     // a blow that missed her: a whoosh past
   SndRow.{name = "hover-casual", file = "hover-casual.wav", gain = 220},   // loop: the hoverboard at its casual speed
   SndRow.{name = "hover-fast", file = "hover-fast.wav", gain = 300},       // loop: the hoverboard fast (Q while on it), or super fast
   SndRow.{name = "rover-lofi", file = "rover-lofi.wav", gain = 300},       // loop: inside the rover (its room, the edit bay)
@@ -59,7 +63,7 @@ SND_DIR :: "/realms/splice-bots/assets/sounds/";
 // turning its row on here.
 SND_PLAYS :: [SND_COUNT] bool.[
   false, false, false, false, false, false, false, false, false, false,   // pickup .. raider-mech
-  false, false, false, false, false, false, false,                        // boss-wake .. land
+  false, false, false, false, false, false, false, false, false,          // boss-wake .. attack-miss
   false, false, false, false, false                                       // hover-casual .. rave-loop
 ];
 
@@ -87,7 +91,7 @@ SND_QUEUE :: 16; SND_LOG :: 200; SND_HIT_GAP :: 0.1f32; SND_BED_EVERY :: 2.0f32;
 // What has sounded, for the checks: each sound's id with the mode, zone and phase it sounded in.
 SndLog :: struct { id: int; mode: int; zone: int; phase: int; }
 SpSound :: struct {
-  q: [SND_QUEUE] int; q_n: int;                 // one-shots for the page to play
+  q: [SND_QUEUE] int; q_n: int; qpan: [SND_QUEUE] f32;   // one-shots for the page to play, and where each is from (-1 left .. 1 right)
   on: [SND_COUNT] bool; heard: [SND_COUNT] bool;  // the beds playing now, and the beds the page has been told of
   beds_due: bool; beds_at: f32;
   log: [SND_LOG] SndLog; log_n: int; fired: [SND_COUNT] int;
@@ -106,12 +110,19 @@ snd_note :: (g: [] SpGame, id: int) {
   if snd_plays(g, id) { g_event(g, SND_EVENT_BASE + id); }   // a native host plays it by its name
 }
 // A one-shot now.
-snd_play :: (g: [] SpGame, id: int) {
+snd_play :: (g: [] SpGame, id: int) { snd_pan(g, id, 0); }
+// A one-shot from (x, z): panned to where it is from her and the way the view looks (her yaw), so a blow
+// off to the side is heard there. The step's own numbers, not the drawn camera's, so a replay hears the same.
+snd_play_at :: (g: [] SpGame, id: int, x: f32, z: f32) {
+  eye := v3(g[0].px - sin(g[0].yaw) * 4, 1.6, g[0].pz - cos(g[0].yaw) * 4);
+  snd_pan(g, id, au_place(AuRoom.{}, Shot.{eye = eye, at = v3(g[0].px, 1.2, g[0].pz)}, v3(x, 1, z)).pan);
+}
+snd_pan :: (g: [] SpGame, id: int, pan: f32) {
   if id < 0 || id >= SND_FIRST_BED { return; }
   s := g[0].snd[..];
   if id == SND_HIT { if s[0].hit_at >= 0 && s[0].t - s[0].hit_at < SND_HIT_GAP { return; } s[0].hit_at = s[0].t; }
   snd_note(g, id);
-  if snd_plays(g, id) && s[0].q_n < SND_QUEUE { s[0].q[s[0].q_n] = id; s[0].q_n += 1; }
+  if snd_plays(g, id) && s[0].q_n < SND_QUEUE { s[0].q[s[0].q_n] = id; s[0].qpan[s[0].q_n] = pan; s[0].q_n += 1; }
 }
 // An event the game raised (g_event): a message's sound.
 snd_event :: (g: [] SpGame, e: int) { if e < SND_EVENT_BASE { snd_play(g, snd_for_message(e)); } }
@@ -179,23 +190,30 @@ snd_bay :: (g: [] SpGame) {
 // for each bed the page has heard of (gain 0 when it is not wanted now). Emptied as it is read.
 snd_text :: (g: [] SpGame, out: [] u8) -> int {
   s := g[0].snd[..]; n := 0;
-  for k: 0..<s[0].q_n { n = snd_line(out, n, "", s[0].q[k], SND_ROWS[s[0].q[k]].gain); }
+  for k: 0..<s[0].q_n { n = snd_line(out, n, "", s[0].q[k], SND_ROWS[s[0].q[k]].gain, s[0].qpan[k]); }
   s[0].q_n = 0;
   if s[0].beds_due {
     for id: SND_FIRST_BED..<SND_COUNT {
       if !snd_plays(g, id) || (!s[0].on[id] && !s[0].heard[id]) { continue; }
       s[0].heard[id] = true;
-      n = snd_line(out, n, "~", id, ifx s[0].on[id] then SND_ROWS[id].gain else 0);
+      n = snd_line(out, n, "~", id, ifx s[0].on[id] then SND_ROWS[id].gain else 0, 0);
     }
     s[0].beds_due = false; s[0].beds_at = s[0].t;
   }
   return n;
 }
-snd_line :: (out: [] u8, at: int, lead: string, id: int, gain: int) -> int {
-  if at + 48 > out.count { return at; }
+snd_line :: (out: [] u8, at: int, lead: string, id: int, gain: int, pan: f32) -> int {
+  if at + 52 > out.count { return at; }
   n := tput(out, at, lead); n = tput(out, n, SND_ROWS[id].name); n = tput(out, n, " 0.");
   if gain < 100 { n = tput(out, n, "0"); } if gain < 10 { n = tput(out, n, "0"); }
-  n = tput_int(out, n, gain); return tput(out, n, " 0\n");
+  n = tput_int(out, n, gain);
+  // the pan in hundredths: " 0" centred, else " 0.62" or " -0.62"
+  c := cast(int) (clamp(pan, -1, 1) * 100 + (ifx pan < 0 then -0.5f32 else 0.5f32));
+  if c == 0 { return tput(out, n, " 0\n"); }
+  a := ifx c < 0 then -c else c;
+  n = tput(out, n, ifx c < 0 then " -" else " ");
+  if a >= 100 { return tput(out, n, "1\n"); }
+  n = tput(out, n, ifx a < 10 then "0.0" else "0."); n = tput_int(out, n, a); return tput(out, n, "\n");
 }
 
 // ---- The placeholders: a recipe for each sound (sfx.coax's layers), rendered by tools/sounds.coax.
@@ -263,6 +281,11 @@ snd_recipe :: (id: int) -> Sfx {
   } else if id == SND_LAND {          // a light thump and a puff of dust
     s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 140, 1, 95, 50, 0, 0, 0, 900), 3));
     s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 120, 2, 0, 0, 1800, 500, 120, 600), 3));
+  } else if id == SND_ATTACK_WIND {   // a servo winding up, rising to the release
+    s = sfx_add(s, sl_curve(sl(SFX_SAW, 0, 420, 30, 150, 520, 900, 2400, 40, 700), 1));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 300, 120, 10, 0, 0, 2000, 5000, 400, 400), 1));
+  } else if id == SND_ATTACK_MISS {   // a whoosh past
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 240, 40, 0, 0, 1200, 4800, 300, 800), 2));
   } else if id == SND_HOVER_CASUAL {  // loop: a soft hum with a slow wobble
     s.loop = 100;
     s = sfx_add(s, sl_curve(sl_vib(sl(SFX_SAW, 0, 1100, 1, 110, 110, 500, 500, 40, 800), 15, 3), 0));

@@ -22,6 +22,7 @@
 // Places come from the landmarks table where it has rows for them (LM_MECH, LM_RAIDER_MECH), so the
 // realm tooling can move them; without rows they stand where this file puts them.
 #load "../../metaverse-engine/action/bot-battle.coax";
+#load "../../metaverse-engine/action/telegraph.coax";   // an attack's beats: wind-up, lock, impact, recovery (#13552)
 
 // The bots the game keeps between battles: their health and battery outlive a fight.
 SB_DIGGER :: 0; SB_MECH :: 1; SB_SNIPER :: 2; SB_RAIDER :: 3; SB_BOSS :: 4; SB_BOTS :: 5;
@@ -55,10 +56,36 @@ SB_SNIPER_REACH :: 12.0f32; // E on the drive starts the battle while the raider
 SB_THINK :: 0.7f32;         // seconds between a foe's moves
 SB_AUTO :: 2.0f32;          // seconds without a move key before your fielded bot fights on its own
 SB_REPAIR :: 1.5f32;        // seconds at Sniper's charger to repair a bot
-SB_CHARGE_EVERY :: 5.0f32; SB_CHARGE_WIND :: 1.0f32; SB_CHARGE_SPEED :: 14.0f32; SB_CHARGE_TIME :: 1.2f32; SB_DAZE :: 2.6f32;
+SB_CHARGE_EVERY :: 5.0f32; SB_CHARGE_SPEED :: 14.0f32; SB_CHARGE_TIME :: 1.2f32; SB_DAZE :: 2.6f32;
 SB_SWEEP_HIT :: 3; SB_CHARGE_HIT :: 6;
 SB_RESTORED :: 3.0f32;      // seconds SCENE RESTORED holds before the mission's teaser
 SB_DINO_S :: 0.8f32;        // the dinosaur's scale: 3.7 m tall, 7 m long
+
+// ---- Enemy attacks (#13552, lane E): every timing in one table, in seconds. Each attack winds up (it still
+// turns to follow), locks (its aim is fixed: a dodge from here on works), strikes, and recovers (its
+// opening). The README's "Enemy attacks" gives each value and why.
+SB_BLOW :: TgBeats.{wind = 0.6, lock = 0.25, hit = 0.15, rest = 0.9};                      // a raider or Imperial robot on foot
+SB_SWEEP :: TgBeats.{wind = T_SWEEP_WARN, lock = 0.3, hit = T_SWEEP_TIME, rest = 1.1};      // the boss's tail sweep (phase one)
+SB_CHARGE :: TgBeats.{wind = 0.7, lock = 0.4, hit = SB_CHARGE_TIME, rest = SB_DAZE};       // the boss's charge (phase two): the daze is its recovery
+SB_CLAW :: TgBeats.{wind = 0.55, lock = 0.25, hit = 0.12, hold = 0.4, rest = 1.3, n = 2};  // the raider mech's two claws on the drive
+SB_CARD :: TgBeats.{wind = 0.5, lock = 0.2, hit = 0.1, rest = 0.3};                        // a foe's card in a bot battle
+SB_GAP :: 0.45f32;          // s: the least time from one impact's end to the next release, whoever attacks
+SB_BLOW_START :: 1.7f32;    // m: a foe after her starts its blow this near
+SB_BLOW_REACH :: 1.6f32; SB_BLOW_HALF :: 0.75f32;   // m and radians to each side: the blow's wedge
+SB_JUMP_CLEAR :: 0.45f32;   // m: feet this high clear the tail sweep
+SB_CLAW_R :: 2.4f32;        // m: the claw's ring round where it locked on Sniper
+SB_CHARGE_W :: 2.4f32;      // m: the charge's half width, its reach on her
+SB_CUE :: 0.9f32;           // s: HIT or DODGED shows over her
+
+// The enemies' attacks (#13552), kept apart from the battles' state: the lane they share, each foe's blow (its
+// clock, 0 idle, and its aim), the raider mech's claws (clock, -1 idle, the spot it locked, Sniper's place a
+// step ago), a foe's card winding up in a battle (clock, -1 idle, the card's slot), whether her sweep or charge
+// was aimed at her and landed, and the last attack on her, landed or dodged, with where it came from.
+SpAttacks :: struct {
+  lane: [1] TgLane; ft: [FOES] f32; fa: [FOES] f32; claw_t: f32 = -1; claw_x: f32; claw_z: f32; was_x: f32; was_z: f32;
+  card_t: f32 = -1; card_k: int; sweep_aim: bool; sweep_hit: bool;
+  cue_t: f32; cue_hit: bool; cue_x: f32; cue_z: f32;
+}
 
 SpBattle :: struct {
   bots: [SB_BOTS] BbBot;
@@ -136,6 +163,7 @@ sb_reset :: (g: [] SpGame) {
   t[0].mech_yaw = atan2(g[0].at.gar_x - m.x, g[0].at.gar_z - m.z);
   sb_rm_home(g);
   sb_dino_home(g);
+  g[0].ak[0] = SpAttacks.{};
 }
 // Where along the route it keeps watch, and where it turns back.
 sb_rm_watch_s :: () -> f32 { return T_RAIL_PING + (T_RAIL - T_RAIL_PING) * 0.3; }
@@ -234,7 +262,7 @@ sb_begin :: (g: [] SpGame, kind: int, crew: [] int, foe: int) {
   sb_arm(g, foe);
   theirs := [1] BbBot.[t[0].bots[foe]];
   bb_begin(t[0].fight[..], mine[0..<n], theirs[..]);
-  t[0].kind = kind; t[0].foe = foe; t[0].think = SB_THINK;
+  t[0].kind = kind; t[0].foe = foe; t[0].think = SB_THINK; g[0].ak[0].card_t = -1;
 }
 // The battle's records back into the kept bots, and the battle over.
 sb_finish :: (g: [] SpGame) {
@@ -370,6 +398,7 @@ sb_toward :: (x: [] f32, z: [] f32, yaw: [] f32, tx: f32, tz: f32, speed: f32, s
 sb_step :: (g: [] SpGame, dt: f32) {
   t := g[0].bt[..];
   if t[0].hit_t > 0 { t[0].hit_t -= dt; }
+  if g[0].ak[0].cue_t > 0 { g[0].ak[0].cue_t -= dt; }
   sb_digger_in(g);
   sb_keys(g);
   // a run kept from the boss chamber on (front.coax): Digger's core is in the mech, beside the open hallway
@@ -412,6 +441,7 @@ sb_mech_spot :: (g: [] SpGame) -> Point {
 sb_ride :: (g: [] SpGame, dt: f32) {
   t := g[0].bt[..];
   if t[0].hit_t > 0 { t[0].hit_t -= dt; }
+  if g[0].ak[0].cue_t > 0 { g[0].ak[0].cue_t -= dt; }
   sb_rm_step(g, dt);
   sb_battle_step(g, dt);
 }
@@ -438,17 +468,41 @@ sb_rm_step :: (g: [] SpGame, dt: f32) {
   if dist2(rx[0], rz[0], b.x, b.z) < 0.5 { ry[0] = sb_road_yaw(g); }   // alongside: it runs the way Sniper drives
   if dist2(rx[0], rz[0], t[0].rm_x, t[0].rm_z) > 0.001 { t[0].rm_step += dt * 7; }
   t[0].rm_x = rx[0]; t[0].rm_z = rz[0]; t[0].rm_yaw = ry[0];
-  // out of a battle it claws Sniper when it is beside it
-  if sb_fighting(g) || dist2(s.x, s.z, rx[0], rz[0]) > SB_RM_CLAW_REACH { return; }
-  t[0].rm_claw -= dt;
-  if t[0].rm_claw > 0 { return; }
-  t[0].rm_claw = SB_RM_CLAW_EVERY;
-  // outrunning is the default: out of a battle its claws scratch, but never take Sniper below a third of
-  // its health; only a battle she starts with E can put Sniper down (#13505 playtest)
-  dmg := sb_card(SBC_CLAW, SB_RAIDER).power;
-  v := t[0].bots[SB_SNIPER].vit;
-  if v.hp - cast(f32) dmg >= v.most / 3 { _ := bb_hurt(t[0].bots[SB_SNIPER..<SB_SNIPER + 1], dmg); }
-  g[0].flash = hi(g[0].flash, 0.2);
+  sb_claws(g, s, rx[0], rz[0], dt);
+}
+// Out of a battle, beside Sniper, the raider mech claws twice (SB_CLAW): it winds up, and each claw locks on
+// the spot Sniper is heading for at its pace then; W pressed or let go as it locks takes Sniper out of
+// the spot. Between the claws it keeps its arm up (another is coming); after the second it drops it.
+sb_claws :: (g: [] SpGame, s: Point, rx: f32, rz: f32, dt: f32) {
+  t := g[0].bt[..];
+  vx := (s.x - g[0].ak[0].was_x) / hi(dt, 0.001); vz := (s.z - g[0].ak[0].was_z) / hi(dt, 0.001);
+  g[0].ak[0].was_x = s.x; g[0].ak[0].was_z = s.z;
+  if sb_fighting(g) { g[0].ak[0].claw_t = -1; return; }
+  a := g[0].ak[0].claw_t;
+  if a < 0 {
+    if dist2(s.x, s.z, rx, rz) > SB_RM_CLAW_REACH { return; }
+    t[0].rm_claw -= dt;
+    if t[0].rm_claw > 0 || !sb_claim(g, SB_CLAW) { return; }
+    t[0].rm_claw = SB_RM_CLAW_EVERY; g[0].ak[0].claw_t = 0; sb_wind(g, rx, rz); return;
+  }
+  b := a + dt; g[0].ak[0].claw_t = b;
+  now := tg_at(SB_CLAW, b);
+  if now.phase == TG_WIND || now.phase == TG_HOLD {
+    // aiming: where Sniper will be when this claw lands, at its pace now
+    lead := tg_release(SB_CLAW, ifx now.phase == TG_HOLD then now.k + 1 else 0) - b;
+    g[0].ak[0].claw_x = s.x + vx * lead; g[0].ak[0].claw_z = s.z + vz * lead;
+  }
+  if tg_struck(SB_CLAW, a, b) >= 0 {
+    if dist2(s.x, s.z, g[0].ak[0].claw_x, g[0].ak[0].claw_z) < SB_CLAW_R {
+      // outrunning is the default: out of a battle its claws scratch, but never take Sniper below a third of
+      // its health; only a battle she starts with E can put Sniper down (#13505 playtest)
+      dmg := sb_card(SBC_CLAW, SB_RAIDER).power;
+      v := t[0].bots[SB_SNIPER].vit;
+      if v.hp - cast(f32) dmg >= v.most / 3 { _ := bb_hurt(t[0].bots[SB_SNIPER..<SB_SNIPER + 1], dmg); }
+      g[0].flash = hi(g[0].flash, 0.2); sb_cue(g, true, rx, rz);
+    } else { sb_cue(g, false, rx, rz); }
+  }
+  if b >= tg_len(SB_CLAW) { g[0].ak[0].claw_t = -1; }
 }
 // The boss. Its battle begins when you and the mech with Digger's core are in its chamber. Phase one: it
 // sweeps its arm round. Below half health, phase two: it winds up, charges, and is dazed after. Its own
@@ -476,39 +530,110 @@ sb_boss_step :: (g: [] SpGame, dt: f32) {
     dx[0] += t[0].rush_dx * SB_CHARGE_SPEED * dt; dz[0] += t[0].rush_dz * SB_CHARGE_SPEED * dt; t[0].rush -= dt;
     wall := dx[0] < -7 || dx[0] > 7 || dz[0] > g[0].at.wall_z - 3 || dz[0] < ga_lab_back(g);
     dx[0] = clamp(dx[0], -7, 7); dz[0] = clamp(dz[0], ga_lab_back(g), g[0].at.wall_z - 3);
-    if !t[0].rush_hit && dist2(g[0].px, g[0].pz, dx[0], dz[0]) < 2.4 { t[0].rush_hit = true; g_hurt(g); }
+    if !t[0].rush_hit && dist2(g[0].px, g[0].pz, dx[0], dz[0]) < SB_CHARGE_W { t[0].rush_hit = true; g[0].ak[0].sweep_hit = true; sb_hurt(g, dx[0], dz[0]); }
     me := sb_body_at(g, sb_fielded(g));
     if !t[0].rush_hit && dist2(me.x, me.z, dx[0], dz[0]) < 3.2 { t[0].rush_hit = true; _ := bb_strike(t[0].fight[..], 0, SB_CHARGE_HIT); t[0].hit_t = 0.9; t[0].hit_side = 0; t[0].hit_dmg = SB_CHARGE_HIT; }
-    if t[0].rush <= 0 || wall { t[0].rush = 0; t[0].daze = SB_DAZE; g_say(g, SBM_OPEN); }
-  } else if t[0].wind > 0 {
-    t[0].wind -= dt;
-    dy[0] = atan2(g[0].px - dx[0], g[0].pz - dz[0]);   // it lowers its head at you
-    if t[0].wind <= 0 { d := hi(0.01, dist2(g[0].px, g[0].pz, dx[0], dz[0])); t[0].rush_dx = (g[0].px - dx[0]) / d; t[0].rush_dz = (g[0].pz - dz[0]) / d; t[0].rush = SB_CHARGE_TIME; t[0].rush_hit = false; }
-  } else if !stunned {
-    // it faces the mech and closes in on it
-    _ := sb_toward(dx[..], dz[..], dy[..], target.x, target.z, ifx t[0].half then 2.4f32 else 1.4f32, 4.5, dt);
-    dx[0] = clamp(dx[0], -7, 7); dz[0] = clamp(dz[0], ga_lab_back(g), g[0].at.wall_z - 3);
-    if t[0].half { t[0].charge_t += dt; if t[0].charge_t >= SB_CHARGE_EVERY { t[0].charge_t = 0; t[0].wind = SB_CHARGE_WIND; } }
-    else {
-      // phase one's arm sweep (boss_t, as the stills draw it): you or the mech in its arc are hit
-      g[0].boss_t += dt;
-      if g[0].boss_t > T_SWEEP_EVERY + T_SWEEP_TIME { g[0].boss_t = 0; t[0].swept = false; }
-      if g[0].boss_t > T_SWEEP_EVERY {
-        a := sb_arm_angle(g);
-        if sb_in_arc(dx[0], dz[0], a, g[0].px, g[0].pz) { g_hurt(g); }
-        me := sb_body_at(g, sb_fielded(g));
-        if !t[0].swept && sb_in_arc(dx[0], dz[0], a, me.x, me.z) { t[0].swept = true; _ := bb_strike(t[0].fight[..], 0, SB_SWEEP_HIT); t[0].hit_t = 0.9; t[0].hit_side = 0; t[0].hit_dmg = SB_SWEEP_HIT; }
-      }
+    if t[0].rush <= 0 || wall {
+      t[0].rush = 0; t[0].daze = SB_DAZE; g_say(g, SBM_OPEN);
+      if g[0].ak[0].sweep_aim && !g[0].ak[0].sweep_hit { sb_cue(g, false, dx[0], dz[0]); }   // she stepped out of its lane
     }
+  } else if t[0].wind > 0 {
+    // the wind-up: its head lowers at her and its lane follows her until it locks (SB_CHARGE.lock before the rush)
+    t[0].wind -= dt;
+    if t[0].wind > SB_CHARGE.lock {
+      dy[0] = atan2(g[0].px - dx[0], g[0].pz - dz[0]);
+      d := hi(0.01, dist2(g[0].px, g[0].pz, dx[0], dz[0])); t[0].rush_dx = (g[0].px - dx[0]) / d; t[0].rush_dz = (g[0].pz - dz[0]) / d;
+      g[0].ak[0].sweep_aim = false; g[0].ak[0].sweep_hit = false;
+    } else if !g[0].ak[0].sweep_aim { g[0].ak[0].sweep_aim = sb_in_lane(g, g[0].px, g[0].pz, SB_CHARGE_W * 1.5); }
+    if t[0].wind <= 0 { t[0].rush = SB_CHARGE_TIME; t[0].rush_hit = false; }
+  } else if !stunned {
+    sw := g[0].boss_t - sb_sweep_from(); ph := ifx t[0].half then TG_IDLE else tg_at(SB_SWEEP, sw).phase;
+    // it faces the mech and closes in on it, until a sweep locks: from then it stands and follows no one
+    if ph == TG_IDLE || ph == TG_WIND {
+      _ := sb_toward(dx[..], dz[..], dy[..], target.x, target.z, ifx t[0].half then 2.4f32 else 1.4f32, 4.5, dt);
+      dx[0] = clamp(dx[0], -7, 7); dz[0] = clamp(dz[0], ga_lab_back(g), g[0].at.wall_z - 3);
+    }
+    if t[0].half {
+      t[0].charge_t += dt;
+      if t[0].charge_t >= SB_CHARGE_EVERY && sb_claim(g, SB_CHARGE) { t[0].charge_t = 0; t[0].wind = SB_CHARGE.wind + SB_CHARGE.lock; sb_wind(g, dx[0], dz[0]); }
+    } else { sb_sweep(g, dx[0], dz[0], dt); }
   }
   t[0].dino_x = dx[0]; t[0].dino_z = dz[0]; t[0].dino_yaw = dy[0];
   sb_dino_body(g);
 }
 sb_arm_angle :: (g: [] SpGame) -> f32 { return g[0].bt[0].dino_yaw + boss_arm(g) - 2.6; }
-sb_in_arc :: (cx: f32, cz: f32, a: f32, x: f32, z: f32) -> bool {
-  d := dist2(x, z, cx, cz); diff := atan2(x - cx, z - cz) - a;
+sb_in_arc :: (cx: f32, cz: f32, a: f32, x: f32, z: f32) -> bool { return sb_in_wedge(cx, cz, a, 0.4, T_ARM, x, z); }
+sb_in_wedge :: (cx: f32, cz: f32, yaw: f32, half: f32, r: f32, x: f32, z: f32) -> bool {
+  diff := atan2(x - cx, z - cz) - yaw;
   while diff > PI { diff -= TAU; } while diff < -PI { diff += TAU; }
-  return d < T_ARM && abs(diff) < 0.4;
+  return dist2(x, z, cx, cz) < r && abs(diff) < half;
+}
+// Phase one's tail sweep (SB_SWEEP on the boss's clock boss_t, as the stills draw it): it winds up, locks
+// where it stands, then its tail swings low from behind it round its left side to its head (the half of
+// the room on that side). Jumping clears it; you or the mech in its arc on the ground are hit. Then it
+// rests, tail down: the opening.
+sb_sweep_from :: () -> f32 { return T_SWEEP_EVERY - SB_SWEEP.wind - SB_SWEEP.lock; }
+sb_sweep :: (g: [] SpGame, x: f32, z: f32, dt: f32) {
+  t := g[0].bt[..];
+  from := sb_sweep_from(); a := g[0].boss_t - from; nt := g[0].boss_t + dt;
+  if a < 0 && nt - from >= 0 {
+    if sb_claim(g, SB_SWEEP) { sb_wind(g, x, z); g[0].ak[0].sweep_aim = false; g[0].ak[0].sweep_hit = false; } else { nt = from - 0.0001; }
+  }
+  g[0].boss_t = nt; b := nt - from;
+  ph := tg_at(SB_SWEEP, b).phase;
+  if ph == TG_LOCK && dist2(g[0].px, g[0].pz, x, z) < T_ARM + 1 { g[0].ak[0].sweep_aim = true; }
+  if ph == TG_HIT {
+    arm := sb_arm_angle(g);
+    if sb_in_arc(x, z, arm, g[0].px, g[0].pz) && g_feet_y(g) - g_ground(g, g[0].px, g[0].pz) < SB_JUMP_CLEAR {
+      if !g[0].ak[0].sweep_hit { sb_hurt(g, x, z); } g[0].ak[0].sweep_hit = true;
+    }
+    me := sb_body_at(g, sb_fielded(g));
+    if !t[0].swept && sb_in_arc(x, z, arm, me.x, me.z) { t[0].swept = true; _ := bb_strike(t[0].fight[..], 0, SB_SWEEP_HIT); t[0].hit_t = 0.9; t[0].hit_side = 0; t[0].hit_dmg = SB_SWEEP_HIT; }
+  }
+  if tg_ended(SB_SWEEP, a, b) >= 0 && g[0].ak[0].sweep_aim && !g[0].ak[0].sweep_hit { sb_cue(g, false, x, z); }
+  if b >= tg_len(SB_SWEEP) { g[0].boss_t = 0; t[0].swept = false; }
+}
+// Whether (x, z) lies in the charge's lane, `w` m to each side.
+sb_in_lane :: (g: [] SpGame, x: f32, z: f32, w: f32) -> bool {
+  t := g[0].bt[..]; ex := x - t[0].dino_x; ez := z - t[0].dino_z;
+  along := ex * t[0].rush_dx + ez * t[0].rush_dz; across := ex * t[0].rush_dz - ez * t[0].rush_dx;
+  return along > -w && along < SB_CHARGE_SPEED * SB_CHARGE_TIME && abs(across) < w;
+}
+
+// ---- What she sees and hears of an attack (#13552)
+// May an attack begin now: the lane every foe shares, so two blows never land together.
+sb_claim :: (g: [] SpGame, b: TgBeats) -> bool { return tg_claim(g[0].ak[0].lane[..], g[0].t, b, SB_GAP); }
+// A wind-up begins: heard from where it is.
+sb_wind :: (g: [] SpGame, x: f32, z: f32) { snd_play_at(g, SND_ATTACK_WIND, x, z); }
+// A blow that landed on her or missed her: HIT or DODGED over her a moment, its sound from where it came.
+sb_cue :: (g: [] SpGame, hit: bool, x: f32, z: f32) {
+  t := g[0].bt[..];
+  g[0].ak[0].cue_t = SB_CUE; g[0].ak[0].cue_hit = hit; g[0].ak[0].cue_x = x; g[0].ak[0].cue_z = z;
+  snd_play_at(g, ifx hit then SND_HIT else SND_ATTACK_MISS, x, z);
+}
+// A blow from (x, z) lands on her (unless she is still shaking off the last one).
+// Its flash is kept short, so it never hides the next warning.
+sb_hurt :: (g: [] SpGame, x: f32, z: f32) { if g[0].hit_cool <= 0 { g_hurt(g); g[0].flash = lo(g[0].flash, 0.18); sb_cue(g, true, x, z); } }
+// A foe on foot after her (raider or Imperial robot): near enough, and when the lane is free, it winds up its
+// blow (SB_BLOW) turning to follow her, locks its aim, strikes the wedge ahead of it and recovers. Only the
+// wedge hurts. Returns whether it is busy with a blow: it stands its ground until it is done. A script's
+// strike (scripts.coax) starts one too.
+sb_blow :: (g: [] SpGame, i: int, d: f32, spoke: bool, dt: f32) -> bool {
+  t := g[0].bt[..]; a := g[0].ak[0].ft[i];
+  if a <= 0 {
+    want := g[0].fhost[i] && d < SB_BLOW_START && (!spoke || g[0].sstrike[i] == g[0].steps);
+    if !want || !sb_claim(g, SB_BLOW) { return false; }
+    g[0].ak[0].ft[i] = 0.0001; g[0].ak[0].fa[i] = atan2(g[0].px - g[0].fx[i], g[0].pz - g[0].fz[i]); sb_wind(g, g[0].fx[i], g[0].fz[i]); return true;
+  }
+  b := a + dt; g[0].ak[0].ft[i] = b;
+  if tg_tracks(SB_BLOW, b) { g[0].ak[0].fa[i] = atan2(g[0].px - g[0].fx[i], g[0].pz - g[0].fz[i]); }
+  g[0].fyaw[i] = g[0].ak[0].fa[i];
+  if tg_struck(SB_BLOW, a, b) >= 0 {
+    if sb_in_wedge(g[0].fx[i], g[0].fz[i], g[0].ak[0].fa[i], SB_BLOW_HALF, SB_BLOW_REACH, g[0].px, g[0].pz) { sb_hurt(g, g[0].fx[i], g[0].fz[i]); }
+    else if d < SB_BLOW_REACH * 2 { sb_cue(g, false, g[0].fx[i], g[0].fz[i]); }
+  }
+  if b >= tg_len(SB_BLOW) { g[0].ak[0].ft[i] = 0; }
+  return true;
 }
 // A battle in progress: the clock, the foe's moves, the fielded bots closing in, and how it ends.
 sb_battle_step :: (g: [] SpGame, dt: f32) {
@@ -535,13 +660,19 @@ sb_battle_step :: (g: [] SpGame, dt: f32) {
     k := bb_pick(f[0], 0, sb_gap(g));
     if k >= 0 { h := bb_use(f, 0, k, sb_gap(g)); if h.verdict == BbVerdict.ok { t[0].idle = SB_AUTO - SB_THINK; t[0].hit_t = 0.9; t[0].hit_side = 1; t[0].hit_dmg = h.damage; g[0].flash = hi(g[0].flash, 0.12); } }
   }
-  // the foe's move: its strongest ready card, not while it charges, is dazed or the stun holds it
+  // the foe's move: its strongest ready card, not while it charges, sweeps, is dazed or the stun holds it.
+  // A card winds up first (SB_CARD), shown and heard, and lands at its release
   t[0].think -= dt;
-  busy := t[0].kind == SBF_BOSS && (t[0].rush > 0 || t[0].wind > 0 || t[0].daze > 0);
-  if t[0].think <= 0 && !busy {
+  sw := tg_at(SB_SWEEP, g[0].boss_t - sb_sweep_from()).phase;
+  busy := t[0].kind == SBF_BOSS && (t[0].rush > 0 || t[0].wind > 0 || t[0].daze > 0 || (!t[0].half && sw != TG_IDLE));
+  if g[0].ak[0].card_t >= 0 {
+    a := g[0].ak[0].card_t; b := a + dt; g[0].ak[0].card_t = b;
+    if tg_struck(SB_CARD, a, b) >= 0 { h := bb_use(f, 1, g[0].ak[0].card_k, sb_gap(g)); if h.verdict == BbVerdict.ok { t[0].hit_t = 0.9; t[0].hit_side = 0; t[0].hit_dmg = h.damage; g[0].flash = hi(g[0].flash, 0.2); } }
+    if b >= tg_len(SB_CARD) { g[0].ak[0].card_t = -1; t[0].think = SB_THINK; }
+  } else if t[0].think <= 0 && !busy {
     t[0].think = SB_THINK;
     k := bb_pick(f[0], 1, sb_gap(g));
-    if k >= 0 { h := bb_use(f, 1, k, sb_gap(g)); if h.verdict == BbVerdict.ok { t[0].hit_t = 0.9; t[0].hit_side = 0; t[0].hit_dmg = h.damage; g[0].flash = hi(g[0].flash, 0.2); } }
+    if k >= 0 && sb_claim(g, SB_CARD) { g[0].ak[0].card_t = 0; g[0].ak[0].card_k = k; at := sb_body_at(g, t[0].foe); sb_wind(g, at.x, at.z); }
   }
   // a fielded bot down: the next one standing comes in; Digger down is said
   if bb_active(f[0], 0).vit.down {
@@ -578,6 +709,7 @@ sb_repair_step :: (g: [] SpGame, dt: f32) {
 sb_respawn :: (g: [] SpGame) {
   t := g[0].bt[..];
   sb_finish(g);
+  g[0].ak[0] = SpAttacks.{}; t[0].wind = 0; t[0].rush = 0; t[0].daze = 0;
   t[0].bots[SB_BOSS] = bb_bot(SB_BOSS, 70, 120, 10); sb_dino_home(g);
   for i: 0..<3 { g[0].stun[i] = 0; }
   bb_repair(t[0].bots[SB_MECH..<SB_MECH + 1]); bb_repair(t[0].bots[SB_SNIPER..<SB_SNIPER + 1]);
@@ -670,7 +802,11 @@ sb_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       df = frame_move(df, v3(df.o.x + reel, df.o.y, df.o.z));
       bk := g_thing(g, p, TK_BOSS, ifx down then 1 else 0, df, SB_DINO_S, tm);
       if bk >= 0 {
-        jaw := ifx down then 0.1f32 else ifx t.wind > 0 then 1.0f32 else 0.3f32 + abs(sin(tm * 1.7)) * 0.3f32;
+        // its jaw: wide as it winds up a charge or a card (BITE, TAIL), slack while it rests after a sweep
+        sw := ifx t.half || t.kind != SBF_BOSS then TG_IDLE else tg_at(SB_SWEEP, g[0].boss_t - sb_sweep_from()).phase;
+        cw := g[0].ak[0].card_t >= 0 && tg_at(SB_CARD, g[0].ak[0].card_t).phase <= TG_LOCK;
+        jaw := ifx down then 0.1f32 else ifx t.wind > 0 || cw then 1.0f32 else ifx sw == TG_REST then 0.05f32 else 0.3f32 + abs(sin(tm * 1.7)) * 0.3f32;
+        if sw == TG_REST || sw == TG_LOCK { df = frame_turn(df, 0, ifx sw == TG_REST then 0.1f32 else -0.06f32); }   // its head sags as it rests; it braces as it locks
         stride := ifx t.rush > 0 then tm * 14 else ifx down then 0.0f32 else tm * 3;
         if down { df = frame_turn(df, 2, 0.12); }
         kit_dino(buf, p, df, SB_DINO_S, 230, ifx down then kit_tint(0.55, 0.56, 0.60) else ifx struck then kit_tint(1.0, 0.86, 0.62) else kit_tint(0.86, 0.90, 0.95), INK(), ifx down then kit_tint(0.30, 0.32, 0.36) else GLOW(), jaw, stride, sin(tm * 1.3));
@@ -686,7 +822,7 @@ sb_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
         }
         // phase one's tail sweep: its tail swings low round from its hips, tapering to the tip, curved
         // against the swing, orange in the warning (#13505 playtest: a tail, not a swung bat)
-        if !t.half && sb_fighting(g) && g[0].boss_t > T_SWEEP_EVERY - T_SWEEP_WARN {
+        if !t.half && sb_fighting(g) && g[0].boss_t > sb_sweep_from() {
           a := sb_arm_angle(g); warn := g[0].boss_t <= T_SWEEP_EVERY;
           kit_pen(p, 236, ifx warn then MAT_GLOW else MAT_SKIN, ifx warn then HEAT() else kit_tint(0.86, 0.90, 0.95));
           root := fp(df, 0, 1.5 * SB_DINO_S, -1.4 * SB_DINO_S);
@@ -705,6 +841,67 @@ sb_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     }
   }
   if sb_desert(g) && (g[0].mode == M_PLAY || g[0].mode == M_RIDE) { sb_draw_rm(g, buf, p); }
+  if g[0].zone == Z_MINE { sb_warns(g, buf, p); }
+}
+// ---- The attacks' poses and warnings (#13552)
+// A foe on foot as its blow goes: it rears back winding up, crouches still as it locks, lunges through
+// the blow, and slumps a moment after (its opening). `face` is where it faces otherwise.
+sb_face :: (g: [] SpGame, i: int, face: f32) -> f32 { return ifx g[0].ak[0].ft[i] > 0 then g[0].ak[0].fa[i] else face; }
+sb_blow_pose :: (g: [] SpGame, i: int, f: Frame) -> Frame {
+  a := g[0].ak[0].ft[i];
+  if a <= 0 { return f; }
+  now := tg_at(SB_BLOW, a); k := now.share;
+  lean := 0.0f32; ahead := 0.0f32; down := 0.0f32;
+  if now.phase == TG_WIND { lean = -0.35 * k; }
+  else if now.phase == TG_LOCK { lean = -0.35 + 0.15 * k; down = 0.12; }
+  else if now.phase == TG_HIT { lean = 0.45; ahead = 0.55 * k; }
+  else { lean = 0.3 * (1 - k); ahead = 0.55 * (1 - k); down = 0.1 * (1 - k); }
+  m := frame_move(f, fp(f, 0, -down, ahead));
+  return frame_turn(m, 0, lean);
+}
+// A warning's outline on the ground: dashes while the attack winds up (it may still turn), a solid line once
+// it is locked. The same shape the blow hits.
+sb_marks :: (g: [] SpGame, buf: [] u32, p: [] Pen, pts: [] f32, n: int, locked: bool) {
+  for k: 0..<n {
+    if !locked && k % 2 == 1 { continue; }
+    x := pts[k * 2]; z := pts[k * 2 + 1]; w := ifx locked then 0.12f32 else 0.08f32;
+    block(buf, p, x, g_ground(g, x, z) + 0.02, z, w, 0.03, w);
+  }
+}
+// The warnings in the mine: each foe's blow wedge, the tail sweep's half circle and the charge's lane, each
+// with an inner outline that grows to the edge as the release comes.
+sb_warns :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  t := g[0].bt[..]; pts: [480] f32;
+  kit_pen(p, 237, MAT_GLOW, HEAT());
+  for i: 0..<FOES {
+    a := g[0].ak[0].ft[i];
+    if a <= 0 || !g_foe_in(g, i) { continue; }
+    now := tg_at(SB_BLOW, a);
+    if now.phase != TG_WIND && now.phase != TG_LOCK { continue; }
+    grow := ifx now.phase == TG_WIND then now.share else 1.0f32;
+    n := tg_wedge(g[0].fx[i], g[0].fz[i], g[0].ak[0].fa[i], SB_BLOW_HALF, SB_BLOW_REACH, 0.18, pts[..]); sb_marks(g, buf, p, pts[..], n, now.phase == TG_LOCK);
+    n = tg_wedge(g[0].fx[i], g[0].fz[i], g[0].ak[0].fa[i], SB_BLOW_HALF, hi(0.2, SB_BLOW_REACH * grow), 0.3, pts[..]); sb_marks(g, buf, p, pts[..], n, false);
+  }
+  if t[0].kind != SBF_BOSS { return; }
+  if !t[0].half {
+    now := tg_at(SB_SWEEP, g[0].boss_t - sb_sweep_from());
+    if now.phase == TG_WIND || now.phase == TG_LOCK {
+      grow := ifx now.phase == TG_WIND then now.share else 1.0f32; side := t[0].dino_yaw + PI * 1.5;
+      n := tg_wedge(t[0].dino_x, t[0].dino_z, side, PI * 0.5, T_ARM, 0.4, pts[..]); sb_marks(g, buf, p, pts[..], n, now.phase == TG_LOCK);
+      n = tg_wedge(t[0].dino_x, t[0].dino_z, side, PI * 0.5, hi(0.5, T_ARM * grow), 0.6, pts[..]); sb_marks(g, buf, p, pts[..], n, false);
+    }
+  } else if t[0].wind > 0 {
+    locked := t[0].wind <= SB_CHARGE.lock; grow := ifx locked then 1.0f32 else 1 - (t[0].wind - SB_CHARGE.lock) / SB_CHARGE.wind;
+    l := 0.0f32;   // the lane runs until the chamber's walls stop it
+    while l < SB_CHARGE_SPEED * SB_CHARGE_TIME { x := t[0].dino_x + t[0].rush_dx * l; z := t[0].dino_z + t[0].rush_dz * l; if x < -7 || x > 7 || z > g[0].at.wall_z - 3 || z < ga_lab_back(g) { break; } l += 0.5; }
+    n := tg_lane(t[0].dino_x, t[0].dino_z, t[0].rush_dx, t[0].rush_dz, l, SB_CHARGE_W, 0.45, pts[..]); sb_marks(g, buf, p, pts[..], n, locked);
+    n = tg_lane(t[0].dino_x, t[0].dino_z, t[0].rush_dx, t[0].rush_dz, hi(0.5, l * grow), SB_CHARGE_W * 0.5, 0.7, pts[..]); sb_marks(g, buf, p, pts[..], n, false);
+  }
+  // a foe's card winding up: a ring under the bot it is for
+  if g[0].ak[0].card_t >= 0 && tg_at(SB_CARD, g[0].ak[0].card_t).phase <= TG_LOCK {
+    at := sb_body_at(g, sb_fielded(g));
+    n := tg_wedge(at.x, at.z, 0, PI, 2.2, 0.35, pts[..]); sb_marks(g, buf, p, pts[..], n, tg_at(SB_CARD, g[0].ak[0].card_t).phase == TG_LOCK);
+  }
 }
 // The raider mech: yellow, an orange eye while it hunts, grey once down; it bounds along as it runs.
 // On the drive (drive.coax) it is drawn while it is up, or near Sniper once down.
@@ -715,9 +912,27 @@ sb_draw_rm :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   f := frame_at(v3(t.rm_x, bob, t.rm_z), t.rm_yaw);
   if t.rm_down { f = frame_turn(f, 0, -0.35); }
   eye := ifx t.rm_down then kit_tint(0.3, 0.3, 0.32) else ifx t.rm_hunt then HEAT() else SB_YELLOW();
+  // its claws (SB_CLAW): raised high winding up and held up between the two, swung through to Sniper on each,
+  // and hanging low after the second, its lean gone slack: the opening
+  now := tg_at(SB_CLAW, g[0].ak[0].claw_t); k := now.share;
+  up := 0.0f32; reach := 0.0f32;
+  if now.phase == TG_WIND || now.phase == TG_HOLD { up = ifx now.phase == TG_WIND then k else 1.0f32; }
+  else if now.phase == TG_LOCK { up = 1.15; }
+  else if now.phase == TG_HIT { up = 1 - k * 1.6; reach = 1; }
+  else if now.phase == TG_REST { up = -0.6 * (1 - k); }
+  if sb_fighting(g) && g[0].ak[0].card_t >= 0 { c := tg_at(SB_CARD, g[0].ak[0].card_t); if c.phase == TG_WIND { up = c.share; } if c.phase == TG_LOCK { up = 1.15; } }   // a card winding up raises it too
+  if now.phase == TG_REST { f = frame_turn(f, 0, 0.18 * (1 - k)); }
   kit_mech(buf, p, f, 0.8, 250, ifx t.rm_down then kit_tint(0.55, 0.52, 0.46) else SB_YELLOW(), HEAT(), INK(), eye);
   kit_pen(p, 254, MAT_SKIN, INK());
-  limb(buf, p, fp(f, 1.5 * 0.8, 1.0 * 0.8, 0.3 * 0.8), fp(f, 1.3 * 0.8, 0.9 * 0.8, 1.6 * 0.8), 0.18, 0.06, v3(0, 1, 0), 6);
+  sh := fp(f, 1.5 * 0.8, 1.0 * 0.8, 0.3 * 0.8);
+  tip := ifx reach > 0 then v3(g[0].ak[0].claw_x, 0.9, g[0].ak[0].claw_z) else fp(f, 1.3 * 0.8, (0.9 + up * 1.6) * 0.8, (1.6 - up * 0.5) * 0.8);
+  limb(buf, p, sh, tip, 0.18, 0.06, v3(0, 1, 0), 6);
+  // where a claw will land: a ring round the spot it aims at, dashed while it aims, solid once locked
+  if now.phase == TG_WIND || now.phase == TG_LOCK || now.phase == TG_HOLD {
+    pts: [160] f32; kit_pen(p, 237, MAT_GLOW, HEAT());
+    n := tg_wedge(g[0].ak[0].claw_x, g[0].ak[0].claw_z, 0, PI, SB_CLAW_R, 0.5, pts[..]);
+    for j: 0..<n { if now.phase != TG_LOCK && j % 2 == 1 { continue; } w := ifx now.phase == TG_LOCK then 0.16f32 else 0.1f32; block(buf, p, pts[j * 2], 0.03, pts[j * 2 + 1], w, 0.04, w); }
+  }
 }
 // The drill on a mech's right arm, pointing ahead; `spin` turns its flutes.
 sb_drill :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, spin: f32) {
@@ -765,6 +980,7 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
     n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_SNIPER), v3(s.x, 3.2, s.z), mine);
     if !t.rm_down && (t.rm_hunt || sb_fighting(g)) { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_RAIDER), v3(t.rm_x, 4.4, t.rm_z), HEAT()); }
   }
+  n = sb_attack_hud(g, out, u, q, n);
   if t.kind == SBF_NONE { return n; }
   f := t.fight[0];
   // the foe: its name and health, under the time of day
@@ -810,6 +1026,51 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
     if sp.ahead { n = ui_title_mid(out, n, num(buf[..], "-", t.hit_dmg, ""), sp.x, sp.y, 16 * k, ifx t.hit_side == 1 then HEAT() else ink); }
   }
   return n;
+}
+// What she sees of the attacks on the HUD (#13552): HIT or DODGED over her a moment after a blow, and a
+// marker at the screen's edge toward each attack winding up off screen, before it can land.
+sb_attack_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
+  n := n0; t := g[0].bt[..]; k := q.k;
+  if g[0].ak[0].cue_t > 0 {
+    me := ifx g[0].mode == M_DRIVE || g[0].mode == M_RIDE then sb_sniper_at(g) else v3(g[0].px, 0, g[0].pz);
+    sp := screen_of(u, v3(me.x, 2.3 + (SB_CUE - g[0].ak[0].cue_t) * 0.6, me.z), q.w, q.h);
+    if sp.ahead {
+      word := ifx g[0].ak[0].cue_hit then "HIT" else "DODGED"; c := 13 * k;
+      ui_panel(g, u, sp.x - ui_w(F_TITLE, word, c) * 0.5 - 8 * k, sp.y - c - 7 * k, sp.x + ui_w(F_TITLE, word, c) * 0.5 + 8 * k, sp.y + 7 * k, PAPER(), 0.9);
+      n = ui_title_mid(out, n, word, sp.x, sp.y, c, ifx g[0].ak[0].cue_hit then HEAT() else INK());
+    }
+  }
+  xs: [FOES + 2] f32; zs: [FOES + 2] f32; m := sb_threats(g, xs[..], zs[..]);
+  for i: 0..<m {
+    at := v3(xs[i], 1.5, zs[i]); sp := screen_of(u, at, q.w, q.h);
+    if !sp.ahead {
+      // behind the camera: toward its side, mirrored by tg_edge
+      ex := at.x - u[U_EYE]; ez := at.z - u[U_EYE + 2];
+      sp.x = q.w * 0.5 - (ex * u[U_RIGHT] + ez * u[U_RIGHT + 2]) * 1000; sp.y = q.h * 0.5 - 1;
+    }
+    e := tg_edge(sp.x, sp.y, sp.ahead, q.w, q.h, 48 * k);
+    if e[2] <= 0 { continue; }
+    // a chevron pointing out toward it, on a paper disc, with a mark
+    dx := e[0] - q.w * 0.5; dy := e[1] - q.h * 0.5; l := hi(0.001, sqrt(dx * dx + dy * dy)); dx /= l; dy /= l;
+    tx := e[0] + dx * 16 * k; ty := e[1] + dy * 16 * k; bx := e[0] - dx * 4 * k; by := e[1] - dy * 4 * k;
+    ui_panel(g, u, e[0] - 20 * k, e[1] - 20 * k, e[0] + 20 * k, e[1] + 20 * k, PAPER(), 0.92);
+    n = ui_seg(out, n, bx - dy * 14 * k, by + dx * 14 * k, tx, ty, 2.6 * k, HEAT(), 1);
+    n = ui_seg(out, n, bx + dy * 14 * k, by - dx * 14 * k, tx, ty, 2.6 * k, HEAT(), 1);
+    n = ui_title_mid(out, n, "!", e[0] - dx * 8 * k, e[1] - dy * 8 * k + 6 * k, 14 * k, INK());
+  }
+  return n;
+}
+// Where each attack winding up or locked on her comes from now: the foes' blows, the boss's sweep, charge or
+// card, the raider mech's claws or card.
+sb_threats :: (g: [] SpGame, xs: [] f32, zs: [] f32) -> int {
+  t := g[0].bt[..]; m := 0;
+  for i: 0..<FOES { if g[0].ak[0].ft[i] > 0 && g_foe_in(g, i) && tg_at(SB_BLOW, g[0].ak[0].ft[i]).phase <= TG_LOCK { xs[m] = g[0].fx[i]; zs[m] = g[0].fz[i]; m += 1; } }
+  boss := t[0].kind == SBF_BOSS && (t[0].wind > 0 || (g[0].ak[0].card_t >= 0 && tg_at(SB_CARD, g[0].ak[0].card_t).phase <= TG_LOCK) || (!t[0].half && tg_at(SB_SWEEP, g[0].boss_t - sb_sweep_from()).phase == TG_WIND) || (!t[0].half && tg_at(SB_SWEEP, g[0].boss_t - sb_sweep_from()).phase == TG_LOCK));
+  if boss { xs[m] = t[0].dino_x; zs[m] = t[0].dino_z; m += 1; }
+  c := tg_at(SB_CLAW, g[0].ak[0].claw_t).phase;
+  rm := c == TG_WIND || c == TG_LOCK || c == TG_HOLD || (t[0].kind == SBF_DESERT && g[0].ak[0].card_t >= 0 && tg_at(SB_CARD, g[0].ak[0].card_t).phase <= TG_LOCK);
+  if rm { xs[m] = t[0].rm_x; zs[m] = t[0].rm_z; m += 1; }
+  return m;
 }
 num_tail :: (b: BbBot) -> string { return ifx b.vit.down then " · DOWN" else " HP"; }
 
