@@ -1,0 +1,93 @@
+// One environment shader for every glade page (#13556): the older glade's (character-glade.coax
+// cg_environment_fs: Experimental, the Druid, the labs, 5E Lab, WorldBuilder, the studio and the Nights) and
+// Everglade II's (everglade/client/gpu/everglade2.coax e2_environment_fs) shade a world surface here, by its
+// record in the page's material table (`mats`, surface-record.coax): sky, leaves, petals, sand, stone and
+// moss, the village's faces and the town's materials, grass, the foliage's scatter, the record's fill and
+// the ground's mottle. What a page adds is its own, passed in or done after:
+//   - the ground's albedo (the older glade's vertex colour and meadow, Everglade II's ground table and woods),
+//     set on the GladePx between ge_begin and ge_light;
+//   - the ground's sky occlusion (Everglade II's baked canopy AO; the older glade's 1) and its meadow share
+//     for the mottle (1 less the page's trail);
+//   - what replaces the lit colour (the older glade's dungeon, Everglade II's ?light views), from GladeLit.
+// Loaded by character-glade.coax in fivelab.coax's unit, where its checks run.
+GladePx :: struct {r:E2Surf;n:V3;albedo:V3;}
+GladeLit :: struct {colour:V3;indirect:V3;albedo:V3;n:V3;direct:f32;visibility:f32;ao:f32;fill:f32;}
+// The painted sky plate's pixel: its texel, the sky's whole light.
+ge_sky_fs :: (tex:V4)->V4 {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
+// A surface pixel before the page's ground: its record, its normal (turned to the viewer unless thin
+// foliage) and its albedo, the texel times the vertex colour, or the vertex colour alone (CM_S_TINTED).
+ge_begin :: (s:FivelabS,tex:V4,front:bool,mats:[]V4)->GladePx {
+ r:=e2_surface(s,mats);n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
+ if (!front && !e2_surf_is(r,cmat.CM_S_FOLIAGE)) {n=scale3(n,-1);}
+ albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
+ if (e2_surf_is(r,cmat.CM_S_TINTED)) {albedo=cg_decode(s.tint);}
+ return GladePx.{r=r,n=n,albedo=albedo};
+}
+// The surface lit under the frame's environment `env`, seen from `eye`, `shadow` its key light's
+// visibility. `ground_ao` scales the ground's sky light and `meadow` is its share away from the trail.
+ge_light :: (p:GladePx,s:FivelabS,tex:V4,env:EnvBlock,eye:V3,shadow:f32,ground_ao:f32,meadow:f32)->GladeLit {
+ r:=p.r;n:=p.n;albedo:=p.albedo;village:=e2_village(r,s.local.y);
+ foliage:=e2_surf_is(r,cmat.CM_S_FOLIAGE);grass:=e2_surf_is(r,cmat.CM_S_GRASS);leaves:=e2_surf_is(r,cmat.CM_S_LEAVES);ground:=e2_surf_is(r,cmat.CM_S_TERRAIN);
+ petal:=e2_surf_is(r,cmat.CM_S_PETAL);stone:=e2_surf_is(r,cmat.CM_S_STONE);
+ sun:=cg_sun_dir(env);view:=normalize3(sub3(eye,s.world));
+ if (leaves) {
+  if (s.tint.x>s.tint.y*1.2f32) {age:=cg_noise(v2(s.world.x*1.4f32+s.world.y*0.7f32,s.world.z*1.4f32));albedo=cg_decode(cg_leaf_palette(s.tint,age));}
+  albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));
+ }
+ if (petal && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));}
+ if (e2_surf_is(r,cmat.CM_S_SAND)) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));}
+ // a town face (its record's CM_S_TOWN, in one of the town's tints south of the road) is that material
+ town:=ifx !village && e2_surf_is(r,cmat.CM_S_TOWN) && s.world.z< -32.5f32 then cg_town_material(s.tint) else -1.0f32;
+ if (town>=0) {albedo=cg_decode(cg_town_albedo(town,s.tint,s.world,n));}
+ if (stone && town<0 && !village) {
+  // Neutral grey stone (the placement tint keeps its value, loses most of its olive) with moss on
+  // faces that look up, as the reference's cliff tops.
+  base:=cg_decode(s.tint);grey:=metaverse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
+  moss:=smoothstep(0.30f32,0.85f32,n.y+0.25f32*(cg_noise(v2(s.world.x*0.9f32+s.world.y,s.world.z*0.9f32))-0.5f32))*(0.55f32+0.45f32*cg_noise(v2(s.world.x*1.7f32,s.world.z*1.7f32)));
+  base=mix3(base,scale3(cg_decode(v3(0.52f32,0.64f32,0.26f32)),fmax(grey/0.22f32,0.7f32)),moss*0.85f32);
+  albedo=scale3(base,0.60f32+0.50f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));
+ }
+ visibility:=shadow*cg_cloud(env,s.world.x,s.world.z);
+ ndl:=dot3(n,sun);direct:=saturate(ndl);ao:f32=1;
+ if (leaves) {direct=saturate((ndl+0.65f32)/1.65f32);ao=clampf(s.local.y,0.5f32,1.0f32);}
+ if (grass) {green:=saturate((s.tint.y-s.tint.x)*4.0f32);albedo=mul3(albedo,mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),green));direct=(0.22f32+0.56f32*s.local.y)*(0.85f32+0.15f32*abs(ndl));ao=0.36f32+0.64f32*s.local.y;}
+ if (petal) {direct=0.35f32+0.45f32*abs(ndl);}
+ if (ground) {ao=ground_ao;}
+ // a village face and a town material take the sky's whole light; the rest their record's share
+ fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx village || town>=0 then 1.0f32 else r.fill;
+ indirect:=mul3(albedo,scale3(cg_hemisphere(env,n),ao*fill));
+ if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
+ colour:=add3(indirect,mul3(albedo,cg_irradiance(env,n,direct,0,visibility)));
+ if (foliage) {
+  // Thin leaves transmit rear sunlight; volume normals and ambient mask stay separate.
+  back:=pow(saturate(dot3(scale3(sun,-1),view)),2.0f32);scatter:=(0.15f32+0.60f32*back)*(1.0f32-abs(ndl)*0.65f32)*visibility;
+  colour=add3(colour,mul3(albedo,scale3(v3(1.35f32,1.16f32,0.62f32),scatter*(ifx grass then s.local.y else 1.0f32))));
+ }
+ if (ground) {mottle:=cg_noise(v2(s.world.x*2,s.world.z*2));grain:=cg_noise(v2(s.world.x*14,s.world.z*14));surface:=(0.90f32+0.16f32*mottle)*(1.0f32+meadow*(grain-0.5f32)*0.18f32)*mix(cg_soil(v2(s.world.x,s.world.z)),1,meadow);colour=scale3(colour,surface);indirect=scale3(indirect,surface);}
+ return GladeLit.{colour=colour,indirect=indirect,albedo=albedo,n=n,direct=direct,visibility=visibility,ao=ao,fill=fill};
+}
+// The lit pixel through the air from `eye`: its colour, and the share of it that is sky light (w).
+ge_finish :: (l:GladeLit,env:EnvBlock,eye:V3,p:V3)->V4 {
+ colour:=cg_atmosphere(env,l.colour,eye,p);share:=saturate(metaverse_style_luma(l.indirect.x,l.indirect.y,l.indirect.z)*exp(-cg_air_depth(env,eye,p))/fmax(metaverse_style_luma(colour.x,colour.y,colour.z),0.00001f32));
+ return v4(colour.x,colour.y,colour.z,share);
+}
+#test "one environment shader: a record's fill, a village face's whole sky light, the ground's occlusion" {
+ mats:[cmat.CM_MAX*4]V4;
+ mats[(E2S_BASE+2)*4+3]=v4(f32(cmat.CM_S_STONE|cmat.CM_S_VILLAGE),0.5,-1,8);
+ mats[(E2S_BASE+3)*4+3]=v4(f32(cmat.CM_S_TERRAIN|cmat.CM_S_TINTED),0.8,-1,0);
+ u:=paint_env_glade_u();env:=paint_env_of(u[..]);eye:=v3(0,2,6);
+ s:FivelabS;s.world=v3(1,0,-2);s.normal=v3(0,1,0);s.tint=v3(0.5,0.5,0.5);s.local=v3(2,1,0);s.dye=v4(0,0,0,12);
+ tex:=v4(1,1,1,1);
+ // a stone face: its record's fill
+ p:=ge_begin(s,tex,true,mats[..]);#assert e2_surf_is(p.r,cmat.CM_S_STONE) && p.n.y>0.99;
+ st:=ge_light(p,s,tex,env,eye,1,1,1);#assert st.fill==0.5f32 && st.ao==1;
+ // the same face marked as a village face (100 + its tile): the sky's whole light, no stone
+ s.local=v3(2,101,0);vf:=ge_light(ge_begin(s,tex,true,mats[..]),s,tex,env,eye,1,1,1);#assert vf.fill==1 && vf.albedo.x!=st.albedo.x;
+ // the ground: its colour the vertex's, its sky light scaled by the page's occlusion
+ s.local=v3(3,1,0);g:=ge_begin(s,tex,true,mats[..]);#assert g.albedo.x==cg_decode(s.tint).x;
+ a:=ge_light(g,s,tex,env,eye,1,1,1);b:=ge_light(g,s,tex,env,eye,1,0.5,1);
+ #assert a.fill==0.8f32 && b.ao==0.5f32 && b.indirect.y<a.indirect.y && b.colour.y<a.colour.y;
+ // a back face turns its normal to the viewer; the plate is its texel
+ #assert ge_begin(s,tex,false,mats[..]).n.y< -0.99 && ge_sky_fs(v4(1,1,1,1)).w==1;
+ #assert ge_finish(a,env,eye,s.world).w>0 && ge_finish(a,env,eye,s.world).w<=1;
+}

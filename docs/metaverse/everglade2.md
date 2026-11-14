@@ -325,6 +325,10 @@ coax/web/tool.sh everglade/model/tools/material-pack.coax --holds "$P"   # coax/
 The older glade pages (Experimental, the Druid, the three labs, the Nights) read the same records at
 the same slots (#13550). Their pack's rows name seven of these surfaces and two of the glade's own
 (docs/metaverse/everglade-experimental.md). Bark's record says it repeats 64 times (`tiles`).
+Both glades shade a surface with one environment shader, `everglade/scene/gpu/glade-environment.coax`
+(#13556). Each page gives it only what is its own: Everglade II its ground table's albedo with the woods,
+the trail and the field's cover, the canopy's baked AO and the `?light` views (`e2_environment_fs`); the
+older glade its vertex colour with the meadow and its dungeon (`cg_environment_fs`).
 
 ### The cat (#13112)
 

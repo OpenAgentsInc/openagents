@@ -438,73 +438,48 @@ e2_ground_ao :: (x:f32,z:f32,ground:[]V4)->f32 {
  g[1]=v4(6,0.5,0,4);
  #assert e2_ground_ao(1,-1,g[..])==1;
 }
-// A world surface's record (E2Surf, e2_surface, e2_surf_is, e2_sky): everglade/scene/gpu/surface-record.coax, which the older glade reads too.
+// A world surface's record (E2Surf, e2_surface, e2_surf_is, e2_sky): everglade/scene/gpu/surface-record.coax.
+// A glade pixel: the one environment shader both glades shade by (everglade/scene/gpu/glade-environment.coax,
+// #13556), with this realm's ground (its table's albedo, the woods, the trail and the field's cover), the
+// canopy's baked AO on it, and the developer's light views.
 e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,shadow:f32,table:[]V4,mats:[]V4)->V4 {
- if (e2_surf_is(e2_surface(s,mats),cmat.CM_S_SKY)) {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
- m:=e2_surface(s,mats);n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
- foliage:=e2_surf_is(m,cmat.CM_S_FOLIAGE);grass:=e2_surf_is(m,cmat.CM_S_GRASS);leaves:=e2_surf_is(m,cmat.CM_S_LEAVES);ground:=e2_surf_is(m,cmat.CM_S_TERRAIN);
- petal:=e2_surf_is(m,cmat.CM_S_PETAL);stone:=e2_surf_is(m,cmat.CM_S_STONE);sand:=e2_surf_is(m,cmat.CM_S_SAND);
- if (!front && !foliage) {n=scale3(n,-1);}
- sun:=cg_sun_dir(u[0].env);eye:=v3_of(u[0].f.eye);view:=normalize3(sub3(eye,s.world));
- albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
- // a model shaded by its vertex colour alone (surface 9), or its texture times it (10: the monsters, their camp, the Sword)
- if (e2_surf_is(m,cmat.CM_S_TINTED)) {albedo=cg_decode(s.tint);}
- // the ground's colour is the admitted material table's at this point (the pack's vertex colours
- // are no longer read); the hand-set gold, woods and trail below are this realm's look on top
- if (ground) {albedo=e2_ground_albedo(s.world.x,s.world.z,table,mats);}
- if (ground) {trail:=e2_path(s.world.x,s.world.z);// the gold is a sunlit hilltop's: steep banks keep more of their olive, and broad patches vary
-  steep:=0.55f32+0.45f32*smoothstep(0.80f32,0.95f32,n.y);
-  // inside the ridge cut on the walk to Everglade (past the main shot's view) the banks stay a grassy olive
-  cut:=(1.0f32-cg_ramp(3.0f32,10.0f32,abs(s.world.x-e2_road_x(s.world.z))))*cg_ramp(-17.0f32,-22.0f32,s.world.z)*(1.0f32-cg_ramp(-40.0f32,-60.0f32,s.world.z));
-  steep=steep*(1.0f32-0.65f32*cut);
-  // under the woods the floor keeps less of the glade's gold and darkens to leaf litter
-  woods:=e2_forest(s.world.x,s.world.z);
-  albedo=mix3(albedo,cg_decode(v3(0.82f32,0.58f32,0.16f32)),e2_gold(s.world.x,s.world.z)*0.80f32*steep*(1.0f32-trail)*(1.0f32-0.75f32*woods));
-  albedo=mix3(albedo,mul3(albedo,v3(0.62f32,0.70f32,0.55f32)),woods*0.55f32*(1.0f32-trail));
-  albedo=scale3(albedo,0.84f32+0.32f32*cg_noise(v2(s.world.x*0.35f32+4.0f32,s.world.z*0.35f32)));
-  // The reference trail is packed olive earth, darker than sand.
-  albedo=mix3(albedo,cg_decode(v3(0.50f32,0.46f32,0.24f32)),trail*0.80f32);
-  // where the grass field thins out with distance its colour carries on in the ground, by the same
-  // cover (everglade/world/field.coax e2_field_cover), so the field never ends in a line
-  au:=e2_gold(s.world.x,s.world.z);dk:=1.0f32-0.38f32*woods;
-  lawn:=mul3(cg_decode(scale3(v3(0.47f32+0.27f32*au,0.66f32-0.10f32*au,0.06f32),dk)),mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),0.6f32));
-  away:=smoothstep(24.0f32,120.0f32,wg_length3(sub3(s.world,v3_of(u[0].f.eye))));
-  albedo=mix3(albedo,lawn,e2_field_cover(s.world.x,s.world.z)*away*0.75f32);}
- if (leaves) {
-  if (s.tint.x>s.tint.y*1.2f32) {age:=cg_noise(v2(s.world.x*1.4f32+s.world.y*0.7f32,s.world.z*1.4f32));albedo=cg_decode(cg_leaf_palette(s.tint,age));}
-  albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));
+ if (e2_surf_is(e2_surface(s,mats),cmat.CM_S_SKY)) {return ge_sky_fs(tex);}
+ eye:=v3_of(u[0].f.eye);p:=ge_begin(s,tex,front,mats);ao:f32=1;meadow:f32=1;
+ if (e2_surf_is(p.r,cmat.CM_S_TERRAIN)) {
+  // the ground's colour is the admitted material table's at this point (the pack's vertex colours
+  // are no longer read); the hand-set gold, woods and trail are this realm's look on top
+  p.albedo=e2_ground_look(e2_ground_albedo(s.world.x,s.world.z,table,mats),p.n,s.world,eye);
+  // the canopy's baked AO darkens the ground's sky light only, as it does your character's (u[0].material.z), by
+  // the share the page gives it (ground.coax E2G_GROUND_AO_SHARE)
+  ao=1.0f32+(e2_ground_ao(s.world.x,s.world.z,table)-1.0f32)*table[1].w;meadow=1.0f32-e2_path(s.world.x,s.world.z);
  }
- if (petal && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));}
- if (sand) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));}
- if (stone) {
-  // Neutral grey stone (the placement tint keeps its value, loses most of its olive) with moss on
-  // faces that look up, as the reference's cliff tops.
-  base:=cg_decode(s.tint);grey:=metaverse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
-  moss:=smoothstep(0.30f32,0.85f32,n.y+0.25f32*(cg_noise(v2(s.world.x*0.9f32+s.world.y,s.world.z*0.9f32))-0.5f32))*(0.55f32+0.45f32*cg_noise(v2(s.world.x*1.7f32,s.world.z*1.7f32)));
-  base=mix3(base,scale3(cg_decode(v3(0.52f32,0.64f32,0.26f32)),fmax(grey/0.22f32,0.7f32)),moss*0.85f32);
-  albedo=scale3(base,0.60f32+0.50f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));
- }
- visibility:=shadow*cg_cloud(u[0].env,s.world.x,s.world.z);
- ndl:=dot3(n,sun);direct:=saturate(ndl);ao:f32=1;
- if (leaves) {direct=saturate((ndl+0.65f32)/1.65f32);ao=clampf(s.local.y,0.5f32,1.0f32);}
- if (grass) {green:=saturate((s.tint.y-s.tint.x)*4.0f32);albedo=mul3(albedo,mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),green));direct=(0.22f32+0.56f32*s.local.y)*(0.85f32+0.15f32*abs(ndl));ao=0.36f32+0.64f32*s.local.y;}
- if (petal) {direct=0.35f32+0.45f32*abs(ndl);}
- // the canopy's baked AO darkens the ground's sky light only, as it does your character's (u[0].material.z), by
- // the share the page gives it (ground.coax E2G_GROUND_AO_SHARE)
- if (ground) {ao=1.0f32+(e2_ground_ao(s.world.x,s.world.z,table)-1.0f32)*table[1].w;}
- fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else m.fill;
- indirect:=mul3(albedo,scale3(cg_hemisphere(u[0].env,n),ao*fill));
- if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
- colour:=add3(indirect,mul3(albedo,cg_irradiance(u[0].env,n,direct,0,visibility)));
+ l:=ge_light(p,s,tex,u[0].env,eye,shadow,ao,meadow);
  // the developer's light views (?light=ambient|direct, everglade/client/client.coax e2_light_view; u[0].glade.w, 0 off): one term, no albedo
- lv:=u[0].glade.w;if (lv>0.5f32 && lv<2.5f32) {lt:=ifx lv<1.5f32 then scale3(cg_hemisphere(u[0].env,n),ao*fill) else scale3(cg_sun_colour(u[0].env),direct*visibility);return v4(lt.x,lt.y,lt.z,0);}
- if (foliage) {
-  // Thin leaves transmit rear sunlight; volume normals and ambient mask stay separate.
-  back:=pow(saturate(dot3(scale3(sun,-1),view)),2.0f32);scatter:=(0.15f32+0.60f32*back)*(1.0f32-abs(ndl)*0.65f32)*visibility;
-  colour=add3(colour,mul3(albedo,scale3(v3(1.35f32,1.16f32,0.62f32),scatter*(ifx grass then s.local.y else 1.0f32))));
- }
- if (ground) {mottle:=cg_noise(v2(s.world.x*2,s.world.z*2));meadow:=1.0f32-e2_path(s.world.x,s.world.z);grain:=cg_noise(v2(s.world.x*14,s.world.z*14));surface:=(0.90f32+0.16f32*mottle)*(1.0f32+meadow*(grain-0.5f32)*0.18f32)*mix(cg_soil(v2(s.world.x,s.world.z)),1,meadow);colour=scale3(colour,surface);indirect=scale3(indirect,surface);}
- colour=cg_atmosphere(u[0].env,colour,eye,s.world);share:=saturate(metaverse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(u[0].env,eye,s.world))/fmax(metaverse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
+ lv:=u[0].glade.w;if (lv>0.5f32 && lv<2.5f32) {lt:=ifx lv<1.5f32 then scale3(cg_hemisphere(u[0].env,l.n),l.ao*l.fill) else scale3(cg_sun_colour(u[0].env),l.direct*l.visibility);return v4(lt.x,lt.y,lt.z,0);}
+ return ge_finish(l,u[0].env,eye,s.world);
+}
+// Everglade II's ground at p over its table's albedo, n its normal, seen from eye: a sunlit hilltop's
+// gold (steep banks keep more of their olive, and broad patches vary), the woods' leaf litter, the packed
+// olive trail, and the grass field's colour carried on where the field thins out with distance.
+e2_ground_look :: (albedo0:V3,n:V3,p:V3,eye:V3)->V3 {
+ albedo:=albedo0;trail:=e2_path(p.x,p.z);
+ steep:=0.55f32+0.45f32*smoothstep(0.80f32,0.95f32,n.y);
+ // inside the ridge cut on the walk to Everglade (past the main shot's view) the banks stay a grassy olive
+ cut:=(1.0f32-cg_ramp(3.0f32,10.0f32,abs(p.x-e2_road_x(p.z))))*cg_ramp(-17.0f32,-22.0f32,p.z)*(1.0f32-cg_ramp(-40.0f32,-60.0f32,p.z));
+ steep=steep*(1.0f32-0.65f32*cut);
+ // under the woods the floor keeps less of the glade's gold and darkens to leaf litter
+ woods:=e2_forest(p.x,p.z);
+ albedo=mix3(albedo,cg_decode(v3(0.82f32,0.58f32,0.16f32)),e2_gold(p.x,p.z)*0.80f32*steep*(1.0f32-trail)*(1.0f32-0.75f32*woods));
+ albedo=mix3(albedo,mul3(albedo,v3(0.62f32,0.70f32,0.55f32)),woods*0.55f32*(1.0f32-trail));
+ albedo=scale3(albedo,0.84f32+0.32f32*cg_noise(v2(p.x*0.35f32+4.0f32,p.z*0.35f32)));
+ // The reference trail is packed olive earth, darker than sand.
+ albedo=mix3(albedo,cg_decode(v3(0.50f32,0.46f32,0.24f32)),trail*0.80f32);
+ // where the grass field thins out with distance its colour carries on in the ground, by the same
+ // cover (everglade/world/field.coax e2_field_cover), so the field never ends in a line
+ au:=e2_gold(p.x,p.z);dk:=1.0f32-0.38f32*woods;
+ lawn:=mul3(cg_decode(scale3(v3(0.47f32+0.27f32*au,0.66f32-0.10f32*au,0.06f32),dk)),mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),0.6f32));
+ away:=smoothstep(24.0f32,120.0f32,wg_length3(sub3(p,eye)));
+ return mix3(albedo,lawn,e2_field_cover(p.x,p.z)*away*0.75f32);
 }
 
 cc_player_light :: (u:[]E2U,albedo:V3,n:V3,view:V3,visibility:f32)->V3 {
