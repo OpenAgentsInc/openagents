@@ -2,7 +2,7 @@
 
 ## Native message rendering and keyboard, build 1072 (2026-11-13)
 
-Install OpenAgents **1072** from Owner in TestFlight when available. Send a
+Install OpenAgents **1072**, now VALID and verified in Owner in TestFlight. Send a
 message asking for headings, a list, a table and a fenced code example.
 Check formatted selectable text, Copy message and Copy code, then reopen
 the saved conversation. Tap the conversation or a blank area outside the

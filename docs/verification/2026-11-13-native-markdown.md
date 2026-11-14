@@ -63,3 +63,13 @@ message code remain deliverable through signed Updates in the new runtime.
 The archive, signed package and screenshots are retained under
 `~/.openagents/releases/openagents-ios-1072/`. Owner device acceptance is
 recorded in `NEEDS_OWNER.md`.
+
+Runtime: `f2e09cdfd651f8e9cca9b34a9b2d37198a5dc8e273fb5ea45c4371e2c2d03060`.
+Signed OTA generation **1** serves the same five resources as the exported
+archive. The public domain and pinned Cloud Run fallback returned the exact
+signed envelope and all five file hashes/bytes. The final native chat UI test
+passed again after the toolbar order and icon-size correction.
+
+Apple accepted the archive and reports **VALID / IN_BETA_TESTING**.
+Build 1072 is verified in the existing **Owner** group, with its release
+notes assigned. No new testers or groups were created.
