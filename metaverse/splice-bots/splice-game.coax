@@ -1761,7 +1761,7 @@ sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', fa
   g[0].px = pick_x(g[..], H_ARM) + 1.8;
   for i: 0..<150 { g_step(g[..], 0.02); if g[0].have[H_ARM] { break; } }
   #assert g[0].have[H_ARM] && g[0].taken[H_ARM] && g[0].dr[0].task == DJ_NONE && d_carry(g[..]).n == 2;   // the Battery and the arm
-  // the better sensor lies in the scrap room; he fits it himself, and it isn't in her inventory
+  // the better sensor lies in front of Sniper's door at the farm; he fits it himself, and it isn't in her inventory
   m := sc_mark(g[0].c[..], LM_SENSOR);
   #assert m.id == LM_SENSOR && d_sensor_here(g[..]);
   g[0].px = m.x + 1; g[0].pz = m.z + 2; g[0].yaw = 0; g_bot_home(g[..]);

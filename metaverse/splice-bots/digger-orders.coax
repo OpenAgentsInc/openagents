@@ -375,3 +375,15 @@ d_select_hud :: (g: [] SpGame, out: [] f32, q: Ui, at: int, cx: f32, cy: f32) ->
   g[0].fz[5] = -90; #assert d_can(g[..], d_pointed(g[..])) == DS_NONE;
   g[0].fz[5] = -60 - T_POINT_SEE - 3; #assert d_pointed(g[..]).kind == DP_NONE;   // past what the reticle sees: nothing there
 }
+#test "the buried sensor lies by Sniper's door at the farm: the first splice's drill digs it out where the run starts" #steps 200000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5); g_begin(g[..]); g_bot_home(g[..]);
+  m := d_sensor_at(g[..]); out := v3(-779, 0, -122);   // where she steps out of Sniper (the portal "Leave the rover")
+  #assert d_sensor_here(g[..]) && dist2(m.x, m.z, out.x, out.z) < 15 && dist2(m.x, m.z, g[0].px, g[0].pz) < 40 && !d_solid(g[..], m.x, m.z);
+  #assert d_way(g[..], out.x, out.z, m.x, m.z) && d_way(g[..], g[0].px, g[0].pz, m.x, m.z);
+  s := DPoint.{kind = DP_SENSOR, i = PICKS};
+  #assert d_can(g[..], s) == DS_NEED_DRILL;
+  for k: 0..<3 { g[0].have[k] = true; g[0].slot[k] = true; } g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL; g[0].strip_n = 2;
+  g[0].px = out.x; g[0].pz = out.z; g_bot_home(g[..]);
+  #assert d_can(g[..], s) == DS_NONE && objective(g[..]) == "Try the drill: look at the buried sensor and click. Digger digs it out.";
+}

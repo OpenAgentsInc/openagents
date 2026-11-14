@@ -95,7 +95,7 @@ table landmarks id name:text x:cm z:cm r:int
 28|Battery cell 2|-10465|-9035|220
 29|Battery cell 3|12817|-12100|220
 30|Battery cell 4|-14300|-19950|220
-31|Better sensor|-600|-2150|220
+31|Better sensor|-78300|-13300|220
 41|Raider 1|-440|-19180|0
 42|Raider 2|60|-19580|0
 43|Raider 3|560|-19080|0

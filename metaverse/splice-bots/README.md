@@ -276,7 +276,7 @@ powers up) over about a second; his BATTERY gauge shows CHARGING and fills as it
 gone: dropping cells drops only the ones you still carry.
 
 Digger follows you and picks up every part within his sensor's range that he has a way to (`T_SENSE`, 4 m; twice that with
-the better sensor buried by the start, which he digs out once the first splice gives him the DRILL
+the better sensor buried in front of Sniper's door at the farm, which he digs out once the first splice gives him the DRILL
 card: the first splice's payoff, `T_SENSOR_DIG` 1.2 s of drilling); you can't choose, so you make room in the inventory. A part he
 can't fit stays where it is. What you drop he leaves until you have walked away from it. Hardware
 spliced into him and cards on his strip are his, not yours.
