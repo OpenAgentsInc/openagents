@@ -1,0 +1,38 @@
+// The glade pages' frame head as a typed uniform block (#13451): the first 12 vec4s of the uniforms
+// that 5E Lab, Character Create's studio, the Nights and Everglade II write (79 vec4s each, their
+// .bindings `u`), which the shared passes read: the screen, the clock, the camera, the sky's halo,
+// the veils. Everglade II's uniforms are a typed block that holds one (everglade/client/gpu/everglade2-uniforms.coax
+// E2U.f); a page whose uniforms are still a []f32 reads one with glade_frame. Words a page uses its
+// own way (5E Lab's map in scale, pass and page; Everglade II's knobs in halo.w and knobs) are its own.
+//   coax/bin/coax test everglade/scene/gpu/glade-frame.coax
+#load "../../../metaverse-engine/gpu/shader.coax";   // V4 alone: a page loads this beside its own vocabulary
+
+GLADE_FRAME_FLOATS :: 48;
+GladeFrame :: struct {
+ view:V4;    // u[0..3]: the frame's width and height (pixels), the clock (seconds), 1 (the HUD's)
+ scale:V4;   // u[4..7]: the device scale; the rest a page's own (5E Lab's map, fivelab_lines)
+ pass:V4;    // u[8..11]: a page's own (5E Lab's map), the shadow pass (u[10]), the panel (u[11])
+ page:V4;    // u[12..15]: a page's own (5E Lab's glass, fivelab_glass)
+ eye:V4;     // u[16..18] the eye, u[19] the focal length (pixels)
+ fwd:V4;     // u[20..22] the view's forward axis, u[23] the frame's middle x (pixels)
+ right:V4;   // u[24..26] its right axis, u[27] the frame's middle y (pixels)
+ up:V4;      // u[28..30] its up axis
+ halo:V4;    // u[32..34] toward the sky's halo; u[35] a page's own (Everglade II's grass reach)
+ knobs:V4;   // u[36..39] a page's own (Everglade II's finest grass share and post knob)
+ veil:V4;    // u[40] the panel's glass fade, u[41] the walk's veil to black, u[42] a page's own
+ shade:V4;   // u[44..46] the shadow casters' centre
+}
+// The head of a []f32 page's uniforms.
+glade_frame :: (u:[]f32)->GladeFrame {
+ return GladeFrame.{view=v4_at(u,0),scale=v4_at(u,4),pass=v4_at(u,8),page=v4_at(u,12),eye=v4_at(u,16),fwd=v4_at(u,20),
+  right=v4_at(u,24),up=v4_at(u,28),halo=v4_at(u,32),knobs=v4_at(u,36),veil=v4_at(u,40),shade=v4_at(u,44)};
+}
+
+#test "the frame head is the uniforms' first 48 floats, a vec4 a field, in order" {
+ #assert size_of(GladeFrame)==GLADE_FRAME_FLOATS*4;
+ u:[GLADE_FRAME_FLOATS]f32;for i:0..<GLADE_FRAME_FLOATS {u[i]=f32(i)+0.5f32;}
+ f:=glade_frame(u[..]);
+ #assert f.view.x==0.5f32 && f.view.w==3.5f32 && f.scale.x==4.5f32 && f.pass.z==10.5f32 && f.page.w==15.5f32;
+ #assert f.eye.x==16.5f32 && f.eye.w==19.5f32 && f.fwd.w==23.5f32 && f.right.y==25.5f32 && f.up.z==30.5f32;
+ #assert f.halo.x==32.5f32 && f.knobs.y==37.5f32 && f.veil.y==41.5f32 && f.shade.z==46.5f32 && f.shade.w==47.5f32;
+}

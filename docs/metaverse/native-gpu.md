@@ -690,3 +690,21 @@ tasks (native-gpu.json) come after the port.
   16 or one with a vec2 or vec3 is refused with reason 10. Metal writes them
   as nested structs and `array<float4, N>`, SPIR-V as nested `Offset`s and
   `ArrayStride`s; a check in each backend pins that.
+- 2026-11-13: Everglade II reads its uniforms as a typed block (#13451).
+  They are `E2U` (`everglade/client/gpu/everglade2-uniforms.coax`): the glade
+  pages' frame head (`GladeFrame`, `everglade/scene/gpu/glade-frame.coax`),
+  its own words, the shadow tiles and the resolved environment (`EnvBlock`,
+  `metaverse-engine/render/env-block.coax`). The page writes the struct and
+  hands its bytes to the host; `E2_U_ENV`, `E2_U_CASCADE` and
+  `E2_U_LIGHT_VIEW` are gone. The shared passes take the frame head and the
+  environment as values (`fivelab_project`, `fivelab_scene_place`, `cg_*`,
+  `paint_env_*`); the glade pages whose uniforms are still a `[]f32` (5E
+  Lab, the studio, the Nights, WorldBuilder) read them with `glade_frame(u)`
+  and `paint_env_of(u)`. On coderos-4080 (RTX 4080, headless Chrome, a GPU
+  readback of the canvas) 5E Lab and WorldBuilder draw the same bytes as
+  before; Everglade II, Character Create, Druid and Experimental differ by
+  at most 1 in 255 on 1 to 22 pixels of 1,024,000 (the driver rounds the
+  reordered arithmetic differently), under any golden's threshold. `coax
+  metal` takes all six of the page's pairs with `u` a buffer of the
+  1264-byte struct; `coax spirv` lowers the pairs it lowered before (the
+  scene pair was outside its lowering before this, and still is).

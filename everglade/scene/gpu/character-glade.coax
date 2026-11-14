@@ -9,13 +9,13 @@
 // shadows and the sky read the frame's resolved environment (u at PAINT_ENV_U, #13066).
 cg_soil :: (p:V2)->f32 {return paint_soil(p);}
 cg_noise :: (p:V2)->f32 {return paint_noise(p);}
-cg_cloud :: (u:[]f32,x:f32,z:f32)->f32 {return paint_env_cloud(u,x,z);}
+cg_cloud :: (env:EnvBlock,x:f32,z:f32)->f32 {return paint_env_cloud(env,x,z);}
 cg_cloud_fbm :: (p:V2)->f32 {return paint_cloud_fbm(p);}
-cg_sky :: (u:[]f32,rd:V3,sun:V3,time:f32)->V3 {return paint_env_sky(u,rd,sun,time);}
-cg_sky_tint :: (u:[]f32,rd:V3)->V3 {return paint_env_sky_tint(u,rd);}   // a painted sky plate under the frame's record (#13067)
+cg_sky :: (env:EnvBlock,rd:V3,sun:V3,time:f32)->V3 {return paint_env_sky(env,rd,sun,time);}
+cg_sky_tint :: (env:EnvBlock,rd:V3)->V3 {return paint_env_sky_tint(env,rd);}   // a painted sky plate under the frame's record (#13067)
 #test "the glade's sky, soil and cloud names are the shared default's" {
  r:=v3(0.3,0.4,-0.8);s:=v3(-0.4,0.8,0.6);u:=paint_env_glade_u();
- #assert cg_sky(u[..],r,s,2).y==paint_sky(r,s,2).y && cg_cloud(u[..],12,-20)==paint_cloud(12,-20) && cg_noise(v2(1.3,2.7))==paint_noise(v2(1.3,2.7));
+ #assert cg_sky(paint_env_of(u[..]),r,s,2).y==paint_sky(r,s,2).y && cg_cloud(paint_env_of(u[..]),12,-20)==paint_cloud(12,-20) && cg_noise(v2(1.3,2.7))==paint_noise(v2(1.3,2.7));
  #assert cg_soil(v2(0.1,0.2))==paint_soil(v2(0.1,0.2)) && cg_cloud_fbm(v2(0.4,1.1))==paint_cloud_fbm(v2(0.4,1.1));
 }
 #test "glade sky texture rays preserve reference image alignment" {
@@ -26,25 +26,25 @@ cg_sky_ray :: (x:f32,y:f32)->V3 {
  fy:=0.4f32/sqrt(9.77f32);fz:= -3.1f32/sqrt(9.77f32);qx:=x*1920.0f32/(1080.0f32*1.78f32);qy:=(y*0.5f32-0.02f32)/0.89f32;
  return v3(qx,fy-qy*fz,fz+qy*fy);
 }
-cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->FivelabS {
+cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,gf:GladeFrame,vertices:[]u32)->FivelabS {
  b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,8));
  p:V3=v3(f32_from_bits(vertices[cast(int)b]),f32_from_bits(vertices[cast(int)add_wrap(b,1)]),f32_from_bits(vertices[cast(int)add_wrap(b,2)]));
  sky_clip:=v4(p.x,p.y,0.999999f32,1);
  seed_uv:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);
  uv:V2=seed_uv;
  normal:u32=vertices[cast(int)add_wrap(b,3)];kind:u32=(normal>>24)&15;
- if (kind==0) {p=add3(wg_at3(u,16),scale3(cg_sky_ray(p.x,p.y),180.0f32));}
+ if (kind==0) {p=add3(v3_of(gf.eye),scale3(cg_sky_ray(p.x,p.y),180.0f32));}
  if (kind==6) {uv=v2(seed_uv.x*64.0f32-32.0f32,seed_uv.y*64.0f32-32.0f32);}
  if (kind==4 && f32_from_bits(vertices[cast(int)add_wrap(b,7)])>=100.0f32) {uv=v2(seed_uv.x*8.0f32-4.0f32,seed_uv.y*8.0f32-4.0f32);}
  tint:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);
- wind:f32=sin(p.x*1.8f32+p.z*0.7f32+u[2]*1.6f32)+sin(p.z*2.7f32+u[2]*0.9f32)*0.35f32;
+ wind:f32=sin(p.x*1.8f32+p.z*0.7f32+gf.view.z*1.6f32)+sin(p.z*2.7f32+gf.view.z*0.9f32)*0.35f32;
  if ((kind==1)||(kind==2)) {p.x=p.x+wind*(ifx kind==2 then 0.025f32 else 0.035f32)*(ifx kind==2 then wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]).y else saturate(p.y*0.7f32));}
  nw:V4=wg_unpack4x8snorm(normal);normal3:=v3(nw.x,nw.y,nw.z);
  // 19: a held weapon, its whole matrix (columns c, e, f; translation a): the hand's pose times the grip.
  if (m.d.w>18.5f32) {p=add3(v3(m.a.x,m.a.y,m.a.z),add3(add3(scale3(v3(m.c.x,m.c.y,m.c.z),p.x),scale3(v3(m.e.x,m.e.y,m.e.z),p.y)),scale3(v3(m.f.x,m.f.y,m.f.z),p.z)));normal3=normalize3(add3(add3(scale3(v3(m.c.x,m.c.y,m.c.z),normal3.x),scale3(v3(m.e.x,m.e.y,m.e.z),normal3.y)),scale3(v3(m.f.x,m.f.y,m.f.z),normal3.z)));}
  // 18: a monster's frame, turned to face c.x, c.y and scaled by c.z (0 is its baked size; experimental-dungeon.coax dg_kind_scale)
  else if (m.d.w>17.5f32) {local:=sub3(p,v3(m.b.x,m.b.y,m.b.z));if (m.c.z>0.0f32) {local=scale3(local,m.c.z);}cs:=m.c.y;sn:=m.c.x;p=add3(v3(m.a.x,m.a.y,m.a.z),v3(local.x*cs+local.z*sn,local.y,-local.x*sn+local.z*cs));normal3=v3(normal3.x*cs+normal3.z*sn,normal3.y,-normal3.x*sn+normal3.z*cs);}
- o:FivelabS;o.pos=ifx kind==0 then sky_clip else fivelab_project(p,u);o.world=p;o.normal=normal3;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(ifx m.d.w<16.5f32 && m.c.x>0.5f32 then 1.0f32 else 0.0f32,0.0f32,0.0f32,12.0f32);   // dye.x 1: the open meadow's ground (record c.x)
+ o:FivelabS;o.pos=ifx kind==0 then sky_clip else fivelab_project(p,gf);o.world=p;o.normal=normal3;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(ifx m.d.w<16.5f32 && m.c.x>0.5f32 then 1.0f32 else 0.0f32,0.0f32,0.0f32,12.0f32);   // dye.x 1: the open meadow's ground (record c.x)
  o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32); o.who=instance;
  // a build-site part growing (metaverse-engine/world/build-site.coax): a.w is 1 less its fraction, the tint's
  // alpha the vertex's reveal key; the pixels past the fraction are dropped (charactercreator_scene_fs)
@@ -67,17 +67,17 @@ cg_instance_point :: (p:V3,center:V3,vertical:f32,horizontal:f32,angle:f32)->V3 
  cs:f32=cos(angle);sn:f32=sin(angle);
  return add3(center,v3((p.x*cs+p.z*sn)*horizontal,p.y*vertical,(-p.x*sn+p.z*cs)*horizontal));
 }
-cg_instanced_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->FivelabS {
+cg_instanced_vs :: (id:u32,instance:u32,m:FivelabObj,gf:GladeFrame,vertices:[]u32)->FivelabS {
  b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,8));seed:u32=add_wrap(wg_u32_f(m.a.x),mul_wrap(instance&65535,8));
  source:V3=v3(f32_from_bits(vertices[cast(int)b]),f32_from_bits(vertices[cast(int)add_wrap(b,1)]),f32_from_bits(vertices[cast(int)add_wrap(b,2)]));
  center:V3=v3(f32_from_bits(vertices[cast(int)seed]),f32_from_bits(vertices[cast(int)add_wrap(seed,1)]),f32_from_bits(vertices[cast(int)add_wrap(seed,2)]));
  sizes:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(seed,4)]);angle:f32=f32_from_bits(vertices[cast(int)add_wrap(seed,7)]);
  p:V3=cg_instance_point(source,center,sizes.x,sizes.y,angle);height:f32=saturate(source.y);
- p.x=p.x+(sin(center.x*1.8f32+center.z*0.7f32+u[2]*1.6f32)+sin(center.z*2.7f32+u[2]*0.9f32)*0.35f32)*0.045f32*height*height;
+ p.x=p.x+(sin(center.x*1.8f32+center.z*0.7f32+gf.view.z*1.6f32)+sin(center.z*2.7f32+gf.view.z*0.9f32)*0.35f32)*0.045f32*height*height;
  packed:u32=vertices[cast(int)add_wrap(b,3)];nw:V4=wg_unpack4x8snorm(packed);
  n:V3=normalize3(v3((nw.x*cos(angle)+nw.z*sin(angle))/sizes.y,nw.y/sizes.x,(-nw.x*sin(angle)+nw.z*cos(angle))/sizes.y));
  base:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(seed,5)]);autumn:f32=cg_autumn(center.x,center.z);
- o:FivelabS;o.pos=fivelab_project(p,u);o.world=p;o.normal=n;o.uv=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);o.slice=vertices[cast(int)add_wrap(b,6)];
+ o:FivelabS;o.pos=fivelab_project(p,gf);o.world=p;o.normal=n;o.uv=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);o.slice=vertices[cast(int)add_wrap(b,6)];
  rust:=saturate((center.x-0.5f32)/3.0f32)*smoothstep(0.50f32,0.72f32,cg_noise(v2(center.x*0.8f32,center.z*0.8f32)))*(1.0f32-autumn);
  bottom:=mix3(v3(base.x,base.y,base.z),v3(0.56f32,0.17f32,0.025f32),rust);top:=mix3(v3(0.65f32+0.28f32*autumn,0.88f32-0.20f32*autumn,0.07f32),v3(0.95f32,0.41f32,0.035f32),rust);o.tint=mix3(bottom,top,height);
  o.dye=v4(0,0,0,12);o.local=v3(2,height,1);o.who=(instance>>16)-1;return o;
@@ -86,10 +86,10 @@ cg_instanced_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fi
 // (a.x, its mesh at the record's b.w) over a grid of a.z by a.z cells round the eye, one instance a
 // cell. Kit 33 is the grass, by field.coax's nested tier a.y; the rest are the understory, one grid
 // a kit. Each piece's place, turn, size and tint are its cell's hash alone; distance only shrinks it.
-cg_meadow_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->FivelabS {
+cg_meadow_vs :: (id:u32,instance:u32,m:FivelabObj,gf:GladeFrame,vertices:[]u32)->FivelabS {
  o:FivelabS;o.pos=v4(0,0,-2,1);o.dye=v4(0,0,0,12);o.who=(instance>>16)-1;
  i:=instance&65535;kit:=cast(int)m.a.x;side:=cast(u32)m.a.z;iz:=i/side;ix:=i-iz*side;half:=side/2;
- origin:=f32(E2_MEADOW_ORIGIN);ex:=u[16];ez:=u[18];
+ origin:=f32(E2_MEADOW_ORIGIN);ex:=gf.eye.x;ez:=gf.eye.z;
  // the graphics quality's reach (b.y) and the finest grass tier's share (b.z), 1 where the record gives none
  // (charactercreator.coax scene, metaverse-engine/core/quality.coax): at 1 these are the full meadow, number for number
  reach:=ifx m.b.y>0.0f32 then m.b.y else 1.0f32;fine:=ifx m.b.z>0.0f32 then m.b.z else 1.0f32;
@@ -103,7 +103,7 @@ cg_meadow_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fivel
   shown:=e2_field_shown(e2_field_rel_r(t,d,reach,fine),e2_field_rank(t,gx,gz,fx,fz));
   if (shown<=0.0f32) {return o;}
   au:=e2_meadow_gold(x,z);
-  return cg_meadow_place(id,v4(x,exp_height_gpu(x,z),z,e2_unit(e2_field_hash(fx,fz,cast(u32)3))*6.2831853f32),e2_meadow_tuft_sv(fx,fz)*shown,e2_meadow_tuft_sh(fx,fz)*shown,v3(0.30f32+0.26f32*au,0.48f32,0.055f32),au,m,u,vertices,o.who);
+  return cg_meadow_place(id,v4(x,exp_height_gpu(x,z),z,e2_unit(e2_field_hash(fx,fz,cast(u32)3))*6.2831853f32),e2_meadow_tuft_sv(fx,fz)*shown,e2_meadow_tuft_sh(fx,fz)*shown,v3(0.30f32+0.26f32*au,0.48f32,0.055f32),au,m,gf,vertices,o.who);
  }
  c:=e2_meadow_cell(kit);
  gx:=add_wrap(cast(u32)floor((ex-origin)/c),ix)-half;gz:=add_wrap(cast(u32)floor((ez-origin)/c),iz)-half;
@@ -118,18 +118,18 @@ cg_meadow_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fivel
  k:=e2_meadow_fade(kit,sqrt(dx*dx+dz*dz)/reach);
  if (k<=0.0f32) {return o;}
  h:=e2_meadow_seed(gx,gz,kit);au:=e2_meadow_gold(x,z);p:=e2_meadow_piece(kit,h,au);
- return cg_meadow_place(id,v4(x,exp_height_gpu(x,z)-p.sink,z,cg_hash(h,16)*6.283f32),p.sv*k,p.sh*k,v3(p.tint[0],p.tint[1],p.tint[2]),au,m,u,vertices,o.who);
+ return cg_meadow_place(id,v4(x,exp_height_gpu(x,z)-p.sink,z,cg_hash(h,16)*6.283f32),p.sv*k,p.sh*k,v3(p.tint[0],p.tint[1],p.tint[2]),au,m,gf,vertices,o.who);
 }
 // One vertex of a meadow piece: the kit's mesh at the origin, placed at a (x y z yaw), scaled sv up
 // and sh across, tinted as Everglade II tints its kit (e2_kit_place); a grass tuft shaded as the glade's grass.
-cg_meadow_place :: (id:u32,a:V4,sv:f32,sh:f32,tint:V3,autumn:f32,m:FivelabObj,u:[]f32,vertices:[]u32,who:u32)->FivelabS {
+cg_meadow_place :: (id:u32,a:V4,sv:f32,sh:f32,tint:V3,autumn:f32,m:FivelabObj,gf:GladeFrame,vertices:[]u32,who:u32)->FivelabS {
  b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,8));
  source:V3=v3(f32_from_bits(vertices[cast(int)b]),f32_from_bits(vertices[cast(int)add_wrap(b,1)]),f32_from_bits(vertices[cast(int)add_wrap(b,2)]));
  normal:u32=vertices[cast(int)add_wrap(b,3)];kind:u32=(normal>>24)&7;
  p:=cg_instance_point(source,v3(a.x,a.y,a.z),sv,sh,a.w);
- if ((kind==1)||(kind==2)||(kind==3)) {sway:=sin(a.x*0.37f32+a.z*0.21f32+u[2]*1.1f32)+sin(a.z*0.53f32+u[2]*0.7f32)*0.35f32;p.x=p.x+sway*0.05f32*saturate(source.y*0.18f32)*sv;}
+ if ((kind==1)||(kind==2)||(kind==3)) {sway:=sin(a.x*0.37f32+a.z*0.21f32+gf.view.z*1.1f32)+sin(a.z*0.53f32+gf.view.z*0.7f32)*0.35f32;p.x=p.x+sway*0.05f32*saturate(source.y*0.18f32)*sv;}
  nw:V4=wg_unpack4x8snorm(normal);cs:=cos(a.w);sn:=sin(a.w);
- o:FivelabS;o.pos=fivelab_project(p,u);o.world=p;o.normal=normalize3(v3((nw.x*cs+nw.z*sn)/sh,nw.y/sv,(-nw.x*sn+nw.z*cs)/sh));
+ o:FivelabS;o.pos=fivelab_project(p,gf);o.world=p;o.normal=normalize3(v3((nw.x*cs+nw.z*sn)/sh,nw.y/sv,(-nw.x*sn+nw.z*cs)/sh));
  o.uv=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);if (kind==6) {o.uv=v2(o.uv.x*64.0f32-32.0f32,o.uv.y*64.0f32-32.0f32);}
  vt:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);o.slice=vertices[cast(int)add_wrap(b,6)];
  o.tint=ifx kind==1 then tint else ifx kind==4 then mul3(v3(vt.x,vt.y,vt.z),tint) else v3(vt.x,vt.y,vt.z);
@@ -194,7 +194,7 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  kind:=s.local.x;village:=kind>3.5f32 && kind<4.5f32 && s.local.y>=100.0f32;n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
  foliage:=kind>0.5f32 && kind<2.5f32;grass:=kind>1.5f32 && kind<2.5f32;leaves:=kind>0.5f32 && kind<1.5f32;ground:=kind>4.5f32 && kind<5.5f32;
  if (!front && !foliage) {n=scale3(n,-1);}
- sun:=cg_sun_dir(u);eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
+ sun:=cg_sun_dir(paint_env_of(u));eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
  albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
  if (foliage || ground) {albedo=cg_decode(s.tint);}
  field:=s.dye.x>0.5f32;   // the open meadow (everglade/world/meadow.coax): no glade trail, its own gold already in its tint
@@ -224,15 +224,15 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
   base=mix3(base,scale3(cg_decode(v3(0.52f32,0.64f32,0.26f32)),fmax(grey/0.22f32,0.7f32)),moss*0.85f32);
   albedo=scale3(base,0.60f32+0.50f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));
  }
- visibility:=shadow*cg_cloud(u,s.world.x,s.world.z);
+ visibility:=shadow*cg_cloud(paint_env_of(u),s.world.x,s.world.z);
  ndl:=dot3(n,sun);direct:=saturate(ndl);ao:f32=1;
  if (leaves) {direct=saturate((ndl+0.65f32)/1.65f32);ao=clampf(s.local.y,0.5f32,1.0f32);}
  if (grass) {green:=saturate((s.tint.y-s.tint.x)*4.0f32);albedo=mul3(albedo,mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),green));direct=(0.22f32+0.56f32*s.local.y)*(0.85f32+0.15f32*abs(ndl));ao=0.36f32+0.64f32*s.local.y;}
  if (kind>2.5f32 && kind<3.5f32) {direct=0.35f32+0.45f32*abs(ndl);}
  fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx kind>5.5f32 && kind<6.5f32 then 1.5f32 else ifx kind>3.5f32 && kind<4.5f32 && town<0 && !village then 0.78f32 else 1.0f32;
- indirect:=mul3(albedo,scale3(cg_hemisphere(u,n),ao*fill));
+ indirect:=mul3(albedo,scale3(cg_hemisphere(paint_env_of(u),n),ao*fill));
  if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
- colour:=add3(indirect,mul3(albedo,cg_irradiance(u,n,direct,0,visibility)));
+ colour:=add3(indirect,mul3(albedo,cg_irradiance(paint_env_of(u),n,direct,0,visibility)));
  if (foliage) {
   // Thin leaves transmit rear sunlight; volume normals and ambient mask stay separate.
   back:=pow(saturate(dot3(scale3(sun,-1),view)),2.0f32);scatter:=(0.15f32+0.60f32*back)*(1.0f32-abs(ndl)*0.65f32)*visibility;
@@ -245,7 +245,7 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
   colour=cg_dungeon_light(albedo,n,s.world,u);indirect=scale3(albedo,0.04f32);
   inner:=saturate(metaverse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(metaverse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,inner);
  }
- colour=cg_atmosphere(u,colour,eye,s.world);share:=saturate(metaverse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(u,eye,s.world))/fmax(metaverse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
+ colour=cg_atmosphere(paint_env_of(u),colour,eye,s.world);share:=saturate(metaverse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(paint_env_of(u),eye,s.world))/fmax(metaverse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
 }
 // Everglade Experimental's dungeon (metaverse/experimental-dungeon.coax), lit by its torches alone:
 // u[60..63] its block (west, south, east, north), u[64] its ceiling's height (0 when there is none
@@ -297,9 +297,9 @@ cg_panel_edge :: (p:V2,w:f32,h:f32,k:f32)->f32 {
  d:=fmin(fmin(p.x-16.0f32*k,350.0f32*k-p.x),fmin(p.y-20.0f32*k,730.0f32*k-p.y));return 1.0f32-smoothstep(0.0f32,1.25f32*k,d);
 }
 // Frosted glass: the scene behind the panel blurred over a 14 px disc, then tinted.
-cg_glass :: (uv:V2,u:[]f32,image:Tex2D,lin:Sampler)->V3 {
- sum:V3=v3(0,0,0);r:=14.0f32*u[4];
- for i:0..<16 {a:=cast(f32)i*2.399963f32;d:=sqrt((cast(f32)i+0.5f32)/16.0f32)*r;sum=add3(sum,cg_post_sample(image,lin,v2(uv.x+cos(a)*d/u[0],uv.y+sin(a)*d/u[1])));}
+cg_glass :: (uv:V2,gf:GladeFrame,image:Tex2D,lin:Sampler)->V3 {
+ sum:V3=v3(0,0,0);r:=14.0f32*gf.scale.x;
+ for i:0..<16 {a:=cast(f32)i*2.399963f32;d:=sqrt((cast(f32)i+0.5f32)/16.0f32)*r;sum=add3(sum,cg_post_sample(image,lin,v2(uv.x+cos(a)*d/gf.view.x,uv.y+sin(a)*d/gf.view.y)));}
  return scale3(sum,1.0f32/16.0f32);
 }
 
@@ -308,7 +308,7 @@ cg_glass :: (uv:V2,u:[]f32,image:Tex2D,lin:Sampler)->V3 {
  #assert abs(a.x)<1 && abs(a.y)<1 && a.z>0 && a.z<1 && b.z<a.z;
 }
 cg_shadow_clip :: (u:[]f32,p:V3)->V4 {
- sun:=cg_sun_dir(u);right:=normalize3(v3(sun.z,0,-sun.x));up:=v3(sun.y*right.z,sun.z*right.x-sun.x*right.z,-sun.y*right.x);r:=sub3(p,v3(0,5,-16));
+ sun:=cg_sun_dir(paint_env_of(u));right:=normalize3(v3(sun.z,0,-sun.x));up:=v3(sun.y*right.z,sun.z*right.x-sun.x*right.z,-sun.y*right.x);r:=sub3(p,v3(0,5,-16));
  return v4(dot3(r,right)/26.0f32,dot3(r,up)/26.0f32,0.5f32-dot3(r,sun)/70.0f32,1);
 }
 // The shadow tiles (charactercreator.coax shadow_frame, #13016): u[10] 3 or 4 puts the glade's casters
@@ -319,7 +319,7 @@ cg_shadow_tiles :: (u:[]f32)->bool {return u[10]>2.5f32;}
 charactercreator_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->CgShadow {
  o:CgShadow;
  if (u[10]<1.5f32 || instance>=65536) {o.pos=v4(0,0,-2,1);return o;}
- s:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {o.pos=v4(0,0,-2,1);return o;}
+ s:=fivelab_scene_place(id,instance,glade_frame(u),vertices,objects,bake);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {o.pos=v4(0,0,-2,1);return o;}
  c:=cg_shadow_clip(u,s.world);o.pos=c;o.edge=v2(c.x,c.y);o.uv=ifx s.local.x>3.5f32 && s.local.x<4.5f32 && s.local.y>=100.0f32 then cg_village_uv(s.uv,s.local.y) else s.uv;o.slice=s.slice;
  if cg_shadow_tiles(u) {
   glade:=s.dye.w>11.5f32;
@@ -389,15 +389,15 @@ cg_fxaa :: (uv:V2,step:V2,image:Tex2D,lin:Sampler)->V3 {
 // The view point and the contact taps are the shared contact shading's (metaverse-engine/render/contact-shade.coax),
 // read from this pass's uniforms: u[16..18] the eye, u[20], u[24], u[28] the forward, right and up
 // axes, u[19] the focal length and u[23], u[27] the frame's middle (pixels).
-cg_viewpoint :: (pixel:V2,z:f32,u:[]f32)->V3 {
- return shade_view_point(pixel,z,wg_at3(u,16),wg_at3(u,20),wg_at3(u,24),wg_at3(u,28),u[19],v2(u[23],u[27]));
+cg_viewpoint :: (pixel:V2,z:f32,gf:GladeFrame)->V3 {
+ return shade_view_point(pixel,z,v3_of(gf.eye),v3_of(gf.fwd),v3_of(gf.right),v3_of(gf.up),gf.eye.w,v2(gf.fwd.w,gf.right.w));
 }
 cg_post_pixel :: (p:V2,size:U2)->I2 {return i2(wg_clamp_i(cast(s32)p.x,0,cast(s32)size.x-1),wg_clamp_i(cast(s32)p.y,0,cast(s32)size.y-1));}
-cg_contact_ao :: (pixel:V2,u:[]f32,aux:Tex2D)->f32 {
+cg_contact_ao :: (pixel:V2,gf:GladeFrame,aux:Tex2D)->f32 {
  size:=wg_dims_2d(aux);a:=wg_load_2d(aux,cg_post_pixel(pixel,size),0);if (a.w<=0) {return 1;}
- n:=cg_normal_unpack(v2(a.x,a.y));center:=cg_viewpoint(pixel,a.w,u);sum:f32=0;radius:=shade_contact_radius(u[1]);
+ n:=cg_normal_unpack(v2(a.x,a.y));center:=cg_viewpoint(pixel,a.w,gf);sum:f32=0;radius:=shade_contact_radius(gf.view.y);
  for i:0..<8 {angle:=cast(f32)i*0.785398f32;r:=radius*(ifx i%2==0 then 0.5f32 else 1.0f32);at:=v2(pixel.x+cos(angle)*r,pixel.y+sin(angle)*r);b:=wg_load_2d(aux,cg_post_pixel(at,size),0);
-  if (abs(b.w)>0.001f32) {sum=sum+shade_contact_tap(n,center,cg_viewpoint(at,abs(b.w),u));}
+  if (abs(b.w)>0.001f32) {sum=sum+shade_contact_tap(n,center,cg_viewpoint(at,abs(b.w),gf));}
  }
  return shade_contact_finish(sum);
 }
@@ -428,7 +428,7 @@ charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,
  pixel:=v2(pos.x,pos.y);uv:=v2(pos.x/u[0],pos.y/u[1]);raw:=gpu_sample_level(post_light,post_lin,uv,0);
  if (u[10]<1.5f32) {encoded:=cg_encode(v3(raw.x,raw.y,raw.z));return v4(encoded.x,encoded.y,encoded.z,1);}
  a:=wg_load_2d(post_aux,cg_post_pixel(pixel,wg_dims_2d(post_aux)),0);
- c:=cg_fxaa(uv,v2(1.0f32/u[0],1.0f32/u[1]),post_light,post_lin);c=scale3(c,1.0f32-(1.0f32-cg_contact_ao(pixel,u,post_aux))*saturate(a.z));
+ c:=cg_fxaa(uv,v2(1.0f32/u[0],1.0f32/u[1]),post_light,post_lin);c=scale3(c,1.0f32-(1.0f32-cg_contact_ao(pixel,glade_frame(u),post_aux))*saturate(a.z));
  glow:=add3(scale3(cg_post_sample(post_quarter,post_lin,uv),0.20f32),scale3(cg_post_sample(post_eighth,post_lin,uv),0.20f32));
  // A small foliage-only reconstruction filter integrates subpixel leaves and blades.
  // Depth/normal class keeps the character, painted petals and hard rocks sharp.
@@ -437,11 +437,11 @@ charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,
   for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
   c=mix3(c,scale3(soft,0.25f32),0.55f32);
  }
- c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(u,add3(c,scale3(cg_sun_veil(uv),ifx cg_dungeon_in(v3(u[16],u[17],u[18]),u) then 0.0f32 else 1.0f32)));if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(u,cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}if (u[11]>1.5f32 && cg_dev_panel(pixel,u[1]-u[52],u[4],u[11]>2.5f32)) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[54]>u[53] && cg_column(pixel,u[53],u[54],u[4])) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[42]>0.5f32 && cg_health_panel(pixel,u[0],u[4])) {result=mix3(result,v3(0.025f32,0.035f32,0.03f32),0.88f32);}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
+ c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(paint_env_of(u),add3(c,scale3(cg_sun_veil(uv),ifx cg_dungeon_in(v3(u[16],u[17],u[18]),u) then 0.0f32 else 1.0f32)));if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(paint_env_of(u),cg_glass(uv,glade_frame(u),post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}if (u[11]>1.5f32 && cg_dev_panel(pixel,u[1]-u[52],u[4],u[11]>2.5f32)) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[54]>u[53] && cg_column(pixel,u[53],u[54],u[4])) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[42]>0.5f32 && cg_health_panel(pixel,u[0],u[4])) {result=mix3(result,v3(0.025f32,0.035f32,0.03f32),0.88f32);}result=cg_walk_veil(result,glade_frame(u));return v4(result.x,result.y,result.z,1);
 }
 #test "glade contact reconstruction preserves camera-forward depth" {
  u:[104]f32;u[16]=2;u[17]=1;u[18]=3;u[22]= -1;u[24]=1;u[29]=1;u[19]=100;u[23]=50;u[27]=40;
- p:=cg_viewpoint(v2(50,40),4,u[..]);#assert p.x==2 && p.y==1 && p.z== -1;
+ p:=cg_viewpoint(v2(50,40),4,glade_frame(u[..]));#assert p.x==2 && p.y==1 && p.z== -1;
 }
 
 #test "glade sky extends continuously across both reference plate edges" {
@@ -459,10 +459,10 @@ cg_sky_uv :: (ray:V3)->V2 {
 // The walk into Everglade (charactercreator-walk.coax): u[40] fades the control panel's glass with
 // the controls, u[41] fades the finished frame to black before the page changes.
 #test "glade walk veil keeps the frame at rest and reaches black" {
- u:[104]f32;c:=v3(0.5f32,0.25f32,1.0f32);a:=cg_walk_veil(c,u[..]);#assert a.x==c.x && a.y==c.y && a.z==c.z;
- u[41]=1;b:=cg_walk_veil(c,u[..]);#assert b.x==0 && b.y==0 && b.z==0;
+ u:[104]f32;c:=v3(0.5f32,0.25f32,1.0f32);a:=cg_walk_veil(c,glade_frame(u[..]));#assert a.x==c.x && a.y==c.y && a.z==c.z;
+ u[41]=1;b:=cg_walk_veil(c,glade_frame(u[..]));#assert b.x==0 && b.y==0 && b.z==0;
 }
-cg_walk_veil :: (c:V3,u:[]f32)->V3 {return scale3(c,1.0f32-saturate(u[41]));}
+cg_walk_veil :: (c:V3,gf:GladeFrame)->V3 {return scale3(c,1.0f32-saturate(gf.veil.y));}
 
 #test "Familiar darkvision lights nearby darkness in gray within its supplied range" {
  u:[104]f32;u[16]= -40;u[17]=1;u[18]= -50;u[65]=9;

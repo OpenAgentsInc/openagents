@@ -183,7 +183,7 @@ worldbuilder_height :: (ground:[]V4,x:f32,z:f32)->f32 {
 // Everglade's zones draw it (everglade/scene/gpu/fivelab.coax), stood on the ground where it is and seen from this
 // page's camera. The zone's floor is level; the ground's height is added here.
 worldbuilder_figure_vs :: (id:u32,k:u32,u:[]f32,people:[]u32,figures:[]FivelabObj,bake:[]V4,ground:[]V4)->WorldbuilderS {
-  f:FivelabS=fivelab_scene_vs(id,k,u,people,figures,bake);
+  f:FivelabS=fivelab_scene_place(id,k,glade_frame(u),people,figures,bake);
   m:FivelabObj=figures[cast(int)k];
   w:V3=v3(f.world.x,f.world.y+worldbuilder_height(ground,m.a.x,m.a.z),f.world.z);
   wp:V4=v4(w.x,w.y,w.z,1.0f32);

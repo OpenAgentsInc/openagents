@@ -12,26 +12,27 @@ E2C_RUN_WORDS :: 4;         // ER_WORDS: first piece, pieces, pieces before, kit
 E2C_NEAR :: 0.1; E2C_FAR :: 900.0;   // everglade/scene/gpu/fivelab.coax FIVELAB_NEAR and FIVELAB_FAR
 
 // fivelab_project (everglade/scene/gpu/fivelab.coax) as a matrix by columns, m * (world, 1), from the frame's
-// uniforms: the eye u[16..18], its forward, right and up frames at 20, 24 and 28, the focal
-// length u[19], the viewport u[0..1] and the centre u[23], u[27].
-e2_cull_matrix :: (u: [] f32, m: [] f32) {
-  f := ifx u[19] > 1 then u[19] else 1.0f32;
-  a := 2 * u[23] / u[0] - 1; c := 1 - 2 * u[27] / u[1]; k := f32(E2C_FAR) / f32(E2C_FAR - E2C_NEAR);
+// head (GladeFrame): the eye and the focal length, the forward, right and up axes, the viewport and
+// the centre (fwd.w, right.w).
+e2_cull_matrix :: (g: GladeFrame, m: [] f32) {
+  f := ifx g.eye.w > 1 then g.eye.w else 1.0f32;
+  a := 2 * g.fwd.w / g.view.x - 1; c := 1 - 2 * g.right.w / g.view.y; k := f32(E2C_FAR) / f32(E2C_FAR - E2C_NEAR);
+  fwd := [3]f32.[g.fwd.x, g.fwd.y, g.fwd.z]; right := [3]f32.[g.right.x, g.right.y, g.right.z]; upv := [3]f32.[g.up.x, g.up.y, g.up.z]; eye := [3]f32.[g.eye.x, g.eye.y, g.eye.z];
   for j: 0..<3 {
-    fw := u[20 + j]; r := u[24 + j]; up := u[28 + j];
-    m[j * 4] = a * fw + 2 * f / u[0] * r; m[j * 4 + 1] = c * fw + 2 * f / u[1] * up; m[j * 4 + 2] = k * fw; m[j * 4 + 3] = fw;
+    fw := fwd[j]; r := right[j]; up := upv[j];
+    m[j * 4] = a * fw + 2 * f / g.view.x * r; m[j * 4 + 1] = c * fw + 2 * f / g.view.y * up; m[j * 4 + 2] = k * fw; m[j * 4 + 3] = fw;
   }
-  for row: 0..<4 { t: f32 = 0; for j: 0..<3 { t -= m[j * 4 + row] * u[16 + j]; } m[12 + row] = t; }
+  for row: 0..<4 { t: f32 = 0; for j: 0..<3 { t -= m[j * 4 + row] * eye[j]; } m[12 + row] = t; }
   m[14] -= k * f32(E2C_NEAR);
 }
 // The block for this frame's draws: cu the uniforms (the matrix, the eye, the runs, the regions),
 // buckets each kit piece's first index and index count, runs each run's words and draws the draw
 // list's index of each. Returns the runs.
-e2_cull_fill :: (s: [] E2, u: [] f32, cu: [] f32, buckets: [] u32, runs: [] u32, draws: [] u32) -> int #export_c #effects(all) {
+e2_cull_fill :: (s: [] E2, u: [] E2U, cu: [] f32, buckets: [] u32, runs: [] u32, draws: [] u32) -> int #export_c #effects(all) {
   for k: 0..<E2C_FLOATS { cu[k] = 0; }
-  if !s[0].kits || u.count < E2_UNIFORM_FLOATS || u[0] < 1 || u[1] < 1 { return 0; }
-  e2_cull_matrix(u, cu);
-  for q: 0..<3 { cu[E2C_EYE + q] = u[16 + q]; }
+  if !s[0].kits || u.count < 1 || u[0].f.view.x < 1 || u[0].f.view.y < 1 { return 0; }
+  e2_cull_matrix(u[0].f, cu);
+  cu[E2C_EYE] = u[0].f.eye.x; cu[E2C_EYE + 1] = u[0].f.eye.y; cu[E2C_EYE + 2] = u[0].f.eye.z;
   for b: 0..<E2_BUCKETS { buckets[b * 2] = cast(u32) s[0].kit_first[b]; buckets[b * 2 + 1] = cast(u32) s[0].kit_count[b]; }
   n := 0; total := 0;
   for i: 0..<s[0].draw_n {
@@ -45,25 +46,24 @@ e2_cull_fill :: (s: [] E2, u: [] f32, cu: [] f32, buckets: [] u32, runs: [] u32,
     draws[n] = cast(u32) i; total += cast(int) d[i * 4 + 3]; n += 1;
   }
   cu[E2C_RUNS] = f32(n); cu[E2C_TOTAL] = f32(total); cu[E2C_OUT1] = f32(E2_VISIBLE); cu[E2C_OUT2] = f32(2 * E2_VISIBLE);
-  cu[E2C_WORD] = u[48]; cu[E2C_BUCKETS] = f32(E2_BUCKETS);
+  cu[E2C_WORD] = u[0].glade.x; cu[E2C_BUCKETS] = f32(E2_BUCKETS);
   return n;
 }
 
 #test "the cull's matrix projects every point as the kit stage's fivelab_project does" {
-  u: [E2_UNIFORM_FLOATS] f32; m: [16] f32;
-  u[0] = 2400; u[1] = 1400; u[19] = 1750; u[23] = 1200; u[27] = 640;
-  u[16] = 3; u[17] = 12; u[18] = -40;
+  g: GladeFrame; m: [16] f32;
+  g.view = v4(2400, 1400, 0, 0); g.eye = v4(3, 12, -40, 1750);
   // a frame tilted down a little and turned
   f := [3]f32.[0.3, -0.2, -0.9]; l := sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]); for q: 0..<3 { f[q] /= l; }
   r := [3]f32.[-f[2], 0, f[0]]; rl := sqrt(r[0] * r[0] + r[2] * r[2]); r[0] /= rl; r[2] /= rl;
   up := [3]f32.[r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
-  for q: 0..<3 { u[20 + q] = f[q]; u[24 + q] = r[q]; u[28 + q] = up[q]; }
-  e2_cull_matrix(u[..], m[..]);
+  g.fwd = v4(f[0], f[1], f[2], 1200); g.right = v4(r[0], r[1], r[2], 640); g.up = v4(up[0], up[1], up[2], 0);
+  e2_cull_matrix(g, m[..]);
   for t: 0..<20 {
     w := [3]f32.[f32(t * 7 % 50) - 25, f32(t * 3 % 20), -40 - f32(t * 11 % 90)];
-    rel := [3]f32.[w[0] - u[16], w[1] - u[17], w[2] - u[18]];
+    rel := [3]f32.[w[0] - g.eye.x, w[1] - g.eye.y, w[2] - g.eye.z];
     z := rel[0] * f[0] + rel[1] * f[1] + rel[2] * f[2]; x := rel[0] * r[0] + rel[1] * r[1] + rel[2] * r[2]; y := rel[0] * up[0] + rel[1] * up[1] + rel[2] * up[2];
-    want := [4]f32.[(2 * u[23] / u[0] - 1) * z + 2 * u[19] * x / u[0], (1 - 2 * u[27] / u[1]) * z + 2 * u[19] * y / u[1], f32(E2C_FAR) * (z - f32(E2C_NEAR)) / f32(E2C_FAR - E2C_NEAR), z];
+    want := [4]f32.[(2 * g.fwd.w / g.view.x - 1) * z + 2 * g.eye.w * x / g.view.x, (1 - 2 * g.right.w / g.view.y) * z + 2 * g.eye.w * y / g.view.y, f32(E2C_FAR) * (z - f32(E2C_NEAR)) / f32(E2C_FAR - E2C_NEAR), z];
     for row: 0..<4 {
       got := m[row] * w[0] + m[4 + row] * w[1] + m[8 + row] * w[2] + m[12 + row];
       #assert abs(got - want[row]) <= 0.002 * (1 + abs(want[row]));
@@ -71,9 +71,9 @@ e2_cull_fill :: (s: [] E2, u: [] f32, cu: [] f32, buckets: [] u32, runs: [] u32,
   }
 }
 #test "the cull's runs are the frame's kit draws, each with its kit piece, and nothing else" {
-  s: [1] E2; u: [E2_UNIFORM_FLOATS] f32; cu: [E2C_FLOATS] f32; buckets: [E2_BUCKETS * 2] u32; runs: [E2_DRAWS * 4] u32; draws: [E2_DRAWS] u32;
+  s: [1] E2; u: [1] E2U; cu: [E2C_FLOATS] f32; buckets: [E2_BUCKETS * 2] u32; runs: [E2_DRAWS * 4] u32; draws: [E2_DRAWS] u32;
   #assert e2_cull_fill(s[..], u[..], cu[..], buckets[..], runs[..], draws[..]) == 0;
-  s[0].kits = true; u[0] = 100; u[1] = 50; u[19] = 80; u[23] = 50; u[27] = 25; u[20] = 1; u[25] = 1; u[30] = 1; u[48] = 1234;
+  s[0].kits = true; u[0].f.view = v4(100, 50, 0, 0); u[0].f.eye.w = 80; u[0].f.fwd = v4(1, 0, 0, 50); u[0].f.right = v4(0, 1, 0, 25); u[0].f.up = v4(0, 0, 1, 0); u[0].glade.x = 1234;
   s[0].kit_first[4] = 900; s[0].kit_count[4] = 60; s[0].kit_first[7] = 2000; s[0].kit_count[7] = 300;
   // the glade, two kit runs, a grass block
   _a := e2_draw(s[0].draws[..], 0, 10, 20, 0, 1);

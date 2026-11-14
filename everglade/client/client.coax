@@ -7,6 +7,7 @@
 // metaverse/tools/assets/everglade2_pack.coax, and the passes everglade/client/gpu/everglade2.coax. everglade2-face.c steps
 // the controller (everglade-step.coax) as fivelab-face.c does; this unit says what is round you,
 // where you may stand, and what is drawn.
+#load "gpu/everglade2-uniforms.coax";   // the frame's uniforms, as the passes read them (E2U, #13451); first, so the GPU vocabulary it loads is this file's own
 #load "../scene/charactercreator.coax" as cc;
 #load "../scene/bodies.coax" as figs;
 #load "../shared/everglade-move-types.coax";
@@ -67,10 +68,7 @@
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 32768;     // strokes: the frame rate in the bottom right corner
-E2_UNIFORM_FLOATS :: 316;     // 79 vec4s (everglade/client/gpu/everglade2.bindings)
-E2_U_ENV :: 208;              // the camera's resolved environment, 27 vec4s (metaverse-engine/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
-E2_U_LIGHT_VIEW :: 51;        // the developer's light view (?light=, metaverse-engine/render/environment-debug.coax env_view_word): 0 the ordinary frame
-E2_U_CASCADE :: 104;          // the key light's shadow tiles' rows (metaverse-engine/render/cascades.coax cascade_rows)
+E2_UNIFORM_FLOATS :: E2_U_FLOATS;   // the frame's uniforms, a typed block (everglade/client/gpu/everglade2-uniforms.coax E2U, #13451)
 // A zone seats 150 (everglade-wire.coax WIRE_ZONE_SEATS, #13275), so the page holds and draws that many
 // others (#13268, #13306): the records and draws are sized for 149 bodies of 11 parts beside the world's.
 E2_RECORDS :: 2048;           // the objects store: the glade, its grass, your character's parts and the others' (11 a body)
@@ -399,11 +397,11 @@ e2_material_facts :: (s: [] E2, t: string) { s[0].film = e2c_fact_has(t, "film")
 #test "?film and ?maps=0 set the characters' shading quality" {
   s: [1] E2; e2_material_facts(s[..], "url=/worlds/character-creator?film&maps=0\n"); #assert s[0].film && s[0].maps_off;
   e2_material_facts(s[..], "url=/worlds/character-creator?filmic=1\n"); #assert !s[0].film && !s[0].maps_off;
-  u: [E2_UNIFORM_FLOATS] f32; s[0].film = true; e2_material_uniforms(s[..], u[..]); #assert u[60] == 1 && u[61] == 0;
+  u: [1] E2U; s[0].film = true; e2_material_uniforms(s[..], u[..]); #assert u[0].material.x == 1 && u[0].material.y == 0;
 }
-// u[60] the film quality, u[61] the maps off (everglade/client/gpu/everglade2.coax cc_player_fs).
-// u[62] the canopy's baked AO at your middle (everglade/world/ground.coax): it shades only your indirect light.
-e2_material_uniforms :: (s: [] E2, u: [] f32) { u[60] = ifx s[0].film then 1.0f32 else 0.0f32; u[61] = ifx s[0].maps_off then 1.0f32 else 0.0f32; u[62] = e2g_ao(s[0].eg[..], s[0].you_x, s[0].you_z, 1.0); }
+// material.x the film quality, .y the maps off (everglade/client/gpu/everglade2.coax cc_player_fs).
+// material.z the canopy's baked AO at your middle (everglade/world/ground.coax): it shades only your indirect light.
+e2_material_uniforms :: (s: [] E2, u: [] E2U) { u[0].material = v4(ifx s[0].film then 1.0f32 else 0.0f32, ifx s[0].maps_off then 1.0f32 else 0.0f32, e2g_ao(s[0].eg[..], s[0].you_x, s[0].you_z, 1.0), 0); }
 E2_HOST_DRIVE :: 700;   // a driver's command (coax/web/host.js coaxial.drive)
 e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
   e2i_load(s);   // the content tables, before the page asks for a seat: their revision is its content pin
@@ -1124,11 +1122,11 @@ e2_bloom_passes :: (s: [] E2) -> int #export_c #effects(all) {
   #assert s[0].kn.grass == 1 && s[0].kn.post == 1 && e2_bloom_passes(s[..]) == 5;
 }
 #test "e2 quality: the shadow knob: no tiles, the nearest only, or the full set" #steps 100000000 {
-  s: [1] E2; u: [E2_UNIFORM_FLOATS] f32;
+  s: [1] E2; u: [1] E2U;
   e2_shadow_event(s[..], 0, 0); s[0].eye = [3]f32.[3, 2, -150]; e2_light(s[..], u[..]);
-  s[0].kn.shadow = 1; e2_shadows(s[..], u[..]); #assert s[0].casc[0].tier.count == s[0].casc_n && u[E2_U_CASCADE + CASCADE_HEADER + 23] == 0;
-  s[0].kn.shadow = 0.3; e2_shadows(s[..], u[..]); #assert s[0].casc[0].tier.count == 1 && u[E2_U_CASCADE] == 1 && u[E2_U_CASCADE + CASCADE_HEADER + 23] == 1;
-  s[0].kn.shadow = 0; e2_shadows(s[..], u[..]); #assert u[E2_U_CASCADE] == 0 && s[0].casc[0].draw == -1;
+  s[0].kn.shadow = 1; e2_shadows(s[..], u[..]); #assert s[0].casc[0].tier.count == s[0].casc_n && e2_casc_row(u[0].casc, 0, 5).w == 0;
+  s[0].kn.shadow = 0.3; e2_shadows(s[..], u[..]); #assert s[0].casc[0].tier.count == 1 && u[0].casc.head.x == 1 && e2_casc_row(u[0].casc, 0, 5).w == 1;
+  s[0].kn.shadow = 0; e2_shadows(s[..], u[..]); #assert u[0].casc.head.x == 0 && s[0].casc[0].draw == -1;
   // back to the full set: the tiles left out are drawn again before they are used
   s[0].kn.shadow = 1; e2_shadows(s[..], u[..]); #assert s[0].casc[0].tier.count == s[0].casc_n && !s[0].casc[0].slot[s[0].casc_n - 1].drawn;
 }
@@ -1311,8 +1309,8 @@ e2_world_view :: (s: [] E2, out: [] f32, at: int) -> int {
   for i: 0..<30 { e2_fps_count(s[..], 1.0f32 / 30); }
   #assert abs(s[0].fps_counter[0].fps - 30) < 0.5;
 }
-e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
-  if u.count < E2_UNIFORM_FLOATS || w < 1 || h < 1 { return 0; }
+e2_frame :: (s: [] E2, out: [] f32, u: [] E2U, w: f32, h: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if u.count < 1 || w < 1 || h < 1 { return 0; }
   s[0].width = w; s[0].height = h; s[0].k = ifx dpr < 0.5 then 0.5f32 else dpr; s[0].media_n = 0;
   cc.ensure(s[0].creator[..]); s[0].creator[0].clock = s[0].clock;
   e2c_action(s); e2_place_keep(s);
@@ -1346,16 +1344,17 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   s[0].eye = [3]f32.[shot.eye.x, shot.eye.y, shot.eye.z]; s[0].fwd = f; s[0].right = r; s[0].up = up;
   // the shadow casters' centre: the eye (e2_shadows draws the tiles round it)
   s[0].shade = [3]f32.[shot.eye.x, shot.eye.y, shot.eye.z];
-  for i: 0..<u.count { u[i] = 0; }
-  u[0] = w; u[1] = h; u[2] = s[0].clock; u[3] = 1; u[4] = s[0].k; u[10] = 2; u[11] = 1;
-  for q: 0..<3 { u[16 + q] = s[0].eye[q]; u[20 + q] = f[q]; u[24 + q] = r[q]; u[28 + q] = up[q]; u[44 + q] = s[0].shade[q]; }
-  u[19] = s[0].focal; u[23] = lens[1]; u[27] = lens[2];
+  u[0] = E2U.{};
+  u[0].f.view = v4(w, h, s[0].clock, 1); u[0].f.scale = v4(s[0].k, 0, 0, 0); u[0].f.pass = v4(0, 0, 2, 1);
+  u[0].f.eye = v4(s[0].eye[0], s[0].eye[1], s[0].eye[2], s[0].focal); u[0].f.fwd = v4(f[0], f[1], f[2], lens[1]);
+  u[0].f.right = v4(r[0], r[1], r[2], lens[2]); u[0].f.up = v4(up[0], up[1], up[2], 0);
+  u[0].f.shade = v4(s[0].shade[0], s[0].shade[1], s[0].shade[2], 0);
   e2_light(s, u);
-  u[48] = f32(s[0].creator[0].glade_word);
-  u[35] = s[0].kn.grass; u[36] = s[0].kn.fine; u[37] = s[0].kn.post;   // the knobs the shaders read (e2_knobs_frame)
+  u[0].glade.x = f32(s[0].creator[0].glade_word);
+  u[0].f.halo.w = s[0].kn.grass; u[0].f.knobs.x = s[0].kn.fine; u[0].f.knobs.y = s[0].kn.post;   // the knobs the shaders read (e2_knobs_frame)
   e2c_arrive_uniforms(s, u);
   e2_material_uniforms(s, u);
-  u[E2_U_LIGHT_VIEW] = envd.env_view_word(s[0].light_view);
+  u[0].glade.w = envd.env_view_word(s[0].light_view);   // the developer's light view (?light=): 0 the ordinary frame
   e2_shadows(s, u);
   // the studio's class is your character's once you are back in the world (Change character's too); the
   // room's when it sat you otherwise (its ticket's class and level, #13259)
@@ -1380,14 +1379,14 @@ e2_overlay :: (s: [] E2, out: [] f32, dt: f32) -> int {
 }
 
 // ---- the light (lighting plan Phase 1, #13066): every lit input the passes read is the camera's
-// resolved environment, written each frame at E2_U_ENV (everglade/client/gpu/everglade2.coax through the cg_* names,
+// resolved environment, written each frame into E2U.env (everglade/client/gpu/everglade2.coax through the cg_* names,
 // metaverse-engine/render/painterly.coax paint_env_*). The world's set is e2_environment_set: the glade (the
 // painterly default) with the sunlit path's and the deep canopy's deltas; its day is the room's (W: the room's ms into its day at a tick,
 // metaverse-engine/world/day.coax day_from_room), or the glade's fixed noon before a room is heard and in a
 // shot or Character Create, which open none. The key's shadow tiles look along the same direction.
 // The world's set (everglade/world/environment.coax), admitted whole once.
 e2_env_route :: (e: [] envf.EnvFrame) { next: [1] EnvironmentSet; next[0] = e2_environment_set(); _ := envf.env_frame_admit(e, next[..]); }
-e2_light :: (s: [] E2, u: [] f32) {
+e2_light :: (s: [] E2, u: [] E2U) {
   e := s[0].env[..];
   if !e[0].admitted { e2_env_route(e); }
   n := s[0].net[..]; tick: s64 = 0;
@@ -1397,9 +1396,11 @@ e2_light :: (s: [] E2, u: [] f32) {
   }
   if s[0].stage != E2ST_NONE { _ := envf.env_frame_room(e, 0, 30, e2st_day_ms(), WIRE_DAY_MS); tick = 0; }   // a stage's late afternoon
   #if BUILD_DEBUG { tick = e2a_light(s, e, tick); }
-  _ := envf.env_frame_write_eye(e, tick, s[0].eye[0], s[0].eye[1], s[0].eye[2], u, E2_U_ENV);
+  w: [ENV_GPU_FLOATS] f32; halo: [3] f32;
+  _ := envf.env_frame_write_eye(e, tick, s[0].eye[0], s[0].eye[1], s[0].eye[2], w[..], 0);
+  u[0].env = env_block_of(w[..], 0);
   s[0].hud_day = envf.env_frame_day(e, tick);
-  envf.env_frame_sky_halo(u, 32);
+  envf.env_frame_sky_halo(halo[..], 0); u[0].f.halo = v4(halo[0], halo[1], halo[2], u[0].f.halo.w);
   if s[0].light_view != envd.ENV_VIEW_OFF { read := envd.env_debug_read(e, tick, EnvDir.{x = s[0].eye[0], y = s[0].eye[1], z = s[0].eye[2]}, s[0].light_text[..]); }
 }
 // ?net (a flag, or net=1): the netcode readout, under the light's. Off without it.
@@ -1442,22 +1443,22 @@ e2_light_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   return eg_readout(s[0].creator[0].ui, out, at, "light", "LIGHT", envd.ENV_VIEW_NAMES[s[0].light_view], lines[0..<t[0].count], s[0].k);
 }
 #test "?light=VIEW turns on one light view and its readout; without it nothing changes" {
-  s: [1] E2; u: [E2_UNIFORM_FLOATS] f32; s[0].eye = [3]f32.[2, 3, 5];
+  s: [1] E2; u: [1] E2U; s[0].eye = [3]f32.[2, 3, 5];
   e2_message(s[..], E2_HOST_PAGE, "url=/worlds/everglade2?at=60\n"); #assert s[0].light_view == envd.ENV_VIEW_OFF;
   e2_light(s[..], u[..]); #assert s[0].light_text[0].count == 0 && envd.env_view_word(s[0].light_view) == 0;
   e2_message(s[..], E2_HOST_PAGE, "url=/worlds/everglade2?at=60&light=ambient\n"); #assert s[0].light_view == envd.ENV_VIEW_AMBIENT;
   e2_light(s[..], u[..]); #assert s[0].light_text[0].count == 6 && envd.envd_line(s[0].light_text[..], 0) == "REGIONS 1:1.000*";
   #assert envd.env_view_word(s[0].light_view) == 1;
   // the record the shaders read is the same with a view on
-  g := envf.env_frame_glade_words(); for i: 0..<envf.ENV_FRAME_FLOATS { #assert u[E2_U_ENV + i] == g[i]; }
+  g := envf.env_frame_glade_words(); for i: 0..<envf.ENV_FRAME_FLOATS { #assert env_block_w(u[0].env, i) == g[i]; }
 }
 #test "every frame writes the camera's environment: the glade's noon in the glade, the canopy's in the woods" {
-  s: [1] E2; u: [E2_UNIFORM_FLOATS] f32;
+  s: [1] E2; u: [1] E2U;
   s[0].eye = [3]f32.[2, 3, 5];
   e2_light(s[..], u[..]);
   g := envf.env_frame_glade_words();
-  for i: 0..<envf.ENV_FRAME_FLOATS { #assert u[E2_U_ENV + i] == g[i]; }
-  #assert u[32] == -0.45f32 && u[33] == 0.78f32 && u[34] == -0.42f32 && s[0].env[0].writes == 1 && s[0].env[0].refusals == 0;
+  for i: 0..<envf.ENV_FRAME_FLOATS { #assert env_block_w(u[0].env, i) == g[i]; }
+  #assert u[0].f.halo.x == -0.45f32 && u[0].f.halo.y == 0.78f32 && u[0].f.halo.z == -0.42f32 && s[0].env[0].writes == 1 && s[0].env[0].refusals == 0;
   // the shadow tiles look along the record's key: the glade's sun, made unit
   l := s[0].env[0].held.dir; m := sqrt(0.40f32 * 0.40f32 + 0.58f32 * 0.58f32 + 0.62f32 * 0.62f32);
   #assert l.x == -0.40f32 / m && l.y == 0.58f32 / m && l.z == -0.62f32 / m;
@@ -1466,13 +1467,13 @@ e2_light_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   e2_light(s[..], u[..]);
   #assert s[0].env[0].clock.seconds == 2880 && s[0].env[0].clock.hz == 30 && s[0].env[0].refusals == 0 && s[0].env[0].writes == 2;
   // the time of day is the room's (word 3), 30 ticks past its noon; every light word is the glade's
-  #assert abs(u[E2_U_ENV + 3] - (0.5f32 + 1.0f32 / 2880)) < 0.00001;
-  for i: 0..<envf.ENV_FRAME_FLOATS { if i != 3 { #assert u[E2_U_ENV + i] == g[i]; } }
+  #assert abs(env_block_w(u[0].env, 3) - (0.5f32 + 1.0f32 / 2880)) < 0.00001;
+  for i: 0..<envf.ENV_FRAME_FLOATS { if i != 3 { #assert env_block_w(u[0].env, i) == g[i]; } }
   // deep in the woods, the canopy's delta: some light words move, the record is written, none refused
   p := e2_env_on_path(-300, 1.7); s[0].eye = [3]f32.[p.x, p.y, p.z];
   e2_light(s[..], u[..]); off := 0;
-  for i: 4..<envf.ENV_FRAME_FLOATS { if u[E2_U_ENV + i] != g[i] { off += 1; } }
-  #assert off > 0 && s[0].env[0].writes == 3 && s[0].env[0].refusals == 0 && u[32] == -0.45f32;
+  for i: 4..<envf.ENV_FRAME_FLOATS { if env_block_w(u[0].env, i) != g[i] { off += 1; } }
+  #assert off > 0 && s[0].env[0].writes == 3 && s[0].env[0].refusals == 0 && u[0].f.halo.x == -0.45f32;
 }
 // ---- the key light's shadow tiles (metaverse-engine/render/cascades.coax, #13016, as Everglade's)
 // The host makes one depth atlas of up to four tiles (two on a phone), each a ring further out round
@@ -1482,9 +1483,9 @@ e2_light_readout :: (s: [] E2, out: [] f32, at: int) -> int {
 // at most one other tile a frame. Its casters are the pieces as the view draws them, at the same
 // levels (e2_pieces casting).
 // The tiles look along the key the frame's environment resolved (e2_light: the record's unit direction).
-e2_shadows :: (s: [] E2, u: [] f32) {
+e2_shadows :: (s: [] E2, u: [] E2U) {
   c := s[0].casc[..];
-  for i: 0..<CASCADE_BLOCK { u[E2_U_CASCADE + i] = 0; }
+  u[0].casc = E2Casc.{};
   if !c[0].on { return; }
   // the graphics quality's shadow knob (e2_knobs_frame): no tiles (all lit), the nearest only, or
   // the full set; under 1 the nearest is redrawn for movers every other frame and filtered with six taps
@@ -1497,8 +1498,10 @@ e2_shadows :: (s: [] E2, u: [] f32) {
   l := s[0].env[0].held.dir;
   _ := cascade_frame(c, s[0].eye[0], s[0].eye[2], l.x, l.y, l.z, sh >= 0.99 || c[0].frame % 2 == 0);
   // the filter: 2.5 texels of a 2048 map over 68 m, the same metres of penumbra in every tile
-  cascade_rows(c[0], u[E2_U_CASCADE..<E2_U_CASCADE + CASCADE_BLOCK], 2.5, 68.0f32 / 2048, 34);
-  if sh < 0.99 { for k: 0..<want { u[E2_U_CASCADE + CASCADE_HEADER + k * CASCADE_FLOATS + 23] = 1; } }
+  rows: [CASCADE_BLOCK] f32;
+  cascade_rows(c[0], rows[..], 2.5, 68.0f32 / 2048, 34);
+  if sh < 0.99 { for k: 0..<want { rows[CASCADE_HEADER + k * CASCADE_FLOATS + 23] = 1; } }   // row 5's w
+  u[0].casc = e2_casc_of(rows[..]);
 }
 // How far round the eye a tile's casters reach: its own reach across its diagonal and its leash,
 // and the tallest tree's shadow beside it.
@@ -1544,7 +1547,7 @@ e2_shadow_event :: (s: [] E2, kind: int, arg: int) #export_c #effects(all) {
   if kind == 0 { cascade_open(c, arg != 0); s[0].casc_n = c[0].tier.count; } else if kind == 1 { cascade_stale(c); } else if kind == 2 { cascade_dropped(c); }
 }
 #test "Everglade II's shadow tiles: snapped to the light's texels, redrawn only past a step, the near one every frame" #steps 400000000 {
-  s: [1] E2; u: [E2_UNIFORM_FLOATS] f32;
+  s: [1] E2; u: [1] E2U;
   #assert e2_shadow_field(s[..], 0) == -1;
   e2_shadow_event(s[..], 0, 0);
   #assert e2_shadow_field(s[..], 6) == 4 && e2_shadow_atlas(s[..], 0, 0) == 2048;
@@ -1561,7 +1564,7 @@ e2_shadow_event :: (s: [] E2, kind: int, arg: int) #export_c #effects(all) {
   far := s[0].casc[0].slot[3];
   for f: 0..<60 { s[0].eye[2] -= 0.05; e2_shadows(s[..], u[..]); }
   #assert s[0].casc[0].slot[3].cx == far.cx && s[0].casc[0].slot[3].cy == far.cy;
-  #assert u[E2_U_CASCADE] == 4;
+  #assert u[0].casc.head.x == 4;
 }
 // ---- the scene: the glade's records and draws, your character, the kit pieces in view
 e2_rec_clear :: (s: [] E2, n: int) { for k: 0..<24 { s[0].records[n * 24 + k] = 0; } }

@@ -9,7 +9,7 @@
 // and, for every view, a readout of the camera's resolved environment: the region weights by profile
 // id (the dominant one marked), the ambient's upper, horizon and lower colours, the key's colour and
 // direction, and an 18% grey and the sky's zenith before and after the grade.
-// The shader views are words the page writes at its uniform word (everglade/client/client.coax E2_U_LIGHT_VIEW);
+// The shader views are words the page writes at its uniform word (everglade/client/gpu/everglade2-uniforms.coax E2U.glade.w);
 // this module only names them and writes the readout. It reads the page's admitted set and index
 // and resolves the camera again only while a view is on, so a page without ?light pays nothing.
 //   coax/bin/coax test metaverse-engine/render/environment-debug.coax

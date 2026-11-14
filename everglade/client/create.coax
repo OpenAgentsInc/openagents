@@ -202,42 +202,37 @@ e2c_arrive_shot :: (s: [] E2, feet: figs.Point, st: figs.Shot) -> figs.Shot {
   floor_y := e2_height(eye.x, eye.z) + 0.3; if eye.y < floor_y { eye.y = floor_y; }
   return figs.Shot.{eye = eye, at = at};
 }
-// The veil's uniforms (everglade/client/gpu/everglade2.coax e2_arrival): u[96] the light's hold, u[97] its clock,
-// u[98] its swell, u[99] your character's size short of whole, u[100] the opening, u[101] and u[102]
-// your records.
-e2c_arrive_uniforms :: (s: [] E2, u: [] f32) {
+// The veil's uniforms (everglade/client/gpu/everglade2.coax e2_arrival): arrival the light's hold, its clock,
+// its swell and your character's size short of whole; opening the opening and your records, first and past the last.
+e2c_arrive_uniforms :: (s: [] E2, u: [] E2U) {
   c := s[0].cz[0];
-  if !c.on || u.count < 104 { return; }
+  if !c.on || u.count < 1 { return; }
   t := e2c_arrive_at(s);
   if t >= f32(E2C_ARRIVE_END) { return; }
   // ease out: the glade shows through the light within a frame or two of the start, then opens wide
   ou := e2c_span(ifx t < 0 then 0.0f32 else t, f32(E2C_ARRIVE_OPEN), f32(E2C_ARRIVE_OPENED)); ov := 1 - ou;
   open := ifx t < 0 then 0.0f32 else 1 - ov * ov * ov;
-  u[96] = 1 - e2c_ease(e2c_span(t, f32(E2C_ARRIVE_OPENED) - 0.5, f32(E2C_ARRIVE_OPENED) + 0.3));
-  if t < 0 { u[96] = 1; }
-  u[97] = ifx c.clocked then c.wall + (s[0].clock - c.wall_clock) else s[0].clock;
-  u[98] = ifx t < 0 then 1.0f32 else 1 - e2c_ease(t / 2.4);
-  u[99] = 1 - e2c_arrive_size(s);
-  u[100] = open;
-  u[101] = f32(c.fig0); u[102] = f32(c.fig1);
+  hold := ifx t < 0 then 1.0f32 else 1 - e2c_ease(e2c_span(t, f32(E2C_ARRIVE_OPENED) - 0.5, f32(E2C_ARRIVE_OPENED) + 0.3));
+  u[0].arrival = v4(hold, ifx c.clocked then c.wall + (s[0].clock - c.wall_clock) else s[0].clock, ifx t < 0 then 1.0f32 else 1 - e2c_ease(t / 2.4), 1 - e2c_arrive_size(s));
+  u[0].opening = v4(open, f32(c.fig0), f32(c.fig1), 0);
 }
 #test "create: through the portal the page holds the portal's light until the glade draws, then opens, comes in, pops and shows the wardrobe" #steps 400000000 {
   s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=http://x/worlds/character-creator?via=portal\nnow=1700000123456\n");
   c := s[0].cz[..];
   #assert c[0].on; #assert c[0].arriving; #assert c[0].clocked; #assert abs(c[0].wall - 323.456) < 0.01;
-  u: [104] f32;
+  u: [1] E2U;
   e2c_arrive_step(s[..], 1.0f32 / 60); e2c_arrive_uniforms(s[..], u[..]);
-  #assert c[0].arrive_t < 0 && u[96] == 1 && u[100] == 0 && u[99] == 1 && e2c_shown(s[..]) == 0;
+  #assert c[0].arrive_t < 0 && u[0].arrival.x == 1 && u[0].opening.x == 0 && u[0].arrival.w == 1 && e2c_shown(s[..]) == 0;
   c[0].drawn = E2C_ARRIVE_FRAMES; e2c_arrive_step(s[..], 1.0f32 / 60); #assert c[0].arrive_t == 0;
   last_open := 0.0f32; last_ui := 0.0f32; t := 0.0f32; shown_at := -1.0f32; popped_at := -1.0f32;
   feet := figs.v3(0, 0, 0); st := figs.Shot.{eye = figs.v3(0, 1.5, 3), at = figs.v3(0, 1.4, -7)};
   prev := e2c_arrive_shot(s[..], feet, st);
   while c[0].arriving {
     e2c_arrive_step(s[..], 1.0f32 / 60); t += 1.0f32 / 60;
-    for i: 0..<104 { u[i] = 0; } e2c_arrive_uniforms(s[..], u[..]);
-    if c[0].arriving { #assert u[100] >= last_open - 0.00001; last_open = u[100]; }   // (f32 rounding near 1)
+    u[0] = E2U.{}; e2c_arrive_uniforms(s[..], u[..]);
+    if c[0].arriving { #assert u[0].opening.x >= last_open - 0.00001; last_open = u[0].opening.x; }   // (f32 rounding near 1)
     #assert e2c_shown(s[..]) >= last_ui; last_ui = e2c_shown(s[..]);
-    if popped_at < 0 && u[99] < 0.5 { popped_at = t; }
+    if popped_at < 0 && u[0].arrival.w < 0.5 { popped_at = t; }
     if shown_at < 0 && last_ui > 0.5 { shown_at = t; }
     sh := e2c_arrive_shot(s[..], feet, st);
     dx := sh.eye.x - prev.eye.x; dy := sh.eye.y - prev.eye.y; dz := sh.eye.z - prev.eye.z;
@@ -247,7 +242,7 @@ e2c_arrive_uniforms :: (s: [] E2, u: [] f32) {
   #assert popped_at > 1 && shown_at > popped_at && t < 3.2;
   #assert e2c_shown(s[..]) == 1;
   e := e2c_arrive_shot(s[..], feet, st); #assert e.eye.x == st.eye.x && e.eye.z == st.eye.z;
-  for i: 0..<104 { u[i] = 0; } e2c_arrive_uniforms(s[..], u[..]); #assert u[96] == 0 && u[99] == 0;
+  u[0] = E2U.{}; e2c_arrive_uniforms(s[..], u[..]); #assert u[0].arrival.x == 0 && u[0].arrival.w == 0;
   // a plain visit has no arrival
   p: [1] E2; e2_message(p[..], E2_HOST_PAGE, "url=/worlds/character-creator\n"); #assert !p[0].cz[0].arriving && e2c_shown(p[..]) == 1;
 }

@@ -4,6 +4,7 @@
 #load "../../../metaverse-engine/gpu/wg-make.coax";
 #load "../../../metaverse/style.coax";
 #load "../../../metaverse-engine/render/sampling.coax";
+#load "glade-frame.coax";   // the glade pages' frame head, a typed block (#13451)
 
 // bg_fs draws one of two views of the battle, as the page picks (V):
 //  - flat: the bare grid of 5-foot squares, every fourth line brighter;
@@ -405,14 +406,14 @@ fivelab_depth :: (z:f32)->f32 {
   return fmin((FIVELAB_FAR*(z-FIVELAB_NEAR))/((FIVELAB_FAR-FIVELAB_NEAR)*z),1.0f32);
 }
 // The camera's projection of a world point, as bg_fs's rays: the eye's frame and focal length.
-fivelab_project :: (w:V3,u:[]f32)->V4 {
-  rel:V3=sub3(w,wg_at3(u,16));
-  z:f32=dot3(rel,wg_at3(u,20));
-  x:f32=dot3(rel,wg_at3(u,24));
-  y:f32=dot3(rel,wg_at3(u,28));
-  f:f32=fmax(u[19],1.0f32);
-  cx:f32=((((2.0f32*u[23])/u[0])-1.0f32)*z)+((2.0f32*f*x)/u[0]);
-  cy:f32=((1.0f32-((2.0f32*u[27])/u[1]))*z)+((2.0f32*f*y)/u[1]);
+fivelab_project :: (w:V3,gf:GladeFrame)->V4 {
+  rel:V3=sub3(w,v3_of(gf.eye));
+  z:f32=dot3(rel,v3_of(gf.fwd));
+  x:f32=dot3(rel,v3_of(gf.right));
+  y:f32=dot3(rel,v3_of(gf.up));
+  f:f32=fmax(gf.eye.w,1.0f32);
+  cx:f32=((((2.0f32*gf.fwd.w)/gf.view.x)-1.0f32)*z)+((2.0f32*f*x)/gf.view.x);
+  cy:f32=((1.0f32-((2.0f32*gf.right.w)/gf.view.y))*z)+((2.0f32*f*y)/gf.view.y);
   cz:f32=(FIVELAB_FAR*(z-FIVELAB_NEAR))/(FIVELAB_FAR-FIVELAB_NEAR);
   return v4(cx,cy,cz,z);
 }
@@ -424,7 +425,7 @@ fivelab_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->FivelabBg {
   if (u[10]>1.5f32) {
     eye:V3=wg_at3(u,16);fwd:V3=wg_at3(u,20);
     rd:V3=normalize3(add3(fwd,add3(scale3(wg_at3(u,24),(p.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-p.y)/u[19]))));
-    c:V3=cg_sky(u,rd,wg_at3(u,32),u[2]);
+    c:V3=cg_sky(paint_env_of(u),rd,wg_at3(u,32),u[2]);
     dep:f32=1.0f32;
     k:f32=u[4];
     if (u[11]<0.5f32) {c=scale3(c,1.0f32-0.50f32*(1.0f32-smoothstep(450.0f32*k,520.0f32*k,p.x))*(1.0f32-smoothstep(45.0f32*k,105.0f32*k,p.y)));}
@@ -656,7 +657,7 @@ fivelab_gaunt :: (p:V3)->V3 {
 // metaverse-engine/anim/mannequin.coax mannequin_rest_bind) carried by its one joint, 36 vertices a box, none indexed. Per
 // box: its joint, middle, half sizes and what it is (0 skin, 1 cloth, 2 the cloth's darker half,
 // 3 boots).
-fivelab_block_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,bake:[]V4)->FivelabS {
+fivelab_block_vs :: (id:u32,instance:u32,m:FivelabObj,gf:GladeFrame,bake:[]V4)->FivelabS {
   boxes:[104]f32=[104]f32.[
     1.0f32,0.0f32,0.95f32,-0.04f32,0.16f32,0.09f32,0.11f32,1.0f32,
     4.0f32,0.0f32,1.3f32,-0.03f32,0.17f32,0.2f32,0.11f32,1.0f32,
@@ -705,7 +706,7 @@ fivelab_block_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,bake:[]V4)->Fivela
   cs:f32=cos(m.a.w); sn:f32=sin(m.a.w);
   w:V3=v3((p.x*cs)+(p.z*sn)+m.a.x,p.y+m.a.y,((-p.x)*sn)+(p.z*cs)+m.a.z);
   o:FivelabS;
-  o.pos=fivelab_project(w,u);
+  o.pos=fivelab_project(w,gf);
   o.world=w;
   o.normal=v3((n.x*cs)+(n.z*sn),n.y,((-n.x)*sn)+(n.z*cs));
   o.uv=v2(0.5f32,0.5f32);
@@ -727,11 +728,14 @@ fivelab_block_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,bake:[]V4)->Fivela
   o.dye=v4(0.0f32,0.0f32,0.0f32,10.0f32);
   return o;
 }
-fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {
-  if (u[10]>1.5f32 && instance>=65536) {m0:=objects[cast(int)((instance>>16)-1)];if (m0.d.w>19.5f32) {return cg_meadow_vs(id,instance,m0,u,vertices);}return cg_instanced_vs(id,instance,m0,u,vertices);}   // 20: the open meadow (character-glade.coax)
+// 5E Lab's scene entry: its uniforms are a []f32, read through their frame head (#13451).
+fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {return fivelab_scene_place(id,instance,glade_frame(u),vertices,objects,bake);}
+// A scene vertex under the frame head gf: every glade page's scene (Everglade II's, the studio's, WorldBuilder's people).
+fivelab_scene_place :: (id:u32,instance:u32,gf:GladeFrame,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {
+  if (gf.pass.z>1.5f32 && instance>=65536) {m0:=objects[cast(int)((instance>>16)-1)];if (m0.d.w>19.5f32) {return cg_meadow_vs(id,instance,m0,gf,vertices);}return cg_instanced_vs(id,instance,m0,gf,vertices);}   // 20: the open meadow (character-glade.coax)
   m:FivelabObj=objects[cast(int)instance];
-  if (m.d.w>15.5f32) {return cg_environment_vs(id,instance,m,u,vertices);}
-  if (wg_fmod(m.d.w,8.0f32)>3.5f32) { return fivelab_block_vs(id,instance,m,u,bake); }
+  if (m.d.w>15.5f32) {return cg_environment_vs(id,instance,m,gf,vertices);}
+  if (wg_fmod(m.d.w,8.0f32)>3.5f32) { return fivelab_block_vs(id,instance,m,gf,bake); }
   b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,6));
   xy:V2=wg_unpack2x16unorm(vertices[cast(int)b]);
   zw:u32=vertices[cast(int)add_wrap(b,1)];
@@ -760,7 +764,7 @@ fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fivela
   c:f32=cos(m.a.w); sn:f32=sin(m.a.w);
   w:V3=v3((sk.p.x*c)+(sk.p.z*sn)+m.a.x,sk.p.y+m.a.y,((-sk.p.x)*sn)+(sk.p.z*c)+m.a.z);
   o:FivelabS;
-  o.pos=fivelab_project(w,u);
+  o.pos=fivelab_project(w,gf);
   o.world=w;
   o.normal=v3((sk.n.x*c)+(sk.n.z*sn),sk.n.y,((-sk.n.x)*sn)+(sk.n.z*c));
   o.uv=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,3)]);
@@ -890,10 +894,11 @@ fivelab_scene_colour :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabO
 }
 FivelabV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
 fivelab_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
-fivelab_fx_vs :: (_vid2:u32,_iid3:u32,in_:fivelab_fx_vs_in,u:[]f32)->FivelabV {
+fivelab_fx_vs :: (_vid2:u32,_iid3:u32,in_:fivelab_fx_vs_in,u:[]f32)->FivelabV {return fivelab_fx_place(_vid2,_iid3,in_,glade_frame(u));}
+fivelab_fx_place :: (_vid2:u32,_iid3:u32,in_:fivelab_fx_vs_in,gf:GladeFrame)->FivelabV {
   a:V4=in_.a;
   o:FivelabV;
-  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.pos=v4(((a.x/gf.view.x)*2.0f32)-1.0f32,1.0f32-((a.y/gf.view.y)*2.0f32),0.0f32,1.0f32);
   o.place=v2(a.z,a.w);
   o.shape=in_.b;
   o.tint=in_.c;
@@ -901,19 +906,20 @@ fivelab_fx_vs :: (_vid2:u32,_iid3:u32,in_:fivelab_fx_vs_in,u:[]f32)->FivelabV {
   return o;
 }
 // A capsule: shape.x its length, y its core's half width, z its light, w its glow's reach.
-fivelab_fx_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
-  if (v.bar.w>0.5f32) { return fivelab_hud_fs(v,u,sans_atlas,sans_sampler); }
+fivelab_fx_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {return fivelab_fx_colour(v,glade_frame(u),sans_atlas,sans_sampler);}
+fivelab_fx_colour :: (v:FivelabV,gf:GladeFrame,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  if (v.bar.w>0.5f32) { return fivelab_hud_fs(v,gf,sans_atlas,sans_sampler); }
   if (v.tint.w>3.5f32) {
     lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
     alpha:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
-    return wg_make_f4_f3f(scale3(v3(v.tint.x,v.tint.y,v.tint.z),alpha*fmin(v.shape.z*1.15f32,1.0f32)*u[3]),1.0f32);
+    return wg_make_f4_f3f(scale3(v3(v.tint.x,v.tint.y,v.tint.z),alpha*fmin(v.shape.z*1.15f32,1.0f32)*gf.view.w),1.0f32);
   }
   along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
   d:f32=wg_length2(v2(along,v.place.y));
   core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
   g:f32=d/fmax(v.shape.w,1.0f32);
   halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
-  return wg_make_f4_f3f(scale3(scale3(scale3(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+  return wg_make_f4_f3f(scale3(scale3(scale3(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),gf.view.w),1.0f32);
 }
 
 // A HUD style's strokes (metaverse-engine/ui/hud-style.coax, docs/metaverse/hud-styles.md): a realm whose fx
@@ -926,7 +932,7 @@ fivelab_fx_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 
 //    reach, a sweep's share); its colour runs from tint.xyz at the top to bar.xyz at the bottom.
 //  - tint.w 4: text in the reading face, the atlas's red; 5: the title face, its green.
 //  - else a capsule, as above, its core and halo the coverage.
-fivelab_hud_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+fivelab_hud_fs :: (v:FivelabV,gf:GladeFrame,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
   m:f32=v.tint.w;
   if (m>9.5f32) {
     kind:f32=floor(m/10.0f32);
@@ -949,21 +955,21 @@ fivelab_hud_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4
       if (turn<0.0f32) { turn=turn+6.2831853f32; }
       cov=(1.0f32-smoothstep(-0.6f32,0.6f32,d))*(1.0f32-smoothstep((wd*6.2831853f32)-0.02f32,wd*6.2831853f32,turn));
     }
-    return v4(c.x,c.y,c.z,saturate(cov*a*u[3]));
+    return v4(c.x,c.y,c.z,saturate(cov*a*gf.view.w));
   }
   if (m>3.5f32) {
     lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
     g:V4=gpu_sample_level(sans_atlas,sans_sampler,v.place,lod);
     face:f32=g.x;
     if (m>4.5f32) { face=g.y; }
-    return v4(v.tint.x,v.tint.y,v.tint.z,saturate(pow(face,0.85f32)*fmin(v.shape.z*1.15f32,1.0f32)*u[3]));
+    return v4(v.tint.x,v.tint.y,v.tint.z,saturate(pow(face,0.85f32)*fmin(v.shape.z*1.15f32,1.0f32)*gf.view.w));
   }
   along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
   dd:f32=wg_length2(v2(along,v.place.y));
   core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,dd);
   gg:f32=dd/fmax(v.shape.w,1.0f32);
   halo:f32=exp(((-5.0f32)*gg)*gg)*0.28f32;
-  return v4(v.tint.x,v.tint.y,v.tint.z,saturate((core+halo)*v.shape.z*u[3]));
+  return v4(v.tint.x,v.tint.y,v.tint.z,saturate((core+halo)*v.shape.z*gf.view.w));
 }
 
 // ---- the vector helpers this file calls

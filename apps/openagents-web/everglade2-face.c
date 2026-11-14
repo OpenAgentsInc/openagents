@@ -267,7 +267,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   e2_you(at(state), feet.x, feet.y, feet.z, face);
   sticks = metaverse_sticks_used(sticks);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_e2_max_vertices() * coaxial_e2_vertex_floats()};
-  coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_e2_uniform_floats()};
+  coax_v_t_E2U u = {(coax_t_E2U *)(uintptr_t)uniforms, 1};   /* the frame's uniforms, a typed block (everglade/client/gpu/everglade2-uniforms.coax, #13451) */
   int64_t n = e2_frame(at(state), out, u, w, h, scale, dt, still != 0);
   draw_n = 0;
   if (e2_at(state)->bodies.e[0].ready) {

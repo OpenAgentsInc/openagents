@@ -22,6 +22,11 @@ v3 :: (x:f32,y:f32,z:f32)->V3 {return V3.{x=x,y=y,z=z};}
 v4 :: (x:f32,y:f32,z:f32,w:f32)->V4 {return V4.{x=x,y=y,z=z,w=w};}
 v3_of :: (v:V4)->V3 {return V3.{x=v.x,y=v.y,z=v.z};}
 v4_of :: (v:V3,w:f32)->V4 {return V4.{x=v.x,y=v.y,z=v.z,w=w};}
+// A vector of a uniform block's floats from at (what a typed block's reader for a []f32 page reads,
+// #13451; wgsl.coax wg_at4 is the same read under the name translated WGSL calls it by), and
+// component i (0 to 3) of a vector: a typed block's row read by a word's place in it.
+v4_at :: (u:[]f32,at:int)->V4 {return V4.{x=u[at],y=u[at+1],z=u[at+2],w=u[at+3]};}
+v4_lane :: (v:V4,i:int)->f32 {return ifx i==0 then v.x else ifx i==1 then v.y else ifx i==2 then v.z else v.w;}
 
 add2 :: (a:V2,b:V2)->V2 {return V2.{x=a.x+b.x,y=a.y+b.y};}
 sub2 :: (a:V2,b:V2)->V2 {return V2.{x=a.x-b.x,y=a.y-b.y};}

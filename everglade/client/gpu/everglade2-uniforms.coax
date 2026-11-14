@@ -1,0 +1,49 @@
+// Everglade II's frame uniforms as a typed block (#13451): what its page writes each frame
+// (everglade/client/client.coax e2_frame) and its passes read (everglade/client/gpu/everglade2.coax,
+// bound `u 0 0 uniform` in everglade2.bindings), 79 vec4s. WGSL, Metal and SPIR-V lay it out as C
+// does: vec4s, nested blocks and arrays of vec4s, each at a multiple of 16 bytes. The first 12 vec4s
+// are the glade pages' frame head (GladeFrame), which the shared passes read; the light is the
+// camera's resolved environment (EnvBlock), as every painterly page's.
+//   coax/bin/coax test everglade/client/gpu/everglade2-uniforms.coax
+#load "../../scene/gpu/glade-frame.coax";
+#load "../../../metaverse-engine/render/env-block.coax";
+
+// The key light's shadow tiles (metaverse-engine/render/cascades.coax cascade_rows, CASCADE_BLOCK
+// floats): the header (how many tiles, the tile drawn now, the atlas's width and height), then four
+// tiles of six rows each (CASCADE_FLOATS: its rect in the atlas, its rows across, up and in depth,
+// its filter, its edge); a spare row keeps the record that follows at its place.
+E2_CASC_TILE_ROWS :: 6;
+E2Casc :: struct {head:V4;rows:[24]V4;spare:V4;}
+E2U :: struct {
+ f:GladeFrame;     // u[0..47]: the screen, the clock, the camera, the sky's halo, the knobs (e2_knobs_frame), the veils
+ glade:V4;         // u[48] the pack's first glade vertex word (e2_kit_place); u[51] the light view (?light=, env_view_word)
+ pane:[2]V4;       // u[52..59] Character Create's class pane, two boxes (x0, y0, x1, y1)
+ material:V4;      // u[60] film quality, u[61] the maps off, u[62] the canopy's baked AO where you stand
+ spare:[8]V4;      // u[64..95]
+ arrival:V4;       // u[96] the portal light's hold, u[97] its clock, u[98] its swell, u[99] your character's size short of whole
+ opening:V4;       // u[100] the glade's opening, u[101] and u[102] your records, first and past the last
+ casc:E2Casc;      // u[104..207]
+ env:EnvBlock;     // u[208..315] the camera's resolved environment (env_gpu_pack)
+}
+E2_U_FLOATS :: 316;
+// Row `row` of shadow tile k.
+e2_casc_row :: (c:E2Casc,k:int,row:int)->V4 {return c.rows[k*E2_CASC_TILE_ROWS+row];}
+// The tiles' block from the floats cascade_rows writes.
+e2_casc_of :: (w:[]f32)->E2Casc {
+ c:E2Casc;c.head=v4_at(w,0);
+ for i:0..<24 {c.rows[i]=v4_at(w,4+4*i);}
+ return c;
+}
+
+#test "the block is 79 vec4s, each part at the word the passes read it at" {
+ #assert size_of(E2U)==E2_U_FLOATS*4 && size_of(E2Casc)==104*4;
+ // f, glade, pane, material, spare, arrival, opening, casc, env
+ at:=[9]int.[0,48,52,60,64,96,100,104,208];
+ for i:0..<9 {#assert field_info(E2U,i).offset==at[i]*4;}
+ #assert field_info(E2Casc,1).offset==16 && field_info(E2Casc,2).offset==100*4;
+}
+#test "a tile's rows are its six, after the header" {
+ w:[100]f32;for i:0..<100 {w[i]=f32(i);}
+ c:=e2_casc_of(w[..]);
+ #assert c.head.x==0 && c.head.w==3 && e2_casc_row(c,0,0).x==4 && e2_casc_row(c,1,0).x==28 && e2_casc_row(c,3,5).w==99;
+}

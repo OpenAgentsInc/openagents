@@ -1,8 +1,8 @@
-# Everglade v2's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as coax/web/host.js lays them out:
+# Everglade v2's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform [VEC4FS]]), as coax/web/host.js lays them out: `u` is a typed block (E2U, #13451).
 # group 0 the frame's uniforms and the frame store (host.js: the tokens and squares); group 1 the scene: the pack's vertices, the stores (the figures'
 # instances, the baked clips, the visible kit pieces' words, the characters' materials, the ground's table and bake, every planted piece's row), the pack's layers and their sampler,
 # then its linear data layers (normal and ORM maps, host.js PACK_DATA_LAYER).
-u 0 0 uniform 79
+u 0 0 uniform
 frame 0 1
 vertices 1 0
 objects 1 1
