@@ -5,7 +5,6 @@
 // draws the ones in view. The glade's own composition stays in the glade's pack mesh.
 #load "forest.coax";
 #load "meadow.coax";   // the open meadow's understory, shared with the druid's field
-#load "../range/layout.coax";   // the Archery Range's ground: nothing is planted on it (#13507)
 
 // The kit: the pack's templates, in this order. Trees have three levels of detail (0 whole, 1 two of the
 // crown's cards in three and a plain trunk, 2 one card in three: the same cards in the same places,
@@ -245,7 +244,7 @@ e2_plant_cell :: (out:[]f32,kinds:[]u8,n0:int,i:int,j:int)->int {
   h:=seed+f32(a*7+b*13);
   x:=x0+(f32(a)+0.15+0.7*cg_hash(h,1))*f32(E2_TREE_STEP);z:=z0-(f32(b)+0.15+0.7*cg_hash(h,2))*f32(E2_TREE_STEP);
   if x<E2_WEST+4 || x>E2_EAST-4 || z<E2_FAR+4 || z>E2_BACK-4 {continue;}
-  f:=e2_forest(x,z);if cg_hash(h,3)>f*0.97 || rg_on_ground(x,z,0) {continue;}
+  f:=e2_forest(x,z);if cg_hash(h,3)>f*0.97 {continue;}
   rd:=e2_road_dist(x,z);if (rd<2.6 && z<9) || e2_path(x,z)>0.05 || e2_clearing(x,z)>0.3 {continue;}
   au:=e2_autumn(x,z);r:=cg_hash(h,4);v:=int(cg_hash(h,5)*4.999);big:=1.0f32+0.35f32*cg_ramp(10,30,rd);
   sz:=cg_hash(h,6);yaw:=cg_hash(h,7)*6.283;stretch:=1+cg_hash(h,8)*0.3;
@@ -271,7 +270,7 @@ e2_plant_cell :: (out:[]f32,kinds:[]u8,n0:int,i:int,j:int)->int {
   h:=seed*1.37+f32(q)*3.1+0.5;
   x:=x0+cg_hash(h,11)*cs;z:=z0-cg_hash(h,12)*cs;
   if x<E2_WEST+2 || x>E2_EAST-2 || z<E2_FAR+2 || z>E2_BACK-2 {continue;}
-  o:=e2_wooded(x,z);if o<0.2 || e2_path(x,z)>0.3 || rg_on_ground(x,z,0) {continue;}
+  o:=e2_wooded(x,z);if o<0.2 || e2_path(x,z)>0.3 {continue;}
   rd:=e2_road_dist(x,z);f:=e2_forest(x,z);cl:=e2_clearing(x,z);au:=e2_autumn(x,z);
   verge:=rd>1.6 && rd<6 && cl<0.5;
   p:=ifx verge then 0.95f32 else ifx cl>0.5 then f32(E2_MEADOW_DENSITY) else ifx f>0.2 then (ifx rd<35 then 0.8f32 else 0.15f32) else 0.12f32;
@@ -306,7 +305,7 @@ e2_plant_cell :: (out:[]f32,kinds:[]u8,n0:int,i:int,j:int)->int {
  // now and then a boulder in the woods
  bh:=seed*0.71+0.3;
  if cg_hash(bh,21)<0.3 {x:=x0+cg_hash(bh,22)*cs;z:=z0-cg_hash(bh,23)*cs;
-  if e2_forest(x,z)>0.3 && e2_road_dist(x,z)>6 && e2_path(x,z)<0.05 && !rg_on_ground(x,z,0) && x>E2_WEST+4 && x<E2_EAST-4 && z>E2_FAR+4 && z<E2_BACK-4 {s:=0.5+cg_hash(bh,24)*0.7;
+  if e2_forest(x,z)>0.3 && e2_road_dist(x,z)>6 && e2_path(x,z)<0.05 && x>E2_WEST+4 && x<E2_EAST-4 && z>E2_FAR+4 && z<E2_BACK-4 {s:=0.5+cg_hash(bh,24)*0.7;
    n=e2_put(out,kinds,n,23+int(cg_hash(bh,25)*1.999),x,e2_height(x,z)-0.2*s,z,cg_hash(bh,26)*6.283,s,s,[3]f32.[0.58,0.60,0.48]);}}
  return n;
 }

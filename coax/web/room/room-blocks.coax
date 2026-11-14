@@ -243,7 +243,7 @@ im_test_blocks :: (im: [] Interest, s: int) -> int {
   #assert eg_test_ent(box[..], 0, 2).id == 2;
   c: [4] int;
   im_counts(v[0].eg[k].im[..], SeatId.{value = 0}, c[..]);
-  #assert c[0] == 9 && rm_st_relevant(v[..], k, SeatId.{value = 0}) == 9;   // itself, seats 1 and 2, Everglade II's two room-wide entities, the glade's two mounts (#13268) and the Archery Range's two, within 110 m (#13507)
+  #assert c[0] == 7 && rm_st_relevant(v[..], k, SeatId.{value = 0}) == 7;   // itself, seats 1 and 2, Everglade II's two room-wide entities, and the glade's two mounts (#13268)
 }
 
 #test "interest (#12845): the party health channel cannot disclose a distant player's position" #steps 4000000000 {

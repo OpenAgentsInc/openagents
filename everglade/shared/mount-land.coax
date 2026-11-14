@@ -86,15 +86,6 @@ e2ml_boxes :: (still: [] E2Still, items: [] f32, kinds: [] u8, first: [] int, pl
     if abs(px - x) > reach + hx || abs(pz - z) > reach + hz { continue; }
     n = e2ml_box(out, n, px - hx, 0, pz - hz, px + hx, h[2] * p.scale, pz + hz);
   }
-  // the Archery Range's butts, poles and posts (#13507), over the land's plane as the camp's are
-  if rg_on_ground(x, z, reach + 8) {
-    rb: [RG_BOXES * 6] f32; rn := ifx kept then still[0].range_n else e2_range_boxes(rb[..]);
-    for q: 0..<rn {
-      o := q * 6; b := ifx kept then still[0].range[o..<o + 6] else rb[o..<o + 6];
-      if b[0] > x + reach || b[3] < x - reach || b[2] > z + reach || b[5] < z - reach { continue; }
-      n = e2ml_box(out, n, b[0], b[1], b[2], b[3], b[4], b[5]);
-    }
-  }
   return n;
 }
 // A rider's walk keys and stick as its mount's steering, -100 to 100: a phone's stick steers as the keys do.
@@ -131,10 +122,7 @@ e2ml_dismount :: (r: [] E2Mounts, seat: int, free: bool, tick: int, still: [] E2
 // red dragon north-west of it, both behind where a new player stands, both clear of the glade's trees and stones (the
 // check below holds them clear). A page learns them from their rows.
 E2MlPlace :: struct { kind: int; x: f32; z: f32; face: f32; }
-// The Archery Range's horse and dragon wait behind its line (everglade/range/layout.coax, #13507).
-E2ML_PLACES :: [4] E2MlPlace.[E2MlPlace.{kind = MK_HORSE, x = 9.0, z = 9.0, face = 3.14159265}, E2MlPlace.{kind = MK_DRAGON, x = -9.0, z = 6.0, face = 3.14159265},
-  E2MlPlace.{kind = MK_HORSE, x = f32(RG_AT_X) + f32(RG_HORSE_X), z = f32(RG_AT_Z) + f32(RG_HORSE_Z), face = 3.14159265},
-  E2MlPlace.{kind = MK_DRAGON, x = f32(RG_AT_X) + f32(RG_DRAGON_X), z = f32(RG_AT_Z) + f32(RG_DRAGON_Z), face = 3.14159265}];
+E2ML_PLACES :: [2] E2MlPlace.[E2MlPlace.{kind = MK_HORSE, x = 9.0, z = 9.0, face = 3.14159265}, E2MlPlace.{kind = MK_DRAGON, x = -9.0, z = 6.0, face = 3.14159265}];
 e2ml_lay :: (r: [] E2Mounts) #effects(all) {
   r[0] = E2Mounts.{};
   for p: E2ML_PLACES { k := e2r_add(r, p.kind, p.x, p.z, p.face, 0); }
@@ -171,11 +159,6 @@ e2ml_lay :: (r: [] E2Mounts) #effects(all) {
   n = e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, sx, sz, 3, out[..]);
   held := false; for i: 0..<n { if !mount_is_post(out[..], i * 6) && out[i * 6] < sx && out[i * 6 + 3] > sx && out[i * 6 + 2] < sz && out[i * 6 + 5] > sz { held = true; } }
   #assert held;
-  // the Archery Range's 30 m butt is a box where it stands, kept or not (#13507)
-  bt := rg_piece_at(2); n = e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, bt[0], bt[1] + 1, 3, out[..]);
-  m = e2ml_boxes(none, g[0].items[..], g[0].kinds[..], g[0].first[..], true, bt[0], bt[1] + 1, 3, bare[..]);
-  held = false; for i: 0..<n { if !mount_is_post(out[..], i * 6) && out[i * 6] < bt[0] && out[i * 6 + 3] > bt[0] && out[i * 6 + 5] == bt[1] { held = true; } }
-  #assert held && m == n; for q: 0..<n * 6 { #assert out[q] == bare[q]; }
   // out past the land's cells: none, and no trap
   #assert e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, 5000, 5000, 8, out[..]) == 0;
   // a full buffer keeps what fits
@@ -184,7 +167,7 @@ e2ml_lay :: (r: [] E2Mounts) #effects(all) {
 #test "mount land: the mounts are laid clear of everything, a rider can step down beside each, and a horse stops at a tree" #steps 4000000000 {
   g: [1] E2MoveGround; e2mg_plant(g[..]);
   r: [1] E2Mounts; e2ml_lay(r[..]);
-  #assert r[0].n == 4 && r[0].kind[0] == MK_HORSE && r[0].kind[1] == MK_DRAGON && r[0].m[1].flies && !r[0].m[0].flies && r[0].kind[2] == MK_HORSE && r[0].kind[3] == MK_DRAGON && rg_on_ground(r[0].m[2].x, r[0].m[2].z, 0) && rg_on_ground(r[0].m[3].x, r[0].m[3].z, 0);
+  #assert r[0].n == 2 && r[0].kind[0] == MK_HORSE && r[0].kind[1] == MK_DRAGON && r[0].m[1].flies && !r[0].m[0].flies;
   out: [E2ML_BOXES * 6] f32;
   for k: 0..<r[0].n {
     m := r[0].m[k]; t := mk_tune(r[0].kind[k]);

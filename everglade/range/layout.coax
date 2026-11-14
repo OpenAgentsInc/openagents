@@ -1,18 +1,16 @@
 // The Archery Range (everglade/docs/archery-range-spec.md), where things are: one set of numbers
-// for the rules (score.coax), the room and the walker (the butts, poles and posts as the land's
-// standing things: everglade/shared/move.coax), and what is built (place.coax). Metres, +y up, in the
-// range's own frame: you shoot toward -z, the shooting line is z = 0, the butts stand downrange at
-// z = -distance, and you arrive behind the line, toward +z, facing them. RG_AT_* is where that
-// frame's origin lies in Everglade's land (everglade/world/forest.coax): on the city's clearing east of
-// the path, about 90 m out of the glade (#13507).
+// for the rules (score.coax), what is built (place.coax) and the realm that stands them on its
+// meadow (apps/openagents-web/archery-range.coax). Metres, +y up, in the range's own frame: you
+// shoot toward -z, the shooting line is z = 0, the butts stand downrange at z = -distance, and you
+// arrive behind the line, toward +z, facing them. RG_AT_* is where that frame's origin lies on the
+// meadow.
 //   coax/bin/coax test --library everglade/range/layout.coax
 #module "everglade.range.layout";
 
-// The middle of the shooting line in Everglade's land (world metres): on the city's clearing
-// (forest.coax E2_CITY_*), whose floor is level from the line to past the far butt, so every lane is
-// open grass on one level and the woods stand round it (#13507, everglade/shared/move.coax checks it).
-RG_AT_X :: 34.0;
-RG_AT_Z :: -80.0;
+// The middle of the shooting line, on the meadow (world metres): the far butt and the place the
+// dragon waits both stay inside the meadow's 82 m edge.
+RG_AT_X :: 0.0;
+RG_AT_Z :: 35.0;
 
 // The lanes, left to right as you face downrange: each a butt at its own distance from the line.
 RG_LANES :: 5;
@@ -51,10 +49,12 @@ RG_MARKS :: 22;
 RG_START_X :: 0.0; RG_START_Z :: 3.0;        // where you arrive, facing downrange
 RG_HORSE_X :: -6.0; RG_HORSE_Z :: 8.0;       // the horse waits behind the line: a gallop along x keeps the butts on your side
 RG_DRAGON_X :: 10.0; RG_DRAGON_Z :: 15.0;    // the dragon waits behind it
-// The range's ground: open grass round the lanes, the line and where the mounts wait, x0, z0, x1, z1
-// in the range's frame. Everglade plants nothing in it and no monster comes into it
-// (everglade/shared/move.coax e2_range_ground).
+// The range's clearing: the meadow scatters no rocks inside it, so the lanes, the line and where the
+// mounts wait are open grass. x0, z0, x1, z1. A few rocks edge it: a quarter of the meadow's, in a
+// band RG_ROCK_BAND wide round it. Past the band the range's meadow has none.
 RG_CLEAR :: [4] f32.[-34.0, -78.0, 34.0, 24.0];
+RG_ROCK_BAND :: 9.0;
+RG_ROCK_KEEP :: 0.25;
 
 // A distance post at each lane's left, level with its butt.
 RG_POST_HEIGHT :: 1.6;
@@ -70,58 +70,10 @@ rg_face :: (i: int) -> RgFace {
   return RgFace.{x = RG_SKY_X[k], y = RG_SKY_Y[k], z = RG_SKY_Z[k], nx = 0, ny = 0.5646425, nz = 0.8253356, radius = RG_SKY_RADIUS};
 }
 
-
-// ---- the pieces and their colliders (place.coax builds their meshes): plain numbers, so the room
-// and the walker load them without the meshes.
-RG_BUTT :: 0; RG_SKYFACE :: 1; RG_POST :: 2; RG_CHALK :: 3;
-RG_PIECES :: 34;              // five butts, two sky faces, five posts, 22 dashes of chalk
-RG_BOXES :: 12;               // colliders: a butt, a pole or a post each
-// Piece i: its kind, which of its kind (a lane, a sky face, a dash), and where its foot is in the
-// range's frame.
-RgPiece :: struct { kind: int; k: int; x: f32; z: f32; }
-rg_piece :: (i: int) -> RgPiece {
-  if i < RG_LANES { return RgPiece.{kind = RG_BUTT, k = i, x = RG_LANE_X[i], z = RG_LANE_Z[i]}; }
-  if i < RG_TARGETS { k := i - RG_LANES; return RgPiece.{kind = RG_SKYFACE, k = k, x = RG_SKY_X[k], z = RG_SKY_Z[k]}; }
-  if i < RG_TARGETS + RG_LANES { k := i - RG_TARGETS; return RgPiece.{kind = RG_POST, k = k, x = RG_LANE_X[k] - f32(RG_POST_OFFSET), z = RG_LANE_Z[k]}; }
-  k := i - RG_TARGETS - RG_LANES;
-  return RgPiece.{kind = RG_CHALK, k = k, x = -f32(RG_LINE_HALF) + f32(RG_MARK_STEP) * (f32(k) + 0.5), z = RG_LINE_Z};
-}
-// Piece i's foot in the land (world metres): where the caller reads the ground's height for it.
-rg_piece_at :: (i: int) -> [2] f32 { p := rg_piece(i); return [2] f32.[f32(RG_AT_X) + p.x, f32(RG_AT_Z) + p.z]; }
-// The straw's half-width (and half-height) round a face of `radius`.
-rg_straw :: (radius: f32) -> f32 { return radius + f32(RG_BUTT_MARGIN); }
-// The range's colliders, appended to `out` from box n (six numbers each: x0, y0, z0, x1, y1, z1,
-// world x and z, heights over `base`): ground[i] the height of the ground under piece i
-// (rg_piece_at). The count after. A box round everything you can see and walk into or shoot: the
-// straw and its legs and prop, a pole, a post. The chalk has none: you walk over it.
-rg_boxes :: (ground: [] f32, base: f32, out: [] f32, n0: int) -> int {
-  n := n0;
-  for i: 0..<RG_TARGETS + RG_LANES {
-    if (n + 1) * 6 > out.count { break; }
-    p := rg_piece(i); at := rg_piece_at(i); g := (ifx i < ground.count then ground[i] else 0.0f32) - base; o := n * 6;
-    if p.kind == RG_BUTT { h := rg_straw(RG_LANE_RADIUS[p.k]);
-      out[o] = at[0] - h; out[o + 1] = g - 0.4; out[o + 2] = at[1] - f32(RG_BUTT_DEEP) - f32(RG_PROP_BACK); out[o + 3] = at[0] + h; out[o + 4] = g + f32(RG_FACE_Y) + h + 0.12; out[o + 5] = at[1]; }
-    else if p.kind == RG_SKYFACE { r := f32(RG_SKY_POLE);
-      out[o] = at[0] - r; out[o + 1] = g - 0.4; out[o + 2] = at[1] - 0.2 - r; out[o + 3] = at[0] + r; out[o + 4] = g + RG_SKY_Y[p.k]; out[o + 5] = at[1] - 0.2 + r; }
-    else { h := f32(RG_POST_HALF);
-      out[o] = at[0] - h; out[o + 1] = g - 0.4; out[o + 2] = at[1] - h; out[o + 3] = at[0] + h; out[o + 4] = g + f32(RG_POST_HEIGHT); out[o + 5] = at[1] + h; }
-    n += 1;
-  }
-  return n;
-}
-// Whether (x, z) (world metres) is on the range's ground (RG_CLEAR), `more` metres round it.
-rg_on_ground :: (x: f32, z: f32, more: f32) -> bool {
-  rx := x - f32(RG_AT_X); rz := z - f32(RG_AT_Z);
-  return rx >= RG_CLEAR[0] - more && rx <= RG_CLEAR[2] + more && rz >= RG_CLEAR[1] - more && rz <= RG_CLEAR[3] + more;
-}
-// Where you arrive: behind the line, facing downrange (world metres, and the facing: pi is -z).
-RG_ARRIVE_FACE :: 3.14159265;
-rg_arrive :: () -> [2] f32 { return [2] f32.[f32(RG_AT_X) + f32(RG_START_X), f32(RG_AT_Z) + f32(RG_START_Z)]; }
-
-#test "the range's layout holds: every butt is downrange, the lanes don't overlap, you and the mounts arrive behind the line" {
+#test "the range's layout holds: every butt is downrange on the meadow, the lanes don't overlap, you and the mounts arrive behind the line" {
   #assert RG_LANES + RG_SKY == RG_TARGETS;
   for i: 0..<RG_LANES {
-    #assert RG_LANE_Z[i] < RG_LINE_Z;
+    #assert RG_LANE_Z[i] < RG_LINE_Z && RG_AT_Z + RG_LANE_Z[i] > -80 && RG_AT_X + RG_LANE_X[i] > -80 && RG_AT_X + RG_LANE_X[i] < 80;
     if i > 0 { #assert RG_LANE_X[i] - RG_LANE_X[i - 1] > RG_LANE_RADIUS[i] + RG_LANE_RADIUS[i - 1] + 2 && RG_LANE_Z[i] < RG_LANE_Z[i - 1]; }
     #assert RG_FACE_Y - RG_LANE_RADIUS[i] - RG_BUTT_MARGIN > 0.1;
     #assert RG_LANE_X[i] - RG_POST_OFFSET < RG_LANE_X[i] - RG_LANE_RADIUS[i] - RG_BUTT_MARGIN - 0.5;   // the post stands clear of the straw
@@ -131,27 +83,7 @@ rg_arrive :: () -> [2] f32 { return [2] f32.[f32(RG_AT_X) + f32(RG_START_X), f32
   for i: 0..<RG_LANES { #assert RG_LANE_X[i] - 6 > RG_CLEAR[0] && RG_LANE_X[i] + 6 < RG_CLEAR[2] && RG_LANE_Z[i] - 6 > RG_CLEAR[1]; }
   for k: 0..<RG_SKY { #assert RG_SKY_X[k] - 6 > RG_CLEAR[0] && RG_SKY_X[k] + 6 < RG_CLEAR[2] && RG_SKY_Z[k] > RG_CLEAR[1]; }
   #assert -f32(RG_LINE_HALF) - 6 > RG_CLEAR[0] && f32(RG_LINE_HALF) + 6 < RG_CLEAR[2] && RG_DRAGON_Z + 6 < RG_CLEAR[3];
-  #assert RG_START_Z > RG_LINE_Z && RG_HORSE_Z > RG_START_Z + 2 && RG_DRAGON_Z > RG_HORSE_Z + 4;
+  #assert RG_START_Z > RG_LINE_Z && RG_HORSE_Z > RG_START_Z + 2 && RG_DRAGON_Z > RG_HORSE_Z + 4 && RG_AT_Z + RG_DRAGON_Z < 76;
   #assert f32(RG_MARKS) * f32(RG_MARK_STEP) == 2 * RG_LINE_HALF && RG_MARK < RG_MARK_STEP;
-  for k: 0..<RG_SKY { #assert RG_SKY_Y[k] > 8; }
-  a := rg_arrive(); e := f32(RG_AT_Z) + RG_CLEAR[3] + 1; #assert rg_on_ground(a[0], a[1], 0) && !rg_on_ground(a[0], e, 0) && rg_on_ground(a[0], e, 2);
-}
-#test "the range has every piece once: five butts, two sky faces, five posts and the chalk line's dashes" {
-  kinds: [4] int; for i: 0..<RG_PIECES { kinds[rg_piece(i).kind] += 1; }
-  #assert kinds[RG_BUTT] == RG_LANES && kinds[RG_SKYFACE] == RG_SKY && kinds[RG_POST] == RG_LANES && kinds[RG_CHALK] == RG_MARKS;
-  a := rg_piece(RG_TARGETS + RG_LANES); b := rg_piece(RG_PIECES - 1);
-  #assert a.x == -RG_LINE_HALF + 1 && b.x == RG_LINE_HALF - 1 && a.z == RG_LINE_Z;
-  at := rg_piece_at(2); #assert at[0] == RG_AT_X + RG_LANE_X[2] && at[1] == RG_AT_Z + RG_LANE_Z[2];
-  for i: 0..<RG_PIECES { p := rg_piece_at(i); #assert rg_on_ground(p[0], p[1], 0); }
-}
-#test "every butt, pole and post has a box round what you see, and the chalk none" {
-  g: [RG_PIECES] f32; for i: 0..<RG_PIECES { g[i] = 1; }
-  out: [RG_BOXES * 6] f32; n := rg_boxes(g[..], 1, out[..], 0);
-  #assert n == RG_BOXES;
-  // the 30 m butt: as wide as its straw, from its face back to its prop's foot, up past the straw's top
-  o := 2 * 6; at := rg_piece_at(2); h := rg_straw(RG_LANE_RADIUS[2]);
-  #assert out[o] == at[0] - h && out[o + 3] == at[0] + h && out[o + 5] == at[1] && out[o + 2] < at[1] - RG_BUTT_DEEP && out[o + 4] > RG_FACE_Y + h && out[o + 1] < 0;
-  // a pole is thin and as tall as its face
-  p := RG_LANES * 6; #assert out[p + 3] - out[p] < 0.4 && out[p + 4] == RG_SKY_Y[0];
-  small: [12] f32; #assert rg_boxes(g[..], 1, small[..], 0) == 2;
+  for k: 0..<RG_SKY { #assert RG_SKY_Y[k] > 8 && RG_AT_Z + RG_SKY_Z[k] > -80; }
 }
