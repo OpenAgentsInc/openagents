@@ -145,3 +145,6 @@ flow in 66.301 seconds. A separate real WebKit test checks geometry after each
 pinch-in, pinch-out and double-tap: all passed in 7.662 seconds. Keyboard code
 entry and login buttons remained reachable. Resource preparation and JS syntax
 checks passed. No native app source was rebuilt for these observations.
+Both public update endpoints served the exact tested generation-5 envelope;
+all 12 artifact sizes and hashes matched. Evidence is retained under
+`~/.openagents/releases/openagents-ios-1069-ota5/`.

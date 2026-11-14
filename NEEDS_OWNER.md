@@ -22,6 +22,15 @@ Generation 5 fixes the screen frame: pinch and double-tap should not zoom
 the page. The chat content can still scroll, and the keyboard should leave
 the active field and login buttons reachable.
 
+Owner phone feedback: real email-code login succeeded. A read-only production
+check found zero linked Nostr keys and zero conversations for the email
+account; existing key-owned conversations were not reassigned. Linking the
+intended web identity remains necessary before those chats can appear here.
+The owner also reported no email-code AutoFill suggestion. The input already
+sets `autocomplete=one-time-code`; released 1069 entitlements and Apple's
+cached AASA both include the correct webcredentials association. Phone/Mail
+AutoFill behavior still needs reproduction; no claim of a fix for it yet.
+
 ## Existing Bitcoin balance in Coax Native (2026-11-13)
 
 Install OpenAgents 1.0.0 **1069** from Owner TestFlight. Apple reports VALID /
