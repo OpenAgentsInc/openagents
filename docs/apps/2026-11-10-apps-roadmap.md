@@ -3,6 +3,15 @@
 Written 2026-11-10. Status: Step 0 is done, Step 1 opens (see its status), Steps 2 and 3 are in progress.
 Tracked in GitHub #13153.
 
+**Owner direction, 2026-11-13:** the next OpenAgents desktop shell is a
+[Coax Native](../../coax/native.md) application on Mac and Linux, followed by
+Windows. It is the primary environment setup/control interface, with a
+separately runnable resident Coax service and optional CLI-only operation.
+The [environment application profile](../protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes)
+owns that replacement plan and its lifecycle, migration and cross-computer
+gates. The dated inventory and Linux qualification results below remain
+evidence to reuse; they do not establish that the replacement is implemented.
+
 The order is the owner's (2026-11-10): work on Linux first because the Mac is
 busy, get OpenAgents for desktop opening on `coderos-4080`, then make every
 app use the same agent code.

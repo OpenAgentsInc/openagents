@@ -6,13 +6,20 @@ pinned to `94abb1f338`. This is one application profile of the
 [OpenAgents Protocol](openagents-protocol-spec.md), implemented in Coax and
 presented through Coax Native. It does not replace that protocol or the NIPs.
 
+Owner direction, 2026-11-13: make the Coax Native OpenAgents desktop app the
+normal environment setup/control interface on Mac and Linux, then Windows.
+The resident service remains independently runnable through the CLI. §3.1–3.5
+define that replacement; this revision changes the plan, not the shipped apps.
+
 ## 1. The result and the delivery order
 
-The iPhone app shows **Mac**, **CoderOS** and **Account chats**. Opening either
-computer shows its Claude Code conversations, including conversations started
-outside OpenAgents. A conversation says where it lives, whether its history is
-current and whether the phone can control it. The phone can start a supervised
-Claude conversation in an approved workspace, send another message, read tool
+The desktop and iPhone apps show **Mac**, **CoderOS** and **Account chats**.
+Each desktop identifies its verified local environment as **This computer**.
+Opening either computer shows its Claude Code conversations, including those
+started outside OpenAgents. A conversation says where it lives, whether its
+history is current and whether the current client can control it. Any admitted
+client can start a supervised Claude conversation in an approved workspace,
+send another message, read tool
 activity, answer an admitted question/approval and stop its turn. Claude uses
 the login on the selected computer. Nothing silently switches to a hosted
 model or another machine when that computer is unavailable.
@@ -25,8 +32,8 @@ different facts.
 
 | Milestone | Required result | Deliberately deferred |
 | --- | --- | --- |
-| **1A: see both computers** | Enroll this Mac and `coderos-4080`; list and page their authorized Claude histories in the app, with source and freshness | Fleet allocation, provider switching, terminal takeover |
-| **1B: use Claude** | New managed conversation, follow output/tools, send next turn, explicit Stop, approvals/questions, reconnect and resume | General remote shell UI, automatic migration, arbitrary control of another terminal |
+| **1A: see both computers** | Enroll this Mac and `coderos-4080`; configure/attach through OpenAgents desktop on both; list and page their authorized Claude histories on desktop and phone, with source and freshness | Fleet allocation, provider switching, terminal takeover, Windows qualification |
+| **1B: use Claude** | New managed conversation, follow output/tools, send next turn, explicit Stop, approvals/questions, reconnect and resume from either desktop or phone; turns survive closing the desktop client | General remote shell UI, automatic migration, arbitrary control of another terminal |
 | **2A: edit and see** | Bind that conversation to one existing realm; edit through the shared tools; show a native revision-labelled preview; observe the same change in the web editor | New editor protocol, general multiplayer/game streaming |
 | **2B: richer viewport** | Native interactive Metaverse Engine viewport using the same realm binding and revisions | A prerequisite for 1A/1B or the first useful visualization |
 
@@ -70,9 +77,13 @@ scope; it is not called an instance.
 ```mermaid
 flowchart TD
     P[Coax Native iPhone app] -->|Account-authenticated typed HTTP| G[OpenAgents connection gateway]
-    W[Web and desktop clients] --> G
+    W[Web client] --> G
+    D1[Coax Native Mac desktop] --> G
+    D2[Coax Native Linux desktop] --> G
     G -->|Scoped signed HOST calls over encrypted Nostr carriage| M[Resident Coax service on this Mac]
     G -->|Same profile| C[Resident Coax service on CoderOS]
+    D1 -->|Authenticated local service adapter| M
+    D2 -->|Authenticated local service adapter| C
     M --> H1[Local Claude history reader]
     C --> H2[Local Claude history reader]
     M --> A1[Coax Claude adapter → Claude Code child]
@@ -83,6 +94,8 @@ flowchart TD
     R --> E[Existing web editor / realm followers]
     R --> V[Authorized preview renderer]
     V -->|Revision-bound image artifact| P
+    V -->|Same authorized artifact| D1
+    V -->|Same authorized artifact| D2
     P -. later native HOST / REACH route .-> M
     P -. later native HOST / REACH route .-> C
 ```
@@ -91,8 +104,8 @@ The resident service owns native processes, canonical workspace roots, native
 session bindings, command receipts, pending interactions and source cursors.
 It runs as the operator's existing OS user. Credentials stay in the selected
 computer's provider store. Launchd on macOS and a user systemd service on
-CoderOS keep the service alive independently of the phone. No root service,
-OS reinstallation or new cloud VM is required for milestone 1.
+CoderOS keep the service alive independently of desktop windows and the phone.
+No root service, OS reinstallation or new cloud VM is required for milestone 1.
 
 The gateway owns account-to-connection metadata and the explicitly delegated
 broker credentials described in §6. It routes to a specific enrolled host; it
@@ -106,6 +119,152 @@ bounded browser/realm-job service: jobs use an empty directory/read ceiling,
 and replies are smaller than the broad HOST specification. It does **not**
 already enumerate all Claude chats or provide general workspace sessions.
 Those capabilities must be implemented and tested, not inferred from its name.
+
+### 3.1 One desktop product, two independent lifetimes
+
+Ship **OpenAgents**, not a separate environment-manager application. A normal
+desktop installation includes the Coax Native client and a versioned resident
+service. The client presents local and remote conversations, approvals,
+environment settings and realm previews. The service owns execution and
+disclosure. The app's first-run flow configures that service; the user does not
+need a terminal to participate.
+
+The same resident service can run without any GUI, using the existing/extended
+`coder host` entry point and the platform's user-service manager. CLI and GUI
+must not create separate host identities, session stores or command ledgers.
+There is one admitted local service per configured OS-user host identity,
+regardless of the number of windows or client processes. A desktop can also
+operate as a remote-only client without enabling its own environment.
+
+The UI calls the local service through an authenticated per-user socket, or a
+qualified equivalent adapter with identical admission semantics. Local peer
+credentials/protected endpoint credentials identify the caller; “localhost,”
+a PID supplied by the client or a window handle does not authorize it. Reuse
+the HOST local-operator boundary; local calls still pass method/workspace,
+generation, revision and request-ownership checks. No cloud round trip is
+required to use an already-authorized local environment. A separately admitted
+local-operator mode can work without an account login; remote access and
+account-saved chats retain their own login/grant requirements.
+
+The local adapter carries the negotiated typed HOST/SESS methods described in
+§5, using the same registered codecs and command identities. Register any new
+IPC framing or stored credential shape before a consumer uses it; a desktop
+socket is not an exception to the proto/registry rules or a second JSON API.
+
+| User action | Meaning |
+| --- | --- |
+| Close a window / quit the client | Detach that view; retain the resident service, agent turns and durable state |
+| Stop a turn | Send the explicit scoped interrupt and observe its result |
+| Stop sharing this computer | Revoke/disable the relevant remote access; separately account for work already admitted |
+| Stop the environment service | Explicit drain/shutdown action; report busy/unknown work and require its disposition before claiming stopped |
+| Sign out of an account | End that client's account access and applicable delegated connections; do not erase host identity or silently log Claude out |
+| CLI-only start | Run the same service/catalog without a window; a later GUI attaches rather than spawning another owner |
+
+The current desktop launch path drives local engines from the GUI process.
+Moving that ownership into the resident service is real migration work. Do not
+claim a still-running GUI child has become a durable service session by
+relabeling it. Drain it, observe it as foreign history, or perform an explicitly
+qualified native continuation after exclusivity is established.
+
+### 3.2 The desktop experience
+
+The app opens a shared environment/conversation view, with **This computer**,
+the other enrolled computers and account chats. “This computer” is derived
+from a verified local-service identity matching the catalog, not its label.
+The active conversation visibly names the executing computer. The same
+conversation can be opened on another computer or phone without moving its
+execution or starting a second Claude process.
+
+First run offers **Use this computer** and **Connect another computer**.
+Using this computer discovers the configured Claude installation, explains
+its local sign-in state, and lets the operator choose the history roots and
+workspaces to expose. Starting a local service is distinct from consenting to
+remote sharing. Pairing and account association follow §6; merely installing,
+signing in or opening a window does not publish every transcript or grant
+remote operation rights. Background/autostart behavior is visible and optional.
+
+From either desktop the user can chat locally or remotely, inspect pending
+approvals and stop an admitted turn on the selected computer. Offline/freshness,
+source gaps and observe-only Terminal sessions use the same semantics as the
+phone. One client cannot answer an approval already resolved by another. Opening
+the app on CoderOS means an ordinary desktop window; it does not replace the
+Metaverse OS session, compositor or boot flow.
+
+### 3.3 Coax Native adoption and platform order
+
+Shared Coax application code owns the environment selector, conversation
+targets, composer/transcript, approvals, settings and realm-binding state.
+Reuse `components/` and the existing agent/protocol libraries. The platform
+hosts own windows, input/IME, accessibility, clipboard/file dialogs, secure
+storage and service lifecycle effects. No React/Electron dependency or
+full-screen WebView is introduced to make the platforms look alike.
+
+| Target | Starting point | Work before replacement qualification |
+| --- | --- | --- |
+| macOS | `apps/openagents-desktop/`, the shared AppKit/Metal host, account/device-key adapters; the iOS native semantic program is a reusable execution reference | Project the shared Coax Native app onto qualified Mac presentation/services, package the resident service, and verify real text/IME/accessibility and lifecycle |
+| Linux, first on CoderOS | The same desktop Coax unit already has a Wayland/Vulkan host and retained chat checks | Adopt the same application/service boundary, finish and qualify input/IME/accessibility, packaging and service startup on the actual machine |
+| Windows, following Mac/Linux | Same protobuf contracts, Coax state/actions and components | Qualify the Windows window/text/accessibility/render, protected local IPC/storage, installer and per-user service adapters before advertising support |
+
+Mac and Linux are the first two desktop targets; neither is a permanent fork
+of the application. They need the same accepted operations and session behavior,
+not identical native widgets or an assumed identical executable runtime. AppKit
+with JavaScriptCore and the existing Linux C11/GPU host are starting points to
+qualify, not proof of the same portable executor. Select a Windows backend
+through its own prototype/evidence; do not commit a new toolkit merely by
+putting it in this plan. Existing iOS/web work and other app targets continue.
+
+Reuse qualified GPU components for custom surfaces and the Metaverse Engine for
+world rendering; use host-native text/control services where appropriate. A
+native semantic projection and the GPU component backend are different
+presentation paths and must earn their own evidence. Replacing the shell
+does not require linking a realm, model, wallet or dictation engine at startup.
+
+### 3.4 Replacement, storage and updates
+
+Replace the current desktop application incrementally, preserving its useful
+Coax components, adapters, agent integrations and regression evidence. Keep
+the existing Mac bundle `com.openagents.desktop`, app identity/name, signing
+and notification identity, icons, credentials, native conversation references
+and recoverable settings/history. Preserve Linux installation/desktop identity
+where present. Do not copy the iPhone bundle identifier onto desktop or restore
+the removed Rust app wholesale.
+
+Persistent data uses the shared `~/.openagents/` helpers. The current Mac client
+still reads some settings from `~/Library/Application Support/OpenAgents/`;
+migrate that through the existing settings codec with a retained source/backup,
+an explicit version and idempotent recovery. Do not replace saved sessions with
+an empty catalog. Keep the existing account/CLI/host-key namespaces and the
+single shared model cache; do not create app-private model downloads. A new
+window or update never rotates a HOST key or takes over an active native writer.
+
+Client presentation and execution-service versions are independent. The app
+bundles a compatible service for convenience, negotiates the running service's
+capabilities, and does not restart it merely because a newer client opens.
+Compatible signed Coax Native Updates may replace application UI/logic within
+an installed profile. OS signing, native-host/service replacement and installer
+ownership remain separate distribution paths. Do not assume the iOS update
+executor exists on Linux or Windows, or that a UI payload may widen daemon
+permissions. Update a busy service only through a qualified drain/restart and
+reconciliation protocol, retaining the old executable/resources while borrowed.
+
+### 3.5 Delivery gate
+
+Desktop adoption and phone connectivity are one protocol effort. Build the
+smallest Mac/Linux desktop window that configures/attaches to the service and
+opens a conversation; add the same remote catalog and controls on both.
+Headless/CLI slices may land first to get the phone connected quickly, but
+the desktop app is the intended normal setup/control experience. Do not delay
+milestone 1 for a full desktop redesign, Windows, optional voice/wallet work or
+an interactive 3D viewport.
+
+Before making the replacement the default, prove: one local service despite
+two windows/CLI startup; Mac → CoderOS and CoderOS → Mac chat/control; phone
+continuity; one winning approval; local use during a gateway outage; and a
+turn that survives closing, quitting and reopening the desktop client. Verify
+identity/settings migration twice without duplicate or lost sessions, and
+update/rollback compatibility without resurrecting a second writer. Keep the
+previous shell available as a recovery option until these consumer gates pass;
+recovery does not authorize concurrent controllers for the same native session.
 
 ## 4. Identity and ownership
 
@@ -774,11 +933,15 @@ binary. Updates deliver compatible application code, not missing SDK services.
 | Step | Work and owner boundary | Gate |
 | --- | --- | --- |
 | **P0** | Add the consumed proto profiles, codec/fixture/registry entries and capability descriptions in Protocol + Coder; keep published baselines byte-exact | `scripts/proto.sh check`, generated descriptor/Coax roundtrips, exact JSON fixtures, wire-check; no allowlist increase |
-| **P1** | Extend the resident Coax host with scoped broker enrollment and source/workspace catalog; run it on Mac and CoderOS | Explicit local host approval; cross-account/host/root denial, revocation and offline tests |
-| **P2 / 1A** | Gateway routes plus Coax Native environment/session list/history, reusing the shared reader/components | A known existing Claude chat from each computer appears with correct text/source, page/gap/freshness behavior; account chats remain intact |
-| **P3 / 1B** | Adopted execution binding, one managed Claude session and request owner on each computer; durable app sends and catch-up | Phone → host → real Claude → tool/request → phone; next turn, stop and relaunch verified on both machines |
-| **P4 / 2A** | Bind an existing realm; typed tool/result correlation and existing followers; native preview service/build | One phone instruction changes an allowed thing; phone preview and web editor show the committed revision; one undo reverses the batch |
+| **P1** | Extend the resident Coax host with scoped local/broker enrollment and source/workspace catalog; run independently on Mac and CoderOS, packaged with desktop and also runnable headlessly | Explicit local approval; one execution owner; cross-account/host/root denial, revocation, local offline use and lifecycle tests |
+| **P2 / 1A** | Minimal Coax Native desktop replacement on Mac/Linux, gateway routes and desktop/phone environment/session list/history, reusing the shared reader/components | Both desktops configure/attach to their service; a known Claude chat from each computer appears with correct source, page/gap/freshness behavior; account chats remain intact |
+| **P3 / 1B** | Adopted execution binding, one managed Claude session and request owner on each computer; durable app sends and catch-up | Mac → CoderOS, CoderOS → Mac and phone → either host → real Claude; tools, next turn, stop, approval races and continuity after quitting/reopening the GUI |
+| **P4 / 2A** | Bind an existing realm; typed tool/result correlation and existing followers; desktop/phone preview adapters and service/build | An admitted instruction changes an allowed thing; desktop/phone preview and web editor show the committed revision; one undo reverses the batch |
 | **P5 / 2B** | Native interactive viewport, direct route and live-view improvements | Same identity/authority/command tests over each newly advertised carrier; no protocol fork |
+| **P6: Windows desktop** | Qualify the Windows host, protected local adapter, installer and service integration against the same shared app/profile | Same desktop conformance and migration gates, real Windows input/accessibility and installed service lifecycle; no Windows-specific agent protocol |
+
+P6 follows the first Mac/Linux desktop qualification and can proceed alongside
+realm work; Windows is not a gate for phone connectivity or initial desktop use.
 
 No new scripts in another language to substitute for shared tools. Product
 state machines/authority/codecs are Coax; platform adapters do platform effects.
@@ -812,6 +975,15 @@ Minimum conformance scenarios:
 9. No Claude credential or seed/token appears in phone/OTA state, transcript,
    metadata or logs. Broker trust is accurately described. World publishing,
    reviewed code, native services and money retain their independent gates.
+10. Two desktop windows and a CLI attach to one local service. Closing/quitting
+    the GUI leaves the turn and pending approval intact; reopening another
+    client does not replay the send. An incompatible client/service refuses
+    attachment without killing the active owner; update/rollback obeys drain
+    and reconciliation requirements.
+11. Both desktops control the other computer under explicit grants. Local
+    admitted chat works during a gateway outage. Run the settings/identity
+    migration twice, retaining source/backup and the same host/session keys;
+    remote sharing remains opt-in and foreign live sessions stay observe-only.
 
 Record real Mac/CoderOS/provider versions, negotiated profiles, native runtime,
 exact fixture transcripts and the limits of each passing result. Read-only
@@ -826,6 +998,7 @@ acceptance belongs in `NEEDS_OWNER.md` when implementation is ready.
 | Protocol baseline/versioning | [Root protocol](openagents-protocol-spec.md) §§18, 22–24, 31–35; [proto guide](../../proto/README.md); [wire registry](../../proto/registry.json) |
 | HOST/REACH/SESS/ENV | [NIP-HOST](../../nostr/nips/openagents/NIP-HOST.md), [NIP-REACH](../../nostr/nips/openagents/NIP-REACH.md), [NIP-SESS](../../nostr/nips/openagents/NIP-SESS.md), [NIP-ENV](../../nostr/nips/openagents/NIP-ENV.md); current Coax [host service](../../coder/tui/host.coax), [carriage](../../coax/lib/nostr/host/browser.coax), [admission](../../coax/lib/nostr/host/admit.coax) |
 | Native account boundary | [Starter capabilities](../../coax/native/README.md), [AppAuth](../../apps/shared/host/apple/AppAuth.swift), [DeviceKey](../../apps/shared/host/apple/DeviceKey.swift), [native host](../../apps/shared/native/NativeHost.swift) |
+| Desktop replacement | [Desktop entry point](../../apps/openagents-desktop/README.md), [existing shell reference](../desktop/coax-desktop.md), [Coax Native](../../coax/native.md), [shared hosts](../../apps/shared/host/), [settings codec](../../apps/openagents-desktop/zeron/settings.coax) |
 | Native history and process semantics | [Reader contract](coder-session-reader-v1.md), [reader](../../coax/lib/agent/observe/claude-history.coax), [Claude parity](../../coax/lib/agent/claude/PARITY.md), [options](../../coax/lib/agent/claude/options.coax), [engine](../../coax/lib/agent/engine/claude.coax), [local inventory](local-inventory-v1.md) |
 | Account chat/hosted compatibility | [Account-chat fixture](../../proto/coder/account-chat-v1.json), [history fixture](../../proto/coder/chat-history-v1.json), [managed runner schema](../../proto/openagents/agent/managed/v1alpha1/session.proto) |
 | Existing world-edit chat | [Turn context](world-turn-v1.md), [edit/events](world-edit-v1.md), [result/effect/approval](realm-result-v1.md), [command table](../../apps/openagents-cli/commands.coax), [CLI tools](../../apps/openagents-cli/realm-world.coax), [web tool projection](../../apps/openagents-web/chat/chat-tools.coax) |
@@ -834,5 +1007,6 @@ acceptance belongs in `NEEDS_OWNER.md` when implementation is ready.
 
 This profile leaves the existing environment, host, account, session and realm
 contracts in their owning contexts. The first buildable result is both
-computers' Claude chats in the phone; the same session and authoring references
-then carry editing and visualization without replacing the underlying system.
+computers' Claude chats in the desktop and phone apps, with one execution owner
+per session; the same session and authoring references then carry editing and
+visualization without replacing the underlying system.

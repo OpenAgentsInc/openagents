@@ -449,6 +449,15 @@ The new session receives defaults and only admitted persisted state. Raw
 memory, views, pointers, OS handles and callbacks never cross by byte copying.
 Development field carry is not a production data migration.
 
+For the planned [OpenAgents desktop/environment consumer](../docs/protocol/environments-claude-and-world-editing.md#34-replacement-storage-and-updates),
+the client and resident execution service have separate lifetimes and version
+negotiation. Activating UI code detaches/reattaches views; it does not cancel
+an admitted Claude turn or transfer process ownership to the new UI. A UI
+payload cannot widen the service's permission ceiling. Native service updates
+use their qualified platform package path, with explicit busy-work disposition,
+drain/restart and reconciliation, retaining old binaries/resources while in
+use. Client launch or a newer UI alone never forces a service restart.
+
 An in-flight payment, biometric/passkey prompt, file transaction, voice turn
 or room handoff defers activation. Streaming work can finish, or be cancelled
 with its outcome retained; it is never silently reissued. Logout and account

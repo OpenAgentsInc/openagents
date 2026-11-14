@@ -1,4 +1,16 @@
-# OpenAgents for Mac, in Coax (spec, draft)
+# OpenAgents desktop: existing shell reference
+
+**Direction updated 2026-11-13:** replace this shell with OpenAgents on
+[Coax Native](../../coax/native.md), on Mac and Linux first, then Windows.
+The app configures a local environment and controls local/remote conversations;
+an independent resident service owns execution and is also runnable through
+the CLI. The [environment application profile, §3.1–3.5](../protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes)
+is the canonical replacement plan and migration/acceptance contract.
+
+The implementation below is useful existing work to reuse, not a claim that
+the replacement or its background-service lifetime has shipped. Preserve its
+components, native adapters, identities, settings and regression evidence.
+The dated sections describe the earlier shell and retain their original scope.
 
 Written 2026-10-28; updated 2026-10-29. Status: `apps/openagents-desktop/`
 builds and opens on Zeron's new chat screen, which talks to your own Claude

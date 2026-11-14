@@ -21,7 +21,7 @@ extends the owner.
 | --- | --- | --- |
 | App state, actions, routes and the driver | Coax Native ([`coax/native.md`](../../coax/native.md)); generic pieces in the proposed `coax/lib/app/` | 1–6 |
 | Components, text, Markdown, the edit buffer | [`components/`](../../components) | 3, 7, 10, 11 |
-| The apps | [`apps/openagents-web`](../../apps/openagents-web), [`apps/openagents-ios`](../../apps/openagents-ios), shared app code in [`apps/shared`](../../apps/shared) | 1–11, 30, 31, 34, 36, 75 |
+| The apps | [`apps/openagents-web`](../../apps/openagents-web), [`apps/openagents-ios`](../../apps/openagents-ios), [`apps/openagents-desktop`](../../apps/openagents-desktop/README.md), shared app code in [`apps/shared`](../../apps/shared) | 1–11, 30, 31, 34, 36, 75 |
 | Login, accounts, agent grants and the HTTP API | [`coax/web/api/`](../../coax/web/api), [`apps/shared/app-login-flow.coax`](../../apps/shared/app-login-flow.coax) | 8, 9, 59, 64 |
 | Engines, sessions, the journal, observation | [`coax/lib/agent/`](../../coax/lib/agent) | 11, 12, 18, 25, 26, 37 |
 | Money rules | The Payments context, [`pay/`](../../pay) | 32, 33, 56–58, 61 |
@@ -35,6 +35,12 @@ The wire shapes live in [`proto/`](../../proto/README.md), and
 [the OpenAgents Protocol](../../docs/protocol/openagents-protocol-spec.md)
 describes them. Chapter 9 gives the apps the minimum; chapters 62 to 67 give
 the rest.
+
+The [environment application profile](../../docs/protocol/environments-claude-and-world-editing.md)
+owns the proto-first desktop/phone connection to Claude on this Mac and
+CoderOS, and subsequent realm editing/preview. It composes HOST, ENV, WS and
+SESS rather than defining another app-specific agent wire. The desktop app
+and optional headless CLI attach to the same resident execution owner.
 
 The checker refuses a planned path that already exists or that sits where a
 current owner lives ([CONTRACT.md](CONTRACT.md#what-the-checker-enforces)).
@@ -172,6 +178,22 @@ Each step ships something a person can use and is the base for the next.
 | Step 7: plugins, evidence and the market | The plugin interface, the evidence rule, the registry, paid calls and payouts | 38–61 | as step 1 |
 | Step 8: the protocol and compute | The protocol chapters, the API for partners, self-hosting, the gateway and Pylons | 62–70 | as step 1 |
 | Step 9: worlds and delivery | The agent in realms, the conformance run, releases from one source, Windows and 1.0 | 71–78 | every target |
+
+**Parallel desktop/environment track (owner direction, 2026-11-13).** After
+the shared first milestone, replace the existing desktop shell on Mac and
+Linux with Coax Native, reusing its hosts, components and engine libraries.
+Start with setup/attachment to an independent local service, authorized chat
+history from both computers, then managed Claude chat/control from either
+desktop and the phone. A CLI-only service may land first for phone access;
+the normal setup experience is the desktop app. Closing the GUI must not stop
+Claude. See the [canonical stages and gates](../../docs/protocol/environments-claude-and-world-editing.md#10-implementation-sequence-and-completion-gates).
+
+This track can proceed alongside the numbered steps; Mac/Linux delivery does
+not wait for Android, the full general agent, realm visualization or chapter
+77. It applies the existing app, execution-owner and protocol chapters without
+renumbering or claiming their drafts implemented. Realm editing/preview adds
+to the same conversation afterward. Windows follows Mac/Linux qualification,
+using the same app/protocol with its platform backend still to be selected.
 
 Steps 4 to 8 can overlap once step 1 is done. Windows and the other
 additional platforms (chapter 77) are qualified on their own evidence and

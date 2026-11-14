@@ -9,6 +9,10 @@ Written 2026-11-13. Status: framework specification with the initial native
 iOS account surface implemented by /root on 2026-11-13. Other target and
 verification stages below remain proposals, not claims about this release.
 
+The OpenAgents desktop replacement is a planned consumer on **Mac and Linux
+first, Windows later**. Its environment service and cross-computer behavior
+are specified in the [environment application profile](../docs/protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes).
+
 ### Alignment with Exact
 
 Exact's iOS host presents UIKit controls; its web host presents DOM elements.
@@ -119,13 +123,13 @@ reused; proposals below describe the additional contract they must satisfy.
 | Reload | Web field carry in `coax/web/state-keep.js` | Equivalent native carry and ownership-safe replacement |
 | Product rules | Payments in `pay/`; shared Apple login and device keys | Preserve these owners while sharing their app flows |
 
-The OpenAgents iOS app is the first migration consumer. On iOS 26 it opens
-the hosted Grid in `WKWebView`, with native account and wallet overlays;
-older systems or missing WebGPU use its native Metal path. Its native worlds
-call generated Coax libraries. UIKit controllers also own navigation,
-asynchronous work and presentation state. Its XCTest flows use identifiers,
-coordinates and elapsed-time waits. This is shared domain logic with several
-host paths, not yet one portable application runtime.
+The OpenAgents iOS app is the first migration consumer. Its replacement
+starter presents UIKit controls from the Coax Native semantic program,
+executed through generated code in JavaScriptCore; 1068–1069's WebKit profile
+is historical. The earlier app's native Metal/world code is not a fallback
+in this replacement target. Account, chat and wallet platform adapters still
+have their own installed capability boundaries. This is an initial native
+consumer, not evidence that every proposed framework service is implemented.
 
 The shared Apple UI host has iOS support, driver code and accessibility work;
 that does not mean `apps/openagents-ios` uses it. Adoption must be established
@@ -133,6 +137,27 @@ in the app's actual target and launch path. The older research audit's open
 items are historical: its November 11 addendum records desktop driver, clock
 and element-table progress, and current web code also has field carry and
 the agent pin. None establishes complete native/mobile parity.
+
+### OpenAgents desktop environment consumer
+
+The [desktop/environment plan](../docs/protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes)
+replaces the current desktop shell with the same Coax Native application
+model used by mobile and web. Reuse the existing Mac AppKit/Metal and Linux
+Wayland/Vulkan hosts, components and agent libraries. Shared Coax state/actions
+and protobuf profiles are required; one identical executable backend is not.
+The UIKit/JavaScriptCore projection is a reference for portable execution,
+not an already-qualified desktop executor or a reason to add a WebView.
+Windows requires its own host/backend qualification before support is claimed.
+
+Desktop packages include a versioned resident environment service, also
+runnable headlessly. The app configures and attaches to that service through
+an authenticated local adapter, or connects to another enrolled computer.
+Agent turns survive closing the GUI. The CLI, desktop, mobile and web use
+the same protocol and authority owners; a UI window never becomes another
+execution owner. Client and resident-service updates negotiate compatibility
+independently. Native service replacement is not an ordinary UI OTA payload.
+Migration preserves desktop identity, credentials, settings and histories;
+the linked profile owns the rollout and acceptance gates.
 
 ## Architecture
 
@@ -534,11 +559,12 @@ device keys keep their existing storage and recovery rules.
 ## Qualification and performance
 
 Support is recorded per app, target, backend and service set, with source and
-artifact identities. A host that compiles is not a qualified host. Target
-order is iOS and macOS with the web reference, then Linux, then Android.
-Existing Android code is reused, but Android receives no parity claim until
-its input, services, lifecycle and real-device checks pass. Windows is an
-extension point with no committed initial backend.
+artifact identities. A host that compiles is not a qualified host. The first
+native consumer is iOS, with the web reference. The OpenAgents environment
+desktop replacement targets Mac and Linux together next; Windows follows
+their qualification, with no backend selected yet. Existing Android work
+continues independently, but receives no parity claim until its input,
+services, lifecycle and real-device checks pass.
 
 | Gate | Required evidence |
 | --- | --- |
@@ -572,15 +598,17 @@ realm budgets and baseline regression policy.
 ## Migration and implementation stages
 
 Each stage is an independently reviewable change with a real consumer and
-bounded checks. Assign its implementer and date before starting it. This
-specification authorizes no app rewrite or default-renderer switch on its own.
+bounded checks. Assign its implementer and date before starting it. The owner
+has selected the desktop replacement direction in the linked environment
+profile. Its default switch still requires that profile's migration and
+consumer gates; this document does not claim a switch has shipped.
 
 | Stage | Consumer and work | Exit condition |
 | --- | --- | --- |
 | 1. Common app boundary | Extract the iOS shell's inspectable route/action state and connect its existing native and web paths to `coax drive` | One login open/cancel case runs through both launch paths; provenance, redaction and unsupported-operation behavior are checked |
 | 2. Controlled time and effects | Add shared scheduling/ownership and fake services to that consumer; reuse existing clock and replay work | The same bounded case gives the same state/actions across web and iOS; cancellation/logout fences a held completion |
 | 3. Portable native form | Project the existing component semantics to the small UIKit control set; share one account flow with the web | Shared Coax action/view code, real keyboard and VoiceOver, large-text layout, same semantic assertions |
-| 4. Desktop adoption | Reuse shared Apple/Linux UI hosts and their current driver; compose a chat or settings flow | Same accepted operations on qualified backends; idle scheduling and accessibility checked on actual hosts |
+| 4. OpenAgents desktop replacement | Reuse shared Apple/Linux hosts and components for environment setup, local/remote chat and controls; bundle the independent service, retaining CLI-only operation | Same accepted operations on both desktops and phone; actual input/accessibility, cross-client ownership, GUI-independent turns, migration and update compatibility checked |
 | 5. Wallet and realm composition | Migrate wallet presentation/state and a realm route incrementally, preserving the existing domain authorities | No seed replacement, no duplicated send, policy refusals preserved, correct modal/realm lifecycle, physical-device gates recorded |
 | 6. Android and packaging | Extend existing Android adapters; finish templates, diagnostics and reproducible packages | Same app acceptance case plus actual Android input/service/device evidence; one documented setup path |
 | 7. Later optimizations | Native state carry and baked initial UI | Independent compatibility, ownership and startup evidence for each feature |

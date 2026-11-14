@@ -19,7 +19,8 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 
 | You need | Use | Where |
 | --- | --- | --- |
-| A mobile app foundation with shared Coax components, native account services and optional signed OTA code | The Coax Native starter, currently the iOS WebKit/Wasm profile | `coax/native/README.md`, `coax/native/starter/`, `apps/shared/native/`, `apps/openagents-ios/`; package codec and policy in `coax/native/updates-*.coax` |
+| A mobile app foundation with shared Coax components, native account services and optional signed OTA code | The Coax Native starter, currently the iOS UIKit/JavaScriptCore profile with compiler-generated Coax code | `coax/native/README.md`, `coax/native/starter/`, `apps/shared/native/`, `apps/openagents-ios/`; package codec and policy in `coax/native/updates-*.coax` |
+| The OpenAgents desktop/environment app | Reuse the current Mac/Linux hosts, components and agent libraries; adopt the planned Coax Native client plus independently runnable resident service | [Desktop entry point](../apps/openagents-desktop/README.md), [canonical environment/desktop plan](protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes); `apps/shared/host/`, `components/`, `coax/lib/agent/`, `coder/tui/host.coax` (planned extension, not a deployed general session service) |
 | Unicode White_Space and C0/C1 control classification, independent of locale | `rune_white_space`, `rune_control` | `components/core/space.coax` (UTF-8 decoding remains `components/core/text.coax`) |
 | A text box: typing, selection, caret, undo, paste, IME | The edit buffer | `components/core/edit.coax` |
 | Cmd/Ctrl+A, C, X, V and word deletion in a box on the website | The site's text keys | `apps/openagents-web/textkeys.coax` |

@@ -1,7 +1,7 @@
 # The OpenAgents Book
 
-Building the OpenAgents web and mobile apps, and the general agent behind
-them, in [Coax](../../coax/book/README.md) on
+Building the OpenAgents web, mobile and desktop apps, and the general agent
+behind them, in [Coax](../../coax/book/README.md) on
 [Coax Native](../../coax/native.md).
 
 > **Status: design drafts, for the owner to edit, and the first milestone.**
@@ -39,6 +39,15 @@ optional signed Updates. The first iOS starter installs native account and
 chat services; the book adds application behavior in Coax and can deliver
 compatible Wasm changes over the air. This starter is a running foundation,
 not completion of the chapter's web/iPhone acceptance contract.
+
+The next desktop consumer replaces the current OpenAgents shell on Mac and
+Linux, then adds Windows. It uses the same Coax Native application model and
+shared components. A separately runnable environment service owns Claude;
+the desktop app configures this computer and chats/controls any enrolled
+computer, just as the phone can. Follow the [environment/desktop plan](../../docs/protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes)
+and the [parallel build track](PLAN.md#order-of-building). This is planned
+work, not a change to chapter 11's completed web/iPhone milestone or a second
+agent implementation.
 
 Each chapter cites the episodes where an idea was first tried, the old
 crates that implemented it in the Rust tree that ended at `coder-v1.0.0`,
