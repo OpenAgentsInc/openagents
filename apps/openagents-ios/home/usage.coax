@@ -16,8 +16,8 @@ na_usage_tick :: (s:[]Starter) {
 
  if pu_flow_running(u) && !u[0].uncertain {q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ReadAccountLogin");q[0].nl=pa_copy(q[0].login[..],cast(string)u[0].flow[0].id[0..<u[0].flow[0].ni]);u[0].wait=3;na_usage_send(s,u[0].flow_host,q[..]);return;}
  // Re-read pending observations after the computer's owned probes finish.
- for host:0..<u[0].catalog[0].n {if u[0].states[host]!=2 {continue;}for i:0..<u[0].views[host].n {a:=u[0].views[host].accounts[i];if cast(string)a.state[0..<a.ns]=="checking" {u[0].next=host;u[0].force=false;u[0].wait=3;return;}}}
- u[0].next=0;u[0].force=false;u[0].wait=300;
+ for host:0..<u[0].catalog[0].n {if u[0].states[host]!=2 {continue;}for i:0..<u[0].views[host].n {a:=u[0].views[host].accounts[i];if cast(string)a.state[0..<a.ns]=="checking" {u[0].next=host;u[0].force=false;u[0].wait=3;s[0].purpose=83;na_request(s,12,"");return;}}}
+ u[0].next=0;u[0].force=false;u[0].wait=30;if u[0].catalog[0].n>0 {s[0].purpose=83;na_request(s,12,"");}
 }
 na_usage_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->bool {
  purpose:=s[0].purpose;if purpose<80 || purpose>83 || op!=s[0].flight {return false;}u:=s[0].usage[..];s[0].flight=0;s[0].purpose=0;s[0].dirty=true;
@@ -38,7 +38,7 @@ na_usage_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->bool {
 }
 na_usage_event :: (s:[]Starter,kind:int,id:string,n:int)->bool {
  u:=s[0].usage[..];
- if kind==1 && id=="usage.open" {u[0].active=true;s[0].navigation[0].settings=false;s[0].navigation[0].open=false;u[0].next=0;return true;}
+ if kind==1 && id=="usage.open" {u[0].active=true;s[0].navigation[0].settings=false;s[0].navigation[0].open=false;u[0].next=0;u[0].wait=0;return true;}
  if !u[0].active {return false;}
  if kind==2 && (id=="usage.label" || id=="usage.code") {if n<0 {return true;}if id=="usage.label" && n<=80 {u[0].nl=pa_copy(u[0].label[..],cast(string)s[0].inbox[0..<n]);}if id=="usage.code" && n<=4096 {u[0].nc=pa_copy(u[0].code[..],cast(string)s[0].inbox[0..<n]);}return true;}
  if kind!=1 {return false;}
@@ -46,7 +46,7 @@ na_usage_event :: (s:[]Starter,kind:int,id:string,n:int)->bool {
  if id=="usage.login.detach" {u[0].login_closed=true;return true;}
  if id=="usage.login.resume" {u[0].login_closed=false;return true;}
  if id=="usage.form.close" {u[0].form=false;return true;}
- if id=="usage.refresh" {if na_usage_idle(s) {if !pu_flow_running(u) && !u[0].uncertain && u[0].intent_host<0 {u[0].catalog_ready=false;}u[0].next=0;u[0].wait=0;u[0].force=true;}return true;}
+ if id=="usage.refresh" {if na_usage_idle(s) || s[0].purpose==83 {if !pu_flow_running(u) && !u[0].uncertain && u[0].intent_host<0 {u[0].catalog_ready=false;}u[0].next=0;u[0].wait=0;u[0].force=true;}return true;}
  if id=="usage.authorize" {url:=cast(string)u[0].flow[0].url[0..<u[0].flow[0].nu];if pa_authorize(url) {na_text_effect(s,true,url,"");}return true;}
  if id=="usage.retry" {if na_usage_idle(s) && u[0].uncertain {u[0].uncertain=false;u[0].intent_ready=true;}return true;}
  if u[0].intent_host>=0 {return true;}
@@ -63,7 +63,7 @@ na_usage_event :: (s:[]Starter,kind:int,id:string,n:int)->bool {
  return false;
 }
 #test "usage pauses chat polling, keeps drafts, and routes its nonce before the environment protocol" {
- s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].ready=true;s[0].draft_n=na_copy(s[0].draft[..],"Keep my draft");#assert na_usage_event(s[..],1,"usage.open",0) && s[0].usage[0].active && s[0].draft_n==13;
+ s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].ready=true;s[0].draft_n=na_copy(s[0].draft[..],"Keep my draft");s[0].usage[0].wait=30;#assert na_usage_event(s[..],1,"usage.open",0) && s[0].usage[0].active && s[0].draft_n==13 && s[0].usage[0].wait==0;
  u:=s[0].usage[..];u[0].catalog_ready=true;u[0].catalog[0].n=1;_:=pa_copy(u[0].catalog[0].entries[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");u[0].next=1;#assert pu_start_intent(u,0,"BeginAccountLogin","");na_usage_tick(s[..]);#assert s[0].purpose==81 && s[0].flight==11;
  s[0].action=0;na_reply(s[..],11,0,"{\"command_id\":\"11111111111111111111111111111111\",\"now_ms\":1700000000000}",false);#assert u[0].intent_ready && !s[0].environments[0].random;na_usage_tick(s[..]);#assert s[0].purpose==80 && s[0].flight==4;
  na_reply(s[..],4,503,"{}",false);#assert u[0].uncertain && u[0].intent[0].nc==32 && s[0].draft_n==13;
@@ -77,4 +77,9 @@ na_usage_event :: (s:[]Starter,kind:int,id:string,n:int)->bool {
 #test "Usage waits through the installed timer even when native frame dt is zero" {
  s:[1]Starter;s[0].usage[0].active=true;s[0].usage[0].catalog_ready=true;s[0].usage[0].wait=3;s[0].account_ready=true;na_usage_tick(s[..]);#assert s[0].purpose==83 && s[0].flight==12;
  s[0].action=0;na_reply(s[..],12,0,"{}",false);#assert s[0].usage[0].wait==2 && s[0].flight==0 && s[0].time==0;
+}
+
+#test "an asynchronous quota observation schedules its own next wake without an animation frame" {
+ s:[1]Starter;s[0].account_ready=true;u:=s[0].usage[..];u[0].active=true;u[0].catalog_ready=true;u[0].catalog[0].n=1;u[0].next=1;u[0].states[0]=2;u[0].views[0].n=1;u[0].views[0].accounts[0].ns=pa_copy(u[0].views[0].accounts[0].state[..],"checking");na_usage_tick(s[..]);#assert s[0].action==12 && s[0].flight==12 && s[0].purpose==83 && u[0].next==0 && u[0].wait==3;
+ s[0].flight=0;s[0].action=0;u[0].next=1;u[0].wait=0;u[0].views[0].accounts[0].ns=pa_copy(u[0].views[0].accounts[0].state[..],"connected");na_usage_tick(s[..]);#assert s[0].action==12 && u[0].wait==30;
 }

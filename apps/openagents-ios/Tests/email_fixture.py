@@ -19,6 +19,7 @@ if a.environment_transcript:
 provider_accounts = {}
 provider_flows = {}
 provider_receipts = {}
+provider_reads = {}
 def provider_view(host, body):
     accounts = provider_accounts.setdefault(host, [dict(account_id="system",provider="claude-code",label="System Claude Code",email="ada@example.com",plan="max",state="connected",selected=True,windows=[dict(window_id="seven_day",used_basis_points=3500,resets_at="2026-11-20T12:00:00Z"),dict(window_id="five_hour",used_basis_points=625,resets_at="2026-11-14T18:00:00Z")],observed_at_ms=1794672000000,stale=False,error="")])
     method=body["method"]; command=body.get("command_id",""); login={"login_id":"","account_id":"","state":"","authorization_url":"","expires_at_ms":0}
@@ -37,7 +38,11 @@ def provider_view(host, body):
         if method=="CancelAccountLogin":login["state"]="cancelled";login["authorization_url"]=""
     if method=="SelectAccount":
         for account in accounts:account["selected"]=account["account_id"]==body["account_id"]
-    value=dict(schema="openagents.environment.accounts.view.v1",host_pubkey=host,method=method,accounts=accounts,login=login,command_id=command,error="",retry_after_ms=0)
+    shown=accounts
+    if method=="ListAccounts":
+        provider_reads[host]=provider_reads.get(host,0)+1
+        if provider_reads[host]<2:shown=[dict(x,state="checking",windows=[],observed_at_ms=0) for x in accounts]
+    value=dict(schema="openagents.environment.accounts.view.v1",host_pubkey=host,method=method,accounts=shown,login=login,command_id=command,error="",retry_after_ms=0)
     if command:provider_receipts[host,command]=json.loads(json.dumps(value))
     return value
 
@@ -134,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("refresh_token")!="oa_rt_fixture":return self.answer(401,{})
             return self.answer(200,dict(access_token="oa_at_fixture",refresh_token="oa_rt_fixture",account="acct_fixture",expires_in=3600,device_bound=True))
         if self.path == "/api/auth/logout":
-            provider_accounts.clear();provider_flows.clear();provider_receipts.clear()
+            provider_accounts.clear();provider_flows.clear();provider_receipts.clear();provider_reads.clear()
             counts["logout"] += 1
             return self.answer(200, {"state": "logged-out"})
         return self.answer(404, {})
