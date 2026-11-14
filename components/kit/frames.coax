@@ -30,7 +30,7 @@
 
 UI_BIRTHS :: 384;
 UI_ID :: 96;          // bytes of an id built here
-BS_PLAIN :: 0; BS_PRIMARY :: 1; BS_DISABLED :: 2;
+BS_PLAIN :: 0; BS_PRIMARY :: 1; BS_DISABLED :: 2; BS_BUSY :: 3; BS_DESTRUCTIVE :: 4;
 
 #test "message Markdown retains headings, combined marks, nested/task lists and table alignment" {
   t:[1]Tree;u:[1]Ui;d:[1]MdDoc;tr_begin(t[..]);ui_begin(u[..],0,true);
@@ -125,10 +125,15 @@ k_text :: (t: [] Tree, u: [] Ui, id: string, tag: int, cls: string, text: string
   return i;
 }
 // Button: an octagon and its label. Primary is the inverse; a disabled one is dashed and can't be pressed.
+// A busy one is doing what it was pressed for: it can't be pressed, its dashes move and its label says what it
+// is doing. A destructive one removes something: its line is bright, it fills when pressed and its label says what
+// goes (the skin has no red to say it). A native host draws the same states from mono_button (skin/mono-native.coax).
 k_button :: (t: [] Tree, u: [] Ui, id: string, label: string, state: int) -> int {
   i := k_frame(t, u, id, TG_BUTTON, "btn", MF_BUTTON);
   if state == BS_PRIMARY { tr_attr(t, i, AT_STATE, "primary"); }
   if state == BS_DISABLED { tr_attr(t, i, AT_DISABLED, ""); }
+  if state == BS_BUSY { tr_attr(t, i, AT_STATE, "busy"); tr_attr(t, i, AT_DISABLED, ""); }
+  if state == BS_DESTRUCTIVE { tr_attr(t, i, AT_STATE, "destructive"); }
   ida: [UI_ID] u8;
   l := tr_leaf(t, tr_cat(ida[..], id, ".l"), TG_SPAN, "btn-l", label);
   tr_close(t);

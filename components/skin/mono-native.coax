@@ -1,0 +1,287 @@
+// The mono skin for hosts that draw with a platform's own views: UIKit, AppKit
+// and GTK (GitHub #13580). It is the same skin as mono.coax. The tokens here
+// are the stylesheet's, and a frame's points are the ones the browser backend
+// turns into SVG (components/backend/dom.coax, dm_frame). A host reads these
+// exports and draws them. It holds no colour of its own and works out no path.
+//
+// A button has a variant and a state. State is shown by brightness, fill and
+// line style, never by hue.
+//   coax/bin/coax test components/skin/mono-native.coax
+
+#load "mono.coax";
+
+// Colours, as 0xRRGGBBAA. Every one is a grey.
+MONO_GROUND :: 0x000000ff; MONO_SURFACE :: 0x0a0a0aff; MONO_RAISED :: 0x161616ff; MONO_PRESSED :: 0x262626ff;
+MONO_LINE_DIM :: 0x2a2a2aff; MONO_LINE :: 0x6b6b6bff; MONO_LINE_BRIGHT :: 0xffffffff;
+MONO_INK :: 0xf2f2f2ff; MONO_INK_MUTED :: 0x9a9a9aff; MONO_INK_FAINT :: 0x5c5c5cff; MONO_INK_BRIGHT :: 0xffffffff;
+MONO_PRIMARY :: 0xc8c8c8ff; MONO_PRIMARY_LIT :: 0xe0e0e0ff; MONO_ON_PRIMARY :: 0x000000ff;
+MONO_GRID_LINE :: 0x070707ff; MONO_GRID_DOT :: 0x181818ff;
+MONO_CLEAR :: 0x00000000;
+// The background grid: a line each way through the middle of a tile and a dot where they cross.
+MONO_GRID_STEP :: 40.0;
+MONO_GRID_PARTS :: 3;
+
+MonoNative :: struct {
+  ground: u32; surface: u32; raised: u32; pressed: u32;
+  line_dim: u32; line: u32; line_bright: u32;
+  ink: u32; ink_muted: u32; ink_faint: u32; ink_bright: u32;
+  primary: u32; primary_lit: u32; on_primary: u32;
+  hairline: f64;      // a rule's width, in points
+  hit: f64;           // the least a finger's target is, either way
+  header: f64;        // a header's height
+  gutter: f64;        // a page's side margin
+  gap: f64;           // between two controls
+  label: f64;         // a chrome label's size: small, upper case, tracked
+  track: f64;         // its tracking, in ems
+  dash: f64;          // a dashed line's dash and gap
+  march: f64;         // seconds a busy line takes to move one dash and gap
+  turn: f64;          // seconds a running glyph's ring takes to turn once
+  grid_step: f64; grid_parts: int;
+}
+mono_native :: () -> MonoNative #export_c #effects(all) {
+  return MonoNative.{ground = MONO_GROUND, surface = MONO_SURFACE, raised = MONO_RAISED, pressed = MONO_PRESSED,
+    line_dim = MONO_LINE_DIM, line = MONO_LINE, line_bright = MONO_LINE_BRIGHT,
+    ink = MONO_INK, ink_muted = MONO_INK_MUTED, ink_faint = MONO_INK_FAINT, ink_bright = MONO_INK_BRIGHT,
+    primary = MONO_PRIMARY, primary_lit = MONO_PRIMARY_LIT, on_primary = MONO_ON_PRIMARY,
+    hairline = 1, hit = 44, header = 44, gutter = 20, gap = 12, label = 11, track = 0.18, dash = 3, march = 0.6, turn = 1.8,
+    grid_step = MONO_GRID_STEP, grid_parts = MONO_GRID_PARTS};
+}
+
+// One filled rectangle of the grid's tile.
+MonoGridPart :: struct { x: f64; y: f64; w: f64; h: f64; color: u32; }
+mono_native_grid :: (part: int) -> MonoGridPart #export_c #effects(all) {
+  half := MONO_GRID_STEP / 2;
+  if part == 0 { return MonoGridPart.{x = 0, y = half, w = MONO_GRID_STEP, h = 1, color = MONO_GRID_LINE}; }
+  if part == 1 { return MonoGridPart.{x = half, y = 0, w = 1, h = MONO_GRID_STEP, color = MONO_GRID_LINE}; }
+  if part == 2 { return MonoGridPart.{x = half - 0.5, y = half - 0.5, w = 2, h = 2, color = MONO_GRID_DOT}; }
+  return MonoGridPart.{};
+}
+
+// A role's frame at a size: the points dm_frame sends the browser, whole (progress 1).
+// Returns the number of points, or 0 when the role is unknown or out is short.
+mono_native_frame :: (role: int, width: f64, height: f64, out: [] AfPoint) -> int #export_c #effects(all) {
+  if role < 0 || role >= MF_COUNT { return 0; }
+  sets: [MF_COUNT] AfSettings;
+  if mono_frames(sets[..]) != MF_COUNT { return 0; }
+  return af_frame_settings(mono_kind(role), HudBox.{x = 0, y = 0, width = cast(f32) width, height = cast(f32) height}, sets[role], 1, out);
+}
+
+// The numbers a host names a frame role, a button variant and a state by, so it writes none of them itself.
+MonoNames :: struct {
+  button: int; panel: int; field: int; notice: int; header: int; row: int; bubble: int; box: int;
+  plain: int; primary: int; quiet: int; icon: int; destructive: int; list: int;
+  rest: int; pressed: int; disabled: int; busy: int; current: int;
+}
+mono_names :: () -> MonoNames #export_c #effects(all) {
+  return MonoNames.{button = MF_BUTTON, panel = MF_PANEL, field = MF_FIELD, notice = MF_NOTICE, header = MF_HEADER, row = MF_ROW, bubble = MF_BUBBLE, box = MF_BOX,
+    plain = MB_DEFAULT, primary = MB_PRIMARY, quiet = MB_QUIET, icon = MB_ICON, destructive = MB_DESTRUCTIVE, list = MB_ROW,
+    rest = MS_REST, pressed = MS_PRESSED, disabled = MS_DISABLED, busy = MS_BUSY, current = MS_CURRENT};
+}
+
+// Button variants and states.
+MB_DEFAULT :: 0;       // a cut-corner outline
+MB_PRIMARY :: 1;       // filled: the one action a screen is for
+MB_QUIET :: 2;         // smaller and dimmer, in the same outline
+MB_ICON :: 3;          // only an icon, in a small square when pressed
+MB_DESTRUCTIVE :: 4;   // a bright outline that fills when pressed; its words say what it removes
+MB_ROW :: 5;           // a line of a list: its text as written, boxed when it is the current one
+MB_COUNT :: 6;
+MS_REST :: 0; MS_PRESSED :: 1; MS_DISABLED :: 2; MS_BUSY :: 3; MS_CURRENT :: 4;
+MS_COUNT :: 5;
+
+MonoButton :: struct {
+  role: int;          // the frame behind it (MF_*)
+  bg: u32; line: u32; ink: u32;
+  dashed: bool;       // the line is dashed
+  march: bool;        // and its dashes move (never under reduced motion)
+  height: f64;        // the frame's height; its target is never under MonoNative.hit
+  pad: f64;           // from the frame's side to the label
+  type: f64;          // the label's size
+  track: f64;         // its tracking, in ems
+  upper: bool;        // drawn in upper case, in the code face
+  side: f64;          // an icon button's square
+  icon: f64;          // an icon's size
+}
+mono_button :: (variant: int, state: int) -> MonoButton #export_c #effects(all) {
+  b := MonoButton.{role = MF_BUTTON, bg = MONO_SURFACE, line = MONO_LINE, ink = MONO_INK, height = 44, pad = 18, type = 11, track = 0.18, upper = true, side = 32, icon = 16};
+  if variant == MB_PRIMARY { b.bg = MONO_PRIMARY; b.line = MONO_PRIMARY; b.ink = MONO_ON_PRIMARY; }
+  if variant == MB_QUIET { b.bg = MONO_CLEAR; b.line = MONO_LINE_DIM; b.ink = MONO_INK_MUTED; b.height = 36; b.pad = 12; b.type = 10; b.track = 0.16; }
+  if variant == MB_ICON { b.role = MF_BOX; b.bg = MONO_CLEAR; b.line = MONO_CLEAR; b.ink = MONO_INK_MUTED; b.height = 32; b.pad = 0; }
+  if variant == MB_DESTRUCTIVE { b.bg = MONO_CLEAR; b.line = MONO_LINE_BRIGHT; b.ink = MONO_INK_BRIGHT; }
+  if variant == MB_ROW { b.role = MF_ROW; b.bg = MONO_CLEAR; b.line = MONO_CLEAR; b.ink = MONO_INK; b.pad = 12; b.type = 15; b.track = 0; b.upper = false; }
+  if state == MS_PRESSED {
+    b.bg = MONO_PRESSED; b.line = MONO_LINE_BRIGHT; b.ink = MONO_INK_BRIGHT;
+    if variant == MB_PRIMARY { b.bg = MONO_PRIMARY_LIT; b.line = MONO_PRIMARY_LIT; b.ink = MONO_ON_PRIMARY; }
+    if variant == MB_QUIET { b.bg = MONO_RAISED; }
+    if variant == MB_ICON { b.bg = MONO_RAISED; b.line = MONO_LINE_DIM; }
+    if variant == MB_DESTRUCTIVE { b.bg = MONO_PRIMARY; b.line = MONO_PRIMARY; b.ink = MONO_ON_PRIMARY; }
+    if variant == MB_ROW { b.bg = MONO_RAISED; b.line = MONO_CLEAR; }
+  }
+  if state == MS_DISABLED || state == MS_BUSY {
+    b.bg = MONO_CLEAR; b.line = MONO_LINE_DIM; b.ink = ifx state == MS_BUSY then MONO_INK_MUTED else MONO_INK_FAINT;
+    b.dashed = true; b.march = state == MS_BUSY;
+    if variant == MB_ICON || variant == MB_ROW { b.line = MONO_CLEAR; b.dashed = false; b.march = false; }
+  }
+  if state == MS_CURRENT { b.bg = MONO_SURFACE; b.line = MONO_LINE_BRIGHT; b.ink = MONO_INK_BRIGHT; }
+  return b;
+}
+
+// A field: one underline, bright while it is typed in.
+MonoField :: struct { role: int; bg: u32; line: u32; ink: u32; hint: u32; height: f64; pad: f64; }
+mono_field :: (focused: bool, disabled: bool) -> MonoField #export_c #effects(all) {
+  f := MonoField.{role = MF_FIELD, bg = MONO_CLEAR, line = MONO_LINE, ink = MONO_INK, hint = MONO_INK_FAINT, height = 44, pad = 12};
+  if focused { f.line = MONO_LINE_BRIGHT; }
+  if disabled { f.line = MONO_LINE_DIM; f.ink = MONO_INK_MUTED; }
+  return f;
+}
+
+// A surface behind content: a panel's brackets, a bubble, a header, a small box. lit: it holds the keyboard.
+MonoSurface :: struct { role: int; bg: u32; line: u32; deco: u32; }
+mono_surface :: (role: int, lit: bool) -> MonoSurface #export_c #effects(all) {
+  s := MonoSurface.{role = role, bg = MONO_SURFACE, line = MONO_LINE_DIM, deco = MONO_LINE};
+  if role == MF_HEADER { s.bg = MONO_CLEAR; }
+  if role == MF_NOTICE { s.line = MONO_LINE_BRIGHT; s.deco = MONO_LINE_BRIGHT; }
+  if lit { s.line = MONO_LINE; s.deco = MONO_LINE_BRIGHT; }
+  return s;
+}
+
+// ---------------------------------------------------------------- checks
+
+mn_nibble :: (v: u32) -> u8 { n := cast(u8) (v & 15); return ifx n < 10 then '0' + n else 'a' + (n - 10); }
+// A colour as the stylesheet writes it: #rgb when it can be, else #rrggbb. Bytes written.
+mn_hex :: (c: u32, out: [] u8) -> int {
+  d: [6] u8;
+  for i: 0..<6 { d[i] = mn_nibble(c >> cast(u32) (28 - i * 4)); }
+  short := d[0] == d[1] && d[2] == d[3] && d[4] == d[5];
+  n := 0;
+  out[n] = '#'; n += 1;
+  if short { out[n] = d[0]; out[n + 1] = d[2]; out[n + 2] = d[4]; return n + 3; }
+  for i: 0..<6 { out[n + i] = d[i]; }
+  return n + 6;
+}
+mn_has :: (text: string, part: string) -> bool {
+  if part.count == 0 || part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 {
+    if cast(string) text[i..<i + part.count] == part { return true; }
+  }
+  return false;
+}
+// The stylesheet has `before` then this colour: the two say the same thing.
+mn_rule :: (css: string, before: string, c: u32) -> bool {
+  b: [96] u8; n := mc(b[..], 0, before);
+  n += mn_hex(c, b[n..<b.count]);
+  return mn_has(css, cast(string) b[0..<n]);
+}
+
+#test "the native tokens are the stylesheet's" {
+  css: [40960] u8; n := mono_css(css[..]); text := cast(string) css[0..<n];
+  t := mono_native();
+  #assert mn_rule(text, "--ground:", t.ground) && mn_rule(text, "--surface:", t.surface) && mn_rule(text, "--raised:", t.raised);
+  #assert mn_rule(text, "--line-dim:", t.line_dim) && mn_rule(text, "--line:", t.line) && mn_rule(text, "--line-bright:", t.line_bright);
+  #assert mn_rule(text, "--ink:", t.ink) && mn_rule(text, "--ink-muted:", t.ink_muted) && mn_rule(text, "--ink-faint:", t.ink_faint);
+  #assert mn_rule(text, ".btn:active{--frame-bg:", t.pressed);
+  #assert mn_rule(text, ".btn[data-state=primary]{color:#000;--frame-bg:", t.primary);
+  #assert mn_rule(text, ".btn[data-state=primary]:hover{--frame-bg:", t.primary_lit);
+  // the grid: the same step and the same two greys
+  #assert mn_has(text, "width='40' height='40'") && t.grid_step == 40 && t.grid_parts == 3;
+  #assert mn_has(text, "fill='%23070707' d='M0 20h40v1H0zM20 0h1v40h-1z'") && mn_has(text, "fill='%23181818' d='M19.5 19.5h2v2h-2z'");
+  a := mono_native_grid(0); b := mono_native_grid(1); c := mono_native_grid(2);
+  #assert a.x == 0 && a.y == 20 && a.w == 40 && a.h == 1 && a.color == 0x070707ff;
+  #assert b.x == 20 && b.y == 0 && b.w == 1 && b.h == 40 && b.color == 0x070707ff;
+  #assert c.x == 19.5 && c.y == 19.5 && c.w == 2 && c.h == 2 && c.color == 0x181818ff;
+  #assert mono_native_grid(3).w == 0;
+}
+
+#test "the busy and destructive rules follow the page's, fit, and say what mono_button says" {
+  css: [40960] u8; at := mono_css(css[..]); n := mono_button_css(css[..], at);
+  #assert n > at + 300 && n < at + 800 && mono_button_css(css[0..<at], at) == at;
+  text := cast(string) css[at..<n];
+  #assert mn_rule(text, ".btn[data-state=destructive]:active{color:#000;--frame-bg:", mono_button(MB_DESTRUCTIVE, MS_PRESSED).bg);
+  #assert mn_has(text, ".btn[data-state=destructive]{color:#fff;--frame-bg:transparent;--frame-line:var(--line-bright)");
+  #assert mono_button(MB_DESTRUCTIVE, MS_REST).line == MONO_LINE_BRIGHT && mono_button(MB_DESTRUCTIVE, MS_REST).bg == MONO_CLEAR;
+  // busy: the muted ink, and dashes that move one dash and gap in the skin's time
+  #assert mn_has(text, ".btn[data-state=busy]{color:var(--ink-muted)}") && mono_button(MB_DEFAULT, MS_BUSY).ink == MONO_INK_MUTED;
+  #assert mn_has(text, "march .6s linear infinite") && mn_has(text, "stroke-dashoffset:-6") && mono_native().march == 0.6 && mono_native().dash == 3;
+  #assert mn_has(text, "prefers-reduced-motion:reduce");
+}
+
+#test "a colour is written as the stylesheet writes it" {
+  b: [8] u8;
+  #assert mn_hex(0x000000ff, b[..]) == 4 && cast(string) b[0..<4] == "#000";
+  #assert mn_hex(0xffffffff, b[..]) == 4 && cast(string) b[0..<4] == "#fff";
+  #assert mn_hex(0x0a0a0aff, b[..]) == 7 && cast(string) b[0..<7] == "#0a0a0a";
+  #assert mn_hex(0xc8c8c8ff, b[..]) == 7 && cast(string) b[0..<7] == "#c8c8c8";
+}
+
+mn_grey :: (c: u32) -> bool { return ((c >> 24) & 255) == ((c >> 16) & 255) && ((c >> 16) & 255) == ((c >> 8) & 255); }
+
+#forall "every button colour is a grey, in every variant and state" variant: 0..<6 {
+  for state: 0..<MS_COUNT {
+    b := mono_button(variant, state);
+    #assert mn_grey(b.bg) && mn_grey(b.line) && mn_grey(b.ink);
+    #assert b.role >= 0 && b.role < MF_COUNT && b.height >= 32 && b.height <= 44 && b.type >= 10;
+    // what is written on a button can always be read against what is behind it
+    #assert (b.ink >> 24) != (b.bg >> 24) || (b.bg & 255) == 0;
+  }
+}
+
+#test "a button's states differ by brightness, fill and line style" {
+  rest := mono_button(MB_DEFAULT, MS_REST); down := mono_button(MB_DEFAULT, MS_PRESSED);
+  off := mono_button(MB_DEFAULT, MS_DISABLED); busy := mono_button(MB_DEFAULT, MS_BUSY);
+  #assert rest.bg == MONO_SURFACE && rest.line == MONO_LINE && !rest.dashed && rest.upper && rest.role == MF_BUTTON;
+  #assert down.bg == MONO_PRESSED && down.line == MONO_LINE_BRIGHT;
+  #assert off.dashed && !off.march && off.ink == MONO_INK_FAINT && off.line == MONO_LINE_DIM;
+  #assert busy.dashed && busy.march && busy.ink == MONO_INK_MUTED;
+  p := mono_button(MB_PRIMARY, MS_REST);
+  #assert p.bg == MONO_PRIMARY && p.ink == MONO_ON_PRIMARY && mono_button(MB_PRIMARY, MS_PRESSED).bg == MONO_PRIMARY_LIT;
+  #assert mono_button(MB_PRIMARY, MS_DISABLED).bg == MONO_CLEAR;
+  q := mono_button(MB_QUIET, MS_REST);
+  #assert q.line == MONO_LINE_DIM && q.ink == MONO_INK_MUTED && q.height == 36 && q.type == 10;
+  i := mono_button(MB_ICON, MS_REST);
+  #assert i.role == MF_BOX && i.line == MONO_CLEAR && i.side == 32 && mono_button(MB_ICON, MS_PRESSED).bg == MONO_RAISED;
+  d := mono_button(MB_DESTRUCTIVE, MS_REST);
+  #assert d.line == MONO_LINE_BRIGHT && d.bg == MONO_CLEAR && mono_button(MB_DESTRUCTIVE, MS_PRESSED).bg == MONO_PRIMARY;
+  r := mono_button(MB_ROW, MS_REST);
+  #assert r.role == MF_ROW && !r.upper && r.type == 15 && mono_button(MB_ROW, MS_CURRENT).line == MONO_LINE_BRIGHT;
+  #assert mono_native().hit == 44;
+}
+
+#test "a field's line is bright while it is typed in, and a surface's is dim" {
+  #assert mono_field(false, false).line == MONO_LINE && mono_field(true, false).line == MONO_LINE_BRIGHT && mono_field(false, true).line == MONO_LINE_DIM;
+  #assert mono_field(false, false).role == MF_FIELD && mono_field(false, false).height == 44;
+  s := mono_surface(MF_PANEL, false);
+  #assert s.bg == MONO_SURFACE && s.line == MONO_LINE_DIM && s.deco == MONO_LINE && mono_surface(MF_PANEL, true).deco == MONO_LINE_BRIGHT;
+  #assert mono_surface(MF_HEADER, false).bg == MONO_CLEAR && mono_surface(MF_NOTICE, false).line == MONO_LINE_BRIGHT;
+}
+
+#forall "a native frame is the browser's frame, point for point" role: 0..<11 {
+  sets: [MF_COUNT] AfSettings; n := mono_frames(sets[..]);
+  sizes := [8] f32.[44, 44, 320, 44, 350, 120, 32, 32];
+  for k: 0..<4 {
+    w := sizes[k * 2]; h := sizes[k * 2 + 1];
+    dom: [256] AfPoint; native: [256] AfPoint;
+    a := af_frame_settings(mono_kind(role), HudBox.{x = 0, y = 0, width = w, height = h}, sets[role], 1, dom[..]);
+    b := mono_native_frame(role, cast(f64) w, cast(f64) h, native[..]);
+    #assert a > 0 && a == b;
+    for i: 0..<a {
+      #assert dom[i].x == native[i].x && dom[i].y == native[i].y && dom[i].move == native[i].move;
+      #assert dom[i].layer == native[i].layer && dom[i].fill == native[i].fill && dom[i].stroke == native[i].stroke && dom[i].alpha == native[i].alpha;
+    }
+  }
+}
+
+#test "a host's names are the skin's roles, variants and states" {
+  n := mono_names();
+  #assert n.button == MF_BUTTON && n.panel == MF_PANEL && n.field == MF_FIELD && n.notice == MF_NOTICE && n.header == MF_HEADER && n.row == MF_ROW && n.bubble == MF_BUBBLE && n.box == MF_BOX;
+  #assert n.plain == MB_DEFAULT && n.primary == MB_PRIMARY && n.quiet == MB_QUIET && n.icon == MB_ICON && n.destructive == MB_DESTRUCTIVE && n.list == MB_ROW;
+  #assert n.rest == MS_REST && n.pressed == MS_PRESSED && n.disabled == MS_DISABLED && n.busy == MS_BUSY && n.current == MS_CURRENT;
+  #assert mono_native().turn == 1.8;   // the running glyph's turn in the stylesheet: .gl[data-state=run] .ic
+  css: [40960] u8; k := mono_css(css[..]);
+  #assert mn_has(cast(string) css[0..<k], ".gl[data-state=run] .ic{animation:turn 1.8s linear infinite}");
+}
+
+#test "an unknown role or a short output draws nothing" {
+  out: [256] AfPoint;
+  #assert mono_native_frame(-1, 100, 44, out[..]) == 0 && mono_native_frame(MF_COUNT, 100, 44, out[..]) == 0;
+  #assert mono_native_frame(MF_BUTTON, 100, 44, out[0..<2]) == 0 && mono_native_frame(MF_BUTTON, 0, 44, out[..]) == 0;
+}

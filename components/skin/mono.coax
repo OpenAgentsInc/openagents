@@ -539,6 +539,19 @@ mono_held_css :: (out: [] u8, at: int) -> int {
   return n;
 }
 
+// The busy and destructive buttons' rules (components/kit/frames.coax k_button, #13580), after mono_css's from
+// `at`. A page that has neither doesn't send them. Busy: a disabled button whose dashes move. Destructive: a bright
+// line that fills when pressed. A native host draws the same states from mono_button (mono-native.coax).
+// Bytes written in all.
+mono_button_css :: (out: [] u8, at: int) -> int {
+  n := at;
+  n = mc(out, n, ".btn[data-state=busy]{color:var(--ink-muted)}.btn[data-state=busy] .fr-line{animation:march .6s linear infinite}@keyframes march{to{stroke-dashoffset:-6}}");
+  n = mc(out, n, "@media (prefers-reduced-motion:reduce){.btn[data-state=busy] .fr-line{animation:none}}");
+  n = mc(out, n, ".btn[data-state=destructive]{color:#fff;--frame-bg:transparent;--frame-line:var(--line-bright);--frame-deco:var(--line-bright)}");
+  n = mc(out, n, ".btn[data-state=destructive]:active{color:#000;--frame-bg:#c8c8c8;--frame-line:#c8c8c8;--frame-deco:#c8c8c8}");
+  return n;
+}
+
 #test "the shell's rules fit, and have no hue" {
   css: [32768] u8; n := mono_css(css[..]);
   m := mono_held_css(css[..], n);

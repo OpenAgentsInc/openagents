@@ -1,0 +1,115 @@
+// Fails when a native host styles a control itself instead of drawing it from
+// the component library (GitHub #13580). The hosts in apps/shared/native and
+// the desktop's AppKit window take every colour, frame and button from the mono
+// skin's exports (components/skin/mono-native.coax) through one file,
+// NativeChrome.swift. Anywhere else, a stock button style, a system colour, a
+// colour written in the host, a rounded corner or a stock control is a fault.
+//
+// A line may keep a stock control the platform owns (a system alert a test
+// names, a document picker) by ending in a comment that starts `// stock:`
+// and gives the reason.
+//   coax/web/tool.sh coax/native/stock-style.coax FILE.swift...
+//   coax/bin/coax test coax/native/stock-style.coax
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/tool.coax";
+
+SS_OK :: 0; SS_BUTTON :: 1; SS_COLOR :: 2; SS_LITERAL :: 3; SS_CONTROL :: 4; SS_SHAPE :: 5;
+
+ss_word :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+// part is in line. With whole, the character after it is not part of a name (.black, never .blackboard).
+ss_has :: (line: string, part: string, whole: bool) -> bool {
+  if part.count == 0 || part.count > line.count { return false; }
+  for i: 0..<line.count - part.count + 1 {
+    if cast(string) line[i..<i + part.count] == part {
+      if !whole || i + part.count == line.count || !ss_word(line[i + part.count]) { return true; }
+    }
+  }
+  return false;
+}
+// What is wrong with one line of a host's source, or SS_OK. chrome: the line is in NativeChrome.swift, the one
+// file that turns the skin's numbers into the platform's colour and layer types.
+ss_fault :: (line: string, chrome: bool) -> int {
+  start := 0;
+  while start < line.count && (line[start] == ' ' || line[start] == '\t') { start += 1; }
+  if start + 1 < line.count && line[start] == '/' && line[start + 1] == '/' { return SS_OK; }
+  if ss_has(line, "// stock:", false) { return SS_OK; }
+  buttons := [8] string.[".bordered()", ".borderedProminent()", ".borderedTinted()", ".plain()", ".filled()", ".tinted()", ".gray()", ".borderless()"];
+  for k: 0..<buttons.count { if ss_has(line, buttons[k], false) { return SS_BUTTON; } }
+  if ss_has(line, "UIButton(", false) || ss_has(line, "NSButton(", false) || ss_has(line, "bezelStyle", false) { return ifx chrome then SS_OK else SS_BUTTON; }
+  colors := [24] string.["systemBackground", "SystemBackground", "systemFill", "SystemFill", "GroupedBackground", ".secondaryLabel", ".tertiaryLabel", ".quaternaryLabel",
+    ".labelColor", ".placeholderText", ".separator", ".link", ".systemRed", ".systemGreen", ".systemBlue", ".systemOrange", ".systemYellow", ".systemPink",
+    ".systemPurple", ".systemTeal", ".systemIndigo", ".systemGray", ".systemMint", ".systemCyan"];
+  for k: 0..<colors.count { if ss_has(line, colors[k], false) { return SS_COLOR; } }
+  named := [9] string.[".white", ".black", ".red", ".green", ".blue", ".orange", ".yellow", ".gray", ".label"];
+  for k: 0..<named.count { if ss_has(line, named[k], true) { return SS_COLOR; } }
+  if !chrome {
+    literals := [6] string.["UIColor(", "NSColor(", "CGColor(", "UIColor.", "NSColor.", "#colorLiteral"];
+    for k: 0..<literals.count { if ss_has(line, literals[k], false) { return SS_LITERAL; } }
+    controls := [11] string.["UIActivityIndicatorView", "UIProgressView", "UISwitch", "UISegmentedControl", "UIBarButtonItem", "UIVisualEffectView", "UIBlurEffect",
+      "UIGlassEffect", "UIAlertController", "NSProgressIndicator", ".roundedRect"];
+    for k: 0..<controls.count { if ss_has(line, controls[k], false) { return SS_CONTROL; } }
+    if ss_has(line, "cornerRadius", false) || ss_has(line, "shadowOpacity", false) { return SS_SHAPE; }
+  }
+  return SS_OK;
+}
+ss_name :: (fault: int) -> string {
+  if fault == SS_BUTTON { return "a stock button style: use NativeButton"; }
+  if fault == SS_COLOR { return "a system colour: use a NativeSkin token"; }
+  if fault == SS_LITERAL { return "a colour written in the host: use a NativeSkin token"; }
+  if fault == SS_CONTROL { return "a stock control: use the library's (NativeChrome.swift), or end the line with // stock: and the reason"; }
+  if fault == SS_SHAPE { return "a rounded corner or a shadow: use a NativeFrameView role"; }
+  return "";
+}
+
+#test "stock button styles, system colours and literal colours are faults outside the chrome file" {
+  #assert ss_fault("let b=UIButton(configuration:.bordered())", false) == SS_BUTTON;
+  #assert ss_fault("b.configuration = .plain();b.configuration?.title=e.label", false) == SS_BUTTON;
+  #assert ss_fault("let copy=UIButton(type:.system)", false) == SS_BUTTON && ss_fault("button.bezelStyle = .rounded", false) == SS_BUTTON;
+  #assert ss_fault("view.backgroundColor = .systemBackground", false) == SS_COLOR;
+  #assert ss_fault("text.backgroundColor = .secondarySystemBackground", false) == SS_COLOR;
+  #assert ss_fault("c.baseForegroundColor=ready ? .systemGreen:.systemOrange", false) == SS_COLOR;
+  #assert ss_fault("l.textColor = e.role == \"notice\" ? .secondaryLabel : .label", false) == SS_COLOR;
+  #assert ss_fault("status.textColor = .white", false) == SS_COLOR && ss_fault("view.backgroundColor = .black", false) == SS_COLOR;
+  #assert ss_fault("circle.backgroundColor=UIColor(red:52/255,green:107/255,blue:241/255,alpha:1)", false) == SS_LITERAL;
+  #assert ss_fault("editor.textColor=UIColor(white:0.96,alpha:1)", false) == SS_LITERAL && ss_fault("x=NSColor.windowBackgroundColor", false) == SS_LITERAL;
+  #assert ss_fault("let a=UIActivityIndicatorView(style:.medium)", false) == SS_CONTROL && ss_fault("f.borderStyle = .roundedRect", false) == SS_CONTROL;
+  #assert ss_fault("glass=UIVisualEffectView(effect:UIBlurEffect(style:.systemMaterialDark))", false) == SS_CONTROL;
+  #assert ss_fault("scroll.layer.cornerRadius=8", false) == SS_SHAPE && ss_fault("layer.shadowOpacity=0.35", false) == SS_SHAPE;
+}
+
+#test "the library's own controls, comments and a stated exception pass" {
+  #assert ss_fault("let b=NativeButton(.primary)", false) == SS_OK && ss_fault("view.backgroundColor=NativeSkin.color(t.ground)", false) == SS_OK;
+  #assert ss_fault("    // a UIButton(type:.system) used to be here", false) == SS_OK;
+  #assert ss_fault("let alert=UIAlertController(title:t,message:m,preferredStyle:.alert) // stock: the system's own alert; UI tests name it", false) == SS_OK;
+  #assert ss_fault("label.backgroundColor = .clear", false) == SS_OK && ss_fault("items.filter {$0.blackboard}", false) == SS_OK;
+  #assert ss_fault("if e.attrs[\"data-state\"]==\"ready\" {mark.image=UIImage(systemName:\"checkmark\")}", false) == SS_OK;
+  // the chrome file alone makes the platform's colours and buttons, but never from a system colour
+  #assert ss_fault("static func color(_ c:UInt32)->UIColor {UIColor(red:r,green:g,blue:b,alpha:a)}", true) == SS_OK;
+  #assert ss_fault("final class NativeButton:UIButton {init() {super.init(frame:.zero)};let b=UIButton(frame:.zero)}", true) == SS_OK;
+  #assert ss_fault("tint = .systemGreen", true) == SS_COLOR && ss_fault("b.configuration = .bordered()", true) == SS_BUTTON;
+  #assert ss_name(SS_BUTTON).count > 0 && ss_name(SS_OK).count == 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: stock-style FILE.swift..."); return 2; }
+  data: [1048576] u8; number: [16] u8; faults := 0; chromes := 0;
+  for i: 0..<args_count(a[..]) {
+    file := args_at(a[..], i); n := fs_read(file, data[..]);
+    if n < 0 { tool_err("stock-style: cannot read "); tool_errln(file); return 1; }
+    chrome := fs_base(file) == "NativeChrome.swift"; if chrome { chromes += 1; }
+    at := 0; row := 1;
+    while at < n {
+      end := at; while end < n && data[end] != '\n' { end += 1; }
+      fault := ss_fault(cast(string) data[at..<end], chrome);
+      if fault != SS_OK {
+        faults += 1; digits := 0; v := row;
+        while v > 0 && digits < 16 { number[15 - digits] = '0' + cast,trunc(u8) (v % 10); v /= 10; digits += 1; }
+        tool_err(file); tool_err(":"); tool_err(cast(string) number[16 - digits..<16]); tool_err(": "); tool_errln(ss_name(fault));
+      }
+      at = end + 1; row += 1;
+    }
+  }
+  if chromes != 1 { tool_errln("stock-style: name NativeChrome.swift once among the files"); return 1; }
+  if faults > 0 { return 1; }
+  print("native hosts: every control is the component library's\n"); return 0;
+}
