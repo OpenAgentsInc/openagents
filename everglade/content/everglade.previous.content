@@ -1,12 +1,103 @@
-aethyr.content.v1 everglade 1
+aethyr.content.v1 everglade 2
 reach 100000
 table ability id name:text
+128|Rage
+129|Attack
+130|Dash
+131|Reckless Attack
+152|Vicious Mockery
+153|Healing Word
+154|Thunderwave
+155|Dash
+156|Hypnotic Pattern
+157|Fireball
+176|Sacred Flame
+177|Guiding Bolt
+178|Healing Word
+179|Attack
+180|Dash
+181|Turn Undead
+182|Preserve Life
+183|Lesser Restoration
+184|Aid
+185|Spirit Guardians
+186|Revivify
+200|Starry Wisp
+201|Produce Flame
+202|Thunderwave
+203|Entangle
+204|Healing Word
+205|Dash
+206|Wild Shape
+207|Attack
+208|Land's Aid
+209|Call Lightning
+224|Second Wind
+225|Attack
+226|Dash
+227|Action Surge
+248|Martial Arts
+249|Dash
+250|Flurry of Blows
+251|Patient Defense
+252|Step of the Wind
+253|Wholeness of Body
+272|Lay On Hands
+273|Attack
+274|Divine Smite
+275|Dash
+276|Sacred Flame
+277|Guidance
+278|Sacred Weapon
+279|Protection from Evil and Good
+280|Aid
+281|Zone of Truth
+296|Hunter's Mark
+297|Attack
+298|Entangle
+299|Dash
+320|Sneak Attack
+321|Dash
+322|Cunning Dash
+323|Steady Aim
+344|Fire Bolt
+345|Chill Touch
+346|Ray of Sickness
+347|Thunderwave
+348|Innate Sorcery
+349|Dash
+350|Scorching Ray
+351|Fireball
+368|Eldritch Blast
+369|Chill Touch
+370|Hex
+371|Dash
+372|Hold Person
+373|Scorching Ray
+374|Fireball
+392|Fire Bolt
+393|Chill Touch
+394|Ray of Sickness
+395|False Life
+396|Thunderwave
+397|Dash
+398|Scorching Ray
+399|Blindness/Deafness
+400|Fireball
 table creature id name:text kind:int xp:int
 1|Wolf|0|50
 2|Goblin Warrior|1|50
+3|Goblin Archer|1|50
+4|Path Guard|2|0
+5|Warden|3|0
+6|Ogre|1|450
 table dialogue id npc:text point:ref.point quest:opt.quest line:text
-1|Warden|1|1|The wolves grow bold on the south road. Thin the pack and bring me their pelts.
-2|Warden|1|2|Goblins have made a camp past the far woods. Find it and drive them off.
+1|Warden|15|1|The wolves grow bold on the south road. A lone one dens beside it. Put it down and come back to me.
+2|Warden|15|2|Goblins have made a camp past the far woods. Find it and drive them off.
+3|Warden|15|3|Well done. More of them hunt further south. Walk the road to the overlook above the thicket, then come back whole.
+4|Warden|15|4|So a pair holds the thicket. They fight as one. Take them both.
+5|Warden|15|5|Three more den in the hollow beyond the thicket. Thin them and bring me a pelt.
+6|Warden|15|0|The road is ours again. You have my thanks.
 table item id name:text slot:int
 1|Wolf pelt|0
 2|Goblin ear|0
@@ -18,23 +109,140 @@ sum weight by creature 100
 2|1|0|40
 3|2|2|50
 4|2|0|50
+5|3|2|50
+6|3|0|50
+7|6|3|30
+8|6|0|70
 table point id name:text x:cm z:cm r:int
 1|Glade|0|0|6000
 2|Wolf woods|0|-17500|6000
 3|Goblin camp|0|-45000|8000
+4|Lone wolf's den|846|-17740|300
+5|Thicket, east|578|-24740|300
+6|Thicket, west|391|-24500|300
+7|Hollow, south|-28|-31740|300
+8|Hollow, middle|210|-31500|300
+9|Hollow, north|139|-31260|300
+10|Camp fire, west|825|-44910|300
+11|Camp fire, east|1115|-45070|300
+12|Camp perch, east|1865|-45000|300
+13|Camp perch, south|465|-45866|300
+14|Guard post|347|-1800|300
+15|Glade's edge|300|-500|800
+16|Thicket overlook|420|-21500|1200
+17|The thicket|485|-24620|2500
+18|The hollow|107|-31500|2500
+19|Road post 1|272|-4000|300
+20|Road post 2|-744|-5900|300
+21|Road post 3|-2001|-7800|300
+22|Road post 4|-2450|-9700|300
+23|Road post 5|-1549|-11600|300
+24|Road post 6|-888|-13500|300
+25|Road post 7|-427|-15400|300
+26|Road post 8|129|-17300|300
+27|Road post 9|-121|-19200|300
+28|Road post 10|217|-21100|300
+29|Road post 11|1060|-23000|300
+30|Road post 12|1319|-24900|300
+31|Road post 13|1700|-26800|300
+32|Road post 14|1157|-28700|300
+33|Road post 15|-257|-30600|300
+34|Road post 16|-961|-32500|300
+35|Road post 17|-1625|-34400|300
+36|Road post 18|-1713|-36300|300
+37|Road post 19|-1056|-38200|300
+38|Road post 20|-1215|-40100|300
+39|Road post 21|-1280|-42000|300
+40|Road post 22|-1075|-43900|300
+41|Road post 23|-1094|-45500|300
+42|Ogre's ground|-435|-48200|300
 table quest id name:text
 1|Thin the pack
 2|The goblin camp
+3|The road south
+4|The thicket pair
+5|The hollow
 table reward id quest:ref.quest item:opt.item coin:int xp:int
-1|1|3|25|100
+1|1|3|25|250
 2|2|4|50|150
+3|3|0|10|600
+4|4|0|40|1700
+5|5|0|60|400
 table spawn id creature:ref.creature point:ref.point count:int
-1|1|2|8
-2|2|3|4
+1|1|4|1
+2|1|5|1
+3|1|6|1
+4|1|7|1
+5|1|8|1
+6|1|9|1
+7|2|10|1
+8|2|11|1
+9|3|12|1
+10|3|13|1
+11|4|14|1
+12|5|15|1
+13|6|42|1
 table step id quest:ref.quest creature:opt.creature point:opt.point item:opt.item talk:opt.dialogue count:int
-1|1|1|0|0|0|4
-2|1|0|0|1|0|2
-3|1|0|0|0|1|1
+1|1|1|0|0|0|1
+2|1|0|0|0|3|1
 4|2|0|3|0|0|1
 5|2|2|0|0|0|2
-6|2|0|0|0|2|1
+6|2|0|0|0|6|1
+7|3|0|16|0|0|1
+8|3|0|0|0|4|1
+9|4|0|17|0|0|1
+10|4|1|0|0|0|2
+11|4|0|0|0|5|1
+12|5|0|18|0|0|1
+13|5|1|0|0|0|3
+14|5|0|0|1|0|1
+15|5|0|0|0|2|1
+table template id creature:ref.creature block:int style:int notice:int leash:int run:int
+1|1|6|0|1500|4000|900
+2|2|3|1|1800|3000|550
+3|3|3|2|900|3000|550
+4|4|0|3|0|2800|425
+5|5|0|4|0|0|0
+6|6|4|1|800|3500|500
+table troop id spawn:ref.spawn group:int face:int respawn:int slot:int
+1|1|1|270|180|0
+2|2|2|90|180|3
+3|3|2|90|180|4
+4|4|3|270|180|5
+5|5|3|270|180|6
+6|6|3|270|180|7
+7|7|4|122|180|8
+8|8|4|295|180|9
+9|9|7|270|180|10
+10|10|8|270|180|11
+11|11|5|180|20|0
+12|12|6|329|0|0
+13|13|9|0|600|1
+table troop_beat id troop:ref.troop point:ref.point rest:int
+1|11|14|2
+2|11|19|0
+3|11|20|0
+4|11|21|0
+5|11|22|0
+6|11|23|0
+7|11|24|0
+8|11|25|0
+9|11|26|0
+10|11|27|0
+11|11|28|0
+12|11|29|0
+13|11|30|0
+14|11|31|0
+15|11|32|0
+16|11|33|0
+17|11|34|0
+18|11|35|0
+19|11|36|0
+20|11|37|0
+21|11|38|0
+22|11|39|0
+23|11|40|0
+24|11|41|2
+table troop_phase id troop:ref.troop hp:int after:int style:int run:int
+1|13|100|0|2|0
+2|13|50|0|1|650
