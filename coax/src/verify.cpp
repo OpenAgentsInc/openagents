@@ -32,6 +32,8 @@
 #include <unordered_map>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <spawn.h>
+extern char **environ;
 
 namespace coax {
 // The Coax policy's closed type/expr observations use this ABI mapping.
@@ -583,6 +585,7 @@ struct MutationOptions {
   std::vector<std::string> units;  // --unit (repeatable): mutate only these source units' procedures, one report each
   std::string killers;             // --killers: try each mutant's last killing check first
   bool source_order = false;       // --source-order: the checks in source order after the recorded killer
+  std::string changed;             // --changed REF: only procedures whose text differs from REF ("" for all)
 };
 
 struct MutantResult {
@@ -1791,7 +1794,8 @@ static bool evaluate_parallel(MutationRun run, const std::vector<size_t> &owned,
 
 // Identifies the mutant set a shard record describes: the compiler, the root
 // source and every mutant's location and change, in order.
-static std::string mutation_fingerprint(const File *file, const std::vector<Mutant> &mutants, bool root_only, const std::string &unit) {
+static std::string mutation_fingerprint(const File *file, const std::vector<Mutant> &mutants, bool root_only, const std::string &unit,
+                                        const std::string &changed) {
   uint64_t h = 1469598103934665603ull;
   auto mix = [&](const std::string &s) {
     for (unsigned char c : s) { h ^= c; h *= 1099511628211ull; }
@@ -1801,6 +1805,7 @@ static std::string mutation_fingerprint(const File *file, const std::vector<Muta
   // an unfiltered receipt, even if that graph has the same mutation sites.
   if (root_only) mix("scope:root-only:v1");
   if (!unit.empty()) mix("scope:unit:v1:" + unit);
+  if (!changed.empty()) mix("scope:changed:v1:" + changed);
   for(const auto &mu:mutants)if(mu.spatial){mix("lowered-spatial-source-token:v1");break;}
   mix(COAX_RELEASE_VERSION);
   mix("execution-profile:v1:" + file->execution_profile);
@@ -1981,6 +1986,151 @@ static std::vector<int32_t> read_killers(const File *file, const std::string &pa
   }
   return hints;
 }
+// ---- --changed REF: the procedures whose text differs from REF (#13583) ----
+//
+// A unit's top-level declarations are found by a scan of its text: a name
+// followed by `::` at bracket depth 0 starts one, and it ends at the `;` or
+// the closing `}` that brings the depth back to 0. Comments go and blanks
+// fold to one space, so a comment or layout edit changes nothing; string and
+// character literals are kept as written. A declaration is matched to REF's
+// by its name and its place among the unit's declarations of that name. A
+// procedure is changed when its declaration's text differs, when REF has no
+// such declaration or no such file, and when the scan can't place it.
+struct DeclText { int32_t begin = 0, end = 0; std::string name, text; uint32_t ordinal = 0; };
+static std::vector<DeclText> top_level_declarations(const std::string &t) {
+  std::vector<DeclText> out;
+  std::map<std::string, uint32_t> seen;
+  int depth = 0;
+  DeclText *open = nullptr;
+  size_t n = t.size(), i = 0;
+  bool blank = false;
+  auto ident = [](char c) { return isalnum((unsigned char)c) || c == '_'; };
+  auto put = [&](char c) {
+    if (!open) return;
+    if (blank && !open->text.empty()) open->text += ' ';
+    blank = false;
+    open->text += c;
+  };
+  while (i < n) {
+    char c = t[i];
+    if (c == '/' && i + 1 < n && t[i + 1] == '/') { while (i < n && t[i] != '\n') i++; blank = true; continue; }
+    if (c == '/' && i + 1 < n && t[i + 1] == '*') {
+      int nest = 0;
+      do {
+        if (t[i] == '/' && i + 1 < n && t[i + 1] == '*') { nest++; i += 2; }
+        else if (t[i] == '*' && i + 1 < n && t[i + 1] == '/') { nest--; i += 2; }
+        else i++;
+      } while (i < n && nest > 0);
+      blank = true;
+      continue;
+    }
+    if (isspace((unsigned char)c)) { blank = true; i++; continue; }
+    if (c == '"' || c == '\'') {
+      size_t j = i + 1;
+      while (j < n && t[j] != c && t[j] != '\n') j += t[j] == '\\' ? 2 : 1;
+      j = std::min(n, j + 1);
+      put(c);
+      for (size_t k = i + 1; k < j; k++) if (open) open->text += t[k];
+      i = j;
+      continue;
+    }
+    if (depth == 0 && !open && (isalpha((unsigned char)c) || c == '_') && (i == 0 || !ident(t[i - 1]))) {
+      size_t j = i;
+      while (j < n && ident(t[j])) j++;
+      size_t k = j;
+      while (k < n && (t[k] == ' ' || t[k] == '\t')) k++;
+      if (k + 1 < n && t[k] == ':' && t[k + 1] == ':') {
+        out.push_back({(int32_t)i, (int32_t)n, t.substr(i, j - i), "", 0});
+        open = &out.back();
+        open->ordinal = seen[open->name]++;
+        blank = false;
+      }
+    }
+    if (c == '{' || c == '(' || c == '[') depth++;
+    else if (c == '}' || c == ')' || c == ']') depth = std::max(0, depth - 1);
+    put(c);
+    i++;
+    if (open && depth == 0 && (c == ';' || c == '}')) { open->end = (int32_t)i; open = nullptr; }
+  }
+  return out;
+}
+
+// Runs git with `args` in `dir`; its standard output, or false when it fails.
+static bool git_output(const std::string &dir, const std::vector<std::string> &args, std::string *out) {
+  std::vector<std::string> all = {"git", "-C", dir};
+  all.insert(all.end(), args.begin(), args.end());
+  std::vector<char *> argv;
+  for (auto &a : all) argv.push_back((char *)a.c_str());
+  argv.push_back(nullptr);
+  int fds[2];
+  if (pipe(fds) != 0) return false;
+  posix_spawn_file_actions_t actions;
+  posix_spawn_file_actions_init(&actions);
+  posix_spawn_file_actions_adddup2(&actions, fds[1], 1);
+  posix_spawn_file_actions_addclose(&actions, fds[0]);
+  posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
+  pid_t pid = 0;
+  int failed = posix_spawnp(&pid, "git", &actions, nullptr, argv.data(), environ);
+  posix_spawn_file_actions_destroy(&actions);
+  close(fds[1]);
+  if (failed) { close(fds[0]); return false; }
+  out->clear();
+  char buf[65536];
+  for (;;) {
+    ssize_t got = read(fds[0], buf, sizeof buf);
+    if (got < 0 && errno == EINTR) continue;
+    if (got <= 0) break;
+    out->append(buf, (size_t)got);
+  }
+  close(fds[0]);
+  int status = 0;
+  while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+// The procedures --changed REF keeps, or false (with a message) when REF
+// isn't a commit of a unit's repository.
+static bool changed_procedures(const File *file, const std::string &ref, std::set<const ProcDecl *> *changed) {
+  struct UnitDiff { bool read = false, absent = false; std::vector<DeclText> now; std::map<std::pair<std::string, uint32_t>, std::string> then; };
+  std::map<const SourceUnit *, UnitDiff> units;
+  std::map<std::string, bool> repos;  // repository root -> REF resolves there
+  for (const ProcDecl *p : file->procs) {
+    const SourceUnit *u = source_unit_at(file->src, p->loc);
+    if (!u) { changed->insert(p); continue; }
+    UnitDiff &d = units[u];
+    if (!d.read) {
+      d.read = true;
+      d.now = top_level_declarations(u->text);
+      std::string dir = std::filesystem::path(u->canonical).parent_path().string(), top;
+      if (!git_output(dir, {"rev-parse", "--show-toplevel"}, &top)) { d.absent = true; }
+      else {
+        while (!top.empty() && (top.back() == '\n' || top.back() == '\r')) top.pop_back();
+        auto known = repos.find(top);
+        if (known == repos.end()) {
+          std::string ignored;
+          known = repos.emplace(top, git_output(top, {"rev-parse", "--verify", "--quiet", ref + "^{commit}"}, &ignored)).first;
+        }
+        if (!known->second) {
+          fprintf(stderr, "coax: --changed %s: no such commit in %s\n", ref.c_str(), top.c_str());
+          return false;
+        }
+        std::string relative = u->canonical.size() > top.size() + 1 && u->canonical.compare(0, top.size(), top) == 0
+                                   ? u->canonical.substr(top.size() + 1) : tree_path(u->canonical);
+        std::string text;
+        if (!git_output(top, {"show", ref + ":" + relative}, &text)) d.absent = true;  // a new file: all of it changed
+        else for (const DeclText &decl : top_level_declarations(text)) d.then[{decl.name, decl.ordinal}] = decl.text;
+      }
+    }
+    if (d.absent) { changed->insert(p); continue; }
+    const int32_t at = source_point(file->src, p->loc).loc.offset;
+    const DeclText *decl = nullptr;
+    for (const DeclText &x : d.now) if (at >= x.begin && at < x.end) { decl = &x; break; }
+    auto then = decl ? d.then.find({decl->name, decl->ordinal}) : d.then.end();
+    if (!decl || then == d.then.end() || then->second != decl->text) changed->insert(p);
+  }
+  return true;
+}
+
 // A run's killer lines, for --killers: one per killed mutant.
 static std::string killer_lines(const File *file, const std::vector<std::string> &keys, const std::vector<MutantResult> &results) {
   std::string text;
@@ -2006,6 +2156,7 @@ struct MutationBaseline {
   MutationFacts facts;
   double seconds = 0;
   uint64_t steps = 0;
+  const std::set<const ProcDecl *> *changed = nullptr;  // --changed: the procedures it keeps
 };
 
 // Why every mutant runs the full schedule, or "" when it is selective.
@@ -2027,6 +2178,7 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
   bool merging = !opt.merge.empty();
   Mutator m{arena};
   for (const CheckDecl *c : file->checks) m.calls(c->proc->body);
+  size_t scope_procs = 0, changed_procs = 0;
   // Mutate in source order, procedure by procedure.
   for (ProcDecl *p : file->procs) {
     if (std::find(m.reached.begin(), m.reached.end(), p) == m.reached.end()) continue;
@@ -2034,6 +2186,9 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
     // provenance, not from a flattened line or the caller's source location.
     if (!MS_include(opt.root_only, p->root_source)) continue;
     if (!unit.empty() && source_point(file->src, p->loc).path != unit) continue;
+    ++scope_procs;
+    if (baseline.changed && !baseline.changed->count(p)) continue;
+    ++changed_procs;
     size_t first = m.mutants.size();
     m.stmt(p->body);
     for (size_t i = first; i < m.mutants.size(); ++i) m.mutants[i].owner = p;
@@ -2042,7 +2197,7 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
   if(m.spatial_eligible || m.spatial_no_alternative || m.spatial_unsupported)
     fprintf(stderr,"spatial operators: %zu eligible token mutations, %zu no admitted alternate, %zu unsupported unary operations\n",m.spatial_eligible,m.spatial_no_alternative,m.spatial_unsupported);
   size_t total = m.mutants.size();
-  std::string fingerprint = merging || opt.shards ? mutation_fingerprint(file, m.mutants, opt.root_only, unit) : "";
+  std::string fingerprint = merging || opt.shards ? mutation_fingerprint(file, m.mutants, opt.root_only, unit, opt.changed) : "";
   MutationFacts facts = baseline.facts;
   std::vector<MutantResult> results(total);
   bool sharded = opt.shards != 0;
@@ -2100,6 +2255,7 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
   std::vector<const ProcDecl *> unreached_procs;
   for (const ProcDecl *p : file->procs) {
     if (!SU_check_required(p->authority,p->root_source,true) || p->foreign || str_eq(p->name, "main")) continue;
+    if (baseline.changed && !baseline.changed->count(p)) continue;  // --changed: only what the change touched
     if (std::find(m.reached.begin(), m.reached.end(), p) == m.reached.end()) {
       unreached += (unreached.empty() ? "" : ", ") + to_std(p->name);
       unreached_procs.push_back(p);
@@ -2119,6 +2275,9 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
   }
   if (opt.root_only) fprintf(report, "mutation scope: root-only (entry-source procedures; dependency checks retained)\n");
   if (!unit.empty()) fprintf(report, "mutation scope: unit %s (its procedures; every check retained)\n", unit.c_str());
+  if (baseline.changed)
+    fprintf(report, "mutation scope: changed since %s (%zu of %zu procedure%s; every check retained)\n", opt.changed.c_str(),
+            changed_procs, scope_procs, scope_procs == 1 ? "" : "s");
   if (g_diagnostics_json) {
     // One coax.diagnostic.v1 object per survivor and per unreached procedure, on stderr.
     for (const Mutant *mu : survivors)
@@ -2144,9 +2303,12 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
   }
   if (equivalent) fprintf(report, ", %zu marked equivalent", equivalent);
   fprintf(report, "\n");
-  if (m.mutants.empty()) fprintf(report, "no reachable mutation sites\n");
+  // --changed: a change with nothing to mutate passes (#13583).
+  const bool nothing_changed = baseline.changed && m.mutants.empty();
+  if (nothing_changed) fprintf(report, "nothing to mutate: no changed procedure since %s has a mutation site\n", opt.changed.c_str());
+  else if (m.mutants.empty()) fprintf(report, "no reachable mutation sites\n");
   fflush(report);
-  g_evidence.mutation_outcome = EV_mutation(!m.mutants.empty(), !survivors.empty(), !unreached.empty(), sharded);
+  g_evidence.mutation_outcome = EV_mutation(!m.mutants.empty() || nothing_changed, !survivors.empty(), !unreached.empty(), sharded);
   {
     std::string rows;
     for (const Mutant *mu : survivors) {
@@ -2157,7 +2319,9 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
     g_evidence.mutation_detail = "\"mutants\":" + std::to_string(total) + ",\"evaluated\":" + std::to_string(owned.size()) +
         ",\"killed\":" + std::to_string(owned.size() - survivors.size() - equivalent) + ",\"survived\":[" + rows + "]" +
         ",\"marked_equivalent\":" + std::to_string(equivalent) + ",\"unreached\":\"" + json_escape_basic(unreached) + "\"" +
-        ",\"scope\":\"" + (opt.root_only ? "root-only" : unit.empty() ? "all" : "unit") + "\",\"shard\":" +
+        ",\"scope\":\"" + (opt.root_only ? "root-only" : unit.empty() ? "all" : "unit") + "\"" +
+        (baseline.changed ? ",\"changed_since\":\"" + json_escape_basic(opt.changed) + "\",\"changed_procedures\":" + std::to_string(changed_procs) : std::string()) +
+        ",\"shard\":" +
         (sharded ? "[" + std::to_string(opt.shard) + "," + std::to_string(opt.shards) + "]" : std::string("null")) +
         ",\"merged_records\":" + std::to_string(opt.merge.size()) + ",\"scheduling\":\"" + (facts.selective ? "selective" : "full") +
         "\",\"per_check_budget\":\"max(10000, 10 x the unmutated check's steps)\"";
@@ -2165,7 +2329,7 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
   if (opt.stats) fprintf(stderr, "mutation-scheduling %s checks=%llu skipped=%llu borrowed=%d strings=%d unstable=%d\n",
                          facts.selective ? "selective" : "full", (unsigned long long)invocations,
                          (unsigned long long)skipped, facts.borrowed, facts.strings, facts.unstable);
-  return survivors.empty() && unreached.empty() && !m.mutants.empty() ? 0 : 1;
+  return survivors.empty() && unreached.empty() && (!m.mutants.empty() || nothing_changed) ? 0 : 1;
 }
 
 static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) {
@@ -2196,6 +2360,12 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
   if (units.empty()) units.push_back("");  // the whole inventory (or --root-only)
   bool merging = !opt.merge.empty();
   MutationBaseline baseline;
+  // --changed REF: read before the baseline, so a bad REF costs nothing.
+  std::set<const ProcDecl *> changed;
+  if (!opt.changed.empty()) {
+    if (!changed_procedures(file, opt.changed, &changed)) { g_evidence.infrastructure = true; return 1; }
+    baseline.changed = &changed;
+  }
   bool unstable = false;
   if (!merging) {
     const auto began = std::chrono::steady_clock::now();

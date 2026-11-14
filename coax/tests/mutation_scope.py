@@ -46,8 +46,10 @@ main :: () {}
         flags = ('--mutation-trace', '--mutation-stats')
         old = self.run_mutate(*flags, compiler=BASELINE)
         current = self.run_mutate(*flags)
-        self.assertEqual((current.returncode, current.stdout, current.stderr),
-                         (old.returncode, old.stdout, old.stderr))
+        # The baseline line holds a wall time (and a frozen compiler may not print it).
+        timeless = lambda r: '\n'.join(x for x in r.stderr.splitlines() if not x.startswith('mutation-baseline '))
+        self.assertEqual((current.returncode, current.stdout, timeless(current)),
+                         (old.returncode, old.stdout, timeless(old)))
         self.assertIn(str(self.dependency), current.stdout)
         self.assertEqual(self.count(current), (9, 5, 4))
 
@@ -202,6 +204,41 @@ main :: () {}
         self.assertIn('\tg\n', misled)
         killers.write_text(misled)
         self.assertEqual(self.run_mutate('--killers', str(killers), source=path).stdout, plain.stdout)
+
+    def git(self, *args):
+        subprocess.run(['git', '-C', str(self.d), *args], check=True, capture_output=True, text=True, timeout=60,
+                       env={**os.environ, 'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@t', 'GIT_COMMITTER_NAME': 't',
+                            'GIT_COMMITTER_EMAIL': 't@t', 'GIT_CONFIG_GLOBAL': '/dev/null'})
+
+    def test_changed_mutates_only_procedures_whose_text_differs(self):
+        # #13583: --changed REF keeps every check and mutates what the change touched.
+        self.git('init', '-q'); self.git('add', '-A'); self.git('commit', '-q', '-m', 'base')
+        same = self.run_mutate('--changed', 'HEAD')
+        self.assertEqual(same.returncode, 0, same.stdout + same.stderr)
+        self.assertIn('mutation scope: changed since HEAD (0 of 3 procedures; every check retained)', same.stdout)
+        self.assertIn('nothing to mutate', same.stdout)
+        # A comment or layout edit is no change.
+        self.dependency.write_text(self.dependency.read_text().replace('dep :: (x:int)->int #effects(all) {',
+                                                                       '// a note\ndep :: (x:int)->int   #effects(all) {\n'))
+        self.assertIn('nothing to mutate', self.run_mutate('--changed', 'HEAD').stdout)
+        # One procedure's body changes: only its mutants, and it still survives where it did.
+        self.dependency.write_text(self.dependency.read_text().replace('x-7', 'x-8'))
+        one = self.run_mutate('--changed', 'HEAD')
+        self.assertIn('(1 of 3 procedures', one.stdout)
+        full = self.run_mutate()
+        self.assertGreater(self.count(full)[0], self.count(one)[0])
+        self.assertGreater(self.count(one)[2], 0)  # dep's x>100 branch has no check
+        self.assertNotIn(str(self.d / 'deps/leaf.coax'), one.stdout)
+        # Composes with --unit: the root unit has no change.
+        root = self.run_mutate('--changed', 'HEAD', '--unit', str(self.entry))
+        self.assertEqual(root.returncode, 0, root.stdout); self.assertIn('nothing to mutate', root.stdout)
+        # A new unit is all changed; a bad REF is refused before the baseline.
+        (self.d / 'deps/extra.coax').write_text('extra :: (x:int)->int #effects(all) { return x+5; }\n')
+        self.dependency.write_text('#load "extra.coax";\n' + self.dependency.read_text().replace('dep(2)==6', 'dep(2)==6 && extra(1)==6'))
+        new = self.run_mutate('--changed', 'HEAD', '--unit', str(self.d / 'deps/extra.coax'))
+        self.assertEqual(new.returncode, 0, new.stdout + new.stderr); self.assertIn('(1 of 1 procedure;', new.stdout)
+        bad = self.run_mutate('--changed', 'no-such-ref')
+        self.assertNotEqual(bad.returncode, 0); self.assertIn('no such commit', bad.stderr)
 
     def test_flag_is_not_accepted_by_other_commands(self):
         r = subprocess.run([str(COMPILER), 'test', str(self.entry), '--root-only'], capture_output=True, text=True, timeout=90)

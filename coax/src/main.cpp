@@ -2356,10 +2356,12 @@ static int usage() {
           "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list] [--profile steps] [--evidence FILE]\n"
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...] [--evidence FILE]\n"
           "                    [--root-only | --unit PART.coax...] [--killers FILE] [--source-order]\n"
-          "                    [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
+          "                    [--changed [REF]] [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
           "                    --root-only mutates entry-source procedures; all baseline checks still run\n"
           "                    --unit PART.coax mutates one loaded unit's procedures; every check still runs;\n"
           "                    repeated, the checks' unmutated pass runs once and each unit reports in turn\n"
+          "                    --changed [REF] mutates only procedures whose text differs from REF\n"
+          "                    (default origin/main); every check still runs; nothing to mutate passes\n"
           "                    --killers FILE runs each mutant's last killing check first and records\n"
           "                    this run's; the verdicts are the same with or without it\n"
           "                    each mutant tries its likely killers first (the file's, then this run's,\n"
@@ -2719,6 +2721,12 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--root-only" && cmd == "mutate" && mutation.units.empty()) mutation.root_only = true;
     else if (a == "--unit" && cmd == "mutate" && i + 1 < argc && !mutation.root_only) mutation.units.push_back(argv[++i]);
     else if (a == "--killers" && cmd == "mutate" && i + 1 < argc && mutation.killers.empty()) mutation.killers = argv[++i];
+    else if (a == "--changed" && cmd == "mutate" && mutation.changed.empty()) {
+      // --changed [REF] (#13583): REF is the next word unless it is an option or a .coax file; else origin/main.
+      const std::string next = i + 1 < argc ? argv[i + 1] : "";
+      const bool ref = !next.empty() && next[0] != '-' && !(next.size() > 5 && next.compare(next.size() - 5, 5, ".coax") == 0);
+      mutation.changed = ref ? argv[++i] : "origin/main";
+    }
     else if (a == "--source-order" && cmd == "mutate") mutation.source_order = true;
     else if (a == "--mutation-reference" && cmd == "mutate") mutation.reference = true;
     else if (a == "--mutation-stats" && cmd == "mutate") mutation.stats = true;
