@@ -70,8 +70,8 @@ it from modified native sources and target an older installed binary.
 Build only changed Wasm, then prepare resources. For example:
 
 ```sh
-coax/remote/remote.sh run -- coax/web/wasm.sh coax/native/starter/app.coax \
-  coax/native/starter/face.c apps/openagents-ios/Starter/build/app.wasm
+coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-ios/home/app.coax \
+  apps/openagents-ios/home/face.c apps/openagents-ios/Starter/build/app.wasm
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-ios/extras/app.coax \
   coax/native/starter/face.c apps/openagents-ios/Starter/build/extras.wasm
 coax/web/tool.sh coax/native/prepare.coax
