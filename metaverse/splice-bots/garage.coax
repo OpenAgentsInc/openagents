@@ -6,7 +6,8 @@
 // the tunnel) and the raiders' rock wall, into the old entrance bay A1 at 6 o'clock. C1 at 3 o'clock is
 // the section the raiders left empty on their dusk trip, where the drill mech waits; G1 at 9 o'clock is
 // the work bay with its catwalk. Straight across from A1, E1 at 12 o'clock opens on a hallway north into
-// the mountain, blocked until the drill mech breaks it; past it is the old-world lab.
+// the mountain, blocked until the drill mech breaks it; past it is the old-world lab, round
+// and white, the hallway coming in at its south (#13552).
 //
 // Where it stands and how big it is are the landmark "Garage" (its middle, and the field's radius); the
 // bays, the rim and the hallway are measured from it. Its walls are colliders in the World (layer.coax
@@ -28,7 +29,10 @@ GA_BERM :: 46.0f32;            // m: the rim's slope down to the desert outside
 GA_DOOR :: 3.0f32;             // m: half the width of the entry's tunnel
 GA_HALL :: 3.2f32;             // m: half the width of the hallway into the mountain (the boss wall reaches into its sides)
 GA_HALL_LONG :: 32.0f32;       // m: the hallway's length, from the back wall to the lab
-GA_LAB_X :: 24.0f32; GA_LAB_Z :: 46.0f32;   // m: the lab's half width and its depth
+GA_LAB_R :: 24.0f32;           // m: the round lab's radius, inside its wall; its middle is the boss's
+GA_LAB_TALL :: 9.0f32;         // m: its ceiling
+GA_LAB_SIDES :: 24;            // its round wall in straight pieces; the one at the south is the hallway's mouth
+GA_LAB_X :: GA_LAB_R; GA_LAB_Z :: GA_LAB_R * 2;   // m: the square of rock round it, half its width and its depth
 GA_ENTRY :: 0;                 // A1: the old entrance bay, north, where the tunnel comes in
 GA_EMPTY :: 6;                 // C1, due east: the section the raiders left empty, where the drill mech stands (layout per the level spec, #13552)
 GA_HALLWAY :: 12;              // E1: straight across from A1, the hallway into the mountain
@@ -39,8 +43,23 @@ GA_X :: 0.0f32; GA_Z :: -195.0f32; GA_R :: 135.0f32;   // where it is when the t
 ga_span :: () -> f32 { return TAU / cast(f32) GA_SECTIONS; }
 // Section k's middle, as an angle round the field: 0 is north (+z), a quarter turn is east (+x).
 ga_angle :: (k: int) -> f32 { return cast(f32) k * ga_span(); }
-// The lab's back wall, less a step: as far as the boss's charge goes (splice-battle.coax).
-ga_lab_back :: (g: [] SpGame) -> f32 { return g[0].at.gar_z - ga_back(g) - GA_HALL_LONG - GA_LAB_Z + 2; }
+// Where the hallway opens into the lab: the one join between the two.
+ga_lab_mouth :: (g: [] SpGame) -> f32 { return g[0].at.gar_z - ga_back(g) - GA_HALL_LONG; }
+// The lab's middle, its radius north of the mouth.
+ga_lab_mid :: (g: [] SpGame) -> Point { return v3(g[0].at.gar_x, 0, ga_lab_mouth(g) - GA_LAB_R); }
+// The lab's north wall, less a step: as far as the boss's charge goes (splice-battle.coax).
+ga_lab_back :: (g: [] SpGame) -> f32 { return ga_lab_mouth(g) - GA_LAB_Z + 2; }
+// The point on a circle round c at angle a (0 south, toward +z; a quarter turn east, +x), y up.
+ga_round :: (c: Point, a: f32, r: f32, y: f32) -> Point { return v3(c.x + sin(a) * r, y, c.z + cos(a) * r); }
+// The lab's round wall: a body of radius r inside it stays r in front of the wall, except through the
+// hallway's mouth at its south. A body just past the wall is put back in; one further out is not the lab's.
+ga_lab_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
+  c := ga_lab_mid(g); dx := x - c.x; dz := z - c.z; d := sqrt(dx * dx + dz * dz);
+  edge := GA_LAB_R - r;
+  if d <= edge || d > GA_LAB_R + GA_BACK * 2 + r { return v3(x, 0, z); }
+  if dz > 0 && abs(dx) <= GA_HALL - r { return v3(x, 0, z); }   // the mouth
+  return v3(c.x + dx / d * edge, 0, c.z + dz / d * edge);
+}
 ga_back :: (g: [] SpGame) -> f32 { return g[0].at.gar_r + GA_BAY; }
 // The foot of the rim's slope outside, where the desert starts.
 ga_foot :: (g: [] SpGame) -> f32 { return ga_back(g) + GA_BACK + 6 + GA_BERM; }
@@ -125,21 +144,20 @@ ga_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
 // (south of it, theirs). A piece is not set there (layer.coax).
 ga_rock :: (g: [] SpGame, x: f32, z: f32, r: f32) -> bool {
   dx := x - g[0].at.gar_x; dz := z - g[0].at.gar_z; d := sqrt(dx * dx + dz * dz);
-  back := ga_back(g);
+  back := ga_back(g); ax := abs(x - g[0].at.gar_x);
+  if z < g[0].at.gar_z - back - GA_HALL_LONG && ax < GA_LAB_X + r { c := ga_lab_mid(g); return dist2(x, z, c.x, c.z) > GA_LAB_R - r; }   // the round lab, and the rock round it
   if d <= back - r || d >= back + GA_BERM { return false; }
-  ax := abs(x - g[0].at.gar_x);
   if z > g[0].at.gar_z + back - r { return false; }                                  // the tunnel and the mine mouth
   if z < g[0].at.gar_z - back + r && ax < GA_HALL { return false; }                  // the hallway
-  if z < g[0].at.gar_z - back - GA_HALL_LONG && ax < GA_LAB_X { return false; }      // the lab
   return true;
 }
 // The hallway into the mountain and the lab past it: walls as the layout's boxes (g_wall).
 ga_layout :: (g: [] SpGame) {
   back := g[0].at.gar_z - ga_back(g);            // the back wall's z, straight across from the entry
   end := back - GA_HALL_LONG;                     // where the hallway opens into the lab
-  g_wall(g, -GA_HALL - 10, -GA_HALL, end - 2, back + 1.5, 16);
-  g_wall(g, GA_HALL, GA_HALL + 10, end - 2, back + 1.5, 16);
-  g_wall(g, -GA_LAB_X - 8, -GA_HALL, end - 2, end, 12); g_wall(g, GA_HALL, GA_LAB_X + 8, end - 2, end, 12);   // the lab's front, either side of the hallway
+  g_wall(g, -GA_HALL - 10, -GA_HALL, end, back + 1.5, 16);
+  g_wall(g, GA_HALL, GA_HALL + 10, end, back + 1.5, 16);
+  g_wall(g, -GA_LAB_X - 8, -GA_HALL, end, end + 2, 12); g_wall(g, GA_HALL, GA_LAB_X + 8, end, end + 2, 12);   // the rock either side of the hallway, behind the lab's round wall (ga_lab_push)
   g_wall(g, -GA_LAB_X - 8, -GA_LAB_X, end - GA_LAB_Z, end, 12); g_wall(g, GA_LAB_X, GA_LAB_X + 8, end - GA_LAB_Z, end, 12);
   g_wall(g, -GA_LAB_X - 8, GA_LAB_X + 8, end - GA_LAB_Z - 6, end - GA_LAB_Z, 12);
 }
@@ -248,34 +266,43 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     kit_pen(p, 220, MAT_GLOW, kit_tint(1.0, 0.86, 0.50));
     ball(buf, p, ga_pt(g, a1, rf + GA_SET + 0.6, GA_RIM + 4.2), 0.4, 6);
   }
-  // the hallway into the mountain, past section E1, and the old-world lab: white walls, a rare blue glow
+  // the hallway into the mountain, past section E1: the white lab's own walls, unlit by the sky, so neither dusk nor night tints them
   back := g[0].at.gar_z - rb; end := back - GA_HALL_LONG;
-  kit_pen(p, 221, MAT_FLAT, kit_tint(0.90, 0.90, 0.88));   // the hallway: the white lab's own walls, unlit by the sky, so neither dusk nor night tints them
-  block(buf, p, -GA_HALL - 5, 0, (back + end) * 0.5, 5, 12, GA_HALL_LONG * 0.5 + 1); block(buf, p, GA_HALL + 5, 0, (back + end) * 0.5, 5, 12, GA_HALL_LONG * 0.5 + 1);
+  kit_pen(p, 221, MAT_FLAT, kit_tint(0.90, 0.90, 0.88));
+  block(buf, p, -GA_HALL - 5, 0, (back + end + 1) * 0.5, 5, 12, (GA_HALL_LONG + 1) * 0.5); block(buf, p, GA_HALL + 5, 0, (back + end + 1) * 0.5, 5, 12, (GA_HALL_LONG + 1) * 0.5);
   block(buf, p, 0, 10, (back + end) * 0.5, GA_HALL + 0.1, 4, GA_HALL_LONG * 0.5);
+  ga_draw_lab(g, buf, p);
+}
+// The old-world lab (#13552): a round white room, the hallway coming in at its south. Its floor, its
+// round wall in GA_LAB_SIDES pieces (none at the mouth) and its ceiling; round the wall, four old machines
+// with the past's light-blue glow, and over the mouth a glowing band, the only blue but the boss's.
+ga_draw_lab :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  c := ga_lab_mid(g); r := GA_LAB_R; da := TAU / cast(f32) GA_LAB_SIDES; up := v3(0, 1, 0); dn := v3(0, -1, 0);
   kit_pen(p, 222, MAT_FLOOR, kit_tint(0.90, 0.92, 0.94));
-  quad(buf, p, v3(-GA_LAB_X, 0.02, end - GA_LAB_Z), v3(-GA_LAB_X, 0.02, end), v3(GA_LAB_X, 0.02, end), v3(GA_LAB_X, 0.02, end - GA_LAB_Z));
-  kit_pen(p, 223, MAT_WORLD, kit_tint(0.94, 0.95, 0.96));
-  block(buf, p, -GA_LAB_X - 1, 0, end - GA_LAB_Z * 0.5, 1, 9, GA_LAB_Z * 0.5); block(buf, p, GA_LAB_X + 1, 0, end - GA_LAB_Z * 0.5, 1, 9, GA_LAB_Z * 0.5);
-  block(buf, p, 0, 0, end - GA_LAB_Z - 1, GA_LAB_X + 2, 9, 1);
-  block(buf, p, -(GA_LAB_X + GA_HALL) * 0.5, 0, end - 1, (GA_LAB_X - GA_HALL) * 0.5, 9, 1); block(buf, p, (GA_LAB_X + GA_HALL) * 0.5, 0, end - 1, (GA_LAB_X - GA_HALL) * 0.5, 9, 1);
-  kit_pen(p, 224, MAT_WORLD, kit_tint(0.86, 0.88, 0.90));
-  block(buf, p, 0, 9, end - GA_LAB_Z * 0.5, GA_LAB_X + 2, 0.6, GA_LAB_Z * 0.5 + 1);
-  // the glow: thin light-blue lines along the walls and the floor, and the old machines' plinths
+  for i: 0..<GA_LAB_SIDES { a := cast(f32) i * da; tri(buf, p, v3(c.x, 0.02, c.z), ga_round(c, a - da * 0.5, r + 1, 0.02), ga_round(c, a + da * 0.5, r + 1, 0.02), up, up, up); }
+  kit_pen(p, 223, MAT_FLAT, kit_tint(0.94, 0.95, 0.96));
+  half := (r + 1) * tan(da * 0.5) + 0.05;
+  for i: 1..<GA_LAB_SIDES { a := cast(f32) i * da; box(buf, p, frame_at(ga_round(c, a, r + 0.5, GA_LAB_TALL * 0.5), a), half, GA_LAB_TALL * 0.5, 0.5); }
+  kit_pen(p, 224, MAT_FLAT, kit_tint(0.86, 0.88, 0.90));
+  for i: 0..<GA_LAB_SIDES { a := cast(f32) i * da; tri(buf, p, v3(c.x, GA_LAB_TALL, c.z), ga_round(c, a + da * 0.5, r + 1, GA_LAB_TALL), ga_round(c, a - da * 0.5, r + 1, GA_LAB_TALL), dn, dn, dn); }
+  block(buf, p, c.x, GA_LAB_TALL, c.z + r, GA_HALL + 0.5, 3, 1);   // the lintel over the mouth
+  // the old machines, white, each with a glowing screen toward the room: NE, NW, SW and SE
+  for i: 0..<4 {
+    a := PI * 0.25 + cast(f32) i * PI * 0.5; f := frame_at(ga_round(c, a, r - 2.2, 0), a);
+    kit_pen(p, 226, MAT_FLAT, kit_tint(0.96, 0.97, 0.98)); box(buf, p, frame_move(f, fp(f, 0, 0.7, 0)), 1.8, 0.7, 1.1); box(buf, p, frame_move(f, fp(f, 0, 2.0, 0.6)), 1.6, 0.6, 0.4);
+    kit_pen(p, 225, MAT_GLOW, GLOW()); box(buf, p, frame_move(f, fp(f, 0, 2.0, 0.18)), 1.3, 0.42, 0.04);
+  }
   kit_pen(p, 225, MAT_GLOW, GLOW());
-  for i: 0..<2 { s := ifx i == 0 then -1.0f32 else 1.0f32; block(buf, p, s * (GA_LAB_X - 0.05), 2.2, end - GA_LAB_Z * 0.5, 0.06, 0.08, GA_LAB_Z * 0.5 - 2); block(buf, p, s * (GA_LAB_X - 0.05), 6.0, end - GA_LAB_Z * 0.5, 0.06, 0.08, GA_LAB_Z * 0.5 - 2); }
-  for i: 0..<5 { block(buf, p, 0, 0.03, end - 6 - cast(f32) i * 8, GA_LAB_X - 4, 0.02, 0.06); }
-  kit_pen(p, 226, MAT_WORLD, kit_tint(0.96, 0.97, 0.98));
-  for i: 0..<6 { s := ifx i % 2 == 0 then -1.0f32 else 1.0f32; block(buf, p, s * (GA_LAB_X - 4), 0, end - 10 - cast(f32) (i / 2) * 12, 1.6, 1.4, 2.4); }
+  block(buf, p, c.x, GA_LAB_TALL - 1.6, c.z + r - 0.1, GA_HALL + 0.3, 0.12, 0.08);
 }
 
 // The lamps of the three bays nearest you, into the light slots 2, 3 and 5 (g_lights); in the lab, its
 // white ceiling lights in the same slots.
 ga_lights :: (g: [] SpGame, l: [] f32) {
   if ga_in_lab(g, g[0].px, g[0].pz) {
-    end := g[0].at.gar_z - ga_back(g) - GA_HALL_LONG;
+    c := ga_lab_mid(g);
     slots := [3] int.[2, 3, 5];
-    for i: 0..<3 { light_put(l, slots[i], v3(g[0].at.gar_x, 8.2, end - GA_LAB_Z * (0.2 + cast(f32) i * 0.3)), 22, 1.0, 1.0, 1.0, 1.1); }
+    for i: 0..<3 { light_put(l, slots[i], v3(c.x, GA_LAB_TALL - 0.8, c.z + GA_LAB_R * 0.6 * cast(f32) (1 - i)), 22, 1.0, 1.0, 1.0, 1.1); }
     return;
   }
   if !ga_inside(g, g[0].px, g[0].pz) { return; }
@@ -301,4 +328,29 @@ ga_look_into :: (g: [] SpGame, k: int) {
   #assert sag > 0.14 && sag < 0.16 && abs(sag - rb * (1 - cos(h / 3))) < 0.001;
   // the mouth stands off the wall by more than the depth buffer's step across the field (about 6 cm)
   #assert GA_OFF_WALL >= 0.2;
+}
+#test "the boss lab is round with the hallway at its south, the boss in its middle facing east, its tail sweep over the north half, and every weak point in reach" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 34);
+  t := g[0].bt[..]; c := ga_lab_mid(g[..]);
+  // the boss's home is the lab's middle, and it faces east (+x)
+  #assert abs(c.x - g[0].at.boss_x) < 0.01 && abs(c.z - g[0].at.boss_z) < 0.01 && t[0].dino_yaw == SB_BOSS_FACE;
+  // the round wall: a walker going north, east or west stops GA_LAB_R in; through the mouth at the south it walks on
+  for a: [3] f32.[PI, PI * 0.5, PI * 1.5] {
+    q := ga_lab_push(g[..], c.x + sin(a) * (GA_LAB_R + 0.5), c.z + cos(a) * (GA_LAB_R + 0.5), T_RADIUS);
+    #assert abs(dist2(q.x, q.z, c.x, c.z) - (GA_LAB_R - T_RADIUS)) < 0.01;
+  }
+  m := ga_lab_push(g[..], c.x + 1, ga_lab_mouth(g[..]) + 0.5, T_RADIUS); #assert m.x == c.x + 1 && m.z == ga_lab_mouth(g[..]) + 0.5;
+  inside := ga_lab_push(g[..], c.x + 5, c.z - 5, T_RADIUS); #assert inside.x == c.x + 5 && inside.z == c.z - 5;
+  // halfway through its sweep the tail is due north of it (-z); its flank weak point is on that side
+  g[0].boss_t = T_SWEEP_EVERY + T_SWEEP_TIME * 0.5; a := sb_arm_angle(g[..]);
+  #assert abs(sin(a)) < 0.01 && cos(a) < -0.99 && sb_weak_at(g[..], 1).z < c.z - 1;
+  // F reaches each weak point from a walker held off by its collider
+  for i: 0..<3 { w := sb_weak_at(g[..], i); #assert lo(abs(SB_BOSS_R - dist2(w.x, w.z, c.x, c.z)), dist2(w.x, w.z, c.x, c.z) + SB_BOSS_R) < T_STUN_RANGE; }
+  // the boss stands in the lab with room round it, and is bigger than the drill mech
+  #assert SB_BOSS_R + SB_BOSS_LONG * 0.5 < GA_LAB_R && SB_BOSS_TALL > SB_MECH_TOP;
+  // phase one: moved off its spot, it walks back and turns east again
+  g_stage(g[..], 35); t[0].dino_x = c.x + 1; t[0].dino_yaw = 0; g[0].boss_t = 0;
+  for i: 0..<300 { t[0].think = 10; t[0].idle = 0; g_step(g[..], 0.02); }   // neither side's cards: no hits, no stuns
+  #assert dist2(t[0].dino_x, t[0].dino_z, c.x, c.z) < 0.06 && abs(t[0].dino_yaw - SB_BOSS_FACE) < 0.01;
 }

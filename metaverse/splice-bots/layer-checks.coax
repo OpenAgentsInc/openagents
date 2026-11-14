@@ -26,8 +26,9 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   if !g[0].wall_gone { q = lc_old_push(q, -4, 4, g[0].at.wall_z - 1, g[0].at.wall_z + 1, T_RADIUS); }
   q = ga_push(g, q.x, q.z, T_RADIUS);   // the garage's round back wall (garage.coax)
   q = pl_push(g, q.x, q.z, T_RADIUS);   // the mountain, the rim from outside and the plain's edge (plain.coax)
+  q = ga_lab_push(g, q.x, q.z, T_RADIUS);   // the lab's round wall
   dx := q.x - g[0].at.boss_x; dz := q.z - g[0].at.boss_z; d := sqrt(dx * dx + dz * dz);
-  if d < 2.1 && d > 0.001 { q = v3(g[0].at.boss_x + dx / d * 2.1, 0, g[0].at.boss_z + dz / d * 2.1); }
+  if d < SB_BOSS_R && d > 0.001 { q = v3(g[0].at.boss_x + dx / d * SB_BOSS_R, 0, g[0].at.boss_z + dz / d * SB_BOSS_R); }
   return q;
 }
 
@@ -60,7 +61,17 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   g[0].px = -3.9; g[0].pz = -6; g_collide(g[..]);
   #assert w.grid.n[SPATIAL_VISITS] - before <= 24 && world_count(w) > 90 && g[0].ws[0].crowded == 0;
 }
-// Every 2.4 m by 3 m across the mine, the garage's field (not its bays), the hallway and the lab, with the rubble and the boss
+// The World's walk from (x, z) against the old list's: -1 when (x, z) is deeper inside a wall than a
+// step can take a walker (up to 0.6 m), 0 when it stands free, 1 when both push it out to the same place.
+lc_walk_at :: (g: [] SpGame, x: f32, z: f32) -> int {
+  g[0].px = x; g[0].pz = z; g_collide(g);
+  old := lc_old_collide(g, x, z);
+  moved := dist2(x, z, old.x, old.z);
+  if moved > 0.6 { return -1; }
+  #assert dist2(g[0].px, g[0].pz, old.x, old.z) < 0.0001;
+  return ifx moved == 0 then 0 else 1;
+}
+// Every 2.4 m by 3 m across the mine, the garage's field (not its bays), the hallway and the lab, and round the lab's wall, with the rubble and the boss
 // wall shut and then open: the World's walk puts the smuggler where the old list's walk did,
 // wherever a step can take a walker (up to 0.6 m into a wall).
 #test "the World's walk is the old wall list's walk, to a tenth of a millimetre inside no wall" #steps 2000000000 #traversal 1000000000 {
@@ -73,13 +84,15 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
       x := -144.2 + cast(f32) i * 2.4; z := -430.3 + cast(f32) k * 3.0;
       ring := dist2(x, z, g[0].at.gar_x, g[0].at.gar_z);
       if ring > g[0].at.gar_r - 2 && ring < ga_back(g[..]) + 2 * GA_BACK + 1 { continue; }   // the bays: their piers are World colliders only
-      g[0].px = x; g[0].pz = z; g_collide(g[..]);
-      old := lc_old_collide(g[..], x, z);
-      moved := dist2(x, z, old.x, old.z);
-      if moved > 0.6 { continue; }   // set deeper inside a wall than a step can take a walker
-      #assert dist2(g[0].px, g[0].pz, old.x, old.z) < 0.0001;
-      if moved == 0 { free += 1; } else { pushed += 1; }
+      w := lc_walk_at(g[..], x, z);
+      if w == 0 { free += 1; } else if w == 1 { pushed += 1; }
     } }
+    // and just inside the lab's round wall all the way round (open at the hallway's mouth), where a step is pushed back
+    c := ga_lab_mid(g[..]);
+    for j: 0..<48 {
+      a := cast(f32) j * TAU / 48; w := lc_walk_at(g[..], c.x + sin(a) * (GA_LAB_R - 0.2), c.z + cos(a) * (GA_LAB_R - 0.2));
+      if w == 0 { free += 1; } else if w == 1 { pushed += 1; }
+    }
     #assert free > 6000 && pushed > 60;
   }
 }

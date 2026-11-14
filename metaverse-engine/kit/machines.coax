@@ -177,7 +177,8 @@ kit_mech :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, shell: KitTint,
 // The dinosaur machine: a long body on two hind legs, short arms, a neck to a boxy head with a jaw,
 // a tail that sways, and plates down its spine in `glow` with the eyes. `jaw` opens the mouth (0
 // shut to 1 wide), `step` swings the legs (radians), `sway` swings the tail (-1 to 1). Facing its
-// frame's z, 4.6 m to the top of the head and 9 m nose to tail at s 1. Uses objects obj to obj + 2.
+// frame's z, KIT_DINO_TALL to the top of the head and KIT_DINO_LONG nose to tail at s 1. Uses objects obj to obj + 2.
+KIT_DINO_TALL :: 4.62f32; KIT_DINO_LONG :: 12.5f32;   // m at s 1 (metrics.coax measures the mesh)
 kit_dino :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, hide: KitTint, dark: KitTint, glow: KitTint, jaw: f32, step: f32, sway: f32) {
   kit_pen(p, obj, MAT_SKIN, hide);
   ellipsoid(buf, p, kit_at(f, 0, 2.4 * s, 0), 1.15 * s, 1.05 * s, 2.3 * s, 16, 9, 0);

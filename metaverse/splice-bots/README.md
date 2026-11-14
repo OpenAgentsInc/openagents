@@ -355,12 +355,20 @@ built, the rubble ahead of you.
   moves with it (`sl_body_to`, layer.coax). Its battle begins when you are in its chamber
   with the mech. The mech fights on its own when you leave it be (its strongest ready card every
   couple of seconds); 1 to 4 pick its moves. A hit landing jolts the boss and flashes it, and the
-  prompt names her part: when it reels, run to a glowing weak point and press F. Phase one: its tail
-  sweeps a half circle over its left side. Below half health, phase two: it winds up, charges and
-  is dazed after. Its three weak points open while it reels from a stunning hit, is dazed, or has no
+  prompt names her part: when it reels, run to a glowing weak point and press F. Phase one: it holds
+  the lab's middle facing east and its tail sweeps half way round over the lab's north half, where its
+  flank's weak point is. Below half health, phase two: it turns on the mech, winds up, charges and
+  is dazed after. Its three weak points (orange) open while it reels from a stunning hit, is dazed, or has no
   health left; stun all three with F (each stays down 12 s) and it powers down, drops its banned core,
   and night falls. You lose if your health or the mech's runs out: back at the checkpoint, the boss
   whole again and the mech repaired at the hallway.
+- **The boss lab.** Past the hallway, a round white old-world lab (`ga_draw_lab`, garage.coax):
+  `GA_LAB_R` (24 m) round its middle, which is the boss's home, the hallway coming in at its south
+  (`ga_lab_mouth`, the one join). Its wall is `ga_lab_push`. Four old machines round the wall and a
+  band over the mouth glow the past's light blue; the rest is white, lit by its own lamps, so it stays
+  white at night. The boss's size is `SB_BOSS_LONG` (13.5 m nose to tail, `SB_BOSS_TALL` 6.9 m), in
+  the export's tuning for the metrics room. Stills 34 to 36 (`coaxial.send(610, "N")`): the lab from
+  the hallway's mouth, the tail sweep winding up, boss down at night.
 - **The night return.** After the boss, night falls and she goes back to Sniper on foot: the long way
   west from the hallway through the bays, under their roofs and through the passage in each pier, round
   to the old entrance bay, or the shortcut straight across the field through the rave, where Imperial 3 and 4 patrol across her way at night. They sense her by Heat (two banned
@@ -386,7 +394,7 @@ combo looks different from its end, when the arm drops and it leans slack.
 | Attack | Warning shape (the real hit area) | How to dodge |
 | --- | --- | --- |
 | A raider's or Imperial robot's blow on foot | A wedge ahead of it, 1.6 m, 43° to each side | Step out of the wedge, or back off, once it locks |
-| The boss's tail sweep (phase one) | A half circle of 6.2 m over its left side | Jump over the tail, or leave the half circle |
+| The boss's tail sweep (phase one) | A half circle of 6.2 m over the lab's north half (it faces east) | Jump over the tail, or leave the half circle |
 | The boss's charge (phase two) | A lane 4.8 m wide, to the chamber's wall | Step out of the lane once it locks; it is dazed after |
 | The raider mech's claws (the drive) | A ring of 2.4 m round where Sniper is heading | Change pace as it locks: press W, or let go of it |
 | A foe's card in a bot battle | A ring round the bot it is for | Its wind-up shows which card is coming |

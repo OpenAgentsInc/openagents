@@ -97,6 +97,7 @@ cm_blocked :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32, roof: f32) -> boo
   if y < g_ground(g, x, z) + pad || y > roof - pad { return true; }
   if g[0].zone == Z_VILLAGE && g_inside(g, x, z) { return true; }
   q := ga_push(g, x, z, pad); if q.x != x || q.z != z { return true; }
+  if g[0].zone == Z_MINE { q = ga_lab_push(g, x, z, pad); if q.x != x || q.z != z { return true; } }   // the lab's round wall
   if sl_inside_at(g, x, y, z, pad) { return true; }
   return cm_body_at(g, x, y, z, pad);
 }
@@ -118,9 +119,10 @@ cm_boss_in :: (g: [] SpGame, x: f32, z: f32, pad: f32) -> bool {
   return cm_boss_gap(g, x, z) < CM_BOSS_R + pad;
 }
 // The boss as the camera meets it: its body and tail along the way it faces, CM_BOSS_HALF each
-// way from its middle, CM_BOSS_R round, up to CM_BOSS_TOP (it is 3.7 m tall and 7 m long).
-CM_BOSS_HALF :: 2.6f32; CM_BOSS_R :: 1.5f32; CM_BOSS_TOP :: 4.0f32;
-CM_BOSS_CORE :: 1.65f32; // m: the round she collides with, less her own radius (layer.coax sl_round of SK_BOSS)
+// way from its middle, CM_BOSS_R round (its body and the tail's thick root; the thin tail tip past it is
+// left out), up to CM_BOSS_TOP (splice-battle.coax SB_BOSS_TALL).
+CM_BOSS_HALF :: 2.6f32; CM_BOSS_R :: 1.5f32; CM_BOSS_TOP :: SB_BOSS_TALL + 0.3;
+CM_BOSS_CORE :: SB_BOSS_R - T_RADIUS; // m: the round she collides with, less her own radius (layer.coax sl_round of SK_BOSS)
 CM_BOSS_BACK :: 1.5f32;  // m further back with the boss ahead
 CM_BOSS_LOOK :: 0.6f32;  // how far the look turns toward the point between her and the boss
 CM_BOSS_RISE :: 0.2f32;  // radians the boom swings up by the boss while coming in still leaves CM_MIN

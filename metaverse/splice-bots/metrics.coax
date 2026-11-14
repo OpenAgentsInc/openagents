@@ -13,7 +13,7 @@ MR_WALL :: 4.0f32;                      // m: its walls
 MR_LANES :: 5;
 MR_HEAT :: 5;                           // rings at Heat 0, 25, 50, 75 and 100
 MR_ROOF :: 2.85f32;                     // m: Sniper's train to its roofs (machines.coax kit_train at s 1)
-MR_BOSS_TALL :: 3.75f32; MR_BOSS_LONG :: 9.5f32;   // m: the boss at SB_DINO_S, head to tail (the test measures its mesh)
+MR_BOSS_TALL :: SB_BOSS_TALL; MR_BOSS_LONG :: SB_BOSS_LONG;  // m: the boss at SB_DINO_S, head to tail (the test measures its mesh)
 
 // Whether (x, z) is in the room.
 mr_in :: (x: f32, z: f32) -> bool { return abs(x - MR_X) < MR_HX + 1 && abs(z - MR_Z) < MR_HZ + 1; }

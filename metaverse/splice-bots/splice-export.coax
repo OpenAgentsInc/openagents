@@ -242,6 +242,7 @@ tool_main :: () -> int #export_c #effects(all) {
   sx_tune(j, "T_MOVE_SHORT", T_MOVE_SHORT); sx_tune(j, "T_MOVE_MAX", T_MOVE_MAX); sx_tune(j, "T_DRILL_REACH", T_DRILL_REACH); sx_tune(j, "T_BAD_CUT", T_BAD_CUT);
   sx_tune(j, "T_SWEEP_EVERY", T_SWEEP_EVERY); sx_tune(j, "T_SWEEP_TIME", T_SWEEP_TIME); sx_tune(j, "T_SWEEP_WARN", T_SWEEP_WARN); sx_tune(j, "T_ARM", T_ARM);
   sx_tune(j, "T_STUN_RANGE", T_STUN_RANGE); sx_tune(j, "T_STUN_TIME", T_STUN_TIME);
+  sx_tune(j, "SB_BOSS_LONG", SB_BOSS_LONG); sx_tune(j, "SB_BOSS_TALL", SB_BOSS_TALL); sx_tune(j, "GA_LAB_R", GA_LAB_R);   // the boss and its lab, for the metrics room (#13552)
   sx_tune(j, "T_HIT_RANGE", T_HIT_RANGE); sx_tune(j, "T_STAGGER", T_STAGGER); sx_tune(j, "T_KNOCK", T_KNOCK); sx_tune(j, "T_RAIDER_HP", cast(f32) T_RAIDER_HP); sx_tune(j, "T_IMPERIAL_HP", cast(f32) T_IMPERIAL_HP); sx_tune(j, "T_IMPERIAL_SPEED", T_IMPERIAL_SPEED); sx_tune(j, "T_PATROL", T_PATROL);
   sx_tune(j, "T_HEAT_SCRAP", T_HEAT_SCRAP); sx_tune(j, "T_FOLLOW", T_FOLLOW); sx_tune(j, "T_BOT_GO", T_BOT_GO);
   sx_tune(j, "T_BANNER", T_BANNER); sx_tune(j, "T_MEMORY", T_MEMORY); sx_tune(j, "T_FADE", T_FADE); sx_tune(j, "T_PASS", T_PASS);

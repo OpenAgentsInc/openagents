@@ -168,7 +168,7 @@ ak_drive :: (g: [] SpGame, want: f32, dodge: int) {
     for i: 0..<500 {
       cue := g[0].ak[0].cue_t; t := g[0].bt[..];
       ph := tg_at(SB_SWEEP, g[0].boss_t - sb_sweep_from()).phase;
-      gap := atan2(g[0].px - t[0].dino_x, g[0].pz - t[0].dino_z) - sb_arm_angle(g[..]);
+      gap := sb_arm_angle(g[..]) - atan2(g[0].px - t[0].dino_x, g[0].pz - t[0].dino_z);   // the swing runs from west over north to east: its angle falls
       while gap < 0 { gap += TAU; } while gap > TAU { gap -= TAU; }
       if k > 0 && !jumped && (ph == TG_LOCK || ph == TG_HIT) && gap < lead { jumped = true; held = 0; }
       _ = g_key(g[..], ' ', jumped && held < 0.4); held += 0.02;   // held through the rise (a tap only hops: feel.coax FL_CUT)

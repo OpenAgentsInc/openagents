@@ -142,7 +142,7 @@ sl_build :: (g: [] SpGame) {
   ga_colliders(g);   // the garage's piers (garage.coax)
   sl_box(g, SK_RUBBLE, 0, -3, 3, g[0].at.rubble_z - 1, g[0].at.rubble_z + 1, 0);
   sl_box(g, SK_BOSS_WALL, 0, -4, 4, g[0].at.wall_z - 1, g[0].at.wall_z + 1, 0);
-  g[0].ws[0].boss = sl_round(g, SK_BOSS, 0, g[0].at.boss_x, 0, g[0].at.boss_z, 0, SH_ALONG_Z, 2.1 - T_RADIUS, 0, 0);
+  g[0].ws[0].boss = sl_round(g, SK_BOSS, 0, g[0].at.boss_x, 0, g[0].at.boss_z, 0, SH_ALONG_Z, SB_BOSS_R - T_RADIUS, 0, 0);
   g[0].ws[0].rover = -1; g[0].ws[0].builds += 1;   // Sniper parked joins the World once it is (drive.coax dv_sync)
   c := rail_at(g, T_RAIL_PING);
   sl_box(g, SK_WALL, -1, c.x - 1.5, c.x + 1.5, c.z - 2.4, c.z + 2.4, 0);

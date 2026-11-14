@@ -395,10 +395,12 @@ g_collide :: (g: [] SpGame) {
     q = pl_push(g, g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z;
   }
   if g[0].zone == Z_MINE && g_feet_y(g) < ff_low() - 0.05 { q = ff_push(g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z; }   // the solar farm's lines, unless on their top (farm.coax)
+  if g[0].zone == Z_MINE { q = ga_lab_push(g, g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z; }   // the lab's round wall (garage.coax)
 }
 g_inside :: (g: [] SpGame, x: f32, z: f32) -> bool {
   if g[0].zone == Z_VILLAGE && dist2(x, z, g[0].at.vil_x, g[0].at.vil_z) > g[0].at.vil_r - 0.5 && !(z > g[0].at.vil_z + 5 && abs(x - g[0].at.vil_x) < 1.5) { return true; }
   if ga_push(g, x, z, 0.3).x != x || ga_push(g, x, z, 0.3).z != z { return true; }   // behind the garage's back wall
+  if g[0].zone == Z_MINE && (ga_lab_push(g, x, z, 0.3).x != x || ga_lab_push(g, x, z, 0.3).z != z) { return true; }   // behind the lab's round wall
   return sl_inside(g, x, z, 0.3);
 }
 // The catwalk: a deck along the party's east wall, a ramp at each end.
@@ -499,9 +501,10 @@ g_foe_walls :: (g: [] SpGame, i: int) {
   q = ga_push(g, q.x, q.z, 0.45);
   g[0].fx[i] = q.x; g[0].fz[i] = q.z;
 }
-// The tail's angle round the boss (2.6 is ahead of it): behind it until the sweep, then half way round, over its
-// left side to its head, and lying there while it rests (#13552; the lab's map: a half-circle arc).
-boss_arm :: (g: [] SpGame) -> f32 { return 2.6 + PI + clamp((g[0].boss_t - T_SWEEP_EVERY) / T_SWEEP_TIME, 0, 1) * PI; }
+// The tail's angle round the boss, 2.6 its heading (sb_arm_angle): behind it until the sweep, then half way
+// round over its frame's x side to its head, lying there while it rests. Facing east at home, that is the
+// north half of the lab (#13552, the lab's map: a half-circle arc over the north).
+boss_arm :: (g: [] SpGame) -> f32 { return 2.6 + PI - clamp((g[0].boss_t - T_SWEEP_EVERY) / T_SWEEP_TIME, 0, 1) * PI; }
 g_walk :: (g: [] SpGame, dt: f32) {
   turn := (ifx g[0].turn_l then 1.0f32 else 0.0f32) - (ifx g[0].turn_r then 1.0f32 else 0.0f32);
   go := (ifx g[0].fwd then 1.0f32 else 0.0f32) - (ifx g[0].back then 1.0f32 else 0.0f32);
@@ -1253,7 +1256,7 @@ g_big_at :: (g: [] SpGame, x: f32, z: f32, pad: f32) -> bool {
   if g[0].zone != Z_MINE { return false; }
   t := g[0].bt[0];
   if dist2(x, z, t.mech_x, t.mech_z) < SB_MECH_R + pad { return true; }
-  if (g[0].wall_gone || g[0].boss_down) && dist2(x, z, t.dino_x, t.dino_z) < 3.2 + pad { return true; }
+  if (g[0].wall_gone || g[0].boss_down) && dist2(x, z, t.dino_x, t.dino_z) < SB_BOSS_R + 1.1 + pad { return true; }
   return false;
 }
 // How much a big body stands in the view ahead, 0 to 1: one within 12 m ahead and near the line of
@@ -2869,14 +2872,14 @@ sb_drive_check :: (g: [] SpGame) {
   #assert t[0].kind == SBF_BOSS && g[0].ws[0].boss >= 0;
   // where it starts: the collider holds a walker off it
   g[0].px = g[0].at.boss_x + 0.5; g[0].pz = g[0].at.boss_z; g_collide(g[..]);
-  #assert dist2(g[0].px, g[0].pz, t[0].dino_x, t[0].dino_z) >= 2.1 - 0.001;
+  #assert dist2(g[0].px, g[0].pz, t[0].dino_x, t[0].dino_z) >= SB_BOSS_R - 0.001;
   // it moves (here, put across the chamber; a charge or a step does the same): the collider is where it stands
   t[0].dino_x = 4.5; t[0].dino_z = -69; t[0].think = 10; t[0].mech_x = 4.5; t[0].mech_z = -64.6;
   g_step(g[..], 0.02);
   w := sl_world(g[..]); s := g[0].ws[0].boss;
   #assert world_f(w, WF_X, s) == t[0].dino_x && world_f(w, WF_Z, s) == t[0].dino_z;
   g[0].px = t[0].dino_x - 0.4; g[0].pz = t[0].dino_z + 0.3; g_collide(g[..]);
-  #assert dist2(g[0].px, g[0].pz, t[0].dino_x, t[0].dino_z) >= 2.1 - 0.001;
+  #assert dist2(g[0].px, g[0].pz, t[0].dino_x, t[0].dino_z) >= SB_BOSS_R - 0.001;
   // and where it started a walker stands free
   g[0].px = g[0].at.boss_x; g[0].pz = g[0].at.boss_z + 0.2; g_collide(g[..]);
   #assert g[0].px == g[0].at.boss_x && g[0].pz == g[0].at.boss_z + 0.2;
@@ -2905,14 +2908,14 @@ sb_drive_check :: (g: [] SpGame) {
     #assert g[0].hearts == hearts - 2;   // after it, a hit lands again
   }
 }
-#test "playtest: in the boss battle the mech lands its hits on its own, the boss jolts, and the prompt says her part: stun the weak points with F" #steps 100000000 {
+#test "playtest: in the boss battle the mech lands its hits on its own, the boss jolts, and the prompt says her part: stun the weak points with F" #steps 250000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 10); for i: 0..<3 { g[0].stun[i] = 0; }
   t := g[0].bt[..];
   g_step(g[..], 0.02);
   #assert t[0].kind == SBF_BOSS && sb_prompt(g[..]).key == "1-4";
   hp := sb_rec(g[..], SB_BOSS).vit.hp; landed := false;
-  for i: 0..<400 { g_step(g[..], 0.02); if t[0].hit_side == 1 && t[0].hit_t > 0.55 { landed = true; } }
+  for i: 0..<1000 { g_step(g[..], 0.02); if t[0].hit_side == 1 && t[0].hit_t > 0.55 { landed = true; } }   // the mech walks from the hallway to the boss holding the lab's middle
   #assert sb_rec(g[..], SB_BOSS).vit.hp < hp && landed;   // no key pressed: the mech still hits it
   // reeling: the prompt sends her to a weak point, and beside one it says F
   t[0].daze = 3; t[0].rush = 0; t[0].wind = 0;
