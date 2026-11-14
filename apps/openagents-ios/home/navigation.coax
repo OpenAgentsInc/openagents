@@ -46,6 +46,7 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
  if id=="nav.history" {n[0].history_open = !n[0].history_open;return true;}
  if id=="nav.toggle" {n[0].open = !n[0].open;n[0].creating=false;return true;}
  if id=="nav.close" {n[0].open=false;n[0].creating=false;return true;}
+ if id=="app.components" {na_text_effect(s,true,"https://openagents.com/components-gpu",id);return true;}
  if id=="nav.settings" {n[0].settings=true;return true;}
  if id=="nav.settings.close" || id=="extras.more" {n[0].settings=false;return id!="extras.more";}
  if id=="nav.refresh" {if s[0].flight==0 && !e[0].flight && !e[0].random {n[0].open=true;n[0].refresh=true;na_http(s,"/api/chat/history/v1","",71);}return true;}
@@ -120,6 +121,12 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  x=tr_open(t,"nav.footer",TG_FOOTER,"side-f");x=k_row(t,u,"nav.settings","Settings","",false);tr_close(t);tr_close(t);
  if n[0].settings {
   x=tr_open(t,"nav.settings.panel",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Settings");x=k_text(t,u,"nav.settings.title",TG_H2,"","Settings");
-  x=k_icon_button(t,"nav.settings.close",IC_X,"Close settings");x=k_link(t,"app.updates","Updates");x=k_link(t,"app.details","About");x=k_link(t,"usage.open","Usage");x=k_link(t,"extras.more","Extras");x=k_link(t,"account.logout","Log out");if s[0].note_n>0 {x=k_text(t,u,"nav.settings.note",TG_P,"meta",cast(string)s[0].note[0..<s[0].note_n]);}tr_close(t);
+  x=k_icon_button(t,"nav.settings.close",IC_X,"Close settings");x=k_link(t,"app.updates","Updates");x=k_link(t,"app.details","About");x=k_link(t,"usage.open","Usage");x=k_link(t,"app.components","Components");x=k_link(t,"extras.more","Extras");x=k_link(t,"account.logout","Log out");if s[0].note_n>0 {x=k_text(t,u,"nav.settings.note",TG_P,"meta",cast(string)s[0].note[0..<s[0].note_n]);}tr_close(t);
  }
+}
+
+#test "settings opens shared component gallery through the existing link contract" {
+ s:[1]Starter;s[0].navigation[0].settings=true;#assert na_nav_press(s[..],"app.components");
+ #assert s[0].action==10 && s[0].text_busy && s[0].flight==0;
+ na_reply(s[..],10,0,"{\"opened\":true}",false);#assert !s[0].text_busy;
 }

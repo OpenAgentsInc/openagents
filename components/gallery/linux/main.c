@@ -1,3 +1,4 @@
+// Firm reason: 6 (native GPU carrier and filesystem effects; state/paint/raster are Coax).
 // The component library's host program (Linux, and the Mac through apps/shared/host/apple/): components/gallery/page.coax behind the
 // shared Wayland and Vulkan host (apps/shared/host/linux/ui-host.h), with the
 // atlas built in Coax (components/raster/atlas.coax). It holds no behaviour:
@@ -26,6 +27,7 @@ typedef struct {
   coax_t_GalleryState *g;
   char resources[PATH_MAX];
   coax_t_RaFonts fonts;
+  uint8_t *font_bytes[4];
   coax_t_RaPlan plan;
   coax_t_RaWork *work;
   float sizes[16], icon_sizes[64];
@@ -63,6 +65,7 @@ static int atlas_setup(App *a) {
   static const char *const files[4] = {"Geist", "Geist-Medium", "Geist-SemiBold", "GeistMono"};
   for (int w = 0; w < 4; w++) {
     size_t n; uint8_t *bytes = slurp(a->resources, "fonts", files[w], ".ttf", &n);
+    a->font_bytes[w] = bytes;
     if (!bytes || !coaxial_ra_open((coax_v_t_RaFonts){&a->fonts, 1}, w, (coax_v_u8){bytes, (int64_t)n})) { fprintf(stderr, "Components: %s is not a TrueType font\n", files[w]); return 0; }
   }
   a->nfonts = (int)coaxial_components_font_count(); a->nicons = (int)coaxial_components_icon_count();
@@ -105,10 +108,49 @@ static int on_frame(void *user, float *vertices, float w, float h, float dpr, fl
 static void on_pointer(void *user, float x, float y, int phase, int clicks, int mods) {
   (void)clicks; (void)mods;
   App *a = user;
-  coaxial_components_pointer(state_of(a), x, y, phase, 0);
+  coaxial_components_pointer(state_of(a), x, y, phase,
+#if defined(COMPONENTS_EMBEDDED) || defined(__ANDROID__)
+  1
+#else
+  0
+#endif
+  );
 }
 static void on_wheel(void *user, float dy) { App *a = user; coaxial_components_wheel(state_of(a), dy); }
 
+// Embedded apps use the exact same host and atlas, with independent owners.
+static void gallery_free(App *a) {
+  if (!a) return;
+  if (a->host) ui_close(a->host);
+  for (int i=0;i<4;i++) free(a->font_bytes[i]);
+  for (int i=0;i<64;i++) free(a->svg[i]);
+  free(a->mono);free(a->color);free(a->work);free(a->g);
+}
+#ifdef COMPONENTS_EMBEDDED
+#include "../apple/embedded.h"
+#include "../../../apps/shared/host/apple/ui-host-apple.h"
+void *cg_open(const char *resources) {
+  App *a=calloc(1,sizeof *a);if (!a) return NULL;
+  snprintf(a->resources,sizeof a->resources,"%s",resources);
+  char shader[PATH_MAX+32];snprintf(shader,sizeof shader,"%s/components.metal",resources);
+  a->g=calloc(1,sizeof *a->g);a->max_vertices=(uint32_t)coaxial_components_max_vertices();
+  if (!a->g) {free(a);return NULL;}
+  UiApp app={.title="Components",.width=390,.height=844,.max_vertices=a->max_vertices,.shader=shader,.user=a,.frame=on_frame,.pointer=on_pointer,.wheel=on_wheel};
+  a->host=ui_open(&app,0);
+  if (!a->host) {gallery_free(a);free(a);return NULL;}
+  a->dpr=ui_dpr(a->host);if (a->dpr<1) a->dpr=1;
+  if (!atlas_setup(a)) {gallery_free(a);free(a);return NULL;}
+  // The embedded entry starts with the small motion playground.
+  coaxial_components_section(state_of(a),1);
+  return a;
+}
+void *cg_view(void *owner) {return owner ? ui_view(((App *)owner)->host) : NULL;}
+void cg_frame(void *owner) {if (owner) ui_frame(((App *)owner)->host);}
+void cg_close(void *owner) {if (owner) {gallery_free(owner);free(owner);}}
+void cg_section(void *owner,int section) {if (owner && section>=0 && section<=4) {App *a=owner;coaxial_components_section(state_of(a),section);}}
+void cg_motion(void *owner,int action) {if (owner) {App *a=owner;coaxial_components_motion(state_of(a),action);}}
+void cg_scroll(void *owner,float dy) {if (owner) on_wheel(owner,dy);}
+#else
 static const char *value(int argc, char **argv, const char *name) {
   for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], name)) return argv[i + 1];
   return NULL;
@@ -175,6 +217,8 @@ int main(int argc, char **argv) {
       if (limit > 0) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); if (t.tv_sec - t0.tv_sec + (t.tv_nsec - t0.tv_nsec) / 1e9 > limit) break; }
     }
   }
-  ui_close(a.host);
+  gallery_free(&a);
   return status;
 }
+
+#endif

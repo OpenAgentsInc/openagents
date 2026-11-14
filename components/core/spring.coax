@@ -1,0 +1,33 @@
+// Caller-clock physical motion. Shares ARWES easing/timing; no platform animator.
+#load "arwes/motion.coax";
+
+UiSpring :: struct {value:f32;velocity:f32;target:f32;mass:f32=1;damping:f32=10;stiffness:f32=100;clamp:bool;}
+
+#test "spring has analytic position, frame partition invariance, interruption and reduced motion" {
+ a:=[1]UiSpring.[UiSpring.{target=1}];b:=a;
+ ui_spring_step(a[..],0.05,false);ui_spring_step(a[..],0.05,false);for i:0..<10 {ui_spring_step(b[..],0.01,false);}
+ #assert abs(a[0].value-0.34029985)<0.00001 && abs(a[0].value-b[0].value)<0.00001;
+ #assert abs(a[0].velocity-b[0].velocity)<0.0001;
+ a[0].target=0;v:=a[0].value;ui_spring_step(a[..],0,false);#assert a[0].value==v;
+ ui_spring_step(a[..],0.01,true);#assert a[0].value==0 && a[0].velocity==0;
+ a[0]=UiSpring.{target=1,clamp=true};for i:0..<120 {ui_spring_step(a[..],0.016,false);#assert a[0].value<=1;}
+ #assert a[0].value==1 && a[0].velocity==0;
+ for i:0..<2 {a[0]=UiSpring.{target=1,damping=20+cast(f32)i*10};for j:0..<600 {ui_spring_step(a[..],0.016,false);}#assert a[0].value==1;}
+}
+
+ui_spring_step :: (s:[]UiSpring,dt:f32,reduced:bool) {
+ if s.count<1 {return;}
+ if reduced {s[0].value=s[0].target;s[0].velocity=0;return;}
+ if !(dt>0) {return;}
+ t:=ifx dt>0.064 then 0.064f32 else dt;
+ // Subdivide at the caller when measuring long intervals; a resumed app never jumps.
+ m:=ifx s[0].mass>0 then s[0].mass else 1.0f32;k:=ifx s[0].stiffness>0 then s[0].stiffness else 100.0f32;
+ c:=ifx s[0].damping>=0 then s[0].damping else 10.0f32;
+ x:=s[0].value-s[0].target;v:=s[0].velocity;a:=c/(2*m);q:=k/m-a*a;
+ nx:f32=0;nv:f32=0;
+ if q>0.00001 {w:=sqrt(q);co:=cos(w*t);si:=sin(w*t);e:=exp(-a*t);b:=(v+a*x)/w;nx=e*(x*co+b*si);nv=e*((-a*x+w*b)*co+(-a*b-w*x)*si);}
+ else if q< -0.00001 {w:=sqrt(-q);r1:= -a+w;r2:= -a-w;b:=(v-r2*x)/(r1-r2);d:=x-b;nx=b*exp(r1*t)+d*exp(r2*t);nv=r1*b*exp(r1*t)+r2*d*exp(r2*t);}
+ else {b:=v+a*x;e:=exp(-a*t);nx=(x+b*t)*e;nv=(b-a*(x+b*t))*e;}
+ if s[0].clamp && x*nx<0 || abs(nx)<0.01 && abs(nv)<2 {nx=0;nv=0;}
+ s[0].value=s[0].target+nx;s[0].velocity=nv;
+}

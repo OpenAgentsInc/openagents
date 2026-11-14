@@ -1,6 +1,8 @@
 # Components (GPU)
 
-The earlier OpenAgents components, drawn on the GPU. On the web they are replaced by [the components the browser draws](/components/index.md) (2026-11-11). OpenAgents for desktop still uses these, until it moves to the new set. This page shows every one of them in every skin, drawn by the library itself.
+The shared Coax Native GPU component gallery, also embedded in the iOS app at **Settings → Components**. WebGPU and Metal draw the same Coax display list with the same generated shader. The [HTML gallery](/components) remains available for browser-native text and controls.
+
+Use **Motion**, **Controls**, **HUD** and **ARWES** to inspect a section. Replay, pause, reduce motion, change skins or tap a motion card. Drag vertically to scroll on a phone. Motion includes corner frames, activity arcs, progress rings, spring switches and drawer/reply transitions. These are the first Arcade motion ports; full blur, image/composition, swipe actions and all 28 audited specimens remain tracked in `components/rendering.md`.
 
 ## What is on the page
 

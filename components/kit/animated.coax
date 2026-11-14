@@ -1,0 +1,46 @@
+// GPU/terminal-independent animated components. All paint comes from the skin.
+#load "controls.coax";
+#load "../core/spring.coax";
+
+// Arcade's corner-origin assembly (A01/A02). Progress is caller-owned.
+animated_frame :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32,highlight:f32) {
+ p:=am_unit(progress);ink:=s.accent;ink.a*=am_unit(highlight);
+ _:=sheet_box(sh,x,y,w,h,0,0,opacity(s.surface,p*0.7),s.surface);
+ for i:0..<4 {cx:=x+ifx i%2==0 then 0.0f32 else w;cy:=y+ifx i<2 then 0.0f32 else h;dx:=ifx i%2==0 then 1.0f32 else -1.0f32;dy:=ifx i<2 then 1.0f32 else -1.0f32;
+ sh[0].nu=prim_line(sh[0].under,sh[0].nu,cx,cy,cx+dx*w*0.5*p,cy,1.5,ink);
+ sh[0].nu=prim_line(sh[0].under,sh[0].nu,cx,cy,cx,cy+dy*h*0.5*p,1.5,ink);}
+}
+// A05: opposite quarter arcs, one half-turn per 500ms. Reduced motion is still.
+activity :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,size:f32,seconds:f32,reduced:bool) {
+ start:=ifx reduced then 0.0f32 else seconds;
+ sh[0].nu=prim_ring(sh[0].under,sh[0].nu,x,y,size,size,2,opacity(s.accent,0.12));
+ for i:0..<2 {sh[0].nu=prim_arc(sh[0].under,sh[0].nu,x,y,size,size,2,start+cast(f32)i*0.5,0.25,s.accent);}
+}
+// A09: progress-squared round-cap ring. Shared primitive; no bespoke shader.
+progress_ring :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,size:f32,progress:f32) {
+ p:=am_unit(progress);sh[0].nu=prim_ring(sh[0].under,sh[0].nu,x,y,size,size,3,s.hairline);
+ sh[0].nu=prim_arc(sh[0].under,sh[0].nu,x,y,size,size,3,0,p*p,s.accent);
+}
+animated_switch :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32) {
+ p:=am_unit(progress);_:=sheet_box(sh,x,y,w,h,h/2,1,s.surface,s.hairline);
+ _:=sheet_box(sh,x,y,w,h,h/2,0,opacity(s.accent,p*0.35),s.accent);
+ _:=sheet_box(sh,x+3+(w-h)*p,y+3,h-6,h-6,(h-6)/2,0,s.ink,s.ink);
+}
+// The parent owns clipping, hit ownership and content; these paint the surface.
+animated_drawer :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32) {
+ p:=am_unit(progress);_:=sheet_box(sh,x,y,w*p,h,6,1,s.surface,s.hairline);
+}
+animated_reply :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32) {
+ p:=am_unit(progress);if p>0 {_:=sheet_box(sh,x,y,w,h*p,4,0,opacity(s.accent,p*0.15),s.surface);}
+}
+
+#test "animated components use the common list and stay bounded at reduced or completed motion" {
+ under:[64]Prim;over:[8]Prim;sh:=[1]Sheet.[Sheet.{under=under[..],over=over[..]}];s:=UiSkin.{};
+ animated_frame(sh[..],s,10,20,100,60,0.5,0.7);#assert sh[0].nu==9 && under[1].a==35;
+ activity(sh[..],s,0,0,32,0.125,false);#assert under[10].kind==PRIM_ARC && under[10].a==0.125;
+ progress_ring(sh[..],s,0,0,35,0.5);#assert under[13].b==0.25;
+ animated_switch(sh[..],s,0,0,52,28,4);#assert under[16].x==27;
+ animated_drawer(sh[..],s,0,0,200,100,0.5);#assert under[17].w==100;
+ animated_reply(sh[..],s,0,0,200,60,0);#assert sh[0].nu==18;
+ animated_reply(sh[..],s,0,0,200,60,0.5);#assert under[18].h==30;
+}

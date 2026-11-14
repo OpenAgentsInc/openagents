@@ -601,7 +601,7 @@ static int ui_ax_drive(UiHost *h, const char *op, char *out, int cap) {
 - (void)touchesBegan:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { (void)e; [self pointer:t phase:0]; }
 - (void)touchesMoved:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { (void)e; [self pointer:t phase:1]; }
 - (void)touchesEnded:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { (void)e; [self pointer:t phase:2]; }
-- (void)touchesCancelled:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { (void)e; [self pointer:t phase:2]; }
+- (void)touchesCancelled:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { (void)e; [self pointer:t phase:3]; }
 @end
 #endif
 
@@ -1170,6 +1170,7 @@ void ui_close(UiHost *h) {
   for (UiAxElement *el in h->ax_by_id.allValues) el.host = NULL;   // VoiceOver may still hold them
   h->ax_by_id = nil; h->ax_rows = nil; h->ax_focus = nil;
 #else
+  h->view.host = NULL;
   [h->view removeFromSuperview];
 #endif
   // ARC keeps the struct's object fields: let them go before the memory does

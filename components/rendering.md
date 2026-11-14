@@ -7,6 +7,19 @@
 The [Arcade animation audit](../docs/arcade/06-rendering-and-animation.md)
 is the concrete completeness list for the first consumer.
 
+## Implementation checkpoint: component gallery
+
+The first inspectable implementation is `gallery/page.coax`, reachable on web
+at `/components-gpu` and inside iOS Settings → Components. It shares the
+existing WebGPU/Metal shader and Coax glyph atlas. `core/spring.coax` adds
+caller-clock damped motion with interruption and reduced motion;
+`kit/animated.coax` paints frame, activity/progress ring, switch and drawer/
+reply surfaces. `backend/gpu.coax` now lowers `PRIM_ARC` through bounded
+antialiased segments. General image/blur/composition and the full Arcade
+catalog are still requirements below, not features of this checkpoint.
+The gallery is compiled into the new native runtime and is not an OTA renderer.
+
+
 ## Recommendation
 
 Use the existing Coax GPU component backend as the default visual target for

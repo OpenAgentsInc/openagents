@@ -74,7 +74,8 @@ wg_build :: (s: [] WebPage) {
   tr_close(t);
   lede := tr_leaf(t, "lede", TG_P, "lede", "The components the OpenAgents chat is being rebuilt from: a small set, each a frame around content, in black, white and grey. The browser draws them, so the text here is real text: select it, search it, zoom it, have it read aloud.");
   bar := tr_open(t, "top.bar", TG_DIV, "rowf");
-  rp := k_button(t, u, "replay", "Replay the entrance", BS_PLAIN);
+  rp := k_button(t, u, "replay", "Replay", BS_PLAIN);
+  gpu:=k_link(t,"gallery.gpu","GPU + motion →");tr_attr(t,gpu,AT_HREF,"/components-gpu");
   tr_close(t);
   tr_close(t);
 

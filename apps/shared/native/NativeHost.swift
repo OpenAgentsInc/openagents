@@ -201,6 +201,13 @@ import Security
             UIPasteboard.general.string=text;return ["copied":true]
         case "link.open":
             let raw=b["url"] as? String ?? ""
+            if raw=="https://openagents.com/components-gpu" {
+                let presenter=presentedViewController ?? self
+                return await withCheckedContinuation {continuation in
+                    let gallery=NativeComponents {continuation.resume(returning:["opened":true])}
+                    let nav=UINavigationController(rootViewController:gallery);nav.modalPresentationStyle = .fullScreen;presenter.present(nav,animated:true)
+                }
+            }
             guard raw.withCString({nt_link(coax_string(data:$0,count:Int64(raw.utf8.count)))}),let url=URL(string:raw),await UIApplication.shared.open(url) else {throw NativeFailure.refused("This link cannot be opened")}
             return ["opened":true]
         case "http.cancel": return ["cancelled":true]

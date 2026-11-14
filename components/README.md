@@ -14,6 +14,8 @@ a second set of native-only components.
 | Layout and text measurement/wrapping | `layout/flex.coax`, `layout/measure.coax`, `layout/text.coax`, `layout/font.coax` |
 | Paint primitives, selectable text and hit regions | `paint/list.coax`, `paint/sheet.coax` |
 | Colors, measures, frames and motion values | `skin/` |
+| Physical springs | `core/spring.coax` |
+| Animated frames, activity/progress rings, switches, drawer/reply surfaces | `kit/animated.coax` |
 | Shared easing, timelines and effects | `core/arwes/motion.coax`, `core/arwes/fx.coax` |
 | Display-list controls, Markdown and game HUD | `kit/controls.coax`, `kit/markdown.coax`, `kit/hud.coax` |
 | Tree-based forms, chat and settings | `kit/frames.coax`, `kit/settings.coax`, `kit/dock.coax`, `kit/work.coax` |
@@ -41,7 +43,7 @@ Do not copy a component to solve the difference in an application folder.
    before use. Preserve installed runtime fingerprints and published ABIs.
 
 Never add another Markdown parser, line wrapper, text edit buffer, animation
-engine or application-specific GPU shader. Missing arcs/images/blur are backend
+engine or application-specific GPU shader. Missing images/blur are backend
 work; OS input methods and accessibility are host work. A component cannot
 reach an engine, network, credential or platform SDK directly.
 
@@ -57,3 +59,33 @@ must also pass before switching those devices' default renderer.
 The [Arcade catalog](../docs/arcade/06-rendering-and-animation.md) is the first
 complete animation acceptance set for the new rendering work. Its entries
 are requirements and source findings, not claims of implemented components.
+
+## Try it
+
+- **iPhone:** Settings → Components (TestFlight 1086 or later). The shared Apple
+  GPU carrier embeds a Metal view; it does not open a browser. Gallery options
+  also provides native accessible section, motion and skin controls. Touches
+  arbitrate tap/scroll/slider in Coax, cancellation never activates a control,
+  and the display link stops on dismissal or backgrounding.
+- **Web:** [/components-gpu](https://openagents.com/components-gpu) runs the same
+  gallery with WebGPU. [/components](https://openagents.com/components) is the
+  browser-rendered companion, with a link to GPU + motion.
+- **Mac/Linux/Android:** the existing `gallery/{apple,linux,android}/build.sh`
+  entry points still load `gallery/page.coax` and the common shader. These
+  carriers share the atlas and native entry in `gallery/linux/main.c`; the iOS
+  app compiles its embedded profile rather than copying it.
+
+The motion lab has replay, pause, reduced motion, three visual skins and tap
+reversal. It adds reusable corner frames, activity/progress arcs, spring
+switches and drawer/reply surfaces. The existing four-skin controls/Markdown,
+HUD cards and 25 ARWES specimens remain selectable. GPU arcs now lower to at
+most 64 existing antialiased segments; this is a bounded approximation.
+
+This is an inspectable first library release, not completion of all 28 Arcade
+animation cases. Image textures, general transforms/blur, inline GPU islands,
+multiple live world views and complete GPU semantic/text parity remain in
+[rendering.md](rendering.md). Native gallery code is installed code: changes
+to its compiled components require a build. Portable app screens and their
+Settings link continue through signed Updates. Gallery controls are accessible
+through the native menu; per-primitive text selection and VoiceOver semantics
+are not qualified, so this does not switch the production chat renderer.

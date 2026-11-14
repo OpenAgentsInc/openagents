@@ -369,11 +369,29 @@ gp_clip_edges :: (out: [] f32, from: int, to: int, d: f32, left: f32, top: f32, 
   }
 }
 
-// Whether this backend draws a kind today. An arc and an image have no path
-// in the shader yet (the realm HUDs draw arcs with their own pass until they
-// move, components/spec.md Phase 5): they are skipped.
+#test "arcs are bounded, clockwise from top, clipped and empty sweeps draw nothing" {
+ out:[14000]f32;c:=hex(0xffffff,1);
+ #assert paint_arc(out[..],0,1,10,20,40,40,3,0,0,c)==0;
+ n:=paint_arc(out[..],0,1,10,20,40,40,3,0,0.25,c);
+ #assert n>0 && n<=96 && out[4]==30 && out[5]==20;
+ #assert paint_arc(out[0..<10],0,1,0,0,40,40,3,0,1,c)==0;
+ #assert paint_arc(out[..],0,1,0,0,0,40,3,0,1,c)==0;
+}
+// Bounded polyline approximation (up to 64 segments), with the existing
+// analytic round-cap coverage. Angle convention is the display list's.
+paint_arc :: (out:[]f32,at:int,d:f32,x:f32,y:f32,w:f32,h:f32,width:f32,start:f32,sweep:f32,c:Rgba)->int {
+ if !(w>0) || !(h>0) || !(width>0) || !(abs(sweep)>0) || c.a<=0 {return at;}
+ turn:=ifx sweep>1 then 1.0f32 else ifx sweep< -1 then -1.0f32 else sweep;
+ count:=cast(int)ceil(abs(turn)*64);v:=at;
+ for i:0..<count {t0:=(start+turn*cast(f32)i/cast(f32)count)*6.28318530718;t1:=(start+turn*cast(f32)(i+1)/cast(f32)count)*6.28318530718;
+ v=paint_segment(out,v,d,x+w/2+sin(t0)*w/2,y+h/2-cos(t0)*h/2,x+w/2+sin(t1)*w/2,y+h/2-cos(t1)*h/2,width,c);}
+ return v;
+}
+
+// Arcs lower through the shared antialiased segment path. Images still need
+// an explicit texture owner; they are not admitted by this backend yet.
 gpu_draws :: (p: Prim) -> bool {
-  if p.kind == PRIM_ARC || p.kind == PRIM_IMAGE { return false; }
+  if p.kind == PRIM_IMAGE { return false; }
   return p.kind >= 0 && p.kind < PRIM_KINDS;
 }
 
@@ -404,6 +422,8 @@ gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, 
     else if p.kind == PRIM_RING {
       r := (ifx p.w < p.h then p.w else p.h) / 2;
       v = paint_quad(out, v, d, x, y, p.w, p.h, r, p.border, rgba(0, 0, 0, 0), p.fill);
+    } else if p.kind == PRIM_ARC {
+      v = paint_arc(out,v,d,x,y,p.w,p.h,p.border,p.a,p.b,p.fill);
     } else if p.kind == PRIM_LINE && gpu_draws(p) {
       // a level or an upright line: a box as wide as the line is thick, centred on it; a slanted one, its band
       x1 := p.a + ox; y1e := p.b + oy; half := p.border / 2;
@@ -568,16 +588,16 @@ gpu_same :: (p: [] f32, q: [] f32, n: int) -> bool {
   n = prim_line(list[..], n, 20, 60, 20, 80, 2, hex(0xffffff, 1));
   n = prim_arc(list[..], n, 0, 0, 32, 32, 3, 0, 0.5, hex(0xffffff, 1));
   n = prim_line(list[..], n, 0, 0, 40, 30, 2, hex(0xffffff, 1));
-  out: [840] f32;
+  out: [14000] f32;
   v := gpu_draw(out[..], 0, a[..], 1, list[0..<n], 0, 0, -PRIM_OPEN, PRIM_OPEN);
-  #assert v == 24 && !gpu_draws(list[3]) && gpu_draws(list[4]) && gpu_draws(list[1]);
+  #assert v > 24 && gpu_draws(list[3]) && gpu_draws(list[4]) && gpu_draws(list[1]);
   #assert out[8] == 16 && out[9] == 3 && out[15] == 0 && out[19] == 1;                    // radius, border, clear fill, the edge
   l := 6 * GP_VERTEX_FLOATS;
   #assert out[l + 4] == 10 && out[l + 5] == 49 && out[l + 6] == 30 && out[l + 7] == 2;
   u := 12 * GP_VERTEX_FLOATS;
   #assert out[u + 4] == 19 && out[u + 5] == 60 && out[u + 6] == 2 && out[u + 7] == 20;
   // the slanted line: its ends and width ride in the bounds, its band reaches one width past them
-  s := 18 * GP_VERTEX_FLOATS;
+  s := (v-6) * GP_VERTEX_FLOATS;
   #assert out[s + 2] == GP_SEGMENT && out[s + 4] == 0 && out[s + 5] == 0 && out[s + 6] == 40 && out[s + 7] == 30 && out[s + 8] == 2;
   #assert out[s] < 0 && out[s + 2 * GP_VERTEX_FLOATS] > 40;
 }
