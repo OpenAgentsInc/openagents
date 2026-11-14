@@ -29,6 +29,9 @@ tool_main :: () -> int #export_c #effects(all) {
   for sub: [2] string.["killers", "parts"] { d := fs_mkdir(fs_join(state, sub, db[..])); }
   // remote.sh sends the checkout's untracked files: the killers files, not the outputs and the report
   gi := fs_write(fs_join(state, ".gitignore", db[..]), MS_IGNORE);
+  // and a file in killers/, so the folder is in the snapshot: coax mutate --killers makes no folder
+  kd: [4096] u8;
+  gk := fs_write(fs_join(fs_join(state, "killers", db[..]), "README", kd[..]), MS_KILLERS_README);
   if !fs_exists(fs_join(state, "killers", db[..])) { tool_err("mutation-sweep: cannot make "); tool_errln(state); return 2; }
   av1 := [3] string.["git", "rev-parse", "HEAD"];
   hn := ms_run(av1[..], root, big[..], st[..]);

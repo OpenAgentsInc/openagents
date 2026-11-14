@@ -401,7 +401,9 @@ ms_rel :: (root: string, path: string) -> string {
 }
 // The state folder's .gitignore: what remote.sh leaves out of a part's snapshot.
 MS_IGNORE :: "/.gitignore\n/parts/\n/report.md\n/issue-body.md\n/issue\n";
+MS_KILLERS_README :: "Each part's killers file (coax mutate --killers), kept between nights: coax/web/mutation-sweep.coax.\n";
 #test "a killers file goes to the host as a path in the checkout, and only it of the state" {
+  #assert !ms_has(MS_IGNORE, "README") && ms_has(MS_KILLERS_README, "--killers");
   #assert ms_rel("/h/c", "/h/c/mutation-sweep/killers/a.tsv") == "mutation-sweep/killers/a.tsv";
   #assert ms_rel("/h/c", "/h/cc/k.tsv") == "/h/cc/k.tsv" && ms_rel("/h/c", "/elsewhere/k.tsv") == "/elsewhere/k.tsv" && ms_rel("/h/c", "/h/c") == "/h/c";
   #assert ms_rel("", "/x/y") == "/x/y" && ms_rel("/h/c", "/h/c/") == "/h/c/" && ms_rel("/h/c", "/h/c/x") == "x";
