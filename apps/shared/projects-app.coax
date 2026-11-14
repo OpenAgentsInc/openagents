@@ -1,6 +1,6 @@
 // State shared by project surfaces. HTTP/file effects remain installed services.
 #load "../../coax/lib/project/wire.coax";
-#load "../../components/core/json-fields.coax";
+#load "../../components/adapters/json-fields.coax";
 ProjectApp :: struct {
  slug:[64]u8;ns:int;title:[256]u8;nt:int;key:[64]u8;nk:int;private_project:bool;
  data:[262144]u8;nd:int;starts:[2048]int;ends:[2048]int;rows:int;
