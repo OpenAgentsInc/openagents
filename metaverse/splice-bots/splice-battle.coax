@@ -742,12 +742,12 @@ sb_msg_text :: (g: [] SpGame) -> string {
   if m == SBM_CHARGES { return "Half its health gone. Now it charges."; }
   if m == SBM_OPEN { return "It's dazed. Stun its weak points with F."; }
   if m == SBM_SHUT { return "Its weak points close."; }
-  if m == SBM_REPAIR { return "Repaired at Sniper's charger."; }
+  if m == SBM_REPAIR { return "You waited at the charger: Sniper is back to full health and charge."; }
   if m == SBM_DIGGER_DOWN { return "Digger powers down. Repair him at Sniper's charger."; }
   if m == SBM_SWAP { return ifx sb_fielded(g) >= 0 then (ifx sb_fielded(g) == SB_MECH then "Core swap: the drill mech." else ifx sb_fielded(g) == SB_SNIPER then "Swap: Sniper." else "Core swap: Digger.") else ""; }
   if m == SBM_REFUSED { return sb_refusal(t.refusal); }
   if m == SBM_MECH_DOWN { return "The drill mech is down."; }
-  if m == SBM_CORE_DROP { return "It powers down and drops its banned core. Night falls."; }
+  if m == SBM_CORE_DROP { return "It drops its banned core: old-world tech the Empire forbids, so carrying it raises Heat. Splice it in Sniper to see what it remembers."; }
   return "";
 }
 sb_refusal :: (v: int) -> string {

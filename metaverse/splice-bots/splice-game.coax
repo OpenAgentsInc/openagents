@@ -738,6 +738,12 @@ g_place :: (g: [] SpGame, item: int, at: int) {
   if at >= 0 && at < g[0].strip_n { g[0].strip[at] = item; return; }
   if g[0].strip_n < 3 { g[0].strip[g[0].strip_n] = item; g[0].strip_n += 1; }
 }
+// Digger is spliced for the dig: his three slots filled and a drill card on his strip.
+g_spliced :: (g: [] SpGame) -> bool {
+  if !(g[0].slot[0] && g[0].slot[1] && g[0].slot[2]) { return false; }
+  for i: 0..<g[0].strip_n { if g[0].strip[i] == H_DRILL || g[0].strip[i] == H_PLUS { return true; } }
+  return false;
+}
 g_take :: (g: [] SpGame, i: int) {
   g[0].taken[i] = true; g[0].last_pick = i;
   if i >= PICK_CELL { g[0].cells += 1; g_say(g, MSG_CELL); return; }
@@ -1464,10 +1470,14 @@ objective :: (g: [] SpGame) -> string {
     return ifx g[0].have[H_BATTERY] then "Get back in the rover." else "Find what the sensor pinged.";
   }
   if g[0].mode == M_DRIVE { return "Drive Sniper to the garage. E: get out and park."; }
-  if g[0].have[H_CORE] { return "Carry the core to the rover."; }
-  if g[0].boss_down { return "Take the core."; }
+  // each step's objective gives way to the next as soon as it is done (#13552 lane A): splice, drive, wall, mech, boss, core
+  bay := d_in_rover(g);
+  if g[0].have[H_CORE] { return ifx bay then "Splice the core in the edit bay: Tab, then X." else "Take the core back to Sniper and splice it in the edit bay."; }
+  if g[0].boss_down { return "Take the banned core the boss dropped."; }
   if g[0].wall_gone { return "Stun all 3 weak points."; }
-  if g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY] && g[0].have[H_MOVE] && g[0].have[H_DRILL] { return "Splice the Digger at the rover."; }
+  if g_spliced(g) && (dv_away(g) || g[0].phase != PH_DAY) && !g[0].rubble_gone { return "Look at the raiders' rock wall and click: Digger drills it."; }
+  if g_spliced(g) && !dv_away(g) && g[0].phase == PH_DAY { return ifx sp_in_room(g) then "Take the wheel at the desk: E." else "Get in Sniper (E at its door) and drive to the garage."; }
+  if g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY] && g[0].have[H_MOVE] && g[0].have[H_DRILL] { return ifx bay then "Splice Digger in the edit bay: Tab." else "Go to Sniper and splice Digger in the edit bay: Tab."; }
   return "Walk near parts: Digger takes them.";
 }
 
