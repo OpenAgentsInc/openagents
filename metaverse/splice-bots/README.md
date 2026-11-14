@@ -415,7 +415,12 @@ Imperial robot come at you through where he stands while he fights it (`d_stage`
   drill mech stop against the same shape (`sb_boss_off`). Its battle begins when you are in its chamber
   with the mech. The mech fights on its own when you leave it be (its strongest ready card every
   couple of seconds); 1 to 4 pick its moves. A hit landing jolts the boss and flashes it, and the
-  prompt names her part: when it reels, run to a glowing weak point and press F. Phase one: it holds
+  prompt names her part, one step at a time: wait while the mech fights; jump a tail sweep or step out of a
+  charge's lane when she stands in one (the outlines on the lab's floor are three times as wide as the foes');
+  once the weak points open, run into an orange ring and press F. An open weak point is larger, with a beam
+  to the floor and a ring round it where F reaches it; the compass leads to the nearest one still awake and
+  one off screen is marked at the screen's edge. HIT over her names what hit: its tail or its charge.
+  The lab casts shadows straight down, so no long blue shadow lies on its white floor (#13584). Phase one: it holds
   the lab's middle facing east and its tail sweeps half way round over the lab's north half, where its
   flank's weak point is. Below half health, phase two: it turns on the mech, winds up, charges and
   is dazed after. Its three weak points (orange) open while it reels from a stunning hit, is dazed, or has no

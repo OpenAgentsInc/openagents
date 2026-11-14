@@ -1266,7 +1266,8 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
 }
 
 // The party's lamps (up to eight point lights): the stage in magenta, the dance floor in cyan,
-// each room in its own colour, and the blue glow of the vault and the boss chamber.
+// each room in its own colour, and the blue glow of the vault. None in the boss's lab: its blue lamp left
+// an unexplained blue patch on the white floor (#13584).
 g_lights :: (g: [] SpGame, l: [] f32) {
   if g[0].zone != Z_MINE || (g[0].mode != M_PLAY && g[0].mode != M_BANNER) { return; }
   t := g[0].t; beat := 0.75 + 0.25 * abs(sin(t * 7.5));
@@ -1274,7 +1275,6 @@ g_lights :: (g: [] SpGame, l: [] f32) {
   light_put(l, 1, dn(g, -1 + sin(t * 0.9) * 5, 3, -50 + cos(t * 0.63) * 4), 10, 0.30, 0.86, 0.96, 1.5 * beat);
   ga_lights(g, l);   // the bays nearest you (garage.coax)
   light_put(l, 4, v3(pick_x(g, PICK_PLUS), 2.2, pick_z(g, PICK_PLUS)), 10, 0.31, 0.70, 0.85, ifx g[0].taken[PICK_PLUS] then 0.5f32 else 2.0f32);
-  light_put(l, 6, v3(g[0].at.boss_x, 4, g[0].at.boss_z + 3), 12, 0.31, 0.70, 0.85, 1.4);
   light_put(l, 7, v3(g[0].at.crate_x, 2, g[0].at.crate_z), 5, 0.31, 0.70, 0.85, 1.0);
 }
 

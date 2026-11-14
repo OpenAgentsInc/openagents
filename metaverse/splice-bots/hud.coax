@@ -108,7 +108,7 @@ hv_goal :: (g: [] SpGame) -> HvGoal {
   if dv_away(g) { w := dv_way_to_door(g, g[0].px, g[0].pz); rover.x = w.x; rover.z = w.z; rover.way = w.way; }   // parked: along the walk to its door, round the train (#13578)
   if g[0].have[H_CORE] { return rover; }
   if g[0].boss_down { c := sb_core_at(g); return HvGoal.{name = "BANNED CORE", x = c.x, z = c.z, ok = true}; }
-  if g[0].wall_gone { return HvGoal.{name = "WEAK POINTS", x = a.boss_x, z = a.boss_z, ok = true}; }
+  if g[0].wall_gone { w := sb_goal(g); return HvGoal.{name = ifx sb_open(g) then "WEAK POINT" else "THE BOSS", x = w.x, z = w.z, ok = true}; }   // the nearest one still awake (#13584)
   // past the rubble: the drill mech in its empty section, then the blocked hallway straight across the
   // ring. DRILL+ is no step of the run: Digger's DRILL already drills (#13505 playtest 2)
   if g[0].rubble_gone {

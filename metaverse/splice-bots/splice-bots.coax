@@ -418,7 +418,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   t := s[0].time;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   for i: 0..<lo_i(style.count, STYLE_FLOATS) { u[U_STYLE + i] = style[i]; }
-  view := sp_camera(s[0].scene); key := sp_look(s[0].scene).key; flash := 0.0f32;
+  view := sp_camera(s[0].scene); key := sp_look(s[0].scene).key; flash := 0.0f32; lab := false;
   s[0].live_n = 0;
   if !s[0].gallery {
     // the world: opened once the page's facts came, then its one request at a time and any piece rising in
@@ -449,6 +449,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
     if s[0].touched {splice_touch_step(s);}
     g_step(g, s[0].sdt);
     view = g_camera(g); key = g_key_light(g); flash = g[0].flash; cm_seen(g, view);
+    lab = ga_in_lab(g, g[0].px, g[0].pz);
     seen := VpView.{ex = view.eye.x, ey = view.eye.y, ez = view.eye.z, ax = view.at.x, ay = view.at.y, az = view.at.z, fov = view.fov, w = width, h = height};
     if vp[0].fly {
       k := s[0].vkeys;
@@ -470,7 +471,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   if style.count >= STYLE_FLOATS { u[U_STYLE + SU_KEY_DIR] = key.x; u[U_STYLE + SU_KEY_DIR + 1] = key.y; u[U_STYLE + SU_KEY_DIR + 2] = key.z; u[U_STYLE + SU_KEY_DIR + 3] = 0; }
   farm := !s[0].gallery && ff_day(g);   // the solar farm by day: the shadow map widened for the long shadows, and the dust haze (farm.coax)
   if farm { ff_style(u[U_STYLE..<U_STYLE + STYLE_FLOATS]); }
-  if s[0].gallery { shadow_rows(u, key); } else { sp_shadow_rows(u, key, view.at, ifx farm then FF_SHADOW_HALF else SHADOW_HALF); }
+  if s[0].gallery { shadow_rows(u, key); } else { sp_shadow_rows(u, ifx lab then v3(0, 1, 0) else key, view.at, ifx farm then FF_SHADOW_HALF else SHADOW_HALF); }
   put4(u, U_SIZE, width, height, t, dpr);
   ink := hi(1, lo(width, height) / 720);
   // a hit or a breakthrough flashes; speed lines only on the hoverboard at speed (#13485), and a speed

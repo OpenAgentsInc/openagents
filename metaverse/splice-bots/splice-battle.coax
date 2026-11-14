@@ -894,11 +894,25 @@ sb_objective :: (g: [] SpGame) -> string {
   if sb_fighting(g) && t.kind == SBF_DESERT { return "Battle the raider mech: 1-4."; }
   if sb_road(g) && t.rm_hunt && !t.rm_down { return "Outrun the raider mech (W), or battle it (E)."; }
   if g[0].zone != Z_MINE || g[0].have[H_CORE] || g[0].boss_down { return ""; }
-  if g[0].wall_gone { return ifx sb_open(g) then "Stun its 3 weak points with F." else "Battle the boss: 1-4. Open its weak points."; }
+  if g[0].wall_gone { return ifx sb_open(g) then "Stun its 3 weak points with F." else "Let the mech fight the boss."; }
   if t.drill_t > 0 { return "The mech is drilling."; }
   if t.mech_core { return "Lead the mech to the blocked hallway (E1), across the field."; }
   if g[0].rubble_gone && g[0].bot { return "Find the drill mech in section C1. Swap Digger's core into it."; }
   return "";
+}
+// The boss's attack winding up or locked that would land on her where she stands: 0 none, 1 its tail sweep
+// (the north half of its reach), 2 its charge (its lane). What the prompt tells her to do about (#13584).
+sb_danger :: (g: [] SpGame) -> int {
+  t := g[0].bt[0];
+  if t.kind != SBF_BOSS { return 0; }
+  if t.half { return ifx t.wind > 0 && sb_in_lane(g, g[0].px, g[0].pz, SB_CHARGE_W * 1.5) then 2 else 0; }
+  return ifx tg_at(SB_SWEEP, g[0].boss_t - sb_sweep_from()).phase <= TG_LOCK && tg_at(SB_SWEEP, g[0].boss_t - sb_sweep_from()).phase != TG_IDLE && sb_in_wedge(t.dino_x, t.dino_z, t.dino_yaw + PI * 0.5, PI * 0.5, T_ARM, g[0].px, g[0].pz) then 1 else 0;
+}
+// Where the compass leads in the boss's lab: the nearest weak point still awake while they are open, else the boss.
+sb_goal :: (g: [] SpGame) -> Point {
+  t := g[0].bt[0]; best := v3(t.dino_x, 0, t.dino_z); bd := 1e9f32;
+  if sb_open(g) { for i: 0..<3 { w := sb_weak_at(g, i); d := dist2(g[0].px, g[0].pz, w.x, w.z); if g[0].stun[i] <= 0 && d < bd { bd = d; best = w; } } }
+  return best;
 }
 // The key prompt for what is in reach, or "" (the HUD's prompt line).
 SbPrompt :: struct { text: string; key: string; }
@@ -906,8 +920,11 @@ sb_prompt :: (g: [] SpGame) -> SbPrompt {
   t := g[0].bt[0];
   // the boss: her part is the weak points; the mech fights on its own (1 to 4 pick its moves)
   if sb_fighting(g) && t.kind == SBF_BOSS {
-    if sb_open(g) { return ifx sb_weak_near(g) >= 0 then SbPrompt.{text = "Stun the weak point", key = "F"} else SbPrompt.{text = "Weak points open: run to a glowing one", key = "F"}; }
-    return SbPrompt.{text = "The mech fights. When the boss reels, stun its weak points", key = "1-4"};
+    if sb_open(g) { return ifx sb_weak_near(g) >= 0 then SbPrompt.{text = "Stun the weak point", key = "F"} else SbPrompt.{text = "Run into an orange ring by the boss, then press F", key = "F"}; }
+    d := sb_danger(g);
+    if d == 1 { return SbPrompt.{text = "Tail sweep: jump over it", key = "SPACE"}; }
+    if d == 2 { return SbPrompt.{text = "It charges: step out of the orange lane", key = "A D"}; }
+    return SbPrompt.{text = "The mech fights. Wait for the boss's orange weak points to open", key = "1-4"};
   }
   if sb_fighting(g) { nx := bb_next(t.fight[0].sides[0]); if nx >= 0 { return SbPrompt.{text = ifx t.crew[nx] == SB_MECH then "Swap the core into the drill mech" else ifx t.crew[nx] == SB_DIGGER then "Swap the core into Digger" else "Swap to Sniper", key = "E"}; } return SbPrompt.{text = "Battle moves", key = "1-4"}; }
   if g[0].zone == Z_MINE {
@@ -957,7 +974,12 @@ sb_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
           w := sb_weak_at(g, i);
           s := SB_DINO_S;
           if g[0].stun[i] > 0 { kit_pen(p, 240 + i, MAT_SKIN, kit_tint(0.30, 0.30, 0.34)); ball(buf, p, w, 0.4 * s, 10); }
-          else if open { kit_pen(p, 240 + i, MAT_GLOW, HEAT()); ball(buf, p, w, (0.45 + abs(sin(tm * 8 + f32(i))) * 0.12) * s, 12); }
+          else if open {
+            // open (#13584): larger, a beam down to the floor, and round it the ring F reaches it from
+            kit_pen(p, 240 + i, MAT_GLOW, HEAT()); ball(buf, p, w, (0.6 + abs(sin(tm * 8 + f32(i))) * 0.15) * s, 12);
+            tube(buf, p, frame_at(v3(w.x, 0, w.z), 0), w.y, 0.1, 0.1, 0.1, 0.1, 6, true);
+            pts: [160] f32; sb_marks(g, buf, p, pts[..], tg_wedge(w.x, w.z, 0, PI, T_STUN_RANGE - 0.2, 0.3, pts[..]), true, SB_BIG);
+          }
           else { kit_pen(p, 240 + i, MAT_SKIN, kit_tint(0.86, 0.44, 0.16)); ball(buf, p, w, 0.38 * s, 8); }
         }
         // phase one's tail sweep: its tail swings low round from its hips, tapering to the tip, curved
@@ -999,12 +1021,13 @@ sb_blow_pose :: (g: [] SpGame, i: int, f: Frame) -> Frame {
   m := frame_move(f, fp(f, 0, -down, ahead));
   return frame_turn(m, 0, lean);
 }
+SB_BIG :: 3.0f32;   // the boss's outlines are this many times as wide: the thin ones were not seen in its white lab (#13584)
 // A warning's outline on the ground: dashes while the attack winds up (it may still turn), a solid line once
 // it is locked. The same shape the blow hits.
-sb_marks :: (g: [] SpGame, buf: [] u32, p: [] Pen, pts: [] f32, n: int, locked: bool) {
+sb_marks :: (g: [] SpGame, buf: [] u32, p: [] Pen, pts: [] f32, n: int, locked: bool, big: f32) {
   for k: 0..<n {
     if !locked && k % 2 == 1 { continue; }
-    x := pts[k * 2]; z := pts[k * 2 + 1]; w := ifx locked then 0.12f32 else 0.08f32;
+    x := pts[k * 2]; z := pts[k * 2 + 1]; w := (ifx locked then 0.12f32 else 0.08f32) * big;
     block(buf, p, x, g_ground(g, x, z) + 0.02, z, w, 0.03, w);
   }
 }
@@ -1019,28 +1042,28 @@ sb_warns :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     now := tg_at(SB_BLOW, a);
     if now.phase != TG_WIND && now.phase != TG_LOCK { continue; }
     grow := ifx now.phase == TG_WIND then now.share else 1.0f32;
-    n := tg_wedge(g[0].fx[i], g[0].fz[i], g[0].ak[0].fa[i], SB_BLOW_HALF, SB_BLOW_REACH, 0.18, pts[..]); sb_marks(g, buf, p, pts[..], n, now.phase == TG_LOCK);
-    n = tg_wedge(g[0].fx[i], g[0].fz[i], g[0].ak[0].fa[i], SB_BLOW_HALF, hi(0.2, SB_BLOW_REACH * grow), 0.3, pts[..]); sb_marks(g, buf, p, pts[..], n, false);
+    n := tg_wedge(g[0].fx[i], g[0].fz[i], g[0].ak[0].fa[i], SB_BLOW_HALF, SB_BLOW_REACH, 0.18, pts[..]); sb_marks(g, buf, p, pts[..], n, now.phase == TG_LOCK, 1);
+    n = tg_wedge(g[0].fx[i], g[0].fz[i], g[0].ak[0].fa[i], SB_BLOW_HALF, hi(0.2, SB_BLOW_REACH * grow), 0.3, pts[..]); sb_marks(g, buf, p, pts[..], n, false, 1);
   }
   if t[0].kind != SBF_BOSS { return; }
   if !t[0].half {
     now := tg_at(SB_SWEEP, g[0].boss_t - sb_sweep_from());
     if now.phase == TG_WIND || now.phase == TG_LOCK {
       grow := ifx now.phase == TG_WIND then now.share else 1.0f32; side := t[0].dino_yaw + PI * 0.5;
-      n := tg_wedge(t[0].dino_x, t[0].dino_z, side, PI * 0.5, T_ARM, 0.4, pts[..]); sb_marks(g, buf, p, pts[..], n, now.phase == TG_LOCK);
-      n = tg_wedge(t[0].dino_x, t[0].dino_z, side, PI * 0.5, hi(0.5, T_ARM * grow), 0.6, pts[..]); sb_marks(g, buf, p, pts[..], n, false);
+      n := tg_wedge(t[0].dino_x, t[0].dino_z, side, PI * 0.5, T_ARM, 0.4, pts[..]); sb_marks(g, buf, p, pts[..], n, now.phase == TG_LOCK, SB_BIG);
+      n = tg_wedge(t[0].dino_x, t[0].dino_z, side, PI * 0.5, hi(0.5, T_ARM * grow), 0.6, pts[..]); sb_marks(g, buf, p, pts[..], n, false, SB_BIG);
     }
   } else if t[0].wind > 0 {
     locked := t[0].wind <= SB_CHARGE.lock; grow := ifx locked then 1.0f32 else 1 - (t[0].wind - SB_CHARGE.lock) / SB_CHARGE.wind;
     l := 0.0f32;   // the lane runs as far as the charge goes: until the boss would leave the lab
     while l < SB_CHARGE_SPEED * SB_CHARGE_TIME { if !sb_in_room(g, t[0].dino_x + t[0].rush_dx * (l + 0.5), t[0].dino_z + t[0].rush_dz * (l + 0.5)) { break; } l += 0.5; }
-    n := tg_lane(t[0].dino_x, t[0].dino_z, t[0].rush_dx, t[0].rush_dz, l, SB_CHARGE_W, 0.45, pts[..]); sb_marks(g, buf, p, pts[..], n, locked);
-    n = tg_lane(t[0].dino_x, t[0].dino_z, t[0].rush_dx, t[0].rush_dz, hi(0.5, l * grow), SB_CHARGE_W * 0.5, 0.7, pts[..]); sb_marks(g, buf, p, pts[..], n, false);
+    n := tg_lane(t[0].dino_x, t[0].dino_z, t[0].rush_dx, t[0].rush_dz, l, SB_CHARGE_W, 0.45, pts[..]); sb_marks(g, buf, p, pts[..], n, locked, SB_BIG);
+    n = tg_lane(t[0].dino_x, t[0].dino_z, t[0].rush_dx, t[0].rush_dz, hi(0.5, l * grow), SB_CHARGE_W * 0.5, 0.7, pts[..]); sb_marks(g, buf, p, pts[..], n, false, SB_BIG);
   }
   // a foe's card winding up: a ring under the bot it is for
   if g[0].ak[0].card_t >= 0 && tg_at(SB_CARD, g[0].ak[0].card_t).phase <= TG_LOCK {
     at := sb_body_at(g, sb_fielded(g));
-    n := tg_wedge(at.x, at.z, 0, PI, 2.2, 0.35, pts[..]); sb_marks(g, buf, p, pts[..], n, tg_at(SB_CARD, g[0].ak[0].card_t).phase == TG_LOCK);
+    n := tg_wedge(at.x, at.z, 0, PI, 2.2, 0.35, pts[..]); sb_marks(g, buf, p, pts[..], n, tg_at(SB_CARD, g[0].ak[0].card_t).phase == TG_LOCK, 1);
   }
 }
 // A dev build's clip of the tail sweep (splice-bots.coax ?stage=10n, attack-checks.coax): the boss at home with
@@ -1158,7 +1181,7 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
   n = ui_title(out, n, sb_bot_name(t.foe), fx0 + 14 * k, fy + 22 * k, 10 * k, ifx t.foe == SB_BOSS then GLOW_INK() else ink);
   n = ui_right(out, n, num(buf[..], "", bb_hp(foe), num_tail(foe)), fx1 - 14 * k, fy + 22 * k, 9 * k, ink);
   n = sb_bar(out, n, fx0 + 14 * k, fy + 38 * k, fx1 - 14 * k, k, bb_health(foe), ifx t.foe == SB_BOSS then GLOW() else HEAT());
-  if t.foe == SB_BOSS { n = ui_mid(out, n, ifx t.half then "PHASE 2 · IT CHARGES" else "PHASE 1 · ITS TAIL SWEEPS", w * 0.5, fy + 22 * k, 8 * k, ifx t.half then HEAT() else ink); }
+  if t.foe == SB_BOSS { op := sb_open(g); n = ui_mid(out, n, ifx op then "WEAK POINTS OPEN" else ifx t.half then "PHASE 2 · IT CHARGES" else "PHASE 1 · ITS TAIL SWEEPS", w * 0.5, fy + 22 * k, 8 * k, ifx t.half || op then HEAT() else ink); }
   // yours: the fielded bot, its health and battery, and its four cards on keys 1 to 4
   me := bb_active(f, 0); who := sb_fielded(g);
   mx0 := w * 0.5 - 220 * k; mx1 := w * 0.5 + 220 * k; my0 := h - pad - 100 * k; my1 := h - pad;
@@ -1202,33 +1225,40 @@ sb_attack_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
     me := ifx g[0].mode == M_DRIVE || g[0].mode == M_RIDE then sb_sniper_at(g) else v3(g[0].px, 0, g[0].pz);
     sp := screen_of(u, v3(me.x, 2.3 + (SB_CUE - g[0].ak[0].cue_t) * 0.6, me.z), q.w, q.h);
     if sp.ahead {
-      word := ifx g[0].ak[0].cue_hit then "HIT" else "DODGED"; c := 13 * k;
+      word := ifx !g[0].ak[0].cue_hit then "DODGED" else ifx t[0].kind != SBF_BOSS then "HIT" else ifx t[0].half then "ITS CHARGE HIT YOU" else "ITS TAIL HIT YOU"; c := 13 * k;
       ui_panel(g, u, sp.x - ui_w(F_TITLE, word, c) * 0.5 - 8 * k, sp.y - c - 7 * k, sp.x + ui_w(F_TITLE, word, c) * 0.5 + 8 * k, sp.y + 7 * k, PAPER(), 0.9);
       n = ui_title_mid(out, n, word, sp.x, sp.y, c, ifx g[0].ak[0].cue_hit then HEAT() else INK());
     }
   }
   xs: [FOES + 2] f32; zs: [FOES + 2] f32; m := sb_threats(g, xs[..], zs[..]);
-  for i: 0..<m {
-    at := v3(xs[i], 1.5, zs[i]); sp := screen_of(u, at, q.w, q.h);
-    if !sp.ahead {
-      // behind the camera: toward its side, mirrored by tg_edge
-      ex := at.x - u[U_EYE]; ez := at.z - u[U_EYE + 2];
-      sp.x = q.w * 0.5 - (ex * u[U_RIGHT] + ez * u[U_RIGHT + 2]) * 1000; sp.y = q.h * 0.5 - 1;
+  for i: 0..<m { n = sb_edge(g, out, u, q, n, v3(xs[i], 1.5, zs[i]), "!"); }
+  // the boss's open weak points (#13584): each one off screen is pointed to from the screen's edge
+  if sb_open(g) {
+    for i: 0..<3 {
+      if g[0].stun[i] > 0 { continue; }
+      n = sb_edge(g, out, u, q, n, sb_weak_at(g, i), "F");
     }
-    e := tg_edge(sp.x, sp.y, sp.ahead, q.w, q.h, 48 * k);
-    if e[2] <= 0 { continue; }
-    // never on the top's compass, objective or boss bar (hud.coax hv_compass): below them on the edge it points from
-    top := ro_safe(q.w, q.h).y0 + 130 * k;
-    e[1] = hi(e[1], top);
-    // a chevron pointing out toward it, on a paper disc, with a mark
-    dx := e[0] - q.w * 0.5; dy := e[1] - q.h * 0.5; l := hi(0.001, sqrt(dx * dx + dy * dy)); dx /= l; dy /= l;
-    tx := e[0] + dx * 16 * k; ty := e[1] + dy * 16 * k; bx := e[0] - dx * 4 * k; by := e[1] - dy * 4 * k;
-    ui_panel(g, u, e[0] - 20 * k, e[1] - 20 * k, e[0] + 20 * k, e[1] + 20 * k, PAPER(), 0.92);
-    n = ui_seg(out, n, bx - dy * 14 * k, by + dx * 14 * k, tx, ty, 2.6 * k, HEAT(), 1);
-    n = ui_seg(out, n, bx + dy * 14 * k, by - dx * 14 * k, tx, ty, 2.6 * k, HEAT(), 1);
-    n = ui_title_mid(out, n, "!", e[0] - dx * 8 * k, e[1] - dy * 8 * k + 6 * k, 14 * k, INK());
   }
   return n;
+}
+// A chevron on a paper disc at the screen's edge, pointing out toward `at` when it is off screen, with a mark.
+sb_edge :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int, at: Point, mark: string) -> int {
+  n := n0; k := q.k; sp := screen_of(u, at, q.w, q.h);
+  if !sp.ahead {
+    // behind the camera: toward its side, mirrored by tg_edge
+    ex := at.x - u[U_EYE]; ez := at.z - u[U_EYE + 2];
+    sp.x = q.w * 0.5 - (ex * u[U_RIGHT] + ez * u[U_RIGHT + 2]) * 1000; sp.y = q.h * 0.5 - 1;
+  }
+  e := tg_edge(sp.x, sp.y, sp.ahead, q.w, q.h, 48 * k);
+  if e[2] <= 0 { return n; }
+  // never on the top's compass, objective or boss bar (hud.coax hv_compass): below them on the edge it points from
+  e[1] = hi(e[1], ro_safe(q.w, q.h).y0 + 130 * k);
+  dx := e[0] - q.w * 0.5; dy := e[1] - q.h * 0.5; l := hi(0.001, sqrt(dx * dx + dy * dy)); dx /= l; dy /= l;
+  tx := e[0] + dx * 16 * k; ty := e[1] + dy * 16 * k; bx := e[0] - dx * 4 * k; by := e[1] - dy * 4 * k;
+  ui_panel(g, u, e[0] - 20 * k, e[1] - 20 * k, e[0] + 20 * k, e[1] + 20 * k, PAPER(), 0.92);
+  n = ui_seg(out, n, bx - dy * 14 * k, by + dx * 14 * k, tx, ty, 2.6 * k, HEAT(), 1);
+  n = ui_seg(out, n, bx + dy * 14 * k, by - dx * 14 * k, tx, ty, 2.6 * k, HEAT(), 1);
+  return ui_title_mid(out, n, mark, e[0] - dx * 8 * k, e[1] - dy * 8 * k + 6 * k, 14 * k, INK());
 }
 // Where each attack winding up or locked on her comes from now: the foes' blows, the boss's sweep, charge or
 // card, the raider mech's claws or card.
