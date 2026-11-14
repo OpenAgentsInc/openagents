@@ -18,10 +18,12 @@ FL_AIR_FRICTION :: 4.0f32; FL_AIR_BRAKE :: 12.0f32;   // letting go in the air: 
 FL_FACE :: 18.0f32;        // /s: her body turns to her heading
 FL_GRAVITY :: 30.0f32;     // m/s^2: a quick, compact arc
 FL_JUMP :: 9.0f32;         // m/s up: a 1.28 m jump, 0.6 s in the air; with FL_STEP a solar row's top (1.34 m) in one
+FL_CUT :: 0.45f32;         // the share of the rise she keeps when Space is let go while rising: a tap hops about 0.3 m, a hold the full jump
 FL_COYOTE :: 0.1f32;       // s after walking off an edge that Space still jumps as from it
 FL_BUFFER :: 0.12f32;      // s before landing that a Space with no air jump left waits, and jumps on landing
 FL_STEP :: 0.3f32;         // m: a top this little above her feet she steps onto, never snagging on its edge
 FL_SWING :: 0.6f32;        // radians her legs swing in the gait (the walk poses are written at it)
+FL_KNEE :: 1.1f32;         // radians a knee folds as its leg comes through (crew-player cp_gait): the foot lifts behind, light and springy
 FL_STRIDE :: 1.9f32;       // m one whole gait covers, before the character's own legs measure it (SpFront.stride_m)
 FL_STOP :: 0.4f32;         // m/s: slower than this with no key down she settles into standing
 FL_SETTLE :: 14.0f32;      // /s: how fast the gait eases into the standing pose
@@ -36,7 +38,9 @@ FL_FALL_VY :: -2.5f32;     // m/s: falling faster than this shows the fall pose
 FL_LAND :: 0.12f32;        // s the landing pose and squash show; input moves her through it
 FL_SQUASH :: 0.016f32;     // squash per m/s of impact
 FL_SQUASH_MAX :: 0.2f32;
-FL_SOFT :: 3.0f32;         // m/s: a landing slower than this has no squash and no pose (stepping off a crate)
+FL_SOFT :: 3.0f32;
+FL_DECK :: 16.0f32;        // /s: she steps up onto the board's deck and down off it over about 0.15 s, never a pop
+FL_BOARD_LEAN :: 0.7f32;   // her lean as a share of the board's carve: she leans with it         // m/s: a landing slower than this has no squash and no pose (stepping off a crate)
 
 // ---- The metrics a level is built to (a level session's grey metrics room shows them; checked
 // against the real walk and jump in splice-game.coax). Metres and metres a second.
@@ -48,18 +52,19 @@ FL_M_LEDGE :: FL_M_JUMP + FL_STEP;   // 1.58: the highest top one jump lands her
 FL_M_WALK :: T_WALK;       // 5.6: her one speed on foot (no sneak: Shift is off; no sprint)
 FL_M_BOARD :: 7.0f32; FL_M_BOARD_FAST :: 22.0f32;   // the hoverboard's casual and fast (the board table, content/splice.content); Q Q is super fast (board_super_cms)
 
-// The air poses after the gait's: takeoff, second jump, fall, landing.
-FL_P_TAKEOFF :: 0; FL_P_SECOND :: 1; FL_P_FALL :: 2; FL_P_LAND :: 3; FL_AIR_POSES :: 4;
-// legs (right, left), arms (right, left): radians forward
-FL_LIMBS :: [FL_AIR_POSES * 4] f32.[
-  0.75, -0.45, -0.7, 1.0,   // takeoff: the right knee drives up, the arms pump against it
-  1.0, 0.75, -1.2, -1.2,    // second jump: tucked, both arms swept back
-  0.25, -0.2, 1.3, 1.1,     // fall: feet apart, arms out front for balance
-  0.45, -0.4, 0.5, -0.3     // landing: a wide stance, one arm forward
+// The poses after the gait's: takeoff, second jump, fall, landing, and her stance on the board.
+FL_P_TAKEOFF :: 0; FL_P_SECOND :: 1; FL_P_FALL :: 2; FL_P_LAND :: 3; FL_P_BOARD :: 4; FL_AIR_POSES :: 5;
+// legs (right, left), arms (right, left): radians forward; knees (right, left): radians folded back
+FL_LIMBS :: [FL_AIR_POSES * 6] f32.[
+  0.75, -0.45, -0.7, 1.0,  1.3, 0.5,   // takeoff: the right knee drives up, the left leg trails, the arms pump against it
+  1.1, 0.9, -1.2, -1.2,    1.9, 1.9,   // second jump: tucked tight, both arms swept back
+  0.25, -0.2, 1.3, 1.1,    0.3, 0.6,   // fall: feet apart, knees soft, arms out front for balance
+  0.45, -0.4, 0.5, -0.3,   0.7, 0.5,   // landing: a wide, low stance, one arm forward
+  0.3, -0.25, 0.55, -0.45, 0.6, 0.5    // the board: feet apart along the deck, knees soft, arms out to balance
 ];
 fl_limbs :: (k: int) -> CpLimbs {
-  t := FL_LIMBS; o := k * 4;
-  return CpLimbs.{leg = [2] f32.[t[o], t[o + 1]], arm = [2] f32.[t[o + 2], t[o + 3]]};
+  t := FL_LIMBS; o := k * 6;
+  return CpLimbs.{leg = [2] f32.[t[o], t[o + 1]], arm = [2] f32.[t[o + 2], t[o + 3]], knee = [2] f32.[t[o + 4], t[o + 5]]};
 }
 
 SpFeel :: struct {
@@ -71,6 +76,7 @@ SpFeel :: struct {
   land_t: f32; squash: f32;  // the landing's time left and how hard it was
   was_air: bool; air_used: int;
   demo_t: f32 = -1; demo_i: int;   // the movement demo's time (-1: off) and its next key (fl_demo)
+  deck: f32; lift: f32;      // how far up onto the board's deck she is drawn (0 to 1, eased) and the deck's height
 }
 
 // The walk: her velocity toward the keys (turned by the view), moved, pushed out by the world, and
@@ -115,9 +121,29 @@ fl_walk :: (g: [] SpGame, go: f32, side: f32, pace: f32, dt: f32) {
   f[0].side += (clamp(rate * speed * FL_LEAN, -FL_LEAN_MAX, FL_LEAN_MAX) - f[0].side) * k;
   f[0].fwd += (ifx air then -f[0].fwd else clamp(accel * FL_PITCH, -FL_PITCH_MAX, FL_PITCH_MAX) - f[0].fwd) * k;
 }
+// The board and her (each frame, riding or not). Riding: her lean follows the board's carve, and her
+// velocity is the board's, held to her walk, so stepping off she runs on and stops as she always does.
+// Either way she eases onto the deck or off it (fl_deck_y).
+fl_board :: (g: [] SpGame, dt: f32) {
+  f := g[0].fl[..]; r := g_riding(g); k := lo(1, FL_LEAN_EASE * dt);
+  if r {
+    b := g[0].board[0]; s := clamp(b.m.speed, -T_WALK, T_WALK);
+    f[0].lift = board_lift(b) + 0.075; f[0].land_t = 0;
+    f[0].vx = sin(b.m.face) * s; f[0].vz = cos(b.m.face) * s; f[0].x = g[0].px; f[0].z = g[0].pz; f[0].speed = abs(s);
+    f[0].side += (b.lean * FL_BOARD_LEAN - f[0].side) * k; f[0].fwd += (b.nose * FL_BOARD_LEAN - f[0].fwd) * k;
+  }
+  f[0].deck += ((ifx r then 1.0f32 else 0.0f32) - f[0].deck) * lo(1, FL_DECK * dt);
+}
+// Stepping on: the board rolls off at her speed along her heading, never from a dead stop.
+fl_mount :: (g: [] SpGame) {
+  f := g[0].fl[0]; y := g[0].yaw;
+  g[0].board[0].m.speed = hi(0, f.vx * sin(y) + f.vz * cos(y));
+}
+// How far over her feet she is drawn for the board's deck.
+fl_deck_y :: (g: [] SpGame) -> f32 { f := g[0].fl[0]; return f.deck * f.lift; }
 // The engine's walking numbers with hers.
 fl_loc :: () -> LocomotionProfile { loc: LocomotionProfile; loc.gravity = FL_GRAVITY; loc.jump_speed = FL_JUMP; return loc; }
-fl_jump_tune :: (j: [] Jump) { j[0].air_jumps = 1; j[0].coyote = FL_COYOTE; j[0].buffer = FL_BUFFER; }
+fl_jump_tune :: (j: [] Jump) { j[0].air_jumps = 1; j[0].cut = FL_CUT; j[0].coyote = FL_COYOTE; j[0].buffer = FL_BUFFER; }
 // After the jump's step: the takeoff, the second jump and the landing, for her pose and squash.
 fl_after_jump :: (g: [] SpGame, dt: f32) {
   f := g[0].fl[..]; j := g[0].air[0];
@@ -132,7 +158,7 @@ fl_after_jump :: (g: [] SpGame, dt: f32) {
 // Which pose she shows: -1 the gait at her stride, else FR_POSES + an air pose.
 fl_pose :: (g: [] SpGame) -> int {
   f := g[0].fl[0];
-  if g_riding(g) { return -1; }
+  if g_riding(g) { return FR_POSES + FL_P_BOARD; }
   if g_airborne(g) {
     j := g[0].air[0];
     if j.vy < FL_FALL_VY || !j.jumped { return FR_POSES + FL_P_FALL; }
@@ -156,8 +182,8 @@ fl_squash :: (g: [] SpGame) -> f32 {
 // reverse off it, then a jump and a second jump that air control steers back onto the row.
 FL_DEMO_N :: 13;
 FL_DEMO :: [FL_DEMO_N * 3] int.[   // centiseconds, key, down
-  30, 'w', 1,  75, ' ', 1,  85, ' ', 0,  105, 'w', 0,  190, 's', 1,  250, 's', 0,
-  280, ' ', 1,  285, 'w', 1,  290, ' ', 0,  315, ' ', 1,  325, ' ', 0,  343, 'w', 0,  500, 0, 0];
+  30, 'w', 1,  75, ' ', 1,  100, ' ', 0,  105, 'w', 0,  190, 's', 1,  250, 's', 0,
+  280, ' ', 1,  285, 'w', 1,  312, ' ', 0,  315, ' ', 1,  340, ' ', 0,  343, 'w', 0,  500, 0, 0];
 FL_DEMO_X :: -850.0f32; FL_DEMO_Z :: -171.4f32;   // 2.4 m north of the farm's second row (farm.coax ff_line_z(3), -169), in the aisle
 fl_demo_start :: (g: [] SpGame) { g[0].px = FL_DEMO_X; g[0].pz = FL_DEMO_Z; g[0].yaw = 0; g[0].face_off = 0; g[0].fl[0].demo_t = 0; g[0].fl[0].demo_i = 0; }
 fl_demo :: (g: [] SpGame, dt: f32) {

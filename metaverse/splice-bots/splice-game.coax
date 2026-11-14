@@ -514,7 +514,7 @@ g_board_given :: (g: [] SpGame) -> bool { return g[0].c[0].board.ok && g[0].c[0]
 g_riding :: (g: [] SpGame) -> bool { return board_riding(g[0].board[0]); }
 g_board_key :: (g: [] SpGame) {
   if g_riding(g) { board_down(g[0].board[..]); return; }
-  if g_board_given(g) { board_up(g[0].board[..], 0, g[0].px, g[0].pz, g[0].yaw); g[0].stride = 0; }   // you stand on it
+  if g_board_given(g) { board_up(g[0].board[..], 0, g[0].px, g[0].pz, g[0].yaw); g[0].stride = 0; fl_mount(g); }   // you step on it, at your speed
 }
 g_ride :: (g: [] SpGame, dt: f32) {
   b := g[0].board[..];
@@ -577,7 +577,7 @@ g_jump :: (g: [] SpGame, dt: f32) {
   fl_after_jump(g, dt);
 }
 // The walk, or the board when you ride one.
-g_move :: (g: [] SpGame, dt: f32) { if g_riding(g) { g_ride(g, dt); } else { g_walk(g, dt); g_jump(g, dt); } }
+g_move :: (g: [] SpGame, dt: f32) { if g_riding(g) { g_ride(g, dt); } else { g_walk(g, dt); g_jump(g, dt); } fl_board(g, dt); }
 g_step :: (g: [] SpGame, dt: f32) {
   fl_demo(g, dt);    // the movement demo's keys, when it plays (feel.coax)
   snd_tick(g, dt);   // what sounds: what changed since the last step, and the loops for where you are (sound.coax)
@@ -1963,20 +1963,25 @@ fl_open :: (g: [] SpGame) { g_stage(g, 5); g[0].mode = M_PLAY; g[0].px = 20; g[0
   for i: 0..<8 { g_step(g[..], 1.0f32 / 60); if abs(g[0].fl[0].side) > abs(lean) { lean = g[0].fl[0].side; } }
   #assert abs(lean) > 0.03 && abs(lean) <= FL_LEAN_MAX;
 }
-#test "feel: the metrics are the real ones: one jump's top, the double jump's, her walk, the board's speeds and her height" #steps 120000000 {
+#test "feel: the metrics are the real ones: one jump's top, a tap's hop, the double jump's, her walk, the board's speeds and her height" #steps 120000000 {
   g := [1] SpGame.[SpGame.{}];
   for k: 0..<2 {
     fl_open(g[..]);
-    _ = g_key(g[..], ' ', true); top := 0.0f32; pressed := false;
+    _ = g_key(g[..], ' ', true); top := 0.0f32; pressed := false; let_go := false;   // held through each rise: a full jump
     for i: 0..<150 {
-      g_step(g[..], 1.0f32 / 60); if i == 1 { _ = g_key(g[..], ' ', false); }
-      if k == 1 && !pressed && g[0].air[0].vy <= 0 { _ = g_key(g[..], ' ', true); pressed = true; }
+      g_step(g[..], 1.0f32 / 60);
+      if k == 1 && let_go && !pressed { _ = g_key(g[..], ' ', true); pressed = true; }
+      if !let_go && i > 1 && g[0].air[0].vy <= 0 { _ = g_key(g[..], ' ', false); let_go = true; }
       top = hi(top, g_feet_y(g[..]));
     }
     _ = g_key(g[..], ' ', false);
     #assert abs(top - (ifx k == 0 then FL_M_JUMP else FL_M_DOUBLE)) < 0.08;
   }
   #assert abs(FL_M_JUMP - 1.28) < 0.01 && abs(FL_M_DOUBLE - 2.98) < 0.01 && FL_M_WALK == T_WALK;
+  // a tap hops: let go at once, she keeps FL_CUT of the rise
+  fl_open(g[..]); _ = g_key(g[..], ' ', true); g_step(g[..], 1.0f32 / 60); _ = g_key(g[..], ' ', false); hop := 0.0f32;
+  for i: 0..<60 { g_step(g[..], 1.0f32 / 60); hop = hi(hop, g_feet_y(g[..])); }
+  #assert hop > 0.15 && hop < FL_M_JUMP * 0.35 && g[0].air[0].on_ground;
   b := board_row_read(1, "on", 700, 2200); g_reset(g[..]);
   #assert cast(f32) g[0].c[0].board.casual == FL_M_BOARD * 100 && cast(f32) g[0].c[0].board.fast == FL_M_BOARD_FAST * 100;
   #assert cast(f32) cd_first().body.v[CB_HEIGHT] == FL_M_HEIGHT * 100;
@@ -1986,7 +1991,7 @@ fl_open :: (g: [] SpGame) { g_stage(g, 5); g[0].mode = M_PLAY; g[0].px = 20; g[0
   // the small crate (0.85 m) just south: up onto it, then walk off its far side and jump just after
   #assert sl_place(g[..], 117, 2000, 1060, 0).ok;
   _ = g_key(g[..], ' ', true); _ = g_key(g[..], 'w', true);
-  for i: 0..<70 { g_step(g[..], 1.0f32 / 60); if i == 1 { _ = g_key(g[..], ' ', false); } if g[0].pz < 11.2 { _ = g_key(g[..], 'w', false); } }
+  for i: 0..<70 { g_step(g[..], 1.0f32 / 60); if i == 30 { _ = g_key(g[..], ' ', false); } if g[0].pz < 11.2 { _ = g_key(g[..], 'w', false); } }
   #assert g[0].air[0].on_ground && abs(g_feet_y(g[..]) - 0.85) < 0.01;
   _ = g_key(g[..], 'w', true);
   off := false; jumped := false;
@@ -2025,7 +2030,7 @@ fl_open :: (g: [] SpGame) { g_stage(g, 5); g[0].mode = M_PLAY; g[0].px = 20; g[0
     for i: 0..<40 { g_step(g[..], 1.0f32 / 60); }
     #assert g[0].pz > 10.55 && g_feet_y(g[..]) == 0;   // walking: stopped by its side
     _ = g_key(g[..], ' ', true);
-    for i: 0..<60 { g_step(g[..], 1.0f32 / 60); if i == 1 { _ = g_key(g[..], ' ', false); } if g[0].pz < 10.1 { _ = g_key(g[..], 'w', false); } }
+    for i: 0..<60 { g_step(g[..], 1.0f32 / 60); if i == 30 { _ = g_key(g[..], ' ', false); } if g[0].pz < 10.1 { _ = g_key(g[..], 'w', false); } }
     _ = g_key(g[..], 'w', false);
     for i: 0..<30 { g_step(g[..], 1.0f32 / 60); }
     y := g_feet_y(g[..]);
@@ -2034,6 +2039,26 @@ fl_open :: (g: [] SpGame) { g_stage(g, 5); g[0].mode = M_PLAY; g[0].px = 20; g[0
     back := ifx side == 0 then g[0].pz - 9.45 else 10.55 - g[0].pz;
     #assert abs(y - (1.34 - 1.1 * sin(SOLAR_TILT) / cos(SOLAR_TILT) * back / 1.1)) < 0.06;
   }
+}
+#test "feel: the board blends: she steps on at her speed and rises onto the deck, rides in her board stance leaning with its carve, and steps off running, then stops" #steps 120000000 {
+  g := [1] SpGame.[SpGame.{}]; fl_open(g[..]);
+  g[0].c[0].board = board_row_read(1, "on", 700, 2200);
+  _ = g_key(g[..], 'w', true); for i: 0..<20 { g_step(g[..], 1.0f32 / 60); }
+  #assert sp_q(g[..]) && g_riding(g[..]) && g[0].board[0].m.speed > T_WALK * 0.9;   // on at her speed, not from a stop
+  g_step(g[..], 1.0f32 / 60);
+  #assert g[0].fl[0].deck > 0.1 && g[0].fl[0].deck < 0.5 && fl_pose(g[..]) == FR_POSES + FL_P_BOARD;   // rising onto the deck
+  _ = g_key(g[..], 'd', true); for i: 0..<40 { g_step(g[..], 1.0f32 / 60); }
+  #assert g[0].fl[0].deck > 0.99 && abs(g[0].fl[0].side) > 0.01 && g[0].fl[0].side * g[0].board[0].lean > 0;   // carving: she leans with it
+  _ = g_key(g[..], 'd', false);
+  for i: 0..<30 { g_step(g[..], 1.0f32 / 60); }
+  _ = g_key(g[..], 'q', true); n := 0;
+  while g_riding(g[..]) && n < 120 { g_step(g[..], 1.0f32 / 60); n += 1; }
+  _ = g_key(g[..], 'q', false);
+  #assert !g_riding(g[..]) && g[0].fl[0].deck > 0.5;   // off, and still easing down from the deck
+  g_step(g[..], 1.0f32 / 60);
+  #assert g[0].fl[0].speed > T_WALK * 0.5;   // running on with W held, not stopped dead
+  _ = g_key(g[..], 'w', false); for i: 0..<30 { g_step(g[..], 1.0f32 / 60); }
+  #assert g[0].fl[0].speed == 0 && g[0].fl[0].deck < 0.01 && fl_pose(g[..]) < 0;   // stopped, on her feet, standing
 }
 #test "feel: the movement demo starts, stops at a solar row, jumps onto it, reverses off it and double-jumps back on" #steps 200000000 {
   g := [1] SpGame.[SpGame.{}];
@@ -2716,11 +2741,12 @@ sb_drive_check :: (g: [] SpGame) {
   one := 0.0f32;
   for k: 0..<2 {
     g_stage(g[..], 5); g[0].px = 0; g[0].pz = 0; g_step(g[..], 0.02);
-    _ = g_key(g[..], ' ', true); g_step(g[..], 0.02); _ = g_key(g[..], ' ', false);
+    _ = g_key(g[..], ' ', true); g_step(g[..], 0.02);
     top := 0.0f32;
-    for i: 0..<120 {
+    for i: 0..<120 {   // held through each rise (a tap hops lower: feel.coax FL_CUT)
+      if i == 11 { _ = g_key(g[..], ' ', false); }
       if k == 1 && i == 12 { _ = g_key(g[..], ' ', true); }
-      if k == 1 && i == 14 { _ = g_key(g[..], ' ', false); }
+      if i == 40 { _ = g_key(g[..], ' ', false); }
       g_step(g[..], 0.02); top = hi(top, g_feet_y(g[..]));
     }
     if k == 0 { one = top; } else { #assert top > one * 1.6; }

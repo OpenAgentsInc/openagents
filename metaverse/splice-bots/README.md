@@ -108,10 +108,12 @@ drawn while your keys already move her. `feel.coax` holds every number:
 | `FL_GRAVITY` | 30 m/s^2 | a quick, compact arc rather than a floaty one |
 | `FL_JUMP` | 9 m/s | a 1.28 m jump, about 0.6 s in the air; with `FL_STEP` it reaches a solar row's top (1.34 m) |
 | `JUMP_AIR` (engine) | 1.15 | the second jump lifts harder than the first, so it goes higher |
+| `FL_CUT` | 0.45 | let go of Space while rising and she keeps this share of the rise: a tap hops about 0.3 m, a hold goes the full jump |
 | `FL_COYOTE` | 0.1 s | Space just after walking off an edge still jumps from it |
 | `FL_BUFFER` | 0.12 s | Space just before landing, with no air jump left, jumps on landing |
 | `FL_STEP` | 0.3 m | small edges are stepped onto, never snagged on |
 | `FL_SWING`, `FL_STRIDE` | 0.6 rad, 1.9 m | the gait's swing; the stride is measured from the character's own legs, so her feet keep pace with the ground and never slide |
+| `FL_KNEE` | 1.1 rad | a knee folds as its leg comes through, so the foot lifts behind and the run reads light and springy; both knees are straight when she stands |
 | `FL_STOP`, `FL_SETTLE` | 0.4 m/s, 14 /s | below that speed with no key down she eases into standing |
 | `FL_LEAN`, `FL_LEAN_MAX` | 0.035, 0.2 | she leans into turns, by turn rate times speed |
 | `FL_PITCH`, `FL_PITCH_MAX` | 0.006, 0.18 | she leans forward to start and back to stop |
@@ -121,9 +123,13 @@ drawn while your keys already move her. `feel.coax` holds every number:
 | `FL_LAND` | 0.12 s | the landing pose and squash; input moves her through it |
 | `FL_SQUASH`, `FL_SQUASH_MAX` | 0.016 per m/s, 0.2 | the squash grows with how hard she lands |
 | `FL_SOFT` | 3 m/s | stepping off a crate has no squash and no landing pose |
+| `FL_DECK` | 16 /s | she steps up onto the hoverboard's deck and down off it over about 0.15 s, never a pop |
+| `FL_BOARD_LEAN` | 0.7 | on the board she leans with its carve and nose |
 
-Her poses are takeoff (a knee drives up), second jump (tucked, arms back), fall (arms out front)
-and landing (a wide stance). Each footstep and hard landing plays `SND_STEP` and `SND_LAND`,
+Her poses are takeoff (a knee drives up), second jump (tucked, knees in, arms back), fall (arms
+out front), landing (a wide, low stance) and her stance on the board (knees soft, arms out). The Q
+controls are unchanged: the board rolls off at her walking speed when she steps on, and when she
+steps off she runs on at up to her walking speed and stops as she always does. Each footstep and hard landing plays `SND_STEP` and `SND_LAND`,
 off like every other sound.
 
 The metrics a level is built to are named constants in the same file (checked against the real

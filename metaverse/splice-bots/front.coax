@@ -370,7 +370,7 @@ fr_player :: (g: [] SpGame, d: [] SpLayerDraw, pieces: [] u32, places: [] u32, d
     wrote := 0;
     while f[0].posed_n < need && wrote < 2 {
       i := f[0].posed_n; f[0].pose_first[i] = pen[0].n; wrote += 1;
-      l := ifx i < FR_POSES then cp_stride_limbs(cp_pose_stride(i, FR_POSES), FL_SWING) else fl_limbs(i - FR_POSES);
+      l := ifx i < FR_POSES then cp_gait(cp_pose_stride(i, FR_POSES), FL_SWING, FL_KNEE) else fl_limbs(i - FR_POSES);
       cp_write_pose(pieces, pen[..], frame_at(v3(0, 0, 0), 0), f[0].doc[0], l, FR_OBJ);
       if pen[0].over { f[0].posed_over = true; pen[0].n = f[0].pose_first[i]; break; }
       f[0].pose_count[i] = pen[0].n - f[0].pose_first[i]; f[0].posed_n += 1;
@@ -382,13 +382,13 @@ fr_player :: (g: [] SpGame, d: [] SpLayerDraw, pieces: [] u32, places: [] u32, d
   if f[0].posed_n < 1 || (at + 1) * 4 > draws.count || (d[0].place_n + 1) * SD_ROW > places.count { return at; }
   // the gait at her stride, or an air pose (feel.coax fl_pose)
   air := ifx crew then -1 else fl_pose(g);
-  pose := ifx crew then 0 else lo_int(ifx air >= 0 then air else cp_pose_of(g[0].stride, FR_POSES), f[0].posed_n - 1);
+  pose := ifx crew then 0 else ifx air >= 0 && air < f[0].posed_n then air else lo_int(cp_pose_of(g[0].stride, FR_POSES), f[0].posed_n - 1);
   x := g[0].px; z := g[0].pz; yaw := g_face(g);
   y := g_feet_y(g);
-  if g_riding(g) { y += board_lift(g[0].board[0]) + 0.075; }   // on the hoverboard's deck (#13485)
+  if !crew { y += fl_deck_y(g); }   // on the hoverboard's deck (#13485), eased on and off (feel.coax fl_board)
   if crew { s := fr_stand(g); x = s.x; z = s.z; y = 0; yaw = PI + f[0].turn; }
   o := d[0].place_n * SD_ROW;
-  fl := g[0].fl[0]; still := crew || g_riding(g);   // her squash and lean (feel.coax): the shader's spare words
+  fl := g[0].fl[0]; still := crew;   // her squash and lean (feel.coax): the shader's spare words; on the board she leans with it
   places[o] = f32_bits(x); places[o + 1] = f32_bits(y); places[o + 2] = f32_bits(z); places[o + 3] = f32_bits(ifx still then 0.0f32 else fl_squash(g));
   places[o + 4] = f32_bits(cos(yaw)); places[o + 5] = f32_bits(sin(yaw)); places[o + 6] = f32_bits(ifx still then 0.0f32 else fl.side); places[o + 7] = f32_bits(ifx still then 0.0f32 else fl.fwd);
   f[0].row = true; f[0].row_gen += 1;
