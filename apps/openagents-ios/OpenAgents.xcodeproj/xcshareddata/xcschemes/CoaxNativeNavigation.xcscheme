@@ -83,6 +83,9 @@
                <Test
                   Identifier = "ChatUITests">
                </Test>
+               <Test
+                  Identifier = "UsageUITests">
+               </Test>
             </SelectedTests>
          </TestableReference>
       </Testables>

@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -140,6 +141,14 @@ int64_t cxproc_now_ns(void) {
 int64_t cxproc_wall_us(void) {
   struct timespec t; clock_gettime(CLOCK_REALTIME, &t);
   return (int64_t)t.tv_sec * 1000000 + t.tv_nsec / 1000;
+}
+
+/* The effective OS user's name, independent of launchd's sparse environment. */
+int64_t cxproc_username(coax_v_u8 out) {
+  struct passwd entry,*found=NULL;char scratch[16384];
+  if (getpwuid_r(geteuid(),&entry,scratch,sizeof scratch,&found)!=0 || !found || !entry.pw_name) return -1;
+  size_t n=strlen(entry.pw_name);if (!out.data || n<1 || (int64_t)n>out.count) return -1;
+  memcpy(out.data,entry.pw_name,n);return (int64_t)n;
 }
 
 int64_t cxproc_self_path(coax_v_u8 out) {

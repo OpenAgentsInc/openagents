@@ -161,3 +161,6 @@ proc_has_env :: (name: string) -> bool {
   for c: name { r := cxproc_getenv_push(cast(int) c); }
   return cxproc_getenv() >= 0;
 }
+
+cxproc_username :: (out:[]u8)->int #foreign #effects(all);
+proc_username :: (out:[]u8)->string {n:=cxproc_username(out);return ifx n>0 && n<=out.count then cast(string)out[0..<n] else "";}

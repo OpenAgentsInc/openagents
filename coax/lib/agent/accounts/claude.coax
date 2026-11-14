@@ -41,7 +41,7 @@ pa_credentials :: (directory:string,system:bool,out:[]u8)->int #effects(all) {
  // Keychain denial is not absence: never fall back to a stale file on denial.
  service:[256]u8;n:=pa_copy(service[..],"Claude Code-credentials");custom:[1200]u8;override:=proc_getenv("CLAUDE_CONFIG_DIR",custom[..]);
  if !system || override.count>0 {digest:[64]u8;if !S_hex(S_hash(ifx system then override else directory),digest[..]) {return -1;}service[n]='-';n+=1;for i:0..<8 {service[n]=digest[i];n+=1;}}
- raw:[16384]u8;defer {for i:0..<raw.count {raw[i]=0;}}user:[256]u8;username:=proc_getenv("USER",user[..]);if username.count==0 {username=proc_getenv("LOGNAME",user[..]);}size:=cxsecret_read_service(service[0..<n],user[0..<username.count],raw[..]);
+ raw:[16384]u8;defer {for i:0..<raw.count {raw[i]=0;}}user:[256]u8;username:=proc_username(user[..]);size:=cxsecret_read_service(service[0..<n],user[0..<username.count],raw[..]);
  if size==0 || size== -2 {path:[1536]u8;size=fs_read(fs_join(directory,".credentials.json",path[..]),raw[..]);}
  if size<1 {return -1;}return pa_token(cast(string)raw[0..<size],out);
 }

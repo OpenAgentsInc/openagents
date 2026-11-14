@@ -78,3 +78,11 @@ credential swapping, and Claude Code's own login instead of cloning OAuth.
 The official [CLI authentication reference](https://code.claude.com/docs/en/cli-reference)
 and [configuration-directory contract](https://code.claude.com/docs/en/env-vars)
 describe the installed CLI commands and account isolation.
+
+The Usage surface uses the existing installed `environment.wait` service for
+polling; native frames have no animation clock. An account action can queue
+behind an observation but never replaces a pending mutation. Sign-in has a
+focused native sheet; Back to Usage detaches, Continue reopens it, and Cancel
+ends the computer's owned login process. The terminal Coder surface already
+uses the shared Claude quota/credential codec; consolidating its older probe
+effects is tracked in [#13598](https://github.com/OpenAgentsInc/openagents/issues/13598).

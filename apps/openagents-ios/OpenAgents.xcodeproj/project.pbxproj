@@ -33,6 +33,7 @@
 		370177B40FC83B533F660A4C /* NostrKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0083B1697095508B0B534B8B /* NostrKey.swift */; };
 		388C74DDAF1E79D078022159 /* NativeWorldAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76CCABCDB810512F41B3CB4 /* NativeWorldAssets.swift */; };
 		3EEE9F6858832B4BED499CC2 /* NativeWire.c in Sources */ = {isa = PBXBuildFile; fileRef = 5DE15337BAC2E10225C3C1CB /* NativeWire.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
+		40CFCBB7D7067099DB18B80B /* UsageUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AFA212E9934ACB660A7E250 /* UsageUITests.swift */; };
 		43A5D1535C05B29C381D5FFF /* NativeUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */; };
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
 		444324321690C6F700CD79A2 /* SparkBalanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */; };
@@ -226,6 +227,7 @@
 		6859E9B70EB7323043C45276 /* Sticks.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Sticks.c; sourceTree = "<group>"; };
 		68A32BEE57050EF541CA1A16 /* NativeControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeControls.swift; sourceTree = "<group>"; };
 		69E87B7AE608F14798614E2E /* client.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = client.c; sourceTree = "<group>"; };
+		6AFA212E9934ACB660A7E250 /* UsageUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageUITests.swift; sourceTree = "<group>"; };
 		7284237748CD21A99F8480AC /* NativeMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessage.swift; sourceTree = "<group>"; };
 		7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePackageTests.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -528,6 +530,7 @@
 				84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */,
 				88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */,
 				5DB2D6E0FD423967C52276CF /* TranscriptUITests.swift */,
+				6AFA212E9934ACB660A7E250 /* UsageUITests.swift */,
 				C314C30B844BE1008335F491 /* WorldsUITests.swift */,
 			);
 			path = StarterUITests;
@@ -873,6 +876,7 @@
 				A05D687346C45546701CEFF7 /* SharedAppUITests.swift in Sources */,
 				647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */,
 				DF0737A262C615800A175C31 /* TranscriptUITests.swift in Sources */,
+				40CFCBB7D7067099DB18B80B /* UsageUITests.swift in Sources */,
 				569D8A9D4CC5B6F695DEF10E /* WorldsUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

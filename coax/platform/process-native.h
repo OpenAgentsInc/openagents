@@ -71,6 +71,7 @@ typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
 #endif
 /* This program's own executable, as an absolute path: its length, or -1 (or more than out holds). */
 int64_t cxproc_self_path(coax_v_u8 out);
+int64_t cxproc_username(coax_v_u8 out);
 /* The local time as YYYYmmdd-HHMMSS (date +'%Y%m%d-%H%M%S'): 15, or -1. */
 int64_t cxproc_local_stamp(coax_v_u8 out);
 int64_t cxproc_uid(void);   /* id -u */

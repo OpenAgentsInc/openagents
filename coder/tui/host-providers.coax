@@ -101,7 +101,7 @@ pa_rpc_call :: (args:[]Args)->int {
 
 // This binding is fixed before the command receipt permits starting a CLI.
 pa_bind :: (h:[]HsHost,slot:[]EsSlot,id:string,grant:string)->bool {
- m:=h[0].providers[..];if !pa_load(m) {return true;}s:=m[0].native[0].store[..];if cast(string)s[0].grant[..]!=grant {return false;}
+ m:=h[0].providers[..];if !pa_load(m) {path:[1400]u8;return !m[0].loaded && !fs_exists(pa_store_file(path[..]));}s:=m[0].native[0].store[..];if cast(string)s[0].grant[..]!=grant {return false;}
  selected:=cast(string)s[0].selected[0..<s[0].ns];if pa_find_profile(m,selected)<0 || pa_login_busy(m,selected) {return false;}
  slot[0].nprovider=pa_copy(slot[0].provider[..],selected);
  if selected!="system" {root:[1400]u8;engine:=slot[0].engine[..];dir:=pa_directory(pa_root(root[..]),selected,engine[0].config_dir[..]);engine[0].config_n=dir.count;if dir.count==0 {return false;}}

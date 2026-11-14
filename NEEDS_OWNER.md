@@ -1,5 +1,19 @@
 # Owner actions
 
+
+## Claude accounts and Usage, compatible with 1082
+
+After applying the signed Usage update, open **Chats → Settings → Usage**.
+The existing Mac and CoderOS connections expose their system Claude account.
+To add another account, choose **Connect a Claude account** on the computer
+that should use it. Open Claude sign-in on the phone, complete Claude's human
+sign-in/consent, and paste the authorization code back into the app. Then use
+**Use for new chats** on that profile. Existing conversations keep their account.
+No additional real account has been signed in on the owner's behalf. Physical
+phone/browser consent and a first chat using that newly connected account
+remain owner observations. The two system accounts' live quota reads and the
+native screen's independent two-account sign-in/selection test were verified.
+
 ## Full-screen worlds and camera, build 1080
 
 1080 is **VALID / IN_BETA_TESTING**, verified in the existing **Owner** group.

@@ -4,9 +4,9 @@
 #load "../../coax/lib/agent/environment/wire.coax";
 #load "../../components/kit/frames.coax";
 ProviderUsage :: struct {
- active:bool;catalog:[1]EaCatalog;catalog_ready:bool;views:[64]PaView;states:[64]int;next:int;force:bool;
+ active:bool;catalog:[1]EaCatalog;catalog_ready:bool;catalog_failed:bool;views:[64]PaView;states:[64]int;next:int;force:bool;
  current:[1]PaRequest;intent:[1]PaRequest;current_host:int= -1;intent_host:int= -1;intent_ready:bool;uncertain:bool;
- flow_host:int= -1;flow:[1]PaLogin;poll:bool;wait:f32;
+ flow_host:int= -1;login_closed:bool;flow:[1]PaLogin;poll:bool;wait:int;
  form:bool;form_host:int;form_account:[32]u8;form_na:int;label:[80]u8;nl:int;code:[4096]u8;nc:int;
  note:[512]u8;nn:int;
 }
@@ -53,7 +53,7 @@ pu_render :: (u:[]ProviderUsage,t:[]Tree,ui:[]Ui,busy:bool) {
  if u[0].nn>0 {x=k_text(t,ui,"usage.note",TG_P,"note",cast(string)u[0].note[0..<u[0].nn]);}
  if u[0].uncertain {x=k_link(t,"usage.retry","Reconnect to original request");}
  if !u[0].catalog_ready {x=k_text(t,ui,"usage.loading",TG_P,"meta","Loading connected computers…");}
- else if u[0].catalog[0].n==0 {x=k_text(t,ui,"usage.no-computers",TG_P,"","No computers are connected. Connect a computer using the OpenAgents desktop app first.");}
+ else if !u[0].catalog_failed && u[0].catalog[0].n==0 {x=k_text(t,ui,"usage.no-computers",TG_P,"","No computers are connected. Connect a computer using the OpenAgents desktop app first.");}
  for host:0..<u[0].catalog[0].n {
   entry:=u[0].catalog[0].entries[host];id:[96]u8;x=k_text(t,ui,tr_join(id[..],"usage.computer.",host),TG_H2,"",cast(string)entry.label[0..<entry.nl]);
   if u[0].states[host]==0 {a:[96]u8;x=k_text(t,ui,tr_join(a[..],"usage.pending.",host),TG_P,"meta","Checking accounts…");continue;}
@@ -74,8 +74,9 @@ pu_render :: (u:[]ProviderUsage,t:[]Tree,ui:[]Ui,busy:bool) {
   a:[96]u8;x=k_link(t,tr_join(a[..],"usage.add.",host),"Connect a Claude account");if busy || u[0].uncertain || pu_flow_running(u) {tr_attr(t,x,AT_DISABLED,"");}
  }
  if u[0].form {x=tr_open(t,"usage.form",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Connect Claude Code");x=k_text(t,ui,"usage.form.title",TG_H2,"","Connect Claude Code");x=k_text(t,ui,"usage.form.about",TG_P,"","This account gets its own Claude Code profile on the selected computer. Your other accounts stay connected.");x=k_input(t,ui,"usage.label","Work, Personal…","Account label","text","off");x=k_button(t,ui,"usage.begin","Continue to Claude",ifx busy then BS_DISABLED else BS_PRIMARY);x=k_link(t,"usage.form.close","Cancel");tr_close(t);}
- f:=u[0].flow[0];if f.ni>0 {x=k_text(t,ui,"usage.login.title",TG_H2,"","Claude sign-in");state:=cast(string)f.state[0..<f.ns];x=k_text(t,ui,"usage.login.state",TG_P,"meta",ifx state=="completed" then "Signed in. Choose Use for new chats on this account." else ifx state=="awaiting_code" then "Open Claude, sign in, then paste its authorization code here." else ifx state=="starting" then "Starting sign-in on your computer…" else ifx state=="verifying" then "Finishing sign-in on your computer…" else ifx state=="cancelled" then "Sign-in cancelled" else ifx state=="expired" then "Sign-in expired. Connect the account again." else "Sign-in could not be confirmed. Connect the account again.");
+ f:=u[0].flow[0];if pu_flow_running(u) && u[0].login_closed {x=k_link(t,"usage.login.resume","Continue Claude sign-in");}
+ if f.ni>0 && !u[0].login_closed {modal:=pu_flow_running(u);if modal {x=tr_open(t,"usage.login.panel",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Claude sign-in");x=k_link(t,"usage.login.detach","Back to Usage");if u[0].uncertain {x=k_text(t,ui,"usage.login.note",TG_P,"note",cast(string)u[0].note[0..<u[0].nn]);x=k_link(t,"usage.retry","Reconnect to original request");}}x=k_text(t,ui,"usage.login.title",TG_H2,"","Claude sign-in");state:=cast(string)f.state[0..<f.ns];x=k_text(t,ui,"usage.login.state",TG_P,"meta",ifx state=="completed" then "Signed in. Choose Use for new chats on this account." else ifx state=="awaiting_code" then "Open Claude, sign in, then paste its authorization code here." else ifx state=="starting" then "Starting sign-in on your computer…" else ifx state=="verifying" then "Finishing sign-in on your computer…" else ifx state=="cancelled" then "Sign-in cancelled" else ifx state=="expired" then "Sign-in expired. Connect the account again." else "Sign-in could not be confirmed. Connect the account again.");
   if f.nu>0 && state=="awaiting_code" {x=k_link(t,"usage.authorize","Open Claude sign-in");x=k_input(t,ui,"usage.code","Paste code from Claude","Authorization code","text","off");x=k_button(t,ui,"usage.complete","Finish sign-in",ifx busy || u[0].nc==0 then BS_DISABLED else BS_PRIMARY);}
-  if pu_flow_running(u) {x=k_link(t,"usage.cancel","Cancel sign-in");if busy {tr_attr(t,x,AT_DISABLED,"");}}
+  if pu_flow_running(u) {x=k_link(t,"usage.cancel","Cancel sign-in");if busy {tr_attr(t,x,AT_DISABLED,"");}}if modal {tr_close(t);}
  }
 }

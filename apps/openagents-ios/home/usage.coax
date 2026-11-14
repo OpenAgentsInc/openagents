@@ -11,25 +11,26 @@ na_usage_tick :: (s:[]Starter) {
   if !u[0].intent_ready {s[0].purpose=81;na_request(s,11,"");return;}
   na_usage_send(s,u[0].intent_host,u[0].intent[..]);return;
  }
- if u[0].wait>s[0].time {return;}
+ if u[0].wait>0 {if !s[0].environments[0].timer {s[0].purpose=83;na_request(s,12,"");}return;}
  if u[0].next<u[0].catalog[0].n {q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ListAccounts");q[0].refresh=u[0].force;host:=u[0].next;u[0].next+=1;na_usage_send(s,host,q[..]);return;}
- if u[0].wait>s[0].time {return;}
- if pu_flow_running(u) && !u[0].uncertain {q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ReadAccountLogin");q[0].nl=pa_copy(q[0].login[..],cast(string)u[0].flow[0].id[0..<u[0].flow[0].ni]);u[0].wait=s[0].time+3;na_usage_send(s,u[0].flow_host,q[..]);return;}
+
+ if pu_flow_running(u) && !u[0].uncertain {q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ReadAccountLogin");q[0].nl=pa_copy(q[0].login[..],cast(string)u[0].flow[0].id[0..<u[0].flow[0].ni]);u[0].wait=3;na_usage_send(s,u[0].flow_host,q[..]);return;}
  // Re-read pending observations after the computer's owned probes finish.
- for host:0..<u[0].catalog[0].n {if u[0].states[host]!=2 {continue;}for i:0..<u[0].views[host].n {a:=u[0].views[host].accounts[i];if cast(string)a.state[0..<a.ns]=="checking" {u[0].next=host;u[0].force=false;u[0].wait=s[0].time+3;return;}}}
- u[0].next=0;u[0].force=false;u[0].wait=s[0].time+300;
+ for host:0..<u[0].catalog[0].n {if u[0].states[host]!=2 {continue;}for i:0..<u[0].views[host].n {a:=u[0].views[host].accounts[i];if cast(string)a.state[0..<a.ns]=="checking" {u[0].next=host;u[0].force=false;u[0].wait=3;return;}}}
+ u[0].next=0;u[0].force=false;u[0].wait=300;
 }
 na_usage_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->bool {
- purpose:=s[0].purpose;if purpose<80 || purpose>82 || op!=s[0].flight {return false;}u:=s[0].usage[..];s[0].flight=0;s[0].purpose=0;s[0].dirty=true;
+ purpose:=s[0].purpose;if purpose<80 || purpose>83 || op!=s[0].flight {return false;}u:=s[0].usage[..];s[0].flight=0;s[0].purpose=0;s[0].dirty=true;
+ if purpose==83 {if u[0].wait>0 {u[0].wait-=1;}return true;}
  if status==401 && op==4 {na_history_clear(s);s[0].account_ready=false;s[0].page=0;na_note(s,"Log in again to see usage.");return true;}
  if purpose==81 {nodes:[24]JvNode;d:[1]Jv;q:=u[0].intent[..];ok:= !failed && jv_parse(d[..],raw,nodes[..]);if ok {q[0].nc=jv_str(d[0],jv_get(d[0],0,"command_id"),q[0].command[..]);q[0].issued=jv_int(d[0],jv_get(d[0],0,"now_ms"),0);q[0].expires=ea_deadline(q[0].issued);ok=pa_request_valid(q);}
   if ok {u[0].intent_ready=true;}else {u[0].intent_host= -1;pu_wipe_code(u);pu_note(u,"Could not prepare sign-in. Try again.");}return true;
  }
- if purpose==82 {u[0].catalog_ready=true;if failed || status!=200 || !ea_catalog_read(raw,u[0].catalog[..]) {pu_note(u,"Your computers could not be loaded. Refresh to retry.");}u[0].next=0;return true;}
+ if purpose==82 {u[0].catalog_ready=true;u[0].catalog_failed=false;if failed || status!=200 || !ea_catalog_read(raw,u[0].catalog[..]) {u[0].catalog_failed=true;pu_note(u,"Your computers could not be loaded. Refresh to retry.");}u[0].next=0;return true;}
  host:=u[0].current_host;q:=u[0].current[..];mutation:=pa_right(cast(string)q[0].method[0..<q[0].nm])==1;view:[1]PaView;
  valid:= !failed && status==200 && pa_view_read(raw,view[..]);if valid {valid=cast(string)view[0].host[..]==cast(string)u[0].catalog[0].entries[host].host[..] && cast(string)view[0].method[0..<view[0].nm]==cast(string)q[0].method[0..<q[0].nm] && cast(string)view[0].command[0..<view[0].nc]==cast(string)q[0].command[0..<q[0].nc];}
  if !valid {if mutation {u[0].uncertain=true;pu_note(u,"Connection interrupted. Reconnect to check the original account request.");}else {u[0].states[host]=3;pu_note(u,"A computer could not be reached. Refresh to retry.");}return true;}
- u[0].views[host]=view[0];u[0].states[host]=2;u[0].wait=s[0].time+3;
+ u[0].views[host]=view[0];u[0].states[host]=2;u[0].wait=3;
  if view[0].login.ni>0 {u[0].flow[0]=view[0].login;u[0].flow_host=host;if !pu_flow_running(u) {pu_wipe_code(u);dm_value(s[0].dom[..],"usage.code","");u[0].next=host;u[0].force=true;}}
  if view[0].ne>0 {pu_note(u,pu_error(cast(string)view[0].error[0..<view[0].ne]));}else {pu_note(u,"");}
  if mutation {u[0].intent_host= -1;u[0].intent_ready=false;u[0].uncertain=false;pu_wipe_code(u);dm_value(s[0].dom[..],"usage.code","");u[0].form=false;}
@@ -42,12 +43,14 @@ na_usage_event :: (s:[]Starter,kind:int,id:string,n:int)->bool {
  if kind==2 && (id=="usage.label" || id=="usage.code") {if n<0 {return true;}if id=="usage.label" && n<=80 {u[0].nl=pa_copy(u[0].label[..],cast(string)s[0].inbox[0..<n]);}if id=="usage.code" && n<=4096 {u[0].nc=pa_copy(u[0].code[..],cast(string)s[0].inbox[0..<n]);}return true;}
  if kind!=1 {return false;}
  if id=="usage.close" {u[0].active=false;s[0].navigation[0].open=true;s[0].navigation[0].settings=true;return true;}
+ if id=="usage.login.detach" {u[0].login_closed=true;return true;}
+ if id=="usage.login.resume" {u[0].login_closed=false;return true;}
  if id=="usage.form.close" {u[0].form=false;return true;}
- if id=="usage.refresh" {if na_usage_idle(s) {u[0].catalog_ready=false;u[0].next=0;u[0].force=true;}return true;}
+ if id=="usage.refresh" {if na_usage_idle(s) {if !pu_flow_running(u) && !u[0].uncertain && u[0].intent_host<0 {u[0].catalog_ready=false;}u[0].next=0;u[0].wait=0;u[0].force=true;}return true;}
  if id=="usage.authorize" {url:=cast(string)u[0].flow[0].url[0..<u[0].flow[0].nu];if pa_authorize(url) {na_text_effect(s,true,url,"");}return true;}
  if id=="usage.retry" {if na_usage_idle(s) && u[0].uncertain {u[0].uncertain=false;u[0].intent_ready=true;}return true;}
- if !na_usage_idle(s) {return true;}
- if id=="usage.begin" {if pu_start_intent(u,u[0].form_host,"BeginAccountLogin",cast(string)u[0].form_account[0..<u[0].form_na]) {u[0].intent_ready=false;}return true;}
+ if u[0].intent_host>=0 {return true;}
+ if id=="usage.begin" {u[0].login_closed=false;if pu_start_intent(u,u[0].form_host,"BeginAccountLogin",cast(string)u[0].form_account[0..<u[0].form_na]) {u[0].intent_ready=false;}return true;}
  if id=="usage.complete" || id=="usage.cancel" {if pu_start_intent(u,u[0].flow_host,ifx id=="usage.complete" then "CompleteAccountLogin" else "CancelAccountLogin","") {u[0].intent_ready=false;}return true;}
  for host:0..<u[0].catalog[0].n {a:[96]u8;if id==tr_join(a[..],"usage.add.",host) {u[0].form=true;u[0].form_host=host;u[0].form_na=0;u[0].nl=0;dm_value(s[0].dom[..],"usage.label","");return true;}
   for i:0..<u[0].views[host].n {base:[96]u8;name:=pu_account_id(host,i,base[..]);account:=u[0].views[host].accounts[i];b:[96]u8;if id==tr_cat(b[..],name,".select") {
@@ -64,4 +67,14 @@ na_usage_event :: (s:[]Starter,kind:int,id:string,n:int)->bool {
  u:=s[0].usage[..];u[0].catalog_ready=true;u[0].catalog[0].n=1;_:=pa_copy(u[0].catalog[0].entries[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");u[0].next=1;#assert pu_start_intent(u,0,"BeginAccountLogin","");na_usage_tick(s[..]);#assert s[0].purpose==81 && s[0].flight==11;
  s[0].action=0;na_reply(s[..],11,0,"{\"command_id\":\"11111111111111111111111111111111\",\"now_ms\":1700000000000}",false);#assert u[0].intent_ready && !s[0].environments[0].random;na_usage_tick(s[..]);#assert s[0].purpose==80 && s[0].flight==4;
  na_reply(s[..],4,503,"{}",false);#assert u[0].uncertain && u[0].intent[0].nc==32 && s[0].draft_n==13;
+}
+
+#test "an explicit sign-in completion queues behind a quota read instead of losing the tap" {
+ s:[1]Starter;s[0].usage[0].active=true;s[0].usage[0].flow_host=0;s[0].usage[0].flow[0].ni=pa_copy(s[0].usage[0].flow[0].id[..],"11111111111111111111111111111111");s[0].usage[0].nc=pa_copy(s[0].usage[0].code[..],"fixture-code");s[0].flight=4;s[0].purpose=80;
+ #assert na_usage_event(s[..],1,"usage.complete",0) && s[0].usage[0].intent_host==0 && s[0].usage[0].intent[0].nb==12 && s[0].flight==4;
+}
+
+#test "Usage waits through the installed timer even when native frame dt is zero" {
+ s:[1]Starter;s[0].usage[0].active=true;s[0].usage[0].catalog_ready=true;s[0].usage[0].wait=3;s[0].account_ready=true;na_usage_tick(s[..]);#assert s[0].purpose==83 && s[0].flight==12;
+ s[0].action=0;na_reply(s[..],12,0,"{}",false);#assert s[0].usage[0].wait==2 && s[0].flight==0 && s[0].time==0;
 }

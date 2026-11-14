@@ -136,7 +136,7 @@ na_text_effect :: (s:[]Starter,link:bool,value:string,id:string) {
   na_reply(s[..],9,0,"{}",false);#assert !s[0].text_busy && s[0].flight==4 && s[0].purpose==5;
 }
 na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
-  if na_usage_reply(s,op,status,raw,failed) {return;}
+  if na_usage_reply(s,op,status,raw,failed) {if s[0].workspace {na_nav_pending(s);}return;}
   if s[0].workspace && op==4 && (s[0].purpose==70 || s[0].purpose==71) {
     purpose:=s[0].purpose;s[0].flight=0;s[0].purpose=0;s[0].dirty=true;
     if status==401 {na_history_clear(s);s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};s[0].account_ready=false;s[0].page=0;na_note(s,"Log in again to see your chats.");return;}
@@ -253,7 +253,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   ui_begin(u,s[0].time,true);tr_begin(t);root:=tr_open(t,"account.app",TG_MAIN,"account-app");
   if !s[0].workspace && s[0].page!=3 && !(s[0].page==4 && s[0].environments[0].page==2) {x:=k_text(t,u,"account.brand",TG_P,"meta","OPENAGENTS");}x:= -1;busy:=s[0].flight!=0;
   if s[0].workspace && s[0].account_ready && s[0].page>=2 {na_nav_render(s,t,u);}
-  if s[0].usage[0].active {pu_render(s[0].usage[..],t,u,busy);}
+  if s[0].usage[0].active {pu_render(s[0].usage[..],t,u,s[0].usage[0].intent_host>=0);}
   else if s[0].page<0 {x=k_text(t,u,"account.starting",TG_P,"","Opening your account…");}
   else if s[0].page==0 {
     x=k_text(t,u,"login.title",TG_H1,"","Log in");x=k_text(t,u,"login.about",TG_P,"","Use the same email as openagents.com. We'll send you a 6-digit code.");

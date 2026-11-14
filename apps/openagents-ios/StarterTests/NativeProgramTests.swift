@@ -80,4 +80,25 @@ import UIKit
         try p.input("env.refresh");try p.frame()
         XCTAssertEqual(try p.action().1,request.1)
     }
+    func testUsageCodeCompletesThroughTheInstalledInterpreter()throws {
+        let p=try NativeProgram(directory:try XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app")
+        func answer(_ op:Int,_ value:[String:Any])throws {try p.event(100+op,op==4 ? 200:0,String(decoding:JSONSerialization.data(withJSONObject:value),as:UTF8.self));try p.frame()}
+        func takeAction()throws->(Int,String) {for _ in 0..<64 {let a=try p.action();if a.0 != 12 {return a};try answer(12,[:])};throw NativeFailure.refused("Unbounded timer chain")}
+        let host=String(repeating:"a",count:64),flow=String(repeating:"1",count:32)
+        let empty:[String:Any]=["schema":"openagents.environment.catalog.v1alpha1","environments":[]]
+        try p.event(15,0,"");try p.frame();_ = try takeAction();try answer(1,["loggedIn":true]);_ = try takeAction();try answer(4,["schema":"openagents.chat.history.v1","chats":[]]);_ = try takeAction();try answer(4,empty)
+        try p.input("nav.settings");try p.frame();try p.input("usage.open");try p.frame();XCTAssertEqual(try takeAction().0,4)
+        try answer(4,["schema":"openagents.environment.catalog.v1alpha1","environments":[["host_pubkey":host,"display_name":"Mac"]]]);XCTAssertEqual(try takeAction().0,4)
+        func view(_ method:String,_ command:String,_ login:[String:Any])->[String:Any] {["schema":"openagents.environment.accounts.view.v1","host_pubkey":host,"method":method,"command_id":command,"accounts":[],"login":login,"error":"","retry_after_ms":0]}
+        let noLogin:[String:Any]=["login_id":"","account_id":"","state":"","authorization_url":"","expires_at_ms":0]
+        try answer(4,view("ListAccounts","",noLogin));try p.input("usage.add.0");try p.frame();try p.input("usage.label","Work");try p.frame();try p.input("usage.begin");try p.frame();XCTAssertEqual(try takeAction().0,11)
+        try answer(11,["command_id":flow,"now_ms":1_700_000_000_000]);XCTAssertEqual(try takeAction().0,4)
+        let login:[String:Any]=["login_id":flow,"account_id":flow,"state":"awaiting_code","authorization_url":"https://claude.com/cai/oauth/authorize?fixture=1","expires_at_ms":1_700_000_600_000]
+        try answer(4,view("BeginAccountLogin",flow,login));try p.input("usage.code","fixture-code");try p.frame()
+        XCTAssertFalse(try XCTUnwrap(p.elements(dialog:true).first {$0.id=="usage.complete"}).disabled)
+        try p.input("usage.complete");try p.frame();XCTAssertEqual(try takeAction().0,11)
+        try answer(11,["command_id":String(repeating:"2",count:32),"now_ms":1_700_000_000_001]);let request=try takeAction();XCTAssertEqual(request.0,4)
+        let http=try XCTUnwrap(JSONSerialization.jsonObject(with:Data(request.1.utf8)) as? [String:Any]);let body=try XCTUnwrap(JSONSerialization.jsonObject(with:Data((http["body"] as! String).utf8)) as? [String:Any]);XCTAssertEqual(body["method"] as? String,"CompleteAccountLogin");XCTAssertEqual(body["code"] as? String,"fixture-code")
+    }
+
 }

@@ -130,7 +130,11 @@ class Handler(BaseHTTPRequestHandler):
             counts["verified"] += 1
             counts["device_bound"] += 1
             return self.answer(200, dict(access_token="oa_at_fixture", refresh_token="oa_rt_fixture", account="acct_fixture", expires_in=3600, device_bound=True))
+        if self.path == "/api/auth/refresh":
+            if body.get("refresh_token")!="oa_rt_fixture":return self.answer(401,{})
+            return self.answer(200,dict(access_token="oa_at_fixture",refresh_token="oa_rt_fixture",account="acct_fixture",expires_in=3600,device_bound=True))
         if self.path == "/api/auth/logout":
+            provider_accounts.clear();provider_flows.clear();provider_receipts.clear()
             counts["logout"] += 1
             return self.answer(200, {"state": "logged-out"})
         return self.answer(404, {})

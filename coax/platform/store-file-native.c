@@ -25,7 +25,7 @@
 /* Service name supplied by Coax; never display a Keychain dialog. */
 int64_t cxsecret_read_service(coax_v_u8 service,coax_v_u8 account,coax_v_u8 out) {
   char name[256],user[256];
-  if (!service.data || service.count<1 || service.count>=sizeof name || account.count<1 || account.count>=sizeof user || out.count<0) return -1;
+  if (!service.data || service.count<1 || service.count>=(int64_t)sizeof name || account.count<1 || account.count>=(int64_t)sizeof user || out.count<0) return -1;
   for (int64_t i=0;i<service.count;i++) {if (!service.data[i]) return -1;name[i]=(char)service.data[i];}
   for (int64_t i=0;i<account.count;i++) {if (!account.data[i]) return -1;user[i]=(char)account.data[i];}
   name[service.count]=0;user[account.count]=0;return cxsecret_copy(name,user,1,out.data,out.count);
