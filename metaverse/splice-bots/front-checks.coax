@@ -70,8 +70,9 @@ fc_answer :: (out: [] u8, status: int, text: string) -> string {
   was := g[0].fr[0].doc[0];
   #assert g_pointer(g[..], (l.x0 + l.x1) * 0.5, (l.y0 + l.y1) * 0.5, 0) && g[0].mode == M_CREW;
   #assert fc_same(g[0].fr[0].doc[0], cp_step(was, CP_OUTFIT, -1));
-  // a press away from every row does nothing
-  #assert !g_pointer(g[..], 1200, 40, 0) && g[0].mode == M_CREW;
+  // a press away from every row picks nothing: it starts a drag that turns the character (#13505 playtest)
+  #assert fc_same(g[0].fr[0].doc[0], cp_step(was, CP_OUTFIT, -1)) && g_pointer(g[..], 1200, 40, 0) && g[0].fr[0].spin && g[0].mode == M_CREW;
+  #assert g_pointer(g[..], 1200, 40, 2) && !g[0].fr[0].spin;
 }
 
 #test "the kept run is read whole or not at all, and says how far it got" #steps 200000000 {

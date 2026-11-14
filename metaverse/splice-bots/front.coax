@@ -37,6 +37,7 @@ SpFront :: struct {
   doc: [1] CrewDoc; doc_gen: int;        // the character you play as, and its changes
   w: f32; h: f32;                        // the screen the last frame was drawn on
   turn: f32;                             // the creation screen's turntable
+  spin: bool; spin_x: f32; spin_hold: f32;   // a drag turning it by hand, where the pointer was, and seconds before it turns on its own again
   run: [1] SpRun;                        // the run this browser keeps
   // this browser's storage: 0 nothing to do, 1 to ask, 2 asked (crew: slot 0, run: slot 1)
   crew_get: int; crew_put: int; run_get: int; run_put: int;
@@ -265,7 +266,34 @@ fr_key :: (g: [] SpGame, key: int) -> bool {
 fr_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
   fr_start(g);
   fr_rows_build(g);
-  return fr_act(g, scr_point(fr_frame(g), fr_menu(g), x, y, phase));
+  f := g[0].fr[..];
+  // the creation screen: a drag off the rows turns the character by hand (#13505 playtest)
+  if g[0].mode == M_CREW && f[0].spin {
+    if phase == 1 { f[0].turn += (x - f[0].spin_x) * FR_SPIN; f[0].spin_x = x; f[0].spin_hold = FR_SPIN_HOLD; return true; }
+    if phase == 2 || phase == 3 { f[0].spin = false; f[0].spin_hold = FR_SPIN_HOLD; return true; }
+  }
+  took := fr_act(g, scr_point(fr_frame(g), fr_menu(g), x, y, phase));
+  if !took && phase == 0 && g[0].mode == M_CREW { f[0].spin = true; f[0].spin_x = x; f[0].spin_hold = FR_SPIN_HOLD; return true; }
+  return took;
+}
+FR_SPIN :: 0.012f32;      // radians a pixel of drag turns the character
+FR_SPIN_HOLD :: 3.0f32;   // seconds after a drag before the turntable turns on its own again
+// The turntable's step: on its own, unless a drag holds it.
+fr_spin_step :: (g: [] SpGame, dt: f32) {
+  f := g[0].fr[..];
+  if f[0].spin { return; }
+  if f[0].spin_hold > 0 { f[0].spin_hold -= dt; return; }
+  f[0].turn += dt * 0.35;
+}
+#test "the character screen: a drag off the rows turns the character by hand, and the turntable waits before it turns on its own" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); g[0].mode = M_CREW; fr_start(g[..]);
+  t0 := g[0].fr[0].turn;
+  #assert fr_pointer(g[..], 1200, 400, 0) && g[0].fr[0].spin;
+  #assert fr_pointer(g[..], 1300, 400, 1) && abs(g[0].fr[0].turn - (t0 + 100 * FR_SPIN)) < 0.001;
+  #assert fr_pointer(g[..], 1300, 400, 2) && !g[0].fr[0].spin;
+  t1 := g[0].fr[0].turn; g_step(g[..], 1.0); #assert g[0].fr[0].turn == t1;
+  g_step(g[..], 2.5); g_step(g[..], 0.5); #assert g[0].fr[0].turn > t1;
 }
 
 // ---- the camera: the rover on the rail and the dolly past it, or the character on its stand

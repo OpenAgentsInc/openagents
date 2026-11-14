@@ -49,6 +49,7 @@ SB_RM_NOTICE :: 16.0f32; SB_RM_GIVE_UP :: 20.0f32; SB_RM_WATCH :: 12.0f32; SB_RM
 SB_RM_CLAW_REACH :: 4.5f32; SB_RM_CLAW_EVERY :: 1.3f32; SB_RM_QUIT :: 12.0f32;   // m before the garage it turns back
 SB_SNIPER_REACH :: 12.0f32; // E on the drive starts the battle while the raider mech is this near Sniper
 SB_THINK :: 0.7f32;         // seconds between a foe's moves
+SB_AUTO :: 2.0f32;          // seconds without a move key before your fielded bot fights on its own
 SB_REPAIR :: 1.5f32;        // seconds at Sniper's charger to repair a bot
 SB_CHARGE_EVERY :: 5.0f32; SB_CHARGE_WIND :: 1.0f32; SB_CHARGE_SPEED :: 14.0f32; SB_CHARGE_TIME :: 1.2f32; SB_DAZE :: 2.6f32;
 SB_SWEEP_HIT :: 3; SB_CHARGE_HIT :: 6;
@@ -59,6 +60,7 @@ SpBattle :: struct {
   bots: [SB_BOTS] BbBot;
   fight: [1] BbBattle; kind: int; crew: [BB_CREW] int; crew_n: int; foe: int = -1;
   think: f32;                 // to the foe's next move
+  idle: f32;                  // seconds since your last move key: past SB_AUTO your fielded bot fights on its own
   hit_t: f32; hit_side: int; hit_dmg: int;   // the last hit, for its number over the bot
   // the drill mech: where it stands, whether Digger's core is in it (and ever was), the hallway's drilling
   mech_x: f32; mech_z: f32; mech_yaw: f32; mech_core: bool; mech_used: bool; drill_t: f32; mech_step: f32;
@@ -239,6 +241,7 @@ sb_gap :: (g: [] SpGame) -> f32 {
 sb_move :: (g: [] SpGame, slot: int) -> bool {
   if !sb_fighting(g) { return false; }
   t := g[0].bt[..];
+  t[0].idle = 0;
   h := bb_use(t[0].fight[..], 0, slot, sb_gap(g));
   if h.verdict == BbVerdict.ok { t[0].hit_t = 0.9; t[0].hit_side = 1; t[0].hit_dmg = h.damage; g[0].flash = 0.15; }
   else if h.verdict != BbVerdict.cooling && h.verdict != BbVerdict.waiting { g_say(g, SBM_REFUSED); g[0].msg_t = 1.2; t[0].refusal = cast(int) h.verdict; }
@@ -498,6 +501,13 @@ sb_battle_step :: (g: [] SpGame, dt: f32) {
     _ := sb_toward(mx[..], mz[..], my[..], foe.x, foe.z, SB_BODY_SPEED, 4.2, dt);
     t[0].mech_x = mx[0]; t[0].mech_z = mz[0]; t[0].mech_yaw = my[0];
   }
+  // your side fights on its own when you leave it be (#13505 playtest): past SB_AUTO without a move key,
+  // the fielded bot uses its strongest ready card, so the mech is seen to land its hits; 1 to 4 still pick
+  t[0].idle += dt;
+  if t[0].idle >= SB_AUTO {
+    k := bb_pick(f[0], 0, sb_gap(g));
+    if k >= 0 { h := bb_use(f, 0, k, sb_gap(g)); if h.verdict == BbVerdict.ok { t[0].idle = SB_AUTO - SB_THINK; t[0].hit_t = 0.9; t[0].hit_side = 1; t[0].hit_dmg = h.damage; g[0].flash = hi(g[0].flash, 0.12); } }
+  }
   // the foe's move: its strongest ready card, not while it charges, is dazed or the stun holds it
   t[0].think -= dt;
   busy := t[0].kind == SBF_BOSS && (t[0].rush > 0 || t[0].wind > 0 || t[0].daze > 0);
@@ -595,6 +605,11 @@ sb_objective :: (g: [] SpGame) -> string {
 SbPrompt :: struct { text: string; key: string; }
 sb_prompt :: (g: [] SpGame) -> SbPrompt {
   t := g[0].bt[0];
+  // the boss: her part is the weak points; the mech fights on its own (1 to 4 pick its moves)
+  if sb_fighting(g) && t.kind == SBF_BOSS {
+    if sb_open(g) { return ifx sb_weak_near(g) >= 0 then SbPrompt.{text = "Stun the weak point", key = "F"} else SbPrompt.{text = "Weak points open: run to a glowing one", key = "F"}; }
+    return SbPrompt.{text = "The mech fights. When the boss reels, stun its weak points", key = "1-4"};
+  }
   if sb_fighting(g) { nx := bb_next(t.fight[0].sides[0]); if nx >= 0 { return SbPrompt.{text = ifx t.crew[nx] == SB_MECH then "Swap the core into the drill mech" else ifx t.crew[nx] == SB_DIGGER then "Swap the core into Digger" else "Swap to Sniper", key = "E"}; } return SbPrompt.{text = "Battle moves", key = "1-4"}; }
   if g[0].zone == Z_MINE {
     if g[0].boss_down && !g[0].core_taken { c := sb_core_at(g); if dist2(g[0].px, g[0].pz, c.x, c.z) < T_PICK_RANGE { return SbPrompt.{text = "PICK UP · Banned core", key = "E"}; } }
@@ -622,14 +637,15 @@ sb_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     if g[0].wall_gone || g[0].boss_down {
       down := g[0].boss_down;
       df := sb_dino_frame(g);
-      reel := ifx sb_open(g) && !down then sin(tm * 30) * 0.05 else 0.0f32;
+      struck := t.kind == SBF_BOSS && t.hit_side == 1 && t.hit_t > 0.55;   // a hit landing: it jolts back
+      reel := ifx (sb_open(g) || struck) && !down then sin(tm * 30) * (ifx struck then 0.18f32 else 0.05f32) else 0.0f32;
       df = frame_move(df, v3(df.o.x + reel, df.o.y, df.o.z));
       bk := g_thing(g, p, TK_BOSS, ifx down then 1 else 0, df, SB_DINO_S, tm);
       if bk >= 0 {
         jaw := ifx down then 0.1f32 else ifx t.wind > 0 then 1.0f32 else 0.3f32 + abs(sin(tm * 1.7)) * 0.3f32;
         stride := ifx t.rush > 0 then tm * 14 else ifx down then 0.0f32 else tm * 3;
         if down { df = frame_turn(df, 2, 0.12); }
-        kit_dino(buf, p, df, SB_DINO_S, 230, ifx down then kit_tint(0.55, 0.56, 0.60) else kit_tint(0.86, 0.90, 0.95), INK(), ifx down then kit_tint(0.30, 0.32, 0.36) else GLOW(), jaw, stride, sin(tm * 1.3));
+        kit_dino(buf, p, df, SB_DINO_S, 230, ifx down then kit_tint(0.55, 0.56, 0.60) else ifx struck then kit_tint(1.0, 0.86, 0.62) else kit_tint(0.86, 0.90, 0.95), INK(), ifx down then kit_tint(0.30, 0.32, 0.36) else GLOW(), jaw, stride, sin(tm * 1.3));
         g_thing_end(g, p, bk);
       }
       if !down {
@@ -640,12 +656,21 @@ sb_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
           else if open { kit_pen(p, 240 + i, MAT_GLOW, GLOW()); ball(buf, p, w, 0.36 + abs(sin(tm * 8 + f32(i))) * 0.1, 12); }
           else { kit_pen(p, 240 + i, MAT_SKIN, GLOW_INK()); ball(buf, p, w, 0.3, 8); }
         }
-        // phase one's arm sweep: a long arm round from its shoulder, orange in the warning
+        // phase one's tail sweep: its tail swings low round from its hips, tapering to the tip, curved
+        // against the swing, orange in the warning (#13505 playtest: a tail, not a swung bat)
         if !t.half && sb_fighting(g) && g[0].boss_t > T_SWEEP_EVERY - T_SWEEP_WARN {
           a := sb_arm_angle(g); warn := g[0].boss_t <= T_SWEEP_EVERY;
           kit_pen(p, 236, ifx warn then MAT_GLOW else MAT_SKIN, ifx warn then HEAT() else kit_tint(0.86, 0.90, 0.95));
-          from := fp(df, 0.9 * SB_DINO_S, 2.6 * SB_DINO_S, 1.6 * SB_DINO_S);
-          limb(buf, p, from, v3(t.dino_x + sin(a) * T_ARM, 1.1, t.dino_z + cos(a) * T_ARM), 0.4, 0.25, v3(0, 1, 0), 8);
+          root := fp(df, 0, 1.5 * SB_DINO_S, -1.4 * SB_DINO_S);
+          tip := v3(t.dino_x + sin(a) * T_ARM, 0.5, t.dino_z + cos(a) * T_ARM);
+          side := v3(cos(a), 0, -sin(a));   // across the swing: the tail lags behind it
+          prev := root; segs := 5;
+          for i: 1..<segs + 1 {
+            k := f32(i) / f32(segs); bend := k * (1 - k) * 2.4;
+            q := v3(root.x + (tip.x - root.x) * k + side.x * bend, root.y + (tip.y - root.y) * k, root.z + (tip.z - root.z) * k + side.z * bend);
+            limb(buf, p, prev, q, 0.55 * (1.15 - k * 0.85), 0.55 * (1.15 - k) + 0.06, v3(0, 1, 0), 8);
+            prev = q;
+          }
         }
       }
       if down && !g[0].core_taken { c := sb_core_at(g); kit_pen(p, 245, MAT_GLOW, GLOW()); ball(buf, p, v3(c.x, 0.9 + sin(tm * 2) * 0.15, c.z), 0.4, 12); }
@@ -718,7 +743,7 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
   n = ui_title(out, n, sb_bot_name(t.foe), fx0 + 14 * k, fy + 22 * k, 10 * k, ifx t.foe == SB_BOSS then GLOW_INK() else ink);
   n = ui_right(out, n, num(buf[..], "", bb_hp(foe), num_tail(foe)), fx1 - 14 * k, fy + 22 * k, 9 * k, ink);
   n = sb_bar(out, n, fx0 + 14 * k, fy + 38 * k, fx1 - 14 * k, k, bb_health(foe), ifx t.foe == SB_BOSS then GLOW() else HEAT());
-  if t.foe == SB_BOSS { n = ui_mid(out, n, ifx t.half then "PHASE 2 · IT CHARGES" else "PHASE 1 · ITS ARM SWEEPS", w * 0.5, fy + 22 * k, 8 * k, ifx t.half then HEAT() else ink); }
+  if t.foe == SB_BOSS { n = ui_mid(out, n, ifx t.half then "PHASE 2 · IT CHARGES" else "PHASE 1 · ITS TAIL SWEEPS", w * 0.5, fy + 22 * k, 8 * k, ifx t.half then HEAT() else ink); }
   // yours: the fielded bot, its health and battery, and its four cards on keys 1 to 4
   me := bb_active(f, 0); who := sb_fielded(g);
   mx0 := w * 0.5 - 220 * k; mx1 := w * 0.5 + 220 * k; my0 := h - pad - 100 * k; my1 := h - pad;

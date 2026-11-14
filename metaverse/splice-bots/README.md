@@ -63,7 +63,7 @@ picks).
 | Screen | What it does |
 | --- | --- |
 | Title | The rover drives the rail at dusk and the camera follows the `dolly` table past it. The rows are the `menu` table's: CONTINUE (shown only when this browser keeps a run, with how far it got), NEW RUN and CREDITS |
-| Character | Body, outfit, height, skin, hair and face on the crew document, shown on a turntable. USE THIS CHARACTER keeps it in the crew page's record (`/worlds/crew` reads the same one) and starts a run |
+| Character | Body, outfit, height, skin, hair and face on the crew document, shown on a turntable (drag off the rows to turn it by hand). USE THIS CHARACTER keeps it in the crew page's record (`/worlds/crew` reads the same one) and starts a run |
 | Credits | The `credits` table's lines |
 
 There is no SETTINGS row: nothing a setting would change yet. Sound has no volume control; it
@@ -119,6 +119,9 @@ and 100 brings the Emperor's sweep. Heat never cools below 25 for each banned pi
 the core), and an Imperial robot
 senses you from its plan's distance plus 0.07 m for each point of Heat; sneaking halves that.
 
+You turn to face the way you walk; S walks toward the camera rather than backwards. The camera rises
+over the drill mech or the boss when one stands ahead of you, and comes in front of one behind you.
+
 Everyone has a health bar: yours top left (your hearts), Digger's under it and over him, and one
 over each foe. At zero you are back at Sniper with the inventory you had when you last left it;
 banned pieces picked up since are lost. Digger at zero powers down where he is: press E beside him
@@ -150,7 +153,10 @@ to tow him, and Sniper's charger charges him back up. A foe Digger fights strike
   1 to 4 are its cards. 12 m before the garage it turns back. On foot nothing hunts you.
 - **The boss.** A dinosaur-shaped bot glowing blue. Its collider is a body in the engine's World that
   moves with it (`sl_body_to`, layer.coax). Its battle begins when you are in its chamber
-  with the mech. Phase one: its arm sweeps. Below half health, phase two: it winds up, charges and
+  with the mech. The mech fights on its own when you leave it be (its strongest ready card every
+  couple of seconds); 1 to 4 pick its moves. A hit landing jolts the boss and flashes it, and the
+  prompt names her part: when it reels, run to a glowing weak point and press F. Phase one: its tail
+  sweeps. Below half health, phase two: it winds up, charges and
   is dazed after. Its three weak points open while it reels from a stunning hit, is dazed, or has no
   health left; stun all three with F (each stays down 12 s) and it powers down, drops its banned core,
   and night falls. You lose if your health or the mech's runs out: back at the checkpoint, the boss

@@ -36,11 +36,11 @@ The run follows the Splice Bots game design document, Tier 1 and Tier 2.
 10. **The drill mech.** A giant mech with a drill arm stands by the blocked hallway. Press E
     beside it to swap Digger's core into it: its lights turn Digger's and it follows you. Press E
     at the hallway and it drills through. Nothing else breaks it.
-11. **The boss.** A dinosaur bot glowing blue. The mech battles it with its cards (keys 1 to 4);
-    it sweeps its arm, then below half health it charges. While it reels from a hit, is dazed after
+11. **The boss.** A dinosaur bot glowing blue. The mech battles it on its own, and keys 1 to 4
+    pick its moves; it sweeps its tail, then below half health it charges. While it reels from a hit, is dazed after
     a charge, or has no health left, its three weak points glow: stun all three with F (a stunned
     point wakes after 12 seconds). It powers down, drops its core, and night falls. If your health
-    or the mech's runs out, you are back at the checkpoint.
+    or the mech's runs out, you are back at the rover.
 12. **The memory.** Splice the core in the rover. A hologram plays, then SCENE RESTORED, then
     what comes next.
 
