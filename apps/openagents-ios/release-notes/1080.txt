@@ -1,0 +1,1 @@
+Worlds now fill the screen with one small floating menu for closing the world or opening its editor. Splice Bots camera drag is corrected: up looks up and down looks down. Keeps 1079's compact transcript and model/effort controls. World assets continue to download separately.

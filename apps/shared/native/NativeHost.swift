@@ -136,7 +136,7 @@ import Security
             }
             return await withCheckedContinuation {continuation in
                 let world=NativeWorldHost(directory:updates.current.map(updates.directory) ?? updates.embedded,realm:realm,path:path,edit:edit) {continuation.resume(returning:["closed":true])}
-                let nav=UINavigationController(rootViewController:world);nav.modalPresentationStyle = .fullScreen;presenter.present(nav,animated:true)
+                let nav=NativeWorldNavigation(rootViewController:world);nav.modalPresentationStyle = .fullScreen;presenter.present(nav,animated:true)
             }
         case "environment.commandIDs":
             var bytes=[UInt8](repeating:0,count:32)

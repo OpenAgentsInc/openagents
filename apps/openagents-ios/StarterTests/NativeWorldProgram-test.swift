@@ -1,10 +1,21 @@
 // Firm reason: 6 (JavaScriptCore/UIKit oracle of the shared mobile authoring programs).
 import XCTest
+import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeWorldProgramTests:XCTestCase {
     private func program(_ module:String)throws->NativeProgram {try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:module)}
     private func object(_ text:String)throws->[String:Any] {try XCTUnwrap(JSONSerialization.jsonObject(with:Data(text.utf8)) as? [String:Any])}
+    func testWorldHasOneFloatingMenuAndNoNavigationBar()throws {
+        let world=NativeWorldHost(directory:FileManager.default.temporaryDirectory,realm:"splice-bots",path:"/worlds/splice-bots",edit:false,finished:{})
+        let nav=NativeWorldNavigation(rootViewController:world);nav.loadViewIfNeeded();world.loadViewIfNeeded();world.view.frame=CGRect(x:0,y:0,width:402,height:874);world.view.layoutIfNeeded()
+        XCTAssertTrue(nav.isNavigationBarHidden);XCTAssertTrue(nav.childForStatusBarHidden === world);XCTAssertTrue(world.prefersStatusBarHidden)
+        let menu=try XCTUnwrap(world.view.subviews.compactMap {$0 as? UIButton}.first)
+        XCTAssertEqual(world.view.subviews.compactMap {$0 as? UIButton}.count,1)
+        XCTAssertEqual(menu.accessibilityIdentifier,"world.menu");XCTAssertEqual(menu.frame.size,CGSize(width:44,height:44))
+        XCTAssertEqual(menu.frame.maxX,world.view.safeAreaLayoutGuide.layoutFrame.maxX-8,accuracy:0.5)
+        XCTAssertTrue(menu.showsMenuAsPrimaryAction);XCTAssertEqual(menu.menu?.children.compactMap {($0 as? UIAction)?.title},["Close world"])
+    }
     func testEvergladeOpensTheCurrentGameInsteadOfTheDeprecatedTown()throws {
         let p=try program("worlds");try p.frame();_ = try p.action();try p.event(104,200,"");try p.frame()
         try p.input("worlds.everglade");try p.frame();let open=try p.action(),request=try object(open.1)

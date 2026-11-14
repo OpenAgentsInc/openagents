@@ -1,5 +1,14 @@
 # Owner actions
 
+## Full-screen worlds and camera, build 1080
+
+Install 1080 for the native world controls. Splice Bots and Everglade fill
+the screen with one small floating **World menu** button. Open that menu to
+close the world or use its editor; loading failures offer Retry there.
+In Splice Bots, drag the camera up and down to check the corrected direction.
+Check portrait and landscape, closing/reopening a world, and the editor sheet.
+Physical-phone acceptance remains an owner observation.
+
 ## iPhone transcript, build 1079
 
 1079 is **VALID / IN_BETA_TESTING**, verified in the existing **Owner** group.

@@ -547,6 +547,21 @@ splice_pointer :: (s: [] Splice, x: f32, y: f32, phase: int) -> bool #export_c #
  #assert splice_touch(s[..],100,240,3,31);splice_touch_step(s[..]);#assert !s[0].game[0].fwd && s[0].thumbs.look_on;
  splice_message(s[..],601,"");#assert !s[0].thumbs.look_on && !s[0].game[0].right;
 }
+#test "Splice mobile camera: dragging up looks up, dragging down looks down, and horizontal look stays the same" {
+ s:[1]Splice;s[0].started=true;s[0].touched=true;s[0].game[0].mode=M_PLAY;s[0].touch_width=800;s[0].touch_height=400;
+ #assert splice_touch(s[..],600,200,0,41);
+ #assert splice_touch(s[..],600,160,1,41);splice_touch_step(s[..]);
+ // The shared sticks report positive pitch for up; SpGame stores pitch down.
+ #assert s[0].thumbs.look_on && s[0].game[0].pitch<0 && s[0].game[0].yaw==0;
+ up:=s[0].game[0].pitch;
+ #assert splice_touch(s[..],600,240,1,41);splice_touch_step(s[..]);
+ #assert s[0].game[0].pitch>0 && s[0].game[0].pitch>up;
+ pitch:=s[0].game[0].pitch;
+ #assert splice_touch(s[..],640,240,1,41);splice_touch_step(s[..]);
+ #assert s[0].game[0].yaw<0 && s[0].game[0].pitch==pitch;
+ #assert splice_touch(s[..],640,240,3,41);splice_touch_step(s[..]);
+ #assert !s[0].thumbs.look_on && s[0].game[0].pitch==pitch;
+}
 #test "#13552: focus lost mid-hold lets every key go: she stops walking, a held jump is cut, Ctrl's sprint ends, and Sniper's throttle and handbrake let go" #steps 4000000000 #traversal 2000000000 {
   s := [1] Splice.[Splice.{}]; s[0].started = true; g := s[0].game[..];
   g_stage(g, 5); #assert g[0].mode == M_PLAY;
@@ -589,7 +604,8 @@ splice_blur :: (s: [] Splice) #export_c #effects(all) {
 splice_touch_step :: (s:[]Splice) {
  if !s[0].touched {return;}g:=s[0].game[..];c:=s[0].thumbs;
  g[0].fwd=c.pad_y>0.15;g[0].back=c.pad_y< -0.15;g[0].left=c.pad_x< -0.15;g[0].right=c.pad_x>0.15;
- g_look(g,-c.dyaw/T_LOOK,c.dpitch/T_LOOK);
+ // Sticks use positive pitch for up; SpGame's mouse delta is positive down.
+ g_look(g,-c.dyaw/T_LOOK,-c.dpitch/T_LOOK);
  if c.jump {_:=g_key(g,' ',true);_:=g_key(g,' ',false);}
  s[0].thumbs=metaverse_sticks_used(c);
 }

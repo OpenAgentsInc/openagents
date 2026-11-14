@@ -3,6 +3,21 @@
 #load "policy.coax";
 #load "profiles.coax";
 #load "../../lib/sys/openagents-paths.coax";
+#test "world chrome is one small floating menu with lifecycle actions" {
+ c:=nwh_chrome(false,false,false);
+ #assert c.side==44 && c.icon==18 && c.inset==8 && c.menu=="World menu" && c.leave=="Close world";
+ #assert !c.show_editor && !c.show_retry;
+ #assert nwh_chrome(true,true,false).show_editor && !nwh_chrome(true,true,false).show_retry;
+ #assert !nwh_chrome(true,false,false).show_editor;
+ #assert nwh_chrome(false,false,true).show_retry && !nwh_chrome(false,true,true).show_editor;
+ #assert !nwh_chrome(true,true,true).show_retry;
+}
+// Coax owns the native world's small chrome recipe. UIKit projects the menu
+// and performs navigation/editor lifecycle effects; this is no editing grant.
+NwhChrome :: struct {menu:string;leave:string;editor:string;retry:string;side:f32;icon:f32;inset:f32;show_editor:bool;show_retry:bool;}
+nwh_chrome :: (ready:bool,editable:bool,failed:bool)->NwhChrome #export_c #effects(all) {
+ return NwhChrome.{menu="World menu",leave="Close world",editor="World editor",retry="Retry loading",side=44,icon=18,inset=8,show_editor=ready && editable,show_retry=failed && !ready};
+}
 #test "the native SDK uses the shared OpenAgents path in its platform-writable home" {
  b:[512]u8;n:=nwh_path("/container/Library/Application Support","worlds",b[..]);
  #assert n>0 && cast(string)b[0..<n]=="/container/Library/Application Support/.openagents/worlds";

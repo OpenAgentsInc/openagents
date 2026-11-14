@@ -139,6 +139,20 @@ copy/selection and draft preservation. `CoaxNativeTranscriptLive` signs into
 an independent local HTTP oracle and opens a computer transcript in the
 installed app; it makes no provider calls or real account changes.
 
+Build 1080 removes the world's navigation and status bars. The Metal canvas
+fills the screen; one 44-point floating menu retains Close world, the existing
+editor and Retry after a loading failure. Opening the menu releases held
+game input. Splice Bots' shared touch adapter now converts the engine's
+positive-up look pitch into the game's positive-down mouse-delta convention,
+correcting inverted vertical drag without changing mouse or horizontal look.
+These native host/producer corrections require TestFlight.
+
+The release can retain a frozen world's exact immutable asset records while
+rebinding its inventory to a rebuilt producer:
+`coax/web/tool.sh coax/native/worlds/package.coax --rebind INVENTORY PRODUCER_DIR OUTPUT_INVENTORY`.
+The existing inventory codec writes it and the installed runtime catalogue;
+other worlds' identities and asset bytes remain pinned.
+
 `apps/openagents-ios/build.sh` generates on a remote build host and builds
 with Xcode on this Mac's slots. XcodeGen is required. No simulator window
 needs to be opened.

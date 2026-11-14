@@ -35,16 +35,34 @@ nwp_identity :: (directory:string,out:[]u8)->bool {
  }
  return at>0 && S_hex(S_hash(cast(string)text[0..<at]),out);
 }
+nwp_versions :: ()->bool {
+ plist:[4096]u8;po:[1]Jo;jo_start(po[..],plist[..]);jo_put(po[..],"<?xml version=\"1.0\"?><plist version=\"1.0\"><dict>");
+ for realm:[4]string.["splice-bots","everglade","everglade2","myrealm"] {
+  paths:[2][4096]u8;dir:=fs_join("apps/openagents-ios/Generated/Worlds",realm,paths[0][..]);hash:[64]u8;
+  if fs_read(fs_join(dir,"identity.txt",paths[1][..]),hash[..])!=64 || !nw_hash_valid(cast(string)hash[..]) {return false;}
+  jo_put(po[..],"<key>");jo_put(po[..],realm);jo_put(po[..],"</key><string>");jo_put(po[..],cast(string)hash[..]);jo_put(po[..],"</string>");
+ }
+ jo_put(po[..],"</dict></plist>");return !po[0].bad && fs_write("apps/openagents-ios/Generated/WorldRuntimes.plist",jo_text(po[..]));
+}
 tool_main :: ()->int #export_c #effects(all) {
- a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("package OUTPUT (from repository root)");return 2;}
+ a:[1]Args;if !args_load(a[..]) {return 2;}
+ // A native-only correction can retain the exact immutable asset inventory.
+ // The existing codec rebinds it to the rebuilt producer, without redownloading
+ // or silently repacking artwork from a newer tree.
+ if args_count(a[..])==4 && args_at(a[..],0)=="--rebind" {
+  raw:[NW_JSON]u8;m:[1]NwManifest;n:=fs_read(args_at(a[..],1),raw[..]);dir:=args_at(a[..],2);path:[4096]u8;
+  if n<0 || !nw_read(cast(string)raw[0..<n],m[..]) || !nwp_identity(dir,m[0].runtime[..]) {return 1;}
+  if !fs_write(fs_join(dir,"identity.txt",path[..]),cast(string)m[0].runtime[..]) {return 1;}
+  size:=nw_write(m[..],raw[..]);if size<0 || !fs_write(args_at(a[..],3),cast(string)raw[0..<size]) || !nwp_versions() {return 1;}
+  print("world package: rebound installed producer, retained % immutable assets\n",m[0].n);return 0;
+ }
+ if args_count(a[..])!=1 {tool_errln("package OUTPUT | --rebind INVENTORY PRODUCER_DIR OUTPUT_INVENTORY");return 2;}
  root:=args_at(a[..],0);if !fs_mkdir(root) {return 1;}paths:[6][4096]u8;objects:=fs_join(root,"objects",paths[0][..]);manifests:=fs_join(root,"manifests",paths[1][..]);
  if !fs_mkdir(objects) || !fs_mkdir(manifests) {return 1;}
- plist:[4096]u8;po:[1]Jo;jo_start(po[..],plist[..]);jo_put(po[..],"<?xml version=\"1.0\"?><plist version=\"1.0\"><dict>");
  for realm:[4]string.["splice-bots","everglade","everglade2","myrealm"] {
   w:[1]NwpWork;w[0].no=nw_copy(w[0].objects[..],objects);m:=w[0].manifest[..];m[0].nr=nw_copy(m[0].realm[..],realm);profile:=nwr_profile(realm);dir:=fs_join("apps/openagents-ios/Generated/Worlds",realm,paths[2][..]);
   if !nwp_identity(dir,m[0].runtime[..]) {tool_errln("world identity missing");return 1;}
   if !fs_write(fs_join(dir,"identity.txt",paths[3][..]),cast(string)m[0].runtime[..]) {return 1;}
-  jo_put(po[..],"<key>");jo_put(po[..],realm);jo_put(po[..],"</key><string>");jo_put(po[..],cast(string)m[0].runtime[..]);jo_put(po[..],"</string>");
   fontdir:=fs_join("apps/openagents-web",profile.font_dir,paths[3][..]);
   if !nwp_add(w[..],fs_join(fontdir,profile.reading,paths[4][..]),"fonts/reading.ttf",true) || !nwp_add(w[..],fs_join(fontdir,profile.heading,paths[4][..]),"fonts/title.ttf",true) {return 1;}
   if profile.pack!="" && !nwp_add(w[..],fs_join("apps/openagents-web",profile.pack,paths[3][..]),"base.pack",true) {return 1;}
@@ -63,5 +81,5 @@ tool_main :: ()->int #export_c #effects(all) {
   if !fs_write(fs_join(manifests,jo_text(o[..]),paths[5][..]),cast(string)w[0].json[0..<n]) {return 1;}
   print("world package: %, % files\n",realm,m[0].n);
  }
- jo_put(po[..],"</dict></plist>");if po[0].bad || !fs_write("apps/openagents-ios/Generated/WorldRuntimes.plist",jo_text(po[..])) {return 1;}return 0;
+ return ifx nwp_versions() then 0 else 1;
 }

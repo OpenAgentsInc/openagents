@@ -69,6 +69,11 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     func close() {ended=true;for t in jobs.values {t.cancel()};jobs=[:];transport.close()}
 }
 
+@MainActor final class NativeWorldNavigation:UINavigationController {
+    override var childForStatusBarHidden:UIViewController? {topViewController}
+    override var childForHomeIndicatorAutoHidden:UIViewController? {topViewController}
+}
+
 @MainActor final class NativeWorldHost:UIViewController,MTKViewDelegate,UIAdaptivePresentationControllerDelegate {
     static let deep=Deep()
     private static let assets=NativeWorldAssets()
@@ -87,19 +92,31 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     private var revision:Int32 = -1
     private var editor:NativeWorldEditor?
     private let status=UILabel(),progress=UIProgressView(progressViewStyle:.default)
+    private let menuButton=UIButton(type:.system)
+    private var editorAvailable=false,loadFailed=false
     private var presentation:MTLCommandBuffer?
     init(directory:URL,realm:String,path:String,edit:Bool,finished:@escaping()->Void) {
         self.directory=directory;self.realm=realm;self.path=path;editRequested=edit;self.finished=finished;super.init(nibName:nil,bundle:nil)
     }
     required init?(coder:NSCoder) {fatalError()}
+    override var prefersStatusBarHidden:Bool {true}
+    override var prefersHomeIndicatorAutoHidden:Bool {true}
+    override func viewWillAppear(_ animated:Bool) {
+        super.viewWillAppear(animated);navigationController?.setNavigationBarHidden(true,animated:false)
+    }
     static func text(_ s:coax_string)->String {s.count>0 ? String(decoding:UnsafeBufferPointer(start:UnsafeRawPointer(s.data!).assumingMemoryBound(to:UInt8.self),count:Int(s.count)),as:UTF8.self):""}
     override func viewDidLoad() {
         super.viewDidLoad();view.backgroundColor = .black
         let profile=realm.withCString {nwr_profile(coax_string(data:$0,count:Int64(realm.utf8.count)))}
         title=Self.text(profile.title)
-        navigationItem.leftBarButtonItem=UIBarButtonItem(systemItem:.close,primaryAction:UIAction { [weak self] _ in self?.leave() })
-        navigationItem.leftBarButtonItem?.accessibilityIdentifier="world.close"
-        navigationItem.rightBarButtonItem=UIBarButtonItem(image:UIImage(systemName:"slider.horizontal.3"),style:.plain,target:self,action:#selector(openEditor));navigationItem.rightBarButtonItem?.isEnabled=false
+        navigationController?.setNavigationBarHidden(true,animated:false)
+        let chrome=nwh_chrome(false,false,false)
+        menuButton.translatesAutoresizingMaskIntoConstraints=false;menuButton.accessibilityIdentifier="world.menu";menuButton.accessibilityLabel=Self.text(chrome.menu)
+        menuButton.setImage(UIImage(systemName:"line.3.horizontal",withConfiguration:UIImage.SymbolConfiguration(pointSize:CGFloat(chrome.icon),weight:.medium)),for:.normal)
+        menuButton.tintColor = .white;menuButton.backgroundColor=UIColor.black.withAlphaComponent(0.55);menuButton.layer.cornerRadius=CGFloat(chrome.side)/2;menuButton.layer.borderWidth=0.5;menuButton.layer.borderColor=UIColor.white.withAlphaComponent(0.2).cgColor
+        menuButton.showsMenuAsPrimaryAction=true
+        menuButton.addAction(UIAction { [weak self] _ in guard let page=self?.page else{return};Self.deep.run {page.focus(false)} },for:.menuActionTriggered)
+        view.addSubview(menuButton);NSLayoutConstraint.activate([menuButton.widthAnchor.constraint(equalToConstant:CGFloat(chrome.side)),menuButton.heightAnchor.constraint(equalToConstant:CGFloat(chrome.side)),menuButton.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-CGFloat(chrome.inset)),menuButton.topAnchor.constraint(equalTo:view.safeAreaLayoutGuide.topAnchor,constant:CGFloat(chrome.inset))]);updateMenu()
         status.numberOfLines=0;status.textColor = .white;status.textAlignment = .center;status.text="Preparing world…";status.translatesAutoresizingMaskIntoConstraints=false
         progress.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(status);view.addSubview(progress)
         NSLayoutConstraint.activate([status.centerYAnchor.constraint(equalTo:view.centerYAnchor),status.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:24),status.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-24),progress.topAnchor.constraint(equalTo:status.bottomAnchor,constant:20),progress.leadingAnchor.constraint(equalTo:status.leadingAnchor),progress.trailingAnchor.constraint(equalTo:status.trailingAnchor)])
@@ -108,6 +125,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
         loading=Task { [weak self] in await self?.open(profile) }
     }
     private func open(_ profile:coax_t_NwProfile)async {
+        loadFailed=false;updateMenu();status.isHidden=false;progress.isHidden=false;progress.progress=0
         do {
             let raw=try Data(contentsOf:directory.appendingPathComponent("worlds/\(realm).json"))
             let inventory=try NativeWorldInventory(raw)
@@ -154,17 +172,24 @@ private final class NativeWorldCancellation:@unchecked Sendable {
             // Consume the deep worker's completion before its next call.
             Self.deep.run {}
             if closed || Task.isCancelled {Self.deep.run {opened.close()};return}
-            page=opened;status.isHidden=true
+            page=opened;status.isHidden=true;updateMenu()
             audio=AEPageAudio(page:opened,resources:root,offline:c.automated)
             canvas=NativeWorldCanvas(frame:view.bounds,device:device);canvas.world=self;turn.view=canvas;turn.moved={AppAnalytics.shared.gyro("world")};canvas.delegate=self;canvas.isMultipleTouchEnabled=true;canvas.preferredFramesPerSecond=60;canvas.colorPixelFormat = .bgra8Unorm;canvas.framebufferOnly=false;canvas.translatesAutoresizingMaskIntoConstraints=false
             canvas.accessibilityIdentifier="world.canvas";canvas.isAccessibilityElement=true;canvas.accessibilityTraits = .image;canvas.accessibilityLabel=Self.text(profile.title)
-            view.addSubview(canvas);NSLayoutConstraint.activate([canvas.topAnchor.constraint(equalTo:view.safeAreaLayoutGuide.topAnchor),canvas.bottomAnchor.constraint(equalTo:view.safeAreaLayoutGuide.bottomAnchor),canvas.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor),canvas.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor)])
+            view.addSubview(canvas);NSLayoutConstraint.activate([canvas.topAnchor.constraint(equalTo:view.topAnchor),canvas.bottomAnchor.constraint(equalTo:view.bottomAnchor),canvas.leadingAnchor.constraint(equalTo:view.leadingAnchor),canvas.trailingAnchor.constraint(equalTo:view.trailingAnchor)]);view.bringSubviewToFront(menuButton)
             optional=Task { [weak self] in await Self.assets.optional(inventory) {name in Task { @MainActor in
                 guard let self,let page=self.page,!self.closed else {return}
                 if name=="dragon.frames",let bytes=try? Data(contentsOf:root.appendingPathComponent(name)) {Self.deep.run {_ = page.deliverAsset(4,bytes:bytes)}}
                 Self.deep.run {page.assetsChanged()}
             }}}
-        }catch {if !closed && !Task.isCancelled {status.text=error.localizedDescription;progress.isHidden=true;navigationItem.rightBarButtonItem=UIBarButtonItem(systemItem:.refresh,primaryAction:UIAction { [weak self] _ in guard let self else {return};loading=Task {await self.open(profile)} })}}
+        }catch {if !closed && !Task.isCancelled {status.text=error.localizedDescription;progress.isHidden=true;loadFailed=true;updateMenu()}}
+    }
+    private func updateMenu() {
+        let chrome=nwh_chrome(page != nil,editorAvailable,loadFailed);var actions:[UIMenuElement]=[]
+        if chrome.show_editor {actions.append(UIAction(title:Self.text(chrome.editor),image:UIImage(systemName:"slider.horizontal.3"),identifier:UIAction.Identifier("world.editor")) { [weak self] _ in self?.openEditor() })}
+        if chrome.show_retry {actions.append(UIAction(title:Self.text(chrome.retry),image:UIImage(systemName:"arrow.clockwise"),identifier:UIAction.Identifier("world.retry")) { [weak self] _ in guard let self else{return};let realm=self.realm;let profile=realm.withCString {nwr_profile(coax_string(data:$0,count:Int64(realm.utf8.count)))};self.loading=Task {await self.open(profile)} })}
+        actions.append(UIAction(title:Self.text(chrome.leave),image:UIImage(systemName:"xmark"),identifier:UIAction.Identifier("world.close")) { [weak self] _ in self?.leave() })
+        menuButton.menu=UIMenu(title:title ?? "",children:actions)
     }
     func draw(in view:MTKView) {
         guard !closed,let page,let drawable=view.currentDrawable,let pass=view.currentRenderPassDescriptor else {return}
@@ -181,8 +206,9 @@ private final class NativeWorldCancellation:@unchecked Sendable {
             cmd.commit();presentation=cmd
         }
         if let model {revision=current;editor?.model(String(decoding:model,as:UTF8.self))}
-        navigationItem.rightBarButtonItem?.isEnabled=owns || model != nil || editor != nil
-        if editRequested,!editorOffered,editor==nil,navigationItem.rightBarButtonItem?.isEnabled==true {editorOffered=true;openEditor()}
+        let available=owns || model != nil || editor != nil
+        if editorAvailable != available {editorAvailable=available;updateMenu()}
+        if editRequested,!editorOffered,editor==nil,editorAvailable {editorOffered=true;openEditor()}
     }
     func mtkView(_ view:MTKView,drawableSizeWillChange size:CGSize) {last=0}
     func touch(_ point:CGPoint,phase:Int32,id:Int32) {guard let page else {return};if phase==0 {view.window?.endEditing(true);audio?.gesture()};Self.deep.run {page.touch(point,phase:phase,finger:id)}}
