@@ -13,23 +13,14 @@
 // session in two places and compares them (oa-room room-control.coax "dice fixed", #12887): rolled
 // in any order the two sessions' rolls agree. No player's game sets it.
 RsDice :: struct { state: u64; rolled: int; fixed: bool; }
-RS_LOW32 :: 0xFFFFFFFF;
-rs_wmul :: (a: u64, b: u64) -> u64 {
-  al := a & RS_LOW32; ah := a >> 32; bl := b & RS_LOW32; bh := b >> 32;
-  low := al * bl;
-  high := (((ah * bl) & RS_LOW32) + ((al * bh) & RS_LOW32) + (low >> 32)) & RS_LOW32;
-  return (high << 32) | (low & RS_LOW32);
-}
-rs_wadd :: (a: u64, b: u64) -> u64 {
-  low := (a & RS_LOW32) + (b & RS_LOW32);
-  high := ((a >> 32) + (b >> 32) + (low >> 32)) & RS_LOW32;
-  return (high << 32) | (low & RS_LOW32);
-}
+// a times b and a plus b modulo 2^64, as SplitMix64 wants them (the language's wrapping forms)
+rs_wmul :: (a: u64, b: u64) -> u64 { return mul_wrap(a, b); }
+rs_wadd :: (a: u64, b: u64) -> u64 { return add_wrap(a, b); }
 rs_next :: (d: [] RsDice) -> u64 {
-  d[0].state = rs_wadd(d[0].state, 0x9E3779B97F4A7C15);
+  d[0].state = add_wrap(d[0].state, 0x9E3779B97F4A7C15);
   z := d[0].state;
-  z = rs_wmul(z ^ (z >> 30), 0xBF58476D1CE4E5B9);
-  z = rs_wmul(z ^ (z >> 27), 0x94D049BB133111EB);
+  z = mul_wrap(z ^ (z >> 30), 0xBF58476D1CE4E5B9);
+  z = mul_wrap(z ^ (z >> 27), 0x94D049BB133111EB);
   return z ^ (z >> 31);
 }
 rs_roll :: (d: [] RsDice, sides: int) -> int {
@@ -131,6 +122,12 @@ rs_line_save :: (d: [] RsDice, modifier: int, dc: int) -> RsLineSave {
   alike := 0;
   for i: 0..<50 { if rs_roll(c[..], 20) == rs_roll(a[..], 20) { alike += 1; } }
   #assert alike < 15;
+}
+#test "rolls: SplitMix64's own outputs, and its arithmetic wraps at 2^64" {
+  d: [1] RsDice; d[0].state = 0;
+  #assert rs_next(d[..]) == 0xE220A8397B1DCDAF && rs_next(d[..]) == 0x6E789E6AA1B965F4 && rs_next(d[..]) == 0x06C45D188009454F;
+  #assert rs_wmul(0xFFFFFFFFFFFFFFFF, 2) == 0xFFFFFFFFFFFFFFFE && rs_wmul(0x100000000, 0x100000000) == 0 && rs_wmul(0x123456789, 0x987654321) == 0xD77D742CCE1833A9;
+  #assert rs_wadd(0xFFFFFFFFFFFFFFFF, 2) == 1 && rs_wadd(0x8000000000000000, 0x8000000000000000) == 0 && rs_wadd(3, 4) == 7;
 }
 #test "rolls: fixed dice land on half their faces whatever was rolled before, and a save of 10 against DC 15 fails (#12887)" {
   a: [1] RsDice; b: [1] RsDice;
