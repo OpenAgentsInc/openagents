@@ -1,0 +1,150 @@
+// An enemy's attack as beats you can read (#13552): anticipation (it winds up and still turns to follow
+// you), commitment (its aim is locked, so a dodge from now on works), impact (the blow is live) and
+// recovery (it is open). A combo repeats commitment and impact `n` times with a hold between: in a hold
+// the attacker keeps its guard up, because more is coming; only the end of the combo drops it.
+//
+// Attackers that may overlap share a lane (tg_claim): an attack starts only when its first release falls a
+// gap after the last impact already promised, so two blows never land together and there is always a
+// moment to react. tg_edge places a warning at the screen's edge for an attack that winds up off screen,
+// and tg_wedge and tg_lane write the outline of the real damage area for a realm to draw on the ground.
+//   coax/bin/coax test metaverse-engine/action/telegraph.coax --library
+#module "metaverse.engine.action.telegraph";
+
+TG_IDLE :: 0; TG_WIND :: 1; TG_LOCK :: 2; TG_HIT :: 3; TG_HOLD :: 4; TG_REST :: 5;
+// Seconds for each beat, and the strikes of a combo.
+TgBeats :: struct { wind: f32; lock: f32; hit: f32; hold: f32; rest: f32; n: int = 1; }
+// Where an attack is `t` seconds after it began: its beat, which strike of the combo, and how far
+// through the beat (0 to 1).
+TgNow :: struct { phase: int; k: int; share: f32; }
+
+tg_n :: (b: TgBeats) -> int { return ifx b.n < 1 then 1 else b.n; }
+tg_part :: (u: f32, span: f32) -> f32 { return ifx span > 0 then u / span else 1.0f32; }
+// The whole attack's length, recovery included.
+tg_len :: (b: TgBeats) -> f32 { n := f32(tg_n(b)); return b.wind + n * (b.lock + b.hit) + (n - 1) * b.hold + b.rest; }
+tg_at :: (b: TgBeats, t: f32) -> TgNow {
+  if t < 0 { return TgNow.{}; }
+  if t < b.wind { return TgNow.{phase = TG_WIND, share = tg_part(t, b.wind)}; }
+  u := t - b.wind; n := tg_n(b);
+  for k: 0..<n {
+    if u < b.lock { return TgNow.{phase = TG_LOCK, k = k, share = tg_part(u, b.lock)}; }
+    u -= b.lock;
+    if u < b.hit { return TgNow.{phase = TG_HIT, k = k, share = tg_part(u, b.hit)}; }
+    u -= b.hit;
+    if k < n - 1 { if u < b.hold { return TgNow.{phase = TG_HOLD, k = k, share = tg_part(u, b.hold)}; } u -= b.hold; }
+  }
+  if u < b.rest { return TgNow.{phase = TG_REST, k = n - 1, share = tg_part(u, b.rest)}; }
+  return TgNow.{};
+}
+// Whether the attacker still turns to follow its target: only while it winds up.
+tg_tracks :: (b: TgBeats, t: f32) -> bool { return t >= 0 && t < b.wind; }
+// When strike k's impact begins, in seconds from the start.
+tg_release :: (b: TgBeats, k: int) -> f32 { return b.wind + f32(k + 1) * b.lock + f32(k) * (b.hit + b.hold); }
+// The strike whose impact began in (t0, t1], or -1: a one-shot blow's moment at any frame rate.
+tg_struck :: (b: TgBeats, t0: f32, t1: f32) -> int {
+  for k: 0..<tg_n(b) { r := tg_release(b, k); if t0 < r && r <= t1 { return k; } }
+  return -1;
+}
+// The strike whose impact ended in (t0, t1], or -1: when a blow that hit nothing reads as a miss.
+tg_ended :: (b: TgBeats, t0: f32, t1: f32) -> int {
+  for k: 0..<tg_n(b) { r := tg_release(b, k) + b.hit; if t0 < r && r <= t1 { return k; } }
+  return -1;
+}
+
+// ---- Overlapping attackers
+// The time from which the next attack's first impact may begin.
+TgLane :: struct { free_at: f32; }
+// May an attack with beats `b` begin at `now`? Yes when its first release comes `gap` after every impact
+// already promised; then its own impacts are promised.
+tg_claim :: (lane: [] TgLane, now: f32, b: TgBeats, gap: f32) -> bool {
+  if now + tg_release(b, 0) < lane[0].free_at { return false; }
+  lane[0].free_at = now + tg_len(b) - b.rest + gap;
+  return true;
+}
+
+// ---- Warnings
+// Where a warning for something off screen sits: the point on the screen's edge, inset m, on the way from
+// the middle to screen point (sx, sy). Behind the camera (`ahead` false) the way is mirrored. [2] is 1
+// when the thing is off screen (the warning shows), else 0.
+tg_edge :: (sx: f32, sy: f32, ahead: bool, w: f32, h: f32, m: f32) -> [3] f32 {
+  cx := w * 0.5; cy := h * 0.5;
+  dx := sx - cx; dy := sy - cy;
+  if !ahead { dx = -dx; dy = -dy; if dy > -1 && dy < 1 { dy = 1; } }
+  off := !ahead || sx < m || sx > w - m || sy < m || sy > h - m;
+  ax := ifx dx < 0 then -dx else dx; ay := ifx dy < 0 then -dy else dy;
+  kx := ifx ax > 0.001 then (cx - m) / ax else 1000000.0f32; ky := ifx ay > 0.001 then (cy - m) / ay else 1000000.0f32;
+  k := ifx kx < ky then kx else ky;
+  return [3] f32.[cx + dx * k, cy + dy * k, ifx off then 1.0f32 else 0.0f32];
+}
+// The outline of a wedge on the ground as points x, z every `step` m: from (cx, cz), facing yaw (+Z at 0,
+// atan2(x, z)), `half` radians to each side, out to r. A half of PI or more is a ring. Returns the points.
+tg_wedge :: (cx: f32, cz: f32, yaw: f32, half: f32, r: f32, step: f32, out: [] f32) -> int {
+  n := 0; most := out.count / 2;
+  ring := half >= 3.14159;
+  arc := ifx ring then 6.28318f32 else half * 2;
+  m := cast(int) (arc * r / step) + 1;
+  for i: 0..<m + 1 {
+    a := yaw - (ifx ring then 3.14159f32 else half) + arc * f32(i) / f32(m);
+    if n < most { out[n * 2] = cx + sin(a) * r; out[n * 2 + 1] = cz + cos(a) * r; n += 1; }
+  }
+  if ring { return n; }
+  e := cast(int) (r / step);
+  for s: 0..<2 {
+    a := ifx s == 0 then yaw - half else yaw + half;
+    for i: 1..<e { k := f32(i) / f32(e) * r; if n < most { out[n * 2] = cx + sin(a) * k; out[n * 2 + 1] = cz + cos(a) * k; n += 1; } }
+  }
+  return n;
+}
+// The outline of a lane on the ground: from (x, z) along unit (dx, dz) for `long` m, half_w to each side.
+tg_lane :: (x: f32, z: f32, dx: f32, dz: f32, long: f32, half_w: f32, step: f32, out: [] f32) -> int {
+  n := 0; most := out.count / 2;
+  e := cast(int) (long / step) + 1; c := cast(int) (half_w * 2 / step) + 1;
+  for s: 0..<2 {
+    sd := ifx s == 0 then -half_w else half_w;
+    for i: 0..<e + 1 { k := long * f32(i) / f32(e); if n < most { out[n * 2] = x + dx * k + dz * sd; out[n * 2 + 1] = z + dz * k - dx * sd; n += 1; } }
+  }
+  for i: 1..<c { sd := -half_w + half_w * 2 * f32(i) / f32(c); if n < most { out[n * 2] = x + dx * long + dz * sd; out[n * 2 + 1] = z + dz * long - dx * sd; n += 1; } }
+  return n;
+}
+
+#test "an attack's beats in order: wind, lock, impact, hold between a combo's strikes, then recovery" {
+  b := TgBeats.{wind = 0.5, lock = 0.25, hit = 0.25, hold = 0.5, rest = 1, n = 2};
+  #assert tg_len(b) == 3.0;
+  #assert tg_at(b, -0.1).phase == TG_IDLE && tg_at(b, 0.25).phase == TG_WIND && tg_at(b, 0.25).share == 0.5;
+  #assert tg_at(b, 0.6).phase == TG_LOCK && tg_at(b, 0.8).phase == TG_HIT && tg_at(b, 0.8).k == 0;
+  #assert tg_at(b, 1.2).phase == TG_HOLD && tg_at(b, 1.6).phase == TG_LOCK && tg_at(b, 1.6).k == 1;
+  #assert tg_at(b, 1.8).phase == TG_HIT && tg_at(b, 1.8).k == 1 && tg_at(b, 2.5).phase == TG_REST && tg_at(b, 3.1).phase == TG_IDLE;
+  // it follows you only while it winds up: from the lock on, a dodge works
+  #assert tg_tracks(b, 0.4) && !tg_tracks(b, 0.5) && !tg_tracks(b, 1.6);
+  #assert tg_release(b, 0) == 0.75 && tg_release(b, 1) == 1.75;
+  // each impact's moment is crossed once, whatever the step
+  #assert tg_struck(b, 0.7, 0.76) == 0 && tg_struck(b, 0.76, 0.9) == -1 && tg_struck(b, 0, 3) == 0 && tg_struck(b, 1.7, 1.8) == 1;
+  #assert tg_ended(b, 0.9, 1.01) == 0 && tg_ended(b, 1.9, 2.0) == 1;
+  one := TgBeats.{wind = 0.4, lock = 0.2, hit = 0.1, rest = 0.5};
+  #assert tg_at(one, 0.75).phase == TG_REST && tg_at(one, 0.75).k == 0;
+}
+#test "attackers on one lane: a second blow waits until a gap after the first impact" {
+  lane := [1] TgLane.[TgLane.{}];
+  b := TgBeats.{wind = 0.5, lock = 0.25, hit = 0.25, rest = 1};
+  #assert tg_claim(lane[..], 0, b, 0.5);      // impact 0.75 to 1.0, so the next release no sooner than 1.5
+  #assert !tg_claim(lane[..], 0.2, b, 0.5);   // its release at 0.95 would overlap
+  #assert !tg_claim(lane[..], 0.7, b, 0.5);   // 1.45: inside the gap
+  #assert tg_claim(lane[..], 0.75, b, 0.5);   // 1.5: just after it
+}
+#test "a warning for an attack off screen sits on the edge toward it, and behind you it is mirrored" {
+  e := tg_edge(1200, 300, true, 1000, 600, 40);
+  #assert e[2] == 1 && e[0] == 960 && e[1] == 300;
+  in := tg_edge(500, 200, true, 1000, 600, 40); #assert in[2] == 0;
+  back := tg_edge(700, 300, false, 1000, 600, 40);   // behind and to the right: drawn on the left
+  #assert back[2] == 1 && back[0] == 40;
+  below := tg_edge(500, 300, false, 1000, 600, 40); #assert below[1] == 560;   // straight behind: the bottom edge
+}
+#test "the outlines of the damage areas lie on their shapes" {
+  pts: [400] f32;
+  n := tg_wedge(0, 0, 0, 3.2, 5, 0.5, pts[..]);
+  #assert n > 50;
+  for i: 0..<n { d := pts[i * 2] * pts[i * 2] + pts[i * 2 + 1] * pts[i * 2 + 1]; #assert d > 24.99 && d < 25.01; }
+  n = tg_wedge(0, 0, 0, 0.5, 4, 0.5, pts[..]);
+  for i: 0..<n { #assert pts[i * 2 + 1] >= -0.001; }   // a wedge facing +Z stays ahead
+  n = tg_lane(0, 0, 0, 1, 10, 1, 0.5, pts[..]);
+  for i: 0..<n { x := pts[i * 2]; z := pts[i * 2 + 1]; #assert z >= -0.001 && z <= 10.001 && x >= -1.001 && x <= 1.001 && (x < -0.999 || x > 0.999 || z > 9.999); }
+}
