@@ -26,6 +26,9 @@
 #  13. a production crash alert's bucket gets one GitHub issue: none while GitHub can't be asked,
 #      none for staging, no second when the watcher's memory is gone, a new one after its alert
 #      opens again with the issue closed
+# And a machine that reads the watcher's shared state (#13525):
+#  14. a watcher whose state can't be read for a while is not reported quiet; one whose state is
+#      read with an old heartbeat is
 set -uo pipefail
 export LC_ALL=C
 here="$(cd "$(dirname "$0")" && pwd -P)"
@@ -231,6 +234,30 @@ echo '{"alerts":[{"key":"crash:a2dd7180","title":"a room crash"},{"key":"crash:p
 echo '{"alerts":[]}' > "$w/health"; watch13; : > "$w/gh-open"
 echo '{"alerts":[{"key":"crash:a2dd7180","title":"a room crash"}]}' > "$w/health"; watch13; watch13
 [[ "$(made13)" == 3 ]] && ok "13: a bucket whose issue was closed gets a new one when its alert opens again" || { bad "13: $(made13) issue(s) after the alert opened again"; cat "$w/gh.log"; }
+
+# 14: `after.sh health` on a machine that is not the watcher (#13525), with a stand-in for gcloud
+# that serves the shared state from a file, or fails while gcloud-down exists.
+cat > "$w/fake/gcloud" <<'EOF'
+#!/usr/bin/env bash
+[[ ! -e "$OA_TEST_W/gcloud-down" && "$1 $2" == "storage cp" ]] || exit 1
+cp "$OA_TEST_W/state.tar.gz" "$4"
+EOF
+chmod +x "$w/fake/gcloud"
+state14() {   # the watcher's heartbeat, seconds ago: the shared object
+  rm -rf "$w/s14"; mkdir -p "$w/s14/releases/after"
+  echo $(( $(date +%s) - $1 )) > "$w/s14/releases/after/heartbeat"; echo "watcher-elsewhere $(date +%s)" > "$w/s14/watcher"
+  tar -czf "$w/state.tar.gz" -C "$w/s14" releases watcher
+}
+health14() { (cd "$w/repo" && PATH="$w/fake:$PATH" OA_PIPELINE_DIR="$w/pl14" OA_PIPELINE_SHARED="gs://test/state" CLOUDSDK_CONFIG="$w" coax/remote/after.sh health) > "$w/health14.log" 2>&1; }
+quiet14() { ls "$w/pl14/alarms" 2> /dev/null | grep -c '^quiet-' || true; }
+state14 10; health14; s=$?
+[[ "$s" == 0 ]] && grep -q "running on watcher-elsewhere" "$w/health14.log" && ok "14: a fresh shared heartbeat: the watcher elsewhere is running" || { bad "14: status $s"; cat "$w/health14.log"; }
+# The read 25 minutes ago found the watcher alive; every read since fails.
+hb=$(( $(date +%s) - 1500 )); echo "$hb" > "$w/pl14/releases/after/heartbeat"; echo $(( hb + 40 )) > "$w/pl14/mirror/read"; echo 0 > "$w/pl14/mirror/fetched"
+touch "$w/gcloud-down"; health14; s=$?; rm -f "$w/gcloud-down"
+[[ "$s" == 0 && "$(quiet14)" == 0 ]] && grep -q "can't be read now" "$w/health14.log" && ok "14: state that can't be read raises no quiet alarm" || { bad "14: status $s, $(quiet14) quiet alarm(s)"; cat "$w/health14.log"; }
+state14 1500; echo 0 > "$w/pl14/mirror/fetched"; health14; s=$?
+[[ "$s" == 1 && "$(quiet14)" == 1 ]] && ok "14: state read with a 25-minute-old heartbeat raises the quiet alarm" || { bad "14: status $s, $(quiet14) quiet alarm(s)"; cat "$w/health14.log"; }
 
 (( fails == 0 )) && echo "test-after: every case passed" || echo "test-after: $fails case(s) failed"
 exit $(( fails > 0 ))

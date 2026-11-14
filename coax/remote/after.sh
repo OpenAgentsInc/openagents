@@ -132,11 +132,23 @@ label="${OA_AFTER_LABEL:-com.openagents.green-main}"
 # On a machine that isn't the watcher, the watcher's shared state first
 # (pipeline-lib.sh's pl_mirror): the watcher elsewhere, and its host.
 watcher_health() {
-  local at=0 age where=""
+  local at=0 age where="" got=0 unread
   ! pl_mirror || where=" on $(cat "$results/watcher-host")"
   [[ ! -f "$results/heartbeat" ]] || at="$(cat "$results/heartbeat")"
   age=$(( $(date +%s) - at ))
   if (( age < 300 )); then echo "watcher     running$where, seen $age s ago"; return 0; fi
+  # The watcher elsewhere is judged by the last copy of its state this machine
+  # could read: the heartbeat's age when it was read. A copy that can't be read
+  # now says nothing about the watcher, so it raises no alarm (#13525).
+  if [[ -n "$where" ]]; then
+    [[ ! -f "$pl_dir/mirror/read" ]] || got="$(cat "$pl_dir/mirror/read")"
+    unread=$(( $(date +%s) - got ))
+    if (( unread >= 60 )) && (( got - at < 300 )); then
+      echo "watcher     running$where when its state was last read, $(( unread / 60 )) min ago; it can't be read now ($pl_shared/state.tar.gz)"
+      return 0
+    fi
+    (( got == 0 )) || age=$(( got - at ))
+  fi
   # A watcher on another machine that went quiet can't say so itself: the
   # machine that sees it does (the log, ALARM and the one GitHub issue).
   [[ -z "$where" ]] || (( age < 900 )) || pl_alarm "quiet-$at" "the watcher$where has not been seen for $(( age / 60 )) minutes" "The green-main watcher$where last wrote its heartbeat at $(pl_date "$at" '%Y-%m-%d %H:%M %Z'), so no head is checked and \`$pl_green\` does not move. Check it there: \`systemctl --user status com.openagents.green-main\` and \`~/.openagents/pipeline/logs/after.out\` (docs/metaverse/green-main-pipeline.md)." > /dev/null 2>&1

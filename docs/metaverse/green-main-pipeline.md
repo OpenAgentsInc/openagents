@@ -682,8 +682,11 @@ whose own watcher is running (a fresh heartbeat and no `watcher-host` file)
 reads only its own files; `--watch` removes `watcher-host` when it starts.
 
 A watcher can't report that it died. When a machine's `state` or `health`
-sees the shared heartbeat 15 minutes old or more, that machine raises the
-alarm: the log, its `ALARM` file and the one "Green-main pipeline needs
+reads the shared state and finds its heartbeat 15 minutes old or more, that
+machine raises the alarm. A read that fails says nothing about the watcher:
+the machine keeps its last copy, judges the heartbeat by its age when that
+copy was read (`mirror/read`), and says the state can't be read now (#13525).
+The alarm: the log, its `ALARM` file and the one "Green-main pipeline needs
 attention" issue, which every machine reuses (`pl_alarm` looks for an open
 one first). `release.sh` runs `health`, so a release raises it too.
 

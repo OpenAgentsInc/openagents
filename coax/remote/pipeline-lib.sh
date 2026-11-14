@@ -75,7 +75,10 @@ pl_publish() {
 }
 # On a machine whose own watcher isn't running: the shared state into the
 # local files, at most every 20 s. Status 0 when they now show a watcher on
-# another machine (its name in releases/after/watcher-host).
+# another machine (its name in releases/after/watcher-host). mirror/read holds
+# the time of the last copy that was read: when a copy can't be read, the files
+# are that older copy's, and the heartbeat in them is as old as that read
+# (#13525: one failed read made a running watcher look 25 minutes quiet).
 pl_mirror() {
   [[ "$pl_shared" != 0 ]] || return 1
   # This machine's watcher writes the heartbeat and no watcher-host: its own
@@ -95,6 +98,7 @@ pl_mirror() {
   fi
   read -r host at < "$t/s/watcher"
   if [[ "$host" == "$(pl_host)" ]]; then rm -rf "$t"; return 1; fi
+  date +%s > "$m/read"
   rm -f "$t/s/watcher" "$t/s/ALARM.keep"; [[ ! -f "$t/s/ALARM" ]] || mv "$t/s/ALARM" "$t/s/ALARM.keep"
   (cd "$t/s" && find . -type f ! -name ALARM.keep -print0 | while IFS= read -r -d '' f; do mkdir -p "$pl_dir/${f%/*}" && cp "$f" "$pl_dir/$f"; done)
   if [[ -f "$t/s/ALARM.keep" ]]; then cp "$t/s/ALARM.keep" "$pl_dir/ALARM"; else rm -f "$pl_dir/ALARM"; fi
