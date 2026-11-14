@@ -1,6 +1,15 @@
 // Installed update authority: immutable runtime, signature, generation and
 // physical resource observations. Native code supplies facts, not decisions.
 #authority;
+#test "fresh bundles and running updates do not download their own contents again" {
+  #assert cn_offer(1,0,true)==1;
+  #assert cn_offer(9,2,true)==1;
+  #assert cn_offer(1,0,false)==2;
+  #assert cn_offer(10,9,false)==2;
+  #assert cn_offer(9,9,true)==0 && cn_offer(9,9,false)==0;
+  #assert cn_offer(8,9,true)==0 && cn_offer(8,9,false)==0;
+  #assert cn_offer(2147483647,0,true)==1;
+}
 #test "only signed compatible newer complete packages can stage" {
   #assert cn_stage(true,true,true,2,1,100,1);
   #assert !cn_stage(false,true,true,2,1,100,1);
@@ -45,6 +54,12 @@ cn_launch :: (valid:bool,failed:bool,healthy:bool,attempted:bool)->int #export_c
 }
 cn_stage :: (signature: bool, app: bool, runtime: bool, generation: int, minimum: int, bytes: int, files: int) -> bool #export_c #effects(all) {
   return signature && app && runtime && generation > minimum && generation > 0 && generation <= 2147483647 && bytes >= 0 && bytes <= 33554432 && files >= 1 && files <= 24;
+}
+// After signature/app/runtime admission: 0 already seen, 1 identical to the
+// running resources (record the generation only), 2 download a changed package.
+cn_offer :: (generation:int,minimum:int,same:bool)->int #export_c #effects(all) {
+  if generation<=minimum {return 0;}
+  return ifx same then 1 else 2;
 }
 cn_safe :: (path: string) -> bool #effects(all) {
   if path.count > 1024 { return false; }

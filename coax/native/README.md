@@ -115,6 +115,11 @@ service does not mount it. Losing all copies requires another native build.
 The client downloads asynchronously after launch, stages and verifies the
 whole package, and activates on the next cold launch or the explicit Apply
 action. There is no silent hot replacement during a login or request.
+Before downloading artifacts it compares every signed file size and digest
+with the running resources, including the embedded bundle on a fresh install.
+Identical contents only advance the verified generation high-water mark; they
+do not create a pending update or an activation prompt. A higher generation
+with changed resources still follows the normal staged-update path.
 A trial becomes healthy after the module reports ready and remains in the
 foreground for 30 seconds. An interrupted trial is quarantined on the next
 boot; a failed native program is marked for recovery on restart. The previous

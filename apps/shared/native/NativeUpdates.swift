@@ -132,6 +132,19 @@ struct NativePackage {
         for try await byte in bytes { if out.count >= limit { throw NativeFailure.refused("Update exceeds its declared size") }; out.append(byte) }
         return out
     }
+    // The envelope is already signature/app/runtime verified. Observe every
+    // declared resource on disk; the shared Coax policy decides whether it is
+    // new code. A TestFlight bundle has no downloaded-generation history.
+    func requiresDownload(_ advertised: NativePackage) throws -> Bool {
+        let floor = read("highwater.cnu")?.generation ?? 0
+        let running = current.map(directory) ?? embedded
+        let same = (try? advertised.validate(running)) != nil
+        let action = cn_offer(advertised.generation, floor, same)
+        if action == 1 {
+            try advertised.envelope.write(to:home.appendingPathComponent("highwater.cnu"),options:.atomic)
+        }
+        return action == 2
+    }
     func check() async throws -> String {
         guard enabled else { return "Updates are disabled in this starter." }
         guard !checking else { return "Already checking for updates." }
@@ -142,7 +155,10 @@ struct NativePackage {
             do {
                 let envelope = try await Self.download(base.appendingPathComponent("latest.cnu"),limit:16456)
                 let advertised = try NativePackage(envelope:envelope,app:app,runtime:runtime,publicKey:publicKey)
-                if advertised.generation <= floor { return "You have the latest compatible update." }
+                if try !requiresDownload(advertised) {
+                    message = "You have the latest compatible update."
+                    return message
+                }
                 let p = try NativePackage(envelope:envelope,app:app,runtime:runtime,publicKey:publicKey,floor:floor)
                 guard !FileManager.default.fileExists(atPath:home.appendingPathComponent(p.identity + ".failed").path) else { throw NativeFailure.refused("This update failed its trial") }
                 let staging = home.appendingPathComponent("staging-"+UUID().uuidString,isDirectory:true)

@@ -36,6 +36,12 @@ changes, isolating its update feed from 1069. Native SDKs, wallet keys and
 auth storage retain their identity. Code fields use `.oneTimeCode`; actual
 email suggestions depend on iOS and the mail/AutoFill integration.
 
+Build 1073 fixes redundant update offers on a fresh TestFlight install: a
+signed package whose files already match the running bundle only records its
+generation, without downloading artifacts or prompting to apply it. Genuinely
+changed resources still use the signed OTA path. See the
+[regression and release record](../../docs/verification/2026-11-13-native-update-dedup.md).
+
 ## Build and check
 
 `apps/openagents-ios/build.sh` generates on a remote build host and builds

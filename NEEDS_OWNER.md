@@ -1,5 +1,16 @@
 # Owner actions
 
+## Fresh-install update prompt, build 1073 (2026-11-13)
+
+- [ ] Install OpenAgents **1073** from the existing Owner TestFlight group
+      (VALID and verified in Owner). Its matching signed OTA generation should produce no
+      update-ready prompt. **Check for updates** should report the latest
+      compatible update. Account login, chat and balance remain available.
+      No logout or data deletion is needed. This supersedes the 1072 install
+      instruction below; the same chat/Markdown acceptance checks apply.
+      Automated package regressions and all 75 authority mutants passed;
+      see `docs/verification/2026-11-13-native-update-dedup.md`.
+
 ## Native message rendering and keyboard, build 1072 (2026-11-13)
 
 Install OpenAgents **1072**, now VALID and verified in Owner in TestFlight. Send a

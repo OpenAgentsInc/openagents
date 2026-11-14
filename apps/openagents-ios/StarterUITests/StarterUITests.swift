@@ -1,6 +1,20 @@
 import XCTest
 
 final class StarterUITests:XCTestCase {
+    // Select explicitly with a published feed matching this build's resources.
+    func testIdenticalLivePackageDoesNotPrompt() {
+        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES"];app.launch()
+        let check=app.buttons["Check for updates"]
+        XCTAssertTrue(check.waitForExistence(timeout:20))
+        XCTAssertFalse(app.alerts["Update ready"].waitForExistence(timeout:10))
+        check.tap()
+        XCTAssertTrue(app.staticTexts["You have the latest compatible update."].waitForExistence(timeout:20))
+        XCTAssertFalse(app.alerts["Update ready"].exists)
+        app.terminate();app.launch()
+        XCTAssertTrue(check.waitForExistence(timeout:20));check.tap()
+        XCTAssertTrue(app.staticTexts["You have the latest compatible update."].waitForExistence(timeout:20))
+        XCTAssertFalse(app.alerts["Update ready"].exists)
+    }
     func testEmbeddedCoaxAccountModuleRuns() {
         let app=XCUIApplication(); app.launchArguments=["-OAAutomation","YES"]; app.launch()
         XCTAssertTrue(app.buttons["Check for updates"].waitForExistence(timeout:20))

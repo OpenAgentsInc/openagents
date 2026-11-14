@@ -1,0 +1,1 @@
+Fresh installs recognize code already included in the TestFlight build and no longer download or prompt to apply an identical update. Genuinely changed signed updates remain available.
