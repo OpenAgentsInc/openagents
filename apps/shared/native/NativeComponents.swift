@@ -31,7 +31,7 @@ import UIKit
     private func menu()->UIMenu {
         let sections=["All","Motion","Controls","HUD","ARWES"].enumerated().map {index,name in UIAction(title:name) { [weak self] _ in guard let owner=self?.owner else{return};cg_section(owner,Int32(index)) }}
         let controls=[(0,"Replay","arrow.counterclockwise"),(1,"Pause / play","pause"),(2,"Reduce motion","figure.stand"),(3,"Toggle specimen","switch.2"),(4,"Zeron","circle"),(5,"Everglade","leaf"),(6,"Verse","sparkles")].map {index,name,icon in UIAction(title:name,image:UIImage(systemName:icon)) { [weak self] _ in guard let owner=self?.owner else{return};cg_motion(owner,Int32(index)) }}
-        return UIMenu(children:[UIMenu(title:"Sections",options:.displayInline,children:sections),UIMenu(title:"Motion",children:controls)])
+        return UIMenu(children:[UIMenu(title:"Sections",options:.displayInline,children:sections),UIMenu(title:"Animation controls",children:controls)])
     }
     private func scroll(_ amount:Float) {if let owner {cg_scroll(owner,amount)}}
     override func viewDidAppear(_ animated:Bool) {super.viewDidAppear(animated);start()}

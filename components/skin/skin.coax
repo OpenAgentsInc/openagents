@@ -191,7 +191,14 @@ UiChrome :: struct {
 // A floating surface's shadow (Tailwind's shadow-lg: two soft layers of the skin's lift).
 UiFloat :: struct { dy: [2] f32; blur: [2] f32; spread: [2] f32; }
 
+// Shared animated kit geometry and paint strengths. Skins may override them.
+UiAnimated :: struct {
+ activity_sweep:f32=0.25;frame_stroke:f32=1.5;activity_stroke:f32=2;progress_stroke:f32=3;
+ switch_inset:f32=3;drawer_radius:f32=6;reply_radius:f32=4;
+ frame_wash:f32=0.7;activity_wash:f32=0.12;switch_wash:f32=0.35;reply_wash:f32=0.15;
+}
 UiSkin :: struct {
+ animated:UiAnimated;
   id: int; name: string;
   // colour roles
   canvas: Rgba;             // the window behind everything

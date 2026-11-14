@@ -303,3 +303,23 @@ The [1083 release record](../../docs/verification/2026-11-14-native-drawer-1083.
 keeps the archive/runtime identities, installed UI checks and live-feed evidence.
 The fresh-install feed check uses the independent email/environment oracle on
 port 13493 for account calls while fetching Updates from the public endpoints.
+
+## Component gallery (1086)
+
+Settings → **Components** opens the shared Coax gallery in an embedded Metal
+view. The web companion is [openagents.com/components-gpu](https://openagents.com/components-gpu),
+linked from the HTML gallery at `/components`. Both run
+`components/gallery/page.coax`, the common GPU backend/shader and atlas.
+Motion, Controls, HUD and ARWES sections have interactive specimens; the
+native options menu also exposes section, playback, reduced motion and skin
+choices. The carrier stops drawing offscreen/backgrounded and releases its
+atlas/state when dismissed. Installing 1086 is required for the native carrier.
+The gallery's compiled components require a new build to change; the ordinary
+Coax app screens continue through Updates.
+
+`CoaxNativeComponents` exercises section switching, touch scrolling,
+background/resume and the real Settings entry against the independent local
+email oracle (`Tests/email_fixture.py RELEASE --port 13567 --environment-transcript`).
+This is a preview of shared visual components, not a switch of the production
+chat renderer or completion of every Arcade animation. See
+[the component guide](../../components/README.md) for exact implementation scope.

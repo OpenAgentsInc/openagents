@@ -1,0 +1,1 @@
+Coax Native component library preview in Settings → Components. Shared Metal/WebGPU components, motion playground, skins, controls, Markdown, HUD and ARWES examples. Replay, pause, reduce motion and tap to animate.
