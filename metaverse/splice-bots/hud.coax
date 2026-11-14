@@ -17,6 +17,7 @@ SpHud :: struct {
   toasts: [1] RoToasts;     // pickups: the event (MSG_*) and the pickup it was for
   hearts: RoGauge; battery: RoGauge; heat: RoGauge;
   pick: int = -1;           // the edit bay's picked item (a kind of d_carry), for its card
+  desk: bool; desk_x: f32; desk_z: f32;   // the compass's last goal was the driving desk, there (drive.coax marks it)
 }
 
 // ---- the look
@@ -182,6 +183,7 @@ hv_compass :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
     }
   }
   gl := hv_goal(g);
+  g[0].hv[0].desk = gl.ok && gl.name == "DESK"; g[0].hv[0].desk_x = gl.x; g[0].hv[0].desk_z = gl.z;
   if !gl.ok { return n; }
   x := ro_compass_x(yaw, ro_bearing(g[0].px, g[0].pz, gl.x, gl.z), span, bw - 40 * k);
   if x == RO_OFF { x = ifx angle_wrap(yaw - ro_bearing(g[0].px, g[0].pz, gl.x, gl.z)) > 0 then bw * 0.5 - 14 * k else -bw * 0.5 + 14 * k; }   // behind: pinned to the side to turn to
@@ -264,7 +266,7 @@ hv_board :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   n = hv_text(out, n, F_TITLE, what, x0 + 14 * k, y0 + 20 * k, 7.5 * k, ifx on && bd.fast then HV_ORANGE() else HV_CREAM(), 1);
   if on { n = hv_right(out, n, F_MONO, num(buf[..], "", cast(int) (abs(bd.m.speed) * 3.6 + 0.5), " KM/H"), x1 - 14 * k, y0 + 20 * k, 7 * k, HV_CREAM(), 1); }
   n = hv_text(out, n, F_TITLE, ifx on then "HOLD Q: GET OFF" else "Q: GET ON", x0 + 14 * k, y0 + 38 * k, 7 * k, HV_CREAM(), 1);
-  return hv_text(out, n, F_MONO, ifx on then "Q: fast · hold Z or W W: very fast" else HV_SPRINT_HINT, x0 + 14 * k, y0 + 54 * k, 6.5 * k, HV_DIM(), 1);
+  return hv_text(out, n, F_MONO, HV_SPRINT_HINT, x0 + 14 * k, y0 + 54 * k, 6.5 * k, HV_DIM(), 1);
 }
 // The bot slots: Digger on 1, two empty, then the stun on F.
 hv_slots :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {

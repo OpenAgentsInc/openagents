@@ -200,12 +200,12 @@ dv_room_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   if !r.ok { return; }
   // while the wheel is next, the driving desk is marked (playtest 3: which desk?): a ring on the floor round
   // it and a light over it, pulsing, as the compass's DESK
-  gl := hv_room_goal(g);
-  if gl.ok && gl.name == "DESK" {
+  h := g[0].hv[0];   // the compass's goal (hud.coax hv_compass)
+  if h.desk {
     t := g[0].t; e := 1.6 + 0.15 * sin(t * 4);
     kit_pen(p, 89, MAT_GLOW, HEAT());
-    for j: 0..<16 { a := t + TAU * cast(f32) j / 16; box(buf, p, frame_at(v3(gl.x + sin(a) * e, 0.04, gl.z + cos(a) * e), a), 0.24, 0.02, 0.08); }
-    ball(buf, p, v3(gl.x, 1.75 + 0.1 * sin(t * 3), gl.z), 0.13, 8);
+    d_ring(buf, p, h.desk_x, 0.04, h.desk_z, e, 0.08, t, true);   // digger-orders.coax
+    ball(buf, p, v3(h.desk_x, 1.75 + 0.1 * sin(t * 3), h.desk_z), 0.13, 8);
   }
   for i: 0..<g[0].layer[0].st[0].n {
     e := g[0].layer[0].items[i];

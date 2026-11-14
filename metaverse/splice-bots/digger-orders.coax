@@ -277,10 +277,14 @@ d_mark_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   if s == OS_WORK { r *= 1 + 0.07 * sin(t * 12); w = 0.1; c = t3(1.0, 0.68, 0.22); }
   if s == OS_DONE { e := clamp01(u / T_MARK_FADE); r *= 1 + e * 0.8; w = 0.09 * (1 - e) + 0.01; c = t3(0.45, 0.86, 0.50); }
   kit_pen(p, 242, MAT_GLOW, c);
+  d_ring(buf, p, d.o_x, y, d.o_z, r, w, spin, dash);
+}
+// A ring of 16 flat pieces on the ground, or every other one: an order's marker, the driving desk's (drive.coax).
+d_ring :: (buf: [] u32, p: [] Pen, x: f32, y: f32, z: f32, r: f32, w: f32, spin: f32, dash: bool) {
   for j: 0..<16 {
     if dash && j % 2 == 1 { continue; }
     a := spin + TAU * cast(f32) j / 16;
-    box(buf, p, frame_at(v3(d.o_x + sin(a) * r, y, d.o_z + cos(a) * r), a), r * PI / 16 * (ifx dash then 0.8f32 else 1.05f32), 0.03, w);
+    box(buf, p, frame_at(v3(x + sin(a) * r, y, z + cos(a) * r), a), r * PI / 16 * (ifx dash then 0.8f32 else 1.05f32), 0.03, w);
   }
 }
 // Chips off the rock face while the bit is in it, more with DRILL+.

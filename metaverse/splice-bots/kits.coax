@@ -13,23 +13,25 @@
 //   coax/bin/coax test metaverse/splice-bots/splice-game.coax
 KS_N :: 13;
 KS_GARAGE_BAY :: 0;
-// Each slot: its name, then what it is now and where it is drawn.
-KS_ROWS :: [KS_N * 2] string.[
-  "garage_bay", "a bay of the ring: floor, back wall, roof and its band, the lamps, the pier after it (garage.coax ga_draw)",
-  "section_sign", "a section's letters on the rim's white panel, named from GA_NAMES (garage.coax)",
-  "rock_wall", "the raiders' rock wall across the old entrance bay, which Digger drills (the rubble)",
-  "mountain_hallway", "the hallway north into the mountain and its barricade, which only the drill mech breaks (garage.coax, splice-game.coax)",
-  "solar_row", "a line of solar banks in the farm's rows (farm.coax ff_mesh)",
-  "charger", "a charging post: Sniper's, and one at each Imperial pad (pieces kind 121)",
-  "sniper_interior", "Sniper's cabin and its furniture (drive.coax dv_room_draw, the shipped pieces)",
-  "raider_mech", "the raider mech on the drive (splice-battle.coax)",
-  "drill_mech", "the drill mech in the empty section (splice-battle.coax, kit_mech)",
-  "imperial_robot", "an Imperial robot (the foes' draw)",
-  "boss_lab", "the old-world lab and the boss in it (garage.coax, kit_dino)",
-  "landmark_rock", "one of the three landmark rocks (plain.coax, kit_mound)",
-  "mountain", "the mountain's two peaks north of the garage (plain.coax, land_peak)"];
-ks_name :: (k: int) -> string { return ifx k >= 0 && k < KS_N then KS_ROWS[k * 2] else ""; }
-ks_about :: (k: int) -> string { return ifx k >= 0 && k < KS_N then KS_ROWS[k * 2 + 1] else ""; }
+// Each slot's name, and apart (KS_ABOUT) what it is now and where it is drawn: only the Unreal exporter
+// reads that, so the page's module leaves it out.
+KS_ROWS :: [KS_N] string.["garage_bay", "section_sign", "rock_wall", "mountain_hallway", "solar_row", "charger", "sniper_interior", "raider_mech", "drill_mech", "imperial_robot", "boss_lab", "landmark_rock", "mountain"];
+KS_ABOUT :: [KS_N] string.[
+  "a bay of the ring: floor, back wall, roof and its band, the lamps, the pier after it (garage.coax ga_draw)",
+  "a section's letters on the rim's white panel, named from GA_NAMES (garage.coax)",
+  "the raiders' rock wall across the old entrance bay, which Digger drills (the rubble)",
+  "the hallway north into the mountain and its barricade, which only the drill mech breaks (garage.coax, splice-game.coax)",
+  "a line of solar banks in the farm's rows (farm.coax ff_mesh)",
+  "a charging post: the rover's, and one at each Imperial pad (pieces kind 121)",
+  "the rover's cabin and its furniture (drive.coax dv_room_draw, the shipped pieces)",
+  "the raider mech on the drive (splice-battle.coax)",
+  "the drill mech in the empty section (splice-battle.coax, kit_mech)",
+  "an Imperial robot (the foes' draw)",
+  "the old-world lab and the boss in it (garage.coax, kit_dino)",
+  "one of the three landmark rocks (plain.coax, kit_mound)",
+  "the mountain's two peaks north of the garage (plain.coax, land_peak)"];
+ks_name :: (k: int) -> string { return ifx k >= 0 && k < KS_N then KS_ROWS[k] else ""; }
+ks_about :: (k: int) -> string { return ifx k >= 0 && k < KS_N then KS_ABOUT[k] else ""; }
 
 KS_PLACE_MAX :: 32;   // places one slot may have
 // A place: where the slot's piece stands on the ground, its turn, and the half width of an opening its
