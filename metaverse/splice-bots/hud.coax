@@ -182,6 +182,19 @@ hv_compass :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
       }
     }
   }
+  // the plain's edge, near it on foot: an orange pennant and its name where the boundary flags stand
+  if g[0].zone == Z_MINE && g[0].mode == M_PLAY && !sp_in_room(g) {
+    e := pl_edge_near(g[0].px, g[0].pz);
+    if e.y < PL_NEAR {
+      x := ro_compass_x(yaw, ro_bearing(g[0].px, g[0].pz, e.x, e.z), span, bw - 40 * k);
+      if x != RO_OFF {
+        fx := cx + x;
+        n = ui_seg(out, n, fx - 4 * k, cy - 8 * k, fx - 4 * k, cy + 8 * k, 1.4 * k, HV_ORANGE(), 1);
+        n = ui_seg(out, n, fx - 4 * k, cy - 7 * k, fx + 5 * k, cy - 4 * k, 3 * k, HV_ORANGE(), 1);
+        n = hv_mid(out, n, F_MONO, "EDGE", fx, cy + 17 * k, 6 * k, HV_ORANGE(), 1);
+      }
+    }
+  }
   gl := hv_goal(g);
   g[0].hv[0].desk = gl.ok && gl.name == "DESK"; g[0].hv[0].desk_x = gl.x; g[0].hv[0].desk_z = gl.z;
   if !gl.ok { return n; }

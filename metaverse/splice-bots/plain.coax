@@ -61,6 +61,16 @@ pl_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
 }
 // Past the plain's edge: what the stakes mark.
 pl_out :: (x: f32, z: f32) -> bool { return x < PL_X0 || x > PL_X1 || z < PL_Z0 || z > PL_Z1; }
+// The nearest point of the plain's edge to (x, z) inside it, and how far it is (in w): where the
+// compass marks the edge once she is within PL_NEAR of it (hud.coax hv_compass).
+PL_NEAR :: 60.0f32;
+pl_edge_near :: (x: f32, z: f32) -> Point {
+  e := v3(PL_X0, x - PL_X0, z);
+  if PL_X1 - x < e.y { e = v3(PL_X1, PL_X1 - x, z); }
+  if z - PL_Z0 < e.y { e = v3(x, z - PL_Z0, PL_Z0); }
+  if PL_Z1 - z < e.y { e = v3(x, PL_Z1 - z, PL_Z1); }
+  return e;   // x, z the point; y how far
+}
 
 // The triangles, with the designed world (splice-game.coax g_world).
 pl_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
@@ -68,13 +78,17 @@ pl_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   quad(buf, p, v3(PL_X0 - PL_FAR, 0, PL_Z0 - PL_FAR), v3(PL_X1 + PL_FAR, 0, PL_Z0 - PL_FAR), v3(PL_X1 + PL_FAR, 0, PL_Z1 + PL_FAR), v3(PL_X0 - PL_FAR, 0, PL_Z1 + PL_FAR));
   for i: 0..<PL_ROCKS { kit_mound(buf, p, 2, t3(0.74, 0.72, 0.71), t3(0.56, 0.55, 0.57), pl_rock(i), PL_ROCK_H[i], PL_ROCK_W[i]); }
   for i: 0..<PL_PEAKS { land_peak(buf, p, 5, ifx i == 0 then t3(0.62, 0.46, 0.60) else t3(0.56, 0.42, 0.56), pl_peak(i), PL_TOP[i * 3], PL_TOP[i * 3 + 1], PL_TOP[i * 3 + 2]); }
-  // the edge: an orange stake every PL_STAKE metres round the plain; the Imperial robots' charging pads at the farm
+  // the edge: an orange boundary flag every PL_STAKE metres round the plain, a pole and a pennant flying
+  // along the edge so she sees its face from inside (#13584: bare sticks did not say what they were);
+  // the Imperial robots' charging pads at the farm
   w := PL_X1 - PL_X0; h := PL_Z1 - PL_Z0; n := cast(int) ((w + h) * 2 / PL_STAKE);
   kit_pen(p, 61, MAT_FLAT, t3(0.96, 0.46, 0.16));
   for i: 0..<n {
-    s := cast(f32) i * PL_STAKE; x := PL_X0; z := PL_Z0;
-    if s < w { x = PL_X0 + s; } else if s < w + h { x = PL_X1; z = PL_Z0 + s - w; } else if s < w * 2 + h { x = PL_X1 - (s - w - h); z = PL_Z1; } else { z = PL_Z1 - (s - w * 2 - h); }
-    block(buf, p, x, 0, z, 0.08, 1.6, 0.08);
+    s := cast(f32) i * PL_STAKE; x := PL_X0; z := PL_Z0; ux := 1.0f32; uz := 0.0f32;
+    if s < w { x = PL_X0 + s; } else if s < w + h { x = PL_X1; z = PL_Z0 + s - w; ux = 0; uz = 1; } else if s < w * 2 + h { x = PL_X1 - (s - w - h); z = PL_Z1; } else { z = PL_Z1 - (s - w * 2 - h); ux = 0; uz = 1; }
+    block(buf, p, x, 0, z, 0.07, 2.8, 0.07);
+    a := v3(x, 2.8, z); b := v3(x, 1.9, z); c := v3(x + ux * 1.5, 2.35, z + uz * 1.5);
+    tri(buf, p, a, b, c, v3(uz, 0, -ux), v3(uz, 0, -ux), v3(uz, 0, -ux)); tri(buf, p, a, c, b, v3(-uz, 0, ux), v3(-uz, 0, ux), v3(-uz, 0, ux));
   }
   kit_pen(p, 62, MAT_FLAT, t3(0.86, 0.86, 0.84));
   for i: 0..<2 { tube(buf, p, frame_at(v3(PL_FARM_PADS[i * 2], 0, PL_FARM_PADS[i * 2 + 1]), 0), 0.05, PL_PAD_R, PL_PAD_R, PL_PAD_R, PL_PAD_R, 16, true); }
