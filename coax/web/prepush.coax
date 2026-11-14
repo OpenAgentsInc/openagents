@@ -518,7 +518,8 @@ pp_touched_suites :: (list: string, changed: string, out: [] u8) -> string {
 // Whether every changed path is a document (Markdown or under docs/).
 pp_only_docs :: (changed: string) -> bool {
   i := 0;
-  while i < changed.count {
+  // At i == changed.count the line is empty and skipped, so `<=` here reads the same list.
+  while i < changed.count {   // mutant: equivalent
     j := i;
     while j < changed.count && changed[j] != '\n' { j += 1; }
     p := cast(string) changed[i..<j]; i = j + 1;
@@ -539,6 +540,11 @@ pp_changelog :: (changed: string) -> bool {
   #assert pp_changelog("coax/CHANGELOG.md\n") && pp_changelog("apps/openagents-web/changelog-content.coax\n");
   #assert !pp_changelog("docs/a.md\ncoax/web/host.js\n") && !pp_changelog("");
   #assert !pp_only_docs("coax/CHANGELOG.md\n") && pp_only_docs("docs/a.md\nREADME.md\n");
+}
+#test "documents only: a last line with no newline, empty lines, one-letter paths and a bare .md" {
+  #assert pp_only_docs("README.md") && !pp_only_docs("README.md\nx");
+  #assert pp_only_docs("docs/a.md\n\nREADME.md\n") && !pp_only_docs("x\n") && !pp_only_docs("\nx\n");
+  #assert pp_only_docs(".md\n") && !pp_only_docs("md\n");
 }
 
 // Whether the push changes the page driver (coax drive, its browser side or the browser protocol under it).
