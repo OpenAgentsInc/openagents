@@ -166,7 +166,14 @@ sb_stage :: (g: [] SpGame, n: int) {
 
 // ---- where things are
 sb_desert :: (g: [] SpGame) -> bool { return g[0].zone == Z_RAIL; }
-sb_sniper_at :: (g: [] SpGame) -> Point { if g[0].zone == Z_RAIL { return rail_at(g, g[0].rail_s); } return v3(g[0].at.rover_x, 0, g[0].at.rover_z); }
+// On the road, where the raider mech hunts: the rail ride (M_RIDE), or the drive from the solar farm to the garage (M_DRIVE, drive.coax).
+sb_road :: (g: [] SpGame) -> bool { return g[0].mode == M_DRIVE || (sb_desert(g) && g[0].mode == M_RIDE); }
+sb_road_yaw :: (g: [] SpGame) -> f32 { if g[0].mode == M_DRIVE { return dv_yaw(g, dv_s(g)); } return rail_yaw(g, g[0].rail_s); }
+sb_road_beside :: (g: [] SpGame, side: f32) -> Point { c := sb_sniper_at(g); y := sb_road_yaw(g); return v3(c.x - cos(y) * side, 0, c.z + sin(y) * side); }
+// Near the road's end it turns back; it runs at its own speed on the rail, and a pace above the rover's cruise on the drive.
+sb_road_end :: (g: [] SpGame) -> bool { if g[0].mode == M_DRIVE { return dv_s(g) >= DV_RM_QUIT; } return g[0].rail_s >= sb_rm_quit_s(); }
+sb_rm_speed :: (g: [] SpGame) -> f32 { if g[0].mode == M_DRIVE { return dv_cruise(g) * DV_RM_CHASE; } return SB_RM_CHASE; }
+sb_sniper_at :: (g: [] SpGame) -> Point { if g[0].mode == M_DRIVE { return dv_at(g, dv_s(g)); } if g[0].zone == Z_RAIL { return rail_at(g, g[0].rail_s); } return v3(g[0].at.rover_x, 0, g[0].at.rover_z); }
 sb_in_chamber :: (g: [] SpGame, z: f32) -> bool { return g[0].zone == Z_MINE && g[0].wall_gone && z < g[0].at.wall_z - 1.5; }
 // The boss's frame, and its three weak points on its body: the neck, the left flank and the root of the tail.
 sb_dino_frame :: (g: [] SpGame) -> Frame { return frame_at(v3(g[0].bt[0].dino_x, 0, g[0].bt[0].dino_z), g[0].bt[0].dino_yaw); }
@@ -289,14 +296,14 @@ sb_use :: (g: [] SpGame) -> bool {
 // The raider mech near enough on the drive to battle it from Sniper.
 sb_can_battle_rm :: (g: [] SpGame) -> bool {
   t := g[0].bt[0];
-  if g[0].mode != M_RIDE || !sb_desert(g) || sb_fighting(g) || !t.rm_hunt || t.rm_down || t.bots[SB_SNIPER].vit.down { return false; }
+  if !sb_road(g) || sb_fighting(g) || !t.rm_hunt || t.rm_down || t.bots[SB_SNIPER].vit.down { return false; }
   s := sb_sniper_at(g);
   return dist2(t.rm_x, t.rm_z, s.x, s.z) < SB_SNIPER_REACH;
 }
 // A key on the drive (M_RIDE): E battles the raider mech from Sniper, and in that battle 1 to 4 are Sniper's cards.
 // True when the chase took it.
 sb_ride_key :: (g: [] SpGame, key: int, down: bool) -> bool {
-  if !down || g[0].mode != M_RIDE { return false; }
+  if !down || !sb_road(g) { return false; }
   if key >= '1' && key <= '4' { return sb_move(g, key - '1'); }
   if key == 'e' || key == 'E' {
     if sb_fighting(g) { return true; }
@@ -395,20 +402,20 @@ sb_ride_pace :: (g: [] SpGame, want: f32) -> f32 { return ifx sb_fighting(g) the
 // beside Sniper and fights with its cards (sb_battle_step).
 sb_rm_step :: (g: [] SpGame, dt: f32) {
   t := g[0].bt[..];
-  if !sb_desert(g) || t[0].rm_down || g[0].mode != M_RIDE { return; }
+  if !sb_road(g) || t[0].rm_down { return; }
   s := sb_sniper_at(g); d := dist2(s.x, s.z, t[0].rm_x, t[0].rm_z);
-  if t[0].rm_hunt && g[0].rail_s >= sb_rm_quit_s() {
+  if t[0].rm_hunt && sb_road_end(g) {
     sb_finish(g); t[0].rm_hunt = false; t[0].rm_gone = true; g_say(g, SBM_RM_GONE);
-  } else if !t[0].rm_hunt && !t[0].rm_gone && d < SB_RM_NOTICE && g[0].rail_s < sb_rm_quit_s() && !t[0].bots[SB_SNIPER].vit.down {
+  } else if !t[0].rm_hunt && !t[0].rm_gone && d < SB_RM_NOTICE && !sb_road_end(g) && !t[0].bots[SB_SNIPER].vit.down {
     t[0].rm_hunt = true; t[0].rm_claw = SB_RM_CLAW_EVERY; g_say(g, SBM_HUNT);
   } else if t[0].rm_hunt && !sb_fighting(g) && d > SB_RM_GIVE_UP {
     t[0].rm_hunt = false; t[0].rm_gone = true; g_say(g, SBM_RM_GONE);
   }
   if !t[0].rm_hunt { return; }
   rx := [1] f32.[t[0].rm_x]; rz := [1] f32.[t[0].rm_z]; ry := [1] f32.[t[0].rm_yaw];
-  b := sb_beside(g, g[0].rail_s, SB_RM_SIDE);
-  _ := sb_toward(rx[..], rz[..], ry[..], b.x, b.z, SB_RM_CHASE, 0.05, dt);
-  if dist2(rx[0], rz[0], b.x, b.z) < 0.5 { ry[0] = rail_yaw(g, g[0].rail_s); }   // alongside: it runs the way Sniper drives
+  b := sb_road_beside(g, SB_RM_SIDE);
+  _ := sb_toward(rx[..], rz[..], ry[..], b.x, b.z, sb_rm_speed(g), 0.05, dt);
+  if dist2(rx[0], rz[0], b.x, b.z) < 0.5 { ry[0] = sb_road_yaw(g); }   // alongside: it runs the way Sniper drives
   if dist2(rx[0], rz[0], t[0].rm_x, t[0].rm_z) > 0.001 { t[0].rm_step += dt * 7; }
   t[0].rm_x = rx[0]; t[0].rm_z = rz[0]; t[0].rm_yaw = ry[0];
   // out of a battle it claws Sniper when it is beside it
@@ -593,7 +600,7 @@ sb_refusal :: (v: int) -> string {
 sb_objective :: (g: [] SpGame) -> string {
   t := g[0].bt[0];
   if sb_fighting(g) && t.kind == SBF_DESERT { return "Battle the raider mech: 1-4."; }
-  if sb_desert(g) && g[0].mode == M_RIDE && t.rm_hunt && !t.rm_down { return "Outrun the raider mech (W), or battle it (E)."; }
+  if sb_road(g) && t.rm_hunt && !t.rm_down { return "Outrun the raider mech (W), or battle it (E)."; }
   if g[0].zone != Z_MINE || g[0].have[H_CORE] || g[0].boss_down { return ""; }
   if g[0].wall_gone { return ifx sb_open(g) then "Stun its 3 weak points with F." else "Battle the boss: 1-4. Open its weak points."; }
   if t.drill_t > 0 { return "The mech is drilling."; }
@@ -676,16 +683,20 @@ sb_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       if down && !g[0].core_taken { c := sb_core_at(g); kit_pen(p, 245, MAT_GLOW, GLOW()); ball(buf, p, v3(c.x, 0.9 + sin(tm * 2) * 0.15, c.z), 0.4, 12); }
     }
   }
-  if sb_desert(g) && (g[0].mode == M_PLAY || g[0].mode == M_RIDE) {
-    // the raider mech: yellow, an orange eye while it hunts, grey once down; it bounds along as it runs
-    bob := ifx t.rm_hunt then abs(sin(t.rm_step)) * 0.12 else 0.0f32;
-    f := frame_at(v3(t.rm_x, bob, t.rm_z), t.rm_yaw);
-    if t.rm_down { f = frame_turn(f, 0, -0.35); }
-    eye := ifx t.rm_down then kit_tint(0.3, 0.3, 0.32) else ifx t.rm_hunt then HEAT() else SB_YELLOW();
-    kit_mech(buf, p, f, 0.8, 250, ifx t.rm_down then kit_tint(0.55, 0.52, 0.46) else SB_YELLOW(), HEAT(), INK(), eye);
-    kit_pen(p, 254, MAT_SKIN, INK());
-    limb(buf, p, fp(f, 1.5 * 0.8, 1.0 * 0.8, 0.3 * 0.8), fp(f, 1.3 * 0.8, 0.9 * 0.8, 1.6 * 0.8), 0.18, 0.06, v3(0, 1, 0), 6);
-  }
+  if sb_desert(g) && (g[0].mode == M_PLAY || g[0].mode == M_RIDE) { sb_draw_rm(g, buf, p); }
+}
+// The raider mech: yellow, an orange eye while it hunts, grey once down; it bounds along as it runs.
+// On the drive (drive.coax) it is drawn while it is up, or near Sniper once down.
+sb_draw_rm :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  t := g[0].bt[0];
+  if g[0].mode == M_DRIVE && t.rm_down { s := sb_sniper_at(g); if dist2(s.x, s.z, t.rm_x, t.rm_z) > 80 { return; } }
+  bob := ifx t.rm_hunt then abs(sin(t.rm_step)) * 0.12 else 0.0f32;
+  f := frame_at(v3(t.rm_x, bob, t.rm_z), t.rm_yaw);
+  if t.rm_down { f = frame_turn(f, 0, -0.35); }
+  eye := ifx t.rm_down then kit_tint(0.3, 0.3, 0.32) else ifx t.rm_hunt then HEAT() else SB_YELLOW();
+  kit_mech(buf, p, f, 0.8, 250, ifx t.rm_down then kit_tint(0.55, 0.52, 0.46) else SB_YELLOW(), HEAT(), INK(), eye);
+  kit_pen(p, 254, MAT_SKIN, INK());
+  limb(buf, p, fp(f, 1.5 * 0.8, 1.0 * 0.8, 0.3 * 0.8), fp(f, 1.3 * 0.8, 0.9 * 0.8, 1.6 * 0.8), 0.18, 0.06, v3(0, 1, 0), 6);
 }
 // The drill on a mech's right arm, pointing ahead; `spin` turns its flutes.
 sb_drill :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, spin: f32) {
@@ -728,7 +739,7 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
     if t.mech_used || dist2(g[0].px, g[0].pz, t.mech_x, t.mech_z) < 20 { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_MECH), v3(t.mech_x, 6.4, t.mech_z), mine); }
     if g[0].wall_gone && !g[0].boss_down { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_BOSS), v3(t.dino_x, 4.4, t.dino_z), GLOW_INK()); }
   }
-  if sb_desert(g) && (g[0].mode == M_PLAY || g[0].mode == M_RIDE) {
+  if (sb_desert(g) && (g[0].mode == M_PLAY || g[0].mode == M_RIDE)) || (g[0].mode == M_DRIVE && (t.rm_hunt || sb_fighting(g))) {
     s := sb_sniper_at(g);
     n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_SNIPER), v3(s.x, 3.2, s.z), mine);
     if !t.rm_down && (t.rm_hunt || sb_fighting(g)) { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_RAIDER), v3(t.rm_x, 4.4, t.rm_z), HEAT()); }

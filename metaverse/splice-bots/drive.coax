@@ -13,6 +13,12 @@ MSG_MAP :: 41;                    // Sniper puts the deep-garage map up at the d
 MSG_OUTFIT :: 42;                 // she changed her outfit in the rover's room
 DV_SPEED :: 24.0f32;              // m/s: the rover's pace on the way
 DV_SHORT :: 5.0f32; DV_LONG :: 14.0f32;   // s: the shortest and the longest a drive takes
+// The raider mech's chase on the drive (splice-battle.coax sb_rm_step): it keeps watch beside the road a
+// third of the way along, gives chase faster than Sniper's cruise, and turns back near the garage. W drives
+// faster than it runs (outrun it); E battles it from Sniper, and a battle holds Sniper to a crawl.
+DV_RM_AT :: 0.35f32; DV_RM_QUIT :: 0.88f32;   // of the way: where it keeps watch, where it turns back
+DV_RM_CHASE :: 1.8f32;            // its pace over the rover's cruise (the eased drive peaks at 1.5)
+DV_FAST :: 1.8f32; DV_SLOW :: 0.4f32;   // the rover's pace with W held, and in a battle
 
 SpDrive :: struct {
   t: f32; span: f32;              // seconds into the drive, and how long it takes
@@ -79,6 +85,25 @@ dv_start :: (g: [] SpGame, out_x: f32, out_z: f32, deg: int) {
   d[0].t = 0; d[0].span = clamp(l / DV_SPEED, DV_SHORT, DV_LONG);
   g[0].mode = M_DRIVE; g[0].flash = 0.3; g[0].px = ax; g[0].pz = az;
   g[0].fwd = false; g[0].back = false; g[0].left = false; g[0].right = false;
+  dv_rm_watch(g);
+}
+// The raider mech keeps watch beside the road (once beaten, it stays down).
+dv_rm_watch :: (g: [] SpGame) {
+  t := g[0].bt[..];
+  if t[0].rm_down { return; }
+  c := dv_at(g, DV_RM_AT); y := dv_yaw(g, DV_RM_AT);
+  t[0].rm_x = c.x - cos(y) * SB_RM_WATCH; t[0].rm_z = c.z + sin(y) * SB_RM_WATCH; t[0].rm_yaw = y + PI * 0.5;
+  t[0].rm_hunt = false; t[0].rm_gone = false; t[0].rm_claw = 0;
+}
+// The rover's mean speed on the way, in m/s.
+dv_cruise :: (g: [] SpGame) -> f32 { d := g[0].dv[0]; return hi(dist2(d.ax, d.az, d.bx, d.bz), 1) / hi(d.span, 0.1); }
+// The raider mech is on her: hunting, and up.
+dv_chased :: (g: [] SpGame) -> bool { t := g[0].bt[0]; return t.rm_hunt && !t.rm_down; }
+// Keys on the drive: W drives faster; Space or Enter is there now, unless the raider mech is on her.
+dv_key :: (g: [] SpGame, key: int, down: bool) -> bool {
+  if key == 'w' || key == 'W' || key == -6 { g[0].fwd = down; return true; }
+  if down && (key == ' ' || key == -2) && !dv_chased(g) && !sb_fighting(g) { dv_arrive(g); }
+  return true;
 }
 // Where the rover is, s from 0 (the start) to 1 (parked): a cubic curve, eased at both ends.
 dv_at :: (g: [] SpGame, s: f32) -> Point {
@@ -99,15 +124,18 @@ dv_s :: (g: [] SpGame) -> f32 { d := g[0].dv[0]; return ifx d.span > 0 then clam
 // world's beats); parked, you step out.
 dv_step :: (g: [] SpGame, dt: f32) {
   d := g[0].dv[..];
-  d[0].t += dt;
+  d[0].t += dt * (ifx sb_fighting(g) then DV_SLOW else ifx g[0].fwd then DV_FAST else 1.0f32);
   c := dv_at(g, dv_s(g));
   g[0].px = c.x; g[0].pz = c.z; g[0].yaw = dv_yaw(g, dv_s(g));
   g_beats(g);
+  sb_ride(g, dt);   // the raider mech's chase, and a battle with it from Sniper (splice-battle.coax)
   if d[0].t >= d[0].span { dv_arrive(g); }
 }
 dv_arrive :: (g: [] SpGame) {
   d := g[0].dv[..];
   d[0].t = d[0].span; d[0].boarded = false;
+  if sb_fighting(g) && g[0].bt[0].kind == SBF_DESERT { sb_finish(g); }   // a battle on the road ends where she parks
+  g[0].bt[0].rm_hunt = false; g[0].fwd = false;
   g[0].mode = M_PLAY;
   g_go(g, d[0].out_x, d[0].out_z, d[0].out_deg); g[0].flash = 0.3;
   // Sniper parks by the garage's least-used opening: stepping out near it, she faces it, not open ground
@@ -192,8 +220,11 @@ dv_stage :: (g: [] SpGame, n: int) {
 dv_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   k := q.k; n := 0;
   ui_panel(g, u, -20, q.h - 120 * k, q.w + 20, q.h + 20, INK(), 0.82);
-  n = ui_mid(out, n, "SNIPER IS DRIVING YOU TO THE GARAGE", q.w * 0.5, q.h - 78 * k, 14 * k, PAPER());
-  n = ui_mid(out, n, "Space: get there now", q.w * 0.5, q.h - 44 * k, 10 * k, PAPER());
+  chase := dv_chased(g) || sb_fighting(g);
+  n = ui_mid(out, n, ifx chase then "A RAIDER MECH GIVES CHASE" else "SNIPER IS DRIVING YOU TO THE GARAGE", q.w * 0.5, q.h - 78 * k, 14 * k, PAPER());
+  line := ifx sb_fighting(g) then "1-4: Sniper's battle moves" else ifx chase then "Hold W: outrun it    E: battle it from Sniper" else "Space: get there now";
+  n = ui_mid(out, n, line, q.w * 0.5, q.h - 44 * k, 10 * k, PAPER());
+  if chase { n = sb_hud(g, out, u, q, n); }   // the health bars over Sniper and the raider mech, and the battle's panel
   return n;
 }
 
