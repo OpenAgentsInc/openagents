@@ -155,7 +155,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if pen[0].over || pen[0].n < 3 { print("splice-export: the world did not fit its store\n"); return 1; }
   vertices := pen[0].n;
 
-  glb: [8388608] u8; scratch: [8388608] u8; groups: [GLB_GROUPS] GlbGroup;
+  glb: [16777216] u8; scratch: [16777216] u8; groups: [GLB_GROUPS] GlbGroup;   // things.glb holds the Digger twice at about 90,000 vertices
   w := glb_world(world[..], vertices, EX_CELL, glb[..], scratch[..], groups[..]);
   if !w.ok { print("splice-export: the glTF writer refused the world\n"); return 1; }
 
@@ -250,7 +250,7 @@ tool_main :: () -> int #export_c #effects(all) {
   // ---- the moving things: one mesh for each kind and variant, and the names a host knows them by
   things_n := 0;
   {
-    live: [150000 * VERTEX_WORDS] u32; baked: [150000 * VERTEX_WORDS] u32; pieces: [SD_PIECE_WORDS] u32;
+    live: [150000 * VERTEX_WORDS] u32; baked: [400000 * VERTEX_WORDS] u32; pieces: [SD_PIECE_WORDS] u32;   // baked: every thing, the Digger about 90,000 vertices each time
     bakes := sx_bakes(); parts: [SX_BAKE] GlbPart; at := 0;
     for b: bakes {
       if b.name == "" { continue; }

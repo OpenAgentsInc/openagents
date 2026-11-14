@@ -233,7 +233,7 @@ cast_boss :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, shell: KitTint
 }
 
 #test "each of the cast fits a small store, uses it, and takes one colour when asked" {
-  buf: [240000] u32;
+  buf: [100000 * VERTEX_WORDS] u32;   // the Digger is about 90,000 vertices
   for who: 0..<5 {
     pen := [1] Pen.[Pen.{}];
     f := frame_at(v3(0, 0, 0), 0); c := cast_colour();

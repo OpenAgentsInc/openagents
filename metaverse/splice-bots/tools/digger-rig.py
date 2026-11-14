@@ -110,26 +110,136 @@ tris.sort(key=lambda t: t[0])
 counts = [sum(1 for t in tris if t[0] == k) for k in range(4)]
 print("verts", len(verts), "tris", len(tris), "per colour", counts)
 
-# Encoding: base64 alphabet, a vertex as 9 chars (x, y, z as 12 bits each over +-SPAN, the normal
-# octahedral as two 6-bit chars... 12 bits for both, the bone one char), a triangle as 9 chars
-# (three 18-bit indices).
-A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+# Encoding (GitHub #13505, the 30k Digger): one bit stream a fill, read in order as the game draws.
+# Each fill's triangles are its body's, then its legs' (a triangle with a corner on a leg bone), each
+# part ordered by walking across shared edges so neighbours come close together. A corner is:
+#   1, then d - 1 (Exp-Golomb, DGM_KD): the vertex the corner d back in this fill wrote, copied as is;
+#   0 1, then d - 1: a new vertex at the place (and bone) of the corner d back, with its own normal;
+#   0 0, then x, y, z (12 bits each over +-SPAN) as zigzagged Exp-Golomb (DGM_KP) differences from the
+#        triangle's last corner (or the fill's last new vertex), the bone (1: the same as that one's,
+#        0 and 4 bits), then the normal.
+# A normal is octahedral, DGM_NB bits a component. The game keeps the places of the last DGM_RING
+# corners (a corner copied from further back has none). Six bits a character, the high bit first,
+# characters 64 to 126 for 0 to 62 and '!' for 63 ('\' is '#'). Each fill starts on a character.
 SPAN = 0.6   # model units: x and z within +-0.6, y within 0..1.2
+NB = 7; NM = (1 << NB) - 1; KD = 3; KP = 3; RING = 4096
 def q12(x): return max(0, min(4095, int(round(x * 4095))))
-def c2(v): return A[v >> 6] + A[v & 63]
-def oct_enc(n):
+def oct_q(n):
     n = n / (abs(n).sum() or 1); x, y = n[0], n[2]
-    if n[1] < 0: x, y = (1 - abs(y)) * np.sign(x or 1), (1 - abs(x)) * np.sign(y or 1)
-    return q12(x * 0.5 + 0.5), q12(y * 0.5 + 0.5)
-vs = []
-for vi, n in verts:
-    p = G[vi]
-    ox, oy = oct_enc(n)
-    vs.append(c2(q12(p[0] / (2 * SPAN) + 0.5)) + c2(q12(p[1] / (2 * SPAN))) + c2(q12(p[2] / (2 * SPAN) + 0.5)) + A[ox >> 6] + A[oy >> 6] + A[bone_of[vi]])
-ts = []
-for _, idx in tris:
-    ts.append("".join(A[(i >> 12) & 63] + A[(i >> 6) & 63] + A[i & 63] for i in idx))
-vstr = "".join(vs); tstr = "".join(ts)
+    if n[1] < 0: x, y = (1 - abs(y)) * (1 if x >= 0 else -1), (1 - abs(x)) * (1 if y >= 0 else -1)
+    return (int(round((x * 0.5 + 0.5) * NM)), int(round((y * 0.5 + 0.5) * NM)))
+def vkey(i):
+    vi, n = verts[i]; p = G[vi]
+    return ((q12(p[0] / (2 * SPAN) + 0.5), q12(p[1] / (2 * SPAN)), q12(p[2] / (2 * SPAN) + 0.5)), oct_q(n), int(bone_of[vi]))
+def walk_order(ts):
+    edge = defaultdict(list)
+    for i, t in enumerate(ts):
+        for a, b in ((0, 1), (1, 2), (2, 0)): edge[tuple(sorted((t[a][0], t[b][0])))].append(i)
+    nbr = defaultdict(list)
+    for l in edge.values():
+        for a in l:
+            for b in l:
+                if a != b: nbr[a].append(b)
+    seen = [False] * len(ts); out = []
+    for s in range(len(ts)):
+        if seen[s]: continue
+        stack = [s]
+        while stack:
+            i = stack[-1]
+            if not seen[i]: seen[i] = True; out.append(i)
+            nx = [j for j in nbr[i] if not seen[j]]
+            if nx: stack.append(nx[0])
+            else: stack.pop()
+    return [ts[i] for i in out]
+class Bits:
+    def __init__(self): self.b = []
+    def put(self, v, n):
+        for i in range(n - 1, -1, -1): self.b.append((v >> i) & 1)
+    def eg(self, v, k):
+        v += 1 << k; L = v.bit_length(); self.put(0, L - k - 1); self.put(v, L)
+    def chars(self):
+        while len(self.b) % 6: self.b.append(0)
+        out = []
+        for i in range(0, len(self.b), 6):
+            v = 0
+            for x in self.b[i:i + 6]: v = v * 2 + x
+            out.append("!" if v == 63 else "#" if v == 28 else chr(64 + v))
+        return "".join(out)
+def zz(v): return 2 * v if v >= 0 else -2 * v - 1
+START = ((2048, 1024, 2048), 1)
+def encode_fill(ts):
+    bs = Bits(); ring = {}; occ = {}; pocc = {}; cur = 0; lastnew = START; news = 0; out_tris = []
+    for t in ts:
+        r = next((j for j in range(3) if t[j] in occ), 0)
+        t = t[r:] + t[:r]; out_tris.append(t)
+        pred = None
+        for k in t:
+            if k in occ:
+                d = cur - occ[k]; bs.put(1, 1); bs.eg(d - 1, KD)
+                ent = ring.get(occ[k]) if d <= RING else None
+            else:
+                bs.put(0, 1); news += 1
+                pk = (k[0], k[2]); j = pocc.get(pk)
+                if j is not None and cur - j <= RING and ring.get(j) == pk:
+                    bs.put(1, 1); bs.eg(cur - j - 1, KD)
+                else:
+                    bs.put(0, 1)
+                    pp, pb = pred if pred else lastnew
+                    for i in range(3): bs.eg(zz(k[0][i] - pp[i]), KP)
+                    if k[2] == pb: bs.put(1, 1)
+                    else: bs.put(0, 1); bs.put(k[2], 4)
+                bs.put(k[1][0], NB); bs.put(k[1][1], NB)
+                ent = pk; lastnew = pk
+            ring[cur] = ent
+            if ent is not None: pred = ent; pocc[ent] = cur
+            occ[k] = cur; cur += 1
+    return bs.chars(), out_tris, news
+# The decoder, as the game's (digger.coax dg_draw), to check the stream gives back every corner.
+def decode_fill(s, ntri):
+    vals = [63 if c == "!" else 28 if c == "#" else ord(c) - 64 for c in s]
+    bits = [(v >> i) & 1 for v in vals for i in range(5, -1, -1)]; pos = [0]
+    def get(n):
+        v = 0
+        for _ in range(n): v = v * 2 + bits[pos[0]]; pos[0] += 1
+        return v
+    def eg(k):
+        z = 0
+        while get(1) == 0: z += 1
+        return ((1 << (z + k)) | get(z + k)) - (1 << k)
+    def unz(v): return v >> 1 if v % 2 == 0 else -(v + 1) // 2
+    out = []; keys = []; ring = {}; lastnew = START; cur = 0
+    for _ in range(ntri):
+        pred = None; tri_ = []
+        for c in range(3):
+            if get(1):
+                d = eg(KD) + 1; k = keys[cur - d]; ent = ring.get(cur - d) if d <= RING else None
+            else:
+                if get(1):
+                    d = eg(KD) + 1; pk = ring[cur - d]
+                else:
+                    pp, pb = pred if pred else lastnew
+                    q = tuple(pp[i] + unz(eg(KP)) for i in range(3))
+                    b = pb if get(1) else get(4)
+                    pk = (q, b)
+                nrm = (get(NB), get(NB)); k = (pk[0], nrm, pk[1]); ent = pk; lastnew = pk
+            ring[cur] = ent
+            if ent is not None: pred = ent
+            keys.append(k); tri_.append(k); cur += 1
+        out.append(tri_)
+    return out
+streams = []; fill_end = []; body_end = []; tri_total = 0; new_total = 0
+for f in range(4):
+    ft = [[vkey(i) for i in idx] for c, idx in tris if c == f]
+    body = [t for t in ft if all(k[2] < 4 for k in t)]; legs = [t for t in ft if any(k[2] >= 4 for k in t)]
+    ordered = walk_order(body) + walk_order(legs)
+    s, rot, news = encode_fill(ordered)
+    assert decode_fill(s, len(rot)) == rot, "fill %d does not decode" % f
+    streams.append(s); body_end.append(tri_total + len(body)); tri_total += len(ordered); fill_end.append(tri_total); new_total += news
+counts = [fill_end[0]] + [fill_end[k] - fill_end[k - 1] for k in range(1, 4)]
+fill_char = [0]
+for s in streams: fill_char.append(fill_char[-1] + len(s))
+stream = "".join(streams)
+print("stream chars", len(stream), "new vertices", new_total, "fill ends", fill_end, "body ends", body_end)
 
 # Rig in Blender (Blender axes: game (x, y, z) = blender (by, bz, bx), so blender = (gz, gx, gy) after
 # the centring) and export the rigged GLB with two clips.
@@ -176,18 +286,24 @@ bpy.ops.export_scene.gltf(filepath=out_glb, export_format='GLB', export_animatio
 
 # The coax table.
 def pt(p): return "v3(%.4f, %.4f, %.4f)" % tuple(p)
+PIECE = 8192   # characters in one piece of the stream, one line of C each (a line the exporter reads is at most 64 KB)
 with open(out_coax, "w") as f:
-    f.write("""// The Digger's mesh (GitHub #13505): the designer's Tripo model, decimated to %d triangles and baked to one
-// flat base colour in Blender, each triangle given the nearest of four cel fills (yellow, ink, cream,
-// steel) so the game's cel pass and ink overlay light it as they light the kit. Written by
-// metaverse/splice-bots/tools/digger-rig.py from metaverse/splice-bots/assets/digger-rigged.glb's
-// source; do not edit by hand. Model units: 1 = %.3f m long, the nose (the drill box) ahead (+z).
-// A vertex is 9 characters of the base64 alphabet: x, y, z as two each (12 bits over DGM_SPAN), the
-// normal as two (octahedral, 6 bits each) and its bone as one. A triangle is 9: three 18-bit indices.
-// The tables are in pieces of DGM_PIECE records (dgm_v, dgm_t). The triangles are sorted by fill: DGM_FILL_END[k] is where fill k ends.
+    f.write("""// The Digger's mesh (GitHub #13505): the designer's Tripo model, decimated to %d triangles (normals
+// smooth by angle) and baked to one flat base colour in Blender, each triangle given the nearest of four
+// cel fills (yellow, ink, cream, steel) so the game's cel pass and ink overlay light it as they light
+// the kit. Written by metaverse/splice-bots/tools/digger-rig.py from the rigged model's source
+// (metaverse/splice-bots/assets/digger-rigged.glb); do not edit by hand. Model units: 1 = %.3f m long,
+// the nose (the drill box) ahead (+z).
+// The triangles are one bit stream a fill, read in order as digger.coax draws them (the script says
+// how a corner is written): a corner copies the vertex an earlier corner wrote, or is a new vertex.
+// DGM_FILL_END[k] is where fill k's triangles end, DGM_BODY_END[k] where its legs' begin, and
+// DGM_FILL_CHAR[k] the character fill k's stream starts on; the stream is dgm_s's pieces of DGM_PIECE.
 DGM_SPAN :: %.3f;
-DGM_VERTS :: %d; DGM_TRIS :: %d;
-DGM_FILL_END :: [4] int.[%d, %d, %d, %d];
+DGM_NB :: %d; DGM_KD :: %d; DGM_KP :: %d; DGM_RING :: %d;
+DGM_VERTS :: %d; DGM_TRIS :: %d; DGM_CHARS :: %d;
+DGM_FILL_END :: [4] int.[%s];
+DGM_BODY_END :: [4] int.[%s];
+DGM_FILL_CHAR :: [5] int.[%s];
 DGM_BONES :: %d;
 // Each bone: its parent (-1: none), its pivot (where it turns) in model units.
 DGM_PARENT :: [DGM_BONES] int.[%s];
@@ -195,14 +311,12 @@ DGM_PIVOT :: (b: int) -> Point {
   pivots := [DGM_BONES] Point.[%s];
   return pivots[b];
 }
-""" % (len(tris), LEN, SPAN, len(verts), len(tris), counts[0], counts[0] + counts[1], counts[0] + counts[1] + counts[2], len(tris), len(bones),
-       ", ".join(str(b[1]) for b in bones), ", ".join(pt(b[2]) for b in bones)))
-    # The tables in pieces of DGM_PIECE records, one line of C each (a line the exporter reads is at most 64 KB).
-    f.write("DGM_PIECE :: 900;   // records in one piece of a table\n")
-    for name, text in (("dgm_v", vstr), ("dgm_t", tstr)):
-        f.write("%s :: (k: int) -> string {\n" % name)
-        step = 9 * 900
-        for k in range(0, len(text), step):
-            f.write("  if k == %d { return \"%s\"; }\n" % (k // step, text[k:k + step]))
-        f.write("  return \"\";\n}\n")
-print("LEN", LEN, "HT", HT, "bytes", len(vstr) + len(tstr))
+DGM_PIECE :: %d;
+""" % (tri_total, LEN, SPAN, NB, KD, KP, RING, new_total, tri_total, len(stream),
+       ", ".join(map(str, fill_end)), ", ".join(map(str, body_end)), ", ".join(map(str, fill_char)), len(bones),
+       ", ".join(str(b[1]) for b in bones), ", ".join(pt(b[2]) for b in bones), PIECE))
+    f.write("dgm_s :: (k: int) -> string {\n")
+    for k in range(0, len(stream), PIECE):
+        f.write("  if k == %d { return \"%s\"; }\n" % (k // PIECE, stream[k:k + PIECE]))
+    f.write("  return \"\";\n}\n")
+print("LEN", LEN, "HT", HT, "chars", len(stream))

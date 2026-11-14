@@ -130,6 +130,7 @@ glb_from_cel :: (buf: [] u32, parts: [] GlbPart, out: [] u8) -> int #effects(all
 GLB_GROUPS :: 1024;
 GLB_WORLD_VERTEX_BYTES :: 56;   // position 12, normal 12, colour 16 (linear, alpha 1), parameter and object 8, material class 8
 GLB_TABLE :: 262144;
+GLB_MAX_VERTICES :: 450000;   // the most vertices glb_parts takes (Splice Bots' things: the Digger twice at about 90,000)
 
 // One mesh of the world: a material class inside one ground cell. Its name is w_mMM_xXXX_zZZZ,
 // the cell numbers offset by 128 so they are never negative.
@@ -209,8 +210,8 @@ glb_parts :: (buf: [] u32, parts: [] GlbPart, out: [] u8, scratch: [] u8, groups
   r: GlbWorld;
   vertices := 0;
   for p: parts { if p.count < 3 || p.count % 3 != 0 || p.first < 0 || p.first % 3 != 0 || (p.first + p.count) * VERTEX_WORDS > buf.count { return r; } if p.first + p.count > vertices { vertices = p.first + p.count; } }
-  if parts.count < 1 || parts.count > groups.count || parts.count > GLB_GROUPS || vertices > 150000 { return r; }
-  keys: [50000] int; distinct: [GLB_GROUPS] int;
+  if parts.count < 1 || parts.count > groups.count || parts.count > GLB_GROUPS || vertices > GLB_MAX_VERTICES { return r; }
+  keys: [GLB_MAX_VERTICES / 3] int; distinct: [GLB_GROUPS] int;
   for t: 0..<vertices / 3 { keys[t] = -1; }
   for p, k: parts { distinct[k] = k; for t: p.first / 3..<(p.first + p.count) / 3 { keys[t] = k; } }
   return glb_meshes(buf, vertices, keys[0..<vertices / 3], distinct[0..<parts.count], parts, out, scratch, groups);
@@ -222,7 +223,7 @@ glb_meshes :: (buf: [] u32, vertices: int, keys: [] int, distinct: [] int, parts
   r: GlbWorld;
   tris := vertices / 3; n := distinct.count;
   lut: [256] f32; for b: 0..<256 { lut[b] = glb_linear(cast(u32) b); }
-  table: [GLB_TABLE] int; index_of: [150000] int;
+  table: [GLB_TABLE] int; index_of: [GLB_MAX_VERTICES] int;
   bin := 0;
   for gi: 0..<n {
     k := distinct[gi];

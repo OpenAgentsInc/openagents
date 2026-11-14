@@ -21,27 +21,47 @@ dg_child :: (parent: DgXf, k: Point, a: f32, c: Point, d: Point) -> DgXf {
   rc := add(times(rx, c.x), add(times(ry, c.y), times(rz, c.z)));
   return DgXf.{x = dg_dir(parent, rx), y = dg_dir(parent, ry), z = dg_dir(parent, rz), t = dg_at(parent, add(sub(c, rc), d))};
 }
-dg_c :: (s: string, i: int) -> int {
-  c := cast(int) s[i];
-  if c >= 65 && c <= 90 { return c - 65; }
-  if c >= 97 && c <= 122 { return c - 71; }
-  if c >= 48 && c <= 57 { return c + 4; }
-  return ifx c == 43 then 62 else 63;
+// The mesh's stream (digger-mesh.coax): the piece being read, the next character, and the bits of
+// the characters read that are not taken yet.
+DgRd :: struct { piece: string; pk: int; ci: int; acc: int; nb: int; }
+dg_rd_at :: (r: [] DgRd, c: int) { r[0].pk = c / DGM_PIECE; r[0].piece = dgm_s(r[0].pk); r[0].ci = c; r[0].acc = 0; r[0].nb = 0; }
+// The next n bits, the high bit first. A character is 6: 64 to 126 for 0 to 62, '!' for 63, '#' for 28.
+dg_bits :: (r: [] DgRd, n: int) -> int {
+  while r[0].nb < n {
+    o := r[0].ci - r[0].pk * DGM_PIECE;
+    if o >= DGM_PIECE { r[0].pk += 1; r[0].piece = dgm_s(r[0].pk); o = 0; }
+    c := cast(int) r[0].piece[o]; r[0].ci += 1;
+    v := ifx c >= 64 then c - 64 else ifx c == 33 then 63 else 28;
+    r[0].acc = ((r[0].acc & ((1 << r[0].nb) - 1)) << 6) | v; r[0].nb += 6;
+  }
+  r[0].nb -= n;
+  return (r[0].acc >> r[0].nb) & ((1 << n) - 1);
 }
-dg_12 :: (s: string, i: int) -> f32 { return cast(f32) (dg_c(s, i) * 64 + dg_c(s, i + 1)) / 4095; }
-// Vertex i's 9 characters, and triangle t's.
-dg_rv :: (i: int) -> string { piece := dgm_v(i / DGM_PIECE); o := (i % DGM_PIECE) * 9; return piece[o..<o + 9]; }
-dg_rt :: (t: int) -> string { piece := dgm_t(t / DGM_PIECE); o := (t % DGM_PIECE) * 9; return piece[o..<o + 9]; }
-dg_vertex :: (r: string) -> Point { return v3((dg_12(r, 0) - 0.5) * 2 * DGM_SPAN, dg_12(r, 2) * 2 * DGM_SPAN, (dg_12(r, 4) - 0.5) * 2 * DGM_SPAN); }
-dg_normal :: (r: string) -> Point {
-  x := cast(f32) dg_c(r, 6) / 63 * 2 - 1; z := cast(f32) dg_c(r, 7) / 63 * 2 - 1;
+// An Exp-Golomb number of order k, and a zigzagged one's sign.
+dg_eg :: (r: [] DgRd, k: int) -> int {
+  z := 0;
+  while dg_bits(r, 1) == 0 { z += 1; }
+  return ((1 << (z + k)) | dg_bits(r, z + k)) - (1 << k);
+}
+dg_unz :: (v: int) -> int { return ifx (v & 1) == 0 then v >> 1 else -((v + 1) >> 1); }
+// An octahedral normal of DGM_NB bits a component, in model space.
+dg_normal :: (ox: int, oz: int) -> Point {
+  m := cast(f32) ((1 << DGM_NB) - 1);
+  x := cast(f32) ox / m * 2 - 1; z := cast(f32) oz / m * 2 - 1;
   y := 1 - abs(x) - abs(z);
-  if y < 0 { ox := x; x = (1 - abs(z)) * (ifx ox >= 0 then 1.0f32 else -1.0f32); z = (1 - abs(ox)) * (ifx z >= 0 then 1.0f32 else -1.0f32); }
+  if y < 0 { px := x; x = (1 - abs(z)) * (ifx px >= 0 then 1.0f32 else -1.0f32); z = (1 - abs(px)) * (ifx z >= 0 then 1.0f32 else -1.0f32); }
   l := sqrt(x * x + y * y + z * z);
   return ifx l > 0.0001 then v3(x / l, y / l, z / l) else v3(0, 1, 0);
 }
-dg_bone :: (r: string) -> int { return dg_c(r, 8); }
-dg_index :: (r: string, k: int) -> int { o := k * 3; return (dg_c(r, o) << 12) | (dg_c(r, o + 1) << 6) | dg_c(r, o + 2); }
+// A bone's place this frame folded into the frame and the scale: a vertex's world point is
+// a + ux qx + uy qy + uz qz from its 12-bit model place q, and its normal rx nx + ry ny + rz nz.
+DgBone :: struct { a: Point; ux: Point; uy: Point; uz: Point; rx: Point; ry: Point; rz: Point; }
+dg_bone_in :: (f: Frame, m: DgXf, k: f32, lift: f32) -> DgBone {
+  q := k * 2 * DGM_SPAN / 4095;
+  rx := fd(f, m.x.x, m.x.y, m.x.z); ry := fd(f, m.y.x, m.y.y, m.y.z); rz := fd(f, m.z.x, m.z.y, m.z.z);
+  a := add(fp(f, m.t.x * k, (m.t.y + lift) * k, m.t.z * k), times(add(rx, rz), -k * DGM_SPAN));
+  return DgBone.{a = a, ux = times(rx, q), uy = times(ry, q), uz = times(rz, q), rx = rx, ry = ry, rz = rz};
+}
 
 // The bones' places for this frame. walk: the stride's phase (radians); amp: how much he walks
 // (0 standing, 1 at a run); t: seconds, for the standing breath and the sensor's look.
@@ -76,18 +96,50 @@ dg_draw :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, a
   dg_pose(xf[..], walk, ifx treads then clamp01(amp) else 0, t);
   k := s * DG_LONG;   // model units to metres
   lift := ifx treads then 0.0f32 else -0.10;   // on stands he sits lower
-  tri_n := 0;
+  bones: [DGM_BONES] DgBone;
+  for b: 0..<DGM_BONES { bones[b] = dg_bone_in(f, xf[b], k, lift); }
+  // Each fill's stream in order (digger-mesh.coax). A corner copies the vertex written d corners back,
+  // or is a new vertex. The places (x, y, z, bone) of the last DGM_RING corners are kept for the new
+  // ones' guesses; bone -1: a corner copied from further back, whose place is not kept.
+  rd: [1] DgRd; ring: [DGM_RING * 4] s32;
   for fill: 0..<4 {
+    start := ifx fill == 0 then 0 else DGM_FILL_END[fill - 1];
+    stop := ifx treads then DGM_FILL_END[fill] else DGM_BODY_END[fill];   // without treads (his legs), the body alone
+    if stop <= start { continue; }
     ca_pen(p, obj + fill, dg_fill_mat(fill), dg_fill(fill), m);
-    while tri_n < DGM_FILL_END[fill] {
-      rt := dg_rt(tri_n); tri_n += 1;
-      ra := dg_rv(dg_index(rt, 0)); rb := dg_rv(dg_index(rt, 1)); rc := dg_rv(dg_index(rt, 2));
-      ba := dg_bone(ra); bb := dg_bone(rb); bc := dg_bone(rc);
-      if !treads && ba >= 4 { continue; }
-      pa := dg_at(xf[ba], dg_vertex(ra)); pb := dg_at(xf[bb], dg_vertex(rb)); pc := dg_at(xf[bc], dg_vertex(rc));
-      na := dg_dir(xf[ba], dg_normal(ra)); nb := dg_dir(xf[bb], dg_normal(rb)); nc := dg_dir(xf[bc], dg_normal(rc));
-      tri(buf, p, fp(f, pa.x * k, (pa.y + lift) * k, pa.z * k), fp(f, pb.x * k, (pb.y + lift) * k, pb.z * k), fp(f, pc.x * k, (pc.y + lift) * k, pc.z * k),
-          fd(f, na.x, na.y, na.z), fd(f, nb.x, nb.y, nb.z), fd(f, nc.x, nc.y, nc.z));
+    dg_rd_at(rd[..], DGM_FILL_CHAR[fill]);
+    first := p[0].n; cur := 0;
+    lx := 2048; ly := 1024; lz := 2048; lb := 1;   // the fill's last new vertex
+    for tn: start..<stop {
+      if !room(buf, p, 3) { return; }
+      gx := lx; gy := ly; gz := lz; gb := lb;   // the guess: the triangle's last corner with a place, or lx..lb
+      for c: 0..<3 {
+        slot := (cur % DGM_RING) * 4;
+        if dg_bits(rd[..], 1) == 1 {
+          d := dg_eg(rd[..], DGM_KD) + 1;
+          src := (first + cur - d) * VERTEX_WORDS; dst := p[0].n * VERTEX_WORDS;
+          for w: 0..<VERTEX_WORDS { buf[dst + w] = buf[src + w]; }
+          p[0].n += 1;
+          if d <= DGM_RING { o := ((cur - d) % DGM_RING) * 4; for w: 0..<4 { ring[slot + w] = ring[o + w]; } } else { ring[slot + 3] = -1; }
+        } else {
+          qx := 0; qy := 0; qz := 0; qb := 0;
+          if dg_bits(rd[..], 1) == 1 {
+            o := ((cur - dg_eg(rd[..], DGM_KD) - 1) % DGM_RING) * 4;
+            qx = cast(int) ring[o]; qy = cast(int) ring[o + 1]; qz = cast(int) ring[o + 2]; qb = cast(int) ring[o + 3];
+          } else {
+            qx = gx + dg_unz(dg_eg(rd[..], DGM_KP)); qy = gy + dg_unz(dg_eg(rd[..], DGM_KP)); qz = gz + dg_unz(dg_eg(rd[..], DGM_KP));
+            qb = ifx dg_bits(rd[..], 1) == 1 then gb else dg_bits(rd[..], 4);
+          }
+          ox := dg_bits(rd[..], DGM_NB); oz := dg_bits(rd[..], DGM_NB);
+          ring[slot] = cast(s32) qx; ring[slot + 1] = cast(s32) qy; ring[slot + 2] = cast(s32) qz; ring[slot + 3] = cast(s32) qb;
+          lx = qx; ly = qy; lz = qz; lb = qb;
+          bn := bones[qb]; n := dg_normal(ox, oz);
+          at := add(bn.a, add(times(bn.ux, cast(f32) qx), add(times(bn.uy, cast(f32) qy), times(bn.uz, cast(f32) qz))));
+          vtx(buf, p, at, add(times(bn.rx, n.x), add(times(bn.ry, n.y), times(bn.rz, n.z))));
+        }
+        if ring[slot + 3] >= 0 { gx = cast(int) ring[slot]; gy = cast(int) ring[slot + 1]; gz = cast(int) ring[slot + 2]; gb = cast(int) ring[slot + 3]; }
+        cur += 1;
+      }
     }
   }
   nose := xf[2];
@@ -114,3 +166,22 @@ dg_draw :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, a
   }
 }
 
+
+#test "the Digger's mesh: every triangle comes out of its stream, inside his box, and without legs only the body's" #steps 2000000000 #traversal 2000000000 {
+  buf: [DGM_TRIS * 3 * VERTEX_WORDS + 4000 * VERTEX_WORDS] u32;
+  whole := [1] Pen.[Pen.{}];
+  dg_draw(buf[..], whole[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), false, true, false, 0, cast_colour(), 0, 0, 0);
+  #assert !whole[0].over && whole[0].n == DGM_TRIS * 3;
+  for i: 0..<whole[0].n {
+    x := f32_from_bits(buf[i * VERTEX_WORDS]); y := f32_from_bits(buf[i * VERTEX_WORDS + 1]); z := f32_from_bits(buf[i * VERTEX_WORDS + 2]);
+    #assert abs(x) < 0.3 * DG_LONG && y > -0.01 && y < 0.7 * DG_LONG && abs(z) < 0.55 * DG_LONG;
+  }
+  body := 0; for k: 0..<4 { body += DGM_BODY_END[k] - (ifx k == 0 then 0 else DGM_FILL_END[k - 1]); }
+  half := [1] Pen.[Pen.{}];
+  dg_draw(buf[..], half[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), false, false, false, 0, cast_colour(), 0, 0, 0);
+  #assert half[0].n == body * 3 + 2 * 36;   // and his two stands
+  // a store too small stops cleanly
+  small := [1] Pen.[Pen.{}];
+  dg_draw(buf[0..<3000 * VERTEX_WORDS], small[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), true, true, true, 0, cast_colour(), 0.5, 1, 0);
+  #assert small[0].over && small[0].n <= 3000;
+}
