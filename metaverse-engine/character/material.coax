@@ -1,5 +1,8 @@
-// A character's material record (#13012; metaverse-engine/book/ch012-materials.md, "a material table in each
-// realm ... a material ID per instance"). One record per surface, with defined defaults: an empty
+// The material record (#13012; metaverse-engine/book/ch012-materials.md, "a material table in each
+// realm ... a material ID per instance"), for characters and, since #13541, for a world's surfaces:
+// kind CM_KIND_SURFACE and its surface flags (CM_S_*: foliage, grass, leaves, petals, stone, the
+// ground's table, an albedo from the vertex tint, sand, wind) with the share of sky light it takes
+// (fill). One record per surface, with defined defaults: an empty
 // record is a matte cloth at roughness 0.8 with no maps, as OpenPBR's empty closure is its defaults.
 // Every Quaternius part (Character Create, Everglade II's player and people, the Fantasy wardrobe)
 // names its material by its colour layer, so a part's material ID is its layer: the table holds one
@@ -15,11 +18,23 @@ CM_KIND_CLOTH :: 1;
 CM_KIND_HAIR :: 2;
 CM_KIND_EYE :: 3;
 CM_KIND_METAL :: 4;
-CM_KINDS :: 5;
+CM_KIND_SURFACE :: 5;   // a world surface (a kit piece, the ground, a prop): shaded by its surface flags
+CM_KINDS :: 6;
+// A surface's flags (CharMaterial.surface), what its shader does with it.
+CM_S_FOLIAGE :: 1;     // thin: lit from both faces, rear sunlight through it
+CM_S_LEAVES :: 2;      // a crown's leaves: wrapped sun, the vertex's own occlusion, the leaf palette
+CM_S_GRASS :: 4;       // grass: the blade's height shades it
+CM_S_PETAL :: 8;       // petals and flowers: a soft wrapped sun, coral where the tint says so
+CM_S_STONE :: 16;      // stone: grey, with moss on faces that look up
+CM_S_TERRAIN :: 32;    // the ground: its albedo and baked occlusion from the ground's material table
+CM_S_TINTED :: 64;     // its albedo is the vertex tint alone, no texel
+CM_S_SAND :: 128;      // sand and gold: its albedo by how much the face looks up
+CM_S_WIND :: 256;      // it sways in the wind (the vertex stage)
+CM_S_ALL :: 511;
 CM_NONE :: -1;          // no map
 CM_MAX :: 128;          // records in one table: one per colour layer
 CM_DATA_MAX :: 32;      // data layers a pack may carry
-CM_FLOATS :: 12;        // a record on the GPU: three vec4s (cm_pack)
+CM_FLOATS :: 16;        // a record on the GPU: four vec4s (cm_pack)
 CharMaterial :: struct {
   kind: int = CM_KIND_CLOTH;
   r: f32 = 1; g: f32 = 1; b: f32 = 1;   // a linear multiplier on the base colour
@@ -32,6 +47,8 @@ CharMaterial :: struct {
   strength: f32 = 1;      // the normal map's strength
   sheen: f32 = 0;         // film: cloth sheen, 0 to 1
   dye: bool = true;       // whether the record's dye masks apply (cloth); dyes are display space, see CA_DYES
+  surface: int = 0;       // a surface's flags (CM_S_*); 0 for a character
+  fill: f32 = 1;          // the share of the sky's light it takes
 }
 CM_OK :: 0;
 CM_KIND :: 1;        // a kind it doesn't know
@@ -42,6 +59,8 @@ CM_MAP :: 5;         // a map past the pack's data layers
 CM_STRENGTH :: 6;    // a normal strength outside 0 to 2, or NaN
 CM_SHEEN :: 7;       // a sheen outside 0 to 1, or NaN
 CM_TABLE :: 8;       // no records, or more than CM_MAX
+CM_SURFACE :: 9;     // surface flags past CM_S_ALL, or on a character's kind
+CM_FILL :: 10;       // a fill outside 0 to 4, or NaN
 // Why one record can't be drawn with a pack of `data` data layers, or CM_OK.
 cm_check :: (m: CharMaterial, data: int) -> int {
   if m.kind < 0 || m.kind >= CM_KINDS { return CM_KIND; }
@@ -51,6 +70,8 @@ cm_check :: (m: CharMaterial, data: int) -> int {
   if m.normal < CM_NONE || m.normal >= data || m.orm < CM_NONE || m.orm >= data { return CM_MAP; }
   if !(m.strength >= 0 && m.strength <= 2) { return CM_STRENGTH; }
   if !(m.sheen >= 0 && m.sheen <= 1) { return CM_SHEEN; }
+  if m.surface < 0 || m.surface > CM_S_ALL || (m.surface != 0 && m.kind != CM_KIND_SURFACE) { return CM_SURFACE; }
+  if !(m.fill >= 0 && m.fill <= 4) { return CM_FILL; }
   return CM_OK;
 }
 CmRefusal :: struct { index: int = -1; reason: int = CM_OK; }
@@ -68,14 +89,25 @@ cm_kind :: (kind: int) -> CharMaterial {
   if kind == CM_KIND_HAIR { m.roughness = 0.6; m.dye = false; }
   if kind == CM_KIND_EYE { m.roughness = 0.55; m.dye = false; }
   if kind == CM_KIND_METAL { m.roughness = 0.5; m.metalness = 1; m.dye = false; }
+  if kind == CM_KIND_SURFACE { m.dye = false; m.sheen = 0; }
   return m;
 }
-// One record as three vec4s: (r, g, b, kind), (roughness, metalness, normal, orm),
-// (strength, sheen, dye, flags: 1 occlusion + 2 orm_metal). Maps are -1 for none.
+// One record as four vec4s: (r, g, b, kind), (roughness, metalness, normal, orm),
+// (strength, sheen, dye, flags: 1 occlusion + 2 orm_metal), (surface flags, fill, 0, 0). Maps are -1 for none.
 cm_pack :: (m: CharMaterial, out: [] f32) {
   out[0] = m.r; out[1] = m.g; out[2] = m.b; out[3] = cast(f32) m.kind;
   out[4] = m.roughness; out[5] = m.metalness; out[6] = cast(f32) m.normal; out[7] = cast(f32) m.orm;
   out[8] = m.strength; out[9] = m.sheen; out[10] = ifx m.dye then 1.0f32 else 0.0f32; out[11] = (ifx m.occlusion then 1.0f32 else 0.0f32) + (ifx m.orm_metal then 2.0f32 else 0.0f32);
+  out[12] = cast(f32) m.surface; out[13] = m.fill; out[14] = 0; out[15] = 0;
+}
+// A world's surfaces, registered once after the colour layers' records: record k of `surfaces` goes
+// to slot `base + k` of the packed table `out`. The surfaces written, or 0 when one is refused or
+// they don't fit (then none is written, and the table keeps what it had).
+cm_surfaces :: (surfaces: [] CharMaterial, base: int, out: [] f32) -> int {
+  if surfaces.count == 0 || base < 0 || (base + surfaces.count) * CM_FLOATS > out.count { return 0; }
+  for m: surfaces { if m.kind != CM_KIND_SURFACE || cm_check(m, 0) != CM_OK { return 0; } }
+  for k: 0..<surfaces.count { at := (base + k) * CM_FLOATS; cm_pack(surfaces[k], out[at..<at + CM_FLOATS]); }
+  return surfaces.count;
 }
 
 // ---- the table from a pack's catalog: its colour layers ("T i NAME lic") and data layers ("D i NAME lic")
@@ -160,7 +192,10 @@ cm_table :: (t: string, table: [] CharMaterial, out: [] f32) -> int {
 }
 #test "admission refuses each bad field, NaNs included, and a bad table whole" {
   nan := 0.0f32; nan = nan / nan; m: CharMaterial;
-  b := m; b.kind = 5; #assert cm_check(b, 4) == CM_KIND; b.kind = -1; #assert cm_check(b, 4) == CM_KIND;
+  b := m; b.kind = CM_KINDS; #assert cm_check(b, 4) == CM_KIND; b.kind = -1; #assert cm_check(b, 4) == CM_KIND;
+  b = m; b.surface = CM_S_FOLIAGE; #assert cm_check(b, 4) == CM_SURFACE; b.kind = CM_KIND_SURFACE; #assert cm_check(b, 4) == CM_OK;
+  b.surface = CM_S_ALL + 1; #assert cm_check(b, 4) == CM_SURFACE; b.surface = -1; #assert cm_check(b, 4) == CM_SURFACE;
+  b.surface = CM_S_ALL; b.fill = 4.5; #assert cm_check(b, 4) == CM_FILL; b.fill = nan; #assert cm_check(b, 4) == CM_FILL; b.fill = 0; #assert cm_check(b, 4) == CM_OK;
   b = m; b.g = 4.5; #assert cm_check(b, 4) == CM_COLOUR; b.g = nan; #assert cm_check(b, 4) == CM_COLOUR; b.g = -0.1; #assert cm_check(b, 4) == CM_COLOUR;
   b = m; b.roughness = 1.01; #assert cm_check(b, 4) == CM_ROUGH; b.roughness = nan; #assert cm_check(b, 4) == CM_ROUGH;
   b = m; b.metalness = -0.01; #assert cm_check(b, 4) == CM_METAL; b.metalness = nan; #assert cm_check(b, 4) == CM_METAL;
@@ -193,4 +228,20 @@ CM_TEST_CATALOG :: "L 6 x\nT 0 T_Regular_Male_Dark_BaseColor.png 4\nT 1 T_Knight
   // no data rows at all: the records still name kinds, with no maps
   #assert cm_table("T 0 T_Knight_BaseColor.png 6\nT 1 T_Eye_Brown.png 4\n", t[..], out[..]) == 2 && t[0].orm == CM_NONE && t[1].kind == CM_KIND_EYE && t[0].metalness == 0;
   #assert cm_row("T x name 4", 'T').index == -1 && cm_row("D 12 name 4", 'D').index == 12 && cm_row("D 12", 'D').index == -1;
+}
+#test "a world's surfaces go after the colour layers, whole or not at all" {
+  out: [6 * CM_FLOATS] f32;
+  for i: 0..<out.count { out[i] = 7; }
+  leaf := cm_kind(CM_KIND_SURFACE); leaf.surface = CM_S_FOLIAGE | CM_S_LEAVES | CM_S_TINTED | CM_S_WIND;
+  rock := cm_kind(CM_KIND_SURFACE); rock.surface = CM_S_STONE; rock.fill = 0.78;
+  two := [2] CharMaterial.[leaf, rock];
+  #assert cm_surfaces(two[..], 4, out[..]) == 2;
+  #assert out[4 * CM_FLOATS + 3] == 5 && out[4 * CM_FLOATS + 12] == 323 && out[4 * CM_FLOATS + 13] == 1 && out[5 * CM_FLOATS + 12] == 16 && out[5 * CM_FLOATS + 13] == 0.78f32;
+  #assert out[3 * CM_FLOATS + 12] == 7;   // the colour layers' records are left as they were
+  // too far, a character's kind among them, or a bad fill: nothing is written
+  #assert cm_surfaces(two[..], 5, out[..]) == 0 && cm_surfaces(two[0..<0], 0, out[..]) == 0 && cm_surfaces(two[..], -1, out[..]) == 0;
+  two[1].kind = CM_KIND_CLOTH; #assert cm_surfaces(two[..], 0, out[..]) == 0 && out[12] == 7;
+  two[1] = rock; two[1].fill = -1; #assert cm_surfaces(two[..], 0, out[..]) == 0 && out[12] == 7;
+  // a character's record packs no surface: its fourth vec4 is (0, 1, 0, 0)
+  c: [CM_FLOATS] f32; cm_pack(cm_kind(CM_KIND_SKIN), c[..]); #assert c[12] == 0 && c[13] == 1 && c[14] == 0 && c[15] == 0;
 }

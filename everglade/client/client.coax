@@ -38,7 +38,8 @@
 #load "../../metaverse-engine/render/graph/cascades.coax";   // the key light's shadow tiles (#13016), as Everglade's
 #load "create.coax";   // Character Create, in this world: /worlds/character-creator
 #load "range.coax";    // the Archery Range, in this world: /worlds/archery-range (#13507)
-#load "../../metaverse-engine/character/material.coax" as cmat;   // the characters' material table (#13012)
+#load "../../metaverse-engine/character/material.coax" as cmat;   // the material table: the characters' records (#13012) and the world's surfaces
+#load "../scene/surfaces.coax";   // Everglade's surfaces as records of that table (#13541)
 #load "cull.coax";   // what the host's instance cull reads each frame (#13050)
 #load "../../metaverse-engine/render/graph/frame-plan.coax";   // the frame's order, as words for the host (#13303)
 #load "../../metaverse-engine/render/graph/retained-rows.coax";   // which records changed since the host last sent them (#13540)
@@ -216,7 +217,8 @@ e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effe
   e2_take_planting(s, whole); s[0].catalog_in = true;
   text := e2_catalog_rest(whole, rest);
   figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); e2w_catalog(s, text); e2b_catalog(s, text); e2rv_catalog(s, text); e2rg_catalog(s, text);
-  s[0].mats_n = cmat.cm_table(text, s[0].mat_table[..], s[0].mats[..]); s[0].mats_v += 1;
+  s[0].mats_n = cmat.cm_table(text, s[0].mat_table[..], s[0].mats[..]);
+  _ := e2s_register(s[0].mats[..]); s[0].mats_v += 1;   // the world's surfaces after the colour layers, in the same table (#13541)
   for b: 0..<E2_BUCKETS { s[0].kit_first[b] = 0; s[0].kit_count[b] = 0; }
   at := 0; any := false;
   while at < text.count {

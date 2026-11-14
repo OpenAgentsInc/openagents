@@ -8,6 +8,8 @@
 #load "../../scene/gpu/portal.coax";   // Everglade's portal's light: Character Create's arrival from the homepage
 #load "../../../metaverse-engine/render/shade/terrain-shade.coax";   // the ground's material table and baked AO (#13052)
 #load "../../../metaverse-engine/render/shade/character-material.coax";   // the characters' material record's shading (#13012)
+#load "../../../metaverse-engine/character/material.coax" as cmat;   // the material record and its surface flags (#13541)
+#load "../../scene/surfaces.coax";   // Everglade's surfaces: where their records are in the table
 Everglade2Bg :: struct {c:V4;aux:V4;depth:f32 #depth;}
 Everglade2Lit :: struct {c:V4;aux:V4;}
 E2_KIT_BASE :: 1048576;   // a base instance at or past this draws kit pieces: items' row inst[instance - base] names
@@ -421,15 +423,23 @@ e2_ground_ao :: (x:f32,z:f32,ground:[]V4)->f32 {
  g[1]=v4(6,0.5,0,4);
  #assert e2_ground_ao(1,-1,g[..])==1;
 }
-e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,shadow:f32,table:[]V4)->V4 {
+// A world surface's record in the material table (everglade/scene/surfaces.coax): its flags and fill.
+E2Surf :: struct {flags:u32;fill:f32;}
+e2_surface :: (s:FivelabS,mats:[]V4)->E2Surf {
+ k:=cast(int)(s.local.x+0.5f32);if (k<0 || k>=E2S_COUNT) {k=0;}
+ d:=mats[(E2S_BASE+k)*4+3];return E2Surf.{flags=cast(u32)cast(int)(d.x+0.5f32),fill=d.y};
+}
+e2_surf_is :: (m:E2Surf,flag:int)->bool {return (m.flags&cast(u32)flag)!=cast(u32)0;}
+e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,shadow:f32,table:[]V4,mats:[]V4)->V4 {
  if (s.local.x<0.5f32) {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
- kind:=s.local.x;n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
- foliage:=kind>0.5f32 && kind<2.5f32;grass:=kind>1.5f32 && kind<2.5f32;leaves:=kind>0.5f32 && kind<1.5f32;ground:=kind>4.5f32 && kind<5.5f32;
+ m:=e2_surface(s,mats);n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
+ foliage:=e2_surf_is(m,cmat.CM_S_FOLIAGE);grass:=e2_surf_is(m,cmat.CM_S_GRASS);leaves:=e2_surf_is(m,cmat.CM_S_LEAVES);ground:=e2_surf_is(m,cmat.CM_S_TERRAIN);
+ petal:=e2_surf_is(m,cmat.CM_S_PETAL);stone:=e2_surf_is(m,cmat.CM_S_STONE);sand:=e2_surf_is(m,cmat.CM_S_SAND);
  if (!front && !foliage) {n=scale3(n,-1);}
  sun:=cg_sun_dir(u[0].env);eye:=v3_of(u[0].f.eye);view:=normalize3(sub3(eye,s.world));
  albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
- // 9: a model shaded by its vertex colour alone; 10: its texture times it (the monsters, their camp, the Sword)
- if (foliage || (kind>7.5f32 && kind<9.5f32)) {albedo=cg_decode(s.tint);}
+ // a model shaded by its vertex colour alone (surface 9), or its texture times it (10: the monsters, their camp, the Sword)
+ if (e2_surf_is(m,cmat.CM_S_TINTED)) {albedo=cg_decode(s.tint);}
  // the ground's colour is the admitted material table's at this point (the pack's vertex colours
  // are no longer read); the hand-set gold, woods and trail below are this realm's look on top
  if (ground) {albedo=e2_ground_albedo(s.world.x,s.world.z,table);}
@@ -455,10 +465,9 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,shadow:f32,table:[]V4
   if (s.tint.x>s.tint.y*1.2f32) {age:=cg_noise(v2(s.world.x*1.4f32+s.world.y*0.7f32,s.world.z*1.4f32));albedo=cg_decode(cg_leaf_palette(s.tint,age));}
   albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));
  }
- if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));}
- if (kind>6.5f32 && kind<8.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));}
- town:f32= -1.0f32;
- if (kind>3.5f32 && kind<4.5f32 && town<0) {
+ if (petal && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));}
+ if (sand) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));}
+ if (stone) {
   // Neutral grey stone (the placement tint keeps its value, loses most of its olive) with moss on
   // faces that look up, as the reference's cliff tops.
   base:=cg_decode(s.tint);grey:=metaverse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
@@ -470,11 +479,11 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,shadow:f32,table:[]V4
  ndl:=dot3(n,sun);direct:=saturate(ndl);ao:f32=1;
  if (leaves) {direct=saturate((ndl+0.65f32)/1.65f32);ao=clampf(s.local.y,0.5f32,1.0f32);}
  if (grass) {green:=saturate((s.tint.y-s.tint.x)*4.0f32);albedo=mul3(albedo,mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),green));direct=(0.22f32+0.56f32*s.local.y)*(0.85f32+0.15f32*abs(ndl));ao=0.36f32+0.64f32*s.local.y;}
- if (kind>2.5f32 && kind<3.5f32) {direct=0.35f32+0.45f32*abs(ndl);}
+ if (petal) {direct=0.35f32+0.45f32*abs(ndl);}
  // the canopy's baked AO darkens the ground's sky light only, as it does your character's (u[0].material.z), by
  // the share the page gives it (ground.coax E2G_GROUND_AO_SHARE)
  if (ground) {ao=1.0f32+(e2_ground_ao(s.world.x,s.world.z,table)-1.0f32)*table[1].w;}
- fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx kind>5.5f32 && kind<6.5f32 then 1.5f32 else ifx kind>3.5f32 && kind<4.5f32 && town<0 then 0.78f32 else 1.0f32;
+ fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else m.fill;
  indirect:=mul3(albedo,scale3(cg_hemisphere(u[0].env,n),ao*fill));
  if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
  colour:=add3(indirect,mul3(albedo,cg_irradiance(u[0].env,n,direct,0,visibility)));
@@ -512,7 +521,7 @@ CcDeriv :: struct {px:V3;py:V3;ux:V2;uy:V2;}
 // glade's sun, sky and the camera-side fill. u[60] 1 is the film quality (portraits and
 // turntables, everglade/client/create.coax); u[61] 1 turns the maps off (before/after captures).
 cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,objects:[]FivelabObj,visibility:f32,mats:[]V4,data:Tex2DArray,sheet:Sampler,d:CcDeriv)->V4 {
- m:=objects[cast(int)s.who];at:=cast(int)s.slice*3;ma:=mats[at];mb:=mats[at+1];mc:=mats[at+2];kind:=cast(int)(ma.w+0.5f32);
+ m:=objects[cast(int)s.who];at:=cast(int)s.slice*4;ma:=mats[at];mb:=mats[at+1];mc:=mats[at+2];kind:=cast(int)(ma.w+0.5f32);
  albedo:=cc_albedo(v3(tex.x,tex.y,tex.z),s.dye,s.tint,v3(ma.x,ma.y,ma.z),mc.z>0.5f32);
  if (m.f.w>1.5f32 && s.slice==FIVELAB_EYE_LAYER) {
   iris:=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);shade:=clampf(metaverse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
@@ -557,10 +566,10 @@ everglade2_scene_fs :: (s:FivelabS,front:bool,u:[]E2U,objects:[]FivelabObj,mats:
  if (s.dye.w>11.5f32 && !e2_dither_keep(v2(s.pos.x,s.pos.y),s.dye.x)) {gpu_demote_helper();}
  if (s.dye.w<11.5f32 && !e2_dither_keep(v2(s.pos.x,s.pos.y),e2_body_fade(s,objects))) {gpu_demote_helper();}
  c:V4;
- if (s.dye.w>11.5f32) {c=e2_environment_fs(s,tex,front,u,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),ground);}
+ if (s.dye.w>11.5f32) {c=e2_environment_fs(s,tex,front,u,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),ground,mats);}
  else {c=cc_player_fs(s,tex,front,u,objects,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),mats,data,sheet,deriv);}
  n:=normalize3(s.normal);z:=dot3(sub3(s.world,v3_of(u[0].f.eye)),v3_of(u[0].f.fwd));
- sky:=s.dye.w>11.5f32 && s.local.x<0.5f32;foliage:=s.dye.w>11.5f32 && s.local.x>0.5f32 && s.local.x<2.5f32;
+ sky:=s.dye.w>11.5f32 && s.local.x<0.5f32;foliage:=s.dye.w>11.5f32 && !sky && e2_surf_is(e2_surface(s,mats),cmat.CM_S_FOLIAGE);
  indirect:=c.w;packed:=cg_normal_pack(n);
  c.w=ifx sky then 0.0f32 else ifx foliage then 0.4f32 else 0.12f32;
  return Everglade2Lit.{c=c,aux=v4(packed.x,packed.y,indirect,ifx sky then 0.0f32 else ifx foliage then -z else z)};

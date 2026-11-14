@@ -1,0 +1,51 @@
+// Everglade's world surfaces as material records (#13541): one record a surface the kit's pieces,
+// the ground and the props are drawn with, in the one material table the characters' records are
+// in (metaverse-engine/character/material.coax, store 3 of Everglade II's page). A piece's surface
+// is the 3-bit kind its pack's vertices carry (and 9 and 10 for the props and baked models), so
+// surface k is record E2S_BASE + k. Registered once, when the catalog's table is made; the passes
+// read the flags and the fill (everglade/client/gpu/everglade2.coax e2_environment_fs), not the kind.
+//   coax/bin/coax test everglade/scene/surfaces.coax
+#module "everglade.scene.surfaces";
+#load "../../metaverse-engine/character/material.coax" as cmat;
+
+E2S_COUNT :: 11;                          // kinds 0 to 10
+E2S_BASE :: cmat.CM_MAX - 16;             // their records' first slot: after every colour layer the packs have
+E2S_SKY :: 0;                             // the painted sky plate: drawn as its texel, not shaded
+
+// The record of surface `kind`.
+e2s_surface :: (kind: int) -> cmat.CharMaterial {
+  m := cmat.cm_kind(cmat.CM_KIND_SURFACE);
+  if kind == 1 { m.surface = cmat.CM_S_FOLIAGE | cmat.CM_S_LEAVES | cmat.CM_S_TINTED | cmat.CM_S_WIND; }   // a crown's leaves
+  if kind == 2 { m.surface = cmat.CM_S_FOLIAGE | cmat.CM_S_GRASS | cmat.CM_S_TINTED | cmat.CM_S_WIND; }    // grass
+  if kind == 3 { m.surface = cmat.CM_S_PETAL | cmat.CM_S_WIND; }                                          // flowers
+  if kind == 4 { m.surface = cmat.CM_S_STONE; m.fill = 0.78; }                                           // rock
+  if kind == 5 { m.surface = cmat.CM_S_TERRAIN; }                                                        // the ground
+  if kind == 6 { m.fill = 1.5; }                                                                         // a tiled surface
+  if kind == 7 { m.surface = cmat.CM_S_SAND; }
+  if kind == 8 { m.surface = cmat.CM_S_SAND | cmat.CM_S_TINTED; }
+  if kind == 9 { m.surface = cmat.CM_S_TINTED; }                                                         // a model in its vertex colour
+  return m;                                                                                               // 0 and 10: their texel times the tint
+}
+// The surfaces into the packed table `out` (cmat.CM_FLOATS a record): how many, or 0 when refused.
+e2s_register :: (out: [] f32) -> int {
+  t: [E2S_COUNT] cmat.CharMaterial;
+  for k: 0..<E2S_COUNT { t[k] = e2s_surface(k); }
+  return cmat.cm_surfaces(t[..], E2S_BASE, out);
+}
+
+#test "every surface is admitted and goes after the colour layers" {
+  out: [cmat.CM_MAX * cmat.CM_FLOATS] f32;
+  #assert e2s_register(out[..]) == E2S_COUNT && E2S_BASE + E2S_COUNT <= cmat.CM_MAX;
+  for k: 0..<E2S_COUNT { at := (E2S_BASE + k) * cmat.CM_FLOATS; #assert out[at + 3] == f32(cmat.CM_KIND_SURFACE) && cmat.cm_check(e2s_surface(k), 0) == cmat.CM_OK; }
+  #assert out[(E2S_BASE + 4) * cmat.CM_FLOATS + 13] == 0.78f32 && out[(E2S_BASE + 6) * cmat.CM_FLOATS + 13] == 1.5f32 && out[(E2S_BASE + 5) * cmat.CM_FLOATS + 12] == f32(cmat.CM_S_TERRAIN);
+  short: [(E2S_BASE + E2S_COUNT) * cmat.CM_FLOATS - 1] f32; #assert e2s_register(short[..]) == 0;
+}
+#test "the flags are the shader's kinds as they were: foliage 1 and 2, the tint's albedo 1, 2, 8 and 9" {
+  for k: 0..<E2S_COUNT {
+    f := e2s_surface(k).surface;
+    #assert ((f & cmat.CM_S_FOLIAGE) != 0) == (k == 1 || k == 2) && ((f & cmat.CM_S_LEAVES) != 0) == (k == 1) && ((f & cmat.CM_S_GRASS) != 0) == (k == 2);
+    #assert ((f & cmat.CM_S_TINTED) != 0) == (k == 1 || k == 2 || k == 8 || k == 9) && ((f & cmat.CM_S_SAND) != 0) == (k == 7 || k == 8);
+    #assert ((f & cmat.CM_S_PETAL) != 0) == (k == 3) && ((f & cmat.CM_S_STONE) != 0) == (k == 4) && ((f & cmat.CM_S_TERRAIN) != 0) == (k == 5);
+    #assert ((f & cmat.CM_S_WIND) != 0) == (k >= 1 && k <= 3);
+  }
+}
