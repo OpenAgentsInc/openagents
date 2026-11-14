@@ -1,0 +1,512 @@
+// The HUD and the edit bay in the SPLICE UI v2 frame (#13505): dark warm-gray panels, cream text,
+// one orange accent, Michroma for labels and IBM Plex Mono for small text.
+//
+// The HUD is minimal by default: a compass bar with the objective under it, pickup toasts top right,
+// the interact prompt in the middle, three round gauges bottom left (hearts, Digger's battery, Heat)
+// that fade out while full or cool and come back when they change, the bot slots bottom centre, and
+// the objective card with the time of day and the keys bottom right. H hides it all.
+//
+// The edit bay: the inventory grid and the picked item's card on the left, Digger on the stage in
+// the middle, his hardware on the right, the behavior strip and SPLICE + RESTORE along the bottom.
+// The compass, the gauges' fades and the toasts are the engine's (metaverse-engine/ui/hud-readout.coax).
+#load "../../metaverse-engine/ui/hud-readout.coax";
+
+SpHud :: struct {
+  hidden: bool;             // H: the HUD is hidden
+  t: f32 = -1;              // the game's time at the last drawn frame: the fades' seconds
+  toasts: [1] RoToasts;     // pickups: the event (MSG_*) and the pickup it was for
+  hearts: RoGauge; battery: RoGauge; heat: RoGauge;
+  pick: int = -1;           // the edit bay's picked item (a kind of d_carry), for its card
+}
+
+// ---- the look
+HV_PANEL :: () -> KitTint { return kit_tint(0.255, 0.235, 0.215); }
+HV_DARK :: () -> KitTint { return kit_tint(0.105, 0.100, 0.092); }
+HV_CELL :: () -> KitTint { return kit_tint(0.150, 0.142, 0.130); }
+HV_LINE :: () -> KitTint { return kit_tint(0.360, 0.340, 0.310); }
+HV_CREAM :: () -> KitTint { return kit_tint(0.930, 0.890, 0.800); }
+HV_DIM :: () -> KitTint { return kit_tint(0.600, 0.565, 0.510); }
+HV_ORANGE :: () -> KitTint { return kit_tint(0.910, 0.530, 0.270); }
+
+// A filled box with slightly rounded corners: round-ended strokes stacked across its short side.
+hv_rect :: (out: [] f32, n: int, x0: f32, y0: f32, x1: f32, y1: f32, c: KitTint, a: f32) -> int {
+  w := x1 - x0; h := y1 - y0; m := n;
+  if w <= 0 || h <= 0 || a <= 0.01 { return m; }
+  r := lo(3.0, lo(w, h) * 0.5); half := hi(0.5, r - 1.0); step := r * 1.2;
+  if w >= h {
+    y := y0 + r;
+    while true { ly := lo(y, y1 - r); m = ui_seg(out, m, x0 + r, ly, x1 - r, ly, half, c, a); if ly >= y1 - r { break; } y += step; }
+  } else {
+    x := x0 + r;
+    while true { lx := lo(x, x1 - r); m = ui_seg(out, m, lx, y0 + r, lx, y1 - r, half, c, a); if lx >= x1 - r { break; } x += step; }
+  }
+  return m;
+}
+hv_frame :: (out: [] f32, n: int, x0: f32, y0: f32, x1: f32, y1: f32, wd: f32, c: KitTint, a: f32) -> int {
+  m := n; h := wd * 0.5;
+  m = ui_seg(out, m, x0, y0, x1, y0, h, c, a); m = ui_seg(out, m, x0, y1, x1, y1, h, c, a);
+  m = ui_seg(out, m, x0, y0, x0, y1, h, c, a); m = ui_seg(out, m, x1, y0, x1, y1, h, c, a);
+  return m;
+}
+hv_text :: (out: [] f32, n: int, face: int, t: string, x: f32, base: f32, cap: f32, c: KitTint, a: f32) -> int { return ui_put(out, n, face, t, x, base, cap, c, a); }
+hv_mid :: (out: [] f32, n: int, face: int, t: string, cx: f32, base: f32, cap: f32, c: KitTint, a: f32) -> int { return ui_put(out, n, face, t, cx - ui_w(face, t, cap) * 0.5, base, cap, c, a); }
+hv_right :: (out: [] f32, n: int, face: int, t: string, x1: f32, base: f32, cap: f32, c: KitTint, a: f32) -> int { return ui_put(out, n, face, t, x1 - ui_w(face, t, cap), base, cap, c, a); }
+// Upper case, for a prompt's verb.
+hv_upper :: (buf: [] u8, t: string) -> string {
+  n := 0;
+  for i: 0..<t.count { if n >= buf.count { break; } b := t[i]; buf[n] = ifx b >= 'a' && b <= 'z' then b - 32 else b; n += 1; }
+  return cast(string) buf[0..<n];
+}
+
+// ---- what feeds it
+// A pickup, a cell, a robot piece or the core: a toast.
+hv_event :: (g: [] SpGame, e: int) {
+  if e == MSG_PICK || e == MSG_CELL || e == MSG_FOE || e == MSG_CORE { ro_toast(g[0].hv[0].toasts[..], e, g[0].last_pick); }
+}
+hv_toast_name :: (e: int, i: int) -> string {
+  if e == MSG_CELL { return "BATTERY CELL"; }
+  if e == MSG_FOE { return "ROBOT PIECE"; }
+  if e == MSG_CORE { return "BANNED CORE"; }
+  return ifx i == H_ARM then "DRILL ARM" else ifx i == H_TREADS then "TREADS" else ifx i == H_BATTERY then "BATTERY" else ifx i == H_MOVE then "MOVE CARD" else ifx i == H_DRILL then "DRILL CARD" else "DRILL+";
+}
+hv_toast_tag :: (e: int, i: int) -> string {
+  if e == MSG_CELL { return "CELL"; }
+  if e == MSG_FOE { return "HEAT +10"; }
+  if e == MSG_CORE { return "BANNED"; }
+  return ifx i == PICK_PLUS then "HEAT +25" else ifx i == H_MOVE || i == H_DRILL then "CARD" else "PART";
+}
+hv_toast_banned :: (e: int, i: int) -> bool { return e == MSG_FOE || e == MSG_CORE || (e == MSG_PICK && i == PICK_PLUS); }
+// The messages a toast says instead of the middle of the screen.
+hv_toasted :: (m: int) -> bool { return m == MSG_PICK || m == MSG_CELL || m == MSG_FOE || m == MSG_CORE; }
+
+// The seconds since the HUD last drew, and the gauges and toasts stepped by them.
+hv_step :: (g: [] SpGame) {
+  hv := g[0].hv[..]; dt := ifx hv[0].t < 0 then 0.0f32 else clamp(g[0].t - hv[0].t, 0, 0.25); hv[0].t = g[0].t;
+  ro_toasts_step(hv[0].toasts[..], dt);
+  hv[0].hearts = ro_gauge_step(hv[0].hearts, cast(f32) g[0].hearts, g[0].hearts < T_HEARTS, dt);
+  share := ifx g[0].bot then vitals_share(g[0].dr[0].hp) else 1.0f32;
+  hv[0].battery = ro_gauge_step(hv[0].battery, floor(share * 100 + 0.5), g[0].bot && share < 0.995, dt);
+  hv[0].heat = ro_gauge_step(hv[0].heat, ifx g[0].heat >= 66 then 2.0f32 else ifx g[0].heat >= 33 then 1.0f32 else 0.0f32, g[0].heat >= 33, dt);
+}
+hv_band :: (heat: f32) -> string { return ifx heat >= 66 then "WANTED" else ifx heat >= 33 then "WARM" else "COOL"; }
+hv_battery :: (g: [] SpGame) -> int { return cast(int) floor(vitals_share(g[0].dr[0].hp) * 100 + 0.5); }
+
+// Where the objective is: its name on the compass and its place, or none.
+HvGoal :: struct { name: string; x: f32; z: f32; ok: bool; rover: bool; }
+hv_goal :: (g: [] SpGame) -> HvGoal {
+  a := g[0].at;
+  if g[0].zone == Z_VILLAGE { return HvGoal.{name = "SCANNER GATE", x = a.vil_x, z = a.scan_z, ok = true}; }
+  if g[0].zone == Z_RAIL {
+    if !g[0].have[H_BATTERY] && !g[0].taken[H_BATTERY] { return HvGoal.{name = "SENSOR PING", x = pick_x(g, H_BATTERY), z = pick_z(g, H_BATTERY), ok = true}; }
+    c := rail_at(g, g[0].rail_s); return HvGoal.{name = "ROVER", x = c.x, z = c.z, ok = true, rover = true};
+  }
+  if g[0].zone != Z_MINE || g[0].mode == M_DRIVE { return HvGoal.{}; }
+  rover := HvGoal.{name = "ROVER", x = a.rover_x, z = a.rover_z, ok = true, rover = true};
+  if g[0].have[H_CORE] { return rover; }
+  if g[0].boss_down { c := sb_core_at(g); return HvGoal.{name = "BANNED CORE", x = c.x, z = c.z, ok = true}; }
+  if g[0].wall_gone { return HvGoal.{name = "WEAK POINTS", x = a.boss_x, z = a.boss_z, ok = true}; }
+  if g[0].have[H_PLUS] { return rover; }
+  if g[0].rubble_gone { return HvGoal.{name = "BLUE GLOW", x = pick_x(g, PICK_PLUS), z = pick_z(g, PICK_PLUS), ok = true}; }
+  if g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY] && g[0].have[H_MOVE] && g[0].have[H_DRILL] { return rover; }
+  best := -1; bd := 1e9f32;
+  for i: 0..<PICK_PLUS { if g[0].taken[i] || pick_zone(g, i) != Z_MINE { continue; } d := dist2(g[0].px, g[0].pz, pick_x(g, i), pick_z(g, i)); if d < bd { bd = d; best = i; } }
+  if best >= 0 { return HvGoal.{name = hv_toast_name(MSG_PICK, best), x = pick_x(g, best), z = pick_z(g, best), ok = true}; }
+  return HvGoal.{};
+}
+// "2.4 KM" past a kilometre, "240 M" under it.
+hv_far :: (buf: [] u8, m: f32) -> string {
+  if m >= 1000 { t := cast(int) floor(m / 100 + 0.5); n := tput_int(buf, 0, t / 10); n = tput(buf, n, "."); n = tput_int(buf, n, t % 10); n = tput(buf, n, " KM"); return cast(string) buf[0..<n]; }
+  n := tput_int(buf, 0, cast(int) floor(m + 0.5)); n = tput(buf, n, " M"); return cast(string) buf[0..<n];
+}
+// The reel line: the run's part and its time of day.
+hv_reel :: (g: [] SpGame, buf: [] u8) -> string {
+  n := tput(buf, 0, "REEL 0"); n = tput_int(buf, n, g[0].zone + 1); n = tput(buf, n, " · ");
+  ph := g_phase(g); n = tput(buf, n, ifx ph == PH_DAWN then "DAWN" else ifx ph == PH_DAY then "DAY" else ifx ph == PH_DUSK then "DUSK" else "NIGHT");
+  return cast(string) buf[0..<n];
+}
+
+// ---- the HUD
+// The compass bar, the objective's name and distance under it.
+hv_compass :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  n := at; k := q.k; bw := 555 * k; x0 := q.w * 0.5 - bw * 0.5; y0 := 25 * k; bh := 43 * k; cx := q.w * 0.5; cy := y0 + bh * 0.5;
+  span := 3.5f32; yaw := g[0].yaw;   // about 200 degrees: W and E near the ends facing north
+  n = hv_rect(out, n, x0, y0, x0 + bw, y0 + bh, HV_PANEL(), 0.94);
+  // ticks every 15 degrees, a letter at each quarter (N faces -Z, E +X)
+  for i: 0..<24 {
+    b := ANGLE_PI - cast(f32) i * ANGLE_TAU / 24; x := ro_compass_x(yaw, b, span, bw - 40 * k);
+    if x == RO_OFF { continue; }
+    if i % 6 == 0 {
+      names := [4] string.["N", "E", "S", "W"];   // clockwise from N (-Z): E is +X
+      nm := names[i / 6];
+      n = hv_mid(out, n, F_TITLE, nm, cx + x, cy + 5 * k, 10 * k, ifx nm == "N" then HV_CREAM() else HV_DIM(), 1);
+    } else { n = ui_seg(out, n, cx + x, cy - 5 * k, cx + x, cy + 5 * k, 0.8 * k, HV_DIM(), 0.8); }
+  }
+  // the rover, a small van, when it is not the objective
+  if g[0].zone == Z_MINE && g[0].mode != M_DRIVE {
+    gl := hv_goal(g);
+    if !gl.rover {
+      x := ro_compass_x(yaw, ro_bearing(g[0].px, g[0].pz, g[0].at.rover_x, g[0].at.rover_z), span, bw - 40 * k);
+      if x != RO_OFF {
+        rx := cx + x;
+        n = hv_frame(out, n, rx - 7 * k, cy - 5 * k, rx + 7 * k, cy + 3 * k, 1.6 * k, HV_CREAM(), 1);
+        n = ui_seg(out, n, rx - 4 * k, cy + 5 * k, rx - 4 * k, cy + 5 * k, 1.6 * k, HV_CREAM(), 1); n = ui_seg(out, n, rx + 4 * k, cy + 5 * k, rx + 4 * k, cy + 5 * k, 1.6 * k, HV_CREAM(), 1);
+      }
+    }
+  }
+  gl := hv_goal(g);
+  if !gl.ok { return n; }
+  x := ro_compass_x(yaw, ro_bearing(g[0].px, g[0].pz, gl.x, gl.z), span, bw - 40 * k);
+  if x == RO_OFF { x = ifx angle_wrap(yaw - ro_bearing(g[0].px, g[0].pz, gl.x, gl.z)) > 0 then bw * 0.5 - 14 * k else -bw * 0.5 + 14 * k; }   // behind: pinned to the side to turn to
+  dx := cx + x; s := 7 * k;
+  n = ui_seg(out, n, dx - s, cy, dx, cy - s, s * 0.45, HV_ORANGE(), 1); n = ui_seg(out, n, dx, cy - s, dx + s, cy, s * 0.45, HV_ORANGE(), 1);
+  n = ui_seg(out, n, dx + s, cy, dx, cy + s, s * 0.45, HV_ORANGE(), 1); n = ui_seg(out, n, dx, cy + s, dx - s, cy, s * 0.45, HV_ORANGE(), 1);
+  // the pill: ◆ NAME · DISTANCE
+  buf: [32] u8; line: [96] u8;
+  ln := tput(line[..], 0, gl.name); ln = tput(line[..], ln, " · "); ln = tput(line[..], ln, hv_far(buf[..], dist2(g[0].px, g[0].pz, gl.x, gl.z)));
+  t := cast(string) line[0..<ln]; cap := 7.5 * k; tw := ui_w(F_MONO, t, cap); pw := tw + 40 * k; py := y0 + bh + 7 * k;
+  n = hv_rect(out, n, cx - pw * 0.5, py, cx + pw * 0.5, py + 21 * k, HV_CREAM(), 0.95);
+  d := 3.5 * k; mx := cx - pw * 0.5 + 13 * k; my := py + 10.5 * k;
+  n = ui_seg(out, n, mx - d, my, mx + d, my, d * 0.5, HV_PANEL(), 1); n = ui_seg(out, n, mx, my - d, mx, my + d, d * 0.5, HV_PANEL(), 1);
+  return hv_text(out, n, F_MONO, t, mx + 10 * k, py + 14 * k, cap, HV_PANEL(), 1);
+}
+// Pickups, stacked top right, each fading on its own.
+hv_toasts :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  n := at; k := q.k; tw := 295 * k; th := 42 * k; x1 := q.w - 30 * k; x0 := x1 - tw; t := g[0].hv[0].toasts[..];
+  for i: 0..<t[0].n {
+    a := ro_toast_alpha(t, i); e := t[0].what[i]; p := t[0].extra[i]; bad := hv_toast_banned(e, p);
+    y0 := 25 * k + cast(f32) i * (th + 4 * k);
+    n = hv_rect(out, n, x0, y0, x1, y0 + th, HV_PANEL(), 0.94 * a);
+    n = ui_seg(out, n, x0 + 1.5 * k, y0 + 1.5 * k, x0 + 1.5 * k, y0 + th - 1.5 * k, (ifx bad then 2.2f32 else 1.0f32) * k, ifx bad then HV_ORANGE() else HV_CREAM(), a);
+    c := ifx bad then HV_ORANGE() else HV_CREAM();
+    n = hv_text(out, n, F_TITLE, "+", x0 + 14 * k, y0 + th * 0.5 + 5 * k, 10 * k, c, a);
+    n = hv_text(out, n, F_TITLE, hv_toast_name(e, p), x0 + 30 * k, y0 + th * 0.5 + 5 * k, 10 * k, c, a);
+    n = hv_right(out, n, F_MONO, hv_toast_tag(e, p), x1 - 14 * k, y0 + th * 0.5 + 3.5 * k, 6.5 * k, ifx bad then HV_ORANGE() else HV_DIM(), a);
+  }
+  return n;
+}
+// A round gauge: a dark disc, a cream ring, `share` of it orange or cream, its label under it.
+hv_gauge :: (out: [] f32, at: int, cx: f32, cy: f32, r: f32, share: f32, hot: bool, label: string, k: f32, a: f32) -> int {
+  n := at;
+  if a <= 0.01 { return n; }
+  n = ui_seg(out, n, cx, cy, cx, cy, r, HV_CREAM(), a);
+  n = ui_seg(out, n, cx, cy, cx, cy, r - 3 * k, HV_PANEL(), a);
+  if share > 0.005 {
+    segs := 28; c := ifx hot then HV_ORANGE() else HV_CREAM(); rr := r - 1.5 * k;
+    for i: 0..<segs {
+      f0 := cast(f32) i / cast(f32) segs; if f0 >= share { break; } f1 := lo(share, cast(f32) (i + 1) / cast(f32) segs);
+      a0 := -ANGLE_PI * 0.5 + f0 * ANGLE_TAU; a1 := -ANGLE_PI * 0.5 + f1 * ANGLE_TAU;
+      n = ui_seg(out, n, cx + cos(a0) * rr, cy + sin(a0) * rr, cx + cos(a1) * rr, cy + sin(a1) * rr, 2.2 * k, c, a);
+    }
+  }
+  return hv_mid(out, n, F_TITLE, label, cx, cy + r + 15 * k, 6.5 * k, HV_CREAM(), a);
+}
+hv_gauges :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  n := at; k := q.k; r := 27 * k; cy := q.h - 75 * k; hv := g[0].hv[0]; buf: [16] u8;
+  // hearts: a pip each
+  cx := 57 * k; a := hv.hearts.alpha;
+  n = hv_gauge(out, n, cx, cy, r, 0, false, "HEARTS", k, a);
+  if a > 0.01 {
+    for i: 0..<T_HEARTS {
+      px := cx + (cast(f32) i - cast(f32) (T_HEARTS - 1) * 0.5) * 11 * k; on := i < g[0].hearts;
+      if on { n = hv_rect(out, n, px - 4 * k, cy - 4 * k, px + 4 * k, cy + 4 * k, HV_CREAM(), a); }
+      else { n = hv_frame(out, n, px - 4 * k, cy - 4 * k, px + 4 * k, cy + 4 * k, 1.2 * k, HV_ORANGE(), a); }
+    }
+  }
+  // Digger's battery
+  if g[0].bot {
+    cx = 127 * k; a = hv.battery.alpha; b := hv_battery(g);
+    n = hv_gauge(out, n, cx, cy, r, cast(f32) b / 100, b < 34, "BATTERY", k, a);
+    n = hv_mid(out, n, F_TITLE, num(buf[..], "", b, ""), cx, cy + 5 * k, 10 * k, ifx b < 34 then HV_ORANGE() else HV_CREAM(), a);
+  }
+  // Heat
+  cx = 197 * k; a = hv.heat.alpha; warm := g[0].heat >= 33;
+  n = hv_gauge(out, n, cx, cy, r, g[0].heat / T_HEAT_MAX, warm, "HEAT", k, a);
+  return hv_mid(out, n, F_TITLE, hv_band(g[0].heat), cx, cy + 3 * k, ifx g[0].heat >= 66 then 4 * k else 5.5 * k, ifx warm then HV_ORANGE() else HV_CREAM(), a);
+}
+// The bot slots: Digger on 1, two empty, then the stun on F.
+hv_slots :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  n := at; k := q.k; sw := 271 * k; sh := 69 * k; x0 := q.w * 0.5 - sw * 0.5; y1 := q.h - 28 * k; y0 := y1 - sh;
+  n = hv_rect(out, n, x0, y0, x0 + sw, y1, HV_PANEL(), 0.94);
+  cw := 54 * k; gap := 5 * k; pad := 6 * k;
+  names := [4] string.["EMPTY", "EMPTY", "EMPTY", "STUN"]; keys := [4] string.["1", "2", "3", "F"];
+  if g[0].bot { names[0] = ifx d_down(g) then "DOWN" else "DIGGER"; }
+  for i: 0..<4 {
+    cx0 := x0 + pad + cast(f32) i * (cw + gap) + (ifx i == 3 then 12 * k else 0.0f32); cx1 := cx0 + cw; cy0 := y0 + pad; cy1 := y1 - pad;
+    on := i == 0 && g[0].bot; empty := names[i] == "EMPTY";
+    n = hv_rect(out, n, cx0, cy0, cx1, cy1, HV_CELL(), 0.9);
+    n = hv_frame(out, n, cx0, cy0, cx1, cy1, (ifx on then 2.2f32 else 1.0f32) * k, ifx on then HV_ORANGE() else HV_LINE(), 1);
+    c := ifx empty then HV_DIM() else ifx i == 0 && d_down(g) then HV_ORANGE() else HV_CREAM();
+    n = hv_mid(out, n, F_TITLE, names[i], (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 + 1 * k, 6.5 * k, c, 1);
+    n = hv_mid(out, n, F_MONO, keys[i], (cx0 + cx1) * 0.5, cy1 - 8 * k, 6 * k, HV_DIM(), 1);
+  }
+  dx := x0 + pad + 3 * (cw + gap) + 3 * k;
+  return ui_seg(out, n, dx, y0 + 12 * k, dx, y1 - 12 * k, 0.8 * k, HV_LINE(), 1);
+}
+// The objective card, and the keys under it.
+hv_card :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  n := at; k := q.k; cw := 298 * k; ch := 64 * k; x1 := q.w - 30 * k; x0 := x1 - cw; y1 := q.h - 51 * k; y0 := y1 - ch; buf: [48] u8;
+  n = hv_rect(out, n, x0, y0, x1, y1, HV_PANEL(), 0.94);
+  n = hv_text(out, n, F_MONO, hv_reel(g, buf[..]), x0 + 14 * k, y0 + 21 * k, 6.5 * k, HV_ORANGE(), 1);
+  o := objective(g); cap := 9.5 * k;
+  while ui_w(F_TITLE, o, cap) > cw - 28 * k && cap > 6 * k { cap -= 0.5 * k; }   // a long one gets smaller, never cut
+  n = hv_text(out, n, F_TITLE, o, x0 + 14 * k, y0 + 47 * k, cap, HV_CREAM(), 1);
+  // the keys: TAB edit bay (in the rover), Q board (when the world gives one), R bots, H hide HUD
+  caps: [4] string; words: [4] string; kn := 0;
+  if d_in_rover(g) { caps[kn] = "TAB"; words[kn] = "EDIT BAY"; kn += 1; }
+  if g_board_given(g) { caps[kn] = "Q"; words[kn] = "BOARD"; kn += 1; }
+  if g[0].bot { caps[kn] = "R"; words[kn] = "BOTS"; kn += 1; }
+  caps[kn] = "H"; words[kn] = "HIDE HUD"; kn += 1;
+  x := x1; hc := 6.5 * k; base := q.h - 30 * k;
+  i := kn - 1;
+  while i >= 0 {
+    x = x - ui_w(F_TITLE, words[i], hc);
+    n = hv_text(out, n, F_TITLE, words[i], x, base, hc, HV_PANEL(), 1);
+    x -= ui_w(F_TITLE, caps[i], hc) + 5 * k;
+    n = hv_text(out, n, F_TITLE, caps[i], x, base, hc, HV_PANEL(), 1);
+    x -= 16 * k; i -= 1;
+  }
+  return n;
+}
+// The interact prompt: a key box, the verb, what it is for; under it the hold bar and its line.
+HvPrompt :: struct { key: string; verb: string; what: string; line: string; share: f32 = -1; }
+hv_prompt_of :: (g: [] SpGame, buf: [] u8) -> HvPrompt {
+  prompt := ""; key := "E"; reach := g_reach(g);
+  if g[0].mode == M_RIDE { prompt = "Speed up · slow down"; key = "W S"; }
+  else if reach >= 0 && g[0].bot && !d_down(g) {
+    d := g[0].dr[0]; share := -1.0f32;
+    if d.task == DJ_FETCH && d.task_i == reach { share = clamp(1 - dist2(g[0].bot_x, g[0].bot_z, pick_x(g, reach), pick_z(g, reach)) / d_range(g), 0, 1); }
+    what := ifx reach == PICK_PLUS then "DRILL+ part" else ifx reach >= PICK_CELL then "Battery cell" else ifx reach == H_MOVE then "MOVE card" else ifx reach == H_DRILL then "DRILL card" else ifx reach == H_ARM then "Drill arm" else ifx reach == H_TREADS then "Treads" else "Battery";
+    return HvPrompt.{key = "AUTO", verb = "SCAVENGE", what = what, line = "DIGGER PICKS IT UP", share = ifx share < 0 then 0.0f32 else share};
+  }
+  else if g[0].bot && d_down(g) && dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) < T_TOW_REACH { prompt = ifx d_towing(g) then "Let go · Digger" else "Tow · Digger to Sniper"; }
+  else if g_weak_near(g) >= 0 { prompt = "Stun · the weak point"; key = "F"; }
+  else if g_foe_near(g) >= 0 { prompt = ifx g_foe_near(g) < F_RAIDERS then "Stun · the raider" else "Stun · the Imperial robot"; key = "F"; }
+  else if g[0].zone == Z_RAIL && near_rover(g, T_USE_RANGE) { prompt = "Board · the rover"; }
+  else if g_portal(g) >= 0 { prompt = prt_name(g[0].c[0].portals[..], g_portal(g)); }
+  else if d_in_rover(g) { prompt = "Open · the edit bay"; key = "TAB"; }
+  sp := sb_prompt(g); if sp.text != "" && reach < 0 { prompt = sp.text; key = sp.key; }   // the battles' (splice-battle.coax)
+  if prompt == "" { return HvPrompt.{}; }
+  // "VERB · what" splits at the dot; otherwise the first word is the verb
+  cut := -1; skip := 0;
+  for i: 0..<prompt.count - 2 { if prompt[i] == ' ' && prompt[i + 1] == 0xC2 && prompt[i + 2] == 0xB7 { cut = i; skip = 4; break; } }
+  if cut < 0 { return HvPrompt.{key = key, what = prompt}; }   // a sentence stays one
+  rest := prompt[cut + skip..<prompt.count];
+  if rest.count > 0 && rest[0] == ' ' { rest = rest[1..<rest.count]; }
+  return HvPrompt.{key = key, verb = hv_upper(buf, prompt[0..<cut]), what = rest};
+}
+hv_prompt :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  n := at; k := q.k; buf: [64] u8;
+  p := hv_prompt_of(g, buf[..]);
+  if p.verb == "" && p.what == "" { return n; }
+  kc := 8 * k; vc := 10 * k; wc := 9 * k;
+  kw := hi(20 * k, ui_w(F_TITLE, p.key, kc) + 12 * k); vw := ui_w(F_TITLE, p.verb, vc); ww := ifx p.what != "" then ui_w(F_MONO, p.what, wc) + (ifx vw > 0 then 12 * k else 0.0f32) else 0.0f32;
+  bw := hi(286 * k, kw + vw + ww + 46 * k); bh := 46 * k; x0 := q.w * 0.5 - bw * 0.5; y0 := q.h * 0.56 - bh * 0.5;
+  n = hv_rect(out, n, x0, y0, x0 + bw, y0 + bh, HV_PANEL(), 0.95);
+  kx := x0 + 14 * k; ky := y0 + bh * 0.5;
+  n = hv_rect(out, n, kx, ky - 11 * k, kx + kw, ky + 11 * k, HV_CREAM(), 1);
+  n = hv_mid(out, n, F_TITLE, p.key, kx + kw * 0.5, ky + 4 * k, kc, HV_PANEL(), 1);
+  vx := kx + kw + 12 * k;
+  n = hv_text(out, n, F_TITLE, p.verb, vx, ky + 5 * k, vc, HV_CREAM(), 1);
+  if p.what != "" { n = hv_text(out, n, F_MONO, p.what, vx + (ifx vw > 0 then vw + 12 * k else 0.0f32), ky + 4.5 * k, wc, HV_CREAM(), 1); }
+  if p.share >= 0 {
+    by := y0 + bh + 5 * k;
+    n = hv_rect(out, n, x0, by, x0 + bw, by + 4 * k, HV_PANEL(), 0.6);
+    if p.share > 0.01 { n = hv_rect(out, n, x0, by, x0 + bw * p.share, by + 4 * k, HV_CREAM(), 1); }
+    n = hv_mid(out, n, F_MONO, p.line, q.w * 0.5, by + 18 * k, 6 * k, HV_PANEL(), 1);
+  }
+  return n;
+}
+// What just happened (all but pickups, which are toasts): a dark strip, orange edge when bad.
+hv_message :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  n := at; k := q.k; m := msg_text(g);
+  if m == "" || hv_toasted(g[0].msg) { return n; }
+  bad := g[0].msg == MSG_BAD_CUT || g[0].msg == MSG_AIR || g[0].msg == MSG_WEAK || g[0].msg == MSG_HIT || g[0].msg == MSG_NEED || g[0].msg == MSG_WAKE;
+  cap := 9 * k; mw := ui_w(F_MONO, m, cap) + 44 * k; x0 := q.w * 0.5 - mw * 0.5; y0 := q.h * 0.3;
+  n = hv_rect(out, n, x0, y0, x0 + mw, y0 + 38 * k, HV_PANEL(), 0.95);
+  if bad { n = ui_seg(out, n, x0 + 1.5 * k, y0 + 2 * k, x0 + 1.5 * k, y0 + 36 * k, 2.2 * k, HV_ORANGE(), 1); }
+  return hv_mid(out, n, F_MONO, m, q.w * 0.5, y0 + 24 * k, cap, ifx bad then HV_ORANGE() else HV_CREAM(), 1);
+}
+hv_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
+  n := 0; hv_step(g);
+  if g[0].dr[0].paused { return d_hud(g, out, u, q, n); }
+  if g[0].hv[0].hidden { return d_hud(g, out, u, q, n); }   // H: only what an open window, the wheel or a line from Digger needs
+  open := g[0].dr[0].bag || g[0].dr[0].map;
+  n = hv_compass(g, out, n, q);
+  n = hv_toasts(g, out, n, q);
+  n = hv_gauges(g, out, n, q);
+  if !sb_fighting(g) { n = hv_slots(g, out, n, q); }   // a battle's own panel takes the bottom centre (splice-battle.coax)
+  n = hv_card(g, out, n, q);
+  n = sb_hud(g, out, u, q, n);   // health bars over the bots, and a battle's panels
+  if !open { n = hv_prompt(g, out, n, q); }
+  // the scanner gate: Heat is cool, pass
+  if g[0].zone == Z_VILLAGE && (g[0].pass_t > 0 || g[0].pz > g[0].at.vil_z + 4) {
+    k := q.k; x0 := q.w * 0.5 - 220 * k; y0 := q.h * 0.2;
+    n = hv_rect(out, n, x0, y0, x0 + 440 * k, y0 + 70 * k, HV_PANEL(), 0.95);
+    n = hv_mid(out, n, F_TITLE, ifx g[0].pass_t > 0 then "HEAT: COOL. PASS." else "SCANNER GATE", q.w * 0.5, y0 + 32 * k, 13 * k, HV_CREAM(), 1);
+    n = hv_mid(out, n, F_MONO, "Walk through the beam to start the rail drive", q.w * 0.5, y0 + 54 * k, 7.5 * k, HV_DIM(), 1);
+  }
+  n = hv_message(g, out, n, q);
+  n = dv_room_hint(g, out, u, q, n);   // the rover's room: the wardrobe and the map (drive.coax)
+  return d_hud(g, out, u, q, n);   // the bars over the bots, her line, the wheel, the grid and the map (director.coax)
+}
+
+// ---- the edit bay
+hv_kind_type :: (kind: int) -> string {
+  if kind == H_ARM { return "ACTUATOR · LEGAL"; }
+  if kind == H_TREADS { return "BODY · LEGAL"; }
+  if kind == H_BATTERY || kind == DK_CELL { return "POWER · LEGAL"; }
+  if kind == H_MOVE || kind == H_DRILL { return "CARD · LEGAL"; }
+  if kind == H_PLUS { return "CARD · BANNED"; }
+  if kind == H_CORE { return "CHIP · BANNED"; }
+  return "SCRAP";
+}
+hv_kind_says :: (kind: int) -> string {
+  if kind == H_ARM { return "Breaks rubble. Needs a DRILL card."; }
+  if kind == H_TREADS { return "Digger's drive. Splice it in to build him."; }
+  if kind == H_BATTERY { return "Powers Digger. Sniper's charger refills it."; }
+  if kind == H_MOVE { return "Follow the path."; }
+  if kind == H_DRILL { return "Breaks rubble."; }
+  if kind == H_PLUS { return "Special part. Drills hardest. Holds Heat up."; }
+  if kind == H_CORE { return "Splice it in with X to restore the scene."; }
+  if kind == DK_CELL { return "Battery cells found on the way."; }
+  return "Taken in fights. Each one cost 10 Heat.";
+}
+hv_kind_title :: (kind: int) -> string {
+  if kind == H_ARM { return "Drill arm"; } if kind == H_TREADS { return "Treads"; } if kind == H_BATTERY { return "Battery"; }
+  if kind == H_MOVE { return "MOVE card"; } if kind == H_DRILL { return "DRILL card"; } if kind == H_PLUS { return "DRILL+"; }
+  if kind == H_CORE { return "Banned core"; } if kind == DK_CELL { return "Battery cells"; }
+  return "Robot pieces";
+}
+hv_banned_kind :: (kind: int) -> bool { return kind == H_PLUS || kind == H_CORE; }
+hv_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
+  n := 0; k := q.k; w := q.w; h := q.h; buf: [64] u8; b2: [32] u8;
+  cream := HV_CREAM(); dim := HV_DIM(); orange := HV_ORANGE(); line := HV_LINE(); cell := HV_CELL();
+  g[0].btn_n = 0; hv := g[0].hv[..];
+  // the stage window: everything round it is the bay's dark
+  sx0 := 389 * k; sx1 := w - 315 * k; sy0 := 155 * k; sy1 := 561 * k;
+  o := 3.0f32;   // the panels overlap a little: no seam where they meet
+  ui_panel(g, u, -20, -20, w + 20, sy0 + o, HV_DARK(), 1);
+  ui_panel(g, u, -20, sy0 - o, sx0 + o, h + 20, HV_DARK(), 1);
+  ui_panel(g, u, sx1 - o, sy0 - o, w + 20, h + 20, HV_DARK(), 1);
+  ui_panel(g, u, sx0 - o, sy1 - o, sx1 + o, h + 20, HV_DARK(), 1);
+  n = hv_frame(out, n, 45 * k, 33 * k, w - 45 * k, h - 36 * k, 1.5 * k, line, 1);
+  // header
+  n = hv_text(out, n, F_MONO, ifx g[0].at_crate then "STASH CRATE // DIGGER" else ifx g[0].heat > 0 then "ROVER // COOLING" else "ROVER // HIDDEN", 72 * k, 67 * k, 6.5 * k, orange, 1);
+  n = hv_text(out, n, F_TITLE, "EDIT BAY", 72 * k, 104 * k, 19 * k, cream, 1);
+  // top right: Digger's battery, robot pieces as scrap, cells, Heat
+  x := w - 76 * k; sc := 8 * k; base := 107 * k;
+  hb := hv_band(g[0].heat); hc := ifx g[0].heat >= 33 then orange else cream;
+  x -= ui_w(F_TITLE, hb, sc); n = hv_text(out, n, F_TITLE, hb, x, base, sc, hc, 1); x -= ui_w(F_MONO, "HEAT ", sc); n = hv_text(out, n, F_MONO, "HEAT ", x, base, sc, hc, 1); x -= 22 * k;
+  t := num(buf[..], "", g[0].cells, ""); x -= ui_w(F_TITLE, t, sc); n = hv_text(out, n, F_TITLE, t, x, base, sc, cream, 1); x -= ui_w(F_MONO, "CELLS ", sc); n = hv_text(out, n, F_MONO, "CELLS ", x, base, sc, cream, 1); x -= 22 * k;
+  t = num(buf[..], "", g[0].scrap, ""); x -= ui_w(F_TITLE, t, sc); n = hv_text(out, n, F_TITLE, t, x, base, sc, cream, 1); x -= ui_w(F_MONO, "SCRAP ", sc); n = hv_text(out, n, F_MONO, "SCRAP ", x, base, sc, cream, 1); x -= 22 * k;
+  if g[0].bot { t = num(buf[..], "", hv_battery(g), ""); x -= ui_w(F_TITLE, t, sc); n = hv_text(out, n, F_TITLE, t, x, base, sc, cream, 1); x -= ui_w(F_MONO, "BATTERY ", sc); n = hv_text(out, n, F_MONO, "BATTERY ", x, base, sc, cream, 1); }
+  // TAB closes: the whole top right of the header
+  g_hot(g, w - 160 * k, 0, w, 50 * k, -15);
+  // left: the inventory grid, 4 across, T_ROOM slots
+  c := d_carry(g); gx := 72 * k; gy := 155 * k; cs := 69 * k; gap := 7 * k;
+  n = hv_text(out, n, F_MONO, num(buf[..], "INVENTORY · ", c.n, num(b2[..], "/", T_ROOM, "")), gx, 141 * k, 6.5 * k, dim, 1);
+  if g[0].drag >= 0 { hv[0].pick = g[0].drag; }
+  picked := -1;
+  for i: 0..<c.n { if c.items[i].kind == hv[0].pick { picked = i; } }
+  if picked < 0 && c.n > 0 { picked = 0; hv[0].pick = c.items[0].kind; }
+  rows := (T_ROOM + 3) / 4;
+  for i: 0..<rows * 4 {
+    cx0 := gx + cast(f32) (i % 4) * (cs + gap); cy0 := gy + cast(f32) (i / 4) * (cs + gap); cx1 := cx0 + cs; cy1 := cy0 + cs;
+    if i >= T_ROOM { continue; }
+    n = hv_rect(out, n, cx0, cy0, cx1, cy1, cell, 1);
+    if i >= c.n { n = hv_frame(out, n, cx0, cy0, cx1, cy1, 1 * k, line, 1); continue; }
+    one := c.items[i]; bad := hv_banned_kind(one.kind); col := ifx bad then orange else cream;
+    if bad { n = ui_dash(out, n, cx0, cy0, cx1, cy1, 1.4 * k, orange); }
+    else { n = hv_frame(out, n, cx0, cy0, cx1, cy1, (ifx i == picked then 2.2f32 else 1.0f32) * k, ifx i == picked then cream else line, 1); }
+    if bad && i == picked { n = hv_frame(out, n, cx0 - 3 * k, cy0 - 3 * k, cx1 + 3 * k, cy1 + 3 * k, 1 * k, orange, 1); }
+    nm := d_kind_name(one.kind); cap := 6.5 * k;
+    while ui_w(F_TITLE, nm, cap) > cs - 10 * k && cap > 5 * k && nm.count < 9 { cap -= 0.25 * k; }   // one word fits its slot
+    sp := -1; if ui_w(F_TITLE, nm, cap) > cs - 10 * k { for j: 0..<nm.count { if nm[j] == ' ' { sp = j; break; } } }
+    if sp > 0 { n = hv_mid(out, n, F_TITLE, nm[0..<sp], (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 - 2 * k, cap, col, 1); n = hv_mid(out, n, F_TITLE, nm[sp + 1..<nm.count], (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 + 10 * k, cap, col, 1); }
+    else { n = hv_mid(out, n, F_TITLE, nm, (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 + 3 * k, cap, col, 1); }
+    if one.count > 1 { n = hv_right(out, n, F_MONO, num(buf[..], "x", one.count, ""), cx1 - 5 * k, cy1 - 5 * k, 6 * k, col, 1); }
+    g_hot(g, cx0, cy0, cx1, cy1, 1000 + one.kind);   // press to pick it (its card below), drag it onto a slot
+  }
+  // the picked item's card
+  dy0 := gy + cast(f32) rows * (cs + gap) + 10 * k; dx1 := gx + 4 * cs + 3 * gap;
+  if picked >= 0 {
+    kind := c.items[picked].kind;
+    n = hv_rect(out, n, gx, dy0, dx1, dy0 + 79 * k, cream, 1);
+    n = hv_text(out, n, F_TITLE, hv_kind_title(kind), gx + 12 * k, dy0 + 24 * k, 9 * k, HV_DARK(), 1);
+    n = hv_text(out, n, F_MONO, hv_kind_type(kind), gx + 12 * k, dy0 + 43 * k, 6 * k, ifx hv_banned_kind(kind) then kit_tint(0.72, 0.33, 0.12) else HV_PANEL(), 1);
+    n = hv_text(out, n, F_MONO, hv_kind_says(kind), gx + 12 * k, dy0 + 63 * k, 7 * k, HV_DARK(), 1);
+  } else {
+    n = hv_frame(out, n, gx, dy0, dx1, dy0 + 79 * k, 1 * k, line, 1);
+    n = hv_mid(out, n, F_MONO, "Nothing carried. Digger picks up parts.", (gx + dx1) * 0.5, dy0 + 44 * k, 7 * k, dim, 1);
+  }
+  // middle: the stage, Digger live on it
+  built := g[0].slot[0] && g[0].slot[1] && g[0].slot[2];
+  n = hv_text(out, n, F_MONO, "PLAY TEST", sx0, 141 * k, 6.5 * k, dim, 1);
+  n = hv_frame(out, n, sx0, sy0, sx1, sy1, 1.2 * k, line, 1);
+  n = hv_text(out, n, F_MONO, ifx d_down(g) then "DIGGER · POWERED DOWN" else ifx built then "DIGGER · READY" else "DIGGER · NEEDS HARDWARE", sx0 + 14 * k, sy0 + 22 * k, 6.5 * k, ifx built && !d_down(g) then HV_DARK() else kit_tint(0.72, 0.33, 0.12), 1);   // on the stage's paper
+  if fract(g[0].t) < 0.6 { n = ui_seg(out, n, sx1 - 40 * k, sy0 + 19 * k, sx1 - 40 * k, sy0 + 19 * k, 3.5 * k, orange, 1); }
+  n = hv_text(out, n, F_MONO, "REC", sx1 - 32 * k, sy0 + 22 * k, 6.5 * k, HV_DARK(), 1);
+  px1 := sx1 - 14 * k; px0 := px1 - 140 * k; py1 := sy1 - 14 * k; py0 := py1 - 42 * k;
+  n = hv_rect(out, n, px0, py0, px1, py1, HV_DARK(), 0.85);
+  n = hv_frame(out, n, px0, py0, px1, py1, 1.5 * k, cream, 1);
+  tx := px0 + 22 * k; ty := (py0 + py1) * 0.5;
+  n = ui_seg(out, n, tx - 4 * k, ty - 6 * k, tx - 4 * k, ty + 6 * k, 1.3 * k, cream, 1); n = ui_seg(out, n, tx - 4 * k, ty - 6 * k, tx + 5 * k, ty, 1.3 * k, cream, 1); n = ui_seg(out, n, tx - 4 * k, ty + 6 * k, tx + 5 * k, ty, 1.3 * k, cream, 1);
+  n = hv_text(out, n, F_TITLE, "PLAY TEST", tx + 14 * k, ty + 4 * k, 8.5 * k, cream, 1);
+  n = hv_mid(out, n, F_MONO, "SPACE", (px0 + px1) * 0.5, py0 - 7 * k, 5.5 * k, HV_PANEL(), 1);
+  g_hot(g, px0, py0, px1, py1, -2);   // Digger leaves the bay and runs his cards
+  // right: the hardware slots; arm, treads and battery take a drop
+  hx0 := w - 294 * k; hx1 := w - 76 * k;
+  n = hv_text(out, n, F_MONO, "HARDWARE", hx0, 141 * k, 6.5 * k, dim, 1);
+  labels := [5] string.["BODY", "SENSOR", "ACTUATOR", "CHIP", "BATTERY"];
+  for i: 0..<5 {
+    ry0 := 150 * k + cast(f32) i * 58 * k; ry1 := ry0 + 49 * k;
+    v := ""; filled := false; hot := false; drop := -1;
+    if i == 0 { drop = H_TREADS; filled = g[0].slot[H_TREADS]; v = ifx filled then "Treads" else "Empty slot"; }
+    if i == 1 { filled = true; v = num(buf[..], ifx g[0].dr[0].sensor then "Better sensor · " else "Sensor · ", cast(int) d_range(g), " m"); }
+    if i == 2 { drop = H_ARM; filled = g[0].slot[H_ARM]; v = ifx filled then "Drill arm" else "Empty slot"; }
+    if i == 3 { filled = g[0].have[H_CORE]; hot = filled; v = ifx filled then "Banned core · X" else "Empty slot"; }
+    if i == 4 { drop = H_BATTERY; filled = g[0].slot[H_BATTERY]; v = ifx !filled then "Empty slot" else ifx g[0].bot then num(b2[..], "Battery · ", hv_battery(g), "%") else "Battery"; }
+    if drop >= 0 { d := drop * 4; g[0].drop[d] = hx0; g[0].drop[d + 1] = ry0; g[0].drop[d + 2] = hx1; g[0].drop[d + 3] = ry1; }
+    lit := drop >= 0 && g[0].drag == drop;
+    if filled { n = hv_rect(out, n, hx0, ry0, hx1, ry1, cell, 1); n = hv_frame(out, n, hx0, ry0, hx1, ry1, 1 * k, ifx hot then orange else line, 1); }
+    else { n = ui_dash(out, n, hx0, ry0, hx1, ry1, 1 * k, ifx lit then cream else line); }
+    n = hv_text(out, n, F_MONO, labels[i], hx0 + 11 * k, ry0 + 17 * k, 5.5 * k, dim, 1);
+    n = hv_text(out, n, F_TITLE, v, hx0 + 11 * k, ry0 + 37 * k, 7.5 * k, ifx hot then orange else ifx filled then cream else dim, 1);
+  }
+  // bottom: the behavior strip, a film strip of Digger's cards, played left to right
+  by1 := h - 63 * k; by0 := by1 - 77 * k; bx0 := 72 * k; bx1 := w - 291 * k;
+  n = hv_rect(out, n, bx0, by0, bx1, by1, kit_tint(0.07, 0.068, 0.062), 1);
+  n = ui_sprockets(out, n, bx0, bx1, by0 + 6 * k, 6 * k, HV_PANEL());
+  n = ui_sprockets(out, n, bx0, bx1, by1 - 6 * k, 6 * k, HV_PANEL());
+  n = hv_text(out, n, F_MONO, "BEHAVIOR", bx0 + 12 * k, (by0 + by1) * 0.5 + 3 * k, 6 * k, dim, 1);
+  sw := 92 * k; sg := 8 * k; s0 := bx0 + 76 * k;
+  for i: 0..<3 {
+    cx0 := s0 + cast(f32) i * (sw + sg); cx1 := cx0 + sw; cy0 := by0 + 21 * k; cy1 := by1 - 21 * k;
+    d := (3 + i) * 4; g[0].drop[d] = cx0; g[0].drop[d + 1] = cy0; g[0].drop[d + 2] = cx1; g[0].drop[d + 3] = cy1;
+    if i < g[0].strip_n {
+      item := g[0].strip[i]; plus := item == H_PLUS;
+      n = hv_rect(out, n, cx0, cy0, cx1, cy1, ifx plus then orange else cream, 1);
+      n = hv_mid(out, n, F_TITLE, card_name(item), (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 + 4 * k, 8.5 * k, HV_DARK(), 1);
+    } else {
+      n = ui_dash(out, n, cx0, cy0, cx1, cy1, 1 * k, ifx g[0].drag >= H_MOVE && g[0].drag <= H_PLUS then cream else line);
+      n = hv_mid(out, n, F_MONO, "+", (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 + 4 * k, 8 * k, dim, 1);
+    }
+  }
+  m := msg_text(g);
+  if m != "" { n = hv_text(out, n, F_MONO, m, s0 + 3 * (sw + sg) + 10 * k, (by0 + by1) * 0.5 + 3 * k, 7 * k, ifx g[0].msg == MSG_NEED then orange else cream, 1); }
+  // SPLICE + RESTORE: the banned core, spliced in, restores the scene
+  core := g[0].have[H_CORE]; kx0 := w - 273 * k; kx1 := w - 76 * k;
+  if core { n = hv_rect(out, n, kx0, by0, kx1, by1, cream, 1); g_hot(g, kx0, by0, kx1, by1, 'x'); }
+  else { n = ui_dash(out, n, kx0, by0, kx1, by1, 1.2 * k, line); }
+  n = hv_mid(out, n, F_TITLE, "SPLICE + RESTORE", (kx0 + kx1) * 0.5, (by0 + by1) * 0.5 + 1 * k, 9 * k, ifx core then HV_DARK() else dim, 1);
+  n = hv_mid(out, n, F_MONO, ifx core then "PRESS X" else "NEEDS THE BANNED CORE", (kx0 + kx1) * 0.5, (by0 + by1) * 0.5 + 18 * k, 5.5 * k, ifx core then HV_PANEL() else dim, 1);
+  // the keys
+  n = hv_right(out, n, F_TITLE, "DRAG TO SLOT    C CLEAR    TAB CLOSE", w - 54 * k, h - 19 * k, 6 * k, cream, 1);
+  // what is being dragged follows the pointer
+  if g[0].drag >= 0 {
+    dt := d_kind_name(g[0].drag); dw := ui_w(F_TITLE, dt, 8 * k) + 30 * k;
+    n = hv_rect(out, n, g[0].drag_x - dw * 0.5, g[0].drag_y - 16 * k, g[0].drag_x + dw * 0.5, g[0].drag_y + 16 * k, ifx hv_banned_kind(g[0].drag) then orange else cream, 1);
+    n = hv_mid(out, n, F_TITLE, dt, g[0].drag_x, g[0].drag_y + 4 * k, 8 * k, HV_DARK(), 1);
+  }
+  return n;
+}

@@ -737,7 +737,7 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
   f := t.fight[0];
   // the foe: its name and health, under the time of day
   foe := bb_active(f, 1);
-  fx0 := w * 0.5 - 220 * k; fx1 := w * 0.5 + 220 * k; fy := pad + 48 * k;
+  fx0 := w * 0.5 - 220 * k; fx1 := w * 0.5 + 220 * k; fy := pad + 88 * k;   // under the compass and its objective (hud.coax)
   ui_panel(g, u, fx0, fy, fx1, fy + 52 * k, paper, 0.96);
   n = ui_box(out, n, fx0, fy, fx1, fy + 52 * k, 3 * k, ink);
   n = ui_title(out, n, sb_bot_name(t.foe), fx0 + 14 * k, fy + 22 * k, 10 * k, ifx t.foe == SB_BOSS then GLOW_INK() else ink);

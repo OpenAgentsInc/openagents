@@ -1,0 +1,93 @@
+// HUD readouts that come and go: a compass bar, a gauge that fades out while it has nothing to say,
+// and a short stack of toasts that fade on their own. Nothing here draws or reads keys: a realm keeps
+// the state, steps it with its frame's seconds, and draws what these return in its own style.
+// Splice Bots' HUD keeps all three (metaverse/splice-bots/hud.coax).
+//   coax/bin/coax test metaverse-engine/ui/hud-readout.coax --library
+#module "metaverse.engine.ui.readout";
+#load "../core/angle.coax";
+
+// ---- the compass bar
+// Where a bearing falls on a bar `width` wide that shows `span` radians centred on `heading`: the
+// offset from the bar's middle, positive to the right. Yaw is the engine's (0 faces +Z, a quarter turn
+// faces +X), so turning right adds to it. Off the bar it is RO_OFF.
+RO_OFF :: -1000000.0f32;
+ro_compass_x :: (heading: f32, bearing: f32, span: f32, width: f32) -> f32 {
+  if !(span > 0) || !(width > 0) { return RO_OFF; }
+  d := angle_wrap(heading - bearing);   // a bearing to the right is a smaller yaw: yaw grows to the left (+X is a quarter turn from +Z)
+  if abs(d) > span * 0.5 { return RO_OFF; }
+  return d / span * width;
+}
+// The bearing from (x, z) to (tx, tz), as a yaw.
+ro_bearing :: (x: f32, z: f32, tx: f32, tz: f32) -> f32 { return angle_atan2(tx - x, tz - z); }
+
+// ---- a gauge that fades out while it has nothing to say
+// It shows while `wants` (low, warm, not full) and for RO_HOLD seconds after its value last changed,
+// then fades out over RO_FADE seconds; it fades in as fast.
+RO_HOLD :: 3.0f32; RO_FADE :: 0.6f32;
+RoGauge :: struct { value: f32; since: f32 = 1000; alpha: f32; seen: bool; }
+ro_gauge_step :: (g: RoGauge, value: f32, wants: bool, dt: f32) -> RoGauge {
+  o := g;
+  if !o.seen || abs(value - o.value) > 0.001 { o.since = ifx o.seen then 0.0f32 else 1000.0f32; o.value = value; o.seen = true; }
+  else if o.since < 1000 { o.since += dt; }
+  up := wants || o.since < RO_HOLD;
+  step := ifx dt > 0 then dt / RO_FADE else 0.0f32;
+  o.alpha = ifx up then lo_ro(1, o.alpha + step) else hi_ro(0, o.alpha - step);
+  return o;
+}
+lo_ro :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+hi_ro :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+
+// ---- toasts
+// The newest first, RO_TOASTS at most (a new one pushes the oldest out). Each holds RO_TOAST_HOLD
+// seconds, then fades over RO_FADE.
+RO_TOASTS :: 4; RO_TOAST_HOLD :: 2.6f32;
+RoToasts :: struct { what: [RO_TOASTS] int; extra: [RO_TOASTS] int; age: [RO_TOASTS] f32; n: int; }
+ro_toast :: (t: [] RoToasts, what: int, extra: int) {
+  i := ifx t[0].n < RO_TOASTS then t[0].n else RO_TOASTS - 1;
+  while i > 0 { t[0].what[i] = t[0].what[i - 1]; t[0].extra[i] = t[0].extra[i - 1]; t[0].age[i] = t[0].age[i - 1]; i -= 1; }
+  t[0].what[0] = what; t[0].extra[0] = extra; t[0].age[0] = 0;
+  if t[0].n < RO_TOASTS { t[0].n += 1; }
+}
+ro_toasts_step :: (t: [] RoToasts, dt: f32) {
+  for i: 0..<t[0].n { t[0].age[i] += hi_ro(0, dt); }
+  while t[0].n > 0 && t[0].age[t[0].n - 1] >= RO_TOAST_HOLD + RO_FADE { t[0].n -= 1; }
+}
+ro_toast_alpha :: (t: [] RoToasts, i: int) -> f32 {
+  if i < 0 || i >= t[0].n { return 0; }
+  a := t[0].age[i];
+  if a <= RO_TOAST_HOLD { return 1; }
+  return hi_ro(0, 1 - (a - RO_TOAST_HOLD) / RO_FADE);
+}
+
+#test "the compass: north ahead sits in the middle, east to the right, west to the left, behind is off the bar" {
+  pi := f32(ANGLE_PI); n := pi;   // facing -Z
+  #assert abs(ro_compass_x(n, n, 2, 400)) < 0.01;
+  #assert ro_compass_x(n, pi * 0.5, pi * 1.2, 600) > 200;    // east (+X) on the right
+  #assert ro_compass_x(n, -pi * 0.5, pi * 1.2, 600) < -200;  // west on the left
+  #assert ro_compass_x(n, 0, pi, 600) == RO_OFF;             // south, behind
+  #assert ro_compass_x(n, n, 0, 600) == RO_OFF && ro_compass_x(n, n, 1, 0) == RO_OFF;
+  #assert abs(angle_wrap(ro_bearing(0, 0, 0, -10) - pi)) < 0.001 && abs(ro_bearing(0, 0, 10, 0) - pi * 0.5) < 0.001;
+}
+#test "a gauge stays out while it is full, shows when its value changes, and fades out after the hold" {
+  g := RoGauge.{};
+  g = ro_gauge_step(g, 3, false, 0.1);
+  #assert g.alpha == 0;                         // full from the start: out
+  g = ro_gauge_step(g, 2, false, 0.1);
+  #assert g.alpha > 0 && g.since == 0;          // a change brings it in
+  for i: 0..<20 { g = ro_gauge_step(g, 2, false, 0.1); }
+  #assert g.alpha == 1;                         // within the hold
+  for i: 0..<20 { g = ro_gauge_step(g, 2, false, 0.1); }
+  #assert g.alpha == 0;                         // past it, faded
+  for i: 0..<10 { g = ro_gauge_step(g, 2, true, 0.1); }
+  #assert g.alpha == 1;                         // wanted: stays
+}
+#test "toasts: the newest first, four at most, each fading out on its own" {
+  t := [1] RoToasts.[RoToasts.{}];
+  for i: 0..<5 { ro_toast(t[..], i, 0); }
+  #assert t[0].n == RO_TOASTS && t[0].what[0] == 4 && t[0].what[3] == 1;
+  #assert ro_toast_alpha(t[..], 0) == 1 && ro_toast_alpha(t[..], 9) == 0;
+  ro_toasts_step(t[..], RO_TOAST_HOLD + RO_FADE * 0.5);
+  #assert t[0].n == RO_TOASTS && ro_toast_alpha(t[..], 0) > 0.4 && ro_toast_alpha(t[..], 0) < 0.6;
+  ro_toasts_step(t[..], RO_FADE);
+  #assert t[0].n == 0;
+}

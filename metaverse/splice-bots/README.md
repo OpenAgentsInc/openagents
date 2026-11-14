@@ -15,6 +15,7 @@ for people and agents who change the code.
 | `splice-battle.coax` | Bot battles, the drill mech, the raider mech, the boss and the ending (below) |
 | `splice-cast.coax` | The five characters of the slice |
 | `sound.coax`, `sound-checks.coax`, `tools/sounds.coax` | The sound table, the moments each sound plays, its checks, and the tool that writes the placeholder files (below) |
+| `hud.coax` | The HUD and the edit bay in the SPLICE UI v2 frame (#13505): the compass and the objective, pickup toasts, the interact prompt, the gauges that fade while full or cool, the bot slots, the objective card; H hides it. The edit bay's inventory grid, the picked item's card, the stage, the hardware slots and the behavior strip. The compass, fades and toasts are `metaverse-engine/ui/hud-readout.coax` |
 | `director.coax` | The Director's systems (#13505): the key map, sneaking, Digger picking up parts by his sensor's range, pointing him with a left click, the inventory grid, Heat's sensing range, the health bars, towing and charging Digger, the map and pause |
 | `gpu/splice-bots.coax` | The shaders: Anime Lab's cel pass, the placed pieces' instances, and the ink overlay |
 | `splice-face.c`, `splice-ue-face.c` | The C faces for the browser and for a native host |

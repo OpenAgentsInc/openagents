@@ -21,6 +21,7 @@
 #load "digger-gait.coax";       // the Digger's stride for his walk (digger.coax)
 #load "world.coax";
 #load "scripts.coax";              // the foes' realm scripts: the frame out, the commands in (#13467)
+#load "hud.coax";                  // the HUD and the edit bay, SPLICE UI v2 (#13505)
 #load "director.coax";             // the Director's keys, Digger's pickups, the inventory, Heat's sensing and health (#13505)
 #load "sound.coax";                // the sound table and the moments each sound plays (#13505)
 #load "sound-checks.coax" #test;
@@ -152,6 +153,7 @@ SpGame :: struct {
   dr: [1] SpDir;               // the Director's systems (director.coax): her stance, Digger's errands and health, the grid, the map, pause
   bt: [1] SpBattle;            // the bots' battles, the drill mech, the raider mech, the boss and the ending (splice-battle.coax)
   snd: [1] SpSound;            // what sounds, and what the page is told to play (sound.coax)
+  hv: [1] SpHud;               // the HUD: hidden or not, the toasts, the gauges' fades, the edit bay's picked item (hud.coax)
 }
 
 // ---- Things and events, for a host that shows the game with its own models and sounds
@@ -174,7 +176,7 @@ g_thing :: (g: [] SpGame, p: [] Pen, kind: int, variant: int, f: Frame, scale: f
 }
 // After a thing's shapes: how many vertices it wrote.
 g_thing_end :: (g: [] SpGame, p: [] Pen, k: int) { if k >= 0 && k < THINGS { g[0].thing_count[k] = p[0].n - g[0].thing_first[k]; } }
-g_event :: (g: [] SpGame, e: int) { if g[0].event_n < EVENTS { g[0].events[g[0].event_n] = e; g[0].event_n += 1; } snd_event(g, e); }
+g_event :: (g: [] SpGame, e: int) { if g[0].event_n < EVENTS { g[0].events[g[0].event_n] = e; g[0].event_n += 1; } snd_event(g, e); hv_event(g, e); }
 
 // ---- Colours (the Game UI board): paper, shade, ink, heat orange, glow blue
 PAPER :: () -> KitTint { return kit_tint(0.918, 0.859, 0.769); }
@@ -777,6 +779,7 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
     if (key == 'o' || key == 'O') && dv_outfit(g) { return true; }   // the wardrobe, in the rover's room (drive.coax)
     if key == -15 { return g_open_bay(g) || true; }
     if key == 'f' || key == 'F' { g_stun(g); return true; }
+    if key == 'h' || key == 'H' { g[0].hv[0].hidden = !g[0].hv[0].hidden; return true; }   // the HUD on and off (hud.coax)
   }
   return false;
 }
@@ -1456,200 +1459,9 @@ objective :: (g: [] SpGame) -> string {
   return "Walk near parts: Digger takes them.";
 }
 
-g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
-  n := 0; k := q.k; w := q.w; h := q.h; pad := 18 * k; ink := INK(); paper := PAPER();
-  buf: [96] u8;
-  // top left: her health, Digger's, her inventory and his sensor (director.coax)
-  if g[0].dr[0].paused { return d_hud(g, out, u, q, n); }
-  n = d_vitals(g, out, u, q, n);
-  // under them: the hoverboard, when the world gives one: what it is doing, and its keys
-  if g_board_given(g) && g[0].mode == M_PLAY {
-    y0 := pad + 100 * k; bd := g[0].board[0]; on := g_riding(g);
-    ui_panel(g, u, pad, y0, pad + 272 * k, y0 + 50 * k, ifx on then ink else paper, 0.96);
-    n = ui_box(out, n, pad, y0, pad + 272 * k, y0 + 50 * k, 3 * k, ink);
-    fg := ifx on then paper else ink;
-    what := ifx !on then "BOARD OFF" else ifx g[0].dr[0].super then "BOARD · SUPER FAST" else ifx bd.fast then "BOARD · FAST" else "BOARD · CASUAL";
-    n = ui_text(out, n, what, pad + 12 * k, y0 + 20 * k, 9.5 * k, ifx on && bd.fast then HEAT() else fg);
-    if on { n = ui_right(out, n, num(buf[..], "", cast(int) (abs(bd.m.speed) * 3.6 + 0.5), " km/h"), pad + 260 * k, y0 + 20 * k, 9.5 * k, fg); }
-    n = ui_text(out, n, ifx on then "Q fast · Q Q super-fast · hold Q off" else "Q board · Q Q super-fast", pad + 12 * k, y0 + 40 * k, 7.5 * k, fg);
-  }
-  // top centre: the phase, four chips on an ink bar
-  bw := 380 * k; bx := w * 0.5 - bw * 0.5;
-  ui_panel(g, u, bx, pad, bx + bw, pad + 38 * k, ink, 0.97);
-  names := [4] string.["DAWN", "DAY", "DUSK", "NIGHT"];
-  for i: 0..<4 {
-    cx := bx + (cast(f32) i + 0.5) * bw / 4; on := i == g_phase(g);   // the editor's time of day, when one is set
-    if on { n = ui_fill(out, n, cx - 40 * k, pad + 6 * k, cx + 40 * k, pad + 32 * k, HEAT()); n = ui_fill(out, n, cx - 37.5 * k, pad + 8.5 * k, cx + 37.5 * k, pad + 29.5 * k, SHADE()); }
-    n = ui_mid(out, n, names[i], cx, pad + 23.5 * k, 9.5 * k, ifx on then ink else SHADE());
-  }
-  // top right: Heat, in three bands
-  hx := w - pad - 350 * k;
-  ui_panel(g, u, hx, pad, w - pad, pad + 86 * k, paper, 0.96);
-  n = ui_box(out, n, hx, pad, w - pad, pad + 86 * k, 3 * k, ink);
-  n = ui_icon(out, n, 5, hx + 22 * k, pad + 19 * k, 16 * k, HEAT(), k);
-  n = ui_text(out, n, num(buf[..], "HEAT ", cast(int) g[0].heat, " / 100"), hx + 38 * k, pad + 24 * k, 10.5 * k, ink);
-  band := ifx g[0].heat >= 66 then "WANTED" else ifx g[0].heat >= 33 then "WARM" else "COOL";
-  n = ui_right(out, n, band, w - pad - 14 * k, pad + 24 * k, 10.5 * k, ifx g[0].heat >= 33 then HEAT() else ink);
-  b0 := hx + 14 * k; b1 := w - pad - 14 * k; by := pad + 46 * k;
-  n = ui_box(out, n, b0, by - 9 * k, b1, by + 9 * k, 2 * k, ink);
-  if g[0].heat > 1 { n = ui_seg(out, n, b0 + 7 * k, by, b0 + 7 * k + (b1 - b0 - 14 * k) * g[0].heat / T_HEAT_MAX, by, 5.5 * k, HEAT(), 1); }
-  n = ui_seg(out, n, b0 + (b1 - b0) / 3, by - 9 * k, b0 + (b1 - b0) / 3, by + 9 * k, 1 * k, ink, 1);
-  n = ui_seg(out, n, b0 + (b1 - b0) * 2 / 3, by - 9 * k, b0 + (b1 - b0) * 2 / 3, by + 9 * k, 1 * k, ink, 1);
-  n = ui_text(out, n, "+25 per banned piece · cools at the rover", b0, pad + 74 * k, 7.5 * k, ink);
-  // bottom left: the Digger's cards
-  cy0 := h - pad - 92 * k;
-  ui_panel(g, u, pad, cy0, pad + 360 * k, h - pad, paper, 0.96);
-  n = ui_box(out, n, pad, cy0, pad + 360 * k, h - pad, 3 * k, ink);
-  n = ui_text(out, n, "DIGGER · CARDS", pad + 14 * k, cy0 + 24 * k, 9.5 * k, ink);
-  for i: 0..<3 {
-    c := H_MOVE + i; x0 := pad + (14 + cast(f32) i * 112) * k; y0 := cy0 + 38 * k; x1 := x0 + 104 * k; blue := c == H_PLUS;
-    if g[0].have[c] { n = ui_button(g, out, n, card_name(c), x0, y0, x1, y0 + 38 * k, ifx blue then 2 else 0, 0); }
-    else if blue { n = ui_dash(out, n, x0, y0, x1, y0 + 38 * k, 1.5 * k, GLOW_INK()); n = ui_mid(out, n, "NOT FOUND", (x0 + x1) * 0.5, y0 + 23 * k, 7.5 * k, GLOW_INK()); }
-    else { n = ui_box(out, n, x0, y0, x1, y0 + 38 * k, 1.5 * k, ink); n = ui_mid(out, n, "NOT FOUND", (x0 + x1) * 0.5, y0 + 23 * k, 7.5 * k, ink); }
-  }
-  // bottom right: the objective and its checklist
-  ox := w - pad - 400 * k;
-  ui_panel(g, u, ox, cy0, w - pad, h - pad, paper, 0.96);
-  n = ui_box(out, n, ox, cy0, w - pad, h - pad, 3 * k, ink);
-  n = ui_text(out, n, "OBJECTIVE", ox + 14 * k, cy0 + 24 * k, 9.5 * k, ink);
-  n = ui_text(out, n, objective(g), ox + 14 * k, cy0 + 50 * k, 9 * k, ink);
-  parts := (ifx g[0].have[H_ARM] then 1 else 0) + (ifx g[0].have[H_TREADS] then 1 else 0) + (ifx g[0].have[H_BATTERY] then 1 else 0);
-  if g[0].zone == Z_MINE && g[0].rubble_gone { n = ui_text(out, n, num(buf[..], "Robot pieces ", g[0].scrap, ""), ox + 14 * k, cy0 + 74 * k, 9 * k, ink); n = ui_text(out, n, num(buf[..], "Cells ", g[0].cells, " / 4"), ox + 190 * k, cy0 + 74 * k, 9 * k, ink); }
-  else if g[0].zone == Z_MINE { n = ui_text(out, n, num(buf[..], "Parts ", parts, " / 3"), ox + 14 * k, cy0 + 74 * k, 9 * k, ink); n = ui_text(out, n, num(buf[..], "Cards ", (ifx g[0].have[H_MOVE] then 1 else 0) + (ifx g[0].have[H_DRILL] then 1 else 0), " / 2"), ox + 150 * k, cy0 + 74 * k, 9 * k, ink); }
-  // bottom centre: the key prompt
-  prompt := ""; key := "E"; reach := g_reach(g);
-  if g[0].mode == M_RIDE { prompt = "Speed up · slow down"; key = "W S"; }
-  else if reach >= 0 && g[0].bot && !d_down(g) { prompt = "Digger picks it up"; key = "AUTO"; }
-  else if g[0].bot && d_down(g) && dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) < T_TOW_REACH { prompt = ifx d_towing(g) then "Let go of Digger" else "Tow Digger to Sniper"; }
-  else if g_weak_near(g) >= 0 { prompt = "Stun the weak point"; key = "F"; }
-  else if g_foe_near(g) >= 0 { prompt = ifx g_foe_near(g) < F_RAIDERS then "Stun the raider" else "Stun the Imperial robot"; key = "F"; }
-  else if g[0].zone == Z_MINE && g[0].boss_down && !g[0].core_taken && dist2(g[0].px, g[0].pz, sb_core_at(g).x, sb_core_at(g).z) < T_PICK_RANGE { prompt = "PICK UP · Banned core"; }
-  else if g[0].zone == Z_RAIL && near_rover(g, T_USE_RANGE) { prompt = "Board the rover"; }
-  else if g_portal(g) >= 0 { prompt = prt_name(g[0].c[0].portals[..], g_portal(g)); }
-  else if d_in_rover(g) { prompt = "Open the edit bay"; key = "TAB"; }
-  sp := sb_prompt(g); if sp.text != "" && reach < 0 { prompt = sp.text; key = sp.key; }   // the battles' (splice-battle.coax)
-  if g[0].dr[0].bag || g[0].dr[0].map { prompt = ""; }   // an open window covers the prompt
-  n = sb_hud(g, out, u, q, n);   // health bars over the bots, and a battle's panels
-  if prompt != "" {
-    extra := ifx reach >= 0 then pick_name(reach) else "";
-    cw := cap_w(key, 26 * k); pw0 := ui_w(F_MONO, prompt, 10.5 * k);
-    pw := pw0 + cw + 44 * k + (ifx extra != "" then ui_w(F_MONO, extra, 10.5 * k) + 30 * k else 0.0f32);
-    x0 := w * 0.5 - pw * 0.5; y0 := h - pad - 150 * k;
-    ui_panel(g, u, x0, y0, x0 + pw, y0 + 46 * k, paper, 0.96);
-    n = ui_box(out, n, x0, y0, x0 + pw, y0 + 46 * k, 3 * k, ink);
-    n = ui_cap(out, n, key, x0 + 12 * k, y0 + 9 * k, 26 * k, ink);
-    n = ui_text(out, n, prompt, x0 + cw + 26 * k, y0 + 29 * k, 10.5 * k, ink);
-    if extra != "" { n = ui_text(out, n, "·", x0 + cw + 36 * k + pw0, y0 + 29 * k, 10.5 * k, ink); n = ui_text(out, n, extra, x0 + cw + 54 * k + pw0, y0 + 29 * k, 10.5 * k, ifx reach == PICK_PLUS then GLOW_INK() else ink); }
-  }
-  // the scanner gate: Heat is cool, pass
-  if g[0].zone == Z_VILLAGE && (g[0].pass_t > 0 || g[0].pz > g[0].at.vil_z + 4) {
-    x0 := w * 0.5 - 250 * k; y0 := h * 0.24;
-    ui_panel(g, u, x0, y0, x0 + 500 * k, y0 + 118 * k, paper, 0.97);
-    n = ui_box(out, n, x0, y0, x0 + 500 * k, y0 + 118 * k, 3 * k, ink);
-    n = ui_title_mid(out, n, ifx g[0].pass_t > 0 then "HEAT: COOL. PASS." else "SCANNER GATE", w * 0.5, y0 + 40 * k, 15 * k, ink);
-    n = ui_box(out, n, x0 + 40 * k, y0 + 56 * k, x0 + 460 * k, y0 + 72 * k, 2 * k, ink);
-    n = ui_mid(out, n, "Walk through the beam to start the rail drive", w * 0.5, y0 + 98 * k, 8.5 * k, ink);
-  }
-  // centre: what just happened
-  m := msg_text(g);
-  if m != "" {
-    mw := ui_w(F_MONO, m, 12 * k) + 48 * k; x0 := w * 0.5 - mw * 0.5; y0 := h * 0.3 + (ifx g[0].zone == Z_VILLAGE then 140 * k else 0.0f32);
-    bad := g[0].msg == MSG_BAD_CUT || g[0].msg == MSG_AIR || g[0].msg == MSG_WEAK || g[0].msg == MSG_HIT || g[0].msg == MSG_NEED || g[0].msg == MSG_WAKE;
-    ui_panel(g, u, x0, y0, x0 + mw, y0 + 50 * k, ifx bad then HEAT() else ink, 0.96);
-    n = ui_mid(out, n, m, w * 0.5, y0 + 31 * k, 12 * k, paper);
-  }
-  n = dv_room_hint(g, out, u, q, n);   // the rover's room: the wardrobe and the map (drive.coax)
-  return d_hud(g, out, u, q, n);   // the bars over the bots, her line, the grid and the map (director.coax)
-}
-
-g_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
-  n := 0; k := q.k; w := q.w; h := q.h; ink := INK(); paper := PAPER(); blue := GLOW_INK();
-  buf: [96] u8;
-  lx := 300 * k; rx := w - 300 * k; top := 66 * k; bot := h - 300 * k; mx := (lx + rx) * 0.5;
-  g[0].btn_n = 0;
-  // paper round a window onto the Digger's stage
-  ui_panel(g, u, -20, -20, w + 20, top, ink, 1);
-  ui_panel(g, u, -20, top, lx, h + 20, paper, 1);
-  ui_panel(g, u, rx, top, w + 20, h + 20, paper, 1);
-  ui_panel(g, u, lx - 10, bot, rx + 10, h + 20, paper, 1);
-  // header: the bay, the bot and where you are, Heat, EXIT [TAB]
-  n = ui_title(out, n, "EDIT BAY", 24 * k, 42 * k, 15 * k, paper);
-  n = ui_text(out, n, ifx g[0].at_crate then "DIGGER · STASH CRATE" else "DIGGER · ROVER", 290 * k, 40 * k, 10 * k, SHADE());
-  n = ui_mid(out, n, num(buf[..], "HEAT ", cast(int) g[0].heat, ifx g[0].heat > 0 then " · COOLING" else " · COOL"), w * 0.5 + 110 * k, 40 * k, 10 * k, ifx g[0].heat > 0 then t3(0.95, 0.52, 0.30) else SHADE());
-  tw := cap_w("TAB", 26 * k);
-  n = ui_right(out, n, "EXIT", w - 36 * k - tw, 40 * k, 10 * k, paper);
-  n = ui_cap(out, n, "TAB", w - 24 * k - tw, 18 * k, 26 * k, paper);
-  g_hot(g, w - 130 * k, 0, w, top, -15);
-  // left: the parts you carry (drag one onto the timeline, or click it)
-  n = ui_title(out, n, "PARTS", 24 * k, top + 38 * k, 10 * k, ink);
-  for i: 0..<3 {
-    y := top + (58 + cast(f32) i * 56) * k; x1 := lx - 24 * k;
-    n = ui_box(out, n, 24 * k, y, x1, y + 46 * k, 2 * k, ink);
-    n = ui_icon(out, n, i, 46 * k, y + 23 * k, 18 * k, ink, k);
-    n = ui_text(out, n, item_name(i), 66 * k, y + 28 * k, 9.5 * k, ink);
-    state := ifx g[0].slot[i] then "SPLICED" else ifx g[0].have[i] then "CARRIED" else "NOT FOUND";
-    n = ui_right(out, n, state, x1 - 12 * k, y + 28 * k, 7.5 * k, ifx g[0].have[i] then ink else HEAT());
-    if g[0].have[i] && !g[0].slot[i] { g_hot(g, 24 * k, y, x1, y + 46 * k, 1000 + i); }
-  }
-  y := top + 246 * k;
-  n = ui_text(out, n, num(buf[..], "Robot pieces ", g[0].scrap, ""), 24 * k, y, 9 * k, ink); n = ui_text(out, n, num(buf[..], "Cells ", g[0].cells, ""), 190 * k, y, 9 * k, ink);
-  if g[0].have[H_CORE] { n = ui_icon(out, n, 4, 34 * k, y + 22 * k, 16 * k, blue, k); n = ui_text(out, n, "Banned core · ready", 52 * k, y + 26 * k, 9 * k, blue); }
-  // the window: a REC mark, SPLICE and SPLICE CORE
-  n = ui_box(out, n, lx, top, rx, bot, 3 * k, ink);
-  if fract(g[0].t) < 0.6 { n = ui_seg(out, n, lx + 24 * k, top + 26 * k, lx + 24 * k, top + 26 * k, 7 * k, HEAT(), 1); }
-  n = ui_text(out, n, "REC", lx + 40 * k, top + 31 * k, 10 * k, ink);
-  n = ui_button(g, out, n, "SPLICE", mx - 290 * k, bot - 58 * k, mx - 60 * k, bot - 14 * k, 0, -2);
-  n = ui_button(g, out, n, "SPLICE CORE", mx - 30 * k, bot - 58 * k, mx + 290 * k, bot - 14 * k, ifx g[0].have[H_CORE] then 2 else 3, 'x');
-  // right: the cards you carry
-  n = ui_title(out, n, "CARDS", rx + 24 * k, top + 38 * k, 10 * k, ink);
-  desc := [3] string.["Follow the path", "Breaks rubble", "Special part · drills hardest"];
-  for i: 0..<3 {
-    c := H_MOVE + i; y0 := top + (58 + cast(f32) i * 74) * k; has := g[0].have[c]; col := ifx c == H_PLUS then blue else ink;
-    if c == H_PLUS && !has { n = ui_dash(out, n, rx + 24 * k, y0, w - 24 * k, y0 + 62 * k, 2 * k, col); } else { n = ui_box(out, n, rx + 24 * k, y0, w - 24 * k, y0 + 62 * k, 2 * k, col); }
-    n = ui_title(out, n, card_name(c), rx + 38 * k, y0 + 26 * k, 9.5 * k, col);
-    n = ui_text(out, n, ifx has then desc[i] else "NOT FOUND", rx + 38 * k, y0 + 47 * k, 6.6 * k, ifx has then col else HEAT());
-    if has { g_hot(g, rx + 24 * k, y0, w - 24 * k, y0 + 62 * k, 1000 + c); }
-  }
-  // bottom: the film-strip timeline, a PARTS row and a CARDS row, slots 01 to 03
-  sy := bot + 16 * k; sh := 210 * k; s0 := lx + 10 * k; s1 := rx - 10 * k;
-  ui_panel(g, u, s0, sy, s1, sy + sh, ink, 1);
-  n = ui_sprockets(out, n, s0, s1, sy + 12 * k, 10 * k, paper);
-  n = ui_sprockets(out, n, s0, s1, sy + sh - 12 * k, 10 * k, paper);
-  lab := 78 * k; sw := (s1 - s0 - lab - 24 * k) / 3;
-  nums := [3] string.["01", "02", "03"];
-  for row: 0..<2 {
-    y0 := sy + (ifx row == 0 then 28 * k else 108 * k); y1 := y0 + 72 * k;
-    n = ui_text(out, n, ifx row == 0 then "PARTS" else "CARDS", s0 + 16 * k, (y0 + y1) * 0.5 + 4 * k, 8 * k, paper);
-    for i: 0..<3 {
-      x0 := s0 + lab + cast(f32) i * sw + 6 * k; x1 := x0 + sw - 12 * k;
-      d := (row * 3 + i) * 4; g[0].drop[d] = x0; g[0].drop[d + 1] = y0; g[0].drop[d + 2] = x1; g[0].drop[d + 3] = y1;
-      full := ifx row == 0 then g[0].slot[i] else i < g[0].strip_n;
-      if full {
-        item := ifx row == 0 then i else g[0].strip[i];
-        n = ui_fill(out, n, x0, y0, x1, y1, ifx item == H_PLUS then GLOW() else paper);
-        if row == 0 { n = ui_icon(out, n, i, x0 + 44 * k, (y0 + y1) * 0.5, 20 * k, ink, k); n = ui_text(out, n, item_name(i), x0 + 64 * k, (y0 + y1) * 0.5 + 5 * k, 8 * k, ink); }
-        else { n = ui_title_mid(out, n, card_name(item), (x0 + x1) * 0.5, (y0 + y1) * 0.5 + 6 * k, 11 * k, ink); }
-      } else {
-        n = ui_box(out, n, x0, y0, x1, y1, 1.5 * k, SHADE());
-        if row == 0 { n = ui_mid(out, n, item_name(i), (x0 + x1) * 0.5, (y0 + y1) * 0.5 + 4 * k, 7.5 * k, SHADE()); }
-      }
-      n = ui_text(out, n, nums[i], x0 + 26 * k, y0 + 16 * k, 6.5 * k, ifx full then ink else SHADE());
-    }
-  }
-  by := sy + sh + 14 * k;
-  n = ui_button(g, out, n, "CLEAR STRIP", lx + 10 * k, by, lx + 270 * k, by + 40 * k, 1, 'c');
-  n = ui_right(out, n, "Drag parts and cards onto the timeline.", rx - 10 * k, by + 17 * k, 7.5 * k, ink);
-  n = ui_right(out, n, "Cards play left to right.", rx - 10 * k, by + 34 * k, 7.5 * k, ink);
-  m := msg_text(g);
-  if m != "" { n = ui_mid(out, n, m, mx, top + 70 * k, 10 * k, ifx g[0].msg == MSG_NEED then HEAT() else blue); }
-  // what is being dragged follows the pointer
-  if g[0].drag >= 0 {
-    t := item_name(g[0].drag); dw := ui_w(F_MONO, t, 10 * k) + 36 * k;
-    n = ui_fill(out, n, g[0].drag_x - dw * 0.5, g[0].drag_y - 20 * k, g[0].drag_x + dw * 0.5, g[0].drag_y + 20 * k, ifx g[0].drag == H_PLUS then GLOW_INK() else ink);
-    n = ui_mid(out, n, t, g[0].drag_x, g[0].drag_y + 5 * k, 10 * k, paper);
-  }
-  return n;
-}
+// The HUD and the edit bay are the SPLICE UI v2 frame (hud.coax).
+g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int { return hv_hud(g, out, u, q); }
+g_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int { return hv_bay(g, out, u, q); }
 
 g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   q := Ui.{w = w, h = h, k = lo(w / 1280, h / 800)}; k := q.k; n := 0;
@@ -2445,6 +2257,75 @@ FlowTest :: struct { o: [5] [CT_BODY] u8; }
   #assert g_pointer(g[..], 5, 5, 0) && g[0].drag == H_DRILL;
   #assert g_pointer(g[..], 150, 150, 1);
   #assert g_pointer(g[..], 150, 150, 2) && g[0].drag == -1 && g[0].strip_n == 2 && g[0].strip[1] == H_DRILL;
+}
+
+// ---- SPLICE UI v2 (hud.coax, #13505): the HUD and the edit bay, drawn at 1440 x 900
+HvCheck :: struct { out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; }
+hv_draw :: (g: [] SpGame, b: [] HvCheck) -> int { return g_overlay(g, b[0].out[..], b[0].u[..], 1440, 900); }
+hv_tick :: (g: [] SpGame, b: [] HvCheck, frames: int) { for i: 0..<frames { g[0].t += 0.1; _ := hv_draw(g, b); } }
+hv_btn :: (g: [] SpGame, key: int) -> int { for i: 0..<g[0].btn_n { if g[0].btn_key[i] == key { return i; } } return -1; }
+hv_press :: (g: [] SpGame, i: int) -> bool { o := i * 4; return g_pointer(g, (g[0].btn[o] + g[0].btn[o + 2]) * 0.5, (g[0].btn[o + 1] + g[0].btn[o + 3]) * 0.5, 0); }
+hv_drop_on :: (g: [] SpGame, d: int) -> bool {
+  o := d * 4; x := (g[0].drop[o] + g[0].drop[o + 2]) * 0.5; y := (g[0].drop[o + 1] + g[0].drop[o + 3]) * 0.5;
+  return g_pointer(g, x, y, 1) && g_pointer(g, x, y, 2);
+}
+#test "SPLICE UI v2 HUD: H hides it, a pickup is a toast that fades, the gauges stay out while full or cool and come back when they change (#13505)" #steps 2000000000 #traversal 1000000000 {
+  g := [1] SpGame.[SpGame.{}]; b: [1] HvCheck;
+  g_stage(g[..], 8);   // the rave at night: three hearts, Digger charged, Heat 20
+  hv_tick(g[..], b[..], 5);
+  #assert g[0].hv[0].hearts.alpha == 0 && g[0].hv[0].battery.alpha == 0 && g[0].hv[0].heat.alpha == 0;
+  shown := hv_draw(g[..], b[..]);
+  #assert g_key(g[..], 'h', true) && g[0].hv[0].hidden && hv_draw(g[..], b[..]) < shown;
+  #assert g_key(g[..], 'H', true) && !g[0].hv[0].hidden && hv_draw(g[..], b[..]) == shown;
+  // a hit brings the hearts in, and they go once the hold is over
+  g[0].hearts = 2; hv_tick(g[..], b[..], 8);
+  #assert g[0].hv[0].hearts.alpha == 1;
+  g[0].hearts = T_HEARTS; hv_tick(g[..], b[..], 50);
+  #assert g[0].hv[0].hearts.alpha == 0;
+  // warm Heat stays in
+  g[0].heat = 45; hv_tick(g[..], b[..], 60);
+  #assert g[0].hv[0].heat.alpha == 1 && hv_band(g[0].heat) == "WARM";
+  // the blue piece: an orange toast with its Heat, not a line in the middle; it fades on its own
+  g_take(g[..], PICK_PLUS);
+  t := g[0].hv[0].toasts[0];
+  #assert t.n == 1 && t.what[0] == MSG_PICK && hv_toast_banned(t.what[0], t.extra[0]) && hv_toast_tag(t.what[0], t.extra[0]) == "HEAT +25" && hv_toasted(g[0].msg);
+  g_take(g[..], PICK_CELL + 1);
+  #assert g[0].hv[0].toasts[0].n == 2 && hv_toast_name(g[0].hv[0].toasts[0].what[0], g[0].hv[0].toasts[0].extra[0]) == "BATTERY CELL";
+  hv_tick(g[..], b[..], 40);
+  #assert g[0].hv[0].toasts[0].n == 0;
+  // the objective on the compass, its distance, and the reel line
+  buf: [32] u8;
+  #assert hv_far(buf[..], 2400) == "2.4 KM" && hv_far(buf[..], 240) == "240 M" && hv_reel(g[..], buf[..]) == "REEL 03 · NIGHT";
+  g_stage(g[..], 7);
+  #assert hv_goal(g[..]).name == "BLUE GLOW" && hv_goal(g[..]).ok;
+  g[0].have[H_PLUS] = true;
+  #assert hv_goal(g[..]).rover;
+  // the prompt: the verb in capitals, what it is for after it
+  #assert hv_upper(buf[..], "Tow") == "TOW";
+}
+#test "SPLICE UI v2 edit bay: press an item to see its card, drag it onto a hardware slot or the behavior strip; PLAY TEST runs Digger, SPLICE + RESTORE needs the core (#13505)" #steps 2000000000 #traversal 1000000000 {
+  g := [1] SpGame.[SpGame.{}]; b: [1] HvCheck;
+  g_stage(g[..], 6);   // in the bay: the arm spliced, MOVE on the strip; treads, battery and DRILL carried
+  _ := hv_draw(g[..], b[..]);
+  #assert d_carry(g[..]).n == 3 && hv_btn(g[..], 1000 + H_TREADS) >= 0 && hv_btn(g[..], -2) >= 0 && hv_btn(g[..], 'x') < 0;
+  // the treads onto BODY
+  #assert hv_press(g[..], hv_btn(g[..], 1000 + H_TREADS)) && g[0].drag == H_TREADS;
+  _ = hv_draw(g[..], b[..]);
+  #assert g[0].hv[0].pick == H_TREADS;
+  #assert hv_drop_on(g[..], H_TREADS) && g[0].slot[H_TREADS] && g[0].drag == -1;
+  // DRILL into the strip's second slot
+  _ = hv_draw(g[..], b[..]);
+  #assert hv_press(g[..], hv_btn(g[..], 1000 + H_DRILL)) && hv_drop_on(g[..], 4);
+  #assert g[0].strip_n == 2 && g[0].strip[1] == H_DRILL;
+  // the battery onto BATTERY builds him; PLAY TEST sends him off
+  _ = hv_draw(g[..], b[..]);
+  #assert hv_press(g[..], hv_btn(g[..], 1000 + H_BATTERY)) && hv_drop_on(g[..], H_BATTERY) && g[0].bot;
+  _ = hv_draw(g[..], b[..]);
+  #assert hv_press(g[..], hv_btn(g[..], -2)) && g[0].mode == M_PLAY && g[0].bot_state == BOT_GO;
+  // with the core: SPLICE + RESTORE
+  g_stage(g[..], 9); g[0].have[H_CORE] = true; g[0].core_taken = true;
+  _ = hv_draw(g[..], b[..]);
+  #assert hv_btn(g[..], 'x') >= 0 && hv_press(g[..], hv_btn(g[..], 'x')) && g[0].mode == M_MEMORY;
 }
 
 // ---- Battles, the drill mech, the boss and the ending (splice-battle.coax, #13505 part C)
