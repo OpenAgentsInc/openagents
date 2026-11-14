@@ -211,6 +211,22 @@ class NativeEmissionTests(unittest.TestCase):
             with self.subTest(fixture=name):
                 self.refused(self.source(name), eligibility=True)
 
+    def test_every_refusal_in_the_selected_closure_is_listed_once(self):
+        # #13582: the policy's first refusal, then each other one the selected
+        # checks reach, and a count by kind; what no selected check reaches is
+        # not listed, and a selection that reaches none still emits.
+        result = self.refused(self.source("two-refusals"), eligibility=True)
+        located = re.findall(r"two-refusals\.coax:(\d+:\d+): error\[E0413\]: (a reachable [a-z -]+) is outside", result.stderr)
+        self.assertEqual(len(located), len(set(located)), result.stderr)
+        kinds = {kind for _, kind in located}
+        self.assertEqual(kinds, {"a reachable host effect", "a reachable unsupported borrow or escape"}, result.stderr)
+        self.assertFalse([at for at, _ in located if at.startswith("12:")], result.stderr)
+        summary = [line for line in result.stderr.splitlines() if line.startswith("coax: checks-c: ")]
+        self.assertEqual(len(summary), 1, result.stderr)
+        self.assertRegex(summary[0], rf"^coax: checks-c: {len(located)} refusals in 2 of the 5 procedures the selected checks reach: "
+                                     r"1 a reachable host effect, \d+ a reachable unsupported borrow or escape$")
+        self.emit(self.source("two-refusals"), "--only", "admitted")
+
     def test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted(self):
         emitted = self.emit(self.source("mixed-forall"), "--only", "selected ordinary")
         executable = self.link(emitted, "-O0")

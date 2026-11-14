@@ -1,0 +1,12 @@
+#import "Basic";
+#test "two refusals in one graph" {
+  values := [2]int.[3, 5];
+  view := borrowed(values[..]);
+  #assert view.count == 2;
+  side_effect();
+}
+#test "an unrelated admitted check" { #assert admitted(2) == 3; }
+borrowed :: (values: []int) -> []int { return values; }
+side_effect :: () { print("not a native verification effect"); }
+admitted :: (x: int) -> int { return x + 1; }
+unreached :: () { print("no selected check reaches this"); }

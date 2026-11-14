@@ -50,6 +50,9 @@ struct NativeCheckFacts {
   std::vector<coax_t_NC_Check> checks;
   std::vector<coax_t_NC_Edge> edges;
   std::vector<Loc> hazard_locations;
+  // Every hazard site of each procedure (one bit a site), so a refusal can
+  // list them all (#13582); hazard_locations keeps the first, as before.
+  std::vector<std::vector<std::pair<uint32_t, Loc>>> hazard_sites;
   std::set<std::pair<int64_t, int64_t>> call_edges;
   std::set<const Expr *> seen_expressions;
   std::set<Type> seen_defaults;
@@ -68,6 +71,7 @@ struct NativeCheckFacts {
     auto &fact = proc_facts[(size_t)current];
     if (!fact.hazards) hazard_locations[(size_t)current] = loc;
     fact.hazards |= bits;
+    hazard_sites[(size_t)current].push_back({bits, loc});
   }
 
   void defaults(Type type) {
@@ -162,6 +166,7 @@ struct NativeCheckFacts {
     for (const CheckDecl *check : file->checks) if (check->proc) add(check->proc);
     proc_facts.resize(procedures.size());
     hazard_locations.resize(procedures.size());
+    hazard_sites.resize(procedures.size());
     for (size_t i = 0; i < procedures.size(); ++i) {
       const ProcDecl *procedure = procedures[i];
       auto &fact = proc_facts[i];
@@ -223,6 +228,60 @@ static Loc nc_refusal_location(const NativeCheckFacts &facts, uint32_t reason, i
   return {1, 1, 0};
 }
 
+// A refusal for what a selected check reaches (reasons 9 to 15) is the first
+// of possibly many. This lists the others, so the gap between a graph and the
+// admitted set can be counted (#13582): the policy selects the closure again
+// over facts with no refusal in them, and every procedure in it reports each
+// of its own. Diagnostics only: the policy's refusal above already decided.
+static void nc_list_refusals(const NativeCheckFacts &facts, coax_t_NC_Result first, uint32_t verification_abi,
+                             coax_string selection, bool only_set, uint32_t profile) {
+  if (first.reason < 9 || first.reason > 15) return;
+  std::vector<coax_t_NC_Proc> open = facts.proc_facts;
+  for (auto &fact : open) { fact.hazards = 0; fact.foreign = false; fact.product_main = false; fact.has_body = true; }
+  std::vector<coax_t_NC_Check> checks = facts.checks;
+  std::vector<coax_t_NC_Edge> edges = facts.edges;
+  std::vector<uint8_t> procedure_mask(open.size()), check_mask(checks.size());
+  coax_t_NC_Result closure = NC_plan_abi({open.data(), (int64_t)open.size()}, {checks.data(), (int64_t)checks.size()},
+      {edges.data(), (int64_t)edges.size()}, selection, only_set, profile, verification_abi, false,
+      {procedure_mask.data(), (int64_t)procedure_mask.size()}, {check_mask.data(), (int64_t)check_mask.size()});
+  if (closure.reason) return;  // the checks themselves refuse: the first error says so
+  const Loc first_loc = nc_refusal_location(facts, first.reason, first.index);
+  size_t counts[16] = {}, reached = 0, refusing = 0;
+  std::set<std::pair<uint32_t, int32_t>> said;
+  said.insert({first.reason, first_loc.offset});
+  counts[first.reason]++;
+  auto say = [&](uint32_t reason, Loc loc) {
+    if (!said.insert({reason, loc.offset}).second) return false;
+    counts[reason]++;
+    coax_string text = NC_reason_text(reason);
+    error_at(facts.file->src, loc, "E0413", std::string(text.data, (size_t)text.count) + " is outside checked native-check emission");
+    return true;
+  };
+  for (size_t i = 0; i < facts.procedures.size(); ++i) {
+    if (!procedure_mask[i]) continue;
+    reached++;
+    const coax_t_NC_Proc &fact = facts.proc_facts[i];
+    bool any = (int64_t)i == first.index;
+    if (fact.product_main) any = say(9, facts.procedures[i]->loc) || any;
+    if (fact.foreign) any = say(10, facts.procedures[i]->loc) || any;
+    else if (!fact.has_body) any = say(11, facts.procedures[i]->loc) || any;
+    for (const auto &site : facts.hazard_sites[i])
+      any = say(site.first & 1 ? 12 : site.first & 2 ? 13 : site.first & 4 ? 14 : 15, site.second) || any;
+    if (any) refusing++;
+  }
+  if (g_json_errors) return;
+  size_t total = 0;
+  for (size_t count : counts) total += count;
+  std::string by_reason;
+  for (uint32_t reason = 9; reason <= 15; ++reason) {
+    if (!counts[reason]) continue;
+    coax_string text = NC_reason_text(reason);
+    by_reason += (by_reason.empty() ? "" : ", ") + std::to_string(counts[reason]) + " " + std::string(text.data, (size_t)text.count);
+  }
+  fprintf(stderr, "coax: checks-c: %zu refusal%s in %zu of the %zu procedures the selected checks reach: %s\n", total, total == 1 ? "" : "s",
+          refusing, reached, by_reason.c_str());
+}
+
 }  // namespace
 #endif
 
@@ -246,6 +305,7 @@ bool emit_native_checks_c(const File *file, const EmitOptions &opts, const char 
     coax_string reason = NC_reason_text(result.reason);
     error_at(file->src, nc_refusal_location(facts, result.reason, result.index), "E0413",
              std::string(reason.data, (size_t)reason.count) + " is outside checked native-check emission");
+    nc_list_refusals(facts, result, 1, selection, only != nullptr, profile);
     return false;
   }
   NativeCheckCPlan plan;
@@ -280,6 +340,7 @@ bool plan_native_checks_c(const File *file, const EmitOptions &opts, const char 
     coax_string reason = verification_abi == 1 ? NC_reason_text(result.reason) : NC_abi_reason_text(result.reason);
     error_at(file->src, nc_refusal_location(facts, result.reason, result.index), "E0413",
              std::string(reason.data, (size_t)reason.count) + " is outside checked native-check emission");
+    nc_list_refusals(facts, result, verification_abi, selection, only != nullptr, profile);
     return false;
   }
   NativeCheckCPlan selected;

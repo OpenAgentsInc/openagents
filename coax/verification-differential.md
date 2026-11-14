@@ -150,7 +150,13 @@ calls, product main, dynamic view-to-string conversions and unsupported
 borrow/escape or type forms refuse with source-located `E0413`. Graphs are
 bounded to 4,096 procedures/checks and 65,536 edges; check names and selection
 queries are bounded to 4,096 bytes. These are verification-emission limits,
-not new limits on ordinary Coax programs. Wrapping arithmetic and standalone
+not new limits on ordinary Coax programs. A refusal for what the selected
+checks reach is followed by every other such refusal in their closure, each
+with its own source-located `E0413`, and one line that counts them by kind
+(`coax: checks-c: N refusals in P of the Q procedures the selected checks
+reach: ...`), so the distance between a graph and the admitted set can be
+measured. The policy's first refusal still decides; the list is diagnostics.
+Wrapping arithmetic and standalone
 source-map output refuse; checked release build profiles and native `#line`
 debug information are independent choices. Build-only stage0 explicitly
 refuses this command.
