@@ -78,6 +78,11 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             else if let label=control as? UILabel {label.text=e.label;label.font=NativeTypography.font(16,strong:true)}
             kept[e.id]=control;if control.superview !== header {header.addArrangedSubview(control)}
         }
+        let ordered=(bar.count==1 ? [headerSpacer]:[])+bar.compactMap {kept[$0.id]}
+        for (i,control) in ordered.enumerated() {
+            if i<header.arrangedSubviews.count && header.arrangedSubviews[i] === control {continue}
+            header.insertArrangedSubview(control,at:i)
+        }
         if let e=elements.first(where:{$0.role=="composer"}) {
             if composer==nil {let c=NativeComposer();c.changed={ [weak self,weak c] text in self?.edit?(c?.fieldID ?? "",text) };c.press={ [weak self,weak c] id in if id==c?.sendID {self?.following=true};self?.press?(id) };composer=c;dock.addArrangedSubview(c)}
             composer?.render(e)

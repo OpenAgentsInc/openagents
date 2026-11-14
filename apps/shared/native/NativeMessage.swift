@@ -75,7 +75,7 @@ extension NativeElement {
         language.accessibilityIdentifier=node.id+".language"
         if let action=header?.children.first(where:{$0.role=="button"}) {
             copy.accessibilityIdentifier=action.id;copy.accessibilityLabel=action.attrs["aria-label"] ?? action.textContent
-            copy.setImage(UIImage(systemName:action.textContent=="Copied" ? "checkmark":"doc.on.doc"),for:.normal)
+            copy.setImage(UIImage(systemName:action.textContent=="Copied" ? "checkmark":"doc.on.doc",withConfiguration:UIImage.SymbolConfiguration(pointSize:14)),for:.normal);copy.tintColor=NativeTypography.color(skin.muted)
             copy.addAction(UIAction {_ in press(action.id)},for:.primaryActionTriggered)
         }
         addSubview(language);addSubview(copy);addSubview(scroll);scroll.addSubview(text)
@@ -129,7 +129,7 @@ extension NativeElement {
     func render(_ e:NativeElement) {
         guard record != e else{return}
         func updateActions(_ node:NativeElement) {
-            if let action=actions[node.id],node.role=="button" {let label=node.attrs["aria-label"] ?? node.textContent;action.accessibilityLabel=label;action.setImage(UIImage(systemName:label=="Copied" ? "checkmark":"doc.on.doc"),for:.normal)}
+            if let action=actions[node.id],node.role=="button" {let label=node.attrs["aria-label"] ?? node.textContent;action.accessibilityLabel=label;action.setImage(UIImage(systemName:label=="Copied" ? "checkmark":"doc.on.doc",withConfiguration:UIImage.SymbolConfiguration(pointSize:14)),for:.normal)}
             for child in node.children {updateActions(child)}
         }
         if record?.contentTree==e.contentTree {record=e;updateActions(e);return}
@@ -142,11 +142,11 @@ extension NativeElement {
             else if node.role=="hr" {let rule=UIView();rule.backgroundColor=NativeTypography.color(nt_skin().border);bubble.addSubview(rule);blocks.append(rule)}
             else if ["p","h1","h2","h3","h4","h5","h6","li"].contains(node.role) {
                 let checked=node.attrs["aria-checked"],level=CGFloat(Int(node.attrs["aria-level"] ?? "1") ?? 1)
-                let prefix=node.role != "li" ? "":checked != nil ? (checked=="true" ? "☑  ":"☐  "):node.attrs["data-state"]=="ordered" ? (node.attrs["value"] ?? "1")+".  ":"•  "
+                let prefix=node.role != "li" ? "":checked != nil ? (checked=="true" ? "☑\u{FE0E}  ":"☐\u{FE0E}  "):node.attrs["data-state"]=="ordered" ? (node.attrs["value"] ?? "1")+".  ":"•  "
                 let text=NativeRichText(node,prefix:prefix,indent:node.role=="li" ? (level-1)*12:0,quote:quote);text.press={ [weak self] id in self?.press?(id) };bubble.addSubview(text);blocks.append(text)
             } else if node.role=="button" {
                 let button=UIButton(type:.system);button.accessibilityIdentifier=node.id;button.accessibilityLabel=node.textContent
-                button.setImage(UIImage(systemName:node.textContent=="Copied" ? "checkmark":"doc.on.doc"),for:.normal);button.tintColor=NativeTypography.color(nt_skin().muted)
+                button.setImage(UIImage(systemName:node.textContent=="Copied" ? "checkmark":"doc.on.doc",withConfiguration:UIImage.SymbolConfiguration(pointSize:14)),for:.normal);button.tintColor=NativeTypography.color(nt_skin().muted)
                 button.addAction(UIAction { [weak self] _ in self?.press?(node.id) },for:.primaryActionTriggered);addSubview(button);copy=button;actions[node.id]=button
             } else {for child in node.children {add(child,quote:quote || node.role=="blockquote")}}
         }

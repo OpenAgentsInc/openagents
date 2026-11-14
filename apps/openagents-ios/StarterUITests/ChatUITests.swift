@@ -16,6 +16,7 @@ final class ChatUITests:XCTestCase {
         let newChat=app.buttons["New chat"];XCTAssertTrue(newChat.waitForExistence(timeout:15));newChat.tap()
         let editor=app.textViews["chat.composer"],send=app.buttons["Send message"]
         XCTAssertTrue(editor.waitForExistence(timeout:10));XCTAssertFalse(send.isEnabled)
+        XCTAssertLessThan(app.buttons["chat.back"].frame.minX,app.buttons["More"].frame.minX)
         XCTAssertEqual(app.webViews.count,0)
         editor.tap();editor.typeText("Hello from iPhone")
         XCTAssertTrue(send.isEnabled)
