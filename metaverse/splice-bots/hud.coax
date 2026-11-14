@@ -376,11 +376,21 @@ hv_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
 hv_kind_type :: (kind: int) -> string {
   if kind == H_ARM { return "ACTUATOR · LEGAL"; }
   if kind == H_TREADS { return "BODY · LEGAL"; }
-  if kind == H_BATTERY || kind == DK_CELL { return "POWER · LEGAL"; }
+  if kind == H_BATTERY || kind == DK_CELL { return "BATTERY · LEGAL"; }
   if kind == H_MOVE || kind == H_DRILL { return "CARD · LEGAL"; }
   if kind == H_PLUS { return "CARD · BANNED"; }
   if kind == H_CORE { return "CHIP · BANNED"; }
   return "SCRAP";
+}
+// The slot an inventory item goes into, as the hardware slots and the behavior strip name it: shown on
+// its tile ("": robot pieces, which go into no slot).
+hv_kind_slot :: (kind: int) -> string {
+  if kind == H_ARM { return "ACTUATOR"; }
+  if kind == H_TREADS { return "BODY"; }
+  if kind == H_BATTERY || kind == DK_CELL { return "BATTERY"; }
+  if kind == H_MOVE || kind == H_DRILL || kind == H_PLUS { return "CARD"; }
+  if kind == H_CORE { return "CHIP"; }
+  return "";
 }
 hv_kind_says :: (kind: int) -> string {
   if kind == H_ARM { return "Breaks rubble. Needs a DRILL card."; }
@@ -441,11 +451,17 @@ hv_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
     if bad { n = ui_dash(out, n, cx0, cy0, cx1, cy1, 1.4 * k, orange); }
     else { n = hv_frame(out, n, cx0, cy0, cx1, cy1, (ifx i == picked then 2.2f32 else 1.0f32) * k, ifx i == picked then cream else line, 1); }
     if bad && i == picked { n = hv_frame(out, n, cx0 - 3 * k, cy0 - 3 * k, cx1 + 3 * k, cy1 + 3 * k, 1 * k, orange, 1); }
+    tag := hv_kind_slot(one.kind);   // which slot it goes into, top left of its tile
+    if tag != "" {
+      tw := ui_w(F_MONO, tag, 4.8 * k) + 8 * k;
+      n = hv_rect(out, n, cx0 + 4 * k, cy0 + 4 * k, cx0 + 4 * k + tw, cy0 + 15 * k, ifx bad then orange else line, 1);
+      n = hv_text(out, n, F_MONO, tag, cx0 + 8 * k, cy0 + 12.5 * k, 4.8 * k, ifx bad then HV_DARK() else cream, 1);
+    }
     nm := d_kind_name(one.kind); cap := 6.5 * k;
     while ui_w(F_TITLE, nm, cap) > cs - 10 * k && cap > 5 * k && nm.count < 9 { cap -= 0.25 * k; }   // one word fits its slot
     sp := -1; if ui_w(F_TITLE, nm, cap) > cs - 10 * k { for j: 0..<nm.count { if nm[j] == ' ' { sp = j; break; } } }
-    if sp > 0 { n = hv_mid(out, n, F_TITLE, nm[0..<sp], (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 - 2 * k, cap, col, 1); n = hv_mid(out, n, F_TITLE, nm[sp + 1..<nm.count], (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 + 10 * k, cap, col, 1); }
-    else { n = hv_mid(out, n, F_TITLE, nm, (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 + 3 * k, cap, col, 1); }
+    if sp > 0 { n = hv_mid(out, n, F_TITLE, nm[0..<sp], (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 + 3 * k, cap, col, 1); n = hv_mid(out, n, F_TITLE, nm[sp + 1..<nm.count], (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 + 15 * k, cap, col, 1); }
+    else { n = hv_mid(out, n, F_TITLE, nm, (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5 + 7 * k, cap, col, 1); }
     if one.count > 1 { n = hv_right(out, n, F_MONO, num(buf[..], "x", one.count, ""), cx1 - 5 * k, cy1 - 5 * k, 6 * k, col, 1); }
     g_hot(g, cx0, cy0, cx1, cy1, 1000 + one.kind);   // press to pick it (its card below), drag it onto a slot
   }
@@ -645,4 +661,11 @@ hv_death :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   g_hot(g, bx0, by, bx0 + cw, by + bh, -1);
   n = hv_mid(out, n, F_MONO, "ENTER RESPAWN    ESC QUIT", cx, by + bh + 22 * k, 6 * k, HV_DIM(), 1);
   return hv_mid(out, n, F_MONO, HV_DEATH_TIP, cx, by + bh + 44 * k, 6 * k, HV_DIM(), 1);
+}
+
+#test "each inventory item names the slot it goes into, as the bay's slots are named (playtest 2)" {
+  #assert hv_kind_slot(H_TREADS) == "BODY" && hv_kind_slot(H_ARM) == "ACTUATOR" && hv_kind_slot(H_BATTERY) == "BATTERY" && hv_kind_slot(DK_CELL) == "BATTERY";
+  #assert hv_kind_slot(H_MOVE) == "CARD" && hv_kind_slot(H_DRILL) == "CARD" && hv_kind_slot(H_PLUS) == "CARD" && hv_kind_slot(H_CORE) == "CHIP" && hv_kind_slot(DK_SCRAP) == "";
+  labels := [5] string.["BODY", "SENSOR", "ACTUATOR", "CHIP", "BATTERY"];
+  for kind: [5] int.[H_TREADS, H_ARM, H_BATTERY, H_CORE, DK_CELL] { t := hv_kind_slot(kind); seen := false; for l: labels { if l == t { seen = true; } } #assert seen; }
 }
