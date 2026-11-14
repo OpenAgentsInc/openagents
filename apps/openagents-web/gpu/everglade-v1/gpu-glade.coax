@@ -162,8 +162,11 @@ eg_glade_albedo :: (s:EgS,tex:V4,n:V3)->V3 {
   return albedo;
 }
 // Its light: Everglade's, as the town's (eg_paint at the clock), with the glade's foliage letting the
-// sun through from behind and a grass blade's foot in its own shade.
-eg_glade_fs :: (s:EgS,tex:V4,front:bool,u:[]f32,heights:[]f32,water_nodes:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->EgLit {
+// sun through from behind and a grass blade's foot in its own shade. eg_scene_fs lights the glade
+// with the town's one eg_map_lit and eg_paint (#13562): eg_glade_dry is what it gives them (the
+// colour, its shade at a blade's foot, the normal), eg_glade_after what the glade adds to the result.
+EgGlade :: struct {albedo:V3; ao:f32; n:V3; foliage:bool; grass:bool; }
+eg_glade_dry :: (s:EgS,tex:V4,front:bool)->EgGlade {
   if (tex.w<0.35f32) {gpu_demote_helper();}
   kind:f32=s.uv1.x;foliage:bool=(kind>0.5f32)&&(kind<2.5f32);grass:bool=(kind>1.5f32)&&(kind<2.5f32);
   n:V3=wg_normalize3(s.normal);
@@ -171,14 +174,16 @@ eg_glade_fs :: (s:EgS,tex:V4,front:bool,u:[]f32,heights:[]f32,water_nodes:[]f32,
   albedo:V3=eg_glade_albedo(s,tex,n);
   ao:f32=ifx grass then 0.36f32+0.64f32*s.uv1.y else 1.0f32;
   if ((kind>0.5f32)&&(kind<1.5f32)) {ao=clampf(s.uv1.y,0.5f32,1.0f32);}
-  lit:f32=eg_map_lit(s.world,n,u,shadow_map,shadow_cmp,false);
-  res:EgLit=eg_paint(wg_mul_f3f(albedo,ao),n,s.world,lit,false,false,u,heights,water_nodes,false);
-  if (foliage&&(eg_st(1,u).w<0.5f32)) {
+  return EgGlade.{albedo=albedo,ao=ao,n=n,foliage=foliage,grass=grass};
+}
+eg_glade_after :: (res_in:EgLit,g:EgGlade,s:EgS,lit:f32,u:[]f32)->EgLit {
+  res:EgLit=res_in;n:V3=g.n;
+  if (g.foliage&&(eg_st(1,u).w<0.5f32)) {
     l:V3=wg_sw_xyz_f4(eg_st(1,u));
     v:V3=wg_normalize3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26])));
     back:f32=pow(clampf(wg_dot3(v,l),0.0f32,1.0f32),2.0f32);
-    scatter:f32=((0.15f32+(0.60f32*back))*(1.0f32-(abs(wg_dot3(n,l))*0.65f32)))*lit*eg_st(0,u).w*(ifx grass then s.uv1.y else 1.0f32);
-    res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f(wg_mul_f3f3(albedo,v3(1.35f32,1.16f32,0.62f32)),scatter)),res.light.w);
+    scatter:f32=((0.15f32+(0.60f32*back))*(1.0f32-(abs(wg_dot3(n,l))*0.65f32)))*lit*eg_st(0,u).w*(ifx g.grass then s.uv1.y else 1.0f32);
+    res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f(wg_mul_f3f3(g.albedo,v3(1.35f32,1.16f32,0.62f32)),scatter)),res.light.w);
   }
   return res;
 }

@@ -1390,18 +1390,9 @@ eg_person_dye :: (t:V3,dye:V4)->V3 {
 }
 eg_scene_fs :: (s:EgS,front:bool,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]EgObj,water_nodes:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->EgLit {
   g0:=og_grad(s.uv);g1:=og_grad(s.uv1);
-  tex:V4=render_sample_layer8_bias(sheets,sheet,s.uv,cast,trunc(s32)(s.slice),ifx s.look==EG_LOOK_CHARACTER then EG_CHARACTER_LOD_BIAS else 0.0f32);
-  if s.look==EG_LOOK_GLADE {return eg_glade_fs(s,tex,front,u,heights,water_nodes,shadow_map,shadow_cmp);}   // gpu-glade.coax
-  if s.look==EG_LOOK_LINK {
-    surface:=OgSurface.{normal=s.normal,world=s.world,uv=s.uv,uv1=s.uv1,tangent=s.tangent,colour=v4(1,1,1,1),character=1};
-    material:=og_material_surface(surface,cast(int)s.slice,vertices,sheets,sheet,g0,g1);
-    shadow:=eg_map_lit(s.world,material.normal,u,shadow_map,shadow_cmp,false);
-    colour:=og_material_light(material,s.world,v3(u[24],u[25],u[26]),wg_sw_xyz_f4(eg_st(1,u)),shadow);
-    return EgLit.{light=v4(colour.x,colour.y,colour.z,1.0f32),aux=v4(0,0,0,0)};
-  }
-  paint_leaf_far:bool;
   // a character's skin and cloth flat (spec 11): sampled two mip levels coarser, so stitching, pores
   // and the fabric's grain go and two or three colour masses stay
+  tex:V4=render_sample_layer8_bias(sheets,sheet,s.uv,cast,trunc(s32)(s.slice),ifx s.look==EG_LOOK_CHARACTER then EG_CHARACTER_LOD_BIAS else 0.0f32);
   if (s.look==EG_LOOK_GLOW) {
     // fire, a fireball, lightning: white-hot where it faces you, its colour, then deep red at its rim;
     // up to three times as bright as its colour says, and it all blooms
@@ -1414,140 +1405,171 @@ eg_scene_fs :: (s:EgS,front:bool,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
   if (s.look==EG_LOOK_ORB) {
     return eg_orb(s,u);
   }
-  if eg_spell_soft(s.look) {
-    return eg_spell_soft_part(s,u,heights,water_nodes,paint_leaf_far);
-  }
+  // Every look is lit by one eg_map_lit and painted by one eg_paint (#13562): each look's branch gives
+  // their inputs, then the one call, then its own after-work. A driver inlines every call, and the
+  // glade's, the smoke's and the town's own eg_paint were three copies of it: 62 k inlined statements
+  // in this pipeline, 35 k now, and NVIDIA's Linux compiler's time grows faster than its size.
+  glade:bool=s.look==EG_LOOK_GLADE;
+  link:bool=s.look==EG_LOOK_LINK;
+  soft:bool=eg_spell_soft(s.look);
+  main:bool=!((glade||link)||soft);
+  paint_leaf_far:bool=false;
   n:V3=wg_normalize3(s.normal);
   base:V3=s.tint;
   shadow:f32=1.0f32;
   mark_ice:f32=0.0f32;
   mark_glow:V3=v3(0.0f32,0.0f32,0.0f32);
-  if (((((s.look==5)||(s.look==EG_LOOK_CANOPY))||(s.look==EG_LOOK_CHARACTER))||(s.look==EG_LOOK_ROCK))||(s.look==EG_LOOK_WINDOW)) {
-    // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit
-    // (a canopy's blob normal already faces out, so it keeps it).
-    if (tex.w<0.35f32) {
-      gpu_demote_helper();
-    }
-    // another player's Ranger while the server hasn't heard their page (dye.w 8 to 8.99: how shown)
-    // dissolves by an ordered dither, so they stand there faded until they are heard again
-    if ((s.look==EG_LOOK_CHARACTER)&&(s.dye.w>=8.0f32)) {
-      shown:f32=clampf((s.dye.w-8.0f32)/0.99f32,0.0f32,1.0f32);
-      dither:[16]f32=[16]f32.[0.0f32,8.0f32,2.0f32,10.0f32,12.0f32,4.0f32,14.0f32,6.0f32,3.0f32,11.0f32,1.0f32,9.0f32,15.0f32,7.0f32,13.0f32,5.0f32];
-      dp:U2=wg_mod_u2u2(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),u2(4,4));
-      if (((dither[cast(int)add_wrap(mul_wrap(dp.y,4),dp.x)]+0.5f32)/16.0f32)>=shown) {
+  gl:EgGlade;
+  material:OgMaterial;
+  if glade {
+    gl=eg_glade_dry(s,tex,front);   // gpu-glade.coax
+    n=gl.n;
+    base=wg_mul_f3f(gl.albedo,gl.ao);
+  } else if link {
+    surface:=OgSurface.{normal=s.normal,world=s.world,uv=s.uv,uv1=s.uv1,tangent=s.tangent,colour=v4(1,1,1,1),character=1};
+    material=og_material_surface(surface,cast(int)s.slice,vertices,sheets,sheet,g0,g1);
+    n=material.normal;
+  } else if soft {
+    sp:EgSoft=eg_spell_soft_part(s,u);
+    if !sp.paint {return sp.lit;}
+    n=sp.n;
+    base=sp.dry;
+  } else {
+    if (((((s.look==5)||(s.look==EG_LOOK_CANOPY))||(s.look==EG_LOOK_CHARACTER))||(s.look==EG_LOOK_ROCK))||(s.look==EG_LOOK_WINDOW)) {
+      // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit
+      // (a canopy's blob normal already faces out, so it keeps it).
+      if (tex.w<0.35f32) {
         gpu_demote_helper();
       }
-    }
-    // a crown's leaves thin out by an ordered dither within a few metres of the eye, so walking in
-    // the woods the camera looks through the boughs it backs into, not at their undersides
-    if (s.look==EG_LOOK_CANOPY) {
-      keep:f32=smoothstep(1.4f32,3.2f32,wg_length3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26]))));
-      bayer:[16]f32=[16]f32.[0.0f32,8.0f32,2.0f32,10.0f32,12.0f32,4.0f32,14.0f32,6.0f32,3.0f32,11.0f32,1.0f32,9.0f32,15.0f32,7.0f32,13.0f32,5.0f32];
-      px:U2=wg_mod_u2u2(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),u2(4,4));
-      if (((bayer[cast(int)add_wrap(mul_wrap(px.y,4),px.x)]+0.5f32)/16.0f32)>=keep) {
-        gpu_demote_helper();
-      }
-      if eg_leaf_gone(s.local,s.dye.z) {
-        gpu_demote_helper();
-      }
-    }
-    base=wg_mul_f3f3(eg_person_dye(v3(tex.x,tex.y,tex.z),s.dye),s.tint);
-    if ((!front)&&(s.look!=EG_LOOK_CANOPY)) {
-      n=wg_neg_f3(n);
-    }
-    if (s.shard!=0) {
-      inside:f32=eg_shard_inside(s.shard,s.local,objects);
-      if (inside<0.0f32) {
-        gpu_demote_helper();
-      }
-      rough:f32=eg_noise(wg_add_f2f2(wg_mul_f2f(v2(s.local.x,s.local.y),9.0f32),wg_mul_f2f(v2(s.local.z,s.local.x),6.0f32)));
-      if (!front) {
-        n=eg_shard_cap(s.shard,s.local,u,objects);
-        base=wg_mul_f3f(base,(0.38f32+(0.24f32*rough)));
-      } else {
-        base=wg_mul_f3f(base,mix(0.5f32+(0.2f32*rough),1.0f32,smoothstep(0.0f32,0.05f32,inside)));
-      }
-    }
-    // a kit piece's top (a bench, a crate) takes the shadow of whoever stands on it
-    if (n.y>0.7f32) {
-      shadow=eg_shade_shadows_at(v2(s.world.x,s.world.z),s.world.y,true,u);
-    }
-  }
-  if (s.look==EG_LOOK_ROCK) {
-    // a rock: its pale texture taken down to a mid grey-brown, mottled in broad patches, and moss
-    // where it faces up (broken by noise), so in full sun it sits under the grass's value, not over it
-    p:V3=s.world;
-    mottle:f32=(eg_noise(wg_add_f2f(wg_mul_f2f(v2(p.x,p.z),0.9f32),p.y*0.7f32))*0.6f32)+(eg_noise(wg_sub_f2f(wg_mul_f2f(v2(p.x,p.z),4.1f32),p.y*3.3f32))*0.4f32);
-    base=wg_mul_f3f(wg_mul_f3f3(base,v3(0.62f32,0.6f32,0.55f32)),(0.78f32+(0.34f32*mottle)));
-    moss:f32=smoothstep(0.35f32,0.8f32,n.y+(0.35f32*(eg_noise(wg_add_f2f(wg_mul_f2f(v2(p.x,p.z),2.3f32),p.y))-0.5f32)));
-    base=wg_mix_f3f3f(base,wg_mul_f3f(v3(0.11f32,0.2f32,0.07f32),(0.8f32+(0.4f32*mottle))),moss*0.85f32);
-  }
-  xz:V2=v2(s.world.x,s.world.z);
-  if (s.look==99) {
-    // broad colour only (eg-paint-pack: no fine noise on the ground; patches 4 m and more across)
-    broad:f32=eg_noise(wg_mul_f2f(xz,0.13f32));
-    base=wg_mul_f3f(eg_meadow_srgb(broad),(0.96f32+(0.08f32*eg_noise(wg_add_f2f(wg_mul_f2f(xz,0.23f32),7.0f32)))));
-    {
-      q:s32=0;
-      while q<4 {
-        sq:V4=wg_at4(u,(cast(int)q)*4+232);
-        if (sq.z<=0.0f32) {
-          break;
+      // another player's Ranger while the server hasn't heard their page (dye.w 8 to 8.99: how shown)
+      // dissolves by an ordered dither, so they stand there faded until they are heard again
+      if ((s.look==EG_LOOK_CHARACTER)&&(s.dye.w>=8.0f32)) {
+        shown:f32=clampf((s.dye.w-8.0f32)/0.99f32,0.0f32,1.0f32);
+        dither:[16]f32=[16]f32.[0.0f32,8.0f32,2.0f32,10.0f32,12.0f32,4.0f32,14.0f32,6.0f32,3.0f32,11.0f32,1.0f32,9.0f32,15.0f32,7.0f32,13.0f32,5.0f32];
+        dp:U2=wg_mod_u2u2(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),u2(4,4));
+        if (((dither[cast(int)add_wrap(mul_wrap(dp.y,4),dp.x)]+0.5f32)/16.0f32)>=shown) {
+          gpu_demote_helper();
         }
-        paved:f32=1.0f32-smoothstep(sq.z-0.3f32,sq.z+0.3f32,wg_length2(wg_sub_f2f2(xz,v2(sq.x,sq.y))));
-        // the square's paving keeps its stone-sized patches (a slab of one grey reads as a stand-in), without the grit
-        stone:V3=wg_mix_f3f3f(v3(0.41f32,0.39f32,0.35f32),v3(0.53f32,0.49f32,0.42f32),(eg_noise(wg_mul_f2f(xz,1.7f32))*0.6f32)+(eg_noise(wg_add_f2f(wg_mul_f2f(xz,0.2f32),5.0f32))*0.4f32));
-        base=wg_mix_f3f3f(base,stone,paved);
-        q+=1;
+      }
+      // a crown's leaves thin out by an ordered dither within a few metres of the eye, so walking in
+      // the woods the camera looks through the boughs it backs into, not at their undersides
+      if (s.look==EG_LOOK_CANOPY) {
+        keep:f32=smoothstep(1.4f32,3.2f32,wg_length3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26]))));
+        bayer:[16]f32=[16]f32.[0.0f32,8.0f32,2.0f32,10.0f32,12.0f32,4.0f32,14.0f32,6.0f32,3.0f32,11.0f32,1.0f32,9.0f32,15.0f32,7.0f32,13.0f32,5.0f32];
+        px:U2=wg_mod_u2u2(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),u2(4,4));
+        if (((bayer[cast(int)add_wrap(mul_wrap(px.y,4),px.x)]+0.5f32)/16.0f32)>=keep) {
+          gpu_demote_helper();
+        }
+        if eg_leaf_gone(s.local,s.dye.z) {
+          gpu_demote_helper();
+        }
+      }
+      base=wg_mul_f3f3(eg_person_dye(v3(tex.x,tex.y,tex.z),s.dye),s.tint);
+      if ((!front)&&(s.look!=EG_LOOK_CANOPY)) {
+        n=wg_neg_f3(n);
+      }
+      if (s.shard!=0) {
+        inside:f32=eg_shard_inside(s.shard,s.local,objects);
+        if (inside<0.0f32) {
+          gpu_demote_helper();
+        }
+        rough:f32=eg_noise(wg_add_f2f2(wg_mul_f2f(v2(s.local.x,s.local.y),9.0f32),wg_mul_f2f(v2(s.local.z,s.local.x),6.0f32)));
+        if (!front) {
+          n=eg_shard_cap(s.shard,s.local,u,objects);
+          base=wg_mul_f3f(base,(0.38f32+(0.24f32*rough)));
+        } else {
+          base=wg_mul_f3f(base,mix(0.5f32+(0.2f32*rough),1.0f32,smoothstep(0.0f32,0.05f32,inside)));
+        }
+      }
+      // a kit piece's top (a bench, a crate) takes the shadow of whoever stands on it
+      if (n.y>0.7f32) {
+        shadow=eg_shade_shadows_at(v2(s.world.x,s.world.z),s.world.y,true,u);
       }
     }
-    d:f32=eg_path_distance(xz,u);
-    half:f32=u[229];
-    edge:f32=1.0f32-smoothstep(half-0.12f32,half+0.12f32,d);
-    if (edge>0.0f32) {
-      dirt:V3=wg_mix_f3f3f(v3(0.46f32,0.35f32,0.23f32),v3(0.58f32,0.46f32,0.3f32),(eg_noise(wg_add_f2f(wg_mul_f2f(xz,0.21f32),3.0f32))*0.6f32)+(eg_noise(wg_mul_f2f(xz,0.08f32))*0.4f32));
-      base=wg_mix_f3f3f(base,dirt,edge);
+    if (s.look==EG_LOOK_ROCK) {
+      // a rock: its pale texture taken down to a mid grey-brown, mottled in broad patches, and moss
+      // where it faces up (broken by noise), so in full sun it sits under the grass's value, not over it
+      p:V3=s.world;
+      mottle:f32=(eg_noise(wg_add_f2f(wg_mul_f2f(v2(p.x,p.z),0.9f32),p.y*0.7f32))*0.6f32)+(eg_noise(wg_sub_f2f(wg_mul_f2f(v2(p.x,p.z),4.1f32),p.y*3.3f32))*0.4f32);
+      base=wg_mul_f3f(wg_mul_f3f3(base,v3(0.62f32,0.6f32,0.55f32)),(0.78f32+(0.34f32*mottle)));
+      moss:f32=smoothstep(0.35f32,0.8f32,n.y+(0.35f32*(eg_noise(wg_add_f2f(wg_mul_f2f(v2(p.x,p.z),2.3f32),p.y))-0.5f32)));
+      base=wg_mix_f3f3f(base,wg_mul_f3f(v3(0.11f32,0.2f32,0.07f32),(0.8f32+(0.4f32*mottle))),moss*0.85f32);
     }
-    // the river's bed: silt and stones under the water, darker the deeper,
-    // and wet earth where the bank meets it
-    under:f32=eg_water_over(xz,u,heights,water_nodes);
-    mud:V3=wg_mix_f3f3f(v3(0.28f32,0.23f32,0.155f32),v3(0.34f32,0.28f32,0.19f32),eg_noise(wg_mul_f2f(xz,0.24f32)));
-    wet:f32=smoothstep(-0.02f32,0.25f32,under);
-    base=wg_mix_f3f3f(base,wg_mul_f3f(mud,(1.0f32-(0.45f32*smoothstep(0.3f32,2.0f32,under)))),wet);
-    // the spells' marks: frost, scorch and the rest painted into it
-    mk:EgMark=eg_ground_mark(xz,0.0f32,u);
-    base=wg_mix_f3f3f(base,mk.tint,mk.cover);
-    mark_ice=mk.ice;
-    mark_glow=mk.glow;
-    shadow=eg_shade_shadows_at(xz,s.world.y,true,u);
-  } else if (s.look==1) {
-    base=wg_mul_f3f(base,0.8f32+(0.35f32*eg_noise(wg_add_f2f2(wg_mul_f2f(v2(s.world.x,s.world.y),3.1f32),wg_mul_f2f(v2(s.world.z,s.world.x),2.3f32)))));
-  } else if (s.look==2) {
-    base=wg_mul_f3f(base,0.9f32+(0.15f32*eg_noise(wg_add_f2f(wg_mul_f2f(v2(s.world.x,s.world.z),9.0f32),s.world.y*7.0f32))));
-  } else if (s.look==EG_LOOK_CARVED) {
-    base=eg_carved(base,s.world,s.uv,u,water_nodes);
-  } else if ((s.look==EG_LOOK_PLANKS)||(s.look==EG_LOOK_WOOD)) {
-    base=eg_timber(base,s.world,n,s.look==EG_LOOK_PLANKS,u,water_nodes);
-  } else if (s.look==4) {
-    base=wg_mix_f3f3f(base,v3(0.85f32,0.92f32,0.95f32),0.25f32*eg_noise(wg_add_f2f2(wg_mul_f2f(xz,1.5f32),v2(u[2]*0.2f32,0.0f32))));
+    xz:V2=v2(s.world.x,s.world.z);
+    if (s.look==99) {
+      // broad colour only (eg-paint-pack: no fine noise on the ground; patches 4 m and more across)
+      broad:f32=eg_noise(wg_mul_f2f(xz,0.13f32));
+      base=wg_mul_f3f(eg_meadow_srgb(broad),(0.96f32+(0.08f32*eg_noise(wg_add_f2f(wg_mul_f2f(xz,0.23f32),7.0f32)))));
+      {
+        q:s32=0;
+        while q<4 {
+          sq:V4=wg_at4(u,(cast(int)q)*4+232);
+          if (sq.z<=0.0f32) {
+            break;
+          }
+          paved:f32=1.0f32-smoothstep(sq.z-0.3f32,sq.z+0.3f32,wg_length2(wg_sub_f2f2(xz,v2(sq.x,sq.y))));
+          // the square's paving keeps its stone-sized patches (a slab of one grey reads as a stand-in), without the grit
+          stone:V3=wg_mix_f3f3f(v3(0.41f32,0.39f32,0.35f32),v3(0.53f32,0.49f32,0.42f32),(eg_noise(wg_mul_f2f(xz,1.7f32))*0.6f32)+(eg_noise(wg_add_f2f(wg_mul_f2f(xz,0.2f32),5.0f32))*0.4f32));
+          base=wg_mix_f3f3f(base,stone,paved);
+          q+=1;
+        }
+      }
+      d:f32=eg_path_distance(xz,u);
+      half:f32=u[229];
+      edge:f32=1.0f32-smoothstep(half-0.12f32,half+0.12f32,d);
+      if (edge>0.0f32) {
+        dirt:V3=wg_mix_f3f3f(v3(0.46f32,0.35f32,0.23f32),v3(0.58f32,0.46f32,0.3f32),(eg_noise(wg_add_f2f(wg_mul_f2f(xz,0.21f32),3.0f32))*0.6f32)+(eg_noise(wg_mul_f2f(xz,0.08f32))*0.4f32));
+        base=wg_mix_f3f3f(base,dirt,edge);
+      }
+      // the river's bed: silt and stones under the water, darker the deeper,
+      // and wet earth where the bank meets it
+      under:f32=eg_water_over(xz,u,heights,water_nodes);
+      mud:V3=wg_mix_f3f3f(v3(0.28f32,0.23f32,0.155f32),v3(0.34f32,0.28f32,0.19f32),eg_noise(wg_mul_f2f(xz,0.24f32)));
+      wet:f32=smoothstep(-0.02f32,0.25f32,under);
+      base=wg_mix_f3f3f(base,wg_mul_f3f(mud,(1.0f32-(0.45f32*smoothstep(0.3f32,2.0f32,under)))),wet);
+      // the spells' marks: frost, scorch and the rest painted into it
+      mk:EgMark=eg_ground_mark(xz,0.0f32,u);
+      base=wg_mix_f3f3f(base,mk.tint,mk.cover);
+      mark_ice=mk.ice;
+      mark_glow=mk.glow;
+      shadow=eg_shade_shadows_at(xz,s.world.y,true,u);
+    } else if (s.look==1) {
+      base=wg_mul_f3f(base,0.8f32+(0.35f32*eg_noise(wg_add_f2f2(wg_mul_f2f(v2(s.world.x,s.world.y),3.1f32),wg_mul_f2f(v2(s.world.z,s.world.x),2.3f32)))));
+    } else if (s.look==2) {
+      base=wg_mul_f3f(base,0.9f32+(0.15f32*eg_noise(wg_add_f2f(wg_mul_f2f(v2(s.world.x,s.world.z),9.0f32),s.world.y*7.0f32))));
+    } else if (s.look==EG_LOOK_CARVED) {
+      base=eg_carved(base,s.world,s.uv,u,water_nodes);
+    } else if ((s.look==EG_LOOK_PLANKS)||(s.look==EG_LOOK_WOOD)) {
+      base=eg_timber(base,s.world,n,s.look==EG_LOOK_PLANKS,u,water_nodes);
+    } else if (s.look==4) {
+      base=wg_mix_f3f3f(base,v3(0.85f32,0.92f32,0.95f32),0.25f32*eg_noise(wg_add_f2f2(wg_mul_f2f(xz,1.5f32),v2(u[2]*0.2f32,0.0f32))));
+    }
+    // the shapes' and the ground's colours are written as they show on screen (sRGB); the light works in
+    // linear, as the kit's textures (sampled sRGB) already are
+    if (((((s.look!=5)&&(s.look!=EG_LOOK_CANOPY))&&(s.look!=EG_LOOK_CHARACTER))&&(s.look!=EG_LOOK_ROCK))&&(s.look!=EG_LOOK_WINDOW)) {
+      base=wg_pow_f3f3(wg_max_f3f3(base,v3(0.0f32,0.0f32,0.0f32)),v3(2.2f32,2.2f32,2.2f32));
+    }
+    if (s.look==EG_LOOK_FLAME) {
+      // a flame: its colour as light, dim by day, bright and blooming once the lamps are lit
+      glow:f32=u[1341];
+      f:V3=wg_mul_f3f(wg_mul_f3f(base,(0.35f32+(7.0f32*glow))),(0.85f32+(0.3f32*eg_noise(v2(u[2]*6.0f32,(s.world.y*9.0f32)+s.world.x)))));
+      return EgLit.{light=v4(f.x,f.y,f.z,ifx glow>0.05f32 then 0.9f32 else 0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+    }
+    if ((s.look==EG_LOOK_WINDOW)&&(s.dye.y>0.75f32)) {
+      return eg_glass(s,front,u);
+    }
+    paint_leaf_far=((s.look==EG_LOOK_CANOPY)&&(eg_st(31,u).z>0.5f32))&&(wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world))>EG_LEAF_FAR);
   }
-  // the shapes' and the ground's colours are written as they show on screen (sRGB); the light works in
-  // linear, as the kit's textures (sampled sRGB) already are
-  if (((((s.look!=5)&&(s.look!=EG_LOOK_CANOPY))&&(s.look!=EG_LOOK_CHARACTER))&&(s.look!=EG_LOOK_ROCK))&&(s.look!=EG_LOOK_WINDOW)) {
-    base=wg_pow_f3f3(wg_max_f3f3(base,v3(0.0f32,0.0f32,0.0f32)),v3(2.2f32,2.2f32,2.2f32));
+  lit:f32=1.0f32;   // smoke takes no shadow
+  if !soft {lit=eg_map_lit(s.world,n,u,shadow_map,shadow_cmp,paint_leaf_far);}
+  if link {
+    colour:=og_material_light(material,s.world,v3(u[24],u[25],u[26]),wg_sw_xyz_f4(eg_st(1,u)),lit);
+    return EgLit.{light=v4(colour.x,colour.y,colour.z,1.0f32),aux=v4(0,0,0,0)};
   }
-  if (s.look==EG_LOOK_FLAME) {
-    // a flame: its colour as light, dim by day, bright and blooming once the lamps are lit
-    glow:f32=u[1341];
-    f:V3=wg_mul_f3f(wg_mul_f3f(base,(0.35f32+(7.0f32*glow))),(0.85f32+(0.3f32*eg_noise(v2(u[2]*6.0f32,(s.world.y*9.0f32)+s.world.x)))));
-    return EgLit.{light=v4(f.x,f.y,f.z,ifx glow>0.05f32 then 0.9f32 else 0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
-  }
-  if ((s.look==EG_LOOK_WINDOW)&&(s.dye.y>0.75f32)) {
-    return eg_glass(s,front,u);
-  }
-  paint_leaf_far=((s.look==EG_LOOK_CANOPY)&&(eg_st(31,u).z>0.5f32))&&(wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world))>EG_LEAF_FAR);
-  lit:f32=metaverse_style_contact(eg_map_lit(s.world,n,u,shadow_map,shadow_cmp,paint_leaf_far),1.0f32-shadow,eg_st(4,u).w);
-  res:EgLit=eg_paint(base,n,s.world,lit,(s.look==EG_LOOK_CHARACTER)||(s.look==3),s.look!=99,u,heights,water_nodes,paint_leaf_far);
+  if main {lit=metaverse_style_contact(lit,1.0f32-shadow,eg_st(4,u).w);}
+  res:EgLit=eg_paint(base,n,s.world,lit,(s.look==EG_LOOK_CHARACTER)||(s.look==3),main&&(s.look!=99),u,heights,water_nodes,paint_leaf_far);
+  if glade {return eg_glade_after(res,gl,s,lit,u);}
+  if soft {return res;}
   if ((mark_ice>0.0f32)||(mark_glow.x>0.0f32)) {
     // ice: a soft sheen of the sky at a glancing look, lit as the sun lights it; moonlight added
     v:V3=wg_normalize3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26])));
@@ -1608,7 +1630,10 @@ eg_glass :: (s:EgS,front:bool,u:[]f32)->EgLit {
 // see-through, a screen door of 4 by 4 (the scene pass draws no blend), so what's behind shows.
 // A spell's fire, smoke or shockwave (LOOK_FIRE, LOOK_SMOKE, LOOK_RING): an ordered dither drops the
 // pixels it doesn't cover, thinning to its feathered, churning edge, and the bloom blurs what stays.
-eg_spell_soft_part :: (s:EgS,u:[]f32,heights:[]f32,water_nodes:[]f32,paint_leaf_far:bool)->EgLit {
+// Smoke is lit by eg_scene_fs's one eg_paint (#13562): paint says so, with its colour and normal;
+// fire's light is done here.
+EgSoft :: struct {lit:EgLit; paint:bool; dry:V3; n:V3; }
+eg_spell_soft_part :: (s:EgS,u:[]f32)->EgSoft {
   n:V3=wg_normalize3(s.normal);
   v:V3=wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
   facing:f32=abs(wg_dot3(n,v));
@@ -1636,7 +1661,7 @@ eg_spell_soft_part :: (s:EgS,u:[]f32,heights:[]f32,water_nodes:[]f32,paint_leaf_
   deep:V3=wg_pow_f3f3(wg_max_f3f3(s.tint,v3(0.0f32,0.0f32,0.0f32)),v3(2.2f32,2.2f32,2.2f32));
   if (s.look==EG_LOOK_SMOKE) {
     // smoke: its colour, a little mottled, in the town's light
-    return eg_paint(wg_mul_f3f(deep,(0.8f32+(0.4f32*churn))),n,s.world,1.0f32,false,false,u,heights,water_nodes,paint_leaf_far);
+    return EgSoft.{paint=true,dry=wg_mul_f3f(deep,(0.8f32+(0.4f32*churn))),n=n};
   }
   // fire: white-hot where it is thickest and faces you, its colour, then a deeper red at its edge
   // (only a hot colour runs white: a fire cooled to red keeps its colour, mottled, sooty at its edge)
@@ -1645,7 +1670,7 @@ eg_spell_soft_part :: (s:EgS,u:[]f32,heights:[]f32,water_nodes:[]f32,paint_leaf_
   edge:V3=wg_mix_f3f3f(v3(0.1f32,0.05f32,0.035f32),wg_mul_f3f3(deep,v3(0.9f32,0.42f32,0.3f32)),0.45f32+(0.55f32*hot));
   body_c:V3=wg_mul_f3f(wg_mix_f3f3f(deep,v3(1.0f32,0.95f32,0.82f32),(heat*heat)*0.6f32),((0.45f32+((1.1f32*churn)*(1.0f32-(0.5f32*hot))))+(0.5f32*hot)));
   c:V3=wg_mul_f3f(wg_mix_f3f3f(edge,body_c,smoothstep(0.1f32,0.75f32,facing)),(0.9f32+(1.8f32*heat)));
-  return EgLit.{light=v4(c.x,c.y,c.z,1.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+  return EgSoft.{lit=EgLit.{light=v4(c.x,c.y,c.z,1.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)}};
 }
 eg_orb :: (s:EgS,u:[]f32)->EgLit {
   n:V3=wg_normalize3(s.normal);
@@ -2829,6 +2854,9 @@ eg_water_vs :: (id:u32,piece:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgWat
 }
 // ---- detail: what bends the normal but never moves the surface
 // pcg3d (Jarzynski and Olano, "Hash Functions for GPU Rendering", JCGT 2020) on the cell's corner.
+// Each word once, never a field of a vector written over (#13562): inlined in a loop (the sun
+// shafts' 16 samples, 16 hashes each), field-by-field stores kept NVIDIA's Linux compiler 25 s
+// on v1 Everglade's scene_fs, against 4 s for the same words in lets.
 eg_water_hash :: (p:V3)->f32 {
   v:U3=wg_add_u3u(wg_mul_u3u(wg_bits_u3i3(wg_cvt_i3f3(p)),1664525),1013904223);
   v.x=add_wrap(v.x,mul_wrap(v.y,v.z));
