@@ -85,7 +85,7 @@ hv_step :: (g: [] SpGame) {
   ro_toasts_step(hv[0].toasts[..], dt);
   hv[0].hearts = ro_gauge_step(hv[0].hearts, cast(f32) g[0].hearts, g[0].hearts < T_HEARTS, dt);
   share := ifx g[0].bot then vitals_share(g[0].dr[0].hp) else 1.0f32;
-  hv[0].battery = ro_gauge_step(hv[0].battery, floor(share * 100 + 0.5), g[0].bot && share < 0.995, dt);
+  hv[0].battery = ro_gauge_step(hv[0].battery, floor(share * 100 + 0.5), g[0].bot && (share < 0.995 || g[0].dr[0].cell), dt);
   hv[0].heat = ro_gauge_step(hv[0].heat, ifx g[0].heat >= 66 then 2.0f32 else ifx g[0].heat >= 33 then 1.0f32 else 0.0f32, g[0].heat >= 33, dt);
 }
 hv_band :: (heat: f32) -> string { return ifx heat >= 66 then "WANTED" else ifx heat >= 33 then "WARM" else "COOL"; }
@@ -215,7 +215,7 @@ hv_gauges :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   // Digger's battery
   if g[0].bot {
     cx = 127 * k; a = hv.battery.alpha; b := hv_battery(g);
-    n = hv_gauge(out, n, cx, cy, r, cast(f32) b / 100, b < 34, "BATTERY", k, a);
+    n = hv_gauge(out, n, cx, cy, r, cast(f32) b / 100, b < 34, ifx g[0].dr[0].cell then "CHARGING" else "BATTERY", k, a);
     n = hv_mid(out, n, F_TITLE, num(buf[..], "", b, ""), cx, cy + 5 * k, 10 * k, ifx b < 34 then HV_ORANGE() else HV_CREAM(), a);
   }
   // Heat
@@ -291,11 +291,13 @@ hv_prompt_of :: (g: [] SpGame, buf: [] u8) -> HvPrompt {
     what := ifx reach == PICK_PLUS then "DRILL+ part" else ifx reach >= PICK_CELL then "Battery cell" else ifx reach == H_MOVE then "MOVE card" else ifx reach == H_DRILL then "DRILL card" else ifx reach == H_ARM then "Drill arm" else ifx reach == H_TREADS then "Treads" else "Battery";
     return HvPrompt.{key = "AUTO", verb = "SCAVENGE", what = what, line = "DIGGER PICKS IT UP", share = ifx share < 0 then 0.0f32 else share};
   }
+  else if d_cell_here(g) && d_down(g) { prompt = "Charge · Digger with a battery cell"; }
   else if g[0].bot && d_down(g) && dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) < T_TOW_REACH { prompt = ifx d_towing(g) then "Let go · Digger" else "Tow · Digger to Sniper"; }
   else if g_weak_near(g) >= 0 { prompt = "Stun · the weak point"; key = "F"; }
   else if g_foe_near(g) >= 0 { prompt = ifx g_foe_near(g) < F_RAIDERS then "Stun · the raider" else "Stun · the Imperial robot"; key = "F"; }
   else if g[0].zone == Z_RAIL && near_rover(g, T_USE_RANGE) { prompt = "Board · the rover"; }
   else if g_portal(g) >= 0 { prompt = prt_name(g[0].c[0].portals[..], g_portal(g)); }
+  else if d_cell_here(g) { prompt = "Charge · Digger with a battery cell"; }
   else if d_in_rover(g) { prompt = "Open · the edit bay"; key = "TAB"; }
   sp := sb_prompt(g); if sp.text != "" && reach < 0 { prompt = sp.text; key = sp.key; }   // the battles' (splice-battle.coax)
   if prompt == "" { return HvPrompt.{}; }
@@ -528,7 +530,7 @@ hv_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
 
 // ---- the bot wheel (Hold R), in the same frame: four choices round a dark ring, the lit one cream,
 // what it does in the middle, Digger's cards and battery to the right
-HV_WHEEL_SAYS :: [DW_N] string.["Digs the rubble you point at", "Fetches a part in his range", "Fights the nearest robot", "Stays at your side"];
+HV_WHEEL_SAYS :: [DW_N] string.["Digs the rubble you point at", "Fetches a part in his range", "Fights the nearest robot", "Stays at your side", "Takes one of your battery cells"];
 hv_wheel :: (g: [] SpGame, out: [] f32, u: [] f32, at: int, q: Ui) -> int {
   n := at; k := q.k; w := g[0].dr[0].wheel; cx := q.w * 0.5; cy := q.h * 0.5; r := 205 * k; buf: [48] u8;
   lit := wheel_pick(w);
@@ -557,7 +559,7 @@ hv_wheel :: (g: [] SpGame, out: [] f32, u: [] f32, at: int, q: Ui) -> int {
     n = hv_text(out, n, F_TITLE, c, x, y0 + 44 * k, 8.5 * k, ifx g[0].strip[i] == H_PLUS then HV_ORANGE() else HV_CREAM(), 1); x += ui_w(F_TITLE, c, 8.5 * k) + 8 * k;
   }
   n = hv_text(out, n, F_MONO, num(buf[..], "BATTERY ", hv_battery(g), ""), x0 + 14 * k, y0 + 64 * k, 6.5 * k, HV_CREAM(), 1);
-  return hv_right(out, n, F_TITLE, "MOUSE AIM    RELEASE R CONFIRM    1-4 PICK", q.w - 50 * k, q.h - 30 * k, 6 * k, HV_CREAM(), 1);
+  return hv_right(out, n, F_TITLE, "MOUSE AIM    RELEASE R CONFIRM    1-5 PICK", q.w - 50 * k, q.h - 30 * k, 6 * k, HV_CREAM(), 1);
 }
 
 // ---- the pause screen: a dark panel down the left (the front screens' format), the run's facts,

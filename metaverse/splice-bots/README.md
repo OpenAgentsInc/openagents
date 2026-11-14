@@ -103,15 +103,20 @@ The key map follows the slice's beat sheet (#13505). The pause screen (Esc) list
 | Double-tap Q | Hoverboard super fast (the fast speed times 1.6, `board_super_cms`) |
 | Hold Ctrl, or double-tap W and hold it | Hoverboard very fast (the fast speed) while held |
 | Hold Q | Step off the hoverboard |
-| E | Interact: enter the rover, take the core, go through a portal, swap a core, tow a powered-down Digger |
+| E | Interact: enter the rover, take the core, go through a portal, swap a core, tow a powered-down Digger; beside a hurt Digger with a battery cell, charge him |
 | Tab | The edit bay, only inside Sniper (the rover) |
-| I | The inventory: six slots. A click on a slot drops what is in it |
+| I | The inventory: six slots. A click on a slot drops what is in it; a click on CELLS charges Digger when he wants it |
 | Left click | Point Digger at what is under the crosshair: he digs it, picks it up or attacks it |
 | F | Stun a robot within 2 m for 4 seconds |
 | 1 to 4 | A bot's battle moves (`d_take_move` hands each press to the battle) |
-| Hold R | The bot wheel: move the mouse (or press 1 to 4) to pick DIG, PICK UP, ATTACK or FOLLOW, and let go of R to give Digger the order (`metaverse-engine/ui/wheel.coax`) |
+| Hold R | The bot wheel: move the mouse (or press 1 to 5) to pick DIG, PICK UP, ATTACK, FOLLOW or CHARGE, and let go of R to give Digger the order (`metaverse-engine/ui/wheel.coax`) |
 | M | The deep-garage map; M, Esc, E or a click closes it (its "M / ESC CLOSE" hint says so) |
 | Esc | Pause; letting go of the pointer pauses too |
+
+A battery cell heals Digger (#13505, playtest 2): E beside him, CHARGE on the bot wheel or a click
+on CELLS in the inventory puts one of yours into him, and it charges him full (a powered-down Digger
+powers up) over about a second; his BATTERY gauge shows CHARGING and fills as it goes. A spent cell is
+gone: dropping cells drops only the ones you still carry.
 
 Digger follows you and picks up every part within his sensor's range (4 m, 8 m with the better
 sensor that lies in the scrap room); you can't choose, so you make room in the inventory. A part he

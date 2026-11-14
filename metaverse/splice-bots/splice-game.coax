@@ -735,7 +735,7 @@ g_stun :: (g: [] SpGame) {
   g[0].fstag[f] = T_FOE_STUN; g[0].flash = 0.2; d_say(g, DS_STUN);
   if g[0].shit_n < SPS_HITS { g[0].shit[g[0].shit_n] = f; g[0].shit_n += 1; }   // its script hears of it (on_hit)
 }
-// E: interact. Tow a powered-down Digger, go through a portal, take the banned core, board the rover
+// E: interact. Charge Digger with a battery cell or tow him when he is powered down, go through a portal, take the banned core, board the rover
 // at the ping. Parts are Digger's to pick up (director.coax); the edit bay is Tab, inside Sniper.
 g_use :: (g: [] SpGame) {
   if d_use(g) { return; }
@@ -745,6 +745,7 @@ g_use :: (g: [] SpGame) {
   if w >= 0 { _ := dv_through(g, w); return; }   // a door, or a drive (drive.coax)
   if g[0].zone == Z_MINE && g[0].boss_down && !g[0].core_taken && dist2(g[0].px, g[0].pz, sb_core_at(g).x, sb_core_at(g).z) < T_PICK_RANGE { g[0].core_taken = true; g[0].have[H_CORE] = true; g_say(g, MSG_CORE); return; }
   if g[0].zone == Z_RAIL && near_rover(g, T_USE_RANGE) { if g[0].have[H_BATTERY] { g[0].mode = M_RIDE; } else { g_say(g, MSG_FIRST); } return; }
+  if d_cell_here(g) { _ := d_give_cell(g, T_TOW_REACH); return; }   // beside a hurt Digger with nothing else here: one of her cells into him
 }
 // A key the page uses returns true (the browser then keeps it from scrolling or moving focus).
 g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
@@ -1808,6 +1809,48 @@ sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', fa
   for i: 0..<400 { g_step(g[..], 0.02); }
   #assert !d_down(g[..]) && g[0].dr[0].hp.hp == T_DIGGER_HP && g[0].dr[0].task == DJ_NONE;
 }
+#test "a battery cell heals Digger: E beside him, CHARGE on the wheel or CELLS in the inventory; his gauge fills, and a spent cell is not dropped again" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5); g[0].px = 0; g[0].pz = -14; g_bot_home(g[..]); g_step(g[..], 0.02);
+  // no cell, or full: nothing is spent
+  d_bot_hurt(g[..], 6);
+  #assert !d_give_cell(g[..], T_TOW_REACH) && g[0].dr[0].say == DS_NO_CELL;
+  g[0].cells = 2; g[0].taken[PICK_CELL] = true; g[0].taken[PICK_CELL + 1] = true;
+  // powered down, E beside him: the prompt says so, a cell goes in, his gauge climbs and he powers up full
+  d_bot_hurt(g[..], 9);
+  g[0].bot_x = g[0].px + 1; g[0].bot_z = g[0].pz; g[0].dr[0].task = DJ_NONE;
+  pb: [64] u8;
+  #assert d_down(g[..]) && d_cell_here(g[..]) && hv_prompt_of(g[..], pb[..]).verb == "CHARGE";
+  #assert g_key(g[..], 'e', true) && g[0].cells == 1 && g[0].dr[0].cell && g[0].dr[0].task != DJ_TOW;
+  g_step(g[..], 0.25);
+  #assert g[0].dr[0].hp.hp > 0 && g[0].dr[0].hp.hp < T_DIGGER_HP && d_down(g[..]);
+  b := hv_battery(g[..]);
+  #assert b > 0 && b < 100;
+  for i: 0..<100 { g_step(g[..], 0.02); }
+  #assert !d_down(g[..]) && g[0].dr[0].hp.hp == T_DIGGER_HP && !g[0].dr[0].cell && hv_battery(g[..]) == 100;
+  // full: the wheel's CHARGE keeps the cell
+  _ := g_key(g[..], 'r', true); _ = g_key(g[..], '5', true); _ = g_key(g[..], 'r', false);
+  #assert g[0].cells == 1 && g[0].dr[0].say == DS_CELL_FULL;
+  // hurt and away from her: the wheel's CHARGE reaches him, E does not
+  d_bot_hurt(g[..], 3); g[0].bot_x = g[0].px + 8; g[0].bot_z = g[0].pz;
+  #assert !d_cell_here(g[..]);
+  _ = g_key(g[..], 'r', true); _ = g_key(g[..], '5', true); _ = g_key(g[..], 'r', false);
+  #assert g[0].cells == 0 && g[0].dr[0].cell;
+  for i: 0..<100 { g_step(g[..], 0.02); }
+  #assert g[0].dr[0].hp.hp == T_DIGGER_HP;
+  // the inventory: a click on CELLS charges a hurt Digger; the spent cells are not put back on the ground
+  g[0].cells = 1; g[0].taken[PICK_CELL + 2] = true;
+  d_bot_hurt(g[..], 2); g[0].dr[0].bag = true;
+  g[0].dr[0].bag_x = 100; g[0].dr[0].bag_y = 100; g[0].dr[0].bag_s = 104; g[0].dr[0].bag_gap = 10;
+  slot := -1; c := d_carry(g[..]); for i: 0..<c.n { if c.items[i].kind == DK_CELL { slot = i; } }
+  at := carry_cell(slot, 3, 100, 100, 104, 10);
+  #assert slot >= 0 && d_pointer(g[..], (at.x0 + at.x1) * 0.5, (at.y0 + at.y1) * 0.5, 0) && g[0].cells == 0 && g[0].dr[0].cell;
+  g[0].cells = 1;
+  for i: 0..<100 { g_step(g[..], 0.02); }
+  #assert d_drop(g[..], slot) && g[0].cells == 0;
+  left := 0; for p: PICK_CELL..<PICKS { if !g[0].taken[p] { left += 1; } }
+  #assert left == 2;   // PICK_CELL + 3 was never taken, and one of the three spent ones is dropped back: only what she still had
+}
 #test "at zero health she is back at Sniper with what she had when she last left it: banned pieces since are lost" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 7);
@@ -2552,12 +2595,12 @@ sb_drive_check :: (g: [] SpGame) {
   t[0].mech_x = 0; t[0].mech_z = -116;    // just behind her: the camera comes in front of it
   e := g_camera(g[..]).eye; #assert !g_big_at(g[..], e.x, e.z, 0);
 }
-#test "Hold R: the bot wheel opens, the mouse or 1 to 4 picks, and letting go has Digger dig, pick up, attack or follow" #steps 200000000 {
+#test "Hold R: the bot wheel opens, the mouse or 1 to 5 picks, and letting go has Digger dig, pick up, attack or follow" #steps 200000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 7); g[0].px = 0; g[0].pz = -20; g_bot_home(g[..]); g_step(g[..], 0.02);
   y0 := g[0].yaw;
   #assert g_key(g[..], 'r', true) && g[0].dr[0].wheel.open;
-  g_look(g[..], 0, 80);   // the mouse down: ATTACK, and the view does not turn
+  g_look(g[..], 47, 65);   // the mouse down and right, toward ATTACK (fifth of five round the wheel), and the view does not turn
   #assert wheel_pick(g[0].dr[0].wheel) == DW_ATTACK && g[0].yaw == y0;
   #assert g_key(g[..], 'r', false) && !g[0].dr[0].wheel.open && g[0].dr[0].say == DS_NO_FOE;   // dusk: no one to attack
   // 4 picks FOLLOW

@@ -10,7 +10,8 @@
 //               better sensor (the landmark LM_SENSOR) widens his range. A left click points him at
 //               what is under the crosshair: he digs it, picks it up or attacks it. At zero health he
 //               powers down; E tows him, and Sniper's charger charges him back up (the engine's
-//               vitals, metaverse-engine/action/vitals.coax).
+//               vitals, metaverse-engine/action/vitals.coax). A battery cell she carries charges him
+//               full wherever he is: E beside him, CHARGE on the bot wheel, or a click on her CELLS.
 //   Inventory   I: a grid of T_ROOM slots (the engine's carry, metaverse-engine/action/carry.coax).
 //               Hardware spliced into Digger and cards on his strip are his, not hers. A click on a
 //               slot drops what is in it at her feet; Digger leaves it until she walks away from it.
@@ -39,7 +40,8 @@ T_DIGGER_HP :: 10.0f32;
 T_FOE_HIT :: 2.0f32;         // an Imperial robot's strike on Digger (a raider's is half)
 T_CHARGE :: 0.2f32;          // the share of his health Sniper's charger gives back a second
 T_CHARGE_RANGE :: 6.0f32;    // metres from Sniper: at the charger
-T_TOW_REACH :: 2.4f32;       // metres: E tows Digger from this near
+T_TOW_REACH :: 2.4f32;       // metres: E tows Digger from this near, or gives him a battery cell
+T_CELL_RATE :: 0.8f32;       // the share of his health a battery cell gives back a second, until he is full
 T_FOE_STUN :: 4.0f32;        // seconds an F stun holds a robot
 T_POINT_FAR :: 40.0f32;      // metres the pointer reaches
 T_GIVE_UP_FIGHT :: 25.0f32;  // metres from her: Digger lets a fight go
@@ -57,15 +59,17 @@ DP_NONE :: 0; DP_PICK :: 1; DP_FOE :: 2; DP_DIG :: 3; DP_SENSOR :: 4;
 DS_NONE :: 0; DS_FULL :: 1; DS_DOWN :: 2; DS_NOTHING :: 3; DS_TOW :: 4; DS_UP :: 5; DS_SENSOR :: 6; DS_BAY :: 7; DS_DROP :: 8;
 DS_KEEP :: 9; DS_STUN :: 10; DS_FETCH :: 11; DS_FIGHT :: 12; DS_POWERED :: 13; DS_HERE :: 14; DS_DIG :: 15; DS_MOVE :: 16;
 DS_FOLLOW :: 17; DS_NO_PART :: 18; DS_NO_FOE :: 19; DS_NO_DIG :: 20;
+DS_CELL :: 21; DS_NO_CELL :: 22; DS_CELL_FULL :: 23; DS_CELL_FAR :: 24;
 // the bot wheel's choices (Hold R), clockwise from the top
-DW_DIG :: 0; DW_PICK :: 1; DW_ATTACK :: 2; DW_FOLLOW :: 3; DW_N :: 4;
-DW_WORDS :: [DW_N] string.["DIG", "PICK UP", "ATTACK", "FOLLOW"];
+DW_DIG :: 0; DW_PICK :: 1; DW_ATTACK :: 2; DW_FOLLOW :: 3; DW_CHARGE :: 4; DW_N :: 5;
+DW_WORDS :: [DW_N] string.["DIG", "PICK UP", "ATTACK", "FOLLOW", "CHARGE"];
 
 SpDir :: struct {
   st: Stance;
   bag: bool; map: bool; paused: bool;
   task: int; task_i: int; task_t: f32;       // Digger's errand, what it is for, and its strike timer
   hp: Vitals = Vitals.{hp = T_DIGGER_HP, most = T_DIGGER_HP};
+  cell: bool;                             // a battery cell she gave him is charging him, until he is full
   sensor: bool;                           // the better sensor is fitted
   left: [PICKS] bool;                     // dropped by her: Digger leaves it until she has walked away
   full_said: [PICKS] bool;                // "inventory full" said for this part, once until it fits again
@@ -101,6 +105,10 @@ d_text :: (m: int) -> string {
   if m == DS_NO_PART { return "No part in Digger's range."; }
   if m == DS_NO_FOE { return "No robot near to attack."; }
   if m == DS_NO_DIG { return "Nothing here for Digger to dig."; }
+  if m == DS_CELL { return "Battery cell in. Digger charges up."; }
+  if m == DS_NO_CELL { return "No battery cell to give him."; }
+  if m == DS_CELL_FULL { return "Digger's battery is full."; }
+  if m == DS_CELL_FAR { return "Digger is too far. Go to him."; }
   return "";
 }
 
@@ -141,6 +149,7 @@ d_drop :: (g: [] SpGame, i: int) -> bool {
   k := 0;
   for p: 0..<PICKS {
     if !g[0].taken[p] || d_kind_of(p) != kind || pick_zone(g, p) != Z_MINE { continue; }
+    if kind == DK_CELL && k >= g[0].cells { break; }   // a cell given to Digger is spent: it is not put back
     a := cast(f32) k * 2.1;
     g[0].at.pick_x[p] = g[0].px + sin(g[0].yaw + a) * 0.9; g[0].at.pick_z[p] = g[0].pz + cos(g[0].yaw + a) * 0.9;
     g[0].taken[p] = false; g[0].dr[0].left[p] = true; k += 1;
@@ -190,10 +199,31 @@ d_at_charger :: (g: [] SpGame) -> bool {
   if g[0].zone == Z_RAIL { c := rail_at(g, g[0].rail_s); return dist2(g[0].bot_x, g[0].bot_z, c.x, c.z) < T_CHARGE_RANGE; }
   return g[0].zone == Z_MINE && dist2(g[0].bot_x, g[0].bot_z, g[0].at.rover_x, g[0].at.rover_z) < T_CHARGE_RANGE;
 }
-// A step of Digger's own: charging at Sniper, being towed, fetching, fighting, or looking for parts.
+// He wants charge, and no cell is charging him already.
+d_needs_charge :: (g: [] SpGame) -> bool { d := g[0].dr[0]; return g[0].bot && !d.cell && (d.hp.down || d.hp.hp < d.hp.most); }
+// E would give him a cell: she has one, he wants it, and he is beside her.
+d_cell_here :: (g: [] SpGame) -> bool { return g[0].cells > 0 && d_needs_charge(g) && dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) <= T_TOW_REACH; }
+// One of her battery cells into Digger, if he is within `reach` metres of her: it charges him full
+// (a powered-down Digger powers up), T_CELL_RATE of his health a second. False, and said why, when not.
+d_give_cell :: (g: [] SpGame, reach: f32) -> bool {
+  if !g[0].bot { return false; }
+  if g[0].cells <= 0 { d_say(g, DS_NO_CELL); return false; }
+  if !d_needs_charge(g) { d_say(g, ifx g[0].dr[0].cell then DS_CELL else DS_CELL_FULL); return false; }
+  if dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > reach { d_say(g, DS_CELL_FAR); return false; }
+  g[0].cells -= 1; g[0].dr[0].cell = true; d_say(g, DS_CELL);
+  return true;
+}
+// A step of Digger's own: charging from a cell or at Sniper, being towed, fetching, fighting, or looking for parts.
 d_bot :: (g: [] SpGame, dt: f32) {
   if !g[0].bot { return; }
   d := g[0].dr[..];
+  if d[0].cell {
+    was := d_down(g);
+    d[0].hp = vitals_charge(d[0].hp, T_CELL_RATE, dt);
+    if d[0].hp.hp >= d[0].hp.most { d[0].cell = false; }
+    if was && !d_down(g) { d_task_end(g); g[0].bot_state = BOT_FOLLOW; d_say(g, DS_UP); }
+    if d_down(g) { return; }
+  }
   if d_down(g) || d[0].hp.hp < d[0].hp.most {
     if d_at_charger(g) {
       was := d_down(g);
@@ -315,7 +345,7 @@ d_key :: (g: [] SpGame, key: int, down: bool) -> int {
   if key == 'w' || key == 'W' || key == -6 { d[0].st = stance_forward(d[0].st, down); return -1; }   // a double tap of W: very fast on the board; W still walks
   if key == 'q' || key == 'Q' { return d_board_q(g, down); }
   if key == 'r' || key == 'R' { return d_wheel_key(g, down); }
-  if d[0].wheel.open && down && key >= '1' && key <= '4' { d[0].wheel = wheel_set(d[0].wheel, key - '1'); return 1; }
+  if d[0].wheel.open && down && key >= '1' && key < '1' + DW_N { d[0].wheel = wheel_set(d[0].wheel, key - '1'); return 1; }
   if !down || g[0].mode != M_PLAY { return -1; }
   if key == 'i' || key == 'I' { d[0].bag = !d[0].bag; d[0].map = false; return 1; }
   if key == 'm' || key == 'M' { d[0].map = !d[0].map; d[0].bag = false; return 1; }
@@ -344,7 +374,7 @@ d_board_q :: (g: [] SpGame, down: bool) -> int {
   d[0].q_since = 0; d[0].q_hold = 0;
   return 1;
 }
-// Hold R: the bot wheel opens; the pointer (or 1 to 4) picks what Digger does; letting go confirms it.
+// Hold R: the bot wheel opens; the pointer (or 1 to 5) picks what Digger does; letting go confirms it.
 d_wheel_key :: (g: [] SpGame, down: bool) -> int {
   d := g[0].dr[..];
   if !down {
@@ -367,10 +397,11 @@ d_wheel_look :: (g: [] SpGame, dx: f32, dy: f32) -> bool {
   return true;
 }
 // What the wheel's choice has Digger do: dig the way ahead, fetch the nearest part in his range,
-// attack the nearest robot near her, or come back to her side.
+// attack the nearest robot near her, come back to her side, or take one of her battery cells.
 d_order :: (g: [] SpGame, pick: int) {
   d := g[0].dr[..];
   if !g[0].bot { return; }
+  if pick == DW_CHARGE { _ := d_give_cell(g, T_GIVE_UP_FIGHT); return; }
   if d_down(g) { d_say(g, DS_DOWN); return; }
   if pick == DW_FOLLOW { d_task_end(g); g[0].bot_state = BOT_FOLLOW; d_say(g, DS_FOLLOW); return; }
   if pick == DW_DIG {
@@ -394,9 +425,10 @@ d_order :: (g: [] SpGame, pick: int) {
 // The wheel, in the middle of the screen: four choices round a ring, the one picked lit.
 // The wheel, in the middle of the screen, in the HUD's frame (hud.coax).
 d_wheel_draw :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int { return hv_wheel(g, out, u, at, q); }
-// E at a powered-down Digger: tow him (or let him go).
+// E at a powered-down Digger: a battery cell into him if she has one, else tow him (or let him go).
 d_use :: (g: [] SpGame) -> bool {
   if !g[0].bot || !d_down(g) || dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > T_TOW_REACH { return false; }
+  if d_cell_here(g) { return d_give_cell(g, T_TOW_REACH); }
   d := g[0].dr[..];
   if d[0].task == DJ_TOW { d_task_end(g); } else { d[0].task = DJ_TOW; d_say(g, DS_TOW); }
   return true;
@@ -410,7 +442,11 @@ d_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
   if d[0].bag {
     if phase != 0 { return true; }
     i := carry_hit(T_ROOM, 3, d[0].bag_x, d[0].bag_y, d[0].bag_s, d[0].bag_gap, x, y);
-    if i >= 0 { _ := d_drop(g, i); }
+    if i >= 0 {
+      c := d_carry(g);
+      // her cells charge Digger when he wants charge; anything else, and cells when he is full, drop
+      if i < c.n && c.items[i].kind == DK_CELL && d_needs_charge(g) { _ := d_give_cell(g, T_GIVE_UP_FIGHT); } else { _ := d_drop(g, i); }
+    }
     return true;
   }
   if phase == 0 && !g[0].look_free { _ := d_point(g); return true; }
@@ -447,7 +483,7 @@ d_noticed :: (g: [] SpGame, see: f32) -> f32 { return stance_noticed(g[0].dr[0].
 d_crouch :: (g: [] SpGame) -> f32 { return ifx d_sneaking(g) then T_CROUCH else 0.0f32; }
 d_respawn :: (g: [] SpGame) {
   d := g[0].dr[..];
-  d_task_end(g); d[0].bag = false; d[0].map = false;
+  d_task_end(g); d[0].bag = false; d[0].map = false; d[0].cell = false;
   for i: 0..<PICKS { d[0].left[i] = false; d[0].full_said[i] = false; }
 }
 
@@ -536,7 +572,7 @@ d_bag :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
     n = ui_mid(out, n, d_kind_name(one.kind), (b.x0 + b.x1) * 0.5, b.y1 - 26 * k, 7 * k, col);
     if one.count > 1 { n = ui_right(out, n, num(buf[..], "x", one.count, ""), b.x1 - 8 * k, b.y1 - 9 * k, 8 * k, col); }
   }
-  n = ui_mid(out, n, "Click a slot to drop it. I or Esc closes.", q.w * 0.5, y0 + gh + 30 * k, 8 * k, ink);
+  n = ui_mid(out, n, ifx d_needs_charge(g) && g[0].cells > 0 then "Click CELLS to charge Digger, another slot to drop it." else "Click a slot to drop it. I or Esc closes.", q.w * 0.5, y0 + gh + 30 * k, 8 * k, ink);
   n = ui_mid(out, n, num(buf[..], "Digger picks up every part within ", cast(int) d_range(g), " m of him."), q.w * 0.5, y0 + gh + 52 * k, 8 * k, ink);
   return n;
 }
@@ -620,9 +656,9 @@ d_controls :: () -> [D_KEYS * 2] string {
   return [D_KEYS * 2] string.[
     "W A S D", "Walk", "Mouse", "Look", "Space", "Jump", "Hold Shift", "Sneak: slower, harder to sense",
     "Q", "Hoverboard on, then casual or fast", "Hold Ctrl or W W", "Hoverboard very fast; Q Q super fast, hold Q off",
-    "E", "Interact, enter the rover, swap a core, tow Digger", "Tab", "Edit bay, inside Sniper", "I", "Inventory",
+    "E", "Interact, enter the rover, swap a core, tow or charge Digger", "Tab", "Edit bay, inside Sniper", "I", "Inventory",
     "Left click", "Point Digger: dig, pick up, attack", "F", "Stun a robot within 2 m", "1 2 3 4", "Battle moves",
-    "Hold R", "Bot wheel: dig, pick up, attack, follow", "M", "Map", "O", "Change outfit, inside Sniper", "Esc", "Pause", "G", "Graybox"];
+    "Hold R", "Bot wheel: dig, pick up, attack, follow, charge", "M", "Map", "O", "Change outfit, inside Sniper", "Esc", "Pause", "G", "Graybox"];
 }
 d_pause_screen :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int { return hv_pause(g, out, u, at, q); }   // hud.coax
 // The Director's HUD: her panel top left, the bars over the bots, her line, and the grid, the map
