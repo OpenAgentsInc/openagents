@@ -120,7 +120,7 @@ struct PassedCheck {
 static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::vector<uint64_t> *steps = nullptr, int32_t *failures = nullptr,
                            std::vector<std::vector<const ProcDecl *>> *paths = nullptr, bool *unstable = nullptr,
                            const std::string *only = nullptr, int32_t *ran = nullptr, bool profile = false,
-                           const std::vector<PassedCheck> *passed = nullptr) {
+                           const std::vector<PassedCheck> *passed = nullptr, const std::vector<uint64_t> *budgets = nullptr) {
   bool ok = true;
   std::vector<const ProcDecl *> executed;
   if (failures) *failures = 0;
@@ -145,7 +145,7 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
       r.budget = child->budget;
       r.executed = child->executed;
       r.near = child->near;
-    } else r = run_check(file, c, c->steps ? c->steps : max_steps, profile);
+    } else r = run_check(file, c, budgets ? (*budgets)[(size_t)index] : c->steps ? c->steps : max_steps, profile);
     native_compare(file, (size_t)index, c, r);
     const double seconds = child ? child->seconds : seconds_since(began);
     const long long ms = (long long)(seconds * 1000);
@@ -708,8 +708,7 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t
       const auto &path = (*run.paths)[(size_t)i];
       bool entered = !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
       if (!MS_run(run.selective, entered)) { ++r.skipped; continue; }
-      uint64_t budget = std::max<uint64_t>(10000, (*run.base)[(size_t)i] * 10);
-      if (file->checks[i]->steps) budget = std::min(budget, file->checks[i]->steps);
+      const uint64_t budget = MS_mutant_budget((*run.base)[(size_t)i], file->checks[i]->steps);
       ++r.invocations;
       killed = mutant_check_fails(file, file->checks[i], budget, &r);
       if (killed) { r.killer = i; break; }
@@ -726,8 +725,7 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t
     const auto &path = (*run.paths)[(size_t)hint];
     bool entered = !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
     if (MS_run(run.selective, entered)) {
-      uint64_t budget = std::max<uint64_t>(10000, (*run.base)[(size_t)hint] * 10);
-      if (file->checks[hint]->steps) budget = std::min(budget, file->checks[hint]->steps);
+      const uint64_t budget = MS_mutant_budget((*run.base)[(size_t)hint], file->checks[hint]->steps);
       ++r.invocations;
       killed = mutant_check_fails(file, file->checks[hint], budget, &r);
       if (killed) r.killer = hint;
@@ -740,9 +738,9 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t
     const auto &path = (*run.paths)[(size_t)i];
     bool entered = !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
     if (!MS_run(run.selective, entered)) { ++r.skipped; continue; }
-    uint64_t budget = std::max<uint64_t>(10000, (*run.base)[(size_t)i] * 10);
-    // A mutant that needs more than the check's own budget fails that check.
-    if (file->checks[i]->steps) budget = std::min(budget, file->checks[i]->steps);
+    // Ten times the baseline's steps (MS_mutant_budget, #13602); a mutant that
+    // needs more than the check's own budget fails that check.
+    const uint64_t budget = MS_mutant_budget((*run.base)[(size_t)i], file->checks[i]->steps);
     ++r.invocations;
     killed = mutant_check_fails(file, file->checks[i], budget, &r);
     if (killed) r.killer = i;
@@ -2409,13 +2407,33 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
   bool unstable = false;
   if (!merging) {
     const auto began = std::chrono::steady_clock::now();
-    if (!run_all_checks(file, TEST_STEPS, false, &baseline.base, nullptr, &baseline.paths, &unstable)) {
+    // `coax test` runs a check as native code when it can, with no step
+    // budget; the baseline runs every check in the evaluator, where the
+    // mutants run. A check that passes as native code is not held to the
+    // evaluator's step budget here (MS_baseline_budget, #13602): its mutants'
+    // budgets come from the steps it used (MS_mutant_budget).
+    const size_t count = (size_t)file->checks.count;
+    std::vector<uint64_t> budgets(count, 0);
+    const bool native_first = native_mode() != NativeMode::off && g_evidence.path.empty();
+    if (native_first) native_run(file, std::vector<bool>(count, true), TEST_STEPS);
+    for (size_t i = 0; i < count; i++)
+      budgets[i] = MS_baseline_budget(native_first && native_passed(file, i), file->checks[(int32_t)i]->steps, TEST_STEPS);
+    if (!run_all_checks(file, TEST_STEPS, false, &baseline.base, nullptr, &baseline.paths, &unstable, nullptr, nullptr, false, nullptr, &budgets)) {
       g_evidence.mutation_detail = "\"reason\":\"the checks fail before any mutation\"";
       fprintf(stderr, "coax: the checks fail before any mutation; make them pass first\n");
       return 1;
     }
     baseline.seconds = seconds_since(began);
     for (uint64_t s : baseline.base) baseline.steps += s;
+    size_t over = 0;
+    uint64_t most = 0;
+    for (size_t i = 0; i < count; i++) {
+      const uint64_t own = file->checks[(int32_t)i]->steps ? file->checks[(int32_t)i]->steps : TEST_STEPS;
+      if (baseline.base[i] > own) { over++; most = std::max(most, baseline.base[i]); }
+    }
+    if (opt.stats && over)
+      fprintf(stderr, "mutation-baseline %zu check%s passed as native code and went over the evaluator's step budget (the most: %llu steps); "
+              "a mutant gets ten times what its check used\n", over, over == 1 ? "" : "s", (unsigned long long)most);
     baseline.facts.borrowed = mutation_borrowed_aggregate(file);
     baseline.facts.strings = mutation_allocates_string(file);
     baseline.facts.unstable = unstable;

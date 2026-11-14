@@ -800,7 +800,10 @@ The changes `coax mutate` makes are the ones that cause real bugs:
 The compiler mutates every site statically reachable from a check, even if a
 baseline run never enters it. Such a mutant can survive. A mutant that loops
 forever doesn't hang the run: each check gets ten times its unmutated steps,
-with a minimum of 10,000, and running out counts as a kill.
+with a minimum of 10,000, and running out counts as a kill. The baseline runs
+the checks as native code first, like `coax test`, so a check that passes there
+and needs more than 20,000,000 evaluator steps still passes the baseline, and
+its mutants get ten times the steps it really took.
 
 To avoid repeating independent work, Coax records which procedures each
 baseline check entered and can skip a check for a mutant in an unentered

@@ -221,3 +221,42 @@ NM_compare :: (native:u32,same_check:bool,ran_killer:bool,evaluator:u32)->u32 #e
  if native>=NM_TICKS {return 1;}
  return 2;
 }
+
+// Step budgets (#13602). `coax test` runs a check as native code when it can,
+// and native code has no step budget, so a check can pass there and need
+// more evaluator steps than the file's budget. The mutation baseline runs
+// every check in the evaluator, because the mutants run there. So a check
+// that passed as native code gets a baseline budget of a thousand times the
+// file's (saturating), which only guards against a hang: native code already
+// showed it ends. Any other check keeps its own #steps, else the file's.
+// A mutant's check then gets ten times the steps the baseline measured, never
+// under 10,000 (a mutant that loops forever stops there), and never over the
+// check's own #steps when the baseline fit in them.
+#forall "the baseline budget lifts only for a check native code passed" native:bool, own:0..<3, file:1..<4 {
+ want:=ifx native then file*1000 else ifx own>0 then own else file;
+ #assert MS_baseline_budget(native,cast(u64)own*7,cast(u64)file*7)==cast(u64)want*7;
+}
+#test "the baseline budget saturates" {
+ #assert MS_baseline_budget(true,0,18446744073709551) == 18446744073709551000 && MS_baseline_budget(true,0,18446744073709552) == NM_MAX;
+ #assert MS_baseline_budget(true,5,NM_MAX) == NM_MAX && MS_baseline_budget(false,5,NM_MAX) == 5;
+ #assert MS_baseline_budget(true,0,0) == 0 && MS_baseline_budget(false,1,9) == 1;
+}
+MS_baseline_budget :: (native_passed:bool,own:u64,file:u64)->u64 #export_c #effects(all) {
+ if native_passed {return nm_scaled(file,1000,0);}
+ return ifx own>0 then own else file;
+}
+#forall "a mutant's budget is ten times the baseline, at least 10,000, within the check's own when the baseline fit" base:0..<5, own:0..<5 {
+ b:=cast(u64)base*3000; o:=cast(u64)own*20000;
+ want:=ifx b*10<10000 then cast(u64)10000 else b*10;
+ if o>0 && b<=o && o<want {want=o;}
+ #assert MS_mutant_budget(b,o)==want;
+}
+#test "a mutant's budget saturates and ignores an own budget the baseline passed" {
+ #assert MS_mutant_budget(NM_MAX,0)==NM_MAX && MS_mutant_budget(1844674407370955162,0)==NM_MAX && MS_mutant_budget(1844674407370955161,0)==18446744073709551610;
+ #assert MS_mutant_budget(50000,40000)==500000 && MS_mutant_budget(40000,40000)==40000 && MS_mutant_budget(0,5)==5 && MS_mutant_budget(1,1)==1;
+}
+MS_mutant_budget :: (base:u64,own:u64)->u64 #export_c #effects(all) {
+ budget:=nm_scaled(base,10,10000);
+ if own>0 && base<=own && own<budget {return own;} // mutant: equivalent ('<' and '<=' agree when own is the budget)
+ return budget;
+}

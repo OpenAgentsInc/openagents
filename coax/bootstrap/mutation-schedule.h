@@ -37,6 +37,8 @@ uint64_t NM_tick_limit(uint64_t baseline);
 uint64_t NM_wall_ms(uint64_t baseline_ms);
 _Bool NM_killed(uint32_t outcome);
 uint32_t NM_compare(uint32_t native, _Bool same_check, _Bool ran_killer, uint32_t evaluator);
+uint64_t MS_baseline_budget(_Bool native_passed, uint64_t own, uint64_t file);
+uint64_t MS_mutant_budget(uint64_t base, uint64_t own);
 
 #ifdef __cplusplus
 }

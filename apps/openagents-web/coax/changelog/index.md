@@ -73,6 +73,13 @@ Commit: [`09101c58f972b76c8fcdd6f9315d1026b6a95837`](https://github.com/OpenAgen
   run says so and continues as before. `coax checks-c` now lists every
   refusal the selected checks reach, with a count by kind, instead of
   stopping at the first. See [docs/native-mutants.md](docs/native-mutants.md).
+- Follow-up 2026-11-14 (#13602): `coax mutate` runs its baseline checks as
+  native code first, as `coax test` does. A check that passes there and runs
+  past the evaluator's 20,000,000 steps gets a baseline budget of a thousand
+  times that, so the evaluator measures its real steps, and each of its mutants
+  gets ten times those steps. A check that passes under `coax test` no longer
+  fails the gate's baseline for its step count alone, and a mutant that loops
+  forever still runs out. `--mutation-stats` counts such checks.
 
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 

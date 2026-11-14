@@ -190,6 +190,8 @@ uint64_t NM_tick_limit(uint64_t l_baseline);
 uint64_t NM_wall_ms(uint64_t l_baseline_ms);
 _Bool NM_killed(uint32_t l_outcome);
 uint32_t NM_compare(uint32_t l_native, _Bool l_same_check, _Bool l_ran_killer, uint32_t l_evaluator);
+uint64_t MS_baseline_budget(_Bool l_native_passed, uint64_t l_own, uint64_t l_file);
+uint64_t MS_mutant_budget(uint64_t l_base, uint64_t l_own);
 
 _Bool MS_include(_Bool l_root_only, _Bool l_root_source) {
   return ((!l_root_only) || l_root_source);
@@ -372,4 +374,21 @@ uint32_t NM_compare(uint32_t l_native, _Bool l_same_check, _Bool l_ran_killer, u
     return ((uint32_t)UINT64_C(1));
   }
   return ((uint32_t)UINT64_C(2));
+}
+
+uint64_t MS_baseline_budget(_Bool l_native_passed, uint64_t l_own, uint64_t l_file) {
+  if (l_native_passed)
+  {
+    return coax_p_nm_scaled(l_file, UINT64_C(1000), UINT64_C(0));
+  }
+  return ((l_own > UINT64_C(0)) ? l_own : l_file);
+}
+
+uint64_t MS_mutant_budget(uint64_t l_base, uint64_t l_own) {
+  uint64_t l_budget = coax_p_nm_scaled(l_base, UINT64_C(10), UINT64_C(10000));
+  if (((l_own > UINT64_C(0)) && (l_base <= l_own)) && (l_own < l_budget))
+  {
+    return l_own;
+  }
+  return l_budget;
 }

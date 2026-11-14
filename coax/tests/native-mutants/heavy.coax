@@ -1,0 +1,19 @@
+// A check within its budget as native code and over it in the evaluator
+// (tests/native-mutants.coax, #13602). `coax test` runs it as native code,
+// so it passes there; the mutation baseline runs it in the evaluator, about
+// 30 million steps against the file's 20 million. The baseline must pass, and
+// each mutant gets ten times what the check used: removing `i += 1` loops
+// forever and is still killed by that budget.
+#import "Basic";
+#authority;
+
+spin :: (n: int) -> int #effects(all) {
+  s := 0;
+  i := 0;
+  while i < n { s += (i & 3) + 1; i += 1; }
+  return s;
+}
+score :: (x: int) -> int #effects(all) { return x * 3 + 1; }
+#test "a long spin, then a score" { #assert spin(2500000) == 6250000 && score(2) == 7; }
+#test "a short spin" { #assert spin(5) == 11 && score(0) == 1; }
+main :: () { }

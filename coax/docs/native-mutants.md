@@ -59,8 +59,16 @@ work. `--killers FILE` still records the evaluator's killers.
 
 ## The limits
 
-The evaluator gives a mutant's check ten times its unmutated steps and never
-fewer than 10,000. Native code gives it ten times its unmutated ticks and
+The baseline runs the checks as native code first, as `coax test` does. A
+check that passes there gets an evaluator budget of a thousand times the
+20,000,000-step default (`MS_baseline_budget`), so a check that `coax test`
+passes can't fail the baseline only for its step count. Its `#steps`, when it
+has one, still binds a check that native code didn't pass. The evaluator then
+gives a mutant's check ten times its measured unmutated steps and never fewer
+than 10,000, capped by the check's `#steps` when that is larger than its
+measured steps (`MS_mutant_budget`). `tests/native-mutants/heavy.coax` is a
+check of about 30,000,000 evaluator steps: it passes the baseline, and its
+mutant that loops forever runs out. Native code gives it ten times its unmutated ticks and
 never fewer than 10,000 (`NM_tick_limit`). Ticks bound every loop and every
 call, so a mutant that loops or recurses forever stops. A wall-time limit of
 twenty times the check's unmutated time, and never under ten seconds
