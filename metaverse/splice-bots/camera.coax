@@ -137,21 +137,16 @@ cm_body_at :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32) -> bool {
 cm_boss_in :: (g: [] SpGame, x: f32, z: f32, pad: f32) -> bool {
   t := g[0].bt[0];
   if dist2(x, z, t.dino_x, t.dino_z) < CM_BOSS_CORE + pad { return true; }
-  if cm_boss_gap(g, g[0].px, g[0].pz) < CM_BOSS_R + CM_CLEAR { return false; }
-  return cm_boss_gap(g, x, z) < CM_BOSS_R + pad;
+  if sb_boss_gap(g, g[0].px, g[0].pz, false) < CM_CLEAR { return false; }
+  return sb_boss_gap(g, x, z, false) < pad;
 }
-// The boss as the camera meets it: its body and tail along the way it faces, CM_BOSS_HALF each
-// way from its middle, CM_BOSS_R round (its body and the tail's thick root; the thin tail tip past it is
-// left out), up to CM_BOSS_TOP (splice-battle.coax SB_BOSS_TALL).
-CM_BOSS_HALF :: 2.6f32; CM_BOSS_R :: 1.5f32; CM_BOSS_TOP :: SB_BOSS_TALL + 0.3;
+// The boss as the camera meets it: the long collider she and Digger stop against, its body and its
+// swaying tail out to the tip (splice-battle.coax sb_boss_gap; its head stands over the boom), up to CM_BOSS_TOP (SB_BOSS_TALL).
+CM_BOSS_TOP :: SB_BOSS_TALL + 0.3;
 CM_BOSS_CORE :: SB_BOSS_R - T_RADIUS; // m: the round she collides with, less her own radius (layer.coax sl_round of SK_BOSS)
 CM_BOSS_BACK :: 1.5f32;  // m further back with the boss ahead
 CM_BOSS_LOOK :: 0.6f32;  // how far the look turns toward the point between her and the boss
 CM_BOSS_RISE :: 0.2f32;  // radians the boom swings up by the boss while coming in still leaves CM_MIN
-cm_boss_gap :: (g: [] SpGame, x: f32, z: f32) -> f32 {
-  t := g[0].bt[0]; fx := sin(t.dino_yaw) * CM_BOSS_HALF; fz := cos(t.dino_yaw) * CM_BOSS_HALF;
-  return cm_flat_gap(t.dino_x - fx, t.dino_z - fz, t.dino_x + fx, t.dino_z + fz, x, z);
-}
 // How much the standing boss is ahead of her and near, 0 to 1: the camera frames the two of them.
 cm_boss_ahead :: (g: [] SpGame) -> f32 {
   t := g[0].bt[0]; dx := t.dino_x - g[0].px; dz := t.dino_z - g[0].pz; d := sqrt(dx * dx + dz * dz);
@@ -218,7 +213,7 @@ cm_open :: (g: [] SpGame, from: Point, dir: Point, far: f32, pad: f32) -> bool {
     t := g[0].bt[0];
     if g[0].bot && cm_flat_gap(from.x, from.z, ex, ez, g[0].bot_x, g[0].bot_z) < T_BOT_R + pad { return false; }
     if cm_flat_gap(from.x, from.z, ex, ez, t.mech_x, t.mech_z) < SB_MECH_R + pad { return false; }
-    if (g[0].wall_gone || g[0].boss_down) && cm_flat_gap(from.x, from.z, ex, ez, t.dino_x, t.dino_z) < CM_BOSS_HALF + CM_BOSS_R + pad { return false; }
+    if (g[0].wall_gone || g[0].boss_down) && cm_flat_gap(from.x, from.z, ex, ez, t.dino_x, t.dino_z) < SB_BOSS_REACH + pad { return false; }
   }
   return true;
 }

@@ -229,7 +229,7 @@ Every camera timing and distance is a constant at the top of `camera.coax`:
 | `CM_BOARD_BACK` | 1.5 m | How much further back it sits on the hoverboard |
 | `CM_TOO_NEAR` | 1.2 m | Nearer than this her body is not drawn |
 | `CM_LINE_PAD` | 0.4 m | What Digger and the mech keep between themselves and the camera's line |
-| `CM_BOSS_HALF`, `CM_BOSS_R`, `CM_BOSS_TOP` | 2.6 m, 1.5 m, 4 m | The boss's body as the camera meets it |
+| `CM_BOSS_TOP` | 4 m | How high the boss stands as the camera meets it; on the ground the camera meets its long collider, body and tail (`sb_boss_gap`) |
 | `CM_BOSS_BACK` | 1.5 m | How much further back the camera sits with the boss ahead |
 | `CM_BOSS_LOOK` | 0.6 | How far the look turns toward the point between her and the boss |
 | `CM_BOSS_RISE` | 0.2 rad | How far the boom swings up by the boss while coming in still leaves `CM_MIN` |
