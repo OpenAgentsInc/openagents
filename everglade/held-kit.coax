@@ -113,6 +113,41 @@ bow_string :: (h:[]HeldPieces,female:bool,aim:f32,nocked:bool,b:[]figs.Bodies,ou
 }
 // The string's tips (up, then down) and its nock point, from the bow's frame w (bow_matrix) and the
 // draw hand's fist: at rest the nock is the string's middle, pulled `k` of the way to the fingers.
+// A loosed arrow (the same glade/weapon6), its head at `head` flying along `dir` (unit), seen from
+// `eye`. It is drawn larger than the nocked one, which is beside you: CC_SHOT_LONG from nock to head
+// and CC_SHOT_GIRTH times as thick, and thicker by CC_SHOT_SEEN of that each metre past CC_SHOT_NEAR
+// from the eye, so a shaft a centimetre through still reads from behind at 30 m (#13590).
+CC_ARROW_MESH :: 6;
+CC_SHOT_LONG :: 1.0;       // metres
+CC_SHOT_GIRTH :: 2.0;
+CC_SHOT_SEEN :: 0.2;
+CC_SHOT_NEAR :: 4.0;
+arrow_matrix :: (head:[3]f32,dir:[3]f32,eye:[3]f32)->[12]f32 {
+ d:=cc_unit(dir);
+ side:=ifx d[1]>0.99 || d[1]< -0.99 then [3]f32.[1,0,0] else [3]f32.[0,1,0];
+ e:=cc_unit([3]f32.[d[1]*side[2]-d[2]*side[1],d[2]*side[0]-d[0]*side[2],d[0]*side[1]-d[1]*side[0]]);
+ g:=[3]f32.[e[1]*d[2]-e[2]*d[1],e[2]*d[0]-e[0]*d[2],e[0]*d[1]-e[1]*d[0]];
+ a:=f32(CC_SHOT_LONG)/(2*f32(CC_ARROW_NOCK));l:=a*f32(CC_ARROW_NOCK);
+ far:=sqrt((head[0]-eye[0])*(head[0]-eye[0])+(head[1]-eye[1])*(head[1]-eye[1])+(head[2]-eye[2])*(head[2]-eye[2]));
+ t:=a*f32(CC_SHOT_GIRTH)*(1+(ifx far>f32(CC_SHOT_NEAR) then (far-f32(CC_SHOT_NEAR))*f32(CC_SHOT_SEEN) else 0.0f32));
+ return [12]f32.[head[0]-d[0]*l,head[1]-d[1]*l,head[2]-d[2]*l,e[0]*t,e[1]*t,e[2]*t,d[0]*a,d[1]*a,d[2]*a,g[0]*t,g[1]*t,g[2]*t];
+}
+#test "a loosed arrow's piece: its head where the arrow is, its length along the flight, thicker the further from the eye (#13590)" {
+  l := f32(CC_SHOT_LONG); k := l / (2 * f32(CC_ARROW_NOCK));
+  w := arrow_matrix([3]f32.[1, 2, -10], [3]f32.[0, 0, -2], [3]f32.[1, 2, -8]);
+  // the mesh's head (+Y, CC_ARROW_NOCK from its middle) lands on `head`; its nock is CC_SHOT_LONG behind
+  #assert abs(w[0] - 1) < 0.001 && abs(w[1] - 2) < 0.001 && abs(w[2] + f32(CC_ARROW_NOCK) * w[8] + 10) < 0.001 && abs(w[2] - f32(CC_ARROW_NOCK) * w[8] + 10 - l) < 0.001;
+  #assert abs(w[6]) < 0.001 && abs(w[7]) < 0.001 && abs(w[8] + k) < 0.001;
+  // near the eye its girth is CC_SHOT_GIRTH; the three columns are square to each other
+  #assert abs(sqrt(w[3] * w[3] + w[4] * w[4] + w[5] * w[5]) - k * f32(CC_SHOT_GIRTH)) < 0.001 && abs(sqrt(w[9] * w[9] + w[10] * w[10] + w[11] * w[11]) - k * f32(CC_SHOT_GIRTH)) < 0.001;
+  #assert abs(w[3] * w[6] + w[4] * w[7] + w[5] * w[8]) < 0.001 && abs(w[9] * w[6] + w[10] * w[7] + w[11] * w[8]) < 0.001 && abs(w[3] * w[9] + w[4] * w[10] + w[5] * w[11]) < 0.001;
+  // 30 m further from the eye: the same length, CC_SHOT_SEEN thicker a metre past CC_SHOT_NEAR
+  far := arrow_matrix([3]f32.[1, 2, -40], [3]f32.[0, 0, -1], [3]f32.[1, 2, -8]);
+  #assert abs(far[8] + k) < 0.001 && abs(sqrt(far[3] * far[3] + far[4] * far[4] + far[5] * far[5]) - k * f32(CC_SHOT_GIRTH) * (1 + (32 - f32(CC_SHOT_NEAR)) * f32(CC_SHOT_SEEN))) < 0.01;
+  // straight up or down it still has a frame
+  up := arrow_matrix([3]f32.[0, 5, 0], [3]f32.[0, -1, 0], [3]f32.[0, 4, 0]);
+  #assert abs(up[7] + k) < 0.001 && abs(sqrt(up[3] * up[3] + up[4] * up[4] + up[5] * up[5]) - k * f32(CC_SHOT_GIRTH)) < 0.001;
+}
 // The arrow rests CC_ARROW_REST up the limbs over the bow fist, not through it (#13073).
 CC_ARROW_REST :: 0.06;     // metres
 // Where the arrow points: over the bow's grip, on its rest.

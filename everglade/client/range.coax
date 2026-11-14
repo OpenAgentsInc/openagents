@@ -207,7 +207,21 @@ e2rg_message :: (s: [] E2, t: string) -> bool {
   s: [1] E2; e2rg_targets(s[..]); a := rg_arrive(); s[0].you_x = a[0]; s[0].you_z = a[1]; s[0].you_y = e2_height(a[0], a[1]);
   f := s[0].bows[0].ar[0].targets[0].face[1];
   from := eg_bow_hand(s[0].you_x, s[0].you_y, s[0].you_z, 3.14159265);
+  // it is drawn all the way (#13590): the pack's arrow, one record and one draw, in the air between the
+  // bow and the face and then stuck in the face; with none loosed, or no arrow in the pack, nothing
+  s[0].creator[0].weapon_first[cc.CC_ARROW_MESH] = 500; s[0].creator[0].weapon_count[cc.CC_ARROW_MESH] = 672; s[0].creator[0].glade_word = 77;
+  s[0].eye = [3] f32.[s[0].you_x, s[0].you_y + 3, s[0].you_z + 5];
+  #assert e2bw_draw(s[..], E2Drawn.{}).rec == 0;
   _ := arch.archer_loose(s[0].bows[0].ar[..], NET_SHOT_MINE, from, [3] f32.[f.x, f.y + 0.2, f.z], 1, -1, 0);
-  for q: 0..<90 { s[0].clock += 1.0 / 30; e2bw_step(s[..]); }
-  #assert s[0].bows[0].ar[0].marks == 1 && s[0].bows[0].net[0].landed == 1;
+  flown := 0;
+  for q: 0..<90 {
+    s[0].clock += 1.0 / 30; e2bw_step(s[..]);
+    d := e2bw_draw(s[..], E2Drawn.{rec = 2, n = 1, sn = 1});
+    #assert d.rec == 3 && d.n == 2 && d.sn == 2 && s[0].records[2 * 24 + 15] == 19 && s[0].records[2 * 24 + 7] == 77 && s[0].draws[4] == 500 && s[0].draws[5] == 672;
+    z := s[0].records[2 * 24 + 2];
+    if s[0].bows[0].ar[0].marks == 0 { #assert z < from[2] + 0.1 && z > f.z; flown += 1; }
+    else { #assert abs(z - f.z) < 1.1 && abs(s[0].records[2 * 24] - f.x) < f.radius; }
+  }
+  #assert flown > 5 && s[0].bows[0].ar[0].marks == 1 && s[0].bows[0].net[0].landed == 1;
+  s[0].creator[0].weapon_count[cc.CC_ARROW_MESH] = 0; #assert e2bw_draw(s[..], E2Drawn.{}).rec == 0;
 }

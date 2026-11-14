@@ -108,6 +108,13 @@ arrow aims 60 m along it. It flies a closed-form arc under gravity
 rate. Each frame, the segment it flew is tested against the ground, the walls and
 every monster's hurt capsule.
 
+In Everglade II each arrow in the air or stuck is drawn as the pack's arrow
+(`glade/weapon6`, the one nocked on the string), about 1 m long and thicker the
+further it is from the eye (`everglade/held-kit.coax` `arrow_matrix`,
+`everglade/client/arrows.coax` `e2bw_draw`). In flight it also leaves a pale
+wake (`metaverse-engine/fx/puff.coax` `fxp_arrow_at`). The glow alone does not
+show on bright grass or sky.
+
 - **It reaches a monster:** the SRD rolls the attack. A hit ends the arrow in the
   monster, with sparks, a hit sound, the damage number and a short hit stop. A miss
   shows **MISS**, plays a whoosh and flies on through.

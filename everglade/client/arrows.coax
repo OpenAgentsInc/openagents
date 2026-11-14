@@ -126,6 +126,20 @@ e2bw_puffs :: (s: [] E2, pf: [] FxPuffs) {
     fxp_arrow_at(pf, fxp_v(w.at[0] + o[0], w.at[1] + o[1], w.at[2] + o[2]), fxp_v(w.dir[0], w.dir[1], w.dir[2]), w.alpha * net_shots_shown(b[0].net[..], i, now), w.flying, w.seed);
   }
 }
+// Each arrow in the air or stuck as the pack's arrow (glade/weapon6, the one nocked on the string:
+// everglade/held-kit.coax arrow_matrix), where its puffs are: a solid shaft that shows on bright grass
+// and in a face, which the glow alone does not (#13590). A fading arrow thins as a body does.
+e2bw_draw :: (s: [] E2, at: E2Drawn) -> E2Drawn {
+  b := s[0].bows[..]; now := s[0].clock; d := at;
+  for i: 0..<bow.ARROWS {
+    w := arch.archery_show(b[0].ar[0].arrows[0], i, s[0].eye[0], s[0].eye[2], now); if !w.on { continue; }
+    o := net_shots_offset(b[0].net[..], i, now); a := w.alpha * net_shots_shown(b[0].net[..], i, now);
+    if a <= 0 { continue; }
+    head := [3] f32.[w.at[0] + o[0], w.at[1] + o[1], w.at[2] + o[2]];
+    d = e2_piece(s, d, cc.CC_ARROW_MESH, cc.arrow_matrix(head, w.dir, s[0].eye), 1 - a);
+  }
+  return d;
+}
 // What the checks read (e2_probe 214 on).
 e2bw_probe :: (s: [] E2, field: int) -> int {
   sh := s[0].bows[0].net[0];

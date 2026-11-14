@@ -31,6 +31,7 @@ FX_PUFF_CAP :: 2400;      // puffs one frame may write
 FX_BUCKETS :: 40;         // the smoke and fire sorted far to near in these, FX_BUCKET_M each
 FX_BUCKET_M :: 4.0;
 FX_PI :: 3.14159265;
+FX_ARROW_WAKE :: 6;        // puffs in a flying arrow's wake (fxp_arrow_at)
 
 // The recipes: what one cause looks like.
 FXR_NONE :: 0;
@@ -700,12 +701,20 @@ fxp_shaft :: (p: [] FxPuffs, c: FxCause, t: f32) {
 // `dir` (unit), `a` how visible. The shaft, 0.9 m drawn a little long so it reads at range, its
 // head's glint and its fletching; in flight (`flying`) a faint streak of the air it cuts.
 fxp_arrow_at :: (p: [] FxPuffs, head: FxV, dir: FxV, a: f32, flying: bool, seed: f32) {
-  if a <= 0 { return; }
+  if a <= 0 { return; }   // mutant: equivalent (at 0 every puff's size is 0, which fxp_put refuses)
   mid := fxp_sub(head, fxp_mul(dir, 0.42));
   ok := fxp_spark(p, mid, 0.045 * a, fxp_mul(fxp_v(0.95, 0.82, 0.55), a), fxp_mul(dir, 0.45), seed);
   ok = fxp_glow(p, head, 0.08 * a, fxp_mul(fxp_v(1.0, 0.95, 0.85), a), 0.8, seed + 0.3);
   ok = fxp_glow(p, fxp_sub(head, fxp_mul(dir, 0.85)), 0.07 * a, fxp_mul(fxp_v(0.9, 0.35, 0.25), a), 0.4, seed + 0.6);
-  if flying { ok = fxp_spark(p, fxp_sub(head, fxp_mul(dir, 1.6)), 0.025 * a, fxp_mul(fxp_v(0.55, 0.55, 0.6), a * 0.5), fxp_mul(dir, 0.7), seed + 0.9); }
+  if flying {
+    ok = fxp_spark(p, fxp_sub(head, fxp_mul(dir, 1.6)), 0.025 * a, fxp_mul(fxp_v(0.55, 0.55, 0.6), a * 0.5), fxp_mul(dir, 0.7), seed + 0.9);
+    // and a pale wake that shows in daylight, where a glow adds almost nothing to bright grass or sky:
+    // FX_ARROW_WAKE small puffs behind the nock, thinner the further back
+    for j: 0..<FX_ARROW_WAKE {
+      u := f32(j) / f32(FX_ARROW_WAKE);
+      ok = fxp_smoke(p, fxp_sub(head, fxp_mul(dir, 1.0 + u * 2.6)), (0.07 - 0.03 * u) * a, fxp_v(0.96, 0.95, 0.9), (0.7 - 0.55 * u) * a, seed + 1.3 + u);
+    }
+  }
 }
 // Where a thrown rock is u of the way: a higher arc than a bolt's.
 fxp_lob :: (c: FxCause, u: f32) -> FxV {
@@ -899,6 +908,41 @@ fxp_test_cause :: (recipe: int, seed: f32) -> FxCause {
   #assert p[0].out[2] == 60 && p[0].out[14] == 20 && p[0].out[26] == 3 && floor(p[0].out[47]) == f32(PF_GLOW);
 }
 
+#test "an arrow drawn where it is: stuck it is its shaft, head and fletching; flying it has its streak and a pale wake behind it that daylight shows" #steps 400000000 {
+  p: [1] FxPuffs;
+  fxp_begin(p[..], 0, fxp_v(0, 2, 10)); fxp_arrow_at(p[..], fxp_v(0, 1, 0), fxp_v(0, 0, -1), 1, false, 0.3);
+  #assert p[0].n == 3;
+  fxp_begin(p[..], 0, fxp_v(0, 2, 10)); fxp_arrow_at(p[..], fxp_v(0, 1, 0), fxp_v(0, 0, -1), 1, true, 0.3);
+  #assert p[0].n == 4 + FX_ARROW_WAKE;
+  // the wake: smoke, not glow, behind the nock (the arrow flies toward -z), each puff smaller than the last
+  for j: 0..<FX_ARROW_WAKE {
+    o := (4 + j) * FX_PUFF_FLOATS;
+    #assert floor(p[0].stage[o + 11]) == f32(PF_SMOKE) && p[0].stage[o + 2] >= 1.0 && p[0].stage[o + 2] < 3.7 && p[0].stage[o + 4] > 0.85;
+    if j > 0 { #assert p[0].stage[o + 3] < p[0].stage[o - FX_PUFF_FLOATS + 3] && p[0].stage[o + 2] > p[0].stage[o - FX_PUFF_FLOATS + 2]; }
+  }
+  fxp_begin(p[..], 0, fxp_v(0, 2, 10)); fxp_arrow_at(p[..], fxp_v(0, 1, 0), fxp_v(0, 0, -1), 0, true, 0.3); #assert p[0].n == 0;
+  // every puff of a half-shown arrow in flight: where it is, its size, colour, core, streak and seed
+  fxp_begin(p[..], 0, fxp_v(0, 2, 10)); fxp_arrow_at(p[..], fxp_v(0, 1, 0), fxp_v(0, 0, -1), 0.5, true, 0.1);
+  // z, size, r, g, b, core, the streak's z, the seed
+  want := [4][8] f32.[
+    [8] f32.[0.42, 0.0225, 0.475, 0.41, 0.275, 0.6, -0.45, 0.1],
+    [8] f32.[0, 0.04, 0.5, 0.475, 0.425, 0.8, 0, 0.4],
+    [8] f32.[0.85, 0.035, 0.45, 0.175, 0.125, 0.4, 0, 0.7],
+    [8] f32.[1.6, 0.0125, 0.1375, 0.1375, 0.15, 0.6, -0.7, 0.0]];
+  for i: 0..<4 {
+    o := i * FX_PUFF_FLOATS; w := want[i];
+    #assert p[0].stage[o] == 0 && p[0].stage[o + 1] == 1 && abs(p[0].stage[o + 2] - w[0]) < 0.0005 && abs(p[0].stage[o + 3] - w[1]) < 0.0005;
+    #assert abs(p[0].stage[o + 4] - w[2]) < 0.0005 && abs(p[0].stage[o + 5] - w[3]) < 0.0005 && abs(p[0].stage[o + 6] - w[4]) < 0.0005 && abs(p[0].stage[o + 7] - w[5]) < 0.0005;
+    #assert p[0].stage[o + 8] == 0 && p[0].stage[o + 9] == 0 && abs(p[0].stage[o + 10] - w[6]) < 0.0005 && abs(p[0].stage[o + 11] - (f32(PF_GLOW) + 0.499 * w[7])) < 0.0005;
+  }
+  seeds := [6] f32.[0.4, 0.56667, 0.73333, 0.9, 0.06667, 0.23333];
+  for j: 0..<FX_ARROW_WAKE {
+    o := (4 + j) * FX_PUFF_FLOATS; u := f32(j) / 6;
+    #assert p[0].stage[o] == 0 && p[0].stage[o + 1] == 1 && abs(p[0].stage[o + 2] - (1 + 2.6 * u)) < 0.0005 && abs(p[0].stage[o + 3] - (0.035 - 0.015 * u)) < 0.0005;
+    #assert abs(p[0].stage[o + 4] - 0.96) < 0.0005 && abs(p[0].stage[o + 5] - 0.95) < 0.0005 && abs(p[0].stage[o + 6] - 0.9) < 0.0005 && abs(p[0].stage[o + 7] - (0.35 - 0.275 * u)) < 0.0005;
+    #assert abs(p[0].stage[o + 11] - (f32(PF_SMOKE) + 0.499 * seeds[j])) < 0.0005;
+  }
+}
 #test "a monster's arrow and rock arrive when their flight says, fade in and out, and point the way they fly" #steps 400000000 {
   p: [1] FxPuffs;
   for r: FXR_SHAFT..<FXR_STONE + 1 {

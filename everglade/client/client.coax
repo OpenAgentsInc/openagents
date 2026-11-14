@@ -1854,6 +1854,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   d = e2mn_draw(s, d, bdt);          // the wolves and the goblins (everglade/client/creatures.coax)
   d = e2rv_draw(s, d, bdt);          // the zone's mounts (everglade/client/ride-view.coax)
   d = e2rg_draw(s, d);               // the Archery Range (everglade/client/range.coax)
+  d = e2bw_draw(s, d);               // the arrows in the air and stuck (everglade/client/arrows.coax)
   rec = d.rec; n = d.n; sn = d.sn; s[0].rec_n = rec;
   _ := retained_rows_mark(e2_record_rows(s), s[0].records[..], rec);   // a still glade's records change nothing
   n = e2_pieces(s, s[0].draws[..], n, false);
@@ -2264,18 +2265,23 @@ e2_held :: (s: [] E2, at: E2Drawn, from: int, kit: int, female: bool, aim: f32, 
   if kit < 0 || from >= d.rec { return d; }
   if kit == XC_KIT_BOW { cc.bow_arm_records(out, from, d.rec); }   // a bow carrier: the bow arm out (the body's records, from to d.rec)
   h: [1] cc.HeldPieces; cc.held_pieces(h[..], kit, female, aim, nocked, s[0].bodies[..], out[from * 24..<from * 24 + 24]);
-  for i: 0..<h[0].n {
-    m := h[0].mesh[i];
-    if c[0].weapon_count[m] <= 0 || d.rec >= E2_RECORDS || d.n >= E2_DRAWS { continue; }
-    q := d.rec * 24;
-    for k: 0..<24 { out[q + k] = 0; }
-    put := [4] int.[0, 8, 16, 20];
-    for j: 0..<4 { for r: 0..<3 { out[q + put[j] + r] = h[0].w[i][j * 3 + r]; } }
-    out[q + 7] = f32(c[0].glade_word); out[q + 15] = 19; out[q + 23] = drop;
-    d.n = e2_draw(s[0].draws[..], d.n, c[0].weapon_first[m], c[0].weapon_count[m], d.rec, 1);
-    d.sn = e2_draw(s[0].shadow[..], d.sn, c[0].weapon_first[m], c[0].weapon_count[m], d.rec, 1);
-    d.rec += 1;
-  }
+  for i: 0..<h[0].n { d = e2_piece(s, d, h[0].mesh[i], h[0].w[i], drop); }
+  return d;
+}
+// One pack piece (glade/weapon m) placed by w (its origin, then its X, Y and Z columns): a flag-19
+// record and its draw, lit and in the shadow pass. A held kit's pieces, and each arrow loosed
+// (everglade/client/arrows.coax e2bw_draw).
+e2_piece :: (s: [] E2, at: E2Drawn, m: int, w: [12] f32, drop: f32) -> E2Drawn {
+  c := s[0].creator[..]; out := s[0].records[..]; d := at;
+  if m < 0 || m >= 7 || c[0].weapon_count[m] <= 0 || d.rec >= E2_RECORDS || d.n >= E2_DRAWS { return d; }
+  q := d.rec * 24;
+  for k: 0..<24 { out[q + k] = 0; }
+  put := [4] int.[0, 8, 16, 20];
+  for j: 0..<4 { for r: 0..<3 { out[q + put[j] + r] = w[j * 3 + r]; } }
+  out[q + 7] = f32(c[0].glade_word); out[q + 15] = 19; out[q + 23] = drop;
+  d.n = e2_draw(s[0].draws[..], d.n, c[0].weapon_first[m], c[0].weapon_count[m], d.rec, 1);
+  d.sn = e2_draw(s[0].shadow[..], d.sn, c[0].weapon_first[m], c[0].weapon_count[m], d.rec, 1);
+  d.rec += 1;
   return d;
 }
 // Another player's class as the room names it (-1 none), and how far their bow's aim is in: up as
