@@ -50,9 +50,13 @@ const root = process.argv[2];
       event(2,slots.get('chat.composer'),'Hello');event(1,slots.get('chat.composer.send'));
       const thread={schema:'openagents.chat.thread.v1',id:'m_12345678901234567890',revision:1,messages:[{role:'user',content:'Hello'}]};
       remember(event(104,200,JSON.stringify(thread)));
-      remember(event(104,200,JSON.stringify({choices:[{message:{content:'Hello back'},finish_reason:'stop'}]})));
-      thread.revision=2;thread.messages.push({role:'assistant',content:'Hello back'});
+      const markdown='## Heading\n\n**bold** and *italic* and [docs](https://openagents.com).\n\n- [x] done\n\n```coax\nx := 1;\n```';
+      remember(event(104,200,JSON.stringify({choices:[{message:{content:markdown},finish_reason:'stop'}]})));
+      thread.revision=2;thread.messages.push({role:'assistant',content:markdown});
       remember(event(104,200,JSON.stringify(thread)));
+      remember(event(1,slots.get('message.1.copy')));remember(event(109,0,'{\"copied\":true}'));
+      const codeCopy=[...slots.keys()].find(id=>id.startsWith('message.1.body.')&&id.endsWith('.copy'));
+      assert.ok(codeCopy);remember(event(1,slots.get(codeCopy)));remember(event(109,0,'{}'));
       remember(event(1,slots.get('chat.back')));event(104,401,'{}');
     } else {
       remember(event(1,slots.get('extras.more')));event(1,slots.get('extras.bitcoin'));
