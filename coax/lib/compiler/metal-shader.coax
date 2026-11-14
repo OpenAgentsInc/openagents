@@ -49,6 +49,11 @@
   // a vec4 after one f32: C puts it at 4, Metal at 16
   #assert ms_try("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 6 4 20 9 7 3 6 3 4 4 8 3 4 4 8 25 1 1 4 22 2 4 27 41 42 40 2 16 5 0 0 0 16 2 0 16 2 0 16 2 1065353216 6 2 6 8 2 6 8 13 1 1 4 27 41 42 40 1 16 5 0 0 1 6 4 2 2 2 2 4 2 2 2 2 14 1 1 4 31 6 4 18 0 18 1 18 2 18 3 2 0 0 0 1 2 1 1 3 2","ub_vs id instance u\nub_fs pos u\nv4 x y z w\nid\ninstance\nu 0 0 uniform\npos\n",out[..])==-9;
 }
+#test "a typed block's nested blocks and arrays (#13451) are Metal structs and arrays at C's offsets" {
+  out:[65536]u8;t:=ms_text(WG_SAMPLE_UBN,"ub_vs id instance u\nub_fs pos u n\nub_get n\nid\ninstance\nu 0 0 uniform\npos\n",out[..]);
+  #assert wg_has(t,"struct coax_t10 {\n  float4 x;\n  coax_t7 y;\n  array<float4, 2> z;\n  array<coax_t7, 2> w;\n  float f4;\n  float f5;\n  float f6;\n  float f7;\n};\nstatic_assert(sizeof(coax_t10) == 160");
+  #assert wg_has(t,"return cx.r_u[0].z[1];") && wg_has(t,"l_n = cx.r_u[0].y;") && wg_has(t,"cx.r_u[0].w[1].x.y, cx.r_u[0].f7, coax_p_ub_get(cx, cx.r_u[0].y)");
+}
 // Work after the shared tree/variant indexes: count, three class counts, and
 // (name id, type, resource class 9/10/11, slot, stage mask), at most 192 resources.
 MS_META :: WG_W_WORDS+8; MS_RESOURCES :: 192; MS_WORDS :: MS_META+MS_RESOURCES*5;

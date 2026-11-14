@@ -683,3 +683,10 @@ tasks (native-gpu.json) come after the port.
   II's shaders reach their uniforms through the shared `cg_*`,
   `fivelab_*`, `paint_env_*` and `wg_at*` helpers, which seven other
   modules also call with a `[]f32` block.
+- 2026-11-13: typed uniform blocks nest (#13451). A typed block's field
+  may also be a typed block, or a fixed array of vec4s or of typed blocks,
+  each at a multiple of 16 bytes (WGSL's uniform rules for a nested struct
+  and an array's stride are then C's); an array of f32s, a nested block off
+  16 or one with a vec2 or vec3 is refused with reason 10. Metal writes them
+  as nested structs and `array<float4, N>`, SPIR-V as nested `Offset`s and
+  `ArrayStride`s; a check in each backend pins that.

@@ -47,7 +47,7 @@ WG_reason_text :: (reason:u32)->string #export_c #effects(all) {
   texts:=[11] string.["","a malformed tree","WGSL larger than its buffer","more types, procedures, entries, variants or locals than it holds",
     "a type or operation WGSL does not take here yet","an entry of a stage this mode does not write","a procedure without its names",
     "a resource without its group and binding","an entry whose parameters or result are not a vertex's, a fragment's or a compute's",
-    "a storage buffer whose layout WGSL does not keep","a typed uniform block that is not vec4s and f32s in fours, or that has a count"];
+    "a storage buffer whose layout WGSL does not keep","a typed uniform block that is not f32s in fours, vec4s, typed blocks and arrays of them at 16 bytes, or that has a count"];
   if reason>=11 {return "this reason";}
   return texts[cast(int)reason];
 }
@@ -898,17 +898,35 @@ wg_shape :: (s:[]WgState,tree:[]u32,w:[]u32,e:int)->bool #effects(all) {
   wg_mark(w,ret,WG_OUT);
   return true;
 }
-// Whether struct t is a typed uniform block's: vec4s and f32s in fours, each where the one
-// before ends, so WGSL's uniform layout (a vec4f's alignment 16, a struct's size a multiple
-// of 16) is C's with no padding rule to get wrong.
+// Whether struct t is a typed uniform block's: f32s in fours, and vec4s, typed blocks and fixed
+// arrays of either, each at a multiple of 16 bytes, each field where the one before ends, so
+// WGSL's uniform layout (a vec4f's and a nested struct's alignment 16, an array's stride 16 or
+// its struct's size, a struct's size a multiple of 16) is C's with no padding rule to get wrong.
 wg_ublock :: (tree:[]u32,w:[]u32,t:u32)->bool #effects(all) {
   n:=cast(int)wg_part(tree,w,t,1);off:=0;
   for i:0..<n {
-    f:=wg_part(tree,w,t,2+2*i);v:=wg_vector(tree,w,f)==4;
-    if (!v && wg_tk(tree,w,f)!=2) || (v && off%16!=0) || (wg_part(tree,w,t,3+2*i)&0x7FFFFFFF)!=cast(u32)off {return false;}
-    off+=ifx v then 16 else 4;
+    f:=wg_part(tree,w,t,2+2*i);
+    if (wg_part(tree,w,t,3+2*i)&0x7FFFFFFF)!=cast(u32)off {return false;}
+    if wg_tk(tree,w,f)==2 {off+=4;}
+    else {
+      if off%16!=0 || !wg_ufield(tree,w,f) {return false;}
+      off+=wg_csize(tree,w,f);
+    }
   }
   return off%16==0 && wg_part(tree,w,t,2+2*n)==cast(u32)off;
+}
+// Whether a typed block's field other than an f32 may be of type f: a vec4, a typed block, or a
+// fixed array of either.
+wg_ufield :: (tree:[]u32,w:[]u32,f:u32)->bool #effects(all) {
+  if wg_tk(tree,w,f)==8 {return wg_ufield(tree,w,wg_part(tree,w,f,1));}
+  if wg_tk(tree,w,f)!=7 {return false;}
+  v:=wg_vector(tree,w,f);
+  return v==4 || (v==0 && wg_ublock(tree,w,f));
+}
+// The bytes C gives a struct or a fixed array of type f.
+wg_csize :: (tree:[]u32,w:[]u32,f:u32)->int #effects(all) {
+  if wg_tk(tree,w,f)==8 {return cast(int)(wg_part(tree,w,f,2)*wg_part(tree,w,f,3));}
+  return cast(int)wg_part(tree,w,f,2+2*cast(int)wg_part(tree,w,f,1));
 }
 // Binding id's module variable, of type t.
 WG_TEXTURES :: [3] string.["texture_2d<f32>","texture_2d_array<f32>","texture_depth_2d"];
@@ -1107,7 +1125,7 @@ WG_WGSL_K :: "fn k(p_x: f32, p_n: i32) -> f32 {\n  var l_x: f32 = p_x;\n  var l_
   #assert WG_reason_text(3)=="more types, procedures, entries, variants or locals than it holds" && WG_reason_text(4)=="a type or operation WGSL does not take here yet";
   #assert WG_reason_text(5)=="an entry of a stage this mode does not write" && WG_reason_text(6)=="a procedure without its names";
   #assert WG_reason_text(7)=="a resource without its group and binding" && WG_reason_text(8)=="an entry whose parameters or result are not a vertex's, a fragment's or a compute's" && WG_reason_text(9)=="a storage buffer whose layout WGSL does not keep";
-  #assert WG_reason_text(10)=="a typed uniform block that is not vec4s and f32s in fours, or that has a count" && WG_reason_text(11)=="this reason" && WG_reason_text(4000000000)=="this reason";
+  #assert WG_reason_text(10)=="a typed uniform block that is not f32s in fours, vec4s, typed blocks and arrays of them at 16 bytes, or that has a count" && WG_reason_text(11)=="this reason" && WG_reason_text(4000000000)=="this reason";
   #assert WG_work_words()==12353 && WG_W_POOL+WG_POOL==WG_W_WORDS && WG_out_bytes()==4194304;
 }
 #test "a malformed tree, a type or code it does not write, and a missing name are refused" {
@@ -1670,4 +1688,20 @@ WG_NAMES_UB :: "ub_vs id instance u\nub_fs pos u c\nv4 x y z w\nub_get u\nid\nin
   #assert wg_mtry("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 5 6 0 2 16 2 20 2 24 2 28 32 9 7 4 6 3 4 4 8 3 4 4 8 25 1 1 4 22 2 4 27 41 42 40 2 16 5 0 1 1 16 2 0 16 2 0 16 2 1065353216 6 2 6 8 3 6 8 6 42 1 2 3 40 2 27 41 42 40 1 16 5 0 0 0 4 22 2 4 27 41 40 2 0 22 3 1 18 1 27 41 42 40 1 16 5 0 0 4 16 2 1065353216 6 4 2 2 2 2 4 2 2 2 2 14 1 1 4 31 6 4 18 0 18 1 18 2 18 3 2 1 8 1 8 27 1 1 4 19 3 27 41 41 42 40 0 16 5 0 0 0 1 27 41 42 40 0 16 5 0 0 2 2 0 0 0 1 2 1 1 3 2",WG_NAMES_UB,out[..])==-4;
   // a count after `uniform`
   #assert wg_mtry(WG_SAMPLE_UB,"ub_vs id instance u\nub_fs pos u c\nv4 x y z w\nub_get u\nid\ninstance\nu 0 0 uniform 2\npos\n",out[..])==-10;
+}
+// Nested typed blocks and fixed arrays (#13451): a block's field may be a typed block, or an
+// array of vec4s or of typed blocks, each at a multiple of 16 bytes. Ub is {h:V4; n:In; r:[2]V4;
+// s:[2]In; k, l, m, o: f32} with In {a:V4; b, c, d, e: f32}; ub_vs reads u[0].r[1], ub_fs a copy
+// of u[0].n, u[0].s[1].a.y and u[0].o, and passes u[0].n by value.
+WG_SAMPLE_UBN :: "2 12 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 5 6 0 2 16 2 20 2 24 2 28 32 8 6 2 16 8 7 2 32 7 8 6 0 7 16 8 48 9 80 2 144 2 148 2 152 2 156 160 9 10 3 6 3 4 4 11 3 4 4 11 18 1 1 4 27 42 41 42 40 2 16 5 0 0 2 16 5 1 0 6 2 6 11 3 6 11 7 66 1 2 3 40 2 27 41 42 40 1 16 5 0 0 1 4 31 6 4 27 41 40 2 1 27 41 41 42 41 42 40 1 16 5 0 0 3 16 5 1 0 0 1 27 41 42 40 1 16 5 0 0 7 22 2 1 27 41 42 40 1 16 5 0 0 1 2 1 7 1 7 10 1 1 4 27 41 41 40 0 0 0 2 0 0 0 1 2 1 1 3 2";
+WG_WGSL_UBN :: "struct coax_t7 {\n  x: vec4f,\n  y: f32,\n  z: f32,\n  w: f32,\n  f4: f32,\n}\nstruct coax_t10 {\n  x: vec4f,\n  y: coax_t7,\n  z: array<vec4f, 2>,\n  w: array<coax_t7, 2>,\n  f4: f32,\n  f5: f32,\n  f6: f32,\n  f7: f32,\n}\n@group(0) @binding(0) var<uniform> u: coax_t10;\nfn coax_p_ub_vs(p_id: u32, p_instance: u32) -> vec4f {\n  var l_id: u32 = p_id;\n  var l_instance: u32 = p_instance;\n  return u.z[1i];\n}\nfn coax_p_ub_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_n: coax_t7;\n  l_n = u.y;\n  return vec4f(l_n.y, u.w[1i].x.y, u.f7, coax_p_ub_get(u.y));\n}\nfn coax_p_ub_get(p_n: coax_t7) -> f32 {\n  var l_n: coax_t7 = p_n;\n  return l_n.x.x;\n}\n@vertex\nfn ub_vs(@builtin(vertex_index) coax_vid: u32, @builtin(instance_index) coax_iid: u32) -> @builtin(position) vec4f {\n  let coax_r = coax_p_ub_vs(coax_vid, coax_iid);\n  return coax_r;\n}\n@fragment\nfn ub_fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_ub_fs(coax_pos);\n  return coax_r;\n}\n";
+#test "a typed block nests typed blocks and arrays of vec4s and of blocks, each at 16 bytes" {
+  out:[16384] u8;
+  #assert wg_mtext(WG_SAMPLE_UBN,"ub_vs id instance u\nub_fs pos u n\nub_get n\nid\ninstance\nu 0 0 uniform\npos\n",out[..])==WG_WGSL_UBN;
+  // an array of f32s, whose stride WGSL makes 16
+  #assert wg_mtry("2 10 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 8 2 4 4 7 2 6 0 7 16 32 9 8 1 6 2 6 9 2 6 9 13 1 1 4 27 41 42 40 1 16 5 0 0 0 1 1 0 0 1","ub_fs pos u\npos\nu 0 0 uniform\n",out[..])==-10;
+  // a nested block at 20, which WGSL puts at 32
+  #assert wg_mtry("2 10 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 1 6 0 16 7 9 2 0 2 4 2 8 2 12 2 16 7 20 2 36 2 40 2 44 48 9 8 1 6 2 6 9 2 6 9 15 1 1 4 27 41 41 42 40 1 16 5 0 0 5 0 1 1 0 0 1","ub_fs pos u\npos\nu 0 0 uniform\n",out[..])==-10;
+  // an array of a struct of vec2s
+  #assert wg_mtry("2 12 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 7 0 7 8 16 8 8 2 16 7 2 6 0 9 16 48 9 10 1 6 2 6 11 2 6 11 13 1 1 4 27 41 42 40 1 16 5 0 0 0 1 1 0 0 1","ub_fs pos u\npos\nu 0 0 uniform\n",out[..])==-10;
 }

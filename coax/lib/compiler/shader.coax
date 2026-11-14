@@ -1890,6 +1890,30 @@ SH_SAMPLE_UB :: "2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 5 6 0 2 16 2 20 2 24 
   }
   #assert stride && block;
 }
+// Nested typed blocks (#13451): Ub :: struct {h:V4; n:In; r:[2]V4; s:[2]In; k, l, m, o: f32} with
+// In :: struct {a:V4; b, c, d, e: f32} (the tree WGSL's WG_SAMPLE_UBN is).
+SH_SAMPLE_UBN :: "2 12 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 5 6 0 2 16 2 20 2 24 2 28 32 8 6 2 16 8 7 2 32 7 8 6 0 7 16 8 48 9 80 2 144 2 148 2 152 2 156 160 9 10 3 6 3 4 4 11 3 4 4 11 18 1 1 4 27 42 41 42 40 2 16 5 0 0 2 16 5 1 0 6 2 6 11 3 6 11 7 66 1 2 3 40 2 27 41 42 40 1 16 5 0 0 1 4 31 6 4 27 41 40 2 1 27 41 41 42 41 42 40 1 16 5 0 0 3 16 5 1 0 0 1 27 41 42 40 1 16 5 0 0 7 22 2 1 27 41 42 40 1 16 5 0 0 1 2 1 7 1 7 10 1 1 4 27 41 41 40 0 0 0 2 0 0 0 1 2 1 1 3 2";
+#test "a typed block's nested blocks and arrays carry their Offsets and ArrayStrides" {
+  out:[16384] u32;work:[SH_CHECK_WORK] u32;
+  n:=sh_text(SH_SAMPLE_UBN,out[..],work[..]);
+  #assert n>0 && work[0]==1;
+  // (struct, member, Offset) for In's fields and Ub's, then (array, ArrayStride) for [2]V4 and [2]In
+  // and the element's 160, and the Block
+  members:=[13] u32.[0,16,20,24,28, 0,16,48,80,144,148,152,156];
+  seen:=0;strides:=0;block:=false;at:=5;
+  while at<n {
+    op:=out[at]&0xFFFF;words:=cast(int)(out[at]>>16);
+    if op==72 && out[at+3]==35 {
+      k:=ifx out[at+1]==7 then cast(int)out[at+2] else ifx out[at+1]==12 then 5+cast(int)out[at+2] else -1;
+      if k>=0 && members[k]==out[at+4] {seen+=1;}
+    }
+    if op==71 && out[at+2]==6 && ((out[at+1]==10 && out[at+3]==16) || (out[at+1]==11 && out[at+3]==32) || (out[at+1]==13 && out[at+3]==160)) {strides+=1;}
+    if op==71 && out[at+1]==14 && out[at+2]==2 {block=true;}
+    if words<1 {break;}
+    at+=words;
+  }
+  #assert seen==13 && strides==3 && block;
+}
 #test "bindings: one per name, of views of numbers" {
   #assert sh_pin("6 3 4 4 7 3 4 4 7 | 4 17 6 ;","0 2 6 7 2 6 7 | 5 ;","","2 0 0 0 1 2 1 1 3 2")==PIN_SHARED;
   #assert sh_build("6 3 4 4 7 3 4 4 7 | 4 17 6 ;","0 2 6 8 2 6 8 | 5 ;","","2 0 0 0 1 2 1 1 3 2")==-7;
