@@ -1,7 +1,8 @@
 {
   "base_sha256": "1c3fcbd6af5bac6b05639cab360725b798c3eb2ff16df0f71512ea68cf7433bc",
-  "source_sha256": "887e0cb0bd75a00f1c76e99c610f7a1d28c48f79e72f54a337d6a57e457a7d14",
-  "output_sha256": "65a9d471559f6b6189c72f5e033dab6e047da58720961b51aaa8a0efd8179ea1",
+  "source_sha256": "4bea14b5c26b51d0ce421e5b15f25e4a21b739d466d3e95bf0d49c1b8e062131",
+  "people_skin": "#13563: everglade/model/tools/people-kind.coax --into gave the 734 people/female-ranger vertices on T_Regular_Female_Dark_BaseColor.png the skin kind (1); before it the pack was 65a9d471559f6b6189c72f5e033dab6e047da58720961b51aaa8a0efd8179ea1",
+  "output_sha256": "35431bbc302d3046d716542a8c8cd6a57fe0457d766adc96ddeced5d7cfec431",
   "output_bytes": 20914460,
   "garments": 76,
   "garment_triangles": 206565,

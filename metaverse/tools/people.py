@@ -30,7 +30,9 @@ bounds, padded) and its UVs moved to match, so a face keeps its detail in a
 512 layer. An image named in "variants" brings its other colourway as the
 layer after it, which a realm picks per person. "kinds" names what each
 material's texels are (KINDS below), so a realm can tint skin and hair and dye
-cloth per person without more layers.
+cloth per person without more layers. Every material a part uses must be in
+"kinds" ("plain" for one drawn as it is); the build refuses one that isn't.
+everglade/model/tools/people-kind.coax holds the built packs to the skin rule.
 
 A part's "plain" lists meshes whose texels are taken as they are whatever
 their material's kind (a ranger's metal pauldron, never dyed with the cloth).
@@ -651,7 +653,14 @@ def build(spec, size, first_layer):
             layer = layer_of[key]
             if layer > 255:
                 raise SystemExit("people: more than 256 layers")
-            kind = KINDS[kinds.get(pr["material"], "plain")]
+            # Every material is named: one left out was packed plain, so the female ranger's body skin
+            # (MI_Regular_Female) never took the skin tone (GitHub #13563). A material drawn as it is
+            # says "plain" (MI_Eyes).
+            if pr["material"] not in kinds:
+                raise SystemExit(f"people: part {ps['name']}: material {pr['material']} isn't in the manifest's \"kinds\"")
+            if kinds[pr["material"]] not in KINDS:
+                raise SystemExit(f"people: material {pr['material']}: no kind {kinds[pr['material']]!r} (KINDS)")
+            kind = KINDS[kinds[pr["material"]]]
             for v in pr["verts"]:
                 vb += vertex(v, layer, 0 if v.get("plain") else kind, box, pr["material"] in spec.get("clamp", []))
             tris += [count + k for t in pr["tris"] for k in t]

@@ -5705,7 +5705,8 @@
       "layer": 52
     }
   ],
-  "pack_sha256": "887e0cb0bd75a00f1c76e99c610f7a1d28c48f79e72f54a337d6a57e457a7d14",
+  "people_skin": "#13563: everglade/model/tools/people-kind.coax --into gave the 734 people/female-ranger vertices on T_Regular_Female_Dark_BaseColor.png the skin kind (1); before it the pack was 887e0cb0bd75a00f1c76e99c610f7a1d28c48f79e72f54a337d6a57e457a7d14",
+  "pack_sha256": "4bea14b5c26b51d0ce421e5b15f25e4a21b739d466d3e95bf0d49c1b8e062131",
   "pack_bytes": 20914708,
   "parts_count": 76,
   "texture_colorways": 3

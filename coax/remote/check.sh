@@ -322,6 +322,8 @@ packs_admitted() {
   step pack-surfaces coax/web/tool.sh everglade/model/tools/material-pack.coax --holds apps/openagents-web/realms/everglade2/assets/everglade2.pack || status=1
   # and Experimental's names the older glade's (e2s_glade_rows, #13550: Experimental, the Druid and the labs read it)
   step glade-surfaces bash -c 'set -e; t="$(mktemp -d)"; gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > "$t/glade.pack"; r=0; coax/web/tool.sh everglade/model/tools/material-pack.coax --holds "$t/glade.pack" glade || r=1; rm -f "$t/glade.pack"; rmdir "$t"; exit $r' || status=1
+  # and no people vertex on a skin layer is plain in any pack that carries the people (everglade/model/tools/people-kind.coax, #13563)
+  step people-skin bash -c 'set -e; t="$(mktemp -d)"; r=0; h() { coax/web/tool.sh everglade/model/tools/people-kind.coax --holds "$1" || r=1; }; a=apps/openagents-web/realms; for p in everglade/assets/everglade.pack everglade/assets/everglade-avatar.pack everglade/assets/everglade-zone.pack everglade2/assets/everglade2.pack character-creator/assets/fantasy.pack character-creator/assets/glade.pack; do h $a/$p; done; for g in everglade-experimental/assets/glade.pack.gz character-creator/assets/fantasy.pack.gz; do gzip -dc $a/$g > "$t/p.pack"; h "$t/p.pack"; rm -f "$t/p.pack"; done; rmdir "$t"; exit $r' || status=1
 }
 # The one C host core (metaverse-engine/host/core, #13304) does what the engine says: its conformance
 # driver, built here with face addresses as pointers and as 32-bit offsets, over fixtures Coax

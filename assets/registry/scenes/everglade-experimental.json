@@ -2294,14 +2294,14 @@
   },
   "wardrobe_base": {
     "path": "apps/openagents-web/realms/character-creator/assets/fantasy.pack",
-    "sha256": "887e0cb0bd75a00f1c76e99c610f7a1d28c48f79e72f54a337d6a57e457a7d14"
+    "sha256": "4bea14b5c26b51d0ce421e5b15f25e4a21b739d466d3e95bf0d49c1b8e062131"
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
-    "sha256": "f68886969c339047babdc42d2be5686211e4a42943f76982bb5f6f98b69dd3d9",
+    "sha256": "e7e989601073195852315bdaf8cb7653db45624224dadba77f2a6fcbb3802272",
     "budget_bytes": 536870912,
-    "decoded_sha256": "d8ea98c77b1a2c700123511a353fe3a018e353acb22d50f33eceaaad0d160e1a",
-    "decoded_bytes": 301673592,
+    "decoded_sha256": "0beca370f80376d0f9fa2d05ffacb807ee2faa6c11195e8e7eb180c2930c4f5f",
+    "decoded_bytes": 301673800,
     "encoding": "gzip"
   },
   "terrain": {

@@ -120,7 +120,8 @@
   },
   "runtime": {
     "pack": "/realms/character-creator/assets/glade.pack",
-    "sha256": "075097f03a083cae0d7a4a5c1ed74d4801ba00482b0fc847a4c9348f75bfe984",
+    "sha256": "15b402c838210ac804d21adb826d31b6d0e7ce037823f015d58d5e51340b008a",
+    "people_skin": "#13563: people-kind.coax --into (the female ranger's body skin takes the skin tone); before it 075097f03a083cae0d7a4a5c1ed74d4801ba00482b0fc847a4c9348f75bfe984",
     "bytes": 33525296,
     "profile": "character-create-legacy-static-v4"
   },

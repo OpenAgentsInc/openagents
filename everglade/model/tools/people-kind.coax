@@ -1,0 +1,131 @@
+// The people's skin in a built pack (GitHub #13563). A people character's vertex (a "C people/NAME
+// FIRST COUNT K WORD VERTICES JOINTS" line; metaverse/tools/people.py vertex: 24 bytes, its layer
+// the seventh byte and its kind the eighth) is drawn as it is when its kind is 0, plain, and by its
+// layer's record otherwise (everglade/scene/gpu/fivelab.coax fivelab_scene_place, #13555). A skin
+// layer's record (metaverse-engine/character/material.coax cm_for_layer: T_Regular_*, T_Superhero_*)
+// takes the figure's skin tone, so a people vertex on a skin layer is never plain.
+//
+// people.py gave each vertex the kind its material has in the manifest's "kinds" and plain when the
+// manifest named none. metaverse/packs/everglade.json named no MI_Regular_Female, so the female
+// ranger's 734 body-skin vertices (on T_Regular_Female_Dark_BaseColor.png) were packed plain, and
+// every pack built on everglade.pack since carries them so. The manifest now names it, and people.py
+// refuses a material its "kinds" leave out. This tool puts the same rule into the packs already
+// built, the tracked ones, which are built on each other by many steps (people.py, then
+// pack_fantasy_source.py, character_glade_pack.coax's appends, everglade2_pack.coax, ...):
+//   people-kind --into IN.pack OUT.pack   IN with every plain people vertex on a skin layer given
+//                                         people.py's skin kind (1), every other byte as it was
+//   people-kind --holds PACK              no people vertex on a skin layer is plain
+// The pack's size, table and catalog don't change, so a sealed pack stays sealed (pack-seal.coax).
+// A gzipped pack (Experimental's glade.pack.gz, fantasy.pack.gz) is gunzipped first and gzipped
+// again after, as grass_cells.coax's steps do.
+// Run: coax/web/tool.sh everglade/model/tools/people-kind.coax ...
+// tool.sh: release
+// tool.sh: stack-gib 8
+#import "Basic";
+#load "../../../metaverse-engine/character/material.coax" as cmat;
+#load "../../../metaverse-engine/host/pack-table.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/args.coax";
+
+PKD_PACK :: 536870912;   // a pack at most, 512 MiB (the glade pack's budget)
+PKD_VERTEX :: 24;        // people.py's vertex
+PKD_SKIN :: 1;           // people.py KINDS["skin"]
+PKD_LAYERS :: 256;       // a vertex's layer is one byte
+PKD_PREFIX :: "C people/";
+
+// The i-th field of a line, split by single spaces ("" past the last).
+pkd_field :: (line: string, i: int) -> string {
+  at := 0; f := 0;
+  for k: 0..<line.count + 1 {
+    if k == line.count || line[k] == ' ' { if f == i { return line[at..<k]; } f += 1; at = k + 1; }
+  }
+  return "";
+}
+// A whole number written plainly, or -1.
+pkd_number :: (s: string) -> int {
+  if s.count == 0 || s.count > 10 { return -1; }
+  v := 0; for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+// Which layers of catalog `cat` are skin, by their T rows' sources (cm_for_layer).
+pkd_skin_layers :: (cat: string, skin: [] bool) {
+  for k: 0..<skin.count { skin[k] = false; }
+  at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    r := cmat.cm_row(cat[at..<e], 'T');
+    if r.index >= 0 && r.index < skin.count { skin[r.index] = cmat.cm_for_layer(cat, r.name).kind == cmat.CM_KIND_SKIN; }
+    at = e + 1;
+  }
+}
+// The plain people vertices on a skin layer in `pack`, each given the skin kind when `fix`: their
+// count, -1 when the pack is refused (not a pack, no vertices second, a people line that doesn't
+// read or reaches past the vertices).
+pkd_walk :: (pack: [] u8, fix: bool) -> int {
+  t: [1] PackTable;
+  if !pack_table(cast(string) pack, pack.count, t[..]) || t[0].count < 2 || t[0].entries[0].kind != PACK_CATALOG || t[0].entries[1].kind != PACK_VERTICES { return -1; }
+  c := t[0].entries[0]; v := t[0].entries[1];
+  cat := cast(string) pack[c.at..<c.at + c.n];
+  skin: [PKD_LAYERS] bool; pkd_skin_layers(cat, skin[..]);
+  found := 0; at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    line := cat[at..<e]; at = e + 1;
+    if line.count <= PKD_PREFIX.count || line[0..<PKD_PREFIX.count] != PKD_PREFIX { continue; }
+    word := pkd_number(pkd_field(line, 5)); n := pkd_number(pkd_field(line, 6));
+    if word < 0 || n < 0 || word * 4 + n * PKD_VERTEX > v.n { return -1; }
+    for q: 0..<n {
+      o := v.at + word * 4 + q * PKD_VERTEX;
+      if skin[cast(int) pack[o + 6]] && pack[o + 7] == 0 { found += 1; if fix { pack[o + 7] = PKD_SKIN; } }
+    }
+  }
+  return found;
+}
+
+#test "a plain people vertex on a skin layer takes the skin kind; a plain one on cloth, and other characters, stay as they were" {
+  cat := "L 0 Kit|CC0|u\nT 0 T_Regular_Female_Dark_BaseColor.png 0\nT 1 T_Ranger_BaseColor.png 0\nT 2 T_Eye_Brown.png 0\nC people/female-ranger 0 3 0 0 4 65\nC fantasy/Female_Ranger_Arms 0 3 0 24 1 65\n";
+  p: [512] u8; for ch, i: "VPK1" { p[i] = ch; } pack_put32(p[..], 4, 2); pack_put32(p[..], 12, 4096); pack_put32(p[..], 16, 32); pack_put32(p[..], 20, 128);
+  at := 128; p[32] = 1; p[33] = 255; pack_put32(p[..], 36, at); pack_put32(p[..], 40, cat.count); for ch, i: "catalog" { p[48 + i] = ch; } for ch: cat { p[at] = ch; at += 1; } at = ((at + 3) / 4) * 4;
+  vat := at; p[80] = 2; p[81] = 255; pack_put32(p[..], 84, at); pack_put32(p[..], 88, 5 * PKD_VERTEX); for ch, i: "vertices" { p[96 + i] = ch; }
+  // the female ranger: skin plain, the pauldron's cloth plain, skin already skin, the eye plain; then a wardrobe part's skin, plain
+  layer := [5] u8.[0, 1, 0, 2, 0]; kind := [5] u8.[0, 0, 1, 0, 0];
+  for q: 0..<5 { for k: 0..<PKD_VERTEX { p[vat + q * PKD_VERTEX + k] = cast(u8) (q + k + 9); } p[vat + q * PKD_VERTEX + 6] = layer[q]; p[vat + q * PKD_VERTEX + 7] = kind[q]; }
+  at += 5 * PKD_VERTEX; pack_put32(p[..], 8, at);
+  before: [512] u8; for k: 0..<at { before[k] = p[k]; }
+  #assert pkd_walk(p[0..<at], false) == 1 && cast(string) p[0..<at] == cast(string) before[0..<at];
+  #assert pkd_walk(p[0..<at], true) == 1 && pkd_walk(p[0..<at], false) == 0;
+  #assert p[vat + 7] == PKD_SKIN && p[vat + PKD_VERTEX + 7] == 0 && p[vat + 2 * PKD_VERTEX + 7] == 1 && p[vat + 3 * PKD_VERTEX + 7] == 0 && p[vat + 4 * PKD_VERTEX + 7] == 0;
+  // every other byte as it was
+  changed := 0; for k: 0..<at { if p[k] != before[k] { changed += 1; } } #assert changed == 1;
+  // again: nothing to do
+  #assert pkd_walk(p[0..<at], true) == 0;
+  // the superhero heads are skin too
+  sk: [PKD_LAYERS] bool; pkd_skin_layers("T 0 T_Superhero_Female_Dark_BaseColor.png_(cut) 0\nT 3 T_Hair_2_BaseColor.png 0\nT 4 T_Regular_Male_Dark_BaseColor.png 0\n", sk[..]);
+  #assert sk[0] && !sk[3] && sk[4] && !sk[1];
+  // a people line past the vertices, and not a pack: refused
+  pack_put32(p[..], 88, 3 * PKD_VERTEX); #assert pkd_walk(p[0..<at], false) == -1; pack_put32(p[..], 88, 5 * PKD_VERTEX);
+  #assert pkd_walk(p[0..<16], false) == -1;
+}
+
+PkdTool :: struct { pack: [PKD_PACK] u8; }
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  mode := ifx args_count(a[..]) >= 2 then args_at(a[..], 0) else "";
+  w: [1] PkdTool;
+  if (mode == "--into" && args_count(a[..]) == 3) || (mode == "--holds" && args_count(a[..]) == 2) {
+    size := fs_read(args_at(a[..], 1), w[0].pack[..]);
+    if size < 32 || size >= PKD_PACK { tool_errln("people-kind: can't read the pack, or it is past 512 MiB"); return 1; }
+    into := mode == "--into";
+    n := pkd_walk(w[0].pack[0..<size], into);
+    if n < 0 { tool_errln("people-kind: the pack is refused (its catalog and vertices first, every people line within the vertices)"); return 1; }
+    if !into {
+      if n > 0 { print("people-kind: % people vertices on a skin layer are plain; write them with --into\n", n); return 1; }
+      print("people-kind: no people vertex on a skin layer is plain\n"); return 0;
+    }
+    if !fs_write(args_at(a[..], 2), cast(string) w[0].pack[0..<size]) { return 1; }
+    print("people-kind: % plain people vertices on a skin layer take the skin kind; the pack % bytes\n", n, size); return 0;
+  }
+  tool_errln("usage: people-kind --into IN.pack OUT.pack | --holds PACK"); return 2;
+}
