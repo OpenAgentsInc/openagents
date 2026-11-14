@@ -1,5 +1,22 @@
 # Owner actions
 
+## Computer connection repair, build1074 (2026-11-14)
+
+The owner has already installed1074. The server correction is live; tap
+**Reconnect** on the computer screen. Confirm both **Mac** and **CoderOS**
+load conversations, open a read-only Terminal history, then start a new Claude
+chat on each. Send a short message and confirm the reply comes from that
+computer. Keep an existing conversation open while reopening the desktop app.
+The compatible signed OTA improves the connection/discovery wording; apply it
+when offered and keep the app foregrounded for30 seconds. No logout or
+reinstallation is needed for the server repair.
+
+Test **Stop**, an explicit permission request and **Deny/Allow once**, plus
+keyboard dismissal without losing the draft. General world editing and
+Windows are not implemented by this bootstrap. See
+`docs/verification/2026-11-14-environment-clients.md` for automated evidence
+and the connection incident's cause.
+
 ## Fresh-install update prompt, build 1073 (2026-11-13)
 
 - [ ] Install OpenAgents **1073** from the existing Owner TestFlight group

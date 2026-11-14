@@ -23,6 +23,7 @@ cp apps/openagents-desktop/Info.plist "$app/Contents/Info.plist"
 cp apps/openagents-desktop/native/OpenAgents.icns "$app/Contents/Resources/OpenAgents.icns"
 rm -rf "$app/Contents/Resources/Starter"
 cp -R apps/openagents-ios/Starter "$app/Contents/Resources/Starter"
-codesign --force --sign - "$app"
+codesign --force --options runtime --entitlements apps/openagents-desktop/native/entitlements.plist \
+  --sign "${OA_DESKTOP_SIGNING_IDENTITY:-Developer ID Application: OpenAgents, Inc. (HQWSG26L43)}" "$app"
 "$app/Contents/MacOS/OpenAgents" --inspect-program
 echo "built $app"
