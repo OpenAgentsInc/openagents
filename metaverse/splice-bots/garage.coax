@@ -154,6 +154,18 @@ ga_strip :: (g: [] SpGame, buf: [] u32, p: [] Pen, a0: f32, a1: f32, r0: f32, y0
     if under { quad(buf, p, A0, A1, B1, B0); } else { quad(buf, p, A0, B0, B1, A1); }
   }
 }
+// How far out the face of a strip ga_strip drew at radius r stands at angle a. Its quads are chords, so
+// between their corners they stand inside the arc: by r (1 - cos(half a quad's angle)), 15 cm at the
+// middle of a back wall's quad. Anything set on a curved wall is measured from this, not from r.
+ga_face :: (a0: f32, a1: f32, r: f32, steps: int, a: f32) -> f32 {
+  w := (a1 - a0) / cast(f32) steps;
+  i := clamp_i(cast(int) floor((a - a0) / w), 0, steps - 1);
+  return r * cos(w * 0.5) / cos(a - (a0 + w * (cast(f32) i + 0.5)));
+}
+// A thing on a wall stands this far off the wall's face. The depth buffer's step grows with the square of
+// the distance, about 6 cm across the field (300 m); nearer than this, the two faces fight from the far
+// side and the wall shows through the thing in crawling hatches (the bay mouths did, 5 cm off).
+GA_OFF_WALL :: 0.25f32;
 // A box standing on the ground in the ring's frame: at angle a, r out, turned to face the field.
 ga_frame :: (g: [] SpGame, a: f32, r: f32, y: f32) -> Frame { return frame_at(ga_pt(g, a, r, y), a + PI); }
 ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
@@ -176,10 +188,12 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       ga_strip(g, buf, p, a - gap, a + gap, rb, GA_ROOF - 3, rb, GA_ROOF, 1, false);   // the lintel over the opening
     } else {
       ga_strip(g, buf, p, a0, a1, rb, 0, rb, GA_ROOF, 3, false);
-      kit_pen(p, 205, MAT_FLAT, GA_DARK());     // its own way outside: a dark mouth in the back wall
-      box(buf, p, ga_frame(g, a, rb - 0.1, 3.2), 3.0, 3.2, 0.1);
+      // its own way outside: a dark mouth in the back wall, from inside the wall to GA_OFF_WALL off its face
+      face := ga_face(a0, a1, rb, 3, a) - GA_OFF_WALL;
+      kit_pen(p, 205, MAT_FLAT, GA_DARK());
+      box(buf, p, ga_frame(g, a, (face + rb) * 0.5, 3.2), 3.0, 3.2, (rb - face) * 0.5);
       kit_pen(p, 206, MAT_FLAT, GA_YELLOW());
-      box(buf, p, ga_frame(g, a, rb - 0.15, 6.6), 3.4, 0.25, 0.12);
+      box(buf, p, ga_frame(g, a, (face - 0.1 + rb) * 0.5, 6.6), 3.4, 0.25, (rb - face + 0.1) * 0.5);
     }
     // the roof's slab, its underside, and the yellow and black band along its edge
     kit_pen(p, 207, MAT_WORLD, kit_tint(0.40, 0.40, 0.41));
@@ -270,4 +284,14 @@ ga_lights :: (g: [] SpGame, l: [] f32) {
 ga_look_into :: (g: [] SpGame, k: int) {
   c := ga_at(g, k, g[0].at.gar_r - 6);
   g[0].px = c.x; g[0].pz = c.z; g[0].yaw = ga_angle(k); g[0].pitch = 0;
+}
+
+#test "a thing on the garage's curved back wall stands GA_OFF_WALL off the wall as drawn, not off its arc: the bay mouths' wall showed through them in crawling hatches from across the field" {
+  rb := GA_R + GA_BAY; h := ga_span() * 0.5;
+  // a quad's corner is on the arc; its middle is inside it by r (1 - cos(half its angle)), 15 cm here
+  #assert abs(ga_face(-h, h, rb, 3, -h) - rb) < 0.001 && abs(ga_face(-h, h, rb, 3, h / 3) - rb) < 0.001;
+  sag := rb - ga_face(-h, h, rb, 3, 0);
+  #assert sag > 0.14 && sag < 0.16 && abs(sag - rb * (1 - cos(h / 3))) < 0.001;
+  // the mouth stands off the wall by more than the depth buffer's step across the field (about 6 cm)
+  #assert GA_OFF_WALL >= 0.2;
 }
