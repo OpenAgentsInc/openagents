@@ -18,6 +18,8 @@ import Security
         program=try NativeProgram(directory:directory,module:"app")
         let window=NSWindow(contentRect:NSRect(x:0,y:0,width:720,height:850),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
         super.init(window:window);window.delegate=self;window.title="OpenAgents — Computers";window.minSize=NSSize(width:420,height:500)
+        // The mono skin: its ground and grid behind every control, each drawn by the component library (NativeChrome.swift).
+        window.appearance=NSAppearance(named:.darkAqua);window.backgroundColor=NativeSkin.ground
         let scroll=NSScrollView();scroll.hasVerticalScroller=true;scroll.drawsBackground=false;scroll.translatesAutoresizingMaskIntoConstraints=false
         let document=NSView();document.translatesAutoresizingMaskIntoConstraints=false
         stack.orientation = .vertical;stack.alignment = .leading;stack.spacing=16;stack.edgeInsets=NSEdgeInsets(top:24,left:24,bottom:24,right:24);stack.translatesAutoresizingMaskIntoConstraints=false
@@ -48,11 +50,12 @@ import Security
         if let old=controls[element.id] {update(old,element);return old}
         let view:NSView
         if element.role=="button" {
-            let button=NSButton(title:element.label,target:self,action:#selector(press));button.bezelStyle = .rounded;view=button
+            let button=NativeButton();button.target=self;button.action=#selector(press);view=button
         } else if element.role=="field" {
             if element.id.hasSuffix("composer") {
-                let field=NSTextView();field.delegate=self;field.isRichText=false;field.isAutomaticQuoteSubstitutionEnabled=false;field.font = .systemFont(ofSize:16);field.textContainerInset=NSSize(width:10,height:10);field.heightAnchor.constraint(greaterThanOrEqualToConstant:100).isActive=true;view=field
-            } else {let field=NSTextField();field.delegate=self;field.placeholderString=element.label;view=field}
+                let field=NSTextView();field.delegate=self;field.isRichText=false;field.isAutomaticQuoteSubstitutionEnabled=false;field.font = .systemFont(ofSize:16);field.textContainerInset=NSSize(width:10,height:10)
+                let t=NativeSkin.tokens;field.backgroundColor=NativeSkin.color(t.surface);field.textColor=NativeSkin.color(t.ink);field.insertionPointColor=NativeSkin.color(t.ink);field.heightAnchor.constraint(greaterThanOrEqualToConstant:100).isActive=true;view=field
+            } else {let field=NativeField(frame:.zero);field.delegate=self;field.placeholderString=element.label;view=field}
         } else {
             let field=NSTextField(wrappingLabelWithString:element.label);field.isSelectable=true;field.maximumNumberOfLines=0;view=field
         }
@@ -60,12 +63,18 @@ import Security
     }
     private func update(_ view:NSView,_ element:NativeElement) {
         if let field=view as? NSTextView {if field.string != element.value {field.string=element.value};field.isEditable = !element.disabled;field.setAccessibilityLabel(element.label);return}
-        if let button=view as? NSButton {button.title=element.label;button.isEnabled = !element.disabled}
+        if let button=view as? NativeButton {
+            // The kit says which button this is (its class and state); the skin says how each looks.
+            let classes=element.classes.split(separator:" "),state=element.attrs["data-state"]
+            button.variant=classes.contains("lk") || classes.contains("sel") ? .quiet:classes.contains("row") ? .list:state=="primary" ? .primary:state=="destructive" ? .destructive:.plain
+            button.busy=state=="busy";button.isEnabled = !element.disabled;button.show(element.label)
+        }
         else if let field=view as? NSTextField {
             let value=element.role=="field" ? element.value:element.label
             if field.stringValue != value {field.stringValue=value}
             field.isEnabled = !element.disabled
-            field.font = element.type=="code" ? .monospacedSystemFont(ofSize:14,weight:.regular):.systemFont(ofSize:element.role=="heading" ? 28:15)
+            field.font = element.type=="code" ? .monospacedSystemFont(ofSize:14,weight:.regular):.systemFont(ofSize:element.role=="heading" ? 28:15,weight:element.role=="heading" ? .semibold:.regular)
+            if element.role != "field" {field.textColor=NativeSkin.color(element.role=="heading" ? NativeSkin.tokens.ink_bright:NativeSkin.tokens.ink)}
             field.setAccessibilityLabel(element.label)
         }
     }

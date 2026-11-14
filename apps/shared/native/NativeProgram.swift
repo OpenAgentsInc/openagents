@@ -84,6 +84,11 @@ import JavaScriptCore
             var next=path;next.insert(slot)
             return n.text+n.children.map {text($0,next)}.joined()
         }
+        // A list row's parts (its name, then a fact about it) are said and shown apart, never run together.
+        func said(_ slot:Int)->String {
+            guard let n=nodes[slot],n.classes.split(separator:" ").contains("row") else {return text(slot)}
+            return ([n.text]+n.children.map {text($0)}).filter {!$0.isEmpty}.joined(separator:" · ")
+        }
         func visit(_ slot:Int,_ inside:Bool) {
             guard seen.insert(slot).inserted,let n=nodes[slot] else {return}
             if n.attrs["hidden"] != nil || n.attrs["aria-hidden"]=="true" {return}
@@ -109,7 +114,7 @@ import JavaScriptCore
                 let field=n.tag=="input" || n.tag=="textarea"
                 let role=n.tag=="button" ? "button" : field ? "field" : n.tag=="h1" || n.tag=="h2" ? "heading" : "text"
                 if field || n.tag=="button" || !n.text.isEmpty {
-                    result.append(NativeElement(id:n.id,role:role,label:field ? n.attrs["aria-label"] ?? n.attrs["placeholder"] ?? "" : n.tag=="button" ? text(slot):n.text,value:n.value,disabled:n.attrs["disabled"] != nil,complete:n.attrs["autocomplete"] ?? "",type:n.tag.hasPrefix("h") ? n.tag:n.tag=="textarea" ? "multiline":n.attrs["type"] ?? "",classes:n.classes,attrs:n.attrs))
+                    result.append(NativeElement(id:n.id,role:role,label:field ? n.attrs["aria-label"] ?? n.attrs["placeholder"] ?? "" : n.tag=="button" ? said(slot):n.text,value:n.value,disabled:n.attrs["disabled"] != nil,complete:n.attrs["autocomplete"] ?? "",type:n.tag.hasPrefix("h") ? n.tag:n.tag=="textarea" ? "multiline":n.attrs["type"] ?? "",classes:n.classes,attrs:n.attrs))
                 }
             }
             if n.tag=="button" || n.tag=="input" {return}

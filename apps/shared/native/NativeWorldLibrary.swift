@@ -13,7 +13,9 @@ import UniformTypeIdentifiers
     }
     required init?(coder:NSCoder) {fatalError()}
     override func viewDidLoad() {
-        super.viewDidLoad();title="Worlds";navigationItem.leftBarButtonItem=UIBarButtonItem(systemItem:.close,primaryAction:UIAction { [weak self] _ in self?.leave() })
+        // The library draws its own header in the skin; the navigation controller only presents it.
+        super.viewDidLoad();title="Worlds";navigationController?.setNavigationBarHidden(true,animated:false)
+        controls.hostHeader(title:"Worlds",close:"Close") { [weak self] in self?.leave() }
         addChild(controls);controls.view.frame=view.bounds;controls.view.autoresizingMask=[.flexibleWidth,.flexibleHeight];view.addSubview(controls.view);controls.didMove(toParent:self)
         controls.press={ [weak self] id in self?.input(id) };controls.edit={ [weak self] id,text in self?.input(id,text) }
         job=Task { [weak self] in guard let self else {return};await network.ready();guard !Task.isCancelled else {return};pump() }

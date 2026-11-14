@@ -14,7 +14,7 @@ done
 coax/remote/remote.sh run --local -- /usr/bin/clang -O2 -w -c "$work/native-c/lab-sign.c" -o "$work/native-c/lab-sign.o"
 coax/remote/remote.sh run --local -- xcrun swiftc -O -swift-version 5 -suppress-warnings -parse-as-library -import-objc-header apps/openagents-desktop/native/NativeBridge.h \
   apps/openagents-desktop/native/App.swift apps/openagents-desktop/native/EnvironmentWindow.swift \
-  apps/shared/native/NativeProgram.swift apps/shared/native/NativeTypes.swift apps/openagents-desktop/Account.swift \
+  apps/shared/native/NativeProgram.swift apps/shared/native/NativeTypes.swift apps/shared/native/NativeChrome.swift apps/openagents-desktop/Account.swift \
   apps/shared/host/apple/AppAuth.swift apps/shared/host/apple/DeviceKey.swift \
   "$work/native-c/lab-sign.o" "$work/native-c/NativePolicy.o" "$work/native-c/NativeText.o" \
   -framework AppKit -framework JavaScriptCore -framework CryptoKit -framework Security -framework UserNotifications \

@@ -69,12 +69,12 @@ mono_native_frame :: (role: int, width: f64, height: f64, out: [] AfPoint) -> in
 // The numbers a host names a frame role, a button variant and a state by, so it writes none of them itself.
 MonoNames :: struct {
   button: int; panel: int; field: int; notice: int; header: int; row: int; bubble: int; box: int;
-  plain: int; primary: int; quiet: int; icon: int; destructive: int; list: int;
+  plain: int; primary: int; quiet: int; icon: int; destructive: int; list: int; action: int;
   rest: int; pressed: int; disabled: int; busy: int; current: int;
 }
 mono_names :: () -> MonoNames #export_c #effects(all) {
   return MonoNames.{button = MF_BUTTON, panel = MF_PANEL, field = MF_FIELD, notice = MF_NOTICE, header = MF_HEADER, row = MF_ROW, bubble = MF_BUBBLE, box = MF_BOX,
-    plain = MB_DEFAULT, primary = MB_PRIMARY, quiet = MB_QUIET, icon = MB_ICON, destructive = MB_DESTRUCTIVE, list = MB_ROW,
+    plain = MB_DEFAULT, primary = MB_PRIMARY, quiet = MB_QUIET, icon = MB_ICON, destructive = MB_DESTRUCTIVE, list = MB_ROW, action = MB_ACTION,
     rest = MS_REST, pressed = MS_PRESSED, disabled = MS_DISABLED, busy = MS_BUSY, current = MS_CURRENT};
 }
 
@@ -85,7 +85,8 @@ MB_QUIET :: 2;         // smaller and dimmer, in the same outline
 MB_ICON :: 3;          // only an icon, in a small square when pressed
 MB_DESTRUCTIVE :: 4;   // a bright outline that fills when pressed; its words say what it removes
 MB_ROW :: 5;           // a line of a list: its text as written, boxed when it is the current one
-MB_COUNT :: 6;
+MB_ACTION :: 6;        // an icon button that is the one action beside a field: a small filled square
+MB_COUNT :: 7;
 MS_REST :: 0; MS_PRESSED :: 1; MS_DISABLED :: 2; MS_BUSY :: 3; MS_CURRENT :: 4;
 MS_COUNT :: 5;
 
@@ -109,9 +110,10 @@ mono_button :: (variant: int, state: int) -> MonoButton #export_c #effects(all) 
   if variant == MB_ICON { b.role = MF_BOX; b.bg = MONO_CLEAR; b.line = MONO_CLEAR; b.ink = MONO_INK_MUTED; b.height = 32; b.pad = 0; }
   if variant == MB_DESTRUCTIVE { b.bg = MONO_CLEAR; b.line = MONO_LINE_BRIGHT; b.ink = MONO_INK_BRIGHT; }
   if variant == MB_ROW { b.role = MF_ROW; b.bg = MONO_CLEAR; b.line = MONO_CLEAR; b.ink = MONO_INK; b.pad = 12; b.type = 15; b.track = 0; b.upper = false; }
+  if variant == MB_ACTION { b.role = MF_BOX; b.bg = MONO_PRIMARY; b.line = MONO_PRIMARY; b.ink = MONO_ON_PRIMARY; b.height = 30; b.pad = 0; b.side = 30; }
   if state == MS_PRESSED {
     b.bg = MONO_PRESSED; b.line = MONO_LINE_BRIGHT; b.ink = MONO_INK_BRIGHT;
-    if variant == MB_PRIMARY { b.bg = MONO_PRIMARY_LIT; b.line = MONO_PRIMARY_LIT; b.ink = MONO_ON_PRIMARY; }
+    if variant == MB_PRIMARY || variant == MB_ACTION { b.bg = MONO_PRIMARY_LIT; b.line = MONO_PRIMARY_LIT; b.ink = MONO_ON_PRIMARY; }
     if variant == MB_QUIET { b.bg = MONO_RAISED; }
     if variant == MB_ICON { b.bg = MONO_RAISED; b.line = MONO_LINE_DIM; }
     if variant == MB_DESTRUCTIVE { b.bg = MONO_PRIMARY; b.line = MONO_PRIMARY; b.ink = MONO_ON_PRIMARY; }
@@ -122,7 +124,10 @@ mono_button :: (variant: int, state: int) -> MonoButton #export_c #effects(all) 
     b.dashed = true; b.march = state == MS_BUSY;
     if variant == MB_ICON || variant == MB_ROW { b.line = MONO_CLEAR; b.dashed = false; b.march = false; }
   }
-  if state == MS_CURRENT { b.bg = MONO_SURFACE; b.line = MONO_LINE_BRIGHT; b.ink = MONO_INK_BRIGHT; }
+  if state == MS_CURRENT {
+    b.bg = MONO_SURFACE; b.line = MONO_LINE_BRIGHT; b.ink = MONO_INK_BRIGHT;
+    if variant == MB_ICON { b.bg = MONO_CLEAR; b.line = MONO_CLEAR; }   // an icon that says a thing is so: bright, unboxed
+  }
   return b;
 }
 
@@ -215,11 +220,11 @@ mn_rule :: (css: string, before: string, c: u32) -> bool {
 
 mn_grey :: (c: u32) -> bool { return ((c >> 24) & 255) == ((c >> 16) & 255) && ((c >> 16) & 255) == ((c >> 8) & 255); }
 
-#forall "every button colour is a grey, in every variant and state" variant: 0..<6 {
+#forall "every button colour is a grey, in every variant and state" variant: 0..<7 {
   for state: 0..<MS_COUNT {
     b := mono_button(variant, state);
     #assert mn_grey(b.bg) && mn_grey(b.line) && mn_grey(b.ink);
-    #assert b.role >= 0 && b.role < MF_COUNT && b.height >= 32 && b.height <= 44 && b.type >= 10;
+    #assert b.role >= 0 && b.role < MF_COUNT && b.height >= 30 && b.height <= 44 && b.type >= 10;
     // what is written on a button can always be read against what is behind it
     #assert (b.ink >> 24) != (b.bg >> 24) || (b.bg & 255) == 0;
   }
@@ -239,10 +244,13 @@ mn_grey :: (c: u32) -> bool { return ((c >> 24) & 255) == ((c >> 16) & 255) && (
   #assert q.line == MONO_LINE_DIM && q.ink == MONO_INK_MUTED && q.height == 36 && q.type == 10;
   i := mono_button(MB_ICON, MS_REST);
   #assert i.role == MF_BOX && i.line == MONO_CLEAR && i.side == 32 && mono_button(MB_ICON, MS_PRESSED).bg == MONO_RAISED;
+  #assert mono_button(MB_ICON, MS_CURRENT).ink == MONO_INK_BRIGHT && mono_button(MB_ICON, MS_CURRENT).line == MONO_CLEAR;
   d := mono_button(MB_DESTRUCTIVE, MS_REST);
   #assert d.line == MONO_LINE_BRIGHT && d.bg == MONO_CLEAR && mono_button(MB_DESTRUCTIVE, MS_PRESSED).bg == MONO_PRIMARY;
   r := mono_button(MB_ROW, MS_REST);
   #assert r.role == MF_ROW && !r.upper && r.type == 15 && mono_button(MB_ROW, MS_CURRENT).line == MONO_LINE_BRIGHT;
+  act := mono_button(MB_ACTION, MS_REST);
+  #assert act.role == MF_BOX && act.bg == MONO_PRIMARY && act.ink == MONO_ON_PRIMARY && act.side == 30 && mono_button(MB_ACTION, MS_DISABLED).bg == MONO_CLEAR && mono_button(MB_ACTION, MS_DISABLED).dashed;
   #assert mono_native().hit == 44;
 }
 
@@ -273,7 +281,7 @@ mn_grey :: (c: u32) -> bool { return ((c >> 24) & 255) == ((c >> 16) & 255) && (
 #test "a host's names are the skin's roles, variants and states" {
   n := mono_names();
   #assert n.button == MF_BUTTON && n.panel == MF_PANEL && n.field == MF_FIELD && n.notice == MF_NOTICE && n.header == MF_HEADER && n.row == MF_ROW && n.bubble == MF_BUBBLE && n.box == MF_BOX;
-  #assert n.plain == MB_DEFAULT && n.primary == MB_PRIMARY && n.quiet == MB_QUIET && n.icon == MB_ICON && n.destructive == MB_DESTRUCTIVE && n.list == MB_ROW;
+  #assert n.plain == MB_DEFAULT && n.primary == MB_PRIMARY && n.quiet == MB_QUIET && n.icon == MB_ICON && n.destructive == MB_DESTRUCTIVE && n.list == MB_ROW && n.action == MB_ACTION;
   #assert n.rest == MS_REST && n.pressed == MS_PRESSED && n.disabled == MS_DISABLED && n.busy == MS_BUSY && n.current == MS_CURRENT;
   #assert mono_native().turn == 1.8;   // the running glyph's turn in the stylesheet: .gl[data-state=run] .ic
   css: [40960] u8; k := mono_css(css[..]);

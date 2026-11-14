@@ -11,7 +11,7 @@ import UIKit
     }
     required init?(coder:NSCoder) {fatalError()}
     override func viewDidLoad() {
-        super.viewDidLoad();addChild(controls);controls.view.frame=view.bounds;controls.view.autoresizingMask=[.flexibleWidth,.flexibleHeight];view.addSubview(controls.view);controls.didMove(toParent:self)
+        super.viewDidLoad();controls.sheet=true;addChild(controls);controls.view.frame=view.bounds;controls.view.autoresizingMask=[.flexibleWidth,.flexibleHeight];view.addSubview(controls.view);controls.didMove(toParent:self)
         controls.press={ [weak self] id in self?.input(id) };controls.edit={ [weak self] id,text in self?.input(id,text) };pump()
     }
     func context(_ text:String) {do {try program.event(16,0,text);pump()}catch {failure(error)}}

@@ -38,6 +38,7 @@
 		444324321690C6F700CD79A2 /* SparkBalanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */; };
 		47402381B8C043A601D16232 /* BalanceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */; };
 		49F8835C3DE10B3EADC4F251 /* Everglade5e-rules.c in Sources */ = {isa = PBXBuildFile; fileRef = 33E1E497155B2D430266283A /* Everglade5e-rules.c */; };
+		4ABB8E0033250A5AD954D6A0 /* LookUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56E9C5471E75811CB4C59AC9 /* LookUITests.swift */; };
 		4D59620F5B373646C05FC2A4 /* NativeComposer-T3-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 12732C0F80796C53136B0DC3 /* NativeComposer-T3-LICENSE.txt */; };
 		559E7996A52A688D46F340D0 /* Deep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92AE2C66797D94AFC4EAF484 /* Deep.swift */; };
 		569D8A9D4CC5B6F695DEF10E /* WorldsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C314C30B844BE1008335F491 /* WorldsUITests.swift */; };
@@ -62,6 +63,7 @@
 		7D945870E3AD12214ABA574E /* DMSans-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E6BDE16B17DBA408B5A72A1F /* DMSans-Italic.ttf */; };
 		7FFD4ECD2F77851EF905BDBA /* native-audio.c in Sources */ = {isa = PBXBuildFile; fileRef = 1FA713933D36CAF22171CD05 /* native-audio.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"; }; };
 		8E4F97485AF1AF831DCB39E9 /* bip39-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = 131BDA8ADB97609206195533 /* bip39-english.txt */; };
+		94469D402865EEEABF23DD4F /* NativeChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5995A6D421346543098BA23D /* NativeChrome.swift */; };
 		991835023F6FB1D8E2D27BE8 /* Everglade-step.c in Sources */ = {isa = PBXBuildFile; fileRef = BC347727510CEB5F0963D925 /* Everglade-step.c */; };
 		992FD07438E96D6B06B01D6C /* MetalAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7444B08092B9624B2F186F /* MetalAudio.swift */; };
 		9B9E8E3B6C3F29DF2B6A3CCB /* WalletKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE5C04823E6E6E322FD7E33C /* WalletKeychain.swift */; };
@@ -100,6 +102,7 @@
 		E04C681B8BB7D9243AFB2BAE /* NativeComposer.c in Sources */ = {isa = PBXBuildFile; fileRef = D1522134FBE4A368E4ED10E6 /* NativeComposer.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		ECDFE75FB85014389B5354CF /* EmailLoginUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */; };
 		F1758E0384C0E7DF3B886192 /* myrealm.c in Sources */ = {isa = PBXBuildFile; fileRef = DBD3A25436338CDD9D50E691 /* myrealm.c */; };
+		F32496C8B07DE3345D303531 /* LookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3055FF0766218183C6117906 /* LookTests.swift */; };
 		F4823961AAF48A24E645C16A /* SpliceBotsRuntime.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2F6D9D49955FFFB825E5D9DF /* SpliceBotsRuntime.framework */; };
 		F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EB43B9790841620D29A9F92 /* PhoneSignin.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		F80124EC8D6E6171038CFD25 /* PageAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0329FFDFC7803A74D7062508 /* PageAudio.swift */; };
@@ -196,6 +199,7 @@
 		2C3236A8315C98ABF86224CB /* StarterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterApp.swift; sourceTree = "<group>"; };
 		2F6D9D49955FFFB825E5D9DF /* SpliceBotsRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = SpliceBotsRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUpdates.swift; sourceTree = "<group>"; };
+		3055FF0766218183C6117906 /* LookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookTests.swift; sourceTree = "<group>"; };
 		31159A6F8D0AE4A71EC70DB3 /* DMSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-Regular.ttf"; sourceTree = "<group>"; };
 		312A9EE9333FE46FFAED3D6F /* Starter */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Starter; sourceTree = SOURCE_ROOT; };
 		33E1E497155B2D430266283A /* Everglade5e-rules.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Everglade5e-rules.c"; sourceTree = "<group>"; };
@@ -208,6 +212,8 @@
 		460986BD3808434A301E2974 /* NativeWorldUnit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeWorldUnit.c; sourceTree = "<group>"; };
 		4A3EDDA42FA80D738F2AF2B3 /* NativeTranscriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranscriptTests.swift; sourceTree = "<group>"; };
 		4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MadeRealmRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		56E9C5471E75811CB4C59AC9 /* LookUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookUITests.swift; sourceTree = "<group>"; };
+		5995A6D421346543098BA23D /* NativeChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeChrome.swift; sourceTree = "<group>"; };
 		5DB2D6E0FD423967C52276CF /* TranscriptUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptUITests.swift; sourceTree = "<group>"; };
 		5DE15337BAC2E10225C3C1CB /* NativeWire.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeWire.c; sourceTree = "<group>"; };
 		60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMarkdownTests.swift; sourceTree = "<group>"; };
@@ -347,6 +353,7 @@
 		71A2ECE12A4F32216053EEC0 /* StarterTests */ = {
 			isa = PBXGroup;
 			children = (
+				3055FF0766218183C6117906 /* LookTests.swift */,
 				60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */,
 				7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */,
 				25D8936BC22A37E1214E454F /* NativeProgramTests.swift */,
@@ -481,6 +488,7 @@
 		ABD48D4B1B28A57624675E53 /* native */ = {
 			isa = PBXGroup;
 			children = (
+				5995A6D421346543098BA23D /* NativeChrome.swift */,
 				12732C0F80796C53136B0DC3 /* NativeComposer-T3-LICENSE.txt */,
 				C00F077C1C17712C38E9F58E /* NativeComposer.swift */,
 				68A32BEE57050EF541CA1A16 /* NativeControls.swift */,
@@ -506,6 +514,7 @@
 				0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */,
 				8B07580CC0A27104C07B9B5C /* ChatUITests.swift */,
 				FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */,
+				56E9C5471E75811CB4C59AC9 /* LookUITests.swift */,
 				09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */,
 				84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */,
 				88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */,
@@ -799,6 +808,7 @@
 				D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */,
 				992FD07438E96D6B06B01D6C /* MetalAudio.swift in Sources */,
 				5B8D020538856B59C5413D67 /* NativeAudioUnit.c in Sources */,
+				94469D402865EEEABF23DD4F /* NativeChrome.swift in Sources */,
 				E04C681B8BB7D9243AFB2BAE /* NativeComposer.c in Sources */,
 				AC281939C157CCA54F84DD2A /* NativeComposer.swift in Sources */,
 				790A92BCF9A5C6628FA9E10E /* NativeControls.swift in Sources */,
@@ -847,6 +857,7 @@
 				47402381B8C043A601D16232 /* BalanceUITests.swift in Sources */,
 				0F64B5AFCEDD256C035DF6D8 /* ChatUITests.swift in Sources */,
 				ECDFE75FB85014389B5354CF /* EmailLoginUITests.swift in Sources */,
+				4ABB8E0033250A5AD954D6A0 /* LookUITests.swift in Sources */,
 				103180BD57D2AA2E93F4A6B7 /* SharedAppDeviceUITests.swift in Sources */,
 				A05D687346C45546701CEFF7 /* SharedAppUITests.swift in Sources */,
 				647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */,
@@ -873,6 +884,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F32496C8B07DE3345D303531 /* LookTests.swift in Sources */,
 				2C15AE18F335A39F71D3ECC5 /* NativeMarkdownTests.swift in Sources */,
 				DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */,
 				095EEDDBD0F5949696F6B490 /* NativeProgramTests.swift in Sources */,

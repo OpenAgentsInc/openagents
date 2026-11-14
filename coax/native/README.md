@@ -15,6 +15,33 @@ from the initial target. Build 1075 adopts installed world producers with
 [streamed assets and the shared editor](../../apps/openagents-ios/README.md#streamed-worlds-build-1075).
 Existing Keychain records are retained.
 
+## Look
+
+Every control is the component library's, in the mono skin: black, white and
+the greys between, hairlines, small cut corners and a faint grid. The skin
+exports its tokens, each role's frame points and each button variant's look
+to native hosts (`components/skin/mono-native.coax`). The frame points are the
+ones the browser turns into SVG, and a check holds the two equal.
+`apps/shared/native/NativeChrome.swift` is the one file that turns them into
+UIKit and AppKit views: `NativeButton` (primary, default, quiet, icon,
+destructive and row; rest, pressed, disabled, busy and current),
+`NativeField`, `NativeFrameView` and `NativeMenu`. GTK takes the same tokens
+as a style sheet (`apps/openagents-desktop/native/program.coax`, `nd_style`);
+it does not draw the frames' cut corners yet.
+
+```sh
+coax/web/tool.sh coax/native/stock-style.coax apps/shared/native/*.swift \
+  apps/openagents-desktop/native/*.swift
+```
+
+That check fails a host file that uses a stock button style, a system colour,
+a colour written in the host, a rounded corner or a stock control. To review
+the look, run the `CoaxNativeLook` scheme against
+`apps/openagents-ios/Tests/email_fixture.py --environment-transcript` with
+`TEST_RUNNER_OA_LOOK_DIR` set to a directory. It walks every screen and
+leaves `NAME.want` at each stop for `xcrun simctl io DEVICE screenshot` to
+answer with `NAME.png`.
+
 ## Build
 
 From the repository root on the Mac:

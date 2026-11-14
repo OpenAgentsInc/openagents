@@ -16,12 +16,15 @@
 SS_OK :: 0; SS_BUTTON :: 1; SS_COLOR :: 2; SS_LITERAL :: 3; SS_CONTROL :: 4; SS_SHAPE :: 5;
 
 ss_word :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
-// part is in line. With whole, the character after it is not part of a name (.black, never .blackboard).
+// part is in line. With whole, the character after it is not part of a name (.black, never .blackboard). A part
+// that starts with a dot is a value written by its short name (`= .label`, `? .white:`), never a member of
+// something (`e.label`, `skin.link`, `node?.label`).
 ss_has :: (line: string, part: string, whole: bool) -> bool {
   if part.count == 0 || part.count > line.count { return false; }
   for i: 0..<line.count - part.count + 1 {
     if cast(string) line[i..<i + part.count] == part {
-      if !whole || i + part.count == line.count || !ss_word(line[i + part.count]) { return true; }
+      member := part[0] == '.' && i > 0 && (ss_word(line[i - 1]) || line[i - 1] == ')' || line[i - 1] == ']' || line[i - 1] == '?' || line[i - 1] == '!');
+      if !member && (!whole || i + part.count == line.count || !ss_word(line[i + part.count])) { return true; }
     }
   }
   return false;
@@ -36,8 +39,8 @@ ss_fault :: (line: string, chrome: bool) -> int {
   buttons := [8] string.[".bordered()", ".borderedProminent()", ".borderedTinted()", ".plain()", ".filled()", ".tinted()", ".gray()", ".borderless()"];
   for k: 0..<buttons.count { if ss_has(line, buttons[k], false) { return SS_BUTTON; } }
   if ss_has(line, "UIButton(", false) || ss_has(line, "NSButton(", false) || ss_has(line, "bezelStyle", false) { return ifx chrome then SS_OK else SS_BUTTON; }
-  colors := [24] string.["systemBackground", "SystemBackground", "systemFill", "SystemFill", "GroupedBackground", ".secondaryLabel", ".tertiaryLabel", ".quaternaryLabel",
-    ".labelColor", ".placeholderText", ".separator", ".link", ".systemRed", ".systemGreen", ".systemBlue", ".systemOrange", ".systemYellow", ".systemPink",
+  colors := [23] string.["systemBackground", "SystemBackground", "systemFill", "SystemFill", "GroupedBackground", ".secondaryLabel", ".tertiaryLabel", ".quaternaryLabel",
+    ".labelColor", ".placeholderText", ".separator", ".systemRed", ".systemGreen", ".systemBlue", ".systemOrange", ".systemYellow", ".systemPink",
     ".systemPurple", ".systemTeal", ".systemIndigo", ".systemGray", ".systemMint", ".systemCyan"];
   for k: 0..<colors.count { if ss_has(line, colors[k], false) { return SS_COLOR; } }
   named := [9] string.[".white", ".black", ".red", ".green", ".blue", ".orange", ".yellow", ".gray", ".label"];
@@ -83,6 +86,9 @@ ss_name :: (fault: int) -> string {
   #assert ss_fault("let alert=UIAlertController(title:t,message:m,preferredStyle:.alert) // stock: the system's own alert; UI tests name it", false) == SS_OK;
   #assert ss_fault("label.backgroundColor = .clear", false) == SS_OK && ss_fault("items.filter {$0.blackboard}", false) == SS_OK;
   #assert ss_fault("if e.attrs[\"data-state\"]==\"ready\" {mark.image=UIImage(systemName:\"checkmark\")}", false) == SS_OK;
+  // a member named like a colour is not one
+  #assert ss_fault("f.placeholder=e.label; f.accessibilityLabel=e.label", false) == SS_OK && ss_fault("x=NativeSkin.color(skin.link)", false) == SS_OK;
+  #assert ss_fault("let n=node?.label ?? items[0].label", false) == SS_OK && ss_fault("l.textColor = busy ? .label:.white", false) == SS_COLOR;
   // the chrome file alone makes the platform's colours and buttons, but never from a system colour
   #assert ss_fault("static func color(_ c:UInt32)->UIColor {UIColor(red:r,green:g,blue:b,alpha:a)}", true) == SS_OK;
   #assert ss_fault("final class NativeButton:UIButton {init() {super.init(frame:.zero)};let b=UIButton(frame:.zero)}", true) == SS_OK;

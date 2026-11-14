@@ -91,8 +91,8 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     private var closed=false,editorOffered=false,firstPresented=false
     private var revision:Int32 = -1
     private var editor:NativeWorldEditor?
-    private let status=UILabel(),progress=UIProgressView(progressViewStyle:.default)
-    private let menuButton=UIButton(type:.system)
+    private let status=UILabel(),progress=NativeBar()
+    private let menuButton=NativeButton(.icon)
     private var editorAvailable=false,loadFailed=false
     private var presentation:MTLCommandBuffer?
     init(directory:URL,realm:String,path:String,edit:Bool,finished:@escaping()->Void) {
@@ -106,20 +106,19 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     }
     static func text(_ s:coax_string)->String {s.count>0 ? String(decoding:UnsafeBufferPointer(start:UnsafeRawPointer(s.data!).assumingMemoryBound(to:UInt8.self),count:Int(s.count)),as:UTF8.self):""}
     override func viewDidLoad() {
-        super.viewDidLoad();view.backgroundColor = .black
+        super.viewDidLoad();view.backgroundColor=NativeSkin.ground
         let profile=realm.withCString {nwr_profile(coax_string(data:$0,count:Int64(realm.utf8.count)))}
         title=Self.text(profile.title)
         navigationController?.setNavigationBarHidden(true,animated:false)
         let chrome=nwh_chrome(false,false,false)
-        menuButton.translatesAutoresizingMaskIntoConstraints=false;menuButton.accessibilityIdentifier="world.menu";menuButton.accessibilityLabel=Self.text(chrome.menu)
-        menuButton.setImage(UIImage(systemName:"line.3.horizontal",withConfiguration:UIImage.SymbolConfiguration(pointSize:CGFloat(chrome.icon),weight:.medium)),for:.normal)
-        menuButton.tintColor = .white;menuButton.backgroundColor=UIColor.black.withAlphaComponent(0.55);menuButton.layer.cornerRadius=CGFloat(chrome.side)/2;menuButton.layer.borderWidth=0.5;menuButton.layer.borderColor=UIColor.white.withAlphaComponent(0.2).cgColor
-        menuButton.showsMenuAsPrimaryAction=true
-        menuButton.addAction(UIAction { [weak self] _ in guard let page=self?.page else{return};Self.deep.run {page.focus(false)} },for:.menuActionTriggered)
+        // The one control over the world: the library's icon button, on a dim ground so it reads on any scene.
+        menuButton.translatesAutoresizingMaskIntoConstraints=false;menuButton.accessibilityIdentifier="world.menu";menuButton.floating=true
+        menuButton.show(Self.text(chrome.menu),symbol:"line.3.horizontal")
+        menuButton.addAction(UIAction { [weak self] _ in self?.showMenu() },for:.primaryActionTriggered)
         // Status chrome is hidden. Use the free upper corner above the realm's
         // title/HUD, retaining horizontal protection from landscape cutouts.
         view.addSubview(menuButton);NSLayoutConstraint.activate([menuButton.widthAnchor.constraint(equalToConstant:CGFloat(chrome.side)),menuButton.heightAnchor.constraint(equalToConstant:CGFloat(chrome.side)),menuButton.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-CGFloat(chrome.inset)),menuButton.topAnchor.constraint(equalTo:view.topAnchor,constant:CGFloat(chrome.inset))]);updateMenu()
-        status.numberOfLines=0;status.textColor = .white;status.textAlignment = .center;status.text="Preparing world…";status.translatesAutoresizingMaskIntoConstraints=false
+        status.numberOfLines=0;status.textColor=NativeSkin.color(NativeSkin.tokens.ink);status.font=NativeTypography.font(16);status.adjustsFontForContentSizeCategory=true;status.textAlignment = .center;status.text="Preparing world…";status.translatesAutoresizingMaskIntoConstraints=false
         progress.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(status);view.addSubview(progress)
         NSLayoutConstraint.activate([status.centerYAnchor.constraint(equalTo:view.centerYAnchor),status.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:24),status.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-24),progress.topAnchor.constraint(equalTo:status.bottomAnchor,constant:20),progress.leadingAnchor.constraint(equalTo:status.leadingAnchor),progress.trailingAnchor.constraint(equalTo:status.trailingAnchor)])
         NotificationCenter.default.addObserver(self,selector:#selector(background),name:UIApplication.willResignActiveNotification,object:nil)
@@ -186,12 +185,18 @@ private final class NativeWorldCancellation:@unchecked Sendable {
             }}}
         }catch {if !closed && !Task.isCancelled {status.text=error.localizedDescription;progress.isHidden=true;loadFailed=true;updateMenu()}}
     }
+    /// What the menu offers now, in order: the library's menu draws it (NativeMenu).
+    private(set) var menuItems:[NativeMenu.Item]=[]
     private func updateMenu() {
-        let chrome=nwh_chrome(page != nil,editorAvailable,loadFailed);var actions:[UIMenuElement]=[]
-        if chrome.show_editor {actions.append(UIAction(title:Self.text(chrome.editor),image:UIImage(systemName:"slider.horizontal.3"),identifier:UIAction.Identifier("world.editor")) { [weak self] _ in self?.openEditor() })}
-        if chrome.show_retry {actions.append(UIAction(title:Self.text(chrome.retry),image:UIImage(systemName:"arrow.clockwise"),identifier:UIAction.Identifier("world.retry")) { [weak self] _ in guard let self else{return};let realm=self.realm;let profile=realm.withCString {nwr_profile(coax_string(data:$0,count:Int64(realm.utf8.count)))};self.loading=Task {await self.open(profile)} })}
-        actions.append(UIAction(title:Self.text(chrome.leave),image:UIImage(systemName:"xmark"),identifier:UIAction.Identifier("world.close")) { [weak self] _ in self?.leave() })
-        menuButton.menu=UIMenu(title:title ?? "",children:actions)
+        let chrome=nwh_chrome(page != nil,editorAvailable,loadFailed);var items:[NativeMenu.Item]=[]
+        if chrome.show_editor {items.append(.init(id:"world.editor",title:Self.text(chrome.editor),symbol:"slider.horizontal.3") { [weak self] in self?.openEditor() })}
+        if chrome.show_retry {items.append(.init(id:"world.retry",title:Self.text(chrome.retry),symbol:"arrow.clockwise") { [weak self] in guard let self else{return};let realm=self.realm;let profile=realm.withCString {nwr_profile(coax_string(data:$0,count:Int64(realm.utf8.count)))};self.loading=Task {await self.open(profile)} })}
+        items.append(.init(id:"world.close",title:Self.text(chrome.leave),symbol:"xmark") { [weak self] in self?.leave() })
+        menuItems=items
+    }
+    private func showMenu() {
+        if let page {Self.deep.run {page.focus(false)}}
+        NativeMenu.show(from:menuButton,in:view,title:title,items:menuItems)
     }
     func draw(in view:MTKView) {
         guard !closed,let page,let drawable=view.currentDrawable,let pass=view.currentRenderPassDescriptor else {return}

@@ -15,7 +15,7 @@ import UIKit
         XCTAssertEqual(menu.accessibilityIdentifier,"world.menu");XCTAssertEqual(menu.frame.size,CGSize(width:44,height:44))
         XCTAssertEqual(menu.frame.maxX,world.view.safeAreaLayoutGuide.layoutFrame.maxX-8,accuracy:0.5)
         XCTAssertEqual(menu.frame.minY,8,accuracy:0.5)
-        XCTAssertTrue(menu.showsMenuAsPrimaryAction);XCTAssertEqual(menu.menu?.children.compactMap {($0 as? UIAction)?.title},["Close world"])
+        XCTAssertTrue(menu is NativeButton);XCTAssertEqual(world.menuItems.map(\.title),["Close world"]);XCTAssertEqual(world.menuItems.map(\.id),["world.close"])
     }
     func testEvergladeOpensTheCurrentGameInsteadOfTheDeprecatedTown()throws {
         let p=try program("worlds");try p.frame();_ = try p.action();try p.event(104,200,"");try p.frame()

@@ -14,11 +14,27 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     private let scroll=UIScrollView()
     private var conversation:String?
     private var following=true
-    private let header=UIStackView(),headerSpacer=UIView()
+    private let header=UIStackView(),headerSpacer=UIView(),headerRule=NativeHeaderRule()
     private lazy var headerHeight=header.heightAnchor.constraint(equalToConstant:0)
+    private let hostBar=UIStackView(),hostTitle=UILabel(),hostClose=NativeButton(.icon)
+    private lazy var hostHeight=hostBar.heightAnchor.constraint(equalToConstant:0)
+    private var hostAction:(()->Void)?
+    private var flows:[String:NativeFlow]=[:]
+    /// A sheet over something else: the skin's panel, with its corner brackets, stands behind what it holds.
+    var sheet=false
+    /// A host's own header above what Coax renders: a title and one icon that closes what the host opened.
+    func hostHeader(title:String,close:String,action:@escaping()->Void) {
+        loadViewIfNeeded();hostAction=action;hostTitle.attributedText=NativeSkin.label(title,size:12,ink:NativeSkin.tokens.ink);hostTitle.accessibilityLabel=title
+        hostClose.show(close,symbol:"xmark");hostHeight.constant=CGFloat(NativeSkin.tokens.header);hostBar.isHidden=false;showHeaderRule()
+    }
+    private func showHeaderRule() {headerRule.isHidden=headerHeight.constant==0 && hostHeight.constant==0}
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor=NativeSkin.ground
+        if sheet {
+            let panel=NativeFrameView(role:NativeSkin.names.panel);panel.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(panel)
+            NSLayoutConstraint.activate([panel.topAnchor.constraint(equalTo:view.topAnchor,constant:14),panel.bottomAnchor.constraint(equalTo:view.safeAreaLayoutGuide.bottomAnchor,constant:-2),panel.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:10),panel.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-10)])
+        }
         scroll.translatesAutoresizingMaskIntoConstraints = false;scroll.delegate=self
         scroll.keyboardDismissMode = .interactive
         // A fixed native form consumes pinches. Otherwise the two touches can
@@ -26,12 +42,19 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         scroll.addGestureRecognizer(UIPinchGestureRecognizer(target:nil,action:nil))
         view.addSubview(scroll)
         header.axis = .horizontal;header.alignment = .center;header.distribution = .equalSpacing;header.spacing=8;header.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(header);headerHeight.isActive=true
+        hostBar.axis = .horizontal;hostBar.alignment = .center;hostBar.spacing=8;hostBar.translatesAutoresizingMaskIntoConstraints=false;hostBar.isHidden=true;view.addSubview(hostBar);hostHeight.isActive=true
+        hostTitle.accessibilityTraits.insert(.header);hostTitle.setContentHuggingPriority(.defaultLow,for:.horizontal)
+        hostClose.addAction(UIAction { [weak self] _ in self?.hostAction?() },for:.primaryActionTriggered)
+        hostBar.addArrangedSubview(hostClose);hostBar.addArrangedSubview(hostTitle)
+        headerRule.translatesAutoresizingMaskIntoConstraints=false;headerRule.isHidden=true;view.addSubview(headerRule)
         let outside=UITapGestureRecognizer(target:self,action:#selector(dismissKeyboard));outside.cancelsTouchesInView=false;outside.delegate=self;view.addGestureRecognizer(outside)
         dock.axis = .vertical;dock.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(dock)
         stack.axis = .vertical; stack.spacing = 16; stack.translatesAutoresizingMaskIntoConstraints = false
         scroll.addSubview(stack)
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo:view.safeAreaLayoutGuide.topAnchor),header.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:20),header.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-20),
+            hostBar.topAnchor.constraint(equalTo:view.safeAreaLayoutGuide.topAnchor,constant:sheet ? 10:0),hostBar.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:8),hostBar.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-20),
+            header.topAnchor.constraint(equalTo:hostBar.bottomAnchor),header.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:14),header.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-14),
+            headerRule.topAnchor.constraint(equalTo:header.bottomAnchor),headerRule.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:14),headerRule.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-14),
             scroll.topAnchor.constraint(equalTo:header.bottomAnchor),
             scroll.bottomAnchor.constraint(equalTo:dock.topAnchor,constant:-6),
             dock.bottomAnchor.constraint(equalTo:view.keyboardLayoutGuide.topAnchor,constant:-6),
@@ -57,21 +80,20 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             else {for child in e.children {toolbar(child)}}
         }
         for e in elements where e.role=="toolbar" {toolbar(e)}
-        headerHeight.constant=bar.isEmpty ? 0:44
+        headerHeight.constant=bar.isEmpty ? 0:CGFloat(NativeSkin.tokens.header);showHeaderRule()
         if bar.count==1 {if headerSpacer.superview==nil {header.insertArrangedSubview(headerSpacer,at:0)}}else {headerSpacer.removeFromSuperview()}
         for e in bar {
-            let old=controls[e.id],matching=e.role=="button" ? old is UIButton:old is UILabel
+            let old=controls[e.id],matching=e.role=="button" ? old is NativeButton:old is UILabel
             let control=matching ? old!:make(e)
-            if let button=control as? UIButton {
-                button.configuration = .plain();button.configuration?.title=e.label;button.isEnabled = !e.disabled
+            if let button=control as? NativeButton {
+                button.isEnabled = !e.disabled
                 if let state=e.attrs["data-state"],["loading","ready","offline","idle"].contains(state) {
-                    button.configuration?.title=nil;button.configuration?.showsActivityIndicator=state=="loading"
-                    button.configuration?.image=state=="loading" ? nil:UIImage(systemName:state=="ready" ? "checkmark.circle.fill":state=="offline" ? "exclamationmark.arrow.triangle.2.circlepath":"arrow.clockwise",withConfiguration:UIImage.SymbolConfiguration(pointSize:17))
-                    button.configuration?.baseForegroundColor=state=="ready" ? .systemGreen:state=="offline" ? .systemOrange:.secondaryLabel
-                    button.accessibilityLabel=e.attrs["aria-label"] ?? "Refresh conversation"
-                }
+                    // A status: how it stands is shown by the icon and its brightness, and said by its label.
+                    button.variant = .icon;button.busy=state=="loading";button.current=state=="ready"
+                    button.show(e.attrs["aria-label"] ?? "Refresh conversation",symbol:state=="ready" ? "checkmark.circle":state=="offline" ? "exclamationmark.arrow.triangle.2.circlepath":"arrow.clockwise")
+                } else {button.variant = .quiet;button.busy=false;button.current=false;button.show(e.label)}
             }
-            else if let label=control as? UILabel {label.text=e.label;label.font=NativeTypography.font(16,strong:true);label.textColor=NativeTypography.color(nt_skin().strong)}
+            else if let label=control as? UILabel {label.attributedText=NativeSkin.label(e.label,size:12,ink:NativeSkin.tokens.ink);label.accessibilityLabel=e.label}
             kept[e.id]=control;if control.superview !== header {header.addArrangedSubview(control)}
         }
         let ordered=(bar.count==1 ? [headerSpacer]:[])+bar.compactMap {kept[$0.id]}
@@ -86,35 +108,64 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         } else {composer?.removeFromSuperview();composer=nil}
         for e in ordinary {
             let old=controls[e.id]
-            let matches = e.role == "tool" ? old is NativeTool : e.role == "message" ? old is NativeMessage : e.role == "button" ? old is UIButton : e.role == "field" ? (e.type=="multiline" ? old is UITextView:old is UITextField) : old is UILabel
+            let matches = e.role == "tool" ? old is NativeTool : e.role == "message" ? old is NativeMessage : e.role == "button" ? old is NativeButton : e.role == "field" ? (e.type=="multiline" ? old is UITextView:old is UITextField) : old is UILabel
             let control = matches ? old! : make(e)
             if let tool=control as? NativeTool {tool.press={ [weak self] id in self?.following=false;self?.press?(id) };tool.render(e)}
             else if let message=control as? NativeMessage {message.press={ [weak self] id in self?.press?(id) };message.render(e)}
-            else if let b=control as? UIButton {b.configuration=e.hasClass("lk") ? .plain():.bordered();b.configuration?.title=e.label;b.isEnabled = !e.disabled;if e.hasClass("lk") {b.configuration?.baseForegroundColor = .secondaryLabel;b.titleLabel?.font=NativeTypography.font(14)}}
+            else if let b=control as? NativeButton {
+                // The kit says which button this is (its class and state); the skin says how each looks.
+                let state=e.attrs["data-state"],select=e.hasClass("sel")
+                b.variant=e.hasClass("lk") || select || e.label.isEmpty ? .quiet:e.hasClass("row") ? .list:state=="primary" ? .primary:state=="destructive" ? .destructive:.plain
+                b.busy=state=="busy";b.current=e.attrs["aria-current"]=="true";b.isEnabled = !e.disabled
+                b.show(e.label.isEmpty ? e.attrs["aria-label"] ?? "":e.label,symbol:select ? (e.attrs["aria-expanded"]=="true" ? "chevron.up":"chevron.down"):nil)
+            }
             else if let text=control as? UITextView {
                 text.accessibilityLabel=e.label;text.isEditable = !e.disabled
                 if text.text != e.value {let selection=text.selectedRange;text.text=e.value;text.selectedRange=NSRange(location:min(selection.location,(e.value as NSString).length),length:0)}
-                text.font=e.attrs["data-lang"] != nil ? .monospacedSystemFont(ofSize:15,weight:.regular):.preferredFont(forTextStyle:.body)
+                text.font=e.attrs["data-lang"] != nil ? NativeTypography.font(15,code:true):NativeTypography.font(16)
             } else if let f=control as? UITextField {
                 f.placeholder=e.label; f.accessibilityLabel=e.label; f.isEnabled = !e.disabled
                 if f.text != e.value { f.text=e.value }
                 f.keyboardType = e.type == "email" ? .emailAddress : e.type == "tel" ? .numberPad : e.type=="number" ? .decimalPad:.default
                 f.textContentType = e.complete == "one-time-code" ? .oneTimeCode : e.complete == "email" ? .emailAddress : nil
             } else if let l=control as? UILabel {
-                l.text=e.label
-                l.font = .preferredFont(forTextStyle:e.role == "heading" ? (e.type=="h2" ? .title2:.largeTitle) : e.role == "notice" ? .footnote : .body)
-                l.textColor = e.role == "notice" ? .secondaryLabel : .label
+                // A page's title reads as text. A section's name, a small fact and a figure are chrome: the skin's label type.
+                let t=NativeSkin.tokens
+                if e.role=="heading" && e.type != "h1" {l.attributedText=NativeSkin.label(e.label,size:12,ink:t.ink_muted)}
+                else if e.hasClass("meta") {l.attributedText=NativeSkin.label(e.label,ink:t.ink_muted)}
+                else if e.hasClass("amount") {l.attributedText=NativeSkin.label(e.label,size:24,track:0.02,ink:t.ink_bright,upper:false)}
+                else {
+                    l.attributedText=nil;l.text=e.label
+                    l.font=e.role=="heading" ? NativeTypography.font(26,strong:true):e.role=="notice" || e.hasClass("note") ? NativeTypography.font(14):NativeTypography.font(16)
+                    l.textColor=NativeSkin.color(e.role=="heading" ? t.ink_bright:e.role=="notice" || e.hasClass("note") ? t.ink_muted:t.ink)
+                }
+                l.accessibilityLabel=e.label
             }
             kept[e.id]=control
         }
         for (id,old) in controls where kept[id] !== old { old.removeFromSuperview() }
         controls=kept
-        for (i,e) in ordinary.enumerated() {
-            guard let control=kept[e.id] else {continue}
-            if i<stack.arrangedSubviews.count && stack.arrangedSubviews[i] === control {continue}
-            stack.insertArrangedSubview(control,at:i)
+        // Quiet buttons that follow one another share a line, each as wide as its words; everything else has its own.
+        var rows:[(view:UIView,first:NativeElement,last:NativeElement)]=[];var used:[String:NativeFlow]=[:];var at=0
+        // On a sheet every button but a list's row does: a sheet's tools are many and its room is small.
+        func quiet(_ e:NativeElement)->Bool {guard e.role=="button",let variant=(kept[e.id] as? NativeButton)?.variant else {return false};return variant == .quiet || sheet && variant != .list}
+        while at<ordinary.count {
+            let e=ordinary[at];guard let control=kept[e.id] else {at+=1;continue}
+            guard quiet(e) else {rows.append((control,e,e));at+=1;continue}
+            var end=at;var items:[UIView]=[]
+            while end<ordinary.count,quiet(ordinary[end]),let c=kept[ordinary[end].id] {items.append(c);end+=1}
+            let flow=flows[e.id] ?? NativeFlow();if flow.items.count != items.count || !zip(flow.items,items).allSatisfy({$0 === $1}) {flow.items=items}
+            used[e.id]=flow;rows.append((flow,e,ordinary[end-1]));at=end
         }
-        for (i,e) in ordinary.enumerated() {if let control=kept[e.id] {stack.setCustomSpacing(e.role=="tool" && i+1<ordinary.count && ordinary[i+1].role=="tool" ? 1:16,after:control)}}
+        for (id,flow) in flows where used[id] !== flow {flow.items=[];flow.removeFromSuperview()}
+        flows=used
+        for (i,row) in rows.enumerated() {
+            if i<stack.arrangedSubviews.count && stack.arrangedSubviews[i] === row.view {continue}
+            stack.insertArrangedSubview(row.view,at:i)
+        }
+        // Rows of one list stand together under a hairline each; tool rows stay as close as the work log sets them.
+        func row(_ e:NativeElement)->Bool {e.role=="button" && e.hasClass("row")}
+        for (i,r) in rows.enumerated() {let next=i+1<rows.count ? rows[i+1].first:nil;stack.setCustomSpacing(r.last.role=="tool" && next?.role=="tool" ? 1:row(r.last) && next.map(row)==true ? 0:CGFloat(NativeSkin.tokens.gap),after:r.view)}
         view.setNeedsLayout()
     }
     private func make(_ e:NativeElement)->UIView {
@@ -122,20 +173,15 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         if e.role=="tool" {control=NativeTool()}
         else if e.role=="message" {control=NativeMessage()}
         else if e.role == "button" {
-            let b=UIButton(configuration:.bordered())
+            let b=NativeButton()
             b.addAction(UIAction { [weak self] _ in self?.press?(e.id) },for:.primaryActionTriggered)
-            b.heightAnchor.constraint(greaterThanOrEqualToConstant:44).isActive=true
-            if let state=e.attrs["data-state"],["loading","ready","offline","idle"].contains(state) {b.widthAnchor.constraint(equalToConstant:44).isActive=true}
             control=b
         } else if e.role == "field" && e.type=="multiline" {
-            let text=UITextView();text.delegate=self;text.font = .preferredFont(forTextStyle:.body);text.adjustsFontForContentSizeCategory=true
-            text.backgroundColor = .secondarySystemBackground;text.layer.cornerRadius=8;text.textContainerInset=UIEdgeInsets(top:10,left:8,bottom:10,right:8)
-            text.heightAnchor.constraint(equalToConstant:e.attrs["data-lang"] != nil ? 240:100).isActive=true;control=text
+            let text=NativeTextArea();text.delegate=self;text.font=NativeTypography.font(16);text.adjustsFontForContentSizeCategory=true
+            text.fixedHeight=e.attrs["data-lang"] != nil ? 240:nil;control=text
         } else if e.role == "field" {
-            let f=UITextField(); f.borderStyle = .roundedRect
+            let f=NativeField()
             f.autocapitalizationType = .none; f.autocorrectionType = .no
-            f.font = .preferredFont(forTextStyle:.body); f.adjustsFontForContentSizeCategory=true
-            f.heightAnchor.constraint(greaterThanOrEqualToConstant:44).isActive=true
             f.addAction(UIAction { [weak self,weak f] _ in self?.edit?(e.id,f?.text ?? "") },for:.editingChanged)
             f.addAction(UIAction { [weak self] _ in self?.submit?(e.id) },for:e.type=="number" ? .editingDidEnd:.editingDidEndOnExit)
             control=f

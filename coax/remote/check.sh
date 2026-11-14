@@ -29,6 +29,7 @@
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
 #   coax/remote/check.sh reports          tools-check, test-remote.sh, test-after.sh, test-vm-deploy.sh, the serve image's compile, everglade-parity, wire-check, layer-check,
 #                                         the native apps' realms (metaverse/native/app-realms.coax, #13389),
+#                                         the native hosts' controls all the component library's (coax/native/stock-style.coax, #13580),
 #                                         packs paged by cell (metaverse-engine/host/check-pack-cells.coax, #13304),
 #                                         the apps' packs admitted (metaverse-engine/tools/pack-seal.coax --check, #13304),
 #                                         the C host core's conformance and the stored formats' profiles (#13304),
@@ -265,6 +266,7 @@ reports() {
   step layer-check coax/web/tool.sh layer-check || status=1
   # the editor has no look of its own: the frames set in the mono skin, as the chat page (#13416)
   step editor-skin coax/web/tool.sh editor-skin-check || status=1
+  native_style
   migrations
   step prepush-replay coax/web/tool.sh prepush --replay-check || status=1
   step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
@@ -354,6 +356,8 @@ frame_plan_walk() { step frame-plan-walk metaverse-engine/host/core/check-frame-
 # on demand exactly as the one reader says (metaverse-engine/host/check-pack-cells.coax; it builds the pack
 # reactor and runs coax/web/pack-host.js in bun over a fixture it writes).
 pack_cells() { step pack-cells coax/web/tool.sh metaverse-engine/host/check-pack-cells.coax "$PWD" coax/web/build/pack-cells || status=1; }
+# the native hosts have no look of their own: every control is the component library's, in the mono skin (#13580)
+native_style() { step native-style coax/web/tool.sh coax/native/stock-style.coax apps/shared/native/*.swift apps/openagents-desktop/native/*.swift || status=1; }
 app_realms() { step app-realms coax/web/tool.sh metaverse/native/app-realms.coax "$PWD" coax/web/build/app-realms || status=1; }
 # Every realm in realms.json has its link-preview card (#13144): a release refuses a realm without
 # one, so it shows at landing, not at release.
@@ -582,6 +586,8 @@ reports_since() {
     step layer-check coax/web/tool.sh layer-check --base "$arg" || status=1
   fi
   if grep -Eq '^coax/web/(api/(migrations/|migrations\.sha256|schema\.sql|migration-check\.coax)|tool\.sh)' "$out/changed"; then migrations "$arg"; fi
+  # a native host's source, the check, or the skin they draw from (#13580)
+  if grep -Eq '^(apps/shared/native/|apps/openagents-desktop/native/.*\.swift|coax/native/stock-style\.coax|components/skin/mono-native\.coax)' "$out/changed"; then native_style; fi
   # the pre-push check still refuses the historical clobbers and passes their fixes (#13265)
   if grep -Eq '^coax/(web/prepush\.coax|remote/hooks/)' "$out/changed"; then step prepush-replay coax/web/tool.sh prepush --replay-check || status=1; fi
   if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs"; then

@@ -311,3 +311,19 @@ schemes:
       targets:
         - name: OpenAgentsUITests
           selectedTests: [TranscriptUITests]
+
+  # A look review, not a check: walks every screen for simulator screenshots (StarterUITests/LookUITests.swift).
+  CoaxNativeLook:
+    build:
+      targets:
+        OpenAgents: all
+    test:
+      commandLineArguments:
+        "-OAAutomation YES": true
+        "-OAAPIOrigin http://127.0.0.1:13591": true
+        "-OAUpdatesOrigin http://127.0.0.1:9": true
+      targets:
+        - name: OpenAgentsUITests
+          selectedTests: [LookUITests]
+        - name: OpenAgentsTests
+          selectedTests: [LookTests]

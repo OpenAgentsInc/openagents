@@ -45,7 +45,8 @@ import UIKit
         try p.event(112,0,"{}");try p.frame();_ = try p.action()
         try p.event(104,200,String(decoding:JSONSerialization.data(withJSONObject:view),as:UTF8.self));try p.frame();_ = try p.action();surface.render(p.elements());surface.view.layoutIfNeeded()
         XCTAssertTrue(tool === surface.controls[e.id]);XCTAssertEqual(text.selectedRange,NSRange(location:3,length:4));XCTAssertEqual(tool.header.accessibilityValue,"Expanded")
-        XCTAssertEqual((surface.controls["env.executing"] as? UILabel)?.text,"Mac")
+        // A header's name is drawn in the skin's upper-case label type; what it says to a reader is the name as given.
+        XCTAssertEqual((surface.controls["env.executing"] as? UILabel)?.accessibilityLabel,"Mac");XCTAssertEqual((surface.controls["env.executing"] as? UILabel)?.text,"MAC")
         try p.input(action);try p.frame()
         XCTAssertEqual(p.elements().first {$0.id==e.id}?.children.first {$0.role=="button"}?.attrs["aria-expanded"],"false")
         surface.render(p.elements());XCTAssertEqual(tool.header.accessibilityValue,"Collapsed")
@@ -54,15 +55,15 @@ import UIKit
     }
     func testRefreshLivesInTheHeaderWithoutAFlashingDisabledButton()throws {
         let (p,view)=try loaded(),surface=NativeControls();surface.view.frame=CGRect(x:0,y:0,width:402,height:874);surface.render(p.elements());surface.view.layoutIfNeeded()
-        let refresh=try XCTUnwrap(surface.controls["env.refresh"] as? UIButton)
-        XCTAssertTrue(refresh.isEnabled);XCTAssertNotNil(refresh.configuration?.image);XCTAssertNil(refresh.configuration?.title)
+        let refresh=try XCTUnwrap(surface.controls["env.refresh"] as? NativeButton)
+        XCTAssertTrue(refresh.isEnabled);XCTAssertNotNil(refresh.symbol);XCTAssertEqual(refresh.variant,.icon)
         XCTAssertFalse(p.elements().contains {$0.id=="env.history.partial"})
         try p.event(112,0,"{}");try p.frame();_ = try p.action();surface.render(p.elements())
-        XCTAssertEqual(refresh.configuration?.showsActivityIndicator,false);XCTAssertTrue(refresh.isEnabled)
+        XCTAssertFalse(refresh.busy);XCTAssertTrue(refresh.isEnabled)
         try p.event(104,200,String(decoding:JSONSerialization.data(withJSONObject:view),as:UTF8.self));try p.frame();_ = try p.action()
         try p.input("env.composer","Keep this draft");try p.frame();_ = try p.action()
         try p.input("env.refresh");try p.frame();surface.render(p.elements());surface.view.layoutIfNeeded()
-        XCTAssertTrue(refresh === surface.controls["env.refresh"]);XCTAssertTrue(refresh.isEnabled);XCTAssertEqual(refresh.configuration?.showsActivityIndicator,true)
+        XCTAssertTrue(refresh === surface.controls["env.refresh"]);XCTAssertTrue(refresh.isEnabled);XCTAssertTrue(refresh.busy)
         XCTAssertEqual((surface.controls["env.composer"] as? UITextView)?.text,"Keep this draft")
         let screenshot=XCTAttachment(image:UIGraphicsImageRenderer(bounds:surface.view.bounds).image {_ in surface.view.drawHierarchy(in:surface.view.bounds,afterScreenUpdates:true)});screenshot.name="Compact T3 work rows and header refresh";screenshot.lifetime = .keepAlways;add(screenshot)
     }

@@ -75,7 +75,7 @@ import Security
             if dialog != nil {dialog?.dismiss(animated:true);dialog=nil}
         } else {
             if dialog==nil {
-                let vc=NativeControls();vc.press=surface.press;vc.edit=surface.edit;vc.isModalInPresentation=true
+                let vc=NativeControls();vc.sheet=true;vc.press=surface.press;vc.edit=surface.edit;vc.isModalInPresentation=true
                 dialog=vc;present(vc,animated:true)
             }
             dialog?.render(modal)
@@ -209,7 +209,8 @@ import Security
     }
     func offerActivation() {
         guard presentedViewController==nil else { return }
-        let alert=UIAlertController(title:"Update ready",message:"A signed Coax Native update is downloaded. Restart this view to use it.",preferredStyle:.alert)
+        let alert=UIAlertController(title:"Update ready",message:"A signed Coax Native update is downloaded. Restart this view to use it.",preferredStyle:.alert) // stock: the system's own alert; UI tests name it
+        alert.view.tintColor=NativeSkin.color(NativeSkin.tokens.ink)
         alert.addAction(UIAlertAction(title:"Later",style:.cancel))
         alert.addAction(UIAlertAction(title:"Apply update",style:.default) { [weak self] _ in
             guard let self,self.services==0 else { return }
