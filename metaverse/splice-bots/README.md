@@ -266,7 +266,7 @@ The key map follows the slice's beat sheet (#13505). The pause screen (Esc) list
 | Hold Z, or double-tap W and hold it | Sprint: on foot half as fast again (`STANCE_SPRINT_PACE`); on the hoverboard very fast (the fast speed). Not Ctrl, which not every keyboard has and which with W closes a browser tab; Left Shift is sneak |
 | Hold Q | Step off the hoverboard (the board's panel says so all the while she rides) |
 | E | Interact: enter the rover, take the core, go through a portal, swap a core, tow a powered-down Digger; beside a hurt Digger with a battery cell, charge him |
-| Tab | The edit bay, only inside Sniper (the rover) |
+| Tab | The edit bay, only inside the rover |
 | I | The inventory: six slots. A click on a slot drops what is in it; a click on CELLS charges Digger when he wants it |
 | Left click | Give Digger the order under the reticle: he goes to what is selected, then digs it, picks it up or attacks it |
 | F | Stun a robot within 2 m for 4 seconds |

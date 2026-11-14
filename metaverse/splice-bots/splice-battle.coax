@@ -152,7 +152,7 @@ sb_card_name :: (id: int) -> string {
   names := [11] string.["", "MOVE", "DRILL", "DRILL+", "SLAM", "STOMP", "FLARE", "ARM", "CLAW", "BITE", "TAIL"];
   return ifx id >= 1 && id <= 10 then names[id] else "";
 }
-sb_bot_name :: (b: int) -> string { names := [SB_BOTS] string.["DIGGER", "DRILL MECH", "SNIPER", "RAIDER MECH", "THE BOSS"]; return ifx b >= 0 && b < SB_BOTS then names[b] else ""; }
+sb_bot_name :: (b: int) -> string { names := [SB_BOTS] string.["DIGGER", "DRILL MECH", "ROVER", "RAIDER MECH", "THE BOSS"]; return ifx b >= 0 && b < SB_BOTS then names[b] else ""; }
 // Digger's cards: the ones spliced onto his strip, each once, in order (his core's software).
 sb_core_cards :: (g: [] SpGame, out: [] int) -> int {
   n := 0;
@@ -877,17 +877,17 @@ sb_msg_text :: (g: [] SpGame) -> string {
   if m == SBM_HUNT { return "A raider mech gives chase. Hold W to outrun it, or press E to battle it."; }
   if m == SBM_RM_GONE { return "The raider mech gave up."; }
   if m == SBM_RM_DOWN { return "The raider mech powers down. Robot piece taken."; }
-  if m == SBM_SNIPER_DOWN { return "Sniper is down. The raider mech drives off with its loot."; }
+  if m == SBM_SNIPER_DOWN { return "The rover is down. The raider mech drives off with its loot."; }
   if m == SBM_BOSS { return "The boss wakes."; }
   if m == SBM_CHARGES { return "Half its health gone. Now it charges."; }
   if m == SBM_OPEN { return "It's dazed."; }
   if m == SBM_SHUT { return "Its weak points close."; }
-  if m == SBM_REPAIR { return "You waited at the charger: Sniper is back to full health and charge."; }
-  if m == SBM_DIGGER_DOWN { return "Digger powers down. Repair him at Sniper's charger."; }
-  if m == SBM_SWAP { return ifx sb_fielded(g) >= 0 then (ifx sb_fielded(g) == SB_MECH then "Core swap: the drill mech." else ifx sb_fielded(g) == SB_SNIPER then "Swap: Sniper." else "Core swap: Digger.") else ""; }
+  if m == SBM_REPAIR { return "You waited at the charger: the rover is back to full health and charge."; }
+  if m == SBM_DIGGER_DOWN { return "Digger powers down. Repair him at the rover's charger."; }
+  if m == SBM_SWAP { return ifx sb_fielded(g) >= 0 then (ifx sb_fielded(g) == SB_MECH then "Core swap: the drill mech." else ifx sb_fielded(g) == SB_SNIPER then "Swap: the rover." else "Core swap: Digger.") else ""; }
   if m == SBM_REFUSED { return sb_refusal(t.refusal); }
   if m == SBM_MECH_DOWN { return "The drill mech is down."; }
-  if m == SBM_CORE_DROP { return "It drops its banned core: old-world tech the Empire forbids, so carrying it raises Heat. Splice it in Sniper to see what it remembers."; }
+  if m == SBM_CORE_DROP { return "It drops its banned core: old-world tech the Empire forbids, so carrying it raises Heat. Splice it in the rover to see what it remembers."; }
   return "";
 }
 sb_refusal :: (v: int) -> string {
@@ -932,13 +932,13 @@ sb_prompt :: (g: [] SpGame) -> SbPrompt {
     if d == 2 { return SbPrompt.{text = "It charges: step aside", key = "A D"}; }
     return SbPrompt.{text = "Wait: the mech fights until orange weak points open", key = "1-4"};
   }
-  if sb_fighting(g) { nx := bb_next(t.fight[0].sides[0]); if nx >= 0 { return SbPrompt.{text = ifx t.crew[nx] == SB_MECH then "Swap the core into the drill mech" else ifx t.crew[nx] == SB_DIGGER then "Swap the core into Digger" else "Swap to Sniper", key = "E"}; } return SbPrompt.{text = "Battle moves", key = "1-4"}; }
+  if sb_fighting(g) { nx := bb_next(t.fight[0].sides[0]); if nx >= 0 { return SbPrompt.{text = ifx t.crew[nx] == SB_MECH then "Swap the core into the drill mech" else ifx t.crew[nx] == SB_DIGGER then "Swap the core into Digger" else "Swap to the rover", key = "E"}; } return SbPrompt.{text = "Battle moves", key = "1-4"}; }
   if g[0].zone == Z_MINE {
     if g[0].boss_down && !g[0].core_taken { c := sb_core_at(g); if dist2(g[0].px, g[0].pz, c.x, c.z) < T_PICK_RANGE { return SbPrompt.{text = "PICK UP · Banned core", key = "E"}; } }
     if !g[0].wall_gone && t.drill_t <= 0 && dist2(g[0].px, g[0].pz, 0, g[0].at.wall_z + 1) < SB_HALL_REACH { return SbPrompt.{text = ifx t.mech_core then "Drill the hallway with the mech" else "Blocked hallway", key = "E"}; }
     if g[0].bot && dist2(g[0].px, g[0].pz, t.mech_x, t.mech_z) < SB_MECH_REACH && !(t.mech_core && !g[0].wall_gone) { return SbPrompt.{text = ifx t.mech_core then "Swap the core back into Digger" else "Swap Digger's core into the drill mech", key = "E"}; }
   }
-  if sb_can_battle_rm(g) { return SbPrompt.{text = "Battle the raider mech from Sniper", key = "E"}; }
+  if sb_can_battle_rm(g) { return SbPrompt.{text = "Battle the raider mech from the rover", key = "E"}; }
   return SbPrompt.{};
 }
 

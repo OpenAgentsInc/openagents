@@ -322,7 +322,7 @@ hv_prompt_of :: (g: [] SpGame, buf: [] u8) -> HvPrompt {
     return HvPrompt.{key = "AUTO", verb = "SCAVENGE", what = what, line = "DIGGER PICKS IT UP", share = ifx share < 0 then 0.0f32 else share};
   }
   else if d_cell_here(g) && d_down(g) { prompt = "Charge · Digger with a battery cell"; }
-  else if g[0].bot && d_down(g) && dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) < T_TOW_REACH { prompt = ifx d_towing(g) then "Let go · Digger" else "Tow · Digger to Sniper"; }
+  else if g[0].bot && d_down(g) && dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) < T_TOW_REACH { prompt = ifx d_towing(g) then "Let go · Digger" else "Tow · Digger to the rover"; }
   else if g_weak_near(g) >= 0 { prompt = "Stun · the weak point"; key = "F"; }
   else if g_foe_near(g) >= 0 { prompt = ifx g_foe_near(g) < F_RAIDERS then "Stun · the raider" else "Stun · the Imperial robot"; key = "F"; }
   else if g[0].zone == Z_RAIL && near_rover(g, T_USE_RANGE) { prompt = "Board · the rover"; }
@@ -426,7 +426,7 @@ hv_kind_slot :: (kind: int) -> string {
 hv_kind_says :: (kind: int) -> string {
   if kind == H_ARM { return "Breaks rubble. Needs a DRILL card."; }
   if kind == H_TREADS { return "Digger's drive. Splice it in to build him."; }
-  if kind == H_BATTERY { return "Powers Digger. Sniper's charger refills it."; }
+  if kind == H_BATTERY { return "Powers Digger. The rover's charger refills it."; }
   if kind == H_MOVE { return "Follow the path."; }
   if kind == H_DRILL { return "Breaks rubble."; }
   if kind == H_PLUS { return "Special part. Drills hardest. Holds Heat up."; }

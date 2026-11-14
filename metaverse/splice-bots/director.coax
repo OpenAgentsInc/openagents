@@ -98,16 +98,16 @@ SpDir :: struct {
 d_say :: (g: [] SpGame, m: int) { g[0].dr[0].say = m; g[0].dr[0].say_t = 3.0; }
 d_text :: (m: int) -> string {
   if m == DS_FULL { return "Inventory full. Press I and drop something."; }
-  if m == DS_DOWN { return "Digger is powered down. Tow him to Sniper with E."; }
+  if m == DS_DOWN { return "Digger is powered down. Tow him to the rover with E."; }
   if m == DS_NOTHING { return "Look at rock, a part or a robot to give Digger an order."; }
   if m == DS_BLOCKED { return "Digger can't get there. Something is in the way."; }
   if m == DS_FAR { return "Too far for Digger. Get closer."; }
   if m == DS_LEASH { return "Too far from you. Digger came back."; }
-  if m == DS_TOW { return "Towing Digger. Sniper's charger will fix him."; }
+  if m == DS_TOW { return "Towing Digger. The rover's charger will fix him."; }
   if m == DS_UP { return "Digger is charged and back on his treads."; }
   if m == DS_SENSOR { return "Digger drilled out a better sensor. He senses twice as far."; }
   if m == DS_NEED_DRILL { return "It's buried. Splice the DRILL card into Digger and he can dig it out."; }
-  if m == DS_BAY { return "The edit bay is inside Sniper."; }
+  if m == DS_BAY { return "The edit bay is inside the rover."; }
   if m == DS_DROP { return "Dropped. Digger leaves it until you walk away."; }
   if m == DS_KEEP { return "That stays with you."; }
   if m == DS_STUN { return "Stunned."; }
@@ -670,7 +670,7 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   n = ui_mid(out, n, "WAY IN", x0 + (in_at.x - lx) * sc, y0 + (hz - in_at.z) * sc + 3 * k, 7 * k, HEAT());
   px := x0 + (g[0].px - lx) * sc; pz := y0 + (hz - g[0].pz) * sc;
   rx := x0 + (g[0].at.rover_x - lx) * sc; rz := y0 + (hz - g[0].at.rover_z) * sc;
-  n = ui_box(out, n, rx - 6 * k, rz - 9 * k, rx + 6 * k, rz + 9 * k, 3 * k, ink); n = ui_text(out, n, "SNIPER", rx + 10 * k, rz + 4 * k, 7 * k, ink);
+  n = ui_box(out, n, rx - 6 * k, rz - 9 * k, rx + 6 * k, rz + 9 * k, 3 * k, ink); n = ui_text(out, n, "ROVER", rx + 10 * k, rz + 4 * k, 7 * k, ink);
   if !g[0].rubble_gone { yy := y0 + (hz - g[0].at.rubble_z) * sc; n = ui_seg(out, n, x0 + (-3 - lx) * sc, yy, x0 + (3 - lx) * sc, yy, 3 * k, t3(0.56, 0.36, 0.28), 1); }
   if !g[0].wall_gone { yy := y0 + (hz - g[0].at.wall_z) * sc; n = ui_seg(out, n, x0 + (-4 - lx) * sc, yy, x0 + (4 - lx) * sc, yy, 3 * k, GLOW_INK(), 1); }
   bz := y0 + (hz - g[0].at.boss_z) * sc; bx := x0 + (g[0].at.boss_x - lx) * sc;
@@ -703,9 +703,9 @@ d_controls :: () -> [D_KEYS * 2] string {
   return [D_KEYS * 2] string.[
     "W A S D", "Walk", "Mouse", "Look; scroll to zoom", "Space", "Jump; again in the air to jump higher", "Hold Shift", "Sneak: crouch, slower, harder to sense",
     "Q", "Hoverboard on, then casual or fast; Q Q super fast; hold Q to get off", "Hold Z or W W", "Sprint; on the hoverboard, very fast",
-    "E", "Interact, enter the rover, swap a core, tow or charge Digger", "Tab", "Edit bay, inside Sniper", "I", "Inventory",
+    "E", "Interact, enter the rover, swap a core, tow or charge Digger", "Tab", "Edit bay, inside the rover", "I", "Inventory",
     "Left click", "Point Digger: dig, pick up, attack", "F", "Stun a robot within 2 m", "1 2 3 4", "Battle moves",
-    "Hold R", "Bot wheel: dig, pick up, attack, follow, charge", "M", "Map", "O", "Change outfit, inside Sniper", "Esc", "Pause", "G", "Graybox"];
+    "Hold R", "Bot wheel: dig, pick up, attack, follow, charge", "M", "Map", "O", "Change outfit, inside the rover", "Esc", "Pause", "G", "Graybox"];
 }
 d_pause_screen :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int { return hv_pause(g, out, u, at, q); }   // hud.coax
 // The Director's HUD: her panel top left, the bars over the bots, her line, and the grid, the map

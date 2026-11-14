@@ -1543,8 +1543,8 @@ msg_text :: (g: [] SpGame) -> string {
   if m == MSG_PING { return "Sensor ping. Something is buried near the marker."; }
   if m == MSG_FIRST { return "The sensor found something. Let Digger get it first."; }
   if m == MSG_EDGE { return "Nothing out there but sand for days. Turn back."; }
-  if m == MSG_NO_DRILL { return "Sniper: not without a drill. Find the DRILL card first."; }
-  if m == MSG_MAP { return "Sniper: the garage goes deeper than anyone mapped. Here's how deep."; }
+  if m == MSG_NO_DRILL { return "The rover: not without a drill. Find the DRILL card first."; }
+  if m == MSG_MAP { return "The rover: the garage goes deeper than anyone mapped. Here's how deep."; }
   if m == MSG_OUTFIT { return "Outfit changed."; }
   if m == MSG_PICK {
     i := g[0].last_pick;
@@ -1559,16 +1559,16 @@ objective :: (g: [] SpGame) -> string {
     if g[0].mode == M_RIDE { return "Ride the rail to the mine."; }
     return ifx g[0].have[H_BATTERY] then "Get back in the rover." else "Find what the sensor pinged.";
   }
-  if g[0].mode == M_DRIVE { return "Drive Sniper to the garage. E: get out and park."; }
+  if g[0].mode == M_DRIVE { return "Drive the rover to the garage. E: get out and park."; }
   // each step's objective gives way to the next as soon as it is done (#13552 lane A): splice, drive, wall, mech, boss, core
   bay := d_in_rover(g);
-  if g[0].have[H_CORE] { return ifx bay then "Splice the core in the edit bay: Tab, then X." else "Take the core back to Sniper and splice it in the edit bay."; }
+  if g[0].have[H_CORE] { return ifx bay then "Splice the core in the edit bay: Tab, then X." else "Take the core back to the rover and splice it in the edit bay."; }
   if g[0].boss_down { return "Take the banned core the boss dropped."; }
   if g[0].wall_gone { return "Stun all 3 weak points."; }
   if g_spliced(g) && (dv_away(g) || g[0].phase != PH_DAY) && !g[0].rubble_gone { return "Look at the raiders' rock wall and click: Digger drills it."; }
   if g_spliced(g) && !dv_away(g) && g[0].phase == PH_DAY && d_sensor_here(g) { return ifx sp_in_room(g) then "Try the drill outside: E at the door, then look at the buried sensor." else "Try the drill: look at the buried sensor and click. Digger digs it out."; }
-  if g_spliced(g) && !dv_away(g) && g[0].phase == PH_DAY { return ifx sp_in_room(g) then "Take the wheel at the desk: E." else "Get in Sniper (E at its door) and drive to the garage."; }
-  if g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY] && g[0].have[H_MOVE] && g[0].have[H_DRILL] { return ifx bay then "Splice Digger in the edit bay: Tab." else "Go to Sniper and splice Digger in the edit bay: Tab."; }
+  if g_spliced(g) && !dv_away(g) && g[0].phase == PH_DAY { return ifx sp_in_room(g) then "Take the wheel at the desk: E." else "Get in the rover (E at its door) and drive to the garage."; }
+  if g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY] && g[0].have[H_MOVE] && g[0].have[H_DRILL] { return ifx bay then "Splice Digger in the edit bay: Tab." else "Go to the rover and splice Digger in the edit bay: Tab."; }
   return "Walk near parts: Digger takes them.";
 }
 
@@ -1590,7 +1590,7 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
     ui_panel(g, u, -20, -20, w + 20, h + 20, ifx sweep then HEAT() else ink, 1);
     if sweep {
       n = ui_title_mid(out, n, "IMPERIAL SWEEP", w * 0.5, h * 0.46, 40 * k, paper);
-      n = ui_mid(out, n, "Heat hit 100. Back at Sniper.", w * 0.5, h * 0.56, 12 * k, paper);
+      n = ui_mid(out, n, "Heat hit 100. Back at the rover.", w * 0.5, h * 0.56, 12 * k, paper);
     } else {
       return hv_death(g, out, u, q);   // BAD CUT (hud.coax)
     }
@@ -2965,7 +2965,7 @@ sb_drive_check :: (g: [] SpGame) {
   for i: 0..<600 { g_step(g[..], 0.02); if t[0].bots[SB_SNIPER].vit.hp < most { break; } }
   b := sb_beside(g[..], g[0].rail_s, SB_RM_SIDE);
   #assert t[0].rm_hunt && t[0].bots[SB_SNIPER].vit.hp == most - cast(f32) sb_card(SBC_CLAW, SB_RAIDER).power && dist2(t[0].rm_x, t[0].rm_z, b.x, b.z) < 1;
-  #assert sb_can_battle_rm(g[..]) && sb_prompt(g[..]).text == "Battle the raider mech from Sniper";
+  #assert sb_can_battle_rm(g[..]) && sb_prompt(g[..]).text == "Battle the raider mech from the rover";
   // E while it is near: a battle, Sniper fielded with its three cards, and Sniper slows to its slow speed
   #assert g_key(g[..], 'e', true) && sb_fighting(g[..]) && t[0].kind == SBF_DESERT && sb_fielded(g[..]) == SB_SNIPER && g[0].mode == M_RIDE;
   t[0].think = 100;   // the raider mech holds its moves while this check reads Sniper's
