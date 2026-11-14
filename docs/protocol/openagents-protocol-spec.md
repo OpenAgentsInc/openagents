@@ -3510,6 +3510,13 @@ message ActivitySummary {                              // ≤1,024 B, no meta, r
 
 ### 23.2 `openagents.environment.v1`
 
+The [environment endpoints, Claude sessions and realm-authoring profile](environments-claude-and-world-editing.md)
+specifies the concrete mobile/web/desktop path for the owner's Mac and CoderOS
+computer. Its endpoint catalog composes HOST/REACH with ENV/SESS; it does not
+replace environment leases or amend the recovered `host.v1`/`reach.v1` schemas.
+It also defines the staged path from Claude chat to existing realm tools and
+revision-bound visualization. It is a design, not a deployed service.
+
 **Purpose.** Environment definitions, leases, exact materialization,
 participant admission, one execution attachment per lease, and cleanup
 (NIP-ENV). The `env_`/`envk_` HTTP resources and the ~52 environment IDs
