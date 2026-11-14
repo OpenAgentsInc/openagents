@@ -15,6 +15,7 @@ final class ComponentsUITests:XCTestCase {
         XCTAssertTrue(app.otherElements["Coax GPU component playground"].exists)
         app.navigationBars["Components"].buttons.firstMatch.tap()
         XCTAssertTrue(app.buttons["nav.settings.close"].waitForExistence(timeout:10));app.buttons["nav.settings.close"].tap()
+        if app.buttons["nav.close"].isHittable {app.buttons["nav.close"].tap()}
         XCTAssertTrue(app.textViews["chat.composer"].waitForExistence(timeout:10))
     }
     func testEmbeddedGallerySectionsMotionAndLifecycle() {

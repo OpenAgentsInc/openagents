@@ -323,3 +323,7 @@ email oracle (`Tests/email_fixture.py RELEASE --port 13567 --environment-transcr
 This is a preview of shared visual components, not a switch of the production
 chat renderer or completion of every Arcade animation. See
 [the component guide](../../components/README.md) for exact implementation scope.
+
+1086 is **VALID / IN_BETA_TESTING**, verified in **Owner**. Its signed generation-1
+feed matches all twenty archived resources. See the
+[gallery evidence and pictures](../../docs/verification/2026-11-14-component-gallery/README.md).

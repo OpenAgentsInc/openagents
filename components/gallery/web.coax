@@ -75,7 +75,7 @@ wg_build :: (s: [] WebPage) {
   lede := tr_leaf(t, "lede", TG_P, "lede", "The components the OpenAgents chat is being rebuilt from: a small set, each a frame around content, in black, white and grey. The browser draws them, so the text here is real text: select it, search it, zoom it, have it read aloud.");
   bar := tr_open(t, "top.bar", TG_DIV, "rowf");
   rp := k_button(t, u, "replay", "Replay", BS_PLAIN);
-  gpu:=k_link(t,"gallery.gpu","GPU + motion →");tr_attr(t,gpu,AT_HREF,"/components-gpu");
+  gpu:=k_go(t,"gallery.gpu","GPU + motion →","/components-gpu");
   tr_close(t);
   tr_close(t);
 
@@ -303,7 +303,7 @@ wg_build :: (s: [] WebPage) {
   c3 := tr_leaf(t, "credit.2", TG_SPAN, "", " by Romel Perez, ported to Coax, under the ");
   c4 := tr_leaf(t, "credit.3", TG_A, "", "MIT license");
   tr_attr(t, c4, AT_HREF, "https://github.com/arwes/arwes/blob/bdbaa0324900ee978d42036d1304a053c1fe54b5/LICENSE");
-  c5 := tr_leaf(t, "credit.4", TG_SPAN, "", ". The earlier components, drawn on the GPU, are at ");
+  c5 := tr_leaf(t, "credit.4", TG_SPAN, "", ". The shared GPU components and motion lab are at ");
   c6 := tr_leaf(t, "credit.5", TG_A, "", "/components-gpu");
   tr_attr(t, c6, AT_HREF, "/components-gpu");
   c7 := tr_leaf(t, "credit.6", TG_SPAN, "", ".");
@@ -526,4 +526,9 @@ WgTest :: struct { s: [1] WebPage; }
   coaxial_kit_event(s, WG_CLICK, dm_find(d, "replay"), 0);
   n = coaxial_kit_frame(s, 0.016, false);
   #assert coaxial_kit_busy(s) && dm_test_count(d, n, DC_FRAME) == 1;
+}
+
+#test "GPU gallery navigation is a real anchor with the shared Go component" {
+ s:[1]WebPage;_:=coaxial_kit_frame(s[..],0.016,true);t:=s[0].tree[..];a:=tr_find(t,"gallery.gpu");
+ #assert a>=0 && t[0].nodes[a].tag==TG_A && tr_attr_of(t,a,AT_HREF)=="/components-gpu";
 }

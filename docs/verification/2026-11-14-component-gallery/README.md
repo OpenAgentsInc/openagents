@@ -30,7 +30,7 @@ are retained under `~/.openagents/releases/openagents-ios-1086/`.
   requires Xcode ad hoc signing (`CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-`);
   an unsigned build cannot retain the account token in Keychain. Manual deep
   signing was refused by the simulator; use Xcode's generated entitlements.
-- The release archive and export succeeded; runtime-oracle checked all four
+- The release archive and export succeeded; runtime-oracle checked the app and extras
   portable programs before archiving. `tools-check` passed.
 
 ## Pictures
@@ -54,3 +54,21 @@ qualify all 28 Arcade animation cases, general image/blur composition, inline
 GPU islands, multiple world views, complete accessibility/text parity or an
 OTA native renderer. No physical-phone or Android run was performed in this
 change. Production chat keeps its existing native text/input path.
+
+## Published result
+
+- TestFlight **1086: VALID / IN_BETA_TESTING**, explicitly verified in **Owner**.
+  Apple delivery `edf68ea5-af70-4748-a517-c8ddaeda7cd2` succeeded.
+- The signed generation-1 feed is byte-identical through both public endpoints.
+  All twenty package file hashes match the exported IPA's exact Starter bytes.
+  The gallery itself is installed native code, outside the OTA package.
+- The targeted web publication retains the production host/shader/font asset
+  identities and updates only the two galleries. GPU module:
+  `components.b5e341425237.wasm`. The full-site prebuilt attempt hit an existing
+  `oneshot` size-budget failure; no other website pages were deployed.
+- The complete installed Settings → Components → Close → Settings → Close →
+  drawer close → Chat path passed with Xcode-generated simulator signing.
+  Returning from Settings retains the existing drawer state; the check closes
+  that drawer before asserting the composer is visible.
+- The HTML-to-GPU navigation uses the shared `k_go` anchor; its Coax regression
+  check passes. It does not depend on a gallery-specific JavaScript handler.
