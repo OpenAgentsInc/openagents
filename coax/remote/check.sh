@@ -12,7 +12,11 @@
 #                                         check); ALSO is one more check that must pass
 #                                         ("only PATH", "reports"...: a revert's own check)
 #   coax/remote/check.sh since BASE I/N   the I-th of N parts of the suites whose sources
-#                                         changed since BASE (after.sh's fast run)
+#                                         changed since BASE (after.sh's fast run); no mutants
+#   coax/remote/check.sh mutate-since BASE I/N
+#                                         the I-th of N parts of the mutants of what changed
+#                                         since BASE in those suites (after.sh's mutation
+#                                         job: a report, never a verdict)
 #   coax/remote/check.sh web BASE         the web modules the change since BASE touched,
 #                                         and the report checks (a fast run)
 #   coax/remote/check.sh room-since BASE [PROD]
@@ -642,7 +646,7 @@ run() {   # mode arg: one check
   local mode="$1" arg="${2:-}"
   case "$mode" in
     suites) suites --part "$arg" || status=1 ;;
-    # With a BASE, as branch and since below: the #authority suites mutate what changed (#13583).
+    # With a BASE, as branch below: the #authority suites mutate what changed (#13583).
     # A BASE this checkout lacks is said and mutates nothing (the after-landing check runs it).
     only) local base="${also[0]:-}"
           if [[ -n "$base" ]] && ! git cat-file -e "$base^{commit}" 2> /dev/null; then
@@ -701,9 +705,19 @@ case "$mode" in
     reports_since
     if (( ${#also[@]} > 0 )); then run "${also[@]}" || { echo "check.sh: unknown check ${also[*]}" >&2; exit 2; }; fi ;;
   since)
+    # No mutants: those are the mutation job's, below, so the suites' verdict
+    # comes in on time whatever the mutants take.
     part="${3:-1/1}"
     changed_since
-    if grep -qvE '(\.md$|^docs/)' "$out/changed"; then suites --since "$arg" --mutate-changed "$arg" --part "$part" || status=1
+    if grep -qvE '(\.md$|^docs/)' "$out/changed"; then suites --since "$arg" --part "$part" || status=1
+    else echo "== suites: skipped, the change is only documents" >> "$log"; fi ;;
+  mutate-since)
+    # The mutants alone (tool.sh suites --mutate-only), split in parts, for
+    # after.sh's report. The pre-push and the integrator's branch check keep
+    # the gate that blocks.
+    part="${3:-1/1}"
+    changed_since
+    if grep -qvE '(\.md$|^docs/)' "$out/changed"; then suites --since "$arg" --mutate-changed "$arg" --mutate-only --part "$part" || status=1
     else echo "== suites: skipped, the change is only documents" >> "$log"; fi ;;
   web)
     changed_since
@@ -721,7 +735,7 @@ case "$mode" in
     changed_since
     if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room "${also[0]:-}"
     else echo "== room-build: skipped, the change doesn't reach the room" >> "$log"; fi ;;
-  *) run "$mode" "$arg" || { sed -n '8,45p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
+  *) run "$mode" "$arg" || { sed -n '8,49p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
 esac
 limits; sizes
 # A failure that says nothing of the commit: the host could not run the check

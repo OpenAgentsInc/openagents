@@ -927,8 +927,11 @@ the baseline runs.
 
 This is how `#authority` code is gated. A change to an `#authority` unit
 mutates the procedures it touched, and a survivor there stops it:
-`coax/remote/check.sh` runs `coax/web/tool.sh suites --mutate-changed BASE`,
-which mutates each touched suite that loads an `#authority` file. The full
+`coax/remote/check.sh` runs `coax/web/tool.sh suites --mutate-changed BASE`
+before a push and on the integrator's branches, which mutates each touched
+suite that loads an `#authority` file. After landing, the same mutants run
+beside the checks as a report (`check.sh mutate-since`), which names each
+survivor and blocks nothing. The full
 sweep of every `#authority` file runs nightly on the build pool
 (`coax/remote/mutation-sweep.sh`), keeps one issue current with its
 survivors, and blocks nothing. A unit's first pass still goes to zero

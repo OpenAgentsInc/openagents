@@ -37,7 +37,9 @@
 # (check.sh room-since G), the API suite in OA_AFTER_API_PARTS parts when the
 # change reaches it (check.sh api-since G I/N), Coder's checks and smoke when it
 # reaches Coder (check.sh coder-since G), and coax/tests/run.sh in 8
-# parts when compiler sources changed. Everything else
+# parts when compiler sources changed. Beside them, and never part of the
+# verdict, the mutation report: the mutants of what the change touched
+# (check.sh mutate-since, mutants_of below). Everything else
 # passed at G and reads no changed file, so it passes at H. A head that changes
 # only documents is green with no job. A head that changes the compiler
 # (coax/src, coax/bootstrap, coax/build.sh) gets a full run instead.
@@ -82,12 +84,14 @@
 # finish a head.
 #
 # Results: OA_PIPELINE_DIR/releases/after/COMMIT/ (each job's output and
-# report, run.tsv with each job's status and seconds, kind and status),
+# report, run.tsv with each job's status and seconds, kind and status, and
+# mutants/ with the mutation report, report.md),
 # history.tsv (commit, time, kind, name, value, limit), runs.tsv (time, commit,
 # kind, status, seconds, slot-seconds, jobs) and red.json.
 #
 # Settings: OA_AFTER_PARTS (6), OA_AFTER_MODULE_PARTS (3), OA_AFTER_FAST_PARTS
-# (3), OA_AFTER_API_PARTS (2), OA_AFTER_GAP (10800: seconds between full
+# (3), OA_AFTER_API_PARTS (2), OA_AFTER_MUTATE (1: the mutation report; 0: none),
+# OA_AFTER_MUTATE_PARTS (3), OA_AFTER_MUTATE_TIMEOUT (OA_AFTER_TIMEOUT), OA_AFTER_GAP (10800: seconds between full
 # runs), OA_AFTER_FAST_GAP (0: seconds between fast runs), OA_AFTER_COMPILER (auto, always or never),
 # OA_BISECT_WIDTH (4), OA_BISECT_CHECKS (4: failing checks bisected one by
 # one; the rest wait for the next run), OA_AFTER_TIMEOUT (3000 s a job),
@@ -654,6 +658,135 @@ $(tail -n 30 "$dir/build/pipeline/soak.log" 2> /dev/null | cut -c1-300)
   ) 8>&- 7>&- &
 }
 
+# The mutation report (#13583, #13601, #13603): beside each fast run, the
+# mutants of the procedures its change touched, in the #authority suites that
+# reach them (check.sh mutate-since BASE I/N, in OA_AFTER_MUTATE_PARTS parts,
+# OA_AFTER_MUTATE_TIMEOUT seconds a part). It is a report and never a verdict:
+# it doesn't hold main-green, put anything on the red list, start a bisect or
+# a revert, or count as flaky. The gate that blocks is the pre-push's and the
+# integrator's (check.sh only PATH BASE, check.sh branch BASE). One report runs
+# at a time; a head that comes while one runs gets none, and the next report
+# starts from the head the last one covered, so no change goes unmutated. The
+# report, RESULTS/HEAD/mutants/report.md, names each surviving mutant's file,
+# procedure, lines and counts, each procedure no check reaches, and each part
+# or suite the tool could not finish ("no summary", a timeout, a host that
+# could not run it), each with the command that runs it alone from its base.
+# A report with any of these goes to one GitHub issue, opened when none is
+# open (OA_AFTER_MUTATE=0: no report).
+mutate_parts="${OA_AFTER_MUTATE_PARTS:-3}"
+mutate_limit="${OA_AFTER_MUTATE_TIMEOUT:-$limit}"
+mutants_title="Mutation report: survivors and tool problems after landing"
+mutants_pid=""
+mutants_path() {   # dir rel: DIR/REL with "." and ".." taken out
+  local IFS=/ p out=() parts=()
+  read -ra parts <<< "$1/$2"
+  for p in "${parts[@]}"; do
+    case "$p" in ""|.) ;; ..) (( ${#out[@]} == 0 )) || unset 'out[${#out[@]}-1]' ;; *) out+=("$p") ;; esac
+  done
+  echo "${out[*]}"
+}
+mutants_proc() {   # head path line: the procedure the line is in ("?" when none)
+  git show "$1:$2" 2> /dev/null | awk -v l="$3" 'NR > l { exit } match($0, /^[ \t]*[A-Za-z_][A-Za-z0-9_]* :: [(]/) { s = substr($0, RSTART, RLENGTH); sub(/^[ \t]*/, "", s); sub(/ :: [(]$/, "", s); p = s } END { print (p == "" ? "?" : p) }'
+}
+# One part's log as records: S SUITE SUMMARY PATH:LINE:COL WHAT (a survivor),
+# U SUITE SUMMARY NAMES (not reached), T SUITE WHY DETAIL (the tool did not finish).
+mutants_records() {   # log
+  awk -F'\t' '
+    function flush() { if (cur != "" && mode == "T") printf "T\t%s\t%s\t%s\n", cur, summ, detail; cur = ""; mode = ""; detail = "" }
+    /^FAIL [^ ]+ \(mutate --changed [0-9a-f]+\): / {
+      flush(); cur = $0; sub(/^FAIL /, "", cur); sub(/ .*/, "", cur)
+      summ = $0; sub(/^FAIL [^ ]+ \(mutate --changed [0-9a-f]+\): /, "", summ); sub(/ \([0-9]+ s\)$/, "", summ)
+      mode = (summ ~ /^[0-9]+ mutants?, [0-9]+ killed, [0-9]+ survived/ || summ ~ /^nothing to mutate/) ? "S" : "T"; next }
+    /^FAIL [^ ]+: the compiler did not start$/ { flush(); s = $0; sub(/^FAIL /, "", s); sub(/: .*/, "", s); printf "T\t%s\tthe compiler did not start\t\n", s; next }
+    /^(ok   |FAIL |suites: |== )/ { flush(); next }
+    mode == "S" && /: mutant survived: / { l = $0; sub(/^ +/, "", l); w = l; sub(/: mutant survived: .*/, "", l); sub(/.*: mutant survived: /, "", w); printf "S\t%s\t%s\t%s\t%s\n", cur, summ, l, w; next }
+    mode == "S" && /^ *not reached by any check: / { l = $0; sub(/^ *not reached by any check: /, "", l); printf "U\t%s\t%s\t%s\n", cur, summ, l; next }
+    mode == "T" && detail == "" && /(error\[E[0-9]+\]|^coax: |still running)/ { d = $0; sub(/^ +/, "", d); detail = substr(d, 1, 240) }
+    END { flush() }' "$1"
+}
+mutants_report() {   # head base dir status...: the report (markdown); status 1 when it has nothing to say
+  local head="$1" base="$2" dir="$3" i=0 s n_s=0 n_u=0 n_t=0 alone="coax/remote/remote.sh run -- coax/remote/check.sh"; shift 3
+  : > "$dir/records.tsv"
+  for s in "$@"; do
+    i=$((i + 1))
+    if [[ "$s" == 97 ]]; then
+      printf 'P\tpart %s/%s\tthe hosts could not finish it\t%s\n' "$i" "$mutate_parts" "$(grep -v '^ *$' "$dir/part-$i/out" 2> /dev/null | tail -1 | cut -c1-240)" >> "$dir/records.tsv"
+    else
+      mutants_records "$dir/part-$i/build/pipeline/mutate-since.log" >> "$dir/records.tsv"
+    fi
+  done
+  echo "Mutants of what changed from ${base:0:10} to ${head:0:10} on \`$pl_main\` (\`check.sh mutate-since $base I/$mutate_parts\`). A report only: it doesn't hold \`$pl_green\`, go on the red list or start a revert."
+  # Survivors: one line a procedure.
+  local suite summ at what p line proc key keys=() owner
+  while IFS=$'\t' read -r _ suite summ at what; do
+    p="$(mutants_path "$(dirname "$suite")" "${at%%:*}")"; line="${at#*:}"; line="${line%%:*}"
+    proc="$(mutants_proc "$head" "$p" "$line")"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$p" "$proc" "$line" "$suite" "$summ" "$what"
+  done < <(awk -F'\t' '$1 == "S"' "$dir/records.tsv") | sort -t$'\t' -k1,1 -k2,2 -k3,3n > "$dir/survivors.tsv"
+  if [[ -s "$dir/survivors.tsv" ]]; then
+    echo; echo "Surviving mutants (a check that fails for each, or \`// mutant: equivalent\` on a line that can't change behaviour):"
+    while IFS=$'\t' read -r p proc; do
+      n_s=$((n_s + 1))
+      local rows lo hi n sts
+      rows="$(awk -F'\t' -v p="$p" -v q="$proc" '$1 == p && $2 == q' "$dir/survivors.tsv")"
+      lo="$(cut -f3 <<< "$rows" | head -1)"; hi="$(cut -f3 <<< "$rows" | tail -1)"; n="$(wc -l <<< "$rows" | tr -d ' ')"
+      sts="$(cut -f4 <<< "$rows" | sort -u | tr '\n' ' ' | sed 's/ $//')"
+      owner="$(git log -1 --format=%H "$base..$head" -- "$p" 2> /dev/null)"
+      echo "- \`$p\` \`$proc\`, line$([[ "$lo" == "$hi" ]] && echo " $lo" || echo "s $lo-$hi"): $n mutant(s) survived; the suite: $(cut -f4,5 <<< "$rows" | sort -u | awk -F'\t' '{ printf "%s%s (%s)", (NR > 1 ? ", " : ""), $1, $2 }')${owner:+; changed by ${owner:0:10} (agent \`$(pl_agent_of "$owner")\`)}. Run alone: \`$alone only ${sts// /,} $base\`"
+      cut -f3,6 <<< "$rows" | head -n 12 | awk -F'\t' '{ print "  - line " $1 ": " $2 }'
+    done < <(cut -f1,2 "$dir/survivors.tsv" | awk '!seen[$0]++')
+  fi
+  if awk -F'\t' '$1 == "U"' "$dir/records.tsv" | grep -q .; then
+    echo; echo "Changed procedures no check reaches (call each from a #test or #forall):"
+    while IFS=$'\t' read -r _ suite summ what; do
+      n_u=$((n_u + 1)); echo "- \`$suite\`: $what. Run alone: \`$alone only $suite $base\`"
+    done < <(awk -F'\t' '$1 == "U"' "$dir/records.tsv")
+  fi
+  if awk -F'\t' '$1 == "T" || $1 == "P"' "$dir/records.tsv" | grep -q .; then
+    echo; echo "Tool problems: the mutation tool did not finish these, so their mutants are not judged (not the commit's failure, not flaky):"
+    while IFS=$'\t' read -r k suite summ what; do
+      n_t=$((n_t + 1))
+      if [[ "$k" == P ]]; then echo "- $suite: $summ${what:+ (\`$what\`)}. Run alone: \`$alone mutate-since $base ${suite#part }\`"
+      else echo "- \`$suite\`: $summ${what:+: \`$what\`}. Run alone: \`$alone only $suite $base\`"; fi
+    done < <(awk -F'\t' '$1 == "T" || $1 == "P"' "$dir/records.tsv")
+  fi
+  echo; echo "Each part's output: \`$dir/\` on the watcher's machine."
+  echo "$n_s $n_u $n_t" > "$dir/counts"
+  (( n_s + n_u + n_t > 0 ))
+}
+mutants_of() {   # head base: the head's report, in the background
+  [[ "${OA_AFTER_MUTATE:-1}" != 0 ]] || return 0
+  local head="$1" base="$2" last=""
+  [[ ! -d "$results/$head/mutants" ]] || return 0
+  [[ ! -f "$results/mutants-head" ]] || last="$(cat "$results/mutants-head")"
+  if [[ -n "$last" && "$last" != "$head" ]] && git merge-base --is-ancestor "$base" "$last" 2> /dev/null &&
+     git merge-base --is-ancestor "$last" "$head" 2> /dev/null; then base="$last"; fi
+  git diff --name-only "$base" "$head" | grep -qvE '(\.md$|^docs/)' || return 0
+  (
+    flock -n 6 || { pl_say "after: a mutation report is running; ${head:0:10}'s change goes in the next one"; exit 0; }
+    dir="$results/$head/mutants"; mkdir -p "$dir"; echo "$base" > "$dir/base"
+    limit="$mutate_limit"
+    pids=() st=()
+    for (( i = 1; i <= mutate_parts; i++ )); do check "$head" "$dir/part-$i" mutate-since "$base" "$i/$mutate_parts" & pids+=($!); done
+    for p in "${pids[@]}"; do wait "$p"; st+=($?); done
+    echo "$head" > "$results/mutants-head"
+    if mutants_report "$head" "$base" "$dir" "${st[@]}" > "$dir/report.md"; then
+      read -r ns nu nt < "$dir/counts"
+      pl_say "after: mutation report at ${head:0:10}: $ns procedure(s) with survivors, $nu unreached, $nt tool problem(s) ($dir/report.md)"
+      if [[ "$pl_issues" == 1 ]]; then
+        n="$(gh issue list --repo "$pl_repo" --state open --search "\"$mutants_title\" in:title" --json number,title --jq "[.[] | select(.title == \"$mutants_title\")][0].number // empty" 2> /dev/null)"
+        if [[ -n "$n" ]]; then pl_issue_comment "$n" "**${head:0:10}**: $(head -c 60000 "$dir/report.md")"
+        else gh issue create --repo "$pl_repo" --title "$mutants_title" --body "The after-landing mutation report (\`coax/remote/after.sh\`, docs/metaverse/green-main-pipeline.md): each fast run's change, mutated. It never holds \`$pl_green\` or reverts anything; each comment is one head's report.
+
+**${head:0:10}**: $(head -c 60000 "$dir/report.md")" > /dev/null 2>&1 || pl_say "could not open the mutation report's issue"; fi
+      fi
+    else
+      pl_say "after: mutation report at ${head:0:10}: every mutant killed"
+    fi
+  ) 6> "$results/mutants.lock" 8>&- 7>&- &
+  mutants_pid=$!
+}
+
 due() {   # stamp seconds: whether the stamp is that old, or missing
   [[ ! -f "$results/$1" ]] || (( $(date +%s) - $(cat "$results/$1") >= $2 ))
 }
@@ -817,6 +950,8 @@ run_head() {
     check "$head" "$dir/${j//[ \/]/-}" $j & pids+=($!)
   done
   [[ ! -s "$dir/passed" ]] || pl_say "after: $(wc -l < "$dir/passed" | tr -d ' ') of the job(s) passed on ${head:0:10} before and don't run again"
+  # Beside the jobs, the change's mutants: a report, never part of this run's verdict.
+  [[ "$kind" != fast || -z "$changed" ]] || mutants_of "$head" "$ref"
   local st=() k failed=() infra=0
   for k in "${!pids[@]}"; do if [[ "${pids[$k]}" == 0 ]]; then st+=(0); else wait "${pids[$k]}"; st+=($?); fi; done
   for k in "${!names[@]}"; do [[ "${st[$k]}" != 0 ]] || echo "${names[$k]}"; done > "$dir/passed"
@@ -1097,4 +1232,6 @@ if (( watch == 1 )); then
   done
 else
   once
+  # One run: its mutation report too, before it ends.
+  [[ -z "$mutants_pid" ]] || wait "$mutants_pid"
 fi

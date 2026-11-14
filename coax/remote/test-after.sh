@@ -22,6 +22,12 @@
 #  11. a check that fails on one host and passes on another (#13327): not the commit's; nothing filed
 #  12. a full run that finds a culprit the fast runs passed: main-green goes back to just before
 #      the culprit, not to the last full green run
+# And the mutation report (#13601, #13603), which is never a verdict:
+#  15. a since job beside a failing mutation part: the suites alone judge the head (green, main-green
+#      moves); a surviving mutant is in the report with its file, procedure, lines, counts and the
+#      command with its base, in one GitHub issue, and nothing goes on the red list or is reverted
+#  16. a mutation part the tool could not finish ("no summary") and one the hosts could not: tool
+#      problems in the report, a comment on that issue, no flaky entry, green
 # And the service watch (#13379):
 #  13. a production crash alert's bucket gets one GitHub issue: none while GitHub can't be asked,
 #      none for staging, no second when the watcher's memory is gone, a new one after its alert
@@ -58,7 +64,9 @@ Agent: test-base" && g push -q origin main && g push -q origin main:refs/heads/m
 # commit has e2-regress; a suite part fails once when the commit has flaky-once. The host faults
 # (#13256): toolchain-moved is not judged (97) until after.sh asks for the compiler again
 # (OA_REMOTE_FRESH_COMPILER=1); host-full fails with no output until then; host-broken is never
-# judged; full-break fails the full run's suite parts.
+# judged; full-break fails the full run's suite parts. The mutation job's parts (mutate-since):
+# mutant-survives leaves two survivors in lib/b.coax's bee, mutate-no-summary a suite the tool
+# could not finish, and mutate-host-down a part no host can run.
 cat > "$w/check" <<'EOF'
 #!/usr/bin/env bash
 commit="$1" dir="$2"; shift 2
@@ -82,6 +90,22 @@ case "$1" in
   since)
     if has flaky-once && [[ ! -e "$OA_TEST_W/flaked" ]]; then : > "$OA_TEST_W/flaked"; fail "$1" "suite lib/a.coax"; fi ;;
   suites|only) has full-break && fail "$1" "suite lib/a.coax" ;;
+  mutate-since)
+    log="$dir/build/pipeline/mutate-since.log"; : > "$log"
+    has mutate-host-down && [[ "$3" == 2/* ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
+    [[ "$3" == 1/* ]] || exit 0
+    if has mutant-survives; then
+      { echo "FAIL lib/a.coax (mutate --changed $2): 5 mutants, 3 killed, 2 survived (2 s)"
+        echo "       b.coax:2:12: mutant survived: '+' became '-'"
+        echo "       b.coax:3:5: mutant survived: 2 became 3"; } >> "$log"
+      fail "$1" "suite lib/a.coax"
+    fi
+    if has mutate-no-summary; then
+      { echo "FAIL lib/a.coax (mutate --changed $2): no summary (9 s)"
+        echo "       "; echo "    ^"
+        echo "b.coax:2:3: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget"; } >> "$log"
+      fail "$1" "suite lib/a.coax"
+    fi ;;
 esac
 exit 0
 EOF
@@ -181,6 +205,38 @@ s="$(run)"
 [[ "$s" == green && "$(open_count)" == "$before" ]] && green_is "$c12" && grep -q "remote: oa-good" "$w/pl/releases/after/$c12"/bisect-0/c1-*/out &&
   ok "11: a failure on one host is run again on another, passes there, and nothing is filed" || { bad "11: status $s, open $(open_count)"; cat "$w/run.log"; }
 rm -f "$w/repo/one-bad-host"; push agent-bh "off the bad host"; c10b="$(g rev-parse HEAD)"; s="$(run)"
+
+# 15: the mutation report, with a stand-in for gh (its calls logged; one open issue at most).
+mkdir -p "$w/fake15"
+printf '%s\n' '#!/usr/bin/env bash' 'echo "$*" | head -1 >> "$OA_TEST_W/gh15.log"' 'case "$1 $2" in' \
+  '  "issue list") cat "$OA_TEST_W/gh15-open" 2> /dev/null ;;' \
+  '  "issue create") echo 950 > "$OA_TEST_W/gh15-open"; echo "https://github.com/x/y/issues/950" ;;' 'esac' > "$w/fake15/gh"
+chmod +x "$w/fake15/gh"
+run15() { (cd "$w/repo" && PATH="$w/fake15:$PATH" OA_PIPELINE_ISSUES=1 coax/remote/after.sh --once) > "$w/run.log" 2>&1; tail -1 "$w/pl/releases/after/runs.tsv" | cut -f4; }
+reds15="$(jq length "$red")"
+printf 'bee :: (x: int) -> int {\n  y := x + 1;\n  return y * 2;\n}\n' > "$w/repo/lib/b.coax"
+touch "$w/repo/mutant-survives"; push agent-mut "a procedure its checks don't pin down"; c15="$(g rev-parse HEAD)"; b15="$(git -C "$w/origin.git" rev-parse main-green)"
+s="$(run15)"; rep15="$w/pl/releases/after/$c15/mutants/report.md"
+[[ "$s" == green && "$(jq length "$red")" == "$reds15" ]] && green_is "$c15" && ! grep -q mutate "$w/pl/releases/after/$c15/run.tsv" &&
+  ok "15: a failing mutation part leaves the verdict to the suites: green, main-green moves, nothing on the red list" || { bad "15: status $s, red entries $(jq length "$red")"; cat "$w/run.log"; }
+grep -qF '`lib/b.coax` `bee`, lines 2-3: 2 mutant(s) survived; the suite: lib/a.coax (5 mutants, 3 killed, 2 survived); changed by '"${c15:0:10}"' (agent `agent-mut`)' "$rep15" 2> /dev/null &&
+  grep -qF "check.sh only lib/a.coax $b15\`" "$rep15" && grep -q "line 3: 2 became 3" "$rep15" &&
+  [[ "$(grep -c '^issue create' "$w/gh15.log")" == 1 ]] && ! grep -q '^issue comment' "$w/gh15.log" &&
+  ok "15: the survivors are in the report (file, procedure, lines, counts, the command with its base) and its one issue" || { bad "15: the report"; cat "$rep15" "$w/gh15.log" "$w/run.log" 2> /dev/null; }
+! grep -qi "revert\|bisect" "$w/run.log" && ok "15: no bisect and no revert" || { bad "15: a bisect or a revert"; cat "$w/run.log"; }
+
+# 16
+rm -f "$w/repo/mutant-survives"; touch "$w/repo/mutate-no-summary" "$w/repo/mutate-host-down"
+printf 'bee :: (x: int) -> int {\n  return x + 2;\n}\n' > "$w/repo/lib/b.coax"; push agent-mut "the tool can't finish its mutants"; c16="$(g rev-parse HEAD)"
+flaky16="$(cat "$w/pl/releases/after/flaky.tsv")"
+s="$(run15)"; rep16="$w/pl/releases/after/$c16/mutants/report.md"
+[[ "$s" == green && "$(jq length "$red")" == "$reds15" && "$(cat "$w/pl/releases/after/flaky.tsv")" == "$flaky16" ]] && green_is "$c16" &&
+  ok "16: mutants the tool could not finish are neither red nor flaky: green" || { bad "16: status $s, red entries $(jq length "$red")"; cat "$w/run.log"; }
+grep -qF '`lib/a.coax`: no summary: `b.coax:2:3: error[E0400]' "$rep16" 2> /dev/null && grep -q "part 2/3: the hosts could not finish it" "$rep16" &&
+  grep -qF "check.sh mutate-since $c15 2/3\`" "$rep16" && grep -qF "check.sh only lib/a.coax $c15\`" "$rep16" &&
+  [[ "$(grep -c '^issue create' "$w/gh15.log")" == 1 && "$(grep -c '^issue comment 950' "$w/gh15.log")" == 1 ]] &&
+  ok "16: they are tool problems in the report, with the commands from their base, as a comment on its issue" || { bad "16: the report"; cat "$rep16" "$w/gh15.log" "$w/run.log" 2> /dev/null; }
+rm -f "$w/repo/mutate-no-summary" "$w/repo/mutate-host-down"; push agent-mut "off the mutants"; c10b="$(g rev-parse HEAD)"; s="$(run)"
 
 # 12
 echo "$c10b" > "$w/pl/releases/after/full-green"

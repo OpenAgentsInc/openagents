@@ -297,6 +297,10 @@ and runs only what the commits between them can have changed:
 - the allowlist counts against `main-green`, with `git` alone on the watcher;
 - `coax/tests/run.sh` in eight parts, when compiler sources changed.
 
+Beside these jobs, and never part of the verdict, the mutation report runs
+the mutants of the procedures the change touched ("The mutation report",
+below).
+
 Every other check passed at `G` and reads no file that changed, so it passes
 at `H`. A head that changes only documents is green with no job. A head that
 changes the compiler (`coax/src/`, `coax/bootstrap/`, `coax/build.sh`) gets a
@@ -548,6 +552,52 @@ entry leaves the list when its issue is closed (the watcher looks once an
 hour). The list before this, `flaky.txt` (head and check, no owner), is kept as
 `flaky-before-13266.txt`.
 
+#### The mutation report
+
+Issues [#13601](https://github.com/OpenAgentsInc/openagents/issues/13601),
+[#13602](https://github.com/OpenAgentsInc/openagents/issues/13602) and
+[#13603](https://github.com/OpenAgentsInc/openagents/issues/13603). The gate
+that blocks a change to `#authority` code is the pre-push's and the
+integrator's: `check.sh only PATHS BASE` and `check.sh branch BASE` run
+`coax mutate --changed BASE` on each touched suite that loads an
+`#authority` file, and a survivor stops the push or the branch. After
+landing, the same mutants are a report. A fast run's `since` jobs run the
+suites alone, so their verdict comes in on time whatever the mutants take.
+Beside them, `after.sh` runs `check.sh mutate-since BASE I/N`
+(`coax/web/tool.sh suites --since BASE --mutate-changed BASE --mutate-only`)
+in three parts (`OA_AFTER_MUTATE_PARTS`), each with the job time limit
+(`OA_AFTER_MUTATE_TIMEOUT`, `OA_AFTER_TIMEOUT` by default).
+
+The report never holds `main-green`, never goes on the red list, never
+starts a bisect or a revert, and is never a flaky entry. It is
+`releases/after/<head>/mutants/report.md`. It lists:
+
+- each procedure with surviving mutants: its file, its name, its lines, how
+  many survived, the suite's counts, the commit and agent that last changed
+  the file, and the command that runs it alone from its base
+  (`coax/remote/remote.sh run -- coax/remote/check.sh only SUITE BASE`);
+- each changed procedure no check reaches;
+- each tool problem: a suite whose mutate run ended with no summary (a
+  baseline over an evaluator limit, for example), or a part the hosts could
+  not finish (a timeout or a host fault), with its command. These are the
+  tool's, not the commit's.
+
+A report with any of these goes to one GitHub issue, "Mutation report:
+survivors and tool problems after landing", opened when none is open, with
+one comment a head. One report runs at a time. A head that lands while one
+runs gets none, and the next report starts from the head the last one
+covered (`releases/after/mutants-head`), so every change is mutated once.
+`OA_AFTER_MUTATE=0` turns the report off. `coax/remote/test-after.sh` cases
+15 and 16 check that a failing mutation part leaves the verdict to the
+suites, and that survivors and tool problems are reported and nothing else.
+
+Before this, the `since` jobs ran the mutants themselves (#13583). A slow
+mutate run then held the whole job past its time limit, so the run was
+unfinished and `main-green` stopped (#13603). A survivor failed the job as
+`suite PATH`, and its run again (`check.sh only PATH`, with no base) skipped
+the mutants and passed, so the survivor was filed as a flaky check (#13601,
+#13602).
+
 #### `main-green`'s lag
 
 The watcher writes the lag (the age of the oldest commit on `main` after
@@ -607,7 +657,7 @@ Issue [#13102](https://github.com/OpenAgentsInc/openagents/issues/13102).
 | --- | --- |
 | Submit and the queue refs | `coax/remote/submit.sh` (`status`, `withdraw`) |
 | The integrator | `coax/remote/integrate.sh` (`--once`, `status`) |
-| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `room-since BASE [PROD]`, `coder-since BASE`, `coder`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `visuals`, `room [PROD]`, `tools [PROD]`, `e2 PROD`, `counts BASE`, `fuzz [HOURS]`, `soak [SECONDS [PLAYERS [DAY]]]`) |
+| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `mutate-since BASE I/N`, `web BASE`, `room-since BASE [PROD]`, `coder-since BASE`, `coder`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `visuals`, `room [PROD]`, `tools [PROD]`, `e2 PROD`, `counts BASE`, `fuzz [HOURS]`, `soak [SECONDS [PLAYERS [DAY]]]`) |
 | The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `install`, `uninstall`, `state`, `health`, `red`, `history`, `flaky`) |
 | The build hosts' pinned nixpkgs (#13256) | `coax/remote/nixpkgs.rev` |
 | The allowlist counts (#13266) | `coax/remote/counts.sh` (`show [REV]`, `check BASE [REV]`) |

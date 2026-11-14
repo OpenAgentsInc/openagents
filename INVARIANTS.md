@@ -38,16 +38,21 @@ Owner decision, 2026-11-14 (#13583). A change that touches an `#authority`
 unit passes `coax mutate --changed BASE` on each suite that loads one: every
 check runs, and every mutant of a procedure whose text changed since BASE is
 killed or marked equivalent with a reason; a changed procedure no check
-reaches fails. `coax/remote/check.sh` (branch, since, and only with a BASE,
-which the pre-push passes) runs it through `suites --mutate-changed`. The
+reaches fails. `coax/remote/check.sh` (branch, and only with a BASE, which
+the pre-push passes) runs it through `suites --mutate-changed`. After
+landing, the same mutants are a report that blocks nothing (`check.sh
+mutate-since`, the green-main pipeline's mutation report, #13601): it never
+holds main-green, goes on the red list, reverts or counts as flaky, and the
+`since` jobs run the suites alone. The
 full sweep of every `#authority` file is a nightly report
 (`coax/remote/mutation-sweep.sh`, one tracking issue) and blocks nothing; a
 unit's first pass still goes to zero survivors or marked equivalents. Shipped
 code is not rewritten only so a mutant stops being equivalent. Checks:
 `coax/tests/mutation_scope.py` (`--changed`: comment-only edits, one changed
 body, new units, `--unit`, a bad REF), `coax/tests/mutation_parallel.py`
-(several `--unit` equal their own runs), and the checks in
-`coax/web/suites.coax` and `coax/web/mutation-sweep.coax`.
+(several `--unit` equal their own runs), the checks in
+`coax/web/suites.coax` and `coax/web/mutation-sweep.coax`, and
+`coax/remote/test-after.sh` cases 15 and 16 (the report after landing).
 
 ## Host transport keeps concrete asynchronous owners across every effect
 
