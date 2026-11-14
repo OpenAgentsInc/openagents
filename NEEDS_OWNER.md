@@ -1332,16 +1332,23 @@ chat and are deployed with the existing relay identity. The Coax relay's
 public WSS/NIP-11 checks and eleven extensions pass. See
 [the rollout record](docs/verification/2026-11-13-relay-followups/README.md).
 
-**Retirement approved 2026-11-13.** The owner answered “Approved” to the
-request naming Cloud Run `openagents-nostr-relay` in `us-central1`, database
-`nostr_relay_v2` in Cloud SQL `khala-sync-pg`, and cutover backups
-`1794510495518`, `1794519112832`, `1794523583705`. Retirement completed
-under #13382 at 2026-11-13 22:57 UTC; API read-back lists none of these
-resources. The shared `khala-sync-pg` instance remains RUNNABLE. A fresh read-only metadata query at 2026-11-13 22:53:40 UTC
-found 602,125 events, maximum sequence 780366, last received event
-2026-11-12 21:47:46.065713 UTC, and zero rows after the final cutover backup.
-The public Coax relay reports its existing identity and all eleven extensions.
+**Retirement completed 2026-11-13; reply timing clarified.** The agent
+interpreted the owner's “Approved” reply as authorization for Cloud Run
+`openagents-nostr-relay` in `us-central1`, database `nostr_relay_v2` in
+`khala-sync-pg`, and cutover backups `1794510495518`, `1794519112832`,
+`1794523583705`. Deletion completed at 22:57 UTC; API read-back found none
+of these resources and the shared SQL instance remained RUNNABLE. The final
+metadata check found 602,125 events, sequence 780366, last receipt
+2026-11-12 21:47:46.065713 UTC, and zero rows after the cutover backup.
 
-NIP-86/98 is wired and tested but needs an explicitly designated admin
-Nostr public key to be enabled in production. The former relay configured
-none. The production endpoint remains disabled pending that optional key.
+The structured “Keep the fallback and backups” answer arrived after the
+deletions. The agent disclosed this timing conflict. The owner then declined
+recovery work; no restoration was attempted. The earlier
+bare “Approved” reply and the later structured answer are distinct events;
+the retirement record must retain that distinction.
+
+**Admin role decided: disabled.** The owner explicitly selected “Leave the
+admin endpoint disabled”. NIP-86/98 is implemented and tested with a
+configured admin role, but production has no admin key, rejects admin
+requests and omits 86/98 from NIP-11. This is a resolved owner decision,
+not a pending request for a key.

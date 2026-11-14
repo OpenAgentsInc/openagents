@@ -740,7 +740,7 @@ steps above, the owner decided it in #13361:
   The other five are in the first 10 minutes and are explained (the Pylon's
   beacon before the mirror delivered it, and the run's own check note).
 - **Read-only (steps 14, 16).** The Rust relay has no read-only switch.
-  It stayed writable at its Cloud Run address until the owner-approved
+  It stayed writable at its Cloud Run address until the
   retirement on 2026-11-13. The writes it took in the hour after the cutover
   (Cloud Run ends a WebSocket after 3,600 s) were carried over with the same
   delta export. The [retirement record](../../docs/verification/2026-11-13-relay-followups/README.md#rust-fallback-retirement)

@@ -1,0 +1,70 @@
+Read-only closure audit (America/Chicago): 2026-11-13T21:22:29.125192-06:00
+[
+  {
+    "name": "projects/openagentsgemini/uptimeCheckConfigs/coax-relay-nip-11-and-tls-fYNYUFRBICs",
+    "validate_ssl": true,
+    "period": "60s",
+    "content_matchers": [
+      {
+        "content": "\"name\":\"OpenAgents Relay\"",
+        "matcher": "CONTAINS_STRING"
+      }
+    ]
+  },
+  {
+    "name": "projects/openagentsgemini/alertPolicies/7984740570427026797",
+    "enabled": true,
+    "conditions": [
+      {
+        "conditionThreshold": {
+          "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"coax-relay-nip-11-and-tls-fYNYUFRBICs\"",
+          "comparison": "COMPARISON_LT",
+          "thresholdValue": 1,
+          "duration": "120s",
+          "trigger": {
+            "count": 1
+          },
+          "aggregations": [
+            {
+              "alignmentPeriod": "60s",
+              "perSeriesAligner": "ALIGN_NEXT_OLDER"
+            }
+          ]
+        },
+        "displayName": "Coax relay: NIP-11 or TLS unavailable",
+        "name": "projects/openagentsgemini/alertPolicies/7984740570427026797/conditions/7984740570427024052"
+      }
+    ],
+    "notification_channels": [
+      "projects/openagentsgemini/notificationChannels/14067723742793378411"
+    ]
+  },
+  {
+    "name": "projects/openagentsgemini/alertPolicies/9580676075493840699",
+    "enabled": true,
+    "conditions": [
+      {
+        "conditionThreshold": {
+          "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/time_until_ssl_cert_expires\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"coax-relay-nip-11-and-tls-fYNYUFRBICs\"",
+          "comparison": "COMPARISON_LT",
+          "thresholdValue": 14,
+          "duration": "600s",
+          "trigger": {
+            "count": 1
+          },
+          "aggregations": [
+            {
+              "alignmentPeriod": "60s",
+              "perSeriesAligner": "ALIGN_MIN"
+            }
+          ]
+        },
+        "displayName": "Coax relay: served certificate expires within 14 days",
+        "name": "projects/openagentsgemini/alertPolicies/9580676075493840699/conditions/9580676075493842616"
+      }
+    ],
+    "notification_channels": [
+      "projects/openagentsgemini/notificationChannels/14067723742793378411"
+    ]
+  }
+]

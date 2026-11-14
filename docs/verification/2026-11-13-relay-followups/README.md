@@ -1,9 +1,10 @@
 # Coax relay after the cutover (#13382)
 
 The owner approved file-backed relay custody and the Rust relay's private-kind
-write checks on 2026-11-13, answering “Approve both”. In a separate reply,
-the owner answered “Approved” to the named Rust service, database and
-cutover-backup retirement request. That retirement completed the same day.
+write checks on 2026-11-13, answering “Approve both”. The Rust retirement
+completed the same day after the agent interpreted a separate “Approved”
+reply as authorization. The later structured retention answer and the
+owner's decision against recovery are recorded below.
 
 ## Behavior
 
@@ -79,7 +80,7 @@ days. Both use the existing owner notification channel
 files under `nostr/relay/monitoring/` describe these resources.
 
 Cloud Run `openagents-nostr-relay`, database `nostr_relay_v2` and the three
-cutover backups were retired with owner approval on 2026-11-13, as recorded
+cutover backups were retired on 2026-11-13, with the reply timing recorded
 below. Recovery uses the retained Coax binary, store generations, data-disk
 snapshots and freshness-checkpoint copies. Never pair a store with another
 generation's checkpoint.
@@ -91,14 +92,18 @@ A read-only PostgreSQL metadata query at 2026-11-13 22:14:25 UTC found
 2026-11-12 21:47:46.065713 UTC. There were zero rows received after
 2026-11-12 22:46:23 UTC, the final cutover backup. No event payloads or
 credentials were printed. This metadata check preceded the separate owner
-retirement approval and was repeated immediately before deletion.
+retirement exchange and was repeated immediately before deletion.
 
 
 ## Rust fallback retirement
 
-The owner answered “Approved” to the request explicitly naming Cloud Run
-`openagents-nostr-relay`, database `nostr_relay_v2` in `khala-sync-pg`, and
-cutover backups `1794510495518`, `1794519112832`, `1794523583705`.
+The agent interpreted the owner's bare “Approved” reply as authorization
+for the request naming Cloud Run `openagents-nostr-relay`, database
+`nostr_relay_v2` in `khala-sync-pg`, and cutover backups `1794510495518`,
+`1794519112832`, `1794523583705`. After deletion, the structured reply
+“Keep the fallback and backups” arrived. The discrepancy was disclosed;
+the owner declined recovery work and no restoration was attempted. This
+record does not treat that late structured reply as approval for deletion.
 
 A metadata query at 22:53:40 UTC on 2026-11-13 found the same 602,125 events
 and sequence 780366. After deleting the Rust service, a second read-only
@@ -202,3 +207,40 @@ After the compacted generation reached `listening`, production SIGHUP
 reload preserved an existing WSS connection and its REQ/EOSE response;
 a new TLS/WSS connection also succeeded. The service had zero automatic
 restarts. Checkpoint upload and the weekly timer are active.
+
+## Closure audit (2026-11-13, America/Chicago)
+
+Every #13382 item has a disposition:
+
+| Item | Disposition and evidence |
+| --- | --- |
+| Content size | Retain the shared 65,536-byte content bound; live NIP-11 advertises it separately from the 131,072-byte frame bound. |
+| Restart/certificates | Checkpoint-covered signatures are skipped after prefix hash verification; initial replay measured 18.35 seconds. Existing-WSS and new-connection TLS reload checks pass. The post-compaction restart took 94 seconds; no universal 18-second guarantee is claimed. |
+| Store growth | Weekly verified compaction is enabled. The manual run removed 8,972,022 bytes with the served-set digest unchanged. It caused about 190 seconds of downtime including restart. |
+| Rate tracking | 4,096 key slots; retained scoped mutation and session checks pass. |
+| Connections | Sixteen per actual IPv4/IPv6 peer, 256 globally; retained scoped mutation and session checks pass. |
+| Monitoring | Live read-back confirms the 60-second TLS/content check and both enabled alerts with the existing notification channel. |
+| NIP-29/65/67/94/98 | 29/65/67/94 are deployed and advertised. NIP-98 protects configured NIP-86 admin roles and its signed-HTTP session checks pass. Production admin access stays disabled by the owner's explicit choice; 86/98 are deliberately not advertised there. |
+| Eleven extensions | All eleven are live in NIP-11 and covered by the independently signed integration sessions. |
+| Private writes | Owner-approved checks are deployed; write-policy and integration checks pass. |
+| Rust fallback | Service/database removed; quiet-period and absence receipts above. The late retention reply and subsequent decision against recovery are explicitly recorded. |
+| Cutover backups | All three named on-demand backups removed; absence receipt above. |
+
+The production relay and maintenance hashes still match the binaries
+qualified in this record. The service is active with zero automatic
+restarts; checkpoint upload succeeds and the weekly timer is active.
+The admin choice is resolved: “Leave the admin endpoint disabled”.
+
+The missed `nostr-chat` size budget was corrected in
+[`272158e062`](https://github.com/OpenAgentsInc/openagents/commit/272158e06209618f1e6c09a240bbbff6087d10a4).
+That commit records a passing full `coax/remote/check.sh wasm` run.
+[#13543's resolution](https://github.com/OpenAgentsInc/openagents/issues/13543#issuecomment-6870764541)
+records the targeted module passing on `443f774d6d`; #13531, #13535,
+#13536 and #13543 are closed. The relay server and policy files implemented
+in `abceb6d324` are unchanged; their earlier passing checks are cited rather
+than repeated.
+
+The overall repository `main-green` pointer still lags main. Closing this
+relay issue does not claim a green result for the whole repository. The
+pipeline status still includes an older `nostr-chat` red-list entry whose
+GitHub issue has already been closed with the passing result above.
