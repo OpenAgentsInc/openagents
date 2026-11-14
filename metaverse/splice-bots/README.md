@@ -416,7 +416,7 @@ metaverse/splice-bots/tools/jam-build.sh "$W" ~/UnrealProjects/out-slice1/final
 
 `WORLD_DIR` is the owner's world as published: the dev server's `build/.worlds` (read from disk;
 the server is not asked). The script exports, imports into `~/UnrealProjects/SpliceSlice1`, plays the
-scripted run inside Unreal, packages the web build into `OUT/web`, plays the run in headless Chrome at
+scripted run inside Unreal, packages the web build into `OUT/web` (the playable folder is `OUT/web/Wasm`), plays the run in headless Chrome at
 1440x900 (fixture `splice-play` in `metaverse-engine/export/unreal/web-fixtures.json`) and zips it as
 `OUT/SpliceBots_Splicebots.zip`, refusing one of 1 GB or more. About 15 minutes on a quiet Mac.
 
