@@ -15,6 +15,20 @@ for i in range(n):
 cat=entries[0][3].decode();vertices=bytearray(entries[1][3]);indices=bytearray(entries[2][3]);layers=sum(e[0]==4 for e in entries);lines=[];receipt={'source':'Quaternius Modular Character Outfits - Fantasy [Source]','license':'CC0 1.0 Universal','base_sha256':hashlib.sha256(raw).hexdigest(),'parts':[],'textures':[]}
 # Native imported images are converted through Blender; no external imaging dependency.
 family_layers={}
+# A garment's material gives its triangles their layer and kind (people.py KINDS, #13577): its family's
+# MI_<Family> is the family's cloth (green for the Ranger, pale for the rest) on the family's colour
+# layer; the body's MI_Regular_<Body> is the figure's skin, the bare arms and hands of the Ranger,
+# Peasant and Wizard arms, on the base pack's T_Regular_<Body>_Dark_BaseColor.png. A material this
+# leaves out is refused, as people.py refuses one its manifest's "kinds" leave out.
+skin_layers={l.split()[2]:int(l.split()[1]) for l in cat.splitlines() if l.startswith('T ')}
+def material_kind(obj,body,family,index):
+ slot=obj.material_slots[index] if index<len(obj.material_slots) else None;material=slot.material.name if slot and slot.material else None
+ if material==f'MI_{family}':return family_layers[family],4 if family=='Ranger' else 3
+ if material==f'MI_Regular_{body}':
+  name=f'T_Regular_{body}_Dark_BaseColor.png'
+  if name not in skin_layers:raise SystemExit(f'pack_fantasy_source: the base pack has no {name} for {obj.name}')
+  return skin_layers[name],1
+ raise SystemExit(f'pack_fantasy_source: {obj.name} uses {material}, which has no layer and kind here')
 with tempfile.TemporaryDirectory() as temp:
  for family in ('Knight','Noble','Peasant','Ranger','Wizard'):
   family_layers[family]=layers
@@ -35,6 +49,7 @@ with tempfile.TemporaryDirectory() as temp:
    evaluated=obj.evaluated_get(bpy.context.evaluated_depsgraph_get());mesh=evaluated.to_mesh(preserve_all_data_layers=True,depsgraph=bpy.context.evaluated_depsgraph_get());mesh.calc_loop_triangles();world=obj.matrix_world;normal=world.to_3x3().inverted().transposed()
    uv=mesh.uv_layers.active;assert uv
    for tri in mesh.loop_triangles:
+    layer,kind=material_kind(obj,body,family,tri.material_index)
     for li in tri.loops:
      loop=mesh.loops[li];v=mesh.vertices[loop.vertex_index];p=world@v.co;nrm=(normal@mesh.corner_normals[li].vector).normalized();p=(p.x,p.z,-p.y);nrm=(nrm.x,nrm.z,-nrm.y);bounds.append(p)
      pairs=sorted([(g.weight,joints.index(obj.vertex_groups[g.group].name)) for g in v.groups if obj.vertex_groups[g.group].name in joints and g.weight>0],reverse=True)[:4];assert pairs
@@ -44,7 +59,7 @@ with tempfile.TemporaryDirectory() as temp:
      uvco=uv.data[li].uv
      sys.path.insert(0,str(Path(__file__).resolve().parents[1]));import people
      record={'p':p,'n':nrm,'uv':(uvco.x,1-uvco.y),'j':js,'w':ws}
-     encoded=people.vertex(record,family_layers[family],4 if family=='Ranger' else 3,(0,0,1,1),False)
+     encoded=people.vertex(record,layer,kind,(0,0,1,1),False)
      if encoded not in unique:unique[encoded]=count;vertices.extend(encoded);count+=1
      indices.extend(struct.pack('<I',unique[encoded]))
    evaluated.to_mesh_clear()

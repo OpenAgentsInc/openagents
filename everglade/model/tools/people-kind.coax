@@ -15,6 +15,22 @@
 //   people-kind --into IN.pack OUT.pack   IN with every plain people vertex on a skin layer given
 //                                         people.py's skin kind (1), every other byte as it was
 //   people-kind --holds PACK              no people vertex on a skin layer is plain
+//   people-kind --like REF IN.pack OUT.pack
+//                                         IN with every Fantasy Source garment vertex REF has on a
+//                                         skin layer put on IN's layer of that name with REF's kind
+//   people-kind --holds-like REF PACK     every such vertex is so in PACK
+//
+// The Fantasy Source garments (a "C fantasy/NAME ..." line, metaverse/tools/humans/
+// pack_fantasy_source.py) had the same fault in another form (#13577): the packer put every triangle
+// of a garment on its family's colour layer with its cloth kind, so the bare arms and hands of the
+// Ranger, Peasant and Wizard arms (material MI_Regular_<Body>) sampled the family texture at the body
+// texture's UVs and were dyed as cloth. The packer now puts them on the base pack's
+// T_Regular_<Body>_Dark_BaseColor.png with the skin kind, and refuses a material it doesn't map. A
+// pack the fixed packer writes differs from the old one by those vertices' layer and kind bytes and
+// nothing else, so --like takes the two bytes from such a pack (REF, a fresh build: it is not
+// tracked) into the tracked packs, by layer name, since the packs built on fantasy.pack number their
+// layers their own way. Every other byte of a REF vertex must be IN's, or the pack is refused.
+// --holds also counts those garments' skin vertices (PKD_GARMENTS) wherever a pack carries them.
 // The pack's size, table and catalog don't change, so a sealed pack stays sealed (pack-seal.coax).
 // A gzipped pack (Experimental's glade.pack.gz, fantasy.pack.gz) is gunzipped first and gzipped
 // again after, as grass_cells.coax's steps do.
@@ -33,6 +49,11 @@ PKD_VERTEX :: 24;        // people.py's vertex
 PKD_SKIN :: 1;           // people.py KINDS["skin"]
 PKD_LAYERS :: 256;       // a vertex's layer is one byte
 PKD_PREFIX :: "C people/";
+PKD_GARMENT :: "C fantasy/";
+// The Fantasy Source garments whose triangles carry the body's MI_Regular_<Body>, and how many of
+// their vertices the fixed pack_fantasy_source.py puts on the skin layer (#13577).
+PKD_GARMENTS :: [5] string.["fantasy/Female_Ranger_Arms", "fantasy/Female_Wizard_Arms", "fantasy/Male_Peasant_Arms", "fantasy/Male_Ranger_Arms", "fantasy/Male_Wizard_Arms"];
+PKD_GARMENT_SKIN :: [5] int.[1202, 1158, 2361, 1206, 1206];
 
 // The i-th field of a line, split by single spaces ("" past the last).
 pkd_field :: (line: string, i: int) -> string {
@@ -83,6 +104,102 @@ pkd_walk :: (pack: [] u8, fix: bool) -> int {
   return found;
 }
 
+// A pack's catalog and vertices, or false.
+PkdPack :: struct { cat: string; vat: int; vn: int; }
+pkd_open :: (pack: [] u8, out: [] PkdPack) -> bool {
+  t: [1] PackTable;
+  if !pack_table(cast(string) pack, pack.count, t[..]) || t[0].count < 2 || t[0].entries[0].kind != PACK_CATALOG || t[0].entries[1].kind != PACK_VERTICES { return false; }
+  c := t[0].entries[0]; v := t[0].entries[1];
+  out[0].cat = cast(string) pack[c.at..<c.at + c.n]; out[0].vat = v.at; out[0].vn = v.n; return true;
+}
+// The "C NAME FIRST COUNT K WORD VERTICES JOINTS" line of `cat` called `name`: its word and vertex
+// count, word -1 when there is none, -2 when it doesn't read.
+PkdPart :: struct { word: int = -1; n: int; }
+pkd_part :: (cat: string, name: string) -> PkdPart {
+  at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    line := cat[at..<e]; at = e + 1;
+    if line.count > 2 && line[0] == 'C' && pkd_field(line, 1) == name {
+      w := pkd_number(pkd_field(line, 5)); n := pkd_number(pkd_field(line, 6));
+      if w < 0 || n < 0 { return PkdPart.{word = -2}; }
+      return PkdPart.{word = w, n = n};
+    }
+  }
+  return PkdPart.{};
+}
+// The source name of layer `i`'s T row in `cat`, "" when there is none.
+pkd_layer_name :: (cat: string, i: int) -> string {
+  at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    r := cmat.cm_row(cat[at..<e], 'T'); if r.index == i { return r.name; }
+    at = e + 1;
+  }
+  return "";
+}
+// The first skin layer of `cat` whose source is `name`, or -1.
+pkd_skin_layer_named :: (cat: string, name: string, skin: [] bool) -> int {
+  at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    r := cmat.cm_row(cat[at..<e], 'T');
+    if r.index >= 0 && r.index < skin.count && skin[r.index] && r.name == name { return r.index; }
+    at = e + 1;
+  }
+  return -1;
+}
+// The Fantasy Source garment vertices `ref` has on a skin layer and `pack` has otherwise (another
+// layer by name, or another kind), each given ref's layer (by name) and kind when `fix`: their count,
+// -1 when refused (either isn't a pack, a garment line doesn't read, reaches past the vertices or has
+// another vertex count than ref's, a vertex differs from ref's past its layer and kind, or pack has
+// no skin layer of ref's name).
+pkd_like :: (ref: [] u8, pack: [] u8, fix: bool) -> int {
+  rr: [1] PkdPack; pr: [1] PkdPack;
+  if !pkd_open(ref, rr[..]) || !pkd_open(pack, pr[..]) { return -1; }
+  r := rr[0]; p := pr[0];
+  rskin: [PKD_LAYERS] bool; pkd_skin_layers(r.cat, rskin[..]);
+  pskin: [PKD_LAYERS] bool; pkd_skin_layers(p.cat, pskin[..]);
+  found := 0; at := 0;
+  while at < p.cat.count {
+    e := at; while e < p.cat.count && p.cat[e] != '\n' { e += 1; }
+    line := p.cat[at..<e]; at = e + 1;
+    if line.count <= PKD_GARMENT.count || line[0..<PKD_GARMENT.count] != PKD_GARMENT { continue; }
+    name := pkd_field(line, 1);
+    pp := pkd_part(p.cat, name); rp := pkd_part(r.cat, name);
+    if pp.word < 0 || rp.word < 0 || pp.n != rp.n || pp.word * 4 + pp.n * PKD_VERTEX > p.vn || rp.word * 4 + rp.n * PKD_VERTEX > r.vn { return -1; }
+    for q: 0..<pp.n {
+      ro := r.vat + rp.word * 4 + q * PKD_VERTEX; po := p.vat + pp.word * 4 + q * PKD_VERTEX;
+      for k: 0..<PKD_VERTEX { if k != 6 && k != 7 && ref[ro + k] != pack[po + k] { return -1; } }
+      rl := cast(int) ref[ro + 6];
+      if !rskin[rl] { continue; }
+      layer := pkd_skin_layer_named(p.cat, pkd_layer_name(r.cat, rl), pskin[..]);
+      if layer < 0 { return -1; }
+      if cast(int) pack[po + 6] != layer || pack[po + 7] != ref[ro + 7] {
+        found += 1; if fix { pack[po + 6] = cast(u8) layer; pack[po + 7] = ref[ro + 7]; }
+      }
+    }
+  }
+  return found;
+}
+// The PKD_GARMENTS `pack` carries whose skin vertices (on a skin layer, with the skin kind) aren't
+// as many as the fixed packer writes: their count, -1 when the pack is refused.
+pkd_garments_short :: (pack: [] u8) -> int {
+  pr: [1] PkdPack; if !pkd_open(pack, pr[..]) { return -1; }
+  p := pr[0];
+  skin: [PKD_LAYERS] bool; pkd_skin_layers(p.cat, skin[..]);
+  short := 0;
+  for g: 0..<PKD_GARMENTS.count {
+    pp := pkd_part(p.cat, PKD_GARMENTS[g]);
+    if pp.word == -1 { continue; }
+    if pp.word < 0 || pp.word * 4 + pp.n * PKD_VERTEX > p.vn { return -1; }
+    n := 0;
+    for q: 0..<pp.n { o := p.vat + pp.word * 4 + q * PKD_VERTEX; if skin[cast(int) pack[o + 6]] && pack[o + 7] == PKD_SKIN { n += 1; } }
+    if n != PKD_GARMENT_SKIN[g] { short += 1; }
+  }
+  return short;
+}
+
 #test "a plain people vertex on a skin layer takes the skin kind; a plain one on cloth, and other characters, stay as they were" {
   cat := "L 0 Kit|CC0|u\nT 0 T_Regular_Female_Dark_BaseColor.png 0\nT 1 T_Ranger_BaseColor.png 0\nT 2 T_Eye_Brown.png 0\nC people/female-ranger 0 3 0 0 4 65\nC fantasy/Female_Ranger_Arms 0 3 0 24 1 65\n";
   p: [512] u8; for ch, i: "VPK1" { p[i] = ch; } pack_put32(p[..], 4, 2); pack_put32(p[..], 12, 4096); pack_put32(p[..], 16, 32); pack_put32(p[..], 20, 128);
@@ -108,7 +225,46 @@ pkd_walk :: (pack: [] u8, fix: bool) -> int {
   #assert pkd_walk(p[0..<16], false) == -1;
 }
 
-PkdTool :: struct { pack: [PKD_PACK] u8; }
+// A two-entry pack for the tests: catalog `cat`, then vertices with these layers and kinds (every
+// other byte q + k + 9); its size, the vertices at `vat`.
+pkd_test_pack :: (p: [] u8, cat: string, layer: [] u8, kind: [] u8, vat: [] int) -> int {
+  for k: 0..<p.count { p[k] = 0; }
+  for ch, i: "VPK1" { p[i] = ch; } pack_put32(p, 4, 2); pack_put32(p, 12, 4096); pack_put32(p, 16, 32); pack_put32(p, 20, 128);
+  at := 128; p[32] = 1; p[33] = 255; pack_put32(p, 36, at); pack_put32(p, 40, cat.count); for ch, i: "catalog" { p[48 + i] = ch; } for ch: cat { p[at] = ch; at += 1; } at = ((at + 3) / 4) * 4;
+  vat[0] = at; p[80] = 2; p[81] = 255; pack_put32(p, 84, at); pack_put32(p, 88, layer.count * PKD_VERTEX); for ch, i: "vertices" { p[96 + i] = ch; }
+  for q: 0..<layer.count { for k: 0..<PKD_VERTEX { p[at + q * PKD_VERTEX + k] = cast(u8) (q + k + 9); } p[at + q * PKD_VERTEX + 6] = layer[q]; p[at + q * PKD_VERTEX + 7] = kind[q]; }
+  at += layer.count * PKD_VERTEX; pack_put32(p, 8, at);
+  return at;
+}
+
+#test "a Fantasy Source garment's skin takes REF's skin layer, by name, and kind; its cloth, and the people, stay as they were" {
+  // REF, a fresh build: the ranger arms' first and third vertices on the female skin layer (30), skin
+  rcat := "T 30 T_Regular_Female_Dark_BaseColor.png 4\nT 47 T_Ranger_BaseColor.png 6\nC fantasy/Female_Ranger_Arms 0 3 6 0 3 65\n";
+  // the tracked pack numbers its layers its own way, and carries a people part first
+  pcat := "T 2 T_Ranger_BaseColor.png 6\nT 5 T_Regular_Female_Dark_BaseColor.png 4\nC people/female-ranger 0 3 0 0 1 65\nC fantasy/Female_Ranger_Arms 0 3 6 36 3 65\n";
+  r: [512] u8; p: [512] u8; rv: [1] int; pv: [1] int;
+  rl := [3] u8.[30, 47, 30]; rk := [3] u8.[1, 4, 1]; rn := pkd_test_pack(r[..], rcat, rl[..], rk[..], rv[..]);
+  // six people vertices on cloth, plain (left alone); then the arms, all on the ranger layer, green
+  pl := [9] u8.[2, 2, 2, 2, 2, 2, 2, 2, 2]; pk := [9] u8.[0, 0, 0, 0, 0, 0, 0, 0, 0]; pn := pkd_test_pack(p[..], pcat, pl[..], pk[..], pv[..]);
+  // the garment's vertices are REF's, but for layer and kind (the test pack's bytes go by index)
+  for q: 0..<3 { for k: 0..<PKD_VERTEX { if k != 6 && k != 7 { p[pv[0] + (6 + q) * PKD_VERTEX + k] = r[rv[0] + q * PKD_VERTEX + k]; } } p[pv[0] + (6 + q) * PKD_VERTEX + 7] = 4; }
+  #assert pkd_like(r[0..<rn], p[0..<pn], false) == 2;
+  #assert pkd_like(r[0..<rn], p[0..<pn], true) == 2 && pkd_like(r[0..<rn], p[0..<pn], false) == 0;
+  g := pv[0] + 6 * PKD_VERTEX;
+  #assert p[g + 6] == 5 && p[g + 7] == 1 && p[g + PKD_VERTEX + 6] == 2 && p[g + PKD_VERTEX + 7] == 4 && p[g + 2 * PKD_VERTEX + 6] == 5 && p[g + 2 * PKD_VERTEX + 7] == 1;
+  #assert p[pv[0] + 6] == 2 && p[pv[0] + 7] == 0;
+  // a vertex that differs from REF's past its layer and kind is refused
+  p[g + 2 * PKD_VERTEX + 1] += 1; #assert pkd_like(r[0..<rn], p[0..<pn], false) == -1; p[g + 2 * PKD_VERTEX + 1] -= 1;
+  // as is a pack with no skin layer of REF's name
+  qcat := "T 2 T_Ranger_BaseColor.png 6\nT 5 T_Ranger_2_BaseColor.png 6\nC people/female-ranger 0 3 0 0 1 65\nC fantasy/Female_Ranger_Arms 0 3 6 36 3 65\n";
+  q: [512] u8; qv: [1] int; qn := pkd_test_pack(q[..], qcat, pl[..], pk[..], qv[..]);
+  for x: 0..<3 { for k: 0..<PKD_VERTEX { if k != 6 && k != 7 { q[qv[0] + (6 + x) * PKD_VERTEX + k] = r[rv[0] + x * PKD_VERTEX + k]; } } }
+  #assert pkd_like(r[0..<rn], q[0..<qn], false) == -1;
+  // --holds counts a listed garment's skin: two here, not the fixed packer's 1202
+  #assert pkd_garments_short(p[0..<pn]) == 1 && pkd_garments_short(r[0..<rn]) == 1;
+}
+
+PkdTool :: struct { pack: [PKD_PACK] u8; ref: [PKD_PACK] u8; }
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
@@ -122,10 +278,26 @@ tool_main :: () -> int #export_c #effects(all) {
     if n < 0 { tool_errln("people-kind: the pack is refused (its catalog and vertices first, every people line within the vertices)"); return 1; }
     if !into {
       if n > 0 { print("people-kind: % people vertices on a skin layer are plain; write them with --into\n", n); return 1; }
-      print("people-kind: no people vertex on a skin layer is plain\n"); return 0;
+      short := pkd_garments_short(w[0].pack[0..<size]);
+      if short != 0 { print("people-kind: % Fantasy Source garments' skin is not on a skin layer; write it with --like\n", short); return 1; }
+      print("people-kind: no people vertex on a skin layer is plain, and the Fantasy Source garments' skin is skin\n"); return 0;
     }
     if !fs_write(args_at(a[..], 2), cast(string) w[0].pack[0..<size]) { return 1; }
     print("people-kind: % plain people vertices on a skin layer take the skin kind; the pack % bytes\n", n, size); return 0;
   }
-  tool_errln("usage: people-kind --into IN.pack OUT.pack | --holds PACK"); return 2;
+  if (mode == "--like" && args_count(a[..]) == 4) || (mode == "--holds-like" && args_count(a[..]) == 3) {
+    rsize := fs_read(args_at(a[..], 1), w[0].ref[..]);
+    size := fs_read(args_at(a[..], 2), w[0].pack[..]);
+    if rsize < 32 || rsize >= PKD_PACK || size < 32 || size >= PKD_PACK { tool_errln("people-kind: can't read the packs, or one is past 512 MiB"); return 1; }
+    fix := mode == "--like";
+    n := pkd_like(w[0].ref[0..<rsize], w[0].pack[0..<size], fix);
+    if n < 0 { tool_errln("people-kind: refused (each Fantasy Source garment as REF has it, but for its skin vertices' layer and kind; a skin layer of REF's name)"); return 1; }
+    if !fix {
+      if n > 0 { print("people-kind: % Fantasy Source garment vertices are not on REF's skin layer and kind; write them with --like\n", n); return 1; }
+      print("people-kind: the Fantasy Source garments' skin is as REF has it\n"); return 0;
+    }
+    if !fs_write(args_at(a[..], 3), cast(string) w[0].pack[0..<size]) { return 1; }
+    print("people-kind: % Fantasy Source garment vertices take REF's skin layer and kind; the pack % bytes\n", n, size); return 0;
+  }
+  tool_errln("usage: people-kind --into IN.pack OUT.pack | --holds PACK | --like REF IN.pack OUT.pack | --holds-like REF PACK"); return 2;
 }

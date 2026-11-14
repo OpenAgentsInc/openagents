@@ -5706,7 +5706,8 @@
     }
   ],
   "people_skin": "#13563: everglade/model/tools/people-kind.coax --into gave the 734 people/female-ranger vertices on T_Regular_Female_Dark_BaseColor.png the skin kind (1); before it the pack was 887e0cb0bd75a00f1c76e99c610f7a1d28c48f79e72f54a337d6a57e457a7d14",
-  "pack_sha256": "4bea14b5c26b51d0ce421e5b15f25e4a21b739d466d3e95bf0d49c1b8e062131",
+  "garment_skin": "#13577: everglade/model/tools/people-kind.coax --like gave the 7133 vertices of the Ranger, Peasant and Wizard arms' bare skin (material MI_Regular_<Body>) the body's T_Regular_<Body>_Dark_BaseColor.png layer and the skin kind (1), as the fixed pack_fantasy_source.py writes them; before it the pack was 4bea14b5c26b51d0ce421e5b15f25e4a21b739d466d3e95bf0d49c1b8e062131",
+  "pack_sha256": "7e4d70674892266fde6895b16e757f2de0bf6e0ec399e05a175151ab7de02740",
   "pack_bytes": 20914708,
   "parts_count": 76,
   "texture_colorways": 3

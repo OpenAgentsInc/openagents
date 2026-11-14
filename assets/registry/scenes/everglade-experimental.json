@@ -2294,13 +2294,14 @@
   },
   "wardrobe_base": {
     "path": "apps/openagents-web/realms/character-creator/assets/fantasy.pack",
-    "sha256": "4bea14b5c26b51d0ce421e5b15f25e4a21b739d466d3e95bf0d49c1b8e062131"
+    "sha256": "7e4d70674892266fde6895b16e757f2de0bf6e0ec399e05a175151ab7de02740"
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
-    "sha256": "e7e989601073195852315bdaf8cb7653db45624224dadba77f2a6fcbb3802272",
+    "sha256": "8722a5ad0ed212a19b17344a6450c80839e2996265a08174d5a946f59ea4c8f8",
+    "garment_skin": "#13577: people-kind.coax --like on the inflated pack, then gzip -n -6 (the Fantasy Source garments' bare arms and hands take the skin tone); before it e7e989601073195852315bdaf8cb7653db45624224dadba77f2a6fcbb3802272, decoded 0beca370f80376d0f9fa2d05ffacb807ee2faa6c11195e8e7eb180c2930c4f5f",
     "budget_bytes": 536870912,
-    "decoded_sha256": "0beca370f80376d0f9fa2d05ffacb807ee2faa6c11195e8e7eb180c2930c4f5f",
+    "decoded_sha256": "5c21a70b9130a738c08d7783bdf9cee6d964a37a9f1be47aac37c207fcf10bb1",
     "decoded_bytes": 301673800,
     "encoding": "gzip"
   },

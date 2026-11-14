@@ -120,8 +120,9 @@
   },
   "runtime": {
     "pack": "/realms/character-creator/assets/glade.pack",
-    "sha256": "15b402c838210ac804d21adb826d31b6d0e7ce037823f015d58d5e51340b008a",
+    "sha256": "6ad9a95abb5ae219cdf103d8aa7b0539a46f9b20a4c6ad3cb681cfbe716c2225",
     "people_skin": "#13563: people-kind.coax --into (the female ranger's body skin takes the skin tone); before it 075097f03a083cae0d7a4a5c1ed74d4801ba00482b0fc847a4c9348f75bfe984",
+    "garment_skin": "#13577: people-kind.coax --like (the Fantasy Source garments' bare arms and hands take the skin tone); before it 15b402c838210ac804d21adb826d31b6d0e7ce037823f015d58d5e51340b008a",
     "bytes": 33525296,
     "profile": "character-create-legacy-static-v4"
   },
