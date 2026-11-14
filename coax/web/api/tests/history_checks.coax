@@ -55,12 +55,12 @@ chh_api_checks :: (t:[]Ap,dir:string) {
 tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   if args_count(a[..])==3 && args_at(a[..],0)=="mail" {return am_main(ap_whole(args_at(a[..],1)),args_at(a[..],2));}
-  if args_count(a[..])==3 && args_at(a[..],0)=="infer" {return am_main(ap_whole(args_at(a[..],1)),args_at(a[..],2),"{\"choices\":[{\"message\":{\"content\":\"Hello from the account agent\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":6}}");}
+  if args_count(a[..])==3 && args_at(a[..],0)=="infer" {return am_response(ap_whole(args_at(a[..],1)),args_at(a[..],2),"{\"choices\":[{\"message\":{\"content\":\"Hello from the account agent\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":6}}");}
   t:[1]Ap;if !ap_open(t[..]) {return 2;}
   wb:[4096]u8;work:=fs_temp("history-mail",wb[..]);
   h:=ac_mail_start(t[..],"coax/web/api/tests/history_checks.coax",work);
   if h<0 {return ap_done(t[..],"history checks");}
-  ib:[4096]u8;infer_dir:=fs_temp("history-infer",ib[..]);ih:=ac_mail_start(t[..],"coax/web/api/tests/history_checks.coax",infer_dir,"infer","INFER_PORT");
+  ib:[4096]u8;infer_dir:=fs_temp("history-infer",ib[..]);ih:=ac_server_start(t[..],"coax/web/api/tests/history_checks.coax",infer_dir,"infer","INFER_PORT");
   if ih>=0 {chh_api_checks(t[..],work);ac_mail_stop(ih,infer_dir);}
   ac_mail_stop(h,work);return ap_done(t[..],"history checks");
 }

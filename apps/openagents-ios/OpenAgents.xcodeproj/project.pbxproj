@@ -10,6 +10,7 @@
 		03AF362E64D9222AA06F0E40 /* NativePolicy.c in Sources */ = {isa = PBXBuildFile; fileRef = DCD62FA8D277D57B999CBF47 /* NativePolicy.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		081BC189AB524F65D78C03E4 /* AppAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABE3F6DB32D91F73A83323E9 /* AppAnalytics.swift */; };
 		095EEDDBD0F5949696F6B490 /* NativeProgramTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25D8936BC22A37E1214E454F /* NativeProgramTests.swift */; };
+		0F64B5AFCEDD256C035DF6D8 /* ChatUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B07580CC0A27104C07B9B5C /* ChatUITests.swift */; };
 		103180BD57D2AA2E93F4A6B7 /* SharedAppDeviceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */; };
 		1F3972F80AD727788C1649CC /* NostrSign.c in Sources */ = {isa = PBXBuildFile; fileRef = 0B12460F6D71E6EC127D760A /* NostrSign.c */; };
 		2423078B067528A80731C519 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BAFA692F7A2D8501CD6985F /* BIP39.swift */; };
@@ -21,6 +22,7 @@
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
 		444324321690C6F700CD79A2 /* SparkBalanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */; };
 		47402381B8C043A601D16232 /* BalanceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */; };
+		4D59620F5B373646C05FC2A4 /* NativeComposer-T3-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 12732C0F80796C53136B0DC3 /* NativeComposer-T3-LICENSE.txt */; };
 		5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */ = {isa = PBXBuildFile; productRef = 6A07344B6842FB168B7EEED5 /* BreezSdkSpark */; };
 		5FCD0C43CB70DA62BB5DE214 /* precomputed_ecmult.c in Sources */ = {isa = PBXBuildFile; fileRef = FA482D60928E6CCB2F0BDDA5 /* precomputed_ecmult.c */; settings = {COMPILER_FLAGS = "-DECMULT_WINDOW_SIZE=8"; }; };
 		6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */ = {isa = PBXBuildFile; fileRef = BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */; settings = {COMPILER_FLAGS = "-DECMULT_WINDOW_SIZE=8"; }; };
@@ -75,6 +77,7 @@
 		09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAppDeviceUITests.swift; sourceTree = "<group>"; };
 		0B12460F6D71E6EC127D760A /* NostrSign.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NostrSign.c; sourceTree = "<group>"; };
 		0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceUITests.swift; sourceTree = "<group>"; };
+		12732C0F80796C53136B0DC3 /* NativeComposer-T3-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "NativeComposer-T3-LICENSE.txt"; sourceTree = "<group>"; };
 		131BDA8ADB97609206195533 /* bip39-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bip39-english.txt"; sourceTree = "<group>"; };
 		1EB43B9790841620D29A9F92 /* PhoneSignin.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = PhoneSignin.c; sourceTree = "<group>"; };
 		25D8936BC22A37E1214E454F /* NativeProgramTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProgramTests.swift; sourceTree = "<group>"; };
@@ -94,6 +97,7 @@
 		8229C5D27BC40A99010E48D9 /* OpenAgents.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenAgents.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAppUITests.swift; sourceTree = "<group>"; };
 		88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterUITests.swift; sourceTree = "<group>"; };
+		8B07580CC0A27104C07B9B5C /* ChatUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatUITests.swift; sourceTree = "<group>"; };
 		910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSignIn.swift; sourceTree = "<group>"; };
 		9BD4840ED2FA15B3276B9A93 /* SharedAppViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAppViewController.swift; sourceTree = "<group>"; };
@@ -245,6 +249,7 @@
 		ABD48D4B1B28A57624675E53 /* native */ = {
 			isa = PBXGroup;
 			children = (
+				12732C0F80796C53136B0DC3 /* NativeComposer-T3-LICENSE.txt */,
 				C00F077C1C17712C38E9F58E /* NativeComposer.swift */,
 				68A32BEE57050EF541CA1A16 /* NativeControls.swift */,
 				01C83152B91DFEEF873AAD56 /* NativeHost.swift */,
@@ -259,6 +264,7 @@
 			isa = PBXGroup;
 			children = (
 				0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */,
+				8B07580CC0A27104C07B9B5C /* ChatUITests.swift */,
 				FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */,
 				09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */,
 				84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */,
@@ -414,6 +420,7 @@
 				AF77409D07EA217012468952 /* DMSans-Medium.ttf in Resources */,
 				335ACC89190205BA908FF0D1 /* DMSans-Regular.ttf in Resources */,
 				658B4C2F5F7EABC4715EB1E4 /* Native.plist in Resources */,
+				4D59620F5B373646C05FC2A4 /* NativeComposer-T3-LICENSE.txt in Resources */,
 				9EDFF85EEFA09C5E405F0C99 /* Starter in Resources */,
 				8E4F97485AF1AF831DCB39E9 /* bip39-english.txt in Resources */,
 			);
@@ -461,6 +468,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				47402381B8C043A601D16232 /* BalanceUITests.swift in Sources */,
+				0F64B5AFCEDD256C035DF6D8 /* ChatUITests.swift in Sources */,
 				ECDFE75FB85014389B5354CF /* EmailLoginUITests.swift in Sources */,
 				103180BD57D2AA2E93F4A6B7 /* SharedAppDeviceUITests.swift in Sources */,
 				A05D687346C45546701CEFF7 /* SharedAppUITests.swift in Sources */,

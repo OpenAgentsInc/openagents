@@ -73,7 +73,7 @@ import CoreText
         if abs(next-height)>0.1 {height=next;invalidateIntrinsicContentSize();superview?.setNeedsLayout()}
         glass.frame=CGRect(x:0,y:0,width:w,height:next);glass.layer.cornerRadius=g.radius
         editor.frame=CGRect(x:g.editor_x,y:g.editor_y,width:g.editor_w,height:g.editor_h)
-        editor.isScrollEnabled=editor.contentSize.height>editor.bounds.height+1
+        editor.isScrollEnabled=measured+12>g.editor_h+1
         placeholder.frame=CGRect(x:editor.frame.minX,y:editor.frame.minY+6,width:editor.frame.width,height:23*scale);placeholder.isHidden = !editor.text.isEmpty
         plus.frame=CGRect(x:0,y:g.toolbar_y,width:44,height:44)
         model.frame=CGRect(x:44,y:g.toolbar_y,width:g.expanded ? min(w-176,220):50,height:44)
