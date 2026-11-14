@@ -3,7 +3,7 @@
 ## Email login and saved chats over the air (2026-11-13)
 
 Use OpenAgents TestFlight **1069**. Tap **Check for updates**, then **Apply
-update** for signed generation **3**. Keep it in the foreground for 30
+update** for signed generation **4**. Keep it in the foreground for 30
 seconds to complete the update's health window. On **Log in**, enter the email already
 linked to your web account, request the code, open the email and enter its
 six digits. Expect **Your chats** with that account's saved conversations,
@@ -12,7 +12,8 @@ persists, then try **Log out**. The list is read-only in this update.
 
 The retained 1069 simulator executable passed signed OTA activation, resend,
 wrong code, device-bound login, two authenticated list reads across relaunch,
-and logout. Its existing balance UI also passed on the new OTA module. The
+and logout. Its existing balance UI passed on generation 3; generation 4
+retains the same wallet module. The
 owner's actual email receipt and real chat titles remain personal acceptance;
 development tests use fake accounts and do not access the phone or mailbox.
 See `docs/verification/2026-11-13-native-email-login.md` for evidence.

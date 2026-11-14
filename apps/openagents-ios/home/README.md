@@ -10,8 +10,10 @@ openagents.com/login through the installed `AppAuth` adapter. The server
 sends the email; the person enters its six digits. Native storage retains
 access/refresh tokens and the device key. Only an opaque pending challenge
 and the entered code pass through this screen; they are cleared after login,
-logout or changing email. Wrong codes retain the challenge for retry; resend
-requests a new one. Requests cannot overlap, and a network failure leaves a
+logout or changing email. Account expiry and every new login erase the
+previous chat list and its title bytes before a new account can load. Wrong
+codes retain the challenge for retry; resend requests a new one. Requests
+cannot overlap, and a network failure leaves a
 manual retry. Restarting during login requires a new code.
 
 After login, `GET /api/chat/history/v1` returns at most 60 saved conversations,
