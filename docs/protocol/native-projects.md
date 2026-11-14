@@ -54,3 +54,8 @@ membership through the existing canonical linked Nostr key. New email project
 drops use the existing creator grant; no admin, key-login or agent rights are
 created. Existing owners retain reads when creation is revoked. Account export,
 merge and deletion include the mapping.
+
+The internal lifecycle registry’s legacy `pubkey` resolver includes these
+account ownership handles when finding key-addressed drop records. Export and
+purge therefore reach their drops, files and drafts; `auth.strong_ways` and
+Nostr authentication still read only actual authenticators.
