@@ -1,0 +1,193 @@
+// What a host needs to play effects the rules do not draw (docs/unreal/2026-11-14-what-belongs-in-unreal.md,
+// sections 5 and 7; GitHub #13599): an event as a record with a place, and each thing's state. Only a
+// native host's face calls these (splice-ue-face.c), after each frame; the page's face does not, so the
+// page's module carries none of it. Nothing here changes the run: it reads the game and keeps its own
+// notes in a SpHost the face owns.
+//
+// An event record, nine floats: the event's number (the manifest's `events`), its place x, y, z (metres),
+// its direction as a unit vector (0, 0, 0 when it has none), its strength (1 is ordinary), and the id of
+// the thing it belongs to (-1 none).
+// A thing's state, sixteen floats: id, kind, variant, flags, its place x, y, z, yaw, its velocity x, y, z
+// (metres a second), a level from 0 to 1 (how far through what it is doing: a drill card, a charge's
+// wind-up), the place its action is at x, y, z (a drill's bit on the rock; else its own place), and 0.
+// The first records are the frame's things in the order splice_things lists them; after them come things
+// the page draws as part of the scene and does not list: Sniper while she drives it (rover, variant 1)
+// and the drill mech while it drills (digger, variant 2).
+// A thing's id is its kind times 64 plus its place among its kind in the frame's list.
+// The sizes, the flag bits and EV_BOT_HURT are in splice-game.coax ("Things and events"), where the exporter reads them.
+
+SpHost :: struct {
+  ev: [HX_EVENTS * HX_EVENT_FLOATS] f32; ev_n: int;
+  st: [HX_STATES * HX_STATE_FLOATS] f32; st_n: int;
+  was: [HX_STATES * 4] f32; was_n: int;   // the frame before: id, x, y, z, for the velocities
+  hit_t: f32;                             // the battle's last-hit clock as last seen: a rise is a new hit
+}
+
+hx_put :: (h: [] SpHost, e: int, at: Point, dx: f32, dy: f32, dz: f32, strength: f32, thing: int) {
+  if h[0].ev_n >= HX_EVENTS { return; }
+  o := h[0].ev_n * HX_EVENT_FLOATS; l := sqrt(dx * dx + dy * dy + dz * dz);
+  if l < 0.0001 { l = 1; }
+  h[0].ev[o] = cast(f32) e; h[0].ev[o + 1] = at.x; h[0].ev[o + 2] = at.y; h[0].ev[o + 3] = at.z;
+  h[0].ev[o + 4] = dx / l; h[0].ev[o + 5] = dy / l; h[0].ev[o + 6] = dz / l;
+  h[0].ev[o + 7] = strength; h[0].ev[o + 8] = cast(f32) thing;
+  h[0].ev_n += 1;
+}
+// Your fielded bot's place in a battle, and the foe's.
+hx_mine :: (g: [] SpGame) -> Point {
+  t := g[0].bt[0];
+  if sb_fielded(g) == SB_DIGGER { return v3(g[0].bot_x, 0.8, g[0].bot_z); }
+  if t.mech_core { return v3(t.mech_x, 1.4, t.mech_z); }
+  s := sb_sniper_at(g); return v3(s.x, 1.2, s.z);
+}
+hx_foe :: (g: [] SpGame) -> Point {
+  t := g[0].bt[0];
+  if t.kind == SBF_BOSS { return fp(sb_dino_frame(g), 0, 2.4 * SB_DINO_S, 1.2 * SB_DINO_S); }
+  if t.foe >= 0 && t.foe < FOES { return v3(g[0].fx[t.foe], 1.1, g[0].fz[t.foe]); }
+  return v3(t.rm_x, 1.6, t.rm_z);
+}
+// One event of the game's, with where it happened read from the game as it stands after the frame.
+hx_event :: (g: [] SpGame, h: [] SpHost, e: int) {
+  t := g[0].bt[0];
+  at := v3(g[0].px, g_feet_y(g) + 1.0, g[0].pz);
+  dx := 0.0f32; dz := 0.0f32; k := 1.0f32; thing := -1;
+  if e == MSG_HIT {
+    // a hit on her: from where the attack's cue says it came, else from the nearest foe
+    thing = TK_SMUGGLER * 64;
+    a := g[0].ak[0];
+    if a.cue_hit && a.cue_t > SB_CUE - 0.25 { dx = g[0].px - a.cue_x; dz = g[0].pz - a.cue_z; }
+    else {
+      best := 144.0f32;
+      for i: 0..<FOES {
+        if g[0].fhp[i] <= 0 { continue; }
+        ex := g[0].px - g[0].fx[i]; ez := g[0].pz - g[0].fz[i]; d := ex * ex + ez * ez;
+        if d < best { best = d; dx = ex; dz = ez; }
+      }
+      if g[0].zone == Z_MINE && g[0].wall_gone && !g[0].boss_down {
+        ex := g[0].px - t.dino_x; ez := g[0].pz - t.dino_z;
+        if ex * ex + ez * ez < best { dx = ex; dz = ez; }
+      }
+    }
+  }
+  if e == MSG_STUN {
+    i := 0; for j: 1..<3 { if g[0].stun[j] > g[0].stun[i] { i = j; } }
+    at = sb_weak_at(g, i); dx = at.x - g[0].px; dz = at.z - g[0].pz; thing = TK_BOSS * 64;
+  }
+  if e == SBM_CORE_DROP { at = fp(sb_dino_frame(g), 0, 0.2, 0); thing = TK_BOSS * 64; k = 2; }
+  if e == MSG_BROKE { at = v3(0, 1.6, g[0].at.wall_z); dx = 0 - t.mech_x; dz = g[0].at.wall_z - t.mech_z; thing = TK_DIGGER * 64; k = 2; }
+  if e == MSG_OPEN { at = v3(g[0].bot_x, 1.0, g[0].at.rubble_z); dz = g[0].at.rubble_z - g[0].bot_z; thing = TK_DIGGER * 64; }
+  if e == MSG_PICK || e == MSG_CELL {
+    i := g[0].last_pick;
+    if i >= 0 && i < PICKS { at = v3(pick_x(g, i), 0.8, pick_z(g, i)); }
+    if g[0].bot { thing = TK_DIGGER * 64; }
+  }
+  if e == MSG_CORE { at = sb_core_at(g); }
+  hx_put(h, e, at, dx, 0, dz, k, thing);
+}
+
+hx_state :: (g: [] SpGame, h: [] SpHost, kind: int, variant: int, id: int, flags: int, x: f32, y: f32, z: f32, yaw: f32, level: f32, ax: f32, ay: f32, az: f32, dt: f32) {
+  if h[0].st_n >= HX_STATES { return; }
+  o := h[0].st_n * HX_STATE_FLOATS; s := h[0].st[..];
+  vx := 0.0f32; vy := 0.0f32; vz := 0.0f32;
+  for k: 0..<h[0].was_n {
+    if cast(int) h[0].was[k * 4] != id { continue; }
+    ex := x - h[0].was[k * 4 + 1]; ey := y - h[0].was[k * 4 + 2]; ez := z - h[0].was[k * 4 + 3];
+    // a step of more than 3 m is the run placing it, not its speed
+    if dt > 0.0001 && ex * ex + ey * ey + ez * ez < 9 { vx = ex / dt; vy = ey / dt; vz = ez / dt; }
+    break;
+  }
+  s[o] = cast(f32) id; s[o + 1] = cast(f32) kind; s[o + 2] = cast(f32) variant; s[o + 3] = cast(f32) flags;
+  s[o + 4] = x; s[o + 5] = y; s[o + 6] = z; s[o + 7] = yaw;
+  s[o + 8] = vx; s[o + 9] = vy; s[o + 10] = vz; s[o + 11] = level;
+  s[o + 12] = ax; s[o + 13] = ay; s[o + 14] = az; s[o + 15] = 0;
+  h[0].st_n += 1;
+}
+// The flags the rules know of a listed thing, and how far through its action it is.
+hx_flags :: (g: [] SpGame, kind: int, variant: int, level: [] f32) -> int {
+  t := g[0].bt[0]; f := 0; level[0] = 0;
+  if kind == TK_SMUGGLER {
+    if variant == 3 { f |= TF_BOARD; if g[0].dr[0].super || g[0].dr[0].q_fast { f |= TF_SPRINT; } }
+    else if d_pace(g) > 1 { f |= TF_SPRINT; }
+    if g[0].hearts <= 0 { f |= TF_DEAD; }
+    if g[0].mode == M_RIDE || g[0].mode == M_DRIVE { f |= TF_DRIVE; }
+  }
+  if kind == TK_DIGGER {
+    u := d_drill_u(g);
+    if u >= T_BITE { f |= TF_DRILL; level[0] = u; }
+    if g[0].dr[0].hp.hp <= 0 { f |= TF_DEAD; }
+  }
+  if kind == TK_BOSS {
+    if g[0].stun[0] > 0 || g[0].stun[1] > 0 || g[0].stun[2] > 0 || t.daze > 0 { f |= TF_STUN; }
+    if t.wind > 0 || t.rush > 0 { f |= TF_CHARGE; level[0] = ifx t.rush > 0 then 1.0f32 else clamp01(t.wind); }
+    if g[0].boss_down { f |= TF_DEAD; }
+    if sb_open(g) { f |= TF_OPEN; }
+  }
+  if kind == TK_ROVER && g[0].mode == M_RIDE { f |= TF_DRIVE; }
+  return f;
+}
+
+// After a frame: the game's events since the last frame become records, a new hit in a battle becomes
+// one, and every thing's state is written.
+splice_host_step :: (s: [] Splice, h: [] SpHost, dt: f32) #export_c #effects(all) {
+  if s.count < 1 || h.count < 1 { return; }
+  g := s[0].game[..];
+  for i: 0..<g[0].event_n { hx_event(g, h, g[0].events[i]); }
+  g[0].event_n = 0;
+  t := g[0].bt[0];
+  if t.hit_t > h[0].hit_t + 0.01 && t.kind != SBF_NONE {
+    mine := hx_mine(g); foe := hx_foe(g); k := clamp01(cast(f32) t.hit_dmg / 20.0) + 0.5;
+    if t.hit_side == 1 { hx_put(h, MSG_SMACK, foe, foe.x - mine.x, 0, foe.z - mine.z, k, ifx t.kind == SBF_BOSS then TK_BOSS * 64 else -1); }
+    else { hx_put(h, EV_BOT_HURT, mine, mine.x - foe.x, 0, mine.z - foe.z, k, -1); }
+  }
+  h[0].hit_t = t.hit_t;
+
+  h[0].st_n = 0;
+  seen: [TK_KINDS] int;
+  n := ifx s[0].gallery then 0 else g[0].thing_n;
+  level: [1] f32;
+  for k: 0..<n {
+    o := k * THING_FLOATS;
+    kind := cast(int) g[0].things[o]; variant := cast(int) g[0].things[o + 1];
+    if kind < 0 || kind >= TK_KINDS { continue; }
+    id := kind * 64 + seen[kind]; seen[kind] += 1;
+    x := g[0].things[o + 2]; y := g[0].things[o + 3]; z := g[0].things[o + 4]; yaw := g[0].things[o + 5];
+    flags := hx_flags(g, kind, variant, level[..]);
+    ax := x; ay := y; az := z;
+    if kind == TK_DIGGER { ax = x + sin(yaw) * 0.95; ay = y + 0.55; az = z + cos(yaw) * 0.95; }   // his bit, ahead of him
+    hx_state(g, h, kind, variant, id, flags, x, y, z, yaw, level[0], ax, ay, az, dt);
+  }
+  if !s[0].gallery && g[0].mode == M_DRIVE {
+    d := g[0].dv[0];
+    hx_state(g, h, TK_ROVER, 1, TK_ROVER * 64 + 32, TF_DRIVE, d.sx, 0.2, d.sz, d.syaw, clamp01(abs(dv_speed(g)) / DV_TOP), d.sx, 0.2, d.sz, dt);
+  }
+  if !s[0].gallery && t.drill_t > 0 && g[0].zone == Z_MINE {
+    hx_state(g, h, TK_DIGGER, 2, TK_DIGGER * 64 + 32, TF_DRILL, t.mech_x, 0, t.mech_z, t.mech_yaw, clamp01(1 - t.drill_t / SB_DRILL_TIME), 0, 1.6, g[0].at.wall_z, dt);
+  }
+  h[0].was_n = h[0].st_n;
+  for k: 0..<h[0].st_n {
+    o := k * HX_STATE_FLOATS;
+    h[0].was[k * 4] = h[0].st[o]; h[0].was[k * 4 + 1] = h[0].st[o + 4]; h[0].was[k * 4 + 2] = h[0].st[o + 5]; h[0].was[k * 4 + 3] = h[0].st[o + 6];
+  }
+}
+// What has happened since the last call, oldest first, as records; the list is emptied.
+splice_event_records :: (h: [] SpHost, out: [] f32) -> int #export_c #effects(all) {
+  if h.count < 1 { return 0; }
+  n := h[0].ev_n; if n * HX_EVENT_FLOATS > out.count { n = out.count / HX_EVENT_FLOATS; }
+  for i: 0..<n * HX_EVENT_FLOATS { out[i] = h[0].ev[i]; }
+  h[0].ev_n = 0;
+  return n;
+}
+// The same list as numbers only, for a host that asks the old way; the list is emptied.
+splice_event_ids :: (h: [] SpHost, out: [] f32) -> int #export_c #effects(all) {
+  if h.count < 1 { return 0; }
+  n := h[0].ev_n; if n > out.count { n = out.count; }
+  for i: 0..<n { out[i] = h[0].ev[i * HX_EVENT_FLOATS]; }
+  h[0].ev_n = 0;
+  return n;
+}
+// The last frame's things and their states.
+splice_thing_states :: (h: [] SpHost, out: [] f32) -> int #export_c #effects(all) {
+  if h.count < 1 { return 0; }
+  n := h[0].st_n; if n * HX_STATE_FLOATS > out.count { n = out.count / HX_STATE_FLOATS; }
+  for i: 0..<n * HX_STATE_FLOATS { out[i] = h[0].st[i]; }
+  return n;
+}

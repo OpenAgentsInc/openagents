@@ -126,6 +126,31 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   if tagged != listed { return xc_fail("world groups hold a kit slot's blockout but no slot lists them", "manifest.json kits"); }
   print("unreal-export-check: % kit slots, % places, % blockout groups\n", jv_len(m, kits), places, listed);
+  // events and things for a host's effects (#13599): each event's number is its own; an event's record
+  // and a thing's state name every float they hold; a state flag is one bit, and no two share one
+  events := jv_get(m, 0, "events"); er := jv_get(m, 0, "event_record"); ts := jv_get(m, 0, "thing_state");
+  if events < 0 || jv_len(m, events) == 0 { return xc_fail("no events", "manifest.json events"); }
+  for ei: 0..<jv_len(m, events) {
+    ea := jv_at(m, events, ei); na := jv_int(m, ea, -1);
+    if na < 0 { return xc_fail("an event has no number", jv_key(m, ea)); }
+    for b: 0..<ei { if jv_int(m, jv_at(m, events, b), -1) == na { return xc_fail("two events share a number", jv_key(m, ea)); } }
+  }
+  if er < 0 || ts < 0 { return xc_fail("no event_record or thing_state", "manifest.json"); }
+  if jv_int(m, jv_get(m, er, "floats"), -1) != jv_len(m, jv_get(m, er, "fields")) || jv_len(m, jv_get(m, er, "fields")) < 9 { return xc_fail("the fields do not name every float", "manifest.json event_record"); }
+  if jv_int(m, jv_get(m, ts, "floats"), -1) != jv_len(m, jv_get(m, ts, "fields")) || jv_len(m, jv_get(m, ts, "fields")) < 12 { return xc_fail("the fields do not name every float", "manifest.json thing_state"); }
+  ef := jv_get(m, er, "fields"); want_ev := [9] string.["event", "x", "y", "z", "dx", "dy", "dz", "strength", "thing"];
+  for w, k: want_ev { if !jv_raw_eq(jv_raw(m, jv_at(m, ef, k)), w) { return xc_fail("event_record field is not", w); } }
+  tf := jv_get(m, ts, "fields"); want_st := [12] string.["id", "kind", "variant", "flags", "x", "y", "z", "yaw", "vx", "vy", "vz", "level"];
+  for w, k: want_st { if !jv_raw_eq(jv_raw(m, jv_at(m, tf, k)), w) { return xc_fail("thing_state field is not", w); } }
+  flags := jv_get(m, ts, "flags"); bits := 0;
+  want_fl := [7] string.["sprinting", "board", "drilling", "stunned", "charging", "dead", "driving"];
+  for w: want_fl { if jv_get(m, flags, w) < 0 { return xc_fail("thing_state has no flag", w); } }
+  for fi: 0..<jv_len(m, flags) {
+    fa := jv_at(m, flags, fi); bit := jv_int(m, fa, 0);
+    if bit <= 0 || (bit & (bit - 1)) != 0 || (bits & bit) != 0 { return xc_fail("a state flag is not one bit of its own", jv_key(m, fa)); }
+    bits |= bit;
+  }
+  print("unreal-export-check: % events, % state flags\n", jv_len(m, events), jv_len(m, flags));
   print("unreal-export-check: ok, % meshes, % triangles, % vertices, bounds (% % %) to (% % %)\n", meshes, triangles, vertices, lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]);
   return 0;
 }

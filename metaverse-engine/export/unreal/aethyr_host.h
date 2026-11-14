@@ -62,6 +62,22 @@ void aethyr_thing_hide(void *state, int kind, int hide);
  * them); the list is emptied. Returns how many. */
 int aethyr_events(void *state, float *out, int cap);
 
+/* For a host's effects (docs/unreal/2026-11-14-what-belongs-in-unreal.md, section 5). A host asks for
+ * events one way or the other, not both: either call empties the list.
+ * aethyr_event_records: what has happened since the last call, oldest first, aethyr_event_floats()
+ * floats each (nine): the event's number, its place x, y, z in metres, its direction as a unit vector
+ * (0, 0, 0: none), its strength (1 is ordinary), and the id of the thing it belongs to (-1: none).
+ * aethyr_thing_states: the last frame's things, aethyr_thing_state_floats() floats each (sixteen): id,
+ * kind, variant, flags, place x, y, z, yaw, velocity x, y, z (metres a second), a level from 0 to 1
+ * (how far through what it is doing), the place its action is at x, y, z (a drill's bit; else its own
+ * place), and 0. The first records are aethyr_things' in its order; after them come things the world
+ * draws as part of its scene and does not list. The manifest names the fields and the flags' bits
+ * ("event_record", "thing_state"). An id is the kind times 64 plus the thing's place among its kind. */
+int aethyr_event_floats(void);
+int aethyr_event_records(void *state, float *out, int cap);
+int aethyr_thing_state_floats(void);
+int aethyr_thing_states(void *state, float *out, int cap);
+
 #ifdef __cplusplus
 }
 #endif

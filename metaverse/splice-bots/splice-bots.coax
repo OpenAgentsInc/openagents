@@ -10,6 +10,7 @@
 #load "../../apps/openagents-web/animelab.coax";
 #load "../../metaverse-engine/kit/land.coax";
 #load "splice-game.coax";
+#load "host-fx.coax";   // events with a place and things' states, for a native host's effects (#13599)
 #load "../../metaverse-engine/core/sticks.coax";
 #load "../../metaverse-engine/host/realm-frame.coax";   // the messages a realm in the site's sandboxed frame takes (#13432)
 

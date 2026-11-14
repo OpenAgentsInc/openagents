@@ -304,11 +304,32 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_end(j);
   // what aethyr_events reports, by number
   jo_key(j, "events"); jo_obj(j);
-  ex_int(j, "bad-cut", MSG_BAD_CUT); ex_int(j, "rubble-open", MSG_OPEN); ex_int(j, "wall-broke", MSG_BROKE); ex_int(j, "boss-down", MSG_DOWN); ex_int(j, "hurt", MSG_HIT);
+  ex_int(j, "bad-cut", MSG_BAD_CUT); ex_int(j, "rubble-open", MSG_OPEN); ex_int(j, "wall-broke", MSG_BROKE); ex_int(j, "boss-down", SBM_CORE_DROP); ex_int(j, "hurt", MSG_HIT);
   ex_int(j, "stun", MSG_STUN); ex_int(j, "picked-up", MSG_PICK); ex_int(j, "core", MSG_CORE); ex_int(j, "ping", MSG_PING); ex_int(j, "foe-down", MSG_FOE);
   ex_int(j, "cell", MSG_CELL); ex_int(j, "smack", MSG_SMACK); ex_int(j, "splice-core", EV_SPLICE_CORE); ex_int(j, "restored", EV_RESTORED);
+  // the battle's moments a host's effects want (splice-battle.coax SBM_*; host-fx.coax raises bot-hurt and smack)
+  ex_int(j, "bot-hurt", EV_BOT_HURT); ex_int(j, "mech-drilling", SBM_DRILLING); ex_int(j, "boss-wakes", SBM_BOSS); ex_int(j, "boss-charges", SBM_CHARGES);
+  ex_int(j, "weak-open", SBM_OPEN); ex_int(j, "weak-shut", SBM_SHUT); ex_int(j, "deploy", EV_DEPLOY);
   // each sound by its name in the sound table (sound.coax): an overrides row event.NAME plays it; a loop's event is its start
   for k: 0..<SND_COUNT { ex_int(j, SND_ROWS[k].name, SND_EVENT_BASE + k); }
+  jo_end(j);
+
+  // an event as a record, and a thing's state, for a host's effects (host-fx.coax; aethyr_event_records, aethyr_thing_states)
+  jo_key(j, "event_record"); jo_obj(j);
+  ex_int(j, "floats", HX_EVENT_FLOATS);
+  ev_fields := [9] string.["event", "x", "y", "z", "dx", "dy", "dz", "strength", "thing"];
+  jo_key(j, "fields"); jo_arr(j); for f: ev_fields { jo_str(j, f); } jo_end(j);
+  ex_str(j, "about", "place in metres, y up; direction a unit vector, or zero when the event has none; strength 1 is ordinary; thing is a thing's id or -1");
+  jo_end(j);
+  jo_key(j, "thing_state"); jo_obj(j);
+  ex_int(j, "floats", HX_STATE_FLOATS);
+  st_fields := [16] string.["id", "kind", "variant", "flags", "x", "y", "z", "yaw", "vx", "vy", "vz", "level", "ax", "ay", "az", "spare"];
+  jo_key(j, "fields"); jo_arr(j); for f: st_fields { jo_str(j, f); } jo_end(j);
+  jo_key(j, "flags"); jo_obj(j);
+  ex_int(j, "sprinting", TF_SPRINT); ex_int(j, "board", TF_BOARD); ex_int(j, "drilling", TF_DRILL); ex_int(j, "stunned", TF_STUN);
+  ex_int(j, "charging", TF_CHARGE); ex_int(j, "dead", TF_DEAD); ex_int(j, "driving", TF_DRIVE); ex_int(j, "open", TF_OPEN);
+  jo_end(j);
+  ex_str(j, "about", "an id is the kind times 64 plus the thing's place among its kind; velocity in metres a second; level 0 to 1 is how far through its action; ax, ay, az is where its action is (a drill's bit). After the listed things: the rover she drives (rover, variant 1) and the drill mech while it drills (digger, variant 2)");
   jo_end(j);
 
   // the codes g_key takes: a letter is its character code, the rest are these

@@ -182,6 +182,10 @@ SpGame :: struct {
 TK_SMUGGLER :: 0; TK_DIGGER :: 1; TK_RAIDER :: 2; TK_IMPERIAL :: 3; TK_DJ :: 4; TK_BOSS :: 5; TK_ROVER :: 6; TK_PICKUP :: 7; TK_KINDS :: 8;
 THINGS :: 48; THING_FLOATS :: 8; EVENTS :: 16;
 EV_SPLICE_CORE :: 100; EV_RESTORED :: 101; EV_DEPLOY :: 102;   // below 100 an event is the message it came with (MSG_*)
+// For a host's effects (host-fx.coax, #13599): an event as a record with a place, a thing's state, and the state's flags.
+HX_EVENT_FLOATS :: 9; HX_STATE_FLOATS :: 16; HX_EVENTS :: 32; HX_STATES :: 56;
+TF_SPRINT :: 1; TF_BOARD :: 2; TF_DRILL :: 4; TF_STUN :: 8; TF_CHARGE :: 16; TF_DEAD :: 32; TF_DRIVE :: 64; TF_OPEN :: 128;
+EV_BOT_HURT :: 110;   // a blow landed on your fielded bot (a blow of yours on a foe is MSG_SMACK)
 
 // Before a thing's shapes: lists it, and says whether to write them (-1: a host draws this kind).
 g_thing :: (g: [] SpGame, p: [] Pen, kind: int, variant: int, f: Frame, scale: f32, phase: f32) -> int {

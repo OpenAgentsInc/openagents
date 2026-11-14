@@ -30,6 +30,10 @@ static uint32_t places[PLACE_WORDS];
 // The world's import pack: a native host reads none yet, so a kind whose mesh is in the pack draws nothing.
 static uint8_t imports[1];
 static float style[128];            /* STYLE_FLOATS */
+// What the effects of a host need (host-fx.coax): the events since the host last asked, as records with a
+// place, and each thing's state. Stepped after every frame; one world a process, as the stores above.
+static coax_t_SpHost host;
+static coax_v_t_SpHost hx(void) { return (coax_v_t_SpHost){&host, 1}; }
 static uint32_t frames;
 
 static coax_v_t_Splice at(void *state) { return (coax_v_t_Splice){(coax_t_Splice *)state, 1}; }
@@ -79,6 +83,7 @@ uint32_t aethyr_frame(void *state, float *vertices, float *uniforms, float width
                            (coax_v_u32){world, WORLD_WORDS}, (coax_v_u32){live, LIVE_WORDS},
                            (coax_v_u32){pieces, PIECE_WORDS}, (coax_v_u32){places, PLACE_WORDS}, (coax_v_f32){style, 128}, (coax_v_u8){imports, 0});
   frames += 1;
+  splice_host_step(at(state), hx(), dt);
 #ifdef AETHYR_WORLD_BAKED
   baked_requests(state);
 #endif
@@ -134,4 +139,9 @@ int aethyr_things(void *state, float *out, int cap) { return (int)splice_things(
 int aethyr_thing_first(void *state, int k) { return (int)splice_thing_first(at(state), k); }
 int aethyr_thing_count(void *state, int k) { return (int)splice_thing_count(at(state), k); }
 void aethyr_thing_hide(void *state, int kind, int hide) { splice_thing_hide(at(state), kind, hide != 0); }
-int aethyr_events(void *state, float *out, int cap) { return (int)splice_events(at(state), (coax_v_f32){out, cap}); }
+// The events are kept as records since the last frame (host-fx.coax); the old call hands out their numbers.
+int aethyr_events(void *state, float *out, int cap) { (void)state; return (int)splice_event_ids(hx(), (coax_v_f32){out, cap}); }
+int aethyr_event_floats(void) { return 9; }
+int aethyr_event_records(void *state, float *out, int cap) { (void)state; return (int)splice_event_records(hx(), (coax_v_f32){out, cap}); }
+int aethyr_thing_state_floats(void) { return 16; }
+int aethyr_thing_states(void *state, float *out, int cap) { (void)state; return (int)splice_thing_states(hx(), (coax_v_f32){out, cap}); }
