@@ -345,6 +345,55 @@ mc_run_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
   }
   return mc_run_next(r, out, k, status);
 }
+// mc_run_poll for a run without a mode (no aware.coax state: the Lab's, agent/engine/microcoder.coax).
+// Its steps have no notes or compiler questions and their edits are mc_run_edit's. Kept apart so
+// the units that only run plain Microcoder (the desktop chat) do not carry aware.coax's retained
+// stores into every caller's summary, which took dsk_frame past the checker's 256 (#13588).
+mc_run_poll_plain :: (r: [] McRun, out: [] McRunEvent) -> int {
+  if r[0].ended || r[0].asking { return 0; }
+  if r[0].l[0].ending==MC_END_FAILED {return mc_run_end(r,out,0);}
+  if r[0].seed && !r[0].seeded { return mc_run_seed(r, out); }
+  if r[0].journal.count>0 && cxproc_now_ms()>=r[0].deadline {gw_plan_stop(r[0].p);r[0].refused="time limit reached: a run has 15 minutes";return mc_run_failed(r,out,0);}
+  l := r[0].l[..];
+  k := 0;
+  ev: [8] GwEvent;
+  n := gw_plan_poll(r[0].p, r[0].bench, ev[..]);
+  if r[0].journal.count>0 && r[0].journal[0].flow.chain.failed {return mc_run_failed(r,out,0);}
+  status := MC_WAIT;
+  rn := 0;
+  for i: 0..<n {
+    if ev[i].kind == GW_EV_TEXT { rn += mc_rs_feed(r[0].rs[..], ev[i].text, r[0].rbuf[rn..<r[0].rbuf.count]); }
+    status = mc_feed(l, ev[i]);
+  }
+  if rn > 0 { k = mc_run_put(out, k, McRunEvent.{kind = MR_REPLY, text = cast(string) r[0].rbuf[0..<rn]}); }
+  k = mc_run_logs(r, out, k);
+  if status == MC_WAIT { return k; }
+  r[0].calling = false;
+  r[0].nob = 0;
+  if status == MC_FINISH { return mc_run_finish(r, out, k); }
+  if status == MC_TOOLS {
+    a := mc_pending(l);
+    for i: 0..<a.ne { k = mc_run_edit(r, out, k, a.edits[i]); if r[0].ended { return k; } }
+    if r[0].gated && a.nc > 0 {
+      r[0].ask_i = 0;
+      return mc_run_ask(r,out,k,a.commands[0]);
+    }
+    for i: 0..<a.nc { k = mc_run_one(r, out, k, a.commands[i]);if r[0].ended {return k;} }
+    return mc_run_after(r, out, k);
+  }
+  return mc_run_next(r, out, k, status);
+}
+
+#test "a plain poll gives nothing once a run has ended or waits on an answer, and ends a failed one" {
+  r: [1] McRun; out: [16] McRunEvent;
+  r[0].ended = true;
+  #assert mc_run_poll_plain(r[..], out[..]) == 0;
+  r[0].ended = false; r[0].asking = true;
+  #assert mc_run_poll_plain(r[..], out[..]) == 0 && !r[0].ended;
+  r[0].asking = false; r[0].l[0].ending = MC_END_FAILED; r[0].l[0].why = "a limit";
+  n := mc_run_poll_plain(r[..], out[..]);
+  #assert n == 1 && r[0].ended && out[0].kind == MR_ENDED && out[0].ending == MC_END_FAILED && out[0].text == "a limit";
+}
 
 // The live journal owns every effect ticket. Any uncertain completion ends
 // the run; a later call never silently retries the pending operation.

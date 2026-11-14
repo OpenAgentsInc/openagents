@@ -472,7 +472,7 @@ lab_mc_pump :: (m: [] LabMc, s: [] Session) {
   if !m[0].v[0].running { return; }
   if m[0].ours_on && gw_ours_stale(m[0].ours[..], zr_lab_unix_s()) { x := lab_mc_ours_fresh(m); }
   ev: [LMC_EVENTS] McRunEvent;
-  n := mc_run_poll(m[0].run[..], ev[..]);
+  n := mc_run_poll_plain(m[0].run[..], ev[..]);   // the Lab's runs have no mode (aware.coax)
   lab_mc_take(m[0].v[..], s, ev[..], n);
 }
 
