@@ -1,0 +1,44 @@
+{
+  "profile": "openagents.provider-accounts.v1",
+  "schema": "proto/openagents/environment/accounts/v1/accounts.proto",
+  "store": {
+    "schema": "openagents.environment.accounts.store.v1",
+    "fields": [
+      "device",
+      "grant",
+      "enabled",
+      "selected",
+      "profiles"
+    ]
+  },
+  "receipt": {
+    "schema": "openagents.environment.accounts.receipt.v1",
+    "fields": [
+      "command_id",
+      "method",
+      "account_id",
+      "login_id",
+      "digest",
+      "expires_at_ms"
+    ],
+    "secrets": "No code, token, URL, raw output or refresh credential is retained."
+  },
+  "local_scope": "One explicitly enabled exact environment device/grant; HOST admit still required.",
+  "probe": {
+    "schema": "openagents.environment.accounts.probe.v1",
+    "fields": [
+      "status",
+      "error",
+      "windows"
+    ],
+    "note": "Local self-child observation; never credentials."
+  },
+  "binding": {
+    "schema": "openagents.environment.accounts.binding.v1",
+    "fields": [
+      "grant",
+      "session_id",
+      "account_id"
+    ]
+  }
+}

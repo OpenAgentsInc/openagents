@@ -1,0 +1,55 @@
+// Provider-account admission is separate from the published environment runtime.
+#authority;
+#load "../environment/policy.coax";
+#test "provider operations have closed rights and never expose a terminal" {
+ #assert pa_right("ListAccounts")==0 && pa_right("ReadAccountLogin")==0;
+ for m:[4]string.["BeginAccountLogin","CompleteAccountLogin","CancelAccountLogin","SelectAccount"] {#assert pa_right(m)==1;}
+ #assert pa_right("RunCommand")== -1 && pa_right("RefreshToken")== -1 && pa_right("")== -1;
+}
+pa_right :: (method:string)->int #export_c #effects(all) {
+ if method=="ListAccounts" || method=="ReadAccountLogin" {return 0;}
+ if method=="BeginAccountLogin" || method=="CompleteAccountLogin" || method=="CancelAccountLogin" || method=="SelectAccount" {return 1;}return -1;
+}
+#test "account management needs every local and HOST scope fact" {
+ #assert pa_scope(true,true,true,true,true,0) && pa_scope(true,true,true,true,true,1);
+ #assert !pa_scope(false,true,true,true,true,0) && !pa_scope(true,false,true,true,true,1);
+ #assert !pa_scope(true,true,false,true,true,0) && !pa_scope(true,true,true,false,true,1);
+ #assert !pa_scope(true,true,true,true,false,0) && !pa_scope(true,true,true,true,true,-1) && !pa_scope(true,true,true,true,true,2);
+}
+pa_scope :: (configured:bool,enabled:bool,device:bool,grant:bool,admitted:bool,right:int)->bool #export_c #effects(all) {return configured && enabled && device && grant && admitted && (right==0 || right==1);}
+#test "profile IDs and codes cannot inject paths, lines, or shell input" {
+ #assert pa_profile("system") && pa_profile("0123456789abcdef0123456789abcdef");
+ #assert !pa_profile("") && !pa_profile("../default") && !pa_profile("ABCDEF01234567890123456789012345");
+ #assert pa_code("abc-123_#state") && !pa_code("") && !pa_code("a\nb") && !pa_code("a\rb") && !pa_code(" a") && !pa_code("a b");
+ b:[4097]u8;for i:0..<b.count {b[i]='a';}#assert pa_code(cast(string)b[0..<4096]) && !pa_code(cast(string)b[..]);
+}
+pa_profile :: (id:string)->bool #effects(all) {return id=="system" || ea_id(id,32);}
+#test "code and authorization URL bounds include exact printable endpoints" {
+ #assert pa_code("!") && pa_code("~");bad:=[1]u8.[127];#assert !pa_code(cast(string)bad[..]);
+ a:="https://claude.ai/oauth/authorize?";b:="https://claude.com/cai/oauth/authorize?";url:[8193]u8;
+ for c,i:a {url[i]=c;}for i:a.count..<url.count {url[i]='a';}
+ #assert !pa_authorize(a);
+ #assert pa_authorize(cast(string)url[0..<8192]) && !pa_authorize(cast(string)url[..]);
+ url[a.count]='!';#assert pa_authorize(cast(string)url[0..<a.count+1]);url[a.count]='~';#assert pa_authorize(cast(string)url[0..<a.count+1]);url[a.count]=127;#assert !pa_authorize(cast(string)url[0..<a.count+1]);url[a.count]=32;#assert !pa_authorize(cast(string)url[0..<a.count+1]);
+ for c,i:b {url[i]=c;}url[b.count]='x';#assert pa_authorize(cast(string)url[0..<b.count+1]) && !pa_authorize(b);
+}
+pa_code :: (code:string)->bool #effects(all) {if code.count<1 || code.count>4096 {return false;}for c:code {if c<33 || c>126 {return false;}}return true;}
+#test "authorization URLs are only Claude's HTTPS authorize pages" {
+ #assert pa_authorize("https://claude.ai/oauth/authorize?code=true&state=abc");
+ #assert pa_authorize("https://claude.com/cai/oauth/authorize?state=abc");
+ #assert !pa_authorize("https://claude.ai.evil.test/oauth/authorize?x=1") && !pa_authorize("http://claude.ai/oauth/authorize?x=1") && !pa_authorize("https://claude.ai/oauth/authorize") && !pa_authorize("https://claude.ai/oauth/authorize?x=1\n");
+}
+pa_authorize :: (url:string)->bool #export_c #effects(all) {
+ a:="https://claude.ai/oauth/authorize?";b:="https://claude.com/cai/oauth/authorize?";
+ if url.count>8192 || !((url.count>a.count && url[0..<a.count]==a) || (url.count>b.count && url[0..<b.count]==b)) {return false;}
+ for c:url {if c<33 || c>126 {return false;}}return true;
+}
+#test "usage cache and forced probes have separate deadlines" {
+ #assert !pa_probe(100000,100000,false) && pa_probe(400000,100000,false) && !pa_probe(399999,100000,false);
+ #assert !pa_probe(129999,100000,true) && pa_probe(130000,100000,true) && pa_probe(1,0,false);
+}
+pa_probe :: (now:int,last:int,force:bool)->bool #effects(all) {return last==0 || now-last>=(ifx force then 30000 else 300000);}
+#test "only a fresh idle profile may be selected for new conversations" {
+ #assert pa_select(true,true,false) && !pa_select(false,true,false) && !pa_select(true,false,false) && !pa_select(true,true,true);
+}
+pa_select :: (present:bool,authenticated:bool,signing_in:bool)->bool #effects(all) {return present && authenticated && !signing_in;}

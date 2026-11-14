@@ -1,0 +1,56 @@
+syntax = "proto3";
+package openagents.environment.accounts.v1;
+
+// A separate profile carried by HOST app.rpc. Runtime v1alpha1 is unchanged.
+// Provider tokens, filesystem paths and arbitrary executable/endpoint choices
+// are never fields in this protocol. Provider login remains on the computer.
+message AccountRequest {
+  string schema = 1; // openagents.environment.accounts.request.v1
+  string method = 2; // ListAccounts, BeginAccountLogin, ReadAccountLogin,
+                    // CompleteAccountLogin, CancelAccountLogin, SelectAccount
+  string provider = 3; // claude-code; other providers explicitly unsupported
+  string account_id = 4; // system or 32 lowercase hex profile ID
+  string login_id = 5; // 32 lowercase hex, bound to initiating device and grant
+  string command_id = 6; // retained 32 lowercase hex for every mutation
+  string label = 7; // optional local label, max 80 UTF-8 bytes
+  string code = 8; // single-use CLI paste code, ephemeral; never retained/logged
+  int64 issued_at_ms = 9;
+  int64 expires_at_ms = 10; // <= issued + five minutes, unchanged on retry
+  bool refresh = 11; // read-only probe; locally throttled
+}
+message UsageWindow {
+  string window_id = 1; // five_hour, seven_day, seven_day_sonnet, seven_day_opus
+  uint32 used_basis_points = 2; // 0..10000; absent window means UNKNOWN, not zero
+  string resets_at = 3; // provider's RFC3339 UTC timestamp, may be absent
+}
+message ProviderAccount {
+  string account_id = 1;
+  string provider = 2;
+  string label = 3;
+  string email = 4;
+  string plan = 5;
+  string state = 6; // checking, connected, login_required, unavailable
+  bool selected = 7; // default for NEW managed conversations on this grant
+  repeated UsageWindow windows = 8; // max four; NEVER summed across computers
+  int64 observed_at_ms = 9; // last successful usage observation, zero if unknown
+  bool stale = 10;
+  string error = 11; // closed refusal/status code, no raw process/network output
+}
+message AccountLogin {
+  string login_id = 1;
+  string account_id = 2;
+  string state = 3; // starting, awaiting_code, verifying, completed, cancelled,
+                    // expired, failed, unknown (restart/uncertain effect)
+  string authorization_url = 4; // exact allowlisted Claude authorization URL
+  int64 expires_at_ms = 5;
+}
+message AccountsView {
+  string schema = 1; // openagents.environment.accounts.view.v1
+  string host_pubkey = 2;
+  string method = 3;
+  repeated ProviderAccount accounts = 4; // max eight, including system
+  AccountLogin login = 5;
+  string command_id = 6;
+  string error = 7;
+  int64 retry_after_ms = 8;
+}

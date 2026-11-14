@@ -398,6 +398,7 @@ Engine :: struct {
   codex_exe: string;                 // where codex is (in probe_out; codex.coax starts it)
   codex_auth: bool;                  // its login is on disk (~/.codex/auth.json)
   cwd: [E_FILE] u8; cwd_n: int;
+  config_dir:[1400]u8;config_n:int;config_env:[1536]u8;
   sid: [128] u8; sid_n: int;         // the conversation's session, for --resume
   err: [2048] u8; err_n: int;     // what the CLI last wrote to stderr before it went
   // The owner's own options, used as they are in place of the desktop app's (e_own): its system
@@ -517,6 +518,10 @@ e_options :: (e: [] Engine, o: [] ClOptions) {
   o[0].permission_handler = true;
   o[0].permission_mode = e_mode(e);
   if e[0].cwd_n > 0 { o[0].cwd = e_str(e[0].cwd[..], e[0].cwd_n); }
+  if e[0].config_n>0 {
+    n:=e_set(e[0].config_env[..],0,"CLAUDE_CONFIG_DIR=");n=e_set(e[0].config_env[..],n,cast(string)e[0].config_dir[0..<e[0].config_n]);cl_add_env(o,cast(string)e[0].config_env[0..<n]);
+    cl_remove_env(o,"CLAUDE_CODE_OAUTH_TOKEN");cl_remove_env(o,"CLAUDE_CODE_USE_BEDROCK");cl_remove_env(o,"CLAUDE_CODE_USE_VERTEX");cl_remove_env(o,"CLAUDE_CODE_USE_FOUNDRY");
+  }
   if e[0].path_n > 5 { cl_add_env(o, e_str(e[0].path_env[..], e[0].path_n)); }
   cl_remove_env(o, "ANTHROPIC_API_KEY");
   // A resident service may itself be installed from an agent's terminal.
@@ -1050,4 +1055,10 @@ s_test_feed :: (s: [] Session, q: [] ClQuery, lines: [] string) {
     e_take(e[..], s[..], cl_feed(e[0].q[..], l));
   }
   #assert !s[0].live && e_str(e[0].sid[..], e[0].sid_n) == "dfc3d0c7-79e7-4d09-b940-c3ad305b7492" && s[0].cost > 0.0041;
+}
+
+#test "profile isolation survives dynamic model choices and resume options" {
+ e:[1]Engine;e_init(e[..]);_:=e_set(e[0].config_dir[..],0,"/private/profile-one");e[0].config_n=20;o:[1]ClOptions;e_options(e[..],o[..]);found:=false;
+ for i:0..<o[0].env_count {if o[0].env[i]=="CLAUDE_CONFIG_DIR=/private/profile-one" {found=true;}}#assert found;
+ e[0].model=1;e_options(e[..],o[..]);found=false;for i:0..<o[0].env_count {if o[0].env[i]=="CLAUDE_CONFIG_DIR=/private/profile-one" {found=true;}}#assert found;
 }

@@ -8,6 +8,8 @@
 #define _DARWIN_C_SOURCE
 #endif
 #include "store-file-native.h"
+#include "entropy-foreign.h"
+#include "secret-read-native.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -19,6 +21,15 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+/* Service name supplied by Coax; never display a Keychain dialog. */
+int64_t cxsecret_read_service(coax_v_u8 service,coax_v_u8 account,coax_v_u8 out) {
+  char name[256],user[256];
+  if (!service.data || service.count<1 || service.count>=sizeof name || account.count<1 || account.count>=sizeof user || out.count<0) return -1;
+  for (int64_t i=0;i<service.count;i++) {if (!service.data[i]) return -1;name[i]=(char)service.data[i];}
+  for (int64_t i=0;i<account.count;i++) {if (!account.data[i]) return -1;user[i]=(char)account.data[i];}
+  name[service.count]=0;user[account.count]=0;return cxsecret_copy(name,user,1,out.data,out.count);
+}
 
 #define CXSTORE_PENDING (4 + 262144)
 static char path_buf[4096];
@@ -358,6 +369,15 @@ int64_t cxfs_unlock(void) {
   int closed = close(held);
   return unlocked == 0 && closed == 0 ? 0 : -1;
 }
+
+int64_t cxfs_private_directory(const char *path) {
+  char d[CXFS_PATH_MAX + 1];size_t n=strlen(path);if (!n || n>CXFS_PATH_MAX) return -1;memcpy(d,path,n+1);
+  for (char *s=d+1;*s;s++) {if (*s!='/') continue;*s=0;if (mkdir(d,0700)!=0 && errno!=EEXIST) return -1;*s='/';}
+  if (mkdir(d,0700)!=0 && errno!=EEXIST) return -1;
+  struct stat st;if (lstat(d,&st)!=0 || !S_ISDIR(st.st_mode)) return -1;
+  return chmod(d,0700)==0 ? 0:-1;
+}
+int64_t cxfs_mkdir_private(void) {const char *p=take_path();return p ? cxfs_private_directory(p):-1;}
 
 int64_t cxfs_mkdir(void) {
   const char *p = take_path();

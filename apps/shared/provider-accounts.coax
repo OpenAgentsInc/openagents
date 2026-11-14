@@ -1,0 +1,81 @@
+// Shared Coax Usage surface. The host performs only existing HTTP, random-ID,
+// link and timer effects; provider credentials never enter this application.
+#load "../../coax/lib/agent/accounts/wire.coax";
+#load "../../coax/lib/agent/environment/wire.coax";
+#load "../../components/kit/frames.coax";
+ProviderUsage :: struct {
+ active:bool;catalog:[1]EaCatalog;catalog_ready:bool;views:[64]PaView;states:[64]int;next:int;force:bool;
+ current:[1]PaRequest;intent:[1]PaRequest;current_host:int= -1;intent_host:int= -1;intent_ready:bool;uncertain:bool;
+ flow_host:int= -1;flow:[1]PaLogin;poll:bool;wait:f32;
+ form:bool;form_host:int;form_account:[32]u8;form_na:int;label:[80]u8;nl:int;code:[4096]u8;nc:int;
+ note:[512]u8;nn:int;
+}
+#test "usage remaining is provider percentage, never an invented token allowance" {
+ b:[80]u8;#assert pu_remaining(3500,b[..])=="65% remaining" && pu_remaining(10000,b[..])=="0% remaining" && pu_remaining(0,b[..])=="100% remaining";
+ #assert pu_remaining(-1,b[..])=="Usage unavailable" && pu_remaining(10001,b[..])=="Usage unavailable";
+}
+pu_cat :: (out:[]u8,left:string,right:string)->string {n:=pa_copy(out,left);if n<0 || n+right.count>out.count {return "";}for c:right {out[n]=c;n+=1;}return cast(string)out[0..<n];}
+pu_remaining :: (used:int,out:[]u8)->string {if used<0 || used>10000 {return "Usage unavailable";}remaining:=(10000-used)/100;b:[32]u8;return pu_cat(out,tr_join(b[..],"",remaining),"% remaining");}
+pu_note :: (u:[]ProviderUsage,text:string) {u[0].nn=pa_copy(u[0].note[..],text);}
+pu_error :: (code:string)->string {
+ if code=="forbidden" {return "Account access is not enabled for this computer connection.";}
+ if code=="login_required" {return "Sign in to Claude Code on this computer.";}
+ if code=="credentials_unavailable" {return "Claude is signed in, but usage credentials could not be read. Check Keychain access on this computer.";}
+ if code=="rate_limited" {return "Claude limited usage checks. Your last reading is shown; refresh will retry after the cooldown.";}
+ if code=="profile_busy" {return "This account is in use. Stop its running chats before signing it in again.";}
+ if code=="capacity" {return "This computer has reached its account or sign-in limit.";}
+ if code=="expired" {return "This sign-in or request expired. Start a new sign-in.";}
+ if code=="unknown" || code=="login_unknown" {return "The computer could not confirm that sign-in. Start a new one; it will not replay an old code.";}
+ if code=="idempotency_conflict" {return "The original request changed. Refresh before trying again.";}
+ if code=="storage_unavailable" {return "The computer could not save this account change.";}
+ if code=="cli_unavailable" {return "Claude Code is not available on this computer.";}
+ return "Usage could not be refreshed. Check the computer connection and try again.";
+}
+pu_flow_running :: (u:[]ProviderUsage)->bool {s:=cast(string)u[0].flow[0].state[0..<u[0].flow[0].ns];return s=="starting" || s=="awaiting_code" || s=="verifying";}
+pu_wipe_code :: (u:[]ProviderUsage) {for i:0..<u[0].code.count {u[0].code[i]=0;}u[0].nc=0;for i:0..<u[0].intent[0].code.count {u[0].intent[0].code[i]=0;}u[0].intent[0].nb=0;}
+pu_start_intent :: (u:[]ProviderUsage,host:int,method:string,account:string)->bool {
+ if u[0].uncertain {pu_note(u,"Reconnect to resolve the original account request first.");return false;}
+ q:=u[0].intent[..];q[0]=PaRequest.{};q[0].nm=pa_copy(q[0].method[..],method);q[0].na=pa_copy(q[0].account[..],account);
+ if method=="BeginAccountLogin" {q[0].nn=pa_copy(q[0].label[..],cast(string)u[0].label[0..<u[0].nl]);}
+ if method=="CompleteAccountLogin" || method=="CancelAccountLogin" {q[0].nl=pa_copy(q[0].login[..],cast(string)u[0].flow[0].id[0..<u[0].flow[0].ni]);}
+ if method=="CompleteAccountLogin" {if !pa_code(cast(string)u[0].code[0..<u[0].nc]) {pu_note(u,"Paste the complete authorization code from Claude.");return false;}q[0].nb=pa_copy(q[0].code[..],cast(string)u[0].code[0..<u[0].nc]);}
+ u[0].intent_host=host;pu_note(u,"");return true;
+}
+#test "a retained account intent keeps the original code and identity on retry" {
+ u:[1]ProviderUsage;u[0].nc=pa_copy(u[0].code[..],"one-time#state");u[0].flow[0].ni=pa_copy(u[0].flow[0].id[..],"11111111111111111111111111111111");#assert pu_start_intent(u[..],0,"CompleteAccountLogin","");
+ u[0].intent[0].nc=pa_copy(u[0].intent[0].command[..],"22222222222222222222222222222222");u[0].uncertain=true;#assert !pu_start_intent(u[..],1,"BeginAccountLogin","") && u[0].intent[0].nb==14 && u[0].intent[0].nc==32;
+ pu_wipe_code(u[..]);#assert u[0].nc==0 && u[0].intent[0].nb==0;
+}
+pu_account_id :: (host:int,account:int,out:[]u8)->string {a:[96]u8;b:[96]u8;return tr_join(out,tr_cat(b[..],tr_join(a[..],"usage.account.",host),"."),account);}
+pu_render :: (u:[]ProviderUsage,t:[]Tree,ui:[]Ui,busy:bool) {
+ x:=tr_open(t,"usage.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"usage.close",IC_X,"Back to settings");x=k_text(t,ui,"usage.title",TG_SPAN,"","Usage");x=k_icon_button(t,"usage.refresh",IC_ARROW_ROTATE_CW,"Refresh usage");tr_attr(t,x,AT_STATE,ifx busy then "loading" else "ready");tr_close(t);
+ x=k_text(t,ui,"usage.about",TG_P,"meta","Claude Code accounts on your computers. Shared logins share a quota; limits are shown separately, never added together.");
+ if u[0].nn>0 {x=k_text(t,ui,"usage.note",TG_P,"note",cast(string)u[0].note[0..<u[0].nn]);}
+ if u[0].uncertain {x=k_link(t,"usage.retry","Reconnect to original request");}
+ if !u[0].catalog_ready {x=k_text(t,ui,"usage.loading",TG_P,"meta","Loading connected computers…");}
+ else if u[0].catalog[0].n==0 {x=k_text(t,ui,"usage.no-computers",TG_P,"","No computers are connected. Connect a computer using the OpenAgents desktop app first.");}
+ for host:0..<u[0].catalog[0].n {
+  entry:=u[0].catalog[0].entries[host];id:[96]u8;x=k_text(t,ui,tr_join(id[..],"usage.computer.",host),TG_H2,"",cast(string)entry.label[0..<entry.nl]);
+  if u[0].states[host]==0 {a:[96]u8;x=k_text(t,ui,tr_join(a[..],"usage.pending.",host),TG_P,"meta","Checking accounts…");continue;}
+  if u[0].states[host]!=2 {a:[96]u8;x=k_text(t,ui,tr_join(a[..],"usage.offline.",host),TG_P,"meta","Computer unavailable. Refresh to retry.");continue;}
+  view:=u[0].views[host];if view.ne>0 {a:[96]u8;x=k_text(t,ui,tr_join(a[..],"usage.refused.",host),TG_P,"meta",pu_error(cast(string)view.error[0..<view.ne]));continue;}
+  for i:0..<view.n {account:=view.accounts[i];base:[96]u8;name:=pu_account_id(host,i,base[..]);title:=ifx account.ne>0 then cast(string)account.email[0..<account.ne] else cast(string)account.label[0..<account.nl];
+   x=k_card(t,ui,name,title);a:[96]u8;x=k_text(t,ui,tr_cat(a[..],name,".plan"),TG_P,"meta",ifx account.selected then "Used for new chats" else cast(string)account.plan[0..<account.np]);
+   if account.nw==0 {b:[96]u8;x=k_text(t,ui,tr_cat(b[..],name,".unknown"),TG_P,"",ifx cast(string)account.state[0..<account.ns]=="checking" then "Checking usage…" else "Usage unavailable");}
+   for k:0..<account.nw {w:=account.windows[k];section:[96]u8;wid:=tr_join(section[..],name,k);window_label:[96]u8;label:="Weekly";key:=cast(string)w.id[0..<w.ni];if key=="five_hour" {label="Five-hour session";}else if key=="seven_day_sonnet" {label="Weekly · Sonnet";}else if key=="seven_day_opus" {label="Weekly · Opus";}
+    x=k_text(t,ui,tr_cat(window_label[..],wid,".label"),TG_H3,"meta",label);b:[96]u8;remaining:[80]u8;x=k_text(t,ui,tr_cat(b[..],wid,".remaining"),TG_P,"amount",pu_remaining(w.used,remaining[..]));
+    if w.nr>0 {c:[96]u8;reset:[96]u8;x=k_text(t,ui,tr_cat(c[..],wid,".reset"),TG_P,"meta",pu_cat(reset[..],"Resets ",cast(string)w.reset[0..<w.nr]));}
+   }
+   if account.stale && account.observed>0 {b:[96]u8;x=k_text(t,ui,tr_cat(b[..],name,".stale"),TG_P,"meta","Last successful reading · may be out of date");}
+   if account.ner>0 {b:[96]u8;x=k_text(t,ui,tr_cat(b[..],name,".error"),TG_P,"meta",pu_error(cast(string)account.error[0..<account.ner]));}
+   if !account.selected && cast(string)account.state[0..<account.ns]=="connected" {b:[96]u8;x=k_link(t,tr_cat(b[..],name,".select"),"Use for new chats");if busy || u[0].uncertain {tr_attr(t,x,AT_DISABLED,"");}}
+   if cast(string)account.id[0..<account.ni]!="system" {b:[96]u8;x=k_link(t,tr_cat(b[..],name,".login"),"Sign in again");if busy || u[0].uncertain {tr_attr(t,x,AT_DISABLED,"");}}tr_close(t);
+  }
+  a:[96]u8;x=k_link(t,tr_join(a[..],"usage.add.",host),"Connect a Claude account");if busy || u[0].uncertain || pu_flow_running(u) {tr_attr(t,x,AT_DISABLED,"");}
+ }
+ if u[0].form {x=tr_open(t,"usage.form",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Connect Claude Code");x=k_text(t,ui,"usage.form.title",TG_H2,"","Connect Claude Code");x=k_text(t,ui,"usage.form.about",TG_P,"","This account gets its own Claude Code profile on the selected computer. Your other accounts stay connected.");x=k_input(t,ui,"usage.label","Work, Personal…","Account label","text","off");x=k_button(t,ui,"usage.begin","Continue to Claude",ifx busy then BS_DISABLED else BS_PRIMARY);x=k_link(t,"usage.form.close","Cancel");tr_close(t);}
+ f:=u[0].flow[0];if f.ni>0 {x=k_text(t,ui,"usage.login.title",TG_H2,"","Claude sign-in");state:=cast(string)f.state[0..<f.ns];x=k_text(t,ui,"usage.login.state",TG_P,"meta",ifx state=="completed" then "Signed in. Choose Use for new chats on this account." else ifx state=="awaiting_code" then "Open Claude, sign in, then paste its authorization code here." else ifx state=="starting" then "Starting sign-in on your computer…" else ifx state=="verifying" then "Finishing sign-in on your computer…" else ifx state=="cancelled" then "Sign-in cancelled" else ifx state=="expired" then "Sign-in expired. Connect the account again." else "Sign-in could not be confirmed. Connect the account again.");
+  if f.nu>0 && state=="awaiting_code" {x=k_link(t,"usage.authorize","Open Claude sign-in");x=k_input(t,ui,"usage.code","Paste code from Claude","Authorization code","text","off");x=k_button(t,ui,"usage.complete","Finish sign-in",ifx busy || u[0].nc==0 then BS_DISABLED else BS_PRIMARY);}
+  if pu_flow_running(u) {x=k_link(t,"usage.cancel","Cancel sign-in");if busy {tr_attr(t,x,AT_DISABLED,"");}}
+ }
+}

@@ -29,7 +29,7 @@ na_nav_restore :: (s:[]Starter) {
 }
 na_nav_tick :: (s:[]Starter) {
  n:=s[0].navigation[..];e:=s[0].environments[..];
- if !s[0].account_ready || s[0].page<2 || !n[0].open || s[0].flight!=0 || e[0].flight || e[0].random || e[0].action!=0 || s[0].action!=0 {return;}
+ if s[0].usage[0].active || !s[0].account_ready || s[0].page<2 || !n[0].open || s[0].flight!=0 || e[0].flight || e[0].random || e[0].action!=0 || s[0].action!=0 {return;}
  if n[0].account_refresh {n[0].account_refresh=false;na_http(s,"/api/chat/history/v1","",71);return;}
  nav_next(n);b:=n[0].browser[..];if b[0].action==4 {s[0].action=4;s[0].flight=4;s[0].purpose=70;s[0].out_n=na_copy(s[0].outbox[..],cast(string)b[0].body[0..<b[0].nb]);b[0].action=0;}
 }
@@ -60,7 +60,7 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
  if e[0].flight && cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="ReadSession" && !e[0].uncertain {n[0].np=ea_copy(n[0].pending[..],id);return true;}
  if e[0].uncertain || e[0].random || e[0].flight || e[0].action!=0 && e[0].action!=12 {nav_note(n,"Wait for the current request, or reconnect before changing chats.");return true;}
  if s[0].flight!=0 {if s[0].purpose==70 || s[0].purpose==71 {n[0].np=ea_copy(n[0].pending[..],id);}else {nav_note(n,"Wait for the current turn before changing chats.");}return true;}
- na_nav_keep(s);
+ s[0].usage[0].active=false;na_nav_keep(s);
  if host>=0 {
   e[0]=EnvironmentApp.{};e[0].active=true;e[0].workspace=true;e[0].page=2;e[0].selected=host;e[0].catalog[0]=n[0].browser[0].catalog[0];e[0].offer[0]=n[0].groups[host].offer;s[0].page=4;
   if row>=0 {summary:=n[0].rows[row].session;e[0].ns=ea_copy(e[0].session[..],cast(string)summary.id[0..<summary.ni]);e[0].view[0].sessions[0]=summary;e[0].view[0].ns=1;eu_request(e,"ReadSession");eu_http(e,false);}
@@ -109,6 +109,6 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  k_side_end(t);x=tr_open(t,"nav.footer",TG_FOOTER,"side-f");if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",false);}x=k_row(t,u,"nav.settings","Settings","",false);tr_close(t);tr_close(t);
  if n[0].settings {
   x=tr_open(t,"nav.settings.panel",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Settings");x=k_text(t,u,"nav.settings.title",TG_H2,"","Settings");
-  x=k_link(t,"nav.settings.close","Close settings");x=k_link(t,"app.updates","Check for updates");x=k_link(t,"app.details","Build details");x=k_link(t,"extras.more","Extras");x=k_link(t,"account.logout","Log out");if s[0].note_n>0 {x=k_text(t,u,"nav.settings.note",TG_P,"meta",cast(string)s[0].note[0..<s[0].note_n]);}tr_close(t);
+  x=k_link(t,"nav.settings.close","Close settings");x=k_link(t,"app.updates","Check for updates");x=k_link(t,"app.details","Build details");x=k_link(t,"usage.open","Usage");x=k_link(t,"extras.more","Extras");x=k_link(t,"account.logout","Log out");if s[0].note_n>0 {x=k_text(t,u,"nav.settings.note",TG_P,"meta",cast(string)s[0].note[0..<s[0].note_n]);}tr_close(t);
  }
 }

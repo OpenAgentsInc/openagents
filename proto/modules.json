@@ -231,7 +231,8 @@
       "openagents/coder/session_reader/v1/reader.proto"
     ],
     "environment-access": [
-      "openagents/environment/access/v1alpha1/runtime.proto"
+      "openagents/environment/access/v1alpha1/runtime.proto",
+      "openagents/environment/accounts/v1/accounts.proto"
     ]
   },
   "profile_namespaces": {

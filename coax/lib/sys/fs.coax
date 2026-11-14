@@ -18,6 +18,7 @@ cxfs_write :: (mode: int) -> int #foreign #effects(all);
 cxfs_kind :: () -> int #foreign #effects(all);
 cxfs_size :: () -> int #foreign #effects(all);
 cxfs_mkdir :: () -> int #foreign #effects(all);
+cxfs_mkdir_private :: () -> int #foreign #effects(all);
 cxfs_temp :: () -> int #foreign #effects(all);
 cxfs_name_byte :: (i: int) -> int #foreign #effects(all);
 cxfs_remove :: () -> int #foreign #effects(all);
@@ -151,6 +152,8 @@ fs_truncate :: (path: string, size: int) -> bool { return size >= 0 && fs_push(p
 fs_mtime_ns :: (path: string) -> int { return ifx fs_push(path) then cxfs_mtime_ns() else -1; }
 // The directory and every missing parent.
 fs_mkdir :: (path: string) -> bool { return fs_push(path) && cxfs_mkdir() == 0; }
+// Owner-only directories, rejecting a symlink at the final component.
+fs_mkdir_private :: (path:string)->bool {return fs_push(path) && cxfs_mkdir_private()==0;}
 // One nonblocking exclusive lock per process. It survives until unlock or
 // process exit, never exec. A nested acquisition fails without changing it.
 fs_try_lock :: (path: string) -> bool { return fs_push(path) && cxfs_try_lock() == 0; }

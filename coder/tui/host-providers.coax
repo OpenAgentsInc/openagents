@@ -1,0 +1,114 @@
+// Provider accounts are an explicit local extension of this one environment
+// grant. HOST owns admission; the shared Claude adapter owns local effects.
+#load "../../coax/lib/agent/accounts/claude.coax";
+PaManager :: struct {native:[1]PaNative;loaded:bool;stamp:int;grant_checked:int;}
+pa_store_file :: (out:[]u8)->string #effects(all) {return es_path("provider-accounts.json",out);}
+pa_root :: (out:[]u8)->string #effects(all) {return es_path("providers",out);}
+pa_save :: (m:[]PaManager)->bool #effects(all) {b:[8192]u8;n:=pa_store_write(m[0].native[0].store[..],b[..]);p:[1400]u8;return n>0 && fs_replace_durable(pa_store_file(p[..]),cast(string)b[0..<n]);}
+pa_load :: (m:[]PaManager)->bool #effects(all) {
+ ptime:[1400]u8;stamp:=fs_mtime_ns(pa_store_file(ptime[..]));if m[0].loaded && m[0].stamp==stamp {return m[0].native[0].store[0].enabled;}
+ if m[0].loaded {fresh:[1]PaStore;bytes:[8192]u8;p:[1400]u8;n:=fs_read(pa_store_file(p[..]),bytes[..]);s:=m[0].native[0].store[..];if n<1 || !pa_store_read(cast(string)bytes[0..<n],fresh[..]) || cast(string)fresh[0].device[..]!=cast(string)s[0].device[..] || cast(string)fresh[0].grant[..]!=cast(string)s[0].grant[..] {s[0].enabled=false;return false;}s[0].enabled=fresh[0].enabled;m[0].stamp=stamp;return s[0].enabled;}
+ b:[8192]u8;p:[1400]u8;n:=fs_read(pa_store_file(p[..]),b[..]);if n<1 || !pa_store_read(cast(string)b[0..<n],m[0].native[0].store[..]) {return false;}
+ m[0].loaded=true;m[0].stamp=stamp;s:=m[0].native[0].store[..];for i:0..<s[0].n {a:=m[0].native[0].accounts[i..<i+1];a[0].ni=pa_copy(a[0].id[..],cast(string)s[0].profiles[i].id[0..<s[0].profiles[i].ni]);a[0].nl=pa_copy(a[0].label[..],cast(string)s[0].profiles[i].label[0..<s[0].profiles[i].nl]);pa_state(a,"checking");}
+ return s[0].enabled;
+}
+pa_enable :: (args:[]Args)->int #effects(all) {
+ e:[1]EsHost;if !es_load_configuration(e[..]) {tool_errln("Enable the enrolled environment first.");return 3;}c:=e[0].configuration[..];st:[1]HsState;b:[HS_STATE_MAX]u8;hs_load(st[..],b[..]);found:=false;
+ for i:0..<st[0].ng {g:=st[0].grants[i];if !g.revoked && g.expires>hs_now() && cast(string)g.device[..]==cast(string)c[0].device[..] && cast(string)g.grant[..]==cast(string)c[0].grant[..] {found=true;}}
+ if !found {tool_errln("The environment's exact device grant is not live.");return 3;}
+ m:[1]PaManager;_:=pa_load(m[..]);present:=m[0].loaded;s:=m[0].native[0].store[..];
+ if present && (cast(string)s[0].device[..]!=cast(string)c[0].device[..] || cast(string)s[0].grant[..]!=cast(string)c[0].grant[..]) {tool_errln("Provider accounts belong to another enrollment. Re-enroll explicitly.");return 3;}
+ if !present {s[0].device=c[0].device;s[0].grant=c[0].grant;s[0].n=1;s[0].profiles[0].ni=pa_copy(s[0].profiles[0].id[..],"system");s[0].profiles[0].nl=pa_copy(s[0].profiles[0].label[..],"System Claude Code");s[0].ns=pa_copy(s[0].selected[..],"system");}
+ s[0].enabled=true;p:[1400]u8;if !fs_mkdir_private(pa_root(p[..])) || !pa_save(m[..]) {return 1;}hs_outln("Provider accounts enabled for this environment's exact device/grant. Tokens remain on this computer.");return 0;
+}
+pa_fail :: (v:[]PaView,code:string) {v[0].ne=pa_copy(v[0].error[..],code);}
+pa_find_profile :: (m:[]PaManager,id:string)->int {s:=m[0].native[0].store[..];for i:0..<s[0].n {if cast(string)s[0].profiles[i].id[0..<s[0].profiles[i].ni]==id {return i;}}return -1;}
+pa_find_flow :: (m:[]PaManager,id:string)->int {for i:0..<4 {f:=m[0].native[0].flows[i].view;if cast(string)f.id[0..<f.ni]==id && f.ni>0 {return i;}}return -1;}
+pa_profile_busy :: (h:[]HsHost,id:string)->bool {
+ for i:0..<ES_SLOTS {s:=h[0].environment[0].slots[i..<i+1];if s[0].occupied && s[0].engine[0].running && cast(string)s[0].provider[0..<s[0].nprovider]==id {return true;}}
+ return pa_login_busy(h[0].providers[..],id);
+}
+pa_login_busy :: (m:[]PaManager,id:string)->bool {for i:0..<4 {f:=m[0].native[0].flows[i..<i+1];if pa_running(f) && cast(string)f[0].view.account[0..<f[0].view.na]==id {return true;}}return false;
+}
+pa_schedule :: (m:[]PaManager,refresh:bool) {
+ s:=m[0].native[0].store[..];root:[1400]u8;directory:[1536]u8;now:=cxproc_wall_us()/1000;
+ for i:0..<s[0].n {p:=m[0].native[0].probes[i..<i+1];a:=m[0].native[0].accounts[i..<i+1];id:=cast(string)s[0].profiles[i].id[0..<s[0].profiles[i].ni];flowing:=false;
+  for k:0..<4 {f:=m[0].native[0].flows[k..<k+1];if pa_running(f) && f[0].profile==i {flowing=true;}}
+  if !flowing && now>=p[0].backoff && pa_probe(now,p[0].last,refresh) {pa_probe_start(p,a,pa_directory(pa_root(root[..]),id,directory[..]),id=="system",now);}
+ }
+}
+pa_snapshot :: (h:[]HsHost,q:[]PaRequest,v:[]PaView) {
+ v[0]=PaView.{};v[0].host=h[0].xhex;v[0].nm=pa_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);v[0].nc=pa_copy(v[0].command[..],cast(string)q[0].command[0..<q[0].nc]);m:=h[0].providers[..];s:=m[0].native[0].store[..];v[0].n=s[0].n;
+ for i:0..<s[0].n {v[0].accounts[i]=m[0].native[0].accounts[i];v[0].accounts[i].selected=cast(string)s[0].profiles[i].id[0..<s[0].profiles[i].ni]==cast(string)s[0].selected[0..<s[0].ns];}
+}
+pa_receipt_file :: (grant:string,command:string,out:[]u8)->string #effects(all) {name:[256]u8;n:=pa_copy(name[..],"provider-command-");for c:grant {name[n]=c;n+=1;}name[n]='-';n+=1;for c:command {name[n]=c;n+=1;}for c:".json" {name[n]=c;n+=1;}return es_path(cast(string)name[0..<n],out);}
+pa_dispatch :: (h:[]HsHost,q:[]PaRequest,v:[]PaView) {
+ m:=h[0].providers[..];s:=m[0].native[0].store[..];method:=cast(string)q[0].method[0..<q[0].nm];pa_snapshot(h,q,v);
+ if method=="ListAccounts" {pa_schedule(m,q[0].refresh);pa_snapshot(h,q,v);return;}
+ login:=cast(string)q[0].login[0..<q[0].nl];which:=pa_find_flow(m,login);
+ if method=="ReadAccountLogin" {if which>=0 {v[0].login=m[0].native[0].flows[which].view;}else {v[0].login.ni=pa_copy(v[0].login.id[..],login);v[0].login.ns=pa_copy(v[0].login.state[..],"unknown");}return;}
+ command:=cast(string)q[0].command[0..<q[0].nc];grant:=cast(string)s[0].grant[..];path:[1400]u8;file:=pa_receipt_file(grant,command,path[..]);canonical:[8192]u8;n:=pa_request_write(q,canonical[..]);if n<1 {pa_fail(v,"malformed");return;}defer {for i:0..<canonical.count {canonical[i]=0;}}
+ digest:[64]u8;if !S_hex(S_hash(cast(string)canonical[0..<n]),digest[..]) {pa_fail(v,"malformed");return;}
+ if fs_exists(file) {raw:[2048]u8;nread:=fs_read(file,raw[..]);r:[1]PaReceipt;if nread<1 || !pa_receipt_read(cast(string)raw[0..<nread],r[..]) || cast(string)r[0].digest[..]!=cast(string)digest[..] {pa_fail(v,"idempotency_conflict");return;}
+  old:=pa_find_flow(m,ifx method=="BeginAccountLogin" then command else login);if old>=0 {v[0].login=m[0].native[0].flows[old].view;}else if method=="SelectAccount" && cast(string)s[0].selected[0..<s[0].ns]==cast(string)q[0].account[0..<q[0].na] {}else {pa_fail(v,"unknown");}return;
+ }
+ if !ea_fresh(q[0].issued,q[0].expires,cxproc_wall_us()/1000) {pa_fail(v,"expired");return;}
+ id:=cast(string)q[0].account[0..<q[0].na];profile:=pa_find_profile(m,id);free:= -1;
+ if method=="BeginAccountLogin" {
+  if id.count==0 {if s[0].n>=8 {pa_fail(v,"capacity");return;}id=command;profile=s[0].n;}else if profile<0 {pa_fail(v,"not_found");return;}
+  if pa_profile_busy(h,id) {pa_fail(v,"profile_busy");return;}
+  for i:0..<4 {if !pa_running(m[0].native[0].flows[i..<i+1]) {free=i;break;}}if free<0 {pa_fail(v,"capacity");return;}
+ }else if method=="SelectAccount" {if profile<0 || !pa_select(true,m[0].native[0].probes[profile].authenticated,pa_login_busy(m,id)) {pa_fail(v,"login_required");return;}}
+ else {if which<0 {pa_fail(v,"login_unknown");return;}f:=m[0].native[0].flows[which..<which+1];if !pa_running(f) {v[0].login=f[0].view;return;}if method=="CompleteAccountLogin" && cast(string)f[0].view.state[0..<f[0].view.ns]!="awaiting_code" {pa_fail(v,"login_not_ready");return;}}
+ receipt:[1]PaReceipt;receipt[0].command=q[0].command;receipt[0].nc=q[0].nc;receipt[0].method=q[0].method;receipt[0].nm=q[0].nm;receipt[0].na=pa_copy(receipt[0].account[..],id);receipt[0].login=q[0].login;receipt[0].nl=q[0].nl;receipt[0].digest=digest;receipt[0].expires=q[0].expires;encoded:[2048]u8;nr:=pa_receipt_write(receipt[..],encoded[..]);if nr<1 || !fs_replace_durable(file,cast(string)encoded[0..<nr]) {pa_fail(v,"storage_unavailable");return;}
+ if method=="SelectAccount" {prior:=s[0].selected;pn:=s[0].ns;s[0].ns=pa_copy(s[0].selected[..],id);ok:=pa_save(m);if !ok {s[0].selected=prior;s[0].ns=pn;}pa_snapshot(h,q,v);if !ok {pa_fail(v,"storage_unavailable");}return;}
+ if method=="BeginAccountLogin" {
+  if profile==s[0].n {s[0].profiles[profile].ni=pa_copy(s[0].profiles[profile].id[..],id);s[0].profiles[profile].nl=pa_copy(s[0].profiles[profile].label[..],ifx q[0].nn>0 then cast(string)q[0].label[0..<q[0].nn] else "Claude account");s[0].n+=1;}
+  root:[1400]u8;dir:[1536]u8;directory:=pa_directory(pa_root(root[..]),id,dir[..]);if !fs_mkdir_private(directory) || !pa_save(m) {pa_fail(v,"storage_unavailable");return;}
+  f:=m[0].native[0].flows[free..<free+1];f[0]=PaFlow.{};f[0].profile=profile;f[0].view.ni=pa_copy(f[0].view.id[..],command);f[0].view.na=pa_copy(f[0].view.account[..],id);f[0].view.expires=cxproc_wall_us()/1000+600000;pa_flow_state(f,"starting");f[0].h=pa_cli_start(directory,false,true);if f[0].h<0 {pa_flow_state(f,"failed");}
+  a:=m[0].native[0].accounts[profile..<profile+1];a[0].id=s[0].profiles[profile].id;a[0].ni=s[0].profiles[profile].ni;a[0].label=s[0].profiles[profile].label;a[0].nl=s[0].profiles[profile].nl;pa_state(a,"login_required");m[0].native[0].probes[profile].authenticated=false;pa_snapshot(h,q,v);v[0].login=f[0].view;return;
+ }
+ f:=m[0].native[0].flows[which..<which+1];
+ if method=="CancelAccountLogin" {_ = proc_release(f[0].h);f[0].h= -1;pa_flow_state(f,"cancelled");f[0].view.nu=0;}
+ else {input:[4097]u8;size:=pa_copy(input[..],cast(string)q[0].code[0..<q[0].nb]);input[size]=10;ok:=proc_send(f[0].h,cast(string)input[0..<size+1]);for i:0..<input.count {input[i]=0;}pa_flow_state(f,ifx ok then "verifying" else "unknown");if !ok {_ = proc_release(f[0].h);f[0].h= -1;}}
+ v[0].login=f[0].view;
+}
+pa_tick :: (h:[]HsHost) {
+ m:=h[0].providers[..];if !m[0].loaded {return;}now:=cxproc_wall_us()/1000;s:=m[0].native[0].store[..];root:[1400]u8;directory:[1536]u8;
+ if now-m[0].grant_checked>=1000 {m[0].grant_checked=now;enabled:=pa_load(m) && es_load_configuration(h[0].environment[..]);st:[1]HsState;bytes:[HS_STATE_MAX]u8;hs_load(st[..],bytes[..]);live:=false;
+  for i:0..<st[0].ng {g:=st[0].grants[i];if !g.revoked && g.expires>hs_now() && cast(string)g.device[..]==cast(string)s[0].device[..] && cast(string)g.grant[..]==cast(string)s[0].grant[..] {live=true;}}
+  c:=h[0].environment[0].configuration[..];enabled=enabled && cast(string)c[0].device[..]==cast(string)s[0].device[..] && cast(string)c[0].grant[..]==cast(string)s[0].grant[..];if !live || !enabled {for i:0..<4 {f:=m[0].native[0].flows[i..<i+1];if f[0].h>=0 {_ = proc_release(f[0].h);f[0].h= -1;pa_flow_state(f,"cancelled");f[0].view.nu=0;}}return;}
+ }
+ for i:0..<4 {f:=m[0].native[0].flows[i..<i+1];before:=pa_running(f);pa_flow_tick(f,now);if before && !pa_running(f) && f[0].profile>=0 {m[0].native[0].probes[f[0].profile].last=0;pa_schedule(m,true);}}
+ for i:0..<s[0].n {id:=cast(string)s[0].profiles[i].id[0..<s[0].profiles[i].ni];pa_probe_tick(m[0].native[0].probes[i..<i+1],m[0].native[0].accounts[i..<i+1],pa_directory(pa_root(root[..]),id,directory[..]),id=="system",now);}
+}
+pa_handle :: (h:[]HsHost,r:[]HbRpcRequest,q:[]PaRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int {
+ if r[0].request!=mailbox || r[0].host!=cast(string)h[0].xhex[..] || r[0].relay!=hs_relay_of(h) || r[0].method!=cast(string)q[0].method[0..<q[0].nm] {return 0;}
+ configured:=es_load_configuration(h[0].environment[..]);enabled:=pa_load(h[0].providers[..]);c:=h[0].environment[0].configuration[..];s:=h[0].providers[0].native[0].store[..];hs_load(st,statebuf);ga:[HS_GRANTS]HostGrantRecord;epochs:[HS_EPOCHS]HostEpoch;hs_records(st,ga[..],epochs[..]);right:=pa_right(r[0].method);
+ req:=HostRequest.{request=r[0].request,event=event,signer=signer,grant=r[0].grant,epoch=r[0].epoch,issued_at=r[0].issued_at,expires_at=r[0].expires_at,right=right};none:[1]HostRetained;verdict:=host_admit(ga[0..<st[0].ng],epochs[0..<st[0].ne],none[0..<0],req,hs_now());
+ if verdict==HA_SILENT {return 0;}
+ scoped:=pa_scope(configured,enabled,cast(string)s[0].device[..]==signer && cast(string)c[0].device[..]==signer,cast(string)s[0].grant[..]==r[0].grant && cast(string)c[0].grant[..]==r[0].grant,verdict==HA_OK,right);
+ if !scoped {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"forbidden",""),signer,w,out);}
+ v:[1]PaView;pa_dispatch(h,q,v[..]);payload:[24576]u8;n:=pa_view_write(v[..],payload[..]);body:[HB_BODY_MAX]u8;made:=ifx n>0 then hb_app_reply_write(r[0].request,event,cast(string)h[0].xhex[..],hs_now(),r[0].expires_at,r[0].method,cast(string)payload[0..<n],body[..]) else -1;
+ peer:[32]u8;nonce:[32]u8;aux:[32]u8;if made<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return 0;}return hb_seal(cast(string)body[0..<made],HB_REPLY_SCHEMA,h[0].secret[..],peer[..],r[0].request,nonce[..],aux[..],hs_now(),w,out);
+}
+pa_rpc_call :: (args:[]Args)->int {
+ input:[8192]u8;n:=fs_read(args_value(args,"--request-file",""),input[..]);q:[1]PaRequest;if n<1 || !pa_request_read(cast(string)input[0..<n],q[..]) {return 2;}defer {for i:0..<input.count {input[i]=0;}for i:0..<q[0].code.count {q[0].code[i]=0;}}
+ out:[HB_BODY_MAX]u8;r:=es_rpc_exchange(args,cast(string)q[0].method[0..<q[0].nm],cast(string)input[0..<n],out[..]);v:[1]PaView;
+ if r.n== -5 {v[0].command=q[0].command;v[0].nc=q[0].nc;v[0].nm=pa_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);_:=pa_copy(v[0].host[..],args_value(args,"--host",""));pa_fail(v[..],cast(string)r.code[0..<r.nc]);n=pa_view_write(v[..],out[..]);if n>0 {hs_outln(cast(string)out[0..<n]);return 0;}return 3;}
+ if r.n<1 || !pa_view_read(cast(string)out[0..<r.n],v[..]) {return 3;}hs_outln(cast(string)out[0..<r.n]);return 0;
+}
+
+// This binding is fixed before the command receipt permits starting a CLI.
+pa_bind :: (h:[]HsHost,slot:[]EsSlot,id:string,grant:string)->bool {
+ m:=h[0].providers[..];if !pa_load(m) {return true;}s:=m[0].native[0].store[..];if cast(string)s[0].grant[..]!=grant {return false;}
+ selected:=cast(string)s[0].selected[0..<s[0].ns];if pa_find_profile(m,selected)<0 || pa_login_busy(m,selected) {return false;}
+ slot[0].nprovider=pa_copy(slot[0].provider[..],selected);
+ if selected!="system" {root:[1400]u8;engine:=slot[0].engine[..];dir:=pa_directory(pa_root(root[..]),selected,engine[0].config_dir[..]);engine[0].config_n=dir.count;if dir.count==0 {return false;}}
+ b:[512]u8;n:=pa_binding_write(grant,id,selected,b[..]);name:[256]u8;size:=hs_cat(name[..],0,"provider-binding-");size=hs_cat(name[..],size,grant);size=hs_cat(name[..],size,"-");size=hs_cat(name[..],size,id);size=hs_cat(name[..],size,".json");path:[1400]u8;return n>0 && fs_replace_durable(es_path(cast(string)name[0..<size],path[..]),cast(string)b[0..<n]);
+}
+
+#test "account snapshots preserve command correlation and independent profile selection" {
+ h:[1]HsHost;q:[1]PaRequest;v:[1]PaView;h[0].providers[0].native[0].store[0].n=2;s:=h[0].providers[0].native[0].store[..];s[0].ns=pa_copy(s[0].selected[..],"22222222222222222222222222222222");
+ s[0].profiles[0].ni=pa_copy(s[0].profiles[0].id[..],"system");s[0].profiles[1].ni=pa_copy(s[0].profiles[1].id[..],"22222222222222222222222222222222");q[0].nc=pa_copy(q[0].command[..],"11111111111111111111111111111111");pa_snapshot(h[..],q[..],v[..]);#assert v[0].n==2 && !v[0].accounts[0].selected && v[0].accounts[1].selected && v[0].nc==32;
+}

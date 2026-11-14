@@ -154,11 +154,11 @@ api_sources "$here" "$work" "$cli_coax"
 if [[ $serve == 0 ]]; then
   "$cli_coax" c "$here/environment-broker-fixture.coax" --library > "$work/environment-fixture.c"
   "$cc" -std=c11 -O1 -g -D_DEFAULT_SOURCE -I"$repo_root/coax/platform" \
-    "$work/environment-fixture.c" "$repo_root/coax/platform/tool-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -o "$work/environment-fixture"
+    "$work/environment-fixture.c" "$repo_root/coax/platform/tool-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -lm -o "$work/environment-fixture"
 fi
 if [[ $serve == 0 ]] && runs checks; then
   "$cc" -std=c11 -O1 -g -D_DEFAULT_SOURCE -fsanitize=address,undefined -I"$work" -I"$here" -I"$repo_root/coax/platform" \
-    "$here/tests/environment_proxy.c" "$here/environment-wire-unit.c" "$repo_root/coax/platform/process-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -o "$work/environment-proxy"
+    "$here/tests/environment_proxy.c" "$here/environment-wire-unit.c" "$repo_root/coax/platform/process-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -lm -o "$work/environment-proxy"
   "$work/environment-proxy" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb /unused "$work/environment-request.json" "$work/environment-fixture"
 fi

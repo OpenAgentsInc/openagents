@@ -9,7 +9,7 @@
 ES_SLOTS :: 4;
 EsSlot :: struct {
   occupied:bool;summary:EaSession;grant:[64]u8;device:[64]u8;engine:[1]Engine;s:[1]Session;
-  options:[1]ClOptions;pool:[524288]u8;line:[1048576]u8;arena:[1048576]u8;
+  provider:[32]u8;nprovider:int;options:[1]ClOptions;pool:[524288]u8;line:[1048576]u8;arena:[1048576]u8;
   out:[262144]u8;scratch:[262144]u8;prompt:[16384]u8;last_saved:int;failed:bool;started:bool;
 }
 EsHost :: struct {slots:[ES_SLOTS]EsSlot;configuration:[1]EaConfiguration;configured:bool;}
@@ -131,40 +131,45 @@ es_handle :: (h:[]HsHost,rq:HbAppRequest,signer:string,event:string,mailbox:stri
 }
 
 es_rpc_call :: (args:[]Args)->int #effects(all) {
+ input:[24576]u8;n:=fs_read(args_value(args,"--request-file",""),input[..]);q:[1]EaRequest;if n<1 || !ea_read(cast(string)input[0..<n],q[..]) {return 2;}
+ out:[HB_BODY_MAX]u8;result:=es_rpc_exchange(args,cast(string)q[0].method[0..<q[0].nm],cast(string)input[0..<n],out[..]);size:=result.n;v:[1]EaView;
+ if size== -5 {v[0].nh=ea_copy(v[0].host[..],args_value(args,"--host",""));v[0].nm=ea_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);es_refuse(v[..],cast(string)result.code[0..<result.nc]);made:=ea_view_write(v[..],out[..]);if made>0 {hs_outln(cast(string)out[0..<made]);return 0;}return 3;}
+ if size<1 || !ea_view_read(cast(string)out[0..<size],v[..]) {tool_errln("Environment did not return an admitted reply. No command is automatically replayed.");return 3;}hs_outln(cast(string)out[0..<size]);return 0;
+}
+EsRpcResult :: struct {n:int;code:[40]u8;nc:int;}
+es_rpc_exchange :: (args:[]Args,method:string,raw:string,response:[]u8)->EsRpcResult #effects(all) {
   host:=args_value(args,"--host","");grant:=args_value(args,"--grant","");epoch:=hs_atoi(args_value(args,"--epoch","0"));
   keyfile:=args_value(args,"--browser-key","");requestfile:=args_value(args,"--request-file","");
   hx:[32]u8;sk:[32]u8;bx:[32]u8;bhex:[64]u8;key:[80]u8;
-  if !hb_unhex(host,hx[..]) || !ea_id(grant,64) || epoch<0 {tool_errln("host rpc needs --host KEY --grant ID --epoch N --browser-key FILE --request-file FILE");return 2;}
+  if !hb_unhex(host,hx[..]) || !ea_id(grant,64) || epoch<0 {tool_errln("host rpc needs --host KEY --grant ID --epoch N --browser-key FILE --request-file FILE");return EsRpcResult.{n=-2};}
   nk:=fs_read(keyfile,key[..]);while nk>0 && (key[nk-1]==10 || key[nk-1]==13) {nk-=1;}
-  if nk!=64 || !hb_unhex(cast(string)key[0..<64],sk[..]) || !hb_public(sk[..],bx[..]) || !hb_hex(bx[..],bhex[..]) {wipe(key[..]);return 2;}
+  if nk!=64 || !hb_unhex(cast(string)key[0..<64],sk[..]) || !hb_public(sk[..],bx[..]) || !hb_hex(bx[..],bhex[..]) {wipe(key[..]);return EsRpcResult.{n=-2};}
   wipe(key[..]);defer {wipe(sk[..]);}
-  input:[24576]u8;ni:=fs_read(requestfile,input[..]);params:[1]EaRequest;
-  if ni<1 || !ea_read(cast(string)input[0..<ni],params[..]) {tool_errln("Invalid typed environment request.");return 2;}
-  relay:=args_value(args,"--relay",HS_RELAY);if !relay_uri(relay).ok {return 2;}
+  relay:=args_value(args,"--relay",HS_RELAY);if !relay_uri(relay).ok {return EsRpcResult.{n=-2};}
   rb:[64]u8;request:=hs_random_hex(32,rb[..]);now:=hs_now();
-  q:=HbAppRequest.{request=request,host=host,grant=grant,relay=relay,epoch=epoch,issued_at=now,expires_at=now+60,params=params[0]};
-  body:[HB_BODY_MAX]u8;n:=hb_app_write(q,body[..]);w:[1]HbWork;out:[131072]u8;nonce:[32]u8;aux:[32]u8;
-  if n<1 || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return 2;}
-  sealed:=hb_seal(cast(string)body[0..<n],HB_REQUEST_SCHEMA,sk[..],hx[..],request,nonce[..],aux[..],now,w[..],out[..]);if sealed<1 {return 2;}
+  q:=HbRpcRequest.{request=request,host=host,grant=grant,relay=relay,epoch=epoch,issued_at=now,expires_at=now+60,method=method,params=raw};
+  body:[HB_BODY_MAX]u8;n:=hb_rpc_write(q,body[..]);w:[1]HbWork;out:[131072]u8;nonce:[32]u8;aux:[32]u8;
+  if n<1 || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return EsRpcResult.{n=-2};}
+  sealed:=hb_seal(cast(string)body[0..<n],HB_REQUEST_SCHEMA,sk[..],hx[..],request,nonce[..],aux[..],now,w[..],out[..]);if sealed<1 {return EsRpcResult.{n=-2};}
   idb:[64]u8;event:=hs_event_id(cast(string)out[0..<sealed],idb[..]);sub:[1]CliRelay;pub:[1]CliRelay;
-  if !cr_open(sub[..],relay,sk[..]) {return 3;}
+  if !cr_open(sub[..],relay,sk[..]) {return EsRpcResult.{n=-3};}
   defer {cr_close(sub[..]);if pub[0].open {cr_close(pub[..]);}}
   filter:[512]u8;nf:=hb_reply_filter(cast(string)bhex[..],request,filter[..]);
-  if nf<1 || !cr_req(sub[..],cast(string)filter[0..<nf]) || !cr_open(pub[..],relay,sk[..]) || !cr_publish(pub[..],cast(string)out[0..<sealed],cxsock_now_ms()+5000) {return 3;}
+  if nf<1 || !cr_req(sub[..],cast(string)filter[0..<nf]) || !cr_open(pub[..],relay,sk[..]) || !cr_publish(pub[..],cast(string)out[0..<sealed],cxsock_now_ms()+5000) {return EsRpcResult.{n=-3};}
   cr_close(pub[..]);deadline:=cxsock_now_ms()+20000;
   while cxsock_now_ms()<deadline {
     result:=cr_next(sub[..],deadline);if result==CR_FAIL || result==CR_CLOSED {break;}if result!=CR_EVENT {continue;}
     opened:=hb_open(cr_event(sub[..]),sk[..],bx[..],HB_REPLY_SCHEMA,w[..],body[..]);
     if opened.error!=HB_OK || cast(string)opened.signer[..]!=host || cast(string)opened.mailbox[..]!=request {continue;}
-    value:=hb_app_reply_read(cast(string)body[0..<opened.body_n],host,request,event,cast(string)params[0].method[0..<params[0].nm],hs_now());
-    if value.count>0 {v:[1]EaView;if ea_view_read(value,v[..]) {hs_outln(value);return 0;}}
+    value:=hb_app_reply_read(cast(string)body[0..<opened.body_n],host,request,event,method,hs_now());
+    if value.count>0 {return EsRpcResult.{n=pa_copy(response,value)};}
     // A signed, correlated refusal is a result, not a transport timeout.
     refusal:[1]HbReply;arena:[4096]u8;text:=[1]HbText.[HbText.{buf=arena[..]}];
     if hb_reply_read(cast(string)body[0..<opened.body_n],refusal[..],text[..])==HB_OK && !refusal[0].ok && refusal[0].host==host && refusal[0].request==request && refusal[0].request_event==event && refusal[0].expires_at>=hs_now() {
-      v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],host);v[0].nm=ea_copy(v[0].method[..],cast(string)params[0].method[0..<params[0].nm]);es_refuse(v[..],refusal[0].code);b:[HB_BODY_MAX]u8;nb:=ea_view_write(v[..],b[..]);if nb>0 {hs_outln(cast(string)b[0..<nb]);return 0;}
+      refused_result:EsRpcResult;refused_result.n= -5;refused_result.nc=pa_copy(refused_result.code[..],refusal[0].code);return refused_result;
     }
   }
-  tool_errln("Environment did not return an admitted reply. No command is automatically replayed.");return 3;
+  return EsRpcResult.{n=-3};
 }
 es_snapshot :: (h:[]HsHost,q:[]EaRequest,grant:string,v:[]EaView) #effects(all) {
   e:=h[0].environment[..];v[0]=EaView.{};v[0].nh=ea_copy(v[0].host[..],cast(string)h[0].xhex[..]);es_offer(v);
@@ -332,6 +337,7 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
     home:[1024]u8;exe:[1200]u8;p:=fs_join(proc_getenv("HOME",home[..]),".local/bin/claude",exe[..]);if fs_kind(p)==FS_FILE {engine[0].claude_n=ea_copy(engine[0].claude[..],p);}
     summary:=slot[0].summary;summary.ni=ea_copy(summary.id[..],id);summary.nw=ea_copy(summary.workspace[..],"default");summary.nt=ea_copy(summary.title[..],hs_cut(cast(string)q[0].text[0..<q[0].nt],200));
     summary.managed=true;summary.nc=ea_copy(summary.control[..],"available");summary.generation=cxproc_wall_us()/1000;slot[0].summary=summary;
+    if !pa_bind(h,slot,id,grant) {slot[0].occupied=false;es_refuse(v,"conflict");return;}
     m:=[1]int.[engine[0].model];l:=[1]int.[engine[0].effort];
     if !es_choice(engine[0].cat[..],q,m[..],l[..]) {slot[0].occupied=false;es_refuse(v,"model_unavailable");return;}
   } else {

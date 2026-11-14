@@ -16,6 +16,8 @@
 #define _GNU_SOURCE
 #endif
 #include "entropy-foreign.h" /* the coax_v_u8 view type, spelled as Coax spells it */
+#include "../../coax/platform/secret-read-native.h"
+#include "../../coax/platform/store-file-native.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -89,18 +91,8 @@ int64_t cxcli_read_line(coax_v_u8 out, int64_t hide) {
 }
 
 int64_t cxcli_mkdir_private(coax_v_u8 path) {
-  char d[CLI_PATH_MAX];
-  if (cstr(path, d, sizeof d)) return -1;
-  for (char *s = d + 1; *s; s++) {
-    if (*s != '/') continue;
-    *s = 0;
-    if (mkdir(d, 0700) != 0 && errno != EEXIST) return -1;
-    *s = '/';
-  }
-  if (mkdir(d, 0700) != 0 && errno != EEXIST) return -1;
-  struct stat st;
-  if (lstat(d, &st) != 0 || !S_ISDIR(st.st_mode)) return -1;
-  return 0;
+  char d[CLI_PATH_MAX];if (cstr(path,d,sizeof d)) return -1;
+  return cxfs_private_directory(d);
 }
 
 int64_t cxcli_write_private(coax_v_u8 path, coax_v_u8 data) {
@@ -180,19 +172,8 @@ int64_t cxcli_keychain_get(coax_v_u8 account, coax_v_u8 out) {
 #if defined(__APPLE__)
   char a[256];
   if (cstr(account, a, sizeof a)) return -1;
-  CFMutableDictionaryRef q = query(a);
-  CFDictionarySetValue(q, kSecReturnData, kCFBooleanTrue);
-  CFDictionarySetValue(q, kSecMatchLimit, kSecMatchLimitOne);
-  CFTypeRef got = NULL;
-  OSStatus st = SecItemCopyMatching(q, &got);
-  CFRelease(q);
-  if (st == errSecItemNotFound) return 0;
-  if (st != errSecSuccess || !got) return -1;
-  CFIndex n = CFDataGetLength((CFDataRef)got);
-  int64_t r = -1;
-  if (n > 0 && n <= out.count) { memcpy(out.data, CFDataGetBytePtr((CFDataRef)got), (size_t)n); r = n; }
-  CFRelease(got);
-  return r;
+  int64_t n=cxsecret_copy(SERVICE,a,0,out.data,out.count);
+  return n < -1 ? -1 : n;
 #else
   (void)account; (void)out;
   return -2;

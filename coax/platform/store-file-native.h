@@ -60,6 +60,8 @@ int64_t cxfs_kind(void);
 int64_t cxfs_size(void);
 int64_t cxfs_truncate(int64_t size);
 int64_t cxfs_mkdir(void);
+int64_t cxfs_mkdir_private(void);
+int64_t cxfs_private_directory(const char *path);
 int64_t cxfs_temp(void);
 int64_t cxfs_name_byte(int64_t i);
 int64_t cxfs_remove(void);

@@ -42,6 +42,7 @@
 #load "../../coax/lib/agent/session/log.coax";   // the session log's reader
 #load "../../coax/lib/agent/cli/json-output.coax";   // what --json prints (cj_*)
 #load "host-environment.coax";
+#load "host-providers.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 #load "../../coax/lib/sys/clock.coax";
@@ -461,7 +462,7 @@ HsHost :: struct {
   // retained replies (NIP-HOST "Admission order and retention"): request ID, event ID, expiry, the signed reply
   rq: [HS_RETAINED] [64] u8; rev: [HS_RETAINED] [64] u8; rexp: [HS_RETAINED] int; rn: [HS_RETAINED] int; rbody: [HS_RETAINED] [HS_REPLY_MAX] u8; rnext: int;
   seen: [256] [64] u8; nseen: int;   // event IDs already answered (two subscriptions overlap)
-  environment:[1]EsHost;
+  environment:[1]EsHost;providers:[1]PaManager;
 }
 hs_relay_of :: (h: [] HsHost) -> string { return cast(string) h[0].relay[0..<h[0].nrelay]; }
 hs_seen :: (h: [] HsHost, id: string) -> bool {
@@ -507,6 +508,7 @@ hs_handle :: (h: [] HsHost, text: string, w: [] HbWork, st: [] HsState, statebuf
   if o.error==HB_UNSUPPORTED || o.error==HB_SHAPE {
     app:[1]HbAppRequest;space:[49152]u8;arena:=[1]HbText.[HbText.{buf=space[..]}];
     if hb_app_read(cast(string)body[0..<o.body_n],app[..],arena[..]) {return es_handle(h,app[0],sig,ev,mb,w,st,statebuf,out);}
+    rpc:[1]HbRpcRequest;provider:[1]PaRequest;arena[0].at=0;if hb_rpc_read(cast(string)body[0..<o.body_n],rpc[..],arena[..]) && pa_request_read(rpc[0].params,provider[..]) {defer {for i:0..<provider[0].code.count {provider[0].code[i]=0;}}return pa_handle(h,rpc[..],provider[..],sig,ev,mb,w,st,statebuf,out);}
   }
   if o.error != HB_OK {
     // a body that does not read: refused, in its mailbox, for its signer
@@ -679,7 +681,7 @@ hs_serve :: (args: [] Args) -> int {
   hs_outln("Paste this key into Your computer in Settings, This machine on openagents.com to pair this computer.");
   retry_at := 0;
   while end_at == 0 || hs_now() < end_at {
-    es_tick(h);
+    es_tick(h);pa_tick(h);
     es_local_tick(h,local_listener);
     now_ms := cxsock_now_ms();
     if !live[cur] && now_ms >= retry_at {
@@ -912,6 +914,9 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "environment-enable" {return es_configure(args);}
   if verb == "local-rpc" {return es_local_call(args);}
   if verb == "rpc" {return es_rpc_call(args);}
+  if verb == "accounts-enable" {return pa_enable(args);}
+  if verb == "accounts-rpc" {return pa_rpc_call(args);}
+  if verb == "accounts-probe" {out:[8192]u8;n:=pa_probe_command(args_value(args,"--directory",""),args_has(args,"--system"),out[..]);if n>0 {hs_outln(cast(string)out[0..<n]);return 0;}return 1;}
   tool_err("coder host: unknown verb "); tool_errln(verb); tool_errln(HS_USAGE);
   return 2;
 }

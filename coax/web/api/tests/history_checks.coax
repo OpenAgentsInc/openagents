@@ -2,6 +2,7 @@
 // tool.sh: tls
 #load "auth_harness.coax";
 #load "../account-chat-wire.coax";
+#load "../../../lib/agent/accounts/wire.coax";
 #load "../../../../metaverse-engine/editor/world-edit.coax";
 
 chh_world_checks :: (t:[]Ap,account:string,auth:string,player:string) {
@@ -41,6 +42,13 @@ chh_api_checks :: (t:[]Ap,dir:string) {
   ap_check(t,"a read route cannot dispatch a mutation",st==400,ap_body(t));
   st=ac_call(t,"GET","/api/chat/environment/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&method=ListSessions","",sb_text(c[..]),"","");
   ap_check(t,"email login reaches the broker after production startup ignored SIGCHLD",st==200 && ap_has(ap_body(t),"Fixture computer") && ap_has(ap_body(t),"ListSessions"),ap_body(t));
+  path_accounts:="/api/chat/environment/accounts/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  st=ac_call(t,"GET",path_accounts,"","","","");ap_check(t,"provider accounts require an account session",st==401,ap_body(t));
+  st=ac_call(t,"GET","/api/chat/environment/accounts/v1?host=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","",sb_text(c[..]),"","");ap_check(t,"provider accounts use the caller's exact computer grant",st==404,ap_body(t));
+  pv:[1]PaView;st=ac_call(t,"GET",path_accounts,"",sb_text(c[..]),"","");ap_check(t,"the account broker returns typed usage without tokens",st==200 && pa_view_read(ap_body(t),pv[..]) && pv[0].n==1 && pv[0].accounts[0].windows[0].used==3500 && !ap_has(ap_body(t),"accessToken"),ap_body(t));
+  ap_check(t,"provider account observations are never cached",ap_has(ac_head(t),"Cache-Control: no-store"),ac_head(t));
+  st=ac_call(t,"POST",path_accounts,"{\"method\":\"RunCommand\",\"token\":\"bad\"}",sb_text(c[..]),"","");ap_check(t,"unknown commands and credential injection never reach the account broker",st==400,ap_body(t));
+  pq:[1]PaRequest;pq[0].nm=pa_copy(pq[0].method[..],"BeginAccountLogin");pq[0].nc=pa_copy(pq[0].command[..],"11111111111111111111111111111111");pq[0].issued=1;pq[0].expires=300001;pb:[8192]u8;pn:=pa_request_write(pq[..],pb[..]);st=ac_call(t,"POST",path_accounts,cast(string)pb[0..<pn],sb_text(c[..]),"","");ap_check(t,"a typed account command preserves its identity through the child boundary",st==200 && pa_view_read(ap_body(t),pv[..]) && pv[0].nc==32,ap_body(t));
   sb_clear(q[..]);
   sb(q[..],"INSERT INTO auth.nostr_keys(account,pubkey) VALUES ('");sb(q[..],account);sb(q[..],"',repeat('cd',32)); INSERT INTO chat.conversations(owner,model,title,created_ms,updated_ms) VALUES (repeat('cd',32),'claude-opus-5-5','Phone-owned history',1,2),(repeat('ef',32),'claude-opus-5-5','Someone else private chat',1,3)");
   ap_do(t,sb_text(q[..]));

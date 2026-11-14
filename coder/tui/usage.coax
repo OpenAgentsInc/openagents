@@ -1,3 +1,4 @@
+#load "../../coax/lib/agent/accounts/wire.coax";
 // Coder book chapter 36: how much of the agent's plan limit is used.
 //
 // The same reads, windows, levels and timings as Zeron's composer usage
@@ -103,19 +104,9 @@ us_when :: (raw: string, ar: [] ClArena, text: string, path: string) -> int {
 
 // Claude's /api/oauth/usage into windows; false when it holds none.
 us_read_claude :: (a: [] UsAcct, body: string) -> bool {
-  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  a[0].nw = 0;
-  keys := [2] string.["five_hour", "seven_day"];
-  labels := [2] string.["Session", "Week"];
-  for i: 0..<2 {
-    pb: [64] u8; pn := cd_cat(pb[..], 0, keys[i]); pn = cd_cat(pb[..], pn, ".utilization");
-    u := cl_raw(body, cast(string) pb[0..<pn]);
-    if u.count == 0 || u == "null" { continue; }
-    rb: [64] u8; rn := cd_cat(rb[..], 0, keys[i]); rn = cd_cat(rb[..], rn, ".resets_at");
-    ar[0].at = 0;
-    us_add(a, labels[i], us_percent(u), us_when(cl_raw(body, cast(string) rb[0..<rn]), ar[..], body, cast(string) rb[0..<rn]));
-  }
-  return a[0].nw > 0;
+  parsed:[1]PaAccount;a[0].nw=0;if !pa_usage(body,parsed[..]) {return false;}
+  for i:0..<parsed[0].nw {w:=parsed[0].windows[i];id:=cast(string)w.id[0..<w.ni];if id!="five_hour" && id!="seven_day" {continue;}us_add(a,ifx id=="five_hour" then "Session" else "Week",cast(f32)w.used/10000.0,ci_iso_us(cast(string)w.reset[0..<w.nr])/1000000);}
+  return a[0].nw>0;
 }
 
 // Codex's /wham/usage into windows and the live plan ("ChatGPT Pro").
@@ -279,7 +270,8 @@ us_spawn :: (a: [] UsAcct, argv: [] string) -> bool {
 // The token from a credentials blob into a[0].tok (and Codex's account ID); false when it holds none.
 us_take_token :: (a: [] UsAcct, blob: string) -> bool {
   ab: [16384] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  t := ifx a[0].claude then cl_str(ar[..], blob, "claudeAiOauth.accessToken") else cl_str(ar[..], blob, "tokens.access_token");
+  t := ifx a[0].claude then "" else cl_str(ar[..], blob, "tokens.access_token");
+  if a[0].claude {size:=pa_token(blob,a[0].tok[..]);if size>0 {t=cast(string)a[0].tok[0..<size];}}
   ok := t.count > 0 && t.count < a[0].tok.count;
   if ok { a[0].ntok = cd_cat(a[0].tok[..], 0, t); }
   if a[0].claude && ok {

@@ -1,0 +1,142 @@
+// One bounded codec for provider-account requests, observations and local metadata.
+#load "policy.coax";
+#load "../../json/json.coax";
+#load "../../nostr/json-f64.coax";
+PA_REQUEST :: "openagents.environment.accounts.request.v1";
+PA_VIEW :: "openagents.environment.accounts.view.v1";
+PA_STORE :: "openagents.environment.accounts.store.v1";
+PA_RECEIPT :: "openagents.environment.accounts.receipt.v1";
+PaRequest :: struct {method:[32]u8;nm:int;account:[32]u8;na:int;login:[32]u8;nl:int;command:[32]u8;nc:int;label:[80]u8;nn:int;code:[4096]u8;nb:int;issued:int;expires:int;refresh:bool;}
+PaWindow :: struct {id:[24]u8;ni:int;used:int;reset:[40]u8;nr:int;}
+PaAccount :: struct {id:[32]u8;ni:int;label:[80]u8;nl:int;email:[254]u8;ne:int;plan:[64]u8;np:int;state:[32]u8;ns:int;selected:bool;windows:[4]PaWindow;nw:int;observed:int;stale:bool;error:[40]u8;ner:int;}
+PaLogin :: struct {id:[32]u8;ni:int;account:[32]u8;na:int;state:[32]u8;ns:int;url:[8192]u8;nu:int;expires:int;}
+PaView :: struct {host:[64]u8;method:[32]u8;nm:int;accounts:[8]PaAccount;n:int;login:PaLogin;command:[32]u8;nc:int;error:[40]u8;ne:int;retry:int;}
+PaProfile :: struct {id:[32]u8;ni:int;label:[80]u8;nl:int;}
+PaStore :: struct {device:[64]u8;grant:[64]u8;enabled:bool;profiles:[8]PaProfile;n:int;selected:[32]u8;ns:int;}
+PaReceipt :: struct {command:[32]u8;nc:int;method:[32]u8;nm:int;account:[32]u8;na:int;login:[32]u8;nl:int;digest:[64]u8;expires:int;}
+pa_copy :: (out:[]u8,text:string)->int #effects(all) {if text.count>out.count {return -1;}for c,i:text {out[i]=c;}return text.count;}
+pa_fields :: (j:Jv,at:int,keys:[]string)->bool #effects(all) {if jv_kind(j,at)!=JV_OBJECT || jv_len(j,at)!=keys.count {return false;}for i:0..<jv_len(j,at) {k:=jv_key(j,jv_at(j,at,i));found:=false;for a:keys {if a==k {found=true;}}if !found {return false;}}return true;}
+pa_string :: (j:Jv,at:int,key:string,out:[]u8)->int #effects(all) {return jv_str(j,jv_get(j,at,key),out);}
+#test "provider request codec round trips and refuses token and path fields" {
+ q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ListAccounts");b:[8192]u8;n:=pa_request_write(q[..],b[..]);r:[1]PaRequest;
+ #assert n>0 && pa_request_read(cast(string)b[0..<n],r[..]) && r[0].nm==12;
+ #assert !pa_request_read("{\"schema\":\"openagents.environment.accounts.request.v1\",\"method\":\"RunCommand\",\"token\":\"never\"}",r[..]);
+ q[0].nm=pa_copy(q[0].method[..],"CompleteAccountLogin");q[0].nl=pa_copy(q[0].login[..],"11111111111111111111111111111111");q[0].nc=pa_copy(q[0].command[..],"22222222222222222222222222222222");q[0].nb=pa_copy(q[0].code[..],"one-time#state");q[0].issued=1;q[0].expires=300001;
+ n=pa_request_write(q[..],b[..]);#assert n>0 && pa_request_read(cast(string)b[0..<n],r[..]) && r[0].nb==14;
+ q[0].code[0]=10;#assert pa_request_write(q[..],b[..])<0;
+}
+pa_request_valid :: (q:[]PaRequest)->bool #effects(all) {
+ m:=cast(string)q[0].method[0..<q[0].nm];right:=pa_right(m);if right<0 {return false;}
+ if q[0].na>0 && !pa_profile(cast(string)q[0].account[0..<q[0].na]) {return false;}
+ if right==0 {return q[0].nc==0 && q[0].issued==0 && q[0].expires==0 && q[0].nb==0 && q[0].nn==0 && (ifx m=="ReadAccountLogin" then ea_id(cast(string)q[0].login[0..<q[0].nl],32) else q[0].nl==0);}
+ if !ea_id(cast(string)q[0].command[0..<q[0].nc],32) || !ea_fresh(q[0].issued,q[0].expires,q[0].issued) {return false;}
+ if m=="BeginAccountLogin" {return q[0].nb==0 && q[0].nl==0 && (q[0].na==0 || cast(string)q[0].account[0..<q[0].na]!="system");}
+ if m=="SelectAccount" {return q[0].na>0 && q[0].nl==0 && q[0].nb==0 && q[0].nn==0;}
+ return ea_id(cast(string)q[0].login[0..<q[0].nl],32) && q[0].na==0 && q[0].nn==0 && (ifx m=="CompleteAccountLogin" then pa_code(cast(string)q[0].code[0..<q[0].nb]) else q[0].nb==0);
+}
+pa_request_read :: (raw:string,q:[]PaRequest)->bool #export_c #effects(all) {
+ q[0]=PaRequest.{};nodes:[48]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];keys:=[11]string.["schema","method","provider","account_id","login_id","command_id","label","code","issued_at_ms","expires_at_ms","refresh"];
+ if !pa_fields(j,0,keys[..]) || jv_raw(j,jv_get(j,0,"schema"))!=PA_REQUEST || jv_raw(j,jv_get(j,0,"provider"))!="claude-code" {return false;}
+ q[0].nm=pa_string(j,0,"method",q[0].method[..]);q[0].na=pa_string(j,0,"account_id",q[0].account[..]);q[0].nl=pa_string(j,0,"login_id",q[0].login[..]);q[0].nc=pa_string(j,0,"command_id",q[0].command[..]);q[0].nn=pa_string(j,0,"label",q[0].label[..]);q[0].nb=pa_string(j,0,"code",q[0].code[..]);
+ q[0].issued=jv_int(j,jv_get(j,0,"issued_at_ms"),-1);q[0].expires=jv_int(j,jv_get(j,0,"expires_at_ms"),-1);q[0].refresh=jv_bool(j,jv_get(j,0,"refresh"));k:=jv_kind(j,jv_get(j,0,"refresh"));
+ return q[0].nm>=0 && q[0].na>=0 && q[0].nl>=0 && q[0].nc>=0 && q[0].nn>=0 && q[0].nb>=0 && (k==JV_TRUE || k==JV_FALSE) && pa_request_valid(q);
+}
+pa_request_write :: (q:[]PaRequest,out:[]u8)->int #export_c #effects(all) {
+ if !pa_request_valid(q) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],PA_REQUEST);jo_key(o[..],"method");jo_str(o[..],cast(string)q[0].method[0..<q[0].nm]);jo_key(o[..],"provider");jo_str(o[..],"claude-code");jo_key(o[..],"account_id");jo_str(o[..],cast(string)q[0].account[0..<q[0].na]);jo_key(o[..],"login_id");jo_str(o[..],cast(string)q[0].login[0..<q[0].nl]);jo_key(o[..],"command_id");jo_str(o[..],cast(string)q[0].command[0..<q[0].nc]);jo_key(o[..],"label");jo_str(o[..],cast(string)q[0].label[0..<q[0].nn]);jo_key(o[..],"code");jo_str(o[..],cast(string)q[0].code[0..<q[0].nb]);jo_key(o[..],"issued_at_ms");jo_int(o[..],q[0].issued);jo_key(o[..],"expires_at_ms");jo_int(o[..],q[0].expires);jo_key(o[..],"refresh");jo_bool(o[..],q[0].refresh);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+#test "provider percentages use reported windows and unknown is never zero" {
+ a:[1]PaAccount;#assert pa_usage("{\"five_hour\":{\"utilization\":6.25,\"resets_at\":\"2026-11-14T20:00:00Z\"},\"seven_day\":{\"utilization\":35}}",a[..]);
+ #assert a[0].nw==2 && a[0].windows[0].used==625 && a[0].windows[1].used==3500;
+ #assert !pa_usage("{\"seven_day\":null}",a[..]) && a[0].nw==0;
+ #assert !pa_usage("{\"seven_day\":{\"utilization\":\"35\"}}",a[..]);
+ #assert !pa_usage("{\"seven_day\":{\"utilization\":-1}}",a[..]);
+ #assert pa_usage("{\"seven_day\":{\"utilization\":110}}",a[..]) && a[0].windows[0].used==10000;
+}
+pa_usage :: (raw:string,a:[]PaAccount)->bool #effects(all) {
+ a[0].nw=0;nodes:[256]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];ids:=[4]string.["five_hour","seven_day","seven_day_sonnet","seven_day_opus"];
+ for id:ids {w:=jv_get(j,0,id);at:=jv_get(j,w,"utilization");if jv_kind(j,at)!=JV_NUMBER {continue;}f:=json_f64(jv_raw(j,at));if !f.ok || f.value<0 {continue;}n:=a[0].nw;v:=ifx f.value>100 then 100.0 else f.value;a[0].windows[n].ni=pa_copy(a[0].windows[n].id[..],id);a[0].windows[n].used=cast(int)(v*100+0.5);a[0].windows[n].nr=pa_string(j,w,"resets_at",a[0].windows[n].reset[..]);if a[0].windows[n].nr<0 {a[0].windows[n].nr=0;}a[0].nw+=1;}
+ return a[0].nw>0;
+}
+pa_login_write :: (value:PaLogin,o:[]Jo) #effects(all) {l:=value;jo_obj(o);jo_key(o,"login_id");jo_str(o,cast(string)l.id[0..<l.ni]);jo_key(o,"account_id");jo_str(o,cast(string)l.account[0..<l.na]);jo_key(o,"state");jo_str(o,cast(string)l.state[0..<l.ns]);jo_key(o,"authorization_url");jo_str(o,cast(string)l.url[0..<l.nu]);jo_key(o,"expires_at_ms");jo_int(o,l.expires);jo_end(o);}
+pa_view_write :: (v:[]PaView,out:[]u8)->int #export_c #effects(all) {
+ if v[0].n<0 || v[0].n>8 || !ea_id(cast(string)v[0].host[..],64) {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],PA_VIEW);jo_key(o[..],"host_pubkey");jo_str(o[..],cast(string)v[0].host[..]);jo_key(o[..],"method");jo_str(o[..],cast(string)v[0].method[0..<v[0].nm]);jo_key(o[..],"accounts");jo_arr(o[..]);
+ for i:0..<v[0].n {a:=v[0].accounts[i];jo_obj(o[..]);jo_key(o[..],"account_id");jo_str(o[..],cast(string)a.id[0..<a.ni]);jo_key(o[..],"provider");jo_str(o[..],"claude-code");jo_key(o[..],"label");jo_str(o[..],cast(string)a.label[0..<a.nl]);jo_key(o[..],"email");jo_str(o[..],cast(string)a.email[0..<a.ne]);jo_key(o[..],"plan");jo_str(o[..],cast(string)a.plan[0..<a.np]);jo_key(o[..],"state");jo_str(o[..],cast(string)a.state[0..<a.ns]);jo_key(o[..],"selected");jo_bool(o[..],a.selected);jo_key(o[..],"observed_at_ms");jo_int(o[..],a.observed);jo_key(o[..],"stale");jo_bool(o[..],a.stale);jo_key(o[..],"error");jo_str(o[..],cast(string)a.error[0..<a.ner]);jo_key(o[..],"windows");pa_windows_write(a.windows[0..<a.nw],o[..]);jo_end(o[..]);
+ }jo_end(o[..]);jo_key(o[..],"login");pa_login_write(v[0].login,o[..]);jo_key(o[..],"command_id");jo_str(o[..],cast(string)v[0].command[0..<v[0].nc]);jo_key(o[..],"error");jo_str(o[..],cast(string)v[0].error[0..<v[0].ne]);jo_key(o[..],"retry_after_ms");jo_int(o[..],v[0].retry);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+pa_view_read :: (raw:string,v:[]PaView)->bool #export_c #effects(all) {
+ v[0]=PaView.{};nodes:[2048]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];if jv_raw(j,jv_get(j,0,"schema"))!=PA_VIEW || pa_string(j,0,"host_pubkey",v[0].host[..])!=64 || !ea_id(cast(string)v[0].host[..],64) {return false;}
+ v[0].nm=pa_string(j,0,"method",v[0].method[..]);v[0].nc=pa_string(j,0,"command_id",v[0].command[..]);v[0].ne=pa_string(j,0,"error",v[0].error[..]);v[0].retry=jv_int(j,jv_get(j,0,"retry_after_ms"),0);
+ if v[0].nm<1 || pa_right(cast(string)v[0].method[0..<v[0].nm])<0 || v[0].nc<0 || v[0].ne<0 || v[0].retry<0 {return false;}
+ list:=jv_get(j,0,"accounts");v[0].n=jv_len(j,list);if jv_kind(j,list)!=JV_ARRAY || v[0].n<0 || v[0].n>8 {return false;}
+ for i:0..<v[0].n {at:=jv_at(j,list,i);a:=v[0].accounts[i];a.ni=pa_string(j,at,"account_id",a.id[..]);a.nl=pa_string(j,at,"label",a.label[..]);a.ne=pa_string(j,at,"email",a.email[..]);a.np=pa_string(j,at,"plan",a.plan[..]);a.ns=pa_string(j,at,"state",a.state[..]);a.ner=pa_string(j,at,"error",a.error[..]);a.selected=jv_bool(j,jv_get(j,at,"selected"));a.stale=jv_bool(j,jv_get(j,at,"stale"));a.observed=jv_int(j,jv_get(j,at,"observed_at_ms"),0);
+  if a.ni<1 || !pa_profile(cast(string)a.id[0..<a.ni]) || a.nl<0 || a.ne<0 || a.np<0 || a.ns<0 || a.ner<0 || jv_raw(j,jv_get(j,at,"provider"))!="claude-code" {return false;}
+  wl:=jv_get(j,at,"windows");a.nw=jv_len(j,wl);if jv_kind(j,wl)!=JV_ARRAY || a.nw<0 || a.nw>4 {return false;}
+  for k:0..<a.nw {w:=jv_at(j,wl,k);a.windows[k].ni=pa_string(j,w,"window_id",a.windows[k].id[..]);a.windows[k].used=jv_int(j,jv_get(j,w,"used_basis_points"),-1);a.windows[k].nr=pa_string(j,w,"resets_at",a.windows[k].reset[..]);if a.windows[k].ni<1 || a.windows[k].used<0 || a.windows[k].used>10000 || a.windows[k].nr<0 {return false;}}
+  v[0].accounts[i]=a;
+ }
+ at:=jv_get(j,0,"login");l:=v[0].login;l.ni=pa_string(j,at,"login_id",l.id[..]);l.na=pa_string(j,at,"account_id",l.account[..]);l.ns=pa_string(j,at,"state",l.state[..]);l.nu=pa_string(j,at,"authorization_url",l.url[..]);l.expires=jv_int(j,jv_get(j,at,"expires_at_ms"),0);
+ if l.ni<0 || l.na<0 || l.ns<0 || l.nu<0 || (l.ni>0 && !ea_id(cast(string)l.id[0..<l.ni],32)) || (l.nu>0 && !pa_authorize(cast(string)l.url[0..<l.nu])) {return false;}v[0].login=l;return true;
+}
+#test "account view keeps reported usage and refuses a token-stealing authorization URL" {
+ v:[1]PaView;_:=pa_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=pa_copy(v[0].method[..],"ListAccounts");v[0].n=1;v[0].accounts[0].ni=pa_copy(v[0].accounts[0].id[..],"system");v[0].accounts[0].ns=pa_copy(v[0].accounts[0].state[..],"connected");_:=pa_usage("{\"seven_day\":{\"utilization\":25}}",v[0].accounts[0..<1]);b:[32768]u8;n:=pa_view_write(v[..],b[..]);r:[1]PaView;#assert n>0 && pa_view_read(cast(string)b[0..<n],r[..]) && r[0].accounts[0].windows[0].used==2500;
+ v[0].login.nu=pa_copy(v[0].login.url[..],"https://evil.test/login");n=pa_view_write(v[..],b[..]);#assert n>0 && !pa_view_read(cast(string)b[0..<n],r[..]);
+}
+
+pa_store_write :: (s:[]PaStore,out:[]u8)->int #effects(all) {
+ if s[0].n<1 || s[0].n>8 {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],PA_STORE);jo_key(o[..],"device");jo_str(o[..],cast(string)s[0].device[..]);jo_key(o[..],"grant");jo_str(o[..],cast(string)s[0].grant[..]);jo_key(o[..],"enabled");jo_bool(o[..],s[0].enabled);jo_key(o[..],"selected");jo_str(o[..],cast(string)s[0].selected[0..<s[0].ns]);jo_key(o[..],"profiles");jo_arr(o[..]);
+ for i:0..<s[0].n {p:=s[0].profiles[i];jo_obj(o[..]);jo_key(o[..],"account_id");jo_str(o[..],cast(string)p.id[0..<p.ni]);jo_key(o[..],"label");jo_str(o[..],cast(string)p.label[0..<p.nl]);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+pa_store_read :: (raw:string,s:[]PaStore)->bool #effects(all) {
+ s[0]=PaStore.{};nodes:[96]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];keys:=[6]string.["schema","device","grant","enabled","selected","profiles"];
+ if !pa_fields(j,0,keys[..]) || jv_raw(j,jv_get(j,0,"schema"))!=PA_STORE || pa_string(j,0,"device",s[0].device[..])!=64 || pa_string(j,0,"grant",s[0].grant[..])!=64 || !ea_id(cast(string)s[0].device[..],64) || !ea_id(cast(string)s[0].grant[..],64) {return false;}
+ s[0].enabled=jv_bool(j,jv_get(j,0,"enabled"));s[0].ns=pa_string(j,0,"selected",s[0].selected[..]);list:=jv_get(j,0,"profiles");s[0].n=jv_len(j,list);if s[0].ns<1 || jv_kind(j,list)!=JV_ARRAY || s[0].n<1 || s[0].n>8 {return false;}found:=false;
+ for i:0..<s[0].n {at:=jv_at(j,list,i);s[0].profiles[i].ni=pa_string(j,at,"account_id",s[0].profiles[i].id[..]);s[0].profiles[i].nl=pa_string(j,at,"label",s[0].profiles[i].label[..]);p:=s[0].profiles[i];if p.ni<1 || !pa_profile(cast(string)p.id[0..<p.ni]) || p.nl<0 {return false;}
+  for k:0..<i {r:=s[0].profiles[k];if cast(string)r.id[0..<r.ni]==cast(string)p.id[0..<p.ni] {return false;}}
+  if cast(string)p.id[0..<p.ni]==cast(string)s[0].selected[0..<s[0].ns] {found=true;}
+ }
+ return found && cast(string)s[0].profiles[0].id[0..<s[0].profiles[0].ni]=="system";
+}
+pa_receipt_write :: (r:[]PaReceipt,out:[]u8)->int #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],PA_RECEIPT);jo_key(o[..],"command_id");jo_str(o[..],cast(string)r[0].command[0..<r[0].nc]);jo_key(o[..],"method");jo_str(o[..],cast(string)r[0].method[0..<r[0].nm]);jo_key(o[..],"account_id");jo_str(o[..],cast(string)r[0].account[0..<r[0].na]);jo_key(o[..],"login_id");jo_str(o[..],cast(string)r[0].login[0..<r[0].nl]);jo_key(o[..],"digest");jo_str(o[..],cast(string)r[0].digest[..]);jo_key(o[..],"expires_at_ms");jo_int(o[..],r[0].expires);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+pa_receipt_read :: (raw:string,r:[]PaReceipt)->bool #effects(all) {
+ nodes:[24]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];if jv_raw(j,jv_get(j,0,"schema"))!=PA_RECEIPT {return false;}
+ r[0].nc=pa_string(j,0,"command_id",r[0].command[..]);r[0].nm=pa_string(j,0,"method",r[0].method[..]);r[0].na=pa_string(j,0,"account_id",r[0].account[..]);r[0].nl=pa_string(j,0,"login_id",r[0].login[..]);r[0].expires=jv_int(j,jv_get(j,0,"expires_at_ms"),0);
+ return r[0].nc==32 && ea_id(cast(string)r[0].command[..],32) && r[0].nm>0 && pa_right(cast(string)r[0].method[0..<r[0].nm])==1 && r[0].na>=0 && r[0].nl>=0 && pa_string(j,0,"digest",r[0].digest[..])==64 && ea_id(cast(string)r[0].digest[..],64) && r[0].expires>0;
+}
+#test "local profile metadata is scoped and receipt contains no paste code" {
+ s:[1]PaStore;_:=pa_copy(s[0].device[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");_:=pa_copy(s[0].grant[..],"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");s[0].n=1;s[0].profiles[0].ni=pa_copy(s[0].profiles[0].id[..],"system");s[0].ns=pa_copy(s[0].selected[..],"system");s[0].enabled=true;b:[8192]u8;n:=pa_store_write(s[..],b[..]);t:[1]PaStore;#assert n>0 && pa_store_read(cast(string)b[0..<n],t[..]) && t[0].enabled;
+ s[0].ns=pa_copy(s[0].selected[..],"missing");n=pa_store_write(s[..],b[..]);#assert !pa_store_read(cast(string)b[0..<n],t[..]);
+ r:[1]PaReceipt;r[0].nc=pa_copy(r[0].command[..],"11111111111111111111111111111111");r[0].nm=pa_copy(r[0].method[..],"CompleteAccountLogin");_:=pa_copy(r[0].digest[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");r[0].expires=100;n=pa_receipt_write(r[..],b[..]);rr:[1]PaReceipt;#assert n>0 && pa_receipt_read(cast(string)b[0..<n],rr[..]);
+}
+
+// Local self-child observation, never a credential frame.
+PA_PROBE :: "openagents.environment.accounts.probe.v1";
+pa_probe_write :: (status:int,a:[]PaAccount,out:[]u8)->int #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],PA_PROBE);jo_key(o[..],"status");jo_int(o[..],status);jo_key(o[..],"error");jo_str(o[..],cast(string)a[0].error[0..<a[0].ner]);jo_key(o[..],"windows");pa_windows_write(a[0].windows[0..<a[0].nw],o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+pa_windows_write :: (windows:[]PaWindow,o:[]Jo) #effects(all) {
+ jo_arr(o);for i:0..<windows.count {w:=windows[i];jo_obj(o);jo_key(o,"window_id");jo_str(o,cast(string)w.id[0..<w.ni]);jo_key(o,"used_basis_points");jo_int(o,w.used);jo_key(o,"resets_at");jo_str(o,cast(string)w.reset[0..<w.nr]);jo_end(o);}jo_end(o);
+}
+pa_probe_read :: (raw:string,a:[]PaAccount,status:[]int)->bool #effects(all) {
+ nodes:[96]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];if jv_raw(j,jv_get(j,0,"schema"))!=PA_PROBE {return false;}status[0]=jv_int(j,jv_get(j,0,"status"),-1);a[0].ner=pa_string(j,0,"error",a[0].error[..]);list:=jv_get(j,0,"windows");a[0].nw=jv_len(j,list);if status[0]<0 || a[0].ner<0 || jv_kind(j,list)!=JV_ARRAY || a[0].nw<0 || a[0].nw>4 {return false;}
+ for i:0..<a[0].nw {at:=jv_at(j,list,i);w:=a[0].windows[i];w.ni=pa_string(j,at,"window_id",w.id[..]);w.nr=pa_string(j,at,"resets_at",w.reset[..]);w.used=jv_int(j,jv_get(j,at,"used_basis_points"),-1);if w.ni<1 || w.nr<0 || w.used<0 || w.used>10000 {return false;}a[0].windows[i]=w;}return true;
+}
+
+PA_BINDING :: "openagents.environment.accounts.binding.v1";
+pa_binding_write :: (grant:string,session:string,account:string,out:[]u8)->int #effects(all) {
+ if !ea_id(grant,64) || !ea_id(session,32) || !pa_profile(account) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],PA_BINDING);jo_key(o[..],"grant");jo_str(o[..],grant);jo_key(o[..],"session_id");jo_str(o[..],session);jo_key(o[..],"account_id");jo_str(o[..],account);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+
+#test "provider token extraction requires a complete OAuth document" {
+ out:[128]u8;#assert pa_token("{\"claudeAiOauth\":{\"accessToken\":\"fixture-only\"}}",out[..])==12;
+ #assert pa_token("{\"accessToken\":\"not-the-store\"}",out[..])<0 && pa_token("{\"claudeAiOauth\":null}",out[..])<0;
+}
+pa_token :: (raw:string,out:[]u8)->int #effects(all) {nodes:[512]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return -1;}return jv_str(d[0],jv_path(d[0],0,"claudeAiOauth.accessToken"),out);}
+
+#test "provider bindings are exact immutable references and never a path" {
+ b:[512]u8;#assert pa_binding_write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","11111111111111111111111111111111","system",b[..])>0;
+ #assert pa_binding_write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","11111111111111111111111111111111","../other",b[..])<0;
+ a:[1]PaAccount;status:=[1]int.[0];_:=pa_usage("{\"seven_day\":{\"utilization\":12.5}}",a[..]);n:=pa_probe_write(200,a[..],b[..]);v:[1]PaAccount;#assert n>0 && pa_probe_read(cast(string)b[0..<n],v[..],status[..]) && status[0]==200 && v[0].windows[0].used==1250;
+}

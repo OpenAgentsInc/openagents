@@ -337,4 +337,4 @@ schemes:
         - name: OpenAgentsTests
           selectedTests: [NativeNavigationTests, NativeProgramTests, NativeMarkdownTests, NativeTranscriptTests]
         - name: OpenAgentsUITests
-          selectedTests: [NavigationUITests, ChatUITests]
+          selectedTests: [NavigationUITests, ChatUITests, UsageUITests]

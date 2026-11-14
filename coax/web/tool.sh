@@ -56,7 +56,7 @@ if [[ -n "$why" ]]; then
   started=$SECONDS
   # Say why the tool isn't up yet: a rebuild takes a while (Coder about 30 s).
   [[ ! -t 2 ]] || printf '%s: rebuilding (%s) ...\n' "$name" "${why#"$repo/"}" >&2
-  if [[ "$(uname -s)" == Darwin ]]; then cc=(/usr/bin/clang -D_DARWIN_C_SOURCE); libs=(-framework Security); else cc=("${CC:-gcc}" -D_DEFAULT_SOURCE); libs=(-lpthread); fi
+  if [[ "$(uname -s)" == Darwin ]]; then cc=(/usr/bin/clang -D_DARWIN_C_SOURCE); libs=(-framework Security -framework CoreFoundation); else cc=("${CC:-gcc}" -D_DEFAULT_SOURCE); libs=(-lpthread); fi
   tls=()
   near=("$src"); while read -r f; do near+=("$(dirname "$src")/$f"); done < <(sed -n 's/^#load "\([^/"]*\.coax\)";.*/\1/p' "$src")
   if grep -qs '^// tool.sh: tls' "${near[@]}"; then

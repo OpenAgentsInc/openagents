@@ -246,3 +246,15 @@ and fonts, and the four `worlds/*.json` inventories. A new build's initial feed
 must be packaged from that archive's `Starter/` directory, rather than a later
 generation of the checkout. Matching bundled hashes let a fresh installation
 record the feed without offering a redundant update.
+
+Settings → **Usage** reads Claude Code's reported five-hour and weekly limits
+from each connected computer. It shows remaining percentage, reset time and
+stale/unavailable readings separately. **Connect a Claude account** starts
+that computer's official CLI sign-in in an isolated profile; open Claude on
+the phone and paste its authorization code back. **Use for new chats** changes
+only subsequent managed conversations on that computer. Existing conversations
+keep their account. Tokens remain in the computer's Keychain/private CLI store.
+The exact environment grant must opt in locally with `accounts-enable`;
+see [the provider-account contract](../../docs/protocol/provider-accounts-v1.md).
+Codex accounts are a later adapter. This screen uses the installed 1082 services
+and can be delivered as a signed OTA update.
