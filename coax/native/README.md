@@ -46,10 +46,12 @@ function decodes UTF-8 bytes through Foundation.
 | `auth.state` | Returns `loggedIn` |
 | `auth.emailStart` | `email`; returns opaque `pending` |
 | `auth.emailVerify` | `pending`, `code`; returns `loggedIn` |
-| `auth.keyLogin` | Uses the existing device Nostr identity; returns `loggedIn` |
-| `auth.passkeyLogin` | Uses Apple's passkey sheet; returns `loggedIn` |
 | `auth.logout` | Clears the existing native account session |
 | `http` | `path`, `method`, `body`; returns `status`, `body`, `contentType` |
+
+The numeric account action profile exposes the operations above. Native key
+and passkey adapters remain in host source; exposing further operations to
+this profile changes the installed runtime.
 
 The shared native auth adapter retains device-bound refresh tokens and
 Secure Enclave support. Tokens and key material never enter Wasm or JS.

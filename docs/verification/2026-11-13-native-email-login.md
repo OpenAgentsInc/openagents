@@ -208,3 +208,13 @@ with a UIKit recognizer. The focused real-gesture regression passed in
 details action. This host-only correction yields runtime `fac1ef0050b1946ebedb4fe5ac6ec8e18f55304e2663f47b86976a5036c17797`.
 Application artifacts are byte-identical to the earlier signed flow. The
 pre-correction archive was retained separately and was not uploaded.
+
+The final release runtime and Xcode-signed simulator both match
+`fac1ef0050b1946ebedb4fe5ac6ec8e18f55304e2663f47b86976a5036c17797`.
+Its complete signed OTA/email/history/relaunch/logout test passed in 69.780
+seconds; the per-gesture regression passed in 8.126 seconds. Both public
+update endpoints served the same generation-1 envelope and all five artifact
+hashes matched. Build 1070 uploaded successfully; Apple reports VALID and
+IN_BETA_TESTING, and the existing Owner group assignment was verified.
+Archive, runtime descriptor, signed package and test evidence are retained
+under `~/.openagents/releases/openagents-ios-1070/` (verification/).
