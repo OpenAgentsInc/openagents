@@ -33,6 +33,9 @@
   z[0].by = 0; z[0].spell = -1; #assert rs_zone_slot(z[..],true,0,-1) == -1;
   z[2].on = false; #assert rs_zone_slot(z[..],false,0,-1) == 2;
 }
+// The zone index of a cast that places none.
+rs_no_zone :: () -> int #effects(all) { return -1; }
+#test "a cast that places no zone names none" { #assert rs_no_zone() == -1; }
 rs_zone_required :: (s: RsSpell) -> bool #effects(all) {
   return s.area != RS_A_NONE && s.duration_s > 0 && !s.burst;
 }

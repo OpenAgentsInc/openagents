@@ -1,25 +1,26 @@
 // Casting (GitHub #13287, split from battle.coax): RS_NO to rs_teleport. The request a cast is admitted
 // by, its slot and components, the spell's steps on its targets' squares, and teleports.
-// Not #authority yet: it owes its mutation pass (and a check for each procedure the issue lists).
-//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-cast.coax
+// Its own checks are battle-cast-checks.coax, which battle.coax loads.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-cast.coax --traversal 16000000000
+#authority;
 
 // ---- casting
 
 RS_NO :: 0; RS_OK :: 1;
 // Whether a spell's program follows a weapon hit (Divine Smite).
-rs_is_smite :: (s: RsSpell) -> bool {
+rs_is_smite :: (s: RsSpell) -> bool #effects(all) {
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_SMITE { return true; } }
   return false;
 }
 // A creature's spell save DC now: Innate Sorcery adds 1 while it lasts.
-rs_dc :: (b: [] RsBattle, i: int) -> int { return rs_spell_dc(b[0].c[i]) + (ifx rs_aura_on(b[0].c[i], EF_INNATE, b[0].clock) then 1 else 0); }
+rs_dc :: (b: [] RsBattle, i: int) -> int #effects(all) { return rs_spell_dc(b[0].c[i]) + (ifx rs_aura_on(b[0].c[i], EF_INNATE, b[0].clock) then 1 else 0); }
 // Armor Class now: Shield's +5 until the start of its next turn, Shield of Faith's +2.
-rs_ac :: (b: [] RsBattle, j: int) -> int { return b[0].c[j].ac + rs_shield_bonus(rs_effect(b[0].c[j], EF_SHIELD)) + (ifx rs_effect(b[0].c[j], EF_FAITH) then 2 else 0); }
+rs_ac :: (b: [] RsBattle, j: int) -> int #effects(all) { return b[0].c[j].ac + rs_shield_bonus(rs_effect(b[0].c[j], EF_SHIELD)) + (ifx rs_effect(b[0].c[j], EF_FAITH) then 2 else 0); }
 // Whether creature i can cast spell sp with a slot of level `slot` now (0 for a cantrip, or for the
 // spell its feature casts without a slot: Paladin's Smite, Favored Enemy). `quick` casts an action
 // spell as a Bonus Action with Quickened Spell (2 Sorcery Points), not after a level 1+ spell this
 // turn and with none after it.
-rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> bool {
+rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> bool #effects(all) {
   if !rs_executable_spell(sp) { return false; }
   if i < 0 || i >= b[0].n || !rs_can_act(b[0].c[i]) || b[0].who != i || rs_casting_barred(b[0].c[i]) { return false; }
   s := rs_spell(sp);
@@ -41,62 +42,63 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
     if b[0].turn.quickened { return false; }
     if slot == 0 {
       if !rs_at_will(b[0].c[i], s) && !rite && (b[0].c[i].rank[RS_RK_FREE_SPELL] != sp || b[0].c[i].uses[RS_USE_FREE] <= 0) { return false; }
-    } else if slot < s.level || slot > 9 || b[0].c[i].slots[slot] <= 0 || b[0].turn.slot_spent { return false; }
+    } else if b[0].c[i].slots[slot] <= 0 || b[0].turn.slot_spent { return false; }   // its level to 9: rs_cast_slot_shape
   }
   return true;
 }
 // A part with no slot of its own (Produce Flame's hurl, Call Lightning's later bolts) needs its parent
 // still there: the spell its caster concentrates on, or the Aura the parent left on its caster.
-rs_part_live :: (b: [] RsBattle, i: int, parent: int) -> bool {
+rs_part_live :: (b: [] RsBattle, i: int, parent: int) -> bool #effects(all) {
   p := rs_spell(parent);
   if p.concentration { return b[0].c[i].conc == parent; }
   return rs_aura_on(b[0].c[i], rs_spell_aura(p), b[0].clock);
 }
-rs_can_cast :: (b: [] RsBattle, i: int, sp: int, slot: int) -> bool { return rs_can_cast_as(b, i, sp, slot, false); }
+rs_can_cast :: (b: [] RsBattle, i: int, sp: int, slot: int) -> bool #effects(all) { return rs_can_cast_as(b, i, sp, slot, false); }
 // Cast spell sp with a slot of level `slot` (0 for a cantrip) at the point (tx, ty), on creature
 // `target` for a spell with no area. False, and nothing spent, on request refusal.
 // A cast at an invalid creature type is accepted/spent but affects nothing (p.106).
-rs_cast :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int) -> bool { return rs_cast_as(b, i, sp, slot, tx, ty, target, false); }
+rs_cast :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int) -> bool #effects(all) { return rs_cast_as(b, i, sp, slot, tx, ty, target, false); }
 // The same with Quickened Spell: an action spell as a Bonus Action, for 2 Sorcery Points.
-rs_cast_quick :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int) -> bool { return rs_cast_as(b, i, sp, slot, tx, ty, target, true); }
-rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool) -> bool {
+rs_cast_quick :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int) -> bool #effects(all) { return rs_cast_as(b, i, sp, slot, tx, ty, target, true); }
+rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool) -> bool #effects(all) {
   empty: [1] int;
   defaults: [1] RsCastOptions;
-  return rs_cast_request_as(b,i,sp,slot,tx,ty,target,quick,empty[0..<0],false,defaults[0..<0]);
+  return rs_cast_request_as(b,i,sp,slot,tx,ty,target,quick,empty[1..<1],false,defaults[1..<1]);
 }
 // Explicit recipients for distinct-target spells, or one ordered assignment
 // for each beam/ray. Area and destination-point spells use rs_cast instead.
-rs_cast_creatures :: (b: [] RsBattle, i: int, sp: int, slot: int, picks: [] const int, quick: bool) -> bool {
+rs_cast_creatures :: (b: [] RsBattle, i: int, sp: int, slot: int, picks: [] const int, quick: bool) -> bool #effects(all) {
   defaults: [1] RsCastOptions;
-  return rs_cast_creatures_with(b,i,sp,slot,picks,quick,defaults[0..<0]);
+  return rs_cast_creatures_with(b,i,sp,slot,picks,quick,defaults[1..<1]);
 }
 // Empty options use defaults. Otherwise one entry belongs to each recipient,
 // allowing mixed Blinded/Deafened choices in an upcast cast.
-rs_cast_creatures_with :: (b: [] RsBattle, i: int, sp: int, slot: int, picks: [] const int, quick: bool, options: [] const RsCastOptions) -> bool {
-  target := ifx picks.count > 0 then picks[0] else -1;
-  return rs_cast_request_as(b,i,sp,slot,0,0,target,quick,picks,true,options);
+rs_cast_creatures_with :: (b: [] RsBattle, i: int, sp: int, slot: int, picks: [] const int, quick: bool, options: [] const RsCastOptions) -> bool #effects(all) {
+  target := ifx picks.count > 0 then picks[0] else -1;   // none chosen: an "up to" spell may still be cast
+  // a chosen cast has no point: its caster's own square stands for one
+  return rs_cast_request_as(b,i,sp,slot,b[0].c[i].x,b[0].c[i].y,target,quick,picks,true,options);
 }
-rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool, picks: [] const int, chosen: bool, options: [] const RsCastOptions) -> bool {
+rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool, picks: [] const int, chosen: bool, options: [] const RsCastOptions) -> bool #effects(all) {
   return rs_cast_request_from(b,i,sp,slot,tx,ty,target,quick,picks,chosen,options,i);
 }
 rs_familiar_touch :: (b:[]RsBattle,i:int,sp:int,slot:int,target:int)->bool #effects(all) {
   origin:=rs_familiar_of(b,i);
   empty:[1]int; defaults:[1]RsCastOptions;
-  return rs_cast_request_from(b,i,sp,slot,0,0,target,false,empty[0..<0],false,defaults[0..<0],origin);
+  return rs_cast_request_from(b,i,sp,slot,b[0].c[i].x,b[0].c[i].y,target,false,empty[1..<1],false,defaults[1..<1],origin);   // a touch has no point
 }
 
-rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool, picks: [] const int, chosen: bool, options: [] const RsCastOptions, origin: int) -> bool {
+rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool, picks: [] const int, chosen: bool, options: [] const RsCastOptions, origin: int) -> bool #effects(all) {
   if !rs_can_cast_as(b, i, sp, slot, quick) { return false; }
   s := rs_spell_variant(rs_spell(sp),sp,slot,RsCastOptions.{});
   me := b[0].c[i];
   smite := rs_is_smite(s);
   delivered := origin != i;
-  if delivered && (chosen || s.area != RS_A_NONE || !rs_familiar_touch_ready(b,i,sp,origin)) { return false; }
+  if delivered && !rs_familiar_touch_ready(b,i,sp,origin) { return false; }   // a Touch spell (no area), never chosen (rs_familiar_touch)
   revive := rs_step_at(s, RS_S_REVIVE) >= 0;
   truth := rs_step_at(s, RS_S_TRUTH) >= 0;
   if chosen && !revive && !rs_creature_choices(b,i,s,sp,slot,picks) { return false; }
   // Charmed (p.177): no damaging ability or magical effect targets the charmer
-  for j: picks { if chosen && !revive && (!rs_cast_sees(b,i,j,sp) || !rs_cover_targetable(b,i,j) || rs_charmed_by(me,j)) { return false; } }
+  if !revive { for j: picks { if !rs_cast_sees(b,i,j,sp) || !rs_cover_targetable(b,i,j) || rs_charmed_by(me,j) { return false; } } }   // picks: a chosen cast's
   if !rs_options_valid(sp,picks.count,options) { return false; }
   if s.willing && target!=i {
     option:=rs_option_at(options,0);
@@ -104,26 +106,27 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
   }
   if !chosen && !rs_self_request(rs_spell_self_range(sp), s.area == RS_A_NONE, smite, i == target) { return false; }
   if revive {
-    if (chosen && (picks.count!=1 || picks[0]!=target)) || !rs_revivify_ready(b,origin,target) || rs_charmed_by(me,target) { return false; }
-  } else if s.area == RS_A_NONE && !chosen {
-    exists := target >= 0 && target < b[0].n;
-    dead := ifx exists then b[0].c[target].dead else false;
-    humanoid := ifx exists then b[0].c[target].humanoid else false;
-    in_range := exists && (s.range_ft <= 0 || rs_feet_to(b, origin, target) <= s.range_ft);
-    if rs_target_decision(exists, dead, in_range, s.humanoid_only, humanoid) == RS_TARGET_REFUSE { return false; }
-    if !rs_cast_sees(b, i, target, sp) { return false; }   // "a creature you can see" (cast-sight.coax)
-    if !rs_cover_targetable(b, origin, target) { return false; }   // Total Cover (p.15)
-    if rs_charmed_by(me, target) { return false; }   // Charmed: not the charmer (p.177)
-    // Divine Smite: right after a melee weapon hit on this target
-    if smite && b[0].turn.last_hit != target + 1 { return false; }
-  } else if s.area != RS_A_NONE && s.area != RS_A_CUBE_SELF && s.area != RS_A_LINE {
+    if (chosen && picks.count != 1) || !rs_revivify_ready(b,origin,target) || rs_charmed_by(me,target) { return false; }   // a chosen one's target is its pick
+  } else if s.area == RS_A_NONE {
+    // one target, not chosen (a chosen cast's picks were asked above)
+    if !chosen {
+      // "a creature you can see" (cast-sight.coax), and none that is not of the battle
+      if !rs_cast_sees(b, i, target, sp) { return false; }
+      tc := b[0].c[target];
+      in_range := s.range_ft == 0 || rs_feet_to(b, origin, target) <= s.range_ft;   // range 0: Self
+      if rs_target_decision(true, tc.dead, in_range, s.humanoid_only, tc.humanoid) == RS_TARGET_REFUSE { return false; }
+      if !rs_cover_targetable(b, origin, target) { return false; }   // Total Cover (p.15)
+      if rs_charmed_by(me, target) { return false; }   // Charmed: not the charmer (p.177)
+    }
+  } else if s.area != RS_A_CUBE_SELF && s.area != RS_A_LINE {
     if rs_range_ft(b, me.x, me.y, tx, ty) > s.range_ft || !rs_point_sees(b, i, sp) { return false; }
   }
-  if chosen && smite && b[0].turn.last_hit != target+1 { return false; }
+  // Divine Smite: right after a melee weapon hit on this target (chosen or not)
+  if smite && b[0].turn.last_hit != target+1 { return false; }
   // Serialized preflight: ending this cast's old concentration is the only
   // release before zone publication. Nothing is spent if no slot will exist.
   zone_required := rs_zone_required(s);
-  zone_at := -1;
+  zone_at := rs_no_zone();   // (it reaches only a zone's Restrained: rs_effect_demand, rs_step_condition)
   if zone_required {
     // a Zone of Truth takes one of the first places: each creature keeps one bit a zone for it (zone-of-truth.coax)
     zone_at = rs_zone_slot(ifx truth then b[0].zone[0..<rs_truth_zones(b)] else b[0].zone[..], s.concentration, i, me.conc);
@@ -134,9 +137,9 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
   } else if !rs_cast_effect_room(b,i,s,sp,slot,tx,ty,target) { return false; }
   rite := slot == 0 && !quick && rs_rite_due_now(b, i, sp);
   rs_rest_cast_before(b,i,s.level);
-  if !rs_cast_components_pay(b[0].c[i..<i+1],sp) { return false; }
+  _ := rs_cast_components_pay(b[0].c[i..<i+1],sp);   // they were ready (rs_can_cast_as), so they are paid
   if delivered { b[0].c[origin].reacted = true; }
-  if rite { rs_rite_complete(b[0].c[i..<i+1]); }
+  if rite { r: [1] RsCreature; r[0] = b[0].c[i]; rs_rite_complete(r[..]); b[0].c[i] = r[0]; }
   if s.components.count > 0 && s.components[0] == 86 { rs_unhide(b,i); }   // a Verbal component ends hiding (p. 183)
   // spend
   b[0].aff_used = false;
@@ -153,11 +156,12 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
   rs_add_name(l[..], b, i);
   rs_add_text(l[..], ifx s.part_of >= 0 then " hurls Produce Flame" else " casts ");
   if s.part_of < 0 { rs_add_text(l[..], s.name); }
-  if s.level > 0 && slot > 0 { rs_add_text(l[..], " ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot)"); }
+  if slot > 0 { rs_add_text(l[..], " ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot)"); }
   if s.level > 0 && slot == 0 { rs_add_text(l[..], ifx rite then " (as a Ritual)" else " (without a slot)"); }
   if quick { rs_add_text(l[..], ", Quickened"); }
   if delivered { rs_add_text(l[..], " through its familiar"); }
-  if s.area == RS_A_NONE && target >= 0 && target != i && (s.range_ft > 0 || smite) { rs_add_text(l[..], ifx smite then " on " else " at "); rs_add_name(l[..], b, target); }
+  if s.area == RS_A_NONE && target >= 0 && target != i {   // (a Self spell has no other target: rs_self_request)
+    rs_add_text(l[..], ifx smite then " on " else " at "); rs_add_name(l[..], b, target); }
   rs_tell(b, RS_EV_CAST, sp, i, ifx s.area == RS_A_NONE then target else -1, slot, 0, l[..]);
   if revive { rs_revivify_apply(b,i,target); return true; }
   if !chosen && s.area == RS_A_NONE && rs_unaffected_target(b, i, target, sp) { return true; }
@@ -208,9 +212,10 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
     }
     // each creature it affects
     sculpted := 0;
-    // more than one target (Bless, Bane, Command): the target, then the nearest to it of its side within range
+    // more than one target (Bless, Bane, Aid): the target, then the nearest to it of its side within range
     more: [RS_TARGETS_MAX] int; more_n := 0;
-    if s.area == RS_A_NONE && s.targets > 1 { more_n = rs_more_targets(b,i,target,rs_legacy_target_limit(s,slot)-1,s.range_ft,more[..]); }
+    // ("up to" N creatures: Bless, Bane, Aid; Hold Person's and Command's upcast creatures are chosen ones)
+    if s.area == RS_A_NONE && s.targets_optional { more_n = rs_more_targets(b,i,target,rs_legacy_target_limit(s,slot)-1,s.range_ft,more[..]); }
     for j: 0..<b[0].n {
       if !rs_choice_continue(s,b[0].c[i].conc,sp) { break; }
       if s.area == RS_A_NONE {
@@ -248,11 +253,11 @@ rs_legacy_target_limit :: (s:RsSpell,slot:int)->int #effects(all) {
 // The other targets of a spell with more than one (RsSpell.targets): up to n of the first target's
 // side but the caster, up and within range_ft of caster i, nearest the first target first, into o; how many.
 RS_TARGETS_MAX :: 8;
-rs_more_targets :: (b: [] RsBattle, i: int, target: int, n: int, range_ft: int, o: [] int) -> int {
+rs_more_targets :: (b: [] RsBattle, i: int, target: int, n: int, range_ft: int, o: [] int) -> int #effects(all) {
   got := 0;
   team := b[0].c[target].team;
   for pick: 0..<rs_min(n, o.count) {
-    best := -1; bd := 1000000;
+    best := -1; bd: int;
     for j: 0..<b[0].n {
       c := b[0].c[j];
       if j == target || j == i || c.team != team || !rs_up(c) || rs_feet_to(b, i, j) > range_ft { continue; }
@@ -260,7 +265,7 @@ rs_more_targets :: (b: [] RsBattle, i: int, target: int, n: int, range_ft: int, 
       for m: 0..<got { if o[m] == j { taken = true; } }
       if taken { continue; }
       d := rs_feet_to(b, target, j);
-      if d < bd { bd = d; best = j; }
+      if best < 0 || d < bd { bd = d; best = j; }
     }
     if best < 0 { break; }
     o[got] = best; got += 1;
@@ -271,15 +276,16 @@ rs_more_targets :: (b: [] RsBattle, i: int, target: int, n: int, range_ft: int, 
 // Dimension Door (p. 123): the caster teleports to the square (tx, ty), within range. Arriving in a
 // space a creature fills, it takes 4d6 Force damage and the teleportation fails. (What objects fill
 // is the world's: it gives a point it can stand on.)
-rs_teleport :: (b: [] RsBattle, i: int, sp: int, tx: int, ty: int) {
+rs_teleport :: (b: [] RsBattle, i: int, sp: int, tx: int, ty: int) #effects(all) {
   l: [1] RsLine;
   other := rs_at(b, tx, ty);
   if tx < 0 || ty < 0 || tx >= b[0].w || ty >= b[0].h || (other >= 0 && other != i) {
+    force := RS_FORCE;
     amount := rs_sum(b[0].dice[..], 4, 6);
     rs_add_text(l[..], "  the space is filled: "); rs_add_name(l[..], b, i); rs_add_text(l[..], " takes "); rs_add_int(l[..], amount);
     rs_add_text(l[..], " Force (4d6) and stays");
-    rs_tell(b, RS_EV_DAMAGE, sp, i, i, amount, RS_FORCE, l[..]);
-    rs_damage(b, i, i, amount, RS_FORCE, false, sp);
+    rs_tell(b, RS_EV_DAMAGE, sp, i, i, amount, force, l[..]);
+    rs_damage(b, i, i, amount, force, false, sp);
     return;
   }
   rs_truth_move(b,i,tx,ty);

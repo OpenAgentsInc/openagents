@@ -1,0 +1,525 @@
+// battle-cast.coax's own checks (GitHub #13287): each procedure called directly, each refusal alone and
+// at its edge, the whole event and what a cast spends. battle.coax loads this with `#test`.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-cast.coax --traversal 16000000000
+
+// A Sorcerer (level 3: Fire Bolt, Scorching Ray, Quickened Spell) second in a battle, on its turn, and
+// a foe first.
+bc_sorcerer :: (b: [] RsBattle) -> int {
+  b[0].w = 40; b[0].h = 10; b[0].dice[0].fixed = true;
+  t := rs_add(b, rs_fighter("Brand", 1, 3), 14, 4);
+  s := rs_add(b, rs_sorcerer("Ember", 0, 3), 2, 4);
+  b[0].c[t].hp = 500; b[0].c[t].hp_max = 500; b[0].c[t].ac = 1;   // hit: no Seeking Spell spends a point
+  b[0].c[s].feats = rs_feature_put(b[0].c[s].feats, RS_FT_QUICKENED, true); b[0].c[s].uses[RS_USE_SORCERY] = 2;
+  b[0].who = s; b[0].turn = RsTurn.{move_left = 6};
+  return s;
+}
+#test "cast: who may cast: a spell, a creature of the battle, its turn, able to act and to cast" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  s := bc_sorcerer(b[..]); ember := b[0].c[s];
+  #assert s == 1 && rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, false) && rs_can_cast(b[..], s, SP_FIRE_BOLT, 0);
+  #assert !rs_can_cast_as(b[..], s, -1, 0, false) && !rs_can_cast_as(b[..], s, RS_MORE_END, 0, false);
+  #assert !rs_can_cast_as(b[..], -1, SP_FIRE_BOLT, 0, false);
+  n := b[0].n; b[0].c[n] = ember; b[0].who = n;   // a record past the battle's count, on "its" turn
+  #assert !rs_can_cast_as(b[..], n, SP_FIRE_BOLT, 0, false);
+  b[0].who = 0; #assert !rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, false);
+  b[0].who = s;
+  b[0].c[s].cond = RS_STUNNED; #assert !rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, false); b[0].c[s] = ember;
+  b[0].c[s].wild_form = 1; #assert !rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, false); b[0].c[s] = ember;
+  // a cantrip takes no slot; a spell it doesn't have
+  #assert !rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 1, false) && !rs_can_cast_as(b[..], s, SP_CURE_WOUNDS, 1, false);
+  #assert rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 2, false);
+}
+#test "cast: the turn's parts: an Action spell, a Bonus Action one, Quickened Spell's, and no Reaction spell on a turn" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  s := bc_sorcerer(b[..]); ember := b[0].c[s];
+  // the Action spent: no Action spell; Quickened, it is a Bonus Action
+  b[0].turn.action = true;
+  #assert !rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, false) && rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, true);
+  b[0].turn.bonus = true; #assert !rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, true);
+  b[0].turn = RsTurn.{bonus = true}; #assert rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, false) && !rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, true);
+  b[0].turn = RsTurn.{};
+  // Quickened Spell: the feature, 2 Sorcery Points, no level 1+ spell before it, one a turn
+  b[0].c[s].uses[RS_USE_SORCERY] = 1; #assert !rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, true); b[0].c[s] = ember;
+  b[0].c[s].feats = rs_feature_put(b[0].c[s].feats, RS_FT_QUICKENED, false); #assert !rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, true); b[0].c[s] = ember;
+  b[0].turn.leveled = true; #assert !rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, true) && rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, false); b[0].turn = RsTurn.{};
+  b[0].turn.quickened = true; #assert !rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, true) && rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, false);
+  // and no level 1+ spell after a Quickened one
+  #assert !rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 2, false); b[0].turn = RsTurn.{};
+  #assert rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, true) && rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 2, true);
+  // a Bonus Action spell is not Quickened, and waits for the Bonus Action
+  d := rs_add(b[..], rs_druid("Ivy", 0, 3), 4, 4);
+  b[0].c[d].feats = rs_feature_put(b[0].c[d].feats, RS_FT_QUICKENED, true); b[0].c[d].uses[RS_USE_SORCERY] = 4;
+  b[0].who = d; b[0].turn = RsTurn.{};
+  #assert rs_spell(SP_PRODUCE_FLAME).cast_time == RS_T_BONUS && rs_can_cast_as(b[..], d, SP_PRODUCE_FLAME, 0, false) && !rs_can_cast_as(b[..], d, SP_PRODUCE_FLAME, 0, true);
+  b[0].turn.action = true; #assert rs_can_cast_as(b[..], d, SP_PRODUCE_FLAME, 0, false);
+  b[0].turn = RsTurn.{bonus = true}; #assert !rs_can_cast_as(b[..], d, SP_PRODUCE_FLAME, 0, false);
+  // a Reaction spell is not cast on a turn
+  w := rs_add(b[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 6, 4);
+  keys := [2] int.[RS_EXEC_SOURCE[SP_HEX], RS_EXEC_SOURCE[SP_HELLISH_REBUKE]];
+  b[0].c[w].feats = rs_feature_put(b[0].c[w].feats, RS_FT_REBUKE, true); #assert rs_set_spells(b[0].c[w..<w+1], keys[..]);
+  b[0].who = w; b[0].turn = RsTurn.{};
+  #assert rs_spell(SP_HELLISH_REBUKE).cast_time == RS_T_REACTION && !rs_can_cast_as(b[..], w, SP_HELLISH_REBUKE, 2, false) && rs_can_cast_as(b[..], w, SP_HEX, 2, false);
+}
+#test "cast: a level 1+ spell's slot: at its level or above, 9 at most, one left, one a turn; none without a free casting" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  s := bc_sorcerer(b[..]); ember := b[0].c[s];
+  #assert rs_spell(SP_SCORCHING_RAY).level == 2 && ember.slots[2] > 0;
+  #assert !rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 1, false) && !rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 10, false) && !rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 0, false);
+  b[0].c[s].slots[9] = 1; #assert rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 9, false);
+  b[0].c[s] = ember;
+  b[0].c[s].slots[2] = 0; #assert !rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 2, false); b[0].c[s] = ember;
+  b[0].turn.slot_spent = true; #assert !rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 2, false) && rs_can_cast_as(b[..], s, SP_FIRE_BOLT, 0, false); b[0].turn = RsTurn.{};
+  // the spell a feature gives free: its own, while a use is left
+  b[0].c[s].rank[RS_RK_FREE_SPELL] = SP_SCORCHING_RAY; b[0].c[s].uses[RS_USE_FREE] = 1;
+  #assert rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 0, false);
+  b[0].c[s].uses[RS_USE_FREE] = 0; #assert !rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 0, false);
+  b[0].c[s].uses[RS_USE_FREE] = 1; b[0].c[s].rank[RS_RK_FREE_SPELL] = SP_FIRE_BOLT; #assert !rs_can_cast_as(b[..], s, SP_SCORCHING_RAY, 0, false);
+}
+// The newest event, whole.
+bc_ev :: (b: [] RsBattle, back: int, kind: int, spell: int, by: int, to: int, amount: int, text: string) -> bool {
+  ev := rs_recent(b[0].book[0], back);
+  return ev.kind == kind && ev.spell.value == spell && ev.by.value == by && ev.to.value == to && ev.amount == amount && ev.damage == 0
+    && cast(string) ev.text[0..<ev.text_n] == text;
+}
+// The newest RS_EV_CAST since seq, back from the newest.
+bc_cast_back :: (b: [] RsBattle, seq: int) -> int {
+  for k: 0..<(b[0].book[0].seq - seq) { if rs_recent(b[0].book[0], k).kind == RS_EV_CAST { return k; } }
+  return -1;
+}
+#test "cast: what a cast spends, and its line: the slot or none, Quickened, at whom" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  s := bc_sorcerer(b[..]); ember := b[0].c[s]; t := 0;
+  // a cantrip: its Action, nothing else
+  seq := b[0].book[0].seq;
+  #assert rs_cast(b[..], s, SP_FIRE_BOLT, 0, 0, 0, t);
+  k := bc_cast_back(b[..], seq);
+  #assert k >= 0 && bc_ev(b[..], k, RS_EV_CAST, SP_FIRE_BOLT, s, t, 0, "Ember casts Fire Bolt at Brand");
+  #assert b[0].turn.action; #assert !b[0].turn.bonus; #assert !b[0].turn.leveled; #assert !b[0].turn.quickened; #assert !b[0].turn.slot_spent; #assert b[0].c[s].uses[RS_USE_SORCERY] == 2;
+  for l: 0..<10 { #assert b[0].c[s].slots[l] == ember.slots[l]; }
+  // Quickened: its Bonus Action and 2 Sorcery Points
+  b[0].c[s] = ember; b[0].turn = RsTurn.{}; seq = b[0].book[0].seq;
+  #assert rs_cast_quick(b[..], s, SP_FIRE_BOLT, 0, 0, 0, t);
+  k = bc_cast_back(b[..], seq);
+  #assert k >= 0 && bc_ev(b[..], k, RS_EV_CAST, SP_FIRE_BOLT, s, t, 0, "Ember casts Fire Bolt, Quickened at Brand");
+  #assert !b[0].turn.action && b[0].turn.bonus && b[0].turn.quickened && !b[0].turn.leveled && b[0].c[s].uses[RS_USE_SORCERY] == 0;
+  // a slot: its level's, the turn's one, and the line names it
+  b[0].c[s] = ember; b[0].turn = RsTurn.{}; seq = b[0].book[0].seq;
+  #assert rs_cast(b[..], s, SP_SCORCHING_RAY, 2, 0, 0, t);
+  k = bc_cast_back(b[..], seq);
+  #assert k >= 0 && bc_ev(b[..], k, RS_EV_CAST, SP_SCORCHING_RAY, s, t, 2, "Ember casts Scorching Ray (2nd-level slot) at Brand");
+  #assert b[0].turn.action && b[0].turn.leveled && b[0].turn.slot_spent && b[0].c[s].slots[2] == ember.slots[2] - 1 && b[0].c[s].uses[RS_USE_FREE] == ember.uses[RS_USE_FREE];
+  for l: 0..<10 { if l != 2 { #assert b[0].c[s].slots[l] == ember.slots[l]; } }
+  // a free casting: a use, no slot
+  b[0].c[s] = ember; b[0].c[s].rank[RS_RK_FREE_SPELL] = SP_SCORCHING_RAY; b[0].c[s].uses[RS_USE_FREE] = 2; b[0].turn = RsTurn.{}; seq = b[0].book[0].seq;
+  hp0 := b[0].c[t].hp;
+  #assert rs_cast(b[..], s, SP_SCORCHING_RAY, 0, 0, 0, t);
+  k = bc_cast_back(b[..], seq);
+  #assert k >= 0 && bc_ev(b[..], k, RS_EV_CAST, SP_SCORCHING_RAY, s, t, 0, "Ember casts Scorching Ray (without a slot) at Brand");
+  #assert b[0].turn.leveled && !b[0].turn.slot_spent && b[0].c[s].uses[RS_USE_FREE] == 1;
+  #assert b[0].c[t].hp == hp0 - 3 * 6;   // three rays, as at its own level: 2d6 Fire each, fixed at 6
+  for l: 0..<10 { #assert b[0].c[s].slots[l] == ember.slots[l]; }
+  // a spell on itself names no one; its part with no slot (Produce Flame's hurl) says so
+  d := rs_add(b[..], rs_druid("Ivy", 0, 3), 4, 4);
+  b[0].who = d; b[0].turn = RsTurn.{}; seq = b[0].book[0].seq;
+  #assert rs_cast(b[..], d, SP_PRODUCE_FLAME, 0, 0, 0, d);
+  k = bc_cast_back(b[..], seq);
+  #assert k >= 0 && bc_ev(b[..], k, RS_EV_CAST, SP_PRODUCE_FLAME, d, d, 0, "Ivy casts Produce Flame") && b[0].turn.bonus && !b[0].turn.action;
+  seq = b[0].book[0].seq;
+  #assert rs_cast(b[..], d, SP_FLAME_HURL, 0, 0, 0, t);
+  k = bc_cast_back(b[..], seq);
+  #assert k >= 0 && bc_ev(b[..], k, RS_EV_CAST, SP_FLAME_HURL, d, t, 0, "Ivy hurls Produce Flame at Brand") && b[0].turn.action;
+}
+#test "cast: a spell's targets: its own, one more a slot level above it, 8 at most" {
+  s: RsSpell; s.level = 1; s.targets = 3; s.target_growth = 1;
+  #assert rs_legacy_target_limit(s, 1) == 3 && rs_legacy_target_limit(s, 0) == 3 && rs_legacy_target_limit(s, 2) == 4 && rs_legacy_target_limit(s, 6) == 8 && rs_legacy_target_limit(s, 9) == 8;
+  s.target_growth = 2; #assert rs_legacy_target_limit(s, 3) == 7;
+  s.target_growth = 0; #assert rs_legacy_target_limit(s, 9) == 3;
+  s.targets = 9; #assert rs_legacy_target_limit(s, 1) == 8;
+}
+#test "cast: the other targets: the first target's side, up, in the caster's range, nearest the first target first" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 10;
+  near := rs_add(b[..], rs_fighter("Near", 1, 3), 11, 2);     // 5 feet from the target: the first creature
+  c := rs_add(b[..], rs_cleric("Bram", 0, 3), 2, 2);
+  t := rs_add(b[..], rs_fighter("Brand", 1, 3), 10, 2);       // 40 feet from the caster
+  mid := rs_add(b[..], rs_fighter("Mid", 1, 3), 10, 4);       // 10 feet from the target
+  far := rs_add(b[..], rs_fighter("Far", 1, 3), 14, 2);       // 20 feet from it, 60 from the caster
+  own := rs_add(b[..], rs_fighter("Ally", 0, 3), 10, 3);      // the caster's side
+  o: [8] int;
+  #assert rs_more_targets(b[..], c, t, 2, 60, o[..]) == 2 && o[0] == near && o[1] == mid;
+  #assert rs_more_targets(b[..], c, t, 5, 60, o[..]) == 3 && o[0] == near && o[1] == mid && o[2] == far;
+  #assert rs_more_targets(b[..], c, t, 5, 55, o[..]) == 2;                           // Far is out of the caster's range
+  #assert rs_more_targets(b[..], c, t, 0, 60, o[..]) == 0;
+  small: [1] int; #assert rs_more_targets(b[..], c, t, 5, 60, small[..]) == 1 && small[0] == near;   // no more than o holds
+  b[0].c[near].hp = 0; #assert rs_more_targets(b[..], c, t, 1, 60, o[..]) == 1 && o[0] == mid; b[0].c[near].hp = b[0].c[near].hp_max;
+  b[0].c[near].dead = true; #assert rs_more_targets(b[..], c, t, 1, 60, o[..]) == 1 && o[0] == mid; b[0].c[near].dead = false;
+  // the first target's side: the caster's own for one of its own; never the caster or the first target
+  #assert rs_more_targets(b[..], c, own, 3, 60, o[..]) == 0;
+  #assert rs_more_targets(b[..], near, t, 5, 60, o[..]) == 2 && o[0] == mid && o[1] == far;
+  // a record past the battle's count is not a creature of it
+  b[0].c[b[0].n] = b[0].c[mid]; b[0].c[b[0].n].x = 10; b[0].c[b[0].n].y = 1;
+  #assert rs_more_targets(b[..], c, t, 5, 60, o[..]) == 3;
+  // two as near: the first of them
+  rs_place(b[..], far, 9, 2);
+  #assert rs_more_targets(b[..], c, t, 1, 60, o[..]) == 1 && o[0] == near;
+  // the nearer of two though it comes later
+  rs_place(b[..], far, 14, 2); rs_place(b[..], near, 13, 2);   // 15 feet from the target; Mid is 10
+  #assert rs_more_targets(b[..], c, t, 1, 60, o[..]) == 1 && o[0] == mid;
+}
+#test "cast: Dimension Door: to a free square in the battle, told; a filled one or one off the grid is 4d6 Force and no move" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].fixed = true;
+  o := rs_add(b[..], rs_fighter("Brand", 1, 3), 8, 5);
+  w := rs_add(b[..], rs_wizard("Mira", 0, 5), 2, 2);
+  b[0].c[w].hp = 100; b[0].c[w].hp_max = 100; mira := b[0].c[w];
+  seq := b[0].book[0].seq;
+  rs_teleport(b[..], w, SP_DIMENSION_DOOR, 12, 7);
+  #assert b[0].c[w].x == 12 && b[0].c[w].y == 7 && rs_at(b[..], 12, 7) == w && b[0].book[0].seq == seq + 1 && bc_ev(b[..], 0, RS_EV_PUSH, SP_DIMENSION_DOOR, w, w, 0, "  Mira teleports");
+  rs_teleport(b[..], w, SP_DIMENSION_DOOR, 12, 7);   // its own square
+  #assert b[0].c[w].x == 12 && b[0].book[0].seq == seq + 2;
+  rs_teleport(b[..], w, SP_DIMENSION_DOOR, 0, 0); #assert b[0].c[w].x == 0 && b[0].c[w].y == 0;
+  rs_teleport(b[..], w, SP_DIMENSION_DOOR, 19, 9); #assert b[0].c[w].x == 19 && b[0].c[w].y == 9;
+  // filled, or off the grid on any side
+  hp := 100;
+  for k: 0..<5 {
+    tx := ifx k == 0 then 8 else ifx k == 1 then -1 else ifx k == 2 then 20 else 5;
+    ty := ifx k == 0 then 5 else ifx k == 3 then -1 else ifx k == 4 then 10 else 5;
+    seq = b[0].book[0].seq;
+    rs_teleport(b[..], w, SP_DIMENSION_DOOR, tx, ty);
+    hp -= 12;
+    #assert b[0].c[w].x == 19 && b[0].c[w].y == 9 && b[0].c[w].hp == hp && b[0].book[0].seq == seq + 1;
+    ev := rs_recent(b[0].book[0], 0);
+    #assert ev.kind == RS_EV_DAMAGE && ev.spell.value == SP_DIMENSION_DOOR && ev.by.value == w && ev.to.value == w && ev.amount == 12 && ev.damage == RS_FORCE
+      && cast(string) ev.text[0..<ev.text_n] == "  the space is filled: Mira takes 12 Force (4d6) and stays";
+  }
+  // the Force damage drops one it brings to 0, told as the spell's
+  b[0].c[w].hp = 5;
+  rs_teleport(b[..], w, SP_DIMENSION_DOOR, 8, 5);
+  ev := rs_recent(b[0].book[0], 0);
+  #assert b[0].c[w].hp == 0 && ev.kind == RS_EV_DOWN && ev.spell.value == SP_DIMENSION_DOOR && ev.to.value == w;
+  // with the dice unfixed, four d6s
+  for seed: 1..<13 {
+    b[0].dice[0].fixed = false; b[0].dice[0].state = cast(u64) (seed * 7919); b[0].c[w] = mira; rs_place(b[..], w, 2, 2);
+    d: [1] RsDice; d[0] = b[0].dice[0]; want := rs_sum(d[..], 4, 6);
+    rs_teleport(b[..], w, SP_DIMENSION_DOOR, 8, 5);
+    #assert b[0].c[w].hp == 100 - want && b[0].dice[0].state == d[0].state;
+  }
+  // it is no Critical Hit: Undead Fortitude can keep one at 1 Hit Point
+  b[0].dice[0].fixed = true; b[0].c[w] = mira; rs_place(b[..], w, 2, 2);
+  b[0].c[w].feats = rs_feature_put(b[0].c[w].feats, RS_FT_UNDEAD_FORTITUDE, true); b[0].c[w].score[RS_CON] = 30; b[0].c[w].hp = 3;
+  rs_teleport(b[..], w, SP_DIMENSION_DOOR, 8, 5);
+  #assert b[0].c[w].hp == 1 && !b[0].c[w].dead;
+}
+#test "cast: an area at a point: within range, its line and its zone's event; Sculpt Spells spares four allies of a 3rd-level Evocation, not a fifth" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 14; b[0].dice[0].fixed = true; b[0].clock = 777;
+  _ := rs_add(b[..], rs_fighter("Far", 1, 3), 39, 13);
+  w := rs_add(b[..], rs_wizard("Vesk", 1, 6), 1, 6);
+  allies: [5] int;
+  for k: 0..<5 { allies[k] = rs_add(b[..], rs_fighter("Garr", 1, 3), 30, 4 + k); b[0].c[allies[k]].hp = 200; b[0].c[allies[k]].hp_max = 200; }
+  foe := rs_add(b[..], rs_skeleton("Bones", 2), 31, 9); b[0].c[foe].hp = 200; b[0].c[foe].hp_max = 200;
+  vesk := b[0].c[w];
+  rs_fresh(b[..], w);
+  #assert !rs_cast(b[..], w, SP_FIREBALL, 3, 32, 6, -1) && b[0].c[w].slots[3] == vesk.slots[3] && b[0].book[0].seq == 0;   // 155 feet
+  seq := b[0].book[0].seq;
+  #assert rs_cast(b[..], w, SP_FIREBALL, 3, 31, 6, allies[0]) && b[0].c[w].slots[3] == vesk.slots[3] - 1;                // 150 feet (a creature given an area names no one)
+  k := bc_cast_back(b[..], seq);
+  #assert k >= 1 && bc_ev(b[..], k, RS_EV_CAST, SP_FIREBALL, w, -1, 3, "Vesk casts Fireball (3rd-level slot)");
+  z := rs_recent(b[0].book[0], k - 1);
+  area := rs_area(b[..], w, rs_spell(SP_FIREBALL), 31, 6);
+  #assert z.kind == RS_EV_ZONE && z.spell.value == SP_FIREBALL && z.by.value == w && z.to.value == -1 && z.x == area.x0 && z.y == area.y0 && z.amount == area.x1 - area.x0 + 1 && z.at == b[0].clock;
+  for a: 0..<4 { #assert b[0].c[allies[a]].hp == 200; }
+  #assert b[0].c[allies[4]].hp < 200 && b[0].c[foe].hp < 200;
+  // without Sculpt Spells, all of them
+  b[0].c[w] = vesk; b[0].c[w].feats = rs_feature_put(b[0].c[w].feats, RS_FT_SCULPT, false); rs_fresh(b[..], w);
+  for a: 0..<5 { b[0].c[allies[a]].hp = 200; }
+  #assert rs_cast(b[..], w, SP_FIREBALL, 3, 31, 6, -1);
+  for a: 0..<5 { #assert b[0].c[allies[a]].hp < 200; }
+}
+#test "cast: chosen creatures: each one seen, not behind Total Cover, not its charmer; a refusal spends and tells nothing" #steps 4000000000 {
+  for mode: [3] int.[0, 2, 3] {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+    t := rs_add(b[..], rs_skeleton("First", 1), 3, 1);
+    a := rs_add(b[..], rs_sorcerer("Caster", 0, 5), 1, 1);
+    u := rs_add(b[..], rs_skeleton("Second", 1), 4, 1);
+    for j: [2] int.[t, u] { b[0].c[j].hp = 500; b[0].c[j].hp_max = 500; b[0].c[j].ac = 1; }
+    keys := [1] int.[RS_EXEC_SOURCE[SP_SCORCHING_RAY]]; #assert rs_set_spells(b[0].c[a..<a+1], keys[..]);
+    rs_start_turn(b[..], a);
+    // the one refused is the last pick, so each pick is asked (Scorching Ray needs no sight of its targets)
+    if mode == 2 { #assert rs_cover_put(b[..], a, t, RS_COVER_TOTAL); }
+    if mode == 3 { b[0].c[a].eff[0] = RsEffect.{kind = EF_COND, cond = RS_CHARMED, by = t, spell = -1, until = rs_secs(60), save = -1}; }
+    slots := b[0].c[a].slots[2]; seq := b[0].book[0].seq;
+    picks := [3] int.[u, u, t];
+    ok := rs_cast_creatures(b[..], a, SP_SCORCHING_RAY, 2, picks[..], false);
+    #assert ok == (mode == 0);
+    if mode == 0 { #assert b[0].c[a].slots[2] == slots - 1 && b[0].c[t].hp == 494 && b[0].c[u].hp == 488; }   // a ray each: 2d6 Fire, fixed at 6
+    else { #assert b[0].c[a].slots[2] == slots && b[0].book[0].seq == seq && !b[0].turn.action && b[0].c[t].hp == 500 && b[0].c[u].hp == 500; }
+  }
+}
+#test "cast: Blessed Healer: a slot spell that heals another heals the Cleric 2 + the slot's level; not on itself, not a spell that doesn't heal, not without the feature" #steps 4000000000 {
+  for mode: 0..<6 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+    a := rs_add(b[..], rs_fighter("Ally", 0, 3), 2, 1); b[0].c[a].hp = 5; b[0].c[a].hp_max = 40;
+    c := rs_add(b[..], rs_cleric("Ama", 0, 6), 1, 1);
+    f := rs_add(b[..], rs_fighter("Foe", 1, 3), 3, 1); b[0].c[f].hp = 200; b[0].c[f].hp_max = 200; b[0].c[f].ac = 1;
+    rs_fresh(b[..], c); b[0].c[c].hp = 10;
+    #assert rs_has_feature(b[0].c[c], RS_FT_BLESSED_HEALER);
+    if mode == 4 { b[0].c[c].feats = rs_feature_put(b[0].c[c].feats, RS_FT_BLESSED_HEALER, false); }
+    if mode == 0 || mode == 4 { #assert rs_cast(b[..], c, SP_HEALING_WORD, 2, 0, 0, a); }
+    if mode == 1 { #assert rs_cast(b[..], c, SP_HEALING_WORD, 1, 0, 0, c); }
+    if mode == 2 { #assert rs_cast(b[..], c, SP_GUIDING_BOLT, 1, 0, 0, f); }
+    if mode == 3 { #assert rs_cast(b[..], c, SP_HEALING_WORD, 1, 0, 0, a); }
+    if mode == 5 { b[0].c[c].rank[RS_RK_FREE_SPELL] = SP_HEALING_WORD; b[0].c[c].uses[RS_USE_FREE] = 1; #assert rs_cast(b[..], c, SP_HEALING_WORD, 0, 0, 0, a) && b[0].c[a].hp > 5; }
+    want := ifx mode == 0 then 10 + 4 else ifx mode == 3 then 10 + 3 else 10;
+    if mode == 1 { want = b[0].c[c].hp; }   // its own healing, and no more
+    #assert b[0].c[c].hp == want;
+    if mode == 0 || mode == 3 {
+      ev := rs_recent(b[0].book[0], 0);
+      #assert ev.kind == RS_EV_HEAL && ev.feat == RS_FT_BLESSED_HEALER && ev.by.value == c && ev.to.value == c && ev.amount == want - 10;
+    }
+    if mode == 1 { #assert rs_recent(b[0].book[0], 0).feat != RS_FT_BLESSED_HEALER; }
+  }
+}
+
+#test "cast: no one chosen is no cast; a creature past the battle's count is none; a Self spell at another, or another's charmer, is refused" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  s := bc_sorcerer(b[..]); t := 0;
+  none: [1] int;
+  #assert !rs_cast_creatures(b[..], s, SP_SCORCHING_RAY, 2, none[0..<0], false) && !b[0].turn.action && b[0].book[0].seq == 0;
+  // an "up to" spell with none chosen is cast, and names no one
+  c := rs_add(b[..], rs_cleric("Ama", 0, 3), 6, 4); keys := [1] int.[RS_EXEC_SOURCE[SP_BLESS]]; #assert rs_set_spells(b[0].c[c..<c+1], keys[..]);
+  rs_fresh(b[..], c); slots := b[0].c[c].slots[1]; seq := b[0].book[0].seq;
+  #assert rs_spell(SP_BLESS).targets_optional && rs_cast_creatures(b[..], c, SP_BLESS, 1, none[0..<0], false) && b[0].c[c].slots[1] == slots - 1 && b[0].turn.action;
+  kb := bc_cast_back(b[..], seq);
+  #assert kb >= 0 && bc_ev(b[..], kb, RS_EV_CAST, SP_BLESS, c, -1, 1, "Ama casts Bless (1st-level slot)") && !rs_effect(b[0].c[t], EF_BLESS) && !rs_effect(b[0].c[c], EF_BLESS);
+  b[0].who = s; b[0].turn = RsTurn.{};
+  n := b[0].n; b[0].c[n] = b[0].c[t]; b[0].c[n].x = 6;
+  #assert !rs_cast(b[..], s, SP_FIRE_BOLT, 0, 0, 0, n) && !rs_cast(b[..], s, SP_FIRE_BOLT, 0, 0, 0, -1) && !b[0].turn.action;
+  b[0].c[s].eff[0] = RsEffect.{kind = EF_COND, cond = RS_CHARMED, by = t, spell = -1, until = rs_secs(60), save = -1};
+  #assert !rs_cast(b[..], s, SP_FIRE_BOLT, 0, 0, 0, t) && !b[0].turn.action;
+  b[0].c[s].eff[0] = RsEffect.{};
+  d := rs_add(b[..], rs_druid("Ivy", 0, 3), 4, 4); b[0].who = d; b[0].turn = RsTurn.{};
+  #assert !rs_cast(b[..], d, SP_PRODUCE_FLAME, 0, 0, 0, t) && !b[0].turn.bonus && rs_cast(b[..], d, SP_PRODUCE_FLAME, 0, 0, 0, d);
+  // its flame: a record on itself for the spell's duration, with no save
+  f := -1; for k: 0..<RS_EFFECTS { if b[0].c[d].eff[k].kind == EF_FLAME { f = k; } }
+  #assert f >= 0;
+  e := b[0].c[d].eff[f];
+  #assert e.by == d && e.spell == SP_PRODUCE_FLAME && e.until == b[0].clock + rs_secs(rs_spell(SP_PRODUCE_FLAME).duration_s) && e.save == -1;
+}
+#test "cast: a creature it must see: Hold Person refused while it is Blinded; one that saves ends the caster's Concentration on it" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  t := rs_add(b[..], rs_fighter("Brand", 1, 3), 3, 1);
+  a := rs_add(b[..], rs_sorcerer("Caster", 0, 5), 1, 1);
+  keys := [1] int.[RS_EXEC_SOURCE[SP_HOLD_PERSON]]; #assert rs_set_spells(b[0].c[a..<a+1], keys[..]);
+  rs_start_turn(b[..], a); caster := b[0].c[a];
+  b[0].c[a].cond = RS_BLINDED;
+  #assert !rs_cast(b[..], a, SP_HOLD_PERSON, 2, 0, 0, t) && b[0].c[a].slots[2] == caster.slots[2] && !b[0].turn.action;
+  b[0].c[a] = caster;
+  b[0].c[t].score[RS_WIS] = 30;
+  #assert rs_cast(b[..], a, SP_HOLD_PERSON, 2, 0, 0, t) && !rs_has(b[0].c[t], RS_PARALYZED) && b[0].c[a].conc == -1;
+  // one that fails holds it, and the caster with it
+  rs_start_turn(b[..], a); b[0].c[t].score[RS_WIS] = 1;
+  #assert rs_cast(b[..], a, SP_HOLD_PERSON, 2, 0, 0, t) && rs_has(b[0].c[t], RS_PARALYZED) && b[0].c[a].conc == SP_HOLD_PERSON;
+  // with no place left on the one chosen, nothing is cast
+  b2: [1] RsBattle; b2_room: [1] RsRoom; rs_have(b2[..], b2_room[..]); b2[0].w = 30; b2[0].h = 8; b2[0].dice[0].fixed = true;
+  t2 := rs_add(b2[..], rs_fighter("Brand", 1, 3), 3, 1); a2 := rs_add(b2[..], rs_sorcerer("Caster", 0, 5), 1, 1);
+  #assert rs_set_spells(b2[0].c[a2..<a2+1], keys[..]); rs_start_turn(b2[..], a2);
+  for k: 0..<RS_EFFECTS { b2[0].c[t2].eff[k] = RsEffect.{kind = EF_BLESS, by = t2, spell = SP_BLESS, until = rs_secs(60), save = -1}; }
+  one := [1] int.[t2];
+  #assert !rs_cast_creatures(b2[..], a2, SP_HOLD_PERSON, 2, one[..], false) && !b2[0].turn.action && b2[0].book[0].seq == 0;
+}
+#test "cast: a willing creature: Guidance on another needs its yes; on itself, none" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+  a := rs_add(b[..], rs_fighter("Ally", 0, 3), 2, 1);
+  c := rs_add(b[..], rs_cleric("Ama", 0, 3), 1, 1);
+  keys := [1] int.[RS_EXEC_SOURCE[SP_GUIDANCE]]; _ := rs_set_spells(b[0].c[c..<c+1], keys[..]);
+  rs_fresh(b[..], c);
+  #assert rs_spell(SP_GUIDANCE).willing && !rs_cast(b[..], c, SP_GUIDANCE, 0, 0, 0, a) && !b[0].turn.action;
+  one := [1] int.[a]; no := [1] RsCastOptions.[RsCastOptions.{}]; yes := [1] RsCastOptions.[RsCastOptions.{willing = true}];
+  #assert !rs_cast_creatures_with(b[..], c, SP_GUIDANCE, 0, one[..], false, no[..]) && !b[0].turn.action;
+  two := [2] RsCastOptions.[RsCastOptions.{willing = true}, RsCastOptions.{willing = true}];
+  #assert !rs_cast_creatures_with(b[..], c, SP_GUIDANCE, 0, one[..], false, two[..]) && !b[0].turn.action;   // an option a pick
+  #assert rs_cast_creatures_with(b[..], c, SP_GUIDANCE, 0, one[..], false, yes[..]) && b[0].turn.action && rs_effect(b[0].c[a], EF_GUIDANCE);
+  rs_fresh(b[..], c); b[0].c[c].conc = -1;
+  #assert rs_cast(b[..], c, SP_GUIDANCE, 0, 0, 0, c) && rs_effect(b[0].c[c], EF_GUIDANCE);
+}
+#test "cast: a slot's line at level 1, a Touch spell names whom, a Verbal component ends hiding, an at-will spell spends no use" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+  a := rs_add(b[..], rs_fighter("Ally", 0, 3), 2, 1); b[0].c[a].hp = 5;
+  c := rs_add(b[..], rs_cleric("Ama", 0, 3), 1, 1);
+  rs_fresh(b[..], c);
+  b[0].c[c].eff[0] = RsEffect.{kind = EF_COND, cond = 0, by = c, spell = RS_HIDE_SPELL, until = RS_NO_END, save = -1}; #assert rs_hidden_at(b[0].c[c]) == 0;
+  seq := b[0].book[0].seq;
+  #assert rs_spell(SP_HEALING_WORD).components == "V" && rs_cast(b[..], c, SP_HEALING_WORD, 1, 0, 0, a) && rs_hidden_at(b[0].c[c]) == -1;
+  k := bc_cast_back(b[..], seq);
+  #assert bc_ev(b[..], k, RS_EV_CAST, SP_HEALING_WORD, c, a, 1, "Ama casts Healing Word (1st-level slot) at Ally");
+  rs_fresh(b[..], c); seq = b[0].book[0].seq;
+  #assert rs_spell(SP_CURE_WOUNDS).range_ft == 5 && rs_cast(b[..], c, SP_CURE_WOUNDS, 1, 0, 0, a);
+  k = bc_cast_back(b[..], seq);
+  #assert bc_ev(b[..], k, RS_EV_CAST, SP_CURE_WOUNDS, c, a, 1, "Ama casts Cure Wounds (1st-level slot) at Ally");
+  // Fiendish Vigor: False Life at will, with no slot and no use
+  w := rs_add(b[..], rs_warlock("Vesk", 0, 5, SP_ELDRITCH_BLAST), 4, 1);
+  #assert rs_has_feature(b[0].c[w], RS_FT_FIENDISH_VIGOR);
+  b[0].c[w].uses[RS_USE_FREE] = 1; vesk := b[0].c[w];
+  rs_fresh(b[..], w); seq = b[0].book[0].seq;
+  #assert rs_cast(b[..], w, SP_FALSE_LIFE, 0, 0, 0, w) && b[0].c[w].uses[RS_USE_FREE] == 1 && b[0].turn.leveled && !b[0].turn.slot_spent;
+  for l: 0..<10 { #assert b[0].c[w].slots[l] == vesk.slots[l]; }
+  k = bc_cast_back(b[..], seq);
+  #assert bc_ev(b[..], k, RS_EV_CAST, SP_FALSE_LIFE, w, w, 0, "Vesk casts False Life (without a slot)");
+}
+#test "cast: more targets: Bless takes the target and its two nearest friends, not a fourth or a foe; Command upcast takes one, its own target" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  c := rs_add(b[..], rs_cleric("Ama", 0, 3), 1, 1);
+  a := rs_add(b[..], rs_fighter("Garr", 0, 3), 4, 1); p := rs_add(b[..], rs_fighter("Wren", 0, 3), 5, 1);
+  q := rs_add(b[..], rs_fighter("Holt", 0, 3), 6, 1); r := rs_add(b[..], rs_fighter("Reed", 0, 3), 7, 1);   // all within its 30 feet
+  f := rs_add(b[..], rs_fighter("Vark", 1, 3), 4, 2); g := rs_add(b[..], rs_fighter("Mott", 1, 3), 5, 2);
+  keys := [2] int.[RS_EXEC_SOURCE[SP_BLESS], RS_EXEC_SOURCE[SP_COMMAND]]; #assert rs_set_spells(b[0].c[c..<c+1], keys[..]);
+  rs_fresh(b[..], c);
+  #assert rs_spell(SP_BLESS).targets == 3 && rs_cast(b[..], c, SP_BLESS, 1, 0, 0, a);
+  #assert rs_effect(b[0].c[a], EF_BLESS) && rs_effect(b[0].c[p], EF_BLESS) && rs_effect(b[0].c[q], EF_BLESS) && !rs_effect(b[0].c[r], EF_BLESS) && !rs_effect(b[0].c[f], EF_BLESS) && !rs_effect(b[0].c[c], EF_BLESS);
+  rs_fresh(b[..], c);
+  #assert rs_spell(SP_COMMAND).targets == 1 && rs_spell(SP_COMMAND).target_growth == 1 && rs_cast(b[..], c, SP_COMMAND, 2, 0, 0, f);
+  #assert rs_effect(b[0].c[f], EF_HALT_PENDING) && !rs_effect(b[0].c[g], EF_HALT_PENDING);
+}
+#test "cast: Eldritch Blast's beams: one below level 5, two at it, each worked out at the target" #steps 4000000000 {
+  lost: [2] int;
+  for lv: 0..<2 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 8; b[0].dice[0].fixed = true;
+    t := rs_add(b[..], rs_fighter("Brand", 1, 3), 6, 3); b[0].c[t].hp = 500; b[0].c[t].hp_max = 500; b[0].c[t].ac = 1;
+    w := rs_add(b[..], rs_warlock("Vesk", 0, 5, SP_ELDRITCH_BLAST), 1, 3);
+    if lv == 0 { b[0].c[w].level = 4; }   // the same Warlock below level 5: one beam
+    rs_fresh(b[..], w);
+    #assert rs_cast(b[..], w, SP_ELDRITCH_BLAST, 0, 0, 0, t);
+    lost[lv] = 500 - b[0].c[t].hp;
+  }
+  #assert lost[0] > 0 && lost[1] == 2 * lost[0];
+}
+#test "cast: a lasting area: Entangle's is Difficult Terrain, Gust of Wind's is not; Hypnotic Pattern leaves out one that is Blinded" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 20; b[0].dice[0].fixed = true;
+  d := rs_add(b[..], rs_druid("Rowan", 0, 5), 2, 10);
+  choices := [2] int.[RS_EXEC_SOURCE[SP_GUST_OF_WIND], RS_EXEC_SOURCE[SP_ENTANGLE]];
+  #assert rs_set_spells(b[0].c[d..<d+1], choices[..]);
+  rs_fresh(b[..], d);
+  #assert rs_cast(b[..], d, SP_ENTANGLE, 1, 10, 3, -1);
+  k := -1; for q: 0..<b[0].zone.count { if b[0].zone[q].on && b[0].zone[q].spell == SP_ENTANGLE { k = q; } }
+  #assert k >= 0 && b[0].zone[k].difficult && b[0].zone[k].until == b[0].clock + rs_secs(rs_spell(SP_ENTANGLE).duration_s);
+  rs_fresh(b[..], d);
+  #assert rs_cast(b[..], d, SP_GUST_OF_WIND, 2, 30, 10, -1);
+  k = -1; for q: 0..<b[0].zone.count { if b[0].zone[q].on && b[0].zone[q].spell == SP_GUST_OF_WIND { k = q; } }
+  #assert k >= 0 && !b[0].zone[k].difficult;
+  // Hypnotic Pattern: only one that can see it
+  b2: [1] RsBattle; b2_room: [1] RsRoom; rs_have(b2[..], b2_room[..]); b2[0].w = 40; b2[0].h = 20; b2[0].dice[0].fixed = true;
+  w := rs_add(b2[..], rs_wizard("Mira", 0, 5), 1, 1);
+  keys := [1] int.[RS_EXEC_SOURCE[SP_HYPNOTIC_PATTERN]]; _ := rs_spellbook_add(b2[0].c[w..<w+1], keys[0]); #assert rs_set_spells(b2[0].c[w..<w+1], keys[..]);
+  seen := rs_add(b2[..], rs_fighter("Seen", 1, 3), 10, 5); blind := rs_add(b2[..], rs_fighter("Blind", 1, 3), 11, 5);
+  b2[0].c[seen].score[RS_WIS] = 1; b2[0].c[blind].score[RS_WIS] = 1; b2[0].c[blind].cond = RS_BLINDED;
+  rs_fresh(b2[..], w);
+  #assert rs_spell(SP_HYPNOTIC_PATTERN).sight && rs_cast(b2[..], w, SP_HYPNOTIC_PATTERN, 3, 10, 5, -1);
+  #assert rs_effect(b2[0].c[seen], EF_DAZED) && !rs_effect(b2[0].c[blind], EF_DAZED);
+}
+#test "cast: Divine Smite: only on the creature just hit, its line names it, and the hit is spent; chosen or not" #steps 4000000000 {
+  for chosen: 0..<2 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].fixed = true;
+    t := rs_add(b[..], rs_skeleton("Bones", 2), 4, 4); b[0].c[t].hp = 500; b[0].c[t].hp_max = 500; b[0].c[t].ac = 1;
+    p := rs_add(b[..], rs_paladin("Oriel", 0, 3), 3, 4);
+    o := rs_add(b[..], rs_skeleton("Other", 2), 3, 5); b[0].c[o].hp = 500; b[0].c[o].hp_max = 500; b[0].c[o].ac = 1;
+    one := [1] int.[t];
+    rs_fresh(b[..], p);
+    #assert !rs_cast(b[..], p, SP_DIVINE_SMITE, 1, 0, 0, t) && !rs_cast_creatures(b[..], p, SP_DIVINE_SMITE, 1, one[..], false);   // no hit yet
+    #assert rs_attack(b[..], p, o, false, -1) && b[0].turn.last_hit == o + 1;
+    #assert !rs_cast(b[..], p, SP_DIVINE_SMITE, 1, 0, 0, t) && !rs_cast_creatures(b[..], p, SP_DIVINE_SMITE, 1, one[..], false);   // another was hit
+    rs_fresh(b[..], p);
+    #assert rs_attack(b[..], p, t, false, -1) && b[0].turn.last_hit == t + 1;
+    seq := b[0].book[0].seq; hp := b[0].c[t].hp;
+    ok := ifx chosen == 1 then rs_cast_creatures(b[..], p, SP_DIVINE_SMITE, 1, one[..], false) else rs_cast(b[..], p, SP_DIVINE_SMITE, 1, 0, 0, t);
+    #assert ok && b[0].turn.last_hit == 0 && b[0].c[t].hp < hp;
+    k := bc_cast_back(b[..], seq);
+    #assert bc_ev(b[..], k, RS_EV_CAST, SP_DIVINE_SMITE, p, t, 1, "Oriel casts Divine Smite (1st-level slot) on Bones");
+    #assert !rs_cast(b[..], p, SP_DIVINE_SMITE, 1, 0, 0, t);   // one a hit
+  }
+}
+#test "cast: a Ritual due now: its slot is none, its line says so, and the rite is done; not before it is due, not Quickened" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  ally := rs_add(b[..], rs_fighter("Ally", 0, 1), 2, 1);
+  a := rs_add(b[..], rs_druid("Druid", 0, 5), 1, 1);
+  keys := [1] int.[RS_EXEC_SOURCE[SP_WATER_WALK]]; #assert rs_set_spells(b[0].c[a..<a+1], keys[..]);
+  b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_QUICKENED, true); b[0].c[a].uses[RS_USE_SORCERY] = 4;
+  rs_fresh(b[..], a); b[0].clock = 1000;
+  b[0].c[a].rite = SP_WATER_WALK; b[0].c[a].rite_owed = true; b[0].c[a].rite_until = 1001;
+  druid := b[0].c[a];
+  #assert !rs_cast(b[..], a, SP_WATER_WALK, 0, 0, 0, ally) && !b[0].turn.action;   // a tick early
+  b[0].clock = 1001;
+  #assert !rs_cast_quick(b[..], a, SP_WATER_WALK, 0, 0, 0, ally) && !b[0].turn.bonus;
+  seq := b[0].book[0].seq;
+  #assert rs_cast(b[..], a, SP_WATER_WALK, 0, 0, 0, ally) && b[0].c[a].rite == -1 && b[0].turn.action && b[0].turn.leveled && !b[0].turn.slot_spent;
+  for l: 0..<10 { #assert b[0].c[a].slots[l] == druid.slots[l]; }
+  #assert b[0].c[a].uses[RS_USE_FREE] == druid.uses[RS_USE_FREE];
+  k := bc_cast_back(b[..], seq);
+  #assert bc_ev(b[..], k, RS_EV_CAST, SP_WATER_WALK, a, ally, 0, "Druid casts Water Walk (as a Ritual) at Ally");
+  // with no rite, slot 0 is no casting of it
+  rs_fresh(b[..], a); #assert !rs_cast(b[..], a, SP_WATER_WALK, 0, 0, 0, ally);
+  // with a slot while the rite is due, it is no Ritual: the rite stays to be finished
+  b2: [1] RsBattle; b2_room: [1] RsRoom; rs_have(b2[..], b2_room[..]); b2[0].w = 20; b2[0].h = 8; b2[0].dice[0].fixed = true;
+  al := rs_add(b2[..], rs_fighter("Ally", 0, 1), 2, 1); d2 := rs_add(b2[..], rs_druid("Druid", 0, 5), 1, 1);
+  #assert rs_set_spells(b2[0].c[d2..<d2+1], keys[..]); rs_fresh(b2[..], d2); b2[0].clock = 1001;
+  b2[0].c[d2].rite = SP_WATER_WALK; b2[0].c[d2].rite_owed = true; b2[0].c[d2].rite_until = 1001; s3 := b2[0].c[d2].slots[3];
+  #assert rs_cast(b2[..], d2, SP_WATER_WALK, 3, 0, 0, al) && b2[0].c[d2].rite == SP_WATER_WALK && b2[0].c[d2].slots[3] == s3 - 1;
+}
+#test "cast: a Touch spell through a familiar: its Reaction, and its line; none from one that has reacted" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 25; b[0].h = 8; b[0].dice[0].fixed = true;
+  i := rs_add(b[..], rs_druid("Druid", 0, 2), 1, 1);
+  j := rs_add(b[..], rs_fighter("Ally", 0, 3), 22, 1);
+  picks := [1] int.[RS_EXEC_SOURCE[SP_CURE_WOUNDS]]; #assert rs_set_spells(b[0].c[i..<i+1], picks[..]);
+  rs_fresh(b[..], i);
+  #assert rs_wild_companion(b[..], i, 0, MON_CAT, 2, 1);
+  f := rs_familiar_of(b[..], i); rs_place(b[..], f, 21, 1);
+  b[0].c[j].hp = 1; rs_fresh(b[..], i);
+  b[0].c[f].reacted = true;
+  #assert !rs_familiar_touch(b[..], i, SP_CURE_WOUNDS, 1, j) && !b[0].turn.action;
+  b[0].c[f].reacted = false; seq := b[0].book[0].seq;
+  #assert rs_familiar_touch(b[..], i, SP_CURE_WOUNDS, 1, j) && b[0].c[f].reacted && !b[0].c[i].reacted && b[0].c[j].hp > 1;
+  k := bc_cast_back(b[..], seq);
+  #assert bc_ev(b[..], k, RS_EV_CAST, SP_CURE_WOUNDS, i, j, 1, "Druid casts Cure Wounds (1st-level slot) through its familiar at Ally");
+}
+#test "cast: Revivify chosen: one pick, a creature it can bring back, not its charmer" #steps 4000000000 {
+  for mode: 0..<3 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8;
+    healer := rs_add(b[..], rs_cleric("Cleric", 0, 5), 1, 1);
+    ally := rs_add(b[..], rs_fighter("Ally", 0, 1), 2, 1);
+    foe := rs_add(b[..], rs_fighter("Foe", 1, 1), 3, 1);
+    b[0].clock = 20;
+    rs_damage(b[..], foe, ally, b[0].c[ally].hp + b[0].c[ally].hp_max, RS_SLASHING, false, -1);
+    b[0].clock = 79; rs_start_turn(b[..], healer);
+    b[0].c[healer].materials[0] = RsMaterialStock.{key = RS_EXEC_SOURCE[SP_REVIVIFY], count = 1};
+    if mode == 2 { b[0].c[healer].eff[0] = RsEffect.{kind = EF_COND, cond = RS_CHARMED, by = ally, spell = -1, until = RS_NO_END, save = -1}; }
+    one := [1] int.[ally]; two := [2] int.[ally, ally];
+    ok := ifx mode == 1 then rs_cast_creatures(b[..], healer, SP_REVIVIFY, 3, two[..], false) else rs_cast_creatures(b[..], healer, SP_REVIVIFY, 3, one[..], false);
+    #assert ok == (mode == 0) && b[0].c[ally].dead == (mode != 0);
+  }
+}
+#test "cast: chosen creatures in order: a caster that loses its Concentration stops; one the spell can't affect is passed over" #steps 4000000000 {
+  for mode: 0..<2 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+    a := rs_add(b[..], rs_sorcerer("Caster", 0, 5), 1, 1); b[0].c[a].score[RS_WIS] = 1; b[0].c[a].humanoid = true;
+    t := rs_add(b[..], rs_fighter("Other", 1, 3), 3, 1); b[0].c[t].score[RS_WIS] = 1;
+    sk := rs_add(b[..], rs_skeleton("Bones", 1), 4, 1); b[0].c[sk].score[RS_WIS] = 1;
+    keys := [1] int.[RS_EXEC_SOURCE[SP_HOLD_PERSON]]; #assert rs_set_spells(b[0].c[a..<a+1], keys[..]);
+    rs_start_turn(b[..], a);
+    if mode == 0 {
+      picks := [2] int.[a, t];   // itself first: held, its Concentration goes, and the next is not reached
+      #assert rs_cast_creatures(b[..], a, SP_HOLD_PERSON, 3, picks[..], false);
+      #assert b[0].c[a].conc == -1 && !rs_has(b[0].c[t], RS_PARALYZED);
+    } else {
+      #assert !b[0].c[sk].humanoid && b[0].c[t].humanoid;
+      picks := [2] int.[sk, t];  // a Skeleton is no Humanoid: passed over, and the next is held
+      #assert rs_cast_creatures(b[..], a, SP_HOLD_PERSON, 3, picks[..], false);
+      #assert !rs_has(b[0].c[sk], RS_PARALYZED) && rs_has(b[0].c[t], RS_PARALYZED) && b[0].c[a].conc == SP_HOLD_PERSON;
+    }
+    // one chosen that saves: the Concentration stays, held for the others it might have had
+    b2: [1] RsBattle; b2_room: [1] RsRoom; rs_have(b2[..], b2_room[..]); b2[0].w = 30; b2[0].h = 8; b2[0].dice[0].fixed = true;
+    a2 := rs_add(b2[..], rs_sorcerer("Caster", 0, 5), 1, 1); t2 := rs_add(b2[..], rs_fighter("Other", 1, 3), 3, 1); b2[0].c[t2].score[RS_WIS] = 30;
+    #assert rs_set_spells(b2[0].c[a2..<a2+1], keys[..]); rs_start_turn(b2[..], a2);
+    one := [1] int.[t2];
+    #assert rs_cast_creatures(b2[..], a2, SP_HOLD_PERSON, 2, one[..], false) && !rs_has(b2[0].c[t2], RS_PARALYZED) && b2[0].c[a2].conc == SP_HOLD_PERSON;
+    // more picks than the spell takes: nothing
+    rs_start_turn(b2[..], a2); b2[0].c[a2].conc = -1; four := [4] int.[t2, t2, t2, t2];
+    #assert !rs_cast_creatures(b2[..], a2, SP_HOLD_PERSON, 2, four[..], false) && !b2[0].turn.action;
+  }
+}

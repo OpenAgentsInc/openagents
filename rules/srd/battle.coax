@@ -1807,6 +1807,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 #load "battle-affect-checks.coax" #test;   // battle-affect.coax's own checks (#13287)
 #load "battle-strike-checks.coax" #test;   // battle-strike.coax's own checks (#13287)
 #load "battle-turn-checks.coax" #test;   // battle-turn.coax's own checks (#13287)
+#load "battle-cast-checks.coax" #test;   // battle-cast.coax's own checks (#13287)
 
 // ---- the feature program (#13285): rs_feature's rows, written out a second time, and rs_feature_use
 rs_fs_is :: (f: RsFeature, k: int, kind: int, a: int, b: int, c: int, t: string) -> bool { st := f.st[k]; return k < f.n && st.kind == kind && st.a == a && st.b == b && st.c == c && st.t == t; }
