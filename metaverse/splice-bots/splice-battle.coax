@@ -569,7 +569,7 @@ sb_msg_text :: (g: [] SpGame) -> string {
   if m == SBM_RM_GONE { return "The raider mech gave up."; }
   if m == SBM_RM_DOWN { return "The raider mech powers down. Robot piece taken."; }
   if m == SBM_SNIPER_DOWN { return "Sniper is down. The raider mech drives off with its loot."; }
-  if m == SBM_BOSS { return "The boss wakes. 1-4 to fight, E to swap Digger's core."; }
+  if m == SBM_BOSS { return "The boss wakes. The mech fights; when it reels, stun its weak points with F."; }
   if m == SBM_CHARGES { return "Half its health gone. Now it charges."; }
   if m == SBM_OPEN { return "It's dazed. Stun its weak points with F."; }
   if m == SBM_SHUT { return "Its weak points close."; }
