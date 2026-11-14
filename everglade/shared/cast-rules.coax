@@ -194,6 +194,19 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
   b[0].c[0].ranged=W_LONGBOW; seats[0]=FbSeat.{me=0};   // the range lends it (everglade/server/arrows.coax e2a_range_lend)
   #assert e2r_use_on(b[..],seats[..],FB_CL_DRUID,slot,g) && b[0].c[g].hp<hp && seats[0].turn.action;
 }
+#test "Everglade II: a level-1 Wizard, Bard, Sorcerer and Warlock holding the Archery Range's Longbow shoot the guard with their Attack, without the Proficiency Bonus (#13538)" #steps 400000000 {
+  for klass:[4]int.[FB_CL_WIZARD,FB_CL_BARD,FB_CL_SORCERER,FB_CL_WARLOCK] {
+    b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=40; b[0].h=8; b[0].dice[0].fixed=true;
+    _:=rs_add(b[..],fb_cl_hero(klass,"Caster",0,1),1,2);
+    g:=rs_add(b[..],rs_guard("Guard",1),25,2);   // 120 feet off
+    b[0].c[g].ac=5; hp:=b[0].c[g].hp;
+    slot:=xk_wire(klass,xk_attack_of(klass)); seats:[1] FbSeat; seats[0].me=0;
+    #assert slot>=0 && !e2r_use_on(b[..],seats[..],klass,slot,g) && b[0].c[g].hp==hp;   // on no bar of its own
+    b[0].c[0].ranged=W_LONGBOW; seats[0]=FbSeat.{me=0};
+    #assert rs_weapon_attack(b[0].c[0],W_LONGBOW)==rs_mod(b[0].c[0].score[RS_DEX]);
+    #assert e2r_use_on(b[..],seats[..],klass,slot,g) && b[0].c[g].hp<hp && seats[0].turn.action;
+  }
+}
 #test "Everglade II harms only the creature the room names, alive and of another team" {
   b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),2,2);

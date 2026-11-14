@@ -12,7 +12,7 @@
     "item": 4,
     "spawn": 5
   },
-  "hash": 55127017896882,
+  "hash": 969526681417500,
   "content_pin": 1,
   "ids": [
     {"kind": "ability", "id": 128, "key": "ability/barbarian/rage"},
@@ -98,6 +98,10 @@
     {"kind": "ability", "id": 398, "key": "ability/wizard/spell/scorching-ray"},
     {"kind": "ability", "id": 399, "key": "ability/wizard/spell/blindness-deafness"},
     {"kind": "ability", "id": 400, "key": "ability/wizard/spell/fireball"},
+    {"kind": "ability", "id": 158, "key": "ability/bard/attack"},
+    {"kind": "ability", "id": 352, "key": "ability/sorcerer/attack"},
+    {"kind": "ability", "id": 375, "key": "ability/warlock/attack"},
+    {"kind": "ability", "id": 401, "key": "ability/wizard/attack"},
     {"kind": "spell", "id": 0, "key": "spell/produce-flame"},
     {"kind": "spell", "id": 1, "key": "spell/produce-flame-hurl"},
     {"kind": "spell", "id": 2, "key": "spell/starry-wisp"},

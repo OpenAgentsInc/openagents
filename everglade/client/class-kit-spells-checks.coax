@@ -30,7 +30,7 @@
       rows += 1;
     }
   }
-  #assert rows == ct_rows(d[..], EC_ABILITY) && rows == 83;   // every row is some bar's, and no bar's ability lacks one
+  #assert rows == ct_rows(d[..], EC_ABILITY) && rows == 87;   // every row is some bar's, and no bar's ability lacks one
 }
 #load "../../rules/srd/catalog.coax";
 #load "../../metaverse-engine/audio/experimental-sfx.coax";

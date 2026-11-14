@@ -11,6 +11,7 @@ table ability id name:text
 155|Dash
 156|Hypnotic Pattern
 157|Fireball
+158|Attack
 176|Sacred Flame
 177|Guiding Bolt
 178|Healing Word
@@ -68,6 +69,7 @@ table ability id name:text
 349|Dash
 350|Scorching Ray
 351|Fireball
+352|Attack
 368|Eldritch Blast
 369|Chill Touch
 370|Hex
@@ -75,6 +77,7 @@ table ability id name:text
 372|Hold Person
 373|Scorching Ray
 374|Fireball
+375|Attack
 392|Fire Bolt
 393|Chill Touch
 394|Ray of Sickness
@@ -84,6 +87,7 @@ table ability id name:text
 398|Scorching Ray
 399|Blindness/Deafness
 400|Fireball
+401|Attack
 table creature id name:text kind:int xp:int
 1|Wolf|0|50
 2|Goblin Warrior|1|50

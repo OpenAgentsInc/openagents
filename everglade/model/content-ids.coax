@@ -16,8 +16,8 @@ CT_KINDS :: 5;
 CT_KIND :: [6] string.["", "ability", "spell", "creature", "item", "spawn"];
 CT_KEY :: 96;   // bytes in a key at most
 ContentRow :: struct { kind: int; id: int; key: string; }
-CONTENT_N :: 211;
-CONTENT_HASH :: 55127017896882;
+CONTENT_N :: 215;
+CONTENT_HASH :: 969526681417500;
 CONTENT :: [CONTENT_N] ContentRow.[
   ContentRow.{kind = CT_ABILITY, id = 128, key = "ability/barbarian/rage"},
   ContentRow.{kind = CT_ABILITY, id = 129, key = "ability/barbarian/attack"},
@@ -102,6 +102,10 @@ CONTENT :: [CONTENT_N] ContentRow.[
   ContentRow.{kind = CT_ABILITY, id = 398, key = "ability/wizard/spell/scorching-ray"},
   ContentRow.{kind = CT_ABILITY, id = 399, key = "ability/wizard/spell/blindness-deafness"},
   ContentRow.{kind = CT_ABILITY, id = 400, key = "ability/wizard/spell/fireball"},
+  ContentRow.{kind = CT_ABILITY, id = 158, key = "ability/bard/attack"},
+  ContentRow.{kind = CT_ABILITY, id = 352, key = "ability/sorcerer/attack"},
+  ContentRow.{kind = CT_ABILITY, id = 375, key = "ability/warlock/attack"},
+  ContentRow.{kind = CT_ABILITY, id = 401, key = "ability/wizard/attack"},
   ContentRow.{kind = CT_SPELL, id = 0, key = "spell/produce-flame"},
   ContentRow.{kind = CT_SPELL, id = 1, key = "spell/produce-flame-hurl"},
   ContentRow.{kind = CT_SPELL, id = 2, key = "spell/starry-wisp"},

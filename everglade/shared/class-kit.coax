@@ -394,17 +394,22 @@ xk_slot_class :: (slot: int) -> int { return ifx slot >= XK_SLOT0 && slot < XK_S
 // Class c's bar at `level`, in the order it is shown: how many.
 xk_bar_at :: (c: int, level: int, out: [] FbAb) -> int { return ifx c >= 0 && c < FB_CL_N then xc_bar_level(c, xk_level(level), out) else 0; }
 xk_bar :: (c: int, out: [] FbAb) -> int { return xk_bar_at(c, XK_LEVEL, out); }
-// Class c's catalog, every ability its bars at levels 1 to XK_LEVELS hold: how many.
+// Class c's catalog, every ability its bars at levels 1 to XK_LEVELS hold, then the Attack action
+// when no bar of its holds one: how many. Anyone can take the Attack action with any weapon (SRD 5.2.1
+// p. 9 and p. 89; without proficiency it adds no Proficiency Bonus, rules/srd/engine.coax
+// rs_weapon_proficient), so every class has one. The Wizard's, Bard's, Sorcerer's and Warlock's is on
+// no bar of their own: a weapon lent past the kit puts it there (xk_bar_held, #13538).
 xk_catalog :: (c: int, out: [] FbAb) -> int {
-  n := 0;
+  n := 0; attack := false;
   for level: 1..<XK_LEVELS + 1 {
     bar: [XC_SLOTS] FbAb; m := xk_bar_at(c, level, bar[..]);
     for i: 0..<m {
       seen := false;
       for j: 0..<n { if xc_id(out[j]) == xc_id(bar[i]) { seen = true; } }
-      if !seen && n < out.count { out[n] = bar[i]; n += 1; }
+      if !seen && n < out.count { out[n] = bar[i]; n += 1; if bar[i].kind == FB_ATTACK { attack = true; } }
     }
   }
+  if !attack && c >= 0 && c < FB_CL_N && n < out.count { out[n] = xc_attack(); n += 1; }
   return n;
 }
 // The content number of class c's ability a (-1: the registry has no row for it).
@@ -575,8 +580,8 @@ xk_entry_at :: (c: int, level: int, slot: int) -> XkEntry {
 // any class's kit the bow: its Attack is the Longbow's shot and aims as the Ranger's does, and a bar
 // without its Attack yet (a Druid's at level 1) has it. The room passes the seat's ranged weapon in the
 // rules (everglade/server/arrows.coax e2a_range_lend), the page the Longbow while it stands where the
-// range lends one; anything else held changes nothing. A class with no Attack at all (the Wizard, Bard,
-// Sorcerer and Warlock) has nothing to shoot it with.
+// range lends one; anything else held changes nothing. Every class's catalog has an Attack (xk_catalog):
+// the Wizard, Bard, Sorcerer and Warlock shoot it too, without their Proficiency Bonus (#13538).
 xk_kit_held :: (c: int, ranged: int) -> int { return ifx ranged == W_LONGBOW then XC_KIT_BOW else xc_kit(c); }
 xk_weapon_held :: (c: int, ranged: int) -> int { return ifx ranged == W_LONGBOW then W_LONGBOW else xk_weapon(c); }
 xk_rules_held :: (c: int, a: FbAb, ranged: int) -> FbAb {
@@ -584,7 +589,7 @@ xk_rules_held :: (c: int, a: FbAb, ranged: int) -> FbAb {
   shot := fb_feature(FB_SHOOT, "Longbow", "attack"); shot.tg = a.tg;
   return shot;
 }
-// Class c's Attack, from its whole catalog; kind -1 when it has none.
+// Class c's Attack, from its whole catalog; kind -1 for no class.
 xk_attack_of :: (c: int) -> FbAb {
   cat: [XC_SLOTS] FbAb; n := xk_catalog(c, cat[..]);
   for i: 0..<n { if cat[i].kind == FB_ATTACK { return cat[i]; } }
@@ -712,12 +717,13 @@ xk_room_slot :: (open: bool, known: bool, n: int, v: [] int, i: int, count: int)
   #assert a.ok && a.left == 2 && a.on && xk_room_slot(true, true, 3, v[..], 0, 3).left == -1 && xk_room_slot(true, true, 3, v[..], 2, 3).left == 1;
   #assert !xk_room_slot(true, true, 3, v[..], 1, 4).ok && !xk_room_slot(true, true, 3, v[..], 3, 3).ok && !xk_room_slot(true, true, 3, v[..], -1, 3).ok;
 }
-#test "class kits: a Longbow lent past the kit makes any class's Attack the Longbow's shot, aimed as the Ranger's, on its bar at every level (#13519)" #steps 4000000000 #traversal 2147483647 {
+#test "class kits: a Longbow lent past the kit makes every class's Attack the Longbow's shot, aimed as the Ranger's, on its bar at every level (#13519, #13538)" #steps 4000000000 #traversal 2147483647 {
   r := xk_entry_at(FB_CL_RANGER, 1, xk_wire(FB_CL_RANGER, xk_attack_of(FB_CL_RANGER)));
   for c: 0..<FB_CL_N {
     a := xk_attack_of(c);
-    if a.kind != FB_ATTACK { #assert c == FB_CL_WIZARD || c == FB_CL_BARD || c == FB_CL_SORCERER || c == FB_CL_WARLOCK; continue; }
+    #assert a.kind == FB_ATTACK;
     w := xk_wire(c, a);
+    #assert w >= 0 && xk_slot_class(w) == c;
     #assert xk_kit_held(c, W_LONGBOW) == XC_KIT_BOW && xk_rules_held(c, a, W_LONGBOW).kind == FB_SHOOT && xk_weapon_held(c, W_LONGBOW) == W_LONGBOW;
     for level: 1..<XK_LEVELS + 1 {
       own := xk_entry_at(c, level, w); lent := xk_entry_held(c, level, w, W_LONGBOW);
@@ -738,6 +744,12 @@ xk_room_slot :: (open: bool, known: bool, n: int, v: [] int, i: int, count: int)
   d := xk_wire(FB_CL_DRUID, xk_attack_of(FB_CL_DRUID));
   #assert !xk_entry_at(FB_CL_DRUID, 1, d).ok && xk_entry_held(FB_CL_DRUID, 1, d, W_LONGBOW).aim.kind != XC_AIM_MELEE && !xk_entry_held(FB_CL_DRUID, 1, 0, W_LONGBOW).ok;
   #assert !xk_entry_held(FB_CL_DRUID, 1, xk_wire(FB_CL_RANGER, xk_attack_of(FB_CL_RANGER)), W_LONGBOW).ok;   // another class's Attack
+  // the Wizard, Bard, Sorcerer and Warlock: an Attack last in the catalog, on no bar of their own, on every bar with the Longbow
+  for c: [4] int.[FB_CL_WIZARD, FB_CL_BARD, FB_CL_SORCERER, FB_CL_WARLOCK] {
+    cat: [XC_SLOTS] FbAb; m := xk_catalog(c, cat[..]); a := xk_wire(c, xk_attack_of(c));
+    #assert cat[m - 1].kind == FB_ATTACK && cat[m - 1].name == "Attack" && a == xk_slot(c, m - 1);
+    for level: 1..<XK_LEVELS + 1 { #assert !xk_entry_at(c, level, a).ok && xk_entry_held(c, level, a, W_LONGBOW).ok && xk_entry_held(c, level, a, W_LONGBOW).aim.kind == XC_AIM_BOLT; }
+  }
   // every other ability is itself, lent or not
-  sp := fb_spell(SP_FIRE_BOLT, 0, FB_FOE); #assert xk_rules_held(FB_CL_WIZARD, sp, W_LONGBOW).sp == SP_FIRE_BOLT && xk_attack_of(FB_CL_WIZARD).kind == -1;
+  sp := fb_spell(SP_FIRE_BOLT, 0, FB_FOE); #assert xk_rules_held(FB_CL_WIZARD, sp, W_LONGBOW).sp == SP_FIRE_BOLT && xk_attack_of(-1).kind == -1 && xk_attack_of(FB_CL_N).kind == -1;
 }
