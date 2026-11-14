@@ -125,12 +125,38 @@ profiles, private keys and signing material remain outside the repository.
 ```sh
 apps/openagents-ios/release.sh /absolute/fresh/output
 # With ASC_API_* loaded, after Apple reports VALID:
-python3 apps/openagents-ios/tools/app_store.py status --build 1068
-python3 apps/openagents-ios/tools/app_store.py testflight --build 1068 \
-  --group Owner --notes-file apps/openagents-ios/release-notes/1068.txt
+python3 apps/openagents-ios/tools/app_store.py status --build 1075
+python3 apps/openagents-ios/tools/app_store.py testflight --build 1075 \
+  --group Owner --notes-file apps/openagents-ios/release-notes/1075.txt
 ```
 
 The release script generates resources, signs, archives, exports and uploads.
 Group assignment remains explicit. It never creates testers or submits a
 public App Store release. Keep the released `Generated/runtime.txt` and
 `Native.plist` with its archive: updates target that installed runtime.
+
+### Publishing world content
+
+`generate.sh` writes the pinned inventories to `Starter/worlds/` and immutable
+objects to `build/world-assets/objects/`. Upload objects before publishing an
+inventory that names them:
+
+```sh
+gcloud storage rsync apps/openagents-ios/build/world-assets/objects \
+  gs://openagentsgemini-native-world-assets/objects \
+  --cache-control='public,max-age=31536000,immutable' --quiet
+```
+
+This bucket contains public game assets only. User uploads retain the existing
+authenticated world-file flow. Never remove an object still referenced by an
+installed or published inventory. The app checks every required object's size
+and digest before opening the world; optional textures are requested by name
+from the installed producer and resolved through that same inventory.
+
+Publish compatible UI/inventory changes through the signed package tools in
+[`coax/native/`](../../coax/native/README.md). The worlds-enabled package needs
+all four portable programs (`app`, `extras`, `worlds`, `editor`), their runtime
+and fonts, and the four `worlds/*.json` inventories. A new build's initial feed
+must be packaged from that archive's `Starter/` directory, rather than a later
+generation of the checkout. Matching bundled hashes let a fresh installation
+record the feed without offering a redundant update.
