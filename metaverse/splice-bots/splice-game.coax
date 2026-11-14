@@ -168,6 +168,7 @@ SpGame :: struct {
   ak: [1] SpAttacks;           // the enemies' attacks: their beats, the lane they share, what she saw of the last (splice-battle.coax, #13552)
   snd: [1] SpSound;            // what sounds, and what the page is told to play (sound.coax)
   cam: [1] SpCam;             // the follow camera's eased boom (camera.coax)
+  zoom: f32 = 1;              // the wheel's scale on the boom (camera.coax cm_wheel); the viewer's, outlives a reset
   hv: [1] SpHud;               // the HUD: hidden or not, the toasts, the gauges' fades, the edit bay's picked item (hud.coax)
 }
 
@@ -306,7 +307,7 @@ g_respawn :: (g: [] SpGame) {
   sb_respawn(g);   // the boss whole again, the mech repaired (splice-battle.coax)
 }
 g_reset :: (g: [] SpGame) {
-  gray := g[0].gray;   // the graybox toggle is the viewer's, not the run's
+  gray := g[0].gray; zoom := g[0].zoom;   // the graybox toggle and the wheel are the viewer's, not the run's
   hide: [TK_KINDS] bool; for k: 0..<TK_KINDS { hide[k] = g[0].hide[k]; }   // and what a host draws is the host's
   hview := g[0].hview; hview_on := g[0].hview_on; haim := g[0].haim; haim_on := g[0].haim_on;   // and so is the view it places
   tables := g[0].c[0];   // the content tables are read once
@@ -320,7 +321,7 @@ g_reset :: (g: [] SpGame) {
   g[0].snd[0] = sound; g[0].snd[0].ready = false;
   g[0].view = view; g[0].shown = shown; g[0].unseen = unseen;
   g[0].imp[0] = imports;
-  g[0].gray = gray;
+  g[0].gray = gray; g[0].zoom = zoom;
   if tables.ok { g[0].c[0] = tables; } else { _ := sc_load(g[0].c[..], SC_SHIPPED); }
   _ := g_places(g);
   g[0].layer[0] = layer;

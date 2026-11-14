@@ -515,6 +515,7 @@ splice_mouselook :: (s: [] Splice) -> int #export_c #effects(all) {
   return g_mouselook(s[0].game[..]);
 }
 splice_look :: (s: [] Splice, dx: f32, dy: f32) #export_c #effects(all) { if !s[0].gallery && s[0].started { g_look(s[0].game[..], dx, dy); } }
+splice_wheel :: (s: [] Splice, dy: f32) #export_c #effects(all) { if !s[0].gallery && s[0].started && !(s[0].edit && !vp_hands(s[0].vp[..])) { cm_wheel(s[0].game[..], dy); } }   // the camera in or out (camera.coax)
 splice_lock :: (s: [] Splice, status: int) #export_c #effects(all) { if !s[0].gallery && s[0].started { g_lock(s[0].game[..], status); } }
 splice_pointer :: (s: [] Splice, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
   if s[0].gallery || !s[0].started { return false; }

@@ -152,6 +152,8 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
 EXPORT("coaxial_mouselook") uint32_t coaxial_mouselook(uint32_t state) { return (uint32_t)splice_mouselook(at(state)); }
 EXPORT("coaxial_look_delta") void coaxial_look_delta(uint32_t state, float dx, float dy) { splice_look(at(state), dx, dy); }
 EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(uint32_t state, int32_t status) { splice_lock(at(state), status); }
+// The wheel or a trackpad's two fingers zoom the camera (camera.coax cm_wheel).
+EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { splice_wheel(at(state), dy); }
 // The interface is ink on paper: the overlay blends source over (gpu/splice-bots.coax fx_fs).
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
 

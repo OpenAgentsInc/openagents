@@ -29,6 +29,9 @@ CM_LOOK_AHEAD :: 0.3f32; // s of her turning the boom looks ahead
 CM_HEAD :: 1.7f32;      // m: the boom's pivot, her head, over her feet
 CM_FOV :: 0.82f32;
 CM_BOARD_BACK :: 1.5f32; // m further back on the hoverboard, before its speed pulls it back more
+CM_ZOOM_NEAR :: 3.0f32;  // m: the nearest the wheel brings the eye to her head; she stays in view, never first person
+CM_ZOOM_FAR :: 1.6f32;   // the furthest the wheel takes the boom, times its rest
+CM_ZOOM_STEP :: 0.0012f32; // the boom's change a CSS pixel of wheel
 
 // The camera's eased state, in the game (SpGame.cam).
 SpCam :: struct {
@@ -56,12 +59,21 @@ cm_feet :: (g: [] SpGame) -> f32 {
   return y;
 }
 cm_pivot :: (g: [] SpGame) -> Point { return v3(g[0].px, cm_feet(g) + CM_HEAD, g[0].pz); }
-// How far out the boom wants to be: closer in the dome village, pulled back at speed on the board.
-cm_want :: (g: [] SpGame) -> f32 {
+// How far out the boom rests before the wheel: closer in the dome village, pulled back at speed on the board.
+cm_reach :: (g: [] SpGame) -> f32 {
   r := ifx g[0].zone == Z_VILLAGE then 4.0f32 else 6.5f32;
   if g[0].zone == Z_MINE && sp_in_room(g) { r = DV_ROOM_REACH; }   // in the rover's cabin: in close (drive.coax)
   if g_riding(g) { r += CM_BOARD_BACK + board_back(g[0].board[0]); }
   return r;
+}
+// How far out the boom wants to be: the rest scaled by the wheel, never nearer than CM_ZOOM_NEAR.
+cm_want :: (g: [] SpGame) -> f32 { return hi(CM_ZOOM_NEAR, cm_reach(g) * g[0].zoom); }
+// The wheel or two fingers on a trackpad (CSS pixels, down is out): the boom in or out, a notch
+// about an eighth. In, it stops CM_ZOOM_NEAR from her head: the view never goes into her.
+cm_wheel :: (g: [] SpGame, dy: f32) {
+  if g[0].mode != M_PLAY && g[0].mode != M_RIDE { return; }
+  z := g[0].zoom * (1 + clamp(dy * CM_ZOOM_STEP, -0.3, 0.3));
+  g[0].zoom = clamp(z, CM_ZOOM_NEAR / cm_reach(g), CM_ZOOM_FAR);
 }
 // The boom's resting angle: a little over her head, more as the view looks down.
 cm_base :: (g: [] SpGame, want: f32) -> f32 {

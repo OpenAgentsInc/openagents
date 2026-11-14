@@ -671,7 +671,7 @@ d_map_hint :: (out: [] f32, at: int, cx: f32, cy: f32, k: f32) -> int {
 D_KEYS :: 16;
 d_controls :: () -> [D_KEYS * 2] string {
   return [D_KEYS * 2] string.[
-    "W A S D", "Walk", "Mouse", "Look", "Space", "Jump; again in the air to jump higher",
+    "W A S D", "Walk", "Mouse", "Look; scroll to zoom", "Space", "Jump; again in the air to jump higher",
     "Q", "Hoverboard on, then casual or fast", "Hold Ctrl or W W", "Hoverboard very fast; Q Q super fast, hold Q off",
     "E", "Interact, enter the rover, swap a core, tow or charge Digger", "Tab", "Edit bay, inside Sniper", "I", "Inventory",
     "Left click", "Point Digger: dig, pick up, attack", "F", "Stun a robot within 2 m", "1 2 3 4", "Battle moves",

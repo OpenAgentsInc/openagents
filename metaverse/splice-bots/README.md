@@ -173,6 +173,36 @@ wall, the board at speed, the drill mech following.
 
 The drill mech is drawn at 0.95 (about twice her height; it was 1.25) and follows at her left, its
 own radius and 1.4 m out from her, a little ahead; it is never nearer her than its radius and hers.
+Digger and the mech never stand between the camera and her (`cm_follow_spot`): each takes the spot
+on her side away from the camera's line, and one standing in that line steps out of it sideways.
+
+The wheel, or two fingers on a trackpad, zooms the boom from 3 m off her head out to 1.6 times its
+rest (`cm_wheel`). The zoom is yours, not the run's: a respawn keeps it. There is no first person.
+
+### Tunables
+
+Every camera timing and distance is a constant at the top of `camera.coax`:
+
+| Constant | Value | What it sets |
+| --- | --- | --- |
+| `CM_RISE_TIME` | 0.3 s | The spring's time for the boom's angle (rising over a wall or a body) |
+| `CM_OUT_TIME` | 0.45 s | Backing out once a wall lets go |
+| `CM_IN_TIME` | 0.12 s | Coming in before a wall |
+| `CM_LOOK_AHEAD` | 0.3 s | How far ahead of her turning the boom looks for room |
+| `CM_CUT` | 6 m | A jump further than this in a step is a cut: the camera starts where it should be |
+| `CM_MIN` | 2.6 m | The nearest the eye comes to her head while any way out has room |
+| `CM_ZOOM_NEAR` | 3 m | The nearest the wheel brings the eye |
+| `CM_ZOOM_FAR` | 1.6 | The furthest the wheel takes the boom, times its rest |
+| `CM_ZOOM_STEP` | 0.0012 | The boom's change for each CSS pixel of wheel (a notch is about 12 %) |
+| `CM_CLEAR` | 0.3 m | What the eye keeps from a wall or a body |
+| `CM_EARLY` | 0.6 m | How much wider the step looks, so the boom moves before the eye meets anything |
+| `CM_RISE_MAX` | 1.55 rad | The steepest the boom swings up to find room |
+| `CM_OVER` | 0.75 rad | How far it swings up to see over a big body ahead |
+| `CM_HEAD` | 1.7 m | The boom's pivot, her head, over her feet |
+| `CM_FOV` | 0.82 rad | The field of view on foot |
+| `CM_BOARD_BACK` | 1.5 m | How much further back it sits on the hoverboard |
+| `CM_TOO_NEAR` | 1.2 m | Nearer than this her body is not drawn |
+| `CM_LINE_PAD` | 0.4 m | What Digger and the mech keep between themselves and the camera's line |
 
 ## Controls
 
@@ -181,6 +211,7 @@ The key map follows the slice's beat sheet (#13505). The pause screen (Esc) list
 | Key | What it does |
 | --- | --- |
 | W A S D, mouse | Walk and look |
+| Mouse wheel, or two fingers on a trackpad | Zoom the camera in or out |
 | Space | Jump; a second Space in the air jumps again, higher (on the hoverboard, hop) |
 | Left Shift | Nothing for now: sneaking is off until it has its own pose |
 | Q | Hoverboard: the first press steps on at casual speed, then each press switches casual and fast |

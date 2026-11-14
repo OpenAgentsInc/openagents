@@ -86,6 +86,18 @@ cc_farm :: (g: [] SpGame) { g_reset(g); _ := spw_shipped(g); g_begin(g); }
   h := sb_mech_spot(g[..]); #assert dist2(t[0].mech_x, t[0].mech_z, h.x, h.z) < 0.5;
 }
 
+#test "#13552: the wheel zooms the camera in to a stop clear of her head and out to half again, and keeps through a reset" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  cc_farm(g[..]); rest := cm_want(g[..]);
+  for i: 0..<40 { cm_wheel(g[..], -120); }   // forty notches in
+  #assert cm_want(g[..]) == CM_ZOOM_NEAR;
+  w := cc_watch(g[..], 120, CcWatch.{});
+  #assert w.near >= CM_MIN - CC_SLACK && w.near < CM_ZOOM_NEAR + 0.3 && !w.in_body;   // in close, never in her head
+  for i: 0..<40 { cm_wheel(g[..], 120); }
+  #assert abs(cm_want(g[..]) - rest * CM_ZOOM_FAR) < 0.01;
+  cm_wheel(g[..], -120); z := g[0].zoom; cc_farm(g[..]);
+  #assert g[0].zoom == z && g[0].zoom < CM_ZOOM_FAR;   // a respawn keeps it
+}
 #test "owner's rule: Digger and the drill mech follow at her side, never between the camera and her, as she turns" #steps 4000000000 #traversal 2000000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 7); g[0].px = 0; g[0].pz = -48; g_bot_home(g[..]);
