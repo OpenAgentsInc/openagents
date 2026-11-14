@@ -16,8 +16,8 @@ final class SharedAppViewController: UIViewController {
 
     private let host = UnsafeMutablePointer<coax_t_OapHost>.allocate(capacity: 1)
     private var view_: coax_v_t_OapHost { coax_v_t_OapHost(data: host, count: 1) }
-    private let stack = UIStackView()
-    private var controls: [String: UIView] = [:]
+    private let surface = NativeControls()
+    private var controls: [String:UIView] {surface.controls}
     private var link: CADisplayLink?
     private let socket: String?
     private let token: String?
@@ -39,27 +39,10 @@ final class SharedAppViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
-        overrideUserInterfaceStyle = .dark
-        let scroll = UIScrollView()
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.keyboardDismissMode = .interactive
-        view.addSubview(scroll)
-        stack.axis = .vertical
-        stack.spacing = 12
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        scroll.addSubview(stack)
-        let guide = view.safeAreaLayoutGuide
-        NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: guide.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
-            scroll.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 24),
-            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -24),
-            stack.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -20),
-        ])
+        addChild(surface);surface.view.frame=view.bounds;surface.view.autoresizingMask=[.flexibleWidth,.flexibleHeight]
+        view.addSubview(surface.view);surface.didMove(toParent:self)
+        surface.press = { [weak self] id in self?.press(id) }
+        surface.edit = { [weak self] id,text in self?.edit(id,text) }
         SharedAppViewController.shown = self
         render()
         if let socket {
@@ -127,74 +110,12 @@ final class SharedAppViewController: UIViewController {
     }
     /// Each element's control, kept by id across draws (a field keeps its caret), in the view's order.
     private func render() {
-        let now = elements()
-        var kept: [String: UIView] = [:]
-        for e in now {
-            let control = controls[e.id].flatMap { fits($0, e.role) ? $0 : nil } ?? make(e)
-            update(control, e)
-            kept[e.id] = control
-        }
-        for (id, old) in controls where kept[id] == nil { old.removeFromSuperview() }
-        controls = kept
-        for (i, e) in now.enumerated() {
-            guard let control = kept[e.id] else { continue }
-            if i < stack.arrangedSubviews.count, stack.arrangedSubviews[i] === control { continue }
-            stack.insertArrangedSubview(control, at: i)
-        }
-    }
-    private func fits(_ control: UIView, _ role: String) -> Bool {
-        switch role {
-        case "button": return control is UIButton
-        case "field": return control is UITextField
-        default: return control is UILabel
-        }
-    }
-    private func make(_ e: Element) -> UIView {
-        let control: UIView
-        switch e.role {
-        case "button":
-            var config = UIButton.Configuration.bordered()
-            config.baseForegroundColor = .white
-            let button = UIButton(configuration: config)
-            let id = e.id
-            button.addAction(UIAction { [weak self] _ in self?.press(id) }, for: .primaryActionTriggered)
-            control = button
-        case "field":
-            let field = UITextField()
-            field.borderStyle = .roundedRect
-            field.autocapitalizationType = .none
-            field.autocorrectionType = .no
-            field.textColor = .white
-            field.font = .preferredFont(forTextStyle: .body)
-            field.adjustsFontForContentSizeCategory = true
-            let id = e.id
-            field.addAction(UIAction { [weak self, weak field] _ in self?.edit(id, field?.text ?? "") }, for: .editingChanged)
-            if e.id == "account.email" { field.keyboardType = .emailAddress; field.textContentType = .emailAddress }
-            if e.id == "account.code" { field.keyboardType = .numberPad; field.textContentType = .oneTimeCode }
-            control = field
-        default:
-            let label = UILabel()
-            label.numberOfLines = 0
-            label.textColor = .white
-            label.adjustsFontForContentSizeCategory = true
-            control = label
-        }
-        control.accessibilityIdentifier = e.id
-        return control
-    }
-    private func update(_ control: UIView, _ e: Element) {
-        if let button = control as? UIButton {
-            button.configuration?.title = e.label
-            button.isEnabled = !e.off
-        } else if let field = control as? UITextField {
-            field.placeholder = e.label
-            field.accessibilityLabel = e.label
-            if field.text != e.field { field.text = e.field }
-        } else if let label = control as? UILabel {
-            label.text = e.role == "message" ? "You: \(e.label)" : e.label
-            label.font = e.role == "text" && e.id.hasSuffix(".title") ? .preferredFont(forTextStyle: .largeTitle) : .preferredFont(forTextStyle: e.role == "notice" ? .footnote : .body)
-            label.textColor = e.role == "notice" ? .secondaryLabel : .white
-        }
+        surface.render(elements().map { e in
+            NativeElement(id:e.id,role:e.id.hasSuffix(".title") ? "heading":e.role,
+                label:e.role == "message" ? "You: \(e.label)":e.label,value:e.field,disabled:e.off,
+                complete:e.id == "account.code" ? "one-time-code":e.id == "account.email" ? "email":"",
+                type:e.id == "account.code" ? "tel":e.id == "account.email" ? "email":"")
+        })
     }
 
     // MARK: coax drive

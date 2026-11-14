@@ -1,8 +1,10 @@
 # OpenAgents mobile account surface
 
-This is application code delivered to Coax Native's WebKit/Wasm profile,
-starting with the starter's shared components and browser ABI. `host.js`
-only transports service requests; `app.coax` owns the UI and transitions.
+This application uses the starter's shared keyed components. Build 1070
+projects them to UIKit controls and executes the compiler-generated portable
+module in JavaScriptCore, with signed Updates. Build 1069 used WebKit/Wasm;
+`host.js` remains its service transport. `app.coax` owns the UI and transitions
+in both profiles.
 The reusable starter itself remains in `coax/native/starter/`.
 
 Email login calls the same `/api/auth/email/start` and `/verify` services as

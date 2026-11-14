@@ -1,25 +1,6 @@
-// Firm reason: 6 (UIKit/WebKit presentation and native account SDK effects).
+// Firm reason: 6 (UIKit, JavaScriptCore and native account SDK effects).
 import UIKit
-import WebKit
 import AuthenticationServices
-
-@MainActor final class NativeFiles: NSObject, WKURLSchemeHandler {
-    let directory: URL
-    init(_ directory: URL) { self.directory = directory }
-    func webView(_ webView: WKWebView,start task: WKURLSchemeTask) {
-        guard let url = task.request.url, url.host == "app" else { task.didFailWithError(NativeFailure.refused("Invalid package origin")); return }
-        let name = url.path == "/" ? "index.html" : String(url.path.dropFirst())
-        guard name.withCString({cnu_path(coax_string(data:$0,count:Int64(name.utf8.count)))}) else { task.didFailWithError(NativeFailure.refused("Invalid package path")); return }
-        do {
-            let file = directory.appendingPathComponent(name)
-            let data = try Data(contentsOf:file)
-            let types = ["html":"text/html","js":"text/javascript","wasm":"application/wasm","css":"text/css","ttf":"font/ttf","svg":"image/svg+xml"]
-            let response = HTTPURLResponse(url:url,statusCode:200,httpVersion:"HTTP/1.1",headerFields:["Content-Type":types[file.pathExtension] ?? "application/octet-stream","Access-Control-Allow-Origin":"*","Cache-Control":"no-store"])!
-            task.didReceive(response); task.didReceive(data); task.didFinish()
-        } catch { task.didFailWithError(error) }
-    }
-    func webView(_ webView: WKWebView,stop task: WKURLSchemeTask) {}
-}
 
 @MainActor final class NativePasskey: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     let anchor: UIWindow
@@ -41,47 +22,89 @@ import AuthenticationServices
     }
 }
 
-@MainActor final class NativeHost: UIViewController, WKScriptMessageHandlerWithReply, WKNavigationDelegate {
-    var web: WKWebView!
+@MainActor final class NativeHost: UIViewController {
     let updates: NativeUpdates
-    var files: NativeFiles?
     var epoch = UUID()
     var services = 0
     var health: Task<Void,Never>?
     var passkey: NativePasskey?
     private let wallet=SparkHost()
+    private let surface=NativeControls()
+    private var dialog:NativeControls?
+    private var programs:[NativeProgram]=[]
     init(updates:NativeUpdates) { self.updates=updates; super.init(nibName:nil,bundle:nil) }
     required init?(coder:NSCoder) { fatalError() }
-    override func viewDidLoad() { super.viewDidLoad(); view.backgroundColor = .black; load() }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        addChild(surface); surface.view.frame=view.bounds; surface.view.autoresizingMask=[.flexibleWidth,.flexibleHeight]
+        view.addSubview(surface.view);surface.didMove(toParent:self)
+        surface.press = { [weak self] id in self?.input(id) }
+        surface.edit = { [weak self] id,text in self?.input(id,text) }
+        load()
+    }
     func load() {
-        epoch=UUID(); health?.cancel(); web?.configuration.userContentController.removeScriptMessageHandler(forName:"coaxNative",contentWorld:.page); web?.removeFromSuperview()
-        let config=WKWebViewConfiguration(); config.allowsInlineMediaPlayback=true
-        files=NativeFiles(updates.boot()); config.setURLSchemeHandler(files,forURLScheme:"coax-native")
-        config.userContentController.addScriptMessageHandler(self,contentWorld:.page,name:"coaxNative")
-        web=WKWebView(frame:view.bounds,configuration:config); web.autoresizingMask=[.flexibleWidth,.flexibleHeight]; web.navigationDelegate=self; web.isOpaque=false; web.backgroundColor = .black
-        web.scrollView.contentInsetAdjustmentBehavior = .never
-        #if DEBUG
-        web.isInspectable=true
-        #endif
-        view.addSubview(web); web.load(URLRequest(url:URL(string:"coax-native://app/index.html")!))
+        epoch=UUID();health?.cancel();programs=[]
+        let directory=updates.boot()
+        do {
+            programs=try [NativeProgram(directory:directory,module:"app"),NativeProgram(directory:directory,module:"extras")]
+            try pump()
+            Task { [weak self] in _ = try? await self?.call("ready",[:]) }
+        } catch {
+            if updates.current != nil {updates.failed();load();return}
+            surface.render([NativeElement(id:"native.error",role:"notice",label:"The embedded app could not start.")])
+        }
     }
-    func webView(_ webView:WKWebView,decidePolicyFor action:WKNavigationAction,decisionHandler:@escaping(WKNavigationActionPolicy)->Void) {
-        guard let url=action.request.url else { decisionHandler(.cancel); return }
-        if url.scheme == "coax-native" && url.host == "app" { decisionHandler(.allow); return }
-        decisionHandler(.cancel)
-        if ["https","http"].contains(url.scheme ?? "") { UIApplication.shared.open(url) }
+    private func input(_ id:String,_ text:String?=nil) {
+        do {
+            for p in programs where p.nodes.values.contains(where:{$0.id==id}) {try p.input(id,text)}
+            try pump()
+        } catch {refuse()}
     }
-    func webViewWebContentProcessDidTerminate(_ webView:WKWebView) { updates.failed(); load() }
-    func userContentController(_ controller:WKUserContentController,didReceive message:WKScriptMessage,replyHandler:@escaping(Any?,String?)->Void) {
-        guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.protocol == "coax-native", message.frameInfo.securityOrigin.host == "app", let b=message.body as? [String:Any], let op=b["op"] as? String else { replyHandler(nil,"Native service origin refused"); return }
-        guard services<8 else {replyHandler(nil,"Native services busy");return}
-        let owner=epoch
-        services += 1
-        Task { [weak self] in
-            guard let self else { replyHandler(nil,"Surface retired"); return }
-            defer { self.services -= 1 }
-            do { let result=try await self.call(op,b); guard self.epoch == owner else { replyHandler(nil,"Surface retired"); return }; replyHandler(result,nil) }
-            catch { replyHandler(nil,error.localizedDescription) }
+    private func refuse() {
+        updates.failed()
+        surface.render([NativeElement(id:"native.error",role:"notice",label:"The app could not continue. Restart to recover the previous update.")])
+    }
+    private func pump()throws {
+        for p in programs {try p.frame()}
+        surface.render(programs.flatMap {$0.elements()})
+        let modal=programs.flatMap {$0.elements(dialog:true)}
+        if modal.isEmpty {
+            if dialog != nil {dialog?.dismiss(animated:true);dialog=nil}
+        } else {
+            if dialog==nil {
+                let vc=NativeControls();vc.press=surface.press;vc.edit=surface.edit;vc.isModalInPresentation=true
+                dialog=vc;present(vc,animated:true)
+            }
+            dialog?.render(modal)
+        }
+        for p in programs {
+            if let slot=p.focus,let id=p.nodes[slot]?.id {
+                (dialog?.controls[id] ?? surface.controls[id])?.becomeFirstResponder();p.focus=nil
+            }
+            let (op,body)=try p.action()
+            if op==0 {continue}
+            let owner=epoch,extra=(p === programs.last)
+            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status"]
+            guard extra || op>0 && op<ops.count else {throw NativeFailure.refused("Unsupported service")}
+            let args=(try? JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] ?? [:]
+            services += 1
+            Task { [weak self,weak p] in
+                guard let self else {return}
+                defer {self.services -= 1}
+                guard let p else {return}
+                do {
+                    let result=try await self.call(extra ? "wallet.balance":ops[op],args)
+                    guard self.epoch==owner else {return}
+                    let record=result as? [String:Any] ?? [:]
+                    let raw=extra ? record["record"] as? String ?? "" : op==4 ? record["body"] as? String ?? "" : String(decoding:try JSONSerialization.data(withJSONObject:result),as:UTF8.self)
+                    try p.event(extra ? 21:100+op,record["status"] as? Int ?? 0,raw)
+                    try self.pump()
+                } catch {
+                    guard self.epoch==owner else {return}
+                    let raw=String(decoding:(try? JSONSerialization.data(withJSONObject:["error":error.localizedDescription])) ?? Data(),as:UTF8.self)
+                    do {try p.event(extra ? 21:200+op,0,extra ? "":raw);try self.pump()} catch {self.refuse()}
+                }
+            }
         }
     }
     func call(_ op:String,_ b:[String:Any]) async throws -> Any {

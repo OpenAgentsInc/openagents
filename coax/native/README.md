@@ -1,10 +1,10 @@
 # Coax Native starter
 
 The OpenAgents book begins with this starter, then adds application behavior
-in Coax. Its first installed target is iOS: UIKit owns the window, WebKit
-runs Coax-generated Wasm, and the existing shared component DOM backend
-draws the app. This is the WebKit/Wasm delivery profile of
-[Coax Native](../native.md), not the proposed native-control renderer.
+in Coax. Its installed iOS target presents UIKit controls and executes
+compiler-generated Coax code in JavaScriptCore. No WebView or DOM is created.
+This is the native-control delivery profile of [Coax Native](../native.md).
+Builds 1068–1069 used the earlier WebKit profile.
 
 The reusable starter is `starter/app.coax`; OpenAgents builds its application
 surface from `apps/openagents-ios/home/app.coax`. Its canonical resources live here and in
@@ -33,10 +33,11 @@ OpenAgents configuration enables Updates and bundles its public key.
 
 ## Installed services
 
-`coaxNative.call(op, args)` is the WebKit transport. Only the package's main
-frame at `coax-native://app` may call it. Replies belong to the calling view's
-epoch. At most eight services may be outstanding; activation waits until
-requests finish.
+The module emits bounded service requests; the installed host dispatches
+only the operations below. Tokens remain native. Replies belong to the
+calling view's epoch; activation waits until requests finish. The JS context
+has no network, Keychain, filesystem, window or browser API. Its only native
+function decodes UTF-8 bytes through Foundation.
 
 | Operation | Arguments and reply |
 | --- | --- |
@@ -67,18 +68,24 @@ subsequent book work (#13512).
 
 Keep `Generated/runtime.txt` from the released native build. Do not regenerate
 it from modified native sources and target an older installed binary.
-Build only changed Wasm, then prepare resources. For example:
+Build only changed Wasm, then emit the portable native artifact with the
+same installed Binaryen toolchain and prepare resources. `generate.sh` does
+both; remote hosts build C/Wasm, and the Mac uses its existing Binaryen SDK
+for the subsecond JavaScript emission. For example:
 
 ```sh
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-ios/home/app.coax \
   apps/openagents-ios/home/face.c apps/openagents-ios/Starter/build/app.wasm
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-ios/extras/app.coax \
   coax/native/starter/face.c apps/openagents-ios/Starter/build/extras.wasm
+coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/app.wasm /tmp/app-mvp.wasm apps/openagents-ios/Starter/build/app.js
+coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/extras.wasm /tmp/extras-mvp.wasm apps/openagents-ios/Starter/build/extras.js
 coax/web/tool.sh coax/native/prepare.coax
+node coax/native/runtime-oracle.cjs apps/openagents-ios/Starter
 mkdir -p /tmp/native-release
 coax/web/tool.sh coax/native/package.coax apps/openagents-ios/Starter \
   com.openagents.app "$(cat apps/openagents-ios/Generated/runtime.txt)" 1 \
-  /tmp/native-release/manifest.json index.html native.js extras.js viewport.js coaxial/dom-host.js \
+  /tmp/native-release/manifest.json index.html runtime.js tree-commands.js build/app.js build/extras.js \
   coaxial/shell.js build/app.wasm build/extras.wasm build/zeron/Geist.ttf \
   build/zeron/Geist-Medium.ttf build/zeron/Geist-SemiBold.ttf build/zeron/GeistMono.ttf
 coax/web/tool.sh coax/native/publish.coax apps/openagents-ios/Starter \
@@ -101,7 +108,7 @@ whole package, and activates on the next cold launch or the explicit Apply
 action. There is no silent hot replacement during a login or request.
 A trial becomes healthy after the module reports ready and remains in the
 foreground for 30 seconds. An interrupted trial is quarantined on the next
-boot; a terminated WebKit process falls back immediately. The previous
+boot; a failed native program is marked for recovery on restart. The previous
 healthy package and embedded bundle remain recovery choices. This first
 profile conservatively allows one unclean trial; filesystem selectors use
 atomic writes. It does not roll back account data or native credentials.

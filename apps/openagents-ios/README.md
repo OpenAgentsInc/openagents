@@ -1,7 +1,7 @@
 # OpenAgents iOS
 
 The replacement app is the [Coax Native starter](../../coax/native/README.md):
-one Coax/Wasm module, shared DOM components inside WebKit, native account
+Coax-generated portable modules, native UIKit controls, native account
 services, and optional signed Updates. The OpenAgents book starts here and
 adds login and agent chat as Coax application functionality.
 
@@ -27,7 +27,14 @@ native rebuild. The seed and recovery words stay in Swift/SDK memory.
 
 The production account surface is now [`home/`](home/README.md): email-code
 login and a read-only list of account-saved chats, delivered over the air to
-build 1069. The original starter remains reusable.
+build 1069 and rendered with UIKit from build 1070. The original starter remains reusable.
+
+Build 1070 replaces the account WebView with UIKit fields, buttons, labels
+and scrolling. JavaScriptCore executes generated Coax code; signed OTA can
+still replace application logic and composition. The runtime fingerprint
+changes, isolating its update feed from 1069. Native SDKs, wallet keys and
+auth storage retain their identity. Code fields use `.oneTimeCode`; actual
+email suggestions depend on iOS and the mail/AutoFill integration.
 
 ## Build and check
 

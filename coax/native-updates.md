@@ -1,11 +1,13 @@
 # Coax Native Updates
 
-An initial iOS WebKit/Wasm delivery profile is implemented in
+The initial UIKit/JavaScriptCore delivery profile is implemented in
 [`native/`](native/README.md). Its published contract is
 [`coax.native.package.v1`](../docs/protocol/coax-native-package-v1.md).
 It provides signed whole packages, installed runtime matching, generation
 replay protection, staged activation and local fallback. The broader design
 below also describes capabilities that this first profile does not implement.
+Build 1070 replaces the WebKit profile of 1068–1069 with a new runtime identity.
+The old 1069 feed remains compatible with that installed binary.
 
 Written 2026-11-13. Status: proposed specification, extending
 [Coax Native](native.md). No update client, service, general app interpreter
@@ -165,13 +167,29 @@ The hosted shell reports its build separately from a signed portable payload.
 ### Portable app modules with native presentation
 
 To update shared app actions while keeping UIKit or other native controls,
-introduce an app Wasm execution profile. Modules receive bounded input,
+use the portable app execution profile. Modules receive bounded input,
 state, time and service results and return semantic component updates and
 effect requests. The installed host presents controls and executes admitted
 services. Nothing requires React, Hermes, a new authoring language or a
 JavaScript business-logic implementation.
 
-Reuse and factor the existing Coax Wasm machinery in
+The initial implementation compiles Coax through C/Wasm, Binaryen's
+nontrapping/bulk-memory lowering and pedantic JavaScript emission, then
+executes the generated artifact in Apple's JavaScriptCore SDK. The generated
+app code, component composition and actions can change in a signed OTA
+package while UIKit and native services remain installed. No WebView or DOM
+is created. Both native and book milestone screens reuse
+`apps/shared/native/NativeControls.swift`.
+
+Each module has a 32 MiB JS linear buffer. The host admits scripts up to
+8 MiB, at most 4096 retained nodes and bounded component frames. SDK/JSCore
+allocations are separate from those buffers. The original Wasm module is the
+independent parity reference (`native/runtime-oracle.cjs`), not something
+JavaScriptCore is assumed to instantiate. This profile does not provide
+instruction fuel or qualify untrusted third-party programs: only verified,
+first-party signed app artifacts are eligible.
+
+For a future direct native Wasm executor, reuse and factor the existing Coax Wasm machinery in
 [`metaverse-engine/script/wasm.coax`](../metaverse-engine/script/wasm.coax)
 and [`interp.coax`](../metaverse-engine/script/interp.coax) before writing
 an executor. The generic core belongs in a lower shared library if ordinary

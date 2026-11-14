@@ -1,14 +1,35 @@
 # Coax Native
 
-The first implemented starter is the [iOS WebKit/Wasm profile](native/README.md),
-with optional signed Updates. It is the OpenAgents book's application starting
-point. The full cross-platform native-control architecture below remains a
-proposal; the starter reuses the existing shared DOM component backend.
+The [iOS starter](native/README.md) presents native UIKit controls with optional
+signed Updates. Build 1070 replaces the WebKit presentation of 1068–1069.
+Coax owns the keyed component tree, state and actions; the host owns native
+controls, input, layout, accessibility and effects.
 
-Written 2026-11-13. Status: proposed framework specification. This change
-defines the architecture; it does not implement a new runtime or migrate an
-app. Implementation is unassigned and unscheduled. Before a stage starts,
-record its implementer, start date and bounded acceptance workload here.
+Written 2026-11-13. Status: framework specification with the initial native
+iOS account surface implemented by /root on 2026-11-13. Other target and
+verification stages below remain proposals, not claims about this release.
+
+### Alignment with Exact
+
+Exact's iOS host presents UIKit controls; its web host presents DOM elements.
+WebViews are optional content surfaces, not the app renderer. That is also
+the Coax Native default. A native app must not substitute a full-screen
+WebView merely to make executable OTA delivery convenient.
+
+The initial native-control execution profile compiles Coax through the
+existing C/Wasm pipeline and Binaryen's portable JavaScript target. Installed
+JavaScriptCore executes that generated artifact. There is no authored JS
+business logic, DOM, WebKit, Rust VM or second UI language. The shared
+component command decoder is used by browser and native SDK adapters. UIKit
+keeps controls by element id, uses system text and keyboard behavior, and
+updates after input or a completion. The book's compiled milestone reuses
+this same UIKit projection.
+
+This adopts Exact's separation of portable application, keyed presentation
+and installed services, not Exact's plan format. Exact's baked first frame,
+dependency analysis and complete driver parity remain unfinished work.
+Generated-code execution is qualified against the Wasm reference and actual
+iOS workloads; it is not a claim of complete language-backend equivalence.
 
 Coax Native is the shared application framework for writing native apps and
 websites in Coax. An app defines its state, actions and components once.
@@ -51,8 +72,8 @@ Coaxial. Browser text surfaces now have a DOM backend, and the iOS wallet
 already uses UIKit. This proposal makes presentation an explicit choice per
 surface: shared GPU components for custom visuals, DOM for browser text,
 native controls for native forms, and system-owned presentations for OS
-services. Adding a native control backend is a proposed extension, not a
-claim that the existing GPU component kit already runs as UIKit controls.
+services. The initial native text/control projection is implemented; this is not a
+claim that the GPU component kit runs as UIKit controls.
 Realm rendering stays GPU-first.
 
 ## Layers and execution ownership
@@ -138,10 +159,11 @@ Coax app
 
 The runtime is a library compiled into the app, with caller-owned bounded
 storage. It does not execute an Exact plan or embed the compiler's evaluator.
-The native profile links compiled Coax procedures. The proposed portable app
-profile executes Coax-generated Wasm behind the same app/service boundary,
+The native profile links compiled Coax procedures. The initial portable app
+profile executes Coax-generated JavaScript in JavaScriptCore after the existing
+C/Wasm and Binaryen compilation steps, behind the app/service boundary,
 so compatible actions and view composition can update over the air while
-the native host remains installed. That executor must reuse/factor the
+the native host remains installed. A future direct Wasm executor must reuse/factor the
 existing realm-script interpreter and qualify a separate app profile; the
 current restricted script VM cannot load full app modules. A portable
 description of elements is data consumed by presentation backends.

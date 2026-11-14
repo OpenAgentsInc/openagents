@@ -1,0 +1,15 @@
+// Coax's existing C/Wasm compiler plus Binaryen's portable JavaScript target.
+// No authored application logic is translated by hand. JavaScriptCore interprets
+// this artifact; UIKit, rather than a DOM or WebView, presents its elements.
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+nc_run :: (a:[]string)->bool {
+  out:[4096]u8;err:[4096]u8;r:=proc_run(a,180000,out[..],err[..]);
+  if r.started!=0 || r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("compile INPUT.wasm LOWERED.wasm OUTPUT.js");return 2;}
+  lower:=[6]string.["wasm-opt",args_at(a[..],0),"--llvm-nontrapping-fptoint-lowering","--llvm-memory-copy-fill-lowering","-o",args_at(a[..],1)];
+  emit:=[8]string.["wasm2js",args_at(a[..],1),"--emscripten","--pedantic","-O","-o",args_at(a[..],2),"--enable-mutable-globals"];
+  return ifx nc_run(lower[..]) && nc_run(emit[..]) then 0 else 1;
+}

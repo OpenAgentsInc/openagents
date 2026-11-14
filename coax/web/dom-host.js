@@ -36,6 +36,7 @@
 // The app shell holds the pages it doesn't draw itself in a frame beside the side (shell.js): a page of the shell's
 // (data-shell on its script) opened at the top of the window becomes the shell instead of starting its own module, and
 // the shell opens itself by address with &top, the page's own shell. That shell is told the address with its query.
+import "./tree-commands.js";
 import { shellTakes, shellHost, shellHeld, shellGo, shellDrawn } from "./shell.js";
 const named = new URL(import.meta.url).searchParams;
 const script = named.has("app") ? null : document.querySelector("script[data-app]");
@@ -76,68 +77,56 @@ function unframe(el) {
 }
 
 function apply(at, length) {
-  const v = new DataView(memory.buffer, at, length);
-  let i = 0;
-  const u8 = () => v.getUint8(i++);
-  const u16 = () => { const n = v.getUint16(i, true); i += 2; return n; };
-  const u32 = () => { const n = v.getUint32(i, true); i += 4; return n; };
-  const i32 = () => { const n = v.getInt32(i, true); i += 4; return n; };
-  const str = () => { const n = u32(), s = text.decode(new Uint8Array(memory.buffer, at + i, n)); i += n; return s; };
-  while (i < length) {
-    const op = u8();
-    if (op === 1) {                                  // make
-      const slot = u16(), tag = str(), el = tag === "svg" || tag === "use" ? document.createElementNS(SVG, tag) : document.createElement(tag);
-      el.id = str(); el.dataset.slot = slot; els[slot] = el;
-      if (tag === "iframe") el.allow = "fullscreen";   // a held page of this site (k_held) may put its game on the whole screen
-    } else if (op === 2) {                           // remove
-      const slot = u16(), el = els[slot];
+  for (const c of coaxTreeCommands(memory.buffer, at, length, b => text.decode(b))) {
+    const [op, slot] = c;
+    if (op === 1) {
+      const [, , tag, id] = c;
+      const el = tag === "svg" || tag === "use" ? document.createElementNS(SVG, tag) : document.createElement(tag);
+      el.id = id; el.dataset.slot = slot; els[slot] = el;
+      if (tag === "iframe") el.allow = "fullscreen";
+    } else if (op === 2) {
+      const el = els[slot];
       if (el) { for (const f of el.querySelectorAll("[data-frame]")) unframe(f); unframe(el); el.remove(); }
       els[slot] = null;
-    } else if (op === 3) {                           // place: after its sibling, or first in its parent (past the frame)
-      const el = els[u16()], p = u16(), a = u16(), parent = p === NONE ? root : els[p];
+    } else if (op === 3) {
+      const el = els[slot], p = c[2], a = c[3], parent = p === NONE ? root : els[p];
       let before = a === NONE ? parent.firstChild : els[a].nextSibling;
       if (a === NONE && before && before === frames.get(parent)) before = before.nextSibling;
-      // already there (a sibling made or taken away before it): left alone, since moving a node takes it out of the
-      // page and back, which restarts its animations and its children's (a running glyph's turn, every new tool call)
       if (before === el && el.parentNode === parent) continue;
       parent.insertBefore(el, before);
-    } else if (op === 4) { els[u16()].textContent = str(); }
-    else if (op === 5) { els[u16()].setAttribute("class", str()); }
-    else if (op === 6) {                             // attr
-      const el = els[u16()], key = str(), value = str();
-      if (key === "src" && (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\"))) continue;   // a picture or a document from this site only (k_image, k_document)
+    } else if (op === 4) els[slot].textContent = c[2];
+    else if (op === 5) els[slot].setAttribute("class", c[2]);
+    else if (op === 6) {
+      const el = els[slot], key = c[2], value = c[3];
+      if (key === "src" && (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\"))) continue;
       el.setAttribute(key, value);
       if (key === "data-frame") frameOf(el);
       if (key === "autofocus") queueMicrotask(() => el.focus());
-      if (key === "data-lang" && el.tagName === "TEXTAREA") { el.spellcheck = false; el.wrap = "off"; el.autocapitalize = "off"; }   // a code field (k_code_field)
-    } else if (op === 7) {                           // unattr
-      const el = els[u16()], key = str();
-      el.removeAttribute(key);
+      if (key === "data-lang" && el.tagName === "TEXTAREA") { el.spellcheck = false; el.wrap = "off"; el.autocapitalize = "off"; }
+    } else if (op === 7) {
+      const el = els[slot], key = c[2]; el.removeAttribute(key);
       if (key === "data-frame") unframe(el);
-    } else if (op === 8) {                           // frame: its runs as paths, reused in order
-      const el = els[u16()], svg = el && frameOf(el), runs = u8();
-      for (let r = 0; r < runs; r++) {
-        const layer = u8(), fill = u8(), alpha = u16() / 1000, stroke = u16() / 64, points = u16();
+    } else if (op === 8) {
+      const el = els[slot], svg = el ? frameOf(el) : null;
+      for (const [r, run] of c[2].entries()) {
+        const [layer, fill, alpha, stroke, xy] = run;
         let d = "";
-        for (let k = 0; k < points; k++) d += (k ? "L" : "M") + i32() / 64 + " " + i32() / 64;
+        for (let k = 0; k < xy.length; k += 2) d += (k ? "L" : "M") + xy[k] / 64 + " " + xy[k + 1] / 64;
         if (fill) d += "Z";
         if (!svg) continue;
         let path = svg.children[r];
         if (!path) { path = document.createElementNS(SVG, "path"); svg.appendChild(path); }
         path.setAttribute("class", LAYERS[layer] + (fill && layer === 2 ? " fr-fill" : ""));
-        path.setAttribute("d", d);
-        path.style.opacity = alpha; path.style.strokeWidth = stroke || "";
+        path.setAttribute("d", d); path.style.opacity = alpha / 1000; path.style.strokeWidth = stroke / 64 || "";
       }
-      if (svg) while (svg.children.length > runs) svg.lastChild.remove();
-    } else if (op === 9) {                           // style
-      // (a surface opened by address keeps its own sheet, so two on one page never write over each other's)
+      if (svg) while (svg.children.length > c[2].length) svg.lastChild.remove();
+    } else if (op === 9) {
       const sheet = named.has("app") ? `coaxial-style-${app}` : "coaxial-style";
       let style = document.getElementById(sheet);
       if (!style) { style = document.createElement("style"); style.id = sheet; document.head.appendChild(style); }
-      style.textContent = str();
-    } else if (op === 10) { const el = els[u16()]; el.value = str(); fit(el); }
-    else if (op === 11) { els[u16()].focus(); }
-    else throw new Error(`${app}: unknown command ${op}`);
+      style.textContent = c[1];
+    } else if (op === 10) { els[slot].value = c[2]; fit(els[slot]); }
+    else if (op === 11) els[slot].focus();
   }
 }
 
