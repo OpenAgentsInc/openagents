@@ -331,15 +331,16 @@ SK_WEAPONS :: [10] int.[W_UNARMED, W_UNARMED, W_SHORTSWORD, W_GREATSWORD, W_LONG
 SK_KINDS :: [7] int.[RS_SLASHING, RS_BLUDGEONING, RS_PIERCING, RS_RADIANT, RS_FORCE, RS_FIRE, RS_NECROTIC];
 // One staging, from a stream of picks: an attacker (Garr), a target (Holt), a third creature beside
 // the target or two squares off, a weapon and everything that can change the strike.
-sk_stage :: (b: [] RsBattle, p: [] RsDice) -> SkArgs {
+sk_stage :: (b: [] RsBattle, p: [] RsDice, r: [] SkRoster) -> SkArgs {
   rs_reset(b); b[0].w = 30; b[0].h = 8; b[0].who = -1; b[0].clock = rs_secs(100); b[0].ko_by = 7; b[0].turn = RsTurn.{move_left = 6};
   a: SkArgs;
   squares := [6] int.[1, 1, 1, 2, 6, 7];
   dist := squares[sk_of(p, 6)];
-  tgt := ifx sk_one(p, 2) then rs_monk("Holt", 1, 3) else rs_fighter("Holt", 1, 3);
-  if sk_one(p, 3) { a.j = rs_add(b, tgt, 3 + dist, 3); a.i = rs_add(b, rs_fighter("Garr", 0, 3), 3, 3); }
-  else { a.i = rs_add(b, rs_fighter("Garr", 0, 3), 3, 3); a.j = rs_add(b, tgt, 3 + dist, 3); }
-  a.ally = rs_add(b, rs_fighter("Ally", ifx sk_one(p, 4) then 1 else 0, 3), 3 + dist, ifx sk_one(p, 3) then 5 else 4);
+  tgt := ifx sk_one(p, 2) then r[0].holt_monk[1] else r[0].holt[1];
+  garr := r[0].actor[1];   // the fighter Garr, team 0, level 3
+  if sk_one(p, 3) { a.j = rs_add(b, tgt, 3 + dist, 3); a.i = rs_add(b, garr, 3, 3); }
+  else { a.i = rs_add(b, garr, 3, 3); a.j = rs_add(b, tgt, 3 + dist, 3); }
+  a.ally = rs_add(b, r[0].ally[ifx sk_one(p, 4) then 1 else 0], 3 + dist, ifx sk_one(p, 3) then 5 else 4);
   if sk_one(p, 5) { b[0].c[a.ally].cond = RS_INCAPACITATED; }
   if sk_one(p, 6) { b[0].c[a.ally].hp = 0; }
   i := a.i; j := a.j; now := b[0].clock;
@@ -424,10 +425,11 @@ sk_stage :: (b: [] RsBattle, p: [] RsDice) -> SkArgs {
   m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
   seen: [1] SkSeen;
   p: [1] RsDice; p[0].state = 20261113;
+  roster: [1] SkRoster; sk_roster(roster[..]);
   for n: 0..<6000 {
     q: [1] RsDice; q[0] = p[0];
-    a := sk_stage(b[..], p[..]);
-    a2 := sk_stage(m[..], q[..]);
+    a := sk_stage(b[..], p[..], roster[..]);
+    a2 := sk_stage(m[..], q[..], roster[..]);
     #assert a2.i == a.i && a2.j == a.j && a2.w == a.w && sk_differ(b[..], m[..]) == 0;
     got := rs_strike_resolved(b[..], a.i, a.j, a.w, a.bare, a.wp, a.printed, a.ab, a.dmod);
     want := sk_resolved(m[..], seen[..], a);
@@ -458,23 +460,39 @@ sk_fill :: (b: [] RsBattle, i: int, free: int) {
   left := rs_effect_free(b[0].c[i]) - free;
   for k: 0..<RS_EFFECTS { if left > 0 && b[0].c[i].eff[k].kind == EF_NONE { b[0].c[i].eff[k] = RsEffect.{kind = EF_BLESS, by = i, spell = SP_BLESS, until = b[0].clock + rs_secs(60), save = -1}; left -= 1; } }
 }
-sk_scene :: (b: [] RsBattle, p: [] RsDice) -> SkScene {
+// The creatures the scenes are staged from, built once for a check rather than for each scene (and
+// each twin) of it: the same creatures, as the builders make them (#13593). actor[cls][team][level]
+// in that order (fighter, barbarian, monk, rogue; levels 1, 3 and 5), and the others by team.
+SkRoster :: struct { actor: [24] RsCreature; holt_monk: [2] RsCreature; holt: [2] RsCreature; kell: [2] RsCreature; pell: [2] RsCreature; ghost: [2] RsCreature; ally: [2] RsCreature; }
+sk_roster :: (r: [] SkRoster) {
+  for team: 0..<2 {
+    for l: 0..<3 {
+      lvl := 1 + 2 * l;
+      r[0].actor[team * 3 + l] = rs_fighter("Garr", team, lvl); r[0].actor[6 + team * 3 + l] = rs_barbarian("Garr", team, lvl);
+      r[0].actor[12 + team * 3 + l] = rs_monk("Garr", team, lvl); r[0].actor[18 + team * 3 + l] = rs_rogue("Garr", team, lvl);
+    }
+    r[0].holt_monk[team] = rs_monk("Holt", team, 3); r[0].holt[team] = rs_fighter("Holt", team, 3);
+    r[0].kell[team] = rs_fighter("Kell", team, 3); r[0].pell[team] = rs_paladin("Pell", team, 6); r[0].ghost[team] = rs_fighter("Ghost", team, 3);
+    r[0].ally[team] = rs_fighter("Ally", team, 3);
+  }
+}
+sk_scene :: (b: [] RsBattle, p: [] RsDice, r: [] SkRoster) -> SkScene {
   rs_reset(b); b[0].w = 140; b[0].h = 8; b[0].clock = rs_secs(100); b[0].turn = RsTurn.{move_left = 6};
   s: SkScene; now := b[0].clock;
   team := sk_of(p, 2); cls := sk_of(p, 4); lvl := 1 + 2 * sk_of(p, 3);
-  actor := ifx cls == 0 then rs_fighter("Garr", team, lvl) else ifx cls == 1 then rs_barbarian("Garr", team, lvl) else ifx cls == 2 then rs_monk("Garr", team, lvl) else rs_rogue("Garr", team, lvl);
-  tgt := ifx sk_one(p, 2) then rs_monk("Holt", 1 - team, 3) else rs_fighter("Holt", 1 - team, 3);
+  actor := r[0].actor[cls * 6 + team * 3 + (lvl - 1) / 2];
+  tgt := ifx sk_one(p, 2) then r[0].holt_monk[1 - team] else r[0].holt[1 - team];
   spot := sk_of(p, 11);
   kx := [4] int.[5, 6, 4, 8]; ky := [4] int.[4, 4, 3, 3]; kat := sk_of(p, 4);
-  third := rs_fighter("Kell", ifx sk_one(p, 3) then team else 1 - team, 3);
+  third := r[0].kell[ifx sk_one(p, 3) then team else 1 - team];
   order := sk_of(p, 4);   // any of the three may be first in the battle
   if order == 0 { s.k = rs_add(b, third, kx[kat], ky[kat]); }
   if order == 1 { s.j = rs_add(b, tgt, SK_SPOT_X[spot], SK_SPOT_Y[spot]); s.i = rs_add(b, actor, 5, 3); }
   else { s.i = rs_add(b, actor, 5, 3); s.j = rs_add(b, tgt, SK_SPOT_X[spot], SK_SPOT_Y[spot]); }
   if order != 0 { s.k = rs_add(b, third, kx[kat], ky[kat]); }
   fx := [3] int.[4, 4, 12]; fy := [3] int.[2, 4, 3]; fat := sk_of(p, 3);
-  s.f = rs_add(b, rs_paladin("Pell", ifx sk_one(p, 2) then team else 1 - team, 6), fx[fat], fy[fat]);
-  ghost := rs_fighter("Ghost", 1 - team, 3); ghost.x = 6; ghost.y = 2; ghost.turn_at = 4242;
+  s.f = rs_add(b, r[0].pell[ifx sk_one(p, 2) then team else 1 - team], fx[fat], fy[fat]);
+  ghost := r[0].ghost[1 - team]; ghost.x = 6; ghost.y = 2; ghost.turn_at = 4242;
   b[0].c[b[0].n] = ghost;
   i := s.i; j := s.j;
   b[0].who = ifx sk_one(p, 8) then j else i;
@@ -712,10 +730,11 @@ sk_whom :: (p: [] RsDice, n: int, s: SkScene) -> int {
   b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
   p: [1] RsDice; p[0].state = 4401;
+  roster: [1] SkRoster; sk_roster(roster[..]);
   yes := 0; no := 0;
   for n: 0..<2500 {
     q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
     w := SK_WEAPONS[sk_of(p[..], 10)]; bare := sk_one(p[..], 3);
     #assert sk_differ(b[..], m[..]) == 0;
     got := rs_strike(b[..], s.i, s.j, w, bare);
@@ -731,10 +750,11 @@ sk_whom :: (p: [] RsDice, n: int, s: SkScene) -> int {
   m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
   seen: [1] SkActs;
   p: [1] RsDice; p[0].state = 4402;
+  roster: [1] SkRoster; sk_roster(roster[..]);
   plain := 0;
   for n: 0..<5000 {
     q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
     j := sk_whom(p[..], b[0].n, s);
     reckless := sk_one(p[..], 3);
     cleaves := [6] int.[-1, s.i, s.j, s.k, s.f, b[0].n];
@@ -755,9 +775,10 @@ sk_whom :: (p: [] RsDice, n: int, s: SkScene) -> int {
   m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
   seen: [1] SkActs;
   p: [1] RsDice; p[0].state = 4403;
+  roster: [1] SkRoster; sk_roster(roster[..]);
   for n: 0..<4000 {
     q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
     j := sk_whom(p[..], b[0].n, s);
     got := rs_shoot(b[..], s.i, j);
     want := sk_shoot(m[..], seen[..], s.i, j);
@@ -773,9 +794,10 @@ sk_whom :: (p: [] RsDice, n: int, s: SkScene) -> int {
   m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
   seen: [1] SkActs; flurry: [1] SkActs; hand: [1] SkActs;
   p: [1] RsDice; p[0].state = 4404;
+  roster: [1] SkRoster; sk_roster(roster[..]);
   for n: 0..<6000 {
     q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
     j := sk_whom(p[..], b[0].n, s);
     op := sk_of(p[..], 3); how := sk_of(p[..], 3);
     if op == 0 {
@@ -904,9 +926,10 @@ sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: boo
   m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
   seen: [1] SkRiders;
   p: [1] RsDice; p[0].state = 4405;
+  roster: [1] SkRoster; sk_roster(roster[..]);
   for n: 0..<8000 {
     q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
     op := sk_of(p[..], 5); i := s.i; j := s.j;
     if op == 0 { rs_stunning_strike(b[..], i, j); sk_stunning_strike(m[..], seen[..], i, j); }
     if op == 1 {
@@ -949,9 +972,10 @@ sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: boo
 #test "strike: the best Aura of Protection in reach, an ally's or its own; a foe beside; Sneak Attack's ally; a mastery; whose turn ends when, on 6000 scenes" #steps 4000000000 {
   b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   p: [1] RsDice; p[0].state = 4406;
+  roster: [1] SkRoster; sk_roster(roster[..]);
   auras := 0; own := 0; least := 0; at10 := 0; at15 := 0; two := 0; down := 0; besides := 0; first := 0; none := 0; allies := 0; lone := 0; has := 0; hasnt := 0; running := 0;
   for n: 0..<6000 {
-    s := sk_scene(b[..], p[..]);
+    s := sk_scene(b[..], p[..], roster[..]);
     // the Paladin sometimes two or three squares from the target, where its aura ends
     if sk_one(p[..], 2) { rs_place(b[..], s.f, 5, ifx sk_one(p[..], 2) then 5 else 6); rs_place(b[..], s.j, 5, ifx sk_one(p[..], 2) then 3 else 2); rs_place(b[..], s.i, 9, 3); }
     for j: 0..<b[0].n {
@@ -1044,10 +1068,11 @@ sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: boo
   b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
   p: [1] RsDice; p[0].state = 4407;
+  roster: [1] SkRoster; sk_roster(roster[..]);
   took := 0; refused := 0; dashed := 0; stayed := 0;
   for n: 0..<3000 {
     q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
     i := s.i;
     if sk_one(p[..], 2) {
       got := rs_patient_defense(b[..], i);
