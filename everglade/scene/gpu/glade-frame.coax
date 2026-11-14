@@ -1,5 +1,5 @@
 // The glade pages' frame head as a typed uniform block (#13451): the first 12 vec4s of the uniforms
-// that 5E Lab, Character Create's studio, the Nights and Everglade II write (79 vec4s each, their
+// that 5E Lab, Character Create's studio and Everglade II write (79 vec4s each, their
 // .bindings `u`), which the shared passes read: the screen, the clock, the camera, the sky's halo,
 // the veils. Everglade II's uniforms are a typed block that holds one (everglade/client/gpu/everglade2-uniforms.coax
 // E2U.f); a page whose uniforms are still a []f32 reads one with glade_frame. Words a page uses its

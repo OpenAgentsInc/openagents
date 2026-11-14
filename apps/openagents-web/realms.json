@@ -106,15 +106,6 @@
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/everglade/assets/everglade-zone.pack", "blocks:bc7,astc4", "particles:/everglade-fx.wgsl", "sounds:/realms/everglade/sfx/"]
       } },
-    { "id": "everglade-nights-experimental", "name": "EVERGLADE NIGHTS EXPERIMENTAL", "kind": "open", "listed": false, "orbit": { "r": 0.35, "a": 4.3, "size": 0.02 },
-      "realm": {
-        "slug": "everglade-nights-experimental", "title": "Everglade Nights Experimental", "module": "nights", "slot": "everglade-nights-experimental",
-        "description": "An unlisted owner-local NWN character creator and woodland world. Requires an installed private source pack.",
-        "alt": "Native NWN characters exploring forest, rural and city areas",
-        "style": "painterly", "clock": "fixed:0.5",
-        "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/everglade-nights-experimental/assets/nights.pack.gz"]
-      } },
     { "id": "everglade-experimental", "name": "EVERGLADE EXPERIMENTAL", "kind": "open", "listed": false, "orbit": { "r": 0.34, "a": 4.2, "size": 0.02 },
       "realm": {
         "slug": "everglade-experimental", "title": "Everglade Experimental", "module": "fivelab", "slot": "everglade-experimental",

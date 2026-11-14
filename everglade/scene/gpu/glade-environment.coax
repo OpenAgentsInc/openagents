@@ -1,5 +1,5 @@
 // One environment shader for every glade page (#13556): the older glade's (character-glade.coax
-// cg_environment_fs: Experimental, the Druid, the labs, 5E Lab, WorldBuilder, the studio and the Nights) and
+// cg_environment_fs: Experimental, the Druid, the labs, 5E Lab, WorldBuilder and the studio) and
 // Everglade II's (everglade/client/gpu/everglade2.coax e2_environment_fs) shade a world surface here, by its
 // record in the page's material table (`mats`, surface-record.coax): sky, leaves, petals, sand, stone and
 // moss, the village's faces and the town's materials, grass, the foliage's scatter, the record's fill and

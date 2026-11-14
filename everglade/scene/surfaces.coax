@@ -14,7 +14,7 @@
 // records of their own after the surfaces, E2S_TERRAIN + k for the table's layer k: the ground's
 // weights read them (e2_ground_albedo), and each names its layer of the ground's table.
 //
-// The older glade (#13550: Experimental, the Druid, the three labs and the Nights, drawn by
+// The older glade (#13550: Experimental, the Druid and the three labs, drawn by
 // everglade/scene/gpu/character-glade.coax) reads the same records at the same slots. Its packs number
 // nine surfaces (E2S_GLADE_NAMES): seven are Everglade II's own, and its rock (with the village's
 // atlas faces and the town's materials) and its ground (its colour the vertex's, no ground table)

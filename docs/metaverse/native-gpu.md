@@ -699,7 +699,7 @@ tasks (native-gpu.json) come after the port.
   `E2_U_LIGHT_VIEW` are gone. The shared passes take the frame head and the
   environment as values (`fivelab_project`, `fivelab_scene_place`, `cg_*`,
   `paint_env_*`); the glade pages whose uniforms are still a `[]f32` (5E
-  Lab, the studio, the Nights, WorldBuilder) read them with `glade_frame(u)`
+  Lab, the studio, WorldBuilder) read them with `glade_frame(u)`
   and `paint_env_of(u)`. On coderos-4080 (RTX 4080, headless Chrome, a GPU
   readback of the canvas) 5E Lab and WorldBuilder draw the same bytes as
   before; Everglade II, Character Create, Druid and Experimental differ by

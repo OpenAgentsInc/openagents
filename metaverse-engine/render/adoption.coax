@@ -7,7 +7,7 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
 
 // Source inspectors and the fivelab animation palette need the larger
 // bounded Wasm ceiling. Other producers retain the 64 MiB ceiling.
-render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="ocarinalab" || app=="fivelab" || app=="bitcoin-lab-walk" || app=="nostr-lab-walk" || app=="coax-lab-walk" || app=="worldbuilder" || app=="worldbuilder-walk" || app=="nights" then 4096 else 1024;}
+render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="ocarinalab" || app=="fivelab" || app=="bitcoin-lab-walk" || app=="nostr-lab-walk" || app=="coax-lab-walk" || app=="worldbuilder" || app=="worldbuilder-walk" then 4096 else 1024;}
 #test "the source inspectors request the bounded larger Wasm memory" {
   #assert render_memory_pages("animationlab")==4096 && render_memory_pages("ocarinalab")==4096 && render_memory_pages("fivelab")==4096;
   for app:[4]string.["", "animationla", "animelab", "valleycanyon"] {#assert render_memory_pages(app)==1024;}
@@ -151,7 +151,6 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
   #assert !render_adoption("everglade2","fivelab").tracked_legacy && !render_adoption("everglade","everglade2").tracked_legacy;
 }
 render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effects(all) {
-  if slug == "everglade-nights-experimental" && app == "nights" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "ocarina-lab" && app == "ocarinalab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "animation-lab" && app == "animationlab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-world" && app == "valleyworld" { return RenderAdoption.{tracked_legacy = true}; }
@@ -210,11 +209,4 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
 #test "Portal Lab owner-local page binds only its own producer" {
   r:=render_adoption("portal-lab","portallab");#assert r.tracked_legacy && !r.shared && r.profile== -1;
   #assert !render_adoption("portal-lab","valleylab").tracked_legacy && !render_adoption("portal-la","portallab").tracked_legacy;
-}
-#test "Nights private source page admits only its independent producer" {
- #assert render_adoption("everglade-nights-experimental","nights").tracked_legacy;
- #assert !render_adoption("everglade-nights-experimental","fivelab").tracked_legacy;
- #assert render_memory_pages("nights")==4096 && render_memory_pages("nights-extra")==1024;
- #assert !render_adoption("everglade-nights-experimental-extra","nights").tracked_legacy;
- #assert !render_adoption("everglade","nights").tracked_legacy;
 }

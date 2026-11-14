@@ -6,7 +6,7 @@ Source: [Everglade and Aethyr against AAA MMORPG practice](../audits/2026-11-11-
 
 ## Context
 
-Four Everglade lines grew side by side: Everglade v1 (`everglade/`, `apps/openagents-web/everglade-*.coax`), Everglade II (`verse/everglade2/`, `apps/openagents-web/everglade2-*.coax`), Everglade Nights Experimental (`docs/metaverse/everglade-nights-experimental.md`), and the native desktop client (`apps/everglade-desktop/`). The room server (`coax/web/room/`) carried two parallel Everglade paths inside `room-everglade.coax` and `room-e2-*.coax` with differing cast, line-of-sight, and persistence rules, splitting player state and doubling parity bugs.
+Three Everglade lines grew side by side: Everglade v1 (`everglade/`, `apps/openagents-web/everglade-*.coax`), Everglade II (`verse/everglade2/`, `apps/openagents-web/everglade2-*.coax`), and the native desktop client (`apps/everglade-desktop/`). The room server (`coax/web/room/`) carried two parallel Everglade paths inside `room-everglade.coax` and `room-e2-*.coax` with differing cast, line-of-sight, and persistence rules, splitting player state and doubling parity bugs.
 
 ## Decision
 
