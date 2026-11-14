@@ -64,7 +64,10 @@ static bool native_compiler_found() {
 
 // Runs `tasks` processes of the check binary, at most `workers` at once, each
 // worker one build worker from the machine-wide pool (JobSlots), as the
-// evaluator's mutation workers are. start(task) gives a process's arguments
+// evaluator's mutation workers are. A worker keeps its token from one process
+// to the next while tasks are left, as an evaluator worker keeps its token
+// from one mutant to the next: the pool's load limit only decides how many
+// workers start, so the processes' own load doesn't shrink a running pass. start(task) gives a process's arguments
 // (none: the task has nothing to run). line(task, text) gets each line the
 // process writes to file descriptor 3 and returns the seconds its current
 // check may still take (negative: no change). ended(task, status, timed_out)
@@ -81,7 +84,7 @@ static void native_mutant_pool(size_t tasks, uint64_t workers, double first_limi
   };
   std::vector<Process> live;
   std::deque<size_t> again;
-  size_t next = 0;
+  size_t next = 0, held = 0;  // held: the build workers this pass holds
   JobSlots slots(workers);
   auto finish = [&](size_t at, bool timed_out) {
     Process p = std::move(live[at]);
@@ -97,20 +100,23 @@ static void native_mutant_pool(size_t tasks, uint64_t workers, double first_limi
     for (size_t nl; (nl = p.buffer.find('\n')) != std::string::npos; p.buffer.erase(0, nl + 1)) line(p.task, p.buffer.substr(0, nl));
     close(p.fd);
     const int status = native_wait(p.pid);
-    slots.stop();
     if (ended(p.task, status, timed_out)) again.push_back(p.task);
   };
   for (;;) {
-    while ((next < tasks || !again.empty()) && live.size() < workers && slots.start()) {
+    while ((next < tasks || !again.empty()) && live.size() < workers) {
+      if (live.size() >= held) {
+        if (!slots.start()) break;
+        held++;
+      }
       size_t task;
       if (!again.empty()) { task = again.front(); again.pop_front(); }
       else task = next++;
       const std::vector<std::string> args = start(task);
       int fds[2];
       pid_t pid = -1;
-      if (args.empty() || pipe(fds) != 0) { slots.stop(); if (!args.empty()) ended(task, -1, false); continue; }
+      if (args.empty() || pipe(fds) != 0) { if (!args.empty()) ended(task, -1, false); continue; }
       fcntl(fds[0], F_SETFD, FD_CLOEXEC);
-      if (native_spawn(args, fds[1], &pid) != 0) { close(fds[0]); close(fds[1]); slots.stop(); ended(task, -1, false); continue; }
+      if (native_spawn(args, fds[1], &pid) != 0) { close(fds[0]); close(fds[1]); ended(task, -1, false); continue; }
       close(fds[1]);
       Process p;
       p.pid = pid;
@@ -120,6 +126,8 @@ static void native_mutant_pool(size_t tasks, uint64_t workers, double first_limi
       p.limit = first_limit;
       live.push_back(std::move(p));
     }
+    // No task is left to start: the workers with nothing to run give their tokens back.
+    if (next >= tasks && again.empty()) while (held > live.size()) { slots.stop(); held--; }
     if (live.empty()) {
       if (next >= tasks && again.empty()) break;
       continue;  // the first worker may always start

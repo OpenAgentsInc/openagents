@@ -44,7 +44,9 @@ coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-strike.coax 
    refuses (output or a host effect, which the evaluator rejects as `E0404`),
    crashes, or runs out of ticks or wall time. The processes run at once, each
    one a build worker from the machine-wide budget, as the evaluator's
-   mutation workers are (`--jobs`).
+   mutation workers are (`--jobs`). A worker keeps its token from one mutant
+   to the next, so the pass's own load doesn't shrink it; on a host already
+   at its load limit a pass starts with one worker, as any coax build does.
 5. **Let the evaluator decide.** A mutant native code killed gets the check
    it stopped in as its hint, exactly as `--killers` gives hints. The
    evaluator runs that one check first, and only its failure there is the
