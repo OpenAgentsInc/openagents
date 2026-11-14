@@ -357,7 +357,7 @@ sc_upgrade_front :: (text: string, out: [] u8) -> string {
 // Tables saved when the map reached 300 m from its middle (before the garage and the solar farm moved
 // out, #13505): the same tables reaching as far as the shipped ones, into out. Tables that reach as far
 // already, or whose reach line can't be read, come back as they were.
-SC_REACH :: 60000;   // centimetres: the shipped tables' reach
+SC_REACH :: 120000;   // centimetres: the shipped tables' reach (the plain is about 1.3 km across, #13552)
 sc_upgrade_reach :: (text: string, out: [] u8) -> string {
   a := sc_at(text, "\nreach ");
   if a < 0 { return text; }
@@ -582,7 +582,9 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
     if w == 3 && i >= 7 { #assert p.ok && p.act == NPD_PATROL && p.notice == 500 && p.n == 2 && p.x[0] == 1500 && p.x[1] == -1500 && p.z[0] == p.z[1]; continue; }
     // day: the Imperial robots patrol the desert, none at the garage (#13505)
     if w == 1 && i >= 5 { #assert p.ok && p.act == NPD_PATROL && p.notice == 500 && p.n == 2 && sc_area_at_cm(c[..], p.x[0], p.z[0]) == 5 && sc_area_at_cm(c[..], p.x[1], p.z[1]) == 5; continue; }
-    if w == 2 { #assert p.ok && p.act == NPD_STAND && p.notice == 0 && p.n == 1 && p.z[0] == 1500 && (p.x[0] >= 13000 || p.x[0] <= -13000); continue; }
+    // dusk: the raiders out on the road past the garage; the Imperial robots on their charging pads at the farm, dawn and dusk (#13552)
+    if w == 2 && i < 5 { #assert p.ok && p.act == NPD_STAND && p.notice == 0 && p.n == 1 && p.z[0] == 1500 && p.x[0] <= -13000; continue; }
+    if (w == 0 || w == 2) && i >= 5 { #assert p.ok && p.act == NPD_STAND && p.notice == 0 && p.n == 1 && sc_area_at_cm(c[..], p.x[0], p.z[0]) == 5; continue; }
     #assert p.ok && p.who == i + 1 && p.when == w && p.x[0] == sc_cm(m.x) && p.z[0] == sc_cm(m.z) && p.speed == 180 && p.on == NPO_CHASE;
     if i < 5 { #assert p.act == NPD_DANCE && p.notice == 0 && p.n == 1; }
     else { t := sc_mark(c[..], 51 + i); #assert p.act == NPD_PATROL && p.notice == 500 && p.n == 2 && p.x[1] == sc_cm(t.x) && p.z[1] == sc_cm(t.z); }
@@ -782,10 +784,10 @@ sc_area_at_cm :: (c: [] SpContent, x: int, z: int) -> int { return sc_area_in(c,
   #assert sc_upgrade(odd, up[..]) == odd && !sc_load(c[..], odd);
 }
 
-#test "tables saved when the map reached 300 m reach as far as the shipped ones, and nothing else changes (#13505)" {
+#test "tables saved when the map reached 300 m or 600 m reach as far as the shipped ones, and nothing else changes (#13505, #13552)" {
   out: [CT_BODY] u8; c: [1] SpContent;
-  #assert sc_at(SC_SHIPPED, "\nreach 60000\n") > 0 && sc_upgrade_reach(SC_SHIPPED, out[..]) == SC_SHIPPED;
-  o2: [CT_BODY] u8; old := sc_swap("\nreach 60000\n", "\nreach 30000\n", o2[..]);
-  #assert old.count == SC_SHIPPED.count && old != SC_SHIPPED && sc_upgrade_reach(old, out[..]) == SC_SHIPPED && sc_load(c[..], old);
+  #assert sc_at(SC_SHIPPED, "\nreach 120000\n") > 0 && sc_upgrade_reach(SC_SHIPPED, out[..]) == SC_SHIPPED;
+  o2: [CT_BODY] u8; old := sc_swap("\nreach 120000\n", "\nreach 60000\n", o2[..]);
+  #assert old.count == SC_SHIPPED.count - 1 && old != SC_SHIPPED && sc_upgrade_reach(old, out[..]) == SC_SHIPPED && sc_load(c[..], old);
   #assert sc_upgrade_reach("", out[..]) == "" && sc_upgrade_reach("reach 1", out[..]) == "reach 1";
 }

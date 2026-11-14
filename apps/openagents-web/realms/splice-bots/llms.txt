@@ -9,7 +9,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - realm: splice-bots
 - page: `/worlds/splice-bots` (module `splice-bots`, source `apps/openagents-web/realms/splice-bots/`)
 - wire: none. The page decides the simulation; there is no room to speak to
-- content: `metaverse/splice-bots/content/splice.content`, revision 4, sha256 `e025dce505097029f3b886836e625d57ec8656927e5f98935e7d2c20d666a8f6`
+- content: `metaverse/splice-bots/content/splice.content`, revision 4, sha256 `57f5d214b6cf33dd29297ecd14b50b8e676b0ff800df7773e148b4b50be9de1f`
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -41,7 +41,7 @@ From `metaverse-engine/editor/authority.coax` (INVARIANTS.md, "Authoring never w
 - format: `aethyr.content.v1` (docs/protocol/aethyr-content-v1.md): one text document; a `table NAME COLUMNS` line, then a row a line, cells split by `|`
 - document: splice
 - revision: 4
-- reach, cm: 60000
+- reach, cm: 120000
 
 | Table | Columns | Rows |
 | --- | --- | --- |
@@ -206,4 +206,4 @@ table actors id name:text
 1|Raider 1
 ```
 
-reference sha256: 3f0d29e6c420e2ea50c8e87d616893b49aa9db8a70b741cc5de35b56f63246ad
+reference sha256: 1143fee6467418c98e0c8002755236753c6501b5f58a38d188212f3983365212

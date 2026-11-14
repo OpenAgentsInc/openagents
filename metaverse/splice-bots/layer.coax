@@ -247,7 +247,7 @@ sl_push_over :: (g: [] SpGame, x: f32, z: f32, r: f32, tall: bool, feet: f32) ->
 }
 // The tops of the placed pieces near (x, z), as the engine's floors (metaverse-engine/physics/stand.coax,
 // STAND_FLOATS numbers each) into out: how many. A piece's top is the rectangle round its stadium,
-// at its height over where it stands. The engine's jump lands you on them (splice-game.coax g_jump).
+// at its height over where it stands; then the farm's banks. The engine's jump lands you on them (splice-game.coax g_jump).
 sl_floors :: (g: [] SpGame, x: f32, z: f32, out: [] f32) -> int {
   ids: [SL_NEAR] int; n := sl_near(g, x, z, 1, ids[..]);
   k := 0;
@@ -272,7 +272,7 @@ sl_floors :: (g: [] SpGame, x: f32, z: f32, out: [] f32) -> int {
     stand_put_quad(out, k, ox, oz, dx * half * 2, dz * half * 2, dz * e.r * 2, -dx * e.r * 2, y0, 0, rise);
     k += 1;
   }
-  return k;
+  return ifx g[0].zone == Z_MINE then ff_floors(x, z, out, k) else k;   // and the solar farm's bank under you (farm.coax)
 }
 // How far the segment a-b is from a box on the ground (0 when it touches or crosses it), by the
 // engine's box and segment rules.

@@ -39,6 +39,8 @@ ga_angle :: (k: int) -> f32 { return cast(f32) k * ga_span(); }
 // The lab's back wall, less a step: as far as the boss's charge goes (splice-battle.coax).
 ga_lab_back :: (g: [] SpGame) -> f32 { return g[0].at.gar_z - ga_back(g) - GA_HALL_LONG - GA_LAB_Z + 2; }
 ga_back :: (g: [] SpGame) -> f32 { return g[0].at.gar_r + GA_BAY; }
+// The foot of the rim's slope outside, where the desert starts.
+ga_foot :: (g: [] SpGame) -> f32 { return ga_back(g) + GA_BACK + 6 + GA_BERM; }
 // Whether (x, z) is in the mountain: the hallway past the back wall, or the old-world lab past it.
 // Indoors, lit white whatever the time of day.
 ga_in_lab :: (g: [] SpGame, x: f32, z: f32) -> bool {

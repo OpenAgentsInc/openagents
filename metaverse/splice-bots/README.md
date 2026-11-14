@@ -25,7 +25,10 @@ for people and agents who change the code.
 | `splice-face.c`, `splice-ue-face.c` | The C faces for the browser and for a native host |
 | `content/splice.content`, `content.coax` | The content tables and their reader |
 | `buildings.coax` | How the buildings look (#13552): printed concrete from `metaverse-engine/kit/printed.coax`. The garage's outer shell steps down to the desert in printed courses, its entry is a bay with a raised roll-up door, raider banners with a cog hang over the rim, and the village's ring wall is printed. Stills 40 to 42 (the entry, the shell, the village). It only draws; where things stand is the level's |
-| `farm.coax` | The solar farm's field: 540 long solar banks in regular lines east and west to the edge of the ground, one instanced draw (`metaverse-engine/kit/props.coax` `kit_solar_bank`), held out of like walls; the low sun, its long shadows and the dust haze at the farm by day (playtest 2) |
+| `farm.coax` | The solar farm's field (layout per the level spec, #13552): four long rows of three lines of solar banks in the farm's north-west, 13 m aisles between them, one instanced draw (`metaverse-engine/kit/props.coax` `kit_solar_bank`); she is held out of a line below its glass and lands on its tilted top (`ff_floors`); the low sun, its long shadows and the dust haze at the farm by day |
+| `plain.coax` | The desert between (#13552): the ground, the plain's edge (orange-flagged stakes, `MSG_EDGE`), the three landmark rocks she climbs and boards over (`land_mound_y`, the numbers their mesh is written from), the mountain's two peaks north of the garage, the Imperial robots' charging pads at the farm, and the garage's rim held as a wall from outside |
+| `metrics.coax` | The grey metrics room, off the map (dev stage 40): her height and jump, walk, sneak and board speeds, Digger's sensor and an Imperial robot's sensing by Heat, and Sniper, the drill mech and the boss at size, each read from the constant the game plays by |
+| `level-review.md` | The level design review (#13552): ranked items, built and proposed |
 | `pieces.coax` | Which engine kit piece a row draws, and its measured footprint |
 | `layer.coax` | The colliders (a World of entities) and the edit layer |
 | `world.coax`, `world-api.coax` | Splice Bots as the world `splice-bots` (once `splice`): its document, its edits as the wire carries them, and what the API calls |
@@ -288,8 +291,8 @@ built, the rubble ahead of you.
   breaks it. Until the hallway is open an E beside the mech leaves the core in, so it is never left
   empty on the way. DRILL+ in the vault is optional: Digger's DRILL is the run's drill. A check plays
   from the garage's door to the boss's fall with keys and the mouse alone, following the compass.
-- **The raider mech.** It keeps watch beside the drive's second leg (landmark 92, else 12 m off the
-  route a third of the way from the rail stop to the garage). Outrunning it is the default: out of a battle
+- **The raider mech.** It keeps watch 12 m off the road at its low point, a little past halfway
+  (`DV_RM_AT`), where the road dips south across the plain between the farm and the garage. Outrunning it is the default: out of a battle
   its claws never take Sniper below a third of its health. When Sniper passes within 16 m it gives
   chase at 16 m/s: faster than Sniper's cruise, slower than its top speed, so holding W outruns it
   (20 m behind, it gives up for the drive). Beside Sniper it claws twice every 1.3 s or so (below). E while it is

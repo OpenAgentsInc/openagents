@@ -1,5 +1,5 @@
 aethyr.content.v1 splice 4
-reach 60000
+reach 120000
 table actors id name:text
 1|Raider 1
 2|Raider 2
@@ -15,8 +15,8 @@ table areas id name:text x:cm z:cm hx:int hz:int r:int
 2|Gate corridor|17500|-6700|165|300|0
 3|Rail stop|16718|9500|0|0|2600
 4|Mine|0|-20500|16000|22500|0
-5|Desert|0|36000|6000|4000|0
-6|Inside the rover|-50000|26000|650|500|0
+5|Desert|-85000|-14000|13000|8000|0
+6|Inside the rover|-50000|76000|650|500|0
 7|Garage yard|0|300|1500|800|0
 table beats id area:int from:text to:text
 1|7|day|dusk
@@ -38,14 +38,14 @@ table kept_clear id name:text x:cm z:cm hx:int hz:int r:int
 1|Village start|17500|-7800|0|0|150
 2|Scanner gate|17500|-6700|165|330|0
 3|Rail track|17500|9500|950|15100|0
-4|Battery|3600|36000|0|0|220
+4|Battery|-84000|-10200|0|0|220
 5|Mine start|0|900|0|0|150
 6|Rover door|280|350|0|0|120
 7|Checkpoint post|260|650|0|0|60
-8|Drill arm|-1200|34200|0|0|220
-9|Treads|-200|33600|0|0|220
-10|MOVE card|600|33300|0|0|220
-11|DRILL card|4600|35800|0|0|220
+8|Drill arm|-83800|-11000|0|0|220
+9|Treads|-84300|-10600|0|0|220
+10|MOVE card|-80900|-9400|0|0|220
+11|DRILL card|-81500|-9000|0|0|220
 12|Mine mouth lane|0|-390|150|1090|0
 13|Scrap room lane|0|-2610|150|690|0
 14|Rubble and tunnel|0|-3650|300|350|0
@@ -76,8 +76,8 @@ table landmarks id name:text x:cm z:cm r:int
 7|Banned bot|0|-40600|620
 8|Catwalk south|14100|-20400|300
 9|Catwalk north|14100|-18600|300
-10|Edit bay stage|-50000|13600|1100
-11|Memory stage|-50000|20000|1600
+10|Edit bay stage|-50000|63600|1100
+11|Memory stage|-50000|70000|1600
 12|Dome village|17500|-7500|700
 13|Scanner gate|17500|-6500|50
 14|Rail start|17500|-5500|150
@@ -85,11 +85,11 @@ table landmarks id name:text x:cm z:cm r:int
 16|Dance floor|0|-19500|800
 17|Rail marker|18820|9580|150
 18|Rail stop|16978|9500|80
-21|Drill arm|-1200|34200|220
-22|Treads|-200|33600|220
-23|Battery|3600|36000|220
-24|MOVE card|600|33300|220
-25|DRILL card|4600|35800|220
+21|Drill arm|-83800|-11000|220
+22|Treads|-84300|-10600|220
+23|Battery|-84000|-10200|220
+24|MOVE card|-80900|-9400|220
+25|DRILL card|-81500|-9000|220
 26|DRILL+ part|-14392|-15644|220
 27|Battery cell 1|-3831|-5204|220
 28|Battery cell 2|-10465|-9035|220
@@ -187,27 +187,27 @@ table plans id who:int when:text do:text route:text speed:int notice:int on:text
 51|5|day|dance|-2040 -18780|180|0|chase
 52|5|dusk|stand|-13000 1500|0|0|ignore
 53|5|night|dance|-2040 -18780|180|0|chase
-60|6|dawn|patrol|1010 -18880, 1010 -20080|180|500|chase
-61|6|day|patrol|-5500 39500, 5500 39500|180|500|chase
-62|6|dusk|stand|13000 1500|0|0|ignore
+60|6|dawn|stand|-90600 -9600|0|0|ignore
+61|6|day|patrol|-93000 -17600, -81000 -17600|180|500|chase
+62|6|dusk|stand|-90600 -9600|0|0|ignore
 63|6|night|patrol|1010 -18880, 1010 -20080|180|500|chase
-70|7|dawn|patrol|-2240 -18980, -1740 -18980|180|500|chase
-71|7|day|patrol|5500 32500, 5500 39500|180|500|chase
-72|7|dusk|stand|13500 1500|0|0|ignore
+70|7|dawn|stand|-90400 -9600|0|0|ignore
+71|7|day|patrol|-93000 -15600, -81000 -15600|180|500|chase
+72|7|dusk|stand|-90400 -9600|0|0|ignore
 73|7|night|patrol|-2240 -18980, -1740 -18980|180|500|chase
-80|8|dawn|patrol|-2240 -20080, -2740 -20080|180|500|chase
-81|8|day|patrol|-5500 32500, -5500 39500|180|500|chase
-82|8|dusk|stand|14000 1500|0|0|ignore
+80|8|dawn|stand|-88600 -9600|0|0|ignore
+81|8|day|patrol|-93000 -13600, -81000 -13600|180|500|chase
+82|8|dusk|stand|-88600 -9600|0|0|ignore
 83|8|night|patrol|1500 -18200, -1500 -18200|180|500|chase
-90|9|dawn|patrol|-3640 -19080, -3640 -20080|180|500|chase
-91|9|day|patrol|-5500 32500, 5500 32500|180|500|chase
-92|9|dusk|stand|14500 1500|0|0|ignore
+90|9|dawn|stand|-88400 -9600|0|0|ignore
+91|9|day|patrol|-93000 -19800, -81000 -19800|180|500|chase
+92|9|dusk|stand|-88400 -9600|0|0|ignore
 93|9|night|patrol|1500 -20800, -1500 -20800|180|500|chase
 table portals id name:text from:text to:text yaw:int r:int
-1|Enter the rover|kind 123|-50420 26000|90|900
-2|Leave the rover|at -50560 26000|1000 34800|90|120
+1|Enter the rover|kind 123|-50420 76000|90|900
+2|Leave the rover|at -50560 76000|-77900 -12200|180|120
 3|Drive to the garage|kind 125|ride 0 1000|180|250
 table scripts id name:text hash:text for:text
 table starts id when:text at:text yaw:int
-1|day|1000 34800|90
+1|day|-79000 -10000|180
 table templates id name:text parts:text

@@ -1,0 +1,128 @@
+// The metrics room (#13552, the level spec's checklist): a grey room off the map where a level designer
+// sees the build's own numbers side by side, every one read from the constant the game plays by, so the
+// room is never out of date. Her height and her jump and double jump on a pole; walk, sneak and the
+// board's three speeds as lanes as long as each goes in a second; Digger's sensor range and an Imperial
+// robot's sensing at each Heat as rings round a spot; and Sniper, the drill mech and the boss as grey
+// blocks of their size, beside a post of her height. Not on the player's route: the dev stage 40 puts
+// you there (coaxial.send(610, "40") on the dev server). Nothing she can reach from the plain sees it.
+//   coax/bin/coax test metaverse/splice-bots/splice-game.coax
+
+MR_X :: 600.0f32; MR_Z :: -1000.0f32;   // m: the room's middle, past the plain's north-east corner and the camera's 400 m
+MR_HX :: 36.0f32; MR_HZ :: 26.0f32;     // m: half its inside
+MR_WALL :: 4.0f32;                      // m: its walls
+MR_LANES :: 5;
+MR_HEAT :: 5;                           // rings at Heat 0, 25, 50, 75 and 100
+MR_ROOF :: 2.85f32;                     // m: Sniper's train to its roofs (machines.coax kit_train at s 1)
+MR_BOSS_TALL :: 3.75f32; MR_BOSS_LONG :: 9.5f32;   // m: the boss at SB_DINO_S, head to tail (the test measures its mesh)
+
+// Whether (x, z) is in the room.
+mr_in :: (x: f32, z: f32) -> bool { return abs(x - MR_X) < MR_HX + 1 && abs(z - MR_Z) < MR_HZ + 1; }
+// A lane's speed in m/s: walk, sneak, the board casual, fast and super fast (the world's board row).
+mr_speed :: (g: [] SpGame, i: int) -> f32 {
+  b := g[0].c[0].board; casual := cast(f32) b.casual / 100; fast := cast(f32) b.fast / 100;
+  if i == 0 { return T_WALK; }
+  if i == 1 { return T_WALK * STANCE_SNEAK_PACE; }
+  if i == 2 { return casual; }
+  if i == 3 { return fast; }
+  return cast(f32) board_super_cms(b.fast) / 100;
+}
+// Her jump's top, and the double jump's pressed at that top.
+mr_jump :: () -> f32 { return FL_JUMP * FL_JUMP / (2 * FL_GRAVITY); }
+mr_double :: () -> f32 { v := FL_JUMP * JUMP_AIR; return mr_jump() + v * v / (2 * FL_GRAVITY); }
+// An Imperial robot's sensing at Heat h, walking (sneaking halves it).
+mr_sense :: (h: f32) -> f32 { return T_NOTICE + h * T_NOTICE_HEAT; }
+// Her height: the character you play as.
+mr_height :: (g: [] SpGame) -> f32 { h := g[0].fr[0].doc[0].body.v[CB_HEIGHT]; return ifx h > 0 then cast(f32) h * 0.01 else FL_M_HEIGHT; }
+// "LABEL 5.6": a number to a tenth, in stencil letters.
+mr_text :: (out: [] u8, label: string, v: f32) -> string {
+  n := 0;
+  for c: label { if n < out.count - 12 { out[n] = c; n += 1; } }
+  out[n] = ' '; n += 1;
+  t := cast(int) floor(v * 10 + 0.5); w := t / 10; tmp: [8] u8; k := 0;
+  if w == 0 { tmp[0] = '0'; k = 1; }
+  while w > 0 && k < 8 { tmp[k] = cast(u8) ('0' + w % 10); w /= 10; k += 1; }
+  while k > 0 { k -= 1; out[n] = tmp[k]; n += 1; }
+  out[n] = '.'; out[n + 1] = cast(u8) ('0' + t % 10);
+  return cast(string) out[0..<n + 2];
+}
+// The room's triangles, with the designed world (splice-game.coax g_world): its grey blocks from one list,
+// then its rings, then its signs from another, each a label and a number on a grey panel facing south.
+MR_BOXES :: 24; MR_SIGNS :: 24;
+mr_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  b: [MR_BOXES * 7] f32; nb := 0;   // x, y0, z, hx, h, hz, shade
+  sg: [MR_SIGNS * 4] f32; sl: [MR_SIGNS] string; ns := 0;   // x, y, z, the number; its label
+  // the floor and the walls
+  bx := [5 * 7] f32.[0, -0.2, 0, MR_HX + 20, 0.2, MR_HZ + 20, 0.60,   0, 0, -MR_HZ - 0.25, MR_HX + 0.5, MR_WALL, 0.25, 0.48,   0, 0, MR_HZ + 0.25, MR_HX + 0.5, MR_WALL, 0.25, 0.48,
+    -MR_HX - 0.25, 0, 0, 0.25, MR_WALL, MR_HZ, 0.48,   MR_HX + 0.25, 0, 0, 0.25, MR_WALL, MR_HZ, 0.48];
+  for k: 0..<5 * 7 { b[k] = bx[k]; } nb = 5;
+  // the speed lanes, west: a dark line from the start to a block where a second takes you
+  z0 := MR_HZ - 4; names := [MR_LANES] string.["WALK", "SNEAK", "BOARD", "FAST", "SUPER"];
+  for i: 0..<MR_LANES {
+    x := 4 - MR_HX + cast(f32) i * 5; v := mr_speed(g, i);
+    mr_put(b[..], nb, x, 0, z0 - v * 0.5, 0.08, 0.02, v * 0.5, 0.3); mr_put(b[..], nb + 1, x, 0, z0 - v, 0.6, 0.5, 0.15, 0.3); nb += 2;
+    mr_put(sg[..], ns, x, 1.6, z0 + 1.2, v, 0, 0, 0); sl[ns] = names[i]; ns += 1;
+  }
+  // the pole: her height, her jump and her double jump
+  hs := [3] f32.[mr_height(g), mr_jump(), mr_double()]; hn := [3] string.["HEIGHT", "JUMP", "DOUBLE"];
+  mr_put(b[..], nb, -4, 0, 8, 0.15, mr_double() + 0.6, 0.15, 0.7); nb += 1;
+  for i: 0..<3 { mr_put(b[..], nb, -4, hs[i] - 0.03, 8, 0.6, 0.06, 0.25, 0.22); nb += 1; mr_put(sg[..], ns, -1.4, hs[i] + 0.35, 8, hs[i], 0, 0, 0); sl[ns] = hn[i]; ns += 1; }
+  // the sizes, north: Sniper, the boss and a post of her height as blocks, the drill mech as a drum
+  long := TRAIN_CAB + cast(f32) TRAIN_CARS * (TRAIN_CAR + TRAIN_GAP); bz := 6 - MR_HZ;
+  mr_put(b[..], nb, -20, 0, bz, long * 0.5, MR_ROOF, 1.2, 0.66); mr_put(b[..], nb + 1, 14, 0, bz, MR_BOSS_LONG * 0.5, MR_BOSS_TALL, 1.6, 0.66); mr_put(b[..], nb + 2, 6, 0, bz, 0.25, mr_height(g), 0.25, 0.66); nb += 3;
+  sz := [9] f32.[-20, MR_ROOF, long, -2, SB_MECH_TOP, SB_MECH_TOP, 14, MR_BOSS_TALL, MR_BOSS_LONG]; sn := [3] string.["SNIPER", "MECH", "BOSS"];
+  for i: 0..<3 { mr_put(sg[..], ns, sz[i * 3], sz[i * 3 + 1] + 0.9, bz + 2.2, sz[i * 3 + 2], 0, 0, 0); sl[ns] = sn[i]; ns += 1; }
+  for i: 0..<nb { o := i * 7; kit_pen(p, 70 + i % 2, MAT_WORLD, t3(b[o + 6], b[o + 6], b[o + 6] + 0.01)); block(buf, p, MR_X + b[o], b[o + 1], MR_Z + b[o + 2], b[o + 3], b[o + 4], b[o + 5]); }
+  kit_pen(p, 72, MAT_WORLD, t3(0.66, 0.66, 0.66));
+  tube(buf, p, frame_at(v3(MR_X - 2, 0, MR_Z + bz), 0), SB_MECH_TOP, SB_MECH_R, SB_MECH_R, SB_MECH_R, SB_MECH_R, 12, true);
+  // the rings, east: Digger's sensor (both), then an Imperial robot's sensing at each Heat, its metres over its Heat
+  cx := MR_X + 16; cz := MR_Z + 4;
+  for i: 0..<2 + MR_HEAT {
+    r := ifx i == 0 then T_SENSE else ifx i == 1 then T_SENSE_UP else mr_sense(cast(f32) (i - 2) * 25);
+    kit_pen(p, 73 + (ifx i < 2 then 0 else 1), MAT_FLAT, ifx i < 2 then t3(0.36, 0.36, 0.40) else t3(0.20, 0.20, 0.22));
+    for k: 0..<48 { a := cast(f32) k * TAU / 48; box(buf, p, frame_at(v3(cx + sin(a) * r, 0.03, cz + cos(a) * r), a), r * 0.065, 0.02, 0.06); }
+    if i < 2 { mr_put(sg[..], ns, 16 - r, 0.9, 4.6, r, 0, 0, 0); sl[ns] = "SENSOR"; ns += 1; }
+    else { mr_put(sg[..], ns, 16 + r, 0.9, 4.6, cast(f32) (i - 2) * 25, 0, 0, 0); sl[ns] = "HEAT"; mr_put(sg[..], ns + 1, 16 + r, 1.75, 4.6, r, 0, 0, 0); sl[ns + 1] = "M"; ns += 2; }
+  }
+  t: [32] u8;
+  for i: 0..<ns {
+    o := i * 4; text := mr_text(t[..], sl[i], sg[o + 3]); w := stencil_width(text, 0.45) * 0.5 + 0.2;
+    kit_pen(p, 75, MAT_FLAT, t3(0.80, 0.80, 0.79));
+    block(buf, p, MR_X + sg[o], sg[o + 1] - 0.35, MR_Z + sg[o + 2] - 0.06, w, 0.7, 0.05);
+    kit_stencil(buf, p, frame_at(v3(MR_X + sg[o], sg[o + 1] - 0.22, MR_Z + sg[o + 2]), 0), text, 0.45, 0.04, 76, t3(0.16, 0.16, 0.18));
+  }
+}
+// Row k of a list of 7 (or 4) numbers.
+mr_put :: (out: [] f32, k: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32, h: f32) {
+  w := ifx out.count == MR_SIGNS * 4 then 4 else 7; o := k * w; v := [7] f32.[a, b, c, d, e, f, h];
+  for i: 0..<w { out[o + i] = v[i]; }
+}
+// The room's walls as colliders (g_layout): she walks inside it, never out.
+mr_walls :: (g: [] SpGame) {
+  g_wall(g, MR_X - MR_HX, MR_X + MR_HX, MR_Z - MR_HZ - 0.5, MR_Z - MR_HZ, 0); g_wall(g, MR_X - MR_HX, MR_X + MR_HX, MR_Z + MR_HZ, MR_Z + MR_HZ + 0.5, 0);
+  g_wall(g, MR_X - MR_HX - 0.5, MR_X - MR_HX, MR_Z - MR_HZ, MR_Z + MR_HZ, 0); g_wall(g, MR_X + MR_HX, MR_X + MR_HX + 0.5, MR_Z - MR_HZ, MR_Z + MR_HZ, 0);
+}
+// Stage 40 (dev): standing at the room's south wall, facing in.
+mr_stage :: (g: [] SpGame, n: int) {
+  if n != 40 { return; }
+  g_reset(g); g_begin(g);
+  g[0].px = MR_X; g[0].pz = MR_Z + MR_HZ - 2; g[0].yaw = PI; g[0].pitch = 0.15; g_bot_home(g);
+}
+
+#test "the metrics room: the build's own numbers, off the route, a room she stays in" {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 40);
+  #assert mr_in(g[0].px, g[0].pz) && g[0].mode == M_PLAY;
+  for i: 0..<400 { g[0].px += 0.2; g_collide(g[..]); }   // walked into the east wall a step at a time: held inside
+  #assert mr_in(g[0].px, g[0].pz) && g[0].px < MR_X + MR_HX;
+  // far from everything she can reach on the plain and from Sniper's room: the camera sees 400 m
+  #assert dist2(MR_X, MR_Z, PL_X1, PL_Z0) > 450 && !mr_in(g[0].at.rover_x, g[0].at.rover_z);
+  // the numbers are the game's
+  #assert mr_speed(g[..], 0) == T_WALK && abs(mr_speed(g[..], 1) - T_WALK * 0.45) < 0.01 && mr_speed(g[..], 2) == 7 && mr_speed(g[..], 3) == 22 && abs(mr_speed(g[..], 4) - 35.2) < 0.01;
+  #assert abs(mr_jump() - 1.35) < 0.01 && mr_double() > mr_jump() * 2 && mr_sense(0) == T_NOTICE && abs(mr_sense(50) - 8.5) < 0.001;
+  s: [32] u8; #assert mr_text(s[..], "WALK", 5.6) == "WALK 5.6" && mr_text(s[..], "HEAT", 0) == "HEAT 0.0" && mr_text(s[..], "M", 12.25) == "M 12.3";
+  // the boss's block is its mesh's size
+  buf: [60000 * VERTEX_WORDS] u32; pen := [1] Pen.[Pen.{}];
+  kit_dino(buf[..], pen[..], frame_at(v3(0, 0, 0), 0), SB_DINO_S, 1, INK(), INK(), INK(), 0, 0, 0);
+  r := kit_reach(buf[..], pen[0].n);
+  #assert !pen[0].over && abs(r.top - MR_BOSS_TALL) < 0.05 && abs(hi(r.hz, r.hx) * 2 - MR_BOSS_LONG) < 0.5;
+}

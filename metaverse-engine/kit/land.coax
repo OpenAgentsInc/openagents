@@ -80,6 +80,81 @@ kit_rocks :: (buf: [] u32, p: [] Pen, obj: int, c: KitTint, count: int, seed: f3
   }
 }
 
+// A mound: a convex outline `pts` (x, z pairs, either way round) on the ground, its sides sloping up
+// from each edge to a flat top `h` high, `w` in from the edges. land_mound_y is its height anywhere, so
+// what is drawn and what is walked on agree; land_mound_push holds a body of radius r out of one too
+// steep to climb. A peak: land_peak, its sides up to one point over the outline.
+// How far (x, z) is inside the outline: the nearest edge's distance, below 0 outside.
+land_mound_d :: (pts: [] const f32, x: f32, z: f32) -> f32 { return land_mound_edge(pts, x, z).y; }
+// An edge (i), how far inside it (x, z) is (y), and its inward normal.
+LandEdge :: struct { i: int; y: f32; nx: f32; nz: f32; }
+land_mound_edge :: (pts: [] const f32, x: f32, z: f32) -> LandEdge {
+  n := pts.count / 2; area := 0.0f32;
+  for i: 0..<n { j := (i + 1) % n; area += pts[i * 2] * pts[j * 2 + 1] - pts[j * 2] * pts[i * 2 + 1]; }
+  sg := ifx area > 0 then 1.0f32 else -1.0f32;
+  e := LandEdge.{i = -1, y = 1000000};
+  for i: 0..<n {
+    j := (i + 1) % n; ex := pts[j * 2] - pts[i * 2]; ez := pts[j * 2 + 1] - pts[i * 2 + 1]; l := hi(sqrt(ex * ex + ez * ez), 0.0001);
+    nx := -ez * sg / l; nz := ex * sg / l; d := (x - pts[i * 2]) * nx + (z - pts[i * 2 + 1]) * nz;
+    if d < e.y { e = LandEdge.{i = i, y = d, nx = nx, nz = nz}; }
+  }
+  return e;
+}
+// Whether (x, z) is within `pad` of the outline's box: the cheap test before the others.
+land_near :: (pts: [] const f32, x: f32, z: f32, pad: f32) -> bool {
+  x0 := pts[0]; x1 := pts[0]; z0 := pts[1]; z1 := pts[1];
+  for i: 1..<pts.count / 2 { x0 = lo(x0, pts[i * 2]); x1 = hi(x1, pts[i * 2]); z0 = lo(z0, pts[i * 2 + 1]); z1 = hi(z1, pts[i * 2 + 1]); }
+  return x > x0 - pad && x < x1 + pad && z > z0 - pad && z < z1 + pad;
+}
+land_mound_y :: (pts: [] const f32, h: f32, w: f32, x: f32, z: f32) -> f32 {
+  if !land_near(pts, x, z, 0) { return 0; }
+  d := land_mound_d(pts, x, z); return ifx d <= 0 then 0.0f32 else h * clamp(d / w, 0, 1); }
+land_mound_push :: (pts: [] const f32, x: f32, z: f32, r: f32) -> Point {
+  if !land_near(pts, x, z, r) { return v3(x, 0, z); }
+  e := land_mound_edge(pts, x, z);
+  if e.i < 0 || e.y <= -r { return v3(x, 0, z); }
+  return v3(x - e.nx * (e.y + r), 0, z - e.nz * (e.y + r));
+}
+// The top's corner i: where the edges either side of it, moved w in, cross.
+land_mound_in :: (pts: [] const f32, w: f32, i: int) -> Point {
+  n := pts.count / 2; k := (i + n - 1) % n;
+  e0 := land_side(pts, k); e1 := land_side(pts, i);
+  c0 := e0.nx * pts[k * 2] + e0.nz * pts[k * 2 + 1] + w; c1 := e1.nx * pts[i * 2] + e1.nz * pts[i * 2 + 1] + w;
+  det := e0.nx * e1.nz - e0.nz * e1.nx;
+  if abs(det) < 0.0001 { return v3(pts[i * 2] + e1.nx * w, 0, pts[i * 2 + 1] + e1.nz * w); }
+  return v3((c0 * e1.nz - c1 * e0.nz) / det, 0, (e0.nx * c1 - e1.nx * c0) / det);
+}
+// Edge i's inward normal.
+land_side :: (pts: [] const f32, i: int) -> LandEdge {
+  n := pts.count / 2; area := 0.0f32;
+  for k: 0..<n { j := (k + 1) % n; area += pts[k * 2] * pts[j * 2 + 1] - pts[j * 2] * pts[k * 2 + 1]; }
+  s := ifx area > 0 then 1.0f32 else -1.0f32;
+  j := (i + 1) % n; ex := pts[j * 2] - pts[i * 2]; ez := pts[j * 2 + 1] - pts[i * 2 + 1]; l := hi(sqrt(ex * ex + ez * ez), 0.0001);
+  return LandEdge.{i = i, nx = -ez * s / l, nz = ex * s / l};
+}
+// A face a, b, c, d turned up and out.
+land_face :: (buf: [] u32, p: [] Pen, a: Point, b: Point, c: Point, d: Point) {
+  if cross(sub(b, a), sub(c, a)).y >= 0 { quad(buf, p, a, b, c, d); } else { quad(buf, p, a, d, c, b); }
+}
+kit_mound :: (buf: [] u32, p: [] Pen, obj: int, top: KitTint, side: KitTint, pts: [] const f32, h: f32, w: f32) {
+  n := pts.count / 2;
+  if n < 3 { return; }
+  kit_pen(p, obj, MAT_WORLD, side);
+  for i: 0..<n {
+    j := (i + 1) % n; a := land_mound_in(pts, w, i); b := land_mound_in(pts, w, j);
+    land_face(buf, p, v3(pts[i * 2], 0, pts[i * 2 + 1]), v3(pts[j * 2], 0, pts[j * 2 + 1]), v3(b.x, h, b.z), v3(a.x, h, a.z));
+  }
+  kit_pen(p, obj + 1, MAT_WORLD, top);
+  c := land_mound_in(pts, w, 0);
+  for i: 1..<n - 1 { a := land_mound_in(pts, w, i); b := land_mound_in(pts, w, i + 1); land_face(buf, p, v3(c.x, h, c.z), v3(a.x, h, a.z), v3(b.x, h, b.z), v3(b.x, h, b.z)); }
+}
+// A peak: its sides from the outline up to one point (x, h, z).
+land_peak :: (buf: [] u32, p: [] Pen, obj: int, c: KitTint, pts: [] const f32, x: f32, h: f32, z: f32) {
+  kit_pen(p, obj, MAT_WORLD, c);
+  n := pts.count / 2;
+  for i: 0..<n { j := (i + 1) % n; land_face(buf, p, v3(pts[i * 2], 0, pts[i * 2 + 1]), v3(pts[j * 2], 0, pts[j * 2 + 1]), v3(x, h, z), v3(x, h, z)); }
+}
+
 // A post-and-lintel arch: two piers and the lintel over a span, its middle at f.
 kit_arch_block :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, pier: KitTint, lintel: KitTint, span: f32, h: f32, thick: f32) {
   kit_pen(p, obj, MAT_WORLD, pier);
@@ -235,6 +310,20 @@ kit_crate :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, wood: KitTint, band: K
   box(buf, p, kit_at(f, 0, w * 0.82, 0), w * 0.12, w * 0.03, w * 0.12);
 }
 
+#test "a mound's height is the drawn mesh's: 0 outside, its slopes to the edges, its flat top; a peak or a steep one holds a body out" {
+  pts := [10] f32.[0, 0, 40, 0, 50, 20, 25, 35, 0, 20];   // a pentagon, counter-clockwise
+  rev := [10] f32.[0, 20, 25, 35, 50, 20, 40, 0, 0, 0];   // the same, the other way round
+  #assert land_mound_y(pts[..], 10, 8, 25, 18) == 10 && land_mound_y(rev[..], 10, 8, 25, 18) == 10;   // the top
+  #assert land_mound_y(pts[..], 10, 8, 20, -1) == 0 && abs(land_mound_y(pts[..], 10, 8, 20, 4) - 5) < 0.001;   // outside; halfway up
+  // every top corner is w in from both its edges, at the top's height
+  for i: 0..<5 { c := land_mound_in(pts[..], 8, i); #assert abs(land_mound_d(pts[..], c.x, c.z) - 8) < 0.01 && abs(land_mound_y(pts[..], 10, 8, c.x, c.z) - 10) < 0.01; }
+  q := land_mound_push(pts[..], 20, 1, 0.5);
+  #assert abs(q.z + 0.5) < 0.001 && q.x == 20 && land_mound_push(pts[..], 20, -3, 0.5).z == -3;
+  buf: [4000] u32; pen := [1] Pen.[Pen.{}];
+  kit_mound(buf[..], pen[..], 1, kit_tint(0.7, 0.7, 0.7), kit_tint(0.5, 0.5, 0.5), pts[..], 10, 8);
+  #assert !pen[0].over && pen[0].n == 5 * 6 + 3 * 6;
+  for i: 0..<pen[0].n { y := f32_from_bits(buf[i * VERTEX_WORDS + 1]); x := f32_from_bits(buf[i * VERTEX_WORDS]); z := f32_from_bits(buf[i * VERTEX_WORDS + 2]); #assert abs(land_mound_y(pts[..], 10, 8, x, z) - y) < 0.02; }
+}
 #test "land pieces are deterministic: the same seed writes the same triangles" {
   a: [60000] u32; b: [60000] u32;
   pa := [1] Pen.[Pen.{}]; pb := [1] Pen.[Pen.{}];

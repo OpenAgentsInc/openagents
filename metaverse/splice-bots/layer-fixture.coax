@@ -12,14 +12,14 @@ SL_FIXTURE :: [SL_FIXTURE_N * 5] int.[
   1, 113, 17700, -7800, 0,        // the village start: a palm
   2, 113, 17720, -7060, 0,        // the scanner gate
   3, 113, 16490, 10000, 0,        // the rail track
-  4, 110, 3900, 36000, 0,         // the Battery: a turbine past the last charger
+  4, 110, -83700, -10200, 0,      // the Battery: a turbine beside the farm's hardware
   5, 113, 210, 960, 0,            // the mine start
   6, 117, 280, 150, 0,            // the rover's door: a small crate
   7, 113, 320, 760, 0,            // the checkpoint post
-  8, 113, -940, 34200, 0,         // the drill arm
-  9, 113, -200, 33340, 0,         // the treads
-  10, 117, 600, 32980, 0,         // the MOVE card
-  11, 113, 4600, 36060, 0,        // the DRILL card
+  8, 113, -83540, -11000, 0,      // the drill arm
+  9, 113, -84300, -10860, 0,      // the treads
+  10, 117, -80900, -9720, 0,      // the MOVE card
+  11, 113, -81500, -8740, 0,      // the DRILL card
   12, 113, -230, -600, 0,         // the mine mouth's lane
   13, 113, -220, -2200, 0,        // the scrap room's lane
   14, 113, 360, -4090, 0,         // the rubble and the tunnel

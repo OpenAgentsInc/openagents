@@ -11,12 +11,17 @@ M_DRIVE :: 9;                     // splice-game.coax's modes, then front.coax's
 MSG_NO_DRILL :: 40;               // the drive asked for before the DRILL card is found
 MSG_MAP :: 41;                    // Sniper puts the deep-garage map up at the desk
 MSG_OUTFIT :: 42;                 // she changed her outfit in the rover's room
+MSG_EDGE :: 43;                   // past the plain's edge: turned back (plain.coax)
 DV_SPEED :: 24.0f32;              // m/s: the rover's pace on the way
-DV_SHORT :: 5.0f32; DV_LONG :: 14.0f32;   // s: the shortest and the longest a drive takes
+DV_SHORT :: 5.0f32; DV_LONG :: 18.0f32;   // s: the shortest and the longest a drive takes (the farm is about 800 m from the garage)
+// The road (layout per the level spec, #13552): out of the farm the way the rover faces (south), a dip
+// across the middle of the plain, and up into the garage's least-used opening heading DV_IN_DEG.
+DV_PULL_OUT :: 0.22f32; DV_PULL_IN :: 0.35f32;   // of the way: the curve's pulls out of the start and into the parking
+DV_IN_DEG :: 105;                 // degrees: the way Sniper drives in to park, east and a little north
 // The raider mech's chase on the drive (splice-battle.coax sb_rm_step): it keeps watch beside the road a
-// third of the way along, gives chase faster than Sniper's cruise, and turns back near the garage. W drives
+// little past halfway, at the road's low point, gives chase faster than Sniper's cruise, and turns back near the garage. W drives
 // faster than it runs (outrun it); E battles it from Sniper, and a battle holds Sniper to a crawl.
-DV_RM_AT :: 0.35f32; DV_RM_QUIT :: 0.88f32;   // of the way: where it keeps watch, where it turns back
+DV_RM_AT :: 0.6f32; DV_RM_QUIT :: 0.92f32;   // of the way: where it keeps watch, where it turns back
 DV_RM_CHASE :: 1.8f32;            // its pace over the rover's cruise (the eased drive peaks at 1.5)
 DV_FAST :: 1.8f32; DV_SLOW :: 0.4f32;   // the rover's pace with W held, and in a battle
 
@@ -234,8 +239,9 @@ dv_start :: (g: [] SpGame, out_x: f32, out_z: f32, deg: int) {
   fx := ifx d[0].boarded then sin(d[0].vyaw) else ux; fz := ifx d[0].boarded then cos(d[0].vyaw) else uz;
   if fx * ux + fz * uz < 0 { fx = -fx; fz = -fz; }   // a rover drives off forward, whichever end its row calls the front
   d[0].ax = ax; d[0].az = az; d[0].bx = bx; d[0].bz = bz;
-  d[0].cx = ax + fx * l / 3; d[0].cz = az + fz * l / 3;
-  d[0].dx = bx - ux * l / 3; d[0].dz = bz - uz * l / 3;
+  iy := sl_rad(DV_IN_DEG);
+  d[0].cx = ax + fx * l * DV_PULL_OUT; d[0].cz = az + fz * l * DV_PULL_OUT;
+  d[0].dx = bx - sin(iy) * l * DV_PULL_IN; d[0].dz = bz - cos(iy) * l * DV_PULL_IN;
   d[0].out_x = out_x; d[0].out_z = out_z; d[0].out_deg = deg;
   d[0].t = 0; d[0].span = clamp(l / DV_SPEED, DV_SHORT, DV_LONG);
   g[0].mode = M_DRIVE; g[0].flash = 0.3; g[0].px = ax; g[0].pz = az;
@@ -397,23 +403,23 @@ dv_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   g := [1] SpGame.[SpGame.{}]; k: [1] FlowTest;
   g_stage(g[..], 0);
   bare := sc_bare_flow(k[0].o[4][..]);   // the shipped tables' areas, without their own rows
-  t := sc_swap2(bare, "table portals id name:text from:text to:text yaw:int r:int\n", "table portals id name:text from:text to:text yaw:int r:int\n1|Enter the rover|kind 116|-50000 26000|0|400\n2|Drive to the garage|at -50000 26300|ride 0 1000|180|200\n", k[0].o[0][..]);
+  t := sc_swap2(bare, "table portals id name:text from:text to:text yaw:int r:int\n", "table portals id name:text from:text to:text yaw:int r:int\n1|Enter the rover|kind 116|-50000 76000|0|400\n2|Drive to the garage|at -50000 76300|ride 0 1000|180|200\n", k[0].o[0][..]);
   t = sc_swap2(t, "table beats id area:int from:text to:text\n", "table beats id area:int from:text to:text\n1|7|day|dusk\n", k[0].o[2][..]);
-  t = sc_swap2(t, "table starts id when:text at:text yaw:int\n", "table starts id when:text at:text yaw:int\n1|day|1000 36000|90\n", k[0].o[3][..]);
+  t = sc_swap2(t, "table starts id when:text at:text yaw:int\n", "table starts id when:text at:text yaw:int\n1|day|-80000 -10000|90\n", k[0].o[3][..]);
   #assert sc_load(g[0].c[..], t) && g_places(g[..]);
   g_reset(g[..]); g_begin(g[..]);
-  #assert g[0].mode == M_PLAY && g[0].phase == PH_DAY && g[0].pz == 360;
+  #assert g[0].mode == M_PLAY && g[0].phase == PH_DAY && g[0].pz == -100;
   // a crate stands for the rover at the farm; E beside it takes you into the room
-  #assert sl_place(g[..], 116, 1500, 36000, 90).ok;
-  g[0].px = 15; g[0].pz = 357; #assert !sp_in_room(g[..]);
-  #assert g_key(g[..], 'e', true) && g[0].px == -500 && g[0].pz == 260 && sp_in_room(g[..]) && g[0].dv[0].boarded;
+  #assert sl_place(g[..], 116, -79500, -10000, 90).ok;
+  g[0].px = -795; g[0].pz = -103; #assert !sp_in_room(g[..]);
+  #assert g_key(g[..], 'e', true) && g[0].px == -500 && g[0].pz == 760 && sp_in_room(g[..]) && g[0].dv[0].boarded;
   // at the desk: no DRILL card, no drive
-  g[0].px = -500; g[0].pz = 263;
+  g[0].px = -500; g[0].pz = 763;
   #assert g_key(g[..], 'e', true) && g[0].mode == M_PLAY && g[0].msg == MSG_NO_DRILL && msg_text(g[..]).count > 10;
   g[0].have[H_DRILL] = true;
   #assert g_key(g[..], 'e', true) && g[0].mode == M_DRIVE && !sp_in_room(g[..]);
   start := dv_at(g[..], 0); end := dv_at(g[..], 1);
-  #assert dist2(start.x, start.z, 15, 360) < 0.01 && dist2(end.x, end.z, g[0].at.rover_x, g[0].at.rover_z) < 0.01;
+  #assert dist2(start.x, start.z, -795, -100) < 0.01 && dist2(end.x, end.z, g[0].at.rover_x, g[0].at.rover_z) < 0.01;
   #assert g[0].dv[0].span >= DV_SHORT && g[0].dv[0].span <= DV_LONG;
   cam := dv_camera(g[..]); #assert cam.eye.y > 4;   // outside, above the road
   for i: 0..<2000 { g_step(g[..], 0.02); if g[0].mode != M_DRIVE { break; } }

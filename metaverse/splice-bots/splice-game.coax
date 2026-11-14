@@ -17,7 +17,9 @@
 #load "buildings.coax";          // how the buildings look: printed concrete, the garage's shell and bay, raider banners (#13552)
 #load "camera.coax";             // the follow camera behind her (playtest 2)
 #load "drive.coax";              // the drive from the solar farm to the garage, and the rover's room (#13505)
-#load "farm.coax";               // the solar farm's field: long lines of banks to the edge of the ground, the low sun and the haze (playtest 2)
+#load "farm.coax";               // the solar farm's field: four long rows of banks, the low sun and the haze
+#load "plain.coax";
+#load "metrics.coax";            // the grey metrics room, off the map, for level design (dev stage 40)              // the desert between: the three landmark rocks, the mountain, the edge (#13552)
 #load "walk.coax";
 #load "feel.coax";                // how she moves: her walk, jump, poses, squash and lean (#13552)
 #load "layer-fixture.coax";
@@ -218,7 +220,7 @@ g_layout :: (g: [] SpGame) {
   g_wall(g, g[0].at.rover_x - 1.5, g[0].at.rover_x + 1.5, g[0].at.rover_z - 2.4, g[0].at.rover_z + 2.4, 0); // the rover (drawn apart)
   g_wall(g, g[0].at.crate_x - 0.9, g[0].at.crate_x + 0.9, g[0].at.crate_z - 0.7, g[0].at.crate_z + 0.7, 0); // the stash crate
   g_wall(g, g[0].at.deck_x - 0.12, g[0].at.deck_x + 0.12, g[0].at.deck_z0 + RAMP, g[0].at.deck_z1 - RAMP, 0);   // the catwalk's rail, between its two ramps
-  g_wall(g, -60, 60, 20, 24, 0); g_wall(g, -64, -44, -40, 24, 0); g_wall(g, 44, 64, -40, 24, 0);   // the edge of the map outside the mouth
+  mr_walls(g);   // the metrics room (metrics.coax)
   dv_room_walls(g);   // the rover's cabin, closed all round (drive.coax)
   sl_build(g);   // the walls become colliders in the World (layer.coax), with the layer's placed pieces
 }
@@ -384,7 +386,11 @@ g_collide :: (g: [] SpGame) {
   }
   q := sl_push_over(g, g[0].px, g[0].pz, T_RADIUS, false, g_feet_y(g) + FL_STEP); g[0].px = q.x; g[0].pz = q.z;   // a piece under your feet, or a step above them, lets you over it
   q = ga_push(g, g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z;   // the garage's round back wall (garage.coax)
-  if g[0].zone == Z_MINE { q = ff_push(g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z; }   // the solar farm's lines (farm.coax)
+  if g[0].zone == Z_MINE && !sp_in_room(g) && !mr_in(g[0].px, g[0].pz) {   // the mountain, the rim from outside and the plain's edge (plain.coax)
+    if pl_out(g[0].px, g[0].pz) && g[0].msg != MSG_EDGE { g_say(g, MSG_EDGE); }
+    q = pl_push(g, g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z;
+  }
+  if g[0].zone == Z_MINE && g_feet_y(g) < ff_low() - 0.05 { q = ff_push(g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z; }   // the solar farm's lines, unless on their top (farm.coax)
 }
 g_inside :: (g: [] SpGame, x: f32, z: f32) -> bool {
   if g[0].zone == Z_VILLAGE && dist2(x, z, g[0].at.vil_x, g[0].at.vil_z) > g[0].at.vil_r - 0.5 && !(z > g[0].at.vil_z + 5 && abs(x - g[0].at.vil_x) < 1.5) { return true; }
@@ -394,7 +400,7 @@ g_inside :: (g: [] SpGame, x: f32, z: f32) -> bool {
 // The catwalk: a deck along the party's east wall, a ramp at each end.
 on_deck :: (g: [] SpGame, x: f32, z: f32) -> bool { return x > g[0].at.deck_x - 0.2 && z > g[0].at.deck_z0 && z < g[0].at.deck_z1; }
 ground_y :: (g: [] SpGame, x: f32, z: f32) -> f32 {
-  if z <= g[0].at.deck_z0 || z >= g[0].at.deck_z1 || x < g[0].at.deck_x - 3 || x > g[0].at.deck_x + 12 { return 0; }
+  if z <= g[0].at.deck_z0 || z >= g[0].at.deck_z1 || x < g[0].at.deck_x - 3 || x > g[0].at.deck_x + 12 { return pl_ground(x, z); }   // the landmark rocks (plain.coax)
   if x >= g[0].at.deck_x { return DECK_Y; }
   ramp := z < g[0].at.deck_z0 + RAMP || z > g[0].at.deck_z1 - RAMP;
   if ramp { return clamp((x - (g[0].at.deck_x - 3)) / 3, 0, 1) * DECK_Y; }
@@ -845,7 +851,7 @@ g_look :: (g: [] SpGame, dx: f32, dy: f32) {
 g_lock :: (g: [] SpGame, status: int) { d_lock(g, status); g[0].look_free = status != 1; }
 
 // A moment of the run to stand in (the page's message 610, "N"): for stills and checks of each beat.
-g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); bl_stage(g, n); }
+g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); bl_stage(g, n); mr_stage(g, n); }
 g_stage_set :: (g: [] SpGame, n: int) {
   g_reset(g); g[0].mode = M_PLAY;
   if n == 0 { g[0].mode = M_TITLE; return; }
@@ -886,12 +892,8 @@ g_stage_set :: (g: [] SpGame, n: int) {
 dn :: (g: [] SpGame, x: f32, y: f32, z: f32) -> Point { return v3(g[0].at.dance_x + x + 1.6, y, g[0].at.dance_z + z + 51.2); }
 dn_block :: (g: [] SpGame, buf: [] u32, p: [] Pen, x: f32, y0: f32, z: f32, hx: f32, h: f32, hz: f32) { c := dn(g, x, y0, z); block(buf, p, c.x, y0, c.z, hx, h, hz); }
 g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
-  kit_pen(p, 1, MAT_WORLD, t3(0.90, 0.68, 0.48));
-  quad(buf, p, v3(-260, 0, -480), v3(280, 0, -480), v3(280, 0, 520), v3(-260, 0, 520));
-  kit_mesas(buf, p, 2, t3(0.72, 0.56, 0.74), 9, 40, 92, 26, 14, 30);
-  kit_dunes(buf, p, 3, t3(0.93, 0.74, 0.50), 12, 50, 40, 28, 60, 5, 11);
-  kit_rocks(buf, p, 4, t3(0.66, 0.36, 0.28), 14, 60, 0, 8, 5, 16, 0.3, 1.0);
-  kit_mesas(buf, p, 5, t3(0.62, 0.46, 0.60), 11, 140, -470, 36, 40, 70);   // the mountain past the garage, where the hallway goes
+  mr_draw(g, buf, p);   // the metrics room (metrics.coax)
+  pl_draw(g, buf, p);   // the ground, the three landmark rocks, the mountain and the plain's edge (plain.coax)
   room := dv_room(g);
   for i: 0..<g[0].wall_n {
     o := i * 5; h := g[0].walls[o + 4];
@@ -955,48 +957,10 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   kit_pen(p, 43, MAT_GLOW, GLOW_INK());
   for i: 0..<9 { k := cast(f32) i; block(buf, p, g[0].at.mem_x - 16 + k * 4, 0.05, g[0].at.mem_z, 0.04, 0.02, 13); block(buf, p, g[0].at.mem_x, 0.05, g[0].at.mem_z - 12 + k * 3, 28, 0.02, 0.04); }
   for i: 0..<4 { k := cast(f32) i; block(buf, p, g[0].at.mem_x - 12 + k * 8, 0, g[0].at.mem_z - 9, 1.2, 9, 1.2); }
-  // the dome village: a ring of wall panels (one left open for the gate), a faceted roof, a bed,
-  // and the gate's corridor with its scanner beam
-  wall := t3(0.93, 0.88, 0.78); trim := t3(0.55, 0.72, 0.62);
-  bl_village(g, buf, p);   // its printed ring wall (buildings.coax)
-  kit_pen(p, 48, MAT_SKIN, trim);
-  tube(buf, p, frame_at(v3(g[0].at.vil_x, 3.4, g[0].at.vil_z), 0), 3.6, g[0].at.vil_r + 0.5, g[0].at.vil_r + 0.5, 0.6, 0.6, 12, true);
-  kit_pen(p, 49, MAT_FLOOR, t3(0.80, 0.70, 0.58));
-  quad(buf, p, v3(g[0].at.vil_x - 8, 0.02, g[0].at.vil_z - 8), v3(g[0].at.vil_x + 8, 0.02, g[0].at.vil_z - 8), v3(g[0].at.vil_x + 8, 0.02, g[0].at.vil_z + 14), v3(g[0].at.vil_x - 8, 0.02, g[0].at.vil_z + 14));
-  kit_pen(p, 50, MAT_CLOTH, t3(0.76, 0.34, 0.20));
-  block(buf, p, g[0].at.vil_x - 3.5, 0, g[0].at.vil_z - 3.5, 1.0, 0.5, 1.9);
-  kit_pen(p, 51, MAT_SKIN, wall);
-  block(buf, p, g[0].at.vil_x - 3.5, 0.5, g[0].at.vil_z - 4.8, 0.7, 0.18, 0.4);
-  kit_crate(buf, p, frame_at(v3(g[0].at.vil_x + 3.6, 0, g[0].at.vil_z - 3), 0.4), 52, t3(0.70, 0.52, 0.36), INK(), t3(1.0, 0.72, 0.30), 1.2);
-  kit_pen(p, 56, MAT_WORLD, wall);
-  block(buf, p, g[0].at.vil_x - 1.9, 0, g[0].at.vil_z + 9.2, 0.25, 3.4, 2.6); block(buf, p, g[0].at.vil_x + 1.9, 0, g[0].at.vil_z + 9.2, 0.25, 3.4, 2.6);
-  block(buf, p, g[0].at.vil_x, 3.0, g[0].at.vil_z + 9.2, 2.15, 0.4, 2.6);
-  kit_pen(p, 57, MAT_GLOW, t3(0.40, 0.90, 0.70));
-  for i: 0..<7 { block(buf, p, g[0].at.vil_x, 0.3 + cast(f32) i * 0.4, g[0].at.scan_z, 1.65, 0.05, 0.03); }   // the beam: thin bars you can see through
-  // the rail line: sleepers and two rails for T_RAIL metres, a marker post at the sensor ping
-  for i: 0..<100 {
-    s := cast(f32) i * 3; c := rail_at(g, s);
-    kit_pen(p, 58, MAT_CLOTH, t3(0.40, 0.28, 0.24));
-    box(buf, p, frame_at(v3(c.x, 0.06, c.z), rail_yaw(g, s)), 1.5, 0.06, 0.22);
-  }
-  kit_pen(p, 59, MAT_SKIN, t3(0.60, 0.60, 0.66));
-  for i: 0..<50 {
-    s := cast(f32) i * 6; a := rail_at(g, s); b := rail_at(g, s + 6); y := rail_yaw(g, s + 3);
-    for side: 0..<2 {
-      o := ifx side == 0 then -1.0f32 else 1.0f32;
-      limb(buf, p, v3(a.x + cos(y) * o, 0.16, a.z - sin(y) * o), v3(b.x + cos(y) * o, 0.16, b.z - sin(y) * o), 0.07, 0.07, v3(0, 1, 0), 4);
-    }
-  }
-  kit_mesas(buf, p, 60, t3(0.86, 0.50, 0.40), 5, 90, 270, 30, 12, 26);
-  kit_dunes(buf, p, 62, t3(0.93, 0.74, 0.50), 10, 110, 16, 0, 240, 4, 9);
+  // the dome village of the old opening (tables with no starts row): its printed ring wall only; the
+  // rail line and the rest went with the layout per the level spec (#13552)
+  if g[0].c[0].start_n == 0 { bl_village(g, buf, p); }
   dv_room_draw(g, buf, p);   // the rover's cabin: floor, walls and ceiling (drive.coax)
-  if g[0].at.bat_rail {   // the sensor's marker by the rail line, where the old opening's Battery lies
-    kit_rocks(buf, p, 63, t3(0.66, 0.36, 0.28), 20, 120, pick_x(g, H_BATTERY), pick_z(g, H_BATTERY), 3, 14, 0.3, 1.2);
-    kit_pen(p, 64, MAT_SKIN, t3(0.93, 0.88, 0.76));
-    tube(buf, p, frame_at(v3(pick_x(g, H_BATTERY) + 1.2, 0, pick_z(g, H_BATTERY) + 0.8), 0), 2.6, 0.1, 0.1, 0.07, 0.07, 6, true);
-    kit_pen(p, 65, MAT_GLOW, HEAT());
-    ball(buf, p, v3(pick_x(g, H_BATTERY) + 1.2, 2.8, pick_z(g, H_BATTERY) + 0.8), 0.26, 10);
-  }
 }
 
 // The blocked hallway (#13505 playtest 2): the raiders' barricade across the hallway into the mountain,
@@ -1474,6 +1438,7 @@ msg_text :: (g: [] SpGame) -> string {
   if m == MSG_CORE { return "You have the core. Get it to the rover."; }
   if m == MSG_PING { return "Sensor ping. Something is buried near the marker."; }
   if m == MSG_FIRST { return "The sensor found something. Let Digger get it first."; }
+  if m == MSG_EDGE { return "Nothing out there but sand for days. Turn back."; }
   if m == MSG_NO_DRILL { return "Sniper: not without a drill. Find the DRILL card first."; }
   if m == MSG_MAP { return "Sniper: the garage goes deeper than anyone mapped. Here's how deep."; }
   if m == MSG_OUTFIT { return "Outfit changed."; }
@@ -1536,10 +1501,10 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   #assert a.rover_x == 6.0 && a.rover_z == 5.0 && a.post_x == 2.6 && a.post_z == 6.5 && abs(a.crate_x - 38.31) < 0.001 && abs(a.crate_z + 52.04) < 0.001 && a.start_x == 0.0 && a.start_z == 9.0;
   #assert a.rubble_z == -34.0 && a.wall_z == -351.0 && a.boss_x == 0.0 && a.boss_z == -406.0;
   #assert a.deck_x == 141.0 && a.deck_z0 == -204.0 && a.deck_z1 == -186.0 && DECK_Y == 0.9 && RAMP == 3.0;
-  #assert a.bay_x == -500.0 && a.bay_z == 136.0 && a.mem_x == -500.0 && a.mem_z == 200.0;
+  #assert a.bay_x == -500.0 && a.bay_z == 636.0 && a.mem_x == -500.0 && a.mem_z == 700.0;   // far south, out of sight of the plain (#13552)
   #assert a.vil_x == 175.0 && a.vil_z == -75.0 && a.vil_r == 7.0 && a.scan_z == -65.0 && a.rail_x == 175.0 && a.rail_z == -55.0;
-  // the first five lie at the solar farm, the rest in the garage's bays (#13505)
-  px := [PICKS] f32.[-12, -2, 36, 6, 46, -143.92, -38.31, -104.65, 128.17, 143]; pz := [PICKS] f32.[342, 336, 360, 333, 358, -156.44, -52.04, -90.35, -121, -199.5];
+  // the first five lie at the solar farm (the hardware, then the two cards nearer the start, #13552), the rest in the garage's bays (#13505)
+  px := [PICKS] f32.[-838, -843, -840, -809, -815, -143.92, -38.31, -104.65, 128.17, 143]; pz := [PICKS] f32.[-110, -106, -102, -94, -90, -156.44, -52.04, -90.35, -121, -199.5];
   for i: 0..<PICKS { #assert abs(pick_x(g[..], i) - px[i]) < 0.001 && abs(pick_z(g[..], i) - pz[i]) < 0.001; }
   // the rave round the garage's middle
   ax := [FOES] f32.[-4.4, 0.6, 5.6, -1.4, -20.4, 10.1, -22.4, -22.4, -36.4]; az := [FOES] f32.[-191.8, -195.8, -190.8, -188.8, -187.8, -188.8, -189.8, -200.8, -190.8];

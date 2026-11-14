@@ -47,6 +47,7 @@ stencil_strokes :: (c: int) -> string {
   if c == '7' { return "06464620"; }
   if c == '8' { return "00060646464040000343"; }
   if c == '9' { return "06460603034346404000"; }
+  if c == '.' { return "1020"; }
   if c == '-' { return "0343"; }
   return "";
 }

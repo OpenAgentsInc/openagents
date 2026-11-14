@@ -1,64 +1,77 @@
-// The solar farm's field (#13505, playtest 2: "expansive and impactful, like a wide shot from a Dune
-// movie"). Past the plain round the spawn, long regular lines of solar banks run east and west to
-// the edge of the ground: FF_LINES lines FF_DZ m apart, each FF_RUN banks long, on both sides. They
-// are shipped code, not pieces of the world's layer: a fresh world has them, and an edit never moves
-// them. One bank's mesh (metaverse-engine/kit/props.coax kit_solar_bank) is written once into the
-// piece store after the kinds' meshes, and the field is one draw of FF_BANKS instances whose rows sit
-// in the place store after the layer's rows and the player's (layer-draw.coax).
+// The solar farm's field (#13505; layout per the level spec, #13552): four long rows of solar banks
+// stacked north to south in the farm's west and north, with wide aisles between them to run, jump and
+// board through. A row is FF_PER lines of banks FF_LINE_DZ m apart, each FF_RUN banks long from FF_XW
+// eastward. They are shipped code, not pieces of the world's layer: a fresh world has them, and an edit
+// never moves them. One bank's mesh (metaverse-engine/kit/props.coax kit_solar_bank) is written once
+// into the piece store after the kinds' meshes, and the field is one draw of FF_BANKS instances whose
+// rows sit in the place store after the layer's rows and the player's (layer-draw.coax).
 //
-// Nothing in the field is tall: the scale comes from the rows' length, the low sun (FF_SUN) and its
-// long shadows over a wider shadow map (FF_SHADOW_HALF), and the dust haze the rows fade into
-// (ff_style). A walker is held out of a line as from a wall (ff_push), without a collider each.
+// Nothing in the field is tall: the low sun (FF_SUN), its long shadows over a wider shadow map
+// (FF_SHADOW_HALF) and the dust haze (ff_style) give it its scale. A walker is held out of a line as
+// from a wall (ff_push), without a collider each, and a bank's top is a floor she lands on (ff_floors).
 //   coax/bin/coax test metaverse/splice-bots/splice-game.coax
 
 FF_PANELS :: 10;                 // panels in one bank: 21 m
 FF_PITCH :: 21.4f32;             // m from one bank's middle to the next along a line
-FF_RUN :: 10;                    // banks in a line on one side
-FF_LINES :: 27;                  // lines on each side
-FF_X0 :: 64.0f32;                // m from x = 0 to a line's inner end: the plain round the spawn and the day patrols is clear
-FF_Z0 :: 296.0f32;               // m: the southmost line
-FF_DZ :: 6.0f32;                 // m between lines: the low sun's shadows nearly fill the aisle
+FF_RUN :: 7;                     // banks in a line: a row about 150 m long
+FF_ROWS :: 4;                    // rows, north to south
+FF_PER :: 3;                     // lines of banks in a row
+FF_LINE_DZ :: 3.0f32;            // m between a row's lines: a hop from one bank to the next
+FF_ROW_DZ :: 20.0f32;            // m from one row's middle to the next: an aisle about 13 m wide
+FF_XW :: -940.0f32;              // m: the rows' west end
+FF_ZN :: -186.0f32;              // m: the north row's middle line
 FF_HZ :: 0.6f32;                 // m: a line's half depth on the ground
-FF_BANKS :: 2 * FF_RUN * FF_LINES;
-FF_SHOW_Z :: 150.0f32;           // m: the field is drawn north of this, where it can be seen
+FF_TOP :: 1.07f32;               // m: a bank's glass at its middle; it rises north at SOLAR_TILT, where she lands on it
+FF_BANKS :: FF_RUN * FF_ROWS * FF_PER;
+FF_SHOW_X :: -560.0f32;          // m: the field is drawn west of this, where it can be seen
 FF_SHADOW_HALF :: 30.0f32;       // m: the shadow map's half width at the farm (the anime pass's is 26)
 // the sun at the farm by day: low in the north-east, about 19 degrees up, so every bank's shadow runs
 // near three times its height across the aisle
 FF_SUN :: () -> Point { return unit_or(v3(0.55, 0.34, 0.8), v3(0, 1, 0)); }
 
-// The far x of a line's outer end.
-ff_x1 :: () -> f32 { return FF_X0 + cast(f32) FF_RUN * FF_PITCH; }
-// Where bank i stands: east side first, line by line from the south, inner bank first.
-ff_bank_at :: (i: int) -> Point {
-  side := ifx i < FF_RUN * FF_LINES then 1.0f32 else -1.0f32;
-  r := i % (FF_RUN * FF_LINES); line := r / FF_RUN; b := r % FF_RUN;
-  return v3(side * (FF_X0 + (cast(f32) b + 0.5) * FF_PITCH), 0, FF_Z0 + cast(f32) line * FF_DZ);
-}
+// The far x of a line's east end.
+ff_x1 :: () -> f32 { return FF_XW + cast(f32) FF_RUN * FF_PITCH; }
+// Line k's z (0 the north row's first line): its row's middle, less or plus a line.
+ff_line_z :: (k: int) -> f32 { return FF_ZN + cast(f32) (k / FF_PER) * FF_ROW_DZ + cast(f32) (k % FF_PER - FF_PER / 2) * FF_LINE_DZ; }
+// Where bank i stands: line by line from the north, west bank first.
+ff_bank_at :: (i: int) -> Point { return v3(FF_XW + (cast(f32) (i % FF_RUN) + 0.5) * FF_PITCH, 0, ff_line_z(i / FF_RUN)); }
 // The field is drawn: on foot, in a banner or on the drive, out at the farm (not in Sniper's room).
 ff_shown :: (g: [] SpGame) -> bool {
   m := g[0].mode;
   if m != M_PLAY && m != M_BANNER && m != M_DRIVE { return false; }
-  return g[0].zone == Z_MINE && g[0].pz > FF_SHOW_Z && !sp_in_room(g);
+  return g[0].zone == Z_MINE && g[0].px < FF_SHOW_X && !sp_in_room(g);
 }
 // The farm by day: the low sun, its long shadows and the dust haze.
 ff_day :: (g: [] SpGame) -> bool { return ff_shown(g) && g_phase(g) == PH_DAY; }
+// The line nearest (x, z) along z, or -1 off the rows' length.
+ff_line :: (x: f32, z: f32, r: f32) -> int {
+  if x < FF_XW - r || x > ff_x1() + r { return -1; }
+  row := clamp_i(cast(int) floor((z - FF_ZN) / FF_ROW_DZ + 0.5), 0, FF_ROWS - 1);
+  return row * FF_PER + clamp_i(cast(int) floor((z - FF_ZN - cast(f32) row * FF_ROW_DZ) / FF_LINE_DZ + 0.5) + FF_PER / 2, 0, FF_PER - 1);
+}
 
 // A walker of radius r at (x, z) held out of the field's lines: along z out of a line's band, or past
 // its end along x when that is the shorter way. (x, z) as it was when it is in none.
 ff_push :: (x: f32, z: f32, r: f32) -> Point {
-  ax := abs(x); x1 := ff_x1();
-  if ax < FF_X0 - r || ax > x1 + r { return v3(x, 0, z); }
-  k := cast(int) floor((z - FF_Z0) / FF_DZ + 0.5);
-  if k < 0 || k >= FF_LINES { return v3(x, 0, z); }
-  zc := FF_Z0 + cast(f32) k * FF_DZ; dz := z - zc;
+  k := ff_line(x, z, r);
+  if k < 0 { return v3(x, 0, z); }
+  zc := ff_line_z(k); dz := z - zc;
   pz := FF_HZ + r - abs(dz);
   if pz <= 0 { return v3(x, 0, z); }
-  inner := ax - (FF_X0 - r); outer := x1 + r - ax;
-  if lo(inner, outer) < pz {
-    s := ifx x < 0 then -1.0f32 else 1.0f32;
-    return v3(ifx inner < outer then s * (FF_X0 - r) else s * (x1 + r), 0, z);
-  }
+  inner := x - (FF_XW - r); outer := ff_x1() + r - x;
+  if lo(inner, outer) < pz { return v3(ifx inner < outer then FF_XW - r else ff_x1() + r, 0, z); }
   return v3(x, 0, ifx dz < 0 then zc - FF_HZ - r else zc + FF_HZ + r);
+}
+// The low edge of a bank's glass: below it she is held out of the line, above it she stands on it.
+ff_low :: () -> f32 { return FF_TOP - FF_HZ * sin(SOLAR_TILT) / cos(SOLAR_TILT); }
+// The top of the line under (x, z) as a floor (metaverse-engine/physics/stand.coax), after k in out: how
+// many floors out holds now.
+ff_floors :: (x: f32, z: f32, out: [] f32, k: int) -> int {
+  l := ff_line(x, z, 0);
+  if l < 0 || abs(z - ff_line_z(l)) > FF_HZ + 1 || (k + 1) * STAND_FLOATS > out.count { return k; }
+  t := FF_HZ * sin(SOLAR_TILT) / cos(SOLAR_TILT);   // the glass rises toward the line's north side, as kit_solar_bank tilts it
+  stand_put_quad(out, k, FF_XW, ff_line_z(l) - FF_HZ, ff_x1() - FF_XW, 0, 0, FF_HZ * 2, FF_TOP + t, 0, -2 * t);
+  return k + 1;
 }
 
 // The bank's mesh, after the kinds' meshes in the piece store (layer-draw.coax sd_meshes).
@@ -96,25 +109,25 @@ ff_style :: (st: [] f32) {
 // animelab.coax's STYLE_FLOATS and SU_KEY_DIR).
 FF_HAZE :: 36; FF_HAZE_COLOUR :: 40; FF_HAZE_KEY :: 44; FF_HORIZON :: 52;
 
-#test "the farm's field: long regular lines east and west past a clear plain, nothing tall, and a walker held out of every line" {
-  // every bank on the ground, on its line, past the plain, inside the ground's edge
+#test "the farm's field: four long rows in the farm's north-west, wide aisles between them, a walker held out of every line and landing on its top" {
+  // every bank on its line, inside the farm, west of where Sniper stands; four rows of three lines
   for i: 0..<FF_BANKS {
     c := ff_bank_at(i);
-    #assert abs(c.x) > FF_X0 && abs(c.x) < 280 && c.z >= FF_Z0 && c.z <= FF_Z0 + cast(f32) (FF_LINES - 1) * FF_DZ;
+    #assert c.x > FF_XW && c.x < ff_x1() && ff_line(c.x, c.z, 0) == i / FF_RUN && c.z >= FF_ZN - FF_LINE_DZ && c.z <= FF_ZN + 3 * FF_ROW_DZ + FF_LINE_DZ;
   }
-  #assert ff_bank_at(0).x > 0 && ff_bank_at(FF_BANKS - 1).x < 0 && ff_x1() < 280;
-  // the plain round the spawn and the road south are clear
-  #assert ff_push(10, 348, 0.3).x == 10 && ff_push(10, 348, 0.3).z == 348 && ff_push(3, 200, 0.3).z == 200;
-  // on a line: pushed off it along z; at its inner end: back out along x
-  zc := FF_Z0 + 5 * FF_DZ;
-  q := ff_push(120, zc + 0.1, 0.3);
-  #assert q.x == 120 && abs(q.z - (zc + FF_HZ + 0.3)) < 0.001;
-  q = ff_push(-120, zc - 0.1, 0.3);
-  #assert abs(q.z - (zc - FF_HZ - 0.3)) < 0.001;
-  q = ff_push(FF_X0 - 0.1, zc, 0.3);
-  #assert abs(q.x - (FF_X0 - 0.3)) < 0.001 && q.z == zc;
-  // in the aisle between two lines: free
-  q = ff_push(150, zc + FF_DZ * 0.5, 0.3); #assert q.z == zc + FF_DZ * 0.5;
+  #assert FF_ROWS == 4 && ff_x1() - FF_XW > 140 && FF_ROW_DZ - (FF_PER - 1) * FF_LINE_DZ - FF_HZ * 2 > 12;   // long rows, aisles over 12 m
+  // the start, the parts and Sniper are clear of the rows (content/splice.content)
+  #assert ff_push(-790, -100, 0.45).z == -100 && ff_line(-772, -128, 0.45) < 0 && ff_push(-812, -92, 0.45).z == -92;
+  // on a line: pushed off it along z; at its west end: back out along x; in an aisle: free
+  zc := ff_line_z(4);
+  q := ff_push(-850, zc + 0.1, 0.3);
+  #assert q.x == -850 && abs(q.z - (zc + FF_HZ + 0.3)) < 0.001;
+  q = ff_push(-850, zc - 0.1, 0.3); #assert abs(q.z - (zc - FF_HZ - 0.3)) < 0.001;
+  q = ff_push(FF_XW + 0.1, zc, 0.3); #assert abs(q.x - (FF_XW - 0.3)) < 0.001 && q.z == zc;
+  q = ff_push(-850, FF_ZN + FF_ROW_DZ * 0.5, 0.3); #assert q.z == FF_ZN + FF_ROW_DZ * 0.5;
+  // a bank's top is a floor; the aisle has none
+  fl: [STAND_FLOATS * 2] f32;
+  #assert ff_floors(-850, zc, fl[..], 0) == 1 && ff_floors(-850, FF_ZN + FF_ROW_DZ * 0.5, fl[..], 0) == 0 && ff_floors(-700, zc, fl[..], 0) == 0;
   // the bank is low, light and on the ground
   buf: [24000 * VERTEX_WORDS] u32; pen := [1] Pen.[Pen.{}];
   ff_mesh(buf[..], pen[..]);

@@ -439,29 +439,22 @@ spw_batch :: (g: [] SpGame, x: [] SpwWork, doc: string, body: string, fenced: bo
   return b;
 }
 // The pieces a world holds before its first edit (#13505): the solar farm where a run starts (its
-// panels and chargers and Sniper's rover train, the plains left clear for props placed by hand) and the
-// rover's room, far out to the west where nothing on the road sees it (its two window strips, the loft bunk, the desk and the
-// workbench arm; the front window, the edit bay's console and the door are the cabin's own, drive.coax). One row a piece: its kind (content ID), where it stands in centimetres, its turn in degrees.
-SPW_SHIPPED_N :: 18;
+// chargers and Sniper's rover train, the plains left clear for props placed by hand) and the
+// rover's room, far out to the south, past what the camera sees from anywhere she can go (its two window strips, the loft
+// bunk, the desk and the workbench arm; the front window, the edit bay's console and the door are the cabin's own, drive.coax).
+// The farm's rows are its field (farm.coax), not pieces. One row a piece: its kind (content ID), where it stands in centimetres,
+// its turn in degrees. Sniper's charger stands just north of its train; the other two at the Imperial robots' pads (#13552).
+SPW_SHIPPED_N :: 9;
 SPW_SHIPPED :: [SPW_SHIPPED_N * 4] int.[
-  120, 1800, 33600, 0,
-  120, 1800, 34100, 0,
-  120, 1800, 34600, 0,
-  120, 1800, 35100, 0,
-  120, 3300, 33600, 0,
-  120, 3300, 34100, 0,
-  120, 3300, 34600, 0,
-  120, 3300, 35100, 0,
-  121, -40, 35200, -90,
-  121, 2400, 36000, 180,
-  121, 2800, 36000, 180,
-  121, 3200, 36000, 180,
-  123, 300, 34800, 0,
-  127, -50150, 25575, 0,
-  127, -49850, 25575, 0,
-  124, -50490, 25670, 0,
-  125, -49650, 25725, 0,
-  126, -49580, 26200, -90];
+  121, -77200, -13850, 0,
+  121, -90500, -10050, 0,
+  121, -88500, -10050, 0,
+  123, -77200, -12800, 0,
+  127, -50150, 75575, 0,
+  127, -49850, 75575, 0,
+  124, -50490, 75670, 0,
+  125, -49650, 75725, 0,
+  126, -49580, 76200, -90];
 // The shipped pieces placed into the layer, each through the layer's check: how many stand, or minus
 // the row the check refused, less one.
 spw_shipped :: (g: [] SpGame) -> int {

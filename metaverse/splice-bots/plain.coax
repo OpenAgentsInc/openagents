@@ -1,0 +1,106 @@
+// The open desert between the solar farm and the garage (layout per the level spec, #13552). North is -z,
+// east +x (hud.coax's compass). The farm is in the west, the garage in the east with the mountain north
+// of it, and the drive dips south across the middle (drive.coax). On the plain stand only the three
+// landmark rocks, out of the main route: her feet climb their slopes and land on their tops, and the
+// board rides over them (pl_ground, the same numbers the mesh is written from). The mountain's two peaks
+// and the garage's rim, seen from outside, hold her off where they stand (pl_push), so nothing she can
+// see is walked through and nothing she can't see stops her. Past the plain's edge, marked with stakes,
+// the desert goes on in the haze and she is turned back with a word (MSG_EDGE).
+//   coax/bin/coax test metaverse/splice-bots/splice-game.coax
+
+PL_X0 :: -1020.0f32; PL_X1 :: 255.0f32; PL_Z0 :: -450.0f32; PL_Z1 :: 110.0f32;   // m: the plain's edge
+PL_STAKE :: 40.0f32;           // m between the edge's stakes
+PL_FAR :: 420.0f32;            // m: the ground runs this far past the edge (the camera sees 400 m)
+// The three landmark rocks: a pentagon each (x, z in metres), their tops' height and how far in from
+// the foot their slopes reach (the slope is 0.42 to 0.46: walked up, boarded up).
+PL_ROCKS :: 3;
+PL_ROCK :: [PL_ROCKS * 10] f32.[
+  -886, -365, -794, -395, -707, -374, -681, -331, -875, -324,   // the north-west rock, the biggest
+  -538, -373, -473, -401, -386, -381, -395, -343, -528, -340,   // the north rock, between the farm and the garage
+  103, 59, 153, 37, 218, 54, 208, 86, 110, 86];                 // the south-east rock, past the garage
+PL_ROCK_H :: [PL_ROCKS] f32.[10, 8.5, 6.5];
+PL_ROCK_W :: [PL_ROCKS] f32.[22, 19, 15];
+// The mountain north of the garage: two peaks either side of the hallway, their feet on the garage's
+// rim (outlines, then each one's top: x, height, z).
+PL_PEAKS :: 2; PL_PEAK_SIDES :: 7;
+PL_PEAK :: [PL_PEAKS * PL_PEAK_SIDES * 2] f32.[
+  -40, -400, -55, -455, -105, -505, -165, -500, -190, -440, -160, -385, -100, -360,
+  42, -400, 95, -355, 165, -370, 215, -430, 205, -505, 140, -540, 60, -490];
+PL_TOP :: [PL_PEAKS * 3] f32.[-112, 78, -440, 128, 96, -452];
+PL_FARM_PADS :: [4] f32.[-905, -96, -885, -96];   // the Imperial robots' charging pads (content/splice.content's dawn and dusk plans)
+PL_PAD_R :: 3.5f32;
+
+pl_rock :: (i: int) -> [] const f32 { return PL_ROCK[i * 10..<i * 10 + 10]; }
+pl_peak :: (i: int) -> [] const f32 { return PL_PEAK[i * PL_PEAK_SIDES * 2..<(i + 1) * PL_PEAK_SIDES * 2]; }
+// The ground's height at (x, z): a landmark rock's slope or top, else the plain's 0.
+pl_ground :: (x: f32, z: f32) -> f32 {
+  y := 0.0f32;
+  if z > -320 && (z < 30 || x < 100) { return y; }   // the farm, the road and the garage: no rock near
+  for i: 0..<PL_ROCKS { y = hi(y, land_mound_y(pl_rock(i), PL_ROCK_H[i], PL_ROCK_W[i], x, z)); }
+  return y;
+}
+// A body of radius r at (x, z) on the plain held off the mountain's peaks, off the garage's rim and
+// berm from outside (the mine mouth's own walls hold the way in), and inside the plain's edge.
+pl_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
+  q := v3(x, 0, z);
+  if z < -350 { for i: 0..<PL_PEAKS { q = land_mound_push(pl_peak(i), q.x, q.z, r); } }   // the peaks are north of the garage
+  dx := q.x - g[0].at.gar_x; dz := q.z - g[0].at.gar_z; d := sqrt(dx * dx + dz * dz);
+  foot := ga_foot(g) + r;
+  mouth := dz > ga_back(g) - 1 && abs(dx) < 44;   // the mine mouth, the scrap room and the tunnel: their walls (g_layout)
+  lab := dz < 1 - ga_back(g) && abs(dx) < GA_LAB_X + 8;   // the hallway and the lab: theirs (ga_layout), between the peaks
+  if d > ga_back(g) + GA_BACK * 2 + r && d < foot && !mouth && !lab { q = v3(g[0].at.gar_x + dx / d * foot, 0, g[0].at.gar_z + dz / d * foot); }
+  return v3(clamp(q.x, PL_X0 + r, PL_X1 - r), 0, clamp(q.z, PL_Z0 + r, PL_Z1 - r));
+}
+// Past the plain's edge: what the stakes mark.
+pl_out :: (x: f32, z: f32) -> bool { return x < PL_X0 || x > PL_X1 || z < PL_Z0 || z > PL_Z1; }
+
+// The triangles, with the designed world (splice-game.coax g_world).
+pl_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  kit_pen(p, 1, MAT_WORLD, t3(0.90, 0.68, 0.48));
+  quad(buf, p, v3(PL_X0 - PL_FAR, 0, PL_Z0 - PL_FAR), v3(PL_X1 + PL_FAR, 0, PL_Z0 - PL_FAR), v3(PL_X1 + PL_FAR, 0, PL_Z1 + PL_FAR), v3(PL_X0 - PL_FAR, 0, PL_Z1 + PL_FAR));
+  for i: 0..<PL_ROCKS { kit_mound(buf, p, 2, t3(0.74, 0.72, 0.71), t3(0.56, 0.55, 0.57), pl_rock(i), PL_ROCK_H[i], PL_ROCK_W[i]); }
+  for i: 0..<PL_PEAKS { land_peak(buf, p, 5, ifx i == 0 then t3(0.62, 0.46, 0.60) else t3(0.56, 0.42, 0.56), pl_peak(i), PL_TOP[i * 3], PL_TOP[i * 3 + 1], PL_TOP[i * 3 + 2]); }
+  // the edge: an orange stake every PL_STAKE metres round the plain; the Imperial robots' charging pads at the farm
+  w := PL_X1 - PL_X0; h := PL_Z1 - PL_Z0; n := cast(int) ((w + h) * 2 / PL_STAKE);
+  kit_pen(p, 61, MAT_FLAT, t3(0.96, 0.46, 0.16));
+  for i: 0..<n {
+    s := cast(f32) i * PL_STAKE; x := PL_X0; z := PL_Z0;
+    if s < w { x = PL_X0 + s; } else if s < w + h { x = PL_X1; z = PL_Z0 + s - w; } else if s < w * 2 + h { x = PL_X1 - (s - w - h); z = PL_Z1; } else { z = PL_Z1 - (s - w * 2 - h); }
+    block(buf, p, x, 0, z, 0.08, 1.6, 0.08);
+  }
+  kit_pen(p, 62, MAT_FLAT, t3(0.86, 0.86, 0.84));
+  for i: 0..<2 { tube(buf, p, frame_at(v3(PL_FARM_PADS[i * 2], 0, PL_FARM_PADS[i * 2 + 1]), 0), 0.05, PL_PAD_R, PL_PAD_R, PL_PAD_R, PL_PAD_R, 16, true); }
+}
+
+#test "the plain as the level spec lays it out: the farm west, the garage east, three rocks off the road she can climb, the mountain north, an edge" {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); _ := spw_shipped(g[..]);
+  // where things are: the farm west of the garage, the mountain's peaks north of it, the rocks off the drive
+  #assert FF_XW < g[0].at.gar_x - 700 && PL_TOP[2] < g[0].at.gar_z - 200 && PL_TOP[5] < g[0].at.gar_z - 200;
+  for i: 0..<PL_ROCKS {
+    r := pl_rock(i); cx := 0.0f32; cz := 0.0f32;
+    for k: 0..<5 { cx += r[k * 2] * 0.2; cz += r[k * 2 + 1] * 0.2; }
+    #assert !pl_out(cx, cz) && abs(pl_ground(cx, cz) - PL_ROCK_H[i]) < 0.01;   // the top, at its height, inside the plain
+    for k: 0..<5 { c := land_mound_in(r, PL_ROCK_W[i], k); #assert land_mound_d(r, c.x, c.z) > PL_ROCK_W[i] - 0.01; }   // a top, not a ridge
+    #assert PL_ROCK_H[i] / PL_ROCK_W[i] < 0.47;   // a slope she walks up
+  }
+  #assert pl_ground(-600, -100) == 0 && pl_ground(0, 0) == 0;
+  // the drive keeps clear of the rocks and the peaks
+  tr := g_shipped_at(g[..], 123); d := g[0].dv[..]; d[0].boarded = true; d[0].vx = tr.x; d[0].vz = tr.z; d[0].vyaw = 0;
+  dv_start(g[..], 0, 10, 180);
+  for i: 0..<50 {
+    c := dv_at(g[..], cast(f32) i / 49);
+    #assert pl_ground(c.x, c.z) == 0 && !pl_out(c.x, c.z);
+  }
+  // the rim from outside: held at its foot; inside the ring, at Sniper and on the open plain: free
+  q := pl_push(g[..], g[0].at.gar_x + 190, g[0].at.gar_z, 0.45);
+  #assert abs(q.x - (g[0].at.gar_x + ga_foot(g[..]) + 0.45)) < 0.01;
+  q = pl_push(g[..], g[0].at.gar_x + 100, g[0].at.gar_z, 0.45); #assert q.x == g[0].at.gar_x + 100;
+  q = pl_push(g[..], g[0].at.rover_x - 3, g[0].at.rover_z, 0.45); #assert q.x == g[0].at.rover_x - 3 && q.z == g[0].at.rover_z;
+  q = pl_push(g[..], -300, 0, 0.45); #assert q.x == -300 && q.z == 0;
+  q = pl_push(g[..], g[0].at.boss_x, g[0].at.boss_z, 0.45); #assert q.x == g[0].at.boss_x && q.z == g[0].at.boss_z;   // the lab, inside the mountain
+  q = pl_push(g[..], 0, g[0].at.gar_z - ga_back(g[..]) - 10, 0.45); #assert q.z == g[0].at.gar_z - ga_back(g[..]) - 10;   // the hallway
+  // a peak holds her out; the edge turns her back
+  q = pl_push(g[..], -170, -430, 0.45); #assert land_mound_d(pl_peak(0), q.x, q.z) <= -0.44 && !pl_out(q.x, q.z);   // 13 m into the west peak: out by its nearest face
+  q = pl_push(g[..], PL_X0 - 5, 0, 0.45); #assert q.x == PL_X0 + 0.45 && pl_out(PL_X0 - 5, 0);
+}

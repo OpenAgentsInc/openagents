@@ -25,6 +25,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   if !g[0].rubble_gone { q = lc_old_push(q, -3, 3, g[0].at.rubble_z - 1, g[0].at.rubble_z + 1, T_RADIUS); }
   if !g[0].wall_gone { q = lc_old_push(q, -4, 4, g[0].at.wall_z - 1, g[0].at.wall_z + 1, T_RADIUS); }
   q = ga_push(g, q.x, q.z, T_RADIUS);   // the garage's round back wall (garage.coax)
+  q = pl_push(g, q.x, q.z, T_RADIUS);   // the mountain, the rim from outside and the plain's edge (plain.coax)
   dx := q.x - g[0].at.boss_x; dz := q.z - g[0].at.boss_z; d := sqrt(dx * dx + dz * dz);
   if d < 2.1 && d > 0.001 { q = v3(g[0].at.boss_x + dx / d * 2.1, 0, g[0].at.boss_z + dz / d * 2.1); }
   return q;
@@ -34,7 +35,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   g := [1] SpGame.[SpGame.{}];
   lc_mine(g[..]);
   w := sl_world(g[..]);
-  #assert world_ready(w) && g[0].ws[0].refused == 0 && g[0].wall_n == 25 && g[0].wall_n <= WALLS;   // the cabin: four walls and the edit bay console
+  #assert world_ready(w) && g[0].ws[0].refused == 0 && g[0].wall_n == 26 && g[0].wall_n <= WALLS;   // the cabin: four walls and the edit bay console; the metrics room's four
   seen: [WALLS] int; gates := 0; boss := 0; stop := 0; piers := 0;
   for s: 0..<world_high(w) {
     #assert world_at(w, s) != ENTITY_NONE && world_has(w, s, WORLD_TRANSFORM | WORLD_BODY | WORLD_KIND | WORLD_ROW) && !world_has(w, s, WORLD_HEALTH);
@@ -136,12 +137,12 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   // a kept-clear zone, by name: the scanner gate's corridor, a pickup's reach, the Digger's lane
   v := sl_place(g[..], 117, 17500, -6700, 0).v;
   #assert v.why == SL_KEPT && sl_why(g[..], v, o[..]) == "in the kept-clear zone 'Scanner gate'";
-  v = sl_place(g[..], 117, -1200, 34200, 0).v;
+  v = sl_place(g[..], 117, -83800, -11000, 0).v;
   #assert v.why == SL_KEPT && sl_why(g[..], v, o[..]) == "in the kept-clear zone 'Drill arm'";
   v = sl_place(g[..], 113, 0, 300, 0).v;
   #assert v.why == SL_KEPT && sl_why(g[..], v, o[..]) == "in the kept-clear zone 'Mine mouth lane'";
   // a footprint that only reaches into a zone is refused too; a step further out it stands
-  #assert sl_place(g[..], 117, -1200 - 220 - 55, 34200, 0).v.why == SL_KEPT && sl_place(g[..], 117, -1200 - 220 - 65, 34200, 0).ok;
+  #assert sl_place(g[..], 117, -83800 - 220 - 55, -11000, 0).v.why == SL_KEPT && sl_place(g[..], 117, -83800 - 220 - 65, -11000, 0).ok;
   // on the player
   g[0].px = 20; g[0].pz = 10;
   v = sl_place(g[..], 117, 2050, 1000, 0).v;
