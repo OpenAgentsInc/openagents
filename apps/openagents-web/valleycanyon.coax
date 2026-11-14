@@ -7,7 +7,7 @@
 #load "../../metaverse-engine/core/assets.coax";
 #load "../../metaverse-engine/core/sticks.coax";
 #load "../../metaverse/valley/slay-shot-play.coax";
-#load "../../metaverse-engine/render/slay-lights.coax";
+#load "../../metaverse-engine/render/shade/slay-lights.coax";
 #load "../../metaverse-engine/move/locomotion.coax" as locomotion;
 #load "../../metaverse-engine/move/walk.coax" as pc;
 #load "../../metaverse-engine/cam/follow.coax" as camera;

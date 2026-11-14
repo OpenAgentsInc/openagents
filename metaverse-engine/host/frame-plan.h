@@ -1,4 +1,4 @@
-/* The frame plan's numbers (GitHub #13303). Written by metaverse-engine/render/frame-plan.coax:
+/* The frame plan's numbers (GitHub #13303). Written by metaverse-engine/render/graph/frame-plan.coax:
  *   coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h
  * Never edit it by hand. The record layout is stated at the top of frame-plan.coax. */
 #ifndef ENGINE_FRAME_PLAN_H

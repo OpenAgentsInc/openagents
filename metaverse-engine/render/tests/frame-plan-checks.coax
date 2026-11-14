@@ -1,5 +1,5 @@
-// Checks for metaverse-engine/render/frame-plan.coax, which loads this file with #test.
-//   coax/bin/coax test metaverse-engine/render/frame-plan.coax
+// Checks for metaverse-engine/render/graph/frame-plan.coax, which loads this file with #test.
+//   coax/bin/coax test metaverse-engine/render/graph/frame-plan.coax
 
 #test "the name tables are the enums: one name a member, in the enums' order" {
   #assert cast(int) RenderPassId.scene_late == FP_PASSES.count - 1 && cast(int) RenderPassId.invalid == 13 && cast(int) RenderTarget.invalid == FP_TARGETS.count;
@@ -153,7 +153,7 @@ fpc_has :: (o: [] FpText, t: string) -> bool #effects(all) {
 #test "the header names every number once, with the enums' values" {
   o: [1] FpText; n := frame_plan_header(o[..]);
   #assert n == o[0].n && n > 1500 && n < 8192 && o[0].b[0] == '/' && o[0].b[1] == '*';
-  #assert fpc_has(o[..], "/* The frame plan's numbers (GitHub #13303). Written by metaverse-engine/render/frame-plan.coax:\n *   coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h\n * Never edit it by hand. The record layout is stated at the top of frame-plan.coax. */\n#ifndef");
+  #assert fpc_has(o[..], "/* The frame plan's numbers (GitHub #13303). Written by metaverse-engine/render/graph/frame-plan.coax:\n *   coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h\n * Never edit it by hand. The record layout is stated at the top of frame-plan.coax. */\n#ifndef");
   #assert fpc_has(o[..], "#ifndef ENGINE_FRAME_PLAN_H\n#define ENGINE_FRAME_PLAN_H\n#define ENGINE_FP_MAGIC 827344449u\n#define ENGINE_FP_VERSION 1u\n#define ENGINE_FP_WORDS 8u\n#define ENGINE_FP_MOST_OPS 256u\n");
   #assert fpc_has(o[..], "#define ENGINE_FP_FLAG_KEEP 1u\n#define ENGINE_FP_FLAG_STORE_DEPTH 2u\n#define ENGINE_FP_FLAG_VALID 4u\n#define ENGINE_FP_FLAG_DEPTH_WRITE 8u\n#define ENGINE_FP_FLAG_AUX_WRITE 16u\n#define ENGINE_FP_OP_BEGIN 0u\n");
   #assert fpc_has(o[..], "#define ENGINE_FP_OP_MEDIA_AFTER 7u\n#define ENGINE_FP_OP_CULL_EARLY 8u\n") && fpc_has(o[..], "#define ENGINE_FP_OP_PARTICLE_SORT 12u\n#define ENGINE_FP_PASS_BACKGROUND 0u\n") && fpc_has(o[..], "#define ENGINE_FP_PASS_HUD 12u\n#define ENGINE_FP_PASS_SHADOW_CLEAR 14u\n") && fpc_has(o[..], "#define ENGINE_FP_PASS_SCENE_LATE 17u\n#define ENGINE_FP_TARGET_NONE 0u\n");

@@ -404,7 +404,7 @@ static void update(VkSpec *s) {
     size_t at = 0, bytes = coaxial_store_bytes(H.state, k) & ~3u;
     if (bytes > st->cap) bytes = st->cap;
     // a store with a span sends only the rows that changed once its buffer was sent whole
-    // (host.js, metaverse-engine/render/retained-rows.coax)
+    // (host.js, metaverse-engine/render/graph/retained-rows.coax)
     if (coaxial_store_span_v1) {
       uint32_t from = coaxial_store_span_v1(H.state, k, 0), length = coaxial_store_span_v1(H.state, k, 1);
       if (length != 0xFFFFFFFFu && st->sent) { at = from & ~3u; if (at > st->cap) at = st->cap; bytes = length; if (bytes > st->cap - at) bytes = st->cap - at; bytes &= ~(size_t)3; }

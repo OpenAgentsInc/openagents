@@ -7,7 +7,7 @@
 #load "../../metaverse/experimental-terrain.coax" as meadow;
 #load "../../metaverse/experimental-grass-grid.coax" as ggrid;    // the glade's grass seeds by cell (meadow_cull)
 #load "../../metaverse/experimental-grass-baked.coax" as gbaked;  // where each cell's seeds start in the committed glade pack
-#load "../../metaverse-engine/render/grid-cull.coax" as gcull;   // the open field draws only the cells its view can see (meadow_cull)
+#load "../../metaverse-engine/render/geometry/grid-cull.coax" as gcull;   // the open field draws only the cells its view can see (meadow_cull)
 #load "../world/meadow-grid.coax" as grid;   // the open field's scatter grids (everglade/world/meadow.coax)
 #load "../../metaverse/experimental-village.coax" as village;
 #load "../../metaverse-engine/cam/follow.coax" as follow;
@@ -125,7 +125,7 @@ coord_draw :: (s:Creator,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  s:Creator;s.player_x= -32;s.player_z= -48;out:[4096]f32;n:=coord_draw(s,out[..],0,1280,720,1);#assert n>0;
  for i:0..<n {#assert out[i*16]>850 && out[i*16+1]>620 && out[i*16+1]<700 && out[i*16+11]==MODE_SANS;}
 }
-// ---- the key light's shadow tiles (#13016, as Everglade's: metaverse-engine/render/cascades.coax)
+// ---- the key light's shadow tiles (#13016, as Everglade's: metaverse-engine/render/graph/cascades.coax)
 // The glade holds still and the sun is fixed, so its shadow map is drawn once, into the atlas's left
 // tile, and again only when a pack installs (at most once every CC_SHADOW_STALE frames). Only the
 // player moves: she is drawn every frame into the right tile, through the same projection
@@ -905,7 +905,7 @@ grass_share :: (n:int,knob:f32)->int {
   k:=ifx knob>=1 then 1.0f32 else ifx knob<0.25 then 0.25f32 else knob;m:=cast(int)(f32(n)*k+0.5);
   return ifx m>n then n else ifx m<1 then (ifx n<1 then n else 1) else m;
 }
-// The open field's grids, culled (metaverse-engine/render/grid-cull.coax, #13147): scene() gives each kit one
+// The open field's grids, culled (metaverse-engine/render/geometry/grid-cull.coax, #13147): scene() gives each kit one
 // draw of its whole grid round the eye, side by side instances. Most of those cells are behind the
 // camera, beside the view or out of the kit's ring, and the GPU ran every vertex of each to learn
 // it. This gives the draw the first run of cells the view can see and adds a draw for each further

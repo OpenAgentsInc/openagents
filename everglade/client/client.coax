@@ -35,18 +35,18 @@
 #load "../world/field.coax";
 #load "../world/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
 #load "../../metaverse-engine/core/quality.coax";
-#load "../../metaverse-engine/render/cascades.coax";   // the key light's shadow tiles (#13016), as Everglade's
+#load "../../metaverse-engine/render/graph/cascades.coax";   // the key light's shadow tiles (#13016), as Everglade's
 #load "create.coax";   // Character Create, in this world: /worlds/character-creator
 #load "range.coax";    // the Archery Range, in this world: /worlds/archery-range (#13507)
 #load "../../metaverse-engine/character/material.coax" as cmat;   // the characters' material table (#13012)
 #load "cull.coax";   // what the host's instance cull reads each frame (#13050)
-#load "../../metaverse-engine/render/frame-plan.coax";   // the frame's order, as words for the host (#13303)
-#load "../../metaverse-engine/render/retained-rows.coax";   // which records changed since the host last sent them (#13540)
+#load "../../metaverse-engine/render/graph/frame-plan.coax";   // the frame's order, as words for the host (#13303)
+#load "../../metaverse-engine/render/graph/retained-rows.coax";   // which records changed since the host last sent them (#13540)
 #load "cell-view.coax";  // the world's cells as the frame reads them; the controller is everglade/client/cells.coax, in the step's unit (#13280)
 #load "../world/cell-content.coax";   // a cell's content as the pack carries it: its planting put in and taken out, the ground's record (#13280)
-#load "../../metaverse-engine/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
+#load "../../metaverse-engine/render/shade/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 #load "../world/environment.coax";   // the world's places and their light (#13065)
-#load "../../metaverse-engine/render/environment-debug.coax" as envd;   // ?light=VIEW: the developer's light views (#13067)
+#load "../../metaverse-engine/render/shade/environment-debug.coax" as envd;   // ?light=VIEW: the developer's light views (#13067)
 #load "../../metaverse-engine/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held, as Neverwinter's
 #load "../../metaverse-engine/cam/reticle.coax" as reticle;   // and its reticle, the one bow aim shares
 #load "../../metaverse-engine/action/bow.coax" as bow;   // the Ranger's Longbow, drawn with the right button
@@ -1382,7 +1382,7 @@ e2_overlay :: (s: [] E2, out: [] f32, dt: f32) -> int {
 
 // ---- the light (lighting plan Phase 1, #13066): every lit input the passes read is the camera's
 // resolved environment, written each frame into E2U.env (everglade/client/gpu/everglade2.coax through the cg_* names,
-// metaverse-engine/render/painterly.coax paint_env_*). The world's set is e2_environment_set: the glade (the
+// metaverse-engine/render/shade/painterly.coax paint_env_*). The world's set is e2_environment_set: the glade (the
 // painterly default) with the sunlit path's and the deep canopy's deltas; its day is the room's (W: the room's ms into its day at a tick,
 // metaverse-engine/world/day.coax day_from_room), or the glade's fixed noon before a room is heard and in a
 // shot or Character Create, which open none. The key's shadow tiles look along the same direction.
@@ -1437,7 +1437,7 @@ e2_net_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   #assert !e2_net_query("url=/worlds/everglade2?at=60\n") && !e2_net_query("url=/x?net=0") && !e2_net_query("url=/x?network=1") && !e2_net_query("url=/x?cabinet");
 }
 // ?light=VIEW's readout, top left: the camera's region weights by profile id, its ambient, key and
-// grade (metaverse-engine/render/environment-debug.coax). Nothing without the query.
+// grade (metaverse-engine/render/shade/environment-debug.coax). Nothing without the query.
 e2_light_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   if s[0].light_view == envd.ENV_VIEW_OFF { return at; }
   t := s[0].light_text[..]; lines: [envd.ENV_DEBUG_LINES] string;
@@ -1477,7 +1477,7 @@ e2_light_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   for i: 4..<envf.ENV_FRAME_FLOATS { if env_block_w(u[0].env, i) != g[i] { off += 1; } }
   #assert off > 0 && s[0].env[0].writes == 3 && s[0].env[0].refusals == 0 && u[0].f.halo.x == -0.45f32;
 }
-// ---- the key light's shadow tiles (metaverse-engine/render/cascades.coax, #13016, as Everglade's)
+// ---- the key light's shadow tiles (metaverse-engine/render/graph/cascades.coax, #13016, as Everglade's)
 // The host makes one depth atlas of up to four tiles (two on a phone), each a ring further out round
 // the eye. A tile's middle snaps to a whole number of its texels in the light's own space and it is
 // drawn again only once the eye has walked past that step, so every shadow stays fixed to the land:
@@ -1858,7 +1858,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   return n;
 }
 // The frame's order for the host (the face's coaxial_frame_plan_v1, #13303): the engine's pass
-// program (metaverse-engine/render/passes.coax) for this frame's counts, the shadow tile the
+// program (metaverse-engine/render/graph/passes.coax) for this frame's counts, the shadow tile the
 // cascades name, the separate shadow list, the instance cull's runs and the bloom stages the
 // quality asks for. `features` is the host's word (frame-plan.coax FPH_*), `hud` the HUD's
 // vertices this frame and `runs` the cull's runs (e2_cull_fill). The words written, 0 refused.
@@ -1884,7 +1884,7 @@ e2_record_bytes :: (s: [] E2) -> int #export_c #effects(all) {
   if n > E2_RECORDS { n = E2_RECORDS; }
   return n * 24 * 4;
 }
-// The records as a plain row array of the retained scene (metaverse-engine/render/retained-rows.coax),
+// The records as a plain row array of the retained scene (metaverse-engine/render/graph/retained-rows.coax),
 // taken on first use.
 e2_record_rows :: (s: [] E2) -> RetainedRows #effects(all) {
   r := RetainedRows.{width = 24, marks = s[0].rec_marks[..], n = s[0].rec_count[..]};

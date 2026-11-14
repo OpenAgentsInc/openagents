@@ -6,7 +6,7 @@
 // uploads the levels as they are: no image decode, no resize, and a quarter of RGBA8's memory.
 //
 // Each layer is decoded and given its mip chain as the canonical layer path does
-// (metaverse-engine/render/host-layers.coax htx_decode: coax/lib/image's decoder, img_double, the
+// (metaverse-engine/render/host/host-layers.coax htx_decode: coax/lib/image's decoder, img_double, the
 // alpha-weighted box chain img_mips and one premultiply round trip), at SIDE (the realm's layer
 // side, else the first layer's): a layer half that side is doubled, one twice it drops its first
 // level. It composes the same calls here because a 1024 PNG needs more decode work than the

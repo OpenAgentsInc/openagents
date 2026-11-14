@@ -1,8 +1,8 @@
 // The GPU half of the character material agreement check (#13012): every shading function of
-// metaverse-engine/render/character-material.coax evaluated on the GPU, one pixel a case and one row a
+// metaverse-engine/render/shade/character-material.coax evaluated on the GPU, one pixel a case and one row a
 // function, from the same cases the CPU evaluates (character-material-gpu.coax). wgsl-module writes
 // this file's WGSL with character-material-probe.module and .bindings.
-#load "../render/character-material.coax";
+#load "../render/shade/character-material.coax";
 
 CMP_CASE :: 8;    // vec4s a case
 CMP_ROWS :: 8;    // functions

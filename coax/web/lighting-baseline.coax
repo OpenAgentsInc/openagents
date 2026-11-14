@@ -26,7 +26,7 @@
 // page's GPU device at fixed world points and directions, with one measurement entry point added
 // to that module: key, ambient, sky, haze, cloud shade and output, in linear light.
 // Since #13066 the glade functions read the frame's resolved environment from the page's uniforms
-// (metaverse-engine/render/painterly.coax PAINT_ENV_U), so the GPU probes bind the page's own last uniform
+// (metaverse-engine/render/shade/painterly.coax PAINT_ENV_U), so the GPU probes bind the page's own last uniform
 // block. "E" reads back what the page wrote there every frame of the load (host.js's uniform writes,
 // kept by the setup script): OUTDIR/env.tsv has each load's frames, how many distinct light records
 // they held, the largest step of any light word between two frames, the time of day at the first and
@@ -38,7 +38,7 @@
 #load "../lib/media/media.coax";   // cdp, json, fs, proc, args; media_size, media_value
 #load "../lib/image/jpeg.coax";
 #load "../lib/image/jpeg_enc.coax";
-#load "../../metaverse-engine/render/environment-frame.coax" as envf;   // the glade's noon, as a page writes it (#13066)
+#load "../../metaverse-engine/render/shade/environment-frame.coax" as envf;   // the glade's noon, as a page writes it (#13066)
 #load "../../metaverse/style-preset.coax";   // painterly's compatibility night, for e2-night (#13067)
 #load "../../everglade/world/points.coax";   // where down Everglade II's path each capture stands, by name (#13078)
 #load "map-points.coax";
@@ -80,7 +80,7 @@ LB_SETTLE_MS :: 120000;
 // record the page writes (LB_STUBS "night": the setup script's uniform hook puts those words at the
 // record's place in every frame block the page sends), so the real renderer draws the whole frame,
 // its painted sky plate included, from a night record.
-// e2-view-* (#13067): the developer's light views (?light=VIEW, metaverse-engine/render/environment-debug.coax).
+// e2-view-* (#13067): the developer's light views (?light=VIEW, metaverse-engine/render/shade/environment-debug.coax).
 // Loads after exp-combat are new in #13067: the P1.1 baseline has no image of them (LB_FRESH).
 LB_LOADS :: 13;
 LB_FRESH :: 7;   // loads from here on are new captures

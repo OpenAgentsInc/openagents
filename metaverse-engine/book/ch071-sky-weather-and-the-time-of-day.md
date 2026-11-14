@@ -11,7 +11,7 @@
 > and the space realms' starfield in [`metaverse/stars.coax`](../../metaverse/stars.coax).
 > This chapter plans one realm environment clock that drives the sky, the
 > weather and [chapter 13](ch013-light-and-shadow.md)'s lighting record.
-> Shared sky and cloud rendering lives in `metaverse-engine/render/sky.coax`;
+> Shared sky and cloud rendering lives in `metaverse-engine/render/shade/sky.coax`;
 > this chapter's environment clock and unified weather schedule remain unbuilt.
 
 The time of day and the weather change how every surface looks and some of

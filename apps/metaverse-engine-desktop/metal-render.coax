@@ -1,9 +1,9 @@
 // One native Coax renderer facade; the producer remains a separate image.
-#load "../../metaverse-engine/render/native-host.coax";
-#load "../../metaverse-engine/render/metal-host.coax";
+#load "../../metaverse-engine/render/host/native-host.coax";
+#load "../../metaverse-engine/render/host/metal-host.coax";
 #load "../../metaverse-engine/render/metal-package.coax";
-#load "../../metaverse-engine/render/presentation-host.coax";
-#load "../../metaverse-engine/render/host-surface.coax";
+#load "../../metaverse-engine/render/host/presentation-host.coax";
+#load "../../metaverse-engine/render/host/host-surface.coax";
 #load "../../metaverse-engine/render/image-bytes.coax";
 #load "../../metaverse-engine/editor/pack.coax";
 #load "../../metaverse-engine/audio/host-effects.coax";

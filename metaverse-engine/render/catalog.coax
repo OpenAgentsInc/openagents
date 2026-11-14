@@ -3,7 +3,7 @@
 // per shader module; native slots and active resource sets are per pipeline.
 #module "metaverse.engine.render.catalog";
 #load "bindings.coax";
-#load "passes.coax";
+#load "graph/passes.coax";
 #authority;
 
 RENDER_CATALOG_COUNT :: 18;

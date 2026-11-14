@@ -328,10 +328,10 @@ host_core() { step host-core coax/web/tool.sh metaverse-engine/host/core/conform
 format_profiles() { step format-profiles coax/web/tool.sh metaverse-engine/tools/format-profile.coax proto/aethyr/echo-pack-ech1.json proto/aethyr/face-pack-efc1.json proto/aethyr/face-rig-frg1.json proto/aethyr/resource-manifest-rcm1.json proto/aethyr/fact-state-fst1.json proto/aethyr/checkpoint-ack1.json proto/aethyr/transport-manifest-htp1.json proto/aethyr/paged-pack-vpk3.json || status=1;
   step format-profile-ocm1 coax/web/tool.sh metaverse/tools/ocarina-material-profile.coax proto/verse/ocarina-material-pack-ocm1.json || status=1
 }
-# The frame plan's numbers for C hosts (#13303): metaverse-engine/host/frame-plan.h is what metaverse-engine/render/frame-plan.coax
+# The frame plan's numbers for C hosts (#13303): metaverse-engine/host/frame-plan.h is what metaverse-engine/render/graph/frame-plan.coax
 # writes. Committed, because a host's build takes no Coax step for it; compared with its source here.
 frame_plan_h() {
-  step frame-plan-h bash -c 'coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax | cmp -s - metaverse-engine/host/frame-plan.h || { echo "metaverse-engine/host/frame-plan.h is not what metaverse-engine/render/frame-plan.coax writes; run: coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h"; exit 1; }' || status=1
+  step frame-plan-h bash -c 'coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax | cmp -s - metaverse-engine/host/frame-plan.h || { echo "metaverse-engine/host/frame-plan.h is not what metaverse-engine/render/graph/frame-plan.coax writes; run: coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h"; exit 1; }' || status=1
 }
 # The frame plan's walk for C hosts (#13303): metaverse-engine/host/core/frame-plan-walk.h calls what Coax says a
 # walk of each plan must call, and refuses a malformed plan with no call.

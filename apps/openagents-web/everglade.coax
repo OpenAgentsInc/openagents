@@ -98,7 +98,7 @@
 #load "old/v1/everglade-classes.coax";   // Character Create's twelve SRD classes, each with its slot 1 (#13024)
 #load "old/v1/everglade-raid-preview.coax";   // the Cultist Raid offline, a preview (?raid=preview, &cine=1 its flight)
 #load "old/v1/everglade-character.coax";   // a detailed character through the host's character pass (?stage=echo)
-#load "../../metaverse-engine/render/cascades.coax";   // the key light's shadow cascades (#13016)
+#load "../../metaverse-engine/render/graph/cascades.coax";   // the key light's shadow cascades (#13016)
 #load "../../metaverse-engine/render/grass-root.coax" as gr_root;
 #load "old/v1/everglade-sound.coax";   // the spells', the fight's, the raid's and the town's sound (#12751)
 #load "old/v1/everglade-access.coax";   // SETTINGS: keys and a pad through one record, text size, captions, the accessible layer (#12857)
@@ -160,7 +160,7 @@ U_MARKS :: U_TIDE + TD_U_FLOATS;
 // grass, which grows only near it, reads that block alone (everglade.wgsl eg_path_near).
 PATHS2 :: 32;
 U_PATH2 :: U_MARKS + MK_FLOATS;
-// Then the key light's shadow cascades (metaverse-engine/render/cascades.coax cascade_rows; #13016): a header
+// Then the key light's shadow cascades (metaverse-engine/render/graph/cascades.coax cascade_rows; #13016): a header
 // and each tile's rows, zero until the host opens the atlas (the one map's rows on the GPU then).
 U_CASCADE :: U_PATH2 + 4 + PATHS2 * 4;
 UNIFORM_FLOATS :: U_CASCADE + CASCADE_BLOCK;
@@ -4171,7 +4171,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   return n;
 }
 
-// ---- the key light's shadow tiles (metaverse-engine/render/cascades.coax, #13016)
+// ---- the key light's shadow tiles (metaverse-engine/render/graph/cascades.coax, #13016)
 // The host opens the atlas (everglade_shadow_event 0); from then each frame draws at most one tile:
 // the nearest while people, the hero or debris move in it (always, in town), a far one only when
 // its snapped view changes: the eye left its step, the sun turned past its limit, or the world was

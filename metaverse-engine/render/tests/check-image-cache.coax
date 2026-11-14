@@ -16,7 +16,7 @@ icc_get :: (url:string){bytes:[65536]u8;for b,i:url{bytes[i]=b;}icn_get(bytes[0.
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4{tool_errln("usage: check-image-cache REPO CANONICAL_BANK PRESSURE_2048_JPEG NEW_OUT");return 2;}
  root:=args_at(a[..],0);bank:=args_at(a[..],1);pressure:=args_at(a[..],2);dir:=args_at(a[..],3);if !fs_mkdir(dir){return 1;}paths:[8][4096]u8;inputs:[1]RtqInputs;
- for name:[5]string.["metaverse/native/render-images.c","metaverse/native/render-images.h","metaverse-engine/render/host-image-cache.coax","metaverse-engine/render/tests/image-cache-effects.c","metaverse-engine/render/tests/check-image-cache.coax"]{if !rtq_input_add(inputs[..],fs_join(root,name,paths[0][..])){return 1;}}
+ for name:[5]string.["metaverse/native/render-images.c","metaverse/native/render-images.h","metaverse-engine/render/host/host-image-cache.coax","metaverse-engine/render/tests/image-cache-effects.c","metaverse-engine/render/tests/check-image-cache.coax"]{if !rtq_input_add(inputs[..],fs_join(root,name,paths[0][..])){return 1;}}
  self:[4096]u8;sn:=cxproc_self_path(self[..]);if sn<1||!rtq_input_add(inputs[..],cast(string)self[0..<sn])||!rtq_input_add(inputs[..],pressure){return 1;}
  for name:[2]string.["media.list","media.urls"]{if !rtq_input_add(inputs[..],fs_join(bank,name,paths[0][..])){return 1;}}
  names_text:[4096]u8;urls_text:[4096]u8;nn:=fs_read(fs_join(bank,"media.list",paths[1][..]),names_text[..]);un:=fs_read(fs_join(bank,"media.urls",paths[2][..]),urls_text[..]);names:[7]string;urls:[7]string;if nn<1||un<1{return 1;}

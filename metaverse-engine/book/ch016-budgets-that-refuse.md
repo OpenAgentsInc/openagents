@@ -383,8 +383,8 @@ refuses past its limit the same way: whole, with the reason kept.
 
 | Module | Limit | Past it |
 | --- | ---: | --- |
-| [metaverse-engine/render/material.coax](../render/material.coax) | 256 materials in a realm's table | `material_admit` refuses the whole table (`MATERIAL_TABLE`) |
-| [metaverse-engine/render/light.coax](../render/light.coax) | 16 local lights a frame | `light_local_add` refuses the light and counts it |
+| [metaverse-engine/render/shade/material.coax](../render/shade/material.coax) | 256 materials in a realm's table | `material_admit` refuses the whole table (`MATERIAL_TABLE`) |
+| [metaverse-engine/render/shade/light.coax](../render/shade/light.coax) | 16 local lights a frame | `light_local_add` refuses the light and counts it |
 | [metaverse-engine/anim/pose.coax](../anim/pose.coax), [metaverse-engine/anim/skin.coax](../anim/skin.coax) | 96 joints a rig | `skin_advance` and `skin_palette` leave the pose and palette as they were |
 | [metaverse-engine/ui/tree.coax](../ui/tree.coax) | 128 elements in a UI tree | `ui_check` refuses the tree (`UI_COUNT`) |
 

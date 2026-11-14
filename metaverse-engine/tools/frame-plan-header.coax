@@ -1,6 +1,6 @@
-// Prints metaverse-engine/host/frame-plan.h (GitHub #13303): the frame plan's numbers, from metaverse-engine/render/frame-plan.coax.
+// Prints metaverse-engine/host/frame-plan.h (GitHub #13303): the frame plan's numbers, from metaverse-engine/render/graph/frame-plan.coax.
 //   coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
-#load "../render/frame-plan.coax";
+#load "../render/graph/frame-plan.coax";
 tool_main :: ()->int #export_c #effects(all) {o:[1]FpText;n:=frame_plan_header(o[..]);print("%",cast(string)o[0].b[0..<n]);return 0;}

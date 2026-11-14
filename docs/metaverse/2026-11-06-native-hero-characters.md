@@ -40,8 +40,8 @@ describe the delivered implementation and its measured limits.
 | Piece | Where it lives | State |
 | --- | --- | --- |
 | Rig, body pose, face playback | `metaverse-engine/character/` (on `metaverse-engine/anim/pose.coax` and `face.coax`); Echo's declarations in `metaverse/valley/echo.coax` | Moved out of Valley Lab in R2 (#12986): a `Character` record over a world's pack table, sizes under declared maximums, an idle face. Valley Lab runs on it with its TF0290 frames unchanged |
-| Skinning, morphs, groom, materials (GPU) | `apps/openagents-web/gpu/valleycanyon.coax` with `metaverse-engine/render/hair-fiber.coax`, `metaverse-engine/anim/morph-gpu.coax`, `metaverse-engine/render/pbr-env.coax` | Works in the Valley page only. Character shading is branches inside that page's `scene_fs` |
-| Lights | `metaverse-engine/render/slay-lights.coax` | The TF0290 studio rig, in the Valley page's own uniform slots |
+| Skinning, morphs, groom, materials (GPU) | `apps/openagents-web/gpu/valleycanyon.coax` with `metaverse-engine/render/shade/hair-fiber.coax`, `metaverse-engine/anim/morph-gpu.coax`, `metaverse-engine/render/shade/pbr-env.coax` | Works in the Valley page only. Character shading is branches inside that page's `scene_fs` |
+| Lights | `metaverse-engine/render/shade/slay-lights.coax` | The TF0290 studio rig, in the Valley page's own uniform slots |
 | Post pass (depth of field, skin blur) | `vc_post_fs`, run by `coax/web/host.js` | Generic host feature; any page with a `post_fs` gets it |
 | Pack | `~/.openagents/verse/private-build/web/valley-slay.pack`, pinned by `metaverse/valley/canyon-pack-policy.coax` | 1,023,634,576 bytes, owner-local. Its 35 mipmapped 4K RGBA8 layers reserve about 3.13 GB of GPU memory |
 | Groom | Valley pack | 118,339 curves, drawn as strands at a share set by the head's size on screen |
@@ -120,7 +120,7 @@ carries tiers, and the runtime streams the tier the camera needs:
 Add a character pass to `coax/web/host.js` (and later its native hosts)
 instead of merging character shading into each world's shader:
 
-- **Its own shader module**, `metaverse-engine/render/character.coax`, compiled by
+- **Its own shader module**, `metaverse-engine/render/shade/character.coax`, compiled by
   `coax wgsl` like other GPU modules: `character_vs` and `character_fs`
   (skin, eyes, teeth, cloth, metal), `strand_vs` and `strand_fs` (hair),
   and `character_caster_vs` for shadows. It is built from the Valley
@@ -190,7 +190,7 @@ the frames.
 
 | Phase | Work | Exit check |
 | --- | --- | --- |
-| **H0** | `SceneLights` block and the character pass in `host.js`, drawing one CC0 Quaternius person through `metaverse-engine/render/character.coax` in Everglade | That person stands in Everglade with depth, lamp light, fog, rain and two-way shadows; Everglade holds 60 FPS on the 4080 and this Mac; Everglade's golden frames are unchanged when no character is placed |
+| **H0** | `SceneLights` block and the character pass in `host.js`, drawing one CC0 Quaternius person through `metaverse-engine/render/shade/character.coax` in Everglade | That person stands in Everglade with depth, lamp light, fog, rain and two-way shadows; Everglade holds 60 FPS on the 4080 and this Mac; Everglade's golden frames are unchanged when no character is placed |
 | **H1** | Move Echo's CPU runtime into `metaverse-engine/character/`; the Valley page uses it | The Valley page's TF0290 frames (1125, 1132, 1137, 1142, 1147) are byte-identical before and after; all Valley checks pass |
 | **H2** | Move Echo's shading into the character module; the Valley page draws her through the character pass | The same five frames are within a stated tolerance of H1's (mean and 99th-percentile channel difference recorded) |
 | **H3** | Character pack v1 with tiers and compressed textures; repack Echo | Echo's hero tier at or under 300 MB of GPU memory on this Mac; the far tier under 10 MB; the hero tier's frame 1125 within tolerance of the 4K render |
@@ -233,13 +233,13 @@ and H8 (native hosts) come after the recording works.
 `?stage=echo` in Everglade draws Echo through the host's character pass, in
 the town's own depth buffer, light and aux targets and shadow map. The parts:
 
-- **Shading.** `metaverse-engine/render/character.coax` holds Echo's shading (her
+- **Shading.** `metaverse-engine/render/shade/character.coax` holds Echo's shading (her
   materials, skinning, morphs, strands and the skin and fibre light), moved
   out of `apps/openagents-web/gpu/valleycanyon.coax`, which now loads it.
   Its pass entries are `ch_character_vs/fs` (body and strands) and
   `ch_caster_vs/fs`. `apps/openagents-web/character.wgsl` is written from it
   (`gpu/character.module`, `gpu/character.bindings`).
-- **SceneLights.** `metaverse-engine/render/scene-lights.coax` lays out the block: the
+- **SceneLights.** `metaverse-engine/render/shade/scene-lights.coax` lays out the block: the
   world's clip rows and camera, the shadow map's rows, the key light, sky and
   ground ambient, the haze, up to 8 point lights (the 8 nearest her that
   reach her), wetness and the aux distance scale. Everglade fills it each
@@ -472,7 +472,7 @@ does:
   `raid=preview`. The room's Echo is drawn by the character pass, not the
   town rig: `rp_echo_room` places her from the creature, and
   `everglade_character_motion` writes the block's motion slots (116 to 125
-  in `metaverse-engine/render/scene-lights.coax`): her pace, her cast, its time, bar
+  in `metaverse-engine/render/shade/scene-lights.coax`): her pace, her cast, its time, bar
   and point, and the ground's rise under her.
 - **Her motion.** `character-host.coax` runs her own ECH1 locomotion graph
   (idle, walk, jog, starts and stops) at the room's pace. The town rig's

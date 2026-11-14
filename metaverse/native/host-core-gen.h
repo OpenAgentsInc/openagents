@@ -218,7 +218,7 @@ static inline int engine_core_deliver(const EngineCorePack *p, const EngineCoreF
  *
  * A page's engine hands its host the frame's operations through
  *   uint32_t coaxial_frame_plan_v1(state, uint32_t features, uint32_t *out, uint32_t cap)
- * (metaverse-engine/render/frame-plan.coax states the records; passes.coax decides the order).
+ * (metaverse-engine/render/graph/frame-plan.coax states the records; passes.coax decides the order).
  * This file walks those records and calls the host back once an operation, in order. The host
  * maps a pass to its pipeline and bindings (Metal in PageHost.m, Vulkan on Linux and Android);
  * it decides no order and names no pass of its own.
@@ -238,7 +238,7 @@ static inline int engine_core_deliver(const EngineCorePack *p, const EngineCoreF
 #define ENGINE_FRAME_PLAN_WALK_H
 #include <stdint.h>
 // ---- metaverse-engine/host/core/../frame-plan.h
-/* The frame plan's numbers (GitHub #13303). Written by metaverse-engine/render/frame-plan.coax:
+/* The frame plan's numbers (GitHub #13303). Written by metaverse-engine/render/graph/frame-plan.coax:
  *   coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h
  * Never edit it by hand. The record layout is stated at the top of frame-plan.coax. */
 #ifndef ENGINE_FRAME_PLAN_H

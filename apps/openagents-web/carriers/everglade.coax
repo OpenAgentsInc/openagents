@@ -1,6 +1,6 @@
 // One physical source graph owns the producer and renderer facade.
 #load "../everglade.coax";
-#load "../../../metaverse-engine/render/native-host.coax";
+#load "../../../metaverse-engine/render/host/native-host.coax";
 
 #load "../../../everglade/npc/guard-guide-policy.coax" as guard_policy;
 #load "../../../everglade/shared/everglade-step.coax" as movement;

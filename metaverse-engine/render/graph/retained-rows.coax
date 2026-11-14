@@ -1,0 +1,96 @@
+// The retained scene's dirty span (GitHub #13303, #13540): which rows of a GPU store changed since
+// a host last took them, so a host uploads that span and nothing else (a face's coaxial_store_span_v1;
+// coax/web/host.js, metaverse-engine/host/apple/PageHost.m, metaverse/gpu/vk-realm.c). A still
+// scene uploads no bytes.
+//
+// Two writers keep a span here:
+//   retained.coax       a World's slots, a row each (retained_system marks the rows it writes).
+//   a plain row array   a page with no World (Everglade II's records: the glade, its grass and the
+//                       bodies' parts, rewritten by its frame). retained_rows_mark compares each row
+//                       with what the GPU was last given, a 64-bit mark a row (FNV-1a over the row's
+//                       f32 bits), and marks only the rows that differ. The mark is all it keeps of a
+//                       row, so it costs 8 bytes a row, not a copy.
+// The span is the first and one past the last changed row, both ends counted in `n` (RS_LO, RS_HI);
+// lo >= hi is nothing to send. Taking it (retained_rows_take, retained_take) empties it.
+//   coax/bin/coax test metaverse-engine/render/graph/retained-rows.coax
+#module "metaverse.engine.render.retained.rows";
+#load "../tests/retained-rows-checks.coax" #test;
+
+// The counters, at these places in `n`.
+RS_READY :: 0;      // 1 once the storage was taken
+RS_SYSTEM :: 1;     // a World's render system: its id in the World's list (retained.coax)
+RS_LO :: 2;         // the dirty span: the first row changed since the span was taken
+RS_HI :: 3;         //   and one past the last (lo >= hi: nothing to upload)
+RS_WRITTEN :: 4;    // rows written (or found changed) by the last run
+RS_RUNS :: 5;       // runs so far
+RS_REBASES :: 6;    // times every row was written again from a new base (retained.coax)
+RS_UPLOADED :: 7;   // rows a host has taken, all told (a check's measure of what a frame costs)
+RS_KNOWN :: 8;      // a plain row array: rows [0, known) have a mark of what the GPU was given
+RS_COUNTERS :: 9;
+
+RetainedSpan :: struct { first: int; count: int; }   // rows
+
+// Row `slot` changed: the span grows to hold it.
+rt_dirty :: (n: [] int, slot: int) #effects(all) {
+  if n[RS_LO] >= n[RS_HI] { n[RS_LO] = slot; n[RS_HI] = slot + 1; return; }
+  if slot < n[RS_LO] { n[RS_LO] = slot; }
+  if slot + 1 > n[RS_HI] { n[RS_HI] = slot + 1; }
+}
+// The span without taking it.
+rt_span :: (n: [] int) -> RetainedSpan #effects(all) {
+  if n.count < RS_COUNTERS || n[RS_READY] != 1 || n[RS_LO] >= n[RS_HI] { return RetainedSpan.{}; }
+  return RetainedSpan.{first = n[RS_LO], count = n[RS_HI] - n[RS_LO]};
+}
+// The span, taken: the next one starts empty.
+rt_take :: (n: [] int) -> RetainedSpan #effects(all) {
+  s := rt_span(n);
+  if s.count == 0 { return s; }
+  n[RS_LO] = 0; n[RS_HI] = 0; n[RS_UPLOADED] += s.count;
+  return s;
+}
+
+// ---- a plain row array
+RR_MARK_PRIME :: 1099511628211;   // FNV-1a's 64-bit prime (its offset basis is written where it is used: no u64 constants yet)
+
+RetainedRows :: struct {
+  width: int;     // floats a row
+  marks: [] u64;  // a row each: its mark when the GPU was last given it
+  n: [] int;      // RS_COUNTERS counters
+}
+// A row's mark: FNV-1a over its words' bits, so -0 and 0, or two NaNs, are told apart as the GPU would.
+retained_row_mark :: (rows: [] f32, at: int, width: int) -> u64 #effects(all) {
+  h: u64 = 14695981039346656037;   // FNV-1a's offset basis
+  for k: 0..<width { h = mul_wrap(h ^ cast(u64) f32_bits(rows[at + k]), RR_MARK_PRIME); }
+  return h;
+}
+// Takes the storage whole or refuses it. No row is known: the first mark sends every row it sees.
+retained_rows_init :: (r: RetainedRows) -> bool #effects(all) {
+  if r.n.count < RS_COUNTERS { return false; }
+  for i: 0..<RS_COUNTERS { r.n[i] = 0; }
+  if r.width < 1 || r.marks.count < 1 { return false; }
+  for i: 0..<r.marks.count { r.marks[i] = 0; }
+  r.n[RS_READY] = 1;
+  return true;
+}
+// After the frame wrote rows [0, count) of `rows`: each row that differs from what the GPU was last
+// given (or that it was never given) joins the span. The rows found changed; -1 when the storage was
+// not taken. Rows past `count` are drawn by nothing and are left as the GPU has them. Mark every
+// frame, take when the host uploads: a frame the host sends nothing keeps its rows in the span.
+retained_rows_mark :: (r: RetainedRows, rows: [] f32, count: int) -> int #effects(all) {
+  if r.n.count < RS_COUNTERS || r.n[RS_READY] != 1 { return -1; }
+  m := count;
+  if m > r.marks.count { m = r.marks.count; }
+  if m > rows.count / r.width { m = rows.count / r.width; }
+  changed := 0; known := r.n[RS_KNOWN];
+  for i: 0..<m {
+    h := retained_row_mark(rows, i * r.width, r.width);
+    if i < known && r.marks[i] == h { continue; }
+    r.marks[i] = h; rt_dirty(r.n, i); changed += 1;
+  }
+  if m > known { r.n[RS_KNOWN] = m; }
+  r.n[RS_WRITTEN] = changed; r.n[RS_RUNS] += 1;
+  return changed;
+}
+// The rows the host has still to upload, taken.
+retained_rows_take :: (r: RetainedRows) -> RetainedSpan #effects(all) { return rt_take(r.n); }
+retained_rows_span :: (r: RetainedRows) -> RetainedSpan #effects(all) { return rt_span(r.n); }

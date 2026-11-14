@@ -661,7 +661,7 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  return nil;
 }
 
-// A big static mesh's runs' boxes (metaverse-engine/render/mesh-cull.coax, #13168), as host.js meshBounds
+// A big static mesh's runs' boxes (metaverse-engine/render/geometry/mesh-cull.coax, #13168), as host.js meshBounds
 // writes them: the face asks for one index range once its catalog is in, and each run of its
 // triangles gets the box of its vertices' positions, flagged when a vertex's keep word matches.
 // ENGINE_MESH_CULL=0 answers "draw it whole", to compare.
@@ -1038,7 +1038,7 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
   int64_t version = x.store_version ? (int64_t)x.store_version(state, (int32_t)k) : -2;
   if (version != -2 && storeVersions[k].longLongValue == version) continue;
   size_t at = 0, bytes = MIN((size_t)x.store_bytes(state, (int32_t)k), stores[k].length) & ~(size_t)3;
-  // a store with a span sends only the rows that changed once its buffer was sent whole (host.js, metaverse-engine/render/retained-rows.coax)
+  // a store with a span sends only the rows that changed once its buffer was sent whole (host.js, metaverse-engine/render/graph/retained-rows.coax)
   if (x.store_span_v1) {
    uint32_t from = x.store_span_v1(state, (int32_t)k, 0), length = x.store_span_v1(state, (int32_t)k, 1);
    if (length != 0xFFFFFFFFu && storeSent[k].boolValue) { at = MIN((size_t)(from & ~3u), stores[k].length); bytes = MIN((size_t)length, stores[k].length - at) & ~(size_t)3; }
@@ -1052,7 +1052,7 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  PHShader *shadowShader = scene ? [self shader:@"shadow"] : nil;
  PHPipe *shadowPipe = shadowShader ? [self pipe:@"shadow" role:@"shadow" targets:NULL count:0 depth:YES] : nil;
 
- // The shadow map: the atlas the realm's Coax lays out in tiles (metaverse-engine/render/cascades.coax), or one 2048 square.
+ // The shadow map: the atlas the realm's Coax lays out in tiles (metaverse-engine/render/graph/cascades.coax), or one 2048 square.
  // Its size and the engine's tile events come before the frame's order is asked for: open the tiles once the atlas is
  // new or the engine has none; a tile with nothing to draw it with is empty again.
  int aw = 0, ah = 0, tile = -1; BOOL tiles = NO;
@@ -1070,7 +1070,7 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  BOOL post = scene && [self shader:@"post"] && [self shader:@"bloom"];
  BOOL flatDepth = scene && !post;
  PHTarget flat[1] = {{MTLPixelFormatBGRA8Unorm}};
- // The frame's order is the engine's (metaverse-engine/render/passes.coax, GitHub #13303): a page whose face has
+ // The frame's order is the engine's (metaverse-engine/render/graph/passes.coax, GitHub #13303): a page whose face has
  // coaxial_frame_plan_v1 is drawn by the one C walk (host/core/frame-plan-walk.h) calling planBegin, planDraw and the
  // rest below, which map a pass to its Metal pipeline, depth state and bindings and decide no order. This host's word
  // says what it has: no grass, water, character pass, instance cull or particle sort. ENGINE_PLAN=off draws a page

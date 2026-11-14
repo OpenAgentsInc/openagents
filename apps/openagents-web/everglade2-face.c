@@ -300,8 +300,8 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   return n < 0 ? 0u : (uint32_t)n;
 }
 
-/* The frame's order (metaverse-engine/render/passes.coax, #13303): the host walks these records
-   (metaverse-engine/render/frame-plan.coax) and decides no order of its own. */
+/* The frame's order (metaverse-engine/render/graph/passes.coax, #13303): the host walks these records
+   (metaverse-engine/render/graph/frame-plan.coax) and decides no order of its own. */
 EXPORT("coaxial_frame_plan_v1") uint32_t coaxial_frame_plan_v1(cx_face_addr state, uint32_t features, cx_face_addr out, uint32_t cap) {
   return (uint32_t)e2_frame_plan(at(state), features, (int64_t)width, (int64_t)height, hud_n, cull_n, (coax_v_u32){(uint32_t *)(uintptr_t)out, cap});
 }
@@ -357,7 +357,7 @@ EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return 
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }
 EXPORT("coaxial_shadow_draws_v1") cx_face_addr coaxial_shadow_draws_v1(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2_at(state)->shadow.e; }
 EXPORT("coaxial_shadow_draw_count_v1") uint32_t coaxial_shadow_draw_count_v1(cx_face_addr state) { return draw_n > 0 ? (uint32_t)e2_at(state)->shadow_n : 0u; }
-/* The key light's shadow tiles (metaverse-engine/render/cascades.coax, everglade/client/client.coax e2_shadows; coax/web/host.js shadowLayout). */
+/* The key light's shadow tiles (metaverse-engine/render/graph/cascades.coax, everglade/client/client.coax e2_shadows; coax/web/host.js shadowLayout). */
 EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(cx_face_addr state, int32_t coarse, int32_t which) { return (uint32_t)e2_shadow_atlas(at(state), coarse, which); }
 EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(cx_face_addr state, int32_t field) { return (int32_t)e2_shadow_field(at(state), field); }
 EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(cx_face_addr state, int32_t kind, int32_t arg) { e2_shadow_event(at(state), kind, arg); }
@@ -417,7 +417,7 @@ EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr state, i
   uint32_t n = (uint32_t)e2_inst_bytes(at(state)); return n ? n : 4u;
 }
 /* Of store 0, the records, only those that changed since the host last took them (host.js
-   coaxial_store_span_v1, metaverse-engine/render/retained-rows.coax, #13540): field 0 takes the span and
+   coaxial_store_span_v1, metaverse-engine/render/graph/retained-rows.coax, #13540): field 0 takes the span and
    answers its first byte, field 1 its bytes. Every other store has no span: it goes whole. */
 EXPORT("coaxial_store_span_v1") uint32_t coaxial_store_span_v1(cx_face_addr state, int32_t k, int32_t field) {
   if (k != 0) return field == 1 ? 0xFFFFFFFFu : 0u;

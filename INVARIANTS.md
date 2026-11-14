@@ -346,7 +346,7 @@ errors/warnings; all 18 receipt mutants are killed. Full production window
 and room-continuity qualification remains separate.
 
 Version 1 Everglade layer decode and mip arithmetic belong to the shared
-`metaverse-engine/render/host-layers.coax` authority. Browser/native compare all 38
+`metaverse-engine/render/host/host-layers.coax` authority. Browser/native compare all 38
 complete chains bit-identically; actual WebGPU readback matches every one
 of 53,127,800 logical bytes across ten mip levels. SDK transfer padding is
 separate from logical texels. Hosts upload canonical raw bytes without
@@ -357,7 +357,7 @@ and 38 mutants, with no survivors or equivalents. This asset receipt does
 not qualify the remaining display/default decision.
 
 Version 1 still-image media consumes the original compressed bytes
-through `metaverse-engine/render/host-image.coax`, retaining natural rectangular extent
+through `metaverse-engine/render/host/host-image.coax`, retaining natural rectangular extent
 and exactly one shared premultiplied byte round trip. Metadata bounds source,
 workspace and output before the SDK allocates them; a failed decode never
 publishes a successful prefix or falls back to a platform decoder. The SDK
@@ -6769,7 +6769,7 @@ kit thins out past part of its reach by a per-instance rank hashed from where it
 stands, never by a hard radius or by one piece standing in for its neighbours.
 The frame depends only on where the eye is, so walking away and back gives the
 same instances. The key light's shadow tiles snap to whole light-space texels
-(`metaverse-engine/render/cascades.coax`), so shadows stay fixed to the land.
+(`metaverse-engine/render/graph/cascades.coax`), so shadows stay fixed to the land.
 Checks: `everglade/client/client.coax` "a piece keeps its place and size
 at every distance and only fades", "the woods' pieces never move, grow or swap
 as you walk, and come back the same", "Everglade II's shadow tiles: ...";
@@ -6796,7 +6796,7 @@ glade, the woods and the clearing, the same pixels with the cull on and off).
 
 The drawn ground's albedo in `/worlds/everglade2` is the admitted material
 table's (`everglade/world/ground.coax` `e2g_table`), evaluated per pixel by
-`metaverse-engine/render/terrain-shade.coax`'s equations with the weights the tile's
+`metaverse-engine/render/shade/terrain-shade.coax`'s equations with the weights the tile's
 converter uses (`everglade/world/forest.coax` `e2_ground_layer`). The ground's
 indirect light takes `E2G_GROUND_AO_SHARE` of the published canopy bake, and
 AO 1 before the bake publishes and off the tile. The pack's ground vertices
@@ -6806,7 +6806,7 @@ a share names two other known materials, the shares add to one, and any share
 makes the table's identity "ATM2". A table without shares keeps its "ATM1"
 identity unchanged.
 Checks: `metaverse-engine/world/terrain-tile.coax` "a layer share names two other known
-materials ...", `metaverse-engine/render/terrain-shade.coax` "a layer share is one weight
+materials ...", `metaverse-engine/render/shade/terrain-shade.coax` "a layer share is one weight
 against the other ...", `everglade/world/ground.coax` "the table draws the
 pack's ground colours ...", `everglade/client/gpu/everglade2.coax` "the
 ground reads its table's material, the litter's share of the layers under it,
@@ -7723,13 +7723,13 @@ changes continuously"), with zero `coax mutate --root-only` survivors.
 
 Character Create's glade lighting numbers are held once, as `ENV_GLADE_*` in
 `metaverse-engine/world/environment.coax`; `env_glade_profile` is built from them, and the
-painterly default's GPU evaluation (`metaverse-engine/render/painterly.coax`, with
+painterly default's GPU evaluation (`metaverse-engine/render/shade/painterly.coax`, with
 `transfer.coax`, `contact-shade.coax` and `filmic.coax` `film_exposed`) reads the
 same constants. The app's `cg_*` lighting names are delegates and hold no numbers.
 `metaverse_style_preset(STYLE_PAINTERLY, ...)` names the glade profile as its default
 environment (`environment = ENV_GLADE_ID`); lowpoly, flat, anime and photoreal
 name none. Character Create's glade stays identical to the P1.1 baseline within
-its declared bounds (GitHub #13060). Checks: `coax test metaverse-engine/render/painterly.coax`
+its declared bounds (GitHub #13060). Checks: `coax test metaverse-engine/render/shade/painterly.coax`
 ("the default's evaluation reads the glade profile's resolved values"),
 `coax test metaverse/style-preset.coax` ("the painterly preset's default environment
 resolves to the glade profile"), the delegate checks in
@@ -7739,10 +7739,10 @@ and `docs/verification/aethyr-lighting-p1-0-2026-11-08/`.
 ## Lit passes read the camera's resolved environment, written once a frame
 
 Character Create, Everglade II, Experimental and 5E Lab write one `ResolvedEnvironment` a frame
-(`metaverse-engine/render/environment-frame.coax` `env_frame_write`: the realm's set admitted whole, the day
+(`metaverse-engine/render/shade/environment-frame.coax` `env_frame_write`: the realm's set admitted whole, the day
 from `metaverse-engine/world/day.coax`, `env_resolve_camera` at the eye, `env_gpu_pack`) into words
 208..315 of the frame's uniform block, and their passes read the key, direct colour, ambient,
-haze, sky, cloud-shadow flag, exposure and saturation only from it (`metaverse-engine/render/painterly.coax`
+haze, sky, cloud-shadow flag, exposure and saturation only from it (`metaverse-engine/render/shade/painterly.coax`
 `paint_env_*`, through the `cg_*` delegates, which take the block). No lit path in those pages
 holds its own key direction, ambient or fog numbers; Everglade II's shadow tiles look along the
 record's key. A refused resolution writes the last record held, or the glade's noon, never a
@@ -7750,8 +7750,8 @@ partial one. Everglade II's set is `everglade/world/environment.coax` `e2_enviro
 day the room's (`day_from_room`); a page with no room is the glade's fixed noon. A painterly made
 realm (`myrealm`) that authors no time of day and no mist writes its style block under the glade
 (`metaverse/style-preset.coax` `metaverse_style_glade_env`). Character Create stays inside the P1.1
-baseline's bounds (GitHub #13066). Checks: `coax test metaverse-engine/render/environment-frame.coax`
-(`#authority`, zero mutants), `coax test metaverse-engine/render/painterly.coax` ("the glade record draws
+baseline's bounds (GitHub #13066). Checks: `coax test metaverse-engine/render/shade/environment-frame.coax`
+(`#authority`, zero mutants), `coax test metaverse-engine/render/shade/painterly.coax` ("the glade record draws
 exactly the constants"), the `every frame writes the camera's environment` checks in
 `everglade/client/client.coax` and `fivelab.coax`, `coax test metaverse/style-preset.coax`
 ("a made painterly realm with nothing authored is the glade's resolved light"), and
@@ -7762,10 +7762,10 @@ painted sky plate follows the record too: the plate's colour is scaled by the re
 over the glade's at the same height (`paint_env_sky_tint`, through `cg_sky_tint`), so the glade's
 record leaves the plate as painted and a night or dusk record darkens it with the land. The
 developer's light views (`?light=ambient|direct|pregrade|postgrade|regions`,
-`metaverse-engine/render/environment-debug.coax`) are off without the query; they write uniform word 51 (0 is
+`metaverse-engine/render/shade/environment-debug.coax`) are off without the query; they write uniform word 51 (0 is
 the ordinary frame) and a readout of the camera's region weights, ambient, key and grade, and they
-never change the record the passes read. Checks: `coax test metaverse-engine/render/painterly.coax` ("the sky
-plate's tint is 1 under the glade"), `coax test metaverse-engine/render/environment-debug.coax`, the `?light=`
+never change the record the passes read. Checks: `coax test metaverse-engine/render/shade/painterly.coax` ("the sky
+plate's tint is 1 under the glade"), `coax test metaverse-engine/render/shade/environment-debug.coax`, the `?light=`
 check in `everglade/client/client.coax`, and the Phase 1 receipt
 `docs/verification/aethyr-lighting-p1-2026-11-08/`.
 

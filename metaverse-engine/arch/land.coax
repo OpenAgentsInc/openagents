@@ -15,7 +15,7 @@
 //   arch_vine          a curtain of leaves that hangs down a rock face
 //
 // Water, spray and the rainbow are wet materials (metaverse-engine/arch/palette.coax, ARCH_M_WET and up): a
-// world draws them last, in the stylized water pass (metaverse-engine/render/stylized.coax).
+// world draws them last, in the stylized water pass (metaverse-engine/render/shade/stylized.coax).
 //   coax/bin/coax test --library metaverse-engine/arch/land.coax
 #module "metaverse.engine.arch.land";
 #load "flora.coax";

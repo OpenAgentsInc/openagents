@@ -9,7 +9,7 @@ wherever a realm wants it.
 | `classical.coax` | Classical parts built from those shapes: `arch_column` (a fluted Doric column), `arch_plinth`, `arch_baluster`, `arch_rails`, `arch_entablature`, `arch_brazier`, `arch_flame`, `arch_band` |
 | `place.coax` | Records that stand a part somewhere, and draws that name a part and a run of records: `arch_stand`, `arch_round` (a ring of them, with a gap for a doorway), `arch_draw`. A draw also stands its part's solids in the world (`arch_scene_solids`) |
 | `solids.coax` | The placed solids as the OpenAgents Metaverse Engine's colliders (`arch_colliders`), a walker among them (`arch_walk`, `arch_walk_among`) and a mesh that shows them (`arch_solid_mesh`) |
-| `palette.coax` | The stylized materials a vertex can carry (`ARCH_M_PLASTER`, `ARCH_M_ROOF`, `ARCH_M_ASHLAR`, `ARCH_M_LEAF` and the rest), which `metaverse-engine/render/stylized.coax` paints |
+| `palette.coax` | The stylized materials a vertex can carry (`ARCH_M_PLASTER`, `ARCH_M_ROOF`, `ARCH_M_ASHLAR`, `ARCH_M_LEAF` and the rest), which `metaverse-engine/render/shade/stylized.coax` paints |
 | `solid.coax` | Flat-faced solids measured in metres, so stone courses, tiles and boards come out at their true size: `arch_face`, `arch_slab`, `arch_obox`, `arch_beam`, `arch_block`, `arch_roof_plane`, and `ArchWall` with `arch_wall_face`, `arch_wall_beam`, `arch_wall_frame` for building on an upright wall |
 | `village.coax` | The village library: generators for buildings, walls and street furniture ([parameters](#the-village-and-flora-library)) |
 | `plaza.coax` | A town square: steps, a terrace, piers, a fountain, benches, banners, a parasol stall, barrels and jars, paving ([parameters](#a-town-square-plazacoax)) |

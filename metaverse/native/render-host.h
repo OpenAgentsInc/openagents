@@ -1,5 +1,5 @@
 // Vulkan effects for a package and frame admitted by the shared Coax renderer.
-// RenderHost.h is generated from metaverse-engine/render/native-host.coax by the build.
+// RenderHost.h is generated from metaverse-engine/render/host/native-host.coax by the build.
 #ifndef ENGINE_NATIVE_RENDER_HOST_H
 #define ENGINE_NATIVE_RENDER_HOST_H
 #include "RenderHost.h"

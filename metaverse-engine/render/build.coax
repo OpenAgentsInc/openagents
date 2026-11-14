@@ -12,10 +12,10 @@
 #load "interface.coax";
 #load "catalog.coax";
 #load "bindings.coax";
-#load "passes.coax";
+#load "graph/passes.coax";
 #load "media-profile.coax";
 #load "package.coax";
-#load "reference-tree.coax";
+#load "reference/reference-tree.coax";
 #load "asset-profile.coax";
 
 RB_FILE :: 4194304;

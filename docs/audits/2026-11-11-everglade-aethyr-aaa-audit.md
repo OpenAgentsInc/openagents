@@ -396,7 +396,7 @@ hit test, with a bound.
   structs.
 - No system scheduler. Each page calls its systems by hand. One thread.
 - Unused by any product: `sim/broad.coax`, `world/cells.coax`,
-  `render/passes.coax`, `actors/` (3,820 lines), `nav/grid.coax` outside one
+  `render/graph/passes.coax`, `actors/` (3,820 lines), `nav/grid.coax` outside one
   small game.
 
 **AAA practice.** Strict layers with a build that fails on an upward include.
@@ -454,7 +454,7 @@ owner's rule from 2026-11-07 already says to build one world; this is how.
 
 ### G8. Three renderers
 
-**Evidence.** `metaverse-engine/render/passes.coax` defines a bounded frame program that
+**Evidence.** `metaverse-engine/render/graph/passes.coax` defines a bounded frame program that
 only a test loads. The shipping pass order is hard-coded in `coax/web/host.js`
 (4,050 lines), restated in `metaverse-engine/host/apple/PageHost.m` ("the native twin")
 and again in the Vulkan host. The draw model is immediate: up to 250,000

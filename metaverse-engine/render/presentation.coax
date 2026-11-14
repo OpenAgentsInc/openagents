@@ -1,7 +1,7 @@
 // Optional experiment: draw the complete shared graph into binary16, then
 // sample it once into an opaque normalized display. No caller is opted in.
 #module "metaverse.engine.render.presentation";
-#load "host-bindings.coax";
+#load "host/host-bindings.coax";
 #load "resources.coax" as presentation_resources;
 #authority;
 

@@ -2,7 +2,7 @@
 // Source/outputs are valid, nonoverlapping caller-owned views. A full first
 // pass validates the candidate before either output view is changed.
 #module "metaverse.engine.render.texture.codec";
-#load "reference-raster.coax";
+#load "reference/reference-raster.coax";
 #authority;
 RENDER_TEXTURE_PIXELS :: 16777216;
 RenderTexelFormat :: enum u8 {rgba8;rgba8_srgb;bgra8;bgra8_srgb;rgba16f;rgba32f;depth32f;invalid;}

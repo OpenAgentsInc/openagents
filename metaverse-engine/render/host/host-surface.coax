@@ -1,0 +1,31 @@
+// The browser's existing pixel-budget/quality cap expressed once for native
+// effects. Dimensions are physical pixels; scale is pixels per logical point.
+#module "metaverse.engine.render.host.surface";
+#load "../../core/math-d.coax";
+#authority;
+RenderHostSurface :: struct {valid:bool;width:int;height:int;scale:f32;}
+#test "host surface names preserve the browser's quality selection" {
+ #assert render_host_surface_mode("")==0 && render_host_surface_mode("high")==0 && render_host_surface_mode("medium")==1 && render_host_surface_mode("low")==2 && render_host_surface_mode("auto")==3 && render_host_surface_mode("unknown")== -1;
+}
+render_host_surface_mode :: (name:string)->int #export_c #effects(all) {if name=="" || name=="high" {return 0;}if name=="medium" {return 1;}if name=="low" {return 2;}if name=="auto" {return 3;}return -1;}
+#test "host surface honors device pixels authored budget and the kept quality cap" {
+ r:=render_host_surface(2560,1600,1280,800,0,0);#assert r.valid && r.width==2560 && r.height==1600 && r.scale==2;
+ r=render_host_surface(2560,1600,1280,800,1024000,3);#assert r.valid && r.width==1280 && r.height==800 && r.scale==1;
+ r=render_host_surface(2560,1600,1280,800,0,1);#assert r.width==1920 && r.height==1200 && r.scale==1.5;
+ r=render_host_surface(2560,1600,1280,800,0,2);#assert r.width==1280 && r.height==800;
+ r=render_host_surface(320,180,320,180,57600,0);#assert r.width==320 && r.height==180 && r.scale==1;
+ r=render_host_surface(1,1,1,1,1,3);#assert r.valid && r.width==1 && r.height==1;
+ r=render_host_surface(16384,16384,16384,16384,1,3);#assert r.valid && r.width==1 && r.height==1;
+ r=render_host_surface(6,3,2,1,3,3);#assert r.valid && r.width==2 && r.height==1 && r.scale==1;
+}
+#forall "host surface refuses malformed measured extents and unknown modes" field:0..<7,edge:0..<2 {
+ v:=[7]int.[1,1,1,1,0,0,0];if field<4 {v[field]=ifx edge==0 then 0 else 16385;}if field==4 {v[4]= -1;}if field==5 {v[5]=ifx edge==0 then -1 else 4;}
+ r:=render_host_surface(v[0],v[1],v[2],v[3],v[4],v[5]);#assert r.valid==(field==6);
+}
+render_host_surface :: (dw:int,dh:int,cw:int,ch:int,budget:int,quality:int)->RenderHostSurface #export_c #effects(all) {
+ if dw<1 || dh<1 || cw<1 || ch<1 || dw>16384 || dh>16384 || cw>16384 || ch>16384 || budget<0 || quality<0 || quality>3 {return RenderHostSurface.{};}
+ per:=f64(dw)/f64(cw);cap:=ifx quality==1 then 1.5 else ifx quality==2 then 1.0 else per;
+ factor:=fmin(1.0,cap/per);if budget>0 {factor=fmin(factor,sqrt(f64(budget)/(f64(cw)*f64(ch)))/per);}
+ w:=cast(int)fmax(1.0,floor(f64(dw)*factor+0.5));h:=cast(int)fmax(1.0,floor(f64(dh)*factor+0.5));
+ return RenderHostSurface.{valid=true,width=w,height=h,scale=f32(f64(w)/f64(cw))};
+}

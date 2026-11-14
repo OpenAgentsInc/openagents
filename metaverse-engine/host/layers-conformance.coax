@@ -1,5 +1,5 @@
 // Complete authored Everglade bank receipt; no tolerance or image mask.
-#load "../render/host-layers.coax";
+#load "../render/host/host-layers.coax";
 #authority;
 #forall "layer observer compares every plan field and actual decode status" changed:0..<9 {
  p:=HostLayerPlan.{status=0,side=512,width=256,height=256,levels=10,bytes=1398100,work=123,base_offset=1048576,source_bytes=87};

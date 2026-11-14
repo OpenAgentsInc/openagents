@@ -1,4 +1,4 @@
-// A realm's mesh cull (metaverse-engine/render/mesh-cull.coax, GitHub #13168), checked and timed in headless
+// A realm's mesh cull (metaverse-engine/render/geometry/mesh-cull.coax, GitHub #13168), checked and timed in headless
 // Chrome: the page in real time, with the cull on and off in turn (coaxial.meshCull, host.js
 // meshBounds). It
 //   - compares the pictures: on, off and on with the page's clock held (prefers-reduced-motion); the

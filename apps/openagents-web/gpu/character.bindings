@@ -1,6 +1,6 @@
-# The character pass's bindings for `coax wgsl metaverse-engine/render/character.coax` (coax/web/wgsl-module.coax):
+# The character pass's bindings for `coax wgsl metaverse-engine/render/shade/character.coax` (coax/web/wgsl-module.coax):
 # NAME GROUP BINDING, and `uniform COUNT` for a []f32 read as a uniform block of COUNT vec4fs.
-# coax/web/host.js's character pass: group 0 the SceneLights block (metaverse-engine/render/scene-lights.coax,
+# coax/web/host.js's character pass: group 0 the SceneLights block (metaverse-engine/render/shade/scene-lights.coax,
 # SCL_FLOATS / 4 rows); group 1 the character's vertex words, its palette store, its texture layers
 # and their sampler; group 2 the world's shadow map and its comparison sampler.
 u 0 0 uniform 68

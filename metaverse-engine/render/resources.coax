@@ -2,7 +2,7 @@
 // objects and report actual allocation, upload and initialization observations.
 #module "metaverse.engine.render.resources";
 #authority;
-#load "passes.coax" as passes;
+#load "graph/passes.coax" as passes;
 #load "bindings.coax" as bindings;
 #load "frame.coax" as ranges;
 #load "types.coax" as target_limits;

@@ -182,7 +182,7 @@ host_sockets=$!
 timed host-packs "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-packs.coax" "$here/../.." "$here/build/host-packs.wasm" &
 host_packs=$!
 # The frame plan for a page with no plan of its own (#13451): host.js loads it (coax/web/frame-plan-host.js)
-# and asks it each frame's order, so every page draws in metaverse-engine/render/passes.coax's.
+# and asks it each frame's order, so every page draws in metaverse-engine/render/graph/passes.coax's.
 timed frame-plan "$here/../../coax/web/wasm.sh" "$here/../../metaverse-engine/host/frame-plan-carrier.coax" "$here/../../coax/web/frame-plan-face.c" "$here/build/frame-plan.wasm" &
 frame_plan=$!
 # Range-addressable packs (VPK3, metaverse-engine/editor/page-pack.coax, #13001): each .vpk3 a realm names in
@@ -402,7 +402,7 @@ deadgears=$!
 # /worlds/hold-the-stair: the popping tower defense on the SRD 5e rules (rules/srd/rolls.coax).
 timed stair "$here/../../coax/web/wasm.sh" "$here/stair.coax" "$here/stair-face.c" "$here/build/stair.wasm" &
 stair=$!
-# /worlds/painted-village: the hand-painted look (metaverse-engine/render/stylized.coax) on generated assets (metaverse-engine/arch/village.coax, flora.coax).
+# /worlds/painted-village: the hand-painted look (metaverse-engine/render/shade/stylized.coax) on generated assets (metaverse-engine/arch/village.coax, flora.coax).
 timed painted "$here/../../coax/web/wasm.sh" "$here/painted.coax" "$here/painted-face.c" "$here/build/painted.wasm" &
 painted=$!
 # /worlds/watchtower: a cyber defense range: find the intruder, isolate and reimage hosts (docs/research/cybersecurity).

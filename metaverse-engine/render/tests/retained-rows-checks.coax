@@ -1,5 +1,5 @@
-// Checks for metaverse-engine/render/retained-rows.coax, which loads this file with #test.
-//   coax/bin/coax test metaverse-engine/render/retained-rows.coax
+// Checks for metaverse-engine/render/graph/retained-rows.coax, which loads this file with #test.
+//   coax/bin/coax test metaverse-engine/render/graph/retained-rows.coax
 
 RRC_ROWS :: 8; RRC_W :: 4;
 RrcStore :: struct { rows: [RRC_ROWS * RRC_W] f32; marks: [RRC_ROWS] u64; n: [RS_COUNTERS] int; }

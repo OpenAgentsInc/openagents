@@ -1,7 +1,7 @@
 // The Metaverse Engine's architecture kit, flat-faced solids measured in metres: the pieces a vernacular building
 // is made of (metaverse-engine/arch/village.coax). Where metaverse-engine/arch/mesh.coax's shapes run u and v from 0 to
 // 1, these give every face its real size, u along it and v up it in metres, so a shader can lay
-// courses of stone, tiles and boards at their true scale (metaverse-engine/render/stylized.coax).
+// courses of stone, tiles and boards at their true scale (metaverse-engine/render/shade/stylized.coax).
 //
 //   arch_face       a flat four-sided face (or a triangle: its last two corners the same)
 //   arch_slab       a box by its two corners, its sides' v the height above the ground

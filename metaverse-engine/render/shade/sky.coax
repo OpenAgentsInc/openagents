@@ -1,0 +1,87 @@
+// Shared sky, halo, cloud field and portable noise functions. No environment clock is owned here.
+#module "metaverse.engine.render.sky";
+#load "material.coax";
+#load "../noise.coax";
+#test "cloud interpolation matches the four independently weighted corner values" {
+ a:=metaverse_style_hash(1,2);b:=metaverse_style_hash(2,2);c:=metaverse_style_hash(1,3);d:=metaverse_style_hash(2,3);
+ expected:=a*0.84375f32*0.15625f32+b*0.15625f32*0.15625f32+c*0.84375f32*0.84375f32+d*0.15625f32*0.84375f32;
+ #assert abs(metaverse_style_noise(1.25,2.75)-expected)<0.000001;
+ x:=100.0f32;z:=40.0f32;two:=0.65f32*metaverse_style_noise(x/2000,z/2000)+0.35f32*metaverse_style_noise(x/700+3.1,z/700+7.7);
+ #assert abs(metaverse_style_cloud_field(x,z,1.0f32/2000,1.0f32/700,1.5)-two)<0.000001;
+}
+// ---- 5. Sky
+// The gradient from horizon (0) to zenith (1) by the view ray's elevation sine.
+metaverse_style_sky_t :: (up:f32)->f32 #export_c #effects(all) {return pow(st_max(up,0.000001f32),0.55f32);}
+// The horizon band: within 6 degrees (sine 0.1045) of the horizon, lifted toward the haze.
+metaverse_style_sky_band :: (up:f32,lift:f32)->f32 #export_c #effects(all) {return lift*(1.0f32-st_sat(abs(up)/0.1045f32));}
+// A halo term, exp(-k (1 - cos theta)).
+metaverse_style_halo :: (cos_t:f32,k:f32)->f32 #export_c #effects(all) {return exp(-k*st_max(1.0f32-cos_t,0.0f32));}
+
+// ---- 5b. Clouds: one dome layer (1,500 m), two octaves of value noise (one on a on_phone), cut soft,
+// shaded in two tones. Fairy Forest's sky is these, lifted into the engine.
+// A hash of a lattice point, 0 to 1.
+#test "style live lattice uses the portable integer noise profile" {
+ #assert f32_bits(metaverse_style_hash(1,2))==0x3f6013da;
+}
+metaverse_style_hash :: (x:f32,y:f32)->f32 #export_c #effects(all) {
+ return render_noise2(x,y);
+}
+// Value noise at (x, y): the four lattice hashes round it, eased between.
+metaverse_style_noise :: (x:f32,y:f32)->f32 #export_c #effects(all) {
+ ix:=floor(x); iy:=floor(y); fx:=x-ix; fy:=y-iy;
+ sx:=fx*fx*(3.0f32-2.0f32*fx); sy:=fy*fy*(3.0f32-2.0f32*fy);
+ a:=metaverse_style_hash(ix,iy); b:=metaverse_style_hash(ix+1.0f32,iy);
+ c:=metaverse_style_hash(ix,iy+1.0f32); d:=metaverse_style_hash(ix+1.0f32,iy+1.0f32);
+ return a+(b-a)*sx+((c+(d-c)*sx)-(a+(b-a)*sx))*sy;
+}
+// The cloud field at (x, z) metres on the layer: the first octave at s1 per metre, and with two
+// octaves 0.35 of a second at s2, offset so they don't line up.
+metaverse_style_cloud_field :: (x:f32,z:f32,s1:f32,s2:f32,octaves:f32)->f32 #export_c #effects(all) {
+ n:=metaverse_style_noise(x*s1,z*s1);
+ if octaves<1.5f32 {return n;}
+ return n*0.65f32+metaverse_style_noise(x*s2+3.1f32,z*s2+7.7f32)*0.35f32;
+}
+// How much of the sky the field covers: cut soft from cut_lo to cut_hi (0.48, 0.62) at the default cover
+// 0.35, more cover lowering the cut; none at all at cover 0.
+metaverse_style_cloud_cover :: (n:f32,cover:f32,cut_lo:f32,cut_hi:f32)->f32 #export_c #effects(all) {
+ return metaverse_style_soft_step((cut_lo+cut_hi)*0.5f32,(cut_hi-cut_lo)*0.5f32,n+(cover-0.35f32)*0.4f32)*metaverse_style_soft_step(0.025f32,0.025f32,cover);
+}
+// The lit share of a cloud, from the field here and a little toward the light: thinning toward the
+// light is the lit top, thickening its underside.
+metaverse_style_cloud_lit :: (n:f32,toward:f32)->f32 #export_c #effects(all) {return st_sat((n-toward)*5.0f32+0.55f32);}
+// Clouds fade into the horizon band: none under 0.01 of elevation sine, all by 0.16, at most 0.92.
+metaverse_style_cloud_fade :: (up:f32)->f32 #export_c #effects(all) {return metaverse_style_soft_step(0.085f32,0.075f32,up)*0.92f32;}
+
+
+#test "the sky runs horizon to zenith by elevation, with a 6 degree band" {
+ #assert metaverse_style_sky_t(0.0f32)<0.001f32;
+ #assert abs(metaverse_style_sky_t(1.0f32)-1.0f32)<0.0001f32;
+ #assert metaverse_style_sky_t(-0.5f32)<0.001f32;
+ #assert abs(metaverse_style_sky_band(0.0f32,0.15f32)-0.15f32)<0.0001f32;
+ #assert metaverse_style_sky_band(0.2f32,0.15f32)==0.0f32;
+ #assert abs(metaverse_style_halo(1.0f32,900.0f32)-1.0f32)<0.0001f32;
+ #assert metaverse_style_halo(0.99f32,900.0f32)<0.001f32;
+ #assert metaverse_style_halo(0.99f32,60.0f32)>0.5f32;
+}
+
+#test "value noise stays in 0..1, is smooth, and repeats exactly at a lattice point" {
+ for i:0..<200 {x:=cast(f32)i*0.173f32-11.0f32; y:=cast(f32)i*0.311f32+4.0f32;
+  n:=metaverse_style_noise(x,y);
+  #assert n>=0.0f32 && n<=1.0f32;
+  #assert abs(metaverse_style_noise(x+0.001f32,y)-n)<0.02f32;
+  h:=metaverse_style_hash(x,y); #assert h>=0.0f32 && h<1.0f32;}
+ #assert metaverse_style_noise(3.0f32,5.0f32)==metaverse_style_hash(3.0f32,5.0f32);
+}
+
+#test "clouds: two octaves (one on a phone), cut at 0.48 to 0.62, none at cover 0" {
+ #assert metaverse_style_cloud_field(100.0f32,40.0f32,1.0f32/2000.0f32,1.0f32/700.0f32,1.0f32)==metaverse_style_noise(0.05f32,0.02f32);
+ two:=metaverse_style_cloud_field(100.0f32,40.0f32,1.0f32/2000.0f32,1.0f32/700.0f32,2.0f32);
+ #assert abs(two-(metaverse_style_noise(0.05f32,0.02f32)*0.65f32+metaverse_style_noise(100.0f32/700.0f32+3.1f32,40.0f32/700.0f32+7.7f32)*0.35f32))<0.00001f32;
+ #assert metaverse_style_cloud_cover(0.48f32,0.35f32,0.48f32,0.62f32)==0.0f32;
+ #assert metaverse_style_cloud_cover(0.62f32,0.35f32,0.48f32,0.62f32)==1.0f32;
+ #assert abs(metaverse_style_cloud_cover(0.55f32,0.35f32,0.48f32,0.62f32)-0.5f32)<0.0001f32;
+ #assert metaverse_style_cloud_cover(0.9f32,0.0f32,0.48f32,0.62f32)==0.0f32;
+ #assert metaverse_style_cloud_cover(0.5f32,0.6f32,0.48f32,0.62f32)>metaverse_style_cloud_cover(0.5f32,0.35f32,0.48f32,0.62f32);
+ #assert metaverse_style_cloud_lit(0.6f32,0.6f32)==0.55f32 && metaverse_style_cloud_lit(0.4f32,0.6f32)==0.0f32 && metaverse_style_cloud_lit(0.8f32,0.6f32)==1.0f32;
+ #assert metaverse_style_cloud_fade(0.005f32)==0.0f32 && metaverse_style_cloud_fade(0.2f32)==0.92f32;
+}

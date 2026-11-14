@@ -1,5 +1,5 @@
-// Checks for the shipping half of metaverse-engine/render/passes.coax (#13303), which loads this file with #test.
-//   coax/bin/coax test metaverse-engine/render/passes.coax
+// Checks for the shipping half of metaverse-engine/render/graph/passes.coax (#13303), which loads this file with #test.
+//   coax/bin/coax test metaverse-engine/render/graph/passes.coax
 
 // Everglade II's frame: a scene with shadow tiles and a separate shadow list, the instance cull,
 // particles, the post chain and the HUD between the media layers.

@@ -111,7 +111,7 @@ time, Wasm memory and the ground's facts. It passes only on the pack route with 
 memory growth.
 
 The woods' and the glade's tree crowns (sphere proxies per kit) are then baked onto the tile as
-ambient occlusion (`metaverse-engine/render/bake.coax`, keyed by the tile's revision, the crowns' digest and one world-state
+ambient occlusion (`metaverse-engine/render/shade/bake.coax`, keyed by the tile's revision, the crowns' digest and one world-state
 axis, the realm's variant: a bake for other land, crowns or state refuses and the live bake stays).
 A crown of radius r whose centre is D away along d hides (r / D)^2 max(0, n . d) of the
 cosine-weighted sky; AO = clamp(1 - sum, 0.6, 1), with no bounce, eased to open sky over the last 6 m inside the tile's edge so leaving it is no step in light. Your character
@@ -121,7 +121,7 @@ the canopy; the ground takes a quarter of it (below). `e2_probe` 9 is the bake's
 The ground draws from the table and the bake (#13052). The page uploads both as one store
 (`e2g_gpu`: the grid, the four materials, the live AO), and the ground shader
 (`everglade/client/gpu/everglade2.coax` `e2_ground_albedo`, `e2_ground_ao`) takes the same weights at each pixel
-(`forest.coax` `e2_ground_layer`) and evaluates `metaverse-engine/render/terrain-shade.coax`'s equations.
+(`forest.coax` `e2_ground_layer`) and evaluates `metaverse-engine/render/shade/terrain-shade.coax`'s equations.
 The pack's vertex colours are no longer read. The table holds the pack's colours re-encoded for
 its 2.2 power, so each decodes to the same linear colour. The litter's autumn tint is a layer share
 (a new material-table term: autumn's weight against the meadow's under it, `aethyr.terrain.materials`
@@ -303,7 +303,7 @@ mv /tmp/everglade2-data.pack apps/openagents-web/realms/everglade2/assets/evergl
 `metaverse-engine/character/material.coax` holds each colour layer's material record: its kind (skin,
 cloth, hair, eye or metal), roughness, metalness, sheen and the data layers it reads. The page
 stores the table (store 3) and `cc_player_fs` in `everglade/client/gpu/everglade2.coax` samples the maps and
-shades with `metaverse-engine/render/character-material.coax`. Roughness never goes below 0.55, or 0.7 on
+shades with `metaverse-engine/render/shade/character-material.coax`. Roughness never goes below 0.55, or 0.7 on
 metal, so characters stay matte. `?maps=0` turns the maps off, and `?film` adds skin wrap, cloth
 sheen and hair highlights.
 
@@ -388,7 +388,7 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
 - A frame-rate counter in the bottom-right corner shows frames a second, averaged over 0.5 s.
 - The graphics governor (`metaverse-engine/core/quality.coax`) sets how many pixels the page draws. It lowers
   the resolution when frames run slow and raises it again when there's room.
-- The key light's shadows are the Metaverse Engine's cascades (`metaverse-engine/render/cascades.coax`): four tiles in
+- The key light's shadows are the Metaverse Engine's cascades (`metaverse-engine/render/graph/cascades.coax`): four tiles in
   a 2048 atlas reaching 24, 60, 150 and 360 m round you (two, to 20 and 75 m, on a phone). Each tile's middle snaps to whole texels
   in the light's space and moves only in steps of 8 to 120 m, so shadows stay fixed to the land
   as you walk. The near tile casts every tree at its second level, the 60 m tile what the view

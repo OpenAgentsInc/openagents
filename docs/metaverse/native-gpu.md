@@ -694,7 +694,7 @@ tasks (native-gpu.json) come after the port.
   They are `E2U` (`everglade/client/gpu/everglade2-uniforms.coax`): the glade
   pages' frame head (`GladeFrame`, `everglade/scene/gpu/glade-frame.coax`),
   its own words, the shadow tiles and the resolved environment (`EnvBlock`,
-  `metaverse-engine/render/env-block.coax`). The page writes the struct and
+  `metaverse-engine/render/shade/env-block.coax`). The page writes the struct and
   hands its bytes to the host; `E2_U_ENV`, `E2_U_CASCADE` and
   `E2_U_LIGHT_VIEW` are gone. The shared passes take the frame head and the
   environment as values (`fivelab_project`, `fivelab_scene_place`, `cg_*`,

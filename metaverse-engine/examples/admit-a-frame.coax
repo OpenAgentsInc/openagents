@@ -1,7 +1,7 @@
 // book:begin example
 #load "../render/types.coax" as rt;
 #load "../render/frame.coax" as frame;
-#load "../render/passes.coax" as passes;
+#load "../render/graph/passes.coax" as passes;
 #import "Basic";
 
 #test "the worked frame admits both four-word draw encodings" {

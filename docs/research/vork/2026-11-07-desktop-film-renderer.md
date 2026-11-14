@@ -206,9 +206,9 @@ the scale of G1 or G2. F4 and F5 should wait until a film needs them.
 | --- | --- |
 | `metaverse-engine/core/loop.coax`, `replay.coax`, `rand.coax` | Exact replay at film time; sample streams |
 | Realm Coax and its stages (`?stage=`, `?raid=preview&cine=1`) | Unchanged scene content |
-| `apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-fx.coax`, `metaverse-engine/render/character.coax`, `apps/openagents-web/gpu/*.coax` | The same shading functions, with film visibility inputs |
+| `apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-fx.coax`, `metaverse-engine/render/shade/character.coax`, `apps/openagents-web/gpu/*.coax` | The same shading functions, with film visibility inputs |
 | `coax spirv`, `coax metal`, `metaverse/gpu/vk-*.c` | The native pipeline and host, extended |
-| `metaverse-engine/render/passes.coax`, `catalog.coax` | The pass graph as data; the film profile selects extra passes |
+| `metaverse-engine/render/graph/passes.coax`, `catalog.coax` | The pass graph as data; the film profile selects extra passes |
 | `metaverse-engine/render/reference-*.coax` | CPU oracles for each new pass |
 | Animation Lab ALP1, `anim.cut.v1`, `labs anim play` | The edit, cameras and audio clock for films |
 | `metaverse-engine/audio`, `metaverse-engine/audio/speak.coax` | Score, voices and the mix, already offline and deterministic |

@@ -1,4 +1,4 @@
-// Fixtures metaverse-engine/render/bake.coax's checks share (#12995).
+// Fixtures metaverse-engine/render/shade/bake.coax's checks share (#12995).
 
 bk_test_grid :: (t: TerrainTile, rev: [8] u32) -> BakeGrid #effects(all) {
   return BakeGrid.{cells = t.cells, spacing = t.spacing, origin_x = t.origin_x, origin_z = t.origin_z, rise = 7,

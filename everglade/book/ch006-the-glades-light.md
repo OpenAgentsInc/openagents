@@ -31,8 +31,8 @@ the glade.
 | The glade profile: sun, sky, ground bounce, haze, film | `env_glade_profile` and `ENV_GLADE_*` in `metaverse-engine/world/environment.coax` |
 | Places as regions, admitted whole and resolved by position | [`metaverse-engine/world/environment-region.coax`](../../metaverse-engine/world/environment-region.coax) (`env_region_index_replace`, `env_resolve_camera`) |
 | Everglade II's places | `e2_environment_set`, `e2_env_sunlit_profile`, `e2_env_canopy_profile` in `everglade/world/environment.coax` |
-| The canopy's baked occlusion | `e2g_bake`, `e2g_occluded`, `e2g_ao_of` in [`everglade/world/ground.coax`](../../everglade/world/ground.coax), on [`metaverse-engine/render/bake.coax`](../../metaverse-engine/render/bake.coax) |
-| Shadow cascades | [`metaverse-engine/render/cascades.coax`](../../metaverse-engine/render/cascades.coax) |
+| The canopy's baked occlusion | `e2g_bake`, `e2g_occluded`, `e2g_ao_of` in [`everglade/world/ground.coax`](../../everglade/world/ground.coax), on [`metaverse-engine/render/shade/bake.coax`](../../metaverse-engine/render/shade/bake.coax) |
+| Shadow cascades | [`metaverse-engine/render/graph/cascades.coax`](../../metaverse-engine/render/graph/cascades.coax) |
 
 ## The method
 

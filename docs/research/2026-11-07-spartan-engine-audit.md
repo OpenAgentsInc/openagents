@@ -189,7 +189,7 @@ This is the part that matters most for Everglade II.
 | Grass | Placed by the vertex shader from the cell hash, in four nested tiers fixed to the land (0.5/1/2/4 m cells out to 28/40/52/140 m). Each coarser tuft is one of the four finer tufts it covers. Past 16 m, tufts drop out by rank and the survivors widen. | `everglade/world/field.coax`, `apps/openagents-web/gpu/everglade2.coax:52-74` |
 | Trees | Three LODs at hard distances: whole to 36 m, crown cards to 70 m. Past 70 m only items with `q % 3 == 0` remain, scaled 1.3x. Past 160 m only `q % 6 == 0`, scaled 1.5x. | `everglade/world/plant.coax:21-23`, `apps/openagents-web/everglade2.coax:648-663` |
 | Understory | Each kit has a hard cutoff distance: pebbles and mushrooms 26 m, flowers 45 m, ferns 80 m, bushes 95 m. | `everglade/world/plant.coax:21-22` |
-| Shadows | One map 68 m across, centred on the player and snapped in world xz to 2 m steps. Its y follows the terrain height. Only pieces within 40 m cast, all at LOD 1. The OpenAgents Metaverse Engine has light-space texel-snapped cascades (`metaverse-engine/render/cascades.coax`), but Everglade II doesn't use them. | `apps/openagents-web/everglade2.coax:28,562-564,648-652`, `apps/openagents-web/gpu/everglade2.coax:90-116` |
+| Shadows | One map 68 m across, centred on the player and snapped in world xz to 2 m steps. Its y follows the terrain height. Only pieces within 40 m cast, all at LOD 1. The OpenAgents Metaverse Engine has light-space texel-snapped cascades (`metaverse-engine/render/graph/cascades.coax`), but Everglade II doesn't use them. | `apps/openagents-web/everglade2.coax:28,562-564,648-652`, `apps/openagents-web/gpu/everglade2.coax:90-116` |
 | AA | No temporal AA. DPR 2. | |
 | Quality | A governor steps the resolution and costs down and up with hysteresis. | `metaverse-engine/core/quality.coax` |
 | Measurement | `frametime.ts`: per-pass GPU timestamps in headless Chrome. `perf.ts`: p95 must stay at or under 17.5 ms and no frame may exceed 33 ms, at four Everglade v1 places. Everglade II: about 16 ms at the glade and 17 ms at the clearing, at 2400x1400. | `coax/web/frametime.ts`, `coax/web/perf.ts`, `docs/metaverse/everglade2.md` |
@@ -280,7 +280,7 @@ runs on our browser host as it stands.
   space, so every step shifts the shadow texels by a fraction and the edges crawl. Only pieces
   within 40 m cast, so the woods past about 34 m have no shadows at all. Distant forest looks flat,
   and shadows pop on at the edge of the map.
-- **Map.** Everglade II should use `metaverse-engine/render/cascades.coax`, which already snaps by texels in
+- **Map.** Everglade II should use `metaverse-engine/render/graph/cascades.coax`, which already snaps by texels in
   light space and redraws a tile only when its snapped view changes. Use two tiles on the Mac: a
   near tile of about 40 m and a far tile of about 300 m, which covers the full 300 m tree reach at
   LOD 2 or with cards only. Blend between tiles as Spartan does. Draw casters with the same LOD and
@@ -367,7 +367,7 @@ runs on our browser host as it stands.
 - **Why.** It would remove grass and leaf shimmer, and it would let hard LOD swaps through as
   Spartan's do. But it needs motion vectors for every instanced, wind-bent vertex, and tuning it
   for thin foliage cost Spartan weeks.
-- **Map.** A post pass in `metaverse-engine/render/post.coax`, with the previous frame's transform in every
+- **Map.** A post pass in `metaverse-engine/render/shade/post.coax`, with the previous frame's transform in every
   vertex stage.
 - **Effort.** L. **WebGPU.** Yes. Do lessons 1 to 5 first, because they remove the pops without it.
 

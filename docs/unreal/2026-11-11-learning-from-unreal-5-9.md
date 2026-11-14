@@ -74,7 +74,7 @@ Verse now:
 
 Nanite, Lumen, MegaLights and virtual shadow maps are not in the top ten.
 Their web-feasible cores are already on our roadmap (the cluster DAG in
-`metaverse-engine/render/geometry/`, cached cascades in `metaverse-engine/render/cascades.coax`,
+`metaverse-engine/render/geometry/`, cached cascades in `metaverse-engine/render/graph/cascades.coax`,
 lighting phases 3–5). Section 2 says what to take from each.
 
 ---
@@ -131,7 +131,7 @@ four, borders locked, half-edge collapses). Watertight page residency
 after its dependents). Projected-error cut selection (`cut.coax`). GPU
 cluster culling with a depth pyramid and a retest list (`cull.coax`, run by
 `coax/web/cull-lab.js`). Mesh pages (`pages.coax`). Shipping realms use run
-culling instead: `render/mesh-cull.coax` and `render/grid-cull.coax`. All of
+culling instead: `render/geometry/mesh-cull.coax` and `render/geometry/grid-cull.coax`. All of
 the DAG work is Valley Lab only.
 
 **The gap.** Our DAG and its rules are `#authority` and checked, which is
@@ -166,9 +166,9 @@ light (`LumenRadianceCache.cpp`), ReSTIR resampling (`LumenReSTIRGather.cpp`)
 and optional hardware tracing. Everything is temporal.
 
 **What the Metaverse Engine has.** No global illumination. A hemisphere ambient with a
-split for indirect occlusion and sun visibility (`render/painterly.coax`,
+split for indirect occlusion and sun visibility (`render/shade/painterly.coax`,
 `paint_irradiance`), contact shading from normal and depth
-(`render/contact-shade.coax`), height haze and cloud shadows. Lighting
+(`render/shade/contact-shade.coax`), height haze and cloud shadows. Lighting
 phase 5 plans "indirect visibility and interior transitions"
 (`docs/metaverse/lighting/README.md`).
 
@@ -199,9 +199,9 @@ traces first, then world-space traces or hardware ray tracing:
 `MegaLightsRayTracing.cpp`), and denoises spatially and temporally
 (`MegaLightsDenoising.cpp`), guided by last frame's history.
 
-**What the Metaverse Engine has.** A bounded list of local lights (`render/light.coax`),
+**What the Metaverse Engine has.** A bounded list of local lights (`render/shade/light.coax`),
 spell lights (`fx/spell-light.coax`) and the character pass's
-`SceneLights` (`render/scene-lights.coax`). Lighting phase 3 plans "shared
+`SceneLights` (`render/shade/scene-lights.coax`). Lighting phase 3 plans "shared
 local lights and scalable assignment".
 
 **The gap.** No clustered light assignment and no local-light shadows. A
@@ -228,9 +228,9 @@ casters move (`VirtualShadowMapCacheManager.cpp`). Rendering many small
 pages cheaply depends on Nanite.
 
 **What the Metaverse Engine has.** Cached cascades in one depth atlas
-(`metaverse-engine/render/cascades.coax`, #13016). A tile redraws only when its
+(`metaverse-engine/render/graph/cascades.coax`, #13016). A tile redraws only when its
 snapped view changes. There's one 2048 map reaching 60 m, with PCF
-(`render/light.coax`, `render/shadow-filter.coax`).
+(`render/shade/light.coax`, `render/shade/shadow-filter.coax`).
 
 **The gap.** No split between static and dynamic casters (a moving
 character forces a whole tile redraw), and no page marking.
@@ -255,7 +255,7 @@ the graph (`RenderGraphValidation.h`) and traces it
 (`RenderGraphTrace.h`, viewed in `Plugins/RenderGraphInsights`).
 
 **What the Metaverse Engine has.** Admitted pass operations and resources
-(`render/passes.coax`, `render/resources.coax`), atomic composition of the
+(`render/graph/passes.coax`, `render/resources.coax`), atomic composition of the
 canonical graph (`render/runtime.coax`), a GPU resource ledger with slot,
 generation and epoch (`render/registry.coax`), and device-loss policy
 (`render/loss-policy.coax`). Each realm still orchestrates its own passes
@@ -792,7 +792,7 @@ agent context the way MCP tool search does.
 - Phones as first-class targets (`metaverse-engine/core/quality.coax`).
 - Compressed-texture detection (`coax/web/host.js`) and texture tiers
   (`docs/metaverse/2026-11-07-texture-formats.md`).
-- Native Metal and Vulkan hosts (`render/metal-host.coax`,
+- Native Metal and Vulkan hosts (`render/host/metal-host.coax`,
   `host/build-vulkan.coax`).
 
 **The gap.** We don't use render bundles. We have no pipeline prewarm

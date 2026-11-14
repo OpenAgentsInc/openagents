@@ -11,6 +11,18 @@ its private adapter is not yet part of this shared catalog or its qualification.
 Galaxy remains absent from the shipping realm list.
 Its development route is `/render-fixtures/galaxy/`.
 
+The folder is split by what each file is (GitHub #13541):
+
+| Folder | What is in it |
+| --- | --- |
+| `shade/` | Light and materials: the painterly environment, the environment block, the character material, terrain shading, contact shade, sky, vegetation, shadow filtering, post and the stylized look |
+| `graph/` | The frame plan and its passes: `frame-plan.coax`, `passes.coax`, `cascades.coax`, `retained.coax` and `retained-rows.coax` |
+| `geometry/` | Culling, clusters and LOD, with `grid-cull.coax` and `mesh-cull.coax` |
+| `reference/` | The CPU oracles the GPU is checked against: `reference-*.coax` |
+| `host/` | What a host needs to walk the plan: `host-*.coax`, `native-host.coax`, `metal-host.coax`, `presentation-host.coax` |
+
+The rest (admission, catalog, packages, textures, media) stays at the top. Checks stay in `tests/`.
+
 | Source | Responsibility |
 | --- | --- |
 | `frame.coax`, `geometry.coax` | Measured upload spans, the four-u32 draw ABI, actual vertex/index/instance domains and bounded admission work |
@@ -54,7 +66,7 @@ To use it in a world:
 
 1. Build parts with the kit's pen and stand them with records
    (`metaverse-engine/arch/`). Give each vertex a material from `metaverse-engine/arch/palette.coax`.
-2. In the world's `gpu/<module>.coax`, `#load` `metaverse-engine/render/stylized.coax`.
+2. In the world's `gpu/<module>.coax`, `#load` `metaverse-engine/render/shade/stylized.coax`.
    In its `.module`, name `stylized_bg_vs/fs`, `stylized_scene_vs/fs`,
    `stylized_shadow_vs/fs` and `stylized_grass_vs/fs`, with `--strip stylized_`.
    For water, also name `stylized_water_vs`, `stylized_water_transmit_fs` and
@@ -83,8 +95,8 @@ Colours are authored as they should look on the display. The shaders decode
 them once, light them, and encode once on the way out.
 
 ```sh
-coax/bin/coax test --library metaverse-engine/render/stylized.coax
-coax/bin/coax test --library metaverse-engine/render/stylized-frame.coax
+coax/bin/coax test --library metaverse-engine/render/shade/stylized.coax
+coax/bin/coax test --library metaverse-engine/render/shade/stylized-frame.coax
 ```
 
 It doesn't do yet: outlines, a walking character's shadow, reflections in

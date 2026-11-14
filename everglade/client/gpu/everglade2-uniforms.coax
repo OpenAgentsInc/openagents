@@ -6,9 +6,9 @@
 // camera's resolved environment (EnvBlock), as every painterly page's.
 //   coax/bin/coax test everglade/client/gpu/everglade2-uniforms.coax
 #load "../../scene/gpu/glade-frame.coax";
-#load "../../../metaverse-engine/render/env-block.coax";
+#load "../../../metaverse-engine/render/shade/env-block.coax";
 
-// The key light's shadow tiles (metaverse-engine/render/cascades.coax cascade_rows, CASCADE_BLOCK
+// The key light's shadow tiles (metaverse-engine/render/graph/cascades.coax cascade_rows, CASCADE_BLOCK
 // floats): the header (how many tiles, the tile drawn now, the atlas's width and height), then four
 // tiles of six rows each (CASCADE_FLOATS: its rect in the atlas, its rows across, up and in depth,
 // its filter, its edge); a spare row keeps the record that follows at its place.

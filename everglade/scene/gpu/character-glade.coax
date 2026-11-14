@@ -5,7 +5,7 @@
 #load "../../world/meadow.coax";      // the open meadow scattered to the horizon (cg_meadow_vs)
 #load "../../../metaverse/experimental-ground.coax";   // the ground it stands on (exp_height_gpu); not experimental-terrain.coax, whose dungeon and visibility WGSL does not take (#13132)
 // The sky, the soil seams and the cloud shadows are the shared painterly default's
-// (metaverse-engine/render/painterly.coax, #13060), with their checks; these names delegate to it. The cloud
+// (metaverse-engine/render/shade/painterly.coax, #13060), with their checks; these names delegate to it. The cloud
 // shadows and the sky read the frame's resolved environment (u at PAINT_ENV_U, #13066).
 cg_soil :: (p:V2)->f32 {return paint_soil(p);}
 cg_noise :: (p:V2)->f32 {return paint_noise(p);}
@@ -386,7 +386,7 @@ cg_fxaa :: (uv:V2,step:V2,image:Tex2D,lin:Sampler)->V3 {
  b:=add3(scale3(a,0.5f32),scale3(add3(cg_post_sample(image,lin,v2(uv.x-dir.x*0.5f32,uv.y-dir.y*0.5f32)),cg_post_sample(image,lin,v2(uv.x+dir.x*0.5f32,uv.y+dir.y*0.5f32))),0.25f32));
  lum:=cg_luma(b);return ifx lum<low || lum>high then a else b;
 }
-// The view point and the contact taps are the shared contact shading's (metaverse-engine/render/contact-shade.coax),
+// The view point and the contact taps are the shared contact shading's (metaverse-engine/render/shade/contact-shade.coax),
 // read from this pass's uniforms: u[16..18] the eye, u[20], u[24], u[28] the forward, right and up
 // axes, u[19] the focal length and u[23], u[27] the frame's middle (pixels).
 cg_viewpoint :: (pixel:V2,z:f32,gf:GladeFrame)->V3 {

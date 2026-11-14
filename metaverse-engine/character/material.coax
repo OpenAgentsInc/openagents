@@ -5,7 +5,7 @@
 // names its material by its colour layer, so a part's material ID is its layer: the table holds one
 // record per colour layer of the pack. The table is admitted whole or refused before it is
 // uploaded; a refused table draws every part with the defaults.
-// Shading: metaverse-engine/render/character-material.coax. Data maps (normal, ORM) live in the pack's
+// Shading: metaverse-engine/render/shade/character-material.coax. Data maps (normal, ORM) live in the pack's
 // linear data layers (entry kind 6, catalog rows "D <index> <name> <licence>"), never sRGB-decoded.
 //   coax/bin/coax test metaverse-engine/character/material.coax
 #module "metaverse.engine.character.material";

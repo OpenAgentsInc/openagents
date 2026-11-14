@@ -12,7 +12,7 @@
 #load "../core/loop.coax" as clock;
 #load "../host/audio-memory.coax";
 #load "../host/audio-encoded.coax";
-#load "../render/host-image-cache.coax";
+#load "../render/host/host-image-cache.coax";
 #load "stream-draw.coax" as draw;
 
 SW_CELLS :: 12;

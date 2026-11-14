@@ -722,7 +722,7 @@ metaverse_style_compat_profile :: (p: StylePreset) -> StyleEnvironment {
 /** `p` lit as Character Create's glade (docs/metaverse/character-glade-lighting.md, the owner,
  *  November 7: "rebuild everglade itself to use that lighting and foliage from character create").
  *  Ocarina's smooth light in place of hard cel bands; Ore's noon sun, 4500 K under a 6500 K white
- *  balance (metaverse-engine/render/light.coax metaverse_style_balanced: 1, .856, .750); thin clear air near the
+ *  balance (metaverse-engine/render/shade/light.coax metaverse_style_balanced: 1, .856, .750); thin clear air near the
  *  town with a warm forward glow far off; olive, not blue, shadows; the glade's soft-knee bloom and
  *  saturation. Night, dawn and dusk keep their own keys. */
 metaverse_style_glade_light :: (p: StylePreset) -> StylePreset {

@@ -1,5 +1,5 @@
 // Exact natural-image bridge observations for the authored seven-image bank.
-#load "../render/host-image.coax";
+#load "../render/host/host-image.coax";
 #authority;
 #forall "media observer compares every plan field and actual decode status" changed:0..<6 {
  p:=HostMediaPlan.{status=0,width=48,height=48,bytes=9216,work=123,source_bytes=87};

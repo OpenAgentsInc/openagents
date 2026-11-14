@@ -5,7 +5,7 @@
 // One plan is a `plan N` line, N hexadecimal words on the next, then the calls and `done`.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
-#load "../render/frame-plan.coax";
+#load "../render/graph/frame-plan.coax";
 
 fpf_hex :: (v: u32) {
   d := "0123456789abcdef"; b: [8] u8;

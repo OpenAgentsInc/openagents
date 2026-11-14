@@ -3,7 +3,7 @@
 #load "../../metaverse/nights/ui.coax" as nui;
 #load "../../metaverse-engine/move/walk.coax" as pc;
 #load "../../metaverse-engine/core/sticks.coax";
-#load "../../metaverse-engine/render/environment-frame.coax" as envf;
+#load "../../metaverse-engine/render/shade/environment-frame.coax" as envf;
 #load "../../metaverse/nights/light.coax" as spring;
 VERTEX_FLOATS ::16;
 NIGHT_HEROES ::32;

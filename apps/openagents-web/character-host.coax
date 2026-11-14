@@ -3,7 +3,7 @@
 // character asks for her pack by name (coaxial_character_pack_v1); the host loads this module and
 // the pack only then, so a world's own wasm and memory carry none of it (Everglade's wasm has about
 // 150 KB of its budget left, and Echo's rig, face and catalog take about 46 MB of memory). Each
-// frame the host copies the world's SceneLights block (metaverse-engine/render/scene-lights.coax) in here;
+// frame the host copies the world's SceneLights block (metaverse-engine/render/shade/scene-lights.coax) in here;
 // this places her where the world's stage put her (the block's feet and heading), steps her on a
 // 1/64 s clock, fills the block's character slots (the hair's share, the morph switch, the head
 // profile) and her palette, and names her draws. Her body and face run on the Metaverse Engine's character
@@ -19,7 +19,7 @@
 #load "../../metaverse/valley/echo.coax";
 #load "../../metaverse/valley/canyon-pack-policy.coax";
 #load "../../metaverse/valley/slay-gpu-policy.coax";
-#load "../../metaverse-engine/render/scene-lights.coax";
+#load "../../metaverse-engine/render/shade/scene-lights.coax";
 #load "../../metaverse-engine/character/idle.coax";
 #load "../../metaverse-engine/character/detail.coax" as detail;
 #load "../../metaverse-engine/character/fix.coax";
@@ -47,7 +47,7 @@ CHARACTER_HAIR_MAX :: 0.5f32;
 // The shadow map takes at most CHARACTER_GROOM_SHADOW of them, a prefix of the same order.
 CHARACTER_GROOM_GROUPS :: 251;
 CHARACTER_GROOM_STRIDE :: 97;      // the order's step through the groups (251 is prime: every group once)
-CHARACTER_GROOM_SEED :: 13573820 + 8 + 10;   // a segment's seed word (metaverse-engine/render/character.coax's ECHO_GROOM_WORD + 8, then 10)
+CHARACTER_GROOM_SEED :: 13573820 + 8 + 10;   // a segment's seed word (metaverse-engine/render/shade/character.coax's ECHO_GROOM_WORD + 8, then 10)
 CHARACTER_GROOM_SEGMENT_WORDS :: 12;          // words a segment
 CHARACTER_GROOM_SHADOW :: 0.25f32;            // the shadow map's share at most (character.coax's CV_SHADOW_HAIR_SHARE)
 // Echo's idle life: her ARKit blink targets, her face rig's eye joints and her mid spine for the breath.

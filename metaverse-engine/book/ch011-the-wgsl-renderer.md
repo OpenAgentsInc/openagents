@@ -91,7 +91,7 @@ now admit that actual draw and refuse its first instance past the declared
 range, an excess index and a short water-node payload.
 
 The host sometimes needs to stage a decoded asset beside the producer's
-Wasm allocations. [host-memory.coax](../render/host-memory.coax) admits
+Wasm allocations. [host-memory.coax](../render/host/host-memory.coax) admits
 that span too. It aligns the cursor to four bytes, checks the whole end
 against the renderer's 64 MiB memory bound, and returns the absolute page
 count needed by `memory.grow`. The adapter then grows and copies exactly
@@ -109,7 +109,7 @@ keeps the original refusal and the exact binary used for the analysis.
 
 Some producer getters consume an update when read. If geometry then
 refuses the frame, reading that getter again next frame may return zero.
-[host-uploads.coax](../render/host-uploads.coax) keeps the copied prefix
+[host-uploads.coax](../render/host/host-uploads.coax) keeps the copied prefix
 pending, takes its union with later prefixes, and clears it only after an
 actual submission is acknowledged. A rejected frame therefore cannot
 silently lose the producer's last update.
@@ -162,7 +162,7 @@ and the admitted pass plan.
 ```jai
 #load "../render/types.coax" as rt;
 #load "../render/frame.coax" as frame;
-#load "../render/passes.coax" as passes;
+#load "../render/graph/passes.coax" as passes;
 #import "Basic";
 
 #test "the worked frame admits both four-word draw encodings" {
@@ -319,7 +319,7 @@ host does not use the ledger yet.
 
 ## The pass graph is data
 
-[passes.coax](../render/passes.coax) returns a bounded operation sequence.
+[passes.coax](../render/graph/passes.coax) returns a bounded operation sequence.
 The features in the catalog select the graph. The host does not inspect
 WGSL with a regular expression to guess whether a shadow or water pass
 exists.
@@ -360,16 +360,16 @@ returning zero are not an image oracle for those shaders.
 
 The new reference has three layers:
 
-- [reference-ir.coax](../render/reference-ir.coax) executes the checked
+- [reference-ir.coax](../render/reference/reference-ir.coax) executes the checked
   shader tree with bounded instructions, calls, storage views and control
-  flow. [reference-io.coax](../render/reference-io.coax) reads its stage
+  flow. [reference-io.coax](../render/reference/reference-io.coax) reads its stage
   entries, packed parameters, attributes, flat varyings and depth output.
-- [reference-quad.coax](../render/reference-quad.coax) executes four fragment
+- [reference-quad.coax](../render/reference/reference-quad.coax) executes four fragment
   lanes. Helper lanes participate in derivatives even when they do not
   publish a pixel; discard changes publication. Texture views include
   their layers and mip levels, and samplers state their address, filtering,
   LOD and comparison rules.
-- [reference-raster.coax](../render/reference-raster.coax) clips triangles,
+- [reference-raster.coax](../render/reference/reference-raster.coax) clips triangles,
   applies top-left edge ownership, interpolates varyings and evaluates
   covered quads. It applies the declared depth, blend and target-format
   behavior, including half-float or unorm storage conversion.
@@ -480,7 +480,7 @@ their own operations; they do not prove every helper or branch of every
 catalogue shader. Remaining workloads keep their own refusal or qualification
 records.
 
-[reference-work.coax](../render/reference-work.coax) names the offline work
+[reference-work.coax](../render/reference/reference-work.coax) names the offline work
 profiles. `standard` keeps its 100-million-step pass limit. `large-world`
 admits one billion steps per pass; `complex-world` admits three billion.
 Every individual IR invocation still has the original 100-million-step
@@ -566,7 +566,7 @@ exact decimal inputs.
 
 The ready image observations retain their actual kind, URL and dimensions.
 An existing texture called `media_image-9` does not prove that this frame's
-line 9 URL is ready. [host-media.coax](../render/host-media.coax) matches
+line 9 URL is ready. [host-media.coax](../render/host/host-media.coax) matches
 those observations against the parsed requests and publishes rectangles
 only after the whole candidate is admitted. Raw native integers are
 checked before conversion to a kind or readiness flag, so a value such

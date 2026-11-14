@@ -29,7 +29,6 @@ adopt metaverse-engine/talk/ #13293  # the bounded conversation profile is how a
 adopt metaverse-engine/render/ #13303  # frame, pass and binding admission, the reference renderer and the cluster DAG are the one frame graph
 adopt metaverse-engine/render/texture- #13304  # texture formats, codecs and the encoder belong to the one pack reader
 adopt metaverse-engine/render/native- #13304  # native texture staging is the reference host core's
-adopt metaverse-engine/render/host- #13304  # host images and layers are the reference host core's
 adopt metaverse-engine/host/ #13304  # the host contract's carriers and conformance programs fold into one C reference host core
 adopt metaverse-engine/anim/ #13306  # importers, retargeting and pose documents feed the one animation runtime; rig data becomes an asset
 adopt metaverse-engine/core/frame-report.coax #13303  # the frame statistics and the 60 FPS rule read the frame graph's stages

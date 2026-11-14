@@ -3,11 +3,11 @@
 > **Status: partly implemented.** The hemisphere ambient, the shadow map's
 > reach, snap, place, depth and tap count, the contact shadow and the haze
 > moved from `metaverse/style.coax` into
-> [metaverse-engine/render/light.coax](../render/light.coax), with every realm's WGSL
+> [metaverse-engine/render/shade/light.coax](../render/shade/light.coax), with every realm's WGSL
 > byte-identical. The module adds the key light from the clock, the shadow
 > map's space with its snapped middle, and a bounded list of local lights.
-> Shared postprocessing and shadow taps now live in `metaverse-engine/render/post.coax`
-> and `metaverse-engine/render/shadow-filter.coax`. Realms still build their light
+> Shared postprocessing and shadow taps now live in `metaverse-engine/render/shade/post.coax`
+> and `metaverse-engine/render/shade/shadow-filter.coax`. Realms still build their light
 > and execute shadow passes in their own shaders (see
 > [Still to do](#still-to-do)).
 
@@ -27,7 +27,7 @@ numbers.
 
 ## The key light from the clock
 
-<!-- source: metaverse-engine/render/light.coax key -->
+<!-- source: metaverse-engine/render/shade/light.coax key -->
 ```jai
 // The key light at `clock` (0 midnight, 0.25 dawn, 0.5 noon, 0.75 dusk; it wraps). The sun's
 // elevation runs from `low` at midnight to `high` at noon. Its azimuth turns half a turn through
@@ -59,7 +59,7 @@ The shadow map covers a square of `reach` metres each way around the eye,
 middle followed the eye exactly, every texel would move a little each frame
 and shadow edges would crawl. Instead the middle snaps to whole texels:
 
-<!-- source: metaverse-engine/render/light.coax space -->
+<!-- source: metaverse-engine/render/shade/light.coax space -->
 ```jai
 // The shadow map's space for a key light toward (lx, ly, lz): `ax` across it, level with the
 // ground, `ay` across it the other way, and the map's middle (mx along ax, my along ay) at the
@@ -102,7 +102,7 @@ thinner higher up, and capped, so a far ridge keeps some contrast.
 
 ## Local lights
 
-<!-- source: metaverse-engine/render/light.coax local -->
+<!-- source: metaverse-engine/render/shade/light.coax local -->
 ```jai
 LIGHT_LOCAL_MAX :: 16;   // local lights one frame may hold
 // A lantern or a spell: where it is, how far it reaches, and its colour (linear, 0 or more).
@@ -255,12 +255,12 @@ from each platform's maths library.
 ## Checks
 
 ```shell
-coax/bin/coax test metaverse-engine/render/light.coax
-coax/bin/coax mutate metaverse-engine/render/light.coax --root-only
+coax/bin/coax test metaverse-engine/render/shade/light.coax
+coax/bin/coax mutate metaverse-engine/render/shade/light.coax --root-only
 coax/bin/coax test metaverse/style.coax
 ```
 
-`metaverse-engine/render/light.coax` has 21 checks of its own (it loads
+`metaverse-engine/render/shade/light.coax` has 21 checks of its own (it loads
 `material.coax`, whose 17 also run). The seven that moved with their
 functions check the map's reach and snap, its depth, the contact shadow and
 the haze. The new checks cover:

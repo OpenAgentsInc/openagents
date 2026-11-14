@@ -2,7 +2,7 @@
 // colours are display sRGB and decode once to linear light; lighting stays linear HDR; the frame
 // encodes once at the end. Character Create's glade defined these (its cg_linear, cg_srgb,
 // cg_decode, cg_encode and cg_shoulder are now delegates of these). GPU-safe Coax; the scalar pieces
-// are exported to C, as metaverse-engine/render/light.coax's are, so the CPU and the shaders share them.
+// are exported to C, as metaverse-engine/render/shade/light.coax's are, so the CPU and the shaders share them.
 //   coax/bin/coax test metaverse-engine/render/transfer.coax
 #load "../gpu/wgsl.coax";
 

@@ -5,7 +5,7 @@
 #load "capabilities.coax";
 #load "catalog.coax" as bc;
 #load "bindings.coax" as rb;
-#load "passes.coax" as bp;
+#load "graph/passes.coax" as bp;
 #load "../../coax/lib/json/json.coax";
 #authority;
 

@@ -1,4 +1,4 @@
 // The Grid links the facade in its existing SHA-owning unit.
 #run_steps 250000000; // the shared secp256k1 field certificates plus the fixed-work comb table (#13454)
 #load "../../../coax/web/project/landing-browser.coax";
-#load "../../../metaverse-engine/render/native-host.coax";
+#load "../../../metaverse-engine/render/host/native-host.coax";

@@ -165,8 +165,8 @@ numbers moved out of the app into the OpenAgents Metaverse Engine:
 | --- | --- |
 | Every number: the key (4500 K under 6500 K, x2.15, direction), hemisphere colours, sky and cloud colours, air, haze window, cloud shade, exposure and saturation | `metaverse-engine/world/environment.coax` `ENV_GLADE_*`, which `env_glade_profile` is built from |
 | `cg_linear`, `cg_srgb`, `cg_decode`, `cg_encode`, `cg_shoulder` | `metaverse-engine/render/transfer.coax` (`transfer_*`) |
-| `cg_sun_dir`, `cg_sun_colour`, `cg_hemisphere`, `cg_irradiance`, `cg_air_depth`, `cg_phase`, `cg_haze_window`, `cg_atmosphere`, `cg_film`, `cg_output`, `cg_sky`, `cg_cloud`, `cg_cloud_fbm`, `cg_soil`, `cg_noise` | `metaverse-engine/render/painterly.coax` (`paint_*`); the film after exposure is `metaverse-engine/render/filmic.coax` `film_exposed` |
-| `cg_sign`, `cg_normal_pack`, `cg_normal_unpack`, the view-point reconstruction and contact taps | `metaverse-engine/render/contact-shade.coax` (`shade_*`) |
+| `cg_sun_dir`, `cg_sun_colour`, `cg_hemisphere`, `cg_irradiance`, `cg_air_depth`, `cg_phase`, `cg_haze_window`, `cg_atmosphere`, `cg_film`, `cg_output`, `cg_sky`, `cg_cloud`, `cg_cloud_fbm`, `cg_soil`, `cg_noise` | `metaverse-engine/render/shade/painterly.coax` (`paint_*`); the film after exposure is `metaverse-engine/render/shade/filmic.coax` `film_exposed` |
+| `cg_sign`, `cg_normal_pack`, `cg_normal_unpack`, the view-point reconstruction and contact taps | `metaverse-engine/render/shade/contact-shade.coax` (`shade_*`) |
 
 The `cg_*` names stay as thin delegates, so Everglade II, Experimental and the lighting probes
 compile unchanged until their consumers read the resolver (#13066). `metaverse/character-glade.coax`

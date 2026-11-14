@@ -223,7 +223,7 @@ wb_land_loaded :: (l: [] WbLand) {
 
 // ---- the layers' looks: a Metaverse Engine material table (metaverse-engine/world/terrain-tile.coax, `aethyr.terrain.materials.v1`),
 // procedural albedos only. The page hands these numbers to its shader, which evaluates
-// metaverse-engine/render/terrain-shade.coax's equations with them.
+// metaverse-engine/render/shade/terrain-shade.coax's equations with them.
 wb_layer_look :: (id: int, a: [3] f32, b: [3] f32, f1: f32, f2: f32, g1: f32) -> TerrainMaterial {
   m: TerrainMaterial;
   m.id = id; m.albedo_a = a; m.albedo_b = b;

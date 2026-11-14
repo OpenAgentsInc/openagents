@@ -465,7 +465,7 @@ static bool has_line(uint32_t length, const char *prefix) {
 }
 
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->draws.e; }
-/* The key light's shadow tiles (metaverse-engine/render/cascades.coax, everglade.coax everglade_shadows; coax/web/host.js
+/* The key light's shadow tiles (metaverse-engine/render/graph/cascades.coax, everglade.coax everglade_shadows; coax/web/host.js
    shadowLayout): the atlas the host makes, what this frame draws into it, and what happened to it. */
 EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(uint32_t state, int32_t coarse, int32_t which) { return (uint32_t)everglade_shadow_atlas(at(state), coarse, which); }
 EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(uint32_t state, int32_t field) { return city(state)->started ? (int32_t)everglade_shadow_field(at(state), field) : -1; }

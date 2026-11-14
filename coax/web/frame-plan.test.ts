@@ -1,5 +1,5 @@
 // Firm reason: 1 (it evaluates host.js's own table of the frame plan's numbers, the browser host's module, as the browser does)
-// host.js's frame plan numbers are the ones metaverse-engine/render/frame-plan.coax writes for C hosts
+// host.js's frame plan numbers are the ones metaverse-engine/render/graph/frame-plan.coax writes for C hosts
 // (metaverse-engine/host/frame-plan.h, #13303): a member added to passes.coax reaches both or this fails.
 //   bun test coax/web/frame-plan.test.ts
 import { expect, test } from "bun:test"

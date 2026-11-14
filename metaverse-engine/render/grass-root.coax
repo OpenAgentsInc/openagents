@@ -2,7 +2,7 @@
 // Callers supply an axis-aligned box containing every root in a cell. A retained
 // cell keeps every original instance ID; this neither thins nor moves foliage.
 #module "metaverse.engine.render.grassroot";
-#load "material.coax" as gr_material;
+#load "shade/material.coax" as gr_material;
 #authority;
 
 #test "root clip rejects only a whole box beyond one published shader plane" {

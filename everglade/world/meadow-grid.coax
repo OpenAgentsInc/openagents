@@ -15,7 +15,7 @@ e2_meadow_side :: (kit: int, tier: int) -> int {
   return 0;
 }
 // A grid's cell (metres) and the ring round the eye its pieces are drawn in (metres), for a page
-// that culls the grid's cells before it draws them (metaverse-engine/render/grid-cull.coax). meadow.coax
+// that culls the grid's cells before it draws them (metaverse-engine/render/geometry/grid-cull.coax). meadow.coax
 // checks each against the kit's own cell and reach and the grass tier's start and end.
 e2_meadow_grid_cell :: (kit: int, tier: int) -> f32 {
   if kit == E2_MEADOW_GRASS { return ifx tier == 0 then 0.5f32 else ifx tier == 1 then 1.0f32 else ifx tier == 2 then 2.0f32 else 4.0f32; }

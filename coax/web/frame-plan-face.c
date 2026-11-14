@@ -1,6 +1,6 @@
 // Firm reason: 1 (browser glue: the reactor's two word buffers and one scalar call into Coax's frame plan).
 // build/frame-plan.wasm (GitHub #13451): coax/web/frame-plan-host.js writes a page's counts to the ask
-// and reads the frame's operations from the plan. metaverse-engine/render/frame-plan.coax states both.
+// and reads the frame's operations from the plan. metaverse-engine/render/graph/frame-plan.coax states both.
 #include "frame-plan-carrier.h"
 #define FRAME_PLAN_EXPORT(name) __attribute__((export_name(name)))
 #define PLAN_WORDS (257 * 8)

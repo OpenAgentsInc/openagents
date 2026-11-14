@@ -2,13 +2,13 @@
 //   coax/web/tool.sh metaverse/tools/assets/glade_light_check.coax [BASE]   (BASE default http://127.0.0.1:8854,
 //   a static server of apps/openagents-web: coax/web/serve.sh apps/openagents-web --static --listen ...)
 // Since #13066 the glade's light functions read the frame's resolved environment from the module's
-// uniform block (metaverse-engine/render/painterly.coax PAINT_ENV_U), so the probe binds a block holding the
-// glade's noon record (metaverse-engine/render/environment-frame.coax env_frame_glade_words) at its words
+// uniform block (metaverse-engine/render/shade/painterly.coax PAINT_ENV_U), so the probe binds a block holding the
+// glade's noon record (metaverse-engine/render/shade/environment-frame.coax env_frame_glade_words) at its words
 // (#13067): the same values a Character Create frame writes.
 #import "Basic";
 #load "../../../coax/lib/net/cdp.coax";
-#load "../../../metaverse-engine/render/environment-frame.coax" as envf;
-#load "../../../metaverse-engine/render/environment-debug.coax" as envd;
+#load "../../../metaverse-engine/render/shade/environment-frame.coax" as envf;
+#load "../../../metaverse-engine/render/shade/environment-debug.coax" as envd;
 GLC_U_FLOATS :: 316;   // the binding's 79 vec4s (everglade/scene/gpu/charactercreator.bindings)
 GLC_U_ENV :: 208;      // PAINT_ENV_U
 // "[0,0,...,w208,...]": the block as a JavaScript array, the glade's record in place
@@ -24,7 +24,7 @@ glc_block :: (o: [] u8) -> int #effects(all) {
  return glc_put(o, n, "]");
 }
 // the glade's 18% grey through its grade, as the frame's own record gives it on the CPU
-// (metaverse-engine/render/environment-debug.coax env_debug_grade): the GPU's cg_output must agree
+// (metaverse-engine/render/shade/environment-debug.coax env_debug_grade): the GPU's cg_output must agree
 glc_grey :: () -> f32 #effects(all) {
  f: [1] envf.EnvFrame; u: [envf.ENV_FRAME_FLOATS] f32;
  if !envf.env_frame_write_eye(f[..], 0, 0, 1, 0, u[..], 0) { return -1; }

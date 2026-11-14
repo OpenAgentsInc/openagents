@@ -457,7 +457,7 @@ Of the records (store 0) a host sends only those that changed (GitHub #13540). A
 answers its first byte, field 1 its length in bytes (0: nothing changed; `0xFFFFFFFF`: the store has
 no span and goes whole). A host sends a buffer whole the first time, then only the span, at that
 offset of the buffer and of the store (`host.js`, `apple/PageHost.m`, `metaverse/gpu/vk-realm.c`).
-The page keeps the span with [`retained-rows.coax`](../render/retained-rows.coax): a 64-bit mark
+The page keeps the span with [`retained-rows.coax`](../render/graph/retained-rows.coax): a 64-bit mark
 a record of what the GPU was last given. In the glade, standing, the records went from 3,936 bytes
 a frame to none (golden mode) or 1,344 (your body's and the idle speakers' animated parts); walking
 the path, from 1,344 to 768 (your body alone).
@@ -466,7 +466,7 @@ the path, from 1,344 to 768 (your body alone).
 
 A page's engine may export `uint32_t coaxial_frame_plan_v1(state, uint32_t features, uint32_t *out, uint32_t cap)`
 (GitHub #13303). It writes the frame's operations as records of 8 words; record 0 is the version
-record. [`metaverse-engine/render/frame-plan.coax`](../render/frame-plan.coax) states the layout, writes the
+record. [`metaverse-engine/render/graph/frame-plan.coax`](../render/graph/frame-plan.coax) states the layout, writes the
 records from `passes.coax`'s plan and reads them back. A host walks them and maps a pass id to its
 pipeline and bindings; it decides no order, and it refuses a plan whose version record is not the
 one it was built for. A page without the export keeps the host's built-in order.
@@ -587,7 +587,7 @@ GPU object first acquires its Coax registry handle; freeing it releases
 that handle. A frame validates every handle before writes. Device loss
 retires all handles, preserving generations so stale handles never revive.
 
-For v1 Everglade layers, `render/host-layers.coax` owns compressed PNG/JPEG
+For v1 Everglade layers, `render/host/host-layers.coax` owns compressed PNG/JPEG
 decode, the profile's 512-pixel side, doubling, alpha-weighted mips and the
 canonical premultiplication round trip. Every host uploads the resulting
 complete per-layer level-major straight RGBA8 bytes directly; SDK image
@@ -598,7 +598,7 @@ bank and actual GPU byte receipts are in
 [`layers-canonical.md`](../../docs/verification/host-contract-2026-11-05/layers-canonical.md);
 the new v1 path deliberately has its own visual reference.
 
-Version 1 still media uses `render/host-image.coax` for PNG/baseline-JPEG
+Version 1 still media uses `render/host/host-image.coax` for PNG/baseline-JPEG
 decode at natural rectangular dimensions, each axis at most 2048. Its
 measured plan bounds compressed input to 8 MiB, workspace to 32 MiB and
 complete straight RGBA8 output to 16 MiB. It performs one premultiplied byte

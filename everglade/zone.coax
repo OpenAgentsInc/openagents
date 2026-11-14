@@ -43,14 +43,14 @@
 #load "../metaverse-engine/agent/drive.coax";   // the agent driver: entities by id, the HUD's widgets, world operations (#13095)
 #load "zone-drive.coax";      // ... wired to a zone
 #load "zone-touch.coax";      // a phone: which finger is the thumb's stick, JUMP, and the dragon's UP and DOWN (#13151)
-#load "../metaverse-engine/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
-#load "../metaverse-engine/render/mesh-cull.coax" as mc;
+#load "../metaverse-engine/render/shade/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
+#load "../metaverse-engine/render/geometry/mesh-cull.coax" as mc;
 #load "../metaverse-engine/render/ghost.coax" as ghost;   // your figure as a ghost, when a zone asks (EgZone.ghost, zone_figure_blend)   // the glade's environment mesh, drawn by the runs in view (zone_mesh_cull, #13168)
 
 // The strokes a frame may draw and the uniforms it writes (everglade/scene/gpu/charactercreator.bindings).
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 250000;   // 16 MB of strokes: the HUD and the labels (the 5E Lab's log too, which shares the count)
-U_ENV :: 208;            // the camera's resolved environment, 27 vec4s (metaverse-engine/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
+U_ENV :: 208;            // the camera's resolved environment, 27 vec4s (metaverse-engine/render/shade/painterly.coax PAINT_ENV_U, env_gpu_pack)
 U_ENV_WORDS :: envf.ENV_FRAME_FLOATS;   // the record's words, from its owner (#13067: no second copy of the layout)
 UNIFORM_FLOATS :: 316;   // 79 vec4s (everglade/scene/gpu/fivelab.bindings, everglade/scene/gpu/charactercreator.bindings)
 HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
@@ -354,7 +354,7 @@ zone_scene :: (s: [] EgZone, out: [] f32) -> int #export_c #effects(all) {
 }
 
 // The glade's environment mesh (2.35 million triangles in Experimental) drawn as the runs of it the
-// view can see (metaverse-engine/render/mesh-cull.coax, #13168): its draw takes the nearest span, and a draw
+// view can see (metaverse-engine/render/geometry/mesh-cull.coax, #13168): its draw takes the nearest span, and a draw
 // is added after the others for each further one, sharing its record. Without the host's boxes, or
 // with no room for another draw, it stays one whole draw. Returns the draws.
 ZONE_MESH_DRAWS :: 48;

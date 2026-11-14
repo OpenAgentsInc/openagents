@@ -1,5 +1,5 @@
 // Browser reactor for the same natural compressed-image authority as native.
-#load "../render/host-image.coax";
+#load "../render/host/host-image.coax";
 #load "media-notice-carrier.coax";
 HostMediaSource :: struct {bytes:[HOST_MEDIA_SOURCE_BYTES]u8;}
 hm_source_storage :: (bank:[]HostMediaSource)->[]u8 #export_c #effects(all) {return bank[0].bytes[..];}

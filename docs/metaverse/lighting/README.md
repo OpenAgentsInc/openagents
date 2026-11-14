@@ -38,15 +38,15 @@ What the glade is today, and what becomes the painterly default:
 | Warm ground / cool sky hemisphere ambient | `cg_hemisphere`, `cg_irradiance` (indirect occlusion and sun visibility on separate terms) | Default upper/lower ambient and the direct/indirect split |
 | Height air with a clear 30 m near field, forward-scatter haze to 65 m | `cg_air_depth`, `cg_phase` (g 0.62), `cg_haze_window`, `cg_atmosphere` | Default analytic atmosphere (Phase 6 starts here) |
 | Cyan daylight sky, drifting cloud shadows (sun x0.45 in shade) | `everglade/scene/gpu/character-glade.coax` (`cg_sky`, `cg_cloud`) | Default sky and cloud-shadow layer |
-| Film response at exposure 1.18, saturation lift 1.16 | `cg_film`, `cg_output` over `metaverse-engine/render/filmic.coax` | Default painterly presentation (Phase 9's identity grade) |
+| Film response at exposure 1.18, saturation lift 1.16 | `cg_film`, `cg_output` over `metaverse-engine/render/shade/filmic.coax` | Default painterly presentation (Phase 9's identity grade) |
 | Octahedral normals with room for an indirect-light weight; normal/depth contact shading | `cg_normal_pack`, the glade's contact pass | Default contact/AO path (Phase 5) |
 | Painterly bands, rim, dab, cool shadow band | `metaverse/style-preset.coax` (`painterly_key`, `shadow_cool` 1.5) | Kept as the painterly material response; the glade defaults sit under it |
 
 Since #13060 these functions and numbers live in the Metaverse Engine: the numbers once, as
 `metaverse-engine/world/environment.coax`'s `ENV_GLADE_*` (`env_glade_profile` is built from them), their
-evaluation in `metaverse-engine/render/painterly.coax`, the transfer helpers in `metaverse-engine/render/transfer.coax`,
-the normal packing and contact taps in `metaverse-engine/render/contact-shade.coax`, and the exposed film
-response in `metaverse-engine/render/filmic.coax`. The `cg_*` names in the app files are thin delegates, and
+evaluation in `metaverse-engine/render/shade/painterly.coax`, the transfer helpers in `metaverse-engine/render/transfer.coax`,
+the normal packing and contact taps in `metaverse-engine/render/shade/contact-shade.coax`, and the exposed film
+response in `metaverse-engine/render/shade/filmic.coax`. The `cg_*` names in the app files are thin delegates, and
 `metaverse_style_preset(STYLE_PAINTERLY, ...)` names the glade profile as its default environment.
 
 Since #13065, `metaverse_style_compat_profile` turns a preset's four clock keys into a profile:
@@ -86,11 +86,11 @@ The existing system supplies useful parts that should be composed and migrated:
 
 | Existing owner | Current capability | Boundary to close |
 | --- | --- | --- |
-| `metaverse-engine/render/light.coax` | Key direction, two-color hemisphere ambient, snapped shadow space, haze and a bounded 16-light CPU list | Realms still construct lighting and shadow space; the CPU list is not the live realm light path |
+| `metaverse-engine/render/shade/light.coax` | Key direction, two-color hemisphere ambient, snapped shadow space, haze and a bounded 16-light CPU list | Realms still construct lighting and shadow space; the CPU list is not the live realm light path |
 | `metaverse/style-preset.coax` | Four time keys, sun/moon choice, style uniforms and clock modes | No general spatial environment profile resolver or irregular time tracks |
-| `metaverse-engine/render/sky.coax`, `vegetation.coax`, `shadow-filter.coax`, `post.coax` | Shared sky/cloud, vegetation, PCF offsets, tone, bloom and shaft arithmetic | Pass ownership and several material/color contracts remain consumer-specific |
+| `metaverse-engine/render/shade/sky.coax`, `vegetation.coax`, `shadow-filter.coax`, `post.coax` | Shared sky/cloud, vegetation, PCF offsets, tone, bloom and shaft arithmetic | Pass ownership and several material/color contracts remain consumer-specific |
 | `apps/openagents-web/gpu/everglade-v1/gpu.coax` | Real geometry shadows, baked sky visibility, lamp/spell lighting, room warmth, weather, water and post | One key shadow map; at most 16 lamp entries evaluated directly; lighting remains embedded in the realm shader |
-| `metaverse-engine/render/scene-lights.coax`, `character.coax` | Detailed characters use world lighting, shadows and post; up to eight selected point lights | Character and world light admission/evaluation are different paths |
+| `metaverse-engine/render/shade/scene-lights.coax`, `character.coax` | Detailed characters use world lighting, shadows and post; up to eight selected point lights | Character and world light admission/evaluation are different paths |
 | Character Create's private glade renderer | Explicit linear HDR, separated direct/indirect terms, height atmosphere and normal/depth contact shading | Private implementation and qualification, not a shared realm capability |
 | Shared render package, graph and resource ledger | Typed resources, bindings, passes, ownership and recovery contracts | New lighting resources and passes must enter these contracts explicitly |
 
@@ -109,9 +109,9 @@ appropriate rather than introducing parallel implementations.
 | --- | --- |
 | `metaverse-engine/world/environment.coax` | Typed profiles, time tracks, regions, conditions, deterministic selection and blending |
 | `metaverse-engine/world/day.coax`, `weather.coax` | Adapters over simulation time and existing weather arithmetic; no second simulation clock |
-| `metaverse-engine/render/environment.coax` | Resolved environment records and CPU/GPU packing; spatial samples and camera presentation inputs |
-| `metaverse-engine/render/material.coax` | Surface inputs, authored illumination/occlusion semantics and material response |
-| `metaverse-engine/render/scene-lights.coax` | Shared scene light records and adapters, evolving the existing character contract |
+| `metaverse-engine/render/shade/environment.coax` | Resolved environment records and CPU/GPU packing; spatial samples and camera presentation inputs |
+| `metaverse-engine/render/shade/material.coax` | Surface inputs, authored illumination/occlusion semantics and material response |
+| `metaverse-engine/render/shade/scene-lights.coax` | Shared scene light records and adapters, evolving the existing character contract |
 | `metaverse-engine/render/light-grid.coax`, `shadow.coax`, `occlusion.coax` | Light selection, shadow planning and indirect visibility |
 | `metaverse-engine/render/fog.coax`, `fog-volume.coax` | Analytic atmosphere, volume injection, scattering, integration and history |
 | Existing `sky.coax`, `post.coax` and shared water hooks | Sky appearance, grading/presentation and consistent water integration |
@@ -166,7 +166,7 @@ Character Create looks the same. This is the first delivery.
 0. Lift the glade first. Move `character-glade-light.coax`'s and
    `character-glade.coax`'s lighting numbers and functions into shared Metaverse Engine
    owners: the profile in `metaverse-engine/world/environment.coax`, the evaluation in
-   `metaverse-engine/render/environment.coax`, and the presentation in `post.coax` or
+   `metaverse-engine/render/shade/environment.coax`, and the presentation in `post.coax` or
    `filmic.coax`. Then make `metaverse/style-preset.coax`'s painterly preset point at
    that profile as its default. The `cg_*` names may stay as thin delegates while
    consumers move. Character Create's pinned captures must match before and

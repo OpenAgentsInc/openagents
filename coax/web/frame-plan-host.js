@@ -1,6 +1,6 @@
 // Firm reason: 1 (browser glue: load the frame plan's reactor and copy a page's counts in, its operations out).
 // The frame plan for a page whose engine exports no coaxial_frame_plan_v1 (GitHub #13451):
-// build/frame-plan.wasm is metaverse-engine/render/frame-plan.coax's frame_plan_host. host.js reads the
+// build/frame-plan.wasm is metaverse-engine/render/graph/frame-plan.coax's frame_plan_host. host.js reads the
 // page's counts from its exports, asks here, and walks the operations as it walks a page's own plan.
 const wasmURL = new URL("../build/frame-plan.wasm", import.meta.url);
 let opened;

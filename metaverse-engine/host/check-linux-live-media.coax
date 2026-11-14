@@ -1,7 +1,7 @@
 // SDK uploads/readbacks over canonical bundled bytes; no new world frames.
-#load "../render/native-host.coax";
-#load "../render/host-image-cache.coax";
-#load "../render/host-image.coax";
+#load "../render/host/native-host.coax";
+#load "../render/host/host-image-cache.coax";
+#load "../render/host/host-image.coax";
 #load "media-notice.coax";
 #load "linux-live-media-conformance.coax";
 #load "../render/tests/qualification-files.coax";

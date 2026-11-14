@@ -1,6 +1,6 @@
 // A character drawn as a ghost (#13324): see-through, with a soft bright rim where its surface turns
 // away from the eye, and no shadow. The scalar functions a realm's scene shader calls for a ghost's
-// pixel, lowered to WGSL as `coax_p_<name>` (as metaverse-engine/render/terrain-shade.coax's are), so every
+// pixel, lowered to WGSL as `coax_p_<name>` (as metaverse-engine/render/shade/terrain-shade.coax's are), so every
 // zone that shows a ghost shows the same one. The pixel is blended over what is behind it (the host's
 // scene blend profile GHOST_BLEND, coax/web/host.js coaxial_draw_blend_v1: source over, no depth
 // write), never a pattern of holes, so it reads the same on a 1x screen as on a 2x one.

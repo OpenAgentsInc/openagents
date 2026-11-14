@@ -1,6 +1,6 @@
 // Verification-only ABI for the device-observed UNORM8 filter profiles.
 #module "metaverse.engine.render.tests.filter.native";
-#load "../reference-texture.coax";
+#load "../reference/reference-texture.coax";
 #authority;
 
 #test "native filter carrier preserves decoded storage and measured profile identity" {

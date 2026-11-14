@@ -3,7 +3,7 @@
 // A plan is not successful decoding or permission to publish an asset.
 #authority;
 #load "../core/assets.coax" as assets;
-#load "../render/host-layers.coax";
+#load "../render/host/host-layers.coax";
 #load "../render/registry.coax" as gpu;
 #load "../audio/host-wav.coax" as wav;
 #load "../physics/query.coax" as queries;

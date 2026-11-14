@@ -1,7 +1,7 @@
 // The Metaverse Engine's architecture kit, its stylized materials: what a surface is made of, as the number a
 // vertex carries (metaverse-engine/arch/mesh.coax, float 6). The village and flora generators
 // (metaverse-engine/arch/village.coax, flora.coax) write these, and the Metaverse Engine's stylized shading
-// (metaverse-engine/render/stylized.coax) paints each one: its colour, its pattern and how it takes light.
+// (metaverse-engine/render/shade/stylized.coax) paints each one: its colour, its pattern and how it takes light.
 // A vertex's tint (the pen's, arch_tint) replaces the colour of a material that takes one.
 //
 //   material          pattern, from the surface's metres (u along, v up)        takes a tint
@@ -35,7 +35,7 @@
 //   ARCH_M_PETAL      a flower's petals: their colour in full, barely shaded      yes
 //
 // Wet materials. A world draws these in the stylized water pass, after everything else and
-// blended over it (metaverse-engine/render/stylized.coax, stylized_water_*); in the plain pass they are
+// blended over it (metaverse-engine/render/shade/stylized.coax, stylized_water_*); in the plain pass they are
 // drawn solid.
 //   ARCH_M_RIVER      a river, a pool or a pond: blue, deeper where the ground    yes (the deep colour)
 //                     lies deeper under it, ripples that run downstream, foam

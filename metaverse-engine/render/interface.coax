@@ -3,7 +3,7 @@
 #module "metaverse.engine.render.interface";
 #load "build-policy.coax";
 #load "catalog.coax";
-#load "passes.coax";
+#load "graph/passes.coax";
 #load "fragment-layout.coax";
 #authority;
 

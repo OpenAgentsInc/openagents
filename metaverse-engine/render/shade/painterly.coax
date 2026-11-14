@@ -1,0 +1,307 @@
+// The painterly default's evaluation (lighting plan Phase 1 step 0, GitHub #13060;
+// docs/metaverse/lighting/README.md). Character Create's glade is the look every painterly realm gets
+// when it authors nothing: its key light, hemisphere ambient with separate indirect-occlusion and
+// sun-visibility terms, height air with a clear near field and a forward-scatter lobe, cyan sky with
+// drifting cloud shadows, and the film response and saturation lift it is presented through.
+//
+// Every number is the glade profile's (metaverse-engine/world/environment.coax ENV_GLADE_*, from which
+// env_glade_profile is built), so this GPU-safe evaluation and the CPU record are one source. The
+// glade's own cg_* names (everglade/scene/gpu/character-glade-light.coax and character-glade.coax)
+// are thin delegates of these while consumers move to the resolver (#13066).
+// Shape constants that are not profile channels (the cloud octaves' offsets and weights, the sky's
+// gradient and wisp shapes) stay here, as the evaluation's form.
+//   coax/bin/coax test metaverse-engine/render/shade/painterly.coax
+#load "../../gpu/wgsl.coax";
+#load "light.coax";       // metaverse_style_balanced, metaverse_style_haze_phase, metaverse_style_haze_window
+#load "sky.coax";         // metaverse_style_hash
+#load "post.coax";        // metaverse_style_saturation
+#load "filmic.coax";      // film_exposed
+#load "../transfer.coax";
+#load "../../world/environment.coax";   // ENV_GLADE_*, env_glade_profile
+#load "environment.coax";            // env_gpu_pack's layout: the frame's resolved record (#13066)
+#load "env-block.coax";              // the record as a typed uniform block (#13451)
+
+// ---- checks (the glade's, moved with the code)
+
+#test "the default's evaluation reads the glade profile's resolved values" {
+ r:=env_profile_sample(env_glade_profile(),0.5);c:=r.channels;
+ s:=paint_sun_colour();#assert s.x==r.direct.r && s.y==r.direct.g && s.z==r.direct.b;
+ d:=paint_sun_dir();#assert abs(d.x-r.dir.x)<0.000001 && abs(d.y-r.dir.y)<0.000001 && abs(d.z-r.dir.z)<0.000001;
+ up:=paint_hemisphere(v3(0,1,0));down:=paint_hemisphere(v3(0,-1,0));side:=paint_hemisphere(v3(1,0,0));
+ #assert up.x==c.ambient.upper.r && up.y==c.ambient.upper.g && up.z==c.ambient.upper.b;
+ #assert down.x==c.ambient.lower.r && down.y==c.ambient.lower.g && down.z==c.ambient.lower.b;
+ #assert abs(side.x-c.ambient.horizon.r)<0.000001 && abs(side.y-c.ambient.horizon.g)<0.000001 && abs(side.z-c.ambient.horizon.b)<0.000001;
+ // The haze window: clear inside fog.near, its whole far gain past fog.far.
+ #assert paint_haze_window(c.fog.near-0.01)==1 && abs(paint_haze_window(c.fog.far+40)-(1+c.fog.far_gain))<0.0001;
+ // No optical depth before fog.start; at the ground, density per metre after it.
+ eye:=v3(0,0,0);#assert paint_air_depth(eye,v3(0,0,-c.fog.start))==0;
+ #assert abs(paint_air_depth(eye,v3(0,0,-c.fog.start-10))-10*c.fog.density)<0.000001;
+ // Cloud shadow: full sun in the clear, the profile's shade under the thickest cloud.
+ lo:f32=1;for i:0..<400 {lo=fmin(lo,paint_cloud(cast(f32)(i%20)*3.0f32,cast(f32)(i/20)*3.0f32));}
+ #assert abs(lo-c.cloud.shade)<0.000001;
+ // Presentation: middle grey under the profile's exposure stays middle grey through the film.
+ g:=paint_film(v3(0.18f32/c.presentation.exposure,0.18f32/c.presentation.exposure,0.18f32/c.presentation.exposure));#assert abs(g.x-0.18)<0.001;
+ // The saturation lift about luminance is the profile's.
+ o:=transfer_decode(paint_output(v3(0.5,0.2,0.1)));f:=paint_film(v3(0.5,0.2,0.1));y:=f.x*0.2126f32+f.y*0.7152f32+f.z*0.0722f32;
+ #assert abs(o.x-metaverse_style_saturation(f.x,y,c.presentation.saturation))<0.0001;
+ // The sky's gradient runs from the profile's horizon to its zenith (below the horizon: no cloud,
+ // no wisp, and with the sun overhead no halo).
+ h:=paint_sky(v3(0,-1,0),v3(0,1,0),0);t:=sqrt(0.08f32);
+ #assert abs(h.x-(c.sky.horizon.r+(c.sky.zenith.r-c.sky.horizon.r)*t))<0.000001 && abs(h.y-(c.sky.horizon.g+(c.sky.zenith.g-c.sky.horizon.g)*t))<0.000001;
+ #assert abs(h.z-(c.sky.horizon.b+(c.sky.zenith.b-c.sky.horizon.b)*t))<0.000001;
+}
+#test "glade indirect occlusion and sun visibility affect separate light terms" {
+ n:=v3(0,1,0);a:=paint_irradiance(n,1,1,0);b:=paint_irradiance(n,1,0.5,0);c:=paint_irradiance(n,1,1,1);
+ #assert b.x<a.x && c.x>a.x;
+ #assert abs((c.x-a.x)-(paint_irradiance(n,1,0.5,1).x-b.x))<0.00001;
+ #assert paint_hemisphere(v3(0,1,0)).z>paint_hemisphere(v3(0,-1,0)).z;
+}
+#test "glade air has zero optical depth at the eye and thins above the meadow" {
+ eye:=v3(0,1,3);#assert paint_air_depth(eye,eye)==0 && paint_air_depth(eye,v3(0,1,-2))==0;
+ low:=paint_air_depth(eye,v3(0,1,-30));high:=paint_air_depth(v3(0,20,3),v3(0,20,-30));
+ #assert low>high && low>0 && low<1;
+}
+#test "glade haze scatters forward toward the sun and stays clear near the eye" {
+ #assert paint_phase(1,0.62)>paint_phase(0,0.62) && paint_phase(0,0.62)>paint_phase(-1,0.62);
+ #assert abs(paint_phase(0.3,0)-1)<0.0001;
+ #assert paint_haze_window(5)==1 && paint_haze_window(70)>1.5 && paint_haze_window(70)<1.7;
+ eye:=v3(0,1,3);c:=v3(0.2,0.5,0.1);#assert paint_atmosphere(c,eye,v3(0,1,0)).x==c.x;
+ far:=paint_atmosphere(c,eye,v3(0,1,-80));#assert far.z>c.z && far.x>c.x;
+}
+#test "glade film output keeps middle grey and orders highlights" {
+ g:=paint_film(v3(0.18f32/ENV_GLADE_EXPOSURE,0.18f32/ENV_GLADE_EXPOSURE,0.18f32/ENV_GLADE_EXPOSURE));#assert abs(g.x-0.18)<0.001 && abs(g.y-0.18)<0.001;
+ #assert paint_film(v3(1,1,1)).y<paint_film(v3(4,4,4)).y && paint_film(v3(4,4,4)).y<=1.05;
+}
+#test "glade film output keeps orange highlights orange" {
+ c:=transfer_decode(paint_output(v3(4,1,0.25)));#assert c.x>c.y && c.y>c.z;
+}
+#test "glade sky retains cyan daylight and warm sunlight without nonfinite horizons" {
+ a:=paint_sky(v3(0,0.2,-1),v3(-0.4,0.8,0.6),0);
+ b:=paint_sky(v3(0,0,-1),v3(-0.4,0.8,0.6),0);
+ #assert a.y>0.6 && a.z>0.5 && b.x>0.3 && b.z<=1.1;
+ cyan:=false;for i:0..<8 {c:=paint_sky(v3(f32(i)*0.2-0.8,0.4,-1),v3(-0.4,0.8,0.6),0);if c.y>c.x && c.z>c.x {cyan=true;}}#assert cyan;
+}
+#test "glade soil seams stay subtle and deterministic" {
+ a:=paint_soil(v2(0.1,0.2));#assert a>=0.78 && a<=1.05 && a==paint_soil(v2(0.1,0.2));
+}
+#test "glade cloud shadows stay between broad shade and full sun and vary over the meadow" {
+ lo:f32=1;hi:f32=0;
+ for i:0..<400 {v:=paint_cloud(cast(f32)(i%20)*3.0f32,cast(f32)(i/20)*3.0f32);lo=fmin(lo,v);hi=fmax(hi,v);#assert v>=0.45f32 && v<=1;}
+ #assert lo<0.6f32 && hi==1;
+}
+
+// ---- the key and the ambient
+
+// The one key light every glade material reads (Metaverse Engine book ch. 13: one lighting record).
+paint_sun_dir :: ()->V3 {return normalize3(v3(ENV_GLADE_SUN_X,ENV_GLADE_SUN_Y,ENV_GLADE_SUN_Z));}
+// Ore's Ocarina noon: a 4500 K sun under 6500 K white balance (metaverse-engine/render/shade/light.coax 4c), decoded once.
+paint_sun_colour :: ()->V3 {
+ return scale3(transfer_decode(v3(metaverse_style_balanced(ENV_GLADE_KELVIN,ENV_GLADE_WHITE,0),metaverse_style_balanced(ENV_GLADE_KELVIN,ENV_GLADE_WHITE,1),metaverse_style_balanced(ENV_GLADE_KELVIN,ENV_GLADE_WHITE,2))),ENV_GLADE_INTENSITY);
+}
+// Warm ground below, cool sky above, by the normal's y.
+paint_hemisphere :: (n:V3)->V3 {return mix3(v3(ENV_GLADE_LOWER_R,ENV_GLADE_LOWER_G,ENV_GLADE_LOWER_B),v3(ENV_GLADE_UPPER_R,ENV_GLADE_UPPER_G,ENV_GLADE_UPPER_B),saturate(n.y*0.5f32+0.5f32));}
+// Indirect occlusion scales only the ambient; sun visibility (shadow times cloud) only the key.
+paint_irradiance :: (n:V3,direct:f32,occlusion:f32,visibility:f32)->V3 {
+ return add3(scale3(paint_hemisphere(n),occlusion),scale3(paint_sun_colour(),direct*visibility));
+}
+
+// ---- the air
+
+// Optical depth along eye to p: none before fog.start, density per metre thinning with height.
+paint_air_depth :: (eye:V3,p:V3)->f32 {
+ ray:=sub3(p,eye);distance:=wg_length3(ray);density:f32=0;
+ for i:0..<4 {height:=eye.y+ray.y*(cast(f32)i+0.5f32)*0.25f32;density=density+exp(-fmax(height,0)/ENV_GLADE_FOG_FALLOFF);}
+ return fmax(distance-ENV_GLADE_FOG_START,0)*ENV_GLADE_FOG_DENSITY*density*0.25f32;
+}
+// Forward scattering and the near/far window come from the engine (metaverse-engine/render/shade/light.coax 4b):
+// Ore's open-field noon fog gives a strong forward lobe; the meadow and the cliff stay clear inside 30 m.
+paint_phase :: (cos_t:f32,g:f32)->f32 #export_c #effects(all) {return metaverse_style_haze_phase(cos_t,g);}
+paint_haze_window :: (distance:f32)->f32 #export_c #effects(all) {return metaverse_style_haze_window(distance,ENV_GLADE_FOG_NEAR,ENV_GLADE_FOG_FAR,ENV_GLADE_FOG_FAR_GAIN);}
+paint_atmosphere :: (colour:V3,eye:V3,p:V3)->V3 {
+ d:=sub3(p,eye);ray:=normalize3(add3(d,v3(0,0.00001f32,0)));sun:=paint_sun_dir();
+ mie:=fmin(paint_phase(dot3(ray,sun),ENV_GLADE_FOG_PHASE_G),ENV_GLADE_FOG_PHASE_CAP);
+ // Blue sky in-scatter everywhere plus warm sun in-scatter weighted by the forward lobe.
+ air:=add3(v3(ENV_GLADE_AIR_R,ENV_GLADE_AIR_G,ENV_GLADE_AIR_B),scale3(v3(ENV_GLADE_SUN_TINT_R,ENV_GLADE_SUN_TINT_G,ENV_GLADE_SUN_TINT_B),mie*ENV_GLADE_FOG_SUN_STRENGTH));
+ trans:=exp(-paint_air_depth(eye,p)*paint_haze_window(wg_length3(d)));return add3(scale3(colour,trans),scale3(air,1.0f32-trans));
+}
+
+// ---- the presentation
+
+// Unreal's default film response (metaverse-engine/render/shade/filmic.coax) after the profile's exposure: the
+// reference is an Unreal capture, so its toe, shoulder and highlight desaturation match it.
+paint_film :: (c:V3)->V3 {f:=film_exposed(film_rgb(c.x,c.y,c.z),ENV_GLADE_EXPOSURE);return v3(f.r,f.g,f.b);}
+// The reference keeps Unreal's saturated stylized grade: the profile's saturation lift about
+// luminance after the film curve restores what its highlight desaturation takes (post.coax), then
+// the one display encode.
+paint_output :: (c:V3)->V3 {
+ f:=paint_film(c);y:=f.x*0.2126f32+f.y*0.7152f32+f.z*0.0722f32;
+ return transfer_encode(v3(metaverse_style_saturation(f.x,y,ENV_GLADE_SATURATION),metaverse_style_saturation(f.y,y,ENV_GLADE_SATURATION),metaverse_style_saturation(f.z,y,ENV_GLADE_SATURATION)));
+}
+
+// ---- the sky and the cloud shadows
+
+paint_noise :: (p:V2)->f32 {
+ i:V2=v2(floor(p.x),floor(p.y));f:V2=v2(fract(p.x),fract(p.y));
+ f=v2(f.x*f.x*(3.0f32-2.0f32*f.x),f.y*f.y*(3.0f32-2.0f32*f.y));
+ a:f32=metaverse_style_hash(i.x,i.y);b:f32=metaverse_style_hash(i.x+1.0f32,i.y);c:f32=metaverse_style_hash(i.x,i.y+1.0f32);d:f32=metaverse_style_hash(i.x+1.0f32,i.y+1.0f32);
+ return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
+}
+// Packed-earth seams: the gap between the two nearest cell points, with a broad value wash.
+paint_soil :: (p:V2)->f32 {
+ cell:V2=v2(floor(p.x*3.5f32),floor(p.y*3.5f32));local:V2=v2(fract(p.x*3.5f32),fract(p.y*3.5f32));
+ first:f32=10.0f32;second:f32=10.0f32;
+ for j:0..<3 {for i:0..<3 {x:f32=cast(f32)i-1.0f32;y:f32=cast(f32)j-1.0f32;
+  dx:f32=x+0.15f32+0.7f32*metaverse_style_hash(cell.x+x,cell.y+y)-local.x;
+  dy:f32=y+0.15f32+0.7f32*metaverse_style_hash(cell.x+x+17.0f32,cell.y+y+3.0f32)-local.y;
+  d:f32=dx*dx+dy*dy;if (d<first) {second=first;first=d;} else if (d<second) {second=d;}
+ }}
+ return (0.86f32+0.14f32*smoothstep(0.0f32,0.05f32,second-first))*(0.94f32+0.06f32*paint_noise(v2(p.x*2.0f32,p.y*2.0f32)));
+}
+// Soft cloud shadows drift over the meadow as in the reference's dappled hill: two octaves of
+// value noise, so a good part of the ground lies in broad shade (sunlight times the profile's shade).
+paint_cloud :: (x:f32,z:f32)->f32 {
+ c:=paint_noise(v2(x*ENV_GLADE_CLOUD_SCALE+12.9f32,z*ENV_GLADE_CLOUD_SCALE-1.7f32))*0.7f32+paint_noise(v2(x*ENV_GLADE_CLOUD_DETAIL_SCALE,z*ENV_GLADE_CLOUD_DETAIL_SCALE))*0.3f32;
+ return 1.0f32-(1.0f32-ENV_GLADE_CLOUD_SHADE)*smoothstep(ENV_GLADE_CLOUD_EDGE_LO,ENV_GLADE_CLOUD_EDGE_HI,c);
+}
+paint_cloud_fbm :: (p:V2)->f32 {
+ return paint_noise(p)*0.5333f32+paint_noise(v2(p.x*2.03f32+7.0f32,p.y*2.03f32-3.0f32))*0.2667f32+paint_noise(v2(p.x*4.11f32-5.0f32,p.y*4.11f32+11.0f32))*0.1333f32+paint_noise(v2(p.x*8.31f32+13.0f32,p.y*8.31f32))*0.0667f32;
+}
+// The cyan daylight sky (display colour): horizon to zenith, warped cumulus, high wisps and a warm halo.
+paint_sky :: (rd:V3,sun:V3,time:f32)->V3 {
+ up:=saturate(rd.y);col:=mix3(v3(ENV_GLADE_SKYLINE_R,ENV_GLADE_SKYLINE_G,ENV_GLADE_SKYLINE_B),v3(ENV_GLADE_ZENITH_R,ENV_GLADE_ZENITH_G,ENV_GLADE_ZENITH_B),sqrt(saturate(up*1.5f32+0.08f32)));
+ q:=v2(rd.x/fmax(rd.y+0.15f32,0.08f32),rd.z/fmax(rd.y+0.15f32,0.08f32));
+ p:=v2(q.x*10.0f32+time*0.001f32,q.y*14.0f32);warp:=v2(paint_noise(v2(p.x*0.45f32,p.y*0.45f32)),paint_noise(v2(p.x*0.45f32+7.0f32,p.y*0.45f32-3.0f32)));
+ density:=paint_cloud_fbm(v2(p.x+warp.x*0.8f32,p.y+warp.y*0.8f32));threshold:=0.62f32-0.10f32*smoothstep(-0.5f32,0.8f32,rd.x);
+ cloud:=smoothstep(threshold,threshold+0.09f32,density)*smoothstep(0.0f32,0.12f32,rd.y)*(0.15f32+0.85f32*smoothstep(-0.15f32,0.70f32,rd.x));
+ thickness:=saturate((density-threshold)*6.0f32);cloud_colour:=mix3(v3(ENV_GLADE_CLOUD_DARK_R,ENV_GLADE_CLOUD_DARK_G,ENV_GLADE_CLOUD_DARK_B),v3(ENV_GLADE_CLOUD_LIT_R,ENV_GLADE_CLOUD_LIT_G,ENV_GLADE_CLOUD_LIT_B),saturate(thickness*0.70f32+0.15f32));
+ col=mix3(col,cloud_colour,cloud*ENV_GLADE_CLOUD_COVER);
+ across:=q.x*0.78f32+q.y*0.63f32;along:=-q.x*0.63f32+q.y*0.78f32;
+ fine:=paint_cloud_fbm(v2(along*0.75f32+paint_noise(v2(across*0.3f32,along*0.3f32))*0.4f32,across*30.0f32));
+ wisps:=pow(saturate((fine-0.35f32)*1.6f32),3.0f32)*smoothstep(0.10f32,0.55f32,rd.y)*ENV_GLADE_WISP_STRENGTH*smoothstep(0.35f32,0.70f32,paint_noise(v2(q.x*0.7f32,q.y*0.7f32)));
+ col=mix3(col,v3(ENV_GLADE_WISP_R,ENV_GLADE_WISP_G,ENV_GLADE_WISP_B),wisps);
+ halo:=pow(saturate(dot3(normalize3(rd),normalize3(sun))),ENV_GLADE_HALO_POWER);return mix3(col,v3(ENV_GLADE_HALO_R,ENV_GLADE_HALO_G,ENV_GLADE_HALO_B),halo*ENV_GLADE_HALO_STRENGTH);
+}
+
+// ---- the frame's resolved environment (lighting plan Phase 1 step 6, GitHub #13066)
+// A painterly page writes the camera's ResolvedEnvironment each frame through env_gpu_pack into its
+// frame uniforms at PAINT_ENV_U (metaverse-engine/render/shade/environment-frame.coax env_frame_write), and these read
+// it: the same arithmetic as the glade's constants above, word for word, so the glade's own record
+// draws exactly the glade. u is the frame's uniform block (WGSL: the module's `u`).
+PAINT_ENV_U :: 208;   // 52 vec4s in; the record's 27 vec4s follow (ENV_GPU_FLOATS)
+// A page whose uniforms are a typed block (#13451) hands its EnvBlock; one whose uniforms are a []f32
+// hands paint_env_of(u), the block at PAINT_ENV_U.
+paint_env_of :: (u:[]f32)->EnvBlock {return env_block_of(u,PAINT_ENV_U);}
+paint_env_w :: (e:EnvBlock,k:int)->f32 {return env_block_w(e,k);}
+paint_env_c :: (e:EnvBlock,c:int)->f32 {return env_block_w(e,ENV_GPU_CHANNELS+c);}
+paint_env_c3 :: (e:EnvBlock,c:int)->V3 {return env_block_w3(e,ENV_GPU_CHANNELS+c);}
+// A frame block with the glade's record in place, for checks (CPU only).
+PAINT_ENV_FLOATS :: PAINT_ENV_U+ENV_GPU_FLOATS;
+paint_env_glade_u :: ()->[PAINT_ENV_FLOATS]f32 #effects(all) {
+ u:[PAINT_ENV_FLOATS]f32;w:=env_gpu_pack(env_profile_sample(env_glade_profile(),0.5));for i:0..<ENV_GPU_FLOATS {u[PAINT_ENV_U+i]=w[i];}return u;
+}
+
+#test "the frame's record draws the glade exactly as its constants do" {
+ u:=paint_env_glade_u();
+ n:=normalize3(v3(0.3,0.7,-0.4));e:=v3(0,1.6,4);c:=v3(0.4,0.3,0.2);
+ s:=paint_env_sun_colour(paint_env_of(u[..]));t:=paint_sun_colour();#assert s.x==t.x && s.y==t.y && s.z==t.z;
+ d:=paint_env_sun_dir(paint_env_of(u[..]));g:=paint_sun_dir();#assert abs(d.x-g.x)<0.000001 && abs(d.y-g.y)<0.000001 && abs(d.z-g.z)<0.000001;
+ for i:0..<9 {m:=normalize3(v3(f32(i%3)-1,f32(i/3)-1,0.3));a:=paint_env_hemisphere(paint_env_of(u[..]),m);b:=paint_hemisphere(m);#assert abs(a.x-b.x)<0.000001 && abs(a.y-b.y)<0.000001 && abs(a.z-b.z)<0.000001;}
+ i:=paint_env_irradiance(paint_env_of(u[..]),n,0.6,0.5,0.7);j:=paint_irradiance(n,0.6,0.5,0.7);#assert abs(i.x-j.x)<0.000001 && abs(i.z-j.z)<0.000001;
+ for k:0..<6 {p:=v3(f32(k)*7-20,f32(k),-f32(k)*15);
+  #assert paint_env_air_depth(paint_env_of(u[..]),e,p)==paint_air_depth(e,p) && paint_env_haze_window(paint_env_of(u[..]),f32(k)*15)==paint_haze_window(f32(k)*15);
+  a:=paint_env_atmosphere(paint_env_of(u[..]),c,e,p);b:=paint_atmosphere(c,e,p);#assert abs(a.x-b.x)<0.000001 && abs(a.y-b.y)<0.000001 && abs(a.z-b.z)<0.000001;
+  #assert paint_env_cloud(paint_env_of(u[..]),p.x,p.z)==paint_cloud(p.x,p.z);
+  r:=normalize3(v3(f32(k)-3,0.3+f32(k)*0.1,-1));q:=paint_env_sky(paint_env_of(u[..]),r,v3(-0.45,0.78,-0.42),f32(k));o:=paint_sky(r,v3(-0.45,0.78,-0.42),f32(k));
+  #assert q.x==o.x && q.y==o.y && q.z==o.z;
+ }
+ f:=paint_env_film(paint_env_of(u[..]),c);h:=paint_film(c);#assert f.x==h.x && f.y==h.y && f.z==h.z;
+ o:=paint_env_output(paint_env_of(u[..]),v3(4,1,0.25));q:=paint_output(v3(4,1,0.25));#assert o.x==q.x && o.y==q.y && o.z==q.z;
+}
+#test "the frame's record carries another profile's key, ambient, air, cloud and presentation" {
+ r:=env_profile_sample(env_test_profile3(),0.2);r.channels.ambient.horizon=env_rgb(0.9,0.1,0.2);r.flags=0;
+ u:[PAINT_ENV_U+ENV_GPU_FLOATS]f32;w:=env_gpu_pack(r);for i:0..<ENV_GPU_FLOATS {u[PAINT_ENV_U+i]=w[i];}
+ #assert paint_env_sun_colour(paint_env_of(u[..])).y==r.direct.g && paint_env_sun_dir(paint_env_of(u[..])).z==r.dir.z;
+ // the hemisphere runs lower, horizon, upper
+ side:=paint_env_hemisphere(paint_env_of(u[..]),v3(1,0,0));up:=paint_env_hemisphere(paint_env_of(u[..]),v3(0,1,0));
+ #assert side.x==0.9f32 && side.y==0.1f32 && up.x==r.channels.ambient.upper.r;
+ // no cloud-shadow flag: full sun everywhere
+ for k:0..<20 {#assert paint_env_cloud(paint_env_of(u[..]),f32(k)*3,-f32(k)*5)==1;}
+ #assert paint_env_haze_window(paint_env_of(u[..]),r.channels.fog.near-0.01)==1;
+ g:=paint_env_film(paint_env_of(u[..]),v3(0.18f32/r.channels.presentation.exposure,0.18f32/r.channels.presentation.exposure,0.18f32/r.channels.presentation.exposure));#assert abs(g.x-0.18)<0.001;
+}
+
+paint_env_sun_dir :: (e:EnvBlock)->V3 {return env_block_w3(e,ENV_GPU_DIR);}
+paint_env_sun_colour :: (e:EnvBlock)->V3 {return env_block_w3(e,ENV_GPU_DIRECT);}
+// Lower to horizon to upper ambient by the normal's y (the glade's horizon is their midpoint).
+paint_env_hemisphere :: (e:EnvBlock,n:V3)->V3 {
+ t:=saturate(n.y*0.5f32+0.5f32);h:=paint_env_c3(e,ENV_C_AMBIENT_HORIZON);
+ return ifx t<0.5f32 then mix3(paint_env_c3(e,ENV_C_AMBIENT_LOWER),h,t*2.0f32) else mix3(h,paint_env_c3(e,ENV_C_AMBIENT_UPPER),t*2.0f32-1.0f32);
+}
+paint_env_irradiance :: (e:EnvBlock,n:V3,direct:f32,occlusion:f32,visibility:f32)->V3 {
+ return add3(scale3(paint_env_hemisphere(e,n),occlusion),scale3(paint_env_sun_colour(e),direct*visibility));
+}
+paint_env_air_depth :: (e:EnvBlock,eye:V3,p:V3)->f32 {
+ ray:=sub3(p,eye);distance:=wg_length3(ray);density:f32=0;falloff:=paint_env_c(e,ENV_C_FOG_HEIGHT_FALLOFF);
+ for i:0..<4 {height:=eye.y+ray.y*(cast(f32)i+0.5f32)*0.25f32;density=density+exp(-fmax(height,0)/falloff);}
+ return fmax(distance-paint_env_c(e,ENV_C_FOG_START),0)*paint_env_c(e,ENV_C_FOG_DENSITY)*density*0.25f32;
+}
+paint_env_haze_window :: (e:EnvBlock,distance:f32)->f32 {return metaverse_style_haze_window(distance,paint_env_c(e,ENV_C_FOG_NEAR),paint_env_c(e,ENV_C_FOG_FAR),paint_env_c(e,ENV_C_FOG_FAR_GAIN));}
+paint_env_atmosphere :: (e:EnvBlock,colour:V3,eye:V3,p:V3)->V3 {
+ d:=sub3(p,eye);ray:=normalize3(add3(d,v3(0,0.00001f32,0)));sun:=paint_env_sun_dir(e);
+ mie:=fmin(paint_phase(dot3(ray,sun),paint_env_c(e,ENV_C_FOG_PHASE_G)),paint_env_c(e,ENV_C_FOG_PHASE_CAP));
+ air:=add3(paint_env_c3(e,ENV_C_FOG_AIR),scale3(paint_env_c3(e,ENV_C_FOG_SUN_TINT),mie*paint_env_c(e,ENV_C_FOG_SUN_STRENGTH)));
+ trans:=exp(-paint_env_air_depth(e,eye,p)*paint_env_haze_window(e,wg_length3(d)));return add3(scale3(colour,trans),scale3(air,1.0f32-trans));
+}
+paint_env_film :: (e:EnvBlock,c:V3)->V3 {f:=film_exposed(film_rgb(c.x,c.y,c.z),paint_env_c(e,ENV_C_EXPOSURE));return v3(f.r,f.g,f.b);}
+paint_env_output :: (e:EnvBlock,c:V3)->V3 {
+ f:=paint_env_film(e,c);y:=f.x*0.2126f32+f.y*0.7152f32+f.z*0.0722f32;k:=paint_env_c(e,ENV_C_SATURATION);
+ return transfer_encode(v3(metaverse_style_saturation(f.x,y,k),metaverse_style_saturation(f.y,y,k),metaverse_style_saturation(f.z,y,k)));
+}
+// The key's share under the clouds' shadows: 1 when the record's flags carry no cloud shadow.
+paint_env_cloud :: (e:EnvBlock,x:f32,z:f32)->f32 {
+ flags:=paint_env_w(e,ENV_GPU_DISCRETE+2);
+ if (flags-2.0f32*floor(flags*0.5f32)<0.5f32) {return 1;}
+ a:=paint_env_c(e,ENV_C_CLOUD_SCALE);b:=paint_env_c(e,ENV_C_CLOUD_DETAIL_SCALE);
+ c:=paint_noise(v2(x*a+12.9f32,z*a-1.7f32))*0.7f32+paint_noise(v2(x*b,z*b))*0.3f32;
+ return 1.0f32-(1.0f32-paint_env_c(e,ENV_C_CLOUD_SHADE))*smoothstep(paint_env_c(e,ENV_C_CLOUD_EDGE_LO),paint_env_c(e,ENV_C_CLOUD_EDGE_HI),c);
+}
+// The sky (display colour) from the record's sky channels; `sun` places its halo.
+paint_env_sky :: (e:EnvBlock,rd:V3,sun:V3,time:f32)->V3 {
+ up:=saturate(rd.y);col:=mix3(paint_env_c3(e,ENV_C_SKY_HORIZON),paint_env_c3(e,ENV_C_SKY_ZENITH),sqrt(saturate(up*1.5f32+0.08f32)));
+ q:=v2(rd.x/fmax(rd.y+0.15f32,0.08f32),rd.z/fmax(rd.y+0.15f32,0.08f32));
+ p:=v2(q.x*10.0f32+time*0.001f32,q.y*14.0f32);warp:=v2(paint_noise(v2(p.x*0.45f32,p.y*0.45f32)),paint_noise(v2(p.x*0.45f32+7.0f32,p.y*0.45f32-3.0f32)));
+ density:=paint_cloud_fbm(v2(p.x+warp.x*0.8f32,p.y+warp.y*0.8f32));threshold:=0.62f32-0.10f32*smoothstep(-0.5f32,0.8f32,rd.x);
+ cloud:=smoothstep(threshold,threshold+0.09f32,density)*smoothstep(0.0f32,0.12f32,rd.y)*(0.15f32+0.85f32*smoothstep(-0.15f32,0.70f32,rd.x));
+ thickness:=saturate((density-threshold)*6.0f32);cloud_colour:=mix3(paint_env_c3(e,ENV_C_SKY_CLOUD_SHADE),paint_env_c3(e,ENV_C_SKY_CLOUD_LIGHT),saturate(thickness*0.70f32+0.15f32));
+ col=mix3(col,cloud_colour,cloud*paint_env_c(e,ENV_C_SKY_CLOUD_COVER));
+ across:=q.x*0.78f32+q.y*0.63f32;along:=-q.x*0.63f32+q.y*0.78f32;
+ fine:=paint_cloud_fbm(v2(along*0.75f32+paint_noise(v2(across*0.3f32,along*0.3f32))*0.4f32,across*30.0f32));
+ wisps:=pow(saturate((fine-0.35f32)*1.6f32),3.0f32)*smoothstep(0.10f32,0.55f32,rd.y)*paint_env_c(e,ENV_C_SKY_WISP_STRENGTH)*smoothstep(0.35f32,0.70f32,paint_noise(v2(q.x*0.7f32,q.y*0.7f32)));
+ col=mix3(col,paint_env_c3(e,ENV_C_SKY_WISP),wisps);
+ halo:=pow(saturate(dot3(normalize3(rd),normalize3(sun))),paint_env_c(e,ENV_C_SKY_HALO_POWER));return mix3(col,paint_env_c3(e,ENV_C_SKY_HALO),halo*paint_env_c(e,ENV_C_SKY_HALO_STRENGTH));
+}
+// A sky plate (a realm's painted sky texture, as Everglade II's backdrop) follows the resolved
+// environment by this tint (lighting plan Phase 1 step 7, GitHub #13067): the record's sky gradient
+// over the glade's at the same height, both decoded to linear. The glade's own record tints by 1, so
+// the plate looks as it was painted; a night or dusk record darkens or warms the plate as it does the
+// procedural sky. A colour channel whose glade value is 0 keeps its plate value.
+#test "the sky plate's tint is 1 under the glade and follows another record's sky" {
+ u:=paint_env_glade_u();
+ for k:0..<12 {r:=normalize3(v3(f32(k%4)-1.5,f32(k)*0.15-0.4,-1));t:=paint_env_sky_tint(paint_env_of(u[..]),r);#assert abs(t.x-1)<0.000001 && abs(t.y-1)<0.000001 && abs(t.z-1)<0.000001;}
+ // a night record: zenith and horizon a fifth of the glade's, bluer at the top
+ n:=env_profile_sample(env_glade_profile(),0.5);z:=n.channels.sky.zenith;h:=n.channels.sky.horizon;
+ n.channels.sky.zenith=env_rgb(z.r*0.2,z.g*0.2,z.b*0.3);n.channels.sky.horizon=env_rgb(h.r*0.2,h.g*0.2,h.b*0.2);
+ w:=env_gpu_pack(n);for i:0..<ENV_GPU_FLOATS {u[PAINT_ENV_U+i]=w[i];}
+ up:=paint_env_sky_tint(paint_env_of(u[..]),v3(0,1,0));low:=paint_env_sky_tint(paint_env_of(u[..]),normalize3(v3(1,-0.2,0)));
+ // an independent evaluation at straight up (height weight sqrt(1.58), clamped to 1: the zenith alone)
+ #assert abs(up.x-transfer_linear(z.r*0.2)/transfer_linear(z.r))<0.00001 && abs(up.z-transfer_linear(z.b*0.3)/transfer_linear(z.b))<0.00001;
+ #assert up.x<0.06 && up.z>up.x && low.x<0.06 && abs(low.x-low.y)<0.01;
+ // the tint scales a plate's linear colour: a bright plate texel goes dark under the night
+ p:=mul3(v3(0.6,0.8,0.9),up);#assert p.x<0.04 && p.y<0.05;
+}
+paint_env_sky_tint :: (e:EnvBlock,rd:V3)->V3 {
+ w:=sqrt(saturate(saturate(rd.y)*1.5f32+0.08f32));
+ now:=transfer_decode(mix3(paint_env_c3(e,ENV_C_SKY_HORIZON),paint_env_c3(e,ENV_C_SKY_ZENITH),w));
+ glade:=transfer_decode(mix3(v3(ENV_GLADE_SKYLINE_R,ENV_GLADE_SKYLINE_G,ENV_GLADE_SKYLINE_B),v3(ENV_GLADE_ZENITH_R,ENV_GLADE_ZENITH_G,ENV_GLADE_ZENITH_B),w));
+ return v3(ifx glade.x>0 then now.x/glade.x else 1.0f32,ifx glade.y>0 then now.y/glade.y else 1.0f32,ifx glade.z>0 then now.z/glade.z else 1.0f32);
+}

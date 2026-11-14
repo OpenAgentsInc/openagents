@@ -1,0 +1,106 @@
+// Metal's independent slot spaces project the same admitted canonical uses.
+// The SDK reports compiler reflection; no SDK code selects sources or passes.
+#load "host-bindings.coax";
+#load "../interface.coax";
+#authority;
+MetalHostUse :: struct {valid:bool;slot:int;canonical:RenderHostUse;}
+MetalHostInterface :: struct {valid:bool;vertex:string;fragment:string;count:int;uses:[32]MetalHostUse;}
+
+#test "Metal host maps a separate buffer and texture namespace by canonical names" {
+ q:=metal_host_use(2,5,"objects",1,3,0,64,3);
+ #assert q.valid && q.slot==3 && q.canonical.source.kind==RenderSourceKind.dynamic_store && q.canonical.source.index==1;
+ q=metal_host_use(2,5,"sheets",2,0,1,0,2);
+ #assert q.valid && q.slot==0 && q.canonical.source.kind==RenderSourceKind.layers;
+ #assert !metal_host_use(2,5,"absent",1,0,0,4,3).valid;
+ #assert !metal_host_use(-1,0,"u",1,0,0,4,3).valid;
+}
+#forall "Metal host reflection refuses either namespace edge and mismatched resource facts" f:0..<12 {
+ name:="u";kind:=1;slot:=0;shape:=0;stride:=4;stages:=3;   // Everglade's background reads u in both stages
+ if f==0 {kind=0;}if f==1 {kind=2;}if f==2 {slot=-1;}if f==3 {slot=29;}
+ if f==4 {shape=1;}if f==5 {stride=8;}if f==6 {stages=0;}if f==7 {stages=1;}if f==8 {name="U";}
+ if f==9 {stages=4;}if f==10 {stride=0;}
+ if f==11 {stages=2;}
+ #assert !metal_host_use(2,0,name,kind,slot,shape,stride,stages).valid;
+}
+#test "Metal host texture and sampler ceilings and ordinary versus comparison shapes" {
+ #assert metal_host_use(2,5,"sheets",2,127,1,0,2).valid;
+ #assert !metal_host_use(2,5,"sheets",2,128,1,0,2).valid;
+ #assert metal_host_use(2,5,"shadow_cmp",3,15,1,0,2).valid;
+ #assert !metal_host_use(2,5,"shadow_cmp",3,16,1,0,2).valid;
+ #assert !metal_host_use(2,5,"shadow_cmp",3,0,0,0,2).valid;
+}
+#test "Metal interface publishes exactly the declared complete entry with distinct slots" {
+ uses:=[1]MetalHostUse.[metal_host_use(2,0,"u",1,0,0,4,3)];attrs:[]RenderVertexInput;
+ #assert metal_host_interface(2,0,"eg_bg_vs","eg_bg_fs",uses[..],attrs,0).valid;
+ #assert !metal_host_interface(2,0,"eg_bg_vs","eg_scene_fs",uses[..],attrs,0).valid;
+ #assert !metal_host_interface(2,0,"other","eg_bg_fs",uses[..],attrs,0).valid;
+ #assert !metal_host_interface(2,0,"eg_bg_vs","eg_bg_fs",uses[0..<0],attrs,0).valid;
+ #assert !metal_host_interface(2,0,"eg_bg_vs","eg_bg_fs",uses[..],attrs,4).valid;
+ uses[0].valid=false;#assert !metal_host_interface(2,0,"eg_bg_vs","eg_bg_fs",uses[..],attrs,0).valid;
+}
+#test "Metal interface observes every HUD attribute and refuses forged source mappings" {
+ uses:=[3]MetalHostUse.[metal_host_use(2,12,"u",1,0,0,4,3),metal_host_use(2,12,"sans_atlas",2,1,0,0,2),metal_host_use(2,12,"sans_sampler",3,2,0,0,2)];attrs:[4]RenderVertexInput;   // the HUD's glyphs (#13018)
+ for i:0..<4 {attrs[i]=RenderVertexInput.{location=i,scalar=2,width=4,offset=i*16};}
+ #assert metal_host_interface(2,12,"eg_fx_vs","eg_fx_fs",uses[..],attrs[..],64).valid;
+ for field:0..<6 {bad:=attrs;
+  if field==0 {bad[0].location=1;}if field==1 {bad[1].scalar=3;}if field==2 {bad[2].width=3;}
+  if field==3 {bad[3].offset=44;}
+  #assert !metal_host_interface(2,12,"eg_fx_vs","eg_fx_fs",uses[..],bad[0..<(ifx field==4 then 3 else 4)],ifx field==5 then 60 else 64).valid;
+ }
+ uses[0].canonical.source.index=91;
+ q:=metal_host_interface(2,12,"eg_fx_vs","eg_fx_fs",uses[..],attrs[..],64);
+ #assert q.valid && q.uses[0].canonical.source.index==0;
+ uses[0].canonical.binding.name="other";#assert !metal_host_interface(2,12,"eg_fx_vs","eg_fx_fs",uses[..],attrs[..],64).valid;
+}
+#test "Metal interface refuses duplicate resources and same-namespace slot aliases" {
+ uses:[32]MetalHostUse;bn:=0;tn:=0;sn:=0;n:=render_host_use_count(2,5);attrs:[]RenderVertexInput;
+ for i:0..<n {u:=render_host_use(2,5,i);slot:=0;
+  if u.use.native_kind==1 {slot=bn;bn+=1;}if u.use.native_kind==2 {slot=tn;tn+=1;}if u.use.native_kind==3 {slot=sn;sn+=1;}
+  uses[i]=metal_host_use(2,5,u.binding.name,u.use.native_kind,slot,u.use.shape,u.use.stride,u.use.stages);
+ }
+ #assert metal_host_interface(2,5,"eg_scene_vs","eg_scene_fs",uses[0..<n],attrs,0).valid;
+ saved:=uses[1];uses[1]=uses[0];#assert !metal_host_interface(2,5,"eg_scene_vs","eg_scene_fs",uses[0..<n],attrs,0).valid;
+ uses[1]=saved;uses[1].slot=0;#assert !metal_host_interface(2,5,"eg_scene_vs","eg_scene_fs",uses[0..<n],attrs,0).valid;
+ #assert !metal_host_interface(2,-1,"","",uses[0..<n],attrs,0).valid && !metal_host_interface(2,14,"","",uses[0..<n],attrs,0).valid;
+}
+#test "Metal interface admits the separate media entry only under a media profile" {
+ uses:[3]MetalHostUse;
+ for i:0..<3 {u:=render_host_use(2,13,i);uses[i]=metal_host_use(2,13,u.binding.name,u.use.native_kind,0,u.use.shape,u.use.stride,u.use.stages);}
+ attrs:[]RenderVertexInput;
+ q:=metal_host_interface(2,13,"media_vs","media_fs",uses[..],attrs,0);
+ #assert q.valid && q.count==3 && q.vertex=="media_vs" && q.fragment=="media_fs";
+ #assert !metal_host_interface(1,13,"media_vs","media_fs",uses[..],attrs,0).valid;
+ #assert !metal_host_interface(2,14,"media_vs","media_fs",uses[..],attrs,0).valid;
+}
+metal_host_use :: (profile:int,entry:int,name:string,kind:int,slot:int,shape:int,stride:int,stages:int)->MetalHostUse #export_c #effects(all) {
+ if slot<0 || !((kind==1 && slot<29)||(kind==2 && slot<128)||(kind==3 && slot<16)) {return MetalHostUse.{};}
+ n:=render_host_use_count(profile,entry);
+ for i:0..<n {u:=render_host_use(profile,entry,i);
+  if u.binding.name==name && u.use.native_kind==kind && u.use.shape==shape && u.use.stride==stride && u.use.stages==stages {
+   return MetalHostUse.{valid=true,slot=slot,canonical=u};
+  }
+ }
+ return MetalHostUse.{};
+}
+metal_host_interface :: (profile:int,entry:int,vertex:string,fragment:string,uses:[]MetalHostUse,attributes:[]RenderVertexInput,stride:int)->MetalHostInterface #export_c #effects(all) {
+ e:RenderEntry;
+ if entry>=0 && entry<13 {e=render_catalog_entry(profile,cast(RenderPassId)entry);}
+ else if entry==13 {m:=render_media_entry();e=RenderEntry.{valid=true,vertex=m.vertex,fragment=m.fragment};}
+ // The canonical use count is bounded by32; -1 refuses absent media profiles.
+ if !e.valid || vertex!=e.vertex || fragment!=e.fragment || uses.count!=render_host_use_count(profile,entry) {return MetalHostInterface.{};}
+ if entry==12 {
+  c:=render_catalog(profile);if stride!=c.vertex_stride*4 || attributes.count!=c.vertex_stride/4 {return MetalHostInterface.{};}
+  for a,i:attributes {if a.location!=i || a.scalar!=2 || a.width!=4 || a.offset!=i*16 {return MetalHostInterface.{};}}
+ }else if stride!=0 || attributes.count!=0 {return MetalHostInterface.{};}
+ q:=MetalHostInterface.{valid=true,vertex=vertex,fragment=fragment,count=uses.count};
+ for u,i:uses {
+  if !u.valid {return MetalHostInterface.{};}
+  admitted:=metal_host_use(profile,entry,u.canonical.binding.name,u.canonical.use.native_kind,u.slot,u.canonical.use.shape,u.canonical.use.stride,u.canonical.use.stages);
+  if !admitted.valid {return MetalHostInterface.{};}
+  for j:0..<i {
+   p:=uses[j];if p.canonical.use.resource==u.canonical.use.resource || (p.canonical.use.native_kind==u.canonical.use.native_kind && p.slot==u.slot) {return MetalHostInterface.{};}
+  }
+  q.uses[i]=admitted;
+ }
+ return q;
+}

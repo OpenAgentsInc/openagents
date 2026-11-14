@@ -978,7 +978,7 @@ owner's request to rebuild it with that lighting and foliage:
 
 ## Shadow tiles (#13016)
 
-The sun's shadow map is an atlas of tiles round the eye (`metaverse-engine/render/cascades.coax`), and a
+The sun's shadow map is an atlas of tiles round the eye (`metaverse-engine/render/graph/cascades.coax`), and a
 tile is drawn only when its view changes:
 
 - A desktop has four tiles of 1024 texels in a 2048 atlas, reaching 24, 60, 150 and 360 m. A

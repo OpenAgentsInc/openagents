@@ -10,7 +10,7 @@
 // parameters (metaverse-engine/arch/village.coax: houses, the church, walls, street furniture;
 // metaverse-engine/arch/plaza.coax: steps, the terrace, piers, the fountain, benches, stalls;
 // metaverse-engine/arch/flora.coax: trees, bushes, hills, the ground); this file says which, with what
-// parameters, and where they stand. The Metaverse Engine's stylized shading (metaverse-engine/render/stylized.coax) draws
+// parameters, and where they stand. The Metaverse Engine's stylized shading (metaverse-engine/render/shade/stylized.coax) draws
 // them, and every part brings its own solids (metaverse-engine/arch/solids.coax), so what you see you can
 // walk to and nothing you see can be walked through.
 //
@@ -22,7 +22,7 @@
 #load "../../metaverse-engine/arch/flora.coax";
 #load "../../metaverse-engine/arch/place.coax";
 #load "../../metaverse-engine/arch/solids.coax";
-#load "../../metaverse-engine/render/stylized-frame.coax";
+#load "../../metaverse-engine/render/shade/stylized-frame.coax";
 #load "wilds.coax";
 
 VR_VERTICES :: 860000;

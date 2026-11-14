@@ -21,7 +21,7 @@
 #load "../pack-cells.coax";
 #load "../page-stream.coax";
 #load "../../render/block-layer.coax";
-#load "../../render/frame-plan.coax";
+#load "../../render/graph/frame-plan.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/sys/args.coax";

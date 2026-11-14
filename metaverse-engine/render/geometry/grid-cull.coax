@@ -1,0 +1,160 @@
+// The Metaverse Engine's grid cull (GitHub #13147): the cells of a square grid round the eye that a view can
+// see, as runs of cells along each row. A realm that lets the GPU place one instance a cell (a
+// meadow's grass and understory: everglade/world/meadow.coax) draws each run instead of the whole
+// grid, so the GPU never runs the vertices of a cell behind the camera, beside the view or out of
+// its kit's ring. The cull only ever keeps too much: a cell is dropped when its whole square, and
+// whatever stands on it out to `pad` metres past it and the view's `rise` metres above or below the
+// eye, is outside the view's sides, behind the eye, or outside the ring from `inner` to `outer`
+// metres from it. The picture is the same as drawing every cell.
+//   coax/bin/coax test metaverse-engine/render/geometry/grid-cull.coax
+
+#module "metaverse.engine.render.gridcull";
+
+GRID_CULL_RISE :: 60.0;   // a view's rise unless it says: metres above or below the eye a piece may stand and still be kept
+
+// The view on the ground: the eye (x, z), which way it looks (f, a unit vector), its right hand
+// (r, a unit vector), `half`, half the picture's width over its focal length, and `rise`, the most
+// metres above or below the eye anything on the grid stands.
+GridView :: struct { ex: f32; ez: f32; fx: f32; fy: f32; fz: f32; rx: f32; ry: f32; rz: f32; half: f32; rise: f32 = GRID_CULL_RISE; }
+
+// A clearing the grid's pieces keep out of (on): no piece stands inside the rectangle x0..x1,
+// z0..z1; with a band (metres) none stands further than that outside it either. `slack` is how far
+// a piece's place may be off its cell (the GPU works the eye's cell out for itself).
+GridClear :: struct { on: bool; x0: f32; z0: f32; x1: f32; z1: f32; band: f32; slack: f32; }
+// Whether a piece on the square x0..x1, z0..z1 may stand: not when the square is wholly inside the
+// clearing, nor wholly past its band.
+grid_cull_stands :: (c: GridClear, x0: f32, z0: f32, x1: f32, z1: f32) -> bool {
+  if !c.on { return true; }
+  s := c.slack;
+  if x0 - s > c.x0 && x1 + s < c.x1 && z0 - s > c.z0 && z1 + s < c.z1 { return false; }
+  if c.band > 0 && (x1 + s < c.x0 - c.band || x0 - s > c.x1 + c.band || z1 + s < c.z0 - c.band || z0 - s > c.z1 + c.band) { return false; }
+  return true;
+}
+grid_cull_abs :: (v: f32) -> f32 { if v < 0 { return -v; } return v; }
+// How far v is from the span a to b (0 inside it), and how far its farther end is.
+grid_cull_near :: (v: f32, a: f32, b: f32) -> f32 { if v < a { return a - v; } if v > b { return v - b; } return 0; }
+grid_cull_far :: (v: f32, a: f32, b: f32) -> f32 { p := grid_cull_abs(v - a); q := grid_cull_abs(b - v); if p > q { return p; } return q; }
+
+// Whether the view may see anything standing on the square x0..x1, z0..z1.
+grid_cull_seen :: (v: GridView, x0: f32, z0: f32, x1: f32, z1: f32, inner: f32, outer: f32, pad: f32) -> bool {
+  nx := grid_cull_near(v.ex, x0, x1); nz := grid_cull_near(v.ez, z0, z1);
+  reach := outer + pad;
+  if nx * nx + nz * nz > reach * reach { return false; }
+  hole := inner - pad;
+  if hole > 0 {
+    wx := grid_cull_far(v.ex, x0, x1); wz := grid_cull_far(v.ez, z0, z1);
+    if wx * wx + wz * wz < hole * hole { return false; }
+  }
+  cx := (x0 + x1) * 0.5 - v.ex; cz := (z0 + z1) * 0.5 - v.ez;
+  r := pad + 0.70711 * ((x1 - x0) + (z1 - z0)) * 0.5;
+  // how far ahead it may be: its place on the ground, and the most its height can add
+  ahead := cx * v.fx + cz * v.fz + grid_cull_abs(v.fy) * v.rise;
+  if ahead < -r { return false; }
+  side := grid_cull_abs(cx * v.rx + cz * v.rz) - grid_cull_abs(v.ry) * v.rise;
+  return side <= ahead * v.half + r * sqrt(1 + v.half * v.half);
+}
+
+// The runs of a grid of side by side cells, each `cell` metres, whose corner cell starts at
+// (x0, z0); cell (ix, iz) is instance iz * side + ix. Each run is two numbers in `runs`: its first
+// instance and how many. Returns the runs, or -1 when `runs` has no room for them all (the caller
+// then draws the whole grid).
+grid_cull_runs :: (v: GridView, x0: f32, z0: f32, cell: f32, side: int, inner: f32, outer: f32, pad: f32, runs: [] u32) -> int {
+  return grid_cull_runs_clear(v, GridClear.{}, x0, z0, cell, side, inner, outer, pad, runs);
+}
+// The same, for a grid whose pieces keep out of a clearing (GridClear).
+grid_cull_runs_clear :: (v: GridView, clear: GridClear, x0: f32, z0: f32, cell: f32, side: int, inner: f32, outer: f32, pad: f32, runs: [] u32) -> int {
+  n := 0;
+  for iz: 0..<side {
+    za := z0 + f32(iz) * cell; open := -1;
+    for ix: 0..<side + 1 {
+      seen := false;
+      if ix < side { xa := x0 + f32(ix) * cell; seen = grid_cull_stands(clear, xa, za, xa + cell, za + cell) && grid_cull_seen(v, xa, za, xa + cell, za + cell, inner, outer, pad); }
+      if seen && open < 0 { open = ix; }
+      if !seen && open >= 0 {
+        if n * 2 + 2 > runs.count { return -1; }
+        runs[n * 2] = cast(u32) (iz * side + open); runs[n * 2 + 1] = cast(u32) (ix - open); n += 1; open = -1;
+      }
+    }
+  }
+  return n;
+}
+
+// ---- checks
+
+// a point (x, y, z) in a view's picture: ahead of the eye and inside its sides
+grid_cull_in_view :: (v: GridView, x: f32, y: f32, z: f32) -> bool {
+  dx := x - v.ex; dz := z - v.ez;
+  ahead := dx * v.fx + y * v.fy + dz * v.fz;
+  if ahead <= 0 { return false; }
+  return grid_cull_abs(dx * v.rx + y * v.ry + dz * v.rz) <= ahead * v.half;
+}
+grid_cull_view :: (ex: f32, ez: f32, yaw: f32, pitch: f32, half: f32) -> GridView {
+  cy := cos(pitch); sy := sin(pitch); sx := sin(yaw); cz := cos(yaw);
+  return GridView.{ex = ex, ez = ez, fx = -sx * cy, fy = -sy, fz = -cz * cy, rx = cz, ry = 0, rz = -sx, half = half};
+}
+#test "grid cull: every cell with a point in view and in the ring is in a run" #steps 400000000 {
+  runs: [4096] u32;
+  for k: 0..<24 {
+    yaw := f32(k) * 0.71 - 3; pitch := f32(k % 7) * 0.2 - 0.5; ex := f32(k) * 3.3 - 20; ez := 11 - f32(k) * 1.7;
+    v := grid_cull_view(ex, ez, yaw, pitch, 0.9);
+    side := 41; cell := 2.5f32; inner := ifx k % 2 == 0 then 0.0f32 else 20.0f32; outer := 48.0f32;
+    x0 := floor(ex / cell) * cell - f32(side / 2) * cell; z0 := floor(ez / cell) * cell - f32(side / 2) * cell;
+    n := grid_cull_runs(v, x0, z0, cell, side, inner, outer, 1, runs[..]);
+    #assert n >= 0;
+    kept: [41 * 41] bool; total := 0;
+    for i: 0..<n { for j: 0..<cast(int) runs[i * 2 + 1] { kept[cast(int) runs[i * 2] + j] = true; total += 1; } #assert runs[i * 2 + 1] > 0; }
+    for iz: 0..<side { for ix: 0..<side {
+      // points of the cell, at heights within the rise
+      for p: 0..<9 {
+        x := x0 + (f32(ix) + f32(p % 3) * 0.5) * cell; z := z0 + (f32(iz) + f32(p / 3) * 0.5) * cell;
+        d := sqrt((x - ex) * (x - ex) + (z - ez) * (z - ez));
+        if d < inner || d > outer { continue; }
+        for hh: 0..<3 { if grid_cull_in_view(v, x, f32(hh) * 25 - 25, z) { #assert kept[iz * side + ix]; } }
+        // a view with less rise keeps what stands within it
+        low := v; low.rise = 10; if grid_cull_in_view(v, x, 9, z) || grid_cull_in_view(v, x, -9, z) { #assert grid_cull_seen(low, x0 + f32(ix) * cell, z0 + f32(iz) * cell, x0 + f32(ix + 1) * cell, z0 + f32(iz + 1) * cell, inner, outer, 1); }
+      }
+    }}
+    // and it drops most of the grid: what is behind the eye, beside the view and out of the ring
+    #assert total > 0 && total < side * side * 6 / 10;
+  }
+}
+#test "grid cull: a run stays in its row, rows come in order, and no room is said" {
+  runs: [4096] u32; v := grid_cull_view(0, 0, 0.4, 0.2, 0.8); side := 21;
+  n := grid_cull_runs(v, -10.5, -10.5, 1, side, 0, 9, 0.5, runs[..]);
+  #assert n > 0;
+  last := -1;
+  for i: 0..<n {
+    first := cast(int) runs[i * 2]; count := cast(int) runs[i * 2 + 1];
+    #assert first > last && first / side == (first + count - 1) / side && first + count <= side * side;
+    last = first + count - 1;
+  }
+  small: [2] u32; #assert grid_cull_runs(v, -10.5, -10.5, 1, side, 0, 9, 0.5, small[..]) == -1;
+  // looking straight down, the cells round the eye stay: nothing near is behind a camera above it
+  d := grid_cull_view(0, 0, 0, 1.5, 0.8); m := grid_cull_runs(d, -10.5, -10.5, 1, side, 0, 9, 0.5, runs[..]);
+  cells := 0; for i: 0..<m { cells += cast(int) runs[i * 2 + 1]; }
+  #assert cells > 200;
+  // a ring's hole is left out, and a cell wholly past the ring too
+  #assert !grid_cull_seen(d, -1, -1, 1, 1, 5, 9, 0.5) && !grid_cull_seen(d, 20, 20, 21, 21, 0, 9, 0.5) && grid_cull_seen(d, 5, 0, 6, 1, 5, 9, 0.5);
+}
+#test "grid cull: a clearing's cells and the cells past its band are in no run, and every cell a piece may stand on still is" {
+  runs: [4096] u32; v := grid_cull_view(0, 30, 0, 0.1, 0.9); side := 41; cell := 2.5f32;
+  x0 := -f32(side / 2) * cell; z0 := 30 - f32(side / 2) * cell;
+  c := GridClear.{on = true, x0 = -10, z0 = -10, x1 = 10, z1 = 20, band = 6, slack = 0.5};
+  all := grid_cull_runs(v, x0, z0, cell, side, 0, 48, 1, runs[..]); whole := 0; for i: 0..<all { whole += cast(int) runs[i * 2 + 1]; }
+  n := grid_cull_runs_clear(v, c, x0, z0, cell, side, 0, 48, 1, runs[..]); #assert n > 0;
+  kept: [41 * 41] bool; total := 0;
+  for i: 0..<n { for j: 0..<cast(int) runs[i * 2 + 1] { kept[cast(int) runs[i * 2] + j] = true; total += 1; } }
+  #assert total < whole / 2;
+  for iz: 0..<side { for ix: 0..<side {
+    for p: 0..<9 {
+      x := x0 + (f32(ix) + f32(p % 3) * 0.5) * cell; z := z0 + (f32(iz) + f32(p / 3) * 0.5) * cell;
+      inside := x > c.x0 && x < c.x1 && z > c.z0 && z < c.z1;
+      past := x < c.x0 - c.band || x > c.x1 + c.band || z < c.z0 - c.band || z > c.z1 + c.band;
+      d := sqrt(x * x + (z - 30) * (z - 30));
+      if !inside && !past && d <= 48 && grid_cull_in_view(v, x, 0, z) { #assert kept[iz * side + ix]; }
+    }
+  }}
+  // with no band the pieces stand everywhere past the clearing; off, the clearing is not there
+  c.band = 0; m := grid_cull_runs_clear(v, c, x0, z0, cell, side, 0, 48, 1, runs[..]); more := 0; for i: 0..<m { more += cast(int) runs[i * 2 + 1]; } #assert more > total && more < whole;
+  c.on = false; #assert grid_cull_runs_clear(v, c, x0, z0, cell, side, 0, 48, 1, runs[..]) == all && grid_cull_stands(c, 0, 0, 1, 1);
+}

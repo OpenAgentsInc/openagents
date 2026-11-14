@@ -8,13 +8,13 @@
 // This file is the page: the camera you walk, the HUD, and what it hands the host. It builds
 // nothing itself. The scene (metaverse/painted/village-road.coax) stands parts made by the Metaverse Engine's
 // architecture kit (metaverse-engine/arch/village.coax, flora.coax), and the Metaverse Engine's stylized shading
-// (metaverse-engine/render/stylized.coax, named by gpu/painted.coax) draws them: store 0 the kit's vertices,
+// (metaverse-engine/render/shade/stylized.coax, named by gpu/painted.coax) draws them: store 0 the kit's vertices,
 // store 1 the records, store 2 the ground table, each copied to the GPU once.
 //
 // South of the village (metaverse/painted/wilds.coax) the road runs on as a path through pines, over a
 // plank bridge and into a meadow of oaks under a cliff and its waterfall. The river, the falls,
 // their spray and the rainbow are the scene's last draws: the host draws them in the water pass
-// (coaxial_water_draws; metaverse-engine/render/stylized.coax, stylized_water_*).
+// (coaxial_water_draws; metaverse-engine/render/shade/stylized.coax, stylized_water_*).
 //
 // Keys: W A S D or the arrows walk, a drag looks, shift runs, C shows what blocks you, H hides the
 // HUD, Escape leaves. The shots, by their reference frame: 1 the road, 2 the plaza, 3 the church

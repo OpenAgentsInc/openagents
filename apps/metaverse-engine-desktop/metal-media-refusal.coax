@@ -4,7 +4,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../metaverse-engine/render/host-image.coax";
+#load "../../metaverse-engine/render/host/host-image.coax";
 mrf_names :: [7]string.["meteor-swarm-48.jpg","thunderbolt-48.jpg","mega-thunderbolt-48.jpg","water-orb-48.jpg","reverse-gravity-48.jpg","wind-wall-48.jpg","next-row-48.jpg"];
 mrf_str :: (o:[]Jo,key:string,value:string) {jo_key(o,key);jo_str(o,value);}
 mrf_run :: (argv:[]string,dir:string,label:string)->bool {out:[1048576]u8;err:[65536]u8;r:=proc_run(argv,60000,out[..],err[..]);names:[2][128]u8;paths:[2][4096]u8;for i:0..<2 {o:[1]Jo;jo_start(o[..],names[i][..]);jo_put(o[..],label);jo_put(o[..],ifx i==0 then ".stdout" else ".stderr");if !fs_write(fs_join(dir,jo_text(o[..]),paths[i][..]),ifx i==0 then cast(string)out[0..<r.out_n] else cast(string)err[0..<r.err_n]) {return false;}}if r.started!=0||r.status!=0||r.cut||r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;}

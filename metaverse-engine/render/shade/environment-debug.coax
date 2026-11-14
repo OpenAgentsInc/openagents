@@ -1,0 +1,166 @@
+// The developer's light views (lighting plan Phase 1 step 7 and verification rule 4, GitHub #13067;
+// docs/metaverse/lighting/README.md). A painterly page that opens with ?light=VIEW (developer-only,
+// off by default: no view without the query) shows one of:
+//   ambient    the sky and ground ambient each surface receives, without its albedo
+//   direct     the key light each surface receives (colour x n.l x visibility), without its albedo
+//   pregrade   the lit frame before the film and grade (linear light, display-encoded only)
+//   postgrade  the ordinary frame (the film and grade applied), with the readout
+//   regions    the ordinary frame, with the readout
+// and, for every view, a readout of the camera's resolved environment: the region weights by profile
+// id (the dominant one marked), the ambient's upper, horizon and lower colours, the key's colour and
+// direction, and an 18% grey and the sky's zenith before and after the grade.
+// The shader views are words the page writes at its uniform word (everglade/client/gpu/everglade2-uniforms.coax E2U.glade.w);
+// this module only names them and writes the readout. It reads the page's admitted set and index
+// and resolves the camera again only while a view is on, so a page without ?light pays nothing.
+//   coax/bin/coax test metaverse-engine/render/shade/environment-debug.coax
+#module "metaverse.engine.render.environment_debug";
+#load "environment-frame.coax" as envf;
+#load "filmic.coax" as film;
+
+ENV_VIEW_OFF :: 0;
+ENV_VIEW_AMBIENT :: 1;
+ENV_VIEW_DIRECT :: 2;
+ENV_VIEW_PREGRADE :: 3;
+ENV_VIEW_POSTGRADE :: 4;
+ENV_VIEW_REGIONS :: 5;
+ENV_VIEW_NAMES :: [6] string.["off", "ambient", "direct", "pregrade", "postgrade", "regions"];
+ENV_DEBUG_LINES :: 8;
+ENV_DEBUG_LINE :: 96;
+
+EnvDebugText :: struct { lines: [ENV_DEBUG_LINES] [ENV_DEBUG_LINE] u8; n: [ENV_DEBUG_LINES] int; count: int; refusal: EnvRefusal; }
+
+// ---- checks (written before the code below)
+
+#test "a view is named by the query's word; anything else is off" {
+  #assert env_view_named("ambient") == ENV_VIEW_AMBIENT && env_view_named("direct") == ENV_VIEW_DIRECT && env_view_named("pregrade") == ENV_VIEW_PREGRADE;
+  #assert env_view_named("postgrade") == ENV_VIEW_POSTGRADE && env_view_named("regions") == ENV_VIEW_REGIONS;
+  #assert env_view_named("") == ENV_VIEW_OFF && env_view_named("off") == ENV_VIEW_OFF && env_view_named("ambient2") == ENV_VIEW_OFF && env_view_named("AMBIENT") == ENV_VIEW_OFF;
+  // the words a page puts at its uniform: 0 off; only ambient, direct and pregrade change the shaders
+  #assert env_view_word(ENV_VIEW_OFF) == 0 && env_view_word(ENV_VIEW_AMBIENT) == 1 && env_view_word(ENV_VIEW_DIRECT) == 2 && env_view_word(ENV_VIEW_PREGRADE) == 3;
+  #assert env_view_word(ENV_VIEW_POSTGRADE) == 0 && env_view_word(ENV_VIEW_REGIONS) == 0 && env_view_word(9) == 0 && env_view_word(-1) == 0;
+}
+#test "?light=VIEW in a page's url fact" {
+  #assert env_view_query("url=/worlds/everglade2?light=ambient\n") == ENV_VIEW_AMBIENT;
+  #assert env_view_query("url=/worlds/everglade2?at=60&light=regions&walk\nnow=5\n") == ENV_VIEW_REGIONS;
+  #assert env_view_query("url=/worlds/everglade2?light=direct#x\n") == ENV_VIEW_DIRECT;
+  #assert env_view_query("url=/worlds/everglade2\n") == ENV_VIEW_OFF && env_view_query("url=/worlds/everglade2?flight=ambient\n") == ENV_VIEW_OFF;
+  #assert env_view_query("url=/worlds/everglade2?light=sideways\n") == ENV_VIEW_OFF && env_view_query("") == ENV_VIEW_OFF;
+}
+#test "the readout under the glade: one profile at weight 1, its ambient, key and grade" {
+  f: [1] envf.EnvFrame; u: [envf.ENV_FRAME_FLOATS] f32;
+  #assert envf.env_frame_write_eye(f[..], 0, 2, 3, 5, u[..], 0);
+  t: [1] EnvDebugText; #assert env_debug_read(f[..], 0, EnvDir.{x = 2, y = 3, z = 5}, t[..]);
+  #assert t[0].count == 6 && t[0].refusal == EnvRefusal.none;
+  #assert envd_line(t[..], 0) == "REGIONS 1:1.000*";
+  #assert envd_line(t[..], 1) == "AMBIENT UP 0.490 0.550 0.620  HOR 0.405 0.445 0.390  LOW 0.320 0.340 0.160";
+  // the key: the glade's 4500 K under a 6500 K white, times 2.15 (cg_sun_colour), toward its sun
+  k := f[0].held.direct; #assert abs(k.r - 2.15) < 0.001;
+  #assert envd_starts(envd_line(t[..], 2), "DIRECT 2.150 1.51") && envd_starts(envd_line(t[..], 3), "KEY DIR -0.426 0.618 -0.661");
+  // the grade: grey 0.18 by the exposure 1.18 through the film, a grey keeps its grey under saturation
+  g := film.film_exposed(film.film_rgb(0.18, 0.18, 0.18), 1.18);
+  #assert abs(env_debug_grade(f[0].held, 0.18, 0.18, 0.18).g - envd_srgb(g.g)) < 0.000001;
+  #assert envd_starts(envd_line(t[..], 4), "GREY 0.180 0.180 0.180 > ") && envd_starts(envd_line(t[..], 5), "ZENITH ");
+  // a page that wrote nothing has nothing to read
+  e: [1] envf.EnvFrame; #assert !env_debug_read(e[..], 0, EnvDir.{}, t[..]) && t[0].count == 0;
+}
+#test "the readout in a band: two profiles' weights by id, summing to 1, the dominant marked" {
+  f: [1] envf.EnvFrame; n: [1] EnvironmentSet; n[0] = envf.env_frame_glade_set();
+  p := env_test_profile3(); n[0].profiles[1] = p; n[0].profile_count = 2;
+  n[0].regions[0] = env_region_sphere(4, 7); n[0].region_count = 1;   // centre (4, 1, -3), radius 12
+  #assert envf.env_frame_admit(f[..], n[..]).refusal == EnvRefusal.none;
+  u: [envf.ENV_FRAME_FLOATS] f32; eye := EnvDir.{x = 4, y = 1, z = -3 + 12.5};   // inside the band
+  #assert envf.env_frame_write(f[..], 0, eye, u[..], 0);
+  t: [1] EnvDebugText; #assert env_debug_read(f[..], 0, eye, t[..]);
+  w := env_debug_weights(f[..], 0, eye); #assert w.refusal == EnvRefusal.none && w.weights.count == 2;
+  #assert abs(w.weights.weights[0] + w.weights.weights[1] - 1) < 0.00001 && w.weights.weights[0] > 0 && w.weights.weights[1] > 0;
+  // the line names both profiles by id, each with its weight, and marks one dominant
+  r := envd_line(t[..], 0); colons := 0; stars := 0; for c: r { if c == ':' { colons += 1; } if c == '*' { stars += 1; } }
+  #assert envd_starts(r, "REGIONS 1:0.") && colons == 2 && stars == 1;
+  // deep inside: the region's profile alone
+  w = env_debug_weights(f[..], 0, EnvDir.{x = 4, y = 1, z = -3}); #assert abs(w.weights.weights[1] - 1) < 0.00001 && w.weights.dominant == 1;
+}
+
+// ---- the code
+
+env_view_named :: (name: string) -> int {
+  for i: 1..<ENV_VIEW_NAMES.count { if ENV_VIEW_NAMES[i] == name { return i; } }
+  return ENV_VIEW_OFF;
+}
+// The word the page's shaders read: 1 ambient, 2 direct, 3 pregrade; 0 draws the ordinary frame.
+env_view_word :: (view: int) -> f32 {
+  return ifx view == ENV_VIEW_AMBIENT || view == ENV_VIEW_DIRECT || view == ENV_VIEW_PREGRADE then f32(view) else 0;
+}
+// ?light=VIEW (or &light=VIEW) in the page's facts, up to & # or the line's end.
+env_view_query :: (t: string) -> int {
+  key := "light=";
+  for i: 1..<t.count - key.count + 1 {
+    if (t[i - 1] == '?' || t[i - 1] == '&') && t[i..<i + key.count] == key {
+      a := i + key.count; e := a;
+      while e < t.count && t[e] != '&' && t[e] != '#' && t[e] != '\n' { e += 1; }
+      return env_view_named(t[a..<e]);
+    }
+  }
+  return ENV_VIEW_OFF;
+}
+
+// The camera's region weights again, at the day the frame last wrote (the record's time of day).
+env_debug_weights :: (f: [] envf.EnvFrame, tick: s64, eye: EnvDir) -> EnvRegionResolve #effects(all) {
+  st := EnvironmentState.{version = ENV_VERSION, profile = 0, day = f64(f[0].held.time)};
+  return env_resolve_camera(f[0].set[..], f[0].index[..], st, eye);
+}
+// A colour through the record's film and grade, as metaverse-engine/render/shade/painterly.coax paint_env_output
+// does on the GPU: exposed through the film, saturated about its luminance, display-encoded.
+EnvGrade :: struct { r: f32; g: f32; b: f32; }
+env_debug_grade :: (e: ResolvedEnvironment, r: f32, g: f32, b: f32) -> EnvGrade {
+  f := film.film_exposed(film.film_rgb(r, g, b), e.channels.presentation.exposure);
+  y := f.r * 0.2126 + f.g * 0.7152 + f.b * 0.0722; k := e.channels.presentation.saturation;
+  s := [3] f32.[envd_max0(y + (f.r - y) * k), envd_max0(y + (f.g - y) * k), envd_max0(y + (f.b - y) * k)];
+  return EnvGrade.{r = envd_srgb(s[0]), g = envd_srgb(s[1]), b = envd_srgb(s[2])};
+}
+envd_max0 :: (x: f32) -> f32 { return ifx x > 0 then x else 0; }
+envd_srgb :: (x: f32) -> f32 { c := ifx x > 0 then x else 0; return ifx c <= 0.0031308 then c * 12.92 else 1.055 * pow(c, 1.0 / 2.4) - 0.055; }
+envd_linear :: (x: f32) -> f32 { return ifx x <= 0.04045 then x / 12.92 else pow((x + 0.055) / 1.055, 2.4); }
+
+// The readout of the record the frame last wrote. False when it holds none.
+env_debug_read :: (f: [] envf.EnvFrame, tick: s64, eye: EnvDir, t: [] EnvDebugText) -> bool #effects(all) {
+  t[0].count = 0; t[0].refusal = EnvRefusal.none;
+  if !f[0].has { return false; }
+  e := f[0].held; w := env_debug_weights(f, tick, eye); t[0].refusal = w.refusal;
+  l := envd_begin(t, "REGIONS");
+  if w.refusal != EnvRefusal.none { envd_put(t, l, " REFUSED"); }
+  else { for i: 0..<w.weights.count { if w.weights.weights[i] > 0 {
+    envd_put(t, l, " "); envd_int(t, l, cast(int) f[0].set[0].profiles[i].id); envd_put(t, l, ":"); envd_num(t, l, w.weights.weights[i]);
+    if i == w.weights.dominant { envd_put(t, l, "*"); } } } }
+  a := e.channels.ambient;
+  l = envd_begin(t, "AMBIENT UP"); envd_rgb(t, l, a.upper.r, a.upper.g, a.upper.b); envd_put(t, l, "  HOR"); envd_rgb(t, l, a.horizon.r, a.horizon.g, a.horizon.b);
+  envd_put(t, l, "  LOW"); envd_rgb(t, l, a.lower.r, a.lower.g, a.lower.b);
+  l = envd_begin(t, "DIRECT"); envd_rgb(t, l, e.direct.r, e.direct.g, e.direct.b);
+  l = envd_begin(t, "KEY DIR"); envd_rgb(t, l, e.dir.x, e.dir.y, e.dir.z); envd_put(t, l, "  DAY"); envd_num(t, l, e.time);
+  l = envd_begin(t, "GREY"); envd_rgb(t, l, 0.18, 0.18, 0.18); envd_put(t, l, " >"); g := env_debug_grade(e, 0.18, 0.18, 0.18); envd_rgb(t, l, g.r, g.g, g.b);
+  z := e.channels.sky.zenith; zr := envd_linear(z.r); zg := envd_linear(z.g); zb := envd_linear(z.b);
+  l = envd_begin(t, "ZENITH"); envd_rgb(t, l, zr, zg, zb); envd_put(t, l, " >"); h := env_debug_grade(e, zr, zg, zb); envd_rgb(t, l, h.r, h.g, h.b);
+  return true;
+}
+
+// ---- text
+envd_begin :: (t: [] EnvDebugText, head: string) -> int {
+  if t[0].count >= ENV_DEBUG_LINES { return ENV_DEBUG_LINES - 1; }
+  l := t[0].count; t[0].count += 1; t[0].n[l] = 0; envd_put(t, l, head); return l;
+}
+envd_put :: (t: [] EnvDebugText, l: int, s: string) { for c: s { if t[0].n[l] < ENV_DEBUG_LINE { t[0].lines[l][t[0].n[l]] = c; t[0].n[l] += 1; } } }
+envd_int :: (t: [] EnvDebugText, l: int, value: int) {
+  v := value; if v < 0 { envd_put(t, l, "-"); v = -v; }
+  d: [24] u8; k := 0;
+  while true { d[k] = cast(u8) (48 + v % 10); k += 1; v = v / 10; if v == 0 { break; } }
+  while k > 0 { k -= 1; envd_put(t, l, cast(string) d[k..<k + 1]); }
+}
+// three decimals, rounded half away from zero
+envd_num :: (t: [] EnvDebugText, l: int, value: f32) {
+  neg := value < 0; m := ifx neg then -value else value; q := cast(int) floor(f64(m) * 1000 + 0.5);
+  if neg && q > 0 { envd_put(t, l, "-"); }
+  envd_int(t, l, q / 1000); envd_put(t, l, ".");
+  f := q % 1000; envd_int(t, l, f / 100); envd_int(t, l, (f / 10) % 10); envd_int(t, l, f % 10);
+}
+envd_rgb :: (t: [] EnvDebugText, l: int, r: f32, g: f32, b: f32) { envd_put(t, l, " "); envd_num(t, l, r); envd_put(t, l, " "); envd_num(t, l, g); envd_put(t, l, " "); envd_num(t, l, b); }
+envd_line :: (t: [] EnvDebugText, l: int) -> string { return ifx l >= 0 && l < t[0].count then cast(string) t[0].lines[l][0..<t[0].n[l]] else ""; }
+envd_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }

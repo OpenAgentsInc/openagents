@@ -38,8 +38,8 @@ frame of 8.5 ms.
 | Streaming | One file, HTTP Range, 128 KiB pages, parents installed first, LRU over a fixed pool | Whole packs, fetched entire (`coax/web/host.js`). `pages.coax` has 2 slots for one Valley Lab rock. `metaverse-engine/world/cells.coax` exists but no realm uses it |
 | GPU memory | Fixed pools allocated at startup, so the budget can't be exceeded | `budget.coax` and `render/frame.coax` refuse a frame that goes over. Registry ceiling of 1 GiB |
 | Textures | BC7/BC5 with sRGB; three tiers of arrays, streamed by mip; unpacked on GPUs without BC | JPEG/PNG through `createImageBitmap`, so full RGBA8 on the GPU. No compressed formats |
-| Shadows | 4 cascades; a cascade redraws only when its view changes; contact shadows | One 2048 map (1024 on a phone) reaching 60 m, with PCF (`metaverse-engine/render/light.coax`) |
-| GI, sky, post | Voxel clipmap GI, Hillaire atmosphere, TAA, histogram exposure | Hemisphere ambient, height haze, authored sky. Bloom and exposure in `render/post.coax`. No GI and no TAA |
+| Shadows | 4 cascades; a cascade redraws only when its view changes; contact shadows | One 2048 map (1024 on a phone) reaching 60 m, with PCF (`metaverse-engine/render/shade/light.coax`) |
+| GI, sky, post | Voxel clipmap GI, Hillaire atmosphere, TAA, histogram exposure | Hemisphere ambient, height haze, authored sky. Bloom and exposure in `render/shade/post.coax`. No GI and no TAA |
 | Measurement | Scripted flyover: a frame-time CSV and one image a second; a throttled server for time to first image | `realm-perf.coax` (17 realms × 3 forms, a scripted walk, the 60 FPS rule). No network throttling, no time-to-first-image figure |
 | Checks | Watertight-cut tests, a randomized residency test, WGSL validated without a GPU, GPU tests that skip when there is no GPU | `#test`/`#forall`, `#authority` with zero mutants, goldens. This is stronger than theirs, and their ideas should land under our rules |
 

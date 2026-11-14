@@ -1,7 +1,7 @@
 // Test-only setup. The production memorial parser, layout, producer, browser
 // decoder and admitted renderer execute after this seeded server response.
 #load "../../../apps/openagents-web/villa.coax";
-#load "../native-host.coax";
+#load "../host/native-host.coax";
 RFM_MEMORIAL :: "{\"name\":\"Fixture memorial\",\"media\":[{\"id\":\"0000000000000000\",\"kind\":\"image\"}]}";
 RFM_VIDEO :: "{\"name\":\"Fixture memorial\",\"media\":[{\"id\":\"0000000000000000\",\"kind\":\"video\"}]}";
 #test "seeded memorial uses the real media record parser and URL producer" {

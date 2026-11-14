@@ -2,7 +2,7 @@
 // her idle face segments. The runtime is shared; only Echo's declarations live here. Raw data stays private.
 #load "echo-rig-policy.coax";
 #load "../../metaverse-engine/character/character.coax";
-#load "../../metaverse-engine/render/slay-lights.coax";
+#load "../../metaverse-engine/render/shade/slay-lights.coax";
 // Platform upload scratch is outside the persistent simulation state.
 EchoCatalogScratch :: struct {bytes:[ECHO_CATALOG_CAP]u8;}
 // Admit an Echo catalog (ECH1, ECP2 or ECP3) into packs[pack]: the rig, then the face projected

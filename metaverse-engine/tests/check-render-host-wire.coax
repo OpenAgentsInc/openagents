@@ -75,7 +75,7 @@ tool_main :: () -> int #export_c #effects(all) {
   for i:0..<image_n {image_path[i]=cast(u8)cxargs_byte(0,i);}
   tool_image:=cast(string)image_path[0..<image_n];
   compiler_path: [4096]u8; tool_compiler:=proc_getenv("COAX",compiler_path[..]); if tool_compiler=="" {tool_compiler="coax/bin/coax";}
-  paths := [10]string.[source,header,"coax/web/render-face.c","metaverse-engine/tests/render-host-wire.c","metaverse-engine/render/host-policy.coax","metaverse-engine/render/host.coax","metaverse-engine/tests/check-render-host-wire.coax","metaverse-engine/tests/render-wire-policy.coax",tool_image,tool_compiler];
+  paths := [10]string.[source,header,"coax/web/render-face.c","metaverse-engine/tests/render-host-wire.c","metaverse-engine/render/host/host-policy.coax","metaverse-engine/render/host/host.coax","metaverse-engine/tests/check-render-host-wire.coax","metaverse-engine/tests/render-wire-policy.coax",tool_image,tool_compiler];
   before: [10][64]u8;
   for i: 0..<paths.count {if !rw_hash(paths[i],before[i][..],data[..]) {return 1;}}
   deadline:=proc_now_ms()+810000; changed: [1048576]u8; path: [4096]u8; work_path: [4096]u8;

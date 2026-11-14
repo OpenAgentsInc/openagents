@@ -1,0 +1,30 @@
+// Shared host selection, separate from the unchanged legacy descriptor.
+#load "../presentation.coax";
+#load "../resources.coax" as host_presentation_resources;
+#load "../../host/render-mode.coax";
+#authority;
+RenderHostPresentation :: struct {enabled:bool;plan:RenderPresentation;}
+#forall "only the qualified contract and realm profile select shared presentation" which:0..<20 {
+ versions:=[5]int.[-1,0,1,2,9223372036854775807];profiles:=[4]int.[-1,2,13,18];version:=versions[which/4];profile:=profiles[which%4];
+ p:=render_host_presentation(version,profile,320,180,1,16384);enabled:=version==1&&profile==2;
+ #assert p.enabled==enabled;
+ if enabled {#assert p.plan.status==host_presentation_resources.RenderResourceStatus.ok&&p.plan.uniforms[5]==1&&p.plan.vertices==6;}
+ else {#assert p.plan.status==host_presentation_resources.RenderResourceStatus.invalid&&p.plan.entry == -1&&p.plan.vertices==0&&p.plan.uniforms[5]==0;}
+}
+#forall "eligible invalid physical facts refuse without selecting a legacy fallback" which:0..<9 {
+ widths:=[9]int.[0,-1,320,320,320,16385,320,320,320];heights:=[9]int.[180,180,0,-1,180,180,180,180,180];formats:=[9]int.[1,1,1,1,2,1,1,1,4294967296];maximums:=[9]int.[16384,16384,16384,16384,16384,32768,0,-1,16384];
+ p:=render_host_presentation(1,2,widths[which],heights[which],formats[which],maximums[which]);
+ #assert p.enabled&&p.plan.status!=host_presentation_resources.RenderResourceStatus.ok&&p.plan.vertices==0&&p.plan.uniforms[5]==0;
+}
+#forall "both display orders retain the complete checked quantized descriptor" format:0..<2 {
+ p:=render_host_presentation(1,2,321,181,format,16384);expected:=render_presentation_quantized_v1(2,321,181,format,16384);
+ #assert p.enabled&&p.plan.status==expected.status&&p.plan.entry==expected.entry&&p.plan.vertices==expected.vertices;
+ #assert p.plan.draw.width==321&&p.plan.draw.height==181&&p.plan.draw.format==host_presentation_resources.RenderTextureFormat.rgba16f;
+ #assert int(p.plan.display.format)==format&&p.plan.source==expected.source;
+ #assert p.plan.uniform.valid&&p.plan.image.valid&&p.plan.sample.valid&&p.plan.state.valid&&p.plan.sampler.status==expected.sampler.status;
+ for i:0..<8 {#assert f32_bits(p.plan.uniforms[i])==f32_bits(expected.uniforms[i]);}
+}
+render_host_presentation :: (version:int,profile:int,width:int,height:int,format:int,maximum:int)->RenderHostPresentation #export_c #effects(all) {
+ if !hrm_presentation(version,profile) {return RenderHostPresentation.{};}
+ return RenderHostPresentation.{enabled=true,plan=render_presentation_quantized_v1(profile,width,height,format,maximum)};
+}

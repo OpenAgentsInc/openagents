@@ -78,7 +78,7 @@ value is in how vork renders and delivers.
    with the style as a third axis: the scene document, then a style
    (realistic or cel), then a quality profile (live or film). Build A6 on
    the film profile's F0 and F1 and reuse the existing renderers:
-   - **Realistic:** Valley's character pass (`metaverse-engine/render/character.coax`:
+   - **Realistic:** Valley's character pass (`metaverse-engine/render/shade/character.coax`:
      dual-lobe skin, strand hair with dual scattering, depth of field in
      `vc_post_fs`).
    - **Cel:** Anime Lab's (`gpu/animelab.coax`: two-tone cel, rim, shadow
@@ -217,7 +217,7 @@ shading.
    pyramid (prepare, downsample with Karis weighting, upsample, combine).
    Everglade's two-level bloom is fine at 60 FPS. For film, a deeper
    pyramid with an explicit reference is a small, checkable upgrade in
-   `metaverse-engine/render/post.coax`.
+   `metaverse-engine/render/shade/post.coax`.
 6. **Compositing over real footage: low.** vork's VFX examples insert CG
    into real plates with shadow catchers, holdouts and camera solves. Not
    an Everglade need, though a shadow-catcher channel would let promo
@@ -253,7 +253,7 @@ and `metaverse-engine/character/character-appearance.coax`.
 - **No portrait or turntable renderer.** The page's og:image,
   `/og/realms/character-creator.jpg`, does not exist.
 - **WebGPU only**, and a legacy consumer in `metaverse-engine/render/adoption.coax`.
-- **The hero character pass** for Echo (`metaverse-engine/render/character.coax`) is
+- **The hero character pass** for Echo (`metaverse-engine/render/shade/character.coax`) is
   a separate UE-derived PBR path: skin, strand hair and eyes.
 
 ### What vork adds
@@ -287,7 +287,7 @@ and `metaverse-engine/character/character-appearance.coax`.
    - the live shader samples normal and roughness;
    - the film profile adds real specular, sheen for cloth and wrap or
      subsurface for skin, borrowing the forms already written in
-     `metaverse-engine/render/character.coax`;
+     `metaverse-engine/render/shade/character.coax`;
    - dyes stay a parameter of the record.
    
    This lifts Create, Everglade's player and NPCs (the same Quaternius

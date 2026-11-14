@@ -483,7 +483,7 @@ of #12628; everything else in it is done on Linux.
 What the Mac agent does, following the native Vulkan host
 (`metaverse/native/render-host.c`, 491fbeb7e4), which uses the same exports:
 
-1. Add the ledger's C exports (`metaverse-engine/render/host.coax`, over
+1. Add the ledger's C exports (`metaverse-engine/render/host/host.coax`, over
    `registry.coax`) to `apps/openagents-ios/generate.sh`; they aren't
    compiled into the app today. Swift then calls
    `engine_render_registry_storage`, `_open`, `_acquire`, `_release`,

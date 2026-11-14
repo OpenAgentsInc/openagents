@@ -6,7 +6,7 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/crypto/sha256-kernel.coax";
-#load "../../metaverse-engine/render/host-image.coax";
+#load "../../metaverse-engine/render/host/host-image.coax";
 mmb_names :: [7]string.["meteor-swarm-48.jpg","thunderbolt-48.jpg","mega-thunderbolt-48.jpg","water-orb-48.jpg","reverse-gravity-48.jpg","wind-wall-48.jpg","next-row-48.jpg"];
 mmb_field :: (o:[]Jo,key:string,value:string) {jo_key(o,key);jo_str(o,value);}
 mmb_hash :: (o:[]Jo,key:string,bytes:[]u8) {hash:[64]u8;if S_hex(S_hash(cast(string)bytes),hash[..]) {mmb_field(o,key,cast(string)hash[..]);}}

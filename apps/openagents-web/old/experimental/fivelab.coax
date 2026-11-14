@@ -59,7 +59,7 @@
 #load "../../../../everglade/zone.coax";   // an Everglade zone: Experimental's and the Druid's world (the scene, the class bar and its rules, the bow, riding, the agent driver)
 #load "../../../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
 #load "experimental-stages.coax";   // Experimental's film stages on a mount
-#load "../../../../metaverse-engine/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
+#load "../../../../metaverse-engine/render/shade/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 #load "../../../../metaverse-engine/cam/track.coax" as trk;   // ?stage= setups' camera tracks (lab_stage)
 #load "../../../../everglade/world/housewright-stage.coax" as hws;   // ?stage=house-*: the housewright time-lapses (#13107)
 

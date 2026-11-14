@@ -2,7 +2,7 @@
 // width. Analytic mode is a mathematical conformance model. Fixed modes need
 // device/probe provenance in the enclosing qualification receipt.
 #module "metaverse.engine.render.raster.profile";
-#load "reference-quad.coax";
+#load "reference/reference-quad.coax";
 #authority;
 RRRasterRounding :: enum u8 {analytic;nearest_even;nearest_positive;invalid;}
 RRXYClipping :: enum u8 {viewport;guard_band;invalid;}

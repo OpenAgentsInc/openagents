@@ -1,5 +1,5 @@
-// Checks for metaverse-engine/render/retained.coax, which loads this file with #test.
-//   coax/bin/coax test metaverse-engine/render/retained.coax
+// Checks for metaverse-engine/render/graph/retained.coax, which loads this file with #test.
+//   coax/bin/coax test metaverse-engine/render/graph/retained.coax
 
 RT_CAP :: 16;
 RtStore :: struct { rows: [RT_CAP * RETAINED_ROW] f32; mesh: [RT_CAP] int; material: [RT_CAP] int; scale: [RT_CAP] f32; base: [3] f64; n: [RS_COUNTERS] int; }

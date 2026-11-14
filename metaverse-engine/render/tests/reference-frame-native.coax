@@ -1,7 +1,7 @@
 // Ordinary normal-C ABI transport. Admission and rendering stay in authority
 // modules; this facade owns only the stable C names for the tooling driver.
-#load "../reference-frame.coax";
-#load "../reference-package.coax";
+#load "../reference/reference-frame.coax";
+#load "../reference/reference-package.coax";
 rfn_load :: (json:string,profile:int,index:int,bytes:[]u8,words:[]u32,meta:[]int)->RFPackageTree #export_c #effects(all) {
  entries:[14]RenderPackageEntry;p:=rf_package_admit(json,profile,entries[..]);return rf_package_prepare(p,index,bytes,words,meta);
 }
@@ -11,7 +11,7 @@ rfn_require :: (profile:int,c:FrameCounts,coarse:bool)->RFRequirements #export_c
 rfn_render :: (input:RFInput,programs:[]RFShader,coarse:bool,policy:RFPolicy,work:RFWorking,out:[]RQColor)->RFResult #export_c #effects(all) {
  return rf_run(input,programs,coarse,RenderTextureFormat.rgba8,policy,work,out);
 }
-#load "../reference-texture.coax";
+#load "../reference/reference-texture.coax";
 rfn_texture_need :: (format:string,layers:int,levels:[]RenderTextureLevel)->RFTextureNeed #export_c #effects(all) {
  return rf_texture_require(format,layers,levels);
 }
@@ -26,7 +26,7 @@ rfn_render_half :: (input:RFInput,programs:[]RFShader,coarse:bool,policy:RFPolic
 rfn_prepare_media :: (profile:int,text:string,width:int,height:int,files:[]RFNamedTexture,images:[]RenderHostMediaImage,out:[]RenderMediaRect)->RFMediaPrepared #export_c #effects(all) {return rf_prepare_media(profile,text,width,height,files,images,out);}
 
 rfn_media_observe_raw :: (kind:int,url:string,ready:int,width:int,height:int)->RenderHostMediaObserved #export_c #effects(all) {return render_host_media_observe_raw(kind,url,ready,width,height);}
-#load "../host-policy.coax";
+#load "../host/host-policy.coax";
 rfn_bool :: (raw:int)->RenderHostBool #export_c #effects(all) {return render_host_bool(raw);}
 rfn_work_policy :: (work:string,raster:string,bits:int,xy:string,guard:int)->RFPolicy #export_c #effects(all) {
  selected:=rf_work_policy(rr_work_profile(work));selected.raster=rfn_raster_profile(raster,bits,xy,guard);return selected;

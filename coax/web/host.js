@@ -17,8 +17,8 @@
 //   coaxial_page(state, page) optional: which page to draw (data-page, e.g. a 404)
 //   coaxial_golden(on)        optional: golden mode, its animated effects held at one moment
 //   coaxial_frame_plan_v1(state, features, out, cap)  optional: the frame's order, from the engine (GitHub #13303):
-//                             metaverse-engine/render/passes.coax's operations as records of 8 words
-//                             (render/frame-plan.coax) written to `out`; the words written, 0 refused. `features`
+//                             metaverse-engine/render/graph/passes.coax's operations as records of 8 words
+//                             (render/graph/frame-plan.coax) written to `out`; the words written, 0 refused. `features`
 //                             is this host's word (FPH_*). draw() walks the records and decides no order, and a
 //                             refused plan clears the frame. A page without it
 //                             is planned by the engine's one plan module (coax/web/frame-plan-host.js) from
@@ -180,7 +180,7 @@
 //                             (instance-cull.js has its fields); its runs draw only what the
 //                             frustum and the frame's own depth leave in view
 //   coaxial_mesh_bounds_v1(state)   optional: a big static mesh's ask for its runs' boxes
-//                             (metaverse-engine/render/mesh-cull.coax has its words), written once from the
+//                             (metaverse-engine/render/geometry/mesh-cull.coax has its words), written once from the
 //                             pack's vertex and index bytes (meshBounds); ?meshcull=0 or
 //                             coaxial.meshCull(false) answers "draw it whole", to compare
 //   coaxial_stores(), coaxial_store_cap(k), coaxial_store(state, k), coaxial_store_bytes(state, k)
@@ -190,7 +190,7 @@
 //   coaxial_store_span_v1(state, k, field)  optional: of store k only the bytes that changed. Field
 //                             0 takes the span and answers its offset, field 1 its length (0: nothing
 //                             changed; 0xFFFFFFFF: no span, send the store whole). A buffer's first
-//                             copy is whole (metaverse-engine/render/retained-rows.coax)
+//                             copy is whole (metaverse-engine/render/graph/retained-rows.coax)
 //   coaxial_sounds(state), coaxial_sounds_len(state)  sounds to play now, a line each: NAME GAIN PAN
 //                             [DELAY], or ~NAME GAIN PAN for a looping bed, or a mixed voice and the
 //                             bus's lines (metaverse-engine/audio/mix.coax; playSoundText)
@@ -1868,7 +1868,7 @@ function pumpCells(x) {
     cells.cell(key, [...cellShared].filter(([, with_]) => with_ !== cell).map(([range]) => range)).then(async (got) => { await pause(!got ? 500 : cellFree > 0 ? (cellFree--, 0) : cellDelay); answer(got); }, async (error) => { if (dev) console.warn(`${app} cell ${cell}: ${error?.message || error}`); await pause(500); answer(null); });
   }
 }
-// A big static mesh's runs' boxes (metaverse-engine/render/mesh-cull.coax, #13168), once the pack's catalog
+// A big static mesh's runs' boxes (metaverse-engine/render/geometry/mesh-cull.coax, #13168), once the pack's catalog
 // is delivered: the face asks with coaxial_mesh_bounds_v1 for one index range, and its runs of
 // triangles each get the box of their vertices' positions (a vertex's first three words), flagged
 // when a vertex's keep word matches. Which runs are drawn is the realm's; this only measures.
@@ -2347,7 +2347,7 @@ function shadowLayout() {
   return gpu.shadowLayout;
 }
 // The map itself: 2048 square (1024 on a phone), or, when the realm's Coax lays out shadow tiles
-// (coaxial_shadow_atlas_v1: metaverse-engine/render/cascades.coax, #13016), the atlas it asks for. Made again
+// (coaxial_shadow_atlas_v1: metaverse-engine/render/graph/cascades.coax, #13016), the atlas it asks for. Made again
 // when the engine wants another size; a new one is empty (shadowFresh: the tiles are opened again).
 function shadowTexture() {
   const { device } = gpu, coarse = matchMedia("(pointer: coarse)").matches ? 1 : 0, x = engine?.exports;
@@ -2430,7 +2430,7 @@ function postTargets(w, h) {
 // Group 1, once every GPU asset is in: the storage assets, the stores, the texture, its sampler.
 function bindScene() {
   if (gpu?.renderer) return;
-  // an asset or pack installed: the shadow tiles are drawn again (rate-limited in Coax: metaverse-engine/render/cascades.coax)
+  // an asset or pack installed: the shadow tiles are drawn again (rate-limited in Coax: metaverse-engine/render/graph/cascades.coax)
   if (engine?.exports.coaxial_shadow_event_v1 && arena?.state) engine.exports.coaxial_shadow_event_v1(arena.state, 1, 0);
   const gpuAssets = assets.filter((a) => ["storage", "index", "layers"].includes(a.kind));
   if (!gpu || gpu.sceneGroup || !engine?.exports.coaxial_draws || gpuAssets.some((a) => (!a.done || a.failed) && !engine.exports.coaxial_asset_optional_v1?.(a.i))) return;
@@ -3145,7 +3145,7 @@ function a11yMirror(now) {
   if (a11y.status.textContent !== say) a11y.status.textContent = say;
 }
 let frameCost = 0;   // ms of main thread the drawing itself takes, smoothed: socket events get what's left
-// ---- the frame plan's numbers (metaverse-engine/render/passes.coax's enums, as metaverse-engine/host/frame-plan.h
+// ---- the frame plan's numbers (metaverse-engine/render/graph/passes.coax's enums, as metaverse-engine/host/frame-plan.h
 // has them for C hosts; coax/web/frame-plan.test.ts holds these to that header).
 const FP = { magic: 0x31504641, version: 1,
   op: { begin: 0, end: 1, draw: 2, copy: 3, each_begin: 4, each_end: 5, media_before: 6, media_after: 7, cull_early: 8, cull_late: 9, viewport: 10, scissor: 11, particle_sort: 12 },
@@ -3255,7 +3255,7 @@ function draw(now) {
     const version = x.coaxial_store_version?.(arena.state, k);
     if (version !== undefined && gpu.storeVersions[k] === version) return;
     let at = 0, bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
-    // a store with a span (coaxial_store_span_v1, metaverse-engine/render/retained-rows.coax) sends only
+    // a store with a span (coaxial_store_span_v1, metaverse-engine/render/graph/retained-rows.coax) sends only
     // the rows that changed, once this buffer has been sent whole; taking the span empties it
     if (x.coaxial_store_span_v1) {
       const from = x.coaxial_store_span_v1(arena.state, k, 0) >>> 0, length = x.coaxial_store_span_v1(arena.state, k, 1) >>> 0;
@@ -3313,7 +3313,7 @@ function draw(now) {
   const hudVertices = n;
   let timed = false;
   if (gpu.shadow && gpu.shadowLayout) shadowTexture();
-  // The shadow tiles (metaverse-engine/render/cascades.coax): open them once the atlas is new or the engine
+  // The shadow tiles (metaverse-engine/render/graph/cascades.coax): open them once the atlas is new or the engine
   // has none yet; then this frame draws at most the one tile the engine names, cleared, into its rect.
   let tile = -1;
   if (gpu.shadow && gpu.shadowTiles) {
@@ -3346,7 +3346,7 @@ function draw(now) {
     }
     return group;
   };
-  // ---- the frame's plan (metaverse-engine/render/passes.coax, #13303). A page whose engine exports
+  // ---- the frame's plan (metaverse-engine/render/graph/passes.coax, #13303). A page whose engine exports
   // coaxial_frame_plan_v1 is drawn by walking the engine's operations: this host maps a pass to its
   // pipeline, bind groups and targets and decides no order. `real` false is a recording only.
   const walk = (encoder, passTimer, words, count, real) => {

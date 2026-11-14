@@ -11,10 +11,10 @@
 //                       and priority. Shape fields only; lookup and blending are #13063
 //   EnvironmentSet      the active profiles and regions, replaced whole or not at all
 //   EnvironmentState    what is being resolved: the profile and the day (from the simulation clock)
-//   ResolvedEnvironment the values one frame reads; metaverse-engine/render/environment.coax packs it for the GPU
+//   ResolvedEnvironment the values one frame reads; metaverse-engine/render/shade/environment.coax packs it for the GPU
 //
 // Time. A knot's time is a day fraction in [0, 1): 0 midnight, .25 dawn, .5 noon, .75 dusk (the
-// clock of metaverse-engine/render/light.coax). A state's day is any finite count of days (|day| <=
+// clock of metaverse-engine/render/shade/light.coax). A state's day is any finite count of days (|day| <=
 // ENV_DAY_MAX); its fraction day - floor(day) is the time, so -0.25 and 3.75 are both dusk and a
 // fraction that rounds to 1 in f32 is midnight. The track is cyclic: between the last knot and the
 // first it interpolates across midnight over (first + 1 - last). One knot is a constant.
@@ -40,7 +40,7 @@
 //   coax/bin/coax mutate metaverse-engine/world/environment.coax --root-only
 #module "metaverse.engine.world.environment";
 #authority;
-#load "../render/light.coax" as light;
+#load "../render/shade/light.coax" as light;
 
 ENV_VERSION :: 1;          // these records' version (EnvironmentProfile, Set, State, ResolvedEnvironment)
 ENV_MAX_KNOTS :: 12;
@@ -103,7 +103,7 @@ ENV_F_REGION_ID :: 110; ENV_F_REGION_PROFILE :: 111; ENV_F_PRIORITY :: 112; ENV_
 ENV_F_RADIUS :: 114; ENV_F_HALF :: 115; ENV_F_POINTS :: 116; ENV_F_HEIGHTS :: 117; ENV_F_BANDS :: 118;
 
 EnvBody :: enum u8 { sun; moon; }
-EnvFilm :: enum u8 { none; source; }   // source: metaverse-engine/render/filmic.coax film_rec709 after exposure
+EnvFilm :: enum u8 { none; source; }   // source: metaverse-engine/render/shade/filmic.coax film_rec709 after exposure
 EnvShape :: enum u8 { sphere; box; prism; }
 EnvRefusal :: enum u8 { none; version; empty; capacity; nonfinite; range; order; duplicate; antipodal; direction; flags; identity; reference; shape; }
 
@@ -598,7 +598,7 @@ EnvResolve :: struct { refusal: EnvRefusal; env: ResolvedEnvironment; }
 // ---- the glade and the fixtures
 
 // The painterly default: Character Create's glade, every number of it once (#13060). The profile
-// below is built from these, and the GPU evaluation of the default (metaverse-engine/render/painterly.coax,
+// below is built from these, and the GPU evaluation of the default (metaverse-engine/render/shade/painterly.coax,
 // which Character Create, Everglade II and Experimental draw with) reads the same constants, so a
 // shader and this record can never disagree. A constant noon: one knot.
 ENV_GLADE_SUN_X :: -0.40f32;  ENV_GLADE_SUN_Y :: 0.58f32;  ENV_GLADE_SUN_Z :: -0.62f32;   // toward the sun

@@ -69,7 +69,7 @@ class InstanceCull {
   }
   // Before the frame's passes: phase 1. want() decides and stages it (each draw's run, -1: drawn as
   // the page drew it; null when nothing is culled this frame); early() encodes it into its own
-  // compute pass, where the frame's plan puts it (metaverse-engine/render/passes.coax cull_early).
+  // compute pass, where the frame's plan puts it (metaverse-engine/render/graph/passes.coax cull_early).
   frame(encoder, x, state, memory, scene, depth, w, h) {
     const active = this.want(x, state, memory, scene, depth, w, h);
     if (active) this.early(encoder);

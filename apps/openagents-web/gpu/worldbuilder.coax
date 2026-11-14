@@ -7,7 +7,7 @@
 // of the terrain tile's cells straight from its samples (worldbuilder-land.coax, #13225), and the
 // pack's meshes, instanced, a draw a mesh; and the shared component shader over all
 // (components/backend/gpu-shader.coax: panels, buttons, bars and chat box).
-// The ground's materials are the Metaverse Engine's (metaverse-engine/render/terrain-shade.coax): each layer's procedural
+// The ground's materials are the Metaverse Engine's (metaverse-engine/render/shade/terrain-shade.coax): each layer's procedural
 // albedo from the page's material table, weighted by the sample's painted shares; the bare Grid is
 // the floor's own look, so the tile's edge meets the endless floor without a seam.
 // The uniform block, read from a []f32 at these offsets (floats):
@@ -19,7 +19,7 @@
 //   the layers from 48, twelve floats each: colour a and its noise's frequency; colour b and the
 //   second noise's; the two noises' shares, the gain and its noise's share
 #load "../../../metaverse-engine/render/sampling.coax";
-#load "../../../metaverse-engine/render/terrain-shade.coax";
+#load "../../../metaverse-engine/render/shade/terrain-shade.coax";
 #load "../../../metaverse-engine/render/ghost.coax";   // your character as a ghost
 #load "../../../components/backend/gpu-shader.coax";
 #load "../../../everglade/scene/gpu/fivelab.coax";   // the people's vertices and their skinning from the baked clips (fivelab_scene_vs)
@@ -82,7 +82,7 @@ worldbuilder_rim :: (xz:V2,w1:V2)->f32 {
   return fmin(line+glow,1.0f32);
 }
 worldbuilder_beyond :: (xz:V2)->f32 { return ifx fmax(abs(xz.x),abs(xz.y))>WB_GROUND_HALF then 1.0f32 else 0.0f32; }
-// One layer's albedo at xz, linear (metaverse-engine/render/terrain-shade.coax's equations from the page's table).
+// One layer's albedo at xz, linear (metaverse-engine/render/shade/terrain-shade.coax's equations from the page's table).
 worldbuilder_layer :: (k:int,xz:V2,u:[]f32)->V3 {
   at:int=WB_U_LAYERS+(k*12);
   t:f32=clampf(engine_terrain_blend_t(xz.x,xz.y,u[at+3],u[at+8],0.0f32,u[at+7],u[at+9],0.0f32),0.0f32,1.0f32);

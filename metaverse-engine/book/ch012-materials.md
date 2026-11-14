@@ -1,7 +1,7 @@
 # 12. Materials
 
 > **Status: partly implemented.** The surface shading functions moved from
-> `metaverse/style.coax` into [metaverse-engine/render/material.coax](../render/material.coax),
+> `metaverse/style.coax` into [metaverse-engine/render/shade/material.coax](../render/shade/material.coax),
 > with a typed `Material` record, its admission and the CPU form of the
 > painterly banded surface. Every realm's WGSL is byte-identical after the
 > move. No realm draws from a material table yet; the style presets, the
@@ -29,7 +29,7 @@ The painterly style shades a surface in three soft bands. The key light's
 `n·l` is wrapped a quarter past the side, so the terminator sits beyond it,
 and two smoothed steps place the shadow, mid and lit bands:
 
-<!-- source: metaverse-engine/render/material.coax bands -->
+<!-- source: metaverse-engine/render/shade/material.coax bands -->
 ```jai
 // smoothstep(e - s, e + s, x): a band edge at e, blended over 2s.
 metaverse_style_soft_step :: (e:f32,s:f32,x:f32)->f32 #export_c #effects(all) {
@@ -54,7 +54,7 @@ because the Metal scalar profile has no vectors. A realm's shader is Coax
 too (for example, `apps/openagents-web/gpu/fixture.coax`), and `coax wgsl`
 emits each function it calls as `coax_p_<name>`. The functions keep their
 `metaverse_style_` names, and `metaverse/style.coax` loads
-`metaverse-engine/render/material.coax`, so every realm's call sites are unchanged.
+`metaverse-engine/render/shade/material.coax`, so every realm's call sites are unchanged.
 The check that every committed WGSL module still matches its Coax source
 reports no change:
 
@@ -78,7 +78,7 @@ the rim light and `metaverse_style_luma`.
 
 ## The material record
 
-<!-- source: metaverse-engine/render/material.coax record -->
+<!-- source: metaverse-engine/render/shade/material.coax record -->
 ```jai
 // The styles a material is drawn in: the values of metaverse/style-preset.coax's STYLE_*.
 MATERIAL_LOWPOLY :: 0;
@@ -161,7 +161,7 @@ preset's `outline_max`. A material that glows asks for none.
 
 ## The banded surface
 
-<!-- source: metaverse-engine/render/material.coax banded -->
+<!-- source: metaverse-engine/render/shade/material.coax banded -->
 ```jai
 MatRgb :: struct { r: f32; g: f32; b: f32; }
 mat_rgb :: (r: f32, g: f32, b: f32) -> MatRgb { return MatRgb.{r = r, g = g, b = b}; }
@@ -301,12 +301,12 @@ last bit.
 ## Checks
 
 ```shell
-coax/bin/coax test metaverse-engine/render/material.coax
-coax/bin/coax mutate metaverse-engine/render/material.coax
+coax/bin/coax test metaverse-engine/render/shade/material.coax
+coax/bin/coax mutate metaverse-engine/render/shade/material.coax
 coax/bin/coax test metaverse/style.coax
 ```
 
-`metaverse-engine/render/material.coax` has 18 checks. The nine shading checks moved
+`metaverse-engine/render/shade/material.coax` has 18 checks. The nine shading checks moved
 with their functions from `metaverse/style.coax`: the band edges, bands that
 never step back as the light grows, the wrap, the characters' two bands, the
 shadow band under the tinted ambient, the cool shadow that keeps its value,
@@ -336,8 +336,8 @@ adapter) checks the pages the move can reach against their goldens.
   scene pass, is the next step.
 - **Presets and outlines.** The style presets (`metaverse/style-preset.coax`),
   the outline pass (`metaverse/look.coax`), the flat and anime functions stay in `metaverse/style.coax`. Shared sky,
-  clouds, grass, canopies and wind now live in `metaverse-engine/render/sky.coax`
-  and `metaverse-engine/render/vegetation.coax`, loaded through that compatibility layer.
+  clouds, grass, canopies and wind now live in `metaverse-engine/render/shade/sky.coax`
+  and `metaverse-engine/render/shade/vegetation.coax`, loaded through that compatibility layer.
 - **Texture layers.** [metaverse/gpu/layers.coax](../../metaverse/gpu/layers.coax)
   decodes and mipmaps texture layers into the layout both GPU hosts upload.
   Admission checks a layer index against the realm's count; moving the

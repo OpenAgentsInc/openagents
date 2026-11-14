@@ -1,14 +1,14 @@
 // Valley Lab source pair: actual source normals/UV/paint, 4K maps and shared shadow effects.
 #load "splash.coax";
 #load "../../../metaverse-engine/render/sampling.coax";
-#load "../../../metaverse-engine/render/echo-materials.coax";
-#load "../../../metaverse-engine/render/pbr-env.coax";
-#load "../../../metaverse-engine/render/filmic.coax";
+#load "../../../metaverse-engine/render/shade/echo-materials.coax";
+#load "../../../metaverse-engine/render/shade/pbr-env.coax";
+#load "../../../metaverse-engine/render/shade/filmic.coax";
 #load "../../../metaverse-engine/anim/morph-gpu.coax";
 #load "../../../metaverse/valley/slay-orb.coax";
-#load "../../../metaverse-engine/render/slay-lights.coax";
-#load "../../../metaverse-engine/render/hair-fiber.coax";
-#load "../../../metaverse-engine/render/character.coax";
+#load "../../../metaverse-engine/render/shade/slay-lights.coax";
+#load "../../../metaverse-engine/render/shade/hair-fiber.coax";
+#load "../../../metaverse-engine/render/shade/character.coax";
 cv_orb_rotate :: (p:V3,u:[]f32)->V3 {q:=cv_at(u,100);return cv_add(p,cv_scale(wg_cross3(q,cv_add(wg_cross3(q,p),cv_scale(p,u[103]))),2));}
 cv_world :: (id:u32,instance:u32,vertices:[]u32,u:[]f32,bones:[]f32)->V3 {
  if id>=1000000 {return cv_groom(id,vertices,u,bones,false).world;}
