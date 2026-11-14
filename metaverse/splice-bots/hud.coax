@@ -197,16 +197,34 @@ hv_compass :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   }
   gl := hv_goal(g);
   g[0].hv[0].desk = gl.ok && gl.name == "DESK"; g[0].hv[0].desk_x = gl.x; g[0].hv[0].desk_z = gl.z;
+  n = hv_mark(g, out, n, q, hv_left(g), 1);
+  return hv_mark(g, out, n, q, gl, 0);
+}
+// Her robot that neither follows her nor is in the inventory (playtest 3): Digger's body while his core is in
+// the drill mech, Digger far from her on an errand or powered down, or the mech once his core is back in him.
+HV_LEFT_FAR :: 15.0f32;   // m
+hv_left :: (g: [] SpGame) -> HvGoal {
+  t := g[0].bt[0];
+  if g[0].zone != Z_MINE || g[0].mode != M_PLAY || sp_in_room(g) || !g[0].bot || sb_fighting(g) { return HvGoal.{}; }   // a battle's panel is under the bar
+  far := dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > HV_LEFT_FAR;
+  if far { return HvGoal.{name = ifx t.mech_core then "DIGGER, NO CORE" else "DIGGER", x = g[0].bot_x, z = g[0].bot_z, ok = true}; }
+  return HvGoal.{name = "DRILL MECH", x = t.mech_x, z = t.mech_z, ok = t.mech_used && !t.mech_core && dist2(g[0].px, g[0].pz, t.mech_x, t.mech_z) > HV_LEFT_FAR};
+}
+// A place on the compass: its diamond on the bar (pinned to the side to turn to when it is behind her) and its
+// pill under it, NAME · DISTANCE. Row 0 is the objective, in orange; row 1 a robot left behind, under it.
+hv_mark :: (g: [] SpGame, out: [] f32, at: int, q: Ui, gl: HvGoal, row: int) -> int {
+  n := at; k := q.k; bw := 555 * k; y0 := ro_safe(q.w, q.h).y0; bh := 43 * k; cx := q.w * 0.5; cy := y0 + bh * 0.5; yaw := g[0].yaw;
   if !gl.ok { return n; }
-  x := ro_compass_x(yaw, ro_bearing(g[0].px, g[0].pz, gl.x, gl.z), span, bw - 40 * k);
+  col := ifx row == 0 then HV_ORANGE() else HV_CREAM();
+  x := ro_compass_x(yaw, ro_bearing(g[0].px, g[0].pz, gl.x, gl.z), 3.5, bw - 40 * k);
   if x == RO_OFF { x = ifx angle_wrap(yaw - ro_bearing(g[0].px, g[0].pz, gl.x, gl.z)) > 0 then bw * 0.5 - 14 * k else -bw * 0.5 + 14 * k; }   // behind: pinned to the side to turn to
-  dx := cx + x; s := 7 * k;
-  n = ui_seg(out, n, dx - s, cy, dx, cy - s, s * 0.45, HV_ORANGE(), 1); n = ui_seg(out, n, dx, cy - s, dx + s, cy, s * 0.45, HV_ORANGE(), 1);
-  n = ui_seg(out, n, dx + s, cy, dx, cy + s, s * 0.45, HV_ORANGE(), 1); n = ui_seg(out, n, dx, cy + s, dx - s, cy, s * 0.45, HV_ORANGE(), 1);
+  dx := cx + x; s := (7 - cast(f32) row * 2) * k;
+  n = ui_seg(out, n, dx - s, cy, dx, cy - s, s * 0.45, col, 1); n = ui_seg(out, n, dx, cy - s, dx + s, cy, s * 0.45, col, 1);
+  n = ui_seg(out, n, dx + s, cy, dx, cy + s, s * 0.45, col, 1); n = ui_seg(out, n, dx, cy + s, dx - s, cy, s * 0.45, col, 1);
   // the pill: ◆ NAME · DISTANCE
   buf: [32] u8; line: [96] u8;
   ln := tput(line[..], 0, gl.name); ln = tput(line[..], ln, " · "); ln = tput(line[..], ln, hv_far(buf[..], ifx gl.way >= 0 then gl.way else dist2(g[0].px, g[0].pz, gl.x, gl.z)));
-  t := cast(string) line[0..<ln]; cap := 7.5 * k; tw := ui_w(F_MONO, t, cap); pw := tw + 40 * k; py := y0 + bh + 7 * k;
+  t := cast(string) line[0..<ln]; cap := 7.5 * k; tw := ui_w(F_MONO, t, cap); pw := tw + 40 * k; py := y0 + bh + (7 + cast(f32) row * 25) * k;
   n = hv_rect(out, n, cx - pw * 0.5, py, cx + pw * 0.5, py + 21 * k, HV_CREAM(), 0.95);
   d := 3.5 * k; mx := cx - pw * 0.5 + 13 * k; my := py + 10.5 * k;
   n = ui_seg(out, n, mx - d, my, mx + d, my, d * 0.5, HV_PANEL(), 1); n = ui_seg(out, n, mx, my - d, mx, my + d, d * 0.5, HV_PANEL(), 1);
@@ -737,4 +755,14 @@ hv_bay_state :: (g: [] SpGame) -> string {
   #assert hv_bay_state(g[..]) == "DIGGER · NEEDS CARDS";
   g[0].strip[0] = H_MOVE; g[0].strip_n = 1;
   #assert hv_bay_state(g[..]) == "DIGGER · READY";
+}
+#test "playtest 3: Digger's body is on the compass while the mech has his core, E beside it puts the core back, and far from her he is marked too" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5); g[0].mode = M_PLAY; g_bot_home(g[..]);
+  #assert !hv_left(g[..]).ok;   // at her side: nothing is left behind
+  g[0].bt[0].mech_core = true; g[0].wall_gone = true;
+  #assert !hv_left(g[..]).ok && sb_prompt(g[..]).key == "E";   // beside his body the prompt says he has no core, and how to give it back
+  g[0].px += 40; l := hv_left(g[..]); #assert l.ok && l.name == "DIGGER, NO CORE" && l.x == g[0].bot_x;
+  g[0].px -= 40; #assert g_key(g[..], 'e', true) && !g[0].bt[0].mech_core;
+  g[0].px += 40; #assert hv_left(g[..]).name == "DIGGER";
 }

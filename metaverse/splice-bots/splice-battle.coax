@@ -344,6 +344,8 @@ sb_holds_digger :: (g: [] SpGame) -> bool {
   if t.kind != SBF_NONE && t.fight[0].on && sb_fielded(g) == SB_DIGGER { return true; }
   return t.mech_core;
 }
+// She stands by Digger's body while his core is in the drill mech.
+sb_coreless :: (g: [] SpGame) -> bool { return g[0].bt[0].mech_core && dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) < SB_MECH_REACH; }
 // The bot fielded on your side, or -1.
 sb_fielded :: (g: [] SpGame) -> int { t := g[0].bt[0]; if t.kind == SBF_NONE { return -1; } return t.crew[t.fight[0].sides[0].active]; }
 sb_fighting :: (g: [] SpGame) -> bool { return g[0].bt[0].kind != SBF_NONE; }
@@ -423,7 +425,8 @@ sb_use :: (g: [] SpGame) -> bool {
       return true;
     }
     // the mech: Digger's core in, or back out
-    if g[0].bot && !d_down(g) && dist2(g[0].px, g[0].pz, t[0].mech_x, t[0].mech_z) < SB_MECH_REACH {
+    // (or beside Digger's body while the mech has his core: E there puts it back in him, playtest 3)
+    if g[0].bot && !d_down(g) && (dist2(g[0].px, g[0].pz, t[0].mech_x, t[0].mech_z) < SB_MECH_REACH || sb_coreless(g)) {
       // until the hallway is open the core stays in: an E beside the mech (it walks close behind you) never
       // leaves it empty on the way, which stranded the playtest's run (#13505 playtest 2)
       if t[0].mech_core && !g[0].wall_gone { g_say(g, SBM_LEAD); return true; }
@@ -938,6 +941,7 @@ sb_prompt :: (g: [] SpGame) -> SbPrompt {
   if g[0].zone == Z_MINE {
     if g[0].boss_down && !g[0].core_taken { c := sb_core_at(g); if dist2(g[0].px, g[0].pz, c.x, c.z) < T_PICK_RANGE { return SbPrompt.{text = "PICK UP · Banned core", key = "E"}; } }
     if !g[0].wall_gone && t.drill_t <= 0 && dist2(g[0].px, g[0].pz, 0, g[0].at.wall_z + 1) < SB_HALL_REACH { return SbPrompt.{text = ifx t.mech_core then "Drill the hallway with the mech" else "Blocked hallway", key = "E"}; }
+    if g[0].bot && sb_coreless(g) { return SbPrompt.{text = ifx g[0].wall_gone then "Digger has no core. Put it back from the drill mech" else "Digger has no core: the drill mech has it until the hallway is open", key = "E"}; }
     if g[0].bot && dist2(g[0].px, g[0].pz, t.mech_x, t.mech_z) < SB_MECH_REACH && !(t.mech_core && !g[0].wall_gone) { return SbPrompt.{text = ifx t.mech_core then "Swap the core back into Digger" else "Swap Digger's core into the drill mech", key = "E"}; }
   }
   if sb_can_battle_rm(g) { return SbPrompt.{text = "Battle the raider mech from the rover", key = "E"}; }
