@@ -198,6 +198,15 @@ dv_bay_console :: (buf: [] u32, p: [] Pen, cx: f32, z1: f32) {
 dv_room_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   r := dv_room(g);
   if !r.ok { return; }
+  // while the wheel is next, the driving desk is marked (playtest 3: which desk?): a ring on the floor round
+  // it and a light over it, pulsing, as the compass's DESK
+  gl := hv_room_goal(g);
+  if gl.ok && gl.name == "DESK" {
+    t := g[0].t; e := 1.6 + 0.15 * sin(t * 4);
+    kit_pen(p, 89, MAT_GLOW, HEAT());
+    for j: 0..<16 { a := t + TAU * cast(f32) j / 16; box(buf, p, frame_at(v3(gl.x + sin(a) * e, 0.04, gl.z + cos(a) * e), a), 0.24, 0.02, 0.08); }
+    ball(buf, p, v3(gl.x, 1.75 + 0.1 * sin(t * 3), gl.z), 0.13, 8);
+  }
   for i: 0..<g[0].layer[0].st[0].n {
     e := g[0].layer[0].items[i];
     if e.mesh != DV_WINDOW_KIND || !dv_room_has(r, e.x, e.z) { continue; }
@@ -647,9 +656,13 @@ dv_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   k := q.k; n := 0;
   ui_panel(g, u, -20, q.h - 120 * k, q.w + 20, q.h + 20, INK(), 0.82);
   chase := dv_chased(g) || sb_fighting(g);
-  n = ui_mid(out, n, ifx chase then "A RAIDER MECH GIVES CHASE" else "DRIVE SNIPER TO THE GARAGE", q.w * 0.5, q.h - 78 * k, 14 * k, PAPER());
-  line := ifx sb_fighting(g) then "1-4: Sniper's battle moves" else ifx chase then "Hold W: outrun it    E: battle it from Sniper" else "W S: drive    A D: steer    Space: handbrake    E: park and get out";
+  n = ui_mid(out, n, ifx chase then "A RAIDER MECH GIVES CHASE" else "DRIVE THE ROVER TO THE GARAGE", q.w * 0.5, q.h - 78 * k, 14 * k, PAPER());
+  line := ifx sb_fighting(g) then "1-4: the rover's battle moves" else ifx chase then "Hold W: outrun it    E: battle it from the rover" else "W S: drive    A D: steer    Space: handbrake    E: park and get out";
   n = ui_mid(out, n, line, q.w * 0.5, q.h - 44 * k, 10 * k, PAPER());
+  // the speed, and how far it goes (playtest 3: can it go faster?): the top is the only gear
+  buf: [24] u8; v := abs(dv_speed(g)); top := v > DV_TOP * 0.97; x := q.w - 40 * k;
+  n = hv_right(out, n, F_TITLE, num(buf[..], "", cast(int) (v * 3.6 + 0.5), " KM/H"), x, q.h - 72 * k, 16 * k, PAPER(), 1);
+  n = hv_right(out, n, F_MONO, ifx top then "FULL SPEED" else num(buf[..], "TOP ", cast(int) (DV_TOP * 3.6 + 0.5), " KM/H"), x, q.h - 44 * k, 8 * k, ifx top then HEAT() else PAPER(), 0.8);
   if chase { n = sb_hud(g, out, u, q, n); }   // the health bars over Sniper and the raider mech, and the battle's panel
   n = hv_compass(g, out, n, q);   // and the compass, to the garage
   return n;
