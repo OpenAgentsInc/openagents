@@ -10,6 +10,7 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#include <functional>
 #include <string>
 #include <vector>
 #include <sys/mman.h>
@@ -813,7 +814,24 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
 // A native check binary: plan's procedures and checks and a driver main, as
 // C translation units: the first holds the driver, helpers and values, the
 // others at most `parts` shares of the procedures.
-std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan, size_t parts);
+// Native mutants (#13582, coax/docs/native-mutants.md): the mutation sites of
+// coax mutate's inventory, each by the node its mutant changes. With them the
+// check binary holds every mutant behind a run-time switch; `emitted` says
+// which sites got one (a site the emitter never wrote has none, and its
+// mutant is the evaluator's alone).
+struct NativeMutantSite {
+  uint64_t id = 0;              // the mutant's index in the inventory, plus one (0 is the unmutated program)
+  const Expr *expr = nullptr;   // kind 1: an operator, a literal or a lowered spatial call
+  const Stmt *stmt = nullptr;   // kind 2: its condition negated; 3: the statement removed; 4: its compound operator exchanged
+  uint8_t kind = 0;
+  std::function<void()> apply, undo;  // the mutant's own change to the checked tree
+};
+struct NativeMutantPlan {
+  std::vector<NativeMutantSite> sites;
+  std::vector<uint8_t> emitted;  // by site
+};
+std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan, size_t parts,
+                                             NativeMutantPlan *mutants = nullptr);
 // The domains of one check's bindings, evaluated as a #forall's are; false,
 // printing nothing, when they can't be (the evaluator then runs that check).
 bool native_check_domains_quiet(File *file, NativeCheckCEntry *entry, uint64_t steps);

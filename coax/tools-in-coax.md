@@ -218,3 +218,12 @@ the same inputs, then deletes it in the same commit that switches callers.
   drill results (timings aside), and the same failure lines on a changed
   counts file. `proc_err_to_out` (`2>&1`) is new in `lib/sys/proc.coax`,
   so the drill reads every pg_restore error line.
+
+- 2026-11-14 (#13582): native mutants (`coax mutate --native`) keep the
+  rule inside the compiler. The runner's decisions are Coax, in
+  `coax/lib/compiler/mutation-schedule.coax` (`NM_tick_limit`, `NM_wall_ms`,
+  `NM_killed`, `NM_compare`), with their own checks and a full mutation
+  pass; `coax/src/native_mutants.cpp` only starts processes and reads their
+  lines, as `native_run.cpp` does for native checks. Its test is a Coax tool,
+  `coax/tests/native-mutants.coax`: it parses both runs' outcomes and
+  compares them mutant for mutant.

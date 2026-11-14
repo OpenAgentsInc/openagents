@@ -135,3 +135,89 @@ EV_mutation :: (sites:bool,survivors:bool,unreached:bool,shard:bool)->u32 #expor
  if shard {return EV_INCONCLUSIVE;}
  return EV_PASSED;
 }
+
+// Native mutants (#13582, coax/docs/native-mutants.md). coax mutate --native
+// runs each mutant's scheduled checks as native code first. Native code never
+// decides a verdict: a native kill only names the check the evaluator runs
+// first, and a native survivor runs the evaluator's whole schedule. This
+// policy holds the runner's decisions; the driver transports observations.
+//
+// A mutant's native outcome. 0 not run (no switch was written for its site,
+// or native code ran none of its checks), 1 every scheduled check passed,
+// 2 every check native code could run passed and it could not run some,
+// 3 a trap, 4 a refusal (output or a host effect), 5 a crash, 6 out of ticks,
+// 7 out of wall time.
+NM_NOT_RUN :: cast(u32) 0;
+NM_SURVIVED :: cast(u32) 1;
+NM_SURVIVED_PART :: cast(u32) 2;
+NM_TRAP :: cast(u32) 3;
+NM_REFUSAL :: cast(u32) 4;
+NM_CRASH :: cast(u32) 5;
+NM_TICKS :: cast(u32) 6;
+NM_WALL :: cast(u32) 7;
+NM_MAX :: cast(u64) 18446744073709551615;
+
+// A mutant's check gets ten times the ticks its unmutated native run used and
+// never fewer than 10,000, as the evaluator gives ten times the steps and
+// never fewer than 10,000. A tick is one procedure entered or one loop
+// iteration. Its wall time is twenty times the unmutated run's and never
+// under ten seconds: ticks bound every loop and call, so the clock only
+// stops what ticks cannot see.
+#test "a mutant's ticks are ten times the baseline, at least 10,000, and saturate" {
+ #assert NM_tick_limit(0)==10000 && NM_tick_limit(1)==10000 && NM_tick_limit(999)==10000;
+ #assert NM_tick_limit(1000)==10000 && NM_tick_limit(1001)==10010 && NM_tick_limit(250000)==2500000;
+ #assert NM_tick_limit(1844674407370955161)==18446744073709551610;
+ #assert NM_tick_limit(1844674407370955162)==NM_MAX && NM_tick_limit(NM_MAX)==NM_MAX;
+}
+#test "a mutant's wall time is twenty times the baseline, at least ten seconds, and saturates" {
+ #assert NM_wall_ms(0)==10000 && NM_wall_ms(1)==10000 && NM_wall_ms(499)==10000;
+ #assert NM_wall_ms(500)==10000 && NM_wall_ms(501)==10020 && NM_wall_ms(120000)==2400000;
+ #assert NM_wall_ms(922337203685477580)==18446744073709551600;
+ #assert NM_wall_ms(922337203685477581)==NM_MAX && NM_wall_ms(NM_MAX)==NM_MAX;
+}
+nm_scaled :: (baseline:u64,factor:u64,least:u64)->u64 #effects(all) {
+ if baseline>NM_MAX/factor {return NM_MAX;}
+ scaled:=baseline*factor;
+ return ifx scaled<least then least else scaled; // mutant: equivalent (at the least, both forms return it)
+}
+NM_tick_limit :: (baseline:u64)->u64 #export_c #effects(all) {return nm_scaled(baseline,10,10000);}
+NM_wall_ms :: (baseline_ms:u64)->u64 #export_c #effects(all) {return nm_scaled(baseline_ms,20,10000);}
+
+#forall "only a stopped check is a native kill" outcome:0..<12 {
+ #assert NM_killed(cast(u32)outcome)==(outcome==3 || outcome==4 || outcome==5 || outcome==6 || outcome==7);
+}
+NM_killed :: (outcome:u32)->bool #export_c #effects(all) {return outcome>=NM_TRAP && outcome<=NM_WALL;}
+
+// Native code against the evaluator, mutant for mutant, after the evaluator
+// has given its verdict. The evaluator's result is 0 survived, 1 a check
+// failed, 2 a check stopped at a limit or rule only the evaluator has (its
+// step and traversal budgets, call depth, a read of an unset local, a
+// non-finite result). same_check: the evaluator's killing check is the one
+// native code recorded. ran_killer: native code ran the evaluator's killing
+// check and it passed there.
+// 0 they agree. 1 they differ only where their limits do: native ticks or
+// wall time against evaluator steps, in either direction. 2 they disagree:
+// a failure of the native path, never a verdict. 3 nothing to compare.
+#forall "native and evaluator outcomes compare by the recorded check and the kind of stop" native:0..<10, same:bool, ran:bool, evaluator:0..<4 {
+ want:=3;
+ if native>=1 && native<=7 && evaluator<=2 {
+  if native<=2 {
+   want=ifx evaluator==0 then 0 else ifx !ran then 3 else ifx evaluator==2 then 1 else 2;
+  } else {
+   want=ifx evaluator!=0 && same then 0 else ifx native==6 || native==7 then 1 else 2;
+  }
+ }
+ #assert NM_compare(cast(u32)native,same,ran,cast(u32)evaluator)==cast(u32)want;
+}
+NM_compare :: (native:u32,same_check:bool,ran_killer:bool,evaluator:u32)->u32 #export_c #effects(all) {
+ if native==NM_NOT_RUN || native>NM_WALL || evaluator>2 {return 3;}
+ if !NM_killed(native) {
+  if evaluator==0 {return 0;}
+  if !ran_killer {return 3;}
+  if evaluator==2 {return 1;}
+  return 2;
+ }
+ if evaluator!=0 && same_check {return 0;}
+ if native>=NM_TICKS {return 1;}
+ return 2;
+}

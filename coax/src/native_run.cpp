@@ -152,6 +152,76 @@ static int native_wait(pid_t pid) {
   return status;
 }
 
+// The check binary's plan: the procedures every struct default calls (the
+// binary's init helpers hold them all), then each wanted, eligible check's
+// body and what it calls. False, with why, when no binary can be planned.
+static bool native_plan(File *file, const std::vector<bool> &want, uint64_t steps, NativeCheckCPlan *out, std::string *why) {
+  const size_t n = (size_t)file->checks.count;
+  std::set<const ProcDecl *> have;
+  NativeCheckCPlan plan;
+  plan.verification_abi = 2;
+  {
+    NativeWalk walk{&have};
+    std::vector<Type> types;
+    collect_types(file, &types);
+    for (Type t : types)
+      if (t->kind == TypeKind::struct_ && t->struct_decl)
+        for (const Field &f : t->struct_decl->fields) walk.expr(f.init);
+    if (walk.bad) { *why = "a struct default holds #run"; return false; }
+    for (const ProcDecl *p : walk.added) { have.insert(p); plan.procedures.push_back(p); }
+  }
+  for (size_t i = 0; i < n; i++) {
+    CheckDecl *c = file->checks[(int32_t)i];
+    if (!want[i] || !c->proc || !c->proc->body || c->proc->params.count > 64) continue;
+    NativeWalk walk{&have};
+    walk.proc(c->proc);
+    if (walk.bad) continue;
+    NativeCheckCEntry entry;
+    entry.declaration_index = (int64_t)i;
+    entry.check = c;
+    if (c->forall && !native_check_domains_quiet(file, &entry, steps)) continue;
+    for (const ProcDecl *p : walk.added) { have.insert(p); plan.procedures.push_back(p); }
+    plan.checks.push_back(std::move(entry));
+  }
+  *out = std::move(plan);
+  return true;
+}
+
+// Compiles a check binary's translation units, each in its own process, all
+// at once, then links them into DIR/checks. False, with why ("" when the C
+// compiler rejected the C: a coax bug), when there is no binary.
+static bool native_compile(const std::vector<std::string> &units, const std::string &dir, std::string *exe, std::string *why) {
+  *exe = dir + "/checks";
+  const char *cc = getenv("COAX_CC");
+  const char *opt = getenv("COAX_NATIVE_CHECKS_OPT");
+  const std::string compiler = cc && *cc ? cc : "cc";
+  std::vector<pid_t> compiling;
+  std::vector<std::string> objects;
+  bool failed = false;
+  for (size_t u = 0; u < units.size(); u++) {
+    const std::string source = dir + "/checks" + std::to_string(u) + ".c", object = dir + "/checks" + std::to_string(u) + ".o";
+    if (!native_write(source, units[u])) { *why = "can't write the C"; failed = true; break; }
+    pid_t pid;
+    if (native_spawn({compiler, "-std=c11", "-w", std::string("-O") + (opt && *opt ? opt : "0"), "-ffp-contract=off", "-fno-builtin-sin",
+                      "-fno-builtin-cos", "-pthread", "-c", "-o", object, source}, -1, &pid) != 0) { *why = "no C compiler"; failed = true; break; }
+    compiling.push_back(pid);
+    objects.push_back(object);
+  }
+  for (pid_t pid : compiling) {
+    const int status = native_wait(pid);
+    if (status < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) failed = true;
+  }
+  if (!failed) {
+    std::vector<std::string> link = {compiler, "-pthread", "-o", *exe};
+    link.insert(link.end(), objects.begin(), objects.end());
+    link.push_back("-lm");
+    pid_t pid;
+    const int status = native_spawn(link, -1, &pid) == 0 ? native_wait(pid) : -1;
+    failed = status < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0;
+  }
+  return !failed;
+}
+
 // Runs the checks whose want[i] is set natively; fills g_native. Prints only
 // when the C compiler fails on the binary (a coax bug, #13570).
 static void native_run(File *file, const std::vector<bool> &want, uint64_t steps) {
@@ -196,34 +266,8 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
     }
     if (wanted < least && !heavy) { g_native.small = "fewer than " + std::to_string(least) + " checks, none with #steps or #traversal: the evaluator runs them"; return; }
   }
-  // The procedures every struct default calls (the binary's init helpers
-  // hold them all), then each eligible check's body and what it calls.
-  std::set<const ProcDecl *> have;
   NativeCheckCPlan plan;
-  plan.verification_abi = 2;
-  {
-    NativeWalk walk{&have};
-    std::vector<Type> types;
-    collect_types(file, &types);
-    for (Type t : types)
-      if (t->kind == TypeKind::struct_ && t->struct_decl)
-        for (const Field &f : t->struct_decl->fields) walk.expr(f.init);
-    if (walk.bad) { g_native.why = "a struct default holds #run"; return; }
-    for (const ProcDecl *p : walk.added) { have.insert(p); plan.procedures.push_back(p); }
-  }
-  for (size_t i = 0; i < n; i++) {
-    CheckDecl *c = file->checks[(int32_t)i];
-    if (!want[i] || !c->proc || !c->proc->body || c->proc->params.count > 64) continue;
-    NativeWalk walk{&have};
-    walk.proc(c->proc);
-    if (walk.bad) continue;
-    NativeCheckCEntry entry;
-    entry.declaration_index = (int64_t)i;
-    entry.check = c;
-    if (c->forall && !native_check_domains_quiet(file, &entry, steps)) continue;
-    for (const ProcDecl *p : walk.added) { have.insert(p); plan.procedures.push_back(p); }
-    plan.checks.push_back(std::move(entry));
-  }
+  if (!native_plan(file, want, steps, &plan, &g_native.why)) return;
   g_native.eligible = plan.checks.size();
   laps.lap("native.plan");
   if (plan.checks.empty()) { g_native.why = "no eligible check"; return; }
@@ -243,36 +287,10 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
   std::string dir = std::string(tmp && *tmp ? tmp : "/tmp") + "/coax-native-checks.XXXXXX";
   if (!mkdtemp(dir.data())) { g_native.why = "no temporary directory"; return; }
   struct Cleanup { std::string dir; ~Cleanup() { std::error_code ec; if (!getenv("COAX_NATIVE_CHECKS_KEEP")) std::filesystem::remove_all(dir, ec); } } cleanup{dir};
-  const std::string exe = dir + "/checks";
-  const char *cc = getenv("COAX_CC");
-  const char *opt = getenv("COAX_NATIVE_CHECKS_OPT");
-  const std::string compiler = cc && *cc ? cc : "cc";
   // Each translation unit compiles in its own process, all at once; then one link.
   t0 = std::chrono::steady_clock::now();
-  std::vector<pid_t> compiling;
-  std::vector<std::string> objects;
-  bool failed = false;
-  for (size_t u = 0; u < units.size(); u++) {
-    const std::string source = dir + "/checks" + std::to_string(u) + ".c", object = dir + "/checks" + std::to_string(u) + ".o";
-    if (!native_write(source, units[u])) { g_native.why = "can't write the C"; failed = true; break; }
-    pid_t pid;
-    if (native_spawn({compiler, "-std=c11", "-w", std::string("-O") + (opt && *opt ? opt : "0"), "-ffp-contract=off", "-fno-builtin-sin",
-                      "-fno-builtin-cos", "-pthread", "-c", "-o", object, source}, -1, &pid) != 0) { g_native.why = "no C compiler"; failed = true; break; }
-    compiling.push_back(pid);
-    objects.push_back(object);
-  }
-  for (pid_t pid : compiling) {
-    const int status = native_wait(pid);
-    if (status < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) failed = true;
-  }
-  if (!failed) {
-    std::vector<std::string> link = {compiler, "-pthread", "-o", exe};
-    link.insert(link.end(), objects.begin(), objects.end());
-    link.push_back("-lm");
-    pid_t pid;
-    const int status = native_spawn(link, -1, &pid) == 0 ? native_wait(pid) : -1;
-    failed = status < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0;
-  }
+  std::string exe;
+  const bool failed = !native_compile(units, dir, &exe, &g_native.why);
   g_native.compile = seconds_since(t0);
   laps.lap("native.compile");
   if (failed) {

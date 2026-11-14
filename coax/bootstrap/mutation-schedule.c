@@ -185,6 +185,11 @@ uint32_t EV_check(_Bool l_ran, _Bool l_passed, _Bool l_budget);
 uint32_t EV_add(uint32_t l_bits, uint32_t l_outcome);
 uint32_t EV_verdict(uint32_t l_bits);
 uint32_t EV_mutation(_Bool l_sites, _Bool l_survivors, _Bool l_unreached, _Bool l_shard);
+static uint64_t coax_p_nm_scaled(uint64_t l_baseline, uint64_t l_factor, uint64_t l_least);
+uint64_t NM_tick_limit(uint64_t l_baseline);
+uint64_t NM_wall_ms(uint64_t l_baseline_ms);
+_Bool NM_killed(uint32_t l_outcome);
+uint32_t NM_compare(uint32_t l_native, _Bool l_same_check, _Bool l_ran_killer, uint32_t l_evaluator);
 
 _Bool MS_include(_Bool l_root_only, _Bool l_root_source) {
   return ((!l_root_only) || l_root_source);
@@ -314,4 +319,57 @@ uint32_t EV_mutation(_Bool l_sites, _Bool l_survivors, _Bool l_unreached, _Bool 
     return ((uint32_t)UINT64_C(2));
   }
   return ((uint32_t)UINT64_C(0));
+}
+
+static uint64_t coax_p_nm_scaled(uint64_t l_baseline, uint64_t l_factor, uint64_t l_least) {
+  if (l_baseline > coax_div_u64(UINT64_C(18446744073709551615), l_factor, 179))
+  {
+    return UINT64_C(18446744073709551615);
+  }
+  uint64_t l_scaled = coax_mul_u64(l_baseline, l_factor, 180);
+  return ((l_scaled < l_least) ? l_least : l_scaled);
+}
+
+uint64_t NM_tick_limit(uint64_t l_baseline) {
+  return coax_p_nm_scaled(l_baseline, UINT64_C(10), UINT64_C(10000));
+}
+
+uint64_t NM_wall_ms(uint64_t l_baseline_ms) {
+  return coax_p_nm_scaled(l_baseline_ms, UINT64_C(20), UINT64_C(10000));
+}
+
+_Bool NM_killed(uint32_t l_outcome) {
+  return ((l_outcome >= ((uint32_t)UINT64_C(3))) && (l_outcome <= ((uint32_t)UINT64_C(7))));
+}
+
+uint32_t NM_compare(uint32_t l_native, _Bool l_same_check, _Bool l_ran_killer, uint32_t l_evaluator) {
+  if (((l_native == ((uint32_t)UINT64_C(0))) || (l_native > ((uint32_t)UINT64_C(7)))) || (l_evaluator > ((uint32_t)UINT64_C(2))))
+  {
+    return ((uint32_t)UINT64_C(3));
+  }
+  if (!NM_killed(l_native))
+  {
+    if (l_evaluator == ((uint32_t)UINT64_C(0)))
+    {
+      return ((uint32_t)UINT64_C(0));
+    }
+    if (!l_ran_killer)
+    {
+      return ((uint32_t)UINT64_C(3));
+    }
+    if (l_evaluator == ((uint32_t)UINT64_C(2)))
+    {
+      return ((uint32_t)UINT64_C(1));
+    }
+    return ((uint32_t)UINT64_C(2));
+  }
+  if ((l_evaluator != ((uint32_t)UINT64_C(0))) && l_same_check)
+  {
+    return ((uint32_t)UINT64_C(0));
+  }
+  if (l_native >= ((uint32_t)UINT64_C(6)))
+  {
+    return ((uint32_t)UINT64_C(1));
+  }
+  return ((uint32_t)UINT64_C(2));
 }

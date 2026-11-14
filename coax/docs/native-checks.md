@@ -132,7 +132,9 @@ can't run costs only its evaluator run.
 - A failing check: native code proves passes; the evaluator explains
   failures.
 - `coax test --profile steps`, `coax mutate` and `--evidence` records stay
-  evaluator-only: they report steps, or are the reference.
+  evaluator-only: they report steps, or are the reference. `coax mutate
+  --native` runs mutants in this binary first and still takes every verdict
+  from the evaluator ([native-mutants.md](native-mutants.md)).
 
 ## Where native and evaluator can differ
 

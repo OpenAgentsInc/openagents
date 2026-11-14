@@ -324,6 +324,12 @@ struct Mutant {
   const ProcDecl *owner = nullptr;
   bool spatial = false;
   Tok from = Tok::eof, to = Tok::eof;
+  // The node it changes, for native mutants (NativeMutantSite, #13582):
+  // 1 an expression, 2 a condition negated, 3 a statement removed, 4 a
+  // compound operator exchanged.
+  const Expr *site_expr = nullptr;
+  const Stmt *site_stmt = nullptr;
+  uint8_t site = 0;
 };
 
 struct Mutator {
@@ -370,6 +376,10 @@ struct Mutator {
     }
   }
 
+  // The node the mutant just added changes (native mutants, #13582).
+  void at(const Expr *e) { mutants.back().site_expr = e; mutants.back().site = 1; }
+  void at(const Stmt *s, uint8_t kind) { mutants.back().site_stmt = s; mutants.back().site = kind; }
+
   void reach(const ProcDecl *p) {
     if (!p || p->foreign) return;
     for (const ProcDecl *q : reached)
@@ -410,15 +420,15 @@ struct Mutator {
         bool shape=from && to && from!=to && to->ret==e->type && from->ret==e->type && to->params.count==e->args.count && from->params.count==e->args.count && e->mutation_op!=Tok::eof && e->mutation_op!=e->op;
         if(shape)for(int i=0;i<e->args.count;i++)shape=shape && e->args[i] && to->params[i].type==e->args[i]->type && from->params[i].type==e->args[i]->type;
         if(!shape)invalid_spatial=true;
-        else {++spatial_eligible;mutants.push_back({e->loc,"spatial source '"+spell(e->op)+"' became '"+spell(e->mutation_op)+"'",[e,to]{e->proc=to;},[e,from]{e->proc=from;},nullptr,true,e->op,e->mutation_op});}
+        else {++spatial_eligible;mutants.push_back({e->loc,"spatial source '"+spell(e->op)+"' became '"+spell(e->mutation_op)+"'",[e,to]{e->proc=to;},[e,from]{e->proc=from;},nullptr,true,e->op,e->mutation_op});at(e);}
       }else invalid_spatial=true;
     }
     if (e->kind == ExprKind::binary) {
       Tok from = e->op, to = swap_of(from);
       bool ints_only = from == Tok::percent;
       if (to != Tok::eof && (!ints_only || is_int(e->type)) && e->lhs->type != &T_STRING)
-        mutants.push_back({e->loc, "'" + spell(from) + "' became '" + spell(to) + "'",
-                           [e, to] { e->op = to; }, [e, from] { e->op = from; }});
+        { mutants.push_back({e->loc, "'" + spell(from) + "' became '" + spell(to) + "'",
+                           [e, to] { e->op = to; }, [e, from] { e->op = from; }}); at(e); }
     } else if (e->kind == ExprKind::int_lit && is_int(e->type)) {
       Type t = e->type;
       __int128 v = t->is_signed ? (__int128)(int64_t)e->int_value : (__int128)e->int_value;
@@ -428,10 +438,12 @@ struct Mutator {
       std::string a = t->is_signed ? std::to_string((long long)(int64_t)from) : std::to_string((unsigned long long)from);
       std::string b = t->is_signed ? std::to_string((long long)(int64_t)to) : std::to_string((unsigned long long)to);
       mutants.push_back({e->loc, a + " became " + b, [e, to] { e->int_value = to; }, [e, from] { e->int_value = from; }});
+      at(e);
     } else if (e->kind == ExprKind::bool_lit) {
       uint64_t from = e->int_value;
       mutants.push_back({e->loc, std::string(from ? "true" : "false") + " became " + (from ? "false" : "true"),
                          [e, from] { e->int_value = !from; }, [e, from] { e->int_value = from; }});
+      at(e);
     }
     expr(e->lhs);
     expr(e->rhs);
@@ -452,6 +464,7 @@ struct Mutator {
       neg->lhs = cond;
       mutants.push_back({cond->loc, std::string("the ") + (s->kind == StmtKind::if_ ? "if" : "while") + " condition was negated",
                          [s, neg] { s->expr = neg; }, [s, cond] { s->expr = cond; }});
+      at(s, 2);
     }
     // _ = f(); is not removed: like the `ignored := f();` it replaces, it says the value is not the point.
     bool removable = s->kind == StmtKind::assign || (s->kind == StmtKind::expr && s->expr->kind == ExprKind::call && !s->uninit);
@@ -459,12 +472,15 @@ struct Mutator {
       StmtKind kind = s->kind;
       mutants.push_back({s->loc, s->kind == StmtKind::assign ? "the assignment was removed" : "the call was removed",
                          [s] { s->kind = StmtKind::block; }, [s, kind] { s->kind = kind; }});
+      at(s, 3);
     }
     if (s->kind == StmtKind::assign) {
       Tok from = s->op, to = swap_of(from);
-      if (to != Tok::eof)
+      if (to != Tok::eof) {
         mutants.push_back({s->loc, "'" + spell(from) + "' became '" + spell(to) + "'",
                            [s, to] { s->op = to; }, [s, from] { s->op = from; }});
+        at(s, 4);
+      }
     }
     expr(s->expr);
     expr(s->expr2);
@@ -586,12 +602,14 @@ struct MutationOptions {
   std::string killers;             // --killers: try each mutant's last killing check first
   bool source_order = false;       // --source-order: the checks in source order after the recorded killer
   std::string changed;             // --changed REF: only procedures whose text differs from REF ("" for all)
+  bool native = false;             // --native: each mutant's checks as native code first (native_mutants.cpp, #13582)
 };
 
 struct MutantResult {
   int32_t killer = -1;  // the first check that failed, -1 for a survivor
   int32_t done = 0;
   uint64_t invocations = 0, skipped = 0;
+  uint32_t stop = 0;    // how the killer failed: 1 a check failed, 2 at a limit or rule only the evaluator has (NM_compare)
 };
 
 // A finished mutant's slot, written so that a worker reading `done` with
@@ -600,6 +618,7 @@ static void publish_result(MutantResult *slot, const MutantResult &r) {
   slot->killer = r.killer;
   slot->invocations = r.invocations;
   slot->skipped = r.skipped;
+  slot->stop = r.stop;
   __atomic_store_n(&slot->done, 1, __ATOMIC_RELEASE);
 }
 
@@ -667,6 +686,17 @@ static std::vector<int32_t> likely_order(const MutationRun &run, size_t index, s
   return order;
 }
 
+// One mutant's check: does it fail? r->stop says how, for the comparison with
+// native code (#13582): a budget, the call depth, a read of an unset local and
+// a non-finite result are the evaluator's own; native code has none of them.
+static bool mutant_check_fails(File *file, CheckDecl *check, uint64_t budget, MutantResult *r) {
+  const CheckOutcome outcome = run_check(file, check, budget);
+  if (outcome.passed) return false;
+  const std::string &code = outcome.code;
+  r->stop = code == "E0400" || code == "E0401" || code == "E0403" || code == "E0405" || code == "E0412" ? 2 : 1;
+  return true;
+}
+
 static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t position) {
   const Mutant &mu = (*run.mutants)[index];
   File *file = run.file;
@@ -681,7 +711,7 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t
       uint64_t budget = std::max<uint64_t>(10000, (*run.base)[(size_t)i] * 10);
       if (file->checks[i]->steps) budget = std::min(budget, file->checks[i]->steps);
       ++r.invocations;
-      killed = !run_check(file, file->checks[i], budget).passed;
+      killed = mutant_check_fails(file, file->checks[i], budget, &r);
       if (killed) { r.killer = i; break; }
     }
     mu.undo();
@@ -699,7 +729,7 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t
       uint64_t budget = std::max<uint64_t>(10000, (*run.base)[(size_t)hint] * 10);
       if (file->checks[hint]->steps) budget = std::min(budget, file->checks[hint]->steps);
       ++r.invocations;
-      killed = !run_check(file, file->checks[hint], budget).passed;
+      killed = mutant_check_fails(file, file->checks[hint], budget, &r);
       if (killed) r.killer = hint;
     } else hint = -1;
   }
@@ -714,7 +744,7 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t
     // A mutant that needs more than the check's own budget fails that check.
     if (file->checks[i]->steps) budget = std::min(budget, file->checks[i]->steps);
     ++r.invocations;
-    killed = !run_check(file, file->checks[i], budget).passed;
+    killed = mutant_check_fails(file, file->checks[i], budget, &r);
     if (killed) r.killer = i;
   }
   mu.undo();
@@ -2147,6 +2177,10 @@ static void write_killers(const std::string &path, const std::string &text) {
   if (!ok || rename(temp.c_str(), path.c_str()) != 0) remove(temp.c_str());
 }
 
+}  // namespace coax
+#include "native_mutants.cpp"
+namespace coax {
+
 // The unmutated pass every unit's mutants are measured against: each
 // check's steps and the procedures it entered, paid once per invocation
 // however many --unit it names (#13581).
@@ -2202,6 +2236,7 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
   std::vector<MutantResult> results(total);
   bool sharded = opt.shards != 0;
   std::vector<size_t> owned;
+  NativeMutants native;  // --native: what native code found, for the comparison after the evaluator
   if (merging) {
     if (!merge_records(opt, fingerprint, total, &results, &facts)) {
       g_evidence.infrastructure = true;
@@ -2214,6 +2249,10 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
     std::vector<int32_t> hints;
     std::vector<std::vector<int32_t>> likely;
     if (!opt.killers.empty()) hints = read_killers(file, opt.killers, mutant_keys(file, m.mutants), &likely);
+    // --native: the scheduled checks as native code first. A native kill
+    // becomes that mutant's hint, so the evaluator confirms it with one check;
+    // a native survivor has none and runs the evaluator's whole schedule.
+    if (opt.native) native_mutants(file, m.mutants, owned, baseline.base, baseline.paths, facts.selective, &hints, opt, &native);
     // The likely-killer order unless --source-order, or --mutation-trace,
     // which names each mutant's first killing check in source order.
     const std::vector<uint64_t> &base = baseline.base;
@@ -2234,6 +2273,7 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
       g_evidence.infrastructure = true;
       return 1;
     }
+    if (opt.native) native_mutants_compare(file, m.mutants, owned, results, native, opt);
     if (opt.trace)
       for (size_t i : owned) fprintf(stderr, "mutation-outcome %zu %d\n", i, results[i].killer);
   }
@@ -2399,6 +2439,9 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
   }
   // A complete run (not one shard) records every unit's killers for the next run.
   if (!opt.killers.empty() && !opt.shards) write_killers(opt.killers, killers);
+  // --native: the reports above are the evaluator's. A disagreement is the
+  // native path's failure; a caller that tests that path asks for it as a status.
+  if (g_native_mutants_disagreed && getenv("COAX_NATIVE_MUTANTS_STRICT")) return 3;
   return status;
 }
 

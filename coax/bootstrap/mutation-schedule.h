@@ -33,6 +33,10 @@ uint32_t EV_check(_Bool ran, _Bool passed, _Bool budget);
 uint32_t EV_add(uint32_t bits, uint32_t outcome);
 uint32_t EV_verdict(uint32_t bits);
 uint32_t EV_mutation(_Bool sites, _Bool survivors, _Bool unreached, _Bool shard);
+uint64_t NM_tick_limit(uint64_t baseline);
+uint64_t NM_wall_ms(uint64_t baseline_ms);
+_Bool NM_killed(uint32_t outcome);
+uint32_t NM_compare(uint32_t native, _Bool same_check, _Bool ran_killer, uint32_t evaluator);
 
 #ifdef __cplusplus
 }

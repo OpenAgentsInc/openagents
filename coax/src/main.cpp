@@ -2357,11 +2357,15 @@ static int usage() {
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...] [--evidence FILE]\n"
           "                    [--root-only | --unit PART.coax...] [--killers FILE] [--source-order]\n"
           "                    [--changed [REF]] [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
+          "                    [--native]\n"
           "                    --root-only mutates entry-source procedures; all baseline checks still run\n"
           "                    --unit PART.coax mutates one loaded unit's procedures; every check still runs;\n"
           "                    repeated, the checks' unmutated pass runs once and each unit reports in turn\n"
           "                    --changed [REF] mutates only procedures whose text differs from REF\n"
           "                    (default origin/main); every check still runs; nothing to mutate passes\n"
+          "                    --native runs each mutant's checks as native code first (one C compile);\n"
+          "                    the evaluator then confirms each kill with one check and runs its whole\n"
+          "                    schedule for the rest, so the report is the same with or without it\n"
           "                    --killers FILE runs each mutant's last killing check first and records\n"
           "                    this run's; the verdicts are the same with or without it\n"
           "                    each mutant tries its likely killers first (the file's, then this run's,\n"
@@ -2728,6 +2732,7 @@ static int main_impl(int argc, char **argv) {
       mutation.changed = ref ? argv[++i] : "origin/main";
     }
     else if (a == "--source-order" && cmd == "mutate") mutation.source_order = true;
+    else if (a == "--native" && cmd == "mutate") mutation.native = true;
     else if (a == "--mutation-reference" && cmd == "mutate") mutation.reference = true;
     else if (a == "--mutation-stats" && cmd == "mutate") mutation.stats = true;
     else if (a == "--mutation-trace" && cmd == "mutate") mutation.trace = true;

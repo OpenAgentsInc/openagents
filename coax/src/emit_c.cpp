@@ -1199,6 +1199,14 @@ struct Emitter {
   // foreign procedure is such a stub, and each procedure marks itself run.
   bool check_binary = false;
   std::map<const ProcDecl *, size_t> coverage_ids;
+  // Native mutants (#13582, coax/docs/native-mutants.md): the check binary
+  // with every mutation site behind `coax_nm_mutant == ID`, 0 the unmutated
+  // program. A site is the node the evaluator's mutant changes; its two
+  // forms are that node emitted before and after the mutant's own change.
+  NativeMutantPlan *mutants = nullptr;
+  std::map<const Expr *, size_t> mutant_exprs;               // site index by expression
+  std::map<const Stmt *, std::vector<size_t>> mutant_stmts;  // site indexes by statement
+  const Stmt *mutant_inner = nullptr;                        // the statement whose own sites are being written
   bool versioned = false;               // a loop was versioned: the output needs IV_RUNTIME
   bool erasure = false;                // observable numeric-view stores are used
   int version_depth = 0;                // inside either copy of a versioned loop: no nested versioning
@@ -1501,6 +1509,8 @@ struct Emitter {
   std::map<const Expr *,std::string> lowered;
   bool control(const Expr *e) const {
     if(!e)return false;
+    // A mutation site with operands: they are evaluated once, into temporaries, before either form.
+    if(!mutant_exprs.empty() && (e->kind==ExprKind::binary || e->kind==ExprKind::call) && mutant_exprs.count(e))return true;
     if((e->effects&8) || e->kind==ExprKind::try_ || e->kind==ExprKind::or_else)return true;
     for(const Expr *child:{e->lhs,e->rhs,e->third})if(control(child))return true;
     for(const Expr *child:e->args)if(control(child))return true;
@@ -1562,7 +1572,76 @@ struct Emitter {
   }
   std::string ex(const Expr *e) {
     auto found=lowered.find(e);if(found!=lowered.end())return found->second;
+    if(!mutant_exprs.empty()){auto site=mutant_exprs.find(e);if(site!=mutant_exprs.end())return mutant_ex(e,site->second);}
     return control(e) ? lower_control(e) : raw_ex(e);
+  }
+
+  // ---- native mutants ----
+  std::string mutant_is(size_t index) {
+    mutants->emitted[index] = 1;
+    return "(coax_nm_mutant == " + std::to_string(mutants->sites[index].id) + ")";
+  }
+  // An expression site. A literal is a choice of two constants. `&&` and `||`
+  // keep their short circuit: the left operand once, then the right one only
+  // when the operator chosen needs it. Any other operator or lowered call
+  // takes its operands once, in source order, then one of its two forms.
+  std::string mutant_ex(const Expr *e, size_t index) {
+    const NativeMutantSite &site = mutants->sites[index];
+    const std::string is = mutant_is(index);
+    if (e->kind == ExprKind::binary && (e->op == Tok::andand || e->op == Tok::oror)) {
+      const bool conjunction = e->op == Tok::andand;
+      std::string left = capture(e->lhs), result = new_temp(c_type(e->type));
+      line("if (" + is + " ? " + (conjunction ? "!" : "") + left + " : " + (conjunction ? "" : "!") + left + ") {");
+      indent++;
+      std::string right = ex(e->rhs);
+      line(result + " = " + right + ";");
+      indent--; line("} else {"); indent++;
+      line(result + " = " + left + ";");
+      indent--; line("}");
+      return result;
+    }
+    std::vector<const Expr *> children;
+    if (e->kind == ExprKind::binary || e->kind == ExprKind::call) {
+      auto stage = [&](const Expr *child) { if (child) { lowered[child] = capture(child); children.push_back(child); } };
+      stage(e->lhs); stage(e->rhs);
+      for (const Expr *argument : e->args) stage(argument);
+    }
+    std::string original = raw_ex(e);
+    site.apply();
+    std::string changed = raw_ex(e);
+    site.undo();
+    for (const Expr *child : children) lowered.erase(child);
+    return "(" + is + " ? " + changed + " : " + original + ")";
+  }
+  // A condition whose statement has a negation site.
+  std::string mutant_condition(const Stmt *s, const std::string &text) {
+    auto found = mutant_stmts.find(s);
+    if (found == mutant_stmts.end()) return text;
+    for (size_t index : found->second)
+      if (mutants->sites[index].kind == 2) return "(" + mutant_is(index) + " != (" + text + "))";  // a condition is 0 or 1
+    return text;
+  }
+  // A statement's own sites: removed under one mutant, its compound operator
+  // exchanged under another. The statement is written once for each form.
+  void mutant_stmt(const Stmt *s, const std::vector<size_t> &sites) {
+    const Stmt *outer = mutant_inner;
+    mutant_inner = s;
+    size_t removal = SIZE_MAX, exchange = SIZE_MAX;
+    for (size_t index : sites) {
+      if (mutants->sites[index].kind == 3) removal = index;
+      if (mutants->sites[index].kind == 4) exchange = index;
+    }
+    if (removal != SIZE_MAX) { line("if (!" + mutant_is(removal) + ") {"); indent++; }
+    if (exchange != SIZE_MAX) {
+      const NativeMutantSite &site = mutants->sites[exchange];
+      line("if " + mutant_is(exchange) + " {"); indent++;
+      site.apply(); stmt(s); site.undo();
+      indent--; line("} else {"); indent++;
+      stmt(s);
+      indent--; line("}");
+    } else stmt(s);
+    if (removal != SIZE_MAX) { indent--; line("}"); }
+    mutant_inner = outer;
   }
 
   std::string raw_ex(const Expr *e) {
@@ -2078,6 +2157,10 @@ struct Emitter {
   }
 
   void stmt(const Stmt *s) {
+    if (!mutant_stmts.empty() && s != mutant_inner) {
+      auto sites = mutant_stmts.find(s);
+      if (sites != mutant_stmts.end() && (s->kind == StmtKind::assign || s->kind == StmtKind::expr)) { mutant_stmt(s, sites->second); return; }
+    }
     struct Restore {Loc &target;Loc old;~Restore(){target=old;}} restore{debug_location,debug_location};
     debug_location=s->loc;
     switch (s->kind) {
@@ -2167,6 +2250,15 @@ struct Emitter {
         line("if (!" + condition(s->expr) + ") coax_trap(\"assertion failed\", " + std::to_string(s->loc.line) + ");");
         break;
       case StmtKind::if_:
+        if (mutants) {
+          // Sites inside a condition write statements before it, so an
+          // `else if` gets its own block.
+          std::string test = ex(s->expr);
+          line("if (" + mutant_condition(s, test) + ")");
+          stmt(s->then_);
+          if (s->else_) { line("else {"); indent++; stmt(s->else_); indent--; line("}"); }
+          break;
+        }
         line("if " + condition(s->expr));
         stmt(s->then_);
         if (s->else_) {
@@ -2192,7 +2284,11 @@ struct Emitter {
         indent--;line("}");break;
       }
       case StmtKind::while_:
-        if(control(s->expr)){
+        if(mutants){
+          line("while (1) {");indent++;
+          std::string test=ex(s->expr);line("if (!"+mutant_condition(s,"("+test+")")+") break;");
+          loop(s->then_);indent--;line("}");
+        }else if(control(s->expr)){
           line("while (1) {");indent++;
           std::string test=ex(s->expr);line("if (!("+test+")) break;");
           loop(s->then_);indent--;line("}");
@@ -2476,7 +2572,12 @@ struct Emitter {
 
   void loop(const Stmt *body, const std::vector<std::string> &prelude = {}) {
     loop_scopes.push_back(defers.size());
-    block_body(body, prelude);
+    if (mutants) {
+      // One tick an iteration: a mutant's work is limited as the evaluator's steps limit it.
+      std::vector<std::string> counted = prelude;
+      counted.push_back("COAX_NM_TICK();");
+      block_body(body, counted);
+    } else block_body(body, prelude);
     loop_scopes.pop_back();
   }
 
@@ -2530,6 +2631,7 @@ struct Emitter {
     if (check_binary) {
       auto id = coverage_ids.find(p);
       if (id != coverage_ids.end()) s += "  coax_nc_cov[" + std::to_string(id->second) + "] = 1;\n";
+      if (mutants) s += "  COAX_NM_TICK();\n";
     }
     if (ret_temp) s += "  " + c_type(p->ret) + " coax_ret;\n";
     for (const std::string &t : temps) s += "  " + t + "\n";
@@ -4232,11 +4334,31 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
 // it traps (the runtime then aborts) and "R what" when it refuses (output or
 // a host effect: the evaluator decides that check). The parent restarts the
 // driver after the check that stopped it.
-std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan, size_t parts) {
+//
+// With mutants (#13582, coax/docs/native-mutants.md) the same binary holds
+// every mutation site behind `coax_nm_mutant`, and counts ticks: one for each
+// procedure entered and each loop iteration. Run as above it is the unmutated
+// program, and it also writes "K i ticks" before a check's "E" line. Run as
+// `checks m ID SCHEDULE [FIRST]` it is mutant ID: it runs the checks SCHEDULE
+// names, one "ROW TICKS" line each (FIRST before the others), each with that
+// many ticks to spend, and writes "B row" before each and "S" after the last.
+// A check that stops it writes why first: "T ..." for a trap, "R what" for a
+// refusal, "L" when the ticks ran out.
+std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan, size_t parts,
+                                             NativeMutantPlan *mutants) {
   Emitter em{file, opts};
   em.verification = true;
   em.check_binary = true;
   em.split = true;  // procedures and helpers are defined once, across the parts
+  if (mutants) {
+    em.mutants = mutants;
+    mutants->emitted.assign(mutants->sites.size(), 0);
+    for (size_t i = 0; i < mutants->sites.size(); ++i) {
+      const NativeMutantSite &site = mutants->sites[i];
+      if (site.kind == 1 && site.expr) em.mutant_exprs.emplace(site.expr, i);
+      else if (site.stmt) em.mutant_stmts[site.stmt].push_back(i);
+    }
+  }
   for (size_t i = 0; i < plan.procedures.size(); ++i) {
     em.verification_names.emplace(plan.procedures[i], "coax_verification_body_" + std::to_string(i));
     em.coverage_ids.emplace(plan.procedures[i], i);
@@ -4283,6 +4405,7 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
   }
   std::string prelude = "/* A native check binary (coax native checks). Not product emission. */\n"
                         "#include <errno.h>\n#include <pthread.h>\n#include <unistd.h>\n";
+  if (mutants) prelude += "#include <sys/resource.h>\n";
   prelude += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
   prelude += runtime;
   prelude += "extern unsigned char coax_nc_cov[" + std::to_string(plan.procedures.size() + 1) + "];\n"
@@ -4293,6 +4416,10 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
        "  char line[256]; int n = snprintf(line, sizeof line, \"R %s\\n\", what);\n"
        "  coax_nc_write(line, (size_t)n); _exit(98);\n"
        "}\n";
+  if (mutants)
+    prelude += "extern int64_t coax_nm_mutant;\nextern uint64_t coax_nm_ticks, coax_nm_limit;\n"
+               "static _Noreturn void coax_nm_over(void) { coax_nc_write(\"L\\n\", 2); _exit(96); }\n"
+               "#define COAX_NM_TICK() do { if (++coax_nm_ticks > coax_nm_limit) coax_nm_over(); } while (0)\n";
   if (em.strict_math) prelude += strict_math_runtime();
   if (em.transactions) prelude += transaction_runtime();
   if (em.erasure) prelude += ZERO_RUNTIME;
@@ -4316,7 +4443,8 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
   for (const ProcDecl *p : plan.procedures) prelude += em.prototype(p) + ";\n";
 
   std::string shared = prelude + "\nunsigned char coax_nc_cov[" + std::to_string(plan.procedures.size() + 1) + "];\n"
-                       "Coax_VerificationTrapHandler_v1 coax_verification_trap_handler_v1;\n" + values + "\n" + inits + shows + table;
+                       "Coax_VerificationTrapHandler_v1 coax_verification_trap_handler_v1;\n" +
+                       (mutants ? "int64_t coax_nm_mutant;\nuint64_t coax_nm_ticks, coax_nm_limit = UINT64_MAX;\n" : "") + values + "\n" + inits + shows + table;
   shared += "\n/* The driver. */\n"
        "static uint64_t coax_nc_case;\n"
        "static void coax_nc_trap(const char *what, int64_t what_count, const char *path, int64_t path_count, int64_t line) {\n"
@@ -4335,6 +4463,7 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
        "    const Coax_VerificationCheck_v2 *c = &table[i];\n"
        "    int n = snprintf(text, sizeof text, \"B %lld\\n\", (long long)i); coax_nc_write(text, (size_t)n);\n"
        "    memset(coax_nc_cov, 0, sizeof coax_nc_cov);\n"
+       + std::string(mutants ? "    coax_nm_ticks = 0;\n" : "") +
        "    for (uint64_t k = 0; k < c->case_count; k++) {\n"
        "      coax_nc_case = k;\n"
        "      uint64_t rest = k;\n"
@@ -4345,20 +4474,70 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
        "      }\n"
        "      if (c->run_values(words, c->binding_count) != 0) coax_nc_refuse(\"a binding mismatch\");\n"
        "    }\n"
+       + std::string(mutants ? "    n = snprintf(text, sizeof text, \"K %lld %llu\\n\", (long long)i, (unsigned long long)coax_nm_ticks); coax_nc_write(text, (size_t)n);\n" : "") +
        "    n = snprintf(text, sizeof text, \"E %lld %llu\", (long long)i, (unsigned long long)c->case_count); coax_nc_write(text, (size_t)n);\n"
        "    for (size_t p = 0; p < sizeof coax_nc_cov; p++) if (coax_nc_cov[p]) { n = snprintf(text, sizeof text, \" %zu\", p); coax_nc_write(text, (size_t)n); }\n"
        "    coax_nc_write(\"\\n\", 1);\n"
        "  }\n"
        "  return 0;\n"
        "}\n"
+       + std::string(!mutants ? "" :
+       "/* One mutant: the scheduled checks in order, each within its ticks. */\n"
+       "static const char *coax_nm_schedule; static int64_t coax_nm_first = -1;\n"
+       "static void coax_nm_trap(const char *what, int64_t what_count, const char *path, int64_t path_count, int64_t line) {\n"
+       "  coax_nc_trap(what, what_count, path, path_count, line); _exit(94);\n"
+       "}\n"
+       "static void coax_nm_check(const Coax_VerificationCheck_v2 *table, int64_t count, int64_t row, uint64_t limit) {\n"
+       "  uint64_t words[64]; char text[64];\n"
+       "  if (row < 0 || row >= count) _exit(95);\n"
+       "  const Coax_VerificationCheck_v2 *c = &table[row];\n"
+       "  int n = snprintf(text, sizeof text, \"B %lld\\n\", (long long)row); coax_nc_write(text, (size_t)n);\n"
+       "  coax_nm_ticks = 0; coax_nm_limit = limit;\n"
+       "  for (uint64_t k = 0; k < c->case_count; k++) {\n"
+       "    coax_nc_case = k;\n"
+       "    uint64_t rest = k;\n"
+       "    for (int64_t b = c->binding_count; b-- > 0;) {\n"
+       "      const Coax_VerificationBinding_v2 *d = &c->bindings[b];\n"
+       "      uint64_t at = rest % d->count; rest /= d->count;\n"
+       "      words[b] = d->values ? d->values[at].bits : (uint64_t)d->first + at;\n"
+       "    }\n"
+       "    if (c->run_values(words, c->binding_count) != 0) coax_nc_refuse(\"a binding mismatch\");\n"
+       "  }\n"
+       "}\n"
+       "static void *coax_nm_main(void *unused) {\n"
+       "  (void)unused;\n"
+       "  int64_t count = 0;\n"
+       "  const Coax_VerificationCheck_v2 *table = coax_verification_checks_v2(&count);\n"
+       "  FILE *schedule = fopen(coax_nm_schedule, \"r\");\n"
+       "  if (!schedule) _exit(95);\n"
+       "  long long row; unsigned long long limit;\n"
+       "  if (coax_nm_first >= 0) {\n"
+       "    while (fscanf(schedule, \"%lld %llu\", &row, &limit) == 2) if (row == coax_nm_first) { coax_nm_check(table, count, row, limit); break; }\n"
+       "    rewind(schedule);\n"
+       "  }\n"
+       "  while (fscanf(schedule, \"%lld %llu\", &row, &limit) == 2) if (row != coax_nm_first) coax_nm_check(table, count, row, limit);\n"
+       "  coax_nc_write(\"S\\n\", 2);\n"
+       "  return 0;\n"
+       "}\n") +
        "int main(int argc, char **argv) {\n"
+       "  void *(*run)(void *) = coax_nc_main;\n"
+       "  coax_verification_trap_handler_v1 = coax_nc_trap;\n"
+       + std::string(!mutants ? "" :
+       "  if (argc > 3 && strcmp(argv[1], \"m\") == 0) {\n"
+       "    struct rlimit none = {0, 0}; setrlimit(RLIMIT_CORE, &none);\n"
+       "    coax_nm_mutant = atoll(argv[2]); coax_nm_schedule = argv[3];\n"
+       "    if (argc > 4) coax_nm_first = atoll(argv[4]);\n"
+       "    coax_verification_trap_handler_v1 = coax_nm_trap;\n"
+       "    run = coax_nm_main;\n"
+       "  } else\n") +
+       "  {\n"
        "  coax_nc_start = argc > 1 ? atoll(argv[1]) : 0;\n"
        "  if (argc > 2 && atoll(argv[2]) > 0) coax_nc_step = atoll(argv[2]);\n"
-       "  coax_verification_trap_handler_v1 = coax_nc_trap;\n"
+       "  }\n"
        "  pthread_attr_t attr; pthread_attr_init(&attr);\n"
        "  pthread_attr_setstacksize(&attr, (size_t)1 << 30);\n"
        "  pthread_t thread;\n"
-       "  if (pthread_create(&thread, &attr, coax_nc_main, 0) != 0) coax_nc_main(0);\n"
+       "  if (pthread_create(&thread, &attr, run, 0) != 0) run(0);\n"
        "  else pthread_join(thread, 0);\n"
        "  return 0;\n"
        "}\n";
