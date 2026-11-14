@@ -1,36 +1,38 @@
-// YOUR COMPUTER, played in headless Chrome (no window opens) against a local relay and a real
-// `coder host` (openagents#12642; docs/metaverse/realm-edit.md "Your computer"). The page is the made
-// realm pine-forest from staging, opened at a localhost origin granted Local Network Access (FL_LNA),
-// whose requests DevTools interception sends on to staging, with two answers swapped in:
-// the realm module is the one built from this checkout, and the realm's spec says we own it. Every other
-// API call that would write (a POST) is answered here with 204 and never leaves the browser; the
-// session carries the automation mark (verse-automation), so analytics leaves it out. The page
-// reaches the local relay through ?relay=ws://localhost:PORT (the wire takes only that form).
+// Your computer, in Settings, This machine (#13529), played in headless Chrome (no window opens) against a local
+// relay and a real `coder host` (openagents#12642; docs/metaverse/realm-edit.md "Your computer"). The page is
+// Settings, Agents and models, opened from the world pine-forest's editor (/settings/models?world=pine-forest) on
+// staging, at a localhost origin granted Local Network Access (FL_LNA), whose requests DevTools interception sends on
+// to staging, with this checkout's in their place: chat-web's and machine-web's modules from BUILD_DIR and the
+// browser host's files (/coaxial/*.js) from coax/web. The account says someone is logged in. Every other API call
+// that would write (a POST) is answered here with 204 and never leaves the browser; the session carries the
+// automation mark (verse-automation), so analytics leaves it out. The page reaches the local relay through
+// ?relay=ws://localhost:PORT (the wire takes only that form).
 //
-// The owner opens EDIT > COMPUTER, pastes the host's key and pairs; the person at the computer allows
-// it (`coder host allow`); the pane shows the computer answers, a request runs as a job whose steps
-// come in, a reload keeps the pairing, a phone-width page shows the pane, and FORGET takes the
-// browser off the computer. It reads the pane through coaxial.guardProbe(2400 + f) (metaverse/edit/
-// edit.coax redit_probe: 4 * b + 0..3 button b's box, 96 the pane, 97 the view).
+// The person opens Settings from the world's editor, pastes the host's key and pairs; the person at the computer
+// allows it (`coder host allow`); Your computer shows the computer answers, a request for the world runs as a job
+// whose steps come in, a reload keeps the pairing, a phone-width page shows it with nothing past its edge, and
+// Forget takes the browser off the computer. It reads Your computer's state from its group's data-state
+// (machine-web.coax MW_VIEWS) and presses the page's own buttons where they are drawn.
 //
 //   nostr/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
 //   OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine echo
-//   COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/myrealm.coax apps/openagents-web/myrealm-face.c \
-//     /tmp/myrealm.wasm metaverse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
-//   CODER_HOME=/tmp/host-home BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 /tmp/myrealm.wasm [SHOTS_DIR]
+//   coax/web/wasm.sh apps/openagents-web/chat-web.coax apps/openagents-web/chat-web-face.c /tmp/b/chat-web.wasm
+//   COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/machine-web.coax apps/openagents-web/machine-web-face.c \
+//     /tmp/b/machine-web.wasm metaverse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
+//   CODER_HOME=/tmp/host-home BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 /tmp/b [SHOTS_DIR]
 //
-// --local SITE SPEC runs it with nothing remote (#12640): the page is this checkout's, served at
-// SITE (http://127.0.0.1:PORT) by `coax/web/tool.sh local-origin --module MYREALM.wasm`, and every
-// /api request is answered here: the page is /realms/built#pine-test, and that realm's spec
-// (/api/playtest/realms/pine-test) is the file SPEC with
-// the owner's lines after it, read again on every request; other reads are 404 and writes 204. With
-// `coder host --engine claude` and a stand-in `claude` (coder/tui/claude_standin.coax) that edits
-// SPEC as the realm tool would, it also checks that the realm reloads when the job's edit lands
-// (the page's rev, realm_probe 2, reaches the spec's), and that STOP stops a long job while it runs.
-// --require-hardware fails unless the page's WebGPU adapter is a GPU's.
+// --local SITE SPEC BUILD_DIR runs it with nothing remote (#12640): the page is this checkout's, served at SITE
+// (http://127.0.0.1:PORT) by `coax/web/tool.sh local-origin --module MYREALM.wasm`, opened from the world pine-test,
+// and every /api request is answered here: the account says someone is logged in, the realm pine-test's spec
+// (/api/playtest/realms/pine-test) is the file SPEC with the owner's lines after it, read again on every request;
+// other reads are 404 and writes 204. With `coder host --engine claude` and a stand-in `claude`
+// (coder/tui/claude_standin.coax) that edits SPEC as the realm tool would, it also checks that the job's edit lands
+// in the world the page named (SPEC's rev goes up by one), that the world's own page then shows it (the made realm,
+// /realms/built#pine-test: its rev, realm_probe 2, is SPEC's), and that Stop stops a long job while it runs.
+// --require-hardware fails unless that page's WebGPU adapter is a GPU's.
 //
 //   CODER_HOME=H BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 --local \
-//     http://127.0.0.1:47999 SPEC [SHOTS_DIR] [--require-hardware]
+//     http://127.0.0.1:47999 SPEC BUILD_DIR [SHOTS_DIR] [--require-hardware]
 //
 // Run it from the repository's root (it runs coder/tui/coder.sh from there). Exit 0 when every check
 // passed, 1 when one failed, 2 for a usage error.
@@ -39,41 +41,36 @@
 
 FL_ORIGIN :: "https://staging.openagents.com";
 FL_HERE :: "http://golden.localhost:47998";   // the page's origin: nothing listens there; every request is answered or sent on to FL_ORIGIN
-FL_SPEC :: "/api/playtest/realms/pine-forest";
-FL_PAGE :: "/realms/pine-forest?relay=";
+FL_WORLD :: "pine-forest"; FL_LOCAL_WORLD :: "pine-test";
 FL_LOCAL :: "ws://localhost:";
 FL_WASM_MAX :: 4194304;                         // the largest module served
 FL_B64_MAX :: FL_WASM_MAX / 3 * 4 + 8;
 FL_CMD_MAX :: FL_B64_MAX + 8192;
 FL_SPEC_MAX :: 1048576;
 FL_PNG_MAX :: 25165824;
-FL_PEND :: 8;                                   // spec bodies being read at once
 FL_MS :: 30000;                                 // the wait for one DevTools reply
+FL_WHO :: "logged_in 1\nemail owner@example.com\n";   // /api/auth/account?as=lines: someone is logged in
 // Local Network Access: the page comes from a public server, so Chrome blocks its socket to this
 // machine's relay unless granted; the permission's names across Chrome versions.
 FL_LNA :: [3] string.["localNetworkAccess", "localNetwork", "loopbackNetwork"];
 
-// Views (metaverse/edit/computer.coax RV_*) and buttons (metaverse/edit/edit.coax RB_*) the flow reads.
-RV_UNPAIRED_V :: 1; RV_ASKING_V :: 2; RV_ALLOWED_V :: 3; RV_RUNNING_V :: 7; RV_STOPPED_V :: 8; RV_FAILED_V :: 9; RV_DONE_V :: 10;
-FB_EDIT :: 0; FB_CTAB :: 12; FB_CMAIN :: 13; FB_CFORGET :: 14; FB_CFIELD :: 16;
-FP_PANE :: 96; FP_VIEW :: 97; FL_COMPUTER_PANE :: 6;
-
 Flow :: struct {
-  wasm: [FL_WASM_MAX] u8; wasm_n: int;
+  wasm: [FL_WASM_MAX] u8;
   b64: [FL_B64_MAX] u8;
   cmd: [FL_CMD_MAX] u8; frame: [FL_CMD_MAX + 14] u8;
-  spec: [FL_SPEC_MAX] u8; spec2: [FL_SPEC_MAX] u8;
+  spec: [FL_SPEC_MAX] u8;
   png: [FL_PNG_MAX] u8;
-  page: [512] u8; page_n: int;
+  page: [512] u8; page_n: int;     // Settings, Agents and models, opened from the world
+  realm: [512] u8; realm_n: int;   // --local: the world's own page
   coder: [2048] u8; coder_n: int;
   out: [262144] u8; out_n: int; err: [4096] u8;
-  pend_id: [FL_PEND] int; pend_req: [FL_PEND * 256] u8; pend_n: [FL_PEND] int;
   label: [256] u8; label_n: int; ask: [128] u8; ask_n: int;
-  served_wasm: int; served_spec: int; held_posts: int;
+  build: [1024] u8; build_n: int;  // BUILD_DIR: chat-web.wasm and machine-web.wasm
+  served_wasm: int; served_host: int; held_posts: int;
   failed: int; bad: bool;
   local: bool; site: [256] u8; site_n: int; specf: [1024] u8; specf_n: int;   // --local
 }
-FL_LOCAL_SPEC :: "/api/playtest/realms/pine-test";   // the page is /realms/built#pine-test
+FL_LOCAL_SPEC :: "/api/playtest/realms/pine-test";
 
 // ---- text (pure) -------------------------------------------------------------
 
@@ -109,13 +106,19 @@ fl_path :: (url: string) -> string {
   while e < url.count && url[e] != '?' && url[e] != '#' { e += 1; }
   return url[i..<e];
 }
-// The realm module's path, /build/myrealm.HASH.wasm.
-fl_is_module :: (path: string) -> bool {
-  if !fl_starts(path, "/build/myrealm.") || !fl_ends(path, ".wasm") { return false; }
-  hash := path["/build/myrealm.".count..<path.count - ".wasm".count];
-  if hash.count == 0 { return false; }
-  for ch: hash { if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) { return false; } }
-  return true;
+// The module this checkout builds that a path asks for (/build/chat-web.wasm, /build/machine-web.wasm), or "".
+fl_module_of :: (path: string) -> string {
+  if path == "/build/chat-web.wasm" { return "chat-web.wasm"; }
+  if path == "/build/machine-web.wasm" { return "machine-web.wasm"; }
+  return "";
+}
+// The browser host's file a path asks for (/coaxial/NAME.js: letters, digits and dashes), or "".
+fl_host_of :: (path: string) -> string {
+  if !fl_starts(path, "/coaxial/") || !fl_ends(path, ".js") { return ""; }
+  name := path["/coaxial/".count..<path.count];
+  if name.count <= 3 { return ""; }
+  for ch: name[0..<name.count - 3] { if !((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-') { return ""; } }
+  return name;
 }
 // A local test relay, ws://localhost:PORT, as the wire takes it.
 fl_relay_ok :: (relay: string) -> bool {
@@ -123,13 +126,31 @@ fl_relay_ok :: (relay: string) -> bool {
   for ch: relay[FL_LOCAL.count..<relay.count] { if ch < '0' || ch > '9' { return false; } }
   return true;
 }
+// The rev line of a realm's spec ("rev N"), or -1.
+fl_rev_of :: (spec: string) -> int {
+  i := 0;
+  while i < spec.count {
+    e := i; while e < spec.count && spec[e] != '\n' { e += 1; }
+    line := spec[i..<e];
+    if fl_starts(line, "rev ") {
+      v := 0; k := 4;
+      if k >= line.count { return -1; }
+      while k < line.count { ch := line[k]; if ch < '0' || ch > '9' { return -1; } v = v * 10 + cast(int) (ch - '0'); k += 1; }
+      return v;
+    }
+    i = e + 1;
+  }
+  return -1;
+}
 #test "computer flow: which requests it answers" {
-  #assert fl_path("https://staging.openagents.com/build/myrealm.5a1af91632c3.wasm") == "/build/myrealm.5a1af91632c3.wasm";
-  #assert fl_path("https://staging.openagents.com/api/playtest/realms/pine-forest?x=1") == FL_SPEC;
+  #assert fl_path("https://staging.openagents.com/build/chat-web.wasm") == "/build/chat-web.wasm";
+  #assert fl_path("https://staging.openagents.com/settings/models?world=pine-forest&relay=ws://localhost:7777") == "/settings/models";
   #assert fl_path("https://staging.openagents.com") == "" && fl_path("nothing") == "";
-  #assert fl_is_module("/build/myrealm.5a1af91632c3.wasm") && !fl_is_module("/build/myrealm..wasm") && !fl_is_module("/build/myrealm.x.wasm") && !fl_is_module("/build/realm.5a.wasm");
+  #assert fl_module_of("/build/machine-web.wasm") == "machine-web.wasm" && fl_module_of("/build/chat-web.wasm") == "chat-web.wasm" && fl_module_of("/build/myrealm.wasm") == "";
+  #assert fl_host_of("/coaxial/dom-host.js") == "dom-host.js" && fl_host_of("/coaxial/dom-wire.js") == "dom-wire.js" && fl_host_of("/coaxial/../x.js") == "" && fl_host_of("/coaxial/.js") == "" && fl_host_of("/coaxial/live") == "";
   #assert fl_relay_ok("ws://localhost:7777") && !fl_relay_ok("ws://localhost:") && !fl_relay_ok("ws://localhost.evil:7") && !fl_relay_ok("wss://relay.openagents.com");
   #assert fl_has("Chrome on Mac", "on Mac") && !fl_has("Mac", "on Mac");
+  #assert fl_rev_of("realm pine-test\nrev 12\nplaced crate 4 -2 0\n") == 12 && fl_rev_of("realm x\n") == -1 && fl_rev_of("rev x\n") == -1;
 }
 
 // ---- DevTools, with the page's requests answered on the way ---------------------
@@ -169,41 +190,18 @@ fl_on :: (c: [] Cdp, method: string, req: string) -> int {
   jo_obj(o[..]); jo_key(o[..], "requestId"); jo_str(o[..], req); jo_end(o[..]);
   return ifx o[0].bad then -1 else cdp_send(c, method, jo_text(o[..]));
 }
-// The spec's body came back: answered with the owner's lines after it.
-fl_spec_body :: (c: [] Cdp, f: [] Flow, d: Jv, req: string) {
-  r := cdp_reply_result(d);
-  n := jv_str(d, jv_get(d, r, "body"), f[0].spec[..]);
-  if n < 0 { f[0].bad = true; s1 := fl_on(c, "Fetch.continueRequest", req); return; }
-  m := n;
-  if jv_bool(d, jv_get(d, r, "base64Encoded")) {
-    m = b64_decode(cast(string) f[0].spec[0..<n], f[0].spec2[..]);
-    if m < 0 { f[0].bad = true; s2 := fl_on(c, "Fetch.continueRequest", req); return; }
-    for i: 0..<m { f[0].spec[i] = f[0].spec2[i]; }
-  }
-  if m > 0 && f[0].spec[m - 1] != '\n' && m < FL_SPEC_MAX { f[0].spec[m] = '\n'; m += 1; }
-  owner := "role owner\nowner 1\n";
-  if m + owner.count > FL_SPEC_MAX { f[0].bad = true; s3 := fl_on(c, "Fetch.continueRequest", req); return; }
-  for i: 0..<owner.count { f[0].spec[m + i] = owner[i]; }
-  m += owner.count;
-  if !fl_fulfill(c, f, req, 200, "text/plain; charset=utf-8", cast(string) f[0].spec[0..<m]) { f[0].bad = true; }
-  f[0].served_spec += 1;
+// A file of this checkout's (a module in BUILD_DIR, or the browser host's in coax/web) answered as the page asked for it.
+fl_serve_file :: (c: [] Cdp, f: [] Flow, req: string, dir: string, name: string, ctype: string) {
+  p: [2048] u8;
+  file := fs_join(dir, name, p[..]);
+  n := ifx file.count > 0 then fs_read(file, f[0].wasm[..]) else -1;
+  if n <= 0 { f[0].bad = true; tool_err("computer-flow: can't read "); tool_errln(file); if !fl_fulfill(c, f, req, 404, "text/plain", "") { f[0].bad = true; } return; }
+  if !fl_fulfill(c, f, req, 200, ctype, cast(string) f[0].wasm[0..<n]) { f[0].bad = true; }
 }
-// One message from the browser that isn't the reply being waited for.
+// One message from the browser that isn't the reply being waited for: a request the page made, answered or sent on.
 fl_message :: (c: [] Cdp, f: [] Flow) {
   d := cdp_doc(c);
-  rid := cdp_reply_id(d);
-  if rid >= 0 {
-    for i: 0..<FL_PEND {
-      if f[0].pend_id[i] == rid {
-        f[0].pend_id[i] = 0;
-        rq: [256] u8; k := f[0].pend_n[i];
-        for j: 0..<k { rq[j] = f[0].pend_req[i * 256 + j]; }
-        fl_spec_body(c, f, d, cast(string) rq[0..<k]);
-      }
-    }
-    return;
-  }
-  if cdp_event_method(d) != "Fetch.requestPaused" { return; }
+  if cdp_reply_id(d) >= 0 || cdp_event_method(d) != "Fetch.requestPaused" { return; }
   p := jv_get(d, 0, "params"); rqn := jv_get(d, p, "request");
   ib: [256] u8; ub: [8192] u8; mb: [32] u8;
   idn := jv_str(d, jv_get(d, p, "requestId"), ib[..]);
@@ -214,34 +212,22 @@ fl_message :: (c: [] Cdp, f: [] Flow) {
   url := ifx un > 0 then cast(string) ub[0..<un] else "";
   verb := ifx vn > 0 then cast(string) mb[0..<vn] else "";
   path := fl_path(url);
-  if f[0].local { fl_local(c, f, req, verb, path); return; }
-  if jv_get(d, p, "responseStatusCode") >= 0 {
-    // the response stage: only the spec stops here
-    if path == FL_SPEC && jv_int(d, jv_get(d, p, "responseStatusCode"), 0) == 200 {
-      for i: 0..<FL_PEND {
-        if f[0].pend_id[i] == 0 {
-          id := fl_on(c, "Fetch.getResponseBody", req);
-          if id < 0 { f[0].bad = true; return; }
-          f[0].pend_id[i] = id; f[0].pend_n[i] = idn;
-          for j: 0..<idn { f[0].pend_req[i * 256 + j] = req[j]; }
-          return;
-        }
-      }
-      f[0].bad = true;
+  // this checkout's modules, from BUILD_DIR
+  module := fl_module_of(path);
+  if module.count > 0 { fl_serve_file(c, f, req, cast(string) f[0].build[0..<f[0].build_n], module, "application/wasm"); f[0].served_wasm += 1; return; }
+  // this checkout's browser host (a local page already has it from local-origin)
+  host := fl_host_of(path);
+  if !f[0].local && host.count > 0 { fl_serve_file(c, f, req, "coax/web", host, "text/javascript; charset=utf-8"); f[0].served_host += 1; return; }
+  if fl_starts(path, "/api/") {
+    if verb != "GET" && verb != "HEAD" {
+      f[0].held_posts += 1;
+      if !fl_fulfill(c, f, req, 204, "text/plain", "") { f[0].bad = true; }
+      return;
     }
-    s4 := fl_on(c, "Fetch.continueRequest", req);
-    return;
+    if path == "/api/auth/account" { if !fl_fulfill(c, f, req, 200, "text/plain; charset=utf-8", FL_WHO) { f[0].bad = true; } return; }
+    if f[0].local { fl_local(c, f, req, path); return; }
   }
-  if fl_is_module(path) {
-    if !fl_fulfill(c, f, req, 200, "application/wasm", cast(string) f[0].wasm[0..<f[0].wasm_n]) { f[0].bad = true; }
-    f[0].served_wasm += 1;
-    return;
-  }
-  if verb != "GET" && verb != "HEAD" && fl_starts(path, "/api/") {
-    f[0].held_posts += 1;
-    if !fl_fulfill(c, f, req, 204, "text/plain", "") { f[0].bad = true; }
-    return;
-  }
+  if f[0].local { s1 := fl_on(c, "Fetch.continueRequest", req); return; }
   if fl_starts(url, FL_HERE) {
     to: [1] FlBuf; fl_put(to[..], FL_ORIGIN); fl_put(to[..], url[FL_HERE.count..<url.count]);
     if to[0].bad || fl_onward(c, req, fl_text(to[..])) < 0 { f[0].bad = true; }
@@ -249,21 +235,14 @@ fl_message :: (c: [] Cdp, f: [] Flow) {
   }
   s5 := fl_on(c, "Fetch.continueRequest", req);
 }
-// --local: an /api request answered here (the spec from its file, other reads 404, writes 204); anything else goes on.
-fl_local :: (c: [] Cdp, f: [] Flow, req: string, verb: string, path: string) {
-  if !fl_starts(path, "/api/") { s1 := fl_on(c, "Fetch.continueRequest", req); return; }
-  if verb != "GET" && verb != "HEAD" {
-    f[0].held_posts += 1;
-    if !fl_fulfill(c, f, req, 204, "text/plain", "") { f[0].bad = true; }
-    return;
-  }
+// --local: an /api read answered here (the realm's spec from its file with the owner's lines after it, others 404).
+fl_local :: (c: [] Cdp, f: [] Flow, req: string, path: string) {
   if path != FL_LOCAL_SPEC { if !fl_fulfill(c, f, req, 404, "text/plain", "") { f[0].bad = true; } return; }
   m := fs_read(cast(string) f[0].specf[0..<f[0].specf_n], f[0].spec[..]);
   owner := "role owner\nowner 1\n";
   if m <= 0 || m + owner.count > FL_SPEC_MAX { f[0].bad = true; m = 0; }
   for i: 0..<owner.count { f[0].spec[m + i] = owner[i]; }
   if !fl_fulfill(c, f, req, 200, "text/plain; charset=utf-8", cast(string) f[0].spec[0..<m + owner.count]) { f[0].bad = true; }
-  f[0].served_spec += 1;
 }
 // Reads messages for ms, answering the page's requests.
 fl_pump :: (c: [] Cdp, f: [] Flow, ms: int) {
@@ -303,14 +282,40 @@ fl_eval :: (c: [] Cdp, f: [] Flow, expression: string) -> int {
 
 // ---- the page -------------------------------------------------------------------
 
-// The edit layer's probe field (redit_probe), or -1 while the page isn't up.
-fl_probe :: (c: [] Cdp, f: [] Flow, field: int) -> int {
-  b: [1] FlBuf; fl_put(b[..], "globalThis.coaxial && coaxial.ready ? coaxial.guardProbe("); fl_int(b[..], 2400 + field); fl_put(b[..], ") : -1");
-  v := fl_eval(c, f, fl_text(b[..]));
-  return ifx v >= 0 then jv_int(cdp_doc(c), v, -1) else -1;
+// An expression's string value, in out ("" when it has none).
+fl_eval_text :: (c: [] Cdp, f: [] Flow, expression: string, out: [] u8) -> string {
+  v := fl_eval(c, f, expression);
+  if v < 0 { return ""; }
+  n := jv_str(cdp_doc(c), v, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
 }
-fl_view :: (c: [] Cdp, f: [] Flow) -> int { return fl_probe(c, f, FP_VIEW); }
-// The realm's own probe field (myrealm.coax realm_probe: 2 the server's rev, 64 the entities laid), or -1.
+// A group's state (machine-web.coax MW_VIEWS: its data-state), or "" while it isn't drawn.
+fl_state :: (c: [] Cdp, f: [] Flow, group: string, out: [] u8) -> string {
+  b: [1] FlBuf; fl_put(b[..], "document.getElementById('"); fl_put(b[..], group); fl_put(b[..], "')?.dataset.state || ''");
+  return fl_eval_text(c, f, fl_text(b[..]), out);
+}
+fl_view :: (c: [] Cdp, f: [] Flow, out: [] u8) -> string { return fl_state(c, f, "computer", out); }
+// Waits up to ms for Your computer to be in one of the views named (a space between each).
+fl_wait :: (c: [] Cdp, f: [] Flow, views: string, ms: int) -> bool {
+  deadline := proc_now_ms() + ms;
+  while true {
+    b: [64] u8; v := fl_view(c, f, b[..]);
+    if v.count > 0 && fl_word_in(v, views) { return true; }
+    if proc_now_ms() >= deadline { return false; }
+    fl_pump(c, f, 250);
+  }
+  return false;
+}
+fl_word_in :: (word: string, words: string) -> bool {
+  i := 0;
+  while i < words.count {
+    e := i; while e < words.count && words[e] != ' ' { e += 1; }
+    if words[i..<e] == word { return true; }
+    i = e + 1;
+  }
+  return false;
+}
+// The made realm's own probe field (myrealm.coax realm_probe: 2 the server's rev), or -1.
 fl_realm :: (c: [] Cdp, f: [] Flow, field: int) -> int {
   b: [1] FlBuf; fl_put(b[..], "globalThis.coaxial && coaxial.ready ? coaxial.guardProbe("); fl_int(b[..], field); fl_put(b[..], ") : -1");
   v := fl_eval(c, f, fl_text(b[..]));
@@ -325,31 +330,47 @@ fl_wait_realm :: (c: [] Cdp, f: [] Flow, field: int, lo: int, ms: int) -> bool {
   }
   return false;
 }
-// Waits up to ms for lo <= probe(field) <= hi.
-fl_wait :: (c: [] Cdp, f: [] Flow, field: int, lo: int, hi: int, ms: int) -> bool {
-  deadline := proc_now_ms() + ms;
-  while true {
-    v := fl_probe(c, f, field);
-    if v >= lo && v <= hi { return true; }
-    if proc_now_ms() >= deadline { return false; }
-    fl_pump(c, f, 250);
-  }
-  return false;
-}
 fl_mouse :: (c: [] Cdp, f: [] Flow, kind: string, x: int, y: int) -> bool {
   b: [512] u8; o: [1] Jo; jo_start(o[..], b[..]);
   jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], kind); jo_key(o[..], "x"); jo_int(o[..], x); jo_key(o[..], "y"); jo_int(o[..], y);
   jo_key(o[..], "button"); jo_str(o[..], "left"); jo_key(o[..], "clickCount"); jo_int(o[..], 1); jo_end(o[..]);
   return fl_call(c, f, "Input.dispatchMouseEvent", jo_text(o[..])) >= 0;
 }
-// Clicks button b's middle; false while it isn't shown.
-fl_tap :: (c: [] Cdp, f: [] Flow, b: int) -> bool {
-  x0 := fl_probe(c, f, 4 * b); y0 := fl_probe(c, f, 4 * b + 1); x1 := fl_probe(c, f, 4 * b + 2); y1 := fl_probe(c, f, 4 * b + 3);
-  if x0 < 0 { return false; }
-  x := (x0 + x1) / 2; y := (y0 + y1) / 2;
+// A node's box as the page lays it out, after it is scrolled into view: [left, top, right, bottom], or false while it
+// isn't on the page (or is disabled, when `on`).
+FlBox :: struct { ok: bool; x0: int; y0: int; x1: int; y1: int; }
+fl_box :: (c: [] Cdp, f: [] Flow, id: string, on: bool) -> FlBox {
+  b: [1] FlBuf;
+  fl_put(b[..], "(()=>{const e=document.getElementById('"); fl_put(b[..], id); fl_put(b[..], "');if(!e");
+  if on { fl_put(b[..], "||e.disabled"); }
+  fl_put(b[..], ")return [];e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return [Math.round(r.left),Math.round(r.top),Math.round(r.right),Math.round(r.bottom)];})()");
+  v := fl_eval(c, f, fl_text(b[..]));
+  d := cdp_doc(c);
+  if v < 0 || jv_len(d, v) != 4 { return FlBox.{ok = false}; }
+  return FlBox.{ok = true, x0 = jv_int(d, jv_at(d, v, 0), 0), y0 = jv_int(d, jv_at(d, v, 1), 0), x1 = jv_int(d, jv_at(d, v, 2), 0), y1 = jv_int(d, jv_at(d, v, 3), 0)};
+}
+// Presses the node's middle, as a pointer does; false while it isn't shown or can't be pressed.
+fl_tap :: (c: [] Cdp, f: [] Flow, id: string) -> bool {
+  r := fl_box(c, f, id, true);
+  if !r.ok { return false; }
+  // a node scrolled into view is pressed once the page has drawn it there: a press sent at once can land where it was
+  fl_pump(c, f, 150);
+  r = fl_box(c, f, id, true);
+  if !r.ok { return false; }
+  x := (r.x0 + r.x1) / 2; y := (r.y0 + r.y1) / 2;
   ok := fl_mouse(c, f, "mouseMoved", x, y) && fl_mouse(c, f, "mousePressed", x, y) && fl_mouse(c, f, "mouseReleased", x, y);
   fl_pump(c, f, 300);
   return ok;
+}
+// Waits up to ms for the node to be shown and pressable, then presses it.
+fl_tap_when :: (c: [] Cdp, f: [] Flow, id: string, ms: int) -> bool {
+  deadline := proc_now_ms() + ms;
+  while true {
+    if fl_box(c, f, id, true).ok { return fl_tap(c, f, id); }
+    if proc_now_ms() >= deadline { return false; }
+    fl_pump(c, f, 250);
+  }
+  return false;
 }
 fl_type :: (c: [] Cdp, f: [] Flow, text: string) -> bool {
   b: [4096] u8; o: [1] Jo; jo_start(o[..], b[..]);
@@ -375,19 +396,22 @@ fl_size :: (c: [] Cdp, f: [] Flow, w: int, h: int, mobile: bool) -> bool {
   jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], 1); jo_key(o[..], "mobile"); jo_bool(o[..], mobile); jo_end(o[..]);
   return fl_call(c, f, "Emulation.setDeviceMetricsOverride", jo_text(o[..])) >= 0;
 }
-// Opens the realm and its COMPUTER pane.
-fl_open :: (c: [] Cdp, f: [] Flow) -> bool {
-  // the local page's URL ends in #pine-test: navigating to it again would only move to the hash, not reload
-  if f[0].local { x := fl_call(c, f, "Page.navigate", "{\"url\":\"about:blank\"}"); fl_pump(c, f, 300); }
+fl_go :: (c: [] Cdp, f: [] Flow, url: string) -> bool {
   b: [1024] u8; o: [1] Jo; jo_start(o[..], b[..]);
-  jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], cast(string) f[0].page[0..<f[0].page_n]); jo_end(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
   if fl_call(c, f, "Page.navigate", jo_text(o[..])) < 0 { return false; }
   fl_pump(c, f, 500);
-  r1 := fl_wait(c, f, 4 * FB_EDIT, 0, 1000000, 45000);      // EDIT is up once the spec says we own it
-  r2 := fl_tap(c, f, FB_EDIT);
-  r3 := fl_wait(c, f, 4 * FB_CTAB, 0, 1000000, 5000);
-  r4 := fl_tap(c, f, FB_CTAB);
-  return fl_wait(c, f, FP_PANE, FL_COMPUTER_PANE, FL_COMPUTER_PANE, 10000) && fl_wait(c, f, FP_VIEW, 1, 99, 10000);
+  return true;
+}
+// Opens Settings, Agents and models from the world, and waits for Your computer to read what this browser kept.
+fl_open :: (c: [] Cdp, f: [] Flow) -> bool {
+  if !fl_go(c, f, cast(string) f[0].page[0..<f[0].page_n]) { return false; }
+  return fl_wait(c, f, "unpaired asking allowed denied expired offline running stopped failed done", 45000);
+}
+// Nothing on the page reaches past the window's width (no sideways scroll).
+fl_fits :: (c: [] Cdp, f: [] Flow, w: int) -> int {
+  v := fl_eval(c, f, "document.documentElement.scrollWidth");
+  return ifx v >= 0 then jv_int(cdp_doc(c), v, -1) else -1;
 }
 fl_shot :: (c: [] Cdp, f: [] Flow, dir: string, name: string) {
   if dir.count == 0 { return; }
@@ -448,29 +472,32 @@ fl_check :: (f: [] Flow, name: string, ok: bool, seen: int) {
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   loaded := args_load(a[..]);
-  relay := args_at(a[..], 0); module := args_at(a[..], 1); shots := args_at(a[..], 2);
-  local := module == "--local";
+  relay := args_at(a[..], 0); build := args_at(a[..], 1); shots := args_at(a[..], 2);
+  local := build == "--local";
   site := ""; specf := "";
-  if local { site = args_at(a[..], 2); specf = args_at(a[..], 3); shots = args_at(a[..], 4); if fl_starts(shots, "--") { shots = ""; } }
+  if local { site = args_at(a[..], 2); specf = args_at(a[..], 3); build = args_at(a[..], 4); shots = args_at(a[..], 5); }
+  if fl_starts(shots, "--") { shots = ""; }
   hard := args_has(a[..], "--require-hardware");
   site_ok := fl_starts(site, "http://127.0.0.1:") && site.count < 64;
-  if !loaded || !fl_relay_ok(relay) || module.count == 0 || (local && (!site_ok || !fs_exists(specf) || specf.count > 1000)) {
-    tool_errln("usage: coax/web/tool.sh computer-flow ws://localhost:PORT (MYREALM.wasm | --local http://127.0.0.1:PORT SPEC) [SHOTS_DIR] [--require-hardware]   (CODER_HOME: the running host's)");
+  p1: [2048] u8; p2: [2048] u8;
+  built := build.count > 0 && build.count < 1000 && fs_exists(fs_join(build, "chat-web.wasm", p1[..])) && fs_exists(fs_join(build, "machine-web.wasm", p2[..]));
+  if !loaded || !fl_relay_ok(relay) || !built || (local && (!site_ok || !fs_exists(specf) || specf.count > 1000)) {
+    tool_errln("usage: coax/web/tool.sh computer-flow ws://localhost:PORT (BUILD_DIR | --local http://127.0.0.1:PORT SPEC BUILD_DIR) [SHOTS_DIR] [--require-hardware]   (BUILD_DIR holds chat-web.wasm and machine-web.wasm; CODER_HOME: the running host's)");
     return 2;
   }
   f: [1] Flow;
   f[0].local = local;
+  for i: 0..<build.count { f[0].build[i] = build[i]; } f[0].build_n = build.count;
   if local {
     for i: 0..<site.count { f[0].site[i] = site[i]; } f[0].site_n = site.count;
     for i: 0..<specf.count { f[0].specf[i] = specf[i]; } f[0].specf_n = specf.count;
-  } else {
-    f[0].wasm_n = fs_read(module, f[0].wasm[..]);
-    if f[0].wasm_n <= 0 { tool_err("computer-flow: can't read the module (at most 4 MiB): "); tool_errln(module); return 2; }
   }
   here := ifx local then site else FL_HERE;
-  u: [1] FlBuf; fl_put(u[..], here); fl_put(u[..], ifx local then "/realms/built?relay=" else FL_PAGE); fl_put(u[..], relay);
-  if local { fl_put(u[..], "#pine-test"); }
+  world := ifx local then FL_LOCAL_WORLD else FL_WORLD;
+  u: [1] FlBuf; fl_put(u[..], here); fl_put(u[..], "/settings/models?world="); fl_put(u[..], world); fl_put(u[..], "&relay="); fl_put(u[..], relay);
   for i: 0..<u[0].n { f[0].page[i] = u[0].b[i]; } f[0].page_n = u[0].n;
+  wu: [1] FlBuf; fl_put(wu[..], here); fl_put(wu[..], "/realms/built#"); fl_put(wu[..], world);
+  for i: 0..<wu[0].n { f[0].realm[i] = wu[0].b[i]; } f[0].realm_n = wu[0].n;
   cwd: [1024] u8;
   root := fs_cwd(cwd[..]);
   cp := fs_join(root, "coder/tui/coder.sh", f[0].coder[..]); f[0].coder_n = cp.count;
@@ -496,9 +523,7 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], "computer-flow");
   jo_key(o[..], "url"); jo_str(o[..], here); jo_end(o[..]);
   armed := fl_call(c[..], f[..], "Network.setCookie", jo_text(o[..])) >= 0;
-  patterns := ifx local then "{\"patterns\":[{\"urlPattern\":\"*/api/*\",\"requestStage\":\"Request\"}]}"
-    else "{\"patterns\":[{\"urlPattern\":\"*/api/playtest/realms/pine-forest*\",\"requestStage\":\"Response\"},{\"urlPattern\":\"*\",\"requestStage\":\"Request\"}]}";
-  armed = armed && fl_call(c[..], f[..], "Fetch.enable", patterns) >= 0;
+  armed = armed && fl_call(c[..], f[..], "Fetch.enable", "{\"patterns\":[{\"urlPattern\":\"*\",\"requestStage\":\"Request\"}]}") >= 0;
   // the test relay is on this machine (FL_LNA)
   for perm: FL_LNA {
     pb: [512] u8; po: [1] Jo; jo_start(po[..], pb[..]);
@@ -507,20 +532,17 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   if !armed { tool_errln("computer-flow: the browser refused the request interception"); cdp_close(c[..]); return 1; }
 
-  v := 0;
+  vb: [64] u8;
+  rev0 := ifx local then fl_rev_of(cast(string) f[0].spec[0..<fl_hi0(fs_read(specf, f[0].spec[..]))]) else -1;
   sz := fl_size(c[..], f[..], 1440, 900, false);
-  fl_check(f[..], "the owner opens EDIT > COMPUTER", fl_open(c[..], f[..]), fl_probe(c[..], f[..], FP_PANE));
-  gpu: [256] u8; adapter := cdp_adapter(c[..], gpu[..]);
-  print("  WebGPU adapter: %\n", adapter);
-  if hard { fl_check(f[..], "the page has a hardware WebGPU adapter (--require-hardware)", cdp_adapter_hardware(adapter), 0); }
-  rev0 := fl_realm(c[..], f[..], 2);
-  v = fl_view(c[..], f[..]);
-  fl_check(f[..], "unpaired, it asks for the computer's key", v == RV_UNPAIRED_V, v);
+  fl_check(f[..], "Settings, This machine opens Your computer, from the world's editor", fl_open(c[..], f[..]), 0);
+  v := fl_view(c[..], f[..], vb[..]);
+  fl_check(f[..], "unpaired, it asks for the computer's key", v == "unpaired", 0);
   fl_shot(c[..], f[..], shots, "1-unpaired.png");
-  t1 := fl_tap(c[..], f[..], FB_CFIELD);
+  t1 := fl_tap(c[..], f[..], "computer.key");
   t2 := fl_type(c[..], f[..], key);
   t3 := fl_enter(c[..], f[..]);
-  fl_check(f[..], "PAIR asks the computer: ALLOW THIS BROWSER", fl_wait(c[..], f[..], FP_VIEW, RV_ASKING_V, RV_ASKING_V, 5000), fl_view(c[..], f[..]));
+  fl_check(f[..], "Pair asks the computer: allow this browser", fl_wait(c[..], f[..], "asking", 5000), 0);
   w := fl_wait_listed(c[..], f[..], false, 1, 1000, 20000);
   label := cast(string) f[0].label[0..<fl_hi0(f[0].label_n)];
   fl_check(f[..], "the computer has the ask, with this browser's name", w == 1 && (fl_has(label, "on Mac") || fl_has(label, "on Linux")), w);
@@ -528,57 +550,76 @@ tool_main :: () -> int #export_c #effects(all) {
   ask := cast(string) f[0].ask[0..<fl_hi0(f[0].ask_n)];
   st := ifx ask.count >= 8 then fl_coder(f[..], "allow", ask[0..<8], "") else -1;
   fl_check(f[..], "coder host allow allows it", st == 0, st);
-  fl_check(f[..], "the pane says allowed, and that the computer answers", fl_wait(c[..], f[..], FP_VIEW, RV_ALLOWED_V, RV_ALLOWED_V, 15000), fl_view(c[..], f[..]));
+  fl_check(f[..], "Your computer says allowed", fl_wait(c[..], f[..], "allowed", 15000), 0);
+  ans: [64] u8;
+  answered := false;
+  dl := proc_now_ms() + 15000;
+  while !answered && proc_now_ms() < dl { answered = fl_eval_text(c[..], f[..], "document.getElementById('computer.answers')?.textContent || ''", ans[..]) == "Answers"; if !answered { fl_pump(c[..], f[..], 250); } }
+  fl_check(f[..], "it says the computer answers", answered, 0);
   fl_shot(c[..], f[..], shots, "3-allowed.png");
 
-  t4 := fl_tap(c[..], f[..], FB_CMAIN);                    // TYPE A REQUEST
+  t4 := fl_tap(c[..], f[..], "computer.words");
   t5 := fl_type(c[..], f[..], "add a red barn by the pines");
-  t6 := fl_tap(c[..], f[..], FB_CMAIN);                    // SEND
-  fl_check(f[..], "SEND makes it a job", fl_wait(c[..], f[..], FP_VIEW, RV_RUNNING_V, RV_DONE_V, 8000), fl_view(c[..], f[..]));
-  ended := fl_wait(c[..], f[..], FP_VIEW, RV_STOPPED_V, RV_DONE_V, 60000);
-  v = fl_view(c[..], f[..]);
-  fl_check(f[..], "its steps come in and the job ends", ended && (v == RV_DONE_V || (!local && v == RV_FAILED_V)), v);
+  t6 := fl_tap(c[..], f[..], "computer.send");
+  fl_check(f[..], "Send makes it a job for the world", fl_wait(c[..], f[..], "running stopped failed done", 8000), 0);
+  ended := fl_wait(c[..], f[..], "stopped failed done", 60000);
+  v = fl_view(c[..], f[..], vb[..]);
+  steps := fl_box(c[..], f[..], "computer.step.0", false).ok;
+  fl_check(f[..], "its steps come in and the job ends", ended && steps && (v == "done" || (!local && v == "failed")), 0);
   fl_shot(c[..], f[..], shots, "4-job.png");
   if local {
-    // the job's realm edit landed in the spec: the page reads it again by itself and lays the realm out anew
-    landed := fl_wait_realm(c[..], f[..], 2, rev0 + 1, 15000);
-    fl_check(f[..], "the realm reloads with the job's edit (its rev goes up by one)", rev0 > 0 && landed, fl_realm(c[..], f[..], 2));
+    // the job's edit landed in the world the page named, where the server keeps it
+    rev1 := fl_rev_of(cast(string) f[0].spec[0..<fl_hi0(fs_read(specf, f[0].spec[..]))]);
+    fl_check(f[..], "the job's edit lands in the world it named (its rev goes up by one)", rev0 > 0 && rev1 == rev0 + 1, rev1);
+    // and the world's own page shows it
+    shown := fl_go(c[..], f[..], "about:blank") && fl_go(c[..], f[..], cast(string) f[0].realm[0..<f[0].realm_n]) && fl_wait_realm(c[..], f[..], 2, rev0 + 1, 45000);
+    fl_check(f[..], "the world's page shows the job's edit (its rev is the spec's)", shown, fl_realm(c[..], f[..], 2));
+    gpu: [256] u8; adapter := cdp_adapter(c[..], gpu[..]);
+    print("  WebGPU adapter: %\n", adapter);
+    if hard { fl_check(f[..], "the page has a hardware WebGPU adapter (--require-hardware)", cdp_adapter_hardware(adapter), 0); }
     fl_shot(c[..], f[..], shots, "4b-edit-landed.png");
   }
 
   r1 := fl_open(c[..], f[..]);
-  fl_check(f[..], "a reload keeps the pairing", fl_wait(c[..], f[..], FP_VIEW, RV_ALLOWED_V, RV_ALLOWED_V, 15000), fl_view(c[..], f[..]));
+  fl_check(f[..], "a reload keeps the pairing", fl_wait(c[..], f[..], "allowed", 15000), 0);
   if local {
-    // a long job, stopped from the page while it runs
-    t9 := fl_tap(c[..], f[..], FB_CMAIN);
+    // a long job, stopped from the page while it runs: once the computer answers again (the row's words change
+    // then, and the field moves with them), typed into the field and sent with Enter
+    dl = proc_now_ms() + 30000; answered = false;
+    while !answered && proc_now_ms() < dl { answered = fl_eval_text(c[..], f[..], "document.getElementById('computer.answers')?.textContent || ''", ans[..]) == "Answers"; if !answered { fl_pump(c[..], f[..], 250); } }
+    typed: [64] u8;
+    t9 := fl_tap_when(c[..], f[..], "computer.words", 15000);
     t10 := fl_type(c[..], f[..], "tidy the paths, slowly");
-    t11 := fl_tap(c[..], f[..], FB_CMAIN);
-    running := fl_wait(c[..], f[..], FP_VIEW, RV_RUNNING_V, RV_RUNNING_V, 15000);
+    in_field := fl_eval_text(c[..], f[..], "document.getElementById('computer.words')?.value || ''", typed[..]);
+    if in_field != "tidy the paths, slowly" { print("        the field holds: '%' (the computer answers: %, pressed: %)\n", in_field, answered, t9); }
+    t11 := fl_enter(c[..], f[..]);
+    running := fl_wait(c[..], f[..], "running", 15000);
     fl_pump(c[..], f[..], 4000);
-    still := fl_view(c[..], f[..]) == RV_RUNNING_V;
-    fl_check(f[..], "a long job runs", running && still, fl_view(c[..], f[..]));
+    still := fl_view(c[..], f[..], vb[..]) == "running";
+    fl_check(f[..], "a long job runs", running && still, 0);
     fl_shot(c[..], f[..], shots, "4c-running.png");
-    t12 := fl_tap(c[..], f[..], FB_CMAIN);                  // STOP
-    fl_check(f[..], "STOP stops it while it runs", fl_wait(c[..], f[..], FP_VIEW, RV_STOPPED_V, RV_STOPPED_V, 30000), fl_view(c[..], f[..]));
+    t12 := fl_tap_when(c[..], f[..], "computer.stop", 15000);
+    fl_check(f[..], "Stop stops it while it runs", t12 && fl_wait(c[..], f[..], "stopped", 30000), 0);
     fl_shot(c[..], f[..], shots, "4d-stopped.png");
     r2 := fl_open(c[..], f[..]);
   }
 
   sz = fl_size(c[..], f[..], 390, 844, true);
-  phone := fl_open(c[..], f[..]) && fl_wait(c[..], f[..], FP_VIEW, RV_ALLOWED_V, RV_ALLOWED_V, 15000);
-  fl_check(f[..], "on a phone width the pane opens", phone, fl_view(c[..], f[..]));
-  fx0 := fl_probe(c[..], f[..], 4 * FB_CFORGET); fx1 := fl_probe(c[..], f[..], 4 * FB_CFORGET + 2);
-  fl_check(f[..], "its controls fit the phone's width", fx0 >= 0 && fx1 <= 390, fx1);
+  phone := fl_open(c[..], f[..]) && fl_wait(c[..], f[..], "allowed", 15000);
+  fl_check(f[..], "on a phone width Your computer opens", phone, 0);
+  fb := fl_box(c[..], f[..], "computer.forget", true); wb := fl_box(c[..], f[..], "computer.words", false);
+  wide := fl_fits(c[..], f[..], 390);
+  fl_check(f[..], "its controls fit the phone's width, nothing past its edge", fb.ok && fb.x0 >= 0 && fb.x1 <= 390 && wb.ok && wb.x1 <= 390 && wide >= 0 && wide <= 390, ifx wide > 390 then wide else fb.x1);
   fl_shot(c[..], f[..], shots, "5-phone.png");
 
-  t7 := fl_tap(c[..], f[..], FB_CFORGET); t8 := fl_tap(c[..], f[..], FB_CFORGET);   // FORGET THIS COMPUTER, SURE?
-  fl_check(f[..], "FORGET takes it back to unpaired", fl_wait(c[..], f[..], FP_VIEW, RV_UNPAIRED_V, RV_UNPAIRED_V, 3000), fl_view(c[..], f[..]));
+  t7 := fl_tap(c[..], f[..], "computer.forget"); t8 := fl_tap(c[..], f[..], "computer.forget");   // Forget this computer, Sure? Press again
+  fl_check(f[..], "Forget takes it back to unpaired", fl_wait(c[..], f[..], "unpaired", 3000), 0);
   left := fl_wait_listed(c[..], f[..], true, 0, 0, 15000);
   fl_check(f[..], "the computer no longer lists this browser", left == 0, left);
   cdp_close(c[..]);
 
   if f[0].bad { tool_errln("computer-flow: a page request was not answered as planned"); f[0].failed += 1; }
-  print("module served % times, spec % times, % writes held in the browser\n", f[0].served_wasm, f[0].served_spec, f[0].held_posts);
+  print("modules served % times, host files % times, % writes held in the browser\n", f[0].served_wasm, f[0].served_host, f[0].held_posts);
   if f[0].failed > 0 { print("computer flow: % failed\n", f[0].failed); return 1; }
   print("computer flow: passed\n");
   return 0;

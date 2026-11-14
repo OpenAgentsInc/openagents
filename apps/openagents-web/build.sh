@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/agents.wasm, build/worlds-web.wasm, build/project-files-web.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm, build/security.wasm, build/life.wasm, build/devices.wasm, build/lightning.wasm, build/wallet.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/agents.wasm, build/worlds-web.wasm, build/project-files-web.wasm, build/machine-web.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm, build/security.wasm, build/life.wasm, build/devices.wasm, build/lightning.wasm, build/wallet.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 # A failing step names itself (#13117): the line and the command, last in the
@@ -378,12 +378,9 @@ script_host=$!
 # /worlds/drop and every /projects/<slug>/realm: a project's first realm, its drop's models on a floor.
 timed droprealm "$here/../../coax/web/wasm.sh" "$here/droprealm.coax" "$here/droprealm-face.c" "$here/build/droprealm.wasm" &
 droprealm=$!
-# /worlds/built and every /worlds/<slug> made at /worlds/new: a realm someone built (myrealm.coax).
-# YOUR COMPUTER's wire (metaverse/edit/computer-wire.coax) links beside it; its signing tables need the larger budget.
-# With its renderer carrier, which loads the wire and entropy too, so one load graph owns
-# sha256-kernel.coax's S_hash and S_hex (#12661); wasm.sh folds the two libraries into it (#12675).
-COAXIAL_RUN_STEPS=250000000 timed myrealm "$here/../../coax/web/wasm.sh" "$here/myrealm.coax" "$here/myrealm-face.c" "$here/build/myrealm.wasm" \
-  "$here/../../metaverse/edit/computer-wire.coax" "$here/../../coax/lib/crypto/entropy.coax" &
+# /worlds/built and every /worlds/<slug> made at /worlds/new: a realm someone built (myrealm.coax), with its
+# renderer carrier.
+timed myrealm "$here/../../coax/web/wasm.sh" "$here/myrealm.coax" "$here/myrealm-face.c" "$here/build/myrealm.wasm" &
 myrealm=$!
 # /worlds/new: build your own realm (docs/metaverse/realm-builder.md).
 timed builder "$here/../../coax/web/wasm.sh" "$here/builder.coax" "$here/builder-face.c" "$here/build/builder.wasm" &
@@ -497,6 +494,13 @@ worlds_web=$!
 # private.c's page through coax/web/dom-host.js with &path=; GitHub #13468).
 timed project-files-web "$here/../../coax/web/wasm.sh" "$here/project-files-web.coax" "$here/project-files-web-face.c" "$here/build/project-files-web.wasm" &
 project_files_web=$!
+# Settings, This machine: Your computer and Your agent (machine-web.coax, #13529), opened by chat-web's Settings in a
+# node of its own (k_module, coax/web/dom-host.js), so only that page loads it. Your computer's wire
+# (metaverse/edit/computer-wire.coax) and the browser's entropy link beside it; the wire's signing tables need the
+# larger budget.
+COAXIAL_RUN_STEPS=250000000 timed machine-web "$here/../../coax/web/wasm.sh" "$here/machine-web.coax" "$here/machine-web-face.c" "$here/build/machine-web.wasm" \
+  "$here/../../metaverse/edit/computer-wire.coax" "$here/../../coax/lib/crypto/entropy.coax" &
+machine_web=$!
 # /memorial/<slug>: a pet's memorial from Hecate's Cemetery, its page (oa-api serves the HTML, villa.c memorial_page).
 timed memorial "$here/../../coax/web/wasm.sh" "$here/memorial.coax" "$here/memorial-face.c" "$here/build/memorial.wasm" &
 memorial=$!
@@ -548,6 +552,7 @@ wait "$render"
 wait "$tables"
 wait "$worlds_web"
 wait "$project_files_web"
+wait "$machine_web"
 wait "$memorial"
 wait "$chat"
 wait "$components_page"

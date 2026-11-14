@@ -1,8 +1,8 @@
 // The wire behind YOUR COMPUTER (computer.coax; openagents#12642): this browser's own key, and the
 // pane's requests carried to the person's computer over the relay as NIP-HOST "Browser device
 // grants" in the direct artifact binding (coax/lib/nostr/host/browser.coax seals and opens them).
-// It is its own wasm unit (its signing tables are computed at compile time), linked into a realm's
-// module beside it; the realm's face moves bytes between the two (apps/openagents-web/computer-face.h).
+// It is its own wasm unit (its signing tables are computed at compile time), linked beside Settings, This
+// machine's module (machine-web.coax); its face moves bytes between the two (apps/openagents-web/machine-web-face.c).
 //
 // In: the pane's next op (cw_op, with 96 fresh random bytes), the relay socket's events (cw_socket),
 // and the record this browser kept (cw_restore). Out: frames for the socket (cw_take_frame), lines

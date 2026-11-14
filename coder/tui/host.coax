@@ -177,7 +177,7 @@ hs_key :: (secret: [] u8, x: [] u8, xhex: [] u8) -> bool {
   return ok && hb_hex(x, xhex);
 }
 
-// The host key as an npub (NIP-19), what a person pastes into a realm's EDIT > COMPUTER tab.
+// The host key as an npub (NIP-19), what a person pastes into Your computer in Settings, This machine on openagents.com.
 hs_npub :: (x: [] u8, out: [] u8) -> string {
   r := nip19_encode_checked(N19_NPUB, cast(string) x[0..<32], out, false);
   return ifx r.error == NC_OK then cast(string) out[0..<r.written] else "";
@@ -665,7 +665,7 @@ hs_serve :: (args: [] Args) -> int {
   ln = hs_cat(lb[..], ln, " ("); ln = hs_cat(lb[..], ln, cast(string) h[0].xhex[..]); ln = hs_cat(lb[..], ln, ")");
   ln = hs_cat(lb[..], ln, " on "); ln = hs_cat(lb[..], ln, relay); ln = hs_cat(lb[..], ln, ", engine "); ln = hs_cat(lb[..], ln, engine);
   hs_outln(cast(string) lb[0..<ln]);
-  hs_outln("Paste this key into your realm's EDIT > COMPUTER tab on openagents.com to pair this computer.");
+  hs_outln("Paste this key into Your computer in Settings, This machine on openagents.com to pair this computer.");
   retry_at := 0;
   while end_at == 0 || hs_now() < end_at {
     now_ms := cxsock_now_ms();
@@ -803,7 +803,7 @@ hs_cmd_list :: (json: bool) -> int {
     n = hs_cat(lb[..], n, "   "); n = hs_cat(lb[..], n, hs_itoa((g.expires - now) / 86400, db[..])); n = hs_cat(lb[..], n, " days left");
     hs_outln(cast(string) lb[0..<n]); shown += 1;
   }
-  if shown == 0 { hs_outln("No browsers waiting or allowed. Pair one from a realm's \"Your computer\" panel on openagents.com while coder host runs."); }
+  if shown == 0 { hs_outln("No browsers waiting or allowed. Pair one from Your computer in Settings, This machine on openagents.com while coder host runs."); }
   return 0;
 }
 

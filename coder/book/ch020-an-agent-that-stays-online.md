@@ -480,8 +480,8 @@ coder host deny 3f2a91c0
 coder host forget 3f2a91c0       # revoke an allowed browser
 ```
 
-1. You paste the host key that `coder host` prints into the realm's
-   **EDIT > COMPUTER** tab. The browser sends `browser.request` with its
+1. You paste the host key that `coder host` prints into **Your computer**
+   in Settings, This machine on openagents.com. The browser sends `browser.request` with its
    own key and a label.
 2. The request waits for at most ten minutes, and at most eight wait at
    once. `coder host` prints it with the command that allows it. Only the

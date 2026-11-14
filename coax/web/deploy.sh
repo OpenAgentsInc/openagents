@@ -155,8 +155,13 @@ for f in pages:
 dom_host = os.path.join(site, "coaxial", "dom-host.js")
 os.makedirs(os.path.dirname(dom_host), exist_ok=True)
 shutil.copy(os.path.join(tools, "dom-host.js"), dom_host)
-# ... and the app shell's glue beside it, which dom-host.js imports (./shell.js; host.js's bundle carries its own copy)
-shutil.copy(os.path.join(tools, "shell.js"), os.path.join(site, "coaxial", "shell.js"))
+# ... and what dom-host.js imports beside it, unbundled: the app shell's glue (./shell.js; host.js's bundle carries
+# its own copy), ./tree-commands.js, and ./dom-wire.js with what it imports (sockets and byte storage, loaded only
+# for a module that uses them).
+todo, held = ["dom-host.js"], {"dom-host.js"}
+while todo:
+    for dep in re.findall(r"(?:from\s+|import\s*\(?\s*)['\"]\./([A-Za-z0-9_.-]+\.js)['\"]", open(os.path.join(tools, todo.pop()), encoding="utf-8").read()):
+        if dep not in held: held.add(dep); shutil.copy(os.path.join(tools, dep), os.path.join(site, "coaxial", dep)); todo.append(dep)
 dom_mods = set()
 for w in sorted(os.listdir(os.path.join(app, "build"))):
     src = os.path.join(app, "build", w)

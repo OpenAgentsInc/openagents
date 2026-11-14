@@ -6,7 +6,7 @@
 // artifact envelope".
 //
 // One codec for both ends: Coder's host (`coder host`, coder/tui/host.coax)
-// and the realm builder's "Your computer" panel (a wasm page). It has no
+// and Your computer in Settings, This machine (apps/openagents-web/machine-web.coax). It has no
 // platform effect: callers bring the keys, the clock, 32 random bytes for
 // each NIP-44 nonce and BIP-340 aux, and they move the events over a relay.
 //

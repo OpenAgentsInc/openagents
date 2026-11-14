@@ -278,7 +278,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   fl := cast(string) first[0..<nfirst];
   sm_check(s, sm_has(fl, sm_key(s)) && s[0].nnpub > 0 && sm_has(fl, sm_str(s[0].npub[..], s[0].nnpub)), "coder host serves and prints its npub and hex key");
-  sm_check(s, sm_has(cast(string) shown[0..<ns], "EDIT > COMPUTER"), "it says where to paste the key");
+  sm_check(s, sm_has(cast(string) shown[0..<ns], "Settings, This machine"), "it says where to paste the key");
 
   bkb: [1100] u8; bk := sm_in_tmp(s, "browser.key", bkb[..]);
   okb: [1100] u8; other := sm_in_tmp(s, "other.key", okb[..]);

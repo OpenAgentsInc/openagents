@@ -42,10 +42,11 @@ AT_DROP :: 19;       // a place files are dropped on or picked from (k_drop): wh
 AT_MIN :: 20; AT_MAX :: 21; AT_STEP :: 22;   // a slider's ends and its step (k_slider), as whole numbers in text
 AT_SRC :: 23;        // where a picture or a document is (k_image, k_document): a path on this site, never another origin's
 AT_LEVEL :: 24; AT_VALUE :: 25; AT_CHECKED :: 26;
-AT_COUNT :: 27;
-AT_NAMES :: [27] string.["href", "aria-label", "placeholder", "role", "aria-hidden", "aria-expanded", "aria-pressed",
+AT_MODULE :: 27;     // a module held in this node (k_module): "APP PATH", which the browser's host opens there
+AT_COUNT :: 28;
+AT_NAMES :: [28] string.["href", "aria-label", "placeholder", "role", "aria-hidden", "aria-expanded", "aria-pressed",
   "disabled", "data-state", "data-frame", "aria-current", "rows", "data-lang", "aria-live", "autofocus", "title", "type", "autocomplete", "style", "data-drop",
-  "min", "max", "step", "src", "aria-level", "value", "aria-checked"];
+  "min", "max", "step", "src", "aria-level", "value", "aria-checked", "data-module"];
 
 TrNode :: struct {
   id_at: int; id_n: int;

@@ -78,6 +78,14 @@ cw_settings_models :: (s: [] ChatWeb) {
     }
   }
   sw_group_end(w, t);
+  // Your computer and Your agent (#13529): their own module (machine-web.coax), opened here only, told the world
+  // Settings was opened from (/worlds/ID), or /settings for none
+  if s[0].me_n > 0 {
+    wp: [16 + WT_WORLD] u8; wn := 0;
+    if s[0].mworld_n > 0 { wn = cw_put(wp[..], 0, "/worlds/"); wn = cw_put(wp[..], wn, cast(string) s[0].mworld[0..<s[0].mworld_n]); }
+    else { wn = cw_put(wp[..], 0, "/settings"); }
+    m := k_module(t, "machine.web", "machine-web", cast(string) wp[0..<wn]);
+  }
   // what a new chat starts with, kept in this browser
   sw_group(w, t, u, "def", "A new chat");
   local := s[0].local == 1 && !s[0].local_off;
@@ -142,11 +150,15 @@ cw_machine_switch :: (s: [] ChatWeb, off: bool) {
 
 // The shell opens a section of Settings, at its address.
 cw_to_settings :: (s: [] ChatWeb, section: int) {
-  href: [40] u8;
-  if s[0].page == SS_SIDE || s[0].page == SS_FOOT { cw_go_to(s, sw_href(section, href[..]), false); return; }   // the side alone, in another page: Settings is a page away
+  href: [40] u8; at: [40 + 8 + WT_WORLD] u8;
+  // Agents and models names the world it was opened from (This machine's Your computer and Your agent work in it)
+  n := cw_put(at[..], 0, sw_href(section, href[..]));
+  if section == SW_MODELS && s[0].mworld_n > 0 { n = cw_put(at[..], n, "?world="); n = cw_put(at[..], n, cast(string) s[0].mworld[0..<s[0].mworld_n]); }
+  url := cast(string) at[0..<n];
+  if s[0].page == SS_SIDE || s[0].page == SS_FOOT { cw_go_to(s, url, false); return; }   // the side alone, in another page: Settings is a page away
   s[0].page = SW_PAGE; s[0].set[0].section = section; s[0].set[0].menu = CS_MENU_NONE;
   s[0].menu = false; s[0].amenu = false;
-  cw_go_to(s, sw_href(section, href[..]), true);
+  cw_go_to(s, url, true);
 }
 
 // A press or typing on the settings page, or a link that leads to it. True when it was Settings'.
@@ -245,7 +257,40 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   cw_test_path(e, "/worlds/splice");
   #assert e[0].page == SS_FOOT;
   cw_test_press(e, "settings");
-  #assert cw_test_go(e) == "/settings/models" && !coaxial_chatweb_go_push(e) && e[0].page == SS_FOOT;
+  #assert cw_test_go(e) == "/settings/models?world=splice" && !coaxial_chatweb_go_push(e) && e[0].page == SS_FOOT;   // the world it was opened from goes with it (#13529)
+}
+
+#test "Settings, This machine holds Your computer and Your agent in their own module, told the world Settings was opened from" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_path(s, "/settings/models?world=pine");
+  t := s[0].tree[..];
+  #assert s[0].page == SW_PAGE && s[0].set[0].section == SW_MODELS && cast(string) s[0].mworld[0..<s[0].mworld_n] == "pine";
+  // logged out: no module (its rows are for an account)
+  #assert tr_find(t, "machine.web") < 0 && tr_find(t, "machine.row") >= 0;
+  s[0].me_n = cw_put(s[0].me[..], 0, "Chris"); s[0].dirty = true;
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  m := tr_find(t, "machine.web");
+  #assert m >= 0 && tr_attr_of(t, m, AT_MODULE) == "machine-web /worlds/pine" && tr_class(t, m) == "module";
+  // it stands after This machine's rows, in the same section
+  g := tr_find(t, "machine");
+  #assert g >= 0 && t[0].nodes[m].parent == t[0].nodes[g].parent;
+  // opened anywhere else, it is told no world
+  o: [1] CwTest; e := o[0].s[..];
+  e[0].me_n = cw_put(e[0].me[..], 0, "Chris");
+  cw_test_path(e, "/settings/models");
+  #assert e[0].mworld_n == 0 && tr_attr_of(e[0].tree[..], tr_find(e[0].tree[..], "machine.web"), AT_MODULE) == "machine-web /settings";
+  // an ID that is no world's is no world
+  cw_test_path(e, "/settings/models?world=Bad%20Name");
+  #assert e[0].mworld_n == 0;
+  // from the editor's foot, the gear carries the world; from /chat it carries none
+  f: [1] CwTest; c := f[0].s[..];
+  cw_test_path(c, "/worlds/pine");
+  cw_test_press(c, "settings");
+  #assert cw_test_go(c) == "/settings/models?world=pine";
+  g2: [1] CwTest; d := g2[0].s[..];
+  cw_test_path(d, "/chat");
+  cw_test_press(d, "settings");
+  #assert cw_test_go(d) == "/settings/models";
 }
 
 #test "Settings, Agents and models: a key is sent once, wiped, and the account is said back; Disconnect removes it" {

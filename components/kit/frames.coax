@@ -715,6 +715,22 @@ k_document :: (t: [] Tree, id: string, src: string, title: string) -> int {
   tr_close(t);
   return i;
 }
+// Module: a place another module of this site draws in (data-module): `app` is its name (letters, digits and
+// dashes) and `path` one of this site's addresses it is told once (or "" for none). The browser's host opens it
+// there when the node appears and stops it when the node goes, so its code loads only when the page shows it
+// (coax/web/dom-host.js). Nothing for a name or an address that is not so.
+KM_NAME :: 40;   // bytes of a module's name
+k_module :: (t: [] Tree, id: string, app: string, path: string) -> int {
+  if app.count == 0 || app.count > KM_NAME || (path.count > 0 && !k_here(path)) { return -1; }
+  for c: app { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return -1; } }
+  said: [KH_LONGEST + 48] u8; n := 0;   // not a size: the name, a space and the address
+  for c: app { said[n] = c; n += 1; }
+  if path.count > 0 { said[n] = ' '; n += 1; for c: path { said[n] = c; n += 1; } }
+  i := tr_open(t, id, TG_DIV, "module");
+  tr_attr(t, i, AT_MODULE, cast(string) said[0..<n]);
+  tr_close(t);
+  return i;
+}
 // Header: the page's or a conversation's title, typed in. Close it with tr_close.
 k_header :: (t: [] Tree, u: [] Ui, id: string, title: string) -> int {
   ida: [UI_ID] u8;
@@ -870,7 +886,7 @@ k_menu :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
   #assert tr_text_of(t, tr_find(t, "drop.t")) == "Drop a file here, or press to pick one" && tr_text_of(t, tr_find(t, "drop.m")) == "512 KB at most";
   #assert !tr_has(t, b, AT_DROP) && tr_has(t, b, AT_DISABLED) && tr_attr_of(t, b, AT_STATE) == "busy" && tr_find(t, "busy.m") < 0;
   #assert t[0].nodes[f].tag == TG_DIV && tr_class(t, f) == "file" && tr_text_of(t, tr_find(t, "file.1.t")) == "rock" && tr_text_of(t, tr_find(t, "file.1.m")) == "Mesh, 2 KB" && tr_find(t, "file.2.m") < 0;
-  names := AT_NAMES; #assert names[AT_DROP] == "data-drop" && names[AT_STEP] == "step" && names[AT_SRC] == "src" && AT_COUNT == 27;
+  names := AT_NAMES; #assert names[AT_DROP] == "data-drop" && names[AT_STEP] == "step" && names[AT_SRC] == "src" && names[AT_MODULE] == "data-module" && AT_COUNT == 28;
 }
 #test "an image and a document from this site, and nothing from anywhere else" {
   h: [1] DkDropTest; t := h[0].t[..];
@@ -884,6 +900,15 @@ k_menu :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
     #assert k_image(t, "no", bad, "", true) == -1 && k_document(t, "no", bad, "") == -1;
   }
   names := TG_NAMES; #assert names[TG_IMG] == "img" && names[TG_IFRAME] == "iframe" && t[0].depth == 0;
+}
+#test "a module held in a node names itself and one address of this site, and nothing else" {
+  h: [1] DkDropTest; t := h[0].t[..];
+  tr_begin(t);
+  m := k_module(t, "machine.web", "machine-web", "/worlds/pine");
+  o := k_module(t, "machine.none", "machine-web", "");
+  #assert t[0].nodes[m].tag == TG_DIV && tr_class(t, m) == "module" && tr_attr_of(t, m, AT_MODULE) == "machine-web /worlds/pine" && tr_attr_of(t, o, AT_MODULE) == "machine-web";
+  #assert k_module(t, "no", "Machine", "") == -1 && k_module(t, "no", "a/b", "") == -1 && k_module(t, "no", "", "/x") == -1 && k_module(t, "no", "m", "https://evil.example/") == -1 && k_module(t, "no", "m", "/a b") == -1;
+  #assert t[0].depth == 0;
 }
 DkDropTest :: struct { t: [1] Tree; u: [1] Ui; }
 

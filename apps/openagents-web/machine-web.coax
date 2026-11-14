@@ -1,0 +1,568 @@
+// Your computer and your agent, in Settings, This machine (#13529): what the realm edit layer's YOUR COMPUTER
+// and YOUR AGENT panes were (metaverse/edit/computer.coax, metaverse/edit/agent.coax hold their state). chat-web's
+// Settings holds this module in a node of its own (k_module, coax/web/dom-host.js), so its code and the wire to the
+// person's computer (metaverse/edit/computer-wire.coax, linked into this module alone) load only when Settings shows
+// This machine. The kit's settings rows on the mono skin, drawn with chat-web's stylesheet.
+//
+// The world a request names is the one the editor had open when its Settings was opened: chat-web tells this module
+// /worlds/ID (Settings at /settings/models?world=ID), or /settings when it was opened anywhere else. With no world,
+// Your computer still pairs, checks and forgets, but takes no request (rc_run refuses one with no world), and Your
+// agent offers no Start: each says to open Settings from a world's editor.
+//
+// Your computer: pair this browser with the person's Coder (coder host, then the key it shows), allow it there
+// (coder host allow), send it a request for the world, read the job's steps, stop it, forget the computer. Your
+// agent: seat a hosted agent in the world as the account (POST /api/playtest/seats, through the host's dom_stream),
+// tell it verbs, read what it sees, close it.
+//   coax/bin/coax test apps/openagents-web/machine-web.coax
+
+#load "../../components/kit/settings.coax";
+#load "../../components/backend/dom.coax";
+#load "../../metaverse/edit/computer.coax";
+#load "../../metaverse/edit/agent.coax";
+
+MW_INBOX :: 32768;    // the biggest relay frame the wire reads, and a storage record with its header
+MW_RESP :: 16384;     // bytes of an agent's answer read
+MW_TYPED :: 400;      // bytes of words typed in a field
+MW_FORGET_S :: 4.0f32;   // Forget, pressed once, reads "Sure? Press again" this long
+MW_CLICK :: 1; MW_INPUT :: 2; MW_SUBMIT :: 3; MW_PIECE :: 4; MW_END :: 5; MW_PATH :: 13; MW_FACTS :: 16;
+MW_HEARD :: 17;       // the face fed the wire (a socket's frame, a record read): what is shown may have changed
+
+// Each group's state for a headless check (its data-state; coax/web/computer-flow.coax, coax/web/agent-pane.coax):
+// rc_view's and ra_view's, in a word. Never shown.
+MW_VIEWS :: [11] string.["loading", "unpaired", "asking", "allowed", "denied", "expired", "offline", "running", "stopped", "failed", "done"];
+MW_SEATS :: [5] string.["none", "opening", "open", "acting", "closing"];
+
+MachineWeb :: struct {
+  ready: bool; dirty: bool; animating: bool; time: f32;
+  told: bool;                                   // the address was heard
+  world: [64] u8; world_n: int;                 // the world open in the editor ("" none)
+  pc: [1] RealmComputer;
+  ag: [1] RealmAgent;
+  key: [MW_TYPED] u8; key_n: int;               // the computer's key, as typed or pasted
+  words: [MW_TYPED] u8; words_n: int;           // a request for the world
+  verb: [MW_TYPED] u8; verb_n: int;             // a verb for the agent
+  forget_at: f32;                               // when Forget was pressed once (0: not)
+  note: [80] u8; note_n: int;                   // what was just done ("Copied.")
+  clip: [64] u8; clip_n: int;                   // text for the host to copy, until it has
+  // the agent's one request: to send, in flight, its answer
+  ask: bool; flying: bool; status: int;
+  door: [256] u8; door_n: int; body: [RA_ACT] u8; body_n: int;
+  resp: [MW_RESP] u8; resp_n: int;
+  inbox: [MW_INBOX] u8;
+  sets: [MF_COUNT] AfSettings;
+  ui: [1] Ui;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+mw_world :: (s: [] MachineWeb) -> string { return cast(string) s[0].world[0..<s[0].world_n]; }
+// The world of "/worlds/ID" (a slug's form), else "".
+mw_world_of :: (path: string) -> string {
+  root := "/worlds/";
+  if path.count <= root.count || cast(string) path[0..<root.count] != root { return ""; }
+  e := root.count; while e < path.count && path[e] != '/' && path[e] != '?' && path[e] != '#' { e += 1; }
+  w := cast(string) path[root.count..<e];
+  return ifx w.count <= 63 && redit_slug_ok(w) then w else "";
+}
+mw_note :: (s: [] MachineWeb, text: string) { s[0].note_n = redit_copy(s[0].note[..], text); }
+
+// ---------------------------------------------------------------- Your computer
+
+// Whether it answers, in a word or two (once there is a computer to answer).
+mw_answers :: (c: [] RealmComputer) -> string {
+  if c[0].offline_page { return "This page is offline"; }
+  if rc_answers(c) { return "Answers"; }
+  if c[0].silent { return "Not answering"; }
+  return "Asking it";
+}
+// What the job's row says it is.
+mw_job :: (c: [] RealmComputer, v: int) -> string {
+  if v == RV_DONE { return "Done. The world shows it"; }
+  if v == RV_STOPPED { return "Stopped"; }
+  if v == RV_FAILED { return "It stopped with a problem"; }
+  if c[0].run_state == RJ_STOPPING { return "Stopping"; }
+  if c[0].thread_n == 0 { return "Sending to your computer"; }
+  return "Coder is building";
+}
+// A line that says what is so, read out as it changes.
+mw_status_line :: (t: [] Tree, id: string, text: string) { m := tr_leaf(t, id, TG_P, "st-a", text); tr_attr(t, m, AT_ROLE, "status"); }
+// Forget: pressed once it asks to be sure.
+mw_forget :: (s: [] MachineWeb, t: [] Tree, u: [] Ui, cancel: bool) {
+  if cancel { b := k_button(t, u, "computer.forget", "Cancel", BS_PLAIN); return; }
+  b := k_button(t, u, "computer.forget", ifx s[0].forget_at > 0 then "Sure? Press again" else "Forget this computer", BS_PLAIN);
+}
+
+mw_computer :: (s: [] MachineWeb) {
+  t := s[0].tree[..]; u := s[0].ui[..]; c := s[0].pc[..];
+  buf: [UI_ID] u8; line: [320] u8;
+  g := k_set_group(t, u, "computer", "Your computer");
+  v := rc_view(c);
+  views := MW_VIEWS; tr_attr(t, g, AT_STATE, views[ifx v >= 0 && v < 11 then v else 0]);
+  if v == RV_LOADING {
+    r := k_set_row(t, "computer.state", "Coder on your computer", "Reading what this browser kept."); k_set_row_end(t);
+    k_set_group_end(t); return;
+  }
+  if v == RV_UNPAIRED {
+    r := k_set_row(t, "computer.state", "Coder on your computer", "Build a world with Coder on your computer: pair this browser with it once.");
+    k_set_row_end(t);
+    r = k_set_row(t, "computer.host", "1. On your computer, run", "It shows a key for this browser.");
+    cb := k_code(t, u, "computer.cmd", "sh", RC_HOST_CMD);
+    k_set_row_end(t);
+    r = k_set_row(t, "computer.pair.row", "2. Paste the key it shows", "");
+    f := k_input(t, u, "computer.key", "npub1...", "Your computer's key", "text", "off");
+    b := k_button(t, u, "computer.pair", "Pair", ifx s[0].key_n > 0 || c[0].host_n > 0 then BS_PRIMARY else BS_DISABLED);
+    k_set_row_end(t);
+  } else {
+    // whether it answers, and the one thing to do now
+    n := 0;
+    if v == RV_ASKING {
+      n = redit_put(line[..], 0, "Allow this browser on your computer. It asks about "); n = redit_put(line[..], n, rc_label(c)); n = redit_put(line[..], n, ". ");
+      n = redit_put(line[..], n, ifx c[0].silent then "It isn't answering: is coder host running there?" else ifx c[0].request_n == 0 then "Sending the ask to your computer." else "Your computer has the ask: allow it there.");
+    }
+    else if v == RV_DENIED { n = redit_put(line[..], 0, "Your computer said no to this browser."); }
+    else if v == RV_EXPIRED { n = redit_put(line[..], 0, "No one allowed it in ten minutes, so the ask ended."); }
+    else if v == RV_OFFLINE { n = redit_put(line[..], 0, ifx c[0].offline_page then "This page can't reach the internet. Check your connection." else "Your computer isn't answering. Run coder host on it."); }
+    else { n = redit_put(line[..], 0, "Paired: Coder on your computer takes requests from this browser."); }
+    r := k_set_row(t, "computer.state", "Coder on your computer", cast(string) line[0..<n]);
+    val := k_set_value(t, "computer.answers", mw_answers(c));
+    k_set_row_end(t);
+    if v == RV_ASKING {
+      r = k_set_row(t, "computer.allow", "On your computer, run", "");
+      cb := k_code(t, u, "computer.cmd", "sh", RC_ALLOW_CMD);
+      k_set_row_end(t);
+    }
+    if v == RV_OFFLINE && !c[0].offline_page {
+      r = k_set_row(t, "computer.host", "On your computer, run", "");
+      cb := k_code(t, u, "computer.cmd", "sh", RC_HOST_CMD);
+      k_set_row_end(t);
+      if rc_busy(c) { r = k_set_row(t, "computer.waits", "Your request waits for it", rc_ask(c)); k_set_row_end(t); }
+    }
+    if v == RV_DENIED || v == RV_EXPIRED {
+      r = k_set_row(t, "computer.again.row", "Ask again", "Your computer shows a new ask to allow.");
+      b := k_button(t, u, "computer.again", "Ask again", BS_PRIMARY);
+      k_set_row_end(t);
+    }
+    if v == RV_ALLOWED {
+      if s[0].world_n > 0 {
+        n = redit_put(line[..], 0, "Tell Coder what to build in "); n = redit_put(line[..], n, mw_world(s));
+        r = k_set_row(t, "computer.ask", cast(string) line[0..<n], "It runs on your computer and changes the world as it goes.");
+        f := k_field(t, u, "computer.words", "A tower of stone by the gate", "What to build");
+        b := k_button(t, u, "computer.send", "Send", ifx s[0].words_n > 0 then BS_PRIMARY else BS_DISABLED);
+        k_set_row_end(t);
+      } else {
+        r = k_set_row(t, "computer.ask", "A request for a world", "Open Settings from a world's editor to ask Coder to build in it.");
+        k_set_row_end(t);
+      }
+    }
+    if v == RV_RUNNING || v == RV_STOPPED || v == RV_FAILED || v == RV_DONE {
+      // the job: what was asked, how it stands, its steps, and the one thing to do
+      r = k_set_row(t, "computer.job", mw_job(c, v), rc_ask(c));
+      if v == RV_RUNNING { if c[0].thread_n > 0 && c[0].run_state != RJ_STOPPING { b := k_button(t, u, "computer.stop", "Stop", BS_PLAIN); } }   // nothing to stop until it has started, nor twice
+      else { b := k_button(t, u, "computer.new", ifx v == RV_FAILED then "Try again" else "New request", BS_PRIMARY); }
+      k_set_row_end(t);
+      if v == RV_FAILED && c[0].why_n > 0 { mw_status_line(t, "computer.failed", rc_why(c)); }
+      if c[0].step_n > 0 {
+        r = k_set_row(t, "computer.steps", "Its steps", "");
+        for i: 0..<c[0].step_n { m := k_meta(t, tr_join(buf[..], "computer.step.", i), rc_step(c, i)); }
+        k_set_row_end(t);
+      }
+    }
+    if v != RV_RUNNING {
+      r = k_set_row(t, "computer.forget.row", ifx v == RV_ASKING then "Cancel the ask" else "Forget this computer", "This browser stops talking to it. Pair again to come back.");
+      mw_forget(s, t, u, v == RV_ASKING);
+      k_set_row_end(t);
+    }
+  }
+  if c[0].why_n > 0 && v != RV_FAILED { mw_status_line(t, "computer.why", rc_why(c)); }
+  if s[0].note_n > 0 { mw_status_line(t, "computer.note", cast(string) s[0].note[0..<s[0].note_n]); }
+  k_set_group_end(t);
+}
+
+// The words typed for the computer: its key while unpaired, else a request for the world.
+mw_pair :: (s: [] MachineWeb) {
+  c := s[0].pc[..];
+  if rc_view(c) != RV_UNPAIRED { return; }
+  if s[0].key_n > 0 && !rc_set_host(c, cast(string) s[0].key[0..<s[0].key_n]) { return; }
+  rc_pair(c);
+  s[0].key_n = 0; dm_value(s[0].dom[..], "computer.key", "");
+}
+mw_send :: (s: [] MachineWeb) {
+  c := s[0].pc[..];
+  if rc_view(c) != RV_ALLOWED || s[0].words_n == 0 { return; }
+  if rc_run(c, cast(string) s[0].words[0..<s[0].words_n]) { s[0].words_n = 0; dm_value(s[0].dom[..], "computer.words", ""); }
+}
+mw_computer_press :: (s: [] MachineWeb, id: string) -> bool {
+  c := s[0].pc[..];
+  if id == "computer.cmd.copy" {
+    cmd := k_code_copy(s[0].tree[..], tr_find(s[0].tree[..], id));
+    if cmd.count > 0 { s[0].clip_n = redit_copy(s[0].clip[..], cmd); mw_note(s, "Copied. Paste it on your computer."); }
+    return true;
+  }
+  if id == "computer.pair" { mw_pair(s); return true; }
+  if id == "computer.send" { mw_send(s); return true; }
+  if id == "computer.again" { rc_again(c); return true; }
+  if id == "computer.stop" { rc_stop(c); return true; }
+  if id == "computer.new" { rc_again(c); dm_focus(s[0].dom[..], "computer.words"); return true; }
+  if id == "computer.forget" {
+    if (s[0].forget_at > 0 && s[0].time - s[0].forget_at <= MW_FORGET_S) || rc_view(c) == RV_ASKING {
+      s[0].forget_at = 0; rc_forget(c); s[0].words_n = 0;
+      mw_note(s, "This browser is off your computer.");
+      return true;
+    }
+    s[0].forget_at = s[0].time;
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- Your agent
+
+mw_agent_word :: (v: int) -> string {
+  if v == RA_OPENING { return "Starting"; }
+  if v == RA_ACTING { return "On it"; }
+  if v == RA_CLOSING { return "Leaving"; }
+  if v == RA_OPEN { return "In the world"; }
+  return "Not started";
+}
+mw_agent :: (s: [] MachineWeb) {
+  t := s[0].tree[..]; u := s[0].ui[..]; a := s[0].ag[..];
+  buf: [UI_ID] u8; line: [RA_LINE + 8] u8;
+  g := k_set_group(t, u, "agent", "Your agent");
+  v := ra_view(a);
+  seats := MW_SEATS; tr_attr(t, g, AT_STATE, seats[ifx v >= 0 && v < 5 then v else 0]);
+  r := k_set_row(t, "agent.state", "An agent that plays as you", ifx s[0].world_n > 0 then "It walks the world as you and says what it sees. It runs on our server, not in this page."
+    else "Open Settings from a world's editor to start your agent there. It walks the world as you and says what it sees.");
+  val := k_set_value(t, "agent.seat", mw_agent_word(v));
+  if s[0].world_n > 0 && (v == RA_NONE || v == RA_OPENING) { b := k_button(t, u, "agent.start", ifx v == RA_OPENING then "Starting" else "Start your agent", ifx v == RA_NONE then BS_PRIMARY else BS_DISABLED); }
+  k_set_row_end(t);
+  // the log: what you told it, then what it saw, newest last
+  if a[0].line_n > 0 {
+    r = k_set_row(t, "agent.log", "What it saw", "");
+    for i: 0..<a[0].line_n {
+      n := ifx ra_kind(a, i) == RAL_YOU then redit_put(line[..], 0, "You: ") else 0;
+      n = redit_put(line[..], n, ra_line(a, i));
+      m := k_meta(t, tr_join(buf[..], "agent.line.", i), cast(string) line[0..<n]);
+    }
+    k_set_row_end(t);
+  }
+  if v == RA_OPEN || v == RA_ACTING || v == RA_CLOSING {
+    r = k_set_row(t, "agent.tell", "Tell it", "One at a time.");
+    f := k_field(t, u, "agent.words", "look left, go Maple, say hello, jump, bye", "What your agent does");
+    b := k_button(t, u, "agent.send", "Tell it", ifx v == RA_OPEN && s[0].verb_n > 0 then BS_PRIMARY else BS_DISABLED);
+    if v == RA_OPEN { x := k_button(t, u, "agent.close", "Close", BS_PLAIN); }
+    k_set_row_end(t);
+  }
+  if a[0].why_n > 0 { mw_status_line(t, "agent.why", ra_why(a)); }
+  k_set_group_end(t);
+}
+mw_tell :: (s: [] MachineWeb) {
+  if s[0].verb_n == 0 { return; }
+  if ra_verb(s[0].ag[..], cast(string) s[0].verb[0..<s[0].verb_n]) { s[0].verb_n = 0; dm_value(s[0].dom[..], "agent.words", ""); }
+}
+mw_agent_press :: (s: [] MachineWeb, id: string) -> bool {
+  a := s[0].ag[..];
+  if id == "agent.start" { _ := ra_open(a); return true; }
+  if id == "agent.send" { mw_tell(s); return true; }
+  if id == "agent.close" { if ra_close(a) { s[0].verb_n = 0; } return true; }
+  return false;
+}
+// The agent's next request, for the face to send when none is in flight.
+mw_next :: (s: [] MachineWeb) {
+  if s[0].ask || s[0].flying || ra_due(s[0].ag[..]) == RAQ_NONE { return; }
+  lens: [2] int;
+  _ := ra_take(s[0].ag[..], s[0].door[..], s[0].body[..], lens[..]);
+  s[0].door_n = lens[0]; s[0].body_n = lens[1]; s[0].resp_n = 0;
+  s[0].ask = true;
+}
+
+// ---------------------------------------------------------------- the page
+
+mw_build :: (s: [] MachineWeb) {
+  t := s[0].tree[..];
+  tr_begin(t);
+  if !s[0].told { return; }
+  w := tr_open(t, "mw", TG_DIV, "");
+  mw_computer(s);
+  mw_agent(s);
+  tr_close(t);
+}
+
+// ---------------------------------------------------------------- the face's calls
+
+coaxial_machineweb_frame :: (s: [] MachineWeb, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready { n := mono_frames(s[0].sets[..]); s[0].ready = true; s[0].dirty = true; }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  c := s[0].pc[..];
+  before := rc_view(c); steps := c[0].step_n; why := c[0].why_n; answers := rc_answers(c);
+  rc_step_time(c, s[0].time);
+  if rc_view(c) != before || c[0].step_n != steps || c[0].why_n != why || rc_answers(c) != answers { s[0].dirty = true; }
+  if s[0].forget_at > 0 && s[0].time - s[0].forget_at > MW_FORGET_S { s[0].forget_at = 0; s[0].dirty = true; }
+  mw_next(s);
+  if !s[0].dirty && !s[0].animating { return 0; }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  mw_build(s);
+  ui_end(s[0].ui[..]);
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  d := s[0].dom[..];
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
+  return bytes;
+}
+// Asked for frames while there is something to draw, or a clock to keep: a computer paired or being paired (its
+// asks and reads are paced by the frame's time), or the agent's request out.
+coaxial_machineweb_busy :: (s: [] MachineWeb) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  c := s[0].pc[..];
+  return s[0].dirty || s[0].animating || s[0].ask || s[0].forget_at > 0 || (c[0].loaded && (c[0].pair != RP_UNPAIRED || c[0].forget_due || rc_busy(c)));
+}
+// The socket opens only while it is wanted: a computer paired or asked, or one being forgotten.
+coaxial_machineweb_wants_socket :: (s: [] MachineWeb) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  c := s[0].pc[..];
+  return c[0].loaded && c[0].host_n > 0 && (c[0].pair != RP_UNPAIRED || c[0].forget_due);
+}
+coaxial_machineweb_event :: (s: [] MachineWeb, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  n := ifx length < 0 then 0 else ifx length > MW_INBOX then MW_INBOX else length;
+  s[0].dirty = true;
+  if kind == MW_HEARD { return; }
+  if kind == MW_PATH {
+    w := mw_world_of(cast(string) s[0].inbox[0..<n]);
+    s[0].world_n = redit_copy(s[0].world[..], w); s[0].told = true;
+    rc_start(s[0].pc[..], w); ra_start(s[0].ag[..], w);
+    return;
+  }
+  if kind == MW_FACTS {
+    text := cast(string) s[0].inbox[0..<n];
+    e := redit_line_end(text, 0);
+    rc_facts(s[0].pc[..], cast(string) text[0..<e], ifx e < text.count then cast(string) text[e + 1..<text.count] else "");
+    return;
+  }
+  if kind == MW_PIECE {
+    for i: 0..<n { if s[0].resp_n < MW_RESP { s[0].resp[s[0].resp_n] = s[0].inbox[i]; s[0].resp_n += 1; } }
+    return;
+  }
+  if kind == MW_END {
+    if !s[0].flying { return; }
+    s[0].flying = false;
+    ra_answer(s[0].ag[..], slot, cast(string) s[0].resp[0..<s[0].resp_n]);
+    mw_next(s);
+    return;
+  }
+  id := dm_slot_id(s[0].dom[..], slot);
+  if kind == MW_INPUT {
+    m := ifx n > MW_TYPED then MW_TYPED else n;
+    if id == "computer.key" { for i: 0..<m { s[0].key[i] = s[0].inbox[i]; } s[0].key_n = m; }
+    else if id == "computer.words" { for i: 0..<m { s[0].words[i] = s[0].inbox[i]; } s[0].words_n = m; }
+    else if id == "agent.words" { for i: 0..<m { s[0].verb[i] = s[0].inbox[i]; } s[0].verb_n = m; }
+    return;
+  }
+  if kind == MW_SUBMIT {
+    if id == "computer.key" { mw_pair(s); }
+    else if id == "computer.words" { mw_send(s); }
+    else if id == "agent.words" { mw_tell(s); }
+    return;
+  }
+  if kind == MW_CLICK {
+    if id != "computer.cmd.copy" { s[0].note_n = 0; }
+    if !mw_computer_press(s, id) { _ := mw_agent_press(s, id); }
+    mw_next(s);
+  }
+}
+coaxial_machineweb_size :: (s: [] MachineWeb, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_machineweb_inbox_cap :: () -> int #export_c #effects(all) { return MW_INBOX; }
+// The agent's request for the host: a POST of body to door (the face sends it), then that it went.
+coaxial_machineweb_asking :: (s: [] MachineWeb) -> bool #export_c #effects(all) { return s.count > 0 && s[0].ask; }
+coaxial_machineweb_asked :: (s: [] MachineWeb) #export_c #effects(all) { if s.count > 0 { s[0].ask = false; s[0].flying = true; } }
+coaxial_machineweb_clip :: (s: [] MachineWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].clip_n else 0; }
+coaxial_machineweb_clip_done :: (s: [] MachineWeb) #export_c #effects(all) { if s.count > 0 { s[0].clip_n = 0; } }
+
+// ---------------------------------------------------------------- checks
+
+MwTest :: struct { s: [1] MachineWeb; }
+mw_test_send :: (s: [] MachineWeb, kind: int, slot: int, text: string) {
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  coaxial_machineweb_event(s, kind, slot, text.count);
+  n := coaxial_machineweb_frame(s, 0.016, true);
+}
+// The face fed the wire (a reply read, a record restored), as machine-web-face.c says it.
+mw_test_heard :: (s: [] MachineWeb) { mw_test_send(s, MW_HEARD, 0, ""); }
+mw_test_press :: (s: [] MachineWeb, id: string) { mw_test_send(s, MW_CLICK, dm_find(s[0].dom[..], id), ""); }
+mw_test_type :: (s: [] MachineWeb, id: string, text: string) { mw_test_send(s, MW_INPUT, dm_find(s[0].dom[..], id), text); }
+mw_test_text :: (s: [] MachineWeb, id: string) -> string { t := s[0].tree[..]; return tr_text_of(t, tr_find(t, id)); }
+mw_test_has :: (s: [] MachineWeb, id: string) -> bool { return tr_find(s[0].tree[..], id) >= 0; }
+mw_test_off :: (s: [] MachineWeb, id: string) -> bool { t := s[0].tree[..]; return tr_has(t, tr_find(t, id), AT_DISABLED); }
+// A page opened at `path`, with this browser's record read back (`kept`, "" none).
+mw_test_open :: (s: [] MachineWeb, path: string, kept: string) {
+  n := coaxial_machineweb_frame(s, 0.016, true);
+  mw_test_send(s, MW_FACTS, 0, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/130.0 Safari/537.36\nhttps://openagents.com/settings/models?world=pine");
+  mw_test_send(s, MW_PATH, 0, path);
+  rc_restore(s[0].pc[..], kept);
+  mw_test_heard(s);
+}
+// The time passing, a frame at a time.
+mw_test_wait :: (s: [] MachineWeb, seconds: f32) {
+  k := cast(int) (seconds / 0.1) + 1;
+  for i: 0..<k { n := coaxial_machineweb_frame(s, 0.1, true); }
+}
+MW_T_KEY :: "npub1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefvnc";
+
+#test "nothing shows until the address is heard; then both groups, on the settings rows" {
+  ts: [1] MwTest; s := ts[0].s[..];
+  n := coaxial_machineweb_frame(s, 0.016, true);
+  #assert !mw_test_has(s, "computer") && !coaxial_machineweb_wants_socket(s);
+  mw_test_open(s, "/worlds/pine", "");
+  t := s[0].tree[..];
+  #assert t[0].lost == 0 && tr_class(t, tr_find(t, "computer")) == "st-g" && tr_class(t, tr_find(t, "agent")) == "st-g";
+  #assert tr_text_of(t, tr_find(t, "computer.h")) == "Your computer" && tr_text_of(t, tr_find(t, "agent.h")) == "Your agent";
+  #assert tr_attr_of(t, tr_find(t, "computer"), AT_STATE) == "unpaired" && tr_attr_of(t, tr_find(t, "agent"), AT_STATE) == "none";
+  #assert mw_world(s) == "pine" && rc_realm(s[0].pc[..]) == "pine" && cast(string) s[0].pc[0].label[0..<s[0].pc[0].label_n] == "Chrome on Mac";
+}
+
+#test "unpaired: the command to run with Copy, the key, and Pair; the socket waits for a computer" {
+  ts: [1] MwTest; s := ts[0].s[..];
+  mw_test_open(s, "/worlds/pine", "");
+  #assert rc_view(s[0].pc[..]) == RV_UNPAIRED && !coaxial_machineweb_wants_socket(s) && !coaxial_machineweb_busy(s);
+  #assert mw_test_text(s, "computer.cmd.pre") == "coder host" && mw_test_has(s, "computer.cmd.copy") && mw_test_off(s, "computer.pair");
+  mw_test_press(s, "computer.cmd.copy");
+  #assert coaxial_machineweb_clip(s) == 10 && cast(string) s[0].clip[0..<s[0].clip_n] == "coder host" && mw_test_text(s, "computer.note") == "Copied. Paste it on your computer.";
+  coaxial_machineweb_clip_done(s);
+  // a key too short is refused in words, and nothing is asked
+  mw_test_type(s, "computer.key", "npub1short");
+  #assert !mw_test_off(s, "computer.pair");
+  mw_test_press(s, "computer.pair");
+  #assert rc_view(s[0].pc[..]) == RV_UNPAIRED && mw_test_text(s, "computer.why") == "That isn't a computer's key. Copy the one coder host shows.";
+  // the key it shows: Pair asks, the field is wiped, and the socket is wanted
+  mw_test_type(s, "computer.key", MW_T_KEY);
+  mw_test_press(s, "computer.pair");
+  c := s[0].pc[..];
+  #assert rc_view(c) == RV_ASKING && rc_host(c) == MW_T_KEY && s[0].key_n == 0 && coaxial_machineweb_wants_socket(s) && coaxial_machineweb_busy(s) && rc_next_op(c) == RO_PAIR;
+  #assert mw_test_text(s, "computer.cmd.pre") == "coder host allow" && mw_test_text(s, "computer.forget.l") == "Cancel" && mw_test_text(s, "computer.answers") == "Asking it";
+  #assert mw_test_text(s, "computer.state.a") == "Allow this browser on your computer. It asks about Chrome on Mac. Sending the ask to your computer.";
+  // Cancel, while it asks, is at once
+  mw_test_press(s, "computer.forget");
+  #assert rc_view(c) == RV_UNPAIRED && mw_test_text(s, "computer.note") == "This browser is off your computer.";
+}
+
+#test "allowed: a request for the world goes, its steps show, Stop stops it, and a new one follows" {
+  ts: [1] MwTest; s := ts[0].s[..];
+  mw_test_open(s, "/worlds/pine", "host npub1abc\npaired allowed\n");
+  c := s[0].pc[..];
+  #assert rc_view(c) == RV_ALLOWED && coaxial_machineweb_wants_socket(s) && coaxial_machineweb_busy(s);
+  #assert mw_test_text(s, "computer.ask.n") == "Tell Coder what to build in pine" && mw_test_off(s, "computer.send") && mw_test_text(s, "computer.forget.l") == "Forget this computer";
+  mw_test_type(s, "computer.words", "a stone tower by the gate");
+  #assert !mw_test_off(s, "computer.send");
+  mw_test_press(s, "computer.send");
+  #assert rc_view(c) == RV_RUNNING && rc_ask(c) == "a stone tower by the gate" && rc_realm(c) == "pine" && s[0].words_n == 0;
+  #assert mw_test_text(s, "computer.job.n") == "Sending to your computer" && !mw_test_has(s, "computer.stop") && !mw_test_has(s, "computer.forget");
+  // it started: Stop shows, then the steps come
+  rc_reply(c, "thread 2222222222222222222222222222222222222222222222222222222222222222\n");
+  rc_reply(c, "step 1 Reading the world\nstep 2 Placing a tower at 4, 9\nrun running 2\n");
+  mw_test_heard(s);
+  #assert mw_test_text(s, "computer.job.n") == "Coder is building" && mw_test_has(s, "computer.stop") && mw_test_text(s, "computer.step.1") == "Placing a tower at 4, 9";
+  mw_test_press(s, "computer.stop");
+  #assert c[0].run_state == RJ_STOPPING && !mw_test_has(s, "computer.stop") && mw_test_text(s, "computer.job.n") == "Stopping";
+  rc_reply(c, "run stopped 2\n"); mw_test_heard(s);
+  #assert rc_view(c) == RV_STOPPED && mw_test_text(s, "computer.new.l") == "New request";
+  mw_test_press(s, "computer.new");
+  #assert rc_view(c) == RV_ALLOWED && mw_test_has(s, "computer.words");
+}
+
+#test "with no world it pairs and forgets but takes no request, and the agent offers no Start" {
+  ts: [1] MwTest; s := ts[0].s[..];
+  mw_test_open(s, "/settings", "host npub1abc\npaired allowed\n");
+  c := s[0].pc[..];
+  #assert mw_world(s) == "" && rc_view(c) == RV_ALLOWED && !mw_test_has(s, "computer.words") && !mw_test_has(s, "computer.send");
+  #assert mw_test_text(s, "computer.ask.a") == "Open Settings from a world's editor to ask Coder to build in it." && !rc_run(c, "a tower");
+  #assert !mw_test_has(s, "agent.start") && mw_test_text(s, "agent.state.a") == "Open Settings from a world's editor to start your agent there. It walks the world as you and says what it sees.";
+  // an address that is no world's names none
+  ts2: [1] MwTest; o := ts2[0].s[..];
+  mw_test_open(o, "/worlds/Bad%20Name", "");
+  #assert mw_world(o) == "" && rc_realm(o[0].pc[..]) == "";
+  // Forget asks to be sure, and forgets on the second press
+  mw_test_press(s, "computer.forget");
+  #assert rc_view(c) == RV_ALLOWED && mw_test_text(s, "computer.forget.l") == "Sure? Press again";
+  mw_test_wait(s, 5.0);
+  #assert s[0].forget_at == 0 && mw_test_text(s, "computer.forget.l") == "Forget this computer";
+  mw_test_press(s, "computer.forget"); mw_test_press(s, "computer.forget");
+  #assert rc_view(c) == RV_UNPAIRED && c[0].forget_due && coaxial_machineweb_wants_socket(s) && rc_next_op(c) == RO_FORGET;
+}
+
+#test "every view of the computer says what is so and draws only controls that work" {
+  ts: [1] MwTest; s := ts[0].s[..];
+  mw_test_open(s, "/worlds/pine", "host npub1abc\npaired allowed\n");
+  c := s[0].pc[..];
+  c[0].pair = RP_DENIED; mw_test_heard(s);
+  #assert mw_test_text(s, "computer.state.a") == "Your computer said no to this browser." && mw_test_has(s, "computer.again") && mw_test_has(s, "computer.forget");
+  mw_test_press(s, "computer.again");
+  #assert rc_view(c) == RV_ASKING;
+  c[0].pair = RP_EXPIRED; mw_test_heard(s);
+  #assert mw_test_text(s, "computer.state.a") == "No one allowed it in ten minutes, so the ask ended.";
+  c[0].pair = RP_ALLOWED; c[0].silent = true; mw_test_heard(s);
+  #assert rc_view(c) == RV_OFFLINE && mw_test_text(s, "computer.cmd.pre") == "coder host" && mw_test_text(s, "computer.answers") == "Not answering";
+  c[0].offline_page = true; mw_test_heard(s);
+  #assert mw_test_text(s, "computer.state.a") == "This page can't reach the internet. Check your connection." && !mw_test_has(s, "computer.cmd") && mw_test_text(s, "computer.answers") == "This page is offline";
+  c[0].offline_page = false; c[0].silent = false; c[0].heard = true; c[0].run_state = RJ_FAILED; c[0].why_n = redit_copy(c[0].why[..], "The world refused the edit.");
+  mw_test_heard(s);
+  #assert rc_view(c) == RV_FAILED && mw_test_text(s, "computer.failed") == "The world refused the edit." && mw_test_text(s, "computer.new.l") == "Try again" && !mw_test_has(s, "computer.why");
+  c[0].run_state = RJ_DONE; c[0].why_n = 0; mw_test_heard(s);
+  #assert mw_test_text(s, "computer.job.n") == "Done. The world shows it" && mw_test_text(s, "computer.answers") == "Answers";
+  // every button shown is one a press does something with
+  t := s[0].tree[..];
+  for i: 0..<t[0].n { if t[0].nodes[i].tag == TG_BUTTON && !tr_has(t, i, AT_DISABLED) { id := tr_id(t, i); #assert id == "computer.new" || id == "computer.forget" || id == "agent.start"; } }
+}
+
+#test "your agent: Start seats it in the world, a verb goes, what it saw shows, and Close ends it" {
+  ts: [1] MwTest; s := ts[0].s[..];
+  mw_test_open(s, "/worlds/pine", "");
+  a := s[0].ag[..];
+  lid: [UI_ID] u8;
+  #assert mw_test_text(s, "agent.seat") == "Not started" && !mw_test_off(s, "agent.start") && !mw_test_has(s, "agent.words");
+  mw_test_press(s, "agent.start");
+  #assert coaxial_machineweb_asking(s) && cast(string) s[0].door[0..<s[0].door_n] == "/api/playtest/seats" && cast(string) s[0].body[0..<s[0].body_n] == "{\"slug\":\"pine\",\"hosted\":true}";
+  #assert mw_test_off(s, "agent.start") && mw_test_text(s, "agent.start.l") == "Starting" && mw_test_text(s, "agent.seat") == "Starting";
+  // one request at a time: the next waits for this one's answer
+  coaxial_machineweb_asked(s);
+  #assert !coaxial_machineweb_asking(s);
+  mw_test_send(s, MW_PIECE, 200, "{\"id\":41,\"slug\":\"pine\",\"hosted\":true,");
+  mw_test_send(s, MW_PIECE, 200, "\"player\":{\"id\":\"p-1\"},\"until\":600000}");
+  mw_test_send(s, MW_END, 200, "");
+  // seated: it looks first
+  #assert ra_view(a) == RA_ACTING && coaxial_machineweb_asking(s) && cast(string) s[0].door[0..<s[0].door_n] == "/api/playtest/seats/41/act" && cast(string) s[0].body[0..<s[0].body_n] == "{\"op\":\"see\"}";
+  coaxial_machineweb_asked(s);
+  mw_test_send(s, MW_PIECE, 200, AGENT_T_SEEN);
+  mw_test_send(s, MW_END, 200, "");
+  #assert ra_view(a) == RA_OPEN && mw_test_text(s, "agent.seat") == "In the world" && mw_test_has(s, "agent.words") && mw_test_has(s, "agent.close") && mw_test_off(s, "agent.send");
+  #assert mw_test_has(s, "agent.line.0") && !mw_test_has(s, "agent.start");
+  mw_test_type(s, "agent.words", "jump");
+  mw_test_press(s, "agent.send");
+  #assert ra_view(a) == RA_ACTING && coaxial_machineweb_asking(s) && cast(string) s[0].door[0..<s[0].door_n] == "/api/playtest/seats/41/act" && s[0].verb_n == 0;
+  #assert mw_test_text(s, "agent.seat") == "On it" && mw_test_text(s, tr_join(lid[..], "agent.line.", a[0].line_n - 1)) == "You: jump" && !mw_test_has(s, "agent.close");
+  coaxial_machineweb_asked(s);
+  mw_test_send(s, MW_PIECE, 200, AGENT_T_SEEN);
+  mw_test_send(s, MW_END, 200, "");
+  #assert ra_view(a) == RA_OPEN;
+  // a refusal is said in words
+  mw_test_type(s, "agent.words", "fly to the moon");
+  mw_test_press(s, "agent.send");
+  #assert ra_view(a) == RA_OPEN && mw_test_text(s, "agent.why") == RA_TRY;
+  mw_test_press(s, "agent.close");
+  #assert ra_view(a) == RA_CLOSING && cast(string) s[0].door[0..<s[0].door_n] == "/api/playtest/seats/41/close";
+  coaxial_machineweb_asked(s);
+  mw_test_send(s, MW_END, 200, "{}");
+  #assert ra_view(a) == RA_NONE && mw_test_has(s, "agent.start");
+  // a seat that won't open says why, and Start shows again
+  mw_test_press(s, "agent.start"); coaxial_machineweb_asked(s);
+  mw_test_send(s, MW_END, 429, "");
+  #assert ra_view(a) == RA_NONE && mw_test_text(s, "agent.why") == "All 8 agent seats are busy. Try again in a few minutes." && !mw_test_off(s, "agent.start");
+  // no answer at all (the host's status 0) is a failure too, never a seat left starting
+  mw_test_press(s, "agent.start"); coaxial_machineweb_asked(s);
+  mw_test_send(s, MW_END, 0, "");
+  #assert ra_view(a) == RA_NONE && mw_test_has(s, "agent.why");
+}
+AGENT_T_SEEN :: "{\"op\":\"see\",\"ok\":true,\"result\":\"looked\",\"realm\":\"pine\",\"at\":[0.0,0.0],\"facing\":0.0,\"camera\":\"third\",\"tools\":[],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":2.0}]}";

@@ -242,7 +242,8 @@ memorial 60000
 # The jump clips in everglade/scene/people-rig.coax (da98ab3915): 273,378 bytes measured; about 5% headroom.
 metahumanlab 290000
 # A made realm follows its world and runs its scripts (metaverse/edit/realm-page.coax, the frame and result codecs, #13496): 696,860 bytes measured on macOS; about 5% room.
-myrealm 740000
+# Without Your computer's wire, which went to machine-web (#13529): 480,286 bytes measured on Linux; about 5% room.
+myrealm 505000
 newland 1180000
 # #13454: width-10 public G table (packed eight-word coordinates) and 62-bit divsteps; 105,571 bytes measured 2026-11-13, about 4% room.
 nip01 110000
@@ -398,3 +399,8 @@ worlds-web 100000
 # A member's project page lists its attachments (project-files-web.coax, GitHub #13468): 85,393 bytes measured
 # 2026-11-13 on Linux, about 10% room.
 project-files-web 94000
+# Settings, This machine: Your computer and Your agent with the wire to the person's Coder (machine-web.coax and
+# metaverse/edit/computer-wire.coax, #13529), loaded only when Settings shows This machine. Set from what YOUR
+# COMPUTER's wire added to myrealm (about 210 KB) and the kit's settings rows: 302814 bytes on 2026-11-13 on
+# Linux, about 5% room. myrealm lost the wire with it (480286 bytes).
+machine-web 318000

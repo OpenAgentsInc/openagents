@@ -1,7 +1,9 @@
 # Browser byte storage
 
 `host.js` exposes optional IndexedDB effects to a Coax app through its C/Wasm
-face. The host stores opaque bytes. Coax chooses namespaces, schema versions,
+face. Both share `byte-storage.js`; `dom-wire.js` gives the same imports to a
+module `dom-host.js` draws, and its replies arrive as `dom_event(768 + slot,
+total_bytes)` with the same inbox bytes. The host stores opaque bytes. Coax chooses namespaces, schema versions,
 keys, content, retention, migrations and whether a record should be trusted.
 This is the byte pipe for the later Nostr database; it does not implement that
 database or persist any signing key automatically.

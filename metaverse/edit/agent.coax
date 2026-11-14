@@ -1,11 +1,11 @@
-// YOUR AGENT (docs/metaverse/realm-seat.md "The agent pane"; docs/metaverse/aethyrforge.md, the YOUR AGENT tab):
-// the realm's owner starts a hosted seat in it from the page, sends it verbs and watches what it sees.
+// Your agent, in Settings, This machine (docs/metaverse/realm-seat.md "The agent pane"; #13529): the person
+// starts a hosted seat in the world open in the editor, sends it verbs and watches what it sees.
 // The server holds the seat: POST /api/playtest/seats {slug, hosted: true} opens it on the runner,
 // the same path `openagents realm play --hosted` takes (coax/web/api/seats.c); each verb is POST
 // .../seats/ID/act, answered with the seat's observation (coax/lib/media/realm_seat.coax); CLOSE is
 // POST .../seats/ID/close. The page's logged-in session is the account; the seat's key stays with
-// the runner. This is the pane's state and nothing else: no key, no socket. The edit layer sends its
-// requests (edit.coax redit_next) and draws it (redit_agent_pane); the forge screen uses the same.
+// the runner. This is the pane's state and nothing else: no key, no socket. apps/openagents-web/machine-web.coax
+// sends its requests (through the browser host's dom_stream) and draws it.
 //
 // What you type is one of the seat's verbs, in plain words:
 //   look left | right | around | up | down | -45     turn (or look up and down, in first person)
@@ -16,6 +16,9 @@
 //   bye                                            end the talk
 // Each answer comes in as plain lines: what happened, where it stands, who answered, what's near.
 //   coax/bin/coax test metaverse/edit/agent_test.coax
+
+#load "edit-text.coax";
+#load "../../coax/lib/media/realm_seat_wire.coax";   // a seat's bodies (seat.proto): one writer and reader
 
 RA_LINES :: 32; RA_LINE :: 180; RA_ACT :: 600; RA_WHY :: 100; RA_SAY :: 400; RA_NAME :: 48;
 // the seat: none, opening, open, a verb in flight, closing

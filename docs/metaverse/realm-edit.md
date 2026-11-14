@@ -133,7 +133,7 @@ What is left of the layer's EDIT, and where each goes (#13515):
 | The asks (ADD, revise, DELETE, a document) | tools of the shell's agent strip: `ask`, `revise`, `unask`, `unrow`, and a document opened first | built (#13528): below, "The asks and the voice in the agent strip" |
 | The realm's voice (HOLD TO TALK, the selector) | the agent strip's composer, with Talk | built (#13528): a spoken switch is a `switch` step, a `cell` edit of the rows table; show and look are tools of the turn |
 | A character's lore and quests | content tables of the realm's world and `cell` edits, as the rows are | follow-up |
-| YOUR COMPUTER, YOUR AGENT | the shell's agent strip | follow-up |
+| YOUR COMPUTER, YOUR AGENT | Settings, This machine, beside the local agents' switch | built (#13529): "Your computer" below, and docs/metaverse/realm-seat.md "The agent pane" |
 
 ### A visitor's idea in the agent strip
 
@@ -222,7 +222,7 @@ callers and for a made realm's spoken commands for screen readers.
 EDIT opens one pane at a time (the panes rule, metaverse/fairy-forest/README.md "Making the world:
 panes"): FEATURES (the board's rows, below, and OPEN THE EDITOR). A visitor's proposal waits in
 the editor's agent strip, not in EDIT (#13527).
-A realm whose face carries the wire also gets COMPUTER (below, "Your computer").
+Your computer and Your agent are in Settings, This machine (below, "Your computer").
 
 The panes for what you work on (ff-panes, migration 0055): a realm says, each frame, which of its
 characters you are by (`redit_near(ed, key, name)`). With EDIT open, coming to one brings up its
@@ -315,32 +315,41 @@ named nothing still waits as one line. The answer: `doc N A applied W waiting`, 
 
 ## Your computer
 
-COMPUTER, the fourth pane, lets the realm's owner build it with their own Coder, on their own
-computer, with their own Claude Code or Codex login (openagents#12640, #12642). Made realms
-(`myrealm.coax`) have it; another realm gets it by calling `redit_computer(ed)` and linking the
-wire into its face as `myrealm-face.c` does. It works the same on a desktop and a phone browser.
+Your computer lets a world's owner build it with their own Coder, on their own computer, with their
+own Claude Code or Codex login (openagents#12640, #12642, #13529). It is in Settings, This machine,
+beside the local agents' switch, with Your agent under it (docs/metaverse/realm-seat.md "The agent
+pane"). Both show once someone is logged in. It works the same on a desktop and a phone browser.
+
+A job builds in the world Settings was opened from. The world's editor opens Settings as
+`/settings/models?world=ID`, and the request (`thread.run {text, realm}`) names that world. Settings
+opened from /chat names none: Your computer still pairs and forgets, but says "Open Settings from a
+world's editor to ask Coder to build in it." and takes no request, and Your agent offers no Start.
 
 What the owner sees, one view at a time:
 
 | View | What it says and does |
 | --- | --- |
-| Unpaired | "On your computer, run:" `coder host` (COPY), then a field for the key it shows, and PAIR. |
-| Asking | "Allow this browser on your computer", with `coder host allow` (COPY) and this browser's name ("Chrome on Mac"). CANCEL takes the ask back. |
-| Allowed | Whether the computer answers, a field for a request, SEND, and FORGET THIS COMPUTER (a second tap within 4 s). |
-| Denied, expired | What happened, ASK AGAIN, or another computer. An ask lasts ten minutes. |
+| Unpaired | "On your computer, run:" `coder host` (Copy), then a field for the key it shows, and Pair. |
+| Asking | "Allow this browser on your computer", with `coder host allow` (Copy) and this browser's name ("Chrome on Mac"). Cancel takes the ask back. |
+| Allowed | Whether the computer answers, a field for a request, Send, and Forget this computer (a second tap within 4 s). |
+| Denied, expired | What happened, Ask again, or another computer. An ask lasts ten minutes. |
 | Not answering | "Your computer isn't answering. On it, run:" `coder host`; a request already sent waits. |
-| Running | What was asked, the job's steps as they come, and STOP. |
-| Stopped, failed, done | What was asked, its steps, the reason a job failed, and NEW REQUEST. |
+| Running | What was asked, the job's steps as they come, and Stop. |
+| Stopped, failed, done | What was asked, its steps, the reason a job failed, and New request. |
 
-The realm reloads by itself as the job's edits land.
+The world's own page reloads by itself as the job's edits land.
 
 How it works:
 
-- `metaverse/edit/computer.coax` is the pane's state and nothing else (checks:
+- `metaverse/edit/computer.coax` is the state and nothing else (checks:
   `coax/bin/coax test metaverse/edit/computer_test.coax`). `rc_next_op` names the one request to send
   next; `rc_reply` reads the computer's answers as plain lines from the wire.
-- `metaverse/edit/computer-wire.coax` is its own wasm unit, linked beside the realm (its signing tables
-  are computed at compile time, so `build.sh` builds `myrealm.wasm` with
+- `apps/openagents-web/machine-web.coax` draws Your computer and Your agent with the kit on the mono
+  skin. Settings holds it as a module of its own (`k_module`, `data-module`): `dom-host.js` loads
+  `machine-web.wasm` into that node only when Settings, This machine is drawn, so chat-web's own module
+  stays small, and the module stops when its node leaves the page.
+- `metaverse/edit/computer-wire.coax` is its own wasm unit, linked beside machine-web (its signing
+  tables are computed at compile time, so `build.sh` builds `machine-web.wasm` with
   `COAXIAL_RUN_STEPS=250000000`). It keeps this browser's key, signs NIP-42 AUTH for
   `wss://relay.openagents.com`, and seals each request with the NIP-HOST browser codec
   (`coax/lib/nostr/host/browser.coax`) as a kind 3188 private artifact for the computer, NIP-44
@@ -348,10 +357,11 @@ How it works:
   key, is signed by the computer the owner pasted, names our request and event, and answers our
   operation. Asking the same thing again within 50 s resends the exact signed event. Checks:
   `coax/bin/coax test metaverse/edit/computer-wire.coax --library --run-steps 250000000 --only "wire: "`.
-- `apps/openagents-web/computer-face.h` moves the bytes: the record in IndexedDB (namespace
+- `apps/openagents-web/machine-web-face.c` moves the bytes: the record in IndexedDB (namespace
   `openagents.computer`, key `browser`: the browser's secret key, the grant, the computer's key and
-  the ask), the relay socket, the browser's random bytes and the clock. The socket opens only for an
-  owner or admin, once COMPUTER is open or the browser is paired.
+  the ask; a browser paired before keeps its pairing), the relay socket, the browser's random bytes
+  and the clock. `coax/web/dom-wire.js` gives a module those imports; `dom-host.js` loads it only for
+  a module that imports them. The socket opens only while the browser is paired, asking or forgetting.
 
 The operations are NIP-HOST "Browser device grants" (`nostr/nips/openagents/NIP-HOST.md`):
 `browser.request {key, label}` to pair, `browser.status {request}` while asking and, once allowed,
@@ -361,36 +371,39 @@ at the computer allows a browser; the browser never makes a code. A request unan
 means the computer isn't answering. A refusal that says the browser's grant is gone (revoked,
 stale, expired) pairs again.
 
-To try it against a computer on this machine, open the realm with `?relay=ws://localhost:PORT`. The
+To try it against a computer on this machine, open Settings with `?relay=ws://localhost:PORT`. The
 wire takes only that form; any other `relay=` keeps `wss://relay.openagents.com`. The headless check
 plays the whole flow in Chrome (no window opens) at 1440×900 and 390×844: pair, allow, a job's steps,
-a reload, and FORGET. It is a Coax tool on the DevTools library (`coax/web/computer-flow.coax`). It
-serves the realm from staging with this checkout's module and an owner's spec swapped in, holds the
-page's writes in the browser, and reads the pane through `coaxial.guardProbe(2400 + f)`
-(`redit_probe`: the buttons' boxes, the pane, the view). Run it from the repository's root:
+a reload, and Forget. It is a Coax tool on the DevTools library (`coax/web/computer-flow.coax`). It
+opens Settings from a world on staging with this checkout's chat-web and machine-web modules swapped
+in, holds the page's writes in the browser, reads Your computer's view from its group's `data-state`
+(`MW_VIEWS`) and presses the page's own buttons. Run it from the repository's root:
 
     nostr/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
     OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine echo
-    COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/myrealm.coax apps/openagents-web/myrealm-face.c \
-      /tmp/myrealm.wasm metaverse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
-    CODER_HOME=/tmp/host-home BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 /tmp/myrealm.wasm [SHOTS_DIR]
+    coax/web/wasm.sh apps/openagents-web/chat-web.coax apps/openagents-web/chat-web-face.c /tmp/b/chat-web.wasm
+    COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/machine-web.coax apps/openagents-web/machine-web-face.c \
+      /tmp/b/machine-web.wasm metaverse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
+    CODER_HOME=/tmp/host-home BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 /tmp/b [SHOTS_DIR]
 
-`--local` runs the same flow with nothing remote (#12640). This checkout's page is served by
-`local-origin`, and the flow answers every `/api` request itself. The realm's spec is a local file,
+`--local` runs the same flow with nothing remote (#12640). This checkout's pages are served by
+`local-origin`, and the flow answers every `/api` request itself. The world's spec is a local file,
 read again on every request, with the owner's lines after it. Other reads get 404 and writes get
 204. With `coder host --engine claude` and a stand-in `claude` (`coder/tui/claude_standin.coax`,
-which edits that file the way the realm tool does), it also checks two things. The realm reloads
-when the job's edit lands: the page's revision, `realm_probe` 2, goes up by one. And STOP stops a
-long job while it runs. No Claude or Codex login is used:
+which edits that file the way the realm tool does), it also checks three things. The job's edit lands
+in the world Settings named: the spec's revision goes up by one. That world's own page shows it: the
+made realm's revision, `realm_probe` 2, is the spec's. And Stop stops a long job while it runs. No
+Claude or Codex login is used:
 
     nostr/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
     printf '#!/bin/sh\nexec %s/coax/web/tool.sh %s/coder/tui/claude_standin.coax "$@"\n' "$PWD" "$PWD" > /tmp/bin/claude && chmod 755 /tmp/bin/claude
     printf 'realm\nname Pine Test\nground forest\ntime day\nrev 1\nfeature trees pine 6\n' > /tmp/spec.txt
     PATH=/tmp/bin:$PATH CLAUDE_STANDIN_SPEC=/tmp/spec.txt OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 \
       CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine claude
+    coax/web/wasm.sh apps/openagents-web/myrealm.coax apps/openagents-web/myrealm-face.c /tmp/myrealm.wasm
     coax/web/tool.sh local-origin --listen 47999 --api http://127.0.0.1:9 --module /tmp/myrealm.wasm
     CODER_HOME=/tmp/host-home BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 \
-      --local http://127.0.0.1:47999 /tmp/spec.txt [SHOTS_DIR] [--require-hardware]
+      --local http://127.0.0.1:47999 /tmp/spec.txt /tmp/b [SHOTS_DIR] [--require-hardware]
 
 What a job from the browser may do is decided on the computer. `coder/tui/host_grants.coax`
 holds the grants. `coax/lib/agent/engine/ceiling.coax` holds the read ceiling with the realm tools, under which

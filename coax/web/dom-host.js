@@ -36,6 +36,13 @@
 // The app shell holds the pages it doesn't draw itself in a frame beside the side (shell.js): a page of the shell's
 // (data-shell on its script) opened at the top of the window becomes the shell instead of starting its own module, and
 // the shell opens itself by address with &top, the page's own shell. That shell is told the address with its query.
+// A module may hold another in one of its nodes (the kit's k_module: data-module="APP PATH"): this host opens a copy
+// of itself for it there, with that node as its root, told PATH once (event 13), as &path= has it. The two keep to
+// their own nodes: a press in the held module is its alone. When the node leaves the page the held copy stops, its
+// sockets closed; a new node opens a new copy (Settings, This machine opens machine-web so: only then is it loaded).
+// A module that imports sockets, byte storage, coaxial_random or coaxial_now_seconds is given them by dom-wire.js,
+// loaded only then. A module that imports dom_facts() is told the browser's name and the page's address as it
+// starts (event 16: "USER AGENT\nADDRESS").
 import "./tree-commands.js";
 import { shellTakes, shellHost, shellHeld, shellGo, shellDrawn } from "./shell.js";
 const named = new URL(import.meta.url).searchParams;
@@ -43,12 +50,18 @@ const script = named.has("app") ? null : document.querySelector("script[data-app
 if (shellTakes(script)) await new Promise(() => {});   // this page is the shell's now: its own module never starts
 const app = named.get("app") || script.dataset.app;
 const top = !named.has("app") || named.has("top");   // the page's own module, not a part opened by another
-const root = document.getElementById(named.get("root") || script?.dataset.root || "coaxial-root");
+const nested = named.has("nest");   // opened for a node of another module's (k_module): it stops when that node goes
+// A held copy draws in the very node it was opened for, handed over by the host that holds it (by the time it runs,
+// the page may hold a newer node of that id, which has a copy of its own).
+const heldNodes = (globalThis.coaxialHeldNodes ||= new Map());
+const root = nested ? heldNodes.get(named.get("nest")) : document.getElementById(named.get("root") || script?.dataset.root || "coaxial-root");
+if (nested) heldNodes.delete(named.get("nest"));
+if (nested && !root?.isConnected) await new Promise(() => {});   // its node left before it ran: it never starts
 const fixed = named.get("path");
 const NONE = 0xffff, SVG = "http://www.w3.org/2000/svg", LAYERS = ["fr-bg", "fr-line", "fr-deco"];
 const text = new TextDecoder(), bytes = new TextEncoder();
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
-let memory, x, state = 0, els = [], frames = new Map(), asked = false, last = 0, pushed = false;
+let memory, x, state = 0, els = [], frames = new Map(), asked = false, last = 0, pushed = false, wire = null, gone = false;
 const clipping = globalThis.coaxialClip === true || new URLSearchParams(location.search).has("clip");
 let clipNow = 0, clipReady = false;
 const clipBorn = new WeakMap();
@@ -103,6 +116,7 @@ function apply(at, length) {
       if (key === "data-frame") frameOf(el);
       if (key === "autofocus") queueMicrotask(() => el.focus());
       if (key === "data-lang" && el.tagName === "TEXTAREA") { el.spellcheck = false; el.wrap = "off"; el.autocapitalize = "off"; }
+      if (key === "data-module") queueMicrotask(() => hold(el));
     } else if (op === 7) {
       const el = els[slot], key = c[2]; el.removeAttribute(key);
       if (key === "data-frame") unframe(el);
@@ -136,10 +150,38 @@ function fit(el) { if (!grows && el.tagName === "TEXTAREA" && !el.dataset.lang) 
 
 function clear() { root.replaceChildren(); els = []; for (const el of [...frames.keys()]) unframe(el); }
 
+// A module held in a node (k_module): a copy of this host opens it there, once for each node, after the commands
+// that made the node are applied (so it is on the page). Its app is a module's name and its path one of this site's.
+const holding = new WeakSet();
+let holds = 0;
+function hold(el) {
+  if (holding.has(el) || !el.isConnected || !el.id) return;
+  const said = el.getAttribute("data-module") || "", cut = said.indexOf(" ");
+  const held = cut < 0 ? said : said.slice(0, cut), path = cut < 0 ? "" : said.slice(cut + 1);
+  if (!/^[a-z0-9-]+$/.test(held) || (path && (!path.startsWith("/") || path.startsWith("//")))) return;
+  holding.add(el);
+  const url = new URL("./dom-host.js", import.meta.url);
+  const nest = `${Math.random().toString(36).slice(2)}.${++holds}`;   // unique on the page, across every copy of this host
+  heldNodes.set(nest, el);
+  url.searchParams.set("app", held); url.searchParams.set("root", el.id); url.searchParams.set("nest", nest);
+  if (path) url.searchParams.set("path", path);
+  import(url.href).catch((error) => console.error(error));
+}
+// Whether a node is this module's, not one held in it.
+function ours(el) { const m = el?.closest?.("[data-module]"); return !m || m === root || !root.contains(m); }
+// A held copy whose node left the page stops: nothing more is drawn or heard, and its sockets close.
+function alive() {
+  if (gone) return false;
+  if (!nested || root.isConnected) return true;
+  gone = true; wire?.stop(); streamStop();
+  return false;
+}
+
 // A frame is drawn only when one was asked for: by a press, typing, a size, or the module still moving.
-function ask() { if (!asked && !clipping) { asked = true; requestAnimationFrame(frame); } }
+function ask() { if (!asked && !clipping && alive()) { asked = true; requestAnimationFrame(frame); } }
 function frame(now) {
   asked = false;
+  if (!alive()) return;
   const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
   last = now;
   const n = x.dom_frame(state, dt, calm());
@@ -175,8 +217,9 @@ if (clipping) globalThis.coaxialClipStep = async (count = 1, fps = 30) => {
   }
   return 1;
 };
-function slotOf(target, selector) { const el = target.closest?.(selector); return el && root.contains(el) ? Number(el.dataset.slot) : -1; }
+function slotOf(target, selector) { const el = target.closest?.(selector); return el && root.contains(el) && ours(el) ? Number(el.dataset.slot) : -1; }
 function send(kind, slot, value) {
+  if (!alive()) return;
   let n = 0;
   if (value !== undefined) {
     const cap = x.dom_inbox_cap(), encoded = bytes.encode(value);
@@ -333,6 +376,9 @@ async function start() {
     if (url !== location.pathname + location.search) history.pushState(null, "", url);
   };
   const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop, dom_file_send: fileSend, dom_file_step: fileStep, dom_keep: keep, dom_go: go } };
+  // sockets, byte storage, random bytes and the clock, for a module that imports them (dom-wire.js); each reply goes
+  // into its inbox as an event of that kind, and is drawn
+  const wired = WebAssembly.Module.imports(module).some((i) => /^coaxial_(socket_|storage_|random$|now_seconds$)/.test(i.name)) ? await import("./dom-wire.js") : null;
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= {})[imp.name] ||= imp.name === "fd_write"
@@ -343,8 +389,20 @@ async function start() {
         }
       : imp.name === "proc_exit" ? (code) => { throw new Error(`${app} exited (${code})`); } : () => 0;
   }
+  if (wired) {
+    wire = wired.wireImports(memory, module, (kind, bytes) => {
+      if (!alive()) return true;
+      if (bytes.length > x.dom_inbox_cap()) return false;
+      new Uint8Array(memory.buffer, x.dom_inbox(state), bytes.length).set(bytes);
+      x.dom_event(state, kind, 0, bytes.length);
+      ask();
+      return true;
+    }, () => (x ? x.dom_inbox_cap() : 0));
+    Object.assign(imports.env, wire.imports);
+  }
   x = (await WebAssembly.instantiate(module, imports)).exports;
   x._initialize?.();
+  wire?.bind(x);
   // the state, above the module's own data and stack
   const size = x.coaxial_state_size();
   state = Math.ceil(Math.max(x.__heap_base?.value ?? 0, memory.buffer.byteLength) / 65536) * 65536;
@@ -355,12 +413,14 @@ async function start() {
     let kept = ""; try { kept = localStorage.getItem(keptKey) || ""; } catch { /* refused */ }
     send(12, 0, kept);
   }
+  if (WebAssembly.Module.imports(module).some((i) => i.name === "dom_facts")) send(16, 0, `${navigator.userAgent}\n${location.href}`);
   const going = WebAssembly.Module.imports(module).some((i) => i.name === "dom_go"), shell = going && !fixed;
   if (fixed) send(13, 0, fixed);
   const here = () => (top ? location.pathname + location.search : location.pathname);
   if (shell && top && !shellHeld) shellHost(own, root);   // before the first address: the frame it draws talks to it
   if (shell) { send(13, 0, here()); addEventListener("popstate", () => send(13, 0, here())); }
   root.addEventListener("click", (e) => {
+    if (!ours(e.target)) return;   // a press in a module held here is that module's
     const drop = e.target.closest?.('button[data-drop]:not([data-drop=""])');
     if (drop && root.contains(drop)) { pick(drop); return; }   // a drop target that names what it takes: a press opens the picker
     const slot = slotOf(e.target, "button[data-slot]");
@@ -374,6 +434,7 @@ async function start() {
   addEventListener("drop", (e) => { const el = dropOn(e); if (el === undefined) return; e.preventDefault(); overNow(null); offer(el, e.dataTransfer.files?.[0]); });
   root.addEventListener("input", (e) => { const slot = slotOf(e.target, "textarea[data-slot],input[data-slot]"); if (slot >= 0) { fit(e.target); send(2, slot, e.target.value); } });
   root.addEventListener("keydown", (e) => {
+    if (!ours(e.target)) return;
     // a code field (k_code_field): Enter makes a line, as the browser has it, and Tab indents two spaces
     if (e.target.dataset?.lang && e.target.tagName === "TEXTAREA") {
       if (e.key !== "Tab" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return;

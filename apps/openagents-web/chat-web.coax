@@ -232,6 +232,7 @@ ChatWeb :: struct {
   list_at: f32; log_at: f32;
   scratch: [CW_RESP] u8;
   world: [1] WorldTurn;              // the world the editor round this conversation has open, as last told; none on /chat
+  mworld: [WT_WORLD] u8; mworld_n: int;   // the world Settings was opened from (the editor's /worlds/ID, or ?world=ID): Your computer's requests and Your agent go there (#13529)
   wwire: [WT_BYTES] u8; wwire_n: int;   // its bytes, as they go with a turn
   planned: [WP_BYTES] u8; planned_n: int;   // a hosted turn's plan, until the page has taken it to its editor
   // the composer's voice (#13528): there at all, held now, the turn it heard waiting on its answer to speak, and
@@ -456,8 +457,30 @@ cw_at :: (s: [] ChatWeb, path: string) {
   sec := sw_section_of(path);
   if sec >= 0 { s[0].page = SW_PAGE; s[0].set[0].section = sec; s[0].set[0].menu = 0; }
   else { s[0].page = ss_page_of(path); }
+  if sec >= 0 || s[0].page == SS_FOOT { s[0].mworld_n = cw_world_of(path, s[0].mworld[..]); }
   s[0].here = ss_side_place(path);
   if s[0].page == SS_HELD { cw_hold(s, path); }
+}
+// The world an address names, in out: the editor's /worlds/ID, or Settings' ?world=ID (a world's ID: lowercase
+// letters, digits and dashes). 0 for none. Bounded reading of an address the route already chose.
+cw_world_of :: (path: string, out: [] u8) -> int {
+  from := -1;
+  root := "/worlds/";
+  if path.count > root.count && cast(string) path[0..<root.count] == root { from = root.count; }
+  else {
+    for i: 0..<path.count {
+      if (path[i] == '?' || path[i] == '&') && i + 7 <= path.count && cast(string) path[i + 1..<i + 7] == "world=" { from = i + 7; }
+    }
+  }
+  if from < 0 { return 0; }
+  n := 0;
+  for i: from..<path.count {
+    c := path[i];
+    if c == '/' || c == '?' || c == '&' || c == '#' { break; }
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') || n >= out.count { return 0; }
+    out[n] = c; n += 1;
+  }
+  return n;
 }
 // The page held beside the side is the one at `path`: a new frame for it, and its loading screen until it draws.
 cw_hold :: (s: [] ChatWeb, path: string) {

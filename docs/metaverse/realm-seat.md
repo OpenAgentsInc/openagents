@@ -193,8 +193,10 @@ panel) comes after, on the same runner as the project agents.
 
 ## The agent pane (YOUR AGENT)
 
-**Built** 2026-11-02 (#12655), not deployed. A made realm's owner opens EDIT >
-AGENT on the realm's page and presses START YOUR AGENT. The page posts
+**Built** 2026-11-02 (#12655), not deployed. Since #13529 it is Your agent in
+Settings, This machine. A made realm's owner opens Settings from the world's
+editor (`/settings/models?world=SLUG`) and presses Start your agent. Settings
+opened from /chat names no world, so it offers no Start. The page posts
 `{"slug": SLUG, "hosted": true}` to `/api/playtest/seats`, the same route and
 runner `openagents realm play --hosted` uses. The page's logged-in session
 (`oa_session`) is the account. The player key never opens a seat, and a POST
@@ -216,18 +218,18 @@ plain words, and the pane turns it into one of the actions above:
 Each answer adds plain lines under the verb: what happened ("Go: reached."),
 where the agent stands ("At 3.5, -1.3, facing 90 degrees."), who answered
 ("Maple: ..."), and the three nearest things ("Near: Maple 1.1 m, house 3.0
-m, tree 4.0 m."). CLOSE ends the seat on the runner as well. A refusal gets one
+m, tree 4.0 m."). Close ends the seat on the runner as well. A refusal gets one
 plain sentence, for example "Log in to start your agent: it plays as your
 account." or "All 8 agent seats are busy. Try again in a few minutes."
 
-The pane's state and verbs are `metaverse/edit/agent.coax`, and it is drawn in the
-edit layer (`metaverse/edit/edit.coax`, `redit_agent_pane`). A realm offers the
-pane with `redit_agent`, as `myrealm.coax` does. The forge screen's YOUR
-AGENT tab (`aethyrforge.md`) is the same pane.
+The pane's state and verbs are `metaverse/edit/agent.coax`, and
+`apps/openagents-web/machine-web.coax` draws it with Your computer
+(docs/metaverse/realm-edit.md "Your computer"). The realm's own EDIT no longer
+has an AGENT pane.
 
 Checks:
 - `metaverse/edit/agent_test.coax`: the verbs, each request and answer, refusals,
-  the log, and the pane on a desktop and a phone.
+  and the log; `apps/openagents-web/machine-web.coax`'s tests draw it.
 - `coax/web/api/test_room.py`: a logged-in page opens, acts in and closes a
   hosted seat. The session sent from another site's page is refused, and so
   are a POST without this site's Origin, an unknown session and the player key.
@@ -236,10 +238,13 @@ Checks:
   both behind one local origin (`coax/web/tool.sh local-origin`, below). It
   makes its owner in SQL (an account, a logged-in session, a player key and
   a private made realm), so the browser sends its own `oa_session` cookie
-  and Origin. It opens EDIT > AGENT, starts the agent, sends `look left`,
+  and Origin. It opens Settings, This machine from the made realm
+  (`/settings/models?world=ap-STAMP`, chat-web.wasm and machine-web.wasm
+  from `apps/openagents-web/build`), starts the agent, sends `look left`,
   closes it, checks the database's seat (the session's account's, hosted,
-  closed) and opens the pane at phone width. Its header lists what to start.
-  Passed 9/9 on coderos-4080 on 2026-11-02 with `CDP_WEBGPU=swiftshader`.
+  closed) and opens the page at phone width. Its header lists what to start.
+  It reads the seat from Your agent's `data-state` and presses the page's own
+  buttons.
 
 ## Local runs: one origin for the site and the API
 

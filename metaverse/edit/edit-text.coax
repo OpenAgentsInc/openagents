@@ -1,0 +1,76 @@
+// The edit layer's small text helpers (a realm's names stay its own): bounded copies into byte
+// buffers, numbers as text, a line's words. The layer (edit.coax), YOUR COMPUTER's state (computer.coax)
+// and YOUR AGENT's (agent.coax) load them; Settings' This machine (apps/openagents-web/machine-web.coax)
+// gets them through those two.
+
+redit_lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+redit_hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+redit_least :: (a: int, b: int) -> int { if a < b { return a; } return b; }
+redit_put :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n >= buf.count { return n; } buf[n] = text[i]; n += 1; }
+  return n;
+}
+redit_put_int :: (buf: [] u8, at: int, v: int) -> int {
+  if v < 0 { return redit_put_int(buf, redit_put(buf, at, "-"), -v); }
+  digits: [12] u8; k := 0; x := v;
+  while k == 0 || (x > 0 && k < 12) { digits[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  n := at;
+  while k > 0 && n < buf.count { k -= 1; buf[n] = digits[k]; n += 1; }
+  return n;
+}
+redit_copy :: (buf: [] u8, text: string) -> int { n := redit_least(text.count, buf.count); for i: 0..<n { buf[i] = text[i]; } return n; }
+redit_line_end :: (text: string, from: int) -> int { e := from; while e < text.count && text[e] != '\n' { e += 1; } return e; }
+redit_word :: (line: string, k: int) -> string {
+  i := 0; w := 0;
+  while i < line.count {
+    while i < line.count && line[i] == ' ' { i += 1; }
+    e := i; while e < line.count && line[e] != ' ' { e += 1; }
+    if w == k { return line[i..<e]; }
+    w += 1; i = e;
+  }
+  return "";
+}
+// the rest of a line after word k
+redit_rest :: (line: string, k: int) -> string {
+  i := 0; w := 0;
+  while i < line.count && w < k {
+    while i < line.count && line[i] == ' ' { i += 1; }
+    while i < line.count && line[i] != ' ' { i += 1; }
+    w += 1;
+  }
+  while i < line.count && line[i] == ' ' { i += 1; }
+  return line[i..<line.count];
+}
+redit_int :: (w: string) -> int {
+  i := 0; neg := false; v := 0; digits := 0;
+  if i < w.count && w[i] == '-' { neg = true; i += 1; }
+  while i < w.count && w[i] >= '0' && w[i] <= '9' && digits < 9 { v = v * 10 + cast(int) (w[i] - '0'); i += 1; digits += 1; }
+  if digits == 0 { return -1; }
+  return ifx neg then -v else v;
+}
+redit_number :: (w: string) -> f32 {
+  i := 0; neg := false; v := 0.0f32; p_scale := 0.0f32;
+  if i < w.count && w[i] == '-' { neg = true; i += 1; }
+  while i < w.count {
+    c := w[i];
+    if c == '.' && p_scale == 0 { p_scale = 1; i += 1; continue; }
+    if c < '0' || c > '9' { break; }
+    if p_scale > 0 { p_scale = p_scale / 10; v += p_scale * cast(f32) (c - '0'); } else { v = v * 10 + cast(f32) (c - '0'); }
+    i += 1;
+  }
+  return ifx neg then -v else v;
+}
+redit_slug_ok :: (text: string) -> bool {
+  if text.count == 0 || text.count > 48 { return false; }
+  for i: 0..<text.count { c := text[i]; if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+redit_upper :: (buf: [] u8, n: int) { for i: 0..<n { if buf[i] >= 'a' && buf[i] <= 'z' { buf[i] -= 32; } } }
+// Does our server's answer hold a field (its own JSON, never the player's words).
+redit_has :: (text: string, p_part: string) -> bool {
+  if p_part.count == 0 { return true; }
+  if text.count < p_part.count { return false; }
+  for i: 0..<text.count - p_part.count + 1 { if text[i..<i + p_part.count] == p_part { return true; } }
+  return false;
+}

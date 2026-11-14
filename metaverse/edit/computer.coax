@@ -1,14 +1,15 @@
-// The realm editor's YOUR COMPUTER pane (openagents#12642; docs/metaverse/realm-edit.md "Your computer"):
-// the person's own Coder, on their own computer, builds the realm. This is the pane's state and
-// nothing else: no key, no crypto, no socket. The realm's face owns the wire (metaverse/edit/computer-wire
-// and apps/openagents-web/computer-face.h): it asks rc_next_op what to send, sends it to the computer
+// Your computer, in Settings, This machine (openagents#12642, #13529; docs/metaverse/realm-edit.md "Your computer";
+// apps/openagents-web/machine-web.coax draws it): the person's own Coder, on their own computer, builds the
+// world open in the editor. This is the pane's state and nothing else: no key, no crypto, no socket. The
+// module's face owns the wire (metaverse/edit/computer-wire and apps/openagents-web/machine-web-face.c): it
+// asks rc_next_op what to send, sends it to the computer
 // over the relay as NIP-HOST "Browser device grants" requests, and hands back what the computer
 // answered as plain lines (rc_reply).
 //
 // The flow: the browser names its computer (the key `coder host` shows), PAIR asks it
 // (BrowserRequest), and the person at the computer allows it there (`coder host allow`); the pane
 // asks how that went (BrowserRequestStatus) until it is allowed, denied or ten minutes have passed.
-// Once allowed, a request for this realm becomes a Coder job (thread.run {text, realm}); the pane
+// Once allowed, a request for the world becomes a Coder job (thread.run {text, realm}: the world's ID); the pane
 // reads its steps as they come (thread.read {thread, after}) and STOP stops it (thread.stop).
 // FORGET (BrowserForget) takes this browser off the computer. Only the computer allows; this browser
 // never makes a code.
@@ -28,6 +29,8 @@
 //   forgot                 the computer forgot this browser
 //   offline, online        the page can't reach the relay; it can again
 //   coax/bin/coax test metaverse/edit/computer_test.coax
+
+#load "edit-text.coax";
 
 RC_HOST :: 96; RC_ID :: 64; RC_LABEL :: 48; RC_ASK :: 200; RC_STEPS :: 24; RC_STEP :: 160; RC_WHY :: 80;
 // pairing
@@ -125,7 +128,9 @@ rc_facts :: (c: [] RealmComputer, p_ua: string, p_url: string) {
     }
   }
 }
-rc_start :: (c: [] RealmComputer, slug: string) { c[0].realm_n = redit_copy(c[0].realm[..], slug); }
+// The world a request is for ("" none: no request is taken). A job running keeps its own; the page
+// names the world again each frame, so the next request takes the one open then.
+rc_start :: (c: [] RealmComputer, slug: string) { if !rc_busy(c) { c[0].realm_n = redit_copy(c[0].realm[..], slug); } }
 
 // The record this browser kept (the wire keeps its key beside it): "host KEY", "request ID",
 // "paired asked|allowed", a line each. "" when it kept none.
@@ -177,9 +182,9 @@ rc_pair :: (c: [] RealmComputer) {
   c[0].pair = RP_ASKING; c[0].request_n = 0; c[0].pair_due = true; c[0].asked_at = c[0].time;
   c[0].heard = false; c[0].silent = false; c[0].why_n = 0; c[0].keep_due = true;
 }
-// A request for this realm.
+// A request for the world named (rc_start): none named, none taken.
 rc_run :: (c: [] RealmComputer, p_words: string) -> bool {
-  if c[0].pair != RP_ALLOWED || rc_busy(c) || p_words.count == 0 { return false; }
+  if c[0].pair != RP_ALLOWED || rc_busy(c) || p_words.count == 0 || c[0].realm_n == 0 { return false; }
   c[0].ask_n = redit_copy(c[0].ask[..], p_words);
   c[0].run_state = RJ_SENDING; c[0].run_due = true; c[0].thread_n = 0; c[0].cursor = 0; c[0].step_n = 0; c[0].why_n = 0;
   return true;

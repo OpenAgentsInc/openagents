@@ -5,11 +5,6 @@
 #include "myrealm.h"
 #include "analytics-face.h"
 #include "edit-face.h"
-// YOUR COMPUTER (metaverse/edit/computer-wire.coax, linked beside it): the owner's own Coder, over the relay
-#include "computer-face.h"
-// The browser's secure random (crypto.getRandomValues) under the shared Coax entropy policy (coax/lib/crypto/entropy.coax).
-#define COAX_ENTROPY_HEADER "Entropy.h"
-#include "../../coax/platform/entropy-wasm.c"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -46,7 +41,6 @@ static void drain(uint32_t state) {
     realm_world_sent(at(state), coaxial_http((uint32_t)(uintptr_t)url.data, (uint32_t)url.count, (uint32_t)(uintptr_t)body.data, (uint32_t)body.count, (int32_t)realm_world_flags(at(state))));
   }
   edit_face_drain(ed(state));
-  computer_face_drain(ed(state));
   track_drain(&track_state);
 }
 
@@ -124,7 +118,6 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int
   if (length < 0 || (uint32_t)length > sizeof inbox) return;
   start_track();
   coax_string bytes = {(const char *)inbox, length};
-  if (computer_face_message(ed(state), kind, bytes)) { drain(state); return; }
   bool taken = track_message(tr(), kind, bytes);
   if (kind != 600 && !taken && edit_face_message(ed(state), kind, bytes)) { drain(state); return; }
   if (kind == 600) edit_face_message(ed(state), kind, bytes);
