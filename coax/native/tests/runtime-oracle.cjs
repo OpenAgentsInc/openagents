@@ -45,8 +45,15 @@ const root = process.argv[2];
       event(2,slots.get('login.code'),'123 456');event(1,slots.get('login.verify'));
       event(203,0,'{"error":"Wrong code."}');event(1,slots.get('login.verify'));
       remember(event(103,0,'{"loggedIn":true}'));
-      event(104,200,'{"schema":"openagents.chat.history.v1","chats":[{"id":"1","title":"Saved chat","model":"m","folder":"","updated_ms":0,"busy":false}]}');
-      remember(event(1,slots.get('chats.refresh')));event(104,401,'{}');
+      remember(event(104,200,'{"schema":"openagents.chat.history.v1","chats":[{"id":"1","title":"Saved chat","model":"m","folder":"","updated_ms":0,"busy":false}]}'));
+      remember(event(1,slots.get('chat.new')));
+      event(2,slots.get('chat.composer'),'Hello');event(1,slots.get('chat.composer.send'));
+      const thread={schema:'openagents.chat.thread.v1',id:'m_12345678901234567890',revision:1,messages:[{role:'user',content:'Hello'}]};
+      remember(event(104,200,JSON.stringify(thread)));
+      remember(event(104,200,JSON.stringify({choices:[{message:{content:'Hello back'},finish_reason:'stop'}]})));
+      thread.revision=2;thread.messages.push({role:'assistant',content:'Hello back'});
+      remember(event(104,200,JSON.stringify(thread)));
+      remember(event(1,slots.get('chat.back')));event(104,401,'{}');
     } else {
       remember(event(1,slots.get('extras.more')));event(1,slots.get('extras.bitcoin'));
       event(21,0,'{"schema":"openagents.wallet.balance.v1","status":1,"sats":12345}');
