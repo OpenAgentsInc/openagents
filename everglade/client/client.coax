@@ -2137,6 +2137,8 @@ e2_net_probe :: (s: [] E2, f: int) -> int {
   if f == 52 { return n[0].look_n; } if f == 54 { return n[0].pings; }
   // 84 the times this page sat again and said where it stood (A), 85 the room's first word on you after
   // the last of them less where you were drawn (mm, -1 none), 86 the ms from losing the room to it (#13057)
+  // 87 the page says it is not connected (e2n_offline, #13589)
+  if f == 87 { return ifx e2n_offline(n) then 1 else 0; }
   if f == 84 { return n[0].agains; } if f == 85 { return n[0].back_fix_mm; } if f == 86 { return n[0].back_ms; }
   if f == 53 { c := 0; for e: 0..<E2N_ENTS { en := n[0].ents[e]; if en.live && en.kind == WK_PLAYER && en.seat != n[0].seat && en.name_n > 0 { c += 1; } } return c; }
   if f == 55 { return ifx n[0].pings > 0 then n[0].ping_rtt[net_ping_best(n[0].ping_rtt[..], n[0].pings)] else -1; }

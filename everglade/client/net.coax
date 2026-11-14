@@ -127,6 +127,8 @@ E2Net :: struct {
   // a moderator's kick or ban, as the seat ticket's refusal said it (#13302): which (E2N_BAR_*), when it
   // ends on the wall clock (ms; 0 no end, or not said), and the line over the bar (e2n_barred_message)
   barred: int; barred_until: int; barred_text: [E2N_BAR_TEXT] u8;
+  // since when a page that wants a room has had none (the mono clock; 0 seated), for e2n_offline (#13589)
+  unseated_at: int;
   klass: int = 3;               // your Character Create class (FB_CL_*: the druid until it says), the hello's srd-*
   level: int = 1;               // and its level (the hello's srd-CLASS-LEVEL past 1, #13046)
   ent_class: [E2N_ENTS] int;    // each other player's class (FB_CL_*, -1 none) from its n row's CLASS: the kit their body carries
@@ -372,6 +374,25 @@ e2n_room_name :: (t: [] u8, at: int, code: string, other: string) -> int {
   if !e2n_realm_instance(code) { return wire_put(t, at, other); }
   r := E2N_REALM;
   return wire_put(t, wire_put(t, at, "ROOM "), code[r.count + 1..<code.count]);
+}
+// A page that wants a room and has had none for E2N_OFFLINE_MS: no dev room, a dropped or restarted
+// room. The page says so over the bar (e2n_offline_message), goes on asking (e2n_down's waits) and
+// stops saying it once seated (#13589). A refusal that says its own words (a ban, a new version) isn't this.
+E2N_OFFLINE_MS :: 1500;
+E2N_OFFLINE_TEXT :: "Not connected. Shots and spells need the server.";
+e2n_offline :: (n: [] E2Net) -> bool {
+  return n[0].want && n[0].barred == E2N_BAR_NONE && !e2n_open(n) && n[0].unseated_at > 0 && n[0].mono - n[0].unseated_at >= E2N_OFFLINE_MS;
+}
+e2n_offline_message :: (n: [] E2Net) -> string { return ifx e2n_offline(n) then E2N_OFFLINE_TEXT else ""; }
+#test "e2n: no room for a moment and the page says it is not connected, until seated" {
+  n: [1] E2Net; n[0].want = true;
+  e2n_step(n[..], 1000); #assert !e2n_offline(n[..]) && n[0].unseated_at == 1000;
+  e2n_step(n[..], 2600); #assert e2n_offline(n[..]) && e2n_offline_message(n[..]) == E2N_OFFLINE_TEXT;
+  n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 2;
+  e2n_step(n[..], 2700); #assert !e2n_offline(n[..]) && n[0].unseated_at == 0 && e2n_offline_message(n[..]) == "";
+  e2n_down(n[..]); e2n_step(n[..], 3000); #assert !e2n_offline(n[..]);
+  e2n_step(n[..], 4600); #assert e2n_offline(n[..]);
+  m: [1] E2Net; e2n_step(m[..], 9000); #assert !e2n_offline(m[..]);   // a page with no room to want says nothing
 }
 e2n_full_message :: (n: [] E2Net) -> string {
   age := n[0].mono - n[0].full_at;
@@ -934,6 +955,7 @@ e2n_fixed :: (n: [] E2Net, dx: f32, dy: f32, dz: f32) {
 // joined (the run began).
 e2n_step :: (n: [] E2Net, mono: int) {
   n[0].mono = mono;
+  if e2n_open(n) || !n[0].want { n[0].unseated_at = 0; } else if n[0].unseated_at == 0 { n[0].unseated_at = ifx mono > 0 then mono else 1; }
   _ := net_action_expire(n[0].acts[..], mono, E2N_ACT_WAIT_MS);
   if n[0].want && n[0].joined && (n[0].state == E2N_OFF || (n[0].state == E2N_DOWN && mono >= n[0].retry)) {
     if n[0].ticket_n > 0 {
