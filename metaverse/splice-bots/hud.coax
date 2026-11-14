@@ -133,7 +133,7 @@ hv_reel :: (g: [] SpGame, buf: [] u8) -> string {
 // ---- the HUD
 // The compass bar, the objective's name and distance under it.
 hv_compass :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
-  n := at; k := q.k; bw := 555 * k; x0 := q.w * 0.5 - bw * 0.5; y0 := 25 * k; bh := 43 * k; cx := q.w * 0.5; cy := y0 + bh * 0.5;
+  n := at; k := q.k; bw := 555 * k; x0 := q.w * 0.5 - bw * 0.5; y0 := ro_safe(q.w, q.h).y0; bh := 43 * k; cx := q.w * 0.5; cy := y0 + bh * 0.5;
   span := 3.5f32; yaw := g[0].yaw;   // about 200 degrees: W and E near the ends facing north
   n = hv_rect(out, n, x0, y0, x0 + bw, y0 + bh, HV_PANEL(), 0.94);
   // ticks every 15 degrees, a letter at each quarter (N faces -Z, E +X)
@@ -176,10 +176,10 @@ hv_compass :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
 }
 // Pickups, stacked top right, each fading on its own.
 hv_toasts :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
-  n := at; k := q.k; tw := 295 * k; th := 42 * k; x1 := q.w - 30 * k; x0 := x1 - tw; t := g[0].hv[0].toasts[..];
+  n := at; k := q.k; sa := ro_safe(q.w, q.h); tw := 295 * k; th := 42 * k; x1 := sa.x1; x0 := x1 - tw; t := g[0].hv[0].toasts[..];
   for i: 0..<t[0].n {
     a := ro_toast_alpha(t, i); e := t[0].what[i]; p := t[0].extra[i]; bad := hv_toast_banned(e, p);
-    y0 := 25 * k + cast(f32) i * (th + 4 * k);
+    y0 := sa.y0 + cast(f32) i * (th + 4 * k);
     n = hv_rect(out, n, x0, y0, x1, y0 + th, HV_PANEL(), 0.94 * a);
     n = ui_seg(out, n, x0 + 1.5 * k, y0 + 1.5 * k, x0 + 1.5 * k, y0 + th - 1.5 * k, (ifx bad then 2.2f32 else 1.0f32) * k, ifx bad then HV_ORANGE() else HV_CREAM(), a);
     c := ifx bad then HV_ORANGE() else HV_CREAM();
@@ -206,9 +206,9 @@ hv_gauge :: (out: [] f32, at: int, cx: f32, cy: f32, r: f32, share: f32, hot: bo
   return hv_mid(out, n, F_TITLE, label, cx, cy + r + 15 * k, 6.5 * k, HV_CREAM(), a);
 }
 hv_gauges :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
-  n := at; k := q.k; r := 27 * k; cy := q.h - 75 * k; hv := g[0].hv[0]; buf: [16] u8;
+  n := at; k := q.k; sa := ro_safe(q.w, q.h); r := 27 * k; cy := sa.y1 - 45 * k; hv := g[0].hv[0]; buf: [16] u8;   // the labels' baselines 3 above the margin
   // hearts: a pip each
-  cx := 57 * k; a := hv.hearts.alpha;
+  cx := sa.x0 + 30 * k; a := hv.hearts.alpha;
   n = hv_gauge(out, n, cx, cy, r, 0, false, "HEARTS", k, a);
   if a > 0.01 {
     for i: 0..<T_HEARTS {
@@ -219,12 +219,12 @@ hv_gauges :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   }
   // Digger's battery
   if g[0].bot {
-    cx = 127 * k; a = hv.battery.alpha; b := hv_battery(g);
+    cx = sa.x0 + 100 * k; a = hv.battery.alpha; b := hv_battery(g);
     n = hv_gauge(out, n, cx, cy, r, cast(f32) b / 100, b < 34, ifx g[0].dr[0].cell then "CHARGING" else "BATTERY", k, a);
     n = hv_mid(out, n, F_TITLE, num(buf[..], "", b, ""), cx, cy + 5 * k, 10 * k, ifx b < 34 then HV_ORANGE() else HV_CREAM(), a);
   }
   // Heat
-  cx = 197 * k; a = hv.heat.alpha; warm := g[0].heat >= 33;
+  cx = sa.x0 + 170 * k; a = hv.heat.alpha; warm := g[0].heat >= 33;
   n = hv_gauge(out, n, cx, cy, r, g[0].heat / T_HEAT_MAX, warm, "HEAT", k, a);
   return hv_mid(out, n, F_TITLE, hv_band(g[0].heat), cx, cy + 3 * k, ifx g[0].heat >= 66 then 4 * k else 5.5 * k, ifx warm then HV_ORANGE() else HV_CREAM(), a);
 }
@@ -234,7 +234,7 @@ hv_board :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   n := at; k := q.k;
   if !g_board_given(g) || g[0].mode != M_PLAY { return n; }
   bd := g[0].board[0]; on := g_riding(g); buf: [32] u8;
-  x0 := 30 * k; x1 := x0 + 330 * k; y1 := q.h - 140 * k; y0 := y1 - 48 * k;
+  sa := ro_safe(q.w, q.h); x0 := sa.x0; x1 := x0 + 330 * k; y1 := sa.y1 - 110 * k; y0 := y1 - 48 * k;   // over the gauges
   n = hv_rect(out, n, x0, y0, x1, y1, HV_PANEL(), 0.94);
   what := ifx !on then "BOARD OFF" else ifx g[0].dr[0].super then "BOARD · SUPER FAST" else ifx bd.fast then "BOARD · VERY FAST" else "BOARD · CASUAL";
   n = hv_text(out, n, F_TITLE, what, x0 + 14 * k, y0 + 20 * k, 7.5 * k, ifx on && bd.fast then HV_ORANGE() else HV_CREAM(), 1);
@@ -243,7 +243,7 @@ hv_board :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
 }
 // The bot slots: Digger on 1, two empty, then the stun on F.
 hv_slots :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
-  n := at; k := q.k; sw := 271 * k; sh := 69 * k; x0 := q.w * 0.5 - sw * 0.5; y1 := q.h - 28 * k; y0 := y1 - sh;
+  n := at; k := q.k; sw := 271 * k; sh := 69 * k; x0 := q.w * 0.5 - sw * 0.5; y1 := ro_safe(q.w, q.h).y1; y0 := y1 - sh;
   n = hv_rect(out, n, x0, y0, x0 + sw, y1, HV_PANEL(), 0.94);
   cw := 54 * k; gap := 5 * k; pad := 6 * k;
   names := [4] string.["EMPTY", "EMPTY", "EMPTY", "STUN"]; keys := [4] string.["1", "2", "3", "F"];
@@ -262,7 +262,7 @@ hv_slots :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
 }
 // The objective card, and the keys under it.
 hv_card :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
-  n := at; k := q.k; cw := 298 * k; ch := 64 * k; x1 := q.w - 30 * k; x0 := x1 - cw; y1 := q.h - 51 * k; y0 := y1 - ch; buf: [48] u8;
+  n := at; k := q.k; sa := ro_safe(q.w, q.h); cw := 298 * k; ch := 64 * k; x1 := sa.x1; x0 := x1 - cw; y1 := sa.y1 - 21 * k; y0 := y1 - ch; buf: [48] u8;
   n = hv_rect(out, n, x0, y0, x1, y1, HV_PANEL(), 0.94);
   n = hv_text(out, n, F_MONO, hv_reel(g, buf[..]), x0 + 14 * k, y0 + 21 * k, 6.5 * k, HV_ORANGE(), 1);
   o := objective(g); cap := 9.5 * k;
@@ -274,7 +274,7 @@ hv_card :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   if g_board_given(g) { caps[kn] = "Q"; words[kn] = "BOARD"; kn += 1; }
   if g[0].bot { caps[kn] = "R"; words[kn] = "BOTS"; kn += 1; }
   caps[kn] = "H"; words[kn] = "HIDE HUD"; kn += 1;
-  x := x1; hc := 6.5 * k; base := q.h - 30 * k;
+  x := x1; hc := 6.5 * k; base := sa.y1;   // the keys' line sits on the margin
   i := kn - 1;
   while i >= 0 {
     x = x - ui_w(F_TITLE, words[i], hc);
@@ -318,8 +318,12 @@ hv_prompt :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   n := at; k := q.k; buf: [64] u8;
   p := hv_prompt_of(g, buf[..]);
   if p.verb == "" && p.what == "" { return n; }
-  kc := 8 * k; vc := 10 * k; wc := 9 * k;
+  kc := 8 * k; vc := 10 * k; wc := 9 * k; sa := ro_safe(q.w, q.h);
   kw := hi(20 * k, ui_w(F_TITLE, p.key, kc) + 12 * k); vw := ui_w(F_TITLE, p.verb, vc); ww := ifx p.what != "" then ui_w(F_MONO, p.what, wc) + (ifx vw > 0 then 12 * k else 0.0f32) else 0.0f32;
+  while kw + vw + ww + 46 * k > sa.x1 - sa.x0 && wc > 6 * k {   // a long one gets smaller, inside the margin
+    vc -= 0.5 * k; wc -= 0.5 * k;
+    vw = ui_w(F_TITLE, p.verb, vc); ww = ifx p.what != "" then ui_w(F_MONO, p.what, wc) + (ifx vw > 0 then 12 * k else 0.0f32) else 0.0f32;
+  }
   bw := hi(286 * k, kw + vw + ww + 46 * k); bh := 46 * k; x0 := q.w * 0.5 - bw * 0.5; y0 := q.h * 0.56 - bh * 0.5;
   n = hv_rect(out, n, x0, y0, x0 + bw, y0 + bh, HV_PANEL(), 0.95);
   kx := x0 + 14 * k; ky := y0 + bh * 0.5;
@@ -341,7 +345,9 @@ hv_message :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   n := at; k := q.k; m := msg_text(g);
   if m == "" || hv_toasted(g[0].msg) { return n; }
   bad := g[0].msg == MSG_BAD_CUT || g[0].msg == MSG_AIR || g[0].msg == MSG_WEAK || g[0].msg == MSG_HIT || g[0].msg == MSG_NEED || g[0].msg == MSG_WAKE;
-  cap := 9 * k; mw := ui_w(F_MONO, m, cap) + 44 * k; x0 := q.w * 0.5 - mw * 0.5; y0 := q.h * 0.3;
+  sa := ro_safe(q.w, q.h); cap := 9 * k;
+  while ui_w(F_MONO, m, cap) + 44 * k > sa.x1 - sa.x0 && cap > 6 * k { cap -= 0.5 * k; }   // a long one gets smaller, inside the margin
+  mw := ui_w(F_MONO, m, cap) + 44 * k; x0 := q.w * 0.5 - mw * 0.5; y0 := q.h * 0.3;
   n = hv_rect(out, n, x0, y0, x0 + mw, y0 + 38 * k, HV_PANEL(), 0.95);
   if bad { n = ui_seg(out, n, x0 + 1.5 * k, y0 + 2 * k, x0 + 1.5 * k, y0 + 36 * k, 2.2 * k, HV_ORANGE(), 1); }
   return hv_mid(out, n, F_MONO, m, q.w * 0.5, y0 + 24 * k, cap, ifx bad then HV_ORANGE() else HV_CREAM(), 1);

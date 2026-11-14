@@ -6,6 +6,14 @@
 #module "metaverse.engine.ui.readout";
 #load "../core/angle.coax";
 
+// ---- the safe margin
+// The rectangle a HUD keeps inside: RO_SAFE of the viewport in from each side, so nothing sits on an
+// edge that a TV, a rounded corner or a window frame clips, whatever the aspect. From the viewport's
+// own size, never fixed pixels.
+RO_SAFE :: 0.05f32;
+RoSafe :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+ro_safe :: (w: f32, h: f32) -> RoSafe { return RoSafe.{x0 = w * RO_SAFE, y0 = h * RO_SAFE, x1 = w * (1 - RO_SAFE), y1 = h * (1 - RO_SAFE)}; }
+
 // ---- the compass bar
 // Where a bearing falls on a bar `width` wide that shows `span` radians centred on `heading`: the
 // offset from the bar's middle, positive to the right. Yaw is the engine's (0 faces +Z, a quarter turn
@@ -90,4 +98,12 @@ ro_toast_alpha :: (t: [] RoToasts, i: int) -> f32 {
   #assert t[0].n == RO_TOASTS && ro_toast_alpha(t[..], 0) > 0.4 && ro_toast_alpha(t[..], 0) < 0.6;
   ro_toasts_step(t[..], RO_FADE);
   #assert t[0].n == 0;
+}
+#test "the safe margin is 5% of the viewport on each side, at any size" {
+  for size: 0..<3 {
+    w := ifx size == 0 then 1440.0f32 else ifx size == 1 then 1920.0f32 else 1280.0f32;
+    h := ifx size == 0 then 900.0f32 else ifx size == 1 then 1080.0f32 else 720.0f32;
+    r := ro_safe(w, h);
+    #assert abs(r.x0 - w * 0.05) < 0.01 && abs(w - r.x1 - w * 0.05) < 0.01 && abs(r.y0 - h * 0.05) < 0.01 && abs(h - r.y1 - h * 0.05) < 0.01;
+  }
 }
