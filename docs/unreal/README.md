@@ -13,6 +13,7 @@ the Model Context Protocol (MCP) tools that ship inside it. Written 2026-11-11.
 | [2026-11-12-splice-unreal-vs-aethyr-session-audit.md](2026-11-12-splice-unreal-vs-aethyr-session-audit.md) | Why two agent sessions building the same game came out so different in Unreal and in the Metaverse Engine, with rules for the next Unreal session |
 | [2026-11-12-aethyr-to-unreal-exporter-spec.md](2026-11-12-aethyr-to-unreal-exporter-spec.md) | Specification for the minimal exporter that turns a Metaverse Engine game (Splice Bots first) into an Unreal project: glTF world, a JSON manifest, and the compiled rules behind a bridge plugin |
 | [2026-11-12-splice-download-size.md](2026-11-12-splice-download-size.md) | What a first visit downloads for Splice Bots as an Aethyr page (443 KB) and as the Unreal web export (72.7 MB), file by file |
+| [2026-11-14-what-belongs-in-unreal.md](2026-11-14-what-belongs-in-unreal.md) | What stays in the prototype (rules, layout, interface) and what moves to Unreal (particles, lighting, sound, animation, cinematics), the one-way line between them, and what the exporter needs so Niagara effects can follow the rules' events |
 
 ## Summary
 
