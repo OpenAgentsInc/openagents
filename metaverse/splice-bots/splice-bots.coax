@@ -429,6 +429,10 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
   // the world's answers (512 + the host's id: "STATUS\n" then the body), and the dev server's word that it was written
   if kind >= 512 && kind < 520 && s.count > 0 && s[0].follow == 2 { _ := spw_page_answer(s[0].game[..], s[0].page[..], kind - 512, body); return; }
   if kind == 614 && s.count > 0 && s[0].follow == 2 { wf_nudge(s[0].page[0].f[..], body); return; }
+  // a host that places the view itself (the Unreal host's camera): "0" gives it back to the game; "1" then the view it
+  // shows (eye x y z, the point it looks at x y z, in millimetres, and its vertical angle in thousandths of a radian),
+  // then the aim (eye and point, millimetres). The bars over the bots are drawn for the view; Digger is pointed along the aim.
+  if kind == 622 && s.count > 0 { splice_host_view(s[0].game[..], body); return; }
   // the editor shell's actions (metaverse-engine/editor/shell.coax): 520 a batch of edits, sent as this page's own write; 521 the piece to select
   if kind == 520 && s.count > 0 && s[0].edit && s[0].follow == 2 { _ := spw_shell_batch(s[0].page[..], body); return; }
   if kind == 521 && s.count > 0 && s[0].edit { spw_select(s[0].game[..], s[0].page[..], sp_whole(body, 0)); return; }
@@ -619,6 +623,14 @@ splice_key :: (s: [] Splice, key: int, down: bool) -> bool #export_c #effects(al
   return g_key(s[0].game[..], key, down);
 }
 // Mouse look (the host holds the pointer while you walk): 0 a still scene, 1 the cursor is free, 2 hold it.
+splice_host_view :: (g: [] SpGame, body: string) {
+  if sp_whole(body, 0) != 1 { g[0].hview_on = false; g[0].haim_on = false; return; }
+  g[0].hview = VpView.{ex = sp_milli(body, 1), ey = sp_milli(body, 2), ez = sp_milli(body, 3), ax = sp_milli(body, 4), ay = sp_milli(body, 5), az = sp_milli(body, 6), fov = sp_milli(body, 7)};
+  g[0].haim = VpView.{ex = sp_milli(body, 8), ey = sp_milli(body, 9), ez = sp_milli(body, 10), ax = sp_milli(body, 11), ay = sp_milli(body, 12), az = sp_milli(body, 13), fov = sp_milli(body, 7)};
+  g[0].hview_on = true; g[0].haim_on = true;
+}
+sp_milli :: (body: string, n: int) -> f32 { return cast(f32) sp_whole(body, n) * 0.001; }
+sp_put_signed :: (buf: [] u8, at: int, v: int) -> int { n := ifx v < 0 then tput(buf, at, "-") else at; return tput_int(buf, n, ifx v < 0 then -v else v); }
 splice_mouselook :: (s: [] Splice) -> int #export_c #effects(all) {
   if s[0].gallery || !s[0].started { return 0; }
   if s[0].edit && !vp_hands(s[0].vp[..]) { return 1; }   // a tool is picked: the cursor is free
@@ -703,6 +715,29 @@ splice_store_asked :: (s: [] Splice, which: int, accepted: bool) #export_c #effe
 splice_piece_words :: () -> int #export_c #effects(all) { return SD_PIECE_WORDS; }
 splice_place_words :: () -> int #export_c #effects(all) { return SD_PLACE_WORDS; }
 
+#test "a host that places the view (message 622): the bars follow its view, Digger is pointed along its aim, and \"0\" gives both back; a reset keeps it" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5);
+  // she stands 5.8 m past the DRILL card facing away from it: the game's own crosshair misses it
+  dx := pick_x(g[..], H_DRILL); dz := pick_z(g[..], H_DRILL);
+  g[0].px = dx; g[0].pz = dz - 5.8; g[0].yaw = PI; g_bot_home(g[..]); g[0].look_free = false;
+  #assert d_pointed(g[..]).kind != DP_PICK;
+  // the host looks back at her from in front (Minecraft's second view) and aims from her head at the card
+  x := cast(int) (dx * 1000); z := cast(int) (dz * 1000);
+  body: [256] u8; n := 0;
+  n = tput(body[..], n, "1 "); n = sp_put_signed(body[..], n, x); n = tput(body[..], n, " 1700 "); n = sp_put_signed(body[..], n, z - 9000);
+  n = tput(body[..], n, " "); n = sp_put_signed(body[..], n, x); n = tput(body[..], n, " 1500 "); n = sp_put_signed(body[..], n, z - 5800); n = tput(body[..], n, " 820 ");
+  n = sp_put_signed(body[..], n, x); n = tput(body[..], n, " 1500 "); n = sp_put_signed(body[..], n, z - 5800);
+  n = tput(body[..], n, " "); n = sp_put_signed(body[..], n, x); n = tput(body[..], n, " 750 "); n = sp_put_signed(body[..], n, z);
+  splice_host_view(g[..], cast(string) body[0..<n]);
+  v := d_view(g[..]);
+  #assert g[0].hview_on && abs(v.ez - (dz - 9)) < 0.01 && abs(v.fov - 0.82) < 0.001;
+  #assert d_pointed(g[..]).kind == DP_PICK && d_pointed(g[..]).i == H_DRILL;
+  g_reset(g[..]);
+  #assert g[0].hview_on && g[0].haim_on;
+  splice_host_view(g[..], "0");
+  #assert !g[0].hview_on && !g[0].haim_on;
+}
 #test "a scripted host's numbers parse, signs and all, and a missing one is 0" {
   #assert sp_whole("-1250 300", 0) == -1250 && sp_whole("-1250 300", 1) == 300 && sp_whole("7", 0) == 7 && sp_whole("7", 1) == 0 && sp_whole("", 0) == 0;
 }

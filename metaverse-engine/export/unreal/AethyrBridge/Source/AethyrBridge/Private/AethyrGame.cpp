@@ -202,6 +202,7 @@ void AAethyrGame::BeginPlay()
 		Flags.SetAntiAliasing(!FParse::Param(FCommandLine::Get(), TEXT("AethyrNoAA")));
 	}
 	bInput = !FParse::Param(FCommandLine::Get(), TEXT("AethyrNoInput"));
+	ReadCameraSettings();
 	if (LiveMaterial) { Live->SetMaterial(0, LiveMaterial); }
 }
 
@@ -228,11 +229,12 @@ void AAethyrGame::SendKeys(APlayerController* Player)
 		if (bHold) { Player->SetInputMode(FInputModeGameOnly()); } else { Player->SetInputMode(FInputModeGameAndUI().SetHideCursorDuringCapture(false)); }
 		aethyr_pointer_lock(State, bHold ? 1 : 0);
 	}
-	if (bHold)
+	// the look (mouse and right stick, AethyrCamera.cpp) and the camera's own key: F5 or V, the right stick's click or the top face button
+	if (bHold) { LookInput(Player, GetWorld()->GetDeltaSeconds()); }
+	if (Player->WasInputKeyJustPressed(EKeys::F5) || Player->WasInputKeyJustPressed(EKeys::V) ||
+		Player->WasInputKeyJustPressed(EKeys::Gamepad_RightThumbstick) || Player->WasInputKeyJustPressed(EKeys::Gamepad_FaceButton_Top))
 	{
-		float Dx = 0, Dy = 0;
-		Player->GetInputMouseDelta(Dx, Dy);
-		if (Dx != 0 || Dy != 0) { aethyr_look_delta(State, Dx * 8.0f, -Dy * 8.0f); }   // Unreal's delta is up-positive and in its own small units
+		CycleCameraMode();
 	}
 	float X = 0, Y = 0;
 	if (Player->GetMousePosition(X, Y))
@@ -373,21 +375,6 @@ void AAethyrGame::UpdateRequests()
 #endif
 }
 
-void AAethyrGame::UpdateCamera()
-{
-	if (Uniforms.Num() < FMath::Max3(EyeAt, ForwardAt, UpAt) + 4) { return; }
-	const float* U = Uniforms.GetData();
-	const FVector Eye = ToUnreal(U[EyeAt], U[EyeAt + 1], U[EyeAt + 2]);
-	const FVector Forward = DirToUnreal(U[ForwardAt], U[ForwardAt + 1], U[ForwardAt + 2]);
-	const FVector Up = DirToUnreal(U[UpAt], U[UpAt + 1], U[UpAt + 2]);
-	if (Forward.IsNearlyZero()) { return; }
-	Camera->SetWorldLocationAndRotation(Eye, FRotationMatrix::MakeFromXZ(Forward, Up).Rotator());
-	Sky->SetWorldLocation(Eye);
-	// the world's angle is vertical; Unreal's is horizontal
-	const float Tan = U[EyeAt + 3], Aspect = U[ForwardAt + 3];
-	if (Tan > 0 && Aspect > 0) { Camera->SetFieldOfView(FMath::RadiansToDegrees(2.0f * FMath::Atan(Tan * Aspect))); }
-}
-
 void AAethyrGame::UpdateLook()
 {
 	if (!Look) { return; }
@@ -433,7 +420,7 @@ void AAethyrGame::Tick(float DeltaSeconds)
 	UpdateThings();
 	UpdateLive();
 	UpdatePieces();
-	UpdateCamera();
+	UpdateCamera(DeltaSeconds);
 	UpdateLook();
 	HostSeconds += FPlatformTime::Seconds() - Before;
 	FrameSeconds += DeltaSeconds;
@@ -632,6 +619,9 @@ void AAethyrGame::UpdateThings()
 		// a thing faces +z in its own space; turned by its yaw about the world's up
 		C->SetWorldLocationAndRotation(ToUnreal(T[2], T[3], T[4]), FRotator(0.0f, -FMath::RadiansToDegrees(T[5]), 0.0f));
 		C->SetVisibility(true);
+		// her own model, when Unreal draws it: hidden from the first-person camera, its shadow still cast
+		C->bCastHiddenShadow = true;
+		C->SetHiddenInGame(Kind == 0 && bBodyHidden);
 	}
 	for (int32 I = Used; I < ThingPool.Num(); I++) { ThingPool[I]->SetVisibility(false); }
 #endif
@@ -648,6 +638,10 @@ void AAethyrGame::PlayEvents()
 		const FName* Name = Manifest ? Manifest->Events.Find(Id) : nullptr;
 		if (!Name) { continue; }
 		UE_LOG(LogAethyr, Display, TEXT("AETHYR_EVENT %s"), *Name->ToString());
+		// the camera's shake: a hit on her, or an impact (a wall broken, the boss down, a blow)
+		static const FName Hurt(TEXT("hurt")), Smack(TEXT("smack")), Broke(TEXT("wall-broke")), Down(TEXT("boss-down"));
+		if (*Name == Hurt) { PlayCameraShake(false); }
+		else if (*Name == Smack || *Name == Broke || *Name == Down) { PlayCameraShake(true); }
 		if (USoundBase* Sound = Cast<USoundBase>(OverrideFor(TEXT("event.") + Name->ToString())))
 		{
 			UGameplayStatics::PlaySound2D(this, Sound);

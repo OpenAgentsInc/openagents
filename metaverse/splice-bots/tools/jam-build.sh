@@ -68,6 +68,11 @@ grep -q 'AETHYR_STATE mode 1 ' "$out/keys/console.log" || { tail -20 "$out/keys.
 (cd "$engine/Engine/Platforms/Wasm/Build/Tools/web" && ../../../../../Binaries/ThirdParty/Python3/Mac/bin/python3 webrun.py run --stage "$stage" \
   --fixtures "$repo/metaverse-engine/export/unreal/web-fixtures.json" --fixture splice-digger --headless --query tier=forward --out "$out/digger") > "$out/digger.log" 2>&1 || true
 [[ -f "$out/digger/turn12.png" ]] || echo "jam-build: no Digger shot (see $out/digger.log)"
+echo "jam-build: 5c the player camera's three views, the board at speed and a room's walls (shots in $out/camera)"
+(cd "$engine/Engine/Platforms/Wasm/Build/Tools/web" && ../../../../../Binaries/ThirdParty/Python3/Mac/bin/python3 webrun.py run --stage "$stage" \
+  --fixtures "$repo/metaverse-engine/export/unreal/web-fixtures.json" --fixture splice-camera --headless --query tier=forward --out "$out/camera") > "$out/camera.log" 2>&1 || true
+grep -h -o 'AETHYR_CAMERA [^"]*' "$out/camera/console.log" 2>/dev/null > "$out/camera.lines" || true
+grep -q 'AETHYR_CAMERA view first owned 1' "$out/camera.lines" || echo "jam-build: the camera run never showed first person on foot (see $out/camera.log)"
 grep -h -o 'AETHYR_SOUND [^"]*' "$out"/browser/console.log "$out"/keys/console.log 2>/dev/null | sort | uniq -c | sort -rn > "$out/sounds-played.txt" || true
 echo "jam-build: sounds the browser runs played: $(wc -l < "$out/sounds-played.txt" | tr -d ' ') kinds (see $out/sounds-played.txt)"
 

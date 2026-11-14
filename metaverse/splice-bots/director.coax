@@ -275,6 +275,7 @@ d_bot :: (g: [] SpGame, dt: f32) {
 
 // ---- pointing Digger: the left click, at what is under the crosshair
 d_view :: (g: [] SpGame) -> VpView {
+  if g[0].hview_on { v := g[0].hview; v.w = g[0].dr[0].sw; v.h = g[0].dr[0].sh; return v; }   // the host's own view (message 622)
   c := g_camera(g);
   return VpView.{ex = c.eye.x, ey = c.eye.y, ez = c.eye.z, ax = c.at.x, ay = c.at.y, az = c.at.z, fov = c.fov, w = g[0].dr[0].sw, h = g[0].dr[0].sh};
 }
@@ -291,7 +292,10 @@ d_aim :: (r: VpRay, x: f32, y: f32, z: f32, size: f32, best: [] f32) -> bool {
 }
 // What the crosshair is on: a part, a foe, the rubble or the boss wall, the better sensor; or none.
 d_pointed :: (g: [] SpGame) -> DPoint {
-  r := vp_ray(d_view(g), g[0].dr[0].sw * 0.5, g[0].dr[0].sh * 0.5);
+  // along the middle of the view, or the host's aim (message 622: from the eye in first person, her head in third)
+  v := d_view(g);
+  if g[0].haim_on { v = g[0].haim; v.w = g[0].dr[0].sw; v.h = g[0].dr[0].sh; }
+  r := vp_ray(v, g[0].dr[0].sw * 0.5, g[0].dr[0].sh * 0.5);
   out := DPoint.{kind = DP_NONE, i = -1};
   if !r.ok { return out; }
   best := [1] f32.[2];

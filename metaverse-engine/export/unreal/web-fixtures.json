@@ -124,6 +124,21 @@
         "--input",
         "3:click=720,450;4:key=Enter;6:key=Enter;10:shot=start;11:move=720,450;11.3:move=760,450;11.5:move=800,450;11.6:move=840,450;11.8:move=880,450;11.9:move=920,450;12.1:move=960,450;12.2:shot=turn6;12.5:move=1000,450;12.7:move=1040,450;12.8:move=1080,450;13.0:move=1120,450;13.1:move=1160,450;13.3:move=1200,450;13.4:shot=turn12;13.7:move=1240,450;13.9:move=1280,450;14.0:move=1320,450;14.2:move=1360,450;14.3:move=1400,450;14.5:move=1440,450;14.6:shot=turn18;14.9:move=1480,450;15.1:move=1520,450;15.2:move=1560,450;15.4:move=1600,450;15.5:move=1640,450;15.7:move=1680,450;15.8:shot=turn24"
       ]
+    },
+    "splice-camera": {
+      "about": "Splice Bots at 1440x900, the player camera (AethyrCamera.cpp): a new run, then behind, F5 to front, F5 to first person, V back to behind; the board very fast (W and Ctrl held) behind and in first person (the sprint widening) and stopped; then a room's walls (611 teleport) behind at four turns, in front and in first person. AETHYR_CAMERA lines give the view, fov and arm.",
+      "args": "-log {harness}",
+      "stop_after_ready": 36,
+      "stop_after": 0,
+      "timeout": 320,
+      "page": [
+        "--viewport",
+        "1440x900",
+        "--input-anchor",
+        "READY",
+        "--input",
+        "3:click=720,450;4:key=Enter;6:key=Enter;10:exec=aethyr.cam.Mode 1;11:shot=behind;11.5:key=F5;12.5:shot=front;13:key=F5;14:shot=first;14.5:key=v;15.5:shot=behind2;16:key=q;16.5:down=w;16.7:down=Control;19:shot=sprint;19.2:key=v;19.4:key=v;20.6:shot=sprint-first;21:up=Control;21.1:up=w;22.6:shot=stopped-first;23:key=q;23.5:key=v;24:exec=aethyr.Message 611 -50000 25700;25:shot=wall0;25.3:move=750,450;25.5:move=781,450;26.2:shot=wall90;26.5:move=811,450;26.7:move=842,450;27.4:shot=wall180;27.7:move=872,450;27.9:move=903,450;28.6:shot=wall270;29:key=v;30:shot=wall-front;30.5:key=v;31.5:shot=wall-first"
+      ]
     }
   }
 }

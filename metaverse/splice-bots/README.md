@@ -483,6 +483,70 @@ more. About 15 minutes on a quiet Mac.
   counts what the two browser runs played.
 - No Windows build: this Mac has no Windows toolchain or Win64 engine binaries, and Unreal does not
   cross-compile Win64 from macOS.
+- Fixture `splice-camera` (step 5c) shoots the player camera's three views, the board at speed and a
+  room's walls into `OUT/camera`, and `OUT/camera.lines` keeps its `AETHYR_CAMERA` lines.
+
+#### The player camera
+
+The Unreal host places the view itself while you are on foot (`AethyrCamera.h`,
+`AethyrBridge/Private/AethyrCamera.cpp`). The world still owns where you stand, which way you face and
+walk, its collision and the scripted run. The host gives it the view it shows and the ray it aims along
+(message 622), so the bars over the bots and Digger's pointing match the picture. In the edit bay, the
+drive, the memory and the title the world's own camera shows, blended to and from. A scripted run
+(`-AethyrPlay`, `-AethyrScript`) sends no 622, so its clicks and lines stay the same.
+
+| Input | Does |
+| --- | --- |
+| F5 or V | Next view: first person, behind, front, then first person again |
+| Gamepad right stick click, or the top face button | The same |
+| Mouse, gamepad right stick | Look (the world turns you; the host keeps the pitch) |
+
+F5 also reloads the page in some browsers, so V is the safe key on the web.
+
+- **First person**: the eye is at `EyeHeight`, pitch reaches ±89°, and your character is hidden from the
+  camera. The game's materials are unlit and cast no Unreal shadows, so hiding the body hides its
+  shadow blob too, except for a model Unreal draws itself, which keeps casting. The head bob scales with
+  speed and is off standing still. A landing dips the eye by the height fallen. The eye is swept out
+  from your middle, so it never enters a wall.
+- **Behind**: a spring arm over the right shoulder with a sphere probe. It pulls in at once on a hit and
+  lets out slowly. It has light position lag and very light turn lag, and it shortens where the world
+  pulls its own camera in (rooms, the rover's cabin). You turn toward where you walk; the camera orbits.
+- **Front**: the arm in front, looking back at you.
+- The body is hidden whenever the camera is closer than `HideDistance`. On the hoverboard the field of
+  view widens with speed (`SprintFovKick`), eased in and out.
+- A view change, or a change to and from the world's camera, blends over `BlendTime`. The view is
+  saved in `GameUserSettings.ini` (`[AethyrCamera] Mode`), so it survives a respawn and a new level.
+- `AimTrace` traces from the eye in first person and from your head in third, along the aim.
+  `PlayCameraShake` is called on `hurt` (light) and `smack`, `wall-broke` and `boss-down` (impact).
+
+Every tunable is on `UAethyrCameraTuning`. To tune without code, make a data asset of it and set it on
+the level's `AethyrGame` actor (**Camera Tuning**). The player's own settings are console variables,
+saved with the view: `aethyr.cam.Mode` (0 first, 1 behind, 2 front), `aethyr.cam.MouseSensitivity`,
+`aethyr.cam.StickSensitivity`, `aethyr.cam.InvertY`, `aethyr.cam.HeadBob`. `aethyr.Message KIND BODY`
+sends the world a message; a test uses `611 X Z` (centimetres) to stand you somewhere.
+
+| Tunable | Default | Turn it |
+| --- | --- | --- |
+| `BlendTime` | 0.25 s | up for slower view changes |
+| `MouseDegreesPerUnit` | 1.4667 | the browser host's feel; the player's multiplier is `MouseSensitivity` |
+| `StickYawSpeed`, `StickPitchSpeed` | 200, 140 °/s | at full stick |
+| `StickDeadZone`, `LookSmoothing` | 0.18, 0.03 s | 0 smoothing is raw input |
+| `FirstPersonFov`, `EyeHeight` | 90°, 155 cm | |
+| `FirstPersonPitchLimit`, `FirstPersonProbeRadius` | 89°, 16 cm | |
+| `BobVertical`, `BobSide`, `BobCycleMetres`, `BobFullSpeed` | 1.6 cm, 0.9 cm, 2.4 m, 560 cm/s | 0 heights for no bob |
+| `LandDipPerMetre`, `LandDipMax`, `LandMinFall`, `LandRecover` | 6 cm, 12 cm, 40 cm, 8/s | |
+| `SprintFovKick`, `SprintSpeedStart`, `SprintSpeedFull`, `FovEaseSpeed` | 8°, 650, 1100 cm/s, 5/s | walking is 560 cm/s |
+| `ThirdPersonFov` | 0 (the world's) | the world's own widens on the board |
+| `ArmLength`, `FrontArmLength`, `PivotHeight`, `ShoulderOffset` | 420, 330, 150, 45 cm | |
+| `ProbeRadius`, `ArmEaseOut` | 18 cm, 3/s | |
+| `PositionLagSpeed`, `RotationLagSpeed` | 14/s, 30/s | higher is stiffer |
+| `ThirdPersonPitchMin`, `ThirdPersonPitchMax` | -70°, 55° | |
+| `HideDistance`, `MinCameraHeight` | 70 cm, 25 cm | |
+| `HitShakeDegrees`, `ImpactShakeDegrees`, `ShakeTime` | 0.6°, 1.2°, 0.3 s | 0 for no built-in shake |
+| `HitShake`, `ImpactShake`, `ShakeAssetScale` | none, none, 0.3 | optional Unreal camera shake assets |
+
+There are no first-person arms or held-item models yet, and no settings menu; the console variables
+stand in for one.
 
 ### Not built yet
 

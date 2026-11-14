@@ -150,6 +150,9 @@ SpGame :: struct {
   // has happened since a host last asked (g_event). Neither changes what the page draws.
   things: [THINGS * THING_FLOATS] f32; thing_first: [THINGS] int; thing_count: [THINGS] int; thing_n: int;
   hide: [TK_KINDS] bool;       // kinds a host draws itself: listed, but not written to the live store; outlives a reset
+  // A host that places the view itself (the Unreal host's camera, message 622): the view it shows, which the
+  // health bars are drawn for, and the ray Digger is pointed along. Off: the game's own camera for both. Outlives a reset.
+  hview: VpView; hview_on: bool; haim: VpView; haim_on: bool;
   events: [EVENTS] int; event_n: int;
   fr: [1] SpFront;             // the front door (front.coax): the menus, your character, the kept run; outlives a reset
   dv: [1] SpDrive;             // the drive to the garage (drive.coax)
@@ -298,6 +301,7 @@ g_respawn :: (g: [] SpGame) {
 g_reset :: (g: [] SpGame) {
   gray := g[0].gray;   // the graybox toggle is the viewer's, not the run's
   hide: [TK_KINDS] bool; for k: 0..<TK_KINDS { hide[k] = g[0].hide[k]; }   // and what a host draws is the host's
+  hview := g[0].hview; hview_on := g[0].hview_on; haim := g[0].haim; haim_on := g[0].haim_on;   // and so is the view it places
   tables := g[0].c[0];   // the content tables are read once
   layer := g[0].layer[0];   // the edit layer is the world's, not the run's
   imports := g[0].imp[0];   // and so are the meshes it imported
@@ -314,6 +318,7 @@ g_reset :: (g: [] SpGame) {
   _ := g_places(g);
   g[0].layer[0] = layer;
   for k: 0..<TK_KINDS { g[0].hide[k] = hide[k]; }
+  g[0].hview = hview; g[0].hview_on = hview_on; g[0].haim = haim; g[0].haim_on = haim_on;
   g_layout(g);
   g[0].mode = M_TITLE; g[0].zone = Z_VILLAGE; g[0].phase = PH_DAWN; g[0].drag = -1;
   g[0].px = g[0].at.vil_x; g[0].pz = g[0].at.vil_z - 3; g[0].yaw = 0; g[0].hearts = T_HEARTS; g[0].rail_v = T_RAIL_SPEED;

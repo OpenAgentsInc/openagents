@@ -8,6 +8,7 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/HUD.h"
+#include "AethyrCamera.h"
 #include "AethyrGame.generated.h"
 
 class UProceduralMeshComponent;
@@ -74,6 +75,26 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Aethyr")
 	int32 PanelCount = 12;
 
+	// The player camera (AethyrCamera.h): its tunables, with none set the class defaults, and the view shown.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Aethyr|Camera")
+	TObjectPtr<UAethyrCameraTuning> CameraTuning;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Aethyr|Camera")
+	EAethyrCameraMode CameraMode = EAethyrCameraMode::Behind;
+
+	// The next view: first person, behind, front, and round. Kept for the next level and the next session.
+	UFUNCTION(BlueprintCallable, Category = "Aethyr|Camera")
+	void CycleCameraMode();
+	UFUNCTION(BlueprintCallable, Category = "Aethyr|Camera")
+	void SetCameraMode(EAethyrCameraMode Mode);
+	// The aim trace of the view shown: from the eye in first person, from her head along the view in third.
+	UFUNCTION(BlueprintCallable, Category = "Aethyr|Camera")
+	bool AimTrace(FHitResult& Hit, float Distance = 3000.0f) const;
+	// A camera shake for an impact (true) or a hit, at the tuning's strength times Scale.
+	UFUNCTION(BlueprintCallable, Category = "Aethyr|Camera")
+	void PlayCameraShake(bool bImpact, float Scale = 1.0f);
+	// A message to the world, as the browser host sends one (the console's aethyr.Message KIND BODY).
+	void SendWorldMessage(int32 Kind, const FString& Body);
+
 	// The overlay as the world last wrote it, for the HUD.
 	const TArray<float>& Overlay() const { return Vertices; }
 	int32 OverlayVertices() const { return OverlayCount; }
@@ -124,8 +145,43 @@ private:
 	void UpdatePieces();
 	void UpdateRequests();
 	void Section(UProceduralMeshComponent* Mesh, const uint32* Words, int32 Count) const;
-	void UpdateCamera();
+	void UpdateCamera(float DeltaSeconds);
 	void UpdateLook();
+
+	// ---- the player camera (AethyrCamera.cpp)
+	const UAethyrCameraTuning& Tuning() const;
+	void LookInput(class APlayerController* Player, float DeltaSeconds);
+	void ReadCameraSettings();
+	void SendView(bool bOwned);
+	bool bCameraReady = false;          // the view below has been set once
+	bool bCameraOwned = false;          // the host places the view (she is on foot)
+	bool bBodyHidden = false;
+	bool bHavePlayer = false;
+	bool bAirborne = false;
+	bool bFalling = false;
+	bool bViewSent = false;
+	EAethyrCameraMode BlendedMode = EAethyrCameraMode::Behind;
+	float LookPitch = 0.0f;             // degrees, up positive: the host's own (first person reaches ±89)
+	float LookYawRate = 0.0f, LookPitchRate = 0.0f;   // smoothed, degrees a second
+	FVector PlayerAt = FVector::ZeroVector;
+	float PlayerSpeed = 0.0f, PlayerClimb = 0.0f;      // cm/s, smoothed
+	float AirPeak = 0.0f, LandDip = 0.0f, LandAge = 10.0f;
+	float BobPhase = 0.0f, BobWeight = 0.0f, SprintAlpha = 0.0f;
+	FVector PivotNow = FVector::ZeroVector;
+	FQuat TurnNow = FQuat::Identity;
+	float ArmNow = 0.0f;
+	FVector ViewAt = FVector::ZeroVector;            // the view as last shown
+	FQuat ViewTurn = FQuat::Identity;
+	float ViewFov = 90.0f;
+	FVector BlendFromAt = FVector::ZeroVector;
+	FQuat BlendFromTurn = FQuat::Identity;
+	float BlendFromFov = 90.0f, BlendAge = 10.0f;
+	float ShakeDegrees = 0.0f, ShakeAge = 10.0f;
+	FVector AimFrom = FVector::ZeroVector, AimDir = FVector::ForwardVector;
+	int32 SentView[14] = {};
+	int32 SeenModeVar = -1;
+	float MouseScale = 1.0f, StickScale = 1.0f;
+	bool bInvertY = false, bBob = true;
 
 	void* State = nullptr;
 	TArray<float> Vertices;
