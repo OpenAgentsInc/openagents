@@ -35,6 +35,12 @@ WM_TIMEOUT_MS :: 300000;   // each coax wgsl (wm_module)
 WM_GPU :: [4] string.["apps/openagents-web/gpu", "everglade/scene/gpu", "everglade/client/gpu", "metaverse/splice-bots/gpu"];
 WM_APP :: "apps/openagents-web";
 WM_SKIP :: "nip";
+// Committed copies of a page's module, each after its source: [copy, source]. The Pylon guide
+// (/docs/connect-a-pylon) draws the homepage's Grid, so connect-pylon.wgsl is newland.wgsl byte
+// for byte (coax/web/connect-pylon-page.ts writes it too). A --site run writes each copy again
+// once its source is written, and --check names a copy that is not its source, so a change to
+// newland's Coax can't leave the guide's copy behind (it did twice: 1eafdd7fea, then 9f20bb8394).
+WM_COPIES :: [2] string.["apps/openagents-web/connect-pylon.wgsl", "apps/openagents-web/newland.wgsl"];
 // wm_module's answers.
 WM_SAME :: 0; WM_FAILED :: 1; WM_WRITTEN :: 2; WM_STALE :: 3;
 // What a --site run found.
@@ -77,8 +83,33 @@ wm_site :: (check: bool) -> int {
       t = wm_tally(t, wm_module(file, into, opts, check), into);
     }
   }
+  for c: 0..<WM_COPIES.count / 2 {
+    into := WM_COPIES[c * 2]; from := WM_COPIES[c * 2 + 1];
+    r := wm_copy(into, from, check);
+    if r == WM_STALE { tool_err("stale: "); tool_err(into); tool_err(" is not "); tool_err(from); tool_errln(" (coax/web/tool.sh coax/web/wgsl-module.coax --site copies it; commit the result)"); r = WM_SAME; t.stale += 1; }
+    t = wm_tally(t, r, into);
+  }
   if check { print("wgsl-module: % module(s) checked, % stale, % failed\n", t.seen, t.stale, t.bad); }
   return ifx t.bad > 0 || t.stale > 0 then 1 else 0;
+}
+// into made the same as from (a committed copy of a module), or with check only compared.
+// WM_SAME, WM_WRITTEN, WM_STALE or WM_FAILED.
+wm_copy :: (into: string, from: string, check: bool) -> int {
+  src: [WM_PAGE] u8;
+  sn := fs_read(from, src[..]);
+  if sn < 0 { tool_err("wgsl-module: cannot read "); tool_errln(from); return WM_FAILED; }
+  was: [WM_PAGE] u8;
+  wn := fs_read(into, was[..]);
+  r := wm_copy_answer(wn >= 0, ifx wn >= 0 then cast(string) was[0..<wn] else "", cast(string) src[0..<sn], check);
+  if r != WM_WRITTEN { return r; }
+  if !fs_write(into, cast(string) src[0..<sn]) { tool_err("wgsl-module: cannot write "); tool_errln(into); return WM_FAILED; }
+  return WM_WRITTEN;
+}
+// What a copy needs: WM_SAME when it is its source, WM_STALE when it is not and check only
+// compares, WM_WRITTEN when it is to be written (it differs, or there is none).
+wm_copy_answer :: (have: bool, was: string, src: string, check: bool) -> int {
+  if have && was == src { return WM_SAME; }
+  return ifx check then WM_STALE else WM_WRITTEN;
 }
 // t with one module's answer r (for into) counted; a stale one is named.
 wm_tally :: (t: WmTally, r: int, into: string) -> WmTally {
@@ -239,6 +270,14 @@ wm_words :: (text: string, into: [] string) -> int {
   #assert wm_path(o[..], "apps/openagents-web/gpu", "realm", ".coax") == "apps/openagents-web/gpu/realm.coax";
   #assert wm_path(o[..], "apps/openagents-web/gpu", "realmrealm", ".module") == "";
   #assert wm_path(o[..], WM_GPU[2], "fx", ".coax") == "everglade/client/gpu/fx.coax";
+}
+#test "a module's copy is kept, named stale, or written" {
+  #assert wm_copy_answer(true, "fn a() {}\n", "fn a() {}\n", true) == WM_SAME;
+  #assert wm_copy_answer(true, "fn a() {}\n", "fn a() {}\n", false) == WM_SAME;
+  #assert wm_copy_answer(true, "fn old() {}\n", "fn a() {}\n", true) == WM_STALE;
+  #assert wm_copy_answer(true, "fn old() {}\n", "fn a() {}\n", false) == WM_WRITTEN;
+  #assert wm_copy_answer(false, "", "", true) == WM_STALE && wm_copy_answer(false, "", "", false) == WM_WRITTEN;
+  #assert WM_COPIES.count % 2 == 0 && WM_COPIES[1] == "apps/openagents-web/newland.wgsl";
 }
 #test "a failed module is bad; written and unchanged ones are only seen" {
   t: WmTally;

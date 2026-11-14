@@ -148,6 +148,11 @@ refuses a push when:
    `drive-hit-check` when the push changes `coax drive` or the browser
    protocol under it (headless Chrome on a fixture page, two seconds; on a
    machine with no browser it can't run and isn't counted, #13448),
+   `wgsl-module.coax --site --check` when the push changes Coax, a `.wgsl`,
+   a module's options or bindings (every committed `.wgsl` is what its Coax
+   writes, and each committed copy, `connect-pylon.wgsl`, is its source
+   `newland.wgsl`; run `coax/web/tool.sh coax/web/wgsl-module.coax --site`
+   and commit),
    and `coax test` of the suites the push changed (`check.sh only`, on the
   pushed commit itself), on a build host when
    `remote.sh status` shows one with a free slot. A check that fails on

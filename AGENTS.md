@@ -172,7 +172,7 @@ metaverse/test_voice.sh [WAV...]             # voice engine, wire, floor, meter 
 coax/tests/net/tls.sh [--public [URL]]   # wss://: tls-native.c under ASan/UBSan against local TLS endpoints (OpenSSL from Nix)
 apps/openagents-ios/build.sh                # the app, for the simulator
 coax/web/serve.sh apps/openagents-web       # the website with hot reload: http://127.0.0.1:8800/
-coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/openagents-web/*.wgsl match their Coax (build.sh writes them; commit them)
+coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/openagents-web/*.wgsl match their Coax, and connect-pylon.wgsl is newland.wgsl (build.sh writes them; commit them; runs before a push)
 coax/web/tool.sh everglade-parity           # no Everglade zone carries its own copy of a shared feature (everglade/features.coax, #13075)
 coax/web/tool.sh everglade/model/tools/zone-cells.coax --check everglade/world/zone-cells.coax everglade/content/everglade.content  # Everglade's cells and navigation are what the land builds, every spawn and named point is reachable (--write after a change to the land or a collider; docs/metaverse/navigation.md, #13281)
 coax/web/tool.sh components-check           # the component system's layers, no looks in a component, one Markdown parser (components/spec.md, #13153)
@@ -271,7 +271,7 @@ tests for what you touched, not everything.
   10 to 20 seconds, never more than two minutes). It refuses a commit that
   undoes another agent's work of the last 24 hours (a tree written from a
   stale snapshot), a commit with no `Agent:` line, and a failing
-  `tools-check`, `everglade-parity`, `wire-check`, `layer-check`, state-keep test, `agent-reference --check`, `drive-hit-check` (a push that changes `coax drive`) or touched
+  `tools-check`, `everglade-parity`, `wire-check`, `layer-check`, state-keep test, `agent-reference --check`, `drive-hit-check` (a push that changes `coax drive`), `wgsl-module --site --check` (a push that changes Coax or a shader) or touched
   suite. The hooks are tracked in `coax/remote/hooks/`; a clone turns them on
   once with `git config core.hooksPath coax/remote/hooks` (this Mac's clone
   has it, so every worktree gets it). When a refusal is right, fix the
