@@ -1685,7 +1685,7 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   #assert a.rover_x == 6.0 && a.rover_z == 5.0 && a.post_x == 2.6 && a.post_z == 6.5 && abs(a.crate_x - 38.31) < 0.001 && abs(a.crate_z + 52.04) < 0.001 && a.start_x == 0.0 && a.start_z == 9.0;
   #assert a.rubble_z == -34.0 && a.wall_z == -351.0 && a.boss_x == 0.0 && a.boss_z == -406.0;
   #assert a.deck_x == 141.0 && a.deck_z0 == -204.0 && a.deck_z1 == -186.0 && DECK_Y == 0.9 && RAMP == 3.0;
-  #assert a.bay_x == -100.0 && a.bay_z == 136.0 && a.mem_x == -100.0 && a.mem_z == 200.0;
+  #assert a.bay_x == -500.0 && a.bay_z == 136.0 && a.mem_x == -500.0 && a.mem_z == 200.0;
   #assert a.vil_x == 175.0 && a.vil_z == -75.0 && a.vil_r == 7.0 && a.scan_z == -65.0 && a.rail_x == 175.0 && a.rail_z == -55.0;
   // the first five lie at the solar farm, the rest in the garage's bays (#13505)
   px := [PICKS] f32.[-12, -2, 36, 6, 46, -143.92, -38.31, -104.65, 128.17, 143]; pz := [PICKS] f32.[342, 336, 360, 333, 358, -156.44, -52.04, -90.35, -121, -199.5];

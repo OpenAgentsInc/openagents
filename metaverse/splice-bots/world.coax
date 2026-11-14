@@ -439,10 +439,10 @@ spw_batch :: (g: [] SpGame, x: [] SpwWork, doc: string, body: string, fenced: bo
   return b;
 }
 // The pieces a world holds before its first edit (#13505): the solar farm where a run starts (its
-// panels, chargers and mesas, Sniper's rover train, a raider mech out in the desert and two at the
-// garage's mouth) and the rover's room (its windows, the loft bunk, the desk, the workbench arm and
+// panels and chargers and Sniper's rover train, the plains left clear for props placed by hand) and the
+// rover's room, far out to the west where nothing on the road sees it (its windows, the loft bunk, the desk, the workbench arm and
 // the sofa). One row a piece: its kind (content ID), where it stands in centimetres, its turn in degrees.
-SPW_SHIPPED_N :: 33;
+SPW_SHIPPED_N :: 26;
 SPW_SHIPPED :: [SPW_SHIPPED_N * 4] int.[
   120, 1800, 33600, 0,
   120, 1800, 34100, 0,
@@ -457,26 +457,19 @@ SPW_SHIPPED :: [SPW_SHIPPED_N * 4] int.[
   121, 2800, 36000, 180,
   121, 3200, 36000, 180,
   123, 300, 34800, 0,
-  122, -5000, 39000, 20,
-  122, 4800, 39200, -30,
-  122, -5200, 33500, 60,
-  122, 1500, 39300, 10,
-  108, -3500, 38300, 150,
-  108, -1100, 600, 90,
-  108, 1100, 600, -90,
-  127, -10310, 26330, 0,
-  127, -10000, 26330, 0,
-  127, -9690, 26330, 0,
-  127, -10310, 25670, 0,
-  127, -9690, 25670, 0,
-  127, -10430, 25845, 90,
-  127, -9570, 25845, 90,
-  127, -10430, 26155, 90,
-  127, -9570, 26155, 90,
-  124, -10250, 25850, 0,
-  125, -9730, 25860, 180,
-  126, -9760, 26160, -90,
-  128, -10250, 26170, 90];
+  127, -50310, 26330, 0,
+  127, -50000, 26330, 0,
+  127, -49690, 26330, 0,
+  127, -50310, 25670, 0,
+  127, -49690, 25670, 0,
+  127, -50430, 25845, 90,
+  127, -49570, 25845, 90,
+  127, -50430, 26155, 90,
+  127, -49570, 26155, 90,
+  124, -50250, 25850, 0,
+  125, -49730, 25860, 180,
+  126, -49760, 26160, -90,
+  128, -50250, 26170, 90];
 // The shipped pieces placed into the layer, each through the layer's check: how many stand, or minus
 // the row the check refused, less one.
 spw_shipped :: (g: [] SpGame) -> int {

@@ -201,7 +201,7 @@ dv_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   g := [1] SpGame.[SpGame.{}]; k: [1] FlowTest;
   g_stage(g[..], 0);
   bare := sc_bare_flow(k[0].o[4][..]);   // the shipped tables' areas, without their own rows
-  t := sc_swap2(bare, "table portals id name:text from:text to:text yaw:int r:int\n", "table portals id name:text from:text to:text yaw:int r:int\n1|Enter the rover|kind 116|-10000 26000|0|400\n2|Drive to the garage|at -10000 26300|ride 0 1000|180|200\n", k[0].o[0][..]);
+  t := sc_swap2(bare, "table portals id name:text from:text to:text yaw:int r:int\n", "table portals id name:text from:text to:text yaw:int r:int\n1|Enter the rover|kind 116|-50000 26000|0|400\n2|Drive to the garage|at -50000 26300|ride 0 1000|180|200\n", k[0].o[0][..]);
   t = sc_swap2(t, "table beats id area:int from:text to:text\n", "table beats id area:int from:text to:text\n1|7|day|dusk\n", k[0].o[2][..]);
   t = sc_swap2(t, "table starts id when:text at:text yaw:int\n", "table starts id when:text at:text yaw:int\n1|day|1000 36000|90\n", k[0].o[3][..]);
   #assert sc_load(g[0].c[..], t) && g_places(g[..]);
@@ -210,9 +210,9 @@ dv_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   // a crate stands for the rover at the farm; E beside it takes you into the room
   #assert sl_place(g[..], 116, 1500, 36000, 90).ok;
   g[0].px = 15; g[0].pz = 357; #assert !sp_in_room(g[..]);
-  #assert g_key(g[..], 'e', true) && g[0].px == -100 && g[0].pz == 260 && sp_in_room(g[..]) && g[0].dv[0].boarded;
+  #assert g_key(g[..], 'e', true) && g[0].px == -500 && g[0].pz == 260 && sp_in_room(g[..]) && g[0].dv[0].boarded;
   // at the desk: no DRILL card, no drive
-  g[0].px = -100; g[0].pz = 263;
+  g[0].px = -500; g[0].pz = 263;
   #assert g_key(g[..], 'e', true) && g[0].mode == M_PLAY && g[0].msg == MSG_NO_DRILL && msg_text(g[..]).count > 10;
   g[0].have[H_DRILL] = true;
   #assert g_key(g[..], 'e', true) && g[0].mode == M_DRIVE && !sp_in_room(g[..]);
