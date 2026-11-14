@@ -19,7 +19,8 @@ for people and agents who change the code.
 | `hud.coax` | The HUD and the edit bay in the SPLICE UI v2 frame (#13505): the compass and the objective, pickup toasts, the interact prompt, the gauges that fade while full or cool, the bot slots, the objective card; H hides it. The edit bay's inventory grid, the picked item's card, the stage, the hardware slots and the behavior strip. The compass, fades and toasts are `metaverse-engine/ui/hud-readout.coax` |
 | `camera.coax`, `camera-checks.coax` | The follow camera behind her on foot and on the hoverboard (below), and its checks |
 | `digger-orders.coax` | Commanding Digger (#13552): the reticle's selection and command, his answer to each order, the marker on his target, the drill card's windup, bite, shudder and break, and where he looks (see Commanding Digger) |
-| `director.coax` | The Director's systems (#13505): the key map, sneaking, Digger picking up parts by his sensor's range, pointing him with a left click, the inventory grid, Heat's sensing range, the health bars, towing and charging Digger, the map and pause |
+| `feel.coax` | How she moves (#13552): the walk, the jump's coyote time and buffer, her air poses, squash and lean, the movement demo, and the tunables and level metrics (see Movement and feel) |
+| `director.coax` | The Director's systems (#13505): the key map (Shift is taken and does nothing), Digger picking up parts by his sensor's range, pointing him with a left click, the inventory grid, Heat's sensing range, the health bars, towing and charging Digger, the map and pause |
 | `gpu/splice-bots.coax` | The shaders: Anime Lab's cel pass, the placed pieces' instances, and the ink overlay |
 | `splice-face.c`, `splice-ue-face.c` | The C faces for the browser and for a native host |
 | `content/splice.content`, `content.coax` | The content tables and their reader |
@@ -76,17 +77,68 @@ There is no SETTINGS row: nothing a setting would change yet. Every sound is off
 that is on starts with your first click or key on the title screen (the browser's rule).
 
 You play as your character. `metaverse-engine/kit/crew-player.coax` writes ten poses of a walk
-cycle from the crew document (the legs and arms swing at the hips and shoulders) into the piece
-store after the placed pieces' meshes, once a character; each frame draws one pose as an
-instance at the smuggler's place. The smuggler's gameplay is unchanged: the same circle, speed
-and stride.
+cycle and four air poses from the crew document (the legs and arms swing at the hips and
+shoulders) into the piece store after the placed pieces' meshes, once a character; each frame
+draws one pose as an instance at the smuggler's place.
 
-Space jumps. The jump is the engine's (`metaverse-engine/move/jump.coax`, the walker's own rules: a
-7.5 m/s press from the ground, 24 m/s^2 down, about 1.1 m high). It lands you on the ground or on
-the top of a placed piece (`sl_floors`, asked as the walker asks for the floor under you); a piece
-whose top is under your feet lets you over it, and walking off its edge drops you. In the air the
-figure holds the walk's widest stride, since the rig has no jump clip. On the hoverboard Space
-hops the board, and in the menus and the edit bay it still picks.
+Space jumps, and a second Space in the air jumps again. The jump is the engine's
+(`metaverse-engine/move/jump.coax`) with the numbers in Movement and feel below. It lands you on
+the ground or on the top of a placed piece (`sl_floors`, asked as the walker asks for the floor
+under you), including the farm's solar rows, whose tilted tops are sloped floors. A top within
+0.3 m of your feet you step onto. Walking off an edge drops you. On the hoverboard Space hops the
+board, and in the menus and the edit bay it still picks.
+
+### Movement and feel
+
+She is light and quick (#13552): she reaches full speed in about a tenth of a second, reverses as
+fast, stops within 0.3 m, and steers well in the air. Nothing waits for an animation: a landing is
+drawn while your keys already move her. `feel.coax` holds every number:
+
+| Constant | Start | Why it fits |
+| --- | --- | --- |
+| `FL_ACCEL` | 52 m/s^2 | 0 to walking speed in about 0.11 s: a press moves her at once |
+| `FL_TURN` | 16 /s | a reversal takes about 0.1 s, with no skid |
+| `FL_BRAKE`, `FL_FRICTION` | 26 m/s^2, 9 /s | letting go stops her in about 0.12 s, within 0.3 m, so she stops where you aim |
+| `FL_AIR` | 0.75 | three quarters of her ground control in the air: you can steer a jump onto a panel |
+| `FL_AIR_FRICTION`, `FL_AIR_BRAKE` | 4 /s, 12 m/s^2 | letting go in the air stops her drift in about 0.17 s, so she lands where you aim |
+| `FL_FACE` | 18 /s | her body turns to her heading in a few frames |
+| `FL_GRAVITY` | 30 m/s^2 | a quick, compact arc rather than a floaty one |
+| `FL_JUMP` | 9 m/s | a 1.28 m jump, about 0.6 s in the air; with `FL_STEP` it reaches a solar row's top (1.34 m) |
+| `JUMP_AIR` (engine) | 1.15 | the second jump lifts harder than the first, so it goes higher |
+| `FL_COYOTE` | 0.1 s | Space just after walking off an edge still jumps from it |
+| `FL_BUFFER` | 0.12 s | Space just before landing, with no air jump left, jumps on landing |
+| `FL_STEP` | 0.3 m | small edges are stepped onto, never snagged on |
+| `FL_SWING`, `FL_STRIDE` | 0.6 rad, 1.9 m | the gait's swing; the stride is measured from the character's own legs, so her feet keep pace with the ground and never slide |
+| `FL_STOP`, `FL_SETTLE` | 0.4 m/s, 14 /s | below that speed with no key down she eases into standing |
+| `FL_LEAN`, `FL_LEAN_MAX` | 0.035, 0.2 | she leans into turns, by turn rate times speed |
+| `FL_PITCH`, `FL_PITCH_MAX` | 0.006, 0.18 | she leans forward to start and back to stop |
+| `FL_LEAN_EASE` | 14 /s | the lean follows smoothly |
+| `FL_TAKEOFF`, `FL_STRETCH` | 0.14 s, 0.08 | a quick takeoff pose with a small stretch |
+| `FL_FALL_VY` | -2.5 m/s | falling faster than this shows the fall pose |
+| `FL_LAND` | 0.12 s | the landing pose and squash; input moves her through it |
+| `FL_SQUASH`, `FL_SQUASH_MAX` | 0.016 per m/s, 0.2 | the squash grows with how hard she lands |
+| `FL_SOFT` | 3 m/s | stepping off a crate has no squash and no landing pose |
+
+Her poses are takeoff (a knee drives up), second jump (tucked, arms back), fall (arms out front)
+and landing (a wide stance). Each footstep and hard landing plays `SND_STEP` and `SND_LAND`,
+off like every other sound.
+
+The metrics a level is built to are named constants in the same file (checked against the real
+walk and jump in `splice-game.coax`):
+
+| Constant | Value | What it is |
+| --- | --- | --- |
+| `FL_M_HEIGHT` | 1.75 m | her height as the first character stands (the creator goes from 1.45 m up) |
+| `FL_M_JUMP` | 1.28 m | the top of one jump |
+| `FL_M_DOUBLE` | 2.98 m | the top of a second jump taken at the first one's top |
+| `FL_M_LEDGE` | 1.58 m | the highest top one jump lands her on (jump plus step) |
+| `FL_M_WALK` | 5.6 m/s | her one speed on foot: no sneak (Shift is off) and no sprint |
+| `FL_M_BOARD`, `FL_M_BOARD_FAST` | 7 m/s, 22 m/s | the hoverboard's casual and fast speeds (the `board` table); double-tap Q is super fast |
+
+The movement demo plays her keys on the game's own clock: `coaxial.send(610, "5")`, then
+`coaxial.send(615, "")` puts her before the solar rows. She walks, jumps onto the panels and
+stops, reverses off, then double jumps forward and lands on a panel. A check plays the
+same demo.
 
 Sniper, the rover, is the checkpoint (#13505): standing by it keeps what you carry. Each second in
 the mine the checkpoint's inventory and what is open (the rubble, the boss wall, the banned bot, the
@@ -121,7 +173,7 @@ The key map follows the slice's beat sheet (#13505). The pause screen (Esc) list
 | --- | --- |
 | W A S D, mouse | Walk and look |
 | Space | Jump; a second Space in the air jumps again, higher (on the hoverboard, hop) |
-| Hold Left Shift | Sneak: you walk at 45 % of your speed and Imperial robots sense you from half as far |
+| Left Shift | Nothing for now: sneaking is off until it has its own pose |
 | Q | Hoverboard: the first press steps on at casual speed, then each press switches casual and fast |
 | Double-tap Q | Hoverboard super fast (the fast speed times 1.6, `board_super_cms`) |
 | Hold Ctrl, or double-tap W and hold it | Hoverboard very fast (the fast speed) while held |
@@ -149,7 +201,7 @@ spliced into him and cards on his strip are his, not yours.
 Heat cools 5 a second at Sniper and nowhere else (not at the stash crate), each banned piece is +25,
 and 100 brings the Emperor's sweep. Heat never cools below 25 for each banned piece with you (DRILL+,
 the core), and an Imperial robot
-senses you from its plan's distance plus 0.07 m for each point of Heat; sneaking halves that.
+senses you from its plan's distance plus 0.07 m for each point of Heat.
 
 You turn to face the way you walk; S walks toward the camera rather than backwards. The camera rises
 over the drill mech or the boss when one stands ahead of you, and comes in front of one behind you.
@@ -256,7 +308,7 @@ built, the rubble ahead of you.
 - **The night return.** After the boss, night falls and she goes back to Sniper on foot: the long way
   round the field's edge under the rim, past the bays, or the shortcut across the field through the
   rave, where Imperial 3 and 4 patrol across her way at night. They sense her by Heat (two banned
-  pieces: 8.5 m, half that sneaking), so sneaking is optional but helps. A check walks both ways with
+  pieces: 8.5 m). A check walks both ways with
   the walk replay's walker, and the run takes the shortcut.
 - **The ending.** SPLICE CORE in Sniper's edit bay plays the 15-second memory hologram with its
   three captions, then SCENE RESTORED, then the mission's teaser with RESTART.
