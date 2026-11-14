@@ -23,7 +23,7 @@ NONE uint32_t coaxial_surface_vertices(cx_face_addr s) { (void)s;return 0; }
 NONE uint32_t coaxial_caster_vertices(cx_face_addr s) { (void)s;return 0; }
 NONE uint32_t coaxial_caster_instances(cx_face_addr s) { (void)s;return 0; }
 NONE void coaxial_wheel(cx_face_addr s,float dy) { (void)s;(void)dy; }
-// host.js calls coaxial_blur only when the face exports it; a face without one (splice-face.c) gets nothing on focus loss, here as there (#13574).
+// host.js calls coaxial_blur only when the face exports it; a face without one gets nothing on focus loss, here as there (#13574).
 NONE void coaxial_blur(cx_face_addr s) { (void)s; }
 NONE void coaxial_page(cx_face_addr s,int32_t p) { (void)s;(void)p; }
 NONE void coaxial_golden(uint32_t on) { (void)on; }

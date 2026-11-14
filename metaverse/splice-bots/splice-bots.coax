@@ -276,7 +276,7 @@ splice_imports :: (s: [] Splice, incoming: string, kept: [] u8) -> bool #export_
   return true;
 }
 splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all) {
-  if (kind==601 || kind==603) && s.count>0 {s[0].thumbs=metaverse_sticks_reset();for i:0..<10 {if s[0].touch_fingers[i]!=0 {_:=g_key(s[0].game[..],s[0].touch_keys[i],false);}s[0].touch_fingers[i]=0;}splice_touch_step(s);}
+  if (kind==601 || kind==603) && s.count>0 {splice_fingers_off(s);}
   // this browser's storage answers (coax/web/STORAGE.md): slot 0 your character, slot 1 the kept run (front.coax)
   if (kind == 768 || kind == 769) && s.count > 0 && !s[0].gallery { fr_stored(s[0].game[..], kind - 768, body); return; }
   if kind == 700 && s.count > 0 { s[0].frame_answer = false; splice_drive(s, body); return; }
@@ -546,6 +546,45 @@ splice_pointer :: (s: [] Splice, x: f32, y: f32, phase: int) -> bool #export_c #
  #assert splice_touch(s[..],600,200,0,32);#assert splice_touch(s[..],650,210,1,32);before:=s[0].game[0].yaw;splice_touch_step(s[..]);#assert before!=s[0].game[0].yaw && s[0].game[0].fwd;
  #assert splice_touch(s[..],100,240,3,31);splice_touch_step(s[..]);#assert !s[0].game[0].fwd && s[0].thumbs.look_on;
  splice_message(s[..],601,"");#assert !s[0].thumbs.look_on && !s[0].game[0].right;
+}
+#test "#13552: focus lost mid-hold lets every key go: she stops walking, a held jump is cut, Ctrl's sprint ends, and Sniper's throttle and handbrake let go" #steps 4000000000 #traversal 2000000000 {
+  s := [1] Splice.[Splice.{}]; s[0].started = true; g := s[0].game[..];
+  g_stage(g, 5); #assert g[0].mode == M_PLAY;
+  #assert splice_key(s[..], 'w', true) && splice_key(s[..], -14, true);
+  for i: 0..<60 { g_step(g, 1.0f32 / 60); }
+  #assert g[0].fwd && stance_fast(g[0].dr[0].st);
+  splice_blur(s[..]);
+  #assert !g[0].fwd && !g[0].back && !g[0].left && !g[0].right && !stance_fast(g[0].dr[0].st) && !g[0].dr[0].st.fwd;
+  for i: 0..<60 { g_step(g, 1.0f32 / 60); }
+  x := g[0].px; z := g[0].pz;
+  for i: 0..<60 { g_step(g, 1.0f32 / 60); }
+  #assert dist2(g[0].px, g[0].pz, x, z) < 0.01;   // she stands where the blur left her
+  // Space held through a blur: the hold is let go, so a rising jump is cut as by a release
+  #assert splice_key(s[..], ' ', true); g_step(g, 1.0f32 / 60);
+  #assert g[0].air[0].presses.held;
+  splice_blur(s[..]);
+  #assert !g[0].jump && !g[0].air[0].presses.held;
+  // the drive: W and Space held, then focus lost; the throttle and the handbrake let go and Sniper slows
+  g_stage(g, 25); #assert g[0].mode == M_DRIVE;
+  #assert splice_key(s[..], 'w', true) && splice_key(s[..], 'a', true);
+  for i: 0..<120 { g_step(g, 1.0f32 / 60); }
+  #assert splice_key(s[..], ' ', true) && g[0].dv[0].brake;
+  v0 := dv_speed(g);
+  splice_blur(s[..]);
+  #assert !g[0].fwd && !g[0].left && !g[0].dv[0].brake && g[0].mode == M_DRIVE;
+  for i: 0..<240 { g_step(g, 1.0f32 / 60); }
+  #assert abs(dv_speed(g)) < abs(v0) * 0.5;
+}
+// Every finger off: the thumbs let go and each on-screen key a finger held is released.
+splice_fingers_off :: (s:[]Splice) {s[0].thumbs=metaverse_sticks_reset();for i:0..<10 {if s[0].touch_fingers[i]!=0 {_:=g_key(s[0].game[..],s[0].touch_keys[i],false);}s[0].touch_fingers[i]=0;}splice_touch_step(s);}
+// Focus lost (coaxial_blur, web and native): every finger, the editor's fly keys and its drag, and
+// the game's held keys and buttons let go (g_blur), so nothing stays held after alt-tab (#13552).
+splice_blur :: (s: [] Splice) #export_c #effects(all) {
+  if s.count != 1 { return; }
+  splice_fingers_off(s);
+  for i: 0..<6 { s[0].vkeys[i] = false; }
+  vp_cancel(s[0].vp[..]);
+  g_blur(s[0].game[..]);
 }
 splice_touch_step :: (s:[]Splice) {
  if !s[0].touched {return;}g:=s[0].game[..];c:=s[0].thumbs;

@@ -835,8 +835,21 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
   }
   return false;
 }
+// Focus lost (alt-tab, a click outside the page): every held key and button lets go, as if each were
+// released, so she and Sniper stop and nothing is held when focus comes back (#13552). Walking, Ctrl's
+// sprint and W W, Space (a rising jump is cut, as a let-go), Q on the board, R's wheel (closed, no
+// order), the drive's W S A D and handbrake, and the edit bay's drag.
+g_blur :: (g: [] SpGame) {
+  g[0].fwd = false; g[0].back = false; g[0].left = false; g[0].right = false; g[0].turn_l = false; g[0].turn_r = false;
+  g[0].jump = false; g[0].air[0] = jump_press(g[0].air[0], false);
+  g[0].dv[0].brake = false;
+  d := g[0].dr[..];
+  d[0].st = stance_forward(stance_hold(stance_sneak(d[0].st, false), false), false);
+  d[0].q_held = false; d[0].q_hold = -1; d[0].wheel = Wheel.{};
+  g[0].drag = -1; g[0].fr[0].spin = false;
+}
 in_box :: (b: [] f32, o: int, x: f32, y: f32) -> bool { return x >= b[o] && x <= b[o + 2] && y >= b[o + 1] && y <= b[o + 3]; }
-g_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
+g_pointer ::(g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
   if fr_front(g) { return fr_pointer(g, x, y, phase); }
   if d_pointer(g, x, y, phase) { return true; }   // pause, the grid, and pointing Digger (director.coax)
   if g[0].mode == M_BAY {
