@@ -95,7 +95,7 @@ The key map follows the slice's beat sheet (#13505). The pause screen (Esc) list
 | Key | What it does |
 | --- | --- |
 | W A S D, mouse | Walk and look |
-| Space | Jump (on the hoverboard, hop) |
+| Space | Jump; a second Space in the air jumps again, higher (on the hoverboard, hop) |
 | Hold Left Shift | Sneak: you walk at 45 % of your speed and Imperial robots sense you from half as far |
 | Q | Hoverboard: the first press steps on at casual speed, then each press switches casual and fast |
 | Double-tap Q | Hoverboard super fast (the fast speed times 1.6, `board_super_cms`) |
@@ -142,7 +142,8 @@ to tow him, and Sniper's charger charges him back up. A foe Digger fights strike
   it swaps Digger's core in: its lenses turn Digger's amber and it follows you; Digger's body waits
   dark. E at the blocked hallway (the boss wall) has it drill through; nothing else breaks it.
 - **The raider mech.** It keeps watch beside the drive's second leg (landmark 92, else 12 m off the
-  route a third of the way from the rail stop to the garage). When Sniper passes within 16 m it gives
+  route a third of the way from the rail stop to the garage). Outrunning it is the default: out of a battle
+  its claws never take Sniper below a third of its health. When Sniper passes within 16 m it gives
   chase at 16 m/s: faster than Sniper's cruise, slower than its top speed, so holding W outruns it
   (20 m behind, it gives up for the drive). Beside Sniper it claws it every 1.3 s. E while it is
   within 12 m starts a battle with Sniper fielded; in the battle Sniper drives at its slow speed and

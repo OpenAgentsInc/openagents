@@ -59,7 +59,10 @@ Jump :: struct {
   on_ground: bool = true;
   presses: InputPress;     // Space and the like: each press is taken by the first step after it
   clock: FrameClock;       // the engine's fixed step (1/64 s)
+  air_jumps: int;          // presses in the air that jump again before landing (a realm's double jump: 1)
+  air_used: int;           // of those, taken since the last landing
 }
+JUMP_AIR :: 1.15f32;       // a jump in the air lifts at this share of the jump speed, so it goes higher
 jump_place :: (y: f32) -> Jump #effects(all) { return Jump.{y = y, prev_y = y}; }
 // The jump control held now (once a frame, or on each key event): a rise is a press.
 jump_press :: (j: Jump, down: bool) -> Jump #effects(all) { next := j; next.presses = input_level(j.presses, down); return next; }
@@ -68,6 +71,8 @@ jump_step :: (j: Jump, loc: LocomotionProfile, ground: f32, dt: f32) -> Jump #ef
   next := j; next.prev_y = j.y;
   t := jump_take(loc, j.presses, j.vy, j.on_ground);
   next.presses = t.presses;
+  if t.pressed && !j.on_ground && j.air_used < j.air_jumps { t.vy = loc.jump_speed * JUMP_AIR; next.air_used = j.air_used + 1; }   // a double jump
+  if j.on_ground { next.air_used = 0; }
   s := jump_settle(loc, j.y, t.vy, t.on_ground, ground, dt);
   next.vy = s.vy; next.on_ground = s.on_ground;
   next.y = jump_rise(loc, s.y, s.vy, ground, dt);
@@ -87,6 +92,26 @@ jump_feet :: (j: Jump) -> f32 #effects(all) { return loop_mix(j.prev_y, j.y, loo
 // In the air: rising, falling, or off a ledge.
 jump_airborne :: (j: Jump) -> bool #effects(all) { return !j.on_ground; }
 
+// The highest the feet go: a press from the ground, let go, and a second press at step `second`.
+jt_top :: (air: int, second: int) -> f32 #effects(all) {
+  loc: LocomotionProfile;
+  j := jump_place(0); j.air_jumps = air; top := 0.0f32;
+  j = jump_press(j, true);
+  for i: 0..<120 {
+    if i == 2 { j = jump_press(j, false); }
+    if i == second { j = jump_press(j, true); }
+    j = jump_step(j, loc, 0, 1.0f32 / 64);
+    if j.y > top { top = j.y; }
+  }
+  return top;
+}
+#test "a double jump: with one air jump, a second press in the air goes higher than one jump; without it, nothing; landing gives it back" {
+  loc: LocomotionProfile;
+  one := jt_top(0, 20); two := jt_top(1, 20);
+  #assert two > one * 1.6 && jt_top(0, 20) == jt_top(0, 999);
+  j := jump_place(0); j.air_jumps = 1; j.air_used = 1; j = jump_step(j, loc, 0, 1.0f32 / 64);
+  #assert j.air_used == 0;
+}
 #test "a press from the ground goes up 1.17 m and lands back in about 0.63 s; holding it never jumps again" {
   loc: LocomotionProfile;
   j := jump_press(jump_place(0), true);

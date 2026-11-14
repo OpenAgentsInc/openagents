@@ -101,6 +101,7 @@ SpGame :: struct {
   gray: bool;                 // graybox (G): the world in grays, orange, yellow and cyan kept; outlives a reset
   mode: int; zone: int; phase: int; t: f32;
   px: f32; pz: f32; yaw: f32; pitch: f32; stride: f32;
+  face_off: f32;               // her body's turn from the view's yaw: she turns to face the way she walks (g_face)
   fwd: bool; back: bool; left: bool; right: bool; turn_l: bool; turn_r: bool;
   look_free: bool;             // the cursor is free (Escape, or the browser refused to hold it)
   jump: bool;                  // Space is held: on foot you jump, on the hoverboard it hops
@@ -460,9 +461,17 @@ g_walk :: (g: [] SpGame, dt: f32) {
   pace := T_WALK * d_pace(g);   // sneaking is slower (director.coax)
   g[0].px += (sin(g[0].yaw) * go - cos(g[0].yaw) * side) * pace * dt;
   g[0].pz += (cos(g[0].yaw) * go + sin(g[0].yaw) * side) * pace * dt;
-  if go != 0 || side != 0 { g[0].stride += dt * 9; }
+  if go != 0 || side != 0 {
+    g[0].stride += dt * 9;
+    // she turns to face the way she walks, never walking backwards (#13505 playtest): her body eases
+    // toward the move's direction, measured from the view
+    want := atan2(-side, go); d := want - g[0].face_off; d = atan2(sin(d), cos(d));
+    g[0].face_off += d * lo(1, 12 * dt);
+  }
   g_collide(g);
 }
+// Which way her body faces: the view's yaw turned by the way she last walked.
+g_face :: (g: [] SpGame) -> f32 { return ifx g_riding(g) then g[0].yaw else g[0].yaw + g[0].face_off; }
 // ---- The hoverboard (#13485): the world's board table gives it (realm world-board), B calls it up
 // at casual, Q switches casual and fast, Q Q is super fast and holding Q steps off (director.coax);
 // W and S speed up and slow, A and D carve, Space hops.
@@ -531,6 +540,7 @@ g_jump :: (g: [] SpGame, dt: f32) {
   c := Colliders.{ground = gr, floors = floors[0..<sl_floors(g, x, z, floors[..]) * STAND_FLOATS]};
   under := query_stand_checked(c, x, z, j[0].y, T_RADIUS);
   loc: LocomotionProfile;   // the engine's published walking numbers: a 7.5 m/s jump, 24 m/s^2
+  j[0].air_jumps = 1;       // a second Space in the air jumps higher (#13505 playtest)
   j[0] = jump_advance(j[0], loc, ifx under.status == QueryStatus.ok then hi(gr, under.y) else gr, dt);
   // standing: on the floor exactly (the catwalk's ramps), not eased onto it
   if j[0].on_ground && under.status == QueryStatus.ok { j[0].y = hi(gr, under.y); }
@@ -984,7 +994,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   blink := g[0].hit_cool > 0 && fract(t * 8) < 0.5;
   if !blink {
     // the smuggler: listed here, drawn as your character from its walk poses in the piece store (front.coax fr_player)
-    pf := frame_at(v3(g[0].px, y, g[0].pz), g[0].yaw);
+    pf := frame_at(v3(g[0].px, y, g[0].pz), g_face(g));
     bd := g[0].board[0]; riding := g_riding(g);
     if riding {
       // on the board: its deck hovers and bobs, the nose lifts as it speeds up, and the rider leans into the carve
@@ -1369,7 +1379,7 @@ g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
     what := ifx !on then "BOARD OFF" else ifx g[0].dr[0].super then "BOARD · SUPER FAST" else ifx bd.fast then "BOARD · FAST" else "BOARD · CASUAL";
     n = ui_text(out, n, what, pad + 12 * k, y0 + 20 * k, 9.5 * k, ifx on && bd.fast then HEAT() else fg);
     if on { n = ui_right(out, n, num(buf[..], "", cast(int) (abs(bd.m.speed) * 3.6 + 0.5), " km/h"), pad + 260 * k, y0 + 20 * k, 9.5 * k, fg); }
-    n = ui_text(out, n, ifx on then "Q fast/casual · Q Q super fast · hold Q off" else "Q board · Space jump", pad + 12 * k, y0 + 40 * k, 7.5 * k, fg);
+    n = ui_text(out, n, ifx on then "Q fast · Q Q super-fast · hold Q off" else "Q board · Q Q super-fast", pad + 12 * k, y0 + 40 * k, 7.5 * k, fg);
   }
   // top centre: the phase, four chips on an ink bar
   bw := 380 * k; bx := w * 0.5 - bw * 0.5;
@@ -1562,11 +1572,11 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
     ui_panel(g, u, -20, -20, w + 20, h + 20, ifx sweep then HEAT() else ink, 1);
     if sweep {
       n = ui_title_mid(out, n, "IMPERIAL SWEEP", w * 0.5, h * 0.46, 40 * k, paper);
-      n = ui_mid(out, n, "Heat hit 100. Back to the checkpoint outside the mine.", w * 0.5, h * 0.56, 12 * k, paper);
+      n = ui_mid(out, n, "Heat hit 100. Back at Sniper.", w * 0.5, h * 0.56, 12 * k, paper);
     } else {
       for i: 0..<3 { n = ui_heart(out, n, w * 0.5 + (cast(f32) i - 1) * 70 * k, h * 0.32, 52 * k, false, ink); }
-      n = ui_title_mid(out, n, "CUT. TAKE TWO.", w * 0.5, h * 0.5, 40 * k, paper);
-      n = ui_mid(out, n, "Back at the rover with your checkpoint inventory.", w * 0.5, h * 0.585, 12 * k, paper);
+      n = ui_title_mid(out, n, "YOU WENT DOWN", w * 0.5, h * 0.5, 40 * k, paper);
+      n = ui_mid(out, n, "Back at Sniper with what you had when you last left it.", w * 0.5, h * 0.585, 12 * k, paper);
       n = ui_mid(out, n, "Banned pieces since then are lost.", w * 0.5, h * 0.625, 12 * k, paper);
     }
     return n;
@@ -2286,6 +2296,38 @@ sb_drive_check :: (g: [] SpGame) {
   g_stage(g, 3);
   g[0].pinged = true; g[0].have[H_BATTERY] = true; g[0].taken[H_BATTERY] = true;
   g[0].rail_s = sb_rm_watch_s() - 30; g[0].rail_v = T_RAIL_SPEED;
+}
+// The playtest's fixes (#13505): she faces the way she walks, a second Space in the air jumps higher,
+// the raider mech's claws out of a battle never put Sniper down, and going down says so plainly.
+#test "playtest: she turns to face the way she walks (never backwards), a double jump goes higher, the raider mech can't claw Sniper down out of a battle" #steps 200000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5); g[0].px = 0; g[0].pz = 0; g[0].yaw = PI;
+  #assert g_key(g[..], 's', true);
+  for i: 0..<40 { g_step(g[..], 0.02); }
+  d := g_face(g[..]) - (g[0].yaw + PI); #assert abs(atan2(sin(d), cos(d))) < 0.05;   // walking toward the view: she faces it
+  _ = g_key(g[..], 's', false); #assert g_key(g[..], 'd', true);
+  for i: 0..<40 { g_step(g[..], 0.02); }
+  d = g_face(g[..]) - (g[0].yaw - PI * 0.5); #assert abs(atan2(sin(d), cos(d))) < 0.05;
+  _ = g_key(g[..], 'd', false);
+  // a jump, and a jump with a second Space in the air
+  one := 0.0f32;
+  for k: 0..<2 {
+    g_stage(g[..], 5); g[0].px = 0; g[0].pz = 0; g_step(g[..], 0.02);
+    _ = g_key(g[..], ' ', true); g_step(g[..], 0.02); _ = g_key(g[..], ' ', false);
+    top := 0.0f32;
+    for i: 0..<120 {
+      if k == 1 && i == 12 { _ = g_key(g[..], ' ', true); }
+      if k == 1 && i == 14 { _ = g_key(g[..], ' ', false); }
+      g_step(g[..], 0.02); top = hi(top, g_feet_y(g[..]));
+    }
+    if k == 0 { one = top; } else { #assert top > one * 1.6; }
+  }
+  // the raider mech beside Sniper, out of a battle: its claws stop at a third of Sniper's health
+  t := g[0].bt[..];
+  g_stage(g[..], 4); g[0].mode = M_PLAY; sb_drive_check(g[..]);
+  for i: 0..<3000 { g_step(g[..], 0.02); if g[0].mode != M_RIDE { break; } }
+  most := t[0].bots[SB_SNIPER].vit.most;
+  #assert !sb_fighting(g[..]) && !t[0].bots[SB_SNIPER].vit.down && t[0].bots[SB_SNIPER].vit.hp >= most / 3 - 0.01;
 }
 #test "the raider mech gives chase on the drive: top speed outruns it, beside Sniper it claws it, near the garage it turns back, and E battles it from Sniper with cards on keys 1 to 4" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];

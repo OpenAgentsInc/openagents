@@ -413,8 +413,11 @@ sb_rm_step :: (g: [] SpGame, dt: f32) {
   t[0].rm_claw -= dt;
   if t[0].rm_claw > 0 { return; }
   t[0].rm_claw = SB_RM_CLAW_EVERY;
+  // outrunning is the default: out of a battle its claws scratch, but never take Sniper below a third of
+  // its health; only a battle she starts with E can put Sniper down (#13505 playtest)
   dmg := sb_card(SBC_CLAW, SB_RAIDER).power;
-  if bb_hurt(t[0].bots[SB_SNIPER..<SB_SNIPER + 1], dmg) { t[0].rm_hunt = false; t[0].rm_gone = true; g_say(g, SBM_SNIPER_DOWN); }
+  v := t[0].bots[SB_SNIPER].vit;
+  if v.hp - cast(f32) dmg >= v.most / 3 { _ := bb_hurt(t[0].bots[SB_SNIPER..<SB_SNIPER + 1], dmg); }
   g[0].flash = hi(g[0].flash, 0.2);
 }
 // The boss. Its battle begins when you and the mech with Digger's core are in its chamber. Phase one: it
@@ -552,7 +555,7 @@ sb_msg_text :: (g: [] SpGame) -> string {
   if m == SBM_CORE_OUT { return "Digger's core is back in Digger."; }
   if m == SBM_DRILLING { return "The drill mech drills the hallway."; }
   if m == SBM_NEED_MECH { return "Only the big drill mech can break this."; }
-  if m == SBM_HUNT { return "A raider mech gives chase. Outrun it, or battle it from Sniper."; }
+  if m == SBM_HUNT { return "A raider mech gives chase. Hold W to outrun it, or press E to battle it."; }
   if m == SBM_RM_GONE { return "The raider mech gave up."; }
   if m == SBM_RM_DOWN { return "The raider mech powers down. Robot piece taken."; }
   if m == SBM_SNIPER_DOWN { return "Sniper is down. The raider mech drives off with its loot."; }

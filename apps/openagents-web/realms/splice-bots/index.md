@@ -62,7 +62,7 @@ slots: press I and click a slot to drop what is in it.
 
 - **W, A, S, D** move; the **mouse** looks (click to hold the pointer). The left and right arrows
   also turn.
-- **Space** jumps: over a low piece, or onto its top. On the hoverboard it hops the board.
+- **Space** jumps: over a low piece, or onto its top. Press it again in the air to jump higher. On the hoverboard it hops the board.
 - Hold **Left Shift** to sneak: slower, and Imperial robots sense you from half as far.
 - **Q** does everything on the hoverboard: the first press steps onto it at casual speed, then each
   press switches casual and fast. Double-tap **Q** for super fast. Hold **Q** to step off.
