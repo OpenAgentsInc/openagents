@@ -3007,7 +3007,19 @@ g_key_wheel_follow :: (g: [] SpGame) { _ := g_key(g, 'r', true); _ = g_key(g, '4
   for i: 0..<100 { g_step(g[..], 0.02); }
   #assert !t[0].bots[SB_SNIPER].vit.down && t[0].bots[SB_SNIPER].vit.hp == 24 && g[0].msg == SBM_REPAIR;
 }
-#test "the raider mech gives chase on the drive from the solar farm to the garage: W outruns it, Space can't skip it, and E battles it from Sniper (#13505)" #steps 200000000 {
+// The checks' driver on the road: W up to `top` m/s, and A or D toward the road (dv_at) a stretch past the
+// nearest of its points at or after u; the new u.
+dv_road_step :: (g: [] SpGame, u: f32, top: f32) -> f32 {
+  d := g[0].dv[0]; at := u; bd: f32 = 1e9;
+  for k: 0..<11 { v := clamp01(u + cast(f32) k * 0.01); q := dv_at(g, v); r := dist2(q.x, q.z, d.sx, d.sz); if r < bd { bd = r; at = v; } }
+  c := dv_at(g, clamp01(at + 0.05));
+  turn := atan2(c.x - d.sx, c.z - d.sz) - d.syaw;
+  while turn > PI { turn -= TAU; } while turn < -PI { turn += TAU; }
+  _ := g_key(g, 'w', dv_speed(g) < top); _ = g_key(g, 's', false); _ = g_key(g, 'a', turn > 0.05); _ = g_key(g, 'd', turn < -0.05);
+  g_step(g, 0.02);
+  return at;
+}
+#test "the raider mech gives chase on the drive from the solar farm to the garage: W outruns it, Space can't skip it, and E battles it from Sniper (#13505)" #steps 1200000000 {
   g := [1] SpGame.[SpGame.{}];
   for run: 0..<2 {
     g[0] = SpGame.{};
@@ -3020,12 +3032,13 @@ g_key_wheel_follow :: (g: [] SpGame) { _ := g_key(g, 'r', true); _ = g_key(g, '4
     t := g[0].bt[..];
     #assert !t[0].rm_hunt && !t[0].rm_gone && !t[0].rm_down;   // on watch beside the road
     bx := g[0].dv[0].bx; bz := g[0].dv[0].bz;
-    for i: 0..<6000 { _ := dv_keys_to(g[..], bx, bz, 6, 0.02); if t[0].rm_hunt || g[0].mode != M_DRIVE { break; } }
+    u: f32 = 0;
+    for i: 0..<6000 { u = dv_road_step(g[..], u, 16); if t[0].rm_hunt || g[0].mode != M_DRIVE { break; } }
     #assert t[0].rm_hunt && g[0].msg == SBM_HUNT && g[0].mode == M_DRIVE && sb_objective(g[..]) == "Outrun the raider mech (W), or battle it (E).";
     #assert g_key(g[..], ' ', true) && g_key(g[..], ' ', false) && g[0].mode == M_DRIVE;   // Space is the handbrake: no skipping past it
     if run == 0 {
       // W: Sniper drives faster than it runs, and it gives up
-      for i: 0..<6000 { _ := dv_keys_to(g[..], bx, bz, 6, 0.02); if !t[0].rm_hunt { break; } }
+      for i: 0..<6000 { u = dv_road_step(g[..], u, DV_TOP); if !t[0].rm_hunt { break; } }
       #assert !t[0].rm_hunt && t[0].rm_gone && !t[0].rm_down && g[0].msg == SBM_RM_GONE && !t[0].bots[SB_SNIPER].vit.down;
     } else {
       // E beside Sniper: a battle on the road, 1 to 4 are Sniper's cards, and she slows to a crawl
@@ -3037,6 +3050,7 @@ g_key_wheel_follow :: (g: [] SpGame) { _ := g_key(g, 'r', true); _ = g_key(g, '4
       #assert dv_speed(g[..]) < DV_CRAWL + 0.5;   // in a battle Sniper crawls
       #assert g_key(g[..], '1', true);
     }
+    for i: 0..<6000 { u = dv_road_step(g[..], u, DV_TOP); if u > 0.95 || g[0].mode != M_DRIVE { break; } }
     #assert dv_keys_to(g[..], bx, bz, 6, 240) && g_key(g[..], 'e', true);
     #assert g[0].mode == M_PLAY && g[0].phase == PH_DUSK && !sb_fighting(g[..]) && !t[0].rm_hunt;
   }
