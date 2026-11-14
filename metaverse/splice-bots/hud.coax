@@ -105,8 +105,13 @@ hv_goal :: (g: [] SpGame) -> HvGoal {
   if g[0].have[H_CORE] { return rover; }
   if g[0].boss_down { c := sb_core_at(g); return HvGoal.{name = "BANNED CORE", x = c.x, z = c.z, ok = true}; }
   if g[0].wall_gone { return HvGoal.{name = "WEAK POINTS", x = a.boss_x, z = a.boss_z, ok = true}; }
-  if g[0].have[H_PLUS] { return rover; }
-  if g[0].rubble_gone { return HvGoal.{name = "BLUE GLOW", x = pick_x(g, PICK_PLUS), z = pick_z(g, PICK_PLUS), ok = true}; }
+  // past the rubble: the drill mech in its empty section, then the blocked hallway straight across the
+  // ring. DRILL+ is no step of the run: Digger's DRILL already drills (#13505 playtest 2)
+  if g[0].rubble_gone {
+    t := g[0].bt[0];
+    if t.mech_core { return HvGoal.{name = "BLOCKED HALLWAY", x = 0, z = a.wall_z + 1, ok = true}; }
+    return HvGoal.{name = "DRILL MECH", x = t.mech_x, z = t.mech_z, ok = true};
+  }
   if g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY] && g[0].have[H_MOVE] && g[0].have[H_DRILL] { return rover; }
   best := -1; bd := 1e9f32;
   for i: 0..<PICK_PLUS { if g[0].taken[i] || pick_zone(g, i) != Z_MINE { continue; } d := dist2(g[0].px, g[0].pz, pick_x(g, i), pick_z(g, i)); if d < bd { bd = d; best = i; } }

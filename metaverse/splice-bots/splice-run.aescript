@@ -45,8 +45,12 @@ key -15
 frames 5 20
 expect 0 1
 # E at the desk: Sniper drives you to the garage, and it is dusk when you step out
-msg 611 -49730 26000
+msg 611 -49695 26000
 frames 2 20
+# Sniper puts the deep-garage map up the first time at the desk: E closes it, and E again drives
+key e
+frames 2 20
+expect 0 1
 key e
 frames 5 20
 expect 0 9
@@ -62,17 +66,14 @@ frames 2 20
 click 640 400
 frames 1500 20
 expect 7 1
-# a battery cell, then the one blue piece (DRILL+, +25 Heat)
+# a battery cell (the DRILL+ in the vault is no step of the run: Digger's DRILL already drills)
 msg 611 -3731 -5304
 frames 200 20
 expect 6 1
-msg 611 -14292 -15544
-frames 200 20
-expect 16 1
-expect 4 25
 beat garage-parts
-# the drill mech: Digger's core in (E), it follows to the blocked hallway, and E has it drill through
-msg 611 850 -5850
+# the drill mech in the empty section C2: Digger's core in (E); it follows to the blocked hallway and drills it
+# when it gets there (E there asks it too)
+msg 611 14206 -23253
 frames 2 20
 key e
 frames 5 20

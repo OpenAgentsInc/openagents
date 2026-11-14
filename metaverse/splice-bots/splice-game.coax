@@ -992,6 +992,41 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
 }
 
+// The blocked hallway (#13505 playtest 2): the raiders' barricade across the hallway into the mountain,
+// so it reads as blocked from across the field. Packed rock to its ceiling, two raider-yellow girders
+// braced across it in an X, a yellow and black band, BLOCKED stencilled over it and two amber lamps that
+// flash. Once Digger's core is in the drill mech an orange beacon stands over it, the objective's marker
+// in the world; while the mech drills, the lamps and the beacon flash fast.
+g_blocked_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  wz := g[0].at.wall_z; t := g[0].t; face := wz + 1.05;
+  drilling := g[0].bt[0].drill_t > 0;
+  kit_pen(p, 92, MAT_WORLD, t3(0.24, 0.20, 0.22)); block(buf, p, 0, 0, wz, GA_HALL + 0.4, 10.5, 1);   // packed rock to the ceiling
+  kit_pen(p, 95, MAT_WORLD, t3(0.42, 0.34, 0.30));
+  for i: 0..<9 { k := cast(f32) i; block(buf, p, -2.6 + kit_rand(k + 11) * 5.2, 0, face - 0.1 + kit_rand(k + 31) * 0.6, 0.5 + kit_rand(k + 21) * 0.6, 0.5 + kit_rand(k + 41) * 1.4, 0.5); }   // boulders at its foot
+  // the girders: an X from corner to corner, raider yellow
+  kit_pen(p, 96, MAT_WORLD, GA_YELLOW());
+  limb(buf, p, v3(-GA_HALL + 0.3, 0.4, face + 0.2), v3(GA_HALL - 0.3, 8.6, face + 0.2), 0.22, 0.22, v3(0, 0, 1), 4);
+  limb(buf, p, v3(GA_HALL - 0.3, 0.4, face + 0.25), v3(-GA_HALL + 0.3, 8.6, face + 0.25), 0.22, 0.22, v3(0, 0, 1), 4);
+  // the band: yellow and black, across its face
+  for j: 0..<8 {
+    kit_pen(p, 208 + j % 2, MAT_FLAT, ifx j % 2 == 0 then GA_YELLOW() else GA_DARK());
+    x0 := -GA_HALL + cast(f32) j * GA_HALL * 0.25;
+    block(buf, p, x0 + GA_HALL * 0.125, 3.6, face + 0.05, GA_HALL * 0.125, 0.9, 0.04);
+  }
+  kit_pen(p, 97, MAT_FLAT, PAPER()); block(buf, p, 0, 5.2, face + 0.06, 2.9, 1.9, 0.04);
+  kit_stencil(buf, p, frame_at(v3(0, 5.55, face + 0.1), 0), "BLOCKED", 1.2, 0.06, 98, GA_LETTER());
+  // the floor's hazard stripes before it, and the amber lamps either side
+  for j: 0..<4 { kit_pen(p, 208 + j % 2, MAT_FLAT, ifx j % 2 == 0 then GA_YELLOW() else GA_DARK()); block(buf, p, 0, 0, face + 1.5 + cast(f32) j * 1.0, GA_HALL, 0.03, 0.5); }
+  on := sin(t * (ifx drilling then 18.0f32 else 5.0f32)) > 0;
+  kit_pen(p, 99, ifx on then MAT_GLOW else MAT_SKIN, ifx on then HEAT() else t3(0.36, 0.24, 0.14));
+  for i: 0..<2 { s := ifx i == 0 then -1.0f32 else 1.0f32; ball(buf, p, v3(s * (GA_HALL - 0.6), 7.8, face + 0.3), 0.45, 10); }
+  // the beacon: the objective, seen from anywhere in the ring once the mech has Digger's core
+  if g[0].bt[0].mech_core {
+    kit_pen(p, 89, MAT_GLOW, HEAT());
+    pulse := 0.35 + abs(sin(t * (ifx drilling then 9.0f32 else 2.2f32))) * 0.35;
+    tube(buf, p, frame_at(v3(0, 0, face + 4), 0), 60, pulse, pulse, pulse * 0.4, pulse * 0.4, 8, false);
+  }
+}
 // ---- What moves, written every frame
 // Sniper as the world's tables draw it: the pieces row SP_ROVER_KIND (the rover train you board at the
 // solar farm), k times its size, so the rail, the drive, the garage and the title show one rover.
@@ -1098,11 +1133,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   d_live(g, buf, p);   // the better sensor (director.coax)
   // the rubble and the boss wall, until the Digger opens them
   if !g[0].rubble_gone { g_rubble_live(g, buf, p); }
-  if !g[0].wall_gone {
-    kit_pen(p, 92, MAT_WORLD, t3(0.34, 0.26, 0.40)); block(buf, p, 0, 0, g[0].at.wall_z, 4, 9, 1);
-    kit_pen(p, 93, MAT_GLOW, blue);
-    for i: 0..<3 { block(buf, p, -2.4 + cast(f32) i * 2.4, 1 + cast(f32) i * 1.6, g[0].at.wall_z + 1.02, 0.07, 2.4, 0.02); }
-  }
+  if !g[0].wall_gone { g_blocked_live(g, buf, p); }
   if g[0].bot {
     shake := ifx g[0].bot_state == BOT_FAIL then sin(t * 40) * 0.06 else 0.0f32;
     df := frame_at(v3(g[0].bot_x + shake, ground_y(g, g[0].bot_x, g[0].bot_z), g[0].bot_z), g[0].bot_yaw);
@@ -1472,8 +1503,6 @@ objective :: (g: [] SpGame) -> string {
   if g[0].have[H_CORE] { return "Carry the core to the rover."; }
   if g[0].boss_down { return "Take the core."; }
   if g[0].wall_gone { return "Stun all 3 weak points."; }
-  if g[0].have[H_PLUS] { return "Splice DRILL+ in the rover."; }
-  if g[0].rubble_gone { return "Find the blue glow."; }
   if g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY] && g[0].have[H_MOVE] && g[0].have[H_DRILL] { return "Splice the Digger at the rover."; }
   return "Walk near parts: Digger takes them.";
 }
@@ -1958,6 +1987,11 @@ sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', fa
 // The game keeps its edit layer through the run's reset, so this plays whatever layer g holds: it needs
 // the shipped pieces (world.coax spw_shipped), whose rover train and desk are the run's doors.
 g_play_run :: (g: [] SpGame) -> int {
+  r := g_run_to_garage(g); if r != 0 { return r; }
+  return g_run_from_garage(g);
+}
+// The run from the title to stepping out at the garage at dusk: 0, or the beat that failed.
+g_run_to_garage :: (g: [] SpGame) -> int {
   g_reset(g);
   if g[0].layer[0].st[0].n == 0 { _ := spw_shipped(g); }   // the farm's pieces, as a new world holds them
   // the title's NEW RUN, then USE THIS CHARACTER on the creation screen: the solar farm by day, beside Sniper
@@ -1984,6 +2018,10 @@ g_play_run :: (g: [] SpGame) -> int {
   if !(g_key(g, 'e', true) && g[0].mode == M_DRIVE) { return 11; }
   for i: 0..<2000 { g_step(g, 0.02); if g[0].mode != M_DRIVE { break; } }
   if !(g[0].mode == M_PLAY && g[0].phase == PH_DUSK && dv_facing_in(g)) { return 12; }
+  return 0;
+}
+// The rest of the run, from stepping out at the garage to SCENE RESTORED and back to a new run.
+g_run_from_garage :: (g: [] SpGame) -> int {
   // at Sniper parked by the garage: the edit bay sends Digger at the raiders' rock wall
   g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z; g_bot_home(g); g_step(g, 0.02);
   if !(g_key(g, -15, true) && g[0].mode == M_BAY) { return 13; }
@@ -2003,22 +2041,14 @@ g_play_run :: (g: [] SpGame) -> int {
   g[0].px = g[0].at.dance_x + 2; g[0].pz = g[0].at.dance_z; g_bot_home(g); g_step(g, 0.02);
   for i: 0..<FOES { if g_foe_in(g, i) || ga_inside(g, g[0].fx[i], g[0].fz[i]) || g[0].fhost[i] { return 23; } }
   _ = g_key(g, -13, false);
-  g[0].px = pick_x(g, PICK_PLUS) + 1; g[0].pz = pick_z(g, PICK_PLUS) + 1;
-  for i: 0..<200 { g_step(g, 0.02); if g[0].have[H_PLUS] { break; } }
-  if !(g[0].have[H_PLUS] && g[0].heat == T_HEAT_PIECE) { return 24; }   // the one banned piece: +25 Heat
-  g[0].heat = 40; g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z;
-  for i: 0..<200 { g_step(g, 0.02); }
-  if !(abs(g[0].heat - T_HEAT_PIECE) < 0.01) { return 25; }   // Heat cools at Sniper, to the banned piece's floor
-  g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z; g_step(g, 0.02);
-  if !(g_key(g, -15, true) && g[0].mode == M_BAY) { return 26; }   // the edit bay is in Sniper
-  if !(g_key(g, 'c', true)) { return 27; } if !(g_key(g, '1', true)) { return 28; } if !(g_key(g, '3', true)) { return 29; } if !(g_key(g, -2, true)) { return 30; }
-  for i: 0..<300 { g_step(g, 0.02); }   // Digger goes to the hallway and comes back: only the drill mech breaks it
-  // the drill mech: Digger's core in, it follows her to the blocked hallway and drills it down
+  // no DRILL+: Digger's DRILL is the run's drill (#13505 playtest 2). The objective is the drill mech in C2
+  if !(hv_goal(g).name == "DRILL MECH" && ga_in_bay(g, g[0].bt[0].mech_x, g[0].bt[0].mech_z) == GA_EMPTY) { return 24; }
+  // the drill mech: Digger's core in, it follows her to the blocked hallway and drills it down when it gets there
   g[0].px = g[0].bt[0].mech_x + 2; g[0].pz = g[0].bt[0].mech_z;
-  if !(g_key(g, 'e', true) && g[0].bt[0].mech_core) { return 31; }
+  if !(g_key(g, 'e', true) && g[0].bt[0].mech_core && hv_goal(g).name == "BLOCKED HALLWAY") { return 31; }
   g[0].px = 1; g[0].pz = g[0].at.wall_z + 3;
-  for i: 0..<600 { g_step(g, 0.1); if i >= 40 && dist2(g[0].bt[0].mech_x, g[0].bt[0].mech_z, 0, g[0].at.wall_z + 1) < 12 { break; } }   // it walks over from the empty section
-  if !(g_key(g, 'e', true) && g[0].bt[0].drill_t > 0) { return 32; }
+  for i: 0..<900 { g_step(g, 0.1); if g[0].bt[0].drill_t > 0 { break; } }   // it walks over from the empty section, and starts on its own
+  if !(g[0].bt[0].drill_t > 0) { return 32; }
   for i: 0..<400 { g_step(g, 0.02); }
   if !(g[0].wall_gone) { return 33; }
   // the boss: the mech battles it with keys 1 to 4; while it reels she stuns its three weak points
@@ -2189,6 +2219,110 @@ g_shipped_at :: (g: [] SpGame, kind: int) -> Point {
   g := [1] SpGame.[SpGame.{}];
   g_reset(g[..]); #assert spw_shipped(g[..]) == SPW_SHIPPED_N;
   #assert g_play_run(g[..]) == 0;
+}
+// Playing with real keys (#13505 playtest 2): from stepping out at the garage to the boss's fall, a player
+// who only presses keys and moves the mouse, and follows the HUD: the compass's objective, the prompt. No
+// place is set by hand. Each step it turns the view toward a point with the mouse and holds W; when it
+// makes no headway it backs off and sidesteps for a moment, as a player would round something in the way.
+SpKeys :: struct { best: f32 = 1e9; still: f32; dodge: f32; side: int; }
+sp_keys_free :: (g: [] SpGame) { for k: [6] int.['w', 's', 'a', 'd', -13, -6] { _ := g_key(g, k, false); } }
+// One step toward (tx, tz): the mouse turns the view, W walks. The distance left after the step.
+sp_keys_toward :: (g: [] SpGame, k: [] SpKeys, tx: f32, tz: f32, dt: f32) -> f32 {
+  d := dist2(g[0].px, g[0].pz, tx, tz);
+  if k[0].dodge > 0 {
+    k[0].dodge -= dt;
+    if k[0].dodge <= 0 { sp_keys_free(g); k[0].still = 0; k[0].best = d; }
+  } else {
+    want := ro_bearing(g[0].px, g[0].pz, tx, tz); turn := angle_wrap(want - g[0].yaw);
+    g_look(g, -turn / T_LOOK, 0);
+    _ := g_key(g, 'w', true);
+    if d < k[0].best - 0.5 { k[0].best = d; k[0].still = 0; } else { k[0].still += dt; }
+    if k[0].still > 1.5 {   // stuck on something: back off and sidestep, the other way each time
+      sp_keys_free(g); k[0].side = 1 - k[0].side; k[0].dodge = 1.2;
+      _ = g_key(g, 's', true); _ = g_key(g, ifx k[0].side == 0 then 'a' else 'd', true);
+    }
+  }
+  g_step(g, dt);
+  return dist2(g[0].px, g[0].pz, tx, tz);
+}
+// Walk to the compass's objective until `near` metres from it, at most `secs`: whether it got there.
+sp_keys_goal :: (g: [] SpGame, near: f32, secs: f32) -> bool {
+  k := [1] SpKeys.[SpKeys.{}];
+  for i: 0..<cast(int) (secs / 0.05) {
+    gl := hv_goal(g); if !gl.ok { sp_keys_free(g); return false; }
+    if sp_keys_toward(g, k[..], gl.x, gl.z, 0.05) < near { sp_keys_free(g); return true; }
+  }
+  sp_keys_free(g); return false;
+}
+// 0 when the keys alone take her from the garage's door to the boss's fall, else the beat that failed.
+sp_keys_play :: (g: [] SpGame) -> int {
+  // to Sniper, parked by the quiet door: Tab is the edit bay there, Enter sends Digger at the raiders' rock wall
+  k := [1] SpKeys.[SpKeys.{}];
+  for i: 0..<600 { if near_rover(g, T_USE_RANGE - 1) { break; } _ := sp_keys_toward(g, k[..], g[0].at.rover_x, g[0].at.rover_z, 0.05); }
+  sp_keys_free(g);
+  if !(g_key(g, -15, true) && g[0].mode == M_BAY) { return 1; }
+  if !(g_key(g, -2, true) && g[0].bot_state == BOT_GO && g[0].mode == M_PLAY) { return 2; }
+  for i: 0..<1500 { g_step(g, 0.02); if g[0].rubble_gone && g[0].bot_state == BOT_FOLLOW { break; } }
+  if !g[0].rubble_gone { return 3; }
+  // in through the quiet door: down the old entrance's tunnel she can see before her, onto the field
+  k[0] = SpKeys.{};
+  for i: 0..<2400 { if sp_keys_toward(g, k[..], 0, g[0].at.gar_z + g[0].at.gar_r - 4, 0.05) < 2 { break; } }
+  sp_keys_free(g);
+  if !(ga_inside(g, g[0].px, g[0].pz) && ga_in_bay(g, g[0].px, g[0].pz) < 0) { return 15; }
+  // the compass says the drill mech; she walks to it in the empty section
+  if hv_goal(g).name != "DRILL MECH" { return 4; }
+  m0 := ga_at(g, ga_section_of(g, hv_goal(g).x, hv_goal(g).z), g[0].at.gar_r - 8);   // the mouth of the bay the compass points into
+  k[0] = SpKeys.{};
+  for i: 0..<6000 { if sp_keys_toward(g, k[..], m0.x, m0.z, 0.05) < 3 { break; } }
+  sp_keys_free(g);
+  if !sp_keys_goal(g, SB_MECH_REACH - 1, 240) { return 5; }
+  if ga_in_bay(g, g[0].px, g[0].pz) != GA_EMPTY { return 6; }
+  if sb_prompt(g).text != "Swap Digger's core into the drill mech" { return 7; }
+  if !(g_key(g, 'e', true) && g[0].bt[0].mech_core) { return 8; }
+  // the compass says the blocked hallway; she walks there with the mech behind her, and it drills on its own
+  if hv_goal(g).name != "BLOCKED HALLWAY" { return 9; }
+  // across the field to the mouth of E1's bay, where the beacon stands, then into it to the barricade
+  k[0] = SpKeys.{};
+  m := ga_at(g, GA_HALLWAY, g[0].at.gar_r - 8);
+  for i: 0..<6000 { if sp_keys_toward(g, k[..], m.x, m.z, 0.05) < 3 { break; } }
+  k[0] = SpKeys.{};
+  for i: 0..<2000 { _ := sp_keys_toward(g, k[..], 0, g[0].at.wall_z + 3, 0.05); if g[0].bt[0].drill_t > 0 { break; } }
+  sp_keys_free(g);
+  if !(g[0].bt[0].drill_t > 0) { return 10; }
+  for i: 0..<200 { g_step(g, 0.05); if g[0].wall_gone { break; } }
+  if !g[0].wall_gone { return 11; }
+  // into the chamber: the boss wakes. The mech fights (1 to 4); when the prompt says its weak points are
+  // open she runs to the nearest glowing one and presses F
+  k[0] = SpKeys.{};
+  for i: 0..<400 { _ := sp_keys_toward(g, k[..], 0, g[0].at.wall_z - 6, 0.05); if sb_fighting(g) { break; } }
+  sp_keys_free(g);
+  if !(sb_fighting(g) && g[0].bt[0].kind == SBF_BOSS) { return 12; }
+  for i: 0..<12000 {
+    if g[0].boss_down { break; }
+    if g[0].mode != M_PLAY { return 13; }
+    if i % 10 == 0 { _ := g_key(g, cast(int) '1' + (i / 10) % 4, true); }
+    if sb_open(g) {
+      best := -1; bd := 1e9f32;
+      for w: 0..<3 { p := weak_at(g, w); d := dist2(g[0].px, g[0].pz, p.x, p.z); if g[0].stun[w] <= 0 && d < bd { bd = d; best = w; } }
+      if best >= 0 {
+        p := weak_at(g, best);
+        if sb_weak_near(g) >= 0 { sp_keys_free(g); _ := g_key(g, 'f', true); g_step(g, 0.05); }
+        else { _ := sp_keys_toward(g, k[..], p.x, p.z, 0.05); }
+        continue;
+      }
+    }
+    sp_keys_free(g); g_step(g, 0.05);
+  }
+  sp_keys_free(g);
+  if !(g[0].boss_down && g[0].phase == PH_NIGHT && g[0].hearts > 0) { return 14; }
+  return 0;
+}
+#test "real keys from the garage's door to the boss: the compass leads to the drill mech in C2, E swaps the core, the compass leads to the blocked hallway, the mech drills it, and the boss falls to 1 to 4 and F (#13505 playtest 2)" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); #assert spw_shipped(g[..]) == SPW_SHIPPED_N;
+  #assert g_run_to_garage(g[..]) == 0;
+  r := sp_keys_play(g[..]);
+  #assert r == 0;
 }
 FlowTest :: struct { o: [5] [CT_BODY] u8; }
 #test "a world's starts, beats and portals: the run starts where a row says, the day moves on in an area, and E at a placed piece's kind takes you through (#13485)" #steps 60000000 {
@@ -2403,9 +2537,9 @@ hv_drop_on :: (g: [] SpGame, d: int) -> bool {
   buf: [64] u8;
   #assert hv_far(buf[..], 2400) == "2.4 KM" && hv_far(buf[..], 240) == "240 M" && hv_reel(g[..], buf[..]) == "REEL 03 · NIGHT";
   g_stage(g[..], 7);
-  #assert hv_goal(g[..]).name == "BLUE GLOW" && hv_goal(g[..]).ok;
+  #assert hv_goal(g[..]).name == "DRILL MECH" && hv_goal(g[..]).ok;
   g[0].have[H_PLUS] = true;
-  #assert hv_goal(g[..]).rover;
+  #assert hv_goal(g[..]).name == "DRILL MECH";   // the DRILL+ is no step: the goal stays the drill mech (#13505 playtest 2)
   // the hoverboard's panel and its keys
   #assert HV_BOARD_HINT == "Q board · hold Ctrl or double-tap W: very fast";
   // BAD CUT: Esc quits to the title; its buttons are RESPAWN AT ROVER and QUIT TO TITLE
@@ -2444,26 +2578,29 @@ hv_drop_on :: (g: [] SpGame, d: int) -> bool {
 }
 
 // ---- Battles, the drill mech, the boss and the ending (splice-battle.coax, #13505 part C)
-#test "the drill mech: E swaps Digger's core in, its lights turn his, it follows you, and only it drills the blocked hallway" #steps 60000000 {
+#test "the drill mech: it waits in the empty section C2, E swaps Digger's core in, its lights turn his, it follows you, and led to the blocked hallway it drills it on its own (#13505 playtest 2)" #steps 200000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 7);   // dusk past the rubble, Digger built with MOVE and DRILL
   t := g[0].bt[..];
   #assert !t[0].mech_core && !sb_holds_digger(g[..]);
+  // in the empty section, far from the entry: the compass points at it
+  #assert ga_in_bay(g[..], t[0].mech_x, t[0].mech_z) == GA_EMPTY && dist2(t[0].mech_x, t[0].mech_z, 0, g[0].at.rubble_z) > 100;
+  #assert hv_goal(g[..]).name == "DRILL MECH" && sb_objective(g[..]) == "Find the drill mech in section C2. Swap Digger's core into it.";
   g[0].px = 1; g[0].pz = g[0].at.wall_z + 3;                              // the hallway without the mech: nothing
   #assert g_key(g[..], 'e', true) && g[0].msg == SBM_NEED_MECH && t[0].drill_t == 0;
   g[0].px = t[0].mech_x + 2; g[0].pz = t[0].mech_z;
   #assert sb_prompt(g[..]).text == "Swap Digger's core into the drill mech";
   #assert g_key(g[..], 'e', true) && t[0].mech_core && sb_holds_digger(g[..]) && g[0].msg == SBM_CORE_IN;
-  bx := g[0].bot_x; bz := g[0].bot_z;
-  g[0].px = 0; g[0].pz = -48;
-  for i: 0..<200 { g_step(g[..], 0.02); }
-  #assert dist2(t[0].mech_x, t[0].mech_z, g[0].px, g[0].pz) < 5 && g[0].bot_x == bx && g[0].bot_z == bz;   // the mech follows; Digger's body waits
+  #assert hv_goal(g[..]).name == "BLOCKED HALLWAY" && hv_goal(g[..]).z == g[0].at.wall_z + 1;
+  // an E beside it on the way leaves the core in: it can't be left empty before the hallway
+  #assert g_key(g[..], 'e', true) && t[0].mech_core && g[0].msg == SBM_LEAD && sb_prompt(g[..]).text == "";
+  // it follows; led to the hallway it starts drilling with no key, and the hallway gives
   g[0].px = 1; g[0].pz = g[0].at.wall_z + 3;
-  for i: 0..<600 { g_step(g[..], 0.1); if i >= 20 && dist2(t[0].mech_x, t[0].mech_z, 0, g[0].at.wall_z + 1) < 12 { break; } }   // it walks over from the empty section
-  #assert g_key(g[..], 'e', true) && t[0].drill_t > 0 && g[0].msg == SBM_DRILLING;
+  for i: 0..<900 { g_step(g[..], 0.1); if t[0].drill_t > 0 { break; } }
+  #assert t[0].drill_t > 0 && g[0].msg == SBM_DRILLING;
   for i: 0..<400 { g_step(g[..], 0.02); }
   #assert g[0].wall_gone && t[0].drill_t == 0;
-  // E beside it again swaps the core back: Digger follows, the mech stays
+  // once the hallway is open, E beside it swaps the core back: Digger follows, the mech stays
   g[0].px = t[0].mech_x + 2; g[0].pz = t[0].mech_z;
   #assert g_key(g[..], 'e', true) && !t[0].mech_core && !sb_holds_digger(g[..]);
 }

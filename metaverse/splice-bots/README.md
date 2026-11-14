@@ -151,9 +151,15 @@ to tow him, and Sniper's charger charges him back up. A foe Digger fights strike
 - **Cards.** Digger's cards are the ones spliced onto his strip (MOVE, DRILL, DRILL+), the software
   in his core. The drill mech uses the same cards with its giant arm (DRILL hits twice as hard) and
   adds SLAM and STOMP. Sniper holds MOVE, ARM and FLARE.
-- **The drill mech.** It waits in an empty section (landmark 91, else beside the boss wall). E beside
-  it swaps Digger's core in: its lenses turn Digger's amber and it follows you; Digger's body waits
-  dark. E at the blocked hallway (the boss wall) has it drill through; nothing else breaks it.
+- **The drill mech.** It waits in the empty section C2 (landmark 81, else the middle of C2's bay), and
+  the compass's objective is DRILL MECH once the rubble is open. E beside it swaps Digger's core in: its
+  lenses turn Digger's amber and it follows you; Digger's body waits dark. The compass then says BLOCKED
+  HALLWAY: the raiders' barricade across E1's hallway, straight across the ring from the entry (packed
+  rock, a yellow X of girders, BLOCKED, flashing lamps, and an orange beacon over it while the mech has
+  the core). Led within 10 m of it, the mech drills it on its own (E there asks it too); nothing else
+  breaks it. Until the hallway is open an E beside the mech leaves the core in, so it is never left
+  empty on the way. DRILL+ in the vault is optional: Digger's DRILL is the run's drill. A check plays
+  from the garage's door to the boss's fall with keys and the mouse alone, following the compass.
 - **The raider mech.** It keeps watch beside the drive's second leg (landmark 92, else 12 m off the
   route a third of the way from the rail stop to the garage). Outrunning it is the default: out of a battle
   its claws never take Sniper below a third of its health. When Sniper passes within 16 m it gives

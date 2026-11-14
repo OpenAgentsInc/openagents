@@ -30,16 +30,17 @@ SB_DIGGER :: 0; SB_MECH :: 1; SB_SNIPER :: 2; SB_RAIDER :: 3; SB_BOSS :: 4; SB_B
 SBC_MOVE :: 1; SBC_DRILL :: 2; SBC_PLUS :: 3; SBC_SLAM :: 4; SBC_STOMP :: 5; SBC_FLARE :: 6; SBC_ARM :: 7; SBC_CLAW :: 8; SBC_BITE :: 9; SBC_TAIL :: 10;
 // What a battle is: none, the raider mech against Sniper, the boss against the drill mech.
 SBF_NONE :: 0; SBF_DESERT :: 1; SBF_BOSS :: 2;
-LM_MECH :: 91; LM_RAIDER_MECH :: 92;      // where the drill mech waits, where the raider mech keeps watch
+LM_MECH :: 81; LM_RAIDER_MECH :: 92;      // where the drill mech waits (the tables' "Drill mech", in section C2), where the raider mech keeps watch
 // The messages (msg_text hands MSG >= SBM_FIRST here).
 SBM_FIRST :: 50; SBM_CORE_IN :: 50; SBM_CORE_OUT :: 51; SBM_DRILLING :: 52; SBM_NEED_MECH :: 53; SBM_HUNT :: 54;
 SBM_RM_GONE :: 56; SBM_RM_DOWN :: 57; SBM_SNIPER_DOWN :: 58; SBM_BOSS :: 59; SBM_CHARGES :: 60; SBM_OPEN :: 61; SBM_SHUT :: 62;
-SBM_REPAIR :: 63; SBM_DIGGER_DOWN :: 64; SBM_SWAP :: 65; SBM_REFUSED :: 66; SBM_MECH_DOWN :: 67; SBM_CORE_DROP :: 68;
+SBM_REPAIR :: 63; SBM_DIGGER_DOWN :: 64; SBM_SWAP :: 65; SBM_REFUSED :: 66; SBM_MECH_DOWN :: 67; SBM_CORE_DROP :: 68; SBM_LEAD :: 69;
 
 // Tuning.
 SB_MECH_REACH :: 3.5f32;    // E this near the mech swaps the core
 SB_HALL_REACH :: 6.0f32;    // E this near the blocked hallway has the mech drill
 SB_DRILL_TIME :: 3.0f32;    // seconds the mech drills the hallway
+SB_AUTO_DRILL :: 10.0f32;   // m: the mech with Digger's core this near the blocked hallway starts drilling it on its own (#13505 playtest 2)
 SB_MECH_SPEED :: 7.0f32; SB_BODY_SPEED :: 5.0f32;
 // The raider mech's chase on the drive: it keeps watch beside the route, a third of the way from the rail stop to the
 // garage; it gives chase when Sniper passes within SB_RM_NOTICE, runs beside it at SB_RM_SIDE, claws it within
@@ -127,7 +128,9 @@ sb_reset :: (g: [] SpGame) {
   t[0].bots[SB_SNIPER] = bb_bot(SB_SNIPER, 24, 80, 10);
   t[0].bots[SB_RAIDER] = bb_bot(SB_RAIDER, 16, 60, 8);
   t[0].bots[SB_BOSS] = bb_bot(SB_BOSS, 70, 120, 10);
-  m := sb_mark(g, LM_MECH, 6.5, -58.5); t[0].mech_x = m.x; t[0].mech_z = m.z; t[0].mech_yaw = PI * 0.5;
+  // in the empty section's bay (C2), facing the field; without a row, the middle of that bay
+  h := ga_bay_at(g, GA_EMPTY); m := sb_mark(g, LM_MECH, h.x, h.z); t[0].mech_x = m.x; t[0].mech_z = m.z;
+  t[0].mech_yaw = atan2(g[0].at.gar_x - m.x, g[0].at.gar_z - m.z);
   sb_rm_home(g);
   sb_dino_home(g);
 }
@@ -285,6 +288,9 @@ sb_use :: (g: [] SpGame) -> bool {
     }
     // the mech: Digger's core in, or back out
     if g[0].bot && !d_down(g) && dist2(g[0].px, g[0].pz, t[0].mech_x, t[0].mech_z) < SB_MECH_REACH {
+      // until the hallway is open the core stays in: an E beside the mech (it walks close behind you) never
+      // leaves it empty on the way, which stranded the playtest's run (#13505 playtest 2)
+      if t[0].mech_core && !g[0].wall_gone { g_say(g, SBM_LEAD); return true; }
       t[0].mech_core = !t[0].mech_core; t[0].mech_used = true; g[0].flash = 0.25;
       if !t[0].mech_core { g_bot_home(g); }
       g_say(g, ifx t[0].mech_core then SBM_CORE_IN else SBM_CORE_OUT);
@@ -380,6 +386,9 @@ sb_mech_step :: (g: [] SpGame, dt: f32) {
     left := sb_toward(mx[..], mz[..], my[..], 0, g[0].at.wall_z + 2.6, SB_MECH_SPEED, 0.05, dt);
     if left <= 0.1 { my[0] = PI; t[0].drill_t -= dt; }
     if t[0].drill_t <= 0 { g[0].wall_gone = true; g[0].flash = 0.6; g_say(g, MSG_BROKE); g[0].bt[0].drill_t = 0; }
+  } else if t[0].mech_core && g[0].zone == Z_MINE && !g[0].wall_gone && !sb_fighting(g) && dist2(mx[0], mz[0], 0, g[0].at.wall_z + 1) < SB_AUTO_DRILL {
+    // led to the blocked hallway, it starts drilling it on its own: no key to find (#13505 playtest 2)
+    t[0].drill_t = SB_DRILL_TIME; g_say(g, SBM_DRILLING);
   } else if t[0].mech_core && g[0].zone == Z_MINE && !(sb_fighting(g) && sb_fielded(g) == SB_MECH) {
     // a step behind you and to your left, behind Digger
     tx := g[0].px - sin(g[0].yaw) * 3.2 + cos(g[0].yaw) * 2.2; tz := g[0].pz - cos(g[0].yaw) * 3.2 - sin(g[0].yaw) * 2.2;
@@ -571,7 +580,8 @@ sb_msg_text :: (g: [] SpGame) -> string {
   if m == SBM_CORE_IN { return "Digger's core is in the drill mech. It follows you."; }
   if m == SBM_CORE_OUT { return "Digger's core is back in Digger."; }
   if m == SBM_DRILLING { return "The drill mech drills the hallway."; }
-  if m == SBM_NEED_MECH { return "Only the big drill mech can break this."; }
+  if m == SBM_NEED_MECH { return ifx t.mech_core then "Bring the drill mech right up to the hallway." else "Only the big drill mech can break this."; }
+  if m == SBM_LEAD { return "Lead the mech to the blocked hallway, across the field. It drills it when it gets there."; }
   if m == SBM_HUNT { return "A raider mech gives chase. Hold W to outrun it, or press E to battle it."; }
   if m == SBM_RM_GONE { return "The raider mech gave up."; }
   if m == SBM_RM_DOWN { return "The raider mech powers down. Robot piece taken."; }
@@ -604,8 +614,8 @@ sb_objective :: (g: [] SpGame) -> string {
   if g[0].zone != Z_MINE || g[0].have[H_CORE] || g[0].boss_down { return ""; }
   if g[0].wall_gone { return ifx sb_open(g) then "Stun its 3 weak points with F." else "Battle the boss: 1-4. Open its weak points."; }
   if t.drill_t > 0 { return "The mech is drilling."; }
-  if t.mech_core { return "Take the mech to the blocked hallway."; }
-  if g[0].rubble_gone && g[0].bot { return "Find the drill mech in the empty section."; }
+  if t.mech_core { return "Lead the mech to the blocked hallway (E1), across the field."; }
+  if g[0].rubble_gone && g[0].bot { return "Find the drill mech in section C2. Swap Digger's core into it."; }
   return "";
 }
 // The key prompt for what is in reach, or "" (the HUD's prompt line).
@@ -621,7 +631,7 @@ sb_prompt :: (g: [] SpGame) -> SbPrompt {
   if g[0].zone == Z_MINE {
     if g[0].boss_down && !g[0].core_taken { c := sb_core_at(g); if dist2(g[0].px, g[0].pz, c.x, c.z) < T_PICK_RANGE { return SbPrompt.{text = "PICK UP · Banned core", key = "E"}; } }
     if !g[0].wall_gone && t.drill_t <= 0 && dist2(g[0].px, g[0].pz, 0, g[0].at.wall_z + 1) < SB_HALL_REACH { return SbPrompt.{text = ifx t.mech_core then "Drill the hallway with the mech" else "Blocked hallway", key = "E"}; }
-    if g[0].bot && dist2(g[0].px, g[0].pz, t.mech_x, t.mech_z) < SB_MECH_REACH { return SbPrompt.{text = ifx t.mech_core then "Swap the core back into Digger" else "Swap Digger's core into the drill mech", key = "E"}; }
+    if g[0].bot && dist2(g[0].px, g[0].pz, t.mech_x, t.mech_z) < SB_MECH_REACH && !(t.mech_core && !g[0].wall_gone) { return SbPrompt.{text = ifx t.mech_core then "Swap the core back into Digger" else "Swap Digger's core into the drill mech", key = "E"}; }
   }
   if sb_can_battle_rm(g) { return SbPrompt.{text = "Battle the raider mech from Sniper", key = "E"}; }
   return SbPrompt.{};

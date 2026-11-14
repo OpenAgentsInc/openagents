@@ -17,7 +17,7 @@ sck_has :: (t: string, part: string) -> bool {
   return false;
 }
 
-SCK_RUN :: 35;
+SCK_RUN :: 29;
 // In the mine at this time of day: on foot (sck_on) or in the edit bay (sck_in).
 sck_on :: (name: string, phase: int) -> SndAt { return sck_at(name, M_PLAY, Z_MINE, phase); }
 sck_in :: (name: string, phase: int) -> SndAt { return sck_at(name, M_BAY, Z_MINE, phase); }
@@ -31,12 +31,11 @@ sck_in :: (name: string, phase: int) -> SndAt { return sck_at(name, M_BAY, Z_MIN
     sck_in("slot-click", PH_DAY), sck_in("slot-click", PH_DAY), sck_in("slot-click", PH_DAY), sck_in("slot-click", PH_DAY), sck_in("slot-click", PH_DAY),
     // the drive to the garage, with the desert's music; she steps out at dusk
     sck_at("desert-music", M_DRIVE, Z_MINE, PH_DAY), sck_on("rover-door", PH_DUSK),
-    // the bay at Sniper parked by the garage, then Digger's DRILL card on the rock wall; the cell and the special part
+    // the bay at Sniper parked by the garage, then Digger's DRILL card on the rock wall; a battery cell
     sck_in("film-whir", PH_DUSK), sck_in("rover-lofi", PH_DUSK), sck_on("rover-door", PH_DUSK), sck_on("drill", PH_DUSK), sck_on("success", PH_DUSK),
-    sck_on("pickup", PH_DUSK), sck_on("pickup", PH_DUSK),
-    // the bay again; Digger's core into the drill mech, its drill, the hallway down
-    sck_in("film-whir", PH_DUSK), sck_in("rover-lofi", PH_DUSK), sck_in("slot-click", PH_DUSK), sck_in("slot-click", PH_DUSK),
-    sck_on("rover-door", PH_DUSK), sck_on("slot-click", PH_DUSK), sck_on("drill", PH_DUSK), sck_on("success", PH_DUSK),
+    sck_on("pickup", PH_DUSK),
+    // Digger's core into the drill mech, its drill, the hallway down (no DRILL+, no second splice: #13505 playtest 2)
+    sck_on("slot-click", PH_DUSK), sck_on("drill", PH_DUSK), sck_on("success", PH_DUSK),
     // the boss wakes, takes blows and falls at night; the core
     sck_on("boss-wake", PH_DUSK), sck_on("hit", PH_DUSK), sck_on("boss-fall", PH_NIGHT), sck_on("success", PH_NIGHT),
     // the core spliced: the memory glitches in, and the scene is restored
@@ -45,7 +44,7 @@ sck_in :: (name: string, phase: int) -> SndAt { return sck_at(name, M_BAY, Z_MIN
   for e: want { k := sck_find(s, at, e); #assert k >= 0; at = k + 1; }
   #assert sck_find(s, at, sck_at("success", M_RESTORED, Z_MINE, PH_NIGHT)) >= 0;
   // the music starts once, on the drive, and each sound reached a native host as its event
-  #assert sck_heard(g[..], "desert-music") == 1 && sck_heard(g[..], "rover-lofi") == 4;
+  #assert sck_heard(g[..], "desert-music") == 1 && sck_heard(g[..], "rover-lofi") == 3;
 }
 
 #test "the board hums casual and whines fast, and stops when she steps off" #steps 60000000 {
