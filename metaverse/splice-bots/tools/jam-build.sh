@@ -17,6 +17,7 @@ repo="$(pwd)"
 project="${SPLICE_UE_PROJECT:-$HOME/UnrealProjects/SpliceSlice1/AethyrHost.uproject}"
 engine="${SPLICE_UE_ENGINE:-$HOME/UnrealEngine-5.9/src}"
 bundle="$out/splice.aexport"; web="$out/web"; zip="$out/SpliceBots_Splicebots.zip"
+stage="$web/Wasm"   # the archive's playable folder (Wasm-Debug beside it holds the symbols, not shipped)
 
 echo "jam-build: 1/6 export"
 coax/web/tool.sh metaverse/splice-bots/splice-export.coax "$bundle" "$world"
@@ -47,13 +48,13 @@ echo "jam-build: 4/6 package for the web"
   || { tail -40 "$out/package.log"; echo "jam-build: packaging failed" >&2; exit 1; }
 
 echo "jam-build: 5/6 the run in headless Chrome at 1440x900"
-(cd "$engine/Engine/Platforms/Wasm/Build/Tools/web" && ../../../../../Binaries/ThirdParty/Python3/Mac/bin/python3 webrun.py run --stage "$web" \
+(cd "$engine/Engine/Platforms/Wasm/Build/Tools/web" && ../../../../../Binaries/ThirdParty/Python3/Mac/bin/python3 webrun.py run --stage "$stage" \
   --fixtures "$repo/metaverse-engine/export/unreal/web-fixtures.json" --fixture splice-play --headless --query tier=forward --out "$out/browser") > "$out/browser.log" 2>&1 || true
 grep -h -o 'AETHYR_PLAY .*' "$out"/browser/*/console.log "$out"/browser/console.log 2>/dev/null | sort -u > "$out/browser.lines" || true
 grep -q 'AETHYR_PLAY done' "$out/browser.lines" || { cat "$out/browser.lines"; tail -20 "$out/browser.log"; echo "jam-build: the run did not finish in the browser" >&2; exit 1; }
 
 echo "jam-build: 6/6 zip"
-rm -f "$zip"; (cd "$web" && zip -q -r -X "$zip" .)
+rm -f "$zip"; (cd "$stage" && zip -q -r -X "$zip" .)
 bytes="$(stat -f %z "$zip")"
 (( bytes < 1000000000 )) || { echo "jam-build: $zip is $bytes bytes, over 1 GB" >&2; exit 1; }
 echo "jam-build: ok, $zip ($bytes bytes)"

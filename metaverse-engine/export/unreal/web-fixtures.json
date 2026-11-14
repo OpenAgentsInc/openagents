@@ -81,8 +81,8 @@
       ]
     },
     "splice-play": {
-      "about": "Splice Bots slice 1: the bundle's scripted run played on screen by the game itself at 1440x900, 16 frames a tick, from the title to SCENE RESTORED: AETHYR_PLAY done.",
-      "args": "-log {harness} -AethyrPlay -AethyrPlaySpeed=16",
+      "about": "Splice Bots slice 1: the bundle's scripted run played on screen by the game itself at 1440x900, 16 frames a tick, the page's own input off (the script is the input), from the title to SCENE RESTORED: AETHYR_PLAY done.",
+      "args": "-log {harness} -AethyrPlay -AethyrPlaySpeed=16 -AethyrNoInput",
       "stop_after_ready": 90,
       "stop_after": 0,
       "timeout": 500,
