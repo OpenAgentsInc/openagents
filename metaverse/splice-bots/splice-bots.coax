@@ -487,6 +487,17 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
   // the still scenes are a review view for the dev server's build (coax serve): a release has only the game,
   // and its module leaves their kits out (#13552)
   #if BUILD_DEBUG {
+    // and may stand in a moment of the run, ?stage=N (g_stage, 1 to 21), to check it in the real build
+    st := "stage=";
+    for i: 0..<body.count - st.count {
+      if cast(string) body[i..<i + st.count] != st { continue; }
+      n := 0; at := i + st.count;
+      while at < body.count && body[at] >= '0' && body[at] <= '9' { n = n * 10 + cast(int) (body[at] - '0'); at += 1; }
+      if n > 0 { s[0].started = true; g_stage(s[0].game[..], n); }
+      // "stage=10n": in the boss's chamber, 5 m north of it inside its tail's reach, with the whole wind-up of its next sweep ahead
+      if at < body.count && body[at] == 'n' { g := s[0].game[..]; g[0].px = g[0].at.boss_x; g[0].pz = g[0].at.boss_z - 5; g[0].yaw = 0; g[0].boss_t = 0; }
+      return;
+    }
     target := "scene=";
     for i: 0..<body.count {
       hit := true;
