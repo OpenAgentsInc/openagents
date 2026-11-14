@@ -23,46 +23,83 @@ SPR_PROBES :: [9 * SPR_PROBE] int.[
   #assert spr_holds(r) && r.ok[OC_LIVE] && r.ok[OC_SAVED] && r.ok[OC_ERRORS] && r.ok[OC_PROBES] && r.pieces == 3 && r.head == 7 && r.why == WHY_OK;
   #assert spr_report(r, o[..]) == "live: holds\nsaved: holds\nerrors: holds\nprobes: holds\n";
 }
-#test "outcome replay: each check fails its own broken variant, and only that one tells the others apart" #steps 4000000000 #traversal 2000000000 {
-  t := [1] SprWork.[SprWork.{}]; o: [400] u8; run := SPR_RUN; probes := SPR_PROBES;
-  // the page missed the last edit: the live World is wrong, the saved document is right
+// Each replay walks the run's whole way once a batch (spw_batch) and once more for PR_WALKS, so the
+// checks below are kept to one or two replays each: a check is one native run with a wall-time limit
+// (COAX_CHECK_SECONDS), and on a loaded build host a check of a dozen replays went past it (#13576).
+// The broken variants of the recorded run: each fails its own check.
+#test "outcome replay: each check fails its own broken variant, and only that one tells the others apart: the page missed the last edit" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_RUN; probes := SPR_PROBES;
+  // the live World is wrong, the saved document is right
   r := spr_replay(t[..], run[..], probes[..], SB_LIVE);
   #assert !r.ok[OC_LIVE] && r.ok[OC_SAVED] && r.ok[OC_ERRORS] && !spr_holds(r) && r.at[OC_LIVE] == 4;
-  // the saved document is one batch behind: the page is right, the document is wrong
-  r = spr_replay(t[..], run[..], probes[..], SB_SAVED);
+}
+#test "outcome replay: each check fails its own broken variant: the saved document is one batch behind" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_RUN; probes := SPR_PROBES;
+  // the page is right, the document is wrong
+  r := spr_replay(t[..], run[..], probes[..], SB_SAVED);
   #assert r.ok[OC_LIVE] && !r.ok[OC_SAVED] && r.ok[OC_ERRORS] && r.ok[OC_PROBES] && !spr_holds(r);
-  // a batch was refused: the run did not go as recorded, though what was saved is whole
-  r = spr_replay(t[..], run[..], probes[..], SB_ERRORS);
+}
+#test "outcome replay: each check fails its own broken variant: a batch was refused" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_RUN; probes := SPR_PROBES;
+  // the run did not go as recorded, though what was saved is whole
+  r := spr_replay(t[..], run[..], probes[..], SB_ERRORS);
   #assert r.ok[OC_LIVE] && r.ok[OC_SAVED] && !r.ok[OC_ERRORS] && r.at[OC_ERRORS] == 5 && !spr_holds(r);
-  // a thing lost its collider: state and document are right, and the probe says which link broke
-  r = spr_replay(t[..], run[..], probes[..], SB_PROBES);
+}
+#test "outcome replay: each check fails its own broken variant: a thing lost its collider" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; o: [400] u8; run := SPR_RUN; probes := SPR_PROBES;
+  // state and document are right, and the probe says which link broke
+  r := spr_replay(t[..], run[..], probes[..], SB_PROBES);
   #assert r.ok[OC_LIVE] && r.ok[OC_SAVED] && r.ok[OC_ERRORS] && !r.ok[OC_PROBES] && r.at[OC_PROBES] == 1 && r.why == WHY_COLLIDER_MISSING && !spr_holds(r);
   #assert spr_report(r, o[..]) == "live: holds\nsaved: holds\nerrors: holds\nprobes: fails at probe 1 (engine.diagnostic.collider-missing.v1)\n";
 }
-#test "outcome replay: a probe the run does not meet fails, each kind by its own link" #steps 4000000000 #traversal 2000000000 {
+// A probe the run does not meet, against the recorded run: what it says.
+spr_one_probe :: (what: int, a: int, b: int) -> SprOutcome {
   t := [1] SprWork.[SprWork.{}]; run := SPR_RUN;
-  wrong := [6] int.[PR_COUNT, 4, PR_STANDS, 9, PR_STANDS, 2];
-  third := [6] int.[0, 0, 113, 0, 113, 0];
-  code := [3] int.[WHY_NOT_IN_STATE, WHY_NOT_IN_STATE, WHY_NOT_IN_STATE];
-  for i: 0..<3 {
-    p := [SPR_PROBE] int.[wrong[i * 2], wrong[i * 2 + 1], third[i * 2], 0];
-    r := spr_replay(t[..], run[..], p[..], SB_NONE);
-    #assert r.ok[OC_LIVE] && r.ok[OC_SAVED] && r.ok[OC_ERRORS] && !r.ok[OC_PROBES] && r.at[OC_PROBES] == 0 && r.why == code[i];
-  }
-  free := [SPR_PROBE] int.[PR_FREE, 17720, -7060, 0];   // a body can't stand where the palm is
-  #assert !spr_replay(t[..], run[..], free[..], SB_NONE).ok[OC_PROBES];
-  open_ground := [SPR_PROBE] int.[PR_BLOCKS, 17500, -6700, 0];   // nothing stands in the gate
-  r := spr_replay(t[..], run[..], open_ground[..], SB_NONE);
+  p := [SPR_PROBE] int.[what, a, b, 0];
+  return spr_replay(t[..], run[..], p[..], SB_NONE);
+}
+spr_unmet :: (r: SprOutcome, code: int) -> bool { return r.ok[OC_LIVE] && r.ok[OC_SAVED] && r.ok[OC_ERRORS] && !r.ok[OC_PROBES] && r.at[OC_PROBES] == 0 && r.why == code; }
+#test "outcome replay: a probe the run does not meet fails, each kind by its own link: a count it does not leave" #steps 4000000000 #traversal 2000000000 {
+  #assert spr_unmet(spr_one_probe(PR_COUNT, 4, 0), WHY_NOT_IN_STATE);
+}
+#test "outcome replay: a probe the run does not meet fails: a thing it never placed" #steps 4000000000 #traversal 2000000000 {
+  #assert spr_unmet(spr_one_probe(PR_STANDS, 9, 113), WHY_NOT_IN_STATE);
+}
+#test "outcome replay: a probe the run does not meet fails: a thing of another kind" #steps 4000000000 #traversal 2000000000 {
+  #assert spr_unmet(spr_one_probe(PR_STANDS, 2, 113), WHY_NOT_IN_STATE);
+}
+#test "outcome replay: a probe the run does not meet fails: a free place where a thing stands" #steps 4000000000 #traversal 2000000000 {
+  #assert !spr_one_probe(PR_FREE, 17720, -7060).ok[OC_PROBES];   // a body can't stand where the palm is
+}
+#test "outcome replay: a probe the run does not meet fails: a stop where nothing stands" #steps 4000000000 #traversal 2000000000 {
+  r := spr_one_probe(PR_BLOCKS, 17500, -6700);   // nothing stands in the gate
   #assert !r.ok[OC_PROBES] && r.why == WHY_COLLIDER_MISSING;
-  none: [1] int;
+}
+#test "outcome replay: an empty run holds, and a thing it never placed is not in the state" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_RUN; none: [1] int;
   #assert spr_holds(spr_replay(t[..], run[0..<0], none[0..<0], SB_NONE)) && spr_why(t[0].live[..], 99) == WHY_NOT_IN_STATE;
 }
+// A run recorded without probes earns its own: replayed once, the probes it earns into p, how many numbers.
+spr_earn :: (t: [] SprWork, p: [] int) -> int {
+  run := SPR_RUN; none: [1] int;
+  first := spr_replay(t, run[..], none[0..<0], SB_NONE);
+  return ifx spr_holds(first) then spr_probes_of(t[0].want[..], p) else -1;
+}
 #test "outcome replay: a run recorded without probes earns its own: every thing it leaves stands and stops a body, and the run walks" #steps 4000000000 #traversal 2000000000 {
-  t := [1] SprWork.[SprWork.{}]; run := SPR_RUN; none: [1] int; p: [(2 * SL_ITEMS + 2) * SPR_PROBE] int;
-  first := spr_replay(t[..], run[..], none[0..<0], SB_NONE);
-  n := spr_probes_of(t[0].want[..], p[..]);
-  #assert spr_holds(first) && n == 8 * SPR_PROBE && p[0] == PR_COUNT && p[1] == 3 && p[4] == PR_STANDS && p[5] == 1 && p[6] == 113 && p[8] == PR_BLOCKS && p[9] == 17720 && p[10] == -7060 && p[n - 4] == PR_WALKS;
-  #assert spr_holds(spr_replay(t[..], run[..], p[0..<n], SB_NONE)) && !spr_replay(t[..], run[..], p[0..<n], SB_PROBES).ok[OC_PROBES] && spr_probes_of(t[0].want[..], p[0..<8]) == 0;
+  t := [1] SprWork.[SprWork.{}]; p: [(2 * SL_ITEMS + 2) * SPR_PROBE] int;
+  n := spr_earn(t[..], p[..]);
+  #assert n == 8 * SPR_PROBE && p[0] == PR_COUNT && p[1] == 3 && p[4] == PR_STANDS && p[5] == 1 && p[6] == 113 && p[8] == PR_BLOCKS && p[9] == 17720 && p[10] == -7060 && p[n - 4] == PR_WALKS;
+  #assert spr_probes_of(t[0].want[..], p[0..<8]) == 0;
+}
+#test "outcome replay: the probes a run earns hold on it" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_RUN; p: [(2 * SL_ITEMS + 2) * SPR_PROBE] int;
+  n := spr_earn(t[..], p[..]);
+  #assert n == 8 * SPR_PROBE && spr_holds(spr_replay(t[..], run[..], p[0..<n], SB_NONE));
+}
+#test "outcome replay: the probes a run earns fail on a thing that lost its collider" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_RUN; p: [(2 * SL_ITEMS + 2) * SPR_PROBE] int;
+  n := spr_earn(t[..], p[..]);
+  #assert n == 8 * SPR_PROBE && !spr_replay(t[..], run[..], p[0..<n], SB_PROBES).ok[OC_PROBES];
 }
 #test "outcome replay: a run as the server kept it (every spawn numbered) replays from the start" #steps 4000000000 #traversal 2000000000 {
   t := [1] SprWork.[SprWork.{}]; none: [1] int;
@@ -75,42 +112,76 @@ SPR_PROBES :: [9 * SPR_PROBE] int.[
   far := [1] string.["{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":3,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}]}"];
   #assert !spr_replay(t[..], far[..], none[0..<0], SB_NONE).ok[OC_ERRORS];
 }
-#test "outcome replay: a run that sets foes' plans holds them in the live World and in the saved tables, and each broken variant tells which (#13466)" #steps 8000000000 #traversal 4000000000 {
-  t := [1] SprWork.[SprWork.{}];
-  // raider 1 sleeps at dawn, a crate is put by the rover, raider 2 stands at dawn: cells and a thing in one run
-  run := [3] string.[
-    "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"plans\",\"row\":10,\"col\":\"do\",\"v\":\"sleep\"}]}",
-    "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}",
-    "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"plans\",\"row\":20,\"col\":\"do\",\"v\":\"stand\"}]}"];
-  probes := [3 * SPR_PROBE] int.[PR_COUNT, 1, 0, 0,   PR_PLAN, 1, 0, NPD_SLEEP,   PR_PLAN, 2, 0, NPD_STAND];
+// A run that sets foes' plans (#13466): raider 1 sleeps at dawn, a crate is put by the rover, raider 2
+// stands at dawn: cells and a thing in one run.
+SPR_PLAN_RUN :: [3] string.[
+  "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"plans\",\"row\":10,\"col\":\"do\",\"v\":\"sleep\"}]}",
+  "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}",
+  "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"plans\",\"row\":20,\"col\":\"do\",\"v\":\"stand\"}]}"];
+SPR_PLAN_PROBES :: [3 * SPR_PROBE] int.[PR_COUNT, 1, 0, 0,   PR_PLAN, 1, 0, NPD_SLEEP,   PR_PLAN, 2, 0, NPD_STAND];
+// The plan run, and the editor's clock set last after its first cell.
+spr_dusk :: (run: [] string, out: [] string) { out[0] = run[0]; out[1] = "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"clock\",\"row\":1,\"col\":\"when\",\"v\":\"dusk\"}]}"; }
+// A run recorded without probes earns one a plan from the tables it saved: replayed once, the probes into earned, how many numbers.
+spr_earn_plans :: (t: [] SprWork, run: [] string, earned: [] int) -> int {
+  none: [1] int;
+  _ := spr_replay(t, run, none[0..<0], SB_NONE);
+  return spr_plan_probes_of(t, earned, 0);
+}
+#test "outcome replay: a run that sets foes' plans holds them in the live World and in the saved tables (#13466)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_PLAN_RUN; probes := SPR_PLAN_PROBES;
   r := spr_replay(t[..], run[..], probes[..], SB_NONE);
   #assert spr_holds(r) && r.pieces == 1 && r.head == 3;
+}
+#test "outcome replay: a run that sets foes' plans: each broken variant tells which (#13466)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_PLAN_RUN; probes := SPR_PLAN_PROBES;
   // the page missed the last plan: the live World is wrong and the probe says so; the saved tables are right
-  r = spr_replay(t[..], run[..], probes[..], SB_LIVE);
+  r := spr_replay(t[..], run[..], probes[..], SB_LIVE);
   #assert !r.ok[OC_LIVE] && r.ok[OC_SAVED] && r.ok[OC_ERRORS] && !r.ok[OC_PROBES] && r.at[OC_PROBES] == 2 && r.why == WHY_NOT_IN_STATE;
   // the saved tables are one batch behind: the page is right, the saved world is wrong
   r = spr_replay(t[..], run[..], probes[..], SB_SAVED);
   #assert r.ok[OC_LIVE] && !r.ok[OC_SAVED] && r.ok[OC_ERRORS] && r.ok[OC_PROBES];
-  // a plan the run did not set fails its probe; a foe that is not one fails too
+}
+#test "outcome replay: a run that sets foes' plans: a plan the run did not set fails its probe; a foe that is not one fails too (#13466)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_PLAN_RUN;
   other := [2 * SPR_PROBE] int.[PR_PLAN, 3, 0, NPD_SLEEP,   PR_PLAN, 10, 0, NPD_DANCE];
-  r = spr_replay(t[..], run[..], other[0..<SPR_PROBE], SB_NONE);
+  r := spr_replay(t[..], run[..], other[0..<SPR_PROBE], SB_NONE);
   #assert !r.ok[OC_PROBES] && r.at[OC_PROBES] == 0 && !r.ok[OC_LIVE] && !r.ok[OC_SAVED];
   #assert !spr_replay(t[..], run[..], other[SPR_PROBE..<2 * SPR_PROBE], SB_NONE).ok[OC_PROBES];
-  // a run recorded without probes earns one a plan from the tables it saved, and each broken variant fails them
-  none: [1] int; earned: [(2 + SPR_PLANS) * SPR_PROBE] int;
-  _ := spr_replay(t[..], run[..], none[0..<0], SB_NONE);
-  n := spr_plan_probes_of(t[..], earned[..], 0);
+}
+#test "outcome replay: a plan run recorded without probes earns one a plan from the tables it saved, and they hold (#13466)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_PLAN_RUN; earned: [(2 + SPR_PLANS) * SPR_PROBE] int;
+  n := spr_earn_plans(t[..], run[..], earned[..]);
   #assert n == SPR_PLANS * SPR_PROBE && earned[0] == PR_CLOCK && earned[1] == -1 && earned[4] == PR_PLAN && earned[5] == 1 && earned[6] == 0 && earned[7] == NPD_SLEEP && earned[5 * SPR_PROBE + 3] == NPD_STAND;
-  #assert spr_holds(spr_replay(t[..], run[..], earned[0..<n], SB_NONE)) && !spr_replay(t[..], run[..], earned[0..<n], SB_LIVE).ok[OC_LIVE] && !spr_replay(t[..], run[..], earned[0..<n], SB_SAVED).ok[OC_SAVED];
+  #assert spr_holds(spr_replay(t[..], run[..], earned[0..<n], SB_NONE));
   #assert spr_plan_probes_of(t[..], earned[0..<8], 0) == 0;
-  // the editor's clock set last: a page that missed it, or a saved world a step behind, fails the clock probe
-  dusk := [2] string.[run[0], "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"clock\",\"row\":1,\"col\":\"when\",\"v\":\"dusk\"}]}"];
-  _ = spr_replay(t[..], dusk[..], none[0..<0], SB_NONE);
-  n = spr_plan_probes_of(t[..], earned[..], 0);
+}
+#test "outcome replay: the plans a run earns fail on a page that missed the last plan (#13466)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_PLAN_RUN; earned: [(2 + SPR_PLANS) * SPR_PROBE] int;
+  n := spr_earn_plans(t[..], run[..], earned[..]);
+  #assert n == SPR_PLANS * SPR_PROBE && !spr_replay(t[..], run[..], earned[0..<n], SB_LIVE).ok[OC_LIVE];
+}
+#test "outcome replay: the plans a run earns fail on saved tables a batch behind (#13466)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_PLAN_RUN; earned: [(2 + SPR_PLANS) * SPR_PROBE] int;
+  n := spr_earn_plans(t[..], run[..], earned[..]);
+  #assert n == SPR_PLANS * SPR_PROBE && !spr_replay(t[..], run[..], earned[0..<n], SB_SAVED).ok[OC_SAVED];
+}
+#test "outcome replay: the editor's clock set last earns a clock probe, and it holds (#13466)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_PLAN_RUN; dusk: [2] string; earned: [(2 + SPR_PLANS) * SPR_PROBE] int;
+  spr_dusk(run[..], dusk[..]);
+  n := spr_earn_plans(t[..], dusk[..], earned[..]);
   #assert earned[1] == 2 && spr_holds(spr_replay(t[..], dusk[..], earned[0..<n], SB_NONE));
-  r = spr_replay(t[..], dusk[..], earned[0..<n], SB_LIVE);
+}
+#test "outcome replay: a page that missed the clock, or a saved world a step behind, fails the clock probe (#13466)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_PLAN_RUN; dusk: [2] string; earned: [(2 + SPR_PLANS) * SPR_PROBE] int;
+  spr_dusk(run[..], dusk[..]);
+  n := spr_earn_plans(t[..], dusk[..], earned[..]);
+  #assert earned[1] == 2;
+  r := spr_replay(t[..], dusk[..], earned[0..<n], SB_LIVE);
   #assert !r.ok[OC_LIVE] && r.at[OC_PROBES] == 0 && !spr_replay(t[..], dusk[..], earned[0..<n], SB_SAVED).ok[OC_SAVED];
-  pieces := SPR_RUN;
-  _ = spr_replay(t[..], pieces[..], none[0..<0], SB_NONE);
-  #assert spr_plan_probes_of(t[..], earned[..], 4) == 4;   // a run that never touched the tables earns none
+}
+#test "outcome replay: a run that never touched the tables earns no plan probes (#13466)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; earned: [(2 + SPR_PLANS) * SPR_PROBE] int;
+  pieces := SPR_RUN; none: [1] int;
+  _ := spr_replay(t[..], pieces[..], none[0..<0], SB_NONE);
+  #assert spr_plan_probes_of(t[..], earned[..], 4) == 4;
 }
