@@ -20,6 +20,14 @@ typealias NativePlatformFont=NSFont
 #endif
 
 enum NativeSkin {
+    // SDK glyph binding for the shared kit's icon names. Paint and geometry
+    // still come from the mono skin, as with the existing native composer.
+    static func symbol(_ element:NativeElement)->String? {
+        func href(_ e:NativeElement)->String? {if let h=e.attrs["href"],h.contains("/icons/") {return h};return e.children.compactMap(href).first}
+        guard let h=href(element),let raw=h.split(separator:"/").last else{return nil}
+        let name=String(raw).components(separatedBy:".svg")[0]
+        return ["sidebar":"sidebar.left","plus":"square.and.pencil","x":"xmark","settings":"gearshape","arrow-rotate-cw":"arrow.clockwise"][name]
+    }
     static let tokens=mono_native()
     static let names=mono_names()
     static func cg(_ c:UInt32)->CGColor {

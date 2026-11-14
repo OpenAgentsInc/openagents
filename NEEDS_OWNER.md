@@ -1429,3 +1429,13 @@ admin endpoint disabled”. NIP-86/98 is implemented and tested with a
 configured admin role, but production has no admin key, rejects admin
 requests and omits 86/98 from NIP-11. This is a resolved owner decision,
 not a pending request for a key.
+
+
+## iOS 1082 history navigation (2026-11-14)
+
+- [ ] Install TestFlight **1082** and check the history button at the upper left.
+      Select a real Mac chat, then a CoderOS chat, and confirm the expected
+      history loads. Try the edge swipe and return to a draft. Settings and
+      Worlds are in the history footer. Simulator checks cover the installed
+      navigation and send/reopen flow with independent local account/computer
+      fixtures; this final check uses the owner's real phone and computers.

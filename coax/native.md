@@ -29,6 +29,31 @@ keeps controls by element id, uses system text and keyboard behavior, and
 updates after input or a completion. The book's compiled milestone reuses
 this same UIKit projection.
 
+The optional [workspace presentation profile](../proto/coax-native/workspace-v1.json)
+starts with iOS 1082. An installed host opts in with the empty event exported
+by `native/workspace.coax`. The existing component tree carries the kit's
+sidebar, header, search, rows and footer; no domain wire format changes.
+Coax owns visibility, filtering, draft selection, request serialization and
+the compact/regular layout measures in `components/layout/workspace.coax`.
+UIKit performs the child-view transition, keyboard layout and accessibility.
+The compact history pane occupies the width of the phone; regular layouts
+reserve a 280–380 point column when at least 600 points are available. This
+follows T3 Code mobile's history/detail structure, while retaining our shared
+mono skin and components. Hosts that do not opt in retain their existing
+presentation, including the world-agent sheet and desktop.
+
+The history browser uses the existing account-history and environment-runtime
+codecs and a separate read-only `EnvironmentApp` state. It shares the main
+app's single HTTP slot. Opening history pauses conversation polling, without
+replacing its command identity or draft. An unresolved mutation prevents
+switching conversations. A selection queued behind a read is a UI selection,
+never a queued execution command. Catalog refresh remaps groups by host key;
+logout clears the history and draft cache. History holds at most 512 computer
+sessions and renders at most 96 matching rows, divided among the groups with
+earlier/latest pages; search covers loaded titles and host
+names. Pagination uses the existing cursor. Sixteen conversation drafts are
+kept in memory by exact host/session or account-chat key, not persisted.
+
 This adopts Exact's separation of portable application, keyed presentation
 and installed services, not Exact's plan format. Exact's baked first frame,
 dependency analysis and complete driver parity remain unfinished work.

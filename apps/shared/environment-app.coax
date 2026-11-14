@@ -11,8 +11,18 @@ EnvironmentApp :: struct {
   // The computer's last offer and the person's model/effort choice (empty:
   // the open conversation's, else the computer's default). menu: 1 model, 2 effort.
   offer:[1]EaOffer;model:[64]u8;nmo:int;effort:[16]u8;nef:int;menu:int;
-  expanded:[64]int;expanded_n:int;history_before:int;sync_requested:bool;
+  expanded:[64]int;expanded_n:int;history_before:int;sync_requested:bool;paused:bool;workspace:bool;
 }
+#test "history navigation pauses polling without replacing an uncertain command" {
+ e:[1]EnvironmentApp;e[0].active=true;e[0].timer=true;e[0].uncertain=true;e[0].request[0].nc=ea_copy(e[0].request[0].command[..],"01234567890123456789012345678901");
+ eu_pause(e[..],true);eu_reply(e[..],12,0,"{}",false);
+ #assert e[0].paused && !e[0].timer && e[0].action==0 && e[0].uncertain && e[0].request[0].nc==32;
+}
+eu_wait :: (e:[]EnvironmentApp) #effects(all) {
+ running:=false;for i:0..<e[0].view[0].ns {s:=e[0].view[0].sessions[i];if cast(string)s.id[0..<s.ni]==cast(string)e[0].session[0..<e[0].ns] {running=s.busy;}}
+ if !e[0].paused && e[0].active && !e[0].flight && !e[0].random && !e[0].uncertain && e[0].page==2 && running && !e[0].timer && e[0].action==0 && e[0].history_before==0 {e[0].timer=true;e[0].action=12;e[0].nb=ea_copy(e[0].body[..],"{}");}
+}
+eu_pause :: (e:[]EnvironmentApp,on:bool) #effects(all) {e[0].paused=on;if on && e[0].action==12 {e[0].action=0;e[0].timer=false;}if !on {eu_wait(e);}}
 #test "tool output is collapsed literal detail, with stable identity across polling" {
   e:[1]EnvironmentApp;e[0].active=true;e[0].page=2;e[0].selected=0;e[0].catalog[0].n=1;e[0].ns=ea_copy(e[0].session[..],"chat");
   v:=e[0].view[..];v[0].ni=1;m:=v[0].items[0];m.ni=ea_copy(m.id[..],"tool-1");m.nr=ea_copy(m.role[..],"tool");m.nk=ea_copy(m.tool[..],"Bash");m.complete=true;
@@ -150,7 +160,7 @@ eu_reply :: (e:[]EnvironmentApp,op:int,status:int,raw:string,failed:bool) #effec
   if !e[0].active {return;}
   if op==12 {
     if !e[0].timer {return;}e[0].timer=false;
-    if !e[0].flight && !e[0].random && !e[0].uncertain && e[0].page==2 && e[0].ns>0 && e[0].history_before==0 {eu_request(e,"ReadSession");eu_http(e,false);}return;
+    if !e[0].paused && !e[0].flight && !e[0].random && !e[0].uncertain && e[0].page==2 && e[0].ns>0 && e[0].history_before==0 {eu_request(e,"ReadSession");eu_http(e,false);}return;
   }
   if op==11 {
     if !e[0].random {return;}e[0].random=false;
@@ -180,10 +190,10 @@ eu_reply :: (e:[]EnvironmentApp,op:int,status:int,raw:string,failed:bool) #effec
   if method=="OpenSession" {e[0].ns=ea_copy(e[0].session[..],cast(string)q[0].session[0..<q[0].ns]);e[0].page=2;}
   if (method=="OpenSession" || method=="SendMessage") && cast(string)next[0].status[0..<next[0].nt]=="accepted" {e[0].nd=0;}
   eu_note(e,ifx cast(string)next[0].status[0..<next[0].nt]=="unknown" then "This command's outcome is unknown. It will not be run again automatically." else "");
-  running:=false;for i:0..<next[0].ns {s:=next[0].sessions[i];if cast(string)s.id[0..<s.ni]==cast(string)e[0].session[0..<e[0].ns] {running=s.busy;}}
-  if e[0].page==2 && running && !e[0].timer && e[0].history_before==0 {e[0].timer=true;e[0].action=12;e[0].nb=ea_copy(e[0].body[..],"{}");}
+  eu_wait(e);
 }
 eu_press :: (e:[]EnvironmentApp,id:string) #effects(all) {
+  if id=="env.choices.close" {e[0].menu=0;return;}
   if id=="env.latest" {eu_press(e,"env.refresh");return;}
   for i:0..<e[0].view[0].ni {m:=e[0].view[0].items[i];b:[96]u8;if (m.nk>0 || cast(string)m.role[0..<m.nr]=="tool") && id==eu_item_id(e[0].view[..],i,b[..]) {
     key:=eu_item_key(e[0].view[..],i);for k:0..<e[0].expanded_n {if e[0].expanded[k]==key {e[0].expanded_n-=1;e[0].expanded[k]=e[0].expanded[e[0].expanded_n];return;}}
@@ -223,11 +233,11 @@ eu_render :: (e:[]EnvironmentApp,t:[]Tree,u:[]Ui,markdown:[]MdDoc) #effects(all)
     for i:0..<e[0].view[0].ns {b:[96]u8;s:=e[0].view[0].sessions[i];x=k_row(t,u,tr_join(b[..],"environment.session.",i),cast(string)s.title[0..<s.nt],"",false);if busy {tr_attr(t,x,AT_DISABLED,"");}}
     if e[0].view[0].nc>0 {x=k_link(t,"env.more","More conversations");if busy {tr_attr(t,x,AT_DISABLED,"");}}
   } else {
-    row:=e[0].catalog[0].entries[e[0].selected];x=tr_open(t,"env.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_button(t,u,"env.sessions","Chats",BS_PLAIN);x=k_text(t,u,"env.executing",TG_SPAN,"",cast(string)row.label[0..<row.nl]);
+    row:=e[0].catalog[0].entries[e[0].selected];x=tr_open(t,"env.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");if e[0].workspace {x=k_side_open(t,"nav.toggle","Show chats");}else {x=k_button(t,u,"env.sessions","Chats",BS_PLAIN);}caption:[384]u8;label:=cast(string)row.label[0..<row.nl];current:=eu_current(e);if e[0].workspace && current>=0 {label=tr_cat(caption[..],cast(string)e[0].view[0].sessions[current].title[0..<e[0].view[0].sessions[current].nt]," · ");n:=mc(caption[..],label.count,cast(string)row.label[0..<row.nl]);label=cast(string)caption[0..<n];}x=k_text(t,u,"env.executing",TG_SPAN,"",label);
     showing:=busy && (e[0].sync_requested || !e[0].view[0].ok || cast(string)e[0].view[0].method[0..<e[0].view[0].nm]!="ReadSession" || cast(string)e[0].request[0].method[0..<e[0].request[0].nm]!="ReadSession");
     x=k_button(t,u,"env.refresh","↻",BS_PLAIN);tr_attr(t,x,AT_LABEL,ifx showing then "Refreshing conversation" else ifx e[0].uncertain then "Connection lost. Reconnect" else ifx e[0].history_before>0 then "Return to latest messages" else "Conversation up to date. Refresh");
     tr_attr(t,x,AT_STATE,ifx showing then "loading" else ifx e[0].uncertain then "offline" else ifx e[0].view[0].ok then "ready" else "idle");
-    tr_close(t);
+    if e[0].workspace {x=k_icon_button(t,"nav.new",IC_PLUS,"New chat");}tr_close(t);
     active:=false;asking:=false;reviewable:=true;writable:=e[0].ns==0;
     for i:0..<e[0].view[0].ns {s:=e[0].view[0].sessions[i];if cast(string)s.id[0..<s.ni]==cast(string)e[0].session[0..<e[0].ns] {active=s.busy;asking=s.nr>0;writable=s.managed && cast(string)s.control[0..<s.nc]=="available";}}
     x=tr_open(t,"env.messages",TG_SECTION,"transcript");tr_attr(t,x,AT_STATE,cast(string)e[0].session[0..<e[0].ns]);
@@ -245,15 +255,23 @@ eu_render :: (e:[]EnvironmentApp,t:[]Tree,u:[]Ui,markdown:[]MdDoc) #effects(all)
     m:=eu_model(e);l:=eu_level(e,m);o:=e[0].offer[..];name:[96]u8;title:="Claude Code";
     if writable && m>=0 {
       // The next turn's model and effort; a running turn keeps its own.
-      ml:=cast(string)o[0].models[m].label[0..<o[0].models[m].nl];a:[96]u8;open:=e[0].menu==1 && !busy;
+      if e[0].workspace {x=tr_open(t,"env.options",TG_FOOTER,"composer-options");}
+      ml:=cast(string)o[0].models[m].label[0..<o[0].models[m].nl];a:[96]u8;open:=e[0].menu==1 && !busy && !e[0].workspace;
       k_select_begin(t,u,"env.model",tr_cat(a[..],"Model · ",ml),"Claude model for the next message",open);
       if open {for i:0..<o[0].n {b:[96]u8;x=k_row(t,u,tr_join(b[..],"env.model.",i),cast(string)o[0].models[i].label[0..<o[0].models[i].nl],"",i==m);}}
       k_select_end(t,open);title=ml;
       if l>=0 {
-        ll:=cast(string)o[0].levels[l].label[0..<o[0].levels[l].nl];c:[96]u8;open=e[0].menu==2 && !busy;
+        ll:=cast(string)o[0].levels[l].label[0..<o[0].levels[l].nl];c:[96]u8;open=e[0].menu==2 && !busy && !e[0].workspace;
         k_select_begin(t,u,"env.effort",tr_cat(c[..],"Effort · ",ll),"Reasoning effort for the next message",open);
         if open {for i:0..<o[0].nv {if (o[0].models[m].ladder&(1<<i))!=0 {b:[96]u8;x=k_row(t,u,tr_join(b[..],"env.effort.",i),cast(string)o[0].levels[i].label[0..<o[0].levels[i].nl],"",i==l);}}}
         k_select_end(t,open);title=tr_cat(name[..],tr_cat(c[..],ml," · "),ll);
+      }
+      if e[0].workspace {tr_close(t);}
+      if e[0].workspace && e[0].menu>0 {
+        x=tr_open(t,"env.choices",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,ifx e[0].menu==1 then "Model" else "Reasoning effort");
+        x=k_text(t,u,"env.choices.title",TG_H2,"",ifx e[0].menu==1 then "Model" else "Reasoning effort");x=k_link(t,"env.choices.close","Close choices");
+        if e[0].menu==1 {for i:0..<o[0].n {b:[96]u8;x=k_row(t,u,tr_join(b[..],"env.model.",i),cast(string)o[0].models[i].label[0..<o[0].models[i].nl],"",i==m);}}
+        else {for i:0..<o[0].nv {if (o[0].models[m].ladder&(1<<i))!=0 {b:[96]u8;x=k_row(t,u,tr_join(b[..],"env.effort.",i),cast(string)o[0].levels[i].label[0..<o[0].levels[i].nl],"",i==l);}}}tr_close(t);
       }
     }
     if writable {f:=k_composer_begin(t,u,"env.composer","Message Claude");if busy || active || e[0].uncertain {tr_attr(t,f,AT_DISABLED,"disabled");}k_composer_end(t,u,"env.composer",ifx active then "Stop" else "Send",!busy && !e[0].uncertain && (active || e[0].nd>0));frame:=tr_find(t,"env.composer.frame");if frame>=0 {tr_attr(t,frame,AT_TITLE,title);}}

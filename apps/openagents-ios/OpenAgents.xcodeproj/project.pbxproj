@@ -41,8 +41,10 @@
 		4ABB8E0033250A5AD954D6A0 /* LookUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56E9C5471E75811CB4C59AC9 /* LookUITests.swift */; };
 		4D59620F5B373646C05FC2A4 /* NativeComposer-T3-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 12732C0F80796C53136B0DC3 /* NativeComposer-T3-LICENSE.txt */; };
 		559E7996A52A688D46F340D0 /* Deep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92AE2C66797D94AFC4EAF484 /* Deep.swift */; };
+		55AC91DF997D5A13F8191302 /* NativeNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F75A26BBCE628290F7BADC0 /* NativeNavigationTests.swift */; };
 		569D8A9D4CC5B6F695DEF10E /* WorldsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C314C30B844BE1008335F491 /* WorldsUITests.swift */; };
 		5B8D020538856B59C5413D67 /* NativeAudioUnit.c in Sources */ = {isa = PBXBuildFile; fileRef = 87B62191D8926016DED19A04 /* NativeAudioUnit.c */; };
+		5BDA859BA50C6EB1D09915B9 /* NativeWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D8BFCC6AB5673870A5A904E /* NativeWorkspace.swift */; };
 		5CE5990EB9BF682AAAB22BAD /* EvergladeRuntime.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43575EA619337B30779C47AD /* EvergladeRuntime.framework */; };
 		5D0BF1EA9B7BD485D8260C0D /* everglade5e.c in Sources */ = {isa = PBXBuildFile; fileRef = 9CF10D05CEBE1FF96A9E94F6 /* everglade5e.c */; };
 		5DC336D026702B482A075377 /* MadeRealmRuntime.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */; };
@@ -63,6 +65,7 @@
 		7D945870E3AD12214ABA574E /* DMSans-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E6BDE16B17DBA408B5A72A1F /* DMSans-Italic.ttf */; };
 		7FFD4ECD2F77851EF905BDBA /* native-audio.c in Sources */ = {isa = PBXBuildFile; fileRef = 1FA713933D36CAF22171CD05 /* native-audio.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"; }; };
 		8E4F97485AF1AF831DCB39E9 /* bip39-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = 131BDA8ADB97609206195533 /* bip39-english.txt */; };
+		9032E72477D42E6F48D6BB4E /* NavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4AB3936542305917B3BC82 /* NavigationUITests.swift */; };
 		94469D402865EEEABF23DD4F /* NativeChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5995A6D421346543098BA23D /* NativeChrome.swift */; };
 		991835023F6FB1D8E2D27BE8 /* Everglade-step.c in Sources */ = {isa = PBXBuildFile; fileRef = BC347727510CEB5F0963D925 /* Everglade-step.c */; };
 		992FD07438E96D6B06B01D6C /* MetalAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7444B08092B9624B2F186F /* MetalAudio.swift */; };
@@ -188,6 +191,7 @@
 		131BDA8ADB97609206195533 /* bip39-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bip39-english.txt"; sourceTree = "<group>"; };
 		1AF7AD81A684A2291C02A25A /* River.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = River.c; sourceTree = "<group>"; };
 		1B7444B08092B9624B2F186F /* MetalAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalAudio.swift; sourceTree = "<group>"; };
+		1E4AB3936542305917B3BC82 /* NavigationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationUITests.swift; sourceTree = "<group>"; };
 		1EB43B9790841620D29A9F92 /* PhoneSignin.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = PhoneSignin.c; sourceTree = "<group>"; };
 		1FA713933D36CAF22171CD05 /* native-audio.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "native-audio.c"; sourceTree = "<group>"; };
 		2090461DEB661585A0B8576E /* NativeWorldDownload-test.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NativeWorldDownload-test.swift"; sourceTree = "<group>"; };
@@ -198,6 +202,7 @@
 		2BAFA692F7A2D8501CD6985F /* BIP39.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39.swift; sourceTree = "<group>"; };
 		2C3236A8315C98ABF86224CB /* StarterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterApp.swift; sourceTree = "<group>"; };
 		2F6D9D49955FFFB825E5D9DF /* SpliceBotsRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = SpliceBotsRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		2F75A26BBCE628290F7BADC0 /* NativeNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeNavigationTests.swift; sourceTree = "<group>"; };
 		303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUpdates.swift; sourceTree = "<group>"; };
 		3055FF0766218183C6117906 /* LookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookTests.swift; sourceTree = "<group>"; };
 		31159A6F8D0AE4A71EC70DB3 /* DMSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-Regular.ttf"; sourceTree = "<group>"; };
@@ -211,6 +216,7 @@
 		439DDA8E07F1EF881E469B46 /* everglade5e.face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = everglade5e.face.c; sourceTree = "<group>"; };
 		460986BD3808434A301E2974 /* NativeWorldUnit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeWorldUnit.c; sourceTree = "<group>"; };
 		4A3EDDA42FA80D738F2AF2B3 /* NativeTranscriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranscriptTests.swift; sourceTree = "<group>"; };
+		4D8BFCC6AB5673870A5A904E /* NativeWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorkspace.swift; sourceTree = "<group>"; };
 		4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MadeRealmRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		56E9C5471E75811CB4C59AC9 /* LookUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookUITests.swift; sourceTree = "<group>"; };
 		5995A6D421346543098BA23D /* NativeChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeChrome.swift; sourceTree = "<group>"; };
@@ -355,6 +361,7 @@
 			children = (
 				3055FF0766218183C6117906 /* LookTests.swift */,
 				60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */,
+				2F75A26BBCE628290F7BADC0 /* NativeNavigationTests.swift */,
 				7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */,
 				25D8936BC22A37E1214E454F /* NativeProgramTests.swift */,
 				4A3EDDA42FA80D738F2AF2B3 /* NativeTranscriptTests.swift */,
@@ -498,6 +505,7 @@
 				EC25DDA3EF1A78B3C171EFF1 /* NativeTool.swift */,
 				8477A24ADD8E8A749294EEEE /* NativeTypes.swift */,
 				303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */,
+				4D8BFCC6AB5673870A5A904E /* NativeWorkspace.swift */,
 				A76CCABCDB810512F41B3CB4 /* NativeWorldAssets.swift */,
 				3D6F9ED8D49C3CB4C705C0A7 /* NativeWorldConversation.swift */,
 				77B06C5399D3C53DAFA386F6 /* NativeWorldEditor.swift */,
@@ -515,6 +523,7 @@
 				8B07580CC0A27104C07B9B5C /* ChatUITests.swift */,
 				FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */,
 				56E9C5471E75811CB4C59AC9 /* LookUITests.swift */,
+				1E4AB3936542305917B3BC82 /* NavigationUITests.swift */,
 				09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */,
 				84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */,
 				88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */,
@@ -822,6 +831,7 @@
 				1B762FE26821A2D99402DDAF /* NativeTypes.swift in Sources */,
 				43A5D1535C05B29C381D5FFF /* NativeUpdates.swift in Sources */,
 				3EEE9F6858832B4BED499CC2 /* NativeWire.c in Sources */,
+				5BDA859BA50C6EB1D09915B9 /* NativeWorkspace.swift in Sources */,
 				388C74DDAF1E79D078022159 /* NativeWorldAssets.swift in Sources */,
 				DE56E2C6256E7DF31BC84955 /* NativeWorldConversation.swift in Sources */,
 				C6D0F1DC49DA862E1E6CD25D /* NativeWorldEditor.swift in Sources */,
@@ -858,6 +868,7 @@
 				0F64B5AFCEDD256C035DF6D8 /* ChatUITests.swift in Sources */,
 				ECDFE75FB85014389B5354CF /* EmailLoginUITests.swift in Sources */,
 				4ABB8E0033250A5AD954D6A0 /* LookUITests.swift in Sources */,
+				9032E72477D42E6F48D6BB4E /* NavigationUITests.swift in Sources */,
 				103180BD57D2AA2E93F4A6B7 /* SharedAppDeviceUITests.swift in Sources */,
 				A05D687346C45546701CEFF7 /* SharedAppUITests.swift in Sources */,
 				647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */,
@@ -886,6 +897,7 @@
 			files = (
 				F32496C8B07DE3345D303531 /* LookTests.swift in Sources */,
 				2C15AE18F335A39F71D3ECC5 /* NativeMarkdownTests.swift in Sources */,
+				55AC91DF997D5A13F8191302 /* NativeNavigationTests.swift in Sources */,
 				DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */,
 				095EEDDBD0F5949696F6B490 /* NativeProgramTests.swift in Sources */,
 				711805FE18B74F48101A84C4 /* NativeTranscriptTests.swift in Sources */,
@@ -1056,7 +1068,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1081;
+				CURRENT_PROJECT_VERSION = 1082;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -1292,7 +1304,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1081;
+				CURRENT_PROJECT_VERSION = 1082;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1325,7 +1337,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1081;
+				CURRENT_PROJECT_VERSION = 1082;
 				EXPORTED_SYMBOLS_FILE = "$(SRCROOT)/../../metaverse-engine/host/apple/page-host.exports";
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1529,7 +1541,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1081;
+				CURRENT_PROJECT_VERSION = 1082;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

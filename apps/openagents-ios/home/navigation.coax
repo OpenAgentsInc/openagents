@@ -1,0 +1,114 @@
+// App assembly of the shared sidebar and the existing domain applications.
+// Included by app.coax, after Starter. No new request or execution protocol.
+#test "opening history keeps the current draft and original uncertain request" {
+ s:[1]Starter;s[0].workspace=true;s[0].page=4;s[0].account_ready=true;e:=s[0].environments[..];e[0].active=true;e[0].page=2;e[0].uncertain=true;e[0].nd=ea_copy(e[0].draft[..],"Keep this draft");
+ #assert na_nav_press(s[..],"nav.toggle") && s[0].navigation[0].open && e[0].nd==15;
+ #assert na_nav_press(s[..],"nav.new") && e[0].uncertain && e[0].page==2 && e[0].nd==15;
+ #assert na_nav_press(s[..],"nav.close") && !s[0].navigation[0].open;
+}
+#test "history selection is deferred while its metadata request owns HTTP" {
+ s:[1]Starter;s[0].workspace=true;s[0].flight=4;s[0].purpose=70;
+ #assert na_nav_press(s[..],"nav.account.new") && s[0].navigation[0].np>0 && s[0].page== -1;
+ s[0].flight=0;s[0].purpose=0;na_nav_pending(s[..]);#assert s[0].page==3 && s[0].navigation[0].np==0;
+}
+#test "settings keeps update feedback inside its presented panel" {
+ s:[1]Starter;s[0].navigation[0].settings=true;s[0].note_n=ea_copy(s[0].note[..],"You have the latest compatible update.");t:[1]Tree;u:[1]Ui;ui_begin(u[..],0,true);tr_begin(t[..]);na_nav_render(s[..],t[..],u[..]);at:=tr_find(t[..],"nav.settings.note");
+ #assert at>=0 && t[0].nodes[at].parent==tr_find(t[..],"nav.settings.panel") && tr_text_of(t[..],at)=="You have the latest compatible update.";
+}
+na_nav_key :: (s:[]Starter,out:[]u8)->string {
+ e:=s[0].environments[..];n:=0;
+ if s[0].page==4 && e[0].page==2 && e[0].selected>=0 {n=mc(out,0,cast(string)e[0].catalog[0].entries[e[0].selected].host[..]);n=mc(out,n,"/");n=mc(out,n,cast(string)e[0].session[0..<e[0].ns]);}
+ else if s[0].page==3 {n=mc(out,0,"account/");n=mc(out,n,cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]);}
+ return cast(string)out[0..<n];
+}
+na_nav_keep :: (s:[]Starter) {key:[224]u8;k:=na_nav_key(s,key[..]);e:=s[0].environments[..];nav_keep_draft(s[0].navigation[..],k,ifx s[0].page==4 then cast(string)e[0].draft[0..<e[0].nd] else cast(string)s[0].draft[0..<s[0].draft_n]);}
+na_nav_restore :: (s:[]Starter) {
+ key:[224]u8;k:=na_nav_key(s,key[..]);text:=nav_draft(s[0].navigation[..],k);
+ if s[0].page==4 {s[0].environments[0].nd=ea_copy(s[0].environments[0].draft[..],text);dm_value(s[0].dom[..],"env.composer",text);}
+ else {s[0].draft_n=na_copy(s[0].draft[..],text);dm_value(s[0].dom[..],"chat.composer",text);}
+}
+na_nav_tick :: (s:[]Starter) {
+ n:=s[0].navigation[..];e:=s[0].environments[..];
+ if !s[0].account_ready || s[0].page<2 || !n[0].open || s[0].flight!=0 || e[0].flight || e[0].random || e[0].action!=0 || s[0].action!=0 {return;}
+ if n[0].account_refresh {n[0].account_refresh=false;na_http(s,"/api/chat/history/v1","",71);return;}
+ nav_next(n);b:=n[0].browser[..];if b[0].action==4 {s[0].action=4;s[0].flight=4;s[0].purpose=70;s[0].out_n=na_copy(s[0].outbox[..],cast(string)b[0].body[0..<b[0].nb]);b[0].action=0;}
+}
+na_nav_pending :: (s:[]Starter) {n:=s[0].navigation[..];if n[0].np==0 || s[0].flight!=0 {return;}b:[96]u8;size:=na_copy(b[..],cast(string)n[0].pending[0..<n[0].np]);n[0].np=0;_:=na_nav_press(s,cast(string)b[0..<size]);}
+na_nav_press :: (s:[]Starter,id:string)->bool {
+ n:=s[0].navigation[..];e:=s[0].environments[..];
+ if id=="nav.toggle" {n[0].open = !n[0].open;n[0].creating=false;return true;}
+ if id=="nav.close" {n[0].open=false;n[0].creating=false;return true;}
+ if id=="nav.settings" {n[0].settings=true;return true;}
+ if id=="nav.settings.close" || id=="extras.more" {n[0].settings=false;return id!="extras.more";}
+ if id=="nav.refresh" {if s[0].flight==0 && !e[0].flight && !e[0].random {n[0].open=true;n[0].refresh=true;na_http(s,"/api/chat/history/v1","",71);}return true;}
+ if id=="nav.account.older" {n[0].account_at+=n[0].page_size;return true;}
+ if id=="nav.account.latest" {n[0].account_at=0;return true;}
+ for i:0..<64 {a:[96]u8;if id==tr_join(a[..],"nav.latest.",i) {n[0].groups[i].offset=0;return true;}}
+ if id=="nav.new" || id=="nav.compose" {if !e[0].uncertain && !e[0].random {n[0].open=true;n[0].creating=true;n[0].nq=0;dm_value(s[0].dom[..],"nav.search","");}else {nav_note(n,"Reconnect to resolve the current command before changing chats.");}return true;}
+ recognized:=id=="nav.account.new";host:= -1;row:= -1;account:= -1;
+ for i:0..<n[0].browser[0].catalog[0].n {b:[96]u8;if id==tr_join(b[..],"nav.new.",i) {host=i;recognized=true;}}
+ for i:0..<n[0].n {b:[96]u8;if id==nav_row_id(n,i,b[..]) {row=i;host=n[0].rows[i].host;recognized=true;}}
+ for i:0..<s[0].chats[0].n {b:[96]u8;if id==tr_join(b[..],"nav.account.",i) {account=i;recognized=true;}}
+ for i:0..<n[0].browser[0].catalog[0].n {buf:[96]u8;if id==tr_join(buf[..],"nav.more.",i) {
+  count:=0;entry:=n[0].browser[0].catalog[0].entries[i];for r:0..<n[0].n {item:=n[0].rows[r];if item.host==i && nav_match(n,cast(string)item.session.title[0..<item.session.nt],cast(string)entry.label[0..<entry.nl]) {count+=1;}}
+  if n[0].groups[i].offset+n[0].page_size<count {n[0].groups[i].offset+=n[0].page_size;return true;}
+  if n[0].groups[i].nc==0 {return true;}
+  if s[0].flight!=0 || e[0].flight || e[0].random {nav_note(n,"Wait for the current request before loading more history.");return true;}
+  n[0].groups[i].offset=count;b:=n[0].browser[..];b[0].selected=i;b[0].view[0].nc=ea_copy(b[0].view[0].cursor[..],cast(string)n[0].groups[i].cursor[0..<n[0].groups[i].nc]);b[0].uncertain=false;eu_press(b,"env.more");na_nav_tick(s);return true;
+ }}
+ if !recognized {return false;}
+ if e[0].flight && cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="ReadSession" && !e[0].uncertain {n[0].np=ea_copy(n[0].pending[..],id);return true;}
+ if e[0].uncertain || e[0].random || e[0].flight || e[0].action!=0 && e[0].action!=12 {nav_note(n,"Wait for the current request, or reconnect before changing chats.");return true;}
+ if s[0].flight!=0 {if s[0].purpose==70 || s[0].purpose==71 {n[0].np=ea_copy(n[0].pending[..],id);}else {nav_note(n,"Wait for the current turn before changing chats.");}return true;}
+ na_nav_keep(s);
+ if host>=0 {
+  e[0]=EnvironmentApp.{};e[0].active=true;e[0].workspace=true;e[0].page=2;e[0].selected=host;e[0].catalog[0]=n[0].browser[0].catalog[0];e[0].offer[0]=n[0].groups[host].offer;s[0].page=4;
+  if row>=0 {summary:=n[0].rows[row].session;e[0].ns=ea_copy(e[0].session[..],cast(string)summary.id[0..<summary.ni]);e[0].view[0].sessions[0]=summary;e[0].view[0].ns=1;eu_request(e,"ReadSession");eu_http(e,false);}
+  na_nav_restore(s);
+ }else if account>=0 {
+  item:=s[0].chats[0].items[account];rid:=cast(string)item.id[0..<item.id_n];
+  if rid.count!=22 || rid[0]!='m' || rid[1]!='_' {nav_note(n,"This older account chat opens on openagents.com/chat.");return true;}
+  e[0].active=false;s[0].selected=account;path:[96]u8;at:=mc(path[..],0,"/api/chat/thread/v1?id=");at=mc(path[..],at,rid);na_http(s,cast(string)path[0..<at],"",3);
+ }else {e[0].active=false;na_new(s);na_nav_restore(s);}
+ n[0].open=false;n[0].creating=false;nav_note(n,"");return true;
+}
+na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
+ n:=s[0].navigation[..];b:=n[0].browser[..];x:=k_side(t,"nav.sidebar","Chats");tr_attr(t,x,AT_STATE,ifx n[0].open then "open" else "closed");
+ x=k_side_head(t,"nav.header","OpenAgents","/");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.refresh",IC_ARROW_ROTATE_CW,"Refresh chats");x=k_icon_button(t,"nav.compose",IC_PLUS,"New chat");x=k_icon_button(t,"nav.close",IC_X,"Hide chats");tr_close(t);
+ x=tr_open(t,"nav.search-wrap",TG_DIV,"navigation-search");x=k_input(t,u,"nav.search","Search chats","Search chats","search","off");tr_close(t);
+ x=k_side_folds(t,"nav.sidebar");visible:=0;account_matches:=0;for i:0..<s[0].chats[0].n {r:=s[0].chats[0].items[i];if nav_match(n,cast(string)r.title[0..<r.title_n],"Account") {account_matches+=1;}}
+ n[0].page_size=nav_page_size(n,account_matches>0);budget:=n[0].page_size;
+ if n[0].creating {x=k_text(t,u,"nav.new.title",TG_H2,"","New conversation");x=k_text(t,u,"nav.new.about",TG_P,"meta","Choose where it runs");}
+ for host:0..<b[0].catalog[0].n {
+  entry:=b[0].catalog[0].entries[host];name:=cast(string)entry.label[0..<entry.nl];g:=n[0].groups[host];count:=0;
+  for i:0..<n[0].n {r:=n[0].rows[i];if r.host==host && nav_match(n,cast(string)r.session.title[0..<r.session.nt],name) {count+=1;}}
+  if n[0].creating {id:[96]u8;x=k_row(t,u,tr_join(id[..],"nav.new.",host),name,"Claude Code",false);continue;}
+  if n[0].nq>0 && count==0 {continue;}
+  id:[96]u8;x=k_side_mark(t,tr_join(id[..],"nav.group.",host),name,count);
+  if !g.loaded {a:[96]u8;x=k_text(t,u,tr_join(a[..],"nav.loading.",host),TG_P,"meta","Loading chats…");}
+  else if g.failed {a:[96]u8;x=k_text(t,u,tr_join(a[..],"nav.failed.",host),TG_P,"meta","Unavailable. Refresh to retry.");}
+  else if count==0 {a:[96]u8;x=k_text(t,u,tr_join(a[..],"nav.empty.",host),TG_P,"meta",ifx g.complete then "No conversations yet" else "History is incomplete");}
+  matched:=0;shown:=0;for i:0..<n[0].n {r:=n[0].rows[i];if r.host!=host || !nav_match(n,cast(string)r.session.title[0..<r.session.nt],name) || visible>=NAV_VISIBLE {continue;}matched+=1;if matched<=g.offset || shown>=budget {continue;}shown+=1;
+   a:[96]u8;current:=s[0].page==4 && s[0].environments[0].selected>=0 && cast(string)s[0].environments[0].catalog[0].entries[s[0].environments[0].selected].host[..]==cast(string)entry.host[..] && cast(string)s[0].environments[0].session[0..<s[0].environments[0].ns]==cast(string)r.session.id[0..<r.session.ni];
+   x=k_row(t,u,nav_row_id(n,i,a[..]),cast(string)r.session.title[0..<r.session.nt],ifx r.session.busy then "Working" else ifx !r.session.managed then "Read only" else "",current);visible+=1;
+  }
+  if g.offset>0 {latest:[96]u8;x=k_link(t,tr_join(latest[..],"nav.latest.",host),"Latest conversations");}
+  if count>g.offset+shown || g.nc>0 {more:[96]u8;x=k_link(t,tr_join(more[..],"nav.more.",host),"Earlier conversations");}
+  else if g.loaded && !g.complete && !g.failed {partial:[96]u8;x=k_text(t,u,tr_join(partial[..],"nav.partial.",host),TG_P,"meta","Discovery is incomplete. Refresh if a chat is missing.");}
+ }
+ if n[0].creating {x=k_row(t,u,"nav.account.new","OpenAgents","Account chat",false);}
+ else {
+  x=k_side_mark(t,"nav.account.heading","Account",s[0].chats[0].n);
+  matched:=0;shown:=0;for i:0..<s[0].chats[0].n {r:=s[0].chats[0].items[i];if visible>=NAV_VISIBLE || !nav_match(n,cast(string)r.title[0..<r.title_n],"Account") {continue;}matched+=1;if matched<=n[0].account_at || shown>=budget {continue;}shown+=1;id:[96]u8;x=k_row(t,u,tr_join(id[..],"nav.account.",i),cast(string)r.title[0..<r.title_n],"",s[0].page==3 && cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]==cast(string)r.id[0..<r.id_n]);visible+=1;}
+  if n[0].account_at>0 {x=k_link(t,"nav.account.latest","Latest account chats");}
+  if account_matches>n[0].account_at+shown {x=k_link(t,"nav.account.older","Earlier account chats");}
+  if visible==0 && n[0].started && !b[0].flight && n[0].next>=b[0].catalog[0].n {x=k_text(t,u,"nav.no-results",TG_P,"meta",ifx n[0].nq>0 then "No matching loaded titles" else "No saved conversations yet");}
+  if visible>=NAV_VISIBLE {x=k_text(t,u,"nav.limit",TG_P,"meta","Use Earlier conversations or search to browse more history.");}
+ }
+ if n[0].nn>0 {x=k_text(t,u,"nav.note",TG_P,"meta",cast(string)n[0].note[0..<n[0].nn]);}
+ k_side_end(t);x=tr_open(t,"nav.footer",TG_FOOTER,"side-f");if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",false);}x=k_row(t,u,"nav.settings","Settings","",false);tr_close(t);tr_close(t);
+ if n[0].settings {
+  x=tr_open(t,"nav.settings.panel",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Settings");x=k_text(t,u,"nav.settings.title",TG_H2,"","Settings");
+  x=k_link(t,"nav.settings.close","Close settings");x=k_link(t,"app.updates","Check for updates");x=k_link(t,"app.details","Build details");x=k_link(t,"extras.more","Extras");x=k_link(t,"account.logout","Log out");if s[0].note_n>0 {x=k_text(t,u,"nav.settings.note",TG_P,"meta",cast(string)s[0].note[0..<s[0].note_n]);}tr_close(t);
+ }
+}

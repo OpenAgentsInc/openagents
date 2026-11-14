@@ -150,6 +150,28 @@ These native host/producer corrections require TestFlight. 1080 is
 feed passes the fresh-install deduplication check. See the
 [release record](../../docs/verification/2026-11-14-native-world-controls-1080.json).
 
+Build 1081 packages the completed shared mono HUD work from
+[issue 13580](https://github.com/OpenAgentsInc/openagents/issues/13580).
+Its upload was started before work on navigation, without waiting for Apple.
+
+Build 1082 adopts T3 Code mobile's history/detail structure with our shared
+HUD controls. On a phone, the searchable history pane slides into the
+conversation; on regular widths it stays beside it. Computer conversations
+are grouped by host, followed by saved account chats. New chat chooses its
+computer or account before opening the composer. Settings and Worlds live
+in the history footer, and model/effort choices stay by the composer.
+Opening history dismisses the keyboard and pauses transcript polling.
+Switching chats preserves sixteen drafts in memory; unresolved commands
+cannot be replaced. Existing desktop and world-agent presentation remains
+available through the optional workspace profile.
+
+`CoaxNativeNavigation` checks the compiled Coax program and installed native
+app against the independent HTTP oracle (`Tests/email_fixture.py
+--environment-transcript`): Mac/CoderOS history, search, chat switching,
+drafts, compact tools, model/effort choices and Settings. The navigation reuses
+`components/kit/frames.coax`; its state is `apps/shared/app-navigation.coax`
+and its layout is `components/layout/workspace.coax`.
+
 The release can retain a frozen world's exact immutable asset records while
 rebinding its inventory to a rebuilt producer:
 `coax/web/tool.sh coax/native/worlds/package.coax --rebind INVENTORY PRODUCER_DIR OUTPUT_INVENTORY`.

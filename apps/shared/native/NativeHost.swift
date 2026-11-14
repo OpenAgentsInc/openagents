@@ -33,16 +33,18 @@ import Security
     var passkey: NativePasskey?
     private let wallet=SparkHost()
     private let surface=NativeControls()
+    private lazy var workspace=NativeWorkspace(detail:surface)
     private var dialog:NativeControls?
     private var programs:[NativeProgram]=[]
     init(updates:NativeUpdates) { self.updates=updates; super.init(nibName:nil,bundle:nil) }
     required init?(coder:NSCoder) { fatalError() }
     override func viewDidLoad() {
         super.viewDidLoad()
-        addChild(surface); surface.view.frame=view.bounds; surface.view.autoresizingMask=[.flexibleWidth,.flexibleHeight]
-        view.addSubview(surface.view);surface.didMove(toParent:self)
+        addChild(workspace);workspace.view.frame=view.bounds;workspace.view.autoresizingMask=[.flexibleWidth,.flexibleHeight]
+        view.addSubview(workspace.view);workspace.didMove(toParent:self)
         surface.press = { [weak self] id in self?.input(id) }
         surface.edit = { [weak self] id,text in self?.input(id,text) }
+        workspace.press=surface.press;workspace.sidebar.press=surface.press;workspace.sidebar.edit=surface.edit
         load()
     }
     func load() {
@@ -50,6 +52,7 @@ import Security
         let directory=updates.boot()
         do {
             programs=try [NativeProgram(directory:directory,module:"app"),NativeProgram(directory:directory,module:"extras")]
+            try programs[0].event(Int(cnw_enable_event()),0,"")
             try pump()
             Task { [weak self] in _ = try? await self?.call("ready",[:]) }
         } catch {
@@ -69,7 +72,9 @@ import Security
     }
     private func pump()throws {
         for p in programs {try p.frame()}
-        surface.render(programs.flatMap {$0.elements()})
+        let primary=programs[0].elements(),hasNavigation=primary.contains {$0.role=="navigation"}
+        let extras=programs.dropFirst().flatMap {$0.elements()}.filter {!hasNavigation || $0.role != "toolbar"}
+        workspace.render(primary+extras,history:programs[0].elements(navigation:true))
         let modal=programs.flatMap {$0.elements(dialog:true)}
         if modal.isEmpty {
             if dialog != nil {dialog?.dismiss(animated:true);dialog=nil}
@@ -82,7 +87,7 @@ import Security
         }
         for p in programs {
             if let slot=p.focus,let id=p.nodes[slot]?.id {
-                (dialog?.controls[id] ?? surface.controls[id])?.becomeFirstResponder();p.focus=nil
+                (dialog?.controls[id] ?? workspace.sidebar.controls[id] ?? surface.controls[id])?.becomeFirstResponder();p.focus=nil
             }
             let (op,body)=try p.action()
             if op==0 {continue}

@@ -14,6 +14,8 @@ a = p.parse_args()
 manifest = json.loads((a.directory / "manifest.json").read_text())
 objects = {f["sha256"]: a.directory / "Starter" / f["path"] for f in manifest["files"]}
 threads = {}
+if a.environment_transcript:
+    threads["m_00000000000000000001"] = dict(schema="openagents.chat.thread.v1", id="m_00000000000000000001", revision=1, model="google/gemini-4-hydrogen", messages=[dict(role="user", content="Account fixture"), dict(role="assistant", content="Saved account answer.")])
 counts = dict(sent=0, wrong=0, verified=0, authorized=0, logout=0, device_bound=0)
 
 class Handler(BaseHTTPRequestHandler):
@@ -35,15 +37,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self.answer(401, {})
             host = "a" * 64
             if urlparse(self.path).path == "/api/chat/environments/v1":
-                return self.answer(200, dict(schema="openagents.environment.catalog.v1alpha1", environments=[dict(host_pubkey=host, display_name="Mac")]))
-            method = parse_qs(urlparse(self.path).query)["method"][0]
-            summary = dict(session_id="fixture-session", workspace_id="default", title="Transcript fixture", origin="managed", control="available", generation=1, revision=1, busy=True, interaction_id="", updated_at_ms=1)
+                return self.answer(200, dict(schema="openagents.environment.catalog.v1alpha1", environments=[dict(host_pubkey=host, display_name="Mac"), dict(host_pubkey="b" * 64, display_name="CoderOS")]))
+            query = parse_qs(urlparse(self.path).query)
+            host = query.get("host", [host])[0]
+            name = "CoderOS" if host == "b" * 64 else "Mac"
+            method = query["method"][0]
+            summary = dict(session_id="fixture-session", workspace_id="default", title="CoderOS task" if name == "CoderOS" else "Transcript fixture", origin="managed", control="available", generation=1, revision=1, busy=False, interaction_id="", updated_at_ms=1)
             items = [] if method == "ListSessions" else [
                 dict(item_id="user-1", role="user", text="Fix the transcript", tool_name="", complete=True),
                 dict(item_id="tool-1", role="tool", text="## Tool output is literal\n" + "42  let code = **not Markdown**;\n" * 120, tool_name="Read", complete=True),
                 dict(item_id="tool-2", role="tool", text="Updated file successfully.", tool_name="Edit", complete=True),
                 dict(item_id="assistant-1", role="assistant", text="**Done.** The transcript is compact.", tool_name="", complete=True)]
-            return self.answer(200, dict(schema="openagents.environment.runtime.v1alpha1", host_pubkey=host, display_name="Mac", method=method, sessions=[summary], items=items, error="", complete=False, next_cursor="1000001", command_id="", command_status="", source_epoch="fixture", models=[dict(model_id="default", display_name="Claude default", efforts=["low", "high"])], efforts=[dict(effort_id="low", display_name="Low"), dict(effort_id="high", display_name="High")], default_effort="high"))
+            return self.answer(200, dict(schema="openagents.environment.runtime.v1alpha1", host_pubkey=host, display_name=name, method=method, sessions=[summary], items=items, error="", complete=False, next_cursor="1000001", command_id="", command_status="", source_epoch="fixture", models=[dict(model_id="default", display_name="Claude default", efforts=["low", "high"])], efforts=[dict(effort_id="low", display_name="Low"), dict(effort_id="high", display_name="High")], default_effort="high"))
         if self.path == "/latest.cnu":
             return self.answer(200, (a.directory / "latest.cnu").read_bytes())
         if self.path.startswith("/objects/"):

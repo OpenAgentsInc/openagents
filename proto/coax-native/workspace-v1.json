@@ -1,0 +1,7 @@
+{
+  "schema": "coax.native.workspace.v1",
+  "transport": "Installed presentation opt-in: component module event kind 15, slot 0, empty payload",
+  "effect": "The app module enables its history/detail composition. This event performs no HTTP, account mutation, command or persistence.",
+  "compatibility": "Optional profile installed with iOS 1082. Hosts that do not send it retain the existing account presentation, including the desktop and world-agent sheet. A new runtime fingerprint isolates the new semantic navigation projection.",
+  "components": "The existing component command stream carries the side, fixed-top and fixed-bottom groups. All actions return existing component IDs. Domain data uses unchanged account-history and environment-runtime codecs."
+}

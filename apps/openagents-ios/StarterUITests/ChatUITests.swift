@@ -8,15 +8,15 @@ final class ChatUITests:XCTestCase {
         app.launch()
         let email=app.textFields["Email address"]
         if !email.waitForExistence(timeout:5) {
-            if app.buttons["chat.back"].exists {app.buttons["chat.back"].tap()}
+            app.showAppSettings()
             let logout=app.buttons["Log out"];XCTAssertTrue(logout.waitForExistence(timeout:15));logout.tap()
         }
         XCTAssertTrue(email.waitForExistence(timeout:15));email.tap();email.typeText("ada@example.com");app.buttons["Send code"].tap()
         let code=app.textFields["Email code"];XCTAssertTrue(code.waitForExistence(timeout:10));code.tap();code.typeText("415926");app.buttons["Log in"].tap()
-        let newChat=app.buttons["New chat"];XCTAssertTrue(newChat.waitForExistence(timeout:15));newChat.tap()
+        app.newAccountChat()
         let editor=app.textViews["chat.composer"],send=app.buttons["Send message"]
         XCTAssertTrue(editor.waitForExistence(timeout:10));XCTAssertFalse(send.isEnabled)
-        XCTAssertLessThan(app.buttons["chat.back"].frame.minX,app.buttons["More"].frame.minX)
+        XCTAssertTrue(app.buttons["nav.toggle"].exists)
         XCTAssertEqual(app.webViews.count,0)
         editor.tap();editor.typeText("Hello from iPhone")
         XCTAssertTrue(send.isEnabled)
@@ -30,7 +30,7 @@ final class ChatUITests:XCTestCase {
         let copy=app.buttons["message.1.copy"];XCTAssertTrue(copy.exists);copy.tap()
         XCTAssertTrue(app.buttons.matching(identifier:"message.1.copy").matching(NSPredicate(format:"label == %@","Copied")).firstMatch.waitForExistence(timeout:5))
         let rich=XCTAttachment(screenshot:app.screenshot());rich.name="Coax Markdown native conversation";rich.lifetime = .keepAlways;add(rich)
-        app.buttons["chat.back"].tap()
+        app.showChatHistory()
         let saved=app.buttons["Hello from iPhone"];XCTAssertTrue(saved.waitForExistence(timeout:15))
         app.terminate();app.launch();XCTAssertTrue(saved.waitForExistence(timeout:15));saved.tap()
         XCTAssertTrue(reply.waitForExistence(timeout:15))

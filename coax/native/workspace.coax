@@ -1,0 +1,5 @@
+// The optional installed presentation profile. No domain request or storage.
+#load "../../components/layout/workspace.coax";
+CNW_ENABLE :: 15;
+#test "workspace presentation has its own empty opt-in event" {#assert cnw_enable_event()==15;}
+cnw_enable_event :: ()->int #export_c #effects(all) {return CNW_ENABLE;}

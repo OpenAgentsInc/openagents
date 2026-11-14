@@ -1,0 +1,20 @@
+// T3 Code's mobile workspace measures, adapted to the shared native skin.
+// Compact phones use a full-width history pane; regular widths keep a column.
+#test "phone history slides as one pane and a regular workspace reserves both columns" {
+ p:=workspace_layout(402,false,true);#assert !p.split && p.list==402 && p.offset==0 && p.content==402;
+ #assert workspace_layout(402,false,false).offset== -402;
+ t:=workspace_layout(1024,true,false);#assert t.split && t.list==328 && t.content==696 && t.offset==0;
+ #assert !workspace_layout(599,true,true).split && workspace_layout(600,true,true).list==280;
+ #assert workspace_layout(2000,true,true).list==380 && !workspace_layout(844,false,true).split;
+}
+WorkspaceLayout :: struct {split:bool;list:f64;content:f64;offset:f64;duration:f64;}
+#test "only a horizontal swipe opens or closes history" {
+ #assert workspace_swipe(40,0,true) && !workspace_swipe(12,0,true) && !workspace_swipe(0,100,true);
+ #assert workspace_swipe(-80,5,false) && !workspace_swipe(-30,0,false) && !workspace_swipe(-70,100,false);
+}
+workspace_swipe :: (x:f64,y:f64,opening:bool)->bool #export_c #effects(all) {return abs(x)>abs(y) && (ifx opening then x>24 else x< -60);}
+workspace_layout :: (width:f64,regular:bool,open:bool)->WorkspaceLayout #export_c #effects(all) {
+ w:=ifx width>0 && width<100000 then width else 1.0;split:=regular && w>=600;
+ list:=w;if split {list=cast(f64)cast(int)(w*0.32+0.5);if list<280 {list=280;}if list>380 {list=380;}}
+ return WorkspaceLayout.{split=split,list=list,content=ifx split then w-list else w,offset=ifx split || open then 0.0 else -list,duration=0.22};
+}

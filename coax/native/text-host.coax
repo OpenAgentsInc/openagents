@@ -2,3 +2,4 @@
 #load "../../components/core/scroll.coax";
 #load "../../components/skin/native-chat.coax";
 #load "text-link-policy.coax";
+#load "workspace.coax";

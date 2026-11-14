@@ -24,7 +24,7 @@ final class LookUITests:XCTestCase {
         app.launch()
         let email=app.textFields["Email address"]
         if !email.waitForExistence(timeout:8) {
-            if app.buttons["chat.back"].exists {app.buttons["chat.back"].tap()}
+            app.showAppSettings()
             let logout=app.buttons["Log out"];XCTAssertTrue(logout.waitForExistence(timeout:15));logout.tap()
         }
         XCTAssertTrue(email.waitForExistence(timeout:15));stop(app,"01-login")
@@ -32,11 +32,11 @@ final class LookUITests:XCTestCase {
         app.buttons["Send code"].tap()
         let code=app.textFields["Email code"];XCTAssertTrue(code.waitForExistence(timeout:10));stop(app,"03-code")
         code.tap();code.typeText("415926");app.buttons["Log in"].tap()
-        let newChat=app.buttons["New chat"];XCTAssertTrue(newChat.waitForExistence(timeout:15));stop(app,"04-chats")
-        app.buttons["More"].tap();XCTAssertTrue(app.buttons["Bitcoin balance"].waitForExistence(timeout:10));stop(app,"05-more")
+        let newChat=app.buttons["nav.compose"];XCTAssertTrue(newChat.waitForExistence(timeout:15));stop(app,"04-chats")
+        app.openAppExtras();XCTAssertTrue(app.buttons["Bitcoin balance"].waitForExistence(timeout:10));stop(app,"05-more")
         app.buttons["Bitcoin balance"].tap();XCTAssertTrue(app.staticTexts["12345 sats"].waitForExistence(timeout:10));stop(app,"06-balance")
         app.buttons["Close"].tap()
-        XCTAssertTrue(newChat.waitForExistence(timeout:10));newChat.tap()
+        XCTAssertTrue(newChat.waitForExistence(timeout:10));app.newAccountChat()
         let editor=app.textViews["chat.composer"];XCTAssertTrue(editor.waitForExistence(timeout:10));stop(app,"07-chat-empty")
         editor.tap();editor.typeText("Hello from iPhone");stop(app,"08-chat-typed")
         app.buttons["Send message"].tap()
@@ -44,17 +44,16 @@ final class LookUITests:XCTestCase {
         XCTAssertTrue(reply.waitForExistence(timeout:20))
         app.scrollViews.firstMatch.coordinate(withNormalizedOffset:CGVector(dx:0.02,dy:0.4)).tap();stop(app,"09-chat")
         app.swipeUp();stop(app,"10-chat-end")
-        app.buttons["chat.back"].tap();XCTAssertTrue(newChat.waitForExistence(timeout:15))
-        let computers=app.buttons["Your computers"];computers.tap()
-        let mac=app.buttons["Mac"];XCTAssertTrue(mac.waitForExistence(timeout:10));stop(app,"11-computers")
-        mac.tap()
-        let thread=app.buttons["Transcript fixture"];XCTAssertTrue(thread.waitForExistence(timeout:10));stop(app,"12-sessions")
-        thread.tap()
+        app.showChatHistory();XCTAssertTrue(newChat.waitForExistence(timeout:15))
+        stop(app,"11-computers")
+        let thread=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@ AND label == %@","nav.chat.","Transcript fixture")).firstMatch
+        XCTAssertTrue(thread.waitForExistence(timeout:20));stop(app,"12-sessions");thread.tap()
         let read=app.buttons["Read"];XCTAssertTrue(read.waitForExistence(timeout:10));stop(app,"13-transcript")
         read.tap();stop(app,"14-tool-open");read.tap()
         if ProcessInfo.processInfo.environment["OA_LOOK_WORLDS"]=="1" {
             app.terminate();app.launch()
-            let worlds=app.buttons["world.library"];XCTAssertTrue(worlds.waitForExistence(timeout:20));worlds.tap()
+            app.showChatHistory()
+        let worlds=app.buttons["world.library"];XCTAssertTrue(worlds.waitForExistence(timeout:20));worlds.tap()
             let open=app.buttons["worlds.splice"];XCTAssertTrue(open.waitForExistence(timeout:30));stop(app,"15-worlds")
             let enabled=XCTNSPredicateExpectation(predicate:NSPredicate(format:"enabled == true"),object:open);XCTAssertEqual(XCTWaiter.wait(for:[enabled],timeout:30),.completed);open.tap()
             stop(app,"16-world-loading")

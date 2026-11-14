@@ -77,7 +77,7 @@ import JavaScriptCore
         roots.removeAll {$0==slot}
         for key in Array(nodes.keys) {nodes[key]?.children.removeAll {$0==slot}}
     }
-    func elements(dialog:Bool=false)->[NativeElement] {
+    func elements(dialog:Bool=false,navigation:Bool=false)->[NativeElement] {
         var result:[NativeElement]=[];var seen:Set<Int>=[]
         func text(_ slot:Int,_ path:Set<Int>=[])->String {
             guard !path.contains(slot),let n=nodes[slot] else {return ""}
@@ -89,19 +89,27 @@ import JavaScriptCore
             guard let n=nodes[slot],n.classes.split(separator:" ").contains("row") else {return text(slot)}
             return ([n.text]+n.children.map {text($0)}).filter {!$0.isEmpty}.joined(separator:" · ")
         }
-        func visit(_ slot:Int,_ inside:Bool) {
-            guard seen.insert(slot).inserted,let n=nodes[slot] else {return}
-            if n.attrs["hidden"] != nil || n.attrs["aria-hidden"]=="true" {return}
-            let isDialog=inside || n.attrs["role"]=="dialog"
-            if isDialog==dialog {
-                if n.classes.split(separator:" ").contains("transcript") {result.append(NativeElement(id:n.id,role:"transcript",label:"Conversation",value:n.attrs["data-state"] ?? "new"))}
-                let tool=n.classes.split(separator:" ").contains("tool")
-                if tool || n.attrs["role"]=="article" || n.attrs["role"]=="toolbar" || n.classes.split(separator:" ").contains("msg-ai") {
                     func semantic(_ key:Int,_ path:Set<Int>=[])->NativeElement? {
                         guard !path.contains(key),let node=nodes[key] else{return nil}
                         var next=path;next.insert(key)
                         return NativeElement(id:node.id,role:node.tag,label:node.text,children:node.children.compactMap {semantic($0,next)},classes:node.classes,attrs:node.attrs)
                     }
+        func visit(_ slot:Int,_ inside:Bool,_ inNavigation:Bool=false,_ placement:String="") {
+            guard seen.insert(slot).inserted,let n=nodes[slot] else {return}
+            if n.attrs["hidden"] != nil || n.attrs["aria-hidden"]=="true" {return}
+            let isDialog=inside || n.attrs["role"]=="dialog"
+            let side=n.classes.split(separator:" ").contains("side"),isNavigation=inNavigation || side
+            if side && !navigation {
+                if !dialog {result.append(NativeElement(id:n.id,role:"navigation",label:n.attrs["aria-label"] ?? "Chats",attrs:n.attrs))};return
+            }
+            let place=n.classes.split(separator:" ").contains("composer-options") || n.classes.split(separator:" ").contains("side-f") ? "dock":n.classes.split(separator:" ").contains("navigation-search") ? "top":placement
+            if isDialog==dialog && isNavigation==navigation {
+                if n.classes.split(separator:" ").contains("side-m") {
+                    result.append(NativeElement(id:n.id,role:"heading",label:n.children.map {text($0)}.joined(separator:" · "),type:"h3",classes:"meta"));return
+                }
+                if n.classes.split(separator:" ").contains("transcript") {result.append(NativeElement(id:n.id,role:"transcript",label:"Conversation",value:n.attrs["data-state"] ?? "new"))}
+                let tool=n.classes.split(separator:" ").contains("tool")
+                if tool || n.attrs["role"]=="article" || n.attrs["role"]=="toolbar" || n.classes.split(separator:" ").contains("msg-ai") {
                     if var message=semantic(slot) {message.role=tool ? "tool":n.attrs["role"]=="toolbar" ? "toolbar":"message";result.append(message)}
                     return
                 }
@@ -114,11 +122,12 @@ import JavaScriptCore
                 let field=n.tag=="input" || n.tag=="textarea"
                 let role=n.tag=="button" ? "button" : field ? "field" : n.tag=="h1" || n.tag=="h2" ? "heading" : "text"
                 if field || n.tag=="button" || !n.text.isEmpty {
-                    result.append(NativeElement(id:n.id,role:role,label:field ? n.attrs["aria-label"] ?? n.attrs["placeholder"] ?? "" : n.tag=="button" ? said(slot):n.text,value:n.value,disabled:n.attrs["disabled"] != nil,complete:n.attrs["autocomplete"] ?? "",type:n.tag.hasPrefix("h") ? n.tag:n.tag=="textarea" ? "multiline":n.attrs["type"] ?? "",classes:n.classes,attrs:n.attrs))
+                    var attrs=n.attrs;if !place.isEmpty {attrs["_nativePlacement"]=place}
+                    result.append(NativeElement(id:n.id,role:role,label:field ? n.attrs["aria-label"] ?? n.attrs["placeholder"] ?? "" : n.tag=="button" ? said(slot):n.text,value:n.value,disabled:n.attrs["disabled"] != nil,complete:n.attrs["autocomplete"] ?? "",type:n.tag.hasPrefix("h") ? n.tag:n.tag=="textarea" ? "multiline":n.attrs["type"] ?? "",children:n.children.compactMap {semantic($0)},classes:n.classes,attrs:attrs))
                 }
             }
             if n.tag=="button" || n.tag=="input" {return}
-            for child in n.children {visit(child,isDialog)}
+            for child in n.children {visit(child,isDialog,isNavigation,place)}
         }
         for root in roots {visit(root,false)}
         return result

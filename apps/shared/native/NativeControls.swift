@@ -10,6 +10,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     var edit: ((String,String)->Void)?
     var submit: ((String)->Void)?
     private let dock=UIStackView()
+    private let topDock=UIStackView(),options=UIStackView()
     private var composer:NativeComposer?
     private let scroll=UIScrollView()
     private var conversation:String?
@@ -49,13 +50,16 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         headerRule.translatesAutoresizingMaskIntoConstraints=false;headerRule.isHidden=true;view.addSubview(headerRule)
         let outside=UITapGestureRecognizer(target:self,action:#selector(dismissKeyboard));outside.cancelsTouchesInView=false;outside.delegate=self;view.addGestureRecognizer(outside)
         dock.axis = .vertical;dock.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(dock)
+        topDock.axis = .vertical;topDock.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(topDock)
+        options.axis = .vertical;dock.addArrangedSubview(options)
         stack.axis = .vertical; stack.spacing = 16; stack.translatesAutoresizingMaskIntoConstraints = false
         scroll.addSubview(stack)
         NSLayoutConstraint.activate([
             hostBar.topAnchor.constraint(equalTo:view.safeAreaLayoutGuide.topAnchor,constant:sheet ? 10:0),hostBar.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:8),hostBar.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-20),
             header.topAnchor.constraint(equalTo:hostBar.bottomAnchor),header.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:14),header.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-14),
             headerRule.topAnchor.constraint(equalTo:header.bottomAnchor),headerRule.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:14),headerRule.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-14),
-            scroll.topAnchor.constraint(equalTo:header.bottomAnchor),
+            topDock.topAnchor.constraint(equalTo:header.bottomAnchor),topDock.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:20),topDock.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-20),
+            scroll.topAnchor.constraint(equalTo:topDock.bottomAnchor),
             scroll.bottomAnchor.constraint(equalTo:dock.topAnchor,constant:-6),
             dock.bottomAnchor.constraint(equalTo:view.keyboardLayoutGuide.topAnchor,constant:-6),
             dock.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:12),
@@ -91,9 +95,9 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
                     // A status: how it stands is shown by the icon and its brightness, and said by its label.
                     button.variant = .icon;button.busy=state=="loading";button.current=state=="ready"
                     button.show(e.attrs["aria-label"] ?? "Refresh conversation",symbol:state=="ready" ? "checkmark.circle":state=="offline" ? "exclamationmark.arrow.triangle.2.circlepath":"arrow.clockwise")
-                } else {button.variant = .quiet;button.busy=false;button.current=false;button.show(e.label)}
+                } else {button.variant=e.hasClass("ib") ? .icon:.quiet;button.busy=false;button.current=false;button.show(e.label.isEmpty ? e.attrs["aria-label"] ?? "":e.label,symbol:NativeSkin.symbol(e))}
             }
-            else if let label=control as? UILabel {label.attributedText=NativeSkin.label(e.label,size:12,ink:NativeSkin.tokens.ink);label.accessibilityLabel=e.label}
+            else if let label=control as? UILabel {label.attributedText=NativeSkin.label(e.label,size:12,ink:NativeSkin.tokens.ink);label.accessibilityLabel=e.label;label.numberOfLines=1;label.lineBreakMode = .byTruncatingTail;label.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)}
             kept[e.id]=control;if control.superview !== header {header.addArrangedSubview(control)}
         }
         let ordered=(bar.count==1 ? [headerSpacer]:[])+bar.compactMap {kept[$0.id]}
@@ -115,9 +119,9 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             else if let b=control as? NativeButton {
                 // The kit says which button this is (its class and state); the skin says how each looks.
                 let state=e.attrs["data-state"],select=e.hasClass("sel")
-                b.variant=e.hasClass("lk") || select || e.label.isEmpty ? .quiet:e.hasClass("row") ? .list:state=="primary" ? .primary:state=="destructive" ? .destructive:.plain
+                b.variant=e.hasClass("ib") ? .icon:e.hasClass("lk") || select || e.label.isEmpty ? .quiet:e.hasClass("row") ? .list:state=="primary" ? .primary:state=="destructive" ? .destructive:.plain
                 b.busy=state=="busy";b.current=e.attrs["aria-current"]=="true";b.isEnabled = !e.disabled
-                b.show(e.label.isEmpty ? e.attrs["aria-label"] ?? "":e.label,symbol:select ? (e.attrs["aria-expanded"]=="true" ? "chevron.up":"chevron.down"):nil)
+                b.show(e.label.isEmpty ? e.attrs["aria-label"] ?? "":e.label,symbol:select ? (e.attrs["aria-expanded"]=="true" ? "chevron.up":"chevron.down"):NativeSkin.symbol(e))
             }
             else if let text=control as? UITextView {
                 text.accessibilityLabel=e.label;text.isEditable = !e.disabled
@@ -143,7 +147,10 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             }
             kept[e.id]=control
         }
-        for (id,old) in controls where kept[id] !== old { old.removeFromSuperview() }
+        // The composer reuses its native editor across domain IDs. Remove a
+        // view only when no current key retains it, including the editor key.
+        let retained=Set(kept.values.map(ObjectIdentifier.init))
+        for old in controls.values where !retained.contains(ObjectIdentifier(old)) {old.removeFromSuperview()}
         controls=kept
         // Quiet buttons that follow one another share a line, each as wide as its words; everything else has its own.
         var rows:[(view:UIView,first:NativeElement,last:NativeElement)]=[];var used:[String:NativeFlow]=[:];var at=0
@@ -153,19 +160,23 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             let e=ordinary[at];guard let control=kept[e.id] else {at+=1;continue}
             guard quiet(e) else {rows.append((control,e,e));at+=1;continue}
             var end=at;var items:[UIView]=[]
-            while end<ordinary.count,quiet(ordinary[end]),let c=kept[ordinary[end].id] {items.append(c);end+=1}
+            while end<ordinary.count,quiet(ordinary[end]),ordinary[end].attrs["_nativePlacement"]==e.attrs["_nativePlacement"],let c=kept[ordinary[end].id] {items.append(c);end+=1}
             let flow=flows[e.id] ?? NativeFlow();if flow.items.count != items.count || !zip(flow.items,items).allSatisfy({$0 === $1}) {flow.items=items}
             used[e.id]=flow;rows.append((flow,e,ordinary[end-1]));at=end
         }
         for (id,flow) in flows where used[id] !== flow {flow.items=[];flow.removeFromSuperview()}
         flows=used
-        for (i,row) in rows.enumerated() {
-            if i<stack.arrangedSubviews.count && stack.arrangedSubviews[i] === row.view {continue}
-            stack.insertArrangedSubview(row.view,at:i)
+        var normal=0,above=0,below=0
+        for row in rows {
+            let place=row.first.attrs["_nativePlacement"],target=place=="dock" ? options:place=="top" ? topDock:stack
+            let i=place=="dock" ? below:place=="top" ? above:normal
+            if place=="dock" {below+=1}else if place=="top" {above+=1}else {normal+=1}
+            if i<target.arrangedSubviews.count && target.arrangedSubviews[i] === row.view {continue}
+            if row.view.superview !== target {row.view.removeFromSuperview()};target.insertArrangedSubview(row.view,at:i)
         }
         // Rows of one list stand together under a hairline each; tool rows stay as close as the work log sets them.
         func row(_ e:NativeElement)->Bool {e.role=="button" && e.hasClass("row")}
-        for (i,r) in rows.enumerated() {let next=i+1<rows.count ? rows[i+1].first:nil;stack.setCustomSpacing(r.last.role=="tool" && next?.role=="tool" ? 1:row(r.last) && next.map(row)==true ? 0:CGFloat(NativeSkin.tokens.gap),after:r.view)}
+        for (i,r) in rows.enumerated() {let next=i+1<rows.count ? rows[i+1].first:nil;(r.first.attrs["_nativePlacement"]=="dock" ? options:r.first.attrs["_nativePlacement"]=="top" ? topDock:stack).setCustomSpacing(r.last.role=="tool" && next?.role=="tool" ? 1:row(r.last) && next.map(row)==true ? 0:CGFloat(NativeSkin.tokens.gap),after:r.view)}
         view.setNeedsLayout()
     }
     private func make(_ e:NativeElement)->UIView {
