@@ -333,8 +333,8 @@ dv_stage :: (g: [] SpGame, n: int) {
   }
   if n == 29 {   // the solar farm by day, beside Sniper's rover train and the charger plugged into it
     tr := g_shipped_at(g, 123);
-    g[0].phase = PH_DAY; g[0].mode = M_PLAY; g[0].px = tr.x + 7.0; g[0].pz = tr.z - 2.5;
-    g[0].yaw = angle_atan2(tr.x + 2.0 - g[0].px, tr.z + 0.4 - g[0].pz); g[0].pitch = 0; g_bot_home(g);
+    g[0].phase = PH_DAY; g[0].mode = M_PLAY; g[0].px = tr.x - 7.0; g[0].pz = tr.z + 3.0;
+    g[0].yaw = angle_atan2(tr.x - 2.0 - g[0].px, tr.z + 0.4 - g[0].pz); g[0].pitch = 0; g_bot_home(g);
   }
 }
 
