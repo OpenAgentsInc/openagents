@@ -109,6 +109,12 @@ emit, compile and run times). Set it to a file name to append the lines to
 that file instead: a loaded unit's standalone check runs in a child whose
 stderr is discarded. `COAX_NATIVE_CHECKS_KEEP=1` keeps the C and the binary.
 
+When the C compiler rejects the check binary (a coax bug, such as #13570's
+`--` from negating a negative constant), every check runs in the evaluator,
+and coax says so on stderr on every path, a loaded unit's check child
+included: `coax: native checks: the C compiler failed on the check binary
+...; the evaluator runs every check (FILE)`.
+
 A check that passes natively is taken as passed, with its case count, its
 time and the procedures it ran. The procedures feed `#authority` execution
 coverage (`E0380`) exactly as the evaluator's do. Every other check (a trap,

@@ -1749,6 +1749,8 @@ static pid_t library_check_start(const Source *src, int32_t at, const EmitOption
   if (pid == 0) {
     close(fds[0]);
     job_child(parent);
+    g_native_say_fd = fcntl(2, F_DUPFD_CLOEXEC, 3);  // a coax bug in its native checks is still said (#13570)
+    if (g_native_say_fd < 0) g_native_say_fd = 2;
     int null = open("/dev/null", O_WRONLY);
     if (null >= 0) { dup2(null, 1); dup2(null, 2); }
     g_timings.path.clear();

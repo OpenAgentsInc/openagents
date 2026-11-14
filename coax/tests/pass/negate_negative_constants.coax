@@ -1,0 +1,19 @@
+#import "Basic";
+
+// Negating a negative float constant (#13570). The C emitter wrote `(-` then
+// the operand, so a negative literal operand made `(--0x1.99999ap-2f)`: C's
+// decrement token, and the C did not compile.
+BACK :: -0.4f32;
+FAR :: -2.5;
+AHEAD :: -BACK;          // a named constant from a negated negative one
+
+ahead :: (x: f32) -> f32 { return x * -BACK; }
+
+main :: () {
+  print("%\n", -BACK == 0.4f32);
+  print("%\n", -FAR == 2.5);
+  print("%\n", AHEAD == 0.4f32);
+  print("%\n", -(-0.4f32) == 0.4f32);
+  print("%\n", -(-(-2.5)) == FAR);
+  print("%\n", ahead(10) == 4);
+}

@@ -78,9 +78,13 @@ struct NativeRun {
   double emit = 0, compile = 0, run = 0;
   double limit = 120;  // one check's wall-time limit in this run (COAX_CHECK_SECONDS)
   std::string why;  // why no check ran natively ("" when they did)
+  bool said = false;  // native_run printed `why` itself (the C compiler failed)
   std::string small;  // why COAX_NATIVE_CHECKS_MIN left a run's checks to the evaluator ("" when it didn't): said only in the trace
 };
 static NativeRun g_native;
+// Where native_run says the C compiler failed: stderr, or in a loaded unit's
+// check child (whose stderr is /dev/null) the parent's stderr (#13570).
+static int g_native_say_fd = 2;
 static EmitOptions g_native_opts;  // the compile's options (set by front_end)
 
 // The procedures a body can call, directly or not (a constant's expression
@@ -148,7 +152,8 @@ static int native_wait(pid_t pid) {
   return status;
 }
 
-// Runs the checks whose want[i] is set natively; fills g_native. Never prints.
+// Runs the checks whose want[i] is set natively; fills g_native. Prints only
+// when the C compiler fails on the binary (a coax bug, #13570).
 static void native_run(File *file, const std::vector<bool> &want, uint64_t steps) {
   g_native = NativeRun{};
   g_native.file = file;
@@ -271,8 +276,16 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
   g_native.compile = seconds_since(t0);
   laps.lap("native.compile");
   if (failed) {
-    if (g_native.why.empty()) g_native.why = "the C compiler failed on the check binary (a coax bug; COAX_NATIVE_CHECKS_KEEP=1 keeps it)";
-    if (getenv("COAX_NATIVE_CHECKS_KEEP")) fprintf(stderr, "coax: native checks: %s in %s\n", g_native.why.c_str(), dir.c_str());
+    if (g_native.why.empty()) {
+      // A coax bug, and every check falls back to the slow evaluator: said on
+      // every path, not only by coax test (#13570).
+      g_native.why = "the C compiler failed on the check binary (a coax bug; COAX_NATIVE_CHECKS_KEEP=1 keeps it)";
+      g_native.said = true;
+      const std::string line = "coax: native checks: " + g_native.why + "; the evaluator runs every check (" + tree_path(file->src->units[0]->canonical) + ")\n";
+      fflush(stderr);
+      if (write(g_native_say_fd, line.data(), line.size()) < 0) {}
+    }
+    if (getenv("COAX_NATIVE_CHECKS_KEEP")) fprintf(stderr, "coax: native checks: kept in %s\n", dir.c_str());
     return;
   }
   // Run the binary as `jobs` processes at once, process w taking checks w,

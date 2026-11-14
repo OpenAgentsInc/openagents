@@ -294,7 +294,7 @@ static int test_command(File *file, uint64_t max_steps, const char *only, bool l
         for (const ProcDecl *p : nr.executed) if (procedures.count(p)) native[i].executed.push_back(p);
       }
     }
-    if (!g_native.why.empty()) fprintf(stderr, "coax: native checks: %s; the evaluator runs every check\n", g_native.why.c_str());
+    if (!g_native.why.empty() && !g_native.said) fprintf(stderr, "coax: native checks: %s; the evaluator runs every check\n", g_native.why.c_str());
   }
   bool ok = run_all_checks(file, max_steps, true, nullptr, &failed, nullptr, nullptr, only ? &filter : nullptr, &ran, profile, native.empty() ? nullptr : &native);
   int32_t total = file->checks.count;

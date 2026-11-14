@@ -93,7 +93,7 @@ unit_python() { python3 tests/crash_reporting.py && python3 tests/compile_time.p
 unit_native() { python3 tests/native.py; }
 unit_strict_math() { python3 tests/strict_math.py; }
 unit_native_checks() {
-  python3 tests/native_checks.py && python3 tests/native_check_baseline.py && python3 tests/native_check_emission.py && python3 tests/native_check_execution.py && python3 tests/native_execution_transport.py && python3 tests/native_check_forall.py && python3 tests/native_report_inputs.py && python3 tests/native_compiler_identity.py && python3 tests/native_check_semantics.py
+  python3 tests/native_checks.py && python3 tests/native_check_fallback.py && python3 tests/native_check_baseline.py && python3 tests/native_check_emission.py && python3 tests/native_check_execution.py && python3 tests/native_execution_transport.py && python3 tests/native_check_forall.py && python3 tests/native_report_inputs.py && python3 tests/native_compiler_identity.py && python3 tests/native_check_semantics.py
 }
 unit_lexer() { python3 tests/lexer.py; }
 unit_parser() { python3 tests/parser.py; }

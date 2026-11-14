@@ -340,7 +340,7 @@ g_say :: (g: [] SpGame, m: int) { g[0].msg = m; g[0].msg_t = 3.5; g_event(g, m);
 // The Digger beside you: where it stands when it is not at work.
 // Where Digger follows: at her left, a little ahead, so the camera behind her shows him beside her, clear of
 // the objective panel at the bottom right and the board panel at the bottom left (left of her is (cos yaw, -sin yaw)).
-T_BOT_AHEAD :: 0.4f32; T_BOT_BACK :: -T_BOT_AHEAD; T_BOT_LEFT :: 1.5f32;   // (a literal negative T_BOT_BACK, negated, emits `--` in C)
+T_BOT_BACK :: -0.4f32; T_BOT_LEFT :: 1.5f32;
 T_BOT_R :: 0.55f32; T_BOT_TOP :: 1.3f32;   // m: Digger's body as the camera meets it (camera.coax)
 g_bot_spot :: (g: [] SpGame) -> Point { y := g[0].yaw; return v3(g[0].px - sin(y) * T_BOT_BACK + cos(y) * T_BOT_LEFT, 0, g[0].pz - cos(y) * T_BOT_BACK - sin(y) * T_BOT_LEFT); }
 g_bot_home :: (g: [] SpGame) { g[0].bot_state = BOT_FOLLOW; h := g_bot_spot(g); g[0].bot_x = h.x; g[0].bot_z = h.z; g[0].bot_yaw = g[0].yaw; }
@@ -454,7 +454,7 @@ g_bot :: (g: [] SpGame, dt: f32) {
   face := ifx g[0].bot_wall then g[0].at.wall_z + 1 else g[0].at.rubble_z + 1;
   if g[0].bot_state == BOT_FOLLOW {
     // always next to you: at your left, a little ahead (g_bot_spot), never between the camera and you (camera.coax)
-    h := cm_follow_spot(g, g[0].bot_x, g[0].bot_z, T_BOT_R, T_BOT_LEFT, T_BOT_AHEAD); tx := h.x; tz := h.z;
+    h := cm_follow_spot(g, g[0].bot_x, g[0].bot_z, T_BOT_R, T_BOT_LEFT, -T_BOT_BACK); tx := h.x; tz := h.z;
     d := dist2(g[0].bot_x, g[0].bot_z, tx, tz);
     if d > 0.15 { left := bot_toward(g, tx, tz, T_FOLLOW * cm_follow_pace(g, g[0].bot_x, g[0].bot_z, T_BOT_R, clamp(d / 1.5, 0.15, 1.6)), dt); if left > 12 { g[0].bot_x = tx; g[0].bot_z = tz; } }
     q := cm_keep_off(g, g[0].bot_x, g[0].bot_z, T_BOT_R); g[0].bot_x = q.x; g[0].bot_z = q.z;

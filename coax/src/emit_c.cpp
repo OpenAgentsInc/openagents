@@ -1718,7 +1718,12 @@ struct Emitter {
       case ExprKind::try_: case ExprKind::or_else: return lower_control(e);
       case ExprKind::unary:
         if (e->op == Tok::bang) return "(!" + ex(e->lhs) + ")";
-        if (is_float(e->type)) return "(-" + ex(e->lhs) + ")";
+        if (is_float(e->type)) {
+          // A negative literal operand (a folded negative constant) would make
+          // `--`, C's decrement token (#13570); a space keeps them apart.
+          const std::string x = ex(e->lhs);
+          return (!x.empty() && x[0] == '-' ? "(- " : "(-") + x + ")";
+        }
         if (opts.wrapping) return "coax_wneg_" + int_tag(e->type) + "(" + ex(e->lhs) + ")";
         return "coax_neg_" + int_tag(e->type) + "(" + ex(e->lhs) + ", " + line + ")";
       case ExprKind::binary: return binary(e);
