@@ -595,10 +595,11 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   // between the HUD panels: clear of the top bars and the bottom cards and objective
   bh := q.h - 400 * k; bw := hi(q.w * 0.3, lo(q.w * 0.6, q.w - 960 * k)); sc := lo(bh / (hz - lz), bw / (hx - lx)); mw := (hx - lx) * sc; mh := (hz - lz) * sc;
   x0 := q.w * 0.5 - mw * 0.5; y0 := q.h * 0.5 - mh * 0.5 + 16 * k;
-  ui_panel(g, u, x0 - 30 * k, y0 - 70 * k, x0 + mw + 30 * k, y0 + mh + 50 * k, paper, 0.98);
-  n = ui_box(out, n, x0 - 30 * k, y0 - 70 * k, x0 + mw + 30 * k, y0 + mh + 50 * k, 3 * k, ink);
-  n = ui_title(out, n, "DEEP GARAGE MAP", x0, y0 - 36 * k, 13 * k, ink);
-  n = d_map_hint(out, n, x0 + mw - 70 * k, y0 - 40 * k, k);
+  ph := hi(mw * 0.5 + 30 * k, 300 * k);   // half the panel: wide enough for the title and the close hint
+  ui_panel(g, u, q.w * 0.5 - ph, y0 - 70 * k, q.w * 0.5 + ph, y0 + mh + 50 * k, paper, 0.98);
+  n = ui_box(out, n, q.w * 0.5 - ph, y0 - 70 * k, q.w * 0.5 + ph, y0 + mh + 50 * k, 3 * k, ink);
+  n = ui_title(out, n, "DEEP GARAGE MAP", q.w * 0.5 - ph + 30 * k, y0 - 36 * k, 13 * k, ink);
+  n = d_map_hint(out, n, q.w * 0.5 + ph - 20 * k - d_map_hint_w(k) * 0.5, y0 - 41 * k, k);
   // north (lower z) is up: x right, z down the page reversed
   for i: 0..<g[0].wall_n {
     o := i * 5; if g[0].walls[o + 4] <= 0 || dv_room_has(room, g[0].walls[o], g[0].walls[o + 2]) { continue; }
@@ -638,18 +639,22 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
     n = ui_seg(out, n, px, pz, px, pz, 6 * k, HEAT(), 1);
     n = ui_seg(out, n, px, pz, px + sin(g[0].yaw) * 14 * k, pz - cos(g[0].yaw) * 14 * k, 1.5 * k, HEAT(), 1);
   }
-  n = ui_mid(out, n, "You (orange) · Digger (blue) · M, Esc, E or a click closes", q.w * 0.5, y0 + mh + 32 * k, 8 * k, ink);
+  n = ui_mid(out, n, "You (orange) · Digger (blue)", q.w * 0.5, y0 + mh + 32 * k, 8 * k, ink);
   return n;
 }
-// The map's close hint, centred on cx: the keys on a dark chip (the HUD's key chip, hud.coax) and CLOSE.
+// The map's close hint, centred on cx: a dark bar with the keys on a cream chip (the HUD's key chip,
+// hud.coax hv_prompt) and CLOSE.
 D_MAP_HINT :: "M / ESC";
+d_map_hint_w :: (k: f32) -> f32 { return ui_w(F_TITLE, D_MAP_HINT, 8 * k) + 16 * k + 12 * k + ui_w(F_TITLE, "CLOSE", 10 * k) + 28 * k; }
 d_map_hint :: (out: [] f32, at: int, cx: f32, cy: f32, k: f32) -> int {
-  n := at; kc := 8 * k; vc := 9 * k;
-  kw := ui_w(F_TITLE, D_MAP_HINT, kc) + 16 * k; vw := ui_w(F_TITLE, "CLOSE", vc);
-  x0 := cx - (kw + 10 * k + vw) * 0.5;
-  n = hv_rect(out, n, x0, cy - 12 * k, x0 + kw, cy + 12 * k, HV_PANEL(), 1);
-  n = hv_mid(out, n, F_TITLE, D_MAP_HINT, x0 + kw * 0.5, cy + 4 * k, kc, HV_CREAM(), 1);
-  return hv_text(out, n, F_TITLE, "CLOSE", x0 + kw + 10 * k, cy + 4.5 * k, vc, HV_PANEL(), 1);
+  n := at; kc := 8 * k; vc := 10 * k;
+  kw := ui_w(F_TITLE, D_MAP_HINT, kc) + 16 * k;
+  bw := d_map_hint_w(k); x0 := cx - bw * 0.5;
+  n = hv_rect(out, n, x0, cy - 20 * k, x0 + bw, cy + 20 * k, HV_PANEL(), 0.95);
+  kx := x0 + 14 * k;
+  n = hv_rect(out, n, kx, cy - 11 * k, kx + kw, cy + 11 * k, HV_CREAM(), 1);
+  n = hv_mid(out, n, F_TITLE, D_MAP_HINT, kx + kw * 0.5, cy + 4 * k, kc, HV_PANEL(), 1);
+  return hv_text(out, n, F_TITLE, "CLOSE", kx + kw + 12 * k, cy + 5 * k, vc, HV_CREAM(), 1);
 }
 // The controls, as the sheet maps them: shown on the pause screen.
 D_KEYS :: 17;
