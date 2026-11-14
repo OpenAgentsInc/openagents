@@ -20,7 +20,9 @@
 #                                         reaches it (a fast run; its own job), and with
 #                                         PROD Everglade II's pair against production (e2)
 #   coax/remote/check.sh suites I/N       the I-th of N parts of every suite
-#   coax/remote/check.sh only PATH,PATH   these suites (a bisect)
+#   coax/remote/check.sh only PATH,PATH [BASE]
+#                                         these suites (a bisect); with BASE, the #authority
+#                                         ones' mutants changed since BASE too (the pre-push)
 #   coax/remote/check.sh compiler I/N     the I-th of N parts of coax/tests/run.sh
 #   coax/remote/check.sh unit UNIT        one unit of coax/tests/run.sh (a bisect)
 #   coax/remote/check.sh wasm             the web build: every module against its budget
@@ -610,7 +612,12 @@ run() {   # mode arg: one check
   local mode="$1" arg="${2:-}"
   case "$mode" in
     suites) suites --part "$arg" || status=1 ;;
-    only) suites --only "$arg" || status=1 ;;
+    # With a BASE, as branch and since below: the #authority suites mutate what changed (#13583).
+    # A BASE this checkout lacks is said and mutates nothing (the after-landing check runs it).
+    only) local base="${also[0]:-}"
+          if [[ -n "$base" ]] && ! git cat-file -e "$base^{commit}" 2> /dev/null; then
+            echo "== mutate --changed: skipped, $base is not in this checkout" >> "$log"; base=""; fi
+          suites --only "$arg" ${base:+--mutate-changed "$base"} || status=1 ;;
     compiler|unit)
       # In the host's own toolchain, not compiler_env: the units build their own
       # sanitized programs with cc and c++, and the static musl toolchain has no
@@ -656,7 +663,9 @@ case "$mode" in
   branch)
     changed_since
     # Documents alone run nothing (suites --since reads every suite's sources).
-    if grep -qvE '(\.md$|^docs/)' "$out/changed"; then suites --since "$arg" || status=1
+    # The #authority suites also mutate the procedures changed since BASE: the gate that
+    # blocks; the whole sweep is the nightly report (coax/remote/mutation-sweep.sh, #13583).
+    if grep -qvE '(\.md$|^docs/)' "$out/changed"; then suites --since "$arg" --mutate-changed "$arg" || status=1
     else echo "== suites: skipped, the branch changes only documents" >> "$log"; fi
     web_since
     reports_since
@@ -664,7 +673,7 @@ case "$mode" in
   since)
     part="${3:-1/1}"
     changed_since
-    if grep -qvE '(\.md$|^docs/)' "$out/changed"; then suites --since "$arg" --part "$part" || status=1
+    if grep -qvE '(\.md$|^docs/)' "$out/changed"; then suites --since "$arg" --mutate-changed "$arg" --part "$part" || status=1
     else echo "== suites: skipped, the change is only documents" >> "$log"; fi ;;
   web)
     changed_since

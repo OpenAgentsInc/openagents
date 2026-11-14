@@ -1,0 +1,402 @@
+// The nightly mutation sweep (GitHub #13583). The gate that blocks a change mutates only the
+// procedures it touched (`coax mutate --changed`, through coax/remote/check.sh); this sweep
+// mutates every procedure of every #authority file, reports, and blocks nothing:
+//   1. the work: `tool.sh suites --list --authority-units`, which puts each #authority file
+//      under one suite, the one whose #load closure reaching it is smallest
+//   2. each suite's files split into up to --parts parts; each part is one
+//      `coax mutate SUITE --unit A --unit B ... --killers K` (one baseline for all its files,
+//      #13581) on the build pool (coax/remote/remote.sh run: its hosts, slots and spend cap),
+//      at most --jobs at once; K is that part's killers file from the last night, which the
+//      run then rewrites, so a night only repeats the checks that killed last time first
+//   3. the parts' reports joined: one row a file, its survivors under it
+//   4. one tracking issue, its body replaced with the night's report (gh); --dry-run prints it
+// State lives in --state DIR (default mutation-sweep/ at the checkout's root, untracked, so
+// remote.sh sends the killers files with the snapshot and brings the rewritten ones back):
+// killers/, parts/ (each part's output), report.md and issue (the tracking issue's number).
+//   coax/web/tool.sh mutation-sweep [--parts N] [--jobs J] [--only SUITE,SUITE] [--state DIR]
+//                                   [--local] [--dry-run] [--issue N]
+//   coax/bin/coax test coax/web/mutation-sweep.coax --library     its own checks
+// Run it from a clean checkout of origin/main (coax/remote/mutation-sweep.sh makes one).
+// Exit 0 when every part ran (survivors are the report, not a failure), 1 when a part could
+// not run or the issue could not be written, 2 on bad usage.
+#import "Basic";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+MS_SUITES :: 1024;
+MS_UNITS :: 64;                // #authority files one part mutates
+MS_PARTS_MAX :: 16;            // parts a suite
+MS_JOBS :: 18;                 // parts at once: 6 hosts x 3 slots (remote.sh's defaults)
+MS_TEXT :: 4194304;            // the suite list, a part's output, the report
+MS_BODY :: 60000;              // a GitHub issue body holds 65,536 characters
+MS_SHOW :: 12;                 // survivors shown a file
+MS_TITLE :: "Nightly mutation sweep: survivors in #authority files";
+
+MsSuite :: struct { path: string; library: bool; root_only: bool; run_steps: string; units: string; nunits: int; }
+MsPart :: struct { suite: int; part: int; parts: int; h: int; ok: bool; started_ms: int; }
+// Kept text: bytes is a view of the caller's buffer.
+MsText :: struct { bytes: [] u8; used: int; full: bool; }
+
+ms_put :: (t: [] MsText, s: string) {
+  if t[0].used + s.count > t[0].bytes.count { t[0].full = true; return; }
+  for i: 0..<s.count { t[0].bytes[t[0].used + i] = s[i]; }
+  t[0].used += s.count;
+}
+ms_text :: (t: [] MsText) -> string { return cast(string) t[0].bytes[0..<t[0].used]; }
+ms_keep :: (t: [] MsText, s: string) -> string {
+  at := t[0].used;
+  ms_put(t, s);
+  return ifx t[0].full then "" else cast(string) t[0].bytes[at..<at + s.count];
+}
+ms_itoa :: (v: int, out: [] u8) -> string {
+  if out.count < 21 { return ""; }
+  neg := v < 0; x := ifx neg then -v else v;
+  tmp: [20] u8; n := 0;
+  while true { tmp[n] = cast,trunc(u8) (48 + x % 10); n += 1; x = x / 10; if x == 0 { break; } }
+  k := 0;
+  if neg { out[0] = '-'; k = 1; }
+  for i: 0..<n { out[k + i] = tmp[n - 1 - i]; }
+  return cast(string) out[0..<k + n];
+}
+#test "numbers as text" { b: [32] u8; #assert ms_itoa(0, b[..]) == "0" && ms_itoa(4096, b[..]) == "4096" && ms_itoa(-7, b[..]) == "-7"; }
+ms_starts :: (s: string, word: string) -> bool {
+  if word.count > s.count { return false; }
+  for i: 0..<word.count { if s[i] != word[i] { return false; } }
+  return true;
+}
+ms_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  i := 0;
+  while i + needle.count <= hay.count {
+    if cast(string) hay[i..<i + needle.count] == needle { return true; }
+    i += 1;
+  }
+  return false;
+}
+// The word after `flag ` in line, or "".
+ms_after :: (line: string, flag: string) -> string {
+  i := 0;
+  while i + flag.count + 1 <= line.count {
+    if cast(string) line[i..<i + flag.count] == flag && line[i + flag.count] == ' ' {
+      e := i + flag.count + 1;
+      while e < line.count && line[e] != ' ' { e += 1; }
+      return cast(string) line[i + flag.count + 1..<e];
+    }
+    i += 1;
+  }
+  return "";
+}
+// The k-th comma-separated item of list.
+ms_item :: (list: string, k: int) -> string {
+  at := 0; s := 0;
+  for i: 0..<list.count + 1 {
+    if i == list.count || list[i] == ',' {
+      if at == k { return cast(string) list[s..<i]; }
+      at += 1; s = i + 1;
+    }
+  }
+  return "";
+}
+ms_items :: (list: string) -> int {
+  if list.count == 0 { return 0; }
+  n := 1;
+  for c: list { if c == ',' { n += 1; } }
+  return n;
+}
+// A suite path as one file name: '/' becomes '_'.
+ms_slug :: (path: string, out: [] u8) -> string {
+  n := ifx path.count < out.count then path.count else out.count;
+  for i: 0..<n { out[i] = ifx path[i] == '/' then '_' else path[i]; }
+  return cast(string) out[0..<n];
+}
+
+// The suites of `suites --list --authority-units` that hold #authority files:
+// "PATH  BUDGET [--library] [--root-only] [--run-steps N] ...  #authority FILE,FILE".
+ms_suites :: (list: string, only: string, keep: [] MsText, out: [] MsSuite) -> int {
+  n := 0; i := 0;
+  while i < list.count && n < out.count {
+    j := i;
+    while j < list.count && list[j] != '\n' { j += 1; }
+    line := cast(string) list[i..<j]; i = j + 1;
+    units := ms_after(line, " #authority");
+    if units.count == 0 || ms_has(line, "(skipped here") { continue; }
+    e := 0;
+    while e < line.count && line[e] != ' ' { e += 1; }
+    path := cast(string) line[0..<e];
+    if path.count == 0 { continue; }
+    if only.count > 0 {
+      hit := false;
+      for k: 0..<ms_items(only) { if ms_item(only, k) == path { hit = true; } }
+      if !hit { continue; }
+    }
+    out[n] = MsSuite.{path = ms_keep(keep, path), library = ms_has(line, " --library"), root_only = ms_has(line, " --root-only"),
+                      run_steps = ms_keep(keep, ms_after(line, "--run-steps")), units = ms_keep(keep, units), nunits = ms_items(units)};
+    n += 1;
+  }
+  return n;
+}
+#test "the sweep takes each suite's #authority files from the list, with its flags, and leaves the skipped ones" {
+  list := "rules/srd/battle.coax  default --library  #authority rules/srd/a.coax,rules/srd/b.coax\ncoax/web/x.coax  default\nm.coax  default --library  #authority\npay/w.coax  --steps 9 --run-steps 50 --root-only  #authority pay/w.coax\nbad.coax  default  (skipped here: loads y, not in the tree)  #authority bad.coax\n";
+  kb: [4096] u8; k: [1] MsText; k[0].bytes = kb[..]; s: [8] MsSuite;
+  n := ms_suites(list, "", k[..], s[..]);
+  #assert n == 2 && s[0].path == "rules/srd/battle.coax" && s[0].library && !s[0].root_only && s[0].run_steps == "";
+  #assert s[0].nunits == 2 && ms_item(s[0].units, 1) == "rules/srd/b.coax";
+  #assert s[1].path == "pay/w.coax" && !s[1].library && s[1].root_only && s[1].run_steps == "50" && s[1].nunits == 1;
+  #assert ms_suites(list, "pay/w.coax", k[..], s[..]) == 1 && s[0].path == "pay/w.coax";
+}
+
+// One file's result in a part's output: from its "mutation scope: unit FILE" line to its counts line.
+MsUnit :: struct { path: string; line: string; survivors: int; at: int; end: int; }
+ms_unit :: (out: string, from: int) -> MsUnit {
+  u: MsUnit; u.at = -1;
+  i := from;
+  while i < out.count {
+    j := i;
+    while j < out.count && out[j] != '\n' { j += 1; }
+    line := cast(string) out[i..<j];
+    if u.at < 0 && ms_starts(line, "mutation scope: unit ") {
+      u.at = i; e := 21;
+      while e < line.count && line[e] != ' ' { e += 1; }
+      u.path = cast(string) line[21..<e];
+    } else if u.at >= 0 {
+      if ms_has(line, ": mutant survived: ") { u.survivors += 1; }
+      if ms_has(line, " killed, ") && ms_has(line, " survived") { u.line = line; u.end = j; return u; }
+    }
+    i = j + 1;
+  }
+  u.at = -1;
+  return u;
+}
+#test "a part's output splits into its files' results, remote.sh's lines around them left out" {
+  out := "remote: host 1\nmutation scope: unit a.coax (its procedures; every check retained)\na.coax:3:4: mutant survived: x\n  x\n4 mutants, 3 killed, 1 survived\nmutation scope: unit b.coax (its procedures; every check retained)\n2 mutants, 2 killed, 0 survived\nremote: done\n";
+  a := ms_unit(out, 0);
+  #assert a.at > 0 && a.path == "a.coax" && a.survivors == 1 && a.line == "4 mutants, 3 killed, 1 survived";
+  b := ms_unit(out, a.end);
+  #assert b.path == "b.coax" && b.survivors == 0 && b.line == "2 mutants, 2 killed, 0 survived";
+  #assert ms_unit(out, b.end).at < 0 && ms_unit("mutation scope: unit c.coax (cut\n", 0).at < 0;
+}
+
+// Runs argv in dir to its end: stdout into out, and its length; -1 when it didn't start.
+ms_run :: (argv: [] string, dir: string, out: [] u8, status: [] int) -> int {
+  h := proc_new();
+  status[0] = -1;
+  if h < 0 { return -1; }
+  ok := proc_cwd(h, dir);
+  for a: argv { ok = ok && proc_arg(h, a); }
+  if !ok || proc_start(h) != 0 { d := proc_release(h); return -1; }
+  n := 0; line: [65536] u8;
+  while true {
+    m := proc_line(h, -1, line[..]);
+    if m == PROC_EOF || m == PROC_ERROR { break; }
+    if m < 0 { continue; }
+    if n + m + 1 <= out.count { for k: 0..<m { out[n + k] = line[k]; } out[n + m] = '\n'; n += m + 1; }
+  }
+  status[0] = proc_wait(h, -1);
+  d := proc_release(h);
+  return n;
+}
+// STATE/SUB/SLUG.partK.EXT
+ms_part_file :: (state: string, sub: string, suite: string, k: int, ext: string, out: [] u8) -> string {
+  b: [4096] u8; n := 0; sb: [4096] u8; nb: [32] u8;
+  for c: ms_slug(suite, sb[..]) { b[n] = c; n += 1; }
+  for c: ".part" { b[n] = c; n += 1; }
+  for c: ms_itoa(k, nb[..]) { b[n] = c; n += 1; }
+  for c: ext { b[n] = c; n += 1; }
+  db: [4096] u8;
+  return fs_join(fs_join(state, sub, db[..]), cast(string) b[0..<n], out);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("mutation-sweep: too many arguments"); return 2; }
+  parts_max := 4; jobs := 6;
+  if args_has(a[..], "--parts") { v := args_number(args_value(a[..], "--parts", "")); if !v.ok || v.value < 1 || v.value > MS_PARTS_MAX { tool_errln("mutation-sweep: --parts N, 1 to 16"); return 2; } parts_max = cast(int) v.value; }
+  if args_has(a[..], "--jobs") { v := args_number(args_value(a[..], "--jobs", "")); if !v.ok || v.value < 1 || v.value > MS_JOBS { tool_errln("mutation-sweep: --jobs J, 1 to 18"); return 2; } jobs = cast(int) v.value; }
+  only := args_value(a[..], "--only", ""); local := args_has(a[..], "--local"); dry := args_has(a[..], "--dry-run");
+  issue := args_value(a[..], "--issue", "");
+
+  big: [MS_TEXT] u8; st: [1] int;
+  av0 := [3] string.["git", "rev-parse", "--show-toplevel"];
+  n := ms_run(av0[..], ".", big[..], st[..]);
+  if n < 2 || st[0] != 0 { tool_errln("mutation-sweep: not in a git checkout"); return 2; }
+  kb: [1048576] u8; keep: [1] MsText; keep[0].bytes = kb[..];
+  root := ms_keep(keep[..], cast(string) big[0..<n - 1]);
+  sb: [4096] u8; db: [4096] u8;
+  state := ms_keep(keep[..], args_value(a[..], "--state", fs_join(root, "mutation-sweep", sb[..])));
+  d0 := fs_mkdir(state);
+  for sub: [2] string.["killers", "parts"] { d := fs_mkdir(fs_join(state, sub, db[..])); }
+  if !fs_exists(fs_join(state, "killers", db[..])) { tool_err("mutation-sweep: cannot make "); tool_errln(state); return 2; }
+  av1 := [3] string.["git", "rev-parse", "HEAD"];
+  hn := ms_run(av1[..], root, big[..], st[..]);
+  head := ms_keep(keep[..], ifx hn > 1 then cast(string) big[0..<hn - 1] else "?");
+
+  av2 := [4] string.["coax/web/tool.sh", "suites", "--list", "--authority-units"];
+  n = ms_run(av2[..], root, big[..], st[..]);
+  if n < 0 || st[0] != 0 { tool_errln("mutation-sweep: suites --list failed"); return 1; }
+  suites: [MS_SUITES] MsSuite;
+  ns := ms_suites(cast(string) big[0..<n], only, keep[..], suites[..]);
+  files := 0;
+  for s: 0..<ns { files += suites[s].nunits; }
+
+  // 2. the parts: a suite's files k, k + P, k + 2P ... in part k (P = at most --parts, one a file at
+  // fewest), each part under MS_UNITS files
+  parts: [MS_SUITES * MS_PARTS_MAX] MsPart; np := 0;
+  for s: 0..<ns {
+    p := ifx suites[s].nunits < parts_max then suites[s].nunits else parts_max;
+    while (suites[s].nunits + p - 1) / p > MS_UNITS { p += 1; }
+    for k: 0..<p { if np < parts.count { parts[np] = MsPart.{suite = s, part = k, parts = p, h = -1}; np += 1; } }
+  }
+  print("mutation-sweep: % #authority files under % suites, in % parts, at most % at once, at %\n", files, ns, np, jobs, head);
+  next := 0; done := 0; failed := 0; t0 := proc_now_ms();
+  line: [65536] u8; kp: [4096] u8; op: [4096] u8;
+  outs: [MS_JOBS] MsText; out_b: [MS_JOBS] [524288] u8;
+  lane_part: [MS_JOBS] int;
+  for l: 0..<MS_JOBS { lane_part[l] = -1; outs[l].bytes = out_b[l][..]; }
+  while done < np {
+    for l: 0..<jobs {
+      if lane_part[l] < 0 && next < np {
+        p := next; next += 1;
+        s := suites[parts[p].suite];
+        h := proc_new();
+        ok := h >= 0 && proc_cwd(h, root) && proc_arg(h, "coax/remote/remote.sh") && proc_arg(h, "run");
+        if local { ok = ok && proc_arg(h, "--local"); }
+        ok = ok && proc_arg(h, "--") && proc_arg(h, "coax/bin/coax") && proc_arg(h, "mutate") && proc_arg(h, s.path);
+        for u: 0..<s.nunits { if u % parts[p].parts == parts[p].part { ok = ok && proc_arg(h, "--unit") && proc_arg(h, ms_item(s.units, u)); } }
+        ok = ok && proc_arg(h, "--killers") && proc_arg(h, ms_part_file(state, "killers", s.path, parts[p].part + 1, ".tsv", kp[..]));
+        if s.library { ok = ok && proc_arg(h, "--library"); }
+        if s.root_only { ok = ok && proc_arg(h, "--root-only"); }
+        if s.run_steps.count > 0 { ok = ok && proc_arg(h, "--run-steps") && proc_arg(h, s.run_steps); }
+        ok = ok && proc_env(h, "OA_REMOTE_WAIT=7200");
+        outs[l].used = 0; outs[l].full = false;
+        parts[p].started_ms = proc_now_ms();
+        if !ok || proc_start(h) != 0 {
+          if h >= 0 { r := proc_release(h); }
+          print("FAIL % part %/%: remote.sh did not start\n", s.path, parts[p].part + 1, parts[p].parts);
+          failed += 1; done += 1;
+          continue;
+        }
+        parts[p].h = h; lane_part[l] = p;
+      }
+      if lane_part[l] < 0 { continue; }
+      p := lane_part[l]; h := parts[p].h;
+      ended := false;
+      while true {
+        m := proc_line(h, 0, line[..]);
+        if m == PROC_TIMEOUT { break; }
+        if m == PROC_EOF || m == PROC_ERROR { ended = true; break; }
+        if m < 0 { continue; }
+        ms_put(outs[l..<l + 1], cast(string) line[0..<m]); ms_put(outs[l..<l + 1], "\n");
+      }
+      if !ended { continue; }
+      status := proc_wait(h, 5000);
+      err: [2048] u8; tail := proc_stderr(h, err[..]);
+      r := proc_release(h);
+      lane_part[l] = -1; done += 1;
+      s := suites[parts[p].suite];
+      out := ms_text(outs[l..<l + 1]);
+      // status 1 is a survivor (or an unreached procedure): still a report
+      parts[p].ok = ms_unit(out, 0).at >= 0 && (status == 0 || status == 1);
+      w := fs_write(ms_part_file(state, "parts", s.path, parts[p].part + 1, ".out", op[..]), out);
+      secs := (proc_now_ms() - parts[p].started_ms) / 1000;
+      if parts[p].ok { print("ok   % part %/% (% s)\n", s.path, parts[p].part + 1, parts[p].parts, secs); }
+      else {
+        failed += 1;
+        print("FAIL % part %/%: status %, no report (% s)\n", s.path, parts[p].part + 1, parts[p].parts, status, secs);
+        if tail.count > 0 { print("       %\n", tail); }
+      }
+    }
+    proc_sleep(200);
+  }
+
+  // 3. the report: a row a file, the survivors after the table
+  rep_b: [MS_TEXT] u8; rep: [1] MsText; rep[0].bytes = rep_b[..];
+  detail_b: [MS_TEXT] u8; detail: [1] MsText; detail[0].bytes = detail_b[..];
+  ms_put(rep[..], "The nightly mutation sweep of every `#authority` file (#13583), at `"); ms_put(rep[..], head);
+  ms_put(rep[..], "`. It blocks nothing: the gate on a change mutates only the procedures the change touched (`coax mutate --changed`). ");
+  ms_put(rep[..], "Kill a survivor with a check, or mark an equivalent one as chapter 11 says, with a reason a reviewer can check.\n\n");
+  ms_put(rep[..], "| File | Suite | Result |\n|---|---|---|\n");
+  total := 0; with := 0; reported := 0;
+  for p: 0..<np {
+    s := suites[parts[p].suite];
+    if !parts[p].ok {
+      ms_put(rep[..], "| part "); nb: [32] u8; ms_put(rep[..], ms_itoa(parts[p].part + 1, nb[..])); ms_put(rep[..], " | `"); ms_put(rep[..], s.path);
+      ms_put(rep[..], "` | did not run |\n"); continue;
+    }
+    k := fs_read(ms_part_file(state, "parts", s.path, parts[p].part + 1, ".out", op[..]), big[..]);
+    out := ifx k > 0 then cast(string) big[0..<k] else "";
+    at := 0;
+    while true {
+      u := ms_unit(out, at);
+      if u.at < 0 { break; }
+      at = u.end;
+      reported += 1; total += u.survivors;
+      ms_put(rep[..], "| `"); ms_put(rep[..], u.path); ms_put(rep[..], "` | `"); ms_put(rep[..], s.path); ms_put(rep[..], "` | ");
+      ms_put(rep[..], u.line); ms_put(rep[..], " |\n");
+      if u.survivors > 0 {
+        with += 1;
+        ms_put(detail[..], "\n### `"); ms_put(detail[..], u.path); ms_put(detail[..], "`\n\n```\n");
+        shown := 0; i := u.at;
+        while i < u.end {
+          j := i;
+          while j < u.end && out[j] != '\n' { j += 1; }
+          l2 := cast(string) out[i..<j]; i = j + 1;
+          if ms_has(l2, ": mutant survived: ") { shown += 1; if shown <= MS_SHOW { ms_put(detail[..], l2); ms_put(detail[..], "\n"); } }
+        }
+        if shown > MS_SHOW { nb: [32] u8; ms_put(detail[..], "... and "); ms_put(detail[..], ms_itoa(shown - MS_SHOW, nb[..])); ms_put(detail[..], " more\n"); }
+        ms_put(detail[..], "```\n");
+      }
+    }
+  }
+  nb2: [32] u8;
+  ms_put(rep[..], "\n"); ms_put(rep[..], ms_itoa(total, nb2[..])); ms_put(rep[..], " survivors in "); ms_put(rep[..], ms_itoa(with, nb2[..]));
+  ms_put(rep[..], " of "); ms_put(rep[..], ms_itoa(reported, nb2[..])); ms_put(rep[..], " files reported; ");
+  ms_put(rep[..], ms_itoa(failed, nb2[..])); ms_put(rep[..], " of "); ms_put(rep[..], ms_itoa(np, nb2[..]));
+  ms_put(rep[..], " parts could not run. Run: `coax/remote/mutation-sweep.sh` (coax/web/mutation-sweep.coax).\n");
+  body := ms_text(rep[..]); extra := ms_text(detail[..]);
+  full_b: [MS_TEXT] u8; fn := 0;
+  for c: body { if fn < full_b.count { full_b[fn] = c; fn += 1; } }
+  for c: extra { if fn < full_b.count { full_b[fn] = c; fn += 1; } }
+  wb: [4096] u8;
+  w := fs_write(fs_join(state, "report.md", wb[..]), cast(string) full_b[0..<fn]);
+  // the issue body under GitHub's limit: what fits, then where the rest is
+  cut := ifx fn > MS_BODY then MS_BODY else fn;
+  final_b: [MS_BODY + 128] u8; bn := 0;
+  for i: 0..<cut { final_b[bn] = full_b[i]; bn += 1; }
+  if fn > MS_BODY { for c: "\n\n(cut here: report.md in the sweep's state folder holds all of it)\n" { final_b[bn] = c; bn += 1; } }
+  final := cast(string) final_b[0..<bn];
+  print("mutation-sweep: % survivors in % of % files, % of % parts failed, in % s\n", total, with, reported, failed, np, (proc_now_ms() - t0) / 1000);
+  if dry { print("%", final); return ifx failed > 0 then 1 else 0; }
+
+  // 4. the one tracking issue: the number kept in STATE/issue, else the open one with this title, else a new one
+  bf: [4096] u8; bodyfile := ms_keep(keep[..], fs_join(state, "issue-body.md", bf[..]));
+  if !fs_write(bodyfile, final) { tool_errln("mutation-sweep: cannot write the issue body"); return 1; }
+  ip: [4096] u8; issue_file := ms_keep(keep[..], fs_join(state, "issue", ip[..]));
+  ibuf: [64] u8;
+  if issue.count == 0 {
+    k := fs_read(issue_file, ibuf[..]);
+    if k > 0 { e := 0; while e < k && ibuf[e] >= '0' && ibuf[e] <= '9' { e += 1; } issue = ms_keep(keep[..], cast(string) ibuf[0..<e]); }
+  }
+  if issue.count == 0 {
+    av3 := [11] string.["gh", "issue", "list", "--state", "open", "--search", "\"Nightly mutation sweep\" in:title", "--json", "number", "--jq", ".[0].number // empty"];
+    k := ms_run(av3[..], root, big[..], st[..]);
+    if k > 1 && st[0] == 0 { issue = ms_keep(keep[..], cast(string) big[0..<k - 1]); }
+  }
+  if issue.count == 0 {
+    av4 := [7] string.["gh", "issue", "create", "--title", MS_TITLE, "--body-file", bodyfile];
+    k := ms_run(av4[..], root, big[..], st[..]);
+    if k < 2 || st[0] != 0 { tool_errln("mutation-sweep: gh issue create failed"); return 1; }
+    url := cast(string) big[0..<k - 1]; e := url.count;
+    while e > 0 && url[e - 1] >= '0' && url[e - 1] <= '9' { e -= 1; }
+    issue = ms_keep(keep[..], cast(string) url[e..<url.count]);
+    print("mutation-sweep: filed #%\n", issue);
+  } else {
+    av5 := [6] string.["gh", "issue", "edit", issue, "--body-file", bodyfile];
+    k := ms_run(av5[..], root, big[..], st[..]);
+    if st[0] != 0 { tool_err("mutation-sweep: gh issue edit "); tool_err(issue); tool_errln(" failed"); return 1; }
+    print("mutation-sweep: updated #%\n", issue);
+  }
+  w2 := fs_write(issue_file, issue);
+  return ifx failed > 0 then 1 else 0;
+}

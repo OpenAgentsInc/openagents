@@ -11,7 +11,8 @@
 //   3. checks           tools-check, everglade-parity, wire-check and layer-check (--base the push's
 //                       merge base), agent-reference --check, wgsl (the committed .wgsl and their
 //                       copies are what their Coax writes) when the push changes Coax or a shader,
-//                       and `coax test` of the suites the push changed, on a build host
+//                       and `coax test` of the suites the push changed (and, for #authority ones,
+//                       `coax mutate --changed` the merge base: the mutants of the procedures the push changed), on a build host
 //                       when one has a free slot; all of it under OA_PREPUSH_SECONDS (default 120):
 //                       what is still running then is stopped and named as skipped
 // Emergency bypass: OA_PREPUSH_BYPASS="why" git push ...  skips every rule and appends a line to
@@ -631,7 +632,8 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
         else {
           // the pushed commit itself on the host, its files left there (check.sh only, as AGENTS.md says)
           ra := [8] string.["coax/remote/remote.sh", "run", "--no-fallback", "--commit", commit, "--", "coax/remote/check.sh", "only"];
-          rargv: [9] string; for q: 0..<8 { rargv[q] = ra[q]; } rargv[8] = suites;
+          // with the merge base: the #authority suites also mutate the procedures the push changed (#13583)
+          rargv: [10] string; for q: 0..<8 { rargv[q] = ra[q]; } rargv[8] = suites; rargv[9] = base;
           env := [1] string.["OA_REMOTE_WAIT=15"];
           remote_started = pp_start(jobs[6..<7], "coax test", rargv[..], env[..]);
           if !remote_started { remote_skip = "remote.sh did not start"; }

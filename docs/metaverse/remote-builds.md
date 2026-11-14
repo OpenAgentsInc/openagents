@@ -982,6 +982,45 @@ builds (`coax/web/api/`, `coax/web/agent/`, `coax/lib/`, `coax/platform/`,
 the compiler, the limits page), in `OA_AFTER_API_PARTS` (2) parts. That is
 two slots, 13 minutes for the longer, about $0.08 a run (782 s and 220 s of slot time).
 
+## The nightly mutation sweep
+
+`coax/remote/mutation-sweep.sh` mutates every `#authority` file once a
+night (#13583). The gate on a change mutates only the procedures it touched
+(`coax mutate --changed`); this sweep is the report that finds what the
+gates missed, and it blocks nothing.
+
+The script keeps its own checkout of `origin/main` at
+`~/.openagents/mutation-sweep/checkout`, moves it to main's tip, builds the
+compiler there and runs `coax/web/tool.sh mutation-sweep`
+([mutation-sweep.coax](../../coax/web/mutation-sweep.coax)):
+
+1. `suites --list --authority-units` puts each `#authority` file under one
+   suite: the one whose `#load` closure reaching it is smallest, so its
+   baseline is the cheapest.
+2. Each suite's files are split into up to four parts. A part is one
+   `coax mutate SUITE --unit A --unit B ...` on a host through `remote.sh
+   run`, so its files share one baseline. At most six parts run at once.
+3. Each part reads and rewrites its killers file in the checkout's
+   untracked `mutation-sweep/killers/`, which `remote.sh` sends with the
+   snapshot and brings back, so the next night tries last night's killers
+   first.
+4. The parts' reports become one table, a row a file, with each file's
+   survivors under it. The script replaces the body of one open issue,
+   "Nightly mutation sweep: survivors in #authority files", and files it the
+   first night. `mutation-sweep/report.md` keeps the whole report and
+   `sweep.log` beside the checkout keeps every night's output.
+
+The parts spend the pool's own budget (`OA_REMOTE_DAILY_USD`) and use its
+hosts; nothing raises either. `--dry-run` prints the report instead of
+writing the issue, `--only SUITE,...` sweeps some suites, and `--local` runs
+the parts on this computer.
+
+The timer that starts it each night, at 02:00 Chicago time:
+
+```shell
+( crontab -l 2> /dev/null; echo '0 2 * * * cd ~/work/openagents && coax/remote/mutation-sweep.sh > /dev/null 2>&1' ) | crontab -
+```
+
 ## What stays on the Mac
 
 - **Shots** (`coax/web/tool.sh shot`, goldens, frame times). The hosts have no

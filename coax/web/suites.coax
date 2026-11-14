@@ -5,10 +5,16 @@
 //   coax/web/tool.sh suites --since REF        # only suites whose sources changed since REF (the #load graph; coax deps when the compiler or a .pb changed)
 //   coax/web/tool.sh suites --since REF --deps # the same, asking coax deps for every suite
 //   coax/web/tool.sh suites --since REF --affected [--faces]  # every .coax file whose #load closure holds a changed file (exit 3: can't tell; --faces: the caller places changed .c and .h files itself)
-//   coax/web/tool.sh suites --list             # the suites and their budgets; nothing runs
+//   coax/web/tool.sh suites --list             # the suites and their budgets (and "#authority" when one loads such a file); nothing runs
+//   coax/web/tool.sh suites --list --authority-units  # and after "#authority", the #authority files whose mutants the nightly
+//                                              # sweep runs under that suite: each file under the suite with the smallest
+//                                              # #load closure that reaches it (the cheapest baseline), comma-separated
 //   coax/web/tool.sh suites --only PATH,PATH   # these suites (paths from the repo root)
 //   coax/web/tool.sh suites --jobs N           # suites side by side (default 6)
 //   coax/web/tool.sh suites --part I/N         # the I-th of N parts: suites I, I+N, I+2N... (after --since and --only)
+//   coax/web/tool.sh suites --mutate-changed REF  # also, for each suite that loads an #authority file, `coax mutate
+//                                              # SUITE --changed REF`: the mutants of the procedures changed since REF
+//                                              # (#13583); a survivor fails it as a failed check does
 //   coax test coax/web/suites.coax --library   # its own checks
 //
 // The convention. A suite is a .coax file under apps/openagents-web/,
@@ -58,7 +64,7 @@ SU_TIMEOUT_MS :: 3600000;    // one suite's longest run, 60 minutes: a hang guar
 SU_JOBS :: 6;
 
 SuHead :: struct { found: bool; steps: string; run_steps: string; library: bool; root_only: bool; native: string; only: string; }
-Suite :: struct { path: string; steps: string; run_steps: string; library: bool; root_only: bool; native: string; missing: string; only: string; }   // native: the unit it links, beside it   // missing: a #load not in the tree
+Suite :: struct { path: string; steps: string; run_steps: string; library: bool; root_only: bool; native: string; missing: string; only: string; authority: bool; mutate: bool; }   // native: the unit it links, beside it   // missing: a #load not in the tree
 // Kept text: bytes is a view of the caller's buffer.
 SuArena :: struct { bytes: [] u8; used: int; full: bool; }
 
@@ -141,6 +147,23 @@ su_has_tests :: (text: string) -> bool {
     i += 1;
   }
   return false;
+}
+
+// An `#authority` directive at a line's start: the file decides money, admission or policy.
+su_has_authority :: (text: string) -> bool {
+  i := 0;
+  while i < text.count {
+    j := i;
+    while j < text.count && su_space(text[j]) { j += 1; }
+    if su_starts(text, j, "#authority") && (j + 10 >= text.count || !su_ident(text[j + 10])) { return true; }
+    while i < text.count && text[i] != '\n' { i += 1; }
+    i += 1;
+  }
+  return false;
+}
+#test "an #authority line marks a file; a mention in a comment or another word does not" {
+  #assert su_has_authority("#import \"Basic\";\n#authority;\n") && su_has_authority("  #authority;");
+  #assert !su_has_authority("// #authority;\n") && !su_has_authority("#authorityx;\n") && !su_has_authority("");
 }
 
 // A `main ::` declaration at a line's start: the file is a program.
@@ -405,6 +428,7 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("suites: too many arguments"); return 2; }
   since := args_value(a[..], "--since", ""); only := args_value(a[..], "--only", "");
+  mutate_ref := args_value(a[..], "--mutate-changed", "");
   list_only := args_has(a[..], "--list");
   jobs := SU_JOBS;
   if args_has(a[..], "--jobs") { j := args_number(args_value(a[..], "--jobs", "")); if !j.ok || j.value < 1 { tool_errln("suites: --jobs N"); return 2; } jobs = cast(int) j.value; }
@@ -453,6 +477,8 @@ tool_main :: () -> int #export_c #effects(all) {
   loads: [SU_LOADS] string; nl := 0;
   load_by: [SU_LOADS] int;     // the file each #load is in
   tested: [SU_FILES] bool;     // that file has checks of its own
+  authority: [SU_FILES] bool;  // that file, or one it loads at any depth, is #authority
+  own_authority: [SU_FILES] bool;  // that file itself is #authority
   cand: [SU_SUITES] Suite; heads: [SU_SUITES] bool; cand_file: [SU_SUITES] int; nc := 0;
   pb: [4096] u8;
   for f: 0..<nf {
@@ -464,6 +490,7 @@ tool_main :: () -> int #export_c #effects(all) {
     nl = su_loads(text, path, arena[..], loads[..], nl);
     for k: from..<nl { load_by[k] = f; }
     tested[f] = su_in(path) && (su_has_tests(text) || su_head(text, su_base(path)).found);   // and so runs here
+    authority[f] = su_has_authority(text); own_authority[f] = authority[f];
     h := ifx su_in(path) then su_head(text, su_base(path)) else SuHead.{};
     if su_in(path) && (su_has_tests(text) || h.found) && nc < SU_SUITES {
       // a #load that isn't in the tree: generated by the build (projects/baked.coax) or staged (a template)
@@ -491,6 +518,13 @@ tool_main :: () -> int #export_c #effects(all) {
     for l: 0..<nl { to := load_to[l]; by := load_by[l]; if to >= 0 && lacks[by].count == 0 && lacks[to].count > 0 { lacks[by] = lacks[to]; spread = true; } }
   }
   for c: 0..<nc { if cand[c].missing.count == 0 { cand[c].missing = lacks[cand_file[c]]; } }
+  // A suite holds #authority code when any file its #load closure reaches is #authority.
+  spread_a := true;
+  while spread_a {
+    spread_a = false;
+    for l: 0..<nl { to := load_to[l]; by := load_by[l]; if to >= 0 && authority[to] && !authority[by] { authority[by] = true; spread_a = true; } }
+  }
+  for c: 0..<nc { cand[c].authority = authority[cand_file[c]]; }
   covered: [SU_FILES] bool;
   grew := true;
   while grew {
@@ -627,7 +661,39 @@ tool_main :: () -> int #export_c #effects(all) {
     for s: 0..<ns { if s % part_n == part_i { suites[keep] = suites[s]; keep += 1; } }
     ns = keep;
   }
+  // --mutate-changed REF: each #authority suite also runs its mutants of the procedures
+  // changed since REF (#13583). A native suite's checks don't run in the evaluator: none.
+  if mutate_ref.count > 0 {
+    tests_n := ns;
+    for s: 0..<tests_n {
+      if suites[s].authority && suites[s].native.count == 0 && ns < SU_SUITES { suites[ns] = suites[s]; suites[ns].mutate = true; ns += 1; }
+    }
+  }
 
+  // --authority-units: each #authority file goes to one suite, the listed one whose #load closure
+  // reaching it is smallest (its baseline is the cheapest), the first such on a tie.
+  owner: [SU_FILES] int;
+  if list_only && args_has(a[..], "--authority-units") {
+    first_e: [SU_FILES + 1] int; edges_e: [SU_LOADS] int; fill_e: [SU_FILES] int;
+    for l: 0..<nl { first_e[load_by[l] + 1] += 1; }
+    for f: 0..<nf { first_e[f + 1] += first_e[f]; }
+    for f: 0..<nf { fill_e[f] = first_e[f]; owner[f] = -1; }
+    for l: 0..<nl { edges_e[fill_e[load_by[l]]] = load_to[l]; fill_e[load_by[l]] += 1; }
+    best: [SU_FILES] int;
+    seen_e: [SU_FILES] int; todo_e: [SU_FILES] int; reach: [SU_FILES] int;
+    for s: 0..<ns {
+      if !suites[s].authority || suites[s].native.count > 0 || suites[s].missing.count > 0 { continue; }
+      start := -1;
+      for f: 0..<nf { if files[f] == suites[s].path { start = f; break; } }
+      if start < 0 { continue; }
+      sp := 1; todo_e[0] = start; seen_e[start] = s + 1; nr := 0;
+      while sp > 0 {
+        sp -= 1; f := todo_e[sp]; reach[nr] = f; nr += 1;
+        for k: first_e[f]..<first_e[f + 1] { to := edges_e[k]; if to >= 0 && seen_e[to] != s + 1 { seen_e[to] = s + 1; todo_e[sp] = to; sp += 1; } }
+      }
+      for r: 0..<nr { f := reach[r]; if own_authority[f] && (owner[f] < 0 || nr < best[f]) { owner[f] = s; best[f] = nr; } }
+    }
+  }
   if list_only {
     for s: 0..<ns {
       su_say(suites[s].path);
@@ -638,6 +704,12 @@ tool_main :: () -> int #export_c #effects(all) {
       if suites[s].only.count > 0 { su_say(" --only "); su_say(suites[s].only); }
       if suites[s].native.count > 0 { su_say(" --native-link "); su_say(suites[s].native); }
       if suites[s].missing.count > 0 { su_say("  (skipped here: loads "); su_say(suites[s].missing); su_say(", not in the tree)"); }
+      if suites[s].authority { su_say("  #authority"); }   // the nightly mutation sweep's list (mutation-sweep.coax)
+      if suites[s].authority && args_has(a[..], "--authority-units") {
+        sep := " ";
+        for f: 0..<nf { if owner[f] == s { su_say(sep); su_say(files[f]); sep = ","; } }
+      }
+      if suites[s].mutate { su_say("  mutate --changed "); su_say(mutate_ref); }
       su_say("\n");
     }
     return 0;
@@ -670,6 +742,14 @@ tool_main :: () -> int #export_c #effects(all) {
           said = ifx nb.said < 2000 then nb.said else 2000;
           h = ifx ok then proc_new() else -1;
           ok = ok && h >= 0 && proc_cwd(h, dir) && proc_arg(h, nb.exe);
+        } else if s.mutate {
+          // the mutants of what changed since REF; every check runs (--steps is test's own budget, not mutate's)
+          h = proc_new();
+          ok = h >= 0 && proc_cwd(h, dir) && proc_arg(h, coax) && proc_arg(h, "mutate") && proc_arg(h, su_base(s.path)) &&
+               proc_arg(h, "--changed") && proc_arg(h, mutate_ref);
+          if s.run_steps.count > 0 { ok = ok && proc_arg(h, "--run-steps") && proc_arg(h, s.run_steps); }
+          if s.library { ok = ok && proc_arg(h, "--library"); }
+          if s.root_only { ok = ok && proc_arg(h, "--root-only"); }
         } else {
           h = proc_new();
           ok = h >= 0 && proc_cwd(h, dir) && proc_arg(h, coax) && proc_arg(h, "test") && proc_arg(h, su_base(s.path));
@@ -701,7 +781,15 @@ tool_main :: () -> int #export_c #effects(all) {
         if n == PROC_EOF || n == PROC_ERROR { ended = true; break; }
         if n == PROC_TOO_LONG { continue; }
         t := cast(string) line[0..<n];
-        if su_contains(t, " passed, ") && su_contains(t, " failed") {   // "418 checks, 418 passed, 0 failed" or "1 check, ..."
+        mutating := suites[lanes[l].suite].mutate;
+        summary := ifx mutating then (su_contains(t, " killed, ") && su_contains(t, " survived")) || su_starts(t, 0, "nothing to mutate")
+                   else su_contains(t, " passed, ") && su_contains(t, " failed");
+        if mutating && (su_contains(t, ": mutant survived: ") || su_starts(t, 0, "not reached by any check")) && lanes[l].fails_kept < 6 {
+          f := lanes[l].fails_kept; m := ifx n > 256 then 256 else n;
+          for k: 0..<m { lanes[l].fails[f][k] = line[k]; }
+          lanes[l].fail_n[f] = m; lanes[l].fails_kept += 1;
+        }
+        if summary {   // "418 checks, 418 passed, 0 failed" or "1 check, ..."
           m := ifx n > 512 then 512 else n;
           for k: 0..<m { lanes[l].last[k] = line[k]; }
           lanes[l].last_n = m;
@@ -725,9 +813,10 @@ tool_main :: () -> int #export_c #effects(all) {
       lanes[l].h = -1; done += 1;
       s := suites[lanes[l].suite];
       last := cast(string) lanes[l].last[0..<lanes[l].last_n];
-      passed := !over && status == 0 && su_contains(last, " 0 failed");
+      passed := !over && status == 0 && (s.mutate || su_contains(last, " 0 failed"));
       if !passed { failed += 1; }
       su_say(ifx passed then "ok   " else "FAIL "); su_say(s.path);
+      if s.mutate { su_say(" (mutate --changed "); su_say(mutate_ref); su_say(")"); }
       if s.steps.count > 0 { su_say(" (--steps "); su_say(s.steps); su_say(")"); }
       su_say(": ");
       if over { su_say("still running after 60 minutes"); } else if last.count > 0 { su_say(last); } else { su_say("no summary"); }
