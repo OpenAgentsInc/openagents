@@ -459,6 +459,24 @@ d_select_hud :: (g: [] SpGame, out: [] f32, q: Ui, at: int, cx: f32, cy: f32) ->
   for k: 0..<3 { g[0].have[k] = true; g[0].slot[k] = true; } g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL; g[0].strip_n = 2;
   g[0].px = out.x; g[0].pz = out.z; g_bot_home(g[..]);
   #assert d_can(g[..], s) == DS_NONE && objective(g[..]) == "Try the drill: look at the buried sensor and click. Digger digs it out.";
+  gl := hv_goal(g[..]); #assert gl.ok && gl.name == "BURIED SENSOR" && gl.x == m.x && gl.z == m.z;   // and the compass points at it, not at Sniper
+}
+#test "inside Sniper's room the compass never points at Sniper: nothing before the splice, the door while the sensor is buried, then the desk" #steps 200000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5); g_begin(g[..]); g_bot_home(g[..]);
+  g[0].px = -504.2; g[0].pz = 760;   // where the door puts her (the portal "Enter the rover")
+  #assert sp_in_room(g[..]) && !hv_goal(g[..]).ok;   // the edit bay is here
+  for k: 0..<3 { g[0].have[k] = true; g[0].slot[k] = true; } g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL; g[0].strip_n = 2;
+  #assert g_spliced(g[..]) && d_sensor_here(g[..]);
+  gl := hv_goal(g[..]);
+  #assert gl.ok && gl.name == "DOOR" && dist2(gl.x, gl.z, g[0].px, g[0].pz) < 5 && objective(g[..]) == "Try the drill outside: E at the door, then look at the buried sensor.";
+  g[0].dr[0].sensor = true;   // dug out
+  gl = hv_goal(g[..]); dk := g_shipped_at(g[..], 125);
+  #assert gl.ok && gl.name == "DESK" && gl.x == dk.x && gl.z == dk.z && objective(g[..]) == "Take the wheel at the desk: E.";
+  // driven to the garage and out: the compass leads to the rock wall the objective names
+  g[0].dv[0].away = true; g[0].px = g[0].at.rover_x + 4; g[0].pz = g[0].at.rover_z;
+  gl = hv_goal(g[..]);
+  #assert gl.ok && gl.name == "ROCK WALL" && gl.z == g[0].at.rubble_z && objective(g[..]) == "Look at the raiders' rock wall and click: Digger drills it.";
 }
 #test "following her, Digger goes round a solar row she runs across the top of, never through the glass, and never jumps to her side" #steps 2000000000 {
   g := [1] SpGame.[SpGame.{}];

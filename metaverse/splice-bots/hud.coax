@@ -102,6 +102,7 @@ hv_goal :: (g: [] SpGame) -> HvGoal {
   }
   if g[0].zone != Z_MINE { return HvGoal.{}; }
   if g[0].mode == M_DRIVE { b := g[0].dv[0]; return HvGoal.{name = "GARAGE", x = b.bx, z = b.bz, ok = true}; }   // on the drive: the garage's parking
+  if sp_in_room(g) { return hv_room_goal(g); }   // inside Sniper the compass never points at Sniper
   sn := dv_sniper(g);
   rover := HvGoal.{name = "ROVER", x = sn.x, z = sn.z, ok = true, rover = true};
   if g[0].have[H_CORE] { return rover; }
@@ -114,10 +115,28 @@ hv_goal :: (g: [] SpGame) -> HvGoal {
     if t.mech_core { return HvGoal.{name = "BLOCKED HALLWAY", x = 0, z = a.wall_z + 1, ok = true}; }
     return HvGoal.{name = "DRILL MECH", x = t.mech_x, z = t.mech_z, ok = true};
   }
+  // driven to the garage: the raiders' rock wall Digger drills (the objective's "look at the rock wall")
+  if g_spliced(g) && (dv_away(g) || g[0].phase != PH_DAY) { return HvGoal.{name = "ROCK WALL", x = 0, z = a.rubble_z, ok = true}; }
+  // spliced at the farm by day, the buried sensor before the drive: the objective's "try the drill"
+  if g_spliced(g) && !dv_away(g) && g[0].phase == PH_DAY && d_sensor_here(g) { m := d_sensor_at(g); return HvGoal.{name = "BURIED SENSOR", x = m.x, z = m.z, ok = true}; }
   if g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY] && g[0].have[H_MOVE] && g[0].have[H_DRILL] { return rover; }
   best := -1; bd := 1e9f32;
   for i: 0..<PICK_PLUS { if g[0].taken[i] || pick_zone(g, i) != Z_MINE { continue; } d := dist2(g[0].px, g[0].pz, pick_x(g, i), pick_z(g, i)); if d < bd { bd = d; best = i; } }
   if best >= 0 { return HvGoal.{name = hv_toast_name(MSG_PICK, best), x = pick_x(g, best), z = pick_z(g, best), ok = true}; }
+  return HvGoal.{};
+}
+// In Sniper's room: nothing while the edit bay is the next step (it is here), the desk when she takes the
+// wheel next, else the door out (the buried sensor, the rock wall and the rest are outside).
+hv_room_goal :: (g: [] SpGame) -> HvGoal {
+  if g[0].have[H_CORE] || !g_spliced(g) { return HvGoal.{}; }
+  wheel := !dv_away(g) && g[0].phase == PH_DAY && !d_sensor_here(g);
+  c := g[0].c[..];
+  for k: 0..<c[0].portal_n {
+    p := c[0].portals[k];
+    if !p.ok { continue; }
+    if wheel && p.ride { d := g_shipped_at(g, p.kind); return HvGoal.{name = "DESK", x = d.x, z = d.z, ok = true}; }   // the drive's portal is the desk's kind
+    if !wheel && p.kind == 0 && !p.ride { return HvGoal.{name = "DOOR", x = sc_m(p.x), z = sc_m(p.z), ok = true}; }
+  }
   return HvGoal.{};
 }
 // "2.4 KM" past a kilometre, "240 M" under it.

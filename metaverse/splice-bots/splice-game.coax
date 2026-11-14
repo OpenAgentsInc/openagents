@@ -1560,7 +1560,7 @@ objective :: (g: [] SpGame) -> string {
   if g[0].boss_down { return "Take the banned core the boss dropped."; }
   if g[0].wall_gone { return "Stun all 3 weak points."; }
   if g_spliced(g) && (dv_away(g) || g[0].phase != PH_DAY) && !g[0].rubble_gone { return "Look at the raiders' rock wall and click: Digger drills it."; }
-  if g_spliced(g) && !dv_away(g) && g[0].phase == PH_DAY && d_sensor_here(g) && !sp_in_room(g) { return "Try the drill: look at the buried sensor and click. Digger digs it out."; }
+  if g_spliced(g) && !dv_away(g) && g[0].phase == PH_DAY && d_sensor_here(g) { return ifx sp_in_room(g) then "Try the drill outside: E at the door, then look at the buried sensor." else "Try the drill: look at the buried sensor and click. Digger digs it out."; }
   if g_spliced(g) && !dv_away(g) && g[0].phase == PH_DAY { return ifx sp_in_room(g) then "Take the wheel at the desk: E." else "Get in Sniper (E at its door) and drive to the garage."; }
   if g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY] && g[0].have[H_MOVE] && g[0].have[H_DRILL] { return ifx bay then "Splice Digger in the edit bay: Tab." else "Go to Sniper and splice Digger in the edit bay: Tab."; }
   return "Walk near parts: Digger takes them.";
