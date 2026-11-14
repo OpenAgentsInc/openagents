@@ -79,7 +79,7 @@ pa_tick :: (h:[]HsHost) {
   for i:0..<st[0].ng {g:=st[0].grants[i];if !g.revoked && g.expires>hs_now() && cast(string)g.device[..]==cast(string)s[0].device[..] && cast(string)g.grant[..]==cast(string)s[0].grant[..] {live=true;}}
   c:=h[0].environment[0].configuration[..];enabled=enabled && cast(string)c[0].device[..]==cast(string)s[0].device[..] && cast(string)c[0].grant[..]==cast(string)s[0].grant[..];if !live || !enabled {for i:0..<4 {f:=m[0].native[0].flows[i..<i+1];if f[0].h>=0 {_ = proc_release(f[0].h);f[0].h= -1;pa_flow_state(f,"cancelled");f[0].view.nu=0;}}return;}
  }
- for i:0..<4 {f:=m[0].native[0].flows[i..<i+1];before:=pa_running(f);pa_flow_tick(f,now);if before && !pa_running(f) && f[0].profile>=0 {m[0].native[0].probes[f[0].profile].last=0;pa_schedule(m,true);}}
+ for i:0..<4 {f:=m[0].native[0].flows[i..<i+1];before:=pa_running(f);pa_flow_tick(f,now);if before && !pa_running(f) && f[0].profile>=0 {m[0].native[0].probes[f[0].profile].last=0;m[0].native[0].probes[f[0].profile].backoff=0;pa_schedule(m,true);}}
  for i:0..<s[0].n {id:=cast(string)s[0].profiles[i].id[0..<s[0].profiles[i].ni];pa_probe_tick(m[0].native[0].probes[i..<i+1],m[0].native[0].accounts[i..<i+1],pa_directory(pa_root(root[..]),id,directory[..]),id=="system",now);}
 }
 pa_handle :: (h:[]HsHost,r:[]HbRpcRequest,q:[]PaRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int {

@@ -132,17 +132,22 @@ list every window with a bar and its reset time:
 
 Coder reads usage the way Zeron does. Claude's comes from
 `api.anthropic.com/api/oauth/usage` (the five-hour Session and the
-seven-day Week), with the token in `.credentials.json` under
-`CLAUDE_CONFIG_DIR` (default `~/.claude`), or on macOS the Keychain item
-`Claude Code-credentials`. Codex's comes from
+seven-day Week), read by the same code that reads the usage of a computer's
+Claude accounts for the phone (`coax/lib/agent/accounts/claude.coax`), in a
+child process of Coder, so the token never reaches the terminal UI. On macOS
+the token is the Keychain item `Claude Code-credentials`, read without a
+dialog; only when there is no such item does Coder read `.credentials.json`
+under `CLAUDE_CONFIG_DIR` (default `~/.claude`). When the Keychain refuses,
+Coder says so and does not fall back to the file. Codex's comes from
 `chatgpt.com/backend-api/wham/usage`, with the token in `auth.json` under
-`CODEX_HOME` (default `~/.codex`). The token goes only to `curl`'s
-standard input and is wiped after the call. Coder asks every 5 minutes,
-or at most every 30 seconds when you switch agents or type `/usage`. After
-a failure it waits: Retry-After for a 429 (30 s to 1 h, default 5 min), 60 s
-for a server error, 15 min for another error, 30 s for a network error,
-and 10 min with no login. The last reading is kept beside the sessions, so
-the row fills at once on the next start. `CODER_USAGE=0` turns it off, and
+`CODEX_HOME` (default `~/.codex`), which goes only to `curl`'s standard
+input and is wiped after the call. Neither token is copied or refreshed.
+Coder asks every 5 minutes, or at most every 30 seconds when you switch
+agents or type `/usage`. After a failure it waits: Retry-After for a 429
+(30 s to 1 h, default 5 min) or a server error (30 s to 30 min, default
+60 s), 15 min for another error, 30 s for a network error, and 10 min with
+no login. The last reading is kept beside the sessions, so the row fills at
+once on the next start. `CODER_USAGE=0` turns it off, and
 `CODER_USAGE_KEYCHAIN=0` keeps it to the files.
 
 **Status.** While a turn runs, the row above the composer shows a spinner,

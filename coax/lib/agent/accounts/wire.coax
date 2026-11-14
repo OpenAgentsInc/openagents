@@ -113,14 +113,34 @@ pa_receipt_read :: (raw:string,r:[]PaReceipt)->bool #effects(all) {
 
 // Local self-child observation, never a credential frame.
 PA_PROBE :: "openagents.environment.accounts.probe.v1";
-pa_probe_write :: (status:int,a:[]PaAccount,out:[]u8)->int #effects(all) {
- o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],PA_PROBE);jo_key(o[..],"status");jo_int(o[..],status);jo_key(o[..],"error");jo_str(o[..],cast(string)a[0].error[0..<a[0].ner]);jo_key(o[..],"windows");pa_windows_write(a[0].windows[0..<a[0].nw],o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+// The plan is Claude Code's own subscriptionType; retry_after_s the provider's Retry-After, 0 none.
+pa_probe_write :: (status:int,retry:int,a:[]PaAccount,out:[]u8)->int #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],PA_PROBE);jo_key(o[..],"status");jo_int(o[..],status);jo_key(o[..],"retry_after_s");jo_int(o[..],retry);jo_key(o[..],"error");jo_str(o[..],cast(string)a[0].error[0..<a[0].ner]);jo_key(o[..],"plan");jo_str(o[..],cast(string)a[0].plan[0..<a[0].np]);jo_key(o[..],"windows");pa_windows_write(a[0].windows[0..<a[0].nw],o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
 }
 pa_windows_write :: (windows:[]PaWindow,o:[]Jo) #effects(all) {
  jo_arr(o);for i:0..<windows.count {w:=windows[i];jo_obj(o);jo_key(o,"window_id");jo_str(o,cast(string)w.id[0..<w.ni]);jo_key(o,"used_basis_points");jo_int(o,w.used);jo_key(o,"resets_at");jo_str(o,cast(string)w.reset[0..<w.nr]);jo_end(o);}jo_end(o);
 }
-pa_probe_read :: (raw:string,a:[]PaAccount,status:[]int)->bool #effects(all) {
- nodes:[96]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];if jv_raw(j,jv_get(j,0,"schema"))!=PA_PROBE {return false;}status[0]=jv_int(j,jv_get(j,0,"status"),-1);a[0].ner=pa_string(j,0,"error",a[0].error[..]);list:=jv_get(j,0,"windows");a[0].nw=jv_len(j,list);if status[0]<0 || a[0].ner<0 || jv_kind(j,list)!=JV_ARRAY || a[0].nw<0 || a[0].nw>4 {return false;}
+#test "the probe frame refuses anything but its own bounded shape" {
+ v:[1]PaAccount;st:=[1]int.[0];ra:=[1]int.[0];
+ #assert pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":200,\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[{\"window_id\":\"x\",\"used_basis_points\":0,\"resets_at\":\"\"}]}",v[..],st[..],ra[..]) && v[0].nw==1 && v[0].windows[0].used==0 && v[0].windows[0].ni==1;
+ #assert pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":200,\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[{\"window_id\":\"five_hour\",\"used_basis_points\":10000,\"resets_at\":\"\"},{\"window_id\":\"five_hour\",\"used_basis_points\":10000,\"resets_at\":\"\"},{\"window_id\":\"five_hour\",\"used_basis_points\":10000,\"resets_at\":\"\"},{\"window_id\":\"five_hour\",\"used_basis_points\":10000,\"resets_at\":\"\"}]}",v[..],st[..],ra[..]) && v[0].nw==4 && v[0].windows[3].used==10000;
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":200,\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[{\"window_id\":\"five_hour\",\"used_basis_points\":1,\"resets_at\":\"\"},{\"window_id\":\"five_hour\",\"used_basis_points\":1,\"resets_at\":\"\"},{\"window_id\":\"five_hour\",\"used_basis_points\":1,\"resets_at\":\"\"},{\"window_id\":\"five_hour\",\"used_basis_points\":1,\"resets_at\":\"\"},{\"window_id\":\"five_hour\",\"used_basis_points\":1,\"resets_at\":\"\"}]}",v[..],st[..],ra[..]);
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":200,\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":{}}",v[..],st[..],ra[..]);
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":200,\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[{\"window_id\":\"\",\"used_basis_points\":1,\"resets_at\":\"\"}]}",v[..],st[..],ra[..]);
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":200,\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[{\"window_id\":\"x\",\"used_basis_points\":-1,\"resets_at\":\"\"}]}",v[..],st[..],ra[..]);
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":200,\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[{\"window_id\":\"x\",\"used_basis_points\":10001,\"resets_at\":\"\"}]}",v[..],st[..],ra[..]);
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":200,\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[{\"window_id\":\"x\",\"used_basis_points\":1}]}",v[..],st[..],ra[..]);
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":200,\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[{\"window_id\":\"x\",\"resets_at\":\"\"}]}",v[..],st[..],ra[..]);
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":200,\"retry_after_s\":0,\"error\":1,\"plan\":\"\",\"windows\":[]}",v[..],st[..],ra[..]);
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":200,\"retry_after_s\":0,\"error\":\"\",\"plan\":1,\"windows\":[]}",v[..],st[..],ra[..]);
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.view.v1\",\"status\":200,\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[]}",v[..],st[..],ra[..]);
+ #assert !pa_probe_read("not json",v[..],st[..],ra[..]);
+ #assert pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":0,\"retry_after_s\":0,\"error\":\"credentials_unavailable\",\"plan\":\"\",\"windows\":[]}",v[..],st[..],ra[..]) && st[0]==0 && v[0].nw==0;
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[]}",v[..],st[..],ra[..]);
+ a:[1]PaAccount;small:[8]u8;#assert pa_probe_write(0,0,a[..],small[..])== -1;
+}
+pa_probe_read :: (raw:string,a:[]PaAccount,status:[]int,retry:[]int)->bool #effects(all) {
+ nodes:[96]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];if jv_raw(j,jv_get(j,0,"schema"))!=PA_PROBE {return false;}status[0]=jv_int(j,jv_get(j,0,"status"),-1);retry[0]=jv_int(j,jv_get(j,0,"retry_after_s"),-1);a[0].ner=pa_string(j,0,"error",a[0].error[..]);a[0].np=pa_string(j,0,"plan",a[0].plan[..]);list:=jv_get(j,0,"windows");a[0].nw=jv_len(j,list);if status[0]<0 || retry[0]<0 || a[0].ner<0 || a[0].np<0 || jv_kind(j,list)!=JV_ARRAY || a[0].nw<0 || a[0].nw>4 {return false;}
  for i:0..<a[0].nw {at:=jv_at(j,list,i);w:=a[0].windows[i];w.ni=pa_string(j,at,"window_id",w.id[..]);w.nr=pa_string(j,at,"resets_at",w.reset[..]);w.used=jv_int(j,jv_get(j,at,"used_basis_points"),-1);if w.ni<1 || w.nr<0 || w.used<0 || w.used>10000 {return false;}a[0].windows[i]=w;}return true;
 }
 
@@ -134,9 +154,50 @@ pa_binding_write :: (grant:string,session:string,account:string,out:[]u8)->int #
  #assert pa_token("{\"accessToken\":\"not-the-store\"}",out[..])<0 && pa_token("{\"claudeAiOauth\":null}",out[..])<0;
 }
 pa_token :: (raw:string,out:[]u8)->int #effects(all) {nodes:[512]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return -1;}return jv_str(d[0],jv_path(d[0],0,"claudeAiOauth.accessToken"),out);}
+// The login's plan as Claude Code stores it ("max", "pro"): not a secret.
+#test "the plan is read beside the token, never the token" {
+ out:[64]u8;#assert pa_plan("{\"claudeAiOauth\":{\"accessToken\":\"fixture-only\",\"subscriptionType\":\"max\"}}",out[..])==3 && cast(string)out[0..<3]=="max";
+ #assert pa_plan("{\"claudeAiOauth\":{\"accessToken\":\"fixture-only\"}}",out[..])<0 && pa_plan("not json",out[..])<0;
+}
+pa_plan :: (raw:string,out:[]u8)->int #effects(all) {nodes:[512]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return -1;}return jv_str(d[0],jv_path(d[0],0,"claudeAiOauth.subscriptionType"),out);}
+// A probe's credential failures are one code in the shared account view (the
+// phone's Usage); the terminal keeps the finer code from the probe frame.
+#test "credential failures share one view code; others pass through" {
+ #assert pa_view_error("keychain_denied")=="credentials_unavailable" && pa_view_error("credentials_unreadable")=="credentials_unavailable" && pa_view_error("credentials_unavailable")=="credentials_unavailable";
+ #assert pa_view_error("rate_limited")=="rate_limited" && pa_view_error("login_required")=="login_required";
+}
+pa_view_error :: (code:string)->string #effects(all) {return ifx code=="keychain_denied" || code=="credentials_unreadable" then "credentials_unavailable" else code;}
 
 #test "provider bindings are exact immutable references and never a path" {
  b:[512]u8;#assert pa_binding_write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","11111111111111111111111111111111","system",b[..])>0;
  #assert pa_binding_write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","11111111111111111111111111111111","../other",b[..])<0;
- a:[1]PaAccount;status:=[1]int.[0];_:=pa_usage("{\"seven_day\":{\"utilization\":12.5}}",a[..]);n:=pa_probe_write(200,a[..],b[..]);v:[1]PaAccount;#assert n>0 && pa_probe_read(cast(string)b[0..<n],v[..],status[..]) && status[0]==200 && v[0].windows[0].used==1250;
+ a:[1]PaAccount;status:=[1]int.[0];retry:=[1]int.[0];_:=pa_usage("{\"seven_day\":{\"utilization\":12.5}}",a[..]);a[0].np=pa_copy(a[0].plan[..],"max");n:=pa_probe_write(200,0,a[..],b[..]);v:[1]PaAccount;#assert n>0 && pa_probe_read(cast(string)b[0..<n],v[..],status[..],retry[..]) && status[0]==200 && retry[0]==0 && v[0].windows[0].used==1250 && cast(string)v[0].plan[0..<v[0].np]=="max";
+ a[0].nw=0;a[0].np=0;a[0].ner=pa_copy(a[0].error[..],"rate_limited");n=pa_probe_write(429,120,a[..],b[..]);#assert n>0 && pa_probe_read(cast(string)b[0..<n],v[..],status[..],retry[..]) && status[0]==429 && retry[0]==120 && v[0].nw==0 && v[0].np==0 && cast(string)v[0].error[0..<v[0].ner]=="rate_limited";
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":0,\"retry_after_s\":-1,\"error\":\"\",\"plan\":\"\",\"windows\":[]}",v[..],status[..],retry[..]);
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[]}",v[..],status[..],retry[..]);
+ #assert !pa_probe_read("{\"schema\":\"openagents.environment.accounts.probe.v1\",\"status\":-1,\"retry_after_s\":0,\"error\":\"\",\"plan\":\"\",\"windows\":[]}",v[..],status[..],retry[..]);
+}
+
+// `claude auth status --json`: signed in to claude.ai, with its email and plan.
+#test "status parsing never includes raw provider credentials in an observation" {
+ a:[1]PaAccount;#assert pa_status("{\"loggedIn\":true,\"authMethod\":\"claude.ai\",\"email\":\"alice@example.com\",\"subscriptionType\":\"max\",\"access_token\":\"NEVER-RETURN\"}",a[..]);
+ #assert cast(string)a[0].email[0..<a[0].ne]=="alice@example.com" && cast(string)a[0].plan[0..<a[0].np]=="max";
+ #assert !pa_status("{\"loggedIn\":false,\"authMethod\":\"none\"}",a[..]);
+ #assert !pa_status("{\"loggedIn\":true,\"authMethod\":\"api_key\"}",a[..]);
+ a[0].ne=5;a[0].np=5;#assert pa_status("{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}",a[..]) && a[0].ne==0 && a[0].np==0;
+ #assert pa_status("{\"loggedIn\":true,\"authMethod\":\"claude.ai\",\"email\":\"\",\"subscriptionType\":\"p\"}",a[..]) && a[0].ne==0 && a[0].np==1;
+ #assert !pa_status("not json",a[..]);
+}
+pa_status :: (raw:string,a:[]PaAccount)->bool #effects(all) {
+ nodes:[128]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];a[0].ne=pa_string(j,0,"email",a[0].email[..]);a[0].np=pa_string(j,0,"subscriptionType",a[0].plan[..]);
+ // A missing field (-1) becomes 0; at 0 (or 1) either comparison leaves the count as it is.
+ if a[0].ne<0 {a[0].ne=0;}if a[0].np<0 {a[0].np=0;} // mutant: equivalent
+ return jv_bool(j,jv_get(j,0,"loggedIn")) && jv_raw(j,jv_get(j,0,"authMethod"))=="claude.ai";
+}
+// Retry-After in whole seconds; 0 when absent or a date.
+#test "Retry-After seconds, and nothing from a date or junk" {
+ #assert pa_seconds("9")==9 && pa_seconds("1:")==0 && pa_seconds("/")==0 && pa_seconds("120")==120 && pa_seconds(" 7")==7 && pa_seconds("")==0 && pa_seconds("Wed, 21 Oct 2015 07:28:00 GMT")==0 && pa_seconds("12a")==0 && pa_seconds("99999999")==9999999;
+}
+pa_seconds :: (text:string)->int #effects(all) {
+ v:=0;seen:=0;for c:text {if c==' ' && seen==0 {continue;}if c<'0' || c>'9' {return 0;}if seen<7 {v=v*10+cast(int)(c-'0');}seen+=1;}return v;
 }

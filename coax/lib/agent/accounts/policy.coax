@@ -49,7 +49,43 @@ pa_authorize :: (url:string)->bool #export_c #effects(all) {
  #assert !pa_probe(129999,100000,true) && pa_probe(130000,100000,true) && pa_probe(1,0,false);
 }
 pa_probe :: (now:int,last:int,force:bool)->bool #effects(all) {return last==0 || now-last>=(ifx force then 30000 else 300000);}
+// The one wait after a failed quota probe, for Coder's terminal and the
+// computer's accounts alike (Zeron's ProbeError::backoff). status: the HTTP
+// code, 0 no answer (the network), -1 no usable login, -2 an answer with no
+// limits. A Retry-After is honoured within the bounds.
+#test "a failed quota probe waits as Zeron does, Retry-After within bounds" {
+ #assert pa_backoff_ms(429,1)==30000 && pa_backoff_ms(429,0)==300000 && pa_backoff_ms(429,5)==30000 && pa_backoff_ms(429,99999)==3600000 && pa_backoff_ms(429,600)==600000;
+ #assert pa_backoff_ms(503,0)==60000 && pa_backoff_ms(500,99999)==1800000 && pa_backoff_ms(502,120)==120000 && pa_backoff_ms(500,1)==30000;
+ #assert pa_backoff_ms(401,0)==600000 && pa_backoff_ms(403,0)==600000 && pa_backoff_ms(-1,0)==600000 && pa_backoff_ms(401,5000)==600000;
+ #assert pa_backoff_ms(0,0)==30000 && pa_backoff_ms(0,900)==30000 && pa_backoff_ms(404,0)==900000 && pa_backoff_ms(499,0)==900000 && pa_backoff_ms(-2,0)==900000 && pa_backoff_ms(400,60)==900000;
+}
+// At v==lo or v==hi either branch gives v, so the strictness of each comparison is unobservable.
+pa_clamp :: (v:int,lo:int,hi:int)->int #effects(all) {return ifx v<lo then lo else ifx v>hi then hi else v;} // mutant: equivalent
+pa_backoff_ms :: (status:int,retry_after_s:int)->int #effects(all) {
+ s:=900;
+ if status==429 {s=pa_clamp(ifx retry_after_s>0 then retry_after_s else 300,30,3600);}
+ else if status>=500 {s=pa_clamp(ifx retry_after_s>0 then retry_after_s else 60,30,1800);}
+ else if status==401 || status==403 || status== -1 {s=600;}
+ else if status==0 {s=30;}
+ return s*1000;
+}
+#test "a probe's failure names the status its wait is chosen by" {
+ #assert pa_quota_status(0,"credentials_unavailable")== -1 && pa_quota_status(0,"keychain_denied")== -1 && pa_quota_status(0,"credentials_unreadable")== -1;
+ #assert pa_quota_status(200,"usage_unavailable")== -2 && pa_quota_status(0,"usage_unavailable")==0 && pa_quota_status(429,"rate_limited")==429 && pa_quota_status(401,"login_required")==401;
+}
+pa_quota_status :: (code:int,error:string)->int #effects(all) {
+ if error=="credentials_unavailable" || error=="keychain_denied" || error=="credentials_unreadable" {return -1;}
+ return ifx code==200 then -2 else code;
+}
 #test "only a fresh idle profile may be selected for new conversations" {
  #assert pa_select(true,true,false) && !pa_select(false,true,false) && !pa_select(true,false,false) && !pa_select(true,true,true);
 }
 pa_select :: (present:bool,authenticated:bool,signing_in:bool)->bool #effects(all) {return present && authenticated && !signing_in;}
+// What a Keychain answer leaves the lookup to do: 1 use the item, 0 read
+// the profile's file (no item, or no Keychain on this system), -3 refused
+// (never fall back to a stale file), -1 nothing usable.
+#test "Keychain denial is not absence: only a missing item or Keychain reads the file" {
+ #assert pa_keychain_next(1)==1 && pa_keychain_next(4096)==1 && pa_keychain_next(0)==0 && pa_keychain_next(-2)==0;
+ #assert pa_keychain_next(-3)== -3 && pa_keychain_next(-1)== -1 && pa_keychain_next(-4)== -1;
+}
+pa_keychain_next :: (size:int)->int #effects(all) {if size>0 {return 1;}if size==0 || size== -2 {return 0;}return ifx size== -3 then -3 else -1;}

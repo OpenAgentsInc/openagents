@@ -19,7 +19,7 @@ One key (the default engine, with the reason in the log).
 
 Test-only harness; the program under test is Coax.
 """
-import queue, threading, json, os, pty, re, select, signal, struct, subprocess, sys, tempfile, time, fcntl, termios
+import hashlib, queue, threading, json, os, pty, re, select, signal, struct, subprocess, sys, tempfile, time, fcntl, termios
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STYLE = re.compile(rb"\x1b\[[0-9;?<>]*[@-~]")
@@ -198,10 +198,15 @@ def verbs(check):
         # coder usage (chapter 36): Zeron's endpoints, read with a stand-in login from files only, never the Keychain
         import http.server
         seen_auth = []
+        ufail = {"code": 0, "retry": ""}          # the fake provider's failure for Claude's endpoint: 0 none
         class UsageStub(http.server.BaseHTTPRequestHandler):
             def log_message(self, *a): pass
             def do_GET(self):
                 seen_auth.append((self.path, self.headers.get("Authorization"), self.headers.get("anthropic-beta"), self.headers.get("chatgpt-account-id")))
+                if self.path == "/api/oauth/usage" and ufail["code"]:
+                    self.send_response(ufail["code"])
+                    if ufail["retry"]: self.send_header("Retry-After", ufail["retry"])
+                    self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"{}"); return
                 if self.path == "/api/oauth/usage":
                     body = {"five_hour": {"utilization": 12.0, "resets_at": "2026-11-02T15:00:00Z"}, "seven_day": {"utilization": 84.0, "resets_at": "2026-11-07T10:00:00Z"}}
                 elif self.path == "/backend-api/wham/usage":
@@ -224,7 +229,6 @@ def verbs(check):
         try: urows = json.loads(uj.stdout)
         except ValueError: urows = []
         un = subprocess.run([coder, "usage", "--json"], cwd=REPO, env=dict(uenv, CLAUDE_CONFIG_DIR=tempfile.mkdtemp(), CODEX_HOME=tempfile.mkdtemp()), capture_output=True, text=True, timeout=120)
-        usrv.shutdown()
         check("usage: Claude's and Codex's plan windows from Zeron's endpoints, with each login's headers; no login says so and exits 1",
               len(urows) == 2 and [w["used_percent"] for w in urows[0]["windows"]] == [12, 84] and [w["label"] for w in urows[0]["windows"]] == ["Session", "Week"]
               and [w["used_percent"] for w in urows[1]["windows"]] == [3, 4] and [w["label"] for w in urows[1]["windows"]] == ["Session", "Week"]
@@ -232,6 +236,83 @@ def verbs(check):
               and ("/backend-api/wham/usage", "Bearer tok-codex", None, "acct-1") in seen_auth
               and "Week" in ut.stdout and "84%" in ut.stdout and "tok-" not in uj.stdout + ut.stdout + uj.stderr + ut.stderr
               and un.returncode == 1 and '"error"' in un.stdout)
+        # Claude's probe is the computer accounts adapter's (#13598): one credential lookup through a stand-in
+        # Keychain (CODER_USAGE_KEYCHAIN=fake:DIR, never the real one), one HTTP probe in a `coder accounts-probe` child
+        ukc = tempfile.mkdtemp(prefix="coder-usage-keychain-")
+        usvc = os.path.join(ukc, "Claude Code-credentials-" + hashlib.sha256(ucl.encode()).hexdigest()[:8])
+        kenv = dict(uenv, CODER_USAGE_KEYCHAIN="fake:" + ukc)
+        def uclaude(e):
+            del seen_auth[:]
+            r = subprocess.run([coder, "usage"], cwd=REPO, env=e, capture_output=True, text=True, timeout=120)
+            return r, [a for (p, a, _, _) in seen_auth if p == "/api/oauth/usage"]
+        ka, kas = uclaude(kenv)
+        json.dump({"claudeAiOauth": {"accessToken": "tok-keychain", "subscriptionType": "pro"}}, open(usvc, "w"))
+        ki, kis = uclaude(kenv)
+        open(usvc + ".denied", "w").close()
+        kd, kds = uclaude(kenv)
+        os.remove(usvc + ".denied")
+        check("usage: a Keychain item is read before the file, a missing item falls back to the file, a refusal never does",
+              kas == ["Bearer tok-claude"] and "Claude Max" in ka.stdout and kis == ["Bearer tok-keychain"] and "Claude Pro" in ki.stdout
+              and kds == [] and "macOS Keychain denied access to the Claude Code login" in kd.stdout
+              and "tok-" not in ka.stdout + ki.stdout + kd.stdout + ka.stderr + ki.stderr + kd.stderr)
+        ubad = tempfile.mkdtemp(prefix="coder-usage-notoken-")
+        json.dump({"claudeAiOauth": {"refreshToken": "never-used"}}, open(os.path.join(ubad, ".credentials.json"), "w"))
+        nt, nts = uclaude(dict(uenv, CLAUDE_CONFIG_DIR=ubad))
+        answers = {}
+        for code, retry in ((401, ""), (429, "120"), (503, "")):
+            ufail.update(code=code, retry=retry); answers[code] = uclaude(uenv)[0]
+            if code == 429:
+                uframe = subprocess.run([coder, "accounts-probe", "--directory", ucl, "--system"], cwd=REPO, env=uenv, capture_output=True, text=True, timeout=60)
+        ufail.update(code=0, retry="")
+        off, _ = uclaude(dict(uenv, CODER_USAGE_CLAUDE_URL="http://127.0.0.1:9/api/oauth/usage"))
+        check("usage: a login with no token, 401, 429 with its Retry-After, 503 and no answer each say so; the probe's frame has no token",
+              nts == [] and "the Claude Code login has no token" in nt.stdout
+              and all(("the usage service answered %d" % c) in answers[c].stdout for c in answers)
+              and '"status":429' in uframe.stdout and '"retry_after_s":120' in uframe.stdout and '"plan":"max"' in uframe.stdout and "tok-" not in uframe.stdout + uframe.stderr
+              and "the usage service didn't answer" in off.stdout)
+        # the terminal: the last reading paints at start from the cache, the probe runs in the session, and /usage
+        # shows the meters with the failure under them (a stand-in claude on PATH; no turn is sent)
+        ufail.update(code=503)
+        del seen_auth[:]
+        tpid, tfd = pty.fork()
+        if tpid == 0:
+            tenv = dict(uenv, TERM="xterm-256color", PATH=stub + ":" + env["PATH"])
+            tenv.pop("ANTHROPIC_API_KEY", None)
+            os.execve(coder, [coder, "--engine", "claude", "--cwd", REPO], tenv)
+        fcntl.ioctl(tfd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 120, 0, 0))
+        tout = bytearray()
+        def tread(needle, seconds):
+            end = time.time() + seconds
+            while time.time() < end and needle.encode() not in shown(tout):
+                r, _, _ = select.select([tfd], [], [], 0.1)
+                if r:
+                    try:
+                        tout.extend(os.read(tfd, 65536))
+                    except OSError:
+                        break
+            return needle.encode() in shown(tout)
+        painted = tread("Enter send", 60) and tread("Week 84%", 10)
+        probed = False
+        pend = time.time() + 20
+        while time.time() < pend and not probed:
+            probed = any(p == "/api/oauth/usage" for (p, _, _, _) in seen_auth); tread("\x00never", 0.2)
+        os.write(tfd, b"/usage\r")
+        meters = tread("the usage service answered 503", 10) and b"Claude Code \xc2\xb7 Claude Max" in shown(tout)
+        os.write(tfd, b"\x03"); time.sleep(0.2); os.write(tfd, b"\x03")
+        tend = time.time() + 5; tdone = False
+        while time.time() < tend and not tdone:
+            try:
+                tdone = os.waitpid(tpid, os.WNOHANG)[0] == tpid
+            except ChildProcessError:
+                tdone = True
+            tread("\x00never", 0.1)
+        if not tdone:
+            os.kill(tpid, signal.SIGKILL); os.waitpid(tpid, 0)
+        os.close(tfd)
+        ufail.update(code=0)
+        check("usage: the terminal paints the cached Week at start, probes Claude in the session, and /usage keeps the meters with the 503 under them",
+              painted and probed and meters and b"tok-" not in shown(tout))
+        usrv.shutdown()
         # coder import claude, then coder resume (chapter 14): a Claude Code log of this folder becomes a Coder
         # session; the terminal UI shows its turns, and the next message continues it on Claude Code's own session
         iwork = os.path.realpath(tempfile.mkdtemp(prefix="coder-import-"))

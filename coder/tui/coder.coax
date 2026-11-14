@@ -2583,6 +2583,8 @@ tool_main :: () -> int #export_c #effects(all) {
   verb := cd_positional(args, 0);
   if args_has(args, "--help") || args_has(args, "-h") || verb == "help" { tool_errln(USAGE); tool_errln(CODEX_HELP); tool_errln("       coder session-read list|show|context [REF] [--cwd DIR] [--within-min N] [--max-turns 1..256] [--before N] [--max-tool-chars 1..1024]   read-only Claude history as JSON; tool: coder_session_read"); return 0; }
   if args_has(args, "--version") || verb == "version" { tool_errln(CODER_VERSION); return 0; }
+  // the shared Claude quota probe's own child (coax/lib/agent/accounts/claude.coax, pa_http_start)
+  if verb == "accounts-probe" { po: [8192] u8; pn := pa_probe_command(args_value(args, "--directory", ""), args_has(args, "--system"), po[..]); if pn > 0 { cd_outln(cast(string) po[0..<pn]); return 0; } return 1; }
   json := args_has(args, "--json") || args_has(args,"--stream-json");
   // another machine: --on ssh:DEST or cloud runs the verb there; a session started that way is followed there
   on := args_value(args, "--on", "");

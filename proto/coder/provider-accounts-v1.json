@@ -28,7 +28,9 @@
     "schema": "openagents.environment.accounts.probe.v1",
     "fields": [
       "status",
+      "retry_after_s",
       "error",
+      "plan",
       "windows"
     ],
     "note": "Local self-child observation; never credentials."

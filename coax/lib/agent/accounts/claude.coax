@@ -12,16 +12,6 @@ PA_USAGE_URL :: "https://api.anthropic.com/api/oauth/usage";
 PaProbe :: struct {h:int= -1;kind:int;last:int;deadline:int;backoff:int;authenticated:bool;raw:[16384]u8;n:int;http:int;}
 PaFlow :: struct {h:int= -1;view:PaLogin;profile:int= -1;raw:[16384]u8;n:int;}
 PaNative :: struct {store:[1]PaStore;accounts:[8]PaAccount;probes:[8]PaProbe;flows:[4]PaFlow;next:int;}
-#test "status parsing never includes raw provider credentials in an observation" {
- a:[1]PaAccount;#assert pa_status("{\"loggedIn\":true,\"authMethod\":\"claude.ai\",\"email\":\"alice@example.com\",\"subscriptionType\":\"max\",\"access_token\":\"NEVER-RETURN\"}",a[..]);
- #assert cast(string)a[0].email[0..<a[0].ne]=="alice@example.com" && cast(string)a[0].plan[0..<a[0].np]=="max";
- #assert !pa_status("{\"loggedIn\":false,\"authMethod\":\"none\"}",a[..]);
- #assert !pa_status("{\"loggedIn\":true,\"authMethod\":\"api_key\"}",a[..]);
-}
-pa_status :: (raw:string,a:[]PaAccount)->bool #effects(all) {
- nodes:[128]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];a[0].ne=pa_string(j,0,"email",a[0].email[..]);if a[0].ne<0 {a[0].ne=0;}a[0].np=pa_string(j,0,"subscriptionType",a[0].plan[..]);if a[0].np<0 {a[0].np=0;}
- return jv_bool(j,jv_get(j,0,"loggedIn")) && jv_raw(j,jv_get(j,0,"authMethod"))=="claude.ai";
-}
 pa_account_error :: (a:[]PaAccount,code:string) {a[0].ner=pa_copy(a[0].error[..],code);a[0].stale=true;}
 pa_state :: (a:[]PaAccount,state:string) {a[0].ns=pa_copy(a[0].state[..],state);}
 pa_flow_state :: (f:[]PaFlow,state:string) {f[0].view.ns=pa_copy(f[0].view.state[..],state);}
@@ -37,14 +27,31 @@ pa_cli_start :: (directory:string,system:bool,login:bool)->int #effects(all) {
  if !system {b:[1536]u8;n:=pa_copy(b[..],"CLAUDE_CONFIG_DIR=");for c:directory {if n>=b.count {good=false;break;}b[n]=c;n+=1;}good=good && proc_env(h,cast(string)b[0..<n]);}
  good=good && proc_err_to_out(h);if !good || proc_start(h)!=0 {_ = proc_release(h);return -1;}return h;
 }
-pa_credentials :: (directory:string,system:bool,out:[]u8)->int #effects(all) {
- // Keychain denial is not absence: never fall back to a stale file on denial.
+// The Keychain read without a dialog, or the stand-in the checks drive, so no
+// check reaches a real login: CODER_USAGE_KEYCHAIN=0 is no Keychain (files
+// only); CODER_USAGE_KEYCHAIN=fake:DIR answers from the file DIR/SERVICE, or
+// refuses when DIR/SERVICE.denied exists, else has no item.
+pa_keychain :: (service:[]u8,user:[]u8,out:[]u8)->int #effects(all) {
+ mode:[1200]u8;m:=proc_getenv("CODER_USAGE_KEYCHAIN",mode[..]);if m=="0" {return -2;}
+ if m.count>5 && m[0..<5]=="fake:" {item:[1536]u8;path:=fs_join(cast(string)m[5..<m.count],cast(string)service,item[..]);denied:[1600]u8;nd:=pa_copy(denied[..],path);for c:".denied" {denied[nd]=c;nd+=1;}
+  if fs_exists(cast(string)denied[0..<nd]) {return -3;}if !fs_exists(path) {return 0;}n:=fs_read(path,out);return ifx n<0 then -1 else n;}
+ return cxsecret_read_service(service,user,out);
+}
+// The one Claude credential lookup. Keychain service `Claude Code-credentials`,
+// suffixed with 8 hex of the SHA-256 of the directory for a profile (or of
+// $CLAUDE_CONFIG_DIR for the system login), as Claude Code names it. The token
+// goes to out and the plan to a; nothing is stored or refreshed. Returns its
+// size, -1 no login, -3 the Keychain refused, -4 a login with no token.
+pa_credentials :: (directory:string,system:bool,out:[]u8,a:[]PaAccount)->int #effects(all) {
  service:[256]u8;n:=pa_copy(service[..],"Claude Code-credentials");custom:[1200]u8;override:=proc_getenv("CLAUDE_CONFIG_DIR",custom[..]);
  if !system || override.count>0 {digest:[64]u8;if !S_hex(S_hash(ifx system then override else directory),digest[..]) {return -1;}service[n]='-';n+=1;for i:0..<8 {service[n]=digest[i];n+=1;}}
- raw:[16384]u8;defer {for i:0..<raw.count {raw[i]=0;}}user:[256]u8;username:=proc_username(user[..]);size:=cxsecret_read_service(service[0..<n],user[0..<username.count],raw[..]);
- if size==0 || size== -2 {path:[1536]u8;size=fs_read(fs_join(directory,".credentials.json",path[..]),raw[..]);}
- if size<1 {return -1;}return pa_token(cast(string)raw[0..<size],out);
+ raw:[16384]u8;defer {for i:0..<raw.count {raw[i]=0;}}user:[256]u8;username:=proc_username(user[..]);size:=pa_keychain(service[0..<n],user[0..<username.count],raw[..]);next:=pa_keychain_next(size);
+ if next== -3 {return -3;}if next==0 {path:[1536]u8;size=fs_read(fs_join(directory,".credentials.json",path[..]),raw[..]);}
+ if size<1 || next<0 {return -1;}t:=pa_token(cast(string)raw[0..<size],out);if t<1 {return -4;}
+ np:=pa_plan(cast(string)raw[0..<size],a[0].plan[..]);a[0].np=ifx np>0 then np else 0;return t;
 }
+// The usage endpoint, or the fake provider a check names (CODER_USAGE_CLAUDE_URL).
+pa_usage_url :: (out:[]u8)->string #effects(all) {u:=proc_getenv("CODER_USAGE_CLAUDE_URL",out);return ifx u.count>0 then u else PA_USAGE_URL;}
 pa_http_start :: (directory:string,system:bool)->int #effects(all) {
  // Isolate the shared synchronous HTTP client in an owned child, so a quota
  // outage cannot stall the computer's chat/event loop. No token in argv.
@@ -52,38 +59,52 @@ pa_http_start :: (directory:string,system:bool)->int #effects(all) {
  good:=proc_arg(h,cast(string)exe[0..<n]) && proc_arg(h,"accounts-probe") && proc_arg(h,"--directory") && proc_arg(h,directory);if system {good=good && proc_arg(h,"--system");}
  if !good || proc_start(h)!=0 {_ = proc_release(h);return -1;}return h;
 }
+// The one HTTP probe, run in the owned child (`accounts-probe`): one read of
+// the provider's quota with the CLI's own token, never a refresh.
 pa_probe_command :: (directory:string,system:bool,out:[]u8)->int #effects(all) {
  a:[1]PaAccount;token:[4096]u8;header:[8192]u8;work:[1]HttpWork;body:[16384]u8;
  defer {for i:0..<token.count {token[i]=0;}for i:0..<header.count {header[i]=0;}for i:0..<work[0].req.count {work[0].req[i]=0;}}
- n:=pa_credentials(directory,system,token[..]);if n<1 {pa_account_error(a[..],"credentials_unavailable");return pa_probe_write(0,a[..],out);}
+ n:=pa_credentials(directory,system,token[..],a[..]);if n<1 {pa_account_error(a[..],ifx n== -3 then "keychain_denied" else ifx n== -4 then "credentials_unreadable" else "credentials_unavailable");return pa_probe_write(0,0,a[..],out);}
  at:=pa_copy(header[..],"Authorization: Bearer ");for c:token[0..<n] {header[at]=c;at+=1;}
- headers:=[2]string.[cast(string)header[0..<at],"anthropic-beta: oauth-2025-04-20"];
- r:=http_do(work[..],"GET",PA_USAGE_URL,headers[..],"",10000,0,body[..]);
- if r.error==HTTP_OK && r.code==200 && pa_usage(cast(string)body[0..<r.n],a[..]) {a[0].stale=false;}
- else {pa_account_error(a[..],ifx r.code==429 then "rate_limited" else ifx r.code==401 || r.code==403 then "login_required" else "usage_unavailable");}
- return pa_probe_write(r.code,a[..],out);
+ headers:=[2]string.[cast(string)header[0..<at],"anthropic-beta: oauth-2025-04-20"];url:[1200]u8;
+ r:=http_do(work[..],"GET",pa_usage_url(url[..]),headers[..],"",10000,0,body[..]);code:=ifx r.error==HTTP_OK then r.code else 0;
+ retry:=ifx code==429 || code>=500 then pa_seconds(http_header(cast(string)work[0].head[0..<work[0].head_n],"retry-after")) else 0;
+ if code==200 && pa_usage(cast(string)body[0..<r.n],a[..]) {a[0].stale=false;}
+ else {pa_account_error(a[..],ifx code==429 then "rate_limited" else ifx code==401 || code==403 then "login_required" else "usage_unavailable");}
+ return pa_probe_write(code,retry,a[..],out);
+}
+// The quota child alone, for a caller that has no `auth status` stage (Coder's terminal).
+pa_quota_start :: (p:[]PaProbe,directory:string,system:bool,now:int)->bool #effects(all) {
+ if p[0].h>=0 {return false;}p[0].n=0;p[0].http=0;p[0].kind=2;p[0].deadline=now+15000;p[0].h=pa_http_start(directory,system);return p[0].h>=0;
+}
+// Collects what the child printed; once it ends or its deadline passes it is
+// released (killed if still running). p[0].h>=0 after the call: still running.
+pa_child_tick :: (p:[]PaProbe,now:int)->int #effects(all) {
+ line:[16384]u8;
+ for count:0..<32 {n:=proc_line(p[0].h,0,line[..]);if n==PROC_TIMEOUT || n==PROC_EOF {break;}if n<0 || p[0].n+n+1>p[0].raw.count {p[0].deadline=0;break;}
+  text:=cast(string)line[0..<n];
+  for c:text {p[0].raw[p[0].n]=c;p[0].n+=1;}p[0].raw[p[0].n]=10;p[0].n+=1;
+ }
+ status:=proc_wait(p[0].h,0);if status==PROC_RUNNING && now<p[0].deadline {return status;}_ = proc_release(p[0].h);p[0].h= -1;return status;
+}
+// The finished quota child's frame: false when it timed out, failed or printed none.
+pa_quota_read :: (p:[]PaProbe,status:int,next:[]PaAccount,code:[]int,retry:[]int)->bool #effects(all) {
+ ok:=status==0 && pa_probe_read(cast(string)p[0].raw[0..<p[0].n],next,code,retry);for i:0..<p[0].raw.count {p[0].raw[i]=0;}p[0].n=0;return ok;
 }
 pa_probe_start :: (p:[]PaProbe,a:[]PaAccount,directory:string,system:bool,now:int) {
  if p[0].h>=0 {return;}p[0].last=now;p[0].n=0;p[0].http=0;p[0].kind=1;p[0].deadline=now+15000;p[0].h=pa_cli_start(directory,system,false);
  if p[0].h<0 {pa_state(a,"unavailable");pa_account_error(a,"cli_unavailable");return;}pa_state(a,"checking");a[0].stale=true;
 }
 pa_probe_tick :: (p:[]PaProbe,a:[]PaAccount,directory:string,system:bool,now:int) {
- if p[0].h<0 {return;}line:[16384]u8;
- for count:0..<32 {n:=proc_line(p[0].h,0,line[..]);if n==PROC_TIMEOUT || n==PROC_EOF {break;}if n<0 || p[0].n+n+1>p[0].raw.count {p[0].deadline=0;break;}
-  text:=cast(string)line[0..<n];
-  for c:text {p[0].raw[p[0].n]=c;p[0].n+=1;}p[0].raw[p[0].n]=10;p[0].n+=1;
- }
- status:=proc_wait(p[0].h,0);if status==PROC_RUNNING && now<p[0].deadline {return;}_ = proc_release(p[0].h);p[0].h= -1;
+ if p[0].h<0 {return;}status:=pa_child_tick(p,now);if p[0].h>=0 {return;}
  if p[0].kind==1 {
   p[0].authenticated=status==0 && pa_status(cast(string)p[0].raw[0..<p[0].n],a);
   if !p[0].authenticated {pa_state(a,ifx status==PROC_RUNNING then "unavailable" else "login_required");pa_account_error(a,ifx status==PROC_RUNNING then "probe_timeout" else "login_required");return;}
-  p[0].h=pa_http_start(directory,system);p[0].kind=2;p[0].deadline=now+15000;p[0].n=0;
-  if p[0].h<0 {pa_state(a,"connected");pa_account_error(a,"usage_unavailable");}return;
+  if !pa_quota_start(p,directory,system,now) {pa_state(a,"connected");pa_account_error(a,"usage_unavailable");}return;
  }
- pa_state(a,"connected");next:[1]PaAccount;code:=[1]int.[0];ok:=status==0 && pa_probe_read(cast(string)p[0].raw[0..<p[0].n],next[..],code[..]);
+ pa_state(a,"connected");next:[1]PaAccount;code:=[1]int.[0];retry:=[1]int.[0];ok:=pa_quota_read(p,status,next[..],code[..],retry[..]);
  if ok && code[0]==200 && next[0].nw>0 && next[0].ner==0 {a[0].windows=next[0].windows;a[0].nw=next[0].nw;a[0].observed=now;a[0].stale=false;a[0].ner=0;}
- else {pa_account_error(a,ifx ok && next[0].ner>0 then cast(string)next[0].error[0..<next[0].ner] else "usage_unavailable");if code[0]==401 || code[0]==403 {p[0].authenticated=false;pa_state(a,"login_required");}if code[0]==429 {p[0].backoff=now+300000;}}
- for i:0..<p[0].raw.count {p[0].raw[i]=0;}p[0].n=0;
+ else {error:=ifx ok && next[0].ner>0 then cast(string)next[0].error[0..<next[0].ner] else "usage_unavailable";pa_account_error(a,pa_view_error(error));if code[0]==401 || code[0]==403 {p[0].authenticated=false;pa_state(a,"login_required");}p[0].backoff=now+pa_backoff_ms(pa_quota_status(ifx ok then code[0] else 0,error),retry[0]);}
 }
 pa_flow_tick :: (f:[]PaFlow,now:int) {
  if f[0].h<0 || !pa_running(f) {return;}
