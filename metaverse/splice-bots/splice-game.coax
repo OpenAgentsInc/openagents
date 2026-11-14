@@ -73,7 +73,7 @@ LM_PICK :: 21;                    // the pickups, in their order: LM_PICK + i
 LM_FOE :: 41; LM_FOE_TURN :: 51;  // where foe i stands (LM_FOE + i), and where an Imperial robot's patrol turns (LM_FOE_TURN + i)
 DECK_Y :: 0.9f32; RAMP :: 3.0f32;
 SpPlaces :: struct {
-  rover_x: f32; rover_z: f32; post_x: f32; post_z: f32; crate_x: f32; crate_z: f32; start_x: f32; start_z: f32;
+  rover_x: f32; rover_z: f32; rover_yaw: f32; post_x: f32; post_z: f32; crate_x: f32; crate_z: f32; start_x: f32; start_z: f32;
   rubble_z: f32; wall_z: f32; boss_x: f32; boss_z: f32;
   deck_x: f32; deck_z0: f32; deck_z1: f32;
   bay_x: f32; bay_z: f32; mem_x: f32; mem_z: f32;         // two stages behind the mesas
@@ -162,6 +162,7 @@ SpGame :: struct {
   events: [EVENTS] int; event_n: int;
   fr: [1] SpFront;             // the front door (front.coax): the menus, your character, the kept run; outlives a reset
   dv: [1] SpDrive;             // the drive to the garage (drive.coax)
+  veh: [1] SpVehicle;          // Sniper on the drive: the engine's vehicle (drive.coax)
   dr: [1] SpDir;               // the Director's systems (director.coax): her stance, Digger's errands and health, the grid, the map, pause
   bt: [1] SpBattle;            // the bots' battles, the drill mech, the raider mech, the boss and the ending (splice-battle.coax)
   ak: [1] SpAttacks;           // the enemies' attacks: their beats, the lane they share, what she saw of the last (splice-battle.coax, #13552)
@@ -217,7 +218,6 @@ g_layout :: (g: [] SpGame) {
   // the garage's hallway into the mountain and the lab past it (garage.coax); the ring itself is its own colliders
   ga_layout(g);
   g_wall(g, g[0].at.dance_x - 13.4, g[0].at.dance_x - 9.9, g[0].at.dance_z - 5.5, g[0].at.dance_z + 5.5, 0);   // the main stage (drawn apart)
-  g_wall(g, g[0].at.rover_x - 1.5, g[0].at.rover_x + 1.5, g[0].at.rover_z - 2.4, g[0].at.rover_z + 2.4, 0); // the rover (drawn apart)
   g_wall(g, g[0].at.crate_x - 0.9, g[0].at.crate_x + 0.9, g[0].at.crate_z - 0.7, g[0].at.crate_z + 0.7, 0); // the stash crate
   g_wall(g, g[0].at.deck_x - 0.12, g[0].at.deck_x + 0.12, g[0].at.deck_z0 + RAMP, g[0].at.deck_z1 - RAMP, 0);   // the catwalk's rail, between its two ramps
   mr_walls(g);   // the metrics room (metrics.coax)
@@ -238,7 +238,7 @@ g_places :: (g: [] SpGame) -> bool {
   c := g[0].c[..]; a: SpPlaces; ok := c[0].ok;
   need := [17] int.[LM_DANCE, LM_ROVER, LM_POST, LM_CRATE, LM_START, LM_RUBBLE, LM_WALL, LM_BOSS, LM_DECK_S, LM_DECK_N, LM_BAY, LM_MEM, LM_VIL, LM_SCAN, LM_RAIL, LM_VIL_START, LM_RAIL_STOP];
   for id: need { ok = ok && sc_mark(c, id).id == id; }
-  m := sc_mark(c, LM_ROVER); a.rover_x = m.x; a.rover_z = m.z;
+  m := sc_mark(c, LM_ROVER); a.rover_x = m.x; a.rover_z = m.z; a.rover_yaw = 0.2;
   m = sc_mark(c, LM_POST); a.post_x = m.x; a.post_z = m.z;
   m = sc_mark(c, LM_CRATE); a.crate_x = m.x; a.crate_z = m.z;
   m = sc_mark(c, LM_START); a.start_x = m.x; a.start_z = m.z;
@@ -361,7 +361,8 @@ g_go :: (g: [] SpGame, x: f32, z: f32, deg: int) { g[0].px = x; g[0].pz = z; g[0
 g_portal :: (g: [] SpGame) -> int {
   if g[0].zone != Z_MINE || g[0].c[0].portal_n == 0 { return -1; }
   things: [SL_ITEMS] PortalThing; n := 0;
-  for i: 0..<g[0].layer[0].st[0].n { e := g[0].layer[0].items[i]; if n < SL_ITEMS { things[n] = PortalThing.{kind = e.mesh, x = e.x, z = e.z}; n += 1; } }
+  hid := dv_hidden(g);   // the farm's rover once Sniper has left: its door is on Sniper where it is parked (drive.coax)
+  for i: 0..<g[0].layer[0].st[0].n { e := g[0].layer[0].items[i]; if n < SL_ITEMS { things[n] = ifx e.id == hid then PortalThing.{kind = e.mesh, x = g[0].at.rover_x, z = g[0].at.rover_z} else PortalThing.{kind = e.mesh, x = e.x, z = e.z}; n += 1; } }
   return prt_pick(g[0].c[0].portals[..], g[0].c[0].portal_n, things[0..<n], g[0].px, g[0].pz);
 }
 
@@ -597,7 +598,8 @@ g_step :: (g: [] SpGame, dt: f32) {
   sb_end_step(g, dt);   // SCENE RESTORED, then the mission's teaser
   if g[0].mode == M_MEMORY { g[0].mem_t += dt; if g[0].mem_t >= T_MEMORY { g[0].mode = M_RESTORED; g_event(g, EV_RESTORED); } return; }
   if g[0].mode == M_BAY { if g[0].heat > 0 { g[0].heat = hi(0, g[0].heat - T_HEAT_COOL * dt); } return; }
-  if g[0].mode == M_DRIVE { dv_step(g, dt); return; }   // Sniper drives (drive.coax)
+  dv_sync(g);   // which placed rover is hidden: the one she drives, or the farm's once Sniper has left it (drive.coax)
+  if g[0].mode == M_DRIVE { dv_step(g, dt); return; }   // she drives Sniper (drive.coax)
   if g[0].mode == M_RIDE {
     // the rover follows the rail; W and S change its speed; the sensor ping stops it halfway
     want := ifx g[0].fwd then T_RAIL_FAST else ifx g[0].back then T_RAIL_SLOW else T_RAIL_SPEED;
@@ -1047,8 +1049,8 @@ g_rubble_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
 g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   t := g[0].t; blue := GLOW();
   g[0].thing_n = 0;
-  // Sniper parked at the mine, except while it drives you there (drive.coax): one rover, not two
-  if g[0].mode != M_DRIVE { g_rover_at(g, buf, p, frame_at(v3(g[0].at.rover_x, 0, g[0].at.rover_z), 0.2), 180, 1); }
+  // Sniper parked where she left it, once it has left the farm, except while she drives it (drive.coax): one rover, not two
+  if g[0].mode != M_DRIVE && dv_away(g) { g_rover_at(g, buf, p, frame_at(v3(g[0].at.rover_x, 0, g[0].at.rover_z), g[0].at.rover_yaw), 180, 1); }
   if fr_front(g) { fr_live(g, buf, p); return; }
   if g[0].mode == M_MEMORY { sb_memory_live(g, buf, p); return; }   // the hologram (splice-battle.coax)
   if g[0].mode != M_DRIVE { _ := sd_cables(g, buf, p); }   // chargers plugged into the parked rover train (layer-draw.coax)
@@ -1461,7 +1463,7 @@ objective :: (g: [] SpGame) -> string {
     if g[0].mode == M_RIDE { return "Ride the rail to the mine."; }
     return ifx g[0].have[H_BATTERY] then "Get back in the rover." else "Find what the sensor pinged.";
   }
-  if g[0].mode == M_DRIVE { return "Sniper drives you to the garage."; }
+  if g[0].mode == M_DRIVE { return "Drive Sniper to the garage. E: get out and park."; }
   if g[0].have[H_CORE] { return "Carry the core to the rover."; }
   if g[0].boss_down { return "Take the core."; }
   if g[0].wall_gone { return "Stun all 3 weak points."; }
@@ -2113,11 +2115,12 @@ g_run_to_garage :: (g: [] SpGame) -> int {
   if !(g_key(g, '1', true)) { return 8; } if !(g_key(g, '2', true)) { return 8; }
   if !(g[0].slot[0] && g[0].slot[1] && g[0].slot[2] && g[0].strip_n == 2 && g[0].strip[1] == H_DRILL) { return 9; }
   if !(g_key(g, -15, true) && g[0].mode == M_PLAY) { return 10; }
-  // E at the desk: Sniper drives her to the garage; she steps out at dusk facing the way in
+  // E at the desk takes the wheel; she drives Sniper to the garage with W, A and D, and E parks it: she
+  // steps out at dusk facing the way in
   dk := g_shipped_at(g, 125); g[0].px = dk.x - 1.2; g[0].pz = dk.z;
   if !(g_key(g, 'e', true) && g[0].mode == M_DRIVE) { return 11; }
-  for i: 0..<2000 { g_step(g, 0.02); if g[0].mode != M_DRIVE { break; } }
-  if !(g[0].mode == M_PLAY && g[0].phase == PH_DUSK && dv_facing_in(g)) { return 12; }
+  if !dv_keys_to(g, g[0].dv[0].bx, g[0].dv[0].bz, 6, 120) { return 12; }
+  if !(g_key(g, 'e', true) && g[0].mode == M_PLAY && g[0].phase == PH_DUSK && dv_facing_in(g)) { return 12; }
   return 0;
 }
 // The rest of the run, from stepping out at the garage to SCENE RESTORED and back to a new run.
@@ -2232,12 +2235,14 @@ SP_RAVE_WAY :: 5;
 sp_rave_way :: (g: [] SpGame, i: int) -> Point {
   c := g[0].c[..];
   ids := [SP_RAVE_WAY] int.[73, 16, 63, 62, 61];   // the hallway's mouth, the dance floor, the field by A1, the tunnel, Sniper's door
+  if i == SP_RAVE_WAY - 1 && dv_away(g) { return dv_door(g); }   // where she parked it (drive.coax)
   m := sc_mark(c, ids[i]); return v3(m.x, 0, m.z);
 }
 SP_LONG_WAY :: 16;
 sp_long_way :: (g: [] SpGame, i: int) -> Point {
   c := g[0].c[..];
   if i == 0 { m := sc_mark(c, 73); return v3(m.x, 0, m.z); }
+  if i == SP_LONG_WAY - 1 && dv_away(g) { return dv_door(g); }   // where she parked it (drive.coax)
   if i >= SP_LONG_WAY - 2 { ids := [2] int.[62, 61]; m := sc_mark(c, ids[i - (SP_LONG_WAY - 2)]); return v3(m.x, 0, m.z); }
   // west from the hallway's section E1 through each bay in turn and the passages in their piers, round to A1 by the tunnel
   // (layout per the level spec, #13552): a bay's middle line, as far out as puts the way between two bays through the passage
@@ -2512,6 +2517,13 @@ FlowTest :: struct { o: [5] [CT_BODY] u8; }
   out: [60000] f32; u: [UNIFORM_FLOATS] f32;
   n := d_map(g[..], out[..], u[..], Ui.{w = 1440, h = 900, k = 1}, 0);
   #assert n > 24 * 2 * 6;
+  // the scripted run's way (splice-run.aescript): a few frames at the desk, E closes the map, and E again takes the wheel
+  g[0].dv[0].shown = false; g[0].dr[0].map = false; g[0].have[H_DRILL] = true;
+  g[0].px = dk.x - 1.2; g[0].pz = dk.z;
+  for i: 0..<2 { g_step(g[..], 0.05); }
+  #assert g[0].dr[0].map && g_key(g[..], 'e', true) && !g[0].dr[0].map;
+  for i: 0..<2 { g_step(g[..], 0.05); }
+  #assert g_key(g[..], 'e', true) && g[0].mode == M_DRIVE;
 }
 #test "Sniper's cabin is a closed level: she walks into its walls on every side and stays in, the camera stays under its ceiling, and only E at its door takes her out beside Sniper (playtest 2)" #steps 400000000 {
   g := [1] SpGame.[SpGame.{}];
@@ -2568,7 +2580,7 @@ sp_map_up :: (g: [] SpGame) -> bool { g[0].dr[0].map = true; g[0].look_free = fa
   b := d_map_hint(out[..], 0, 700, 400, 1);
   #assert b > 0 && a >= b;
 }
-#test "the drive: the rover you boarded and Sniper parked at the garage are hidden while it drives you; you step out facing the way in (#13505)" #steps 200000000 {
+#test "the drive: the rover she boarded is hidden while she drives it, and once it has left the farm it is parked where she stopped; she steps out facing the way in (#13505)" #steps 200000000 {
   g := [1] SpGame.[SpGame.{}];
   g_reset(g[..]); #assert spw_shipped(g[..]) == SPW_SHIPPED_N;
   g_begin(g[..]); g[0].have[H_DRILL] = true;
@@ -2583,8 +2595,8 @@ sp_map_up :: (g: [] SpGame) -> bool { g[0].dr[0].map = true; g[0].look_free = fa
   one := [1] Pen.[Pen.{}]; g_draw_rover(g[..], buf[..], one[..], v3(0, 0.2, 0), 0);
   rm := [1] Pen.[Pen.{}]; sb_draw_rm(g[..], buf[..], rm[..]); #assert rm[0].n > 0;
   #assert driving == one[0].n + rm[0].n;   // only the rover on the road and the raider mech on watch beside it: no second, parked one
-  for i: 0..<2000 { g_step(g[..], 0.02); if g[0].mode != M_DRIVE { break; } }
-  #assert g[0].mode == M_PLAY && dv_hidden(g[..]) == -1 && dv_facing_in(g[..]) && g[0].phase == PH_DUSK;
+  #assert dv_keys_to(g[..], g[0].dv[0].bx, g[0].dv[0].bz, 6, 120);
+  #assert g_key(g[..], 'e', true) && g[0].mode == M_PLAY && dv_hidden(g[..]) == dv_train(g[..]) && dv_train(g[..]) >= 0 && dv_facing_in(g[..]) && g[0].phase == PH_DUSK;
   w := dv_way_in(g[..]); #assert dist2(w.x, w.z, 0, g[0].at.gar_z + ga_back(g[..]) + GA_BACK * 2) < 0.01;
   pen[0] = Pen.{}; g_live(g[..], buf[..], pen[..]);
   #assert pen[0].n > one[0].n;   // out of it, Sniper stands parked by the garage
@@ -2595,7 +2607,12 @@ sp_map_up :: (g: [] SpGame) -> bool { g[0].dr[0].map = true; g[0].look_free = fa
   #assert low == 1;
   g[0].mode = M_PLAY; g[0].dv[0].boarded = false; sd_places(d[..], g[..], places[..]);
   low = 0; for r: 0..<d[0].place_n { if f32_from_bits(places[r * SD_ROW + 1]) < -100 { low += 1; } }
-  #assert low == 0;
+  #assert low == 1;   // and parked: the farm's rover is gone from there
+  // E at Sniper where it is parked opens its cabin, and the cabin's door lets her out beside it again
+  g[0].px = g[0].at.rover_x + 3; g[0].pz = g[0].at.rover_z;
+  #assert g_key(g[..], 'e', true) && sp_in_room(g[..]);
+  r := dv_room(g[..]); g[0].px = r.door_x; g[0].pz = r.door_z;
+  #assert g_key(g[..], 'e', true) && !sp_in_room(g[..]) && near_rover(g[..], T_USE_RANGE);
 }
 #test "the old-world lab and its hallway are lit white at night, never the night's neon (#13505)" {
   g := [1] SpGame.[SpGame.{}];
@@ -2980,23 +2997,25 @@ g_key_wheel_follow :: (g: [] SpGame) { _ := g_key(g, 'r', true); _ = g_key(g, '4
     #assert g_key(g[..], 'e', true) && g[0].mode == M_DRIVE;
     t := g[0].bt[..];
     #assert !t[0].rm_hunt && !t[0].rm_gone && !t[0].rm_down;   // on watch beside the road
-    for i: 0..<2000 { g_step(g[..], 0.02); if t[0].rm_hunt || g[0].mode != M_DRIVE { break; } }
+    bx := g[0].dv[0].bx; bz := g[0].dv[0].bz;
+    for i: 0..<6000 { _ := dv_keys_to(g[..], bx, bz, 6, 0.02); if t[0].rm_hunt || g[0].mode != M_DRIVE { break; } }
     #assert t[0].rm_hunt && g[0].msg == SBM_HUNT && g[0].mode == M_DRIVE && sb_objective(g[..]) == "Outrun the raider mech (W), or battle it (E).";
-    #assert g_key(g[..], ' ', true) && g[0].mode == M_DRIVE;   // no skipping past it
+    #assert g_key(g[..], ' ', true) && g_key(g[..], ' ', false) && g[0].mode == M_DRIVE;   // Space is the handbrake: no skipping past it
     if run == 0 {
       // W: Sniper drives faster than it runs, and it gives up
-      #assert g_key(g[..], 'w', true);
-      for i: 0..<2000 { g_step(g[..], 0.02); if !t[0].rm_hunt { break; } }
+      for i: 0..<6000 { _ := dv_keys_to(g[..], bx, bz, 6, 0.02); if !t[0].rm_hunt { break; } }
       #assert !t[0].rm_hunt && t[0].rm_gone && !t[0].rm_down && g[0].msg == SBM_RM_GONE && !t[0].bots[SB_SNIPER].vit.down;
     } else {
       // E beside Sniper: a battle on the road, 1 to 4 are Sniper's cards, and she slows to a crawl
+      for k: [4] int.['w', 's', 'a', 'd'] { _ := g_key(g[..], k, false); }   // she lets it come to her
       for i: 0..<2000 { g_step(g[..], 0.02); if sb_can_battle_rm(g[..]) || g[0].mode != M_DRIVE { break; } }
       #assert sb_can_battle_rm(g[..]);
       #assert g_key(g[..], 'e', true) && sb_fighting(g[..]) && t[0].kind == SBF_DESERT && sb_fielded(g[..]) == SB_SNIPER && g[0].mode == M_DRIVE;
-      at := g[0].dv[0].t; g_step(g[..], 0.1); #assert g[0].dv[0].t - at < 0.05;
+      _ = g_key(g[..], 'w', true); for i: 0..<150 { g_step(g[..], 0.02); } _ = g_key(g[..], 'w', false);
+      #assert dv_speed(g[..]) < DV_CRAWL + 0.5;   // in a battle Sniper crawls
       #assert g_key(g[..], '1', true);
     }
-    for i: 0..<4000 { g_step(g[..], 0.02); if g[0].mode != M_DRIVE { break; } }
+    #assert dv_keys_to(g[..], bx, bz, 6, 240) && g_key(g[..], 'e', true);
     #assert g[0].mode == M_PLAY && g[0].phase == PH_DUSK && !sb_fighting(g[..]) && !t[0].rm_hunt;
   }
 }

@@ -32,6 +32,7 @@ expect 13 1
 msg 611 1000 34800
 frames 5 20
 key e
+key e up
 frames 5 20
 key -15
 expect 0 2
@@ -44,19 +45,27 @@ key 2
 key -15
 frames 5 20
 expect 0 1
-# E at the desk: Sniper drives you to the garage, and it is dusk when you step out
-msg 611 -49695 26000
+# E at the desk: she takes Sniper's wheel; the run puts Sniper at the garage's parking (on the drive 611 places
+# the rover), it is dusk in the garage yard, and E parks it and lets her out
+msg 611 -49770 25725
 frames 2 20
-# Sniper puts the deep-garage map up the first time at the desk: E closes it, and E again drives
+# Sniper puts the deep-garage map up the first time at the desk: E closes it, and E again (at the desk) takes the wheel
 key e
+key e up
 frames 2 20
 expect 0 1
+msg 611 -49770 25725
 key e
+key e up
 frames 5 20
 expect 0 9
 frames 100 20
 beat drive
-frames 650 20
+msg 611 600 500
+frames 20 20
+key e
+key e up
+frames 5 20
 expect 0 1
 expect 2 2
 beat garage
@@ -76,68 +85,99 @@ beat garage-parts
 msg 611 14206 -23253
 frames 2 20
 key e
+key e up
 frames 5 20
 msg 611 100 -34800
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 frames 100 20
 key e
+key e up
 expect 8 1
 beat wall-open
 # the boss: the mech battles it with keys 1 to 4; while it reels, F stuns its three weak points
@@ -868,6 +908,7 @@ beat boss-down
 msg 611 -20 -39370
 frames 2 20
 key e
+key e up
 frames 5 20
 expect 17 1
 msg 611 300 500

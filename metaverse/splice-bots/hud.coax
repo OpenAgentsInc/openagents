@@ -100,8 +100,10 @@ hv_goal :: (g: [] SpGame) -> HvGoal {
     if !g[0].have[H_BATTERY] && !g[0].taken[H_BATTERY] { return HvGoal.{name = "SENSOR PING", x = pick_x(g, H_BATTERY), z = pick_z(g, H_BATTERY), ok = true}; }
     c := rail_at(g, g[0].rail_s); return HvGoal.{name = "ROVER", x = c.x, z = c.z, ok = true, rover = true};
   }
-  if g[0].zone != Z_MINE || g[0].mode == M_DRIVE { return HvGoal.{}; }
-  rover := HvGoal.{name = "ROVER", x = a.rover_x, z = a.rover_z, ok = true, rover = true};
+  if g[0].zone != Z_MINE { return HvGoal.{}; }
+  if g[0].mode == M_DRIVE { b := g[0].dv[0]; return HvGoal.{name = "GARAGE", x = b.bx, z = b.bz, ok = true}; }   // on the drive: the garage's parking
+  sn := dv_sniper(g);
+  rover := HvGoal.{name = "ROVER", x = sn.x, z = sn.z, ok = true, rover = true};
   if g[0].have[H_CORE] { return rover; }
   if g[0].boss_down { c := sb_core_at(g); return HvGoal.{name = "BANNED CORE", x = c.x, z = c.z, ok = true}; }
   if g[0].wall_gone { return HvGoal.{name = "WEAK POINTS", x = a.boss_x, z = a.boss_z, ok = true}; }
@@ -150,7 +152,8 @@ hv_compass :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   if g[0].zone == Z_MINE && g[0].mode != M_DRIVE {
     gl := hv_goal(g);
     if !gl.rover {
-      x := ro_compass_x(yaw, ro_bearing(g[0].px, g[0].pz, g[0].at.rover_x, g[0].at.rover_z), span, bw - 40 * k);
+      sn := dv_sniper(g);
+      x := ro_compass_x(yaw, ro_bearing(g[0].px, g[0].pz, sn.x, sn.z), span, bw - 40 * k);
       if x != RO_OFF {
         rx := cx + x;
         n = hv_frame(out, n, rx - 7 * k, cy - 5 * k, rx + 7 * k, cy + 3 * k, 1.6 * k, HV_CREAM(), 1);

@@ -203,12 +203,15 @@ sb_stage :: (g: [] SpGame, n: int) {
 sb_desert :: (g: [] SpGame) -> bool { return g[0].zone == Z_RAIL; }
 // On the road, where the raider mech hunts: the rail ride (M_RIDE), or the drive from the solar farm to the garage (M_DRIVE, drive.coax).
 sb_road :: (g: [] SpGame) -> bool { return g[0].mode == M_DRIVE || (sb_desert(g) && g[0].mode == M_RIDE); }
-sb_road_yaw :: (g: [] SpGame) -> f32 { if g[0].mode == M_DRIVE { return dv_yaw(g, dv_s(g)); } return rail_yaw(g, g[0].rail_s); }
+sb_road_yaw :: (g: [] SpGame) -> f32 { if g[0].mode == M_DRIVE { return g[0].dv[0].syaw; } return rail_yaw(g, g[0].rail_s); }
 sb_road_beside :: (g: [] SpGame, side: f32) -> Point { c := sb_sniper_at(g); y := sb_road_yaw(g); return v3(c.x - cos(y) * side, 0, c.z + sin(y) * side); }
 // Near the road's end it turns back; it runs at its own speed on the rail, and a pace above the rover's cruise on the drive.
 sb_road_end :: (g: [] SpGame) -> bool { if g[0].mode == M_DRIVE { return dv_s(g) >= DV_RM_QUIT; } return g[0].rail_s >= sb_rm_quit_s(); }
-sb_rm_speed :: (g: [] SpGame) -> f32 { if g[0].mode == M_DRIVE { return dv_cruise(g) * DV_RM_CHASE; } return SB_RM_CHASE; }
-sb_sniper_at :: (g: [] SpGame) -> Point { if g[0].mode == M_DRIVE { return dv_at(g, dv_s(g)); } if g[0].zone == Z_RAIL { return rail_at(g, g[0].rail_s); } return v3(g[0].at.rover_x, 0, g[0].at.rover_z); }
+sb_rm_speed :: (g: [] SpGame) -> f32 { return SB_RM_CHASE; }
+// How near it notices Sniper, and how far behind it gives up: on the drive she can pass it anywhere across the desert.
+sb_rm_notice :: (g: [] SpGame) -> f32 { return ifx g[0].mode == M_DRIVE then DV_RM_NOTICE else SB_RM_NOTICE; }
+sb_rm_give_up :: (g: [] SpGame) -> f32 { return ifx g[0].mode == M_DRIVE then DV_RM_GIVE_UP else SB_RM_GIVE_UP; }
+sb_sniper_at :: (g: [] SpGame) -> Point { if g[0].mode == M_DRIVE { return v3(g[0].dv[0].sx, 0, g[0].dv[0].sz); } if g[0].zone == Z_RAIL { return rail_at(g, g[0].rail_s); } return v3(g[0].at.rover_x, 0, g[0].at.rover_z); }
 sb_in_chamber :: (g: [] SpGame, z: f32) -> bool { return g[0].zone == Z_MINE && g[0].wall_gone && z < g[0].at.wall_z - 1.5; }
 // The boss's frame, and its three weak points on its body: the neck, the left flank and the root of the tail.
 sb_dino_frame :: (g: [] SpGame) -> Frame { return frame_at(v3(g[0].bt[0].dino_x, 0, g[0].bt[0].dino_z), g[0].bt[0].dino_yaw); }
@@ -457,9 +460,9 @@ sb_rm_step :: (g: [] SpGame, dt: f32) {
   s := sb_sniper_at(g); d := dist2(s.x, s.z, t[0].rm_x, t[0].rm_z);
   if t[0].rm_hunt && sb_road_end(g) {
     sb_finish(g); t[0].rm_hunt = false; t[0].rm_gone = true; g_say(g, SBM_RM_GONE);
-  } else if !t[0].rm_hunt && !t[0].rm_gone && d < SB_RM_NOTICE && !sb_road_end(g) && !t[0].bots[SB_SNIPER].vit.down {
+  } else if !t[0].rm_hunt && !t[0].rm_gone && d < sb_rm_notice(g) && !sb_road_end(g) && !t[0].bots[SB_SNIPER].vit.down {
     t[0].rm_hunt = true; t[0].rm_claw = SB_RM_CLAW_EVERY; g_say(g, SBM_HUNT);
-  } else if t[0].rm_hunt && !sb_fighting(g) && d > SB_RM_GIVE_UP {
+  } else if t[0].rm_hunt && !sb_fighting(g) && d > sb_rm_give_up(g) {
     t[0].rm_hunt = false; t[0].rm_gone = true; g_say(g, SBM_RM_GONE);
   }
   if !t[0].rm_hunt { return; }

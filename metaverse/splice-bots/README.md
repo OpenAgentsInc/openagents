@@ -299,11 +299,12 @@ built, the rubble ahead of you.
   from the garage's door to the boss's fall with keys and the mouse alone, following the compass.
 - **The raider mech.** It keeps watch 12 m off the road at its low point, a little past halfway
   (`DV_RM_AT`), where the road dips south across the plain between the farm and the garage. Outrunning it is the default: out of a battle
-  its claws never take Sniper below a third of its health. When Sniper passes within 16 m it gives
-  chase at 16 m/s: faster than Sniper's cruise, slower than its top speed, so holding W outruns it
-  (20 m behind, it gives up for the drive). Beside Sniper it claws twice every 1.3 s or so (below). E while it is
-  within 12 m starts a battle with Sniper fielded; in the battle Sniper drives at its slow speed and
-  1 to 4 are its cards. 12 m before the garage it turns back. On foot nothing hunts you.
+  its claws never take Sniper below a third of its health. On the rail, when Sniper passes within 16 m it gives
+  chase at 16 m/s, slower than Sniper's top speed, so holding W outruns it (20 m behind, it gives
+  up). On the drive it notices her within 45 m and gives up 60 m behind (`DV_RM_NOTICE`,
+  `DV_RM_GIVE_UP`), since she can pass it anywhere across the desert. Beside Sniper it claws twice every
+  1.3 s or so (below). E while it is within 12 m starts a battle with Sniper fielded; in the battle Sniper crawls
+  (no faster than `DV_CRAWL`, 4 m/s) and 1 to 4 are its cards. 12 m before the garage it turns back. On foot nothing hunts you.
 - **The boss.** A dinosaur-shaped bot glowing blue. Its collider is a body in the engine's World that
   moves with it (`sl_body_to`, layer.coax). Its battle begins when you are in its chamber
   with the mech. The mech fights on its own when you leave it be (its strongest ready card every
@@ -459,8 +460,16 @@ window across the whole front wall, the loft bunk and its ladder top left, the d
 top right, two window strips on the top wall, the workbench arm on the right by the front, and the
 edit bay's console with its six slots at the bottom middle (Tab opens the bay). The door is in the
 back wall, on the left; E at it goes back out beside Sniper. Inside, the camera stays close and
-under the ceiling. E at the desk there starts the drive to the garage, and the garage yard turns
-the day to dusk. Tables saved before the `portals`, `starts` and `beats` tables get them empty,
+under the ceiling. E at the desk takes Sniper's wheel, and she drives it herself (playtest 2):
+W and S drive and brake, A and D steer, Space is the handbrake, and the compass points to the
+garage. Sniper is the engine's wheeled vehicle (`metaverse-engine/physics/vehicle.coax`) on the flat
+ground, top speed 24 m/s (`DV_TOP`). A step that would put it into a collider or a solar farm line is
+taken back and it stops there, so it drives round buildings, never through them. The road is open
+desert: no mesas or dune hills across it, and no invisible fence north of the garage yard. E parks
+it where it stands and she steps out at its left. From then on Sniper is where she parked it: its
+collider, its door into the cabin, the cabin's door out, the edit bay, its charger, the respawn and
+the compass's ROVER all follow it, and the rover at the farm's charger is gone from there. Driving
+into the garage yard turns the day to dusk. Tables saved before the `portals`, `starts` and `beats` tables get them empty,
 so such a world keeps its older opening in the dome village (#13505).
 
 Splice Bots now has 16 tables, the most a content document holds. A new kind of row goes in an

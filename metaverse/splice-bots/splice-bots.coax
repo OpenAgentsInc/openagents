@@ -316,6 +316,7 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
   // run): 611 "x z" in centimetres, 642 "i" beside foe i, 643 "i" at the boss's weak point i.
   if (kind == 611 || kind == 642 || kind == 643) && s.count > 0 && s[0].started && !s[0].gallery {
     g := s[0].game[..];
+    if kind == 611 && g[0].mode == M_DRIVE { dv_place(g, cast(f32) sp_whole(body, 0) / 100, cast(f32) sp_whole(body, 1) / 100); return; }   // on the drive: Sniper there
     if kind == 611 {   // "x z [deg [pitch]]": a third number faces that way, a fourth tilts the look (degrees)
       g[0].px = cast(f32) sp_whole(body, 0) / 100; g[0].pz = cast(f32) sp_whole(body, 1) / 100;
       if ct_parts(body, ' ') > 2 { g[0].yaw = sl_rad(sp_whole(body, 2)); g[0].pitch = cast(f32) sp_whole(body, 3) * PI / 180; }

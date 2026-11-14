@@ -57,6 +57,8 @@ SlWorld :: struct {
   refused: int;    // spawns the World had no slot for
   crowded: int;    // questions that met more than SL_NEAR entities
   boss: int = -1;  // the banned bot's slot: a body that moves (sl_body_to)
+  rover: int = -1; // Sniper parked: a body that moves where she parks it, in the World only while it is parked (drive.coax dv_sync)
+  builds: int;     // how many times the World was built: a despawned piece's collider is back after one
 }
 SlLayer :: struct {
   st: [1] EditorSceneState;
@@ -141,6 +143,7 @@ sl_build :: (g: [] SpGame) {
   sl_box(g, SK_RUBBLE, 0, -3, 3, g[0].at.rubble_z - 1, g[0].at.rubble_z + 1, 0);
   sl_box(g, SK_BOSS_WALL, 0, -4, 4, g[0].at.wall_z - 1, g[0].at.wall_z + 1, 0);
   g[0].ws[0].boss = sl_round(g, SK_BOSS, 0, g[0].at.boss_x, 0, g[0].at.boss_z, 0, SH_ALONG_Z, 2.1 - T_RADIUS, 0, 0);
+  g[0].ws[0].rover = -1; g[0].ws[0].builds += 1;   // Sniper parked joins the World once it is (drive.coax dv_sync)
   c := rail_at(g, T_RAIL_PING);
   sl_box(g, SK_WALL, -1, c.x - 1.5, c.x + 1.5, c.z - 2.4, c.z + 2.4, 0);
   _ = world_commit(w);
