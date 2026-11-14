@@ -116,7 +116,7 @@ chh_api_checks :: (t:[]Ap,dir:string) {
 // Real API/DB checks, isolated to the disposable harness database.
 pc_api_checks :: (t:[]Ap,account:string,auth:string) {
  st:=ac_call(t,"GET","/api/drops/me","",auth,"","");ap_check(t,"email creator can open native project creation without a Nostr key",st==200 && (ap_has(ap_body(t),"\"may\": true") || ap_has(ap_body(t),"\"may\":true")),ap_body(t));
- st=ac_call(t,"POST","/api/drops","{}",auth,"Origin: https://openagents.com","");ap_check(t,"email creator starts its own project drop",st==200 && ap_has(ap_body(t),"d-"),ap_body(t));
+ origin:[1]Sb;sb(origin[..],"Origin: ");sb(origin[..],t[0].api);st=ac_call(t,"POST","/api/drops","{}",auth,sb_text(origin[..]),"");ap_check(t,"email creator starts its own project drop",st==200 && ap_has(ap_body(t),"d-"),ap_body(t));
  dropid:[24]u8;kept_drop:=ap_member(ap_body(t),"id",dropid[..]);
  q:[1]Sb;sb(q[..],"INSERT INTO auth.nostr_keys(account,pubkey) VALUES ('");sb(q[..],account);sb(q[..],"',repeat('cd',32)); UPDATE auth.sessions SET level='L2',l2_at=now() WHERE account='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
  ap_do(t,"INSERT INTO projects.docs(slug,version,doc,updated_ms,updated_by) SELECT slug,1,jsonb_build_object('v','openagents.private-project.v1','slug',slug,'title','Native project','members',jsonb_build_array(jsonb_build_object('name','Ada','pubkey',repeat('cd',32)))),0,repeat('cd',32) FROM unnest(ARRAY['native-project-a','native-project-b']) slug");
