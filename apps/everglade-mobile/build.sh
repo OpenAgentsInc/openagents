@@ -107,8 +107,8 @@ emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
 # PageHost.m is built on the core over it (metaverse-engine/host/core/host-core.h); Engine.swift finds a pack's
 # entries through the reader (pack-table.h, which includes the face under its old name).
 "$coax" c "$repo/metaverse-engine/host/core/core-face.coax" --library --header "$work/c/engine-core-face.h" > "$work/c/engine-core-face.c"
-# (Its SHA-256 helpers are also native-audio's: this unit keeps its own names for them.)
-"${cc[@]}" -w -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex -c "$work/c/engine-core-face.c" -o "$work/c/engine-core-face.o"
+# (The libraries it loads are also other units' (SHA-256, crypto bytes): this unit keeps its own names for them, core-face-private.h.)
+"${cc[@]}" -w -include "$repo/metaverse-engine/host/core/core-face-private.h" -c "$work/c/engine-core-face.c" -o "$work/c/engine-core-face.o"
 printf '#include "engine-core-face.h"\n' > "$work/c/engine-pack-table.h"
 xcrun -sdk "$sdk" clang -target "$target" -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/metaverse-engine/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # A phone's tier for the pack's layers is Coax's (metaverse-engine/render/texture-format.coax tf_side), which

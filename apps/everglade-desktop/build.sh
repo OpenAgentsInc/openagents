@@ -7,7 +7,11 @@
 # Everglade II's pack, on the shared Mac host (apps/shared/host/apple/ui-host.m, the ui-host.h
 # contract OpenAgents uses) with the app's Metal layer and callbacks in Swift (Sources/Workshop.swift).
 #   apps/everglade-desktop/build.sh [--open [APP ARGS...]]
+#   apps/everglade-desktop/build.sh --units   only the C: every unit compiled and the objects linked
+#                                             together (ld -r), so two units exporting one symbol fail;
+#                                             no shaders, realms, resources or Swift (coax/remote/check.sh desktop-units)
 set -Eeuo pipefail
+units_only=0; if [[ "${1:-}" == --units ]]; then units_only=1; shift; fi
 shopt -s inherit_errexit 2>/dev/null || true   # bash 4.4+: a failing step inside $(...) fails the build too
 # A step that fails stops the build with a non-zero exit, naming its line (#13588).
 trap 'echo "build.sh: line $LINENO failed (status $?): $BASH_COMMAND" >&2; exit 1' ERR
@@ -26,16 +30,20 @@ cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-
 /usr/bin/clang "${cflags[@]}" -c "$here/model-face.c" -o "$work/c/model-face.o"
 /usr/bin/clang "${cflags[@]}" -c "$here/next-face.c" -o "$work/c/next-face.o"
 /usr/bin/clang -std=gnu11 -O2 -w -I"$repo/coax/platform" -c "$repo/coax/platform/process-native.c" -o "$work/c/process.o"
+if (( ! units_only )); then
 xcrun -sdk macosx metal "$here/Workshop.metal" "$here/Model.metal" -o "$app/Contents/Resources/default.metallib"
+fi
 # The place: the temple's parts (the Metaverse Engine's architecture kit) compiled to C, and the Metaverse Engine's shaders for
 # it emitted from Coax for Metal, a library a pair (each emission carries its own helpers).
 "$coax" c "$repo/everglade/workshop/temple.coax" --library --header "$work/c/temple.h" > "$work/c/temple.c"
 /usr/bin/clang "${cflags[@]}" -w -c "$work/c/temple.c" -o "$work/c/temple.o"
 /usr/bin/clang "${cflags[@]}" -c "$here/place-face.c" -o "$work/c/place-face.o"
+if (( ! units_only )); then
 for pair in sky scene light; do
   "$coax" metal "$repo/everglade/workshop/gpu/temple.coax" --vertex "temple_${pair}_vs" --fragment "temple_${pair}_fs" -o "$work/c/temple-$pair.metal" 2> "$work/c/temple-$pair.bind"
   xcrun -sdk macosx metal -w "$work/c/temple-$pair.metal" -o "$app/Contents/Resources/temple-$pair.metallib"
 done
+fi
 # The realms: the Everglade row is the web's everglade2 realm (Character Create, then the glade),
 # and the Experimental row is the web's fivelab realm on its Experimental page, both natively,
 # drawn by the Metaverse Engine's page host for Metal (metaverse-engine/host/apple/). A realm's Coax as C and its face are
@@ -88,6 +96,7 @@ emit_page() {   # REALM SOURCE PREFIX FX FXPREFIX
   cp "${passes%.coax}.bindings" "$app/Contents/Resources/$1/page.bindings"
   cp "$work/c/page-host.metallib" "$app/Contents/Resources/$1/page-host.metallib"
 }
+if (( ! units_only )); then
 xcrun -sdk macosx metal -w "$repo/metaverse-engine/host/apple/PageHost.metal" -o "$work/c/page-host.metallib"
 build_realm everglade2
 emit_page everglade2 everglade2 everglade2 everglade2-fx e2fx
@@ -101,13 +110,14 @@ cp "$repo/apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
 # Grid and stations in the particle pass (bitcoin-lab-fx), Experimental's pack.
 build_realm bitcoin-lab-walk
 emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
+fi
 # The host core's face (metaverse-engine/host/core/core-face.coax, #13304) as C: the one pack reader, a paged
 # block build read whole, a block layer's levels, the format this GPU takes and the frame plan's records.
 # PageHost.m is built on the core over it (metaverse-engine/host/core/host-core.h); Engine.swift finds a pack's
 # entries through the reader (pack-table.h, which includes the face under its old name).
 "$coax" c "$repo/metaverse-engine/host/core/core-face.coax" --library --header "$work/c/engine-core-face.h" > "$work/c/engine-core-face.c"
-# (Its SHA-256 helpers are also native-audio's: this unit keeps its own names for them.)
-/usr/bin/clang "${cflags[@]}" -w -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex -c "$work/c/engine-core-face.c" -o "$work/c/engine-core-face.o"
+# (The libraries it loads are also other units' (SHA-256, crypto bytes): this unit keeps its own names for them, core-face-private.h.)
+/usr/bin/clang "${cflags[@]}" -w -include "$repo/metaverse-engine/host/core/core-face-private.h" -c "$work/c/engine-core-face.c" -o "$work/c/engine-core-face.o"
 printf '#include "engine-core-face.h"\n' > "$work/c/engine-pack-table.h"
 /usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/metaverse-engine/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # The realms' sound: the Metaverse Engine's Apple audio host (metaverse-engine/host/apple/audio-host.h, PageAudio.swift and
@@ -118,6 +128,7 @@ printf '#include "engine-core-face.h"\n' > "$work/c/engine-pack-table.h"
 printf '#include "native-audio.h"\n#include "%s"\n#include "%s"\n' "$repo/metaverse-engine/host/apple/audio-host.h" "$repo/metaverse-engine/host/apple/audio-host.c" > "$work/c/audio-host-unit.c"
 /usr/bin/clang "${cflags[@]}" -w -c "$work/c/audio-host-unit.c" -o "$work/c/audio-host.o"
 # The pictures the realm names (the classes' and spells' icons), where the site has them.
+if (( ! units_only )); then
 mkdir -p "$app/Contents/Resources/web/realms/everglade" "$app/Contents/Resources/web/realms/5e-mmo"
 rsync -a --delete "$repo/apps/openagents-web/realms/everglade/hotbar" "$app/Contents/Resources/web/realms/everglade/"
 rsync -a --delete "$repo/apps/openagents-web/realms/5e-mmo/hotbar" "$app/Contents/Resources/web/realms/5e-mmo/"
@@ -132,12 +143,15 @@ blocks="$work/blocks/everglade2-$(shasum -a 256 "$repo/apps/openagents-web/realm
 mkdir -p "$work/blocks"
 [[ -f "$blocks" ]] || "$repo/coax/web/tool.sh" "$repo/metaverse-engine/tools/block-pack.coax" "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$blocks" --format bc7 >/dev/null
 cp "$blocks" "$app/Contents/Resources/everglade2.bc7.vpk3"
+fi
 # The web's character code passes its Creator and Bodies by value, megabytes a call, so the main
 # thread, which runs every Coax call, gets a 512 MB stack (reserved, not touched until used).
 # The shared Mac host, and the component shader it draws the shared components with (components/backend/gpu-shader.coax as Metal).
 /usr/bin/clang -fobjc-arc -O2 -w -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/apple" -c "$repo/apps/shared/host/apple/ui-host.m" -o "$work/c/ui-host.o"
+if (( ! units_only )); then
 "$coax" metal "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$work/c/gpu-shader.metal" 2> "$work/c/gpu-shader.bind"
 xcrun -sdk macosx metal "$work/c/gpu-shader.metal" -o "$app/Contents/Resources/zeron.metallib"
+fi
 # The OpenAgents chat (apps/openagents-desktop/linux/chat.h), the Workshop's panel: the app's chat unit as C
 # (zeron/linux.coax and its NIP-98 signer, as that app builds them), the component, CoreText's atlas,
 # and no dictation (dictation-none.c). Its fonts and icons go in Resources/chat, apart from Everglade's faces.
@@ -153,8 +167,14 @@ for c in "$oa/linux/chat.c" "$oa/linux/dictation-none.c" "$oa/zeron-face.c" "$re
   /usr/bin/clang "${chatflags[@]}" -c "$c" -o "$work/c/chat/$(basename "$c" .c).o"
 done
 /usr/bin/clang -fobjc-arc -O2 -w -I"$work/c/chat" -I"$oa" -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/apple" -c "$repo/apps/shared/host/apple/ct-atlas.m" -o "$work/c/chat/ct-atlas.o"
+if (( ! units_only )); then
 rm -rf "$app/Contents/Resources/chat"; mkdir -p "$app/Contents/Resources/chat"
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$repo/components/zeron/NOTICE" "$app/Contents/Resources/chat/"
+fi
+if (( units_only )); then
+  ld -r -o "$work/c/units.o" "$work/c"/{ui-host,page-host,engine-core-face,audio-host,native-audio,workshop,face,model,model-face,next-face,temple,place-face,process}.o "$work/c/chat"/{zeron,lab-sign,chat,dictation-none,zeron-face,store-file-native,ct-atlas}.o
+  echo "linked the app's C units: $work/c/units.o"; exit 0
+fi
 printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$here/face.h" "$repo/metaverse-engine/host/apple/page-host.h" "$repo/metaverse-engine/host/apple/audio-host.h" "$repo/apps/shared/host/apple/ui-host-apple.h" "$oa/linux/chat.h" "$repo/metaverse-engine/host/pack-table.h" > "$work/c/bridge.h"
 xcrun -sdk macosx swiftc -O -Xcc -I"$work/c" -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/metaverse-engine/host/apple/PageAudio.swift" "$repo/apps/metaverse-engine-desktop/Sources/MetalAudio.swift" "$work/c/ui-host.o" "$work/c/page-host.o" "$work/c/engine-core-face.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" "$work/c/chat"/{zeron,lab-sign,chat,dictation-none,zeron-face,store-file-native,ct-atlas}.o \
   -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -framework AVFoundation -framework UniformTypeIdentifiers -lm -lz \

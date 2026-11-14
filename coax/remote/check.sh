@@ -304,10 +304,31 @@ generated() {
   step changelog-page coax/web/tool.sh coax/web/changelog-page.coax --check || status=1
 }
 # The Coax units apps/everglade-desktop/build.sh compiles to C, the OpenAgents chat among them
-# (apps/openagents-desktop/zeron/linux.coax): each must compile, so a change that takes one
-# over a checker budget fails here and not only in the app's build (#13588).
+# (apps/openagents-desktop/zeron/linux.coax): each must compile, and their objects, built with the
+# names the app's build gives each unit, must link together (ld -r), so a change that takes one over
+# a checker budget or makes two units export one C symbol fails here and not only in the app's
+# build (#13588). On a Mac it also runs build.sh --units: every C object of the app, linked.
 desktop_units() {
-  step desktop-units bash -c 'r=0; for u in apps/everglade-desktop/desktop.coax apps/everglade-desktop/model.coax everglade/workshop/temple.coax metaverse-engine/host/core/core-face.coax metaverse-engine/host/native-audio.coax apps/openagents-desktop/zeron/linux.coax; do coax/bin/coax c "$u" --library > /dev/null || { echo "desktop-units: $u does not compile"; r=1; }; done; coax/bin/coax c apps/openagents-desktop/lab-sign.coax --run-steps 250000000 --library > /dev/null || { echo "desktop-units: apps/openagents-desktop/lab-sign.coax does not compile"; r=1; }; exit $r' || status=1
+  step desktop-units bash -c '
+    set -u; r=0; t="$(mktemp -d)"; trap "rm -rf \"\$t\"" EXIT
+    cc=${CC:-cc}; core=metaverse-engine/host/core
+    unit() {   # NAME UNIT [COAX ARGS] -- [CC ARGS]
+      local name="$1" u="$2"; shift 2; local coax_args=() cc_args=()
+      while [[ $# -gt 0 && "$1" != -- ]]; do coax_args+=("$1"); shift; done; [[ $# -gt 0 ]] && shift; cc_args=("$@")
+      coax/bin/coax c "$u" ${coax_args[@]+"${coax_args[@]}"} --library --header "$t/$name.h" > "$t/$name.c" || { echo "desktop-units: $u does not compile"; r=1; return; }
+      "$cc" -std=gnu11 -O0 -w -I"$t" -Iapps/openagents-desktop -Iapps/openagents-desktop/linux -Iapps/shared/host/linux -Icoax/platform -Ipsionic/platform ${cc_args[@]+"${cc_args[@]}"} -c "$t/$name.c" -o "$t/$name.o" || { echo "desktop-units: $u'"'"'s C does not compile"; r=1; }
+    }
+    unit workshop apps/everglade-desktop/desktop.coax
+    unit model apps/everglade-desktop/model.coax
+    unit temple everglade/workshop/temple.coax
+    unit engine-core-face $core/core-face.coax -- -include $core/core-face-private.h
+    unit native-audio metaverse-engine/host/native-audio.coax
+    unit zeron apps/openagents-desktop/zeron/linux.coax -- -DS_hash=eg_zeron_S_hash -DS_hex=eg_zeron_S_hex
+    (( r == 0 )) || exit 1
+    ld -r -o "$t/units.o" "$t"/{workshop,model,temple,engine-core-face,native-audio,zeron}.o || { echo "desktop-units: the app'"'"'s Coax units export a symbol twice (see apps/everglade-desktop/build.sh)"; exit 1; }
+    coax/bin/coax c apps/openagents-desktop/lab-sign.coax --run-steps 250000000 --library > /dev/null || { echo "desktop-units: apps/openagents-desktop/lab-sign.coax does not compile"; exit 1; }
+    if [[ "$(uname)" == Darwin ]]; then apps/everglade-desktop/build.sh --units || exit 1; fi
+  ' || status=1
 }
 # metaverse/native/pack-table-gen.h is the C the compiler writes for the one pack reader's face
 # (#13304): the native realm host includes it, since most of the builds that compile

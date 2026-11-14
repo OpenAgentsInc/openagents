@@ -42,7 +42,7 @@ for face in face model-face place-face; do "${cc[@]}" -c "$desk/$face.c" -o "$wo
 # over it (metaverse-engine/host/core/host-core.h). Its Coax shares library code with the scene's
 # units, so its two colliding helpers are renamed, as the Mac's build does.
 "$coax" c "$repo/metaverse-engine/host/core/core-face.coax" --library --header "$work/c/engine-core-face.h" > "$work/c/engine-core-face.c"
-"${cc[@]}" -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex -c "$work/c/engine-core-face.c" -o "$work/c/engine-core-face.o"; objects+=("$work/c/engine-core-face.o")
+"${cc[@]}" -include "$repo/metaverse-engine/host/core/core-face-private.h" -c "$work/c/engine-core-face.c" -o "$work/c/engine-core-face.o"; objects+=("$work/c/engine-core-face.o")
 "${cc[@]}" -c "$here/host.c" -o "$work/c/host.o"
 # Your account (#13229): the login's flow and NIP-98 signing (app-login-unit.coax, its own unit:
 # secp256k1's tables take long to build), app-login.c's HTTPS, Keystore and files, and the
