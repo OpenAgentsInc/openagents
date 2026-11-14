@@ -188,6 +188,7 @@ ARC_G_X :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
  key[31]=2;#assert arc_public(key[..],pub[..]);
  #assert cast(string)pub[..]=="c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
  #assert !arc_public(key[0..<31],pub[..]) && !arc_public(key[..],pub[0..<63]);
+ large:[65]u8;#assert !arc_public(key[..],large[..]); // Exact ABI, including excess capacity.
  key[31]=0;#assert !arc_public(key[..],pub[..]);
  for i:0..<32 {key[i]=255;}#assert !arc_public(key[..],pub[..]);
 }
