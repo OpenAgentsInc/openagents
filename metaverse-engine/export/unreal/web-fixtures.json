@@ -137,7 +137,7 @@
         "--input-anchor",
         "READY",
         "--input",
-        "3:click=720,450;4:key=Enter;6:key=Enter;10:exec=aethyr.cam.Mode 1;11:shot=behind;11.5:key=F5;12.5:shot=front;13:key=F5;14:shot=first;14.5:key=v;15.5:shot=behind2;16:key=q;16.5:down=w;16.7:down=Control;19:shot=sprint;19.2:key=v;19.4:key=v;20.6:shot=sprint-first;21:up=Control;21.1:up=w;22.6:shot=stopped-first;23:key=q;23.5:key=v;24:exec=aethyr.Message 611 -50000 25700;25:shot=wall0;25.3:move=750,450;25.5:move=781,450;26.2:shot=wall90;26.5:move=811,450;26.7:move=842,450;27.4:shot=wall180;27.7:move=872,450;27.9:move=903,450;28.6:shot=wall270;29:key=v;30:shot=wall-front;30.5:key=v;31.5:shot=wall-first"
+        "3:click=720,450;4:key=Enter;6:key=Enter;10:exec=aethyr.cam.Mode 1;11:shot=behind;11.5:key=F5;12.5:shot=front;13:key=F5;14:shot=first;14.5:key=v;15.5:shot=behind2;16:key=q;16.5:down=w;16.7:down=Control;19:shot=sprint;19.2:key=v;19.4:key=v;20.6:shot=sprint-first;21:up=Control;21.1:up=w;22.6:shot=stopped-first;23:key=q;23.5:key=v;24:exec=aethyr.Message 611 -50000 75700;25:shot=wall0;25.3:move=750,450;25.5:move=781,450;26.2:shot=wall90;26.5:move=811,450;26.7:move=842,450;27.4:shot=wall180;27.7:move=872,450;27.9:move=903,450;28.6:shot=wall270;29:key=v;30:shot=wall-front;30.5:key=v;31.5:shot=wall-first"
       ]
     }
   }

@@ -15,13 +15,13 @@ expect 0 1
 expect 2 1
 beat farm
 # the farm: Digger picks up the four parts by his sensor as you walk near each
-msg 611 -1200 34300
+msg 611 -83800 -10900
 frames 150 20
-msg 611 -200 33700
+msg 611 -84300 -10500
 frames 150 20
-msg 611 600 33400
+msg 611 -80900 -9300
 frames 150 20
-msg 611 4600 35900
+msg 611 -81500 -8900
 frames 150 20
 expect 11 1
 expect 12 1
@@ -29,7 +29,7 @@ expect 14 1
 expect 15 1
 expect 13 1
 # E at the rover: into its room; Tab, the edit bay: the parts and the MOVE and DRILL cards; Tab out
-msg 611 1000 34800
+msg 611 -76500 -12800
 frames 5 20
 key e
 key e up
@@ -47,14 +47,14 @@ frames 5 20
 expect 0 1
 # E at the desk: she takes Sniper's wheel; the run puts Sniper at the garage's parking (on the drive 611 places
 # the rover), it is dusk in the garage yard, and E parks it and lets her out
-msg 611 -49770 25725
+msg 611 -49770 75725
 frames 2 20
 # Sniper puts the deep-garage map up the first time at the desk: E closes it, and E again (at the desk) takes the wheel
 key e
 key e up
 frames 2 20
 expect 0 1
-msg 611 -49770 25725
+msg 611 -49770 75725
 key e
 key e up
 frames 5 20
@@ -80,104 +80,15 @@ msg 611 -3731 -5304
 frames 200 20
 expect 6 1
 beat garage-parts
-# the drill mech in the empty section C2: Digger's core in (E); it follows to the blocked hallway and drills it
-# when it gets there (E there asks it too)
-msg 611 14206 -23253
+# the drill mech in the empty section C1: Digger's core in (E); it follows her to the blocked hallway and drills it
+# on its own once there. No E there: with the hallway open, E beside the mech takes the core back out
+msg 611 14700 -19500
 frames 2 20
 key e
 key e up
 frames 5 20
 msg 611 100 -34800
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
-frames 100 20
-key e
-key e up
+frames 2000 20
 expect 8 1
 beat wall-open
 # the boss: the mech battles it with keys 1 to 4; while it reels, F stuns its three weak points
@@ -904,8 +815,9 @@ key f
 expect 9 1
 expect 2 3
 beat boss-down
-# its banned core, then the edit bay at Sniper: SPLICE CORE plays the memory, then SCENE RESTORED
-msg 611 -20 -39370
+# its banned core (under its chest, wherever it fell: 643 0 stands her at its neck, over it), then the edit bay at
+# Sniper: SPLICE CORE plays the memory, then SCENE RESTORED
+msg 643 0
 frames 2 20
 key e
 key e up
