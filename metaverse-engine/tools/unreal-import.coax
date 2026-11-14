@@ -92,7 +92,8 @@ tool_main :: () -> int #export_c #effects(all) {
   platform := ifx tool_os() == TOOL_LINUX then "Linux" else "Mac";
   print("unreal-import: building %Editor for %\n", stem, platform);
   t0: [256] u8; t1: [4200] u8;
-  build := [8] string.["/bin/bash", ubt, ui_cat(stem, "Editor", t0[..]), platform, "Development", ui_cat("-project=", project, t1[..]), "-NoHotReload", "-NoHotReloadFromIDE"];
+  // -WaitMutex: another project's build on this engine holds the build tool's one lock; wait for it, do not fail
+  build := [9] string.["/bin/bash", ubt, ui_cat(stem, "Editor", t0[..]), platform, "Development", ui_cat("-project=", project, t1[..]), "-NoHotReload", "-NoHotReloadFromIDE", "-WaitMutex"];
   if ui_run(build[..], none, 3600000) != 0 { return ui_fail("the project did not build (run RunUBT.sh by hand to see why)"); }
 
   report := fs_join(fs_join(dir, "Saved", b8[..]), "aethyr-import-report.json", b9[..]);

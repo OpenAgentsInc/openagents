@@ -39,12 +39,20 @@ public:
 	// What aethyr_events reports, by number.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Aethyr")
 	TMap<int32, FName> Events;
+
+	// The flags of a thing's state (aethyr_thing_states), by name: "drilling" is 4. A "state.KIND.FLAG"
+	// row of the overrides table names one.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Aethyr")
+	TMap<FName, int32> StateFlags;
 };
 
 // A row of the overrides table, DT_AethyrOverrides: the row's name says what is replaced
 // ("thing.raider", "thing.raider_v1", "world.<mesh name>", "material.cel", "event.pickup") and
 // Asset is what replaces it (a static mesh, a material, a sound). People own the table; the
 // importer reads it and never writes it.
+// Effects are rows too (the plugin's README, "Effects"): "fx.EVENT" a Niagara system played once at
+// the event's place, "trail.KIND" one kept on each thing of a kind, "state.KIND.FLAG" one kept on a
+// thing while that flag is set.
 USTRUCT(BlueprintType)
 struct AETHYRBRIDGE_API FAethyrOverrideRow : public FTableRowBase
 {

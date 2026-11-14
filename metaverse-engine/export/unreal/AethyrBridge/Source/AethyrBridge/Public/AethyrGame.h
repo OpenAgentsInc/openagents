@@ -108,6 +108,14 @@ public:
 	// A camera shake for an impact (true) or a hit, at the tuning's strength times Scale.
 	UFUNCTION(BlueprintCallable, Category = "Aethyr|Camera")
 	void PlayCameraShake(bool bImpact, float Scale = 1.0f);
+	// A run's events and things, recorded with -AethyrRecord=FILE, played back in place of the world's own:
+	// an effect is tuned in the editor against the same moments, with no rebuild. -AethyrReplay=FILE sets it too.
+	UPROPERTY(EditAnywhere, Category = "Aethyr|Effects")
+	FString ReplayFile;
+	// Every effect's size, for a look at them from far off.
+	UPROPERTY(EditAnywhere, Category = "Aethyr|Effects")
+	float EffectScale = 1.0f;
+
 	// A message to the world, as the browser host sends one (the console's aethyr.Message KIND BODY).
 	void SendWorldMessage(int32 Kind, const FString& Body);
 
@@ -124,6 +132,43 @@ private:
 	void PlayEvents();
 	bool StepPlay();
 	UObject* OverrideFor(const FString& Row) const;
+
+	// ---- Effects (AethyrEffects.cpp; the README's "Effects"). Rows of the overrides table whose asset is a
+	// Niagara system: "fx.EVENT" plays once at an event's place, turned to its direction; "trail.KIND" is kept
+	// on each thing of a kind while it is listed; "state.KIND.FLAG" is kept on a thing while that flag is set.
+	// Each system is given the user parameters it declares: Strength, Speed (metres a second), Direction,
+	// Level, and Fill and Shade (the rows "look.fx.fill" and "look.fx.shade", colour curves over the day's phase).
+	struct FThingState { int32 Id = 0, Kind = 0, Variant = 0, Flags = 0; FVector At = FVector::ZeroVector; float Yaw = 0.0f; FVector Velocity = FVector::ZeroVector; float Level = 0.0f; FVector ActAt = FVector::ZeroVector; };
+	struct FFxRow { int32 Kind = 0; int32 Flag = 0; FString Name; class UNiagaraSystem* System = nullptr; };   // Flag 0: a trail
+	void SetUpEffects();
+	void ReadStates();
+	void FeedEvent(const float* Record);
+	void UpdateEffects(float DeltaSeconds);
+	void SetFxParameters(class UNiagaraComponent* Fx, float Strength, float Speed, float Level, const FVector& Direction);
+	void RecordFrame(float DeltaSeconds);
+	void SaveRecording();
+	bool StepReplay();
+	TArray<FThingState> States;
+	TArray<FFxRow> FxRows;
+	TMap<FName, class UNiagaraSystem*> EventFx;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UObject>> FxKeep;                    // the systems and curves above, kept loaded
+	UPROPERTY(Transient)
+	TMap<int64, TObjectPtr<class UNiagaraComponent>> FxLive;   // by thing id and row
+	UPROPERTY(Transient)
+	TObjectPtr<class USoundAttenuation> EventFalloff;      // an event's sound at its place
+	class UCurveLinearColor* FxFill = nullptr;
+	class UCurveLinearColor* FxShade = nullptr;
+	TArray<float> EventLog;                                // this tick's event records, for the recording
+	FString RecordPath;
+	TArray<FString> RecordLines;
+	TArray<FString> ReplayLines;
+	int32 ReplayLine = 0;
+	bool bReplaying = false;
+	bool bReplayView = false;
+	FVector ReplayViewAt = FVector::ZeroVector;
+	FQuat ReplayViewTurn = FQuat::Identity;
+	float ReplayViewFov = 90.0f;
 
 	// one model for each (kind, variant) a host draws; empty for kinds the world draws
 	TMap<int32, TObjectPtr<class UStaticMesh>> NativeMeshes;

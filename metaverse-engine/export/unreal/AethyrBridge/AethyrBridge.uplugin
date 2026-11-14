@@ -6,6 +6,12 @@
 	"Description": "What an Aethyr export needs inside Unreal: the manifest asset, collision boxes, markers, and editor checks the importer calls. docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md in the openagents repository.",
 	"Category": "Aethyr",
 	"CanContainContent": true,
+	"Plugins": [
+		{
+			"Name": "Niagara",
+			"Enabled": true
+		}
+	],
 	"Modules": [
 		{
 			"Name": "AethyrBridge",

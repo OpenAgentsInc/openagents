@@ -204,6 +204,7 @@ void AAethyrGame::BeginPlay()
 	if (FParse::Value(Args, TEXT("AethyrShots="), ShotsDir)) { ShotEvery = 2; FParse::Value(Args, TEXT("AethyrShotEvery="), ShotEvery); ShotEvery = FMath::Max(1, ShotEvery); }
 	SetUpThings();
 	SetUpLook();
+	SetUpEffects();
 	if (FParse::Value(Args, TEXT("AethyrShot="), ShotPath)) { ShotAfter = 20; FParse::Value(Args, TEXT("AethyrShotAfter="), ShotAfter); bExitAfterShot = true; }
 #endif
 	if (APlayerController* Player = GetWorld()->GetFirstPlayerController())
@@ -236,6 +237,7 @@ void AAethyrGame::BeginPlay()
 
 void AAethyrGame::EndPlay(const EEndPlayReason::Type Reason)
 {
+	SaveRecording();
 	if (State) { FMemory::Free(State); State = nullptr; }
 	Super::EndPlay(Reason);
 }
@@ -616,6 +618,8 @@ void AAethyrGame::Tick(float DeltaSeconds)
 	UpdatePieces();
 	UpdateCamera(DeltaSeconds);
 	UpdateLook();
+	if (bReplaying) { StepReplay(); }   // a recording's events and things in place of the world's own
+	UpdateEffects(DeltaSeconds);
 	HostSeconds += FPlatformTime::Seconds() - Before;
 	FrameSeconds += DeltaSeconds;
 	FrameCount++;
@@ -919,27 +923,17 @@ void AAethyrGame::UpdateThings()
 #endif
 }
 
+// What happened in the frame just run, as records with a place (aethyr_event_records): each is logged,
+// shakes the camera, plays its sound and its effect (AethyrEffects.cpp FeedEvent). While a recording
+// plays, the world's own events are taken and dropped.
 void AAethyrGame::PlayEvents()
 {
 #if AETHYR_HAS_RULES
-	float Events[16];
-	const int32 Count = aethyr_events(State, Events, 16);
-	for (int32 I = 0; I < Count; I++)
-	{
-		const int32 Id = (int32)Events[I];
-		const FName* Name = Manifest ? Manifest->Events.Find(Id) : nullptr;
-		if (!Name) { continue; }
-		UE_LOG(LogAethyr, Display, TEXT("AETHYR_EVENT %s"), *Name->ToString());
-		// the camera's shake: a hit on her, or an impact (a wall broken, the boss down, a blow)
-		static const FName Hurt(TEXT("hurt")), Smack(TEXT("smack")), Broke(TEXT("wall-broke")), Down(TEXT("boss-down"));
-		if (*Name == Hurt) { PlayCameraShake(false); }
-		else if (*Name == Smack || *Name == Broke || *Name == Down) { PlayCameraShake(true); }
-		if (USoundBase* Sound = Cast<USoundBase>(OverrideFor(TEXT("event.") + Name->ToString())))
-		{
-			UGameplayStatics::PlaySound2D(this, Sound);
-			UE_LOG(LogAethyr, Display, TEXT("AETHYR_SOUND %s %s"), *Name->ToString(), *Sound->GetName());
-		}
-	}
+	float Events[32 * 9];
+	const int32 Floats = aethyr_event_floats();
+	const int32 Count = Floats == 9 ? aethyr_event_records(State, Events, 32 * 9) : 0;
+	if (bReplaying) { return; }
+	for (int32 I = 0; I < Count; I++) { FeedEvent(Events + I * 9); }
 #endif
 }
 

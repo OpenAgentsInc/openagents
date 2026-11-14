@@ -51,6 +51,9 @@ fixture's `args`) in the web build:
 | `-AethyrShots=DIR` `-AethyrShotEvery=N` | Saves `DIR/f00001.png`, ... every N frames (default 2): a film's frames |
 | `-AethyrWorld=URL` | The page's address: the world follows its saved edit layer from that site, and its placed pieces are drawn |
 | `-AethyrExit` | Quits when a script ends |
+| `-AethyrRecord=FILE` | Writes the run's events and things to a file (see "Tune an effect without a rebuild") |
+| `-AethyrReplay=FILE` | Plays a recorded file's events and things in place of the world's own |
+| `-AethyrFxScale=N` | Every effect N times its size |
 
 Step 3 makes the project when it is named `AethyrHost.uproject` and does not
 exist. It copies the plugin in, builds the editor modules, and runs
@@ -108,10 +111,14 @@ row's name says what is replaced and its Asset is the replacement:
 | `world.w_m00_x127_z127` | One world mesh group | A static mesh |
 | `kit.garage_bay` | A kit slot's grey blockout, at every place the slot stands | A static mesh |
 | `material.cel`, `material.sky` | The look | A material |
-| `event.pickup` | Nothing: adds a sound to the event | A sound |
+| `event.pickup` | Nothing: adds a sound to the event, played at the event's place | A sound |
 | `look.level` | Nothing: adds your lighting and post-processing | A level |
 | `look.params` | Nothing: gives your materials the game's numbers | A material parameter collection |
 | `look.shadow` | Nothing: gives your materials the key light's shadows | A render target |
+| `fx.wall-broke` | Nothing: adds an effect to the event | A Niagara system (see "Effects") |
+| `trail.rover` | Nothing: an effect kept on each thing of a kind | A Niagara system |
+| `state.digger.drilling` | Nothing: an effect kept on a thing while a flag is set | A Niagara system |
+| `look.fx.fill`, `look.fx.shade` | Nothing: the effects' two flat colours over the day | A colour curve |
 
 ### A thing with a skeleton
 
@@ -152,8 +159,59 @@ picture.
 `metaverse/splice-bots/tools/character-fit.py --fbx DIR` writes a mesh and
 its clips as FBX files for these rows.
 
-Kinds and events are listed in the bundle's `manifest.json` (`things`,
-`events`). Layout is Aethyr's: the import report lists generated actors that
+### Effects
+
+The rules decide what happens. Unreal shows it. Three kinds of row play a
+Niagara system, and none of them changes the run.
+
+| Row | Plays | Where |
+|---|---|---|
+| `fx.EVENT` | Once, each time the event fires | At the event's place, its +X turned to the event's direction |
+| `trail.KIND` | For as long as a thing of that kind is listed | At the thing's place, its +X the way the thing moves (at rest, the way it faces) |
+| `state.KIND.FLAG` | While that flag is set on a thing of that kind | At the place the thing's action is (a drill's bit), +X as a trail's |
+
+`EVENT`, `KIND` and `FLAG` are names from the manifest: `events`,
+`things.kinds` and `thing_state.flags`. Splice Bots lists the flags
+`sprinting`, `board`, `drilling`, `stunned`, `charging`, `dead`, `driving`
+and `open`. Two things have a state and are not in `things`: the rover she
+drives (`rover`) and the drill mech while it drills (`digger`).
+
+The bridge sets these user parameters on a system every frame. A system
+declares the ones it reads:
+
+| Parameter | Type | Value |
+|---|---|---|
+| `User.Strength` | float | The event's strength. 1 is ordinary. 1 for a trail or a state |
+| `User.Speed` | float | The thing's speed in metres a second. 0 for an event |
+| `User.Level` | float | 0 to 1: how far the thing is through its action (a drill card, a charge) |
+| `User.Direction` | vector | The event's direction, or the way the thing moves, in Unreal's axes |
+| `User.Fill`, `User.Shade` | colour | The rows `look.fx.fill` and `look.fx.shade` read at the day's phase (0 dawn, 1 day, 2 dusk, 3 night). Not set when the rows are missing |
+
+A trail's system should spawn nothing at `User.Speed` 0. When a thing goes or
+its flag clears, the system is deactivated and ends with its last particle.
+
+An event's record also places its sound: an `event.NAME` row's sound plays at
+the event's place, whole within 15 m of the camera and gone by 105 m.
+
+### Tune an effect without a rebuild
+
+`-AethyrRecord=FILE` writes a run's events and things to a text file, one
+line each: `f` starts a frame, `v` is the view, `e` is an event's nine
+numbers and `t` a thing's sixteen. `-AethyrReplay=FILE`, or the host actor's
+**Replay File** in the editor, plays that file in a loop in place of the
+world's own events and things, from the recorded view
+(`-AethyrReplayFreeView` keeps the game's camera). Change a system, press
+Play, and the same hit lands in the same place. `-AethyrFxScale=N` sizes
+every effect.
+
+At start the bridge logs each `fx.`, `trail.` and `state.` row that names no
+event, kind or flag (`AETHYR_FX row ...`), and each effect as it plays. The
+import report lists every row that matches nothing in the manifest
+(`overrides.unmatched`).
+
+Kinds, events, the event record's fields and the state flags are listed in
+the bundle's `manifest.json` (`things`, `events`, `event_record`,
+`thing_state`). Layout is Aethyr's: the import report lists generated actors that
 were moved by hand, then rebuilds them.
 
 A kit slot (`kits` in the manifest) lists its places and the world groups

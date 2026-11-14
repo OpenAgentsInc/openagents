@@ -515,19 +515,57 @@ for key, current in (("material.cel", "cel"), ("material.sky", "sky")):
             else:
                 sky_material = replacement
             applied.append(key)
-applied += sorted(k for k in overrides if k.startswith("thing.") or k.startswith("event."))   # the bridge applies these as the game runs
+applied += sorted(k for k in overrides if k.split(".")[0] in ("thing", "event", "anim", "fx", "trail", "state"))   # the bridge applies these as the game runs
 # look.level, look.params, look.shadow: the project's own lighting and post, which the bridge loads as the game runs
 for key in ("look.level", "look.params", "look.shadow"):
     if key in overrides:
         if check(assets.does_asset_exist(overrides[key].split(".")[0]), "override %s names no asset: %s" % (key, overrides[key])):
             applied.append(key)
-unknown_look = sorted(k for k in overrides if k.startswith("look.") and k not in ("look.level", "look.params", "look.shadow"))
+unknown_look = sorted(k for k in overrides if k.startswith("look.") and k not in ("look.level", "look.params", "look.shadow", "look.fx.fill", "look.fx.shade"))
 check(not unknown_look, "overrides rows name no look hook: " + ", ".join(unknown_look))
 # kit.NAME: the row's mesh at each of the slot's places, the slot's blockout groups dropped. Planned
 # here, done after the reference shots, which are of the world as exported
 kit_plan = kit_slots.plan(manifest, overrides)
 check(not kit_plan["unknown"], "overrides rows name no kit slot of the manifest: " + ", ".join(kit_plan["unknown"]))
-report["overrides"] = {"table": OVERRIDES_TABLE, "created": created_overrides, "rows": sorted(overrides), "applied": sorted(applied)}
+# Rows that match nothing (#13599): a row is PREFIX.NAME, and NAME must be something the manifest lists for
+# that prefix. A renamed event or kind leaves its row playing nothing; this says so.
+def unmatched_rows():
+    kinds = set(things["kinds"]) if things else set()
+    variants = set(m["name"][len("thing_"):] if m["name"].startswith("thing_") else m["name"] for m in (things["meshes"] if things else []))
+    events = set(manifest.get("events", {}))
+    flags = set(manifest.get("thing_state", {}).get("flags", {}))
+    world_names = set(g["name"] for g in groups)
+    out = []
+    for row in sorted(overrides):
+        head, _, rest = row.partition(".")
+        if head == "thing":
+            ok = rest in kinds or rest in variants or rest.rsplit("_v", 1)[0] in kinds
+        elif head == "anim":
+            ok = rest.split(".")[0].rsplit("_v", 1)[0] in kinds
+        elif head == "world":
+            ok = rest in world_names
+        elif head == "kit":
+            ok = rest in manifest.get("kits", {})
+        elif head == "material":
+            ok = rest in ("cel", "sky", "ink")
+        elif head in ("event", "fx"):
+            ok = rest in events
+        elif head == "trail":
+            ok = rest in kinds
+        elif head == "state":
+            kind, _, flag = rest.partition(".")
+            ok = kind in kinds and flag in flags
+        elif head == "look":
+            ok = True   # the look's own rows (the bridge reads them by name)
+        else:
+            ok = False
+        if not ok:
+            out.append(row)
+    return out
+unmatched = unmatched_rows()
+if unmatched:
+    unreal.log_warning("AETHYR_IMPORT overrides rows that match nothing in the manifest: " + ", ".join(unmatched))
+report["overrides"] = {"table": OVERRIDES_TABLE, "created": created_overrides, "rows": sorted(overrides), "applied": sorted(applied), "unmatched": unmatched}
 
 # the host: the actor that runs the world's rules, and the game mode that gives it the screen
 host = actors.spawn_actor_from_class(unreal.AethyrGame, unreal.Vector(0, 0, 0))
@@ -565,6 +603,7 @@ if check(keep is not None, "could not make the manifest asset"):
         keep.set_editor_property("thing_kinds", things["kinds"])
         keep.set_editor_property("thing_meshes", {name[len("thing_"):]: mesh for name, mesh in thing_meshes.items()})
     keep.set_editor_property("events", {int(v): k for k, v in manifest.get("events", {}).items()})
+    keep.set_editor_property("state_flags", {k: int(v) for k, v in manifest.get("thing_state", {}).get("flags", {}).items()})
     host.set_editor_property("manifest", keep)
 # ---- what is there now, against the manifest
 world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
