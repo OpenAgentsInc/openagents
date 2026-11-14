@@ -244,11 +244,14 @@ cast_boss :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, shell: KitTint
     if who == 4 { cast_boss(buf[..], pen[..], f, 1, 10, CAST_TEAL(), CAST_INK(), CAST_CYAN(), true, c); }
     #assert pen[0].n > 600 && !pen[0].over;
   }
-  // a half-built Digger is fewer vertices than a whole one
+  // a half-built Digger is drawn whole, its missing parts in the grey of an empty slot (playtest 2)
   a := [1] Pen.[Pen.{}]; b := [1] Pen.[Pen.{}];
   cast_digger(buf[..], a[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), false, false, false, 0, cast_colour());
-  cast_digger(buf[..], b[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), true, true, true, 0, cast_colour());
-  #assert a[0].n < b[0].n;
+  whole: [100000 * VERTEX_WORDS] u32;
+  cast_digger(whole[..], b[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), true, true, true, 0, cast_colour());
+  #assert a[0].n == b[0].n && !a[0].over && !b[0].over;
+  greyed := 0; for i: 0..<a[0].n { if buf[i * VERTEX_WORDS + 4] != whole[i * VERTEX_WORDS + 4] { greyed += 1; } }
+  #assert greyed > a[0].n / 10;
   // the hologram: every vertex the one tint
   h := [1] Pen.[Pen.{}];
   cast_raider(buf[..], h[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), 0, cast_mono(kit_tint(0, 0, 1)));

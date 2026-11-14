@@ -88,14 +88,27 @@ dg_fill :: (k: int) -> KitTint {
 }
 dg_fill_mat :: (k: int) -> int { return ifx k == 1 then MAT_CLOTH else ifx k == 3 then MAT_FLAT else MAT_SKIN; }
 
-// The Digger at frame f, scale s (DG_LONG metres long at 1), using objects obj to obj + 7. As the kit
-// Digger did: without treads (his legs) he sits on two stands, without the arm his drill box has no
-// drill, and without the battery his eyes are dark. spin turns the drill.
+// The Digger at frame f, scale s (DG_LONG metres long at 1), using objects obj to obj + 7. He is
+// always drawn whole, so a half-built Digger reads as the dog he will be (playtest 2): a part not
+// spliced in yet (the treads, his legs; the drill arm; the battery that lights his eyes) is drawn in
+// the flat grey of an empty slot (DG_GHOST). spin turns the drill.
+DG_GHOST :: () -> KitTint { return kit_tint(0.60, 0.60, 0.62); }
+// Recolour the vertices from `from` to the pen's end in the grey (object obj, flat).
+dg_grey :: (buf: [] u32, p: [] Pen, obj: int, from: int, m: CastMono) {
+  n := p[0].n;
+  ca_pen(p, obj, MAT_FLAT, DG_GHOST(), m);
+  c := byte_of(p[0].r) | (byte_of(p[0].g) << 8) | (byte_of(p[0].b) << 16) | (cast(u32) (p[0].mat & 255) << 24);
+  for v: from..<n {
+    i := v * VERTEX_WORDS;
+    buf[i + 3] = (buf[i + 3] & 0x00ffffff) | (cast(u32) (obj & 255) << 24);
+    buf[i + 4] = c;
+  }
+}
 dg_draw :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, arm: bool, treads: bool, battery: bool, spin: f32, m: CastMono, walk: f32, amp: f32, t: f32) {
   xf: [DGM_BONES] DgXf;
   dg_pose(xf[..], walk, ifx treads then clamp01(amp) else 0, t);
   k := s * DG_LONG;   // model units to metres
-  lift := ifx treads then 0.0f32 else -0.10;   // on stands he sits lower
+  lift := 0.0f32;
   bones: [DGM_BONES] DgBone;
   for b: 0..<DGM_BONES { bones[b] = dg_bone_in(f, xf[b], k, lift); }
   // Each fill's stream in order (digger-mesh.coax). A corner copies the vertex written d corners back,
@@ -104,14 +117,16 @@ dg_draw :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, a
   rd: [1] DgRd; ring: [DGM_RING * 4] s32;
   for fill: 0..<4 {
     start := ifx fill == 0 then 0 else DGM_FILL_END[fill - 1];
-    stop := ifx treads then DGM_FILL_END[fill] else DGM_BODY_END[fill];   // without treads (his legs), the body alone
+    stop := DGM_FILL_END[fill];
+    leg := ifx treads then stop else DGM_BODY_END[fill];   // without treads, his legs (the fill's tail) go grey
     if stop <= start { continue; }
     ca_pen(p, obj + fill, dg_fill_mat(fill), dg_fill(fill), m);
     dg_rd_at(rd[..], DGM_FILL_CHAR[fill]);
-    first := p[0].n; cur := 0;
+    first := p[0].n; cur := 0; grey := -1;
     lx := 2048; ly := 1024; lz := 2048; lb := 1;   // the fill's last new vertex
     for tn: start..<stop {
       if !room(buf, p, 3) { return; }
+      if tn == leg { grey = p[0].n; }
       gx := lx; gy := ly; gz := lz; gb := lb;   // the guess: the triangle's last corner with a place, or lx..lb
       for c: 0..<3 {
         slot := (cur % DGM_RING) * 4;
@@ -141,24 +156,21 @@ dg_draw :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, a
         cur += 1;
       }
     }
+    // the legs decode in the fill's stream (their corners copy earlier ones), so they are recoloured after
+    if grey >= 0 { dg_grey(buf, p, obj + 6, grey, m); }
   }
   nose := xf[2];
-  if !treads {
-    ca_pen(p, obj + 1, MAT_CLOTH, CAST_INK(), m);
-    ca_box(buf, p, f, k, -0.09, 0.09, 0, 0.03, 0.09, 0.15);
-    ca_box(buf, p, f, k, 0.09, 0.09, 0, 0.03, 0.09, 0.15);
-  }
-  if arm {   // the drill, out of the nose box's front
+  {   // the drill, out of the nose box's front; grey until the arm is spliced in
     a := dg_at(nose, v3(0, 0.36, 0.48)); b := dg_at(nose, v3(0, 0.36, 0.66));
     ap := fp(f, a.x * k, (a.y + lift) * k, a.z * k); bp := fp(f, b.x * k, (b.y + lift) * k, b.z * k);
     g := frame_turn(frame_along(ap, bp, fd(f, 1, 0, 0)), 1, spin);
-    ca_pen(p, obj + 4, MAT_SKIN, dg_fill(0), m);
+    if arm { ca_pen(p, obj + 4, MAT_SKIN, dg_fill(0), m); } else { ca_pen(p, obj + 6, MAT_FLAT, DG_GHOST(), m); }
     tube(buf, p, kit_at(g, 0, 0.02 * k, 0), 0.17 * k, 0.05 * k, 0.05 * k, 0.004 * k, 0.004 * k, 6, true);
-    ca_pen(p, obj + 5, MAT_CLOTH, CAST_INK(), m);
+    if arm { ca_pen(p, obj + 5, MAT_CLOTH, CAST_INK(), m); }
     tube(buf, p, g, 0.025 * k, 0.055 * k, 0.055 * k, 0.06 * k, 0.06 * k, 10, true);
   }
-  if battery {   // the eyes on the nose box, lit by his cells
-    ca_pen(p, obj + 7, MAT_GLOW, glow, m);
+  {   // the eyes on the nose box, lit by his cells; grey and dark without them
+    if battery { ca_pen(p, obj + 7, MAT_GLOW, glow, m); } else { ca_pen(p, obj + 6, MAT_FLAT, DG_GHOST(), m); }
     for side: 0..<2 {
       e := dg_at(nose, v3((cast(f32) side - 0.5) * 0.12, 0.43, 0.485));
       ball(buf, p, fp(f, e.x * k, (e.y + lift) * k, e.z * k), DG_EYE_GLOW * k * 0.5, 6);
@@ -167,19 +179,23 @@ dg_draw :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, a
 }
 
 
-#test "the Digger's mesh: every triangle comes out of its stream, inside his box, and without legs only the body's" #steps 2000000000 #traversal 2000000000 {
+#test "the Digger's mesh: every triangle comes out of its stream, inside his box, and without treads his legs are drawn grey" #steps 2000000000 #traversal 2000000000 {
   buf: [DGM_TRIS * 3 * VERTEX_WORDS + 4000 * VERTEX_WORDS] u32;
   whole := [1] Pen.[Pen.{}];
   dg_draw(buf[..], whole[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), false, true, false, 0, cast_colour(), 0, 0, 0);
-  #assert !whole[0].over && whole[0].n == DGM_TRIS * 3;
-  for i: 0..<whole[0].n {
+  #assert !whole[0].over && whole[0].n > DGM_TRIS * 3;   // the mesh, then the grey drill and eyes
+  for i: 0..<DGM_TRIS * 3 {
     x := f32_from_bits(buf[i * VERTEX_WORDS]); y := f32_from_bits(buf[i * VERTEX_WORDS + 1]); z := f32_from_bits(buf[i * VERTEX_WORDS + 2]);
     #assert abs(x) < 0.3 * DG_LONG && y > -0.01 && y < 0.7 * DG_LONG && abs(z) < 0.55 * DG_LONG;
   }
   body := 0; for k: 0..<4 { body += DGM_BODY_END[k] - (ifx k == 0 then 0 else DGM_FILL_END[k - 1]); }
+  had: [DGM_TRIS * 3 * VERTEX_WORDS + 4000 * VERTEX_WORDS] u32;
+  for i: 0..<whole[0].n * VERTEX_WORDS { had[i] = buf[i]; }
   half := [1] Pen.[Pen.{}];
   dg_draw(buf[..], half[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), false, false, false, 0, cast_colour(), 0, 0, 0);
-  #assert half[0].n == body * 3 + 2 * 36;   // and his two stands
+  #assert half[0].n == whole[0].n;   // the whole dog, no stands
+  grey := 0; for i: 0..<half[0].n { if buf[i * VERTEX_WORDS + 4] != had[i * VERTEX_WORDS + 4] { grey += 1; } }
+  #assert grey == (DGM_TRIS - body) * 3;   // exactly his legs
   // a store too small stops cleanly
   small := [1] Pen.[Pen.{}];
   dg_draw(buf[0..<3000 * VERTEX_WORDS], small[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), true, true, true, 0, cast_colour(), 0.5, 1, 0);
