@@ -3274,7 +3274,14 @@ eg_water_painted_teal :: (world:V3,rest:V2,flow:V2,depth:f32,shore:f32,white:f32
   o.mirror=v4(refl.x,refl.y,refl.z,(fresnel*edge)*(1.0f32-foam));
   return o;
 }
-eg_water_fragment :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,wake_foam:[]f32,water_scene_depth:TexDepth)->EgWaterShade {
+// The water's shading comes in two kinds, a function each, so that a pipeline holds only the kind it
+// can draw (#13539). The transmit half never shades a surface, and the emit half shades a surface whole
+// and the rest in halves. With both kinds in one function, each water pipeline held every branch twice
+// over (the emit half drew the surface in eg_water_whole and again under the halves), and NVIDIA's Vulkan
+// compiler took 83 s (transmit) and over 150 s (emit) to build them.
+// The parts that are not a surface (eg_water_surface_part): the weir's sheet, the spray and mist, the
+// fountain's falls. They keep the two halves (they multiply and add over what is drawn).
+eg_water_fall_fragment :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,water_scene_depth:TexDepth)->EgWaterShade {
   part:u32=wg_u32_f(i.extra.x+0.5f32);
   if (part==EG_WEIR_PART) {
     return eg_weir_shade(i,u,shadow_map,shadow_cmp,paint_leaf_far);
@@ -3282,9 +3289,11 @@ eg_water_fragment :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:Sample
   if (part==EG_FX_PART) {
     return eg_fx_shade(i,u,shadow_map,shadow_cmp,paint_leaf_far,water_scene_depth);
   }
-  if (!eg_water_surface_part(part)) {
-    return eg_fountain_fall_shade(i,part,u,shadow_map,shadow_cmp,paint_leaf_far);
-  }
+  return eg_fountain_fall_shade(i,part,u,shadow_map,shadow_cmp,paint_leaf_far);
+}
+// A surface: the river, the fountain's pools and the pond (eg_water_surface_part), drawn whole.
+eg_water_surface_fragment :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,wake_foam:[]f32)->EgWaterShade {
+  part:u32=wg_u32_f(i.extra.x+0.5f32);
   world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
   rest:V2=v2(i.rest_flow.x,i.rest_flow.y);
   flow:V2=v2(i.rest_flow.z,i.rest_flow.w);
@@ -3341,9 +3350,8 @@ eg_water_fragment :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:Sample
   o.mirror=v4(sky.x,sky.y,sky.z,(fresnel*edge)*(1.0f32-cover));
   return o;
 }
-// The fogged surface, with the HUD's plates over it, as the two halves blend it.
-eg_water_halves :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,wake_foam:[]f32,water_scene_depth:TexDepth)->EgWaterShade {
-  s:EgWaterShade=eg_water_fragment(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene_depth);
+// A shading s (eg_water_fall_fragment or eg_water_surface_fragment) fogged, as the two halves blend it.
+eg_water_halves :: (i:EgWaterOut,u:[]f32,s:EgWaterShade)->EgWaterShade {
   d:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),v3(i.world_depth.x,i.world_depth.y,i.world_depth.z)));
   fog:f32=eg_haze_share(d,i.world_depth.y,u);
   emit:V3=wg_add_f3f3(wg_mul_f3f(s.emit,(1.0f32-fog)),wg_mul_f3f3(wg_mul_f3f(eg_haze_colour(fog,wg_div_f3f(wg_sub_f3f3(v3(i.world_depth.x,i.world_depth.y,i.world_depth.z),v3(u[24],u[25],u[26])),fmax(d,0.001f32)),u),fog),wg_sub_f3f3(v3(1.0f32,1.0f32,1.0f32),s.transmit)));
@@ -3422,7 +3430,7 @@ eg_water_whole :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCo
   if ((eg_water_hull(v2(world.x,world.z),u)>0.5f32)||eg_water_dry(v2(world.x,world.z),u)) {
     return eg_water_scene_at(px,water_scene);
   }
-  s:EgWaterShade=eg_water_halves(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene_depth);
+  s:EgWaterShade=eg_water_halves(i,u,eg_water_surface_fragment(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam));
   w:f32=fmax(wg_dot4(wg_at4(u,20),v4(world.x,world.y,world.z,1.0f32)),1e-3f32);
   thick:f32=eg_water_thickness(px,world,u,water_scene_depth);
   // refraction: the bed seen a little aside, more through more water; never something in front of the surface
@@ -3467,13 +3475,11 @@ eg_water_whole :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCo
 }
 eg_water_transmit_fs :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,water_scene_depth:TexDepth)->V4 {
   paint_leaf_far:bool;
-  wake_foam_store:[1]f32;
-  wake_foam:=wake_foam_store[..];
   // a surface draws whole in the light half (water_whole): this half clears what lies behind it
   if eg_water_surface_part(wg_u32_f(i.extra.x+0.5f32)) {
     return v4(0.0f32,0.0f32,0.0f32,1.0f32);
   }
-  return wg_make_f4_f3f(wg_clamp_f3f3f3(eg_water_halves(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene_depth).transmit,v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),1.0f32);
+  return wg_make_f4_f3f(wg_clamp_f3f3f3(eg_water_halves(i,u,eg_water_fall_fragment(i,u,shadow_map,shadow_cmp,paint_leaf_far,water_scene_depth)).transmit,v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),1.0f32);
 }
 eg_water_emit_fs :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,water_scene:Tex2D,water_scene_depth:TexDepth)->V4 {
   paint_leaf_far:bool;
@@ -3482,7 +3488,7 @@ eg_water_emit_fs :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:Sampler
   if eg_water_surface_part(wg_u32_f(i.extra.x+0.5f32)) {
     return wg_make_f4_f3f(eg_water_whole(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene,water_scene_depth),0.0f32);
   }
-  return wg_make_f4_f3f(eg_water_halves(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene_depth).emit,0.0f32);
+  return wg_make_f4_f3f(eg_water_halves(i,u,eg_water_fall_fragment(i,u,shadow_map,shadow_cmp,paint_leaf_far,water_scene_depth)).emit,0.0f32);
 }
 // ---- the post pass (host.js postLayouts, art-styles.md 6 and 9): the bright share at a quarter and an
 // eighth of the size, blurred, mixed back at the preset's bloom mix; the light shafts; then the tone,

@@ -27,21 +27,21 @@ fn coax_at_u(i: i32) -> f32 {
 }
 @group(1) @binding(0) var<storage, read> puffs: array<coax_t8>;
 fn coax_p_particle_vs(p_v: u32, p_n: u32) -> coax_t12 {
-  var l_v: u32 = p_v;
-  var l_n: u32 = p_n;
+  let l_v: u32 = p_v;
+  let l_n: u32 = p_n;
   return coax_p_qfx_gone();
 }
 fn coax_p_particle_over_vs(p_v: u32, p_n: u32) -> coax_t12 {
-  var l_v: u32 = p_v;
-  var l_n: u32 = p_n;
+  let l_v: u32 = p_v;
+  let l_n: u32 = p_n;
   return coax_p_qfx_place(l_v, l_n);
 }
 fn coax_p_particle_fs(p_p: coax_t12) -> vec4f {
-  var l_p: coax_t12 = p_p;
+  let l_p: coax_t12 = p_p;
   return coax_p_v4(0.0f, 0.0f, 0.0f, 0.0f);
 }
 fn coax_p_particle_over_fs(p_p: coax_t12) -> vec4f {
-  var l_p: coax_t12 = p_p;
+  let l_p: coax_t12 = p_p;
   var l_kind: f32;
   var l_f: f32;
   var l_rd: vec3f;
@@ -98,8 +98,8 @@ fn coax_p_qfx_gone() -> coax_t12 {
   return l_o;
 }
 fn coax_p_qfx_place(p_v: u32, p_n: u32) -> coax_t12 {
-  var l_v: u32 = p_v;
-  var l_n: u32 = p_n;
+  let l_v: u32 = p_v;
+  let l_n: u32 = p_n;
   var l_o: coax_t12;
   var l_e: coax_t8;
   var l_quad: array<vec2f, 6>;
@@ -142,15 +142,15 @@ fn coax_p_qfx_place(p_v: u32, p_n: u32) -> coax_t12 {
   return l_o;
 }
 fn coax_p_v4(p_x: f32, p_y: f32, p_z: f32, p_w: f32) -> vec4f {
-  var l_x: f32 = p_x;
-  var l_y: f32 = p_y;
-  var l_z: f32 = p_z;
-  var l_w: f32 = p_w;
+  let l_x: f32 = p_x;
+  let l_y: f32 = p_y;
+  let l_z: f32 = p_z;
+  let l_w: f32 = p_w;
   return vec4f(l_x, l_y, l_z, l_w);
 }
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
-  var l_a: f32 = p_a;
-  var l_b: f32 = p_b;
+  let l_a: f32 = p_a;
+  let l_b: f32 = p_b;
   if ((l_b > l_a))
   {
     return l_b;
@@ -158,26 +158,26 @@ fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   return l_a;
 }
 fn coax_p_wg_at3(p_at: i32) -> vec3f {
-  var l_at: i32 = p_at;
+  let l_at: i32 = p_at;
   return coax_p_v3(coax_at_u(i32(l_at)), coax_at_u(i32((l_at + 1i))), coax_at_u(i32((l_at + 2i))));
 }
 fn coax_p_scale3(p_a: vec3f, p_k: f32) -> vec3f {
-  var l_a: vec3f = p_a;
-  var l_k: f32 = p_k;
+  let l_a: vec3f = p_a;
+  let l_k: f32 = p_k;
   return vec3f((l_a.x * l_k), (l_a.y * l_k), (l_a.z * l_k));
 }
 fn coax_p_add3(p_a: vec3f, p_b: vec3f) -> vec3f {
-  var l_a: vec3f = p_a;
-  var l_b: vec3f = p_b;
+  let l_a: vec3f = p_a;
+  let l_b: vec3f = p_b;
   return vec3f((l_a.x + l_b.x), (l_a.y + l_b.y), (l_a.z + l_b.z));
 }
 fn coax_p_normalize3(p_a: vec3f) -> vec3f {
-  var l_a: vec3f = p_a;
+  let l_a: vec3f = p_a;
   return coax_p_scale3(l_a, (0x1.000000p0f / coax_p_length3(l_a)));
 }
 fn coax_p_qfx_sky(p_rd: vec3f, p_t: f32) -> vec3f {
-  var l_rd: vec3f = p_rd;
-  var l_t: f32 = p_t;
+  let l_rd: vec3f = p_rd;
+  let l_t: f32 = p_t;
   var l_up: f32;
   var l_dome: vec3f;
   var l_band: f32;
@@ -208,12 +208,12 @@ fn coax_p_qfx_sky(p_rd: vec3f, p_t: f32) -> vec3f {
   return l_c;
 }
 fn coax_p_qfx_rgba(p_c: vec3f, p_a: f32) -> vec4f {
-  var l_c: vec3f = p_c;
-  var l_a: f32 = p_a;
+  let l_c: vec3f = p_c;
+  let l_a: f32 = p_a;
   return coax_p_v4(l_c.x, l_c.y, l_c.z, l_a);
 }
 fn coax_p_qfx_floor(p_p: coax_t12) -> vec4f {
-  var l_p: coax_t12 = p_p;
+  let l_p: coax_t12 = p_p;
   var l_w: vec3f;
   var l_eye: vec3f;
   var l_dist: f32;
@@ -287,7 +287,7 @@ fn coax_p_qfx_floor(p_p: coax_t12) -> vec4f {
   return coax_p_qfx_rgba(coax_p_qfx_fog(l_c, l_dist), 0x1.000000p0f);
 }
 fn coax_p_qfx_panel(p_p: coax_t12) -> vec4f {
-  var l_p: coax_t12 = p_p;
+  let l_p: coax_t12 = p_p;
   var l_dist: f32;
   var l_ink: vec3f;
   var l_ex: f32;
@@ -312,7 +312,7 @@ fn coax_p_qfx_panel(p_p: coax_t12) -> vec4f {
   return coax_p_qfx_rgba(coax_p_scale3(coax_p_qfx_fog(l_c, l_dist), l_a), l_a);
 }
 fn coax_p_qfx_glyph(p_p: coax_t12) -> vec4f {
-  var l_p: coax_t12 = p_p;
+  let l_p: coax_t12 = p_p;
   var l_gx: f32;
   var l_gy: f32;
   var l_col: f32;
@@ -343,7 +343,7 @@ fn coax_p_qfx_glyph(p_p: coax_t12) -> vec4f {
   return coax_p_qfx_rgba(coax_p_scale3(coax_p_v3(l_p.w.x, l_p.w.y, l_p.w.z), (l_p.w.w * l_a)), l_a);
 }
 fn coax_p_qfx_wave_face(p_p: coax_t12) -> vec4f {
-  var l_p: coax_t12 = p_p;
+  let l_p: coax_t12 = p_p;
   var l_dist: f32;
   var l_h: f32;
   var l_c: vec3f;
@@ -355,35 +355,35 @@ fn coax_p_qfx_wave_face(p_p: coax_t12) -> vec4f {
   return coax_p_qfx_rgba(coax_p_scale3(coax_p_qfx_fog(l_c, l_dist), l_a), l_a);
 }
 fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
-  var l_x: f32 = p_x;
-  var l_y: f32 = p_y;
-  var l_z: f32 = p_z;
+  let l_x: f32 = p_x;
+  let l_y: f32 = p_y;
+  let l_z: f32 = p_z;
   return vec3f(l_x, l_y, l_z);
 }
 fn coax_p_sub3(p_a: vec3f, p_b: vec3f) -> vec3f {
-  var l_a: vec3f = p_a;
-  var l_b: vec3f = p_b;
+  let l_a: vec3f = p_a;
+  let l_b: vec3f = p_b;
   return vec3f((l_a.x - l_b.x), (l_a.y - l_b.y), (l_a.z - l_b.z));
 }
 fn coax_p_wg_length3(p_a: vec3f) -> f32 {
-  var l_a: vec3f = p_a;
+  let l_a: vec3f = p_a;
   return sqrt(dot(l_a, l_a));
 }
 fn coax_p_smoothstep(p_a: f32, p_b: f32, p_x: f32) -> f32 {
-  var l_a: f32 = p_a;
-  var l_b: f32 = p_b;
-  var l_x: f32 = p_x;
+  let l_a: f32 = p_a;
+  let l_b: f32 = p_b;
+  let l_x: f32 = p_x;
   var l_t: f32;
   l_t = coax_p_saturate(((l_x - l_a) / (l_b - l_a)));
   return ((l_t * l_t) * (0x1.800000p1f - (0x1.000000p1f * l_t)));
 }
 fn coax_p_v2(p_x: f32, p_y: f32) -> vec2f {
-  var l_x: f32 = p_x;
-  var l_y: f32 = p_y;
+  let l_x: f32 = p_x;
+  let l_y: f32 = p_y;
   return vec2f(l_x, l_y);
 }
 fn coax_p_qfx_clip(p_w: vec3f) -> vec4f {
-  var l_w: vec3f = p_w;
+  let l_w: vec3f = p_w;
   var l_rel: vec3f;
   var l_z: f32;
   var l_r: f32;
@@ -405,33 +405,33 @@ fn coax_p_qfx_clip(p_w: vec3f) -> vec4f {
   return coax_p_v4(l_x, l_y, ((0x1.c20000p9f * (l_z - 0x1.99999ap-4f)) / (0x1.c20000p9f - 0x1.99999ap-4f)), l_z);
 }
 fn coax_p_cross3(p_a: vec3f, p_b: vec3f) -> vec3f {
-  var l_a: vec3f = p_a;
-  var l_b: vec3f = p_b;
+  let l_a: vec3f = p_a;
+  let l_b: vec3f = p_b;
   return vec3f(((l_a.y * l_b.z) - (l_a.z * l_b.y)), ((l_a.z * l_b.x) - (l_a.x * l_b.z)), ((l_a.x * l_b.y) - (l_a.y * l_b.x)));
 }
 fn coax_p_qfx_key() -> vec3f {
   return coax_p_v3((-0x1.ae147ap-2f), 0x1.7ae148p-1f, 0x1.0a3d70p-1f);
 }
 fn coax_p_saturate(p_x: f32) -> f32 {
-  var l_x: f32 = p_x;
+  let l_x: f32 = p_x;
   return coax_p_clampf(l_x, 0.0f, 0x1.000000p0f);
 }
 fn coax_p_length3(p_a: vec3f) -> f32 {
-  var l_a: vec3f = p_a;
+  let l_a: vec3f = p_a;
   return sqrt(dot(l_a, l_a));
 }
 fn coax_p_mix3(p_a: vec3f, p_b: vec3f, p_t: f32) -> vec3f {
-  var l_a: vec3f = p_a;
-  var l_b: vec3f = p_b;
-  var l_t: f32 = p_t;
+  let l_a: vec3f = p_a;
+  let l_b: vec3f = p_b;
+  let l_t: f32 = p_t;
   return vec3f(coax_p_mix(l_a.x, l_b.x, l_t), coax_p_mix(l_a.y, l_b.y, l_t), coax_p_mix(l_a.z, l_b.z, l_t));
 }
 fn coax_p_qfx_horizon() -> vec3f {
   return coax_p_v3(0x1.89374cp-8f, 0x1.89374cp-6f, 0x1.581062p-5f);
 }
 fn coax_p_wg_atan2(p_y: f32, p_x: f32) -> f32 {
-  var l_y: f32 = p_y;
-  var l_x: f32 = p_x;
+  let l_y: f32 = p_y;
+  let l_x: f32 = p_x;
   var l_ax: f32;
   var l_ay: f32;
   var l_high: f32;
@@ -459,8 +459,8 @@ fn coax_p_wg_atan2(p_y: f32, p_x: f32) -> f32 {
   return l_r;
 }
 fn coax_p_render_noise2(p_x: f32, p_y: f32) -> f32 {
-  var l_x: f32 = p_x;
-  var l_y: f32 = p_y;
+  let l_x: f32 = p_x;
+  let l_y: f32 = p_y;
   if (((!coax_p_render_noise_coordinate_ok(l_x)) || (!coax_p_render_noise_coordinate_ok(l_y))))
   {
     return 0.0f;
@@ -468,23 +468,23 @@ fn coax_p_render_noise2(p_x: f32, p_y: f32) -> f32 {
   return coax_p_render_noise_unit(coax_p_render_noise_mix2(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y)));
 }
 fn coax_p_fract(p_x: f32) -> f32 {
-  var l_x: f32 = p_x;
+  let l_x: f32 = p_x;
   return (l_x - floor(l_x));
 }
 fn coax_p_qfx_cell(p_x: f32, p_step: f32) -> f32 {
-  var l_x: f32 = p_x;
-  var l_step: f32 = p_step;
+  let l_x: f32 = p_x;
+  let l_step: f32 = p_step;
   return abs(((coax_p_fract(((l_x / l_step) + 0x1.000000p-1f)) - 0x1.000000p-1f) * l_step));
 }
 fn coax_p_qfx_line(p_d: f32, p_wide: f32, p_soft: f32) -> f32 {
-  var l_d: f32 = p_d;
-  var l_wide: f32 = p_wide;
-  var l_soft: f32 = p_soft;
+  let l_d: f32 = p_d;
+  let l_wide: f32 = p_wide;
+  let l_soft: f32 = p_soft;
   return (0x1.000000p0f - coax_p_smoothstep(l_wide, (l_wide + l_soft), l_d));
 }
 fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
-  var l_a: f32 = p_a;
-  var l_b: f32 = p_b;
+  let l_a: f32 = p_a;
+  let l_b: f32 = p_b;
   if ((l_b < l_a))
   {
     return l_b;
@@ -492,18 +492,18 @@ fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   return l_a;
 }
 fn coax_p_qfx_fog(p_c: vec3f, p_dist: f32) -> vec3f {
-  var l_c: vec3f = p_c;
-  var l_dist: f32 = p_dist;
+  let l_c: vec3f = p_c;
+  let l_dist: f32 = p_dist;
   return coax_p_mix3(l_c, coax_p_qfx_horizon(), (0x1.000000p0f - exp(((-l_dist) / 0x1.2c0000p7f))));
 }
 fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
-  var l_x: f32 = p_x;
-  var l_low: f32 = p_low;
-  var l_high: f32 = p_high;
+  let l_x: f32 = p_x;
+  let l_low: f32 = p_low;
+  let l_high: f32 = p_high;
   return coax_p_fmin(coax_p_fmax(l_x, l_low), l_high);
 }
 fn coax_p_wg_u32_f(p_x: f32) -> u32 {
-  var l_x: f32 = p_x;
+  let l_x: f32 = p_x;
   if ((!(l_x > 0.0f)))
   {
     return 0u;
@@ -515,9 +515,9 @@ fn coax_p_wg_u32_f(p_x: f32) -> u32 {
   return u32(l_x);
 }
 fn coax_p_qfx_wave(p_x: f32, p_y: f32, p_t: f32) -> f32 {
-  var l_x: f32 = p_x;
-  var l_y: f32 = p_y;
-  var l_t: f32 = p_t;
+  let l_x: f32 = p_x;
+  let l_y: f32 = p_y;
+  let l_t: f32 = p_t;
   var l_ax: f32;
   var l_ay: f32;
   var l_bx: f32;
@@ -533,17 +533,17 @@ fn coax_p_qfx_wave(p_x: f32, p_y: f32, p_t: f32) -> f32 {
   return (0x1.000000p-1f + (0x1.000000p-2f * (l_a + l_b)));
 }
 fn coax_p_qfx_wave_light(p_h: f32) -> f32 {
-  var l_h: f32 = p_h;
+  let l_h: f32 = p_h;
   return ((0x1.47ae14p-5f + ((0x1.000000p-1f * l_h) * l_h)) + ((((((0x1.99999ap0f * l_h) * l_h) * l_h) * l_h) * l_h) * l_h));
 }
 fn coax_p_mix(p_a: f32, p_b: f32, p_t: f32) -> f32 {
-  var l_a: f32 = p_a;
-  var l_b: f32 = p_b;
-  var l_t: f32 = p_t;
+  let l_a: f32 = p_a;
+  let l_b: f32 = p_b;
+  let l_t: f32 = p_t;
   return (l_a + ((l_b - l_a) * l_t));
 }
 fn coax_p_wg_atan01(p_x: f32) -> f32 {
-  var l_x: f32 = p_x;
+  let l_x: f32 = p_x;
   var l_z: f32;
   var l_p: f32;
   l_z = (l_x * l_x);
@@ -558,26 +558,26 @@ fn coax_p_wg_atan01(p_x: f32) -> f32 {
   return (l_x * l_p);
 }
 fn coax_p_render_noise_coordinate_ok(p_x: f32) -> bool {
-  var l_x: f32 = p_x;
+  let l_x: f32 = p_x;
   return ((l_x >= (-0x1.fffffep127f)) && (l_x <= 0x1.fffffep127f));
 }
 fn coax_p_render_noise_cell(p_x: f32) -> u32 {
-  var l_x: f32 = p_x;
+  let l_x: f32 = p_x;
   var l_bounded: f32;
   l_bounded = coax_p_fmin(coax_p_fmax(l_x, (-0x1.000000p25f)), 0x1.fffffep24f);
   return u32(i32(floor((l_bounded * 0x1.000000p6f))));
 }
 fn coax_p_render_noise_mix2(p_x: u32, p_y: u32) -> u32 {
-  var l_x: u32 = p_x;
-  var l_y: u32 = p_y;
+  let l_x: u32 = p_x;
+  let l_y: u32 = p_y;
   return coax_p_render_noise_permute(((l_x * 1597334677u) ^ (l_y * 3812015801u)));
 }
 fn coax_p_render_noise_unit(p_word: u32) -> f32 {
-  var l_word: u32 = p_word;
+  let l_word: u32 = p_word;
   return (f32((l_word >> u32(8u))) * 0x1.000000p-24f);
 }
 fn coax_p_render_noise_permute(p_word: u32) -> u32 {
-  var l_word: u32 = p_word;
+  let l_word: u32 = p_word;
   var l_h: u32;
   l_h = (l_word * 747796405u);
   l_h = ((l_h ^ (l_h >> u32(16u))) * 2246822519u);
