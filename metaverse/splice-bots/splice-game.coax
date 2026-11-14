@@ -318,7 +318,11 @@ g_reset :: (g: [] SpGame) {
 }
 g_say :: (g: [] SpGame, m: int) { g[0].msg = m; g[0].msg_t = 3.5; g_event(g, m); }
 // The Digger beside you: where it stands when it is not at work.
-g_bot_home :: (g: [] SpGame) { g[0].bot_state = BOT_FOLLOW; g[0].bot_x = g[0].px - sin(g[0].yaw) * 1.7 - cos(g[0].yaw) * 1.1; g[0].bot_z = g[0].pz - cos(g[0].yaw) * 1.7 + sin(g[0].yaw) * 1.1; g[0].bot_yaw = g[0].yaw; }
+// Where Digger follows: half a step behind her and to her left, so the camera behind her shows him beside her,
+// clear of the objective panel at the bottom right (left of her is (cos yaw, -sin yaw)).
+T_BOT_BACK :: 0.8f32; T_BOT_LEFT :: 1.5f32;
+g_bot_spot :: (g: [] SpGame) -> Point { y := g[0].yaw; return v3(g[0].px - sin(y) * T_BOT_BACK + cos(y) * T_BOT_LEFT, 0, g[0].pz - cos(y) * T_BOT_BACK - sin(y) * T_BOT_LEFT); }
+g_bot_home :: (g: [] SpGame) { g[0].bot_state = BOT_FOLLOW; h := g_bot_spot(g); g[0].bot_x = h.x; g[0].bot_z = h.z; g[0].bot_yaw = g[0].yaw; }
 g_enter_mine :: (g: [] SpGame) { g[0].zone = Z_MINE; g[0].mode = M_PLAY; g[0].phase = PH_DAY; g[0].px = g[0].at.start_x; g[0].pz = g[0].at.start_z; g[0].yaw = PI; g[0].pitch = 0; g_bot_home(g); g_keep(g); }
 // A new run (front.coax), or a restored one: where the world's starts table says the run starts (as shipped, the solar farm
 // by day, #13505), or the dome village at dawn for tables with no starts row
@@ -416,8 +420,8 @@ g_bot :: (g: [] SpGame, dt: f32) {
   if sb_holds_digger(g) { return; }   // his core is in the drill mech, or he is fielded in a battle (splice-battle.coax)
   face := ifx g[0].bot_wall then g[0].at.wall_z + 1 else g[0].at.rubble_z + 1;
   if g[0].bot_state == BOT_FOLLOW {
-    // always next to you: a step behind and to your right
-    tx := g[0].px - sin(g[0].yaw) * 1.7 - cos(g[0].yaw) * 1.1; tz := g[0].pz - cos(g[0].yaw) * 1.7 + sin(g[0].yaw) * 1.1;
+    // always next to you: half a step behind and to your left (g_bot_spot)
+    h := g_bot_spot(g); tx := h.x; tz := h.z;
     d := dist2(g[0].bot_x, g[0].bot_z, tx, tz);
     if d > 0.15 { left := bot_toward(g, tx, tz, T_FOLLOW * clamp(d / 1.5, 0.15, 1.6), dt); if left > 12 { g[0].bot_x = tx; g[0].bot_z = tz; } }
     return;
@@ -1726,7 +1730,7 @@ sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', fa
   for i: 0..<200 { g_step(g[..], 0.02); if g[0].dr[0].sensor { break; } }
   #assert g[0].dr[0].sensor && d_range(g[..]) == T_SENSE_UP && !d_sensor_here(g[..]) && d_carry(g[..]).n == 2;
   // now the MOVE card over 7 m from him is in his range
-  g[0].px = pick_x(g[..], H_MOVE); g[0].pz = pick_z(g[..], H_MOVE) + 5.5; g[0].yaw = PI; g_bot_home(g[..]);
+  g[0].px = pick_x(g[..], H_MOVE); g[0].pz = pick_z(g[..], H_MOVE) + 6.5; g[0].yaw = PI; g_bot_home(g[..]);   // he follows half a step back, to her left
   #assert dist2(g[0].bot_x, g[0].bot_z, pick_x(g[..], H_MOVE), pick_z(g[..], H_MOVE)) > 7;
   for i: 0..<200 { g_step(g[..], 0.02); if g[0].have[H_MOVE] { break; } }
   #assert g[0].have[H_MOVE];

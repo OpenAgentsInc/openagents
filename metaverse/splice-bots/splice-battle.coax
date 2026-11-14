@@ -381,7 +381,7 @@ sb_mech_step :: (g: [] SpGame, dt: f32) {
     if left <= 0.1 { my[0] = PI; t[0].drill_t -= dt; }
     if t[0].drill_t <= 0 { g[0].wall_gone = true; g[0].flash = 0.6; g_say(g, MSG_BROKE); g[0].bt[0].drill_t = 0; }
   } else if t[0].mech_core && g[0].zone == Z_MINE && !(sb_fighting(g) && sb_fielded(g) == SB_MECH) {
-    // a step behind you and to your left, as Digger keeps to your right
+    // a step behind you and to your left, further back than Digger
     tx := g[0].px - sin(g[0].yaw) * 3.2 + cos(g[0].yaw) * 2.2; tz := g[0].pz - cos(g[0].yaw) * 3.2 - sin(g[0].yaw) * 2.2;
     _ := sb_toward(mx[..], mz[..], my[..], tx, tz, SB_MECH_SPEED * clamp(dist2(mx[0], mz[0], tx, tz) / 3, 0.2, 1.6), 0.3, dt);
   }
