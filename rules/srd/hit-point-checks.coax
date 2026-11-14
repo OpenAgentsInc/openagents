@@ -236,7 +236,7 @@
   #assert cast(string)e.text[0..<e.text_n] == "Patient rolls a 20 on a death save but cannot regain Hit Points";
 }
 
-#forall "damage conserves ordinary and temporary HP and observes exact massive-damage thresholds" amount: 0..<31 {
+#forall "damage conserves ordinary and temporary HP and observes exact massive-damage thresholds" amount: 0..<31 #steps 200000000 {
   for hp: [3] int.[1,6,12] { for temp: [2] int.[0,5] { for monster: 0..<2 {
     c: [1] RsCreature; c[0] = rs_druid("Patient",0,3); c[0].hp_max = 12; c[0].hp = hp; c[0].temp = temp;
     c[0].cond = RS_BLINDED; if monster == 1 { c[0].klass = RS_MONSTER; }

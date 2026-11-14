@@ -66,3 +66,14 @@
   #assert !rs_disengage_use(b[..],1,RS_DISENGAGE_NIMBLE) && !b[0].turn.bonus && !b[0].turn.disengaged;
   #assert !rs_disengage_use(b[..],1,RS_DISENGAGE_NIMBLE+1) && !rs_disengage_use(b[..],1,RS_DISENGAGE_PATIENT) && !b[0].turn.bonus;
 }
+#test "paid Patient Defense needs a place for its Dodge: a full list with a Dodge in it has one, a full list holding Shield has none" {
+  for mode: 0..<2 {
+    b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
+    _:=rs_add(b[..],rs_monk("Monk",0,3),2,2); rs_start_turn(b[..],0);
+    for k:0..<RS_EFFECTS { b[0].c[0].eff[k]=RsEffect.{kind=EF_BLESS,by=0,spell=SP_BLESS,until=9000,save=-1}; }
+    b[0].c[0].eff[2]=RsEffect.{kind=ifx mode==0 then EF_DODGE else EF_SHIELD,by=-1,spell=-1,until=RS_NO_END,save=-1};
+    focus:=b[0].c[0].uses[RS_USE_FOCUS];
+    #assert rs_disengage_use(b[..],0,RS_DISENGAGE_DODGE)==(mode==0);
+    #assert b[0].c[0].uses[RS_USE_FOCUS]==(ifx mode==0 then focus-1 else focus) && b[0].turn.bonus==(mode==0);
+  }
+}

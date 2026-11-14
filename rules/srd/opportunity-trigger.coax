@@ -34,3 +34,12 @@ rs_opportunity_begin :: (c:[] RsCreature) #effects(all) { c[0].eff = rs_state_pu
   _:=rs_add(b[..],rs_guard("Guard",1),2,2); _=rs_add(b[..],rs_fighter("Mover",0,1),3,2);
   #assert !rs_opportunity_trigger(b[..],0,1,RsOpportunityMove.{});
 }
+#test "a measured move provokes only from within reach (its edge too, and from 0) to beyond it" {
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],rs_guard("Guard",1),2,2); _=rs_add(b[..],rs_fighter("Mover",0,1),3,2);
+  m:=RsOpportunityMove.{measured=true,reach=5,melee=true,seen=true,movement=true};
+  froms:=[6] f32.[0, 5, 2.5, -0.5, 5.5, 5]; tos:=[6] f32.[6, 5.5, 9, 6, 6, 5]; want:=[6] bool.[true, true, true, false, false, false];
+  for k:0..<6 { q:=m; q.from_feet=froms[k]; q.to_feet=tos[k]; #assert rs_opportunity_trigger(b[..],0,1,q)==want[k]; }
+  q:=m; q.from_feet=2; q.to_feet=4; #assert !rs_opportunity_trigger(b[..],0,1,q);   // still within
+  q.from_feet=7; q.to_feet=9; #assert !rs_opportunity_trigger(b[..],0,1,q);         // never within
+}
