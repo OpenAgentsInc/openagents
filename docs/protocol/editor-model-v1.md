@@ -41,6 +41,8 @@ The model is lines of text, in this order.
 | `atonce` | The world has one lane: an edit is what people get at once (a realm's world, #13478). The shell shows no Publish. |
 | `list TABLE COLUMN TITLE` | A content table whose rows are each on or off (a realm's board, the tools its visitors get): the table, the column a switch sets, and the list's title. The shell shows the list with a switch on each row. A press is a `cell` edit of that table and column, to `0` or `1`. |
 | `sw ROW ON LABEL` | A row of the list on the nearest `list` line above: its ID in the table, `0` or `1`, and its name. |
+| `asks` | The world is a realm that keeps a list of asks: what its owner asked for (#13528). Left out for a world that keeps none. The shell then tells the conversation in its foot the asks and the lists, so its agent can add, revise and delete them. |
+| `q ID STATE WORDS` | An ask: its ID, its state (`applied`, `waiting` or `removing`) and its words, cut to 120 bytes. |
 | `card ID X Z THING` | A visitor's proposal waiting for the owner (#13527): its ID on the realm's server, where the thing would stand in whole centimetres, and what it is. The shell's Agent button counts them, and the shell tells each to the conversation in its foot, which shows Accept and Decline. |
 | `from WHO` | Who proposed the card on the line above, as people read it ("Visitor ab12"). Every `card` has one. |
 | `cards N` | How many proposals wait in all, when the model lists fewer. Left out, it lists them all. |
@@ -74,6 +76,8 @@ but the ones the writer writes: it writes what it read and compares.
 | Bytes in a switch's name | 48 |
 | Proposals waiting | 16 |
 | Bytes in a proposal's thing, and in who proposed it | 40 |
+| Asks | 24 |
+| Bytes in an ask's words | 120 |
 | Bytes in a model | 65,536 |
 
 ## What the shell sends back
@@ -86,6 +90,7 @@ The shell asks the page to act through the host, as two message kinds:
 | 521 | An entity's ID, or 0 | Selects it. |
 | 527 | `actor N`, or `actor 0` | Selects NPC N (or none): the page draws its route and notice range and frames it. |
 | 523 | `add KIND COUNT` | Plans where COUNT things of a kind go from "here" with the placement planner (`metaverse-engine/editor/place.coax`) and sends them as one batch. |
+| 530 | A realm's steps of a hosted turn's plan, a step a line: `ask WORDS`, `revise WORDS`, `unask ID`, `unrow TABLE ROW`, `look WORDS` (`docs/protocol/world-turn-v1.md`) | The edit layer sends each, in order, as the owner's own request, and says what came of it in words (action 34), for the conversation. |
 | 522 | Words for the viewport's tools (`metaverse-engine/editor/viewport.coax`, `vp_act`): `tool play`, `tool select`, `tool move`, `tool turn`, `tool size`, `grid 10`, `grid 25`, `grid 50`, `grid 100`, `fly on`, `fly off`, `run play`, `run pause`, `step`, `sim on`, `sim off`, and for a world whose land takes edits `tool land`, `brush paint` (or `raise`, `lower`, `smooth`, `flatten`), `radius CM`, `strength PCT`, `mat N` | Picks the tool, the grid, the camera, the clock and the land's brush. Anything else changes nothing. |
 
 ## A page that wants the shell
@@ -102,8 +107,9 @@ A made realm (`apps/openagents-web/myrealm.coax`) and the realm pages that load 
 (`metaverse/edit/edit.coax`, #13478) are the third. Both follow the realm's world with
 `metaverse/edit/realm-page.coax` (`rp_model`): the realm's kinds (`k`) and each placed thing that
 stands (`e`, its ID the thing's place in the realm's list), `atonce`, the scripts table, the board and
-the tools as lists of switches, and `here`, where the player stands in whole metres, and for its owner and admins the visitors' proposals waiting (`card`, `from`, `cards`: read from `GET /api/playtest/realms/SLUG/proposals`, [realm-edit.md](../metaverse/realm-edit.md)). The page takes
-520, 521 and 523 (`rp_message`); its Add plans from `here` (#13506). They export `coaxial_edit_own(state)` (below), which answers 1 once the
+the tools as lists of switches, the realm's asks (`asks`, `q`; the edit layer reads them once the
+page tells the shell its world, `redit_asks_to`), and `here`, where the player stands in whole metres, and for its owner and admins the visitors' proposals waiting (`card`, `from`, `cards`: read from `GET /api/playtest/realms/SLUG/proposals`, [realm-edit.md](../metaverse/realm-edit.md)). The page takes
+520, 521 and 523 (`rp_message`) and 530 (the edit layer, `redit_realm`); its Add plans from `here` (#13506). They export `coaxial_edit_own(state)` (below), which answers 1 once the
 realm's server has said this visitor is its owner or an admin; the host asks again every frame until
 it does.
 

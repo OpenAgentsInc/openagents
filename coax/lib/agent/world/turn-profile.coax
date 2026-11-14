@@ -36,6 +36,17 @@ wtp_turn :: (d: Jv, w: [] WtpWork) -> bool {
   if wtp_str(d, jv_get(d, 0, "schema"), nb[..]) != WT_SCHEMA { return false; }
   if wtp_lim(d, "world_bytes") != WT_WORLD || wtp_lim(d, "name_bytes") != WT_NAME || wtp_lim(d, "kinds") != WT_KINDS || wtp_lim(d, "things") != WT_THINGS || wtp_lim(d, "bytes") != WT_BYTES || wtp_lim(d, "files") != WT_FILES { return false; }
   if wtp_lim(d, "plan_steps") != WP_STEPS || wtp_lim(d, "plan_bytes") != WP_BYTES || wtp_lim(d, "say_bytes") != WP_SAY { return false; }
+  if wtp_lim(d, "lists") != WT_LISTS || wtp_lim(d, "switches") != WT_SWS || wtp_lim(d, "asks") != WT_ASKS || wtp_lim(d, "step_words") != WP_WORDS { return false; }
+  // a realm's turn: its lists, their rows and its asks read and write back, and its plan of the realm's tools
+  realm := jv_get(d, 0, "realm");
+  rw := wtp_str(d, jv_get(d, realm, "wire"), w[0].wire[..]);
+  if rw.count == 0 || !wt_read(t, rw, w[0].scratch[..]) || wt_write(t, w[0].out[..]) != rw || !t[0].asks { return false; }
+  if jv_int(d, jv_get(d, realm, "lists"), -1) != t[0].nl || jv_int(d, jv_get(d, realm, "switches"), -1) != t[0].nw || jv_int(d, jv_get(d, realm, "asks"), -1) != t[0].naq { return false; }
+  for key: [2] string.["plan", "look"] {
+    rp := wtp_str(d, jv_get(d, realm, key), w[0].wire[..]);
+    if rp.count == 0 || !wp_read(p, rp, w[0].scratch[..]) || wp_write(p, w[0].out[..]) != rp { return false; }
+  }
+  if !wtp_rejects(d, jv_get(d, realm, "rejected"), 0, w) { return false; }
   if !wtp_rejects(d, jv_get(d, 0, "rejected"), 0, w) { return false; }
   empty := wtp_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);
   if empty.count == 0 || !wt_read(t, empty, w[0].scratch[..]) || !t[0].live || t[0].nt != 0 { return false; }
@@ -57,6 +68,9 @@ wtp_turn :: (d: Jv, w: [] WtpWork) -> bool {
   plan := jv_get(d, 0, "plan"); tools := jv_get(d, plan, "tools"); names := WT_TOOL;
   if wtp_str(d, jv_get(d, plan, "schema"), nb[..]) != WP_SCHEMA || jv_len(d, tools) != WT_TOOLS { return false; }
   for k: 0..<WT_TOOLS { if wtp_str(d, jv_at(d, tools, k), nb[..]) != names[k] { return false; } }
+  panes := jv_get(d, plan, "panes"); pn := WT_PANE;
+  if jv_len(d, panes) != WT_PANES { return false; }
+  for k: 0..<WT_PANES { if wtp_str(d, jv_at(d, panes, k), nb[..]) != pn[k] { return false; } }
   pw := wtp_str(d, jv_get(d, plan, "wire"), w[0].wire[..]);
   if pw.count == 0 || !wp_read(p, pw, w[0].scratch[..]) || wp_write(p, w[0].out[..]) != pw || jv_int(d, jv_get(d, plan, "steps"), -1) != p[0].n { return false; }
   reply := wtp_str(d, jv_get(d, plan, "reply"), w[0].wire[..]);

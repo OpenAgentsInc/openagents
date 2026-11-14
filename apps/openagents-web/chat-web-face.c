@@ -56,8 +56,9 @@ EXPORT("dom_size") void dom_size(uint32_t state, int32_t slot, float w, float h)
 EXPORT("dom_clip") uint32_t dom_clip(uint32_t state) { return (uint32_t)(uintptr_t)raw(state)->clip.e; }
 EXPORT("dom_clip_len") uint32_t dom_clip_len(uint32_t state) { return (uint32_t)coaxial_chatweb_clip(at(state)); }
 EXPORT("dom_clip_done") void dom_clip_done(uint32_t state) { coaxial_chatweb_clip_done(at(state)); }
-// An action for the page that opened this conversation (the editor: host.js): a hosted turn's plan for its world.
+// An action for the page that opened this conversation (the editor: host.js): a hosted turn's plan for its world (8),
+// or the composer's voice held or let go (7) and an answer to speak (9).
 EXPORT("dom_act_kind") int32_t dom_act_kind(uint32_t state) { return (int32_t)coaxial_chatweb_act_kind(at(state)); }
-EXPORT("dom_act") uint32_t dom_act(uint32_t state) { return (uint32_t)(uintptr_t)raw(state)->planned.e; }
+EXPORT("dom_act") uint32_t dom_act(uint32_t state) { return (uint32_t)(uintptr_t)(coaxial_chatweb_act_planned(at(state)) ? raw(state)->planned.e : raw(state)->vact.e); }
 EXPORT("dom_act_len") uint32_t dom_act_len(uint32_t state) { return (uint32_t)coaxial_chatweb_act_len(at(state)); }
 EXPORT("dom_act_done") void dom_act_done(uint32_t state) { coaxial_chatweb_act_done(at(state)); }

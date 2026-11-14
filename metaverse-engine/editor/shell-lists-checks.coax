@@ -62,3 +62,50 @@ es_test_lists :: (h: [] EsTest, rev: int, on2: bool) {
   coaxial_editor_event(s, ES_MODEL, 0, n); es_test_frames(h[..], 1);
   #assert es_lists_only(s[0].model[..]) && tr_find(t, "list.none.0") > 0 && tr_find(t, "publish") > 0;
 }
+// The same realm's world where its owner keeps a list of asks (#13528).
+es_test_realm :: (h: [] EsTest, rev: int) {
+  s := h[0].s[..]; out := h[0].text[..];
+  none: [WE_COLS] bool;
+  n := em_begin(out, "fairy-forest", 0, rev, 1, 0, 0);
+  n = em_cols(out, n, none[..]);
+  n = em_at_once(out, n);
+  n = em_list(out, n, "rows", "on", "Features");
+  n = em_switch(out, n, 1, true, "Glowing mushrooms");
+  n = em_switch(out, n, 2, false, "A bridge over the stream");
+  n = em_list(out, n, "tools", "on", "Tools visitors get");
+  n = em_switch(out, n, 3, false, "jump");
+  n = em_asks(out, n);
+  n = em_ask(out, n, 7, 0, "A ghost cat by the gate");
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n);
+}
+#test "a realm's turn tells its lists and its asks; a plan's switch is a cell edit, its words for the asks go to the page, and a pane it shows opens or is said" {
+  h: [1] EsTest; s := h[0].s[..]; o: [160] u8;
+  es_test_realm(h[..], 9); es_test_frames(h[..], 1);
+  es_test_press(h[..], "agent");
+  #assert coaxial_editor_act_kind(s) == ES_TURN;
+  a := s[0].acts[0];
+  #assert cast(string) a[0..<coaxial_editor_act_len(s)] == "world.turn.v1 fairy-forest dev 9 0\nl rows Features\nw 1 1 Glowing mushrooms\nw 2 0 A bridge over the stream\nl tools Tools visitors get\nw 3 0 jump\nasks\nq 7 applied A ghost cat by the gate\n";
+  coaxial_editor_act_done(s);
+  // a switch, an ask, a row deleted and a pane the world does not have: one cell edit, one action of words, and a sentence
+  es_test_plan(h[..], "world.plan.v1 fairy-forest 9\nswitch 0 2 1\nask a dragon by the lake\nunrow 1 3\nunask 7\nshow files\n");
+  #assert es_test_cell(h[..], 9, o[..]) == "rows 2 on 1";
+  coaxial_editor_act_done(s);
+  #assert coaxial_editor_act_kind(s) == ES_REALM;
+  r := s[0].acts[0];
+  #assert cast(string) r[0..<coaxial_editor_act_len(s)] == "ask a dragon by the lake\nunrow tools 3\nunask 7\n";
+  coaxial_editor_act_done(s);
+  #assert s[0].nacts == 0 && cast(string) s[0].said[0..<s[0].said_n] == "This world has no files to show.";
+  // words for the asks need no revision of the world's; a switch from an older one is said and not sent
+  es_test_plan(h[..], "world.plan.v1 fairy-forest 4\nrevise no mushrooms\n");
+  #assert coaxial_editor_act_kind(s) == ES_REALM; coaxial_editor_act_done(s);
+  es_test_plan(h[..], "world.plan.v1 fairy-forest 4\nswitch 0 2 1\n");
+  #assert s[0].nacts == 0 && cast(string) s[0].said[0..<s[0].said_n] == "The world changed while the agent worked. Ask it again.";
+  es_test_plan(h[..], "world.plan.v1 fairy-forest 9\nswitch 0 5 1\n");
+  #assert s[0].nacts == 0 && cast(string) s[0].said[0..<s[0].said_n] == "The agent named a row that is no longer here. Ask it again.";
+  // a world that keeps no asks takes none
+  es_test_lists(h[..], 9, false);
+  #assert coaxial_editor_act_kind(s) == ES_TURN; coaxial_editor_act_done(s);   // the conversation is told the world again
+  es_test_plan(h[..], "world.plan.v1 fairy-forest 9\nask a dragon\n");
+  #assert s[0].nacts == 0 && cast(string) s[0].said[0..<s[0].said_n] == "This world keeps no asks.";
+}

@@ -125,6 +125,8 @@
 //       coaxial_drive_out(state) and coaxial_drive_out_len(state), read by coaxial.drive.send
 //   613 the GPU, once the adapter opens: gpu_vendor, gpu_arch, gpu_fallback (also in every later 600), and
 //       action 33 keeps the graphics rung the app settled at (verse.quality.settled, the next 600's settled=)
+// Action 34 is words for the editor's agent strip: what came of its turn's realm steps (an ask added, a revision, a
+// delete, a look; metaverse/edit/edit.coax REDIT_ACT_AGENT), shown there as the agent's answer (chat-web event 18).
 // and, on a page with data-drops (drop.js, /projects): files dropped on the page or picked go to
 // /api/drops, private to who dropped them. Message 40 is their state, a line each: "S|signed|signer|
 // dragging|note" (signer: the browser has a Nostr signer), then "F|name|kind|bytes|permille|status|note"
@@ -264,7 +266,7 @@ import { startDrops } from "./drop.js";
 import { startUploads } from "./uploads.js";
 import { startDocs } from "./docs.js";
 import { startCard } from "./card.js";
-import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
+import { startVoice, VOICE_KIND, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
 import { localRoomSocket } from "./room-worker.js";
 import { wtSocket } from "./room-wt.js";
 import { startGpui } from "./gpui.js";
@@ -4035,11 +4037,27 @@ function agentTell() {
   if (!chat || !agentWorld || agentTold === agentWorld) return;
   chat.after ||= agentActs;
   chat.still = agentMode;   // on an agent's clock no frame comes by itself: each event is drawn at once
+  // the page's voice is the composer's to hold (Talk, #13528): the chat is told it is there
+  if (!chat.voiceTold && globalThis.coaxial?.voice) { chat.voiceTold = true; chat.exports().dom_event(chat.state(), 17, 1, 0); }
   const cx = chat.exports(), most = Math.min(agentWorld.length, cx.dom_inbox_cap());
   new Uint8Array(chat.memory().buffer, cx.dom_inbox(chat.state()), most).set(agentWorld.subarray(0, most));
   cx.dom_event(chat.state(), 8, 0, most);
   agentTold = agentWorld;
   chat.ask();
+}
+// The composer's voice (#13528): while Talk is held the page's voice is the strip's. Its words go to the chat
+// (event 16, voice.js's "PHASE|CAPTION"), not the page, and the voice host leaves the turns to the chat, which
+// answers them (its act 9, spoken). Let go, the page's voice is the page's again.
+const AGENT_FACE = "Realm editor";
+let agentVoice = false;
+function agentEvent(kind, text) {
+  const chat = globalThis.coaxialDoms?.[AGENT];
+  if (!chat) return false;
+  const cx = chat.exports(), bytes = new TextEncoder().encode(text), most = Math.min(bytes.length, cx.dom_inbox_cap());
+  new Uint8Array(chat.memory().buffer, cx.dom_inbox(chat.state()), most).set(bytes.subarray(0, most));
+  cx.dom_event(chat.state(), kind, 0, most);
+  if (agentMode) chat.now?.(); else chat.ask();
+  return true;
 }
 function agentActs() {
   const chat = globalThis.coaxialDoms?.[AGENT], shell = globalThis.coaxialDoms?.[EDITOR];
@@ -4048,6 +4066,14 @@ function agentActs() {
   for (let kind; (kind = cx.dom_act_kind(cs)); ) {
     const body = new Uint8Array(chat.memory().buffer, cx.dom_act(cs), cx.dom_act_len(cs)).slice();
     cx.dom_act_done(cs);
+    const voice = globalThis.coaxial?.voice;
+    if (kind === 7 && voice) {
+      const held = new TextDecoder().decode(body) === "hold";
+      if (held) { agentVoice = true; voice.face(AGENT_FACE); voice.toggle("hold"); }
+      else voice.toggle("end");
+      continue;
+    }
+    if (kind === 9 && voice) { voice.say(new TextDecoder().decode(body)); continue; }
     if (kind !== 8) continue;
     const sx = shell.exports(), most = Math.min(body.length, sx.dom_inbox_cap());
     new Uint8Array(shell.memory().buffer, sx.dom_inbox(shell.state()), most).set(body.subarray(0, most));
@@ -4421,8 +4447,16 @@ function snapshot() {
 }
 if (script?.dataset.card) startCard({ url: script.dataset.card, key: () => player()?.key || "", snapshot, ready: () => !!globalThis.coaxial.sceneReady });
 // A page that talks (data-voice: the route its voice host answers as): voice.js, on the app's VOICE.
+// While the editor's agent strip holds it (agentVoice), what it shows goes to the strip; once it is off, the page's
+// own conversation faces are its again.
 const voice = script?.dataset.voice
-  ? startVoice({ send, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" }) : null;
+  ? startVoice({ send: (kind, text) => {
+      if (kind === VOICE_KIND && agentVoice) {
+        if (text.startsWith("off|") || text.startsWith("notice|")) { agentVoice = false; globalThis.coaxial?.voice?.face(""); }
+        if (agentEvent(16, text)) return;
+      }
+      send(kind, text);
+    }, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" }) : null;
 globalThis.coaxial.voice = voice;
 
 // The location's hash, for an app that opens something by it (a link straight to it).
@@ -4570,6 +4604,8 @@ function after(gesture, tap = false) {
     else if (code === ACT_VOICE && voice) voice.toggle(text === "end" ? "end" : text === "hold" ? "hold" : text === "on");
     else if (code === ACT_VOICE_TO && voice) voice.face(text);
     else if (code === ACT_VOICE_SAY && voice) voice.say(text);
+    // what came of the agent strip's realm steps (an ask added, a revision, a delete, a look; #13528): the strip's words
+    else if (code === 34) agentEvent(18, text);
     else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }

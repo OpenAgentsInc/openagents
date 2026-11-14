@@ -281,9 +281,6 @@ realm_voice :: (r: [] Realm, text: string) #export_c #effects(all) {
   }
 }
 realm_heard :: (r: [] Realm) -> string #export_c #effects(all) { return cast(string) r[0].heard[0..<r[0].heard_n]; }
-// What VOICE heard said to the realm itself (no one faced): its owner's and admins' words go to the
-// edit layer's selector (metaverse/edit/edit.coax redit_hear), whose reply is shown and spoken.
-realm_hear :: (r: [] Realm) -> bool #export_c #effects(all) { return redit_hear(r[0].ed[..], realm_heard(r)); }
 
 // Who is logged in (host.js message 606, /api/auth/me's lines): the npub of
 // a "K|" line, shortened to its start and end for the HUD; "" nobody.
@@ -309,15 +306,14 @@ realm_me :: (r: [] Realm) -> string #export_c #effects(all) { return cast(string
 
 // Every frame: whom you're talking to ("" nobody), told to voice.js when it
 // changes and the host's outbox is free, so VOICE answers as them. Talking to
-// nobody, the realm's owner and admins face the realm itself: the page answers
-// what VOICE heard through the edit layer's selector (realm_hear).
+// nobody, VOICE answers as the house; the realm's owner talks to the realm itself
+// through the editor's agent strip (#13528).
 realm_voice_to :: (r: [] Realm, p_said_to: string) #export_c #effects(all) {
-  who := ifx p_said_to.count == 0 && redit_may(r[0].ed[..]) then REDIT_FACING else p_said_to;
+  who := p_said_to;
   if r[0].action != 0 || seen_same(r[0].voice_to[..], r[0].voice_to_n, who) { return; }
   r[0].voice_to_n = tw_copy(r[0].voice_to[..], 0, who);
   r[0].out_n = put(r[0].outbox[..], 0, cast(string) r[0].voice_to[0..<r[0].voice_to_n]);
   r[0].action = ACT_VOICE_TO;
-  r[0].ed[0].faced = false;   // the edit layer tells VOICE again before it next listens
 }
 // Their answer to what VOICE heard, for voice.js to speak; false while the
 // outbox is busy (the face tries again next frame).
@@ -356,8 +352,6 @@ realm_edit_act :: (r: [] Realm) #export_c #effects(all) {
   e := redit_take_action(r[0].ed[..], r[0].outbox[..]);
   if e.kind == 0 { return; }
   r[0].out_n = e.n; r[0].action = e.kind;
-  // the editor is who VOICE answers as now: a person you talk to next is told again
-  if e.kind == REDIT_ACT_VOICE_TO { r[0].voice_to_n = tw_copy(r[0].voice_to[..], 0, REDIT_FACING); }
 }
 // Typed or pasted text (the host's field on a phone): printable bytes only.
 realm_type :: (r: [] Realm, text: string) #export_c #effects(all) {

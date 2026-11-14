@@ -12,7 +12,8 @@
 //     places as kinds and each placed thing that stands as an entity (#13506: the tables `kinds` and
 //     `things`; an entity's ID is the thing's world ID, its place in the realm's list), `atonce`, the
 //     scripts table with the kind a script drives here (kind 1: the realm's characters) and its rows, the
-//     board and the tools as lists of switches, and `here`, the player's spot (rp_here, in whole metres);
+//     board and the tools as lists of switches, the realm's asks where the edit layer hands them over (rp_asks,
+//     #13528: the agent strip's turn is told them), and `here`, the player's spot (rp_here, in whole metres);
 //   - the scripts the tables name, as the page's script loader reads them (metaverse-engine/script/loader.coax):
 //     the world's script list, then "SLOT HASH" a row;
 //   - which loaded script drives a character (srw_pick: a row for that one wins over a row for the kind).
@@ -50,6 +51,7 @@ RP_BATCH :: 8192;          // bytes of a batch on its way (a realm's batches are
 RP_BATCH_KIND :: 520;      // the editor shell's: a world.edit.v1 batch
 RP_CARDS_POLL :: 5.0f32;   // seconds between reads of the visitors' proposals (a proposal is no world event)
 RP_CARDS_LATE :: 10.0f32;  // seconds a read of them may take before it is asked again
+RP_ASK_APPLIED :: 0; RP_ASK_WAITING :: 1; RP_ASK_REMOVING :: 2;   // an ask's state, as editor.model.v1 writes it
 
 RealmPage :: struct {
   on: bool;
@@ -73,6 +75,9 @@ RealmPage :: struct {
   nq: int; q_id: [EM_CARDS] int; q_x: [EM_CARDS] int; q_z: [EM_CARDS] int;
   q_thing: [EM_CARDS] [EM_NAME] u8; q_thing_n: [EM_CARDS] int; q_who: [EM_CARDS] [EM_NAME] u8; q_who_n: [EM_CARDS] int;
   q_all: int;
+  // the realm's asks (#13528): whether the edit layer handed them over, at which of its reads, and each one
+  asks: bool; asks_v: int;
+  naq: int; aq_id: [EM_ASKS] int; aq_state: [EM_ASKS] int; aq_words: [EM_ASKS] [EM_QWORDS] u8; aq_words_n: [EM_ASKS] int;
 }
 
 rp_world_id :: (p: [] RealmPage) -> string { return wf_id(p[0].f[..]); }
@@ -86,6 +91,7 @@ rp_open :: (p: [] RealmPage, slug: string) -> bool {
   p[0].cards_due = false; p[0].cards_host = -1; p[0].cards_since = 0; p[0].nq = 0; p[0].q_all = 0; p[0].cards_reopened = p[0].f[0].reopened;
   n := ct_put(p[0].cards_url[..], 0, "/api/playtest/realms/"); n = ct_put(p[0].cards_url[..], n, slug); n = ct_put(p[0].cards_url[..], n, "/proposals");
   p[0].cards_url_n = ifx n > p[0].cards_url.count then 0 else n;
+  p[0].asks = false; p[0].naq = 0;
   rp_remodel(p);
   return true;
 }
@@ -262,6 +268,19 @@ rp_batch :: (p: [] RealmPage, text: string) -> bool {
   return true;
 }
 
+// The realm's asks, as the edit layer read them (edit.coax redit_asks_to): begun at its read `v`, an ask at a
+// time (words made one line, cut to what the model holds), then ended, which tells the shell.
+rp_asks_begin :: (p: [] RealmPage, v: int) { p[0].asks = true; p[0].asks_v = v; p[0].naq = 0; }
+rp_ask :: (p: [] RealmPage, id: int, state: int, words: string) {
+  if p[0].naq >= EM_ASKS || id < 1 || state < RP_ASK_APPLIED || state > RP_ASK_REMOVING { return; }
+  k := p[0].naq; n := rp_line(p[0].aq_words[k][..], words);
+  // never a cut UTF-8 character at the end
+  if n == EM_QWORDS { while n > 0 && (p[0].aq_words[k][n - 1] & 0xC0) == 0x80 { n -= 1; } if n > 0 && p[0].aq_words[k][n - 1] >= 0xC0 { n -= 1; } while n > 0 && p[0].aq_words[k][n - 1] == ' ' { n -= 1; } }
+  if n == 0 { return; }
+  p[0].aq_id[k] = id; p[0].aq_state[k] = state; p[0].aq_words_n[k] = n; p[0].naq += 1;
+}
+rp_asks_end :: (p: [] RealmPage) { if p[0].on { rp_remodel(p); } }
+
 // ---- what the page tells the shell, and its script loader
 
 // Words as one printable line, at most out.count bytes, no space at either end: their length.
@@ -320,6 +339,10 @@ rp_model_write :: (p: [] RealmPage, out: [] u8) -> int {
   }
   n = em_at_once(out, n);
   n = ct_put(out, n, cast(string) p[0].part[0..<p[0].part_n]);
+  if p[0].asks {
+    n = em_asks(out, n);
+    for k: 0..<p[0].naq { n = em_ask(out, n, p[0].aq_id[k], p[0].aq_state[k], cast(string) p[0].aq_words[k][0..<p[0].aq_words_n[k]]); }
+  }
   for k: 0..<p[0].nq { n = em_card(out, n, p[0].q_id[k], p[0].q_x[k], p[0].q_z[k], cast(string) p[0].q_thing[k][0..<p[0].q_thing_n[k]], cast(string) p[0].q_who[k][0..<p[0].q_who_n[k]]); }
   if p[0].q_all > 0 { n = em_cards_all(out, n, p[0].q_all); }
   if p[0].here { n = em_here(out, n, p[0].here_x, p[0].here_z); }
@@ -477,4 +500,31 @@ rp_test_state :: (rev: int, out: [] u8) -> string {
   #assert p[0].cards_host == -1 && p[0].cards_due;
   // a page that is no longer its owner's forgets them
   p[0].nq = 1; rp_cards_for(p[..], false); #assert p[0].nq == 0 && !rp_cards_wants(p[..]);
+}
+#test "a realm's page tells the shell the realm's asks the edit layer hands over, after its lists" {
+  p: [1] RealmPage; o: [4096] u8; t: [2048] u8; b: [2048] u8;
+  #assert rp_open(p[..], "fairy-forest");
+  rp_step(p[..], 0.016); rp_sent(p[..], 0);
+  k := ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_state(4, o[..]));
+  #assert rp_answer(p[..], 0, cast(string) b[0..<k]);
+  rp_step(p[..], 0.016); rp_sent(p[..], 1);
+  k = ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_tables("", t[..]));
+  #assert rp_answer(p[..], 1, cast(string) b[0..<k]);
+  rev := rp_rev(p[..]);
+  rp_asks_begin(p[..], 3);
+  rp_ask(p[..], 7, RP_ASK_APPLIED, "A ghost cat\nby the gate ");
+  rp_ask(p[..], 0, RP_ASK_WAITING, "no ID");
+  rp_ask(p[..], 5, 9, "no state");
+  rp_ask(p[..], 6, RP_ASK_WAITING, "  ");
+  rp_ask(p[..], 5, RP_ASK_WAITING, "Fireflies");
+  rp_asks_end(p[..]);
+  #assert rp_rev(p[..]) == rev + 1 && p[0].naq == 2 && p[0].asks_v == 3;
+  m := rp_model(p[..]);
+  #assert ct_part(m, '\n', ct_parts(m, '\n') - 4) == "asks" && ct_part(m, '\n', ct_parts(m, '\n') - 3) == "q 7 applied A ghost cat by the gate" && ct_part(m, '\n', ct_parts(m, '\n') - 2) == "q 5 waiting Fireflies";
+  em: [1] EdModel; sc: [EM_BYTES] u8;
+  #assert em_read(em[..], m, sc[..]) && em[0].asks && em[0].naq == 2 && em[0].nl == 2;
+  // words longer than the model holds are cut on a character
+  long: [EM_QWORDS + 8] u8; for i: 0..<long.count { long[i] = 'a'; } long[EM_QWORDS - 1] = 0xC3; long[EM_QWORDS] = 0xA9;
+  rp_asks_begin(p[..], 4); rp_ask(p[..], 9, RP_ASK_WAITING, cast(string) long[..]); rp_asks_end(p[..]);
+  #assert p[0].naq == 1 && p[0].aq_words_n[0] == EM_QWORDS - 1 && em_read(em[..], rp_model(p[..]), sc[..]);
 }

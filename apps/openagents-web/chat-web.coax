@@ -129,8 +129,10 @@ CF_PROJECTS :: 23;      // the projects the person is in, under Projects in the 
 CF_HCALL :: 24;         // one request of a tool call a Gemini message made (chat-hosted.coax ch_path)
 CF_DECIDE :: 25;        // Accept or Decline on a visitor's idea for the realm in the editor (chat-ideas.coax)
 CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
-// A world step's realm tool (turn.coax WT_TOOL; a size is a set), for its icon and how a run of them is named.
-CW_STEP_TOOLS :: [7] string.["realm_world_place", "realm_world_move", "realm_world_turn", "realm_world_set", "realm_world_remove", "realm_world_undo", "realm_world_redo"];
+// A world step's realm tool (turn.coax WT_TOOL; a size is a set), for its icon and how a run of them is named: the
+// world's own, then a realm's (a switch of its lists, a pane shown, its asks, a look at the screen; #13528).
+CW_STEP_TOOLS :: [WT_TOOLS] string.["realm_world_place", "realm_world_move", "realm_world_turn", "realm_world_set", "realm_world_remove", "realm_world_undo", "realm_world_redo",
+  "realm_world_switch", "realm_show", "realm_ask", "realm_revise", "realm_ask_delete", "realm_row_delete", "realm_look"];
 CW_CL :: 8;            // Claude Code conversations listed beside the chat
 CW_CL_EVERY :: 5.0;    // seconds between reads of them
 CW_LOCAL_WAIT :: 12.0; // seconds a request to Coder on this machine may go unanswered before it is given up, so one that hangs can't stop the page
@@ -162,6 +164,15 @@ CW_FRAME :: 14;
 CW_GOTO :: 15;
 CW_HELD :: 320;        // bytes of a held page's address
 CW_PLANNED :: 8;       // an action for the page that opened this conversation: a world.plan.v1 for its editor
+// The composer's voice, in the editor (#13528): the page's voice (coax/web/voice.js) is the strip's while Talk is on.
+// From the host: the voice is there (CW_VOICE_ON); what it shows ("PHASE|CAPTION", voice.js message 50: a turn's final
+// words come as "heard|WORDS"), while the strip holds it (CW_VOICE); and the page's own words about what came of
+// a turn's realm steps (its action 34, CW_SAID), as an answer of the agent's.
+CW_VOICE :: 16; CW_VOICE_ON :: 17; CW_SAID :: 18;
+// To the host: the voice held or let go ("hold", "end"; voice.js action 7), and an answer to what it heard, to speak
+// (voice.js action 9).
+CW_ACT_VOICE :: 7; CW_ACT_SAY :: 9;
+CW_SAY_MOST :: 600;    // bytes of an answer spoken (voice.js says at most 600)
 
 ChatWeb :: struct {
   ready: bool; time: f32; dirty: bool; animating: bool;
@@ -223,6 +234,10 @@ ChatWeb :: struct {
   world: [1] WorldTurn;              // the world the editor round this conversation has open, as last told; none on /chat
   wwire: [WT_BYTES] u8; wwire_n: int;   // its bytes, as they go with a turn
   planned: [WP_BYTES] u8; planned_n: int;   // a hosted turn's plan, until the page has taken it to its editor
+  // the composer's voice (#13528): there at all, held now, the turn it heard waiting on its answer to speak, and
+  // the act for the host (CW_ACT_VOICE, CW_ACT_SAY) with its words
+  voice_ok: bool; talking: bool; spoken: bool;
+  vact: [CW_SAY_MOST] u8; vact_n: int; vact_kind: int;
   opened: [WP_OPEN] [WT_FID] u8; nopened: int;   // the attachments a hosted turn asked to open (#13468): its second ask carries them
   pmodel: int;                       // the model a hosted turn in the editor went to
   card_due: [WT_WORLD] u8; card_due_n: int;   // a world an agent's tool named: its card is read when the page is free
@@ -637,6 +652,8 @@ cw_build :: (s: [] ChatWeb) {
   }
   f := k_composer_begin(t, u, "composer", "Ask anything");
   tr_attr(t, f, AT_FOCUS, "");
+  // Talk, where the page has a voice: held, what is said is sent as a message, and the answer is spoken
+  if s[0].voice_ok { talk := k_icon_button(t, "composer.talk", ifx s[0].talking then IC_MIC_FILLED else IC_MIC, ifx s[0].talking then "Stop talking" else "Talk"); }
   gear := k_icon_button(t, "settings", IC_SETTINGS, "Settings");
   names := CW_MODEL_NAMES; agents := CW_AGENT_NAMES; lnames := CW_LM_NAMES; counts := CW_LM_N;
   agent := cw_agent(s);
@@ -1508,6 +1525,7 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].time += step;
   cw_tick(s);
+  cw_speak(s);
   if !s[0].dirty && !s[0].animating { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
@@ -1563,6 +1581,18 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     if !cw_keeps(s, url) && url.count > 0 && url.count <= CW_HELD && url[0] == '/' { cw_go_to(s, url, false); }   // another page: the browser goes
     s[0].dirty = true; return;
   }
+  if kind == CW_VOICE_ON { s[0].voice_ok = slot == 1; if !s[0].voice_ok { s[0].talking = false; } s[0].dirty = true; return; }
+  if kind == CW_VOICE {
+    n := ifx length < 0 || length > CW_INBOX then 0 else length;
+    cw_heard(s, cast(string) s[0].inbox[0..<n]);
+    s[0].dirty = true; return;
+  }
+  if kind == CW_SAID {
+    // what came of a turn's realm steps, in the page's words: an answer of the agent's under the turn
+    n := ifx length < 0 || length > CW_INBOX then 0 else length;
+    if n > 0 { cw_add(s, cast(string) s[0].inbox[0..<n], CW_AGENT, 0); }
+    s[0].dirty = true; return;
+  }
   if kind == CW_WORLD {
     // bytes that are not a turn mean no world: the next turn goes without one
     n := ifx length < 0 || length > WT_BYTES then 0 else length;
@@ -1586,6 +1616,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   else if kind == CW_SUBMIT && id == "composer" { cw_send(s); }
   else if kind == CW_SUBMIT && id == "claude.key" { cw_connect(s); }
   else if kind == CW_CLICK && ci_press(s, id) {}   // Accept or Decline on a visitor's idea (chat-ideas.coax)
+  else if kind == CW_CLICK && id == "composer.talk" { cw_talk(s); }
   else if kind == CW_CLICK && id == "composer.send" {
     if s[0].live { cw_stop(s); }
     else if s[0].lrun && !cw_has_words(s) { s[0].stop_due = true; }
@@ -1698,9 +1729,61 @@ coaxial_chatweb_asked :: (s: [] ChatWeb) #export_c #effects(all) {
 }
 // An action for the page that opened this conversation (dom-host's dom_act): its kind (0: none), its bytes at
 // `planned`, and its taking.
-coaxial_chatweb_act_kind :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].planned_n > 0 then CW_PLANNED else 0; }
-coaxial_chatweb_act_len :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].planned_n else 0; }
-coaxial_chatweb_act_done :: (s: [] ChatWeb) #export_c #effects(all) { if s.count > 0 { s[0].planned_n = 0; } }
+// The plan goes first; then the voice's act (`vact`: held or let go, or words to speak).
+coaxial_chatweb_act_kind :: (s: [] ChatWeb) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return ifx s[0].planned_n > 0 then CW_PLANNED else s[0].vact_kind;
+}
+coaxial_chatweb_act_planned :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && s[0].planned_n > 0; }
+coaxial_chatweb_act_len :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count < 1 then 0 else ifx s[0].planned_n > 0 then s[0].planned_n else s[0].vact_n; }
+coaxial_chatweb_act_done :: (s: [] ChatWeb) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if s[0].planned_n > 0 { s[0].planned_n = 0; } else { s[0].vact_kind = 0; s[0].vact_n = 0; }
+}
+// The voice's act for the host: one at a time; a newer one takes the place of one not yet taken.
+cw_voice_act :: (s: [] ChatWeb, kind: int, words: string) {
+  n := 0;
+  for c: words {
+    if n >= CW_SAY_MOST { break; }
+    s[0].vact[n] = c; n += 1;
+  }
+  while n > 0 && n < words.count && (words[n] & 0xC0) == 0x80 { n -= 1; }   // a cut keeps whole characters
+  s[0].vact_n = n; s[0].vact_kind = kind;
+}
+// Talk pressed: the voice is held, or let go (its last words then come as heard).
+cw_talk :: (s: [] ChatWeb) {
+  if !s[0].voice_ok { return; }
+  s[0].talking = !s[0].talking;
+  cw_voice_act(s, CW_ACT_VOICE, ifx s[0].talking then "hold" else "end");
+}
+// What the voice shows, while the strip holds it: its final words are the person's message, sent as typed. When the
+// message can't go now, that is said back, so the voice is not left waiting.
+cw_heard :: (s: [] ChatWeb, text: string) {
+  bar := 0;
+  while bar < text.count && text[bar] != '|' { bar += 1; }
+  phase := cast(string) text[0..<bar];
+  words := ifx bar + 1 <= text.count then cast(string) text[bar + 1..<text.count] else "";
+  if phase == "off" { s[0].talking = false; s[0].spoken = false; return; }
+  if phase == "notice" { s[0].talking = false; if words.count > 0 { cw_say(s, words); } return; }
+  if phase != "heard" || words.count == 0 { return; }
+  s[0].talking = false;
+  n := ifx words.count > CW_DRAFT then CW_DRAFT else words.count;
+  for i: 0..<n { s[0].draft[i] = words[i]; }
+  s[0].draft_n = n;
+  sends := s[0].sends;
+  cw_send(s);
+  if s[0].send_due { s[0].spoken = true; return; }   // it goes when the page's read is back
+  if s[0].sends == sends { s[0].draft_n = 0; cw_voice_act(s, CW_ACT_SAY, "One at a time: ask again in a moment."); return; }
+  s[0].spoken = true;
+}
+// A spoken message's answer, once it has come: its words are spoken back (the first CW_SAY_MOST bytes).
+cw_speak :: (s: [] ChatWeb) {
+  if !s[0].spoken || s[0].live || s[0].flight != CF_NONE || s[0].vact_kind != 0 { return; }
+  s[0].spoken = false;
+  k := s[0].count - 1;
+  said := ifx k >= 0 && s[0].who[k] == CW_AGENT && s[0].len[k] > 0 then cw_text(s, k) else ifx s[0].error_n > 0 then cast(string) s[0].error[0..<s[0].error_n] else "";
+  if said.count > 0 { cw_voice_act(s, CW_ACT_SAY, said); }
+}
 // A setting for the host to keep in this browser (dom-host.js dom_keep): its bytes at `keep`, and its taking.
 coaxial_chatweb_keep_len :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].keep_n else 0; }
 coaxial_chatweb_keep_done :: (s: [] ChatWeb) #export_c #effects(all) { if s.count > 0 { s[0].keep_n = 0; } }
@@ -2384,7 +2467,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   cw_test_enter(s, "composer");
   body := cw_test_body(s);
   #assert s[0].flight == CF_PLAN && cw_test_door(s) == "/api/chat/complete" && s[0].live;
-  #assert cw_test_has(body, "\"json_schema\":{\"name\":\"world_turn\"") && cw_test_has(body, "\"enum\":[\"place\",\"move\",\"turn\",\"size\",\"remove\",\"undo\",\"redo\"]") && cw_test_has(body, "\"stream\":false");
+  #assert cw_test_has(body, "\"json_schema\":{\"name\":\"world_turn\"") && cw_test_has(body, "\"enum\":[\"place\",\"move\",\"turn\",\"size\",\"remove\",\"undo\",\"redo\",\"switch\",\"show\",\"ask\",\"revise\",\"unask\",\"unrow\",\"look\"]") && cw_test_has(body, "\"stream\":false");
   #assert cw_test_has(body, "- place: a new thing") && cw_test_has(body, "world.turn.v1 splice dev 7 2\\nhere 420 -75\\nk 1001 Cargo crate") && cw_test_has(body, "what stands here?");
   cw_test_planned(s, "{\"route\":\"talk\",\"say\":\"A crate and a rover.\",\"steps\":[]}");
   #assert !s[0].live && s[0].count == 2 && cw_text(s, 1) == "A crate and a rover." && coaxial_chatweb_act_kind(s) == 0 && s[0].error_n == 0;
@@ -2408,6 +2491,48 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   cw_test_enter(s, "composer");
   cw_test_planned(s, "{\"route\":\"edit\",\"say\":\"Done.\",\"steps\":[{\"tool\":\"remove\",\"kind\":0,\"id\":9,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}");
   #assert !s[0].live && coaxial_chatweb_act_kind(s) == 0 && cw_test_has(cast(string) s[0].error[0..<s[0].error_n], "a thing that is not in this world");
+}
+#test "in a realm's editor Talk holds the page's voice: what it hears is sent, the turn's realm steps go to the editor, its answer is spoken, and the page's words come in under it" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  cw_test_world(s, WT_TEST_REALM);
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  // no voice on the page: no Talk
+  #assert tr_find(t, "composer.talk") < 0;
+  coaxial_chatweb_event(s, CW_VOICE_ON, 1, 0);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "composer.talk") >= 0 && tr_attr_of(t, tr_find(t, "composer.talk"), AT_LABEL) == "Talk";
+  cw_test_press(s, "composer.talk");
+  #assert s[0].talking && coaxial_chatweb_act_kind(s) == CW_ACT_VOICE && cast(string) s[0].vact[0..<coaxial_chatweb_act_len(s)] == "hold";
+  coaxial_chatweb_act_done(s);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_attr_of(t, tr_find(t, "composer.talk"), AT_LABEL) == "Stop talking" && coaxial_chatweb_act_kind(s) == 0;
+  // what it hears is the person's message, sent as typed, with the realm's lists and asks in the turn
+  heard := "heard|add a dragon by the lake";
+  for i: 0..<heard.count { s[0].inbox[i] = heard[i]; }
+  coaxial_chatweb_event(s, CW_VOICE, 0, heard.count);
+  #assert !s[0].talking && s[0].spoken && s[0].flight == CF_PLAN && cw_text(s, 0) == "add a dragon by the lake";
+  #assert cw_test_has(cw_test_body(s), "- ask: ") && cw_test_has(cw_test_body(s), "\\nq 7 applied A ghost cat by the gate\\n");
+  cw_test_planned(s, "{\"route\":\"edit\",\"say\":\"We asked for a dragon by the lake.\",\"open\":[],\"steps\":[{\"tool\":\"ask\",\"kind\":0,\"id\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0,\"list\":0,\"on\":0,\"pane\":\"\",\"words\":\"a dragon by the lake\"}]}");
+  // the step shows as the realm's ask tool and goes to the editor as the plan, before anything is spoken
+  #assert coaxial_chatweb_act_kind(s) == CW_PLANNED && cw_test_has(cast(string) s[0].planned[0..<coaxial_chatweb_act_len(s)], "\nask a dragon by the lake\n");
+  #assert s[0].who[s[0].count - 2] == CW_TOOL && cw_test_has(cw_text(s, s[0].count - 2), "realm_ask");
+  coaxial_chatweb_act_done(s);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert !s[0].spoken && coaxial_chatweb_act_kind(s) == CW_ACT_SAY && cast(string) s[0].vact[0..<coaxial_chatweb_act_len(s)] == "We asked for a dragon by the lake.";
+  coaxial_chatweb_act_done(s);
+  // the page's own words about what came of it are the agent's, under the turn
+  said := "Added to the list. It isn't applied yet: it waits on the list for code.";
+  for i: 0..<said.count { s[0].inbox[i] = said[i]; }
+  coaxial_chatweb_event(s, CW_SAID, 0, said.count);
+  #assert s[0].who[s[0].count - 1] == CW_AGENT && cw_text(s, s[0].count - 1) == said;
+  // the voice gone off lets Talk go
+  cw_test_press(s, "composer.talk");
+  off := "off|";
+  for i: 0..<off.count { s[0].inbox[i] = off[i]; }
+  coaxial_chatweb_event(s, CW_VOICE, 0, off.count);
+  #assert !s[0].talking;
 }
 #test "in the editor a Gemini turn may open attachments first: it says what it opened and is asked again with them" {
   h: [1] CwTest; s := h[0].s[..];

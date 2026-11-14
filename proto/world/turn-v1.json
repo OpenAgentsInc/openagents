@@ -5,7 +5,7 @@
  "check": "coax/web/tool.sh coax/lib/agent/world/turn-profile.coax proto/world/turn-v1.json",
  "spec": "docs/protocol/world-turn-v1.md",
  "schema": "world.turn.v1",
- "about": "What the editor tells the conversation in its foot, sent with each turn (GitHub #13418): the world, its lane and revision, the selected thing, the point last tapped, the kinds and the things. And world.plan.v1: what a hosted turn asks the editor to do, a step a line, each step one of the hosted world tools. The editor shell writes the turn and reads the plan; the chat page reads the turn and writes the plan. Neither leaves the page.",
+ "about": "What the editor tells the conversation in its foot, sent with each turn (GitHub #13418): the world, its lane and revision, the selected thing, the point last tapped, the kinds and the things, and for a realm its lists of switches and its asks (#13528). And world.plan.v1: what a hosted turn asks the editor to do, a step a line, each step one of the hosted world tools. The editor shell writes the turn and reads the plan; the chat page reads the turn and writes the plan. Neither leaves the page.",
  "limits": {
   "world_bytes": 32,
   "name_bytes": 40,
@@ -14,9 +14,13 @@
   "bytes": 24576,
   "files": 24,
   "plan_steps": 16,
-  "plan_bytes": 1024,
+  "plan_bytes": 4096,
   "say_bytes": 2000,
-  "cards": 16
+  "cards": 16,
+  "lists": 4,
+  "switches": 96,
+  "asks": 24,
+  "step_words": 200
  },
  "lines": [
   "world.turn.v1 WORLD LANE REV SELECTED",
@@ -25,6 +29,10 @@
   "a ID KIND BYTES NAME",
   "an NOTE",
   "at TAGS",
+  "l TABLE TITLE",
+  "w ROW ON LABEL",
+  "asks",
+  "q ID STATE WORDS",
   "e ID KIND X Z YAW",
   "more N",
   "card ID X Z THING",
@@ -49,6 +57,21 @@
  "empty": {
   "wire": "world.turn.v1 splice live 0 0\n"
  },
+ "realm": {
+  "wire": "world.turn.v1 moonlit-marsh dev 4 0\nl rows Features\nw 1 1 Glowing mushrooms\nw 2 0 A bridge over the stream\nl tools Tools visitors get\nw 1 1 build\nasks\nq 7 applied A ghost cat by the gate\nq 5 waiting Fireflies that follow you\n",
+  "lists": 2,
+  "switches": 3,
+  "asks": 2,
+  "plan": "world.plan.v1 moonlit-marsh 4\nswitch 0 2 1\nask a dragon by the lake\nrevise no mushrooms\nunask 7\nunrow 0 1\nshow files\n",
+  "look": "world.plan.v1 moonlit-marsh 4\nlook what is that dark strip\n",
+  "rejected": [
+   "world.turn.v1 moonlit-marsh dev 4 0\nw 1 1 x\n",
+   "world.turn.v1 moonlit-marsh dev 4 0\nq 7 done x\n",
+   "world.turn.v1 moonlit-marsh dev 4 0\nasks now\n",
+   "world.turn.v1 moonlit-marsh dev 4 0\nl rows Features\nw 0 1 x\n",
+   "world.turn.v1 moonlit-marsh dev 4 0\nl rows Features\nw 1 2 x\n"
+  ]
+ },
  "rejected": [
   "",
   "world.turn.v2 splice dev 0 0\n",
@@ -71,7 +94,14 @@
    "size ID PERCENT",
    "remove ID",
    "undo",
-   "redo"
+   "redo",
+   "switch LIST ROW ON",
+   "show PANE",
+   "ask WORDS",
+   "revise WORDS",
+   "unask ID",
+   "unrow LIST ROW",
+   "look WORDS"
   ],
   "tools": [
    "place",
@@ -80,7 +110,14 @@
    "size",
    "remove",
    "undo",
-   "redo"
+   "redo",
+   "switch",
+   "show",
+   "ask",
+   "revise",
+   "unask",
+   "unrow",
+   "look"
   ],
   "wire": "world.plan.v1 splice 7\nplace 1001 420 -75 90\nmove 2 100 -200\nturn 1 -45\nsize 2 150\nremove 1\n",
   "steps": 5,
@@ -95,7 +132,10 @@
    "world.plan.v1 splice 7\nmove 0 1 1\n",
    "world.plan.v1 splice 7\nsize 2 1\n",
    "world.plan.v1 splice 7\nplace 1001 420 -75 90 extra\n",
-   "world.plan.v2 splice 7\nundo\n"
+   "world.plan.v2 splice 7\nundo\n",
+   "world.plan.v1 splice 7\nlook x\nshow files\n",
+   "world.plan.v1 splice 7\nshow map\n",
+   "world.plan.v1 splice 7\nswitch 0 2 5\n"
   ],
   "rejected_replies": [
    "nothing",
@@ -104,6 +144,13 @@
    "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"paint\",\"kind\":0,\"id\":1,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}",
    "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"remove\",\"kind\":0,\"id\":9,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}",
    "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"place\",\"kind\":5,\"id\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}"
+  ],
+  "panes": [
+   "files",
+   "scripts",
+   "code",
+   "revisions",
+   "assets"
   ]
  },
  "cards": {

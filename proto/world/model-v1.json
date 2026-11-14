@@ -26,7 +26,9 @@
     "lists": 4,
     "switches": 96,
     "label_bytes": 48,
-    "cards": 16
+    "cards": 16,
+    "asks": 24,
+    "ask_bytes": 120
   },
   "lines": [
     "editor.model.v1 WORLD LANE REV UNDO REDO SELECTED",
@@ -54,6 +56,8 @@
     "atonce",
     "list TABLE COLUMN TITLE",
     "sw ROW ON LABEL",
+    "asks",
+    "q ID STATE WORDS",
     "card ID X Z THING",
     "from WHO",
     "cards N",
@@ -136,11 +140,12 @@
     "table": "scripts"
   },
   "lists": {
-    "about": "A realm's world (#13478): no things and one lane, with its board and the tools its visitors get as two lists of switches. A switch is a cell edit of the list's table and column, to 0 or 1.",
-    "wire": "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\natonce\nlist rows on Features\nsw 1 1 Glowing mushrooms\nsw 2 0 A bridge over the stream\nlist tools on Tools visitors get\nsw 1 1 build\nsw 3 0 jump\n",
+    "about": "A realm's world (#13478): no things and one lane, with its board and the tools its visitors get as two lists of switches. A switch is a cell edit of the list's table and column, to 0 or 1. A realm that keeps a list of asks says so (`asks`) and lists them (#13528); the conversation in the editor's foot adds, revises and deletes them.",
+    "wire": "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\natonce\nlist rows on Features\nsw 1 1 Glowing mushrooms\nsw 2 0 A bridge over the stream\nlist tools on Tools visitors get\nsw 1 1 build\nsw 3 0 jump\nasks\nq 7 applied A ghost cat by the gate\nq 5 waiting Fireflies that follow you\n",
     "lists": 2,
     "switches": 4,
-    "at_once": true
+    "at_once": true,
+    "asks": 2
   },
   "cards": {
     "about": "Visitors' proposals waiting for the owner of a realm's world (#13527, #13542): each card's ID on the realm's server, where the thing would stand, what it is and who proposed it, and how many wait in all when fewer are listed.",

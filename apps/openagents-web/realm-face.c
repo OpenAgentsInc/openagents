@@ -30,10 +30,8 @@
 // and their answer, theirs or the house's lines, is spoken (realm_voice_say);
 // voice.js is told whom you face (realm_voice_to), so the voice host leaves
 // those turns to this page instead of answering as the house.
-// Facing no one, the realm's owner and admins face the realm itself: what VOICE
-// hears goes to the edit layer's selector (realm_hear; metaverse/edit/edit.coax),
-// which switches the realm's rows, opens the editing screen, looks at the
-// screen or answers, and its reply is shown and spoken.
+// Facing no one, the voice host answers as the house; the realm's owner talks
+// to the realm itself through the editor's agent strip (#13528).
 //
 // The Sandbox's set pieces (rl-sandbox-pieces): in edit mode MAKE A SET
 // PIECE (P) takes one sentence to the server's selector
@@ -906,10 +904,8 @@ static void take_asks(void) {
     realm_remember(realm_of(), true, house.reply);
   }
   if (asks & 8) house = metaverse_haunt_talk(house, -1, 0);
-  // VOICE heard a question: in a conversation, theirs to answer; else the realm's owner's and admins'
-  // words go to the edit layer's selector (realm_hear); the voice host answers the rest as the house.
+  // VOICE heard a question: in a conversation, theirs to answer; the voice host answers the rest as the house.
   if ((asks & 8192) && house.talking >= 0) ask_npc(realm_heard(realm_of()), true);
-  else if (asks & 8192) { if (realm_hear(realm_of())) edit_face_drain(ed()); }
   // Walked away: the conversation ends.
   if (house.talking >= 0 && !metaverse_haunt_reach(house, house.talking)) house = metaverse_haunt_talk(house, -1, 0);
   follow_talk();

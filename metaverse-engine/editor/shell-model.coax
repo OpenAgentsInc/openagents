@@ -41,6 +41,9 @@
 //   list TABLE COLUMN TITLE             a content table whose rows are each on or off (a realm's board, the tools its visitors get):
 //                                       the table, the column a switch sets to 0 or 1, and the list's title
 //   sw ROW ON LABEL                     a row of the list on the nearest `list` line above: its ID, 0 or 1, and its name
+//   asks                                the world is a realm that keeps a list of asks (#13528): the conversation in the foot
+//                                       may add, revise and delete them (shell.coax ES_REALM)
+//   q ID STATE WORDS                    an ask: its ID, applied, waiting or removing, and its words (at most EM_QWORDS bytes)
 //   card ID X Z THING                   a visitor's proposal waiting for the owner (#13527, #13542): its ID on the realm's
 //                                       server, where the thing would stand in whole centimetres, and what it is
 //   from WHO                            who proposed the card on the line above, as people read it
@@ -49,7 +52,7 @@
 //                                       left out until a point is tapped
 //   no WORDS                            the last refusal, in words
 // Lines come in the order they are listed in, the `templates` line after `table`, each `tp` after its `t`, `atonce`
-// after `local`, each list's `sw` lines after its `list`, and each `from` after its `card`.
+// after `local`, each list's `sw` lines after its `list`, the `q` lines after `asks`, and each `from` after its `card`.
 // (The lists above are in the order the lines were added to the shape.) Every number is whole. A name and a value are one line of printable
 // bytes. em_read refuses any bytes but the ones em_write writes (it writes what it read and
 // compares).
@@ -78,6 +81,9 @@ EM_LISTS :: 4;         // lists of switches (#13478)
 EM_SWITCHES :: 96;     // their rows, in all (a realm's board is 64 rows and 16 tools: metaverse/edit/realm-world.coax)
 EM_LABEL :: 48;        // bytes in a row's name
 EM_CARDS :: 16;        // proposals waiting for the owner a model lists (#13527)
+EM_ASKS :: 24;         // asks a model lists (world.turn.v1 WT_ASKS)
+EM_QWORDS :: 120;      // bytes of an ask's words (WT_QWORDS)
+EM_QSTATE :: [3] string.["applied", "waiting", "removing"];
 
 EdModel :: struct {
   ok: bool;
@@ -114,6 +120,9 @@ EdModel :: struct {
   nq: int; q_id: [EM_CARDS] int; q_x: [EM_CARDS] int; q_z: [EM_CARDS] int;
   q_thing: [EM_CARDS] [EM_NAME] u8; q_thing_n: [EM_CARDS] int; q_who: [EM_CARDS] [EM_NAME] u8; q_who_n: [EM_CARDS] int;
   q_all: int;                            // 0: the model lists them all
+  // a realm's asks (#13528): whether the world keeps them, and each one
+  asks: bool;
+  naq: int; aq_id: [EM_ASKS] int; aq_state: [EM_ASKS] int; aq_words: [EM_ASKS] [EM_QWORDS] u8; aq_words_n: [EM_ASKS] int;
   here: bool; here_x: int; here_z: int;
   no: [EM_WORDS] u8; no_n: int;
 }
@@ -293,6 +302,14 @@ em_cards_all :: (out: [] u8, at: int, n_all: int) -> int {
   n := ct_put(out, at, "cards "); n = ct_put_int(out, n, n_all);
   return ct_put(out, n, "\n");
 }
+em_asks :: (out: [] u8, at: int) -> int { return ct_put(out, at, "asks\n"); }
+// An ask: its ID, its state (0 applied, 1 waiting, 2 removing) and its words.
+em_ask :: (out: [] u8, at: int, id: int, state: int, words: string) -> int {
+  if id < 1 || state < 0 || state > 2 || !em_text_ok(words, EM_QWORDS) { return out.count + 1; }
+  states := EM_QSTATE;
+  n := ct_put(out, at, "q "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, states[state]); n = ct_put(out, n, " "); n = ct_put(out, n, words);
+  return ct_put(out, n, "\n");
+}
 em_here :: (out: [] u8, at: int, x: int, z: int) -> int {
   if x < -WE_REACH || x > WE_REACH || z < -WE_REACH || z > WE_REACH { return out.count + 1; }
   n := ct_put(out, at, "here "); n = ct_put_int(out, n, x); n = ct_put(out, n, " "); n = ct_put_int(out, n, z);
@@ -335,6 +352,8 @@ em_write :: (m: [] EdModel, out: [] u8) -> string {
     n = em_list(out, n, cast(string) m[0].l_table[l][0..<m[0].l_table_n[l]], cast(string) m[0].l_col[l][0..<m[0].l_col_n[l]], cast(string) m[0].l_title[l][0..<m[0].l_title_n[l]]);
     for k: 0..<m[0].nw { if m[0].w_list[k] == l { n = em_switch(out, n, m[0].w_row[k], m[0].w_on[k], cast(string) m[0].w_label[k][0..<m[0].w_label_n[k]]); } }
   }
+  if m[0].asks { n = em_asks(out, n); }
+  for k: 0..<m[0].naq { n = em_ask(out, n, m[0].aq_id[k], m[0].aq_state[k], cast(string) m[0].aq_words[k][0..<m[0].aq_words_n[k]]); }
   for k: 0..<m[0].nq { n = em_card(out, n, m[0].q_id[k], m[0].q_x[k], m[0].q_z[k], cast(string) m[0].q_thing[k][0..<m[0].q_thing_n[k]], cast(string) m[0].q_who[k][0..<m[0].q_who_n[k]]); }
   if m[0].q_all > 0 { n = em_cards_all(out, n, m[0].q_all); }
   if m[0].here { n = em_here(out, n, m[0].here_x, m[0].here_z); }
@@ -362,7 +381,7 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
   m[0].all = false; m[0].local = false; m[0].land = false; m[0].nm = 0; m[0].kinds_all = 0;
   m[0].ptable_n = 0; m[0].ctable_n = 0; m[0].clock_n = 0; m[0].na = 0; m[0].np = 0; m[0].asel = 0;
   m[0].stable_n = 0; m[0].nsk = 0; m[0].ns = 0;
-  m[0].at_once = false; m[0].nl = 0; m[0].nw = 0; m[0].nq = 0; m[0].q_all = 0;
+  m[0].at_once = false; m[0].nl = 0; m[0].nw = 0; m[0].nq = 0; m[0].q_all = 0; m[0].asks = false; m[0].naq = 0;
   for k: 0..<WE_COLS { m[0].cols[k] = false; }
   if text.count < EM_SCHEMA.count || text.count > EM_BYTES { return false; }
   lines := ct_parts(text, '\n');
@@ -473,6 +492,15 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
       m[0].q_who_n[m[0].nq - 1] = em_copy(m[0].q_who[m[0].nq - 1][..], em_rest(line, 1));
     } else if word == "cards" {
       m[0].q_all = ct_num(ct_part(line, ' ', 1)).v;
+    } else if word == "asks" && line == "asks" {
+      m[0].asks = true;
+    } else if word == "q" && m[0].naq < EM_ASKS {
+      k := m[0].naq; states := EM_QSTATE;
+      m[0].aq_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].aq_state[k] = -1;
+      for j: 0..<3 { if ct_part(line, ' ', 2) == states[j] { m[0].aq_state[k] = j; } }
+      if m[0].aq_state[k] < 0 { return false; }
+      m[0].aq_words_n[k] = em_copy(m[0].aq_words[k][..], em_rest(line, 3));
+      m[0].naq += 1;
     } else if word == "here" {
       m[0].here = true; m[0].here_x = ct_num(ct_part(line, ' ', 1)).v; m[0].here_z = ct_num(ct_part(line, ' ', 2)).v;
     } else if word == "no" {
@@ -689,6 +717,9 @@ em_test_lists :: (out: [] u8) -> string {
   n = em_list(out, n, "tools", "on", "Tools visitors get");
   n = em_switch(out, n, 1, true, "build");
   n = em_switch(out, n, 3, false, "jump");
+  n = em_asks(out, n);
+  n = em_ask(out, n, 7, 0, "A ghost cat by the gate");
+  n = em_ask(out, n, 5, 1, "Fireflies that follow you");
   return ifx n > out.count then "" else cast(string) out[0..<n];
 }
 #test "lists of switches: a table, its column and title, then its rows, read as written; one lane says so" {
@@ -699,6 +730,9 @@ em_test_lists :: (out: [] u8) -> string {
   #assert cast(string) t0[0..<m[0].l_table_n[0]] == "rows" && cast(string) c1[0..<m[0].l_col_n[1]] == "on" && cast(string) n1[0..<m[0].l_title_n[1]] == "Tools visitors get";
   #assert m[0].w_list[1] == 0 && m[0].w_row[1] == 2 && !m[0].w_on[1] && cast(string) lb[0..<m[0].w_label_n[1]] == "A bridge over the stream" && m[0].w_list[3] == 1 && m[0].w_row[3] == 3 && m[0].w_on[2];
   #assert em_switch_at(m, 0, 2) == 1 && em_switch_at(m, 1, 3) == 3 && em_switch_at(m, 1, 2) == -1 && em_switch_at(m, 2, 1) == -1;
+  // a realm's asks (#13528) come after the lists
+  qw := m[0].aq_words[1];
+  #assert m[0].asks && m[0].naq == 2 && m[0].aq_id[0] == 7 && m[0].aq_state[1] == 1 && cast(string) qw[0..<m[0].aq_words_n[1]] == "Fireflies that follow you";
   // the same model without the lines reads as before: no lists, and a publish is there to make
   #assert em_read(m, "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\n", h[0].scratch[..]) && !m[0].at_once && m[0].nl == 0 && m[0].nw == 0;
   // what is not one is not written or read
@@ -708,7 +742,9 @@ em_test_lists :: (out: [] u8) -> string {
   #assert em_switch(o, 0, 0, true, "x") > EM_BYTES && em_switch(o, 0, 1, true, "") > EM_BYTES && em_switch(o, 0, 1, true, "x ") > EM_BYTES && em_switch(o, 0, 1, true, cast(string) long[..]) > EM_BYTES;
   #assert em_switch(o, 0, 1, true, cast(string) long[0..<EM_LABEL]) == 8 + EM_LABEL;
   head := "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\n";
-  for bad: [6] string.["sw 1 1 x\n", "list rows on Features\nsw 1 2 x\n", "list rows on Features\nsw 01 1 x\n", "list rows on Features\nsw 1 1\n", "list rows on\n", "atonce now\n"] {
+  #assert em_ask(o, 0, 0, 0, "x") > EM_BYTES && em_ask(o, 0, 1, 3, "x") > EM_BYTES && em_ask(o, 0, 1, 0, "") > EM_BYTES && em_ask(o, 0, 1, 0, "two\nlines") > EM_BYTES;
+  for bad: [9] string.["sw 1 1 x\n", "list rows on Features\nsw 1 2 x\n", "list rows on Features\nsw 01 1 x\n", "list rows on Features\nsw 1 1\n", "list rows on\n", "atonce now\n",
+                       "asks now\n", "asks\nq 7 done x\n", "q 7 applied x\nasks\n"] {
     b: [256] u8; k := ct_put(b[..], 0, head); k = ct_put(b[..], k, bad);
     #assert !em_read(m, cast(string) b[0..<k], h[0].scratch[..]);
   }

@@ -52,7 +52,10 @@ one-a-player-every-2-seconds pace. No words are matched anywhere: the model pick
 - input: `redit_key` (0 not ours, 1 used, 2 typed text for the host), `redit_pointer`;
 - drawing: `redit_hud(ed, out, at, anchor)` draws EDIT in the box the realm gives and the open pane
   under it; the realm draws `plate_box[0..<plate_n]` with its own `plate`;
-- actions: `redit_take_action(ed, outbox)` first in the realm's action (push to talk);
+- actions: `redit_take_action(ed, outbox)` first in the realm's action (action 34: words for the
+  editor's agent strip, below);
+- the editor shell's realm steps: `redit_realm(ed, text)` for message 530 (`REDIT_MSG_REALM`), and
+  `redit_asks_to(ed, world)` each frame, which reads the asks for the shell's model;
 - the C face: `edit-face.h` (`edit_face_drain`, `edit_face_message`, and `EDIT_FACE_SHELL` for the
   editor shell, below).
 
@@ -108,7 +111,7 @@ Forest and Hecate's Cemetery do; a made realm calls `rp_here` itself). See
 
 So the layer's own SETTINGS pane is gone, and a tap on a FEATURES row switches nothing: the rows and
 the visitors' tools are switched in the shell. FEATURES shows OPEN THE EDITOR, which opens this page
-again with `?edit`, and a spoken "open the settings" does the same. The layer's own placing
+again with `?edit`. The layer's own placing
 (`redit_place`, which posted to `/place`) is gone; no realm called it.
 
 A row switched, the visitors' tools and a thing placed are world edits only (#13514): the routes
@@ -127,8 +130,8 @@ What is left of the layer's EDIT, and where each goes (#13515):
 | Item | Becomes | State |
 |---|---|---|
 | A visitor's proposal | a pending world batch the owner accepts in the shell's agent strip | built: a visitor's spawns on the realm's world are kept as cards (202, `rpp_propose`: building on, fewer than 50 waiting), and ACCEPT is the owner's own spawn in the world (0195). A world UNDO of it takes the thing away; the card stays decided. Each card is a turn of the agent strip (#13527, below) |
-| The asks (ADD, revise, DELETE, a document) | turns of the shell's agent strip: words to an agent | follow-up |
-| The realm's voice (HOLD TO TALK, the selector) | the agent strip's input | follow-up |
+| The asks (ADD, revise, DELETE, a document) | tools of the shell's agent strip: `ask`, `revise`, `unask`, `unrow`, and a document opened first | built (#13528): below, "The asks and the voice in the agent strip" |
+| The realm's voice (HOLD TO TALK, the selector) | the agent strip's composer, with Talk | built (#13528): a spoken switch is a `switch` step, a `cell` edit of the rows table; show and look are tools of the turn |
 | A character's lore and quests | content tables of the realm's world and `cell` edits, as the rows are | follow-up |
 | YOUR COMPUTER, YOUR AGENT | the shell's agent strip | follow-up |
 
@@ -156,20 +159,39 @@ shell instead:
 A made realm knows its maker by the player key, so the conversation's asks to
 `/api/playtest/realms/` carry `X-Verse-Player` as the page's own do (`coax/web/dom-host.js`).
 
-Spoken and typed commands about the editing screen go to `redit_heard(ed, word, row, on, pane,
-out)` (migration 0104's `switch` and `show` edits): it switches one of the realm's rows by its id,
-or opens EDIT's board (SETTINGS and IDEAS open the editor: the ideas wait in its agent strip), or closes it, and writes the sentence to show and
-speak. Every realm with the layer gets it by handing the selector's answer there. The server's
-selector lists the realm's own rows from `verse.realm_rights`, so a new row is switchable by voice
-with no new migration.
+## The asks and the voice in the agent strip
 
-A question about what's on screen ("what's this dark strip along the sky?") is the selector's
-`look` (migration 0105). The page asks again at `POST /api/playtest/realm/<slug>/look` with the
-same words and HTTP flag 32 (`coax/web/HTTP.md`): the host adds the next frame drawn, as base64
-JPEG at most 1024 wide, to the body's `image`. Gemini answers from the picture in one to three
-spoken sentences, `200 {edit: "chat", reply}`, shown and spoken as any chat answer. Looks are paced
-and counted with voice edits; the picture is never stored. Any page can send flag 32 on a request
-of its own.
+The asks and the realm's voice are the editor's agent strip now (#13528,
+[world-turn-v1.md](../protocol/world-turn-v1.md)). The layer's EDIT has no ADD, DELETE, revise,
+document picker or HOLD TO TALK.
+
+- The page tells the shell the realm's asks in its model (`asks`, `q`;
+  [editor-model-v1.md](../protocol/editor-model-v1.md)). The layer reads them once the page follows
+  its world (`redit_asks_to`), and again after each change and each new spec, so an ask made from
+  the CLI or Coder shows too.
+- The shell tells the strip's conversation the realm's lists and asks with every turn
+  (`world.turn.v1`: `l`, `w`, `asks`, `q`). An agent on your computer reads them in words, with the
+  names of its realm tools (`realm_ask`, `realm_revise`, `realm_ask_delete`, `realm_row_delete`,
+  `realm_world_switch`). A hosted turn plans with the same tools as typed steps: `switch`, `show`,
+  `ask`, `revise`, `unask`, `unrow` and `look`.
+- A hosted turn's realm steps come back from the shell as message 530, a step a line. The layer
+  sends each, in order, as its owner's own request (`/asks`, `/revise`, `/asks/ID/delete`,
+  `/rows/KEY/delete`, `/look` with the frame drawn), and writes what came of it as action 34: words
+  the browser host shows in the strip as the agent's answer.
+- To add from a design document, attach it to the world (the shell's Files pane) and ask the
+  strip. The model opens the attachment, then adds an ask for each feature or change it asks for.
+- The strip's composer has **Talk** where the page has a voice. Talk holds the page's voice for
+  the strip: what you say is sent as a message and the answer is spoken. Which tools a spoken
+  message uses is the model's typed answer under the turn's schema, so no words are matched.
+  A spoken switch is a `switch` step: a `cell` edit of the rows table, the edit a switch in the
+  shell makes (#13514).
+- "Show" means the shell's own panes: Files, Scripts, Code, Revisions and Assets.
+
+The server's routes for asks and looks are the same; only who calls them changed. The look route
+(`POST /api/playtest/realm/<slug>/look`, migration 0105) takes the question and HTTP flag 32
+(`coax/web/HTTP.md`): the host adds the next frame drawn, as base64 JPEG at most 1024 wide, to the
+body's `image`. Gemini answers from the picture in one to three sentences, `200 {edit: "chat",
+reply}`. Looks are paced and counted with voice edits; the picture is never stored.
 
 ## The realm's voice
 
@@ -181,10 +203,10 @@ only, under a typed enum:
 
 | Verb | Fields | What the page does |
 | --- | --- | --- |
-| `switch` | `row`, `on` | switches the row (`redit_heard`, then `POST .../switch` as a tap does) |
+| `switch` | `row`, `on` | switches the row (`redit_heard`, then a `cell` edit of the rows table, #13514) |
 | `show` | `panel`: edit, settings, ideas, close | opens or closes that pane; one already open stays open. Settings and ideas open the editor |
 | `look` | | asks again at `.../look` with the frame on screen |
-| `ask` | | puts the words on the realm's list, as FEATURES' ADD does (`POST .../asks`) |
+| `ask` | | puts the words on the realm's list (`POST .../asks`) |
 | `chat` | `reply` | the answer, said as it is |
 
 A realm with a catalogue (Everglade) keeps its own verbs and prompt; `ask` is only for a realm
@@ -192,27 +214,14 @@ without one. A fork speaks with its base's catalogue and switches its own rows. 
 checked as for edits: a site admin, or the realm's owner or admins by `X-Verse-Player`
 (`verse.edit_may`, made realms included).
 
-The edit layer does the whole trip, so a realm only wires it:
-
-- `redit_hear(ed, words)` sends words said or typed to the realm itself (not to a character).
-  It returns false for a visitor, whose words stay the realm's own.
-- The answer is handled in the layer (`redit_heard_answer`). Every answer, a refusal too, is shown
-  under EDIT for ten seconds (and in an open pane's note) and spoken as action 9.
-- `redit_hears(ed, on)`, each frame, offers the voice under EDIT with the panes shut: V held or
-  HOLD TO TALK on a page with a voice, and Enter to type. Pass false while a character talk has the
-  keys.
-
-Wired today:
-
-| Page | How words reach the selector |
-| --- | --- |
-| Everglade | its own HOLD TO TALK (everglade-voice.coax), with its catalogue's verbs |
-| Haunted House (and every page on realm.coax) | VOICE, while you face no one: the page faces the realm (`REDIT_FACING`) for its owner and admins, and `realm_hear` hands the words over |
-| A made realm (myrealm.coax) | V, HOLD TO TALK under EDIT, or Enter, outside a character talk (`redit_hears`) |
+The selector's route still serves Everglade's own voice edits (`everglade-voice.coax`), which hand
+its answer to `redit_heard(ed, word, row, on, pane, out)`. The other realm pages no longer call it:
+their owners talk to the agent strip (above). `redit_heard` and `redit_switch` stay for those
+callers and for a made realm's spoken commands for screen readers.
 
 EDIT opens one pane at a time (the panes rule, metaverse/fairy-forest/README.md "Making the world:
-panes"): FEATURES (the list below; HOLD TO TALK on a page with a voice, typing everywhere, and
-OPEN THE EDITOR). A visitor's proposal waits in the editor's agent strip, not in EDIT (#13527).
+panes"): FEATURES (the board's rows, below, and OPEN THE EDITOR). A visitor's proposal waits in
+the editor's agent strip, not in EDIT (#13527).
 A realm whose face carries the wire also gets COMPUTER (below, "Your computer").
 
 The panes for what you work on (ff-panes, migration 0055): a realm says, each frame, which of its
@@ -257,11 +266,10 @@ admin does; theirs are paced and counted under their key's hash.
 
 ## What you asked for: the feature list
 
-FEATURES, the first pane EDIT opens in every realm, is a bulleted list: first the board's rows (what
-the realm's code switches; the editor shell switches it, #13506), then every ask its owner and admins made,
-newest first. Each says APPLIED or NOT APPLIED (REMOVING while its code comes out), with DELETE
-(tapped once it reads SURE?; a second tap within 4 s sends it). ADD (HOLD TO TALK, or typing) asks
-for a new feature or a change. A phone gets the same list a page at a time (MORE).
+FEATURES, the first pane EDIT opens in every realm, lists the board's rows (what the realm's code
+switches; the editor shell switches it, #13506), each IN IT or NOT IN IT YET, and OPEN THE EDITOR.
+A list too long for the pane says how many more the editor has. The asks live in the editor's agent
+strip (#13528, above): it adds, revises and deletes them, and a hosted turn sees each ask's state.
 
 The server keeps the list per realm, for its owner and admins only (`migrations/0078_realm_asks.sql`,
 `verse.realm_asks`). An ask goes the way talking to the board always went: the model answers under
@@ -294,8 +302,7 @@ How DELETE cleans up:
 - **An ask built in code** (marked done with its commit): DELETE makes it REMOVING; its code comes
   out the way it went in (reverting that commit, with tests), and done with that commit removes it.
 
-ADD FROM A DOCUMENT (`coax/web/docs.js`: action 31 opens the picker for this realm's
-`/asks/doc`; message 54 brings the answer) sends a design document, .md, .txt, .pdf or .docx, at
+`POST /asks/doc` (the CLI's `openagents realm ask SLUG --doc FILE`) sends a design document, .md, .txt, .pdf or .docx, at
 most 360 KB: `POST /asks/doc {name, data}` (migrations/0080_realm_docs.sql). The server takes its
 text out (a .docx's `word/document.xml`, inflated with zlib; a PDF goes to the model as itself),
 and the model answers the board as an ADD does, naming every feature or change the document asks

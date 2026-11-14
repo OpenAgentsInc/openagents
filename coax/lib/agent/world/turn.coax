@@ -13,6 +13,12 @@
 //                                           size and its name; never its bytes
 //   an NOTE                                 the attachment's note; left out for none
 //   at TAGS                                 its tags, comma-separated; left out for none
+//   l TABLE TITLE                           a list of switches (#13528): the content table whose rows
+//                                           are each on or off (a realm's board is table rows), and its title
+//   w ROW ON LABEL                          a row of the list above: its ID, 0 or 1, and its name
+//   asks                                    the world keeps asks (a realm's list of what its owner asked
+//                                           for): the realm's tools (ask, revise, unask, unrow, look) are offered
+//   q ID STATE WORDS                        an ask: its ID, applied, waiting or removing, and its words
 //   e ID KIND X Z YAW                       a thing: its ID, its kind, where it stands in whole
 //                                           centimetres, its turn in whole degrees
 //   more N                                  things the world holds that are not listed; left out for none
@@ -32,6 +38,11 @@
 //   size ID PERCENT                         a thing to a size
 //   remove ID                               a thing taken away
 //   undo, redo                              the last step back, or again (a plan of only that)
+//   switch LIST ROW ON                      a row of a list of the turn switched (LIST: its place, from 0)
+//   show PANE                               one of the editor's panes opened (WT_PANE)
+//   ask WORDS, revise WORDS                 words on the realm's list of asks; the board revised without one
+//   unask ID, unrow LIST ROW                an ask deleted; a row of the realm's board deleted
+//   look WORDS                              a question about the picture on screen (a plan of only that)
 //
 // world.card.v1, a world as a conversation shows it:
 //   world.card.v1 WORLD REV THINGS          the world's ID, its revision and how many things it holds
@@ -61,18 +72,31 @@ WT_BYTES :: 24576;     // bytes a turn may take
 WT_REACH :: 10000000;  // centimetres either way a place may be
 WT_ID_MAX :: 2147483647;
 WP_STEPS :: 16;        // steps in one plan
-WP_BYTES :: 1024;      // bytes a plan may take
+WP_BYTES :: 4096;      // bytes a plan may take (its asks' words)
 WP_SAY :: 2000;        // bytes of what a hosted turn says
 WP_REPLY :: 8192;      // bytes of the model's answer read
 WP_PROMPT :: 32768;    // bytes of the instructions a hosted world turn is asked with
 WP_OPEN :: 3;          // attachments a hosted turn may open (route "open")
+WT_LISTS :: 4;         // lists of switches a turn lists (editor.model.v1 EM_LISTS)
+WT_SWS :: 96;          // their rows, in all (EM_SWITCHES)
+WT_TABLE :: 32;        // bytes in a list's table (world.edit.v1 WE_NAME)
+WT_LABEL :: 48;        // bytes in a row's name or a list's title
+WT_ASKS :: 24;         // asks a turn lists (metaverse/edit/edit.coax REDIT_ASKS)
+WT_QWORDS :: 120;        // bytes of an ask's words as the turn has them
+WP_WORDS :: 200;       // bytes of a step's words (an ask, a revision, a question)
+WT_STATE :: [3] string.["applied", "waiting", "removing"];
+// The editor's panes a `show` step opens (metaverse-engine/editor/shell.coax), as the model names them.
+WT_PANES :: 5;
+WT_PANE :: [WT_PANES] string.["files", "scripts", "code", "revisions", "assets"];
 WC_URL :: 200;         // bytes in a card's picture's address
 WC_BYTES :: 400;       // bytes a card may take
 
 // The hosted world tools: the word a step names, and what it does, as the model is told.
 WT_PLACE :: 0; WT_MOVE :: 1; WT_TURN :: 2; WT_SIZE :: 3; WT_REMOVE :: 4; WT_UNDO :: 5; WT_REDO :: 6;
-WT_TOOLS :: 7;
-WT_TOOL :: [WT_TOOLS] string.["place", "move", "turn", "size", "remove", "undo", "redo"];
+// the lists' and the editor's (any world that has them), then the realm's, which only a turn with `asks` offers (#13528)
+WT_SWITCH :: 7; WT_SHOW :: 8; WT_ASK :: 9; WT_REVISE :: 10; WT_UNASK :: 11; WT_UNROW :: 12; WT_LOOK :: 13;
+WT_TOOLS :: 14;
+WT_TOOL :: [WT_TOOLS] string.["place", "move", "turn", "size", "remove", "undo", "redo", "switch", "show", "ask", "revise", "unask", "unrow", "look"];
 WT_TOOL_NOTE :: [WT_TOOLS] string.[
   "a new thing: kind is a kind's ID from the list, x and z where it stands in centimetres, yaw its heading in degrees",
   "a thing to a new place: id is the thing's ID, x and z the place in centimetres",
@@ -80,7 +104,14 @@ WT_TOOL_NOTE :: [WT_TOOLS] string.[
   "a thing to a size: id is the thing's ID, percent its size, 100 as it was made",
   "a thing taken out of the world: id is the thing's ID",
   "the last change taken back; it must be the only step",
-  "the last change taken back, made again; it must be the only step"];
+  "the last change taken back, made again; it must be the only step",
+  "a row of a list switched: list is the list's place among the lists (0 for the first), id the row's ID, on 1 or 0",
+  "one of the editor's panes opened for the person: pane is files, scripts, code, revisions or assets",
+  "words put on the realm's list of asks, as its owner would ask: words is one feature or change; the realm's model applies it to the board when it can, and it waits for code when it cannot",
+  "the realm's board revised from words, with nothing kept on the list: words says what to change",
+  "an ask deleted: id is the ask's ID; what it changed goes back",
+  "a row of the realm's board deleted (only the list of table rows): list and id as for switch",
+  "a question about what is on the screen now, answered from a picture of it: words is the question; it must be the only step"];
 
 WorldTurn :: struct {
   ok: bool;
@@ -98,8 +129,18 @@ WorldTurn :: struct {
   nq: int; q_id: [WT_CARDS] int; q_x: [WT_CARDS] int; q_z: [WT_CARDS] int;
   q_thing: [WT_CARDS] [WT_NAME] u8; q_thing_n: [WT_CARDS] int; q_who: [WT_CARDS] [WT_NAME] u8; q_who_n: [WT_CARDS] int;
   q_all: int;
+  // the lists of switches and their rows (#13528)
+  nl: int; l_table: [WT_LISTS] [WT_TABLE] u8; l_table_n: [WT_LISTS] int; l_title: [WT_LISTS] [WT_LABEL] u8; l_title_n: [WT_LISTS] int;
+  nw: int; w_list: [WT_SWS] int; w_row: [WT_SWS] int; w_on: [WT_SWS] bool; w_label: [WT_SWS] [WT_LABEL] u8; w_label_n: [WT_SWS] int;
+  // the realm's asks: whether the world keeps them, and each one
+  asks: bool;
+  naq: int; aq_id: [WT_ASKS] int; aq_state: [WT_ASKS] int; aq_words: [WT_ASKS] [WT_QWORDS] u8; aq_words_n: [WT_ASKS] int;
 }
-WorldStep :: struct { tool: int; kind: int; id: int; x: int; z: int; yaw: int; percent: int = 100; }
+WorldStep :: struct {
+  tool: int; kind: int; id: int; x: int; z: int; yaw: int; percent: int = 100;
+  list: int; on: int; pane: int;          // switch and unrow: the list's place; switch: 0 or 1; show: its place in WT_PANE
+  words: [WP_WORDS] u8; words_n: int;     // ask, revise, look
+}
 WorldPlan :: struct {
   ok: bool;
   edit: bool;                            // the turn changes the world; else it only talks
@@ -231,6 +272,42 @@ wt_file_of :: (t: [] WorldTurn, out: [] u8, at: int, k: int) -> int {
   return wt_file(out, at, cast(string) t[0].f_id[k][..], t[0].f_kind[k], t[0].f_bytes[k], cast(string) t[0].f_name[k][0..<t[0].f_name_n[k]],
                  cast(string) t[0].f_note[k][0..<t[0].f_note_n[k]], cast(string) t[0].f_tags[k][0..<t[0].f_tags_n[k]]);
 }
+// A list of switches: its table and its title (#13528).
+wt_list :: (out: [] u8, at: int, table: string, title: string) -> int {
+  if at < 0 || !wt_text_ok(table, WT_TABLE) || wt_parts(table, ' ') != 1 || !wt_text_ok(title, WT_LABEL) { return -1; }
+  n := json_raw(out, at, "l "); n = json_raw(out, n, table); n = json_raw(out, n, " "); n = json_raw(out, n, title);
+  return json_raw(out, n, "\n");
+}
+// A row of the list above: its ID, on or off, and its name.
+wt_switch :: (out: [] u8, at: int, row: int, on: bool, label: string) -> int {
+  if at < 0 || row < 1 || !wt_text_ok(label, WT_LABEL) { return -1; }
+  n := json_raw(out, at, "w "); n = json_write_int(out, n, row); n = json_raw(out, n, ifx on then " 1 " else " 0 "); n = json_raw(out, n, label);
+  return json_raw(out, n, "\n");
+}
+// The world keeps asks: the realm's tools are offered.
+wt_asks :: (out: [] u8, at: int) -> int { return ifx at < 0 then -1 else json_raw(out, at, "asks\n"); }
+// An ask: its ID, its state (0 applied, 1 waiting, 2 removing) and its words.
+wt_ask :: (out: [] u8, at: int, id: int, state: int, words: string) -> int {
+  if at < 0 || id < 1 || state < 0 || state > 2 || !wt_text_ok(words, WT_QWORDS) { return -1; }
+  states := WT_STATE;
+  n := json_raw(out, at, "q "); n = json_write_int(out, n, id); n = json_raw(out, n, " "); n = json_raw(out, n, states[state]);
+  n = json_raw(out, n, " "); n = json_raw(out, n, words);
+  return json_raw(out, n, "\n");
+}
+// Words as one line a turn or a plan holds: control bytes are spaces, runs of spaces one, none at either end, at most dst.count bytes.
+wt_line_copy :: (dst: [] u8, s: string) -> int {
+  n := 0;
+  for b: s {
+    c := ifx b < 32 || b == 127 then cast(u8) ' ' else b;
+    if c == ' ' && (n == 0 || dst[n - 1] == ' ') { continue; }
+    if n >= dst.count { break; }
+    dst[n] = c; n += 1;
+  }
+  while n > 0 && dst[n - 1] == ' ' { n -= 1; }
+  // never a cut UTF-8 sequence at the end
+  if n == dst.count { while n > 0 && (dst[n - 1] & 0xC0) == 0x80 { n -= 1; } if n > 0 && dst[n - 1] >= 0xC0 { n -= 1; } }
+  return n;
+}
 wt_more :: (out: [] u8, at: int, count: int) -> int {
   if count < 1 { return -1; }
   n := json_raw(out, at, "more "); n = json_write_int(out, n, count);
@@ -257,6 +334,12 @@ wt_write :: (t: [] WorldTurn, out: [] u8) -> string {
   if t[0].here { n = wt_here(out, n, t[0].here_x, t[0].here_z); }
   for k: 0..<t[0].nk { n = wt_kind(out, n, t[0].kind_id[k], cast(string) t[0].kind_name[k][0..<t[0].kind_n[k]]); }
   for k: 0..<t[0].nf { n = wt_file_of(t, out, n, k); }
+  for l: 0..<t[0].nl {
+    n = wt_list(out, n, cast(string) t[0].l_table[l][0..<t[0].l_table_n[l]], cast(string) t[0].l_title[l][0..<t[0].l_title_n[l]]);
+    for k: 0..<t[0].nw { if t[0].w_list[k] == l { n = wt_switch(out, n, t[0].w_row[k], t[0].w_on[k], cast(string) t[0].w_label[k][0..<t[0].w_label_n[k]]); } }
+  }
+  if t[0].asks { n = wt_asks(out, n); }
+  for k: 0..<t[0].naq { n = wt_ask(out, n, t[0].aq_id[k], t[0].aq_state[k], cast(string) t[0].aq_words[k][0..<t[0].aq_words_n[k]]); }
   for k: 0..<t[0].nt { n = wt_thing(out, n, t[0].t_id[k], t[0].t_kind[k], t[0].t_x[k], t[0].t_z[k], t[0].t_yaw[k]); }
   if t[0].more > 0 { n = wt_more(out, n, t[0].more); }
   for k: 0..<t[0].nq { n = wt_card(out, n, t[0].q_id[k], t[0].q_x[k], t[0].q_z[k], wt_card_thing(t, k), wt_card_who(t, k)); }
@@ -266,6 +349,7 @@ wt_write :: (t: [] WorldTurn, out: [] u8) -> string {
 // Reads a turn. False for any bytes wt_write would not write.
 wt_read :: (t: [] WorldTurn, text: string, scratch: [] u8) -> bool {
   t[0].ok = false; t[0].world_n = 0; t[0].nk = 0; t[0].nt = 0; t[0].more = 0; t[0].here = false; t[0].sel = 0; t[0].rev = 0; t[0].nf = 0; t[0].nq = 0; t[0].q_all = 0;
+  t[0].nl = 0; t[0].nw = 0; t[0].asks = false; t[0].naq = 0;
   if text.count < WT_SCHEMA.count || text.count > WT_BYTES { return false; }
   head := wt_part(text, '\n', 0);
   if wt_part(head, ' ', 0) != WT_SCHEMA || wt_parts(head, ' ') != 5 { return false; }
@@ -299,6 +383,23 @@ wt_read :: (t: [] WorldTurn, text: string, scratch: [] u8) -> bool {
     } else if (word == "an" || word == "at") && t[0].nf > 0 {
       k := t[0].nf - 1;
       if word == "an" { t[0].f_note_n[k] = wt_copy(t[0].f_note[k][..], wt_rest(line, 1)); } else { t[0].f_tags_n[k] = wt_copy(t[0].f_tags[k][..], wt_rest(line, 1)); }
+    } else if word == "l" && t[0].nl < WT_LISTS {
+      l := t[0].nl;
+      t[0].l_table_n[l] = wt_copy(t[0].l_table[l][..], wt_part(line, ' ', 1)); t[0].l_title_n[l] = wt_copy(t[0].l_title[l][..], wt_rest(line, 2));
+      t[0].nl += 1;
+    } else if word == "w" && t[0].nl > 0 && t[0].nw < WT_SWS {
+      k := t[0].nw;
+      t[0].w_list[k] = t[0].nl - 1; t[0].w_row[k] = wt_num(wt_part(line, ' ', 1)).v; t[0].w_on[k] = wt_part(line, ' ', 2) == "1";
+      t[0].w_label_n[k] = wt_copy(t[0].w_label[k][..], wt_rest(line, 3));
+      t[0].nw += 1;
+    } else if word == "asks" && line == "asks" { t[0].asks = true; }
+    else if word == "q" && t[0].naq < WT_ASKS {
+      k := t[0].naq; states := WT_STATE;
+      t[0].aq_id[k] = wt_num(wt_part(line, ' ', 1)).v;
+      t[0].aq_state[k] = -1; for j: 0..<3 { if wt_part(line, ' ', 2) == states[j] { t[0].aq_state[k] = j; } }
+      if t[0].aq_state[k] < 0 { return false; }
+      t[0].aq_words_n[k] = wt_copy(t[0].aq_words[k][..], wt_rest(line, 3));
+      t[0].naq += 1;
     } else if word == "more" { t[0].more = wt_num(wt_part(line, ' ', 1)).v; }
     else if word == "card" && t[0].nq < WT_CARDS {
       k := t[0].nq;
@@ -346,16 +447,46 @@ wt_words :: (t: [] WorldTurn, out: [] u8) -> string {
     }
     n = json_raw(out, n, ".");
   }
+  // its lists of switches, and a realm's asks, with the tools that change them (#13528)
+  for l: 0..<t[0].nl {
+    n = json_raw(out, n, " The list "); n = json_raw(out, n, cast(string) t[0].l_title[l][0..<t[0].l_title_n[l]]); n = json_raw(out, n, ":");
+    first := true;
+    for k: 0..<t[0].nw {
+      if t[0].w_list[k] != l { continue; }
+      n = json_raw(out, n, ifx first then " " else "; "); first = false;
+      n = json_raw(out, n, cast(string) t[0].w_label[k][0..<t[0].w_label_n[k]]); n = json_raw(out, n, ifx t[0].w_on[k] then " (on)" else " (off)");
+    }
+    n = json_raw(out, n, ".");
+  }
+  if t[0].nl > 0 { n = json_raw(out, n, " Switch a row with `realm_world_switch`."); }
+  if t[0].asks {
+    states := WT_STATE;
+    n = json_raw(out, n, ifx t[0].naq > 0 then " What its owner asked for:" else " Its owner has asked for nothing yet.");
+    for k: 0..<t[0].naq {
+      n = json_raw(out, n, ifx k == 0 then " " else "; "); n = json_raw(out, n, "ask "); n = json_write_int(out, n, t[0].aq_id[k]);
+      n = json_raw(out, n, " ("); n = json_raw(out, n, states[t[0].aq_state[k]]); n = json_raw(out, n, ") "); n = json_raw(out, n, cast(string) t[0].aq_words[k][0..<t[0].aq_words_n[k]]);
+    }
+    if t[0].naq > 0 { n = json_raw(out, n, "."); }
+    n = json_raw(out, n, " Add, revise and delete asks with `realm_ask`, `realm_revise`, `realm_ask_delete` and `realm_row_delete`; read them with `realm_asks`.");
+  }
   n = json_raw(out, n, "]");
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // ---- the plan
 
 wp_word :: (p: [] WorldPlan) -> string { return cast(string) p[0].world[0..<p[0].world_n]; }
+// A step that stands alone in its plan: undo, redo and look.
+wp_alone :: (tool: int) -> bool { return tool == WT_UNDO || tool == WT_REDO || tool == WT_LOOK; }
+// A step that changes the world itself (one batch of world.edit.v1 edits), as against the editor's panes and a realm's asks.
+wp_world_step :: (tool: int) -> bool { return tool <= WT_SWITCH; }
 wp_step_ok :: (s: WorldStep) -> bool {
   if s.tool < 0 || s.tool >= WT_TOOLS { return false; }
   if s.tool == WT_PLACE { return s.kind >= 0 && wt_place_ok(s.x, s.z) && wt_yaw_ok(s.yaw); }
   if s.tool == WT_UNDO || s.tool == WT_REDO { return true; }
+  if s.tool == WT_SHOW { return s.pane >= 0 && s.pane < WT_PANES; }
+  if s.tool == WT_ASK || s.tool == WT_REVISE || s.tool == WT_LOOK { w := s.words; return wt_text_ok(cast(string) w[0..<s.words_n], WP_WORDS); }
+  if s.tool == WT_SWITCH { return s.list >= 0 && s.list < WT_LISTS && s.id >= 1 && (s.on == 0 || s.on == 1); }
+  if s.tool == WT_UNROW { return s.list >= 0 && s.list < WT_LISTS && s.id >= 1; }
   if s.id < 1 { return false; }
   if s.tool == WT_MOVE { return wt_place_ok(s.x, s.z); }
   if s.tool == WT_TURN { return wt_yaw_ok(s.yaw); }
@@ -367,15 +498,19 @@ wp_steps_ok :: (p: [] WorldPlan) -> bool {
   if p[0].n < 1 || p[0].n > WP_STEPS { return false; }
   for k: 0..<p[0].n {
     if !wp_step_ok(p[0].steps[k]) { return false; }
-    if (p[0].steps[k].tool == WT_UNDO || p[0].steps[k].tool == WT_REDO) && p[0].n != 1 { return false; }
+    if wp_alone(p[0].steps[k].tool) && p[0].n != 1 { return false; }
   }
   return true;
 }
 wp_step_write :: (out: [] u8, at: int, s: WorldStep) -> int {
-  tools := WT_TOOL;
+  tools := WT_TOOL; panes := WT_PANE;
   n := json_raw(out, at, tools[s.tool]);
+  if s.tool == WT_SWITCH || s.tool == WT_UNROW { n = json_raw(out, n, " "); n = json_write_int(out, n, s.list); }
+  if s.tool == WT_SHOW { return json_raw(out, json_raw(out, n, " "), panes[s.pane]); }
+  if s.tool == WT_ASK || s.tool == WT_REVISE || s.tool == WT_LOOK { w := s.words; return json_raw(out, json_raw(out, n, " "), cast(string) w[0..<s.words_n]); }
   if s.tool == WT_PLACE { n = json_raw(out, n, " "); n = json_write_int(out, n, s.kind); }
   else if s.tool != WT_UNDO && s.tool != WT_REDO { n = json_raw(out, n, " "); n = json_write_int(out, n, s.id); }
+  if s.tool == WT_SWITCH { n = json_raw(out, n, " "); n = json_write_int(out, n, s.on); }
   if s.tool == WT_PLACE || s.tool == WT_MOVE { n = json_raw(out, n, " "); n = json_write_int(out, n, s.x); n = json_raw(out, n, " "); n = json_write_int(out, n, s.z); }
   if s.tool == WT_PLACE || s.tool == WT_TURN { n = json_raw(out, n, " "); n = json_write_int(out, n, s.yaw); }
   if s.tool == WT_SIZE { n = json_raw(out, n, " "); n = json_write_int(out, n, s.percent); }
@@ -405,7 +540,12 @@ wp_read :: (p: [] WorldPlan, text: string, scratch: [] u8) -> bool {
     s: WorldStep; s.tool = -1;
     for k: 0..<WT_TOOLS { if wt_part(line, ' ', 0) == tools[k] { s.tool = k; } }
     a := wt_num(wt_part(line, ' ', 1)).v; b := wt_num(wt_part(line, ' ', 2)).v; c := wt_num(wt_part(line, ' ', 3)).v; e := wt_num(wt_part(line, ' ', 4)).v;
-    if s.tool == WT_PLACE { s.kind = a; s.x = b; s.z = c; s.yaw = e; }
+    if s.tool == WT_ASK || s.tool == WT_REVISE || s.tool == WT_LOOK { s.words_n = wt_copy(s.words[..], wt_rest(line, 1)); }
+    else if s.tool == WT_SHOW { panes := WT_PANE; s.pane = -1; for k: 0..<WT_PANES { if wt_rest(line, 1) == panes[k] { s.pane = k; } } }
+    else if s.tool == WT_SWITCH { s.list = a; s.id = b; s.on = c; }
+    else if s.tool == WT_UNROW { s.list = a; s.id = b; }
+    else if s.tool == WT_UNASK { s.id = a; }
+    else if s.tool == WT_PLACE { s.kind = a; s.x = b; s.z = c; s.yaw = e; }
     else if s.tool == WT_MOVE { s.id = a; s.x = b; s.z = c; }
     else if s.tool == WT_TURN { s.id = a; s.yaw = b; }
     else if s.tool == WT_SIZE { s.id = a; s.percent = b; }
@@ -418,6 +558,19 @@ wp_read :: (p: [] WorldPlan, text: string, scratch: [] u8) -> bool {
 }
 // A step as a line of the conversation: what the turn did, in words, with the kind's name where the turn knows it.
 WP_LINE :: 120;
+// The longest start of words that fits in most bytes, not cutting a character.
+wt_cut :: (w: string, most: int) -> int {
+  n := ifx most < 0 then 0 else ifx most > w.count then w.count else most;
+  while n > 0 && n < w.count && (w[n] & 0xC0) == 0x80 { n -= 1; }
+  return n;
+}
+// A row's name in list `list` of the turn, or "" when the turn does not list it.
+wt_row_label :: (t: [] WorldTurn, list: int, row: int) -> string {
+  for k: 0..<t[0].nw { if t[0].w_list[k] == list && t[0].w_row[k] == row { return cast(string) t[0].w_label[k][0..<t[0].w_label_n[k]]; } }
+  return "";
+}
+// An ask's place in the turn's list, or -1.
+wt_ask_at :: (t: [] WorldTurn, id: int) -> int { for k: 0..<t[0].naq { if t[0].aq_id[k] == id { return k; } } return -1; }
 wp_line :: (s: WorldStep, t: [] WorldTurn, out: [] u8) -> string {
   n := 0;
   if s.tool == WT_PLACE {
@@ -426,8 +579,28 @@ wp_line :: (s: WorldStep, t: [] WorldTurn, out: [] u8) -> string {
     n = json_raw(out, n, " at "); n = json_write_int(out, n, s.x); n = json_raw(out, n, ", "); n = json_write_int(out, n, s.z);
   } else if s.tool == WT_UNDO { n = json_raw(out, 0, "Undo the last change"); }
   else if s.tool == WT_REDO { n = json_raw(out, 0, "Redo the last change"); }
-  else {
-    verbs := [WT_TOOLS] string.["", "Move ", "Turn ", "Size ", "Remove ", "", ""];
+  else if s.tool == WT_SWITCH || s.tool == WT_UNROW {
+    label := wt_row_label(t, s.list, s.id);
+    n = json_raw(out, 0, ifx s.tool == WT_UNROW then "Delete " else "Switch "); n = json_raw(out, n, ifx label.count > 0 then label else "a row");
+    if s.tool == WT_SWITCH { n = json_raw(out, n, ifx s.on == 1 then " on" else " off"); }
+  } else if s.tool == WT_SHOW {
+    names := [WT_PANES] string.["Show the files", "Show the scripts", "Show the code", "Show the revisions", "Show the assets"];
+    n = json_raw(out, 0, names[ifx s.pane >= 0 && s.pane < WT_PANES then s.pane else 0]);
+  } else if s.tool == WT_ASK || s.tool == WT_REVISE || s.tool == WT_LOOK {
+    heads := [3] string.["Ask: ", "Revise the board: ", "Look at the screen: "];
+    n = json_raw(out, 0, heads[s.tool - WT_ASK - (ifx s.tool == WT_LOOK then 2 else 0)]);
+    words := s.words; w := cast(string) words[0..<s.words_n]; room := out.count - n;
+    if w.count > room { w = w[0..<wt_cut(w, room - 3)]; n = json_raw(out, n, w); n = json_raw(out, n, "..."); } else { n = json_raw(out, n, w); }
+  } else if s.tool == WT_UNASK {
+    at := wt_ask_at(t, s.id);
+    n = json_raw(out, 0, "Delete ask "); n = json_write_int(out, n, s.id);
+    if at >= 0 {
+      w := cast(string) t[0].aq_words[at][0..<t[0].aq_words_n[at]]; room := out.count - n - 2;
+      n = json_raw(out, n, ": ");
+      if w.count > room { w = w[0..<wt_cut(w, room - 3)]; n = json_raw(out, n, w); n = json_raw(out, n, "..."); } else { n = json_raw(out, n, w); }
+    }
+  } else {
+    verbs := [7] string.["", "Move ", "Turn ", "Size ", "Remove ", "", ""];
     at := wt_thing_at(t, s.id);
     name := ifx at >= 0 then wt_kind_name(t, t[0].t_kind[at]) else "";
     n = json_raw(out, 0, verbs[s.tool]); n = json_raw(out, n, ifx name.count > 0 then name else "thing");
@@ -446,17 +619,30 @@ wp_schema :: (out: [] u8) -> string {
   n := json_raw(out, 0, "{\"type\":\"object\",\"properties\":{\"route\":{\"type\":\"string\",\"enum\":[\"talk\",\"edit\",\"open\"]},\"say\":{\"type\":\"string\"},\"open\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"steps\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"tool\":{\"type\":\"string\",\"enum\":[");
   for k: 0..<WT_TOOLS { if k > 0 { n = json_raw(out, n, ","); } n = json_write_string(out, n, tools[k]); }
   n = json_raw(out, n, "]}");
-  fields := [6] string.["kind", "id", "x", "z", "yaw", "percent"];
+  fields := [8] string.["kind", "id", "x", "z", "yaw", "percent", "list", "on"];
   for f: fields { n = json_raw(out, n, ",\""); n = json_raw(out, n, f); n = json_raw(out, n, "\":{\"type\":\"integer\"}"); }
-  n = json_raw(out, n, "},\"required\":[\"tool\",\"kind\",\"id\",\"x\",\"z\",\"yaw\",\"percent\"],\"additionalProperties\":false}}},\"required\":[\"route\",\"say\",\"open\",\"steps\"],\"additionalProperties\":false}");
+  // a show step's pane is one of the editor's, by name; the others' is ""
+  panes := WT_PANE;
+  n = json_raw(out, n, ",\"pane\":{\"type\":\"string\",\"enum\":[\"\"");
+  for k: 0..<WT_PANES { n = json_raw(out, n, ","); n = json_write_string(out, n, panes[k]); }
+  n = json_raw(out, n, "]},\"words\":{\"type\":\"string\"}");
+  n = json_raw(out, n, "},\"required\":[\"tool\",\"kind\",\"id\",\"x\",\"z\",\"yaw\",\"percent\",\"list\",\"on\",\"pane\",\"words\"],\"additionalProperties\":false}}},\"required\":[\"route\",\"say\",\"open\",\"steps\"],\"additionalProperties\":false}");
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // What a hosted world turn is told: who it is, the tools (from their rows) and the world as the turn has it.
 wp_system :: (t: [] WorldTurn, scratch: [] u8, out: [] u8) -> string {
   tools := WT_TOOL; notes := WT_TOOL_NOTE;
   n := json_raw(out, 0, "You are OpenAgents, in the editor of a world a person has open. Speak as \"we\". Answer with a route, what to say, and steps.\nroute \"talk\": the person asks or talks and nothing in the world changes; steps is empty and say is the answer, in Markdown where it helps.\nroute \"edit\": the person wants the world changed; steps are the changes in order, at most 16, and say is one short sentence of what was done.\nA step's tool is one of:\n");
-  for k: 0..<WT_TOOLS { n = json_raw(out, n, "- "); n = json_raw(out, n, tools[k]); n = json_raw(out, n, ": "); n = json_raw(out, n, notes[k]); n = json_raw(out, n, "\n"); }
-  n = json_raw(out, n, "A field a tool does not use is 0. Use only kinds and thing IDs from the lists below. \"Here\" and \"this\" mean the point last tapped and the selected thing. Places are centimetres; x runs east and z south. If the request cannot be done with these tools, route \"talk\" and say why.\nThe maker's attachments (lines a: ID, kind, size in bytes and name; an: its note; at: its tags) are reference files for this world, such as concept art and design notes. To answer from what one shows or says, route \"open\" with open listing the IDs of at most 3 of them, steps empty and say empty: they come with the next message, and you answer then. Open only attachments in the list. With route talk or edit, open is empty.\nThe world now (k is a kind: ID and name; e is a thing: ID, kind, x, z, heading; the first line ends with the selected thing's ID, 0 for none):\n");
+  for k: 0..<WT_TOOLS {
+    // the realm's tools only where the world keeps asks; a switch only where it has lists
+    if k >= WT_ASK && !t[0].asks { continue; }
+    if (k == WT_SWITCH) && t[0].nl == 0 { continue; }
+    n = json_raw(out, n, "- "); n = json_raw(out, n, tools[k]); n = json_raw(out, n, ": "); n = json_raw(out, n, notes[k]); n = json_raw(out, n, "\n");
+  }
+  if t[0].asks {
+    n = json_raw(out, n, "This world is a realm whose owner keeps a list of asks (lines q: ID, applied, waiting or removing, and the words). A request for a new feature or a change to the realm is an ask; to work from one of the attachments (a design document), open it first, then add an ask for each feature or change it asks for. Lists (lines l: the table and its title) hold rows that are each on or off (lines w: the row's ID, 1 or 0, its name); the realm's board is the list of table rows.\n");
+  }
+  n = json_raw(out, n, "A field a tool does not use is 0, and pane and words are \"\" where a tool does not use them. Use only kinds and thing IDs from the lists below. \"Here\" and \"this\" mean the point last tapped and the selected thing. Places are centimetres; x runs east and z south. If the request cannot be done with these tools, route \"talk\" and say why.\nThe maker's attachments (lines a: ID, kind, size in bytes and name; an: its note; at: its tags) are reference files for this world, such as concept art and design notes. To answer from what one shows or says, route \"open\" with open listing the IDs of at most 3 of them, steps empty and say empty: they come with the next message, and you answer then. Open only attachments in the list. With route talk or edit, open is empty.\nThe world now (k is a kind: ID and name; e is a thing: ID, kind, x, z, heading; the first line ends with the selected thing's ID, 0 for none):\n");
   n = json_raw(out, n, wt_write(t, scratch));
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
@@ -469,7 +655,7 @@ wp_system_opened :: (t: [] WorldTurn, opened: string, scratch: [] u8, out: [] u8
   n = json_raw(out, n, ". Answer now with route talk or edit; open is empty. Say which attachment you looked at, and when one was too large to read whole, say so.\n");
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
-WP_NODES :: 24 + WP_STEPS * 16;
+WP_NODES :: 24 + WP_STEPS * 24;
 // Reads the model's answer into a plan for the turn's world. False when it is not an answer under
 // the schema, or a step names a kind or a thing the turn does not list: then say holds why.
 wp_reply :: (p: [] WorldPlan, t: [] WorldTurn, reply: string) -> bool #effects(all) {
@@ -511,7 +697,27 @@ wp_reply :: (p: [] WorldPlan, t: [] WorldTurn, reply: string) -> bool #effects(a
     s.kind = jv_int(d, jv_get(d, at, "kind"), -1); s.id = jv_int(d, jv_get(d, at, "id"), -1);
     s.x = jv_int(d, jv_get(d, at, "x"), WT_REACH + 1); s.z = jv_int(d, jv_get(d, at, "z"), WT_REACH + 1);
     s.yaw = jv_int(d, jv_get(d, at, "yaw"), 999); s.percent = jv_int(d, jv_get(d, at, "percent"), 0);
+    s.list = jv_int(d, jv_get(d, at, "list"), -1); s.on = jv_int(d, jv_get(d, at, "on"), -1);
     if s.tool < 0 { return false; }
+    if s.tool >= WT_SWITCH {
+      // the editor's and a realm's: what each names must be the turn's
+      if s.tool >= WT_ASK && !t[0].asks { p[0].say_n = wt_copy(p[0].say[..], "That did not go: this world keeps no asks."); return false; }
+      if s.tool == WT_SHOW {
+        pn: [16] u8; k := jv_str(d, jv_get(d, at, "pane"), pn[..]); panes := WT_PANE; s.pane = -1;
+        for j: 0..<WT_PANES { if k > 0 && cast(string) pn[0..<k] == panes[j] { s.pane = j; } }
+        if s.pane < 0 { return false; }
+      }
+      if s.tool == WT_ASK || s.tool == WT_REVISE || s.tool == WT_LOOK {
+        raw: [WP_WORDS * 2] u8; k := jv_str(d, jv_get(d, at, "words"), raw[..]);
+        if k <= 0 { return false; }
+        s.words_n = wt_line_copy(s.words[..], cast(string) raw[0..<k]);
+        if s.words_n == 0 { return false; }
+      }
+      if (s.tool == WT_SWITCH || s.tool == WT_UNROW) && wt_row_label(t, s.list, s.id).count == 0 { p[0].say_n = wt_copy(p[0].say[..], "That did not go: the plan named a row that is not in this world's lists."); return false; }
+      if s.tool == WT_UNASK && wt_ask_at(t, s.id) < 0 { p[0].say_n = wt_copy(p[0].say[..], "That did not go: the plan named an ask that is not on the list."); return false; }
+      p[0].steps[p[0].n] = s; p[0].n += 1;
+      continue;
+    }
     while s.yaw > 180 && s.yaw <= 540 { s.yaw -= 360; }
     if s.tool == WT_PLACE && wt_kind_name(t, s.kind).count == 0 { p[0].say_n = wt_copy(p[0].say[..], "That did not go: the plan named a kind this world does not have."); return false; }
     if s.tool != WT_PLACE && s.tool != WT_UNDO && s.tool != WT_REDO && wt_thing_at(t, s.id) < 0 { p[0].say_n = wt_copy(p[0].say[..], "That did not go: the plan named a thing that is not in this world."); return false; }
@@ -645,6 +851,43 @@ WP_TEST_PLAN :: "world.plan.v1 splice 7\nplace 1001 420 -75 90\nmove 2 100 -200\
   for k: 0..<WT_TOOLS { n := jv_str(da[0], jv_at(da[0], tools, k), word[..]); #assert cast(string) word[0..<n] == names[k]; }
   sys := wp_system(t, h[0].s[..], h[0].b[..]);
   #assert sys.count > WT_TEST_TURN.count && cast(string) sys[sys.count - WT_TEST_TURN.count..<sys.count] == WT_TEST_TURN;
+}
+WT_TEST_REALM :: "world.turn.v1 moonlit-marsh dev 4 0\nl rows Features\nw 1 1 Glowing mushrooms\nw 2 0 A bridge over the stream\nl tools Tools visitors get\nw 1 1 build\nasks\nq 7 applied A ghost cat by the gate\nq 5 waiting Fireflies that follow you\n";
+#test "a realm's turn lists its switches and its asks, and its tools are the model's only there" {
+  h: [1] WtTest; t := h[0].t[..]; p := h[0].p[..];
+  #assert wt_read(t, WT_TEST_REALM, h[0].s[..]) && t[0].nl == 2 && t[0].nw == 3 && t[0].asks && t[0].naq == 2 && t[0].aq_state[1] == 1;
+  #assert wt_write(t, h[0].a[..]) == WT_TEST_REALM && wt_row_label(t, 0, 2) == "A bridge over the stream" && wt_row_label(t, 1, 2) == "" && wt_ask_at(t, 5) == 1;
+  w := wt_words(t, h[0].a[..]);
+  #assert wt_has(w, " The list Features: Glowing mushrooms (on); A bridge over the stream (off). The list Tools visitors get: build (on). Switch a row with `realm_world_switch`.") && wt_has(w, " What its owner asked for: ask 7 (applied) A ghost cat by the gate; ask 5 (waiting) Fireflies that follow you. Add, revise and delete asks with `realm_ask`, `realm_revise`, `realm_ask_delete` and `realm_row_delete`; read them with `realm_asks`.]");
+  bad := [4] string.["world.turn.v1 moonlit-marsh dev 4 0\nw 1 1 x\n", "world.turn.v1 moonlit-marsh dev 4 0\nq 7 done x\n",
+    "world.turn.v1 moonlit-marsh dev 4 0\nasks now\n", "world.turn.v1 moonlit-marsh dev 4 0\nl rows Features\nw 0 1 x\n"];
+  for b: bad { #assert !wt_read(t, b, h[0].s[..]); }
+  #assert wt_read(t, WT_TEST_REALM, h[0].s[..]);
+  // the model's answer: a switch, an ask with its words made one line, a revision, an ask deleted, a row deleted and a pane shown, as one plan
+  r := "{\"route\":\"edit\",\"say\":\"Done.\",\"steps\":[{\"tool\":\"switch\",\"id\":2,\"list\":0,\"on\":1,\"pane\":\"\",\"words\":\"\",\"kind\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0},{\"tool\":\"ask\",\"id\":0,\"list\":0,\"on\":0,\"pane\":\"\",\"words\":\" a dragon\\nby the lake \",\"kind\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0},{\"tool\":\"revise\",\"id\":0,\"list\":0,\"on\":0,\"pane\":\"\",\"words\":\"no mushrooms\",\"kind\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0},{\"tool\":\"unask\",\"id\":7,\"list\":0,\"on\":0,\"pane\":\"\",\"words\":\"\",\"kind\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0},{\"tool\":\"unrow\",\"id\":1,\"list\":0,\"on\":0,\"pane\":\"\",\"words\":\"\",\"kind\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0},{\"tool\":\"show\",\"id\":0,\"list\":0,\"on\":0,\"pane\":\"files\",\"words\":\"\",\"kind\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}";
+  #assert wp_reply(p, t, r) && p[0].n == 6;
+  #assert wp_write(p, h[0].a[..]) == "world.plan.v1 moonlit-marsh 4\nswitch 0 2 1\nask a dragon by the lake\nrevise no mushrooms\nunask 7\nunrow 0 1\nshow files\n";
+  #assert wp_read(p, "world.plan.v1 moonlit-marsh 4\nswitch 0 2 1\nask a dragon by the lake\nrevise no mushrooms\nunask 7\nunrow 0 1\nshow files\n", h[0].s[..]) && p[0].steps[1].words_n == 20;
+  ln: [WP_LINE] u8;
+  #assert wp_line(p[0].steps[0], t, ln[..]) == "Switch A bridge over the stream on" && wp_line(p[0].steps[3], t, ln[..]) == "Delete ask 7: A ghost cat by the gate" && wp_line(p[0].steps[5], t, ln[..]) == "Show the files";
+  // a look stands alone; a row or an ask the turn does not list, or a realm's tool where the world keeps no asks, is refused in words
+  #assert wp_read(p, "world.plan.v1 moonlit-marsh 4\nlook what is that dark strip\n", h[0].s[..]) && !wp_read(p, "world.plan.v1 moonlit-marsh 4\nlook x\nshow files\n", h[0].s[..]);
+  #assert !wp_reply(p, t, "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"switch\",\"id\":9,\"list\":0,\"on\":1,\"pane\":\"\",\"words\":\"\",\"kind\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}") && p[0].say_n > 20;
+  #assert !wp_reply(p, t, "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"unask\",\"id\":3,\"list\":0,\"on\":0,\"pane\":\"\",\"words\":\"\",\"kind\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}") && p[0].say_n > 20;
+  #assert !wp_reply(p, t, "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"show\",\"id\":0,\"list\":0,\"on\":0,\"pane\":\"map\",\"words\":\"\",\"kind\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}");
+  #assert wt_read(t, WT_TEST_TURN, h[0].s[..]);
+  #assert !wp_reply(p, t, "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"ask\",\"id\":0,\"list\":0,\"on\":0,\"pane\":\"\",\"words\":\"a dragon\",\"kind\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}") && p[0].say_n > 20;
+  // the instructions offer the realm's tools only to a realm's turn
+  sys := wp_system(t, h[0].s[..], h[0].b[..]);
+  #assert sys.count > 0 && !wt_has(sys, "- ask: ") && !wt_has(sys, "- switch: ");
+  #assert wt_read(t, WT_TEST_REALM, h[0].s[..]);
+  sys = wp_system(t, h[0].s[..], h[0].b[..]);
+  #assert wt_has(sys, "- ask: ") && wt_has(sys, "- look: ") && wt_has(sys, "- switch: ") && wt_has(sys, "add an ask for each feature or change it asks for");
+}
+wt_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if cast(string) s[i..<i + part.count] == part { return true; } }
+  return false;
 }
 #test "a card reads as it was written" {
   h: [1] WtTest; c := h[0].c[..];
