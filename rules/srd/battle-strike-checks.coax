@@ -1114,3 +1114,44 @@ sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: boo
   b[0].c[a] = monk; b[0].c[g] = holt; sk_fill(b[..], g, 2); b[0].turn = RsTurn.{};
   #assert rs_flurry(b[..], a, g, OH_ADDLE) && b[0].turn.bonus && b[0].c[a].uses[RS_USE_FOCUS] == 1;
 }
+
+#test "strike: a Blinded ally beside the target is Sneak Attack's ally; the Attack action cleaves no one; Stunning Strike and a Trip at one Blinded; Addle on a full list holding a die" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  r := rs_add(b[..], rs_rogue("Vex", 0, 3), 1, 1); t := rs_add(b[..], rs_fighter("Brand", 1, 3), 2, 1); al := rs_add(b[..], rs_fighter("Pal", 0, 3), 3, 1);
+  b[0].c[al].cond = RS_BLINDED;
+  #assert rs_sneak_ally(b[..], r, t);
+  b[0].c[al].cond = RS_INCAPACITATED; #assert !rs_sneak_ally(b[..], r, t);
+  // the Attack action, plainly: a Cleave weapon takes no second creature, the first of the battle neither
+  x: [1] RsBattle; x_room: [1] RsRoom; rs_have(x[..], x_room[..]); x[0].w = 20; x[0].h = 8; x[0].dice[0].fixed = true;
+  near := rs_add(x[..], rs_fighter("Near", 1, 3), 3, 2); f := rs_add(x[..], rs_fighter("Garr", 0, 3), 2, 2); tg := rs_add(x[..], rs_fighter("Brand", 1, 3), 3, 1);
+  x[0].c[f].weapon = W_GREATAXE; x[0].c[f].masteries = 1 << M_CLEAVE; #assert rs_weapon(W_GREATAXE).mastery == M_CLEAVE;
+  for q: [2] int.[near, tg] { x[0].c[q].ac = 1; x[0].c[q].hp = 200; x[0].c[q].hp_max = 200; }
+  x[0].who = f; x[0].turn = RsTurn.{};
+  #assert rs_attack_action(x[..], f, tg) && x[0].c[tg].hp < 200 && x[0].c[near].hp == 200 && !x[0].turn.cleaved;
+  // Stunning Strike at one Blinded (not Stunned): the save is asked
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]); m[0].w = 20; m[0].h = 8; m[0].dice[0].fixed = true;
+  k := rs_add(m[..], rs_monk("Kira", 0, 5), 1, 1); v := rs_add(m[..], rs_fighter("Brand", 1, 3), 2, 1);
+  m[0].c[k].note[RS_NT_STUN] = 1; m[0].c[k].uses[RS_USE_FOCUS] = 3; m[0].c[v].cond = RS_BLINDED; m[0].who = k; m[0].turn = RsTurn.{};
+  #assert rs_stun_ready(m[0].c[k], false);
+  rs_stunning_strike(m[..], k, v);
+  #assert m[0].turn.stunned && m[0].c[k].uses[RS_USE_FOCUS] == 2;
+  // a Trip at one Blinded (not Prone): the save is asked
+  seq := b[0].book[0].seq; b[0].c[t].cond = RS_BLINDED; b[0].who = r;
+  rs_cunning_effect(b[..], r, t, CS_TRIP);
+  #assert b[0].book[0].seq > seq;
+  seq = b[0].book[0].seq; b[0].c[t].cond = RS_PRONE;
+  rs_cunning_effect(b[..], r, t, CS_TRIP); #assert b[0].book[0].seq == seq;
+  // Addle: a full list with a Bardic Inspiration die in it has no place for the Addle
+  o: [1] RsBattle; o_room: [1] RsRoom; rs_have(o[..], o_room[..]); o[0].w = 20; o[0].h = 8; o[0].dice[0].fixed = true;
+  h := rs_add(o[..], rs_monk("Kira", 0, 3), 1, 1); w := rs_add(o[..], rs_fighter("Brand", 1, 3), 2, 1);
+  o[0].c[h].feats = rs_feature_put(o[0].c[h].feats, RS_FT_OPEN_HAND, true);
+  for e: 0..<RS_EFFECTS { o[0].c[w].eff[e] = RsEffect.{kind = EF_BLESS, by = w, spell = SP_BLESS, until = 9000, save = -1}; }
+  o[0].c[w].eff[3] = RsEffect.{kind = EF_INSPIRED, cond = 6, by = -1, spell = -1, until = RS_NO_END, save = -1};
+  seq = o[0].book[0].seq;
+  rs_open_hand(o[..], h, w, OH_ADDLE);
+  #assert o[0].book[0].seq == seq && !rs_effect(o[0].c[w], EF_ADDLED);
+  // with a place, the Addle on the target, told
+  o[0].c[w].eff[5] = RsEffect.{};
+  rs_open_hand(o[..], h, w, OH_ADDLE);
+  #assert o[0].book[0].seq == seq + 1 && rs_effect(o[0].c[w], EF_ADDLED);
+}
