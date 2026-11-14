@@ -137,9 +137,17 @@
     "Code editing requires a server exposing that capability. Agent attachment-open requests are displayed; automatic attachment read-back is not installed.",
     "No asset-cache eviction UI yet.",
     "Native producers, SDK capabilities and shaders require a native build; compatible UI/editor/chat logic, inventories and content use signed Updates.",
-    "Production world creation requires an existing creator grant; the email account checked for the owner currently lacks one and the owner choice to enable it is pending.",
+    "Production world creation requires a creator grant. The owner subsequently approved their verified email account; the grant is now live and audited.",
     "Physical-device touch, motion, audio, suspension, offline reopening and real-account authoring acceptance remain in NEEDS_OWNER.md."
   ],
   "local_artifacts": "/Users/christopherdavid/.openagents/releases/openagents-ios-1075-final",
-  "release_validation_correction": "The first upload was refused for missing CFBundleShortVersionString on the four new frameworks. Project-level marketing metadata was added, every embedded bundle was checked, and the corrected IPA was accepted and processed VALID."
+  "release_validation_correction": "The first upload was refused for missing CFBundleShortVersionString on the four new frameworks. Project-level marketing metadata was added, every embedded bundle was checked, and the corrected IPA was accepted and processed VALID.",
+  "creator_access": {
+    "verified_at": "2026-11-14T13:35:39.939239+00:00",
+    "authorization": "Owner explicitly approved creator access for their verified email account in this conversation",
+    "creator": true,
+    "site_invite_only": true,
+    "audit_action": "admin.creator.add",
+    "verification": "Existing approval function committed the grant; a separate read-only transaction verified creator membership and its audit row."
+  }
 }

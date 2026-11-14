@@ -8,14 +8,13 @@ and landscape touch controls, sound after a gesture, suspension and reopening
 offline after an initial successful visit. Sign in with the existing email
 account, create a world and open it from **Worlds you can edit**. Check the
 inspector, a transform plus Undo, and an Agent change with the world visible
-behind its sheet. Creator/admin rights are unchanged. Physical touch, motion,
+behind its sheet. Existing ownership and admin rules apply. Physical touch, motion,
 audio and the actual account's acceptance remain owner observations.
 
-A read-only production check on November 14 found that the existing
-`chris@openagents.com` email account is on the team but has no world-creator
-grant. Its Create flow therefore retains the site's invite gate. The owner
-choice to enable creator access for this account is pending; public play and
-the TestFlight release do not depend on that grant.
+The owner approved creator access for `chris@openagents.com` on November 14.
+The verified account's creator grant is live and independently read back;
+the approval is in the authentication audit log. The production site remains
+invite-only. Close and reopen **Worlds** to refresh its creator status.
 
 ## Computer connection repair, build1074 (2026-11-14)
 
