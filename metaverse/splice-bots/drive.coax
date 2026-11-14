@@ -133,7 +133,7 @@ dv_camera :: (g: [] SpGame) -> CamNow {
 }
 dv_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   s := dv_s(g); c := dv_at(g, s);
-  g_draw_rover(buf, p, v3(c.x, 0.2, c.z), dv_yaw(g, s));
+  g_draw_rover(g, buf, p, v3(c.x, 0.2, c.z), dv_yaw(g, s));
 }
 
 // At the desk (where the world's drive portal is): the first time she comes to it, Sniper puts the

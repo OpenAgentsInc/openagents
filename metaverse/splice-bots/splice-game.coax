@@ -971,14 +971,22 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
 }
 
 // ---- What moves, written every frame
-g_draw_rover :: (buf: [] u32, p: [] Pen, at: Point, yaw: f32) {
-  cast_rover(buf, p, frame_at(at, yaw), 1.5, 150, at.x + at.z, cast_colour());   // the wheels turn as it travels
+// Sniper as the world's tables draw it: the pieces row SP_ROVER_KIND (the rover train you board at the
+// solar farm), k times its size, so the rail, the drive, the garage and the title show one rover.
+// Tables without that row draw the cast's rover.
+SP_ROVER_KIND :: 123;
+g_rover_at :: (g: [] SpGame, buf: [] u32, p: [] Pen, f: Frame, obj: int, k: f32) {
+  r := sc_piece(g[0].c[..], SP_ROVER_KIND);
+  if r < 0 || g[0].c[0].pieces[r].kit < 0 || g[0].c[0].pieces[r].kit == PK_MESH { cast_rover(buf, p, f, 1.5 * k, obj, 0, cast_colour()); return; }
+  pc := g[0].c[0].pieces[r];
+  sp_piece_write(buf, p, pc.kit, pc.scale * k, f, obj, sp_tint(pc.a), sp_tint(pc.b), sp_tint(pc.c), INK());
 }
+g_draw_rover :: (g: [] SpGame, buf: [] u32, p: [] Pen, at: Point, yaw: f32) { g_rover_at(g, buf, p, frame_at(at, yaw), 150, 1); }
 g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   t := g[0].t; blue := GLOW();
   g[0].thing_n = 0;
   // Sniper parked at the mine, except while it drives you there (drive.coax): one rover, not two
-  if g[0].mode != M_DRIVE { cast_rover(buf, p, frame_at(v3(g[0].at.rover_x, 0, g[0].at.rover_z), 0.2), 1.5, 180, 0, cast_colour()); }
+  if g[0].mode != M_DRIVE { g_rover_at(g, buf, p, frame_at(v3(g[0].at.rover_x, 0, g[0].at.rover_z), 0.2), 180, 1); }
   if fr_front(g) { fr_live(g, buf, p); return; }
   if g[0].mode == M_MEMORY { sb_memory_live(g, buf, p); return; }   // the hologram (splice-battle.coax)
   if g[0].mode == M_BAY {
@@ -991,7 +999,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   if g[0].zone == Z_RAIL {
     c := rail_at(g, g[0].rail_s);
     rk := g_thing(g, p, TK_ROVER, 0, frame_at(v3(c.x, 0.2, c.z), rail_yaw(g, g[0].rail_s)), 1.5, g[0].rail_s);
-    if rk >= 0 { g_draw_rover(buf, p, v3(c.x, 0.2, c.z), rail_yaw(g, g[0].rail_s)); g_thing_end(g, p, rk); }
+    if rk >= 0 { g_draw_rover(g, buf, p, v3(c.x, 0.2, c.z), rail_yaw(g, g[0].rail_s)); g_thing_end(g, p, rk); }
     if !g[0].taken[H_BATTERY] {
       at := v3(pick_x(g, H_BATTERY), 0.75 + sin(t * 2.2) * 0.12, pick_z(g, H_BATTERY));
       kit_pen(p, 72, MAT_SKIN, t3(1.0, 0.72, 0.30)); box(buf, p, frame_at(at, t * 1.2), 0.26, 0.34, 0.2);
@@ -2355,7 +2363,7 @@ FlowTest :: struct { o: [5] [CT_BODY] u8; }
   // the parked Sniper is not written live while it drives, and is once you are out
   buf: [400000] u32; pen := [1] Pen.[Pen.{}];
   g_live(g[..], buf[..], pen[..]); driving := pen[0].n;
-  one := [1] Pen.[Pen.{}]; g_draw_rover(buf[..], one[..], v3(0, 0.2, 0), 0);
+  one := [1] Pen.[Pen.{}]; g_draw_rover(g[..], buf[..], one[..], v3(0, 0.2, 0), 0);
   #assert driving == one[0].n;   // only the rover on the road: no second, parked one
   for i: 0..<2000 { g_step(g[..], 0.02); if g[0].mode != M_DRIVE { break; } }
   #assert g[0].mode == M_PLAY && dv_hidden(g[..]) == -1 && dv_facing_in(g[..]) && g[0].phase == PH_DUSK;

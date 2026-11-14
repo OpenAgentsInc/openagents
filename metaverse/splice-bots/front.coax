@@ -344,7 +344,7 @@ fr_camera :: (g: [] SpGame) -> CamNow {
 fr_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   rs := ifx g[0].mode == M_CREW then 0.0f32 else fr_rail_s(g);
   c := rail_at(g, rs);
-  g_draw_rover(buf, p, v3(c.x, 0.2, c.z), rail_yaw(g, rs));
+  g_draw_rover(g, buf, p, v3(c.x, 0.2, c.z), rail_yaw(g, rs));
 }
 
 // ---- the player: the character's walk cycle in the piece store, one instance a frame
