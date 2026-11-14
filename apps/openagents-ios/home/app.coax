@@ -316,7 +316,7 @@ st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
     else {dm_value(s[0].dom[..],"chat.composer",cast(string)s[0].draft[0..<s[0].draft_n]);na_note(s,"Messages can be up to 4,096 bytes.");}
   }
   if kind==1 {
-    if s[0].environments[0].active {for k:0..<s[0].environments[0].view[0].ni {a:[96]u8;b:[96]u8;if id==tr_cat(b[..],tr_join(a[..],"environment.message.",k),".copy") {m:=s[0].environments[0].view[0].items[k];na_text_effect(s,false,ea_item_text(s[0].environments[0].view[..],k),id);return;}}}
+    if s[0].environments[0].active {for k:0..<s[0].environments[0].view[0].ni {a:[96]u8;b:[96]u8;if id==tr_cat(b[..],eu_item_id(s[0].environments[0].view[..],k,a[..]),".copy") {na_text_effect(s,false,ea_item_text(s[0].environments[0].view[..],k),id);return;}}}
     for k:0..<s[0].thread[0].n {a:[96]u8;b:[96]u8;if id==tr_cat(b[..],tr_join(a[..],"message.",k),".copy") {m:=s[0].thread[0].messages[k];na_text_effect(s,false,cast(string)m.text[0..<m.n],id);return;}}
     code:=k_code_copy(s[0].tree[..],i);if code.count>0 {na_text_effect(s,false,code,id);return;}
     if i>=0 && s[0].tree[0].nodes[i].tag==TG_A {na_text_effect(s,true,tr_attr_of(s[0].tree[..],i,AT_HREF),id);return;}

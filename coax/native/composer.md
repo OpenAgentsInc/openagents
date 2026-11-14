@@ -15,6 +15,29 @@ under `components/fonts/`, with its OFL and pinned package provenance.
 No upstream scripts ran on the Mac. No upstream Markdown parser or edit
 buffer was copied.
 
+Build 1079 adds the T3 mobile work-log presentation from the same reference:
+`work-log-layout.tsx` and `thread-work-log.tsx`. The shared Coax `k_tool_line`
+owns the disclosure and literal result; the native projection uses 28-point
+rows, a 24-point icon slot, 14-point text/icons and an 11-point chevron.
+Expanded output is selectable, copyable and scrolls within 240 points. Tool
+results are never parsed as assistant Markdown. Disclosure keys follow the
+item's identity across polls, and opening a result stops automatic following.
+
+The environment header contains a small refresh/status control. Background
+polls leave it quiet; an explicit refresh shows its spinner without removing
+or disabling the control. Success is
+green and a connection failure offers reconnection through the same control.
+An uncertain mutation still checks its original command identity. Earlier
+history is a quiet action above the transcript, and polling pauses while that
+page is being read. The existing model/effort offer and choices remain owned
+by the environment application on main.
+
+The current environment view carries a tool name and bounded text, rather
+than a full invocation/status record. Rows use neutral tool symbols; `complete`
+describes the returned text's completeness and is never treated as success or
+execution progress. Partial output is labelled in the row. This presentation
+uses the existing protocol and parser, without inventing missing call data.
+
 The regular phone profile follows these reference dimensions in points:
 
 | Part | Geometry |

@@ -1,5 +1,13 @@
 # Owner actions
 
+## iPhone transcript, build 1079
+
+Install 1079 and open an existing Mac or CoderOS conversation. Tool calls
+start collapsed; open one to read/copy its literal output. Refresh is the
+small status control in the header. Check a long conversation while Claude
+is working, and the existing model/effort choices offered by that computer.
+Physical-phone acceptance remains an owner observation.
+
 ## iPhone worlds acceptance, build 1078
 
 Build 1075 is superseded: its download/state paths tried to write beside the

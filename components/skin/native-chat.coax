@@ -6,3 +6,11 @@ nt_skin :: ()->NativeChatSkin #export_c #effects(all) {
 }
 
 nt_heading :: (level:int)->f64 #export_c #effects(all) {sizes:=[7]f64.[16,21,19,17,16,15,14];return ifx level>=1 && level<=6 then sizes[level] else 16.0;}
+
+// T3 mobile work-log-layout: 28-point row, 24-point icon slot, 14-point
+// symbol and text, 6-point gap, 11-point disclosure. Details scroll locally.
+NativeWorkSkin :: struct {row:f64;slot:f64;icon:f64;gap:f64;text:f64;chevron:f64;detail_max:f64;}
+#test "native work rows follow the T3 mobile work-log measures" {
+ s:=nt_work();#assert s.row==28 && s.slot==24 && s.icon==14 && s.gap==6 && s.text==14 && s.chevron==11 && s.detail_max==240;
+}
+nt_work :: ()->NativeWorkSkin #export_c #effects(all) {return NativeWorkSkin.{row=28,slot=24,icon=14,gap=6,text=14,chevron=11,detail_max=240};}

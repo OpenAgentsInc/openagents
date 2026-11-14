@@ -4,10 +4,12 @@ import argparse
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
 
 p = argparse.ArgumentParser()
 p.add_argument("directory", type=Path)
 p.add_argument("--port", type=int, default=13491)
+p.add_argument("--environment-transcript", action="store_true")
 a = p.parse_args()
 manifest = json.loads((a.directory / "manifest.json").read_text())
 objects = {f["sha256"]: a.directory / "Starter" / f["path"] for f in manifest["files"]}
@@ -28,6 +30,20 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if a.environment_transcript and self.path.startswith("/api/chat/environment"):
+            if self.headers.get("Authorization") != "Bearer oa_at_fixture":
+                return self.answer(401, {})
+            host = "a" * 64
+            if urlparse(self.path).path == "/api/chat/environments/v1":
+                return self.answer(200, dict(schema="openagents.environment.catalog.v1alpha1", environments=[dict(host_pubkey=host, display_name="Mac")]))
+            method = parse_qs(urlparse(self.path).query)["method"][0]
+            summary = dict(session_id="fixture-session", workspace_id="default", title="Transcript fixture", origin="managed", control="available", generation=1, revision=1, busy=True, interaction_id="", updated_at_ms=1)
+            items = [] if method == "ListSessions" else [
+                dict(item_id="user-1", role="user", text="Fix the transcript", tool_name="", complete=True),
+                dict(item_id="tool-1", role="tool", text="## Tool output is literal\n" + "42  let code = **not Markdown**;\n" * 120, tool_name="Read", complete=True),
+                dict(item_id="tool-2", role="tool", text="Updated file successfully.", tool_name="Edit", complete=True),
+                dict(item_id="assistant-1", role="assistant", text="**Done.** The transcript is compact.", tool_name="", complete=True)]
+            return self.answer(200, dict(schema="openagents.environment.runtime.v1alpha1", host_pubkey=host, display_name="Mac", method=method, sessions=[summary], items=items, error="", complete=False, next_cursor="1000001", command_id="", command_status="", source_epoch="fixture", models=[dict(model_id="default", display_name="Claude default", efforts=["low", "high"])], efforts=[dict(effort_id="low", display_name="Low"), dict(effort_id="high", display_name="High")], default_effort="high"))
         if self.path == "/latest.cnu":
             return self.answer(200, (a.directory / "latest.cnu").read_bytes())
         if self.path.startswith("/objects/"):

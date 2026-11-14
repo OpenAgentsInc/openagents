@@ -76,8 +76,8 @@ import UIKit
         XCTAssertEqual(command["method"] as? String,"OpenSession")
         XCTAssertEqual(command["text"] as? String,"Hello from the phone")
         try p.event(204,0,"{}");try p.frame()
-        XCTAssertTrue(p.elements().contains {$0.id=="env.reconnect"})
-        try p.input("env.reconnect");try p.frame()
+        XCTAssertTrue(p.elements().contains {$0.role=="toolbar" && $0.children.contains {$0.id=="env.refresh" && $0.attrs["data-state"]=="offline"}})
+        try p.input("env.refresh");try p.frame()
         XCTAssertEqual(try p.action().1,request.1)
     }
 }

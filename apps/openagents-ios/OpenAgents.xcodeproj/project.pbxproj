@@ -54,6 +54,7 @@
 		6E5DC168044EA02417ED816B /* StarterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3236A8315C98ABF86224CB /* StarterApp.swift */; };
 		6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0AAC9508FA4369A9715A69 /* AppAuth.swift */; };
 		704C961857BA052BD602FE8A /* MadeRealmRuntime.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		711805FE18B74F48101A84C4 /* NativeTranscriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3EDDA42FA80D738F2AF2B3 /* NativeTranscriptTests.swift */; };
 		77214AC5E50DDE33A8E5057E /* NativeWorldHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE6F7A293A2BF2130273E7A /* NativeWorldHost.swift */; };
 		790A92BCF9A5C6628FA9E10E /* NativeControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A32BEE57050EF541CA1A16 /* NativeControls.swift */; };
 		7AF8A667DDA6EC805E8356D3 /* OpenagentsAppUnit.c in Sources */ = {isa = PBXBuildFile; fileRef = A06EC60CB2CB2474370174C3 /* OpenagentsAppUnit.c */; };
@@ -80,6 +81,7 @@
 		C0B0BC79860337C450B78A5D /* PhoneSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */; };
 		C1CD4FE3E08EAA35C1A45124 /* NativeWorldUnit.c in Sources */ = {isa = PBXBuildFile; fileRef = 460986BD3808434A301E2974 /* NativeWorldUnit.c */; };
 		C378479D5A66B8CE7518A401 /* Everglade-step.c in Sources */ = {isa = PBXBuildFile; fileRef = E83CC85136FF56D90258CB5E /* Everglade-step.c */; };
+		C40009380DB0593D74436CC1 /* NativeTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC25DDA3EF1A78B3C171EFF1 /* NativeTool.swift */; };
 		C5714B16C1D38C98556E313A /* River.c in Sources */ = {isa = PBXBuildFile; fileRef = 1AF7AD81A684A2291C02A25A /* River.c */; };
 		C6D0F1DC49DA862E1E6CD25D /* NativeWorldEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77B06C5399D3C53DAFA386F6 /* NativeWorldEditor.swift */; };
 		C77117B7CBCFC4CC0576E57C /* phone-drive.c in Sources */ = {isa = PBXBuildFile; fileRef = D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function"; }; };
@@ -94,6 +96,7 @@
 		DC5537790C17AE594AEEEDDA /* NativeProgram.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C29607A719DC46C635E2BB /* NativeProgram.swift */; };
 		DD81534B0F0F15B73270C06B /* WorldRuntimes.plist in Resources */ = {isa = PBXBuildFile; fileRef = E3ADDDE39510B15815C9C133 /* WorldRuntimes.plist */; };
 		DE56E2C6256E7DF31BC84955 /* NativeWorldConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D6F9ED8D49C3CB4C705C0A7 /* NativeWorldConversation.swift */; };
+		DF0737A262C615800A175C31 /* TranscriptUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DB2D6E0FD423967C52276CF /* TranscriptUITests.swift */; };
 		E04C681B8BB7D9243AFB2BAE /* NativeComposer.c in Sources */ = {isa = PBXBuildFile; fileRef = D1522134FBE4A368E4ED10E6 /* NativeComposer.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		ECDFE75FB85014389B5354CF /* EmailLoginUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */; };
 		F1758E0384C0E7DF3B886192 /* myrealm.c in Sources */ = {isa = PBXBuildFile; fileRef = DBD3A25436338CDD9D50E691 /* myrealm.c */; };
@@ -203,7 +206,9 @@
 		43575EA619337B30779C47AD /* EvergladeRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = EvergladeRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		439DDA8E07F1EF881E469B46 /* everglade5e.face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = everglade5e.face.c; sourceTree = "<group>"; };
 		460986BD3808434A301E2974 /* NativeWorldUnit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeWorldUnit.c; sourceTree = "<group>"; };
+		4A3EDDA42FA80D738F2AF2B3 /* NativeTranscriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranscriptTests.swift; sourceTree = "<group>"; };
 		4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MadeRealmRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		5DB2D6E0FD423967C52276CF /* TranscriptUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptUITests.swift; sourceTree = "<group>"; };
 		5DE15337BAC2E10225C3C1CB /* NativeWire.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeWire.c; sourceTree = "<group>"; };
 		60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMarkdownTests.swift; sourceTree = "<group>"; };
 		6859E9B70EB7323043C45276 /* Sticks.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Sticks.c; sourceTree = "<group>"; };
@@ -255,6 +260,7 @@
 		E6BDE16B17DBA408B5A72A1F /* DMSans-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-Italic.ttf"; sourceTree = "<group>"; };
 		E83CC85136FF56D90258CB5E /* Everglade-step.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Everglade-step.c"; sourceTree = "<group>"; };
 		E9B32CD7EF30EADCBFE18124 /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
+		EC25DDA3EF1A78B3C171EFF1 /* NativeTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTool.swift; sourceTree = "<group>"; };
 		ED0BF4D0079AFBF3E14D42FB /* splice-bots.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "splice-bots.c"; sourceTree = "<group>"; };
 		EE83E3BBB4A5E7F30389A371 /* splice-bots.face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "splice-bots.face.c"; sourceTree = "<group>"; };
 		F1D217C6F37EE5CCCA813BE7 /* engine-core-face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "engine-core-face.c"; sourceTree = "<group>"; };
@@ -344,6 +350,7 @@
 				60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */,
 				7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */,
 				25D8936BC22A37E1214E454F /* NativeProgramTests.swift */,
+				4A3EDDA42FA80D738F2AF2B3 /* NativeTranscriptTests.swift */,
 				2090461DEB661585A0B8576E /* NativeWorldDownload-test.swift */,
 				93CE4D9A643E98E31E87C926 /* NativeWorldProgram-test.swift */,
 				9EE12087F6CBB97147B8BD05 /* NativeWorldTests.swift */,
@@ -480,6 +487,7 @@
 				01C83152B91DFEEF873AAD56 /* NativeHost.swift */,
 				7284237748CD21A99F8480AC /* NativeMessage.swift */,
 				09C29607A719DC46C635E2BB /* NativeProgram.swift */,
+				EC25DDA3EF1A78B3C171EFF1 /* NativeTool.swift */,
 				8477A24ADD8E8A749294EEEE /* NativeTypes.swift */,
 				303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */,
 				A76CCABCDB810512F41B3CB4 /* NativeWorldAssets.swift */,
@@ -501,6 +509,7 @@
 				09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */,
 				84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */,
 				88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */,
+				5DB2D6E0FD423967C52276CF /* TranscriptUITests.swift */,
 				C314C30B844BE1008335F491 /* WorldsUITests.swift */,
 			);
 			path = StarterUITests;
@@ -799,6 +808,7 @@
 				03AF362E64D9222AA06F0E40 /* NativePolicy.c in Sources */,
 				DC5537790C17AE594AEEEDDA /* NativeProgram.swift in Sources */,
 				1654B08E3C265E5E8E899CA8 /* NativeText.c in Sources */,
+				C40009380DB0593D74436CC1 /* NativeTool.swift in Sources */,
 				1B762FE26821A2D99402DDAF /* NativeTypes.swift in Sources */,
 				43A5D1535C05B29C381D5FFF /* NativeUpdates.swift in Sources */,
 				3EEE9F6858832B4BED499CC2 /* NativeWire.c in Sources */,
@@ -840,6 +850,7 @@
 				103180BD57D2AA2E93F4A6B7 /* SharedAppDeviceUITests.swift in Sources */,
 				A05D687346C45546701CEFF7 /* SharedAppUITests.swift in Sources */,
 				647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */,
+				DF0737A262C615800A175C31 /* TranscriptUITests.swift in Sources */,
 				569D8A9D4CC5B6F695DEF10E /* WorldsUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -865,6 +876,7 @@
 				2C15AE18F335A39F71D3ECC5 /* NativeMarkdownTests.swift in Sources */,
 				DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */,
 				095EEDDBD0F5949696F6B490 /* NativeProgramTests.swift in Sources */,
+				711805FE18B74F48101A84C4 /* NativeTranscriptTests.swift in Sources */,
 				12A636838C1DF3448BAB4DB9 /* NativeWorldDownload-test.swift in Sources */,
 				18FDCC1A0A5965D7D479402D /* NativeWorldProgram-test.swift in Sources */,
 				1DE975734DFC2118F8DA6120 /* NativeWorldTests.swift in Sources */,
@@ -1032,7 +1044,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1078;
+				CURRENT_PROJECT_VERSION = 1079;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -1268,7 +1280,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1078;
+				CURRENT_PROJECT_VERSION = 1079;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1301,7 +1313,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1078;
+				CURRENT_PROJECT_VERSION = 1079;
 				EXPORTED_SYMBOLS_FILE = "$(SRCROOT)/../../metaverse-engine/host/apple/page-host.exports";
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1505,7 +1517,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1078;
+				CURRENT_PROJECT_VERSION = 1079;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

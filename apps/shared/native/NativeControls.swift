@@ -52,7 +52,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         let ordinary=elements.filter {$0.role != "composer" && $0.role != "transcript" && $0.role != "toolbar"}
         var bar:[NativeElement]=[]
         func toolbar(_ e:NativeElement) {
-            if e.role=="button" {bar.append(NativeElement(id:e.id,role:"button",label:e.textContent,disabled:e.attrs["disabled"] != nil))}
+            if e.role=="button" {var button=e;button.label=e.textContent;button.disabled=e.attrs["disabled"] != nil;bar.append(button)}
             else if !e.label.isEmpty {bar.append(NativeElement(id:e.id,role:"text",label:e.label))}
             else {for child in e.children {toolbar(child)}}
         }
@@ -62,8 +62,16 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         for e in bar {
             let old=controls[e.id],matching=e.role=="button" ? old is UIButton:old is UILabel
             let control=matching ? old!:make(e)
-            if let button=control as? UIButton {button.configuration = .plain();button.configuration?.title=e.label;button.isEnabled = !e.disabled}
-            else if let label=control as? UILabel {label.text=e.label;label.font=NativeTypography.font(16,strong:true)}
+            if let button=control as? UIButton {
+                button.configuration = .plain();button.configuration?.title=e.label;button.isEnabled = !e.disabled
+                if let state=e.attrs["data-state"],["loading","ready","offline","idle"].contains(state) {
+                    button.configuration?.title=nil;button.configuration?.showsActivityIndicator=state=="loading"
+                    button.configuration?.image=state=="loading" ? nil:UIImage(systemName:state=="ready" ? "checkmark.circle.fill":state=="offline" ? "exclamationmark.arrow.triangle.2.circlepath":"arrow.clockwise",withConfiguration:UIImage.SymbolConfiguration(pointSize:17))
+                    button.configuration?.baseForegroundColor=state=="ready" ? .systemGreen:state=="offline" ? .systemOrange:.secondaryLabel
+                    button.accessibilityLabel=e.attrs["aria-label"] ?? "Refresh conversation"
+                }
+            }
+            else if let label=control as? UILabel {label.text=e.label;label.font=NativeTypography.font(16,strong:true);label.textColor=NativeTypography.color(nt_skin().strong)}
             kept[e.id]=control;if control.superview !== header {header.addArrangedSubview(control)}
         }
         let ordered=(bar.count==1 ? [headerSpacer]:[])+bar.compactMap {kept[$0.id]}
@@ -78,10 +86,11 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         } else {composer?.removeFromSuperview();composer=nil}
         for e in ordinary {
             let old=controls[e.id]
-            let matches = e.role == "message" ? old is NativeMessage : e.role == "button" ? old is UIButton : e.role == "field" ? (e.type=="multiline" ? old is UITextView:old is UITextField) : old is UILabel
+            let matches = e.role == "tool" ? old is NativeTool : e.role == "message" ? old is NativeMessage : e.role == "button" ? old is UIButton : e.role == "field" ? (e.type=="multiline" ? old is UITextView:old is UITextField) : old is UILabel
             let control = matches ? old! : make(e)
-            if let message=control as? NativeMessage {message.press={ [weak self] id in self?.press?(id) };message.render(e)}
-            else if let b=control as? UIButton { b.configuration?.title=e.label; b.isEnabled = !e.disabled }
+            if let tool=control as? NativeTool {tool.press={ [weak self] id in self?.following=false;self?.press?(id) };tool.render(e)}
+            else if let message=control as? NativeMessage {message.press={ [weak self] id in self?.press?(id) };message.render(e)}
+            else if let b=control as? UIButton {b.configuration=e.hasClass("lk") ? .plain():.bordered();b.configuration?.title=e.label;b.isEnabled = !e.disabled;if e.hasClass("lk") {b.configuration?.baseForegroundColor = .secondaryLabel;b.titleLabel?.font=NativeTypography.font(14)}}
             else if let text=control as? UITextView {
                 text.accessibilityLabel=e.label;text.isEditable = !e.disabled
                 if text.text != e.value {let selection=text.selectedRange;text.text=e.value;text.selectedRange=NSRange(location:min(selection.location,(e.value as NSString).length),length:0)}
@@ -105,14 +114,18 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             if i<stack.arrangedSubviews.count && stack.arrangedSubviews[i] === control {continue}
             stack.insertArrangedSubview(control,at:i)
         }
+        for (i,e) in ordinary.enumerated() {if let control=kept[e.id] {stack.setCustomSpacing(e.role=="tool" && i+1<ordinary.count && ordinary[i+1].role=="tool" ? 1:16,after:control)}}
+        view.setNeedsLayout()
     }
     private func make(_ e:NativeElement)->UIView {
         let control:UIView
-        if e.role=="message" {control=NativeMessage()}
+        if e.role=="tool" {control=NativeTool()}
+        else if e.role=="message" {control=NativeMessage()}
         else if e.role == "button" {
             let b=UIButton(configuration:.bordered())
             b.addAction(UIAction { [weak self] _ in self?.press?(e.id) },for:.primaryActionTriggered)
             b.heightAnchor.constraint(greaterThanOrEqualToConstant:44).isActive=true
+            if let state=e.attrs["data-state"],["loading","ready","offline","idle"].contains(state) {b.widthAnchor.constraint(equalToConstant:44).isActive=true}
             control=b
         } else if e.role == "field" && e.type=="multiline" {
             let text=UITextView();text.delegate=self;text.font = .preferredFont(forTextStyle:.body);text.adjustsFontForContentSizeCategory=true

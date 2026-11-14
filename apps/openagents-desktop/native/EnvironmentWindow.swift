@@ -65,17 +65,30 @@ import Security
             let value=element.role=="field" ? element.value:element.label
             if field.stringValue != value {field.stringValue=value}
             field.isEnabled = !element.disabled
-            field.font = .systemFont(ofSize:element.role=="heading" ? 28:15)
+            field.font = element.type=="code" ? .monospacedSystemFont(ofSize:14,weight:.regular):.systemFont(ofSize:element.role=="heading" ? 28:15)
             field.setAccessibilityLabel(element.label)
         }
     }
     private func render(_ elements:[NativeElement]) {
         var projected:[NativeElement]=[]
+        func text(_ node:NativeElement)->String {node.label+node.children.filter {$0.role != "button"}.map {text($0)}.joined(separator:["p","pre","li","tr"].contains(node.role) ? "\n":"")}
         func add(_ e:NativeElement) {
             if e.role=="composer" || e.role=="toolbar" {for child in e.children {add(child)};return}
+            if e.role=="tool" {
+                for child in e.children {
+                    if child.role=="button" {add(child)}
+                    else if child.classes.split(separator:" ").contains("tool-b") {
+                        for detail in child.children {
+                            if detail.role=="pre" {projected.append(NativeElement(id:detail.id,role:"text",label:text(detail),type:"code"))}
+                            else if detail.role=="button" {add(detail)}
+                        }
+                    }
+                }
+                return
+            }
+            if e.role=="button" {var button=e;button.label=text(e);if button.label.isEmpty {button.label=e.attrs["aria-label"] ?? ""};button.disabled=e.attrs["disabled"] != nil;projected.append(button);return}
             if e.role=="message" {
                 var message=e
-                func text(_ node:NativeElement)->String {node.label+node.children.filter {$0.role != "button"}.map {text($0)}.joined(separator:["p","pre","li","tr"].contains(node.role) ? "\n":"")}
                 message.role="text";message.label=text(e);projected.append(message);return
             }
             if e.role != "transcript" {projected.append(e)}

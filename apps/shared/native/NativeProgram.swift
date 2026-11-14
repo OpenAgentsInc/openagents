@@ -90,13 +90,14 @@ import JavaScriptCore
             let isDialog=inside || n.attrs["role"]=="dialog"
             if isDialog==dialog {
                 if n.classes.split(separator:" ").contains("transcript") {result.append(NativeElement(id:n.id,role:"transcript",label:"Conversation",value:n.attrs["data-state"] ?? "new"))}
-                if n.attrs["role"]=="article" || n.attrs["role"]=="toolbar" || n.classes.split(separator:" ").contains("msg-ai") {
+                let tool=n.classes.split(separator:" ").contains("tool")
+                if tool || n.attrs["role"]=="article" || n.attrs["role"]=="toolbar" || n.classes.split(separator:" ").contains("msg-ai") {
                     func semantic(_ key:Int,_ path:Set<Int>=[])->NativeElement? {
                         guard !path.contains(key),let node=nodes[key] else{return nil}
                         var next=path;next.insert(key)
                         return NativeElement(id:node.id,role:node.tag,label:node.text,children:node.children.compactMap {semantic($0,next)},classes:node.classes,attrs:node.attrs)
                     }
-                    if var message=semantic(slot) {message.role=n.attrs["role"]=="toolbar" ? "toolbar":"message";result.append(message)}
+                    if var message=semantic(slot) {message.role=tool ? "tool":n.attrs["role"]=="toolbar" ? "toolbar":"message";result.append(message)}
                     return
                 }
                 if n.classes.split(separator:" ").contains("composer") {
