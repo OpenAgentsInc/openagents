@@ -7,8 +7,8 @@
 // its hip joint and each arm about its shoulder, by the form's named joints (crew-body.coax CJ_*),
 // legs opposite each other and each arm against its leg, and the body sinks by what the swung legs
 // lose in height, so the feet stay on the ground. The garments follow, because they are drawn from
-// the same rings. Knees and elbows don't bend yet: a gait on the engine's figure rig
-// (metaverse-engine/anim/figure.coax) is what comes next.
+// the same rings. A pose may also bend each knee (the shin folds back about the knee joint, the
+// calf and ankle rings with it); elbows don't bend yet.
 //   coax/bin/coax test metaverse-engine/kit/crew-player.coax
 #load "crew-doc.coax";
 
@@ -34,16 +34,30 @@ cp_leg_angle :: (stride: f32, side: int) -> f32 { a := sin(stride) * CP_LEG_SWIN
 cp_arm_angle :: (stride: f32, side: int) -> f32 { return -cp_leg_angle(stride, side) * CP_ARM_SWING / CP_LEG_SWING; }
 // A pose: how far each leg turns about its hip and each arm about its shoulder (radians; positive
 // swings it forward). A gait is one at each stride; a realm's jump, fall and landing are others.
-CpLimbs :: struct { leg: [2] f32; arm: [2] f32; }
+CpLimbs :: struct { leg: [2] f32; arm: [2] f32; knee: [2] f32; }   // knee: radians the shin folds back (0: straight)
 // The gait's pose at this stride, its legs swung up to `swing` (CP_LEG_SWING the walk's; a run swings wider).
 cp_stride_limbs :: (stride: f32, swing: f32) -> CpLimbs {
   a := sin(stride) * swing; b := a * CP_ARM_SWING / CP_LEG_SWING;
   return CpLimbs.{leg = [2] f32.[a, -a], arm = [2] f32.[-b, b]};
 }
-// How far the body sinks so the lower foot still reaches the ground.
+// A gait that bends its knees: a leg coming forward folds its shin back, most halfway through the swing
+// (the foot lifts off behind and clears the ground), and straightens to plant; at a stride of 0 or a
+// half turn both knees are straight, so the standing pose stays.
+cp_gait :: (stride: f32, swing: f32, knee: f32) -> CpLimbs {
+  l := cp_stride_limbs(stride, swing); c := cos(stride); b := 2 * abs(sin(stride)) * knee;
+  l.knee[0] = ifx c > 0 then c * b else 0; l.knee[1] = ifx c < 0 then -c * b else 0;
+  return l;
+}
+// How far the body sinks so the lower foot still reaches the ground: the posed feet's lower one.
 cp_lift :: (m: CrewForm, l: CpLimbs) -> f32 {
-  leg := m.joint[CJ_R_HIP].y - m.joint[CJ_R_FOOT].y;
-  return leg * (1 - cos(ifx abs(l.leg[0]) > abs(l.leg[1]) then l.leg[0] else l.leg[1]));
+  low := 1e9f32;
+  for side: 0..<2 {
+    hip := ifx side == 0 then CJ_R_HIP else CJ_L_HIP; hj := m.joint[hip];
+    knee := cp_turn_x(m.joint[hip + 1], hj, l.leg[side]);
+    foot := cp_turn_x(cp_turn_x(m.joint[hip + 2], hj, l.leg[side]), knee, -l.knee[side]);
+    if foot.y < low { low = foot.y; }
+  }
+  return low - m.joint[CJ_R_FOOT].y;
 }
 cp_sink :: (m: CrewForm, stride: f32) -> f32 { return cp_lift(m, cp_stride_limbs(stride, CP_LEG_SWING)); }
 
@@ -55,6 +69,13 @@ cp_pose :: (m: CrewForm, l: CpLimbs) -> CrewForm {
     a := l.leg[side]; hj := m.joint[hip];
     o.leg[side] = cp_loft_x(m.leg[side], hj, a);
     for j: hip + 1..<hip + 4 { o.joint[j] = cp_turn_x(m.joint[j], hj, a); }
+    k := l.knee[side];
+    if k != 0 {   // the shin folds back about the knee as it now stands; the knee ring turns half as far
+      kj := o.joint[hip + 1];
+      o.leg[side].r[CL_KNEE] = cp_ring_x(o.leg[side].r[CL_KNEE], kj, -k * 0.5);
+      for r: CL_CALF..<o.leg[side].n { o.leg[side].r[r] = cp_ring_x(o.leg[side].r[r], kj, -k); }
+      for j: hip + 2..<hip + 4 { o.joint[j] = cp_turn_x(o.joint[j], kj, -k); }
+    }
     sh := ifx side == 0 then CJ_R_SHOULDER else CJ_L_SHOULDER;
     b := l.arm[side]; sj := m.joint[sh];
     o.arm[side] = cp_loft_x(m.arm[side], sj, b);
@@ -160,9 +181,22 @@ cp_value :: (d: CrewDoc, field: int, buf: [] u8) -> string {
   w := cp_pose(m, l);
   #assert w.joint[CJ_R_FOOT].z > m.joint[CJ_R_FOOT].z + 0.3 && abs(w.joint[CJ_L_FOOT].z - m.joint[CJ_L_FOOT].z) < 0.1;
   #assert w.joint[CJ_R_HAND].z > m.joint[CJ_R_HAND].z + 0.2 && w.joint[CJ_L_HAND].z < m.joint[CJ_L_HAND].z;
-  #assert abs(cp_lift(m, l) - cp_lift(m, CpLimbs.{leg = [2] f32.[0.6, 0], arm = [2] f32.[0, 0]})) < 0.0001;
+  #assert abs(cp_lift(m, l) - cp_lift(m, CpLimbs.{leg = [2] f32.[0.1, 0.1], arm = [2] f32.[0, 0]})) < 0.0001;   // the lower foot's
+  #assert cp_lift(m, CpLimbs.{leg = [2] f32.[0.3, 0.3], arm = [2] f32.[0, 0], knee = [2] f32.[1.0, 1.0]}) > cp_lift(m, CpLimbs.{leg = [2] f32.[0.3, 0.3], arm = [2] f32.[0, 0]}) + 0.03;   // bent knees sink it
   #assert cp_lift(m, cp_stride_limbs(PI * 0.5, 0.55)) > cp_sink(m, PI * 0.5) * 2;
   #assert cp_stride_limbs(0.7, CP_LEG_SWING).leg[1] == cp_leg_angle(0.7, 1) && cp_stride_limbs(0.7, CP_LEG_SWING).arm[0] == cp_arm_angle(0.7, 0);
+}
+#test "a bent knee folds the shin back about the knee: the thigh stays, the shin keeps its length, the foot lifts; a gait's knees are straight at rest" {
+  m := cb_form(cb_usual());
+  l := CpLimbs.{leg = [2] f32.[0.3, 0], arm = [2] f32.[0, 0], knee = [2] f32.[1.0, 0]};
+  w := cp_pose(m, l); s := cp_pose(m, CpLimbs.{leg = [2] f32.[0.3, 0], arm = [2] f32.[0, 0]});
+  #assert length(sub(w.joint[CJ_R_KNEE], s.joint[CJ_R_KNEE])) < 0.0001;
+  #assert abs(length(sub(w.joint[CJ_R_FOOT], w.joint[CJ_R_KNEE])) - length(sub(m.joint[CJ_R_FOOT], m.joint[CJ_R_KNEE]))) < 0.0001;
+  #assert w.joint[CJ_R_FOOT].y > s.joint[CJ_R_FOOT].y + 0.03 && w.joint[CJ_R_FOOT].z < s.joint[CJ_R_FOOT].z - 0.2;   // the shin from 0.3 forward to 0.7 back
+  #assert length(sub(w.joint[CJ_L_FOOT], s.joint[CJ_L_FOOT])) < 0.0001;
+  for i: 0..<2 { r := cp_gait(PI * cast(f32) i, 0.6, 1.2); #assert r.knee[0] < 0.001 && r.knee[1] < 0.001; }
+  q := cp_gait(PI * 0.25, 0.6, 1.2); #assert q.knee[0] > 1.1 && q.knee[1] == 0;   // the right leg coming forward
+  q = cp_gait(PI * 0.75, 0.6, 1.2); #assert q.knee[0] == 0 && q.knee[1] > 1.1;    // planted, the left comes through
 }
 #test "a walk cycle's poses: each pose's stride, and the pose a stride shows, round the cycle" {
   #assert cp_pose_stride(0, 10) == 0 && abs(cp_pose_stride(5, 10) - PI) < 0.0001 && cp_pose_stride(3, 0) == 0;

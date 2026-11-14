@@ -70,6 +70,9 @@ Jump :: struct {
   waiting: f32;            // s the buffered press still waits (0: none)
   landed: bool;            // the last step landed
   impact: f32;             // m/s down at the last landing, for a realm's squash and its sound
+  // A realm's variable height: the share of the rise kept when the control is let go while rising
+  // (0: none, every jump goes full height). A tap hops; a hold goes all the way. Once a jump.
+  cut: f32; cut_done: bool;
 }
 JUMP_AIR :: 1.15f32;       // a jump in the air lifts at this share of the jump speed, so it goes higher
 jump_place :: (y: f32) -> Jump #effects(all) { return Jump.{y = y, prev_y = y}; }
@@ -86,7 +89,9 @@ jump_step :: (j: Jump, loc: LocomotionProfile, ground: f32, dt: f32) -> Jump #ef
     else if j.air_used < j.air_jumps { t.vy = loc.jump_speed * JUMP_AIR; next.air_used = j.air_used + 1; }   // a double jump
     else { next.waiting = j.buffer; }   // held for the landing
   }
-  if !t.pressed && j.on_ground && j.waiting > 0 { t.vy = loc.jump_speed; t.on_ground = false; next.jumped = true; next.waiting = 0; }   // the buffered press, now on the floor
+  if t.pressed { next.cut_done = false; }
+  if !t.pressed && j.on_ground && j.waiting > 0 { t.vy = loc.jump_speed; t.on_ground = false; next.jumped = true; next.waiting = 0; next.cut_done = true; }   // the buffered press, now on the floor: a full jump
+  if j.cut > 0 && !next.cut_done && !t.on_ground && t.vy > 0 && !t.presses.held { t.vy *= j.cut; next.cut_done = true; }   // let go while rising
   s := jump_settle(loc, j.y, t.vy, t.on_ground, ground, dt);
   next.vy = s.vy; next.on_ground = s.on_ground;
   if s.on_ground && !t.on_ground { next.landed = true; next.impact = -t.vy; }
@@ -166,6 +171,19 @@ jt_top :: (air: int, second: int) -> f32 #effects(all) {
   #assert j.presses.waiting == 0;
   j = jump_press(jump_press(j, false), true);
   #assert j.presses.waiting == 1;
+}
+#test "variable height: with a cut, letting go early hops lower than holding; without one, a tap goes full height" {
+  loc: LocomotionProfile;
+  hold := jump_press(jump_place(0), true); hold.cut = 0.5;
+  tap := hold; full := jump_press(jump_place(0), true);
+  top_hold := 0.0f32; top_tap := 0.0f32; top_full := 0.0f32;
+  for i: 0..<80 {
+    if i == 3 { tap = jump_press(tap, false); full = jump_press(full, false); }
+    hold = jump_step(hold, loc, 0, 1.0f32 / 64); tap = jump_step(tap, loc, 0, 1.0f32 / 64); full = jump_step(full, loc, 0, 1.0f32 / 64);
+    top_hold = quality_hi(top_hold, hold.y); top_tap = quality_hi(top_tap, tap.y); top_full = quality_hi(top_full, full.y);
+    if i == 3 { #assert tap.cut_done && tap.vy < hold.vy * 0.55; }   // let go: the rise halves at once
+  }
+  #assert top_tap < top_hold * 0.6 && top_tap > 0.05 && top_full == top_hold && tap.on_ground;
 }
 #test "a press in the air is taken and does nothing; a fall lands on a higher floor; standing eases onto a lower one" {
   loc: LocomotionProfile;
