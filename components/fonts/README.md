@@ -1,0 +1,1 @@
+DM Sans Regular and Medium, shared native composer fonts. Source: @expo-google-fonts/dm-sans 0.4.2, data files only (no scripts executed). Package SHA-256: f682e0150a070a118b8b113ca64974a6ced7e514d9d8af6ee95619804b48b352. Licensed under SIL Open Font License 1.1; see DMSans-OFL.txt. Matches T3 Code f313d0a6cb typography.

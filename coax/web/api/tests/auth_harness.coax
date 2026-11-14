@@ -6,7 +6,7 @@
 // The fake Resend: every POST's body goes to DIR/last (and DIR/all), its line and headers to
 // DIR/heads; it answers 200 with an id.
 // It stops when DIR/stop exists.
-am_main :: (port: int, dir: string) -> int {
+am_main :: (port: int, dir: string, response: string = "") -> int {
   listener := cxsock_listen(port);
   if listener < 0 { tool_errln("auth_checks mail: can't listen"); return 1; }
   pb: [1100] u8; ready := fs_write(fs_join(dir, "ready", pb[..]), "1");
@@ -40,6 +40,7 @@ am_main :: (port: int, dir: string) -> int {
     gone := ac_find(head, "/3/device/dead") >= 0;
     sent += 1;
     reply: [1] Sb; sb(reply[..], "{\"id\":\"re_test_"); sb_int(reply[..], sent); sb(reply[..], "\"}");
+    if response.count>0 {sb_clear(reply[..]);sb(reply[..],response);}
     s: [1] Sb;
     sb(s[..], ifx gone then "HTTP/1.1 410 Gone" else "HTTP/1.1 200 OK");
     sb(s[..], "\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "); sb_int(s[..], reply[0].n); sb(s[..], "\r\n\r\n");
@@ -137,10 +138,10 @@ ac_pubkey :: (t: [] Ap, keyfile: string, out: [] u8) -> string {
 }
 
 // Starts the fake Resend (this check file's own `mail PORT DIR` mode) on RESEND_PORT; its handle, or -1.
-ac_mail_start :: (t: [] Ap, file: string, work: string) -> int {
-  rp: [32] u8; port := proc_getenv("RESEND_PORT", rp[..]);
+ac_mail_start :: (t: [] Ap, file: string, work: string, mode: string = "mail", port_env: string = "RESEND_PORT") -> int {
+  rp: [32] u8; port := proc_getenv(port_env, rp[..]);
   if port == "" { tool_errln("auth checks: RESEND_PORT comes from test.sh"); return -1; }
-  ba := [5] string.["coax/web/tool.sh", file, "mail", port, work];
+  ba := [5] string.["coax/web/tool.sh", file, mode, port, work];
   h := proc_new(); ok := h >= 0;
   for x: ba { ok = ok && proc_arg(h, x); }
   started := ok && proc_start(h) == 0;

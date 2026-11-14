@@ -9,6 +9,7 @@ struct NativeElement {
     var disabled = false
     var complete = ""
     var type = ""
+    var children:[NativeElement] = []
 }
 
 /// The shared UIKit projection: keyed controls survive updates, including their
@@ -18,6 +19,8 @@ final class NativeControls: UIViewController {
     private(set) var controls: [String:UIView] = [:]
     var press: ((String)->Void)?
     var edit: ((String,String)->Void)?
+    private let dock=UIStackView()
+    private var composer:NativeComposer?
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
@@ -27,11 +30,15 @@ final class NativeControls: UIViewController {
         // reach different buttons even though the scroll view has no zoom view.
         scroll.addGestureRecognizer(UIPinchGestureRecognizer(target:nil,action:nil))
         view.addSubview(scroll)
+        dock.axis = .vertical;dock.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(dock)
         stack.axis = .vertical; stack.spacing = 16; stack.translatesAutoresizingMaskIntoConstraints = false
         scroll.addSubview(stack)
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo:view.safeAreaLayoutGuide.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo:view.keyboardLayoutGuide.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo:dock.topAnchor,constant:-6),
+            dock.bottomAnchor.constraint(equalTo:view.keyboardLayoutGuide.topAnchor,constant:-6),
+            dock.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:12),
+            dock.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-12),
             scroll.leadingAnchor.constraint(equalTo:view.leadingAnchor), scroll.trailingAnchor.constraint(equalTo:view.trailingAnchor),
             stack.topAnchor.constraint(equalTo:scroll.contentLayoutGuide.topAnchor,constant:24),
             stack.bottomAnchor.constraint(equalTo:scroll.contentLayoutGuide.bottomAnchor,constant:-24),
@@ -42,7 +49,13 @@ final class NativeControls: UIViewController {
     func render(_ elements:[NativeElement]) {
         loadViewIfNeeded()
         var kept:[String:UIView] = [:]
-        for e in elements {
+        let ordinary=elements.filter {$0.role != "composer"}
+        if let e=elements.first(where:{$0.role=="composer"}) {
+            if composer==nil {let c=NativeComposer();c.changed={ [weak self,weak c] text in self?.edit?(c?.fieldID ?? "",text) };c.press={ [weak self] id in self?.press?(id) };composer=c;dock.addArrangedSubview(c)}
+            composer?.render(e)
+            if let c=composer {kept[e.id]=c;kept[c.fieldID]=c.editor}
+        } else {composer?.removeFromSuperview();composer=nil}
+        for e in ordinary {
             let old=controls[e.id]
             let matches = e.role == "button" ? old is UIButton : e.role == "field" ? old is UITextField : old is UILabel
             let control = matches ? old! : make(e)
@@ -61,7 +74,7 @@ final class NativeControls: UIViewController {
         }
         for (id,old) in controls where kept[id] !== old { old.removeFromSuperview() }
         controls=kept
-        for (i,e) in elements.enumerated() {
+        for (i,e) in ordinary.enumerated() {
             guard let control=kept[e.id] else {continue}
             if i<stack.arrangedSubviews.count && stack.arrangedSubviews[i] === control {continue}
             stack.insertArrangedSubview(control,at:i)

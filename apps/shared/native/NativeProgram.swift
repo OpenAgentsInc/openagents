@@ -4,7 +4,7 @@ import JavaScriptCore
 
 @MainActor final class NativeProgram {
     struct Node {
-        var id:String; var tag:String; var text=""; var value=""
+        var id:String; var tag:String; var text=""; var value=""; var classes=""
         var attrs:[String:String]=[:]; var children:[Int]=[]
     }
     let context:JSContext
@@ -62,6 +62,7 @@ import JavaScriptCore
                 list.insert(slot,at:at)
                 if parent==65535 {roots=list}else {nodes[parent]?.children=list}
             } else if op==4 {nodes[num(1)]?.text=str(2)}
+            else if op==5 {nodes[num(1)]?.classes=str(2)}
             else if op==6 {nodes[num(1)]?.attrs[str(2)]=str(3)}
             else if op==7 {nodes[num(1)]?.attrs.removeValue(forKey:str(2))}
             else if op==10 {nodes[num(1)]?.value=str(2)}
@@ -85,9 +86,16 @@ import JavaScriptCore
             guard seen.insert(slot).inserted,let n=nodes[slot] else {return}
             let isDialog=inside || n.attrs["role"]=="dialog"
             if isDialog==dialog {
-                let role=n.tag=="button" ? "button" : n.tag=="input" ? "field" : n.tag=="h1" || n.tag=="h2" ? "heading" : "text"
-                if n.tag=="input" || n.tag=="button" || !n.text.isEmpty {
-                    result.append(NativeElement(id:n.id,role:role,label:n.tag=="input" ? n.attrs["aria-label"] ?? n.attrs["placeholder"] ?? "" : n.tag=="button" ? text(slot):n.text,value:n.value,disabled:n.attrs["disabled"] != nil,complete:n.attrs["autocomplete"] ?? "",type:n.attrs["type"] ?? ""))
+                if n.classes.split(separator:" ").contains("composer") {
+                    var children:[NativeElement]=[]
+                    func collect(_ key:Int) {guard let c=nodes[key] else{return};if ["textarea","button"].contains(c.tag) {children.append(NativeElement(id:c.id,role:c.tag=="textarea" ? "field":"button",label:c.tag=="textarea" ? c.attrs["aria-label"] ?? c.attrs["placeholder"] ?? "Message":text(key),value:c.value,disabled:c.attrs["disabled"] != nil))}else {for key in c.children {collect(key)}}}
+                    for child in n.children {collect(child)}
+                    result.append(NativeElement(id:n.id,role:"composer",label:"Message",children:children));return
+                }
+                let field=n.tag=="input" || n.tag=="textarea"
+                let role=n.tag=="button" ? "button" : field ? "field" : n.tag=="h1" || n.tag=="h2" ? "heading" : "text"
+                if field || n.tag=="button" || !n.text.isEmpty {
+                    result.append(NativeElement(id:n.id,role:role,label:field ? n.attrs["aria-label"] ?? n.attrs["placeholder"] ?? "" : n.tag=="button" ? text(slot):n.text,value:n.value,disabled:n.attrs["disabled"] != nil,complete:n.attrs["autocomplete"] ?? "",type:n.attrs["type"] ?? ""))
                 }
             }
             if n.tag=="button" || n.tag=="input" {return}

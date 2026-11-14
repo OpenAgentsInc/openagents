@@ -1,0 +1,17 @@
+// T3 Code f313d0a6cb, ThreadComposer.tsx / ComposerToolbar.tsx (MIT).
+// Shared native layout. UIKit supplies measured text and executes these frames.
+#test "T3 compact, wrapped and capped composer geometry" {
+  a:=nc_layout(378,23,1,false);#assert a.height==48 && a.radius==27 && a.editor_y==6 && !a.expanded;
+  b:=nc_layout(378,46,1,true);#assert b.expanded && b.editor_x==14 && b.height==114 && b.send_size==30;
+  c:=nc_layout(378,400,1,true);#assert c.editor_h==104 && c.height==160;
+  d:=nc_layout(378,23,1,false);#assert d.send_x==334 && d.editor_w>100;
+}
+NativeComposerLayout :: struct {height:f64;radius:f64;editor_x:f64;editor_y:f64;editor_w:f64;editor_h:f64;toolbar_y:f64;send_x:f64;send_size:f64;expanded:bool;}
+nc_layout :: (width:f64,text_height:f64,scale:f64,has_text:bool)->NativeComposerLayout #export_c #effects(all) {
+  s:=ifx scale>1 then scale else 1.0;line:=23*s;expanded:=has_text && text_height>line*1.5;
+  h:=text_height+12;if h<36*s {h=36*s;}if h>line*4+12 {h=line*4+12;}
+  r:=NativeComposerLayout.{height=48,radius=27,editor_x=98,editor_y=6,editor_w=width-186,editor_h=36*s,toolbar_y=2,send_x=width-44,send_size=30,expanded=expanded};
+  if expanded {r.editor_x=14;r.editor_y=2;r.editor_w=width-28;r.editor_h=h;r.toolbar_y=h+10;r.height=h+56;}
+  else if s>1 {r.height=36*s+12;}
+  return r;
+}

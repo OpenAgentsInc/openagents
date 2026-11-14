@@ -20646,6 +20646,23 @@ CREATE TABLE auth.wallet_spends (
 
 
 --
+-- Name: account_threads_v1; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.account_threads_v1 (
+    account text NOT NULL,
+    id text NOT NULL,
+    record text NOT NULL,
+    revision bigint NOT NULL,
+    title text NOT NULL,
+    updated_ms bigint NOT NULL,
+    CONSTRAINT account_threads_v1_id_check CHECK ((id ~ '^m_[0-9a-f]{20}$'::text)),
+    CONSTRAINT account_threads_v1_record_check CHECK ((octet_length(record) <= 65536)),
+    CONSTRAINT account_threads_v1_revision_check CHECK ((revision > 0))
+);
+
+
+--
 -- Name: conversations; Type: TABLE; Schema: chat; Owner: -
 --
 
@@ -24130,6 +24147,14 @@ ALTER TABLE ONLY auth.wallet_spends
 
 
 --
+-- Name: account_threads_v1 account_threads_v1_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.account_threads_v1
+    ADD CONSTRAINT account_threads_v1_pkey PRIMARY KEY (account, id);
+
+
+--
 -- Name: conversations conversations_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
 --
 
@@ -25702,6 +25727,13 @@ CREATE INDEX wallet_spends_recent ON auth.wallet_spends USING btree (account, at
 
 
 --
+-- Name: account_threads_v1_recent; Type: INDEX; Schema: chat; Owner: -
+--
+
+CREATE INDEX account_threads_v1_recent ON chat.account_threads_v1 USING btree (account, updated_ms DESC);
+
+
+--
 -- Name: conversations_owner; Type: INDEX; Schema: chat; Owner: -
 --
 
@@ -26716,6 +26748,14 @@ ALTER TABLE ONLY auth.wallet_limits
 
 ALTER TABLE ONLY auth.wallet_spends
     ADD CONSTRAINT wallet_spends_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: account_threads_v1 account_threads_v1_account_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.account_threads_v1
+    ADD CONSTRAINT account_threads_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id) ON DELETE CASCADE;
 
 
 --

@@ -1,6 +1,7 @@
 // Independent API/database checks for email-L1 account-owned saved history.
 // tool.sh: tls
 #load "auth_harness.coax";
+#load "../account-chat-wire.coax";
 
 chh_api_checks :: (t:[]Ap,dir:string) {
   b:[128]u8;code:[6]u8;link:[64]u8;out:[8192]u8;acctb:[64]u8;tokenb:[256]u8;c:[1]Sb;q:[1]Sb;v:[1]Sb;
@@ -21,14 +22,45 @@ chh_api_checks :: (t:[]Ap,dir:string) {
   ap_check(t,"the old admin chat gate still requires stronger login",st!=200,"");
   st=ac_call(t,"POST","/api/chat/history/v1","{}",sb_text(c[..]),"","");
   ap_check(t,"the email history grant cannot write",st!=200,"");
+  thread:[1]AccountThread;wire:[65536]u8;thread[0].n=1;thread[0].messages[0].text[0]='H';thread[0].messages[0].n=1;
+  wn:=act_write(thread[..],wire[..]);body:=cast(string)wire[0..<wn];
+  st=ac_call(t,"POST","/api/chat/complete/v1",body,sb_text(c[..]),"","");
+  ap_check(t,"ordinary email accounts do not inherit team-funded inference",st==403,ap_body(t));
+  st=ac_call(t,"POST","/api/chat/thread/v1",body,sb_text(c[..]),"","");
+  ap_check(t,"email account can save its own transcript",st==200 && act_read(ap_body(t),thread[..]) && thread[0].revision==1,ap_body(t));
+  if st!=200 {return;}
+  sb_clear(q[..]);sb(q[..],"/api/chat/thread/v1?id=");sb(q[..],cast(string)thread[0].id[0..<thread[0].id_n]);
+  st=ac_call(t,"GET",sb_text(q[..]),"",sb_text(c[..]),"","");
+  ap_check(t,"saved transcript reopens on the account",st==200 && ap_has(ap_body(t),"messages"),ap_body(t));
+  st=ac_call(t,"POST","/api/chat/thread/v1",body,sb_text(c[..]),"","");
+  ap_check(t,"creating with a claimed revision cannot overwrite a thread",st==200,"new ID stays a separate transcript");
+  wn=act_write(thread[..],wire[..]);body=cast(string)wire[0..<wn];
+  st=ac_call(t,"POST","/api/chat/thread/v1",body,sb_text(c[..]),"","");
+  ap_check(t,"saving a matching revision succeeds",st==200,ap_body(t));
+  st=ac_call(t,"POST","/api/chat/thread/v1",body,sb_text(c[..]),"","");
+  ap_check(t,"stale saves refuse instead of replacing newer turns",st==409,ap_body(t));
+  // A separate owner row is inserted directly as a fixture, never inferred from
+  // a caller-supplied owner field.
+  ap_do(t,"INSERT INTO auth.accounts(id,kind,verse_account) VALUES ('acct_aaaaaaaaaaaaaaaaaaaaaaaaaa','person','history-other') ON CONFLICT DO NOTHING");
+  sb_clear(q[..]);sb(q[..],"UPDATE chat.account_threads_v1 SET account='acct_aaaaaaaaaaaaaaaaaaaaaaaaaa' WHERE account='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+  sb_clear(q[..]);sb(q[..],"/api/chat/thread/v1?id=");sb(q[..],cast(string)thread[0].id[0..<thread[0].id_n]);
+  st=ac_call(t,"GET",sb_text(q[..]),"",sb_text(c[..]),"","");ap_check(t,"another account's ID is not readable",st==404,ap_body(t));
+  st=ac_call(t,"POST","/api/chat/thread/v1",body,sb_text(c[..]),"","");ap_check(t,"another account's ID is not writable",st==409,ap_body(t));
+  sb_clear(q[..]);sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+  st=ac_call(t,"POST","/api/chat/complete/v1",body,sb_text(c[..]),"","");
+  ap_check(t,"team email login reaches the existing metered model adapter",st==200 && ap_has(ap_body(t),"choices"),ap_body(t));
+
 }
 
 tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   if args_count(a[..])==3 && args_at(a[..],0)=="mail" {return am_main(ap_whole(args_at(a[..],1)),args_at(a[..],2));}
+  if args_count(a[..])==3 && args_at(a[..],0)=="infer" {return am_main(ap_whole(args_at(a[..],1)),args_at(a[..],2),"{\"choices\":[{\"message\":{\"content\":\"Hello from the account agent\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":6}}");}
   t:[1]Ap;if !ap_open(t[..]) {return 2;}
   wb:[4096]u8;work:=fs_temp("history-mail",wb[..]);
   h:=ac_mail_start(t[..],"coax/web/api/tests/history_checks.coax",work);
   if h<0 {return ap_done(t[..],"history checks");}
-  chh_api_checks(t[..],work);ac_mail_stop(h,work);return ap_done(t[..],"history checks");
+  ib:[4096]u8;infer_dir:=fs_temp("history-infer",ib[..]);ih:=ac_mail_start(t[..],"coax/web/api/tests/history_checks.coax",infer_dir,"infer","INFER_PORT");
+  if ih>=0 {chh_api_checks(t[..],work);ac_mail_stop(ih,infer_dir);}
+  ac_mail_stop(h,work);return ap_done(t[..],"history checks");
 }

@@ -1,0 +1,23 @@
+{
+  "schema": "openagents.chat.thread.v1",
+  "transport": "GET /api/chat/thread/v1?id=ID; POST /api/chat/thread/v1; POST /api/chat/complete/v1",
+  "authentication": "Verified person account. Storage is account-owned. Completion requires team funding and the existing inference daily quotas.",
+  "fields": {
+    "schema": "literal openagents.chat.thread.v1",
+    "id": "empty to create, returned m_ plus 20 hex digits; max24 UTF-8 bytes",
+    "revision": "nonnegative compare-and-swap revision; server increments on successful save",
+    "messages": "1..32 objects with role user|assistant and nonempty content <=16384 UTF-8 bytes, total <=48000"
+  },
+  "limits": "65536 encoded request bytes; fixed Gemini 4 Hydrogen, 2048 max output tokens; no tools; client transcript is not an inference receipt",
+  "golden": {
+    "schema": "openagents.chat.thread.v1",
+    "id": "",
+    "revision": 0,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hi \"you\""
+      }
+    ]
+  }
+}

@@ -35,6 +35,12 @@ targets:
       - OpenAgents/Wallet/BreezKey.swift
       - path: OpenAgents/Resources/bip39-english.txt
         buildPhase: resources
+      - path: ../../components/fonts/DMSans-Regular.ttf
+        buildPhase: resources
+      - path: ../../components/fonts/DMSans-Medium.ttf
+        buildPhase: resources
+      - path: Generated/NativeComposer.c
+        compilerFlags: "-Wno-unused-function -Wno-unused-variable"
       - path: Generated/WalletBalance.c
         compilerFlags: "-Wno-unused-function -Wno-unused-variable"
       - path: Generated/NativePolicy.c
@@ -67,7 +73,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app
         PRODUCT_NAME: OpenAgents
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1070"
+        CURRENT_PROJECT_VERSION: "1071"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COAX_NATIVE_BALANCE"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
@@ -132,3 +138,14 @@ schemes:
       targets:
         - name: OpenAgentsTests
           selectedTests: [SparkBalanceLiveTests]
+
+  CoaxNativeChat:
+    build:
+      targets:
+        OpenAgents: all
+    test:
+      targets:
+        - name: OpenAgentsTests
+          selectedTests: [NativeProgramTests]
+        - name: OpenAgentsUITests
+          selectedTests: [ChatUITests]

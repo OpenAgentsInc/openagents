@@ -12,8 +12,11 @@ bool chat_history_route(const request *q) {
   PGconn *db=api_db();if (!db) {api_error(q->fd,503,"History unavailable.");return true;}
   const char *values[]={p->account};
   PGresult *r=PQexecParams(db,
-    "SELECT k.account,c.id::text,left(c.title,80),c.model,coalesce(c.folder,''),c.updated_ms::text,(c.status='running')::text "
-    "FROM chat.conversations c JOIN auth.nostr_keys k ON k.pubkey=c.owner WHERE k.account=$1 ORDER BY c.updated_ms DESC,c.id DESC LIMIT 60",
+    "SELECT account,id,title,model,folder,updated_ms::text,busy::text FROM ("
+    "SELECT k.account,c.id::text,left(c.title,80) AS title,c.model,coalesce(c.folder,'') AS folder,c.updated_ms,(c.status='running') AS busy "
+    "FROM chat.conversations c JOIN auth.nostr_keys k ON k.pubkey=c.owner WHERE k.account=$1 UNION ALL "
+    "SELECT account,id,title,'google/gemini-4-hydrogen','',updated_ms,false FROM chat.account_threads_v1 WHERE account=$1"
+    ") own ORDER BY updated_ms DESC,id DESC LIMIT 60",
     1,NULL,values,NULL,NULL,0);
   if (PQresultStatus(r)!=PGRES_TUPLES_OK) {PQclear(r);api_error(q->fd,503,"History unavailable.");return true;}
   coax_t_ChatHistoryRow rows[60]={0};int count=PQntuples(r);

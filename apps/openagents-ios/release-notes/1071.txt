@@ -1,0 +1,1 @@
+Native compact and expanding chat composer based on T3 Code. Email account chat with Gemini 4 Hydrogen: send, stop, retry, save and reopen. Native keyboard docking, multiline input, selection, paste, undo and Dynamic Type. New native runtime; subsequent app logic remains available over signed Updates. Text messages only; attachment upload and custom dictation are not enabled.

@@ -4,18 +4,20 @@
 #load "../../../components/backend/dom.coax";
 #load "../../../coax/lib/json/json.coax";
 #load "../../shared/app-login.coax";
+#load "../../../coax/web/api/account-chat-wire.coax";
 #load "../../../coax/web/api/chat-history-wire.coax"; // shared account-history codec
 
 Starter :: struct {
   ready:bool;dirty:bool=true;time:f32;action:int;flight:int;purpose:int;page:int= -1;
   email:[254]u8;email_n:int;code:[32]u8;code_n:int;pending:[256]u8;pending_n:int;
-  note:[512]u8;note_n:int;outbox:[1024]u8;out_n:int;inbox:[1048576]u8;
+  note:[512]u8;note_n:int;outbox:[131072]u8;out_n:int;inbox:[1048576]u8;
   chats:[1]ChatHistory;selected:int= -1;
+  thread:[1]AccountThread;draft:[4096]u8;draft_n:int;wire:[65536]u8;retry:bool;
   tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;css:[24576]u8;
 }
 na_copy :: (out:[]u8,text:string)->int {n:=ifx text.count<out.count then text.count else out.count;for i:0..<n {out[i]=text[i];}return n;}
 na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[0].dirty=true;}
-na_history_clear :: (s:[]Starter) {empty:ChatHistory;s[0].chats[0]=empty;}
+na_history_clear :: (s:[]Starter) {empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
 na_secrets_clear :: (s:[]Starter) {
   for i:0..<s[0].email.count {s[0].email[i]=0;}s[0].email_n=0;
   dm_value(s[0].dom[..],"login.email","");
@@ -48,9 +50,67 @@ na_verify :: (s:[]Starter) {
   if s[0].pending_n==0 {s[0].page=0;na_note(s,"Ask for a new email code.");return;}
   na_note(s,"");na_request(s,3,"");
 }
+na_http :: (s:[]Starter,path:string,body:string,purpose:int) {
+  if s[0].flight!=0 {return;}
+  o:[1]Jo;jo_start(o[..],s[0].outbox[..]);jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],path);jo_key(o[..],"method");jo_str(o[..],ifx body.count>0 then "POST" else "GET");
+  if body.count>0 {jo_key(o[..],"body");jo_str(o[..],body);}jo_end(o[..]);
+  if o[0].bad {na_note(s,"This chat is full. Start a new chat.");return;}
+  s[0].out_n=o[0].n;s[0].purpose=purpose;s[0].action=4;s[0].flight=4;s[0].dirty=true;
+}
+na_new :: (s:[]Starter) {
+  if s[0].flight!=0 {return;}empty:AccountThread;s[0].thread[0]=empty;s[0].draft_n=0;s[0].retry=false;s[0].page=3;
+  dm_value(s[0].dom[..],"chat.composer","");na_note(s,"");
+}
+na_save :: (s:[]Starter,purpose:int) {
+  n:=act_write(s[0].thread[..],s[0].wire[..]);if n<1 {na_note(s,"This chat is full. Start a new chat.");return;}
+  na_http(s,"/api/chat/thread/v1",cast(string)s[0].wire[0..<n],purpose);
+}
+na_complete :: (s:[]Starter) {
+  n:=act_write(s[0].thread[..],s[0].wire[..]);if n<1 {return;}
+  na_http(s,"/api/chat/complete/v1",cast(string)s[0].wire[0..<n],5);na_note(s,"");s[0].retry=false;
+}
+na_send :: (s:[]Starter) {
+  if s[0].flight!=0 || s[0].draft_n==0 {return;}
+  // A bounded transcript reserves room for the next answer. No hidden clipping.
+  t:=s[0].thread[..];total:=s[0].draft_n;for i:0..<t[0].n {total+=t[0].messages[i].n;}
+  if t[0].n>=31 || total>30000 {na_note(s,"This chat is full. Start a new chat to continue.");return;}
+  i:=t[0].n;t[0].messages[i].assistant=false;t[0].messages[i].n=na_copy(t[0].messages[i].text[..],cast(string)s[0].draft[0..<s[0].draft_n]);t[0].n+=1;
+  na_save(s,4);if s[0].flight==0 {t[0].n-=1;}
+}
+#test "send persists the user before inference, clears only accepted draft, and saves the reply" {
+  s:[1]Starter;s[0].page=3;s[0].draft_n=na_copy(s[0].draft[..],"Hello");na_send(s[..]);#assert s[0].purpose==4 && s[0].draft_n==5;
+  na_reply(s[..],4,200,"{\"schema\":\"openagents.chat.thread.v1\",\"id\":\"m_12345678901234567890\",\"revision\":1,\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}",false);
+  #assert s[0].purpose==5 && s[0].flight==4 && s[0].draft_n==0;
+  na_reply(s[..],4,200,"{\"choices\":[{\"message\":{\"content\":\"Hi!\"},\"finish_reason\":\"stop\"}]}",false);
+  #assert s[0].purpose==6 && s[0].thread[0].n==2 && s[0].thread[0].messages[1].assistant;
+}
+#test "save failure retains draft, model failure offers explicit retry without duplicating user" {
+  s:[1]Starter;s[0].page=3;s[0].draft_n=na_copy(s[0].draft[..],"Hello");na_send(s[..]);na_reply(s[..],4,503,"{}",false);
+  #assert s[0].draft_n==5 && s[0].thread[0].n==0 && s[0].flight==0;
+  s[0].flight=4;s[0].purpose=5;na_reply(s[..],4,429,"{}",false);#assert s[0].retry && s[0].flight==0;
+}
 na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
   if op!=s[0].flight {return;}s[0].flight=0;s[0].dirty=true;
   nodes:[48]JvNode;d:[1]Jv;ok:=jv_parse(d[..],raw,nodes[..]);v:=d[0];
+  if op==8 {s[0].purpose=0;s[0].retry=true;na_note(s,"Stopped. You can retry this turn.");return;}
+  if op==4 && s[0].purpose>=3 {
+    purpose:=s[0].purpose;s[0].purpose=0;
+    if status==401 {na_history_clear(s);na_new(s);s[0].page=0;na_secrets_clear(s);na_note(s,"Log in again to continue.");return;}
+    if failed || status!=200 {
+      if purpose==4 && s[0].thread[0].n>0 {s[0].thread[0].n-=1;}
+      if purpose==5 {s[0].retry=true;}
+      na_note(s,ifx status==409 then "Chat changed on another device. Go back and reopen it." else ifx status==403 then "Agent chat is currently available to the team beta." else ifx purpose==6 then "Reply received but not saved. Tap Save reply to retry." else "Chat request failed. Check your connection and try again.");
+      if purpose==6 {s[0].purpose=6;}return;
+    }
+    if purpose==5 {
+      t:=s[0].thread[..];i:=t[0].n;n:=ifx i<32 then act_answer(raw,t[0].messages[i].text[..]) else -1;
+      if n<1 {s[0].retry=true;na_note(s,"The agent did not return an answer. Retry this turn.");return;}
+      t[0].messages[i].n=n;t[0].messages[i].assistant=true;t[0].n+=1;na_save(s,6);return;
+    }
+    if !act_read(raw,s[0].thread[..]) {na_note(s,"The chat service returned an unreadable conversation.");return;}
+    if purpose==4 {s[0].draft_n=0;dm_value(s[0].dom[..],"chat.composer","");na_complete(s);return;}
+    s[0].page=3;s[0].retry=false;na_note(s,"");return;
+  }
   if failed {
     n:=ifx ok then jv_str(v,jv_get(v,0,"error"),s[0].note[..]) else -1;
     s[0].note_n=ifx n>0 then n else na_copy(s[0].note[..],"OpenAgents is unavailable. Check your connection and try again.");
@@ -70,7 +130,7 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
     if ok && jv_bool(v,jv_get(v,0,"loggedIn")) {na_secrets_clear(s);na_history_clear(s);na_list(s);}
     else {na_note(s,"The code was not accepted. Try again.");}return;
   }
-  if op==5 {na_secrets_clear(s);na_history_clear(s);s[0].page=0;na_note(s,"");return;}
+  if op==5 {na_new(s);na_secrets_clear(s);na_history_clear(s);s[0].page=0;na_note(s,"");return;}
   if op==6 || op==7 {n:=ifx ok then jv_str(v,jv_get(v,0,"message"),s[0].note[..]) else -1;s[0].note_n=ifx n>0 then n else 0;return;}
   if op==4 {
     if status==401 {na_history_clear(s);s[0].page=0;na_secrets_clear(s);na_note(s,"Log in again to see your chats.");return;}
@@ -130,29 +190,56 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     x=k_button(t,u,"login.verify",ifx busy then "Checking code…" else "Log in",ifx busy then BS_DISABLED else BS_PRIMARY);
     x=k_button(t,u,"login.resend","Send a new code",ifx busy then BS_DISABLED else BS_PLAIN);
     x=k_button(t,u,"login.change","Use another email",ifx busy then BS_DISABLED else BS_PLAIN);
+  } else if s[0].page==3 {
+    x=k_button(t,u,"chat.back","Your chats",ifx busy then BS_DISABLED else BS_PLAIN);
+    x=k_text(t,u,"chat.heading",TG_H2,"","OpenAgents");
+    if s[0].thread[0].n==0 {x=k_text(t,u,"chat.welcome",TG_P,"","What would you like to work on?");}
+    for k:0..<s[0].thread[0].n {id:[96]u8;m:=s[0].thread[0].messages[k];
+      if m.assistant {x=k_text(t,u,tr_join(id[..],"message.",k),TG_P,"assistant",cast(string)m.text[0..<m.n]);}
+      else {x=k_user(t,u,tr_join(id[..],"message.",k),cast(string)m.text[0..<m.n]);}
+    }
+    if s[0].purpose==5 && busy {x=k_text(t,u,"chat.thinking",TG_P,"","Thinking…");}
+    if s[0].retry {x=k_button(t,u,"chat.retry","Retry this turn",ifx busy then BS_DISABLED else BS_PLAIN);}
+    if s[0].purpose==6 && !busy {x=k_button(t,u,"chat.save","Save reply",BS_PRIMARY);}
+    f:=k_composer_begin(t,u,"chat.composer","Message");if busy {tr_attr(t,f,AT_DISABLED,"disabled");}
+    k_composer_end(t,u,"chat.composer",ifx s[0].purpose==5 && busy then "Stop" else "Send",(s[0].purpose==5 && busy) || (!busy && s[0].draft_n>0 && s[0].purpose!=6));
   } else {
     x=k_text(t,u,"chats.title",TG_H1,"","Your chats");
     x=k_button(t,u,"chats.refresh",ifx busy then "Loading chats…" else "Refresh chats",ifx busy then BS_DISABLED else BS_PLAIN);
+    x=k_button(t,u,"chat.new","New chat",ifx busy then BS_DISABLED else BS_PRIMARY);
     count:=s[0].chats[0].n;
     if count==0 && !busy && s[0].note_n==0 {x=k_text(t,u,"chats.empty",TG_P,"","No saved account chats yet.");}
     for k:0..<count {
       id:[96]u8;row:=s[0].chats[0].items[k];label:=cast(string)row.title[0..<row.title_n];
-      x=k_text(t,u,tr_join(id[..],"chat.",k),TG_P,"chat-row",ifx label.count>0 then label else "Untitled chat");
+      x=k_button(t,u,tr_join(id[..],"chat.",k),ifx label.count>0 then label else "Untitled chat",ifx busy then BS_DISABLED else BS_PLAIN);
     }
     x=k_button(t,u,"account.logout","Log out",ifx busy then BS_DISABLED else BS_PLAIN);
   }
   if s[0].note_n>0 {x=k_text(t,u,"account.note",TG_P,"note",cast(string)s[0].note[0..<s[0].note_n]);tr_attr(t,x,AT_LIVE,"polite");}
-  x=tr_open(t,"app.tools",TG_FOOTER,"");x=k_button(t,u,"app.updates","Check for updates",ifx busy then BS_DISABLED else BS_PLAIN);x=k_button(t,u,"app.details","Build details",ifx busy then BS_DISABLED else BS_PLAIN);tr_close(t);
+  if s[0].page!=3 {x=tr_open(t,"app.tools",TG_FOOTER,"");x=k_button(t,u,"app.updates","Check for updates",ifx busy then BS_DISABLED else BS_PLAIN);x=k_button(t,u,"app.details","Build details",ifx busy then BS_DISABLED else BS_PLAIN);tr_close(t);}
   tr_close(t);ui_end(u);s[0].dirty=false;return dm_flush(d,t,s[0].sets[..]);
 }
 st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
-  if kind>=100 && kind<208 {op:=ifx kind>=200 then kind-200 else kind-100;if n>=0 && n<=1048576 {na_reply(s,op,slot,cast(string)s[0].inbox[0..<n],kind>=200);}return;}
+  if kind>=100 && kind<209 {op:=ifx kind>=200 then kind-200 else kind-100;if n>=0 && n<=1048576 {na_reply(s,op,slot,cast(string)s[0].inbox[0..<n],kind>=200);}return;}
   i:= -1;for k:0..<s[0].tree[0].n {if s[0].dom[0].of[k]==slot {i=k;break;}}id:=tr_id(s[0].tree[..],i);
   if kind==2 && n>=0 && s[0].flight==0 {
     if id=="login.email" && n<=254 {s[0].email_n=na_copy(s[0].email[..],cast(string)s[0].inbox[0..<n]);}
     if id=="login.code" && n<=32 {s[0].code_n=na_copy(s[0].code[..],cast(string)s[0].inbox[0..<n]);}
   }
+  if kind==2 && id=="chat.composer" && s[0].flight==0 && n>=0 {
+    if n<=4096 {s[0].draft_n=na_copy(s[0].draft[..],cast(string)s[0].inbox[0..<n]);}
+    else {dm_value(s[0].dom[..],"chat.composer",cast(string)s[0].draft[0..<s[0].draft_n]);na_note(s,"Messages can be up to 4,096 bytes.");}
+  }
+  if kind==1 && id=="chat.composer.send" && s[0].purpose==5 && s[0].flight==4 {s[0].flight=0;na_request(s,8,"");return;}
   if kind==1 && s[0].flight==0 {
+    if id=="chat.new" {na_new(s);}if id=="chat.back" {na_list(s);}
+    if id=="chat.clear" {s[0].draft_n=0;dm_value(s[0].dom[..],"chat.composer","");}
+    if id=="chat.composer.send" {na_send(s);}if id=="chat.retry" {na_complete(s);}if id=="chat.save" {na_save(s,6);}
+    for k:0..<s[0].chats[0].n {b:[96]u8;if id==tr_join(b[..],"chat.",k) {
+      row:=s[0].chats[0].items[k];rid:=cast(string)row.id[0..<row.id_n];
+      if rid.count==22 && rid[0]=='m' && rid[1]=='_' {path:[96]u8;at:=mc(path[..],0,"/api/chat/thread/v1?id=");at=mc(path[..],at,rid);na_http(s,cast(string)path[0..<at],"",3);}
+      else {na_note(s,"Open this older conversation on openagents.com/chat. New mobile chats open here.");}
+    }}
     if id=="login.send" || id=="login.resend" {na_start(s);}
     if id=="login.verify" {na_verify(s);}
     if id=="login.change" {na_secrets_clear(s);s[0].page=0;na_note(s,"");dm_value(s[0].dom[..],"login.email",cast(string)s[0].email[0..<s[0].email_n]);}

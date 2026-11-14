@@ -47,6 +47,7 @@ function decodes UTF-8 bytes through Foundation.
 | `auth.emailStart` | `email`; returns opaque `pending` |
 | `auth.emailVerify` | `pending`, `code`; returns `loggedIn` |
 | `auth.logout` | Clears the existing native account session |
+| `http.cancel` | Cancels the active request and invalidates its callback generation |
 | `http` | `path`, `method`, `body`; returns `status`, `body`, `contentType` |
 
 The numeric account action profile exposes the operations above. Native key
@@ -62,9 +63,9 @@ Chat can use the existing send/state/turn polling API. Streaming transport,
 wallet payments, notifications and arbitrary new native SDKs are not exposed by this
 profile. The OpenAgents-only build 1069 adds a read-only `wallet.balance`
 service for its separate Extras module; it is not book functionality.
-The OpenAgents `home/` module adds email-code login and read-only account
-history over these services. Full conversation functionality remains
-subsequent book work (#13512).
+The OpenAgents `home/` module adds email-code login, account history and
+text conversations over these services; see [composer.md](composer.md).
+The book still introduces application functionality in subsequent milestones (#13512).
 
 ## Publish an update
 
@@ -144,3 +145,7 @@ expiry, delegated-key, telemetry and native-renderer designs remain in
 [Updates](../native-updates.md). App Store distribution rules still govern
 what functionality may change remotely; this runtime is not a guarantee
 that every future feature can avoid a store build.
+
+The regular phone composer and account text-chat extension added in build
+1071 are specified in [composer.md](composer.md), including delivery limits,
+ownership, funding, retries and the T3 Code reference measurements.

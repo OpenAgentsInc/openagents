@@ -1,0 +1,20 @@
+// Account transcript ownership and the explicitly team-funded mobile beta.
+#authority;
+#test "only a nonempty exact person owner can access an account thread" {
+  #assert act_owns(2,"a","a");#assert !act_owns(2,"a","b") && !act_owns(2,"","");
+  #assert !act_owns(2,"a","") && !act_owns(2,"","a");
+  for k:0..<6 {if k!=2 {#assert !act_owns(k,"a","a");}}
+}
+#test "team funding never grants an anonymous or other principal inference" {
+  #assert act_funded(2,"a",true);#assert !act_funded(2,"a",false) && !act_funded(2,"",true);
+  for k:0..<6 {if k!=2 {#assert !act_funded(k,"a",true);}}
+}
+#test "save bounds and compare-and-swap revisions" {
+  #assert act_save(0,0,1,1) && act_save(7,7,32,48000);
+  #assert !act_save(0,1,1,1) && !act_save(-1,-1,1,1);
+  #assert !act_save(0,0,0,1) && !act_save(0,0,33,1);
+  #assert !act_save(0,0,1,0) && !act_save(0,0,1,48001);
+}
+act_owns :: (kind:int,account:string,owner:string)->bool #export_c #effects(all) {return kind==2 && account.count>0 && account==owner;}
+act_funded :: (kind:int,account:string,team:bool)->bool #export_c #effects(all) {return kind==2 && account.count>0 && team;}
+act_save :: (revision:int,current:int,messages:int,bytes:int)->bool #export_c #effects(all) {return revision>=0 && revision==current && messages>=1 && messages<=32 && bytes>=1 && bytes<=48000;}

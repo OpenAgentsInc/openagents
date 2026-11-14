@@ -26,6 +26,8 @@ import AuthenticationServices
     let updates: NativeUpdates
     var epoch = UUID()
     var services = 0
+    private var httpEpoch=UUID()
+    private var httpTask:Task<Void,Never>?
     var health: Task<Void,Never>?
     var passkey: NativePasskey?
     private let wallet=SparkHost()
@@ -84,27 +86,30 @@ import AuthenticationServices
             let (op,body)=try p.action()
             if op==0 {continue}
             let owner=epoch,extra=(p === programs.last)
-            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status"]
+            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel"]
             guard extra || op>0 && op<ops.count else {throw NativeFailure.refused("Unsupported service")}
             let args=(try? JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] ?? [:]
+            if !extra && op==8 {httpEpoch=UUID();httpTask?.cancel();httpTask=nil}
+            let requestOwner=httpEpoch
             services += 1
-            Task { [weak self,weak p] in
+            let task=Task { [weak self,weak p] in
                 guard let self else {return}
                 defer {self.services -= 1}
                 guard let p else {return}
                 do {
                     let result=try await self.call(extra ? "wallet.balance":ops[op],args)
-                    guard self.epoch==owner else {return}
+                    guard self.epoch==owner,op != 4 || self.httpEpoch==requestOwner else {return}
                     let record=result as? [String:Any] ?? [:]
                     let raw=extra ? record["record"] as? String ?? "" : op==4 ? record["body"] as? String ?? "" : String(decoding:try JSONSerialization.data(withJSONObject:result),as:UTF8.self)
                     try p.event(extra ? 21:100+op,record["status"] as? Int ?? 0,raw)
                     try self.pump()
                 } catch {
-                    guard self.epoch==owner else {return}
+                    guard self.epoch==owner,op != 4 || self.httpEpoch==requestOwner else {return}
                     let raw=String(decoding:(try? JSONSerialization.data(withJSONObject:["error":error.localizedDescription])) ?? Data(),as:UTF8.self)
                     do {try p.event(extra ? 21:200+op,0,extra ? "":raw);try self.pump()} catch {self.refuse()}
                 }
             }
+            if !extra && op==4 {httpTask=task}
         }
     }
     func call(_ op:String,_ b:[String:Any]) async throws -> Any {
@@ -150,6 +155,7 @@ import AuthenticationServices
             let challenge=try await AppAuth.shared.passkeyChallenge(); let p=NativePasskey(window); passkey=p; defer { passkey=nil }
             _ = try await AppAuth.shared.passkeyLogin(challenge,try await p.get(challenge)); return ["loggedIn":true]
         case "auth.logout": await AppAuth.shared.logout(); return ["loggedIn":false]
+        case "http.cancel": return ["cancelled":true]
         case "http":
             let path=b["path"] as? String ?? "", method=b["method"] as? String ?? "GET", body=b["body"] as? String ?? ""
             let allowed=path.withCString { cn_api(coax_string(data:$0,count:Int64(path.utf8.count))) }

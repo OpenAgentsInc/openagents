@@ -24,10 +24,10 @@ final class EmailLoginUITests:XCTestCase {
         app.buttons["Send a new code"].tap()
         XCTAssertTrue(code.waitForExistence(timeout:10));code.tap();code.typeText("415926")
         app.buttons["Log in"].tap()
-        XCTAssertTrue(app.staticTexts["My first saved chat"].waitForExistence(timeout:15))
-        XCTAssertTrue(app.staticTexts["Another saved chat"].exists)
+        XCTAssertTrue(app.buttons["My first saved chat"].waitForExistence(timeout:15))
+        XCTAssertTrue(app.buttons["Another saved chat"].exists)
         // Exercise real UIKit gestures on the OTA surface, not a browser mock.
-        let title=app.staticTexts["My first saved chat"]
+        let title=app.buttons["My first saved chat"]
         let frame=title.frame
         app.firstMatch.pinch(withScale:2,velocity:1)
         XCTAssertEqual(title.frame.width,frame.width,accuracy:1)
@@ -44,7 +44,7 @@ final class EmailLoginUITests:XCTestCase {
         DispatchQueue.main.asyncAfter(deadline:.now()+31) {health.fulfill()}
         wait(for:[health],timeout:35)
         app.terminate();app.launch()
-        XCTAssertTrue(app.staticTexts["My first saved chat"].waitForExistence(timeout:15))
+        XCTAssertTrue(app.buttons["My first saved chat"].waitForExistence(timeout:15))
         app.buttons["Log out"].tap()
         XCTAssertTrue(email.waitForExistence(timeout:10))
         app.terminate();app.launch()

@@ -14,6 +14,7 @@
 		1F3972F80AD727788C1649CC /* NostrSign.c in Sources */ = {isa = PBXBuildFile; fileRef = 0B12460F6D71E6EC127D760A /* NostrSign.c */; };
 		2423078B067528A80731C519 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BAFA692F7A2D8501CD6985F /* BIP39.swift */; };
 		2CC0D955E1B50A311219BE38 /* SparkHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F41D56BF7ED365348CE324E /* SparkHost.swift */; };
+		335ACC89190205BA908FF0D1 /* DMSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 31159A6F8D0AE4A71EC70DB3 /* DMSans-Regular.ttf */; };
 		370177B40FC83B533F660A4C /* NostrKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0083B1697095508B0B534B8B /* NostrKey.swift */; };
 		3EEE9F6858832B4BED499CC2 /* NativeWire.c in Sources */ = {isa = PBXBuildFile; fileRef = 5DE15337BAC2E10225C3C1CB /* NativeWire.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		43A5D1535C05B29C381D5FFF /* NativeUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */; };
@@ -36,6 +37,8 @@
 		A547AE3F03D7EADA997DE696 /* SharedAppViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BD4840ED2FA15B3276B9A93 /* SharedAppViewController.swift */; };
 		A82532704621FA268D0CA249 /* secp256k1.c in Sources */ = {isa = PBXBuildFile; fileRef = 29CE2F09F9A0B3457456014E /* secp256k1.c */; settings = {COMPILER_FLAGS = "-DENABLE_MODULE_EXTRAKEYS=1 -DENABLE_MODULE_SCHNORRSIG=1 -DECMULT_WINDOW_SIZE=8"; }; };
 		AAFF31B0E8810A7429EE6DA8 /* BreezKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9B32CD7EF30EADCBFE18124 /* BreezKey.swift */; };
+		AC281939C157CCA54F84DD2A /* NativeComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00F077C1C17712C38E9F58E /* NativeComposer.swift */; };
+		AF77409D07EA217012468952 /* DMSans-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3462DD345AFA66B75FD4E0DE /* DMSans-Medium.ttf */; };
 		B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C83152B91DFEEF873AAD56 /* NativeHost.swift */; };
 		C0B0BC79860337C450B78A5D /* PhoneSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */; };
 		C77117B7CBCFC4CC0576E57C /* phone-drive.c in Sources */ = {isa = PBXBuildFile; fileRef = D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function"; }; };
@@ -43,6 +46,7 @@
 		D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */; };
 		DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */; };
 		DC5537790C17AE594AEEEDDA /* NativeProgram.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C29607A719DC46C635E2BB /* NativeProgram.swift */; };
+		E04C681B8BB7D9243AFB2BAE /* NativeComposer.c in Sources */ = {isa = PBXBuildFile; fileRef = D1522134FBE4A368E4ED10E6 /* NativeComposer.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		ECDFE75FB85014389B5354CF /* EmailLoginUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */; };
 		F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EB43B9790841620D29A9F92 /* PhoneSignin.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 /* End PBXBuildFile section */
@@ -79,7 +83,9 @@
 		2BAFA692F7A2D8501CD6985F /* BIP39.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39.swift; sourceTree = "<group>"; };
 		2C3236A8315C98ABF86224CB /* StarterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterApp.swift; sourceTree = "<group>"; };
 		303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUpdates.swift; sourceTree = "<group>"; };
+		31159A6F8D0AE4A71EC70DB3 /* DMSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-Regular.ttf"; sourceTree = "<group>"; };
 		312A9EE9333FE46FFAED3D6F /* Starter */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Starter; sourceTree = SOURCE_ROOT; };
+		3462DD345AFA66B75FD4E0DE /* DMSans-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-Medium.ttf"; sourceTree = "<group>"; };
 		3F41D56BF7ED365348CE324E /* SparkHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkHost.swift; sourceTree = "<group>"; };
 		5DE15337BAC2E10225C3C1CB /* NativeWire.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeWire.c; sourceTree = "<group>"; };
 		68A32BEE57050EF541CA1A16 /* NativeControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeControls.swift; sourceTree = "<group>"; };
@@ -98,6 +104,8 @@
 		BE3E54671A8869C147608A21 /* WalletBalance.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = WalletBalance.c; sourceTree = "<group>"; };
 		BE5C04823E6E6E322FD7E33C /* WalletKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletKeychain.swift; sourceTree = "<group>"; };
 		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
+		C00F077C1C17712C38E9F58E /* NativeComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeComposer.swift; sourceTree = "<group>"; };
+		D1522134FBE4A368E4ED10E6 /* NativeComposer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeComposer.c; sourceTree = "<group>"; };
 		D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "phone-drive.c"; sourceTree = "<group>"; };
 		DA6976CE4AA8C31947C48C5D /* Native.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Native.plist; sourceTree = "<group>"; };
 		DCD62FA8D277D57B999CBF47 /* NativePolicy.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativePolicy.c; sourceTree = "<group>"; };
@@ -132,6 +140,7 @@
 		5B366C12F710C7D176CACD52 /* Generated */ = {
 			isa = PBXGroup;
 			children = (
+				D1522134FBE4A368E4ED10E6 /* NativeComposer.c */,
 				DCD62FA8D277D57B999CBF47 /* NativePolicy.c */,
 				5DE15337BAC2E10225C3C1CB /* NativeWire.c */,
 				1EB43B9790841620D29A9F92 /* PhoneSignin.c */,
@@ -169,6 +178,16 @@
 			);
 			name = Platform;
 			path = OpenAgents/Platform;
+			sourceTree = "<group>";
+		};
+		89D0EDCD22386A706365DFDC /* fonts */ = {
+			isa = PBXGroup;
+			children = (
+				3462DD345AFA66B75FD4E0DE /* DMSans-Medium.ttf */,
+				31159A6F8D0AE4A71EC70DB3 /* DMSans-Regular.ttf */,
+			);
+			name = fonts;
+			path = ../../components/fonts;
 			sourceTree = "<group>";
 		};
 		8A366ADC38979696589B7858 /* src */ = {
@@ -226,6 +245,7 @@
 		ABD48D4B1B28A57624675E53 /* native */ = {
 			isa = PBXGroup;
 			children = (
+				C00F077C1C17712C38E9F58E /* NativeComposer.swift */,
 				68A32BEE57050EF541CA1A16 /* NativeControls.swift */,
 				01C83152B91DFEEF873AAD56 /* NativeHost.swift */,
 				09C29607A719DC46C635E2BB /* NativeProgram.swift */,
@@ -262,6 +282,7 @@
 				312A9EE9333FE46FFAED3D6F /* Starter */,
 				2C3236A8315C98ABF86224CB /* StarterApp.swift */,
 				61353A3754B849E19D09A2E0 /* apple */,
+				89D0EDCD22386A706365DFDC /* fonts */,
 				5B366C12F710C7D176CACD52 /* Generated */,
 				ABD48D4B1B28A57624675E53 /* native */,
 				EBA77022E6429671290CDE34 /* OpenAgents */,
@@ -390,6 +411,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */,
+				AF77409D07EA217012468952 /* DMSans-Medium.ttf in Resources */,
+				335ACC89190205BA908FF0D1 /* DMSans-Regular.ttf in Resources */,
 				658B4C2F5F7EABC4715EB1E4 /* Native.plist in Resources */,
 				9EDFF85EEFA09C5E405F0C99 /* Starter in Resources */,
 				8E4F97485AF1AF831DCB39E9 /* bip39-english.txt in Resources */,
@@ -408,6 +431,8 @@
 				2423078B067528A80731C519 /* BIP39.swift in Sources */,
 				AAFF31B0E8810A7429EE6DA8 /* BreezKey.swift in Sources */,
 				D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */,
+				E04C681B8BB7D9243AFB2BAE /* NativeComposer.c in Sources */,
+				AC281939C157CCA54F84DD2A /* NativeComposer.swift in Sources */,
 				790A92BCF9A5C6628FA9E10E /* NativeControls.swift in Sources */,
 				B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */,
 				03AF362E64D9222AA06F0E40 /* NativePolicy.c in Sources */,
@@ -475,7 +500,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1070;
+				CURRENT_PROJECT_VERSION = 1071;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -604,7 +629,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1070;
+				CURRENT_PROJECT_VERSION = 1071;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
