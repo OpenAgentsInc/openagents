@@ -137,8 +137,8 @@ ga_layout :: (g: [] SpGame) {
 
 // ---- the triangles
 // Colours: the pit's concrete and rust, the raiders' yellow, the Empire's white.
-GA_CONCRETE :: () -> KitTint { return kit_tint(0.80, 0.70, 0.60); }
-GA_RUST :: () -> KitTint { return kit_tint(0.72, 0.40, 0.30); }
+GA_CONCRETE :: () -> KitTint { return kit_tint(0.56, 0.56, 0.55); }   // poured grey concrete, not canyon rock (#13505)
+GA_RUST :: () -> KitTint { return kit_tint(0.15, 0.15, 0.16); }     // black-stained concrete
 GA_DIRT :: () -> KitTint { return kit_tint(0.86, 0.66, 0.48); }
 GA_YELLOW :: () -> KitTint { return kit_tint(0.96, 0.76, 0.16); }
 GA_DARK :: () -> KitTint { return kit_tint(0.10, 0.08, 0.08); }
@@ -170,7 +170,7 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     // the bay's floor, its back wall (around the gap, if any) and the way out at its back
     kit_pen(p, 202, MAT_WORLD, GA_CONCRETE());
     ga_strip(g, buf, p, a0, a1, rf, 0.012, rb, 0.012, 3, false);
-    kit_pen(p, 203 + k % 2, MAT_WORLD, ifx k % 3 == 1 then GA_RUST() else kit_tint(0.70, 0.58, 0.50));
+    kit_pen(p, 203 + k % 2, MAT_WORLD, ifx k % 3 == 1 then GA_RUST() else kit_tint(0.46, 0.46, 0.46));
     if gap > 0 {
       ga_strip(g, buf, p, a0, a - gap, rb, 0, rb, GA_ROOF, 2, false); ga_strip(g, buf, p, a + gap, a1, rb, 0, rb, GA_ROOF, 2, false);
       ga_strip(g, buf, p, a - gap, a + gap, rb, GA_ROOF - 3, rb, GA_ROOF, 1, false);   // the lintel over the opening
@@ -182,7 +182,7 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       box(buf, p, ga_frame(g, a, rb - 0.15, 6.6), 3.4, 0.25, 0.12);
     }
     // the roof's slab, its underside, and the yellow and black band along its edge
-    kit_pen(p, 207, MAT_WORLD, kit_tint(0.74, 0.64, 0.56));
+    kit_pen(p, 207, MAT_WORLD, kit_tint(0.40, 0.40, 0.41));
     ga_strip(g, buf, p, a0, a1, rf - 0.6, GA_ROOF + GA_LEDGE, rb + GA_BACK, GA_ROOF + GA_LEDGE, 3, false);
     ga_strip(g, buf, p, a0, a1, rf - 0.6, GA_ROOF, rb, GA_ROOF, 3, true);
     for j: 0..<12 {
@@ -199,16 +199,29 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     kit_pen(p, 212, MAT_FLAT, GA_YELLOW());
     box(buf, p, frame_move(pf, ga_pt(g, b, rf - 1.55, 1.2)), GA_PIER + 0.1, 1.2, 0.1);   // on the pier's face to the field
     // the rim's wall over the bays, set back, with the section's letters on a white panel
-    kit_pen(p, 213 + k % 2, MAT_WORLD, ifx k % 4 == 1 then GA_RUST() else kit_tint(0.78, 0.68, 0.58));
+    kit_pen(p, 213 + k % 2, MAT_WORLD, ifx k % 4 == 1 then GA_RUST() else kit_tint(0.50, 0.50, 0.50));
     ga_strip(g, buf, p, a0, a1, rf + GA_SET, GA_ROOF + GA_LEDGE, rf + GA_SET, GA_RIM, 3, false);
     kit_pen(p, 215, MAT_FLAT, GA_PANEL());
     box(buf, p, ga_frame(g, a, rf + GA_SET - 0.2, 18.5), 6.5, 4.2, 0.2);
     kit_stencil(buf, p, ga_frame(g, a, rf + GA_SET - 0.45, 15.8), ga_name(k, name[..]), 5.4, 0.12, 216, GA_LETTER());
     // the rim: its walk, a post with a lamp at each pier, and the long slope down to the desert outside
-    kit_pen(p, 217, MAT_WORLD, kit_tint(0.70, 0.60, 0.52));
-    ga_strip(g, buf, p, a0, a1, rf + GA_SET, GA_RIM, rb + GA_BACK + 6, GA_RIM, 3, false);
-    kit_pen(p, 218, MAT_WORLD, kit_tint(0.88, 0.62, 0.44));
-    ga_strip(g, buf, p, a0, a1, rb + GA_BACK + 6, GA_RIM, rb + GA_BACK + 6 + GA_BERM, 0, 3, false);
+    // at the entry (A1) the rim and its slope are cut open down to the desert: the way in you see from outside
+    ro := rb + GA_BACK + 6; cut := ifx k == GA_ENTRY then GA_DOOR / ro else 0.0f32;
+    kit_pen(p, 217, MAT_WORLD, kit_tint(0.36, 0.36, 0.37));
+    if cut > 0 { ga_strip(g, buf, p, a0, a - cut, rf + GA_SET, GA_RIM, ro, GA_RIM, 2, false); ga_strip(g, buf, p, a + cut, a1, rf + GA_SET, GA_RIM, ro, GA_RIM, 2, false); }
+    else { ga_strip(g, buf, p, a0, a1, rf + GA_SET, GA_RIM, ro, GA_RIM, 3, false); }
+    kit_pen(p, 218, MAT_WORLD, kit_tint(0.22, 0.22, 0.23));   // the outer wall down to the desert: dark concrete
+    if cut > 0 { ga_strip(g, buf, p, a0, a - cut, ro, GA_RIM, ro + GA_BERM, 0, 2, false); ga_strip(g, buf, p, a + cut, a1, ro, GA_RIM, ro + GA_BERM, 0, 2, false); }
+    else { ga_strip(g, buf, p, a0, a1, ro, GA_RIM, ro + GA_BERM, 0, 3, false); }
+    if cut > 0 {
+      // the cut's two concrete sides, stepping down with the slope, from the back wall out to the desert
+      kit_pen(p, 227, MAT_WORLD, kit_tint(0.30, 0.30, 0.31));
+      for j: 0..<7 {
+        r0 := ifx j == 0 then rb else ro + GA_BERM * cast(f32) (j - 1) / 6; r1 := ifx j == 0 then ro else ro + GA_BERM * cast(f32) j / 6;
+        hy := ifx j == 0 then GA_RIM else GA_RIM * (1 - cast(f32) (j - 1) / 6);
+        for side: 0..<2 { o := ifx side == 0 then -1.0f32 else 1.0f32; c := ga_pt(g, a + o * (GA_DOOR + 0.6) / ((r0 + r1) * 0.5), (r0 + r1) * 0.5, hy * 0.5); box(buf, p, frame_move(ga_frame(g, a, (r0 + r1) * 0.5, 0), c), 0.6, hy * 0.5, (r1 - r0) * 0.5); }
+      }
+    }
     kit_pen(p, 219, MAT_CLOTH, GA_DARK());
     tube(buf, p, frame_at(ga_pt(g, a1, rf + GA_SET + 0.6, GA_RIM), 0), 4.0, 0.12, 0.12, 0.1, 0.1, 5, true);
     kit_pen(p, 220, MAT_GLOW, kit_tint(1.0, 0.86, 0.50));
@@ -216,7 +229,7 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
   // the hallway into the mountain, past section E1, and the old-world lab: white walls, a rare blue glow
   back := g[0].at.gar_z - rb; end := back - GA_HALL_LONG;
-  kit_pen(p, 221, MAT_WORLD, kit_tint(0.92, 0.92, 0.90));   // the hallway: the white lab's own walls, so it reads white at night too
+  kit_pen(p, 221, MAT_FLAT, kit_tint(0.90, 0.90, 0.88));   // the hallway: the white lab's own walls, unlit by the sky, so neither dusk nor night tints them
   block(buf, p, -GA_HALL - 5, 0, (back + end) * 0.5, 5, 12, GA_HALL_LONG * 0.5 + 1); block(buf, p, GA_HALL + 5, 0, (back + end) * 0.5, 5, 12, GA_HALL_LONG * 0.5 + 1);
   block(buf, p, 0, 10, (back + end) * 0.5, GA_HALL + 0.1, 4, GA_HALL_LONG * 0.5);
   kit_pen(p, 222, MAT_FLOOR, kit_tint(0.90, 0.92, 0.94));
