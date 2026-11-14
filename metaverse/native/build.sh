@@ -144,9 +144,10 @@ if [[ -x "$coax" ]]; then
     rm "$out/render-assets.pending.json"
   fi
   cp "$face" "$web"/*-face.h "$web"/*-bridge.h "$web/face-address.h" ${faces_too[@]+"${faces_too[@]}"} "$out/"
-  # A face kept in a folder (old/labs/, #13269) names the site's flat headers as ../../X.h; here
+  # A face kept in a folder (old/labs/, #13269) names the site's flat headers as ../../X.h, and a
+  # realm's face outside the site (metaverse/splice-bots/) as ../../apps/openagents-web/X.h; here
   # they sit beside it.
-  sed -i.bak -E 's|^#include "(\.\./)+([^/"]+\.h)"|#include "\2"|' "$out/$(basename "$face")" && rm -f "$out/$(basename "$face").bak"
+  sed -i.bak -E 's|^#include "(\.\./)+(apps/openagents-web/)?([^/"]+\.h)"|#include "\3"|' "$out/$(basename "$face")" && rm -f "$out/$(basename "$face").bak"
   cp "$here"/face.h "$here"/face-defaults.h "$here"/realm-host.h "$here"/realm-host.c "$here"/pack-table-gen.h "$here"/host-core-gen.h "$here"/audio-host.h "$here"/realm-run.c "$out/"
   units="$(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')"
   # C the face includes itself (the haunted house's realm-flight.c ...), and a header of the

@@ -6,7 +6,7 @@
 #include "Animelab-style.h"
 #include <stdbool.h>
 #include <stddef.h>
-#include "face-address.h"
+#include "../../apps/openagents-web/face-address.h"   /* the site's face width; metaverse/native/build.sh flattens it */
 
 #define EXPORT(name) __attribute__((export_name(name)))
 
