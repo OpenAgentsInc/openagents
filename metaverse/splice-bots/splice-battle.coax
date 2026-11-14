@@ -64,8 +64,19 @@ SB_RESTORED :: 3.0f32;      // seconds SCENE RESTORED holds before the mission's
 SB_BOSS_LONG :: 13.5f32;                        // m: over half the lab's radius, three times the drill mech's height
 SB_DINO_S :: SB_BOSS_LONG / KIT_DINO_LONG;      // the dinosaur kit's scale
 SB_BOSS_TALL :: KIT_DINO_TALL * SB_DINO_S;      // m: to the top of its head
-SB_BOSS_R :: 2.1f32;                            // m: a walker's middle stays this far from its middle (its hips; head and tail stand over you)
+SB_BOSS_R :: 2.1f32;                            // m: a walker's middle stays this far from its middle (its hips, belly and legs; the head stands over you)
 SB_BOSS_FACE :: PI * 0.5f32;                    // at home in the lab's middle it faces east (+x), its tail west
+// Its collider is long (sb_boss_tail): the body's round, then the tail out to its tip as a stadium along the spine,
+// swaying as kit_dino draws it, so a walker meets the tail where it is drawn. The camera meets the neck and head too
+// (sb_boss_gap). Measured off kit_dino at SB_DINO_S.
+SB_BOSS_BODY :: SB_BOSS_R - T_RADIUS;           // m: the body's round itself (a walker adds her own radius)
+SB_BOSS_TAIL_R :: 0.5f32;                       // m: the tail's round (1.6 m thick at its root, a point at the tip)
+SB_BOSS_TAIL_FROM :: 2.3f32;                    // m behind its middle: the tail's stadium starts here, where she pushed off its side, however it sways, is clear of the body
+SB_BOSS_TIP :: 6.2f32 * SB_DINO_S;              // m behind its middle: the tail's tip (kit_dino's last joint)
+SB_BOSS_SWAY :: 1.6f32 * SB_DINO_S;             // m: how far the tip sways to either side
+SB_BOSS_SWAY_RATE :: 1.3f32;                    // radians a second of the sway's sine
+SB_BOSS_NECK :: 1.7f32 * SB_DINO_S; SB_BOSS_HEAD_R :: 0.7f32 * SB_DINO_S; SB_BOSS_NOSE :: 4.3f32 * SB_DINO_S;   // m ahead: the neck's foot, the head's round, the nose
+SB_BOSS_REACH :: SB_BOSS_TIP + SB_BOSS_TAIL_R;  // m: the furthest any part of it reaches from its middle
 
 // ---- Enemy attacks (#13552, lane E): every timing in one table, in seconds. Each attack winds up (it still
 // turns to follow), locks (its aim is fixed: a dodge from here on works), strikes, and recovers (its
@@ -188,8 +199,57 @@ sb_dino_home :: (g: [] SpGame) {
   t[0].charge_t = 0; t[0].wind = 0; t[0].rush = 0; t[0].daze = 0; t[0].half = false;
   sb_dino_body(g);
 }
-// The boss's collider (layer.coax) stands where the boss does: the engine's World moves its body with it.
-sb_dino_body :: (g: [] SpGame) { t := g[0].bt[0]; sl_body_to(g, g[0].ws[0].boss, t.dino_x, t.dino_z, t.dino_yaw); }
+// The boss's collider (layer.coax) stands where the boss is drawn: the engine's World moves its body's round
+// and its tail's stadium with it, the tail swaying as kit_dino draws it.
+sb_dino_body :: (g: [] SpGame) {
+  t := g[0].bt[0]; e := sb_boss_tail(g);
+  a := sl_body_set(g, g[0].ws[0].boss, t.dino_x, t.dino_z, t.dino_yaw);
+  b := sl_body_set(g, g[0].ws[0].tail, e.x, e.z, e.yaw);
+  if a || b { _ := world_commit(sl_world(g)); }
+}
+// The tail's sway, -1 to 1: kit_dino's (sb_live), so the collider follows the tail drawn.
+sb_boss_sway :: (g: [] SpGame) -> f32 { return sin(g[0].t * SB_BOSS_SWAY_RATE); }
+// The tail's stadium (the World's SH_ALONG_Z, SB_BOSS_TAIL_R round, SB_BOSS_TAIL_HALF each way from its middle) for a
+// boss at (x, z) facing yaw: from SB_BOSS_TAIL_FROM behind its middle toward the tip, kept at its length (the sway
+// swings the tip nearly square to the tail).
+SbTail :: struct { x: f32; z: f32; yaw: f32; }
+SB_BOSS_TAIL_HALF :: (SB_BOSS_TIP - SB_BOSS_TAIL_FROM) * 0.5f32;
+sb_boss_tail_at :: (x: f32, z: f32, yaw: f32, sway: f32) -> SbTail {
+  f := frame_at(v3(x, 0, z), yaw); a := fp(f, 0, 0, -SB_BOSS_TAIL_FROM); b := fp(f, SB_BOSS_SWAY * sway, 0, -SB_BOSS_TIP);
+  dx := b.x - a.x; dz := b.z - a.z; d := sqrt(dx * dx + dz * dz);   // over 4 m: the tip is well behind the stadium's start
+  return SbTail.{x = a.x + dx / d * SB_BOSS_TAIL_HALF, z = a.z + dz / d * SB_BOSS_TAIL_HALF, yaw = atan2(dx, dz)};
+}
+sb_boss_tail :: (g: [] SpGame) -> SbTail { t := g[0].bt[0]; return sb_boss_tail_at(t.dino_x, t.dino_z, t.dino_yaw, sb_boss_sway(g)); }
+sb_boss_tail_seg :: (g: [] SpGame) -> SlSeg { e := sb_boss_tail(g); return sl_seg_of(e.x, e.z, e.yaw, SH_ALONG_Z, SB_BOSS_TAIL_R, SB_BOSS_TAIL_HALF); }
+// How far (x, z) is from segment a-b, flat.
+sb_seg_d :: (ax: f32, az: f32, bx: f32, bz: f32, x: f32, z: f32) -> f32 {
+  q := query_nearest(world_point(ax, 0, az), world_point(bx, 0, bz), world_point(x, 0, z)); return dist2(x, z, q.x, q.z);
+}
+// How far (x, z) is outside the boss, flat (under 0 inside): its body's round and its tail's stadium, and with
+// `head` its neck and head too, which stand over a walker but in the camera's way.
+sb_boss_gap :: (g: [] SpGame, x: f32, z: f32, head: bool) -> f32 {
+  t := g[0].bt[0]; s := sb_boss_tail_seg(g);
+  gap := lo(dist2(x, z, t.dino_x, t.dino_z) - SB_BOSS_BODY, sb_seg_d(s.ax, s.az, s.bx, s.bz, x, z) - SB_BOSS_TAIL_R);
+  if !head { return gap; }
+  f := sb_dino_frame(g); a := fp(f, 0, 0, SB_BOSS_NECK); b := fp(f, 0, 0, SB_BOSS_NOSE - SB_BOSS_HEAD_R);
+  return lo(gap, sb_seg_d(a.x, a.z, b.x, b.z, x, z) - SB_BOSS_HEAD_R);
+}
+// A body of radius r at (x, z) pushed out of the boss's body and then its tail, as the World pushes a walker
+// (layer.coax sl_push), and out of its body again: one wider than her, pushed off the tail's side by its root, can
+// land in the body's round (SB_BOSS_TAIL_FROM keeps her clear). Where Digger and the drill mech stop against it.
+sb_boss_off :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
+  t := g[0].bt[0]; s := sb_boss_tail_seg(g);
+  q := sb_off_seg(v3(x, 0, z), t.dino_x, t.dino_z, t.dino_x, t.dino_z, SB_BOSS_BODY + r, t.dino_yaw);
+  q = sb_off_seg(q, s.ax, s.az, s.bx, s.bz, SB_BOSS_TAIL_R + r, t.dino_yaw);
+  return sb_off_seg(q, t.dino_x, t.dino_z, t.dino_x, t.dino_z, SB_BOSS_BODY + r, t.dino_yaw);
+}
+sb_off_seg :: (q: Point, ax: f32, az: f32, bx: f32, bz: f32, need: f32, yaw: f32) -> Point {
+  c := query_nearest(world_point(ax, 0, az), world_point(bx, 0, bz), world_point(q.x, 0, q.z));
+  dx := q.x - c.x; dz := q.z - c.z; d := sqrt(dx * dx + dz * dz);
+  if d >= need { return q; }
+  if d < 0.0001 { dx = cos(yaw); dz = -sin(yaw); d = 1; }   // on its spine: out to its frame's x side
+  return v3(c.x + dx / d * need, 0, c.z + dz / d * need);
+}
 // The stills and checks stand in a moment of the run (g_stage): from the boss chamber on, Digger's core is in the mech
 // beside you. Two moments of the battles' own: 20, Sniper battling the raider mech on the drive at dusk; 21, the boss
 // below half health, about to charge.
@@ -434,6 +494,7 @@ sb_step :: (g: [] SpGame, dt: f32) {
   // a run kept from the boss chamber on (front.coax): Digger's core is in the mech, beside the open hallway
   if g[0].wall_gone && !g[0].boss_down && !t[0].mech_used { t[0].mech_used = true; t[0].mech_core = true; t[0].mech_x = 2.5; t[0].mech_z = g[0].at.wall_z - 2; }
   sb_mech_step(g, dt);
+  if g[0].zone == Z_MINE { sb_dino_body(g); }   // its tail's collider sways with the tail drawn, fight or not
   sb_boss_step(g, dt);
   sb_battle_step(g, dt);
   sb_repair_step(g, dt);
@@ -572,10 +633,9 @@ sb_boss_step :: (g: [] SpGame, dt: f32) {
   target := sb_body_at(g, sb_fielded(g));
   if t[0].daze > 0 { t[0].daze -= dt; if t[0].daze <= 0 { g_say(g, SBM_SHUT); } }
   else if t[0].rush > 0 {
-    // the charge: straight on until its time is up or it meets the chamber's wall; anyone in its path is hit once
+    // the charge: straight on until its time is up or it would leave the lab (sb_to_room); anyone in its path is hit once
     dx[0] += t[0].rush_dx * SB_CHARGE_SPEED * dt; dz[0] += t[0].rush_dz * SB_CHARGE_SPEED * dt; t[0].rush -= dt;
-    wall := dx[0] < -7 || dx[0] > 7 || dz[0] > g[0].at.wall_z - 3 || dz[0] < ga_lab_back(g);
-    dx[0] = clamp(dx[0], -7, 7); dz[0] = clamp(dz[0], ga_lab_back(g), g[0].at.wall_z - 3);
+    wall := sb_to_room(g, dx[..], dz[..]);
     if !t[0].rush_hit && dist2(g[0].px, g[0].pz, dx[0], dz[0]) < SB_CHARGE_W { t[0].rush_hit = true; g[0].ak[0].sweep_hit = true; sb_hurt(g, dx[0], dz[0]); }
     me := sb_body_at(g, sb_fielded(g));
     if !t[0].rush_hit && dist2(me.x, me.z, dx[0], dz[0]) < 3.2 { t[0].rush_hit = true; _ := bb_strike(t[0].fight[..], 0, SB_CHARGE_HIT); t[0].hit_t = 0.9; t[0].hit_side = 0; t[0].hit_dmg = SB_CHARGE_HIT; }
@@ -598,7 +658,7 @@ sb_boss_step :: (g: [] SpGame, dt: f32) {
     // on it. Once a sweep locks it stands and follows no one
     if ph == TG_IDLE || ph == TG_WIND {
       if t[0].half { _ := sb_toward(dx[..], dz[..], dy[..], target.x, target.z, 2.4, 4.5, dt); } else { sb_hold(g, dx[..], dz[..], dy[..], dt); }
-      dx[0] = clamp(dx[0], -7, 7); dz[0] = clamp(dz[0], ga_lab_back(g), g[0].at.wall_z - 3);
+      _ := sb_to_room(g, dx[..], dz[..]);
     }
     if t[0].half {
       t[0].charge_t += dt;
@@ -607,6 +667,17 @@ sb_boss_step :: (g: [] SpGame, dt: f32) {
   }
   t[0].dino_x = dx[0]; t[0].dino_z = dz[0]; t[0].dino_yaw = dy[0];
   sb_dino_body(g);
+}
+// The boss stays in its lab, all of it (#13552): its middle keeps SB_BOSS_REACH inside the lab's round wall, so
+// neither its walk nor a charge takes its nose or tail to the wall or out through the hallway's mouth.
+SB_LAB_ROOM :: GA_LAB_R - SB_BOSS_REACH;   // m from the lab's middle
+sb_in_room :: (g: [] SpGame, x: f32, z: f32) -> bool { c := ga_lab_mid(g); return dist2(x, z, c.x, c.z) <= SB_LAB_ROOM; }
+// Brought back to the edge of that room if it was past it: whether it was.
+sb_to_room :: (g: [] SpGame, x: [] f32, z: [] f32) -> bool {
+  c := ga_lab_mid(g); dx := x[0] - c.x; dz := z[0] - c.z; d := sqrt(dx * dx + dz * dz);
+  if d <= SB_LAB_ROOM { return false; }
+  x[0] = c.x + dx / d * SB_LAB_ROOM; z[0] = c.z + dz / d * SB_LAB_ROOM;
+  return true;
 }
 // Phase one's stance (#13552, the lab's map): back to its home in the lab's middle at a walk if anything
 // moved it, then turned to face east, so its tail sweep covers the north half of the lab.
@@ -706,11 +777,13 @@ sb_battle_step :: (g: [] SpGame, dt: f32) {
   if me == SB_DIGGER {
     bx := [1] f32.[g[0].bot_x]; bz := [1] f32.[g[0].bot_z]; by := [1] f32.[g[0].bot_yaw];
     _ := sb_toward(bx[..], bz[..], by[..], foe.x, foe.z, SB_BODY_SPEED, 2.2, dt);
+    if t[0].foe == SB_BOSS { q := sb_boss_off(g, bx[0], bz[0], T_BOT_R); bx[0] = q.x; bz[0] = q.z; }   // he stops at its body and tail, never in them
     g[0].bot_x = bx[0]; g[0].bot_z = bz[0]; g[0].bot_yaw = by[0];
   }
   if me == SB_MECH {
     mx := [1] f32.[t[0].mech_x]; mz := [1] f32.[t[0].mech_z]; my := [1] f32.[t[0].mech_yaw];
     _ := sb_toward(mx[..], mz[..], my[..], foe.x, foe.z, SB_BODY_SPEED, 4.2, dt);
+    if t[0].foe == SB_BOSS { q := sb_boss_off(g, mx[0], mz[0], SB_MECH_R); mx[0] = q.x; mz[0] = q.z; }
     t[0].mech_x = mx[0]; t[0].mech_z = mz[0]; t[0].mech_yaw = my[0];
   }
   // your side fights on its own when you leave it be (#13505 playtest): past SB_AUTO without a move key,
@@ -869,7 +942,7 @@ sb_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
         if sw == TG_REST || sw == TG_LOCK { df = frame_turn(df, 0, ifx sw == TG_REST then 0.1f32 else -0.06f32); }   // its head sags as it rests; it braces as it locks
         stride := ifx t.rush > 0 then tm * 14 else ifx down then 0.0f32 else tm * 3;
         if down { df = frame_turn(df, 2, 0.12); }
-        kit_dino(buf, p, df, SB_DINO_S, 230, ifx down then kit_tint(0.55, 0.56, 0.60) else ifx struck then kit_tint(1.0, 0.86, 0.62) else kit_tint(0.86, 0.90, 0.95), INK(), ifx down then kit_tint(0.30, 0.32, 0.36) else GLOW(), jaw, stride, sin(tm * 1.3));
+        kit_dino(buf, p, df, SB_DINO_S, 230, ifx down then kit_tint(0.55, 0.56, 0.60) else ifx struck then kit_tint(1.0, 0.86, 0.62) else kit_tint(0.86, 0.90, 0.95), INK(), ifx down then kit_tint(0.30, 0.32, 0.36) else GLOW(), jaw, stride, sb_boss_sway(g));
         g_thing_end(g, p, bk);
       }
       if !down {
@@ -953,8 +1026,8 @@ sb_warns :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     }
   } else if t[0].wind > 0 {
     locked := t[0].wind <= SB_CHARGE.lock; grow := ifx locked then 1.0f32 else 1 - (t[0].wind - SB_CHARGE.lock) / SB_CHARGE.wind;
-    l := 0.0f32;   // the lane runs until the chamber's walls stop it
-    while l < SB_CHARGE_SPEED * SB_CHARGE_TIME { x := t[0].dino_x + t[0].rush_dx * l; z := t[0].dino_z + t[0].rush_dz * l; if x < -7 || x > 7 || z > g[0].at.wall_z - 3 || z < ga_lab_back(g) { break; } l += 0.5; }
+    l := 0.0f32;   // the lane runs as far as the charge goes: until the boss would leave the lab
+    while l < SB_CHARGE_SPEED * SB_CHARGE_TIME { if !sb_in_room(g, t[0].dino_x + t[0].rush_dx * (l + 0.5), t[0].dino_z + t[0].rush_dz * (l + 0.5)) { break; } l += 0.5; }
     n := tg_lane(t[0].dino_x, t[0].dino_z, t[0].rush_dx, t[0].rush_dz, l, SB_CHARGE_W, 0.45, pts[..]); sb_marks(g, buf, p, pts[..], n, locked);
     n = tg_lane(t[0].dino_x, t[0].dino_z, t[0].rush_dx, t[0].rush_dz, hi(0.5, l * grow), SB_CHARGE_W * 0.5, 0.7, pts[..]); sb_marks(g, buf, p, pts[..], n, false);
   }

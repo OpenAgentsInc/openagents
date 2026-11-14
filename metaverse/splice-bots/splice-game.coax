@@ -458,7 +458,9 @@ g_bot :: (g: [] SpGame, dt: f32) {
     h := cm_follow_spot(g, g[0].bot_x, g[0].bot_z, T_BOT_R, T_BOT_LEFT, -T_BOT_BACK); tx := h.x; tz := h.z;
     d := dist2(g[0].bot_x, g[0].bot_z, tx, tz);
     if d > 0.15 { left := bot_toward(g, tx, tz, T_FOLLOW * cm_follow_pace(g, g[0].bot_x, g[0].bot_z, T_BOT_R, clamp(d / 1.5, 0.15, 1.6)), dt); if left > 12 { g[0].bot_x = tx; g[0].bot_z = tz; } }
-    q := cm_keep_off(g, g[0].bot_x, g[0].bot_z, T_BOT_R); g[0].bot_x = q.x; g[0].bot_z = q.z;
+    q := cm_keep_off(g, g[0].bot_x, g[0].bot_z, T_BOT_R);
+    if g[0].zone == Z_MINE { q = sb_boss_off(g, q.x, q.z, T_BOT_R); }   // never in the boss's body or tail (splice-battle.coax)
+    g[0].bot_x = q.x; g[0].bot_z = q.z;
     return;
   }
   if g[0].bot_state == BOT_FAIL { g[0].bot_fail -= dt; if g[0].bot_fail <= 0 { g[0].bot_state = BOT_FOLLOW; } return; }

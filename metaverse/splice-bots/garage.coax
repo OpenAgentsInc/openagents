@@ -48,8 +48,6 @@ ga_angle :: (k: int) -> f32 { return cast(f32) k * ga_span(); }
 ga_lab_mouth :: (g: [] SpGame) -> f32 { return g[0].at.gar_z - ga_back(g) - GA_HALL_LONG; }
 // The lab's middle, its radius north of the mouth.
 ga_lab_mid :: (g: [] SpGame) -> Point { return v3(g[0].at.gar_x, 0, ga_lab_mouth(g) - GA_LAB_R); }
-// The lab's north wall, less a step: as far as the boss's charge goes (splice-battle.coax).
-ga_lab_back :: (g: [] SpGame) -> f32 { return ga_lab_mouth(g) - GA_LAB_Z + 2; }
 // The point on a circle round c at angle a (0 south, toward +z; a quarter turn east, +x), y up.
 ga_round :: (c: Point, a: f32, r: f32, y: f32) -> Point { return v3(c.x + sin(a) * r, y, c.z + cos(a) * r); }
 // The lab's round wall: a body of radius r inside it stays r in front of the wall, except through the
@@ -350,8 +348,11 @@ ga_look_into :: (g: [] SpGame, k: int) {
   // halfway through its sweep the tail is due north of it (-z); its flank weak point is on that side
   g[0].boss_t = T_SWEEP_EVERY + T_SWEEP_TIME * 0.5; a := sb_arm_angle(g[..]);
   #assert abs(sin(a)) < 0.01 && cos(a) < -0.99 && sb_weak_at(g[..], 1).z < c.z - 1;
-  // F reaches each weak point from a walker held off by its collider
-  for i: 0..<3 { w := sb_weak_at(g[..], i); #assert lo(abs(SB_BOSS_R - dist2(w.x, w.z, c.x, c.z)), dist2(w.x, w.z, c.x, c.z) + SB_BOSS_R) < T_STUN_RANGE; }
+  // F reaches each weak point from where its collider (its body's round, its tail's stadium) holds a walker off it
+  for i: 0..<3 {
+    w := sb_weak_at(g[..], i); g[0].px = w.x + 0.01; g[0].pz = w.z + 0.01; g_collide(g[..]);
+    #assert sb_boss_gap(g[..], g[0].px, g[0].pz, false) >= T_RADIUS - 0.001 && dist2(g[0].px, g[0].pz, w.x, w.z) < T_STUN_RANGE;
+  }
   // the boss stands in the lab with room round it, and is bigger than the drill mech
   #assert SB_BOSS_R + SB_BOSS_LONG * 0.5 < GA_LAB_R && SB_BOSS_TALL > SB_MECH_TOP;
   // phase one: moved off its spot, it walks back and turns east again

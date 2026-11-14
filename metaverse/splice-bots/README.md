@@ -386,8 +386,11 @@ built, the rubble ahead of you.
   `DV_RM_GIVE_UP`), since she can pass it anywhere across the desert. Beside Sniper it claws twice every
   1.3 s or so (below). E while it is within 12 m starts a battle with Sniper fielded; in the battle Sniper crawls
   (no faster than `DV_CRAWL`, 4 m/s) and 1 to 4 are its cards. 12 m before the garage it turns back. On foot nothing hunts you.
-- **The boss.** A dinosaur-shaped bot glowing blue. Its collider is a body in the engine's World that
-  moves with it (`sl_body_to`, layer.coax). Its battle begins when you are in its chamber
+- **The boss.** A dinosaur-shaped bot glowing blue. Its collider is long, two bodies in the engine's World
+  that move with it (`sb_dino_body`, splice-battle.coax): its body's round (`SB_BOSS_R` from its middle to
+  a walker's middle) and its tail, a stadium `SB_BOSS_TAIL_R` round from `SB_BOSS_TAIL_FROM` behind its
+  middle out to the tip, swaying as the tail is drawn. Her head clears its neck and head. Digger and the
+  drill mech stop against the same shape (`sb_boss_off`). Its battle begins when you are in its chamber
   with the mech. The mech fights on its own when you leave it be (its strongest ready card every
   couple of seconds); 1 to 4 pick its moves. A hit landing jolts the boss and flashes it, and the
   prompt names her part: when it reels, run to a glowing weak point and press F. Phase one: it holds
@@ -430,7 +433,7 @@ combo looks different from its end, when the arm drops and it leans slack.
 | --- | --- | --- |
 | A raider's or Imperial robot's blow on foot | A wedge ahead of it, 1.6 m, 43° to each side | Step out of the wedge, or back off, once it locks |
 | The boss's tail sweep (phase one) | A half circle of 6.2 m over the lab's north half (it faces east) | Jump over the tail, or leave the half circle |
-| The boss's charge (phase two) | A lane 4.8 m wide, to the chamber's wall | Step out of the lane once it locks; it is dazed after |
+| The boss's charge (phase two) | A lane 4.8 m wide, until all of it would leave the lab (`SB_LAB_ROOM`: never into the hallway's mouth) | Step out of the lane once it locks; it is dazed after |
 | The raider mech's claws (the drive) | A ring of 2.4 m round where Sniper is heading | Change pace as it locks: press W, or let go of it |
 | A foe's card in a bot battle | A ring round the bot it is for | Its wind-up shows which card is coming |
 

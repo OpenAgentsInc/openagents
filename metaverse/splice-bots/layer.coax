@@ -57,6 +57,7 @@ SlWorld :: struct {
   refused: int;    // spawns the World had no slot for
   crowded: int;    // questions that met more than SL_NEAR entities
   boss: int = -1;  // the banned bot's slot: a body that moves (sl_body_to)
+  tail: int = -1;  // its tail's slot: a stadium that moves and sways with it (splice-battle.coax sb_dino_body)
   rover: int = -1; // Sniper parked: a body that moves where she parks it, in the World only while it is parked (drive.coax dv_sync)
   builds: int;     // how many times the World was built: a despawned piece's collider is back after one
 }
@@ -131,7 +132,7 @@ sl_box :: (g: [] SpGame, kind: int, row: int, x0: f32, x1: f32, z0: f32, z1: f32
   } }
 }
 // The designed world's colliders, from the layout's walls (g_layout) and the places: the walls,
-// the rubble and the boss wall (which open), the banned bot (a round body) and the rover where
+// the rubble and the boss wall (which open), the banned bot (its body's round and its tail's stadium) and the rover where
 // the sensor ping stops item. Then the layer's placed pieces.
 sl_build :: (g: [] SpGame) {
   w := sl_world(g);
@@ -142,7 +143,9 @@ sl_build :: (g: [] SpGame) {
   ga_colliders(g);   // the garage's piers (garage.coax)
   sl_box(g, SK_RUBBLE, 0, -3, 3, g[0].at.rubble_z - 1, g[0].at.rubble_z + 1, 0);
   sl_box(g, SK_BOSS_WALL, 0, -4, 4, g[0].at.wall_z - 1, g[0].at.wall_z + 1, 0);
-  g[0].ws[0].boss = sl_round(g, SK_BOSS, 0, g[0].at.boss_x, 0, g[0].at.boss_z, 0, SH_ALONG_Z, SB_BOSS_R - T_RADIUS, 0, 0);
+  g[0].ws[0].boss = sl_round(g, SK_BOSS, 0, g[0].at.boss_x, 0, g[0].at.boss_z, 0, SH_ALONG_Z, SB_BOSS_BODY, 0, 0);
+  e := sb_boss_tail_at(g[0].at.boss_x, g[0].at.boss_z, SB_BOSS_FACE, 0);   // at home; sb_dino_body moves it where the boss stands
+  g[0].ws[0].tail = sl_round(g, SK_BOSS, 1, e.x, 0, e.z, e.yaw, SH_ALONG_Z, SB_BOSS_TAIL_R, SB_BOSS_TAIL_HALF, 0);
   g[0].ws[0].rover = -1; g[0].ws[0].builds += 1;   // Sniper parked joins the World once it is (drive.coax dv_sync)
   c := rail_at(g, T_RAIL_PING);
   sl_box(g, SK_WALL, -1, c.x - 1.5, c.x + 1.5, c.z - 2.4, c.z + 2.4, 0);
@@ -152,13 +155,15 @@ sl_build :: (g: [] SpGame) {
 }
 // A body that moves (the banned bot, splice-battle.coax): its transform and its shape's middle go where it
 // stands, and the World's commit puts it in the index there, so a walker is pushed out of it where it is drawn.
-sl_body_to :: (g: [] SpGame, s: int, x: f32, z: f32, yaw: f32) {
+sl_body_to :: (g: [] SpGame, s: int, x: f32, z: f32, yaw: f32) { if sl_body_set(g, s, x, z, yaw) { _ := world_commit(sl_world(g)); } }
+// The same before the commit, for a few bodies moved together: whether it moved.
+sl_body_set :: (g: [] SpGame, s: int, x: f32, z: f32, yaw: f32) -> bool {
   w := sl_world(g);
-  if s < 0 || s >= SL_CAP || world_at(w, s) == ENTITY_NONE { return; }
-  if sl_f(g, WF_X, s) == x && sl_f(g, WF_Z, s) == z && sl_f(g, WF_YAW, s) == yaw { return; }
+  if s < 0 || s >= SL_CAP || world_at(w, s) == ENTITY_NONE { return false; }
+  if sl_f(g, WF_X, s) == x && sl_f(g, WF_Z, s) == z && sl_f(g, WF_YAW, s) == yaw { return false; }
   _ := world_set_f(w, WF_X, s, x); _ = world_set_f(w, WF_Z, s, z); _ = world_set_f(w, WF_YAW, s, yaw);
   g[0].ws[0].ox[s] = x; g[0].ws[0].oz[s] = z;
-  _ = world_commit(w);
+  return true;
 }
 // The World's placed pieces are the layer's items, in ID order: built again whenever the layer's
 // revision is not the one they were built from.

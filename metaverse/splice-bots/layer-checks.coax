@@ -27,9 +27,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   q = ga_push(g, q.x, q.z, T_RADIUS);   // the garage's round back wall (garage.coax)
   q = pl_push(g, q.x, q.z, T_RADIUS);   // the mountain, the rim from outside and the plain's edge (plain.coax)
   q = ga_lab_push(g, q.x, q.z, T_RADIUS);   // the lab's round wall
-  dx := q.x - g[0].at.boss_x; dz := q.z - g[0].at.boss_z; d := sqrt(dx * dx + dz * dz);
-  if d < SB_BOSS_R && d > 0.001 { q = v3(g[0].at.boss_x + dx / d * SB_BOSS_R, 0, g[0].at.boss_z + dz / d * SB_BOSS_R); }
-  return q;
+  return sb_boss_off(g, q.x, q.z, T_RADIUS);   // the banned bot's body, then its tail (splice-battle.coax)
 }
 
 #test "the walls are World entities: every wall is there, a long one in parts, and none was refused" {
@@ -49,7 +47,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
     #assert world_f(w, WF_RADIUS, s) <= SL_CELL * 0.71;   // no part reaches further than a cell's half diagonal
   }
   for i: 0..<g[0].wall_n { #assert seen[i] >= 1; }
-  #assert seen[0] == 3 && gates == 2 && boss == 1 && stop == 1;   // the mine mouth's 40 m wall in three parts
+  #assert seen[0] == 3 && gates == 2 && boss == 2 && stop == 1;   // the boss: its body and its tail   // the mine mouth's 40 m wall in three parts
   #assert piers == GA_SECTIONS * 3;   // the garage's piers, each in three parts round its passage (garage.coax)
   #assert world_count(w) > 90 && world_count(w) < SL_CAP - SL_ITEMS && g[0].ws[0].reach < SL_CELL;
 }
@@ -64,6 +62,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
 // The World's walk from (x, z) against the old list's: -1 when (x, z) is deeper inside a wall than a
 // step can take a walker (up to 0.6 m), 0 when it stands free, 1 when both push it out to the same place.
 lc_walk_at :: (g: [] SpGame, x: f32, z: f32) -> int {
+  sb_dino_body(g);   // the boss's tail where it sways now
   g[0].px = x; g[0].pz = z; g_collide(g);
   old := lc_old_collide(g, x, z);
   moved := dist2(x, z, old.x, old.z);
@@ -272,4 +271,41 @@ LcDraw :: struct { d: [1] SpLayerDraw; pieces: [SD_PIECE_WORDS] u32; places: [SD
     #assert abs(mx / n) < 0.002 && abs(my / n) < 0.002 && abs(mz / n) < 0.002;
     if i < 2 { #assert far < 0.0001; } else { #assert far < 0.9; }
   }
+}
+// The boss's long collider (#13552): its body's round and its tail's stadium along the spine, swaying as drawn.
+#test "the boss collides along its body and its swaying tail: she is held off the tail's tip where it is drawn, and Digger and the drill mech stop at it, never in it" #steps 400000000 {
+  // pushed off the tail's side by its root, however it sways, she is clear of the body's round
+  n := SB_BOSS_TAIL_R + T_RADIUS; k := SB_BOSS_SWAY / (SB_BOSS_TIP - SB_BOSS_TAIL_FROM); slant := k / sqrt(1 + k * k);
+  #assert SB_BOSS_TAIL_FROM * SB_BOSS_TAIL_FROM + n * n - 2 * SB_BOSS_TAIL_FROM * n * slant >= SB_BOSS_R * SB_BOSS_R;
+  // and the body's round and the tail's start leave no gap a walker fits through, and the tail reaches the drawn tip
+  #assert SB_BOSS_TAIL_FROM - SB_BOSS_TAIL_R - SB_BOSS_BODY < T_RADIUS * 2 && SB_BOSS_REACH > SB_BOSS_TIP;
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 35);
+  t := g[0].bt[..]; w := sl_world(g[..]); held := 0;
+  for step: 0..<12 {
+    g_step(g[..], 0.4);   // the tail sways between steps
+    // the World's tail is the tail drawn now
+    e := sb_boss_tail(g[..]); s := g[0].ws[0].tail;
+    #assert abs(world_f(w, WF_X, s) - e.x) < 0.001 && abs(world_f(w, WF_Z, s) - e.z) < 0.001 && abs(world_f(w, WF_YAW, s) - e.yaw) < 0.001;
+    // she steps into the tail's tip as kit_dino draws it (its last joint), from either side: held off it
+    f := sb_dino_frame(g[..]); tip := fp(f, SB_BOSS_SWAY * sb_boss_sway(g[..]), 0, -SB_BOSS_TIP);
+    for side: 0..<2 {
+      o := ifx side == 0 then -0.2f32 else 0.2f32; px := g[0].px; pz := g[0].pz;
+      g[0].px = tip.x + f.x.x * o; g[0].pz = tip.z + f.x.z * o; g_collide(g[..]);
+      #assert sb_boss_gap(g[..], g[0].px, g[0].pz, false) >= T_RADIUS - 0.001;
+      if dist2(g[0].px, g[0].pz, tip.x, tip.z) > 0.3 { held += 1; }
+      g[0].px = px; g[0].pz = pz;
+    }
+  }
+  #assert held == 24;
+  // Digger fielded, and the drill mech, each sent at its middle from behind its tail: they stop at the tail, not in it
+  g_stage(g[..], 35); _ := bb_swap(t[0].fight[..], 0, 1); t[0].fight[0].sides[0].swap_until = 0;
+  #assert sb_fielded(g[..]) == SB_DIGGER;
+  f := sb_dino_frame(g[..]); back := fp(f, 0, 0, -SB_BOSS_TIP - 4);
+  g[0].bot_x = back.x; g[0].bot_z = back.z;
+  for i: 0..<150 { g_step(g[..], 0.02); #assert sb_boss_gap(g[..], g[0].bot_x, g[0].bot_z, false) >= T_BOT_R - 0.001; }
+  #assert dist2(g[0].bot_x, g[0].bot_z, back.x, back.z) > 2;   // he did close in
+  g_stage(g[..], 35); t[0].mech_x = back.x; t[0].mech_z = back.z;
+  for i: 0..<150 { g_step(g[..], 0.02); #assert sb_boss_gap(g[..], t[0].mech_x, t[0].mech_z, false) >= SB_MECH_R - 0.001; }
+  #assert dist2(t[0].mech_x, t[0].mech_z, back.x, back.z) > 2;
 }
