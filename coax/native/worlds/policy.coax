@@ -39,12 +39,13 @@ nwp_open :: (realm:string,path:string)->bool #export_c #effects(all) {
 }
 nwp_received :: (expected:int,actual:int,hash:string,observed:string,cancelled:bool)->bool #export_c #effects(all) {return !cancelled && expected>=0 && expected<=67108864 && actual==expected && cnu_hex(hash) && hash==observed;}
 #test "native world account authorization stays on the site's named API families" {
- #assert nwp_account("/api/worlds") && nwp_account("/api/auth/account");
+ #assert nwp_account("/api/worlds") && nwp_account("/api/projects") && nwp_account("/api/auth/account");
+ #assert !nwp_account("/api/project") && !nwp_account("/api/projectsx");
  #assert nwp_account("/api/worlds/splice-bots?lane=dev") && nwp_account("/api/playtest/player") && nwp_account("/api/auth/viewer") && nwp_account("/api/projects/coax/files") && nwp_account("/api/chat/complete/v1");
  for p:[10]string.["https://evil.test/api/worlds/x","//evil.test/api/worlds/x","/api/worldsx","/api/admin/keys","/api/worlds/x#y","/api/worlds/x\n","/api/worlds/x\\y","/api/worlds/x%2fy","/api/worlds/../admin","/api/worlds/./x"] {#assert !nwp_account(p);}
 }
 nwp_account :: (path:string)->bool #export_c #effects(all) {
  if !cnp_path(path) {return false;}stem:=cnp_stem(path);
- if stem=="/api/worlds" || stem=="/api/auth/viewer" || stem=="/api/auth/account" {return true;}
+ if stem=="/api/projects" || stem=="/api/worlds" || stem=="/api/auth/viewer" || stem=="/api/auth/account" {return true;}
  for root:[4]string.["/api/worlds/","/api/playtest/","/api/projects/","/api/chat/"] {if uri_prefix(stem,root) {return true;}}return false;
 }

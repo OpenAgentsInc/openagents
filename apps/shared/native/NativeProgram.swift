@@ -102,7 +102,8 @@ import JavaScriptCore
             if side && !navigation {
                 if !dialog {result.append(NativeElement(id:n.id,role:"navigation",label:n.attrs["aria-label"] ?? "Chats",attrs:n.attrs))};return
             }
-            let place=n.classes.split(separator:" ").contains("composer-options") || n.classes.split(separator:" ").contains("side-f") ? "dock":n.classes.split(separator:" ").contains("navigation-search") ? "top":placement
+            if n.classes.split(separator:" ").contains("welcome") && isDialog==dialog && isNavigation==navigation {result.append(NativeElement(id:n.id,role:"welcome",label:""))}
+            let place=n.classes.split(separator:" ").contains("composer-options") || n.classes.split(separator:" ").contains("side-f") ? "dock":(n.classes.split(separator:" ").contains("navigation-search") || n.classes.split(separator:" ").contains("side-p")) ? "top":placement
             if isDialog==dialog && isNavigation==navigation {
                 if n.classes.split(separator:" ").contains("side-m") {
                     result.append(NativeElement(id:n.id,role:"heading",label:n.children.map {text($0)}.joined(separator:" · "),type:"h3",classes:"meta"));return

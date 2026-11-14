@@ -16,10 +16,35 @@ import UIKit
         try p.event(Int(cnw_enable_event()),0,"");try p.frame();_ = try p.action()
         try p.event(101,0,"{\"loggedIn\":true,\"worldsAvailable\":true}");try p.frame();_ = try p.action()
         try answer(p,["schema":"openagents.chat.history.v1","chats":[]])
+        XCTAssertEqual(p.elements().first {$0.role=="navigation"}?.attrs["data-state"],"closed")
+        try p.input("nav.toggle");try p.frame();_ = try p.action()
         try answer(p,["schema":"openagents.environment.catalog.v1alpha1","environments":[["host_pubkey":mac,"display_name":"Mac"],["host_pubkey":coder,"display_name":"CoderOS"]]])
         var page=view(mac,"ListSessions")
         if count>1 {let base=(page["sessions"] as! [[String:Any]])[0];page["sessions"]=(0..<count).map {i -> [String:Any] in var row=base;row["session_id"]="session-\(i)";row["title"]="Mac task \(i)";return row}}
         try answer(p,page);try answer(p,view(coder,"ListSessions"));return p
+    }
+    func testHomeDrawerBackdropProjectsAndStreamedWorldShortcuts()throws {
+        let p=try loaded(),detail=NativeControls(),workspace=NativeWorkspace(detail:detail)
+        workspace.loadViewIfNeeded();workspace.view.frame=CGRect(x:0,y:0,width:402,height:874)
+        func render()throws {try p.frame();workspace.render(p.elements(),history:p.elements(navigation:true));workspace.view.layoutIfNeeded()}
+        try p.input("nav.home");try render()
+        XCTAssertTrue(p.elements().contains {$0.id=="home.suggestions" && $0.role=="welcome"})
+        XCTAssertNotNil(detail.controls["chat.composer"] as? UITextView)
+        XCTAssertGreaterThan(try XCTUnwrap(detail.controls["home.title"]).convert(.zero,to:detail.view).y,150)
+        try p.input("chat.composer","Home draft");try render();try p.input("nav.toggle");try render()
+        XCTAssertEqual(workspace.sidebar.view.frame.width,338,accuracy:1)
+        XCTAssertTrue(["nav.home","nav.projects","world.library"].allSatisfy {workspace.sidebar.controls[$0] != nil})
+        let shade=try XCTUnwrap(workspace.view.subviews.first {$0.accessibilityIdentifier=="workspace.backdrop"})
+        XCTAssertFalse(shade.isHidden);XCTAssertEqual(shade.frame.width-workspace.sidebar.view.frame.width,64,accuracy:1)
+        try p.input("nav.projects");try render();let request=try p.action();XCTAssertEqual(request.0,4);XCTAssertTrue(request.1.contains("/api/projects"))
+        try p.event(104,200,"project mobile-kit Mobile Kit\n");try render()
+        XCTAssertTrue(p.elements().contains {$0.id=="projects.item.0" && $0.label.contains("Mobile Kit")})
+        try p.input("projects.item.0");try render();let link=try p.action();XCTAssertEqual(link.0,10);XCTAssertTrue(link.1.contains("https://openagents.com/projects/mobile-kit"))
+        try p.event(110,0,"{}");try render();try p.input("nav.home");try render()
+        XCTAssertEqual((detail.controls["chat.composer"] as? UITextView)?.text,"Home draft")
+        try p.input("home.everglade");try render();let world=try p.action();XCTAssertEqual(world.0,13);XCTAssertTrue(world.1.contains("everglade2"))
+        try p.event(113,0,"{}");try render();try p.input("nav.toggle");try render()
+        XCTAssertTrue(workspace.accessibilityPerformEscape())
     }
     func testLargeHistoryKeepsBothComputersAccessibleAndPagesCachedRows()throws {
         let p=try loaded(count:100)

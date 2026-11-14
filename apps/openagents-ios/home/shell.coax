@@ -1,0 +1,50 @@
+// Mobile assembly of the site's places, the existing composer and streamed worlds.
+#test "the mobile landing is the composer with a closed drawer and world suggestions" {
+ s:[1]Starter;s[0].workspace=true;s[0].worlds_available=true;na_list(s[..]);#assert s[0].page==2 && !s[0].navigation[0].open;
+ t:[1]Tree;u:[1]Ui;ui_begin(u[..],0,true);tr_begin(t[..]);na_home_render(s[..],t[..],u[..]);
+ #assert tr_find(t[..],"chat.composer")>=0 && tr_find(t[..],"home.splice")>=0 && tr_find(t[..],"home.everglade")>=0 && tr_find(t[..],"home.suggestions")>=0;
+}
+#test "landing navigation retains a conversation draft and refuses to abandon an uncertain command" {
+ s:[1]Starter;s[0].workspace=true;s[0].page=4;e:=s[0].environments[..];e[0].active=true;e[0].page=2;e[0].uncertain=true;e[0].nd=ea_copy(e[0].draft[..],"keep");#assert na_shell_press(s[..],"nav.home") && s[0].page==4 && e[0].nd==4;
+ e[0].uncertain=false;#assert na_shell_press(s[..],"nav.home") && s[0].page==2 && !e[0].active && !s[0].navigation[0].open;
+}
+#test "the home composer enters the existing saved account turn before asking its model" {
+ s:[1]Starter;s[0].workspace=true;s[0].page=2;s[0].draft_n=na_copy(s[0].draft[..],"Hello");na_send(s[..]);#assert s[0].page==3 && s[0].flight==4 && s[0].purpose==4 && s[0].thread[0].n==1;
+}
+na_shell_press :: (s:[]Starter,id:string)->bool {
+ home:=id=="nav.home";projects:=id=="nav.projects" || id=="projects.refresh";world:=id=="world.library" || id=="home.worlds" || id=="home.splice" || id=="home.everglade";send:=id=="chat.composer.send" && s[0].workspace && s[0].page==2;
+ for i:0..<s[0].projects_n {b:[96]u8;if id==tr_join(b[..],"projects.item.",i) {p:=s[0].projects[i];url:[160]u8;na_text_effect(s,true,tr_cat(url[..],"https://openagents.com/projects/",cast(string)p.id[0..<p.id_n]),"");return true;}}
+ if !home && !projects && !world && !send && id!="projects.web" {return false;}
+ n:=s[0].navigation[..];e:=s[0].environments[..];
+ if s[0].flight!=0 || e[0].flight || e[0].random || s[0].action!=0 {n[0].np=ea_copy(n[0].pending[..],id);return true;}
+ if e[0].uncertain || s[0].usage[0].uncertain {nav_note(n,"Reconnect to resolve the current command before changing places.");return true;}
+ if send {na_send(s);return true;}
+ if id=="projects.web" {na_text_effect(s,true,"https://openagents.com/projects","");return true;}
+ s[0].usage[0].active=false;n[0].open=false;n[0].settings=false;
+ if world {if id=="home.splice" {na_world(s,"splice-bots","/worlds/splice-bots",false);}else if id=="home.everglade" {na_world(s,"everglade2","/worlds/everglade2",false);}else {na_world(s,"catalog","/worlds",false);}return true;}
+ na_nav_keep(s);e[0].active=false;
+ if projects {s[0].page=5;na_http(s,"/api/projects","",90);return true;}
+ s[0].page=2;s[0].thread[0]=AccountThread.{};na_nav_restore(s);return true;
+}
+na_home_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
+ x:=tr_open(t,"home.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"home.name",TG_SPAN,"","OpenAgents");tr_close(t);
+ x=tr_open(t,"home.suggestions",TG_SECTION,"welcome");x=k_text(t,u,"home.title",TG_H1,"","What would you like to do?");
+ if s[0].worlds_available {x=k_link(t,"home.splice","Play Splice Bots");x=k_link(t,"home.everglade","Explore Everglade");x=k_link(t,"home.worlds","Browse worlds");}tr_close(t);
+ busy:=s[0].flight!=0 && s[0].purpose!=1 && s[0].purpose!=70 && s[0].purpose!=71;
+ f:=k_composer_begin(t,u,"chat.composer","Message OpenAgents");if busy {tr_attr(t,f,AT_DISABLED,"");}k_composer_end(t,u,"chat.composer","Send",!busy && s[0].draft_n>0);frame:=tr_find(t,"chat.composer.frame");if frame>=0 {tr_attr(t,frame,AT_TITLE,"Gemini 4 Hydrogen");}
+}
+na_projects_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->bool {
+ if op!=4 || s[0].purpose!=90 {return false;}s[0].flight=0;s[0].purpose=0;s[0].dirty=true;
+ if status==401 {na_history_clear(s);s[0].account_ready=false;s[0].page=0;na_note(s,"Log in again to see your projects.");return true;}
+ s[0].projects_loaded=true;s[0].projects_failed=failed || status!=200;s[0].projects_n=0;
+ if !s[0].projects_failed {s[0].projects_n=ss_projects_read(raw,s[0].projects[..]);if raw.count>0 && s[0].projects_n==0 {s[0].projects_failed=true;}}
+ na_nav_pending(s);return true;
+}
+na_projects_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
+ x:=tr_open(t,"projects.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"projects.title",TG_SPAN,"","Projects");x=k_icon_button(t,"projects.refresh",IC_ARROW_ROTATE_CW,"Refresh projects");tr_close(t);
+ if s[0].flight!=0 {x=k_text(t,u,"projects.loading",TG_P,"meta","Loading your projects…");}
+ else if s[0].projects_failed {x=k_text(t,u,"projects.failed",TG_P,"","Projects could not be loaded. Refresh to retry.");}
+ else if s[0].projects_n==0 {x=k_text(t,u,"projects.empty",TG_P,"","No projects were returned for this account.");}
+ for i:0..<s[0].projects_n {p:=s[0].projects[i];id:[96]u8;x=k_row(t,u,tr_join(id[..],"projects.item.",i),cast(string)p.name[0..<p.name_n],"Open on openagents.com",false);}
+ x=k_link(t,"projects.web","Browse projects on openagents.com");
+}

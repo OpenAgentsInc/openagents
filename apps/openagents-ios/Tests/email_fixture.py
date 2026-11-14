@@ -62,6 +62,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path == "/api/projects":
+            if self.headers.get("Authorization") != "Bearer oa_at_fixture":return self.answer(401,{})
+            return self.answer(200,b"project mobile-kit Mobile Kit\n")
         if a.environment_transcript and self.path.startswith("/api/chat/environment"):
             if self.headers.get("Authorization") != "Bearer oa_at_fixture":
                 return self.answer(401, {})

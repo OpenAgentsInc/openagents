@@ -5,12 +5,15 @@ import UIKit
 @MainActor final class NativeWorkspace:UIViewController,UIGestureRecognizerDelegate {
     let detail:NativeControls,sidebar=NativeControls()
     private var available=false,open=false,laidOpen=false,split=false,transitioning=false
+    private let backdrop=UIControl()
     var press:((String)->Void)?
     init(detail:NativeControls) {self.detail=detail;super.init(nibName:nil,bundle:nil)}
     required init?(coder:NSCoder) {fatalError()}
     override func viewDidLoad() {
         super.viewDidLoad();view.backgroundColor=NativeSkin.ground
-        for child in [detail,sidebar] {addChild(child);view.addSubview(child.view);child.didMove(toParent:self)}
+        addChild(detail);view.addSubview(detail.view);detail.didMove(toParent:self)
+        backdrop.backgroundColor=NativeSkin.drawerShade;backdrop.accessibilityIdentifier="workspace.backdrop";backdrop.accessibilityLabel="Close navigation";backdrop.addAction(UIAction { [weak self] _ in self?.press?("nav.close") },for:.touchUpInside);backdrop.isHidden=true;view.addSubview(backdrop)
+        addChild(sidebar);view.addSubview(sidebar.view);sidebar.didMove(toParent:self)
         sidebar.view.accessibilityIdentifier="workspace.history";sidebar.view.isHidden=true
         let edge=UIScreenEdgePanGestureRecognizer(target:self,action:#selector(reveal(_:)));edge.edges = .left;view.addGestureRecognizer(edge)
         let close=UIPanGestureRecognizer(target:self,action:#selector(conceal(_:)));close.delegate=self;sidebar.view.addGestureRecognizer(close)
@@ -30,6 +33,7 @@ import UIKit
     }
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews();let g=workspace_layout(Double(view.bounds.width),traitCollection.horizontalSizeClass == .regular,open);split=available && g.split
+        backdrop.frame=view.bounds;backdrop.isHidden = !available || split || (!open && !transitioning);backdrop.alpha=open && !split ? 1:0
         let show=available && (open || split);sidebar.view.isHidden = !show && !transitioning
         sidebar.view.frame=CGRect(x:g.offset,y:0,width:g.list,height:view.bounds.height)
         detail.view.frame=CGRect(x:split ? g.list:0,y:0,width:split ? g.content:Double(view.bounds.width),height:Double(view.bounds.height))

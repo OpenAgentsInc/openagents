@@ -5,9 +5,7 @@
 #load "../../coax/lib/nostr/nip19-core.coax";
 
 // The places at the top of the side, in order, and the page each one is.
-SS_HOME :: -1; SS_CHATS :: 0; SS_PROJECTS :: 1; SS_WORLDS :: 2; SS_PLACES :: 3;
-SS_NAMES :: [3] string.["Chats", "Projects", "Worlds"];
-SS_HREFS :: [3] string.["/chat", "/projects", "/worlds"];
+#load "../shared/site-places.coax";
 SS_WHO :: 96;          // bytes of a name at the foot
 
 // The place an address is: the home page, or one of the places (anything under it). -2 for none.

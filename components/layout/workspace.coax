@@ -1,8 +1,8 @@
 // T3 Code's mobile workspace measures, adapted to the shared native skin.
-// Compact phones use a full-width history pane; regular widths keep a column.
+// Compact phones overlay a drawer; regular widths keep a column.
 #test "phone history slides as one pane and a regular workspace reserves both columns" {
- p:=workspace_layout(402,false,true);#assert !p.split && p.list==402 && p.offset==0 && p.content==402;
- #assert workspace_layout(402,false,false).offset== -402;
+ p:=workspace_layout(402,false,true);#assert !p.split && p.list==338 && p.offset==0 && p.content==402;
+ #assert workspace_layout(402,false,false).offset== -338;
  t:=workspace_layout(1024,true,false);#assert t.split && t.list==328 && t.content==696 && t.offset==0;
  #assert !workspace_layout(599,true,true).split && workspace_layout(600,true,true).list==280;
  #assert workspace_layout(2000,true,true).list==380 && !workspace_layout(844,false,true).split;
@@ -15,6 +15,11 @@ WorkspaceLayout :: struct {split:bool;list:f64;content:f64;offset:f64;duration:f
 workspace_swipe :: (x:f64,y:f64,opening:bool)->bool #export_c #effects(all) {return abs(x)>abs(y) && (ifx opening then x>24 else x< -60);}
 workspace_layout :: (width:f64,regular:bool,open:bool)->WorkspaceLayout #export_c #effects(all) {
  w:=ifx width>0 && width<100000 then width else 1.0;split:=regular && w>=600;
- list:=w;if split {list=cast(f64)cast(int)(w*0.32+0.5);if list<280 {list=280;}if list>380 {list=380;}}
+ list:=ifx w>64 then w-64 else w;if list>360 {list=360;}if split {list=cast(f64)cast(int)(w*0.32+0.5);if list<280 {list=280;}if list>380 {list=380;}}
  return WorkspaceLayout.{split=split,list=list,content=ifx split then w-list else w,offset=ifx split || open then 0.0 else -list,duration=0.22};
+}
+
+#test "compact drawers leave a backdrop target and wide phones cap their rail" {
+ #assert workspace_layout(320,false,true).list==256 && workspace_layout(430,false,true).list==360;
+ #assert workspace_layout(844,false,true).list==360 && workspace_layout(402,false,false).content==402;
 }

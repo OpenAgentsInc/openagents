@@ -26,8 +26,9 @@ enum NativeSkin {
         func href(_ e:NativeElement)->String? {if let h=e.attrs["href"],h.contains("/icons/") {return h};return e.children.compactMap(href).first}
         guard let h=href(element),let raw=h.split(separator:"/").last else{return nil}
         let name=String(raw).components(separatedBy:".svg")[0]
-        return ["sidebar":"sidebar.left","plus":"square.and.pencil","x":"xmark","settings":"gearshape","arrow-rotate-cw":"arrow.clockwise"][name]
+        return ["sidebar":"line.3.horizontal","menu":"line.3.horizontal","plus":"square.and.pencil","x":"xmark","settings":"gearshape","arrow-rotate-cw":"arrow.clockwise"][name]
     }
+    static var drawerShade:NativePlatformColor {color(mono_drawer_shade())}
     static let tokens=mono_native()
     static let names=mono_names()
     static func cg(_ c:UInt32)->CGColor {
@@ -296,6 +297,7 @@ final class NativeMenu:UIControl {
 
 /// Quiet buttons that follow one another share a line, each as wide as its words, and wrap to the next.
 final class NativeFlow:UIView {
+    var centered=false {didSet {setNeedsLayout()}}
     var items:[UIView]=[] {
         didSet {
             for v in oldValue where v.superview === self && !items.contains(where:{$0 === v}) {v.removeFromSuperview()}
@@ -305,14 +307,15 @@ final class NativeFlow:UIView {
     }
     private var laid:CGFloat=0
     private func arrange(_ width:CGFloat,apply:Bool)->CGFloat {
-        let gap=CGFloat(NativeSkin.tokens.gap)*2/3;var x:CGFloat=0,y:CGFloat=0,row:CGFloat=0
-        for v in items {
+        let gap=CGFloat(NativeSkin.tokens.gap)*2/3;var x:CGFloat=0,y:CGFloat=0,row:CGFloat=0,start=0
+        func centerRow(_ end:Int) {guard apply,centered,end>start else{return};let shift=max(0,(width-(x-gap))/2);for i in start..<end {items[i].frame.origin.x += shift}}
+        for (index,v) in items.enumerated() {
             let size=v.intrinsicContentSize,w=min(size.width,width)
-            if x>0 && x+w>width {x=0;y+=row;row=0}
+            if x>0 && x+w>width {centerRow(index);start=index;x=0;y+=row;row=0}
             if apply {v.frame=CGRect(x:x,y:y,width:w,height:size.height)}
             x+=w+gap;row=max(row,size.height)
         }
-        return y+row
+        centerRow(items.count);return y+row
     }
     override func layoutSubviews() {
         super.layoutSubviews();guard bounds.width>0 else {return}

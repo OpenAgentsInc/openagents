@@ -293,3 +293,6 @@ mn_grey :: (c: u32) -> bool { return ((c >> 24) & 255) == ((c >> 16) & 255) && (
   #assert mono_native_frame(-1, 100, 44, out[..]) == 0 && mono_native_frame(MF_COUNT, 100, 44, out[..]) == 0;
   #assert mono_native_frame(MF_BUTTON, 100, 44, out[0..<2]) == 0 && mono_native_frame(MF_BUTTON, 0, 44, out[..]) == 0;
 }
+
+// A navigation drawer dims its underlying surface in this skin's ground ink.
+mono_drawer_shade :: ()->u32 #export_c #effects(all) {return (MONO_GROUND&0xffffff00)|0x99;}

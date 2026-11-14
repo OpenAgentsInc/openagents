@@ -9,6 +9,16 @@ final class NavigationUITests:XCTestCase {
             email.tap();email.typeText("ada@example.com");app.buttons["Send code"].tap()
             let code=app.textFields["Email code"];XCTAssertTrue(code.waitForExistence(timeout:10));code.tap();code.typeText("415926");app.buttons["Log in"].tap()
         }
+        XCTAssertTrue(app.textViews["chat.composer"].waitForExistence(timeout:20))
+        XCTAssertTrue(app.buttons["home.splice"].exists);XCTAssertTrue(app.buttons["home.everglade"].exists)
+        attach(app,"Quiet mobile home")
+        app.showChatHistory()
+        XCTAssertTrue(app.buttons["nav.projects"].exists);XCTAssertTrue(app.buttons["world.library"].exists)
+        app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:0.5)).tap()
+        XCTAssertTrue(app.buttons["nav.toggle"].isHittable)
+        app.showChatHistory();app.buttons["nav.projects"].tap()
+        XCTAssertTrue(app.buttons["projects.item.0"].waitForExistence(timeout:10));attach(app,"Account projects")
+        app.showChatHistory();app.buttons["nav.home"].tap();app.showChatHistory()
         let search=app.textFields["nav.search"];XCTAssertTrue(search.waitForExistence(timeout:20))
         let mac=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@ AND label == %@","nav.chat.","Transcript fixture")).firstMatch
         let coder=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@ AND label == %@","nav.chat.","CoderOS task")).firstMatch

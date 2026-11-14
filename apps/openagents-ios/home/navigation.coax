@@ -18,7 +18,7 @@
 na_nav_key :: (s:[]Starter,out:[]u8)->string {
  e:=s[0].environments[..];n:=0;
  if s[0].page==4 && e[0].page==2 && e[0].selected>=0 {n=mc(out,0,cast(string)e[0].catalog[0].entries[e[0].selected].host[..]);n=mc(out,n,"/");n=mc(out,n,cast(string)e[0].session[0..<e[0].ns]);}
- else if s[0].page==3 {n=mc(out,0,"account/");n=mc(out,n,cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]);}
+ else if s[0].page==2 || s[0].page==3 {n=mc(out,0,"account/");n=mc(out,n,cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]);}
  return cast(string)out[0..<n];
 }
 na_nav_keep :: (s:[]Starter) {key:[224]u8;k:=na_nav_key(s,key[..]);e:=s[0].environments[..];nav_keep_draft(s[0].navigation[..],k,ifx s[0].page==4 then cast(string)e[0].draft[0..<e[0].nd] else cast(string)s[0].draft[0..<s[0].draft_n]);}
@@ -41,6 +41,8 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
   if s[0].flight!=0 || e[0].flight || e[0].random || s[0].action!=0 {n[0].np=ea_copy(n[0].pending[..],id);return true;}
   na_request(s,ifx id=="account.logout" then 5 else ifx id=="app.updates" then 6 else 7,"");return true;
  }
+ if na_shell_press(s,id) {return true;}
+ if id=="nav.history" {n[0].history_open = !n[0].history_open;return true;}
  if id=="nav.toggle" {n[0].open = !n[0].open;n[0].creating=false;return true;}
  if id=="nav.close" {n[0].open=false;n[0].creating=false;return true;}
  if id=="nav.settings" {n[0].settings=true;return true;}
@@ -78,8 +80,11 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
  n[0].open=false;n[0].creating=false;nav_note(n,"");return true;
 }
 na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
- n:=s[0].navigation[..];b:=n[0].browser[..];x:=k_side(t,"nav.sidebar","Chats");tr_attr(t,x,AT_STATE,ifx n[0].open then "open" else "closed");
- x=k_side_head(t,"nav.header","OpenAgents","/");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.refresh",IC_ARROW_ROTATE_CW,"Refresh chats");x=k_icon_button(t,"nav.compose",IC_PLUS,"New chat");x=k_icon_button(t,"nav.close",IC_X,"Hide chats");tr_close(t);
+ n:=s[0].navigation[..];b:=n[0].browser[..];x:=k_side(t,"nav.sidebar","Navigation");tr_attr(t,x,AT_STATE,ifx n[0].open then "open" else "closed");
+ x=k_side_head(t,"nav.header","OpenAgents","/");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.close",IC_X,"Close navigation");tr_close(t);
+ x=k_side_places(t,"nav.sidebar");x=k_row(t,u,"nav.home","Chat","",s[0].page!=5);x=k_row(t,u,"nav.projects","Projects","",s[0].page==5);if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",false);}tr_close(t);
+ x=tr_open(t,"nav.history.header",TG_HEADER,"navigation-search");x=k_link(t,"nav.history","Recent chats");tr_attr(t,x,AT_EXPANDED,ifx n[0].history_open then "true" else "false");x=k_icon_button(t,"nav.compose",IC_PLUS,"New chat");x=k_icon_button(t,"nav.refresh",IC_ARROW_ROTATE_CW,"Refresh chats");tr_close(t);
+ if n[0].history_open {
  x=tr_open(t,"nav.search-wrap",TG_DIV,"navigation-search");x=k_input(t,u,"nav.search","Search chats","Search chats","search","off");tr_close(t);
  x=k_side_folds(t,"nav.sidebar");visible:=0;account_matches:=0;for i:0..<s[0].chats[0].n {r:=s[0].chats[0].items[i];if nav_match(n,cast(string)r.title[0..<r.title_n],"Account") {account_matches+=1;}}
  n[0].page_size=nav_page_size(n,account_matches>0);budget:=n[0].page_size;
@@ -111,7 +116,8 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
   if visible>=NAV_VISIBLE {x=k_text(t,u,"nav.limit",TG_P,"meta","Use Earlier conversations or search to browse more history.");}
  }
  if n[0].nn>0 {x=k_text(t,u,"nav.note",TG_P,"meta",cast(string)n[0].note[0..<n[0].nn]);}
- k_side_end(t);x=tr_open(t,"nav.footer",TG_FOOTER,"side-f");if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",false);}x=k_row(t,u,"nav.settings","Settings","",false);tr_close(t);tr_close(t);
+ k_side_end(t);}
+ x=tr_open(t,"nav.footer",TG_FOOTER,"side-f");x=k_row(t,u,"nav.settings","Settings","",false);tr_close(t);tr_close(t);
  if n[0].settings {
   x=tr_open(t,"nav.settings.panel",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Settings");x=k_text(t,u,"nav.settings.title",TG_H2,"","Settings");
   x=k_link(t,"nav.settings.close","Close settings");x=k_link(t,"app.updates","Check for updates");x=k_link(t,"app.details","Build details");x=k_link(t,"usage.open","Usage");x=k_link(t,"extras.more","Extras");x=k_link(t,"account.logout","Log out");if s[0].note_n>0 {x=k_text(t,u,"nav.settings.note",TG_P,"meta",cast(string)s[0].note[0..<s[0].note_n]);}tr_close(t);

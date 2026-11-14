@@ -13,6 +13,9 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     private let topDock=UIStackView(),options=UIStackView()
     private var composer:NativeComposer?
     private let scroll=UIScrollView()
+    private lazy var ordinaryTop=stack.topAnchor.constraint(equalTo:scroll.contentLayoutGuide.topAnchor,constant:24)
+    private lazy var centeredTop=stack.topAnchor.constraint(greaterThanOrEqualTo:scroll.contentLayoutGuide.topAnchor,constant:24)
+    private lazy var centeredY:NSLayoutConstraint={let c=stack.centerYAnchor.constraint(equalTo:scroll.frameLayoutGuide.centerYAnchor);c.priority = .defaultLow;return c}()
     private var conversation:String?
     private var following=true
     private let header=UIStackView(),headerSpacer=UIView(),headerRule=NativeHeaderRule()
@@ -65,7 +68,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             dock.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:12),
             dock.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-12),
             scroll.leadingAnchor.constraint(equalTo:view.leadingAnchor), scroll.trailingAnchor.constraint(equalTo:view.trailingAnchor),
-            stack.topAnchor.constraint(equalTo:scroll.contentLayoutGuide.topAnchor,constant:24),
+            ordinaryTop,
             stack.bottomAnchor.constraint(equalTo:scroll.contentLayoutGuide.bottomAnchor,constant:-24),
             stack.leadingAnchor.constraint(equalTo:scroll.frameLayoutGuide.leadingAnchor,constant:20),
             stack.trailingAnchor.constraint(equalTo:scroll.frameLayoutGuide.trailingAnchor,constant:-20),
@@ -73,10 +76,11 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     }
     func render(_ elements:[NativeElement]) {
         loadViewIfNeeded()
+        let centered=elements.contains {$0.role=="welcome"};ordinaryTop.isActive = !centered;centeredTop.isActive=centered;centeredY.isActive=centered
         var kept:[String:UIView] = [:]
         let thread=elements.first {$0.role=="transcript"}?.value
         if thread != conversation {conversation=thread;following=true}
-        let ordinary=elements.filter {$0.role != "composer" && $0.role != "transcript" && $0.role != "toolbar"}
+        let ordinary=elements.filter {$0.role != "welcome" && $0.role != "composer" && $0.role != "transcript" && $0.role != "toolbar"}
         var bar:[NativeElement]=[]
         func toolbar(_ e:NativeElement) {
             if e.role=="button" {var button=e;button.label=e.textContent;button.disabled=e.attrs["disabled"] != nil;bar.append(button)}
@@ -143,7 +147,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
                     l.font=e.role=="heading" ? NativeTypography.font(26,strong:true):e.role=="notice" || e.hasClass("note") ? NativeTypography.font(14):NativeTypography.font(16)
                     l.textColor=NativeSkin.color(e.role=="heading" ? t.ink_bright:e.role=="notice" || e.hasClass("note") ? t.ink_muted:t.ink)
                 }
-                l.accessibilityLabel=e.label
+                l.textAlignment=centered ? .center:.natural;l.accessibilityLabel=e.label
             }
             kept[e.id]=control
         }
@@ -162,7 +166,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             var end=at;var items:[UIView]=[]
             while end<ordinary.count,quiet(ordinary[end]),ordinary[end].attrs["_nativePlacement"]==e.attrs["_nativePlacement"],let c=kept[ordinary[end].id] {items.append(c);end+=1}
             let flow=flows[e.id] ?? NativeFlow();if flow.items.count != items.count || !zip(flow.items,items).allSatisfy({$0 === $1}) {flow.items=items}
-            used[e.id]=flow;rows.append((flow,e,ordinary[end-1]));at=end
+            flow.centered=centered;used[e.id]=flow;rows.append((flow,e,ordinary[end-1]));at=end
         }
         for (id,flow) in flows where used[id] !== flow {flow.items=[];flow.removeFromSuperview()}
         flows=used
