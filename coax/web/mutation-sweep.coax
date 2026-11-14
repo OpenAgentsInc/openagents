@@ -35,7 +35,7 @@ MS_BODY :: 60000;              // a GitHub issue body holds 65,536 characters
 MS_SHOW :: 12;                 // survivors shown a file
 MS_TITLE :: "Nightly mutation sweep: survivors in #authority files";
 
-MsSuite :: struct { path: string; library: bool; root_only: bool; run_steps: string; units: string; nunits: int; }
+MsSuite :: struct { path: string; library: bool; root_only: bool; run_steps: string; traversal: string; units: string; nunits: int; }
 MsPart :: struct { suite: int; part: int; parts: int; h: int; ok: bool; started_ms: int; }
 // Kept text: bytes is a view of the caller's buffer.
 MsText :: struct { bytes: [] u8; used: int; full: bool; }
@@ -133,16 +133,16 @@ ms_suites :: (list: string, only: string, keep: [] MsText, out: [] MsSuite) -> i
       if !hit { continue; }
     }
     out[n] = MsSuite.{path = ms_keep(keep, path), library = ms_has(line, " --library"), root_only = ms_has(line, " --root-only"),
-                      run_steps = ms_keep(keep, ms_after(line, "--run-steps")), units = ms_keep(keep, units), nunits = ms_items(units)};
+                      run_steps = ms_keep(keep, ms_after(line, "--run-steps")), traversal = ms_keep(keep, ms_after(line, "--traversal")), units = ms_keep(keep, units), nunits = ms_items(units)};
     n += 1;
   }
   return n;
 }
 #test "the sweep takes each suite's #authority files from the list, with its flags, and leaves the skipped ones" {
-  list := "rules/srd/battle.coax  default --library  #authority rules/srd/a.coax,rules/srd/b.coax\ncoax/web/x.coax  default\nm.coax  default --library  #authority\npay/w.coax  --steps 9 --run-steps 50 --root-only  #authority pay/w.coax\nbad.coax  default  (skipped here: loads y, not in the tree)  #authority bad.coax\n";
+  list := "rules/srd/battle.coax  default --library --traversal 16000000000  #authority rules/srd/a.coax,rules/srd/b.coax\ncoax/web/x.coax  default\nm.coax  default --library  #authority\npay/w.coax  --steps 9 --run-steps 50 --root-only  #authority pay/w.coax\nbad.coax  default  (skipped here: loads y, not in the tree)  #authority bad.coax\n";
   kb: [4096] u8; k: [1] MsText; k[0].bytes = kb[..]; s: [8] MsSuite;
   n := ms_suites(list, "", k[..], s[..]);
-  #assert n == 2 && s[0].path == "rules/srd/battle.coax" && s[0].library && !s[0].root_only && s[0].run_steps == "";
+  #assert n == 2 && s[0].path == "rules/srd/battle.coax" && s[0].library && !s[0].root_only && s[0].run_steps == "" && s[0].traversal == "16000000000";
   #assert s[0].nunits == 2 && ms_item(s[0].units, 1) == "rules/srd/b.coax";
   #assert s[1].path == "pay/w.coax" && !s[1].library && s[1].root_only && s[1].run_steps == "50" && s[1].nunits == 1;
   #assert ms_suites(list, "pay/w.coax", k[..], s[..]) == 1 && s[0].path == "pay/w.coax";
@@ -272,6 +272,7 @@ tool_main :: () -> int #export_c #effects(all) {
         if s.library { ok = ok && proc_arg(h, "--library"); }
         if s.root_only { ok = ok && proc_arg(h, "--root-only"); }
         if s.run_steps.count > 0 { ok = ok && proc_arg(h, "--run-steps") && proc_arg(h, s.run_steps); }
+        if s.traversal.count > 0 { ok = ok && proc_arg(h, "--traversal") && proc_arg(h, s.traversal); }
         ok = ok && proc_env(h, "OA_REMOTE_WAIT=7200");
         outs[l].used = 0; outs[l].full = false;
         parts[p].started_ms = proc_now_ms();

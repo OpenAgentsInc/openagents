@@ -10,7 +10,7 @@
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
-//   coax/bin/coax test --library rules/srd/battle.coax
+//   coax/bin/coax test --library rules/srd/battle.coax --traversal 16000000000
 #load "spells.coax";
 #load "ability-record.coax";
 #load "prone-movement.coax";

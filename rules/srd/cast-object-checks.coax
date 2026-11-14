@@ -1,7 +1,7 @@
 // Spells cast at objects through the shared battle (SRD 5.2.1 pp.177-178 Breaking Objects, p.178
 // Burning, p.180 Damage Threshold; Eldritch Blast, Fire Bolt, Produce Flame and Starry Wisp). Its decisions
 // are object-target.coax's (mutation-gated through this entry):
-//   coax/bin/coax test rules/srd/cast-object-checks.coax --library
+//   coax/bin/coax test rules/srd/cast-object-checks.coax --library --traversal 16000000000
 //   coax/bin/coax mutate rules/srd/cast-object-checks.coax --library --unit rules/srd/object-target.coax
 #load "battle.coax";
 #load "object-cast.coax";
