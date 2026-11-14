@@ -68,6 +68,10 @@ class CapacityRefusals(unittest.TestCase):
         environment.pop('COAX_NEAR_LIMIT', None)
         # Isolate each refusal/threshold probe from other scenarios.
         environment['COAX_CHECK_CACHE'] = tempfile.mkdtemp(dir=self.tmp.name)
+        # A put into a fresh cache starts the detached eviction, which can still
+        # be writing the cache's account when the test removes its directory
+        # (#13537); inline eviction ends with the compile.
+        environment['COAX_CHECK_CACHE_EVICT'] = 'inline'
         environment.update(env or {})
         return subprocess.run([str(COMPILER), command, str(self.path), *args], text=True, capture_output=True,
                               timeout=120, env=environment)
@@ -179,8 +183,9 @@ class CapacityRefusals(unittest.TestCase):
     def cache_compile(self, source, cache, name, *args, jobs=2, expected=0):
         self.path.write_text(source)
         timing = Path(self.tmp.name) / (name + '.json')
+        # Inline eviction, as in run_coax: no detached evictor outlives the compile (#13537).
         env = dict(os.environ, COAX_CHECK_CACHE=str(cache), COAX_CHECK_JOBS=str(jobs),
-                   COAX_JOBS_QUIET='1')
+                   COAX_JOBS_QUIET='1', COAX_CHECK_CACHE_EVICT='inline')
         env.pop('COAX_NEAR_LIMIT', None)
         r = subprocess.run([str(COMPILER), 'c', str(self.path), '--timings', str(timing), *args],
                            text=True, capture_output=True, timeout=120, env=env)
