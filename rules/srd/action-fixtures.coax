@@ -1,5 +1,12 @@
 // Test fixtures for the action, movement and cover checks (grapple.coax, movement-modes.coax,
-// ready.coax, actions.coax). Not authority: only the checks call these.
+// ready.coax, actions.coax) and the battle units' checks (battle-*-checks.coax). Not authority:
+// only the checks call these.
+
+// A small battle's room: 8 creatures and the squares of a grid up to 140 by 8, so a check that
+// copies a battle or makes many copies little (#13593). rs_have's RsRoom holds a world's.
+FX_SQUARES :: 1120;
+FxRoom :: struct { c: [8] RsCreature; occ: [FX_SQUARES] int; zone: [RS_ZONES] RsZone; }
+fx_have :: (b: [] RsBattle, r: [] FxRoom) { rs_use(b, r[0].c[..], r[0].occ[..]); rs_use_zones(b, r[0].zone[..]); }
 
 // A level 5 Fighter (Str 16, +3 PB: DC 14) at (2,2) beside a Goblin-sized Wizard at (3,2), fixed dice.
 grapple_field :: (b: [] RsBattle) {

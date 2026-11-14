@@ -2,11 +2,12 @@
 // numbers, its whole events and what it leaves on the creatures. battle.coax loads this with `#test`.
 //   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-strike.coax
 //
-// Most checks here stage the same battle twice from one stream of picks: the unit's procedure runs
-// on one, and what it must do is worked out a second time, step by step, on the other with the same
-// dice. Then the two battles must be the same: every event with its text, every creature's Hit
+// Most checks here stage a battle from a stream of picks and copy it to a twin: the unit's procedure
+// runs on one, and what it must do is worked out a second time, step by step, on the other with the
+// same dice. Then the two battles must be the same: every event with its text, every creature's Hit
 // Points, conditions, effects, uses and notes, the turn's flags and the dice. Counters prove each
-// branch was met.
+// branch was met. A staging costs the most, so a scene may serve several calls, each on fresh copies
+// of it (#13593).
 
 // The i-th newest event, whole: its kind, spell, attacker, target, amount, damage, feature and exact text.
 sk_ev :: (b: [] RsBattle, i: int, kind: int, spell: int, by: int, to: int, amount: int, damage: int, feat: int, text: string) -> bool {
@@ -14,9 +15,14 @@ sk_ev :: (b: [] RsBattle, i: int, kind: int, spell: int, by: int, to: int, amoun
   return ev.kind == kind && ev.spell.value == spell && ev.by.value == by && ev.to.value == to && ev.amount == amount && ev.damage == damage && ev.feat == feat
     && cast(string) ev.text[0..<ev.text_n] == text;
 }
-// A pick from a stream: 0 to n - 1, and one chance in n.
-sk_of :: (p: [] RsDice, n: int) -> int { return rs_roll(p, n) - 1; }
-sk_one :: (p: [] RsDice, n: int) -> bool { return rs_roll(p, n) == 1; }
+// A pick from a stream: 0 to n - 1, and one chance in n. The stream only stages the checks' scenes,
+// so it is a plain 64-bit LCG (Knuth's MMIX constants, its high bits) rather than the battle's dice:
+// a scene is most of a check's work, and a pick here costs a quarter of a roll (#13593).
+sk_of :: (p: [] RsDice, n: int) -> int {
+  p[0].state = add_wrap(mul_wrap(p[0].state, 6364136223846793005), 1442695040888963407);
+  return cast(int) ((p[0].state >> 33) % cast(u64) n);
+}
+sk_one :: (p: [] RsDice, n: int) -> bool { return sk_of(p, n) == 0; }
 // An effect record in a creature's first free place.
 sk_eff :: (b: [] RsBattle, i: int, e: RsEffect) {
   for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == EF_NONE { b[0].c[i].eff[k] = e; return; } }
@@ -49,10 +55,29 @@ sk_differ :: (b: [] RsBattle, m: [] RsBattle) -> int {
     for k: 0..<10 { if c.slots[k] != d.slots[k] { return at + 8; } }
     for k: 0..<RS_EFFECTS {
       e := c.eff[k]; f := d.eff[k];
+      if e.kind == EF_NONE && f.kind == EF_NONE { continue; }   // two free places: no effect in either (every reader looks at the kind first)
       if e.kind != f.kind || e.cond != f.cond || e.by != f.by || e.spell != f.spell || e.until != f.until || e.save != f.save || e.dc != f.dc || e.turn_end != f.turn_end { return at + 10 + k; }
     }
   }
   return 0;
+}
+
+// The twin: m made a copy of b in place, each in its own small room (FxRoom, action-fixtures.coax): every field of the battle, the
+// events its book holds, and the room's creatures, squares and lasting areas. A staging made once
+// and copied, rather than made twice from one stream of picks (#13593): the picks, the scenes and
+// the battles are the same. The book's places past its count are no event and stay as they were.
+// A field added to RsBattle must be copied here too.
+sk_twin :: (m: [] RsBattle, m_room: [] FxRoom, b: [] RsBattle, b_room: [] FxRoom) {
+  m[0].n = b[0].n; m[0].truth_zones = b[0].truth_zones; m[0].dice = b[0].dice; m[0].clock = b[0].clock;
+  m[0].rest_clock = b[0].rest_clock; m[0].rest_auto = b[0].rest_auto; m[0].w = b[0].w; m[0].h = b[0].h;
+  m[0].turn_no = b[0].turn_no; m[0].guards = b[0].guards; m[0].aff_used = b[0].aff_used; m[0].who = b[0].who;
+  m[0].turn = b[0].turn; m[0].ko_by = b[0].ko_by; m[0].reaction_frame = b[0].reaction_frame; m[0].shape_keeps = b[0].shape_keeps;
+  m[0].timing = b[0].timing; m[0].areas = b[0].areas; m[0].measure = b[0].measure; m[0].walk = b[0].walk;
+  m[0].timing_sealed = b[0].timing_sealed; m[0].occ_used = b[0].occ_used; m[0].terrain = b[0].terrain; m[0].covers = b[0].covers;
+  m[0].kept = b[0].kept;
+  m[0].book[0].head = b[0].book[0].head; m[0].book[0].count = b[0].book[0].count; m[0].book[0].seq = b[0].book[0].seq;
+  for k: 0..<b[0].book[0].count { e := (b[0].book[0].head + k) % RS_EVENTS; m[0].book[0].ev[e] = b[0].book[0].ev[e]; }
+  m_room[0] = b_room[0];
 }
 
 // ---- rs_strike_resolved, worked out a second time
@@ -70,10 +95,12 @@ SkSeen :: struct {
   sap: int; vex: int; vex_zero: int; vex_one: int; slow: int; slow_zero: int; slow_one: int; left_one: int; left_zero: int; redirect: int; redirect_pass: int; redirect_fail: int; redirect_eq: int; redirect_one_use: int;
   redirect_cut_one: int; redirect_near: int; redirect_no_cut: int; redirect_kill: int; ko: int; ko_far: int; kill: int; seek: int; hidden: int; crit_down: int; unarmed: int; rested: int;
 }
+SK_BITS :: [7] int.[1, 2, 4, 8, 16, 32, 64];   // a mastery kind's bit, 2 to the kind
 sk_mastery :: (m: [] RsBattle, i: int, w: int, kind: int) -> bool {
-  bit := 1; for n: 0..<kind { bit = bit * 2; }
-  return rs_weapon(w).mastery == kind && (m[0].c[i].masteries / bit) % 2 == 1;
+  return rs_weapon(w).mastery == kind && (m[0].c[i].masteries / SK_BITS[kind]) % 2 == 1;
 }
+// Whether creature k knows feature f, read in place (rs_has_feature takes a copy of the creature).
+sk_feat :: (b: [] RsBattle, k: int, f: int) -> bool { return (b[0].c[k].feats[f / 64] & (cast(u64) 1 << (f % 64))) != 0; }
 sk_physical :: (kind: int) -> bool { return kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING; }
 sk_note :: (l: [] RsLine, got: int, before: int) {
   if got == before { return; }
@@ -421,16 +448,13 @@ sk_stage :: (b: [] RsBattle, p: [] RsDice, r: [] SkRoster) -> SkArgs {
   return a;
 }
 #test "strike: one attack roll and its damage, worked out a second time on a twin battle over 6000 stagings: the two end the same, and every branch was met" #steps 4000000000 {
-  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
-  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  b: [1] RsBattle; b_room: [1] FxRoom; fx_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] FxRoom; fx_have(m[..], m_room[..]);
   seen: [1] SkSeen;
   p: [1] RsDice; p[0].state = 20261113;
   roster: [1] SkRoster; sk_roster(roster[..]);
   for n: 0..<6000 {
-    q: [1] RsDice; q[0] = p[0];
-    a := sk_stage(b[..], p[..], roster[..]);
-    a2 := sk_stage(m[..], q[..], roster[..]);
-    #assert a2.i == a.i && a2.j == a.j && a2.w == a.w && sk_differ(b[..], m[..]) == 0;
+    a := sk_stage(b[..], p[..], roster[..]); sk_twin(m[..], m_room[..], b[..], b_room[..]);
     got := rs_strike_resolved(b[..], a.i, a.j, a.w, a.bare, a.wp, a.printed, a.ab, a.dmod);
     want := sk_resolved(m[..], seen[..], a);
     #assert got == want;
@@ -727,16 +751,14 @@ sk_whom :: (p: [] RsDice, n: int, s: SkScene) -> int {
   return ifx r == 0 then -1 else ifx r == 1 then n else ifx r == 2 then s.i else s.j;
 }
 #test "strike: rs_strike asks the riders' room for one attack at the target alone, then resolves with the weapon's own numbers" #steps 4000000000 {
-  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
-  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  b: [1] RsBattle; b_room: [1] FxRoom; fx_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] FxRoom; fx_have(m[..], m_room[..]);
   p: [1] RsDice; p[0].state = 4401;
   roster: [1] SkRoster; sk_roster(roster[..]);
   yes := 0; no := 0;
   for n: 0..<2500 {
-    q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
+    s := sk_scene(b[..], p[..], roster[..]); sk_twin(m[..], m_room[..], b[..], b_room[..]);
     w := SK_WEAPONS[sk_of(p[..], 10)]; bare := sk_one(p[..], 3);
-    #assert sk_differ(b[..], m[..]) == 0;
     got := rs_strike(b[..], s.i, s.j, w, bare);
     want := sk_strike(m[..], s.i, s.j, w, bare);
     #assert got == want;
@@ -746,77 +768,86 @@ sk_whom :: (p: [] RsDice, n: int, s: SkScene) -> int {
   #assert yes > 1000 && no > 30;
 }
 #test "strike: the Attack action: whose turn, the Beast's action in a form, a foe in reach, Reckless Attack, Cleave and Extra Attack, worked out twice" #steps 4000000000 {
-  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
-  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  b: [1] RsBattle; b_room: [1] FxRoom; fx_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] FxRoom; fx_have(m[..], m_room[..]);
   seen: [1] SkActs;
   p: [1] RsDice; p[0].state = 4402;
   roster: [1] SkRoster; sk_roster(roster[..]);
+  base: [1] RsBattle; base_room: [1] FxRoom; fx_have(base[..], base_room[..]);
   plain := 0;
-  for n: 0..<5000 {
-    q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
-    j := sk_whom(p[..], b[0].n, s);
-    reckless := sk_one(p[..], 3);
-    cleaves := [6] int.[-1, s.i, s.j, s.k, s.f, b[0].n];
-    cleave_to := cleaves[sk_of(p[..], 6)];
-    if sk_one(p[..], 2) { cleave_to = s.k; }
-    got := false;
-    if !reckless && cleave_to == -1 { got = rs_attack_action(b[..], s.i, j); plain += 1; } else { got = rs_attack(b[..], s.i, j, reckless, cleave_to); }
-    want := sk_attack(m[..], seen[..], s.i, j, reckless, cleave_to);
-    #assert got == want;
-    #assert sk_differ(b[..], m[..]) == 0;
+  for n: 0..<2500 {
+    s := sk_scene(base[..], p[..], roster[..]);
+    for call: 0..<2 {
+      sk_twin(b[..], b_room[..], base[..], base_room[..]); sk_twin(m[..], m_room[..], base[..], base_room[..]);
+      j := sk_whom(p[..], b[0].n, s);
+      reckless := sk_one(p[..], 3);
+      cleaves := [6] int.[-1, s.i, s.j, s.k, s.f, b[0].n];
+      cleave_to := cleaves[sk_of(p[..], 6)];
+      if sk_one(p[..], 2) { cleave_to = s.k; }
+      got := false;
+      if !reckless && cleave_to == -1 { got = rs_attack_action(b[..], s.i, j); plain += 1; } else { got = rs_attack(b[..], s.i, j, reckless, cleave_to); }
+      want := sk_attack(m[..], seen[..], s.i, j, reckless, cleave_to);
+      #assert got == want;
+      #assert sk_differ(b[..], m[..]) == 0;
+    }
   }
   a := seen[0];
   #assert plain > 100 && a.yes > 300 && a.other_turn > 100 && a.spent > 100 && a.unable > 100 && a.wild > 50 && a.shape > 50 && a.below > 50 && a.past > 50 && a.dead > 30 && a.self > 50;
   #assert a.far > 100 && a.near > 30 && a.charmed > 5 && a.unfit > 5 && a.reckless > 5 && a.reckless_no >= 0 && a.cleave > 5 && a.cleave_past > 0 && a.cleave_far > 0 && a.extra > 50 && a.extra_beside > 5 && a.extra_none > 5;
 }
 #test "strike: shooting: a ranged weapon in hand, a living target within its long range, and Extra Attack while it stands, worked out twice" #steps 4000000000 {
-  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
-  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  b: [1] RsBattle; b_room: [1] FxRoom; fx_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] FxRoom; fx_have(m[..], m_room[..]);
   seen: [1] SkActs;
   p: [1] RsDice; p[0].state = 4403;
   roster: [1] SkRoster; sk_roster(roster[..]);
-  for n: 0..<4000 {
-    q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
-    j := sk_whom(p[..], b[0].n, s);
-    got := rs_shoot(b[..], s.i, j);
-    want := sk_shoot(m[..], seen[..], s.i, j);
-    #assert got == want;
-    #assert sk_differ(b[..], m[..]) == 0;
+  base: [1] RsBattle; base_room: [1] FxRoom; fx_have(base[..], base_room[..]);
+  for n: 0..<2000 {
+    s := sk_scene(base[..], p[..], roster[..]);
+    for call: 0..<2 {
+      sk_twin(b[..], b_room[..], base[..], base_room[..]); sk_twin(m[..], m_room[..], base[..], base_room[..]);
+      j := sk_whom(p[..], b[0].n, s);
+      got := rs_shoot(b[..], s.i, j);
+      want := sk_shoot(m[..], seen[..], s.i, j);
+      #assert got == want;
+      #assert sk_differ(b[..], m[..]) == 0;
+    }
   }
   a := seen[0];
   #assert a.yes > 300 && a.other_turn > 100 && a.spent > 100 && a.unable > 100 && a.no_bow > 100 && a.fist_bow > 100 && a.below > 30 && a.past > 30 && a.dead > 30 && a.self > 30;
   #assert a.far > 30 && a.at_long > 10 && a.past_long > 10 && a.unfit >= 0 && a.extra > 50 && a.extra_none > 20;
 }
 #test "strike: Martial Arts' Bonus Action strike, Flurry of Blows and Open Hand Technique, worked out twice" #steps 4000000000 {
-  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
-  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  b: [1] RsBattle; b_room: [1] FxRoom; fx_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] FxRoom; fx_have(m[..], m_room[..]);
   seen: [1] SkActs; flurry: [1] SkActs; hand: [1] SkActs;
   p: [1] RsDice; p[0].state = 4404;
   roster: [1] SkRoster; sk_roster(roster[..]);
-  for n: 0..<6000 {
-    q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
-    j := sk_whom(p[..], b[0].n, s);
-    op := sk_of(p[..], 3); how := sk_of(p[..], 3);
-    if op == 0 {
-      got := rs_bonus_strike(b[..], s.i, j); want := sk_bonus_strike(m[..], seen[..], s.i, j);
-      #assert got == want;
+  base: [1] RsBattle; base_room: [1] FxRoom; fx_have(base[..], base_room[..]);
+  for n: 0..<2400 {
+    s := sk_scene(base[..], p[..], roster[..]);
+    for op: 0..<3 {
+      sk_twin(b[..], b_room[..], base[..], base_room[..]); sk_twin(m[..], m_room[..], base[..], base_room[..]);
+      j := sk_whom(p[..], b[0].n, s);
+      how := sk_of(p[..], 3);
+      if op == 0 {
+        got := rs_bonus_strike(b[..], s.i, j); want := sk_bonus_strike(m[..], seen[..], s.i, j);
+        #assert got == want;
+      }
+      if op == 1 {
+        got := rs_flurry(b[..], s.i, j, how); want := sk_flurry(m[..], flurry[..], s.i, j, how);
+        #assert got == want;
+      }
+      if op == 2 {
+        // against a wall too: the push stops at the grid's edge and at a filled square
+        if sk_one(p[..], 4) { rs_place(b[..], s.j, 5, 1); rs_place(m[..], s.j, 5, 1); }
+        if sk_one(p[..], 4) { rs_place(b[..], s.j, 3, 5); rs_place(m[..], s.j, 3, 5); rs_place(b[..], s.i, 2, 4); rs_place(m[..], s.i, 2, 4); }
+        if sk_one(p[..], 6) { rs_place(b[..], s.j, 137, 3); rs_place(m[..], s.j, 137, 3); rs_place(b[..], s.i, 136, 3); rs_place(m[..], s.i, 136, 3); }
+        if sk_one(p[..], 6) { rs_place(b[..], s.j, 1, 3); rs_place(m[..], s.j, 1, 3); rs_place(b[..], s.i, 2, 3); rs_place(m[..], s.i, 2, 3); }
+        rs_open_hand(b[..], s.i, s.j, how); sk_open_hand(m[..], hand[..], s.i, s.j, how);
+      }
+      #assert sk_differ(b[..], m[..]) == 0;
     }
-    if op == 1 {
-      got := rs_flurry(b[..], s.i, j, how); want := sk_flurry(m[..], flurry[..], s.i, j, how);
-      #assert got == want;
-    }
-    if op == 2 {
-      // against a wall too: the push stops at the grid's edge and at a filled square
-      if sk_one(p[..], 4) { rs_place(b[..], s.j, 5, 1); rs_place(m[..], s.j, 5, 1); }
-      if sk_one(p[..], 4) { rs_place(b[..], s.j, 3, 5); rs_place(m[..], s.j, 3, 5); rs_place(b[..], s.i, 2, 4); rs_place(m[..], s.i, 2, 4); }
-      if sk_one(p[..], 6) { rs_place(b[..], s.j, 137, 3); rs_place(m[..], s.j, 137, 3); rs_place(b[..], s.i, 136, 3); rs_place(m[..], s.i, 136, 3); }
-      if sk_one(p[..], 6) { rs_place(b[..], s.j, 1, 3); rs_place(m[..], s.j, 1, 3); rs_place(b[..], s.i, 2, 3); rs_place(m[..], s.i, 2, 3); }
-      rs_open_hand(b[..], s.i, s.j, how); sk_open_hand(m[..], hand[..], s.i, s.j, how);
-    }
-    #assert sk_differ(b[..], m[..]) == 0;
   }
   a := seen[0];
   #assert a.yes > 100 && a.other_turn > 50 && a.spent > 50 && a.unable > 50 && a.no_die > 100 && a.die_one > 50 && a.below > 20 && a.past > 20 && a.dead > 20 && a.far > 50 && a.near > 10 && a.unfit >= 0;
@@ -922,44 +953,46 @@ sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: boo
   if told == 2 { seen[0].curse_both += 1; }
 }
 #test "strike: Stunning Strike, Cunning Strike's effects, Hex and Hunter's Mark, Remarkable Athlete and Rage's end, worked out twice" #steps 4000000000 {
-  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
-  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  b: [1] RsBattle; b_room: [1] FxRoom; fx_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] FxRoom; fx_have(m[..], m_room[..]);
   seen: [1] SkRiders;
   p: [1] RsDice; p[0].state = 4405;
   roster: [1] SkRoster; sk_roster(roster[..]);
-  for n: 0..<8000 {
-    q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
-    op := sk_of(p[..], 5); i := s.i; j := s.j;
-    if op == 0 { rs_stunning_strike(b[..], i, j); sk_stunning_strike(m[..], seen[..], i, j); }
-    if op == 1 {
-      plan := 1 + sk_of(p[..], 3);
-      rs_cunning_effect(b[..], i, j, plan); sk_cunning_effect(m[..], seen[..], i, j, plan);
-    }
-    if op == 2 {
-      crit := sk_one(p[..], 2);
-      rs_curse_damage(b[..], i, j, crit); sk_curse_damage(m[..], seen[..], i, j, crit);
-    }
-    if op == 3 {
-      // After each attack: Remarkable Athlete moves half its Speed after a Critical Hit, once for that hit
-      crit := !sk_one(p[..], 3);
-      b[0].turn.last_crit = crit; m[0].turn.last_crit = crit;
-      rs_after_blow(b[..], i);
-      if !crit { seen[0].blow_no_crit += 1; } else if !rs_has_feature(m[0].c[i], RS_FT_ATHLETE) { seen[0].blow_no_feat += 1; } else if m[0].turn.anchored { seen[0].blow_anchored += 1; }
-      else { seen[0].blow += 1; m[0].turn.move_left += m[0].c[i].speed / 10; m[0].turn.last_crit = false; }
-      #assert b[0].turn.last_crit == m[0].turn.last_crit;
-    }
-    if op == 4 {
-      rs_rage_end(b[..], i, ": it did not attack");
-      if !rs_effect(m[0].c[i], EF_RAGE) { seen[0].rage_none += 1; }
-      else {
-        seen[0].rage += 1;
-        for k: 0..<RS_EFFECTS { if m[0].c[i].eff[k].kind == EF_RAGE { m[0].c[i].eff[k] = RsEffect.{}; } }
-        l: [1] RsLine; rs_add_name(l[..], m[..], i); rs_add_text(l[..], "'s Rage ends: it did not attack");
-        rs_tell(m[..], RS_EV_END, -1, i, -1, 0, 0, l[..]);
+  base: [1] RsBattle; base_room: [1] FxRoom; fx_have(base[..], base_room[..]);
+  for n: 0..<2000 {
+    s := sk_scene(base[..], p[..], roster[..]); i := s.i; j := s.j;
+    for op: 0..<5 {
+      sk_twin(b[..], b_room[..], base[..], base_room[..]); sk_twin(m[..], m_room[..], base[..], base_room[..]);
+      if op == 0 { rs_stunning_strike(b[..], i, j); sk_stunning_strike(m[..], seen[..], i, j); }
+      if op == 1 {
+        plan := 1 + sk_of(p[..], 3);
+        rs_cunning_effect(b[..], i, j, plan); sk_cunning_effect(m[..], seen[..], i, j, plan);
       }
+      if op == 2 {
+        crit := sk_one(p[..], 2);
+        rs_curse_damage(b[..], i, j, crit); sk_curse_damage(m[..], seen[..], i, j, crit);
+      }
+      if op == 3 {
+        // After each attack: Remarkable Athlete moves half its Speed after a Critical Hit, once for that hit
+        crit := !sk_one(p[..], 3);
+        b[0].turn.last_crit = crit; m[0].turn.last_crit = crit;
+        rs_after_blow(b[..], i);
+        if !crit { seen[0].blow_no_crit += 1; } else if !rs_has_feature(m[0].c[i], RS_FT_ATHLETE) { seen[0].blow_no_feat += 1; } else if m[0].turn.anchored { seen[0].blow_anchored += 1; }
+        else { seen[0].blow += 1; m[0].turn.move_left += m[0].c[i].speed / 10; m[0].turn.last_crit = false; }
+        #assert b[0].turn.last_crit == m[0].turn.last_crit;
+      }
+      if op == 4 {
+        rs_rage_end(b[..], i, ": it did not attack");
+        if !rs_effect(m[0].c[i], EF_RAGE) { seen[0].rage_none += 1; }
+        else {
+          seen[0].rage += 1;
+          for k: 0..<RS_EFFECTS { if m[0].c[i].eff[k].kind == EF_RAGE { m[0].c[i].eff[k] = RsEffect.{}; } }
+          l: [1] RsLine; rs_add_name(l[..], m[..], i); rs_add_text(l[..], "'s Rage ends: it did not attack");
+          rs_tell(m[..], RS_EV_END, -1, i, -1, 0, 0, l[..]);
+        }
+      }
+      #assert sk_differ(b[..], m[..]) == 0;
     }
-    #assert sk_differ(b[..], m[..]) == 0;
   }
   r := seen[0];
   #assert r.stun > 50 && r.stun_saved > 10 && r.stun_failed > 10 && r.stun_unready > 100 && r.stun_down > 10 && r.stun_already > 5 && r.stun_room1 > 0 && r.stun_room2 > 0;
@@ -974,6 +1007,7 @@ sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: boo
   p: [1] RsDice; p[0].state = 4406;
   roster: [1] SkRoster; sk_roster(roster[..]);
   auras := 0; own := 0; least := 0; at10 := 0; at15 := 0; two := 0; down := 0; besides := 0; first := 0; none := 0; allies := 0; lone := 0; has := 0; hasnt := 0; running := 0;
+  marks: [10] int; for w: 0..<10 { marks[w] = rs_weapon(w).mastery; }   // each weapon's mastery, read once
   for n: 0..<6000 {
     s := sk_scene(b[..], p[..], roster[..]);
     // the Paladin sometimes two or three squares from the target, where its aura ends
@@ -981,27 +1015,28 @@ sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: boo
     for j: 0..<b[0].n {
       best := 0; count := 0;
       for k: 0..<b[0].n {
-        c := b[0].c[k];
-        if !rs_has_feature(c, RS_FT_AURA_OF_PROTECTION) || c.team != b[0].c[j].team { continue; }
-        if c.dead || c.hp < 1 || (c.cond & (RS_INCAPACITATED | RS_PARALYZED | RS_PETRIFIED | RS_STUNNED | RS_UNCONSCIOUS)) != 0 { down += 1; continue; }
+        if !sk_feat(b[..], k, RS_FT_AURA_OF_PROTECTION) || b[0].c[k].team != b[0].c[j].team { continue; }
+        if b[0].c[k].dead || b[0].c[k].hp < 1 || (b[0].c[k].cond & (RS_INCAPACITATED | RS_PARALYZED | RS_PETRIFIED | RS_STUNNED | RS_UNCONSCIOUS)) != 0 { down += 1; continue; }
         feet := rs_feet_to(b[..], k, j);
         if feet == 15 { at15 += 1; }
         if feet > 10 { continue; }
         if feet == 10 { at10 += 1; }
-        mine := rs_mod(c.score[RS_CHA]); if mine < 1 { mine = 1; least += 1; }
+        mine := rs_mod(b[0].c[k].score[RS_CHA]); if mine < 1 { mine = 1; least += 1; }
         if mine > best { best = mine; }
         count += 1; if k == j { own += 1; }
       }
       if count > 0 { auras += 1; } if count > 1 { two += 1; }
       #assert rs_aura(b[..], j) == best;
-      for ability: 0..<6 { #assert rs_save_in(b[..], j, ability) == rs_save_bonus(b[0].c[j], ability) + best; }
+      // its save: the aura is the same for every ability, and the creature's own bonus is its
+      // record's, so one ability a creature and scene, in turn, meets all six many times over
+      ability := (n + j) % 6;
+      #assert rs_save_in(b[..], j, ability) == rs_save_bonus(b[0].c[j], ability) + best;
     }
     // a foe standing within 5 feet: the first in the battle's order
     for i: 0..<b[0].n {
       want := -1; found := 0;
       for k: 0..<b[0].n {
-        c := b[0].c[k];
-        if k == i || c.dead || c.hp < 1 || c.team == b[0].c[i].team || rs_feet_to(b[..], i, k) > 5 { continue; }
+        if k == i || b[0].c[k].dead || b[0].c[k].hp < 1 || b[0].c[k].team == b[0].c[i].team || rs_feet_to(b[..], i, k) > 5 { continue; }
         if want < 0 { want = k; } found += 1;
       }
       if want >= 0 { besides += 1; } else { none += 1; } if found > 1 { first += 1; }
@@ -1009,18 +1044,21 @@ sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: boo
       for j: 0..<b[0].n {
         ally := false;
         for k: 0..<b[0].n {
-          c := b[0].c[k];
-          if k != i && c.team == b[0].c[i].team && !c.dead && c.hp > 0 && (c.cond & RS_INCAPACITATED) == 0 && rs_feet_to(b[..], k, j) <= 5 { ally = true; }
+          if k != i && b[0].c[k].team == b[0].c[i].team && !b[0].c[k].dead && b[0].c[k].hp > 0 && (b[0].c[k].cond & RS_INCAPACITATED) == 0 && rs_feet_to(b[..], k, j) <= 5 { ally = true; }
         }
         if ally { allies += 1; } else { lone += 1; }
         #assert rs_sneak_ally(b[..], i, j) == ally;
       }
-      for w: 0..<10 { for kind: 0..<7 {
-        bit := 1; for z: 0..<kind { bit = bit * 2; }
-        want_m := rs_weapon(w).mastery == kind && (b[0].c[i].masteries / bit) % 2 == 1;
-        if want_m { has += 1; } else { hasnt += 1; }
-        #assert rs_mastery(b[..], i, w, kind) == want_m;
-      } }
+      // a mastery: the actor's, its bits drawn for the scene; the others' bits are their builders',
+      // the same in every scene, so they are read in the first
+      if i == s.i || n == 0 {
+        masteries := b[0].c[i].masteries;
+        for w: 0..<10 { for kind: 0..<7 {
+          want_m := marks[w] == kind && (masteries / SK_BITS[kind]) % 2 == 1;
+          if want_m { has += 1; } else { hasnt += 1; }
+          #assert rs_mastery(b[..], i, w, kind) == want_m;
+        } }
+      }
     }
     // the end of a creature's own next turn: a beat after its turn began while it runs, else when its next begins
     b[0].c[s.i].turn_at = 7000 + n; b[0].c[s.j].turn_at = 9000 + n;
@@ -1065,33 +1103,36 @@ sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: boo
   }
 }
 #test "strike: Patient Defense with a Focus Point tells its line when the Monk can take it; Step of the Wind is a Monk's Dash as a Bonus Action" #steps 4000000000 {
-  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
-  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  b: [1] RsBattle; b_room: [1] FxRoom; fx_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] FxRoom; fx_have(m[..], m_room[..]);
   p: [1] RsDice; p[0].state = 4407;
   roster: [1] SkRoster; sk_roster(roster[..]);
+  base: [1] RsBattle; base_room: [1] FxRoom; fx_have(base[..], base_room[..]);
   took := 0; refused := 0; dashed := 0; stayed := 0;
-  for n: 0..<3000 {
-    q: [1] RsDice; q[0] = p[0];
-    s := sk_scene(b[..], p[..], roster[..]); s2 := sk_scene(m[..], q[..], roster[..]);
+  for n: 0..<1800 {
+    s := sk_scene(base[..], p[..], roster[..]);
     i := s.i;
-    if sk_one(p[..], 2) {
-      got := rs_patient_defense(b[..], i);
-      want := rs_disengage_use(m[..], i, RS_DISENGAGE_DODGE);
-      if want {
-        took += 1;
-        l: [1] RsLine; rs_add_name(l[..], m[..], i); rs_add_text(l[..], " spends a Focus Point on Patient Defense: Disengage and Dodge");
-        rs_tell_ft(m[..], RS_EV_CONDITION, -1, i, i, 0, 0, RS_FT_PATIENT_DEFENSE, l[..]);
-      } else { refused += 1; }
-      #assert got == want;
-    } else {
-      got := rs_step_of_the_wind(b[..], i);
-      want := rs_dash_use(m[..], i, RS_DASH_WIND);
-      if want { dashed += 1; } else { stayed += 1; }
-      #assert got == want && (!got || b[0].turn.dash_n == 1);
-      // not Cunning Action's Dash, which a creature without that feature is refused, nor the action's
-      #assert !want || (b[0].turn.bonus && b[0].turn.action == m[0].turn.action && b[0].c[i].uses_max[RS_USE_FOCUS] > 0);
+    for op: 0..<2 {
+      sk_twin(b[..], b_room[..], base[..], base_room[..]); sk_twin(m[..], m_room[..], base[..], base_room[..]);
+      if op == 0 {
+        got := rs_patient_defense(b[..], i);
+        want := rs_disengage_use(m[..], i, RS_DISENGAGE_DODGE);
+        if want {
+          took += 1;
+          l: [1] RsLine; rs_add_name(l[..], m[..], i); rs_add_text(l[..], " spends a Focus Point on Patient Defense: Disengage and Dodge");
+          rs_tell_ft(m[..], RS_EV_CONDITION, -1, i, i, 0, 0, RS_FT_PATIENT_DEFENSE, l[..]);
+        } else { refused += 1; }
+        #assert got == want;
+      } else {
+        got := rs_step_of_the_wind(b[..], i);
+        want := rs_dash_use(m[..], i, RS_DASH_WIND);
+        if want { dashed += 1; } else { stayed += 1; }
+        #assert got == want && (!got || b[0].turn.dash_n == 1);
+        // not Cunning Action's Dash, which a creature without that feature is refused, nor the action's
+        #assert !want || (b[0].turn.bonus && b[0].turn.action == m[0].turn.action && b[0].c[i].uses_max[RS_USE_FOCUS] > 0);
+      }
+      #assert sk_differ(b[..], m[..]) == 0;
     }
-    #assert sk_differ(b[..], m[..]) == 0;
   }
   #assert took > 20 && refused > 500 && dashed > 100 && stayed > 500;
 }

@@ -245,10 +245,13 @@ tn_gust :: (b: [] RsBattle, i: int, x: int, y: int) -> int {
 
 // A repeated save at a turn's end. One staging: caster 0, the one who saves 1, another 2, another caster 3.
 TnSave :: struct { kind: int; save: int; spell: int; by: int; magic: bool; conc: int; other: int; self: bool; far: bool; diff: bool; }
-tn_save_stage :: (b: [] RsBattle, seed: int, v: TnSave) -> int {
+// Its four creatures, built once for a check rather than for each staging (#13593).
+TnCast :: struct { rowan: RsCreature; garr: RsCreature; holt: RsCreature; other: RsCreature; }
+tn_cast :: () -> TnCast { return TnCast.{rowan = rs_druid("Rowan", 0, 5), garr = rs_fighter("Garr", 1, 3), holt = rs_fighter("Holt", 1, 3), other = rs_druid("Other", 0, 5)}; }
+tn_save_stage :: (b: [] RsBattle, seed: int, v: TnSave, crew: [] TnCast) -> int {
   b[0].w = 20; b[0].h = 8; b[0].dice[0].state = cast(u64) seed;
-  w := rs_add(b, rs_druid("Rowan", 0, 5), 1, 1); t := rs_add(b, rs_fighter("Garr", 1, 3), 5, 1);
-  o := rs_add(b, rs_fighter("Holt", 1, 3), 6, 1); x := rs_add(b, rs_druid("Other", 0, 5), 1, 3);
+  w := rs_add(b, crew[0].rowan, 1, 1); t := rs_add(b, crew[0].garr, 5, 1);
+  o := rs_add(b, crew[0].holt, 6, 1); x := rs_add(b, crew[0].other, 1, 3);
   if v.magic { b[0].c[t].form = b[0].c[t].form | RS_TRAIT_MAGIC; }
   b[0].c[w].conc = v.conc; b[0].c[w].conc_until = RS_NO_END;
   k := tn_eff(b, t, RsEffect.{kind = v.kind, cond = ifx v.kind == EF_COND then RS_PARALYZED else 0, by = v.by, spell = v.spell, until = RS_NO_END, save = v.save, dc = 12});
@@ -263,9 +266,9 @@ tn_save_stage :: (b: [] RsBattle, seed: int, v: TnSave) -> int {
 // Ends creature 1's turn on b and works the save out again on m; what the concentration must do is `ends`
 // (0 stays, 1 the target shook it off, 2 no one left under it). False when the two differ.
 TnSaveSeen :: struct { pass: int; hold: int; ended: int; adv: int; }
-tn_save :: (seed: int, v: TnSave, ends: int, seen: [] TnSaveSeen) -> bool {
-  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
-  k := tn_save_stage(b[..], seed, v); _ := tn_save_stage(m[..], seed, v);
+tn_save :: (seed: int, v: TnSave, ends: int, seen: [] TnSaveSeen, crew: [] TnCast) -> bool {
+  b: [1] RsBattle; b_room: [1] FxRoom; fx_have(b[..], b_room[..]); m: [1] RsBattle; m_room: [1] FxRoom; fx_have(m[..], m_room[..]);
+  k := tn_save_stage(b[..], seed, v, crew); _ := tn_save_stage(m[..], seed, v, crew);
   t := 1;
   ups := ifx v.magic && v.spell >= 0 then 1 else 0;
   if ups == 1 { seen[0].adv += 1; }
@@ -301,36 +304,37 @@ tn_save :: (seed: int, v: TnSave, ends: int, seen: [] TnSaveSeen) -> bool {
 }
 // Every case of the repeated save, for seeds lo to hi - 1.
 tn_saves :: (lo: int, hi: int, seen: [] TnSaveSeen) -> bool {
+  crew: [1] TnCast; crew[0] = tn_cast();
   for seed: lo..<hi {
     hold := TnSave.{kind = EF_COND, save = RS_WIS, spell = SP_HOLD_PERSON, by = 0, conc = SP_HOLD_PERSON};
     // the only one under it: the spell ends with its success
-    #assert tn_save(seed, hold, 2, seen[..]);
+    #assert tn_save(seed, hold, 2, seen[..], crew[..]);
     // a Strength save (ability 0) is a save; one with Magic Resistance has Advantage against a spell's
-    v := hold; v.save = RS_STR; #assert tn_save(seed, v, 2, seen[..]);
-    v = hold; v.magic = true; #assert tn_save(seed, v, 2, seen[..]);
+    v := hold; v.save = RS_STR; #assert tn_save(seed, v, 2, seen[..], crew[..]);
+    v = hold; v.magic = true; #assert tn_save(seed, v, 2, seen[..], crew[..]);
     // spell 0 is a spell: its name, Magic Resistance, and its caster's Concentration
-    v = hold; v.spell = SP_PRODUCE_FLAME; v.conc = SP_PRODUCE_FLAME; v.magic = true; #assert SP_PRODUCE_FLAME == 0 && tn_save(seed, v, 2, seen[..]);
+    v = hold; v.spell = SP_PRODUCE_FLAME; v.conc = SP_PRODUCE_FLAME; v.magic = true; #assert SP_PRODUCE_FLAME == 0 && tn_save(seed, v, 2, seen[..], crew[..]);
     // no spell: "the poison", no Advantage from Magic Resistance, and nobody's Concentration
-    v = hold; v.spell = -1; v.conc = SP_HOLD_PERSON; v.magic = true; #assert tn_save(seed, v, 0, seen[..]);
-    v = hold; v.spell = -1; v.by = -1; v.conc = -1; #assert tn_save(seed, v, 0, seen[..]);
+    v = hold; v.spell = -1; v.conc = SP_HOLD_PERSON; v.magic = true; #assert tn_save(seed, v, 0, seen[..], crew[..]);
+    v = hold; v.spell = -1; v.by = -1; v.conc = -1; #assert tn_save(seed, v, 0, seen[..], crew[..]);
     // a spell of no caster in this battle
-    v = hold; v.by = -1; #assert tn_save(seed, v, 0, seen[..]);
+    v = hold; v.by = -1; #assert tn_save(seed, v, 0, seen[..], crew[..]);
     // another still under it, in its first place; the caster itself under it; neither ends it
-    v = hold; v.other = 1; #assert tn_save(seed, v, 0, seen[..]);
-    v = hold; v.self = true; #assert tn_save(seed, v, 0, seen[..]);
+    v = hold; v.other = 1; #assert tn_save(seed, v, 0, seen[..], crew[..]);
+    v = hold; v.self = true; #assert tn_save(seed, v, 0, seen[..], crew[..]);
     // another caster's same spell on someone, or this caster's other spell: not under this one
-    v = hold; v.far = true; #assert tn_save(seed, v, 2, seen[..]);
-    v = hold; v.diff = true; #assert tn_save(seed, v, 2, seen[..]);
+    v = hold; v.far = true; #assert tn_save(seed, v, 2, seen[..], crew[..]);
+    v = hold; v.diff = true; #assert tn_save(seed, v, 2, seen[..], crew[..]);
     // the caster holds another spell now: that one stays
-    v = hold; v.conc = SP_HEX; #assert tn_save(seed, v, 0, seen[..]);
+    v = hold; v.conc = SP_HEX; #assert tn_save(seed, v, 0, seen[..], crew[..]);
     // Ray of Enfeeblement ends for its caster when the target shakes it off, and says so
     ray := TnSave.{kind = EF_ENFEEBLED, save = RS_CON, spell = SP_RAY_OF_ENFEEBLEMENT, by = 0, conc = SP_RAY_OF_ENFEEBLEMENT};
-    #assert tn_save(seed, ray, 1, seen[..]);
-    v = ray; v.other = 1; #assert tn_save(seed, v, 1, seen[..]);
-    v = ray; v.spell = SP_PRODUCE_FLAME; v.conc = SP_PRODUCE_FLAME; #assert tn_save(seed, v, 1, seen[..]);
-    v = ray; v.conc = SP_HEX; #assert tn_save(seed, v, 0, seen[..]);
+    #assert tn_save(seed, ray, 1, seen[..], crew[..]);
+    v = ray; v.other = 1; #assert tn_save(seed, v, 1, seen[..], crew[..]);
+    v = ray; v.spell = SP_PRODUCE_FLAME; v.conc = SP_PRODUCE_FLAME; #assert tn_save(seed, v, 1, seen[..], crew[..]);
+    v = ray; v.conc = SP_HEX; #assert tn_save(seed, v, 0, seen[..], crew[..]);
     // an effect of another kind with others under it: nothing ends
-    v = hold; v.kind = EF_WEAK; v.other = 1; #assert tn_save(seed, v, 0, seen[..]);
+    v = hold; v.kind = EF_WEAK; v.other = 1; #assert tn_save(seed, v, 0, seen[..], crew[..]);
   }
   return true;
 }
@@ -357,7 +361,8 @@ tn_saves :: (lo: int, hi: int, seen: [] TnSaveSeen) -> bool {
 #test "turn: no repeated save between rounds, for the dead, or of a record with no save" {
   for mode: 0..<3 {
     b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
-    k := tn_save_stage(b[..], 3, TnSave.{kind = EF_COND, save = ifx mode == 2 then -1 else RS_WIS, spell = SP_HOLD_PERSON, by = 0, conc = SP_HOLD_PERSON});
+    crew: [1] TnCast; crew[0] = tn_cast();
+    k := tn_save_stage(b[..], 3, TnSave.{kind = EF_COND, save = ifx mode == 2 then -1 else RS_WIS, spell = SP_HOLD_PERSON, by = 0, conc = SP_HOLD_PERSON}, crew[..]);
     if mode == 0 { b[0].turn.new_round = false; }
     if mode == 1 { b[0].c[1].dead = true; }
     rolled := b[0].dice[0].rolled;
