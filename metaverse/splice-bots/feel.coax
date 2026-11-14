@@ -70,6 +70,7 @@ SpFeel :: struct {
   up_t: f32; second: bool;   // s since she left the ground on a jump, and whether the second has been taken
   land_t: f32; squash: f32;  // the landing's time left and how hard it was
   was_air: bool; air_used: int;
+  demo_t: f32 = -1; demo_i: int;   // the movement demo's time (-1: off) and its next key (fl_demo)
 }
 
 // The walk: her velocity toward the keys (turned by the view), moved, pushed out by the world, and
@@ -148,4 +149,24 @@ fl_squash :: (g: [] SpGame) -> f32 {
   if f.land_t > 0 { return f.squash * f.land_t / FL_LAND; }
   if g_airborne(g) && f.up_t < FL_TAKEOFF && g[0].air[0].vy > 0 { return -FL_STRETCH * (1 - f.up_t / FL_TAKEOFF); }
   return 0;
+}
+
+// ---- The movement demo (page message 615, for clips and checks): her keys on the game's own clock,
+// from between two solar rows at the farm: start, stop at a row, jump onto it, stop on its panels,
+// reverse off it, then a jump and a second jump that air control steers back onto the row.
+FL_DEMO_N :: 13;
+FL_DEMO :: [FL_DEMO_N * 3] int.[   // centiseconds, key, down
+  30, 'w', 1,  75, ' ', 1,  85, ' ', 0,  105, 'w', 0,  190, 's', 1,  250, 's', 0,
+  280, ' ', 1,  285, 'w', 1,  290, ' ', 0,  315, ' ', 1,  325, ' ', 0,  343, 'w', 0,  500, 0, 0];
+FL_DEMO_X :: 20.0f32; FL_DEMO_Z :: 338.6f32;
+fl_demo_start :: (g: [] SpGame) { g[0].px = FL_DEMO_X; g[0].pz = FL_DEMO_Z; g[0].yaw = 0; g[0].face_off = 0; g[0].fl[0].demo_t = 0; g[0].fl[0].demo_i = 0; }
+fl_demo :: (g: [] SpGame, dt: f32) {
+  f := g[0].fl[..];
+  if f[0].demo_t < 0 { return; }
+  f[0].demo_t += dt; d := FL_DEMO;
+  while f[0].demo_i < FL_DEMO_N && cast(f32) d[f[0].demo_i * 3] * 0.01 <= f[0].demo_t {
+    o := f[0].demo_i * 3; f[0].demo_i += 1;
+    if d[o + 1] == 0 { f[0].demo_t = -1; return; }
+    _ := g_key(g, d[o + 1], d[o + 2] == 1);
+  }
 }

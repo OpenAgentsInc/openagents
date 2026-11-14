@@ -459,6 +459,7 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
     s[0].started = true; g_stage(s[0].game[..], n);
     return;
   }
+  if kind == 615 && s.count > 0 && s[0].started && !s[0].gallery { fl_demo_start(s[0].game[..]); return; }   // her movement demo (feel.coax)
   // A scripted host places the smuggler (metaverse-engine/export/unreal/aethyr_script.c, the Unreal bridge's
   // run): 611 "x z" in centimetres, 612 "i" beside foe i, 613 "i" at the boss's weak point i.
   if kind >= 611 && kind <= 613 && s.count > 0 && s[0].started && !s[0].gallery {
