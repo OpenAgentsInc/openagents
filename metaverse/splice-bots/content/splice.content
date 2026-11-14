@@ -18,8 +18,11 @@ table areas id name:text x:cm z:cm hx:int hz:int r:int
 5|Desert|-85000|-14000|13000|8000|0
 6|Inside the rover|-50000|76000|650|500|0
 7|Garage yard|0|300|1500|800|0
+8|Open desert|-85000|-14000|0|0|62000
+9|Dusk road|-37000|-10000|19000|80000|0
 table beats id area:int from:text to:text
 1|7|day|dusk
+2|9|day|dusk
 table board id on:text casual:int fast:int
 1|on|700|2200
 table clock id when:text
@@ -188,19 +191,19 @@ table plans id who:int when:text do:text route:text speed:int notice:int on:text
 52|5|dusk|stand|-13000 1500|0|0|ignore
 53|5|night|dance|-2040 -18780|180|0|chase
 60|6|dawn|stand|-90600 -9600|0|0|ignore
-61|6|day|patrol|-93000 -17600, -81000 -17600|180|500|chase
+61|6|day|patrol|-105000 -44000, -65000 -44000|600|500|chase
 62|6|dusk|stand|-90600 -9600|0|0|ignore
 63|6|night|patrol|1010 -18880, 1010 -20080|180|500|chase
 70|7|dawn|stand|-90400 -9600|0|0|ignore
-71|7|day|patrol|-93000 -15600, -81000 -15600|180|500|chase
+71|7|day|patrol|-115000 -30000, -115000 4000|600|500|chase
 72|7|dusk|stand|-90400 -9600|0|0|ignore
 73|7|night|patrol|-2240 -18980, -1740 -18980|180|500|chase
 80|8|dawn|stand|-88600 -9600|0|0|ignore
-81|8|day|patrol|-93000 -13600, -81000 -13600|180|500|chase
+81|8|day|patrol|-56000 -42000, -42000 -22000|600|500|chase
 82|8|dusk|stand|-88600 -9600|0|0|ignore
 83|8|night|patrol|1500 -18200, -1500 -18200|180|500|chase
 90|9|dawn|stand|-88400 -9600|0|0|ignore
-91|9|day|patrol|-93000 -19800, -81000 -19800|180|500|chase
+91|9|day|patrol|-100000 26000, -70000 30000|600|500|chase
 92|9|dusk|stand|-88400 -9600|0|0|ignore
 93|9|night|patrol|1500 -20800, -1500 -20800|180|500|chase
 table portals id name:text from:text to:text yaw:int r:int

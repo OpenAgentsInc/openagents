@@ -293,6 +293,8 @@ sb_stage_lab :: (g: [] SpGame, n: int) {
 
 // ---- where things are
 sb_desert :: (g: [] SpGame) -> bool { return g[0].zone == Z_RAIL; }
+// Raiders are out, and after her, only at dawn and dusk (playtest 3, #13584): the raider mech keeps no watch by day or night.
+sb_dusk :: (g: [] SpGame) -> bool { return g_phase(g) % 2 == 0; }
 // On the road, where the raider mech hunts: the rail ride (M_RIDE), or the drive from the solar farm to the garage (M_DRIVE, drive.coax).
 sb_road :: (g: [] SpGame) -> bool { return g[0].mode == M_DRIVE || (sb_desert(g) && g[0].mode == M_RIDE); }
 sb_road_yaw :: (g: [] SpGame) -> f32 { if g[0].mode == M_DRIVE { return g[0].dv[0].syaw; } return rail_yaw(g, g[0].rail_s); }
@@ -520,7 +522,7 @@ sb_mech_step :: (g: [] SpGame, dt: f32) {
     // to the hallway's face, then the drill turns until it gives
     left := sb_toward(mx[..], mz[..], my[..], 0, g[0].at.wall_z + 2.6, SB_MECH_SPEED, 0.05, dt);
     if left <= 0.1 { my[0] = PI; t[0].drill_t -= dt; }
-    if t[0].drill_t <= 0 { g[0].wall_gone = true; g[0].flash = 0.6; g_say(g, MSG_BROKE); g[0].bt[0].drill_t = 0; }
+    if t[0].drill_t <= 0 { g[0].wall_gone = true; g[0].phase = PH_NIGHT; g[0].flash = 0.6; g_say(g, MSG_BROKE); g[0].bt[0].drill_t = 0; }
   } else if t[0].mech_core && g[0].zone == Z_MINE && !g[0].wall_gone && !sb_fighting(g) && dist2(mx[0], mz[0], 0, g[0].at.wall_z + 1) < SB_AUTO_DRILL {
     // led to the blocked hallway, it starts drilling it on its own: no key to find (#13505 playtest 2)
     t[0].drill_t = SB_DRILL_TIME; g_say(g, SBM_DRILLING);
@@ -559,7 +561,7 @@ sb_rm_step :: (g: [] SpGame, dt: f32) {
   s := sb_sniper_at(g); d := dist2(s.x, s.z, t[0].rm_x, t[0].rm_z);
   if t[0].rm_hunt && sb_road_end(g) {
     sb_finish(g); t[0].rm_hunt = false; t[0].rm_gone = true; g_say(g, SBM_RM_GONE);
-  } else if !t[0].rm_hunt && !t[0].rm_gone && d < sb_rm_notice(g) && !sb_road_end(g) && !t[0].bots[SB_SNIPER].vit.down {
+  } else if !t[0].rm_hunt && !t[0].rm_gone && sb_dusk(g) && d < sb_rm_notice(g) && !sb_road_end(g) && !t[0].bots[SB_SNIPER].vit.down {
     t[0].rm_hunt = true; t[0].rm_claw = SB_RM_CLAW_EVERY; g_say(g, SBM_HUNT);
   } else if t[0].rm_hunt && !sb_fighting(g) && d > sb_rm_give_up(g) {
     t[0].rm_hunt = false; t[0].rm_gone = true; g_say(g, SBM_RM_GONE);
@@ -1101,6 +1103,7 @@ sb_sense_ring :: (g: [] SpGame, buf: [] u32, p: [] Pen, i: int) {
 // On the drive (drive.coax) it is drawn while it is up, or near Sniper once down.
 sb_draw_rm :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   t := g[0].bt[0];
+  if !sb_dusk(g) && !t.rm_down && !t.rm_hunt { return; }
   if g[0].mode == M_DRIVE && t.rm_down { s := sb_sniper_at(g); if dist2(s.x, s.z, t.rm_x, t.rm_z) > 80 { return; } }
   bob := ifx t.rm_hunt then abs(sin(t.rm_step)) * 0.12 else 0.0f32;
   f := frame_at(v3(t.rm_x, bob, t.rm_z), t.rm_yaw);

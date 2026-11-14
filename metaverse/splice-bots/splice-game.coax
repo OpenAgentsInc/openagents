@@ -97,6 +97,7 @@ H_ARM :: 0; H_TREADS :: 1; H_BATTERY :: 2; H_MOVE :: 3; H_DRILL :: 4; H_PLUS :: 
 PICKS :: 10; PICK_PLUS :: 5; PICK_CELL :: 6;
 // the party's people: five raiders dancing, four Imperial robots on patrol
 FOES :: 9; F_RAIDERS :: 5;
+G_GIANT :: 13.0f32;   // an Imperial robot's size out in the desert: about 32 m tall
 WALLS :: 44; BUTTONS :: 12;
 BOT_FOLLOW :: 0; BOT_GO :: 1; BOT_RUN :: 2; BOT_FAIL :: 3;
 MSG_NONE :: 0; MSG_BAD_CUT :: 1; MSG_AIR :: 2; MSG_WEAK :: 3; MSG_OPEN :: 4; MSG_NEED :: 5; MSG_BROKE :: 7; MSG_DOWN :: 8; MSG_HIT :: 9; MSG_STUN :: 10; MSG_PICK :: 11; MSG_BANNED :: 12; MSG_CORE :: 13; MSG_PING :: 14; MSG_WAKE :: 15; MSG_FIRST :: 16; MSG_FOE :: 17; MSG_CELL :: 18; MSG_SMACK :: 19;
@@ -768,11 +769,8 @@ g_beats :: (g: [] SpGame) {
   if c[0].beat_n == 0 { return; }
   inside: [FLW_MAX] bool;
   for k: 0..<c[0].beat_n {
-    for a: 0..<c[0].area_n {
-      m := c[0].areas[a];
-      if m.id != c[0].beats[k].area { continue; }
-      inside[k] = ifx m.r > 0 then dist2(g[0].px, g[0].pz, m.x, m.z) <= m.r else abs(g[0].px - m.x) <= m.hx && abs(g[0].pz - m.z) <= m.hz;
-    }
+    if c[0].beats[k].from != g[0].phase { continue; }   // only a beat from this time of day can move it on
+    for a: 0..<c[0].area_n { if c[0].areas[a].id == c[0].beats[k].area { inside[k] = sc_area_holds(c, a, g[0].px, g[0].pz); } }
   }
   g[0].phase = flw_step(c[0].beats[..], c[0].beat_n, inside[..], g[0].phase);
 }
@@ -1239,12 +1237,14 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       cast_raider(buf, p, f, 0.95, 100 + i * 5, ifx g[0].fhost[i] then t3(1.0, 0.30, 0.12) else t3(1.0, 0.36, 0.62), ifx dance then beat else ifx still && !g[0].fhost[i] then 0.0f32 else t * 9, cast_colour());
       g_thing_end(g, p, fk); }
     } else {
-      // an Imperial robot: white plates, an orange band, a red eye once it has seen you; it faces where it walks
+      // an Imperial robot: white plates, an orange band, a red eye once it has seen you; it faces where it walks.
+      // Out roaming the desert it is a giant, to be seen from far off (playtest 3, #13584); in the garage, her size
+      big := ifx ga_inside(g, g[0].fx[i], g[0].fz[i]) then 0.8f32 else G_GIANT;
       f := sb_blow_pose(g, i, frame_at(v3(g[0].fx[i] + reel, fy, g[0].fz[i]), ifx g[0].fhost[i] then sb_face(g, i, face) else g[0].fyaw[i]));
       if pose == MP_SLEEP && !g[0].fhost[i] && !g[0].fflee[i] { f = g_lying(v3(g[0].fx[i], fy + 0.2, g[0].fz[i]), g[0].fyaw[i]); }
-      ik := g_thing(g, p, TK_IMPERIAL, ifx g[0].fhost[i] then 1 else 0, f, 0.8, t);
+      ik := g_thing(g, p, TK_IMPERIAL, ifx g[0].fhost[i] then 1 else 0, f, big, t);
       if ik >= 0 {
-      kit_robot(buf, p, f, 0.8, 100 + i * 5, t3(0.92, 0.93, 0.96), HEAT(), ifx g[0].fhost[i] then t3(1.0, 0.22, 0.12) else t3(0.95, 0.95, 1.0), t3(0.20, 0.20, 0.28), ifx g[0].fhost[i] then 0.7 else 0.0f32);
+      kit_robot(buf, p, f, big, 100 + i * 5, t3(0.92, 0.93, 0.96), HEAT(), ifx g[0].fhost[i] then t3(1.0, 0.22, 0.12) else t3(0.95, 0.95, 1.0), t3(0.20, 0.20, 0.28), ifx g[0].fhost[i] then 0.7 else 0.0f32);
       g_thing_end(g, p, ik); }
       sb_sense_ring(g, buf, p, i);   // how far it senses her, before she commits (splice-battle.coax)
     }
@@ -1536,7 +1536,7 @@ msg_text :: (g: [] SpGame) -> string {
   if m == MSG_WEAK { return "DRILL can't break this wall. It needs DRILL+."; }
   if m == MSG_OPEN { return "The tunnel is open. Dusk falls."; }
   if m == MSG_NEED { return "The Digger needs its arm, treads, battery and a card."; }
-  if m == MSG_BROKE { return "The wall is down."; }
+  if m == MSG_BROKE { return "The wall is down. Night falls."; }
   if m == MSG_DOWN { return "The banned bot powers down. Take its core."; }
   if m == MSG_HIT { return "Hit. One heart lost."; }
   if m == MSG_STUN { return "Weak point stunned."; }
@@ -2606,8 +2606,8 @@ FlowTest :: struct { o: [5] [CT_BODY] u8; }
   g := [1] SpGame.[SpGame.{}]; k := [1] FlowTest.[FlowTest.{}];
   bare := sc_bare_flow(k[0].o[4][..]);   // the shipped tables without their own rows (the solar farm's)
   t := sc_swap2(bare, "table starts id when:text at:text yaw:int\n", "table starts id when:text at:text yaw:int\n1|day|1500 3500|180\n", k[0].o[0][..]);
-  t = sc_swap2(t, "table beats id area:int from:text to:text\n", "table beats id area:int from:text to:text\n1|8|day|dusk\n", k[0].o[1][..]);
-  t = sc_swap2(t, "7|Garage yard|0|300|1500|800|0\n", "7|Garage yard|0|300|1500|800|0\n8|Mine mouth|0|-1000|800|800|0\n", k[0].o[2][..]);
+  t = sc_swap2(t, "table beats id area:int from:text to:text\n", "table beats id area:int from:text to:text\n1|10|day|dusk\n", k[0].o[1][..]);
+  t = sc_swap2(t, "9|Dusk road|-37000|-10000|19000|80000|0\n", "9|Dusk road|-37000|-10000|19000|80000|0\n10|Mine mouth|0|-1000|800|800|0\n", k[0].o[2][..]);
   t = sc_swap2(t, "table portals id name:text from:text to:text yaw:int r:int\n", "table portals id name:text from:text to:text yaw:int r:int\n1|Enter the crate|kind 116|-1000 2500|90|300\n", k[0].o[3][..]);
   g_stage(g[..], 0);
   #assert sc_load(g[0].c[..], t) && g_places(g[..]);
@@ -2756,8 +2756,8 @@ sp_map_up :: (g: [] SpGame) -> bool { g[0].dr[0].map = true; g[0].look_free = fa
   buf: [400000] u32; pen := [1] Pen.[Pen.{}];
   g_live(g[..], buf[..], pen[..]); driving := pen[0].n;
   one := [1] Pen.[Pen.{}]; g_draw_rover(g[..], buf[..], one[..], v3(0, 0.2, 0), 0);
-  rm := [1] Pen.[Pen.{}]; sb_draw_rm(g[..], buf[..], rm[..]); #assert rm[0].n > 0;
-  #assert driving == one[0].n + rm[0].n;   // only the rover on the road and the raider mech on watch beside it: no second, parked one
+  rm := [1] Pen.[Pen.{}]; sb_draw_rm(g[..], buf[..], rm[..]); #assert rm[0].n == 0;   // by day no raider mech keeps watch: raiders are out at dawn and dusk only (playtest 3, #13584)
+  #assert driving == one[0].n;   // only the rover on the road: no second, parked one
   #assert dv_keys_to(g[..], g[0].dv[0].bx, g[0].dv[0].bz, 6, 120);
   #assert g_key(g[..], 'e', true) && g[0].mode == M_PLAY && dv_hidden(g[..]) == dv_train(g[..]) && dv_train(g[..]) >= 0 && dv_facing_in(g[..]) && g[0].phase == PH_DUSK;
   w := dv_way_in(g[..]); #assert dist2(w.x, w.z, 0, g[0].at.gar_z + ga_back(g[..]) + GA_BACK * 2) < 0.01;
@@ -2911,7 +2911,7 @@ hv_drop_on :: (g: [] SpGame, d: int) -> bool {
 sb_drive_check :: (g: [] SpGame) {
   g_stage(g, 3);
   g[0].pinged = true; g[0].have[H_BATTERY] = true; g[0].taken[H_BATTERY] = true;
-  g[0].rail_s = sb_rm_watch_s() - 30; g[0].rail_v = T_RAIL_SPEED;
+  g[0].rail_s = sb_rm_watch_s() - 30; g[0].rail_v = T_RAIL_SPEED; g[0].phase = PH_DUSK;   // dusk: the raiders are out (#13584)
 }
 // The playtest's fixes (#13505): she faces the way she walks, a second Space in the air jumps higher,
 // the raider mech's claws out of a battle never put Sniper down, and going down says so plainly.
@@ -2950,7 +2950,7 @@ sb_drive_check :: (g: [] SpGame) {
   g := [1] SpGame.[SpGame.{}];
   t := g[0].bt[..];
   // on foot at the rail stop it only keeps watch
-  g_stage(g[..], 4); g[0].mode = M_PLAY;
+  g_stage(g[..], 4); g[0].mode = M_PLAY; g[0].phase = PH_DUSK;   // dusk: the raiders are out (by day the mech keeps no watch, #13584)
   for i: 0..<100 { g_step(g[..], 0.02); }
   #assert !t[0].rm_hunt;
   // on the drive it gives chase once Sniper passes its watch

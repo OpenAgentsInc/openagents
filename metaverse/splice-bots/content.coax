@@ -87,7 +87,7 @@ SC_HEAD :: [SC_TABLES] string.[
   "table templates id name:text parts:text"];
 SC_TABLE_NAME :: [SC_TABLES] string.["actors", "areas", "beats", "board", "clock", "credits", "dolly", "kept_clear", "landmarks", "looks", "menu", "pieces", "plans", "portals", "scripts", "starts", "templates"];
 SC_NAME :: 24;          // bytes of a row's name kept for a refusal or a listing
-SC_AREA_MAX :: 8; SC_KEPT_MAX :: 48; SC_MARK_MAX :: 96; SC_PIECE_MAX :: 32;
+SC_AREA_MAX :: 12; SC_KEPT_MAX :: 48; SC_MARK_MAX :: 96; SC_PIECE_MAX :: 32;
 SC_SCALE_MIN :: 100; SC_SCALE_MAX :: 4000;   // a piece's size, thousandths
 SC_FOES :: 9;           // the party's people a plan names: raiders 1 to 5, Imperial robots 6 to 9
 SC_PLAN_MAX :: SC_FOES * NPL_WHENS;
@@ -508,7 +508,7 @@ sc_drop_kept :: (c: [] SpContent, row: int) {
 #test "Splice's shipped tables read: areas, kept-clear zones, landmarks and pieces, each by its ID" {
   c: [1] SpContent;
   #assert sc_load(c[..], SC_SHIPPED) && c[0].ok && c[0].rev >= 1;
-  #assert c[0].area_n == 7 && c[0].kept_n >= 20 && c[0].mark_n >= 40 && c[0].piece_n >= 15 && c[0].piece_n <= 30;
+  #assert c[0].area_n == 9 && c[0].kept_n >= 20 && c[0].mark_n >= 40 && c[0].piece_n >= 15 && c[0].piece_n <= 30;
   rover := sc_mark(c[..], 1);
   #assert rover.id == 1 && sc_mark_name(c[..], sc_mark_row(c[..], 1)) == "Rover" && sc_mark_row(c[..], 19) == -1 && sc_kept_name(c[..], 0) == "Village start" && sc_area_name(c[..], 3) == "Mine" && rover.x == 12 && rover.z == 7 && rover.r == 4.5;
   #assert sc_mark(c[..], 0).id == 0 && sc_mark(c[..], 9999).id == 0 && sc_mark(c[..], 19).id == 0;
@@ -580,8 +580,8 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
     // dusk: everyone is out of the garage, standing out on the road (#13505)
     // night: Imperial 3 and 4 patrol across the rave, the shortcut back to Sniper (#13505)
     if w == 3 && i >= 7 { #assert p.ok && p.act == NPD_PATROL && p.notice == 500 && p.n == 2 && p.x[0] == 1500 && p.x[1] == -1500 && p.z[0] == p.z[1]; continue; }
-    // day: the Imperial robots patrol the desert, none at the garage (#13505)
-    if w == 1 && i >= 5 { #assert p.ok && p.act == NPD_PATROL && p.notice == 500 && p.n == 2 && sc_area_at_cm(c[..], p.x[0], p.z[0]) == 5 && sc_area_at_cm(c[..], p.x[1], p.z[1]) == 5; continue; }
+    // day: the Imperial robots roam the open desert far off, none at the garage (#13505) and none in the solar farm (playtest 3, #13584)
+    if w == 1 && i >= 5 { #assert p.ok && p.act == NPD_PATROL && p.notice == 500 && p.n == 2 && sc_area_at_cm(c[..], p.x[0], p.z[0]) >= 8 && sc_area_at_cm(c[..], p.x[1], p.z[1]) >= 8; continue; }
     // dusk: the raiders out on the road past the garage; the Imperial robots on their charging pads at the farm, dawn and dusk (#13552)
     if w == 2 && i < 5 { #assert p.ok && p.act == NPD_STAND && p.notice == 0 && p.n == 1 && p.z[0] == 1500 && p.x[0] <= -13000; continue; }
     if (w == 0 || w == 2) && i >= 5 { #assert p.ok && p.act == NPD_STAND && p.notice == 0 && p.n == 1 && sc_area_at_cm(c[..], p.x[0], p.z[0]) == 5; continue; }
@@ -591,7 +591,7 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
   } }
   #assert !sc_plan(c[..], 9, 0).ok && !sc_plan(c[..], -1, 0).ok && sc_plan(c[..], 0, 7).when == 3 && sc_plan(c[..], 0, -2).when == 0;
 }
-#test "a plan that leaves the mine, a dropped plan and a clock that is no time of day are refused, each with its words" {
+#test "a plan that leaves the mine, a dropped plan and a clock that is no time of day are refused, each with its words" #steps 30000000 {
   c: [1] SpContent; o: [CT_BODY] u8; w: [300] u8;
   #assert sc_load(c[..], sc_swap("\n1|story\n", "\n1|dusk\n", o[..])) && c[0].clock == 2;
   #assert sc_load(c[..], sc_swap("\n1|story\n", "\n1|dawn\n", o[..])) && c[0].clock == 0;
@@ -601,11 +601,11 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
   // an area added after the mine is ground the foes walk too: a box, or a circle
   far := sc_swap("63|6|night|patrol|1010 -18880, 1010 -20080|", "63|6|night|patrol|1010 -18880, 1500 4000|", o[..]);
   #assert !sc_load(c[..], far);
-  w2: [CT_BODY] u8; desert := sc_swap2(far, "7|Garage yard|0|300|1500|800|0\n", "7|Garage yard|0|300|1500|800|0\n8|Sand|0|5000|3000|3000|0\n", w2[..]);
+  w2: [CT_BODY] u8; desert := sc_swap2(far, "9|Dusk road|-37000|-10000|19000|80000|0\n", "9|Dusk road|-37000|-10000|19000|80000|0\n10|Sand|0|5000|3000|3000|0\n", w2[..]);
   #assert sc_load(c[..], desert) && sc_plan(c[..], 5, 3).z[1] == 4000;
-  w3: [CT_BODY] u8; round := sc_swap2(far, "7|Garage yard|0|300|1500|800|0\n", "7|Garage yard|0|300|1500|800|0\n8|Round|1500|4000|0|0|500\n", w3[..]);
+  w3: [CT_BODY] u8; round := sc_swap2(far, "9|Dusk road|-37000|-10000|19000|80000|0\n", "9|Dusk road|-37000|-10000|19000|80000|0\n10|Round|1500|4000|0|0|500\n", w3[..]);
   #assert sc_load(c[..], round);
-  w4: [CT_BODY] u8; edge := sc_swap2(far, "7|Garage yard|0|300|1500|800|0\n", "7|Garage yard|0|300|1500|800|0\n8|Round|1500|4500|0|0|499\n", w4[..]);
+  w4: [CT_BODY] u8; edge := sc_swap2(far, "9|Dusk road|-37000|-10000|19000|80000|0\n", "9|Dusk road|-37000|-10000|19000|80000|0\n10|Round|1500|4500|0|0|499\n", w4[..]);
   #assert !sc_load(c[..], edge);
   bad = sc_swap("63|6|night|patrol|", "63|6|night|fly|", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "plan 63: DO is stand, dance, sleep, guard, patrol, wander or follow";
@@ -713,10 +713,10 @@ sc_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the credits are at most 12 lines of at most 48 bytes";
 }
 
-#test "portals, starts and beats read from their tables; a row that does not read, or names what the tables lack, is refused in words" {
+#test "portals, starts and beats read from their tables; a row that does not read, or names what the tables lack, is refused in words" #steps 60000000 {
   c: [1] SpContent; o: [CT_BODY] u8; w: [300] u8; b: [CT_BODY] u8;
   // shipped: the run starts at the solar farm by day, the rover's door and desk take you through, the yard turns the day to dusk (#13505)
-  #assert sc_load(c[..], SC_SHIPPED) && c[0].portal_n == 3 && c[0].start_n == 1 && c[0].beat_n == 1 && c[0].starts[0].when == 1 && sc_area_at_cm(c[..], c[0].starts[0].x, c[0].starts[0].z) == 5;
+  #assert sc_load(c[..], SC_SHIPPED) && c[0].portal_n == 3 && c[0].start_n == 1 && c[0].beat_n == 2 && c[0].starts[0].when == 1 && sc_area_at_cm(c[..], c[0].starts[0].x, c[0].starts[0].z) == 5;
   #assert c[0].portals[0].kind == 123 && c[0].portals[2].kind == 125 && c[0].portals[2].ride && c[0].beats[0].area == 7;
   bare := sc_bare_flow(b[..]);
   #assert sc_load(c[..], bare) && c[0].portal_n == 0 && c[0].start_n == 0 && c[0].beat_n == 0;
@@ -735,7 +735,7 @@ sc_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }
   bh := "table beats id area:int from:text to:text\n";
   good = sc_swap2(bare, bh, "table beats id area:int from:text to:text\n1|4|day|dusk\n", o[..]);
   #assert sc_load(c[..], good) && c[0].beat_n == 1 && c[0].beats[0].area == 4 && c[0].beats[0].to == 2;
-  bad = sc_swap2(bare, bh, "table beats id area:int from:text to:text\n1|9|day|dusk\n", o[..]);
+  bad = sc_swap2(bare, bh, "table beats id area:int from:text to:text\n1|12|day|dusk\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "beat 1: AREA is the ID of one of the world's areas";
   bad = sc_swap2(bare, bh, "table beats id area:int from:text to:text\n1|4|night|dusk\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "beat 1: a beat moves the day on: TO comes after FROM (dawn, day, dusk, night)";

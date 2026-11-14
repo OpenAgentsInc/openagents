@@ -629,7 +629,11 @@ The shipped rows keep the raiders dancing and the Imperial robots patrolling by 
 (#13505): then every foe's plan stands it out on the road beyond the garage (the raiders scavenging, the
 Imperial robots recharging at the solar farm), so the garage is quiet. A plan whose every point lies
 outside the ring and its bays (`g_plan_out`) has the foe out of the garage: it isn't drawn, senses no one,
-and can't be pointed at or stunned; going out or coming back in, it is where its plan starts. The table `clock` holds
+and can't be pointed at or stunned; going out or coming back in, it is where its plan starts. By day the
+Imperial robots roam the open desert round the solar farm (the area `Open desert`), never the farm itself, and
+out there each is drawn as a giant, about 32 m tall (`G_GIANT`, #13584). The day moves on to dusk on the road to
+the garage (the area `Dusk road`), and the raider mech keeps watch there only at dawn and dusk; night falls when
+the blocked hallway comes down. The table `clock` holds
 the editor's time of day (`story` in play). A route stays in the mine or in an area added after it
 (ID 5 and up, such as a desert), and a point inside a wall
 is refused with the nearest place a foe can stand. `world.coax` checks both on every cell edit.

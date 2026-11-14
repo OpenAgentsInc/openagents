@@ -21,7 +21,7 @@ SCK_RUN :: 29;
 // In the mine at this time of day: on foot (sck_on) or in the edit bay (sck_in).
 sck_on :: (name: string, phase: int) -> SndAt { return sck_at(name, M_PLAY, Z_MINE, phase); }
 sck_in :: (name: string, phase: int) -> SndAt { return sck_at(name, M_BAY, Z_MINE, phase); }
-#test "the scripted run sounds each sound at its moment, in order" #steps 800000000 {
+#test "the scripted run sounds each sound at its moment, in order" #steps 800000000 #traversal 400000000 {
   g := [1] SpGame.[SpGame.{}];
   #assert g_play_run(g[..]) == 0;
   want := [SCK_RUN] SndAt.[
@@ -35,9 +35,10 @@ sck_in :: (name: string, phase: int) -> SndAt { return sck_at(name, M_BAY, Z_MIN
     sck_in("film-whir", PH_DUSK), sck_in("rover-lofi", PH_DUSK), sck_on("rover-door", PH_DUSK), sck_on("drill", PH_DUSK), sck_on("success", PH_DUSK),
     sck_on("pickup", PH_DUSK),
     // Digger's core into the drill mech, its drill, the hallway down (no DRILL+, no second splice: #13505 playtest 2)
-    sck_on("slot-click", PH_DUSK), sck_on("drill", PH_DUSK), sck_on("success", PH_DUSK),
+    // night falls as the hallway comes down (playtest 3, #13584: it fell with the boss before)
+    sck_on("slot-click", PH_DUSK), sck_on("drill", PH_DUSK), sck_on("success", PH_NIGHT),
     // the boss wakes, takes blows and falls at night; the core
-    sck_on("boss-wake", PH_DUSK), sck_on("hit", PH_DUSK), sck_on("boss-fall", PH_NIGHT), sck_on("success", PH_NIGHT),
+    sck_on("boss-wake", PH_NIGHT), sck_on("hit", PH_NIGHT), sck_on("boss-fall", PH_NIGHT), sck_on("success", PH_NIGHT),
     // the core spliced: the memory glitches in, and the scene is restored
     sck_in("film-whir", PH_NIGHT), sck_in("rover-lofi", PH_NIGHT), sck_at("glitch", M_MEMORY, Z_MINE, PH_NIGHT)];
   s := g[0].snd[0]; at := 0;
