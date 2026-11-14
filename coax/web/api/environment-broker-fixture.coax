@@ -1,0 +1,12 @@
+// An independent process-boundary fixture. No relay, credentials or model call.
+#load "../../lib/agent/environment/wire.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) {return 2;}
+  input:[24576]u8;n:=fs_read(args_value(args[..],"--request-file",""),input[..]);q:[1]EaRequest;
+  if n<1 || !ea_read(cast(string)input[0..<n],q[..]) || ea_right(cast(string)q[0].method[0..<q[0].nm])!=0 {return 2;}
+  host:=args_value(args[..],"--host","");if !ea_id(host,64) {return 2;}
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],host);v[0].nm=ea_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);v[0].nl=ea_copy(v[0].label[..],"Fixture computer");v[0].complete=true;
+  out:[4096]u8;n=ea_view_write(v[..],out[..]);if n<1 {return 2;}print("%\n",cast(string)out[0..<n]);return 0;
+}

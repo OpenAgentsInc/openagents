@@ -148,6 +148,18 @@ trap cleanup EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HU
 # The binary's C files and Coax units are api-sources.sh's, the one list every local build reads (#13380).
 source "$here/api-sources.sh"
 api_sources "$here" "$work" "$cli_coax"
+# A production worker inherits SIGCHLD=SIG_IGN from the realm-page refresher.
+# Exercise the actual process adapter under that disposition, without relay
+# access, credentials or a model. The oracle also checks it is restored.
+if [[ $serve == 0 ]] && runs checks; then
+  "$cli_coax" c "$here/environment-broker-fixture.coax" --library > "$work/environment-fixture.c"
+  "$cc" -std=c11 -O1 -g -D_DEFAULT_SOURCE -I"$repo_root/coax/platform" \
+    "$work/environment-fixture.c" "$repo_root/coax/platform/tool-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -o "$work/environment-fixture"
+  "$cc" -std=c11 -O1 -g -D_DEFAULT_SOURCE -fsanitize=address,undefined -I"$work" -I"$here" -I"$repo_root/coax/platform" \
+    "$here/tests/environment_proxy.c" "$here/environment-wire-unit.c" "$repo_root/coax/platform/process-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -o "$work/environment-proxy"
+  "$work/environment-proxy" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb /unused "$work/environment-request.json" "$work/environment-fixture"
+fi
 if [[ $serve == 0 ]] && runs checks; then
 # The image keeps its own list: the Dockerfile's C files and deploy.sh's Coax units must be this one's.
 diff <(printf '%s\n' "${API_SOURCES[@]##*/}" | sort) <(grep -o '/src/[A-Za-z0-9_.-]*\.c' "$here/Dockerfile" | sed 's|/src/||' | sort) ||
