@@ -5,7 +5,10 @@
 # Animation Library's (65 joints; the one Everglade's people are on, metaverse/tools/people.py), so the
 # library's clips and every clip made for Everglade play on the result.
 #   Blender -b --factory-startup -P character-fit.py -- IN.glb|IN.fbx LIBRARY.glb OUT.glb OUT.json
-#           [--height M] [--clips A,B,...] [--reach M]
+#           [--height M] [--clips A,B,...] [--reach M] [--fbx DIR]
+# --fbx DIR also writes FBX files for Unreal: DIR/NAME.fbx (the mesh on the skeleton, no clip) and
+# DIR/NAME@CLIP.fbx (the skeleton and one clip each), NAME being OUT's. The bridge's "thing." row
+# takes the first as a skeletal mesh and the others as its "anim." rows (metaverse-engine/export/unreal/README.md).
 # LIBRARY.glb is the animation library (UAL1_Standard.glb); it is not in the repository.
 # What it does, in order:
 #   1. stands the model up: turned to face -y (foot to toe), scaled to --height (default: its own
@@ -267,6 +270,22 @@ for name in CLIPS:
     for pb in Q.pose.bones: pb.rotation_quaternion = Quaternion(); pb.location = Vector()
     print("BAKED", name, n_out, round(dur, 3))
 
+# A stance the library has no clip for: on a hoverboard (feet apart along the deck, knees soft, arms out and
+# low), set from the rest pose and held, as the clip Board_Stance.
+STANCE = [("thigh_l", "X", -30), ("calf_l", "X", 40), ("thigh_r", "X", 10), ("calf_r", "X", 30), ("upperarm_l", "Z", -35), ("upperarm_r", "Z", 35), ("lowerarm_l", "X", 25), ("lowerarm_r", "X", 25)]
+out = bpy.data.actions.new("Q_Board_Stance"); Q.animation_data.action = out
+for pb in Q.pose.bones:
+    pb.rotation_mode = "QUATERNION"; pb.rotation_quaternion = Quaternion(); pb.location = Vector()
+for n, ax, deg in STANCE: Q.pose.bones[n].rotation_quaternion = Quaternion({"X": Vector((1, 0, 0)), "Y": Vector((0, 1, 0)), "Z": Vector((0, 0, 1))}[ax], math.radians(deg))
+for k in (0, 30):
+    for pb in Q.pose.bones: pb.keyframe_insert("rotation_quaternion", frame=k)
+    Q.pose.bones["pelvis"].keyframe_insert("location", frame=k)
+tr = Q.animation_data.nla_tracks.new(); tr.name = "Board_Stance"
+st = tr.strips.new("Board_Stance", 0, out); st.action_frame_end = 30
+Q.animation_data.action = None
+for pb in Q.pose.bones: pb.rotation_quaternion = Quaternion(); pb.location = Vector()
+info["clips"]["Board_Stance"] = {"frames": 30, "seconds": 1.0}
+
 # ---- 6. out
 bpy.data.objects.remove(M, do_unlink=True)
 bpy.ops.object.select_all(action="DESELECT")
@@ -277,5 +296,25 @@ bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True,
     export_skins=True, export_image_format="AUTO", export_normals=True, export_yup=True,
     export_def_bones=False, export_anim_single_armature=True)
 info["bytes"] = os.path.getsize(OUT)
+FBX = opt("--fbx", "")
+if FBX:
+    os.makedirs(FBX, exist_ok=True)
+    stem = os.path.splitext(os.path.basename(OUT))[0]
+    common = dict(use_selection=True, add_leaf_bones=False, apply_unit_scale=True, apply_scale_options="FBX_SCALE_UNITS",
+                  axis_forward="-Z", axis_up="Y", use_armature_deform_only=False, mesh_smooth_type="FACE", path_mode="COPY", embed_textures=True)
+    tracks = list(Q.animation_data.nla_tracks)
+    for tr in tracks: tr.mute = True
+    bpy.ops.export_scene.fbx(filepath=os.path.join(FBX, stem + ".fbx"), object_types={"ARMATURE", "MESH"}, bake_anim=False, **common)
+    bpy.ops.object.select_all(action="DESELECT"); Q.select_set(True); bpy.context.view_layer.objects.active = Q
+    for tr in tracks:
+        act = tr.strips[0].action
+        Q.animation_data.action = act
+        if hasattr(act, "slots") and len(act.slots): Q.animation_data.action_slot = act.slots[0]
+        sc.frame_start = 0; sc.frame_end = int(tr.strips[0].action_frame_end)
+        bpy.ops.export_scene.fbx(filepath=os.path.join(FBX, "%s@%s.fbx" % (stem, tr.name)), object_types={"ARMATURE"}, bake_anim=True,
+                                 bake_anim_use_all_bones=True, bake_anim_use_nla_strips=False, bake_anim_use_all_actions=False, bake_anim_force_startend_keying=True, bake_anim_simplify_factor=0.0, **common)
+    Q.animation_data.action = None
+    info["fbx"] = sorted(os.listdir(FBX))
+    print("FBX", FBX, len(info["fbx"]), "files")
 json.dump(info, open(OUTJ, "w"), indent=1)
 print("EXPORTED", OUT, info["bytes"])

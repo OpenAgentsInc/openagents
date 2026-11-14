@@ -27,6 +27,9 @@
 #include "Kismet/KismetMaterialLibrary.h"
 #include "Sound/SoundBase.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/SkeletalMesh.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimSequenceBase.h"
 #include "Engine/DataTable.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Materials/MaterialParameterCollection.h"
@@ -35,6 +38,8 @@
 #include "ProceduralMeshComponent.h"
 #include "Rendering/SlateRenderer.h"
 #include "UnrealClient.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 #if AETHYR_HAS_RULES
 extern "C" {
@@ -178,6 +183,16 @@ void AAethyrGame::BeginPlay()
 		bExitAfterPlay = FParse::Param(Args, TEXT("AethyrExit"));
 #endif
 	}
+	// -AethyrPlayFile=FILE: a script read from a file, played on screen as -AethyrPlay plays the bundle's
+	// (keys, messages and frames; a look at one moment or one movement, with no rebuild)
+	FString PlayFile;
+	if (FParse::Value(Args, TEXT("AethyrPlayFile="), PlayFile) && FFileHelper::LoadFileToStringArray(PlayLines, *PlayFile))
+	{
+		bPlaying = true; PlaySpeed = 1;
+		bExitAfterPlay = FParse::Param(Args, TEXT("AethyrExit"));
+	}
+	// -AethyrShots=DIR -AethyrShotEvery=N: a numbered picture every N frames (a film's frames)
+	if (FParse::Value(Args, TEXT("AethyrShots="), ShotsDir)) { ShotEvery = 2; FParse::Value(Args, TEXT("AethyrShotEvery="), ShotEvery); ShotEvery = FMath::Max(1, ShotEvery); }
 	SetUpThings();
 	if (FParse::Value(Args, TEXT("AethyrShot="), ShotPath)) { ShotAfter = 20; FParse::Value(Args, TEXT("AethyrShotAfter="), ShotAfter); bExitAfterShot = true; }
 #endif
@@ -434,6 +449,10 @@ void AAethyrGame::Tick(float DeltaSeconds)
 			(int32)(aethyr_store_bytes(State, 1) / 24), OverlayCount, PiecesShown, RequestsAnswered, RequestsSent, FrameSeconds / FrameCount * 1000.0, HostSeconds / FrameCount * 1000.0);
 		FrameSeconds = 0; HostSeconds = 0; FrameCount = 0;
 	}
+	if (ShotEvery > 0 && (++ShotFrame % ShotEvery) == 0)
+	{
+		FScreenshotRequest::RequestScreenshot(FPaths::Combine(ShotsDir, FString::Printf(TEXT("f%05d.png"), ShotFrame / ShotEvery)), true, false);
+	}
 	if (ShotAfter >= 0 && --ShotAfter < 0)
 	{
 		if (ShotPath.IsEmpty()) { if (bExitAfterShot) { UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false); } }
@@ -569,11 +588,34 @@ void AAethyrGame::SetUpThings()
 	if (!Manifest || !State) { return; }
 	// -AethyrNativeThings: every kind with an exported model is drawn with it, as a check of the path
 	const bool bAll = FParse::Param(FCommandLine::Get(), TEXT("AethyrNativeThings"));
+	FParse::Value(FCommandLine::Get(), TEXT("AethyrThingBeside="), ThingBeside);
+	// the clips: every "anim." row that is an animation, by its row's name
+	if (Overrides)
+	{
+		for (const FName& Row : Overrides->GetRowNames())
+		{
+			const FString Key = Row.ToString();
+			if (!Key.StartsWith(TEXT("anim."))) { continue; }
+			if (UAnimSequenceBase* Clip = Cast<UAnimSequenceBase>(OverrideFor(Key))) { Clips.Add(Key, Clip); }
+		}
+	}
 	for (int32 Kind = 0; Kind < Manifest->ThingKinds.Num(); Kind++)
 	{
 		const FString Name = Manifest->ThingKinds[Kind].ToString();
-		UStaticMesh* Whole = Cast<UStaticMesh>(OverrideFor(TEXT("thing.") + Name));
+		UObject* Asset = OverrideFor(TEXT("thing.") + Name);
+		UStaticMesh* Whole = Cast<UStaticMesh>(Asset);
 		bool bNative = false;
+		if (USkeletalMesh* Skin = Cast<USkeletalMesh>(Asset))
+		{
+			// a skeletal mesh stands for every variant of its kind: the variant picks its clip
+			NativeSkins.Add(Kind, Skin);
+			NativeKinds.Add(Kind);
+			if (ThingBeside == 0.0f) { aethyr_thing_hide(State, Kind, 1); }
+			int32 Mine = 0;
+			for (const TPair<FString, TObjectPtr<UAnimSequenceBase>>& Clip : Clips) { if (Clip.Key.StartsWith(TEXT("anim.") + Name)) { Mine++; } }
+			UE_LOG(LogAethyr, Display, TEXT("AETHYR_THINGS kind %s is drawn by Unreal with the skeletal mesh %s and %d clips"), *Name, *Skin->GetName(), Mine);
+			continue;
+		}
 		for (int32 Variant = 0; Variant < 16; Variant++)
 		{
 			const FString Key = FString::Printf(TEXT("%s_v%d"), *Name, Variant);
@@ -585,11 +627,33 @@ void AAethyrGame::SetUpThings()
 		if (bNative)
 		{
 			NativeKinds.Add(Kind);
-			aethyr_thing_hide(State, Kind, 1);
+			if (ThingBeside == 0.0f) { aethyr_thing_hide(State, Kind, 1); }
 			UE_LOG(LogAethyr, Display, TEXT("AETHYR_THINGS kind %s is drawn by Unreal%s"), *Name, Whole ? *FString::Printf(TEXT(" with %s"), *Whole->GetName()) : TEXT(""));
 		}
 	}
 #endif
+}
+
+// The clip for a thing of this kind in this variant at this speed (metres a second). Rows, most
+// particular first: "anim.KIND_vN.run", ".walk", ".idle", or "anim.KIND_vN" alone (one clip for the
+// variant: a jump, a stance); a variant with no row of its own takes the kind's, "anim.KIND.run",
+// ".walk", ".idle". Faster than RunAt is run, faster than WalkAt is walk, else idle; a missing one
+// takes the next slower. bGait: the clip is a walk or a run, whose place in its cycle is the thing's phase.
+UAnimSequenceBase* AAethyrGame::ClipFor(const FString& Kind, int32 Variant, float Speed, bool& bGait) const
+{
+	const float WalkAt = 0.3f, RunAt = 3.0f;
+	const FString Own = FString::Printf(TEXT("anim.%s_v%d"), *Kind, Variant);
+	bool bOwn = false;
+	for (const TPair<FString, TObjectPtr<UAnimSequenceBase>>& Clip : Clips) { if (Clip.Key == Own || Clip.Key.StartsWith(Own + TEXT("."))) { bOwn = true; break; } }
+	const FString Base = bOwn ? Own : TEXT("anim.") + Kind;
+	const TCHAR* Tiers[3] = { TEXT(".run"), TEXT(".walk"), TEXT(".idle") };
+	for (int32 Tier = Speed >= RunAt ? 0 : Speed >= WalkAt ? 1 : 2; Tier < 3; Tier++)
+	{
+		if (const TObjectPtr<UAnimSequenceBase>* Found = Clips.Find(Base + Tiers[Tier])) { bGait = Tier < 2; return *Found; }
+	}
+	bGait = false;
+	const TObjectPtr<UAnimSequenceBase>* Alone = Clips.Find(Base);
+	return Alone ? Alone->Get() : nullptr;
 }
 
 void AAethyrGame::UpdateThings()
@@ -598,12 +662,54 @@ void AAethyrGame::UpdateThings()
 	if (NativeKinds.Num() == 0) { return; }
 	float Things[48 * 8];
 	const int32 Count = aethyr_things(State, Things, 48 * 8);
-	int32 Used = 0;
+	int32 Used = 0, Skinned = 0;
+	const float Dt = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f;
 	for (int32 I = 0; I < Count; I++)
 	{
 		const float* T = Things + I * 8;
 		const int32 Kind = (int32)T[0], Variant = FMath::Clamp((int32)T[1], 0, 15);
 		if (!NativeKinds.Contains(Kind)) { continue; }
+		// to the side of the world's own drawing of it, across the way it faces (-AethyrThingBeside)
+		const FVector Beside = ThingBeside == 0.0f ? FVector::ZeroVector : FVector(FMath::Cos(T[5]), -FMath::Sin(T[5]), 0.0f) * ThingBeside;
+		if (const TObjectPtr<USkeletalMesh>* Skin = NativeSkins.Find(Kind))
+		{
+			if (Skinned >= SkinPool.Num())
+			{
+				USkeletalMeshComponent* Made = NewObject<USkeletalMeshComponent>(this);
+				Made->SetupAttachment(RootComponent);
+				Made->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				Made->SetMobility(EComponentMobility::Movable);
+				Made->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+				Made->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+				Made->RegisterComponent();
+				SkinPool.Add(Made); SkinNow.AddDefaulted();
+			}
+			USkeletalMeshComponent* C = SkinPool[Skinned]; FSkinNow& Now = SkinNow[Skinned]; Skinned++;
+			if (C->GetSkeletalMeshAsset() != *Skin) { C->SetSkeletalMeshAsset(*Skin); Now = FSkinNow(); }
+			const FVector At = ToUnreal(T[2], T[3], T[4]);
+			// its speed over the ground, from where it was (a step of more than 3 m is the run placing it)
+			const float Moved = Now.bSeen ? FVector::Dist2D(At, Now.Last) / Units : 0.0f;
+			const float Speed = (Dt > 0.0001f && Moved < 3.0f) ? Moved / Dt : 0.0f;
+			Now.Speed += (Speed - Now.Speed) * (1.0f - FMath::Exp(-12.0f * Dt));
+			const bool bPhased = Now.bSeen && T[7] != Now.Phase;
+			Now.Last = At; Now.Phase = T[7]; Now.bSeen = true;
+			bool bGait = false;
+			UAnimSequenceBase* Clip = ClipFor(Manifest->ThingKinds[Kind].ToString(), Variant, Now.Speed, bGait);
+			if (Clip != Now.Clip) { Now.Clip = Clip; if (Clip) { C->PlayAnimation(Clip, true); } }
+			if (Clip && bGait && bPhased)
+			{
+				// a gait keeps step with the rules: a whole turn of the phase is one cycle of the clip
+				const float Turn = T[7] / (2.0f * PI);
+				C->SetPlayRate(0.0f);
+				C->SetPosition((Turn - FMath::FloorToFloat(Turn)) * Clip->GetPlayLength(), false);
+			}
+			else if (Clip) { C->SetPlayRate(1.0f); if (!C->IsPlaying()) { C->Play(true); } }
+			C->SetWorldLocationAndRotation(At + Beside, FRotator(0.0f, -FMath::RadiansToDegrees(T[5]), 0.0f));
+			C->SetVisibility(true);
+			C->bCastHiddenShadow = true;
+			C->SetHiddenInGame(Kind == 0 && bBodyHidden);
+			continue;
+		}
 		TObjectPtr<UStaticMesh>* Mesh = NativeMeshes.Find(Kind * 16 + Variant);
 		if (!Mesh) { Mesh = NativeMeshes.Find(Kind * 16); }
 		if (!Mesh) { continue; }
@@ -619,13 +725,14 @@ void AAethyrGame::UpdateThings()
 		UStaticMeshComponent* C = ThingPool[Used++];
 		if (C->GetStaticMesh() != *Mesh) { C->SetStaticMesh(*Mesh); }
 		// a thing faces +z in its own space; turned by its yaw about the world's up
-		C->SetWorldLocationAndRotation(ToUnreal(T[2], T[3], T[4]), FRotator(0.0f, -FMath::RadiansToDegrees(T[5]), 0.0f));
+		C->SetWorldLocationAndRotation(ToUnreal(T[2], T[3], T[4]) + Beside, FRotator(0.0f, -FMath::RadiansToDegrees(T[5]), 0.0f));
 		C->SetVisibility(true);
 		// her own model, when Unreal draws it: hidden from the first-person camera, its shadow still cast
 		C->bCastHiddenShadow = true;
 		C->SetHiddenInGame(Kind == 0 && bBodyHidden);
 	}
 	for (int32 I = Used; I < ThingPool.Num(); I++) { ThingPool[I]->SetVisibility(false); }
+	for (int32 I = Skinned; I < SkinPool.Num(); I++) { SkinPool[I]->SetVisibility(false); SkinNow[I].bSeen = false; }
 #endif
 }
 

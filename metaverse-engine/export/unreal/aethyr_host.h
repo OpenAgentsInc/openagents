@@ -51,8 +51,9 @@ int aethyr_fact(void *state, int k);
 
 /* What moves, by kind, for a host that draws some kinds with its own models. aethyr_things
  * copies the last frame's list into out (cap floats) and returns how many things: eight floats
- * each, kind, variant, x, y, z, yaw, scale, phase. A hidden kind is listed but not written to the
- * live store. aethyr_thing_first and _count give thing k's vertices in the live store. */
+ * each, kind, variant, x, y, z, yaw, scale, phase. A variant is what the thing is doing, as its
+ * world numbers it; phase is where it is in its movement's cycle (radians, a whole turn a cycle).
+ * A hidden kind is listed but not written to the live store. aethyr_thing_first and _count give thing k's vertices in the live store. */
 int aethyr_things(void *state, float *out, int cap);
 int aethyr_thing_first(void *state, int k);
 int aethyr_thing_count(void *state, int k);

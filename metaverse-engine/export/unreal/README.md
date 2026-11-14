@@ -43,9 +43,12 @@ fixture's `args`) in the web build:
 | `-AethyrPlay` `-AethyrPlaySpeed=N` | Plays the script on screen, N frames a tick |
 | `-AethyrStage=N` | Starts at a moment of the run (the game's stages) |
 | `-AethyrNativeThings` | Unreal draws every kind of thing from its exported model |
+| `-AethyrThingBeside=CM` | A kind an override row replaces is still drawn by the world, the replacement that far to its side |
 | `-AethyrGray` | Starts in graybox |
 | `-AethyrShot=FILE` `-AethyrShotAfter=N` | Saves a screenshot after N frames and quits. Keys and the mouse are ignored, as with `-AethyrNoInput`, so the desktop's mouse cannot turn an offscreen still |
 | `-AethyrNoInput` | Ignores keys and the mouse |
+| `-AethyrPlayFile=FILE` | Plays a script from a file on screen, as `-AethyrPlay` plays the bundle's: `key`, `msg` and `frames` lines |
+| `-AethyrShots=DIR` `-AethyrShotEvery=N` | Saves `DIR/f00001.png`, ... every N frames (default 2): a film's frames |
 | `-AethyrWorld=URL` | The page's address: the world follows its saved edit layer from that site, and its placed pieces are drawn |
 | `-AethyrExit` | Quits when a script ends |
 
@@ -99,10 +102,45 @@ row's name says what is replaced and its Asset is the replacement:
 |---|---|---|
 | `thing.raider` | Every raider, drawn by Unreal at the world's place and yaw | A static mesh |
 | `thing.raider_v1` | One variant (here, a raider in a fight) | A static mesh |
+| `thing.smuggler` | Every variant of a kind, when the asset has a skeleton | A skeletal mesh (see "A thing with a skeleton") |
+| `anim.smuggler.run`, `anim.smuggler_v3` | Nothing: the clips a skeletal `thing.` row plays | An animation sequence |
 | `world.w_m00_x127_z127` | One world mesh group | A static mesh |
 | `kit.garage_bay` | A kit slot's grey blockout, at every place the slot stands | A static mesh |
 | `material.cel`, `material.sky` | The look | A material |
 | `event.pickup` | Nothing: adds a sound to the event | A sound |
+
+### A thing with a skeleton
+
+A `thing.KIND` row whose asset is a skeletal mesh draws every one of that
+kind with it, at the world's place and yaw, facing +Y in its own space as a
+static one does. The world still says only where the thing is; which clip
+plays is the bridge's choice from two facts:
+
+- **Its variant.** A world's variants say what a thing is doing. Splice's
+  player is 0 on foot, 1 in the air, 2 sneaking, 3 on the hoverboard.
+- **Its speed over the ground**, in metres a second, which the bridge
+  measures from where the thing was a frame ago.
+
+The clips are rows of the same table, each an animation sequence on the
+mesh's skeleton:
+
+| Row | Plays when |
+|---|---|
+| `anim.KIND.idle`, `.walk`, `.run` | The variant has no rows of its own. Under 0.3 m/s is idle, under 3 is walk, faster is run; a missing one takes the next slower |
+| `anim.KIND_vN.idle`, `.walk`, `.run` | The thing is in variant N, by speed in the same way |
+| `anim.KIND_vN` | The thing is in variant N, whatever its speed (a jump, a stance) |
+
+A walk or a run keeps step with the rules: one whole turn of the thing's
+phase (its eighth number) is one cycle of the clip, so the feet cover the
+ground the rules moved it. Other clips loop on the clock. One clip gives way
+to the next at once; there is no blend yet, and no animation blueprint.
+
+`-AethyrThingBeside=CM` leaves the world drawing a replaced kind and stands
+the replacement that many centimetres to its side, to compare the two in one
+picture.
+
+`metaverse/splice-bots/tools/character-fit.py --fbx DIR` writes a mesh and
+its clips as FBX files for these rows.
 
 Kinds and events are listed in the bundle's `manifest.json` (`things`,
 `events`). Layout is Aethyr's: the import report lists generated actors that

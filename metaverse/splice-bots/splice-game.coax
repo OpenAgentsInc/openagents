@@ -1161,7 +1161,8 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       df := frame_turn(frame_turn(frame_at(v3(g[0].px, y + board_lift(bd), g[0].pz), g[0].yaw), 2, bd.lean), 0, -bd.nose);
       pf = kit_at(df, 0, 0.075, 0);
     }
-    sk := g_thing(g, p, TK_SMUGGLER, 0, pf, 0.85, g[0].stride);
+    // her variant says how she moves, for a host that draws her itself: 0 on foot, 1 in the air, 2 sneaking, 3 on the board
+    sk := g_thing(g, p, TK_SMUGGLER, ifx riding then 3 else ifx g_airborne(g) then 1 else ifx d_sneaking(g) then 2 else 0, pf, 0.85, g[0].stride);
     // the board under you, in the live store (the character stands on it: fr_player lifts it by the hover)
     if riding && sk >= 0 { kit_hoverboard(buf, p, frame_move(pf, fp(pf, 0, -0.075, 0)), 1, 196, INK(), HEAT(), blue, bd.rush + 0.15); }
     g_thing_end(g, p, sk);
