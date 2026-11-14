@@ -1,5 +1,22 @@
 # Owner actions
 
+## Native chat composer, build 1071 (2026-11-13)
+
+Install OpenAgents **1071**, now VALID and verified in the existing Owner
+TestFlight group. Log in with the same email, tap **New chat**, and send a message.
+Expect a Gemini 4 Hydrogen reply. Go back to Your chats, reopen it, and
+relaunch to confirm the conversation and login persist. Try a wrapped draft,
+selection, paste, undo, keyboard dismissal and **Stop** during a reply. The
+bar should grow to four lines and remain above the keyboard without zoom.
+
+This native composer requires 1071; the installed 1070 control set cannot
+render it. App state and chat logic continue through signed Updates in the
+new runtime. The current profile supports text messages. The plus menu has
+New chat and Clear draft; attachments and custom dictation are not enabled.
+The older key-owned chats still open on the web. More → Bitcoin balance
+retains the existing read-only native path. This section supersedes the 1070
+install instructions below. See `coax/native/composer.md` for the contract.
+
 ## Native UIKit app, build 1070 (2026-11-13)
 
 Install OpenAgents **1070** from the existing Owner TestFlight group. The app
