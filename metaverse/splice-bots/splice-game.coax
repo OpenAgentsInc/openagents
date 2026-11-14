@@ -397,6 +397,10 @@ g_collide :: (g: [] SpGame) {
   }
   if g[0].zone == Z_MINE && g_feet_y(g) < ff_low() - 0.05 { q = ff_push(g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z; }   // the solar farm's lines, unless on their top (farm.coax)
   if g[0].zone == Z_MINE { q = ga_lab_push(g, g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z; }   // the lab's round wall (garage.coax)
+  if g[0].zone == Z_MINE {   // the drill mech's body (#13578): walked into, she stopped inside it and the camera, boxed in by it, looked straight down
+    t := g[0].bt[0]; dx := g[0].px - t.mech_x; dz := g[0].pz - t.mech_z; d := sqrt(dx * dx + dz * dz); r := SB_MECH_R + T_RADIUS;
+    if d < r && d > 0.0001 { g[0].px = t.mech_x + dx / d * r; g[0].pz = t.mech_z + dz / d * r; }
+  }
 }
 g_inside :: (g: [] SpGame, x: f32, z: f32) -> bool {
   if g[0].zone == Z_VILLAGE && dist2(x, z, g[0].at.vil_x, g[0].at.vil_z) > g[0].at.vil_r - 0.5 && !(z > g[0].at.vil_z + 5 && abs(x - g[0].at.vil_x) < 1.5) { return true; }
@@ -1327,7 +1331,9 @@ g_big_at :: (g: [] SpGame, x: f32, z: f32, pad: f32) -> bool {
   return false;
 }
 // How much a big body stands in the view ahead, 0 to 1: one within 12 m ahead and near the line of
-// sight blocks what is behind it, so the camera rises over it.
+// sight blocks what is behind it, so the camera rises over it. Close up it lets go again (#13578): within
+// G_BIG_NEAR of its edge she is at it, using it, and a camera still over it looked straight down on her.
+G_BIG_NEAR :: 3.0f32;   // m past the body's edge (and 1.5 m more) over which the rise eases back to none
 g_big_ahead :: (g: [] SpGame, x: f32, z: f32, fx: f32, fz: f32) -> f32 {
   if g[0].zone != Z_MINE { return 0; }
   t := g[0].bt[0]; best := 0.0f32;
@@ -1339,7 +1345,7 @@ g_big_ahead :: (g: [] SpGame, x: f32, z: f32, fx: f32, fz: f32) -> f32 {
       for i: 0..<13 { s := cast(f32) i; d := sb_boss_gap(g, x + fx * s, z + fz * s, false); if d < off { off = hi(d, 0); along = s; } }
     }
     if along < 0 || along > 12 { continue; }
-    if off < r + 1.5 { best = hi(best, lo(1, (r + 1.5 - off) / 1.5) * lo(1, (12 - along) / 4)); }
+    if off < r + 1.5 { best = hi(best, lo(1, (r + 1.5 - off) / 1.5) * lo(1, (12 - along) / 4) * clamp((along - r - 1.5) / G_BIG_NEAR, 0, 1)); }
   }
   return best;
 }
@@ -2494,6 +2500,18 @@ sp_keys_goal :: (g: [] SpGame, near: f32, secs: f32) -> bool {
   }
   sp_keys_free(g); return false;
 }
+// While the boss's charge is locked or rushing and she is in its lane: A or D steps her sideways out of it,
+// to the side of the lane she already leans to, for one step. Whether it stepped.
+sp_keys_dodge :: (g: [] SpGame) -> bool {
+  t := g[0].bt[0];
+  if !((t.rush > 0 || (t.wind > 0 && t.wind <= SB_CHARGE.lock)) && sb_in_lane(g, g[0].px, g[0].pz, SB_CHARGE_W + T_RADIUS)) { return false; }
+  across := (g[0].px - t.dino_x) * t.rush_dz - (g[0].pz - t.dino_z) * t.rush_dx;
+  side := ifx across >= 0 then 1.0f32 else -1.0f32;   // away along (rush_dz, -rush_dx) times side
+  right := -cos(g[0].yaw) * t.rush_dz * side + sin(g[0].yaw) * -t.rush_dx * side;   // D's way (-cos yaw, sin yaw, feel.coax fl_walk) along it
+  sp_keys_free(g); _ := g_key(g, ifx right > 0 then 'd' else 'a', true);
+  g_step(g, 0.05);
+  return true;
+}
 // 0 when the keys alone take her from the garage's door to the boss's fall, else the beat that failed.
 sp_keys_play :: (g: [] SpGame) -> int {
   // to Sniper, parked by the quiet door: Tab is the edit bay there, Enter sends Digger at the raiders' rock wall
@@ -2541,6 +2559,7 @@ sp_keys_play :: (g: [] SpGame) -> int {
     if g[0].boss_down { break; }
     if g[0].mode != M_PLAY { return 13; }
     if i % 10 == 0 { _ := g_key(g, cast(int) '1' + (i / 10) % 4, true); }
+    if sp_keys_dodge(g) { continue; }   // a locked charge: sidestep out of its lane, as a player would (#13578)
     if sb_open(g) {
       best := -1; bd := 1e9f32;
       for w: 0..<3 { p := weak_at(g, w); d := dist2(g[0].px, g[0].pz, p.x, p.z); if g[0].stun[w] <= 0 && d < bd { bd = d; best = w; } }
@@ -3025,8 +3044,11 @@ sb_drive_check :: (g: [] SpGame) {
   t := g[0].bt[..];
   t[0].mech_x = 60; t[0].mech_z = -120;   // away
   low := g_camera(g[..]).eye.y;
-  t[0].mech_x = 0; t[0].mech_z = -125;    // 5 m ahead, in the line of sight
-  #assert g_big_ahead(g[..], 0, -120, 0, -1) > 0.9 && g_camera(g[..]).eye.y > low + 3;
+  t[0].mech_x = 0; t[0].mech_z = -127;    // 7 m ahead, in the line of sight: it rises, short of looking down on her (#13578)
+  e0 := g_camera(g[..]).eye;
+  #assert g_big_ahead(g[..], 0, -120, 0, -1) > 0.9 && e0.y > low + 2 && atan2(e0.y - (g_cam_y(g[..]) + CM_HEAD), dist2(e0.x, e0.z, 0, -120)) <= CM_STEEP + 0.05;
+  t[0].mech_x = 0; t[0].mech_z = -122.5;  // at it, in E's reach: no rise at all
+  #assert g_big_ahead(g[..], 0, -120, 0, -1) == 0 && abs(g_camera(g[..]).eye.y - low) < 0.5;
   t[0].mech_x = 0; t[0].mech_z = -116;    // just behind her: the camera comes in front of it
   e := g_camera(g[..]).eye; #assert !g_big_at(g[..], e.x, e.z, 0);
 }
@@ -3088,7 +3110,7 @@ g_key_wheel_follow :: (g: [] SpGame) { _ := g_key(g, 'r', true); _ = g_key(g, '4
   #assert g[0].mode == M_BANNER && g[0].banner == B_CUT && !sb_fighting(g[..]);
   #assert g_key(g[..], ' ', true);   // RESPAWN AT ROVER
   for i: 0..<200 { g_step(g[..], 0.02); }
-  #assert g[0].mode == M_PLAY && t[0].bots[SB_BOSS].vit.hp == 70 && t[0].bots[SB_MECH].vit.hp == 45 && t[0].mech_core && g[0].wall_gone;
+  #assert g[0].mode == M_PLAY && t[0].bots[SB_BOSS].vit.hp == f32(SB_BOSS_HP) && t[0].bots[SB_MECH].vit.hp == 45 && t[0].mech_core && g[0].wall_gone;
 }
 #test "a bot's cards are its moves, big moves cost more charge, and Digger's health is the Director's, and Sniper at zero powers down until its charger repairs it" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];

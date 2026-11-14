@@ -101,6 +101,29 @@ cc_farm :: (g: [] SpGame) { g_reset(g); _ := spw_shipped(g); g_begin(g); }
   h := sb_mech_spot(g[..]); #assert dist2(t[0].mech_x, t[0].mech_z, h.x, h.z) < 0.5;
 }
 
+#test "#13578: walking up to the drill mech in its bay to swap the core, the camera never goes top-down" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 7);
+  t := g[0].bt[..]; mx := t[0].mech_x; mz := t[0].mech_z;
+  dx := g[0].at.gar_x - mx; dz := g[0].at.gar_z - mz; l := sqrt(dx * dx + dz * dz); dx /= l; dz /= l;   // from it toward the ring's middle
+  g[0].px = mx + dx * 14; g[0].pz = mz + dz * 14; g[0].yaw = atan2(-dx, -dz); g[0].pitch = 0; g_bot_home(g[..]);
+  for i: 0..<30 { g_step(g[..], 1.0f32 / 60); }
+  steep := 0.0f32; w := CcWatch.{};
+  g[0].fwd = true;
+  for i: 0..<600 {
+    w = cc_watch(g[..], 1, w); steep = hi(steep, g[0].cam[0].rise);
+    if dist2(g[0].px, g[0].pz, mx, mz) < SB_MECH_REACH - 0.5 { break; }
+  }
+  g[0].fwd = false;
+  for i: 0..<60 { w = cc_watch(g[..], 1, w); steep = hi(steep, g[0].cam[0].rise); }   // standing at it, where E swaps the core
+  #assert dist2(g[0].px, g[0].pz, mx, mz) < SB_MECH_REACH && sb_prompt(g[..]).key == "E";
+  // walking on into it (W held, as the playtest did): its body stops her, and the camera still never looks down on her
+  g[0].fwd = true;
+  for i: 0..<120 { w = cc_watch(g[..], 1, w); steep = hi(steep, g[0].cam[0].rise); #assert dist2(g[0].px, g[0].pz, mx, mz) >= SB_MECH_R + T_RADIUS - 0.01; }
+  g[0].fwd = false;
+  #assert steep <= CM_STEEP + 0.05 && !w.in_body && w.near >= CM_MIN - CC_SLACK;
+}
+
 #test "#13552: the wheel zooms the camera in to a stop clear of her head and out to half again, and keeps through a reset" #steps 4000000000 #traversal 2000000000 {
   g := [1] SpGame.[SpGame.{}];
   cc_farm(g[..]); rest := cm_want(g[..]);

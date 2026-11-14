@@ -196,3 +196,54 @@ ak_drive :: (g: [] SpGame, want: f32, dodge: int) {
     if k == 1 { #assert jumped && dodged && !struck && g[0].hearts == hearts; }
   }
 }
+// The boss's fight played out (#13578): she waits at the lab's mouth; when `engage`, while the weak points stand
+// open she runs to the nearest one still awake and presses F, then runs back. She moves at her walking speed
+// (T_WALK), never faster, and steps sideways out of a charge's lane once it locks (it no longer follows her).
+AckFight :: struct { half_t: f32 = -1; down_t: f32 = -1; end_t: f32 = -1; sweeps: int; charges: int; open1: f32; openings: int; hearts: int; won: bool; lost: bool; }
+ack_run :: (g: [] SpGame, x: f32, z: f32, dt: f32) {
+  dx := x - g[0].px; dz := z - g[0].pz; d := sqrt(dx * dx + dz * dz); s := T_WALK * dt;
+  if d <= s { g[0].px = x; g[0].pz = z; } else { g[0].px += dx / d * s; g[0].pz += dz / d * s; }
+}
+ack_fight :: (g: [] SpGame, engage: bool, secs: f32) -> AckFight {
+  r := AckFight.{}; t := g[0].bt[..]; hx := g[0].px; hz := g[0].pz; dt := 0.02f32; clock := 0.0f32;
+  was_hit := false; was_rush := false; was_open := false;
+  for i: 0..<cast(int) (secs / dt) {
+    g_step(g, dt); clock += dt;
+    if g[0].boss_down { r.won = true; r.end_t = clock; break; }
+    if t[0].kind != SBF_BOSS { r.lost = true; r.end_t = clock; break; }
+    if t[0].half && r.half_t < 0 { r.half_t = clock; }
+    if sb_boss(g).vit.down && r.down_t < 0 { r.down_t = clock; }
+    hit := !t[0].half && tg_at(SB_SWEEP, g[0].boss_t - sb_sweep_from()).phase == TG_HIT;
+    if hit && !was_hit { r.sweeps += 1; } was_hit = hit;
+    if t[0].rush > 0 && !was_rush { r.charges += 1; } was_rush = t[0].rush > 0;
+    open := sb_open(g);
+    if open && !was_open { r.openings += 1; } was_open = open;
+    if open && !t[0].half { r.open1 += dt; }
+    if (t[0].rush > 0 || (t[0].wind > 0 && t[0].wind <= SB_CHARGE.lock)) && sb_in_lane(g, g[0].px, g[0].pz, SB_CHARGE_W + T_RADIUS) {
+      side := ifx (g[0].px - t[0].dino_x) * t[0].rush_dz - (g[0].pz - t[0].dino_z) * t[0].rush_dx >= 0 then 10.0f32 else -10.0f32;
+      ack_run(g, g[0].px + t[0].rush_dz * side, g[0].pz - t[0].rush_dx * side, dt);   // out of the locked lane, sideways, the way she leans
+    } else if engage && open {
+      if sb_weak_near(g) >= 0 { _ := g_key(g, 'f', true); }
+      else {
+        best := -1; bd := 1e9f32;
+        for w: 0..<3 { p := sb_weak_at(g, w); d := dist2(g[0].px, g[0].pz, p.x, p.z); if g[0].stun[w] <= 0 && d < bd { bd = d; best = w; } }
+        if best >= 0 { p := sb_weak_at(g, best); ack_run(g, p.x, p.z, dt); }
+      }
+    } else if engage { ack_run(g, hx, hz, dt); }
+  }
+  r.hearts = g[0].hearts;
+  return r;
+}
+#test "#13578: the boss: F never holds an opening longer, and its stuns are guarded" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 10); for i: 0..<3 { g[0].stun[i] = 0; }
+  g_step(g[..], 0.02);
+  t := g[0].bt[..];
+  #assert t[0].kind == SBF_BOSS && sb_boss(g[..]).guard == deed_tick(SB_BOSS_GUARD);
+  // reeling from a stun: F on a weak point takes it, and the opening still ends when the card's stun does
+  t[0].fight[0].sides[1].bots[0].stun_until = t[0].fight[0].now + deed_tick(1.0); t[0].think = 10;
+  until := sb_boss(g[..]).stun_until; w := sb_weak_at(g[..], 0); g[0].px = w.x + 0.3; g[0].pz = w.z + 0.3;
+  #assert sb_open(g[..]) && g_key(g[..], 'f', true) && g[0].stun[0] > 0 && sb_boss(g[..]).stun_until == until;
+  // TODO(#13578): the whole fight played out with ack_fight (it won in about 30 s, two sweeps and a charge, no
+  // heart lost, against about 12 s before) runs out of the dev build's traversal budget; bring it back as a lighter check.
+}

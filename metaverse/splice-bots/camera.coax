@@ -20,7 +20,7 @@ CM_START :: 0.5f32;     // m out from her head the boom is first looked along (h
 CM_SAMPLE :: 0.4f32;    // m between the points the boom is looked at
 CM_RISE_STEP :: 0.2f32;
 CM_RISE_MAX :: 1.55f32; // radians: the steepest the boom swings up to find room, over her head (her back to a tall wall)
-CM_OVER :: 0.75f32;     // radians the boom swings up to see over a big body ahead
+CM_OVER :: 0.45f32;     // radians the boom swings up to see over a big body ahead: to about CM_STEEP, never top-down (#13578)
 CM_RISE_TIME :: 0.3f32; // s: the spring's time for the boom's angle
 CM_OUT_TIME :: 0.45f32; // s: backing out once a wall lets go
 CM_IN_TIME :: 0.12f32;  // s: coming in before a wall

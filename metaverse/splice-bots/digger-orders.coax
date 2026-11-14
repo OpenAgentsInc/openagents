@@ -191,6 +191,7 @@ d_ord_tick :: (g: [] SpGame, dt: f32) {
 // row, 53 she has crossed the row's glass and he follows round it, 54 an Imperial robot comes for her
 // through where he stands, 2.5 m off, as he fights it.
 d_stage :: (g: [] SpGame, n: int) {
+  if n >= 55 && n <= 57 { d_stage_followups(g, n); return; }
   if n < 52 || n > 54 { return; }
   g_stage_set(g, 5); g_foes(g);
   g[0].phase = PH_DAY; g[0].look_free = false; g[0].pitch = 0;
@@ -201,6 +202,21 @@ d_stage :: (g: [] SpGame, n: int) {
     g[0].bot_x = -700; g[0].bot_z = -63; g[0].fx[f] = -700.05; g[0].fz[f] = -65.5; g[0].fhost[f] = true;
     _ := d_command(g, DPoint.{kind = DP_FOE, i = f}); g[0].yaw = PI + 0.75;   // the camera sees them from the side
   }
+}
+// The #13578 stills: 55, the edit bay with his hardware in and no card on the strip; 56, walking up to the
+// drill mech in its bay (W held); 57, the core taken, across the parked train from its door.
+d_stage_followups :: (g: [] SpGame, n: int) {
+  if n == 55 { g_stage_set(g, 7); g[0].strip_n = 0; g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z; g[0].mode = M_BAY; return; }
+  if n == 56 {
+    g_stage_set(g, 7); g_foes(g); t := g[0].bt[..]; mx := t[0].mech_x; mz := t[0].mech_z;
+    dx := g[0].at.gar_x - mx; dz := g[0].at.gar_z - mz; l := sqrt(dx * dx + dz * dz);
+    g[0].px = mx + dx / l * 12; g[0].pz = mz + dz / l * 12; g[0].yaw = atan2(-dx, -dz); g[0].pitch = 0; g_bot_home(g); g[0].fwd = true;
+    return;
+  }
+  g_stage_set(g, 7); g_foes(g); dv_park(g, g[0].at.rover_x, g[0].at.rover_z, g[0].at.rover_yaw); g[0].have[H_CORE] = true;
+  o := sl_seg(g, g[0].ws[0].rover); d := dv_door(g); rx := g[0].at.rover_x; rz := g[0].at.rover_z;
+  sx := d.x - rx; sz := d.z - rz; sl := sqrt(sx * sx + sz * sz);
+  g[0].px = rx - sx / sl * (o.r + 2); g[0].pz = rz - sz / sl * (o.r + 2); g[0].yaw = atan2(-sx, -sz) + PI; g[0].pitch = 0; g_bot_home(g);
 }
 
 // ---- the drill card, in its phases

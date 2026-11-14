@@ -227,7 +227,7 @@ Every camera timing and distance is a constant at the top of `camera.coax`:
 | `CM_EARLY` | 0.6 m | How much wider the step looks, so the boom moves before the eye meets anything |
 | `CM_RISE_MAX` | 1.55 rad | The steepest the boom swings up to find room |
 | `CM_STEEP`, `CM_STEEP_COST` | 0.8 rad, 6 | Past this angle each radian of rise costs 6 more where a lower angle keeps `CM_MIN`, so in a hallway it rises only as far as `CM_MIN` needs; it goes over her head only with her back to a wall |
-| `CM_OVER` | 0.75 rad | How far it swings up to see over a big body ahead |
+| `CM_OVER` | 0.45 rad | How far it swings up to see over a big body ahead: to about `CM_STEEP`, never top-down. Within `G_BIG_NEAR` (3 m) of the body's edge the swing eases back to none, since she is at it (#13578) |
 | `CM_HEAD` | 1.7 m | The boom's pivot, her head, over her feet |
 | `CM_FOV` | 0.82 rad | The field of view on foot |
 | `CM_BOARD_BACK` | 1.5 m | How much further back it sits on the hoverboard |
@@ -418,7 +418,9 @@ Imperial robot come at you through where he stands while he fights it (`d_stage`
   the lab's middle facing east and its tail sweeps half way round over the lab's north half, where its
   flank's weak point is. Below half health, phase two: it turns on the mech, winds up, charges and
   is dazed after. Its three weak points (orange) open while it reels from a stunning hit, is dazed, or has no
-  health left; stun all three with F (each stays down 12 s) and it powers down, drops its banned core,
+  health left. After a stun it shakes off the next one for `SB_BOSS_GUARD` (4 s, the engine's `BbBot.guard`),
+  so each opening is one card's stun and it sweeps and charges between them; F at a weak point does not hold
+  the opening longer, so the fight runs through both phases, its sweeps and its charges (#13578); stun all three with F (each stays down 12 s) and it powers down, drops its banned core,
   and night falls. You lose if your health or the mech's runs out: back at the checkpoint, the boss
   whole again and the mech repaired at the hallway.
 - **The boss lab.** Past the hallway, a round white old-world lab (`ga_draw_lab`, garage.coax):
@@ -585,7 +587,7 @@ collider, its door into the cabin, the cabin's door out, the edit bay, its charg
 the compass's ROVER all follow it, and the rover at the farm's charger is gone from there. Its
 collider, on the drive and parked, is the rover train's own footprint (the `pieces` row, about 18 m
 from the cab's nose to the last car's ramp, 2.85 m to its roofs), the same as at the farm: she,
-Digger and the camera stop at every car, the back ones too (#13552). The `Rover` landmark, where the
+Digger and the camera stop at every car, the back ones too (#13552). From its far side the compass's ROVER leads round the train's nearer free end to its door, not through it (`dv_way_to_door`, on the engine's `metaverse_route_seen`; the distance is the walk's, #13578). The `Rover` landmark, where the
 drive parks it, stands clear of the mine mouth's lane and walls for a train that long. It parks in the garage yard, open sky from the mine mouth's face out to the desert between the
 ends of the mouth's walls (`GA_YARD_X`, `GA_YARD_IN`, garage.coax): the outer shell's slope is cut
 round it, drawn and solid alike (`ga_shell_y`, `pl_push`), with printed cut faces toward the yard, and

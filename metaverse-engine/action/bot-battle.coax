@@ -45,6 +45,8 @@ BbBot :: struct {
   cards: [BB_CARDS] BbCard; card_n: int;
   bar: [1] DeedBar;         // its moves' slots: asked, answered, cooling, greyed
   stun_until: int;        // the tick its stun ends
+  guard: int;             // ticks after a stun in which no card stuns it again: it shakes the stun off (0, the default: none)
+  guard_until: int;       // the tick its guard ends
 }
 BbSide :: struct { bots: [BB_CREW] BbBot; n: int; active: int; swap_until: int; }
 // What a press did: the verdict, the card, the damage dealt, and whether the foe went down.
@@ -75,7 +77,7 @@ bb_give :: (b: [] BbBot, c: BbCard) -> bool {
 // Takes every card away (a re-splice gives them again).
 bb_clear :: (b: [] BbBot) { b[0].card_n = 0; b[0].bar[0] = DeedBar.{}; }
 // Back to full health and a full battery, standing (a charger's repair).
-bb_repair :: (b: [] BbBot) { b[0].vit = vitals_make(b[0].vit.most); b[0].charge = b[0].charge_max; b[0].stun_until = 0; b[0].bar[0] = DeedBar.{}; }
+bb_repair :: (b: [] BbBot) { b[0].vit = vitals_make(b[0].vit.most); b[0].charge = b[0].charge_max; b[0].stun_until = 0; b[0].guard_until = 0; b[0].bar[0] = DeedBar.{}; }
 // Takes health: true when this took it to zero and the bot powered down.
 bb_hurt :: (b: [] BbBot, damage: int) -> bool {
   if b[0].vit.down || damage <= 0 { return false; }
@@ -153,7 +155,10 @@ bb_use :: (b: [] BbBattle, side: int, slot: int, dist: f32) -> BbHit {
   fa := b[0].sides[1 - side].active; foe := b[0].sides[1 - side].bots[fa..<fa + 1];
   hit.damage = ifx foe[0].vit.down then 0 else bb_lo(c.power, bb_hp(foe[0]));
   hit.downed = bb_hurt(foe, c.power);
-  if !hit.downed && c.stun > 0 { foe[0].stun_until = bb_hi(foe[0].stun_until, b[0].now + c.stun); }
+  if !hit.downed && c.stun > 0 && b[0].now >= foe[0].guard_until {
+    foe[0].stun_until = bb_hi(foe[0].stun_until, b[0].now + c.stun);
+    if foe[0].guard > 0 { foe[0].guard_until = foe[0].stun_until + foe[0].guard; }   // a guarded bot's stun neither stacks nor comes straight back
+  }
   b[0].last = hit; b[0].moves += 1;
   bb_judge(b);
   return hit;
@@ -291,6 +296,19 @@ bb_test_bot :: (id: int) -> BbBot {
   #assert !bb_hurt(bot[..], 3) && bot[0].charge == 0;
   bb_repair(bot[..]);
   #assert !bot[0].vit.down && bot[0].vit.hp == 10 && bot[0].charge == 100;
+}
+#test "bot battle: a guarded bot's stun neither stacks nor lands again until its guard has passed" {
+  b := [1] BbBattle.[BbBattle.{}];
+  mine := [1] BbBot.[bb_test_bot(1)]; theirs := [1] BbBot.[bb_test_bot(2)];
+  theirs[0].guard = deed_tick(2.0); theirs[0].vit = vitals_make(40.0);   // health for three big moves
+  bb_begin(b[..], mine[..], theirs[..]);
+  #assert bb_use(b[..], 0, 1, 2).verdict == BbVerdict.ok;     // stuns for a second
+  until := bb_active(b[0], 1).stun_until;
+  #assert until == b[0].now + deed_tick(1.0) && bb_active(b[0], 1).guard_until == until + deed_tick(2.0);
+  bb_step(b[..], 2.1);                                          // stun over, guard still up: the next stun is shaken off
+  #assert bb_use(b[..], 0, 1, 2).verdict == BbVerdict.ok && bb_active(b[0], 1).stun_until == until;
+  bb_step(b[..], 2.1);                                          // guard passed: it stuns again
+  #assert bb_use(b[..], 0, 1, 2).verdict == BbVerdict.ok && bb_active(b[0], 1).stun_until > b[0].now;
 }
 #test "bot battle: a core swap fields another bot, takes a moment, and never fields a downed one" {
   b := [1] BbBattle.[BbBattle.{}];

@@ -456,6 +456,27 @@ dv_round_free :: (g: [] SpGame, e: int) -> bool {
   }
   return true;
 }
+// The way on foot from (x, z) to the parked Sniper's door (#13578): straight while the train does not stand
+// between, else round one of its ends, over the engine's route graph (metaverse_route_seen): a node past each
+// end on either side (dv_round_at), linked round each end and along each side. An end with something standing
+// past it (dv_round_free) is left out. The compass leads along it, so it never points through the train.
+dv_way_to_door :: (g: [] SpGame, x: f32, z: f32) -> RouteSeen {
+  d := dv_door(g); o := dv_seg(g, g[0].at.rover_x, g[0].at.rover_z, g[0].at.rover_yaw); r := o.r + T_RADIUS * 0.5;
+  if dv_sees(o, r, x, z, d.x, d.z) { return RouteSeen.{x = d.x, z = d.z, way = dist2(x, z, d.x, d.z), ok = true}; }
+  n: [8] f32; fs: [4] bool; ts: [4] bool;
+  for e: 0..<2 {
+    free := dv_round_free(g, e);
+    for k: 0..<2 {
+      i := e * 2 + k; p := dv_round_at(g, e, ifx k == 0 then 1.0f32 else -1.0f32); n[i * 2] = p.x; n[i * 2 + 1] = p.z;
+      fs[i] = free && dv_sees(o, r, x, z, p.x, p.z); ts[i] = free && dv_sees(o, r, p.x, p.z, d.x, d.z);
+    }
+  }
+  l := [8] int.[0, 1, 2, 3, 0, 2, 1, 3];   // round each end, then along the door's side and the far side
+  w := metaverse_route_seen(n[..], l[..], v3(x, 0, z), v3(d.x, 0, d.z), fs[..], ts[..]);
+  return ifx w.ok then w else RouteSeen.{x = d.x, z = d.z, way = dist2(x, z, d.x, d.z), ok = true};
+}
+// Whether the straight line a-b passes clear of the train's footprint o, r from its middle line.
+dv_sees :: (o: SlSeg, r: f32, ax: f32, az: f32, bx: f32, bz: f32) -> bool { return sl_seg_seg(SlSeg.{ax = ax, az = az, bx = bx, bz = bz}, o) > r; }
 // E on the drive: Sniper parks where it stands and she steps out at its left, clear of it.
 dv_arrive :: (g: [] SpGame) {
   d := g[0].dv[..];
@@ -724,4 +745,27 @@ dv_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   r := dv_room(g[..]); g[0].px = r.door_x; g[0].pz = r.door_z;
   #assert g_key(g[..], 'e', true) && !sp_in_room(g[..]) && near_rover(g[..], T_USE_RANGE);
   #assert sl_seg_seg(SlSeg.{ax = g[0].px, az = g[0].pz, bx = g[0].px, bz = g[0].pz}, o) > o.r + T_RADIUS - 0.01;   // she steps out clear of it
+}
+#test "#13578: on the far side of the parked train the compass leads round its end to the door, never through it" #steps 400000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 50); g[0].fwd = false; _ = g_key(g[..], 'w', false);
+  #assert dv_away(g[..]) && g[0].ws[0].rover >= 0;
+  g[0].have[H_CORE] = true;   // the core taken: ROVER is the objective
+  o := sl_seg(g[..], g[0].ws[0].rover); d := dv_door(g[..]); rx := g[0].at.rover_x; rz := g[0].at.rover_z;
+  sx := d.x - rx; sz := d.z - rz; sl := sqrt(sx * sx + sz * sz);
+  g[0].px = rx - sx / sl * (o.r + 2); g[0].pz = rz - sz / sl * (o.r + 2); g_bot_home(g[..]);   // across the train from its door, at its middle
+  gl := hv_goal(g[..]);
+  #assert gl.ok && gl.rover && dist2(gl.x, gl.z, d.x, d.z) > 3 && gl.way > dist2(g[0].px, g[0].pz, d.x, d.z) + 2;   // a point round an end, and the walk's length
+  k := [1] SpKeys.[SpKeys.{}]; reached := false;
+  for i: 0..<1200 {
+    gl = hv_goal(g[..]);
+    #assert sl_seg_seg(SlSeg.{ax = g[0].px, az = g[0].pz, bx = gl.x, bz = gl.z}, o) > o.r;   // where it points is open ground
+    _ := sp_keys_toward(g[..], k[..], gl.x, gl.z, 0.05);
+    #assert sl_seg_seg(SlSeg.{ax = g[0].px, az = g[0].pz, bx = g[0].px, bz = g[0].pz}, o) > o.r + T_RADIUS - 0.05;
+    if dist2(g[0].px, g[0].pz, d.x, d.z) < 1 { reached = true; break; }
+  }
+  sp_keys_free(g[..]);
+  #assert reached && near_rover(g[..], T_USE_RANGE);
+  // on the door's side it points straight at the door
+  gl = hv_goal(g[..]); #assert gl.x == d.x && gl.z == d.z;
 }

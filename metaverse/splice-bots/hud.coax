@@ -92,7 +92,7 @@ hv_band :: (heat: f32) -> string { return ifx heat >= 66 then "WANTED" else ifx 
 hv_battery :: (g: [] SpGame) -> int { return cast(int) floor(vitals_share(g[0].dr[0].hp) * 100 + 0.5); }
 
 // Where the objective is: its name on the compass and its place, or none.
-HvGoal :: struct { name: string; x: f32; z: f32; ok: bool; rover: bool; }
+HvGoal :: struct { name: string; x: f32; z: f32; ok: bool; rover: bool; way: f32 = -1; }   // way: the walk's length when it is not straight
 hv_goal :: (g: [] SpGame) -> HvGoal {
   a := g[0].at;
   if g[0].zone == Z_VILLAGE { return HvGoal.{name = "SCANNER GATE", x = a.vil_x, z = a.scan_z, ok = true}; }
@@ -105,6 +105,7 @@ hv_goal :: (g: [] SpGame) -> HvGoal {
   if sp_in_room(g) { return hv_room_goal(g); }   // inside Sniper the compass never points at Sniper
   sn := dv_sniper(g);
   rover := HvGoal.{name = "ROVER", x = sn.x, z = sn.z, ok = true, rover = true};
+  if dv_away(g) { w := dv_way_to_door(g, g[0].px, g[0].pz); rover.x = w.x; rover.z = w.z; rover.way = w.way; }   // parked: along the walk to its door, round the train (#13578)
   if g[0].have[H_CORE] { return rover; }
   if g[0].boss_down { c := sb_core_at(g); return HvGoal.{name = "BANNED CORE", x = c.x, z = c.z, ok = true}; }
   if g[0].wall_gone { return HvGoal.{name = "WEAK POINTS", x = a.boss_x, z = a.boss_z, ok = true}; }
@@ -189,7 +190,7 @@ hv_compass :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   n = ui_seg(out, n, dx + s, cy, dx, cy + s, s * 0.45, HV_ORANGE(), 1); n = ui_seg(out, n, dx, cy + s, dx - s, cy, s * 0.45, HV_ORANGE(), 1);
   // the pill: ◆ NAME · DISTANCE
   buf: [32] u8; line: [96] u8;
-  ln := tput(line[..], 0, gl.name); ln = tput(line[..], ln, " · "); ln = tput(line[..], ln, hv_far(buf[..], dist2(g[0].px, g[0].pz, gl.x, gl.z)));
+  ln := tput(line[..], 0, gl.name); ln = tput(line[..], ln, " · "); ln = tput(line[..], ln, hv_far(buf[..], ifx gl.way >= 0 then gl.way else dist2(g[0].px, g[0].pz, gl.x, gl.z)));
   t := cast(string) line[0..<ln]; cap := 7.5 * k; tw := ui_w(F_MONO, t, cap); pw := tw + 40 * k; py := y0 + bh + 7 * k;
   n = hv_rect(out, n, cx - pw * 0.5, py, cx + pw * 0.5, py + 21 * k, HV_CREAM(), 0.95);
   d := 3.5 * k; mx := cx - pw * 0.5 + 13 * k; my := py + 10.5 * k;
@@ -506,10 +507,10 @@ hv_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
     n = hv_mid(out, n, F_MONO, "Nothing carried. Digger picks up parts.", (gx + dx1) * 0.5, dy0 + 44 * k, 7 * k, dim, 1);
   }
   // middle: the stage, Digger live on it
-  built := g[0].slot[0] && g[0].slot[1] && g[0].slot[2];
   n = hv_text(out, n, F_MONO, "PLAY TEST", sx0, 141 * k, 6.5 * k, dim, 1);
   n = hv_frame(out, n, sx0, sy0, sx1, sy1, 1.2 * k, line, 1);
-  n = hv_text(out, n, F_MONO, ifx d_down(g) then "DIGGER · POWERED DOWN" else ifx built then "DIGGER · READY" else "DIGGER · NEEDS HARDWARE", sx0 + 14 * k, sy0 + 22 * k, 6.5 * k, ifx built && !d_down(g) then HV_DARK() else kit_tint(0.72, 0.33, 0.12), 1);   // on the stage's paper
+  state := hv_bay_state(g);
+  n = hv_text(out, n, F_MONO, state, sx0 + 14 * k, sy0 + 22 * k, 6.5 * k, ifx state == "DIGGER · READY" then HV_DARK() else kit_tint(0.72, 0.33, 0.12), 1);   // on the stage's paper
   if fract(g[0].t) < 0.6 { n = ui_seg(out, n, sx1 - 40 * k, sy0 + 19 * k, sx1 - 40 * k, sy0 + 19 * k, 3.5 * k, orange, 1); }
   n = hv_text(out, n, F_MONO, "REC", sx1 - 32 * k, sy0 + 22 * k, 6.5 * k, HV_DARK(), 1);
   px1 := sx1 - 14 * k; px0 := px1 - 140 * k; py1 := sy1 - 14 * k; py0 := py1 - 42 * k;
@@ -697,9 +698,26 @@ hv_death :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   return hv_mid(out, n, F_MONO, HV_DEATH_TIP, cx, by + bh + 44 * k, 6 * k, HV_DIM(), 1);
 }
 
+// The stage's line over Digger: READY only once he has his hardware and a card on his strip to run
+// (#13578: with the strip empty, PLAY TEST has him do nothing, so it says what is missing).
+hv_bay_state :: (g: [] SpGame) -> string {
+  if d_down(g) { return "DIGGER · POWERED DOWN"; }
+  if !(g[0].slot[0] && g[0].slot[1] && g[0].slot[2]) { return "DIGGER · NEEDS HARDWARE"; }
+  return ifx g[0].strip_n == 0 then "DIGGER · NEEDS CARDS" else "DIGGER · READY";
+}
+
 #test "each inventory item names the slot it goes into, as the bay's slots are named (playtest 2)" {
   #assert hv_kind_slot(H_TREADS) == "BODY" && hv_kind_slot(H_ARM) == "ACTUATOR" && hv_kind_slot(H_BATTERY) == "BATTERY" && hv_kind_slot(DK_CELL) == "BATTERY";
   #assert hv_kind_slot(H_MOVE) == "CARD" && hv_kind_slot(H_DRILL) == "CARD" && hv_kind_slot(H_PLUS) == "CARD" && hv_kind_slot(H_CORE) == "CHIP" && hv_kind_slot(DK_SCRAP) == "";
   labels := [5] string.["BODY", "SENSOR", "ACTUATOR", "CHIP", "BATTERY"];
   for kind: [5] int.[H_TREADS, H_ARM, H_BATTERY, H_CORE, DK_CELL] { t := hv_kind_slot(kind); seen := false; for l: labels { if l == t { seen = true; } } #assert seen; }
+}
+#test "#13578: the bay says READY only with the hardware in and a card on the strip" {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 7);
+  g[0].slot[0] = false; #assert hv_bay_state(g[..]) == "DIGGER · NEEDS HARDWARE";
+  g[0].slot[0] = true; g[0].slot[1] = true; g[0].slot[2] = true; g[0].strip_n = 0;
+  #assert hv_bay_state(g[..]) == "DIGGER · NEEDS CARDS";
+  g[0].strip[0] = H_MOVE; g[0].strip_n = 1;
+  #assert hv_bay_state(g[..]) == "DIGGER · READY";
 }
