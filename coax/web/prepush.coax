@@ -11,6 +11,7 @@
 //   3. checks           tools-check, everglade-parity, wire-check and layer-check (--base the push's
 //                       merge base), agent-reference --check, wgsl (the committed .wgsl and their
 //                       copies are what their Coax writes) when the push changes Coax or a shader,
+//                       changelog-page --check when it changes coax/CHANGELOG.md or the page,
 //                       and `coax test` of the suites the push changed (and, for #authority ones,
 //                       `coax mutate --changed` the merge base: the mutants of the procedures the push changed), on a build host
 //                       when one has a free slot; all of it under OA_PREPUSH_SECONDS (default 120):
@@ -43,7 +44,7 @@ PP_PATHS :: 65536;         // files one commit changes
 PP_WINDOW_S :: 86400;      // how far back a change counts as newer work: 24 hours
 PP_SHOW :: 12;             // findings printed per commit
 PP_PUSH :: 512;            // commits judged per push
-PP_JOBS :: 11;
+PP_JOBS :: 12;
 PP_HOW :: "docs/metaverse/green-main-pipeline.md, \"The pre-push check\"";
 PP_REFUSE :: 3;
 PP_ZERO :: "0000000000000000000000000000000000000000";
@@ -524,8 +525,20 @@ pp_only_docs :: (changed: string) -> bool {
     if p.count == 0 { continue; }
     md := p.count >= 3 && cast(string) p[p.count - 3..<p.count] == ".md";
     if !md && !pp_starts(p, "docs/") { return false; }
+    if p == "coax/CHANGELOG.md" { return false; }   // the changelog page is generated from it
   }
   return true;
+}
+
+// Whether the push changes what the changelog page is written from (coax/web/changelog-page.coax):
+// coax/CHANGELOG.md went in without the page three times on 2026-11-14 (#13592).
+pp_changelog :: (changed: string) -> bool {
+  return pp_has(changed, "coax/CHANGELOG.md") || pp_has(changed, "coax/web/changelog-page.coax") || pp_has(changed, "changelog-content.coax") || pp_has(changed, "apps/openagents-web/coax/changelog/");
+}
+#test "the changelog page check runs for a push that changes the changelog or its page, and for no other" {
+  #assert pp_changelog("coax/CHANGELOG.md\n") && pp_changelog("apps/openagents-web/changelog-content.coax\n");
+  #assert !pp_changelog("docs/a.md\ncoax/web/host.js\n") && !pp_changelog("");
+  #assert !pp_only_docs("coax/CHANGELOG.md\n") && pp_only_docs("docs/a.md\nREADME.md\n");
 }
 
 // Whether the push changes the page driver (coax drive, its browser side or the browser protocol under it).
@@ -586,6 +599,8 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   // the committed .wgsl and their copies are what their Coax writes (coax/web/wgsl-module.coax, #12702):
   // newland.wgsl's copy for the Pylon guide went stale twice with no check before a push (1eafdd7fea)
   wg := [4] string.["coax/web/tool.sh", "coax/web/wgsl-module.coax", "--site", "--check"];
+  // the changelog page is what coax/CHANGELOG.md writes (#13592); --write regenerates it
+  cl := [3] string.["coax/web/tool.sh", "coax/web/changelog-page.coax", "--check"];
   tests := true;
   hb: [64] u8;
   if proc_getenv("OA_PREPUSH_TESTS", hb[..]) == "0" { tests = false; print("prepush: OA_PREPUSH_TESTS=0: no coax test\n"); }
@@ -608,6 +623,7 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   if some_compiler { ok = pp_start(jobs[8..<9], "agent-reference", ar[..], none) && ok; }
   if has_compiler && pp_drives(changed) { ok = pp_start(jobs[9..<10], "drive-hit-check", dh[..], none) && ok; }
   if some_compiler && pp_shaders(changed) { ok = pp_start(jobs[10..<11], "wgsl", wg[..], none) && ok; }
+  if some_compiler && pp_changelog(changed) { ok = pp_start(jobs[11..<12], "changelog-page", cl[..], none) && ok; }
   tests = (run & PP_RUN_SUITES) != 0;
   if tests {
     ok = pp_start(jobs[4..<5], "suites --list", sl[..], none) && ok;
