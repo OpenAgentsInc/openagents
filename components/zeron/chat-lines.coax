@@ -59,11 +59,11 @@ CHL_T_DETAIL :: 3;       // at most 200 characters, cleaned
 // How many cells a line of this kind has as the API writes it today, its letter among them.
 // 0 for a letter that is no kind.
 chl_cells :: (kind: u8) -> int {
-  if kind == CHL_Z { return 9; }
-  if kind == CHL_C { return 8; }
-  if kind == CHL_S { return 5; }
-  if kind == CHL_U { return 11; }
-  if kind == CHL_T { return 4; }
+  if kind == CHL_Z { return 9; } // not a size: protocol cell count.
+  if kind == CHL_C { return 8; } // not a size: protocol cell count.
+  if kind == CHL_S { return 5; } // not a size: protocol cell count.
+  if kind == CHL_U { return 11; } // not a size: protocol cell count.
+  if kind == CHL_T { return 4; } // not a size: protocol cell count.
   return 0;
 }
 
