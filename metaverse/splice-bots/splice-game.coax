@@ -207,6 +207,7 @@ g_layout :: (g: [] SpGame) {
   g_wall(g, g[0].at.crate_x - 0.9, g[0].at.crate_x + 0.9, g[0].at.crate_z - 0.7, g[0].at.crate_z + 0.7, 0); // the stash crate
   g_wall(g, g[0].at.deck_x - 0.12, g[0].at.deck_x + 0.12, g[0].at.deck_z0 + RAMP, g[0].at.deck_z1 - RAMP, 0);   // the catwalk's rail, between its two ramps
   g_wall(g, -60, 60, 20, 24, 0); g_wall(g, -64, -44, -40, 24, 0); g_wall(g, 44, 64, -40, 24, 0);   // the edge of the map outside the mouth
+  dv_room_walls(g);   // the rover's cabin, closed all round (drive.coax)
   sl_build(g);   // the walls become colliders in the World (layer.coax), with the layer's placed pieces
 }
 pick_x :: (g: [] SpGame, i: int) -> f32 { return g[0].at.pick_x[i]; }
@@ -979,6 +980,7 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
   kit_mesas(buf, p, 60, t3(0.86, 0.50, 0.40), 5, 90, 270, 30, 12, 26);
   kit_dunes(buf, p, 62, t3(0.93, 0.74, 0.50), 10, 110, 16, 0, 240, 4, 9);
+  dv_room_draw(g, buf, p);   // the rover's cabin: floor, walls and ceiling (drive.coax)
   if g[0].at.bat_rail {   // the sensor's marker by the rail line, where the old opening's Battery lies
     kit_rocks(buf, p, 63, t3(0.66, 0.36, 0.28), 20, 120, pick_x(g, H_BATTERY), pick_z(g, H_BATTERY), 3, 14, 0.3, 1.2);
     kit_pen(p, 64, MAT_SKIN, t3(0.93, 0.88, 0.76));
@@ -1041,6 +1043,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     return;
   }
   if g[0].mode == M_DRIVE { dv_draw(g, buf, p); sb_draw_rm(g, buf, p); return; }   // and the raider mech's chase (splice-battle.coax)
+  if g[0].zone == Z_MINE && sp_in_room(g) { dv_room_live(g, buf, p); }   // the painted desert in the cabin's windows (drive.coax)
   if g[0].zone == Z_RAIL {
     c := rail_at(g, g[0].rail_s);
     rk := g_thing(g, p, TK_ROVER, 0, frame_at(v3(c.x, 0.2, c.z), rail_yaw(g, g[0].rail_s)), 1.5, g[0].rail_s);
@@ -1222,11 +1225,14 @@ g_camera :: (g: [] SpGame) -> CamNow {
   head := v3(g[0].px, y + 1.7, g[0].pz);
   back := v3(-sin(g[0].yaw), 0, -cos(g[0].yaw));
   reach := (ifx g[0].zone == Z_VILLAGE then 4.0f32 else 6.5f32) + (ifx riding then board_back(bd) else 0.0f32);   // pulled back at speed
+  room := g[0].zone == Z_MINE && sp_in_room(g);
+  if room { reach = lo(reach, DV_ROOM_REACH); }   // in the rover's cabin: in close, under its ceiling (drive.coax)
   for i: 1..<14 { d := cast(f32) i * 0.5; if d > reach { break; } if g_inside(g, head.x + back.x * d, head.z + back.z * d) || g_big_at(g, head.x + back.x * d, head.z + back.z * d, 0.8) { reach = hi(0.8, d - 0.6); break; } }
   lift := ifx g[0].zone == Z_VILLAGE then 0.18f32 else 0.33f32;
   // a big body ahead (the drill mech, the boss): the view rises to see over it (#13505 playtest)
   over := g_big_ahead(g, head.x, head.z, -back.x, -back.z);
   eye := v3(head.x + back.x * reach, y + 1.9 + reach * (lift + g[0].pitch * 0.6) + over * 4.5, head.z + back.z * reach);
+  if room { eye.y = clamp(eye.y, 0.6, DV_ROOM_H - 0.45); }
   if riding {
     // the sense of speed: a wider view and a shake, from the engine's board
     k := board_shake(bd, t); eye = v3(eye.x + k[0], eye.y + k[1], eye.z + k[2]);
@@ -2260,6 +2266,28 @@ FlowTest :: struct { o: [5] [CT_BODY] u8; }
   out: [60000] f32; u: [UNIFORM_FLOATS] f32;
   n := d_map(g[..], out[..], u[..], Ui.{w = 1440, h = 900, k = 1}, 0);
   #assert n > 24 * 2 * 6;
+}
+#test "Sniper's cabin is a closed level: she walks into its walls on every side and stays in, the camera stays under its ceiling, and only E at its door takes her out beside Sniper (playtest 2)" #steps 400000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); #assert spw_shipped(g[..]) == SPW_SHIPPED_N;
+  g_begin(g[..]); fr_start(g[..]);
+  tr := g_shipped_at(g[..], 123); g[0].px = tr.x + 2.2; g[0].pz = tr.z;
+  #assert g_key(g[..], 'e', true) && sp_in_room(g[..]);
+  r := dv_room(g[..]);
+  #assert r.ok && r.door && r.x1 - r.x0 >= 11 && r.z1 - r.z0 >= 8.5;   // roomier than before: 12 m by 9 m
+  // eight ways from the middle, a long walk each: she never leaves the cabin
+  for k: 0..<8 {
+    g[0].px = (r.x0 + r.x1) * 0.5; g[0].pz = (r.z0 + r.z1) * 0.5 + 1; g[0].yaw = cast(f32) k * TAU / 8; g[0].pitch = 0;
+    _ = g_key(g[..], 'w', true);
+    for i: 0..<300 { g_step(g[..], 0.02); }
+    _ = g_key(g[..], 'w', false);
+    #assert sp_in_room(g[..]) && g[0].px > r.x0 && g[0].px < r.x1 && g[0].pz > r.z0 && g[0].pz < r.z1;
+    c := g_camera(g[..]);
+    #assert c.eye.x > r.x0 && c.eye.x < r.x1 && c.eye.z > r.z0 && c.eye.z < r.z1 && c.eye.y < DV_ROOM_H && c.eye.y > 0;
+  }
+  // E at the door: outside by the rover train
+  g[0].px = r.door_x; g[0].pz = r.door_z + 0.3; g[0].dr[0].map = false;
+  #assert g_key(g[..], 'e', true) && !sp_in_room(g[..]) && dist2(g[0].px, g[0].pz, tr.x, tr.z) < 10;
 }
 sp_map_up :: (g: [] SpGame) -> bool { g[0].dr[0].map = true; g[0].look_free = false; return g[0].dr[0].map; }
 #test "the deep-garage map closes with M, Esc, E, a click, or Esc freeing the pointer, and says so on it (playtest 2)" #steps 200000000 {

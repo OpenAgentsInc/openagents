@@ -586,7 +586,8 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   }
   // the bounds: every wall but the map's edge
   lx := 1e9f32; hx := -1e9f32; lz := 1e9f32; hz := -1e9f32;
-  for i: 0..<g[0].wall_n { o := i * 5; if g[0].walls[o + 4] <= 0 && (g[0].walls[o + 1] - g[0].walls[o] > 30 || g[0].walls[o + 3] - g[0].walls[o + 2] > 30) { continue; } lx = lo(lx, g[0].walls[o]); hx = hi(hx, g[0].walls[o + 1]); lz = lo(lz, g[0].walls[o + 2]); hz = hi(hz, g[0].walls[o + 3]); }
+  room := dv_room(g);   // the rover's cabin is not on the map
+  for i: 0..<g[0].wall_n { o := i * 5; if g[0].walls[o + 4] <= 0 && (g[0].walls[o + 1] - g[0].walls[o] > 30 || g[0].walls[o + 3] - g[0].walls[o + 2] > 30) { continue; } if dv_room_has(room, g[0].walls[o], g[0].walls[o + 2]) { continue; } lx = lo(lx, g[0].walls[o]); hx = hi(hx, g[0].walls[o + 1]); lz = lo(lz, g[0].walls[o + 2]); hz = hi(hz, g[0].walls[o + 3]); }
   // and the garage's ring (garage.coax), whose walls are its own colliders
   gx := g[0].at.gar_x; gz := g[0].at.gar_z; rb := ga_back(g); rf := g[0].at.gar_r;
   lx = lo(lx, gx - rb); hx = hi(hx, gx + rb); lz = lo(lz, gz - rb); hz = hi(hz, gz + rb);

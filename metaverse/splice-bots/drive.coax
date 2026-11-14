@@ -44,6 +44,117 @@ sp_in_room :: (g: [] SpGame) -> bool {
   }
   return false;
 }
+// The rover's room is a level of its own (playtest 2): a closed cabin round that area, half a metre in
+// from its edges: a floor, four solid walls with no gap and a ceiling, so nothing of the world outside
+// shows and no one walks out. Its windows (placed Window wall pieces) show a painted desert on the
+// wall behind them. E at its door (the leave portal) goes back out beside Sniper.
+DV_ROOM_IN :: 0.5f32;             // m: the cabin's inside, in from the area's edges
+DV_ROOM_H :: 4.2f32;              // m: its ceiling
+DV_ROOM_T :: 0.3f32;              // m: its walls' thickness
+DV_ROOM_REACH :: 3.6f32;          // m: the camera stays this near her inside, under the ceiling
+DV_WINDOW_KIND :: 127;            // the Window wall piece: a painted desert behind each one in the cabin
+SpRoom :: struct { ok: bool; x0: f32; x1: f32; z0: f32; z1: f32; door_x: f32; door_z: f32; door: bool; }
+// The cabin: the inside of the area that holds a vehicle door's TO, and the leave portal's point in it.
+dv_room :: (g: [] SpGame) -> SpRoom {
+  c := g[0].c[..]; r := SpRoom.{};
+  for k: 0..<c[0].portal_n {
+    p := c[0].portals[k];
+    if !p.ok || p.kind == 0 || p.ride { continue; }
+    tx := sc_m(p.to_x); tz := sc_m(p.to_z);
+    for a: 0..<c[0].area_n {
+      m := c[0].areas[a];
+      if m.r > 0 || !sc_area_holds(c, a, tx, tz) { continue; }
+      r = SpRoom.{ok = true, x0 = m.x - m.hx + DV_ROOM_IN, x1 = m.x + m.hx - DV_ROOM_IN, z0 = m.z - m.hz + DV_ROOM_IN, z1 = m.z + m.hz - DV_ROOM_IN};
+      for j: 0..<c[0].portal_n {
+        q := c[0].portals[j];
+        if !q.ok || q.kind != 0 || q.ride { continue; }
+        if sc_area_holds(c, a, sc_m(q.x), sc_m(q.z)) { r.door = true; r.door_x = sc_m(q.x); r.door_z = sc_m(q.z); }
+      }
+      return r;
+    }
+  }
+  return r;
+}
+dv_room_has :: (r: SpRoom, x: f32, z: f32) -> bool { return r.ok && x > r.x0 - DV_ROOM_T - 0.01 && x < r.x1 + DV_ROOM_T + 0.01 && z > r.z0 - DV_ROOM_T - 0.01 && z < r.z1 + DV_ROOM_T + 0.01; }
+// The cabin's walls as colliders (g_layout): drawn apart (height 0), corners closed.
+dv_room_walls :: (g: [] SpGame) {
+  r := dv_room(g); t := DV_ROOM_T;
+  if !r.ok { return; }
+  g_wall(g, r.x0 - t, r.x1 + t, r.z0 - t, r.z0, 0); g_wall(g, r.x0 - t, r.x1 + t, r.z1, r.z1 + t, 0);
+  g_wall(g, r.x0 - t, r.x0, r.z0, r.z1, 0); g_wall(g, r.x1, r.x1 + t, r.z0, r.z1, 0);
+}
+// The cabin drawn into the world (g_world): its floor, walls, ceiling, the ribs of the hull, the lights
+// and the door.
+dv_room_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  r := dv_room(g); t := DV_ROOM_T; H := DV_ROOM_H;
+  if !r.ok { return; }
+  cx := (r.x0 + r.x1) * 0.5; cz := (r.z0 + r.z1) * 0.5; hx := (r.x1 - r.x0) * 0.5; hz := (r.z1 - r.z0) * 0.5;
+  // the floor: deck plates under everything, so there is no void below
+  kit_pen(p, 81, MAT_WORLD, t3(0.42, 0.38, 0.40));
+  block(buf, p, cx, -0.3, cz, hx + t, 0.3, hz + t);
+  kit_pen(p, 82, MAT_FLAT, t3(0.34, 0.30, 0.33));
+  for i: 1..<cast(int) (hx * 2) { block(buf, p, r.x0 + cast(f32) i, 0, cz, 0.012, 0.006, hz); }
+  // the walls, closed all round, and the ceiling
+  wall := t3(0.88, 0.82, 0.72);
+  kit_pen(p, 83, MAT_WORLD, wall);
+  block(buf, p, cx, 0, r.z0 - t * 0.5, hx + t, H, t * 0.5); block(buf, p, cx, 0, r.z1 + t * 0.5, hx + t, H, t * 0.5);
+  block(buf, p, r.x0 - t * 0.5, 0, cz, t * 0.5, H, hz); block(buf, p, r.x1 + t * 0.5, 0, cz, t * 0.5, H, hz);
+  kit_pen(p, 84, MAT_FLAT, t3(0.80, 0.75, 0.68));
+  block(buf, p, cx, H, cz, hx + t, 0.2, hz + t);
+  // the hull's ribs across the ceiling and down the walls, and a dark baseboard
+  kit_pen(p, 85, MAT_SKIN, t3(0.70, 0.62, 0.54));
+  n := cast(int) (hx / 1.5);
+  for i: 0..<n + 1 {
+    x := r.x0 + 0.1 + (r.x1 - r.x0 - 0.2) * cast(f32) i / cast(f32) hi_int(n, 1);
+    block(buf, p, x, H - 0.25, cz, 0.08, 0.25, hz);
+    block(buf, p, x, 2.75, r.z0 + 0.06, 0.08, H - 2.75, 0.06); block(buf, p, x, 2.75, r.z1 - 0.06, 0.08, H - 2.75, 0.06);
+  }
+  kit_pen(p, 86, MAT_CLOTH, t3(0.20, 0.17, 0.20));
+  block(buf, p, cx, 0, r.z0 + 0.02, hx, 0.12, 0.02); block(buf, p, cx, 0, r.z1 - 0.02, hx, 0.12, 0.02);
+  block(buf, p, r.x0 + 0.02, 0, cz, 0.02, 0.12, hz); block(buf, p, r.x1 - 0.02, 0, cz, 0.02, 0.12, hz);
+  // warm light strips under the ceiling
+  kit_pen(p, 87, MAT_GLOW, t3(1.0, 0.86, 0.62));
+  block(buf, p, cx, H - 0.06, cz - hz * 0.4, hx * 0.8, 0.05, 0.08); block(buf, p, cx, H - 0.06, cz + hz * 0.4, hx * 0.8, 0.05, 0.08);
+  // the door out: a hatch in the wall it stands by, a lamp over it
+  if r.door {
+    f := dv_room_face(r, r.door_x, r.door_z);
+    kit_pen(p, 88, MAT_SKIN, t3(0.72, 0.36, 0.26));
+    box(buf, p, kit_at(f, 0, 1.1, 0.03), 0.7, 1.1, 0.03);
+    kit_pen(p, 89, MAT_CLOTH, t3(0.20, 0.17, 0.20));
+    box(buf, p, kit_at(f, 0, 2.24, 0.05), 0.8, 0.05, 0.05); box(buf, p, kit_at(f, -0.75, 1.1, 0.05), 0.05, 1.15, 0.05); box(buf, p, kit_at(f, 0.75, 1.1, 0.05), 0.05, 1.15, 0.05);
+    box(buf, p, kit_at(f, 0.5, 1.05, 0.08), 0.03, 0.12, 0.03);
+    kit_pen(p, 95, MAT_GLOW, HEAT());
+    box(buf, p, kit_at(f, 0, 2.45, 0.05), 0.25, 0.05, 0.04);
+  }
+}
+// A frame on the cabin's wall nearest (x, z), facing into the room (+z ahead), its x along the wall.
+dv_room_face :: (r: SpRoom, x: f32, z: f32) -> Frame {
+  d := [4] f32.[z - r.z0, r.z1 - z, x - r.x0, r.x1 - x];
+  k := 0; for i: 1..<4 { if d[i] < d[k] { k = i; } }
+  if k == 0 { return frame_at(v3(x, 0, r.z0), 0); }
+  if k == 1 { return frame_at(v3(x, 0, r.z1), PI); }
+  if k == 2 { return frame_at(v3(r.x0, 0, z), PI * 0.5); }
+  return frame_at(v3(r.x1, 0, z), -PI * 0.5);
+}
+// Each frame (g_live): behind every window in the cabin, a painted desert on the wall: the sky, far
+// mesas, the dunes and the sand.
+dv_room_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  r := dv_room(g);
+  if !r.ok { return; }
+  for i: 0..<g[0].layer[0].st[0].n {
+    e := g[0].layer[0].items[i];
+    if e.mesh != DV_WINDOW_KIND || !dv_room_has(r, e.x, e.z) { continue; }
+    f := dv_room_face(r, e.x, e.z);
+    s := cast(f32) i * 1.7;
+    kit_pen(p, 191, MAT_FLAT, t3(0.98, 0.84, 0.64)); box(buf, p, kit_at(f, 0, 1.75, 0.01), 1.25, 0.6, 0.005);
+    kit_pen(p, 192, MAT_FLAT, t3(0.99, 0.93, 0.80)); box(buf, p, kit_at(f, 0.3 * sin(s), 2.0, 0.015), 0.22, 0.22, 0.004);   // the sun, low and pale
+    kit_pen(p, 193, MAT_FLAT, t3(0.72, 0.56, 0.74));
+    box(buf, p, kit_at(f, -0.55 + 0.2 * sin(s), 1.42, 0.02), 0.42, 0.22, 0.004); box(buf, p, kit_at(f, 0.5 - 0.2 * cos(s), 1.38, 0.02), 0.55, 0.16, 0.004);
+    kit_pen(p, 194, MAT_FLAT, t3(0.93, 0.74, 0.50)); box(buf, p, kit_at(f, 0, 1.08, 0.025), 1.25, 0.2, 0.004);
+    kit_pen(p, 195, MAT_FLAT, t3(0.86, 0.62, 0.42)); box(buf, p, kit_at(f, 0.35 * cos(s), 0.88, 0.03), 0.9, 0.1, 0.004);
+  }
+}
+
 // The item ID of the placed piece hidden now (-1: none): the rover you boarded, while it drives you.
 dv_hidden :: (g: [] SpGame) -> int { d := g[0].dv[0]; return ifx g[0].mode == M_DRIVE && d.boarded then d.vid else -1; }
 
