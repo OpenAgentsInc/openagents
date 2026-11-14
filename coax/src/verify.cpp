@@ -1721,86 +1721,257 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
 
 static_assert(std::atomic<uint64_t>::is_always_lock_free, "mutation workers share a lock-free counter");
 
-// Evaluates `owned` (global mutant indices) with up to `workers` forked
-// processes pulling the next index from a shared counter. Returns false, with
-// a message, if a worker could not finish.
-// Evaluates `owned` in this process, in order.
-static void evaluate_serial(MutationRun run, const std::vector<size_t> &owned, std::vector<MutantResult> *results) {
-  std::vector<MutantResult> slots(owned.size());
-  run.owned = &owned;
-  run.slots = slots.data();
-  for (size_t k = 0; k < owned.size(); k++) publish_result(&slots[k], evaluate_mutant(run, owned[k], k));
-  for (size_t k = 0; k < owned.size(); k++) (*results)[owned[k]] = slots[k];
+// ---- a native survivor's schedule across the workers (#13587) ----
+//
+// A mutant native code ran without a kill (MS_chunked) still runs the
+// evaluator's whole schedule, and under a large root that is about the
+// unmutated run's cost. Its checks are cut into chunks, in the order its
+// verdict reads them, and the workers take chunks as they take mutants. It
+// survives when every chunk passes. Its killer is the failing check earliest
+// in its order: a chunk runs the check at place p only while no failure
+// before p is known (MS_chunk_runs), so every place before the earliest
+// failure ran and passed, whichever worker ran it. The checks it counts are
+// the ones the loop in evaluate_mutant would have run, so the report, the
+// trace and --mutation-stats are the same for any --jobs.
+struct ChunkedMutant {
+  size_t position = 0;             // in owned
+  std::vector<int32_t> order;      // its checks, in the order its verdict reads them
+  std::vector<uint8_t> scheduled;  // by place in order: the schedule runs it (MS_run)
+  size_t first_chunk = 0, chunks = 0;
+};
+struct MutationChunk { size_t mutant; uint32_t begin, end; uint64_t cost; };  // places [begin, end) of chunked[mutant].order
+struct ChunkSlot { int64_t fail; uint32_t stop; int32_t done; };            // fail: the place that failed, -1 for none
+struct MutationWork {
+  std::vector<ChunkedMutant> chunked;
+  std::vector<MutationChunk> chunks;
+  // What the workers take, in this order: chunk j is j, the whole mutant at
+  // position k is chunks.size() + k.
+  std::vector<uint64_t> items;
+};
+
+static bool mutant_enters(const MutationRun &run, const Mutant &mu, int32_t check) {
+  const auto &path = (*run.paths)[(size_t)check];
+  return !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
+}
+// A mutant's check budget, as evaluate_mutant gives it (MS_mutant_budget).
+static uint64_t mutant_budget(const MutationRun &run, int32_t check) {
+  return MS_mutant_budget((*run.base)[(size_t)check], run.file->checks[check]->steps);
 }
 
-static bool evaluate_parallel(MutationRun run, const std::vector<size_t> &owned, uint64_t workers,
-                              std::vector<MutantResult> *results) {
-  size_t bytes = 64 + owned.size() * sizeof(MutantResult);
-  void *shared = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-  if (shared == MAP_FAILED) {
-    evaluate_serial(run, owned, results);
-    return true;
+// The order evaluate_mutant reads a mutant's checks in, fixed before any
+// worker starts: the likely-killer order without this run's other outcomes
+// (they depend on timing), or the recorded killer and then source order.
+static std::vector<int32_t> chunk_order(const MutationRun &run, size_t index) {
+  if (run.cheap) {
+    MutationRun fixed = run;
+    fixed.slots = nullptr;
+    return likely_order(fixed, index, 0);
+  }
+  const Mutant &mu = (*run.mutants)[index];
+  const int32_t count = run.file->checks.count;
+  int32_t hint = run.hints ? (*run.hints)[index] : -1;
+  if (hint < 0 || hint >= count || !MS_run(run.selective, mutant_enters(run, mu, hint))) hint = -1;
+  std::vector<int32_t> order;
+  if (hint >= 0) order.push_back(hint);
+  for (int32_t i = 0; i < count; i++) if (i != hint) order.push_back(i);
+  return order;
+}
+
+static uint64_t env_count(const char *name) {
+  const char *v = getenv(name);
+  uint64_t n = 0;
+  return v && *v && parse_count(v, &n) ? n : 0;
+}
+
+// The work for owned: chunks for each mutant `chunked` marks (by index), cut to
+// MS_chunk_target over `workers`, heaviest first; then every other mutant whole.
+static MutationWork plan_work(const MutationRun &run, const std::vector<size_t> &owned, const std::vector<uint8_t> &chunked,
+                              uint64_t workers) {
+  MutationWork work;
+  auto cost = [&](int32_t c) { return std::max<uint64_t>(1, (*run.base)[(size_t)c]); };
+  uint64_t heaviest = 0, total = 0;
+  for (size_t k = 0; k < owned.size(); k++) {
+    if (!chunked[owned[k]]) continue;
+    ChunkedMutant cm;
+    cm.position = k;
+    cm.order = chunk_order(run, owned[k]);
+    const Mutant &mu = (*run.mutants)[owned[k]];
+    for (int32_t c : cm.order) {
+      const bool runs = MS_run(run.selective, mutant_enters(run, mu, c));
+      cm.scheduled.push_back(runs);
+      if (!runs) continue;
+      heaviest = std::max(heaviest, cost(c));
+      total = total > UINT64_MAX - cost(c) ? UINT64_MAX : total + cost(c);
+    }
+    work.chunked.push_back(std::move(cm));
+  }
+  const uint64_t target = MS_chunk_target(heaviest, total, workers);
+  const uint64_t fixed = env_count("COAX_MUTATE_CHUNK_CHECKS");
+  for (size_t m = 0; m < work.chunked.size(); m++) {
+    ChunkedMutant &cm = work.chunked[m];
+    cm.first_chunk = work.chunks.size();
+    uint32_t begin = 0;
+    uint64_t held = 0, checks = 0;
+    for (uint32_t p = 0; p < (uint32_t)cm.order.size(); p++) {
+      if (!cm.scheduled[p]) continue;
+      const uint64_t next = cost(cm.order[p]);
+      if (MS_chunk_cut(held, checks, next, target, fixed)) {
+        work.chunks.push_back({m, begin, p, held});
+        begin = p;
+        held = checks = 0;
+      }
+      held += next;
+      checks++;
+    }
+    if (checks) work.chunks.push_back({m, begin, (uint32_t)cm.order.size(), held});
+    cm.chunks = work.chunks.size() - cm.first_chunk;
+  }
+  for (uint64_t j = 0; j < work.chunks.size(); j++) work.items.push_back(j);
+  std::stable_sort(work.items.begin(), work.items.end(), [&](uint64_t a, uint64_t b) { return work.chunks[a].cost > work.chunks[b].cost; });
+  std::vector<uint8_t> in_chunks(owned.size(), 0);
+  for (const ChunkedMutant &cm : work.chunked) in_chunks[cm.position] = 1;
+  for (size_t k = 0; k < owned.size(); k++) if (!in_chunks[k]) work.items.push_back(work.chunks.size() + k);
+  return work;
+}
+
+// One chunk: its places in order, each only while no failure before it is
+// known. A failure lowers `known` to its place.
+static void run_chunk(const MutationRun &run, const MutationWork &work, size_t j, ChunkSlot *slot, uint64_t *known) {
+  const MutationChunk &c = work.chunks[j];
+  const ChunkedMutant &cm = work.chunked[c.mutant];
+  const Mutant &mu = (*run.mutants)[(*run.owned)[cm.position]];
+  int64_t fail = -1;
+  uint32_t stop = 0;
+  if (MS_chunk_runs(__atomic_load_n(known, __ATOMIC_ACQUIRE), c.begin)) {
+    mu.apply();
+    for (uint32_t p = c.begin; p < c.end; p++) {
+      if (!MS_chunk_runs(__atomic_load_n(known, __ATOMIC_ACQUIRE), p)) break;
+      if (!cm.scheduled[p]) continue;
+      const int32_t check = cm.order[p];
+      MutantResult r;
+      if (!mutant_check_fails(run.file, run.file->checks[check], mutant_budget(run, check), &r)) continue;
+      fail = p;
+      stop = r.stop;
+      uint64_t seen = __atomic_load_n(known, __ATOMIC_ACQUIRE);
+      while ((uint64_t)p < seen && !__atomic_compare_exchange_n(known, &seen, (uint64_t)p, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {}
+      break;
+    }
+    mu.undo();
+  }
+  slot->fail = fail;
+  slot->stop = stop;
+  __atomic_store_n(&slot->done, 1, __ATOMIC_RELEASE);
+}
+
+// A chunked mutant's result from its chunks: the earliest failing place, and
+// the checks evaluate_mutant's loop would have run up to it. Not done while a
+// chunk is not.
+static MutantResult chunked_result(const ChunkedMutant &cm, const ChunkSlot *slots) {
+  MutantResult r;
+  int64_t first = -1;
+  for (size_t j = cm.first_chunk; j < cm.first_chunk + cm.chunks; j++) {
+    if (!__atomic_load_n(&slots[j].done, __ATOMIC_ACQUIRE)) return r;
+    if (slots[j].fail >= 0 && (first < 0 || slots[j].fail < first)) { first = slots[j].fail; r.stop = slots[j].stop; }
+  }
+  const size_t through = first < 0 ? cm.order.size() : (size_t)first + 1;
+  for (size_t p = 0; p < through; p++) (cm.scheduled[p] ? r.invocations : r.skipped)++;
+  r.killer = first < 0 ? -1 : cm.order[(size_t)first];
+  r.done = 1;
+  return r;
+}
+
+static_assert(std::atomic<uint64_t>::is_always_lock_free, "mutation workers share a lock-free counter");
+
+// Evaluates `owned` (global mutant indices) as `work` says, with up to
+// `workers` forked processes pulling the next item from a shared counter, or
+// in this process when workers is 1. Returns false, with a message, if a
+// worker could not finish.
+static bool evaluate_work(MutationRun run, const std::vector<size_t> &owned, const MutationWork &work, uint64_t workers,
+                          std::vector<MutantResult> *results) {
+  const size_t nchunks = work.chunks.size(), nchunked = work.chunked.size();
+  size_t bytes = 64 + owned.size() * sizeof(MutantResult) + nchunks * sizeof(ChunkSlot) + nchunked * sizeof(uint64_t);
+  void *shared = workers > 1 ? mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0) : MAP_FAILED;
+  std::vector<uint64_t> local;
+  const bool forked = shared != MAP_FAILED;
+  if (!forked) {
+    local.assign((bytes + 7) / 8, 0);
+    shared = local.data();
   }
   auto *next = new (shared) std::atomic<uint64_t>(0);
   auto *slots = (MutantResult *)((char *)shared + 64);
+  auto *chunk_slots = (ChunkSlot *)(slots + owned.size());
+  auto *known = (uint64_t *)(chunk_slots + nchunks);
   for (size_t k = 0; k < owned.size(); k++) new (&slots[k]) MutantResult();
+  for (size_t j = 0; j < nchunks; j++) chunk_slots[j] = ChunkSlot{-1, 0, 0};
+  for (size_t m = 0; m < nchunked; m++) known[m] = UINT64_MAX;  // MS_NONE: no failure known
   run.owned = &owned;
   run.slots = slots;
-  fflush(stdout);
-  fflush(stderr);
-  // Each worker is one build worker from the machine-wide pool (JobSlots):
-  // the first starts at once, the others as tokens are free while mutants
-  // are left, and each worker's token goes back when it ends.
+  auto run_item = [&](uint64_t item) {
+    if (item < nchunks) run_chunk(run, work, (size_t)item, &chunk_slots[item], &known[work.chunks[item].mutant]);
+    else {
+      const size_t k = (size_t)(item - nchunks);
+      publish_result(&slots[k], evaluate_mutant(run, owned[k], k));
+    }
+  };
   std::vector<pid_t> pids;
-  std::vector<pid_t> live;
-  pid_t parent = getpid();
-  JobSlots slots_held(workers);
   std::string failure;
-  auto start_worker = [&]() -> bool {
-    pid_t pid = fork();
-    if (pid == 0) {
-      job_child(parent);  // a worker never outlives the run that started it
-      for (;;) {
-        if (getppid() != parent) _exit(1);
-        uint64_t k = next->fetch_add(1);
-        if (k >= owned.size()) break;
-        publish_result(&slots[k], evaluate_mutant(run, owned[k], (size_t)k));
+  if (forked) {
+    fflush(stdout);
+    fflush(stderr);
+    // Each worker is one build worker from the machine-wide pool (JobSlots):
+    // the first starts at once, the others as tokens are free while items
+    // are left, and each worker's token goes back when it ends.
+    std::vector<pid_t> live;
+    pid_t parent = getpid();
+    JobSlots slots_held(workers);
+    const size_t items = work.items.size();
+    auto start_worker = [&]() -> bool {
+      pid_t pid = fork();
+      if (pid == 0) {
+        job_child(parent);  // a worker never outlives the run that started it
+        for (;;) {
+          if (getppid() != parent) _exit(1);
+          uint64_t k = next->fetch_add(1);
+          if (k >= items) break;
+          run_item(work.items[k]);
+        }
+        _exit(0);
       }
-      _exit(0);
+      if (pid < 0) return false;  // fewer workers; the ones started take all the work
+      pids.push_back(pid);
+      live.push_back(pid);
+      return true;
+    };
+    auto reap = [&](pid_t pid, int status) {
+      for (size_t i = 0; i < live.size(); i++)
+        if (live[i] == pid) { live.erase(live.begin() + (std::ptrdiff_t)i); break; }
+      slots_held.stop();
+      if (failure.empty() && !(WIFEXITED(status) && WEXITSTATUS(status) == 0))
+        failure = WIFSIGNALED(status) ? "terminated by signal " + std::to_string(WTERMSIG(status))
+                                      : "exited with status " + std::to_string(WEXITSTATUS(status));
+    };
+    bool can_fork = true;
+    for (;;) {
+      while (can_fork && live.size() < workers && next->load() < items && slots_held.start())
+        if (!start_worker()) { slots_held.stop(); can_fork = false; }
+      if (live.empty()) break;
+      // While it may grow, look in on the workers every quarter second;
+      // after that, wait for each in turn (they end when the items do).
+      const bool may_grow = can_fork && live.size() < workers && next->load() < items;
+      bool ended = false;
+      for (size_t i = live.size(); i-- > 0;) {
+        int status = 0;
+        pid_t pid = waitpid(live[i], &status, may_grow ? WNOHANG : 0);
+        if (pid < 0 && errno == EINTR) { ended = true; break; }
+        if (pid == live[i] || pid < 0) { reap(live[i], pid < 0 ? 0 : status); ended = true; if (!may_grow) break; }
+      }
+      if (!ended && may_grow) poll(nullptr, 0, 250);
     }
-    if (pid < 0) return false;  // fewer workers; the ones started take all the work
-    pids.push_back(pid);
-    live.push_back(pid);
-    return true;
-  };
-  auto reap = [&](pid_t pid, int status) {
-    for (size_t i = 0; i < live.size(); i++)
-      if (live[i] == pid) { live.erase(live.begin() + (std::ptrdiff_t)i); break; }
-    slots_held.stop();
-    if (failure.empty() && !(WIFEXITED(status) && WEXITSTATUS(status) == 0))
-      failure = WIFSIGNALED(status) ? "terminated by signal " + std::to_string(WTERMSIG(status))
-                                    : "exited with status " + std::to_string(WEXITSTATUS(status));
-  };
-  bool can_fork = true;
-  for (;;) {
-    while (can_fork && live.size() < workers && next->load() < owned.size() && slots_held.start())
-      if (!start_worker()) { slots_held.stop(); can_fork = false; }
-    if (live.empty()) break;
-    // While it may grow, look in on the workers every quarter second;
-    // after that, wait for each in turn (they end when the mutants do).
-    const bool may_grow = can_fork && live.size() < workers && next->load() < owned.size();
-    bool ended = false;
-    for (size_t i = live.size(); i-- > 0;) {
-      int status = 0;
-      pid_t pid = waitpid(live[i], &status, may_grow ? WNOHANG : 0);
-      if (pid < 0 && errno == EINTR) { ended = true; break; }
-      if (pid == live[i] || pid < 0) { reap(live[i], pid < 0 ? 0 : status); ended = true; if (!may_grow) break; }
-    }
-    if (!ended && may_grow) poll(nullptr, 0, 250);
   }
-  // No worker could start: evaluate in this process.
-  if (pids.empty())
-    for (size_t k = 0; k < owned.size(); k++) publish_result(&slots[k], evaluate_mutant(run, owned[k], k));
+  // In this process: every item in order, or what no worker could start on.
+  if (!forked || pids.empty())
+    for (uint64_t item : work.items) run_item(item);
+  for (const ChunkedMutant &cm : work.chunked) slots[cm.position] = chunked_result(cm, chunk_slots);
   bool ok = true;
   for (size_t k = 0; k < owned.size(); k++) {
     if (!slots[k].done) {
@@ -1816,7 +1987,7 @@ static bool evaluate_parallel(MutationRun run, const std::vector<size_t> &owned,
     }
     (*results)[owned[k]] = slots[k];
   }
-  munmap(shared, bytes);
+  if (forked) munmap(shared, bytes);
   return ok;
 }
 
@@ -1973,6 +2144,13 @@ static std::vector<std::string> mutant_keys(const File *file, const std::vector<
   }
   return keys;
 }
+// Where a killers line's MUTANT ends: MUTANT is four fields and CHECK two, so
+// at the fourth tab (npos for a line with fewer).
+static size_t killer_key_end(const std::string &line) {
+  size_t at = 0;
+  for (int k = 0; k < 4 && at != std::string::npos; k++) at = line.find('\t', at ? at + 1 : 0);
+  return at;
+}
 // `likely` gets, per mutant, the checks the file records as killing other
 // mutants of its procedure, most often first (at most 8).
 static std::vector<int32_t> read_killers(const File *file, const std::string &path, const std::vector<std::string> &keys,
@@ -1987,9 +2165,7 @@ static std::vector<int32_t> read_killers(const File *file, const std::string &pa
   std::istringstream in(text);
   std::string line;
   while (std::getline(in, line)) {
-    // MUTANT is four fields and CHECK two: split after the fourth tab.
-    size_t at = 0;
-    for (int k = 0; k < 4 && at != std::string::npos; k++) at = line.find('\t', at ? at + 1 : 0);
+    const size_t at = killer_key_end(line);
     if (at == std::string::npos) continue;
     auto check = checks.find(line.substr(at + 1));
     if (check != checks.end()) recorded[line.substr(0, at)] = check->second;
@@ -2250,7 +2426,11 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
     // --native: the scheduled checks as native code first. A native kill
     // becomes that mutant's hint, so the evaluator confirms it with one check;
     // a native survivor has none and runs the evaluator's whole schedule.
-    if (opt.native) native_mutants(file, m.mutants, owned, baseline.base, baseline.paths, facts.selective, &hints, opt, &native);
+    if (opt.native) native_mutants(file, m.mutants, owned, baseline.base, baseline.paths, facts.selective, &hints, likely, opt, &native);
+    // --killers: the native kills go into the file now, so a run stopped
+    // while the evaluator confirms them starts again from them (#13587).
+    if (opt.native && native.ran && !opt.killers.empty() && !sharded)
+      native_mutants_record(file, opt.killers, *killers, mutant_keys(file, m.mutants), owned, native);
     // The likely-killer order unless --source-order, or --mutation-trace,
     // which names each mutant's first killing check in source order.
     const std::vector<uint64_t> &base = baseline.base;
@@ -2263,14 +2443,25 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
                     likely.empty() || cheap.empty() ? nullptr : &likely, cheap.empty() ? nullptr : &cheap, nullptr, nullptr};
     // The most mutation workers at once: --jobs N, else $COAX_MUTATE_JOBS,
     // else $COAX_JOBS, else the machine-wide budget; the pool decides how
-    // many run at a time (evaluate_parallel).
+    // many run at a time (evaluate_work).
     uint64_t jobs = opt.jobs ? opt.jobs : job_cap("COAX_MUTATE_JOBS", std::min<uint64_t>(available_cores(), 1024));
-    uint64_t workers = std::min<uint64_t>(jobs, owned.size());
-    if (workers <= 1) evaluate_serial(run, owned, &results);
-    else if (!evaluate_parallel(run, owned, workers, &results)) {
+    // --native: a mutant native code ran without a kill takes its schedule
+    // in chunks across the workers (#13587); every other mutant runs whole.
+    // COAX_MUTATE_CHUNK_ALL=1 chunks every mutant, for the tests.
+    const char *every_env = getenv("COAX_MUTATE_CHUNK_ALL");
+    const bool every = every_env && *every_env && strcmp(every_env, "0") != 0;
+    std::vector<uint8_t> chunked(total, 0);
+    for (size_t i : owned) chunked[i] = MS_chunked(native.ran, native.ran ? native.outcome[i] : 0, every);
+    const MutationWork work = plan_work(run, owned, chunked, jobs);
+    uint64_t workers = std::min<uint64_t>(jobs, work.items.size());
+    if (!evaluate_work(run, owned, work, workers, &results)) {
       g_evidence.infrastructure = true;
       return 1;
     }
+    if (opt.stats && !work.chunked.empty())
+      fprintf(stderr, "mutation-chunks %zu mutant%s in %zu chunk%s, at most %llu worker%s at once\n", work.chunked.size(),
+              work.chunked.size() == 1 ? "" : "s", work.chunks.size(), work.chunks.size() == 1 ? "" : "s",
+              (unsigned long long)workers, workers == 1 ? "" : "s");
     if (opt.native) native_mutants_compare(file, m.mutants, owned, results, native, opt);
     if (opt.trace)
       for (size_t i : owned) fprintf(stderr, "mutation-outcome %zu %d\n", i, results[i].killer);

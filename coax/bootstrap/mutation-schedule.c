@@ -192,6 +192,10 @@ _Bool NM_killed(uint32_t l_outcome);
 uint32_t NM_compare(uint32_t l_native, _Bool l_same_check, _Bool l_ran_killer, uint32_t l_evaluator);
 uint64_t MS_baseline_budget(_Bool l_native_passed, uint64_t l_own, uint64_t l_file);
 uint64_t MS_mutant_budget(uint64_t l_base, uint64_t l_own);
+_Bool MS_chunked(_Bool l_native_ran, uint32_t l_native_outcome, _Bool l_every);
+_Bool MS_chunk_runs(uint64_t l_known, uint64_t l_place);
+uint64_t MS_chunk_target(uint64_t l_heaviest, uint64_t l_total, uint64_t l_workers);
+_Bool MS_chunk_cut(uint64_t l_held, uint64_t l_checks, uint64_t l_next, uint64_t l_target, uint64_t l_fixed);
 
 _Bool MS_include(_Bool l_root_only, _Bool l_root_source) {
   return ((!l_root_only) || l_root_source);
@@ -391,4 +395,40 @@ uint64_t MS_mutant_budget(uint64_t l_base, uint64_t l_own) {
     return l_own;
   }
   return l_budget;
+}
+
+_Bool MS_chunked(_Bool l_native_ran, uint32_t l_native_outcome, _Bool l_every) {
+  if (l_every)
+  {
+    return 1;
+  }
+  return (l_native_ran && ((l_native_outcome == ((uint32_t)UINT64_C(1))) || (l_native_outcome == ((uint32_t)UINT64_C(2)))));
+}
+
+_Bool MS_chunk_runs(uint64_t l_known, uint64_t l_place) {
+  return (l_place < l_known);
+}
+
+uint64_t MS_chunk_target(uint64_t l_heaviest, uint64_t l_total, uint64_t l_workers) {
+  uint64_t coax_t2;
+  uint64_t coax_t3;
+  uint64_t coax_t4;
+  uint64_t coax_t5;
+  uint64_t l_w = ((l_workers == UINT64_C(0)) ? UINT64_C(1) : l_workers);
+  uint64_t l_each = (coax_t2 = coax_div_u64(l_total, l_w, 307), coax_t3 = ((coax_mod_u64(l_total, l_w, 307) == UINT64_C(0)) ? UINT64_C(0) : UINT64_C(1)), coax_add_u64(coax_t2, coax_t3, 307));
+  uint64_t l_share = (coax_t4 = coax_div_u64(l_each, UINT64_C(4), 308), coax_t5 = ((coax_mod_u64(l_each, UINT64_C(4), 308) == UINT64_C(0)) ? UINT64_C(0) : UINT64_C(1)), coax_add_u64(coax_t4, coax_t5, 308));
+  uint64_t l_t = ((l_heaviest > l_share) ? l_heaviest : l_share);
+  return ((l_t == UINT64_C(0)) ? UINT64_C(1) : l_t);
+}
+
+_Bool MS_chunk_cut(uint64_t l_held, uint64_t l_checks, uint64_t l_next, uint64_t l_target, uint64_t l_fixed) {
+  if (l_checks == UINT64_C(0))
+  {
+    return 0;
+  }
+  if (l_fixed > UINT64_C(0))
+  {
+    return (l_checks >= l_fixed);
+  }
+  return ((l_next > l_target) || (l_held > coax_sub_u64(l_target, l_next, 323)));
 }

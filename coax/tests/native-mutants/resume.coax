@@ -1,0 +1,33 @@
+// An interrupted --native --killers run (tests/native-mutants.coax, #13587).
+// step's mutants die in native code; churn's checks are slow in the
+// evaluator (a few hundred milliseconds each) and cheap as native code, and
+// guard's two survivors run every one of them, so the evaluator is still busy
+// after the native pass ends and the run can be stopped there.
+#import "Basic";
+#authority;
+
+step :: (x: int) -> int #effects(all) {
+  if x > 2 { return x * 3; }
+  return x + 1;
+}
+guard :: (x: int) -> int #effects(all) {
+  if x > 1000000000 { return 0; }
+  return x;
+}
+churn :: (n: int) -> int #effects(all) {
+  s := 0;
+  i := 0;
+  while i < n { s += i % 7; i += 1; }
+  return s;
+}
+#test "step is positive" { #assert step(1) > 0; }
+#test "step exactly" { #assert step(1) == 2 && step(2) == 3 && step(3) == 9; }
+#test "churn of 800000" { #assert churn(guard(800000)) == 2399995; }
+#test "churn of 900000" { #assert churn(guard(900000)) == 2699994; }
+#test "churn of 1000000" { #assert churn(guard(1000000)) == 2999997; }
+#test "churn of 1100000" { #assert churn(guard(1100000)) == 3299997; }
+#test "churn of 1200000" { #assert churn(guard(1200000)) == 3599994; }
+#test "churn of 1300000" { #assert churn(guard(1300000)) == 3899995; }
+#test "churn of 1400000" { #assert churn(guard(1400000)) == 4200000; }
+#test "churn of 700000" { #assert churn(guard(700000)) == 2100000; }
+main :: () { }

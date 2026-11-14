@@ -1,0 +1,23 @@
+// A schedule in chunks (tests/native-mutants.coax, #13587). With
+// COAX_MUTATE_CHUNK_ALL=1 COAX_MUTATE_CHUNK_CHECKS=1 every check of every
+// mutant is a chunk of its own. "2 became 3" in twice fails "twice of three"
+// and "twice of five"; the second is the heaviest check, so it runs first and
+// fails first, and the earlier one must still be the killer. lone's mutants
+// fail no check: every chunk passes.
+#import "Basic";
+#authority;
+
+twice :: (x: int) -> int #effects(all) { return x * 2 + 1 - 1; }
+lone :: (x: int) -> int #effects(all) {
+  if x > 1000000 { return 0; }
+  return x;
+}
+#test "twice of nothing" { #assert twice(0) == 0; }
+#test "twice is not negative" { #assert twice(1) >= 0 && lone(1) == 1; }
+#test "twice of three" { #assert twice(3) == 6; }
+#test "twice of five, the long way" {
+  s := 0;
+  for i: 0..<2000 { s += lone(i % 3); }
+  #assert twice(5) == 10 && s == 2000 * 3 / 3 - 1;
+}
+main :: () { }

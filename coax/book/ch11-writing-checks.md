@@ -1024,6 +1024,20 @@ failure there counts. A mutant native code didn't kill runs the evaluator's
 whole schedule, as before. So the report, the counts and the exit status are
 the ones a run without `--native` gives, byte for byte.
 
+A mutant native code didn't kill is usually a survivor, and it still runs
+every check in the evaluator. Its checks are cut into chunks, and the
+mutation workers take chunks rather than whole mutants, so a few survivors
+take about as long as the heaviest check, not the whole run. It survives only
+when every chunk passes, and its killer is the failing check earliest in its
+order: a chunk stops for an earlier failure, never a later one. So the
+report and `--mutation-trace` are the same for every `--jobs`.
+
+Native code also tries first the checks that killed the same procedure's
+other mutants, so most mutants die on the first check they run. With
+`--killers FILE`, the native kills go into the file as soon as the native
+pass ends: a run stopped while the evaluator confirms them starts again from
+them instead of searching again.
+
 If native code and the evaluator differ on a mutant, the evaluator's answer
 stands and the run says so on standard error. A difference is expected only
 where their limits differ: ticks are not steps, and native code has no call

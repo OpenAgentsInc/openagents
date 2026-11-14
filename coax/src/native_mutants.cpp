@@ -38,6 +38,7 @@ struct NativeMutants {
   std::vector<uint8_t> judged;    // by check index: its unmutated native run passed, so native code runs it
   std::vector<int32_t> rows;      // by check index: its row in the binary's table, or -1
   size_t emitted = 0, checks = 0;
+  size_t runs = 0, first = 0;     // checks the mutant processes began; mutants killed by the first check they ran
   double emit = 0, compile = 0, baseline = 0, run = 0;
   std::chrono::steady_clock::time_point began;  // when the native pass began: after the evaluator's unmutated run
 };
@@ -171,7 +172,8 @@ static void native_mutant_pool(size_t tasks, uint64_t workers, double first_limi
 // `hints` names, for each mutant native code killed, the check it stopped in.
 static void native_mutants(File *file, const std::vector<Mutant> &mutants, const std::vector<size_t> &owned,
                            const std::vector<uint64_t> &base, const std::vector<std::vector<const ProcDecl *>> &paths,
-                           bool selective, std::vector<int32_t> *hints, const MutationOptions &opt, NativeMutants *native) {
+                           bool selective, std::vector<int32_t> *hints, const std::vector<std::vector<int32_t>> &likely,
+                           const MutationOptions &opt, NativeMutants *native) {
   const size_t total = mutants.size(), checks = (size_t)file->checks.count;
   native->outcome.assign(total, NM_NOT_RUN);
   native->killer.assign(total, -1);
@@ -197,10 +199,11 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
       for (uint8_t j : native->judged) judged += j;
       fprintf(stderr, "coax: native mutants: %zu of %zu mutants have a switch, %zu of %zu checks run natively; %zu killed"
               " (%zu trap, %zu refusal, %zu crash, %zu ticks, %zu wall), %zu survived, %zu survived what ran, %zu not run;"
+              " %zu checks run, %zu mutants killed by the first;"
               " emit %.2f s, compile %.2f s, baseline %.2f s, mutants %.2f s\n",
               native->emitted, owned->size(), judged, native->checks, counts[3] + counts[4] + counts[5] + counts[6] + counts[7],
               counts[3], counts[4], counts[5], counts[6], counts[7], counts[1], counts[2], counts[0],
-              native->emit, native->compile, native->baseline, native->run);
+              native->runs, native->first, native->emit, native->compile, native->baseline, native->run);
     }
   } said{native, &owned};
   if (owned.empty()) return;
@@ -325,6 +328,10 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
   for (int32_t i = 0; i < (int32_t)checks; i++) cheap.push_back(i);
   std::stable_sort(cheap.begin(), cheap.end(), [&](int32_t a, int32_t b) { return base[(size_t)a] < base[(size_t)b]; });
   struct Schedule { std::string path; bool whole = true; std::vector<int32_t> order; double seconds = 0; };
+  auto schedule_line = [&](int32_t c) {
+    const size_t row = (size_t)native->rows[(size_t)c];
+    return std::to_string(row) + " " + std::to_string((unsigned long long)NM_tick_limit(ticks[row])) + "\n";
+  };
   std::map<const ProcDecl *, Schedule> schedules;
   for (size_t i : owned) {
     if (!has_switch[i]) continue;
@@ -343,9 +350,8 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
     s.path = dir + "/schedule" + std::to_string(schedules.size());
     std::string text;
     for (int32_t c : s.order) {
-      const size_t row = (size_t)native->rows[(size_t)c];
-      text += std::to_string(row) + " " + std::to_string((unsigned long long)NM_tick_limit(ticks[row])) + "\n";
-      s.seconds += seconds[row];
+      text += schedule_line(c);
+      s.seconds += seconds[(size_t)native->rows[(size_t)c]];
     }
     if (!native_write(s.path, text)) { native->why = "can't write a schedule"; return; }
     schedules.emplace(owner, std::move(s));
@@ -354,8 +360,38 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
   // The mutants: one process each. It stops at its first failing check.
   std::vector<size_t> work;
   for (size_t i : owned) if (has_switch[i] && !schedules[mutants[i].owner].order.empty()) work.push_back(i);
-  struct Run { int64_t current = -1; uint32_t stop = 0; bool survived = false; };
+  struct Run { int64_t current = -1; uint32_t stop = 0; bool survived = false; size_t began = 0; std::string own; };
   std::vector<Run> runs(work.size());
+  // Unless the order is fixed (--mutation-trace, --source-order), a mutant
+  // tries first the checks that killed its procedure's other mutants: the
+  // --killers file's, then this pass's, most often first (#13587), as the
+  // evaluator's likely order does. Only the order: the verdicts are the
+  // evaluator's either way.
+  const bool fixed_order = opt.trace || opt.source_order;
+  std::map<const ProcDecl *, std::map<int32_t, uint32_t>> found;  // per procedure: its native killers so far, how often
+  auto lead = [&](size_t i) {
+    std::vector<int32_t> first;
+    if (fixed_order) return first;
+    const Schedule &s = schedules[mutants[i].owner];
+    const int32_t hint = hints->empty() ? -1 : (*hints)[i];
+    auto add = [&](int32_t c) {
+      if (c < 0 || c == hint || first.size() >= 8 || std::find(first.begin(), first.end(), c) != first.end()) return;
+      if (std::find(s.order.begin(), s.order.end(), c) != s.order.end()) first.push_back(c);
+    };
+    if (i < likely.size()) for (int32_t c : likely[i]) add(c);
+    auto seen = found.find(mutants[i].owner);
+    if (seen != found.end()) {
+      std::vector<std::pair<uint32_t, int32_t>> ranked;
+      for (const auto &k : seen->second) ranked.push_back({k.second, k.first});
+      // Most often first; between equals, the schedule's (cheapest) first.
+      auto place = [&](int32_t c) { return std::find(s.order.begin(), s.order.end(), c) - s.order.begin(); };
+      std::stable_sort(ranked.begin(), ranked.end(), [&](const auto &a, const auto &b) {
+        return a.first != b.first ? a.first > b.first : place(a.second) < place(b.second);
+      });
+      for (const auto &k : ranked) add(k.second);
+    }
+    return first;
+  };
   auto row_seconds = [&](int64_t row) {
     return (double)NM_wall_ms((uint64_t)((row >= 0 && (size_t)row < rows ? seconds[(size_t)row] : 0) * 1000)) / 1000.0;
   };
@@ -363,7 +399,18 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
   native_mutant_pool(work.size(), std::max<uint64_t>(1, std::min<uint64_t>(jobs, work.size())), check_seconds,
     [&](size_t t) -> std::vector<std::string> {
       const size_t i = work[t];
-      std::vector<std::string> args = {exe, "m", std::to_string(i + 1), schedules[mutants[i].owner].path};
+      const Schedule &s = schedules[mutants[i].owner];
+      std::string schedule = s.path;
+      const std::vector<int32_t> ahead = lead(i);
+      if (!ahead.empty()) {
+        std::string text;
+        for (int32_t c : ahead) text += schedule_line(c);
+        for (int32_t c : s.order) if (std::find(ahead.begin(), ahead.end(), c) == ahead.end()) text += schedule_line(c);
+        runs[t].own = dir + "/mutant" + std::to_string(i);
+        if (native_write(runs[t].own, text)) schedule = runs[t].own;
+        else runs[t].own.clear();
+      }
+      std::vector<std::string> args = {exe, "m", std::to_string(i + 1), schedule};
       // The check a --killers file names for it runs first, when native code runs it at all.
       const int32_t first = hints->empty() ? -1 : (*hints)[i];
       if (first >= 0 && (size_t)first < checks && native->judged[(size_t)first]) args.push_back(std::to_string(native->rows[(size_t)first]));
@@ -372,7 +419,7 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
     [&](size_t t, const std::string &text) -> double {
       Run &r = runs[t];
       if (text.empty()) return -1;
-      if (text[0] == 'B' && text.size() > 2) { r.current = strtoll(text.c_str() + 2, nullptr, 10); return row_seconds(r.current); }
+      if (text[0] == 'B' && text.size() > 2) { r.current = strtoll(text.c_str() + 2, nullptr, 10); r.began++; return row_seconds(r.current); }
       if (text[0] == 'T') r.stop = NM_TRAP;
       else if (text[0] == 'R') r.stop = NM_REFUSAL;
       else if (text[0] == 'L') r.stop = NM_TICKS;
@@ -383,6 +430,8 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
       Run &r = runs[t];
       const size_t i = work[t];
       const Schedule &s = schedules[mutants[i].owner];
+      if (!r.own.empty()) remove(r.own.c_str());
+      native->runs += r.began;
       if (r.survived && status >= 0 && WIFEXITED(status) && WEXITSTATUS(status) == 0) {
         native->outcome[i] = s.whole ? NM_SURVIVED : NM_SURVIVED_PART;
         return false;
@@ -391,6 +440,8 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
       if (r.current < 0 || (size_t)r.current >= rows) return false;
       native->outcome[i] = timed_out ? NM_WALL : r.stop ? r.stop : NM_CRASH;
       native->killer[i] = (int32_t)plan.checks[(size_t)r.current].declaration_index;
+      found[mutants[i].owner][native->killer[i]]++;
+      if (r.began == 1) native->first++;
       return false;
     });
   native->run = seconds_since(t0);
@@ -412,6 +463,34 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
       if (!native_write(report, text)) fprintf(stderr, "coax: native mutants: cannot write '%s'\n", report);
     }
   }
+}
+
+// --native --killers FILE (#13587): the native kills go into FILE when the
+// native pass ends, so a run stopped while the evaluator confirms them starts
+// again from them: each recorded check runs first, as native code's first
+// check and as the evaluator's. The file keeps its other lines (other units,
+// mutants native code didn't kill); `confirmed` holds the earlier units'
+// killers in this run. Only hints: the run's end writes its killers as before.
+static void native_mutants_record(const File *file, const std::string &path, const std::string &confirmed,
+                                  const std::vector<std::string> &keys, const std::vector<size_t> &owned, const NativeMutants &native) {
+  std::string fresh = confirmed;
+  for (size_t i : owned)
+    if (NM_killed(native.outcome[i]) && native.killer[i] >= 0) fresh += keys[i] + "\t" + check_key(file, file->checks[native.killer[i]]) + "\n";
+  std::set<std::string> replaced;
+  std::istringstream lines(fresh);
+  for (std::string line; std::getline(lines, line);) {
+    const size_t at = killer_key_end(line);
+    if (at != std::string::npos) replaced.insert(line.substr(0, at));
+  }
+  std::string old, kept;
+  if (read_record(path, &old)) {
+    std::istringstream in(old);
+    for (std::string line; std::getline(in, line);) {
+      const size_t at = killer_key_end(line);
+      if (at != std::string::npos && !replaced.count(line.substr(0, at))) kept += line + "\n";
+    }
+  }
+  write_killers(path, kept + fresh);
 }
 
 // After the evaluator: each mutant's native outcome against its verdict.

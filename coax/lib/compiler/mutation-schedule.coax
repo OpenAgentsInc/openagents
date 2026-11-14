@@ -260,3 +260,65 @@ MS_mutant_budget :: (base:u64,own:u64)->u64 #export_c #effects(all) {
  if own>0 && base<=own && own<budget {return own;} // mutant: equivalent ('<' and '<=' agree when own is the budget)
  return budget;
 }
+
+// A native survivor's schedule across the mutation workers (#13587,
+// coax/docs/native-mutants.md). A mutant native code ran without a kill has
+// its scheduled checks cut into chunks, in the order its verdict reads them,
+// and the workers take chunks, not mutants. COAX_MUTATE_CHUNK_ALL=1 (every)
+// cuts every mutant, for the tests. It survives only when every chunk passes.
+// Its killer is the failing check earliest in that order: a chunk runs the
+// check at place p only while no failure before p is known (known is the
+// earliest failing place found so far, MS_NONE for none). So a chunk stops for
+// an earlier failure, never for a later one, and every place before the
+// earliest failure ran and passed, whoever ran it.
+MS_NONE :: cast(u64) 18446744073709551615;
+#forall "a native survivor is cut into chunks; a native kill, a mutant native code did not run and a run without native code are not" ran:bool, outcome:0..<10, every:bool {
+ #assert MS_chunked(ran,cast(u32)outcome,every)==(every || (ran && (outcome==1 || outcome==2)));
+}
+MS_chunked :: (native_ran:bool,native_outcome:u32,every:bool)->bool #export_c #effects(all) {
+ if every {return true;}
+ return native_ran && (native_outcome==NM_SURVIVED || native_outcome==NM_SURVIVED_PART);
+}
+#forall "a chunk runs a place only before every failure known" known:0..<6, place:0..<6 {
+ #assert MS_chunk_runs(cast(u64)known,cast(u64)place)==(place<known);
+}
+#test "with no failure known every place runs" { #assert MS_chunk_runs(MS_NONE,0) && MS_chunk_runs(MS_NONE,MS_NONE-1) && !MS_chunk_runs(0,0); }
+MS_chunk_runs :: (known:u64,place:u64)->bool #export_c #effects(all) {return place<known;}
+
+// A check's cost is its unmutated steps. A chunk's target cost is the
+// heaviest chunked check, or a quarter of an even share of all the chunked
+// work across the workers when that is more: so one survivor's schedule ends
+// in about the time of its heaviest check, and many survivors still give
+// every worker several chunks. Never under 1.
+#forall "the target is the heaviest check or a quarter of a worker's share, rounded up" heaviest:0..<5, total:0..<40, workers:0..<4 {
+ w:=ifx workers==0 then 1 else workers;
+ share:=0;
+ while share*4*w<total {share+=1;}
+ want:=ifx heaviest>share then heaviest else share;
+ if want==0 {want=1;}
+ #assert MS_chunk_target(cast(u64)heaviest,cast(u64)total,cast(u64)workers)==cast(u64)want;
+}
+#test "the target does not overflow" {
+ #assert MS_chunk_target(MS_NONE,MS_NONE,MS_NONE)==MS_NONE && MS_chunk_target(0,MS_NONE,1)==4611686018427387904;
+ #assert MS_chunk_target(7,MS_NONE,MS_NONE)==7 && MS_chunk_target(0,0,MS_NONE)==1;
+}
+MS_chunk_target :: (heaviest:u64,total:u64,workers:u64)->u64 #export_c #effects(all) {
+ w:=ifx workers==0 then 1 else workers;
+ each:=total/w+(ifx total%w==0 then cast(u64)0 else cast(u64)1);
+ share:=each/4+(ifx each%4==0 then cast(u64)0 else cast(u64)1);
+ t:=ifx heaviest>share then heaviest else share; // mutant: equivalent (when they are equal, both forms return that value)
+ return ifx t==0 then 1 else t;
+}
+// A chunk is cut before the next check (cost next) when it already holds
+// checks (held is their cost) and the next would take it past the target.
+// With a fixed size (COAX_MUTATE_CHUNK_CHECKS=N, for the tests) a chunk holds
+// N checks instead.
+#forall "a chunk is cut when the next check would pass the target, or at a fixed count" held:0..<6, checks:0..<4, next:0..<6, target:0..<6, fixed:0..<3 {
+ want:=ifx checks==0 then false else ifx fixed>0 then checks>=fixed else held+next>target;
+ #assert MS_chunk_cut(cast(u64)held,cast(u64)checks,cast(u64)next,cast(u64)target,cast(u64)fixed)==want;
+}
+MS_chunk_cut :: (held:u64,checks:u64,next:u64,target:u64,fixed:u64)->bool #export_c #effects(all) {
+ if checks==0 {return false;}
+ if fixed>0 {return checks>=fixed;}
+ return next>target || held>target-next;
+}

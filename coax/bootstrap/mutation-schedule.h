@@ -39,6 +39,10 @@ _Bool NM_killed(uint32_t outcome);
 uint32_t NM_compare(uint32_t native, _Bool same_check, _Bool ran_killer, uint32_t evaluator);
 uint64_t MS_baseline_budget(_Bool native_passed, uint64_t own, uint64_t file);
 uint64_t MS_mutant_budget(uint64_t base, uint64_t own);
+_Bool MS_chunked(_Bool native_ran, uint32_t native_outcome, _Bool every);
+_Bool MS_chunk_runs(uint64_t known, uint64_t place);
+uint64_t MS_chunk_target(uint64_t heaviest, uint64_t total, uint64_t workers);
+_Bool MS_chunk_cut(uint64_t held, uint64_t checks, uint64_t next, uint64_t target, uint64_t fixed);
 
 #ifdef __cplusplus
 }

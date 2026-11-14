@@ -1,7 +1,8 @@
 # Native mutants
 
 Issue: [#13582](https://github.com/OpenAgentsInc/openagents/issues/13582)
-(after #13581). Code: `coax/src/native_mutants.cpp` (the runner), the mutant
+(after #13581), and the follow-up
+[#13587](https://github.com/OpenAgentsInc/openagents/issues/13587). Code: `coax/src/native_mutants.cpp` (the runner), the mutant
 sites in `emit_check_binary_c` (`coax/src/emit_c.cpp`), the decisions in
 `coax/lib/compiler/mutation-schedule.coax` (`NM_*`), and the hooks in
 `mutate_unit` (`coax/src/verify.cpp`). Test:
@@ -40,22 +41,86 @@ coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-strike.coax 
 4. **Run each mutant.** One process a mutant. It runs the checks the
    evaluator would run for that mutant, those that enter the mutated
    procedure first, each group cheapest first, and stops at the first that
-   fails. A check fails when it traps (an assertion, an overflow, a bound),
+   fails. Before them it tries the check a `--killers` file names for the
+   mutant, then the checks that killed its procedure's other mutants: the
+   file's, then this pass's, most often first (see "The order" below). A check fails when it traps (an assertion, an overflow, a bound),
    refuses (output or a host effect, which the evaluator rejects as `E0404`),
    crashes, or runs out of ticks or wall time. The processes run at once, each
    one a build worker from the machine-wide budget, as the evaluator's
    mutation workers are (`--jobs`). A worker keeps its token from one mutant
    to the next, so the pass's own load doesn't shrink it; on a host already
    at its load limit a pass starts with one worker, as any coax build does.
-5. **Let the evaluator decide.** A mutant native code killed gets the check
+5. **Record the kills.** With `--killers FILE`, the native kills go into the
+   file as soon as the native pass ends (see "An interrupted run" below).
+6. **Let the evaluator decide.** A mutant native code killed gets the check
    it stopped in as its hint, exactly as `--killers` gives hints. The
    evaluator runs that one check first, and only its failure there is the
-   kill. A mutant native code did not kill has no hint and runs the
-   evaluator's whole schedule.
+   kill. A mutant native code ran without a kill runs the evaluator's whole
+   schedule, cut into chunks across the workers (see "A survivor across the
+   workers" below).
 
 So the report is the one `coax mutate` prints without `--native`, byte for
 byte, with the same exit status. Native code only orders the evaluator's
-work. `--killers FILE` still records the evaluator's killers.
+work. At its end, `--killers FILE` records the evaluator's killers.
+
+## A survivor across the workers
+
+A mutant native code did not kill is usually a survivor, and a survivor runs
+every check its schedule holds. Under a large root that is about the cost of
+the unmutated run on one core. So its schedule is cut into chunks of checks,
+and the mutation workers take chunks as they take mutants
+(`MS_chunked`, `MS_chunk_target`, `MS_chunk_cut` and `MS_chunk_runs` in
+`lib/compiler/mutation-schedule.coax`):
+
+- The order is fixed before any worker starts: the order the evaluator would
+  read the mutant's checks in, without the other mutants' outcomes from this
+  run (those depend on timing). With `--mutation-trace` or `--source-order`
+  it is the recorded check, then source order, as before.
+- A chunk is a run of consecutive checks in that order, cut so that no chunk
+  costs more than the heaviest check, or a quarter of each worker's share of
+  all the chunked work when that is more. A check's cost is its unmutated
+  steps. The workers take the costliest chunks first, then the other mutants
+  whole.
+- The mutant survives only when every chunk passes. Its killer is the failing
+  check earliest in its order. A chunk runs a check only while no failure
+  earlier in the order is known; it stops for an earlier failure, never for a
+  later one. So every check before the killer ran and passed, whichever
+  worker ran it.
+- Its checks and skips in `--mutation-stats` count what one worker running the
+  whole schedule in order would have run, up to the killer.
+
+So the report, `--mutation-trace` and the stats are the same for every
+`--jobs`, and one survivor ends in about the time of its heaviest check.
+`--mutation-stats` adds a line when there are chunks:
+
+```text
+mutation-chunks 3 mutants in 41 chunks, at most 20 workers at once
+```
+
+Mutants native code killed or did not run stay whole. Without `--native` no
+mutant is cut. Two variables are for the tests: `COAX_MUTATE_CHUNK_ALL=1` cuts
+every mutant, and `COAX_MUTATE_CHUNK_CHECKS=N` makes every chunk N checks.
+
+## An interrupted run
+
+With `--killers FILE`, the native kills go into the file when the native pass
+ends, not only the evaluator's killers at the end of the run. The file keeps
+its other lines: other units' killers and the mutants native code didn't
+kill. A run stopped while the evaluator confirms the kills starts again from
+them: each killed mutant's native process runs the recorded check first and
+stops there, and the evaluator runs it first too. The end of the run writes
+the evaluator's killers, as before.
+
+## The order
+
+Without `--mutation-trace` or `--source-order`, a mutant's native process
+tries, before its procedure's schedule: the check the `--killers` file names
+for it, then up to eight checks that killed its procedure's other mutants,
+the file's first and then this pass's, most often first. Mutants of one
+procedure are mostly killed by the same few checks, so most die on the first
+check they run. With `--mutation-trace` or `--source-order` the order is the
+procedure's schedule alone, so the trace is the same for every `--jobs`. The
+order changes which failing check native code names, never a verdict.
 
 ## The limits
 
@@ -124,7 +189,7 @@ the end of the evaluator's confirmation: the whole cost of the mutants.
 
 | Environment | Meaning |
 | --- | --- |
-| `COAX_NATIVE_MUTANTS_TRACE=1` | One line on standard error: sites with a switch, checks run natively, outcomes by kind, times |
+| `COAX_NATIVE_MUTANTS_TRACE=1` | One line on standard error: sites with a switch, checks run natively, outcomes by kind, the checks the mutant processes began and how many mutants the first one killed, times |
 | `COAX_NATIVE_MUTANTS_REPORT=FILE` | One line a mutant: its index, native outcome, the check it stopped in, its `--killers` key. The rows that say `survived` are the native survivors |
 | `COAX_NATIVE_MUTANTS_STRICT=1` | A disagreement makes the command exit 3 |
 | `COAX_NATIVE_MUTANTS_KEEP=1` | Keeps the C, the binary and the schedules |
@@ -163,7 +228,15 @@ one. That is why native mutants use it.
 mutates a fixture and seven real `#authority` units both ways. The two
 reports must be the same bytes with the same status, and for every mutant
 the native outcome must be the evaluator's. It also runs the three cases
-where native code can't run. `tests/run.sh --only native_mutants` runs it.
+where native code can't run. Then, for the fixtures and each unit, the report
+and the trace of `--jobs 1` must be those of `--jobs 3` and `--jobs 8`, whole,
+with every mutant in chunks, and with one check a chunk, and with `--native`
+the trace must be the same for every `--jobs`. `tests/native-mutants/chunks.coax`
+holds a mutant two checks kill, the later one the heaviest, so it runs and
+fails first, and the earlier stays the killer. `tests/native-mutants/resume.coax`
+is stopped after its native pass and run again: the file holds the native
+kills, every mutant dies on its recorded check, and the report is that of a
+run that was never stopped. `tests/run.sh --only native_mutants` runs it.
 
 ## Measured
 
@@ -185,6 +258,6 @@ killed every mutant (1,125 by a trap, 7 by ticks) and the evaluator confirmed
 each with the check native code named: 1,132 agree, none differ. The closing
 comment on #13582 has the evaluator-only time for the same pass.
 
-A mutant that survives still costs the evaluator its whole schedule: under
-this root, about what the unmutated run costs. `--native` removes the checks
-before each kill, not the cost of a survivor.
+Then a mutant that survived still cost the evaluator its whole schedule on
+one worker: under this root, about what the unmutated run costs. Since
+#13587 that schedule is spread across the workers.

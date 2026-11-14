@@ -80,6 +80,16 @@ Commit: [`09101c58f972b76c8fcdd6f9315d1026b6a95837`](https://github.com/OpenAgen
   gets ten times those steps. A check that passes under `coax test` no longer
   fails the gate's baseline for its step count alone, and a mutant that loops
   forever still runs out. `--mutation-stats` counts such checks.
+- Follow-up 2026-11-14 (#13587): with `--native`, a mutant native code ran
+  without a kill has its evaluator schedule cut into chunks of checks that the
+  mutation workers share, so a few survivors take about as long as the
+  heaviest check. It survives only when every chunk passes, and its killer is
+  the failing check earliest in its order, so the report and
+  `--mutation-trace` are the same for every `--jobs`. Native code tries first
+  the checks that killed the same procedure's other mutants, and with
+  `--killers` the native kills are written when the native pass ends, so an
+  interrupted run doesn't search again. The nightly sweep runs with
+  `--native --mutation-stats` and reports the `limits` and `disagree` counts.
 
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 

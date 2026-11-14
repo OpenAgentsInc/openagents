@@ -18,6 +18,16 @@
 // mutant dies. Then the cases where native code can't run: without a C compiler, with one
 // that rejects the binary, and for checks the binary can't hold, the run
 // says why once and reports what a run without --native reports.
+// Then a schedule in chunks (#13587): for the fixtures and every unit, the
+// report and --mutation-trace are the same for --jobs 1, 3 and 8, with and
+// without every mutant cut into chunks (COAX_MUTATE_CHUNK_ALL=1, also one
+// check a chunk), and with --native the trace is the same for every --jobs.
+// tests/native-mutants/chunks.coax has a mutant two checks kill whose later
+// check runs first; the earlier one must stay its killer. And an interrupted
+// --native --killers run (tests/native-mutants/resume.coax): stopped after the
+// native pass, its killers file holds the native kills, and the run again
+// starts each killed mutant from its recorded check and reports as a run
+// that was never stopped.
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/args.coax";
@@ -163,7 +173,7 @@ compare :: (e: [] Outcomes, n: [] Outcomes) -> Compared {
 
 // Runs body in sh with C the compiler and D the scratch directory; out gets stdout and stderr.
 run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
-  argv := [8] string.["sh", "-c", "C=$1; D=$2; eval \"$3\"; eval \"$4\"", "sh", compiler, dir, FUNCTIONS, body];
+  argv := [9] string.["sh", "-c", "C=$1; D=$2; eval \"$3\"; eval \"$4\"; eval \"$5\"", "sh", compiler, dir, FUNCTIONS, JOBS_FUNCTIONS, body];
   err: [1024] u8;
   return proc_run(argv[..], 1800000, out, err[..]);
 }
@@ -173,6 +183,16 @@ run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
 // the same bytes. also NAME UNIT ENV [FLAGS...]: the --native run again under
 // ENV, compared with pair's evaluator run.
 FUNCTIONS :: "pair() { n=$1; u=$2; shift 2; COAX_NATIVE_CHECKS=0 \"$C\" mutate \"$u\" \"$@\" --jobs 4 --mutation-trace > \"$D/$n.e.out\" 2> \"$D/$n.e.err\"; e=$?; COAX_NATIVE_CHECKS=0 \"$C\" mutate \"$u\" \"$@\" --jobs 4 > \"$D/$n.p.out\" 2> \"$D/$n.p.err\"; p=$?; COAX_NATIVE_CHECKS=0 COAX_NATIVE_MUTANTS_STRICT=1 COAX_NATIVE_MUTANTS_TRACE=1 COAX_NATIVE_MUTANTS_REPORT=\"$D/$n.report\" \"$C\" mutate \"$u\" \"$@\" --jobs 4 --native > \"$D/$n.n.out\" 2> \"$D/$n.n.err\"; s=$?; same=different; cmp -s \"$D/$n.p.out\" \"$D/$n.n.out\" && cmp -s \"$D/$n.p.out\" \"$D/$n.e.out\" && same=same; echo \"$n evaluator=$e plain=$p native=$s $same\"; }; also() { n=$1; u=$2; v=$3; shift 3; env $v COAX_NATIVE_CHECKS=0 \"$C\" mutate \"$u\" \"$@\" --jobs 4 --native > \"$D/$n.a.out\" 2> \"$D/$n.a.err\"; s=$?; same=different; cmp -s \"$D/$n.p.out\" \"$D/$n.a.out\" && same=same; echo \"$n native=$s $same\"; }";
+
+// jobs NAME UNIT [FLAGS...]: the report and the trace of --jobs 1 against
+// --jobs 3 and 8, whole, every mutant in chunks, and one check a chunk; then
+// --native's trace for each --jobs against --jobs 1, and its report against
+// the evaluator's. Prints "jobs NAME same" or what differed first.
+// resume UNIT [FLAGS...]: a --native --killers run stopped once its killers
+// file is written (the native pass's end), then run again; prints whether the
+// first run had ended, the file's lines, the two runs' native trace lines,
+// and "same" when the second run's report and status are an unstopped run's.
+JOBS_FUNCTIONS :: "mo() { grep '^mutation-outcome' \"$1\" > \"$2\"; }; jobs() { n=$1; u=$2; shift 2; e=\"COAX_NATIVE_CHECKS=0\"; env $e \"$C\" mutate \"$u\" \"$@\" --jobs 1 --mutation-trace > \"$D/$n.t0.out\" 2> \"$D/$n.t0.err\"; t0=$?; mo \"$D/$n.t0.err\" \"$D/$n.t0.trace\"; env $e \"$C\" mutate \"$u\" \"$@\" --jobs 1 > \"$D/$n.r0.out\" 2> /dev/null; r0=$?; r=same; for v in COAX_MUTATE_CHUNK_ALL=0 COAX_MUTATE_CHUNK_ALL=1 COAX_MUTATE_CHUNK_ALL=1,COAX_MUTATE_CHUNK_CHECKS=1; do w=$(echo $v | tr , ' '); for j in 3 8; do env $e $w \"$C\" mutate \"$u\" \"$@\" --jobs $j --mutation-trace > \"$D/$n.t.out\" 2> \"$D/$n.t.err\"; t=$?; mo \"$D/$n.t.err\" \"$D/$n.t.trace\"; { cmp -s \"$D/$n.t0.out\" \"$D/$n.t.out\" && cmp -s \"$D/$n.t0.trace\" \"$D/$n.t.trace\" && [ $t = $t0 ]; } || [ $r != same ] || r=\"different: trace, $v --jobs $j\"; env $e $w \"$C\" mutate \"$u\" \"$@\" --jobs $j > \"$D/$n.r.out\" 2> /dev/null; t=$?; { cmp -s \"$D/$n.r0.out\" \"$D/$n.r.out\" && [ $t = $r0 ]; } || [ $r != same ] || r=\"different: report, $v --jobs $j\"; done; done; env $e \"$C\" mutate \"$u\" \"$@\" --jobs 1 --native --mutation-trace > \"$D/$n.n0.out\" 2> \"$D/$n.n0.err\"; t=$?; mo \"$D/$n.n0.err\" \"$D/$n.n0.trace\"; { cmp -s \"$D/$n.t0.out\" \"$D/$n.n0.out\" && [ $t = $t0 ]; } || [ $r != same ] || r=\"different: --native report, --jobs 1\"; for j in 3 8; do env $e \"$C\" mutate \"$u\" \"$@\" --jobs $j --native --mutation-trace > \"$D/$n.n.out\" 2> \"$D/$n.n.err\"; t=$?; mo \"$D/$n.n.err\" \"$D/$n.n.trace\"; { cmp -s \"$D/$n.n0.out\" \"$D/$n.n.out\" && cmp -s \"$D/$n.n0.trace\" \"$D/$n.n.trace\" && [ $t = $t0 ]; } || [ $r != same ] || r=\"different: --native trace, --jobs $j\"; done; echo \"jobs $n $r\"; }; resume() { u=$1; shift; k=\"$D/resume.tsv\"; rm -f \"$k\"; e=\"COAX_NATIVE_CHECKS=0 COAX_NATIVE_MUTANTS_TRACE=1\"; env $e \"$C\" mutate \"$u\" \"$@\" --jobs 1 --native --killers \"$k\" > \"$D/resume.1.out\" 2> \"$D/resume.1.err\" & p=$!; i=0; while [ ! -s \"$k\" ] && kill -0 $p 2> /dev/null && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done; kill $p 2> /dev/null; wait $p 2> /dev/null; ended=stopped; grep -q ' mutants, ' \"$D/resume.1.out\" && ended=ended; lines=$(cat \"$k\" 2> /dev/null | wc -l | tr -d ' '); env $e \"$C\" mutate \"$u\" \"$@\" --jobs 1 --native --killers \"$k\" > \"$D/resume.2.out\" 2> \"$D/resume.2.err\"; s2=$?; COAX_NATIVE_CHECKS=0 \"$C\" mutate \"$u\" \"$@\" --jobs 1 > \"$D/resume.0.out\" 2> /dev/null; s0=$?; same=different; cmp -s \"$D/resume.0.out\" \"$D/resume.2.out\" && [ $s0 = $s2 ] && same=same; echo \"resume $ended lines=$lines $same\"; grep -h '^coax: native mutants: ' \"$D/resume.1.err\" \"$D/resume.2.err\"; }";
 
 // Real #authority units, from the repository root.
 REAL :: [7] string.["../rules/srd/long-rest-state.coax", "../rules/srd/import-policy.coax", "../rules/srd/long-rest-timing.coax",
@@ -225,6 +245,35 @@ unit :: (compiler: string, dir: string, name: string, path: string, real: bool, 
   return bad;
 }
 
+// The parts one after another, into out.
+joined :: (parts: [] string, out: [] u8) -> string {
+  n := 0;
+  for part: parts { for c: part { if n < out.count { out[n] = c; n += 1; } } }
+  return cast(string) out[0..<n];
+}
+#test "joined puts the parts one after another" { b: [16] u8; p := [3] string.["ab", "", "cd"]; #assert joined(p[..], b[..]) == "abcd"; }
+
+// The number after the first occurrence of tag in text, read as number does.
+after :: (text: string, tag: string) -> Number {
+  for at: 0..<text.count - tag.count + 1 { if starts(text, at, tag) { return number(text, at + tag.count); } }
+  r: Number;
+  return r;
+}
+#test "after reads the number that follows a tag" {
+  #assert after("a 12 killed (3", " killed (").value == 3 && after("x=7", "x=").value == 7 && after("x=7", "y=").next == -1;
+}
+
+// The same report and trace for every --jobs, cut into chunks or not (#13587).
+same_for_every_jobs :: (compiler: string, dir: string, name: string, path: string) -> int {
+  out: [4096] u8; body: [8192] u8;
+  parts := [5] string.["jobs ", name, " '", path, "' --library"];
+  r := run(compiler, dir, joined(parts[..], body[..]), out[..]);
+  line := cast(string) out[0..<r.out_n];
+  print("%", line);
+  want: [256] u8; w := [3] string.["jobs ", name, " same"];
+  return check(has(line, joined(w[..], want[..])), "the report and the trace are the same for every --jobs, in chunks or whole, and with --native");
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: native-mutants.coax COMPILER [UNIT.coax ...]"); return 2; }
@@ -258,6 +307,33 @@ tool_main :: () -> int #export_c #effects(all) {
   print("%", heavy);
   bad += check(has(heavy, "heavy status=0\n17 mutants, 17 killed, 0 survived\n1\n1"),
                "a check that passes as native code but needs more evaluator steps than its budget passes the baseline, and every mutant dies within ten times its steps");
+  // A schedule in chunks: the same report and trace for every --jobs (#13587).
+  bad += same_for_every_jobs(compiler, dir, "mix", "tests/native-mutants/mix.coax");
+  bad += same_for_every_jobs(compiler, dir, "chunks", "tests/native-mutants/chunks.coax");
+  chunked := run(compiler, dir, "COAX_NATIVE_CHECKS=0 COAX_MUTATE_CHUNK_ALL=1 COAX_MUTATE_CHUNK_CHECKS=1 \"$C\" mutate tests/native-mutants/chunks.coax --library --jobs 1 --mutation-trace --mutation-stats 2>&1 | grep -E '^mutation-(outcome 3 |chunks)'", out[..]);
+  t0 := cast(string) out[0..<chunked.out_n];
+  bad += check(has(t0, "mutation-outcome 3 2") && has(t0, "mutation-chunks 10 mutants in 32 chunks,"),
+               "the mutant two checks kill keeps the earlier one as its killer when the later one, the heaviest, runs first");
+  if given > 0 { for i: 0..<given { bad += same_for_every_jobs(compiler, dir, names[i], args_at(a[..], i + 1)); } }
+  else { for i: 0..<REAL.count { bad += same_for_every_jobs(compiler, dir, names[i], REAL[i]); } }
+
+  // An interrupted --native --killers run starts again from the native kills.
+  r = run(compiler, dir, "resume tests/native-mutants/resume.coax --library", out[..]);
+  rt := cast(string) out[0..<r.out_n];
+  print("%", rt);
+  second := 0;
+  for i: 0..<rt.count { if i > 0 && starts(rt, i, "\ncoax: native mutants: ") { second = i + 1; } }
+  one := cast(string) rt[0..<second]; two := cast(string) rt[second..<rt.count];
+  killed1 := after(one, " checks run natively; ").value;
+  first1 := after(one, " checks run, ").value;
+  killed2 := after(two, " checks run natively; ").value;
+  first2 := after(two, " checks run, ").value;
+  lines := after(rt, " lines=").value;
+  bad += check(has(rt, "resume stopped ") && second > 0, "the first run was stopped after its native pass, before its report");
+  bad += check(lines == killed1 && killed1 > 0, "the killers file holds the native kills when the native pass ends");
+  bad += check(first1 < killed1, "the first run searched: a native kill took more than one check");
+  bad += check(killed2 == killed1 && first2 == killed2, "the run again killed every mutant with the check the file named, and searched for none");
+  bad += check(has(rt, " same\n"), "its report and status are those of a run that was never stopped");
 
   // No C compiler: said once, and the run is the evaluator's.
   r = run(compiler, dir, "also mix tests/native-mutants/mix.coax COAX_CC=/nonexistent/cc --library; grep -c 'mutate --native: no C compiler' \"$D/mix.a.err\"", out[..]);
