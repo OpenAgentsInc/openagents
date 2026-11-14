@@ -1,0 +1,14 @@
+// The Digger's walk as the game drives it (digger.coax draws it; GitHub #13505).
+// The Digger's stride from how far he went since the last frame drawn: the phase moves with the
+// ground covered (a stride about 1.1 m) and the amount eases toward his speed over a quarter second.
+dg_gait :: (g: [] SpGame, t: f32) {
+  dt := t - g[0].dg_t; dx := g[0].bot_x - g[0].dg_x; dz := g[0].bot_z - g[0].dg_z;
+  g[0].dg_t = t; g[0].dg_x = g[0].bot_x; g[0].dg_z = g[0].bot_z;
+  if dt <= 0 || dt > 0.5 { return; }
+  d := sqrt(dx * dx + dz * dz);
+  if d > 3 { return; }   // a jump back to the checkpoint is not a step
+  g[0].dg_walk += d * 2 * PI / 1.1;
+  if g[0].dg_walk > 2 * PI * 64 { g[0].dg_walk -= 2 * PI * 64; }
+  want := clamp01(d / dt / 4);
+  g[0].dg_amp += (want - g[0].dg_amp) * clamp01(dt * 4);
+}

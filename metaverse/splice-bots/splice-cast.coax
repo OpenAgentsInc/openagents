@@ -5,13 +5,14 @@
 //
 //   cast_smuggler   the player: a pointed hat, an orange coat, a film reel on the pack, a stun baton
 //   cast_rover      home base: a bulbous six-wheeler with the edit bay's housing on its back
-//   cast_digger     the first restore: a round body on treads, a drill arm, a battery of cells
+//   cast_digger     the first restore: a yellow and black dog-bot with a drill box for a nose (digger.coax)
 //   cast_raider     the party mine's dark silhouette: spiked shoulders, a crest, a pipe
 //   cast_boss       the banned bot: an old-world factory giant with two blue eyes
 //
 // The game draws them (splice-game.coax g_live, g_world) and ?scene=17..22 stands them on a plinth
 // to review (splice-bots.coax). Every one faces its frame's z.
 #load "../../metaverse-engine/kit/machines.coax";
+#load "digger.coax";
 
 // Short forms: a shape placed in the character's frame, all lengths times its scale.
 ca_box :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, x: f32, y: f32, z: f32, hx: f32, hy: f32, hz: f32) { box(buf, p, kit_at(f, x * s, y * s, z * s), hx * s, hy * s, hz * s); }
@@ -138,62 +139,13 @@ cast_rover :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, roll: f32, m:
   ca_box(buf, p, f, s, -0.28, 2.24, -0.86, 0.30, 0.17, 0.26);
 }
 
-// The Digger: a round cream body with a turret head and one dark visor, on two treads with cream
-// wheels; a drill arm ahead on an orange shoulder, its cone ringed dark; on its back a battery of
-// three cells and a stack. A part is drawn only when the caller has it (arm, treads, battery), so
-// a half-built Digger shows what is missing: no treads and it sits on stands, no battery and its
-// eyes are dark. `spin` turns the drill; `glow` is the cells' and the eyes' light. 2.1 m to the
-// antenna's tip at s 1. Uses objects obj to obj + 7.
+// The Digger: the designer's yellow and black dog-bot (digger.coax), the drill box for a nose. A part
+// is drawn only when the caller has it (arm, treads, battery), so a half-built Digger shows what is
+// missing: no treads (his legs) and he sits on stands, no arm and his nose has no drill, no battery
+// and his eyes are dark. `spin` turns the drill; `glow` is the eyes' light. Standing, unposed; the
+// game walks him with dg_draw. Uses objects obj to obj + 7.
 cast_digger :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, arm: bool, treads: bool, battery: bool, spin: f32, m: CastMono) {
-  ca_pen(p, obj, MAT_SKIN, CAST_CREAM(), m);   // body, turret
-  ca_egg(buf, p, f, s, 0, 0.98, 0, 0.66, 0.46, 0.84, 14);
-  ca_tube(buf, p, f, s, 0, 1.34, 0.22, 0.30, 0.35, 0.31, 12);
-  ca_egg(buf, p, f, s, 0, 1.64, 0.22, 0.31, 0.11, 0.31, 12);
-  ca_pen(p, obj + 1, MAT_WINDOW, CAST_INK(), m);   // the visor
-  ca_box(buf, p, f, s, 0, 1.50, 0.50, 0.25, 0.085, 0.05);
-  ca_pen(p, obj + 2, MAT_CLOTH, CAST_INK(), m);   // treads or stands, the stack, the antenna
-  if treads {
-    for side: 0..<2 {
-      sx := ifx side == 0 then -1.0f32 else 1.0f32;
-      ca_box(buf, p, f, s, sx * 0.84, 0.30, 0, 0.20, 0.30, 0.86);
-      ca_limb(buf, p, f, s, sx * 0.64, 0.30, 0.86, sx * 1.04, 0.30, 0.86, 0.30, 0.30, 10);
-      ca_limb(buf, p, f, s, sx * 0.64, 0.30, -0.86, sx * 1.04, 0.30, -0.86, 0.30, 0.30, 10);
-    }
-  } else {
-    ca_box(buf, p, f, s, -0.36, 0.26, 0, 0.13, 0.26, 0.50);
-    ca_box(buf, p, f, s, 0.36, 0.26, 0, 0.13, 0.26, 0.50);
-  }
-  ca_tube(buf, p, f, s, 0.30, 1.26, -0.46, 0.56, 0.075, 0.09, 8);
-  ca_tube(buf, p, f, s, -0.20, 1.70, 0.12, 0.40, 0.014, 0.010, 5);
-  ca_pen(p, obj + 3, MAT_FLAT, CAST_ORANGE(), m);   // the chest plate, the antenna's tip, the arm's shoulder
-  ca_box(buf, p, f, s, 0.36, 1.02, 0.70, 0.14, 0.10, 0.05);
-  ball(buf, p, fp(f, -0.20 * s, 2.10 * s, 0.12 * s), 0.04 * s, 6);
-  if arm { ca_limb(buf, p, f, s, 0, 1.0, 0.66, 0, 0.95, 1.30, 0.20, 0.24, 9); }
-  if treads {
-    ca_pen(p, obj + 4, MAT_SKIN, CAST_CREAM(), m);   // tread guards and road wheels
-    for side: 0..<2 {
-      sx := ifx side == 0 then -1.0f32 else 1.0f32;
-      ca_box(buf, p, f, s, sx * 0.84, 0.63, 0, 0.24, 0.035, 1.0);
-      for w: 0..<3 { z := (cast(f32) w - 1) * 0.56; ca_limb(buf, p, f, s, sx * 1.04, 0.30, z, sx * 1.07, 0.30, z, 0.15, 0.13, 8); }
-    }
-  }
-  if arm {
-    a := fp(f, 0, 0.95 * s, 1.30 * s); b := fp(f, 0, 0.90 * s, 2.40 * s);
-    g := frame_turn(frame_along(a, b, fd(f, 1, 0, 0)), 1, spin);
-    ca_pen(p, obj + 5, MAT_SKIN, CAST_CREAM(), m);   // the drill's cone
-    tube(buf, p, kit_at(g, 0, 0.12 * s, 0), 0.98 * s, 0.34 * s, 0.34 * s, 0.02 * s, 0.02 * s, 6, true);
-    ca_pen(p, obj + 6, MAT_CLOTH, CAST_INK(), m);   // its collar and rings
-    tube(buf, p, g, 0.13 * s, 0.30 * s, 0.30 * s, 0.36 * s, 0.36 * s, 10, true);
-    for i: 1..<4 { k := cast(f32) i * 0.24; r := 0.34 * (1 - k) + 0.035; tube(buf, p, kit_at(g, 0, (0.12 + k * 0.98) * s, 0), 0.05 * s, r * s, r * s, (r - 0.02) * s, (r - 0.02) * s, 6, false); }
-  }
-  if battery {
-    ca_pen(p, obj + 6, MAT_CLOTH, CAST_INK(), m);   // the battery's case
-    ca_box(buf, p, f, s, 0, 1.18, -0.66, 0.38, 0.30, 0.16);
-    ca_pen(p, obj + 7, MAT_GLOW, glow, m);   // its cells, and the eyes they light
-    for i: 0..<3 { ca_box(buf, p, f, s, (cast(f32) i - 1) * 0.23, 1.18, -0.83, 0.08, 0.22, 0.02); }
-    ball(buf, p, fp(f, -0.10 * s, 1.50 * s, 0.55 * s), 0.048 * s, 6);
-    ball(buf, p, fp(f, 0.10 * s, 1.50 * s, 0.55 * s), 0.048 * s, 6);
-  }
+  dg_draw(buf, p, f, s, obj, glow, arm, treads, battery, spin, m, 0, 0, 0);
 }
 
 // A raider: a dark, hunched silhouette. Broad shoulders under two spikes, a helmet with a crest

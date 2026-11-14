@@ -18,6 +18,7 @@
 #load "walk.coax";
 #load "layer-fixture.coax";
 #load "layer-draw.coax";
+#load "digger-gait.coax";       // the Digger's stride for his walk (digger.coax)
 #load "world.coax";
 #load "scripts.coax";              // the foes' realm scripts: the frame out, the commands in (#13467)
 #load "director.coax";             // the Director's keys, Digger's pickups, the inventory, Heat's sensing and health (#13505)
@@ -120,6 +121,7 @@ SpGame :: struct {
   rubble_gone: bool; wall_gone: bool; at_crate: bool;
   bot: bool;                   // the Digger is built (its three slots are filled): it follows you
   bot_state: int; bot_x: f32; bot_z: f32; bot_yaw: f32; bot_from: f32; bot_step: int; bot_t: f32; bot_fail: f32; bot_wall: bool; bot_spin: f32;
+  dg_walk: f32; dg_amp: f32; dg_x: f32; dg_z: f32; dg_t: f32;   // the Digger's stride as drawn (digger.coax dg_gait)
   fx: [FOES] f32; fz: [FOES] f32; fhp: [FOES] int; fhost: [FOES] bool; fstag: [FOES] f32;
   fyaw: [FOES] f32; fflee: [FOES] bool; fpose: [FOES] int;   // where each faces, whether it runs from you, and its plan's pose (ai/plan.coax MP_*)
   fout: [FOES] bool;           // out of the garage at this time of day: its plan stands it beyond the ring (g_plan_out)
@@ -1088,7 +1090,8 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     df := frame_at(v3(g[0].bot_x + shake, ground_y(g, g[0].bot_x, g[0].bot_z), g[0].bot_z), g[0].bot_yaw);
     dk := g_thing(g, p, TK_DIGGER, ifx g[0].have[H_PLUS] then 1 else 0, df, 0.85, t);
     if dk >= 0 {
-    cast_digger(buf, p, df, 0.85, 190, d_tint(g, ifx sb_holds_digger(g) && sb_fielded(g) != SB_DIGGER then t3(0.32, 0.32, 0.34) else ifx g[0].have[H_PLUS] then blue else CAST_AMBER()), true, true, true, g[0].bot_spin, cast_colour());   // his lights go dark while his core is in the drill mech
+    dg_gait(g, t);
+    dg_draw(buf, p, df, 0.85, 190, d_tint(g, ifx sb_holds_digger(g) && sb_fielded(g) != SB_DIGGER then t3(0.32, 0.32, 0.34) else ifx g[0].have[H_PLUS] then blue else CAST_AMBER()), true, true, true, g[0].bot_spin, cast_colour(), g[0].dg_walk, g[0].dg_amp, t);   // his lights go dark while his core is in the drill mech
     g_thing_end(g, p, dk); }
   }
   // the raiders leaving the garage as she arrives: out of its entry and off along the road, out of play

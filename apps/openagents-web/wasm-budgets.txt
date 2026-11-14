@@ -385,7 +385,9 @@ painted 200000
 # kit_train, kit_mesa, #13485): 598,185 bytes measured 2026-11-13 on a Linux build host; about 3.5% room.
 # With the crew kit's modelled face and hair (#13490): 633,556 bytes measured 2026-11-13 on a Linux build host; about 3% room.
 # Shared secp follow-ups (#13454): measured release output includes the wider public G table and shared secret field; about 5% room.
-splice-bots 750000
+# With the Digger drawn from the designer's model (digger-mesh.coax: 6,633 triangles and 3,375 vertices as a 90 KB
+# table, and digger.coax's rig): 831,911 bytes measured 2026-11-13 on a Linux build host; about 4.5% room.
+splice-bots 870000
 # /worlds on the frames set drawn by the browser (worlds-web.coax, beside the side): 91,057 bytes measured
 # 2026-11-13 on a Mac, about 9% room. It replaces realmlist (70,076 bytes and its 16,279-byte shader).
 worlds-web 100000

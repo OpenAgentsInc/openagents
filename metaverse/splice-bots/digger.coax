@@ -1,0 +1,116 @@
+// The Digger drawn from the designer's model (GitHub #13505): a yellow and black dog-bot on four legs
+// with the drill box for a nose, its triangles from digger-mesh.coax. Its rig is the mesh's bones
+// (a root, the body, the nose, the rear sensor, and each leg's thigh and shin), turned here each
+// frame: the walk swings the legs in diagonal pairs and bobs the body, and standing it breathes and
+// the sensor looks about. Each triangle is drawn with the cel kit's pen in one of four fills, so the
+// game's cel pass and ink overlay light it as they light the kit, and the Unreal exporter bakes it
+// from these vertices as it bakes every thing (splice-export.coax).
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "the Digger's mesh"
+#load "digger-mesh.coax";
+
+DG_LONG :: 2.54;   // metres from tail to nose at scale 1 (the old kit Digger was 2.4 m to its drill's tip)
+DG_EYE_GLOW :: 0.035;
+
+// A bone's place: where its model points go (t + x p.x + y p.y + z p.z).
+DgXf :: struct { x: Point; y: Point; z: Point; t: Point; }
+dg_at :: (m: DgXf, p: Point) -> Point { return add(m.t, add(times(m.x, p.x), add(times(m.y, p.y), times(m.z, p.z)))); }
+dg_dir :: (m: DgXf, p: Point) -> Point { return add(times(m.x, p.x), add(times(m.y, p.y), times(m.z, p.z))); }
+// The parent's place after a turn by a about the unit axis k through c, then a shift d.
+dg_child :: (parent: DgXf, k: Point, a: f32, c: Point, d: Point) -> DgXf {
+  rx := turn(v3(1, 0, 0), k, a); ry := turn(v3(0, 1, 0), k, a); rz := turn(v3(0, 0, 1), k, a);
+  rc := add(times(rx, c.x), add(times(ry, c.y), times(rz, c.z)));
+  return DgXf.{x = dg_dir(parent, rx), y = dg_dir(parent, ry), z = dg_dir(parent, rz), t = dg_at(parent, add(sub(c, rc), d))};
+}
+dg_c :: (s: string, i: int) -> int {
+  c := cast(int) s[i];
+  if c >= 65 && c <= 90 { return c - 65; }
+  if c >= 97 && c <= 122 { return c - 71; }
+  if c >= 48 && c <= 57 { return c + 4; }
+  return ifx c == 43 then 62 else 63;
+}
+dg_12 :: (s: string, i: int) -> f32 { return cast(f32) (dg_c(s, i) * 64 + dg_c(s, i + 1)) / 4095; }
+// Vertex i's 9 characters, and triangle t's.
+dg_rv :: (i: int) -> string { piece := dgm_v(i / DGM_PIECE); o := (i % DGM_PIECE) * 9; return piece[o..<o + 9]; }
+dg_rt :: (t: int) -> string { piece := dgm_t(t / DGM_PIECE); o := (t % DGM_PIECE) * 9; return piece[o..<o + 9]; }
+dg_vertex :: (r: string) -> Point { return v3((dg_12(r, 0) - 0.5) * 2 * DGM_SPAN, dg_12(r, 2) * 2 * DGM_SPAN, (dg_12(r, 4) - 0.5) * 2 * DGM_SPAN); }
+dg_normal :: (r: string) -> Point {
+  x := cast(f32) dg_c(r, 6) / 63 * 2 - 1; z := cast(f32) dg_c(r, 7) / 63 * 2 - 1;
+  y := 1 - abs(x) - abs(z);
+  if y < 0 { ox := x; x = (1 - abs(z)) * (ifx ox >= 0 then 1.0f32 else -1.0f32); z = (1 - abs(ox)) * (ifx z >= 0 then 1.0f32 else -1.0f32); }
+  l := sqrt(x * x + y * y + z * z);
+  return ifx l > 0.0001 then v3(x / l, y / l, z / l) else v3(0, 1, 0);
+}
+dg_bone :: (r: string) -> int { return dg_c(r, 8); }
+dg_index :: (r: string, k: int) -> int { o := k * 3; return (dg_c(r, o) << 12) | (dg_c(r, o + 1) << 6) | dg_c(r, o + 2); }
+
+// The bones' places for this frame. walk: the stride's phase (radians); amp: how much he walks
+// (0 standing, 1 at a run); t: seconds, for the standing breath and the sensor's look.
+dg_pose :: (xf: [] DgXf, walk: f32, amp: f32, t: f32) {
+  X := v3(1, 0, 0); Y := v3(0, 1, 0); none := v3(0, 0, 0);
+  xf[0] = DgXf.{x = X, y = Y, z = v3(0, 0, 1), t = none};
+  bob := (1 - amp) * 0.006 * sin(t * 2.2) + amp * 0.012 * abs(sin(walk));
+  xf[1] = dg_child(xf[0], X, amp * 0.03 * sin(walk * 2), DGM_PIVOT(1), v3(0, bob, 0));
+  xf[2] = dg_child(xf[1], X, (1 - amp) * 0.05 * sin(t * 1.3), DGM_PIVOT(2), none);
+  xf[3] = dg_child(xf[1], Y, (1 - amp) * 0.35 * sin(t * 0.6), DGM_PIVOT(3), none);
+  for leg: 0..<4 {
+    ph := walk + ifx leg == 0 || leg == 3 then 0.0f32 else PI;   // front left with hind right, front right with hind left
+    xf[4 + leg] = dg_child(xf[1], X, amp * 0.45 * sin(ph), DGM_PIVOT(4 + leg), none);
+    xf[8 + leg] = dg_child(xf[4 + leg], X, -amp * 0.35 * hi(0, sin(ph + PI / 2)), DGM_PIVOT(8 + leg), none);
+  }
+}
+
+// The fills: the model's yellow, its black, its cream plates and its steel.
+dg_fill :: (k: int) -> KitTint {
+  if k == 0 { return kit_tint(0.96, 0.70, 0.16); }
+  if k == 1 { return kit_tint(0.17, 0.16, 0.17); }
+  if k == 2 { return kit_tint(0.90, 0.86, 0.76); }
+  return kit_tint(0.46, 0.46, 0.48);
+}
+dg_fill_mat :: (k: int) -> int { return ifx k == 1 then MAT_CLOTH else ifx k == 3 then MAT_FLAT else MAT_SKIN; }
+
+// The Digger at frame f, scale s (DG_LONG metres long at 1), using objects obj to obj + 7. As the kit
+// Digger did: without treads (his legs) he sits on two stands, without the arm his drill box has no
+// drill, and without the battery his eyes are dark. spin turns the drill.
+dg_draw :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, arm: bool, treads: bool, battery: bool, spin: f32, m: CastMono, walk: f32, amp: f32, t: f32) {
+  xf: [DGM_BONES] DgXf;
+  dg_pose(xf[..], walk, ifx treads then clamp01(amp) else 0, t);
+  k := s * DG_LONG;   // model units to metres
+  lift := ifx treads then 0.0f32 else -0.10;   // on stands he sits lower
+  tri_n := 0;
+  for fill: 0..<4 {
+    ca_pen(p, obj + fill, dg_fill_mat(fill), dg_fill(fill), m);
+    while tri_n < DGM_FILL_END[fill] {
+      rt := dg_rt(tri_n); tri_n += 1;
+      ra := dg_rv(dg_index(rt, 0)); rb := dg_rv(dg_index(rt, 1)); rc := dg_rv(dg_index(rt, 2));
+      ba := dg_bone(ra); bb := dg_bone(rb); bc := dg_bone(rc);
+      if !treads && ba >= 4 { continue; }
+      pa := dg_at(xf[ba], dg_vertex(ra)); pb := dg_at(xf[bb], dg_vertex(rb)); pc := dg_at(xf[bc], dg_vertex(rc));
+      na := dg_dir(xf[ba], dg_normal(ra)); nb := dg_dir(xf[bb], dg_normal(rb)); nc := dg_dir(xf[bc], dg_normal(rc));
+      tri(buf, p, fp(f, pa.x * k, (pa.y + lift) * k, pa.z * k), fp(f, pb.x * k, (pb.y + lift) * k, pb.z * k), fp(f, pc.x * k, (pc.y + lift) * k, pc.z * k),
+          fd(f, na.x, na.y, na.z), fd(f, nb.x, nb.y, nb.z), fd(f, nc.x, nc.y, nc.z));
+    }
+  }
+  nose := xf[2];
+  if !treads {
+    ca_pen(p, obj + 1, MAT_CLOTH, CAST_INK(), m);
+    ca_box(buf, p, f, k, -0.09, 0.09, 0, 0.03, 0.09, 0.15);
+    ca_box(buf, p, f, k, 0.09, 0.09, 0, 0.03, 0.09, 0.15);
+  }
+  if arm {   // the drill, out of the nose box's front
+    a := dg_at(nose, v3(0, 0.36, 0.48)); b := dg_at(nose, v3(0, 0.36, 0.66));
+    ap := fp(f, a.x * k, (a.y + lift) * k, a.z * k); bp := fp(f, b.x * k, (b.y + lift) * k, b.z * k);
+    g := frame_turn(frame_along(ap, bp, fd(f, 1, 0, 0)), 1, spin);
+    ca_pen(p, obj + 4, MAT_SKIN, dg_fill(0), m);
+    tube(buf, p, kit_at(g, 0, 0.02 * k, 0), 0.17 * k, 0.05 * k, 0.05 * k, 0.004 * k, 0.004 * k, 6, true);
+    ca_pen(p, obj + 5, MAT_CLOTH, CAST_INK(), m);
+    tube(buf, p, g, 0.025 * k, 0.055 * k, 0.055 * k, 0.06 * k, 0.06 * k, 10, true);
+  }
+  if battery {   // the eyes on the nose box, lit by his cells
+    ca_pen(p, obj + 7, MAT_GLOW, glow, m);
+    for side: 0..<2 {
+      e := dg_at(nose, v3((cast(f32) side - 0.5) * 0.12, 0.43, 0.485));
+      ball(buf, p, fp(f, e.x * k, (e.y + lift) * k, e.z * k), DG_EYE_GLOW * k * 0.5, 6);
+    }
+  }
+}
+
