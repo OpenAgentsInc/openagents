@@ -47,6 +47,8 @@ function decodes UTF-8 bytes through Foundation.
 | `auth.emailStart` | `email`; returns opaque `pending` |
 | `auth.emailVerify` | `pending`, `code`; returns `loggedIn` |
 | `auth.logout` | Clears the existing native account session |
+| `clipboard.write` | Explicit copy, `text`; writes at most 64 KiB and never reads clipboard |
+| `link.open` | Explicit tap, `url`; installed Coax policy admits HTTP(S) documents only, no account headers |
 | `http.cancel` | Cancels the active request and invalidates its callback generation |
 | `http` | `path`, `method`, `body`; returns `status`, `body`, `contentType` |
 
