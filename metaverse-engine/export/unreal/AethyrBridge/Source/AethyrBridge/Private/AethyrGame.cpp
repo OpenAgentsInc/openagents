@@ -30,6 +30,15 @@
 #include "Engine/SkeletalMesh.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Animation/AnimSequenceBase.h"
+#include "Components/LocalLightComponent.h"
+#include "Components/LightComponent.h"
+#include "Components/SceneCaptureComponent2D.h"
+#include "Engine/Level.h"
+#include "Engine/LevelStreamingDynamic.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "RenderingThread.h"
+#include "RHICommandList.h"
+#include "TextureResource.h"
 #include "Engine/DataTable.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Materials/MaterialParameterCollection.h"
@@ -194,6 +203,7 @@ void AAethyrGame::BeginPlay()
 	// -AethyrShots=DIR -AethyrShotEvery=N: a numbered picture every N frames (a film's frames)
 	if (FParse::Value(Args, TEXT("AethyrShots="), ShotsDir)) { ShotEvery = 2; FParse::Value(Args, TEXT("AethyrShotEvery="), ShotEvery); ShotEvery = FMath::Max(1, ShotEvery); }
 	SetUpThings();
+	SetUpLook();
 	if (FParse::Value(Args, TEXT("AethyrShot="), ShotPath)) { ShotAfter = 20; FParse::Value(Args, TEXT("AethyrShotAfter="), ShotAfter); bExitAfterShot = true; }
 #endif
 	if (APlayerController* Player = GetWorld()->GetFirstPlayerController())
@@ -206,9 +216,10 @@ void AAethyrGame::BeginPlay()
 	if (GEngine && GEngine->GameViewport)
 	{
 		FEngineShowFlags& Flags = GEngine->GameViewport->EngineShowFlags;
-		Flags.SetTonemapper(false);
+		// A look level (the row look.level) owns the tone curve and bloom: its volume sets them.
+		Flags.SetTonemapper(LookLevel != nullptr);
 		Flags.SetEyeAdaptation(false);
-		Flags.SetBloom(false);
+		Flags.SetBloom(LookLevel != nullptr);
 		Flags.SetMotionBlur(false);
 		Flags.SetAmbientOcclusion(false);
 		Flags.SetVignette(false);
@@ -394,16 +405,182 @@ void AAethyrGame::UpdateRequests()
 
 void AAethyrGame::UpdateLook()
 {
-	if (!Look) { return; }
-	for (const FCollectionVectorParameter& P : Look->VectorParameters)
+	// the generated collection, and the project's own (look.params): the same U<n> names in both
+	for (UMaterialParameterCollection* Collection : {Look.Get(), LookParams.Get()})
 	{
-		const FString Name = P.ParameterName.ToString();
-		if (!Name.StartsWith(TEXT("U"))) { continue; }
-		const int32 At = FCString::Atoi(*Name + 1);
-		if (At >= 0 && At + 4 <= Uniforms.Num())
+		if (!Collection) { continue; }
+		for (const FCollectionVectorParameter& P : Collection->VectorParameters)
 		{
-			UKismetMaterialLibrary::SetVectorParameterValue(this, Look, P.ParameterName, FLinearColor(Uniforms[At], Uniforms[At + 1], Uniforms[At + 2], Uniforms[At + 3]));
+			const FString Name = P.ParameterName.ToString();
+			if (!Name.StartsWith(TEXT("U")) || Name.Len() < 2 || !FChar::IsDigit(Name[1])) { continue; }
+			const int32 At = FCString::Atoi(*Name + 1);
+			if (At >= 0 && At + 4 <= Uniforms.Num())
+			{
+				UKismetMaterialLibrary::SetVectorParameterValue(this, Collection, P.ParameterName, FLinearColor(Uniforms[At], Uniforms[At + 1], Uniforms[At + 2], Uniforms[At + 3]));
+			}
 		}
+	}
+	UpdateLookWorld();
+}
+
+// ---- the look a project owns. Three rows of the overrides table, each optional:
+//   look.level   a level, loaded beside the generated one: its volumes, fog and lights are the project's.
+//                With it the tone curve and bloom stay on, for its post-process volume to set.
+//                In it, an actor tagged AethyrSun is turned to the key light and takes its colour; one
+//                tagged AethyrLight0 to AethyrLight7 is kept at that light of the game's, with its
+//                colour and reach, its own brightness times the light's strength.
+//   look.params  a material parameter collection. Each vector named U<n> receives the uniform block's
+//                floats n to n + 3, as the generated collection's do, and these when it has them:
+//                AeLook (1, the clock 0 to 1, seconds, 0), AeSun (toward the key light, Unreal's axes; w 1 for the moon),
+//                AeShadowU, AeShadowV, AeShadowD (a place's u, v and depth in cm in the shadow picture:
+//                dot(xyz, place) + w) and AeShadowInfo (1 when the picture is drawn, a texel, its width in cm).
+//                AeShadowSet, when it has it, is read once: the shadow picture's width and depth in metres.
+//   look.shadow  a render target (one float channel): the scene's depth seen from the key light, a
+//                square ShadowWidth wide ahead of the camera, drawn each frame.
+void AAethyrGame::SetUpLook()
+{
+	if (!Overrides || FParse::Param(FCommandLine::Get(), TEXT("AethyrNoLook"))) { return; }
+	LookParams = Cast<UMaterialParameterCollection>(OverrideFor(TEXT("look.params")));
+	if (LookParams)
+	{
+		for (const FCollectionVectorParameter& P : LookParams->VectorParameters)
+		{
+			LookNames.Add(P.ParameterName);
+			// AeShadowSet: the shadow picture's width and depth in metres, set in the collection
+			if (P.ParameterName == FName(TEXT("AeShadowSet")) && P.DefaultValue.R > 0.0f && P.DefaultValue.G > 0.0f) { ShadowWidth = P.DefaultValue.R * Units; ShadowReach = P.DefaultValue.G * Units; }
+		}
+	}
+	if (const FAethyrOverrideRow* Row = Overrides->FindRow<FAethyrOverrideRow>(FName(TEXT("look.level")), TEXT("Aethyr"), false))
+	{
+		bool bOk = false;
+		LookLevel = ULevelStreamingDynamic::LoadLevelInstanceBySoftObjectPtr(this, TSoftObjectPtr<UWorld>(Row->Asset.ToSoftObjectPath()), FVector::ZeroVector, FRotator::ZeroRotator, bOk);
+		if (LookLevel) { LookLevel->bShouldBlockOnLoad = true; }
+		UE_LOG(LogAethyr, Display, TEXT("AETHYR_LOOK level %s %s"), *Row->Asset.ToString(), LookLevel ? TEXT("loading") : TEXT("FAILED"));
+	}
+	ShadowTarget = Cast<UTextureRenderTarget2D>(OverrideFor(TEXT("look.shadow")));
+	if (ShadowTarget)
+	{
+		ShadowDepth = NewObject<UTextureRenderTarget2D>(this);
+		ShadowDepth->RenderTargetFormat = ShadowTarget->RenderTargetFormat;
+		ShadowDepth->ClearColor = FLinearColor(1.0e9f, 1.0e9f, 1.0e9f, 1.0f);
+		ShadowDepth->bAutoGenerateMips = false;
+		ShadowDepth->InitAutoFormat(ShadowTarget->SizeX, ShadowTarget->SizeY);
+		ShadowDepth->UpdateResourceImmediate(true);
+		ShadowCapture = NewObject<USceneCaptureComponent2D>(this);
+		ShadowCapture->SetupAttachment(RootComponent);
+		ShadowCapture->SetUsingAbsoluteLocation(true);
+		ShadowCapture->SetUsingAbsoluteRotation(true);
+		ShadowCapture->ProjectionType = ECameraProjectionMode::Orthographic;
+		ShadowCapture->OrthoWidth = ShadowWidth;
+		ShadowCapture->CaptureSource = ESceneCaptureSource::SCS_SceneDepth;
+		ShadowCapture->TextureTarget = ShadowDepth;
+		ShadowCapture->bCaptureEveryFrame = false;
+		ShadowCapture->bCaptureOnMovement = false;
+		ShadowCapture->bAlwaysPersistRenderingState = true;
+		ShadowCapture->HiddenComponents.Add(Sky);
+		FEngineShowFlags& F = ShadowCapture->ShowFlags;
+		F.SetLighting(false); F.SetPostProcessing(false); F.SetFog(false); F.SetAtmosphere(false); F.SetSkyLighting(false);
+		F.SetDynamicShadows(false); F.SetAntiAliasing(false); F.SetBloom(false); F.SetAmbientOcclusion(false); F.SetTranslucency(false);
+		F.SetMotionBlur(false); F.SetEyeAdaptation(false); F.SetVolumetricFog(false); F.SetCloud(false); F.SetDecals(false);
+		ShadowCapture->RegisterComponent();
+		UE_LOG(LogAethyr, Display, TEXT("AETHYR_LOOK shadow %s %dx%d, %.0f m wide"), *ShadowTarget->GetName(), ShadowTarget->SizeX, ShadowTarget->SizeY, ShadowWidth / Units);
+	}
+	UE_LOG(LogAethyr, Display, TEXT("AETHYR_LOOK params %s"), LookParams ? *LookParams->GetName() : TEXT("none"));
+}
+
+void AAethyrGame::LookVector(FName Name, const FLinearColor& Value)
+{
+	if (LookParams && LookNames.Contains(Name)) { UKismetMaterialLibrary::SetVectorParameterValue(this, LookParams, Name, Value); }
+}
+
+void AAethyrGame::UpdateLookWorld()
+{
+	if (!LookParams && !LookLevel && !ShadowCapture) { return; }
+	if (StyleAt < 0 || StyleAt + 128 > Uniforms.Num()) { return; }
+	const float* S = Uniforms.GetData() + StyleAt;
+	const FVector Sun = DirToUnreal(S[4], S[5], S[6]).GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector);
+	static const FName NLook(TEXT("AeLook")), NSun(TEXT("AeSun")), NU(TEXT("AeShadowU")), NV(TEXT("AeShadowV")), ND(TEXT("AeShadowD")), NInfo(TEXT("AeShadowInfo"));
+	LookVector(NLook, FLinearColor(1.0f, S[127], GetWorld()->GetTimeSeconds(), 0.0f));
+	LookVector(NSun, FLinearColor(Sun.X, Sun.Y, Sun.Z, S[7]));
+
+	// the look level's actors, found once it is shown
+	if (LookLevel && !bLookFound && LookLevel->GetLoadedLevel() && LookLevel->IsLevelVisible())
+	{
+		bLookFound = true;
+		LookLights.SetNum(LightCount); LookLightBase.SetNumZeroed(LightCount);
+		static const FName SunTag(TEXT("AethyrSun"));
+		for (AActor* A : LookLevel->GetLoadedLevel()->Actors)
+		{
+			if (!A) { continue; }
+			if (A->ActorHasTag(SunTag)) { LookSuns.Add(A); }
+			for (int32 K = 0; K < LightCount; K++)
+			{
+				if (!A->ActorHasTag(FName(*FString::Printf(TEXT("AethyrLight%d"), K)))) { continue; }
+				LookLights[K] = A;
+				if (const ULightComponent* L = A->FindComponentByClass<ULightComponent>()) { LookLightBase[K] = L->Intensity; }
+			}
+		}
+		UE_LOG(LogAethyr, Display, TEXT("AETHYR_LOOK level shown: %d sun, %d lights"), LookSuns.Num(), LookLights.FilterByPredicate([](const TObjectPtr<AActor>& A) { return A != nullptr; }).Num());
+	}
+	for (AActor* A : LookSuns)
+	{
+		if (!A) { continue; }
+		A->SetActorRotation((-Sun).Rotation());
+		if (ULightComponent* L = A->FindComponentByClass<ULightComponent>()) { L->SetLightColor(FLinearColor(S[0], S[1], S[2])); }
+	}
+	for (int32 K = 0; K < LookLights.Num(); K++)
+	{
+		AActor* A = LookLights[K];
+		const int32 At = LightsAt + K * 8;
+		if (!A || At + 8 > Uniforms.Num()) { continue; }
+		const float* L = Uniforms.GetData() + At;
+		const bool bOn = L[7] > 0.0f && L[3] > 0.0f;
+		A->SetActorHiddenInGame(!bOn);
+		ULightComponent* Light = A->FindComponentByClass<ULightComponent>();
+		if (Light) { Light->SetVisibility(bOn); }
+		if (!bOn) { continue; }
+		A->SetActorLocation(ToUnreal(L[0], L[1], L[2]));
+		if (Light)
+		{
+			Light->SetLightColor(FLinearColor(L[4], L[5], L[6]));
+			Light->SetIntensity(LookLightBase[K] * L[7]);
+			if (ULocalLightComponent* Local = Cast<ULocalLightComponent>(Light)) { Local->SetAttenuationRadius(L[3] * Units); }
+		}
+	}
+
+	// the key light's depth picture: a square of ground ahead of the camera, its texels still on the ground as the camera moves
+	if (ShadowCapture && ShadowTarget && ShadowDepth)
+	{
+		const FQuat Turn = FRotationMatrix::MakeFromX(-Sun).ToQuat();
+		const FVector Fwd = -Sun, Right = Turn.GetRightVector(), Up = Turn.GetUpVector();
+		FVector Ahead = Camera->GetForwardVector(); Ahead.Z = 0.0;
+		const FVector Focus = Camera->GetComponentLocation() + Ahead.GetSafeNormal() * ShadowWidth * 0.3f;
+		const double Texel = ShadowWidth / FMath::Max(ShadowTarget->SizeX, 1);
+		const FVector At = Right * FMath::GridSnap(FVector::DotProduct(Focus, Right), Texel) + Up * FMath::GridSnap(FVector::DotProduct(Focus, Up), Texel)
+			+ Fwd * (FMath::GridSnap(FVector::DotProduct(Focus, Fwd), 100.0) - ShadowReach * 0.5);
+		ShadowCapture->SetWorldLocationAndRotation(At, Turn);
+		ShadowCapture->OrthoWidth = ShadowWidth;
+		ShadowCapture->CaptureScene();
+		// materials read a copy: the picture they read is never the one being drawn
+		FTextureRenderTargetResource* From = ShadowDepth->GameThread_GetRenderTargetResource();
+		FTextureRenderTargetResource* To = ShadowTarget->GameThread_GetRenderTargetResource();
+		if (From && To)
+		{
+			ENQUEUE_RENDER_COMMAND(AethyrShadowCopy)([From, To](FRHICommandListImmediate& RHICmdList)
+			{
+				FRHITexture* A = From->GetRenderTargetTexture();
+				FRHITexture* B = To->GetRenderTargetTexture();
+				if (!A || !B || A->GetDesc().Extent != B->GetDesc().Extent || A->GetFormat() != B->GetFormat()) { return; }
+				RHICmdList.Transition({FRHITransitionInfo(A, ERHIAccess::Unknown, ERHIAccess::CopySrc), FRHITransitionInfo(B, ERHIAccess::Unknown, ERHIAccess::CopyDest)});
+				RHICmdList.CopyTexture(A, B, FRHICopyTextureInfo());
+				RHICmdList.Transition({FRHITransitionInfo(A, ERHIAccess::CopySrc, ERHIAccess::SRVMask), FRHITransitionInfo(B, ERHIAccess::CopyDest, ERHIAccess::SRVMask)});
+			});
+		}
+		const float W = ShadowWidth;
+		LookVector(NU, FLinearColor(Right.X / W, Right.Y / W, Right.Z / W, 0.5f - FVector::DotProduct(At, Right) / W));
+		LookVector(NV, FLinearColor(-Up.X / W, -Up.Y / W, -Up.Z / W, 0.5f + FVector::DotProduct(At, Up) / W));
+		LookVector(ND, FLinearColor(Fwd.X, Fwd.Y, Fwd.Z, -FVector::DotProduct(At, Fwd)));
+		LookVector(NInfo, FLinearColor(1.0f, 1.0f / FMath::Max(ShadowTarget->SizeX, 1), W, 0.0f));
 	}
 }
 

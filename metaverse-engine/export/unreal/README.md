@@ -68,6 +68,7 @@ engine shaders for several minutes; later runs take about a minute.
 | `kits.py` | Which kit slots a `kit.NAME` row replaces, where, and which groups it drops |
 | `aethyr_script.c` | Runs a script against a world through the host interface; the bridge compiles the same file |
 | `web-fixtures.json` | Browser runs for the engine's web harness |
+| `look.py`, `look_source.py` | A starter look in the project's overrides, and the shader source it shares with the importer |
 | `probe/make_overrides.py` | Stands in for a designer: a replacement model and a sound |
 | `probe/` | Step 0: the frame-hash probe and the axis fixture |
 
@@ -108,6 +109,9 @@ row's name says what is replaced and its Asset is the replacement:
 | `kit.garage_bay` | A kit slot's grey blockout, at every place the slot stands | A static mesh |
 | `material.cel`, `material.sky` | The look | A material |
 | `event.pickup` | Nothing: adds a sound to the event | A sound |
+| `look.level` | Nothing: adds your lighting and post-processing | A level |
+| `look.params` | Nothing: gives your materials the game's numbers | A material parameter collection |
+| `look.shadow` | Nothing: gives your materials the key light's shadows | A render target |
 
 ### A thing with a skeleton
 
@@ -164,6 +168,60 @@ the plan, checked without Unreal: `python3 -I
 metaverse-engine/export/unreal/kits.py BUNDLE/manifest.json`. The report's
 `kits` lists the slots replaced and, with the reason, those still drawing
 the blockout.
+
+## A look of your own
+
+Lighting, shadows, bloom, fog, the colour grade and the sky are Unreal's side of
+the picture. Three rows let a project own them. The importer never makes or
+changes what they name, so an import leaves your look in place. Run the game with
+`-AethyrNoLook` to see it without them.
+
+- **`look.level`** names a level. The bridge loads it beside the generated one
+  when the game starts. Put your post-process volume, fog and lights in it. With
+  this row, the tone curve and bloom stay on for your volume to set; without it,
+  the bridge turns both off. In that level:
+  - An actor tagged `AethyrSun` is turned to the game's key light each frame and
+    takes its colour. Use a directional light.
+  - An actor tagged `AethyrLight0` to `AethyrLight7` is kept at that light of
+    the game's, with its colour and reach. Its brightness is its own times the
+    game's strength for that light. It is hidden while the game's light is off.
+- **`look.params`** names a material parameter collection. Each frame the bridge
+  writes the game's uniform block into every vector parameter named `U<n>`
+  (floats n to n + 3), as it does for the generated `MPC_Aethyr`. Your materials
+  must read your collection, not the generated one, which is made again by each
+  import. The bridge also writes these vector parameters when the collection
+  has them:
+
+  | Parameter | Holds |
+  |---|---|
+  | `AeLook` | 1 while the game runs, the clock (0 midnight, 0.5 noon), seconds |
+  | `AeSun` | The direction to the key light in Unreal's axes; w is 1 for the moon |
+  | `AeShadowU`, `AeShadowV`, `AeShadowD` | A place's u, v and depth (cm) in the shadow picture: `dot(xyz, place) + w` |
+  | `AeShadowInfo` | 1 when the shadow picture is drawn, one texel, its width in cm |
+  | `AeShadowSet` | Read once, not written: the shadow picture's width and depth in metres |
+
+- **`look.shadow`** names a render target with one float channel. Each frame the
+  bridge draws the scene's depth into it as the key light sees it: a square of
+  ground ahead of the camera. A material compares a place's depth with it to
+  know whether the key light reaches that place.
+
+The cel materials are unlit: they write their own two tones. So Unreal's lights
+and shadow maps do not reach them, and a cast shadow on the cel world comes from
+`look.shadow`. A light in the look level lights only what has a lit material,
+such as a replacement mesh.
+
+`look.py` makes a starter look in `/Game/<Game>/Overrides/Look/` and adds the
+three rows, with `material.cel` and `material.sky`. It makes a cel material that
+takes the cast shadow into its tones and writes glow brighter than white, a sky
+with a sun disc and stars, a post-process pass (inner ink lines, height fog, a
+grade for each time of day), and the level. Its dials are the `Ae...` vector
+parameters of `MPC_Look`. Run it once, then import again so the importer puts the
+two materials on the generated meshes:
+
+```
+AETHYR_BUNDLE=/abs/game.aexport UnrealEditor-Cmd Project.uproject \
+  -ExecutePythonScript=/abs/metaverse-engine/export/unreal/look.py -unattended -nosplash -RenderOffscreen
+```
 
 ## What the importer checks
 

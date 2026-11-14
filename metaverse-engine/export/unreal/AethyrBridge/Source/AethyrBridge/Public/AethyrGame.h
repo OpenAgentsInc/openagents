@@ -74,6 +74,22 @@ public:
 	int32 PanelsAt = 64;
 	UPROPERTY(EditAnywhere, Category = "Aethyr")
 	int32 PanelCount = 12;
+	// The lights (a place and reach, then a colour and strength, eight floats each) and the style
+	// block (metaverse/style-preset.coax: the key light, its direction, the clock).
+	UPROPERTY(EditAnywhere, Category = "Aethyr")
+	int32 LightsAt = 160;
+	UPROPERTY(EditAnywhere, Category = "Aethyr")
+	int32 LightCount = 8;
+	UPROPERTY(EditAnywhere, Category = "Aethyr")
+	int32 StyleAt = 224;
+
+	// The look a project owns (the overrides rows look.level, look.params and look.shadow), none
+	// of it made or changed by an import. -AethyrNoLook runs without it.
+	// How wide a square of ground the key light's depth picture covers, and how deep it reaches (cm).
+	UPROPERTY(EditAnywhere, Category = "Aethyr|Look")
+	float ShadowWidth = 9000.0f;
+	UPROPERTY(EditAnywhere, Category = "Aethyr|Look")
+	float ShadowReach = 60000.0f;
 
 	// The player camera (AethyrCamera.h): its tunables, with none set the class defaults, and the view shown.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Aethyr|Camera")
@@ -162,6 +178,27 @@ private:
 	void Section(UProceduralMeshComponent* Mesh, const uint32* Words, int32 Count) const;
 	void UpdateCamera(float DeltaSeconds);
 	void UpdateLook();
+	void SetUpLook();
+	void UpdateLookWorld();
+	void LookVector(FName Name, const FLinearColor& Value);
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialParameterCollection> LookParams;
+	UPROPERTY(Transient)
+	TObjectPtr<class ULevelStreamingDynamic> LookLevel;
+	UPROPERTY(Transient)
+	TObjectPtr<class UTextureRenderTarget2D> ShadowTarget;      // look.shadow: what materials read
+	UPROPERTY(Transient)
+	TObjectPtr<class UTextureRenderTarget2D> ShadowDepth;       // what the capture draws, copied to it
+	UPROPERTY(Transient)
+	TObjectPtr<class USceneCaptureComponent2D> ShadowCapture;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<AActor>> LookSuns;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<AActor>> LookLights;                      // by light number, null where none
+	TArray<float> LookLightBase;
+	TSet<FName> LookNames;
+	bool bLookFound = false;
 
 	// ---- the player camera (AethyrCamera.cpp)
 	const UAethyrCameraTuning& Tuning() const;
