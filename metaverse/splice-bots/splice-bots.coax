@@ -476,6 +476,11 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
   s[0].edit = sp_has(body, "?edit") || sp_has(body, "&edit");
   if s[0].follow == 0 { s[0].follow = 1; }
   if s[0].dev && s[0].fixture == 0 && (sp_has(body, "?layer=fixture") || sp_has(body, "&layer=fixture")) { s[0].fixture = 1; }
+  // the dev server's page may start at a moment of the run, ?stage=N (as message 610 does), for a clip
+  if s[0].dev { for i: 0..<body.count - 6 { if cast(string) body[i..<i + 6] == "stage=" { s[0].started = true; g_stage(s[0].game[..], sp_whole(cast(string) body[i + 6..<body.count], 0)); } } }
+  if s[0].dev && sp_has(body, "&rubble") {   // and with the rubble back, Digger beside her before it
+    g := s[0].game[..]; g[0].rubble_gone = false; g[0].phase = PH_DAY; g[0].px = 1.5; g[0].pz = g[0].at.rubble_z + 9; g[0].yaw = PI; g_bot_home(g);
+  }
   gray := "gray";   // ?gray opens in graybox
   for i: 0..<body.count { if i + gray.count <= body.count && i > 0 && (body[i - 1] == '?' || body[i - 1] == '&') && cast(string) body[i..<i + gray.count] == gray { s[0].game[0].gray = true; } }
   target := "scene=";

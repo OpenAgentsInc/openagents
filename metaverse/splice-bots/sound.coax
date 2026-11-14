@@ -30,7 +30,7 @@ SND_EVENT_BASE :: 200;               // a sound's event for a native host: SND_E
 SndRow :: struct { name: string; file: string; gain: int; }
 SND_ROWS :: [SND_COUNT] SndRow.[
   SndRow.{name = "pickup", file = "pickup.wav", gain = 450},               // a part, a card or a battery cell picked up
-  SndRow.{name = "drill", file = "drill.wav", gain = 450},                 // a drill card starts on the rubble; the drill mech starts on the hallway
+  SndRow.{name = "drill", file = "drill.wav", gain = 450},                 // a drill card's bit meets the rubble (g_bot); the drill mech starts on the hallway
   SndRow.{name = "glitch", file = "glitch.wav", gain = 400},               // a bad cut; the core's memory flickering in
   SndRow.{name = "success", file = "success.wav", gain = 450},             // the rubble opens, the hallway breaks, a fight won, the scene restored
   SndRow.{name = "hit", file = "hit.wav", gain = 420},                     // a blow: you hurt, a foe hit, a stun, a hit in a bot battle
@@ -146,10 +146,6 @@ snd_tick :: (g: [] SpGame, dt: f32) {
     aboard := snd_aboard(g);
     if aboard != s[0].aboard { snd_play(g, SND_ROVER_DOOR); }
     for i: 0..<FOES { if g[0].fhost[i] && !s[0].host[i] && g[0].fhp[i] > 0 { snd_play(g, SND_ROBOT_ALERT); break; } }
-    if g[0].bot_state == BOT_RUN && g[0].bot_step != s[0].bot_step && g[0].bot_step >= 0 && g[0].bot_step < g[0].strip_n {
-      c := g[0].strip[g[0].bot_step];
-      if c == H_DRILL || c == H_PLUS { snd_play(g, SND_DRILL); }
-    }
     t := g[0].bt[0];
     if t.kind != SBF_NONE && t.kind == s[0].kind && (snd_health(g, 0) < s[0].mine || snd_health(g, 1) < s[0].foe) { snd_play(g, SND_HIT); }
   }

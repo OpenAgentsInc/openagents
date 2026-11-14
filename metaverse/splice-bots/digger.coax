@@ -65,17 +65,25 @@ dg_bone_in :: (f: Frame, m: DgXf, k: f32, lift: f32) -> DgBone {
 
 // The bones' places for this frame. walk: the stride's phase (radians); amp: how much he walks
 // (0 standing, 1 at a run); t: seconds, for the standing breath and the sensor's look.
-dg_pose :: (xf: [] DgXf, walk: f32, amp: f32, t: f32) {
+// What he is doing on top of the walk (digger-orders.coax d_act): the nose's nod (+ down) and turn
+// (+ to his right... his x), the body's pitch (+ nose down) and its push ahead (model units).
+DgAct :: struct { nod: f32; turn: f32; pitch: f32; push: f32; }
+DG_STANCE :: 0.62f32;   // the share of a stride a foot stays planted
+dg_pose :: (xf: [] DgXf, walk: f32, amp: f32, t: f32, a: DgAct) {
   X := v3(1, 0, 0); Y := v3(0, 1, 0); none := v3(0, 0, 0);
   xf[0] = DgXf.{x = X, y = Y, z = v3(0, 0, 1), t = none};
   bob := (1 - amp) * 0.006 * sin(t * 2.2) + amp * 0.012 * abs(sin(walk));
-  xf[1] = dg_child(xf[0], X, amp * 0.03 * sin(walk * 2), DGM_PIVOT(1), v3(0, bob, 0));
-  xf[2] = dg_child(xf[1], X, (1 - amp) * 0.05 * sin(t * 1.3), DGM_PIVOT(2), none);
-  xf[3] = dg_child(xf[1], Y, (1 - amp) * 0.35 * sin(t * 0.6), DGM_PIVOT(3), none);
+  xf[1] = dg_child(xf[0], X, amp * 0.03 * sin(walk * 2) + a.pitch, DGM_PIVOT(1), v3(0, bob, a.push));
+  xf[2] = dg_child(dg_child(xf[1], Y, a.turn, DGM_PIVOT(2), none), X, (1 - amp) * 0.05 * sin(t * 1.3) + a.nod, DGM_PIVOT(2), none);
+  xf[3] = dg_child(xf[1], Y, (1 - amp) * 0.35 * sin(t * 0.6) + a.turn * 0.6, DGM_PIVOT(3), none);
   for leg: 0..<4 {
-    ph := walk + ifx leg == 0 || leg == 3 then 0.0f32 else PI;   // front left with hind right, front right with hind left
-    xf[4 + leg] = dg_child(xf[1], X, amp * 0.45 * sin(ph), DGM_PIVOT(4 + leg), none);
-    xf[8 + leg] = dg_child(xf[4 + leg], X, -amp * 0.35 * hi(0, sin(ph + PI / 2)), DGM_PIVOT(8 + leg), none);
+    // front left with hind right, front right with hind left. A foot stays planted for DG_STANCE of
+    // the stride, sweeping back as the body goes over it, then swings forward quickly, lifted.
+    u := fract((walk + ifx leg == 0 || leg == 3 then 0.0f32 else PI) / TAU);
+    sw := -1 + 2 * u / DG_STANCE; lift := 0.0f32;
+    if u >= DG_STANCE { v := (u - DG_STANCE) / (1 - DG_STANCE); sw = 1 - 2 * v * v * (3 - 2 * v); lift = sin(PI * v); }
+    xf[4 + leg] = dg_child(xf[1], X, amp * 0.42 * sw, DGM_PIVOT(4 + leg), none);
+    xf[8 + leg] = dg_child(xf[4 + leg], X, -amp * 0.5 * lift, DGM_PIVOT(8 + leg), none);
   }
 }
 
@@ -104,9 +112,9 @@ dg_grey :: (buf: [] u32, p: [] Pen, obj: int, from: int, m: CastMono) {
     buf[i + 4] = c;
   }
 }
-dg_draw :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, arm: bool, treads: bool, battery: bool, spin: f32, m: CastMono, walk: f32, amp: f32, t: f32) {
+dg_draw :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, arm: bool, treads: bool, battery: bool, spin: f32, m: CastMono, walk: f32, amp: f32, t: f32, act: DgAct) {
   xf: [DGM_BONES] DgXf;
-  dg_pose(xf[..], walk, ifx treads then clamp01(amp) else 0, t);
+  dg_pose(xf[..], walk, ifx treads then clamp01(amp) else 0, t, act);
   k := s * DG_LONG;   // model units to metres
   lift := 0.0f32;
   bones: [DGM_BONES] DgBone;
@@ -182,7 +190,7 @@ dg_draw :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, a
 #test "the Digger's mesh: every triangle comes out of its stream, inside his box, and without treads his legs are drawn grey" #steps 2000000000 #traversal 2000000000 {
   buf: [DGM_TRIS * 3 * VERTEX_WORDS + 4000 * VERTEX_WORDS] u32;
   whole := [1] Pen.[Pen.{}];
-  dg_draw(buf[..], whole[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), false, true, false, 0, cast_colour(), 0, 0, 0);
+  dg_draw(buf[..], whole[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), false, true, false, 0, cast_colour(), 0, 0, 0, DgAct.{});
   #assert !whole[0].over && whole[0].n > DGM_TRIS * 3;   // the mesh, then the grey drill and eyes
   for i: 0..<DGM_TRIS * 3 {
     x := f32_from_bits(buf[i * VERTEX_WORDS]); y := f32_from_bits(buf[i * VERTEX_WORDS + 1]); z := f32_from_bits(buf[i * VERTEX_WORDS + 2]);
@@ -192,12 +200,12 @@ dg_draw :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, a
   had: [DGM_TRIS * 3 * VERTEX_WORDS + 4000 * VERTEX_WORDS] u32;
   for i: 0..<whole[0].n * VERTEX_WORDS { had[i] = buf[i]; }
   half := [1] Pen.[Pen.{}];
-  dg_draw(buf[..], half[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), false, false, false, 0, cast_colour(), 0, 0, 0);
+  dg_draw(buf[..], half[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), false, false, false, 0, cast_colour(), 0, 0, 0, DgAct.{});
   #assert half[0].n == whole[0].n;   // the whole dog, no stands
   grey := 0; for i: 0..<half[0].n { if buf[i * VERTEX_WORDS + 4] != had[i * VERTEX_WORDS + 4] { grey += 1; } }
   #assert grey == (DGM_TRIS - body) * 3;   // exactly his legs
   // a store too small stops cleanly
   small := [1] Pen.[Pen.{}];
-  dg_draw(buf[0..<3000 * VERTEX_WORDS], small[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), true, true, true, 0, cast_colour(), 0.5, 1, 0);
+  dg_draw(buf[0..<3000 * VERTEX_WORDS], small[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), true, true, true, 0, cast_colour(), 0.5, 1, 0, DgAct.{});
   #assert small[0].over && small[0].n <= 3000;
 }

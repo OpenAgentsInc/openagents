@@ -29,10 +29,11 @@
 #load "../../metaverse-engine/action/carry.coax";
 #load "../../metaverse-engine/action/vitals.coax";
 #load "../../metaverse-engine/ui/wheel.coax";   // Hold R: the bot wheel
+#load "digger-orders.coax";   // commanding him: the selection, his answer, the marker, the drill's phases (#13552)
 
 T_ROOM :: 6;                 // inventory slots
-T_SENSE :: 4.0f32;           // metres: Digger's sensor
-T_SENSE_UP :: 8.0f32;        // metres: with the better sensor
+T_SENSE :: 4.0f32;           // metres: Digger's sensor range, the one number a level's metrics room shows
+T_SENSE_UP :: T_SENSE * 2;   // with the better sensor: twice as far
 T_FETCH_REACH :: 0.8f32;     // metres: near enough to pick a part up
 T_STRIKE :: 0.9f32;          // seconds between Digger's strikes, and a foe's back at him
 T_STRIKE_REACH :: 1.4f32;    // metres
@@ -44,7 +45,7 @@ T_TOW_REACH :: 2.4f32;       // metres: E tows Digger from this near, or gives h
 T_CELL_RATE :: 0.8f32;       // the share of his health a battery cell gives back a second, until he is full
 T_FOE_STUN :: 4.0f32;        // seconds an F stun holds a robot
 T_POINT_FAR :: 40.0f32;      // metres the pointer reaches
-T_GIVE_UP_FIGHT :: 25.0f32;  // metres from her: Digger lets a fight go
+T_GIVE_UP_FIGHT :: 25.0f32;  // metres from her: the bot wheel's reach (ATTACK, CHARGE); an order lasts to T_LEASH
 T_CROUCH :: 0.35f32;         // metres the view sinks while sneaking
 T_Q_TAP :: 0.3f32;           // seconds: a second Q within this of the last is a double tap (super fast)
 T_Q_OFF :: 0.5f32;           // seconds: Q held this long on the board steps off
@@ -80,6 +81,12 @@ SpDir :: struct {
   q_fast: bool;                           // Q has the board fast (Q switches it); Ctrl held or a double tap of W rides very fast too
   wheel: Wheel;                           // Hold R: the bot wheel, open while R is held (metaverse-engine/ui/wheel.coax)
   sw: f32 = 1280; sh: f32 = 800;          // the screen at the last frame: the pointer's crosshair
+  sel: DPoint = DPoint.{kind = DP_NONE, i = -1};   // what the crosshair has selected (digger-orders.coax)
+  o_st: int; o_t: f32 = 9; o_kind: int; o_i: int = -1;   // the last order's state (OS_*), seconds in it, and its target
+  o_x: f32; o_z: f32; o_r: f32 = 1;       // its marker
+  o_yes: bool; o_ack: f32 = 9;            // taken (a nod) or refused (a shake), seconds since
+  o_kick: f32 = 9; o_kd: f32; o_burst: f32 = 9; o_plus: bool;   // a strike's lunge (+) or the break's recoil (-), the rubble flying
+  o_look: f32;                            // his nose turned toward what he looks at
   bag_x: f32; bag_y: f32; bag_s: f32; bag_gap: f32;   // the grid as last drawn, for a click
 }
 
@@ -87,7 +94,8 @@ d_say :: (g: [] SpGame, m: int) { g[0].dr[0].say = m; g[0].dr[0].say_t = 3.0; }
 d_text :: (m: int) -> string {
   if m == DS_FULL { return "Inventory full. Press I and drop something."; }
   if m == DS_DOWN { return "Digger is powered down. Tow him to Sniper with E."; }
-  if m == DS_NOTHING { return "Nothing there to dig, take or fight."; }
+  if m == DS_NOTHING { return "Look at rock, a part or a robot to give Digger an order."; }
+  if m == DS_BLOCKED { return "Digger can't get there. Something is in the way."; }
   if m == DS_TOW { return "Towing Digger. Sniper's charger will fix him."; }
   if m == DS_UP { return "Digger is charged and back on his treads."; }
   if m == DS_SENSOR { return "Better sensor fitted. Digger senses twice as far."; }
@@ -96,7 +104,7 @@ d_text :: (m: int) -> string {
   if m == DS_KEEP { return "That stays with you."; }
   if m == DS_STUN { return "Stunned."; }
   if m == DS_FETCH { return "Digger goes for it."; }
-  if m == DS_FIGHT { return "Digger attacks."; }
+  if m == DS_FIGHT { return "Digger goes to attack."; }
   if m == DS_POWERED { return "Digger powered down."; }
   if m == DS_HERE { return "Drop it where Digger can find it again."; }
   if m == DS_DIG { return "Digger digs."; }
@@ -242,7 +250,7 @@ d_bot :: (g: [] SpGame, dt: f32) {
   if d[0].task == DJ_FETCH {
     i := d[0].task_i;
     gone := ifx i == PICKS then !d_sensor_here(g) else g[0].taken[i];
-    if gone || dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > T_GIVE_UP_FIGHT { d_task_end(g); return; }
+    if gone || dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > T_LEASH { d_task_end(g); return; }
     at := d_fetch_at(g, i);
     if bot_toward(g, at[0], at[1], T_BOT_GO, dt) > T_FETCH_REACH { return; }
     if i == PICKS { d[0].sensor = true; d_say(g, DS_SENSOR); }
@@ -253,11 +261,11 @@ d_bot :: (g: [] SpGame, dt: f32) {
   }
   if d[0].task == DJ_FIGHT {
     f := d[0].task_i;
-    if f < 0 || f >= FOES || !g_foe_in(g, f) || dist2(g[0].px, g[0].pz, g[0].fx[f], g[0].fz[f]) > T_GIVE_UP_FIGHT { d_task_end(g); return; }
+    if f < 0 || f >= FOES || !g_foe_in(g, f) || dist2(g[0].px, g[0].pz, g[0].fx[f], g[0].fz[f]) > T_LEASH { d_task_end(g); return; }
     if bot_toward(g, g[0].fx[f], g[0].fz[f], T_BOT_GO, dt) > T_STRIKE_REACH { return; }
     d[0].task_t += dt;
     if d[0].task_t < T_STRIKE { return; }
-    d[0].task_t = 0;
+    d[0].task_t = 0; d[0].o_kick = 0; d[0].o_kd = 1; snd_play(g, SND_HIT);   // his strike: a lunge
     // the foe turns on Digger, not on her: it stops for the exchange and strikes him back
     g[0].fhp[f] -= 1; g[0].fhost[f] = false; g[0].fstag[f] = hi(g[0].fstag[f], 0.3); g[0].flash = 0.15;
     if g[0].fhp[f] <= 0 {
@@ -279,45 +287,28 @@ d_view :: (g: [] SpGame) -> VpView {
   c := g_camera(g);
   return VpView.{ex = c.eye.x, ey = c.eye.y, ez = c.eye.z, ax = c.at.x, ay = c.at.y, az = c.at.z, fov = c.fov, w = g[0].dr[0].sw, h = g[0].dr[0].sh};
 }
-DPoint :: struct { kind: int; i: int; }
-d_aim :: (r: VpRay, x: f32, y: f32, z: f32, size: f32, best: [] f32) -> bool {
+DPoint :: struct { kind: int; i: int = -1; }
+// How far off the ray a thing is, for its size and distance (keep widens it: what is selected): best keeps the least.
+d_aim :: (r: VpRay, x: f32, y: f32, z: f32, size: f32, keep: f32, best: [] f32) -> bool {
   dx := x - r.o.x; dy := y - r.o.y; dz := z - r.o.z;
   t := dx * r.d.x + dy * r.d.y + dz * r.d.z;
   if t < 0 || t > T_POINT_FAR { return false; }
   ox := dx - r.d.x * t; oy := dy - r.d.y * t; oz := dz - r.d.z * t;
-  off := sqrt(ox * ox + oy * oy + oz * oz) / (size + 0.03 * t);
+  off := sqrt(ox * ox + oy * oy + oz * oz) / ((size + 0.03 * t) * keep);
   if off > 1 || off >= best[0] { return false; }
   best[0] = off;
   return true;
 }
-// What the crosshair is on: a part, a foe, the rubble or the boss wall, the better sensor; or none.
-d_pointed :: (g: [] SpGame) -> DPoint {
-  // along the middle of the view, or the host's aim (message 622: from the eye in first person, her head in third)
-  v := d_view(g);
-  if g[0].haim_on { v = g[0].haim; v.w = g[0].dr[0].sw; v.h = g[0].dr[0].sh; }
-  r := vp_ray(v, g[0].dr[0].sw * 0.5, g[0].dr[0].sh * 0.5);
-  out := DPoint.{kind = DP_NONE, i = -1};
-  if !r.ok { return out; }
-  best := [1] f32.[2];
-  for i: 0..<PICKS { if !g[0].taken[i] && pick_zone(g, i) == g[0].zone && d_aim(r, pick_x(g, i), 0.75, pick_z(g, i), 0.9, best[..]) { out = DPoint.{kind = DP_PICK, i = i}; } }
-  if d_sensor_here(g) { m := d_sensor_at(g); if d_aim(r, m.x, 0.75, m.z, 0.9, best[..]) { out = DPoint.{kind = DP_SENSOR, i = PICKS}; } }
-  if g[0].zone == Z_MINE {
-    for i: 0..<FOES { if g_foe_in(g, i) && d_aim(r, g[0].fx[i], 1.0, g[0].fz[i], 1.0, best[..]) { out = DPoint.{kind = DP_FOE, i = i}; } }
-    if !g[0].rubble_gone && d_aim(r, 0, 1.5, g[0].at.rubble_z, 3.0, best[..]) { out = DPoint.{kind = DP_DIG, i = 0}; }
-    if g[0].rubble_gone && !g[0].wall_gone && d_aim(r, 0, 2.0, g[0].at.wall_z, 4.0, best[..]) { out = DPoint.{kind = DP_DIG, i = 1}; }
-  }
-  return out;
-}
 // The left click in play: Digger digs, picks up or attacks what she points at.
 d_point :: (g: [] SpGame) -> int {
   if !g[0].bot { return DP_NONE; }
-  if d_down(g) { d_say(g, DS_DOWN); return DP_NONE; }
   p := d_pointed(g); d := g[0].dr[..];
-  if p.kind == DP_NONE { d_say(g, DS_NOTHING); return DP_NONE; }
+  why := d_can(g, p);
+  d_ack(g, p, why);   // answered at once: taken, or refused with the reason (digger-orders.coax)
+  if why != DS_NONE { return DP_NONE; }
   if p.kind == DP_DIG { d_task_end(g); d_say(g, DS_DIG); g_deploy(g); return p.kind; }
   if g[0].bot_state != BOT_FOLLOW { g[0].bot_state = BOT_FOLLOW; }   // called off his cut
   if p.kind == DP_FOE { d[0].task = DJ_FIGHT; d[0].task_i = p.i; d[0].task_t = T_STRIKE * 0.5; d_say(g, DS_FIGHT); return p.kind; }
-  if p.kind == DP_PICK && !d_fits(g, d_kind_of(p.i)) { d_say(g, DS_FULL); return DP_NONE; }
   if p.kind == DP_PICK { d[0].left[p.i] = false; }   // pointed at: no longer left
   d[0].task = DJ_FETCH; d[0].task_i = p.i; d_say(g, DS_FETCH);
   return p.kind;
@@ -410,20 +401,22 @@ d_order :: (g: [] SpGame, pick: int) {
   if pick == DW_FOLLOW { d_task_end(g); g[0].bot_state = BOT_FOLLOW; d_say(g, DS_FOLLOW); return; }
   if pick == DW_DIG {
     if g[0].zone != Z_MINE || (g[0].rubble_gone && g[0].wall_gone) { d_say(g, DS_NO_DIG); return; }
-    d_task_end(g); d_say(g, DS_DIG); g_deploy(g); return;
+    d_task_end(g); d_say(g, DS_DIG); g_deploy(g);
+    if g[0].bot_state == BOT_GO { d_ack(g, DPoint.{kind = DP_DIG, i = ifx g[0].rubble_gone then 1 else 0}, DS_NONE); }
+    return;
   }
   if g[0].bot_state != BOT_FOLLOW { g[0].bot_state = BOT_FOLLOW; }   // called off his cut
   if pick == DW_PICK {
     i := d_sense(g);
     if i < 0 { d_say(g, DS_NO_PART); return; }
     if i < PICKS { d[0].left[i] = false; }
-    d[0].task = DJ_FETCH; d[0].task_i = i; d_say(g, DS_FETCH); return;
+    d[0].task = DJ_FETCH; d[0].task_i = i; d_say(g, DS_FETCH); d_ack(g, DPoint.{kind = ifx i == PICKS then DP_SENSOR else DP_PICK, i = i}, DS_NONE); return;
   }
   if pick == DW_ATTACK {
     best := -1; bd := T_GIVE_UP_FIGHT;
     if g[0].zone == Z_MINE { for i: 0..<FOES { if g_foe_in(g, i) { e := dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]); if e < bd { bd = e; best = i; } } } }
     if best < 0 { d_say(g, DS_NO_FOE); return; }
-    d[0].task = DJ_FIGHT; d[0].task_i = best; d[0].task_t = T_STRIKE * 0.5; d_say(g, DS_FIGHT); return;
+    d[0].task = DJ_FIGHT; d[0].task_i = best; d[0].task_t = T_STRIKE * 0.5; d_say(g, DS_FIGHT); d_ack(g, DPoint.{kind = DP_FOE, i = best}, DS_NONE); return;
   }
 }
 // The wheel, in the middle of the screen: four choices round a ring, the one picked lit.
@@ -479,6 +472,8 @@ d_pre :: (g: [] SpGame, dt: f32) {
 d_post :: (g: [] SpGame, dt: f32) {
   if g[0].heat < d_heat_floor(g) { g[0].heat = d_heat_floor(g); }
   d_bot(g, dt);
+  d_ord_tick(g, dt);   // the selection, the order's marker, where he looks (digger-orders.coax)
+  g[0].dr[0].o_burst += dt;
 }
 d_pace :: (g: [] SpGame) -> f32 { return stance_pace(g[0].dr[0].st); }
 d_sneaking :: (g: [] SpGame) -> bool { return g[0].dr[0].st.sneak && g[0].mode == M_PLAY && !g_riding(g); }
@@ -487,7 +482,7 @@ d_noticed :: (g: [] SpGame, see: f32) -> f32 { return stance_noticed(g[0].dr[0].
 d_crouch :: (g: [] SpGame) -> f32 { return ifx d_sneaking(g) then T_CROUCH else 0.0f32; }
 d_respawn :: (g: [] SpGame) {
   d := g[0].dr[..];
-  d_task_end(g); d[0].bag = false; d[0].map = false; d[0].cell = false;
+  d_task_end(g); d[0].bag = false; d[0].map = false; d[0].cell = false; d[0].o_st = OS_NONE;
   for i: 0..<PICKS { d[0].left[i] = false; d[0].full_said[i] = false; }
 }
 
@@ -501,6 +496,8 @@ d_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     kit_pen(p, 240, MAT_SKIN, t3(0.93, 0.88, 0.76)); box(buf, p, f, 0.22, 0.12, 0.22);
     kit_pen(p, 241, MAT_GLOW, t3(1.0, 0.72, 0.30)); ball(buf, p, v3(m.x, 1.0 + sin(t * 2.2) * 0.12, m.z), 0.12, 8);
   }
+  if g[0].zone == Z_MINE { d_chips_live(g, buf, p); d_burst_live(g, buf, p); }
+  d_mark_live(g, buf, p);   // the order's marker (digger-orders.coax)
 }
 d_tint :: (g: [] SpGame, c: KitTint) -> KitTint { return ifx d_down(g) then t3(0.30, 0.28, 0.27) else c; }
 // A bar: an ink outline, filled `share` of the way in `c`, cut into `cuts` segments when above 1.
@@ -679,9 +676,10 @@ d_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   if !d.paused && !d.bag && !d.map { n = d_plates(g, out, q, n); }   // under an open window the bars would show through
   // the crosshair Digger is pointed with
   if g[0].mode == M_PLAY && !d.paused && !d.bag && !d.map && g[0].bot {
-    k := q.k; cx := q.w * 0.5; cy := q.h * 0.5; c := ifx d_pointed(g).kind != DP_NONE then HEAT() else INK();
+    k := q.k; cx := q.w * 0.5; cy := q.h * 0.5; c := ifx d.sel.kind != DP_NONE && d_can(g, d.sel) == DS_NONE then HEAT() else INK();
     n = ui_seg(out, n, cx - 9 * k, cy, cx - 3 * k, cy, 1.2 * k, c, 0.9); n = ui_seg(out, n, cx + 3 * k, cy, cx + 9 * k, cy, 1.2 * k, c, 0.9);
     n = ui_seg(out, n, cx, cy - 9 * k, cx, cy - 3 * k, 1.2 * k, c, 0.9); n = ui_seg(out, n, cx, cy + 3 * k, cx, cy + 9 * k, 1.2 * k, c, 0.9);
+    n = d_select_hud(g, out, q, n, cx, cy);   // what is selected and the command it gives (digger-orders.coax)
   }
   if d.say != DS_NONE && !d.paused {
     t := d_text(d.say); k := q.k; mw := ui_w(F_MONO, t, 10 * k) + 40 * k; y0 := q.h * 0.3 + 60 * k;

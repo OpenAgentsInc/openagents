@@ -145,7 +145,7 @@ cast_rover :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, roll: f32, m:
 // and his eyes are dark. `spin` turns the drill; `glow` is the eyes' light. Standing, unposed; the
 // game walks him with dg_draw. Uses objects obj to obj + 7.
 cast_digger :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, arm: bool, treads: bool, battery: bool, spin: f32, m: CastMono) {
-  dg_draw(buf, p, f, s, obj, glow, arm, treads, battery, spin, m, 0, 0, 0);
+  dg_draw(buf, p, f, s, obj, glow, arm, treads, battery, spin, m, 0, 0, 0, DgAct.{});
 }
 
 // A raider: a dark, hunched silhouette. Broad shoulders under two spikes, a helmet with a crest

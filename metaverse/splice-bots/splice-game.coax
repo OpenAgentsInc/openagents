@@ -128,7 +128,7 @@ SpGame :: struct {
   rubble_gone: bool; wall_gone: bool; at_crate: bool;
   bot: bool;                   // the Digger is built (its three slots are filled): it follows you
   bot_state: int; bot_x: f32; bot_z: f32; bot_yaw: f32; bot_from: f32; bot_step: int; bot_t: f32; bot_fail: f32; bot_wall: bool; bot_spin: f32;
-  dg_walk: f32; dg_amp: f32; dg_x: f32; dg_z: f32; dg_t: f32;   // the Digger's stride as drawn (digger.coax dg_gait)
+  dg_walk: f32; dg_amp: f32; dg_x: f32; dg_z: f32; dg_t: f32; dg_yaw: f32;   // the Digger's stride and heading as drawn (digger-gait.coax dg_gait)
   fx: [FOES] f32; fz: [FOES] f32; fhp: [FOES] int; fhost: [FOES] bool; fstag: [FOES] f32;
   fyaw: [FOES] f32; fflee: [FOES] bool; fpose: [FOES] int;   // where each faces, whether it runs from you, and its plan's pose (ai/plan.coax MP_*)
   fout: [FOES] bool;           // out of the garage at this time of day: its plan stands it beyond the ring (g_plan_out)
@@ -454,16 +454,18 @@ g_bot :: (g: [] SpGame, dt: f32) {
   card := ifx g[0].bot_step >= 0 && g[0].bot_step < g[0].strip_n then g[0].strip[g[0].bot_step] else -1;
   // MOVE drives forward to just short of what is in the way, at most T_MOVE_MAX
   if card == H_MOVE { g[0].bot_z = hi(hi(face + T_MOVE_SHORT, g[0].bot_from - T_MOVE_MAX), g[0].bot_z - dt * 4.2); }
-  if card == H_DRILL || card == H_PLUS { g[0].bot_spin += dt * 22; }
+  // a drill card: the bit spins up through the windup, then bites in with its sound (digger-orders.coax)
+  bite := d_card_len(card) * T_BITE;
+  if card == H_DRILL || card == H_PLUS { g[0].bot_spin += dt * d_spin_rate(g); if g[0].bot_t < bite && g[0].bot_t + dt >= bite { snd_play(g, SND_DRILL); } }
   g[0].bot_t += dt;
-  if g[0].bot_t < T_CARD_TIME { return; }
+  if g[0].bot_t < d_card_len(card) { return; }   // DRILL+ breaks through sooner
   g[0].bot_t = 0;
   // the card that just finished decides what happened
   if card == H_MOVE { g[0].bot_from = g[0].bot_z; }
   if card == H_DRILL || card == H_PLUS {
     if g[0].bot_z - face > T_DRILL_REACH { g_say(g, MSG_AIR); }
     else if g[0].bot_wall { g_say(g, SBM_NEED_MECH); g[0].bot_state = BOT_FOLLOW; return; }   // only the drill mech breaks the hallway
-    else { g[0].rubble_gone = true; g[0].phase = PH_DUSK; g[0].flash = 0.5; g_say(g, MSG_OPEN); g[0].bot_state = BOT_FOLLOW; return; }
+    else { g[0].rubble_gone = true; g[0].phase = PH_DUSK; g[0].flash = 0.5; g_say(g, MSG_OPEN); g[0].bot_state = BOT_FOLLOW; d_broke(g, card == H_PLUS); return; }
   }
   g[0].bot_step += 1;
   if g[0].bot_step >= g[0].strip_n { g[0].bot_state = BOT_FAIL; g[0].bot_fail = T_BAD_CUT; if g[0].msg == MSG_NONE || g[0].msg_t < 2.5 { g_say(g, MSG_BAD_CUT); } }
@@ -1042,9 +1044,11 @@ g_draw_rover :: (g: [] SpGame, buf: [] u32, p: [] Pen, at: Point, yaw: f32) { g_
 // Digger's DRILL (or DRILL+) card bites it, the top rocks shake loose and dust falls, more as the card goes on.
 g_rubble_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   rz := g[0].at.rubble_z; t := g[0].t;
-  card := ifx g[0].bot_state == BOT_RUN && g[0].bot_step >= 0 && g[0].bot_step < g[0].strip_n then g[0].strip[g[0].bot_step] else -1;
-  drill := (card == H_DRILL || card == H_PLUS) && !g[0].bot_wall && g[0].bot_z - (rz + 1) <= T_DRILL_REACH;
-  k := ifx drill then clamp(g[0].bot_t / T_CARD_TIME, 0, 1) else 0.0f32;
+  // the rock holds through the windup, then shakes harder and loosens as the bit works (digger-orders.coax)
+  du := ifx g[0].bot_wall then -1.0f32 else d_drill_u(g);
+  drill := du >= T_BITE;
+  k := ifx drill then (du - T_BITE) / (1 - T_BITE) else 0.0f32;
+  f_plus := ifx d_drill_card(g) == H_PLUS then 1.5f32 else 1.0f32;
   kit_pen(p, 90, MAT_WORLD, t3(0.56, 0.36, 0.28));
   for i: 0..<25 {
     f := cast(f32) i; row := i / 5;
@@ -1052,7 +1056,7 @@ g_rubble_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     loose := drill && row >= 3 && kit_rand(f + 21) < k * 0.9;   // the top rocks come away as the drill bites
     y := 0.6 + cast(f32) row * 1.25; z := rz + (kit_rand(f) - 0.5) * 0.8;
     if loose { y = lo(y, 0.4 + (1 - k) * y); z = rz + 0.8 + k * 1.2; }
-    shake := ifx drill then sin(t * 40 + f) * 0.04 else 0.0f32;
+    shake := ifx drill then sin(t * 40 + f) * (0.015 + 0.05 * k) * f_plus else 0.0f32;
     ellipsoid(buf, p, frame_at(v3(-2.6 + cast(f32) (i % 5) * 1.3 + shake, y, z), kit_rand(f + 5) * 6), 0.85 * sz, 0.72 * sz, 0.8 * sz, 7, 4, 0);
   }
   kit_pen(p, 91, MAT_WORLD, t3(0.48, 0.31, 0.24));   // small stones packed between
@@ -1136,11 +1140,11 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   if !g[0].wall_gone { g_blocked_live(g, buf, p); }
   if g[0].bot {
     shake := ifx g[0].bot_state == BOT_FAIL then sin(t * 40) * 0.06 else 0.0f32;
-    df := frame_at(v3(g[0].bot_x + shake, ground_y(g, g[0].bot_x, g[0].bot_z), g[0].bot_z), g[0].bot_yaw);
+    dg_gait(g, t);   // his stride and his heading, eased (digger-gait.coax)
+    df := frame_at(v3(g[0].bot_x + shake, ground_y(g, g[0].bot_x, g[0].bot_z), g[0].bot_z), g[0].dg_yaw);
     dk := g_thing(g, p, TK_DIGGER, ifx g[0].have[H_PLUS] then 1 else 0, df, 0.85, t);
     if dk >= 0 {
-    dg_gait(g, t);
-    dg_draw(buf, p, df, 0.85, 190, d_tint(g, ifx sb_holds_digger(g) && sb_fielded(g) != SB_DIGGER then t3(0.32, 0.32, 0.34) else ifx g[0].have[H_PLUS] then blue else CAST_AMBER()), true, true, true, g[0].bot_spin, cast_colour(), g[0].dg_walk, g[0].dg_amp, t);   // his lights go dark while his core is in the drill mech
+    dg_draw(buf, p, df, 0.85, 190, d_tint(g, ifx sb_holds_digger(g) && sb_fielded(g) != SB_DIGGER then t3(0.32, 0.32, 0.34) else ifx g[0].have[H_PLUS] then blue else CAST_AMBER()), true, true, true, g[0].bot_spin, cast_colour(), g[0].dg_walk, g[0].dg_amp, t, d_act(g));   // his lights go dark while his core is in the drill mech
     g_thing_end(g, p, dk); }
   }
   // the raiders leaving the garage as she arrives: out of its entry and off along the road, out of play

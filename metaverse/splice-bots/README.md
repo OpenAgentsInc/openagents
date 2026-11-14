@@ -18,6 +18,7 @@ for people and agents who change the code.
 | `sound.coax`, `sound-checks.coax`, `tools/sounds.coax` | The sound table, the moments each sound plays, its checks, and the tool that writes the placeholder files (below) |
 | `hud.coax` | The HUD and the edit bay in the SPLICE UI v2 frame (#13505): the compass and the objective, pickup toasts, the interact prompt, the gauges that fade while full or cool, the bot slots, the objective card; H hides it. The edit bay's inventory grid, the picked item's card, the stage, the hardware slots and the behavior strip. The compass, fades and toasts are `metaverse-engine/ui/hud-readout.coax` |
 | `camera.coax`, `camera-checks.coax` | The follow camera behind her on foot and on the hoverboard (below), and its checks |
+| `digger-orders.coax` | Commanding Digger (#13552): the reticle's selection and command, his answer to each order, the marker on his target, the drill card's windup, bite, shudder and break, and where he looks (see Commanding Digger) |
 | `director.coax` | The Director's systems (#13505): the key map, sneaking, Digger picking up parts by his sensor's range, pointing him with a left click, the inventory grid, Heat's sensing range, the health bars, towing and charging Digger, the map and pause |
 | `gpu/splice-bots.coax` | The shaders: Anime Lab's cel pass, the placed pieces' instances, and the ink overlay |
 | `splice-face.c`, `splice-ue-face.c` | The C faces for the browser and for a native host |
@@ -128,7 +129,7 @@ The key map follows the slice's beat sheet (#13505). The pause screen (Esc) list
 | E | Interact: enter the rover, take the core, go through a portal, swap a core, tow a powered-down Digger; beside a hurt Digger with a battery cell, charge him |
 | Tab | The edit bay, only inside Sniper (the rover) |
 | I | The inventory: six slots. A click on a slot drops what is in it; a click on CELLS charges Digger when he wants it |
-| Left click | Point Digger at what is under the crosshair: he digs it, picks it up or attacks it |
+| Left click | Give Digger the order under the reticle: he goes to what is selected, then digs it, picks it up or attacks it |
 | F | Stun a robot within 2 m for 4 seconds |
 | 1 to 4 | A bot's battle moves (`d_take_move` hands each press to the battle) |
 | Hold R | The bot wheel: move the mouse (or press 1 to 5) to pick DIG, PICK UP, ATTACK, FOLLOW or CHARGE, and let go of R to give Digger the order (`metaverse-engine/ui/wheel.coax`) |
@@ -140,8 +141,8 @@ on CELLS in the inventory puts one of yours into him, and it charges him full (a
 powers up) over about a second; his BATTERY gauge shows CHARGING and fills as it goes. A spent cell is
 gone: dropping cells drops only the ones you still carry.
 
-Digger follows you and picks up every part within his sensor's range (4 m, 8 m with the better
-sensor that lies in the scrap room); you can't choose, so you make room in the inventory. A part he
+Digger follows you and picks up every part within his sensor's range (`T_SENSE`, 4 m; twice that with
+the better sensor that lies in the scrap room); you can't choose, so you make room in the inventory. A part he
 can't fit stays where it is. What you drop he leaves until you have walked away from it. Hardware
 spliced into him and cards on his strip are his, not yours.
 
@@ -157,6 +158,60 @@ Everyone has a health bar: yours top left (your hearts), Digger's under it and o
 over each foe. At zero you are back at Sniper with the inventory you had when you last left it;
 banned pieces picked up since are lost. Digger at zero powers down where he is: press E beside him
 to tow him, and Sniper's charger charges him back up. A foe Digger fights strikes back at him.
+
+### Commanding Digger
+
+Commanding Digger works like a block game on a controller (#13552, `digger-orders.coax`): look at
+something, see what is selected and the command it gives, then click.
+
+- **Selecting.** Corners frame the rock, part or robot nearest the reticle for its size. The cone
+  widens with distance, so a far target is easy to hold. What is selected keeps a cone `T_AIM_KEEP`
+  times wider, so two things side by side never flicker. Under the reticle is the command (DIG,
+  PICK UP, ATTACK, in orange) or why not (DIGGER DOWN, BAG FULL, NO WAY THERE, NEEDS PARTS, DRILL
+  MECH ONLY, pale).
+- **Answering.** Every click gets an answer at once. He nods when he takes the order, and a ring
+  snaps in round the target. When he can't, he shakes his head, the target gets a cross and the
+  line says why: nothing there, no way there (something solid is in his straight way), the bag
+  full, him powered down, parts missing for a dig, or the hallway wall only the drill mech breaks.
+- **Going.** He goes to the target himself, at any distance the reticle reaches, and holds the order
+  until the target is gone or you are `T_LEASH` away. The ring is dashed and turning while he is on
+  his way, pulses while he works, and opens out green when he is done.
+- **Drilling.** He rears back while the bit spins up, then bites in. The drill sound, the chips off
+  the face and the rock's shaking all start at that bite. The rock shakes harder and its top stones
+  loosen as he works. At the break he is thrown back, the rubble flies into the tunnel, and he
+  settles. DRILL+ spins faster, throws more chips, shakes harder and breaks through in
+  `T_PLUS_CARD` of a card.
+- **Moving.** Each foot stays planted for `DG_STANCE` of a stride, then swings forward, in diagonal
+  pairs. He turns toward a new heading rather than snapping to it, a turn on the spot is steps too,
+  and he stops crisper than he sets off. Standing, his nose and sensor turn to you; with an order,
+  to his target.
+
+Digger tunables:
+
+| Name | Value | File | What it sets |
+| --- | --- | --- | --- |
+| `T_SENSE` | 4 m | `director.coax` | His sensor range: he picks up parts within it. The better sensor doubles it (`T_SENSE_UP`) |
+| `T_POINT_FAR` | 40 m | `director.coax` | How far the reticle selects |
+| `T_AIM_KEEP` | 1.6 | `digger-orders.coax` | How much wider the selected thing's cone is |
+| `T_LEASH` | 45 m | `digger-orders.coax` | He lets an order go when you are this far from him or his target |
+| `T_GIVE_UP_FIGHT` | 25 m | `director.coax` | The bot wheel's reach for ATTACK and CHARGE |
+| `T_ACK` | 0.35 s | `digger-orders.coax` | The marker snaps in this long before it shows his progress |
+| `T_NOD` | 0.5 s | `digger-orders.coax` | His nod, or his head shake |
+| `T_MARK_FADE` | 0.8 s | `digger-orders.coax` | A done marker opening out, or a refusal's cross |
+| `T_CARD_TIME` | 2.4 s | `splice-game.coax` | A card of his strip |
+| `T_BITE` | 0.18 | `digger-orders.coax` | The share of a drill card before the bit meets the rock (the windup) |
+| `T_PLUS_CARD` | 0.7 | `digger-orders.coax` | DRILL+ breaks through in this share of a card |
+| `T_DRILL_REACH` | 2.6 m | `splice-game.coax` | How near the rock a drill card must start to bite |
+| `T_KICK` | 0.45 s | `digger-orders.coax` | A strike's lunge, or the break's recoil, back to standing |
+| `T_BURST` | 1.2 s | `digger-orders.coax` | The broken rubble flying |
+| `T_STRIKE`, `T_STRIKE_REACH` | 0.9 s, 1.4 m | `director.coax` | Between his strikes on a robot, and how near he stands to strike |
+| `T_BOT_GO`, `T_FOLLOW` | 6.5, 7.5 m/s | `splice-game.coax` | His speed to his work, and keeping up with you |
+| `DG_STANCE` | 0.62 | `digger.coax` | The share of a stride a foot stays planted |
+| `DG_TURN_EASE` | 9 /s | `digger-gait.coax` | How fast his drawn heading follows his heading |
+| `T_LOOK_EASE` | 6 /s | `digger-orders.coax` | How fast his nose turns to what he looks at |
+
+For a playtest, open the dev page at `?stage=7&rubble` (the dev server only): you start with Digger
+built, the rubble ahead of you.
 
 ## Battles, the drill mech, the boss and the ending
 
@@ -221,12 +276,12 @@ the checks. Turn a row on to plug its sound back in.
 | Sound | When it plays |
 | --- | --- |
 | `pickup` | A part, a card or a battery cell picked up |
-| `drill` | Digger's DRILL card starts on the rubble; the drill mech starts on the hallway |
-| `glitch` | A bad cut; the core's memory starting |
+| `drill` | The bit of Digger's DRILL or DRILL+ card meets the rubble, after its windup; the drill mech starts on the hallway |
+| `glitch` | A bad cut; the core's memory starting; Digger refusing an order |
 | `success` | The rubble opens, the hallway breaks, a fight won, the raider mech down, the core taken, SCENE RESTORED |
-| `hit` | You hurt, a foe hit, a stun, a blow in a bot battle |
+| `hit` | You hurt, a foe hit, a stun, a blow in a bot battle, Digger's strike on a robot |
 | `sensor-ping` | The rover's sensor pings and stops it on the rail |
-| `slot-click` | Edit bay: a part or card set in its slot; Digger's core into or out of the drill mech |
+| `slot-click` | Edit bay: a part or card set in its slot; Digger's core into or out of the drill mech; Digger taking an order |
 | `film-whir` | The edit bay opens |
 | `rover-door` | Into or out of the rover |
 | `robot-alert` | A robot sees you and comes for you |
