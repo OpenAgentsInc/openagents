@@ -135,6 +135,7 @@ E2MlPlace :: struct { kind: int; x: f32; z: f32; face: f32; }
 E2ML_PLACES :: [4] E2MlPlace.[E2MlPlace.{kind = MK_HORSE, x = 9.0, z = 9.0, face = 3.14159265}, E2MlPlace.{kind = MK_DRAGON, x = -9.0, z = 6.0, face = 3.14159265},
   E2MlPlace.{kind = MK_HORSE, x = f32(RG_AT_X) + f32(RG_HORSE_X), z = f32(RG_AT_Z) + f32(RG_HORSE_Z), face = 3.14159265},
   E2MlPlace.{kind = MK_DRAGON, x = f32(RG_AT_X) + f32(RG_DRAGON_X), z = f32(RG_AT_Z) + f32(RG_DRAGON_Z), face = 3.14159265}];
+E2ML_RANGE_HORSE :: 2; E2ML_RANGE_DRAGON :: 3;   // the mounts that wait at the Archery Range (E2ML_PLACES)
 e2ml_lay :: (r: [] E2Mounts) #effects(all) {
   r[0] = E2Mounts.{};
   for p: E2ML_PLACES { k := e2r_add(r, p.kind, p.x, p.z, p.face, 0); }

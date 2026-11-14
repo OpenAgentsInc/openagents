@@ -80,6 +80,13 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_E2) * 1000003u + offsetof(coax_t_E2, inst) * 13u + 0x45324532u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_E2); }
+/* The Archery Range's pane (everglade/client/range.coax, apps/openagents-web/range-pane.coax; coax/web/host.js
+   "A page's own pane"): its module's name, only on the range's page, and what it is told. */
+EXPORT("coaxial_pane") cx_face_addr coaxial_pane(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2rg_pane(at(state)).data; }
+EXPORT("coaxial_pane_len") uint32_t coaxial_pane_len(cx_face_addr state) { return (uint32_t)e2rg_pane(at(state)).count; }
+EXPORT("coaxial_pane_rev") int32_t coaxial_pane_rev(cx_face_addr state) { return (int32_t)e2rg_pane_rev(at(state)); }
+EXPORT("coaxial_pane_model") cx_face_addr coaxial_pane_model(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2rg_pane_model(at(state)).data; }
+EXPORT("coaxial_pane_model_len") uint32_t coaxial_pane_model_len(cx_face_addr state) { return (uint32_t)e2rg_pane_model(at(state)).count; }
 EXPORT("coaxial_state_init") void coaxial_state_init(cx_face_addr state) { coax_default_t_E2((coax_t_E2 *)(uintptr_t)state); e2_ground_store(at(state), (coax_v_t_E2Tiles){ground_tiles, 2}); quality_state = state; }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_e2_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_e2_vertex_floats(); }

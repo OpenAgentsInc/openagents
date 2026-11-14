@@ -188,7 +188,7 @@ e2a_fly :: (v: [] RmServer, k: int, tick: int) {
 e2a_archer_ok :: (v: [] RmServer, k: int, tag: E2ArrowTag) -> bool {
   if tag.seat < 0 || tag.seat >= eg_cap(v, k) || !v[0].eg[k].seat[tag.seat].live { return false; }
   r := v[0].eg[k].rules[..];
-  return xk_entry_at(r[0].klass[tag.seat] - EGB_CL0, r[0].b[0].c[EGB_SEAT + tag.seat].level, tag.slot).ok;
+  return xk_entry_held(r[0].klass[tag.seat] - EGB_CL0, r[0].b[0].c[EGB_SEAT + tag.seat].level, tag.slot, r[0].b[0].c[EGB_SEAT + tag.seat].ranged).ok;
 }
 // A loosed arrow's Attack, rolled as it lands. Its Action was the turn's it was loosed in (the seat's
 // pace took it then, eg_e2_cast), so the rules open that Action for it, and the turn the seat is in now
@@ -237,8 +237,10 @@ e2a_range_told :: (v: [] RmServer, k: int, tag: E2ArrowTag, face: int, points: i
   egr_take(st[0].range[..], e, f32(v[0].eg[k].tick) / f32(EG_HZ));
   b: [64] u8; n := egr_put(b[..], e);
   eg_event_only(v, k, cast(string) b[0..<n], s);
+  _ := ri_range_shot(v, k, SeatId.{value = s}, rg_shot(e.mode, f32(e.cm) / 100, e.points), st[0].range[0].run);   // and on its character's record (#13519)
 }
-// Seat s asks to clear its tally (E kind 23): cleared, and told so.
+// Seat s asks to clear its tally (E kind 23): cleared, and told so; standing on the range, it goes
+// back to the line too (#13519), off any mount it rides, where it arrived (layout.coax rg_arrive).
 e2a_range_reset :: (v: [] RmServer, k: int, seat_id: SeatId, u: WireUse) { s := seat_id.value;
   if !egr_reset_read(u) { eg_refuse(v, k, seat_id, u.seq, "no"); return; }
   st := v[0].eg[k].seat[s..<s + 1];
@@ -247,10 +249,83 @@ e2a_range_reset :: (v: [] RmServer, k: int, seat_id: SeatId, u: WireUse) { s := 
   e := EgrArrow.{ok = true}; egr_take(st[0].range[..], e, 0);
   b: [64] u8; n := egr_put(b[..], e);
   eg_event_only(v, k, cast(string) b[0..<n], s);
+  _ := ri_range_shot(v, k, seat_id, RG_SHOT_CLEAR, 0);   // the record's lasting tally too (#13519)
+  if e2a_range_here(v, k, s) {
+    if e2r_of(e2rd_room(v, k)[0], s) >= 0 { left := e2r_leave(e2rd_room(v, k), s, v[0].eg[k].tick); }
+    a := rg_arrive(); e2a_range_go(v, k, s, a[0], a[1], f32(RG_ARRIVE_FACE));
+  }
+}
+// Whether seat s stands on the range's ground, placed and free to move.
+e2a_range_here :: (v: [] RmServer, k: int, s: int) -> bool {
+  st := v[0].eg[k].seat[s];
+  return st.live && st.placed && rg_lends(st.pose.x, st.pose.z) && e2rd_free(v, k, s);
+}
+e2a_range_go :: (v: [] RmServer, k: int, s: int, x: f32, z: f32, face: f32) {
+  st := v[0].eg[k].seat[s..<s + 1]; st[0].range_go = true; st[0].range_to = [3] f32.[x, z, face];
+}
+// Seat s asks to shoot another way (E kind 24, #13519), by riding's own rules: on foot, it gets down
+// (e2ml_dismount: a flier in the air lands first); from horseback or dragonback, off whatever else it
+// rides and onto the range's horse or dragon, stepped up to it from its side wherever on the range it
+// stands. Answered as riding answers (e ride), MOUNT the mount it was about.
+e2a_range_ride :: (v: [] RmServer, k: int, seat_id: SeatId, u: WireUse) { s := seat_id.value;
+  mode := egr_ride_read(u);
+  if mode < 0 { eg_refuse(v, k, seat_id, u.seq, "no"); return; }
+  st := v[0].eg[k].seat[s..<s + 1];
+  if u.seq <= st[0].range_last { return; }
+  st[0].range_last = u.seq;
+  r := e2rd_room(v, k); tick := v[0].eg[k].tick; mine := e2r_of(r[0], s);
+  code := E2R_HELD; mount := mine;
+  if e2a_range_here(v, k, s) {
+    if mode == RG_FOOT {
+      g := v[0].e2land; none: [6] f32;
+      code = ifx mine < 0 then E2R_OK else ifx g.count > 0 && g[0].done then e2ml_dismount(r, s, true, tick, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true) else e2r_dismount(r, s, true, tick, none[..], 0);
+      if code == E2R_ALOFT { code = e2r_land(r, s); }
+    } else {
+      mount = ifx mode == RG_HORSE then E2ML_RANGE_HORSE else E2ML_RANGE_DRAGON;
+      if mine == mount { code = E2R_OK; }
+      else if mount >= r[0].n || r[0].m[mount].state != MOUNT_FREE { code = ifx mount >= r[0].n then E2R_NONE else E2R_TAKEN; }
+      else if mine >= 0 && mount_aloft(r[0].m[mine]) { code = E2R_ALOFT; }
+      else {
+        if mine >= 0 { left := e2r_leave(r, s, tick); }
+        h := r[0].m[mount]; side := 1.2f32;   // at its side, inside its reach (mount-rules.coax)
+        x := h.x + side * cos(h.face); z := h.z - side * sin(h.face);
+        code = e2r_mount(r, s, mount, x, z, true, tick);
+        if code == E2R_OK { e2a_range_go(v, k, s, x, z, h.face); }
+      }
+    }
+  }
+  b: [48] u8; n := egm_answer_put(b[..], EgmAnswer.{seq = u.seq, code = code, mount = mount});
+  eg_event_only(v, k, cast(string) b[0..<n], s);
+}
+// The host's step (admin.coax rm_e2_admin_warp): seat s's move on the range, taken once, into out (x, z, facing).
+e2a_range_go_take :: (v: [] RmServer, k: int, s: int, out: [] f32) -> bool {
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= eg_cap(v, k) || out.count < 3 || !v[0].eg[k].seat[s].range_go { return false; }
+  st := v[0].eg[k].seat[s..<s + 1]; st[0].range_go = false;
+  if !st[0].live || !st[0].placed { return false; }
+  for i: 0..<3 { out[i] = st[0].range_to[i]; }
+  return true;
+}
+// Each tick: every seat that stands where the range lends a Longbow (layout.coax rg_lends) holds one as
+// its ranged weapon in the rules, and the one it had is kept for it; off the range it has its own again.
+// A Ranger's own is a Longbow: nothing changes for it.
+e2a_range_lend :: (v: [] RmServer, k: int) {
+  r := v[0].eg[k].rules[..];
+  for s: 0..<eg_cap(v, k) {
+    st := v[0].eg[k].seat[s..<s + 1];
+    if !st[0].live || !r[0].live[s] { st[0].range_own = -2; continue; }
+    c := r[0].b[0].c[EGB_SEAT + s..<EGB_SEAT + s + 1];
+    if st[0].placed && rg_lends(st[0].pose.x, st[0].pose.z) {
+      if c[0].ranged != W_LONGBOW { st[0].range_own = c[0].ranged; c[0].ranged = W_LONGBOW; }
+    } else if st[0].range_own != -2 {
+      if c[0].ranged == W_LONGBOW { c[0].ranged = st[0].range_own; }
+      st[0].range_own = -2;
+    }
+  }
 }
 
 // The tick (after the monsters have moved): this tick's bodies are written down, then every arrow flies to it.
 e2_arrows_tick :: (v: [] RmServer, k: int) {
+  e2a_range_lend(v, k);   // the Archery Range's Longbow, lent and given back (#13519)
   e2a_remember(v, k);
   a := e2a_room(v, k);
   if e2a_flying(a) == 0 { return; }   // (epoch may be below 0: a room younger than E2A_LEAD ticks)
@@ -350,6 +425,112 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
   rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k);
   #assert eg_test_has(e2rt_heard(v[..], 0, out[..]), "e range 0 0 0 0 -1") && rg_sum(st[0].range[0], -1, -1).shots == 0 && st[0].range_last == 5;
   rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k); #assert !eg_test_has(e2rt_heard(v[..], 0, out[..]), "e range");
+}
+#test "e2 arrows: on the Archery Range a fresh Druid holds the range's Longbow: its Attack looses an arrow the room scores; off the range it is its own again; RESET takes it back to the line (#13519)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-lent HTTP/1.1\r\n\r\n") == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay); rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-druid 0 -"); eg_test_tick(v[..], k);
+  a := v[0].eg[k].arrows[..]; out: [262144] u8; st := v[0].eg[k].seat[0..<1]; r := v[0].eg[k].rules[..];
+  c := r[0].b[0].c[EGB_SEAT..<EGB_SEAT + 1]; own := c[0].ranged;
+  #assert r[0].klass[0] - EGB_CL0 == FB_CL_DRUID && c[0].level == 1 && own != W_LONGBOW;
+  slot := xk_wire(FB_CL_DRUID, xk_attack_of(FB_CL_DRUID)); #assert !xk_entry_at(FB_CL_DRUID, 1, slot).ok;
+  // on the path: nothing lent, and its Attack is not on its bar
+  e2mt_at(v[..], k, 0, -40); for q: 0..<4 { e2mt_tick(v[..], k); }
+  #assert c[0].ranged == own && st[0].range_own == -2;
+  // behind the line: the range's Longbow, its own kept
+  at := rg_arrive(); e2mt_at(v[..], k, at[0], at[1]);
+  for q: 0..<10 { e2mt_tick(v[..], k); }
+  #assert c[0].ranged == W_LONGBOW && st[0].range_own == own;
+  _ := e2rt_heard(v[..], 0, out[..]);
+  f0 := rg_target(0, e2_height(rg_piece_at(0)[0], rg_piece_at(0)[1])); to := [3] f32.[f0.x, f0.y + 0.15, f0.z];
+  me := st[0].pose; b: [160] u8;
+  n := net_loose_write(NetLoose.{seq = 1000001, from = e2ar_hand(me.x, me.z, to), to = to, strength = 1, view_ms = v[0].eg[k].tick * 1000 / EG_HZ}, b[..]);
+  rm_heard(v[..], 0, cast(string) b[0..<n]);
+  n = wire_put_cast(b[..], 0, WireCast.{seq = 1000001, slot = slot, ax = me.x, ay = 1, az = me.z - 5}); rm_heard(v[..], 0, cast(string) b[0..<n]);
+  #assert a[0].loosed == 1 && a[0].tag[0].range && a[0].tag[0].mode == RG_FOOT;
+  for q: 0..<EG_HZ * 3 { e2mt_tick(v[..], k); }
+  #assert rg_sum(st[0].range[0], -1, -1).shots == 1 && a[0].marks == 1 && st[0].range[0].last_points >= 5;
+  // RESET: the tally cleared, and back to the line from wherever on the range
+  e2mt_at(v[..], k, at[0] + 12, at[1] - 20); for q: 0..<2 { e2mt_tick(v[..], k); }
+  n = wire_put_use(b[..], 0, egr_reset_ask(5)); rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k);
+  #assert rg_sum(st[0].range[0], -1, -1).shots == 0 && st[0].range_go;
+  w: [3] f32; #assert rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, w[..]) && w[0] == at[0] && w[1] == at[1] && w[2] == f32(RG_ARRIVE_FACE) && !st[0].range_go;
+  #assert !rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, w[..]);   // once
+  // off the range: RESET clears the tally but moves no one, and the Longbow goes back
+  e2mt_at(v[..], k, 0, -40); for q: 0..<2 { e2mt_tick(v[..], k); }
+  #assert c[0].ranged == own && st[0].range_own == -2;
+  n = wire_put_use(b[..], 0, egr_reset_ask(6)); rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k);
+  #assert !st[0].range_go && st[0].range_last == 6;
+  // and its Attack is refused there, as before the range: not on a level-1 Druid's bar
+  for q: 0..<XP_BEAT + 2 { e2mt_tick(v[..], k); }
+  _ = e2rt_heard(v[..], 0, out[..]);
+  n = wire_put_cast(b[..], 0, WireCast.{seq = 1000002, slot = slot, ax = 0, ay = 1, az = -42}); rm_heard(v[..], 0, cast(string) b[0..<n]);
+  #assert a[0].loosed == 1 && eg_test_has(e2rt_heard(v[..], 0, out[..]), "r 1000002 slot");
+}
+#test "e2 arrows: on the Archery Range FOOT, HORSE and DRAGON are riding's own asks: onto the range's horse or dragon from anywhere on it, and down again; off the range, refused (#13519)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2at_room(v[..], "pair-e2-range-ride"); #assert k >= 0;
+  st := v[0].eg[k].seat[0..<1]; out: [262144] u8; b: [64] u8; w: [3] f32;
+  at := rg_arrive(); e2mt_at(v[..], k, at[0], at[1]); for q: 0..<6 { e2mt_tick(v[..], k); }
+  r := e2rd_room(v[..], k);
+  #assert r[0].kind[E2ML_RANGE_HORSE] == MK_HORSE && r[0].kind[E2ML_RANGE_DRAGON] == MK_DRAGON;
+  _ := e2rt_heard(v[..], 0, out[..]);
+  // HORSE from the line, 5 m from it: up from its side, and the host steps the seat there
+  n := wire_put_use(b[..], 0, egr_ride_ask(7000001, RG_HORSE)); rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k);
+  #assert e2r_of(r[0], 0) == E2ML_RANGE_HORSE && eg_test_has(e2rt_heard(v[..], 0, out[..]), "e ride 7000001 0 2");
+  h := r[0].m[E2ML_RANGE_HORSE];
+  #assert rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, w[..]) && mount_near(Mount.{on = true, x = h.x, z = h.z, face = h.face}, mk_tune(MK_HORSE), w[0], w[1]);
+  e2mt_at(v[..], k, w[0], w[1]);
+  seq := 1; for q: 0..<25 { e2rd_test_input(v[..], 0, seq, 0, 0, 0); seq += 1; e2rd_test_tick(v[..], k); }   // its inputs carry it into the saddle
+  #assert r[0].m[E2ML_RANGE_HORSE].state == MOUNT_RIDDEN && e2a_range_mode(v[..], k, 0) == RG_HORSE;
+  // DRAGON from the saddle: off the horse at once and onto the dragon
+  n = wire_put_use(b[..], 0, egr_ride_ask(7000002, RG_DRAGON)); rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k);
+  #assert e2r_of(r[0], 0) == E2ML_RANGE_DRAGON && r[0].m[E2ML_RANGE_HORSE].state == MOUNT_FREE && eg_test_has(e2rt_heard(v[..], 0, out[..]), "e ride 7000002 0 3");
+  #assert rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, w[..]); e2mt_at(v[..], k, w[0], w[1]);
+  for q: 0..<60 { e2rd_test_input(v[..], 0, seq, 0, 0, 0); seq += 1; e2rd_test_tick(v[..], k); }
+  #assert r[0].m[E2ML_RANGE_DRAGON].state == MOUNT_RIDDEN && e2a_range_mode(v[..], k, 0) == RG_DRAGON;
+  // the same ask again is heard once; FOOT gets down by riding's rule
+  rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k); #assert !eg_test_has(e2rt_heard(v[..], 0, out[..]), "e ride 7000002");
+  n = wire_put_use(b[..], 0, egr_ride_ask(7000003, RG_FOOT)); rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k);
+  #assert eg_test_has(e2rt_heard(v[..], 0, out[..]), "e ride 7000003 0 3");
+  for q: 0..<60 { e2rd_test_input(v[..], 0, seq, 0, 0, 0); seq += 1; e2rd_test_tick(v[..], k); }
+  #assert e2r_of(r[0], 0) < 0 && e2a_range_mode(v[..], k, 0) == RG_FOOT;
+  // on foot already: FOOT is done, nothing to do
+  n = wire_put_use(b[..], 0, egr_ride_ask(7000004, RG_FOOT)); rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k);
+  #assert eg_test_has(e2rt_heard(v[..], 0, out[..]), "e ride 7000004 0 -1");
+  // off the range nothing moves: held (E2R_HELD); a mode that is none is refused
+  e2mt_at(v[..], k, 0, -40); for q: 0..<2 { e2mt_tick(v[..], k); } _ = e2rt_heard(v[..], 0, out[..]);
+  n = wire_put_use(b[..], 0, egr_ride_ask(7000005, RG_HORSE)); rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k);
+  #assert e2r_of(r[0], 0) < 0 && eg_test_has(e2rt_heard(v[..], 0, out[..]), "e ride 7000005 2 -1") && !rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, w[..]);
+  n = wire_put_use(b[..], 0, egr_ride_ask(7000006, 3)); rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k);
+  #assert eg_test_has(e2rt_heard(v[..], 0, out[..]), "r 7000006 no");
+}
+#test "e2 arrows: the Archery Range's tally lasts on the character's record: each arrow a claim, RESET's clear one, and a seat sat again takes it back and is told it (#13519)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2at_room(v[..], "pair-e2-range-lasts"); #assert k >= 0;
+  st: [1] RiStore; seat := v[0].eg[k].seat[0..<1]; out: [262144] u8;
+  c := ri_open(v[..], k, 0, "p-a", 1); #assert c >= 0 && ri_seat(v[..], k, 0) == c;   // a check's room has no ticket: its character sits by hand
+  seat[0].full = false;   // its page took its snapshot (input.coax: an input past it)
+  ri_test_drain(v[..], st[..]); e2mt_tick(v[..], k); #assert v[0].itm.c[c].synced && v[0].itm.c[c].ranged && !char_ranged(v[0].itm.c[c].rec);
+  at := rg_arrive(); f := rg_target(0, 0);
+  // two arrows land: a 10 and a miss, each told, each a claim
+  e2a_range_told(v[..], k, E2ArrowTag.{id = 1, seat = 0, from = [3] f32.[at[0], 1, at[1]], mode = RG_FOOT, range = true}, 0, 10, [3] f32.[f.x, f.y, f.z]);
+  e2a_range_told(v[..], k, E2ArrowTag.{id = 2, seat = 0, from = [3] f32.[at[0], 1, at[1]], mode = RG_HORSE, range = true}, -1, 0, [3] f32.[at[0], 0, at[1] - 30]);
+  #assert rg_sum(seat[0].range[0], -1, -1).shots == 2 && rm_items_pending(v[..]) == 2;
+  ri_test_drain(v[..], st[..]);
+  w := v[0].itm.c[c].rec;
+  #assert char_ranged(w) && w.range[0] == 1 && rg_sum(rg_tally_score(w.range[..], CHAR_RANGE), -1, -1).shots == 2 && rg_sum(rg_tally_score(w.range[..], CHAR_RANGE), RG_FOOT, -1).points == 10;
+  // the seat leaves and sits again: its new seat's tally is the record's, and its page hears it whole
+  ri_left(v[..], k, SeatId.{value = 0}); seat[0].range[0] = RgScore.{};
+  c = ri_open(v[..], k, 0, "p-a", 1); _ := e2rt_heard(v[..], 0, out[..]);
+  #assert c >= 0 && !v[0].itm.c[c].ranged && rm_items_pending(v[..]) == 1;
+  ri_test_drain(v[..], st[..]); #assert v[0].itm.c[c].synced && !v[0].itm.c[c].ranged;   // read, and taken at the seat's next tick once its page has its snapshot
+  seat[0].full = true; e2mt_tick(v[..], k); #assert !v[0].itm.c[c].ranged; seat[0].full = false;
+  told := false; for q: 0..<4 { e2mt_tick(v[..], k); if eg_test_has(e2rt_heard(v[..], 0, out[..]), "e tally 1 0 0 0 0 1 1 10 1 0 ") { told = true; } }   // once its snapshot is out
+  #assert v[0].itm.c[c].ranged && char_ranged(v[0].itm.c[c].rec) && told && !seat[0].full;
+  #assert rg_sum(seat[0].range[0], -1, -1).shots == 2 && seat[0].range[0].best_run == 1 && rg_sum(seat[0].range[0], RG_HORSE, 2).shots == 1;
+  // RESET clears it on the record too, which is v1's bytes again
+  b: [32] u8; n := wire_put_use(b[..], 0, egr_reset_ask(9)); rm_heard(v[..], 0, cast(string) b[0..<n]);
+  ri_test_drain(v[..], st[..]); #assert !char_ranged(v[0].itm.c[c].rec) && rg_sum(seat[0].range[0], -1, -1).shots == 0;
+  o: [CHAR_BODY] u8; #assert char_write(v[0].itm.c[c].rec, o[..])[0..<6] == "{\"v\":1";
 }
 #test "e2 arrows: the room flies a loose from the moment its page was drawing, inside the bound, and it meets a monster where it stood then" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := e2at_room(v[..], "pair-e2-rewind"); #assert k >= 0;

@@ -1,0 +1,196 @@
+// The Archery Range's pane (#13519; everglade/client/range.coax): the range's tally and its buttons,
+// standing beside Everglade II's canvas on /worlds/archery-range. RESET clears your tally and takes
+// you back to the line; FOOT, HORSE and DRAGON are the ways to shoot, by riding's own rules (the room's
+// E kind 24, everglade/server/range-wire.coax). The page tells it what you have (egr_pane_put) and it
+// tells the page what was pressed (EGR_PANE_ACT, one word).
+//
+// It is a module of its own beside the page's, as Crew's pane is (crew-pane.coax). It has no look of
+// its own: every node is a kit component (components/kit/frames.coax and dock.coax), the stylesheet is
+// the mono skin's, and this file names no colour, face or size (coax/web/tool.sh editor-skin-check).
+//   coax/bin/coax test apps/openagents-web/range-pane.coax
+#load "../../components/kit/dock.coax";
+#load "../../components/backend/dom.coax";
+#load "../../components/core/text.coax";   // text_put_int
+#load "../../everglade/server/range-wire.coax";
+
+RP_CSS :: 28672;
+RP_ACTS :: 4;
+RP_CLICK :: 1; RP_MODEL :: 6;
+RP_WAY_NAMES :: [RG_MODES] string.["Foot", "Horse", "Dragon"];
+RP_MODE_NAMES :: [RG_MODES] string.["On foot", "From horseback", "From dragonback"];
+RP_BAND_NAMES :: [RG_BANDS] string.["To 15 m", "To 25 m", "To 40 m", "To 60 m", "Past 60 m"];
+
+RangePane :: struct {
+  ready: bool; time: f32; dirty: bool; animating: bool;
+  have: bool;                       // the page said what you have
+  at: EgrPane;
+  acts: [RP_ACTS] int; nacts: int;  // presses for the page: EGR_PANE_RESET to EGR_PANE_FOOT + RG_DRAGON
+  act: [16] u8; act_n: int;         // the first one's word
+  inbox: [EGR_PANE] u8;
+  sets: [MF_COUNT] AfSettings;
+  css: [RP_CSS] u8;
+  ui: [1] Ui;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+rp_line :: (out: [] u8, t: RgTally) -> string {
+  n := text_put_int(out, 0, t.hits); n = wire_put(out, n, " of "); n = text_put_int(out, n, t.shots);
+  n = wire_put(out, n, ", "); n = text_put_int(out, n, rg_accuracy(t)); n = wire_put(out, n, "%, ");
+  n = text_put_int(out, n, t.points); n = wire_put(out, n, " points");
+  return cast(string) out[0..<n];
+}
+rp_build :: (s: [] RangePane) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  buf: [UI_ID] u8; line: [96] u8;
+  tr_begin(t);
+  dock := k_dock(t, "range", true);
+  side := k_pane(t, u, "tally", DK_RIGHT, "Archery Range");
+  if !s[0].have {
+    wait := k_meta(t, "wait", "Coming to the range");
+    k_pane_end(t); tr_close(t);
+    return;
+  }
+  p := s[0].at; sc := p.score;
+  if !p.here { off := k_meta(t, "off", "Walk onto the range's ground to shoot here: the range lends you its Longbow."); }
+  // the ways to shoot, the one you shoot now first among equals
+  ways := RP_WAY_NAMES;
+  for m: 0..<RG_MODES {
+    b := k_button(t, u, tr_join(buf[..], "way.", m), ways[m], ifx !p.here then BS_DISABLED else ifx m == p.mode then BS_PRIMARY else BS_PLAIN);
+  }
+  all := rg_sum(sc, -1, -1);
+  f := k_fact(t, "all", "Arrows", rp_line(line[..], all));
+  n := text_put_int(line[..], 0, p.run); n = wire_put(line[..], n, " now, best "); n = text_put_int(line[..], n, sc.best_run);
+  f = k_fact(t, "run", "Hits in a row", cast(string) line[0..<n]);
+  n = text_put_int(line[..], 0, all.golds); f = k_fact(t, "golds", "Golds", cast(string) line[0..<n]);
+  avg := rg_average_tenths(all); n = text_put_int(line[..], 0, avg / 10); n = wire_put(line[..], n, "."); n = text_put_int(line[..], n, avg % 10);
+  f = k_fact(t, "avg", "Points an arrow", cast(string) line[0..<n]);
+  modes := RP_MODE_NAMES; bands := RP_BAND_NAMES;
+  h := tr_leaf(t, "way.h", TG_H2, "sec-h", modes[p.mode]);
+  f = k_fact(t, "way", "Arrows", rp_line(line[..], rg_sum(sc, p.mode, -1)));
+  for b: 0..<RG_BANDS {
+    bt := rg_sum(sc, p.mode, b);
+    if bt.shots > 0 { f = k_fact(t, tr_join(buf[..], "band.", b), bands[b], rp_line(line[..], bt)); }
+  }
+  if p.last.id > 0 {
+    n = ifx p.last.points > 0 then text_put_int(line[..], 0, p.last.points) else wire_put(line[..], 0, "Miss");
+    n = wire_put(line[..], n, " at "); n = text_put_int(line[..], n, (p.last.cm + 50) / 100); n = wire_put(line[..], n, " m");
+    f = k_fact(t, "last", "Last arrow", cast(string) line[0..<n]);
+  }
+  r := k_button(t, u, "reset", "Reset", ifx p.here then BS_PLAIN else BS_DISABLED);
+  tr_attr(t, r, AT_TITLE, "Clear your tally and go back to the line");
+  k_pane_end(t);
+  tr_close(t);
+}
+rp_act :: (s: [] RangePane, press: int) {
+  if s[0].nacts >= RP_ACTS { return; }
+  s[0].acts[s[0].nacts] = press; s[0].nacts += 1;
+}
+rp_click :: (s: [] RangePane, id: string) {
+  if !s[0].have || !s[0].at.here { return; }
+  if id == "reset" { rp_act(s, EGR_PANE_RESET); return; }
+  for m: 0..<RG_MODES { buf: [UI_ID] u8; if id == tr_join(buf[..], "way.", m) { rp_act(s, EGR_PANE_FOOT + m); return; } }
+}
+rp_model :: (s: [] RangePane, length: int) {
+  n := ifx length < 0 then 0 else ifx length > EGR_PANE then EGR_PANE else length;
+  p := egr_pane_read(cast(string) s[0].inbox[0..<n]);
+  if p.ok { s[0].at = p; s[0].have = true; }
+}
+
+// ---------------------------------------------------------------- the face's calls
+
+coaxial_rangepane_frame :: (s: [] RangePane, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready { n := mono_frames(s[0].sets[..]); s[0].ready = true; s[0].dirty = true; }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled {
+    n := mono_dock_css(s[0].css[..], mono_css(s[0].css[..]));
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  rp_build(s);
+  ui_end(s[0].ui[..]);
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
+  return bytes;
+}
+coaxial_rangepane_busy :: (s: [] RangePane) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
+// A press (1) on the node in this slot; or the page's word (6), in the inbox.
+coaxial_rangepane_event :: (s: [] RangePane, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].dirty = true;
+  if kind == RP_MODEL { rp_model(s, length); return; }
+  id := dm_slot_id(s[0].dom[..], slot);
+  if id.count > 0 && kind == RP_CLICK { rp_click(s, id); }
+}
+coaxial_rangepane_size :: (s: [] RangePane, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_rangepane_inbox_cap :: () -> int #export_c #effects(all) { return EGR_PANE; }
+// The press that waits for the page: its message kind (0: none) and its word (at act); done takes it away.
+coaxial_rangepane_act_kind :: (s: [] RangePane) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].nacts < 1 { return 0; }
+  w := EGR_PANE_WORDS[s[0].acts[0]];
+  for i: 0..<w.count { s[0].act[i] = w[i]; }
+  s[0].act_n = w.count;
+  return EGR_PANE_ACT;
+}
+coaxial_rangepane_act_len :: (s: [] RangePane) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].nacts > 0 then s[0].act_n else 0; }
+coaxial_rangepane_act_done :: (s: [] RangePane) #export_c #effects(all) {
+  if s.count < 1 || s[0].nacts < 1 { return; }
+  for k: 1..<s[0].nacts { s[0].acts[k - 1] = s[0].acts[k]; }
+  s[0].nacts -= 1;
+}
+
+// ---------------------------------------------------------------- checks
+
+RpTest :: struct { s: [1] RangePane; }
+rp_test_frames :: (h: [] RpTest, n: int) { for k: 0..<n { _ = coaxial_rangepane_frame(h[0].s[..], 0.016, true); } }
+rp_test_told :: (h: [] RpTest, here: bool, mode: int, run: int, last: EgrArrow, sc: RgScore) {
+  s := h[0].s[..];
+  rp_test_frames(h, 1);
+  n := egr_pane_put(s[0].inbox[..], here, mode, run, last, sc);
+  coaxial_rangepane_event(s, RP_MODEL, 0, n);
+  rp_test_frames(h, 2);
+}
+rp_test_press :: (h: [] RpTest, id: string) { s := h[0].s[..]; coaxial_rangepane_event(s, RP_CLICK, dm_find(s[0].dom[..], id), 0); rp_test_frames(h, 1); }
+rp_test_take :: (h: [] RpTest) -> string {
+  s := h[0].s[..];
+  if coaxial_rangepane_act_kind(s) != EGR_PANE_ACT { return ""; }
+  w := EGR_PANE_WORDS[s[0].acts[0]];
+  coaxial_rangepane_act_done(s);
+  return w;
+}
+
+#test "range pane: before the page speaks it waits; then the tally, the way you shoot first, and RESET" {
+  h: [1] RpTest; s := h[0].s[..]; t := s[0].tree[..];
+  rp_test_frames(h[..], 1);
+  #assert tr_find(t, "wait") > 0 && tr_find(t, "reset") < 0;
+  sc: [1] RgScore; rg_record(sc[..], RG_FOOT, 10, 10, 1); rg_record(sc[..], RG_FOOT, 20, 0, 2); rg_record(sc[..], RG_HORSE, 30, 9, 3);
+  rp_test_told(h[..], true, RG_FOOT, 0, egr_read("e range 3 1 3000 9 3"), sc[0]);
+  #assert tr_find(t, "wait") < 0 && tr_class(t, tr_find(t, "range")) == "dock dock-over" && tr_class(t, tr_find(t, "tally")) == "pane pane-r";
+  #assert tr_text_of(t, tr_find(t, "all.v")) == "2 of 3, 67%, 19 points" && tr_text_of(t, tr_find(t, "run.v")) == "0 now, best 1" && tr_text_of(t, tr_find(t, "golds.v")) == "2";
+  #assert tr_text_of(t, tr_find(t, "way.h")) == "On foot" && tr_text_of(t, tr_find(t, "way.v")) == "1 of 2, 50%, 10 points" && tr_find(t, "band.0") > 0 && tr_find(t, "band.1") > 0 && tr_find(t, "band.2") < 0;
+  #assert tr_text_of(t, tr_find(t, "last.v")) == "9 at 30 m" && tr_attr_of(t, tr_find(t, "way.0"), AT_STATE) == "primary" && !tr_has(t, tr_find(t, "way.1"), AT_STATE) && tr_find(t, "reset") > 0 && tr_find(t, "off") < 0;
+  #assert t[0].lost == 0 && t[0].depth == 0 && s[0].nacts == 0;
+}
+#test "range pane: RESET, FOOT, HORSE and DRAGON each send the page their word, in order; off the range none does" {
+  h: [1] RpTest; s := h[0].s[..]; t := s[0].tree[..];
+  rp_test_told(h[..], true, RG_HORSE, 2, EgrArrow.{}, RgScore.{});
+  #assert tr_attr_of(t, tr_find(t, "way.1"), AT_STATE) == "primary" && tr_find(t, "last") < 0;
+  rp_test_press(h[..], "way.2"); rp_test_press(h[..], "reset"); rp_test_press(h[..], "way.0");
+  #assert rp_test_take(h[..]) == "dragon" && rp_test_take(h[..]) == "reset" && rp_test_take(h[..]) == "foot" && rp_test_take(h[..]) == "";
+  rp_test_press(h[..], "way.1"); #assert rp_test_take(h[..]) == "horse";
+  // off the range's ground the buttons are shown disabled and nothing is sent
+  rp_test_told(h[..], false, RG_FOOT, 0, EgrArrow.{}, RgScore.{});
+  #assert tr_find(t, "off") > 0 && tr_has(t, tr_find(t, "reset"), AT_DISABLED);
+  rp_test_press(h[..], "reset"); rp_test_press(h[..], "way.1"); #assert rp_test_take(h[..]) == "";
+  // a word that is not the page's leaves the pane as it was
+  n := wire_put(s[0].inbox[..], 0, "pane 1 9 0\ne range 0 0 0 0 -1\ne tally 0");
+  coaxial_rangepane_event(s, RP_MODEL, 0, n); rp_test_frames(h[..], 1); #assert !s[0].at.here && tr_find(t, "off") > 0;
+}

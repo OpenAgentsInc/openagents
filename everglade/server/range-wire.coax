@@ -10,26 +10,91 @@
 // docs/protocol/everglade-range-v1.md; its check runs these functions:
 //   coax/web/tool.sh coax/web/room/range-profile.coax proto/verse/everglade2-range-v1.json
 // Whole numbers a space apart (everglade-wire.coax wire_int).
-//   E SEQ 23 0                          clear your tally (WE_RANGE_RESET)
+//   E SEQ 23 0                          clear your tally (WE_RANGE_RESET); standing on the range, you go
+//                                       back to its line too (#13519)
+//   E SEQ 24 MODE                       shoot MODE from now (WE_RANGE_RIDE, #13519): on foot, you get down;
+//                                       from horseback or dragonback, onto the range's horse or dragon,
+//                                       by riding's rules (mount-rules.coax), answered as riding answers
+//                                       (mount-wire.coax e ride SEQ CODE MOUNT)
 //   e range ID MODE CM POINTS FACE      your arrow ID landed: shot MODE (0 on foot, 1 from horseback,
 //                                       2 from dragonback) from CM centimetres, for POINTS (0 a miss,
 //                                       1 to 10 the ring), in FACE (-1 none). ID 0: your tally was
 //                                       cleared (the other numbers 0, FACE -1)
-// A page from before the range has no reader for e range and drops it (everglade/client/net.coax
-// e2n_entry); it never says kind 23.
+//   e tally BEST S H P G ...            your lasting tally (#13519), told when your seat takes it from your
+//                                       character's record: your longest run of hits, then for each way
+//                                       of shooting and each band of distance (score.coax's order, RG_MODES
+//                                       x RG_BANDS) its shots, hits, points and golds
+// A page from before the range has no reader for e range or e tally and drops them (everglade/client/net.coax
+// e2n_entry); it never says kind 23 or 24.
 //   coax/bin/coax test everglade/server/range-wire.coax --library
 #load "../shared/everglade-wire.coax";
 #load "../range/score.coax";
 
 EGR_RANGE_E :: "e range";
+EGR_TALLY_E :: "e tally";
 EGR_FAR_CM :: 100000;   // no shot counted from farther than 1 km
 
 EgrArrow :: struct { ok: bool; id: int; mode: int; cm: int; points: int; face: int = -1; }
 
 egr_reset_ask :: (seq: int) -> WireUse { return WireUse.{seq = seq, kind = WE_RANGE_RESET, id = 0}; }
 egr_reset_read :: (u: WireUse) -> bool { return u.seq > 0 && u.kind == WE_RANGE_RESET && u.id == 0; }
+egr_ride_ask :: (seq: int, mode: int) -> WireUse { return WireUse.{seq = seq, kind = WE_RANGE_RIDE, id = mode}; }
+// The way of shooting a ride ask names (RG_FOOT to RG_DRAGON), -1 for anything else.
+egr_ride_read :: (u: WireUse) -> int { return ifx u.seq > 0 && u.kind == WE_RANGE_RIDE && u.id >= 0 && u.id < RG_MODES then u.id else -1; }
+// ---- the range's pane (#13519): the page's panel of the tally and its buttons, a module the browser
+// draws in the mono skin (apps/openagents-web/range-pane.coax). The page tells it, in three lines:
+//   pane HERE MODE RUN          HERE 1 on the range's ground, MODE the way you shoot now, RUN your hits in a row
+//   e range ...                 your last arrow (as the room told it; ID 0: none yet)
+//   e tally ...                 your tally (its lasting part)
+// and it tells the page what was pressed: a message of kind EGR_PANE_ACT, one word of EGR_PANE_WORDS.
+EGR_PANE_E :: "pane";
+EGR_PANE_ACT :: 740;
+EGR_PANE_RESET :: 0; EGR_PANE_FOOT :: 1;   // FOOT, HORSE and DRAGON are 1 + the way (RG_FOOT, RG_HORSE, RG_DRAGON)
+EGR_PANE_WORDS :: [4] string.["reset", "foot", "horse", "dragon"];
+EGR_PANE :: 1024;   // bytes the pane's model holds at most
+EgrPane :: struct { ok: bool; here: bool; mode: int; run: int; last: EgrArrow; score: RgScore; }
+egr_pane_put :: (out: [] u8, here: bool, mode: int, run: int, last: EgrArrow, s: RgScore) -> int {
+  n := wire_int(out, wire_int(out, wire_int(out, wire_put(out, 0, EGR_PANE_E), ifx here then 1 else 0), mode), run);
+  n = wire_put(out, n, "\n");
+  l := ifx last.ok && last.id > 0 then last else EgrArrow.{ok = true};
+  t: [64] u8; m := egr_put(t[..], l); n = wire_put(out, n, cast(string) t[0..<m]); n = wire_put(out, n, "\n");
+  y: [640] u8; k := egr_tally_put(y[..], s); n = wire_put(out, n, cast(string) y[0..<k]);
+  return n;
+}
+egr_pane_read :: (text: string) -> EgrPane {
+  a := 0; while a < text.count && text[a] != '\n' { a += 1; }
+  b := a + 1; while b < text.count && text[b] != '\n' { b += 1; }
+  if b >= text.count || !wire_is(text[0..<a], EGR_PANE_E) { return EgrPane.{}; }
+  head := text[0..<a];
+  rd := [1] WireRd.[wire_rd(head, EGR_PANE_E.count)];
+  p: EgrPane; here := wire_num(head, rd[..]); p.mode = wire_num(head, rd[..]); p.run = wire_num(head, rd[..]);
+  p.last = egr_read(text[a + 1..<b]); t := egr_tally_read(text[b + 1..<text.count]);
+  if !rd[0].ok || wire_more(head, rd[..]) || (here != 0 && here != 1) || p.mode < 0 || p.mode >= RG_MODES || p.run < 0 || p.run > RG_TALLY_MAX || !p.last.ok || !t.ok { return EgrPane.{}; }
+  p.here = here == 1; p.score = t.score; p.ok = true;
+  return p;
+}
+// The press a pane's word names (EGR_PANE_RESET to 1 + RG_DRAGON), -1 none.
+egr_pane_word :: (w: string) -> int { for i: 0..<4 { if w == EGR_PANE_WORDS[i] { return i; } } return -1; }
+
+// ---- the lasting tally, as the character's record keeps it (score.coax rg_tally_*)
+egr_tally_put :: (out: [] u8, s: RgScore) -> int {
+  v: [RG_TALLY] int; n := rg_tally_of(s, v[..]);
+  w := wire_put(out, 0, EGR_TALLY_E);
+  for i: 0..<n { w = wire_int(out, w, v[i]); }
+  return w;
+}
+// The tally an e tally entry says; ok false when it is not one, whole.
+EgrTally :: struct { ok: bool; score: RgScore; }
+egr_tally_read :: (t: string) -> EgrTally {
+  if !wire_is(t, EGR_TALLY_E) { return EgrTally.{}; }
+  rd := [1] WireRd.[wire_rd(t, EGR_TALLY_E.count)];
+  v: [RG_TALLY] int;
+  for i: 0..<RG_TALLY { v[i] = wire_num(t, rd[..]); }
+  if !rd[0].ok || wire_more(t, rd[..]) || !rg_tally_ok(v[..], RG_TALLY) { return EgrTally.{}; }
+  return EgrTally.{ok = true, score = rg_tally_score(v[..], RG_TALLY)};
+}
 // Whether an e entry is the range's answer: told to its archer alone.
-egr_kept :: (t: string) -> bool { return wire_is(t, EGR_RANGE_E); }
+egr_kept :: (t: string) -> bool { return wire_is(t, EGR_RANGE_E) || wire_is(t, EGR_TALLY_E); }
 egr_put :: (out: [] u8, a: EgrArrow) -> int {
   return wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_put(out, 0, EGR_RANGE_E), a.id), a.mode), a.cm), a.points), a.face);
 }
@@ -68,4 +133,30 @@ egr_take :: (s: [] RgScore, a: EgrArrow, now: f32) {
   all := rg_sum(s[0], -1, -1); #assert all.shots == 3 && all.hits == 2 && all.points == 17 && all.golds == 1 && rg_sum(s[0], RG_DRAGON, -1).shots == 1 && s[0].run == 1 && s[0].best_run == 1;
   egr_take(s[..], egr_read("e range 9 0 1000 99 0"), 4); #assert rg_sum(s[0], -1, -1).shots == 3;   // refused: nothing taken
   egr_take(s[..], egr_read("e range 0 0 0 0 -1"), 5); #assert rg_sum(s[0], -1, -1).shots == 0 && s[0].last_points == -1;
+}
+#test "range wire: the ride ask names a way of shooting; a lasting tally writes and reads back whole (#13519)" {
+  b: [640] u8; n := wire_put_use(b[..], 0, egr_ride_ask(9, RG_DRAGON)); #assert cast(string) b[0..<n] == "E 9 24 2";
+  for m: 0..<RG_MODES { #assert egr_ride_read(egr_ride_ask(4, m)) == m; }
+  #assert egr_ride_read(egr_ride_ask(4, 3)) == -1 && egr_ride_read(egr_ride_ask(4, -1)) == -1 && egr_ride_read(egr_ride_ask(0, 1)) == -1 && egr_ride_read(WireUse.{seq = 4, kind = WE_RANGE_RESET, id = 1}) == -1;
+  s: [1] RgScore; rg_record(s[..], RG_FOOT, 10, 10, 1); rg_record(s[..], RG_FOOT, 10, 7, 2); rg_record(s[..], RG_HORSE, 30, 0, 3); rg_record(s[..], RG_DRAGON, 70, 9, 4);
+  n = egr_tally_put(b[..], s[0]); t := cast(string) b[0..<n];
+  #assert t[0..<10] == "e tally 2 " && egr_kept(t) && !wire_outcome(t);
+  back := egr_tally_read(t); #assert back.ok && back.score.best_run == 2 && back.score.run == 0 && back.score.last_points == -1;
+  for c: 0..<RG_CELLS { #assert back.score.cell[c].shots == s[0].cell[c].shots && back.score.cell[c].hits == s[0].cell[c].hits && back.score.cell[c].points == s[0].cell[c].points && back.score.cell[c].golds == s[0].cell[c].golds; }
+  #assert egr_tally_put(b[..], RgScore.{}) == 7 + RG_TALLY * 2 && egr_tally_read(cast(string) b[0..<egr_tally_put(b[..], RgScore.{})]).ok;
+  for bad: [6] string.["e tally", "e tally 1", "e tallyx 0", "e talley 0", "e tally -1", "e range 1 0 0 0 -1"] { #assert !egr_tally_read(bad).ok; }
+  n = egr_tally_put(b[..], s[0]); #assert !egr_tally_read(cast(string) b[0..<n - 2]).ok;   // one number short
+  b[n] = ' '; b[n + 1] = '0'; #assert !egr_tally_read(cast(string) b[0..<n + 2]).ok;      // one more
+  b[8] = '9'; #assert !egr_tally_read(cast(string) b[0..<n]).ok;                           // a run past every hit: no tally
+}
+#test "range wire: the pane's words: what the page tells it reads back whole, and each press is one word (#13519)" {
+  b: [EGR_PANE] u8; s: [1] RgScore; rg_record(s[..], RG_HORSE, 30, 9, 1);
+  last := egr_read("e range 4 1 3000 9 3");
+  n := egr_pane_put(b[..], true, RG_HORSE, 1, last, s[0]); t := cast(string) b[0..<n];
+  #assert t[0..<14] == "pane 1 1 1\ne r";
+  p := egr_pane_read(t); #assert p.ok && p.here && p.mode == RG_HORSE && p.run == 1 && p.last.id == 4 && p.last.points == 9 && rg_sum(p.score, RG_HORSE, -1).golds == 1;
+  n = egr_pane_put(b[..], false, RG_FOOT, 0, EgrArrow.{}, RgScore.{}); q := egr_pane_read(cast(string) b[0..<n]); #assert q.ok && !q.here && q.last.id == 0;
+  for bad: [5] string.["", "pane 1 1 1", "pane 2 0 0\ne range 0 0 0 0 -1\ne tally 0", "pane 1 3 0\ne range 0 0 0 0 -1\ne tally 0", "x\ny\nz"] { #assert !egr_pane_read(bad).ok; }
+  #assert !egr_pane_read(cast(string) b[0..<n - 2]).ok;
+  for i: 0..<4 { #assert egr_pane_word(EGR_PANE_WORDS[i]) == i; } #assert egr_pane_word("jump") == -1 && EGR_PANE_FOOT + RG_DRAGON == 3;
 }

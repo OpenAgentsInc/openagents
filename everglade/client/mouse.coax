@@ -22,7 +22,7 @@ e2m_slot :: (k: [] E2Cast) -> int {
   return 0;
 }
 e2m_attack :: (k: [] E2Cast) -> int { for i: 0..<k[0].bar_n { if k[0].bar[i].kind == FB_ATTACK { return i; } } return -1; }
-e2m_archer :: (s: [] E2) -> bool { return e2k_on(s) && xc_kit(s[0].casts[0].klass) == XC_KIT_BOW && e2m_attack(s[0].casts[..]) >= 0; }
+e2m_archer :: (s: [] E2) -> bool { return e2k_on(s) && e2k_kit(s[0].casts[..]) == XC_KIT_BOW && e2m_attack(s[0].casts[..]) >= 0; }   // a Ranger, or anyone on the Archery Range (#13519)
 
 // Draw (self_loose: a left click, which looses itself at full draw). False when you can't now: a
 // draw starts only when its loose would be an Attack the rules allow (e2k_ready: cooled down, and

@@ -366,6 +366,9 @@ crew=$!
 # ... and its pane, the creation steps beside the scene: the frames set in the mono skin, drawn by the browser (crew-pane.coax, coax/web/dom-host.js).
 timed crew-pane "$here/../../coax/web/wasm.sh" "$here/crew-pane.coax" "$here/crew-pane-face.c" "$here/build/crew-pane.wasm" &
 crew_pane=$!
+# The Archery Range's pane beside Everglade II's canvas on /worlds/archery-range: its tally, RESET, FOOT, HORSE and DRAGON in the frames set (range-pane.coax, #13519).
+timed range-pane "$here/../../coax/web/wasm.sh" "$here/range-pane.coax" "$here/range-pane-face.c" "$here/build/range-pane.wasm" &
+range_pane=$!
 # A game page's own bar: the Fullscreen button over a plain play page's canvas, in the frames set (play-bar.coax; coax/web/host.js opens it).
 timed play-bar "$here/../../coax/web/wasm.sh" "$here/play-bar.coax" "$here/play-bar-face.c" "$here/build/play-bar.wasm" &
 play_bar=$!
@@ -619,7 +622,7 @@ wait "$villa"
 wait "$animelab"
 wait "$splice"
 wait "$crew"
-wait "$crew_pane"
+wait "$crew_pane"; wait "$range_pane"
 wait "$play_bar"
 wait "$script_host"
 wait "$changelog"

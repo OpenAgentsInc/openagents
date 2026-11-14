@@ -570,6 +570,46 @@ xk_entry_at :: (c: int, level: int, slot: int) -> XkEntry {
   return XkEntry.{};
 }
 
+// What class c's kit is while it holds `ranged`, a weapon lent it past its kit (#13519: the Archery
+// Range lends everyone a Longbow, everglade/range/layout.coax rg_lends; -1 none). A Longbow held makes
+// any class's kit the bow: its Attack is the Longbow's shot and aims as the Ranger's does, and a bar
+// without its Attack yet (a Druid's at level 1) has it. The room passes the seat's ranged weapon in the
+// rules (everglade/server/arrows.coax e2a_range_lend), the page the Longbow while it stands where the
+// range lends one; anything else held changes nothing. A class with no Attack at all (the Wizard, Bard,
+// Sorcerer and Warlock) has nothing to shoot it with.
+xk_kit_held :: (c: int, ranged: int) -> int { return ifx ranged == W_LONGBOW then XC_KIT_BOW else xc_kit(c); }
+xk_weapon_held :: (c: int, ranged: int) -> int { return ifx ranged == W_LONGBOW then W_LONGBOW else xk_weapon(c); }
+xk_rules_held :: (c: int, a: FbAb, ranged: int) -> FbAb {
+  if a.kind != FB_ATTACK || xk_kit_held(c, ranged) != XC_KIT_BOW { return a; }
+  shot := fb_feature(FB_SHOOT, "Longbow", "attack"); shot.tg = a.tg;
+  return shot;
+}
+// Class c's Attack, from its whole catalog; kind -1 when it has none.
+xk_attack_of :: (c: int) -> FbAb {
+  cat: [XC_SLOTS] FbAb; n := xk_catalog(c, cat[..]);
+  for i: 0..<n { if cat[i].kind == FB_ATTACK { return cat[i]; } }
+  return FbAb.{kind = -1};
+}
+// Its bar at `level` holding `ranged`: the level's, and with a Longbow its Attack at the end when the
+// level's bar lacks it.
+xk_bar_held :: (c: int, level: int, ranged: int, out: [] FbAb) -> int {
+  n := xk_bar_at(c, level, out);
+  if ranged != W_LONGBOW || n >= out.count { return n; }
+  for i: 0..<n { if out[i].kind == FB_ATTACK { return n; } }
+  a := xk_attack_of(c);
+  if a.kind != FB_ATTACK { return n; }
+  out[n] = a;
+  return n + 1;
+}
+// Wire slot `slot` for a seat of class c at `level` holding `ranged`: as xk_entry_at, and with a
+// Longbow its Attack is on the bar at every level, aimed as the Longbow's.
+xk_entry_held :: (c: int, level: int, slot: int, ranged: int) -> XkEntry {
+  e := xk_entry_at(c, level, slot);
+  if !e.ok && ranged == W_LONGBOW { a := xk_entry(c, slot); if a.ok && a.ab.kind == FB_ATTACK { e = a; } }
+  if e.ok { e.aim = xc_aim_for(e.ab, xk_weapon_held(c, ranged)); }
+  return e;
+}
+
 #test "class kits: every class's bar holds its Character Create ability first, each slot with its picture, and its wire slots" #steps 400000000 {
   bar: [XC_SLOTS] FbAb;
   for c: 0..<FB_CL_N {
@@ -671,4 +711,33 @@ xk_room_slot :: (open: bool, known: bool, n: int, v: [] int, i: int, count: int)
   a := xk_room_slot(true, true, 3, v[..], 1, 3);
   #assert a.ok && a.left == 2 && a.on && xk_room_slot(true, true, 3, v[..], 0, 3).left == -1 && xk_room_slot(true, true, 3, v[..], 2, 3).left == 1;
   #assert !xk_room_slot(true, true, 3, v[..], 1, 4).ok && !xk_room_slot(true, true, 3, v[..], 3, 3).ok && !xk_room_slot(true, true, 3, v[..], -1, 3).ok;
+}
+#test "class kits: a Longbow lent past the kit makes any class's Attack the Longbow's shot, aimed as the Ranger's, on its bar at every level (#13519)" #steps 4000000000 #traversal 2147483647 {
+  r := xk_entry_at(FB_CL_RANGER, 1, xk_wire(FB_CL_RANGER, xk_attack_of(FB_CL_RANGER)));
+  for c: 0..<FB_CL_N {
+    a := xk_attack_of(c);
+    if a.kind != FB_ATTACK { #assert c == FB_CL_WIZARD || c == FB_CL_BARD || c == FB_CL_SORCERER || c == FB_CL_WARLOCK; continue; }
+    w := xk_wire(c, a);
+    #assert xk_kit_held(c, W_LONGBOW) == XC_KIT_BOW && xk_rules_held(c, a, W_LONGBOW).kind == FB_SHOOT && xk_weapon_held(c, W_LONGBOW) == W_LONGBOW;
+    for level: 1..<XK_LEVELS + 1 {
+      own := xk_entry_at(c, level, w); lent := xk_entry_held(c, level, w, W_LONGBOW);
+      #assert lent.ok && lent.ab.name == a.name && lent.aim.kind == r.aim.kind && lent.aim.reach == r.aim.reach;
+      bar: [XC_SLOTS] FbAb; n := xk_bar_at(c, level, bar[..]); held: [XC_SLOTS] FbAb; m := xk_bar_held(c, level, W_LONGBOW, held[..]);
+      #assert m == ifx own.ok then n else n + 1;
+      for i: 0..<n { #assert held[i].name == bar[i].name && held[i].kind == bar[i].kind; }
+      if !own.ok { #assert held[n].kind == FB_ATTACK && xk_wire(c, held[n]) == w; }
+      // nothing lent, or a weapon that is not a Longbow: the class's own kit and bar
+      for keep: [2] int.[-1, W_SHORTBOW] {
+        e := xk_entry_held(c, level, w, keep);
+        #assert e.ok == own.ok && xk_bar_held(c, level, keep, held[..]) == n && xk_kit_held(c, keep) == xc_kit(c) && xk_rules_held(c, a, keep).kind == xk_rules(c, a).kind && xk_weapon_held(c, keep) == xk_weapon(c);
+        if own.ok { #assert e.aim.reach == own.aim.reach && e.aim.kind == own.aim.kind; }
+      }
+    }
+  }
+  // a Druid's Attack waits for level 2; with the range's Longbow it is there at 1, a bolt to the Longbow's reach
+  d := xk_wire(FB_CL_DRUID, xk_attack_of(FB_CL_DRUID));
+  #assert !xk_entry_at(FB_CL_DRUID, 1, d).ok && xk_entry_held(FB_CL_DRUID, 1, d, W_LONGBOW).aim.kind != XC_AIM_MELEE && !xk_entry_held(FB_CL_DRUID, 1, 0, W_LONGBOW).ok;
+  #assert !xk_entry_held(FB_CL_DRUID, 1, xk_wire(FB_CL_RANGER, xk_attack_of(FB_CL_RANGER)), W_LONGBOW).ok;   // another class's Attack
+  // every other ability is itself, lent or not
+  sp := fb_spell(SP_FIRE_BOLT, 0, FB_FOE); #assert xk_rules_held(FB_CL_WIZARD, sp, W_LONGBOW).sp == SP_FIRE_BOLT && xk_attack_of(FB_CL_WIZARD).kind == -1;
 }

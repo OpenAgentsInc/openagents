@@ -9,7 +9,10 @@
 // applied with it, once (everglade/model/character.coax char_claim): a quest's stage from one value
 // to the next, coin, XP, an item worn.
 //   {"id":ID,"op":WORD,"pid":PID,"gen":N,"ver":N,"item":N|null,"to":"","kind":N,"sent":MS,
-//    "quest":N,"from":N,"stage":N,"coin":N,"xp":N,"slot":N,"wear":N}
+//    "quest":N,"from":N,"stage":N,"coin":N,"xp":N,"slot":N,"wear":N[,"shot":N,"run":N]}
+// "shot" and "run" (#13519) come only with an arrow on the Archery Range, an addition to the record's
+// tally (character.coax CharClaim): an ask with no arrow is v1's bytes exactly, and an API from before
+// them reads an arrow's ask as one with no claim.
 // WORD: read (the record as it is; nothing changes), grant, transfer, escrow, settle, cancel,
 // consume, claim. A room writes no transfer or escrow yet: "to" is always empty.
 //
@@ -88,6 +91,7 @@ io_ask :: (a: ItemOp, out: [] u8) -> string #effects(all) {
   jo_key(o[..], "xp"); jo_int(o[..], a.claim.xp);
   jo_key(o[..], "slot"); jo_int(o[..], a.claim.slot);
   jo_key(o[..], "wear"); jo_int(o[..], a.claim.item);
+  if a.claim.shot != 0 { jo_key(o[..], "shot"); jo_int(o[..], a.claim.shot); jo_key(o[..], "run"); jo_int(o[..], a.claim.run); }
   jo_end(o[..]);
   return ifx o[0].bad then "" else jo_text(o[..]);
 }
@@ -108,7 +112,7 @@ io_answer :: (status: int, item: int, replay: bool, ver: int, kinds: string, rec
 // (char_read) or null, and a kind for each item in the record's bag.
 io_read :: (text: string) -> ItemAnswer #effects(all) {
   a := ItemAnswer.{};
-  nodes: [384] JvNode; d: [1] Jv;
+  nodes: [512] JvNode; d: [1] Jv;   // an answer: its kinds and the fullest v2 record
   _ := jv_parse(d[..], text, nodes[..]);   // a failed parse leaves no nodes: no status, no record
   for i: 0..<IO_STATUSES { if jv_raw_eq(jv_raw(d[0], jv_get(d[0], 0, "status")), IO_STATUS[i]) { a.status = i; } }
   a.item = jv_int(d[0], jv_get(d[0], 0, "item"), 0);
@@ -178,4 +182,11 @@ io_read :: (text: string) -> ItemAnswer #effects(all) {
   #assert !io_read(char_swap(s, "\"kinds\":[3,1,3]", char_splice("\"kinds\":", 8, 8, many, o[0..<200]), o[200..<o.count])).ok;
   // the longest answer is IO_ANSWER bytes: a record's own limit is far below it
   #assert s.count < IO_ANSWER;
+}
+#test "item op: an arrow's claim on the record's tally is two keys at the end, and an ask without one is v1's bytes (#13519)" {
+  o: [IO_ASK] u8; p: [IO_ASK] u8;
+  r := io_fixture(); plain := io_ask(r, o[..]);
+  r.op = LOP_CLAIM; r.item = 0; r.kind = 0; r.claim = CharClaim.{shot = rg_shot(RG_FOOT, 10, 9), run = 3};
+  s := io_ask(r, p[..]); t := ",\"shot\":10,\"run\":3}";
+  #assert s.count > t.count && s[s.count - t.count..<s.count] == t && plain.count > 0 && char_find(plain, "shot") < 0;
 }

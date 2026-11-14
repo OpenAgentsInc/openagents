@@ -1,7 +1,9 @@
 // The Character aggregate (#13290, AAA P4.1; DDD audit 3.4): one record the server owns for each
 // character, with named fields, and the one owner of its rules. Its wire and stored form is
-// `everglade.character.v1` (docs/protocol/everglade-character-v1.md; proto/verse/everglade-character-v1.schema.json),
-// and this file is that form's one codec.
+// `everglade.character.v2` (docs/protocol/everglade-character-v2.md; proto/verse/everglade-character-v2.schema.json),
+// v1 with the Archery Range's lasting tally (#13519), and this file is that form's one codec. It reads
+// v1 too, as a v2 record with no tally (the upgrade), and writes a record whose tally is empty as v1,
+// byte for byte, so a room from before v2 still reads every record that never shot at the range.
 //
 // What the record holds, and who changes each part:
 //   who      the durable identity: the account's text, as the item ledger names it (verse.item_who,
@@ -21,7 +23,10 @@
 //   coin     copper pieces. Coin is game currency, never money (AGENTS.md: Bitcoin-only money).
 //   quests   (quest content ID, stage) pairs, ascending by ID, no repeats. A stage counts what is
 //            done and paid (everglade/model/content.coax) and only rises.
-// What is worn, coin and quests change by a claim (char_claim): what a room's ledger operation asks
+//   range    v2: the Archery Range's lasting tally (everglade/range/score.coax rg_tally_*): the longest
+//            run of hits, then each way of shooting's and band's shots, hits, points and golds. Each
+//            arrow the room scores adds to it, and RESET clears it, by a claim (rg_tally_shot).
+// What is worn, coin, quests and the range's tally change by a claim (char_claim): what a room's ledger operation asks
 // of the record, applied by the store with that operation, once (#13291, #13292). A claim's quest
 // part is a compare-and-set: it names the stage the quest is at, so a claim sent twice, or sent
 // from a stale read, changes nothing the second time.
@@ -33,9 +38,11 @@
 #load "../../coax/lib/json/json.coax";
 #load "../../metaverse-engine/core/ids.coax";
 #load "../../rules/srd/advancement.coax";
+#load "../range/score.coax";   // the Archery Range's lasting tally and its rules (#13519)
 #load "character-checks.coax" #test;   // the checks' fixture and helpers
 
-CHAR_VERSION :: 1;
+CHAR_V1 :: 1;
+CHAR_VERSION :: 2;        // the newest: v1 and the range's tally (#13519)
 CHAR_BODY :: 4096;        // the longest record, in bytes
 CHAR_WHO :: 80;           // [a-z0-9_-]: a player ID (p-...), an account's (e-..., n-..., acct_...)
 CHAR_CLASS :: 16;         // "srd-" and 3 to 12 lowercase letters: "srd-barbarian" is the longest class
@@ -50,6 +57,8 @@ CHAR_CONTENT_MAX :: 2147483647;      // a content ID: 1 to this
 CHAR_ITEM_MAX :: 9007199254740991;   // an item ID (verse.items.id) and the inventory version: 1 (0 for inv) to this
 CHAR_COIN_MAX :: 999999999;
 CHAR_KEYS :: 11;          // v, who, class, xp, floor, known, bag, inv, worn, coin, quests: the writer's order
+CHAR_KEYS_V2 :: 12;       // and v2's range
+CHAR_RANGE :: RG_TALLY;   // the tally's whole numbers
 // The equipment slots, in the record's order.
 CHAR_SLOT :: [10] string.["head", "body", "hands", "legs", "feet", "neck", "ring", "main", "off", "ranged"];
 
@@ -64,6 +73,7 @@ Character :: struct #persisted {
   worn: [CHAR_WORN] int;
   coin: int;
   quest: [CHAR_QUESTS] int; stage: [CHAR_QUESTS] int; quest_n: int;
+  range: [CHAR_RANGE] int;          // v2: the Archery Range's lasting tally (all 0: none, written as v1)
 }
 
 // A new character: who it is, no class yet, level `floor`.
@@ -125,6 +135,7 @@ char_accept :: (kept: Character, room: Character) -> Character #effects(all) {
   out.id = kept.id;
   out.floor = kept.floor;
   out.bag = kept.bag; out.bag_n = kept.bag_n; out.inv = kept.inv;
+  out.range = kept.range;   // the tally changes only by a claim
   for s: 0..<CHAR_WORN { if out.worn[s] != 0 && !char_holds(out, out.worn[s]) { out.worn[s] = 0; } }
   return out;
 }
@@ -139,13 +150,16 @@ char_stage :: (c: Character, quest: int) -> int #effects(all) {
 }
 
 // What a ledger operation asks of the record with it: a quest's stage from `from` to `to` (quest 0:
-// none), coin and XP added, and item `item` worn in slot `slot` (0: the slot emptied; slot below 0: none).
-CharClaim :: struct { quest: int; from: int; to: int; coin: int; xp: int; slot: int = -1; item: int; }
+// none), coin and XP added, item `item` worn in slot `slot` (0: the slot emptied; slot below 0: none), and
+// an arrow on the Archery Range: `shot` (score.coax rg_shot; RG_SHOT_CLEAR clears the tally; 0 none) with
+// `run` hits in a row after it.
+CharClaim :: struct { quest: int; from: int; to: int; coin: int; xp: int; slot: int = -1; item: int; shot: int; run: int; }
 // The record after a claim; not ok, and nothing changed, when the claim is refused:
 //   - the quest is not at `from` (0 for a quest not taken), `to` is not above it, or the record
 //     holds its CHAR_QUESTS quests and this is another;
 //   - XP would fall; coin would fall below 0;
 //   - the slot is not the record's, or the item is not in the bag;
+//   - the shot is no arrow, or it would break the tally's rules (rg_tally_shot);
 //   - anything the claim leaves breaks the record's rules (char_valid): a range, the lists' order.
 // An item already worn elsewhere moves to the slot.
 char_claim :: (c: Character, k: CharClaim) -> Character #effects(all) {
@@ -169,6 +183,7 @@ char_claim :: (c: Character, k: CharClaim) -> Character #effects(all) {
     for s: 0..<CHAR_WORN { if out.worn[s] == k.item { out.worn[s] = 0; } }
     out.worn[k.slot] = k.item;
   }
+  if k.shot != 0 && !rg_tally_shot(out.range[..], CHAR_RANGE, k.shot, k.run) { return Character.{}; }
   if !char_valid(out) { return Character.{}; }
   return out;
 }
@@ -199,15 +214,21 @@ char_valid :: (c: Character) -> bool #effects(all) {
   }
   if c.quest_n < 0 || c.quest_n > CHAR_QUESTS || !char_ascending(c.quest[..], c.quest_n, CHAR_CONTENT_MAX) { return false; }
   for i: 0..<c.quest_n { if c.stage[i] < 0 || c.stage[i] > CHAR_STAGE_MAX { return false; } }
-  return true;
+  return rg_tally_ok(c.range[..], CHAR_RANGE);
+}
+// Whether c has a tally to keep: any of its numbers above 0 (a v2 record).
+char_ranged :: (c: Character) -> bool #effects(all) {
+  for i: 0..<CHAR_RANGE { if c.range[i] != 0 { return true; } }
+  return false;
 }
 
-// The record as `everglade.character.v1` JSON, keys in CHAR_KEY's order; "" when it breaks a rule or
-// out is too small.
+// The record as JSON, keys in the writer's order: `everglade.character.v2` with its range when it has a
+// tally, else `everglade.character.v1`'s bytes exactly; "" when it breaks a rule or out is too small.
 char_write :: (c: Character, out: [] u8) -> string #effects(all) {
   if !c.ok || !char_valid(c) { return ""; }
   o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
-  jo_key(o[..], "v"); jo_int(o[..], CHAR_VERSION);
+  two := char_ranged(c);
+  jo_key(o[..], "v"); jo_int(o[..], ifx two then CHAR_VERSION else CHAR_V1);
   w := c.who; k := c.klass;
   jo_key(o[..], "who"); jo_str(o[..], cast(string) w[0..<c.who_n]);
   jo_key(o[..], "class"); jo_str(o[..], cast(string) k[0..<c.klass_n]);
@@ -221,6 +242,7 @@ char_write :: (c: Character, out: [] u8) -> string #effects(all) {
   jo_key(o[..], "quests"); jo_arr(o[..]);
   for i: 0..<c.quest_n { jo_arr(o[..]); jo_int(o[..], c.quest[i]); jo_int(o[..], c.stage[i]); jo_end(o[..]); }
   jo_end(o[..]);
+  if two { jo_key(o[..], "range"); jo_arr(o[..]); for i: 0..<CHAR_RANGE { jo_int(o[..], c.range[i]); } jo_end(o[..]); }
   jo_end(o[..]);
   return ifx o[0].bad then "" else jo_text(o[..]);
 }
@@ -234,15 +256,18 @@ char_list :: (d: Jv, at: int, cap: int, v: [] int) -> int #effects(all) {
   for i: 0..<jv_len(d, at) { v[i] = char_num(d, jv_at(d, at, i)); }
   return jv_len(d, at);
 }
-// The record in `text`, or one that is not ok. A version other than CHAR_VERSION is refused, never
-// guessed at; so is a key missing or extra (exactly CHAR_KEYS, each one read), anything of the wrong
-// kind, and any rule broken (char_valid).
+// The record in `text`, or one that is not ok. v1 (exactly CHAR_KEYS keys) is upgraded as it is read:
+// it is a v2 record whose range is empty (all 0), the written default. v2 has CHAR_KEYS_V2 keys, its
+// range CHAR_RANGE whole numbers. Any other version is refused, never guessed at; so is a key missing
+// or extra (each one read), anything of the wrong kind, and any rule broken (char_valid).
 char_read :: (text: string) -> Character #effects(all) {
   c := Character.{};
   if text.count > CHAR_BODY { return c; }
-  nodes: [256] JvNode; d: [1] Jv;
+  nodes: [384] JvNode; d: [1] Jv;   // the fullest v2 record is under 330 nodes
   _ := jv_parse(d[..], text, nodes[..]);   // a failed parse leaves no nodes: no object, no keys
-  if jv_len(d[0], 0) != CHAR_KEYS || char_num(d[0], jv_get(d[0], 0, "v")) != CHAR_VERSION { return c; }
+  v := char_num(d[0], jv_get(d[0], 0, "v"));
+  if (v != CHAR_V1 || jv_len(d[0], 0) != CHAR_KEYS) && (v != CHAR_VERSION || jv_len(d[0], 0) != CHAR_KEYS_V2) { return c; }
+  if v == CHAR_VERSION && char_list(d[0], jv_get(d[0], 0, "range"), CHAR_RANGE, c.range[..]) != CHAR_RANGE { return c; }
   c.who_n = jv_str(d[0], jv_get(d[0], 0, "who"), c.who[..]); c.klass_n = jv_str(d[0], jv_get(d[0], 0, "class"), c.klass[..]);
   c.xp = char_num(d[0], jv_get(d[0], 0, "xp"));
   c.floor = char_num(d[0], jv_get(d[0], 0, "floor"));
@@ -477,4 +502,46 @@ char_read :: (text: string) -> Character #effects(all) {
   n := char_claim(c, CharClaim.{slot = -1, item = 12}); #assert n.ok && char_same(n, c); n = char_claim(c, CharClaim.{item = 5}); #assert n.ok && char_same(n, c);
   n = char_claim(c, CharClaim.{slot = -2, item = 5}); #assert n.ok && char_same(n, c);
   #assert !char_claim(c, CharClaim.{slot = 0, item = -1}).ok;
+}
+#test "character v2: the range's tally is kept by claims, written as v2 while it holds one and as v1's bytes when empty; v1 reads as v2 with none (#13519)" {
+  c := char_fixture(); o: [CHAR_BODY] u8; b: [CHAR_BODY] u8;
+  #assert !char_ranged(c) && char_write(c, o[..]) == CHAR_FIXTURE_WIRE;   // no tally: v1, byte for byte
+  for i: 0..<CHAR_RANGE { one := c; one.range[i] = 1; #assert char_ranged(one); }   // any number of it is a tally to keep, the first and the last too
+  up := char_read(CHAR_FIXTURE_WIRE); #assert up.ok && !char_ranged(up) && char_same(up, c);   // the upgrade: v1 is v2 with an empty range
+  // an arrow at the 10 m gold on foot, then a miss from horseback at 30 m
+  a := char_claim(c, CharClaim.{shot = rg_shot(RG_FOOT, 10, 10), run = 1}); #assert a.ok && char_ranged(a) && a.range[0] == 1 && a.range[1] == 1 && a.range[2] == 1 && a.range[3] == 10 && a.range[4] == 1;
+  a = char_claim(a, CharClaim.{shot = rg_shot(RG_HORSE, 30, 0), run = 0}); h := 1 + (RG_HORSE * RG_BANDS + 2) * 4;
+  #assert a.ok && a.range[0] == 1 && a.range[h] == 1 && a.range[h + 1] == 0 && a.xp == c.xp && a.coin == c.coin;
+  s := char_write(a, o[..]);
+  #assert s.count > 0 && s[0..<6] == "{\"v\":2" && char_find(s, ",\"range\":[1,1,1,10,1,0,") > 0 && s[s.count - 2..<s.count] == "]}";
+  back := char_read(s); #assert back.ok && char_same(back, a) && char_write(back, b[..]) == s;
+  for i: 0..<CHAR_RANGE { #assert back.range[i] == a.range[i]; }
+  // a claim's other parts and its arrow go together, and one refused changes nothing
+  q := char_claim(a, CharClaim.{coin = 5, shot = rg_shot(RG_DRAGON, 70, 9), run = 2}); #assert q.ok && q.coin == c.coin + 5 && q.range[0] == 2;
+  #assert !char_claim(a, CharClaim.{coin = 5, shot = RG_SHOTS}).ok && !char_claim(a, CharClaim.{shot = rg_shot(RG_FOOT, 10, 3), run = 9}).ok && !char_claim(a, CharClaim.{shot = 1, run = -1}).ok;
+  // RESET's clear: an empty tally, written as v1 again
+  z := char_claim(a, CharClaim.{shot = RG_SHOT_CLEAR}); #assert z.ok && !char_ranged(z) && char_write(z, o[..]) == CHAR_FIXTURE_WIRE;
+  // a room's write never changes the tally; the kept one stays
+  room := a; room.range[1] = 0; room.xp = 2000; w := char_accept(a, room); #assert w.ok && w.xp == 2000 && w.range[1] == 1;
+  room = c; room.xp = 2000; #assert !char_ranged(char_accept(c, room));
+  // v2's reader: its range whole, CHAR_RANGE numbers, each rule held; v1 with a range, and v2 without, are refused
+  s = char_write(a, o[..]); at := char_find(s, ",\"range\":"); #assert at > 0;
+  #assert !char_read(char_splice(s, at, s.count - 1, "", b[..])).ok;                       // v2 with no range
+  #assert !char_read(char_splice(s, s.count - 2, s.count - 2, ",0", b[..])).ok;          // 62 numbers
+  #assert !char_read(char_splice(s, s.count - 4, s.count - 2, "", b[..])).ok;           // 60
+  #assert !char_read(char_splice(s, at, s.count - 1, ",\"range\":5", b[..])).ok;          // not an array
+  #assert !char_read(char_splice(s, 5, 6, "1", b[..])).ok;                                  // v1 with a range
+  #assert !char_read(char_splice(s, 5, 6, "3", b[..])).ok;                                  // a version it doesn't know
+  #assert !char_read(char_splice(s, at + 10, at + 11, "9", b[..])).ok;                      // a run past every hit
+  #assert char_read(char_splice(s, at + 10, at + 11, "0", b[..])).ok;                       // a run of 0 is a tally
+  // the fullest record there is, with the fullest tally, fits
+  f := char_read("{\"v\":1,\"who\":\"acct_abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcde\",\"class\":\"srd-barbarian\",\"xp\":9999999,\"floor\":6,\"known\":[],\"bag\":[],\"inv\":9007199254740991,\"worn\":[0,0,0,0,0,0,0,0,0,0],\"coin\":999999999,\"quests\":[]}");
+  #assert f.ok;
+  for i: 0..<CHAR_KNOWN { f.known[i] = CHAR_CONTENT_MAX - CHAR_KNOWN + i + 1; f.bag[i] = CHAR_ITEM_MAX - CHAR_BAG + i + 1; f.quest[i] = CHAR_CONTENT_MAX - CHAR_QUESTS + i + 1; f.stage[i] = CHAR_STAGE_MAX; }
+  f.known_n = CHAR_KNOWN; f.bag_n = CHAR_BAG; f.quest_n = CHAR_QUESTS;
+  for s2: 0..<CHAR_WORN { f.worn[s2] = f.bag[s2]; }
+  for cell: 0..<RG_CELLS { f.range[1 + cell * 4] = RG_TALLY_MAX; f.range[2 + cell * 4] = RG_TALLY_MAX / RG_RINGS; f.range[3 + cell * 4] = RG_TALLY_MAX / RG_RINGS * RG_RINGS; f.range[4 + cell * 4] = RG_TALLY_MAX / RG_RINGS; }
+  f.range[0] = RG_TALLY_MAX;
+  big := char_write(f, o[..]); #assert big.count > 0 && big.count < CHAR_BODY && char_read(big).ok;
+  wide := big.count; for ch: big { if ch == ':' || ch == ',' { wide += 1; } } #assert wide <= CHAR_BODY;   // and the store's text of it
 }

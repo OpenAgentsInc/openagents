@@ -2,6 +2,8 @@
 
 Profile `everglade-character-v1`. Issue #13290 (AAA P4.1), tracker #13257.
 
+Superseded for writing by [v2](everglade-character-v2.md) (#13519), which reads v1 and writes v1's bytes for a record with no range tally.
+
 The Character aggregate: the one record the server owns for each Everglade
 character. The schema and its pinned bytes are in
 [`proto/verse/everglade-character-v1.schema.json`](../../proto/verse/everglade-character-v1.schema.json).

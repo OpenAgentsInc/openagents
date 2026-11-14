@@ -13,7 +13,8 @@ EG_E2_GAP :: XP_FREE_GAP;   // ticks between presses that take no part of a turn
 EG_E2_CAST_SLACK :: 3.0;   // m
 eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := seat_id.value;
   st := v[0].eg[k].seat[seat..<seat + 1];
-  e := xk_entry_at(v[0].eg[k].rules[0].klass[seat] - EGB_CL0, v[0].eg[k].rules[0].b[0].c[EGB_SEAT + seat].level, wc.slot);   // its level's bar (#13046)
+  held := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + seat].ranged;   // its ranged weapon: a Longbow on the Archery Range (#13519, arrows.coax e2a_range_lend)
+  e := xk_entry_held(v[0].eg[k].rules[0].klass[seat] - EGB_CL0, v[0].eg[k].rules[0].b[0].c[EGB_SEAT + seat].level, wc.slot, held);   // its level's bar (#13046)
   if !e.ok { eg_refuse(v, k, seat_id, wc.seq, "slot"); return; }
   if !(wc.ax == wc.ax) || !(wc.az == wc.az) || !(wc.ay == wc.ay) || abs(wc.ay) > 1000 { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_AIM)); return; }
   t := v[0].eg[k].tick;
@@ -27,7 +28,7 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   r:=v[0].eg[k].rules[..];
   // a bow's Attack with its launch said: an arrow the room flies; its Attack is rolled when it reaches
   // a body or the ground (everglade/server/arrows.coax). The cast is told now, as any: the archer's loose.
-  if e.ab.kind == FB_ATTACK && xc_kit(r[0].klass[seat] - EGB_CL0) == XC_KIT_BOW && st[0].loose.ok {
+  if e.ab.kind == FB_ATTACK && xk_kit_held(r[0].klass[seat] - EGB_CL0, held) == XC_KIT_BOW && st[0].loose.ok {
     kept := st[0].loose.seq == wc.seq && rs_can_act(r[0].b[0].c[EGB_SEAT + seat]);
     if !kept { st[0].loose = NetLoose.{}; }
     if kept && e2_arrow_loose(v, k, seat_id, wc.slot, wc.seq) {
@@ -46,7 +47,7 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   // aimed at the path's guard or a monster, a harmful cast is at it (everglade/server/guard.coax,
   // everglade/server/creatures.coax): the shared rules' strike
   // an area that can harm names no one: it is cast at the aimed point, and whoever stands in it is struck
-  area := e2r_area(xk_rules(r[0].klass[seat]-EGB_CL0,e.ab));
+  area := e2r_area(xk_rules_held(r[0].klass[seat]-EGB_CL0,e.ab,held));
   // judged at the moment its page drew (#13289): who the aim names, and where every other body
   // stands for the rules' reach and shapes, are as they stood then; the caster is where it is now
   vt := e2_cast_view_tick(v, k, wc.view);

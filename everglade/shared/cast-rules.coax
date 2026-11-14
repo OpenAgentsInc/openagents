@@ -48,7 +48,7 @@ e2r_foe :: (b:[] RsBattle,i:int,foe:int)->int #effects(reads,traps) {
 e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int,open:int)->bool #effects(all) {
   i:=seats[0].me;
   if i<0 || i>=b[0].n { return false; }
-  e:=xk_entry_at(klass,b[0].c[i].level,slot);   // the seat's own level's bar (#13046)
+  e:=xk_entry_held(klass,b[0].c[i].level,slot,b[0].c[i].ranged);   // the seat's own level's bar (#13046), and its Attack with a Longbow lent (#13519)
   if !e.ok || !rs_can_act(b[0].c[i]) { return false; }
   // a new turn: its Action, its Bonus Action and its one spell with a slot (the transaction undoes this on a refusal)
   if (open & XP_ACTION)!=0 { seats[0].turn.action=false; }
@@ -68,7 +68,7 @@ e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,tar
     }
   } else if e.ab.kind==FB_SPELL && e.ab.sp==SP_REVIVIFY {
     ok=e2r_named(b,target) && fb_cast(b,i,e.ab,target,b[0].c[i].x,b[0].c[i].y,target);
-  } else { ok=e2r_dispatch_at(b,i,xk_rules(klass,e.ab),e2r_foe(b,i,target),point); }   // a bow kit's Attack is its Longbow's shot (#13130)
+  } else { ok=e2r_dispatch_at(b,i,xk_rules_held(klass,e.ab,b[0].c[i].ranged),e2r_foe(b,i,target),point); }   // a bow kit's Attack is its Longbow's shot (#13130), and so is one with a Longbow lent (#13519)
   fb_seat_out(b,seats);
   return ok;
 }
@@ -183,6 +183,16 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
   // an arrow at no one spends the Action and harms nothing
   seats[0]=FbSeat.{me=0}; hp=b[0].c[g].hp;
   #assert e2r_use(b[..],seats[..],FB_CL_RANGER,slot) && seats[0].turn.action && b[0].c[g].hp==hp;
+}
+#test "Everglade II: a level-1 Druid holding the Archery Range's Longbow shoots the guard with its Attack; without it the slot is not its own (#13519)" {
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=40; b[0].h=8; b[0].dice[0].fixed=true;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_DRUID,"Druid",0,1),1,2);
+  g:=rs_add(b[..],rs_guard("Guard",1),25,2);   // 120 feet off
+  b[0].c[g].ac=5; hp:=b[0].c[g].hp;
+  slot:=xk_wire(FB_CL_DRUID,xk_attack_of(FB_CL_DRUID)); seats:[1] FbSeat; seats[0].me=0;
+  #assert b[0].c[0].ranged!=W_LONGBOW && !e2r_use_on(b[..],seats[..],FB_CL_DRUID,slot,g) && b[0].c[g].hp==hp;   // not on its bar at level 1
+  b[0].c[0].ranged=W_LONGBOW; seats[0]=FbSeat.{me=0};   // the range lends it (everglade/server/arrows.coax e2a_range_lend)
+  #assert e2r_use_on(b[..],seats[..],FB_CL_DRUID,slot,g) && b[0].c[g].hp<hp && seats[0].turn.action;
 }
 #test "Everglade II harms only the creature the room names, alive and of another team" {
   b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;

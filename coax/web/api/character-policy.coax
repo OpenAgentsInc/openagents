@@ -49,20 +49,20 @@ character_checkpoint :: (kept: string, xp: int, out: [] u8) -> string #export_c 
 // stored record (kept; "" none: a new record for who), its bag and inventory version the ledger's
 // (items, a JSON array of who's item IDs after the operation; inv), anything worn that the bag no
 // longer holds taken off, and then the operation's claim (char_claim: a quest's stage from `from` to
-// `to`, coin and XP added, an item worn in a slot). "" when the stored body is not who's record or
+// `to`, coin and XP added, an item worn in a slot, an arrow on the Archery Range's tally: shot and run, #13519). "" when the stored body is not who's record or
 // the claim is refused: nothing is stored then. With no claim (quest 0, coin 0, xp 0, slot below 0)
 // it is the record as the store has it.
-character_op :: (kept: string, who: string, items: string, inv: int, quest: int, from: int, to: int, coin: int, xp: int, slot: int, item: int, out: [] u8) -> string #export_c #effects(all) {
+character_op :: (kept: string, who: string, items: string, inv: int, quest: int, from: int, to: int, coin: int, xp: int, slot: int, item: int, shot: int, run: int, out: [] u8) -> string #export_c #effects(all) {
   c := ifx kept.count == 0 then char_new(who, 1) else char_read(kept);
   if !c.ok || !char_who_is(c, who) { return ""; }
   nodes: [64] JvNode; d: [1] Jv;
   _ := jv_parse(d[..], items, nodes[..]);
   c.bag_n = char_list(d[0], 0, CHAR_BAG, c.bag[..]); c.inv = inv;
   for s: 0..<CHAR_WORN { if !char_holds(c, c.worn[s]) { c.worn[s] = 0; } }
-  return char_write(char_claim(c, CharClaim.{quest = quest, from = from, to = to, coin = coin, xp = xp, slot = slot, item = item}), out);
+  return char_write(char_claim(c, CharClaim.{quest = quest, from = from, to = to, coin = coin, xp = xp, slot = slot, item = item, shot = shot, run = run}), out);
 }
-// Whether an operation carries a claim on the record: a quest, coin, XP or a slot.
-character_claims :: (quest: int, coin: int, xp: int, slot: int) -> bool #export_c #effects(all) { return quest != 0 || coin != 0 || xp != 0 || slot >= 0; }
+// Whether an operation carries a claim on the record: a quest, coin, XP, a slot or an arrow.
+character_claims :: (quest: int, coin: int, xp: int, slot: int, shot: int) -> bool #export_c #effects(all) { return quest != 0 || coin != 0 || xp != 0 || slot >= 0 || shot != 0; }
 // The record's class word, into out ("" none, or not a record).
 character_class_word :: (text: string, out: [] u8) -> string #export_c #effects(all) {
   c := char_read(text);
@@ -126,25 +126,36 @@ character_level_of :: (text: string) -> int #export_c #effects(all) { c := char_
   o: [CHAR_BODY] u8; b: [CHAR_BODY] u8; c: [CHAR_BODY] u8;
   kept := character_ticket("", "p-a", "srd-ranger", 950, 2, "[4,9]", 5, o[..]);
   // no claim: the record as the store has it, with the ledger's bag and version
-  s := character_op(kept, "p-a", "[4,9,12]", 6, 0, 0, 0, 0, 0, -1, 0, b[..]);
+  s := character_op(kept, "p-a", "[4,9,12]", 6, 0, 0, 0, 0, 0, -1, 0, 0, 0, b[..]);
   r := char_read(s); #assert r.ok && r.bag_n == 3 && r.bag[2] == 12 && r.inv == 6 && r.xp == 950 && r.coin == 0 && r.quest_n == 0 && char_class_is(r, "srd-ranger");
   // a reward: the quest's stage, coin and XP, and the new item worn
-  s = character_op(kept, "p-a", "[4,9,12]", 6, 1, 0, 1, 25, 100, 1, 12, b[..]);
+  s = character_op(kept, "p-a", "[4,9,12]", 6, 1, 0, 1, 25, 100, 1, 12, 0, 0, b[..]);
   r = char_read(s); #assert r.ok && char_stage(r, 1) == 1 && r.coin == 25 && r.xp == 1050 && r.worn[1] == 12 && r.inv == 6;
   // the same claim on the record it left is refused: the quest is no longer at 0
-  #assert character_op(s, "p-a", "[4,9,12]", 7, 1, 0, 1, 25, 100, -1, 0, c[..]) == "" && character_op(s, "p-a", "[4,9,12]", 7, 1, 1, 2, 0, 0, -1, 0, c[..]).count > 0;
+  #assert character_op(s, "p-a", "[4,9,12]", 7, 1, 0, 1, 25, 100, -1, 0, 0, 0, c[..]) == "" && character_op(s, "p-a", "[4,9,12]", 7, 1, 1, 2, 0, 0, -1, 0, 0, 0, c[..]).count > 0;
   // an item the ledger no longer holds comes off, the first slot's and the last's; one not in the bag can't be worn
-  worn := character_op(character_op(kept, "p-a", "[4,9,12]", 6, 0, 0, 0, 0, 0, 0, 4, c[..]), "p-a", "[4,9,12]", 6, 0, 0, 0, 0, 0, 9, 12, b[..]);
+  worn := character_op(character_op(kept, "p-a", "[4,9,12]", 6, 0, 0, 0, 0, 0, 0, 4, 0, 0, c[..]), "p-a", "[4,9,12]", 6, 0, 0, 0, 0, 0, 9, 12, 0, 0, b[..]);
   r = char_read(worn); #assert r.ok && r.worn[0] == 4 && r.worn[9] == 12;
-  gone := char_read(character_op(worn, "p-a", "[9]", 8, 0, 0, 0, 0, 0, -1, 0, c[..])); #assert gone.ok && gone.worn[0] == 0 && gone.worn[9] == 0 && gone.bag_n == 1 && gone.inv == 8;
-  #assert character_op(kept, "p-a", "[4,9]", 6, 0, 0, 0, 0, 0, 0, 12, c[..]) == "";
+  gone := char_read(character_op(worn, "p-a", "[9]", 8, 0, 0, 0, 0, 0, -1, 0, 0, 0, c[..])); #assert gone.ok && gone.worn[0] == 0 && gone.worn[9] == 0 && gone.bag_n == 1 && gone.inv == 8;
+  #assert character_op(kept, "p-a", "[4,9]", 6, 0, 0, 0, 0, 0, 0, 12, 0, 0, c[..]) == "";
   // a new record for a character with none; another's record, a body that is no record, a bag past the record's
-  fresh := char_read(character_op("", "p-n", "[]", 0, 2, 0, 1, 0, 0, -1, 0, c[..])); #assert fresh.ok && char_who_is(fresh, "p-n") && fresh.floor == 1 && char_stage(fresh, 2) == 1;
-  #assert character_op(kept, "p-b", "[]", 0, 0, 0, 0, 0, 0, -1, 0, c[..]) == "" && character_op("{}", "p-a", "[]", 0, 0, 0, 0, 0, 0, -1, 0, c[..]) == "" && character_op("", "P!", "[]", 0, 0, 0, 0, 0, 0, -1, 0, c[..]) == "";
-  #assert character_op(kept, "p-a", "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33]", 6, 0, 0, 0, 0, 0, -1, 0, c[..]) == "";
-  #assert character_op(kept, "p-a", "nope", 6, 0, 0, 0, 0, 0, -1, 0, c[..]) == "";
+  fresh := char_read(character_op("", "p-n", "[]", 0, 2, 0, 1, 0, 0, -1, 0, 0, 0, c[..])); #assert fresh.ok && char_who_is(fresh, "p-n") && fresh.floor == 1 && char_stage(fresh, 2) == 1;
+  #assert character_op(kept, "p-b", "[]", 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, c[..]) == "" && character_op("{}", "p-a", "[]", 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, c[..]) == "" && character_op("", "P!", "[]", 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, c[..]) == "";
+  #assert character_op(kept, "p-a", "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33]", 6, 0, 0, 0, 0, 0, -1, 0, 0, 0, c[..]) == "";
+  #assert character_op(kept, "p-a", "nope", 6, 0, 0, 0, 0, 0, -1, 0, 0, 0, c[..]) == "";
 }
 #test "character policy: an operation carries a claim when it names a quest, coin, XP or a slot" {
-  #assert !character_claims(0, 0, 0, -1) && character_claims(1, 0, 0, -1) && character_claims(0, 1, 0, -1) && character_claims(0, -1, 0, -1) && character_claims(0, 0, 1, -1) && character_claims(0, 0, 0, 0);
-  #assert character_claims(-1, 0, 0, -1) && character_claims(0, 0, -1, -1) && !character_claims(0, 0, 0, -2) && character_claims(0, 0, 0, 9);
+  #assert !character_claims(0, 0, 0, -1, 0) && character_claims(1, 0, 0, -1, 0) && character_claims(0, 1, 0, -1, 0) && character_claims(0, -1, 0, -1, 0) && character_claims(0, 0, 1, -1, 0) && character_claims(0, 0, 0, 0, 0);
+  #assert character_claims(-1, 0, 0, -1, 0) && character_claims(0, 0, -1, -1, 0) && !character_claims(0, 0, 0, -2, 0) && character_claims(0, 0, 0, 9, 0) && character_claims(0, 0, 0, -1, 1) && character_claims(0, 0, 0, -1, -1);
+}
+#test "character route: an arrow's claim adds to the record's range tally, once per operation, and RESET's clears it (#13519)" {
+  o: [CHAR_BODY] u8; b: [CHAR_BODY] u8; c: [CHAR_BODY] u8;
+  kept := char_write(char_fixture(), o[..]);
+  s := character_op(kept, "p-a", "[4,9,12]", 6, 0, 0, 0, 0, 0, -1, 0, rg_shot(RG_FOOT, 12, 10), 1, b[..]);
+  r := char_read(s); #assert r.ok && s[0..<6] == "{\"v\":2" && r.range[0] == 1 && r.range[1] == 1 && r.range[2] == 1 && r.range[3] == 10 && r.range[4] == 1 && r.bag_n == 3 && r.inv == 6;
+  #assert character_op(s, "p-a", "[4,9,12]", 6, 0, 0, 0, 0, 0, -1, 0, RG_SHOTS, 0, c[..]) == "";   // no arrow: refused, nothing stored
+  z := character_op(s, "p-a", "[4,9,12]", 6, 0, 0, 0, 0, 0, -1, 0, RG_SHOT_CLEAR, 0, c[..]); #assert z.count > 0 && z[0..<6] == "{\"v\":1" && !char_ranged(char_read(z));
+  // the ticket and a checkpoint keep the tally as it is
+  t := character_ticket(s, "p-a", "", 2000, 1, "[4,9,12]", 6, c[..]); #assert char_read(t).range[0] == 1 && char_read(t).xp == 2000;
+  k := character_checkpoint(s, 3000, c[..]); #assert char_read(k).range[0] == 1 && char_read(k).xp == 3000;
 }

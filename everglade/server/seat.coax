@@ -149,6 +149,8 @@ EgSeat :: struct {
   familiar:E2Familiar;
   ride_last: int;   // the newest riding ask heard (everglade/server/riding.coax)
   range: [1] RgScore; range_last: int;   // its Archery Range tally and the newest ask to clear it (everglade/server/arrows.coax, #13507)
+  range_own: int = -2;   // its own ranged weapon while the Archery Range lends it a Longbow (-2: none lent; arrows.coax e2a_range_lend, #13519)
+  range_go: bool; range_to: [3] f32;   // the Archery Range moves it (x, z, facing) at the host's next step: RESET to the line, a ride ask beside the mount (e2a_range_go_take)
   stock: [RS_MATERIAL_STOCK] RsMaterialStock;   // the reagents its casts left (everglade/shared/reagent-stock.coax)
   // Everglade II rest (everglade/server/rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and

@@ -114,6 +114,12 @@ rg_on_ground :: (x: f32, z: f32, more: f32) -> bool {
   rx := x - f32(RG_AT_X); rz := z - f32(RG_AT_Z);
   return rx >= RG_CLEAR[0] - more && rx <= RG_CLEAR[2] + more && rz >= RG_CLEAR[1] - more && rz <= RG_CLEAR[3] + more;
 }
+// Whether the range lends a Longbow to someone standing at (x, z) (#13519): anyone on its ground, or
+// RG_LEND_MORE metres round it, carries the range's Longbow, whatever their class; it is given back
+// on leaving. The room lends it (everglade/server/arrows.coax e2a_range_lend: the seat's ranged weapon
+// in the rules) and the page draws and looses by the same rule (everglade/client/range.coax).
+RG_LEND_MORE :: 2.0;
+rg_lends :: (x: f32, z: f32) -> bool { return rg_on_ground(x, z, f32(RG_LEND_MORE)); }
 // Where you arrive: behind the line, facing downrange (world metres, and the facing: pi is -z).
 RG_ARRIVE_FACE :: 3.14159265;
 rg_arrive :: () -> [2] f32 { return [2] f32.[f32(RG_AT_X) + f32(RG_START_X), f32(RG_AT_Z) + f32(RG_START_Z)]; }
@@ -135,6 +141,8 @@ rg_arrive :: () -> [2] f32 { return [2] f32.[f32(RG_AT_X) + f32(RG_START_X), f32
   #assert f32(RG_MARKS) * f32(RG_MARK_STEP) == 2 * RG_LINE_HALF && RG_MARK < RG_MARK_STEP;
   for k: 0..<RG_SKY { #assert RG_SKY_Y[k] > 8; }
   a := rg_arrive(); e := f32(RG_AT_Z) + RG_CLEAR[3] + 1; #assert rg_on_ground(a[0], a[1], 0) && !rg_on_ground(a[0], e, 0) && rg_on_ground(a[0], e, 2);
+  // the Longbow is lent where you arrive and RG_LEND_MORE round the ground, and nowhere past it
+  #assert rg_lends(a[0], a[1]) && rg_lends(a[0], e) && !rg_lends(a[0], e + 1.5) && !rg_lends(0, 0);
 }
 #test "the range has every piece once: five butts, two sky faces, five posts and the chalk line's dashes" {
   kinds: [4] int; for i: 0..<RG_PIECES { kinds[rg_piece(i).kind] += 1; }

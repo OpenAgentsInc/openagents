@@ -852,7 +852,7 @@ static bool item_view(PGconn *db, const char *who, char *rec, size_t rec_cap, ch
   const char *kept = PQgetvalue(r, 0, 0), *items = PQgetvalue(r, 0, 1);
   *ver = atoll(PQgetvalue(r, 0, 3));
   coax_string made = character_op((coax_string){kept, (int64_t)strlen(kept)}, (coax_string){who, (int64_t)strlen(who)}, (coax_string){items, (int64_t)strlen(items)},
-                                  *ver, 0, 0, 0, 0, 0, -1, 0, (coax_v_u8){(uint8_t *)rec, (int64_t)rec_cap - 1});
+                                  *ver, 0, 0, 0, 0, 0, -1, 0, 0, 0, (coax_v_u8){(uint8_t *)rec, (int64_t)rec_cap - 1});
   rec[made.count > 0 ? made.count : 0] = 0;
   if (rec[0]) snprintf(kinds, kinds_cap, "%s", PQgetvalue(r, 0, 2));   /* a kind for each item in the record's bag */
   PQclear(r);
@@ -882,7 +882,8 @@ static void room_items(const request *q, PGconn *db) {
   PGresult *r = PQexecParams(db, "SELECT j->>'id', j->>'op', verse.item_who(j->>'pid'), (j->>'gen')::bigint, (j->>'ver')::bigint, (j->>'item')::bigint, "
     "CASE WHEN coalesce(j->>'to', '') = '' THEN NULL ELSE verse.item_who(j->>'to') END, (j->>'kind')::int, (j->>'sent')::bigint, "
     "coalesce((j->>'quest')::bigint, 0), coalesce((j->>'from')::bigint, 0), coalesce((j->>'stage')::bigint, 0), coalesce((j->>'coin')::bigint, 0), "
-    "coalesce((j->>'xp')::bigint, 0), coalesce((j->>'slot')::bigint, -1), coalesce((j->>'wear')::bigint, 0) "
+    "coalesce((j->>'xp')::bigint, 0), coalesce((j->>'slot')::bigint, -1), coalesce((j->>'wear')::bigint, 0), "
+    "coalesce((j->>'shot')::bigint, 0), coalesce((j->>'run')::bigint, 0) "
     "FROM (SELECT $1::jsonb j) s", 1, NULL, bv, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
@@ -894,11 +895,15 @@ static void room_items(const request *q, PGconn *db) {
   char *item = item_dup(r, 0, 5), *to = item_dup(r, 0, 6), *kind = item_dup(r, 0, 7), *sent = item_dup(r, 0, 8);
   int64_t c_quest = atoll(PQgetvalue(r, 0, 9)), c_from = atoll(PQgetvalue(r, 0, 10)), c_to = atoll(PQgetvalue(r, 0, 11)), c_coin = atoll(PQgetvalue(r, 0, 12));
   int64_t c_xp = atoll(PQgetvalue(r, 0, 13)), c_slot = atoll(PQgetvalue(r, 0, 14)), c_wear = atoll(PQgetvalue(r, 0, 15));
+  int64_t c_shot = atoll(PQgetvalue(r, 0, 16)), c_run = atoll(PQgetvalue(r, 0, 17));   /* an arrow on the Archery Range's tally (#13519) */
   PQclear(r); r = NULL;
   /* the claim as the ID's record keeps it: part of the payload */
-  char rider[160]; snprintf(rider, sizeof rider, "%lld,%lld,%lld,%lld,%lld,%lld,%lld", (long long)c_quest, (long long)c_from, (long long)c_to,
-                            (long long)c_coin, (long long)c_xp, (long long)c_slot, (long long)c_wear);
-  bool claims = character_claims(c_quest, c_coin, c_xp, c_slot);
+  char rider[200];
+  if (c_shot) snprintf(rider, sizeof rider, "%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld", (long long)c_quest, (long long)c_from, (long long)c_to,
+                       (long long)c_coin, (long long)c_xp, (long long)c_slot, (long long)c_wear, (long long)c_shot, (long long)c_run);
+  else snprintf(rider, sizeof rider, "%lld,%lld,%lld,%lld,%lld,%lld,%lld", (long long)c_quest, (long long)c_from, (long long)c_to,
+                (long long)c_coin, (long long)c_xp, (long long)c_slot, (long long)c_wear);   /* as before arrows: an ID's recorded claim keeps its bytes */
+  bool claims = character_claims(c_quest, c_coin, c_xp, c_slot, c_shot);
   char *owner = NULL, *escrow = NULL, *made = NULL, *result = NULL;
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   int64_t now = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
@@ -1000,7 +1005,7 @@ static void room_items(const request *q, PGconn *db) {
     int64_t inv = atoll(PQgetvalue(r, 0, 2));
     PQclear(r); r = NULL;
     coax_string rec = character_op((coax_string){kept, (int64_t)strlen(kept)}, (coax_string){who, (int64_t)strlen(who)}, (coax_string){items, (int64_t)strlen(items)},
-                                   inv, c_quest, c_from, c_to, c_coin, c_xp, c_slot, c_wear, (coax_v_u8){(uint8_t *)next, (int64_t)sizeof next - 1});
+                                   inv, c_quest, c_from, c_to, c_coin, c_xp, c_slot, c_wear, c_shot, c_run, (coax_v_u8){(uint8_t *)next, (int64_t)sizeof next - 1});
     if (rec.count > 0) {
       next[rec.count] = 0;
       const char *cv[2] = {who, next};

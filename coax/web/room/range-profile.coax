@@ -1,5 +1,6 @@
-// The Archery Range's profile check (#13507): proto/verse/everglade2-range-v1.json names the ask to
-// clear a tally (an E kind) and the room's word on each arrow (e range). This program holds the one
+// The Archery Range's profile check (#13507, #13519): proto/verse/everglade2-range-v1.json names the asks
+// to clear a tally and to shoot another way (E kinds), the room's word on each arrow (e range) and the
+// lasting tally (e tally). This program holds the one
 // codec (everglade/server/range-wire.coax, which the room and the page both load) to that file: the
 // kind, the ways of shooting and the bounds are the codec's; each ask's text reads as its values and
 // writes back as the text; each answer the same; what is malformed is refused whole. The file's texts
@@ -24,7 +25,7 @@ rgp_check :: (d: Jv, file: string) -> bool {
   if rgp_str(d, jv_get(d, 0, "check"), tb[0][..]) != cast(string) cb[0..<cn] { print("check: not this program\n"); return false; }
   if rgp_str(d, jv_get(d, 0, "base_session"), tb[0][..]) != "everglade-session-v7" || WIRE_VERSION != 7 { print("base_session\n"); return false; }
   uses := jv_get(d, 0, "uses");
-  if jv_kind(d, uses) != JV_OBJECT || jv_len(d, uses) != 1 || rgp_int(d, uses, "reset") != WE_RANGE_RESET { print("uses\n"); return false; }
+  if jv_kind(d, uses) != JV_OBJECT || jv_len(d, uses) != 2 || rgp_int(d, uses, "reset") != WE_RANGE_RESET || rgp_int(d, uses, "ride") != WE_RANGE_RIDE { print("uses\n"); return false; }
   modes := jv_get(d, 0, "modes");
   if jv_kind(d, modes) != JV_OBJECT || jv_len(d, modes) != RG_MODES || rgp_int(d, modes, "foot") != RG_FOOT || rgp_int(d, modes, "horse") != RG_HORSE || rgp_int(d, modes, "dragon") != RG_DRAGON { print("modes\n"); return false; }
   if rgp_int(d, 0, "faces") != RG_TARGETS || rgp_int(d, 0, "rings") != RG_RINGS || rgp_int(d, 0, "far_cm") != EGR_FAR_CM { print("faces, rings or far_cm\n"); return false; }
@@ -36,8 +37,10 @@ rgp_check :: (d: Jv, file: string) -> bool {
     text := rgp_str(d, jv_get(d, r, "text"), tb[0][..]);
     rd := [1] WireRd.[wire_rd(text, 1)];
     u := wire_read_use(text, rd[..]);
-    if rgp_str(d, jv_get(d, r, "use"), tb[1][..]) != "reset" || !wire_is(text, "E") || !rd[0].ok || wire_fields(text) != 4 || !egr_reset_read(u) || u.seq != rgp_int(d, r, "seq") { print("request %: %\n", i, text); return false; }
-    n := wire_put_use(out[..], 0, egr_reset_ask(u.seq));
+    use := rgp_str(d, jv_get(d, r, "use"), tb[1][..]); ride := use == "ride";
+    if (use != "reset" && !ride) || !wire_is(text, "E") || !rd[0].ok || wire_fields(text) != 4 || u.seq != rgp_int(d, r, "seq") { print("request %: %\n", i, text); return false; }
+    if (!ride && !egr_reset_read(u)) || (ride && egr_ride_read(u) != rgp_int(d, r, "mode")) { print("request %: %\n", i, text); return false; }
+    n := wire_put_use(out[..], 0, ifx ride then egr_ride_ask(u.seq, u.id) else egr_reset_ask(u.seq));
     if cast(string) out[0..<n] != text { print("request %: written %\n", i, cast(string) out[0..<n]); return false; }
   }
   answers := jv_get(d, 0, "answers");
@@ -55,13 +58,25 @@ rgp_check :: (d: Jv, file: string) -> bool {
     t := rgp_str(d, jv_at(d, bad, i), tb[0][..]);
     rd := [1] WireRd.[wire_rd(t, 1)];
     u := wire_read_use(t, rd[..]);
-    if !rd[0].ok || egr_reset_read(u) { print("malformed_requests %: %\n", i, t); return false; }
+    if !rd[0].ok || egr_reset_read(u) || egr_ride_read(u) >= 0 { print("malformed_requests %: %\n", i, t); return false; }
   }
   worse := jv_get(d, 0, "malformed_answers");
   if jv_kind(d, worse) != JV_ARRAY || jv_len(d, worse) < 6 { print("malformed_answers\n"); return false; }
   for i: 0..<jv_len(d, worse) {
     t := rgp_str(d, jv_at(d, worse, i), tb[0][..]);
-    if egr_read(t).ok { print("malformed_answers %: %\n", i, t); return false; }
+    if egr_read(t).ok || egr_tally_read(t).ok { print("malformed_answers %: %\n", i, t); return false; }
+  }
+  // the lasting tally (#13519): each written as its text, read back to its numbers
+  tallies := jv_get(d, 0, "tallies");
+  if jv_kind(d, tallies) != JV_ARRAY || jv_len(d, tallies) < 2 { print("tallies\n"); return false; }
+  for i: 0..<jv_len(d, tallies) {
+    r := jv_at(d, tallies, i); big: [1024] u8; tb2: [1024] u8;
+    text := rgp_str(d, jv_get(d, r, "text"), big[..]); nums := jv_get(d, r, "numbers");
+    if jv_kind(d, nums) != JV_ARRAY || jv_len(d, nums) != RG_TALLY { print("tallies %: numbers\n", i); return false; }
+    v: [RG_TALLY] int; for q: 0..<RG_TALLY { v[q] = jv_int(d, jv_at(d, nums, q), -1); }
+    g := egr_tally_read(text); m := egr_tally_put(tb2[..], rg_tally_score(v[..], RG_TALLY));
+    if !g.ok || !rg_tally_ok(v[..], RG_TALLY) || cast(string) tb2[0..<m] != text { print("tallies %: %\n", i, text); return false; }
+    back: [RG_TALLY] int; _ := rg_tally_of(g.score, back[..]); for q: 0..<RG_TALLY { if back[q] != v[q] { print("tallies %: number %\n", i, q); return false; } }
   }
   return true;
 }

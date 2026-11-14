@@ -21746,7 +21746,7 @@ CREATE TABLE verse.characters (
     body jsonb NOT NULL,
     at_ms bigint NOT NULL,
     CONSTRAINT characters_at_ms_check CHECK ((at_ms > 0)),
-    CONSTRAINT characters_body CHECK (((jsonb_typeof(body) = 'object'::text) AND ((body ->> 'v'::text) = '1'::text) AND ((body ->> 'who'::text) = who) AND (jsonb_typeof((body -> 'known'::text)) = 'array'::text) AND (jsonb_typeof((body -> 'bag'::text)) = 'array'::text) AND (jsonb_typeof((body -> 'worn'::text)) = 'array'::text) AND (jsonb_array_length((body -> 'worn'::text)) = 10) AND (jsonb_typeof((body -> 'quests'::text)) = 'array'::text))),
+    CONSTRAINT characters_body CHECK (((jsonb_typeof(body) = 'object'::text) AND ((body ->> 'who'::text) = who) AND (jsonb_typeof((body -> 'known'::text)) = 'array'::text) AND (jsonb_typeof((body -> 'bag'::text)) = 'array'::text) AND (jsonb_typeof((body -> 'worn'::text)) = 'array'::text) AND (jsonb_array_length((body -> 'worn'::text)) = 10) AND (jsonb_typeof((body -> 'quests'::text)) = 'array'::text) AND ((((body ->> 'v'::text) = '1'::text) AND (NOT (body ? 'range'::text))) OR (((body ->> 'v'::text) = '2'::text) AND (jsonb_typeof((body -> 'range'::text)) = 'array'::text) AND (jsonb_array_length((body -> 'range'::text)) = 61))))),
     CONSTRAINT characters_who CHECK ((who ~ '^[a-z0-9_-]{1,80}$'::text))
 );
 

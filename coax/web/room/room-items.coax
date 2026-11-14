@@ -37,7 +37,7 @@ RI_RETRY_MAX_MS :: 16000; // up to this (an API that is down, or one from before
 RI_TRIES :: 8;            // new IDs one operation may take when its inventory version was stale
 RI_TELL :: 8;             // entries a tick a seat is told of its own character
 RI_GONE :: 8;             // items gone that a seat is still to be told of
-RI_SYNC :: 0; RI_LOOT :: 1; RI_QUEST :: 2; RI_WEAR :: 3;
+RI_SYNC :: 0; RI_LOOT :: 1; RI_QUEST :: 2; RI_WEAR :: 3; RI_RANGE :: 4;
 
 RiChar :: struct {
   live: bool;
@@ -48,6 +48,7 @@ RiChar :: struct {
   rec: Character; kinds: [CHAR_BAG] int; ver: int;
   tell: int = -1;                // the next entry its seat is to be told (-1: all told)
   old: bool;                     // its page is the release before's: it plays by the tables before (ri_doc)
+  ranged: bool;                  // its seat's Archery Range tally has taken the record's lasting one (ri_range_sync, #13519)
   gone: [RI_GONE] int; gone_n: int;
 }
 RiOp :: struct {
@@ -254,6 +255,36 @@ ri_done :: (v: [] RmServer, i: int, a: ItemAnswer) {
   ri_pump(v, c);
 }
 
+// ---- the Archery Range's lasting tally (#13519): the record keeps it (character.coax `range`), the
+// room's seat keeps the tally it plays with (everglade/server/arrows.coax)
+
+// The first tick character c's seat is placed with its record read (ri_tick): the seat's tally is the
+// record's lasting one, with the arrows it shot before (their claims leave after the read), and its page
+// is told it whole (range-wire.coax e tally).
+ri_range_sync :: (v: [] RmServer, c: int) {
+  ch := v[0].itm.c[c..<c + 1]; k := ch[0].k; s := ch[0].seat;
+  if ch[0].ranged || !ch[0].synced || k < 0 || s < 0 || !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].placed || v[0].eg[k].seat[s].full { return; }   // placed, its snapshot sent: its page hears the tally
+  ch[0].ranged = true;
+  if !char_ranged(ch[0].rec) { return; }
+  st := v[0].eg[k].seat[s..<s + 1];
+  mine: [RG_TALLY] int; n := rg_tally_of(st[0].range[0], mine[..]);
+  for i: 1..<n { mine[i] += ch[0].rec.range[i]; }
+  if ch[0].rec.range[0] > mine[0] { mine[0] = ch[0].rec.range[0]; }
+  if !rg_tally_ok(mine[..], n) { return; }
+  was := st[0].range[0]; st[0].range[0] = rg_tally_score(mine[..], n);
+  st[0].range[0].run = was.run; st[0].range[0].last_points = was.last_points; st[0].range[0].last_distance = was.last_distance; st[0].range[0].last_mode = was.last_mode; st[0].range[0].last_at = was.last_at;
+  b: [640] u8; m := egr_tally_put(b[..], st[0].range[0]);
+  eg_event_only(v, k, cast(string) b[0..<m], s);
+}
+// Seat s of room k's arrow on the range (score.coax rg_shot; RG_SHOT_CLEAR: its tally cleared), with
+// `run` hits in a row after it: a claim on its character's record. False when no character sits there
+// or the outbox is full.
+ri_range_shot :: (v: [] RmServer, k: int, seat_id: SeatId, shot: int, run: int) -> bool {
+  c := ri_seat(v, k, seat_id.value);
+  if c < 0 || shot == 0 { return false; }
+  return ri_push(v, c, RI_RANGE, LOP_CLAIM, 0, 0, CharClaim.{shot = shot, run = run});
+}
+
 // ---- what a seat is told
 
 // One entry aimed at character c's seat; false when the tick's events are full (it waits).
@@ -421,6 +452,7 @@ ri_tick :: (v: [] RmServer, k: int) {
     c := ri_seat(v, k, s);
     if c < 0 || !v[0].eg[k].seat[s].live { continue; }
     ri_tell(v, c);
+    ri_range_sync(v, c);   // the Archery Range's lasting tally, once placed (#13519)
     if !second || !v[0].itm.content || !v[0].itm.c[c].synced { continue; }
     d := ri_doc(v, c);
     for q: 0..<ct_rows(d, EC_QUEST) {

@@ -35,6 +35,7 @@ E2kAct :: struct { at: f32 = -100; clip: int = -1; }
 E2kAsk :: struct { seq: int; slot: int = -1; wire: int; face: f32; net_seq: int; rolled: bool; replay: bool; }
 E2Cast :: struct {
   klass: int = -1; level: int = 1; bar: [XC_SLOTS] FbAb; bar_n: int;
+  lent: int = -1;                          // a ranged weapon lent past your kit: the Archery Range's Longbow (#13519, range.coax e2rg_lend)
   wire: [XC_SLOTS] int;                    // each slot's ability on the wire (class-kit.coax xk_wire)
   cool_at: f32 = -100; used: int = -1; hover: int = -1;
   pace: XpPace; pace_was: XpPace;          // your turn as the room paces it (everglade/shared/cast-pace.coax), and before your last press, for a refusal
@@ -70,9 +71,21 @@ e2k_name :: (s: [] E2, i: int, out: [] u8) -> string {
 e2k_set_class :: (k: [] E2Cast, c: int, level: int) {
   l := xk_level(level);
   if c < 0 || c >= FB_CL_N || (c == k[0].klass && l == k[0].level) { return; }
-  k[0].klass = c; k[0].level = l; k[0].bar_n = xk_bar_at(c, l, k[0].bar[..]); k[0].used = -1; k[0].hover = -1;
-  for i: 0..<k[0].bar_n { k[0].wire[i] = xk_wire(c, k[0].bar[i]); }
+  k[0].klass = c; k[0].level = l; e2k_bar(k);
 }
+// A weapon lent past your kit, or given back (-1): the bar it gives (class-kit.coax xk_bar_held: with
+// the range's Longbow your Attack is on it, and is the Longbow's shot).
+e2k_set_lent :: (k: [] E2Cast, ranged: int) {
+  if ranged == k[0].lent { return; }
+  k[0].lent = ranged;
+  if k[0].klass >= 0 { e2k_bar(k); }
+}
+e2k_bar :: (k: [] E2Cast) {
+  k[0].bar_n = xk_bar_held(k[0].klass, k[0].level, k[0].lent, k[0].bar[..]); k[0].used = -1; k[0].hover = -1;
+  for i: 0..<k[0].bar_n { k[0].wire[i] = xk_wire(k[0].klass, k[0].bar[i]); }
+}
+// Your kit now: your class's, or the bow while the range lends you its Longbow.
+e2k_kit :: (k: [] E2Cast) -> int { return xk_kit_held(k[0].klass, k[0].lent); }
 e2k_on :: (s: [] E2) -> bool { return s[0].placed && !e2c_creating(s) && s[0].casts[0].bar_n > 0; }
 
 // One sound where it happens: softer the farther from you, panned the way the camera faces.
@@ -110,7 +123,8 @@ e2k_play :: (s: [] E2, c: int, slot: int, px: f32, py: f32, pz: f32, face: f32, 
   if mine { k[0].shown += 1; }
   // a bow's Attack is its arrow (everglade/client/arrows.coax): the loose, its flight and where it ends are
   // drawn and heard there, and nothing flashes where it was aimed
-  if xc_kit(c) == XC_KIT_BOW && e.ab.kind == FB_ATTACK { act[0].at = now; act[0].clip = -1; return 1; }
+  kit := xk_kit_held(c, ifx rg_lends(px, pz) then W_LONGBOW else -1);   // a Longbow the range lends whoever stands on it (#13519)
+  if kit == XC_KIT_BOW && e.ab.kind == FB_ATTACK { act[0].at = now; act[0].clip = -1; return 1; }
   started := xc_look_start(k[0].puffs[..], xc_look_of(e.ab, px, py, pz, face, fxp_v(ax, ay, az)), now, f32(seed % 9973));
   d := xc_sound(e.ab, c);
   e2k_cue(s, d.start, f32(E2K_GAIN_START), px, pz, d.rate);
@@ -123,7 +137,7 @@ e2k_play :: (s: [] E2, c: int, slot: int, px: f32, py: f32, pz: f32, face: f32, 
   }
   // a blow's slash or a spell's cast, as Experimental's (cast-pose.coax; no weapon drawn here, so no cleave)
   // a bow's arrow is the bow's own pose (its draw and follow-through, everglade/client/mouse.coax and e2_remote_aim)
-  act[0].at = now; act[0].clip = ifx xc_kit(c) == XC_KIT_BOW && e.ab.kind == FB_ATTACK then -1 else cp_cast_clip(xc_kit(c), e.aim.kind == XC_AIM_MELEE, false);
+  act[0].at = now; act[0].clip = cp_cast_clip(xc_kit(c), e.aim.kind == XC_AIM_MELEE, false);
   return started;
 }
 
@@ -179,7 +193,7 @@ e2k_press :: (s: [] E2, i: int) -> bool {
   // a Ranger's Attack is the Longbow's: its key or its slot draws, and looses at full draw, as the
   // left button does and as Experimental's key does (everglade/client/mouse.coax)
   if a.kind == FB_ATTACK && !k[0].loosing && e2m_archer(s) { return e2m_draw(s, true); }
-  m := xc_aim_for(a, xk_weapon(c));
+  m := xc_aim_for(a, xk_weapon_held(c, k[0].lent));
   face := e2_show_face(s); fx := sin(face); fz := cos(face);   // mouselook: the camera's way
   // a placed area (class-kit.coax xk_area_placed): the first press arms its preview on the ground, the
   // second (or a click) casts it there
@@ -330,7 +344,7 @@ e2k_cast :: (s: [] E2, i: int, face: f32, px: f32, pz: f32) -> bool {
   k[0].pace_was = k[0].pace;
   k[0].pace = xp_took(k[0].pace, xk_parts(k[0].bar[i]), xk_parts(k[0].bar[i]), xk_gives(k[0].bar[i]), xk_tick(now), 0);
   // a bow's Attack is its arrow: loosed here now, and the room told of its launch under the same number
-  if xc_kit(k[0].klass) == XC_KIT_BOW && k[0].bar[i].kind == FB_ATTACK { _ := e2bw_loose(s, k[0].ask.net_seq); }
+  if e2k_kit(k) == XC_KIT_BOW && k[0].bar[i].kind == FB_ATTACK { _ := e2bw_loose(s, k[0].ask.net_seq); }
   _ := e2n_cast(s[0].net[..], k[0].wire[i], px, ay, pz);
   e2k_predict(s, i, face, px, ay, pz);
   return true;

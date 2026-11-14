@@ -97,6 +97,7 @@ The rows of `proto/registry.json` whose codec or files are this realm's (under `
 | `room-reports-v1` | profile | room-session | `proto/verse/room-reports-v1.json` |
 | `character-checkpoint-v2` | profile | room-session | `proto/verse/character-checkpoint-v2.schema.json` |
 | `everglade-character-v1` | profile | characters | `proto/verse/everglade-character-v1.schema.json` |
+| `everglade-character-v2` | profile | characters | `proto/verse/everglade-character-v2.schema.json` |
 | `aethyr.content.v1` | profile | engine | `proto/aethyr/content-v1.json` |
 | `everglade.item-op.v1` | profile | items | `proto/verse/everglade-item-op-v1.json` |
 | `items.item.granted.v1` | event | items | `proto/verse/everglade-events-v1.json` |
@@ -203,4 +204,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: 360a0e21611924084e13ae364527a51156acb5f219f655f443501da4241c2d04
+reference sha256: 43b723b591aae7f15e5d692c3d2742a2b0d9285d484f890b4529c5dc62533b09

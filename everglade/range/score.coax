@@ -68,6 +68,64 @@ rg_sum :: (s: RgScore, mode: int, band: int) -> RgTally {
   } }
   return t;
 }
+// ---- the lasting tally (#13519): what of a tally the character's record keeps (everglade/model/character.coax
+// `range`), as whole numbers: the longest run of hits, then for each way of shooting and each band (cell
+// m * RG_BANDS + b) its shots, hits, points and golds. The run now and the last arrow are not kept.
+RG_CELLS :: RG_MODES * RG_BANDS;
+RG_TALLY :: 1 + RG_CELLS * 4;
+RG_TALLY_MAX :: 9999999;   // a count's most
+rg_tally_of :: (s: RgScore, out: [] int) -> int {
+  if out.count < RG_TALLY { return 0; }
+  out[0] = s.best_run;
+  for c: 0..<RG_CELLS { t := s.cell[c]; out[1 + c * 4] = t.shots; out[2 + c * 4] = t.hits; out[3 + c * 4] = t.points; out[4 + c * 4] = t.golds; }
+  return RG_TALLY;
+}
+// Whether n numbers are a lasting tally: each 0 to RG_TALLY_MAX, a cell's hits no more than its shots,
+// its golds no more than its hits, its points from one a hit to RG_RINGS a hit, and the best run no
+// more than every hit there is.
+rg_tally_ok :: (v: [] const int, n: int) -> bool #effects(all) {
+  if n != RG_TALLY || v.count < n { return false; }
+  hits := 0;
+  for i: 0..<n { if v[i] < 0 || v[i] > RG_TALLY_MAX { return false; } }
+  for c: 0..<RG_CELLS {
+    s := v[1 + c * 4]; h := v[2 + c * 4]; p := v[3 + c * 4]; g := v[4 + c * 4];
+    if h > s || g > h || p < h || p > h * RG_RINGS { return false; }
+    hits += h;
+  }
+  return v[0] <= hits;
+}
+// A tally from its numbers: an empty one unless they are a lasting tally.
+rg_tally_score :: (v: [] const int, n: int) -> RgScore {
+  s := RgScore.{};
+  if !rg_tally_ok(v, n) { return s; }
+  s.best_run = v[0];
+  for c: 0..<RG_CELLS { s.cell[c] = RgTally.{shots = v[1 + c * 4], hits = v[2 + c * 4], points = v[3 + c * 4], golds = v[4 + c * 4]}; }
+  return s;
+}
+// One arrow as one whole number, for a claim on the record: 1 + its cell * 11 + its points (0 a miss);
+// RG_SHOT_CLEAR clears the tally; 0 is none. RG_SHOTS: every arrow's number is below it.
+RG_SHOT_CLEAR :: -1;
+RG_SHOTS :: 1 + RG_CELLS * (RG_RINGS + 1);
+rg_shot :: (mode: int, distance: f32, points: int) -> int {
+  m := ifx mode < 0 || mode >= RG_MODES then RG_FOOT else mode;
+  p := ifx points < 0 then 0 else ifx points > RG_RINGS then RG_RINGS else points;
+  return 1 + (m * RG_BANDS + rg_band(distance)) * (RG_RINGS + 1) + p;
+}
+// The tally's numbers after arrow `shot` (rg_shot's, or RG_SHOT_CLEAR) with `run` hits in a row after
+// it: false, and v as it was, when shot is no arrow, the run is less than 0, or the tally would break a rule.
+rg_tally_shot :: (v: [] int, n: int, shot: int, run: int) -> bool #effects(all) {
+  if n != RG_TALLY || v.count < n || run < 0 { return false; }
+  if shot == RG_SHOT_CLEAR { for i: 0..<n { v[i] = 0; } return true; }
+  if shot < 1 || shot >= RG_SHOTS { return false; }
+  was: [RG_TALLY] int; for i: 0..<n { was[i] = v[i]; }
+  c := (shot - 1) / (RG_RINGS + 1); p := (shot - 1) % (RG_RINGS + 1); o := 1 + c * 4;
+  v[o] += 1;
+  if p > 0 { v[o + 1] += 1; v[o + 2] += p; if p >= 9 { v[o + 3] += 1; } }
+  if run > v[0] { v[0] = run; }
+  if !rg_tally_ok(v, n) { for i: 0..<n { v[i] = was[i]; } return false; }
+  return true;
+}
+
 // Hits in a hundred shots, and points an arrow in tenths; 0 before any shot.
 rg_accuracy :: (t: RgTally) -> int { return ifx t.shots > 0 then (t.hits * 100 + t.shots / 2) / t.shots else 0; }
 rg_average_tenths :: (t: RgTally) -> int { return ifx t.shots > 0 then (t.points * 10 + t.shots / 2) / t.shots else 0; }
@@ -101,4 +159,33 @@ rg_average_tenths :: (t: RgTally) -> int { return ifx t.shots > 0 then (t.points
   #assert rg_accuracy(all) == 75 && rg_average_tenths(all) == 65 && rg_accuracy(RgTally.{}) == 0;
   #assert s[0].run == 1 && s[0].best_run == 2 && s[0].last_points == 9 && s[0].last_mode == RG_DRAGON;
   rg_record(s[..], 99, 5, 3, 5); #assert rg_sum(s[0], RG_FOOT, 0).shots == 3;
+}
+#test "the lasting tally: a tally's numbers and back, each rule, and each arrow added as the tally adds it (#13519)" {
+  s: [1] RgScore; rg_record(s[..], RG_FOOT, 10, 10, 1); rg_record(s[..], RG_FOOT, 10, 7, 2); rg_record(s[..], RG_HORSE, 30, 0, 3); rg_record(s[..], RG_DRAGON, 70, 9, 4);
+  v: [RG_TALLY] int; n := rg_tally_of(s[0], v[..]); #assert n == RG_TALLY && RG_TALLY == 61 && v[0] == 2 && rg_tally_ok(v[..], n) && !rg_tally_ok(v[..], n - 1);
+  short: [3] int; #assert rg_tally_of(s[0], short[..]) == 0;
+  back := rg_tally_score(v[..], n); #assert back.best_run == 2 && back.run == 0 && back.last_points == -1;
+  for c: 0..<RG_CELLS { #assert back.cell[c].shots == s[0].cell[c].shots && back.cell[c].hits == s[0].cell[c].hits && back.cell[c].points == s[0].cell[c].points && back.cell[c].golds == s[0].cell[c].golds; }
+  // each rule
+  w := v; w[1] = -1; #assert !rg_tally_ok(w[..], n);
+  w = v; w[5] = RG_TALLY_MAX; #assert rg_tally_ok(w[..], n); w[5] = RG_TALLY_MAX + 1; #assert !rg_tally_ok(w[..], n) && rg_tally_score(w[..], n).best_run == 0;
+  w = v; w[2] = w[1] + 1; w[3] = w[2] * 10; #assert !rg_tally_ok(w[..], n);
+  w = v; w[4] = w[2] + 1; #assert !rg_tally_ok(w[..], n); w[4] = w[2]; #assert rg_tally_ok(w[..], n);
+  w = v; w[3] = w[2] - 1; #assert !rg_tally_ok(w[..], n); w[3] = w[2]; #assert rg_tally_ok(w[..], n); w[3] = w[2] * RG_RINGS; #assert rg_tally_ok(w[..], n); w[3] += 1; #assert !rg_tally_ok(w[..], n);
+  w = v; w[0] = 3; #assert rg_tally_ok(w[..], n); w[0] = 4; #assert !rg_tally_ok(w[..], n);
+  // arrows one at a time are the tally rg_record keeps
+  t: [RG_TALLY] int; z: [1] RgScore;
+  for q: 0..<4 {
+    m := [4] int.[RG_FOOT, RG_FOOT, RG_HORSE, RG_DRAGON]; d := [4] f32.[10, 10, 30, 70]; p := [4] int.[10, 7, 0, 9];
+    rg_record(z[..], m[q], d[q], p[q], 1);
+    #assert rg_tally_shot(t[..], RG_TALLY, rg_shot(m[q], d[q], p[q]), z[0].run);
+  }
+  for i: 0..<RG_TALLY { #assert t[i] == v[i]; }
+  #assert rg_shot(RG_FOOT, 0, 0) == 1 && rg_shot(RG_DRAGON, 500, 10) == RG_SHOTS - 1 && rg_shot(9, 10, 12) == rg_shot(RG_FOOT, 10, 10) && rg_shot(RG_HORSE, 10, -3) == rg_shot(RG_HORSE, 10, 0);
+  // what is no arrow changes nothing; a run past every hit is refused whole; a clear empties it
+  for bad: [3] int.[0, RG_SHOTS, -2] { #assert !rg_tally_shot(t[..], RG_TALLY, bad, 0); }
+  #assert !rg_tally_shot(t[..], RG_TALLY, rg_shot(RG_FOOT, 10, 0), -1) && !rg_tally_shot(t[..], RG_TALLY - 1, rg_shot(RG_FOOT, 10, 0), 0);
+  #assert !rg_tally_shot(t[..], RG_TALLY, rg_shot(RG_FOOT, 10, 0), 9); for i: 0..<RG_TALLY { #assert t[i] == v[i]; }
+  full := t; full[1] = RG_TALLY_MAX; #assert !rg_tally_shot(full[..], RG_TALLY, rg_shot(RG_FOOT, 10, 0), 0) && full[1] == RG_TALLY_MAX;
+  #assert rg_tally_shot(t[..], RG_TALLY, RG_SHOT_CLEAR, 0); for i: 0..<RG_TALLY { #assert t[i] == 0; }
 }

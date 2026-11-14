@@ -36,6 +36,7 @@ or a reward: it sends an ask to its room (`E SEQ KIND ID`), and the room decides
 | `quest`, `from`, `stage` | The claim's quest part: move quest `quest` from stage `from` to stage `stage`. `quest` 0 means none |
 | `coin`, `xp` | Coin and XP the claim adds |
 | `slot`, `wear` | Wear item `wear` in equipment slot `slot` (0 to 9). `wear` 0 empties the slot. `slot` below 0 means none |
+| `shot`, `run` | Only with an arrow on the Archery Range (#13519), after `wear`: `shot` is the arrow (`1 + cell * 11 + points`, `everglade/range/score.coax` `rg_shot`; -1 clears the tally) and `run` the hits in a row after it. The record's tally takes it ([character v2](everglade-character-v2.md)). An ask without an arrow has v1's bytes exactly, and an API from before these keys reads such an ask as one with no claim |
 
 | Operation | What it does |
 | --- | --- |

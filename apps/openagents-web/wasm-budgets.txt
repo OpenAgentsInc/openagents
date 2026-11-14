@@ -78,6 +78,8 @@ agents 120000
 crew 188000
 # ... and its pane, the creation steps in the frames set (crew-pane.coax): 119,391 bytes measured the same way; about 10% room.
 crew-pane 132000
+# ... and the Archery Range's pane beside Everglade II's canvas (range-pane.coax, #13519): 81,617 bytes measured the same way; about 10% room.
+range-pane 90000
 # A plain play page's bar (play-bar.coax): the kit's Fullscreen button, the mono skin's stylesheet and the browser backend:
 # 85,120 bytes measured 2026-11-13 on a build host; about 10% room.
 play-bar 94000

@@ -1,0 +1,358 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents:everglade:character:2",
+  "title": "Everglade character v2",
+  "profile": "everglade-character-v2",
+  "version": 2,
+  "check": "coax/web/tool.sh everglade/model/tools/character-profile.coax proto/verse/everglade-character-v2.schema.json",
+  "migration": "docs/protocol/everglade-character-v2.md#versions-and-migration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "who",
+    "class",
+    "xp",
+    "floor",
+    "known",
+    "bag",
+    "inv",
+    "worn",
+    "coin",
+    "quests",
+    "range"
+  ],
+  "properties": {
+    "v": {
+      "const": 2
+    },
+    "who": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,80}$",
+      "description": "the durable identity: the account's text (decision 0006), else the player's: p-..., e-..., n-..., acct_..."
+    },
+    "class": {
+      "type": "string",
+      "pattern": "^(srd-[a-z]{3,12})?$",
+      "description": "set once, never changed; empty before the first seat"
+    },
+    "xp": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9999999,
+      "description": "only rises"
+    },
+    "floor": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 6,
+      "description": "the level the server grants without the XP; the level is srd_level_from(xp, floor, 6) and is not stored"
+    },
+    "known": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 2147483647
+      },
+      "description": "ability content IDs learned past the class kit, ascending, no repeats"
+    },
+    "bag": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "description": "item IDs (verse.items.id), ascending, no repeats: the ledger's, never a room's"
+    },
+    "inv": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "the ledger's inventory version"
+    },
+    "worn": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "description": "head, body, hands, legs, feet, neck, ring, main, off, ranged: an item ID in the bag or 0; no item twice"
+    },
+    "coin": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 999999999,
+      "description": "copper pieces: game currency, never money"
+    },
+    "quests": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          }
+        ],
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "description": "(quest content ID, stage), ascending by ID, no repeats"
+    },
+    "range": {
+      "type": "array",
+      "minItems": 61,
+      "maxItems": 61,
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9999999
+      },
+      "description": "the Archery Range's lasting tally (#13519, everglade/range/score.coax rg_tally_*): the longest run of hits, then for each way of shooting (on foot, from horseback, from dragonback) and each band of distance (to 15, 25, 40, 60 m, past 60) its shots, hits, points and golds. A cell's hits are at most its shots, its golds at most its hits, its points one to ten a hit; the run at most every hit. Changed only by a claim (an arrow's, or RESET's clear). A record whose tally is all 0 is written as v1"
+    }
+  },
+  "fixtures": [
+    {
+      "wire": "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[1,1,1,10,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+      "values": {
+        "v": 2,
+        "who": "p-a",
+        "class": "srd-ranger",
+        "xp": 950,
+        "floor": 2,
+        "known": [
+          7,
+          31
+        ],
+        "bag": [
+          4,
+          9,
+          12
+        ],
+        "inv": 5,
+        "worn": [
+          0,
+          9,
+          0,
+          0,
+          0,
+          0,
+          0,
+          4,
+          0,
+          0
+        ],
+        "coin": 1250,
+        "quests": [
+          [
+            3,
+            0
+          ],
+          [
+            8,
+            255
+          ]
+        ],
+        "range": [
+          1,
+          1,
+          1,
+          10,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "wire": "{\"v\":2,\"who\":\"acct_abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcde\",\"class\":\"srd-barbarian\",\"xp\":9999999,\"floor\":6,\"known\":[1,2147483647],\"bag\":[1,9007199254740991],\"inv\":9007199254740991,\"worn\":[1,0,0,0,0,0,0,0,0,9007199254740991],\"coin\":999999999,\"quests\":[[1,0],[2147483647,255]],\"range\":[9999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999,9999999,999999,9999990,999999]}",
+      "values": {
+        "v": 2,
+        "who": "acct_abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcde",
+        "class": "srd-barbarian",
+        "xp": 9999999,
+        "floor": 6,
+        "known": [
+          1,
+          2147483647
+        ],
+        "bag": [
+          1,
+          9007199254740991
+        ],
+        "inv": 9007199254740991,
+        "worn": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          9007199254740991
+        ],
+        "coin": 999999999,
+        "quests": [
+          [
+            1,
+            0
+          ],
+          [
+            2147483647,
+            255
+          ]
+        ],
+        "range": [
+          9999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999,
+          9999999,
+          999999,
+          9999990,
+          999999
+        ]
+      }
+    }
+  ],
+  "rejected": [
+    "{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[1,1,1,10,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":3,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[1,1,1,10,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]]}",
+    "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[1,0,1,1,10,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[1,1,1,10,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[1,1,1,10,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[9,1,1,10,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[1,1,2,20,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[1,1,1,11,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[1,1,1,10,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[1,-1,1,10,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":[1,10000000,1,10,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]],\"range\":5,\"x\":[1,1,1,10,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+    "{}",
+    "not json"
+  ]
+}

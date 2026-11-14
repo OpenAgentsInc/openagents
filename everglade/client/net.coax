@@ -100,6 +100,7 @@ E2Net :: struct {
   fix_tick: int;          // the room's tick that word was written at (a mount's transitions count from it: ride.coax)
   ride: [1] E2Ride;       // the zone's mounts: yours predicted, the others' their rows (ride.coax, #13268)
   range: [1] RgScore; range_heard: int; range_last: EgrArrow; range_sent: int;   // the Archery Range's tally as the room tells it (range-wire.coax, #13507)
+  range_told: int;   // lasting tallies heard (e tally, #13519)
   off: [1] NetCorrect;    // where you are drawn less where the re-runs put you, eased out (metaverse-engine/net/interp.coax)
   hello_due: bool;
   change_due: bool;             // your class or look changed while seated: the room is told (V), for it holds a ticket's later hellos
@@ -749,6 +750,12 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
   if c == 'e' && egf_kept(t) { e2n_familiar_answer(n, t); return; }
   if c == 'e' && egm_kept(t) { _ := e2rp_answer(n[0].ride[..], t); return; }   // the room's answer to a riding ask
   if c == 'e' && egr_kept(t) {   // the room's word on an arrow of yours on the Archery Range: your tally by its rule
+    if wire_is(t, EGR_TALLY_E) {   // or your lasting tally, from your character's record (#13519)
+      l := egr_tally_read(t); if !l.ok { return; }
+      was := n[0].range[0]; n[0].range[0] = l.score; n[0].range[0].run = was.run; n[0].range[0].last_points = was.last_points; n[0].range[0].last_distance = was.last_distance; n[0].range[0].last_mode = was.last_mode; n[0].range[0].last_at = was.last_at;
+      n[0].range_told += 1;
+      return;
+    }
     a := egr_read(t); if !a.ok { return; }
     egr_take(n[0].range[..], a, f32(n[0].mono) / 1000); n[0].range_heard += 1; n[0].range_last = a;
     return;

@@ -93,6 +93,7 @@ rm_e2_admin_warp :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool 
   s := s_id.value;
   if rm_mod_warp(v, k, s, out) { return true; }   // a moderator's move, in any room (coax/web/room/room-mod.coax, #13302)
   if ev_wake_take(v, k, s, out) { return true; }   // a player whose death saves settled wakes at the spawn (progress.coax ev_rise)
+  if e2a_range_go_take(v, k, s, out) { return true; }   // the Archery Range's RESET to its line, or a ride ask beside its mount (arrows.coax, #13519)
   if !v[0].adm.local || k < 0 || k >= EG_ROOMS || s < 0 || s >= eg_cap(v, k) || out.count < 3 { return false; }
   if v[0].adm.warp[k] != s + 1 { return false; }
   v[0].adm.warp[k] = 0;
