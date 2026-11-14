@@ -1,0 +1,1 @@
+Chat, Projects and Worlds now live in a compact mobile drawer. Home opens with the chat composer and shortcuts for Splice Bots, Everglade and your worlds. Tap outside the drawer or swipe to close it. Recent conversations, search, Settings and Usage remain in the drawer; unsent drafts survive navigation.

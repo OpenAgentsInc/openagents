@@ -258,3 +258,20 @@ The exact environment grant must opt in locally with `accounts-enable`;
 see [the provider-account contract](../../docs/protocol/provider-accounts-v1.md).
 Codex accounts are a later adapter. This screen uses the installed 1082 services
 and can be delivered as a signed OTA update.
+
+
+Build 1083 starts on a quiet Chat home: the existing account composer stays
+at the bottom, with centered Splice Bots, Everglade and world-library
+shortcuts. The menu opens Chat, Projects and Worlds, followed by searchable
+recent computer/account conversations and Settings. Phones use a narrow
+drawer, a dismissible backdrop, edge-open/left-close gestures and VoiceOver
+escape; regular-width layouts keep the sidebar column. Drafts survive place
+and conversation changes, and an unresolved command must be reconciled before
+leaving its conversation. Existing model/effort and Usage flows are retained.
+
+Projects reads the same account project list as the web sidebar through
+`GET /api/projects` and its existing line codec. A project's explicitly
+labelled action opens its page on openagents.com. World shortcuts use the
+existing native streamed-world service; Everglade opens `everglade2`.
+The drawer geometry and welcome layout require installing 1083. Future
+compatible screen changes continue through signed Updates.

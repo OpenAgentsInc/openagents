@@ -13,9 +13,14 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     private let topDock=UIStackView(),options=UIStackView()
     private var composer:NativeComposer?
     private let scroll=UIScrollView()
+    private lazy var emptyTop=topDock.heightAnchor.constraint(equalToConstant:0)
+    private lazy var emptyOptions=options.heightAnchor.constraint(equalToConstant:0)
     private lazy var ordinaryTop=stack.topAnchor.constraint(equalTo:scroll.contentLayoutGuide.topAnchor,constant:24)
     private lazy var centeredTop=stack.topAnchor.constraint(greaterThanOrEqualTo:scroll.contentLayoutGuide.topAnchor,constant:24)
-    private lazy var centeredY:NSLayoutConstraint={let c=stack.centerYAnchor.constraint(equalTo:scroll.frameLayoutGuide.centerYAnchor);c.priority = .defaultLow;return c}()
+    private lazy var ordinaryBottom=stack.bottomAnchor.constraint(equalTo:scroll.contentLayoutGuide.bottomAnchor,constant:-24)
+    private lazy var centeredBottom=stack.bottomAnchor.constraint(lessThanOrEqualTo:scroll.contentLayoutGuide.bottomAnchor,constant:-24)
+    private lazy var centeredY=stack.centerYAnchor.constraint(equalTo:scroll.contentLayoutGuide.centerYAnchor)
+    private lazy var centeredHeight:NSLayoutConstraint={let c=scroll.contentLayoutGuide.heightAnchor.constraint(equalTo:scroll.frameLayoutGuide.heightAnchor);c.priority = .defaultLow;return c}()
     private var conversation:String?
     private var following=true
     private let header=UIStackView(),headerSpacer=UIView(),headerRule=NativeHeaderRule()
@@ -69,14 +74,14 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             dock.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-12),
             scroll.leadingAnchor.constraint(equalTo:view.leadingAnchor), scroll.trailingAnchor.constraint(equalTo:view.trailingAnchor),
             ordinaryTop,
-            stack.bottomAnchor.constraint(equalTo:scroll.contentLayoutGuide.bottomAnchor,constant:-24),
+            ordinaryBottom,
             stack.leadingAnchor.constraint(equalTo:scroll.frameLayoutGuide.leadingAnchor,constant:20),
             stack.trailingAnchor.constraint(equalTo:scroll.frameLayoutGuide.trailingAnchor,constant:-20),
         ])
     }
     func render(_ elements:[NativeElement]) {
         loadViewIfNeeded()
-        let centered=elements.contains {$0.role=="welcome"};ordinaryTop.isActive = !centered;centeredTop.isActive=centered;centeredY.isActive=centered
+        let centered=elements.contains {$0.role=="welcome"};ordinaryTop.isActive = !centered;ordinaryBottom.isActive = !centered;centeredTop.isActive=centered;centeredBottom.isActive=centered;centeredY.isActive=centered;centeredHeight.isActive=centered
         var kept:[String:UIView] = [:]
         let thread=elements.first {$0.role=="transcript"}?.value
         if thread != conversation {conversation=thread;following=true}
@@ -159,7 +164,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         // Quiet buttons that follow one another share a line, each as wide as its words; everything else has its own.
         var rows:[(view:UIView,first:NativeElement,last:NativeElement)]=[];var used:[String:NativeFlow]=[:];var at=0
         // On a sheet every button but a list's row does: a sheet's tools are many and its room is small.
-        func quiet(_ e:NativeElement)->Bool {guard e.role=="button",let variant=(kept[e.id] as? NativeButton)?.variant else {return false};return variant == .quiet || sheet && variant != .list}
+        func quiet(_ e:NativeElement)->Bool {guard e.role=="button",let variant=(kept[e.id] as? NativeButton)?.variant else {return false};return variant == .quiet || variant == .icon || sheet && variant != .list}
         while at<ordinary.count {
             let e=ordinary[at];guard let control=kept[e.id] else {at+=1;continue}
             guard quiet(e) else {rows.append((control,e,e));at+=1;continue}
@@ -178,6 +183,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             if i<target.arrangedSubviews.count && target.arrangedSubviews[i] === row.view {continue}
             if row.view.superview !== target {row.view.removeFromSuperview()};target.insertArrangedSubview(row.view,at:i)
         }
+        emptyTop.isActive=above==0;emptyOptions.isActive=below==0
         // Rows of one list stand together under a hairline each; tool rows stay as close as the work log sets them.
         func row(_ e:NativeElement)->Bool {e.role=="button" && e.hasClass("row")}
         for (i,r) in rows.enumerated() {let next=i+1<rows.count ? rows[i+1].first:nil;(r.first.attrs["_nativePlacement"]=="dock" ? options:r.first.attrs["_nativePlacement"]=="top" ? topDock:stack).setCustomSpacing(r.last.role=="tool" && next?.role=="tool" ? 1:row(r.last) && next.map(row)==true ? 0:CGFloat(NativeSkin.tokens.gap),after:r.view)}

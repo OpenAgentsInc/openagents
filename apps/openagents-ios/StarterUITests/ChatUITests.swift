@@ -32,7 +32,7 @@ final class ChatUITests:XCTestCase {
         let rich=XCTAttachment(screenshot:app.screenshot());rich.name="Coax Markdown native conversation";rich.lifetime = .keepAlways;add(rich)
         app.showChatHistory()
         let saved=app.buttons["Hello from iPhone"];XCTAssertTrue(saved.waitForExistence(timeout:15))
-        app.terminate();app.launch();XCTAssertTrue(saved.waitForExistence(timeout:15));saved.tap()
+        app.terminate();app.launch();XCTAssertTrue(app.buttons["nav.toggle"].waitForExistence(timeout:15));app.showChatHistory();XCTAssertTrue(saved.waitForExistence(timeout:15));saved.tap()
         XCTAssertTrue(reply.waitForExistence(timeout:15))
         editor.tap();editor.typeText("First line\nSecond line\nThird line\nFourth line\nFifth line")
         XCTAssertLessThanOrEqual(editor.frame.height,105)

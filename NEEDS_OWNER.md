@@ -1,5 +1,16 @@
 # Owner actions
 
+## Mobile drawer and home, build 1083
+
+Install 1083 from TestFlight once available. Check the menu’s Chat, Projects
+and Worlds destinations, tap outside the drawer to close it, and reopen it
+with a left-edge swipe. Type a draft, switch places/chats, and return to it.
+Try both home world shortcuts; Everglade opens the current Everglade II world.
+Settings → Usage and existing computer model/effort controls remain available.
+The simulator checks cover navigation, email login, account chat, drafts,
+Projects and the two-account Usage flow; physical-phone acceptance remains
+an owner observation.
+
 
 ## Claude accounts and Usage, compatible with 1082
 

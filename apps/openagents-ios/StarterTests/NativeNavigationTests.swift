@@ -25,8 +25,8 @@ import UIKit
     }
     func testHomeDrawerBackdropProjectsAndStreamedWorldShortcuts()throws {
         let p=try loaded(),detail=NativeControls(),workspace=NativeWorkspace(detail:detail)
-        workspace.loadViewIfNeeded();workspace.view.frame=CGRect(x:0,y:0,width:402,height:874)
-        func render()throws {try p.frame();workspace.render(p.elements(),history:p.elements(navigation:true));workspace.view.layoutIfNeeded()}
+        let window=UIWindow(frame:CGRect(x:0,y:0,width:402,height:874));window.rootViewController=workspace;window.makeKeyAndVisible();defer {window.isHidden=true}
+        func render()throws {try p.frame();workspace.render(p.elements(),history:p.elements(navigation:true));workspace.view.layoutIfNeeded();detail.view.layoutIfNeeded()}
         try p.input("nav.home");try render()
         XCTAssertTrue(p.elements().contains {$0.id=="home.suggestions" && $0.role=="welcome"})
         XCTAssertNotNil(detail.controls["chat.composer"] as? UITextView)
@@ -39,6 +39,7 @@ import UIKit
         try p.input("nav.projects");try render();let request=try p.action();XCTAssertEqual(request.0,4);XCTAssertTrue(request.1.contains("/api/projects"))
         try p.event(104,200,"project mobile-kit Mobile Kit\n");try render()
         XCTAssertTrue(p.elements().contains {$0.id=="projects.item.0" && $0.label.contains("Mobile Kit")})
+        let project=try XCTUnwrap(detail.controls["projects.item.0"]);XCTAssertTrue(project.isDescendant(of:detail.view));XCTAssertTrue(detail.view.bounds.contains(project.convert(CGPoint(x:10,y:10),to:detail.view)))
         try p.input("projects.item.0");try render();let link=try p.action();XCTAssertEqual(link.0,10);XCTAssertTrue(link.1.contains("https://openagents.com/projects/mobile-kit"))
         try p.event(110,0,"{}");try render();try p.input("nav.home");try render()
         XCTAssertEqual((detail.controls["chat.composer"] as? UITextView)?.text,"Home draft")
@@ -65,7 +66,7 @@ import UIKit
     func testHistoryProjectionSearchSelectionDraftAndFixedComposerControls()throws {
         let p=try loaded(),detail=NativeControls(),workspace=NativeWorkspace(detail:detail)
         workspace.loadViewIfNeeded();workspace.view.frame=CGRect(x:0,y:0,width:402,height:874)
-        func render()throws {try p.frame();workspace.render(p.elements(),history:p.elements(navigation:true));workspace.view.layoutIfNeeded()}
+        func render()throws {try p.frame();workspace.render(p.elements(),history:p.elements(navigation:true));workspace.view.layoutIfNeeded();detail.view.layoutIfNeeded()}
         try render();XCTAssertTrue(p.elements().contains {$0.role=="navigation" && $0.attrs["data-state"]=="open"})
         XCTAssertFalse(p.elements().contains {$0.id.hasPrefix("nav.chat.")})
         XCTAssertEqual(p.elements(navigation:true).filter {$0.id.hasPrefix("nav.chat.")}.count,2)
