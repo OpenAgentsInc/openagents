@@ -81,7 +81,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app
         PRODUCT_NAME: OpenAgents
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1073"
+        CURRENT_PROJECT_VERSION: "1074"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COAX_NATIVE_BALANCE"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
@@ -127,7 +127,7 @@ schemes:
     test:
       targets:
         - name: OpenAgentsTests
-          selectedTests: [NativePackageTests, SparkBalanceTests]
+          selectedTests: [NativePackageTests, NativeProgramTests, SparkBalanceTests]
         - name: OpenAgentsUITests
           selectedTests: [StarterUITests/testEmbeddedCoaxAccountModuleRuns, BalanceUITests]
   CoaxNativeLive:

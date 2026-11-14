@@ -247,6 +247,26 @@ int64_t cxfs_write(int64_t mode) {
   size_t n = fs_out_n;
   fs_out_n = 0;
   if (!p) return -1;
+  if (mode == 4) {
+    char temp[CXFS_PATH_MAX + 32],dir[CXFS_PATH_MAX + 1];
+    if (snprintf(temp,sizeof temp,"%s.tmp.XXXXXX",p)>=(int)sizeof temp) return -1;
+    int f=mkstemp(temp);if (f<0) return -1;
+    int ok=fchmod(f,0600)==0;size_t done=0;
+    while (ok && done<n) {
+      ssize_t w=write(f,fs_out+done,n-done);
+      if (w<0 && errno==EINTR) continue;
+      if (w<=0) ok=0;else done+=(size_t)w;
+    }
+    if (ok) ok=full_sync(f)==0;
+    if (close(f)!=0) ok=0;
+    if (ok) ok=rename(temp,p)==0;
+    if (!ok) {unlink(temp);return -1;}
+    memcpy(dir,p,strlen(p)+1);char *slash=strrchr(dir,'/');
+    if (!slash) strcpy(dir,".");else if (slash==dir) dir[1]=0;else *slash=0;
+    int d=open(dir,O_RDONLY|O_DIRECTORY|O_CLOEXEC);if (d<0) return -1;
+    int synced=fsync(d)==0;if (close(d)!=0) synced=0;
+    return synced ? 0:-1;
+  }
   int append = mode == 1 || mode == 3, durable = mode >= 2;
   int f = open(p, O_WRONLY | O_CREAT | O_CLOEXEC | (append ? O_APPEND : O_TRUNC), 0644);
   if (f < 0) return -1;

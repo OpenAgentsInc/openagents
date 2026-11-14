@@ -1,19 +1,6 @@
 // Firm reason: 6 (UIKit controls, text input, keyboard layout and accessibility SDK).
 import UIKit
 
-struct NativeElement:Equatable {
-    var id: String
-    var role: String
-    var label: String
-    var value = ""
-    var disabled = false
-    var complete = ""
-    var type = ""
-    var children:[NativeElement] = []
-    var classes=""
-    var attrs:[String:String]=[:]
-}
-
 /// The shared UIKit projection: keyed controls survive updates, including their
 /// caret/selection. Coax owns what exists, its value and the meaning of input.
 final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecognizerDelegate {

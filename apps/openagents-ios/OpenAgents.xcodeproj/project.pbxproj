@@ -13,6 +13,7 @@
 		0F64B5AFCEDD256C035DF6D8 /* ChatUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B07580CC0A27104C07B9B5C /* ChatUITests.swift */; };
 		103180BD57D2AA2E93F4A6B7 /* SharedAppDeviceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */; };
 		1654B08E3C265E5E8E899CA8 /* NativeText.c in Sources */ = {isa = PBXBuildFile; fileRef = 2863347EB50F2C00D1ED1869 /* NativeText.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
+		1B762FE26821A2D99402DDAF /* NativeTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8477A24ADD8E8A749294EEEE /* NativeTypes.swift */; };
 		1F3972F80AD727788C1649CC /* NostrSign.c in Sources */ = {isa = PBXBuildFile; fileRef = 0B12460F6D71E6EC127D760A /* NostrSign.c */; };
 		2423078B067528A80731C519 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BAFA692F7A2D8501CD6985F /* BIP39.swift */; };
 		2C15AE18F335A39F71D3ECC5 /* NativeMarkdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */; };
@@ -104,6 +105,7 @@
 		7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePackageTests.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8229C5D27BC40A99010E48D9 /* OpenAgents.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenAgents.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8477A24ADD8E8A749294EEEE /* NativeTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTypes.swift; sourceTree = "<group>"; };
 		84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAppUITests.swift; sourceTree = "<group>"; };
 		88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterUITests.swift; sourceTree = "<group>"; };
 		8B07580CC0A27104C07B9B5C /* ChatUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatUITests.swift; sourceTree = "<group>"; };
@@ -272,6 +274,7 @@
 				01C83152B91DFEEF873AAD56 /* NativeHost.swift */,
 				7284237748CD21A99F8480AC /* NativeMessage.swift */,
 				09C29607A719DC46C635E2BB /* NativeProgram.swift */,
+				8477A24ADD8E8A749294EEEE /* NativeTypes.swift */,
 				303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */,
 			);
 			name = native;
@@ -467,6 +470,7 @@
 				03AF362E64D9222AA06F0E40 /* NativePolicy.c in Sources */,
 				DC5537790C17AE594AEEEDDA /* NativeProgram.swift in Sources */,
 				1654B08E3C265E5E8E899CA8 /* NativeText.c in Sources */,
+				1B762FE26821A2D99402DDAF /* NativeTypes.swift in Sources */,
 				43A5D1535C05B29C381D5FFF /* NativeUpdates.swift in Sources */,
 				3EEE9F6858832B4BED499CC2 /* NativeWire.c in Sources */,
 				370177B40FC83B533F660A4C /* NostrKey.swift in Sources */,
@@ -532,7 +536,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1073;
+				CURRENT_PROJECT_VERSION = 1074;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -661,7 +665,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1073;
+				CURRENT_PROJECT_VERSION = 1074;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (

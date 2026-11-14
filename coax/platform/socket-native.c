@@ -17,6 +17,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/un.h>
+#include <sys/stat.h>
 
 typedef struct {
   int fd;                 /* -1 when the slot is free */
@@ -187,6 +188,35 @@ int64_t cxsock_listen(int64_t port) {
 int64_t cxsock_port(int64_t h) {
   cxsock_slot *s = cxsock_get(h);
   return s == NULL || s->port == 0 ? CXSOCK_ERROR : s->port;
+}
+
+int64_t cxsock_listen_unix(void) {
+  cxsock_init();
+  struct sockaddr_un a;memset(&a,0,sizeof a);a.sun_family=AF_UNIX;
+  int bad=cxsock_host_bad || cxsock_host_len<1 || cxsock_host_len>=(int)sizeof a.sun_path;
+  if (!bad) memcpy(a.sun_path,cxsock_host,(size_t)cxsock_host_len);
+  cxsock_host_len=0;cxsock_host_bad=0;if (bad) return CXSOCK_ERROR;
+  struct stat st;
+  if (lstat(a.sun_path,&st)==0) {
+    if (!S_ISSOCK(st.st_mode) || st.st_uid!=geteuid() || unlink(a.sun_path)!=0) return CXSOCK_REFUSED;
+  } else if (errno!=ENOENT) return CXSOCK_REFUSED;
+  int fd=socket(AF_UNIX,SOCK_STREAM,0);if (fd<0) return CXSOCK_ERROR;
+  int flags=fcntl(fd,F_GETFL,0);
+  if (flags<0 || fcntl(fd,F_SETFL,flags|O_NONBLOCK)<0) {close(fd);return CXSOCK_ERROR;}
+  mode_t old=umask(0077);int bound=bind(fd,(struct sockaddr *)&a,sizeof a);umask(old);
+  if (bound!=0 || chmod(a.sun_path,0600)!=0 || listen(fd,16)!=0) {close(fd);return CXSOCK_REFUSED;}
+  return cxsock_take(fd,-1);
+}
+
+int64_t cxsock_peer_self(int64_t h) {
+  cxsock_slot *s=cxsock_get(h);if (!s) return 0;
+#ifdef __APPLE__
+  uid_t uid;gid_t gid;
+  return getpeereid(s->fd,&uid,&gid)==0 && uid==geteuid();
+#else
+  struct {pid_t pid;uid_t uid;gid_t gid;} peer;socklen_t n=sizeof peer;
+  return getsockopt(s->fd,SOL_SOCKET,SO_PEERCRED,&peer,&n)==0 && n==sizeof peer && peer.uid==geteuid();
+#endif
 }
 
 int64_t cxsock_accept(int64_t h, int64_t timeout_ms) {

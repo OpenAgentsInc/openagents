@@ -43,6 +43,7 @@ SPart :: struct {
 }
 
 Session :: struct {
+  exhausted: bool;          // a rejected append is observable; execution owners stop on loss
   pool: [] u8; np: int;
   parts: [S_PARTS] SPart; n: int;
   live: bool;               // a turn is running
@@ -59,7 +60,7 @@ Session :: struct {
   frames: bool;             // text and thinking come from whole assistant frames, not stream deltas (an engine run without partial messages)
 }
 
-s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].asking = -1; }
+s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].asking = -1; s[0].exhausted=false; }
 
 // For a surface that prints a conversation as it comes (a terminal, a wire) rather than
 // redrawing it: where it has read up to, and the next thing it has not read.
@@ -100,7 +101,7 @@ s_text_of :: (s: [] Session, k: int) -> string { return cast(string) s[0].pool[s
 // Copies text into the pool ("" when it is full). Tabs become a space each:
 // the transcript's fonts draw no tab.
 s_put :: (s: [] Session, text: string) -> string {
-  if s[0].np + text.count > s[0].pool.count { return ""; }
+  if s[0].np + text.count > s[0].pool.count { s[0].exhausted=true;return ""; }
   at := s[0].np;
   for k: 0..<text.count { c := text[k]; s[0].pool[at + k] = ifx c == '\t' && !s[0].tabs then ' ' else c; }
   s[0].np += text.count;
@@ -120,7 +121,7 @@ s_single :: (s: [] Session, text: string) -> string {
   return cast(string) s[0].pool[at..<at + n];
 }
 s_part :: (s: [] Session, kind: int) -> int {
-  if s[0].n >= S_PARTS { return -1; }
+  if s[0].n >= S_PARTS { s[0].exhausted=true;return -1; }
   k := s[0].n; s[0].n += 1;
   s[0].parts[k] = SPart.{kind = kind, at = s[0].np};
   s[0].changed = true;
@@ -130,12 +131,12 @@ s_part :: (s: [] Session, kind: int) -> int {
 s_append :: (s: [] Session, k: int, text: string) {
   p := s[0].parts[k];
   if p.at + p.n != s[0].np {
-    if s[0].np + p.n + text.count > s[0].pool.count { return; }
+    if s[0].np + p.n + text.count > s[0].pool.count { s[0].exhausted=true;return; }
     at := s[0].np;
     for q: 0..<p.n { s[0].pool[at + q] = s[0].pool[p.at + q]; }
     s[0].np += p.n; s[0].parts[k].at = at;
   }
-  if s[0].np + text.count > s[0].pool.count { return; }
+  if s[0].np + text.count > s[0].pool.count { s[0].exhausted=true;return; }
   q := s_put(s, text);
   s[0].parts[k].n += text.count;
   s[0].changed = true;
@@ -241,9 +242,10 @@ s_int :: (buf: [] u8, at: int, v: int) -> int {
   s: [1] Session; pool: [8] u8;
   s_init(s[..], pool[..]);
   s_user(s[..], "12345");
-  #assert s_text_of(s[..], 0) == "12345" && s_put(s[..], "6789") == "" && s[0].np == 5;
+  #assert s_text_of(s[..], 0) == "12345" && s_put(s[..], "6789") == "" && s[0].np == 5 && s[0].exhausted;
+  s_init(s[..],pool[..]);#assert !s[0].exhausted;s_user(s[..],"12345");
   s_append(s[..], 0, "6789");
-  #assert s_text_of(s[..], 0) == "12345";
+  #assert s_text_of(s[..], 0) == "12345" && s[0].exhausted;
   s[0].n = S_PARTS;
   #assert s_part(s[..], P_TEXT) == -1;
 }

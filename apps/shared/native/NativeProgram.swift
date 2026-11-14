@@ -12,9 +12,9 @@ import JavaScriptCore
     var roots:[Int]=[]
     var focus:Int?
     private var failure:String?
-    init(directory:URL,module:String)throws {
+    init(directory:URL,module:String,diagnostic:((String)->Void)?=nil)throws {
         context=JSContext()!
-        context.exceptionHandler = { [weak self] _,_ in self?.failure="The Coax module failed." }
+        context.exceptionHandler = { [weak self] _,error in self?.failure="The Coax module failed.";diagnostic?(error?.toString() ?? "Unknown JavaScriptCore exception") }
         let decode:@convention(block) ([NSNumber])->String = { String(decoding:$0.map {UInt8(truncating:$0)},as:UTF8.self) }
         context.setObject(decode,forKeyedSubscript:"cnUTF8" as NSString)
         for path in ["tree-commands.js","build/\(module).js","runtime.js"] {

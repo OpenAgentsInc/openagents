@@ -1,0 +1,1 @@
+Your computers: Claude Code on Mac and CoderOS. Browse existing Terminal conversations read only; start a new managed Claude chat, follow messages and tools, stop a turn, and answer approvals. Conversations run on the selected computer using its Claude login and survive closing the desktop client. Account chats and Bitcoin balance remain available.

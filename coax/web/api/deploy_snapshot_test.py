@@ -46,6 +46,8 @@ class Snapshot(unittest.TestCase):
   repo=root/'repo';api=repo/'coax/web/api';api.mkdir(parents=True);(api/'migrations').mkdir()
   for f in ('deploy.sh','deploy-command.sh','deploy-rollout.sh','deploy_verify.py'):shutil.copy2(HERE/f,api/f)
   # deploy.sh compiles the API's Coax modules with the commit's compiler (coax/build.sh, then coax/bin/coax c ...); stub both.
+  (repo/'coax/platform').mkdir(parents=True)
+  for suffix in ('c','h','inc'):(repo/'coax/platform'/('fixture.'+suffix)).write_text('fixture platform source\n')
   (repo/'coax/bin').mkdir(parents=True);(repo/'coax/build.sh').write_text('#!/bin/sh\nexit 0\n');(repo/'coax/build.sh').chmod(0o755)
   (repo/'coax/bin/coax').write_text('#!/bin/sh\nwhile [ $# -gt 0 ]; do [ "$1" = --header ] && { printf "/* h */\\n" > "$2"; }; shift; done\nprintf "/* c */\\n"\n');(repo/'coax/bin/coax').chmod(0o755)
   for m in ('nip98','mesh-policy','caller-policy'):(api/(m+'.coax')).write_text('fixture\n')

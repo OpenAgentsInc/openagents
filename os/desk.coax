@@ -17,7 +17,7 @@
 #load "../coax/lib/json/json.coax";
 
 cxsock_host_push :: (byte: int) -> int #foreign #effects(all);
-cxsock_connect_unix :: (timeout_ms: int) -> int #foreign #effects(all);
+#load "../coax/lib/net/socket_foreign.coax";
 cxsock_write :: (h: int, byte: int) -> int #foreign #effects(all);
 cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
 cxsock_read :: (h: int, timeout_ms: int) -> int #foreign #effects(all);

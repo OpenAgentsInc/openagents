@@ -59,6 +59,7 @@ void admin_roots(char *out, size_t cap);  // the roots as a Postgres text array 
 int admin_who(const request *q, PGconn *db, char who[65]);   // 0 an admin (cookie or NIP-98), else 401/403
 bool chat_route(const request *q);        // chat.c
 bool account_chat_route(const request *q); // account-owned mobile chat
+bool environment_route(const request *q); // account-owned computer connections
 bool chat_history_route(const request *q); // read-only account history
 void chat_key(const request *q, const char *pubkey, bool member);   // KEY for a signed-in admin, or a project member (private.c)
 bool player_route(const request *q);      // player.c

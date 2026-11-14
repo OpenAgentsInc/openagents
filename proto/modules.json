@@ -229,6 +229,9 @@
     ],
     "coder-session-reader": [
       "openagents/coder/session_reader/v1/reader.proto"
+    ],
+    "environment-access": [
+      "openagents/environment/access/v1alpha1/runtime.proto"
     ]
   },
   "profile_namespaces": {
@@ -398,6 +401,9 @@
     ],
     "coder-session-reader": [
       "openagents.coder.session_reader.v1"
+    ],
+    "environment-access": [
+      "openagents.environment.access.v1alpha1"
     ]
   }
 }

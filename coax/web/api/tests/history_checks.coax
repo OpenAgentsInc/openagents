@@ -13,6 +13,15 @@ chh_api_checks :: (t:[]Ap,dir:string) {
   st=ac_call(t,"POST","/api/auth/email/verify",sb_text(v[..]),"","","");
   token:=ap_member(ap_body(t),"access_token",tokenb[..]);sb(c[..],"Authorization: Bearer ");sb(c[..],token);account:=ap_member(ap_body(t),"account",acctb[..]);
   ap_check(t,"history fixture logs in by a delivered email code",got && st==200 && token.count>0 && account.count>0,ifx st==200 then "" else ap_body(t));if st!=200 || account.count==0 {return;}
+  ap_check(t,"environment catalog requires a login",ac_call(t,"GET","/api/chat/environments/v1","","","","")==401,ap_body(t));
+  sb_clear(q[..]);sb(q[..],"INSERT INTO chat.environment_connections_v1(account,host_pubkey,display_name,grant_id,epoch,relay) VALUES ('");sb(q[..],account);sb(q[..],"',repeat('aa',32),'My Mac',repeat('bb',32),0,'wss://relay.openagents.com')");ap_do(t,sb_text(q[..]));
+  st=ac_call(t,"GET","/api/chat/environments/v1","",sb_text(c[..]),"","");
+  ap_check(t,"email account sees its enrolled computer without a broker secret",st==200 && ap_has(ap_body(t),"My Mac") && !ap_has(ap_body(t),"grant_id"),ap_body(t));
+  st=ac_call(t,"GET","/api/chat/environment/v1?host=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&method=ListSessions","",sb_text(c[..]),"","");
+  ap_check(t,"a host reference is not an account grant",st==404,ap_body(t));
+  st=ac_call(t,"GET","/api/chat/environment/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&method=SendMessage","",sb_text(c[..]),"","");
+  ap_check(t,"a read route cannot dispatch a mutation",st==400,ap_body(t));
+  sb_clear(q[..]);
   sb(q[..],"INSERT INTO auth.nostr_keys(account,pubkey) VALUES ('");sb(q[..],account);sb(q[..],"',repeat('cd',32)); INSERT INTO chat.conversations(owner,model,title,created_ms,updated_ms) VALUES (repeat('cd',32),'claude-opus-5-5','Phone-owned history',1,2),(repeat('ef',32),'claude-opus-5-5','Someone else private chat',1,3)");
   ap_do(t,sb_text(q[..]));
   st=ac_call(t,"GET","/api/chat/history/v1","",sb_text(c[..]),"","");

@@ -1,0 +1,12 @@
+// API effects call the one typed codec and bounded process library. Broker
+// credentials are installed server files and never part of an app response.
+#load "../../lib/agent/environment/wire.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/sys/fs.coax";
+ea_payload_file :: (path:string,body:string)->bool #export_c #effects(all) {return fs_write(path,body);}
+ea_proxy :: (host:string,grant:string,epoch:string,relay:string,keyfile:string,input:string,program:string,out:[]u8)->int #export_c #effects(all) {
+  if !ea_id(host,64) || !ea_id(grant,64) {return -1;}
+  args:=[14]string.[program,"rpc","--host",host,"--grant",grant,"--epoch",epoch,"--relay",relay,"--browser-key",keyfile,"--request-file",input];
+  error:[1024]u8;r:=proc_run(args[..],35000,out,error[..]);
+  if r.started!=0 || r.status!=0 || r.timed_out || r.out_n<1 {return -1;}return r.out_n;
+}

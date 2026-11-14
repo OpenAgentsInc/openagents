@@ -1,0 +1,16 @@
+// Actual native IPC effects: owner credentials, stream bytes, protected path.
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/net/socket_foreign.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  temp:[1400]u8;dir:=fs_temp("coax-local-socket-",temp[..]);if dir.count==0 {return 1;}defer {_ = fs_remove(dir);}
+  p:[1500]u8;path:=fs_join(dir,"service.sock",p[..]);
+  for c:path {_ = cxsock_host_push(cast(int)c);}server:=cxsock_listen_unix();if server<0 {return 1;}defer {_ = cxsock_close(server);_ = fs_remove(path);}
+  for c:path {_ = cxsock_host_push(cast(int)c);}client:=cxsock_connect_unix(1000);if client<0 || cxsock_peer_self(client)!=1 {return 1;}defer {_ = cxsock_close(client);}
+  peer:=cxsock_accept(server,1000);if peer<0 || cxsock_peer_self(peer)!=1 {return 1;}defer {_ = cxsock_close(peer);}
+  _ = cxsock_write(client,65);_ = cxsock_write(client,10);if cxsock_flush(client,1000)!=0 || cxsock_read(peer,1000)!=2 || cxsock_byte(peer,0)!=65 {return 1;}
+  file:[1500]u8;regular:=fs_join(dir,"keep",file[..]);if !fs_write(regular,"preserved") {return 1;}defer {_ = fs_remove(regular);}
+  for c:regular {_ = cxsock_host_push(cast(int)c);}if cxsock_listen_unix()>=0 {return 1;}
+  data:[16]u8;n:=fs_read(regular,data[..]);if n!=9 || cast(string)data[0..<n]!="preserved" {return 1;}
+  print("local socket: verified actual owner peers, stream and non-socket preservation\n");return 0;
+}

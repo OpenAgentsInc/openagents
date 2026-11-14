@@ -11,7 +11,7 @@
 # from the repository root when it starts with pay/ or metaverse/), which makes WORK/NAME.generated.{c,h}. A unit
 # whose C is wrapped by a NAME-unit.c (it includes the generated C under names of its own) is
 # listed in API_COAX_WRAPPED instead, so its generated C is made but not linked twice.
-API_C="api.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c villa.c chat.c chat-history.c account-chat.c account-chat-wire-unit.c realms.c
+API_C="api.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c villa.c chat.c chat-history.c account-chat.c account-chat-wire-unit.c environment.c environment-wire-unit.c realms.c
   access.c makers.c inference.c mesh.c mesh-gemini-unit.c mesh-policy.generated.c caller-policy.generated.c nip98.generated.c
   anime.c seats.c nostr.c email.c jobs.c relay.c verse_packs.c worldbuilder.c auth.c auth-seal-unit.c
   lnaddr.c lnaddr-unit.c agents.c agent-wire-unit.c agent-attest-unit.c auth-recover.c auth-life.c
@@ -21,7 +21,7 @@ API_COAX="npc-personas anime-director-policy seat-policy progress-policy item-po
   character-policy worldbuilder-policy auth-policy chat-history-wire auth-recover-policy auth-life-policy
   auth-device-policy passkey-policy pay/wallet-policy:wallet-policy service-policy service-wire realm-wire auth-push seat-wire jobs-wire email-wire packs-wire world-policy error-wire mesh-wire
   auth-wire auth-recover-wire auth-life-wire auth-device-wire passkeys-wire chat-wire player-wire rooms-wire lnaddr-wire makers-wire worldbuilder-wire"
-API_COAX_WRAPPED="account-chat-wire mesh-gemini auth-seal pay/lnaddr-policy:lnaddr-policy agent-wire agent-attest auth-recover-crypto
+API_COAX_WRAPPED="account-chat-wire environment-wire mesh-gemini auth-seal pay/lnaddr-policy:lnaddr-policy agent-wire agent-attest auth-recover-crypto
   auth-device-crypto passkey-verify pay/wallet-vault-store:wallet-vault ticket-sign
   metaverse/splice-bots/world-api:splice-world script-store"
 api_sources() {
@@ -29,6 +29,7 @@ api_sources() {
   root="$(cd "$a/../../.." && pwd)"
   API_SOURCES=()
   for u in $API_C; do API_SOURCES+=("$a/$u"); done
+  API_SOURCES+=("$root/coax/platform/process-native.c" "$root/coax/platform/store-file-native.c")
   for u in $API_COAX $API_COAX_WRAPPED; do
     src="${u%%:*}"; name="${u##*:}"
     if [[ "$src" == pay/* || "$src" == metaverse/* ]]; then src="$root/$src.coax"; else src="$a/$src.coax"; fi

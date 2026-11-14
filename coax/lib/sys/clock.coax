@@ -1,0 +1,2 @@
+// Wall-clock platform effect shared by native service and history adapters.
+cxproc_wall_us :: () -> int #foreign #effects(all);

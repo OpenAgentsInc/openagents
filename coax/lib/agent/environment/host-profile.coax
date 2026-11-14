@@ -1,0 +1,16 @@
+// Independent exact bytes for the optional environment HOST projection.
+#run_steps 250000000;
+#load "host-wire.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) {return 1;}file:[32768]u8;n:=fs_read(args_at(args[..],0),file[..]);nodes:[32]JvNode;d:[1]Jv;
+  if n<1 || !jv_parse(d[..],cast(string)file[0..<n],nodes[..]) {return 1;}j:=d[0];body:[16384]u8;out:[16384]u8;
+  nr:=jv_str(j,jv_get(j,0,"request"),body[..]);if nr<1 {return 1;}q:[1]HbAppRequest;arena:[16384]u8;a:=[1]HbText.[HbText.{buf=arena[..]}];
+  if !hb_app_read(cast(string)body[0..<nr],q[..],a[..]) {return 1;}made:=hb_app_write(q[0],out[..]);if made!=nr || cast(string)out[0..<ifx made>0 then made else 0]!=cast(string)body[0..<nr] {tool_errln("environment HOST request fixture differs");return 1;}
+  nr=jv_str(j,jv_get(j,0,"reply"),body[..]);if nr<1 {return 1;}rn:[128]JvNode;reply:[1]Jv;if !jv_parse(reply[..],cast(string)body[0..<nr],rn[..]) {return 1;}r:=reply[0];
+  request:=jv_raw(r,jv_get(r,0,"request"));event:=jv_raw(r,jv_get(r,0,"request_event"));host:=jv_raw(r,jv_get(r,0,"host"));method:=jv_raw(r,jv_path(r,0,"result.outcome.method"));
+  value:=hb_app_reply_read(cast(string)body[0..<nr],host,request,event,method,11);if value.count==0 {return 1;}
+  made=hb_app_reply_write(request,event,host,11,70,method,value,out[..]);if made!=nr || cast(string)out[0..<ifx made>0 then made else 0]!=cast(string)body[0..<nr] {tool_errln("environment HOST reply fixture differs");return 1;}
+  print("environment HOST: two exact-byte carriage fixtures passed\n");return 0;
+}

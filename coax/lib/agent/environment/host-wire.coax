@@ -1,0 +1,47 @@
+// The Coder environment profile above frozen NIP-HOST carriage.
+#load "../../nostr/host/browser.coax";
+#load "wire.coax";
+
+// Negotiated environment bootstrap app.rpc projection. The original browser
+// reader below remains closed: realm-only browser grants do not opt into this.
+HbAppRequest :: struct {request:string;host:string;grant:string;relay:string;epoch:int;issued_at:int;expires_at:int;params:EaRequest;}
+hb_app_read :: (body:string,q:[]HbAppRequest,a:[]HbText)->bool #effects(all) {
+  nodes:[128]JvNode;d:[1]Jv;if !jv_parse(d[..],body,nodes[..]) {return false;}v:=d[0];
+  root:=[9]string.["v","requires","request","host","grant","epoch","relay","issued_at","expires_at"];
+  fields:=[10]string.["v","requires","request","host","grant","epoch","relay","issued_at","expires_at","op"];
+  if !hb_fields(v,0,fields[..]) || hb_head(v,HB_REQUEST_SCHEMA)!=HB_OK {return false;}
+  op:=jv_get(v,0,"op");of:=[3]string.["kind","method","params"];if !hb_fields(v,op,of[..]) || jv_raw(v,jv_get(v,op,"kind"))!="app.rpc" {return false;}
+  good:=[1]bool.[true];q[0].request=hb_get_str(v,0,"request",a,good[..]);q[0].host=hb_get_str(v,0,"host",a,good[..]);q[0].grant=hb_get_str(v,0,"grant",a,good[..]);q[0].relay=hb_get_str(v,0,"relay",a,good[..]);
+  q[0].epoch=hb_get_int(v,0,"epoch");q[0].issued_at=hb_get_int(v,0,"issued_at");q[0].expires_at=hb_get_int(v,0,"expires_at");
+  params:=jv_raw(v,jv_get(v,op,"params"));rq:=[1]EaRequest.[q[0].params];
+  if !good[0] || !hb_hex64(q[0].request) || !hb_hex64(q[0].host) || !hb_hex64(q[0].grant) || q[0].epoch<0 || !ea_read(params,rq[..]) {return false;}
+  q[0].params=rq[0];return jv_raw(v,jv_get(v,op,"method"))==cast(string)q[0].params.method[0..<q[0].params.nm];
+}
+hb_app_write :: (q:HbAppRequest,out:[]u8)->int #effects(all) {
+  params:=[1]EaRequest.[q.params];b:[24576]u8;n:=ea_write(params[..],b[..]);if n<0 {return -1;}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"v");jo_str(o[..],HB_REQUEST_SCHEMA);jo_key(o[..],"requires");jo_arr(o[..]);jo_end(o[..]);
+  jo_key(o[..],"request");jo_str(o[..],q.request);jo_key(o[..],"host");jo_str(o[..],q.host);jo_key(o[..],"grant");jo_str(o[..],q.grant);jo_key(o[..],"epoch");jo_int(o[..],q.epoch);
+  jo_key(o[..],"relay");jo_str(o[..],q.relay);jo_key(o[..],"issued_at");jo_int(o[..],q.issued_at);jo_key(o[..],"expires_at");jo_int(o[..],q.expires_at);
+  jo_key(o[..],"op");jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],"app.rpc");jo_key(o[..],"method");jo_str(o[..],cast(string)params[0].method[0..<params[0].nm]);jo_key(o[..],"params");jo_raw(o[..],cast(string)b[0..<n]);jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+hb_app_reply_write :: (request:string,event:string,host:string,now:int,expires:int,method:string,value:string,out:[]u8)->int #effects(all) {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"v");jo_str(o[..],HB_REPLY_SCHEMA);jo_key(o[..],"requires");jo_arr(o[..]);jo_end(o[..]);
+  jo_key(o[..],"request");jo_str(o[..],request);jo_key(o[..],"request_event");jo_str(o[..],event);jo_key(o[..],"host");jo_str(o[..],host);jo_key(o[..],"issued_at");jo_int(o[..],now);jo_key(o[..],"expires_at");jo_int(o[..],expires);
+  jo_key(o[..],"result");jo_obj(o[..]);jo_key(o[..],"status");jo_str(o[..],"ok");jo_key(o[..],"outcome");jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],"app_rpc");jo_key(o[..],"method");jo_str(o[..],method);jo_key(o[..],"value");jo_raw(o[..],value);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+hb_app_reply_read :: (raw:string,host:string,request:string,event:string,method:string,now:int)->string #effects(all) {
+  nodes:[4096]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return "";}v:=d[0];
+  if hb_head(v,HB_REPLY_SCHEMA)!=HB_OK || jv_raw(v,jv_get(v,0,"request"))!=request || jv_raw(v,jv_get(v,0,"request_event"))!=event || jv_raw(v,jv_get(v,0,"host"))!=host {return "";}
+  if hb_get_int(v,0,"expires_at")<now || hb_get_int(v,0,"issued_at")>now+60 {return "";}
+  if jv_raw(v,jv_path(v,0,"result.status"))!="ok" || jv_raw(v,jv_path(v,0,"result.outcome.kind"))!="app_rpc" || jv_raw(v,jv_path(v,0,"result.outcome.method"))!=method {return "";}
+  return jv_raw(v,jv_path(v,0,"result.outcome.value"));
+}
+#test "environment app RPC is typed, binds its method and keeps browser decoding closed" {
+  params:[1]EaRequest;params[0].nm=ea_copy(params[0].method[..],"ListSessions");params[0].nw=ea_copy(params[0].workspace[..],"default");
+  q:=HbAppRequest.{request=HBT_REQ,host=HBT_HOST_X,grant=HBT_GRANT,relay="wss://relay.openagents.com",issued_at=10,expires_at=70,params=params[0]};
+  out:[32768]u8;n:=hb_app_write(q,out[..]);#assert n>0;
+  read:[1]HbAppRequest;b:[32768]u8;a:=[1]HbText.[HbText.{buf=b[..]}];
+  #assert hb_app_read(cast(string)out[0..<n],read[..],a[..]);#assert read[0].params.nm==12;
+  original:[1]HbRequest;a[0].at=0;#assert hb_request_read(cast(string)out[0..<n],original[..],a[..])!=HB_OK;
+}
+

@@ -42,6 +42,14 @@ generation, without downloading artifacts or prompting to apply it. Genuinely
 changed resources still use the signed OTA path. See the
 [regression and release record](../../docs/verification/2026-11-13-native-update-dedup.md).
 
+Build1074 adds **Your computers**: Claude Code on the owner's Mac and CoderOS,
+read-only Terminal history, managed conversations, Stop and held permissions.
+The resident computer service owns execution independently of desktop windows.
+New installed random-ID/timer services require this TestFlight build; subsequent
+compatible presentation changes can use Updates. The
+[runtime contract](../../docs/protocol/environment-runtime-v1alpha1.md) records
+the implemented scope and current bounds.
+
 ## Build and check
 
 `apps/openagents-ios/build.sh` generates on a remote build host and builds

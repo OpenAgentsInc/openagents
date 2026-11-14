@@ -1,0 +1,14 @@
+// Native file effect: a reader sees one complete private checkpoint, and a
+// failed sibling creation preserves the prior file. No product policy here.
+#load "../../lib/sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  b:[1024]u8;dir:=fs_temp("coax-checkpoint-",b[..]);#assert dir.count>0;
+  p:[1100]u8;path:=fs_join(dir,"state",p[..]);
+  #assert fs_replace_durable(path,"first checkpoint");
+  out:[128]u8;n:=fs_read(path,out[..]);#assert n==16 && cast(string)out[0..<n]=="first checkpoint";
+  #assert fs_replace_durable(path,"second");n=fs_read(path,out[..]);#assert n==6 && cast(string)out[0..<n]=="second";
+  bad:[1100]u8;missing:=fs_join(dir,"absent/state",bad[..]);#assert !fs_replace_durable(missing,"no");
+  n=fs_read(path,out[..]);#assert n==6 && cast(string)out[0..<n]=="second";
+  #assert fs_remove(dir);
+  return 0;
+}

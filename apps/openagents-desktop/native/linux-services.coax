@@ -1,0 +1,68 @@
+// Native Linux services reuse the one login flow, HTTP client, file adapter,
+// command codec and random source. GTK only schedules these calls off its UI.
+#load "../../shared/app-login-flow.coax";
+#load "../../../coax/lib/net/http.coax";
+#load "../../../coax/lib/nostr/hex.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/sys/clock.coax";
+#load "../../../coax/lib/agent/environment/wire.coax";
+#load "../../../coax/native/updates-policy.coax";
+cxrand_draw :: (out:[]u8,n:int)->int #foreign #effects(all);
+LinuxServices :: struct {flow:[1]AlFlow;ready:bool;status:int;home:[1024]u8;nh:int;}
+ls_size :: ()->int #export_c #effects(all) {return size_of(LinuxServices);}
+ls_status :: (s:[]LinuxServices)->int #export_c #effects(all) {return s[0].status;}
+ls_path :: (s:[]LinuxServices,name:string,out:[]u8)->string #effects(all) {
+  return fs_join(cast(string)s[0].home[0..<s[0].nh],name,out);
+}
+ls_keep :: (s:[]LinuxServices)->bool #effects(all) {
+  f:=s[0].flow[..];if !f[0].keep {return true;}p:[1400]u8;path:=ls_path(s,".openagents/desktop/native-login.json",p[..]);
+  record:[AL_RECORD]u8;n:=alf_record(f,record[..]);if n==0 {_ = fs_remove(path);return true;}return n>0 && fs_replace_durable(path,cast(string)record[0..<n]);
+}
+ls_http :: (s:[]LinuxServices,path:string,method:string,body:string,token:string,out:[]u8)->int #effects(all) {
+  url:[2400]u8;n:=ea_copy(url[..],"https://openagents.com");for c:path {if n>=url.count {return -1;}url[n]=c;n+=1;}
+  headers:[2]string;headers[0]="Content-Type: application/json";auth:[1024]u8;na:=ea_copy(auth[..],"Authorization: Bearer ");
+  for c:token {if na>=auth.count {return -1;}auth[na]=c;na+=1;}headers[1]=cast(string)auth[0..<na];w:[1]HttpWork;
+  r:=http_do(w[..],method,cast(string)url[0..<n],headers[0..<ifx token.count>0 then 2 else 1],body,45000,0,out);s[0].status=r.code;
+  return ifx r.error==HTTP_OK then r.n else -1;
+}
+ls_flow :: (s:[]LinuxServices)->bool #effects(all) {
+  f:=s[0].flow[..];for round:0..<4 {if f[0].step==ALF_S_NONE {return ls_keep(s);}
+    // This first Linux profile uses protected local files and an unbound email
+    // login. It never pretends to hold an Apple/Android device proof key.
+    if f[0].auth==ALF_AUTH_NOSTR || f[0].proof_ms>0 {return false;}
+    out:[65536]u8;n:=ls_http(s,alf_path(f),ifx f[0].method==ALF_POST then "POST" else "GET",alf_body(f),ifx f[0].auth==ALF_AUTH_BEARER then alf_access(f) else "",out[..]);
+    if n<0 {return false;}more:=alf_answer(f,s[0].status,cast(string)out[0..<n],cxproc_wall_us()/1000);if !ls_keep(s) {return false;}if !more {return f[0].words_n==0 || f[0].state==ALF_CODE;}
+  }return false;
+}
+ls_call :: (s:[]LinuxServices,op:int,raw:string,out:[]u8)->int #export_c #effects(all) {
+  s[0].status=0;
+  if !s[0].ready {home:=proc_getenv("HOME",s[0].home[..]);s[0].nh=home.count;s[0].ready=true;
+    p:[1400]u8;for name:[2]string.[".openagents",".openagents/desktop"] {_ = fs_mkdir(ls_path(s,name,p[..]));}
+    record:[AL_RECORD]u8;n:=fs_read(ls_path(s,".openagents/desktop/native-login.json",p[..]),record[..]);alf_open(s[0].flow[..],ifx n>0 then cast(string)record[0..<n] else "");
+  }
+  nodes:[64]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return -1;}j:=d[0];o:[1]Jo;jo_start(o[..],out);f:=s[0].flow[..];
+  if op==1 || op==5 {
+    if op==5 {_ = alf_logout(f);_ = ls_flow(s);_ = ls_keep(s);}
+    p:[1400]u8;jo_obj(o[..]);jo_key(o[..],"loggedIn");jo_bool(o[..],f[0].state==ALF_IN);jo_key(o[..],"localEnvironment");jo_bool(o[..],fs_exists(ls_path(s,".openagents/coder/host/service.sock",p[..])));jo_end(o[..]);
+  } else if op==2 || op==3 {
+    value:[512]u8;n:=jv_str(j,jv_get(j,0,ifx op==2 then "email" else "code"),value[..]);if n<1 {return -1;}
+    if op==2 {if !alf_email(f,cast(string)value[0..<n]) {return -1;}}
+    else {pending:[ALF_PENDING]u8;np:=jv_str(j,jv_get(j,0,"pending"),pending[..]);if np<1 || cast(string)pending[0..<np]!=cast(string)f[0].pending[0..<f[0].pending_n] || !alf_code(f,cast(string)value[0..<n]) {return -1;}}
+    if !ls_flow(s) {return -1;}jo_obj(o[..]);if op==2 {jo_key(o[..],"pending");jo_str(o[..],cast(string)f[0].pending[0..<f[0].pending_n]);}else {jo_key(o[..],"loggedIn");jo_bool(o[..],f[0].state==ALF_IN);}jo_end(o[..]);
+  } else if op==4 {
+    path:[512]u8;method:[8]u8;body:[65536]u8;np:=jv_str(j,jv_get(j,0,"path"),path[..]);nm:=jv_str(j,jv_get(j,0,"method"),method[..]);nb:=jv_str(j,jv_get(j,0,"body"),body[..]);if nb<0 {nb=0;}
+    if np<1 || nm<1 || !cn_api(cast(string)path[0..<np]) || (cast(string)method[0..<nm]!="GET" && cast(string)method[0..<nm]!="POST") {return -1;}
+    if al_next(f[0].t[..],cxproc_wall_us()/1000)==AL_REFRESH {if !alf_refresh(f,cxproc_wall_us()/1000) || !ls_flow(s) {return -1;}}
+    return ls_http(s,cast(string)path[0..<np],cast(string)method[0..<nm],cast(string)body[0..<nb],alf_access(f),out);
+  } else if op==11 {
+    bytes:[32]u8;if cxrand_draw(bytes[..],32)!=0 {return -1;}hex:[64]u8;encoded:=hex_encode_checked(cast(string)bytes[..],hex[..],false);if encoded.error!=NC_OK {return -1;}
+    jo_obj(o[..]);jo_key(o[..],"command_id");jo_str(o[..],cast(string)hex[0..<32]);jo_key(o[..],"session_id");jo_str(o[..],cast(string)hex[32..<64]);jo_key(o[..],"now_ms");jo_int(o[..],cxproc_wall_us()/1000);jo_end(o[..]);
+  } else if op==14 {
+    p:[1400]u8;nonce:[16]u8;hex:[32]u8;if cxrand_draw(nonce[..],16)!=0 {return -1;}encoded:=hex_encode_checked(cast(string)nonce[..],hex[..],false);if encoded.error!=NC_OK {return -1;}name:[128]u8;file_writer:[1]Jo;jo_start(file_writer[..],name[..]);jo_raw(file_writer[..],".openagents/desktop/request-");jo_raw(file_writer[..],cast(string)hex[..]);jo_raw(file_writer[..],".json");path:=ls_path(s,jo_text(file_writer[..]),p[..]);if !fs_replace_durable(path,raw) {return -1;}defer {_ = fs_remove(path);}
+    exe:[1400]u8;av:=[4]string.[ls_path(s,".openagents/bin/openagents-environment",exe[..]),"local-rpc","--request-file",path];err:[1024]u8;r:=proc_run(av[..],15000,out,err[..]);if r.started!=0 || r.status!=0 {return -1;}s[0].status=200;return r.out_n;
+  } else if op==6 || op==7 {jo_obj(o[..]);jo_key(o[..],"message");jo_str(o[..],"OpenAgents on Coax Native");jo_end(o[..]);}
+  else if op==8 {return ea_copy(out,"{\"cancelled\":true}");}
+  else {return -1;}
+  return ifx o[0].bad then -1 else o[0].n;
+}

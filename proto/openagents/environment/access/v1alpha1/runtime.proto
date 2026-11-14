@@ -1,0 +1,69 @@
+syntax = "proto3";
+package openagents.environment.access.v1alpha1;
+
+// Explicit shared-user bootstrap profile. It does not attest ENV readiness or
+// implement the complete SESS artifact family. No frozen HOST/SESS shape changes.
+// Carried in HOST app.rpc; method/right mapping is closed in the Coax policy.
+message RuntimeRequest {
+  string method = 1 [json_name = "method"]; // DescribeEnvironment, ListSessions, ReadSession,
+                    // OpenSession, SendMessage, StopTurn, RespondInteraction
+  string workspace_id = 2 [json_name = "workspace_id"]; // configured canonical workspace ID, never a path
+  string session_id = 3 [json_name = "session_id"]; // 32 lowercase hex managed ID or native UUID
+  string command_id = 4 [json_name = "command_id"]; // 32 lowercase hex, caller retained across retries
+  int64 generation = 5 [json_name = "generation"]; // >0 for a managed operation
+  int64 expected_revision = 6 [json_name = "expected_revision"];
+  string text = 7 [json_name = "text"]; // 1..16384 UTF-8 bytes, nonblank and no NUL for submit
+  string interaction_id = 8 [json_name = "interaction_id"];
+  bool allow = 9 [json_name = "allow"];
+  int64 before = 10 [json_name = "before"];
+  int64 expires_at_ms = 11 [json_name = "expires_at_ms"]; // max five-minute logical intent, unchanged on retry
+  int64 issued_at_ms = 12 [json_name = "issued_at_ms"]; // host allows 60 seconds of caller skew; reads use zero
+}
+message RuntimeItem {
+  string item_id = 1 [json_name = "item_id"];
+  string role = 2 [json_name = "role"]; // user, assistant, tool, notice
+  string text = 3 [json_name = "text"];
+  string tool_name = 4 [json_name = "tool_name"];
+  bool complete = 5 [json_name = "complete"];
+}
+message RuntimeSession {
+  string session_id = 1 [json_name = "session_id"];
+  string workspace_id = 2 [json_name = "workspace_id"];
+  string title = 3 [json_name = "title"];
+  string origin = 4 [json_name = "origin"]; // managed or observed-native
+  string control = 5 [json_name = "control"]; // available, observe-only, unknown
+  int64 generation = 6 [json_name = "generation"];
+  int64 revision = 7 [json_name = "revision"];
+  bool busy = 8 [json_name = "busy"];
+  string interaction_id = 9 [json_name = "interaction_id"];
+  int64 updated_at_ms = 10 [json_name = "updated_at_ms"];
+}
+message RuntimeView {
+  string schema = 1 [json_name = "schema"]; // openagents.environment.runtime.v1alpha1
+  string host_pubkey = 2 [json_name = "host_pubkey"];
+  string display_name = 3 [json_name = "display_name"];
+  string method = 4 [json_name = "method"];
+  repeated RuntimeSession sessions = 5 [json_name = "sessions"]; // at most 128
+  repeated RuntimeItem items = 6 [json_name = "items"]; // bounded complete page, no silent clipping
+  string error = 7 [json_name = "error"]; // closed refusal code, empty only on success
+  bool complete = 8 [json_name = "complete"];
+  string next_cursor = 9 [json_name = "next_cursor"];
+  string command_id = 10 [json_name = "command_id"];
+  string command_status = 11 [json_name = "command_status"]; // accepted, completed, unknown, refused
+  string source_epoch = 12 [json_name = "source_epoch"]; // observed page cut; never a SESS generation
+}
+// Private local configuration; never returned in a RuntimeView.
+message RuntimeConfiguration {
+  string schema = 1 [json_name = "schema"]; // openagents.environment.configuration.v1alpha1
+  string device = 2 [json_name = "device"];
+  string grant = 3 [json_name = "grant"];
+  string workspace = 4 [json_name = "workspace"]; // canonical root selected by the local operator
+  string display_name = 5 [json_name = "display_name"];
+  bool enabled = 6 [json_name = "enabled"];
+  string history_root = 7 [json_name = "history_root"]; // separately approved canonical read-only history tree
+}
+message CatalogEntry { string host_pubkey = 1 [json_name = "host_pubkey"]; string display_name = 2 [json_name = "display_name"]; }
+message RuntimeCatalog {
+  string schema = 1 [json_name = "schema"]; // openagents.environment.catalog.v1alpha1
+  repeated CatalogEntry environments = 2 [json_name = "environments"]; // max 64, routes/secrets never included
+}

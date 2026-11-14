@@ -20584,6 +20584,24 @@ CREATE TABLE chat.credentials (
 
 
 --
+-- Name: environment_connections_v1; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.environment_connections_v1 (
+    account text NOT NULL,
+    host_pubkey text NOT NULL,
+    display_name text NOT NULL,
+    grant_id text NOT NULL,
+    epoch bigint NOT NULL,
+    relay text NOT NULL,
+    CONSTRAINT environment_connections_v1_display_name_check CHECK (((octet_length(display_name) >= 1) AND (octet_length(display_name) <= 80))),
+    CONSTRAINT environment_connections_v1_epoch_check CHECK ((epoch >= 0)),
+    CONSTRAINT environment_connections_v1_grant_id_check CHECK ((grant_id ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT environment_connections_v1_host_pubkey_check CHECK ((host_pubkey ~ '^[0-9a-f]{64}$'::text))
+);
+
+
+--
 -- Name: events; Type: TABLE; Schema: chat; Owner: -
 --
 
@@ -24033,6 +24051,14 @@ ALTER TABLE ONLY chat.credentials
 
 
 --
+-- Name: environment_connections_v1 environment_connections_v1_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.environment_connections_v1
+    ADD CONSTRAINT environment_connections_v1_pkey PRIMARY KEY (account, host_pubkey);
+
+
+--
 -- Name: events events_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
 --
 
@@ -26618,6 +26644,14 @@ ALTER TABLE ONLY auth.wallet_spends
 
 ALTER TABLE ONLY chat.account_threads_v1
     ADD CONSTRAINT account_threads_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id) ON DELETE CASCADE;
+
+
+--
+-- Name: environment_connections_v1 environment_connections_v1_account_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.environment_connections_v1
+    ADD CONSTRAINT environment_connections_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id) ON DELETE CASCADE;
 
 
 --

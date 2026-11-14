@@ -20,7 +20,7 @@ realm-authoring folders: metaverse-engine/editor/ apps/metaverse-engine-desktop/
 identity folders: coax/web/api/auth coax/web/api/agent-wire.coax may load: nostr toolchain
 payments folders: pay/ coax/lib/bitcoin/ coax/lib/lightning/ coax/lib/lnaddr/ coax/lib/nostr/nipkeys coax/lib/nostr/vault-wallet.coax nostr/examples/agent-treasury.coax nostr/examples/checks/agent-treasury.coax nostr/tools/treasury.coax may load: nostr identity toolchain
 coder folders: coder/ coax/lib/agent/ coax/lib/boat/ coax/web/boat.coax coax/lib/microcoder/ coax/lib/gateway/ coax/lib/rlm/ coax/lib/repo/ coax/web/repo/ coax/web/agent/ may load: psionic nostr protocol toolchain realm-seat
-chat folders: components/zeron/ apps/openagents-web/chat.coax coax/web/api/chat.c coax/web/api/chat-history coax/web/api/account-chat may load: coder identity protocol toolchain
+chat folders: components/zeron/ apps/openagents-web/chat.coax coax/web/api/chat.c coax/web/api/chat-history coax/web/api/account-chat coax/web/api/environment may load: coder identity protocol toolchain
 projects folders: coax/web/api/private.c coax/web/api/drops.c coax/web/project/ may load: identity payments nostr psionic toolchain
 nostr folders: nostr/ coax/lib/nostr/ may load: toolchain
 psionic folders: psionic/ coax/lib/systemone/ coax/web/api/inference.c coax/web/api/mesh may load: nostr protocol toolchain

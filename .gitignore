@@ -91,3 +91,6 @@ build/pipeline/
 # Coax Native generated package and immutable runtime configuration.
 /apps/openagents-ios/Starter/
 /apps/openagents-ios/Native.plist
+
+# Generated resident environment service C and native binaries.
+/coder/build/

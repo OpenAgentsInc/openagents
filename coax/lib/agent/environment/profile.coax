@@ -1,0 +1,19 @@
+// Pin the registered records to independent, hand-specified golden bytes.
+#import "Basic";
+#load "wire.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/fs.coax";
+#load "../../sys/args.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) {return 1;}file:[32768]u8;n:=fs_read(args_at(args[..],0),file[..]);nodes:[128]JvNode;d:[1]Jv;
+  if n<1 || !jv_parse(d[..],cast(string)file[0..<n],nodes[..]) {return 1;}j:=d[0];rows:=jv_get(j,0,"fixtures");
+  if jv_kind(j,rows)!=JV_ARRAY || jv_len(j,rows)!=4 {return 1;}
+  for i:0..<4 {row:=jv_at(j,rows,i);raw:[16384]u8;nr:=jv_str(j,jv_get(j,row,"bytes"),raw[..]);if nr<1 {return 1;}
+    kind:=jv_raw(j,jv_get(j,row,"kind"));text:=cast(string)raw[0..<nr];out:[16384]u8;made:= -1;
+    if kind=="request" {q:[1]EaRequest;if !ea_read(text,q[..]) {return 1;}made=ea_write(q[..],out[..]);}
+    else if kind=="view" {v:[1]EaView;if !ea_view_read(text,v[..]) {return 1;}made=ea_view_write(v[..],out[..]);}
+    else if kind=="configuration" {c:[1]EaConfiguration;if !ea_config_read(text,c[..]) {return 1;}made=ea_config_write(c[..],out[..]);}
+    else if kind=="catalog" {c:[1]EaCatalog;if !ea_catalog_read(text,c[..]) {return 1;}made=ea_catalog_write(c[..],out[..]);}
+    if made!=nr || cast(string)out[0..<ifx made>0 then made else 0]!=text {print("environment fixture differs: %\n",kind);return 1;}
+  }print("environment runtime: four exact-byte codec fixtures passed\n");return 0;
+}

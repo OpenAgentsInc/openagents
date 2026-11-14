@@ -1,0 +1,73 @@
+// Shared-user execution profile. Transport authentication is supplied by HOST;
+// these decisions still gate source scope, command ownership and stale views.
+#authority;
+#test "gateway environment catalogs and calls require the exact person account" {
+  #assert ea_account(2,"a","a");#assert !ea_account(2,"a","b") && !ea_account(2,"","");
+  for k:0..<6 {if k!=2 {#assert !ea_account(k,"a","a");}}
+}
+ea_account :: (kind:int,account:string,owner:string)->bool #export_c #effects(all) {return kind==2 && account.count>0 && account==owner;}
+#test "the environment gateway has a bounded per-account call rate" {#assert ea_rate()==180;}
+ea_rate :: ()->int #export_c #effects(all) {return 180;}
+#test "logical command expiry keeps one intent window across transport retries" {
+  #assert ea_deadline(1)==300001 && ea_deadline(0)==0;
+  #assert ea_deadline(9007199254440991)==9007199254740991 && ea_deadline(9007199254440992)==0;
+  #assert ea_fresh(1,300001,1) && ea_fresh(1,300001,300001);
+  #assert !ea_fresh(1,300001,300002) && !ea_fresh(1,300002,1);
+  #assert !ea_fresh(0,300000,1) && !ea_fresh(1,1,1) && !ea_fresh(1,300001,0);
+  #assert ea_fresh(60001,360001,1) && !ea_fresh(60002,360002,1);
+  #assert ea_fresh(9007199254440991,9007199254740991,9007199254440991);
+  #assert !ea_fresh(9007199254440992,9007199254740992,9007199254440992);
+}
+ea_deadline :: (now:int)->int #effects(all) {return ifx now>0 && now<=9007199254440991 then now+300000 else 0;}
+ea_fresh :: (issued:int,expires:int,now:int)->bool #effects(all) {
+  return issued>0 && expires>issued && expires<=9007199254740991 && expires-issued<=300000 && now>0 && issued-now<=60000 && expires>=now;
+}
+
+#test "environment methods have fixed rights, unknown methods cannot dispatch" {
+  #assert ea_right("DescribeEnvironment")==0 && ea_right("ListSessions")==0 && ea_right("ReadSession")==0;
+  #assert ea_right("OpenSession")==1 && ea_right("SendMessage")==1 && ea_right("StopTurn")==1;
+  #assert ea_right("RespondInteraction")==3 && ea_right("")== -1 && ea_right("RunCommand")== -1;
+}
+#test "only an explicitly scoped device may see or operate the local environment" {
+  #assert ea_scope(true,true,true,true);
+  #assert !ea_scope(false,true,true,true) && !ea_scope(true,false,true,true);
+  #assert !ea_scope(true,true,false,true) && !ea_scope(true,true,true,false);
+}
+#test "stale generation and revision, busy submit, and completed requests refuse" {
+  #assert ea_command(7,7,3,3,false,false)==0;
+  #assert ea_command(6,7,3,3,false,false)==1 && ea_command(7,7,2,3,false,false)==1;
+  #assert ea_command(7,7,3,3,true,false)==2 && ea_command(7,7,3,3,false,true)==3;
+  #assert ea_command(0,0,0,0,false,false)==1;
+  #assert ea_command(1,1,0,0,false,false)==0;
+}
+#test "command identities and native references cannot escape their directory" {
+  #assert ea_id("0123456789abcdef0123456789abcdef",32);
+  #assert !ea_id("0123456789abcdef0123456789abcdeF",32);
+  #assert !ea_id("../0123456789abcdef0123456789abc",32) && !ea_id("",32);
+  #assert !ea_text("") && !ea_text(" \n\t\r") && ea_text("hi") && ea_text("a");
+  b:=[3]u8.['a',0,'b'];#assert !ea_text(cast(string)b[..]);
+  long:[16385]u8;for i:0..<long.count {long[i]='a';}
+  #assert ea_text(cast(string)long[0..<16384]) && !ea_text(cast(string)long[..]);
+}
+#forall "identifier classification checks every byte" byte:u8 {
+  text:=[1]u8.[byte];
+  #assert ea_id(cast(string)text[..],1)==((byte>='0' && byte<='9') || (byte>='a' && byte<='f'));
+}
+
+ea_right :: (method:string)->int #effects(all) {
+  if method=="DescribeEnvironment" || method=="ListSessions" || method=="ReadSession" {return 0;}
+  if method=="OpenSession" || method=="SendMessage" || method=="StopTurn" {return 1;}
+  if method=="RespondInteraction" {return 3;}return -1;
+}
+ea_scope :: (admitted:bool,enabled:bool,device:bool,workspace:bool)->bool #effects(all) {return admitted && enabled && device && workspace;}
+ea_command :: (generation:int,current:int,revision:int,expected:int,busy:bool,resolved:bool)->int #effects(all) {
+  if generation<=0 || generation!=current || revision!=expected {return 1;}
+  if busy {return 2;}if resolved {return 3;}return 0;
+}
+ea_id :: (id:string,n:int)->bool #effects(all) {
+  if id.count!=n {return false;}for c:id {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;
+}
+ea_text :: (text:string)->bool #effects(all) {
+  if text.count==0 || text.count>16384 {return false;}nonblank:=false;
+  for c:text {if c==0 {return false;}if c!=' ' && c!=9 && c!=10 && c!=13 {nonblank=true;}}return nonblank;
+}

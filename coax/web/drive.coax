@@ -104,7 +104,7 @@
 #load "../../metaverse-engine/agent/pin.coax";
 
 cxtool_out_flush :: () -> int #foreign #effects(all);
-cxsock_connect_unix :: (timeout_ms: int) -> int #foreign #effects(all);
+#load "../lib/net/socket_foreign.coax";
 
 DV_FILE :: 33554432;   // the largest layout, source list, build script or source file read
 DV_TEXT :: 65536;

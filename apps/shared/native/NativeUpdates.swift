@@ -2,11 +2,6 @@
 import Foundation
 import CryptoKit
 
-enum NativeFailure: Error, LocalizedError {
-    case refused(String)
-    var errorDescription: String? { if case .refused(let text) = self { return text }; return "Unavailable" }
-}
-
 struct NativePackage {
     struct File { let path: String; let hash: String; let bytes: Int }
     let envelope: Data

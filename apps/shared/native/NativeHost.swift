@@ -1,6 +1,7 @@
 // Firm reason: 6 (UIKit, JavaScriptCore and native account SDK effects).
 import UIKit
 import AuthenticationServices
+import Security
 
 @MainActor final class NativePasskey: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     let anchor: UIWindow
@@ -86,7 +87,7 @@ import AuthenticationServices
             let (op,body)=try p.action()
             if op==0 {continue}
             let owner=epoch,extra=(p === programs.last)
-            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open"]
+            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open","environment.commandIDs","environment.wait"]
             guard extra || op>0 && op<ops.count else {throw NativeFailure.refused("Unsupported service")}
             let args=(try? JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] ?? [:]
             if !extra && op==8 {httpEpoch=UUID();httpTask?.cancel();httpTask=nil}
@@ -114,6 +115,12 @@ import AuthenticationServices
     }
     func call(_ op:String,_ b:[String:Any]) async throws -> Any {
         switch op {
+        case "environment.commandIDs":
+            var bytes=[UInt8](repeating:0,count:32)
+            guard SecRandomCopyBytes(kSecRandomDefault,bytes.count,&bytes)==errSecSuccess else {throw NativeFailure.refused("Random identities unavailable")}
+            return ["command_id":bytes.prefix(16).map {String(format:"%02x",$0)}.joined(),"session_id":bytes.suffix(16).map {String(format:"%02x",$0)}.joined(),"now_ms":Int64(Date().timeIntervalSince1970*1000)]
+        case "environment.wait":
+            try await Task.sleep(for:.seconds(1));return ["ready":true]
         case "ready":
             let owner=epoch
             health=Task { [weak self] in

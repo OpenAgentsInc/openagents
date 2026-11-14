@@ -3,6 +3,9 @@
 // one program: transport.coax (relays, HTTP) and cdp.coax (headless Chrome).
 cxsock_host_push :: (byte: int) -> int #foreign #effects(all);
 cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsock_connect_unix :: (timeout_ms:int)->int #foreign #effects(all);
+cxsock_listen_unix :: ()->int #foreign #effects(all);
+cxsock_peer_self :: (h:int)->int #foreign #effects(all);
 cxsock_write :: (h: int, byte: int) -> int #foreign #effects(all);
 cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
 cxsock_read :: (h: int, timeout_ms: int) -> int #foreign #effects(all);

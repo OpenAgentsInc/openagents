@@ -55,6 +55,9 @@
                   Identifier = "NativePackageTests">
                </Test>
                <Test
+                  Identifier = "NativeProgramTests">
+               </Test>
+               <Test
                   Identifier = "SparkBalanceTests">
                </Test>
             </SelectedTests>

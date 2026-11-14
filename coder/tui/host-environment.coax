@@ -1,0 +1,311 @@
+// The environment service is a resident execution owner; windows are clients.
+// HOST owns carriage/admission. The shared engine and reader own Claude wire
+// and native history. No transcript text is ever interpreted as an operation.
+#load "../../coax/lib/agent/environment/host-wire.coax";
+#load "../../coax/lib/agent/engine/claude.coax";
+#load "../../coax/lib/agent/observe/claude-files.coax";
+#load "../../coax/lib/agent/session/log.coax";
+
+ES_SLOTS :: 4;
+EsSlot :: struct {
+  occupied:bool;summary:EaSession;grant:[64]u8;device:[64]u8;engine:[1]Engine;s:[1]Session;
+  options:[1]ClOptions;pool:[524288]u8;line:[1048576]u8;arena:[1048576]u8;
+  out:[262144]u8;scratch:[262144]u8;prompt:[16384]u8;last_saved:int;failed:bool;started:bool;
+}
+EsHost :: struct {slots:[ES_SLOTS]EsSlot;configuration:[1]EaConfiguration;configured:bool;}
+
+// The same registered RuntimeRequest/View, newline framed over an owner-only
+// Unix socket. Both ends authenticate the actual kernel peer, never a supplied
+// PID or a loopback address. One request per connection; no shell command.
+es_local_listen :: ()->int #effects(all) {
+  path:[1400]u8;p:=es_path("service.sock",path[..]);for c:p {_ = cxsock_host_push(cast(int)c);}return cxsock_listen_unix();
+}
+es_local_tick :: (h:[]HsHost,listener:int) #effects(all) {
+  connection:=cxsock_accept(listener,0);if connection<0 {return;}defer {_ = cxsock_close(connection);}
+  if cxsock_peer_self(connection)!=1 {return;}
+  input:[24576]u8;n:=0;done:=false;deadline:=cxsock_now_ms()+1000;
+  while cxsock_now_ms()<deadline && !done {
+    got:=cxsock_read(connection,50);if got== -2 {continue;}if got<0 {break;}
+    for i:0..<got {c:=cxsock_byte(connection,i);if c==10 {done=true;break;}if n>=input.count {return;}input[n]=cast(u8)c;n+=1;}
+  }
+  q:[1]EaRequest;if !done || !ea_read(cast(string)input[0..<n],q[..]) {return;}
+  v:[1]EaView;c:=h[0].environment[0].configuration[..];
+  if !es_load_configuration(h[0].environment[..]) {return;}
+  es_dispatch(h,q[..],cast(string)c[0].device[..],cast(string)c[0].grant[..],v[..]);
+  out:[HB_BODY_MAX]u8;made:=ea_view_write(v[..],out[..]);if made<1 {return;}
+  for i:0..<made {_ = cxsock_write(connection,cast(int)out[i]);}_ = cxsock_write(connection,10);_ = cxsock_flush(connection,2000);
+}
+es_local_call :: (args:[]Args)->int #effects(all) {
+  data:[24576]u8;n:=fs_read(args_value(args,"--request-file",""),data[..]);q:[1]EaRequest;
+  if n<1 || !ea_read(cast(string)data[0..<n],q[..]) {return 2;}
+  path:[1400]u8;p:=es_path("service.sock",path[..]);for c:p {_ = cxsock_host_push(cast(int)c);}
+  connection:=cxsock_connect_unix(2000);if connection<0 {return 3;}defer {_ = cxsock_close(connection);}
+  if cxsock_peer_self(connection)!=1 {return 3;}
+  for i:0..<n {_ = cxsock_write(connection,cast(int)data[i]);}_ = cxsock_write(connection,10);if cxsock_flush(connection,2000)<0 {return 3;}
+  out:[HB_BODY_MAX]u8;at:=0;deadline:=cxsock_now_ms()+10000;
+  while cxsock_now_ms()<deadline {got:=cxsock_read(connection,500);if got== -2 {continue;}if got<0 {return 3;}
+    for i:0..<got {c:=cxsock_byte(connection,i);if c==10 {v:[1]EaView;if !ea_view_read(cast(string)out[0..<at],v[..]) {return 3;}hs_outln(cast(string)out[0..<at]);return 0;}if at>=out.count {return 3;}out[at]=cast(u8)c;at+=1;}
+  }return 3;
+}
+
+es_path :: (name:string,out:[]u8)->string #effects(all) {return hs_path(name,out);}
+es_configure :: (args:[]Args)->int #effects(all) {
+  device:=args_value(args,"--device","");grant:=args_value(args,"--grant","");workspace:=args_value(args,"--workspace","");label:=args_value(args,"--label","");
+  canonical:[1024]u8;root:=fs_realpath(workspace,canonical[..]);history_path:[1024]u8;history:=fs_realpath(args_value(args,"--history-root",workspace),history_path[..]);
+  if !ea_id(device,64) || !ea_id(grant,64) || root.count==0 || fs_kind(root)!=FS_DIR || history.count==0 || fs_kind(history)!=FS_DIR || label.count==0 || label.count>80 {tool_errln("environment-enable needs --device KEY --grant ID --workspace EXISTING_ROOT --label NAME");return 2;}
+  st:[1]HsState;b:[HS_STATE_MAX]u8;hs_load(st[..],b[..]);found:=false;
+  for i:0..<st[0].ng {g:=st[0].grants[i];if cast(string)g.device[..]==device && cast(string)g.grant[..]==grant && !g.revoked && g.expires>hs_now() {found=true;}}
+  if !found {tool_errln("Allow this device through coder host pairing first.");return 3;}
+  c:[1]EaConfiguration;c[0].enabled=true;n:=ea_copy(c[0].device[..],device);n=ea_copy(c[0].grant[..],grant);
+  c[0].nh=ea_copy(c[0].history[..],history);c[0].nw=ea_copy(c[0].workspace[..],root);c[0].nl=ea_copy(c[0].label[..],label);
+  prior:[1]EsHost;if es_load_configuration(prior[..]) {
+    old:=prior[0].configuration[0];
+    if cast(string)old.grant[..]==grant && cast(string)old.workspace[0..<old.nw]!=root {tool_errln("A workspace binding is immutable. Revoke and pair a new grant to change it.");return 3;}
+  }
+  out:[8192]u8;n=ea_config_write(c[..],out[..]);p:[1400]u8;
+  if n<1 || !hs_dir() || !fs_replace_durable(es_path("environment.json",p[..]),cast(string)out[0..<n]) {return 1;}
+  hs_outln("Environment enabled for this device and workspace. Existing terminal histories remain read-only.");return 0;
+}
+es_load_configuration :: (e:[]EsHost)->bool #effects(all) {
+  p:[1400]u8;b:[8192]u8;n:=fs_read(es_path("environment.json",p[..]),b[..]);
+  e[0].configured=n>0 && ea_config_read(cast(string)b[0..<ifx n>0 then n else 0],e[0].configuration[..]) && e[0].configuration[0].enabled;
+  return e[0].configured;
+}
+es_find :: (e:[]EsHost,id:string,grant:string)->int #effects(all) {
+  for i:0..<ES_SLOTS {s:=e[0].slots[i].summary;g:=e[0].slots[i].grant;
+    if e[0].slots[i].occupied && cast(string)s.id[0..<s.ni]==id && cast(string)g[..]==grant {return i;}}
+  return -1;
+}
+es_file :: (slot:[]EsSlot,extension:string,out:[]u8)->string #effects(all) {
+  b:[256]u8;n:=hs_cat(b[..],0,"environment-");n=hs_cat(b[..],n,cast(string)slot[0].grant[..]);n=hs_cat(b[..],n,"-");n=hs_cat(b[..],n,cast(string)slot[0].summary.id[0..<slot[0].summary.ni]);n=hs_cat(b[..],n,extension);
+  return es_path(cast(string)b[0..<n],out);
+}
+es_save :: (slot:[]EsSlot,host:string,label:string)->bool #effects(all) {
+  // Reuse the session log's one writer, including tools and native notices.
+  saved_log:[2097152]u8;n:=sl_lines(slot[0].s[..],0,slot[0].s[0].n,!slot[0].s[0].live,saved_log[..]);
+  p:[1400]u8;if n<0 || !fs_replace_durable(es_file(slot,".jsonl",p[..]),cast(string)saved_log[0..<n]) {slot[0].failed=true;return false;}
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],host);v[0].nl=ea_copy(v[0].label[..],label);v[0].nm=ea_copy(v[0].method[..],"ReadSession");v[0].ns=1;v[0].sessions[0]=slot[0].summary;v[0].complete=true;
+  b:[8192]u8;n=ea_view_write(v[..],b[..]);
+  if n<0 || !fs_replace_durable(es_file(slot,".json",p[..]),cast(string)b[0..<n]) {slot[0].failed=true;return false;}
+  return true;
+}
+es_tick :: (h:[]HsHost) #effects(all) {
+  e:=h[0].environment[..];
+  for i:0..<ES_SLOTS {slot:=e[0].slots[i..<i+1];if !slot[0].occupied || slot[0].failed {continue;}
+    s:=slot[0].s[..];before:=s[0].live;asking:=s[0].asking;
+    slot[0].started=slot[0].started || slot[0].engine[0].running;e_pump(slot[0].engine[..],s);
+    if s[0].exhausted {slot[0].failed=true;e_stop(slot[0].engine[..],s);}
+    if slot[0].started && !slot[0].engine[0].running {slot[0].summary.nc=ea_copy(slot[0].summary.control[..],"observe-only");}
+    if s[0].changed || before!=s[0].live || asking!=s[0].asking {
+      slot[0].summary.busy=s[0].live;slot[0].summary.updated=cxproc_wall_us()/1000;
+      if asking!=s[0].asking {slot[0].summary.revision+=1;}
+      pending:=ifx s[0].asking>=0 then cl_pending_id(slot[0].engine[0].q[..]) else "";
+      slot[0].summary.nr=ea_copy(slot[0].summary.interaction[..],pending);
+      if slot[0].summary.nr<0 {slot[0].summary.nr=0;slot[0].failed=true;e_stop(slot[0].engine[..],s);}
+      // Snapshots are bounded; no live process continues after a failed save.
+      if !es_save(slot,cast(string)h[0].xhex[..],cast(string)e[0].configuration[0].label[0..<e[0].configuration[0].nl]) {e_stop(slot[0].engine[..],s);}
+      s[0].changed=false;
+    }
+  }
+}
+
+es_handle :: (h:[]HsHost,rq:HbAppRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
+  if rq.request!=mailbox || rq.host!=cast(string)h[0].xhex[..] || rq.relay!=hs_relay_of(h) {return 0;}
+  configured:=es_load_configuration(h[0].environment[..]);c:=h[0].environment[0].configuration[..];
+  hs_load(st,statebuf);ga:[HS_GRANTS]HostGrantRecord;epochs:[HS_EPOCHS]HostEpoch;hs_records(st,ga[..],epochs[..]);
+  scoped:=ea_scope(configured,c[0].enabled,cast(string)c[0].device[..]==signer,cast(string)c[0].grant[..]==rq.grant);
+  // The local operator's explicit environment enable extends this one grant
+  // with review. It never changes the frozen realm-browser wire projection.
+  if scoped {for i:0..<st[0].ng {if ga[i].grant==rq.grant && ga[i].device==signer {ga[i].rights|=1<<HA_REVIEW;}}}
+  params:=[1]EaRequest.[rq.params];right:=ea_right(cast(string)params[0].method[0..<params[0].nm]);
+  request:=HostRequest.{request=rq.request,event=event,signer=signer,grant=rq.grant,epoch=rq.epoch,issued_at=rq.issued_at,expires_at=rq.expires_at,right=right};
+  none:[1]HostRetained;verdict:=host_admit(ga[0..<st[0].ng],epochs[0..<st[0].ne],none[0..<0],request,hs_now());
+  if verdict==HA_SILENT {return 0;}
+  if verdict!=HA_OK || !scoped {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"forbidden",""),signer,w,out);}
+  v:[1]EaView;es_dispatch(h,params[..],signer,rq.grant,v[..]);data:[HB_BODY_MAX]u8;vn:=ea_view_write(v[..],data[..]);
+  if vn<1 {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"too_large",""),signer,w,out);}
+  body:[HB_BODY_MAX]u8;n:=hb_app_reply_write(rq.request,event,cast(string)h[0].xhex[..],hs_now(),rq.expires_at,cast(string)params[0].method[0..<params[0].nm],cast(string)data[0..<vn],body[..]);
+  peer:[32]u8;nonce:[32]u8;aux:[32]u8;
+  if n<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return 0;}
+  return hb_seal(cast(string)body[0..<n],HB_REPLY_SCHEMA,h[0].secret[..],peer[..],rq.request,nonce[..],aux[..],hs_now(),w,out);
+}
+
+es_rpc_call :: (args:[]Args)->int #effects(all) {
+  host:=args_value(args,"--host","");grant:=args_value(args,"--grant","");epoch:=hs_atoi(args_value(args,"--epoch","0"));
+  keyfile:=args_value(args,"--browser-key","");requestfile:=args_value(args,"--request-file","");
+  hx:[32]u8;sk:[32]u8;bx:[32]u8;bhex:[64]u8;key:[80]u8;
+  if !hb_unhex(host,hx[..]) || !ea_id(grant,64) || epoch<0 {tool_errln("host rpc needs --host KEY --grant ID --epoch N --browser-key FILE --request-file FILE");return 2;}
+  nk:=fs_read(keyfile,key[..]);while nk>0 && (key[nk-1]==10 || key[nk-1]==13) {nk-=1;}
+  if nk!=64 || !hb_unhex(cast(string)key[0..<64],sk[..]) || !hb_public(sk[..],bx[..]) || !hb_hex(bx[..],bhex[..]) {wipe(key[..]);return 2;}
+  wipe(key[..]);defer {wipe(sk[..]);}
+  input:[24576]u8;ni:=fs_read(requestfile,input[..]);params:[1]EaRequest;
+  if ni<1 || !ea_read(cast(string)input[0..<ni],params[..]) {tool_errln("Invalid typed environment request.");return 2;}
+  relay:=args_value(args,"--relay",HS_RELAY);if !relay_uri(relay).ok {return 2;}
+  rb:[64]u8;request:=hs_random_hex(32,rb[..]);now:=hs_now();
+  q:=HbAppRequest.{request=request,host=host,grant=grant,relay=relay,epoch=epoch,issued_at=now,expires_at=now+60,params=params[0]};
+  body:[HB_BODY_MAX]u8;n:=hb_app_write(q,body[..]);w:[1]HbWork;out:[131072]u8;nonce:[32]u8;aux:[32]u8;
+  if n<1 || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return 2;}
+  sealed:=hb_seal(cast(string)body[0..<n],HB_REQUEST_SCHEMA,sk[..],hx[..],request,nonce[..],aux[..],now,w[..],out[..]);if sealed<1 {return 2;}
+  idb:[64]u8;event:=hs_event_id(cast(string)out[0..<sealed],idb[..]);sub:[1]CliRelay;pub:[1]CliRelay;
+  if !cr_open(sub[..],relay,sk[..]) {return 3;}
+  defer {cr_close(sub[..]);if pub[0].open {cr_close(pub[..]);}}
+  filter:[512]u8;nf:=hb_reply_filter(cast(string)bhex[..],request,filter[..]);
+  if nf<1 || !cr_req(sub[..],cast(string)filter[0..<nf]) || !cr_open(pub[..],relay,sk[..]) || !cr_publish(pub[..],cast(string)out[0..<sealed],cxsock_now_ms()+5000) {return 3;}
+  cr_close(pub[..]);deadline:=cxsock_now_ms()+20000;
+  while cxsock_now_ms()<deadline {
+    result:=cr_next(sub[..],deadline);if result==CR_FAIL || result==CR_CLOSED {break;}if result!=CR_EVENT {continue;}
+    opened:=hb_open(cr_event(sub[..]),sk[..],bx[..],HB_REPLY_SCHEMA,w[..],body[..]);
+    if opened.error!=HB_OK || cast(string)opened.signer[..]!=host || cast(string)opened.mailbox[..]!=request {continue;}
+    value:=hb_app_reply_read(cast(string)body[0..<opened.body_n],host,request,event,cast(string)params[0].method[0..<params[0].nm],hs_now());
+    if value.count>0 {v:[1]EaView;if ea_view_read(value,v[..]) {hs_outln(value);return 0;}}
+    // A signed, correlated refusal is a result, not a transport timeout.
+    refusal:[1]HbReply;arena:[4096]u8;text:=[1]HbText.[HbText.{buf=arena[..]}];
+    if hb_reply_read(cast(string)body[0..<opened.body_n],refusal[..],text[..])==HB_OK && !refusal[0].ok && refusal[0].host==host && refusal[0].request==request && refusal[0].request_event==event && refusal[0].expires_at>=hs_now() {
+      v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],host);v[0].nm=ea_copy(v[0].method[..],cast(string)params[0].method[0..<params[0].nm]);es_refuse(v[..],refusal[0].code);b:[HB_BODY_MAX]u8;nb:=ea_view_write(v[..],b[..]);if nb>0 {hs_outln(cast(string)b[0..<nb]);return 0;}
+    }
+  }
+  tool_errln("Environment did not return an admitted reply. No command is automatically replayed.");return 3;
+}
+es_snapshot :: (h:[]HsHost,q:[]EaRequest,grant:string,v:[]EaView) #effects(all) {
+  e:=h[0].environment[..];v[0]=EaView.{};v[0].nh=ea_copy(v[0].host[..],cast(string)h[0].xhex[..]);
+  c:=e[0].configuration[..];v[0].nl=ea_copy(v[0].label[..],cast(string)c[0].label[0..<c[0].nl]);v[0].nm=ea_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);v[0].complete=true;
+  for i:0..<ES_SLOTS {g:=e[0].slots[i].grant;if e[0].slots[i].occupied && cast(string)g[..]==grant {v[0].sessions[v[0].ns]=e[0].slots[i].summary;v[0].ns+=1;}}
+  id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);if k<0 {return;}
+  slot:=e[0].slots[k..<k+1];es_project(slot[0].s[..],q,v);
+  if slot[0].failed {for i:0..<v[0].ns {if cast(string)v[0].sessions[i].id[0..<v[0].sessions[i].ni]==id {v[0].sessions[i].nc=ea_copy(v[0].sessions[i].control[..],"unknown");}}es_refuse(v,"record_limit");}
+
+}
+
+// One timeline projection for resident and recovered logs. The numeric cursor
+// is (part+1)*1000000 + byte-end. Pages walk backward without dropping a long
+// message; the owned arena survives value copies. A page is at most6000 raw
+// bytes, leaving room for worst-case JSON escaping and HOST metadata.
+es_project :: (s:[]Session,q:[]EaRequest,v:[]EaView) #effects(all) {
+  part:=s[0].n-1;end:= -1;
+  if q[0].before>0 {part=q[0].before/1000000-1;end=q[0].before%1000000;if part<0 || part>=s[0].n {es_refuse(v,"stale_cursor");return;}}
+  bytes:=0;
+  while part>=0 && v[0].ni<24 && bytes<5996 {
+    p:=s[0].parts[part];if p.kind==P_THINK {part-=1;end= -1;continue;}
+    text:=ifx p.kind==P_TOOL then (ifx p.resolved && p.output.count>0 then p.output else ifx p.input.count>0 then p.input else p.detail) else s_text_of(s,part);
+    to:=ifx end>=0 then end else text.count;if to>text.count {es_refuse(v,"stale_cursor");return;}
+    start:=ifx to>6000-bytes then to-(6000-bytes) else 0;
+    while start<to && text[start]>=128 && text[start]<192 {start+=1;}
+    m:=v[0].items[v[0].ni];id:[128]u8;n:=hs_cat(id[..],0,"");digits:[64]u8;n=hs_cat(id[..],n,hs_itoa(part,digits[..]));n=hs_cat(id[..],n,":");n=hs_cat(id[..],n,hs_itoa(start,digits[..]));m.ni=ea_copy(m.id[..],cast(string)id[0..<n]);
+    m.nr=ea_copy(m.role[..],ifx p.kind==P_USER then "user" else ifx p.kind==P_TOOL then "tool" else ifx p.kind==P_TEXT then "assistant" else "notice");m.nk=ea_copy(m.tool[..],hs_cut(p.name,128));
+    m.text_at=ea_text_put(v,cast(string)text[start..<to]);m.nt=to-start;m.complete=start==0 && to==text.count && (p.kind!=P_TEXT || part<s[0].n-1 || !s[0].live);if m.text_at<0 {es_refuse(v,"output_limit");return;}
+    v[0].items[v[0].ni]=m;v[0].ni+=1;bytes+=m.nt;
+    if start>0 {end=start;break;}part-=1;end= -1;
+  }
+  // Offsets borrow only our owned arena; reverse item order, never their bytes.
+  for i:0..<v[0].ni/2 {j:=v[0].ni-1-i;tmp:=v[0].items[i];v[0].items[i]=v[0].items[j];v[0].items[j]=tmp;}
+  if part>=0 {if end<0 {p:=s[0].parts[part];text:=ifx p.kind==P_TOOL then (ifx p.resolved && p.output.count>0 then p.output else ifx p.input.count>0 then p.input else p.detail) else s_text_of(s,part);end=text.count;}
+    b:[64]u8;v[0].nc=ea_copy(v[0].cursor[..],hs_itoa((part+1)*1000000+end,b[..]));v[0].complete=false;}
+}
+#test "managed timeline pages retain every byte of a long message and refuse a foreign cursor" {
+  s:[1]Session;pool:[24000]u8;s_init(s[..],pool[..]);text:[12000]u8;for i:0..<12000 {text[i]=ifx i<6000 then cast(u8)'a' else cast(u8)'b';}s_user(s[..],cast(string)text[..]);
+  q:[1]EaRequest;v:[1]EaView;es_project(s[..],q[..],v[..]);#assert v[0].ni==1 && ea_item_text(v[..],0)==cast(string)text[6000..<12000] && v[0].nc>0;
+  q[0].before=1006000;v[0]=EaView.{};es_project(s[..],q[..],v[..]);#assert v[0].ni==1 && ea_item_text(v[..],0)==cast(string)text[0..<6000] && v[0].nc==0;
+  q[0].before=9000000;v[0]=EaView.{};es_project(s[..],q[..],v[..]);#assert v[0].ne>0 && v[0].ni==0;
+}
+
+es_refuse :: (v:[]EaView,code:string) #effects(all) {v[0].ne=ea_copy(v[0].error[..],code);v[0].complete=false;}
+es_saved_summary :: (h:[]HsHost,id:string,grant:string,summary:[]EaSession)->bool #effects(all) {
+  if !ea_id(id,32) || !ea_id(grant,64) {return false;}
+  slot:[1]EsSlot;slot[0].summary.ni=ea_copy(slot[0].summary.id[..],id);ncopy:=ea_copy(slot[0].grant[..],grant);
+  path:[1400]u8;b:[8192]u8;n:=fs_read(es_file(slot[..],".json",path[..]),b[..]);v:[1]EaView;
+  if n<1 || !ea_view_read(cast(string)b[0..<n],v[..]) || v[0].ns!=1 || cast(string)v[0].host[..]!=cast(string)h[0].xhex[..] {return false;}
+  s:=v[0].sessions[0];if cast(string)s.id[0..<s.ni]!=id {return false;}
+  s.nc=ea_copy(s.control[..],ifx s.busy then "unknown" else "observe-only");s.busy=false;s.nr=0;summary[0]=s;return true;
+}
+es_saved_list :: (h:[]HsHost,grant:string,v:[]EaView) #effects(all) {
+  dir:[1400]u8;files:[1]FsList;count:=fs_list(es_path("",dir[..]),files[..]);if count<0 {v[0].complete=false;return;}
+  prefix:[128]u8;np:=hs_cat(prefix[..],0,"environment-");np=hs_cat(prefix[..],np,grant);np=hs_cat(prefix[..],np,"-");
+  for i:0..<count {name:=fs_entry(files[..],i);
+    if name.count!=np+37 || !hs_prefix(name,cast(string)prefix[0..<np]) || !csr_suffix(name,".json") {continue;}
+    id:=cast(string)name[np..<np+32];if es_find(h[0].environment[..],id,grant)>=0 {continue;}
+    summary:[1]EaSession;if !es_saved_summary(h,id,grant,summary[..]) {v[0].complete=false;continue;}
+    if v[0].ns>=8 {v[0].complete=false;break;}v[0].sessions[v[0].ns]=summary[0];v[0].ns+=1;
+  }
+}
+es_read_saved :: (h:[]HsHost,q:[]EaRequest,grant:string,v:[]EaView) #effects(all) {
+  summary:[1]EaSession;id:=cast(string)q[0].session[0..<q[0].ns];if !es_saved_summary(h,id,grant,summary[..]) {es_refuse(v,"not_found");return;}
+  slot:[1]EsSlot;slot[0].summary=summary[0];ncopy:=ea_copy(slot[0].grant[..],grant);path:[1400]u8;data:[2097152]u8;n:=fs_read(es_file(slot[..],".jsonl",path[..]),data[..]);
+  if n<0 {es_refuse(v,"source_unavailable");return;}s_init(slot[0].s[..],slot[0].pool[..]);sl_load(slot[0].s[..],cast(string)data[0..<n]);
+  v[0].ns=1;v[0].sessions[0]=summary[0];es_project(slot[0].s[..],q,v);
+
+}
+es_native_list :: (h:[]HsHost,q:[]EaRequest,v:[]EaView) #effects(all) {
+  e:=h[0].environment[..];c:=e[0].configuration[..];scan:[1]CsrScan;rb:[2048]u8;pb:[2048]u8;
+  root:=csr_root(rb[..]);projects:=fs_join(root,"projects",pb[..]);
+  csr_discover_tree(scan[..],projects,cast(string)c[0].history[0..<c[0].nh],0);
+  v[0].complete=v[0].complete && !scan[0].incomplete;
+  start:=ifx q[0].before<scan[0].n then q[0].before else scan[0].n;
+  for i:start..<scan[0].n {
+    if v[0].ns>=16 {v[0].complete=false;b:[64]u8;v[0].nc=ea_copy(v[0].cursor[..],hs_itoa(i,b[..]));break;}row:=scan[0].rows[i];s:=v[0].sessions[v[0].ns];
+    s.ni=ea_copy(s.id[..],cast(string)row.id[0..<row.nid]);s.nw=ea_copy(s.workspace[..],"default");s.nt=ea_copy(s.title[..],cast(string)row.title[0..<row.ntitle]);
+    s.nc=ea_copy(s.control[..],"observe-only");s.updated=row.modified/1000000;v[0].sessions[v[0].ns]=s;v[0].ns+=1;
+  }
+}
+es_native_read :: (h:[]HsHost,q:[]EaRequest,v:[]EaView) #effects(all) {
+  // Resolve from the admitted workspace's catalog; a native UUID is not a path
+  // grant and must never use the reader's broader exact-ID discovery shortcut.
+  e:=h[0].environment[..];c:=e[0].configuration[..];scan:[1]CsrScan;rb:[2048]u8;pb:[2048]u8;
+  root:=csr_root(rb[..]);projects:=fs_join(root,"projects",pb[..]);csr_discover_tree(scan[..],projects,cast(string)c[0].history[0..<c[0].nh],0);
+  found:= -1;for i:0..<scan[0].n {row:=scan[0].rows[i];if cast(string)row.id[0..<row.nid]==cast(string)q[0].session[0..<q[0].ns] {found=i;}}
+  if found<0 {es_refuse(v,ifx scan[0].incomplete then "discovery_incomplete" else "not_found");return;}
+  row:=scan[0].rows[found];data:[CSR_OUTPUT_MAX]u8;raw:=csr_read_file(cast(string)row.path[0..<row.npath],cast(string)row.id[0..<row.nid],24,q[0].before,1024,false,data[..]);
+  nodes:[2048]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {es_refuse(v,"source_unavailable");return;}
+  j:=d[0];if jv_get(j,0,"error")>=0 {es_refuse(v,"source_unavailable");return;}
+  turns:=jv_get(j,0,"turns");if jv_kind(j,turns)!=JV_ARRAY {es_refuse(v,"source_unavailable");return;}
+  for i:0..<jv_len(j,turns) {if v[0].ni>=64 {v[0].complete=false;break;}at:=jv_at(j,turns,i);m:=v[0].items[v[0].ni];
+    m.ni=jv_str(j,jv_get(j,at,"uuid"),m.id[..]);m.nr=jv_str(j,jv_get(j,at,"role"),m.role[..]);decoded:[16384]u8;m.nt=jv_str(j,jv_get(j,at,"text"),decoded[..]);if m.nt<0 {es_refuse(v,"source_unavailable");return;}m.text_at=ea_text_put(v,cast(string)decoded[0..<m.nt]);if m.text_at<0 {es_refuse(v,"output_limit");return;}m.complete=true;
+    if m.ni<1 || m.nr<1 || m.nt<0 {es_refuse(v,"source_unavailable");return;}v[0].items[v[0].ni]=m;v[0].ni+=1;
+  }
+  before:=jv_int(j,jv_get(j,0,"next_before"),0);if before>0 {b:[64]u8;v[0].nc=ea_copy(v[0].cursor[..],hs_itoa(before,b[..]));}
+  v[0].complete=before==0 && jv_len(j,jv_get(j,0,"warnings"))==0;
+  epoch:[64]u8;v[0].np=ea_copy(v[0].epoch[..],hs_itoa(row.modified,epoch[..]));
+}
+es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) #effects(all) {
+  e:=h[0].environment[..];es_snapshot(h,q,grant,v);method:=cast(string)q[0].method[0..<q[0].nm];
+  if method=="DescribeEnvironment" {return;}
+  if cast(string)q[0].workspace[0..<q[0].nw]!="default" {es_refuse(v,"workspace_refused");return;}
+  if method=="ListSessions" {if q[0].before==0 {es_saved_list(h,grant,v);}else {v[0].ns=0;}es_native_list(h,q,v);return;}
+  id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);
+  if method=="ReadSession" {if k<0 {if ea_id(id,32) {es_read_saved(h,q,grant,v);}else {es_native_read(h,q,v);}}return;}
+  if !ea_id(cast(string)q[0].command[0..<q[0].nc],32) || !ea_id(id,32) {es_refuse(v,"malformed");return;}
+  command:[24576]u8;n:=ea_write(q,command[..]);if n<0 {es_refuse(v,"malformed");return;}
+  name:[256]u8;name_n:=hs_cat(name[..],0,"command-");name_n=hs_cat(name[..],name_n,grant);name_n=hs_cat(name[..],name_n,"-");name_n=hs_cat(name[..],name_n,cast(string)q[0].command[..]);name_n=hs_cat(name[..],name_n,".json");
+  path:[1400]u8;file:=es_path(cast(string)name[0..<name_n],path[..]);
+  if fs_exists(file) {
+    previous:[24576]u8;got:=fs_read(file,previous[..]);if got!=n || cast(string)previous[0..<ifx got>0 then got else 0]!=cast(string)command[0..<n] {es_refuse(v,"idempotency_conflict");return;}
+    v[0].nq=ea_copy(v[0].command[..],cast(string)q[0].command[..]);v[0].nt=ea_copy(v[0].status[..],ifx k>=0 then "accepted" else "unknown");return;
+  }
+  if !ea_fresh(q[0].issued,q[0].expires,cxproc_wall_us()/1000) {es_refuse(v,"expired");return;}
+  if method=="OpenSession" {
+    if k>=0 || !ea_text(cast(string)q[0].text[0..<q[0].nt]) {es_refuse(v,"conflict");return;}
+    for i:0..<ES_SLOTS {if !e[0].slots[i].occupied {k=i;break;}}
+    if k<0 {es_refuse(v,"capacity");return;}
+    slot:=e[0].slots[k..<k+1];slot[0].occupied=true;ncopy:=ea_copy(slot[0].grant[..],grant);ncopy=ea_copy(slot[0].device[..],device);
+    s:=slot[0].s[..];s_init(s,slot[0].pool[..]);engine:=slot[0].engine[..];e_attach(engine,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].scratch[..],slot[0].prompt[..]);
+    c:=e[0].configuration[..];engine[0].cwd_n=ea_copy(engine[0].cwd[..],cast(string)c[0].workspace[0..<c[0].nw]);
+    home:[1024]u8;exe:[1200]u8;p:=fs_join(proc_getenv("HOME",home[..]),".local/bin/claude",exe[..]);if fs_kind(p)==FS_FILE {engine[0].claude_n=ea_copy(engine[0].claude[..],p);}
+    summary:=slot[0].summary;summary.ni=ea_copy(summary.id[..],id);summary.nw=ea_copy(summary.workspace[..],"default");summary.nt=ea_copy(summary.title[..],hs_cut(cast(string)q[0].text[0..<q[0].nt],200));
+    summary.managed=true;summary.nc=ea_copy(summary.control[..],"available");summary.generation=cxproc_wall_us()/1000;slot[0].summary=summary;
+  } else {
+    if k<0 {es_refuse(v,"not_found");return;}
+    slot:=e[0].slots[k..<k+1];summary:=slot[0].summary;
+    if slot[0].failed || cast(string)summary.control[0..<summary.nc]!="available" || ea_command(q[0].generation,summary.generation,q[0].revision,summary.revision,method=="SendMessage" && summary.busy,false)!=0 {es_refuse(v,"conflict");return;}
+    if method=="SendMessage" && !ea_text(cast(string)q[0].text[0..<q[0].nt]) {es_refuse(v,"malformed");return;}
+    if method=="RespondInteraction" && (summary.nr==0 || cast(string)summary.interaction[0..<summary.nr]!=cast(string)q[0].interaction[0..<q[0].ni]) {es_refuse(v,"interaction_expired");return;}
+  }
+  slot:=e[0].slots[k..<k+1];
+  // A durable intent precedes every process/control effect. Its exact retry is
+  // never automatically dispatched again, including after a service restart.
+  if !fs_replace_durable(file,cast(string)command[0..<n]) {if method=="OpenSession" {slot[0].occupied=false;}es_refuse(v,"storage_unavailable");return;}
+  slot[0].summary.revision+=1;
+  if method=="OpenSession" || method=="SendMessage" {e_send(slot[0].engine[..],slot[0].s[..],cast(string)q[0].text[0..<q[0].nt]);}
+  else if method=="StopTurn" {e_stop(slot[0].engine[..],slot[0].s[..]);}
+  else if method=="RespondInteraction" {e_answer(slot[0].engine[..],slot[0].s[..],q[0].allow);}
+  slot[0].summary.busy=slot[0].s[0].live;slot[0].summary.nr=0;es_tick(h);es_snapshot(h,q,grant,v);
+  v[0].nq=ea_copy(v[0].command[..],cast(string)q[0].command[..]);v[0].nt=ea_copy(v[0].status[..],"accepted");
+}

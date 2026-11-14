@@ -1,0 +1,162 @@
+// One codec for the explicit shared-user bootstrap profile. Every client uses
+// these typed bounded records. HOST envelope/signature verification is separate.
+#load "policy.coax";
+#load "../../json/json.coax";
+
+EA_SCHEMA :: "openagents.environment.runtime.v1alpha1";
+EA_CONFIG :: "openagents.environment.configuration.v1alpha1";
+EA_CATALOG :: "openagents.environment.catalog.v1alpha1";
+EaCatalogEntry :: struct {host:[64]u8;label:[80]u8;nl:int;}
+EaCatalog :: struct {ok:bool;entries:[64]EaCatalogEntry;n:int;}
+ea_catalog_write :: (c:[]EaCatalog,out:[]u8)->int #export_c #effects(all) {
+  if c[0].n<0 || c[0].n>64 {return -1;}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],EA_CATALOG);jo_key(o[..],"environments");jo_arr(o[..]);
+  for i:0..<c[0].n {row:=c[0].entries[i];if !ea_id(cast(string)row.host[..],64) || row.nl<1 || row.nl>80 {return -1;}
+    jo_obj(o[..]);jo_key(o[..],"host_pubkey");jo_str(o[..],cast(string)row.host[..]);jo_key(o[..],"display_name");jo_str(o[..],cast(string)row.label[0..<row.nl]);jo_end(o[..]);}
+  jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+ea_catalog_read :: (raw:string,c:[]EaCatalog)->bool #effects(all) {
+  c[0]=EaCatalog.{};nodes:[512]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];list:=jv_get(j,0,"environments");
+  if jv_raw(j,jv_get(j,0,"schema"))!=EA_CATALOG || jv_kind(j,list)!=JV_ARRAY || jv_len(j,list)>64 {return false;}
+  c[0].n=jv_len(j,list);for i:0..<c[0].n {row:=jv_at(j,list,i);n:=jv_str(j,jv_get(j,row,"host_pubkey"),c[0].entries[i].host[..]);c[0].entries[i].nl=jv_str(j,jv_get(j,row,"display_name"),c[0].entries[i].label[..]);
+    if n!=64 || !ea_id(cast(string)c[0].entries[i].host[..],64) || c[0].entries[i].nl<1 {return false;}}
+  c[0].ok=true;return true;
+}
+EaConfiguration :: struct {device:[64]u8;grant:[64]u8;workspace:[1024]u8;nw:int;label:[80]u8;nl:int;enabled:bool;history:[1024]u8;nh:int;}
+ea_config_write :: (c:[]EaConfiguration,out:[]u8)->int #effects(all) {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],EA_CONFIG);
+  jo_key(o[..],"device");jo_str(o[..],cast(string)c[0].device[..]);jo_key(o[..],"grant");jo_str(o[..],cast(string)c[0].grant[..]);jo_key(o[..],"workspace");jo_str(o[..],cast(string)c[0].workspace[0..<c[0].nw]);
+  jo_key(o[..],"display_name");jo_str(o[..],cast(string)c[0].label[0..<c[0].nl]);jo_key(o[..],"enabled");jo_bool(o[..],c[0].enabled);jo_key(o[..],"history_root");jo_str(o[..],cast(string)c[0].history[0..<c[0].nh]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+ea_config_read :: (raw:string,c:[]EaConfiguration)->bool #effects(all) {
+  c[0]=EaConfiguration.{};nodes:[32]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];
+  fields:=[7]string.["schema","device","grant","workspace","display_name","enabled","history_root"];seen:[7]bool;
+  if jv_kind(j,0)!=JV_OBJECT || jv_len(j,0)!=7 {return false;}
+  for i:0..<7 {key:=jv_key(j,jv_at(j,0,i));found:=false;for f,k:fields {if f==key {if seen[k] {return false;}seen[k]=true;found=true;}}if !found {return false;}}
+  if jv_raw(j,jv_get(j,0,"schema"))!=EA_CONFIG || ea_field(j,"device",c[0].device[..])!=64 || ea_field(j,"grant",c[0].grant[..])!=64 {return false;}
+  c[0].nh=ea_field(j,"history_root",c[0].history[..]);if c[0].nh<1 {return false;}c[0].nw=ea_field(j,"workspace",c[0].workspace[..]);c[0].nl=ea_field(j,"display_name",c[0].label[..]);
+  if c[0].nw<1 || c[0].nl<1 || !ea_id(cast(string)c[0].device[..],64) || !ea_id(cast(string)c[0].grant[..],64) {return false;}
+  k:=jv_kind(j,jv_get(j,0,"enabled"));if k!=JV_TRUE && k!=JV_FALSE {return false;}c[0].enabled=k==JV_TRUE;return true;
+}
+EaRequest :: struct {
+  method:[32]u8;nm:int;workspace:[64]u8;nw:int;session:[128]u8;ns:int;
+  command:[32]u8;nc:int;generation:int;revision:int;text:[16384]u8;nt:int;
+  interaction:[128]u8;ni:int;allow:bool;before:int;expires:int;issued:int;
+}
+EaSession :: struct {id:[128]u8;ni:int;workspace:[64]u8;nw:int;title:[256]u8;nt:int;managed:bool;control:[32]u8;nc:int;generation:int;revision:int;busy:bool;interaction:[128]u8;nr:int;updated:int;}
+EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;}
+EaView :: struct {ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[64]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;}
+ea_text_put :: (v:[]EaView,text:string)->int #effects(all) {
+  if text.count>16384 || v[0].text_n+text.count>v[0].text.count {return -1;}
+  at:=v[0].text_n;for c,i:text {v[0].text[at+i]=c;}v[0].text_n+=text.count;return at;
+}
+ea_item_text :: (v:[]EaView,i:int)->string #effects(all) {
+  if i<0 || i>=v[0].ni {return "";}m:=v[0].items[i];
+  return cast(string)v[0].text[m.text_at..<m.text_at+m.nt];
+}
+ea_copy :: (out:[]u8,s:string)->int #effects(all) {if s.count>out.count {return -1;}for c,i:s {out[i]=c;}return s.count;}
+ea_field :: (d:Jv,key:string,out:[]u8)->int #effects(all) {return jv_str(d,jv_get(d,0,key),out);}
+ea_read :: (raw:string,q:[]EaRequest)->bool #export_c #effects(all) {
+  q[0]=EaRequest.{};nodes:[64]JvNode;d:[1]Jv;
+  if raw.count>24576 || !jv_parse(d[..],raw,nodes[..]) || jv_kind(d[0],0)!=JV_OBJECT {return false;}
+  v:=d[0];fields:=[12]string.["method","workspace_id","session_id","command_id","generation","expected_revision","text","interaction_id","allow","before","expires_at_ms","issued_at_ms"];seen:[12]bool;
+  for i:0..<jv_len(v,0) {known:=false;k:=jv_key(v,jv_at(v,0,i));for key,j:fields {if k==key {if seen[j] {return false;}seen[j]=true;known=true;}}if !known {return false;}}
+  q[0].nm=ea_field(v,"method",q[0].method[..]);q[0].nw=ea_field(v,"workspace_id",q[0].workspace[..]);
+  q[0].ns=ea_field(v,"session_id",q[0].session[..]);q[0].nc=ea_field(v,"command_id",q[0].command[..]);
+  q[0].nt=ea_field(v,"text",q[0].text[..]);q[0].ni=ea_field(v,"interaction_id",q[0].interaction[..]);
+  if q[0].nm<1 || q[0].nw<0 || q[0].ns<0 || q[0].nc<0 || q[0].nt<0 || q[0].ni<0 {return false;}
+  q[0].generation=jv_int(v,jv_get(v,0,"generation"),-1);q[0].revision=jv_int(v,jv_get(v,0,"expected_revision"),-1);
+  q[0].before=jv_int(v,jv_get(v,0,"before"),-1);b:=jv_kind(v,jv_get(v,0,"allow"));
+  q[0].expires=jv_int(v,jv_get(v,0,"expires_at_ms"),-1);q[0].issued=jv_int(v,jv_get(v,0,"issued_at_ms"),-1);
+  if q[0].generation<0 || q[0].revision<0 || q[0].before<0 || q[0].expires<0 || q[0].issued<0 || (b!=JV_TRUE && b!=JV_FALSE) {return false;}
+  q[0].allow=b==JV_TRUE;return ea_right(cast(string)q[0].method[0..<q[0].nm])>=0;
+}
+ea_write :: (q:[]EaRequest,out:[]u8)->int #effects(all) {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
+  jo_key(o[..],"method");jo_str(o[..],cast(string)q[0].method[0..<q[0].nm]);
+  jo_key(o[..],"workspace_id");jo_str(o[..],cast(string)q[0].workspace[0..<q[0].nw]);
+  jo_key(o[..],"session_id");jo_str(o[..],cast(string)q[0].session[0..<q[0].ns]);
+  jo_key(o[..],"command_id");jo_str(o[..],cast(string)q[0].command[0..<q[0].nc]);
+  jo_key(o[..],"generation");jo_int(o[..],q[0].generation);jo_key(o[..],"expected_revision");jo_int(o[..],q[0].revision);
+  jo_key(o[..],"text");jo_str(o[..],cast(string)q[0].text[0..<q[0].nt]);
+  jo_key(o[..],"interaction_id");jo_str(o[..],cast(string)q[0].interaction[0..<q[0].ni]);
+  jo_key(o[..],"allow");jo_bool(o[..],q[0].allow);jo_key(o[..],"before");jo_int(o[..],q[0].before);jo_key(o[..],"expires_at_ms");jo_int(o[..],q[0].expires);jo_key(o[..],"issued_at_ms");jo_int(o[..],q[0].issued);jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+ea_read_body :: (method:string,id:string,before:string,out:[]u8)->int #export_c #effects(all) {
+  if ea_right(method)!=0 || id.count>128 {return -1;}
+  q:[1]EaRequest;q[0].nm=ea_copy(q[0].method[..],method);q[0].nw=ea_copy(q[0].workspace[..],"default");q[0].ns=ea_copy(q[0].session[..],id);
+  for c:before {if c<'0' || c>'9' || q[0].before>900719925474099 {return -1;}q[0].before=q[0].before*10+cast(int)(c-'0');}
+  return ea_write(q[..],out);
+}
+ea_summary :: (o:[]Jo,s_in:EaSession) #effects(all) {
+  s:=s_in;
+  jo_obj(o);jo_key(o,"session_id");jo_str(o,cast(string)s.id[0..<s.ni]);jo_key(o,"workspace_id");jo_str(o,cast(string)s.workspace[0..<s.nw]);
+  jo_key(o,"title");jo_str(o,cast(string)s.title[0..<s.nt]);jo_key(o,"origin");jo_str(o,ifx s.managed then "managed" else "observed-native");
+  jo_key(o,"control");jo_str(o,cast(string)s.control[0..<s.nc]);jo_key(o,"generation");jo_int(o,s.generation);jo_key(o,"revision");jo_int(o,s.revision);
+  jo_key(o,"busy");jo_bool(o,s.busy);jo_key(o,"interaction_id");jo_str(o,cast(string)s.interaction[0..<s.nr]);jo_key(o,"updated_at_ms");jo_int(o,s.updated);jo_end(o);
+}
+ea_item :: (o:[]Jo,m_in:EaItem,text:string) #effects(all) {
+  m:=m_in;
+  jo_obj(o);jo_key(o,"item_id");jo_str(o,cast(string)m.id[0..<m.ni]);jo_key(o,"role");jo_str(o,cast(string)m.role[0..<m.nr]);
+  jo_key(o,"text");jo_str(o,text);jo_key(o,"tool_name");jo_str(o,cast(string)m.tool[0..<m.nk]);jo_key(o,"complete");jo_bool(o,m.complete);jo_end(o);
+}
+ea_view_write :: (v:[]EaView,out:[]u8)->int #effects(all) {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],EA_SCHEMA);jo_key(o[..],"host_pubkey");jo_str(o[..],cast(string)v[0].host[0..<v[0].nh]);
+  jo_key(o[..],"display_name");jo_str(o[..],cast(string)v[0].label[0..<v[0].nl]);jo_key(o[..],"method");jo_str(o[..],cast(string)v[0].method[0..<v[0].nm]);
+  jo_key(o[..],"sessions");jo_arr(o[..]);for i:0..<v[0].ns {ea_summary(o[..],v[0].sessions[i]);}jo_end(o[..]);
+  jo_key(o[..],"items");jo_arr(o[..]);for i:0..<v[0].ni {ea_item(o[..],v[0].items[i],ea_item_text(v,i));}jo_end(o[..]);
+  jo_key(o[..],"error");jo_str(o[..],cast(string)v[0].error[0..<v[0].ne]);jo_key(o[..],"complete");jo_bool(o[..],v[0].complete);
+  jo_key(o[..],"next_cursor");jo_str(o[..],cast(string)v[0].cursor[0..<v[0].nc]);jo_key(o[..],"command_id");jo_str(o[..],cast(string)v[0].command[0..<v[0].nq]);
+  jo_key(o[..],"command_status");jo_str(o[..],cast(string)v[0].status[0..<v[0].nt]);jo_key(o[..],"source_epoch");jo_str(o[..],cast(string)v[0].epoch[0..<v[0].np]);jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
+  v[0]=EaView.{};nodes:[4096]JvNode;d:[1]Jv;if raw.count>1048576 || !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];
+  if jv_raw(j,jv_get(j,0,"schema"))!=EA_SCHEMA {return false;}
+  v[0].nh=ea_field(j,"host_pubkey",v[0].host[..]);v[0].nl=ea_field(j,"display_name",v[0].label[..]);v[0].nm=ea_field(j,"method",v[0].method[..]);
+  v[0].ne=ea_field(j,"error",v[0].error[..]);v[0].nc=ea_field(j,"next_cursor",v[0].cursor[..]);v[0].nq=ea_field(j,"command_id",v[0].command[..]);
+  v[0].nt=ea_field(j,"command_status",v[0].status[..]);v[0].np=ea_field(j,"source_epoch",v[0].epoch[..]);
+  if v[0].nh!=64 || v[0].nl<0 || v[0].nm<1 || v[0].ne<0 || v[0].nc<0 || v[0].nq<0 || v[0].nt<0 || v[0].np<0 {return false;}
+  if !ea_id(cast(string)v[0].host[..],64) {return false;}v[0].complete=jv_bool(j,jv_get(j,0,"complete"));
+  list:=jv_get(j,0,"sessions");items:=jv_get(j,0,"items");
+  if jv_kind(j,list)!=JV_ARRAY || jv_kind(j,items)!=JV_ARRAY {return false;}
+  v[0].ns=jv_len(j,list);v[0].ni=jv_len(j,items);if v[0].ns>128 || v[0].ni>64 {return false;}
+  for i:0..<v[0].ns {s:=v[0].sessions[i];row:=jv_at(j,list,i);
+    s.ni=jv_str(j,jv_get(j,row,"session_id"),s.id[..]);s.nw=jv_str(j,jv_get(j,row,"workspace_id"),s.workspace[..]);s.nt=jv_str(j,jv_get(j,row,"title"),s.title[..]);
+    origin:=jv_raw(j,jv_get(j,row,"origin"));if origin!="managed" && origin!="observed-native" {return false;}s.managed=origin=="managed";
+    s.nc=jv_str(j,jv_get(j,row,"control"),s.control[..]);s.nr=jv_str(j,jv_get(j,row,"interaction_id"),s.interaction[..]);
+    s.generation=jv_int(j,jv_get(j,row,"generation"),-1);s.revision=jv_int(j,jv_get(j,row,"revision"),-1);s.updated=jv_int(j,jv_get(j,row,"updated_at_ms"),-1);s.busy=jv_bool(j,jv_get(j,row,"busy"));
+    if s.ni<1 || s.nw<0 || s.nt<0 || s.nc<1 || s.nr<0 || s.generation<0 || s.revision<0 || s.updated<0 {return false;}v[0].sessions[i]=s;
+  }
+  for i:0..<v[0].ni {m:=v[0].items[i];row:=jv_at(j,items,i);
+    m.ni=jv_str(j,jv_get(j,row,"item_id"),m.id[..]);m.nr=jv_str(j,jv_get(j,row,"role"),m.role[..]);m.text_at=v[0].text_n;end:=ifx v[0].text_n+16384<v[0].text.count then v[0].text_n+16384 else v[0].text.count;m.nt=jv_str(j,jv_get(j,row,"text"),v[0].text[v[0].text_n..<end]);m.nk=jv_str(j,jv_get(j,row,"tool_name"),m.tool[..]);m.complete=jv_bool(j,jv_get(j,row,"complete"));
+    if m.ni<1 || m.nr<1 || m.nt<0 || m.nk<0 {return false;}v[0].text_n+=m.nt;v[0].items[i]=m;
+  }
+  v[0].ok=true;return true;
+}
+
+#test "runtime view is owned, host-scoped and refuses malformed item bounds" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"DescribeEnvironment");v[0].complete=true;
+  out:[4096]u8;n:=ea_view_write(v[..],out[..]);other:[1]EaView;#assert n>0 && ea_view_read(cast(string)out[0..<n],other[..]);
+  #assert other[0].ok && other[0].complete && other[0].nh==64;
+  #assert !ea_view_read("{}",other[..]);
+}
+#test "decoded timeline copies own one bounded arena without retained pointers" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ReadSession");v[0].ni=1;
+  v[0].items[0].ni=ea_copy(v[0].items[0].id[..],"item-1");v[0].items[0].nr=ea_copy(v[0].items[0].role[..],"assistant");
+  text:="**héllo**\n\"world\"";v[0].items[0].text_at=ea_text_put(v[..],text);v[0].items[0].nt=text.count;
+  out:[4096]u8;n:=ea_view_write(v[..],out[..]);r:[1]EaView;#assert n>0 && ea_view_read(cast(string)out[0..<n],r[..]);
+  copy:=[1]EaView.[r[0]];for i:0..<r[0].text_n {r[0].text[i]=0;}
+  #assert ea_item_text(copy[..],0)==text;
+  oversized:[16385]u8;before:=copy[0].text_n;#assert ea_text_put(copy[..],cast(string)oversized[..])== -1 && copy[0].text_n==before;
+}
+
+#test "runtime request codec preserves escaped text and rejects a duplicate or unknown method" {
+  q:[1]EaRequest;q[0].nm=ea_copy(q[0].method[..],"SendMessage");q[0].nt=ea_copy(q[0].text[..],"hello\n\"world\"");q[0].generation=7;q[0].revision=4;
+  out:[24576]u8;n:=ea_write(q[..],out[..]);r:[1]EaRequest;
+  #assert n>0 && ea_read(cast(string)out[0..<n],r[..]);#assert r[0].generation==7 && r[0].revision==4 && r[0].nt==13;
+  #assert !ea_read("{\"method\":\"RunCommand\"}",r[..]);
+  #assert !ea_read("{\"method\":\"ReadSession\",\"method\":\"SendMessage\"}",r[..]);
+  #assert !ea_read("[]",r[..]);
+}

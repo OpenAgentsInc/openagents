@@ -108,6 +108,13 @@ fs_write :: (path: string, data: string) -> bool {
   if !fs_push(path) { r := cxfs_write(0); return false; }
   return cxfs_write(0) == 0 && ok;
 }
+// A private complete checkpoint: sync a new sibling, atomically replace the
+// destination, then sync its directory. Failure after rename is unknown;
+// callers must not dispatch an effect after a false result.
+fs_replace_durable :: (path:string,data:string)->bool #effects(all) {
+  ok:=fs_put_all(data);if !fs_push(path) {r:=cxfs_write(4);return false;}
+  return cxfs_write(4)==0 && ok;
+}
 fs_append :: (path: string, data: string) -> bool {
   ok := fs_put_all(data);
   if !fs_push(path) { r := cxfs_write(1); return false; }

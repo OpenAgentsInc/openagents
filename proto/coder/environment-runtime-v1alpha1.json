@@ -1,0 +1,22 @@
+{
+  "profile": "openagents.environment.runtime.v1alpha1",
+  "local_framing": "one UTF-8 JSON record plus LF per owner-authenticated Unix connection",
+  "fixtures": [
+    {
+      "kind": "request",
+      "bytes": "{\"method\":\"OpenSession\",\"workspace_id\":\"default\",\"session_id\":\"22222222222222222222222222222222\",\"command_id\":\"11111111111111111111111111111111\",\"generation\":0,\"expected_revision\":0,\"text\":\"Hello\\nClaude\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":1700000300000,\"issued_at_ms\":1700000000000}"
+    },
+    {
+      "kind": "view",
+      "bytes": "{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Mac\",\"method\":\"ReadSession\",\"sessions\":[{\"session_id\":\"22222222222222222222222222222222\",\"workspace_id\":\"default\",\"title\":\"Hello Claude\",\"origin\":\"managed\",\"control\":\"available\",\"generation\":1,\"revision\":2,\"busy\":false,\"interaction_id\":\"\",\"updated_at_ms\":1700000000000}],\"items\":[{\"item_id\":\"0\",\"role\":\"assistant\",\"text\":\"**Hello**, Claude.\",\"tool_name\":\"\",\"complete\":true}],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\"}"
+    },
+    {
+      "kind": "configuration",
+      "bytes": "{\"schema\":\"openagents.environment.configuration.v1alpha1\",\"device\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"grant\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"workspace\":\"/home/owner/openagents\",\"display_name\":\"CoderOS\",\"enabled\":true,\"history_root\":\"/home/owner\"}"
+    },
+    {
+      "kind": "catalog",
+      "bytes": "{\"schema\":\"openagents.environment.catalog.v1alpha1\",\"environments\":[{\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Mac\"}]}"
+    }
+  ]
+}

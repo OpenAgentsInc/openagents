@@ -41,9 +41,10 @@
 #load "../../coax/lib/nostr/nip19-core.coax";
 #load "../../coax/lib/agent/session/log.coax";   // the session log's reader
 #load "../../coax/lib/agent/cli/json-output.coax";   // what --json prints (cj_*)
+#load "host-environment.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
-cxproc_wall_us :: () -> int #foreign #effects(all);
+#load "../../coax/lib/sys/clock.coax";
 cxproc_pid_alive :: (pid: int) -> int #foreign #effects(all);
 
 HS_RELAY :: "wss://relay.openagents.com";
@@ -460,6 +461,7 @@ HsHost :: struct {
   // retained replies (NIP-HOST "Admission order and retention"): request ID, event ID, expiry, the signed reply
   rq: [HS_RETAINED] [64] u8; rev: [HS_RETAINED] [64] u8; rexp: [HS_RETAINED] int; rn: [HS_RETAINED] int; rbody: [HS_RETAINED] [HS_REPLY_MAX] u8; rnext: int;
   seen: [256] [64] u8; nseen: int;   // event IDs already answered (two subscriptions overlap)
+  environment:[1]EsHost;
 }
 hs_relay_of :: (h: [] HsHost) -> string { return cast(string) h[0].relay[0..<h[0].nrelay]; }
 hs_seen :: (h: [] HsHost, id: string) -> bool {
@@ -502,6 +504,10 @@ hs_handle :: (h: [] HsHost, text: string, w: [] HbWork, st: [] HsState, statebuf
   sig := cast(string) signer[..]; ev := cast(string) eid[..]; mb := cast(string) mail[..];
   if o.error == HB_EVENT || o.error == HB_SIGNATURE || o.error == HB_ARTIFACT || o.error == HB_KEY || o.error == HB_DECRYPT || o.error == HB_ENVELOPE || o.error == HB_INPUT { return 0; }
   now := hs_now();
+  if o.error==HB_UNSUPPORTED || o.error==HB_SHAPE {
+    app:[1]HbAppRequest;space:[49152]u8;arena:=[1]HbText.[HbText.{buf=space[..]}];
+    if hb_app_read(cast(string)body[0..<o.body_n],app[..],arena[..]) {return es_handle(h,app[0],sig,ev,mb,w,st,statebuf,out);}
+  }
   if o.error != HB_OK {
     // a body that does not read: refused, in its mailbox, for its signer
     code := ifx o.error == HB_SIGNER then "forbidden" else hb_refusal(o.error);
@@ -643,6 +649,11 @@ hs_publish :: (h: [] HsHost, p: [] CliRelay, event: string) -> bool {
 hs_serve :: (args: [] Args) -> int {
   h_b: [1] HsHost; h := h_b[..];
   if !hs_key(h[0].secret[..], h[0].x[..], h[0].xhex[..]) { tool_errln("coder host: could not read or make the host key in ~/.openagents/coder/host"); return 1; }
+  lock:[1400]u8;if !fs_try_lock(hs_path("service.lock",lock[..])) {tool_errln("coder host: this host already has a resident service");return 4;}
+  defer {_ = fs_unlock();}
+  configured:=es_load_configuration(h[0].environment[..]);
+  local_listener:=es_local_listen();if local_listener<0 {tool_errln("Could not open the protected local environment socket.");return 1;}
+  defer {_ = cxsock_close(local_listener);}
   eb: [512] u8; env := proc_getenv("OPENAGENTS_NIP_HOST_RELAY", eb[..]);
   relay := args_value(args, "--relay", ifx env.count > 0 then env else HS_RELAY);
   if relay.count > 500 || !relay_uri(relay).ok { tool_errln("coder host: --relay is a ws:// or wss:// URL with a host name (ws://localhost:7777, not an IP address)"); return 2; }
@@ -668,6 +679,8 @@ hs_serve :: (args: [] Args) -> int {
   hs_outln("Paste this key into Your computer in Settings, This machine on openagents.com to pair this computer.");
   retry_at := 0;
   while end_at == 0 || hs_now() < end_at {
+    es_tick(h);
+    es_local_tick(h,local_listener);
     now_ms := cxsock_now_ms();
     if !live[cur] && now_ms >= retry_at {
       live[cur] = hs_subscribe(h, subs[cur..<cur + 1]);
@@ -896,6 +909,9 @@ tool_main :: () -> int #export_c #effects(all) {
     wipe(s[..]); hs_outln(cast(string) xh[..]); nb: [100] u8; hs_outln(hs_npub(x[..], nb[..])); return 0;
   }
   if verb == "call" { return hs_cmd_call(args, arg); }
+  if verb == "environment-enable" {return es_configure(args);}
+  if verb == "local-rpc" {return es_local_call(args);}
+  if verb == "rpc" {return es_rpc_call(args);}
   tool_err("coder host: unknown verb "); tool_errln(verb); tool_errln(HS_USAGE);
   return 2;
 }

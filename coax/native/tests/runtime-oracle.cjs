@@ -57,7 +57,25 @@ const root = process.argv[2];
       remember(event(1,slots.get('message.1.copy')));remember(event(109,0,'{\"copied\":true}'));
       const codeCopy=[...slots.keys()].find(id=>id.startsWith('message.1.body.')&&id.endsWith('.copy'));
       assert.ok(codeCopy);remember(event(1,slots.get(codeCopy)));remember(event(109,0,'{}'));
-      remember(event(1,slots.get('chat.back')));event(104,401,'{}');
+      remember(event(1,slots.get('chat.back')));
+      remember(event(104,200,'{"schema":"openagents.chat.history.v1","chats":[]}'));
+      remember(event(1,slots.get('environments.open')));
+      const host='a'.repeat(64);
+      remember(event(104,200,JSON.stringify({schema:'openagents.environment.catalog.v1alpha1',environments:[{host_pubkey:host,display_name:'Mac'}]})));
+      remember(event(1,slots.get('environment.0')));
+      const view={schema:'openagents.environment.runtime.v1alpha1',host_pubkey:host,display_name:'Mac',method:'ListSessions',sessions:[],items:[],error:'',complete:true,next_cursor:'',command_id:'',command_status:'',source_epoch:''};
+      remember(event(104,200,JSON.stringify(view)));
+      remember(event(1,slots.get('env.new')));
+      event(2,slots.get('env.composer'),'Hello Claude');event(1,slots.get('env.composer.send'));
+      remember(event(111,0,JSON.stringify({command_id:'1'.repeat(32),session_id:'2'.repeat(32),now_ms:1700000000000})));
+      remember(event(204,0,'{}'));remember(event(1,slots.get('env.reconnect')));
+      view.method='OpenSession';view.command_id='1'.repeat(32);view.command_status='accepted';
+      view.sessions=[{session_id:'2'.repeat(32),workspace_id:'default',title:'Hello Claude',origin:'managed',control:'available',generation:1,revision:1,busy:true,interaction_id:'',updated_at_ms:1700000000000}];
+      view.items=[{item_id:'0',role:'user',text:'Hello Claude',tool_name:'',complete:true}];
+      remember(event(104,200,JSON.stringify(view)));remember(event(112,0,'{}'));
+      view.method='ReadSession';view.sessions[0].busy=false;view.items.push({item_id:'1',role:'assistant',text:markdown.repeat(40),tool_name:'',complete:true});
+      remember(event(104,200,JSON.stringify(view)));
+
     } else {
       remember(event(1,slots.get('extras.more')));event(1,slots.get('extras.bitcoin'));
       event(21,0,'{"schema":"openagents.wallet.balance.v1","status":1,"sats":12345}');

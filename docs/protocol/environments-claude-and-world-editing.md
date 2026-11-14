@@ -11,6 +11,11 @@ normal environment setup/control interface on Mac and Linux, then Windows.
 The resident service remains independently runnable through the CLI. §3.1–3.5
 define that replacement; this revision changes the plan, not the shipped apps.
 
+Implementation has begun in the [first environment runtime](environment-runtime-v1alpha1.md):
+shared native clients, resident Claude execution and the account gateway.
+That record distinguishes the implemented bootstrap profile and its bounds
+from the full milestones and replacement qualification gates below.
+
 ## 1. The result and the delivery order
 
 The desktop and iPhone apps show **Mac**, **CoderOS** and **Account chats**.

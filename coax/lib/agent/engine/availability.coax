@@ -9,7 +9,7 @@
 #load "availability-policy.coax";
 #load "../../sys/fs.coax";
 
-cxproc_wall_us :: () -> int #foreign #effects(all);
+#load "../../sys/clock.coax";
 
 // The engines availability knows, in the policy's bit order: System One's four
 // (AGR_ENGINES), then Antigravity, which routing runs only when allowed and

@@ -46,6 +46,8 @@ case "${1:-} ${2:-}" in
     [[ "${3:-}" == --detach ]] || exit 92
     mkdir -p "$4/coax/web/api" "$4/coax/bin"
     cp -R "$DEPLOY_FIXTURE_API"/. "$4/coax/web/api/"
+    mkdir -p "$4/coax/platform"
+    touch "$4/coax/platform/fixture.c" "$4/coax/platform/fixture.h" "$4/coax/platform/fixture.inc"
     # deploy.sh installs the compiler and emits the Coax modules as C: stand-ins that do nothing
     printf '#!/usr/bin/env bash\nexit 0\n' > "$4/coax/build.sh"
     printf '#!/usr/bin/env bash\nexit 0\n' > "$4/coax/bin/coax"

@@ -519,6 +519,12 @@ e_options :: (e: [] Engine, o: [] ClOptions) {
   if e[0].cwd_n > 0 { o[0].cwd = e_str(e[0].cwd[..], e[0].cwd_n); }
   if e[0].path_n > 5 { cl_add_env(o, e_str(e[0].path_env[..], e[0].path_n)); }
   cl_remove_env(o, "ANTHROPIC_API_KEY");
+  // A resident service may itself be installed from an agent's terminal.
+  // Child conversations always use this computer's normal Claude login.
+  cl_remove_env(o, "ANTHROPIC_AUTH_TOKEN");
+  cl_remove_env(o, "ANTHROPIC_BASE_URL");
+  cl_remove_env(o, "CLAUDECODE");
+  cl_remove_env(o, "CLAUDE_CODE_ENTRYPOINT");
   if e[0].sid_n > 0 { o[0].resume = e_str(e[0].sid[..], e[0].sid_n); }
   if e[0].room { e_room_tools(o); }
 }

@@ -48,6 +48,10 @@ extern "C" {
 int64_t cxsock_host_push(int64_t byte);
 int64_t cxsock_connect(int64_t port, int64_t timeout_ms);
 int64_t cxsock_connect_unix(int64_t timeout_ms);
+/* Unix listener at the pushed path, mode0600. Refuses non-owned/non-socket
+   existing paths. accept and client check the actual OS peer's effective UID. */
+int64_t cxsock_listen_unix(void);
+int64_t cxsock_peer_self(int64_t h);
 int64_t cxsock_write(int64_t h, int64_t byte);
 int64_t cxsock_flush(int64_t h, int64_t timeout_ms);
 int64_t cxsock_read(int64_t h, int64_t timeout_ms);
