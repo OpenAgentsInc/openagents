@@ -118,6 +118,7 @@ static const char *realm_headers(void) {
   return text;
 }
 static int api_port;   // --api: /api/ requests go to 127.0.0.1:api_port
+static int room_port;  // --room: /api/room/ (the room's socket) goes to the local room on 127.0.0.1:room_port (serve.sh, #13589)
 static int local_port; // --local: /local/ requests go to `coder mcp --http` on 127.0.0.1:local_port (its local routes)
 static double throttle_bytes, latency_ms, next_send_ms;
 static bool shaping_send;
@@ -422,7 +423,9 @@ static void tunnel(int page, int api) {
 static void proxy_api(client *c) {
   int fd = private_fd(socket(AF_INET, SOCK_STREAM, 0));
   struct sockaddr_in a = {0};
-  a.sin_family = AF_INET; a.sin_port = htons((uint16_t)api_port);
+  int port = api_port;
+  { char m[8], u[1024]; if (room_port && sscanf(c->buf, "%7s %1023s", m, u) == 2 && !strncmp(u, "/api/room/", 10)) port = room_port; }
+  a.sin_family = AF_INET; a.sin_port = htons((uint16_t)port);
   inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
   if (fd < 0 || connect(fd, (struct sockaddr *)&a, sizeof a)) {
     if (fd >= 0) close(fd);
@@ -1706,6 +1709,7 @@ int main(int argc, char **argv) {
     }
     else if (!strcmp(argv[i], "--build") && i + 1 < argc) cmd = argv[++i];
     else if (!strcmp(argv[i], "--api") && i + 1 < argc) api_port = atoi(argv[++i]);
+    else if (!strcmp(argv[i], "--room") && i + 1 < argc) room_port = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--local") && i + 1 < argc) local_port = atoi(argv[++i]);
     else if (!app && argv[i][0]!='-') app = argv[i];
     else { fprintf(stderr, "usage: serve APP_DIR [--listen HOST:PORT] [--build CMD]\n"); return 2; }

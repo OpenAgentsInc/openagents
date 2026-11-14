@@ -10,6 +10,9 @@
 # its database in ~/.openagents/dev (OA_SERVE_STATE), so a restart keeps your chats, worlds and settings and
 # applies new migrations on top. --fresh (or OA_SERVE_FRESH=1): a throwaway database instead, for a test run.
 # Claude's realm tools (Coder's `openagents mcp`) act on this server as the same login.
+# It also starts a local room (coax/web/room/ bin/room --dev, as local.coax does) on a port of its own and sends
+# /api/room/ to it, so a room-backed page (/worlds/archery-range, Everglade) has its room with no ?relay= (#13589).
+# OA_SERVE_NO_ROOM=1 leaves it out.
 set -euo pipefail
 fresh="${OA_SERVE_FRESH:-}"; args=()
 for a in "$@"; do if [[ "$a" == --fresh ]]; then fresh=1; else args+=("$a"); fi; done
@@ -41,7 +44,7 @@ if [[ "$(cd "${1:-.}" 2>/dev/null && pwd -P)" == "$(cd "$here/../../apps/openage
 fi
 [[ $want_api == 1 ]] || COAXIAL_MODE=dev exec "$here/build/serve" "$@"
 port_file="$(mktemp)"; coder_log="$(mktemp)"
-trap 'kill ${serve_pid:-} ${api_pid:-} ${coder_pid:-} 2>/dev/null || true; rm -f "$port_file" "$coder_log"' EXIT
+trap 'kill ${serve_pid:-} ${api_pid:-} ${coder_pid:-} ${room_pid:-} 2>/dev/null || true; rm -f "$port_file" "$coder_log"' EXIT
 echo "serve: starting the local API for /chat and the editor's agent (a minute or two the first time)"
 # The editor's Gemini turn opens attachments from the dev server's own store (serve.c files_local, #13468).
 state=""; [[ -n "$fresh" ]] || state="${OA_SERVE_STATE:-$HOME/.openagents/dev}"
@@ -74,5 +77,19 @@ while [[ -n "${coder_pid:-}" ]]; do
   kill -0 "$coder_pid" 2>/dev/null || { echo "serve: Coder didn't start (its output: $(tail -n 3 "$coder_log" | tr '\n' ' ')); the page offers our models only" >&2; coder_pid=""; break; }
   sleep 0.5
 done
-COAXIAL_MODE=dev "$here/build/serve" "$@" --api "$(cat "$port_file")" ${local_args[@]+"${local_args[@]}"} & serve_pid=$!
+# The room: built when a source is newer than the last build, on a free port, the API's stand-in for its own paths.
+room_args=()
+if [[ -z "${OA_SERVE_NO_ROOM:-}" ]]; then
+  room_bin="$here/room/bin/room"
+  if [[ ! -x "$room_bin" || -n "$(find "$here/room" "$here/../../everglade" "$here/../../metaverse-engine" -name '*.coax' -newer "$room_bin" -not -path '*/build/*' -print -quit 2>/dev/null)$(find "$here/room" -maxdepth 1 \( -name '*.c' -o -name '*.h' \) -newer "$room_bin" -print -quit)" ]]; then
+    echo "serve: building the room server for room-backed pages"
+    "$here/room/build.sh" > /dev/null || echo "serve: the room didn't build; room-backed pages say they aren't connected" >&2
+  fi
+  if [[ -x "$room_bin" ]]; then
+    room_port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')"
+    "$room_bin" --listen 127.0.0.1 --port "$room_port" --dev "$here/room/dev" > /dev/null & room_pid=$!
+    room_args=(--room "$room_port"); echo "serve: the room answers on 127.0.0.1:$room_port"
+  fi
+fi
+COAXIAL_MODE=dev "$here/build/serve" "$@" --api "$(cat "$port_file")" ${local_args[@]+"${local_args[@]}"} ${room_args[@]+"${room_args[@]}"} & serve_pid=$!
 wait "$serve_pid"
