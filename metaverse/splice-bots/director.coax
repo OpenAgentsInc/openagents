@@ -97,6 +97,8 @@ d_text :: (m: int) -> string {
   if m == DS_DOWN { return "Digger is powered down. Tow him to Sniper with E."; }
   if m == DS_NOTHING { return "Look at rock, a part or a robot to give Digger an order."; }
   if m == DS_BLOCKED { return "Digger can't get there. Something is in the way."; }
+  if m == DS_FAR { return "Too far for Digger. Get closer."; }
+  if m == DS_LEASH { return "Too far from you. Digger came back."; }
   if m == DS_TOW { return "Towing Digger. Sniper's charger will fix him."; }
   if m == DS_UP { return "Digger is charged and back on his treads."; }
   if m == DS_SENSOR { return "Digger drilled out a better sensor. He senses twice as far."; }
@@ -187,11 +189,11 @@ d_sense :: (g: [] SpGame) -> int {
     if g[0].taken[i] || pick_zone(g, i) != g[0].zone { continue; }
     if d[0].left[i] { if dist2(g[0].px, g[0].pz, pick_x(g, i), pick_z(g, i)) > d_range(g) + 1 { d[0].left[i] = false; } continue; }
     e := dist2(g[0].bot_x, g[0].bot_z, pick_x(g, i), pick_z(g, i));
-    if e >= bd { continue; }
+    if e >= bd || !d_way(g, g[0].bot_x, g[0].bot_z, pick_x(g, i), pick_z(g, i)) { continue; }   // in range and a way to it
     if !d_fits(g, d_kind_of(i)) { if !d[0].full_said[i] { d[0].full_said[i] = true; d_say(g, DS_FULL); } continue; }
     d[0].full_said[i] = false; bd = e; best = i;
   }
-  if d_sensor_here(g) && g_spliced(g) { m := d_sensor_at(g); if dist2(g[0].bot_x, g[0].bot_z, m.x, m.z) < bd { best = PICKS; } }   // buried: dug out with the drill
+  if d_sensor_here(g) && g_spliced(g) { m := d_sensor_at(g); if dist2(g[0].bot_x, g[0].bot_z, m.x, m.z) < bd && d_way(g, g[0].bot_x, g[0].bot_z, m.x, m.z) { best = PICKS; } }   // buried: dug out with the drill
   return best;
 }
 d_fetch_at :: (g: [] SpGame, i: int) -> [2] f32 {
@@ -224,6 +226,11 @@ d_give_cell :: (g: [] SpGame, reach: f32) -> bool {
   g[0].cells -= 1; g[0].dr[0].cell = true; d_say(g, DS_CELL);
   return true;
 }
+// His next step toward (tx, tz) would go into something solid: he never walks through it.
+d_held :: (g: [] SpGame, tx: f32, tz: f32) -> bool {
+  bx := g[0].bot_x; bz := g[0].bot_z; d := dist2(bx, bz, tx, tz);
+  return d > 1.2 + T_PATH_STEP && d_solid(g, bx + (tx - bx) / d * T_PATH_STEP, bz + (tz - bz) / d * T_PATH_STEP);
+}
 // A step of Digger's own: charging from a cell or at Sniper, being towed, fetching, fighting, or looking for parts.
 d_bot :: (g: [] SpGame, dt: f32) {
   if !g[0].bot { return; }
@@ -253,8 +260,10 @@ d_bot :: (g: [] SpGame, dt: f32) {
   if d[0].task == DJ_FETCH {
     i := d[0].task_i;
     gone := ifx i == PICKS then !d_sensor_here(g) else g[0].taken[i];
-    if gone || dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > T_LEASH { d_task_end(g); return; }
+    if gone { d_task_end(g); return; }
+    if dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > T_LEASH { d_give_up(g, DS_LEASH); return; }
     at := d_fetch_at(g, i);
+    if d_held(g, at[0], at[1]) { d_give_up(g, DS_BLOCKED); return; }
     if bot_toward(g, at[0], at[1], T_BOT_GO, dt) > T_FETCH_REACH { return; }
     if i == PICKS {
       // the first splice's payoff: his drill digs the sensor out (spins up with its sound, shudders, then the
@@ -265,13 +274,15 @@ d_bot :: (g: [] SpGame, dt: f32) {
       d[0].sensor = true; d_say(g, DS_SENSOR); d[0].o_kick = 0; d[0].o_kd = -1;
     }
     else if d_fits(g, d_kind_of(i)) { g_take(g, i); }
-    else { d_say(g, DS_FULL); }
+    else { d_give_up(g, DS_FULL); return; }
     d_task_end(g);
     return;
   }
   if d[0].task == DJ_FIGHT {
     f := d[0].task_i;
-    if f < 0 || f >= FOES || !g_foe_in(g, f) || dist2(g[0].px, g[0].pz, g[0].fx[f], g[0].fz[f]) > T_LEASH { d_task_end(g); return; }
+    if f < 0 || f >= FOES || !g_foe_in(g, f) { d_task_end(g); return; }
+    if dist2(g[0].px, g[0].pz, g[0].fx[f], g[0].fz[f]) > T_LEASH { d_give_up(g, DS_LEASH); return; }
+    if d_held(g, g[0].fx[f], g[0].fz[f]) { d_give_up(g, DS_BLOCKED); return; }   // a robot that went behind something solid
     if bot_toward(g, g[0].fx[f], g[0].fz[f], T_BOT_GO, dt) > T_STRIKE_REACH { return; }
     d[0].task_t += dt;
     if d[0].task_t < T_STRIKE { return; }
@@ -302,7 +313,7 @@ DPoint :: struct { kind: int; i: int = -1; }
 d_aim :: (r: VpRay, x: f32, y: f32, z: f32, size: f32, keep: f32, best: [] f32) -> bool {
   dx := x - r.o.x; dy := y - r.o.y; dz := z - r.o.z;
   t := dx * r.d.x + dy * r.d.y + dz * r.d.z;
-  if t < 0 || t > T_POINT_FAR { return false; }
+  if t < 0 || t > T_POINT_SEE { return false; }   // past T_POINT_FAR it is seen, and too far (d_can)
   ox := dx - r.d.x * t; oy := dy - r.d.y * t; oz := dz - r.d.z * t;
   off := sqrt(ox * ox + oy * oy + oz * oz) / ((size + 0.03 * t) * keep);
   if off > 1 || off >= best[0] { return false; }

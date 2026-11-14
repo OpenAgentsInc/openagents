@@ -275,7 +275,7 @@ on CELLS in the inventory puts one of yours into him, and it charges him full (a
 powers up) over about a second; his BATTERY gauge shows CHARGING and fills as it goes. A spent cell is
 gone: dropping cells drops only the ones you still carry.
 
-Digger follows you and picks up every part within his sensor's range (`T_SENSE`, 4 m; twice that with
+Digger follows you and picks up every part within his sensor's range that he has a way to (`T_SENSE`, 4 m; twice that with
 the better sensor buried by the start, which he digs out once the first splice gives him the DRILL
 card: the first splice's payoff, `T_SENSOR_DIG` 1.2 s of drilling); you can't choose, so you make room in the inventory. A part he
 can't fit stays where it is. What you drop he leaves until you have walked away from it. Hardware
@@ -302,15 +302,21 @@ something, see what is selected and the command it gives, then click.
 - **Selecting.** Corners frame the rock, part or robot nearest the reticle for its size. The cone
   widens with distance, so a far target is easy to hold. What is selected keeps a cone `T_AIM_KEEP`
   times wider, so two things side by side never flicker. Under the reticle is the command (DIG,
-  PICK UP, ATTACK, in orange) or why not (DIGGER DOWN, BAG FULL, NO WAY THERE, NEEDS PARTS, DRILL
-  MECH ONLY, pale).
+  PICK UP, ATTACK, DIG OUT, in orange) or why not (DIGGER DOWN, BAG FULL, NO WAY THERE, NEEDS PARTS, NEEDS
+  DRILL, DRILL MECH ONLY, TOO FAR, pale). The reticle names things out to `T_POINT_SEE`, so one past his
+  orders' reach (`T_POINT_FAR`) says TOO FAR instead of nothing.
 - **Answering.** Every click gets an answer at once. He nods when he takes the order, and a ring
   snaps in round the target. When he can't, he shakes his head, the target gets a cross and the
-  line says why: nothing there, no way there (something solid is in his straight way), the bag
-  full, him powered down, parts missing for a dig, or the hallway wall only the drill mech breaks.
-- **Going.** He goes to the target himself, at any distance the reticle reaches, and holds the order
-  until the target is gone or you are `T_LEASH` away. The ring is dashed and turning while he is on
-  his way, pulses while he works, and opens out green when he is done.
+  line says why: nothing there, too far, no way there (something solid is in his straight way: what
+  holds her back holds him, the placed pieces, the garage's walls, the solar farm's rows, the peaks and
+  the garage's rim, `d_solid`), the bag full, him powered down, parts missing for a dig, or the hallway
+  wall only the drill mech breaks.
+- **Going.** He goes to the target himself, at any distance his orders reach, and holds the order
+  until the target is gone or you are `T_LEASH` away. He never walks into something solid: a robot that
+  goes behind a row while he chases it, or a way that closes, and he stops short. The ring is dashed
+  and turning while he is on his way, pulses while he works, and opens out green when he is done.
+  When he lets an order go instead (you too far, no way any more, the bag full when he gets there),
+  he shakes his head, the ring becomes a cross and the line says why: never the green of a job done.
 - **Drilling.** He rears back while the bit spins up, then bites in. The drill sound, the chips off
   the face and the rock's shaking all start at that bite. The rock shakes harder and its top stones
   loosen as he works. At the break he is thrown back, the rubble flies into the tunnel, and he
@@ -326,7 +332,8 @@ Digger tunables:
 | Name | Value | File | What it sets |
 | --- | --- | --- | --- |
 | `T_SENSE` | 4 m | `director.coax` | His sensor range: he picks up parts within it. The better sensor doubles it (`T_SENSE_UP`) |
-| `T_POINT_FAR` | 40 m | `director.coax` | How far the reticle selects |
+| `T_POINT_FAR` | 40 m | `director.coax` | How far his orders reach |
+| `T_POINT_SEE` | 80 m | `digger-orders.coax` | How far the reticle still names a thing, to say TOO FAR past `T_POINT_FAR`: twice his reach, so a robot across the farm is named, not silent |
 | `T_AIM_KEEP` | 1.6 | `digger-orders.coax` | How much wider the selected thing's cone is |
 | `T_LEASH` | 45 m | `digger-orders.coax` | He lets an order go when you are this far from him or his target |
 | `T_GIVE_UP_FIGHT` | 25 m | `director.coax` | The bot wheel's reach for ATTACK and CHARGE |

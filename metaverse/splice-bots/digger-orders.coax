@@ -18,7 +18,8 @@
 // The numbers are in the README's Digger tunables table.
 
 T_AIM_KEEP :: 1.6f32;     // what is selected keeps a cone this many times wider
-T_LEASH :: 45.0f32;       // metres from her: past this Digger lets an order go (the pointer reaches T_POINT_FAR)
+T_LEASH :: 45.0f32;       // metres from her: past this Digger lets an order go, and says so (the pointer reaches T_POINT_FAR)
+T_POINT_SEE :: 80.0f32;   // metres the reticle still names a thing past T_POINT_FAR, to say it is too far
 T_ACK :: 0.35f32;         // seconds the marker snaps in before it shows his progress
 T_NOD :: 0.5f32;          // seconds of his nod, or his head shake
 T_MARK_FADE :: 0.8f32;    // seconds a done marker opens out, or a refusal's cross shows
@@ -62,20 +63,29 @@ d_pointed :: (g: [] SpGame) -> DPoint {
   }
   return out;
 }
-// Digger's way to a target, straight from him: false when something solid stands in it.
-d_path :: (g: [] SpGame, p: DPoint) -> bool {
-  a := d_at(g, p.kind, p.i); bx := g[0].bot_x; bz := g[0].bot_z;
-  e := dist2(bx, bz, a.x, a.z) - 1.2;   // he stops short of it
+// Whether Digger's body can't stand at (x, z): what holds her back holds him (the pieces, the garage's
+// walls, the solar farm's lines, the peaks and the garage's rim from outside; g_collide). He can't jump
+// onto a line's top as she can.
+d_solid :: (g: [] SpGame, x: f32, z: f32) -> bool {
+  if g_inside(g, x, z) { return true; }
+  if g[0].zone != Z_MINE || sp_in_room(g) || mr_in(x, z) { return false; }
+  q := ff_push(x, z, T_BOT_R); if q.x != x || q.z != z { return true; }
+  q = pl_push(g, x, z, T_BOT_R); return q.x != x || q.z != z;
+}
+// His straight way from (bx, bz) to (tx, tz): false when something solid stands in it. He stops short of it.
+d_way :: (g: [] SpGame, bx: f32, bz: f32, tx: f32, tz: f32) -> bool {
+  e := dist2(bx, bz, tx, tz) - 1.2;
   s := T_PATH_STEP;
   while s < e {
     u := s / (e + 1.2);
-    if g_inside(g, bx + (a.x - bx) * u, bz + (a.z - bz) * u) { return false; }
+    if d_solid(g, bx + (tx - bx) * u, bz + (tz - bz) * u) { return false; }
     s += T_PATH_STEP;
   }
   return true;
 }
+d_path :: (g: [] SpGame, p: DPoint) -> bool { a := d_at(g, p.kind, p.i); return d_way(g, g[0].bot_x, g[0].bot_z, a.x, a.z); }
 // Why Digger can't take an order at p, or DS_NONE when he can.
-DS_BLOCKED :: 25; DS_MECH :: 26; DS_PARTS :: 27; DS_NEED_DRILL :: 28;
+DS_BLOCKED :: 25; DS_MECH :: 26; DS_PARTS :: 27; DS_NEED_DRILL :: 28; DS_FAR :: 29; DS_LEASH :: 30;
 d_can :: (g: [] SpGame, p: DPoint) -> int {
   if d_down(g) { return DS_DOWN; }
   if p.kind == DP_NONE { return DS_NOTHING; }
@@ -83,6 +93,7 @@ d_can :: (g: [] SpGame, p: DPoint) -> int {
   if p.kind == DP_DIG && p.i == 1 { return DS_MECH; }
   if p.kind == DP_DIG && !(g[0].slot[0] && g[0].slot[1] && g[0].slot[2] && g[0].strip_n > 0) { return DS_PARTS; }
   if p.kind == DP_SENSOR && !g_spliced(g) { return DS_NEED_DRILL; }   // it is buried: the first splice's drill digs it out
+  a := d_at(g, p.kind, p.i); if dist2(g[0].px, g[0].pz, a.x, a.z) > T_POINT_FAR { return DS_FAR; }   // seen, but past his orders' reach
   if p.kind != DP_DIG && !d_path(g, p) { return DS_BLOCKED; }
   return DS_NONE;
 }
@@ -94,6 +105,7 @@ d_label :: (p: DPoint, why: int) -> string {
   if why == DS_PARTS { return "NEEDS PARTS"; }
   if why == DS_NEED_DRILL { return "NEEDS DRILL"; }
   if why == DS_BLOCKED { return "NO WAY THERE"; }
+  if why == DS_FAR { return "TOO FAR"; }
   return ifx p.kind == DP_DIG then "DIG" else ifx p.kind == DP_FOE then "ATTACK" else ifx p.kind == DP_SENSOR then "DIG OUT" else "PICK UP";
 }
 // His answer to a command: taken (a nod, a click, the marker snapping in) or refused (a shake, a
@@ -109,6 +121,13 @@ d_ack :: (g: [] SpGame, p: DPoint, why: int) {
   if why == DS_MECH { g_say(g, SBM_NEED_MECH); } else if why == DS_PARTS { g_say(g, MSG_NEED); } else { d_say(g, why); }
 }
 d_ord_set :: (g: [] SpGame, s: int) { g[0].dr[0].o_st = s; g[0].dr[0].o_t = 0; }
+// He lets an order go before it is done, and says why: a head shake, the glitch, and a cross where the
+// ring was, never the green of a job done.
+d_give_up :: (g: [] SpGame, why: int) {
+  d := g[0].dr[..]; d_task_end(g); d_say(g, why); snd_play(g, SND_GLITCH);
+  d[0].o_ack = 0; d[0].o_yes = false;
+  if d[0].o_st >= OS_TAKEN && d[0].o_st <= OS_WORK { d_ord_set(g, OS_NO); }
+}
 // Each step: the selection under the crosshair, the order's state, and where he looks.
 d_ord_tick :: (g: [] SpGame, dt: f32) {
   d := g[0].dr[..];
@@ -274,7 +293,7 @@ d_select_hud :: (g: [] SpGame, out: [] f32, q: Ui, at: int, cx: f32, cy: f32) ->
     if g_inside(g[..], x, z) && !g_inside(g[..], x - 4, z) && !g_inside(g[..], x + 4, z) && !g_inside(g[..], x + 6, z) { found = true; qx = x; qz = z; }
   } }
   #assert found;
-  g[0].bot_x = qx - 4; g[0].bot_z = qz; g[0].fx[5] = qx + 4; g[0].fz[5] = qz;
+  g[0].bot_x = qx - 4; g[0].bot_z = qz; g[0].px = qx - 5; g[0].pz = qz; g[0].fx[5] = qx + 4; g[0].fz[5] = qz;   // she stands by him
   #assert d_can(g[..], DPoint.{kind = DP_FOE, i = 5}) == DS_BLOCKED;
   g[0].fx[5] = qx - 6; #assert d_can(g[..], DPoint.{kind = DP_FOE, i = 5}) == DS_NONE;
   #assert d_label(DPoint.{kind = DP_FOE, i = 5}, DS_NONE) == "ATTACK" && d_label(DPoint.{kind = DP_DIG, i = 1}, DS_MECH) == "DRILL MECH ONLY";
@@ -319,4 +338,40 @@ d_select_hud :: (g: [] SpGame, out: [] f32, q: Ui, at: int, cx: f32, cy: f32) ->
     a := d_act(g[..]); #assert a.push == 0;   // the recoil starts from standing
     g[0].dr[0].o_kick = T_KICK * 0.5; a = d_act(g[..]); #assert a.push < 0 && a.pitch < 0;   // thrown back, nose up
   }
+}
+#test "Digger's way: a solar row stops it and the reticle says so, a chase stops short of a row, a robot past his reach is TOO FAR, and an order he lets go is a cross with the reason" #steps 400000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5); g[0].mode = M_PLAY; g[0].look_free = false;
+  // in the aisle north of the farm's south row, the Drill Arm across it: no way there, before and after a click
+  g[0].px = -838; g[0].pz = -140; g[0].yaw = 0; g_bot_home(g[..]);
+  arm := DPoint.{kind = DP_PICK, i = H_ARM};
+  #assert pick_z(g[..], H_ARM) > -121 && ff_line(-838, -126, 0) >= 0 && d_solid(g[..], -838, -126) && !d_solid(g[..], -838, -136);
+  #assert d_can(g[..], arm) == DS_BLOCKED && d_label(arm, DS_BLOCKED) == "NO WAY THERE";
+  // from the open ground south of the rows the same part is his
+  g[0].px = -838; g[0].pz = -100; g_bot_home(g[..]); #assert d_can(g[..], arm) == DS_NONE;
+  // and he never walks into a row for a part he senses: his sensor wants a way to it
+  g[0].px = -838; g[0].pz = -134; g[0].bot_x = -838; g[0].bot_z = -131; g[0].at.pick_x[H_ARM] = -838; g[0].at.pick_z[H_ARM] = -127.5;
+  #assert dist2(g[0].bot_x, g[0].bot_z, -838, -127.5) < d_range(g[..]) && d_sense(g[..]) == -1;   // in range, a line of glass between
+  g[0].at.pick_z[H_ARM] = -134.5; #assert d_sense(g[..]) == H_ARM;                                  // in range in the open aisle: his
+  // a robot he chases goes behind the row: he stops short of the glass, shakes his head and says why
+  g[0].bot_x = -860; g[0].bot_z = -136; g[0].px = -861; g[0].pz = -138; g[0].fx[5] = -860; g[0].fz[5] = -112;
+  #assert g_foe_in(g[..], 5);
+  d := g[0].dr[..]; d[0].task = DJ_FIGHT; d[0].task_i = 5; d[0].o_st = OS_GO; d[0].o_kind = DP_FOE; d[0].o_i = 5;
+  glitch := g[0].snd[0].fired[SND_GLITCH];
+  for i: 0..<60 { d_bot(g[..], 0.05); #assert !d_solid(g[..], g[0].bot_x, g[0].bot_z); }
+  #assert d[0].task == DJ_NONE && d[0].say == DS_BLOCKED && d[0].o_st == OS_NO && !d[0].o_yes && g[0].snd[0].fired[SND_GLITCH] == glitch + 1;
+  // she walks off while he fetches: he lets it go and says so, never the done ring
+  g[0].at.pick_x[H_ARM] = -700; g[0].at.pick_z[H_ARM] = -60; g[0].bot_x = -700; g[0].bot_z = -80;
+  d[0].task = DJ_FETCH; d[0].task_i = H_ARM; d[0].o_st = OS_GO; g[0].px = -700; g[0].pz = -140;
+  d_bot(g[..], 0.05);
+  #assert d[0].task == DJ_NONE && d[0].say == DS_LEASH && d[0].o_st == OS_NO && d_text(DS_LEASH) != "";
+  g[0].taken[H_ARM] = true;   // out of the way of the reticle below
+  // a robot 60 m down the reticle is named, and too far; at 30 m it is an order
+  g[0].px = -700; g[0].pz = -60; g[0].yaw = PI; g_bot_home(g[..]);
+  g[0].haim_on = true; g[0].haim = VpView.{ex = -700, ey = 1, ez = -58, ax = -700, ay = 1, az = -70, fov = 1.0};
+  g[0].fx[5] = -700; g[0].fz[5] = -120;
+  p := d_pointed(g[..]); #assert p.kind == DP_FOE && p.i == 5 && d_can(g[..], p) == DS_FAR && d_label(p, DS_FAR) == "TOO FAR";
+  #assert d_point(g[..]) == DP_NONE && d[0].say == DS_FAR && d[0].o_st == OS_NO;
+  g[0].fz[5] = -90; #assert d_can(g[..], d_pointed(g[..])) == DS_NONE;
+  g[0].fz[5] = -60 - T_POINT_SEE - 3; #assert d_pointed(g[..]).kind == DP_NONE;   // past what the reticle sees: nothing there
 }
