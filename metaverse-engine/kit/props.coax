@@ -67,14 +67,14 @@ kit_solar_bank :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glass: Ki
   box(buf, p, kit_at(g, 0, 0.042 * s, 0), (half - 0.09) * s, 0.004 * s, 0.008 * s);
 }
 
-// A charging post: a plinth, a tall body with a screen and a glow strip, a cap with a light on top,
+// A charging post: a plinth, a tall printed concrete body with a screen and a glow strip, a cap with a light on top,
 // and a cable from an outlet low on its side, looping down near the ground and up to its plug hung
 // in a holster. 2.6 m tall at s 1.
 kit_charger :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, body: KitTint, accent: KitTint, glow: KitTint, dark: KitTint) {
   kit_pen(p, obj, MAT_CLOTH, dark);
   box(buf, p, kit_at(f, 0, 0.08 * s, 0), 0.42 * s, 0.08 * s, 0.34 * s);
-  kit_pen(p, obj + 1, MAT_SKIN, body);
-  box(buf, p, kit_at(f, 0, 1.2 * s, 0), 0.28 * s, 1.04 * s, 0.2 * s);
+  kit_pen(p, obj + 1, MAT_SKIN, body);   // a printed column (printed.coax)
+  kit_print_walls(buf, p, f, 0.28 * s, 0.2 * s, 0.1 * s, 0.16 * s, 2.24 * s, 9, 0.02 * s, true);
   kit_pen(p, obj + 2, MAT_FLAT, accent);
   box(buf, p, kit_at(f, 0, 2.32 * s, 0), 0.34 * s, 0.08 * s, 0.26 * s);
   box(buf, p, kit_at(f, 0, 0.45 * s, 0.205 * s), 0.24 * s, 0.05 * s, 0.01 * s);

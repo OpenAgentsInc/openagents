@@ -1,10 +1,10 @@
 // Cel land: ground, dunes, mesas, rocks, arches, canyons, terraces, towers, steps, sea, palms,
-// domed houses, banners and a moon, built with the cel mesh writers (metaverse-engine/render/cel-mesh.coax)
+// banners and a moon (the domed houses are printed.coax's), built with the cel mesh writers (metaverse-engine/render/cel-mesh.coax)
 // in the colours they are handed. Scattered pieces take a seed, so the same scene writes the same
 // triangles. Nothing here draws or decides; it only writes. Splice
 // (metaverse/splice-bots/splice-bots.coax) stages them.
 //   coax/bin/coax test --library metaverse-engine/kit/land.coax
-#load "machines.coax";
+#load "printed.coax";
 
 // The ground: one wide quad at y 0. MAT_FLOOR draws flagstones; MAT_WORLD a plain cel plane.
 kit_ground :: (buf: [] u32, p: [] Pen, obj: int, c: KitTint, tiles: bool) {
@@ -189,15 +189,6 @@ kit_palm :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, trunk: KitTint,
     g := frame_turn(frame_at(top, cast(f32) i * TAU / 7), 0, 0.55);
     ellipsoid(buf, p, kit_at(g, 0, 0, 1.6 * s), 0.38 * s, 0.07 * s, 1.6 * s, 8, 4, 0);
   }
-}
-
-// A domed house: walls, a dome and a little lantern on top; `w` across.
-kit_dome_house :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, wall: KitTint, dome: KitTint, w: f32, h: f32) {
-  kit_pen(p, obj, MAT_WORLD, wall);
-  box(buf, p, kit_at(f, 0, h * 0.5, 0), w * 0.5, h * 0.5, w * 0.5);
-  kit_pen(p, obj + 1, MAT_SKIN, dome);
-  ellipsoid(buf, p, kit_at(f, 0, h, 0), w * 0.46, w * 0.5, w * 0.46, 14, 7, 0);
-  tube(buf, p, kit_at(f, 0, h + w * 0.45, 0), w * 0.18, w * 0.06, w * 0.06, 0.01, 0.01, 8, true);
 }
 
 // A banner on a wall: a cloth panel with a sun disc on it, facing the frame's z.

@@ -1,0 +1,123 @@
+// Printed buildings: walls laid up by a gantry printer in courses of concrete, each course a bead
+// whose upper half faces the sky and lower half the ground, so the cel pass draws every course as a
+// lit band over a shaded one. A footprint is a rounded rectangle (a circle when its corner radius is
+// its half width); windows sit in deep dark frames. Flat, matte, built with the cel mesh writers
+// (metaverse-engine/render/cel-mesh.coax) in the colours they are handed, like the other kits.
+// Nothing here draws or decides; it only writes triangles. Splice's buildings use them
+// (metaverse/splice-bots/buildings.coax, garage.coax, props.coax kit_charger, land.coax kit_dome_house).
+// The architecture kit (metaverse-engine/arch/) builds parts in its own vertex format for the stylized
+// shader; this one writes the cel kits' vertices, for realms drawn by the cel pass.
+//   coax/bin/coax test --library metaverse-engine/kit/printed.coax
+#load "machines.coax";
+
+PRINT_SEG :: 3;          // steps round each rounded corner
+PRINT_BEAD :: 0.45f32;   // how far a bead's halves lean from the wall (their normals' tilt, as a slope)
+
+// Point k of a rounded rectangle's outline (half sizes hx, hz, corner radius r), out by `out`; the
+// outline has 4 (PRINT_SEG + 1) points, anticlockwise from +x seen from above. With normal set, the
+// outward direction there instead (y 0).
+print_rim :: (hx: f32, hz: f32, r: f32, out: f32, k: int, normal: bool) -> Point {
+  c := (k / (PRINT_SEG + 1)) % 4; j := k % (PRINT_SEG + 1);
+  a := (cast(f32) c + cast(f32) j / cast(f32) PRINT_SEG) * PI * 0.5;
+  sx := ifx c == 0 || c == 3 then 1.0f32 else -1.0f32; sz := ifx c < 2 then 1.0f32 else -1.0f32;
+  if normal { return v3(cos(a), 0, sin(a)); }
+  return v3(sx * (hx - r) + cos(a) * (r + out), 0, sz * (hz - r) + sin(a) * (r + out));
+}
+// A band of a rounded wall from y0 (out by o0) to y1 (out by o1), its faces turned up by `lean`.
+print_band :: (buf: [] u32, p: [] Pen, f: Frame, hx: f32, hz: f32, r: f32, y0: f32, o0: f32, y1: f32, o1: f32, lean: f32) {
+  n := 4 * (PRINT_SEG + 1);
+  q: [4] Point; m: [2] Point;
+  for k: 0..<n {
+    for c: 0..<4 { e := print_rim(hx, hz, r, ifx c < 2 then o0 else o1, k + ((c + 1) / 2) % 2, false); q[c] = fp(f, e.x, ifx c < 2 then y0 else y1, e.z); }
+    for c: 0..<2 { e := print_rim(hx, hz, r, 0, k + c, true); m[c] = unit_or(fd(f, e.x, lean, e.z), f.y); }
+    tri(buf, p, q[0], q[3], q[2], m[0], m[0], m[1]); tri(buf, p, q[0], q[2], q[1], m[0], m[1], m[1]);
+  }
+}
+// Printed walls round a rounded rectangle from y0 to y1 in `courses` beads, standing in the pen's
+// colour; the outermost face is at the outline (hx, hz), each course's waist `inset` in from it.
+// Capped on top when roof. 16 triangles a course for each band, 64 a course.
+kit_print_walls :: (buf: [] u32, p: [] Pen, f: Frame, hx: f32, hz: f32, r: f32, y0: f32, y1: f32, courses: int, inset: f32, roof: bool) {
+  rr := clamp(r, 0.01, lo(hx, hz)); dy := (y1 - y0) / cast(f32) hi_i(courses, 1);
+  for i: 0..<hi_i(courses, 1) {
+    y := y0 + cast(f32) i * dy;
+    print_band(buf, p, f, hx, hz, rr, y, -inset, y + dy * 0.5, 0, -PRINT_BEAD);
+    print_band(buf, p, f, hx, hz, rr, y + dy * 0.5, 0, y + dy, -inset, PRINT_BEAD);
+  }
+  if roof {
+    n := 4 * (PRINT_SEG + 1); top := fp(f, 0, y1, 0);
+    for k: 0..<n {
+      a := print_rim(hx, hz, rr, -inset, k, false); b := print_rim(hx, hz, rr, -inset, k + 1, false);
+      tri(buf, p, top, fp(f, b.x, y1, b.z), fp(f, a.x, y1, a.z), f.y, f.y, f.y);
+    }
+  }
+}
+// A straight printed wall along the frame's x, 2 hx long, from y0 to y1, 2 t thick: courses that
+// step out and in by `inset` each side, so it reads as laid up like the rounded ones.
+kit_print_slab :: (buf: [] u32, p: [] Pen, f: Frame, hx: f32, y0: f32, y1: f32, t: f32, courses: int, inset: f32) {
+  dy := (y1 - y0) / cast(f32) hi_i(courses, 1);
+  for i: 0..<hi_i(courses, 1) {
+    box(buf, p, kit_at(f, 0, y0 + (cast(f32) i + 0.5) * dy, 0), hx, dy * 0.5, ifx i % 2 == 0 then t else t - inset);
+  }
+}
+// A window in a deep dark frame on a wall's face, the frame's middle at the origin facing its z: the
+// frame `w` wide and `h` tall, standing `d` proud, a mullion down the middle when it is wider than tall,
+// and the glass in MAT_WINDOW set back in it. Parts obj and obj + 1.
+kit_print_window :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, w: f32, h: f32, d: f32, frame: KitTint, glass: KitTint) {
+  e := 0.09f32;
+  kit_pen(p, obj, MAT_CLOTH, frame);
+  for i: 0..<5 {
+    s := ifx i % 2 == 0 then 1.0f32 else -1.0f32; side := i >= 2;   // the head and sill, the jambs, the mullion
+    if i < 4 || w > h { box(buf, p, kit_at(f, ifx side && i < 4 then s * (w * 0.5 - e) else 0, ifx side then 0 else s * (h * 0.5 - e), 0), ifx side then e else w * 0.5, ifx side then h * 0.5 else e, d); }
+  }
+  kit_pen(p, obj + 1, MAT_WINDOW, glass);
+  box(buf, p, kit_at(f, 0, 0, -d * 0.3), w * 0.5 - e, h * 0.5 - e, d * 0.5);
+}
+// A raider banner hung from a bar along the frame's x, facing its z: a cloth `w` wide and `h` long
+// under the bar with a ragged hem, and a cog on it. Parts obj to obj + 2.
+kit_cog_banner :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, w: f32, h: f32, cloth: KitTint, cog: KitTint, bar: KitTint) {
+  kit_pen(p, obj, MAT_CLOTH, bar);
+  box(buf, p, f, w * 0.6, 0.1, 0.1);
+  kit_pen(p, obj + 1, MAT_CLOTH, cloth);
+  box(buf, p, kit_at(f, 0, -h * 0.45, 0), w * 0.5, h * 0.45, 0.05);
+  for i: 0..<4 { x := (cast(f32) i - 1.5) * w * 0.25; box(buf, p, kit_at(f, x, -h * (0.92 + 0.03 * cast(f32) (i % 2)), 0), w * 0.1, h * (0.04 + 0.03 * cast(f32) (i % 2)), 0.05); }
+  kit_pen(p, obj + 2, MAT_FLAT, cog);
+  c := kit_at(f, 0, -h * 0.42, 0.06);
+  oval(buf, p, c, w * 0.2, w * 0.2, 12);
+  for i: 0..<8 { box(buf, p, frame_turn(c, 2, cast(f32) i * TAU / 8), w * 0.05, w * 0.27, 0.01); }
+  kit_pen(p, obj + 1, MAT_CLOTH, cloth);
+  oval(buf, p, kit_at(c, 0, 0, 0.02), w * 0.08, w * 0.08, 10);
+}
+
+// A domed printed house: a round printed drum `w` across and `h` to its eaves, a dark-framed door and
+// windows set round it (each square to the wall), a cap ring and a dome with a little lantern on top.
+// Parts obj to obj + 3.
+kit_dome_house :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, wall: KitTint, dome: KitTint, w: f32, h: f32) {
+  r := w * 0.5 - 0.1;   // the frames stand proud of the wall to about w / 2
+  kit_pen(p, obj, MAT_WORLD, wall);
+  kit_print_walls(buf, p, f, r, r, r, 0, h, cast(int) (h / 0.45), 0.05, false);
+  // the door, then two windows: (angle round from ahead, height of the middle, width, height)
+  for i: 0..<3 {
+    door := i == 0; g := frame_turn(f, 1, ifx door then 0.35f32 else ifx i == 1 then -0.45f32 else -1.7f32);
+    kit_print_window(buf, p, kit_at(g, 0, h * (ifx door then 0.3f32 else 0.58f32), r * 0.99), obj + 2, r * (ifx door then 0.3f32 else 0.45f32), h * (ifx door then 0.6f32 else 0.3f32), 0.1, kit_tint(0.17, 0.14, 0.13), kit_tint(0.30, 0.26, 0.24));
+  }
+  kit_pen(p, obj + 1, MAT_SKIN, dome);
+  tube(buf, p, kit_at(f, 0, h, 0), w * 0.06, r, r, r, r, 16, false);
+  ellipsoid(buf, p, kit_at(f, 0, h, 0), r * 0.94, w * 0.46, r * 0.94, 14, 7, 0);
+  tube(buf, p, kit_at(f, 0, h + w * 0.45, 0), w * 0.18, w * 0.06, w * 0.06, 0.01, 0.01, 8, true);
+}
+
+#test "a printed wall stands inside its outline, its waist set in, and round a circle when the corner is the half width" {
+  buf: [20000 * VERTEX_WORDS] u32; pen := [1] Pen.[Pen.{}];
+  kit_print_walls(buf[..], pen[..], frame_at(v3(0, 0, 0), 0), 2, 1, 0.5, 0, 3, 6, 0.06, true);
+  #assert pen[0].n == 6 * 2 * 16 * 6 + 16 * 3 && !pen[0].over;
+  far := 0.0f32;
+  for i: 0..<pen[0].n { far = hi(far, abs(f32_from_bits(buf[i * VERTEX_WORDS]))); }
+  #assert abs(far - 2) < 0.001;
+  for k: 0..<16 { q := print_rim(1, 1, 1, 0, k, false); #assert abs(sqrt(q.x * q.x + q.z * q.z) - 1) < 0.001; }
+}
+#test "a printed dome house stays within its width (its frames a little proud) and under 2,000 triangles" {
+  buf: [20000 * VERTEX_WORDS] u32; pen := [1] Pen.[Pen.{}];
+  kit_dome_house(buf[..], pen[..], frame_at(v3(0, 0, 0), 0), 3, kit_tint(1, 1, 1), kit_tint(1, 1, 1), 6, 5);
+  #assert pen[0].n / 3 < 2000;
+  for i: 0..<pen[0].n { o := i * VERTEX_WORDS; x := f32_from_bits(buf[o]); z := f32_from_bits(buf[o + 2]); #assert x * x + z * z <= 3.1 * 3.1; }
+}
