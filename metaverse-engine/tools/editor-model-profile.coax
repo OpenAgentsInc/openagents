@@ -65,6 +65,12 @@ emp_check :: (profile_json: string, w: [] EmpWork) -> bool {
   lsw := emp_str(d, jv_get(d, lst, "wire"), w[0].wire[..]);
   if lsw.count == 0 || !em_read(m, lsw, w[0].scratch[..]) || em_write(m, w[0].out[..]) != lsw { return false; }
   if jv_int(d, jv_get(d, lst, "lists"), -1) != m[0].nl || jv_int(d, jv_get(d, lst, "switches"), -1) != m[0].nw || jv_kind(d, jv_get(d, lst, "at_once")) != JV_TRUE || !m[0].at_once { return false; }
+  // visitors' proposals waiting for the owner (#13527)
+  if jv_int(d, jv_get(d, lim, "cards"), 0) != EM_CARDS { return false; }
+  crd := jv_get(d, 0, "cards");
+  cw := emp_str(d, jv_get(d, crd, "wire"), w[0].wire[..]);
+  if cw.count == 0 || !em_read(m, cw, w[0].scratch[..]) || em_write(m, w[0].out[..]) != cw { return false; }
+  if jv_int(d, jv_get(d, crd, "cards"), -1) != m[0].nq || jv_int(d, jv_get(d, crd, "all"), -1) != m[0].q_all { return false; }
   empty := emp_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);
   if empty.count == 0 || !em_read(m, empty, w[0].scratch[..]) || m[0].ne != 0 || m[0].lane != 1 { return false; }
   rej := jv_get(d, 0, "rejected");

@@ -15,9 +15,9 @@
 // characters are figures built from the pack's barrel and crate (from above, a figure on a bright ring).
 //
 // The owner and admins (the server decides) get EDIT, the shared edit layer (metaverse/edit/edit.coax):
-// the board of what is here, a checkbox a row, revised by typing; SETTINGS, the tools visitors get;
-// and the cards for what visitors propose, each with ACCEPT and DECLINE. With BUILD on, a visitor's
-// placed thing is a proposal; the owner's goes in at once.
+// the board of what is here, a checkbox a row, revised by typing. The tools visitors get are the editor's.
+// With BUILD on, a visitor's placed thing is a proposal the owner accepts or declines in the editor's agent
+// strip (#13527); the owner's goes in at once.
 //
 // The camera is the maker's (the spec's "camera", chosen at /worlds/new; 0049_realm_builder_setup.sql):
 //   third  behind you (W and S walk, A and D turn, a mouse drag turns; on a phone a thumb walks and turns)
@@ -145,7 +145,6 @@ HOUSES :: 5;
 INSTANCE_FLOATS :: 16;
 LANTERNS :: 16; BIRDS :: 12; PEOPLE :: 4; PERSON :: 24; ROLE :: 40;
 HERD :: 10; DWELLINGS :: 8; VILLAGERS :: 8;   // 0079_builder_herds.sql's most of each
-CARDS :: 8;
 TOOLS :: 6;
 TOOL_BUILD :: 0; TOOL_FLY :: 1; TOOL_JUMP :: 2; TOOL_MAP :: 3; TOOL_TALK :: 4; TOOL_VOICE :: 5;
 THINGS :: 8;
@@ -2840,6 +2839,7 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   next_request(s);
   if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { s[0].req_id = -1; s[0].req_what = REQ_NONE; if !s[0].spec_ready { s[0].spec_failed = true; } }
   if s[0].spec_ready && s[0].slug_n > 0 { _ := rp_open(s[0].world[..], slug_text(s)); }
+  rp_cards_for(s[0].world[..], editor_owner(s));   // the visitors' proposals, for the owner's shell and its agent strip (#13527)
   rp_step(s[0].world[..], dt);
   world_posted(s);
   rp_here(s[0].world[..], s[0].x, s[0].z);   // where the shell's Add places things
@@ -3275,7 +3275,7 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
   n := frame_of(s[..], t[..], 2560, 1600);
   edit_opened(s[..]);
   _f := redit_message(s[0].ed[..], REDIT_FACTS, VOICED);   // the face hands the page's facts to the layer too
-  s[0].ed[0].cards_due = false; s[0].ed[0].asks_due = false;
+  s[0].ed[0].asks_due = false;
   m := frame_of(s[..], t[..], 2560, 1600);
   #assert s[0].ed[0].voice && s[0].ed[0].hears && s[0].ed[0].shown[RB_HEAR];
   #assert realm_key(s[..], t[..], 'v', true) && s[0].ed[0].held;
@@ -3304,7 +3304,7 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
   edit_opened(s[..]);
   m := frame_of(s[..], t[..], 2560, 1600);   // read once more after the layer's first spec
   realm_requested(s[..], 2); realm_message(s[..], t[..], HTTP_ANSWER_KIND + 2, "200\n" );
-  s[0].ed[0].cards_due = false; s[0].ed[0].req_ready = false; s[0].ed[0].req_id = -1;
+  s[0].ed[0].req_ready = false; s[0].ed[0].req_id = -1;
   redit_toggle(s[0].ed[..]);
   redit_switch(s[0].ed[..], 1);
   m2 := frame_of(s[..], t[..], 2560, 1600);

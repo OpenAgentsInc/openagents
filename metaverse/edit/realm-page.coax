@@ -21,6 +21,10 @@
 // shell's selection (521) is kept for the model, and its Add (523, "add KIND COUNT") is planned from `here`
 // with the placement planner (metaverse-engine/editor/place.coax) and sent as one batch of spawns: rp_message
 // takes all three.
+// Visitors' proposals (#13527): the realm's server keeps a visitor's spawns on its world as cards for the owner
+// (GET /api/playtest/realms/SLUG/proposals, "" for anyone else). The page reads them after the tables, after any
+// event and every RP_CARDS_POLL seconds, and tells the shell each as a `card` line with its `from`; the shell tells
+// the conversation in its foot, whose turn takes ACCEPT and DECLINE (apps/openagents-web/chat/chat-ideas.coax).
 // This file decides what to ask and what an answer is; the page's face sends it (rp_wants, rp_url, rp_body,
 // rp_flags, rp_sent, rp_answer). It reads nothing of the realm's own spec.
 //   coax/bin/coax test metaverse/edit/realm-page.coax
@@ -28,6 +32,7 @@
 #load "../../metaverse-engine/editor/shell-model.coax";
 #load "../../metaverse-engine/script/rows.coax";
 #load "../../metaverse-engine/editor/place.coax";   // the placement planner: where the shell's Add puts things (#13506)
+#load "../../metaverse-engine/editor/lists.coax";   // the proposals' one reader (editor_read_proposal)
 
 RP_KIND_CHARACTERS :: 1;   // "kind 1": the realm's characters; "who N": the Nth of them (1 and up)
 RP_CHARACTERS_NAME :: "Characters";
@@ -43,6 +48,8 @@ RP_STATE :: 4096;          // bytes of the lane's state answer the page reads (a
 RP_DID :: 8192;            // and of the batch as taken it carries (a realm's batches are switches and script rows)
 RP_BATCH :: 8192;          // bytes of a batch on its way (a realm's batches are switches and script rows)
 RP_BATCH_KIND :: 520;      // the editor shell's: a world.edit.v1 batch
+RP_CARDS_POLL :: 5.0f32;   // seconds between reads of the visitors' proposals (a proposal is no world event)
+RP_CARDS_LATE :: 10.0f32;  // seconds a read of them may take before it is asked again
 
 RealmPage :: struct {
   on: bool;
@@ -60,6 +67,12 @@ RealmPage :: struct {
   sel: int;                                   // the thing the shell selected (0: none)
   here: bool; here_x: int; here_z: int;       // the player's spot, centimetres in whole metres
   batch: [RP_BATCH] u8;                       // the follower's room for a batch on its way (world-follow.coax wf_post)
+  // visitors' proposals waiting for the owner (#13527): the read's state, then the cards as the model tells them
+  cards: bool;                                // the page is its owner's or an admin's: it reads them (rp_cards_for)
+  cards_due: bool; cards_host: int = -1; cards_since: f32; cards_url: [WF_URL] u8; cards_url_n: int; cards_reopened: int;
+  nq: int; q_id: [EM_CARDS] int; q_x: [EM_CARDS] int; q_z: [EM_CARDS] int;
+  q_thing: [EM_CARDS] [EM_NAME] u8; q_thing_n: [EM_CARDS] int; q_who: [EM_CARDS] [EM_NAME] u8; q_who_n: [EM_CARDS] int;
+  q_all: int;
 }
 
 rp_world_id :: (p: [] RealmPage) -> string { return wf_id(p[0].f[..]); }
@@ -70,16 +83,75 @@ rp_open :: (p: [] RealmPage, slug: string) -> bool {
   if !wf_open(p[0].f[..], slug, WL_DEV, none) { return false; }
   p[0].f[0].tables = true;
   p[0].on = true; p[0].tabled = false; p[0].rows_n = 0; p[0].part_n = 0; p[0].no_n = 0; p[0].wants_n = 0; p[0].kinds = 0; p[0].things = 0; p[0].sel = 0;
+  p[0].cards_due = false; p[0].cards_host = -1; p[0].cards_since = 0; p[0].nq = 0; p[0].q_all = 0; p[0].cards_reopened = p[0].f[0].reopened;
+  n := ct_put(p[0].cards_url[..], 0, "/api/playtest/realms/"); n = ct_put(p[0].cards_url[..], n, slug); n = ct_put(p[0].cards_url[..], n, "/proposals");
+  p[0].cards_url_n = ifx n > p[0].cards_url.count then 0 else n;
   rp_remodel(p);
   return true;
 }
-rp_step :: (p: [] RealmPage, dt: f32) { if p[0].on { wf_step(p[0].f[..], dt); } }
-rp_wants :: (p: [] RealmPage) -> bool { return p[0].on && wf_wants(p[0].f[..]); }
-rp_url :: (p: [] RealmPage) -> string { return wf_url(p[0].f[..]); }
-rp_body :: (p: [] RealmPage) -> string { return wf_body(p[0].f[..], p[0].batch[..]); }
-rp_flags :: (p: [] RealmPage) -> int { return wf_flags(p[0].f[..]); }
-rp_sent :: (p: [] RealmPage, host_id: int) { wf_sent(p[0].f[..], host_id); }
-rp_engine_started :: (p: [] RealmPage) { if p[0].on { wf_engine_started(p[0].f[..]); } }
+rp_step :: (p: [] RealmPage, dt: f32) {
+  if !p[0].on { return; }
+  wf_step(p[0].f[..], dt);
+  p[0].cards_since += dt;
+  // the proposals again: after any event the follower took (it reopens the world), and every RP_CARDS_POLL seconds
+  if p[0].f[0].reopened != p[0].cards_reopened { p[0].cards_reopened = p[0].f[0].reopened; p[0].cards_due = true; }
+  if p[0].cards_host < 0 && p[0].tabled && p[0].cards_since >= RP_CARDS_POLL { p[0].cards_due = true; }
+  if p[0].cards_host >= 0 && p[0].cards_since >= RP_CARDS_LATE { p[0].cards_host = -1; p[0].cards_due = true; }
+}
+// Whether the page reads the visitors' proposals: only its owner's and admins' do (the server answers "" to anyone else).
+rp_cards_for :: (p: [] RealmPage, on: bool) {
+  if p[0].cards == on { return; }
+  p[0].cards = on; p[0].cards_due = on;
+  if !on && (p[0].nq > 0 || p[0].q_all > 0) { p[0].nq = 0; p[0].q_all = 0; if p[0].on { rp_remodel(p); } }
+}
+// The proposals' read is wanted: the tables were read, none is out, and the follower wants nothing first.
+rp_cards_wants :: (p: [] RealmPage) -> bool { return p[0].on && p[0].cards && p[0].tabled && p[0].cards_due && p[0].cards_host < 0 && p[0].cards_url_n > 0 && !wf_wants(p[0].f[..]); }
+rp_wants :: (p: [] RealmPage) -> bool { return p[0].on && (wf_wants(p[0].f[..]) || rp_cards_wants(p)); }
+rp_url :: (p: [] RealmPage) -> string { return ifx rp_cards_wants(p) then cast(string) p[0].cards_url[0..<p[0].cards_url_n] else wf_url(p[0].f[..]); }
+rp_body :: (p: [] RealmPage) -> string { return ifx rp_cards_wants(p) then "" else wf_body(p[0].f[..], p[0].batch[..]); }
+rp_flags :: (p: [] RealmPage) -> int { return ifx rp_cards_wants(p) then WF_HTTP_WANTED else wf_flags(p[0].f[..]); }
+rp_sent :: (p: [] RealmPage, host_id: int) {
+  if rp_cards_wants(p) {
+    p[0].cards_due = host_id < 0; p[0].cards_since = 0;
+    if host_id >= 0 { p[0].cards_host = host_id; }
+    return;
+  }
+  wf_sent(p[0].f[..], host_id);
+}
+rp_engine_started :: (p: [] RealmPage) { if p[0].on { wf_engine_started(p[0].f[..]); if p[0].cards_host >= 0 { p[0].cards_host = -1; p[0].cards_due = true; } } }
+// The proposals as the server answered them: at most EM_CARDS cards for the model, and how many wait in all.
+// A line that is not a proposal, or whose words are not one printable line, is left out.
+rp_cards :: (p: [] RealmPage, text: string) {
+  p[0].nq = 0; p[0].q_all = 0; all := 0;
+  for i: 0..<ct_parts(text, '\n') {
+    pr := editor_read_proposal(ct_part(text, '\n', i));   // metaverse-engine/editor/lists.coax, the proposals' one reader
+    if !pr.ok { continue; }
+    id := ct_num(pr.id);
+    th: [EM_NAME] u8; tn := rp_line(th[..], pr.thing); wh: [EM_NAME] u8; wn := rp_line(wh[..], pr.who);
+    x := we_cm(rp_metres(pr.x)); z := we_cm(rp_metres(pr.z));
+    if !id.ok || id.v < 1 || tn == 0 || wn == 0 || x < -WE_REACH || x > WE_REACH || z < -WE_REACH || z > WE_REACH { continue; }
+    all += 1;
+    if p[0].nq >= EM_CARDS { continue; }
+    k := p[0].nq;
+    p[0].q_id[k] = id.v; p[0].q_x[k] = x; p[0].q_z[k] = z;
+    p[0].q_thing_n[k] = ct_copy(p[0].q_thing[k][..], cast(string) th[0..<tn]); p[0].q_who_n[k] = ct_copy(p[0].q_who[k][..], cast(string) wh[0..<wn]);
+    p[0].nq += 1;
+  }
+  if all > p[0].nq { p[0].q_all = all; }
+}
+// A number of metres as the server writes it ("-3.8"): what it reads as, 0 for none.
+rp_metres :: (w: string) -> f32 {
+  i := 0; neg := false; v := 0.0f32; scale := 0.0f32;
+  if i < w.count && w[i] == '-' { neg = true; i += 1; }
+  while i < w.count {
+    c := w[i];
+    if c == '.' && scale == 0 { scale = 1; i += 1; continue; }
+    if c < '0' || c > '9' { break; }
+    if scale > 0 { scale = scale / 10; v += scale * cast(f32) (c - '0'); } else { v = v * 10 + cast(f32) (c - '0'); }
+    i += 1;
+  }
+  return ifx neg then -v else v;
+}
 
 // The tables read: their script rows, what the realm places and its things, and the model's lines they give
 // (the page keeps no other copy of them). Tables that do not read name no script, no switch and no thing.
@@ -111,6 +183,14 @@ rp_tables :: (p: [] RealmPage, text: string) {
 // An answer from the host (kind 512 + its id): whether it was the follower's.
 rp_answer :: (p: [] RealmPage, host_id: int, text: string) -> bool {
   if !p[0].on { return false; }
+  if p[0].cards_host >= 0 && host_id == p[0].cards_host {
+    p[0].cards_host = -1;
+    nl := 0; while nl < text.count && text[nl] != '\n' { nl += 1; }
+    status := ct_num(cast(string) text[0..<nl]);
+    if status.ok && status.v == 200 { rp_cards(p, ifx nl < text.count then text[nl + 1..<text.count] else ""); }
+    rp_remodel(p);
+    return true;
+  }
   f := p[0].f[..];
   a := wf_answer(f, host_id, text);
   if a.what == WFQ_NONE { return false; }
@@ -120,6 +200,7 @@ rp_answer :: (p: [] RealmPage, host_id: int, text: string) -> bool {
   } else if a.what == WFQ_TABLES {
     if a.status == 200 { rp_tables(p, a.body); }
     wf_tabled(f);
+    p[0].cards_due = true;   // and the proposals after them
   } else if a.what == WFQ_EVENTS {
     // any event: the state and the tables again (the world is small; the page keeps no copy an event would change)
     if a.status == 200 && wf_line(a.body, 0).count > 0 { wf_reopen(f); }
@@ -239,6 +320,8 @@ rp_model_write :: (p: [] RealmPage, out: [] u8) -> int {
   }
   n = em_at_once(out, n);
   n = ct_put(out, n, cast(string) p[0].part[0..<p[0].part_n]);
+  for k: 0..<p[0].nq { n = em_card(out, n, p[0].q_id[k], p[0].q_x[k], p[0].q_z[k], cast(string) p[0].q_thing[k][0..<p[0].q_thing_n[k]], cast(string) p[0].q_who[k][0..<p[0].q_who_n[k]]); }
+  if p[0].q_all > 0 { n = em_cards_all(out, n, p[0].q_all); }
   if p[0].here { n = em_here(out, n, p[0].here_x, p[0].here_z); }
   if p[0].no_n > 0 { n = em_no(out, n, cast(string) p[0].no[0..<p[0].no_n]); }
   return n;
@@ -332,6 +415,7 @@ rp_test_state :: (rev: int, out: [] u8) -> string {
   rp_step(p[..], 0.016); rp_sent(p[..], 1);
   k = ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_tables("", t[..]));
   #assert rp_answer(p[..], 1, cast(string) b[0..<k]) && p[0].things == 2;
+  #assert !rp_cards_wants(p[..]);   // a page that is not its owner's reads no proposals
   // a selection: the model names it; one that names no thing names none
   #assert rp_message(p[..], RP_SELECT, "3") && ct_part(rp_model(p[..]), '\n', 0) == "editor.model.v1 fairy-forest dev 4 1 0 3";
   #assert rp_message(p[..], RP_SELECT, "9") && ct_part(rp_model(p[..]), '\n', 0) == "editor.model.v1 fairy-forest dev 4 1 0 0";
@@ -353,4 +437,44 @@ rp_test_state :: (rev: int, out: [] u8) -> string {
     e := es[i];
     #assert e.op == WE_SPAWN && e.id == 0 && e.kind == 1 && e.x > -300 && e.x < 700 && e.z > -1000 && e.z < 0;
   }
+}
+#test "a realm's page reads the visitors' proposals after its tables, after an event and every few seconds, and tells the shell each as a card" {
+  p: [1] RealmPage; o: [4096] u8; t: [2048] u8; b: [2048] u8;
+  #assert rp_open(p[..], "fairy-forest");
+  rp_cards_for(p[..], true);
+  rp_step(p[..], 0.016); rp_sent(p[..], 0);
+  k := ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_state(4, o[..]));
+  #assert rp_answer(p[..], 0, cast(string) b[0..<k]);
+  #assert !rp_cards_wants(p[..]);   // not before the tables
+  rp_step(p[..], 0.016); rp_sent(p[..], 1);
+  k = ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_tables("", t[..]));
+  #assert rp_answer(p[..], 1, cast(string) b[0..<k]);
+  rp_step(p[..], 0.016); #assert rp_url(p[..]) == "/api/playtest/realms/fairy-forest/proposals"; rp_sent(p[..], 3);
+  #assert !rp_answer(p[..], 4, "200\nP 9|V|crate|0|0|0|1|2\n") && p[0].nq == 0;   // another request's answer
+  // two cards and a line that is not one; who and what as people read them, the place in whole centimetres
+  rev := rp_rev(p[..]);
+  #assert rp_answer(p[..], 3, "200\nP 31|Visitor ab12|barrel|0|3.8|1.57|2|3\nP 32|Visitor 4f2a|crate|-2.5|12|0|0|1\nQ 33|V|crate|0|0|0|0|1\n") && rp_rev(p[..]) == rev + 1;
+  #assert p[0].nq == 2 && p[0].q_all == 0 && p[0].q_z[0] == 380 && p[0].q_x[1] == -250 && p[0].q_z[1] == 1200;
+  m: [1] EdModel; sc: [EM_BYTES] u8;
+  #assert em_read(m[..], rp_model(p[..]), sc[..]) && m[0].nq == 2 && m[0].q_id[1] == 32;
+  #assert ct_part(rp_model(p[..]), '\n', ct_parts(rp_model(p[..]), '\n') - 5) == "card 31 0 380 barrel" && ct_part(rp_model(p[..]), '\n', ct_parts(rp_model(p[..]), '\n') - 4) == "from Visitor ab12";
+  // not again at once: the world's events first, then nothing more
+  rp_step(p[..], 1.0); #assert !p[0].cards_due && rp_url(p[..]) == "/api/worlds/fairy-forest/events?lane=dev&after=4"; rp_sent(p[..], 5);
+  #assert !rp_wants(p[..]) && rp_answer(p[..], 5, "200\n") && !rp_wants(p[..]);
+  // again after RP_CARDS_POLL seconds, once the world's own ask went; a refusal keeps what was read
+  rp_step(p[..], RP_CARDS_POLL); #assert p[0].cards_due && !rp_cards_wants(p[..]) && rp_url(p[..]) == "/api/worlds/fairy-forest/events?lane=dev&after=4"; rp_sent(p[..], 6);
+  #assert rp_cards_wants(p[..]) && rp_url(p[..]) == "/api/playtest/realms/fairy-forest/proposals"; rp_sent(p[..], 7);
+  #assert rp_answer(p[..], 7, "503\nlater") && p[0].nq == 2 && !p[0].cards_due;
+  // an event: the world first, then the proposals again
+  #assert rp_answer(p[..], 6, "200\nEVENT\n");
+  rp_step(p[..], 0.016); #assert p[0].cards_due && rp_url(p[..]) == "/api/worlds/fairy-forest?lane=dev"; rp_sent(p[..], 0);
+  #assert rp_cards_wants(p[..]) && rp_url(p[..]) == "/api/playtest/realms/fairy-forest/proposals"; rp_sent(p[..], 1);
+  // an answer of none takes the cards away
+  #assert rp_answer(p[..], 1, "200\n") && p[0].nq == 0;
+  m2: [1] EdModel; #assert em_read(m2[..], rp_model(p[..]), sc[..]) && m2[0].nq == 0;
+  // a read that gets no answer is asked again
+  p[0].cards_host = 3; p[0].cards_due = false; p[0].cards_since = 0; rp_step(p[..], RP_CARDS_LATE);
+  #assert p[0].cards_host == -1 && p[0].cards_due;
+  // a page that is no longer its owner's forgets them
+  p[0].nq = 1; rp_cards_for(p[..], false); #assert p[0].nq == 0 && !rp_cards_wants(p[..]);
 }

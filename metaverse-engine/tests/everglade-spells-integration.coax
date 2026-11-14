@@ -345,10 +345,6 @@ engine_native_everglade_10 :: () #export_c #effects(all) {
   #assert everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1) && everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1);
   edit_layer(a[..]);
   #assert a[0].ev.editing && redit_open(f);
-  // the visitor's card accepted here: the barrel goes into the city and out to everyone
-  f[0].took = true; f[0].decided_thing_n = redit_copy(f[0].decided_thing[..], "barrel"); f[0].decided_x = 6; f[0].decided_z = -12;
-  edit_layer(a[..]);
-  #assert a[0].ev.edits.n == 1 && a[0].ev.edits.things[0].kind == 1 && a[0].ev.edits.things[0].x == 6 && a[0].ev.due > 0;
   // in edit mode the Metaverse Engine's panels stand in for the layer's (everglade-editor.coax): its DONE closes edit mode, and the layer's pane with it
   n = everglade_edit_hud(a[..], out[..], u[..], 0, 840);
   #assert editor_on(a[..]) && !f[0].shown[RB_EDIT];

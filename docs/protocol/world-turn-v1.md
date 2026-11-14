@@ -27,6 +27,15 @@ which sends it with every turn after. It never leaves the page as these bytes.
 | `at TAGS` | Its tags, joined by commas. Left out for none. |
 | `e ID KIND X Z YAW` | A thing: its ID, its kind, where it stands and its heading. At most 128. |
 | `more N` | Things the world holds that are not listed. Left out for none. |
+| `card ID X Z THING` | A visitor's proposal waiting for the owner of a realm's world (#13527): its ID on the realm's server, where the thing would stand, and what it is. At most 16. |
+| `from WHO` | Who proposed the card on the line above. |
+| `cards N` | How many proposals wait in all, when fewer are listed. Left out when all are. |
+
+The conversation shows each card as a turn of its own: who proposed what and where, with Accept and
+Decline (`apps/openagents-web/chat/chat-ideas.coax`). Accept posts
+`/api/playtest/realms/WORLD/proposals/ID/accept` as the owner, and the server places the thing as
+the owner's own world edit under its rules. Decline posts `.../decline`. Neither goes through a
+model, and the cards are not in the turn in words.
 
 How a turn carries it depends on who answers:
 

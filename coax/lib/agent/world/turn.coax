@@ -16,6 +16,10 @@
 //   e ID KIND X Z YAW                       a thing: its ID, its kind, where it stands in whole
 //                                           centimetres, its turn in whole degrees
 //   more N                                  things the world holds that are not listed; left out for none
+//   card ID X Z THING                       a visitor's proposal waiting for the owner (#13527): its ID on the
+//                                           realm's server, where the thing would stand, and what it is
+//   from WHO                                who proposed the card on the line above
+//   cards N                                 how many proposals wait in all, when fewer are listed
 //
 // world.plan.v1, what a hosted turn asks the editor to do, a step a line, carried out as one
 // batch of world.edit.v1 edits the page sends as its own (so the server's rules answer):
@@ -50,6 +54,7 @@ WT_NAME :: 40;         // bytes in a kind's or a world's name
 WT_KINDS :: 64;        // kinds a turn lists
 WT_THINGS :: 128;      // things a turn lists; the rest are counted in `more`
 WT_FILES :: 24;        // attachments a turn lists (#13468); the rest are left out
+WT_CARDS :: 16;        // visitors' proposals a turn lists (#13527); `cards` counts them all
 WT_FID :: 16; WT_FNAME :: 100; WT_FNOTE :: 200; WT_FTAGS :: 120;   // an attachment's ID, name, note and tags, in bytes (world.files.v1's)
 WT_FKIND :: [4] string.["", "image", "document", "link"];
 WT_BYTES :: 24576;     // bytes a turn may take
@@ -89,6 +94,10 @@ WorldTurn :: struct {
   f_name: [WT_FILES] [WT_FNAME] u8; f_name_n: [WT_FILES] int;
   f_note: [WT_FILES] [WT_FNOTE] u8; f_note_n: [WT_FILES] int;
   f_tags: [WT_FILES] [WT_FTAGS] u8; f_tags_n: [WT_FILES] int;
+  // visitors' proposals waiting for the owner (#13527): each card's ID, place, thing and who proposed it
+  nq: int; q_id: [WT_CARDS] int; q_x: [WT_CARDS] int; q_z: [WT_CARDS] int;
+  q_thing: [WT_CARDS] [WT_NAME] u8; q_thing_n: [WT_CARDS] int; q_who: [WT_CARDS] [WT_NAME] u8; q_who_n: [WT_CARDS] int;
+  q_all: int;
 }
 WorldStep :: struct { tool: int; kind: int; id: int; x: int; z: int; yaw: int; percent: int = 100; }
 WorldPlan :: struct {
@@ -227,6 +236,21 @@ wt_more :: (out: [] u8, at: int, count: int) -> int {
   n := json_raw(out, at, "more "); n = json_write_int(out, n, count);
   return json_raw(out, n, "\n");
 }
+// A visitor's proposal waiting for the owner: its ID, where the thing would stand, what it is, who proposed it.
+wt_card :: (out: [] u8, at: int, id: int, x: int, z: int, thing: string, who: string) -> int {
+  if at < 0 || id < 1 || !wt_place_ok(x, z) || !wt_text_ok(thing, WT_NAME) || !wt_text_ok(who, WT_NAME) { return -1; }
+  n := json_raw(out, at, "card "); n = json_write_int(out, n, id); n = json_raw(out, n, " "); n = json_write_int(out, n, x);
+  n = json_raw(out, n, " "); n = json_write_int(out, n, z); n = json_raw(out, n, " "); n = json_raw(out, n, thing);
+  n = json_raw(out, n, "\nfrom "); n = json_raw(out, n, who);
+  return json_raw(out, n, "\n");
+}
+wt_cards :: (out: [] u8, at: int, count: int) -> int {
+  if at < 0 || count < 1 { return -1; }
+  n := json_raw(out, at, "cards "); n = json_write_int(out, n, count);
+  return json_raw(out, n, "\n");
+}
+wt_card_thing :: (t: [] WorldTurn, k: int) -> string { return cast(string) t[0].q_thing[k][0..<t[0].q_thing_n[k]]; }
+wt_card_who :: (t: [] WorldTurn, k: int) -> string { return cast(string) t[0].q_who[k][0..<t[0].q_who_n[k]]; }
 // The whole turn as its bytes, or "" when it does not fit.
 wt_write :: (t: [] WorldTurn, out: [] u8) -> string {
   n := wt_begin(out, wt_word(t), t[0].live, t[0].rev, t[0].sel);
@@ -235,11 +259,13 @@ wt_write :: (t: [] WorldTurn, out: [] u8) -> string {
   for k: 0..<t[0].nf { n = wt_file_of(t, out, n, k); }
   for k: 0..<t[0].nt { n = wt_thing(out, n, t[0].t_id[k], t[0].t_kind[k], t[0].t_x[k], t[0].t_z[k], t[0].t_yaw[k]); }
   if t[0].more > 0 { n = wt_more(out, n, t[0].more); }
+  for k: 0..<t[0].nq { n = wt_card(out, n, t[0].q_id[k], t[0].q_x[k], t[0].q_z[k], wt_card_thing(t, k), wt_card_who(t, k)); }
+  if t[0].q_all > 0 { n = wt_cards(out, n, t[0].q_all); }
   return ifx n < 0 || n > WT_BYTES then "" else cast(string) out[0..<n];
 }
 // Reads a turn. False for any bytes wt_write would not write.
 wt_read :: (t: [] WorldTurn, text: string, scratch: [] u8) -> bool {
-  t[0].ok = false; t[0].world_n = 0; t[0].nk = 0; t[0].nt = 0; t[0].more = 0; t[0].here = false; t[0].sel = 0; t[0].rev = 0; t[0].nf = 0;
+  t[0].ok = false; t[0].world_n = 0; t[0].nk = 0; t[0].nt = 0; t[0].more = 0; t[0].here = false; t[0].sel = 0; t[0].rev = 0; t[0].nf = 0; t[0].nq = 0; t[0].q_all = 0;
   if text.count < WT_SCHEMA.count || text.count > WT_BYTES { return false; }
   head := wt_part(text, '\n', 0);
   if wt_part(head, ' ', 0) != WT_SCHEMA || wt_parts(head, ' ') != 5 { return false; }
@@ -274,6 +300,13 @@ wt_read :: (t: [] WorldTurn, text: string, scratch: [] u8) -> bool {
       k := t[0].nf - 1;
       if word == "an" { t[0].f_note_n[k] = wt_copy(t[0].f_note[k][..], wt_rest(line, 1)); } else { t[0].f_tags_n[k] = wt_copy(t[0].f_tags[k][..], wt_rest(line, 1)); }
     } else if word == "more" { t[0].more = wt_num(wt_part(line, ' ', 1)).v; }
+    else if word == "card" && t[0].nq < WT_CARDS {
+      k := t[0].nq;
+      t[0].q_id[k] = wt_num(wt_part(line, ' ', 1)).v; t[0].q_x[k] = wt_num(wt_part(line, ' ', 2)).v; t[0].q_z[k] = wt_num(wt_part(line, ' ', 3)).v;
+      t[0].q_thing_n[k] = wt_copy(t[0].q_thing[k][..], wt_rest(line, 4)); t[0].q_who_n[k] = 0;
+      t[0].nq += 1;
+    } else if word == "from" && t[0].nq > 0 { t[0].q_who_n[t[0].nq - 1] = wt_copy(t[0].q_who[t[0].nq - 1][..], wt_rest(line, 1)); }
+    else if word == "cards" { t[0].q_all = wt_num(wt_part(line, ' ', 1)).v; }
     else if line.count > 0 || i + 1 < lines { return false; }
   }
   t[0].ok = wt_write(t, scratch) == text;
@@ -544,6 +577,18 @@ WT_TEST_TURN :: "world.turn.v1 splice dev 7 2\nhere 420 -75\nk 1001 Cargo crate\
   #assert wt_words(t, h[0].a[..]) == "[The editor is open on the world splice, dev lane, revision 7. Selected: thing 2, Parked rover, at x -40 z 600 cm. Here, the point last tapped: x 420 z -75 cm. Read and change it with the realm world tools.]";
   #assert wt_read(t, "world.turn.v1 splice live 3 0\n", h[0].s[..]);
   #assert wt_words(t, h[0].a[..]) == "[The editor is open on the world splice, live lane, revision 3. Nothing is selected. Read and change it with the realm world tools.]";
+}
+WT_TEST_CARDS :: "world.turn.v1 fairy-forest dev 9 0\ncard 31 0 380 barrel\nfrom Visitor ab12\ncard 32 -250 1200 Glowing mushroom\nfrom Visitor 4f2a\ncards 3\n";
+#test "a turn lists visitors' proposals waiting for the owner, each with who proposed it" {
+  h: [1] WtTest; t := h[0].t[..];
+  #assert wt_read(t, WT_TEST_CARDS, h[0].s[..]) && t[0].nq == 2 && t[0].q_all == 3 && t[0].q_id[0] == 31 && t[0].q_z[0] == 380 && t[0].q_x[1] == -250;
+  #assert wt_card_thing(t, 1) == "Glowing mushroom" && wt_card_who(t, 0) == "Visitor ab12" && wt_write(t, h[0].a[..]) == WT_TEST_CARDS;
+  head := "world.turn.v1 fairy-forest dev 9 0\n";
+  for bad: [5] string.["card 31 0 380 barrel\n", "from V\n", "card 0 0 380 barrel\nfrom V\n", "card 31 0 380 barrel\nfrom V\nfrom W\n", "cards 0\n"] {
+    b: [256] u8; k := json_raw(b[..], 0, head); k = json_raw(b[..], k, bad);
+    #assert !wt_read(t, cast(string) b[0..<k], h[0].s[..]);
+  }
+  #assert wt_card(h[0].a[..], 0, 1, 0, 0, "", "V") < 0 && wt_card(h[0].a[..], 0, 1, 0, 0, "barrel", "") < 0 && wt_card(h[0].a[..], 0, 1, WT_REACH + 1, 0, "barrel", "V") < 0;
 }
 WT_TEST_FILES :: "world.turn.v1 splice dev 7 0\nk 1001 Cargo crate\na 00112233445566aa image 4032348 RaiderGarage.png\nan The raiders' garage, outside\nat garage,raiders\na 00112233445566bb document 900 Garage notes.md\ne 1 1001 350 -1200 90\n";
 #test "a turn lists the attachments, never their bytes, and a hosted turn may ask to open them first" {

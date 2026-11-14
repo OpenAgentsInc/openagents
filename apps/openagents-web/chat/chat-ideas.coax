@@ -1,0 +1,186 @@
+// Visitors' ideas in the editor's conversation (GitHub #13527, #13542): where a realm's owner lets visitors build,
+// a visitor's placed thing waits for the owner as a proposal (coax/web/api/realms.c, worlds.c rpp_propose). The
+// realm's page reads the proposals and tells the editor shell each as a `card` line of its model
+// (metaverse/edit/realm-page.coax); the shell tells this conversation each in the world it hands over
+// (world.turn.v1 `card` and `from`, coax/lib/agent/world/turn.coax). Here each is a turn of the conversation: who
+// proposed what, and where, with Accept and Decline.
+//
+// Accept is the owner's own write: POST /api/playtest/realms/WORLD/proposals/ID/accept, which the server carries
+// out as a spawn in the realm's world, one step of its undo log, answered by its rules (worlds.c
+// world_realm_accept); the world's next event brings the thing to the page and the shell. Decline is
+// .../decline. A card decided here stays off until the world told next no longer lists it. Loaded by
+// chat-web.coax, which holds ChatWeb; its checks run with that file's:
+//   coax/bin/coax test apps/openagents-web/chat-web.coax
+
+CI_SAID :: 160;     // bytes of what the last decision came to, in words
+
+ChatIdeas :: struct {
+  due: int;                          // a card pressed, waiting for the page's one request to be free (0: none)
+  accept: bool;                      // and whether it was Accept
+  busy: int;                         // the card whose decision is on its way (0: none)
+  thing: [WT_NAME] u8; thing_n: int; // what it was, for the words after
+  done: [WT_CARDS] int; done_n: int; // cards decided here that the world told still lists
+  said: [CI_SAID] u8; said_n: int;   // what the last decision came to
+}
+
+// Card `k` of the world told: whether it is still to be decided here.
+ci_open :: (s: [] ChatWeb, k: int) -> bool {
+  id := s[0].world[0].q_id[k];
+  for j: 0..<s[0].ideas[0].done_n { if s[0].ideas[0].done[j] == id { return false; } }
+  return true;
+}
+// Whether the conversation shows any ideas: the editor told it of a world with cards, or a decision said something.
+ci_any :: (s: [] ChatWeb) -> bool {
+  if s[0].wwire_n == 0 { return false; }
+  if s[0].ideas[0].said_n > 0 { return true; }
+  for k: 0..<s[0].world[0].nq { if ci_open(s, k) { return true; } }
+  return false;
+}
+// The world was told again: cards it no longer lists are forgotten.
+ci_told :: (s: [] ChatWeb) {
+  c := s[0].ideas[..]; w := s[0].world[..]; n := 0;
+  for j: 0..<c[0].done_n {
+    still := false;
+    for k: 0..<w[0].nq { if w[0].q_id[k] == c[0].done[j] { still = true; } }
+    if still { c[0].done[n] = c[0].done[j]; n += 1; }
+  }
+  c[0].done_n = ifx s[0].wwire_n > 0 then n else 0;
+  if c[0].due > 0 && ci_card_at(w, c[0].due) < 0 { c[0].due = 0; }
+}
+// The place of card `id` in the world told, or -1.
+ci_card_at :: (w: [] WorldTurn, id: int) -> int { for k: 0..<w[0].nq { if w[0].q_id[k] == id { return k; } } return -1; }
+// "idea.ID.accept" or "idea.ID.decline": the card's ID (1 and up) and which; card 0 for neither.
+CiPress :: struct { card: int; accept: bool; }
+ci_press_of :: (id: string) -> CiPress {
+  if id.count < 7 || cast(string) id[0..<5] != "idea." { return CiPress.{}; }
+  at := 5; n := 0;
+  while at < id.count && id[at] >= '0' && id[at] <= '9' && at < 15 { n = n * 10 + cast(int) (id[at] - '0'); at += 1; }
+  rest := cast(string) id[at..<id.count];
+  if n < 1 || at == 5 || id[5] == '0' || (rest != ".accept" && rest != ".decline") { return CiPress.{}; }
+  return CiPress.{card = n, accept = rest == ".accept"};
+}
+// A press of Accept or Decline on a card the world told and not yet decided here: it goes when the page is free.
+ci_press :: (s: [] ChatWeb, id: string) -> bool {
+  p := ci_press_of(id); card := p.card; accept := p.accept;
+  if card == 0 { return false; }
+  c := s[0].ideas[..]; k := ci_card_at(s[0].world[..], card);
+  if k < 0 || !ci_open(s, k) || c[0].busy > 0 || c[0].due > 0 { return true; }
+  c[0].due = card; c[0].accept = accept; c[0].said_n = 0;
+  c[0].thing_n = cw_put(c[0].thing[..], 0, wt_card_thing(s[0].world[..], k));
+  return true;
+}
+// A frame's turn: the decision pressed, once the page's one request is free. Whether it went.
+ci_tick :: (s: [] ChatWeb) -> bool {
+  c := s[0].ideas[..];
+  if c[0].due == 0 || s[0].wwire_n == 0 { return false; }
+  url: [WT_WORLD + 64] u8; num: [24] u8;
+  n := cw_put(url[..], 0, "/api/playtest/realms/"); n = cw_put(url[..], n, wt_word(s[0].world[..]));
+  n = cw_put(url[..], n, "/proposals/"); n = cw_put(url[..], n, tr_join(num[..], "", c[0].due));
+  n = cw_put(url[..], n, ifx c[0].accept then "/accept" else "/decline");
+  if !cw_go(s, CF_DECIDE, cast(string) url[0..<n], "{}") { return false; }
+  c[0].busy = c[0].due; c[0].due = 0;
+  return true;
+}
+// The server's answer to a decision: the card is off once decided, by this owner or someone before; else the words why.
+ci_end :: (s: [] ChatWeb, status: int, body: string) {
+  c := s[0].ideas[..];
+  card := c[0].busy; c[0].busy = 0;
+  if card == 0 { return; }
+  thing := cast(string) c[0].thing[0..<c[0].thing_n];
+  if status == 200 || status == 409 {
+    if c[0].done_n < WT_CARDS { c[0].done[c[0].done_n] = card; c[0].done_n += 1; }
+    n := 0;
+    if status == 409 { n = cw_put(c[0].said[..], 0, "Someone already decided that one."); }
+    else if c[0].accept { n = cw_put(c[0].said[..], 0, "Accepted: the "); n = cw_put(c[0].said[..], n, thing); n = cw_put(c[0].said[..], n, " is in the world."); }
+    else { n = cw_put(c[0].said[..], 0, "Declined: the "); n = cw_put(c[0].said[..], n, thing); n = cw_put(c[0].said[..], n, "."); }
+    c[0].said_n = n;
+    return;
+  }
+  scratch: [CI_SAID] u8; ar: [1] ClArena; ar[0].buf = scratch[..];
+  said := cl_str(ar[..], body, "error");
+  c[0].said_n = cw_put(c[0].said[..], 0, ifx status == 0 then "The page couldn't reach OpenAgents. Try again."
+    else ifx status == 401 || status == 403 then "Only the realm's owner can decide that."
+    else ifx said.count > 0 then said else "That didn't go through. Try again.");
+}
+// Each card still to be decided, as a turn of the conversation: who proposed what and where, Accept and Decline.
+ci_draw :: (s: [] ChatWeb) {
+  if s[0].wwire_n == 0 { return; }
+  t := s[0].tree[..]; u := s[0].ui[..]; w := s[0].world[..]; c := s[0].ideas[..];
+  shown := 0;
+  for k: 0..<w[0].nq {
+    if !ci_open(s, k) { continue; }
+    shown += 1;
+    id := w[0].q_id[k];
+    ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; ide: [UI_ID] u8;
+    title: [WT_NAME * 2 + 16] u8; where: [80] u8; num: [24] u8;
+    base := tr_join(ida[..], "idea.", id);
+    tn := cw_put(title[..], 0, wt_card_who(w, k)); tn = cw_put(title[..], tn, " proposes a "); tn = cw_put(title[..], tn, wt_card_thing(w, k));
+    card := k_card(t, u, base, cast(string) title[0..<tn]);
+    wn := cw_put(where[..], 0, "At "); wn = ci_metres(where[..], wn, w[0].q_x[k], num[..]); wn = cw_put(where[..], wn, ", "); wn = ci_metres(where[..], wn, w[0].q_z[k], num[..]);
+    wn = cw_put(where[..], wn, " from the middle of the realm");
+    m := k_meta(t, tr_cat(idb[..], base, ".where"), cast(string) where[0..<wn]);
+    acts := tr_open(t, tr_cat(idc[..], base, ".acts"), TG_DIV, "acts");
+    going := c[0].busy == id || c[0].due == id;
+    held := c[0].busy > 0 || c[0].due > 0;
+    yes := k_button(t, u, tr_cat(idd[..], base, ".accept"), ifx going && c[0].accept then "Accepting" else "Accept", ifx held then BS_DISABLED else BS_PRIMARY);
+    no := k_button(t, u, tr_cat(ide[..], base, ".decline"), ifx going && !c[0].accept then "Declining" else "Decline", ifx held then BS_DISABLED else BS_PLAIN);
+    tr_close(t);
+    tr_close(t);
+  }
+  more := w[0].q_all - w[0].nq;
+  if more > 0 { mb: [80] u8; num: [24] u8; mn := cw_put(mb[..], 0, tr_join(num[..], "", more)); mn = cw_put(mb[..], mn, ifx more == 1 then " more idea waits after these." else " more ideas wait after these."); m := k_meta(t, "ideas.more", cast(string) mb[0..<mn]); }
+  if c[0].said_n > 0 { m := k_meta(t, "ideas.said", cast(string) c[0].said[0..<c[0].said_n]); }
+}
+// Whole centimetres as metres a person reads: "3.8 m", "-12 m", "0 m".
+ci_metres :: (out: [] u8, at: int, cm: int, num: [] u8) -> int {
+  n := at; v := ifx cm < 0 then -cm else cm;
+  tenths := (v + 5) / 10;   // to the nearest tenth of a metre
+  if cm < 0 && tenths > 0 { n = cw_put(out, n, "-"); }
+  n = cw_put(out, n, tr_join(num, "", tenths / 10));
+  if tenths % 10 > 0 { n = cw_put(out, n, "."); n = cw_put(out, n, tr_join(num, "", tenths % 10)); }
+  return cw_put(out, n, " m");
+}
+
+CW_T_IDEAS :: "world.turn.v1 fairy-forest dev 9 0\ncard 31 0 380 barrel\nfrom Visitor ab12\ncard 32 -250 1200 bench\nfrom Visitor 4f2a\ncards 3\n";
+#test "a visitor's idea is a turn of the editor's conversation: who proposed what and where, with Accept and Decline" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  n := coaxial_chatweb_frame(s, 0.016, true); t := s[0].tree[..];
+  #assert tr_find(t, "idea.31") < 0 && !ci_any(s);   // no world: none
+  cw_test_world(s, CW_T_IDEAS);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert ci_any(s) && tr_text_of(t, tr_find(t, "idea.31.h")) == "Visitor ab12 proposes a barrel" && tr_text_of(t, tr_find(t, "idea.31.where")) == "At 0 m, 3.8 m from the middle of the realm";
+  #assert tr_text_of(t, tr_find(t, "idea.32.where")) == "At -2.5 m, 12 m from the middle of the realm" && tr_text_of(t, tr_find(t, "ideas.more")) == "1 more idea waits after these.";
+  #assert tr_text_of(t, tr_find(t, "idea.31.accept.l")) == "Accept" && tr_text_of(t, tr_find(t, "idea.32.decline.l")) == "Decline" && !tr_has(t, tr_find(t, "idea.31.accept"), AT_DISABLED);
+  // Accept: the owner's write, to the realm's server, once the page's one request is free
+  cw_test_press(s, "idea.31.accept");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/playtest/realms/fairy-forest/proposals/31/accept" && cw_test_body(s) == "{}";
+  #assert tr_text_of(t, tr_find(t, "idea.31.accept.l")) == "Accepting" && tr_has(t, tr_find(t, "idea.32.accept"), AT_DISABLED);
+  cw_test_press(s, "idea.32.decline");   // one at a time: a second press while one is on its way does nothing
+  #assert s[0].ideas[0].due == 0;
+  cw_test_answer(s, 200, "{\"state\":\"accepted\"}");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "idea.31") < 0 && tr_find(t, "idea.32") > 0 && tr_text_of(t, tr_find(t, "ideas.said")) == "Accepted: the barrel is in the world.";
+  // the world told again still lists it: it stays off; told without it, it is forgotten
+  cw_test_world(s, CW_T_IDEAS); #assert s[0].ideas[0].done_n == 1;
+  cw_test_world(s, "world.turn.v1 fairy-forest dev 10 0\ncard 32 -250 1200 bench\nfrom Visitor 4f2a\n"); #assert s[0].ideas[0].done_n == 0;
+  // Decline; someone else decided first; a refusal in the server's words
+  cw_test_press(s, "idea.32.decline"); n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert cw_test_door(s) == "/api/playtest/realms/fairy-forest/proposals/32/decline";
+  cw_test_answer(s, 422, "{\"error\":\"That spot is kept clear.\"}"); n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "idea.32") > 0 && tr_text_of(t, tr_find(t, "ideas.said")) == "That spot is kept clear." && !tr_has(t, tr_find(t, "idea.32.decline"), AT_DISABLED);
+  cw_test_press(s, "idea.32.decline"); n = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_answer(s, 409, "{\"error\":\"decided\"}"); n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "idea.32") < 0 && tr_text_of(t, tr_find(t, "ideas.said")) == "Someone already decided that one.";
+  // a press on a card the world did not tell, or not a card's control, sends nothing
+  #assert ci_press(s, "idea.99.accept") && s[0].ideas[0].due == 0 && !ci_press(s, "idea.x.accept") && !ci_press(s, "idea.031.accept") && !ci_press(s, "idea.31.open");
+  // bytes that are not a world: no ideas
+  cw_test_world(s, "no world"); n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "ideas.said") < 0 && !ci_any(s);
+}
+#test "a visitor's idea's place is said in metres" {
+  o: [40] u8; num: [24] u8;
+  #assert cast(string) o[0..<ci_metres(o[..], 0, 380, num[..])] == "3.8 m" && cast(string) o[0..<ci_metres(o[..], 0, -1200, num[..])] == "-12 m";
+  #assert cast(string) o[0..<ci_metres(o[..], 0, 0, num[..])] == "0 m" && cast(string) o[0..<ci_metres(o[..], 0, 199, num[..])] == "2 m" && cast(string) o[0..<ci_metres(o[..], 0, -5, num[..])] == "-0.1 m";
+}

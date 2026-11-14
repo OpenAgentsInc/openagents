@@ -56,28 +56,6 @@ edit_layer :: (s: [] Everglade) {
     else if s[0].ev.editing != open { e[0].pane = ifx s[0].ev.editing then REDIT_BOARD else REDIT_SHUT; }
   }
   s[0].ev.ed_open = redit_open(e);
-  // a visitor's card accepted here: the thing goes into the city, published as any edit by hand
-  if redit_took(e) && s[0].ev.admin {
-    kind := -1;
-    took := cast(string) e[0].decided_thing[0..<e[0].decided_thing_n];
-    for i: 0..<EG_EDIT_ITEMS { if eg_lower_is(EG_EDIT_LABEL[i], took) { kind = i; } }
-    if kind >= 0 && s[0].ev.edits.n < EG_EDIT_MAX {
-      before := s[0].ev.edits;
-      t: EgThing; t.kind = kind; t.size = 1; t.yaw = 0; t.group = eg_new_group(s[0].ev.edits); t.x = e[0].decided_x; t.z = e[0].decided_z;
-      s[0].ev.edits.things[s[0].ev.edits.n] = t; s[0].ev.edits.n += 1;
-      if eg_edit_fault(s[0].ev.edits, s[0].ev.edits.n - 1) == EG_FAULT_NONE {
-        after := s[0].ev.edits;
-        s[0].ev.edits = before; edit_remember(s); s[0].ev.edits = after;
-        edit_settle(s);
-      } else { s[0].ev.edits = before; redit_note(e, "Accepted, but something stands there now."); }
-    }
-  }
-}
-// A label (CRATE) is a thing's name (crate).
-eg_lower_is :: (label: string, name: string) -> bool {
-  if label.count != name.count { return false; }
-  for i: 0..<label.count { c := label[i]; if c >= 'A' && c <= 'Z' { c = c + 32; } if c != name[i] { return false; } }
-  return true;
 }
 
 // ---- into and out of edit mode

@@ -25,7 +25,8 @@
     "script_name_bytes": 48,
     "lists": 4,
     "switches": 96,
-    "label_bytes": 48
+    "label_bytes": 48,
+    "cards": 16
   },
   "lines": [
     "editor.model.v1 WORLD LANE REV UNDO REDO SELECTED",
@@ -53,6 +54,9 @@
     "atonce",
     "list TABLE COLUMN TITLE",
     "sw ROW ON LABEL",
+    "card ID X Z THING",
+    "from WHO",
+    "cards N",
     "here X Z",
     "no WORDS"
   ],
@@ -98,7 +102,9 @@
     "editor.model.v1 splice dev 0 0 0 0\ncols\ns 1 a 528d kind 1\n",
     "editor.model.v1 splice dev 0 0 0 0\ncols\ns 9 a 528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5 kind 1\n",
     "editor.model.v1 fairy-forest dev 0 0 0 0\ncols\nsw 1 1 Lanterns\n",
-    "editor.model.v1 fairy-forest dev 0 0 0 0\ncols\nlist rows on Features\nsw 1 yes Lanterns\n"
+    "editor.model.v1 fairy-forest dev 0 0 0 0\ncols\nlist rows on Features\nsw 1 yes Lanterns\n",
+    "editor.model.v1 fairy-forest dev 0 0 0 0\ncols\ncard 31 0 380 barrel\n",
+    "editor.model.v1 fairy-forest dev 0 0 0 0\ncols\nfrom Visitor ab12\n"
   ],
   "local": {
     "wire": "editor.model.v1 create-world dev 12 3 1 0\ncols x z yaw kind\nk 786 Cottage (house)\ne 1 786 350 0 -1200 90 150\nall 1203 4096\nkinds 788\nlocal\nland 100 4000\nm 1 Grass\nm 3 Sand\nm 0 Bare grid\nhere 420 -75\n",
@@ -135,5 +141,11 @@
     "lists": 2,
     "switches": 4,
     "at_once": true
+  },
+  "cards": {
+    "about": "Visitors' proposals waiting for the owner of a realm's world (#13527, #13542): each card's ID on the realm's server, where the thing would stand, what it is and who proposed it, and how many wait in all when fewer are listed.",
+    "wire": "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\natonce\ncard 31 0 380 barrel\nfrom Visitor ab12\ncard 32 -250 1200 Glowing mushroom\nfrom Visitor 4f2a\ncards 3\n",
+    "cards": 2,
+    "all": 3
   }
 }

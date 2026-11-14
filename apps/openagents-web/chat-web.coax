@@ -53,6 +53,7 @@
 #load "../../components/kit/listing.coax";      // k_held, k_loading: another page held beside the side, and its loading screen
 #load "chat/chat-tools.coax";                     // tool calls: what each is called, how it stands, a run drawn (#13481)
 #load "chat/chat-hosted.coax";                    // our own tools for a Gemini message: the command table's reads, run as the person
+#load "chat/chat-ideas.coax";                     // visitors' ideas for a realm, in the editor: a turn each, with Accept and Decline (#13527)
 #load "site-side.coax";                      // the side's rules: places, who is logged in, search, sections
 #load "settings-web.coax";                   // Settings in the shell: its sections, its search, Account, Limits, About
 #load "chat/chat-settings.coax";                  // and the sections that are this module's state: Agents and models, Appearance
@@ -126,6 +127,7 @@ CF_LIMITS :: 21;        // Settings, Limits: every login limit (/api/auth/limits
 CF_ABOUT :: 22;         // Settings, About: the release this page is from (/build/about.txt)
 CF_PROJECTS :: 23;      // the projects the person is in, under Projects in the side (/api/projects)
 CF_HCALL :: 24;         // one request of a tool call a Gemini message made (chat-hosted.coax ch_path)
+CF_DECIDE :: 25;        // Accept or Decline on a visitor's idea for the realm in the editor (chat-ideas.coax)
 CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
 // A world step's realm tool (turn.coax WT_TOOL; a size is a set), for its icon and how a run of them is named.
 CW_STEP_TOOLS :: [7] string.["realm_world_place", "realm_world_move", "realm_world_turn", "realm_world_set", "realm_world_remove", "realm_world_undo", "realm_world_redo"];
@@ -224,6 +226,7 @@ ChatWeb :: struct {
   opened: [WP_OPEN] [WT_FID] u8; nopened: int;   // the attachments a hosted turn asked to open (#13468): its second ask carries them
   pmodel: int;                       // the model a hosted turn in the editor went to
   card_due: [WT_WORLD] u8; card_due_n: int;   // a world an agent's tool named: its card is read when the page is free
+  ideas: [1] ChatIdeas;              // the visitors' ideas the world told lists, as this page decides them (chat-ideas.coax)
   // a Gemini message's own tool calls (chat-hosted.coax): the asks so far, the calls the last ask made, the one
   // running and which of its requests, its answer so far, and every answer for the next ask
   hstep: int; hmodel: int;
@@ -588,6 +591,7 @@ cw_transcript :: (s: [] ChatWeb) {
     }
     tr_close(t);
   }
+  ci_draw(s);   // the visitors' ideas the editor's world lists, each a turn with Accept and Decline (chat-ideas.coax)
   if s[0].lrun {
     // what the session is doing: the call it is running, else its goal
     gb: [CW_GOAL + 32] u8; nb: [CQ_LABEL + CQ_ARG] u8;
@@ -617,7 +621,7 @@ cw_build :: (s: [] ChatWeb) {
   }
   if s[0].page == SS_SIDE { tr_close(t); return; }   // the editor's left: the side, and nothing beside it (the home page is a new chat)
   if s[0].page == SW_PAGE { cw_settings_page(s); tr_close(t); return; }   // Settings, beside the side
-  if s[0].count > 0 || s[0].lrun || s[0].error_n > 0 { cw_transcript(s); }   // an error shows in a new chat too
+  if s[0].count > 0 || s[0].lrun || s[0].error_n > 0 || ci_any(s) { cw_transcript(s); }   // an error shows in a new chat too, and visitors' ideas
   if s[0].wwire_n > 0 && s[0].view == CW_CHAT {
     // in the editor: what "this" and "here" mean to the agent now
     w := s[0].world[..]; seen: [160] u8; num: [24] u8;
@@ -1300,6 +1304,8 @@ cw_end :: (s: [] ChatWeb, status: int) {
     s[0].worlds_n = ifx status == 200 then ss_worlds_read(body, s[0].worlds[..]) else 0;
   } else if kind == CF_PROJECTS {
     s[0].projects_n = ifx status == 200 then ss_projects_read(body, s[0].projects[..]) else 0;
+  } else if kind == CF_DECIDE {
+    ci_end(s, status, body);
   } else if kind == CF_LIMITS {
     sw_limits_read(s[0].set[..], status, body);
   } else if kind == CF_ABOUT {
@@ -1417,6 +1423,7 @@ cw_tick :: (s: [] ChatWeb) {
   }
   if s[0].flight != CF_NONE { return; }
   if s[0].out_due { if cw_go(s, CF_OUT, "/api/auth/logout?as=lines", "{}") { s[0].out_due = false; } return; }
+  if ci_tick(s) { return; }   // Accept or Decline on a visitor's idea, as soon as the page is free
   if !s[0].me_asked && s[0].known_asked { if cw_go(s, CF_WHO, "/api/auth/account?as=lines", "") { s[0].me_asked = true; } return; }
   if !s[0].worlds_asked && s[0].me_n > 0 { if cw_go(s, CF_WORLDS, "/api/worlds", "") { s[0].worlds_asked = true; } return; }
   if !s[0].projects_asked && s[0].me_n > 0 { if cw_go(s, CF_PROJECTS, "/api/projects", "") { s[0].projects_asked = true; } return; }
@@ -1562,6 +1569,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     scratch: [WT_BYTES] u8;
     for i: 0..<n { s[0].wwire[i] = s[0].inbox[i]; }
     s[0].wwire_n = ifx wt_read(s[0].world[..], cast(string) s[0].wwire[0..<n], scratch[..]) then n else 0;
+    ci_told(s);   // the visitors' ideas it lists: those decided here and gone from it are forgotten
     s[0].dirty = true; return;
   }
   id := dm_slot_id(s[0].dom[..], slot);
@@ -1577,6 +1585,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   }
   else if kind == CW_SUBMIT && id == "composer" { cw_send(s); }
   else if kind == CW_SUBMIT && id == "claude.key" { cw_connect(s); }
+  else if kind == CW_CLICK && ci_press(s, id) {}   // Accept or Decline on a visitor's idea (chat-ideas.coax)
   else if kind == CW_CLICK && id == "composer.send" {
     if s[0].live { cw_stop(s); }
     else if s[0].lrun && !cw_has_words(s) { s[0].stop_due = true; }

@@ -214,8 +214,11 @@ function streamOpen(urlAt, urlLen, bodyAt, bodyLen) {
   (async () => {
     let status = 0;
     try {
-      const r = await fetch(url, bodyLen ? { method: "POST", body, credentials: "same-origin", headers: { "Content-Type": "application/json" }, signal: mine.signal }
-        : { credentials: "same-origin", cache: "no-store", signal: mine.signal });
+      // a realm's own asks (a visitor's idea accepted or declined in the editor's conversation, #13527) carry the
+      // player key, so a made realm knows its maker
+      const realm = url.startsWith("/api/playtest/realms/"), json = { "Content-Type": "application/json" };
+      const r = await fetch(url, bodyLen ? { method: "POST", body, credentials: "same-origin", headers: realm ? playerHeaders(json) : json, signal: mine.signal }
+        : { credentials: "same-origin", cache: "no-store", headers: realm ? playerHeaders({}) : {}, signal: mine.signal });
       status = r.status;
       const reader = r.body.getReader(), cap = x.dom_inbox_cap();
       for (;;) {

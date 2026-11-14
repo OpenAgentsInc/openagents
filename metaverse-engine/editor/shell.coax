@@ -483,7 +483,11 @@ es_build :: (s: [] EdShell) {
   fly := k_button(t, u, "fly", ifx s[0].fly then "Stop flying" else "Fly", BS_PLAIN);
   run := k_button(t, u, "run", ifx s[0].paused then "Play" else "Pause", BS_PLAIN);
   }
-  agent := k_button(t, u, "agent", ifx s[0].agent then "Hide agent" else "Agent", BS_PLAIN);
+  // visitors' proposals waiting (#13527) are turns of the conversation in the foot: the button says how many
+  waiting := ifx m[0].q_all > 0 then m[0].q_all else m[0].nq;
+  wl: [40] u8; wn: [48] u8;
+  alabel := ifx s[0].agent then "Hide agent" else ifx waiting == 1 then "Agent: 1 idea waits" else ifx waiting > 1 then tr_cat(wn[..], tr_join(wl[..], "Agent: ", waiting), " ideas wait") else "Agent";
+  agent := k_button(t, u, "agent", alabel, BS_PLAIN);
   // assets: only where the world's server answered with its list. Closed, its button still takes a dropped file
   asseting := s[0].assets && s[0].as_have;
   if s[0].as_have { ab := k_button(t, u, "assets", ifx s[0].assets then "Hide assets" else "Assets", BS_PLAIN); if !s[0].assets { tr_attr(t, ab, AT_DROP, ""); } }
@@ -831,6 +835,14 @@ es_turn :: (s: [] EdShell) -> bool {
     n = next; listed += 1;
   }
   if listed < m[0].ne { n = wt_more(out[..], n, m[0].ne - listed); }
+  // visitors' proposals waiting for the owner (#13527): the conversation shows each as a turn with Accept and Decline
+  for k: 0..<m[0].nq {
+    if k >= WT_CARDS { break; }
+    next := wt_card(out[..], n, m[0].q_id[k], m[0].q_x[k], m[0].q_z[k], cast(string) m[0].q_thing[k][0..<m[0].q_thing_n[k]], cast(string) m[0].q_who[k][0..<m[0].q_who_n[k]]);
+    if next < 0 { break; }
+    n = next;
+  }
+  if n >= 0 && m[0].q_all > 0 { n = wt_cards(out[..], n, m[0].q_all); }
   return n < 0 || es_act(s, ES_TURN, cast(string) out[0..<n]);
 }
 // A hosted turn's plan: its steps as one batch of edits made from the model's revision, so one undo
@@ -1549,6 +1561,23 @@ es_test_templates :: (h: [] EsTest, rev: int, things: int) {
   #assert wt_read(turn[..], cast(string) b[0..<coaxial_editor_act_len(s)], scratch[..]) && turn[0].rev == 8 && turn[0].sel == 1;
   coaxial_editor_act_done(s);
   #assert s[0].nacts == 0;
+}
+#test "visitors' proposals waiting: the Agent button counts them, and the conversation is told each with who proposed it" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; turn: [1] WorldTurn; scratch: [WT_BYTES] u8;
+  out := h[0].text[..]; none: [WE_COLS] bool;
+  n := em_begin(out, "fairy-forest", 0, 9, 0, 0, 0); n = em_cols(out, n, none[..]); n = em_at_once(out, n);
+  n = em_card(out, n, 31, 0, 380, "barrel", "Visitor ab12"); n = em_card(out, n, 32, -250, 1200, "bench", "Visitor 4f2a");
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n);
+  es_test_frames(h[..], 1);
+  #assert tr_text_of(t, tr_find(t, "agent.l")) == "Agent: 2 ideas wait" && s[0].nacts == 0;
+  es_test_press(h[..], "agent");
+  #assert coaxial_editor_act_kind(s) == ES_TURN;
+  a := s[0].acts[0];
+  #assert cast(string) a[0..<coaxial_editor_act_len(s)] == "world.turn.v1 fairy-forest dev 9 0\ncard 31 0 380 barrel\nfrom Visitor ab12\ncard 32 -250 1200 bench\nfrom Visitor 4f2a\n";
+  #assert wt_read(turn[..], cast(string) a[0..<coaxial_editor_act_len(s)], scratch[..]) && turn[0].nq == 2;
+  es_test_frames(h[..], 1);
+  #assert tr_text_of(t, tr_find(t, "agent.l")) == "Hide agent";
 }
 es_test_plan :: (h: [] EsTest, plan: string) {
   s := h[0].s[..];

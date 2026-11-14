@@ -41,6 +41,9 @@ The model is lines of text, in this order.
 | `atonce` | The world has one lane: an edit is what people get at once (a realm's world, #13478). The shell shows no Publish. |
 | `list TABLE COLUMN TITLE` | A content table whose rows are each on or off (a realm's board, the tools its visitors get): the table, the column a switch sets, and the list's title. The shell shows the list with a switch on each row. A press is a `cell` edit of that table and column, to `0` or `1`. |
 | `sw ROW ON LABEL` | A row of the list on the nearest `list` line above: its ID in the table, `0` or `1`, and its name. |
+| `card ID X Z THING` | A visitor's proposal waiting for the owner (#13527): its ID on the realm's server, where the thing would stand in whole centimetres, and what it is. The shell's Agent button counts them, and the shell tells each to the conversation in its foot, which shows Accept and Decline. |
+| `from WHO` | Who proposed the card on the line above, as people read it ("Visitor ab12"). Every `card` has one. |
+| `cards N` | How many proposals wait in all, when the model lists fewer. Left out, it lists them all. |
 | `here X Z` | The last point tapped on the ground, in whole centimetres. Left out until a point is tapped. The shell places a new thing there. |
 | `no WORDS` | The last refusal, in words. The shell shows it as a notice. |
 
@@ -69,6 +72,8 @@ but the ones the writer writes: it writes what it read and compares.
 | Lists of switches | 4 |
 | Switches, in all lists | 96 |
 | Bytes in a switch's name | 48 |
+| Proposals waiting | 16 |
+| Bytes in a proposal's thing, and in who proposed it | 40 |
 | Bytes in a model | 65,536 |
 
 ## What the shell sends back
@@ -97,7 +102,7 @@ A made realm (`apps/openagents-web/myrealm.coax`) and the realm pages that load 
 (`metaverse/edit/edit.coax`, #13478) are the third. Both follow the realm's world with
 `metaverse/edit/realm-page.coax` (`rp_model`): the realm's kinds (`k`) and each placed thing that
 stands (`e`, its ID the thing's place in the realm's list), `atonce`, the scripts table, the board and
-the tools as lists of switches, and `here`, where the player stands in whole metres. The page takes
+the tools as lists of switches, and `here`, where the player stands in whole metres, and for its owner and admins the visitors' proposals waiting (`card`, `from`, `cards`: read from `GET /api/playtest/realms/SLUG/proposals`, [realm-edit.md](../metaverse/realm-edit.md)). The page takes
 520, 521 and 523 (`rp_message`); its Add plans from `here` (#13506). They export `coaxial_edit_own(state)` (below), which answers 1 once the
 realm's server has said this visitor is its owner or an admin; the host asks again every frame until
 it does.

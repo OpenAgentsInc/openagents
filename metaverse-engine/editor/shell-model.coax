@@ -41,11 +41,15 @@
 //   list TABLE COLUMN TITLE             a content table whose rows are each on or off (a realm's board, the tools its visitors get):
 //                                       the table, the column a switch sets to 0 or 1, and the list's title
 //   sw ROW ON LABEL                     a row of the list on the nearest `list` line above: its ID, 0 or 1, and its name
+//   card ID X Z THING                   a visitor's proposal waiting for the owner (#13527, #13542): its ID on the realm's
+//                                       server, where the thing would stand in whole centimetres, and what it is
+//   from WHO                            who proposed the card on the line above, as people read it
+//   cards N                             how many proposals wait in all, when the model lists fewer
 //   here X Z                            the last point tapped on the ground, whole centimetres (E8, #13417);
 //                                       left out until a point is tapped
 //   no WORDS                            the last refusal, in words
 // Lines come in the order they are listed in, the `templates` line after `table`, each `tp` after its `t`, `atonce`
-// after `local`, and each list's `sw` lines after its `list`.
+// after `local`, each list's `sw` lines after its `list`, and each `from` after its `card`.
 // (The lists above are in the order the lines were added to the shape.) Every number is whole. A name and a value are one line of printable
 // bytes. em_read refuses any bytes but the ones em_write writes (it writes what it read and
 // compares).
@@ -73,6 +77,7 @@ EM_SFOR :: 12;         // bytes in whom a script drives
 EM_LISTS :: 4;         // lists of switches (#13478)
 EM_SWITCHES :: 96;     // their rows, in all (a realm's board is 64 rows and 16 tools: metaverse/edit/realm-world.coax)
 EM_LABEL :: 48;        // bytes in a row's name
+EM_CARDS :: 16;        // proposals waiting for the owner a model lists (#13527)
 
 EdModel :: struct {
   ok: bool;
@@ -105,6 +110,10 @@ EdModel :: struct {
   at_once: bool;                         // one lane: an edit is what people get, and nothing is published
   nl: int; l_table: [EM_LISTS] [WE_NAME] u8; l_table_n: [EM_LISTS] int; l_col: [EM_LISTS] [WE_NAME] u8; l_col_n: [EM_LISTS] int; l_title: [EM_LISTS] [EM_NAME] u8; l_title_n: [EM_LISTS] int;
   nw: int; w_list: [EM_SWITCHES] int; w_row: [EM_SWITCHES] int; w_on: [EM_SWITCHES] bool; w_label: [EM_SWITCHES] [EM_LABEL] u8; w_label_n: [EM_SWITCHES] int;
+  // visitors' proposals waiting for the owner (#13527): each card's ID, place, thing and who proposed it; how many wait in all
+  nq: int; q_id: [EM_CARDS] int; q_x: [EM_CARDS] int; q_z: [EM_CARDS] int;
+  q_thing: [EM_CARDS] [EM_NAME] u8; q_thing_n: [EM_CARDS] int; q_who: [EM_CARDS] [EM_NAME] u8; q_who_n: [EM_CARDS] int;
+  q_all: int;                            // 0: the model lists them all
   here: bool; here_x: int; here_z: int;
   no: [EM_WORDS] u8; no_n: int;
 }
@@ -271,6 +280,19 @@ em_switch :: (out: [] u8, at: int, row: int, on: bool, label: string) -> int {
   n := ct_put(out, at, "sw "); n = ct_put_int(out, n, row); n = ct_put(out, n, ifx on then " 1 " else " 0 "); n = ct_put(out, n, label);
   return ct_put(out, n, "\n");
 }
+// A visitor's proposal waiting for the owner: its ID, where the thing would stand, what it is, and who proposed it.
+em_card :: (out: [] u8, at: int, id: int, x: int, z: int, thing: string, who: string) -> int {
+  if id < 1 || x < -WE_REACH || x > WE_REACH || z < -WE_REACH || z > WE_REACH || !em_text_ok(thing, EM_NAME) || !em_text_ok(who, EM_NAME) { return out.count + 1; }
+  n := ct_put(out, at, "card "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put_int(out, n, x); n = ct_put(out, n, " "); n = ct_put_int(out, n, z);
+  n = ct_put(out, n, " "); n = ct_put(out, n, thing); n = ct_put(out, n, "\nfrom "); n = ct_put(out, n, who);
+  return ct_put(out, n, "\n");
+}
+// How many proposals wait in all, when the model lists fewer.
+em_cards_all :: (out: [] u8, at: int, n_all: int) -> int {
+  if n_all < 1 { return out.count + 1; }
+  n := ct_put(out, at, "cards "); n = ct_put_int(out, n, n_all);
+  return ct_put(out, n, "\n");
+}
 em_here :: (out: [] u8, at: int, x: int, z: int) -> int {
   if x < -WE_REACH || x > WE_REACH || z < -WE_REACH || z > WE_REACH { return out.count + 1; }
   n := ct_put(out, at, "here "); n = ct_put_int(out, n, x); n = ct_put(out, n, " "); n = ct_put_int(out, n, z);
@@ -313,6 +335,8 @@ em_write :: (m: [] EdModel, out: [] u8) -> string {
     n = em_list(out, n, cast(string) m[0].l_table[l][0..<m[0].l_table_n[l]], cast(string) m[0].l_col[l][0..<m[0].l_col_n[l]], cast(string) m[0].l_title[l][0..<m[0].l_title_n[l]]);
     for k: 0..<m[0].nw { if m[0].w_list[k] == l { n = em_switch(out, n, m[0].w_row[k], m[0].w_on[k], cast(string) m[0].w_label[k][0..<m[0].w_label_n[k]]); } }
   }
+  for k: 0..<m[0].nq { n = em_card(out, n, m[0].q_id[k], m[0].q_x[k], m[0].q_z[k], cast(string) m[0].q_thing[k][0..<m[0].q_thing_n[k]], cast(string) m[0].q_who[k][0..<m[0].q_who_n[k]]); }
+  if m[0].q_all > 0 { n = em_cards_all(out, n, m[0].q_all); }
   if m[0].here { n = em_here(out, n, m[0].here_x, m[0].here_z); }
   if m[0].no_n > 0 { n = em_no(out, n, cast(string) m[0].no[0..<m[0].no_n]); }
   if n > out.count { return ""; }
@@ -338,7 +362,7 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
   m[0].all = false; m[0].local = false; m[0].land = false; m[0].nm = 0; m[0].kinds_all = 0;
   m[0].ptable_n = 0; m[0].ctable_n = 0; m[0].clock_n = 0; m[0].na = 0; m[0].np = 0; m[0].asel = 0;
   m[0].stable_n = 0; m[0].nsk = 0; m[0].ns = 0;
-  m[0].at_once = false; m[0].nl = 0; m[0].nw = 0;
+  m[0].at_once = false; m[0].nl = 0; m[0].nw = 0; m[0].nq = 0; m[0].q_all = 0;
   for k: 0..<WE_COLS { m[0].cols[k] = false; }
   if text.count < EM_SCHEMA.count || text.count > EM_BYTES { return false; }
   lines := ct_parts(text, '\n');
@@ -439,6 +463,16 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
       m[0].w_list[k] = m[0].nl - 1; m[0].w_row[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].w_on[k] = ct_part(line, ' ', 2) == "1";
       m[0].w_label_n[k] = em_copy(m[0].w_label[k][..], em_rest(line, 3));
       m[0].nw += 1;
+    } else if word == "card" && m[0].nq < EM_CARDS {
+      k := m[0].nq;
+      m[0].q_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].q_x[k] = ct_num(ct_part(line, ' ', 2)).v; m[0].q_z[k] = ct_num(ct_part(line, ' ', 3)).v;
+      m[0].q_thing_n[k] = em_copy(m[0].q_thing[k][..], em_rest(line, 4)); m[0].q_who_n[k] = 0;
+      m[0].nq += 1;
+    } else if word == "from" && m[0].nq > 0 {
+      // who proposed the card named on the line before
+      m[0].q_who_n[m[0].nq - 1] = em_copy(m[0].q_who[m[0].nq - 1][..], em_rest(line, 1));
+    } else if word == "cards" {
+      m[0].q_all = ct_num(ct_part(line, ' ', 1)).v;
     } else if word == "here" {
       m[0].here = true; m[0].here_x = ct_num(ct_part(line, ' ', 1)).v; m[0].here_z = ct_num(ct_part(line, ' ', 2)).v;
     } else if word == "no" {
@@ -686,5 +720,42 @@ em_test_lists :: (out: [] u8) -> string {
   for k: 0..<EM_SWITCHES { n = em_switch(o, n, k + 1, true, "x"); }
   #assert em_read(m, cast(string) o[0..<n], h[0].scratch[..]) && m[0].nw == EM_SWITCHES;
   n = em_switch(o, n, EM_SWITCHES + 1, true, "x");
+  #assert !em_read(m, cast(string) o[0..<n], h[0].scratch[..]);
+}
+
+// Visitors' proposals waiting for the owner (#13527, #13542): the fixture proto/world/model-v1.json holds as "cards".
+em_test_cards :: (out: [] u8) -> string {
+  none: [WE_COLS] bool;
+  n := em_begin(out, "fairy-forest", 0, 9, 2, 0, 0);
+  n = em_cols(out, n, none[..]);
+  n = em_at_once(out, n);
+  n = em_card(out, n, 31, 0, 380, "barrel", "Visitor ab12");
+  n = em_card(out, n, 32, -250, 1200, "Glowing mushroom", "Visitor 4f2a");
+  n = em_cards_all(out, n, 3);
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+#test "a visitor's proposal waits as a card: its place, its thing and who proposed it, read as written" {
+  h: [1] EmTest; m := h[0].m[..];
+  text := em_test_cards(h[0].out[..]);
+  #assert text == "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\natonce\ncard 31 0 380 barrel\nfrom Visitor ab12\ncard 32 -250 1200 Glowing mushroom\nfrom Visitor 4f2a\ncards 3\n";
+  #assert em_read(m, text, h[0].scratch[..]) && m[0].nq == 2 && m[0].q_all == 3 && m[0].q_id[1] == 32 && m[0].q_x[1] == -250 && m[0].q_z[1] == 1200;
+  th := m[0].q_thing[1]; wh := m[0].q_who[0];
+  #assert cast(string) th[0..<m[0].q_thing_n[1]] == "Glowing mushroom" && cast(string) wh[0..<m[0].q_who_n[0]] == "Visitor ab12";
+  // a model with none reads as before
+  #assert em_read(m, "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\n", h[0].scratch[..]) && m[0].nq == 0 && m[0].q_all == 0;
+  // what is not one is not written or read
+  o := h[0].out[..];
+  #assert em_card(o, 0, 0, 0, 0, "barrel", "V") > EM_BYTES && em_card(o, 0, 1, WE_REACH + 1, 0, "barrel", "V") > EM_BYTES && em_card(o, 0, 1, 0, 0, "", "V") > EM_BYTES && em_card(o, 0, 1, 0, 0, "barrel", "") > EM_BYTES;
+  #assert em_card(o, 0, 1, 0, 0, "barrel ", "V") > EM_BYTES && em_cards_all(o, 0, 0) > EM_BYTES;
+  head := "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\n";
+  for bad: [6] string.["card 31 0 380 barrel\n", "from Visitor ab12\n", "card 31 0 barrel\nfrom V\n", "card 031 0 380 barrel\nfrom V\n", "card 31 0 380 barrel\nfrom V\nfrom W\n", "cards 0\n"] {
+    b: [256] u8; k := ct_put(b[..], 0, head); k = ct_put(b[..], k, bad);
+    #assert !em_read(m, cast(string) b[0..<k], h[0].scratch[..]);
+  }
+  // a seventeenth card is not read
+  n := ct_put(o, 0, head);
+  for k: 0..<EM_CARDS { n = em_card(o, n, k + 1, 0, 0, "barrel", "V"); }
+  #assert em_read(m, cast(string) o[0..<n], h[0].scratch[..]) && m[0].nq == EM_CARDS;
+  n = em_card(o, n, EM_CARDS + 1, 0, 0, "barrel", "V");
   #assert !em_read(m, cast(string) o[0..<n], h[0].scratch[..]);
 }

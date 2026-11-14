@@ -15,7 +15,8 @@
   "files": 24,
   "plan_steps": 16,
   "plan_bytes": 1024,
-  "say_bytes": 2000
+  "say_bytes": 2000,
+  "cards": 16
  },
  "lines": [
   "world.turn.v1 WORLD LANE REV SELECTED",
@@ -25,7 +26,10 @@
   "an NOTE",
   "at TAGS",
   "e ID KIND X Z YAW",
-  "more N"
+  "more N",
+  "card ID X Z THING",
+  "from WHO",
+  "cards N"
  ],
  "turn": {
   "wire": "world.turn.v1 splice dev 7 2\nhere 420 -75\nk 1001 Cargo crate\nk 1002 Parked rover\ne 1 1001 350 -1200 90\ne 2 1002 -40 600 -179\nmore 3\n",
@@ -54,7 +58,8 @@
   "world.turn.v1 splice dev 0 0\ne 01 5 0 0 0\n",
   "world.turn.v1 splice dev 0 0\nx what\n",
   "world.turn.v1 splice dev 0 0\nhere 1\n",
-  "world.turn.v1 splice dev 0 0\ne 1 5 0 0 999\n"
+  "world.turn.v1 splice dev 0 0\ne 1 5 0 0 999\n",
+  "world.turn.v1 fairy-forest dev 9 0\ncard 31 0 380 barrel\n"
  ],
  "plan": {
   "schema": "world.plan.v1",
@@ -100,5 +105,11 @@
    "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"remove\",\"kind\":0,\"id\":9,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}",
    "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"place\",\"kind\":5,\"id\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}"
   ]
+ },
+ "cards": {
+  "about": "Visitors' proposals waiting for the owner of a realm's world (#13527): each card's ID on the realm's server, where the thing would stand, what it is and who proposed it, and how many wait in all when fewer are listed. The conversation shows each as a turn with Accept and Decline.",
+  "wire": "world.turn.v1 fairy-forest dev 9 0\ncard 31 0 380 barrel\nfrom Visitor ab12\ncard 32 -250 1200 Glowing mushroom\nfrom Visitor 4f2a\ncards 3\n",
+  "cards": 2,
+  "all": 3
  }
 }

@@ -2,7 +2,7 @@
 
 Build your own realm ([realm-builder.md](realm-builder.md)) gave a made realm a board, its owner's
 settings and the ACCEPT/DECLINE cards. Every realm now has them (the settings, the board's switches and
-placing now in the editor shell, #13506): Everglade, Hecate's Cemetery, the
+placing now in the editor shell, #13506; the cards in the shell's agent strip, #13527): Everglade, Hecate's Cemetery, the
 Grid, Fairy Forest, Dead Gears, Ice Cream Man, the Haunted House and every made realm. If you can
 edit a realm, EDIT opens the same layer in each one.
 
@@ -34,7 +34,7 @@ All under `/api/playtest/realms/<slug>`, for a made or a hand-built realm:
 |---|---|
 | `GET` | the spec, a line each: `role`, `owner 0/1`, `tool NAME 0/1`, `thing NAME`, `row KEY 0/1 LABEL`, `placed THING X Z YAW`, `waiting N` (owners and admins) |
 | `POST /revise {prompt}` | talking or typing revises the board: the model answers under a schema whose enums are this realm's row ids (a made realm: the builder's catalogue), and its answer is the realm now. `?as=lines` answers the rows as lines |
-| `GET /proposals`, `POST /proposals/<id>/accept\|decline` | the cards; ACCEPT places the thing as the owner's own world edit (one step of the world's undo log, #13515) |
+| `GET /proposals`, `POST /proposals/<id>/accept\|decline` | the cards; ACCEPT places the thing as the owner's own world edit (one step of the world's undo log, #13515). The editor shell's agent strip reads and decides them (below, "A visitor's idea in the agent strip") |
 | `GET /panes` | everyone: `lore WHO\|TEXT` and `quest GIVER\|ASK\|STEP\|STEP\|STEP\|REWARD`, a line each |
 | `POST /lore {who, text}` | a character's lore (400 characters; `""` forgets it) |
 | `POST /quest {giver, ask, steps, reward}` | the quest a character gives, one each (`""` ask takes it away) |
@@ -126,17 +126,39 @@ What is left of the layer's EDIT, and where each goes (#13515):
 
 | Item | Becomes | State |
 |---|---|---|
-| A visitor's proposal | a pending world batch the owner accepts | built: a visitor's spawns on the realm's world are kept as cards (202, `rpp_propose`: building on, fewer than 50 waiting), and ACCEPT is the owner's own spawn in the world (0195). A world UNDO of it takes the thing away; the card stays decided |
+| A visitor's proposal | a pending world batch the owner accepts in the shell's agent strip | built: a visitor's spawns on the realm's world are kept as cards (202, `rpp_propose`: building on, fewer than 50 waiting), and ACCEPT is the owner's own spawn in the world (0195). A world UNDO of it takes the thing away; the card stays decided. Each card is a turn of the agent strip (#13527, below) |
 | The asks (ADD, revise, DELETE, a document) | turns of the shell's agent strip: words to an agent | follow-up |
 | The realm's voice (HOLD TO TALK, the selector) | the agent strip's input | follow-up |
 | A character's lore and quests | content tables of the realm's world and `cell` edits, as the rows are | follow-up |
 | YOUR COMPUTER, YOUR AGENT | the shell's agent strip | follow-up |
 
-The IDEAS cards still show in the layer's EDIT until the strip shows pending batches.
+### A visitor's idea in the agent strip
+
+The layer's EDIT has no IDEAS pane (#13527). A visitor's proposal waits for the owner in the editor
+shell instead:
+
+1. The realm's page (`metaverse/edit/realm-page.coax`) reads `GET .../proposals` for its owner and
+   admins only: after the world's tables, after any event of the world, and every 5 seconds, since
+   a proposal is no world event. The server answers `""` to anyone else.
+2. It tells the shell each card as a `card ID X Z THING` line and a `from WHO` line of the model
+   (`editor.model.v1`, [editor-model-v1.md](../protocol/editor-model-v1.md)). The shell's Agent
+   button says how many wait ("Agent: 2 ideas wait").
+3. The shell tells the conversation in its foot the same lines in the world it hands over
+   (`world.turn.v1`, [world-turn-v1.md](../protocol/world-turn-v1.md)).
+4. The conversation (`apps/openagents-web/chat/chat-ideas.coax`) shows each card as a turn: "Visitor
+   ab12 proposes a barrel", where it would stand, and ACCEPT and DECLINE. ACCEPT posts
+   `.../proposals/ID/accept` as the owner. The server carries it out as a spawn in the realm's
+   world, one step of its undo log, under its rules, and the world's next event brings the thing
+   to the page and the shell. DECLINE posts `.../decline`. The turn then says what came of it:
+   "Accepted: the barrel is in the world.", "Declined: the barrel.", "Someone already decided that
+   one." (409), or the server's refusal in its own words.
+
+A made realm knows its maker by the player key, so the conversation's asks to
+`/api/playtest/realms/` carry `X-Verse-Player` as the page's own do (`coax/web/dom-host.js`).
 
 Spoken and typed commands about the editing screen go to `redit_heard(ed, word, row, on, pane,
 out)` (migration 0104's `switch` and `show` edits): it switches one of the realm's rows by its id,
-or opens EDIT's board or the cards (SETTINGS opens the editor), or closes them, and writes the sentence to show and
+or opens EDIT's board (SETTINGS and IDEAS open the editor: the ideas wait in its agent strip), or closes it, and writes the sentence to show and
 speak. Every realm with the layer gets it by handing the selector's answer there. The server's
 selector lists the realm's own rows from `verse.realm_rights`, so a new row is switchable by voice
 with no new migration.
@@ -160,7 +182,7 @@ only, under a typed enum:
 | Verb | Fields | What the page does |
 | --- | --- | --- |
 | `switch` | `row`, `on` | switches the row (`redit_heard`, then `POST .../switch` as a tap does) |
-| `show` | `panel`: edit, settings, ideas, close | opens or closes that pane; one already open stays open |
+| `show` | `panel`: edit, settings, ideas, close | opens or closes that pane; one already open stays open. Settings and ideas open the editor |
 | `look` | | asks again at `.../look` with the frame on screen |
 | `ask` | | puts the words on the realm's list, as FEATURES' ADD does (`POST .../asks`) |
 | `chat` | `reply` | the answer, said as it is |
@@ -190,8 +212,7 @@ Wired today:
 
 EDIT opens one pane at a time (the panes rule, metaverse/fairy-forest/README.md "Making the world:
 panes"): FEATURES (the list below; HOLD TO TALK on a page with a voice, typing everywhere, and
-OPEN THE EDITOR), and N WAITING
-(the first card: who, what, where, the count before and after, ACCEPT and DECLINE).
+OPEN THE EDITOR). A visitor's proposal waits in the editor's agent strip, not in EDIT (#13527).
 A realm whose face carries the wire also gets COMPUTER (below, "Your computer").
 
 The panes for what you work on (ff-panes, migration 0055): a realm says, each frame, which of its
@@ -227,8 +248,10 @@ both, the board and SETTINGS under EDIT and the hotbar along the bottom. DONE cl
 board is typed there (TYPE IT): Everglade's HOLD TO TALK is its voice edits. The realm's owner and
 admin accounts get edit mode as a site admin does, and the server lets them publish its world
 (player.c: a hand-built realm's world routes). A visitor gets no edit mode: its BUILD
-(each thing sent as a card through `redit_place`) went with the layer's own placing (#13506). ACCEPT
-on the owner's page still puts a card already waiting into the city, published as an edit by hand. Its owner and admin
+(each thing sent as a card through `redit_place`) went with the layer's own placing (#13506). Everglade
+has no world of its own, so its page tells the shell no cards. A card still waiting from before
+then is decided with `openagents realm accept everglade ID` or `decline`; the server settles it
+(`verse.edit_decide`), and the page no longer puts it into the city by hand (#13527). Its owner and admin
 accounts make voice edits (HOLD TO TALK, `/api/playtest/realm/everglade/edit`, npc.c) as a site
 admin does; theirs are paced and counted under their key's hash.
 
