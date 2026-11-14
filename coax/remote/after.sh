@@ -37,7 +37,7 @@
 # (check.sh room-since G), the API suite in OA_AFTER_API_PARTS parts when the
 # change reaches it (check.sh api-since G I/N), Coder's checks and smoke when it
 # reaches Coder (check.sh coder-since G), and coax/tests/run.sh in 8
-# parts when compiler sources changed. Beside them, and never part of the
+# parts when compiler sources changed. After them, and never part of the
 # verdict, the mutation report: the mutants of what the change touched
 # (check.sh mutate-since, mutants_of below). Everything else
 # passed at G and reads no changed file, so it passes at H. A head that changes
@@ -94,7 +94,8 @@
 # OA_AFTER_MUTATE_PARTS (3), OA_AFTER_MUTATE_TIMEOUT (OA_AFTER_TIMEOUT), OA_AFTER_GAP (10800: seconds between full
 # runs), OA_AFTER_FAST_GAP (0: seconds between fast runs), OA_AFTER_COMPILER (auto, always or never),
 # OA_BISECT_WIDTH (4), OA_BISECT_CHECKS (4: failing checks bisected one by
-# one; the rest wait for the next run), OA_AFTER_TIMEOUT (3000 s a job),
+# one; the rest wait for the next run), OA_AFTER_TIMEOUT (3000 s a job's command),
+# OA_AFTER_QUEUE (3600 s more to find a host slot),
 # OA_AFTER_RETRIES (2), OA_AFTER_UNFINISHED (3), OA_AFTER_STALE (5400),
 # OA_AFTER_STALE_COMMITS (40),
 # OA_AFTER_FLAKY_TRIES (3), OA_AFTER_PAGES (0: no pages), OA_AFTER_PAGES_GAP
@@ -126,6 +127,11 @@ compiler_mode="${OA_AFTER_COMPILER:-auto}"
 width="${OA_BISECT_WIDTH:-4}"
 bisect_checks="${OA_BISECT_CHECKS:-4}"
 limit="${OA_AFTER_TIMEOUT:-3000}"
+# A job's wait for a host slot is not its command's time: the host stops the command at
+# OA_AFTER_TIMEOUT less a minute (OA_REMOTE_TIMEOUT), and the job as a whole gets OA_AFTER_QUEUE
+# more seconds (3600) to find a slot. Before #13603 the wait counted, so a full run's last jobs,
+# queued behind the others and other agents' work, ran out with no command started.
+queue="${OA_AFTER_QUEUE:-3600}"
 max_unfinished="${OA_AFTER_UNFINISHED:-3}"
 stale="${OA_AFTER_STALE:-5400}"
 stale_commits="${OA_AFTER_STALE_COMMITS:-40}"
@@ -438,18 +444,18 @@ check() {   # commit outdir check-args...
     rm -rf "$dir"; mkdir -p "$dir"
     if [[ -n "${OA_AFTER_CHECK:-}" ]]; then
       # shellcheck disable=SC2086
-      OA_REMOTE_AVOID="$avoid" OA_REMOTE_FRESH_COMPILER="$fresh" timeout "$limit" $OA_AFTER_CHECK "$commit" "$dir" "$@" > "$dir/out" 2>&1; s=$?
+      OA_REMOTE_AVOID="$avoid" OA_REMOTE_FRESH_COMPILER="$fresh" timeout "$(( limit + queue ))" $OA_AFTER_CHECK "$commit" "$dir" "$@" > "$dir/out" 2>&1; s=$?
     else
       # check-visuals runs as itself, so a bisect can run it on commits whose
       # check.sh has no such step.
       local cmd=(coax/remote/check.sh "$@")
       [[ "$1" != visuals ]] || cmd=(coax/web/check-visuals.sh apps/openagents-web)
       # Without the lock descriptors: nothing a job leaves behind holds the watcher's locks.
-      OA_REMOTE_AVOID="$avoid" OA_REMOTE_FRESH_COMPILER="$fresh" OA_REMOTE_TIMEOUT=$(( limit - 60 )) timeout "$limit" "$here/remote.sh" run --commit "$commit" --out "$dir" --no-fallback -- "${cmd[@]}" > "$dir/out" 2>&1 7>&- 8>&-; s=$?
+      OA_REMOTE_AVOID="$avoid" OA_REMOTE_FRESH_COMPILER="$fresh" OA_REMOTE_TIMEOUT=$(( limit - 60 )) timeout "$(( limit + queue ))" "$here/remote.sh" run --commit "$commit" --out "$dir" --no-fallback -- "${cmd[@]}" > "$dir/out" 2>&1 7>&- 8>&-; s=$?
     fi
     case "$s" in
       0) break ;;
-      124) echo "after: the check ran past $limit s" >> "$dir/out"; s=97; break ;;
+      124) echo "after: the check ran past $(( limit + queue )) s, its wait for a host slot included" >> "$dir/out"; s=97; break ;;
       97|255) s=97 ;;
       *) if judged "$dir/out" "$@"; then s=1; break; fi
          echo "after: status $s with no verdict from the check (empty output, or it stopped first): the host could not judge it (97)" >> "$dir/out"; s=97 ;;
@@ -950,11 +956,12 @@ run_head() {
     check "$head" "$dir/${j//[ \/]/-}" $j & pids+=($!)
   done
   [[ ! -s "$dir/passed" ]] || pl_say "after: $(wc -l < "$dir/passed" | tr -d ' ') of the job(s) passed on ${head:0:10} before and don't run again"
-  # Beside the jobs, the change's mutants: a report, never part of this run's verdict.
-  [[ "$kind" != fast || -z "$changed" ]] || mutants_of "$head" "$ref"
   local st=() k failed=() infra=0
   for k in "${!pids[@]}"; do if [[ "${pids[$k]}" == 0 ]]; then st+=(0); else wait "${pids[$k]}"; st+=($?); fi; done
   for k in "${!names[@]}"; do [[ "${st[$k]}" != 0 ]] || echo "${names[$k]}"; done > "$dir/passed"
+  # Then the change's mutants, a report and never part of this run's verdict: they start once
+  # its jobs are done, so they never take a slot its jobs wait for.
+  [[ "$kind" != fast || -z "$changed" ]] || mutants_of "$head" "$ref"
   # Per-commit compile-limit use and sizes.
   cat "$dir"/*/build/pipeline/limits.txt 2> /dev/null | sort -u > "$dir/limits.txt"
   cat "$dir"/*/build/pipeline/sizes.txt 2> /dev/null | sort -u > "$dir/sizes.txt"

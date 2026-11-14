@@ -297,8 +297,8 @@ and runs only what the commits between them can have changed:
 - the allowlist counts against `main-green`, with `git` alone on the watcher;
 - `coax/tests/run.sh` in eight parts, when compiler sources changed.
 
-Beside these jobs, and never part of the verdict, the mutation report runs
-the mutants of the procedures the change touched ("The mutation report",
+Once these jobs are done, and never part of the verdict, the mutation report
+runs the mutants of the procedures the change touched ("The mutation report",
 below).
 
 Every other check passed at `G` and reads no file that changed, so it passes
@@ -339,6 +339,13 @@ or output that stops before `check.sh`'s last line). Each try after the first
 goes to another host when one has a free slot (`OA_REMOTE_AVOID`), with the
 slot's compiler installed again first (`OA_REMOTE_FRESH_COMPILER=1`). Such a
 job is never bisected, filed or reverted.
+
+A job's time limit is its command's: the host stops the command after
+`OA_AFTER_TIMEOUT` (3000 s) less a minute. Waiting for a free host slot does
+not count; the job gets `OA_AFTER_QUEUE` (3600 s) more to find one. Before #13603 the
+wait counted: on 2026-11-14 the full run on 7c9cd482ea queued 21 jobs behind
+other agents' work, and `compiler 3/8`, which takes 470 to 700 s, ran out at
+3000 s with no command started.
 
 An unfinished run leaves the head unjudged, neither green nor red. The same
 is true when the hosts could not finish a bisect. The jobs that did not pass
@@ -563,7 +570,8 @@ integrator's: `check.sh only PATHS BASE` and `check.sh branch BASE` run
 `#authority` file, and a survivor stops the push or the branch. After
 landing, the same mutants are a report. A fast run's `since` jobs run the
 suites alone, so their verdict comes in on time whatever the mutants take.
-Beside them, `after.sh` runs `check.sh mutate-since BASE I/N`
+Once the run's jobs are done, so the mutants never take a slot they wait for,
+`after.sh` runs `check.sh mutate-since BASE I/N`
 (`coax/web/tool.sh suites --since BASE --mutate-changed BASE --mutate-only`)
 in three parts (`OA_AFTER_MUTATE_PARTS`), each with the job time limit
 (`OA_AFTER_MUTATE_TIMEOUT`, `OA_AFTER_TIMEOUT` by default).
