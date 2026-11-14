@@ -307,6 +307,15 @@ shades with `metaverse-engine/render/shade/character-material.coax`. Roughness n
 metal, so characters stay matte. `?maps=0` turns the maps off, and `?film` adds skin wrap, cloth
 sheen and hair highlights.
 
+The record also says how a figure's colour layer is coloured (#13555). Skin takes the figure's skin
+tone, hair takes its hair colour, and a dyed cloth takes its colourway and dye. The dye's `mask` is
+`CM_MASK_PALE` for a pale cloth's pale texels (the peasant's shirts, the robes) or `CM_MASK_GREEN` for
+the ranger's green ones. `cm_for_layer` names them by the layer's name, and `cm_check` admits them.
+`fivelab_scene_place` reads the record, not a code: a figure vertex's top byte is only 0 on a plain
+mesh (a ranger's metal pauldron), which is drawn as it is. A skeleton and a far figure's blocks are
+the figure's object flags (`fivelab_is_bones`, `fivelab_is_block`). A skeleton's rags are its layers
+whose record dyes.
+
 The world's surfaces are records of the same table (#13541, #13545). Each kit vertex carries a
 material id in its normal word's top byte, and the catalog's `U ID NAME` rows say which surface
 asset each id is (`U 1 e2/surface/leaves`, `U 6 e2/surface/bark`, ...). The page registers

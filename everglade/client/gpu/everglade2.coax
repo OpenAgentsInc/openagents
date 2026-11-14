@@ -493,8 +493,8 @@ cc_player_light :: (u:[]E2U,albedo:V3,n:V3,view:V3,visibility:f32)->V3 {
 // dyed in display space (CA_DYES in metaverse-engine/character/character-appearance.coax: the dye masks and colours are
 // authored on display values), decoded, then times the part's tint and its record's multiplier.
 // Live and film both call this, so they agree.
-cc_albedo :: (tex:V3,dye:V4,tint:V3,base:V3,dyed:bool)->V3 {
- display:=cg_encode(tex);d:=ifx dyed then fivelab_dye(display,dye) else display;
+cc_albedo :: (tex:V3,dye:V4,tint:V3,base:V3,dyed:bool,green:bool)->V3 {
+ display:=cg_encode(tex);d:=ifx dyed then fivelab_dye(display,dye,green) else display;
  return mul3(mul3(cg_decode(d),cg_decode(tint)),base);
 }
 // The screen derivatives the material's normal map and data samples need, taken where every pixel
@@ -506,7 +506,7 @@ CcDeriv :: struct {px:V3;py:V3;ux:V2;uy:V2;}
 // turntables, everglade/client/create.coax); u[61] 1 turns the maps off (before/after captures).
 cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,objects:[]FivelabObj,visibility:f32,mats:[]V4,data:Tex2DArray,sheet:Sampler,d:CcDeriv)->V4 {
  m:=objects[cast(int)s.who];at:=cast(int)s.slice*4;ma:=mats[at];mb:=mats[at+1];mc:=mats[at+2];kind:=cast(int)(ma.w+0.5f32);
- albedo:=cc_albedo(v3(tex.x,tex.y,tex.z),s.dye,s.tint,v3(ma.x,ma.y,ma.z),mc.z>0.5f32);
+ albedo:=cc_albedo(v3(tex.x,tex.y,tex.z),s.dye,s.tint,v3(ma.x,ma.y,ma.z),mc.z>0.5f32,mc.z>1.5f32);
  if (m.f.w>1.5f32 && e2_eye_layer(s.slice,mats)) {
   iris:=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);shade:=clampf(metaverse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
   albedo=mix3(albedo,scale3(cg_decode(v3(m.f.x,m.f.y,m.f.z)),shade),iris);

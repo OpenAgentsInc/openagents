@@ -725,9 +725,13 @@ fivelab_block_vs :: (id:u32,instance:u32,m:FivelabObj,gf:GladeFrame,bake:[]V4)->
     if ((q==0)||(q==8)) { t=v3(0.08f32,0.07f32,0.06f32); }
   }
   o.tint=t;
-  o.dye=v4(0.0f32,0.0f32,0.0f32,10.0f32);
+  o.dye=v4(0.0f32,0.0f32,0.0f32,0.0f32);
   return o;
 }
+// A figure's object record's flags (d.w, under 16): 1 a skeleton (bones), 4 drawn as its far blocks
+// (fivelab_block_vs), 8 a bow carrier's arm. The vertex stage places by them and the pixel shades by them.
+fivelab_is_bones :: (m:FivelabObj)->bool {return wg_fmod(m.d.w,2.0f32)>0.5f32;}
+fivelab_is_block :: (m:FivelabObj)->bool {return wg_fmod(m.d.w,8.0f32)>3.5f32;}
 // 5E Lab's scene entry: its uniforms are a []f32, read through their frame head (#13451).
 fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,mats:[]V4)->FivelabS {return fivelab_scene_place(id,instance,glade_frame(u),vertices,objects,bake,mats);}
 // A scene vertex under the frame head gf: every glade page's scene (Everglade II's, the studio's, WorldBuilder's people).
@@ -736,13 +740,13 @@ fivelab_scene_place :: (id:u32,instance:u32,gf:GladeFrame,vertices:[]u32,objects
   if (gf.pass.z>1.5f32 && instance>=65536) {m0:=objects[cast(int)((instance>>16)-1)];if (m0.d.w>19.5f32) {return cg_meadow_vs(id,instance,m0,gf,vertices,mats);}return cg_instanced_vs(id,instance,m0,gf,vertices);}   // 20: the open meadow (character-glade.coax)
   m:FivelabObj=objects[cast(int)instance];
   if (m.d.w>15.5f32) {return cg_environment_vs(id,instance,m,gf,vertices,mats);}
-  if (wg_fmod(m.d.w,8.0f32)>3.5f32) { return fivelab_block_vs(id,instance,m,gf,bake); }
+  if fivelab_is_block(m) { return fivelab_block_vs(id,instance,m,gf,bake); }
   b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,6));
   xy:V2=wg_unpack2x16unorm(vertices[cast(int)b]);
   zw:u32=vertices[cast(int)add_wrap(b,1)];
   local:V3=add3(scale3(v3(xy.x,xy.y,(cast(f32)(zw&0xffff))/65535.0f32),FIVELAB_SPAN),v3(-1.25f32,-0.25f32,-1.25f32));
   flags:f32=m.d.w;
-  bones:bool=wg_fmod(flags,2.0f32)>0.5f32;
+  bones:bool=fivelab_is_bones(m);
   at:V3=local;
   if bones { at=fivelab_gaunt(local); }
   at4:V4=v4(at.x,at.y,at.z,1.0f32);
@@ -771,26 +775,60 @@ fivelab_scene_place :: (id:u32,instance:u32,gf:GladeFrame,vertices:[]u32,objects
   o.uv=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,3)]);
   o.local=local;
   o.who=instance;
-  kind:u32=(zw>>24)&255;
+  // The vertex's top byte is 0 on a plain mesh (its texels as they are: a ranger's metal pauldron, the
+  // packer's "plain" meshes); any other vertex takes what its colour layer's record says (cm_for_layer, by
+  // the layer's name): skin the figure's skin tone (c), hair its hair colour (d), and a dyed cloth the
+  // figure's colourway (the layers after it, c.w) and its dye (e: colour, share), on the mask the record names.
+  plain:bool=((zw>>24)&255)==0;
   o.slice=(zw>>16)&255;
   o.tint=v3(1.0f32,1.0f32,1.0f32);
   o.dye=v4(0.0f32,0.0f32,0.0f32,0.0f32);
-  if (kind==1) { o.tint=v3(m.c.x,m.c.y,m.c.z); }
-  if (kind==2) { o.tint=v3(m.d.x,m.d.y,m.d.z); }
-  if ((kind==3)||(kind==4)) {
-    o.slice=add_wrap(o.slice,wg_u32_f(m.c.w));
-    o.dye=v4(m.e.x,m.e.y,m.e.z,((cast(f32)(sub_wrap(kind,2)))*2.0f32)+m.e.w);
+  if (!plain) {
+    layer:=e2_layer_kind(o.slice,mats);
+    if (layer==cmat.CM_KIND_SKIN) { o.tint=v3(m.c.x,m.c.y,m.c.z); }
+    if (layer==cmat.CM_KIND_HAIR) { o.tint=v3(m.d.x,m.d.y,m.d.z); }
+    if (e2_layer_dyes(o.slice,mats)) {
+      o.slice=add_wrap(o.slice,wg_u32_f(m.c.w));
+      o.dye=v4(m.e.x,m.e.y,m.e.z,m.e.w);
+    }
   }
-  // a skeleton's bones and its rags: dye.w 8 the bone, 9 the cloth
-  if bones { o.dye=v4(0.0f32,0.0f32,0.0f32,ifx kind>=3 then 9.0f32 else 8.0f32); }
+  // a skeleton is shaded as its object's record says (fivelab_scene_colour), undyed
+  if bones { o.dye=v4(0.0f32,0.0f32,0.0f32,0.0f32); }
   return o;
 }
-// A person's cloth dyed (Everglade's person_dye): dye.w 2 + share on a pale cloth, 4 + share on a
-// green one; under 2, the texture as it is.
-fivelab_dye :: (t:V3,dye:V4)->V3 {
-  if ((dye.w<2.0f32)||(dye.w>=6.0f32)) { return t; }
-  green:bool=dye.w>=4.0f32;
-  share:f32=clampf(dye.w-(ifx green then 4.0f32 else 2.0f32),0.0f32,1.0f32);
+#test "a cloth's dye takes the texels its record's mask names, by its share; a figure's flags say bones and blocks" {
+ pale:=v3(0.6,0.58,0.55);green:=v3(0.2,0.45,0.15);dye:=v4(0.8,0.1,0.1,1);
+ #assert fivelab_dye(pale,dye,false).x>0.7 && fivelab_dye(pale,dye,true).x==pale.x;
+ #assert fivelab_dye(green,dye,true).x>green.x && fivelab_dye(green,dye,false).x==green.x;
+ #assert fivelab_dye(pale,v4(0.8,0.1,0.1,0),false).x==pale.x && fivelab_dye(green,v4(0.8,0.1,0.1,0),true).y==green.y;
+ m:FivelabObj;m.d=v4(0,0,0,1);#assert fivelab_is_bones(m) && !fivelab_is_block(m);
+ m.d.w=5;#assert fivelab_is_bones(m) && fivelab_is_block(m);m.d.w=12;#assert !fivelab_is_bones(m) && fivelab_is_block(m);m.d.w=8;#assert !fivelab_is_bones(m) && !fivelab_is_block(m);
+}
+#test "a figure's vertex takes its colour layer's record: skin and hair tints, a dyed cloth's colourway and dye, a plain mesh as it is" {
+ mats:[cmat.CM_MAX*4]V4;r:[cmat.CM_FLOATS]f32;
+ rec:=[6]cmat.CharMaterial.[cmat.cm_kind(cmat.CM_KIND_CLOTH),cmat.cm_kind(cmat.CM_KIND_CLOTH),cmat.cm_kind(cmat.CM_KIND_SKIN),cmat.cm_kind(cmat.CM_KIND_CLOTH),cmat.cm_kind(cmat.CM_KIND_CLOTH),cmat.cm_kind(cmat.CM_KIND_HAIR)];
+ rec[3].mask=cmat.CM_MASK_GREEN;rec[4].mask=cmat.CM_MASK_GREEN;   // as the people's packs: 25, 26 a pale cloth's two colourways, 27 skin, 28, 29 the ranger's, 30 hair
+ for i:0..<6 {cmat.cm_pack(rec[i],r[..]);for k:0..<4 {mats[(25+i)*4+k]=v4(r[k*4],r[k*4+1],r[k*4+2],r[k*4+3]);}}
+ // five vertices: skin, hair, a pale cloth, the ranger's cloth on a plain mesh (its pauldron), and on a dyed one
+ at:=[5]u32.[27,30,25,28,28];top:=[5]u32.[1,2,3,0,4];
+ vertices:[30]u32;
+ for k:0..<5 {vertices[k*6]=0x80008000;vertices[k*6+1]=0x8000|(at[k]<<16)|(top[k]<<24);vertices[k*6+2]=0x007f0000;vertices[k*6+3]=0;vertices[k*6+4]=0;vertices[k*6+5]=255;}
+ bake:[6]V4;bake[0]=v4(1,0,0,0);bake[1]=v4(0,1,0,0);bake[2]=v4(0,0,1,0);
+ objects:[1]FivelabObj;objects[0].c=v4(0.5,0.4,0.3,1);objects[0].d=v4(0.1,0.2,0.3,0);objects[0].e=v4(0.9,0.1,0.1,0.8);
+ u:[64]f32;u[0]=1280;u[1]=800;u[19]=900;gf:=glade_frame(u[..]);
+ skin:=fivelab_scene_place(0,0,gf,vertices[..],objects[..],bake[..],mats[..]);#assert skin.tint.x==0.5f32 && skin.slice==27 && skin.dye.w==0;
+ hair:=fivelab_scene_place(1,0,gf,vertices[..],objects[..],bake[..],mats[..]);#assert hair.tint.y==0.2f32 && hair.slice==30 && hair.dye.w==0;
+ pale:=fivelab_scene_place(2,0,gf,vertices[..],objects[..],bake[..],mats[..]);#assert pale.slice==26 && pale.dye.w==0.8f32 && pale.dye.x==0.9f32 && pale.tint.x==1;
+ plain:=fivelab_scene_place(3,0,gf,vertices[..],objects[..],bake[..],mats[..]);#assert plain.slice==28 && plain.dye.w==0 && plain.tint.x==1;
+ green:=fivelab_scene_place(4,0,gf,vertices[..],objects[..],bake[..],mats[..]);#assert green.slice==29 && green.dye.w==0.8f32 && e2_layer_green(green.slice,mats[..]) && !e2_layer_green(pale.slice,mats[..]);
+ // a skeleton keeps its tints and colourway but takes no dye; its rags are the layers whose record dyes
+ objects[0].d.w=1;bone:=fivelab_scene_place(2,0,gf,vertices[..],objects[..],bake[..],mats[..]);#assert bone.slice==26 && bone.dye.w==0 && e2_layer_dyes(bone.slice,mats[..]);
+}
+// A person's cloth dyed (Everglade's person_dye): dye.w the share of the dye, on a green cloth's green
+// texels or a pale cloth's pale ones (its layer's record, CM_MASK_*); none, the texture as it is.
+fivelab_dye :: (t:V3,dye:V4,green:bool)->V3 {
+  if (!(dye.w>0.0f32)) { return t; }
+  share:f32=clampf(dye.w,0.0f32,1.0f32);
   hi:f32=fmax(t.x,fmax(t.y,t.z));
   lo:f32=fmin(t.x,fmin(t.y,t.z));
   sat:f32=(hi-lo)/fmax(hi,0.0001f32);
@@ -810,7 +848,7 @@ fivelab_scene_colour :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabO
   m:FivelabObj=objects[cast(int)s.who];
   if (tex.w<0.35f32) { gpu_demote_helper(); }
   t:f32=u[2];
-  albedo:V3=mul3(fivelab_dye(v3(tex.x,tex.y,tex.z),s.dye),s.tint);
+  albedo:V3=mul3(fivelab_dye(v3(tex.x,tex.y,tex.z),s.dye,e2_layer_green(s.slice,mats)),s.tint);
   glow:V3=v3(0.0f32,0.0f32,0.0f32);
   // Studio-only record marker; retain the eye texture pupil, whites and highlights.
   if ((m.f.w>1.5f32)&&e2_eye_layer(s.slice,mats)) {
@@ -818,14 +856,15 @@ fivelab_scene_colour :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabO
     shade:f32=clampf(metaverse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
     albedo=mix3(albedo,scale3(v3(m.f.x,m.f.y,m.f.z),shade),iris);
   }
-  // a far figure's blocks: their own colour, no texture
-  if (s.dye.w>9.5f32) { albedo=s.tint; }
-  if ((s.dye.w>7.5f32)&&(s.dye.w<9.5f32)) {
-    // a skeleton: old bone, its rags near black, the ribs open to the light between them, and an
-    // ember in each socket
+  // a far figure's blocks (its object's block flag, as fivelab_scene_place draws it): their own colour, no texture
+  block:bool=fivelab_is_block(m);
+  if block { albedo=s.tint; }
+  if ((!block)&&fivelab_is_bones(m)) {
+    // a skeleton: old bone, its rags (its cloth: the layers whose record dyes) near black, the ribs open
+    // to the light between them, and an ember in each socket
     l:f32=metaverse_style_luma(tex.x,tex.y,tex.z);
     albedo=scale3(v3(0.8f32,0.75f32,0.62f32),0.7f32+(0.6f32*saturate(l*2.2f32)));
-    if (s.dye.w>8.5f32) { albedo=scale3(v3(0.09f32,0.08f32,0.07f32),0.7f32+l); }
+    if (e2_layer_dyes(s.slice,mats)) { albedo=scale3(v3(0.09f32,0.08f32,0.07f32),0.7f32+l); }
     p:V3=s.local;
     if ((p.y>1.0f32)&&(p.y<1.38f32)&&(abs(p.x)<0.2f32)) {
       if ((fract((p.y-1.0f32)*15.0f32)<0.45f32)&&(abs(p.x)>0.028f32)) { gpu_demote_helper(); }

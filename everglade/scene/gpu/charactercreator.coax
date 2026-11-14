@@ -25,7 +25,7 @@ cc_player_light :: (u:[]f32,albedo:V3,n:V3,view:V3,visibility:f32)->V3 {
 cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visibility:f32,mats:[]V4)->V4 {
  m:=objects[cast(int)s.who];
  // The array sampler already decodes sRGB. Dye masks are authored in display space.
- display:=cg_encode(v3(tex.x,tex.y,tex.z));albedo:=mul3(cg_decode(fivelab_dye(display,s.dye)),cg_decode(s.tint));
+ display:=cg_encode(v3(tex.x,tex.y,tex.z));albedo:=mul3(cg_decode(fivelab_dye(display,s.dye,e2_layer_green(s.slice,mats))),cg_decode(s.tint));
  if (m.f.w>1.5f32 && e2_eye_layer(s.slice,mats)) {
   iris:=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);shade:=clampf(metaverse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
   albedo=mix3(albedo,scale3(cg_decode(v3(m.f.x,m.f.y,m.f.z)),shade),iris);

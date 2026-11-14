@@ -20,8 +20,14 @@ e2_sky :: (s:FivelabS,mats:[]V4)->bool {return s.dye.w>11.5f32 && e2_surf_is(e2_
 e2_tiled_uv :: (uv:V2,m:E2Surf)->V2 {return v2(uv.x*m.tiles-m.tiles*0.5f32,uv.y*m.tiles-m.tiles*0.5f32);}
 // A village face: its record's CM_S_VILLAGE, and its vertex marked 100 + its atlas tile.
 e2_village :: (m:E2Surf,marker:f32)->bool {return e2_surf_is(m,cmat.CM_S_VILLAGE) && marker>=100.0f32;}
+// A character's colour layer's record (cm_table, by the layer's name: cm_for_layer): its kind (CM_KIND_*),
+// and its dye, 0 for none, else 1 + its mask (CM_MASK_*: 1 a pale cloth's, 2 a green one's).
+e2_layer_kind :: (slice:u32,mats:[]V4)->int {return cast(int)(mats[cast(int)slice*4].w+0.5f32);}
+e2_layer_dye :: (slice:u32,mats:[]V4)->f32 {return mats[cast(int)slice*4+2].z;}
+e2_layer_dyes :: (slice:u32,mats:[]V4)->bool {return e2_layer_dye(slice,mats)>0.5f32;}
+e2_layer_green :: (slice:u32,mats:[]V4)->bool {return e2_layer_dye(slice,mats)>1.5f32;}
 // A character's colour layer is the eye's (its record's kind, cm_table: T_Eye_*).
-e2_eye_layer :: (slice:u32,mats:[]V4)->bool {return cast(int)(mats[cast(int)slice*4].w+0.5f32)==cmat.CM_KIND_EYE;}
+e2_eye_layer :: (slice:u32,mats:[]V4)->bool {return e2_layer_kind(slice,mats)==cmat.CM_KIND_EYE;}
 #test "a surface's record reads its flags, fill and repeats, and an id past the surfaces reads as a textured model" {
  mats:[cmat.CM_MAX*4]V4;mats[(E2S_BASE+6)*4+3]=v4(512,1.5,-1,64);mats[(E2S_BASE+E2S_MODEL_TEXTURE)*4+3]=v4(0,1,-1,0);mats[(E2S_BASE+4)*4+3]=v4(4096+16,0.78,-1,8);
  b:=e2_surface_id(6,mats[..]);#assert e2_surf_is(b,cmat.CM_S_TILED) && b.fill==1.5f32 && b.tiles==64;
@@ -29,4 +35,12 @@ e2_eye_layer :: (slice:u32,mats:[]V4)->bool {return cast(int)(mats[cast(int)slic
  #assert e2_surface_id(40,mats[..]).fill==1 && e2_surface_id(-1,mats[..]).flags==0;
  r:=e2_surface_id(4,mats[..]);#assert e2_village(r,100) && !e2_village(r,99.5) && !e2_village(b,120);
  mats[32*4]=v4(1,1,1,f32(cmat.CM_KIND_EYE));#assert e2_eye_layer(cast(u32)32,mats[..]) && !e2_eye_layer(cast(u32)31,mats[..]);
+}
+#test "a character's layer reads its kind and dye as cm_pack packs them" {
+ mats:[cmat.CM_MAX*4]V4;r:[cmat.CM_FLOATS]f32;
+ g:=cmat.cm_kind(cmat.CM_KIND_CLOTH);g.mask=cmat.CM_MASK_GREEN;cmat.cm_pack(g,r[..]);for k:0..<4 {mats[28*4+k]=v4(r[k*4],r[k*4+1],r[k*4+2],r[k*4+3]);}
+ cmat.cm_pack(cmat.cm_kind(cmat.CM_KIND_CLOTH),r[..]);for k:0..<4 {mats[25*4+k]=v4(r[k*4],r[k*4+1],r[k*4+2],r[k*4+3]);}
+ cmat.cm_pack(cmat.cm_kind(cmat.CM_KIND_HAIR),r[..]);for k:0..<4 {mats[31*4+k]=v4(r[k*4],r[k*4+1],r[k*4+2],r[k*4+3]);}
+ #assert e2_layer_dyes(cast(u32)28,mats[..]) && e2_layer_green(cast(u32)28,mats[..]) && e2_layer_dyes(cast(u32)25,mats[..]) && !e2_layer_green(cast(u32)25,mats[..]);
+ #assert !e2_layer_dyes(cast(u32)31,mats[..]) && e2_layer_kind(cast(u32)31,mats[..])==cmat.CM_KIND_HAIR && e2_layer_kind(cast(u32)25,mats[..])==cmat.CM_KIND_CLOTH;
 }

@@ -4,7 +4,8 @@
 // ground's table, an albedo from the vertex tint, sand, wind, a tiled texture, the placement's tint, the sky)
 // with the share of sky light it takes (fill); since #13545 a ground material's record names its
 // layer of the ground's material table (terrain); since #13550 a tiled surface's record says how many times its
-// texture repeats (tiles), and the older glade's village and town are surface flags. One record per surface, with defined defaults: an empty
+// texture repeats (tiles), and the older glade's village and town are surface flags; since #13555 a dyed record says which
+// texels its dye takes (mask: a pale cloth's or a green one's). One record per surface, with defined defaults: an empty
 // record is a matte cloth at roughness 0.8 with no maps, as OpenPBR's empty closure is its defaults.
 // Every Quaternius part (Character Create, Everglade II's player and people, the Fantasy wardrobe)
 // names its material by its colour layer, so a part's material ID is its layer: the table holds one
@@ -39,6 +40,11 @@ CM_S_VILLAGE :: 4096;  // a vertex marked 100 + k is a face of the village atlas
 CM_S_TOWN :: 8192;     // a face whose tint is one of the town's materials, south of the road's end, is painted as that material (character-glade.coax cg_town_material)
 CM_S_ALL :: 16383;
 CM_TILES_MAX :: 256;   // a tiled texture's repeats at most
+// Which texels a dyed record's dye takes (everglade/scene/gpu/fivelab.coax fivelab_dye): a pale cloth's pale,
+// unsaturated texels (the peasant's shirts, the robes), or a green cloth's green ones (the ranger's leathers).
+CM_MASK_PALE :: 0;
+CM_MASK_GREEN :: 1;
+CM_MASKS :: 2;
 CM_TERRAINS :: 16;     // the layers a ground's material table holds (metaverse-engine/world/terrain-tile.coax TERRAIN_MATERIALS_MAX)
 CM_NONE :: -1;          // no map
 CM_MAX :: 128;          // records in one table: one per colour layer
@@ -56,6 +62,7 @@ CharMaterial :: struct {
   strength: f32 = 1;      // the normal map's strength
   sheen: f32 = 0;         // film: cloth sheen, 0 to 1
   dye: bool = true;       // whether the record's dye masks apply (cloth); dyes are display space, see CA_DYES
+  mask: int = CM_MASK_PALE; // which texels the dye takes (CM_MASK_*); a green mask only on a record that dyes
   surface: int = 0;       // a surface's flags (CM_S_*); 0 for a character
   fill: f32 = 1;          // the share of the sky's light it takes
   terrain: int = CM_NONE; // a ground material's layer of the ground's table (aethyr.terrain.materials.v1), CM_S_TERRAIN only
@@ -74,6 +81,7 @@ CM_SURFACE :: 9;     // surface flags past CM_S_ALL, or on a character's kind
 CM_FILL :: 10;       // a fill outside 0 to 4, or NaN
 CM_TERRAIN :: 11;    // a ground layer past the table's, or on a record that isn't CM_S_TERRAIN
 CM_TILES :: 12;      // tiles past CM_TILES_MAX or below 0, none on a tiled or village surface, or some on another
+CM_MASK :: 13;       // a dye mask it doesn't know, or a green one on a record that doesn't dye
 // Why one record can't be drawn with a pack of `data` data layers, or CM_OK.
 cm_check :: (m: CharMaterial, data: int) -> int {
   if m.kind < 0 || m.kind >= CM_KINDS { return CM_KIND; }
@@ -87,6 +95,7 @@ cm_check :: (m: CharMaterial, data: int) -> int {
   if !(m.fill >= 0 && m.fill <= 4) { return CM_FILL; }
   if m.terrain < CM_NONE || m.terrain >= CM_TERRAINS || (m.terrain != CM_NONE && (m.surface & CM_S_TERRAIN) == 0) { return CM_TERRAIN; }
   if m.tiles < 0 || m.tiles > CM_TILES_MAX || ((m.surface & (CM_S_TILED | CM_S_VILLAGE)) != 0) != (m.tiles > 0) { return CM_TILES; }
+  if m.mask < 0 || m.mask >= CM_MASKS || (m.mask != CM_MASK_PALE && !m.dye) { return CM_MASK; }
   return CM_OK;
 }
 CmRefusal :: struct { index: int = -1; reason: int = CM_OK; }
@@ -108,11 +117,12 @@ cm_kind :: (kind: int) -> CharMaterial {
   return m;
 }
 // One record as four vec4s: (r, g, b, kind), (roughness, metalness, normal, orm),
-// (strength, sheen, dye, flags: 1 occlusion + 2 orm_metal), (surface flags, fill, terrain, tiles). Maps and terrain are -1 for none.
+// (strength, sheen, dye, flags: 1 occlusion + 2 orm_metal), (surface flags, fill, terrain, tiles). Maps and terrain are -1 for none;
+// dye is 0 for a record that doesn't dye, else 1 + its mask (1 a pale cloth's, 2 a green one's).
 cm_pack :: (m: CharMaterial, out: [] f32) {
   out[0] = m.r; out[1] = m.g; out[2] = m.b; out[3] = cast(f32) m.kind;
   out[4] = m.roughness; out[5] = m.metalness; out[6] = cast(f32) m.normal; out[7] = cast(f32) m.orm;
-  out[8] = m.strength; out[9] = m.sheen; out[10] = ifx m.dye then 1.0f32 else 0.0f32; out[11] = (ifx m.occlusion then 1.0f32 else 0.0f32) + (ifx m.orm_metal then 2.0f32 else 0.0f32);
+  out[8] = m.strength; out[9] = m.sheen; out[10] = ifx m.dye then 1.0f32 + cast(f32) m.mask else 0.0f32; out[11] = (ifx m.occlusion then 1.0f32 else 0.0f32) + (ifx m.orm_metal then 2.0f32 else 0.0f32);
   out[12] = cast(f32) m.surface; out[13] = m.fill; out[14] = cast(f32) m.terrain; out[15] = cast(f32) m.tiles;
 }
 // A world's surfaces, registered once after the colour layers' records: record k of `surfaces` goes
@@ -149,8 +159,9 @@ cm_data :: (t: string, name: string) -> int {
 }
 CM_FAMILIES :: [5] string.["Knight", "Noble", "Peasant", "Ranger", "Wizard"];
 // The record for the colour layer called `name`, from the data layers in catalog `t`: the five
-// Fantasy families' cloth and armour (their T_<Family>_Normal and _ORM), the base bodies' skin
-// (T_Regular_<Body>_Normal and _Roughness, a roughness-only map), hair, eyes, and the rest cloth.
+// Fantasy families' cloth and armour (their T_<Family>_Normal and _ORM; the Ranger's dye takes its green
+// texels, the rest their pale ones), the base bodies' skin (T_Regular_<Body>_Normal and _Roughness, a
+// roughness-only map), hair, eyes, and the rest cloth with a pale cloth's dye (the robes).
 cm_for_layer :: (t: string, name: string) -> CharMaterial {
   if cm_starts(name, "T_Regular_Female") || cm_starts(name, "T_Regular_Male") {
     m := cm_kind(CM_KIND_SKIN); body := ifx cm_starts(name, "T_Regular_Female") then "Female" else "Male";
@@ -168,6 +179,7 @@ cm_for_layer :: (t: string, name: string) -> CharMaterial {
       nb: [64] u8; ob: [64] u8;
       m.normal = cm_data(t, cm_join(nb[..], "T_", f, "_Normal"));
       m.orm = cm_data(t, cm_join(ob[..], "T_", f, "_ORM"));
+      if f == "Ranger" { m.mask = CM_MASK_GREEN; }
       return m;
     }
   }
@@ -220,6 +232,9 @@ cm_table :: (t: string, table: [] CharMaterial, out: [] f32) -> int {
   b.tiles = CM_TILES_MAX; #assert cm_check(b, 4) == CM_OK; b.tiles = CM_TILES_MAX + 1; #assert cm_check(b, 4) == CM_TILES; b.tiles = -1; #assert cm_check(b, 4) == CM_TILES;
   b.surface = CM_S_STONE | CM_S_VILLAGE | CM_S_TOWN; b.tiles = 8; #assert cm_check(b, 4) == CM_OK; b.tiles = 0; #assert cm_check(b, 4) == CM_TILES;
   b.surface = CM_S_STONE; b.tiles = 8; #assert cm_check(b, 4) == CM_TILES; b.tiles = 0; #assert cm_check(b, 4) == CM_OK;
+  // a dye mask: one it knows, and a green one only where the record dyes
+  b = m; b.mask = CM_MASK_GREEN; #assert cm_check(b, 4) == CM_OK; b.mask = CM_MASKS; #assert cm_check(b, 4) == CM_MASK; b.mask = -1; #assert cm_check(b, 4) == CM_MASK;
+  b = cm_kind(CM_KIND_HAIR); b.mask = CM_MASK_GREEN; #assert cm_check(b, 4) == CM_MASK; b.mask = CM_MASK_PALE; #assert cm_check(b, 4) == CM_OK;
   b = m; b.g = 4.5; #assert cm_check(b, 4) == CM_COLOUR; b.g = nan; #assert cm_check(b, 4) == CM_COLOUR; b.g = -0.1; #assert cm_check(b, 4) == CM_COLOUR;
   b = m; b.roughness = 1.01; #assert cm_check(b, 4) == CM_ROUGH; b.roughness = nan; #assert cm_check(b, 4) == CM_ROUGH;
   b = m; b.metalness = -0.01; #assert cm_check(b, 4) == CM_METAL; b.metalness = nan; #assert cm_check(b, 4) == CM_METAL;
@@ -244,6 +259,16 @@ CM_TEST_CATALOG :: "L 6 x\nT 0 T_Regular_Male_Dark_BaseColor.png 4\nT 1 T_Knight
   #assert t[5].kind == CM_KIND_CLOTH && t[5].normal == CM_NONE;
   // packed: kind in the first vec4's w, maps in the second's z and w
   #assert out[1 * CM_FLOATS + 3] == 1 && out[1 * CM_FLOATS + 6] == 0 && out[1 * CM_FLOATS + 7] == 1 && out[0 * CM_FLOATS + 11] == 0 && out[1 * CM_FLOATS + 11] == 3 && out[4 * CM_FLOATS + 6] == -1;
+  // the dye: a pale cloth's (the Knight's, the Wizard's), none on skin, hair or eyes
+  #assert out[1 * CM_FLOATS + 10] == 1 && out[4 * CM_FLOATS + 10] == 1 && out[0 * CM_FLOATS + 10] == 0 && out[2 * CM_FLOATS + 10] == 0 && out[3 * CM_FLOATS + 10] == 0;
+}
+#test "the people's packs' layers by name: skin, hair and eyes, a ranger's green cloth, a pale one's, a robe's" {
+  c := "T 0 T_Peasant_BaseColor.png 4\nT 1 T_Peasant_2_BaseColor.png 4\nT 2 T_Ranger_BaseColor.png 4\nT 3 T_Ranger_3_BaseColor.png 4\nT 4 T_Regular_Female_Dark_BaseColor.png 4\nT 5 T_Superhero_Male_Dark.png_(cut) 4\nT 6 T_Hair_2_BaseColor.png 4\nT 7 T_Eye_Brown.png 4\nT 8 T_Cult_Robe_2_BaseColor.png 4\n";
+  t: [9] CharMaterial; out: [9 * CM_FLOATS] f32;
+  #assert cm_table(c, t[..], out[..]) == 9;
+  #assert t[0].dye && t[0].mask == CM_MASK_PALE && t[1].mask == CM_MASK_PALE && t[8].dye && t[8].mask == CM_MASK_PALE;
+  #assert t[2].dye && t[2].mask == CM_MASK_GREEN && t[3].mask == CM_MASK_GREEN && out[2 * CM_FLOATS + 10] == 2 && out[3 * CM_FLOATS + 10] == 2 && out[8 * CM_FLOATS + 10] == 1;
+  #assert t[4].kind == CM_KIND_SKIN && t[5].kind == CM_KIND_SKIN && t[6].kind == CM_KIND_HAIR && t[7].kind == CM_KIND_EYE && !t[4].dye && !t[6].dye && out[7 * CM_FLOATS + 10] == 0;
 }
 #test "a catalog with out-of-order data rows is refused and draws the defaults" {
   t: [8] CharMaterial; out: [8 * CM_FLOATS] f32;
