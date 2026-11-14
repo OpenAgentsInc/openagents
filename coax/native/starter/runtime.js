@@ -34,8 +34,9 @@ function cnAction() {
   if (copied) {const text=cnString(cnExports.dom_clip(cnState),copied);cnExports.dom_clip_done(cnState);return [404,JSON.stringify({text})];}
   const op = cnExports.dom_act_kind(cnState);
   if (!op) return [0, ""];
+  const count=cnExports.dom_act_len?.(cnState) || 0;
   const body = cnExports.app_body ? cnUTF8(Array.from(new Uint8Array(cnMemory.buffer,
-    cnExports.app_body(cnState), cnExports.app_body_len(cnState)))) : cnExports.dom_act ? cnString(cnExports.dom_act(cnState),cnExports.dom_act_len(cnState)) : "{}";
+    cnExports.app_body(cnState), cnExports.app_body_len(cnState)))) : cnExports.dom_act && count ? cnString(cnExports.dom_act(cnState),count) : "{}";
   cnExports.dom_act_done(cnState);
   return [op, body];
 }

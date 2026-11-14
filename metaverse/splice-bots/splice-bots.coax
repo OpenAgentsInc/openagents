@@ -403,6 +403,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   g := s[0].game[..];
   s[0].touch_width=width;s[0].touch_height=height;s[0].touch_scale=dpr;
   if !s[0].started { s[0].started = true; s[0].time = 0; g_reset(g); }
+  g[0].fr[0].touch_scale=ifx s[0].touched then dpr else 0.0f32;
   if !s[0].gallery && s[0].built_gray != g[0].gray { s[0].world_built = false; s[0].built_gray = g[0].gray; }
   if !s[0].gallery && s[0].built_pack != g[0].imp[0].gen { s[0].world_built = false; s[0].built_pack = g[0].imp[0].gen; }   // a kit slot the pack dresses draws no blockout (kits.coax)
   if !s[0].world_built || (s[0].gallery && s[0].built_scene != s[0].scene) {

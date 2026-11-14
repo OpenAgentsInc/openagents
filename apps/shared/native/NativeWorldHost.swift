@@ -28,7 +28,9 @@ private final class NativeWorldCancellation:@unchecked Sendable {
                 guard (response as? HTTPURLResponse)?.statusCode==200 else {return};player=String(decoding:data,as:UTF8.self)
             }
             if AppAuth.shared.loggedIn,let raw=player.data(using:.utf8),let record=(try? JSONSerialization.jsonObject(with:raw)) as? [String:Any],let key=record["key"] as? String {
-                var q=URLRequest(url:URL(string:AppAuth.defaultOrigin+"/api/chat/world/player/v1")!);q.httpMethod="POST";q.setValue(key,forHTTPHeaderField:"X-Verse-Player");q.setValue(AppAuth.defaultOrigin,forHTTPHeaderField:"Origin");q.setValue("application/json",forHTTPHeaderField:"Content-Type");q.httpBody=Data("{\"schema\":\"openagents.world.player-bind.v1\"}".utf8);q=try await AppAuth.shared.authorize(q)
+                var bytes=[UInt8](repeating:0,count:128);let n=bytes.withUnsafeMutableBufferPointer {awb_write(coax_v_u8(data:$0.baseAddress,count:Int64($0.count)))}
+                guard n>0 else {throw NativeFailure.refused("Player binding could not be encoded")}
+                var q=URLRequest(url:URL(string:AppAuth.defaultOrigin+"/api/chat/world/player/v1")!);q.httpMethod="POST";q.setValue(key,forHTTPHeaderField:"X-Verse-Player");q.setValue(AppAuth.defaultOrigin,forHTTPHeaderField:"Origin");q.setValue("application/json",forHTTPHeaderField:"Content-Type");q.httpBody=Data(bytes.prefix(Int(n)));q=try await AppAuth.shared.authorize(q)
                 let (data,response)=try await transport.session.data(for:q);if (response as? HTTPURLResponse)?.statusCode==200 {player=String(decoding:data,as:UTF8.self)}
             }
             guard !ended,!Task.isCancelled else {return}
@@ -81,7 +83,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     private var canvas:NativeWorldCanvas!
     private var queue:MTLCommandQueue!
     private var last=0.0
-    private var closed=false,editorOffered=false
+    private var closed=false,editorOffered=false,firstPresented=false
     private var revision:Int32 = -1
     private var editor:NativeWorldEditor?
     private let status=UILabel(),progress=UIProgressView(progressViewStyle:.default)
@@ -96,6 +98,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
         let profile=realm.withCString {nwr_profile(coax_string(data:$0,count:Int64(realm.utf8.count)))}
         title=Self.text(profile.title)
         navigationItem.leftBarButtonItem=UIBarButtonItem(systemItem:.close,primaryAction:UIAction { [weak self] _ in self?.leave() })
+        navigationItem.leftBarButtonItem?.accessibilityIdentifier="world.close"
         navigationItem.rightBarButtonItem=UIBarButtonItem(image:UIImage(systemName:"slider.horizontal.3"),style:.plain,target:self,action:#selector(openEditor));navigationItem.rightBarButtonItem?.isEnabled=false
         status.numberOfLines=0;status.textColor = .white;status.textAlignment = .center;status.text="Preparing world…";status.translatesAutoresizingMaskIntoConstraints=false
         progress.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(status);view.addSubview(progress)
@@ -154,6 +157,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
             page=opened;status.isHidden=true
             audio=AEPageAudio(page:opened,resources:root,offline:c.automated)
             canvas=NativeWorldCanvas(frame:view.bounds,device:device);canvas.world=self;turn.view=canvas;turn.moved={AppAnalytics.shared.gyro("world")};canvas.delegate=self;canvas.isMultipleTouchEnabled=true;canvas.preferredFramesPerSecond=60;canvas.colorPixelFormat = .bgra8Unorm;canvas.framebufferOnly=false;canvas.translatesAutoresizingMaskIntoConstraints=false
+            canvas.accessibilityIdentifier="world.canvas";canvas.isAccessibilityElement=true;canvas.accessibilityTraits = .image;canvas.accessibilityLabel=Self.text(profile.title)
             view.addSubview(canvas);NSLayoutConstraint.activate([canvas.topAnchor.constraint(equalTo:view.safeAreaLayoutGuide.topAnchor),canvas.bottomAnchor.constraint(equalTo:view.safeAreaLayoutGuide.bottomAnchor),canvas.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor),canvas.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor)])
             optional=Task { [weak self] in await Self.assets.optional(inventory) {name in Task { @MainActor in
                 guard let self,let page=self.page,!self.closed else {return}
@@ -171,7 +175,11 @@ private final class NativeWorldCancellation:@unchecked Sendable {
         var wantsText=false,wantsMotion=false;Self.deep.run {wantsText=page.wantsText();wantsMotion=page.wantsMotion()}
         if wantsText && !canvas.isFirstResponder {canvas.becomeFirstResponder()}else if !wantsText && canvas.isFirstResponder {canvas.resignFirstResponder()}
         if wantsMotion {if turn.available {turn.start();let moved=turn.take();Self.deep.run {page.motionStatus(1);page.tilt(Float(moved.yaw),pitch:Float(moved.pitch))}}else {Self.deep.run {page.motionStatus(3)}}}else {turn.stop()}
-        if let cmd=queue.makeCommandBuffer(),let encoder=cmd.makeRenderCommandEncoder(descriptor:pass) {page.present(encoder,format:view.colorPixelFormat);encoder.endEncoding();cmd.present(drawable);cmd.commit();presentation=cmd}
+        if let cmd=queue.makeCommandBuffer(),let encoder=cmd.makeRenderCommandEncoder(descriptor:pass) {
+            page.present(encoder,format:view.colorPixelFormat);encoder.endEncoding();cmd.present(drawable)
+            if !firstPresented {firstPresented=true;cmd.addCompletedHandler { [weak self] _ in Task { @MainActor in guard let self,!self.closed else {return};self.canvas.accessibilityValue="Ready" }}}
+            cmd.commit();presentation=cmd
+        }
         if let model {revision=current;editor?.model(String(decoding:model,as:UTF8.self))}
         navigationItem.rightBarButtonItem?.isEnabled=owns || model != nil || editor != nil
         if editRequested,!editorOffered,editor==nil,navigationItem.rightBarButtonItem?.isEnabled==true {editorOffered=true;openEditor()}

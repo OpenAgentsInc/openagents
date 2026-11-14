@@ -7,7 +7,7 @@ adds login and agent chat as Coax application functionality.
 
 Bundle `com.openagents.app`, team HQWSG26L43, version 1.0.0, existing icons
 and entitlements are preserved. Build 1068 introduces the replacement. The
-earlier Metal world, wallet and voice screens are excluded from this target;
+earlier Metal world, wallet and voice screens were excluded from that target;
 their Keychain namespaces are retained. Their implementation notes are in
 [README-legacy.md](README-legacy.md).
 
@@ -49,6 +49,51 @@ New installed random-ID/timer services require this TestFlight build; subsequent
 compatible presentation changes can use Updates. The
 [runtime contract](../../docs/protocol/environment-runtime-v1alpha1.md) records
 the implemented scope and current bounds.
+
+## Streamed worlds, build 1075
+
+**Worlds** opens Splice Bots and the main Everglade town using their existing
+Coax simulation and shaders on Metal. The installed catalogue also includes
+Everglade Forest and the saved-world template. There is no WebView.
+
+The binary contains producers, compiled shaders, the account interface and
+small signed asset inventories. Packs, world fonts, sounds and icons download
+separately. Required files are verified whole before opening; icons load on
+demand and optional sounds follow. Immutable SHA-256 objects live in the
+public, asset-only bucket `openagentsgemini-native-world-assets`. Direct Cloud
+Storage delivery avoids Cloud Run's large-response limit. Inventories pin the
+installed producer identity, relative paths, sizes and digests. Redirects,
+partial files and corrupt cached files cannot become ready assets. Verified
+assets reopen offline; online rooms and account world records need a network.
+Old cache generations currently have no eviction UI.
+
+**Create a world** projects the web's existing Builder: setup questions,
+typed/document planning, editable feature board, pending requests, revision
+and creation. **Worlds you can edit** uses the existing account/player-scoped
+API. The SDK attaches its guest player key to the verified email session's
+game account through a closed request. Creator and admin rights are unchanged.
+
+The shared Coax editor shell is projected into native controls in a resizable
+sheet above the Metal view. It retains the inspector, tools, transform fields,
+undo/redo, assets, files, actor plans, lists, revision history and publishing
+where a realm exposes them. The Agent sheet uses the account composer and
+component Markdown parser. Typed plans retain the turn's revision and follow
+the realm's normal batch and ownership path. Inference uses the existing team
+meter; the answer is saved before its edit is handed to the editor.
+
+This SDK uses the generic Apple PageHost, not the canonical MetalRealm
+renderer. Scene, shadow, particles, bloom and HUD are adopted; separate water
+and grass passes and downloaded realm-script execution are not yet adopted
+here. Scripts can be authored, built and assigned for web players, with an
+explicit iOS notice. Code editing needs a server that exposes that capability.
+Agent attachment-open requests are shown; automatic attachment read-back is
+not installed. Producer/shader changes need TestFlight. Builder/editor/chat
+logic, world records and compatible asset inventories can change over the air.
+
+Focused schemes: `CoaxNativeWorlds` checks Metal readback, generated native
+programs, cache integrity and cancellation. `CoaxNativeWorldsLive` opens both
+games in the installed app through real public downloads. Physical acceptance
+is tracked in root `NEEDS_OWNER.md`.
 
 ## Build and check
 

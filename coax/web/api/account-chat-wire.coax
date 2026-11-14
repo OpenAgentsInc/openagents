@@ -3,10 +3,10 @@
 #load "../../lib/gateway/types.coax";
 #load "../../lib/gateway/chat.coax";
 #load "../../lib/agent/world/turn.coax";
+#load "account-chat-player-bind.coax";
 ACT_SCHEMA :: "openagents.chat.thread.v1";
 ACT_MODEL :: "google/gemini-4-hydrogen";
 AWC_SCHEMA :: "openagents.world.account-turn.v1";
-AWB_SCHEMA :: "openagents.world.player-bind.v1";
 AccountMessage :: struct {assistant:bool;text:[16384]u8;n:int;}
 AccountThread :: struct {ok:bool;id:[24]u8;id_n:int;revision:int;n:int;messages:[32]AccountMessage;}
 #test "account world inference is a distinct closed version and uses the web's typed world tools" {
@@ -15,7 +15,6 @@ AccountThread :: struct {ok:bool;id:[24]u8;id_n:int;revision:int;n:int;messages:
  #assert awc_completion(cast(string)request[0..<n],out[..])>0 && awc_completion("{}",out[..])<0;
  #assert awb_read("{\"schema\":\"openagents.world.player-bind.v1\"}") && !awb_read("{\"schema\":\"openagents.world.player-bind.v1\",\"account\":\"other\"}");
 }
-awb_read :: (raw:string)->bool #export_c #effects(all) {d:[1]Jv;nodes:[4]JvNode;return raw.count<128 && jv_parse(d[..],raw,nodes[..]) && jv_kind(d[0],0)==JV_OBJECT && jv_len(d[0],0)==1 && jv_raw(d[0],jv_get(d[0],0,"schema"))==AWB_SCHEMA;}
 awc_write :: (t:[]AccountThread,world:string,out:[]u8)->int {
  thread:[65536]u8;n:=act_write(t,thread[..]);if n<0 {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],AWC_SCHEMA);jo_key(o[..],"world");jo_str(o[..],world);jo_key(o[..],"thread");jo_put(o[..],cast(string)thread[0..<n]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
 }

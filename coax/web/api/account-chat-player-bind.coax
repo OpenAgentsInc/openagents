@@ -1,0 +1,10 @@
+// Closed account-session request for attaching the SDK's existing guest key.
+// Account identity is a verified server fact and never enters this body.
+#load "../../lib/json/json.coax";
+AWB_SCHEMA :: "openagents.world.player-bind.v1";
+awb_read :: (raw:string)->bool #export_c #effects(all) {d:[1]Jv;nodes:[4]JvNode;return raw.count<128 && jv_parse(d[..],raw,nodes[..]) && jv_kind(d[0],0)==JV_OBJECT && jv_len(d[0],0)==1 && jv_raw(d[0],jv_get(d[0],0,"schema"))==AWB_SCHEMA;}
+awb_write :: (out:[]u8)->int #export_c #effects(all) {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],AWB_SCHEMA);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;}
+#test "account player binding is one pinned closed request" {
+ out:[128]u8;n:=awb_write(out[..]);#assert n>0 && cast(string)out[0..<n]=="{\"schema\":\"openagents.world.player-bind.v1\"}" && awb_read(cast(string)out[0..<n]);
+ #assert !awb_read("{}") && !awb_read("{\"schema\":\"openagents.world.player-bind.v1\",\"account\":\"other\"}") && awb_write(out[0..<1])<0;
+}

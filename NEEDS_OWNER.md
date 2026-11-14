@@ -1,5 +1,16 @@
 # Owner actions
 
+## iPhone worlds acceptance, build 1075
+
+After TestFlight processes 1075, install it and open **Worlds**. Open Splice
+Bots and Everglade; the first visit downloads their assets. Check portrait
+and landscape touch controls, sound after a gesture, suspension and reopening
+offline after an initial successful visit. Sign in with the existing email
+account, create a world and open it from **Worlds you can edit**. Check the
+inspector, a transform plus Undo, and an Agent change with the world visible
+behind its sheet. Creator/admin rights are unchanged. Physical touch, motion,
+audio and the actual account's acceptance remain owner observations.
+
 ## Computer connection repair, build1074 (2026-11-14)
 
 The owner has already installed1074. The server correction is live; tap

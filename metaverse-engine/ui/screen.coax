@@ -29,6 +29,16 @@ scr_in :: (b: ScrBox, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 
 // The frame on a w by h screen: k design pixels to the device's, the panel, the left of everything
 // in it, the title's top, the content's top, the foot's baseline and the hints' bottom right.
 ScrFrame :: struct { k: f32; w: f32; h: f32; panel: ScrBox; left: f32; top: f32; body: f32; foot: f32; hint_x1: f32; hint_y1: f32; row: f32; gap: f32; width: f32; }
+#test "portrait touch menus keep readable type and 44 point rows instead of shrinking a desktop panel" {
+ f:=scr_touch_frame(804,1460,2,scr_title_spec());#assert f.k==2.5 && f.panel.x1==804 && f.row==88 && f.left==32 && f.width==740;
+ c:=scr_touch_frame(804,1460,2,ScrSpec.{body=196,row=44,gap=8});#assert c.body+8*c.row+7*c.gap<c.foot;
+ d:=scr_frame(1560,840,scr_title_spec());l:=scr_touch_frame(1560,840,2,scr_title_spec());#assert d.k==l.k && d.width==l.width;
+}
+scr_touch_frame :: (w:f32,h:f32,dpr:f32,s:ScrSpec)->ScrFrame {
+ f:=scr_frame(w,h,s);if !(dpr>0) || w>h || w/dpr>600 {return f;}
+ f.k=1.25*dpr;f.panel.x1=w;f.left=16*dpr;f.top=20*dpr;f.width=w-32*dpr;
+ f.body=(ifx s.body<240 then 160.0f32 else 220.0f32)*dpr;f.row=44*dpr;f.gap=8*dpr;f.foot=h-32*dpr;return f;
+}
 scr_frame :: (w: f32, h: f32, s: ScrSpec) -> ScrFrame {
   k := w / SCR_DESIGN_W; kh := h / SCR_DESIGN_H; if kh < k { k = kh; }
   if !(k > 0) { k = 1; }

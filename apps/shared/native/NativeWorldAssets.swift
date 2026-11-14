@@ -83,7 +83,7 @@ actor NativeWorldAssets {
             defer {try? fm.removeItem(at:temporary)}
             guard fm.createFile(atPath:temporary.path,contents:nil,attributes:[.posixPermissions:0o600]) else {throw NativeFailure.refused("Not enough storage for this world.")}
             let handle=try FileHandle(forWritingTo:temporary);defer {try? handle.close()}
-            let url=URL(string:"https://updates.openagents.com/world-assets/objects/\(file.hash)")!
+            let url=URL(string:"https://storage.googleapis.com/openagentsgemini-native-world-assets/objects/\(file.hash)")!
             let (stream,response)=try await transport.session.bytes(for:URLRequest(url:url))
             guard let http=response as? HTTPURLResponse,http.statusCode==200,
                   response.expectedContentLength<0 || response.expectedContentLength==file.bytes else {throw NativeFailure.refused("A world file could not be downloaded. Try again.")}

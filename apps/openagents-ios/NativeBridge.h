@@ -10,6 +10,7 @@
 
 #include "Generated/NativeText.h"
 #include "Generated/NativeWorld.h"
+#include "Generated/NativePlayerBind.h"
 #include "Generated/engine-core-face.h"
 #import "../../metaverse-engine/host/apple/page-host.h"
 #include "../../metaverse-engine/host/apple/audio-host.h"

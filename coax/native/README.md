@@ -10,8 +10,10 @@ The reusable starter is `starter/app.coax`; OpenAgents builds its application
 surface from `apps/openagents-ios/home/app.coax`. Its canonical resources live here and in
 `components/` and `coax/web/`; generated copies are ignored. The iOS target
 uses the existing bundle `com.openagents.app`, signing team, icons,
-entitlements and 1.0.0 version line. Old world/wallet screens are excluded
-from the replacement target. Their Keychain records are retained.
+entitlements and 1.0.0 version line. Old world/wallet screens were excluded
+from the initial target. Build 1075 adopts installed world producers with
+[streamed assets and the shared editor](../../apps/openagents-ios/README.md#streamed-worlds-build-1075).
+Existing Keychain records are retained.
 
 ## Build
 

@@ -126,8 +126,11 @@ reused; proposals below describe the additional contract they must satisfy.
 The OpenAgents iOS app is the first migration consumer. Its replacement
 starter presents UIKit controls from the Coax Native semantic program,
 executed through generated code in JavaScriptCore; 1068–1069's WebKit profile
-is historical. The earlier app's native Metal/world code is not a fallback
-in this replacement target. Account, chat and wallet platform adapters still
+is historical. Build 1075 adds installed Metal world producers and signed,
+streamed asset inventories through the shared Apple PageHost; see the
+[iOS consumer's scope](../apps/openagents-ios/README.md#streamed-worlds-build-1075).
+This does not qualify the canonical renderer's other passes or backends.
+Account, chat and wallet platform adapters still
 have their own installed capability boundaries. This is an initial native
 consumer, not evidence that every proposed framework service is implemented.
 

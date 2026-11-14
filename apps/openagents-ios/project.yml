@@ -28,6 +28,8 @@ targets:
       - ../shared/host/apple/PhoneTurn.swift
       - ../../metaverse-engine/host/apple/PageHost.m
       - NativeWorldUnit.c
+      - path: Generated/NativePlayerBind.c
+        compilerFlags: "-Wno-unused-function -Wno-unused-variable"
       - NativeAudioUnit.c
       - path: Generated/native-audio.c
         compilerFlags: "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"
@@ -265,3 +267,12 @@ schemes:
       targets:
         - name: OpenAgentsTests
           selectedTests: [NativeWorldTests, NativeWorldDownloadTests, NativeWorldProgramTests]
+
+  CoaxNativeWorldsLive:
+    build:
+      targets:
+        OpenAgents: all
+    test:
+      targets:
+        - name: OpenAgentsUITests
+          selectedTests: [WorldsUITests]

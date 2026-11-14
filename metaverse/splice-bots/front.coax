@@ -37,6 +37,7 @@ SpFront :: struct {
   menu: [1] ScrMenu; rows: [1] ScrMenu; back: [1] ScrMenu;
   doc: [1] CrewDoc; doc_gen: int;        // the character you play as, and its changes
   w: f32; h: f32;                        // the screen the last frame was drawn on
+  touch_scale:f32;                       // SDK points to device pixels on a coarse portrait screen
   turn: f32;                             // the creation screen's turntable
   spin: bool; spin_x: f32; spin_hold: f32;   // a drag turning it by hand, where the pointer was, and seconds before it turns on its own again
   run: [1] SpRun;                        // the run this browser keeps
@@ -230,7 +231,7 @@ fr_spec :: (mode: int) -> ScrSpec {
   if mode == M_CREDITS { return ScrSpec.{body = 560}; }
   return scr_title_spec();
 }
-fr_frame :: (g: [] SpGame) -> ScrFrame { return scr_frame(g[0].fr[0].w, g[0].fr[0].h, fr_spec(g[0].mode)); }
+fr_frame :: (g: [] SpGame) -> ScrFrame {f:=g[0].fr[0];return ifx f.touch_scale>0 then scr_touch_frame(f.w,f.h,f.touch_scale,fr_spec(g[0].mode)) else scr_frame(f.w,f.h,fr_spec(g[0].mode)); }
 fr_menu :: (g: [] SpGame) -> [] ScrMenu {
   f := g[0].fr[..];
   return ifx g[0].mode == M_CREW then f[0].rows[..] else ifx g[0].mode == M_CREDITS then f[0].back[..] else f[0].menu[..];

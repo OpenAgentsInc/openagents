@@ -2,6 +2,24 @@
 // tool.sh: tls
 #load "auth_harness.coax";
 #load "../account-chat-wire.coax";
+#load "../../../../metaverse-engine/editor/world-edit.coax";
+
+chh_world_checks :: (t:[]Ap,account:string,auth:string,player:string) {
+ // This grant belongs only to the disposable test database. Binding a player
+ // must preserve an existing creator grant, never manufacture one itself.
+ q:[1]Sb;sb(q[..],"INSERT INTO access.creators(who,how,at_ms) SELECT verse_account,'admin',0 FROM auth.accounts WHERE id='");sb(q[..],account);sb(q[..],"' ON CONFLICT DO NOTHING");ap_do(t,sb_text(q[..]));
+ st:=ac_call(t,"POST","/api/playtest/realms","{\"board\":{\"name\":\"Native world fixture\",\"features\":[]}}",auth,player,"");slugb:[64]u8;slug:=ap_member(ap_body(t),"slug",slugb[..]);
+ ap_check(t,"a creator's email-bound player creates a saved realm",st==200 && slug.count>0,ap_body(t));if st!=200 || slug.count==0 {return;}
+ st=ac_call(t,"GET","/api/worlds","",auth,player,"");ap_check(t,"the mobile account library lists the newly saved realm",st==200 && ap_has(ap_body(t),slug),ap_body(t));
+ sb_clear(q[..]);sb(q[..],"/api/worlds/");sb(q[..],slug);sb(q[..],"?lane=dev");path:=sb_text(q[..]);
+ st=ac_call(t,"GET",path,"",auth,player,"");doc:[65536]u8;did:[65536]u8;scratch:[131072]u8;state:=we_state_read(ap_body(t),doc[..],did[..],scratch[..]);
+ ap_check(t,"the mobile account reads its private editable world",st==200 && state.ok,ap_body(t));if st!=200 || !state.ok {return;}
+ edits:[1]WorldEdit;edits[0]=WorldEdit.{ok=true,op=WE_CELL,id=1};edits[0].table_n=ct_copy(edits[0].table[..],"tools");edits[0].name_n=ct_copy(edits[0].name[..],"on");edits[0].text_n=ct_copy(edits[0].text[..],"1");wire:[4096]u8;base:=state.rev;batch:=we_batch_write(base,WB_APPLY,edits[..],1,wire[..]);
+ st=ac_call(t,"POST",path,batch,auth,player,"");state=we_state_read(ap_body(t),doc[..],did[..],scratch[..]);ap_check(t,"the native editor's shared typed batch edits its owned realm",st==200 && state.ok && state.rev==base+1,ap_body(t));
+ st=ac_call(t,"POST",path,batch,auth,player,"");ap_check(t,"an edit based on a stale mobile revision cannot replace the world",st==409,ap_body(t));
+ batch=we_batch_write(base+1,WB_UNDO,edits[..],0,wire[..]);st=ac_call(t,"POST",path,batch,auth,player,"");state=we_state_read(ap_body(t),doc[..],did[..],scratch[..]);ap_check(t,"the mobile world edit follows the existing undo log",st==200 && state.ok && state.rev==base+2,ap_body(t));
+ st=ac_call(t,"GET",path,"","","","");ap_check(t,"a private mobile-created world is not readable by a stranger",st==404,ap_body(t));
+}
 
 chh_api_checks :: (t:[]Ap,dir:string) {
   b:[128]u8;code:[6]u8;link:[64]u8;out:[8192]u8;acctb:[64]u8;tokenb:[256]u8;c:[1]Sb;q:[1]Sb;v:[1]Sb;
@@ -45,6 +63,7 @@ chh_api_checks :: (t:[]Ap,dir:string) {
   ap_check(t,"email account attaches its guest without gaining admin",st==200 && ap_has(ap_body(t),player),ifx st==200 then "" else ap_body(t));
   st=ac_call(t,"POST","/api/chat/world/player/v1",bind_body,sb_text(c[..]),sb_text(ph[..]),"");
   ap_check(t,"world player binding is idempotent",st==200,ap_body(t));
+  chh_world_checks(t,account,sb_text(c[..]),sb_text(ph[..]));
   sb_clear(q[..]);sb(q[..],"INSERT INTO verse.accounts(id,created_ms) VALUES ('world-bind-other',0) ON CONFLICT DO NOTHING; UPDATE verse.players SET account='world-bind-other' WHERE id='");sb(q[..],pid);sb(q[..],"'");ap_do(t,sb_text(q[..]));
   st=ac_call(t,"POST","/api/chat/world/player/v1",bind_body,sb_text(c[..]),sb_text(ph[..]),"");
   ap_check(t,"possessing another account player key cannot rebind its worlds",st==403,ap_body(t));

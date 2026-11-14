@@ -1,0 +1,7 @@
+Worlds: play Splice Bots and Everglade on native Metal. World assets download when needed and stay cached for later visits.
+
+Create worlds using the shared setup and feature planner. Open your saved worlds, edit them in a native sheet, inspect objects, use tools and undo, manage assets/files, and ask the world agent for typed changes.
+
+Large world packs download rather than being bundled. Core engine/shader changes still require TestFlight; compatible application and content changes use signed Updates.
+
+Downloaded realm scripts execute in web players, not this iOS build. The Scripts pane explains this limit.
