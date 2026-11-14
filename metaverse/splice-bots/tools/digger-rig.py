@@ -119,10 +119,9 @@ print("verts", len(verts), "tris", len(tris), "per colour", counts)
 #        triangle's last corner (or the fill's last new vertex), the bone (1: the same as that one's,
 #        0 and 4 bits), then the normal.
 # A normal is octahedral, DGM_NB bits a component. The game keeps the places of the last DGM_RING
-# corners (a corner copied from further back has none). Thirteen bits a pair of characters, the high
-# bit first: the pair's value is its first digit times 93 plus its second, a digit being a printable
-# character from space to '~' without the quote and the backslash (ALPHA, in order). Each fill starts
-# on a pair (#13552: 7.7% fewer characters than the six bits a character before).
+# corners (a corner copied from further back has none). Each fill's bits are padded to a multiple of
+# 13 (the pairs of characters they were packed in before, #13552) and the fills follow one another in
+# 32-bit words, the high bit first (#13566: 8 bits a byte, where two printable characters carried 13).
 SPAN = 0.6   # model units: x and z within +-0.6, y within 0..1.2
 NB = 7; NM = (1 << NB) - 1; KD = 3; KP = 3; RING = 4096
 def q12(x): return max(0, min(4095, int(round(x * 4095))))
@@ -159,16 +158,9 @@ class Bits:
         for i in range(n - 1, -1, -1): self.b.append((v >> i) & 1)
     def eg(self, v, k):
         v += 1 << k; L = v.bit_length(); self.put(0, L - k - 1); self.put(v, L)
-    def chars(self):
+    def padded(self):
         while len(self.b) % 13: self.b.append(0)
-        out = []
-        for i in range(0, len(self.b), 13):
-            v = 0
-            for x in self.b[i:i + 13]: v = v * 2 + x
-            out.append(ALPHA[v // 93] + ALPHA[v % 93])
-        return "".join(out)
-ALPHA = [chr(c) for c in range(32, 127) if c not in (34, 92)]   # 93 digits
-def digit(c): c = ord(c); return c - 32 - (c > 34) - (c > 92)
+        return self.b
 def zz(v): return 2 * v if v >= 0 else -2 * v - 1
 START = ((2048, 1024, 2048), 1)
 def encode_fill(ts):
@@ -197,11 +189,10 @@ def encode_fill(ts):
             ring[cur] = ent
             if ent is not None: pred = ent; pocc[ent] = cur
             occ[k] = cur; cur += 1
-    return bs.chars(), out_tris, news
+    return bs.padded(), out_tris, news
 # The decoder, as the game's (digger.coax dg_draw), to check the stream gives back every corner.
-def decode_fill(s, ntri):
-    vals = [digit(s[i]) * 93 + digit(s[i + 1]) for i in range(0, len(s), 2)]
-    bits = [(v >> i) & 1 for v in vals for i in range(12, -1, -1)]; pos = [0]
+def decode_fill(bits, ntri):
+    pos = [0]
     def get(n):
         v = 0
         for _ in range(n): v = v * 2 + bits[pos[0]]; pos[0] += 1
@@ -240,10 +231,12 @@ for f in range(4):
     assert decode_fill(s, len(rot)) == rot, "fill %d does not decode" % f
     streams.append(s); body_end.append(tri_total + len(body)); tri_total += len(ordered); fill_end.append(tri_total); new_total += news
 counts = [fill_end[0]] + [fill_end[k] - fill_end[k - 1] for k in range(1, 4)]
-fill_char = [0]
-for s in streams: fill_char.append(fill_char[-1] + len(s))
-stream = "".join(streams)
-print("stream chars", len(stream), "new vertices", new_total, "fill ends", fill_end, "body ends", body_end)
+fill_bit = [0]
+for s in streams: fill_bit.append(fill_bit[-1] + len(s))
+stream = [b for s in streams for b in s]
+while len(stream) % 32: stream.append(0)
+words = [int("".join(map(str, stream[i:i + 32])), 2) for i in range(0, len(stream), 32)]
+print("stream bits", fill_bit[-1], "words", len(words), "new vertices", new_total, "fill ends", fill_end, "body ends", body_end)
 
 # Rig in Blender (Blender axes: game (x, y, z) = blender (by, bz, bx), so blender = (gz, gx, gy) after
 # the centring) and export the rigged GLB with two clips.
@@ -290,7 +283,8 @@ bpy.ops.export_scene.gltf(filepath=out_glb, export_format='GLB', export_animatio
 
 # The coax table.
 def pt(p): return "v3(%.4f, %.4f, %.4f)" % tuple(p)
-PIECE = 8192   # characters in one piece of the stream, one line of C each (a line the exporter reads is at most 64 KB)
+PIECE = 1024   # words in one table: each is one line of C, and a line the exporter reads is at most 64 KB
+ROW = 16       # words a line here
 with open(out_coax, "w") as f:
     f.write("""// The Digger's mesh (GitHub #13505): the designer's Tripo model, decimated to %d triangles (normals
 // smooth by angle) and baked to one flat base colour in Blender, each triangle given the nearest of four
@@ -301,13 +295,13 @@ with open(out_coax, "w") as f:
 // The triangles are one bit stream a fill, read in order as digger.coax draws them (the script says
 // how a corner is written): a corner copies the vertex an earlier corner wrote, or is a new vertex.
 // DGM_FILL_END[k] is where fill k's triangles end, DGM_BODY_END[k] where its legs' begin, and
-// DGM_FILL_CHAR[k] the character fill k's stream starts on; the stream is dgm_s's pieces of DGM_PIECE.
+// DGM_FILL_BIT[k] the bit fill k's stream starts on; the stream is dgm_w's words, 32 bits each, the high bit first.
 DGM_SPAN :: %.3f;
 DGM_NB :: %d; DGM_KD :: %d; DGM_KP :: %d; DGM_RING :: %d;
-DGM_VERTS :: %d; DGM_TRIS :: %d; DGM_CHARS :: %d;
+DGM_VERTS :: %d; DGM_TRIS :: %d; DGM_BITS :: %d;
 DGM_FILL_END :: [4] int.[%s];
 DGM_BODY_END :: [4] int.[%s];
-DGM_FILL_CHAR :: [5] int.[%s];
+DGM_FILL_BIT :: [5] int.[%s];
 DGM_BONES :: %d;
 // Each bone: its parent (-1: none), its pivot (where it turns) in model units.
 DGM_PARENT :: [DGM_BONES] int.[%s];
@@ -315,12 +309,18 @@ DGM_PIVOT :: (b: int) -> Point {
   pivots := [DGM_BONES] Point.[%s];
   return pivots[b];
 }
-DGM_PIECE :: %d;
-""" % (tri_total, LEN, SPAN, NB, KD, KP, RING, new_total, tri_total, len(stream),
-       ", ".join(map(str, fill_end)), ", ".join(map(str, body_end)), ", ".join(map(str, fill_char)), len(bones),
-       ", ".join(str(b[1]) for b in bones), ", ".join(pt(b[2]) for b in bones), PIECE))
-    f.write("dgm_s :: (k: int) -> string {\n")
-    for k in range(0, len(stream), PIECE):
-        f.write("  if k == %d { return \"%s\"; }\n" % (k // PIECE, stream[k:k + PIECE]))
-    f.write("  return \"\";\n}\n")
-print("LEN", LEN, "HT", HT, "chars", len(stream))
+DGM_WORDS :: %d; DGM_PIECE :: %d;
+""" % (tri_total, LEN, SPAN, NB, KD, KP, RING, new_total, tri_total, fill_bit[-1],
+       ", ".join(map(str, fill_end)), ", ".join(map(str, body_end)), ", ".join(map(str, fill_bit)), len(bones),
+       ", ".join(str(b[1]) for b in bones), ", ".join(pt(b[2]) for b in bones), len(words), PIECE))
+    pieces = (len(words) + PIECE - 1) // PIECE
+    for k in range(pieces):
+        part = words[k * PIECE:(k + 1) * PIECE]
+        f.write("DGM_W%02d :: [%d] u32.[\n" % (k, len(part)))
+        for i in range(0, len(part), ROW):
+            f.write("  " + ",".join(str(w) for w in part[i:i + ROW]) + ("," if i + ROW < len(part) else "") + "\n")
+        f.write("];\n")
+    f.write("// Word i of the stream.\ndgm_w :: (i: int) -> int {\n  k := i / DGM_PIECE; j := i - k * DGM_PIECE;\n")
+    for k in range(pieces): f.write("  if k == %d { return cast(int) DGM_W%02d[j]; }\n" % (k, k))
+    f.write("  return 0;\n}\n")
+print("LEN", LEN, "HT", HT, "bits", fill_bit[-1], "words", len(words))
