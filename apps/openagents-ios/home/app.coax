@@ -325,7 +325,7 @@ st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
   if kind==1 && s[0].flight==0 {
     if id=="world.library" {na_world(s,"catalog","/worlds",false);return;}
   if id=="world.play.splice" {na_world(s,"splice-bots","/worlds/splice-bots",false);}
-    if id=="world.play.everglade" {na_world(s,"everglade","/worlds/everglade",false);}
+    if id=="world.play.everglade" {na_world(s,"everglade2","/worlds/everglade2",false);}
     if id=="environments.open" {eu_enter(s[0].environments[..]);s[0].page=4;na_note(s,"");}
     if id=="environments.local" && s[0].local_available {eu_enter_local(s[0].environments[..]);s[0].page=4;na_note(s,"");}
     if id=="chat.new" {na_new(s);}if id=="chat.back" {na_list(s);}

@@ -1,0 +1,1 @@
+Fixes the crash when opening native worlds and switches Everglade to the current Everglade II forest and winding path. The deprecated town is no longer the Everglade catalogue choice. World assets download separately and are cached inside the writable app Library. The release now checks native engine imports against the final archive's host exports.

@@ -5,6 +5,11 @@ import XCTest
 @MainActor final class NativeWorldProgramTests:XCTestCase {
     private func program(_ module:String)throws->NativeProgram {try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:module)}
     private func object(_ text:String)throws->[String:Any] {try XCTUnwrap(JSONSerialization.jsonObject(with:Data(text.utf8)) as? [String:Any])}
+    func testEvergladeOpensTheCurrentGameInsteadOfTheDeprecatedTown()throws {
+        let p=try program("worlds");try p.frame();_ = try p.action();try p.event(104,200,"");try p.frame()
+        try p.input("worlds.everglade");try p.frame();let open=try p.action(),request=try object(open.1)
+        XCTAssertEqual(open.0,13);XCTAssertEqual(request["realm"] as? String,"everglade2");XCTAssertEqual(request["path"] as? String,"/worlds/everglade2")
+    }
     func testLibraryUsesTheSharedBuilderAndNativeWorldService()throws {
         let p=try program("worlds");try p.frame();XCTAssertEqual(try p.action().0,4)
         try p.event(104,200,"world my-forest My forest\n");try p.frame()

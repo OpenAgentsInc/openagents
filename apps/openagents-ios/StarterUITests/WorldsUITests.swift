@@ -23,9 +23,11 @@ final class WorldsUITests:XCTestCase {
                 top.withOffset(CGVector(dx:0,dy:494)).tap()
                 let playing=XCTAttachment(screenshot:app.screenshot());playing.name="Splice started through native touch";playing.lifetime = .keepAlways;add(playing)
             } else {
-                let top=canvas.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0))
-                top.withOffset(CGVector(dx:0,dy:max(16,(canvas.frame.height-380)/2)+341)).tap()
-                let playing=XCTAttachment(screenshot:app.screenshot());playing.name="Everglade entered through native touch";playing.lifetime = .keepAlways;add(playing)
+                XCTAssertEqual(canvas.label,"Everglade")
+                let start=canvas.coordinate(withNormalizedOffset:CGVector(dx:0.18,dy:0.82))
+                let end=canvas.coordinate(withNormalizedOffset:CGVector(dx:0.18,dy:0.65))
+                start.press(forDuration:0.15,thenDragTo:end)
+                let playing=XCTAttachment(screenshot:app.screenshot());playing.name="Current Everglade II forest and path through native touch";playing.lifetime = .keepAlways;add(playing)
             }
             app.buttons["world.close"].tap()
         }

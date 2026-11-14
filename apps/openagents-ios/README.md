@@ -52,9 +52,10 @@ the implemented scope and current bounds.
 
 ## Streamed worlds, build 1075
 
-**Worlds** opens Splice Bots and the main Everglade town using their existing
-Coax simulation and shaders on Metal. The installed catalogue also includes
-Everglade Forest and the saved-world template. There is no WebView.
+**Worlds** opens Splice Bots and the current Everglade (the Everglade II forest
+and winding path), using their existing Coax simulation and shaders on Metal.
+The earlier town producer is legacy and is not a public catalogue choice.
+The saved-world template is also installed. There is no WebView.
 
 The binary contains producers, compiled shaders, the account interface and
 small signed asset inventories. Packs, world fonts, sounds and icons download
@@ -114,6 +115,11 @@ could terminate the app. Build 1077 preserves the explicit host exports and
 limits each producer to its page face. The release wrapper now checks the actual
 archive's Mach-O imports and exports; Debug/testability exports cannot satisfy
 that gate. This native linking correction requires a TestFlight install.
+
+Build 1078 includes that repair and corrects the Everglade choice to the current
+`everglade2` producer and `/worlds/everglade2` path, both from the library and
+the account program. Its native title is **Everglade**. The library choice is
+portable Coax and can also be corrected over Updates on compatible builds.
 
 `apps/openagents-ios/build.sh` generates on a remote build host and builds
 with Xcode on this Mac's slots. XcodeGen is required. No simulator window

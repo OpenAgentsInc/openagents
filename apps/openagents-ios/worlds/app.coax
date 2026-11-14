@@ -21,6 +21,12 @@ wl_pump :: (s:[]Starter) {
   wl_open(s,"myrealm",raw[0..<end],true);builder_action_done(b);b[0].action=0;return;
  }
 }
+#test "the public Everglade button opens the current Everglade II producer, never the deprecated town" {
+ s:[1]Starter;_:=st_frame(s[..],0,true);st_done(s[..]);st_event(s[..],104,200,0);_:=st_frame(s[..],0,true);
+ slot:=dm_find(s[0].dom[..],"worlds.everglade");#assert slot>=0;st_event(s[..],1,slot,0);
+ opened:[1]NwOpen;#assert s[0].action==13 && nwo_read(cast(string)s[0].outbox[0..<s[0].out_n],opened[..]);
+ #assert cast(string)opened[0].realm[0..<opened[0].nr]=="everglade2" && cast(string)opened[0].path[0..<opened[0].np]=="/worlds/everglade2";
+}
 #test "mobile builder uses the same setup and board request as the web and lists saved worlds" {
  s:[1]Starter;builder_reset(s[0].builder[..]);choose(s[0].builder[..],s[0].track[..],0,"tap");#assert s[0].builder[0].q==Q_CAMERA;
  for i:0..<4 {choose_skip(s[0].builder[..],s[0].track[..]);}
@@ -96,7 +102,7 @@ st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
  if kind==2 {if id=="worlds.prompt" {s[0].np=copy_into(s[0].prompt[..],text);}if id=="worlds.description" {b[0].desc_n=copy_into(b[0].desc[..],text);}if id=="worlds.invite.code" {b[0].code_n=copy_into(b[0].code[..],text);}if id=="worlds.invite.note" {b[0].inote_n=copy_into(b[0].inote[..],text);}return;}
  if kind!=1 || s[0].flight!=0 {return;}
  if id=="worlds.splice" {wl_open(s,"splice-bots","/worlds/splice-bots",false);}
- if id=="worlds.everglade" {wl_open(s,"everglade","/worlds/everglade",false);}
+ if id=="worlds.everglade" {wl_open(s,"everglade2","/worlds/everglade2",false);}
  if id=="worlds.refresh" {wl_list(s);}
  if id=="worlds.create" {s[0].page=1;}
  if id=="worlds.back" {s[0].page=0;wl_list(s);}
