@@ -188,19 +188,19 @@ table plans id who:int when:text do:text route:text speed:int notice:int on:text
 52|5|dusk|stand|-13000 1500|0|0|ignore
 53|5|night|dance|-2040 -18780|180|0|chase
 60|6|dawn|patrol|1010 -18880, 1010 -20080|180|500|chase
-61|6|day|patrol|1010 -18880, 1010 -20080|180|500|chase
+61|6|day|patrol|-5500 39500, 5500 39500|180|500|chase
 62|6|dusk|stand|13000 1500|0|0|ignore
 63|6|night|patrol|1010 -18880, 1010 -20080|180|500|chase
 70|7|dawn|patrol|-2240 -18980, -1740 -18980|180|500|chase
-71|7|day|patrol|-2240 -18980, -1740 -18980|180|500|chase
+71|7|day|patrol|5500 32500, 5500 39500|180|500|chase
 72|7|dusk|stand|13500 1500|0|0|ignore
 73|7|night|patrol|-2240 -18980, -1740 -18980|180|500|chase
 80|8|dawn|patrol|-2240 -20080, -2740 -20080|180|500|chase
-81|8|day|patrol|-2240 -20080, -2740 -20080|180|500|chase
+81|8|day|patrol|-5500 32500, -5500 39500|180|500|chase
 82|8|dusk|stand|14000 1500|0|0|ignore
 83|8|night|patrol|1500 -18200, -1500 -18200|180|500|chase
 90|9|dawn|patrol|-3640 -19080, -3640 -20080|180|500|chase
-91|9|day|patrol|-3640 -19080, -3640 -20080|180|500|chase
+91|9|day|patrol|-5500 32500, 5500 32500|180|500|chase
 92|9|dusk|stand|14500 1500|0|0|ignore
 93|9|night|patrol|1500 -20800, -1500 -20800|180|500|chase
 table portals id name:text from:text to:text yaw:int r:int

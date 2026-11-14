@@ -614,8 +614,9 @@ g_step :: (g: [] SpGame, dt: f32) {
 // garage's landmark and radius, ga_inside): the raiders scavenging the desert at dusk, the Imperial
 // robots recharging at the solar farm (#13505). A foe out of the garage is not there: it isn't drawn,
 // senses no one and can't be pointed at or stunned. Going out or coming back in, it is where its plan starts.
+// A plan that moves beyond it (the Imperial robots patrolling the desert by day) keeps its foe in play there.
 g_plan_out :: (g: [] SpGame, pl: NplPlan) -> bool {
-  if !pl.ok || pl.n <= 0 || pl.act == NPD_FOLLOW { return false; }
+  if !pl.ok || pl.n <= 0 || pl.act != NPD_STAND { return false; }
   for k: 0..<pl.n { if ga_inside(g, mp_m(pl.x[k]), mp_m(pl.z[k])) { return false; } }
   return true;
 }
