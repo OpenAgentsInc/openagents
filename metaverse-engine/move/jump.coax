@@ -61,6 +61,15 @@ Jump :: struct {
   clock: FrameClock;       // the engine's fixed step (1/64 s)
   air_jumps: int;          // presses in the air that jump again before landing (a realm's double jump: 1)
   air_used: int;           // of those, taken since the last landing
+  // A realm's forgiveness, in seconds (0: none, the walker's own rules): coyote, how long after
+  // walking off a floor a press still jumps as from it; buffer, how long a press in the air with
+  // no air jump left waits, to jump the moment you land.
+  coyote: f32; buffer: f32;
+  since_floor: f32;        // s since the last step that began on a floor
+  jumped: bool;            // this time in the air began with a jump, not a walk off an edge
+  waiting: f32;            // s the buffered press still waits (0: none)
+  landed: bool;            // the last step landed
+  impact: f32;             // m/s down at the last landing, for a realm's squash and its sound
 }
 JUMP_AIR :: 1.15f32;       // a jump in the air lifts at this share of the jump speed, so it goes higher
 jump_place :: (y: f32) -> Jump #effects(all) { return Jump.{y = y, prev_y = y}; }
@@ -70,11 +79,17 @@ jump_press :: (j: Jump, down: bool) -> Jump #effects(all) { next := j; next.pres
 jump_step :: (j: Jump, loc: LocomotionProfile, ground: f32, dt: f32) -> Jump #effects(all) {
   next := j; next.prev_y = j.y;
   t := jump_take(loc, j.presses, j.vy, j.on_ground);
-  next.presses = t.presses;
-  if t.pressed && !j.on_ground && j.air_used < j.air_jumps { t.vy = loc.jump_speed * JUMP_AIR; next.air_used = j.air_used + 1; }   // a double jump
-  if j.on_ground { next.air_used = 0; }
+  next.presses = t.presses; next.landed = false; next.waiting = j.waiting - dt;
+  if j.on_ground { next.air_used = 0; next.since_floor = 0; next.jumped = t.pressed; } else { next.since_floor = j.since_floor + dt; }
+  if t.pressed && !j.on_ground {
+    if !j.jumped && j.since_floor <= j.coyote { t.vy = loc.jump_speed; next.jumped = true; }   // just off an edge: a jump from it
+    else if j.air_used < j.air_jumps { t.vy = loc.jump_speed * JUMP_AIR; next.air_used = j.air_used + 1; }   // a double jump
+    else { next.waiting = j.buffer; }   // held for the landing
+  }
+  if !t.pressed && j.on_ground && j.waiting > 0 { t.vy = loc.jump_speed; t.on_ground = false; next.jumped = true; next.waiting = 0; }   // the buffered press, now on the floor
   s := jump_settle(loc, j.y, t.vy, t.on_ground, ground, dt);
   next.vy = s.vy; next.on_ground = s.on_ground;
+  if s.on_ground && !t.on_ground { next.landed = true; next.impact = -t.vy; }
   next.y = jump_rise(loc, s.y, s.vy, ground, dt);
   return next;
 }
@@ -111,6 +126,33 @@ jt_top :: (air: int, second: int) -> f32 #effects(all) {
   #assert two > one * 1.6 && jt_top(0, 20) == jt_top(0, 999);
   j := jump_place(0); j.air_jumps = 1; j.air_used = 1; j = jump_step(j, loc, 0, 1.0f32 / 64);
   #assert j.air_used == 0;
+}
+#test "coyote time: a press just after walking off an edge jumps as from it, a late one does not; a buffered press jumps on landing" {
+  loc: LocomotionProfile;
+  // standing on a ledge at 1 m, then the floor drops away
+  j := jump_place(1); j.coyote = 0.1; j.buffer = 0.12;
+  j = jump_step(j, loc, 1, 1.0f32 / 64);
+  for i: 0..<4 { j = jump_step(j, loc, 0, 1.0f32 / 64); }   // off the edge, falling, 4 steps (0.0625 s)
+  #assert !j.on_ground && j.vy < 0 && !j.jumped;
+  j = jump_step(jump_press(j, true), loc, 0, 1.0f32 / 64);
+  #assert j.vy > loc.jump_speed * 0.9 && j.jumped && j.air_used == 0;
+  // past the coyote time, a press is only a press in the air (no air jump: it waits)
+  k := jump_place(0.6); k.coyote = 0.1; k.buffer = 0.12;
+  k = jump_step(k, loc, 0.6, 1.0f32 / 64);
+  for i: 0..<10 { k = jump_step(k, loc, 0, 1.0f32 / 64); }
+  k = jump_step(jump_press(k, true), loc, 0, 1.0f32 / 64);
+  #assert k.vy < 0 && k.waiting > 0;
+  // that press was within the buffer of landing: the step after it lands, it jumps
+  up := false;
+  for i: 0..<12 { k = jump_step(k, loc, 0, 1.0f32 / 64); if k.vy > 0 { up = true; } }
+  #assert up && k.jumped;
+  // a press far too early is forgotten: it lands and stays
+  m := jump_press(jump_place(0), true); m.buffer = 0.12;
+  for i: 0..<3 { m = jump_step(m, loc, 0, 1.0f32 / 64); }
+  m = jump_step(jump_press(jump_press(m, false), true), loc, 0, 1.0f32 / 64);   // just after takeoff
+  landed := false; impact := 0.0f32;
+  for i: 0..<80 { m = jump_step(m, loc, 0, 1.0f32 / 64); if m.landed { landed = true; impact = m.impact; } }
+  #assert landed && m.on_ground && m.y == 0 && impact > 6 && impact < 8.5;
 }
 #test "a press from the ground goes up 1.17 m and lands back in about 0.63 s; holding it never jumps again" {
   loc: LocomotionProfile;

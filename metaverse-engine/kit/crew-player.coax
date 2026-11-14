@@ -32,38 +32,49 @@ cp_loft_x :: (l: Loft, o: Point, a: f32) -> Loft { out := l; for i: 0..<l.n { ou
 // How far each limb turns at this stride (radians, a gait's phase): side 0's leg forward as side 1's goes back.
 cp_leg_angle :: (stride: f32, side: int) -> f32 { a := sin(stride) * CP_LEG_SWING; return ifx side == 0 then a else -a; }
 cp_arm_angle :: (stride: f32, side: int) -> f32 { return -cp_leg_angle(stride, side) * CP_ARM_SWING / CP_LEG_SWING; }
-// How far the body sinks so the swung legs still reach the ground.
-cp_sink :: (m: CrewForm, stride: f32) -> f32 {
-  leg := m.joint[CJ_R_HIP].y - m.joint[CJ_R_FOOT].y;
-  return leg * (1 - cos(cp_leg_angle(stride, 0)));
+// A pose: how far each leg turns about its hip and each arm about its shoulder (radians; positive
+// swings it forward). A gait is one at each stride; a realm's jump, fall and landing are others.
+CpLimbs :: struct { leg: [2] f32; arm: [2] f32; }
+// The gait's pose at this stride, its legs swung up to `swing` (CP_LEG_SWING the walk's; a run swings wider).
+cp_stride_limbs :: (stride: f32, swing: f32) -> CpLimbs {
+  a := sin(stride) * swing; b := a * CP_ARM_SWING / CP_LEG_SWING;
+  return CpLimbs.{leg = [2] f32.[a, -a], arm = [2] f32.[-b, b]};
 }
+// How far the body sinks so the lower foot still reaches the ground.
+cp_lift :: (m: CrewForm, l: CpLimbs) -> f32 {
+  leg := m.joint[CJ_R_HIP].y - m.joint[CJ_R_FOOT].y;
+  return leg * (1 - cos(ifx abs(l.leg[0]) > abs(l.leg[1]) then l.leg[0] else l.leg[1]));
+}
+cp_sink :: (m: CrewForm, stride: f32) -> f32 { return cp_lift(m, cp_stride_limbs(stride, CP_LEG_SWING)); }
 
-// The form walking at this stride: legs and their joints turned about the hips, arms and hands
-// about the shoulders. A stride of 0 (or any whole number of half turns) is the form as it stands.
-cp_walk :: (m: CrewForm, stride: f32) -> CrewForm {
+// The form in a pose: legs and their joints turned about the hips, arms and hands about the shoulders.
+cp_pose :: (m: CrewForm, l: CpLimbs) -> CrewForm {
   o := m;
   for side: 0..<2 {
     hip := ifx side == 0 then CJ_R_HIP else CJ_L_HIP;
-    a := cp_leg_angle(stride, side); hj := m.joint[hip];
+    a := l.leg[side]; hj := m.joint[hip];
     o.leg[side] = cp_loft_x(m.leg[side], hj, a);
     for j: hip + 1..<hip + 4 { o.joint[j] = cp_turn_x(m.joint[j], hj, a); }
     sh := ifx side == 0 then CJ_R_SHOULDER else CJ_L_SHOULDER;
-    b := cp_arm_angle(stride, side); sj := m.joint[sh];
+    b := l.arm[side]; sj := m.joint[sh];
     o.arm[side] = cp_loft_x(m.arm[side], sj, b);
     for j: sh + 1..<sh + 3 { o.joint[j] = cp_turn_x(m.joint[j], sj, b); }
     o.hand[side] = cp_turn_x(m.hand[side], sj, b); o.hand_along[side] = cp_dir_x(m.hand_along[side], b);
   }
   return o;
 }
+// The form walking at this stride. A stride of 0 (or any whole number of half turns) is the form as it stands.
+cp_walk :: (m: CrewForm, stride: f32) -> CrewForm { return cp_pose(m, cp_stride_limbs(stride, CP_LEG_SWING)); }
 
-// Writes the character walking at this stride, standing in frame f (its feet at the frame's
-// origin, facing its z). It uses objects obj to obj + 9, as cw_write does.
-cp_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CrewDoc, stride: f32, obj: int) {
+// Writes the character in a pose, standing in frame f (its feet at the frame's origin, facing its
+// z). It uses objects obj to obj + 9, as cw_write does.
+cp_write_pose :: (buf: [] u32, p: [] Pen, f: Frame, d: CrewDoc, l: CpLimbs, obj: int) {
   m := cb_form(d.body);
-  w := cp_walk(m, stride);
   none: [1] CwLog;
-  cw_write(buf, p, kit_at(f, 0, -cp_sink(m, stride), 0), w, d.look, d.wear, obj, none[0..<0]);
+  cw_write(buf, p, kit_at(f, 0, -cp_lift(m, l), 0), cp_pose(m, l), d.look, d.wear, obj, none[0..<0]);
 }
+// Writes the character walking at this stride.
+cp_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CrewDoc, stride: f32, obj: int) { cp_write_pose(buf, p, f, d, cp_stride_limbs(stride, CP_LEG_SWING), obj); }
 // A walk cycle as n poses written once (a realm that draws its player as instances of meshes): the
 // stride pose i stands for, and the pose a stride shows.
 cp_pose_stride :: (i: int, n: int) -> f32 { return ifx n < 1 then 0.0f32 else TAU * cast(f32) i / cast(f32) n; }
@@ -142,6 +153,16 @@ cp_value :: (d: CrewDoc, field: int, buf: [] u8) -> string {
     cp_write(t[0].buf[..], pen[..], frame_at(v3(0, 0, 0), 0), d, 1.2, 16);
     #assert !pen[0].over && pen[0].n > 6000 && pen[0].n <= CW_BUDGET;
   }
+}
+#test "a pose turns each limb on its own; a wider gait sinks the body further, so the lower foot stays on the ground" {
+  m := cb_form(cb_usual());
+  l := CpLimbs.{leg = [2] f32.[0.6, 0.1], arm = [2] f32.[1.2, -0.4]};
+  w := cp_pose(m, l);
+  #assert w.joint[CJ_R_FOOT].z > m.joint[CJ_R_FOOT].z + 0.3 && abs(w.joint[CJ_L_FOOT].z - m.joint[CJ_L_FOOT].z) < 0.1;
+  #assert w.joint[CJ_R_HAND].z > m.joint[CJ_R_HAND].z + 0.2 && w.joint[CJ_L_HAND].z < m.joint[CJ_L_HAND].z;
+  #assert abs(cp_lift(m, l) - cp_lift(m, CpLimbs.{leg = [2] f32.[0.6, 0], arm = [2] f32.[0, 0]})) < 0.0001;
+  #assert cp_lift(m, cp_stride_limbs(PI * 0.5, 0.55)) > cp_sink(m, PI * 0.5) * 2;
+  #assert cp_stride_limbs(0.7, CP_LEG_SWING).leg[1] == cp_leg_angle(0.7, 1) && cp_stride_limbs(0.7, CP_LEG_SWING).arm[0] == cp_arm_angle(0.7, 0);
 }
 #test "a walk cycle's poses: each pose's stride, and the pose a stride shows, round the cycle" {
   #assert cp_pose_stride(0, 10) == 0 && abs(cp_pose_stride(5, 10) - PI) < 0.0001 && cp_pose_stride(3, 0) == 0;

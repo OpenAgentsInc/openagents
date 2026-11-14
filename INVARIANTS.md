@@ -2025,7 +2025,7 @@ Evidence and outstanding exits: `docs/verification/valley-lab-slay-2026-11-06/`.
 
 ## One follow camera eases the walker's view
 
-Valley Lab explicitly opts into `metaverse-engine/move/walk.coax`'s `source_velocity` flat-ground
+Valley Lab explicitly opts into `metaverse-engine/move/locomotion.coax`'s `source_velocity` flat-ground
 CalcVelocity/braking profile, decoded from the source Echo defaults. Other
 walking realms keep their existing profile. Source tuning never bypasses
 paid 1/64 s steps, capsule collision or queued input. Source numbers qualify
