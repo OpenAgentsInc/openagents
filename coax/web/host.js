@@ -22,8 +22,8 @@
 //                             is this host's word (FPH_*). draw() walks the records and decides no order, and a
 //                             refused plan clears the frame. A page without it
 //                             is planned by the engine's one plan module (coax/web/frame-plan-host.js) from
-//                             the counts its exports give, and a refused frame of it is drawn in the built-in order. ?plan=check and ?plan=off on a
-//                             development server; coaxial.framePlan() says what was walked
+//                             the counts its exports give; the host has no order of its own (#13539).
+//                             coaxial.framePlan() says what was walked and refused
 //   coaxial_bloom_passes_v1(state) optional: how many of the five bloom passes to draw this frame (the rest
 //                             are left as they were; the app's post pass reads only those drawn)
 //   coaxial_pixel_budget()    optional: the most pixels a frame draws (a page that traces every pixel);
@@ -569,7 +569,7 @@ async function loadEngine(bytes, generation) {
   hostTransport=makeHostTransport(x,memory);
   hostLifecycle=makeHostLifecycle(x);
   // a page with no plan of its own is drawn by the engine's (frame-plan-host.js, #13451)
-  // (a reactor that won't load leaves the page in the built-in order)
+  // (a reactor that won't load refuses every frame: each is cleared, and coaxial.framePlan().refused counts them)
   if(!x.coaxial_frame_plan_v1){planHost??=await openFramePlan().catch((e)=>{console.warn(`coaxial: ${e.message}`);return null;});if(generation!==wanted)return false;}
   if(hostTransport){const services=await openHostServices();if(generation!==wanted)return false;hostServices=services;
     if(firstPacks.size){packHost??=await openPackHost();if(generation!==wanted)return false;}
@@ -3023,37 +3023,9 @@ const FP = { magic: 0x31504641, version: 1,
     shadow_clear: 14, character_cast: 15, character: 16, scene_late: 17 },
   target: { none: 0, screen: 1, light: 2, aux: 3, scene_depth: 4, shadow_map: 5, water_light: 6, water_depth: 7, q0: 8, q1: 9, e0: 10, e1: 11 },
   source: { vertices: 0, records: 1, current: 2, shadow_records: 3, late: 4 } };
-// ?plan=off draws a page that has a plan in the built-in order; ?plan=check (or coaxialPlanCheck) records both
-// orders each frame and counts the frames whose GPU calls differ (coaxial.framePlan()). Development and tests only.
-const planAsk = new URLSearchParams(location.search).get("plan");
-const planMode = globalThis.coaxialPlanCheck === true ? "check" : globalThis.coaxialPlan === "off" ? "off" : dev && (planAsk === "off" || planAsk === "check") ? planAsk : "on";
-const planStats = { mode: planMode, frames: 0, ops: 0, refused: 0, checked: 0, differing: 0, first: null, calls: 0 };
-const planIds = new WeakMap(); let planIdNext = 1;
-const planId = (o) => { if (o === null || typeof o !== "object") return o; if (o.__planTexture) o = o.__planTexture; let id = planIds.get(o); if (!id) { id = planIdNext++; planIds.set(o, id); } return `#${id}`; };
-if (planMode === "check" && globalThis.GPUTexture) {
-  // a view is named by its texture, so the two recordings agree only when they draw into the same textures
-  const make = GPUTexture.prototype.createView;
-  GPUTexture.prototype.createView = function (...a) { const v = make.apply(this, a); try { v.__planTexture = this; } catch {} return v; };
-}
-// An encoder that records its calls and its passes' (and makes them on `real`, when there is one).
-function planRecorder(real) {
-  const log = [];
-  const word = (v) => Array.isArray(v) ? `[${v.map(word)}]` : v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype
-    ? `{${Object.keys(v).filter((k) => k !== "timestampWrites" && k !== "clearValue").sort().map((k) => `${k}:${word(v[k])}`)}}` : String(planId(v ?? null));
-  const wrap = (target, name) => new Proxy({}, { get: (_, key) => (...args) => {
-    log.push(`${name}.${String(key)}(${args.map(word)})`);
-    const made = target ? target[key](...args) : undefined;
-    return key === "beginRenderPass" || key === "beginComputePass" ? wrap(made, key === "beginRenderPass" ? "pass" : "compute") : made;
-  } });
-  return { log, encoder: wrap(real, "encoder") };
-}
-function planCompare(a, b) {
-  planStats.checked++; planStats.calls = b.length;
-  let at = 0; while (at < a.length && at < b.length && a[at] === b[at]) at++;
-  if (at === a.length && at === b.length) return;
-  planStats.differing++;
-  planStats.first ||= { frame: planStats.checked, at, builtin: a.slice(Math.max(0, at - 2), at + 3), plan: b.slice(Math.max(0, at - 2), at + 3), lengths: [a.length, b.length] };
-}
+// What the plans did (coaxial.framePlan()): the frames walked, the last one's operations, and the frames whose
+// plan was refused, which are cleared and draw nothing (coax/web/plan-check.ts fails a page with any, #13539).
+const planStats = { frames: 0, ops: 0, refused: 0 };
 // The bytes the scene's stores were sent: each store's on the last frame, and every frame's together.
 const storeUploads = { frames: 0, total: 0, last: new Array(16).fill(0) };
 function draw(now) {
@@ -3315,139 +3287,11 @@ function draw(now) {
     }
     return timed;
   };
-  // ---- the built-in order, for a page whose engine has no plan yet (pages move one at a time, #13303)
-  const builtin = (encoder, passTimer, real) => {
-  if (culled) gpu.cull.early(encoder, real);
-  if (gpu.shadow && gpu.shadowTiles) {
-    const st = arena.state;
-    if (tile >= 0) {
-      const [rx, ry, rw, rh] = [1, 2, 3, 4].map((f) => x.coaxial_shadow_v1(st, f));
-      const shade = timedPass(encoder, passTimer, { colorAttachments: [],
-        depthStencilAttachment: { view: gpu.shadowView, depthLoadOp: "load", depthStoreOp: "store" } });
-      const clears = x.coaxial_shadow_v1(st, 7), count = x.coaxial_shadow_v1(st, 6);
-      shade.setPipeline(shadowClear());
-      for (let k = 0; k < count; k++) if (clears & (1 << k)) {
-        const f = 16 + 4 * k;
-        shade.setViewport(x.coaxial_shadow_v1(st, f), x.coaxial_shadow_v1(st, f + 1), x.coaxial_shadow_v1(st, f + 2), x.coaxial_shadow_v1(st, f + 3), 0, 1); shade.draw(3);
-      }
-      shade.setViewport(0, 0, gpu.shadowMap.width, gpu.shadowMap.height, 0, 1); shade.setScissorRect(rx, ry, rw, rh);
-      shade.setBindGroup(0, gpu.bindGroup); shade.setPipeline(gpu.shadow);
-      drawScene(shade, false, shadowList, separateShadow ? shadowDraws : draws - wet, true);
-      if (hero && x.coaxial_shadow_v1(st, 5) === 1) characters.cast(shade);
-      shade.end();
-      if (real) shadowTilesDrawn++;
-    }
-  } else if (((draws || shadowDraws) && gpu.shadow) || gpu.caster) {
-    // cleared every frame even with nothing to cast, so a traced scene never reads a stale map
-    const shade = timedPass(encoder, passTimer, { colorAttachments: [],
-      depthStencilAttachment: { view: gpu.shadowMap.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
-    shade.setBindGroup(0, gpu.bindGroup);
-    if (shadowDraws && gpu.shadow) { shade.setPipeline(gpu.shadow); drawScene(shade, false, shadowList, separateShadow ? shadowDraws : draws - wet, true); }
-    if (cast[0] && cast[1]) { shade.setPipeline(gpu.caster); shade.draw(cast[0], cast[1]); }
-    if (hero) characters.cast(shade);
-    shade.end();
-  }
-  // the particles' sort (the header's "Sorting"), before the pass that draws them; timed when asked
-  const sorted = gpu.sort && gpu.particles && draws ? sortFrame(encoder, x) : false;
-  const timed = sorted && gpu.timing && !gpu.timer.busy;
-  let pass = timedPass(encoder, passTimer, { colorAttachments: post ? [target(gpu.light.createView()), target(gpu.aux.createView())] : [screen()],
-    ...(gpu.scene || gpu.surface ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post || culled ? "store" : "discard" } } : {}),
-    ...(timed ? { timestampWrites: { querySet: gpu.timer.set, beginningOfPassWriteIndex: 2, endOfPassWriteIndex: 3 } } : {}) });
-  pass.setBindGroup(0, gpu.bindGroup);
-  if (gpu.caster) { pass.setBindGroup(1, gpu.emptyGroup); pass.setBindGroup(2, gpu.shadowGroup); }
-  pass.setPipeline(gpu.bg); pass.draw(3);
-  const drawGrass = () => grassInto(pass);
-  // Without a blend ABI the scene is opaque: populate depth before shading hidden blades.
-  // Blended producers retain their existing ordering relative to grass.
-  const opaqueGrass = draws && !x.coaxial_draw_blend_v1;
-  if (!opaqueGrass) drawGrass();
-  const surface = gpu.surface ? x.coaxial_surface_vertices(arena.state) : 0;
-  if (surface) { pass.setPipeline(gpu.surface); pass.draw(surface); }
-  if (draws) {
-    pass.setPipeline(gpu.scene);
-    if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
-    drawScene(pass, true);
-    if (culled) {
-      // the cull's second phase: the pyramid of what was just drawn, then the pieces it no longer
-      // hides, drawn on in a pass that keeps the light and depth
-      pass.end();
-      gpu.cull.late(encoder, real);
-      const keep = (view) => ({ view, loadOp: "load", storeOp: "store" });
-      pass = timedPass(encoder, passTimer, { colorAttachments: post ? [keep(gpu.light.createView()), keep(gpu.aux.createView())] : [keep(texture.createView())],
-        depthStencilAttachment: { view: gpu.depth.createView(), depthLoadOp: "load", depthStoreOp: post ? "store" : "discard" } });
-      pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.sceneGroup);
-      if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
-      if (gpu.index) pass.setIndexBuffer(gpu.index, "uint32");
-      pass.setPipeline(gpu.scene);
-      gpu.cull.second(pass);
-    }
-    if (opaqueGrass) drawGrass();
-    if (hero) {
-      // after the world's opaque geometry, before its water and particles; then the world's groups again
-      characters.draw(pass);
-      pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.sceneGroup); pass.setBindGroup(2, gpu.shadowGroup);
-      if (gpu.index) pass.setIndexBuffer(gpu.index, "uint32");
-    }
-    const sparks = gpu.particles ? x.coaxial_particle_instances(arena.state) : 0;
-    if ((wet || (sparks && gpu.particleDepth)) && post && gpu.waterCopyGroup) {
-      // W5: the scene's light and depth as they stand before the water (and the soft particles), then on
-      // in a pass that keeps them
-      pass.end();
-      encoder.copyTextureToTexture({ texture: gpu.light }, { texture: gpu.waterLight }, [w, h]);
-      encoder.copyTextureToTexture({ texture: gpu.depth }, { texture: gpu.waterDepth }, [w, h]);
-      const keep = (view) => ({ view, loadOp: "load", storeOp: "store" });
-      pass = timedPass(encoder, passTimer, { colorAttachments: [keep(gpu.light.createView()), keep(gpu.aux.createView())],
-        depthStencilAttachment: { view: gpu.depth.createView(), depthLoadOp: "load", depthStoreOp: "store" } });
-      pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.sceneGroup);
-      pass.setBindGroup(2, gpu.shadow ? gpu.shadowGroup : (emptyLayout(), gpu.emptyGroup));
-      pass.setBindGroup(3, gpu.waterCopyGroup);
-      pass.setIndexBuffer(gpu.index, "uint32");
-    }
-    for (let i = draws - wet; i < draws; i++) {
-      pass.setPipeline(gpu.waterTransmit); drawOne(pass, i);
-      pass.setPipeline(gpu.waterEmit); drawOne(pass, i);
-    }
-    const sparkGroup = sparksInto(sparks);
-    if (sparkGroup) {
-      pass.setBindGroup(1, sparkGroup);
-      if (gpu.particleDepth) { pass.setBindGroup(2, (emptyLayout(), gpu.emptyGroup)); pass.setBindGroup(3, gpu.waterCopyGroup); }
-      if (gpu.particlesOver) { pass.setPipeline(gpu.particlesOver); pass.draw(6, sparks); }
-      pass.setPipeline(gpu.particles); pass.draw(6, sparks);
-    }
-  }
-  const puffs = !gpu.scene && gpu.particles ? x.coaxial_particle_instances(arena.state) : 0;
-  if (puffs) {
-    // a traced page's particles, over what bg_fs drew
-    const puffGroup = particleGroupNow();
-    const bytes = puffGroup ? Math.min(x.coaxial_particle_bytes(arena.state), gpu.particleBuffer.size) & ~3 : 0;
-    if (bytes) {
-      device.queue.writeBuffer(gpu.particleBuffer, 0, memory.buffer, x.coaxial_particles(arena.state), bytes);
-      pass.setBindGroup(1, puffGroup);
-      if (gpu.particlesOver) { pass.setPipeline(gpu.particlesOver); pass.draw(6, puffs); }
-      pass.setPipeline(gpu.particles); pass.draw(6, puffs);
-    }
-  }
-  if (post) {
-    pass.end();
-    const blooms = x.coaxial_bloom_passes_v1 ? gpu.blooms.slice(0, Math.max(0, Math.min(gpu.blooms.length, x.coaxial_bloom_passes_v1(arena.state)))) : gpu.blooms;
-    for (const [into, group] of blooms) {
-      const b = timedPass(encoder, passTimer, { colorAttachments: [target(into.createView())] });
-      b.setBindGroup(0, gpu.bindGroup); b.setBindGroup(1, group); b.setPipeline(gpu.bloom); b.draw(3); b.end();
-    }
-    pass = timedPass(encoder, passTimer, { colorAttachments: [screen()] });
-    pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.postGroup); pass.setPipeline(gpu.post); pass.draw(3);
-  }
-  if (x.coaxial_media) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post);
-  if (n && (!gpu.fxScene || gpu.sceneGroup)) { if (gpu.fxScene) pass.setBindGroup(1, gpu.sceneGroup); pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
-  if (x.coaxial_media) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post, true);
-  pass.end();
-  return timed;
-  };
   // Ask for the frame's plan: this host's word (frame-plan.coax FPH_*) in, the operations out. A page's
   // engine writes its own (coaxial_frame_plan_v1); for a page with none the host hands the counts it
   // reads from the page's exports to the engine's one plan module (frame-plan-host.js, frame-plan.coax FPA).
   let planned = 0;
-  if (planMode !== "off") {
+  {
     const has = (on, bit) => (on ? 1 << bit : 0);
     const copies = !!(post && gpu.waterCopyGroup && gpu.waterTransmit);
     const bits = has(gpu.scene, 0) | has(gpu.scene && gpu.shadow, 1) | has(gpu.scene && gpu.caster, 2) | has(gpu.scene && gpu.grass, 3) | has(!gpu.scene && gpu.surface, 4)
@@ -3467,8 +3311,8 @@ function draw(now) {
       ask[15] = post ? Math.max(0, Math.min(gpu.blooms.length, x.coaxial_bloom_passes_v1 ? x.coaxial_bloom_passes_v1(st) : gpu.blooms.length)) : 0;
       if (gpu.shadow && gpu.shadowTiles) {
         const count = Math.max(0, x.coaxial_shadow_v1(st, 6));
-        // the tiles cleared first are read only for a frame that draws a tile, as the built-in order reads them
-        // (a page says -1 for them on a frame with none: everglade_shadow_field)
+        // the tiles cleared first are read only for a frame that draws a tile (a page says -1 for them on a
+        // frame with none: everglade_shadow_field)
         ask[16] = tile + 1; ask[17] = count; ask[18] = tile >= 0 ? x.coaxial_shadow_v1(st, 7) : 0;
         for (let k = 0; k < count && k < 8; k++) for (let j = 0; j < 4; j++) ask[19 + k * 4 + j] = x.coaxial_shadow_v1(st, 16 + 4 * k + j);
         if (tile >= 0) for (let j = 0; j < 4; j++) ask[51 + j] = x.coaxial_shadow_v1(st, 1 + j);   // what the tile's draws are cut to
@@ -3477,23 +3321,11 @@ function draw(now) {
     }
     if (words && wrote >= 8 && words[0] === FP.magic && words[1] === FP.version && words[2] === 8 && (words[3] + 1) * 8 === wrote) planned = words[3];
     else planStats.refused++;
-    if (planned) {
-      if (planMode === "check") {
-        // the proof of the swap (#13303): the built-in order and the plan's walk, recorded on the same frame
-        const a = planRecorder(null), b = planRecorder(encoder);
-        try { builtin(a.encoder, null, false); } catch (e) { a.log.push(`threw ${e.message}`); }
-        timed = walk(b.encoder, passTimer, words, planned, true);
-        planCompare(a.log, b.log);
-      } else timed = walk(encoder, passTimer, words, planned, true);
-      planStats.frames++; planStats.ops = planned;
-    }
+    if (planned) { timed = walk(encoder, passTimer, words, planned, true); planStats.frames++; planStats.ops = planned; }
   }
-  // A page with a plan of its own is never drawn in the built-in order unless ?plan=off asks (#13303):
-  // when its plan is refused the frame is cleared and nothing is drawn (coaxial.framePlan().refused
-  // counts them). A page the host plans for falls back to the built-in order on a refused frame until
-  // every such page is proved (coax/web/plan-check.ts, #13451).
-  if (!planned && planMode !== "off" && x.coaxial_frame_plan_v1) timedPass(encoder, passTimer, { colorAttachments: [screen()] }).end();
-  else if (!planned) timed = builtin(encoder, passTimer, true);
+  // Every frame is a plan's walk: the host has no order of its own (#13539). A refused plan clears the
+  // frame and nothing is drawn (coaxial.framePlan().refused counts them).
+  if (!planned) timedPass(encoder, passTimer, { colorAttachments: [screen()] }).end();
   if (timed) {
     encoder.resolveQuerySet(gpu.timer.set, 0, 4, gpu.timer.resolve, 0);
     encoder.copyBufferToBuffer(gpu.timer.resolve, 0, gpu.timer.read, 0, 32);

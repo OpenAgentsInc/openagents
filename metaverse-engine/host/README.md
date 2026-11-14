@@ -469,7 +469,8 @@ A page's engine may export `uint32_t coaxial_frame_plan_v1(state, uint32_t featu
 record. [`metaverse-engine/render/graph/frame-plan.coax`](../render/graph/frame-plan.coax) states the layout, writes the
 records from `passes.coax`'s plan and reads them back. A host walks them and maps a pass id to its
 pipeline and bindings; it decides no order, and it refuses a plan whose version record is not the
-one it was built for. A page without the export keeps the host's built-in order.
+one it was built for. A page without the export is planned by the engine's one plan module in the
+browser (below); the Mac's and the C hosts' own orders are noted with them.
 
 `features` is the host's word: bits 0 to 13 are the pipelines the page's shader module gave it
 (`RenderFeatures`' fields in order), and the rest say what it did before it asked: the shadow atlas
@@ -482,13 +483,14 @@ shadow tile (clears, viewport and scissor as operations), the separate shadow li
 cull's two phases and the second scene pass, the bloom stages the quality asks for, the post pass
 and the HUD between the media layers are all `passes.coax`'s order.
 
-- The browser: `coax/web/host.js` walks the records (`walk` in `draw`). `?plan=check` on a
-  development server records the built-in order and the walk on the same frame and counts the
-  frames whose GPU calls differ (`coaxial.framePlan()`); `?plan=off` draws the built-in order.
-  A page whose engine exports no plan is planned by `build/frame-plan.wasm` (`frame_plan_host`,
-  loaded by `coax/web/frame-plan-host.js`) from the counts `host.js` reads from its exports; a
-  frame it refuses is drawn in the built-in order. `bun coax/web/plan-check.ts` opens every page
-  of `realms.json` with the check on and fails on a page whose frames differ.
+- The browser: `coax/web/host.js` walks the records (`walk` in `draw`) and has no order of its own
+  (#13539): every frame is a plan's walk. A page whose engine exports no plan is planned by
+  `build/frame-plan.wasm` (`frame_plan_host`, loaded by `coax/web/frame-plan-host.js`) from the
+  counts `host.js` reads from its exports. A refused frame is cleared and draws nothing;
+  `coaxial.framePlan()` counts the frames walked and refused. `bun coax/web/plan-check.ts` opens
+  every page of `realms.json` and fails on a page that refuses a frame or walks none. Before the
+  built-in order went, `?plan=check` recorded it and the walk on the same frame, and every page but
+  Nostr Lab's had 0 differing frames (#13451, #13539).
 - C hosts: [`core/frame-plan-walk.h`](core/frame-plan-walk.h) checks the whole plan, then calls the
   host back once an operation (`begin`, `end`, `draw`, `copy`, `rect`, `compute`, `media`). A
   malformed or newer plan gives -1 and no call. The numbers are [`frame-plan.h`](frame-plan.h)'s,
