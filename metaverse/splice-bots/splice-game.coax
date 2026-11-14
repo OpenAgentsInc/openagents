@@ -3226,6 +3226,9 @@ dv_road_step :: (g: [] SpGame, u: f32, top: f32) -> f32 {
   for i: 0..<160 { g_step(g[..], 0.02); }
   #assert g[0].bt[0].teaser;
   #assert g_key(g[..], -2, true) && g[0].mode == M_PLAY;   // RESTART
+  // playtest 3: which scene of how many, and the run's time, which the ending itself does not add to
+  b: [64] u8; g_stage(g[..], 12); g[0].bt[0].run_t = 775.5; g_step(g[..], 1); #assert sb_run_line(g[..], b[..]) == "Scene 1 of 1 in this build · Run time 12:55";
+  g_stage(g[..], 7); g_step(g[..], 0.5); g_step(g[..], 0.5); g[0].bt[0].run_t += 4; #assert sb_run_line(g[..], b[..]) == "Scene 1 of 1 in this build · Run time 0:05";
   // a click on SCENE RESTORED goes on to the teaser at once, and the next starts again
   g_stage(g[..], 12);
   #assert g_key(g[..], -2, true) && g[0].mode == M_RESTORED && g[0].bt[0].teaser;

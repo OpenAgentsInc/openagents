@@ -130,6 +130,7 @@ SpBattle :: struct {
   repair_t: f32;
   refusal: int;                // why the last press of yours was refused (BbVerdict)
   end_t: f32; teaser: bool;   // the ending: time on SCENE RESTORED, and the mission's teaser after it
+  run_t: f32;                 // seconds this run has been played, for the ending (not the front screens, a pause, or the ending itself)
 }
 
 // ---- the bots and their cards
@@ -1357,7 +1358,11 @@ sb_memory_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
 // SCENE RESTORED, then after SB_RESTORED (or a click) the mission's teaser with RESTART.
 sb_end_step :: (g: [] SpGame, dt: f32) {
   t := g[0].bt[..];
-  if g[0].mode != M_RESTORED { t[0].end_t = 0; t[0].teaser = false; return; }
+  if g[0].mode != M_RESTORED {
+    t[0].end_t = 0; t[0].teaser = false;
+    if g[0].mode != M_MEMORY && !g[0].dr[0].paused { t[0].run_t += dt; }
+    return;
+  }
   t[0].end_t += dt;
   if t[0].end_t >= SB_RESTORED { t[0].teaser = true; }
 }
@@ -1367,15 +1372,24 @@ sb_restored_key :: (g: [] SpGame, key: int) -> bool {
   g[0].bt[0].teaser = true;
   return true;
 }
+// The ending's line (playtest 3): which scene this is out of how many, and how long the run took.
+SB_SCENES :: 1;   // the erased scenes this build holds
+sb_run_line :: (g: [] SpGame, buf: [] u8) -> string {
+  s := cast(int) g[0].bt[0].run_t;
+  n := tput(buf, 0, "Scene 1 of "); n = tput_int(buf, n, SB_SCENES); n = tput(buf, n, " in this build · Run time "); n = tput_int(buf, n, s / 60);
+  n = tput(buf, n, ifx s % 60 < 10 then ":0" else ":"); n = tput_int(buf, n, s % 60);
+  return cast(string) buf[0..<n];
+}
 sb_restored_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
-  n := 0; k := q.k; w := q.w; h := q.h; ink := INK(); paper := PAPER();
+  n := 0; k := q.k; w := q.w; h := q.h; ink := INK(); paper := PAPER(); buf: [64] u8;
   ui_panel(g, u, -20, -20, w + 20, h + 20, ink, 1);
   n = ui_sprockets(out, n, 0, w, 32 * k, 16 * k, paper); n = ui_sprockets(out, n, 0, w, h - 32 * k, 16 * k, paper);
   if !g[0].bt[0].teaser {
     n = ui_title_mid(out, n, "SCENE RESTORED", w * 0.5, h * 0.46, 44 * k, paper);
-    n = ui_mid(out, n, "Director's Cut · 1 of ? erased scenes", w * 0.5, h * 0.55, 12 * k, GLOW());
+    n = ui_mid(out, n, sb_run_line(g, buf[..]), w * 0.5, h * 0.55, 12 * k, GLOW());
     return n;
   }
+  n = ui_mid(out, n, sb_run_line(g, buf[..]), w * 0.5, h * 0.2, 11 * k, paper);   // SCENE RESTORED holds three seconds: the run's time stays up here
   n = ui_mid(out, n, "NEXT", w * 0.5, h * 0.28, 12 * k, GLOW());
   n = ui_title_mid(out, n, "THE MISSION", w * 0.5, h * 0.38, 40 * k, paper);
   n = ui_mid(out, n, "The Emperor is gone. Nobody has told the other planets,", w * 0.5, h * 0.47, 13 * k, paper);
