@@ -423,10 +423,18 @@ fn coax_p_sp_place(p_id: u32, p_instance: u32) -> vec3f {
   var l_instance: u32 = p_instance;
   var l_b: u32;
   var l_r: u32;
+  var l_p: vec3f;
+  var l_k: f32;
+  var l_w: f32;
+  var l_q: vec3f;
   var l_t: vec3f;
   l_b = (l_id * 6u);
   l_r = coax_p_sp_row(l_instance);
-  l_t = coax_p_sp_turn(coax_p_v3(coax_p_al_word(l_b), coax_p_al_word((l_b + 1u)), coax_p_al_word((l_b + 2u))), l_r);
+  l_p = coax_p_v3(coax_p_al_word(l_b), coax_p_al_word((l_b + 1u)), coax_p_al_word((l_b + 2u)));
+  l_k = coax_p_al_word_1((l_r + 3u));
+  l_w = (0x1.000000p0f + (l_k * 0x1.000000p-1f));
+  l_q = coax_p_v3(((l_p.x * l_w) + (l_p.y * coax_p_al_word_1((l_r + 6u)))), (l_p.y * (0x1.000000p0f - l_k)), ((l_p.z * l_w) + (l_p.y * coax_p_al_word_1((l_r + 7u)))));
+  l_t = coax_p_sp_turn(l_q, l_r);
   return coax_p_v3((l_t.x + coax_p_al_word_1(l_r)), (l_t.y + coax_p_al_word_1((l_r + 1u))), (l_t.z + coax_p_al_word_1((l_r + 2u))));
 }
 fn coax_p_al_rows(p_at: i32, p_w: vec3f) -> vec4f {

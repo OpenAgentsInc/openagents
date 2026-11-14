@@ -22,6 +22,7 @@ FR_CONTINUE :: 1; FR_NEW :: 2; FR_CREDITS :: 3;   // a menu row's key (content.c
 FR_USE :: 100; FR_BACK :: 101;          // the creation screen's two plain rows; its value rows are the CP_* fields
 FR_FIELDS :: [6] int.[CP_BODY, CP_OUTFIT, CP_HEIGHT, CP_SKIN, CP_HAIR, CP_MARK];
 FR_POSES :: 10;                         // the walk cycle's poses, written once a character
+FR_ALL :: FR_POSES + FL_AIR_POSES;      // and after them the air poses (feel.coax)
 FR_OBJ :: 246;                          // the player's first object number (objects 246 to 255)
 FR_RUN_TEXT :: 192;
 FR_RUN_HEAD :: "splice.run.v1";
@@ -47,7 +48,8 @@ SpFront :: struct {
   save_t: f32;
   // the player's poses in the piece store (layer-draw.coax): for which character and which meshes, and where
   posed_doc: int = -1; posed_mesh: int = -1; posed_gray: bool; posed_n: int; posed_over: bool;
-  pose_first: [FR_POSES] int; pose_count: [FR_POSES] int; pose_n: int; pose_gen: int; row_gen: int; row: bool;
+  pose_first: [FR_ALL] int; pose_count: [FR_ALL] int; pose_n: int; pose_gen: int; row_gen: int; row: bool;
+  stride_m: f32;                         // m one whole gait of this character covers (its legs at FL_SWING): her stride follows it
 }
 
 fr_start :: (g: [] SpGame) {
@@ -360,7 +362,7 @@ fr_player :: (g: [] SpGame, d: [] SpLayerDraw, pieces: [] u32, places: [] u32, d
   if walking && g[0].hide[TK_SMUGGLER] { return at; }   // a host draws you itself (splice_thing_hide)
   if walking && cm_too_near(g) { return at; }   // the camera is at her head: her body is left out (camera.coax)
   if g[0].hit_cool > 0 && fract(g[0].t * 8) < 0.5 && !crew { return at; }
-  need := ifx crew then 1 else FR_POSES;
+  need := ifx crew then 1 else FR_ALL;
   if f[0].posed_doc != f[0].doc_gen || f[0].posed_mesh != d[0].mesh_gen || f[0].posed_gray != g[0].gray { f[0].posed_n = 0; f[0].pose_n = 0; f[0].posed_over = false; }
   // at most two poses a frame (a pose is a whole dressed figure): play starts on the first and the walk fills in
   if f[0].posed_n < need && !f[0].posed_over {
@@ -368,24 +370,27 @@ fr_player :: (g: [] SpGame, d: [] SpLayerDraw, pieces: [] u32, places: [] u32, d
     wrote := 0;
     while f[0].posed_n < need && wrote < 2 {
       i := f[0].posed_n; f[0].pose_first[i] = pen[0].n; wrote += 1;
-      cp_write(pieces, pen[..], frame_at(v3(0, 0, 0), 0), f[0].doc[0], cp_pose_stride(i, FR_POSES), FR_OBJ);
+      l := ifx i < FR_POSES then cp_stride_limbs(cp_pose_stride(i, FR_POSES), FL_SWING) else fl_limbs(i - FR_POSES);
+      cp_write_pose(pieces, pen[..], frame_at(v3(0, 0, 0), 0), f[0].doc[0], l, FR_OBJ);
       if pen[0].over { f[0].posed_over = true; pen[0].n = f[0].pose_first[i]; break; }
       f[0].pose_count[i] = pen[0].n - f[0].pose_first[i]; f[0].posed_n += 1;
     }
     f[0].pose_n = pen[0].n - d[0].mesh_n; f[0].pose_gen += 1;
     f[0].posed_doc = f[0].doc_gen; f[0].posed_mesh = d[0].mesh_gen; f[0].posed_gray = g[0].gray;
+    m := cb_form(f[0].doc[0].body); f[0].stride_m = 4 * (m.joint[CJ_R_HIP].y - m.joint[CJ_R_FOOT].y) * sin(FL_SWING);   // two steps, each foot's whole swing
   }
   if f[0].posed_n < 1 || (at + 1) * 4 > draws.count || (d[0].place_n + 1) * SD_ROW > places.count { return at; }
-  // in the air on a jump the figure holds the stride's widest pose, a leap (the rig has no jump clip)
-  stride := ifx g_airborne(g) then PI * 0.5f32 else g[0].stride;
-  pose := ifx crew then 0 else lo_int(cp_pose_of(stride, FR_POSES), f[0].posed_n - 1);
+  // the gait at her stride, or an air pose (feel.coax fl_pose)
+  air := ifx crew then -1 else fl_pose(g);
+  pose := ifx crew then 0 else lo_int(ifx air >= 0 then air else cp_pose_of(g[0].stride, FR_POSES), f[0].posed_n - 1);
   x := g[0].px; z := g[0].pz; yaw := g_face(g);
   y := g_feet_y(g);
   if g_riding(g) { y += board_lift(g[0].board[0]) + 0.075; }   // on the hoverboard's deck (#13485)
   if crew { s := fr_stand(g); x = s.x; z = s.z; y = 0; yaw = PI + f[0].turn; }
   o := d[0].place_n * SD_ROW;
-  places[o] = f32_bits(x); places[o + 1] = f32_bits(y); places[o + 2] = f32_bits(z); places[o + 3] = 0;
-  places[o + 4] = f32_bits(cos(yaw)); places[o + 5] = f32_bits(sin(yaw)); places[o + 6] = 0; places[o + 7] = 0;
+  fl := g[0].fl[0]; still := crew || g_riding(g);   // her squash and lean (feel.coax): the shader's spare words
+  places[o] = f32_bits(x); places[o + 1] = f32_bits(y); places[o + 2] = f32_bits(z); places[o + 3] = f32_bits(ifx still then 0.0f32 else fl_squash(g));
+  places[o + 4] = f32_bits(cos(yaw)); places[o + 5] = f32_bits(sin(yaw)); places[o + 6] = f32_bits(ifx still then 0.0f32 else fl.side); places[o + 7] = f32_bits(ifx still then 0.0f32 else fl.fwd);
   f[0].row = true; f[0].row_gen += 1;
   draws[at * 4] = cast(u32) f[0].pose_first[pose]; draws[at * 4 + 1] = cast(u32) f[0].pose_count[pose];
   draws[at * 4 + 2] = 0x80000000 | cast(u32) (SD_BASE + d[0].place_n); draws[at * 4 + 3] = 1;

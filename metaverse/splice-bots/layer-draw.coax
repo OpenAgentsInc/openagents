@@ -4,7 +4,7 @@
 // in one draw (splice-bots.coax, gpu/splice-bots.coax's scene_vs). An edit writes rows; it never writes the
 // designed world's store, and it never writes a mesh again.
 //   coax/bin/coax test metaverse/splice-bots/splice-game.coax
-SD_ROW :: 8;            // words a placed piece: x, y, z, 0, cos turn, sin turn, 0, 0 (f32 bits)
+SD_ROW :: 8;            // words a placed piece: x, y, z, squash, cos turn, sin turn, lean x, lean z (f32 bits; the player's only, else 0)
 SD_BASE :: 2;           // a placed piece's instance number is SD_BASE + its row: 0 and 1 are the world's and the live store's
 SD_PIECE_WORDS :: (SD_KIND_VERTS + FR_POSES * CW_BUDGET) * VERTEX_WORDS;   // the piece store: every kind's mesh, then the player's walk poses (front.coax)
 SD_KIND_VERTS :: 100000;   // the kinds' meshes' share of it: the shipped kinds (the solar farm's and Sniper's room's with them, #13505) and one of each kit at size 1 take about 82,000 vertices (#13485)
@@ -84,7 +84,10 @@ sd_draws :: (d: [] SpLayerDraw, g: [] SpGame, draws: [] u32, at: int) -> int {
 // the same lines): turned about y, then moved. A piece's own +z is (sin turn, cos turn).
 sd_apply :: (p: Point, row: [] u32) -> Point {
   c := f32_from_bits(row[4]); s := f32_from_bits(row[5]);
-  return v3(p.x * c + p.z * s + f32_from_bits(row[0]), p.y + f32_from_bits(row[1]), p.z * c - p.x * s + f32_from_bits(row[2]));
+  // first squashed (y by 1 - k, across by 1 + k/2) and leaned (sheared by height), then turned and moved
+  k := f32_from_bits(row[3]); w := 1 + k * 0.5;
+  q := v3(p.x * w + p.y * f32_from_bits(row[6]), p.y * (1 - k), p.z * w + p.y * f32_from_bits(row[7]));
+  return v3(q.x * c + q.z * s + f32_from_bits(row[0]), q.y + f32_from_bits(row[1]), q.z * c - q.x * s + f32_from_bits(row[2]));
 }
 
 // A charger standing within SD_CABLE metres of a rover train is plugged into it (playtest 2): a

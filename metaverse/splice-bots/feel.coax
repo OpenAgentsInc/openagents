@@ -1,0 +1,148 @@
+// How she moves (#13552 lane B): a light, nimble director of robots. Her walk steps a velocity with the
+// engine's source kernel (metaverse-engine/move/locomotion.coax source_velocity): quick to start, quick
+// to turn and reverse, a short stop, and generous control in the air. The jump is the engine's
+// (move/jump.coax) with coyote time, a press buffer and the double jump. Her poses are the crew
+// character's (kit/crew-player.coax cp_write_pose): a gait whose stride follows the ground she
+// covers, and four air poses (takeoff, second jump, fall, landing). Squash and lean are the place
+// row's spare words, which the shader reads (gpu/splice-bots.coax sp_place). Nothing here ever holds
+// her input: a landing is drawn, never waited for.
+// Every number worth tuning is below; metaverse/splice-bots/README.md says why each fits.
+
+// ---- The tunables
+FL_ACCEL :: 52.0f32;       // m/s^2 toward the speed you ask: 0 to T_WALK in about 0.11 s
+FL_TURN :: 16.0f32;        // /s: the share of her velocity turned onto a new heading each second (a reversal in about 0.1 s)
+FL_BRAKE :: 26.0f32;       // m/s^2 of braking when you let go, on top of FL_FRICTION
+FL_FRICTION :: 9.0f32;     // /s: letting go stops her in about 0.12 s, within 0.3 m
+FL_AIR :: 0.75f32;         // the share of FL_ACCEL she keeps in the air: steer a jump onto a panel
+FL_AIR_FRICTION :: 4.0f32; FL_AIR_BRAKE :: 12.0f32;   // letting go in the air: she stops drifting in about 0.17 s, so a jump lands where you aim
+FL_FACE :: 18.0f32;        // /s: her body turns to her heading
+FL_GRAVITY :: 30.0f32;     // m/s^2: a quick, compact arc
+FL_JUMP :: 9.0f32;         // m/s up: a 1.28 m jump, 0.6 s in the air; with FL_STEP a solar row's top (1.34 m) in one
+FL_COYOTE :: 0.1f32;       // s after walking off an edge that Space still jumps as from it
+FL_BUFFER :: 0.12f32;      // s before landing that a Space with no air jump left waits, and jumps on landing
+FL_STEP :: 0.3f32;         // m: a top this little above her feet she steps onto, never snagging on its edge
+FL_SWING :: 0.6f32;        // radians her legs swing in the gait (the walk poses are written at it)
+FL_STRIDE :: 1.9f32;       // m one whole gait covers, before the character's own legs measure it (SpFront.stride_m)
+FL_STOP :: 0.4f32;         // m/s: slower than this with no key down she settles into standing
+FL_SETTLE :: 14.0f32;      // /s: how fast the gait eases into the standing pose
+FL_LEAN :: 0.035f32;       // lean per (rad/s of body turn x m/s): into a turn
+FL_LEAN_MAX :: 0.2f32;     // the most she leans to the side
+FL_PITCH :: 0.006f32;      // lean forward per m/s^2 of speeding up, back for slowing down
+FL_PITCH_MAX :: 0.18f32;
+FL_LEAN_EASE :: 14.0f32;   // /s: the lean follows
+FL_TAKEOFF :: 0.14f32;     // s the takeoff pose and stretch hold after leaving the ground
+FL_STRETCH :: 0.08f32;     // the takeoff's stretch (the place row's squash below zero)
+FL_FALL_VY :: -2.5f32;     // m/s: falling faster than this shows the fall pose
+FL_LAND :: 0.12f32;        // s the landing pose and squash show; input moves her through it
+FL_SQUASH :: 0.016f32;     // squash per m/s of impact
+FL_SQUASH_MAX :: 0.2f32;
+FL_SOFT :: 3.0f32;         // m/s: a landing slower than this has no squash and no pose (stepping off a crate)
+
+// ---- The metrics a level is built to (a level session's grey metrics room shows them; checked
+// against the real walk and jump in splice-game.coax). Metres and metres a second.
+FL_M_HEIGHT :: 1.75f32;    // her height as the first character stands (the creator goes from 1.45 m up)
+// A jump's top is v^2 / 2g less half a step's rise: the engine steps 1/64 s, and gravity pulls before each rise.
+FL_M_JUMP :: FL_JUMP * FL_JUMP / (2 * FL_GRAVITY) - FL_JUMP / 128;   // 1.28: the top of one jump
+FL_M_DOUBLE :: FL_M_JUMP + FL_JUMP * JUMP_AIR * FL_JUMP * JUMP_AIR / (2 * FL_GRAVITY) - FL_JUMP * JUMP_AIR / 128;   // 2.98: the second Space at the first one's top
+FL_M_LEDGE :: FL_M_JUMP + FL_STEP;   // 1.58: the highest top one jump lands her on
+FL_M_WALK :: T_WALK;       // 5.6: her one speed on foot (no sneak: Shift is off; no sprint)
+FL_M_BOARD :: 7.0f32; FL_M_BOARD_FAST :: 22.0f32;   // the hoverboard's casual and fast (the board table, content/splice.content); Q Q is super fast (board_super_cms)
+
+// The air poses after the gait's: takeoff, second jump, fall, landing.
+FL_P_TAKEOFF :: 0; FL_P_SECOND :: 1; FL_P_FALL :: 2; FL_P_LAND :: 3; FL_AIR_POSES :: 4;
+// legs (right, left), arms (right, left): radians forward
+FL_LIMBS :: [FL_AIR_POSES * 4] f32.[
+  0.75, -0.45, -0.7, 1.0,   // takeoff: the right knee drives up, the arms pump against it
+  1.0, 0.75, -1.2, -1.2,    // second jump: tucked, both arms swept back
+  0.25, -0.2, 1.3, 1.1,     // fall: feet apart, arms out front for balance
+  0.45, -0.4, 0.5, -0.3     // landing: a wide stance, one arm forward
+];
+fl_limbs :: (k: int) -> CpLimbs {
+  t := FL_LIMBS; o := k * 4;
+  return CpLimbs.{leg = [2] f32.[t[o], t[o + 1]], arm = [2] f32.[t[o + 2], t[o + 3]]};
+}
+
+SpFeel :: struct {
+  vx: f32; vz: f32;          // her velocity on the ground plane
+  x: f32; z: f32;            // where the last step left her: a jump of more is the run moving her
+  side: f32; fwd: f32;       // her lean: toward her own +x (into a turn), and forward (the place row's words 6 and 7)
+  speed: f32;                // the last step's speed
+  up_t: f32; second: bool;   // s since she left the ground on a jump, and whether the second has been taken
+  land_t: f32; squash: f32;  // the landing's time left and how hard it was
+  was_air: bool; air_used: int;
+}
+
+// The walk: her velocity toward the keys (turned by the view), moved, pushed out by the world, and
+// what the push took off taken off it too, so a wall never stores speed.
+fl_walk :: (g: [] SpGame, go: f32, side: f32, pace: f32, dt: f32) {
+  f := g[0].fl[..];
+  if dist2(f[0].x, f[0].z, g[0].px, g[0].pz) > 1 { f[0].vx = 0; f[0].vz = 0; }   // a respawn, a door, a ride
+  y := g[0].yaw; wx := sin(y) * go - cos(y) * side; wz := cos(y) * go + sin(y) * side;
+  n := sqrt(wx * wx + wz * wz); amount := lo(n, 1);
+  if n > 0.0001 { wx /= n; wz /= n; }
+  air := g_airborne(g);
+  v := source_velocity(f[0].vx, f[0].vz, wx, wz, amount, pace, ifx air then FL_ACCEL * FL_AIR else FL_ACCEL,
+    ifx air then FL_AIR_FRICTION else FL_FRICTION, ifx air then FL_AIR_BRAKE else FL_BRAKE, 1, dt);
+  x0 := g[0].px; z0 := g[0].pz;
+  g[0].px += v.x * dt; g[0].pz += v.z * dt;
+  g_collide(g);
+  if dt > 0 {
+    mx := (g[0].px - x0) / dt; mz := (g[0].pz - z0) / dt;
+    if abs(mx - v.x) > 0.05 || abs(mz - v.z) > 0.05 { v.x = mx; v.z = mz; }
+  }
+  f[0].x = g[0].px; f[0].z = g[0].pz;
+  speed := sqrt(v.x * v.x + v.z * v.z);
+  accel := ifx dt > 0 then (speed - f[0].speed) / dt else 0.0f32;
+  f[0].vx = v.x; f[0].vz = v.z; f[0].speed = speed;
+  // the stride follows the ground covered; standing, it settles into the nearest standing pose
+  if !air {
+    long := ifx g[0].fr[0].stride_m > 0.5 then g[0].fr[0].stride_m else FL_STRIDE;
+    if speed > FL_STOP || n > 0 { g[0].stride += speed * dt * TAU / long; }
+    else { rest := floor(g[0].stride / PI + 0.5) * PI; g[0].stride += (rest - g[0].stride) * lo(1, FL_SETTLE * dt); }
+  }
+  // she turns to face the way you steer, never walking backwards (#13505 playtest)
+  turned := 0.0f32;
+  if n > 0 {
+    want := atan2(-side, go); d := want - g[0].face_off; d = atan2(sin(d), cos(d));
+    turned = d * lo(1, FL_FACE * dt); g[0].face_off += turned;
+  }
+  rate := ifx dt > 0 then turned / dt else 0.0f32;
+  k := lo(1, FL_LEAN_EASE * dt);
+  f[0].side += (clamp(rate * speed * FL_LEAN, -FL_LEAN_MAX, FL_LEAN_MAX) - f[0].side) * k;
+  f[0].fwd += (ifx air then -f[0].fwd else clamp(accel * FL_PITCH, -FL_PITCH_MAX, FL_PITCH_MAX) - f[0].fwd) * k;
+}
+// The engine's walking numbers with hers.
+fl_loc :: () -> LocomotionProfile { loc: LocomotionProfile; loc.gravity = FL_GRAVITY; loc.jump_speed = FL_JUMP; return loc; }
+fl_jump_tune :: (j: [] Jump) { j[0].air_jumps = 1; j[0].coyote = FL_COYOTE; j[0].buffer = FL_BUFFER; }
+// After the jump's step: the takeoff, the second jump and the landing, for her pose and squash.
+fl_after_jump :: (g: [] SpGame, dt: f32) {
+  f := g[0].fl[..]; j := g[0].air[0];
+  air := !j.on_ground;
+  if air && !f[0].was_air && j.jumped { f[0].up_t = 0; f[0].second = false; f[0].land_t = 0; }
+  if air && j.air_used > f[0].air_used { f[0].up_t = 0; f[0].second = true; }
+  if air { f[0].up_t += dt; }
+  if j.landed && j.impact > FL_SOFT { f[0].land_t = FL_LAND; f[0].squash = lo(FL_SQUASH_MAX, j.impact * FL_SQUASH); }
+  else if f[0].land_t > 0 { f[0].land_t = hi(0, f[0].land_t - dt); }
+  f[0].was_air = air; f[0].air_used = j.air_used;
+}
+// Which pose she shows: -1 the gait at her stride, else FR_POSES + an air pose.
+fl_pose :: (g: [] SpGame) -> int {
+  f := g[0].fl[0];
+  if g_riding(g) { return -1; }
+  if g_airborne(g) {
+    j := g[0].air[0];
+    if j.vy < FL_FALL_VY || !j.jumped { return FR_POSES + FL_P_FALL; }
+    return FR_POSES + ifx f.second then FL_P_SECOND else FL_P_TAKEOFF;
+  }
+  if f.land_t > 0 && f.speed < FL_STOP * 4 { return FR_POSES + FL_P_LAND; }
+  return -1;
+}
+// The place row's squash (above zero flattens her, below stretches): the landing's, fading with its
+// time, or the takeoff's stretch.
+fl_squash :: (g: [] SpGame) -> f32 {
+  f := g[0].fl[0];
+  if g_riding(g) { return 0; }
+  if f.land_t > 0 { return f.squash * f.land_t / FL_LAND; }
+  if g_airborne(g) && f.up_t < FL_TAKEOFF && g[0].air[0].vy > 0 { return -FL_STRETCH * (1 - f.up_t / FL_TAKEOFF); }
+  return 0;
+}

@@ -1,8 +1,8 @@
 // The Director's systems (GitHub #13505, part A): her keys, Digger at her side, what she carries,
 // how far Imperial robots sense her, and the health of everyone.
 //
-//   Sneak       hold Left Shift: slower, and robots sense her from half as far (the engine's stance,
-//               metaverse-engine/move/stance.coax).
+//   Sneak       off for now: Shift does nothing until she has a crouch animation (#13552). The stance
+//               (metaverse-engine/move/stance.coax) keeps the sneak's rules for when it comes back.
 //   Hoverboard  everything on Q (#13505, Nov 13): Q calls the board up at casual speed, then each Q
 //               switches casual and fast; a double tap of Q is super fast; holding Q steps off (the
 //               engine's board, metaverse-engine/action/hoverboard.coax, and its board_super_cms).
@@ -16,7 +16,7 @@
 //               Hardware spliced into Digger and cards on his strip are his, not hers. A click on a
 //               slot drops what is in it at her feet; Digger leaves it until she walks away from it.
 //   Heat        never cools below T_HEAT_PIECE for each banned piece with her; the more Heat, the
-//               farther robots sense her, and sneaking halves it.
+//               farther robots sense her.
 //   Map         M: the deep-garage map: the garage's ring of lettered sections, the way in, the hallway
 //               and how deep it goes. Sniper puts it up at the rover's desk (drive.coax dv_desk).
 //   Outfit      O in the rover's room: the next outfit of the wardrobe (drive.coax dv_outfit).
@@ -344,7 +344,7 @@ d_key :: (g: [] SpGame, key: int, down: bool) -> int {
     return ifx down then 1 else -1;
   }
   if d[0].map && down && (key == 'm' || key == 'M' || key == -1 || key == 'e' || key == 'E') { d_map_close(g); return 1; }   // the map closes with M, Esc or E
-  if key == -13 { d[0].st = stance_sneak(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }
+  if key == -13 { return ifx g[0].mode == M_PLAY then 1 else 0; }   // Shift: no sneak or crouch until she has an animation for it (#13552)
   if key == -14 { d[0].st = stance_hold(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }   // Ctrl: very fast on the board
   if key == 'w' || key == 'W' || key == -6 { d[0].st = stance_forward(d[0].st, down); return -1; }   // a double tap of W: very fast on the board; W still walks
   if key == 'q' || key == 'Q' { return d_board_q(g, down); }
@@ -661,10 +661,10 @@ d_map_hint :: (out: [] f32, at: int, cx: f32, cy: f32, k: f32) -> int {
   return hv_text(out, n, F_TITLE, "CLOSE", kx + kw + 12 * k, cy + 5 * k, vc, HV_CREAM(), 1);
 }
 // The controls, as the sheet maps them: shown on the pause screen.
-D_KEYS :: 17;
+D_KEYS :: 16;
 d_controls :: () -> [D_KEYS * 2] string {
   return [D_KEYS * 2] string.[
-    "W A S D", "Walk", "Mouse", "Look", "Space", "Jump", "Hold Shift", "Sneak: slower, harder to sense",
+    "W A S D", "Walk", "Mouse", "Look", "Space", "Jump; again in the air to jump higher",
     "Q", "Hoverboard on, then casual or fast", "Hold Ctrl or W W", "Hoverboard very fast; Q Q super fast, hold Q off",
     "E", "Interact, enter the rover, swap a core, tow or charge Digger", "Tab", "Edit bay, inside Sniper", "I", "Inventory",
     "Left click", "Point Digger: dig, pick up, attack", "F", "Stun a robot within 2 m", "1 2 3 4", "Battle moves",

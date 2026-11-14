@@ -31,10 +31,16 @@ sp_turn :: (p:V3,r:u32,places:[]u32)->V3 {
   s:f32=al_word(add_wrap(r,cast(u32)5),places);
   return v3((p.x*c)+(p.z*s),p.y,(p.z*c)-(p.x*s));
 }
+// A row's squash (word 3: y by 1 - k, across by 1 + k/2) and lean (words 6 and 7: sheared by height),
+// before its turn: the player's landing and turns (feel.coax). Every other row has them 0.
 sp_place :: (id:u32,instance:u32,pieces:[]u32,places:[]u32)->V3 {
   b:u32=mul_wrap(id,cast(u32)6);
   r:u32=sp_row(instance);
-  t:V3=sp_turn(v3(al_word(b,pieces),al_word(add_wrap(b,cast(u32)1),pieces),al_word(add_wrap(b,cast(u32)2),pieces)),r,places);
+  p:V3=v3(al_word(b,pieces),al_word(add_wrap(b,cast(u32)1),pieces),al_word(add_wrap(b,cast(u32)2),pieces));
+  k:f32=al_word(add_wrap(r,cast(u32)3),places);
+  w:f32=1.0f32+(k*0.5f32);
+  q:V3=v3((p.x*w)+(p.y*al_word(add_wrap(r,cast(u32)6),places)),p.y*(1.0f32-k),(p.z*w)+(p.y*al_word(add_wrap(r,cast(u32)7),places)));
+  t:V3=sp_turn(q,r,places);
   return v3(t.x+al_word(r,places),t.y+al_word(add_wrap(r,cast(u32)1),places),t.z+al_word(add_wrap(r,cast(u32)2),places));
 }
 shadow_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32)->AnimelabShade {

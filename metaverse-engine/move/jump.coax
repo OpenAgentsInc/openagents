@@ -97,9 +97,9 @@ jump_step :: (j: Jump, loc: LocomotionProfile, ground: f32, dt: f32) -> Jump #ef
 jump_advance :: (j: Jump, loc: LocomotionProfile, ground: f32, frame: f32) -> Jump #effects(all) {
   next := j;
   next.clock = loop_accept(j.clock, cast(f64) frame);
-  n := loop_due(next.clock);
-  for i: 0..<n { next = jump_step(next, loc, ground, cast(f32) loop_step(next.clock)); }
-  next.clock = loop_ran(next.clock);
+  n := loop_due(next.clock); landed := false;
+  for i: 0..<n { next = jump_step(next, loc, ground, cast(f32) loop_step(next.clock)); landed = landed || next.landed; }
+  next.clock = loop_ran(next.clock); next.landed = landed;   // a landing in any of the frame's steps
   return next;
 }
 // Feet as drawn: between the last two steps, by how far the clock is into the next.

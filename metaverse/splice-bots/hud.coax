@@ -618,7 +618,7 @@ hv_pause :: (g: [] SpGame, out: [] f32, u: [] f32, at: int, q: Ui) -> int {
 
 // ---- BAD CUT: hearts at zero. What you keep (what you had when you last left the rover) and what
 // is lost since; RESPAWN AT ROVER (Enter, Space or E) or QUIT TO TITLE (Esc)
-HV_DEATH_TIP :: "TIP · HOLD SHIFT TO SNEAK: ROBOTS SENSE YOU FROM HALF AS FAR";
+HV_DEATH_TIP :: "TIP · SPACE AGAIN IN THE AIR JUMPS HIGHER";
 hv_kept :: (g: [] SpGame, buf: [] u8) -> string {
   n := tput(buf, 0, "Digger");
   names := [3] string.["drill arm", "treads", "battery"];
