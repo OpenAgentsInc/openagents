@@ -63,6 +63,21 @@ cc_farm :: (g: [] SpGame) { g_reset(g); _ := spw_shipped(g); g_begin(g); }
   w = cc_watch(g[..], 160, CcWatch.{});
   #assert w.near >= CM_MIN - CC_SLACK && !w.in_body;
 }
+#test "#13552: turning on the spot in the hallway to the lab, the camera stays behind her at CM_MIN or more, under the roof, never over her head" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); _ := spw_shipped(g[..]); g_stage(g[..], 7);
+  g[0].px = 0; g[0].pz = g[0].at.gar_z - ga_back(g[..]) - GA_HALL_LONG * 0.5; g[0].yaw = PI * 0.5;
+  g[0].cam[0].ready = false; g[0].turn_l = true;
+  steep := 0.0f32; w := CcWatch.{};
+  for i: 0..<240 {
+    w = cc_watch(g[..], 1, w);
+    c := g_camera(g[..]); p := cm_pivot(g[..]); r := length(sub(c.eye, p));
+    steep = hi(steep, (c.eye.y - p.y) / hi(r, 0.01));
+    #assert c.eye.y < CM_HALL_ROOF - CM_CLEAR + CC_SLACK;
+  }
+  // sideways the walls are 2.3 m off the boom: it rises only as far as CM_MIN needs, well short of overhead
+  #assert w.near >= CM_MIN - CC_SLACK && !w.in_body && steep < 0.8;
+}
 #test "playtest 2: the drill mech is about twice her height, follows at her side clear of her, and the camera is never inside it" #steps 4000000000 #traversal 2000000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 7);

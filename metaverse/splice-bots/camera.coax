@@ -29,6 +29,7 @@ CM_LOOK_AHEAD :: 0.3f32; // s of her turning the boom looks ahead
 CM_HEAD :: 1.7f32;      // m: the boom's pivot, her head, over her feet
 CM_FOV :: 0.82f32;
 CM_BOARD_BACK :: 1.5f32; // m further back on the hoverboard, before its speed pulls it back more
+CM_FOOT_TIME :: 0.15f32; // s: the spring's time for the height it follows (landings, ramps, the board's hover)
 CM_ZOOM_NEAR :: 3.0f32;  // m: the nearest the wheel brings the eye to her head; she stays in view, never first person
 CM_ZOOM_FAR :: 1.6f32;   // the furthest the wheel takes the boom, times its rest
 CM_ZOOM_STEP :: 0.0012f32; // the boom's change a CSS pixel of wheel
@@ -41,6 +42,7 @@ SpCam :: struct {
   over: f32; over_v: f32;   // how far it has swung up for a big body ahead, 0 to 1
   x: f32; z: f32; yaw: f32; // where she was and faced at the last step
   yaw_v: f32;               // how fast she turns (radians a second), eased
+  foot: f32; foot_v: f32;   // the height it follows (cm_feet), eased
 }
 
 // One spring step of `time` seconds: the engine's critically damped spring, whose time is 0.1 s,
@@ -53,10 +55,17 @@ cm_ease :: (cur: f32, vel: [] f32, dest: f32, dt: f32, time: f32) -> f32 {
 }
 
 // Her height the camera follows: the jump's third, sinking as she sneaks, the board's hover.
-cm_feet :: (g: [] SpGame) -> f32 {
+cm_foot_goal :: (g: [] SpGame) -> f32 {
   y := g_cam_y(g) - d_crouch(g);
   if g_riding(g) { y += board_lift(g[0].board[0]); }
   return y;
+}
+// That height eased on CM_FOOT_TIME: a jump stays steady in the frame, and landing on a panel or
+// stepping down a ramp the view settles instead of popping.
+cm_feet :: (g: [] SpGame) -> f32 {
+  c := g[0].cam[0];
+  if !c.ready || dist2(c.x, c.z, g[0].px, g[0].pz) > CM_CUT { return cm_foot_goal(g); }
+  return c.foot;
 }
 cm_pivot :: (g: [] SpGame) -> Point { return v3(g[0].px, cm_feet(g) + CM_HEAD, g[0].pz); }
 // How far out the boom rests before the wheel: closer in the dome village, pulled back at speed on the board.
@@ -202,9 +211,12 @@ cm_flat_gap :: (ax: f32, az: f32, bx: f32, bz: f32, px: f32, pz: f32) -> f32 {
 // (`ahead` radians of yaw), so it moves before the boom meets anything.
 CmAim :: struct { rise: f32; dist: f32; }
 CM_RISE_COST :: 3.0f32; CM_STAY :: 1.5f32; CM_SHORT :: 4.0f32;
+// Past CM_STEEP radians each radian costs CM_STEEP_COST more where a lower angle keeps CM_MIN: in a
+// hallway or beside a wall it rises only as far as CM_MIN needs, and over her head only with her back to the wall.
+CM_STEEP :: 0.8f32; CM_STEEP_COST :: 6.0f32;
 cm_aim :: (g: [] SpGame, over: f32, now: f32, ahead: f32) -> CmAim {
   p := cm_pivot(g); want := cm_want(g); base := cm_base(g, want) + over * CM_OVER;
-  best := CmAim.{rise = base, dist = -1}; cost := 1000000.0f32;
+  best := CmAim.{rise = base, dist = -1}; cost := 1000000.0f32; low_kept := false;
   near_boss := cm_boss_near(g); rise_cost := CM_RISE_COST * (1 + near_boss);
   a := base;
   while a <= CM_RISE_MAX + 0.001 {
@@ -215,11 +227,11 @@ cm_aim :: (g: [] SpGame, over: f32, now: f32, ahead: f32) -> CmAim {
     room := cm_room(g, p, dir, want, CM_CLEAR + CM_EARLY);
     if abs(ahead) > 0.05 { room = lo(room, cm_room(g, p, cm_dir(g[0].yaw + ahead, a), want, CM_CLEAR + CM_EARLY)); }
     // the early look never brings it nearer than CM_MIN where the draw's own room allows that
-    kept := room >= CM_MIN;
+    kept := room >= CM_MIN; if kept && a <= CM_STEEP { low_kept = true; }
     if room < CM_MIN { room = lo(cm_room(g, p, dir, want, CM_CLEAR), CM_MIN); }
     // short of CM_MIN costs CM_SHORT times as much: she must not fill the view; by the boss, rising
     // costs double, but not where it is what keeps CM_MIN
-    c := (want - room) + hi(0, CM_MIN - room) * CM_SHORT + (a - base) * (ifx kept then rise_cost else CM_RISE_COST) + (ifx now < 0 then 0.0f32 else abs(a - now) * CM_STAY);
+    c := (want - room) + hi(0, CM_MIN - room) * CM_SHORT + (a - base) * (ifx kept then rise_cost else CM_RISE_COST) + (ifx low_kept then hi(0, a - CM_STEEP) * CM_STEEP_COST else 0.0f32) + (ifx now < 0 then 0.0f32 else abs(a - now) * CM_STAY);
     if c < cost { cost = c; best = CmAim.{rise = a, dist = room}; }
     if a < CM_RISE_MAX && a + CM_RISE_STEP > CM_RISE_MAX { a = CM_RISE_MAX; } else { a += CM_RISE_STEP; }
   }
@@ -231,6 +243,10 @@ cm_step :: (g: [] SpGame, dt: f32) {
   c := g[0].cam[..];
   over := g_big_ahead(g, g[0].px, g[0].pz, sin(g[0].yaw), cos(g[0].yaw));
   cut := !c[0].ready || dist2(c[0].x, c[0].z, g[0].px, g[0].pz) > CM_CUT;
+  foot := cm_foot_goal(g);
+  if cut { c[0].foot = foot; c[0].foot_v = 0; }
+  else { f := [1] f32.[c[0].foot_v]; c[0].foot = cm_ease(c[0].foot, f[..], foot, dt, CM_FOOT_TIME); c[0].foot_v = f[0]; }
+  c[0].ready = true; c[0].x = g[0].px; c[0].z = g[0].pz;   // cm_pivot follows the eased height from here
   if cut { c[0].over = over; c[0].over_v = 0; }
   else { v := [1] f32.[c[0].over_v]; c[0].over = cm_ease(c[0].over, v[..], over, dt, CM_RISE_TIME); c[0].over_v = v[0]; }
   // how fast she turns, eased, for the look ahead

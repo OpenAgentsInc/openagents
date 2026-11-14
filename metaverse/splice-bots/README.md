@@ -196,6 +196,7 @@ Every camera timing and distance is a constant at the top of `camera.coax`:
 | `CM_OUT_TIME` | 0.45 s | Backing out once a wall lets go |
 | `CM_IN_TIME` | 0.12 s | Coming in before a wall |
 | `CM_LOOK_AHEAD` | 0.3 s | How far ahead of her turning the boom looks for room |
+| `CM_FOOT_TIME` | 0.15 s | The spring on the height it follows: a jump stays steady, a landing on a panel or a ramp settles instead of popping |
 | `CM_CUT` | 6 m | A jump further than this in a step is a cut: the camera starts where it should be |
 | `CM_MIN` | 2.6 m | The nearest the eye comes to her head while any way out has room |
 | `CM_ZOOM_NEAR` | 3 m | The nearest the wheel brings the eye |
@@ -204,6 +205,7 @@ Every camera timing and distance is a constant at the top of `camera.coax`:
 | `CM_CLEAR` | 0.3 m | What the eye keeps from a wall or a body |
 | `CM_EARLY` | 0.6 m | How much wider the step looks, so the boom moves before the eye meets anything |
 | `CM_RISE_MAX` | 1.55 rad | The steepest the boom swings up to find room |
+| `CM_STEEP`, `CM_STEEP_COST` | 0.8 rad, 6 | Past this angle each radian of rise costs 6 more where a lower angle keeps `CM_MIN`, so in a hallway it rises only as far as `CM_MIN` needs; it goes over her head only with her back to a wall |
 | `CM_OVER` | 0.75 rad | How far it swings up to see over a big body ahead |
 | `CM_HEAD` | 1.7 m | The boom's pivot, her head, over her feet |
 | `CM_FOV` | 0.82 rad | The field of view on foot |
