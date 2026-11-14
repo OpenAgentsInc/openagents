@@ -15,7 +15,10 @@ Starter :: struct {
 }
 na_copy :: (out:[]u8,text:string)->int {n:=ifx text.count<out.count then text.count else out.count;for i:0..<n {out[i]=text[i];}return n;}
 na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[0].dirty=true;}
+na_history_clear :: (s:[]Starter) {empty:ChatHistory;s[0].chats[0]=empty;}
 na_secrets_clear :: (s:[]Starter) {
+  for i:0..<s[0].email.count {s[0].email[i]=0;}s[0].email_n=0;
+  dm_value(s[0].dom[..],"login.email","");
   for i:0..<s[0].code.count {s[0].code[i]=0;}s[0].code_n=0;
   for i:0..<s[0].pending.count {s[0].pending[i]=0;}s[0].pending_n=0;
   for i:0..<s[0].inbox.count {s[0].inbox[i]=0;}
@@ -51,11 +54,11 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
   if failed {
     n:=ifx ok then jv_str(v,jv_get(v,0,"error"),s[0].note[..]) else -1;
     s[0].note_n=ifx n>0 then n else na_copy(s[0].note[..],"OpenAgents is unavailable. Check your connection and try again.");
-    if op==1 {s[0].page=0;}
+    if op==1 {s[0].page=0;na_history_clear(s);na_secrets_clear(s);}
     if op==4 {s[0].purpose=2;na_request(s,1,"");}return;
   }
   if op==1 {
-    if ok && jv_bool(v,jv_get(v,0,"loggedIn")) {if s[0].purpose==2 {s[0].purpose=0;s[0].page=2;}else {na_list(s);}}else {s[0].page=0;s[0].chats[0].n=0;na_secrets_clear(s);}return;
+    if ok && jv_bool(v,jv_get(v,0,"loggedIn")) {if s[0].purpose==2 {s[0].purpose=0;s[0].page=2;}else {na_list(s);}}else {s[0].page=0;na_history_clear(s);na_secrets_clear(s);}return;
   }
   if op==2 {
     n:=ifx ok then jv_str(v,jv_get(v,0,"pending"),s[0].pending[..]) else -1;
@@ -64,13 +67,13 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
     dm_value(s[0].dom[..],"login.code","");dm_focus(s[0].dom[..],"login.code");return;
   }
   if op==3 {
-    if ok && jv_bool(v,jv_get(v,0,"loggedIn")) {na_secrets_clear(s);na_list(s);}
+    if ok && jv_bool(v,jv_get(v,0,"loggedIn")) {na_secrets_clear(s);na_history_clear(s);na_list(s);}
     else {na_note(s,"The code was not accepted. Try again.");}return;
   }
-  if op==5 {na_secrets_clear(s);s[0].chats[0].n=0;s[0].page=0;na_note(s,"");return;}
+  if op==5 {na_secrets_clear(s);na_history_clear(s);s[0].page=0;na_note(s,"");return;}
   if op==6 || op==7 {n:=ifx ok then jv_str(v,jv_get(v,0,"message"),s[0].note[..]) else -1;s[0].note_n=ifx n>0 then n else 0;return;}
   if op==4 {
-    if status==401 {s[0].page=0;na_secrets_clear(s);na_note(s,"Log in again to see your chats.");return;}
+    if status==401 {na_history_clear(s);s[0].page=0;na_secrets_clear(s);na_note(s,"Log in again to see your chats.");return;}
     if status!=200 {na_note(s,ifx status==403 then "This account cannot access these saved chats." else "Your chats could not be loaded. Refresh to try again.");return;}
     s[0].chats[0]=chh_read(raw);
     if !s[0].chats[0].ok {na_note(s,"The chat service returned an unreadable list. Refresh to try again.");return;}
@@ -95,6 +98,14 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
   na_reply(s[..],1,0,"{\"loggedIn\":true}",false);#assert s[0].flight==0 && s[0].page==2;
   na_list(s[..]);na_reply(s[..],4,0,"{}",true);
   na_reply(s[..],1,0,"{\"loggedIn\":false}",false);#assert s[0].page==0 && s[0].flight==0;
+}
+#test "expired sessions and a new login erase all prior account history" {
+  s:[1]Starter;s[0].page=2;s[0].chats[0].n=1;s[0].chats[0].items[0].title[0]='X';s[0].email[0]='a';s[0].email_n=1;
+  na_list(s[..]);na_reply(s[..],4,401,"{}",false);
+  #assert s[0].page==0 && s[0].chats[0].n==0 && s[0].chats[0].items[0].title[0]==0 && s[0].email_n==0 && s[0].email[0]==0;
+  s[0].chats[0].n=1;s[0].chats[0].items[0].title[0]='Y';s[0].flight=3;
+  na_reply(s[..],3,0,"{\"loggedIn\":true}",false);
+  #assert s[0].page==2 && s[0].flight==4 && s[0].chats[0].n==0 && s[0].chats[0].items[0].title[0]==0;
 }
 st_done :: (s:[]Starter) #export_c #effects(all) {s[0].action=0;for i:0..<s[0].out_n {s[0].outbox[i]=0;}s[0].out_n=0;}
 st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
