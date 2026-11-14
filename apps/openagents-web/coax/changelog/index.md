@@ -62,6 +62,17 @@ Commit: [`09101c58f972b76c8fcdd6f9315d1026b6a95837`](https://github.com/OpenAgen
   suites with it (`suites --mutate-changed BASE`), and
   `coax/remote/mutation-sweep.sh` sweeps every `#authority` file nightly on
   the build pool into one tracking issue, blocking nothing.
+- Follow-up 2026-11-14 (#13582): `coax mutate --native` runs each mutant's
+  checks as native code before the evaluator. The checks and what they reach
+  are written to C once with every mutation site behind a run-time switch,
+  compiled once, and run as one process a mutant, each check within ten times
+  its unmutated ticks. Native code never decides a verdict: the evaluator
+  confirms each native kill with the one check it names and runs its whole
+  schedule for the rest, so the report is byte for byte the one without the
+  flag. Without a C compiler, or for checks that can't be written as C, the
+  run says so and continues as before. `coax checks-c` now lists every
+  refusal the selected checks reach, with a count by kind, instead of
+  stopping at the first. See [docs/native-mutants.md](docs/native-mutants.md).
 
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 
