@@ -153,6 +153,8 @@ feed passes the fresh-install deduplication check. See the
 Build 1081 packages the completed shared mono HUD work from
 [issue 13580](https://github.com/OpenAgentsInc/openagents/issues/13580).
 Its upload was started before work on navigation, without waiting for Apple.
+It is **VALID / IN_BETA_TESTING**, verified in **Owner**; see the
+[release record](../../docs/verification/2026-11-14-native-mono-1081.json).
 
 Build 1082 adopts T3 Code mobile's history/detail structure with our shared
 HUD controls. On a phone, the searchable history pane slides into the
@@ -160,6 +162,9 @@ conversation; on regular widths it stays beside it. Computer conversations
 are grouped by host, followed by saved account chats. New chat chooses its
 computer or account before opening the composer. Settings and Worlds live
 in the history footer, and model/effort choices stay by the composer.
+1082 is **VALID / IN_BETA_TESTING**, verified in **Owner**. Its generation-1
+feed matches the archived resources and passes the live fresh-install check.
+See the [release record](../../docs/verification/2026-11-14-native-navigation-1082.json).
 Opening history dismisses the keyboard and pauses transcript polling.
 Switching chats preserves sixteen drafts in memory; unresolved commands
 cannot be replaced. Existing desktop and world-agent presentation remains

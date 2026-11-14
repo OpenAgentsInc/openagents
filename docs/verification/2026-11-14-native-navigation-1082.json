@@ -1,0 +1,111 @@
+{
+  "release": {
+    "build": 1082,
+    "bundle": "com.openagents.app",
+    "version": "1.0.0",
+    "runtime": "24aac0f832944da03a0f511fb3e476251baa262fa43a743a00a52f3e90a18cc0",
+    "source_commit": "cbfb03f09490c93ef2ffe2b94742ec4098352c57",
+    "ipa_bytes": 18116666,
+    "ipa_sha256": "7f73ce290131cdc8b9bad7901a86855eb008fec5efb051ac573a104f57686ece",
+    "codesign": "deep/strict passed",
+    "native_links": "archive and exported IPA: 4 producers, 0 missing",
+    "portable_files": 20,
+    "bundled_world_packs": 0,
+    "recorded_at": "2026-11-14T17:28:01.969540+00:00",
+    "upload": "altool completed successfully; upload exit 0",
+    "apple_state": "VALID",
+    "source_tag": "openagents-ios-1082",
+    "source_issue": 13580,
+    "world_producers": {
+      "everglade2": "ce82d1086659535bb971f18d69d7658a9a29cd6f5f97f73711befc6c7ed5edc5",
+      "myrealm": "61ae59f4b00e20e198f2befc44fcfdb3aa95959f25144dbea83f41555b4ff18c",
+      "splice-bots": "179388b81b5dc84b349b32dd3c4b7c31c2b7589ee7396141d32c819856c26b71",
+      "everglade": "48208ef47e47b23040121384dfc7068b9137a6aef2a37e540bc16d9fad676f0f"
+    },
+    "framework_versions": {
+      "breez_sdk_sparkFFI.framework": "1",
+      "MadeRealmRuntime.framework": "1",
+      "EvergladeForestRuntime.framework": "1",
+      "EvergladeRuntime.framework": "1",
+      "SpliceBotsRuntime.framework": "1"
+    },
+    "internal_beta_state": "IN_BETA_TESTING",
+    "verified_group": "Owner",
+    "verified_at": "2026-11-14T17:31:38.550356+00:00"
+  },
+  "t3_reference": {
+    "checkout": "/Users/christopherdavid/work/projects/repos/t3code",
+    "commit": "f313d0a6cb843551fb60e57a454a71e71a3a8c04",
+    "files": [
+      "apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx",
+      "apps/mobile/src/features/layout/workspace/WorkspaceThreadSidebar.tsx",
+      "apps/mobile/src/features/layout/workspace/WorkspaceSidebarColumn.tsx",
+      "apps/mobile/src/features/layout/workspace/WorkspaceListHeader.tsx",
+      "apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx",
+      "apps/mobile/src/features/threads/ThreadHeader.tsx",
+      "apps/mobile/src/lib/layout.ts"
+    ],
+    "adaption": "T3 phone history/detail stack, searchable grouped threads, compact header and composer-local choices, presented with the existing shared mono HUD controls. Regular layouts reserve a sidebar column."
+  },
+  "behavior": [
+    "Shared kit sidebar replaces the account/computer button stack. Search remains above the scrolling history; Worlds and Settings remain below it.",
+    "Existing environment catalog/ListSessions/ReadSession and account-history codecs; one serialized HTTP slot. No new execution or authentication protocol.",
+    "History browsing pauses conversation polling without replacing command IDs; selections behind read-only requests are deferred. Unresolved mutations prevent switching conversations.",
+    "512 cached computer sessions, up to 96 visible rows divided among groups, cached and server pagination, sixteen in-memory conversation drafts. Search resets paging and covers loaded titles/host names.",
+    "The shared native composer remains attached across computer/account changes. Main\u2019s existing model and effort logic stays by the composer. Update/build feedback appears inside Settings.",
+    "The optional installed workspace event keeps the existing desktop and world-agent presentation available.",
+    "World producers and device shaders retain exact 1080 inputs through 1081; all four immutable inventories and public assets are preserved."
+  ],
+  "verification": {
+    "coax": {
+      "baseline_app_checks": 510,
+      "baseline_failed": 0,
+      "history_checks_after_paging": 13,
+      "settings_feedback_checks": 1,
+      "text_host_checks": 38,
+      "scope": "Remote oa-build hosts; passing unchanged checks were not repeated. Later UI-only changes used focused checks. Normal pre-push gates also passed."
+    },
+    "native_navigation": {
+      "passed": 4,
+      "failed": 0,
+      "result_bundle": "/tmp/oa-ios1082-navigation-final.xcresult",
+      "coverage": "Actual generated program, single-line search, host/account switching, draft retention, fixed model/effort choices, settings, 100-session pagination and composer domain attachment."
+    },
+    "native_baseline": {
+      "passed": 8,
+      "failed": 0,
+      "result_bundle": "/tmp/oa-ios1082-navigation-fixed.xcresult",
+      "coverage": "NativeProgram, Markdown, and compact transcript/tool/status checks. The initial navigation failure exposed the cross-domain composer attachment and was fixed and requalified above."
+    },
+    "account_chat": {
+      "passed": 1,
+      "failed": 0,
+      "result_bundle": "/tmp/oa-ios1082-chat.xcresult",
+      "coverage": "Installed email code flow, send, copy, Markdown, keyboard dismissal, account history refresh, relaunch/reopen, multiline composer and pinch resistance. Independent local HTTP oracle; no real provider calls."
+    },
+    "fresh_install": {
+      "passed": 1,
+      "failed": 0,
+      "result_bundle": "/tmp/oa-ios1082-dedup.xcresult",
+      "coverage": "Fresh simulator install of the tested SDK binary with exact archived portable resources, live signed feed, manual check, relaunch and second check. No Update ready prompt; only highwater.cnu exists and equals the public envelope."
+    },
+    "distribution": {
+      "endpoints": 2,
+      "objects": 20,
+      "generation": 1,
+      "runtime": "24aac0f832944da03a0f511fb3e476251baa262fa43a743a00a52f3e90a18cc0",
+      "all_hashes_match": true
+    },
+    "symbols": "All five dSYMs kept by UUID in the private symbol bucket.",
+    "gates": [
+      "tools-check",
+      "wire-check",
+      "components-check",
+      "layer-check",
+      "native stock-style check",
+      "normal pre-push: stale snapshot, Agent, parity, state-keep, agent-reference, generated WGSL and Coax checks"
+    ],
+    "screenshots": "Three inspected images kept beside the private archive; result bundle attachments retained."
+  },
+  "owner_followup": "Install 1082 and confirm real Mac/CoderOS history and edge swipe on the physical phone; recorded in NEEDS_OWNER.md."
+}
