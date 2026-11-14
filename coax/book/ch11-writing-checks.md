@@ -840,6 +840,25 @@ coax mutate lib/compiler/checker.coax --unit lib/compiler/checker/types.coax
 isn't one. The units' inventories add up to the default inventory. Its shard
 records name the unit, so they merge only with records of the same unit.
 
+Before any mutant runs, `coax mutate` runs every check once, unmutated, to
+learn each check's steps and the procedures it enters. Under a large root
+this baseline is most of the time: under `rules/srd/battle.coax` it takes
+about 14 minutes, whether the unit has 21 mutants or 188. To pay it once,
+name several units in one run:
+
+```shell
+coax mutate rules/srd/battle.coax --library \
+  --unit rules/srd/zone-admission.coax --unit rules/srd/zone-lifetime.coax
+```
+
+The baseline runs once, then each unit's mutants. Each unit prints the
+report a run of that unit alone prints, in the order you named them, and
+the exit status is 1 if any unit has a survivor. A unit named twice is
+refused. `--killers FILE` reads one file for every unit and records all of
+their killers in it. `--shard`, `--merge`, `--mutation-trace` and
+`--evidence` each describe one mutant set, so they take one `--unit`; with
+several, `coax mutate` refuses to run.
+
 `--killers FILE` keeps the work of the last run. After a complete run (not
 a shard) it writes, for each killed mutant, the check that killed it; the
 next run tries that check first. A mutant is named by its unit, procedure,
@@ -865,6 +884,52 @@ same for every `--jobs` and shard split.
 Use `coax mutate split.coax --mutation-reference` to force the full runner.
 `--mutation-stats` reports check counts and fallback facts;
 `--mutation-trace` reports the first killing check for each mutant.
+
+`--mutation-stats` also prints, before any mutant runs, what the baseline
+cost and whether every mutant runs the full schedule, and why:
+
+```text
+mutation-baseline 817.8 s, 15329730477 steps over 641 checks; full schedule for every mutant: a check can keep a view into storage across checks; a check can allocate strings
+```
+
+The steps are summed over every check. The reasons are the conditions
+above: `--mutation-reference`, a view kept across checks, string
+allocation, and compile-time storage the baseline changed. A selective run
+says `selective schedule` instead. A merge runs no baseline and prints no
+such line.
+
+### Mutating what a change touched
+
+`--changed REF` keeps only the procedures whose text differs from `REF`, a
+Git commit (`origin/main` when you give none). Every check still runs:
+
+```shell
+coax mutate rules/srd/battle.coax --library --changed origin/main
+```
+
+A procedure's text is its whole declaration, compared with comments removed
+and runs of blanks folded to one, so a comment or a layout change is no
+change. A declaration is matched by its unit, its name and its place among
+that name's declarations; a unit that `REF` doesn't have is all changed. The
+report says how many procedures the change left in scope:
+
+```text
+mutation scope: changed since origin/main (1 of 3 procedures; every check retained)
+```
+
+A change with nothing to mutate passes and says so. A changed procedure that
+no check reaches still fails. `--changed` works with `--unit`, `--killers`,
+`--shard` and `--merge`, and a `REF` that isn't a commit is refused before
+the baseline runs.
+
+This is how `#authority` code is gated. A change to an `#authority` unit
+mutates the procedures it touched, and a survivor there stops it:
+`coax/remote/check.sh` runs `coax/web/tool.sh suites --mutate-changed BASE`,
+which mutates each touched suite that loads an `#authority` file. The full
+sweep of every `#authority` file runs nightly on the build pool
+(`coax/remote/mutation-sweep.sh`), keeps one issue current with its
+survivors, and blocks nothing. A unit's first pass still goes to zero
+survivors or marked equivalents.
 
 ### Running mutants in parallel
 
@@ -965,12 +1030,14 @@ $ coax mutate split.coax
 Marked survivors are counted separately and don't fail the run. Use the
 marker sparingly: it covers every mutant on its line, so a real survivor
 on the same line would be hidden too. And it's a claim made by a person,
-not something the compiler proves, so it deserves a reviewer's eye.
+not something the compiler proves, so it deserves a reviewer's eye: give
+the reason on the line above, in words a reviewer can check.
 
-The other way, often the better one, is to take the hint. An equivalent
-mutant usually means the code says something twice. Here `people <= 0`
-adds nothing that `i < 0 || i >= people` doesn't already cover, so we
-can delete it:
+The other way is to take the hint, when the rewrite is also the clearer
+code. An equivalent mutant often means the code says something twice. Don't
+reshape shipped code only so that a mutant stops being equivalent; mark it
+instead. Here `people <= 0` adds nothing that `i < 0 || i >= people`
+doesn't already cover, so deleting it is clearer anyway:
 
 ```jai
   if total < 0 || i < 0 || i >= people { return -1; }

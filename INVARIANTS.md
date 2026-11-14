@@ -32,6 +32,23 @@ budget; earlier software submission/total-runtime failures remain retained.
 The product's submission fence is unchanged. See
 `docs/verification/host-contract-2026-11-05/linux-world-recovery.md`.
 
+## A change to `#authority` code passes its changed procedures' mutants
+
+Owner decision, 2026-11-14 (#13583). A change that touches an `#authority`
+unit passes `coax mutate --changed BASE` on each suite that loads one: every
+check runs, and every mutant of a procedure whose text changed since BASE is
+killed or marked equivalent with a reason; a changed procedure no check
+reaches fails. `coax/remote/check.sh` (branch, since, and only with a BASE,
+which the pre-push passes) runs it through `suites --mutate-changed`. The
+full sweep of every `#authority` file is a nightly report
+(`coax/remote/mutation-sweep.sh`, one tracking issue) and blocks nothing; a
+unit's first pass still goes to zero survivors or marked equivalents. Shipped
+code is not rewritten only so a mutant stops being equivalent. Checks:
+`coax/tests/mutation_scope.py` (`--changed`: comment-only edits, one changed
+body, new units, `--unit`, a bad REF), `coax/tests/mutation_parallel.py`
+(several `--unit` equal their own runs), and the checks in
+`coax/web/suites.coax` and `coax/web/mutation-sweep.coax`.
+
 ## Host transport keeps concrete asynchronous owners across every effect
 
 The v1 browser's `pack-stream.coax` and `private-pack.coax` bound public/private

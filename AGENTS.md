@@ -74,9 +74,16 @@ Character Create's frozen save keys. Do not add new app-private source copies.
   certificate verification and record encryption only; every protocol
   decision above the socket (WebSocket, Nostr, NIP-42, NIP-44) stays in Coax.
 - **Check first.** Write `#test`/`#forall` checks before the code. Use
-  `#authority;` for any file that decides money, admission or policy, and
-  run `coax mutate` on it with zero survivors. Don't mark mutants equivalent
-  to make a run pass.
+  `#authority;` for any file that decides money, admission or policy. Its
+  first `coax mutate` pass goes to zero survivors or marked equivalents.
+  After that, a change mutates the procedures it touched
+  (`coax mutate FILE --changed origin/main`), and a survivor there blocks
+  the change (`coax/remote/check.sh` runs it on every touched `#authority`
+  suite). The whole sweep runs nightly on the build pool
+  (`coax/remote/mutation-sweep.sh`), keeps one issue of survivors current
+  and blocks nothing. Mark an equivalent mutant (`// mutant: equivalent`)
+  with a reason a reviewer can check; don't mark one to make a run pass,
+  and don't rewrite shipped code only to suit the tool (#13583).
 - **No GitHub Actions.** Checks run locally or on our own machines.
 - **Shared OpenAgents files** (owner, 2026-11-04). App-owned persistent files
   live under `~/.openagents/`, including future desktop apps. The Metaverse Engine uses
@@ -158,6 +165,8 @@ coax/bin/coax test FILE --list              # name them, run none
 coax/bin/coax test FILE --only SUBSTR       # just the checks whose name contains SUBSTR (skips #authority coverage)
 coax/bin/coax mutate FILE                   # are the checks sharp? parallel within the machine's build-worker budget
 coax/bin/coax mutate FILE --root-only       # entry-source sites; all baseline checks still run
+coax/bin/coax mutate FILE --changed         # only procedures changed since origin/main (or --changed REF): the gate
+coax/bin/coax mutate FILE --unit A --unit B # several units, one baseline, one report each
 coax/bin/coax mutate FILE --jobs N          # cap the workers (or COAX_MUTATE_JOBS=N, COAX_JOBS=N)
 coax/bin/coax status --jobs                 # the shared build-worker budget and who holds it
 coax/bin/coax serve status                  # the resident compiler c, check and test run in (it starts itself; COAX_SERVE=0 turns it off)
@@ -231,7 +240,8 @@ compare against its recorded reference answer, or run it on the GPU path.
 For model code, the Elephant slices check one linear layer, one
 full-attention layer, the embedding and a readout chunk with the original
 weights in seconds. `coax mutate` gives the same report for any `--jobs` or
-shard split, so zero survivors stays the rule; name the units you touched with
+shard split; on a change, mutate what it touched (`--changed`, or several
+`--unit` in one run, which share one baseline); name the units you touched with
 `--only` and leave the full `psionic/check.sh` for release.
 
 **Check duration and progress.**

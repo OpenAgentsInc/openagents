@@ -47,6 +47,21 @@ Commit: [`09101c58f972b76c8fcdd6f9315d1026b6a95837`](https://github.com/OpenAgen
   exports. The policy is `lib/compiler/script-profile.coax`; the contract is
   [script-profile.md](script-profile.md). The compiler is still not a
   sandbox: a server checks the module it is handed.
+- Follow-up 2026-11-14 (#13581): `coax mutate` takes several `--unit` in one
+  run. The unmutated checks run once, then each unit's mutants, and each unit
+  prints the report its own run prints; the exit status is 1 if any unit has
+  a survivor. `--killers` keeps every unit's killers in one file; `--shard`,
+  `--merge`, `--mutation-trace` and `--evidence` take one unit and are
+  refused with several. Four units under `rules/srd/battle.coax` take one
+  baseline instead of four. `--mutation-stats` prints the baseline's wall
+  time and steps, and why every mutant runs the full schedule when it does.
+- Follow-up 2026-11-14 (#13583): `coax mutate --changed [REF]` mutates only
+  the procedures whose text differs from `REF` (default `origin/main`),
+  ignoring comments and layout; every check still runs, and a change with
+  nothing to mutate passes. `coax/remote/check.sh` gates touched `#authority`
+  suites with it (`suites --mutate-changed BASE`), and
+  `coax/remote/mutation-sweep.sh` sweeps every `#authority` file nightly on
+  the build pool into one tracking issue, blocking nothing.
 
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 
