@@ -1371,7 +1371,7 @@ sb_restored_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   n = ui_title_mid(out, n, "THE MISSION", w * 0.5, h * 0.38, 40 * k, paper);
   n = ui_mid(out, n, "The Emperor is gone. Nobody has told the other planets,", w * 0.5, h * 0.47, 13 * k, paper);
   n = ui_mid(out, n, "or the other communities on Earth. Someone has to.", w * 0.5, h * 0.51, 13 * k, paper);
-  n = ui_mid(out, n, "Sniper is fuelled. The map is open.", w * 0.5, h * 0.57, 11 * k, GLOW());
+  n = ui_mid(out, n, "The rover is fuelled. The map is open.", w * 0.5, h * 0.57, 11 * k, GLOW());
   n = ui_button(g, out, n, "RESTART", w * 0.5 - 130 * k, h * 0.66, w * 0.5 + 130 * k, h * 0.66 + 48 * k, 1, -2);
   return n;
 }
