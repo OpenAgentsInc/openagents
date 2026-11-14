@@ -50,7 +50,7 @@
 T_WALK :: 5.6f32; T_TURN :: 2.5f32; T_LOOK :: 0.0032f32; T_RADIUS :: 0.45f32;
 T_HEAT_PIECE :: 25.0f32; T_HEAT_MAX :: 100.0f32; T_HEAT_COOL :: 5.0f32; T_COOL_RANGE :: 6.0f32;
 T_HEARTS :: 3; T_HIT_COOL :: 1.0f32;
-T_NOTICE :: 5.0f32; T_NOTICE_HEAT :: 0.07f32; T_RAIDER_SPEED :: 3.5f32; T_RAIDER_WANDER :: 1.2f32; T_GIVE_UP :: 15.0f32; T_RAIDER_REACH :: 0.95f32;
+T_NOTICE :: 5.0f32; T_NOTICE_HEAT :: 0.07f32; T_RAIDER_SPEED :: 3.5f32; T_RAIDER_WANDER :: 1.2f32; T_GIVE_UP :: 15.0f32;
 T_USE_RANGE :: 4.5f32;        // the rover prompt's range
 T_PICK_RANGE :: 2.2f32; T_SAVE_RANGE :: 5.0f32;
 T_CARD_TIME :: 2.4f32;        // the Digger's card interval
@@ -854,7 +854,7 @@ g_look :: (g: [] SpGame, dx: f32, dy: f32) {
 }
 g_lock :: (g: [] SpGame, status: int) { d_lock(g, status); g[0].look_free = status != 1; }
 
-// A moment of the run to stand in (the page's message 610, "N"): for stills and checks of each beat.
+// A moment of the run to stand in (the page's message 640, "N"): for stills and checks of each beat.
 g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); bl_stage(g, n); mr_stage(g, n); }
 g_stage_set :: (g: [] SpGame, n: int) {
   g_reset(g); g[0].mode = M_PLAY;
@@ -1163,6 +1163,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       if ik >= 0 {
       kit_robot(buf, p, f, 0.8, 100 + i * 5, t3(0.92, 0.93, 0.96), HEAT(), ifx g[0].fhost[i] then t3(1.0, 0.22, 0.12) else t3(0.95, 0.95, 1.0), t3(0.20, 0.20, 0.28), ifx g[0].fhost[i] then 0.7 else 0.0f32);
       g_thing_end(g, p, ik); }
+      sb_sense_ring(g, buf, p, i);   // how far it senses her, before she commits (splice-battle.coax)
     }
   }
   // the editor's shown foe: its route as dots on the ground, its notice as a ring round it (?edit)

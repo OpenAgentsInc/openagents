@@ -1,6 +1,6 @@
 # Splice Bots slice 1 from the title to SCENE RESTORED, through the host interface, on the world
 # `splice-bots` as the jam build bakes it in (splice-export WORLD_DIR). Walking between beats is stood in
-# for by msg 611 (place, centimetres) and 613 (at a weak point). Facts: 0 mode, 1 zone, 2 phase,
+# for by msg 611 (place, centimetres) and 643 (at a weak point). Facts: 0 mode, 1 zone, 2 phase,
 # 3 hearts, 4 Heat, 5 robot pieces, 6 cells, 7 rubble gone, 8 boss wall gone, 9 boss down, 11.. a part
 # or card held (11 arm, 12 treads, 13 battery, 14 MOVE, 15 DRILL, 16 DRILL+, 17 the core).
 size 1280 800
@@ -147,23 +147,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -171,23 +159,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -195,23 +171,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -219,23 +183,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -243,23 +195,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -267,23 +207,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -291,23 +219,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -315,23 +231,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -339,23 +243,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -363,23 +255,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -387,23 +267,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -411,23 +279,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -435,23 +291,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -459,23 +303,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -483,23 +315,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -507,23 +327,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -531,23 +339,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -555,23 +351,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -579,23 +363,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -603,23 +375,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -627,23 +387,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -651,23 +399,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -675,23 +411,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -699,23 +423,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -723,23 +435,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -747,23 +447,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -771,23 +459,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -795,23 +471,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -819,23 +483,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
-key f
-msg 611 150 -35400
-frames 10 20
-key 1
-key 2
-key 3
-key 4
-msg 613 0
-key f
-msg 613 1
-key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -843,11 +495,11 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
+msg 643 2
 key f
 msg 611 150 -35400
 frames 10 20
@@ -855,11 +507,359 @@ key 1
 key 2
 key 3
 key 4
-msg 613 0
+msg 643 0
 key f
-msg 613 1
+msg 643 1
 key f
-msg 613 2
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
+key f
+msg 611 150 -35400
+frames 10 20
+key 1
+key 2
+key 3
+key 4
+msg 643 0
+key f
+msg 643 1
+key f
+msg 643 2
 key f
 expect 9 1
 expect 2 3

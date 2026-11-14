@@ -165,7 +165,7 @@ void AAethyrGame::BeginPlay()
 		aethyr_frame(State, Vertices.GetData(), Uniforms.GetData(), 1280, 800, 1, 0.02f, 0);
 		const FString Text = FString::FromInt(Stage);
 		const FTCHARToUTF8 Body(*Text);
-		aethyr_message(State, 610, Body.Get(), Body.Length());
+		aethyr_message(State, 640, Body.Get(), Body.Length());
 	}
 	// -AethyrPlay: the exported run, played on this world so its things, sounds and screen are the game's own
 	if (FParse::Param(Args, TEXT("AethyrPlay")))

@@ -144,7 +144,7 @@ walk and jump in `splice-game.coax`):
 | `FL_M_WALK` | 5.6 m/s | her one speed on foot: no sneak (Shift is off) and no sprint |
 | `FL_M_BOARD`, `FL_M_BOARD_FAST` | 7 m/s, 22 m/s | the hoverboard's casual and fast speeds (the `board` table); double-tap Q is super fast |
 
-The movement demo plays her keys on the game's own clock: `coaxial.send(610, "5")`, then
+The movement demo plays her keys on the game's own clock: `coaxial.send(640, "5")`, then
 `coaxial.send(615, "")` puts her before the solar rows. She walks, jumps onto the panels and
 stops, reverses off, then double jumps forward and lands on a panel. A check plays the
 same demo.
@@ -168,7 +168,7 @@ drawn. The angle and length ease on the engine's spring, and it also looks where
 it moves before it meets anything. Nothing else moves it: standing still, it stands still. The eye
 is never further out than the room the boom has that frame.
 
-Stills 30 to 33 (`coaxial.send(610, "N")`) are the camera's: the farm, Digger drilling the rock
+Stills 30 to 33 (`coaxial.send(640, "N")`) are the camera's: the farm, Digger drilling the rock
 wall, the board at speed, the drill mech following.
 
 The drill mech is drawn at 0.95 (about twice her height; it was 1.25) and follows at her left, its
@@ -364,12 +364,18 @@ The tunables, in one table at the top of `splice-battle.coax` (seconds unless na
 | `SB_GAP` | 0.45 | About two reaction times between two impacts, so even overlapping foes never trap her |
 | `SB_BLOW_START`, `SB_BLOW_REACH`, `SB_BLOW_HALF` | 1.7 m, 1.6 m, 0.75 rad | It starts just outside its reach, so backing off during the wind-up always works |
 | `SB_JUMP_CLEAR` | 0.45 m | A single jump (about 1.1 m) clears it for most of its arc |
+| `SB_TAIL_W` | 0.7 m | The tail hits within this of its line (its drawn width plus her body), so the hit is where the tail is seen and the swing passes her in about 0.12 s: a jump started in the third of a second before it reaches her clears it |
 | `SB_CLAW_R`, `SB_CHARGE_W` | 2.4 m, 2.4 m | The hit areas the warnings draw |
 | `SB_CUE` | 0.9 | HIT or DODGED shows long enough to read, short enough to clear before the next wind-up |
 
 How far an Imperial robot senses her: its plan's `notice` (the `plans` table) plus `T_NOTICE_HEAT`
 (0.07 m) for each point of Heat (`splice-game.coax`), halved while she sneaks (`stance_noticed`). With
 two banned pieces (Heat 50) a 5 m notice is 8.5 m. `T_NOTICE` (5 m) is the notice of a foe with no plan.
+
+An Imperial robot is the tougher foe (3 hits to the raiders' 2, and it senses by Heat), so it shows that
+distance before she commits: while it is calm and she is within `SB_SENSE_SHOW` (6 m) of the line, a ring
+of short posts stands on the ground at the real distance, wider with Heat and narrower while she sneaks.
+She can read it, sneak to shrink it, or route round it. Raiders show no ring.
 
 ## Sound
 

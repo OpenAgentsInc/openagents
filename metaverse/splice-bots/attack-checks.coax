@@ -129,3 +129,38 @@ ack_blow :: (g: [] SpGame, i: int, s: f32) { for k: 0..<cast(int) (s / 0.02 + 0.
   xs: [FOES + 2] f32; zs: [FOES + 2] f32;
   #assert sb_threats(g[..], xs[..], zs[..]) == 1 && xs[0] == 1.4;
 }
+#test "a calm Imperial shows how far it senses her before she commits: the real distance, wider with Heat; raiders show none" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 8);
+  i := F_RAIDERS; g[0].fout[i] = false; g[0].fhost[i] = false; g[0].fflee[i] = false; g[0].fpose[i] = 0;
+  see := mp_notice(sc_plan(g[0].c[..], i, g_phase(g[..])));
+  #assert see > 0;
+  r := d_noticed(g[..], see);
+  g[0].px = g[0].fx[i] + r + 3; g[0].pz = g[0].fz[i];
+  #assert sb_sense_r(g[..], i) == r;
+  g[0].heat += 40; #assert sb_sense_r(g[..], i) > r;   // more Heat: it senses her from further
+  g[0].px = g[0].fx[i] + 60; #assert sb_sense_r(g[..], i) == 0;   // far off: no ring
+  g[0].px = g[0].fx[i] + r; g[0].fhost[i] = true; #assert sb_sense_r(g[..], i) == 0;   // it has seen her: the fight is on
+  #assert sb_sense_r(g[..], 0) == 0;   // a raider shows none
+}
+#test "the sweep clip's spot: standing still the tail finds her; one jump a quarter second before it reaches her clears it; a jump far too early lands in it" #steps 400000000 {
+  g := [1] SpGame.[SpGame.{}];
+  for k: 0..<3 {
+    g[0] = SpGame.{}; g_stage(g[..], 10); sb_sweep_spot(g[..]);
+    hearts := g[0].hearts; dodged := false; struck := false; jumped := false; held := 1.0f32;
+    lead := ifx k == 1 then 0.6f32 else 1.9f32;   // radians of swing before it reaches her: at about 2.4 rad/s, 0.25 s or 0.8 s
+    for i: 0..<500 {
+      cue := g[0].ak[0].cue_t; t := g[0].bt[..];
+      ph := tg_at(SB_SWEEP, g[0].boss_t - sb_sweep_from()).phase;
+      gap := atan2(g[0].px - t[0].dino_x, g[0].pz - t[0].dino_z) - sb_arm_angle(g[..]);
+      while gap < 0 { gap += TAU; } while gap > TAU { gap -= TAU; }
+      if k > 0 && !jumped && (ph == TG_LOCK || ph == TG_HIT) && gap < lead { jumped = true; held = 0; }
+      _ = g_key(g[..], ' ', jumped && held < 0.4); held += 0.02;   // held through the rise (a tap only hops: feel.coax FL_CUT)
+      g_step(g[..], 0.02);
+      if g[0].ak[0].cue_t > cue { if g[0].ak[0].cue_hit { struck = true; } else { dodged = true; } }
+      if ph == TG_REST { break; }
+    }
+    if k != 1 { #assert struck && g[0].hearts < hearts; }
+    if k == 1 { #assert jumped && dodged && !struck && g[0].hearts == hearts; }
+  }
+}

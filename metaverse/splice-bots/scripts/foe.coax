@@ -2,13 +2,13 @@
 // reaction that splice-game.coax's g_foes_step has for a foe with no script, written against the script
 // API. A foe's plan (data, #13466) still says where it walks when calm, how far it sees and what it does
 // on seeing someone; this is the part a plan cannot say: when it starts, when it gives up and when it
-// strikes. The numbers are Splice's own (splice-game.coax T_NOTICE_HEAT, T_GIVE_UP, T_RAIDER_REACH).
+// strikes. The numbers are Splice's own (splice-game.coax T_NOTICE_HEAT, T_GIVE_UP; splice-battle.coax SB_BLOW_START).
 // A library: the two scripts beside it load it, and each declares its own state.
 
 FOE_PLAYER :: 1;                 // the player's id in a Splice frame (scripts.coax SPS_PLAYER)
 FOE_NOTICE_HEAT :: 0.07f32;      // metres further a foe sees for each point of heat
 FOE_GIVE_UP :: 15.0f32;          // metres past which a chase or a flight ends
-FOE_REACH :: 0.95f32;            // metres within which it strikes
+FOE_REACH :: 1.7f32;             // metres within which it starts a blow (splice-battle.coax SB_BLOW_START)
 FOE_CALL :: 1;                   // the event that calls the others (scripts.coax SPS_CALL)
 FOE_ON_CALL :: 1; FOE_ON_FLEE :: 2;   // a plan's ON (metaverse-engine/ai/npc-plan.coax NPO_*)
 

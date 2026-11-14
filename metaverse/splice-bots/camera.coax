@@ -238,7 +238,7 @@ cm_too_near :: (g: [] SpGame) -> bool {
   return length(sub(g_camera(g).eye, cm_pivot(g))) < CM_TOO_NEAR;
 }
 
-// The camera's own stills (g_stage, the page's message 610): 30 the solar farm on foot among the
+// The camera's own stills (g_stage, the page's message 640): 30 the solar farm on foot among the
 // pieces, 31 Digger drilling the rock wall, 32 the hoverboard at speed, 33 the drill mech following.
 cm_stage :: (g: [] SpGame, n: int) {
   if n < 30 || n > 33 { return; }

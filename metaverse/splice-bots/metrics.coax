@@ -4,7 +4,7 @@
 // board's three speeds as lanes as long as each goes in a second; Digger's sensor range and an Imperial
 // robot's sensing at each Heat as rings round a spot; and Sniper, the drill mech and the boss as grey
 // blocks of their size, beside a post of her height. Not on the player's route: the dev stage 40 puts
-// you there (coaxial.send(610, "40") on the dev server). Nothing she can reach from the plain sees it.
+// you there (coaxial.send(640, "40") on the dev server). Nothing she can reach from the plain sees it.
 //   coax/bin/coax test metaverse/splice-bots/splice-game.coax
 
 MR_X :: 600.0f32; MR_Z :: -1000.0f32;   // m: the room's middle, past the plain's north-east corner and the camera's 400 m

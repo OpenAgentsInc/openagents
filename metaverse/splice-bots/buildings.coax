@@ -77,7 +77,7 @@ bl_village :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
 }
 
-// Stills of the buildings (g_stage, the page's message 610): 40 the garage's entry from the desert at
+// Stills of the buildings (g_stage, the page's message 640): 40 the garage's entry from the desert at
 // dusk, 41 its shell from the desert a quarter way round, 42 the village's printed wall by day.
 bl_stage :: (g: [] SpGame, n: int) {
   if n < 40 || n > 42 { return; }

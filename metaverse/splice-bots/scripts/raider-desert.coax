@@ -12,7 +12,7 @@ PLAYER :: 1;                     // the player's id in a Splice frame (scripts.c
 DESERT_X0 :: -60.0f32; DESERT_X1 :: 60.0f32; DESERT_Z0 :: 20.0f32; DESERT_Z1 :: 100.0f32;   // metres
 NOTICE_HEAT :: 0.07f32;          // metres further a raider sees for each point of heat (world 0)
 GIVE_UP :: 15.0f32;              // metres past which a chase or a flight ends
-REACH :: 0.95f32;                // metres within which it strikes
+REACH :: 1.7f32;                 // metres within which it starts a blow (splice-battle.coax SB_BLOW_START)
 CALL :: 1;                       // the event that calls the others (scripts.coax SPS_CALL)
 ON_CALL :: 1; ON_FLEE :: 2; ON_IGNORE :: 3;
 

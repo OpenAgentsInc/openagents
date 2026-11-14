@@ -102,7 +102,7 @@ sy_foe :: (w: [] Why, g: [] SpGame, pg: SyPage, i: int) {
   sy_view(w, g, pg, v3(g[0].fx[i], ground_y(g, g[0].fx[i], g[0].fz[i]) + 1, g[0].fz[i]));
   sy_live(w, g, pg, ifx i < F_RAIDERS then TK_RAIDER else TK_IMPERIAL, true);
   why_skip(w, WHY_ASSET);
-  why_pass(w, WHY_COLLIDER);       // touched by distance (T_RAIDER_REACH, T_HIT_RANGE), not by a World shape
+  why_pass(w, WHY_COLLIDER);       // touched by distance (SB_BLOW_REACH, T_HIT_RANGE), not by a World shape
   sy_system(w, g, pg);
 }
 // The rubble or the boss wall: a World box that stops blocking, and stops being drawn, once the Digger opens it.

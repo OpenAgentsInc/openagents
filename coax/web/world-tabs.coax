@@ -8,7 +8,7 @@
 // stands at, 1 outside edits carried out, 2 placed things, 3 things arriving, and from 100 the
 // run's own facts. What it checks, a line each, then holds or fails:
 //   1. both tabs open the world's dev lane (?edit) and stand at its revision;
-//   2. tab B is put mid-run (message 610, --stage), and its run facts are noted;
+//   2. tab B is put mid-run (message 640, --stage), and its run facts are noted;
 //   3. tab A sends a batch (a place); A and B both stand one revision on, B within the limit of
 //      the answer, with one more placed thing, and a thing arriving (it animates in);
 //   4. an outside write (this tool's own POST): both tabs take it within the limit;
@@ -94,7 +94,7 @@ wt_run :: (t: [] Wt, ca: [] Cdp, cb: [] Cdp, origin: string, path: string, world
   if !wt_check(t, a0 >= 0 && b0 >= 0 && rev >= 0 && wt_fact(t, cb, 0) == rev, "1. both tabs open the world's dev lane and stand at its revision") { return; }
   placed := wt_fact(t, cb, 2);
   // B mid-run
-  sn := wt_put(t[0].js[..], 0, "coaxial.send(610, '"); sn = wt_put_int(t[0].js[..], sn, stage); sn = wt_put(t[0].js[..], sn, "'), 1");
+  sn := wt_put(t[0].js[..], 0, "coaxial.send(640, '"); sn = wt_put_int(t[0].js[..], sn, stage); sn = wt_put(t[0].js[..], sn, "'), 1");
   sent := wt_int(cb, cast(string) t[0].js[0..<sn]);
   proc_sleep(300);
   mode := wt_fact(t, cb, 100); zone := wt_fact(t, cb, 101); phase := wt_fact(t, cb, 102); hearts := wt_fact(t, cb, 103);

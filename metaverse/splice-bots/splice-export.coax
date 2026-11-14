@@ -248,7 +248,7 @@ tool_main :: () -> int #export_c #effects(all) {
   sx_tune(j, "T_WALK", T_WALK); sx_tune(j, "T_TURN", T_TURN); sx_tune(j, "T_LOOK", T_LOOK); sx_tune(j, "T_RADIUS", T_RADIUS);
   sx_tune(j, "T_HEAT_PIECE", T_HEAT_PIECE); sx_tune(j, "T_HEAT_MAX", T_HEAT_MAX); sx_tune(j, "T_HEAT_COOL", T_HEAT_COOL); sx_tune(j, "T_COOL_RANGE", T_COOL_RANGE);
   sx_tune(j, "T_HEARTS", cast(f32) T_HEARTS); sx_tune(j, "T_HIT_COOL", T_HIT_COOL);
-  sx_tune(j, "T_NOTICE", T_NOTICE); sx_tune(j, "T_NOTICE_HEAT", T_NOTICE_HEAT); sx_tune(j, "T_RAIDER_SPEED", T_RAIDER_SPEED); sx_tune(j, "T_RAIDER_WANDER", T_RAIDER_WANDER); sx_tune(j, "T_GIVE_UP", T_GIVE_UP); sx_tune(j, "T_RAIDER_REACH", T_RAIDER_REACH);
+  sx_tune(j, "T_NOTICE", T_NOTICE); sx_tune(j, "T_NOTICE_HEAT", T_NOTICE_HEAT); sx_tune(j, "T_RAIDER_SPEED", T_RAIDER_SPEED); sx_tune(j, "T_RAIDER_WANDER", T_RAIDER_WANDER); sx_tune(j, "T_GIVE_UP", T_GIVE_UP); sx_tune(j, "SB_BLOW_REACH", SB_BLOW_REACH);
   sx_tune(j, "T_USE_RANGE", T_USE_RANGE); sx_tune(j, "T_PICK_RANGE", T_PICK_RANGE); sx_tune(j, "T_SAVE_RANGE", T_SAVE_RANGE); sx_tune(j, "T_CARD_TIME", T_CARD_TIME);
   sx_tune(j, "T_MOVE_SHORT", T_MOVE_SHORT); sx_tune(j, "T_MOVE_MAX", T_MOVE_MAX); sx_tune(j, "T_DRILL_REACH", T_DRILL_REACH); sx_tune(j, "T_BAD_CUT", T_BAD_CUT);
   sx_tune(j, "T_SWEEP_EVERY", T_SWEEP_EVERY); sx_tune(j, "T_SWEEP_TIME", T_SWEEP_TIME); sx_tune(j, "T_SWEEP_WARN", T_SWEEP_WARN); sx_tune(j, "T_ARM", T_ARM);

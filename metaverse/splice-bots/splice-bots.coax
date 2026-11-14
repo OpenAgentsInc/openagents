@@ -303,7 +303,9 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
     if s[0].page[0].actor > 0 { spv_frame_foe(g, s[0].vp[..], s[0].vview, s[0].page[0].actor - 1); }
     return;
   }
-  if kind == 610 && s.count > 0 && body.count > 0 {   // a moment of the game to stand in: "0" to "10"
+  // A host's own messages (600 to 615, coax/web/host.js: 610 is its GPU timing, 612 the network, 613 the GPU)
+  // never move the run: the realm's own are 611 and 640 to 643.
+  if kind == 640 && s.count > 0 && body.count > 0 {   // a moment of the game to stand in: "0" to "10"
     n := 0;
     for i: 0..<body.count { d := cast(int) body[i] - 48; if d >= 0 && d <= 9 { n = n * 10 + d; } }
     s[0].started = true; g_stage(s[0].game[..], n);
@@ -311,16 +313,16 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
   }
   if kind == 615 && s.count > 0 && s[0].started && !s[0].gallery { fl_demo_start(s[0].game[..]); return; }   // her movement demo (feel.coax)
   // A scripted host places the smuggler (metaverse-engine/export/unreal/aethyr_script.c, the Unreal bridge's
-  // run): 611 "x z" in centimetres, 612 "i" beside foe i, 613 "i" at the boss's weak point i.
-  if kind >= 611 && kind <= 613 && s.count > 0 && s[0].started && !s[0].gallery {
+  // run): 611 "x z" in centimetres, 642 "i" beside foe i, 643 "i" at the boss's weak point i.
+  if (kind == 611 || kind == 642 || kind == 643) && s.count > 0 && s[0].started && !s[0].gallery {
     g := s[0].game[..];
     if kind == 611 {   // "x z [deg [pitch]]": a third number faces that way, a fourth tilts the look (degrees)
       g[0].px = cast(f32) sp_whole(body, 0) / 100; g[0].pz = cast(f32) sp_whole(body, 1) / 100;
       if ct_parts(body, ' ') > 2 { g[0].yaw = sl_rad(sp_whole(body, 2)); g[0].pitch = cast(f32) sp_whole(body, 3) * PI / 180; }
     }
     i := sp_whole(body, 0);
-    if kind == 612 && i >= 0 && i < FOES { g[0].px = g[0].fx[i] + 1; g[0].pz = g[0].fz[i]; }
-    if kind == 613 && i >= 0 && i < 3 { w := weak_at(g, i); g[0].px = w.x; g[0].pz = w.z + 0.1; g_collide(g); }
+    if kind == 642 && i >= 0 && i < FOES { g[0].px = g[0].fx[i] + 1; g[0].pz = g[0].fz[i]; }
+    if kind == 643 && i >= 0 && i < 3 { w := weak_at(g, i); g[0].px = w.x; g[0].pz = w.z + 0.1; g_collide(g); }
     return;
   }
   if kind != 600 || s.count < 1 { return; }
@@ -331,7 +333,7 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
   s[0].edit = sp_has(body, "?edit") || sp_has(body, "&edit");
   if s[0].follow == 0 { s[0].follow = 1; }
   if s[0].dev && s[0].fixture == 0 && (sp_has(body, "?layer=fixture") || sp_has(body, "&layer=fixture")) { s[0].fixture = 1; }
-  // the dev server's page may start at a moment of the run, ?stage=N (as message 610 does), for a clip
+  // the dev server's page may start at a moment of the run, ?stage=N (as message 640 does), for a clip
   if s[0].dev { for i: 0..<body.count - 6 { if cast(string) body[i..<i + 6] == "stage=" { s[0].started = true; g_stage(s[0].game[..], sp_whole(cast(string) body[i + 6..<body.count], 0)); } } }
   if s[0].dev && sp_has(body, "&rubble") {   // and with the rubble back, Digger beside her before it
     g := s[0].game[..]; g[0].rubble_gone = false; g[0].phase = PH_DAY; g[0].px = 1.5; g[0].pz = g[0].at.rubble_z + 9; g[0].yaw = PI; g_bot_home(g);
@@ -348,8 +350,8 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
       n := 0; at := i + st.count;
       while at < body.count && body[at] >= '0' && body[at] <= '9' { n = n * 10 + cast(int) (body[at] - '0'); at += 1; }
       if n > 0 { s[0].started = true; g_stage(s[0].game[..], n); }
-      // "stage=10n": in the boss's chamber, 5 m north of it inside its tail's reach, with the whole wind-up of its next sweep ahead
-      if at < body.count && body[at] == 'n' { g := s[0].game[..]; g[0].px = g[0].at.boss_x; g[0].pz = g[0].at.boss_z - 5; g[0].yaw = 0; g[0].boss_t = 0; }
+      // "stage=10n": in the boss's chamber, inside its tail's reach with a whole sweep ahead (sb_sweep_spot)
+      if at < body.count && body[at] == 'n' { sb_sweep_spot(s[0].game[..]); }
       return;
     }
     target := "scene=";
@@ -615,6 +617,14 @@ splice_place_words :: () -> int #export_c #effects(all) { return SD_PLACE_WORDS;
 }
 #test "a scripted host's numbers parse, signs and all, and a missing one is 0" {
   #assert sp_whole("-1250 300", 0) == -1250 && sp_whole("-1250 300", 1) == 300 && sp_whole("7", 0) == 7 && sp_whole("7", 1) == 0 && sp_whole("", 0) == 0;
+}
+#test "the host's GPU timing and network messages never restage the run; the realm's own 640 does" #steps 60000000 {
+  s := [1] Splice.[Splice.{}];
+  s[0].started = true; g_reset(s[0].game[..]); x := s[0].game[0].px; z := s[0].game[0].pz; wall := s[0].game[0].wall_gone;
+  splice_message(s[..], 610, "1234 5678"); splice_message(s[..], 612, "1"); splice_message(s[..], 613, "gpu_vendor=apple");
+  #assert s[0].game[0].px == x && s[0].game[0].pz == z && s[0].game[0].wall_gone == wall && !wall;
+  splice_message(s[..], 640, "10");
+  #assert s[0].game[0].wall_gone;
 }
 #test "two digit scenes parse, and an unknown scene is the first; a release opens the game" {
   s := [1] Splice.[Splice.{}];

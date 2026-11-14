@@ -73,6 +73,7 @@ SB_GAP :: 0.45f32;          // s: the least time from one impact's end to the ne
 SB_BLOW_START :: 1.7f32;    // m: a foe after her starts its blow this near
 SB_BLOW_REACH :: 1.6f32; SB_BLOW_HALF :: 0.75f32;   // m and radians to each side: the blow's wedge
 SB_JUMP_CLEAR :: 0.45f32;   // m: feet this high clear the tail sweep
+SB_TAIL_W :: 0.7f32;        // m to each side of the tail's line that it hits her: its drawn width plus her body
 SB_CLAW_R :: 2.4f32;        // m: the claw's ring round where it locked on Sniper
 SB_CHARGE_W :: 2.4f32;      // m: the charge's half width, its reach on her
 SB_CUE :: 0.9f32;           // s: HIT or DODGED shows over her
@@ -562,7 +563,12 @@ sb_boss_step :: (g: [] SpGame, dt: f32) {
   sb_dino_body(g);
 }
 sb_arm_angle :: (g: [] SpGame) -> f32 { return g[0].bt[0].dino_yaw + boss_arm(g) - 2.6; }
-sb_in_arc :: (cx: f32, cz: f32, a: f32, x: f32, z: f32) -> bool { return sb_in_wedge(cx, cz, a, 0.4, T_ARM, x, z); }
+// Whether (x, z) is where the tail is now: within SB_TAIL_W of its line from the hips out to T_ARM, the
+// width drawn plus her body, so the blow lands where the tail is seen and a jump only has to clear it as it passes.
+sb_in_arc :: (cx: f32, cz: f32, a: f32, x: f32, z: f32) -> bool {
+  rx := x - cx; rz := z - cz; along := rx * sin(a) + rz * cos(a); across := rx * cos(a) - rz * sin(a);
+  return along > 0 && along < T_ARM && abs(across) < SB_TAIL_W;
+}
 sb_in_wedge :: (cx: f32, cz: f32, yaw: f32, half: f32, r: f32, x: f32, z: f32) -> bool {
   diff := atan2(x - cx, z - cz) - yaw;
   while diff > PI { diff -= TAU; } while diff < -PI { diff += TAU; }
@@ -588,7 +594,7 @@ sb_sweep :: (g: [] SpGame, x: f32, z: f32, dt: f32) {
       if !g[0].ak[0].sweep_hit { sb_hurt(g, x, z); } g[0].ak[0].sweep_hit = true;
     }
     me := sb_body_at(g, sb_fielded(g));
-    if !t[0].swept && sb_in_arc(x, z, arm, me.x, me.z) { t[0].swept = true; _ := bb_strike(t[0].fight[..], 0, SB_SWEEP_HIT); t[0].hit_t = 0.9; t[0].hit_side = 0; t[0].hit_dmg = SB_SWEEP_HIT; }
+    if !t[0].swept && sb_in_wedge(x, z, arm, 0.4, T_ARM, me.x, me.z) { t[0].swept = true; _ := bb_strike(t[0].fight[..], 0, SB_SWEEP_HIT); t[0].hit_t = 0.9; t[0].hit_side = 0; t[0].hit_dmg = SB_SWEEP_HIT; }
   }
   if tg_ended(SB_SWEEP, a, b) >= 0 && g[0].ak[0].sweep_aim && !g[0].ak[0].sweep_hit { sb_cue(g, false, x, z); }
   if b >= tg_len(SB_SWEEP) { g[0].boss_t = 0; t[0].swept = false; }
@@ -903,6 +909,33 @@ sb_warns :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     n := tg_wedge(at.x, at.z, 0, PI, 2.2, 0.35, pts[..]); sb_marks(g, buf, p, pts[..], n, tg_at(SB_CARD, g[0].ak[0].card_t).phase == TG_LOCK);
   }
 }
+// A dev build's clip of the tail sweep (splice-bots.coax ?stage=10n, attack-checks.coax): the boss at home with
+// a whole sweep ahead, the drill mech 4 m south of it and held back (it never fights on its own), so the boss
+// stays, facing it; she stands 5 m west of it, in the tail's half circle, facing it.
+sb_sweep_spot :: (g: [] SpGame) {
+  t := g[0].bt[..]; sb_dino_home(g);
+  g[0].px = g[0].at.boss_x - 5; g[0].pz = g[0].at.boss_z; g[0].yaw = PI * 0.5; g[0].boss_t = 0;
+  t[0].mech_used = true; t[0].mech_core = true; t[0].mech_x = g[0].at.boss_x; t[0].mech_z = g[0].at.boss_z + 4; t[0].idle = -100000;
+}
+// An Imperial robot, the tougher foe, shows how far it senses her before she commits: while it is calm and
+// she is within SB_SENSE_SHOW m of that line, a ring of short posts on the ground at the real distance
+// (d_noticed: its plan's notice, more with Heat, half while she sneaks). Raiders show none.
+SB_SENSE_SHOW :: 6.0f32;
+sb_sense_r :: (g: [] SpGame, i: int) -> f32 {
+  if i < F_RAIDERS || g[0].fhost[i] || g[0].fflee[i] || g[0].fpose[i] == MP_SLEEP { return 0; }
+  see := mp_notice(sc_plan(g[0].c[..], i, g_phase(g)));
+  if see <= 0 { return 0; }
+  r := d_noticed(g, see);
+  return ifx dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]) < r + SB_SENSE_SHOW then r else 0.0f32;
+}
+sb_sense_ring :: (g: [] SpGame, buf: [] u32, p: [] Pen, i: int) {
+  r := sb_sense_r(g, i);
+  if r <= 0 { return; }
+  dots: [240] f32;
+  kit_pen(p, 179, MAT_GLOW, HEAT());
+  n := mp_ring(g[0].fx[i], g[0].fz[i], r, 0.9, dots[..]);
+  for k: 0..<n { block(buf, p, dots[k * 2], ground_y(g, dots[k * 2], dots[k * 2 + 1]) + 0.02, dots[k * 2 + 1], 0.06, 0.22, 0.06); }
+}
 // The raider mech: yellow, an orange eye while it hunts, grey once down; it bounds along as it runs.
 // On the drive (drive.coax) it is drawn while it is up, or near Sniper once down.
 sb_draw_rm :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
@@ -1050,6 +1083,9 @@ sb_attack_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
     }
     e := tg_edge(sp.x, sp.y, sp.ahead, q.w, q.h, 48 * k);
     if e[2] <= 0 { continue; }
+    // never on the top's compass, objective or boss bar (hud.coax hv_compass): below them on the edge it points from
+    top := ro_safe(q.w, q.h).y0 + 130 * k;
+    e[1] = hi(e[1], top);
     // a chevron pointing out toward it, on a paper disc, with a mark
     dx := e[0] - q.w * 0.5; dy := e[1] - q.h * 0.5; l := hi(0.001, sqrt(dx * dx + dy * dy)); dx /= l; dy /= l;
     tx := e[0] + dx * 16 * k; ty := e[1] + dy * 16 * k; bx := e[0] - dx * 4 * k; by := e[1] - dy * 4 * k;

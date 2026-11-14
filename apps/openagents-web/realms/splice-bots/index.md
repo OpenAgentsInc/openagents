@@ -121,7 +121,7 @@ The code is in `metaverse/splice-bots/`, and `metaverse/splice-bots/README.md` d
 - `metaverse-engine/kit/machines.coax`, `metaverse-engine/kit/land.coax`, `metaverse-engine/render/cel-mesh.coax`: the engine's
   cel kits and mesh writers.
 
-A page script can stand the game at one beat with `coaxial.send(610, "N")`, N from 0 (title) to
+A page script can stand the game at one beat with `coaxial.send(640, "N")`, N from 0 (title) to
 33, for stills and checks.
 
 The fonts are in `realms/splice/assets/fonts/` with their Open Font Licences.
