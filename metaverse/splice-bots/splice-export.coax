@@ -317,7 +317,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   // ---- the rules: the game as C behind the native host interface, the scripted run, and the
   // lines that run prints when the C is built and run here (what any host must print too)
-  work: [4194304] u8;
+  work: [8388608] u8;   // the rules' C: 4.2 MB on 2026-11-13
   if !fs_mkdir(fs_join(dir, "rules", path[..])) { print("splice-export: could not make rules/\n"); return 1; }
   if !sx_emit("metaverse/splice-bots/splice-bots.coax", dir, "splice.c", "splice.h", work[..]) || !sx_emit("apps/openagents-web/animelab-style.coax", dir, "animelab-style.c", "Animelab-style.h", work[..]) {
     print("splice-export: the Coax compiler did not emit the rules' C (run from the repository root)\n"); return 1;
