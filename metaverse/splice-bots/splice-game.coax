@@ -476,7 +476,11 @@ g_bot :: (g: [] SpGame, dt: f32) {
     if round { g[0].dr[0].rt_back = true; }
     if g[0].dr[0].rt_back && !round && dist2(g[0].bot_x, g[0].bot_z, h.x, h.z) < 12 { g[0].dr[0].rt_back = false; }
     if g[0].dr[0].rt_back { _ := d_apart_step(g, tx, tz, T_FOLLOW * 1.6, dt); }
-    else if d > 0.15 { left := d_apart_step(g, tx, tz, T_FOLLOW * cm_follow_pace(g, g[0].bot_x, g[0].bot_z, T_BOT_R, clamp(d / 1.5, 0.15, 1.6)), dt); if left > 12 { g[0].bot_x = tx; g[0].bot_z = tz; } }
+    else if d > 0.15 {
+      // beside her at her own speed when she sprints or rides (playtest 3), and from far back a dash, never a jump to her side
+      her := ifx g_riding(g) then abs(g[0].board[0].m.speed) else g[0].fl[0].speed;
+      _ := d_apart_step(g, tx, tz, hi(T_FOLLOW, her) * cm_follow_pace(g, g[0].bot_x, g[0].bot_z, T_BOT_R, clamp(d / 1.5, 0.15, 1.6)) + hi(0, d - 12) * 3, dt);
+    }
     q := cm_keep_off(g, g[0].bot_x, g[0].bot_z, T_BOT_R);
     if g[0].zone == Z_MINE { q = ff_push(q.x, q.z, T_BOT_R); }   // pushed off her, never into a line of the farm
     if g[0].zone == Z_MINE { q = sb_boss_off(g, q.x, q.z, T_BOT_R); }   // never in the boss's body or tail (splice-battle.coax)
@@ -1779,6 +1783,7 @@ sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', fa
   #assert sp_q(g[..]) && g_key(g[..], 'w', true);
   top := 0.0f32; for i: 0..<150 { g_step(g[..], 1.0f32 / 60); if g[0].board[0].m.speed > top { top = g[0].board[0].m.speed; } }
   #assert top > 15 && g[0].board[0].rush > 0.3 && g_camera(g[..]).fov > 0.85;
+  #assert g[0].bot && dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) < 3;   // Digger beside her at that speed (playtest 3)
   y0 := g[0].yaw; #assert g_key(g[..], 'd', true);
   for i: 0..<20 { g_step(g[..], 1.0f32 / 60); }
   #assert g[0].yaw < y0 && g[0].board[0].lean > 0.1;
