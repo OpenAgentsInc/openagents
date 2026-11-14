@@ -4747,9 +4747,11 @@ CREATE FUNCTION drops.list(pubkey text) RETURNS jsonb
 CREATE FUNCTION drops.may(pubkey text, admin boolean) RETURNS boolean
     LANGUAGE sql STABLE
     AS $_$
-  SELECT pubkey ~ '^[0-9a-f]{64}$' AND (admin
-    OR EXISTS (SELECT 1 FROM projects.docs d, jsonb_array_elements(d.doc->'members') m WHERE m->>'pubkey' = pubkey)
-    OR EXISTS (SELECT 1 FROM verse.accounts a WHERE a.npub = pubkey)) $_$;
+ SELECT pubkey ~ '^[0-9a-f]{64}$' AND (admin
+  OR EXISTS (SELECT 1 FROM projects.docs d, jsonb_array_elements(d.doc->'members') m WHERE m->>'pubkey' = pubkey)
+  OR EXISTS (SELECT 1 FROM verse.accounts a WHERE a.npub = pubkey)
+  OR EXISTS (SELECT 1 FROM drops.account_owners_v1 o JOIN auth.accounts a ON a.id=o.account JOIN access.creators c ON c.who=a.verse_account WHERE o.owner=pubkey))
+$_$;
 
 
 --
@@ -20703,6 +20705,17 @@ ALTER SEQUENCE chat.turns_id_seq OWNED BY chat.turns.id;
 
 
 --
+-- Name: account_owners_v1; Type: TABLE; Schema: drops; Owner: -
+--
+
+CREATE TABLE drops.account_owners_v1 (
+    account text NOT NULL,
+    owner text NOT NULL,
+    CONSTRAINT account_owners_v1_owner_check CHECK ((owner ~ '^[0-9a-f]{64}$'::text))
+);
+
+
+--
 -- Name: drops; Type: TABLE; Schema: drops; Owner: -
 --
 
@@ -24106,6 +24119,22 @@ ALTER TABLE ONLY chat.turns
 
 
 --
+-- Name: account_owners_v1 account_owners_v1_owner_key; Type: CONSTRAINT; Schema: drops; Owner: -
+--
+
+ALTER TABLE ONLY drops.account_owners_v1
+    ADD CONSTRAINT account_owners_v1_owner_key UNIQUE (owner);
+
+
+--
+-- Name: account_owners_v1 account_owners_v1_pkey; Type: CONSTRAINT; Schema: drops; Owner: -
+--
+
+ALTER TABLE ONLY drops.account_owners_v1
+    ADD CONSTRAINT account_owners_v1_pkey PRIMARY KEY (account);
+
+
+--
 -- Name: drafts drafts_pkey; Type: CONSTRAINT; Schema: drops; Owner: -
 --
 
@@ -26714,6 +26743,14 @@ ALTER TABLE ONLY chat.project_threads_v1
 
 ALTER TABLE ONLY chat.turns
     ADD CONSTRAINT turns_conv_fkey FOREIGN KEY (conv) REFERENCES chat.conversations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: account_owners_v1 account_owners_v1_account_fkey; Type: FK CONSTRAINT; Schema: drops; Owner: -
+--
+
+ALTER TABLE ONLY drops.account_owners_v1
+    ADD CONSTRAINT account_owners_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
 
 
 --
