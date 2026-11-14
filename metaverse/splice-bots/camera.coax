@@ -407,6 +407,8 @@ cm_dissolve :: (g: [] SpGame, buf: [] u32, from: int, to: int) {
 cm_tick :: (g: [] SpGame, dt: f32) {
   c := g[0].cam[..]; src := g_cam_src(g);
   if src != c[0].src && c[0].seen && length(sub(c[0].last.eye, g_camera_raw(g).eye)) < CM_BLEND_FAR { c[0].bl = 1; c[0].bl_from = c[0].last; }
+  // on foot with no change of camera, she was put somewhere new (a respawn, a restage): the boom cuts, so the blend does too
+  if src == c[0].src && src == 0 && c[0].ready && dist2(c[0].x, c[0].z, g[0].px, g[0].pz) > CM_CUT { c[0].bl = 0; }
   c[0].src = src; c[0].bl = hi(0, c[0].bl - dt / CM_BLEND); c[0].kick_t += dt;
   j := g[0].air[0];
   if j.landed && j.impact > CM_KICK_HARD && g[0].mode == M_PLAY { cm_kick(g, (j.impact - CM_KICK_HARD) * CM_KICK_LAND, false); }

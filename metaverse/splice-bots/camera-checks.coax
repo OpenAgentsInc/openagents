@@ -205,6 +205,12 @@ cc_farm :: (g: [] SpGame) { g_reset(g); _ := spw_shipped(g); g_begin(g); }
   #assert g_key(g[..], 'e', true) && g[0].mode == M_PLAY;
   g_step(g[..], 1.0f32 / 60);
   #assert g[0].cam[0].bl > 0.9 && length(sub(g_camera(g[..]).eye, was)) < 1;
+  // put somewhere new mid-blend (a respawn, a restage): the view cuts to her there, as the boom does
+  {
+    k := g[0]; k.px += 12; k.pz += 12; kg := [1] SpGame.[k];
+    g_step(kg[..], 1.0f32 / 60);
+    #assert kg[0].cam[0].bl == 0 && length(sub(g_camera(kg[..]).eye, g_camera_raw(kg[..]).eye)) < 0.2;
+  }
   most := 0.0f32; e0 := g_camera(g[..]).eye;
   for i: 0..<45 { g_step(g[..], 1.0f32 / 60); e := g_camera(g[..]).eye; most = hi(most, length(sub(e, e0))); e0 = e; cm_seen(g[..], g_camera(g[..])); }
   #assert g[0].cam[0].bl == 0 && most < 1;
