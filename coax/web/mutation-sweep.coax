@@ -3,7 +3,7 @@
 // mutates every procedure of every #authority file, reports, and blocks nothing:
 //   1. the work: `tool.sh suites --list --authority-units`, which puts each #authority file
 //      under one suite, the one whose #load closure reaching it is smallest
-//   2. each suite's files split into up to --parts parts; each part is one
+//   2. each suite's files split into one part per eight files, at most --parts; each part is one
 //      `coax mutate SUITE --unit A --unit B ... --killers K` (one baseline for all its files,
 //      #13581) on the build pool (coax/remote/remote.sh run: its hosts, slots and spend cap),
 //      at most --jobs at once; K is that part's killers file from the last night, which the
@@ -28,6 +28,7 @@
 MS_SUITES :: 1024;
 MS_UNITS :: 64;                // #authority files one part mutates
 MS_PARTS_MAX :: 16;            // parts a suite
+MS_PER_PART :: 8;              // files a part holds before a suite splits: each part repeats the baseline
 MS_JOBS :: 18;                 // parts at once: 6 hosts x 3 slots (remote.sh's defaults)
 MS_TEXT :: 4194304;            // the suite list, a part's output, the report
 MS_BODY :: 60000;              // a GitHub issue body holds 65,536 characters
@@ -240,11 +241,14 @@ tool_main :: () -> int #export_c #effects(all) {
   files := 0;
   for s: 0..<ns { files += suites[s].nunits; }
 
-  // 2. the parts: a suite's files k, k + P, k + 2P ... in part k (P = at most --parts, one a file at
-  // fewest), each part under MS_UNITS files
+  // 2. the parts: a suite's files k, k + P, k + 2P ... in part k. Every part pays the suite's
+  // baseline, so a part holds MS_PER_PART files or more: P is nunits / MS_PER_PART, rounded up,
+  // at most --parts (and more only to keep each part under MS_UNITS files).
   parts: [MS_SUITES * MS_PARTS_MAX] MsPart; np := 0;
   for s: 0..<ns {
-    p := ifx suites[s].nunits < parts_max then suites[s].nunits else parts_max;
+    p := (suites[s].nunits + MS_PER_PART - 1) / MS_PER_PART;
+    if p > parts_max { p = parts_max; }
+    if p < 1 { p = 1; }
     while (suites[s].nunits + p - 1) / p > MS_UNITS { p += 1; }
     for k: 0..<p { if np < parts.count { parts[np] = MsPart.{suite = s, part = k, parts = p, h = -1}; np += 1; } }
   }

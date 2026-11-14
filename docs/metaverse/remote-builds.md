@@ -997,9 +997,12 @@ compiler there and runs `coax/web/tool.sh mutation-sweep`
 1. `suites --list --authority-units` puts each `#authority` file under one
    suite: the one whose `#load` closure reaching it is smallest, so its
    baseline is the cheapest.
-2. Each suite's files are split into up to four parts. A part is one
-   `coax mutate SUITE --unit A --unit B ...` on a host through `remote.sh
-   run`, so its files share one baseline. At most six parts run at once.
+2. Each suite's files are split into one part per eight files, at most
+   four. A part is one `coax mutate SUITE --unit A --unit B ...` on a host
+   through `remote.sh run`, so its files share one baseline; every part
+   repeats it, which is why a suite splits only when it has many files. At
+   most six parts run at once (`--jobs`). The first run, on 2026-11-14,
+   took parts of 3 to 12 minutes for the web app's suites.
 3. Each part reads and rewrites its killers file in the checkout's
    untracked `mutation-sweep/killers/`, which `remote.sh` sends with the
    snapshot and brings back, so the next night tries last night's killers
