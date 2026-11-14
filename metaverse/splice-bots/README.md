@@ -565,7 +565,11 @@ the compass's ROVER all follow it, and the rover at the farm's charger is gone f
 collider, on the drive and parked, is the rover train's own footprint (the `pieces` row, about 18 m
 from the cab's nose to the last car's ramp, 2.85 m to its roofs), the same as at the farm: she,
 Digger and the camera stop at every car, the back ones too (#13552). The `Rover` landmark, where the
-drive parks it, stands clear of the mine mouth's lane and walls for a train that long. Driving
+drive parks it, stands clear of the mine mouth's lane and walls for a train that long. It parks in the garage yard, open sky from the mine mouth's face out to the desert between the
+ends of the mouth's walls (`GA_YARD_X`, `GA_YARD_IN`, garage.coax): the outer shell's slope is cut
+round it, drawn and solid alike (`ga_shell_y`, `pl_push`), with printed cut faces toward the yard, and
+the camera meets the shell where it is drawn. A check samples every shell triangle and finds none of it
+over the yard below the train's roof plus `BL_YARD_CLEAR` (6 m). Driving
 into the garage yard turns the day to dusk. Tables saved before the `portals`, `starts` and `beats` tables get them empty,
 so such a world keeps its older opening in the dome village (#13505).
 

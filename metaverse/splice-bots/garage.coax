@@ -61,7 +61,40 @@ ga_lab_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
 }
 ga_back :: (g: [] SpGame) -> f32 { return g[0].at.gar_r + GA_BAY; }
 // The foot of the rim's slope outside, where the desert starts.
-ga_foot :: (g: [] SpGame) -> f32 { return ga_back(g) + GA_BACK + 6 + GA_BERM; }
+ga_foot :: (g: [] SpGame) -> f32 { return ga_shell_in(g) + GA_BERM; }
+// The yard outside the mine mouth, where Sniper parks (#13552): open sky from the mine mouth's face out
+// to the desert, between the ends of the mouth's walls (g_layout). The outer shell's slope is cut round
+// it, drawn and solid alike, so the parked rover train stands in the open and the camera has room.
+GA_YARD_X :: 44.0f32;          // m: half its width, to the ends of the mine mouth's walls
+GA_YARD_IN :: 38.0f32;         // m: from the back wall out to the mine mouth's face, where the yard starts
+ga_shell_in :: (g: [] SpGame) -> f32 { return ga_back(g) + GA_BACK + 6; }   // the rim's edge, where the shell starts down
+ga_yard_z :: (g: [] SpGame) -> f32 { return ga_back(g) + GA_YARD_IN; }      // the mine mouth's face, out from the field's middle
+// Whether (x, z) is in the yard, kept r in from its sides.
+ga_in_yard :: (g: [] SpGame, x: f32, z: f32, r: f32) -> bool { return z - g[0].at.gar_z > ga_yard_z(g) && abs(x - g[0].at.gar_x) < GA_YARD_X - r; }
+// The yard's half angle round the entry's middle on the circle r out from the field's middle: where the
+// circle crosses the mouth's face, or nearer the desert a side (0 short of the face).
+ga_yard_cut :: (g: [] SpGame, r: f32) -> f32 {
+  f := ga_yard_z(g);
+  if r <= f { return 0; }
+  a := atan2(sqrt(r * r - f * f), f);
+  if r > GA_YARD_X { a = lo(a, atan2(GA_YARD_X, sqrt(r * r - GA_YARD_X * GA_YARD_X))); }
+  return a;
+}
+// The outer shell's top at (x, z) as it is drawn (buildings.coax bl_course): a course's tread from the
+// rim's edge down to the desert, 0 off it, in the entry's cut, over the yard, and over the hallway and
+// the lab (the mountain's, with their own walls and roofs).
+ga_shell_y :: (g: [] SpGame, x: f32, z: f32) -> f32 {
+  dx := x - g[0].at.gar_x; dz := z - g[0].at.gar_z; d := sqrt(dx * dx + dz * dz); ro := ga_shell_in(g);
+  if d < ro || d >= ga_foot(g) || ga_in_yard(g, x, z, 0) { return 0; }
+  if dz < 1 - ga_back(g) && abs(dx) < GA_LAB_X + 8 { return 0; }
+  if abs(atan2(dx, dz) - ga_angle(GA_ENTRY)) < GA_DOOR / ro { return 0; }
+  run := GA_BERM / cast(f32) BL_COURSES;
+  return GA_RIM - GA_RIM / cast(f32) BL_COURSES * cast(f32) clamp_i(cast(int) floor((d - ro) / run), 0, BL_COURSES - 1);
+}
+// The highest the shell stands within r of (x, z), for the camera: its top there and r to each side.
+ga_shell_near :: (g: [] SpGame, x: f32, z: f32, r: f32) -> f32 {
+  return hi(hi(ga_shell_y(g, x, z), hi(ga_shell_y(g, x - r, z), ga_shell_y(g, x + r, z))), hi(ga_shell_y(g, x, z - r), ga_shell_y(g, x, z + r)));
+}
 // Whether (x, z) is in the mountain: the hallway past the back wall, or the old-world lab past it.
 // Indoors, lit white whatever the time of day.
 ga_in_lab :: (g: [] SpGame, x: f32, z: f32) -> bool {
@@ -255,7 +288,7 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     kit_stencil(buf, p, ga_frame(g, a, rf + GA_SET - 0.45, 15.8), ga_name(k, name[..]), 5.4, 0.12, 216, GA_LETTER());
     // the rim: its walk, a post with a lamp at each pier, and the long slope down to the desert outside
     // at the entry (A1) the rim and its slope are cut open down to the desert: the way in you see from outside
-    ro := rb + GA_BACK + 6; cut := ifx k == GA_ENTRY then GA_DOOR / ro else 0.0f32;
+    ro := ga_shell_in(g); cut := ifx k == GA_ENTRY then GA_DOOR / ro else 0.0f32;
     kit_pen(p, 217, MAT_WORLD, kit_tint(0.36, 0.36, 0.37));
     if cut > 0 { ga_strip(g, buf, p, a0, a - cut, rf + GA_SET, GA_RIM, ro, GA_RIM, 2, false); ga_strip(g, buf, p, a + cut, a1, rf + GA_SET, GA_RIM, ro, GA_RIM, 2, false); }
     else { ga_strip(g, buf, p, a0, a1, rf + GA_SET, GA_RIM, ro, GA_RIM, 3, false); }

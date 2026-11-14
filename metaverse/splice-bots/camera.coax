@@ -120,6 +120,7 @@ cm_blocked :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32, roof: f32) -> boo
   if g[0].zone == Z_VILLAGE && g_inside(g, x, z) { return true; }
   q := ga_push(g, x, z, pad); if q.x != x || q.z != z { return true; }
   if g[0].zone == Z_MINE { q = ga_lab_push(g, x, z, pad); if q.x != x || q.z != z { return true; } }   // the lab's round wall
+  if g[0].zone == Z_MINE && y < ga_shell_near(g, x, z, pad) + pad { return true; }   // the garage's outer shell as drawn, cut round the yard
   if sl_inside_at(g, x, y, z, pad) && !(g[0].cam[0].ghost && cm_rover_has(g, x, y, z, pad)) { return true; }
   return cm_body_at(g, x, y, z, pad);
 }
@@ -209,6 +210,7 @@ cm_open :: (g: [] SpGame, from: Point, dir: Point, far: f32, pad: f32) -> bool {
   if g[0].zone == Z_MINE {
     d := dist2(mx, mz, g[0].at.gar_x, g[0].at.gar_z);
     if d + r >= ga_back(g) - 0.5 && d - r <= ga_back(g) + GA_BACK * 2 + 0.5 { return false; }   // near the garage's back wall
+    if d + r >= ga_shell_in(g) - 0.5 && d - r <= ga_foot(g) + 0.5 && !(mz - g[0].at.gar_z - r > ga_yard_z(g) && abs(mx - g[0].at.gar_x) + r < GA_YARD_X) { return false; }   // near its outer shell, unless all in the yard
     t := g[0].bt[0];
     if g[0].bot && cm_flat_gap(from.x, from.z, ex, ez, g[0].bot_x, g[0].bot_z) < T_BOT_R + pad { return false; }
     if cm_flat_gap(from.x, from.z, ex, ez, t.mech_x, t.mech_z) < SB_MECH_R + pad { return false; }

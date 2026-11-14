@@ -46,9 +46,17 @@ pl_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
   if z < -350 { for i: 0..<PL_PEAKS { q = land_mound_push(pl_peak(i), q.x, q.z, r); } }   // the peaks are north of the garage
   dx := q.x - g[0].at.gar_x; dz := q.z - g[0].at.gar_z; d := sqrt(dx * dx + dz * dz);
   foot := ga_foot(g) + r;
-  mouth := dz > ga_back(g) - 1 && abs(dx) < 44;   // the mine mouth, the scrap room and the tunnel: their walls (g_layout)
+  // the yard outside the mine mouth is open (the shell is cut round it, garage.coax): a body in it stays r
+  // in from the cut's sides; behind the mouth's face, the mouth, the scrap room and the tunnel have their walls (g_layout)
+  yard := dz > ga_yard_z(g);
+  mouth := dz > ga_back(g) - 1 && abs(dx) < (ifx yard then GA_YARD_X - r else GA_YARD_X);
   lab := dz < 1 - ga_back(g) && abs(dx) < GA_LAB_X + 8;   // the hallway and the lab: theirs (ga_layout), between the peaks
-  if d > ga_back(g) + GA_BACK * 2 + r && d < foot && !mouth && !lab { q = v3(g[0].at.gar_x + dx / d * foot, 0, g[0].at.gar_z + dz / d * foot); }
+  if d > ga_back(g) + GA_BACK * 2 + r && d < foot && !mouth && !lab {
+    // out by the nearer way: back into the yard past a cut side, or down the slope to its foot
+    side := abs(dx) - (GA_YARD_X - r);
+    if yard && side < foot - d { q = v3(g[0].at.gar_x + (ifx dx < 0 then r - GA_YARD_X else GA_YARD_X - r), 0, q.z); }
+    else { q = v3(g[0].at.gar_x + dx / d * foot, 0, g[0].at.gar_z + dz / d * foot); }
+  }
   return v3(clamp(q.x, PL_X0 + r, PL_X1 - r), 0, clamp(q.z, PL_Z0 + r, PL_Z1 - r));
 }
 // Past the plain's edge: what the stakes mark.

@@ -7,6 +7,7 @@
 
 BL_COURSES :: 6;            // the outer shell's courses, from the rim down to the desert
 BL_BEAD :: 0.35f32;         // m: how far a course's waist stands out of its riser
+BL_YARD_CLEAR :: 6.0f32;    // m: the room over the parked rover train's roofs the yard keeps clear (the camera's boom)
 BL_DOOR_Y :: 9.0f32;        // m: the raised roll-up door's foot over the entry
 BL_BANNER_W :: 5.0f32; BL_BANNER_H :: 11.0f32;   // m: a raider banner over the rim
 BL_STONE :: () -> KitTint { return kit_tint(0.52, 0.47, 0.43); }   // printed concrete: warm grey
@@ -15,28 +16,114 @@ BL_BROWN :: () -> KitTint { return kit_tint(0.20, 0.16, 0.14); }   // frames, do
 BL_RED :: () -> KitTint { return kit_tint(0.72, 0.18, 0.14); }     // the raiders' banner cloth
 BL_CREAM :: () -> KitTint { return kit_tint(0.93, 0.88, 0.80); }
 
-// The outer shell of section k from angle a0 to a1, left open by `cut` either side of a (the entry): from
-// the rim's edge ro, BL_COURSES courses step down to the desert GA_BERM out, each a dusted tread and a
-// riser that bulges out at its waist. A course whose riser comes down under `low` is left out.
+// A band like ga_strip's from (ra, ya) to (rb, yb), its ends at angles s0a to s1a on ra and s0b to s1b
+// on rb: an end whose two corners stand on one straight edge (a side of the yard) runs along it.
+bl_band :: (g: [] SpGame, buf: [] u32, p: [] Pen, ra: f32, ya: f32, s0a: f32, s1a: f32, rb: f32, yb: f32, s0b: f32, s1b: f32, steps: int) {
+  for i: 0..<steps {
+    t0 := cast(f32) i / cast(f32) steps; t1 := cast(f32) (i + 1) / cast(f32) steps;
+    A0 := ga_pt(g, s0a + (s1a - s0a) * t0, ra, ya); A1 := ga_pt(g, s0a + (s1a - s0a) * t1, ra, ya);
+    B0 := ga_pt(g, s0b + (s1b - s0b) * t0, rb, yb); B1 := ga_pt(g, s0b + (s1b - s0b) * t1, rb, yb);
+    quad(buf, p, A0, B0, B1, A1);
+  }
+}
+// ga_strip's strip from (r0, y0) to (r1, y1) over a0 to a1 (angles round the entry's middle, A1 at 0),
+// less the yard outside the mine mouth (#13552): cut along the mouth's face and the yard's sides, so it
+// stands nowhere over the yard. It is split where the cut's edge turns (the face's corner) and where the
+// cut reaches a0 or a1, so between splits each end runs along one straight edge.
+bl_ring :: (g: [] SpGame, buf: [] u32, p: [] Pen, a0: f32, a1: f32, r0: f32, y0: f32, r1: f32, y1: f32, steps: int) {
+  ra0 := lo(r0, r1); rb1 := hi(r0, r1);
+  // clear of the yard (its cut is 13 degrees either side at most): the strip whole
+  if rb1 <= ga_yard_z(g) || a0 > 0.3 || a1 < -0.3 { ga_strip(g, buf, p, a0, a1, r0, y0, r1, y1, steps, false); return; }
+  f := ga_yard_z(g); X := GA_YARD_X;
+  rs: [8] f32; n := 0;
+  rs[0] = ra0; n = 1;
+  want := [6] f32.[f, sqrt(f * f + X * X), 0, 0, 0, 0];
+  for i: 0..<2 {
+    t := abs(ifx i == 0 then a0 else a1);
+    if t > 0.0001 && t < PI * 0.5 { want[2 + i * 2] = f / cos(t); want[3 + i * 2] = X / sin(t); }
+  }
+  for w: want { if w > ra0 + 0.0001 && w < rb1 - 0.0001 { rs[n] = w; n += 1; } }
+  rs[n] = rb1; n += 1;
+  for i: 1..<n { j := i; while j > 0 && rs[j - 1] > rs[j] { t := rs[j]; rs[j] = rs[j - 1]; rs[j - 1] = t; j -= 1; } }
+  for i: 0..<n - 1 {
+    // from the r0 side to the r1 side, as ga_strip faces it
+    ra := ifx r0 <= r1 then rs[i] else rs[i + 1]; rb := ifx r0 <= r1 then rs[i + 1] else rs[i];
+    if abs(rb - ra) < 0.0001 { continue; }
+    span := r1 - r0; ya := ifx abs(span) < 0.0001 then y0 else y0 + (y1 - y0) * (ra - r0) / span; yb := ifx abs(span) < 0.0001 then y0 else y0 + (y1 - y0) * (rb - r0) / span;
+    ca := ga_yard_cut(g, ra); cb := ga_yard_cut(g, rb);
+    if ca <= 0 && cb <= 0 { bl_band(g, buf, p, ra, ya, a0, a1, rb, yb, a0, a1, steps); continue; }
+    sa := lo(hi(a0, ca), a1); sb := lo(hi(a0, cb), a1);   // past the yard's east edge
+    if sa < a1 - 0.00001 || sb < a1 - 0.00001 { bl_band(g, buf, p, ra, ya, sa, a1, rb, yb, sb, a1, steps); }
+    ea := hi(lo(a1, -ca), a0); eb := hi(lo(a1, -cb), a0);   // short of its west edge
+    if ea > a0 + 0.00001 || eb > a0 + 0.00001 { bl_band(g, buf, p, ra, ya, a0, ea, rb, yb, a0, eb, steps); }
+  }
+}
+// The outer shell of section k from angle a0 to a1 (round the entry's middle): from the rim's edge ro,
+// BL_COURSES courses step down to the desert GA_BERM out, each a dusted tread and a riser that bulges out
+// at its waist, none over the yard. A course whose riser comes down under `low` is left out.
 bl_course :: (g: [] SpGame, buf: [] u32, p: [] Pen, a0: f32, a1: f32, ro: f32, low: f32) {
   run := GA_BERM / cast(f32) BL_COURSES; rise := GA_RIM / cast(f32) BL_COURSES;
   for j: 0..<BL_COURSES {
     r := ro + run * cast(f32) (j + 1); y := GA_RIM - rise * cast(f32) j;
     if y - rise < low { continue; }
     kit_pen(p, 218, MAT_WORLD, BL_TREAD());
-    ga_strip(g, buf, p, a0, a1, r - run, y, r, y, 3, false);
+    bl_ring(g, buf, p, a0, a1, r - run, y, r, y, 3);
     kit_pen(p, 228, MAT_WORLD, BL_STONE());
-    ga_strip(g, buf, p, a0, a1, r, y, r + BL_BEAD, y - rise * 0.5, 3, false);
-    ga_strip(g, buf, p, a0, a1, r + BL_BEAD, y - rise * 0.5, r, y - rise, 3, false);
+    bl_ring(g, buf, p, a0, a1, r, y, r + BL_BEAD, y - rise * 0.5, 3);
+    bl_ring(g, buf, p, a0, a1, r + BL_BEAD, y - rise * 0.5, r, y - rise, 3);
   }
 }
-bl_shell :: (g: [] SpGame, buf: [] u32, p: [] Pen, k: int, a0: f32, a1: f32, ro: f32) {
+// The top of the layout's wall standing at (x, z), or -1 (the mine mouth's walls, under the yard's face).
+bl_wall_top :: (g: [] SpGame, x: f32, z: f32) -> f32 {
+  for i: 0..<g[0].wall_n { o := i * 5; w := g[0].walls[o..<o + 5]; if x >= w[0] && x <= w[1] && z >= w[2] && z <= w[3] { return w[4]; } }
+  return -1;
+}
+// Where the shell is cut round the yard, its cut faces in printed stone toward the yard: along the mine
+// mouth's face from its walls' tops up to each course's tread, and down each side to the desert.
+bl_yard_faces :: (g: [] SpGame, buf: [] u32, p: [] Pen, ro: f32) {
+  run := GA_BERM / cast(f32) BL_COURSES; rise := GA_RIM / cast(f32) BL_COURSES;
+  f := ga_yard_z(g); X := GA_YARD_X; corner := sqrt(f * f + X * X); foot := ga_foot(g);
+  gx := g[0].at.gar_x; gz := g[0].at.gar_z; door := f * tan(GA_DOOR / ro);
+  kit_pen(p, 227, MAT_WORLD, BL_STONE());
+  for j: 0..<BL_COURSES {
+    r0 := ro + run * cast(f32) j; r1 := r0 + run; y := GA_RIM - rise * cast(f32) j;
+    // along the face: where the circles r0 to r1 cross it, either side of the entry's cut
+    p0 := hi(r0, f); p1 := lo(r1, corner);
+    if p1 > p0 {
+      x0 := hi(sqrt(hi(p0 * p0 - f * f, 0)), door); x1 := sqrt(hi(p1 * p1 - f * f, 0));
+      for side: 0..<2 {
+        o := ifx side == 0 then -1.0f32 else 1.0f32;
+        // in the pieces over a wall's top only: where no wall stands under it, the way in stays open
+        m := 4;
+        for i: 0..<m {
+          u0 := x0 + (x1 - x0) * cast(f32) i / cast(f32) m; u1 := x0 + (x1 - x0) * cast(f32) (i + 1) / cast(f32) m;
+          top := bl_wall_top(g, gx + o * (u0 + u1) * 0.5, gz + f - 0.1);
+          if top < 0 || top >= y || u1 <= u0 { continue; }
+          xa := gx + lo(o * u0, o * u1); xb := gx + hi(o * u0, o * u1); zz := gz + f;
+          quad(buf, p, v3(xa, top, zz), v3(xb, top, zz), v3(xb, y, zz), v3(xa, y, zz));
+        }
+      }
+    }
+    // down each side, where the circles cross the line X out
+    q0 := hi(r0, corner); q1 := lo(r1, foot);
+    if q1 > q0 {
+      z0 := gz + sqrt(q0 * q0 - X * X); z1 := gz + sqrt(q1 * q1 - X * X);
+      quad(buf, p, v3(gx + X, 0, z0), v3(gx + X, 0, z1), v3(gx + X, y, z1), v3(gx + X, y, z0));
+      quad(buf, p, v3(gx - X, 0, z0), v3(gx - X, y, z0), v3(gx - X, y, z1), v3(gx - X, 0, z1));
+    }
+  }
+}
+bl_shell :: (g: [] SpGame, buf: [] u32, p: [] Pen, k: int, a0_in: f32, a1_in: f32, ro: f32) {
   a := ga_angle(k); cut := ifx k == GA_ENTRY then GA_DOOR / ro else 0.0f32;
+  // the angles round the entry's middle, -PI to PI, so the yard's cut reads the same either side of it
+  turn := ifx a - ga_angle(GA_ENTRY) > PI then -TAU else 0.0f32;
+  a0 := a0_in + turn; a1 := a1_in + turn; a = a + turn;
   run := GA_BERM / cast(f32) BL_COURSES; rise := GA_RIM / cast(f32) BL_COURSES;
   // over the hallway the lower courses would stand inside the lab, across it in front of the boss (#13552):
   // only those above the lab's ceiling are drawn there
   low := ifx k == GA_HALLWAY then GA_LAB_TALL else 0.0f32;
   if cut > 0 { bl_course(g, buf, p, a0, a - cut, ro, low); bl_course(g, buf, p, a + cut, a1, ro, low); } else { bl_course(g, buf, p, a0, a1, ro, low); }
+  if k == GA_ENTRY { bl_yard_faces(g, buf, p, ro); }
   // a raider banner over every third section and either side of the entry, on the first riser
   for i: 0..<3 {
     want := ifx k == GA_ENTRY then i != 1 else i == 1 && k % 3 == 1;
@@ -45,16 +132,25 @@ bl_shell :: (g: [] SpGame, buf: [] u32, p: [] Pen, k: int, a0: f32, a1: f32, ro:
     kit_cog_banner(buf, p, frame_at(ga_pt(g, b, ro + run + BL_BEAD + 0.2, GA_RIM - 0.4), b), 229, BL_BANNER_W, BL_BANNER_H, BL_RED(), BL_CREAM(), BL_BROWN());
   }
   if cut <= 0 { return; }
-  // the entry: its two side walls printed, stepping down with the courses, from the back wall out
+  // the entry: its two side walls printed, stepping down with the courses, from the back wall out to the
+  // mine mouth's face (the yard past it is open sky, #13552). Each stands on the layout's wall under it,
+  // or where none stands (the scrap room, the mouth's way in) is the cut's edge only, a course deep, so
+  // none stands where she walks with no wall to stop her
   kit_pen(p, 227, MAT_WORLD, BL_STONE());
-  rb := ga_back(g);
+  rb := ga_back(g); face := ga_yard_z(g);
   for j: 0..<BL_COURSES + 1 {
     r0 := ifx j == 0 then rb else ro + run * cast(f32) (j - 1); r1 := ifx j == 0 then ro else r0 + run;
+    r1 = lo(r1, face);
+    if r1 <= r0 { continue; }
     hy := ifx j == 0 then GA_RIM else GA_RIM - rise * cast(f32) (j - 1);
     for side: 0..<2 {
       o := ifx side == 0 then -1.0f32 else 1.0f32; m := (r0 + r1) * 0.5;
-      f := frame_turn(frame_at(ga_pt(g, a + o * (GA_DOOR + 0.6) / m, m, 0), a), 1, PI * 0.5);
-      kit_print_slab(buf, p, f, (r1 - r0) * 0.5, 0, hy, 0.6, cast(int) (hy / 1.6), 0.12);
+      c := ga_pt(g, a + o * (GA_DOOR + 0.6) / m, m, 0);
+      y0 := bl_wall_top(g, c.x, c.z);
+      if y0 < 0 { y0 = hy - rise; }
+      if y0 >= hy { continue; }
+      f := frame_turn(frame_at(c, a), 1, PI * 0.5);
+      kit_print_slab(buf, p, f, (r1 - r0) * 0.5, y0, hy, 0.6, hi_i(cast(int) ((hy - y0) / 1.6), 1), 0.12);
     }
   }
   // the bay's roll-up door, raised: a dark slatted drum and a yellow and black lintel over the way in
@@ -118,4 +214,51 @@ bl_stage :: (g: [] SpGame, n: int) {
     }
   }
   #assert seen > 1000 && near > 0;
+}
+#test "the garage's outer shell stands nowhere over the yard outside the mine mouth below the parked rover train's roof and the camera's room; its collider is its drawn shape there (#13552)" #steps 120000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); _ := spw_shipped(g[..]); g[0].zone = Z_MINE;
+  top := DV_TOP_H; row := sc_piece(g[0].c[..], SP_ROVER_KIND); if row >= 0 { top = g[0].c[0].pieces[row].top; }
+  // the parked train is in the yard: its whole footprint on the yard's side of the mouth's face (its cab to it), a metre in from the cut's sides
+  e := dv_seg(g[..], g[0].at.rover_x, g[0].at.rover_z, g[0].at.rover_yaw);
+  for i: 0..<2 {
+    x := ifx i == 0 then e.ax else e.bx; z := ifx i == 0 then e.az else e.bz;
+    #assert ga_in_yard(g[..], x, z, e.r + 1) && z - e.r > g[0].at.gar_z + ga_yard_z(g[..]);
+  }
+  // every triangle of the shell, sampled across its face: none of it over the yard below the roof and its room
+  buf: [8000 * VERTEX_WORDS] u32; pen := [1] Pen.[Pen.{}];
+  h := ga_span() * 0.5; ro := ga_shell_in(g[..]); seen := 0; near := 0; over := 0;
+  for k: 0..<GA_SECTIONS {
+    pen[0].n = 0; a := ga_angle(k);
+    bl_shell(g[..], buf[..], pen[..], k, a - h, a + h, ro);
+    #assert !pen[0].over;
+    for t: 0..<pen[0].n / 3 {
+      v: [3] Point;
+      for c: 0..<3 { o := (t * 3 + c) * VERTEX_WORDS; v[c] = v3(f32_from_bits(buf[o]), f32_from_bits(buf[o + 1]), f32_from_bits(buf[o + 2])); }
+      for s: 0..<6 { for u: 0..<6 - s {
+        w0 := (cast(f32) s + 0.25) / 6.5; w1 := (cast(f32) u + 0.25) / 6.5; w2 := 1 - w0 - w1;
+        x := v[0].x * w2 + v[1].x * w0 + v[2].x * w1; y := v[0].y * w2 + v[1].y * w0 + v[2].y * w1; z := v[0].z * w2 + v[1].z * w0 + v[2].z * w1;
+        seen += 1;
+        if abs(x - g[0].at.gar_x) < GA_YARD_X + 4 && z - g[0].at.gar_z > ga_yard_z(g[..]) - 4 { near += 1; }   // the cut's faces and the slope round the yard
+        if ga_in_yard(g[..], x, z, 0.05) && z - g[0].at.gar_z > ga_yard_z(g[..]) + 0.05 && y < top + BL_YARD_CLEAR { over += 1; }
+      } }
+    }
+  }
+  #assert seen > 10000; #assert near > 100; #assert over == 0;
+  // the collider is the drawn shape: where the shell stands she is put out of it, over the yard she walks free
+  free := 0; held := 0;
+  for i: 0..<81 { for j: 0..<30 {
+    x := g[0].at.gar_x - 80 + cast(f32) i * 2; z := g[0].at.gar_z + ga_yard_z(g[..]) - 6 + cast(f32) j;
+    q := pl_push(g[..], x, z, T_RADIUS); moved := q.x != x || q.z != z;
+    if ga_in_yard(g[..], x, z, T_RADIUS + 0.01) { #assert !moved; free += 1; }
+    else if ga_shell_y(g[..], x, z) > 0 && !(z - g[0].at.gar_z <= ga_yard_z(g[..]) && abs(x - g[0].at.gar_x) < GA_YARD_X) { #assert moved && ga_shell_y(g[..], q.x, q.z) == 0; held += 1; }
+  } }
+  #assert free > 500 && held > 300;
+  // beside the train, next to the cut's side: back into the yard, not down the slope's far side
+  q := pl_push(g[..], g[0].at.gar_x + GA_YARD_X + 0.5, g[0].at.rover_z, T_RADIUS);
+  #assert abs(q.x - (g[0].at.gar_x + GA_YARD_X - T_RADIUS)) < 0.01 && q.z == g[0].at.rover_z;
+  // the camera meets the shell where it is drawn, and has the yard's sky over the train
+  #assert !cm_blocked(g[..], g[0].at.rover_x + 4, top + BL_YARD_CLEAR, g[0].at.rover_z, 0.3, 1000000);
+  #assert !cm_blocked(g[..], g[0].at.rover_x, top + BL_YARD_CLEAR, g[0].at.rover_z + 3, 0.3, 1000000);
+  #assert cm_blocked(g[..], g[0].at.gar_x + GA_YARD_X + 2, 3, g[0].at.rover_z, 0.3, 1000000);
 }
