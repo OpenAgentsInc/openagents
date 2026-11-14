@@ -119,8 +119,10 @@ print("verts", len(verts), "tris", len(tris), "per colour", counts)
 #        triangle's last corner (or the fill's last new vertex), the bone (1: the same as that one's,
 #        0 and 4 bits), then the normal.
 # A normal is octahedral, DGM_NB bits a component. The game keeps the places of the last DGM_RING
-# corners (a corner copied from further back has none). Six bits a character, the high bit first,
-# characters 64 to 126 for 0 to 62 and '!' for 63 ('\' is '#'). Each fill starts on a character.
+# corners (a corner copied from further back has none). Thirteen bits a pair of characters, the high
+# bit first: the pair's value is its first digit times 93 plus its second, a digit being a printable
+# character from space to '~' without the quote and the backslash (ALPHA, in order). Each fill starts
+# on a pair (#13552: 7.7% fewer characters than the six bits a character before).
 SPAN = 0.6   # model units: x and z within +-0.6, y within 0..1.2
 NB = 7; NM = (1 << NB) - 1; KD = 3; KP = 3; RING = 4096
 def q12(x): return max(0, min(4095, int(round(x * 4095))))
@@ -158,13 +160,15 @@ class Bits:
     def eg(self, v, k):
         v += 1 << k; L = v.bit_length(); self.put(0, L - k - 1); self.put(v, L)
     def chars(self):
-        while len(self.b) % 6: self.b.append(0)
+        while len(self.b) % 13: self.b.append(0)
         out = []
-        for i in range(0, len(self.b), 6):
+        for i in range(0, len(self.b), 13):
             v = 0
-            for x in self.b[i:i + 6]: v = v * 2 + x
-            out.append("!" if v == 63 else "#" if v == 28 else chr(64 + v))
+            for x in self.b[i:i + 13]: v = v * 2 + x
+            out.append(ALPHA[v // 93] + ALPHA[v % 93])
         return "".join(out)
+ALPHA = [chr(c) for c in range(32, 127) if c not in (34, 92)]   # 93 digits
+def digit(c): c = ord(c); return c - 32 - (c > 34) - (c > 92)
 def zz(v): return 2 * v if v >= 0 else -2 * v - 1
 START = ((2048, 1024, 2048), 1)
 def encode_fill(ts):
@@ -196,8 +200,8 @@ def encode_fill(ts):
     return bs.chars(), out_tris, news
 # The decoder, as the game's (digger.coax dg_draw), to check the stream gives back every corner.
 def decode_fill(s, ntri):
-    vals = [63 if c == "!" else 28 if c == "#" else ord(c) - 64 for c in s]
-    bits = [(v >> i) & 1 for v in vals for i in range(5, -1, -1)]; pos = [0]
+    vals = [digit(s[i]) * 93 + digit(s[i + 1]) for i in range(0, len(s), 2)]
+    bits = [(v >> i) & 1 for v in vals for i in range(12, -1, -1)]; pos = [0]
     def get(n):
         v = 0
         for _ in range(n): v = v * 2 + bits[pos[0]]; pos[0] += 1

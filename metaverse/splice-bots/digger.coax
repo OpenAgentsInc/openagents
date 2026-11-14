@@ -25,14 +25,16 @@ dg_child :: (parent: DgXf, k: Point, a: f32, c: Point, d: Point) -> DgXf {
 // the characters read that are not taken yet.
 DgRd :: struct { piece: string; pk: int; ci: int; acc: int; nb: int; }
 dg_rd_at :: (r: [] DgRd, c: int) { r[0].pk = c / DGM_PIECE; r[0].piece = dgm_s(r[0].pk); r[0].ci = c; r[0].acc = 0; r[0].nb = 0; }
-// The next n bits, the high bit first. A character is 6: 64 to 126 for 0 to 62, '!' for 63, '#' for 28.
+// A character's digit, 0 to 92: the printable characters from space to '~' without the quote and the backslash, in order.
+dg_digit :: (c: int) -> int { return c - 32 - (ifx c > 34 then 1 else 0) - (ifx c > 92 then 1 else 0); }
+// The next n bits, the high bit first. Two characters are 13 bits, the first digit times 93 plus the
+// second; a fill starts on an even character, and a piece holds whole pairs.
 dg_bits :: (r: [] DgRd, n: int) -> int {
   while r[0].nb < n {
     o := r[0].ci - r[0].pk * DGM_PIECE;
     if o >= DGM_PIECE { r[0].pk += 1; r[0].piece = dgm_s(r[0].pk); o = 0; }
-    c := cast(int) r[0].piece[o]; r[0].ci += 1;
-    v := ifx c >= 64 then c - 64 else ifx c == 33 then 63 else 28;
-    r[0].acc = ((r[0].acc & ((1 << r[0].nb) - 1)) << 6) | v; r[0].nb += 6;
+    v := dg_digit(cast(int) r[0].piece[o]) * 93 + dg_digit(cast(int) r[0].piece[o + 1]); r[0].ci += 2;
+    r[0].acc = ((r[0].acc & ((1 << r[0].nb) - 1)) << 13) | v; r[0].nb += 13;
   }
   r[0].nb -= n;
   return (r[0].acc >> r[0].nb) & ((1 << n) - 1);
