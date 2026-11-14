@@ -1,0 +1,156 @@
+// Project the existing inert session-reader view into environment items. A
+// native tool record is not a user/assistant message with an empty body.
+// One compact tool group per source record keeps 24 records within 64 items;
+// source UUIDs and their .tools companions stay stable across polling.
+#load "wire.coax";
+#load "../observe/claude-history.coax";
+
+#test "native tools and results stay readable without empty message bubbles" {
+ source:="{\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\"Fix it\"}}\n{\"type\":\"assistant\",\"uuid\":\"a\",\"parentUuid\":\"u\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"t\",\"name\":\"Bash\",\"input\":{\"command\":\"echo **literal**\"}}]}}\n{\"type\":\"user\",\"uuid\":\"r\",\"parentUuid\":\"a\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"t\",\"content\":\"## literal output\"}]}}\n{\"type\":\"assistant\",\"uuid\":\"done\",\"parentUuid\":\"r\",\"message\":{\"content\":\"Stopping now.\"}}\n";
+ g:[1]CsrGraph;csr_parse(g[..],source);csr_select(g[..]);out:[CSR_OUTPUT_MAX]u8;
+ raw:=csr_show(g[..],"fixture","fixture.jsonl",24,0,1024,out[..]);v:[1]EaView;
+ #assert eh_read(raw,v[..]) && v[0].ni==3;
+ #assert ea_item_text(v[..],0)=="Fix it" && ea_item_text(v[..],2)=="Stopping now.";
+ #assert cast(string)v[0].items[1].role[0..<v[0].items[1].nr]=="tool";
+ #assert cast(string)v[0].items[1].tool[0..<v[0].items[1].nk]=="Bash";
+ #assert csr_has(ea_item_text(v[..],1),"echo **literal**") && csr_has(ea_item_text(v[..],1),"## literal output");
+ #assert cast(string)v[0].items[1].id[0..<v[0].items[1].ni]=="a.tools";
+}
+#test "mixed text, parallel calls and a result from another page retain their content" {
+ raw:="{\"schema\":\"coder.session-reader.v1\",\"inert\":true,\"turns\":[{\"uuid\":\"a\",\"role\":\"assistant\",\"text\":\"Working\",\"tool_calls\":[{\"id\":\"one\",\"name\":\"Read\",\"input\":\"first\"},{\"id\":\"two\",\"name\":\"Edit\",\"input\":\"second\"}],\"tool_results\":[]},{\"uuid\":\"r\",\"role\":\"user\",\"text\":\"\",\"tool_calls\":[],\"tool_results\":[{\"tool_use_id\":\"outside-page\",\"content\":\"Output retained\"}]},{\"uuid\":\"empty\",\"role\":\"assistant\",\"text\":\"\",\"tool_calls\":[],\"tool_results\":[]}]}";
+ v:[1]EaView;#assert eh_read(raw,v[..]) && v[0].ni==3;
+ #assert ea_item_text(v[..],0)=="Working" && csr_has(ea_item_text(v[..],1),"first") && csr_has(ea_item_text(v[..],1),"second");
+ #assert cast(string)v[0].items[1].tool[0..<v[0].items[1].nk]=="Tools";
+ #assert csr_has(ea_item_text(v[..],2),"Output retained") && cast(string)v[0].items[2].tool[0..<v[0].items[2].nk]=="Tool";
+ #assert !eh_read("{}",v[..]) && v[0].ni==0;
+}
+#test "tool presentation preserves exact fields, separators and completion" {
+ raw:="{\"schema\":\"coder.session-reader.v1\",\"inert\":true,\"turns\":[{\"uuid\":\"a\",\"role\":\"assistant\",\"text\":\"x\",\"tool_calls\":[{\"id\":\"one\",\"name\":\"R\",\"input\":\"i\"},{\"id\":\"two\",\"name\":\"E\",\"input\":\"j\"}],\"tool_results\":[]},{\"uuid\":\"r\",\"role\":\"user\",\"text\":\"\",\"tool_calls\":[],\"tool_results\":[{\"tool_use_id\":\"one\",\"content\":\"o\"},{\"tool_use_id\":\"two\",\"content\":\"p\"},{\"tool_use_id\":\"old\",\"content\":\"z\"},{\"tool_use_id\":\"older\",\"content\":\"q\"}]}]}";
+ v:[1]EaView;#assert eh_read(raw,v[..]) && v[0].ni==3 && v[0].text_n==29;
+ #assert ea_item_text(v[..],0)=="x" && ea_item_text(v[..],1)=="R\ni\n\no\n\nE\nj\n\np" && ea_item_text(v[..],2)=="Tool\nz\n\nTool\nq";
+ for i:0..<3 {m:=v[0].items[i];#assert m.complete && m.ni==ifx i==0 then 1 else 7;
+  #assert cast(string)m.role[0..<m.nr]==ifx i==0 then "assistant" else "tool";
+  #assert cast(string)m.tool[0..<m.nk]==ifx i==0 then "" else "Tools";
+ }
+ #assert cast(string)v[0].items[1].id[0..<v[0].items[1].ni]=="a.tools" && cast(string)v[0].items[2].id[0..<v[0].items[2].ni]=="r.tools";
+}
+#test "item storage admits exact capacities and refuses each exhausted field" {
+ v:[1]EaView;long:[16385]u8;for i:0..<long.count {long[i]='x';}
+ #assert !eh_add(v[..],"","a","","") && !eh_add(v[..],"a","","","");
+ #assert !eh_add(v[..],cast(string)long[0..<129],"a","","") && !eh_add(v[..],"a",cast(string)long[0..<17],"","");
+ #assert !eh_add(v[..],"a","a",cast(string)long[0..<129],"") && !eh_add(v[..],"a","a","",cast(string)long[..]);
+ #assert v[0].ni==0;
+ #assert eh_add(v[..],cast(string)long[0..<128],cast(string)long[0..<16],cast(string)long[0..<128],cast(string)long[0..<16384]);
+ m:=v[0].items[0];#assert m.ni==128 && m.nr==16 && m.nk==128 && m.complete && m.text_at==0 && m.nt==16384;
+ #assert ea_item_text(v[..],0)==cast(string)long[0..<16384];
+ #assert eh_add(v[..],"b","b","",cast(string)long[0..<16384]) && eh_add(v[..],"c","c","",cast(string)long[0..<16384]);
+ #assert v[0].text_n==49152 && !eh_add(v[..],"d","d","","x") && v[0].ni==3;
+ v[0]=EaView.{};for i:0..<64 {#assert eh_add(v[..],"a","a","","");}#assert !eh_add(v[..],"a","a","","") && v[0].ni==64;
+}
+#test "history lookup keeps the first decoded nonempty identity and misses empty ones" {
+ raw:="[{\"tool_calls\":[{\"id\":\"\"},{\"id\":\"\\u0061\"},{\"id\":\"a\"}]},{\"tool_calls\":[{\"id\":\"b\"}]}]";
+ nodes:[32]JvNode;d:[1]Jv;#assert jv_parse(d[..],raw,nodes[..]);j:=d[0];
+ #assert eh_find(j,0,"tool_calls","id","")== -1 && eh_find(j,0,"tool_calls","id","missing")== -1;
+ #assert eh_find(j,0,"tool_calls","id","a")==jv_at(j,jv_get(j,jv_at(j,0,0),"tool_calls"),1);
+ #assert eh_find(j,0,"tool_calls","id","b")==jv_at(j,jv_get(j,jv_at(j,0,1),"tool_calls"),0);
+}
+#test "bad source fields refuse atomically instead of publishing partial items" {
+ bad:=[18]string.["{","{}","{\"schema\":\"wrong\",\"inert\":true,\"turns\":[]}","{\"schema\":\"coder.session-reader.v1\",\"inert\":false,\"turns\":[]}","{\"schema\":\"coder.session-reader.v1\",\"inert\":true,\"turns\":{}}",
+ "{\"uuid\":\"\",\"role\":\"a\",\"text\":\"x\"}","{\"uuid\":\"a\",\"role\":\"\",\"text\":\"x\"}","{\"uuid\":\"a\",\"role\":\"a\",\"text\":false}","{\"uuid\":\"a\",\"role\":\"a\",\"text\":\"\",\"tool_results\":[{\"tool_use_id\":\"\"}]}",
+ "{\"uuid\":\"a\",\"role\":\"a\",\"text\":\"\",\"tool_calls\":[{\"id\":\"\",\"name\":\"R\",\"input\":\"i\"}]}","{\"uuid\":\"a\",\"role\":\"a\",\"text\":\"\",\"tool_calls\":[{\"id\":\"t\",\"name\":\"R\",\"input\":false}]}","{\"uuid\":\"a\",\"role\":\"a\",\"text\":\"\",\"tool_calls\":[{\"id\":\"t\",\"name\":\"R\",\"input\":\"i\"}],\"tool_results\":[{\"tool_use_id\":\"t\",\"content\":false}]}",
+ "{\"uuid\":\"a\",\"role\":\"a\",\"text\":\"\",\"tool_results\":[{\"tool_use_id\":\"t\",\"content\":false}]}","{\"uuid\":null,\"role\":\"a\",\"text\":\"x\"}","{\"uuid\":\"a\",\"role\":null,\"text\":\"x\"}","{\"uuid\":\"a\",\"role\":\"a\"}","{\"uuid\":\"a\",\"role\":\"a\",\"text\":\"\",\"tool_results\":[{}]}","{\"uuid\":\"a\",\"role\":\"a\",\"text\":\"\",\"tool_calls\":[{\"name\":\"R\",\"input\":\"i\"}]}" ];
+ for raw,i:bad {v:[1]EaView;v[0].ni=2;v[0].text_n=19;out:[4096]u8;n:=json_raw(out[..],0,"{\"schema\":\"coder.session-reader.v1\",\"inert\":true,\"turns\":[{\"uuid\":\"ok\",\"role\":\"a\",\"text\":\"kept?\"},");n=json_raw(out[..],n,raw);n=json_raw(out[..],n,"]}");
+  #assert !eh_read(ifx i<5 then raw else cast(string)out[0..<n],v[..]) && v[0].ni==0 && v[0].text_n==0;
+ }
+}
+eh_find :: (j:Jv,turns:int,list_name:string,key:string,id:string)->int {
+ for i:0..<jv_len(j,turns) {list:=jv_get(j,jv_at(j,turns,i),list_name);for k:0..<jv_len(j,list) {
+  row:=jv_at(j,list,k);b:[128]u8;n:=jv_str(j,jv_get(j,row,key),b[..]);
+  if n>0 && cast(string)b[0..<n]==id {return row;}
+ }}return -1;
+}
+#test "source field and combined tool detail boundaries are explicit" {
+ long:[16385]u8;for i:0..<long.count {long[i]='x';}
+ for kind:0..<19 {
+  raw:[40000]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CSR_SCHEMA);jo_key(o[..],"inert");jo_bool(o[..],true);jo_key(o[..],"turns");jo_arr(o[..]);jo_obj(o[..]);
+  idlen:=ifx kind==1 then 128 else ifx kind==2 then 122 else ifx kind==3 then 123 else 1;
+  jo_key(o[..],"uuid");jo_str(o[..],cast(string)long[0..<idlen]);jo_key(o[..],"role");jo_str(o[..],cast(string)long[0..<ifx kind==4 then 17 else 1]);
+  jo_key(o[..],"text");jo_str(o[..],cast(string)long[0..<ifx kind==5 then 16385 else ifx kind==6 then 16384 else 0]);
+  jo_key(o[..],"tool_calls");jo_arr(o[..]);
+  nc:=ifx kind==12 || kind==13 || kind==14 then 2 else 1;
+  for k:0..<nc {jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],cast(string)long[0..<ifx kind==17 then 129 else 1+k]);
+   jo_key(o[..],"name");jo_str(o[..],ifx kind==7 then "" else ifx kind==8 then cast(string)long[0..<129] else ifx kind==16 then cast(string)long[0..<128] else "R");
+   n:=ifx k>0 then 0 else ifx kind==9 then 16382 else ifx kind==10 then 16383 else ifx kind==11 then 16381 else ifx kind==12 then 16380 else ifx kind==13 then 16379 else ifx kind==14 then 16378 else ifx kind==15 then 16380 else 1;
+   jo_key(o[..],"input");jo_str(o[..],cast(string)long[0..<n]);jo_end(o[..]);
+  }jo_end(o[..]);jo_key(o[..],"tool_results");jo_arr(o[..]);
+  if kind==11 || kind==15 || kind==18 {jo_obj(o[..]);jo_key(o[..],"tool_use_id");jo_str(o[..],cast(string)long[0..<ifx kind==18 then 129 else 1]);jo_key(o[..],"content");jo_str(o[..],"");jo_end(o[..]);}
+  jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);#assert !o[0].bad;
+  v:[1]EaView;ok:=eh_read(jo_text(o[..]),v[..]);want:=kind==0 || kind==2 || kind==6 || kind==7 || kind==8 || kind==9 || kind==14 || kind==15 || kind==16;
+  #assert ok==want;
+  if !want {#assert v[0].ni==0 && v[0].text_n==0;}else {
+   #assert v[0].ni==ifx kind==6 then 2 else 1;
+   m:=v[0].items[v[0].ni-1];#assert m.complete;
+   #assert m.ni==idlen+6 && cast(string)m.id[idlen..<m.ni]==".tools" && cast(string)m.role[0..<m.nr]=="tool";
+   if kind==7 || kind==8 {#assert cast(string)m.tool[0..<m.nk]=="Tool" && ea_item_text(v[..],0)=="Tool\nx";}
+   if kind==9 || kind==14 || kind==15 {#assert m.nt==16384;}
+  }
+ }
+}
+#test "saturated text and tool item pages both refuse without a partial transcript" {
+ for kind:0..<3 {
+  raw:[30000]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CSR_SCHEMA);jo_key(o[..],"inert");jo_bool(o[..],true);jo_key(o[..],"turns");jo_arr(o[..]);
+  count:=ifx kind==0 then 65 else 33;
+  for i:0..<count {jo_obj(o[..]);jo_key(o[..],"uuid");jo_str(o[..],"a");jo_key(o[..],"role");jo_str(o[..],"assistant");jo_key(o[..],"text");jo_str(o[..],ifx kind==1 && i==0 then "" else "x");
+   jo_key(o[..],"tool_calls");jo_arr(o[..]);if kind>0 {jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],"t");jo_key(o[..],"name");jo_str(o[..],"R");jo_key(o[..],"input");jo_str(o[..],"");jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);
+  }jo_end(o[..]);jo_end(o[..]);#assert !o[0].bad;v:[1]EaView;#assert !eh_read(jo_text(o[..]),v[..]) && v[0].ni==0 && v[0].text_n==0;
+ }
+}
+eh_add :: (v:[]EaView,id:string,role:string,tool:string,text:string)->bool {
+ if v[0].ni>=EA_ITEMS {return false;}m:EaItem;
+ m.ni=ea_copy(m.id[..],id);m.nr=ea_copy(m.role[..],role);m.nk=ea_copy(m.tool[..],tool);m.nt=text.count;m.complete=true;
+ if m.ni<1 || m.nr<1 || m.nk<0 {return false;}m.text_at=ea_text_put(v,text);if m.text_at<0 {return false;}
+ v[0].items[v[0].ni]=m;v[0].ni+=1;return true;
+}
+eh_items :: (j:Jv,turns:int,v:[]EaView)->bool {
+ for i:0..<jv_len(j,turns) {
+  row:=jv_at(j,turns,i);ib:[128]u8;rb:[16]u8;text:[16384]u8;
+  ni:=jv_str(j,jv_get(j,row,"uuid"),ib[..]);nr:=jv_str(j,jv_get(j,row,"role"),rb[..]);nt:=jv_str(j,jv_get(j,row,"text"),text[..]);
+  if ni<1 || nr<1 || nt<0 {return false;}id:=cast(string)ib[0..<ni];role:=cast(string)rb[0..<nr];
+  if nt>0 && !eh_add(v,id,role,"",cast(string)text[0..<nt]) {return false;}
+  calls:=jv_get(j,row,"tool_calls");results:=jv_get(j,row,"tool_results");count:=jv_len(j,calls);
+  for k:0..<jv_len(j,results) {item:=jv_at(j,results,k);b:[128]u8;n:=jv_str(j,jv_get(j,item,"tool_use_id"),b[..]);
+   if n<1 {return false;}if eh_find(j,turns,"tool_calls","id",cast(string)b[0..<n])== -1 {count+=1;}
+  }
+  if count==0 {continue;}
+  detail:[16384]u8;dn:=0;title:[128]u8;tn:=ea_copy(title[..],"Tools");
+  for pass:0..<2 {list:=ifx pass==0 then calls else results;
+   for k:0..<jv_len(j,list) {
+    item:=jv_at(j,list,k);name:[128]u8;nn:int;
+    if pass==0 {nn=jv_str(j,jv_get(j,item,"name"),name[..]);}else {
+     tb:[128]u8;tid:=jv_str(j,jv_get(j,item,"tool_use_id"),tb[..]);
+     if eh_find(j,turns,"tool_calls","id",cast(string)tb[0..<tid])!= -1 {continue;}
+    }
+    if nn<1 {nn=ea_copy(name[..],"Tool");}label:=cast(string)name[0..<nn];if count==1 {tn=ea_copy(title[..],label);}
+    if dn!=0 {dn=json_raw(detail[..],dn,"\n\n");}
+    dn=json_raw(detail[..],dn,label);dn=json_raw(detail[..],dn,"\n");if dn== -1 {return false;}
+    n:=jv_str(j,jv_get(j,item,ifx pass==0 then "input" else "content"),detail[dn..<detail.count]);if n<0 {return false;}dn+=n;
+    if pass==0 {
+     tb:[128]u8;tid:=jv_str(j,jv_get(j,item,"id"),tb[..]);if tid<1 {return false;}
+     result:=eh_find(j,turns,"tool_results","tool_use_id",cast(string)tb[0..<tid]);
+     if result!= -1 {
+      dn=json_raw(detail[..],dn,"\n\n");if dn== -1 {return false;}
+      n=jv_str(j,jv_get(j,result,"content"),detail[dn..<detail.count]);if n<0 {return false;}dn+=n;
+     }
+    }
+   }
+  }
+  ni=json_raw(ib[..],ni,".tools");if ni== -1 {return false;}
+  if !eh_add(v,cast(string)ib[0..<ni],"tool",cast(string)title[0..<tn],cast(string)detail[0..<dn]) {return false;}
+ }return true;
+}
+eh_read :: (raw:string,v:[]EaView)->bool {
+ v[0].ni=0;v[0].text_n=0;nodes:[4096]JvNode;d:[1]Jv;
+ if !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];turns:=jv_get(j,0,"turns");
+ if jv_raw(j,jv_get(j,0,"schema"))!=CSR_SCHEMA || !jv_bool(j,jv_get(j,0,"inert")) || jv_kind(j,turns)!=JV_ARRAY {return false;}
+ if eh_items(j,turns,v) {return true;}v[0].ni=0;v[0].text_n=0;return false;
+}

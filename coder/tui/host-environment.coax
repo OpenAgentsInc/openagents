@@ -4,6 +4,7 @@
 #load "../../coax/lib/agent/environment/host-wire.coax";
 #load "../../coax/lib/agent/engine/claude.coax";
 #load "../../coax/lib/agent/observe/claude-files.coax";
+#load "../../coax/lib/agent/environment/history.coax";
 #load "../../coax/lib/agent/session/log.coax";
 
 ES_SLOTS :: 4;
@@ -303,10 +304,7 @@ es_native_read :: (h:[]HsHost,q:[]EaRequest,v:[]EaView) #effects(all) {
   nodes:[2048]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {es_refuse(v,"source_unavailable");return;}
   j:=d[0];if jv_get(j,0,"error")>=0 {es_refuse(v,"source_unavailable");return;}
   turns:=jv_get(j,0,"turns");if jv_kind(j,turns)!=JV_ARRAY {es_refuse(v,"source_unavailable");return;}
-  for i:0..<jv_len(j,turns) {if v[0].ni>=64 {v[0].complete=false;break;}at:=jv_at(j,turns,i);m:=v[0].items[v[0].ni];
-    m.ni=jv_str(j,jv_get(j,at,"uuid"),m.id[..]);m.nr=jv_str(j,jv_get(j,at,"role"),m.role[..]);decoded:[16384]u8;m.nt=jv_str(j,jv_get(j,at,"text"),decoded[..]);if m.nt<0 {es_refuse(v,"source_unavailable");return;}m.text_at=ea_text_put(v,cast(string)decoded[0..<m.nt]);if m.text_at<0 {es_refuse(v,"output_limit");return;}m.complete=true;
-    if m.ni<1 || m.nr<1 || m.nt<0 {es_refuse(v,"source_unavailable");return;}v[0].items[v[0].ni]=m;v[0].ni+=1;
-  }
+  if !eh_read(raw,v) {es_refuse(v,"output_limit");return;}
   before:=jv_int(j,jv_get(j,0,"next_before"),0);if before>0 {b:[64]u8;v[0].nc=ea_copy(v[0].cursor[..],hs_itoa(before,b[..]));}
   v[0].complete=before==0 && jv_len(j,jv_get(j,0,"warnings"))==0;
   epoch:[64]u8;v[0].np=ea_copy(v[0].epoch[..],hs_itoa(row.modified,epoch[..]));

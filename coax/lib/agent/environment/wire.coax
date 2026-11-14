@@ -55,8 +55,9 @@ EA_MODELS :: 12;EA_LEVELS :: 8;
 EaModel :: struct {id:[64]u8;ni:int;label:[48]u8;nl:int;ladder:int;}
 EaLevel :: struct {id:[16]u8;ni:int;label:[24]u8;nl:int;}
 EaOffer :: struct {models:[EA_MODELS]EaModel;n:int;levels:[EA_LEVELS]EaLevel;nv:int;default_level:int;}
+EA_ITEMS :: 64;
 EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;}
-EaView :: struct {ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[64]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;}
+EaView :: struct {ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[EA_ITEMS]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;}
 ea_text_put :: (v:[]EaView,text:string)->int #effects(all) {
   if text.count>16384 || v[0].text_n+text.count>v[0].text.count {return -1;}
   at:=v[0].text_n;for c,i:text {v[0].text[at+i]=c;}v[0].text_n+=text.count;return at;

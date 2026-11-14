@@ -67,4 +67,23 @@ import UIKit
         XCTAssertEqual((surface.controls["env.composer"] as? UITextView)?.text,"Keep this draft")
         let screenshot=XCTAttachment(image:UIGraphicsImageRenderer(bounds:surface.view.bounds).image {_ in surface.view.drawHierarchy(in:surface.view.bounds,afterScreenUpdates:true)});screenshot.name="Compact T3 work rows and header refresh";screenshot.lifetime = .keepAlways;add(screenshot)
     }
+    func testEmptyNativeHistoryRecordsNeverRenderBubblesOrCopyOnlyRows()throws {
+        let (p,initial)=try loaded();var view=initial
+        var items=try XCTUnwrap(view["items"] as? [[String:Any]])
+        for i in 0..<12 {items.insert(["item_id":"blank-\(i)","role":i%2==0 ? "user":"assistant","text":i%3==0 ? " \n\t":"","tool_name":"","complete":true],at:1)}
+        view["items"]=items
+        try p.event(104,200,String(decoding:JSONSerialization.data(withJSONObject:view),as:UTF8.self));try p.frame();_ = try p.action()
+        let elements=p.elements(),messages=elements.filter {$0.role=="message"}
+        XCTAssertEqual(messages.count,2);XCTAssertEqual(elements.filter {$0.role=="tool"}.count,2)
+        let surface=NativeControls();surface.view.frame=CGRect(x:0,y:0,width:402,height:874);surface.render(elements)
+        surface.view.layoutIfNeeded();surface.view.layoutIfNeeded()
+        for message in messages {
+            let native=try XCTUnwrap(surface.controls[message.id] as? NativeMessage)
+            let text=descendants(native).compactMap {$0 as? NativeRichText}
+            XCTAssertTrue(text.contains {!$0.text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty})
+            XCTAssertTrue(text.allSatisfy {$0.bounds.height>0})
+        }
+        let shot=XCTAttachment(image:UIGraphicsImageRenderer(bounds:surface.view.bounds).image {_ in surface.view.drawHierarchy(in:surface.view.bounds,afterScreenUpdates:true)})
+        shot.name="Native history without empty bubbles or orphan copy icons";shot.lifetime = .keepAlways;add(shot)
+    }
 }

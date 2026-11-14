@@ -1484,3 +1484,12 @@ not a pending request for a key.
       **Settings → Updates**. Generation **2** contains the shorter interface
       and icon actions. Confirm the appearance on the physical phone; the
       twelve native/simulator checks passed.
+
+## iOS transcript visibility (2026-11-14)
+
+- [ ] Reopen TestFlight **1085** and apply Updates generation **3**, or use
+      **Settings → Updates**. Open the CoderOS conversation that showed blank
+      bubbles: text should be readable, with compact expandable tool rows and
+      no empty copy-only messages. Both computer services are updated and the
+      exact conversation passes service read-back. Generation 3 also includes
+      generation 2's shorter interface; no new TestFlight install is needed.

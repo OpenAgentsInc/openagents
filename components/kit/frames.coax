@@ -52,6 +52,13 @@ BS_PLAIN :: 0; BS_PRIMARY :: 1; BS_DISABLED :: 2; BS_BUSY :: 3; BS_DESTRUCTIVE :
   tr_begin(t[..]);t[0].pool_n=TR_POOL-60020;raw:="**hello**";x=k_message(t[..],u[..],"f",true,d[..],raw);
   #assert tr_text_of(t[..],tr_find(t[..],"f.plain"))==raw;
 }
+#test "empty transcript records render neither bubbles nor copy-only rows" {
+ t:[1]Tree;u:[1]Ui;d:[1]MdDoc;tr_begin(t[..]);ui_begin(u[..],0,true);
+ #assert k_message(t[..],u[..],"empty",false,d[..],"")== -1;
+ #assert k_message(t[..],u[..],"blank",true,d[..]," \n\t\n")== -1 && t[0].n==0;
+ #assert k_message(t[..],u[..],"answer",true,d[..],"Readable")>=0;
+ #assert tr_find(t[..],"answer.copy")>=0 && tr_find(t[..],"empty.copy")== -1;
+}
 
 // When a node first appeared: its id's hash and the second it starts to enter.
 UiBirth :: struct { h: int; born: f32; seen: bool; }
@@ -386,8 +393,9 @@ k_agent :: (t: [] Tree, u: [] Ui, id: string, doc: [] MdDoc) -> int {
 // selection while the rest of the app changes. Rich-node exhaustion falls back
 // to the complete source, reserving space for the remainder of a transcript.
 k_message :: (t:[]Tree,u:[]Ui,id:string,assistant:bool,doc:[]MdDoc,source:string)->int {
-  i:=tr_open(t,id,TG_DIV,ifx assistant then "msg-ai" else "msg-user");tr_attr(t,i,AT_ROLE,"article");
   doc[0].n=0;doc[0].nb=0;doc[0].nr=0;doc[0].ni=0;doc[0].nlink=0;doc[0].keep_rules=true;n:=md_parse(doc,source,0);
+  if doc[0].nb==0 {return -1;}
+  i:=tr_open(t,id,TG_DIV,ifx assistant then "msg-ai" else "msg-user");tr_attr(t,i,AT_ROLE,"article");
   a:[UI_ID]u8;b:[UI_ID]u8;
   if !md_tree_rich_fits(doc,TR_POOL-t[0].pool_n,TR_NODES-t[0].n) {
     p:=tr_leaf(t,tr_cat(a[..],id,".plain"),TG_P,"",source);
