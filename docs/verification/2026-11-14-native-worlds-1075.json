@@ -142,6 +142,11 @@
   ],
   "local_artifacts": "/Users/christopherdavid/.openagents/releases/openagents-ios-1075-final",
   "release_validation_correction": "The first upload was refused for missing CFBundleShortVersionString on the four new frameworks. Project-level marketing metadata was added, every embedded bundle was checked, and the corrected IPA was accepted and processed VALID.",
+  "physical_device_incident": {
+    "observed_at": "2026-11-14",
+    "status": "1075 superseded by storage-path correction in 1076",
+    "cause": "Real iOS refuses creation of .openagents at the app-container root; simulator tests did not enforce that root restriction. All three affected paths (asset cache, player credentials, game state) move to the platform-writable Library/Application Support home, joined with the shared Coax path helper."
+  },
   "creator_access": {
     "verified_at": "2026-11-14T13:35:39.939239+00:00",
     "authorization": "Owner explicitly approved creator access for their verified email account in this conversation",

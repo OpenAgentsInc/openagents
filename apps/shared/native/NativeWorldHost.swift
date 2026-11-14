@@ -19,7 +19,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     func ready()async {
         let account=AppAuth.shared.tokens?.account ?? "guest"
         let name=NativePackage.hex(Data(SHA256.hash(data:Data(account.utf8))))
-        let file=URL(fileURLWithPath:NSHomeDirectory()).appendingPathComponent(".openagents/worlds/players/\(name).json")
+        let file=NativeWorldStorage.directory("worlds/players/\(name).json")
         if let raw=try? Data(contentsOf:file),let text=String(data:raw,encoding:.utf8) {player=text}
         do {
             if player.isEmpty {
@@ -124,7 +124,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
             c.shaders=Bundle.main.resourceURL!.appendingPathComponent("WorldShaders/\(realm)").path
             c.pack=Self.text(profile.pack).isEmpty ? "":root.appendingPathComponent("base.pack").path
             c.fonts=root.appendingPathComponent("fonts").path;c.reading="reading";c.title="title";c.titleWeight=realm=="splice-bots" ? 400:600;c.titleScale=Double(profile.title_scale)
-            c.web=root.appendingPathComponent("web").path;c.store=URL(fileURLWithPath:NSHomeDirectory()).appendingPathComponent(".openagents/world-state/\(path.split(separator:"/").last ?? "world")").path
+            c.web=root.appendingPathComponent("web").path;c.store=NativeWorldStorage.directory("world-state/\(path.split(separator:"/").last ?? "world")").path
             c.origin=AppAuth.defaultOrigin;c.path=path+(editRequested ? "?edit":"");c.realm=realm;c.slot=realm;c.style=Self.text(profile.style);c.clock=Self.text(profile.clock);c.variant=Self.text(profile.variant)
             c.touch=true;c.screen=view.bounds.size;c.automated=UserDefaults.standard.bool(forKey:"OAAutomation");c.viewer=viewer
             c.player=network.player.isEmpty ? nil:network.player

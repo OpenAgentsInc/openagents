@@ -2,6 +2,27 @@
 import Foundation
 import CryptoKit
 
+// iOS permits durable app data in Library, not arbitrary children of its
+// container root. The simulator does not enforce that restriction. Foundation
+// selects the platform home; Coax's one OpenAgents path helper joins it.
+enum NativeWorldStorage {
+    static var base:URL {
+        #if os(iOS)
+        return FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0]
+        #else
+        return FileManager.default.homeDirectoryForCurrentUser
+        #endif
+    }
+    static func directory(_ leaf:String,base:URL=NativeWorldStorage.base)->URL {
+        let home=base.path;var bytes=[UInt8](repeating:0,count:4096)
+        let n=home.withCString {h in leaf.withCString {l in bytes.withUnsafeMutableBufferPointer {b in
+            nwh_path(coax_string(data:h,count:Int64(home.utf8.count)),coax_string(data:l,count:Int64(leaf.utf8.count)),coax_v_u8(data:b.baseAddress,count:Int64(b.count)))
+        }}}
+        precondition(n>0,"The platform's OpenAgents path must fit")
+        return URL(fileURLWithPath:String(decoding:bytes.prefix(Int(n)),as:UTF8.self))
+    }
+}
+
 struct NativeWorldFile {
     let path:String,hash:String
     let bytes:Int64,required:Bool
@@ -43,7 +64,7 @@ actor NativeWorldAssets {
     private let transport:NativeWorldSession
     init(home:URL?=nil,transport:NativeWorldSession=NativeWorldSession()) {
         self.transport=transport
-        self.home=home ?? URL(fileURLWithPath:NSHomeDirectory(),isDirectory:true).appendingPathComponent(".openagents/worlds",isDirectory:true)
+        self.home=home ?? NativeWorldStorage.directory("worlds")
     }
     static func hash(_ file:URL)throws->(Int64,String) {
         let h=try FileHandle(forReadingFrom:file);defer {try? h.close()};var digest=SHA256(),count:Int64=0

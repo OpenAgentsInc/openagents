@@ -18,6 +18,37 @@ private final class WorldDownloadOracle:URLProtocol {
     override func stopLoading() {}
 }
 @MainActor final class NativeWorldDownloadTests:XCTestCase {
+    func testDefaultWorldPathsAreInsideTheWritableIOSLibrary()async throws {
+        let support=FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].standardizedFileURL
+        let assets=NativeWorldAssets(),home=await assets.home
+        XCTAssertEqual(home,NativeWorldStorage.directory("worlds"))
+        XCTAssertTrue(home.path.hasPrefix(support.path+"/"))
+        for leaf in ["worlds/players/account.json","world-state/splice-bots"] {
+            XCTAssertTrue(NativeWorldStorage.directory(leaf).path.hasPrefix(support.path+"/"))
+        }
+    }
+    func testDownloadsWorkWhenTheContainerRootRefusesNewDirectories()async throws {
+        let fm=FileManager.default,container=fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let support=container.appendingPathComponent("Library/Application Support")
+        try fm.createDirectory(at:support,withIntermediateDirectories:true)
+        try fm.setAttributes([.posixPermissions:0o500],ofItemAtPath:container.path)
+        defer {try? fm.setAttributes([.posixPermissions:0o700],ofItemAtPath:container.path);try? fm.removeItem(at:container)}
+        XCTAssertThrowsError(try fm.createDirectory(at:container.appendingPathComponent(".openagents/worlds/objects"),withIntermediateDirectories:true))
+        let data=Data("world in an iOS-writable directory".utf8),inventory=try self.inventory(data)
+        let root=NativeWorldStorage.directory("worlds",base:support)
+        WorldDownloadOracle.reset(data);let assets=cache(root)
+        let installed=try await assets.prepare(inventory,progress:{_,_ in})
+        XCTAssertEqual(try Data(contentsOf:installed.appendingPathComponent("base.pack")),data)
+        WorldDownloadOracle.reset(Data(),status:503)
+        _ = try await assets.prepare(inventory,progress:{_,_ in});XCTAssertEqual(WorldDownloadOracle.count,0)
+        // Player credentials and game saves use the same writable logical home.
+        for leaf in ["worlds/players/account.json","world-state/splice-bots/save"] {
+            let file=NativeWorldStorage.directory(leaf,base:support)
+            try fm.createDirectory(at:file.deletingLastPathComponent(),withIntermediateDirectories:true)
+            try data.write(to:file,options:.atomic)
+            XCTAssertEqual(try Data(contentsOf:file),data)
+        }
+    }
     private func inventory(_ data:Data)throws->NativeWorldInventory {
         let hash=NativePackage.hex(Data(SHA256.hash(data:data)))
         return try NativeWorldInventory(JSONSerialization.data(withJSONObject:["schema":"coax.native.world.assets.v1","realm":"splice-bots","runtime":String(repeating:"a",count:64),"files":[["path":"base.pack","sha256":hash,"bytes":data.count,"required":true]]]))

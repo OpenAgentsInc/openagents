@@ -1,0 +1,3 @@
+Fixes the iPhone storage-permission error that blocked opening Splice Bots and Everglade. World downloads, player files and game saves now use the writable iOS Library directory.
+
+Open Worlds and try either game again. This native storage correction requires build 1076.

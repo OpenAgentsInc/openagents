@@ -2,3 +2,11 @@
 #load "assets-wire.coax";
 #load "policy.coax";
 #load "profiles.coax";
+#load "../../lib/sys/openagents-paths.coax";
+#test "the native SDK uses the shared OpenAgents path in its platform-writable home" {
+ b:[512]u8;n:=nwh_path("/container/Library/Application Support","worlds",b[..]);
+ #assert n>0 && cast(string)b[0..<n]=="/container/Library/Application Support/.openagents/worlds";
+}
+nwh_path :: (home:string,leaf:string,out:[]u8)->int #export_c #effects(all) {
+ return oa_path(home,leaf,out).count;
+}

@@ -2,7 +2,11 @@
 
 ## iPhone worlds acceptance, build 1075
 
-Install TestFlight 1075 (VALID, verified in Owner) and open **Worlds**. Open Splice
+Build 1075 is superseded: its download/state paths tried to write beside the
+iOS container's Library, which a real phone refuses. Build 1076 is being
+qualified with the paths inside Library/Application Support instead.
+
+Install the corrected TestFlight build and open **Worlds**. Open Splice
 Bots and Everglade; the first visit downloads their assets. Check portrait
 and landscape touch controls, sound after a gesture, suspension and reopening
 offline after an initial successful visit. Sign in with the existing email
