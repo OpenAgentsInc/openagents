@@ -148,3 +148,55 @@ checks passed. No native app source was rebuilt for these observations.
 Both public update endpoints served the exact tested generation-5 envelope;
 all 12 artifact sizes and hashes matched. Evidence is retained under
 `~/.openagents/releases/openagents-ios-1069-ota5/`.
+
+## Build 1070: UIKit presentation and executable OTA
+
+The owner requested alignment with Exact. The pinned Exact source/research
+(94b8671) uses UIKit on iOS and the DOM on the web. The production account
+host now creates no WebView. Coax still owns the keyed tree, state, actions,
+requests and history decoding; the browser and native hosts share the
+component-buffer decoder. UIKit controls persist by id and use system text,
+scrolling, keyboard layout and accessibility. The compiled book milestone
+reuses the same NativeControls projection.
+
+The installed execution SDK is JavaScriptCore. The existing Coax C/Wasm
+output is lowered with the installed Binaryen SDK and emitted as pedantic
+portable JavaScript. There is no handwritten JS application logic or new UI
+language. Signed app.js/extras.js and the transport adapters remain OTA
+replaceable. This follows Exact's ownership split, not its Rust plan format;
+baking, dependency analysis and complete driver parity remain separate work.
+
+- The independent Node WebAssembly oracle matched both generated modules'
+  component commands and service requests through login, history, expiry and
+  balance fixtures.
+- Three existing signed-package unit cases passed. Two native runtime/UIKit
+  unit cases passed, including malformed-frame refusal, keyed input retention
+  and a real UITextField with .oneTimeCode/numberPad.
+- The native embedded-screen and both existing balance UI cases passed.
+  The first UI run caught missing descendant text on native buttons; the
+  projection now gathers that text, and its regression check passes.
+- The final Xcode-signed simulator run passed email/OTA/history in 76.441 s,
+  per-gesture zoom checks in 8.014 s and the shared book login in 18.404 s.
+  The email test explicitly observes zero WebViews and checks login persistence
+  and logged-out relaunch after the 30-second foreground health window.
+- Earlier retained-copy runs were discarded: Xcode dependency paths selected
+  the wrong app; an unsigned copy could not preserve its Keychain login; a
+  manually entitled copy could not launch. The final approach uses Xcode's
+  embedded simulator identity and an automation-only localhost update override.
+  The override is excluded from Release. Production auth/token storage was
+  unchanged. No real mailbox, account conversations or wallet seed was read.
+- The shared browser decoder was exercised by the actual account Wasm page
+  in headless Chrome: all account buttons and the email field rendered. A
+  cached-main-pages fetch unexpectedly built snapshot 9ca61c2264 and failed
+  its unrelated nostr_chat build; the targeted browser check used the retained
+  account module instead.
+
+The tested signed native-runtime package is generation 1, runtime
+`f231ad8b52cd85c3c84e76f9f96cf7e6eac4031332e478c300abc56b700cb3e9`. It has five files (including the frozen
+package-v1 index.html requirement, which this native host does not execute).
+The application JavaScript artifact is 583225 bytes, SHA-256
+`3efb894022048a3b54f9a6a303dd452df68fd5f5914af6cfbc089cb39363da73`. The original Wasm remains the parity reference.
+
+Actual phone appearance, typing and suggestions remain in NEEDS_OWNER.md.
+The owner uses Gmail/another mail app; a .oneTimeCode field does not establish
+that the system can access or suggest codes from that inbox.

@@ -9,10 +9,10 @@ below also describes capabilities that this first profile does not implement.
 Build 1070 replaces the WebKit profile of 1068–1069 with a new runtime identity.
 The old 1069 feed remains compatible with that installed binary.
 
-Written 2026-11-13. Status: proposed specification, extending
-[Coax Native](native.md). No update client, service, general app interpreter
-or new compiler target is implemented by this document. Assign an implementer,
-date and bounded workload before starting each implementation stage.
+Written 2026-11-13. Status: specification extending [Coax Native](native.md),
+with the initial signed-package client/service and native-control execution
+profile implemented. Later stages remain proposals; they require an
+implementer, date and bounded workload before implementation.
 
 Coax Native Updates delivers signed application code and content to an
 installed Coax Native runtime. The goal is to update as much of the product
@@ -184,7 +184,7 @@ is created. Both native and book milestone screens reuse
 Each module has a 32 MiB JS linear buffer. The host admits scripts up to
 8 MiB, at most 4096 retained nodes and bounded component frames. SDK/JSCore
 allocations are separate from those buffers. The original Wasm module is the
-independent parity reference (`native/runtime-oracle.cjs`), not something
+independent parity reference (`native/tests/runtime-oracle.cjs`), not something
 JavaScriptCore is assumed to instantiate. This profile does not provide
 instruction fuel or qualify untrusted third-party programs: only verified,
 first-party signed app artifacts are eligible.

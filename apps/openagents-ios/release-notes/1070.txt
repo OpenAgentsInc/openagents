@@ -1,0 +1,8 @@
+Native UIKit presentation for the Coax Native app: native text fields, buttons,
+scrolling, Dynamic Type and accessibility. No account WebView or page zoom.
+The email-code field uses iOS one-time-code input. Email suggestions depend
+on the phone's mail and AutoFill integration.
+
+Coax continues to own login, saved chat titles and the hidden read-only balance
+menu. Signed OTA can replace generated application code without another
+native build. This build introduces a new compatible update runtime.

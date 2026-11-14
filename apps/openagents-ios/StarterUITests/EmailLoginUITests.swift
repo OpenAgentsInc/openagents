@@ -6,7 +6,7 @@ import XCTest
 final class EmailLoginUITests:XCTestCase {
     func testEmailCodeLoginAndAccountHistoryThroughOTA() {
         let app=XCUIApplication()
-        app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13491"]
+        app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13491","-OAUpdatesOrigin","http://127.0.0.1:13491"]
         app.launch()
         XCTAssertEqual(app.webViews.count,0)
         let apply=app.alerts.buttons["Apply update"]
@@ -54,7 +54,7 @@ final class EmailLoginUITests:XCTestCase {
     // Run after the OTA flow, on the healthy package with the keyboard closed.
     func testViewportDoesNotZoom() {
         let app=XCUIApplication()
-        app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13491"]
+        app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13491","-OAUpdatesOrigin","http://127.0.0.1:13491"]
         app.launch()
         let title=app.staticTexts["Log in"]
         XCTAssertTrue(title.waitForExistence(timeout:20))

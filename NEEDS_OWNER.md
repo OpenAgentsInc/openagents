@@ -1,5 +1,22 @@
 # Owner actions
 
+## Native UIKit app, build 1070 (2026-11-13)
+
+Install OpenAgents **1070** from the existing Owner TestFlight group. The app
+now uses UIKit fields, buttons, scrolling and accessibility, with Coax
+application code running in JavaScriptCore. It creates no account WebView.
+Check native typing, keyboard dismissal, pinch/double-tap stability, login
+persistence and **More → Bitcoin balance**. Signed native-runtime updates
+remain available; keep a newly applied update foregrounded for 30 seconds.
+
+The owner uses Gmail/another mail app. The native code field has
+`.oneTimeCode`, but actual email-code suggestions depend on supported iOS
+mail/AutoFill integration and are not established by simulator fixtures.
+The account still has no linked Nostr keys or saved conversations; this
+renderer change does not reassign the existing key-owned chats.
+
+The 1069 instructions below describe the older WebKit runtime and its feed.
+
 ## Email login and saved chats over the air (2026-11-13)
 
 Use OpenAgents TestFlight **1069**. Tap **Check for updates**, then **Apply

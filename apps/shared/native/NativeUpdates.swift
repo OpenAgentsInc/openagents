@@ -73,7 +73,15 @@ struct NativePackage {
         runtime = config["runtime"] as! String
         enabled = config["updatesEnabled"] as? Bool ?? false
         publicKey = verificationKey ?? Data(base64Encoded: config["publicKey"] as! String)!
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey:"OAAutomation"),
+           let origin=UserDefaults.standard.string(forKey:"OAUpdatesOrigin"),
+           let url=URL(string:origin),url.host=="127.0.0.1",url.scheme=="http" {
+            endpoints=[url]
+        } else {endpoints = (config["endpoints"] as! [String]).compactMap(URL.init(string:))}
+        #else
         endpoints = (config["endpoints"] as! [String]).compactMap(URL.init(string:))
+        #endif
         app = bundle.bundleIdentifier ?? "com.openagents.app"
         embedded = bundle.url(forResource: "Starter", withExtension: nil)!
         self.home = home ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("CoaxNativeUpdates",isDirectory: true)

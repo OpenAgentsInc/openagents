@@ -81,7 +81,7 @@ coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-ios/extras/app.coa
 coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/app.wasm /tmp/app-mvp.wasm apps/openagents-ios/Starter/build/app.js
 coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/extras.wasm /tmp/extras-mvp.wasm apps/openagents-ios/Starter/build/extras.js
 coax/web/tool.sh coax/native/prepare.coax
-node coax/native/runtime-oracle.cjs apps/openagents-ios/Starter
+node coax/native/tests/runtime-oracle.cjs apps/openagents-ios/Starter
 mkdir -p /tmp/native-release
 coax/web/tool.sh coax/native/package.coax apps/openagents-ios/Starter \
   com.openagents.app "$(cat apps/openagents-ios/Generated/runtime.txt)" 1 \
@@ -97,6 +97,10 @@ coax/web/tool.sh coax/native/publish.coax apps/openagents-ios/Starter \
 Choose a fresh, increasing generation. The publisher checks file hashes,
 signs locally using CryptoKit Ed25519, uploads immutable artifacts first,
 then promotes `latest.cnu`. An interrupted publish keeps the previous feed.
+`index.html` remains required by the frozen package-v1 format; the UIKit
+profile never executes it. Native presentation needs `runtime.js`,
+`tree-commands.js`, `build/app.js` and `build/extras.js`. The Wasm files
+are retained as build/parity references, not executed by JavaScriptCore.
 To roll back, publish old compatible resources with a higher generation.
 The installed key is the public file here; keep its private key outside the
 repository. A restricted backup is in Secret Manager
