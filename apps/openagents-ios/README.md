@@ -124,6 +124,21 @@ portable Coax and can also be corrected over Updates on compatible builds.
 matches all twenty archived resources. See the
 [crash and release record](../../docs/verification/2026-11-14-native-world-crash-1078.json).
 
+Build 1079 adopts T3 Code's compact work rows for computer transcripts. Tool
+output starts collapsed, opens as literal selectable text with bounded
+scrolling and Copy, and keeps its disclosure state across polls. The header
+has a small refresh/status control; background polling stays quiet. Earlier
+history moves above the transcript and remains still while being read. Main's
+existing model and effort controls are retained. The shared Coax presentation
+also has a compatible OTA for 1078; the native row and status styling requires
+1079. It is **VALID / IN_BETA_TESTING**, verified in **Owner**. See the
+[release record](../../docs/verification/2026-11-14-native-transcript-1079.json).
+
+`CoaxNativeTranscript` covers the generated program, native tool disclosure,
+copy/selection and draft preservation. `CoaxNativeTranscriptLive` signs into
+an independent local HTTP oracle and opens a computer transcript in the
+installed app; it makes no provider calls or real account changes.
+
 `apps/openagents-ios/build.sh` generates on a remote build host and builds
 with Xcode on this Mac's slots. XcodeGen is required. No simulator window
 needs to be opened.

@@ -2,6 +2,11 @@
 
 ## iPhone transcript, build 1079
 
+1079 is **VALID / IN_BETA_TESTING**, verified in the existing **Owner** group.
+Its generation-1 feed matches the archive; 1078 also has the compatible
+portable cleanup in generation 2. The complete native appearance needs 1079.
+See the [release record](docs/verification/2026-11-14-native-transcript-1079.json).
+
 Install 1079 and open an existing Mac or CoderOS conversation. Tool calls
 start collapsed; open one to read/copy its literal output. Refresh is the
 small status control in the header. Check a long conversation while Claude
