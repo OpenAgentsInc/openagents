@@ -417,9 +417,9 @@ Imperial robot come at you through where he stands while he fights it (`d_stage`
   couple of seconds); 1 to 4 pick its moves. A hit landing jolts the boss and flashes it, and the
   prompt names her part, one step at a time: wait while the mech fights; jump a tail sweep or step out of a
   charge's lane when she stands in one (the outlines on the lab's floor are three times as wide as the foes');
-  once the weak points open, run into an orange ring and press F. An open weak point is larger, with a beam
-  to the floor and a ring round it where F reaches it; the compass leads to the nearest one still awake and
-  one off screen is marked at the screen's edge. HIT over her names what hit: its tail or its charge.
+  once the weak points open, run into an orange ring and press F (it takes the nearest one). An open weak
+  point is larger, with a ring round it on the floor where F reaches it; the compass leads to the nearest one
+  still awake. HIT over her names what hit: its tail or its charge. The boss's health is on its panel only.
   The lab casts shadows straight down, so no long blue shadow lies on its white floor (#13584). Phase one: it holds
   the lab's middle facing east and its tail sweeps half way round over the lab's north half, where its
   flank's weak point is. Below half health, phase two: it turns on the mech, winds up, charges and
