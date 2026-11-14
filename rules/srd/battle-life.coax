@@ -75,12 +75,12 @@ rs_dropped :: (b: [] RsBattle, by: int, j: int) #effects(all) {
   for k: 0..<b[0].n {
     // only a Hex or a Hunter's Mark held, or Dark One's Blessing, has anything to do here (the
     // look first, before a creature's copy: a big battle has thousands)
-    if !rs_has_feature(b[0].c[k], RS_FT_DARK_BLESSING) && b[0].c[k].conc < 0 { continue; }
+    if !rs_has_feature(b[0].c[k], RS_FT_DARK_BLESSING) && !rs_executable_spell(b[0].c[k].conc) { continue; }   // no Concentration held
     c := b[0].c[k];
     for e: 0..<RS_EFFECTS {
       ef := b[0].c[j].eff[e];
       if ef.by == k && ef.spell == c.conc && rs_aura_moves(ef.kind) {
-        b[0].c[k].note[RS_NT_CURSE_FREE] = 1;
+        b[0].c[k].note[RS_NT_CURSE_FREE] = j + 1;   // free to move: the creature it was on, plus one
         b[0].c[k].note[RS_NT_CURSE_AFTER] = ifx rs_turn_owner(b) == k then c.turn_at else c.turn_at - rs_beat(b);
       }
     }

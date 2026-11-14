@@ -1011,3 +1011,18 @@ af_guard :: (b: [] RsBattle, slot: int) {
   #assert rs_difficult(b[..], 11, 5) && !rs_step_to(b[..], f, 11, 5) && b[0].c[f].x == 10;
   #assert rs_step_to(b[..], f, 9, 5) && b[0].c[f].x == 9;
 }
+
+#test "affect: a curse whose target drops is free to move: the note names that creature, from this turn or the last" #steps 400000000 {
+  for own: 0..<2 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true; b[0].clock = 1000;
+    o := rs_add(b[..], rs_fighter("Other", 1, 3), 6, 1); t := rs_add(b[..], rs_fighter("Brand", 1, 3), 3, 1);
+    w := rs_add(b[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 1, 1);
+    b[0].c[w].conc = SP_HEX; b[0].c[w].conc_until = 9000;
+    b[0].c[t].eff[1] = RsEffect.{kind = EF_HEX, cond = RS_STR, by = w, spell = SP_HEX, until = 9000, save = -1};
+    b[0].who = ifx own == 1 then w else o;
+    b[0].c[t].hp = 1; rs_damage(b[..], o, t, 5, RS_SLASHING, false, -1);
+    #assert b[0].c[t].hp == 0 && b[0].c[w].note[RS_NT_CURSE_FREE] == t + 1;
+    #assert b[0].c[w].note[RS_NT_CURSE_AFTER] == (ifx own == 1 then b[0].c[w].turn_at else b[0].c[w].turn_at - rs_beat(b[..]));
+    #assert o == 0;
+  }
+}
