@@ -15,6 +15,7 @@
 // marked srd: false (house.coax). rs_spell answers for both, not for the whole source catalog.
 #load "more.coax";
 #load "house.coax";
+#load "spell-table.coax";   // every record, generated: rs_spell reads it
 
 // casting times
 RS_T_ACTION :: 0; RS_T_BONUS :: 1; RS_T_REACTION :: 2; RS_T_LONG :: 3;
@@ -119,7 +120,16 @@ RS_SPELLS :: 30;
 
 rs_step :: (kind: int, a: int, b: int, c: int, d: int) -> RsStep { return RsStep.{kind = kind, a = a, b = b, c = c, d = d}; }
 
+// Every record by its number, as one constant table (spell-table.coax, generated from
+// rs_spell_record by spell-table-build.coax): a lookup in a check or a room's battle is one index,
+// not a walk of the records (#13593). A check below holds the table to the records; a number with no
+// record answers as rs_spell_record does.
 rs_spell :: (i: int) -> RsSpell {
+  if i < 0 { return RS_SPELL_NONE; }
+  if i < RS_HOUSE_END { return RS_SPELL_TABLE[i]; }
+  return RS_SPELL_PAST;
+}
+rs_spell_record :: (i: int) -> RsSpell {
   if i >= RS_SPELLS { return rs_more_spell(i); }
   s: RsSpell;
   s.part_of = -1;
@@ -342,6 +352,31 @@ rs_cantrip_tier :: (level: int) -> int {
   return 1;
 }
 
+// When it fails, a record changed: regenerate spell-table.coax (spell-table-build.coax's header).
+#test "every number's record is its table entry, and a number with no record answers as the records do" {
+  ids := [4] int.[1000, -1000, RS_HOUSE_END + 7, RS_MORE_END + 3];
+  for n: 0..<RS_HOUSE_END + 6 + ids.count {
+    i := ifx n < RS_HOUSE_END + 6 then n - 3 else ids[n - RS_HOUSE_END - 6];
+    r := rs_spell_record(i);
+    for side: 0..<2 {
+      if side == 1 && (i < 0 || i >= RS_HOUSE_END) { continue; }
+      a := ifx side == 0 then rs_spell(i) else RS_SPELL_TABLE[i];
+      #assert a.id == r.id && a.name == r.name && a.level == r.level && a.school == r.school && a.classes == r.classes;
+      #assert a.cast_time == r.cast_time && a.range_ft == r.range_ft && a.components == r.components && a.duration == r.duration && a.duration_s == r.duration_s;
+      #assert a.concentration == r.concentration && a.area == r.area && a.area_ft == r.area_ft && a.wide_ft == r.wide_ft && a.turn_save == r.turn_save;
+      for k: 0..<RS_STEPS {
+        #assert a.steps[k].kind == r.steps[k].kind && a.steps[k].a == r.steps[k].a && a.steps[k].b == r.steps[k].b && a.steps[k].c == r.steps[k].c && a.steps[k].d == r.steps[k].d;
+      }
+      #assert a.step_n == r.step_n && a.part_of == r.part_of && a.ritual == r.ritual && a.humanoid_only == r.humanoid_only && a.burst == r.burst && a.plus == r.plus;
+      #assert a.targets == r.targets && a.target_growth == r.target_growth && a.targets_optional == r.targets_optional && a.others == r.others && a.sight == r.sight;
+      #assert a.srd == r.srd && a.page == r.page && a.text == r.text && a.at_will == r.at_will && a.willing == r.willing && a.option == r.option;
+      for k: 0..<3 { #assert a.lasts_from[k] == r.lasts_from[k]; }
+      #assert a.cast_s == r.cast_s && a.shield_stops == r.shield_stops && a.ignites == r.ignites;
+    }
+  }
+  #assert rs_spell(-1).srd && rs_spell(-1).part_of == -1 && rs_spell(-1).name.count == 0 && !rs_spell(RS_HOUSE_END).srd && rs_spell(RS_HOUSE_END).part_of == -1;
+  #assert rs_spell(0).id == "produce-flame" && rs_spell(RS_HOUSE_END - 1).id.count > 0 && rs_spell(RS_MORE_END).name.count == 0 && rs_spell(RS_MORE_END).srd;
+}
 #test "the records hold the SRD's numbers" {
   for i: 0..<RS_SPELLS { s := rs_spell(i); #assert s.name.count > 0 && s.text.count > 40 && s.step_n > 0 && s.page > 100; }
   cw := rs_spell(SP_CURE_WOUNDS); #assert cw.level == 1 && cw.range_ft == 5 && cw.steps[0].a == 2 && cw.steps[0].b == 8 && cw.steps[0].d == 2;
