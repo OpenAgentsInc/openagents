@@ -372,3 +372,12 @@ The focused scheme is `CoaxNativeSettings`. New SDK/key effects require 1088.
 feed matches every archived portable resource and passes the installed
 fresh-install/relaunch no-prompt check. Account/settings migration 0202 is
 live in production.
+
+## Simplified workspace, build 1090
+
+Titles stay centered, creation uses a plus, and foreground synchronization
+replaces refresh controls. The composer contains text and Send/Stop. Worlds
+opens in the main workspace; history reveals at a fixed width with single-line
+truncated rows. The shared project review from main is included, with an 8 MiB
+app stack inside the existing 32 MiB runtime. The grayscale gallery repair
+from 1089 is included. [Checks and installed pictures](../../docs/verification/2026-11-14-mobile-workspace/README.md).

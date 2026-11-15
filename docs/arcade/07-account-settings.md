@@ -46,3 +46,9 @@ automatically imported.
 
 Protocol: [account settings v1](../protocol/account-settings-v1.md).
 Release evidence: [1088](../verification/2026-11-14-arcade-settings/README.md).
+
+Build 1090 centers toolbar titles independently of action groups and removes
+refresh controls. Read-only Account/Profile/Keys/Devices views synchronize
+automatically while foregrounded. Profile drafts, relay/privacy edits and
+private-key views retain their controlled state. The history reveal clips a
+fixed-width pane; rows truncate to one line. [1090 evidence](../verification/2026-11-14-mobile-workspace/README.md).

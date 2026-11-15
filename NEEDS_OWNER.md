@@ -1,5 +1,15 @@
 # Owner actions
 
+## Mobile workspace, build 1090
+
+**1090 is uploaded and Apple is processing it; automatic Owner assignment is queued.**
+Install it when TestFlight lists it. Check centered titles, the minimal
+composer, Worlds → history → Chat, and single-line history while opening the
+drawer. Confirm new chats/projects from another computer appear automatically.
+Settings → Components includes the grayscale gallery repair. Physical-device
+appearance and touch feel remain owner observations; the installed simulator
+flows and fresh-install live-feed check pass. [Pictures and evidence](docs/verification/2026-11-14-mobile-workspace/README.md).
+
 ## Component gallery, build 1086
 
 Install **1086** from TestFlight (**Owner**) and open **Settings → Components**.
