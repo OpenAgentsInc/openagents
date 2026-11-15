@@ -1,0 +1,40 @@
+// Authored kinematic film, not trained locomotion or a contact simulator.
+// Reuses the component easing and the engine's gait; this adapter only maps
+// their visual values onto the pinned Microduck mechanical coordinates.
+#load "../../components/core/arwes/motion.coax";
+#load "../../metaverse-engine/anim/figure.coax" as film_figure;
+#load "../../metaverse-engine/anim/assembly.coax";
+MdFilmFrame :: struct {time:f32;explosion:f32;zoom:f32;walk:f32;blend:f32;phase:f32;origin:Point;}
+#test "the film restores exact assembly before walking and eases both endpoints" {
+ #assert mdf_sample(0).explosion==0 && mdf_sample(1.2).explosion==0;
+ #assert mdf_sample(2.7).explosion>0.49 && mdf_sample(2.7).explosion<0.51;
+ #assert mdf_sample(4.2).explosion==1 && mdf_sample(5.6).explosion==1;
+ #assert mdf_sample(7.2).explosion>0.49 && mdf_sample(7.2).explosion<0.51;
+ #assert mdf_sample(8.8).explosion==0 && mdf_sample(10).explosion==0 && mdf_sample(10).blend==0;
+ #assert mdf_sample(11).blend==1 && mdf_sample(11).explosion==0 && mdf_sample(18).origin.x>0.2;
+ #assert mdf_sample(1.201).explosion<0.000001 && mdf_sample(8.799).explosion<0.000001;
+ #assert mdf_sample(-1).time==0 && mdf_sample(0.0/0.0).time==0 && mdf_sample(99).time==18;
+}
+mdf_sample :: (elapsed:f32)->MdFilmFrame {
+ t:=am_lo(am_time(elapsed),18);e:=0.0f32;
+ if t>1.2 && t<4.2 {e=ar_ease(AM_IN_OUT_CUBIC,(t-1.2)/3);}
+ if t>=4.2 && t<=5.6 {e=1;}
+ if t>5.6 && t<8.8 {e=1-ar_ease(AM_IN_OUT_CUBIC,(t-5.6)/3.2);}
+ walk:=am_hi(0,t-10);blend:=ar_ease(AM_IN_OUT_SINE,walk);
+ // Translation ramps with the same zero-slope entrance as the joint poses.
+ distance:=0.033*(ifx walk<1 then (walk-sin(walk*AM_PI)/AM_PI)*0.5 else walk-0.5);
+ return MdFilmFrame.{time=t,explosion=e,zoom=0.74+0.86*e,walk=walk,blend=blend,phase=film_figure.fract(walk*0.95),origin=v3(distance,0,0)};
+}
+mdf_angles :: (a:[]RigidAssembly,f:MdFilmFrame,out:[]f32)->bool {
+ if a.count!=1 || a[0].joints!=14 || out.count<14 {return false;}
+ for i:0..<14 {out[i]=a[0].joint[i].stand;}
+ if f.walk<=0 {return true;}
+ gait:=film_figure.metaverse_figure_gait(film_figure.Rig.person,film_figure.Gait.walk,f.phase,f.walk);
+ left:=gait.turn[film_figure.P_L_HIP].x*0.6*f.blend;right:= -gait.turn[film_figure.P_R_HIP].x*0.6*f.blend;
+ lk:=gait.turn[film_figure.P_L_KNEE].x*0.48*f.blend;rk:= -gait.turn[film_figure.P_R_KNEE].x*0.48*f.blend;
+ out[2]+=left;out[3]+=lk;out[4]+=lk-left;
+ out[11]+=right;out[12]+=rk;out[13]+=rk-right;
+ sway:=0.025*sin(f.phase*AM_PI*2)*f.blend;out[1]+=sway;out[10]+=sway;
+ out[7]=0.04*sin(f.walk*1.2)*f.blend;out[8]= -sway*0.6;
+ return true;
+}

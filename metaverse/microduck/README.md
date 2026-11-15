@@ -17,6 +17,16 @@ selected joint's rotation axis. These are visual poses; whole-body dynamics, lea
 and hardware control remain separate work in the
 [pipeline specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md).
 
+## Assembly film
+
+**Animation → Play assembly + walk film** runs a smooth 18-second sequence:
+assembly, eased explosion, reassembly, restored stand, then illustrative
+walking. Shared component easing and the engine's gait feed the existing
+source-joint pose/palette. The camera follows the visual root, and a foot-bounds
+anchor keeps the lowest foot on its stand plane. It is a kinematic animation,
+without trained locomotion or contact/balance physics. **Pause animation**
+holds it; **Reset** restores the original scene.
+
 ## Illustrative servo
 
 The floating menu now includes **Illustrative servo**: Baseline, Delayed

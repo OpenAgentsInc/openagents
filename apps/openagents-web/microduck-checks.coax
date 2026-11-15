@@ -65,7 +65,7 @@ md_test_asset :: (s:[]Microduck) {a:[1]RigidAssembly;a[0]=assembly_fixture();a[0
  #assert md_key(s[..],120) && s[0].explosion==0 && s[0].zoom==0.74;#assert md_key(s[..],120);s[0].zoom=1.2;
  #assert !md_angle(s[..],0,3) && s[0].angles[0]==old[0];#assert md_key(s[..],2002) && s[0].selected==2 && s[0].joint== -1;#assert !md_key(s[..],43);
  #assert md_key(s[..],114) && s[0].explosion==0 && s[0].angles[0]==0 && s[0].angles[1]==0 && s[0].joint== -1 && s[0].selected== -1;
- b:[32768]u8;n:=md_menu(s[..],b[..]);#assert n>0;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);#assert jv_len(d[0],jv_get(d[0],0,"items"))==25;
+ b:[32768]u8;n:=md_menu(s[..],b[..]);#assert n>0;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);#assert jv_len(d[0],jv_get(d[0],0,"items"))==27;
  s[0].assembly[0].joints=32;s[0].assembly[0].parts=96;b[0]=77;#assert md_menu(s[..],b[..])== -1 && b[0]==77;
 }
 #test "actual workbench controls compose servo pose plots refusal and background admission" {

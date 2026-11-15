@@ -1,0 +1,18 @@
+{
+  "issue": 13643,
+  "video_sha256": "48916df893418bda111d5e61561f6d1640c67ad8e2a490ded962e9c90ce24250",
+  "bytes": 6063463,
+  "url": "https://storage.googleapis.com/openagentsgemini-native-world-assets/objects/48916df893418bda111d5e61561f6d1640c67ad8e2a490ded962e9c90ce24250",
+  "local": "/Users/christopherdavid/Downloads/Microduck-assembly-walk-2026-11-15.mp4",
+  "duration_seconds": 18,
+  "width": 1920,
+  "height": 1080,
+  "fps": 60,
+  "frames": 1080,
+  "renderer": "actual Coax Native Web / WebGPU, Apple Metal 3",
+  "motion": "authored illustrative kinematic animation; no trained locomotion/contact/balance claim",
+  "model_pack_sha256": "fc21cb95595d665bb83dc5b90c373dcf197f5b45b34b376c0d110b044bb408b5",
+  "source_revision": "b283d134f52db75f747581f9ed47f64f3f94df7b",
+  "license": "CC-BY-NC-SA-4.0",
+  "wasm_sha256": "d03578a8e13d12e36050a1b8c7ca8e338c9da96e904a9727fae0dea1d5ade051"
+}
