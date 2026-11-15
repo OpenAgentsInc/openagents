@@ -704,6 +704,63 @@ env_glade_day_profile :: () -> EnvironmentProfile #effects(all) {
   #assert env_resolved_same(noon, env_profile_sample(env_glade_profile(), 0.5), false);
   #assert env_profile_sample(p, 0.0).body == EnvBody.moon && env_profile_sample(p, 0.25).dir.y < env_profile_sample(p, 0.5).dir.y;
 }
+env_near_rgb :: (c: EnvRgb, r: f32, g: f32, b: f32) -> bool #effects(all) {
+  return abs(c.r - r) < 0.00001 && abs(c.g - g) < 0.00001 && abs(c.b - b) < 0.00001;
+}
+env_near_dir :: (d: EnvDir, x: f32, y: f32, z: f32) -> bool #effects(all) {
+  return abs(d.x - x) < 0.00001 && abs(d.y - y) < 0.00001 && abs(d.z - z) < 0.00001;
+}
+#test "the glade's night, dawn and dusk knots hold their own numbers and keep the glade's film, presentation and noon" {
+  glade := env_glade_profile().track.knots[0];
+  night := env_glade_day_knot(0); dawn := env_glade_day_knot(1); dusk := env_glade_day_knot(3);
+  #assert night.time == 0 && dawn.time == 0.25 && env_glade_day_knot(2).time == 0.5 && dusk.time == 0.75;
+  for i: 0..<4 {
+    k := env_glade_day_knot(i);
+    #assert k.film == glade.film && k.channels.presentation.exposure == glade.channels.presentation.exposure;
+    #assert k.channels.presentation.saturation == glade.channels.presentation.saturation && k.white == glade.white;
+  }
+  // night: the moon is the key, 10000 K at 0.16 of the glade's 2.15, up 40 degrees and turned half a
+  // turn from the glade's sun: the sun's bearing (-0.4, -0.62) normalized is (-0.5422, -0.8403)
+  #assert night.body == EnvBody.moon && night.kelvin == 10000 && abs(night.intensity - 0.344) < 0.00001;
+  #assert env_near_dir(night.dir, 0.4152933, 0.6427876, 0.6437046);
+  c := night.channels;
+  #assert env_near_rgb(c.ambient.upper, 0.065, 0.084, 0.16) && env_near_rgb(c.ambient.lower, 0.026, 0.031, 0.029);
+  #assert env_near_rgb(c.ambient.horizon, 0.0455, 0.0575, 0.0945);
+  #assert env_near_rgb(c.sky.zenith, 0.006, 0.010, 0.030) && env_near_rgb(c.sky.horizon, 0.030, 0.050, 0.100);
+  #assert env_near_rgb(c.sky.cloud_shade, 0.050, 0.060, 0.090) && env_near_rgb(c.sky.cloud_light, 0.14, 0.16, 0.24);
+  #assert env_near_rgb(c.sky.halo, 0.55, 0.62, 0.80) && env_near_rgb(c.sky.wisp, 0.10, 0.12, 0.18) && c.sky.halo_strength == 0.08;
+  #assert env_near_rgb(c.fog.air, 0.025, 0.040, 0.090) && env_near_rgb(c.fog.sun_tint, 0.30, 0.36, 0.55);
+  #assert c.fog.sun_strength == 0.25 && c.fog.density == 0.0065;
+  // dawn and dusk: a sun 10 degrees up, a sixth of a turn east (dawn) or west (dusk) of the glade's,
+  // 2800 K (dawn) or 2600 K (dusk) at 0.85 of 2.15
+  #assert dawn.body == glade.body && dusk.body == glade.body;
+  #assert dawn.kelvin == 2800 && dusk.kelvin == 2600 && abs(dawn.intensity - 1.8275) < 0.00001 && abs(dusk.intensity - 1.8275) < 0.00001;
+  #assert env_near_dir(dawn.dir, -0.9836079, 0.1736482, 0.0485977) && env_near_dir(dusk.dir, 0.4497172, 0.1736482, -0.8761283);
+  for i: 0..<2 {
+    k := ifx i == 0 then dawn else dusk; w := k.channels;
+    #assert env_near_rgb(w.ambient.upper, 0.40, 0.46, 0.54) && env_near_rgb(w.ambient.lower, 0.32, 0.27, 0.14);
+    #assert env_near_rgb(w.ambient.horizon, 0.36, 0.365, 0.34);
+    #assert env_near_rgb(w.sky.zenith, 0.10, 0.36, 0.50) && env_near_rgb(w.sky.horizon, 0.98, 0.72, 0.52);
+    #assert env_near_rgb(w.sky.cloud_shade, 0.62, 0.52, 0.58) && env_near_rgb(w.sky.cloud_light, 1.0, 0.80, 0.62);
+    #assert env_near_rgb(w.sky.halo, 1.0, 0.62, 0.32) && env_near_rgb(w.sky.wisp, 1.0, 0.82, 0.70);
+    #assert env_near_rgb(w.fog.air, 0.56, 0.56, 0.84) && env_near_rgb(w.fog.sun_tint, 0.95, 0.42, 0.12) && w.fog.sun_strength == 0.55;
+    #assert w.fog.density == ifx i == 0 then 0.0065f32 else 0.0055f32;
+    // dawn and dusk leave the glade's halo strength alone
+    #assert w.sky.halo_strength == glade.channels.sky.halo_strength;
+  }
+  #assert env_rgb(1, 2, 3).g == 2;
+  #assert env_glade_day_profile().id == 2 && env_glade_day_profile().version == ENV_VERSION;
+}
+#test "the colour and direction comparisons need every channel within a hundred-thousandth, and refuse one exactly at it" {
+  z := env_rgb(0, 0, 0); e := 0.00001f32;
+  #assert env_near_rgb(z, 0, 0, 0) && env_near_rgb(z, 0.000009, 0, 0);
+  #assert !env_near_rgb(z, e, 0, 0) && !env_near_rgb(z, 0, e, 0) && !env_near_rgb(z, 0, 0, e);
+  #assert !env_near_rgb(z, 1, 0, 0) && !env_near_rgb(z, 0, 1, 0) && !env_near_rgb(z, 0, 0, 1);
+  d := EnvDir.{x = 0, y = 0, z = 0};
+  #assert env_near_dir(d, 0, 0, 0) && env_near_dir(d, 0, 0.000009, 0);
+  #assert !env_near_dir(d, e, 0, 0) && !env_near_dir(d, 0, e, 0) && !env_near_dir(d, 0, 0, e);
+  #assert !env_near_dir(d, 1, 0, 0) && !env_near_dir(d, 0, 1, 0) && !env_near_dir(d, 0, 0, 1);
+}
 // Three irregular knots (0.1, 0.3, 0.75) off the glade, each changing values, identifiers and flags.
 env_test_profile3 :: () -> EnvironmentProfile #effects(all) {
   p := env_glade_profile(); p.id = 7; p.track.count = 3;
