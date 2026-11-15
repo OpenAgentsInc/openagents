@@ -35,6 +35,12 @@ carriage and correlated replies. The optional projection lives above HOST
 in Coder's `environment/host-wire.coax`; the old browser decoder stays closed.
 There is no generic process or shell RPC.
 
+The separate [execution preparation profile](environment-execution-v1alpha1.md)
+adds `PrepareTask`, `PutTaskInput` and `ReadTaskInput` under the same explicit
+environment/device/grant binding. They retain immutable input and upload
+receipts across resident restarts. They do not start a task or widen this
+Claude-only runtime contract.
+
 `DescribeStation` is a separate read-only method for the delegation router
 (docs/router/README.md). Its params are `openagents.router.describe.v1alpha1`
 and its reply `openagents.router.station.v1alpha1`

@@ -50,3 +50,31 @@ command_id"
 text (	Rtext"
 issued_at_ms (Rissued_at_ms$
 expires_at_ms	 (Rexpires_at_msbproto3
+ä
+;openagents/environment/execution/v1alpha1/preparation.proto)openagents.environment.execution.v1alpha1"F
+PreparationRequest
+schema (	Rschema
+task_id (	Rtask_id"Í
+PreparationView
+schema (	Rschema 
+host_pubkey (	Rhost_pubkey
+task_id (	Rtask_id
+
+command_id (	R
+command_id"
+input_sha256 (	Rinput_sha256 
+input_bytes (Rinput_bytes&
+retained_bytes (Rretained_bytes
+complete (Rcomplete
+replay	 (Rreplay$
+expires_at_ms
+ (Rexpires_at_ms"Ù
+InputCommandReceipt
+schema (	Rschema
+task_id (	Rtask_id
+
+command_id (	R
+command_id&
+request_sha256 (	Rrequest_sha256"
+issued_at_ms (Rissued_at_ms$
+expires_at_ms (Rexpires_at_msbproto3

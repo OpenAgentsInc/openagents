@@ -1,0 +1,30 @@
+// Preparation's exact JSON bytes and descriptor fields; independently pinned
+// receipt digest binds the complete normalized execution fixture's chunk.
+#load "preparation-wire.coax";
+#load "../../proto/importer.coax";
+#load "../../proto/golden-keys.coax";
+#load "../../crypto/sha256-kernel.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ pb:[65536]u8;n:=fs_read("proto/descriptors/environment-execution.pb",pb[..]);g:[1]PkDescriptor;
+ if n<1 || pk_load(g[..],cast(string)pb[0..<n])!="" {return 2;}
+ file:[16384]u8;fn:=fs_read("proto/coder/environment-preparation-v1alpha1.json",file[..]);d:[1]Jv;nodes:[256]JvNode;
+ if fn<1 || !jv_parse(d[..],cast(string)file[0..<fn],nodes[..]) {return 2;}v:=d[0];
+ source:[16384]u8;sn:=fs_read("proto/coder/environment-execution-v1alpha1.json",source[..]);sd:[1]Jv;sns:[256]JvNode;
+ if sn<1 || !jv_parse(sd[..],cast(string)source[0..<sn],sns[..]) {return 2;}
+ chunk_bytes:[16384]u8;o:[1]Jo;jo_start(o[..],chunk_bytes[..]);jv_write(sd[0],jv_get(sd[0],0,"chunk"),o[..]);hash:[64]u8;
+ if o[0].bad || !S_hex(S_hash(jo_text(o[..])),hash[..]) {return 1;}
+ keys:=[4]string.["read","partial","ready","receipt"];
+ types:=[4]string.[".openagents.environment.execution.v1alpha1.PreparationRequest",".openagents.environment.execution.v1alpha1.PreparationView",".openagents.environment.execution.v1alpha1.PreparationView",".openagents.environment.execution.v1alpha1.InputCommandReceipt"];
+ for key,i:keys {
+  canonical:[2048]u8;encoded:[2048]u8;jo_start(o[..],canonical[..]);jv_write(v,jv_get(v,0,key),o[..]);raw:=jo_text(o[..]);fields:[128]JvNode;
+  if pk_text_keys(g[0].state[..],types[i],raw,true,false,fields[..])!="" {print("FAIL preparation descriptor: %\n",key);return 1;}
+  made:= -1;arena:[256]u8;
+  if key=="read" {task:[32]u8;if !exp_read_request(raw,task[..]) {return 1;}made=exp_read_write(cast(string)task[..],encoded[..]);}
+  else if key=="receipt" {q:[1]ExInputReceipt;if !exp_receipt_read(raw,q[..],arena[..]) || q[0].hash!=cast(string)hash[..] {return 1;}made=exp_receipt_write(q[0],encoded[..]);}
+  else {q:[1]ExPrepView;if !exp_view_read(raw,q[..],arena[..]) {return 1;}made=exp_view_write(q[0],encoded[..]);}
+  if made!=raw.count || cast(string)encoded[0..<ifx made>0 then made else 0]!=raw {print("FAIL preparation golden: %\n",key);return 1;}
+ }
+ print("Preparation query/views/receipt match exact bytes, descriptors and whole-request SHA256\n");return 0;
+}

@@ -1,11 +1,13 @@
 # Routed execution handoff v1alpha1
 
-Status, 2026-11-15: checked handoff records and admission primitives for
-[#13620](https://github.com/OpenAgentsInc/openagents/issues/13620). **No task
-upload/start RPC, router dispatch, mobile task view or CLI task command is
-installed by this foundation.** Those consumers and the task event/control
-contract are the next implementation steps. The current environment runtime
-remains its separate Claude-only profile.
+Status, 2026-11-15: checked handoff records and an authenticated resident input
+preparation consumer for
+[#13620](https://github.com/OpenAgentsInc/openagents/issues/13620).
+`PrepareTask`, `PutTaskInput` and `ReadTaskInput` persist input under the
+current HOST environment grant. **Task start, router dispatch and mobile or
+OpenAgents CLI task commands remain unimplemented.** The current environment
+runtime remains its separate Claude-only profile. These are source-level
+capabilities, not a claim of a production deployment.
 
 The defining schema is
 [`execution.proto`](../../proto/openagents/environment/execution/v1alpha1/execution.proto),
@@ -106,9 +108,73 @@ retained with exactly matching bytes is a replay; a gap, changed retained range,
 overlap into new bytes, invalid length or overflow is refused. The resident
 consumer must scope storage to the admitted grant/task/hash/total, durably retain
 command identity, and verify the complete canonical input hash and byte length
-before permitting a start. An upload has no execution effect. Persisting these
-ranges, reconciling after restarts and starting an engine are not implemented
-by the pure range classifier.
+before permitting a start. An upload has no execution effect. The pure range
+classifier is consumed by the resident store described below.
+
+## Authenticated resident preparation
+
+[`preparation.proto`](../../proto/openagents/environment/execution/v1alpha1/preparation.proto)
+adds three records without changing the published handoff or runtime records.
+Their single codec is `coax/lib/agent/environment/preparation-wire.coax`.
+All fields below are required; views use an empty command ID for a read.
+
+| Record | Fields |
+| --- | --- |
+| `PreparationRequest` | `schema: "openagents.environment.execution.read-input.v1alpha1"`, `task_id` (32 lowercase hex) |
+| `PreparationView` | `schema: "openagents.environment.execution.preparation.v1alpha1"`, `host_pubkey` (64 hex), `task_id` (32 hex), `command_id` (32 hex or empty on read), `input_sha256` (64 hex), `input_bytes` (1–1,048,576), `retained_bytes` (0 through input length), `complete` (boolean), `replay` (boolean), `expires_at_ms` (original binding deadline) |
+| `InputCommandReceipt` | `schema: "openagents.environment.execution.input-receipt.v1alpha1"`, `task_id` (32 hex), `command_id` (32 hex), `request_sha256` (64 hex), `issued_at_ms`, `expires_at_ms` (the unchanged chunk's five-minute window) |
+
+The existing signed/encrypted HOST `app.rpc` carries these methods:
+
+| Method | Params | Required right | Result |
+| --- | --- | --- | --- |
+| `PrepareTask` | `Binding` | operate | Immutable stage binding, empty on first preparation |
+| `PutTaskInput` | `InputChunk` | operate | Exact durable retained byte count |
+| `ReadTaskInput` | `PreparationRequest` | observe | Current progress reconstructed from disk |
+
+Every call rechecks the current grant/epoch, configured environment and exact
+enrolled device/grant before accessing the store. Project membership does not
+admit any method. The current workspace ID is `default`, whose actual path is
+locally configured; a caller cannot choose a path. Staging input does not prove
+that the selected engine/account/model is ready or admit execution.
+
+The existing resident lifetime lock serializes writes. Input lives under
+`($CODER_HOME or $HOME)/.openagents/coder/host/execution-input/<grant>/<task>/`
+in private 0700 directories, with
+0600 `binding.json`, `input.json` and `commands/<command>` files. Prepare
+compares normalized binding bytes; changed reuse conflicts. Before publishing
+new input bytes, Put durably records the SHA256 of the **whole normalized
+chunk**, including its unchanged logical window. A retained command cannot
+be reused for a different range, payload or window. An interrupted write can
+recover against that receipt without minting a new intent.
+
+Exact retained-range and binding retries report `replay: true` without
+rewriting data. Such observations remain available after expiry; adding bytes
+or recording a new command requires both the binding and chunk windows to be
+fresh. Full completion requires actual canonical-input, hash and length
+verification, including on reads after restart. Corruption cannot become a
+complete view merely because the file length matches.
+
+At most four stages per grant and 512 upload receipts per stage are retained.
+Preparing a new task collects expired **input-only** stages; unknown entries
+conservatively consume capacity. This cache owns no engine or session. A
+future start consumer must retain its execution receipt and complete input
+outside this cache before launching, and reconcile task identity there even
+after cache collection. Capacity refusal grants no retry with a new task ID.
+
+The broker/operator client uses existing HOST key handling and correlation:
+
+```sh
+coder/tui/coder.sh host execution-rpc --host HOST --browser-key PRIVATE_KEY_FILE \
+  --grant GRANT --epoch EPOCH --relay RELAY --request-file REQUEST_JSON
+```
+
+The request schema selects one of the three methods. The client validates the
+returned host, task, command, input hash and length where supplied. It emits
+the shared PreparationView. Exit 0 means success; 2 malformed/unsupported,
+3 unavailable/transport failure, 4 forbidden/revoked, 5 expired/stale,
+6 conflicting intent and 7 capacity/rate limit. It never automatically resends
+uncertain work. This internal client is not the future OpenAgents task CLI.
 
 ## Checks and remaining integration
 
@@ -131,8 +197,9 @@ The effect owner must supply distinct retained/chunk/output buffers and only
 commit a successful preparation durably. These pure helpers perform no file
 write, HOST authorization or process start.
 
-Next, the resident consumes these records through a negotiated authenticated
-profile and owns their durable receipts, provider selection and process effects.
+The resident now consumes these records through authenticated HOST methods and
+owns their durable upload receipts. Provider selection and process effects
+remain the next execution integration.
 The task event/control contract must carry structured tool correlation, held
 permissions and truthful Stop/unknown outcomes. API dispatch, mobile/CLI joins
 and a real staging patch/test task remain the acceptance gates in #13620.
@@ -149,3 +216,23 @@ fixture tool's imports cannot hide them from suite discovery. These checks prove
 the handoff primitives, not resident execution or the issue's end-to-end gates.
 The escaped-key fixture generator is itself pinned to independent exact bytes;
 all 33 of its changed-procedure mutants were killed in both consuming suites.
+
+Preparation qualification: all 80 policy and 198 codec root-site mutants were
+killed. The descriptor/exact-byte oracle checks both progress views and the
+whole-request receipt digest. The native filesystem oracle passes 27 checks,
+including private modes, interrupted receipt/data publication, replay without
+mtime changes, conflicting intent, corruption and both capacity bounds.
+The signed HOST smoke exercises explicit environment admission, actual chunk
+publication, resident restart, progress reconstruction, exact retry, complete
+hash verification and revoked-grant refusal. Its relay is an explicit local
+fixture with a bounded 240-event/REQ/key burst budget for three resident starts
+and their two-minute history replays; production defaults are unchanged.
+No provider login or model call is needed for preparation. The Linux
+socket qualifier also verifies actual kernel peer UID checks on both ends.
+Two earlier full smoke runs passed 48/49: a final pairing assertion did not
+observe the expected reply even though the operation was persisted. The second
+failure moved from re-pair to forget. This observation is retained; clients
+must reconcile uncertain outcomes rather than assume an unobserved effect failed.
+With the fixture's explicit burst budget, the complete native smoke passed all
+49 checks without a resident publication error. This qualifies the stated
+fixture capacity, not delivery under an exhausted production relay quota.

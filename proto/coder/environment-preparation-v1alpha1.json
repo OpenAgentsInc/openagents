@@ -1,0 +1,38 @@
+{
+  "read": {
+    "schema": "openagents.environment.execution.read-input.v1alpha1",
+    "task_id": "0123456789abcdef0123456789abcdef"
+  },
+  "partial": {
+    "schema": "openagents.environment.execution.preparation.v1alpha1",
+    "host_pubkey": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "task_id": "0123456789abcdef0123456789abcdef",
+    "command_id": "0123456789abcdef0123456789abcdef",
+    "input_sha256": "01a0353c521c0211993a17f3f27eaa46daafb36e210246523029c3248901cf3b",
+    "input_bytes": 251,
+    "retained_bytes": 100,
+    "complete": false,
+    "replay": false,
+    "expires_at_ms": 301000
+  },
+  "ready": {
+    "schema": "openagents.environment.execution.preparation.v1alpha1",
+    "host_pubkey": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "task_id": "0123456789abcdef0123456789abcdef",
+    "command_id": "0123456789abcdef0123456789abcdef",
+    "input_sha256": "01a0353c521c0211993a17f3f27eaa46daafb36e210246523029c3248901cf3b",
+    "input_bytes": 251,
+    "retained_bytes": 251,
+    "complete": true,
+    "replay": true,
+    "expires_at_ms": 301000
+  },
+  "receipt": {
+    "schema": "openagents.environment.execution.input-receipt.v1alpha1",
+    "task_id": "0123456789abcdef0123456789abcdef",
+    "command_id": "0123456789abcdef0123456789abcdef",
+    "request_sha256": "92610053307f40756e09fa73b013b13670d51918f9fd1bf453ab9d9cbef9b0b6",
+    "issued_at_ms": 1000,
+    "expires_at_ms": 301000
+  }
+}

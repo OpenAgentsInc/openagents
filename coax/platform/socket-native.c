@@ -1,4 +1,7 @@
 /* TCP client sockets for Coax; see socket-native.h for the contract. */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #define _POSIX_C_SOURCE 200809L
 #define _DARWIN_C_SOURCE 1
 #include "socket-native.h"

@@ -1,0 +1,77 @@
+// Resident filesystem adapter. Its caller holds the existing service lifetime
+// lock and admits HOST/device/grant scope before any call here. All public
+// paths are built from the trusted root and validated grant/task identifiers.
+// Policy and complete-input admission remain in the checked pure units.
+#load "preparation-wire.coax";
+#load "execution-input.coax";
+#load "../../sys/fs.coax";
+ExStageCount :: struct {count:int;incomplete:bool;}
+
+exp_task_dir :: (root:string,grant:string,task:string,out:[]u8)->string #effects(all) {
+ if !ea_id(grant,64) || !ea_id(task,32) {return "";}parent:[FS_PATH_MAX]u8;p:=fs_join(root,grant,parent[..]);return ifx p.count>0 then fs_join(p,task,out) else "";
+}
+exp_grant_dir :: (root:string,grant:string,out:[]u8)->string #effects(all) {return ifx ea_id(grant,64) then fs_join(root,grant,out) else "";}
+exp_store_view :: (directory:string,b:ExBinding,command:string,replay:bool,out:[]ExPrepView)->string #effects(all) {
+ path:[FS_PATH_MAX]u8;p:=fs_join(directory,"input.json",path[..]);bytes:[EX_INPUT_MAX]u8;n:=ifx fs_exists(p) then fs_read(p,bytes[..]) else 0;
+ if n<0 || n>b.input_bytes {return "unavailable";}
+ complete:=n==b.input_bytes;if complete {decoded:[1]ExInput;canonical:[EX_INPUT_MAX]u8;if !ex_input_accept(b,cast(string)bytes[0..<n],decoded[..],canonical[..]) {return "conflict";}}
+ out[0]=ExPrepView.{host=b.host,task=b.task,command=command,hash=b.input_hash,total=b.input_bytes,retained=n,complete=complete,replay=replay,expires=b.expires};return "";
+}
+// Only expired input preparations are removed; no engine or session lives in
+// this cache. A dispatch consumer must retain its start receipt elsewhere.
+exp_collect :: (directory:string,now:int)->ExStageCount #effects(all) {
+ result:ExStageCount;list:[1]FsList;n:=fs_list(directory,list[..]);if n<0 || list[0].full {result.incomplete=true;return result;}
+ for i:0..<n {name:=fs_entry(list[..],i);path:[FS_PATH_MAX]u8;taskdir:=fs_join(directory,name,path[..]);removed:=false;
+  if ea_id(name,32) && fs_kind(taskdir)==FS_DIR {
+   file:[FS_PATH_MAX]u8;binding_file:=fs_join(taskdir,"binding.json",file[..]);data:[8192]u8;got:=fs_read(binding_file,data[..]);b:[1]ExBinding;arena:[1024]u8;
+   if got>0 && ex_binding_read(cast(string)data[0..<got],b[..],arena[..]) && b[0].task==name && b[0].expires<now {removed=fs_remove(taskdir);if !removed {result.incomplete=true;}}
+   else if !fs_exists(binding_file) {contents:[1]FsList;count:=fs_list(taskdir,contents[..]);if count==0 && !contents[0].full {removed=fs_remove(taskdir);if !removed {result.incomplete=true;}}}
+  }
+  if !removed {result.count+=1;}
+ }return result;
+}
+exp_store_prepare :: (root:string,grant:string,host:string,b:ExBinding,now:int,out:[]ExPrepView)->string #effects(all) {
+ if !ex_binding_valid(b) || b.host!=host || b.workspace!="default" {return "malformed";}
+ task_path:[FS_PATH_MAX]u8;directory:=exp_task_dir(root,grant,b.task,task_path[..]);if directory.count==0 {return "malformed";}
+ name:[FS_PATH_MAX]u8;file:=fs_join(directory,"binding.json",name[..]);encoded:[8192]u8;n:=ex_binding_write(b,encoded[..]);if n<1 {return "malformed";}
+ state:=0;if fs_exists(file) {prior:[8192]u8;got:=fs_read(file,prior[..]);state=ifx got==n && cast(string)prior[0..<ifx got>0 then got else 0]==cast(string)encoded[0..<n] then 1 else 2;}
+ verdict:=exp_prepare(state,b.issued,b.expires,now,0,false);
+ if verdict==2 {return exp_store_view(directory,b,b.command,true,out);}if verdict== -1 {return "conflict";}if verdict== -2 {return "expired";}
+ parent:[FS_PATH_MAX]u8;grantdir:=exp_grant_dir(root,grant,parent[..]);
+ if !fs_mkdir_private(root) || !fs_mkdir_private(grantdir) {return "unavailable";}
+ count:=exp_collect(grantdir,now);verdict=exp_prepare(0,b.issued,b.expires,now,count.count,count.incomplete);
+ if verdict!=1 {return ifx count.incomplete then "unavailable" else "bounds";}
+ if !fs_mkdir_private(directory) || !fs_replace_durable(file,cast(string)encoded[0..<n]) {return "unavailable";}
+ return exp_store_view(directory,b,b.command,false,out);
+}
+// Strings in the returned view borrow arena, which its caller retains.
+exp_store_read :: (root:string,grant:string,task:string,out:[]ExPrepView,arena:[]u8)->string #effects(all) {
+ path:[FS_PATH_MAX]u8;directory:=exp_task_dir(root,grant,task,path[..]);if directory.count==0 {return "malformed";}
+ name:[FS_PATH_MAX]u8;data:[8192]u8;n:=fs_read(fs_join(directory,"binding.json",name[..]),data[..]);b:[1]ExBinding;
+ if n<1 || !ex_binding_read(cast(string)data[0..<ifx n>0 then n else 0],b[..],arena) || b[0].task!=task {return "unavailable";}
+ return exp_store_view(directory,b[0],"",false,out);
+}
+exp_store_put :: (root:string,grant:string,c:ExChunk,now:int,out:[]ExPrepView,arena:[]u8)->string #effects(all) {
+ if !ex_chunk_valid(c) {return "malformed";}
+ path:[FS_PATH_MAX]u8;directory:=exp_task_dir(root,grant,c.task,path[..]);if directory.count==0 {return "malformed";}
+ name:[FS_PATH_MAX]u8;binding_file:=fs_join(directory,"binding.json",name[..]);raw:[8192]u8;n:=fs_read(binding_file,raw[..]);b:[1]ExBinding;
+ if n<1 || !ex_binding_read(cast(string)raw[0..<ifx n>0 then n else 0],b[..],arena) || b[0].task!=c.task {return "unavailable";}
+ input_path:[FS_PATH_MAX]u8;input_file:=fs_join(directory,"input.json",input_path[..]);retained:[EX_INPUT_MAX]u8;got:=ifx fs_exists(input_file) then fs_read(input_file,retained[..]) else 0;
+ if got<0 {return "unavailable";}prepared:[EX_INPUT_MAX]u8;result:=ex_input_prepare(b[0],c,retained[0..<got],prepared[..]);if !result.ok {return "conflict";}
+ command_path:[FS_PATH_MAX]u8;commands:=fs_join(directory,"commands",command_path[..]);receipt_path:[FS_PATH_MAX]u8;receipt_file:=fs_join(commands,c.command,receipt_path[..]);
+ packet:[32768]u8;made:=ex_chunk_write(c,packet[..]);digest:[64]u8;if made<1 || !S_hex(S_hash(cast(string)packet[0..<made]),digest[..]) {return "malformed";}
+ receipt_state:=0;
+ if fs_exists(receipt_file) {data:[1024]u8;nr:=fs_read(receipt_file,data[..]);r:[1]ExInputReceipt;ra:[256]u8;
+  matches:=nr>0 && exp_receipt_read(cast(string)data[0..<ifx nr>0 then nr else 0],r[..],ra[..]) && r[0].task==c.task && r[0].command==c.command && r[0].hash==cast(string)digest[..] && r[0].issued==c.issued && r[0].expires==c.expires;
+  receipt_state=ifx matches then 1 else 2;
+ }
+ count:=0;if receipt_state==0 && fs_exists(commands) {entries:[1]FsList;count=fs_list(commands,entries[..]);if entries[0].full {return "bounds";}if count<0 {return "unavailable";}}
+ action:=exp_upload(receipt_state,ifx result.replay then 2 else 1,c.issued,c.expires,b[0].expires,now,count);
+ if action<0 {return ifx action== -1 then "conflict" else ifx action== -2 then "expired" else "bounds";}
+ if action==1 {
+  receipt:=ExInputReceipt.{task=c.task,command=c.command,hash=cast(string)digest[..],issued=c.issued,expires=c.expires};encoded:[1024]u8;nr:=exp_receipt_write(receipt,encoded[..]);
+  if nr<1 || !fs_mkdir_private(commands) || !fs_replace_durable(receipt_file,cast(string)encoded[0..<nr]) {return "unavailable";}
+ }
+ if action!=2 && !result.replay && !fs_replace_durable(input_file,cast(string)prepared[0..<result.bytes]) {return "unavailable";}
+ out[0]=ExPrepView.{host=b[0].host,task=b[0].task,command=c.command,hash=b[0].input_hash,total=b[0].input_bytes,retained=result.bytes,complete=result.complete,replay=result.replay,expires=b[0].expires};return "";
+}

@@ -1,0 +1,79 @@
+// Staging is separate from execution. The owner supplies authenticated scope
+// and filesystem observations, and publishes only the admitted transition.
+// coax/bin/coax test coax/lib/agent/environment/preparation-policy.coax --library
+#load "execution-policy.coax";
+#authority;
+EX_STAGES :: 4;
+EX_UPLOAD_COMMANDS :: 512;
+
+#test "preparation methods keep closed rights and never start an agent" {
+ #assert exp_right("PrepareTask")==1 && exp_right("PutTaskInput")==1 && exp_right("ReadTaskInput")==0;
+ #assert exp_right("StartTask")== -1 && exp_right("RunCommand")== -1 && exp_right("")== -1;
+}
+#test "staging capacity is bounded and incomplete enumeration never grants a slot" {
+ #assert exp_room(0,false) && exp_room(EX_STAGES-1,false);
+ #assert !exp_room(-1,false) && !exp_room(EX_STAGES,false) && !exp_room(0,true);
+}
+#test "an immutable preparation replays after expiry, while a new preparation needs a fresh window" {
+ #assert exp_prepare(1,1,300001,500000,4,false)==2;
+ #assert exp_prepare(2,1,300001,1,0,false)== -1;
+ #assert exp_prepare(0,1,300001,1,0,false)==1;
+ #assert exp_prepare(0,1,300001,300001,3,false)==1;
+ #assert exp_prepare(0,1,300001,300002,0,false)== -2;
+ #assert exp_prepare(0,1,300001,1,4,false)== -3 && exp_prepare(0,1,300001,1,0,true)== -3;
+ #assert exp_prepare(-1,1,300001,1,0,false)== -1 && exp_prepare(3,1,300001,1,0,false)== -1;
+}
+#test "upload receipt conflicts and invalid ranges refuse before a write" {
+ #assert exp_upload(2,1,1,300001,300001,1,0)== -1;
+ #assert exp_upload(0,0,1,300001,300001,1,0)== -1;
+ #assert exp_upload(0,3,1,300001,300001,1,0)== -1;
+ #assert exp_upload(-1,1,1,300001,300001,1,0)== -1;
+}
+#test "exact receipted ranges replay without extending either original logical window" {
+ #assert exp_upload(1,2,1,300001,300001,500000,EX_UPLOAD_COMMANDS)==2;
+ #assert exp_upload(1,1,1,300001,300001,300002,1)== -2;
+ #assert exp_upload(0,2,1,300001,300001,300002,0)== -2;
+ #assert exp_upload(0,1,1,300001,1,2,0)== -2;
+ #assert exp_upload(0,1,1,300002,300002,1,0)== -2;
+}
+#test "new and recovered uploads append once within the binding and command bounds" {
+ #assert exp_upload(0,1,1,300001,300001,1,0)==1;
+ #assert exp_upload(0,2,1,300001,300001,1,EX_UPLOAD_COMMANDS-1)==1;
+ #assert exp_upload(1,1,1,300001,300001,300001,EX_UPLOAD_COMMANDS)==3;
+ #assert exp_upload(0,1,1,300001,300001,1,EX_UPLOAD_COMMANDS)== -3;
+ #assert exp_upload(0,1,1,300001,300001,1,-1)== -3;
+}
+#test "the broker distinguishes signed refusals from an unobserved transport outcome" {
+ #assert exp_refusal_status("malformed")==2 && exp_refusal_status("unsupported")==2;
+ #assert exp_refusal_status("unavailable")==3 && exp_refusal_status("")==3 && exp_refusal_status("other")==3;
+ for code:[4]string.["forbidden","missing_right","revoked","denied"] {#assert exp_refusal_status(code)==4;}
+ #assert exp_refusal_status("expired")==5 && exp_refusal_status("stale")==5;
+ #assert exp_refusal_status("conflict")==6;
+ #assert exp_refusal_status("bounds")==7 && exp_refusal_status("rate_limited")==7;
+}
+
+exp_right :: (method:string)->int #effects(all) {
+ if method=="ReadTaskInput" {return 0;}if method=="PrepareTask" || method=="PutTaskInput" {return 1;}return -1;
+}
+exp_room :: (count:int,incomplete:bool)->bool #effects(all) {return count>=0 && count<EX_STAGES && !incomplete;}
+// retained: 0 absent, 1 exact normalized binding, 2 different/unreadable.
+// 1 create, 2 replay; negative conflict/expiry/capacity.
+exp_prepare :: (retained:int,issued:int,expires:int,now:int,count:int,incomplete:bool)->int #effects(all) {
+ if retained==1 {return 2;}if retained!=0 {return -1;}
+ if !ea_fresh(issued,expires,now) {return -2;}if !exp_room(count,incomplete) {return -3;}return 1;
+}
+// receipt: 0 absent, 1 exact digest, 2 conflict/unreadable; range: ex_chunk_action.
+// 1 new receipt, 2 replay without writes, 3 recover an admitted incomplete write.
+exp_upload :: (receipt:int,range:int,issued:int,expires:int,binding_expires:int,now:int,commands:int)->int #effects(all) {
+ if receipt<0 || receipt>1 || range<1 || range>2 {return -1;}
+ if receipt==1 && range==2 {return 2;}
+ if !ea_fresh(issued,expires,now) || binding_expires<now {return -2;}
+ if receipt==0 && (commands<0 || commands>=EX_UPLOAD_COMMANDS) {return -3;}
+ return ifx receipt==0 then 1 else 3;
+}
+exp_refusal_status :: (code:string)->int #effects(all) {
+ if code=="malformed" || code=="unsupported" {return 2;}
+ if code=="forbidden" || code=="missing_right" || code=="revoked" || code=="denied" {return 4;}
+ if code=="expired" || code=="stale" {return 5;}if code=="conflict" {return 6;}
+ if code=="bounds" || code=="rate_limited" {return 7;}return 3;
+}

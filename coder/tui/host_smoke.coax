@@ -25,6 +25,8 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/agent/environment/preparation-wire.coax";
+#load "../../coax/lib/sys/clock.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
@@ -170,6 +172,9 @@ sm_host :: (s: [] Sm, rp: [] Rp, args: [] string) {
   for a: args { argv[n] = a; n += 1; }
   sm_exec(s, rp, argv[0..<n], 600000);
 }
+sm_execution :: (s:[]Sm,rp:[]Rp,key:string,grant:string,epoch:string,file:string) {
+ args:=[13]string.["execution-rpc","--host",sm_key(s),"--grant",grant,"--epoch",epoch,"--browser-key",key,"--request-file",file,"--relay",sm_str(s[0].url[..],s[0].nurl)];sm_host(s,rp,args[..]);
+}
 // A file's permission bits as octal text (stat -f on macOS, stat -c elsewhere).
 sm_mode :: (s: [] Sm, path: string, out: [] u8) -> string {
   rp_b: [1] Rp;
@@ -237,12 +242,15 @@ tool_main :: () -> int #export_c #effects(all) {
   rp_b: [1] Rp; rp := rp_b[..];
   build := [2] string.["nostr/relay/build.sh", relay_bin];
   sm_exec(s, rp, build[..], 600000);
-  if rp[0].status != 0 { tool_errln("host_smoke: nostr/relay/build.sh failed"); return 1; }
+  if rp[0].status != 0 { tool_errln("host_smoke: nostr/relay/build.sh failed"); tool_errln(sm_text(rp)); return 1; }
   port := 20000 + (proc_now_ms() / 7) % 30000;
   pb: [16] u8; ports := sm_itoa(port, pb[..]);
   un := sm_cat(s[0].url[..], 0, "ws://localhost:"); s[0].nurl = sm_cat(s[0].url[..], un, ports);   // a host name: relay URLs never take an IP literal
   url := sm_str(s[0].url[..], s[0].nurl);
-  rargv := [7] string.[relay_bin, "--listen", "127.0.0.1", "--port", ports, "--url", url];
+  // Three resident starts replay the relay's last two minutes of requests.
+  // Give this lifecycle fixture its bounded burst budget; relay-rate policy
+  // has its own default-limit checks and production limits are unchanged.
+  rargv := [9] string.[relay_bin, "--listen", "127.0.0.1", "--port", ports, "--url", url, "--rate", "240,240,240"];
   relay := sm_spawn(s, rargv[..], true);
   if relay < 0 { tool_errln("host_smoke: the relay did not start"); return 1; }
   proc_sleep(500);
@@ -305,6 +313,31 @@ tool_main :: () -> int #export_c #effects(all) {
   gb: [64] u8; gs := rp_s(rp, "result.outcome.grant.grant", gb[..]);
   grant_b: [64] u8; gn := sm_cat(grant_b[..], 0, gs); grant := cast(string) grant_b[0..<gn];
   eb: [24] u8; epoch := sm_itoa(rp_i(rp, "result.outcome.grant.epoch"), eb[..]);
+
+  // The routed input profile has real HOST admission and durable file ownership.
+  // Its preparation methods never invoke an agent, even when the binding names Codex.
+  sm_host(s,rp,la[..]);device_buf:[64]u8;device:=rp_s(rp,"browsers.0.key",device_buf[..]);
+  fixture:[16384]u8;fixture_n:=fs_read("proto/coder/environment-execution-v1alpha1.json",fixture[..]);fixture_doc:[1]Jv;fixture_nodes:[256]JvNode;
+  if fixture_n<1 || !jv_parse(fixture_doc[..],cast(string)fixture[0..<fixture_n],fixture_nodes[..]) {return 2;}
+  packet_bytes:[32768]u8;json:[1]Jo;jo_start(json[..],packet_bytes[..]);jv_write(fixture_doc[0],jv_get(fixture_doc[0],0,"binding"),json[..]);binding:[1]ExBinding;binding_arena:[1024]u8;
+  if !ex_binding_read(jo_text(json[..]),binding[..],binding_arena[..]) {return 2;}binding[0].host=sm_key(s);binding[0].issued=cxproc_wall_us()/1000;binding[0].expires=ea_deadline(binding[0].issued);binding[0].report_at=binding[0].issued;
+  prepare_buf:[1200]u8;prepare_file:=sm_in_tmp(s,"execution-prepare.json",prepare_buf[..]);made:=ex_binding_write(binding[0],packet_bytes[..]);if made<1 || !fs_write(prepare_file,cast(string)packet_bytes[0..<made]) {return 2;}
+  sm_execution(s,rp,bk,grant,epoch,prepare_file);sm_check(s,rp[0].status==4,"a paired browser still needs the explicitly enabled environment scope");
+  workspace_path:[1200]u8;workspace:=sm_in_tmp(s,"execution-workspace",workspace_path[..]);if !fs_mkdir_private(workspace) {return 2;}
+  enable:=[9]string.["environment-enable","--device",device,"--grant",grant,"--workspace",workspace,"--label","Execution smoke workspace"];sm_host(s,rp,enable[..]);sm_check(s,rp[0].status==0,"the operator explicitly enables this grant's workspace");
+  sm_execution(s,rp,bk,grant,epoch,prepare_file);sm_check(s,rp[0].status==0 && rp_i(rp,"retained_bytes")==0 && rp_kind(rp,"complete")==JV_FALSE,"signed PrepareTask admits an empty stage without starting an agent");
+  jo_start(json[..],packet_bytes[..]);jv_write(fixture_doc[0],jv_get(fixture_doc[0],0,"chunk"),json[..]);chunk:[1]ExChunk;chunk_arena:[8192]u8;if !ex_chunk_read(jo_text(json[..]),chunk[..],chunk_arena[..]) {return 2;}
+  complete_input:=chunk[0].text;chunk[0].issued=binding[0].issued;chunk[0].expires=binding[0].expires;chunk[0].text=cast(string)complete_input[0..<100];
+  chunk_path:[1200]u8;chunk_file:=sm_in_tmp(s,"execution-chunk.json",chunk_path[..]);made=ex_chunk_write(chunk[0],packet_bytes[..]);if made<1 || !fs_write(chunk_file,cast(string)packet_bytes[0..<made]) {return 2;}
+  sm_execution(s,rp,bk,grant,epoch,chunk_file);sm_check(s,rp[0].status==0 && rp_i(rp,"retained_bytes")==100 && rp_kind(rp,"complete")==JV_FALSE,"a signed input range reaches the actual resident store");
+  sm_stop(serve);serve=sm_serve(s,sargv[2..<sargv.count]);sm_check(s,serve>=0,"the resident restarts with its existing host key and grant");
+  read_path:[1200]u8;read_file:=sm_in_tmp(s,"execution-read.json",read_path[..]);made=exp_read_write(binding[0].task,packet_bytes[..]);if made<1 || !fs_write(read_file,cast(string)packet_bytes[0..<made]) {return 2;}
+  sm_execution(s,rp,bk,grant,epoch,read_file);sm_check(s,rp[0].status==0 && rp_i(rp,"retained_bytes")==100,"ReadTaskInput reconstructs the same partial input after restart");
+  sm_execution(s,rp,bk,grant,epoch,chunk_file);sm_check(s,rp[0].status==0 && rp_kind(rp,"replay")==JV_TRUE && rp_i(rp,"retained_bytes")==100,"retrying the same signed command reconciles its durable receipt");
+  chunk[0].command="11111111111111111111111111111111";chunk[0].offset=100;chunk[0].text=cast(string)complete_input[100..<complete_input.count];made=ex_chunk_write(chunk[0],packet_bytes[..]);if made<1 || !fs_write(chunk_file,cast(string)packet_bytes[0..<made]) {return 2;}
+  sm_execution(s,rp,bk,grant,epoch,chunk_file);sm_check(s,rp[0].status==0 && rp_kind(rp,"complete")==JV_TRUE && rp_i(rp,"retained_bytes")==complete_input.count,"the final signed range verifies the complete admitted input");
+  source_path:[1600]u8;source_n:=sm_cat(source_path[..],0,sm_home(s));source_n=sm_cat(source_path[..],source_n,"/.openagents/coder/host/execution-input/");source_n=sm_cat(source_path[..],source_n,grant);source_n=sm_cat(source_path[..],source_n,"/");source_n=sm_cat(source_path[..],source_n,binding[0].task);source_n=sm_cat(source_path[..],source_n,"/input.json");source:[8192]u8;source_size:=fs_read(cast(string)source_path[0..<source_n],source[..]);
+  sm_check(s,source_size==complete_input.count && cast(string)source[0..<ifx source_size>0 then source_size else 0]==complete_input,"the CLI-reported completion is backed by exact retained bytes");
 
   e4 := [8] string.["--text", "Add a well by the oak", "--realm", "garden", "--grant", grant, "--epoch", epoch];
   sm_call(s, rp, "thread.run", bk, e4[..]);
@@ -413,13 +446,19 @@ tool_main :: () -> int #export_c #effects(all) {
   sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "allowed") && rp_is(rp, "result.outcome.grant.grant", grant), "browser.status keeps answering allowed for the pairing while the grant lasts");
   fa := [2] string.["forget", ifx grant.count >= 8 then cast(string) grant[0..<8] else "none"]; sm_host(s, rp, fa[..]);
   sm_check(s, rp[0].status == 0 && sm_has(sm_text(rp), "Revoked"), "coder host forget revokes it");
+  sm_execution(s,rp,bk,grant,epoch,read_file);sm_check(s,rp[0].status==4,"a revoked grant cannot inspect staged input");
   sm_call(s, rp, "thread.read", bk, e5[..]);
   sm_check2(s, rp_refused(rp, "revoked"), "a forgotten key is refused", rp_s(rp, "result.code", b2[..]));
   sm_call(s, rp, "browser.status", bk, e2[..]);
   sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "denied") && rp_kind(rp, "result.outcome.grant") == JV_NULL, "browser.status says denied once forgotten, with no grant");
   e8 := [2] string.["--label", "Smoke again"];
   sm_call(s, rp, "browser.request", bk, e8[..]);
-  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "asked"), "the forgotten browser can ask again");
+  asked_again:=rp_good(rp) && rp_is(rp, "result.outcome.state", "asked");
+  if !asked_again {
+    code:[32]u8;sm_out("re-pair exit: ");sm_out(sm_itoa(rp[0].status,code[..]));sm_out("; reply: ");sm_out(sm_text(rp));sm_out("\n");
+    for i:0..<32 {got:=proc_line(serve,0,line[..]);if got<0 {break;}sm_out("resident: ");sm_out(cast(string)line[0..<got]);sm_out("\n");}
+  }
+  sm_check(s, asked_again, "the forgotten browser can ask again");
   none: [1] string;
   sm_call(s, rp, "browser.forget", bk, none[0..<0]);
   sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.kind", "forgotten"), "browser.forget answers forgotten");
@@ -427,6 +466,7 @@ tool_main :: () -> int #export_c #effects(all) {
   sm_check(s, rp_count(rp, "waiting") == 0 && rp_count(rp, "browsers") == 0, "nothing is waiting or allowed after browser.forget");
   sm_check(s, sm_mode(s, sm_in_home(s, ".openagents/coder/host/state.json", mb[..]), mo[..]) == "600", "state.json is mode 600");
 
+  resident_error:[8192]u8;tail:=proc_stderr(serve,resident_error[..]);if tail.count>0 {sm_out("resident stderr: ");sm_out(tail);sm_out("\n");}
   if serve >= 0 { k := proc_kill(serve, PROC_SIGTERM); w := proc_wait(serve, 10000); d := proc_release(serve); }
   k2 := proc_kill(relay, PROC_SIGTERM); w2 := proc_wait(relay, 10000); d2 := proc_release(relay);
   cb2: [24] u8; fb2: [24] u8;

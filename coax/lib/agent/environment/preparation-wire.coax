@@ -1,0 +1,95 @@
+// One codec for preparation queries/views and private upload receipts.
+// coax/bin/coax test coax/lib/agent/environment/preparation-wire.coax --library
+#load "execution-wire.coax";
+#load "preparation-policy.coax";
+EXP_READ :: "openagents.environment.execution.read-input.v1alpha1";
+EXP_VIEW :: "openagents.environment.execution.preparation.v1alpha1";
+EXP_RECEIPT :: "openagents.environment.execution.input-receipt.v1alpha1";
+ExPrepView :: struct {host:string;task:string;command:string;hash:string;total:int;retained:int;complete:bool;replay:bool;expires:int;}
+ExInputReceipt :: struct {task:string;command:string;hash:string;issued:int;expires:int;}
+
+#test "preparation queries round trip only a safe task identity" {
+ out:[512]u8;task:[32]u8;n:=exp_read_write("0123456789abcdef0123456789abcdef",out[..]);
+ #assert n>0 && exp_read_request(cast(string)out[0..<n],task[..]) && cast(string)task[..]=="0123456789abcdef0123456789abcdef";
+ #assert exp_read_write("../private",out[..])<0 && !exp_read_request("{",task[..]);
+ #assert !exp_read_request("{\"schema\":\"openagents.environment.execution.read-input.v1alpha1\",\"task_id\":\"0123456789abcdef0123456789abcdef\",\"path\":\"private\"}",task[..]);
+}
+#test "preparation views keep exact byte progress and independently typed booleans" {
+ v:=ExPrepView.{host=EX_TEST_HASH,task=EX_TEST_ID,command=EX_TEST_ID,hash=EX_TEST_HASH,total=100,retained=50,expires=300001};
+ out:[2048]u8;again:[2048]u8;arena:[256]u8;read:[1]ExPrepView;n:=exp_view_write(v,out[..]);
+ #assert n>0 && exp_view_read(cast(string)out[0..<n],read[..],arena[..]) && read[0].retained==50 && !read[0].complete;
+ #assert exp_view_write(read[0],again[..])==n && cast(string)again[0..<n]==cast(string)out[0..<n];
+ v.retained=100;#assert exp_view_write(v,out[..])<0;v.complete=true;v.replay=true;v.command="";
+ n=exp_view_write(v,out[..]);#assert n>0 && exp_view_read(cast(string)out[0..<n],read[..],arena[..]) && read[0].complete && read[0].replay && read[0].command=="";
+ for key:[10]string.["schema","host_pubkey","task_id","command_id","input_sha256","input_bytes","retained_bytes","complete","replay","expires_at_ms"] {
+  raw:=cast(string)out[0..<n];#assert !exp_view_read(ex_test_field(raw,key,"",again[..]),read[..],arena[..]);#assert !exp_view_read(ex_test_field(raw,key,"null",again[..]),read[..],arena[..]);
+  #assert !exp_view_read(ex_test_alias(raw,key,again[..]),read[..],arena[..]);
+ }
+ #assert exp_view_write(v,again[0..<n-1])<0 && !exp_view_read(cast(string)out[0..<n],read[..],arena[0..<1]);
+}
+#test "upload receipts bind a complete request digest and its unchanged logical window" {
+ v:=ExInputReceipt.{task=EX_TEST_ID,command=EX_TEST_ID,hash=EX_TEST_HASH,issued=1,expires=300001};
+ out:[2048]u8;again:[2048]u8;arena:[256]u8;read:[1]ExInputReceipt;n:=exp_receipt_write(v,out[..]);
+ #assert n>0 && exp_receipt_read(cast(string)out[0..<n],read[..],arena[..]) && read[0].issued==1 && read[0].expires==300001;
+ #assert exp_receipt_write(read[0],again[..])==n && cast(string)again[0..<n]==cast(string)out[0..<n];
+ for key:[6]string.["schema","task_id","command_id","request_sha256","issued_at_ms","expires_at_ms"] {raw:=cast(string)out[0..<n];#assert !exp_receipt_read(ex_test_field(raw,key,"null",again[..]),read[..],arena[..]);#assert !exp_receipt_read(ex_test_alias(raw,key,again[..]),read[..],arena[..]);}
+ v.expires+=1;#assert exp_receipt_write(v,out[..])<0;
+}
+#test "preparation scalar bounds and malformed records are refused independently" {
+ v:=ExPrepView.{host=EX_TEST_HASH,task=EX_TEST_ID,hash=EX_TEST_HASH,total=1,expires=1};#assert exp_view_valid(v);
+ v.total=EX_INPUT_MAX;#assert exp_view_valid(v);v.total+=1;#assert !exp_view_valid(v);v.total=0;#assert !exp_view_valid(v);v.complete=true;#assert !exp_view_valid(v);v.complete=false;v.total=1;
+ v.retained=-1;#assert !exp_view_valid(v);v.retained=2;#assert !exp_view_valid(v);v.retained=1;v.complete=true;#assert exp_view_valid(v);
+ v.expires=9007199254740991;#assert exp_view_valid(v);v.expires+=1;#assert !exp_view_valid(v);v.expires=0;#assert !exp_view_valid(v);v.expires=1;
+ v.command="bad";#assert !exp_view_valid(v);v.command="";v.host="bad";#assert !exp_view_valid(v);v.host=EX_TEST_HASH;v.task="bad";#assert !exp_view_valid(v);v.task=EX_TEST_ID;v.hash="bad";#assert !exp_view_valid(v);
+ out:[2048]u8;#assert exp_view_write(v,out[..])<0;
+ r:=ExInputReceipt.{task=EX_TEST_ID,command=EX_TEST_ID,hash=EX_TEST_HASH,issued=1,expires=2};#assert exp_receipt_valid(r);r.task="bad";#assert !exp_receipt_valid(r);r.task=EX_TEST_ID;r.command="bad";#assert !exp_receipt_valid(r);r.command=EX_TEST_ID;r.hash="bad";#assert !exp_receipt_valid(r) && exp_receipt_write(r,out[..])<0;
+ arena:[256]u8;view:[1]ExPrepView;receipt:[1]ExInputReceipt;#assert !exp_view_read("{",view[..],arena[..]) && !exp_receipt_read("{",receipt[..],arena[..]);
+}
+#test "preparation reader byte limits and caller capacities keep exact endpoints" {
+ small:[2048]u8;padded:[2050]u8;task:[32]u8;arena:[256]u8;view:[1]ExPrepView;receipt:[1]ExInputReceipt;
+ n:=exp_read_write(EX_TEST_ID,small[..]);for i:0..<n {padded[i]=small[i];}for i:n..<514 {padded[i]=' ';}
+ #assert exp_read_request(cast(string)padded[0..<512],task[..]) && !exp_read_request(cast(string)padded[0..<513],task[..]);
+ #assert !exp_read_request(cast(string)small[0..<n],task[0..<31]) && exp_read_write(EX_TEST_ID,padded[0..<n-1])<0;
+ for key:[2]string.["schema","task_id"] {#assert !exp_read_request(ex_test_alias(cast(string)small[0..<n],key,padded[..]),task[..]);}
+ #assert !exp_read_request(ex_test_field(cast(string)small[0..<n],"task_id","\"0123456789abcdef0123456789abcdef0\"",padded[..]),task[..]);
+ v:=ExPrepView.{host=EX_TEST_HASH,task=EX_TEST_ID,hash=EX_TEST_HASH,total=1,expires=1};n=exp_view_write(v,small[..]);for i:0..<n {padded[i]=small[i];}for i:n..<2050 {padded[i]=' ';}
+ #assert exp_view_read(cast(string)padded[0..<2048],view[..],arena[..]) && !exp_view_read(cast(string)padded[0..<2049],view[..],arena[..]);
+ r:=ExInputReceipt.{task=EX_TEST_ID,command=EX_TEST_ID,hash=EX_TEST_HASH,issued=1,expires=2};n=exp_receipt_write(r,small[..]);for i:0..<n {padded[i]=small[i];}for i:n..<1026 {padded[i]=' ';}
+ #assert exp_receipt_read(cast(string)padded[0..<1024],receipt[..],arena[..]) && !exp_receipt_read(cast(string)padded[0..<1025],receipt[..],arena[..]);
+ #assert exp_receipt_write(r,padded[0..<n-1])<0 && !exp_receipt_read(cast(string)small[0..<n],receipt[..],arena[0..<1]);
+}
+
+exp_read_request :: (raw:string,task:[]u8)->bool #effects(all) {
+ d:[1]Jv;nodes:[8]JvNode;if raw.count>512 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[2]string.["schema","task_id"];id:[32]u8;
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=2 || jv_raw(v,jv_get(v,0,"schema"))!=EXP_READ || js_string(v,jv_get(v,0,"task_id"),id[..])!=32 || !ea_id(cast(string)id[..],32) {return false;}
+ return js_copy(task,cast(string)id[..])==32;
+}
+exp_read_write :: (task:string,out:[]u8)->int #effects(all) {
+ if !ea_id(task,32) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],EXP_READ);jo_key(o[..],"task_id");jo_str(o[..],task);jo_end(o[..]);return ex_encoded(o[..]);
+}
+exp_view_valid :: (v:ExPrepView)->bool #effects(all) {
+ return ea_id(v.host,64) && ea_id(v.task,32) && (v.command.count==0 || ea_id(v.command,32)) && ea_id(v.hash,64) && v.total>0 && v.total<=EX_INPUT_MAX && v.retained>=0 && v.retained<=v.total && v.complete==(v.retained==v.total) && v.expires>0 && v.expires<=9007199254740991;
+}
+exp_view_write :: (v:ExPrepView,out:[]u8)->int #effects(all) {
+ if !exp_view_valid(v) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],EXP_VIEW);
+ jo_key(o[..],"host_pubkey");jo_str(o[..],v.host);jo_key(o[..],"task_id");jo_str(o[..],v.task);jo_key(o[..],"command_id");jo_str(o[..],v.command);jo_key(o[..],"input_sha256");jo_str(o[..],v.hash);
+ jo_key(o[..],"input_bytes");jo_int(o[..],v.total);jo_key(o[..],"retained_bytes");jo_int(o[..],v.retained);jo_key(o[..],"complete");jo_bool(o[..],v.complete);jo_key(o[..],"replay");jo_bool(o[..],v.replay);jo_key(o[..],"expires_at_ms");jo_int(o[..],v.expires);jo_end(o[..]);return ex_encoded(o[..]);
+}
+exp_view_read :: (raw:string,out:[]ExPrepView,arena:[]u8)->bool #effects(all) {
+ d:[1]Jv;nodes:[24]JvNode;if raw.count>2048 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[10]string.["schema","host_pubkey","task_id","command_id","input_sha256","input_bytes","retained_bytes","complete","replay","expires_at_ms"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=keys.count || jv_raw(v,jv_get(v,0,"schema"))!=EXP_VIEW {return false;}
+ a:=[1]ExArena.[ExArena.{buf=arena}];next:ExPrepView;next.host=ex_string(v,0,"host_pubkey",a[..]);next.task=ex_string(v,0,"task_id",a[..]);next.command=ex_string(v,0,"command_id",a[..]);next.hash=ex_string(v,0,"input_sha256",a[..]);
+ next.total=js_number(v,jv_get(v,0,"input_bytes"));next.retained=js_number(v,jv_get(v,0,"retained_bytes"));next.expires=js_number(v,jv_get(v,0,"expires_at_ms"));
+ complete:=jv_kind(v,jv_get(v,0,"complete"));replay:=jv_kind(v,jv_get(v,0,"replay"));if (complete!=JV_TRUE && complete!=JV_FALSE) || (replay!=JV_TRUE && replay!=JV_FALSE) {return false;}
+ next.complete=complete==JV_TRUE;next.replay=replay==JV_TRUE;if a[0].bad || !exp_view_valid(next) {return false;}out[0]=next;return true;
+}
+exp_receipt_valid :: (v:ExInputReceipt)->bool #effects(all) {return ea_id(v.task,32) && ea_id(v.command,32) && ea_id(v.hash,64) && ea_fresh(v.issued,v.expires,v.issued);}
+exp_receipt_write :: (v:ExInputReceipt,out:[]u8)->int #effects(all) {
+ if !exp_receipt_valid(v) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],EXP_RECEIPT);jo_key(o[..],"task_id");jo_str(o[..],v.task);jo_key(o[..],"command_id");jo_str(o[..],v.command);jo_key(o[..],"request_sha256");jo_str(o[..],v.hash);jo_key(o[..],"issued_at_ms");jo_int(o[..],v.issued);jo_key(o[..],"expires_at_ms");jo_int(o[..],v.expires);jo_end(o[..]);return ex_encoded(o[..]);
+}
+exp_receipt_read :: (raw:string,out:[]ExInputReceipt,arena:[]u8)->bool #effects(all) {
+ d:[1]Jv;nodes:[16]JvNode;if raw.count>1024 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[6]string.["schema","task_id","command_id","request_sha256","issued_at_ms","expires_at_ms"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=keys.count || jv_raw(v,jv_get(v,0,"schema"))!=EXP_RECEIPT {return false;}
+ a:=[1]ExArena.[ExArena.{buf=arena}];next:ExInputReceipt;next.task=ex_string(v,0,"task_id",a[..]);next.command=ex_string(v,0,"command_id",a[..]);next.hash=ex_string(v,0,"request_sha256",a[..]);next.issued=js_number(v,jv_get(v,0,"issued_at_ms"));next.expires=js_number(v,jv_get(v,0,"expires_at_ms"));
+ if a[0].bad || !exp_receipt_valid(next) {return false;}out[0]=next;return true;
+}

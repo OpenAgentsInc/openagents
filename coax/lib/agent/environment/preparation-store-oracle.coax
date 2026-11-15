@@ -1,0 +1,61 @@
+// Native filesystem qualification: separate invocations reread the durable
+// state, exact retries retain mtime, and failed/conflicting inputs stay inert.
+#import "Basic";
+#load "preparation-store.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/proc.coax";
+ExpOracle :: struct {checks:int;failed:int;}
+exp_o_check :: (o:[]ExpOracle,ok:bool,name:string) #effects(all) {o[0].checks+=1;if !ok {o[0].failed+=1;}print("% %\n",ifx ok then "ok" else "FAIL",name);}
+exp_o_mode :: (path:string,out:[]u8)->string #effects(all) {
+ err:[1024]u8;args:=[4]string.["stat","-c","%a",path];r:=proc_run(args[..],10000,out,err[..]);
+ if r.status!=0 {mac:=[4]string.["/usr/bin/stat","-f","%Lp",path];r=proc_run(mac[..],10000,out,err[..]);}
+ n:=r.out_n;while n>0 && (out[n-1]==10 || out[n-1]==13) {n-=1;}return cast(string)out[0..<n];
+}
+tool_main :: ()->int #export_c #effects(all) {
+ o:[1]ExpOracle;fixture:[16384]u8;fn:=fs_read("proto/coder/environment-execution-v1alpha1.json",fixture[..]);d:[1]Jv;nodes:[256]JvNode;
+ if fn<1 || !jv_parse(d[..],cast(string)fixture[0..<fn],nodes[..]) {return 2;}
+ bytes:[32768]u8;writer:[1]Jo;jo_start(writer[..],bytes[..]);jv_write(d[0],jv_get(d[0],0,"binding"),writer[..]);binding:[1]ExBinding;ba:[1024]u8;
+ if !ex_binding_read(jo_text(writer[..]),binding[..],ba[..]) {return 2;}b:=binding[0];
+ jo_start(writer[..],bytes[..]);jv_write(d[0],jv_get(d[0],0,"chunk"),writer[..]);packet:[1]ExChunk;ca:[8192]u8;
+ if !ex_chunk_read(jo_text(writer[..]),packet[..],ca[..]) {return 2;}c:=packet[0];full:=c.text;
+ tmp:[FS_PATH_MAX]u8;temporary:=fs_temp("oa-execution-preparation-",tmp[..]);root_buf:[FS_PATH_MAX]u8;root:=fs_join(temporary,"staging",root_buf[..]);if temporary.count==0 {return 2;}
+ grant:=b.host;view:[1]ExPrepView;arena:[1024]u8;
+ error:=exp_store_prepare(root,grant,b.host,b,1000,view[..]);exp_o_check(o[..],error=="" && view[0].retained==0 && !view[0].complete && !view[0].replay,"prepare creates an immutable empty stage");
+ task_buf:[FS_PATH_MAX]u8;taskdir:=exp_task_dir(root,grant,b.task,task_buf[..]);p:[FS_PATH_MAX]u8;file:=fs_join(taskdir,"input.json",p[..]);mode:[32]u8;
+ exp_o_check(o[..],exp_o_mode(taskdir,mode[..])=="700","task directory is owner-only");
+ error=exp_store_prepare(root,grant,b.host,b,500000,view[..]);exp_o_check(o[..],error=="" && view[0].replay,"an exact binding reconciles after its window without restarting it");
+ changed:=b;changed.model="other";exp_o_check(o[..],exp_store_prepare(root,grant,b.host,changed,1000,view[..])=="conflict","a changed binding cannot replace the task");
+ c.text=cast(string)full[0..<100];error=exp_store_put(root,grant,c,1000,view[..],arena[..]);
+ exp_o_check(o[..],error=="" && view[0].retained==100 && !view[0].complete,"the first range is durably retained");
+ original:[EX_INPUT_MAX]u8;n:=fs_read(file,original[..]);exp_o_check(o[..],n==100 && cast(string)original[0..<ifx n>0 then n else 0]==cast(string)full[0..<100],"the actual retained file has the exact range bytes");
+ exp_o_check(o[..],exp_o_mode(file,mode[..])=="600","input bytes are owner-only");
+ stamp:=fs_mtime_ns(file);error=exp_store_put(root,grant,c,500000,view[..],arena[..]);
+ exp_o_check(o[..],error=="" && view[0].replay && fs_mtime_ns(file)==stamp,"exact receipted replay after expiry performs no rewrite");
+ error=exp_store_read(root,grant,b.task,view[..],arena[..]);exp_o_check(o[..],error=="" && view[0].retained==100 && view[0].command=="","a new read reconstructs progress from files");
+ wrong:=c;wrong.text="changed";exp_o_check(o[..],exp_store_put(root,grant,wrong,1001,view[..],arena[..])=="conflict" && fs_mtime_ns(file)==stamp,"conflicting command reuse leaves input unchanged");
+ wrong=c;wrong.command="11111111111111111111111111111111";wrong.offset=101;exp_o_check(o[..],exp_store_put(root,grant,wrong,1001,view[..],arena[..])=="conflict","a gap is refused");
+ exp_o_check(o[..],fs_remove(file),"simulate a crash after the durable intent and before the data write");
+ error=exp_store_put(root,grant,c,1001,view[..],arena[..]);exp_o_check(o[..],error=="" && !view[0].replay && view[0].retained==100,"the original intent recovers its missing range once");
+ c.command="11111111111111111111111111111111";c.offset=100;c.text=cast(string)full[100..<full.count];
+ error=exp_store_put(root,grant,c,1002,view[..],arena[..]);exp_o_check(o[..],error=="" && view[0].complete && view[0].retained==full.count,"the final range verifies the complete canonical input");
+ n=fs_read(file,original[..]);exp_o_check(o[..],n==full.count && cast(string)original[0..<ifx n>0 then n else 0]==full,"the complete persisted bytes match the admitted input");
+ stamp=fs_mtime_ns(file);error=exp_store_put(root,grant,c,500000,view[..],arena[..]);exp_o_check(o[..],error=="" && view[0].complete && view[0].replay && fs_mtime_ns(file)==stamp,"completed retries reconcile without rewriting");
+ exp_o_check(o[..],exp_store_read(root,"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",b.task,view[..],arena[..])=="unavailable","another grant cannot read this task");
+ original[0]='[';exp_o_check(o[..],fs_replace_durable(file,cast(string)original[0..<n]),"seed same-length storage corruption");
+ exp_o_check(o[..],exp_store_read(root,grant,b.task,view[..],arena[..])=="conflict","same-length corruption cannot report complete");
+ exp_o_check(o[..],fs_replace_durable(file,full),"restore the independent canonical fixture");
+ ids:=[4]string.["22222222222222222222222222222222","33333333333333333333333333333333","44444444444444444444444444444444","55555555555555555555555555555555"];
+ for i:0..<3 {next:=b;next.task=ids[i];next.session=ids[i];next.command=ids[i];exp_o_check(o[..],exp_store_prepare(root,grant,b.host,next,1000,view[..])=="","fill one bounded staging slot");}
+ next:=b;next.task=ids[3];next.session=ids[3];next.command=ids[3];exp_o_check(o[..],exp_store_prepare(root,grant,b.host,next,1000,view[..])=="bounds","a fifth live preparation is refused");
+ next.issued=500000;next.expires=800000;next.report_at=499999;error=exp_store_prepare(root,grant,b.host,next,500000,view[..]);
+ exp_o_check(o[..],error=="" && !fs_exists(taskdir),"expired input-only stages are collected before a new preparation");
+ next_task:[FS_PATH_MAX]u8;next_dir:=exp_task_dir(root,grant,next.task,next_task[..]);cmd_buf:[FS_PATH_MAX]u8;commands:=fs_join(next_dir,"commands",cmd_buf[..]);exp_o_check(o[..],fs_mkdir_private(commands),"prepare the command capacity fixture");
+ for i:0..<EX_UPLOAD_COMMANDS {number:[32]u8;num:[1]Jo;jo_start(num[..],number[..]);jo_int(num[..],i);hash:[64]u8;
+  if !S_hex(S_hash(jo_text(num[..])),hash[..]) {return 2;}id:=cast(string)hash[0..<32];receipt:=ExInputReceipt.{task=next.task,command=id,hash=next.input_hash,issued=500000,expires=800000};encoded:[1024]u8;nr:=exp_receipt_write(receipt,encoded[..]);path:[FS_PATH_MAX]u8;
+  if nr<1 || !fs_replace_durable(fs_join(commands,id,path[..]),cast(string)encoded[0..<nr]) {return 2;}
+ }
+ c.task=next.task;c.command="99999999999999999999999999999999";c.offset=0;c.text=full;c.issued=500000;c.expires=800000;
+ exp_o_check(o[..],exp_store_put(root,grant,c,500000,view[..],arena[..])=="bounds","durable command count enforces its actual filesystem bound");
+ print("Preparation filesystem: % checks, % failed\n",o[0].checks,o[0].failed);
+ if o[0].failed==0 {_ = fs_remove(temporary);}else {print("Evidence: %\n",temporary);}return ifx o[0].failed==0 then 0 else 1;
+}

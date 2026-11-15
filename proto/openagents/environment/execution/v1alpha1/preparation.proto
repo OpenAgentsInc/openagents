@@ -1,0 +1,31 @@
+syntax = "proto3";
+package openagents.environment.execution.v1alpha1;
+
+// HOST app.rpc methods: PrepareTask takes Binding, PutTaskInput takes
+// InputChunk, ReadTaskInput takes PreparationRequest. None starts an agent.
+message PreparationRequest {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.read-input.v1alpha1
+  string task_id = 2 [json_name="task_id"];
+}
+message PreparationView {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.preparation.v1alpha1
+  string host_pubkey = 2 [json_name="host_pubkey"];
+  string task_id = 3 [json_name="task_id"];
+  string command_id = 4 [json_name="command_id"]; // empty on ReadTaskInput
+  string input_sha256 = 5 [json_name="input_sha256"];
+  int64 input_bytes = 6 [json_name="input_bytes"];
+  int64 retained_bytes = 7 [json_name="retained_bytes"];
+  bool complete = 8 [json_name="complete"]; // full hash, length and canonical input verified
+  bool replay = 9 [json_name="replay"]; // exact retained binding/range, no data rewritten
+  int64 expires_at_ms = 10 [json_name="expires_at_ms"]; // staging binding's original deadline
+}
+// Private resident receipt, written before publishing an uploaded range.
+// The digest binds the entire normalized InputChunk, including its time window.
+message InputCommandReceipt {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.input-receipt.v1alpha1
+  string task_id = 2 [json_name="task_id"];
+  string command_id = 3 [json_name="command_id"];
+  string request_sha256 = 4 [json_name="request_sha256"];
+  int64 issued_at_ms = 5 [json_name="issued_at_ms"];
+  int64 expires_at_ms = 6 [json_name="expires_at_ms"];
+}
