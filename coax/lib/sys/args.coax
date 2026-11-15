@@ -32,6 +32,11 @@ Args :: struct {
   // a flag at the end has no value: the fallback
   #assert args_value(b[..], "--eval", "none") == "none" && args_has(b[..], "--eval");
   #assert args_add(b[..], "") && args_at(b[..], 2) == "" && args_count(b[..]) == 3;
+  // a flag in first place, and a value in last place
+  c: [1] Args;
+  #assert args_add(c[..], "--k") && args_add(c[..], "v");
+  #assert args_find(c[..], "--k") == 0 && args_has(c[..], "--k") && args_value(c[..], "--k", "fb") == "v" && args_find(c[..], "v") == 1 && args_at(c[..], 0) == "--k";
+  #assert args_find(a[..], "http://x/") == 0 && args_has(a[..], "http://x/") && args_value(a[..], "http://x/", "fb") == "out.mp4";
 }
 #test "arguments past the limits are dropped and flagged" {
   a: [1] Args;
@@ -57,7 +62,7 @@ args_add :: (a: [] Args, s: string) -> bool #effects(all) {
 args_count :: (a: [] Args) -> int #effects(all) { return a[0].n; }
 // Argument i (0 is the first after the program name), or "".
 args_at :: (a: [] Args, i: int) -> string #effects(all) {
-  if i < 0 || i >= a[0].n { return ""; }
+  if i < 0 || i >= a[0].n { return ""; }  // mutant: equivalent (slot n of a fresh Args is the empty string)
   return a[0].v[i];
 }
 // The index of the first argument equal to name, or -1.
@@ -80,11 +85,25 @@ ArgsNumber :: struct { ok: bool; value: f64; }
   #assert args_number("3").ok && args_number("3").value == 3.0;
   #assert args_number("1.5").value == 1.5 && args_number("-2").value == -2.0 && args_number("+4").value == 4.0;
   #assert args_number("0.1").value == 0.1 && args_number(".5").value == 0.5 && args_number("6.").value == 6.0;
-  #assert args_number("  7 ").value == 7.0 && args_number("").ok && args_number("").value == 0.0;
+  #assert args_number("  7 ").value == 7.0 && args_number(" 7").value == 7.0 && args_number("   7").value == 7.0 && args_number("7   ").value == 7.0 && args_number("").ok && args_number("").value == 0.0;
   #assert args_number("1e3").ok && args_number("1e3").value == 1000.0 && args_number("25e-1").value == 2.5;
   #assert !args_number("x").ok && !args_number("1x").ok && !args_number("--").ok && !args_number(".").ok && !args_number("1e").ok;
   #assert !args_number("1e999").ok && !args_number("123456789012345678901").ok;
   #assert args_number("1.25").value * 4.0 == 5.0 && args_number("4000").value == 4000.0;
+  // digit edges: 0 and 9 are digits, the characters beside them are not
+  #assert args_number("9").value == 9.0 && args_number("0.9").value == 0.9 && args_number("1.0").value == 1.0 && args_number("2.50").value == 2.5 && args_number("1.9").value == 1.9;
+  #assert !args_number(":").ok && !args_number("1:").ok && !args_number("1.:").ok && !args_number("1e:").ok && !args_number("1/").ok;
+  // seventeen significant digits fit, an eighteenth does not; leading zeros do not count
+  #assert args_number("12345678901234567").ok && !args_number("123456789012345678").ok;
+  #assert args_number("1.2345678901234567").ok && !args_number("1.23456789012345678").ok && !args_number("0.123456789012345678").ok;
+  #assert !args_number("100000000000000000").ok && !args_number("0.100000000000000000").ok && args_number("10000000000000000").ok;
+  #assert args_number("0000000000000000000012").value == 12.0 && args_number("0.0000000000000000001").ok && args_number("0.000000000000000000000012").ok == false;
+  // exponents: E and e, an explicit plus, up to three digits, scale within 22
+  #assert args_number("1E3").value == 1000.0 && args_number("1e+3").value == 1000.0 && args_number("1e0").value == 1.0 && args_number("1e9").value == 1000000000.0;
+  #assert args_number("1e10").value == 10000000000.0 && args_number("1e00").value == 1.0 && args_number("1e000").value == 1.0 && !args_number("1e0000").ok;
+  #assert !args_number("1F3").ok && !args_number("1e+").ok && !args_number("1e3x").ok;
+  #assert args_number("1e22").ok && !args_number("1e23").ok && args_number("1e-22").ok && !args_number("1e-23").ok;
+  #assert args_number("0.5e1").value == 5.0 && args_number("5e-1").value == 0.5 && args_number("-0.25e2").value == -25.0;
 }
 // A decimal number as JavaScript's Number() reads it, for the plain forms
 // our flags take: optional sign, digits with an optional fraction and
@@ -128,10 +147,10 @@ args_number :: (text: string) -> ArgsNumber #effects(all) {
   }
   if i != s.count || scale > 22 || scale < -22 { return r; }
   p: f64 = 1.0;
-  k := ifx scale < 0 then -scale else scale;
+  k := ifx scale < 0 then -scale else scale;  // mutant: equivalent (at scale 0 both branches give 0)
   for j: 0..<k { p = p * 10.0; }
   v := cast(f64) mant;
-  v = ifx scale < 0 then v / p else v * p;
+  v = ifx scale < 0 then v / p else v * p;  // mutant: equivalent (at scale 0 p is 1, so dividing and multiplying agree)
   r.ok = true; r.value = ifx neg then -v else v;
   return r;
 }
@@ -142,13 +161,16 @@ ArgsSize :: struct { ok: bool; w: int; h: int; }
   #assert s.ok && s.w == 1280 && s.h == 720;
   #assert args_size("1x1").ok && !args_size("1280").ok && !args_size("x720").ok && !args_size("12x").ok;
   #assert !args_size("1.5x2").ok && !args_size("-1x2").ok && !args_size("1x2x3").ok && !args_size("99999x1").ok && !args_size("0x5").ok;
+  // the limit is 16384 in each direction
+  #assert args_size("16384x1").ok && args_size("1x16384").ok && args_size("16384x16384").w == 16384 && args_size("1x16384").h == 16384;
+  #assert !args_size("16385x1").ok && !args_size("1x16385").ok && !args_size("x").ok && !args_size("2x").ok;
 }
 // "WxH" with whole positive numbers up to 16384 each.
 args_size :: (text: string) -> ArgsSize #effects(all) {
   r: ArgsSize;
   x := -1;
-  for c, i: text { if c == 'x' { if x >= 0 { return r; } x = i; } }
-  if x < 1 || x + 1 >= text.count { return r; }
+  for c, i: text { if c == 'x' { if x >= 0 { return r; } x = i; } }  // mutant: equivalent (a second x after an x at 0 lands in the width, which args_whole refuses)
+  if x < 1 || x + 1 >= text.count { return r; }  // mutant: equivalent (an empty height is refused by args_whole)
   w := args_whole(text[0..<x]); h := args_whole(text[x + 1..<text.count]);
   if w < 1 || h < 1 || w > 16384 || h > 16384 { return r; }
   r.ok = true; r.w = w; r.h = h;
@@ -157,6 +179,7 @@ args_size :: (text: string) -> ArgsSize #effects(all) {
 #test "whole numbers" {
   #assert args_whole("0") == 0 && args_whole("42") == 42 && args_whole("") == -1 && args_whole("4a") == -1;
   #assert args_whole("123456789") == 123456789 && args_whole("1234567890") == -1 && args_whole("-3") == -1;
+  #assert args_whole(":") == -1 && args_whole("1:") == -1 && args_whole("/") == -1 && args_whole("999999999") == 999999999;
 }
 // Decimal digits only, at most nine of them: the value, or -1.
 args_whole :: (text: string) -> int #effects(all) {
