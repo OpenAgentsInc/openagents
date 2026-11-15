@@ -64,5 +64,5 @@ round_action :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,size:f32,progress:f32) {
 
 // The composer retains the shared pill geometry while its border enters.
 composer_frame :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32) {
- p:=am_unit(progress);_:=sheet_box(sh,x,y,w,h,s.composer.radius,1,opacity(s.surface,p),opacity(s.accent,p));
+ p:=am_unit(progress);_:=sheet_box(sh,x,y,w,h,s.cmp.radius,1,opacity(s.surface,p),opacity(s.accent,p));
 }

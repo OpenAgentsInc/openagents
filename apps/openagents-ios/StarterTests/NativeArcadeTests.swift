@@ -4,6 +4,27 @@ import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeArcadeTests:XCTestCase {
+    func testMultilineNoticeMeasuresTheSameInsetWidthItDraws() {
+        let words="This is a long notice that must remain readable when the phone is narrow and the text size is large."
+        let notice=NativeNotice(),label=UILabel();notice.numberOfLines=0;label.numberOfLines=0
+        notice.font=UIFont.systemFont(ofSize:28);label.font=notice.font;notice.text=words;label.text=words
+        let expected=label.sizeThatFits(CGSize(width:176,height:1000))
+        XCTAssertEqual(notice.sizeThatFits(CGSize(width:200,height:1000)).height,expected.height+20,accuracy:1)
+    }
+    func testUpdateOfferUsesTheSameComponentSurfaceAndRetainsBusyGuard() throws {
+        let home=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:home)}
+        let host=NativeHost(updates:try NativeUpdates(home:home)),window=UIWindow(frame:CGRect(x:0,y:0,width:402,height:874))
+        window.rootViewController=host;window.makeKeyAndVisible()
+        defer {host.health?.cancel();window.isHidden=true}
+        host.offerActivation()
+        let prompt=try XCTUnwrap(host.presentedViewController as? NativeControls)
+        XCTAssertNotNil(prompt.controls["updates.apply"] as? NativeButton)
+        XCTAssertNotNil(prompt.controls["updates.ready"] as? NativeNotice)
+        XCTAssertTrue(prompt.view.subviews.contains {$0 is NativeArcadeSurface})
+        host.services=1;prompt.press?("updates.apply");XCTAssertNil(host.updates.current)
+        host.dismiss(animated:false)
+    }
     func testMeasuredNativeAdaptersArePaintedByTheSharedSceneAndRetireWhenHidden() {
         let controller=UIViewController(),window=UIWindow(frame:CGRect(x:0,y:0,width:402,height:874))
         window.rootViewController=controller;window.makeKeyAndVisible();defer {window.isHidden=true}

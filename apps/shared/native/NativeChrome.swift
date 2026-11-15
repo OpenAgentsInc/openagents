@@ -1,9 +1,8 @@
 // Firm reason: 6 (UIKit/AppKit layers and controls that project the mono skin's exports).
-// The one file in which a native host makes a platform colour, a layer path
-// or a button. Everything it draws comes from components/skin/mono-native.coax:
-// the tokens (mono_native), a role's frame points (mono_native_frame, the
-// points the browser backend turns into SVG) and a button's look by variant
-// and state (mono_button). It holds no colour and works out no path itself.
+// The platform's text/input/accessibility projection of the shared kit. On
+// iOS, frames and motion are painted by components/native/scene.coax through
+// NativeArcadeSurface. AppKit retains its frame-point adapter. Skin exports
+// own the tokens, variants and states. This file holds no private palette.
 // coax/native/stock-style.coax fails any other host file that styles a
 // control on its own (#13580).
 import Foundation
@@ -65,7 +64,7 @@ enum NativeSkin {
         let font=labelFont(CGFloat(size ?? tokens.label))
         return NSAttributedString(string:upper ? text.uppercased():text,attributes:[.font:font,.kern:font.pointSize*CGFloat(track ?? tokens.track),.foregroundColor:color(ink ?? tokens.ink_muted)])
     }
-    /// The root ground: black with the skin's faint grid.
+    /// The root ground: plain black on iOS, the skin's faint grid on desktop.
     static let ground:NativePlatformColor = {
         #if canImport(UIKit)
         return color(tokens.ground)
@@ -186,8 +185,10 @@ final class NativeNotice:UILabel {
     required init?(coder:NSCoder) {fatalError()}
     override func layoutSubviews() {super.layoutSubviews();surface.frame=bounds}
     override func drawText(in rect:CGRect) {super.drawText(in:rect.insetBy(dx:12,dy:10))}
-    override func sizeThatFits(_ size:CGSize)->CGSize {let text=super.sizeThatFits(CGSize(width:max(1,size.width-24),height:size.height));return CGSize(width:text.width+24,height:text.height+20)}
-    override var intrinsicContentSize:CGSize {let size=super.intrinsicContentSize;return CGSize(width:size.width+24,height:size.height+20)}
+    override func textRect(forBounds bounds:CGRect,limitedToNumberOfLines lines:Int)->CGRect {
+        let text=super.textRect(forBounds:bounds.insetBy(dx:12,dy:10),limitedToNumberOfLines:lines)
+        return text.insetBy(dx:-12,dy:-10)
+    }
 }
 
 /// A world HUD layer passes empty space through to the scene below it.
@@ -353,7 +354,7 @@ final class NativeFlow:UIView {
     override var intrinsicContentSize:CGSize {CGSize(width:UIView.noIntrinsicMetric,height:laid>0 ? laid:CGFloat(NativeSkin.tokens.hit))}
 }
 
-/// One line of typing over the skin's underline, bright while it is typed in.
+/// A native editor with shared animated focus chrome.
 final class NativeField:UITextField {
     private let chrome=NativeFrameView(role:NativeSkin.names.field)
     override init(frame:CGRect) {

@@ -7,15 +7,15 @@ final class StarterUITests:XCTestCase {
         if !app.buttons["app.updates"].waitForExistence(timeout:3) {app.showAppSettings()}
         let check=app.buttons["app.updates"]
         XCTAssertTrue(check.waitForExistence(timeout:20))
-        XCTAssertFalse(app.alerts["Update ready"].waitForExistence(timeout:10))
+        XCTAssertFalse(app.buttons["updates.apply"].waitForExistence(timeout:10))
         check.tap()
         XCTAssertTrue(app.staticTexts["You have the latest compatible update."].waitForExistence(timeout:20))
-        XCTAssertFalse(app.alerts["Update ready"].exists)
+        XCTAssertFalse(app.buttons["updates.apply"].exists)
         app.terminate();app.launch()
         if !check.waitForExistence(timeout:3) {app.showAppSettings()}
         XCTAssertTrue(check.waitForExistence(timeout:20));check.tap()
         XCTAssertTrue(app.staticTexts["You have the latest compatible update."].waitForExistence(timeout:20))
-        XCTAssertFalse(app.alerts["Update ready"].exists)
+        XCTAssertFalse(app.buttons["updates.apply"].exists)
     }
     func testEmbeddedCoaxAccountModuleRuns() {
         let app=XCUIApplication(); app.launchArguments=["-OAAutomation","YES"]; app.launch()
