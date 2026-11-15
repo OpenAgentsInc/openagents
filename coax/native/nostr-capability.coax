@@ -1,0 +1,37 @@
+// Trusted custody facts, not values an updateable caller can assert.
+#authority;
+NS_MANAGED :: 1; NS_LINKED :: 2;
+NS_SERVER :: 1; NS_DEVICE :: 2; NS_REMOTE :: 3;
+NsFacts :: struct {live:bool;human:bool;limited:bool;frozen:bool;matched:bool;approved:bool;source:int;provider:int;}
+
+#test "a managed identity remains server-custodied and independently linked keys use their own provider" {
+ f:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_MANAGED,provider=NS_SERVER};
+ for action:1..<7 {#assert ns_permit(f,action);}
+ f.provider=NS_DEVICE;#assert !ns_permit(f,2);f.provider=NS_REMOTE;#assert !ns_permit(f,3);
+ f.source=NS_LINKED;#assert ns_permit(f,3);f.provider=NS_DEVICE;#assert ns_permit(f,4);
+ f.provider=NS_SERVER;#assert !ns_permit(f,5);
+}
+#test "every trusted permission fact is independently necessary" {
+ good:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_MANAGED,provider=NS_SERVER};
+ for action:1..<7 {
+  f:=good;f.live=false;#assert !ns_permit(f,action);f=good;f.human=false;#assert !ns_permit(f,action);
+  f=good;f.limited=true;#assert !ns_permit(f,action);f=good;f.frozen=true;#assert !ns_permit(f,action);
+  f=good;f.matched=false;#assert !ns_permit(f,action);f=good;f.approved=false;#assert !ns_permit(f,action);
+ }
+}
+#test "unknown sources providers and actions never acquire custody rights" {
+ for source:0..<4 {for provider:0..<5 {for action:0..<8 {
+  f:=NsFacts.{live=true,human=true,matched=true,approved=true,source=source,provider=provider};
+  expected:=action>=1 && action<=6 && ((source==1 && provider==1) || (source==2 && (provider==2 || provider==3)));
+  #assert ns_permit(f,action)==expected;
+ }}}
+ f:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_MANAGED,provider=NS_SERVER};
+ #assert !ns_permit(f,-1);f.source= -1;#assert !ns_permit(f,1);f.source=NS_LINKED;f.provider= -1;#assert !ns_permit(f,1);
+}
+// 1 capabilities, 2 relay-auth, 3 seal, 4 open, 5 publish-list, 6 group.
+// This is a necessary gate only. Each effect must validate its typed purpose,
+// complete payload and trusted current key/session facts before cryptography.
+ns_permit :: (f:NsFacts,action:int)->bool #export_c #effects(all) {
+ return action>=1 && action<=6 && f.live && f.human && !f.limited && !f.frozen && f.matched && f.approved &&
+  ((f.source==NS_MANAGED && f.provider==NS_SERVER) || (f.source==NS_LINKED && (f.provider==NS_DEVICE || f.provider==NS_REMOTE)));
+}

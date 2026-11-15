@@ -1,0 +1,53 @@
+// Installed read transport admission; generic reads confer no signing power.
+#load "../lib/json/shape.coax";
+#load "../lib/net/relay_uri.coax";
+#authority;
+NRR_SLOTS :: 6; NRR_SEND :: 8192; NRR_FRAME :: 65536; NRR_WIRE :: 400000; NRR_SERIAL :: 2147483647;
+
+#test "all slot and serial edges preserve one nonwrapping owner" {
+ for slot:[4]int.[-1,0,5,6] {for gen:[4]int.[0,1,2147483647,2147483648] {for seq:[4]int.[-1,0,2147483647,2147483648] {
+  #assert nrr_owner(slot,gen,seq)==(slot>=0 && slot<=5 && gen>=1 && gen<=2147483647 && seq>=0 && seq<=2147483647);
+ }}}
+}
+#test "read transport is WSS-only with no credentials and retains exact paths" {
+ #assert nrr_admit(1,0,1,0,"wss://relay.example/all?x=1");
+ for url:[7]string.["","ws://relay.example","https://relay.example","wss://a@relay.example","wss://relay.example#x","wss://relay.example/%00","wss://relay.example\\x"] {#assert !nrr_admit(1,0,1,0,url);}
+ b:[257]u8;for i:0..<b.count {b[i]='a';}p:="wss://a.example/";for c,i:p {b[i]=c;}
+ #assert nrr_admit(1,0,1,0,cast(string)b[0..<256]) && !nrr_admit(1,0,1,0,cast(string)b[..]);
+ #assert !nrr_admit(1,0,1,1,"wss://a.example");
+}
+#test "only explicit read frames and empty control payloads are admitted" {
+ #assert nrr_admit(2,0,1,0,"[\"REQ\",\"x\",{},{}]") && nrr_admit(2,0,1,0,"[\"CLOSE\",\"x\"]");
+ #assert !nrr_admit(2,0,1,1,"[\"CLOSE\",\"x\"]") && !nrr_admit(2,0,1,0,"[\"EVENT\",{}]");
+ for action:[2]int.[3,4] {#assert nrr_admit(action,0,1,0,"") && !nrr_admit(action,0,1,0,"x");}
+ #assert nrr_admit(5,0,0,0,"") && !nrr_admit(5,1,0,0,"") && !nrr_admit(5,0,1,0,"") && !nrr_admit(5,0,0,1,"") && !nrr_admit(5,0,0,0,"x");
+ #assert nrr_admit(6,0,1,0,"") && !nrr_admit(6,0,1,1,"") && !nrr_admit(6,0,1,0,"x");
+ #assert !nrr_admit(0,0,1,0,"") && !nrr_admit(7,0,1,0,"") && !nrr_admit(-1,0,1,0,"");
+}
+#test "REQ CLOSE shape and UTF8 boundaries refuse malformed or write-bearing commands" {
+ for text:[12]string.["[]","[\"AUTH\",{}]","[\"REQ\",\"x\"]","[\"REQ\",\"\",{}]","[\"REQ\",1,{}]","[\"REQ\",\"x\",[]]","[\"REQ\",\"x\",{},true]","[\"CLOSE\",\"x\",{}]","[\"CLOSE\"]","bad","[\"EVENT\",{}]","[\"REQ\",\"\\u0000\",{}]"] {#assert !nrr_read_command(text);}
+ b:[8193]u8;for i:0..<b.count {b[i]=' ';}p:="[\"REQ\",\"x\",{}]";for c,i:p {b[i]=c;}
+ #assert nrr_read_command(cast(string)b[0..<8192]) && !nrr_read_command(cast(string)b[..]);
+ id:[83]u8;for i:0..<id.count {id[i]='a';}p="[\"CLOSE\",\"";for c,i:p {id[i]=c;}id[74]='"';id[75]=']';
+ #assert nrr_read_command(cast(string)id[0..<76]);id[74]='a';id[75]='"';id[76]=']';#assert !nrr_read_command(cast(string)id[0..<77]);
+ b[10]=255;#assert !nrr_read_command(cast(string)b[0..<100]);
+ #assert !nrr_read_command("{\"command\":\"REQ\",\"id\":\"x\",\"filter\":{}}") && !nrr_read_command("{\"command\":\"CLOSE\",\"id\":\"x\"}");
+}
+nrr_owner :: (slot:int,generation:int,sequence:int)->bool #effects(all) {return slot>=0 && slot<NRR_SLOTS && generation>=1 && generation<=NRR_SERIAL && sequence>=0 && sequence<=NRR_SERIAL;}
+nrr_read_command :: (text:string)->bool #export_c #effects(all) {
+ d:[1]Jv;nodes:[512]JvNode;if text.count>NRR_SEND || !js_utf8(text) || !jv_parse(d[..],text,nodes[..]) {return false;}v:=d[0];b:[64]u8;
+ if jv_kind(v,0)!=JV_ARRAY || js_string(v,jv_at(v,0,1),b[..])<1 {return false;}
+ if jv_raw(v,jv_at(v,0,0))=="CLOSE" {return jv_len(v,0)==2;}
+ if jv_raw(v,jv_at(v,0,0))!="REQ" || jv_len(v,0)<3 {return false;}
+ for i:2..<jv_len(v,0) {if jv_kind(v,jv_at(v,0,i))!=JV_OBJECT {return false;}}return true;
+}
+nrr_admit :: (action:int,slot:int,generation:int,sequence:int,payload:string)->bool #effects(all) {
+ if action==5 {return slot==0 && generation==0 && sequence==0 && payload.count==0;}
+ if !nrr_owner(slot,generation,sequence) {return false;}
+ if action<1 {return false;}
+ if action>6 {return false;}
+ if action==1 {r:=relay_uri(payload);return sequence==0 && payload.count<=256 && r.ok && r.tls;}
+ if action==2 {return sequence==0 && nrr_read_command(payload);}
+ if action==6 {return sequence==0 && payload.count==0;}
+ return payload.count==0;
+}

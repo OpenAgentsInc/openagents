@@ -99,6 +99,11 @@ decoded projection is not verification. Product behavior is Coax. Shared
 components own Markdown, references, editing, layout, paint and motion; native
 hosts supply lifecycle, secure effects, IME, accessibility and GPU bindings.
 
+The [Nostr app service contracts](../protocol/nostr-app-services-v1.md) define
+the read-only installed bridge and the later custody boundary. They reserve
+separate capabilities, retain the approved account-managed key model and
+require per-action contracts before messaging effects are implemented.
+
 ## Complete feature disposition
 
 Numbers below are the immutable inventory rows in [part 01 §13](01-codebase.md#13-what-the-port-must-carry-over).

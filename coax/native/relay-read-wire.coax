@@ -1,0 +1,129 @@
+// The one installed read-only relay effect codec. No key or token fields.
+#load "relay-read-policy.coax";
+NRR_SCHEMA :: "coax.native.relay-read.v1"; NRR_OP :: 20;
+NrrRequest :: struct {ok:bool;action:int;slot:int;generation:int;sequence:int;n:int;payload:[NRR_SEND]u8;}
+NrrObservation :: struct {ok:bool;slot:int;generation:int;sequence:int;kind:int;n:int;payload:[NRR_FRAME]u8;}
+NRR_ACTIONS :: [6]string.["open","send","poll","close","reset","clock"];
+NRR_KINDS :: [8]string.["connecting","open","message","closed","overflow","idle","failed","clock"];
+
+#test "read relay requests have pinned bytes and no signing capability" {
+ b:[1024]u8;q:[1]NrrRequest;
+ n:=nrr_request("open",0,1,0,"wss://relay.openagents.com",b[..]);
+ #assert n>0 && cast(string)b[0..<n]=="{\"schema\":\"coax.native.relay-read.v1\",\"action\":\"open\",\"slot\":0,\"generation\":1,\"sequence\":0,\"payload\":\"wss://relay.openagents.com\"}";
+ #assert nrr_read(cast(string)b[0..<n],q[..]) && q[0].action==1 && q[0].n==26;
+ #assert nrr_request("sign",0,1,0,"",b[..])<0 && nrr_request("open",0,1,0,"ws://relay.example",b[..])<0;
+ #assert nrr_request("open",0,1,0,"wss://user@relay.example",b[..])<0;
+ #assert nrr_request("open",0,1,0,"wss://relay.example/all?x=1",b[..])>0;
+}
+#test "poll acknowledgement and close/reset are explicit bounded operations" {
+ b:[1024]u8;q:[1]NrrRequest;
+ for action:[2]string.["poll","close"] {n:=nrr_request(action,5,NRR_SERIAL,NRR_SERIAL,"",b[..]);#assert n>0 && nrr_read(cast(string)b[0..<n],q[..]);}
+ #assert nrr_request("reset",0,0,0,"",b[..])>0 && nrr_request("reset",1,0,0,"",b[..])<0;
+ #assert nrr_request("reset",0,1,0,"",b[..])<0 && nrr_request("reset",0,0,1,"",b[..])<0 && nrr_request("reset",0,0,0,"x",b[..])<0;
+ for slot:[3]int.[-1,6,7] {#assert nrr_request("poll",slot,1,0,"",b[..])<0;}
+ for gen:[3]int.[-1,0,2147483648] {#assert nrr_request("poll",0,gen,0,"",b[..])<0;}
+ for seq:[2]int.[-1,2147483648] {#assert nrr_request("poll",0,1,seq,"",b[..])<0;}
+ #assert nrr_request("poll",0,1,0,"x",b[..])<0 && nrr_request("open",0,1,1,"wss://a.example",b[..])<0;
+}
+#test "read sends admit REQ and CLOSE but never EVENT AUTH or malformed frame shapes" {
+ b:[2048]u8;q:[1]NrrRequest;
+ for frame:[2]string.["[\"REQ\",\"feed\",{\"kinds\":[1],\"limit\":40}]","[\"CLOSE\",\"feed\"]"] {
+  n:=nrr_request("send",0,1,0,frame,b[..]);#assert n>0 && nrr_read(cast(string)b[0..<n],q[..]) && cast(string)q[0].payload[0..<q[0].n]==frame;
+ }
+ for frame:[10]string.["[]","[\"EVENT\",{}]","[\"AUTH\",{}]","[\"REQ\",\"x\"]","[\"REQ\",\"\",{}]","[\"REQ\",\"x\",1]","[\"CLOSE\",\"x\",{}]","[\"CLOSE\",1]","bad","[\"REQ\",\"x\",{}] trailing"] {
+  #assert nrr_request("send",0,1,0,frame,b[..])<0;
+ }
+ #assert nrr_request("send",0,1,1,"[\"CLOSE\",\"x\"]",b[..])<0;
+}
+#test "closed relay fields reject duplicates escaped aliases unknown keys and missing numbers" {
+ q:[1]NrrRequest;
+ for raw:[6]string.["{}","{\"schema\":\"coax.native.relay-read.v1\",\"action\":\"poll\",\"slot\":0,\"generation\":1,\"sequence\":0,\"payload\":\"\",\"secret\":\"x\"}","{\"schema\":\"coax.native.relay-read.v1\",\"action\":\"poll\",\"slot\":0,\"slot\":1,\"generation\":1,\"sequence\":0,\"payload\":\"\"}","{\"schema\":\"coax.native.relay-read.v1\",\"action\":\"poll\",\"slot\":0,\"generation\":1,\"payload\":\"\"}","{\"schema\":\"coax.native.relay-read.v1\",\"action\":\"poll\",\"slot\":0.0,\"generation\":1,\"sequence\":0,\"payload\":\"\"}","{\"schema\":\"coax.native.relay-read.v1\",\"action\":\"poll\",\"slot\":0,\"generation\":1,\"sequence\":0,\"payload\":null}"] {#assert !nrr_read(raw,q[..]) && !q[0].ok;}
+ b:[1024]u8;n:=nrr_request("poll",0,1,0,"",b[..]);#assert !nrr_read(cast(string)b[0..<n],q[0..<0]);
+ #assert nrr_request("poll",0,1,0,"",b[0..<1])<0;
+}
+#test "relay observation preserves exact untrusted frame bytes and generation ownership" {
+ b:[2048]u8;o:[1]NrrObservation;frame:="[\"EVENT\",\"x\",{\"content\":\"a\\n\\\"b\\\"\"}]";
+ n:=nrr_observation(2,7,9,"message",frame,b[..]);#assert n>0 && nrr_observe(cast(string)b[0..<n],o[..]);
+ #assert o[0].slot==2 && o[0].generation==7 && o[0].sequence==9 && o[0].kind==3 && cast(string)o[0].payload[0..<o[0].n]==frame;
+ for kind:NRR_KINDS {#assert nrr_observation(0,1,0,kind,ifx kind=="clock" then "1700000000" else "",b[..])>0;}
+ #assert nrr_observation(0,0,0,"idle","",b[..])<0 && nrr_observation(6,1,0,"idle","",b[..])<0 && nrr_observation(0,1,-1,"idle","",b[..])<0;
+ #assert nrr_observation(0,1,0,"unknown","",b[..])<0 && !nrr_observe("{}",o[..]);
+}
+#test "wall clock is a bounded read effect and cannot carry a substituted numeric value" {
+ b:[1024]u8;q:[1]NrrRequest;o:[1]NrrObservation;
+ n:=nrr_request("clock",0,7,0,"",b[..]);#assert nrr_read(cast(string)b[0..<n],q[..]) && q[0].action==6;
+ n=nrr_clock_record(0,7,1700000000,b[..]);#assert n>0 && nrr_observe(cast(string)b[0..<n],o[..]) && o[0].kind==8 && nrr_seconds(cast(string)o[0].payload[0..<o[0].n])==1700000000;
+ #assert cast(string)b[0..<n]=="{\"schema\":\"coax.native.relay-read.v1\",\"kind\":\"clock\",\"slot\":0,\"generation\":7,\"sequence\":0,\"payload\":\"1700000000\"}";
+ #assert nrr_clock_record(0,1,0,b[..])>0 && nrr_clock_record(0,1,9007199254740991,b[..])>0 && nrr_clock_record(0,1,-1,b[..])<0 && nrr_clock_record(0,1,9007199254740992,b[..])<0;
+ padded:[17]u8;for i:0..<padded.count {padded[i]=' ';}padded[0]='0';#assert nrr_seconds(cast(string)padded[0..<16])==0 && nrr_seconds(cast(string)padded[..])<0;
+ for raw:[7]string.["","1.0","1e0","-1","null","\"1\"","9007199254740992"] {#assert nrr_seconds(raw)<0 && nrr_observation(0,1,0,"clock",raw,b[..])<0;}
+}
+#test "relay frame ceiling is complete even under maximum JSON escaping" #steps 200000000 {
+ raw:[65537]u8;for i:0..<raw.count {raw[i]=1;}b:[400000]u8;o:[1]NrrObservation;
+ n:=nrr_observation(0,1,1,"message",cast(string)raw[0..<65536],b[..]);#assert n>393216 && nrr_observe(cast(string)b[0..<n],o[..]) && o[0].n==65536;
+ #assert nrr_observation(0,1,1,"message",cast(string)raw[..],b[..])<0;
+ raw[0]=0;#assert nrr_observation(0,1,1,"message",cast(string)raw[0..<1],b[..])<0;raw[0]=255;#assert nrr_observation(0,1,1,"message",cast(string)raw[0..<1],b[..])<0;
+}
+#test "read requests reset stale records and enforce complete encoded input bounds" #steps 200000000 {
+ b:[400001]u8;q:[1]NrrRequest;n:=nrr_request("poll",5,7,13,"",b[..]);
+ #assert nrr_read(cast(string)b[0..<n],q[..]) && q[0].ok && q[0].slot==5 && q[0].generation==7 && q[0].sequence==13;
+ #assert !nrr_read("{",q[..]) && !q[0].ok && q[0].sequence==0 && q[0].generation==0;
+ for i:n..<b.count {b[i]=' ';}
+ #assert nrr_read(cast(string)b[0..<400000],q[..]) && !nrr_read(cast(string)b[..],q[..]);
+ #assert !nrr_read("{\"schema\":\"wrong\",\"action\":\"poll\",\"slot\":0,\"generation\":1,\"sequence\":0,\"payload\":\"\"}",q[..]);
+}
+#test "observations independently reject unknown kinds owners invalid content and stale output" #steps 200000000 {
+ b:[400001]u8;q:[1]NrrObservation;n:=nrr_observation(0,1,0,"idle","",b[..]);
+ #assert nrr_observe(cast(string)b[0..<n],q[..]) && q[0].ok && q[0].kind==6 && q[0].n==0;
+ #assert !nrr_observe(cast(string)b[0..<n],q[0..<0]);
+ #assert !nrr_observe("{",q[..]) && !q[0].ok && q[0].kind==0;
+ for i:n..<b.count {b[i]=' ';}#assert nrr_observe(cast(string)b[0..<400000],q[..]) && !nrr_observe(cast(string)b[..],q[..]);
+ for slot:[2]int.[-1,6] {n=nrr_write("idle",slot,1,0,"",true,b[..]);#assert !nrr_observe(cast(string)b[0..<n],q[..]);}
+ n=nrr_write("idle",0,0,0,"",true,b[..]);#assert !nrr_observe(cast(string)b[0..<n],q[..]);
+ n=nrr_write("idle",0,1,-1,"",true,b[..]);#assert !nrr_observe(cast(string)b[0..<n],q[..]);
+ n=nrr_write("unknown",0,1,0,"",true,b[..]);#assert !nrr_observe(cast(string)b[0..<n],q[..]);
+ z:[1]u8;n=nrr_write("message",0,1,1,cast(string)z[..],true,b[..]);#assert !nrr_observe(cast(string)b[0..<n],q[..]);
+ #assert !nrr_observe("{\"schema\":\"wrong\",\"kind\":\"idle\",\"slot\":0,\"generation\":1,\"sequence\":0,\"payload\":\"\"}",q[..]);
+}
+
+nrr_id :: (s:string,values:[]const string)->int #effects(all) {for value,i:values {if s==value {return i+1;}}return 0;}
+nrr_read :: (raw:string,q:[]NrrRequest)->bool #export_c #effects(all) {
+ if q.count!=1 {return false;}q[0]=NrrRequest.{};d:[1]Jv;nodes:[16]JvNode;
+ if raw.count>NRR_WIRE || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[6]string.["schema","action","slot","generation","sequence","payload"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=6 {return false;} // mutant: equivalent (|| -> && cannot admit a missing required field: every field is checked below; extra/duplicate full records fail both predicates)
+ if jv_kind(v,jv_get(v,0,"schema"))!=JV_STRING || jv_raw(v,jv_get(v,0,"schema"))!=NRR_SCHEMA {return false;}
+ q[0].action=nrr_id(jv_raw(v,jv_get(v,0,"action")),NRR_ACTIONS[..]);q[0].slot=js_number(v,jv_get(v,0,"slot"));q[0].generation=js_number(v,jv_get(v,0,"generation"));q[0].sequence=js_number(v,jv_get(v,0,"sequence"));
+ q[0].n=js_string(v,jv_get(v,0,"payload"),q[0].payload[..]);if q[0].n<0 {return false;}
+ q[0].ok=nrr_admit(q[0].action,q[0].slot,q[0].generation,q[0].sequence,cast(string)q[0].payload[0..<q[0].n]);return q[0].ok;
+}
+nrr_request :: (action:string,slot:int,generation:int,sequence:int,payload:string,out:[]u8)->int #effects(all) {
+ if !nrr_admit(nrr_id(action,NRR_ACTIONS[..]),slot,generation,sequence,payload) {return -1;}
+ return nrr_write(action,slot,generation,sequence,payload,false,out);
+}
+nrr_write :: (name:string,slot:int,generation:int,sequence:int,payload:string,observation:bool,out:[]u8)->int #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NRR_SCHEMA);jo_key(o[..],ifx observation then "kind" else "action");jo_str(o[..],name);
+ jo_key(o[..],"slot");jo_int(o[..],slot);jo_key(o[..],"generation");jo_int(o[..],generation);jo_key(o[..],"sequence");jo_int(o[..],sequence);jo_key(o[..],"payload");jo_str(o[..],payload);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+nrr_observation :: (slot:int,generation:int,sequence:int,kind:string,payload:string,out:[]u8)->int #export_c #effects(all) {
+ if !nrr_owner(slot,generation,sequence) || nrr_id(kind,NRR_KINDS[..])==0 || !js_utf8(payload) {return -1;} // mutant: equivalent (|| -> &&: nrr_observe repeats every check before success; output bytes on -1 are unspecified)
+ if payload.count>NRR_FRAME {return -1;} // mutant: equivalent (65536 -> 65537 still fails the complete fixed-size payload decode in nrr_observe below)
+ n:=nrr_write(kind,slot,generation,sequence,payload,true,out);q:[1]NrrObservation;return ifx n>=0 && nrr_observe(cast(string)out[0..<n],q[..]) then n else -1; // mutant: equivalent (n >= 0 -> n > 0: nrr_write returns a positive complete JSON length or -1, never 0)
+}
+nrr_observe :: (raw:string,q:[]NrrObservation)->bool #effects(all) {
+ if q.count!=1 {return false;}q[0]=NrrObservation.{};d:[1]Jv;nodes:[16]JvNode;
+ if raw.count>NRR_WIRE || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[6]string.["schema","kind","slot","generation","sequence","payload"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=6 {return false;} // mutant: equivalent (|| -> && cannot admit missing required fields; extra/duplicate full records fail both predicates)
+ if jv_raw(v,jv_get(v,0,"schema"))!=NRR_SCHEMA {return false;}
+ q[0].kind=nrr_id(jv_raw(v,jv_get(v,0,"kind")),NRR_KINDS[..]);q[0].slot=js_number(v,jv_get(v,0,"slot"));q[0].generation=js_number(v,jv_get(v,0,"generation"));q[0].sequence=js_number(v,jv_get(v,0,"sequence"));q[0].n=js_string(v,jv_get(v,0,"payload"),q[0].payload[..]);
+ q[0].ok=q[0].kind>0 && nrr_owner(q[0].slot,q[0].generation,q[0].sequence) && q[0].n>=0;
+ if q[0].ok && q[0].kind==8 {q[0].ok=nrr_seconds(cast(string)q[0].payload[0..<q[0].n])>=0 && q[0].sequence==0;}
+ return q[0].ok;
+}
+nrr_seconds :: (raw:string)->int #effects(all) {
+ d:[1]Jv;nodes:[2]JvNode;if raw.count>16 || !jv_parse(d[..],raw,nodes[..]) {return -1;}
+ n:=js_number(d[0],0);return ifx n>=0 && n<=9007199254740991 then n else -1;
+}
+nrr_clock_record :: (slot:int,generation:int,seconds:int,out:[]u8)->int #export_c #effects(all) {
+ b:[32]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_int(o[..],seconds);
+ return nrr_observation(slot,generation,0,"clock",jo_text(o[..]),out);
+}

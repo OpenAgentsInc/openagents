@@ -1,0 +1,9 @@
+{
+  "schema":"coax.native.conversation.v1alpha1",
+  "fields":["schema","kind","id","scope"],
+  "kinds":["account-v1","account-v2","environment","project","world","nip17","nip29"],
+  "limits":{"id_bytes":256,"scope_bytes":256,"wire_bytes":4096},
+  "scope":{"account-v1":"account ID","account-v2":"account ID","environment":"host ID","project":"project ID","world":"world ID","nip17":"public identity key","nip29":"exact WSS relay URL"},
+  "fixture":"proto/coax-native/fixtures/conversation-v1alpha1.json",
+  "authority":"presentation reference only; original domain ID, authorization, storage, signature and execution contracts remain authoritative; no runtime consumer until messaging integration"
+}

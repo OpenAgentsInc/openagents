@@ -1,0 +1,52 @@
+// Alpha custody envelope, planned for the messaging foundation, not installed
+// by the read-only feed. No request field is itself an authorization fact.
+#load "nostr-capability.coax";
+#load "../lib/json/shape.coax";
+#load "../web/api/api-wire.coax"; // the shared public fixed-length identity hex codec
+NSC_SCHEMA :: "coax.native.nostr-custody.v1alpha1"; NSC_OP :: 21;
+NSC_ACTIONS :: [6]string.["capabilities","relay-auth","seal","open","publish-list","group"];
+NscRequest :: struct {ok:bool;action:int;operation:[64]u8;identity:[64]u8;n:int;payload:[65536]u8;}
+
+#test "custody envelope is pinned and contains references and content but no secret slot" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";
+ b:[1024]u8;q:[1]NscRequest;n:=nsc_request("capabilities",id,id,"",b[..]);
+ #assert n>0 && nsc_read(cast(string)b[0..<n],q[..]) && q[0].action==1;
+ #assert cast(string)b[0..<n]=="{\"schema\":\"coax.native.nostr-custody.v1alpha1\",\"action\":\"capabilities\",\"operation\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"identity\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"payload\":\"\"}";
+ for action:NSC_ACTIONS {n=nsc_request(action,id,id,"a\n\"b\"",b[..]);#assert n>0 && nsc_read(cast(string)b[0..<n],q[..]) && q[0].n==5;}
+ #assert nsc_request("sign-hash",id,id,"",b[..])<0 && nsc_request("export",id,id,"",b[..])<0;
+ #assert nsc_request("seal","bad",id,"",b[..])<0 && nsc_request("open",id,"bad","",b[..])<0;
+ #assert nsc_request("seal",id,id,"",b[0..<1])<0 && !nsc_read("{}",q[..]);
+}
+#test "caller authority fields duplicate identity and missing fields cannot enter the custody envelope" {
+ q:[1]NscRequest;
+ for raw:[3]string.["{\"schema\":\"coax.native.nostr-custody.v1alpha1\",\"action\":\"seal\",\"account\":\"someone-else\"}","{\"schema\":\"coax.native.nostr-custody.v1alpha1\",\"action\":\"seal\",\"identity\":\"a\",\"identity\":\"b\",\"payload\":\"\"}","null"] {#assert !nsc_read(raw,q[..]) && !q[0].ok;}
+}
+#test "custody content ceiling roundtrips without NUL or UTF8 substitution" #steps 200000000 {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";raw:[65537]u8;for i:0..<raw.count {raw[i]='a';}b:[400000]u8;q:[1]NscRequest;
+ n:=nsc_request("seal",id,id,cast(string)raw[0..<65536],b[..]);#assert n>0 && nsc_read(cast(string)b[0..<n],q[..]) && q[0].n==65536;
+ #assert nsc_request("seal",id,id,cast(string)raw[..],b[..])<0;
+ raw[0]=0;#assert nsc_request("seal",id,id,cast(string)raw[0..<1],b[..])<0;raw[0]=255;#assert nsc_request("seal",id,id,cast(string)raw[0..<1],b[..])<0;
+}
+#test "custody decoder verifies each complete field and clears a previously ready result" #steps 200000000 {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";b:[400001]u8;q:[1]NscRequest;
+ n:=nsc_request("capabilities",id,id,"",b[..]);#assert nsc_read(cast(string)b[0..<n],q[..]) && q[0].ok;
+ #assert !nsc_read(cast(string)b[0..<n],q[0..<0]);#assert !nsc_read("{",q[..]) && !q[0].ok && q[0].action==0;
+ for i:n..<b.count {b[i]=' ';}#assert nsc_read(cast(string)b[0..<400000],q[..]) && !nsc_read(cast(string)b[..],q[..]);
+ d:[1]Jv;nodes:[16]JvNode;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);
+ for name:[4]string.["schema","action","operation","identity"] {
+  at:=d[0].nodes[jv_get(d[0],0,name)].from;old:=b[at];b[at]='G';#assert !nsc_read(cast(string)b[0..<n],q[..]);b[at]=old;
+ }
+}
+nsc_action :: (s:string)->int #effects(all) {for value,i:NSC_ACTIONS {if value==s {return i+1;}}return 0;}
+nsc_read :: (raw:string,q:[]NscRequest)->bool #export_c #effects(all) {
+ if q.count!=1 {return false;}q[0]=NscRequest.{};d:[1]Jv;nodes:[16]JvNode;if raw.count>400000 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[5]string.["schema","action","operation","identity","payload"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=5 {return false;} // mutant: equivalent (|| -> && cannot admit missing required fields; extra/duplicate full records fail both predicates)
+ if jv_raw(v,jv_get(v,0,"schema"))!=NSC_SCHEMA {return false;}
+ q[0].action=nsc_action(jv_raw(v,jv_get(v,0,"action")));op:=js_string(v,jv_get(v,0,"operation"),q[0].operation[..]);identity:=js_string(v,jv_get(v,0,"identity"),q[0].identity[..]);
+ q[0].n=js_string(v,jv_get(v,0,"payload"),q[0].payload[..]);q[0].ok=q[0].action>0 && op==64 && identity==64 && aw_hex(cast(string)q[0].operation[..],64) && aw_hex(cast(string)q[0].identity[..],64) && q[0].n>=0;return q[0].ok;
+}
+nsc_request :: (action:string,operation:string,identity:string,payload:string,out:[]u8)->int #effects(all) {
+ if nsc_action(action)==0 || !aw_hex(operation,64) || !aw_hex(identity,64) || !js_utf8(payload) {return -1;} // mutant: equivalent (|| -> &&: nsc_read repeats all action/key/UTF8 checks before success; failed output bytes are unspecified)
+ if payload.count>65536 {return -1;} // mutant: equivalent (65536 -> 65537 still fails nsc_read's complete fixed-size payload decode below)
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NSC_SCHEMA);jo_key(o[..],"action");jo_str(o[..],action);jo_key(o[..],"operation");jo_str(o[..],operation);jo_key(o[..],"identity");jo_str(o[..],identity);jo_key(o[..],"payload");jo_str(o[..],payload);jo_end(o[..]);q:[1]NscRequest;return ifx !o[0].bad && nsc_read(jo_text(o[..]),q[..]) then o[0].n else -1;
+}

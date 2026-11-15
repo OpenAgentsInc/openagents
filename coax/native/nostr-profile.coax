@@ -1,0 +1,27 @@
+// Exact proto fixtures and profile constants against the shared product codecs.
+#load "relay-read-wire.coax";
+#load "nostr-custody-wire.coax";
+#load "conversation-wire.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ raw:[8192]u8;out:[8192]u8;id:="0000000000000000000000000000000000000000000000000000000000000001";
+ names:=[4]string.["proto/coax-native/fixtures/relay-read-open-v1.json","proto/coax-native/fixtures/relay-read-observation-v1.json","proto/coax-native/fixtures/nostr-custody-capabilities-v1alpha1.json","proto/coax-native/fixtures/conversation-v1alpha1.json"];
+ for i:0..<4 {
+  n:=fs_read(names[i],raw[..]);k:=ifx i==0 then nrr_request("open",0,1,0,"wss://relay.openagents.com",out[..]) else ifx i==1 then nrr_observation(0,1,1,"message","[\"EOSE\",\"feed\"]",out[..]) else ifx i==2 then nsc_request("capabilities",id,id,"",out[..]) else ncv_write("account-v2","thread_123","acct_example",out[..]);
+  if k<0 || n!=k+1 || raw[k]!='\n' || cast(string)raw[0..<k]!=cast(string)out[0..<k] {return 1;}
+  if i==0 {q:[1]NrrRequest;if !nrr_read(cast(string)raw[0..<k],q[..]) {return 1;}}
+  if i==1 {q:[1]NrrObservation;if !nrr_observe(cast(string)raw[0..<k],q[..]) {return 1;}}
+  if i==2 {q:[1]NscRequest;if !nsc_read(cast(string)raw[0..<k],q[..]) {return 1;}}
+  if i==3 {q:[1]NcvRef;if !ncv_read(cast(string)raw[0..<k],q[..]) {return 1;}}
+ }
+ paths:=[2]string.["proto/coax-native/relay-read-v1.json","proto/coax-native/nostr-custody-v1alpha1.json"];
+ for i:0..<2 {
+  n:=fs_read(paths[i],raw[..]);d:[1]Jv;nodes:[128]JvNode;if n<0 || !jv_parse(d[..],cast(string)raw[0..<n],nodes[..]) {return 1;}v:=d[0];
+  schema:=ifx i==0 then NRR_SCHEMA else NSC_SCHEMA;op:=ifx i==0 then NRR_OP else NSC_OP;
+  if jv_raw(v,jv_get(v,0,"schema"))!=schema || js_number(v,jv_get(v,0,"operation"))!=op {return 1;}
+  actions:=jv_get(v,0,"actions");values:[]const string=ifx i==0 then NRR_ACTIONS[..] else NSC_ACTIONS[..];if jv_len(v,actions)!=values.count {return 1;}
+  for value,index:values {if jv_raw(v,jv_at(v,actions,index))!=value {return 1;}}
+ }
+ print("native relay read and custody profiles match their pinned codecs\n");return 0;
+}

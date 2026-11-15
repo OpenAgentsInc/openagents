@@ -1,0 +1,13 @@
+{
+  "schema":"coax.native.nostr-custody.v1alpha1",
+  "operation":21,
+  "status":"contract-only; not installed by the feed",
+  "actions":["capabilities","relay-auth","seal","open","publish-list","group"],
+  "request_fields":["schema","action","operation","identity","payload"],
+  "limits":{"operation_hex_bytes":64,"identity_hex_bytes":64,"payload_bytes":65536,"wire_bytes":400000},
+  "fixture":"proto/coax-native/fixtures/nostr-custody-capabilities-v1alpha1.json",
+  "custody":{"account":"server","linked":"device or approved remote signer","automatic_backup_download":false,"key_in_updateable_ui":false},
+  "authorization":"trusted live full human session, matching current identity/provider, explicit permitted purpose; payload has no caller-selected account, auth strength or key replacement",
+  "errors":["unsupported","not-ready","identity-mismatch","session-expired","purpose-refused","revoked","capacity","cancelled"],
+  "note":"Envelope admission alone grants nothing. Each action payload and response must receive a versioned proto profile and one codec before its effect is implemented. Profile signing and backup retain their existing independent contracts."
+}
