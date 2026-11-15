@@ -81,7 +81,10 @@ The **Reference** gallery section names all 25 atom categories observed in the
 Claude iOS captures and provides a visual specimen for each. The thumbnail is
 an icon placeholder because the GPU gallery does not render image textures;
 fields are static, the scrim is a swatch, and the system status bar is the
-host's actual bar rather than a simulated one. It
+host's actual bar rather than a simulated one. The section also includes
+interactive model-choice and notification rows, a project context pill and a
+usage meter; the shared kit wraps the rows' explanatory text and makes the
+whole row a touch target. It
 uses the shared control kit and a separate reference skin; it is not a product
 skin or a pixel-parity qualification. Its colors are approximate and its text
 still uses the gallery atlas. Select it from Gallery options on iPhone or from

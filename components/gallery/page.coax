@@ -249,6 +249,25 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
     _:=sheet_text(sh[..],m,-1,inside.x,inside.y,ref.body.line,ref.body.face,ref.muted,"Add a description and instructions.");y+=120;
     _:=button(sh[..],m,ref,x,y,"Default environment",UISKIN_REST,GL_HIT_BUTTON,0);y+=60;
     _:=button(sh[..],m,ref,x,y,"Add files",UISKIN_REST,GL_HIT_BUTTON,0);y+=68;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Reference molecules");y+=36;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Model choices");y+=26;
+    card:=sheet_box(sh[..],x,y,w-2*gutter,0,ref.radius,0,ref.surface,ref.surface);top:=y;
+    y+=choice_row(sh[..],m,ref,x,y,w-2*gutter,"Opus","For complex work and everyday tasks",g[0].cards[0].row==0,ICON_CHECK,GL_HIT_ROW,0,0);
+    sheet_rule(sh[..],x+ref.control_pad,y,w-2*gutter-2*ref.control_pad,1,ref.hairline);
+    y+=choice_row(sh[..],m,ref,x,y,w-2*gutter,"Sonnet","Most efficient for simpler tasks",g[0].cards[0].row==1,ICON_CHECK,GL_HIT_ROW,0,1);
+    if card>=0 {g[0].under[card].h=y-top;}y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Notifications");y+=26;
+    card=sheet_box(sh[..],x,y,w-2*gutter,0,ref.radius,0,ref.surface,ref.surface);top=y;toggle_ref:=ref;toggle_ref.control_h=48;
+    y+=setting_toggle_row(sh[..],m,toggle_ref,x,y,w-2*gutter,"Replies","Get notified when replies finish.",g[0].cards[0].toggles[1],GL_HIT_TOGGLE,0,1);
+    sheet_rule(sh[..],x+ref.control_pad,y,w-2*gutter-2*ref.control_pad,1,ref.hairline);
+    y+=setting_toggle_row(sh[..],m,toggle_ref,x,y,w-2*gutter,"Product updates","Get notified about new features.",g[0].cards[0].toggles[0],GL_HIT_TOGGLE,0,0);
+    if card>=0 {g[0].under[card].h=y-top;}y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Project context");y+=26;
+    _:=button(sh[..],m,ref,x,y,"Project",UISKIN_REST,GL_HIT_BUTTON,0);y+=60;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Usage meter");y+=26;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.ink,"Project capacity");y+=28;
+    _:=bar(sh[..],ref,x,y,w-2*gutter,0.36,ref.accent);y+=16;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"36% used");y+=48;
     _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Atom catalog");y+=34;
     _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Text");y+=24;
     _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.ink,"Primary");
@@ -529,6 +548,16 @@ coaxial_components_cell_ready :: (g: [] GalleryState, cell: int) #export_c #effe
  names:=[25]string.["Text","Icon","Brand mark","Avatar","Thumbnail","Status dot","Selection check","Chevron","Divider","Badge","Progress bar","Spinner","Slider","Switch","Icon button","Text button","Text field","Text area","Link","Inline code","Bullet","Sheet handle","Scrim","Page indicator","System status bar"];
  for name:names {found:=false;for i:0..<g[0].no {if g[0].over[i].text==name {found=true;}}#assert found;}
  #assert g[0].nu<GL_UNDER && g[0].no<GL_OVER && g[0].nh<GL_HITS;
+}
+
+#test "reference molecules expose selectable choices and a trailing switch" #steps 400000000 {
+ g:[1]GalleryState;o:[1]GlOut;u:[4]f32;gl_test_atlas(g[0].atlas[..]);
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);g[0].section=5;
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);
+ names:=[4]string.["Model choices","Notifications","Project context","Usage meter"];
+ for name:names {found:=false;for i:0..<g[0].no {if g[0].over[i].text==name {found=true;}}#assert found;}
+ h:=gl_test_hit(g[..],GL_HIT_TOGGLE,0,1);#assert h.w>200;
+ g[0].scroll=h.y-100;before:=g[0].cards[0].toggles[1];#assert gl_pointer(g[..],h.x+2,102,0) && g[0].cards[0].toggles[1]!=before;
 }
 
 // A fixed atlas: every glyph 8 wide, the monospace faces 7.

@@ -6,6 +6,7 @@
  s:=claude_reference_skin();
  #assert s.canvas.r==0 && s.surface.r>0 && s.surface.r<0.2;
  #assert s.control_h==44 && s.radius_control==22;
+ #assert s.knob==20 && s.slider_track==3 && s.bar_h==6;
  #assert s.ink.r>0.9 && s.accent.b>s.accent.r;
 }
 
@@ -17,5 +18,6 @@ claude_reference_skin :: ()->UiSkin {
  s.ink=hex(0xf5f5f5,1);s.muted=hex(0xa3a3a5,1);s.faint=hex(0x808083,1);
  s.accent=hex(0x4598ee,1);s.on_accent=hex(0xffffff,1);
  s.control_h=44;s.control_pad=18;s.radius_control=22;s.radius=20;s.border=1;
+ s.knob=20;s.slider_track=3;s.bar_h=6;
  return s;
 }

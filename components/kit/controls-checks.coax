@@ -12,6 +12,21 @@ ctl_sheet :: (st: [] CtlStore) -> Sheet {
 // The measure a skin is laid out with: cells for the terminal, the atlas for the rest.
 ctl_measure :: (id: int, a: [] Atlas) -> TextMeasure { return ifx id == UISKIN_TERMINAL then measure_cells() else measure_font(a); }
 
+#test "choice and setting rows wrap descriptions and keep their full hit bounds" {
+ st:[1]CtlStore;a:[1]Atlas;text_test_atlas(a[..]);s:=zeron_skin();m:=measure_font(a[..]);sh:=[1]Sheet.[ctl_sheet(st[..])];
+ h:=choice_row(sh[..],m,s,0,0,200,"Model","A longer description that wraps on a narrow screen",true,25,7,1,2);
+ #assert h>s.control_h && sh[0].nh==1 && sh[0].hits[0].w==200 && sh[0].hits[0].h==h && sh[0].hits[0].b==2;
+ #assert sh[0].under[0].kind==PRIM_ICON && sh[0].under[0].id==25;
+ sh[0]=ctl_sheet(st[..]);h=setting_toggle_row(sh[..],m,s,0,0,200,"Replies","Notify when replies finish",true,8,1,0);
+ #assert h>=s.control_h && sh[0].nh==1 && sh[0].hits[0].w==200 && sh[0].hits[0].h==h;
+ #assert sh[0].under[0].x>100 && sh[0].no>=2;
+}
+#test "slider thumb corner cannot exceed half its size" {
+ st:[1]CtlStore;sh:=[1]Sheet.[ctl_sheet(st[..])];s:=zeron_skin();s.knob=20;s.radius_control=22;
+ slider(sh[..],s,0,0,200,0.5,4,0);
+ #assert sh[0].under[2].w==20 && sh[0].under[2].radius==10;
+}
+
 #test "a button is its label and the padding either side; its hit covers it; primary reads on the accent" {
   st: [1] CtlStore; a: [1] Atlas; text_test_atlas(a[..]);
   for id: 0..<UISKINS {

@@ -71,7 +71,8 @@ slider :: (sh: [] Sheet, s: UiSkin, x: f32, y: f32, w: f32, value: f32, hit_kind
     // the knob, centred on the value
     k := s.knob;
     kx := x + (w - k) * v;
-    sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, kx, y + (s.control_h - k) / 2, k, k, UISKIN_PRIMARY);
+    knob_skin:=s;if knob_skin.radius_control>k/2 {knob_skin.radius_control=k/2;}
+    sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, knob_skin, kx, y + (s.control_h - k) / 2, k, k, UISKIN_PRIMARY);
   }
   sheet_hit(sh, hit_kind, hit_a, 0, x, y, w, s.control_h);
 }
@@ -79,6 +80,34 @@ slider_value :: (x: f32, w: f32, px: f32) -> f32 {
   if w <= 0 { return 0; }
   v := (px - x) / w;
   return ifx v < 0 then 0.0f32 else ifx v > 1 then 1.0f32 else v;
+}
+
+// Wrapped row copy uses the shared line wrapper and the skin's type roles.
+control_copy :: (sh:[]Sheet,m:TextMeasure,face:UiType,color:Rgba,x:f32,y:f32,w:f32,text:string)->f32 {
+ if text.count==0 {return 0;}
+ lines:[16]TextLine;runs:[1]MdRun;faces:=TextFaces.{plain=face.face,bold=face.face,code=face.face};
+ n:=text_wrap(m,faces,text,runs[0..<0],ifx w>1 then w else 1.0f32,lines[..]);
+ for i:0..<n {_:=sheet_text(sh,m,-1,x,y+cast(f32)i*face.line,face.line,face.face,color,cast(string)text[lines[i].from..<lines[i].to]);}
+ return cast(f32)n*face.line;
+}
+// A choice row's title, supporting copy and trailing selected mark. The caller
+// supplies the platform atlas's check icon and owns the selected state.
+choice_row :: (sh:[]Sheet,m:TextMeasure,s:UiSkin,x:f32,y:f32,w:f32,title:string,detail:string,selected:bool,check:int,hit_kind:int,hit_a:int,hit_b:int)->f32 {
+ pad:=s.control_pad;icon:=s.body.line;copy_w:=w-2*pad-icon-s.space;
+ h:=control_copy(sh,m,s.body,s.ink,x+pad,y+pad,copy_w,title);
+ h+=control_copy(sh,m,s.small,s.muted,x+pad,y+pad+h,copy_w,detail);
+ h+=2*pad;if h<s.control_h {h=s.control_h;}
+ if selected {sheet_icon(sh,check,x+w-pad-icon,y+(h-icon)/2,icon,s.accent);}
+ sheet_hit(sh,hit_kind,hit_a,hit_b,x,y,w,h);return h;
+}
+// A descriptive setting with a trailing switch. Its entire row is a target.
+setting_toggle_row :: (sh:[]Sheet,m:TextMeasure,s:UiSkin,x:f32,y:f32,w:f32,title:string,detail:string,on:bool,hit_kind:int,hit_a:int,hit_b:int)->f32 {
+ pad:=s.control_pad;tw:=uiskin_toggle_width(s);copy_w:=w-2*pad-tw-s.space;
+ h:=control_copy(sh,m,s.body,s.ink,x+pad,y+pad,copy_w,title);
+ h+=control_copy(sh,m,s.small,s.muted,x+pad,y+pad+h,copy_w,detail);
+ h+=2*pad;if h<s.control_h {h=s.control_h;}
+ sh[0].nu=uiskin_toggle(sh[0].under,sh[0].nu,s,x+w-pad-tw,y+(h-s.control_h)/2,on);
+ sheet_hit(sh,hit_kind,hit_a,hit_b,x,y,w,h);return h;
 }
 
 // ---------------------------------------------------------------- tabs
