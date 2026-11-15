@@ -3,7 +3,7 @@ import XCTest
 
 final class WorldsUITests:XCTestCase {
     func testWorldLibraryDownloadsAndOpensTheTwoGames() {
-        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAUpdatesOrigin","http://127.0.0.1:13492"];app.launch()
+        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13567","-OAUpdatesOrigin","http://127.0.0.1:13492"];app.launch()
         let worlds=app.buttons["world.library"];XCTAssertTrue(worlds.waitForExistence(timeout:20));worlds.tap()
         for (id,name) in [("worlds.splice","Splice Bots"),("worlds.everglade","Everglade")] {
             let open=app.buttons[id];XCTAssertTrue(open.waitForExistence(timeout:30))

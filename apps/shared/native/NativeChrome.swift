@@ -166,7 +166,7 @@ final class NativeRingView:UIView,NativeArcadeNode {
 
 /// A download's determinate value is animated by the shared Coax spring.
 final class NativeBar:UIView,NativeArcadeNode {
-    var progress:Float=0
+    var progress:Float=0 {didSet {setNeedsLayout()}}
     var arcadePaint:NativeArcadePaint {NativeArcadePaint(kind:2,line:NativeSkin.tokens.line_dim,ink:NativeSkin.tokens.ink,value:progress)}
     override init(frame:CGRect) {super.init(frame:frame);isAccessibilityElement=true;accessibilityTraits = .updatesFrequently}
     required init?(coder:NSCoder) {fatalError()}
@@ -409,7 +409,7 @@ final class NativeHeaderRule:UIView {
     override init(frame:CGRect) {super.init(frame:frame);isUserInteractionEnabled=false;addSubview(chrome)}
     required init?(coder:NSCoder) {fatalError()}
     override var intrinsicContentSize:CGSize {CGSize(width:UIView.noIntrinsicMetric,height:8)}
-    override func layoutSubviews() {super.layoutSubviews();chrome.frame=bounds}
+    override func layoutSubviews() {super.layoutSubviews();chrome.arcadePaint.kind=3;chrome.frame=CGRect(x:0,y:bounds.midY,width:bounds.width,height:CGFloat(NativeSkin.tokens.hairline))}
 }
 #else
 /// A view with one of the skin's frames behind what it holds.

@@ -9,7 +9,7 @@ arcade_skin :: ()->UiSkin {
  s.raised=arcade_color(MONO_RAISED);s.sunk=s.canvas;s.hairline=arcade_color(MONO_LINE);s.hover=arcade_color(MONO_PRESSED);
  s.ink=arcade_color(MONO_INK);s.muted=arcade_color(MONO_INK_MUTED);s.faint=arcade_color(MONO_INK_FAINT);
  s.accent=arcade_color(MONO_INK_BRIGHT);s.on_accent=s.canvas;s.selection=arcade_color(MONO_RAISED);
- s.animated.frame_stroke=1;s.animated.frame_wash=1;return s;
+ s.animated.frame_stroke=1.5;s.animated.frame_square_limit=12;s.animated.frame_wash=1;return s;
 }
 #test "Arcade component accents and surfaces are the shared grayscale roles" {
  s:=arcade_skin();#assert s.accent.r==1 && s.accent.g==1 && s.accent.b==1;

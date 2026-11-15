@@ -3,7 +3,7 @@ import UIKit
 @main final class StarterApp: UIResponder, UIApplicationDelegate {
     var window:UIWindow?
     func application(_ application:UIApplication,didFinishLaunchingWithOptions options:[UIApplication.LaunchOptionsKey:Any]?=nil)->Bool {
-        let window=UIWindow(frame:UIScreen.main.bounds)
+        let window=UIWindow(frame:UIScreen.main.bounds);window.tintColor=NativeSkin.color(NativeSkin.tokens.ink)
         #if DEBUG
         if UserDefaults.standard.bool(forKey:"OAComponents") {
             window.rootViewController=UINavigationController(rootViewController:NativeComponents(closed:{}));window.makeKeyAndVisible();self.window=window;return true

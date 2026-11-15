@@ -369,3 +369,14 @@ schemes:
       targets:
         - name: OpenAgentsUITests
           selectedTests: [ComponentsUITests]
+
+  CoaxNativeArcade:
+    build:
+      targets:
+        OpenAgents: all
+    test:
+      targets:
+        - name: OpenAgentsTests
+          selectedTests: [NativeArcadeTests, NativeTranscriptTests, NativeMarkdownTests]
+        - name: OpenAgentsUITests
+          selectedTests: [ComponentsUITests]

@@ -52,6 +52,7 @@ arcade_scene_frame :: (s:[]ArcadeScene,out:[]f32,width:f32,height:f32,dpr:f32,dt
   ar_motion_tick(n.entry[..],t);ar_motion_tick(n.press[..],t);ui_spring_step(n.progress[..],t,s[0].reduced);
   if s[0].reduced {n.entry[0].value=1;n.press[0].value=ifx (n.flags&1)!=0 then 1.0f32 else 0.0f32;}
   s[0].nodes[i]=n;skin:=arcade_skin();skin.surface=opacity(arcade_color(n.bg),n.alpha);skin.accent=opacity(arcade_color(n.line),n.alpha);skin.ink=opacity(arcade_color(n.ink),n.alpha);
+  if (n.bg&255)==0 && (n.line&255)>0 {skin.surface=opacity(arcade_color(MONO_GROUND),n.alpha);}
   skin.accent.a*=0.75+0.25*n.press[0].value;skin.hairline=opacity(skin.accent,0.3);
   sh[0].nu=prim_clip(sh[0].under,sh[0].nu,n.cl,n.ct,n.cr,n.cb);
   if n.kind==ARCADE_ACTIVITY {skin.accent=skin.ink;activity(sh[..],skin,n.x,n.y,n.w,s[0].clock,s[0].reduced);}
@@ -59,6 +60,7 @@ arcade_scene_frame :: (s:[]ArcadeScene,out:[]f32,width:f32,height:f32,dpr:f32,dt
   else if n.kind==ARCADE_RULE {sh[0].nu=prim_fill(sh[0].under,sh[0].nu,n.x,n.y,n.w,n.h,0,skin.accent);}
   else if n.kind==ARCADE_ACTION {round_action(sh[..],skin,n.x,n.y,n.w,n.entry[0].value);}
   else if n.kind==ARCADE_BOX {sh[0].nu=prim_box(sh[0].under,sh[0].nu,n.x,n.y,n.w,n.h,0,0.5,skin.surface,skin.accent);}
+  else if n.role==MF_PANEL && (n.flags&2)!=0 {composer_frame(sh[..],skin,n.x,n.y,n.w,n.h,n.entry[0].value);}
   else {p:=n.entry[0].value;if (n.flags&2)!=0 {p*=0.65+0.35*n.press[0].value;}animated_frame(sh[..],skin,n.x,n.y,n.w,n.h,p,1);}
   sh[0].nu=prim_unclip(sh[0].under,sh[0].nu);s[0].painted+=1;
  }

@@ -1,7 +1,7 @@
 import XCTest
 final class BalanceUITests:XCTestCase {
     func testBalanceIsOnlyInExtrasAndNoPaymentActionsAreExposed() {
-        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OABalanceFixture","12345"];app.launch()
+        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13567","-OABalanceFixture","12345"];app.launch()
         XCTAssertTrue(app.wait(for:.runningForeground,timeout:20))
         XCTAssertFalse(app.staticTexts["12345 sats"].exists)
         app.openAppExtras();app.buttons["extras.bitcoin"].tap()
@@ -13,7 +13,7 @@ final class BalanceUITests:XCTestCase {
         app.buttons["Close"].tap();XCTAssertFalse(app.staticTexts["12345 sats"].exists)
     }
     func testMissingWalletIsNotDisplayedAsZero() {
-        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OABalanceFixture","missing"];app.launch()
+        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13567","-OABalanceFixture","missing"];app.launch()
         app.openAppExtras();app.buttons["extras.bitcoin"].tap()
         XCTAssertTrue(app.staticTexts["No existing wallet was found on this phone."].waitForExistence(timeout:10))
         XCTAssertFalse(app.staticTexts["0 sats"].exists)

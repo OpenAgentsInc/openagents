@@ -4,11 +4,23 @@
 
 // Arcade's corner-origin assembly (A01/A02). Progress is caller-owned.
 animated_frame :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32,highlight:f32) {
- p:=am_unit(progress);ink:=s.accent;ink.a*=am_unit(highlight);
- _:=sheet_box(sh,x,y,w,h,0,0,opacity(s.surface,p*s.animated.frame_wash),s.surface);
- for i:0..<4 {cx:=x+ifx i%2==0 then 0.0f32 else w;cy:=y+ifx i<2 then 0.0f32 else h;dx:=ifx i%2==0 then 1.0f32 else -1.0f32;dy:=ifx i<2 then 1.0f32 else -1.0f32;
- sh[0].nu=prim_line(sh[0].under,sh[0].nu,cx,cy,cx+dx*w*p/2,cy,s.animated.frame_stroke,ink);
- sh[0].nu=prim_line(sh[0].under,sh[0].nu,cx,cy,cx,cy+dy*h*p/2,s.animated.frame_stroke,ink);}
+ p:=am_unit(progress);ink:=s.accent;off:=s.animated.frame_corner_stroke;
+ if w<=off*2 || h<=off*2 {return;}
+ square:=w*s.animated.frame_square_fraction;if s.animated.frame_square_limit>0 && square>s.animated.frame_square_limit {square=s.animated.frame_square_limit;}
+ // FrameSquare scales about its own outer corner, including its stroke.
+ for i:0..<4 {left:=i%2==0;top:=i<2;
+  sx:=x+ifx left then off/2*p else w-(square+off/2)*p;
+  sy:=y+ifx top then off/2*p else h-(square+off/2)*p;
+  _:=sheet_box(sh,sx,sy,square*p,square*p,0,off*p,s.clear,ink);
+ }
+ // The border's four segments scale from their centres, as Arcade's Scaler.
+ cx:=x+(w-off)/2;cy:=y+(h-off)/2;lx:=x+off;rx:=x+w-off;ty:=y+off;by:=y+h-off;
+ ax:=cx+(lx-cx)*p;bx:=cx+(rx-cx)*p;ay:=cy+(ty-cy)*p;by2:=cy+(by-cy)*p;
+ sh[0].nu=prim_line(sh[0].under,sh[0].nu,ax,ty,bx,ty,s.animated.frame_stroke,ink);
+ sh[0].nu=prim_line(sh[0].under,sh[0].nu,lx,ay,lx,by2,s.animated.frame_stroke,ink);
+ sh[0].nu=prim_line(sh[0].under,sh[0].nu,rx,ay,rx,by2,s.animated.frame_stroke,ink);
+ sh[0].nu=prim_line(sh[0].under,sh[0].nu,ax,by,bx,by,s.animated.frame_stroke,ink);
+ _:=sheet_box(sh,lx,ty,w-off*2,h-off*2,0,0,opacity(s.surface,p*s.animated.frame_wash),s.surface);
 }
 // A05: opposite quarter arcs, one half-turn per 500ms. Reduced motion is still.
 activity :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,size:f32,seconds:f32,reduced:bool) {
@@ -36,7 +48,7 @@ animated_reply :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32) {
 
 #test "animated components use the common list and stay bounded at reduced or completed motion" {
  under:[64]Prim;over:[8]Prim;sh:=[1]Sheet.[Sheet.{under=under[..],over=over[..]}];s:=UiSkin.{};
- animated_frame(sh[..],s,10,20,100,60,0.5,0.7);#assert sh[0].nu==9 && under[1].a==35;
+ animated_frame(sh[..],s,10,20,100,60,0.5,0.7);#assert sh[0].nu==9 && under[0].x==10.75 && under[0].w==5 && under[0].border==1.5 && under[1].x==104.25;
  activity(sh[..],s,0,0,32,0.125,false);#assert under[10].kind==PRIM_ARC && under[10].a==0.125;
  progress_ring(sh[..],s,0,0,35,0.5);#assert under[13].b==0.25;
  animated_switch(sh[..],s,0,0,52,28,4);#assert under[16].x==27;
@@ -48,4 +60,9 @@ animated_reply :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32) {
 // Arcade's round send/action control. Text/glyphs use the same semantic node.
 round_action :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,size:f32,progress:f32) {
  p:=am_unit(progress);_:=sheet_box(sh,x,y,size,size,size/2,1,opacity(s.surface,p),opacity(s.accent,p));
+}
+
+// The composer retains the shared pill geometry while its border enters.
+composer_frame :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32) {
+ p:=am_unit(progress);_:=sheet_box(sh,x,y,w,h,s.composer.radius,1,opacity(s.surface,p),opacity(s.accent,p));
 }
