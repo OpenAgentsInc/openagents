@@ -1,5 +1,5 @@
 // Exact JSON bytes, descriptor keys and the input's actual SHA256/byte identity.
-#load "execution-wire.coax";
+#load "execution-input.coax";
 #load "../../proto/importer.coax";
 #load "../../proto/golden-keys.coax";
 #load "../../crypto/sha256-kernel.coax";
@@ -11,15 +11,18 @@ tool_main :: ()->int #export_c #effects(all) {
  file:[16384]u8;fn:=fs_read("proto/coder/environment-execution-v1alpha1.json",file[..]);d:[1]Jv;nodes:[256]JvNode;
  if fn<1 || !jv_parse(d[..],cast(string)file[0..<fn],nodes[..]) {return 2;}v:=d[0];
  canonical:[16384]u8;encoded:[16384]u8;input:[16384]u8;input_n:=0;input_hash:[64]u8;
- binding:[1]ExBinding;chunk:[1]ExChunk;arena:[8192]u8;
+ binding:[1]ExBinding;chunk:[1]ExChunk;binding_arena:[1024]u8;chunk_arena:[8192]u8;
  keys:=[3]string.["input","binding","chunk"];types:=[3]string.[".openagents.environment.execution.v1alpha1.Input",".openagents.environment.execution.v1alpha1.Binding",".openagents.environment.execution.v1alpha1.InputChunk"];
  for key,i:keys {
   o:[1]Jo;jo_start(o[..],canonical[..]);jv_write(v,jv_get(v,0,key),o[..]);raw:=jo_text(o[..]);fields:[512]JvNode;
   if pk_text_keys(g[0].state[..],types[i],raw,true,false,fields[..])!="" {print("FAIL execution descriptor: %\n",key);return 1;}
   made:= -1;
   if key=="input" {q:[1]ExInput;if !ex_input_read(raw,q[..]) {return 1;}made=ex_input_write(q[..],encoded[..]);input_n=js_copy(input[..],raw);if !S_hex(S_hash(raw),input_hash[..]) {return 1;}}
-  else if key=="binding" {if !ex_binding_read(raw,binding[..],arena[..]) {return 1;}made=ex_binding_write(binding[0],encoded[..]);if binding[0].input_bytes!=input_n || binding[0].input_hash!=cast(string)input_hash[..] {return 1;}}
-  else {if !ex_chunk_read(raw,chunk[..],arena[..]) {return 1;}made=ex_chunk_write(chunk[0],encoded[..]);if chunk[0].total!=input_n || chunk[0].hash!=cast(string)input_hash[..] || chunk[0].text!=cast(string)input[0..<input_n] {return 1;}}
+  else if key=="binding" {if !ex_binding_read(raw,binding[..],binding_arena[..]) {return 1;}made=ex_binding_write(binding[0],encoded[..]);if binding[0].input_bytes!=input_n || binding[0].input_hash!=cast(string)input_hash[..] {return 1;}}
+  else {if !ex_chunk_read(raw,chunk[..],chunk_arena[..]) {return 1;}made=ex_chunk_write(chunk[0],encoded[..]);if chunk[0].total!=input_n || chunk[0].hash!=cast(string)input_hash[..] || chunk[0].text!=cast(string)input[0..<input_n] {return 1;}
+   prepared:[16384]u8;empty:[]u8;result:=ex_input_prepare(binding[0],chunk[0],empty,prepared[..]);
+   if !result.ok || !result.complete || result.replay || result.bytes!=input_n || cast(string)prepared[0..<result.bytes]!=cast(string)input[0..<input_n] {return 1;}
+  }
   if made!=raw.count || cast(string)encoded[0..<ifx made>0 then made else 0]!=raw {print("FAIL execution golden: %\n",key);return 1;}
  }
  print("Execution binding, complete input and chunk match exact bytes, descriptors and input SHA256\n");return 0;

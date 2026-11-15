@@ -20,15 +20,16 @@
  #assert !ex_reference("cnv_0123456789abcdef0123456789abcdef0","cnv_") && !ex_reference("","cnv_");
 }
 #test "execution pins the exact host workspace input and authenticated provider account" {
- b:=ExBinding.{host="host",workspace="workspace",input_hash="hash",input_bytes=12,account="account"};
- #assert ex_pin(b,"host","workspace","hash",12,"account",true,false);
- #assert !ex_pin(b,"other","workspace","hash",12,"account",true,false);
- #assert !ex_pin(b,"host","other","hash",12,"account",true,false);
- #assert !ex_pin(b,"host","workspace","other",12,"account",true,false);
- #assert !ex_pin(b,"host","workspace","hash",13,"account",true,false);
- #assert !ex_pin(b,"host","workspace","hash",12,"other",true,false);
- #assert !ex_pin(b,"host","workspace","hash",12,"account",false,false);
- #assert !ex_pin(b,"host","workspace","hash",12,"account",true,true);
+ b:=ExBinding.{host="host",workspace="workspace",input_hash="hash",input_bytes=12,engine="codex",account="system"};
+ #assert ex_pin(b,"host","workspace","hash",12,"codex","system",true,false);
+ #assert !ex_pin(b,"other","workspace","hash",12,"codex","system",true,false);
+ #assert !ex_pin(b,"host","other","hash",12,"codex","system",true,false);
+ #assert !ex_pin(b,"host","workspace","other",12,"codex","system",true,false);
+ #assert !ex_pin(b,"host","workspace","hash",13,"codex","system",true,false);
+ #assert !ex_pin(b,"host","workspace","hash",12,"claude","system",true,false);
+ #assert !ex_pin(b,"host","workspace","hash",12,"codex","other",true,false);
+ #assert !ex_pin(b,"host","workspace","hash",12,"codex","system",false,false);
+ #assert !ex_pin(b,"host","workspace","hash",12,"codex","system",true,true);
 }
 #test "a model and effort must match the actual offer without catalog fallback" {
  c:[1]AgCatalog;c[0].n=2;c[0].levels=3;c[0].default_level=1;
@@ -75,8 +76,8 @@ ex_scope :: (configured:bool,enabled:bool,device:bool,grant:bool,admitted:bool)-
 ex_reference :: (value:string,prefix:string)->bool #effects(all) {
  return value.count==prefix.count+32 && value[0..<prefix.count]==prefix && ea_id(cast(string)value[prefix.count..<value.count],32);
 }
-ex_pin :: (b:ExBinding,host:string,workspace:string,hash:string,bytes:int,account:string,authenticated:bool,signing_in:bool)->bool #effects(all) {
- return b.host==host && b.workspace==workspace && b.input_hash==hash && b.input_bytes==bytes && b.account==account && pa_select(true,authenticated,signing_in);
+ex_pin :: (b:ExBinding,host:string,workspace:string,hash:string,bytes:int,engine:string,account:string,authenticated:bool,signing_in:bool)->bool #effects(all) {
+ return b.host==host && b.workspace==workspace && b.input_hash==hash && b.input_bytes==bytes && b.engine==engine && b.account==account && pa_select(true,authenticated,signing_in);
 }
 ex_choice :: (cat:[]AgCatalog,model:string,effort:string)->ExChoice #effects(all) {
  no:ExChoice;if cat.count==0 || cat[0].n>AG_MODELS || cat[0].levels<0 || cat[0].levels>AG_LEVELS || model.count==0 {return no;}

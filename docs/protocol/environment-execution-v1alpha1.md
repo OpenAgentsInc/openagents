@@ -52,7 +52,8 @@ catalog alone is not evidence that an account can execute the task.
 The binding contains no HOST grant. The consumer must admit the current
 signed HOST request, exact enrolled device/grant and configured workspace,
 then compare the validated binding with the resident's own host, workspace,
-complete input hash/length and authenticated provider account. The checked
+complete input hash/length and authenticated provider engine/account pair
+(Claude's `system` and Codex's `system` are different accounts). The checked
 `ex_scope` and `ex_pin` primitives enforce those comparisons; their facts must
 come from the owner, not fields supplied by a caller. Project membership and
 Project context confer no computer control. Reachability, fresh reports,
