@@ -98,6 +98,28 @@ aap_test_replace :: (text:string,from:string,to:string,out:[]u8)->string #effect
   x=aap_test_replace(AAP_TEST_CAST,"\"heroine\":0.9","\"heroine\":0.9,\"heroine\":0.9",changed[..]);#assert aap_test_finish(aap_test_list(x,"",list[..]),out[..])==AAP_MODEL;
   #assert out[0]==93 && out[out.count-1]==93;
 }
+// A reply of count answers (each the cast direction), then read by aap_reply as its caller reads it.
+aap_test_replied :: (count:int,out:[]u8)->string #effects(all) {
+  list:[65536]u8;o:[1]Jo;jo_start(o[..],list[..]);jo_arr(o[..]);
+  for i:0..<count {jo_raw(o[..],AAP_TEST_CAST);}jo_end(o[..]);
+  n:=aap_test_finish(jo_text(o[..]),out);return cast(string)out[0..<n];
+}
+#test "API anime reply: whitespace, the version and the answer count are each checked, to the edge" {
+  words:="Draconia casts a fireball. Close up on Kai.";
+  out:[AAP_RESULT_MAX]u8;nodes:[2048]JvNode;d:[1]Jv;
+  reply:=aap_test_replied(2,out[..]);#assert reply!=""&&aap_reply(reply,words,d[..],nodes[..])!=-1;
+  // a line break between tokens is whitespace, not a control byte
+  sp:[AAP_RESULT_MAX]u8;pretty:=aap_test_replace(reply,"{\"v\":1,","{\n\"v\":1,",sp[..]);#assert pretty!=""&&aap_reply(pretty,words,d[..],nodes[..])!=-1;
+  // a version that is not the integer 1 is refused, whether it is text or missing
+  ver:[AAP_RESULT_MAX]u8;#assert aap_reply(aap_test_replace(reply,"\"v\":1,","\"v\":\"1\",",ver[..]),words,d[..],nodes[..])==-1;
+  #assert aap_reply(aap_test_replace(reply,"\"v\":1,","\"v\":2,",ver[..]),words,d[..],nodes[..])==-1;
+  // eight answers are the most
+  full:[AAP_RESULT_MAX]u8;eight:=aap_test_replied(8,full[..]);
+  a8:=aap_reply(eight,words,d[..],nodes[..]);#assert a8!=-1&&jv_len(d[0],a8)==8;
+  big:[AAP_RESULT_MAX]u8;w:[1]Jo;jo_start(w[..],big[..]);jo_obj(w[..]);jo_key(w[..],"v");jo_int(w[..],1);jo_key(w[..],"heard");jo_str(w[..],words);jo_key(w[..],"answers");jo_arr(w[..]);
+  for i:0..<9 {jv_write(d[0],jv_at(d[0],a8,i%8),w[..]);}jo_end(w[..]);jo_end(w[..]);
+  nine:=jo_text(w[..]);#assert nine!=""&&aap_reply(nine,words,d[..],nodes[..])==-1;
+}
 #test "API anime empty selection is heard-only and output capacity failure is atomic" {
   out:[AAP_RESULT_MAX]u8;n:=aap_test_finish("[]",out[..]);#assert n>0;
   nodes:[64]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]) && jv_len(d[0],jv_get(d[0],0,"answers"))==0;
