@@ -33,6 +33,12 @@ RFL_MEDIA_TREE :: [358]u32.[2,13,0,1,2,3,4,5,9,2,7,2,2,0,2,4,8,8,7,6,8,7,4,2,0,2
   #assert rf_shader_layout(-1,13,p,tree[..],meta[..]).status==RQStatus.resource;
   #assert rf_shader_layout(2,-1,p,tree[..],meta[..]).status==RQStatus.resource;
   #assert rf_shader_layout(2,14,p,tree[..],meta[..]).status==RQStatus.resource;
+  // indices past the media entry name pass ids that exist in the enum: refused in every profile
+  for rfl_pr:0..<18 {
+    for rfl_i:14..<18 {
+      #assert rf_shader_layout(rfl_pr,rfl_i,p,tree[..],meta[..]).status==RQStatus.resource;
+    }
+  }
 }
 #test "reference layout admits the real vertex-only caster and rejects both fragment-presence mismatches" {
   caster:=RP_CATALOG_CASTER_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(caster[..],meta[..]);

@@ -50,7 +50,7 @@ rf_shader_use :: (profile:int,index:int,slot:int)->RenderUse #effects(all) {
 }
 rf_shader_layout :: (profile:int,index:int,p:RQProgram,tree:[]u32,meta:[]int)->RFShaderLayout #effects(all) {
  if p.status!=RQStatus.ok {return RFShaderLayout.{status=p.status};}
- if index<0 || index>13 {return RFShaderLayout.{status=RQStatus.resource};}
+ if index<0 || index>13 {return RFShaderLayout.{status=RQStatus.resource};}   // mutant: equivalent (the catalog holds no pass id past 13, so a later index is refused as a resource anyway; checked for every profile in reference-frame-layout-checks.coax)
  entry:RenderEntry;
  if index==13 {
   if !render_catalog(profile).features.media {return RFShaderLayout.{status=RQStatus.resource};}
