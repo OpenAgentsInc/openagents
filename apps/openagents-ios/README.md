@@ -327,3 +327,26 @@ chat renderer or completion of every Arcade animation. See
 1086 is **VALID / IN_BETA_TESTING**, verified in **Owner**. Its signed generation-1
 feed matches all twenty archived resources. See the
 [gallery evidence and pictures](../../docs/verification/2026-11-14-component-gallery/README.md).
+
+## Monochrome Arcade application components (1087)
+
+The default mobile app now uses the shared GPU component scene for all current
+app-owned chrome: buttons, fields, composer, transcript/tool decorations,
+drawer/menus, Projects, Usage, Settings/extras, world library/editor/overlay,
+progress, notices and Updates. `components/native/scene.coax` uses the existing
+kit and GPU backend; `NativeArcadeSurface` forwards actual measured bounds,
+ancestor clips, keys and control state through the shared Metal carrier.
+White/grayscale replaces cyan, including alternate skins in the phone gallery.
+World content keeps its authored colors.
+
+The native text/input/accessibility adapters preserve selection, IME, OTP
+AutoFill, Dynamic Type, keyboard docking, scrolling and actions. Frame entry,
+press/focus, activity arcs and progress springs live in Coax and honor reduced
+motion. Desktop adapters are unchanged. This is not completion of all 28 Arcade
+motion cases or a measured performance claim.
+
+`CoaxNativeArcade` runs the installed carrier, update-offer presentation,
+Markdown/transcript and gallery tests. Navigation, Chat, Usage, Project,
+Balance and Worlds UI suites qualify the existing flows against independent
+local account fixtures and real streamed world assets. New native code needs
+1087; later compatible Coax app-screen changes can continue through Updates.

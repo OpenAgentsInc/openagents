@@ -1394,3 +1394,25 @@ Android. Existing native controls remain compatible during qualification.
 Part B's system-control substitutions are therefore migration options, not
 the final reusable component architecture. All source/history claims above
 remain tied to their audited revision.
+
+## 1087: current mobile component mapping
+
+The default iOS app now uses `components/native/scene.coax`, the shared GPU
+backend and `skin/arcade.coax`. The phone keeps white/grayscale rather than
+Arcade cyan. Its existing screen structure and native text services remain.
+
+| Current mobile family | Shared presentation |
+| --- | --- |
+| Login/search/form/code inputs | Arcade frame assembly and animated focus; native IME and OTP AutoFill |
+| Buttons, compact actions, tool chips, rows | Arcade corner frames or round action; pressed/disabled/current roles; native actions/accessibility |
+| Composer, message bubbles, code panels | Shared pill/frame chrome with native editing and selectable shared-parser Markdown |
+| Tables, quotes, separators, headers | Shared GPU boxes/rules, measured by the same text adapters |
+| Drawer, menus, notices and Updates offer | Shared framed surfaces/rows; existing drawer navigation and native modal focus |
+| Busy and download states | Shared two-arc activity and determinate spring progress |
+| Worlds and editor | App-owned menu/progress/form chrome uses the kit; game scene colors stay authored |
+| Components preview | Shared GPU gallery plus shared header/menu controls, monochrome enforced on phone |
+
+This is an app-wide component migration, not all-animation parity. The
+12-point corner-square cap adapts source geometry to compact controls. Full
+blur/compositor, A01–A28 reference traces and Android qualification remain in
+[audit 06](06-rendering-and-animation.md) and the rendering plan.

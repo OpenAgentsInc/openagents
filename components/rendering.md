@@ -1,7 +1,7 @@
 # Coax Native component rendering and composition
 
-2026-11-14. Architecture recommendation and implementation requirements;
-**not an implemented renderer switch or a performance result**. Source baseline:
+2026-11-14. Architecture and implementation requirements, with the mobile
+chrome checkpoint below. This is **not a performance result**. Audit baseline:
 `96825b529e`. This extends [the component spec](spec.md),
 [Coax Native](../coax/native.md) and [Coax Native Web](../coax/web.md).
 The [Arcade animation audit](../docs/arcade/06-rendering-and-animation.md)
@@ -18,6 +18,32 @@ reply surfaces. `backend/gpu.coax` now lowers `PRIM_ARC` through bounded
 antialiased segments. General image/blur/composition and the full Arcade
 catalog are still requirements below, not features of this checkpoint.
 The gallery is compiled into the new native runtime and is not an OTA renderer.
+
+## Implementation checkpoint: default iOS chrome (1087)
+
+The default mobile UI now projects its component decorations through
+`native/scene.coax` and the existing shared GPU backend. UIKit measures actual
+bounds and clips, then provides keys, state and skin roles to one transparent
+Metal scene per component surface. The scene retains Coax entry/press/spring
+state across updates and order changes; unseen nodes retire, invisible nodes
+are excluded and capacity refusals are counted. There are no new app shaders.
+
+All current app-owned control families use it: buttons/icon actions, fields,
+multiline fields, composer, messages/code/tables/quotes, tools, headers, rows,
+notices, menus, progress and activity. That covers account/login, chat/history,
+Projects, Usage, Settings/extras, world library/create/edit and overlay controls,
+Updates and gallery navigation. Existing platform text/selection, IME, AutoFill,
+scrolling, touch and accessibility nodes remain the semantic adapters. Source
+frame-square/line assembly, animated focus/press, activity arcs and spring
+progress are shared; plain black replaces the old background grid on iOS.
+
+The production profile is white/grayscale. It caps Arcade's corner squares at
+12 points for compact phone controls, retains the existing phone layout and
+uses the source's corner origins and centered border-segment scaling. It does
+not claim full source-animation parity: blur, all 28 cases, offscreen effects,
+the icon morph and shared gesture/layout transitions remain requirements.
+AppKit/GTK/Android have not been switched by this iOS release. Authored world
+scenes are separate colored producers; only their app chrome uses this skin.
 
 
 ## Recommendation
@@ -60,7 +86,7 @@ These are source observations at the baseline, not device qualifications.
 | `kit/controls.coax`, `kit/hud.coax`, `kit/markdown.coax` | Display-list components | Adapt the tree-based `kit/frames.coax` family to shared presentation semantics; an existing tree builder is not automatically GPU paint |
 | `backend/dom.coax`, `coax/web/dom-host.js` | Working keyed DOM output | GPU-island mount, measurement, resource lifecycle and semantic ownership integration |
 | `apps/shared/host/apple/ui-host.m`, `host/linux/ui-host.*`, `host/android/ui-host.c` | Shared Metal/Vulkan carriers and existing atlas/input/driver work | Complete component composition and mobile input; Android has drawing/window support, not a qualified full chat/IME/TalkBack path |
-| `apps/shared/native/NativeChrome.swift`, `NativeMessage.swift`, `NativeComposer.swift` | Shipped mono presentation and native editing/Markdown experience | Compatibility bridge/migration; CAShapeLayer frames are not the shared GPU backend |
+| `native/scene.coax`, `skin/arcade.coax`, `apps/shared/native/NativeArcade.swift`, `NativeChrome.swift` | iOS GPU chrome with keyed Coax motion and native measured text/input/semantics | Complete shared text/semantic layout, Android qualification and full source-animation parity; AppKit retains its legacy frame adapter |
 | `metaverse-engine/host/apple/PageHost.m`, `apps/shared/native/NativeWorldHost.swift` | Real streamed Metal world presentation | Several embedded worlds: `phCurrent` explicitly says one page is open at a time; isolate all callback and mutable state first |
 
 The actual shared GPU C face is `apps/shared/host/linux/ui-host.h`, reused by

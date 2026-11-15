@@ -3,8 +3,9 @@
 **Rendering assessment, 2026-11-14:** [rendering.md](rendering.md) specifies
 the recommended GPU visual target for new Coax Native components, native
 input/accessibility adapters, DOM pages with GPU islands, all Arcade motion,
-and several embedded scene views. It extends the layers below; it is not a
-claim that the shipped UIKit app or Android host already provides that path.
+and several embedded scene views. The 1087 iOS checkpoint projects all current
+app chrome through shared GPU components with native text/input/semantics;
+Android and general scene composition remain unqualified.
 New controls and animations belong here once, not in an app-private kit.
 
 Written 2026-11-10. Status: Phase 1 (the move), Phase 2 (the layers and

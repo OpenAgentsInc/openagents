@@ -6,6 +6,14 @@ versus native controls for iOS, Android, HTML pages and several inline worlds.
 This is a source audit and architecture recommendation; no port, performance
 benchmark, binary or OTA is delivered by this document.
 
+**Implementation update:** TestFlight 1087 ports the current iOS application's
+control chrome to the shared GPU scene with a white/grayscale Arcade skin.
+Frame entry/press/focus, two-arc activity and spring progress are implemented
+with native text/input/semantics adapters. This is a subset of the catalog;
+blur, the large spinner spring-loop, gesture/icon/layout parity and other
+unimplemented rows remain acceptance requirements. See the current mapping
+in [audit 03](03-design-and-components.md#1087-current-mobile-component-mapping).
+
 Sources: read-only Arcade `3f10e1ebf84658411af12c8ff3527e34eb34a5fd`, arclib
 `542ecec`; OpenAgents `96825b529e`. No Arcade install/build scripts were run.
 Arcade code paths below are relative to its `app/`; `assets/` paths are

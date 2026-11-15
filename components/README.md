@@ -16,6 +16,7 @@ a second set of native-only components.
 | Colors, measures, frames and motion values | `skin/` |
 | Physical springs | `core/spring.coax` |
 | Animated frames, activity/progress rings, switches, drawer/reply surfaces | `kit/animated.coax` |
+| Measured native controls painted in one shared GPU scene | `native/scene.coax`, `native/apple.{c,h}`, `skin/arcade.coax`; SDK projection: `apps/shared/native/NativeArcade.swift` |
 | Shared easing, timelines and effects | `core/arwes/motion.coax`, `core/arwes/fx.coax` |
 | Display-list controls, Markdown and game HUD | `kit/controls.coax`, `kit/markdown.coax`, `kit/hud.coax` |
 | Tree-based forms, chat and settings | `kit/frames.coax`, `kit/settings.coax`, `kit/dock.coax`, `kit/work.coax` |
@@ -81,11 +82,36 @@ switches and drawer/reply surfaces. The existing four-skin controls/Markdown,
 HUD cards and 25 ARWES specimens remain selectable. GPU arcs now lower to at
 most 64 existing antialiased segments; this is a bounded approximation.
 
-This is an inspectable first library release, not completion of all 28 Arcade
+This is an inspectable library release, not completion of all 28 Arcade
 animation cases. Image textures, general transforms/blur, inline GPU islands,
 multiple live world views and complete GPU semantic/text parity remain in
 [rendering.md](rendering.md). Native gallery code is installed code: changes
 to its compiled components require a build. Portable app screens and their
 Settings link continue through signed Updates. Gallery controls are accessible
-through the native menu; per-primitive text selection and VoiceOver semantics
-are not qualified, so this does not switch the production chat renderer.
+through the native menu; per-primitive gallery text selection and VoiceOver
+semantics are not qualified.
+
+## Mobile application port (1087)
+
+The default iOS application now uses the shared Arcade GPU chrome, beyond the
+gallery. `native/scene.coax` consumes stable keys, actual platform-measured
+rectangles, ancestor clips and control states. It paints the existing kit's
+frames, composer pill, round action, activity arcs, spring progress and rules
+through the common GPU backend. `skin/arcade.coax` supplies a white/grayscale
+profile. The native gallery also enforces grayscale, including its alternate
+skins; the web gallery retains its reference palettes.
+
+`NativeArcadeSurface` is one transparent Metal carrier per presentation surface,
+not a canvas per button. UIKit supplies text shaping/selection, SF Symbol glyphs,
+text input/IME, OTP AutoFill, measured layout, scrolling, hit targets and
+accessibility. Native component wrappers contain the semantics and platform
+effects; they no longer draw iOS frames with CAShapeLayer. AppKit/GTK keep their
+existing adapters. This is a component port with native text services, not a
+claim that every character is rasterized by the GPU.
+
+Login, the chat composer/transcript/tool rows, drawer, Projects, Usage, Settings,
+wallet extras, world library/create/edit forms, floating world menu, progress,
+update offer and component-gallery navigation all use this path. Authored game
+scenes keep their own colors. Entry, press/focus, two-arc activity and progress
+spring motion are shared Coax; reduced motion resolves to stable states.
+The remaining A01–A28 work and performance qualification stay in rendering.md.
