@@ -20781,6 +20781,23 @@ CREATE TABLE chat.turn_operations_v2 (
 
 
 --
+-- Name: turn_tasks_v1; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.turn_tasks_v1 (
+    account text NOT NULL,
+    turn text NOT NULL,
+    record text NOT NULL,
+    phase integer DEFAULT 0 NOT NULL,
+    status_json text,
+    stop_json text,
+    poll_after_ms bigint DEFAULT 0 NOT NULL,
+    created_ms bigint NOT NULL,
+    updated_ms bigint NOT NULL
+);
+
+
+--
 -- Name: turns; Type: TABLE; Schema: chat; Owner: -
 --
 
@@ -20863,7 +20880,8 @@ CREATE TABLE chat.turns_v2 (
     dispatched_ms bigint,
     heartbeat_ms bigint,
     created_ms bigint NOT NULL,
-    updated_ms bigint NOT NULL
+    updated_ms bigint NOT NULL,
+    native_input_json text
 );
 
 
@@ -24432,6 +24450,14 @@ ALTER TABLE ONLY chat.turn_operations_v2
 
 
 --
+-- Name: turn_tasks_v1 turn_tasks_v1_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turn_tasks_v1
+    ADD CONSTRAINT turn_tasks_v1_pkey PRIMARY KEY (account, turn);
+
+
+--
 -- Name: turns turns_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
 --
 
@@ -27279,6 +27305,14 @@ ALTER TABLE ONLY chat.turn_events_v2
 
 ALTER TABLE ONLY chat.turn_operations_v2
     ADD CONSTRAINT turn_operations_v2_account_turn_fkey FOREIGN KEY (account, turn) REFERENCES chat.turns_v2(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: turn_tasks_v1 turn_tasks_v1_account_turn_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turn_tasks_v1
+    ADD CONSTRAINT turn_tasks_v1_account_turn_fkey FOREIGN KEY (account, turn) REFERENCES chat.turns_v2(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --

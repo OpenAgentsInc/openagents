@@ -1,0 +1,48 @@
+ctn_test_offer :: (out:[]u8)->int #effects(all) {v:=xo_test_offer();v.state=XO_READY;v.n=1;v.models[0]=XoModel.{id="native-model",label="Native model",n=2};v.models[0].levels[0]="low";v.models[0].levels[1]="high";return xo_write(v,out);}
+#test "model resolution uses an actual offered pair and never guesses a default or strength from order" {
+ s:[1]CtnSelect;raw:[XO_MAX]u8;out:[262144]u8;n:=ctn_test_offer(raw[..]);body:=ctn_select_begin(s[..],cast(string)raw[0..<n],"Fix the test","opus","high",out[..]);
+ #assert body>0 && s[0].n==2 && s[0].selected== -1;
+ #assert cl_raw(cast(string)out[0..<body],"input.0.text")=="\"Fix the test\"" && cl_raw(cast(string)out[0..<body],"input.1.text")=="\"opus\"" && cl_raw(cast(string)out[0..<body],"input.2.text")=="\"high\"";
+ #assert cl_raw(cast(string)out[0..<body],"questions.native_model.criteria.m00e00")=="\"native-model (Native model), effort: low\"" && cl_raw(cast(string)out[0..<body],"questions.native_model.criteria.m00e01")=="\"native-model (Native model), effort: high\"";
+ answer:="{\"answers\":{\"native_model\":{\"type\":\"choice\",\"choice\":\"m00e01\",\"confidence\":1,\"probabilities\":{\"m00e00\":0,\"m00e01\":1}}}}";
+ #assert ctn_select_finish(s[..],200,answer) && s[0].selected==1 && s[0].model[1]==0 && s[0].level[1]==1;
+ #assert !ctn_select_finish(s[..],503,answer) && s[0].selected== -1 && !ctn_select_finish(s[..],200,"{\"answers\":{\"native_model\":{\"type\":\"choice\",\"choice\":\"invented\",\"confidence\":1,\"probabilities\":{\"invented\":1}}}}");
+ first:="{\"answers\":{\"native_model\":{\"type\":\"choice\",\"choice\":\"m00e00\",\"confidence\":1,\"probabilities\":{\"m00e00\":1,\"m00e01\":0}}}}";
+ #assert ctn_select_finish(s[..],200,first) && s[0].selected==0 && !ctn_select_finish(s[..],201,first) && s[0].selected== -1;
+ #assert !ctn_select_finish(s[..],200,"{\"answers\":{\"native_model\":{\"type\":\"choice\",\"choice\":\"invented\",\"confidence\":1,\"probabilities\":{\"invented\":1,\"other\":0}}}}") && s[0].selected== -1;
+ #assert !ctn_select_finish(s[..],200,"{\"answers\":{\"native_model\":{\"type\":\"choice\",\"choice\":\"\",\"confidence\":1,\"probabilities\":{\"\":1,\"other\":0}}}}");
+ v:=xo_test_offer();v.state=XO_READY;v.n=1;v.models[0]=XoModel.{id="only-model",label="Only model"};n=xo_write(v,raw[..]);#assert ctn_select_begin(s[..],cast(string)raw[0..<n],"Q","","high",out[..])==0 && ctn_select_finish(s[..],0,"") && s[0].selected==0 && s[0].level[0]== -1;
+ v.models[0].id="native[1m]";n=xo_write(v,raw[..]);#assert ctn_select_begin(s[..],cast(string)raw[0..<n],"Q","","",out[..])<0 && s[0].selected== -1;
+}
+#test "native choices retain the exact typed request and refuse malformed unavailable and short outputs" {
+ s:[1]CtnSelect;raw:[XO_MAX]u8;out:[262144]u8;n:=ctn_test_offer(raw[..]);body:=ctn_select_begin(s[..],cast(string)raw[0..<n],"Fix the test","opus","high",out[..]);
+ #assert body>0 && ctn_select_begin(s[..],cast(string)raw[0..<n],"Fix the test","opus","high",out[0..<body])==body && ctn_select_begin(s[..],cast(string)raw[0..<n],"Fix the test","opus","high",out[0..<body-1])<0;
+ #assert ctn_select_begin(s[..],"{}","Q","","",out[..])<0 && s[0].n==0;
+ v:=xo_test_offer();n=xo_write(v,raw[..]);#assert ctn_select_begin(s[..],cast(string)raw[0..<n],"Q","","",out[..])<0;
+ n=ctn_test_offer(raw[..]);#assert ctn_select_begin(s[..],cast(string)raw[0..<n],"\0","","",out[..])<0;
+ text:[16385]u8;for i:0..<text.count {text[i]='x';}#assert ctn_select_begin(s[..],cast(string)raw[0..<n],cast(string)text[0..<16384],"","",out[..])>0 && ctn_select_begin(s[..],cast(string)raw[0..<n],cast(string)text[..],"","",out[..])<0;
+ #assert !ctn_select_finish(s[..],200,"{}");
+ n=ctn_test_offer(raw[..]);#assert ctn_select_begin(s[..],cast(string)raw[0..<n],"Q","","",out[..])>0;s[0].body[0].names[0]="another_request";
+ #assert !ctn_select_finish(s[..],200,"{\"answers\":{\"native_model\":{\"type\":\"choice\",\"choice\":\"m00e00\",\"confidence\":1,\"probabilities\":{\"m00e00\":1,\"m00e01\":0}}}}");
+}
+#test "the largest executable native offer is not silently truncated to a different decision" {
+ s:[1]CtnSelect;raw:[XO_MAX]u8;out:[262144]u8;v:=xo_test_offer();v.state=XO_READY;v.n=32;ids:[32][3]u8;
+ levels:=[8]string.["low","medium","high","xhigh","max","ultra","fast","none"];
+ for i:0..<32 {ids[i][0]='m';ids[i][1]=cast(u8)('0'+i/10);ids[i][2]=cast(u8)('0'+i%10);v.models[i]=XoModel.{id=cast(string)ids[i][..],label="Offered",n=8};for level,k:levels {v.models[i].levels[k]=level;}}
+ v.models[31].n=7;n:=xo_write(v,raw[..]);#assert n>0 && ctn_select_begin(s[..],cast(string)raw[0..<n],"Q","","",out[..])>0 && s[0].n==255 && cast(string)s[0].keys[254][..]=="m31e06" && s[0].model[254]==31 && s[0].level[254]==6;
+ v.models[31].n=8;n=xo_write(v,raw[..]);#assert n>0 && ctn_select_begin(s[..],cast(string)raw[0..<n],"Q","","",out[..])<0;
+ v.n=2;v.models[0]=XoModel.{id="opaque[1m]",label="Not executable"};v.models[1]=XoModel.{id="native-model",label="Executable"};n=xo_write(v,raw[..]);#assert ctn_select_begin(s[..],cast(string)raw[0..<n],"Q","","",out[..])==0 && s[0].model[0]==1 && s[0].level[0]== -1;
+ v.models[0]=XoModel.{id="first",label="No effort"};n=xo_write(v,raw[..]);made:=ctn_select_begin(s[..],cast(string)raw[0..<n],"Q","","",out[..]);#assert made>0 && cl_raw(cast(string)out[0..<made],"questions.native_model.criteria.m00e00")=="\"first (No effort), effort: none\"";
+}
+#test "intent classification is typed and unavailable decisions cannot become an execution grant" {
+ h:[1]CtnIntent;out:[32768]u8;#assert ctn_intent_begin(h[..],"Run the checks.","Saved context",out[..])>0;
+ #assert ctn_intent_finish(h[..],200,"{\"answers\":{\"native_work\":{\"type\":\"noul\",\"noul\":1,\"confidence\":1}}}")==1;
+ #assert ctn_intent_finish(h[..],200,"{\"answers\":{\"native_work\":{\"type\":\"noul\",\"noul\":0,\"confidence\":1}}}")==0;
+ #assert ctn_intent_finish(h[..],0,"")== -1 && ctn_intent_finish(h[..],200,"{}")== -1;
+ n:=ctn_intent_begin(h[..],"Run the checks.","Saved context",out[..]);#assert n>0 && ctn_intent_begin(h[..],"Run the checks.","Saved context",out[0..<n])==n && ctn_intent_begin(h[..],"Run the checks.","Saved context",out[0..<n-1])<0;
+ n=ctn_intent_begin(h[..],"Run the checks.","Saved context",out[..]);#assert cl_raw(cast(string)out[0..<n],"input.0.text")=="\"Run the checks.\"" && cl_raw(cast(string)out[0..<n],"input.1.text")=="\"Saved context\"";
+ #assert ctn_intent_begin(h[..],"Run the checks.","",out[..])>0;
+ fresh:[1]CtnIntent;#assert ctn_intent_finish(fresh[..],200,"{\"answers\":{}}")== -1 && ctn_intent_finish(h[..],201,"{\"answers\":{\"native_work\":{\"type\":\"noul\",\"noul\":1,\"confidence\":1}}}")== -1;
+ #assert ctn_intent_finish(h[..],200,"{\"answers\":{\"native_work\":{\"type\":\"noul\",\"noul\":0.5,\"confidence\":1}}}")==1 && ctn_intent_finish(h[..],200,"{\"answers\":{\"native_work\":{\"type\":\"noul\",\"noul\":0.49,\"confidence\":1}}}")==0;
+ h[0].body[0].names[0]="another_request";#assert ctn_intent_finish(h[..],200,"{\"answers\":{\"native_work\":{\"type\":\"noul\",\"noul\":1,\"confidence\":1}}}")== -1;
+}

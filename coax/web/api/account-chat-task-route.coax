@@ -1,0 +1,41 @@
+// Native adapter for primary protobuf router codecs. Authorization lives in
+// account-chat-task-policy and account-chat-task-link-policy supply admission.
+#load "account-chat-task-policy.coax";
+#load "account-chat-task-wire.coax";
+#load "../../lib/agent/router/native-choice.coax";
+#load "../../lib/agent/router/decide.coax";
+CTN_REPORTS :: 16;
+CtnRouter :: struct {
+ q:[1]RtrRequest;e:[1]RtrEligible;d:[1]RtrDecision;w:[1]RtrWork;
+ input:[1]ExInput;summary:[8192]u8;reports:[CTN_REPORTS][RTR_REPORT_MAX]u8;nr:[CTN_REPORTS]int;
+ report_wire:[CTN_REPORTS][RTR_REPORT_MAX]u8;hosts:[CTN_REPORTS][64]u8;
+ names:[CTN_REPORTS][80]u8;nn:[CTN_REPORTS]int;nodes:[4096]JvNode;
+}
+ctn_init :: (h:[]CtnRouter,raw:string,now:int)->bool #export_c #effects(all) {
+ if now<1 || !ex_input_read(raw,h[0].input[..]) {return false;}text:=ex_input_text(h[0].input[..],h[0].input[0].n-1);if text.count>16384 {return false;}
+ h[0].q[0]=RtrRequest.{text=text,now_ms=now};o:[1]Jo;jo_start(o[..],h[0].summary[..]);
+ if raw.count<=4096 {jo_put(o[..],raw);}else {jo_put(o[..],"Bounded routing context excerpt; the native task receives the complete saved input. Beginning:\n");n:=ctn_slice(raw,0,2048);jo_put(o[..],cast(string)raw[0..<n]);jo_put(o[..],"\nEnd:\n");at:=raw.count-2048;while at<raw.count && (raw[at]&192)==128 {at+=1;}jo_put(o[..],cast(string)raw[at..<raw.count]);}
+ if o[0].bad {return false;}h[0].q[0].summary=jo_text(o[..]);return true;
+}
+ctn_report_add :: (h:[]CtnRouter,host:string,name:string,raw:string)->bool #export_c #effects(all) {
+ row:=h[0].q[0].n;if row>=CTN_REPORTS || !ea_id(host,64) || !ex_text_valid(name,80) {return false;}actual:[64]u8;
+ if !rtr_report_read(raw,h[0].nodes[..],h[0].report_wire[row][..],h[0].q[..],row,actual[..]) || cast(string)actual[..]!=host {return false;}
+ for i:0..<row {if ctt_station(cast(string)h[0].hosts[i][..])==ctt_station(host) {return false;}}
+ _=js_copy(h[0].hosts[row][..],host);h[0].nr[row]=rtr_report_write(h[0].q[..],row,host,h[0].reports[row][..]);if h[0].nr[row]<1 {return false;}
+ h[0].nn[row]=js_copy(h[0].names[row][..],name);h[0].q[0].stations[row].id=cast(string)h[0].hosts[row][0..<32];if name!="" {h[0].q[0].stations[row].name=cast(string)h[0].names[row][0..<h[0].nn[row]];}
+ for i:2..<RTR_ENGINES {h[0].q[0].stations[row].agents[i].installed=false;}h[0].q[0].n+=1;return true;
+}
+ctn_route_begin :: (h:[]CtnRouter,now:int,out:[]u8)->int #export_c #effects(all) {
+ h[0].q[0].now_ms=now;body:=rtr_begin(h[0].q[..],h[0].e[..],h[0].d[..],h[0].w[..],GD_MODEL);if body.count>out.count {return -1;}_=js_copy(out,body);return body.count;
+}
+ctn_route_finish :: (h:[]CtnRouter,status:int,answer:string)->int #export_c #effects(all) {
+ if h[0].w[0].request!="" {a:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=a[..]}];gr:=gd_result(h[0].w[0].body[..],ar[..],status,answer);rtr_finish(h[0].q[..],h[0].e[..],gr,h[0].d[..],h[0].w[..]);}
+ if !h[0].d[0].ok || (h[0].d[0].engine!="claude" && h[0].d[0].engine!="codex") {return -1;}return rtr_station_index(h[0].q[..],h[0].d[0].station);
+}
+ctn_route_write :: (h:[]CtnRouter,out:[]u8)->int #export_c #effects(all) {return rtr_decision_write(h[0].d[..],out);}
+ctn_dispatch_write :: (h:[]CtnRouter,row:int,b:ExBinding,out:[]u8)->int #export_c #effects(all) {
+ if row<0 || row>=h[0].q[0].n || cast(string)h[0].hosts[row][..]!=b.host {return -1;}
+ q:[1]RtrRequest;wire:[RTR_REPORT_MAX]u8;host:[64]u8;
+ if !rtr_report_read(cast(string)h[0].reports[row][0..<h[0].nr[row]],h[0].nodes[..],wire[..],q[..],0,host[..]) {return -1;}
+ d:=[1]RtrDecision.[h[0].d[0]];d[0].station=q[0].stations[0].id;d[0].model=b.model;d[0].effort=b.effort;return rtr_decision_write(d[..],out);
+}

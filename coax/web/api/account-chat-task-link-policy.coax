@@ -1,0 +1,25 @@
+// Pure admission for an immutable turn/task association. The primary router
+// codec supplies facts; decoded records never themselves grant execution.
+// coax/bin/coax test coax/web/api/account-chat-task-link-policy.coax --library --traversal 1000000000
+#load "../../lib/agent/environment/offer-wire.coax";
+#load "../../lib/crypto/sha256-memory.coax";
+#authority;
+CTT_SCHEMA :: "openagents.chat.task.v1alpha1";
+CTT_MAX :: 98304; CTT_ARENA :: 20480;
+CttTask :: struct {binding:ExBinding;decision:string;report:string;offer:XoOffer;enrollment:string;reason:string;dispatch:string;}
+CttFacts :: struct {ok:bool;station:string;engine:string;needs:string;weight:int;host:string;at:int;os:string;apple:bool;gpu:bool;installed:bool;logged_in:bool;quota:bool;cooldown:bool;keep_clear:bool;nothing_heavy:bool;disk_free:int;disk_floor:int;work:int;max_agents:int;}
+ctt_station :: (host:string)->string #effects(all) {return ifx ea_id(host,64) then cast(string)host[0..<32] else "";}
+ctt_offered :: (b:ExBinding,o:XoOffer)->bool #effects(all) {
+ if !xo_valid(o) || o.state!=XO_READY || o.host!=b.host || o.workspace!=b.workspace || o.engine!=b.engine || o.account!=b.account || o.probe!=b.route || o.observed>b.issued || o.expires<b.issued {return false;}
+ for i:0..<o.n {m:=o.models[i];if m.id!=b.model {continue;}if m.n==0 {return b.effort=="";}for k:0..<m.n {if m.levels[k]==b.effort {return true;}}}return false;
+}
+ctt_admit :: (t:CttTask,f:CttFacts)->bool #effects(all) {
+ b:=t.binding;if !ex_binding_valid(b) || !ea_id(t.enrollment,64) || t.reason.count<1 || !ex_text_valid(t.reason,1024) || !ctt_offered(b,t.offer) || t.decision.count>16384 || t.report.count>16384 {return false;}
+ if !f.ok || f.station!=ctt_station(b.host) || f.engine!=b.engine || f.host!=b.host || f.at!=b.report_at || b.issued-f.at>120000 || (f.os!="macos" && f.os!="linux") {return false;}
+ if !f.installed || !f.logged_in || f.quota || f.cooldown || f.keep_clear || f.disk_floor<0 || f.disk_free<f.disk_floor || f.work<0 || f.max_agents<0 || f.weight< -1 || f.weight>2 || (f.max_agents>0 && f.work>=f.max_agents) || ((f.weight==2 || f.weight== -1) && f.nothing_heavy) {return false;}
+ if f.needs!="" && f.needs!="apple" && f.needs!="gpu" && f.needs!="this_computer" {return false;}
+ if (f.needs=="apple" && (f.os!="macos" || !f.apple)) || (f.needs=="gpu" && !f.gpu) {return false;}
+ hash:[64]u8;_=S_hex(S_hash(t.report),hash[..]);return cast(string)hash[..]==b.report_hash;
+}
+ctt_owned :: (t:CttTask,turn:string,conversation:string)->bool #export_c #effects(all) {return ex_reference(turn,"trn_") && ex_reference(conversation,"cnv_") && t.binding.turn==turn && t.binding.conversation==conversation;}
+#load "account-chat-task-link-checks.coax" #test;

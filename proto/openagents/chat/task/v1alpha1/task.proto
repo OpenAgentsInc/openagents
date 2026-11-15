@@ -1,0 +1,21 @@
+syntax = "proto3";
+package openagents.chat.task.v1alpha1;
+import "openagents/environment/execution/v1alpha1/execution.proto";
+import "openagents/environment/execution/v1alpha1/offer.proto";
+import "openagents/router/v1alpha1/router.proto";
+
+// Immutable server-owned association, committed before native preparation or
+// Start. All JSON fields are required, in this order; the top object is closed.
+// Nested values use their existing primary codecs, not protobuf JSON defaults.
+// The decision keeps requested profiles; Binding records the exact SDK choice.
+// This record is private to its account. It contains no credential or grant.
+message TurnTask {
+  string schema = 1 [json_name="schema"]; // openagents.chat.task.v1alpha1
+  openagents.environment.execution.v1alpha1.Binding binding = 2 [json_name="binding"];
+  openagents.router.v1alpha1.RouteDecision decision = 3 [json_name="decision"];
+  openagents.router.v1alpha1.StationReport report = 4 [json_name="report"];
+  openagents.environment.execution.v1alpha1.EngineOffer offer = 5 [json_name="offer"];
+  string enrollment_sha256 = 6 [json_name="enrollment_sha256"];
+  string selection_reason = 7 [json_name="selection_reason"]; // complete UTF-8, 1..1024 bytes
+  openagents.router.v1alpha1.RouteDecision dispatch_decision = 8 [json_name="dispatch_decision"]; // exact native station/model/effort; all other decision fields retained
+}

@@ -1,0 +1,39 @@
+// Native primary-protobuf oracle; no provider, relay, account or credential.
+#load "account-chat-task-route.coax";
+#load "../../lib/agent/environment/execution-fixtures.coax";
+#load "../../lib/proto/importer.coax";
+#load "../../lib/proto/golden-keys.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+CtnOracle :: struct {checks:int;failed:int;}
+ctno_check :: (o:[]CtnOracle,ok:bool,name:string) #effects(all) {o[0].checks+=1;if !ok {o[0].failed+=1;}print("% %\n",ifx ok then "ok" else "FAIL",name);}
+tool_main :: ()->int #export_c #effects(all) {
+ check:[1]CtnOracle;descriptor:[65536]u8;dn:=fs_read("proto/descriptors/chat-task.pb",descriptor[..]);g:[1]PkDescriptor;
+ if dn<1 || pk_load(g[..],cast(string)descriptor[0..<dn])!="" {return 2;}
+ fixture:[CTT_MAX]u8;fn:=fs_read("proto/coder/chat-task-v1alpha1.json",fixture[..]);j:[1]Jv;nodes:[4096]JvNode;if fn<1 || !jv_parse(j[..],cast(string)fixture[0..<fn],nodes[..]) {return 2;}
+ raw:[CTT_MAX]u8;writer:[1]Jo;jo_start(writer[..],raw[..]);jv_write(j[0],jv_get(j[0],0,"task"),writer[..]);text:=jo_text(writer[..]);keys:[4096]JvNode;
+ // Binding/Offer use required fields. Router records use generated protobuf
+ // JSON with a schema sentinel and omitted defaults, so check those with their
+ // actual descriptor-backed mapper below rather than a required-fields rule.
+ projected:[CTT_MAX]u8;po:[1]Jo;jo_start(po[..],projected[..]);jo_obj(po[..]);root:=jv_get(j[0],0,"task");
+ for i:0..<jv_len(j[0],root) {at:=jv_at(j[0],root,i);name:=jv_key(j[0],at);jo_key(po[..],name);if name=="decision" || name=="report" || name=="dispatch_decision" {jo_null(po[..]);}else {jv_write(j[0],at,po[..]);}}jo_end(po[..]);
+ why:=pk_text_keys(g[0].state[..],".openagents.chat.task.v1alpha1.TurnTask",jo_text(po[..]),true,false,keys[..]);ctno_check(check[..],why=="","top-level required fields and nested Binding/Offer follow owned descriptors");if why!="" {print("%\n",why);}
+ task:[1]CttTask;arena:[CTT_ARENA]u8;good:=ctt_read(text,task[..],arena[..]);ctno_check(check[..],good,"the independent fixture binds its actual report digest and native choice");if !good {return 1;}
+ encoded:[CTT_MAX]u8;n:=ctt_write(task[0],encoded[..]);ctno_check(check[..],n==text.count && cast(string)encoded[0..<ifx n>0 then n else 0]==text,"the primary codec reproduces exact independent fixture bytes");
+ d:[1]RtrDecision;router_wire:[RTR_DECISION_MAX]u8;
+ for source:[2]string.[task[0].decision,task[0].dispatch] {valid:=rtr_decision_read(source,nodes[..],router_wire[..],d[..]);size:=ifx valid then rtr_decision_write(d[..],encoded[..]) else 0;ctno_check(check[..],size==source.count && cast(string)encoded[0..<size]==source,"the primary descriptor-backed router mapper preserves its actual JSON mapping");}
+ report_q:[1]RtrRequest;report_wire:[RTR_REPORT_MAX]u8;host:[64]u8;valid:=rtr_report_read(task[0].report,nodes[..],report_wire[..],report_q[..],0,host[..]);size:=ifx valid then rtr_report_write(report_q[..],0,cast(string)host[..],encoded[..]) else 0;ctno_check(check[..],size==task[0].report.count && cast(string)encoded[0..<size]==task[0].report,"the primary report mapper preserves its independently hashed canonical bytes");
+ changed:[CTT_MAX]u8;read:[1]CttTask;read_arena:[CTT_ARENA]u8;
+ for key:[8]string.["schema","binding","decision","report","offer","enrollment_sha256","selection_reason","dispatch_decision"] {ctno_check(check[..],!ctt_read(ex_test_field(text,key,"",changed[..]),read[..],read_arena[..]) && !ctt_read(ex_test_field(text,key,"null",changed[..]),read[..],read_arena[..]) && !ctt_read(ex_test_alias(text,key,changed[..]),read[..],read_arena[..]),"missing null and escaped association fields are refused");}
+ ctno_check(check[..],!ctt_read(text,read[0..<0],read_arena[..]) && !ctt_read(text,read[..],read_arena[0..<1]) && ctt_write(task[0],encoded[0..<n-1])<0,"short outputs and arenas cannot publish a partial association");
+ h:[1]CtnRouter;input:[1]ExInput;input_wire:[8192]u8;out:[32768]u8;ex_test_input(input[..]);ni:=ex_input_write(input[..],input_wire[..]);
+ ctno_check(check[..],ctn_init(h[..],cast(string)input_wire[0..<ni],1000) && h[0].q[0].text=="Run the checks.","routing reads the admitted final message and saved context");
+ ctno_check(check[..],ctn_report_add(h[..],task[0].binding.host,"My computer",task[0].report) && h[0].q[0].n==1 && h[0].q[0].stations[0].id==ctt_station(task[0].binding.host) && h[0].q[0].stations[0].name=="My computer","authenticated full host and account display name determine one router row");
+ ctno_check(check[..],!ctn_report_add(h[..],task[0].binding.host,"Changed",task[0].report) && h[0].q[0].n==1 && !ctn_report_add(h[..],"bad","",task[0].report),"duplicate or malformed host identities cannot add a router candidate");
+ ctno_check(check[..],ctn_route_begin(h[..],1000,out[..])>0,"the existing router writes its one typed decision request");
+ gr:=rtr_mock(h[0].w[..],"engine=codex,difficulty=3,effort=high,weight=0,needs=apple,named_station=none,named_engine=none,named_depth=none",0);
+ ctno_check(check[..],ctn_route_finish(h[..],gr.status,gr.body)==0 && h[0].d[0].engine=="codex" && h[0].d[0].needs=="apple" && ctn_route_write(h[..],out[..])>0,"the actual typed mock selects an eligible Mac and its available engine");
+ ctno_check(check[..],ctn_dispatch_write(h[..],0,task[0].binding,out[..])>0 && h[0].d[0].model=="" && ctn_dispatch_write(h[..],-1,task[0].binding,out[..])<0,"dispatch projects exact native choices without replacing the router's profile decision");
+ ctno_check(check[..],!ctn_init(h[..],"{}",1000) && !ctn_init(h[..],cast(string)input_wire[0..<ni],0),"invalid saved inputs and clocks refuse before routing");
+ print("Native chat task oracle: % checks, % failed\n",check[0].checks,check[0].failed);return ifx check[0].failed==0 then 0 else 1;
+}

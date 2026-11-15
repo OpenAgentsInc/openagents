@@ -1,0 +1,26 @@
+// One immutable account turn -> native task association, composed from primary codecs.
+// Native codec oracle: coax/web/tool.sh coax/web/api/account-chat-task-oracle.coax
+#load "account-chat-task-link-policy.coax";
+#load "../../lib/agent/router/wire.coax";
+ctt_valid :: (t:CttTask)->bool #export_c #effects(all) {
+ b:=t.binding;if !ex_binding_valid(b) || t.decision.count>RTR_DECISION_MAX || t.report.count>RTR_REPORT_MAX {return false;}
+ nodes:[4096]JvNode;wire:[RTR_DECISION_MAX]u8;d:[1]RtrDecision;
+ if !rtr_decision_read(t.decision,nodes[..],wire[..],d[..]) {return false;}
+ q:[1]RtrRequest;rw:[RTR_REPORT_MAX]u8;host:[64]u8;if !rtr_report_read(t.report,nodes[..],rw[..],q[..],0,host[..]) {return false;}
+ actual:[1]RtrDecision;aw:[RTR_DECISION_MAX]u8;wanted:[RTR_DECISION_MAX]u8;encoded:[RTR_DECISION_MAX]u8;
+ if !rtr_decision_read(t.dispatch,nodes[..],aw[..],actual[..]) {return false;}expected:=d[0];expected.station=q[0].stations[0].id;expected.model=b.model;expected.effort=b.effort;
+ want:=[1]RtrDecision.[expected];wn:=rtr_decision_write(want[..],wanted[..]);an:=rtr_decision_write(actual[..],encoded[..]);if wn<1 || an!=wn || cast(string)wanted[0..<wn]!=cast(string)encoded[0..<an] {return false;}
+ s:=q[0].stations[0];agent:=s.agents[ca_index(b.engine)];return ctt_admit(t,CttFacts.{ok=d[0].ok,station=d[0].station,engine=d[0].engine,needs=d[0].needs,weight=d[0].weight,host=cast(string)host[..],at=s.reported_at_ms,os=s.os,apple=s.apple_builds,gpu=s.gpu!="",installed=agent.installed,logged_in=agent.logged_in,quota=agent.quota_used_up,cooldown=agent.cooldown,keep_clear=s.keep_clear,nothing_heavy=s.nothing_heavy,disk_free=s.disk_free_mb,disk_floor=s.disk_floor_mb,work=s.work,max_agents=s.max_agents});
+}
+ctt_write :: (t:CttTask,out:[]u8)->int #export_c #effects(all) {
+ if !ctt_valid(t) {return -1;}binding:[8192]u8;offer:[XO_MAX]u8;bn:=ex_binding_write(t.binding,binding[..]);on:=xo_write(t.offer,offer[..]);if bn<1 || on<1 {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CTT_SCHEMA);jo_key(o[..],"binding");jo_raw(o[..],cast(string)binding[0..<bn]);jo_key(o[..],"decision");jo_raw(o[..],t.decision);jo_key(o[..],"report");jo_raw(o[..],t.report);jo_key(o[..],"offer");jo_raw(o[..],cast(string)offer[0..<on]);jo_key(o[..],"enrollment_sha256");jo_str(o[..],t.enrollment);jo_key(o[..],"selection_reason");jo_str(o[..],t.reason);jo_key(o[..],"dispatch_decision");jo_raw(o[..],t.dispatch);jo_end(o[..]);n:=ex_encoded(o[..]);return ifx n>CTT_MAX then -1 else n;
+}
+ctt_read :: (raw:string,out:[]CttTask,arena:[]u8)->bool #export_c #effects(all) {
+ d:[1]Jv;nodes:[4096]JvNode;keys:=[8]string.["schema","binding","decision","report","offer","enrollment_sha256","selection_reason","dispatch_decision"];
+ if out.count<1 || arena.count<CTT_ARENA || raw.count>CTT_MAX || !jv_parse(d[..],raw,nodes[..]) || !js_fields(d[0],0,keys[..]) || jv_len(d[0],0)!=keys.count || jv_raw(d[0],jv_get(d[0],0,"schema"))!=CTT_SCHEMA {return false;}
+ t:CttTask;b:[1]ExBinding;offer:[1]XoOffer;
+ if !ex_binding_read(jv_raw(d[0],jv_get(d[0],0,"binding")),b[..],arena[0..<2048]) || !xo_read(jv_raw(d[0],jv_get(d[0],0,"offer")),offer[..],arena[2048..<18432]) {return false;}
+ a:=[1]ExArena.[ExArena.{buf=arena[18432..<arena.count]}];t.binding=b[0];t.offer=offer[0];t.decision=jv_raw(d[0],jv_get(d[0],0,"decision"));t.report=jv_raw(d[0],jv_get(d[0],0,"report"));t.enrollment=ex_string(d[0],0,"enrollment_sha256",a[..]);t.reason=ex_string(d[0],0,"selection_reason",a[..]);t.dispatch=jv_raw(d[0],jv_get(d[0],0,"dispatch_decision"));
+ if a[0].bad || !ctt_valid(t) {return false;}out[0]=t;return true;
+}

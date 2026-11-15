@@ -1,0 +1,12 @@
+{
+  "task": {
+    "schema":"openagents.chat.task.v1alpha1",
+    "binding":{"schema":"openagents.environment.execution.binding.v1alpha1","task_id":"0123456789abcdef0123456789abcdef","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","route_id":"0123456789abcdef0123456789abcdef","host_pubkey":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","workspace_id":"default","session_id":"0123456789abcdef0123456789abcdef","command_id":"0123456789abcdef0123456789abcdef","engine_id":"codex","account_id":"system","model_id":"gpt-6-astra","effort_id":"high","input_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","input_bytes":201,"report_sha256":"b91a39faed624288f9c58a867feaf71483956537d81bcc64fb2112d22ee74fcb","report_observed_at_ms":999,"issued_at_ms":1000,"expires_at_ms":301000},
+    "decision":{"schema":"openagents.router.decision.v1alpha1","ok":true,"station":"0123456789abcdef0123456789abcdef","engine":"codex","effort":"high","door":"none"},
+    "report":{"schema":"openagents.router.station.v1alpha1","host_pubkey":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","station":{"station_id":"test-mac","display_name":"Test Mac","reported_at_ms":999,"os":"macos","cpu_cores":8,"memory_total_mb":8192,"memory_free_mb":4096,"disk_free_mb":90000,"disk_floor_mb":1000,"apple_builds":true,"agents":[{"engine":"codex","installed":true,"logged_in":true}]}},
+    "offer":{"schema":"openagents.environment.execution.offer.v1alpha1","host_pubkey":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","workspace_id":"default","probe_id":"0123456789abcdef0123456789abcdef","engine_id":"codex","account_id":"system","state":"ready","error_code":"","observed_at_ms":999,"expires_at_ms":30999,"models":[{"model_id":"gpt-6-astra","display_name":"Actual native model","effort_ids":["high"]}]},
+    "enrollment_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "selection_reason":"Resolved against the actual native offer",
+    "dispatch_decision":{"schema":"openagents.router.decision.v1alpha1","ok":true,"station":"test-mac","engine":"codex","model":"gpt-6-astra","effort":"high","door":"none"}
+  }
+}

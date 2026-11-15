@@ -49,6 +49,8 @@ openagents chat stop "$TURN_ID" --operation-id stop-turn
 openagents chat events "$TURN_ID" --after 3
 openagents chat context "$TURN_ID"
 openagents chat input "$TURN_ID"
+openagents chat native-input "$TURN_ID"
+openagents chat task "$TURN_ID"
 ```
 
 For a Project, pass `--project "$P" --project-rev N` to both `new` and `send`.
@@ -60,6 +62,10 @@ leaves execution with the resident worker; follow again to reconcile. `--json`
 follow emits a snapshot and subsequent event pages as JSON Lines. `show` uses
 `next_cursor` as its next `--after`; list uses `next_cursor` as `--cursor`.
 Stop requests cancellation; inspect/follow the turn for its authoritative result.
+`native-input` reads the complete canonical context/history captured when the
+turn was admitted. `task` reads its immutable native task association when one
+exists; it returns 404 before association. Both use the same private account
+profile as the other chat commands. Neither command starts work.
 
 ## Native task controls
 

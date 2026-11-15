@@ -4,6 +4,8 @@
 #load "cli_harness.coax";
 #load "../account-chat-input.coax";
 #load "../projects-wire.coax";
+#load "../account-chat-task-wire.coax";
+#load "../../../lib/text/base64.coax";
 dc_z :: (b:[]u8)->string {n:=0;while n<b.count && b[n]!=0 {n+=1;}return cast(string)b[0..<n];}
 dc_get :: (t:[]Ap,auth:string,path:string,id:string,after:int)->int {q:[1]Sb;sb(q[..],path);sb(q[..],"?id=");sb(q[..],id);sb(q[..],"&after=");sb_int(q[..],after);return ac_call(t,"GET",sb_text(q[..]),"",auth,"","");}
 dc_post :: (t:[]Ap,auth:string,op:string,conversation:string,rev:int,project:string,pr:int,text:string)->int {b:[131072]u8;one:=[1]string.[text];n:=ct_submit_write(op,conversation,rev,project,pr,"",-1,one[..],b[..]);return ac_call(t,"POST","/api/chat/submit/v2alpha1",cast(string)b[0..<n],auth,"","");}
@@ -22,6 +24,20 @@ dc_cli_followed :: (raw:string,turn:string)->bool {
  for at:0..<raw.count+1 {if at==raw.count || raw[at]=='\n' {if at>start {line:=raw[start..<at];if first {if !ctr_turn_read(line,v[..],i[..],arena[..]) {return false;}first=false;}else if !ctr_page_apply(line,v[..],p[..]) {return false;}}start=at+1;}}
  return !first && cast(string)v[0].turn[..]==turn && v[0].state==CT_COMPLETED && ct_view_text(v[..])=="Hello world";
 }
+// A stored association fixture exercises the read contract only. The server's
+// native dispatch acceptance is a separate real HOST journey, not this row.
+dc_task_association :: (t:[]Ap,c:[]Sc,account:string,conversation:string,turn:string,native:string,stranger:string) {
+ fixture:[98304]u8;fn:=fs_read("proto/coder/chat-task-v1alpha1.json",fixture[..]);j:[1]Jv;nodes:[4096]JvNode;task:[1]CttTask;arena:[CTT_ARENA]u8;
+ if fn<1 || !jv_parse(j[..],cast(string)fixture[0..<fn],nodes[..]) || !ctt_read(jv_raw(j[0],jv_get(j[0],0,"task")),task[..],arena[..]) {ap_check(t,"the inert task association fixture is valid",false,"");return;}
+ task[0].binding.turn=turn;task[0].binding.conversation=conversation;task[0].binding.task=cast(string)turn[4..<turn.count];hash:[64]u8;_=S_hex(S_hash(native),hash[..]);task[0].binding.input_hash=cast(string)hash[..];task[0].binding.input_bytes=native.count;task[0].reason="Inert HTTP association fixture; no task was started";
+ raw:[CTT_MAX]u8;n:=ctt_write(task[0],raw[..]);b64:[CTT_MAX*2]u8;bn:=ifx n>0 then b64_encode(cast(string)raw[0..<n],b64[..]) else -1;if bn<1 {ap_check(t,"the owned task association fixture is canonical",false,"");return;}
+ q:[1]Sb;sb(q[..],"INSERT INTO chat.turn_tasks_v1(account,turn,record,created_ms,updated_ms) VALUES('");sb(q[..],account);sb(q[..],"','");sb(q[..],turn);sb(q[..],"',convert_from(decode('");sb(q[..],cast(string)b64[0..<bn]);sb(q[..],"','base64'),'UTF8'),1,1)");ap_do(t,sb_text(q[..]));
+ inspect:=[3]string.["chat","task",turn];st:=sc_cli(t,c,inspect[..]);again:[1]CttTask;again_arena:[CTT_ARENA]u8;
+ ap_check(t,"the built CLI reads the owned primary task association with exact admitted input identity",st==0 && ctt_read(sc_text(c),again[..],again_arena[..]) && again[0].binding.turn==turn && again[0].binding.conversation==conversation && again[0].binding.input_hash==cast(string)hash[..] && sc_text(c)==cast(string)raw[0..<n],sc_text(c));
+ ap_check(t,"another account cannot inspect a retained native association",dc_get(t,stranger,"/api/chat/turn-task/v1alpha1",turn,0)==404,ap_body(t));
+ sb_clear(q[..]);sb(q[..],"UPDATE chat.turn_tasks_v1 SET record='{}' WHERE account='");sb(q[..],account);sb(q[..],"' AND turn='");sb(q[..],turn);sb(q[..],"'");ap_do(t,sb_text(q[..]));st=sc_cli(t,c,inspect[..]);ap_check(t,"corrupt retained associations are refused rather than sent as task facts",st!=0 && ap_has(sc_text(c),"503"),sc_text(c));
+ sb_clear(q[..]);sb(q[..],"DELETE FROM chat.turn_tasks_v1 WHERE account='");sb(q[..],account);sb(q[..],"' AND turn='");sb(q[..],turn);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+}
 dc_cli_checks :: (t:[]Ap,stranger:string) {
  c:[1]Sc;c[0].cli=ap_env(t,"CLI");dir:[1024]u8;c[0].dir=fs_temp("durable-cli",dir[..]);path:[1100]u8;key:=fs_join(c[0].dir,"key",path[..]);pub:[128]u8;pk:=ac_newkey(t,key,pub[..]);if !sc_key(c[..],key) || pk.count!=64 {ap_check(t,"durable CLI key is created privately",false,"");return;}
  q:[1]Sb;sb(q[..],"SELECT acct FROM auth.account_for_key('");sb(q[..],pk);sb(q[..],"','Durable CLI fixture')");owner:[80]u8;account:=ap_sql(t,sb_text(q[..]),owner[..]);sb_clear(q[..]);sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
@@ -36,12 +52,17 @@ dc_cli_checks :: (t:[]Ap,stranger:string) {
  sb_clear(q[..]);sb(q[..],"SELECT count(*) FROM chat.turns_v2 WHERE conversation='");sb(q[..],cid);sb(q[..],"' AND snapshot_json::jsonb#>>'{data,instructions_sha256}'=encode(sha256(convert_to('Answer in violet prose.','UTF8')),'hex') AND input_json LIKE '%Answer in violet prose.%'");count:[80]u8;ap_check(t,"both real CLI calls pin the actual Project instructions",ap_sql(t,sb_text(q[..]),count[..])=="2","");
  inspect:=[3]string.["chat","context",tid];st=sc_cli(t,c[..],inspect[..]);saved:[4096]u8;sn:=js_copy(saved[..],sc_text(c[..]));ap_check(t,"CLI reads the immutable admitted Project context",st==0 && sn>0 && ap_member_int(sc_text(c[..]),"data.project_revision",-1)==1 && ap_has(sc_text(c[..]),cid),sc_text(c[..]));
  inspect[1]="input";st=sc_cli(t,c[..],inspect[..]);input:[4096]u8;in_n:=js_copy(input[..],sc_text(c[..]));ap_check(t,"CLI reads the exact admitted gateway input",st==0 && in_n>0 && ap_has(sc_text(c[..]),"Answer in violet prose.") && ap_has(sc_text(c[..]),"A durable Project question"),sc_text(c[..]));
+ inspect[1]="native-input";st=sc_cli(t,c[..],inspect[..]);native:[8192]u8;native_n:=js_copy(native[..],sc_text(c[..]));decoded:[1]ExInput;
+ ap_check(t,"the CLI reads complete admitted native history through its primary codec",st==0 && native_n>0 && ex_input_read(sc_text(c[..]),decoded[..]) && decoded[0].n==3 && ex_input_text(decoded[..],0)=="A durable Project question" && ex_input_text(decoded[..],1)=="Hello world" && ex_input_text(decoded[..],2)=="A durable Project question" && cast(string)decoded[0].instructions[0..<decoded[0].ni]=="Answer in violet prose.",sc_text(c[..]));
  ap_check(t,"another account cannot inspect private admitted context",dc_get(t,stranger,"/api/chat/context/v2alpha1",tid,0)==404,ap_body(t));
  ap_check(t,"another account cannot inspect private model input",dc_get(t,stranger,"/api/chat/input/v2alpha1",tid,0)==404,ap_body(t));
+ ap_check(t,"another account cannot inspect admitted native history",dc_get(t,stranger,"/api/chat/native-input/v1alpha1",tid,0)==404,ap_body(t));
  proj:=[3]string.["projects","show",project];st=sc_cli(t,c[..],proj[..]);ap_check(t,"Project chat count includes one rich conversation and ignores its extra turn",st==0 && ap_member_int(sc_text(c[..]),"data.counts.conversations",-1)==1 && ap_member_int(sc_text(c[..]),"data.revision",-1)==1,sc_text(c[..]));
  updatedb:[1100]u8;updated:=sc_file(c[..],"new-instructions","Answer in green prose.",updatedb[..]);edit:=[7]string.["projects","instructions",project,"--rev","1","--file",updated];st=sc_cli(t,c[..],edit[..]);ap_check(t,"Project instructions can change after admission",st==0,sc_text(c[..]));
  inspect[1]="context";st=sc_cli(t,c[..],inspect[..]);ap_check(t,"changing Project instructions preserves the historical context bytes",st==0 && sc_text(c[..])==cast(string)saved[0..<ifx sn>0 then sn else 0],sc_text(c[..]));
  inspect[1]="input";st=sc_cli(t,c[..],inspect[..]);ap_check(t,"changing Project instructions preserves the historical model input bytes",st==0 && sc_text(c[..])==cast(string)input[0..<ifx in_n>0 then in_n else 0] && !ap_has(sc_text(c[..]),"Answer in green prose."),sc_text(c[..]));
+ inspect[1]="native-input";st=sc_cli(t,c[..],inspect[..]);ap_check(t,"changing Project instructions preserves every admitted native input byte",st==0 && sc_text(c[..])==cast(string)native[0..<ifx native_n>0 then native_n else 0],sc_text(c[..]));
+ if native_n>0 {dc_task_association(t,c[..],account,cid,tid,cast(string)native[0..<native_n],stranger);}
  _=fs_remove(c[0].dir);
 }
 dc_worker :: (t:[]Ap)->int {
@@ -207,6 +228,10 @@ dc_checks :: (t:[]Ap,mail:string) {
  ap_check(t,"input inspection requires account authentication",dc_get(t,"","/api/chat/input/v2alpha1",turn,0)==401,ap_body(t));
  ap_check(t,"ordinary turns have no invented Project context",dc_get(t,auth,"/api/chat/context/v2alpha1",turn,0)==404,ap_body(t));
  st=dc_get(t,auth,"/api/chat/input/v2alpha1",turn,0);ap_check(t,"admitted input inspection returns exact text privately",st==200 && ap_has(ap_body(t),"First café") && ap_has(ac_head(t),"private, no-store"),ap_body(t));
+ native:[1]ExInput;st=dc_get(t,auth,"/api/chat/native-input/v1alpha1",turn,0);ap_check(t,"the same transaction retains canonical complete native input",st==200 && ex_input_read(ap_body(t),native[..]) && native[0].n==1 && ex_input_text(native[..],0)=="First café" && ap_has(ac_head(t),"private, no-store"),ap_body(t));
+ ap_check(t,"native input inspection requires authentication",dc_get(t,"","/api/chat/native-input/v1alpha1",turn,0)==401,ap_body(t));
+ ap_check(t,"a turn has no invented native task association",dc_get(t,auth,"/api/chat/turn-task/v1alpha1",turn,0)==404,ap_body(t));
+ ap_check(t,"task association inspection requires authentication",dc_get(t,"","/api/chat/turn-task/v1alpha1",turn,0)==401,ap_body(t));
  ap_check(t,"another account cannot replay private events",dc_get(t,stranger,"/api/chat/events/v2alpha1",turn,0)==404,ap_body(t));
  ap_check(t,"another account cannot cancel a private turn",dc_stop(t,stranger,"steal",turn)==404,ap_body(t));
  st=dc_get(t,stranger,"/api/chat/conversations/v2alpha1","",0);ap_check(t,"another account's history excludes this conversation",st==200 && !ap_has(ap_body(t),conversation),ap_body(t));

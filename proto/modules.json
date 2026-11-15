@@ -247,6 +247,9 @@
     "account-identity": [
       "openagents/account/identity/v1/identity.proto"
     ],
+    "chat-task": [
+      "openagents/chat/task/v1alpha1/task.proto"
+    ],
     "chat-turn": [
       "openagents/chat/v2alpha1/conversation.proto",
       "openagents/chat/v2alpha1/service.proto"
@@ -439,6 +442,12 @@
     ],
     "account-identity": [
       "openagents.account.identity.v1"
+    ],
+    "chat-task": [
+      "openagents.chat.task.v1alpha1",
+      "openagents.environment.execution.v1alpha1",
+      "openagents.router.v1alpha1",
+      "openagents.options.v1alpha1"
     ],
     "chat-turn": [
       "openagents.chat.v2alpha1",

@@ -1,0 +1,47 @@
+ctt_policy_test :: ()->CttTask #effects(all) {
+ // Fixed independently computed SHA avoids borrowing a scratch digest that
+ // subsequent hostile-input cases overwrite.
+ b:=ex_test_binding();b.report_hash="845e91831319e89c4d656bdb80c278ac09a7230d61e5dfd2e1b1fbb436ac8917";o:=xo_test_offer();o.host=b.host;o.probe=b.route;o.engine=b.engine;o.account=b.account;o.state=XO_READY;o.observed=999;o.expires=30999;o.n=1;o.models[0]=XoModel.{id=b.model,label="Actual model",n=1};o.models[0].levels[0]=b.effort; // mutant: equivalent (fixture host/probe/account assignments repeat xo_test_offer defaults; observed 999 to 1000 and expiry 30999 to 31000 preserve the fixture's live window at issued=1000)
+ return CttTask.{binding=b,decision="decision",report="report",offer=o,enrollment=EX_TEST_HASH,reason="Selected from the native offer"};
+}
+#test "native association checks exact report ages offer endpoints and byte limits" #steps 50000000 {
+ hash:[64]u8;t:=ctt_policy_test();f:=ctt_facts_test();a:=t;
+ #assert f.disk_free==100 && f.disk_floor==100;
+ a.offer.host="1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";#assert !ctt_admit(a,f);a=t;a.offer.workspace="other";#assert !ctt_admit(a,f);a=t;a.offer.engine="claude";#assert !ctt_admit(a,f);
+ a=t;a.offer.observed=a.binding.issued;#assert ctt_admit(a,f);a=t;a.offer.expires=a.binding.issued;#assert ctt_admit(a,f);
+ a=t;a.binding.issued=120999;a.binding.expires=420999;a.offer.observed=120999;a.offer.expires=150999;#assert ctt_admit(a,f);a.binding.issued=121000;#assert !ctt_admit(a,f);
+ long:[16385]u8;for i:0..<long.count {long[i]='x';}
+ a=t;a.reason=cast(string)long[0..<1024];#assert ctt_admit(a,f);a.reason=cast(string)long[0..<1025];#assert !ctt_admit(a,f);a.reason="\0";#assert !ctt_admit(a,f);
+ a=t;a.decision=cast(string)long[0..<16384];#assert ctt_admit(a,f);a.decision=cast(string)long[..];#assert !ctt_admit(a,f);
+ a=t;a.report=cast(string)long[0..<16384];_=S_hex(S_hash(a.report),hash[..]);a.binding.report_hash=cast(string)hash[..];#assert ctt_admit(a,f);a.report=cast(string)long[..];_=S_hex(S_hash(a.report),hash[..]);#assert !ctt_admit(a,f);
+ a=t;a.offer.models[0].n=0;#assert !ctt_admit(a,f);a=t;a.offer.models[0].label="";#assert !ctt_admit(a,f);
+ a=t;a.reason="x";#assert ctt_admit(a,f);
+ #assert ctt_station(EX_TEST_HASH)=="0123456789abcdef0123456789abcdef";
+ a=t;a.binding.turn="bad";#assert !ctt_owned(a,"bad",a.binding.conversation);a=t;a.binding.conversation="bad";#assert !ctt_owned(a,a.binding.turn,"bad");
+ #assert !ctt_owned(t,t.binding.turn,"bad");
+}
+#test "native facts admit explicit zero capacities Linux and every supported need and weight" {
+ hash:[64]u8;t:=ctt_policy_test();f:=ctt_facts_test();f.os="linux";f.apple=false;f.disk_floor=0;f.disk_free=0;f.work=0;f.max_agents=0;#assert ctt_admit(t,f);
+ for need:[4]string.["","this_computer","gpu","apple"] {a:=f;a.needs=need;a.gpu=true;if need=="apple" {a.os="macos";a.apple=true;}#assert ctt_admit(t,a);}
+ for weight: -1..<3 {a:=f;a.weight=weight;#assert ctt_admit(t,a);a.nothing_heavy=true;#assert ctt_admit(t,a)==(weight==0 || weight==1);}
+ f.max_agents=2;f.work=1;#assert ctt_admit(t,f);f.work=2;#assert !ctt_admit(t,f);f.work=3;#assert !ctt_admit(t,f);
+}
+ctt_facts_test :: ()->CttFacts #effects(all) {return CttFacts.{ok=true,station=ctt_station(EX_TEST_HASH),engine="codex",host=EX_TEST_HASH,at=999,os="macos",apple=true,installed=true,logged_in=true,disk_free=100,disk_floor=100};}
+#test "associated native execution requires the exact ready offered model effort and account" {
+ hash:[64]u8;t:=ctt_policy_test();f:=ctt_facts_test();#assert ctt_admit(t,f);
+ a:=t;a.binding.host="bad";#assert !ctt_admit(a,f);a=t;a.binding.account=EX_TEST_ID;#assert !ctt_admit(a,f);a=t;a.binding.model="unoffered";#assert !ctt_admit(a,f);a=t;a.binding.effort="low";#assert !ctt_admit(a,f);a=t;a.offer.state=XO_WARM;a.offer.n=0;#assert !ctt_admit(a,f);
+ a=t;a.offer.observed=1001;#assert !ctt_admit(a,f);a=t;a.offer.expires=999;#assert !ctt_admit(a,f);a=t;a.binding.report_hash=EX_TEST_HASH;#assert !ctt_admit(a,f);a=t;a.reason="";#assert !ctt_admit(a,f);a=t;a.enrollment="bad";#assert !ctt_admit(a,f);
+ a=t;a.binding.effort="";a.offer.models[0].n=0;#assert ctt_admit(a,f);#assert ctt_station("bad")=="";
+ a=t;a.offer.probe="11111111111111111111111111111111";#assert !ctt_admit(a,f);
+ #assert ctt_owned(t,t.binding.turn,t.binding.conversation) && !ctt_owned(t,"trn_11111111111111111111111111111111",t.binding.conversation) && !ctt_owned(t,t.binding.turn,"cnv_11111111111111111111111111111111") && !ctt_owned(t,"bad",t.binding.conversation);
+}
+#forall "no report or routing fact can stand in for another host or permission" bits:0..<128 {
+ hash:[64]u8;t:=ctt_policy_test();f:=ctt_facts_test();f.ok=(bits&1)!=0;f.installed=(bits&2)!=0;f.logged_in=(bits&4)!=0;f.quota=(bits&8)!=0;f.cooldown=(bits&16)!=0;f.keep_clear=(bits&32)!=0;f.nothing_heavy=(bits&64)!=0;f.weight=2;
+ #assert ctt_admit(t,f)==(bits==7);
+}
+#test "native resource freshness and Mac or GPU needs use checked report facts" {
+ hash:[64]u8;t:=ctt_policy_test();f:=ctt_facts_test();a:=f;a.station="other";#assert !ctt_admit(t,a);a=f;a.engine="claude";#assert !ctt_admit(t,a);a=f;a.host="other";#assert !ctt_admit(t,a);a=f;a.at=998;#assert !ctt_admit(t,a);
+ a=f;a.os="unknown";#assert !ctt_admit(t,a);a=f;a.disk_free=99;#assert !ctt_admit(t,a);a=f;a.disk_floor= -1;#assert !ctt_admit(t,a);a=f;a.work= -1;#assert !ctt_admit(t,a);a=f;a.max_agents= -1;#assert !ctt_admit(t,a);a=f;a.max_agents=1;#assert ctt_admit(t,a);a.work=1;#assert !ctt_admit(t,a);
+ a=f;a.needs="apple";#assert ctt_admit(t,a);a.apple=false;#assert !ctt_admit(t,a);a.apple=true;a.os="linux";#assert !ctt_admit(t,a);a=f;a.needs="gpu";#assert !ctt_admit(t,a);a.gpu=true;#assert ctt_admit(t,a);a.needs="other";#assert !ctt_admit(t,a);
+ a=f;a.weight= -2;#assert !ctt_admit(t,a);a.weight=3;#assert !ctt_admit(t,a);a.weight= -1;a.nothing_heavy=true;#assert !ctt_admit(t,a);a.nothing_heavy=false;#assert ctt_admit(t,a);
+}

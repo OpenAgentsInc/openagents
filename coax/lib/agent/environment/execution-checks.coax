@@ -1,30 +1,5 @@
 // Checks are loaded only by the codec's #test edge.
-EX_TEST_ID :: "0123456789abcdef0123456789abcdef";
-EX_TEST_HASH :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-ex_test_binding :: ()->ExBinding #effects(all) {
- return ExBinding.{task=EX_TEST_ID,conversation="cnv_0123456789abcdef0123456789abcdef",turn="trn_0123456789abcdef0123456789abcdef",route=EX_TEST_ID,host=EX_TEST_HASH,workspace="default",session=EX_TEST_ID,command=EX_TEST_ID,engine="codex",account="system",model="gpt-6-astra",effort="high",input_hash=EX_TEST_HASH,input_bytes=201,report_hash=EX_TEST_HASH,report_at=999,issued=1000,expires=301000};
-}
-ex_test_input :: (v:[]ExInput) #effects(all) {
- v[0]=ExInput.{};v[0].ni=js_copy(v[0].instructions[..],"Be brief.");v[0].nr=js_copy(v[0].reference[..],"Reference: café");
- v[0].n=3;messages:=[3]string.["Old question","Old answer","Run the checks."];
- for text,i:messages {v[0].starts[i]=v[0].bytes;v[0].counts[i]=js_copy(v[0].text[v[0].bytes..<v[0].text.count],text);v[0].bytes+=text.count;v[0].assistant[i]=i==1;}
-}
-// A syntax-valid field mutation through the shared JSON writer, never a second
-// product encoder. An empty replacement removes the field.
-ex_test_field :: (raw:string,key:string,replacement:string,out:[]u8)->string #effects(all) {
- d:[1]Jv;nodes:[512]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return "";}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
- for i:0..<jv_len(d[0],0) {at:=jv_at(d[0],0,i);name:=jv_key(d[0],at);if name==key {if replacement.count>0 {jo_key(o[..],name);jo_raw(o[..],replacement);}}else {jo_key(o[..],name);jv_write(d[0],at,o[..]);}}
- jo_end(o[..]);return jo_text(o[..]);
-}
-// jv_get compares decoded keys, while the closed-shape check requires literal
-// canonical keys. An escaped spelling must not bypass that shape check.
-ex_test_alias :: (raw:string,key:string,out:[]u8)->string #effects(all) {
- d:[1]Jv;nodes:[512]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return "";}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);hex:="0123456789abcdef";
- for i:0..<jv_len(d[0],0) {at:=jv_at(d[0],0,i);name:=jv_key(d[0],at);
-  if name==key {jo_put(o[..],"\"\\u00");c:=cast(int)key[0];jo_put(o[..],cast(string)hex[c/16..<c/16+1]);jo_put(o[..],cast(string)hex[c%16..<c%16+1]);jo_put(o[..],cast(string)key[1..<key.count]);jo_put(o[..],"\":");}
-  else {jo_key(o[..],name);}jv_write(d[0],at,o[..]);
- }jo_end(o[..]);return jo_text(o[..]);
-}
+#load "execution-fixtures.coax";
 #test "escaped-key fixtures have exact independent bytes and retain every other field" {
  out:[1024]u8;raw:="{\"task_id\":\"x\",\"count\":1}";
  #assert ex_test_alias(raw,"task_id",out[..])=="{\"\\u0074ask_id\":\"x\",\"count\":1}";

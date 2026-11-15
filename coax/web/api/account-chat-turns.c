@@ -4,6 +4,7 @@
 #include "api.h"
 #include "account-chat-wire.generated.h"
 #include "projects-wire.generated.h"
+#include "environment-process.h"
 #include <stdlib.h>
 #include <string.h>
 #define CT_CAP (1u<<20)
@@ -37,8 +38,8 @@ static bool operation_lock(PGconn *db,const char *account,const char *operation)
 static int operation(PGconn *db,const char *account,const char *op,const char *path,const char *hash,char id[37]){const char *p[]={account,op};PGresult *r=PQexecParams(db,"SELECT path,digest,turn FROM chat.turn_operations_v2 WHERE account=$1 AND operation=$2",2,NULL,p,NULL,NULL,0);if(!tuples(r)){PQclear(r);return -1;}bool found=PQntuples(r)>0;int result=(int)ct_operation(found,found&&!strcmp(PQgetvalue(r,0,0),path)&&!strcmp(PQgetvalue(r,0,1),hash));if(found&&result==2)snprintf(id,37,"%s",PQgetvalue(r,0,2));PQclear(r);return result;}
 static bool operation_save(PGconn *db,const char *account,const char *op,const char *path,const char *hash,const char *id){const char *p[]={account,op,path,hash,id};return exec_sql(db,"INSERT INTO chat.turn_operations_v2(account,operation,path,digest,turn) VALUES($1,$2,$3,$4,$5)",5,p);}
 static void submit(const request *q,PGconn *db,const auth_principal *p){
- coax_t_CtSubmit *s=calloc(1,sizeof *s);coax_t_CtInput *h=calloc(1,sizeof *h);coax_t_CtView *v=calloc(1,sizeof *v);unsigned char *out=calloc(1,CT_CAP+1),arena[174];project_context context={0};PGresult *c=NULL,*r=NULL;int status=503;const char *why="Chat storage unavailable.";bool tx=false;char op[81]="",cid[37]="",tid[37]="",project[37]="",legacy[23]="",hash[65]="",title[161]="",ms[32],revision[32],legacy_revision[32];char *legacy_record=NULL,*canonical_request=NULL;
- if(!s||!h||!v||!out){goto done;}
+ coax_t_CtSubmit *s=calloc(1,sizeof *s);coax_t_CtInput *h=calloc(1,sizeof *h);coax_t_CtView *v=calloc(1,sizeof *v);unsigned char *out=calloc(1,CT_CAP+1),*native=calloc(1,CT_CAP+1),arena[174];project_context context={0};PGresult *c=NULL,*r=NULL;int status=503;const char *why="Chat storage unavailable.";bool tx=false;char op[81]="",cid[37]="",tid[37]="",project[37]="",legacy[23]="",hash[65]="",title[161]="",ms[32],revision[32],legacy_revision[32];char *legacy_record=NULL,*canonical_request=NULL;
+ if(!s||!h||!v||!out||!native){goto done;}
  if(!ct_submit_read(tn(q->body,q->body_len),(coax_v_t_CtSubmit){s,1},tb(arena,sizeof arena))){status=400;why="Invalid durable chat request.";goto done;}
  copy_string(op,sizeof op,s->operation);copy_string(cid,sizeof cid,s->conversation);copy_string(project,sizeof project,s->project);copy_string(legacy,sizeof legacy,s->legacy);
  int64_t n=cti_canonical(tn(q->body,q->body_len),tb(out,131072));if(n<1){status=400;goto done;}(void)pr_hash(tn(out,n),tb(hash,64));canonical_request=strndup((char *)out,(size_t)n);if(!canonical_request){goto done;}
@@ -58,14 +59,16 @@ static void submit(const request *q,PGconn *db,const auth_principal *p){
  if(active){status=409;why="This conversation already has an active turn.";goto done;}
  input=input&&cti_submit((coax_v_t_CtInput){h,1},tn(q->body,q->body_len));n=input?cti_write((coax_v_t_CtInput){h,1},ts(context.instructions),ts(context.reference),tb(out,CT_CAP)):-1;
  if(!ct_admit(true,true,p->limited,p->frozen!=0,active,n>0,true)){status=413;why="The complete conversation and Project context do not fit. Start a new conversation.";goto done;}out[n]=0;
+ int64_t native_n=ctn_input((coax_v_bool){h->roles.e,128},(coax_v_s64){h->starts.e,128},(coax_v_s64){h->counts.e,128},tn(h->data.e,h->bytes),h->n,ts(context.instructions),ts(context.reference),tb(native,CT_CAP));
+ if(native_n<1){status=413;why="The complete native conversation and Project context do not fit.";goto done;}native[native_n]=0;
  int64_t title_n=cti_title(tn(q->body,q->body_len),tb(title,160));if(title_n<0){goto done;}num(revision,before+1);num(legacy_revision,s->legacy_revision);
  if(fresh){const char *cv[]={cid,p->account,project,title,legacy,legacy_revision,legacy_record,ms};if(!exec_sql(db,"INSERT INTO chat.conversations_v2(id,account,project,revision,title,legacy_thread,legacy_revision,legacy_record,created_ms,updated_ms) VALUES($1,$2,nullif($3,''),1,$4,nullif($5,''),CASE WHEN $5<>'' THEN $6::bigint END,$7,$8::bigint,$8::bigint)",8,cv)){goto done;}}
  else {const char *cv[]={p->account,cid,revision,ms};if(!exec_sql(db,"UPDATE chat.conversations_v2 SET revision=$3::bigint,updated_ms=$4::bigint WHERE account=$1 AND id=$2",4,cv)){goto done;}}
- const char *tv[]={tid,p->account,cid,revision,op,hash,canonical_request,(char *)out,context.snapshot_id,context.snapshot,ms};
- if(!exec_sql(db,"INSERT INTO chat.turns_v2(id,account,conversation,ordinal,operation,digest,request_json,input_json,snapshot_id,snapshot_json,state,model,provider,effort,created_ms,updated_ms) VALUES($1,$2,$3,$4::bigint,$5,$6,$7,$8,nullif($9,''),$10,1,'google/gemini-4-hydrogen','google','low',$11::bigint,$11::bigint)",11,tv)||!operation_save(db,p->account,op,q->path,hash,tid)||!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;
+ const char *tv[]={tid,p->account,cid,revision,op,hash,canonical_request,(char *)out,context.snapshot_id,context.snapshot,ms,(char *)native};
+ if(!exec_sql(db,"INSERT INTO chat.turns_v2(id,account,conversation,ordinal,operation,digest,request_json,input_json,snapshot_id,snapshot_json,state,model,provider,effort,created_ms,updated_ms,native_input_json) VALUES($1,$2,$3,$4::bigint,$5,$6,$7,$8,nullif($9,''),$10,1,'google/gemini-4-hydrogen','google','low',$11::bigint,$11::bigint,$12)",12,tv)||!operation_save(db,p->account,op,q->path,hash,tid)||!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;
  r=turn_row(db,p->account,tid,false);n=control(r,v,out,CT_CAP);if(n<1){goto done;}(void)chat_wake();reply(q,202,out,(size_t)n);goto replied;
  done: if(tx)exec_sql(db,"ROLLBACK",0,NULL);refuse(q,status,why);
- replied: if(tx)exec_sql(db,"ROLLBACK",0,NULL);PQclear(c);PQclear(r);free(legacy_record);free(canonical_request);projects_context_free(&context);free(s);free(h);free(v);free(out);
+ replied: if(tx)exec_sql(db,"ROLLBACK",0,NULL);PQclear(c);PQclear(r);free(legacy_record);free(canonical_request);projects_context_free(&context);free(s);free(h);free(v);free(out);free(native);
 }
 static void stop_turn(const request *q,PGconn *db,const auth_principal *p){
  unsigned char opb[81]={0},id[37]={0};int64_t no=ct_stop_read(tn(q->body,q->body_len),tb(opb,80),tb(id,36));if(no<1){refuse(q,400,"Invalid Stop request.");return;}char hash[65]={0};unsigned char canonical[1024];int64_t canonical_n=ct_stop_write(tn(opb,no),tn(id,36),tb(canonical,sizeof canonical));if(canonical_n<1){refuse(q,400,"Invalid Stop request.");return;}(void)pr_hash(tn(canonical,canonical_n),tb(hash,64));
@@ -88,14 +91,16 @@ static void read_turn(const request *q,PGconn *db,const auth_principal *p,bool e
  done: refuse(q,status,why);
  finish: exec_sql(db,"ROLLBACK",0,NULL);PQclear(er);PQclear(r);free(out);free(v);
 }
-static void read_admitted(const request *q,PGconn *db,const auth_principal *p,bool context){
+static void read_admitted(const request *q,PGconn *db,const auth_principal *p,int kind){
  char id[64];api_query(q,"id",id,sizeof id);if(!cta_id(ts(id),true)){refuse(q,400,"Invalid turn.");return;}
- const char *args[]={p->account,id};PGresult *r=PQexecParams(db,context?"SELECT snapshot_json FROM chat.turns_v2 WHERE account=$1 AND id=$2":"SELECT input_json FROM chat.turns_v2 WHERE account=$1 AND id=$2",2,NULL,args,NULL,NULL,0);
+ const char *sql=kind==8?"SELECT snapshot_json FROM chat.turns_v2 WHERE account=$1 AND id=$2":kind==9?"SELECT input_json FROM chat.turns_v2 WHERE account=$1 AND id=$2":kind==10?"SELECT native_input_json FROM chat.turns_v2 WHERE account=$1 AND id=$2":"SELECT x.record,t.conversation FROM chat.turn_tasks_v1 x JOIN chat.turns_v2 t ON t.account=x.account AND t.id=x.turn WHERE x.account=$1 AND x.turn=$2";
+ const char *args[]={p->account,id};PGresult *r=PQexecParams(db,sql,2,NULL,args,NULL,NULL,0);
  if(!tuples(r)){refuse(q,503,"Chat storage unavailable.");}
  else if(PQntuples(r)!=1||PQgetisnull(r,0,0)||!PQgetlength(r,0,0)){refuse(q,404,"not found");}
  else if((size_t)PQgetlength(r,0,0)>CT_CAP){refuse(q,503,"Saved input exceeds its transport bound.");}
  // These bytes were composed by the sole Project/gateway codec at admission.
  // Inspection performs no reconstruction from the Project's current state.
+ else if(kind==11){coax_t_CttTask task;unsigned char arena[20480];bool valid=ctt_read(ts(PQgetvalue(r,0,0)),(coax_v_t_CttTask){&task,1},tb(arena,sizeof arena))&&ctt_owned(task,ts(id),ts(PQgetvalue(r,0,1)));if(valid)reply(q,200,PQgetvalue(r,0,0),(size_t)PQgetlength(r,0,0));else refuse(q,503,"Saved task association is invalid.");}
  else reply(q,200,PQgetvalue(r,0,0),(size_t)PQgetlength(r,0,0));
  PQclear(r);
 }
@@ -170,11 +175,11 @@ static void runner(const request *q,PGconn *db){
  if(r.operation==1)claim(q,db,key,op,worker);else dispatch_turn(q,db,key,id,fence,worker,r.operation==3);
 }
 bool account_chat_turn_route(const request *q){
- const char *path=q->path;int op=!strcmp(path,"/api/chat/submit/v2alpha1")?1:!strcmp(path,"/api/chat/stop/v2alpha1")?2:!strcmp(path,"/api/chat/turn/v2alpha1")?3:!strcmp(path,"/api/chat/events/v2alpha1")?4:!strcmp(path,"/api/chat/conversations/v2alpha1")?5:!strcmp(path,"/api/chat/conversation/v2alpha1")?6:!strcmp(path,"/api/chat/runner/v2alpha1")?7:!strcmp(path,"/api/chat/context/v2alpha1")?8:!strcmp(path,"/api/chat/input/v2alpha1")?9:0;if(!op)return false;
+ const char *path=q->path;int op=!strcmp(path,"/api/chat/submit/v2alpha1")?1:!strcmp(path,"/api/chat/stop/v2alpha1")?2:!strcmp(path,"/api/chat/turn/v2alpha1")?3:!strcmp(path,"/api/chat/events/v2alpha1")?4:!strcmp(path,"/api/chat/conversations/v2alpha1")?5:!strcmp(path,"/api/chat/conversation/v2alpha1")?6:!strcmp(path,"/api/chat/runner/v2alpha1")?7:!strcmp(path,"/api/chat/context/v2alpha1")?8:!strcmp(path,"/api/chat/input/v2alpha1")?9:!strcmp(path,"/api/chat/native-input/v1alpha1")?10:!strcmp(path,"/api/chat/turn-task/v1alpha1")?11:0;if(!op)return false;
  PGconn *db=api_db();if(!db){refuse(q,503,"Chat storage unavailable.");return true;}if(op==7){runner(q,db);return true;}
  const auth_principal *p=auth_principal_of(q);if(!p||!ctw_owns(p->kind,p->level,ts(p->account),ts(p->account))){refuse(q,401,"Log in first.");return true;}
  bool post=op<=2;if(strcmp(q->method,post?"POST":"GET")){refuse(q,405,post?"POST this":"GET this");return true;}if(post&&!auth_same_site(q)){refuse(q,403,"Cross-site write refused.");return true;}
- if(op==1)submit(q,db,p);else if(op==2)stop_turn(q,db,p);else if(op==3||op==4)read_turn(q,db,p,op==4);else if(op==5)conversation_index(q,db,p);else if(op==6)conversation_read(q,db,p);else read_admitted(q,db,p,op==8);return true;
+ if(op==1)submit(q,db,p);else if(op==2)stop_turn(q,db,p);else if(op==3||op==4)read_turn(q,db,p,op==4);else if(op==5)conversation_index(q,db,p);else if(op==6)conversation_read(q,db,p);else read_admitted(q,db,p,op);return true;
 }
 typedef struct {
  request response;char account[41],turn[37],dispatch[37],worker[81],key[65];

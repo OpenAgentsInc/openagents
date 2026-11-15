@@ -1,0 +1,46 @@
+// Account-owned native input, worker leases and enrollment identity. Runtime
+// effects supply facts; this module starts no agent and grants no HOST right.
+#load "../../lib/agent/environment/task-wire.coax";
+#load "../../lib/crypto/sha256-memory.coax";
+#load "../../../components/core/text.coax";
+#authority;
+#test "native admission copies the complete owned history through its primary input codec" {
+ roles:=[3]bool.[false,true,false];starts:=[3]int.[0,1,3];counts:=[3]int.[1,2,3];raw:[8192]u8;decoded:[1]ExInput;
+ n:=ctn_input(roles[..],starts[..],counts[..],"QéNow",3,"I","Ref",raw[..]);#assert n>0 && ex_input_read(cast(string)raw[0..<n],decoded[..]) && decoded[0].n==3 && ex_input_text(decoded[..],1)=="é" && ex_input_text(decoded[..],2)=="Now" && decoded[0].ni==1 && decoded[0].nr==3;
+ #assert ctn_input(roles[..],starts[..],counts[..],"QéNow!",3,"I","Ref",raw[..])<0;
+ starts[1]=2;#assert ctn_input(roles[..],starts[..],counts[..],"QéNow",3,"I","Ref",raw[..])<0;starts[1]=1;
+ #assert ctn_input(roles[0..<2],starts[..],counts[..],"QéNow",3,"I","Ref",raw[..])<0 && ctn_input(roles[..],starts[..],counts[..],"QéNow",0,"I","Ref",raw[..])<0;
+ #assert ctn_input(roles[..],starts[..],counts[..],"QéNow",3,"\0","Ref",raw[..])<0;
+}
+#forall "native worker claims preserve leases and only reclaim associated running work" state:0..<8 {
+ #assert ctn_claim(state,true,9,10,10)==(state==1 || state==2);
+ #assert ctn_claim(state,false,9,10,10)==(state==1);
+ #assert !ctn_claim(state,true,9,11,10) && !ctn_claim(state,true,11,10,10);
+}
+#test "scope and terminal observations are facts, not effects inferred from a connection" {
+ #assert ctn_scope(true,1,EX_TEST_HASH,EX_TEST_HASH) && !ctn_scope(false,1,EX_TEST_HASH,EX_TEST_HASH) && !ctn_scope(true,2,EX_TEST_HASH,EX_TEST_HASH) && !ctn_scope(true,1,"","") && !ctn_scope(true,1,EX_TEST_HASH,"other");
+ #assert ctn_outcome(XT_QUEUED)==0 && ctn_outcome(XT_RUNNING)==0 && ctn_outcome(XT_WAITING)==0;
+ #assert ctn_outcome(XT_COMPLETED)==1 && ctn_outcome(XT_FAILED)==2 && ctn_outcome(XT_CANCELED)==3 && ctn_outcome(XT_UNKNOWN)==4 && ctn_outcome(-1)==4 && ctn_outcome(7)==4;
+}
+#test "native read offsets keep complete UTF8 and never split an admitted byte range" {
+ text:="aéZ";#assert ctn_slice(text,0,2)==1 && ctn_slice(text,1,2)==2 && ctn_slice(text,1,1)==0 && ctn_slice(text,3,20)==1 && ctn_slice(text,4,1)==0 && ctn_slice(text,-1,1)== -1 && ctn_slice(text,5,1)== -1;
+ #assert ctn_slice(text,2,2)== -1 && ctn_slice(text,0,-1)== -1;
+}
+ctn_input :: (roles:[]bool,starts:[]int,counts:[]int,text:string,n:int,instructions:string,reference:string,out:[]u8)->int #export_c #effects(all) {
+ if n<1 || n>EX_MESSAGES || roles.count<n || starts.count<n || counts.count<n || text.count>EX_HISTORY_MAX {return -1;} // mutant: equivalent (131072 to 131073: js_copy refuses the oversized text arena and the primary Input validator independently refuses bytes above EX_HISTORY_MAX)
+ v:[1]ExInput;v[0].n=n;v[0].ni=js_copy(v[0].instructions[..],instructions);v[0].nr=js_copy(v[0].reference[..],reference);
+ for i:0..<n {if starts[i]!=v[0].bytes || counts[i]<1 || counts[i]>text.count-v[0].bytes {return -1;}v[0].assistant[i]=roles[i];v[0].starts[i]=starts[i];v[0].counts[i]=counts[i];v[0].bytes+=counts[i];} // mutant: equivalent (the two weakened range disjunctions and remaining-byte subtraction: this loop copies only scalar ranges; ex_input_valid independently checks contiguous positive spans against the complete copied text before encoding)
+ if v[0].bytes!=text.count {return -1;}_=js_copy(v[0].text[..],text);return ex_input_write(v[..],out);
+}
+ctn_claim :: (state:int,native:bool,due:int,until:int,now:int)->bool #export_c #effects(all) {return now>=0 && until<=now && due<=now && (state==1 || (state==2 && native));}
+ctn_scope :: (connected:bool,exclusive:int,expected:string,current:string)->bool #export_c #effects(all) {return connected && exclusive==1 && ea_id(expected,64) && expected==current;}
+ctn_outcome :: (state:int)->int #export_c #effects(all) {if state>=XT_QUEUED && state<=XT_WAITING {return 0;}if state==XT_COMPLETED {return 1;}if state==XT_FAILED {return 2;}if state==XT_CANCELED {return 3;}return 4;}
+ctn_slice :: (text:string,offset:int,cap:int)->int #export_c #effects(all) {
+ if offset<0 || offset>text.count || cap<0 || (offset<text.count && (text[offset]&192)==128) {return -1;}n:=0;while offset+n<text.count {r:=rune_at(text,offset+n);if r.len<1 || r.len>cap-n {break;}n+=r.len;}return n;
+}
+ctn_enrollment :: (host:string,grant:string,epoch:string,relay:string,out:[]u8)->bool #export_c #effects(all) {
+ if !ea_id(host,64) || !ea_id(grant,64) || epoch.count<1 || epoch.count>16 || relay.count>2048 {return false;} // mutant: equivalent (16 to 17: every canonical 17-digit epoch is above 9007199254740991; parsing 17 digits cannot overflow int64 and the value guard refuses it)
+ if epoch.count>1 && epoch[0]=='0' {return false;}value:=0;for c:epoch {if c<'0' || c>'9' {return false;}value=value*10+cast(int)(c-'0');}if value>9007199254740991 {return false;}
+ b:[2304]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],"openagents.chat.enrollment.v1\n");jo_put(o[..],host);jo_put(o[..],"\n");jo_put(o[..],grant);jo_put(o[..],"\n");jo_put(o[..],epoch);jo_put(o[..],"\n");jo_put(o[..],relay);return !o[0].bad && S_hex(S_hash(jo_text(o[..])),out);
+}
+#load "account-chat-task-checks.coax" #test;

@@ -1,0 +1,40 @@
+#test "enrollment identity uses the full original connection and canonical epoch" {
+ hash:[64]u8;changed:[64]u8;#assert ctn_enrollment(EX_TEST_HASH,EX_TEST_HASH,"0","wss://relay.openagents.com",hash[..]);
+ #assert ctn_enrollment(EX_TEST_HASH,EX_TEST_HASH,"1","wss://relay.openagents.com",changed[..]) && cast(string)hash[..]!=cast(string)changed[..];
+ for epoch:[6]string.["","01","-1","x","9007199254740992","00000000000000000"] {#assert !ctn_enrollment(EX_TEST_HASH,EX_TEST_HASH,epoch,"wss://relay.openagents.com",changed[..]);}
+ #assert !ctn_enrollment("bad",EX_TEST_HASH,"0","wss://relay.openagents.com",changed[..]) && !ctn_enrollment(EX_TEST_HASH,"bad","0","wss://relay.openagents.com",changed[..]) && !ctn_enrollment(EX_TEST_HASH,EX_TEST_HASH,"0","wss://relay.openagents.com",changed[0..<63]);
+}
+#test "native admission refuses incomplete spans and preserves all boundary history and context bytes" {
+ roles:[129]bool;starts:[129]int;counts:[129]int;text:[EX_HISTORY_MAX+1]u8;out:[EX_INPUT_MAX]u8;read:[1]ExInput;
+ for i:0..<text.count {text[i]='x';}for i:0..<129 {starts[i]=i;counts[i]=1;roles[i]=true;}roles[127]=false;
+ n:=ctn_input(roles[..],starts[..],counts[..],cast(string)text[0..<128],128,"","",out[..]);
+ #assert n>0 && ex_input_read(cast(string)out[0..<n],read[..]) && read[0].n==128 && ex_input_text(read[..],127)=="x" && read[0].assistant[0] && !read[0].assistant[127];
+ #assert ctn_input(roles[..],starts[..],counts[..],cast(string)text[0..<129],129,"","",out[..])<0;
+ roles[0]=false;starts[0]=0;counts[0]=1;
+ #assert ctn_input(roles[..],starts[0..<0],counts[..],"x",1,"","",out[..])<0 && ctn_input(roles[..],starts[..],counts[0..<0],"x",1,"","",out[..])<0;
+ counts[0]=0;#assert ctn_input(roles[..],starts[..],counts[..],"x",1,"","",out[..])<0;counts[0]= -1;#assert ctn_input(roles[..],starts[..],counts[..],"x",1,"","",out[..])<0;
+ counts[0]=2;#assert ctn_input(roles[..],starts[..],counts[..],"x",1,"","",out[..])<0;counts[0]=1;
+ #assert ctn_input(roles[..],starts[..],counts[..],"x",1,"","",out[0..<1])<0;
+ ctx:[32769]u8;for i:0..<ctx.count {ctx[i]='i';}
+ n=ctn_input(roles[..],starts[..],counts[..],"x",1,cast(string)ctx[0..<32768],"",out[..]);#assert n>0 && ex_input_read(cast(string)out[0..<n],read[..]) && read[0].ni==32768 && read[0].instructions[32767]=='i';
+ #assert ctn_input(roles[..],starts[..],counts[..],"x",1,cast(string)ctx[..],"",out[..])<0 && ctn_input(roles[..],starts[..],counts[..],"x",1,cast(string)ctx[0..<32768],"r",out[..])<0;
+ roles[0]=true;roles[1]=false;counts[0]=EX_HISTORY_MAX-1;starts[1]=EX_HISTORY_MAX-1;counts[1]=1;
+ n=ctn_input(roles[..],starts[..],counts[..],cast(string)text[0..<EX_HISTORY_MAX],2,"","",out[..]);#assert n>0 && ex_input_read(cast(string)out[0..<n],read[..]) && read[0].bytes==EX_HISTORY_MAX && read[0].counts[0]==EX_HISTORY_MAX-1;
+ counts[0]=EX_HISTORY_MAX;starts[1]=EX_HISTORY_MAX;#assert ctn_input(roles[..],starts[..],counts[..],cast(string)text[..],2,"","",out[..])<0;
+}
+#test "native worker clocks include zero and exact due and lease endpoints" {
+ #assert ctn_claim(1,false,0,0,0) && !ctn_claim(1,false,0,0,-1) && ctn_claim(2,true,10,10,10) && !ctn_claim(2,false,10,10,10);
+ #assert ctn_scope(true,1,EX_TEST_HASH,EX_TEST_HASH) && !ctn_scope(true,0,EX_TEST_HASH,EX_TEST_HASH) && !ctn_scope(true,1,"bad","bad");
+ #assert ctn_slice("",0,0)==0 && ctn_slice("é🌲Z",0,0)==0 && ctn_slice("é🌲Z",0,2)==2 && ctn_slice("é🌲Z",2,4)==4 && ctn_slice("é🌲Z",2,3)==0 && ctn_slice("é🌲Z",6,1)==1;
+}
+#test "enrollment hashes include every original field and retain maximum canonical values" {
+ base:[64]u8;other:[64]u8;relay:[2049]u8;for i:0..<relay.count {relay[i]='r';}
+ // Independently computed with Python hashlib, including all domain separators.
+ #assert ctn_enrollment(EX_TEST_HASH,EX_TEST_HASH,"0","wss://relay.openagents.com",base[..]) && cast(string)base[..]=="3631438c06876e0b555faf30678f102210da48285cd25729eca13a25ae755c78";
+ #assert ctn_enrollment("1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",EX_TEST_HASH,"0","wss://relay.openagents.com",other[..]) && cast(string)base[..]!=cast(string)other[..];
+ #assert ctn_enrollment(EX_TEST_HASH,"1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","0","wss://relay.openagents.com",other[..]) && cast(string)base[..]!=cast(string)other[..];
+ #assert ctn_enrollment(EX_TEST_HASH,EX_TEST_HASH,"0","wss://other.openagents.com",other[..]) && cast(string)base[..]!=cast(string)other[..];
+ for epoch:[4]string.["9","10","1000000000000000","9007199254740991"] {#assert ctn_enrollment(EX_TEST_HASH,EX_TEST_HASH,epoch,"",other[..]);}
+ for epoch:[4]string.["/",":","10000000000000000","9007199254740992"] {#assert !ctn_enrollment(EX_TEST_HASH,EX_TEST_HASH,epoch,"",other[..]);}
+ #assert ctn_enrollment(EX_TEST_HASH,EX_TEST_HASH,"0",cast(string)relay[0..<2048],other[..]) && !ctn_enrollment(EX_TEST_HASH,EX_TEST_HASH,"0",cast(string)relay[..],other[..]);
+}
