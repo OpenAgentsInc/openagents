@@ -1012,7 +1012,9 @@ at a time; a second one says which is running and stops.
    one baseline; every part repeats it, which is why a suite splits only
    when it has many files. Native code finds each mutant's killer and the
    evaluator confirms it (`coax/docs/native-mutants.md`). At
-   most six parts run at once (`--jobs`). A part stops after
+   most six parts run at once (`--jobs`), the ones that took longest the
+   night before first (a part with no time yet before them), so a long part
+   never starts last and holds the night open. A part stops after
    `--part-minutes` (180 by default, through `OA_REMOTE_TIMEOUT`) and the
    report says so; a part ran only when it reported every file it was given.
 3. Each part reads and rewrites its killers file in the checkout's

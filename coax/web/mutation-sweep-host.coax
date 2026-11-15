@@ -63,13 +63,20 @@ tool_main :: () -> int #export_c #effects(all) {
   print("mutation-sweep: % #authority files under % suites, in % parts, at most % at once, % minutes a part, at %\n", files, ns, np, jobs, minutes, head);
   next := 0; done := 0; failed := 0; t0 := proc_now_ms();
   line: [65536] u8; kp: [4096] u8; op: [4096] u8;
+  // the longest parts of the last night first (ms_order), from their kept outputs
+  last_secs: [MS_SUITES * MS_PARTS_MAX] int; order: [MS_SUITES * MS_PARTS_MAX] int;
+  for p: 0..<np {
+    k := fs_read(ms_part_file(state, "parts", suites[parts[p].suite].path, parts[p].part + 1, ".out", op[..]), big[..]);
+    last_secs[p] = ifx k > 0 then ms_command_secs(cast(string) big[0..<k]) else -1;
+  }
+  ms_order(last_secs[0..<np], order[0..<np]);
   outs: [MS_JOBS] MsText; out_b: [MS_JOBS] [MS_LANE] u8;
   lane_part: [MS_JOBS] int;
   for l: 0..<MS_JOBS { lane_part[l] = -1; outs[l].bytes = out_b[l][..]; }
   while done < np {
     for l: 0..<jobs {
       if lane_part[l] < 0 && next < np {
-        p := next; next += 1;
+        p := order[next]; next += 1;
         s := suites[parts[p].suite];
         h := proc_new();
         ok := h >= 0 && proc_cwd(h, root) && proc_arg(h, "coax/remote/remote.sh") && proc_arg(h, "run");

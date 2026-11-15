@@ -8,7 +8,7 @@
 //   2. each suite's files split into one part per eight files, at most --parts; each part is one
 //      `coax mutate SUITE --unit A --unit B ... --killers K` (one baseline for all its files,
 //      #13581) on the build pool (coax/remote/remote.sh run: its hosts, slots and spend cap),
-//      at most --jobs at once; K is that part's killers file from the last night, which the
+//      at most --jobs at once, the longest of the last night first (ms_order); K is that part's killers file from the last night, which the
 //      run then rewrites, so a night only repeats the checks that killed last time first.
 //      A part stops after --part-minutes (default 180; remote.sh's OA_REMOTE_TIMEOUT) and is
 //      reported as stopped; the native kills it found are in K already, so the next night resumes
@@ -393,6 +393,49 @@ ms_run :: (argv: [] string, dir: string, out: [] u8, status: [] int) -> int {
   status[0] = proc_wait(h, -1);
   d := proc_release(h);
   return n;
+}
+// The seconds a part's command took last time, from remote.sh's "slot S: checkout and compiler X s,
+// command N s" line in its kept output; -1 when there is none.
+ms_command_secs :: (out: string) -> int {
+  i := 0; secs := -1;
+  // At i == out.count the line is empty and matches nothing, so `<=` there changes nothing.
+  while i < out.count { // mutant: equivalent
+    j := i;
+    while j < out.count && out[j] != '\n' { j += 1; }
+    line := cast(string) out[i..<j]; i = j + 1;
+    if ms_starts(line, "remote: ") && ms_has(line, ": checkout and compiler ") { secs = ms_before(line, " s, status"); }
+  }
+  return secs;
+}
+// The order the parts start in: the longest last time first, so the long ones don't start last and
+// hold the night open; a part with no time yet (-1) before them, to learn it. Ties keep list order.
+ms_order :: (secs: [] int, order: [] int) {
+  for k: 0..<order.count { order[k] = k; }
+  for k: 1..<order.count {
+    x := order[k]; j := k;
+    while j > 0 && ms_before_in(secs[x], secs[order[j - 1]]) { order[j] = order[j - 1]; j -= 1; }
+    order[j] = x;
+  }
+}
+// Whether a part that took a seconds starts before one that took b: unknown first, then longer.
+ms_before_in :: (a: int, b: int) -> bool {
+  if a < 0 { return b >= 0; }
+  return b >= 0 && a > b;
+}
+#test "the parts that took longest start first, and one with no time yet before them" {
+  #assert ms_command_secs("remote: h slot 1: checkout and compiler 5 s, command 1090 s, status 1\nremote: h: 1100 s in all\n") == 1090;
+  #assert ms_command_secs("mutation scope: unit a.coax (x)\n") == -1 && ms_command_secs("remote: h: 9 s in all\n") == -1;
+  #assert ms_command_secs("remote: a slot 1: checkout and compiler 1 s, command 7 s, status 0\nremote: b slot 2: checkout and compiler 1 s, command 8 s, status 0") == 8;
+  #assert ms_command_secs("x\nremote: h slot 1: checkout and compiler 5 s, command 3 s, status 0\n") == 3;
+  secs := [6] int.[10, -1, 300, 10, 0, 299];
+  o := [6] int.[9, 9, 9, 9, 9, 9];
+  ms_order(secs[..], o[..]);
+  #assert o[0] == 1 && o[1] == 2 && o[2] == 5 && o[3] == 0 && o[4] == 3 && o[5] == 4;
+  #assert ms_before_in(-1, 5) && !ms_before_in(-1, -1) && !ms_before_in(5, -1) && ms_before_in(6, 5) && !ms_before_in(5, 5) && !ms_before_in(4, 5);
+  #assert ms_before_in(0, -1) == false && ms_before_in(1, 0) && ms_before_in(-1, 0);
+  one: [1] int; one_s := [1] int.[3];
+  ms_order(one_s[..], one[..]);
+  #assert one[0] == 0;
 }
 // path from root when it is under root (a part runs from the checkout's root on its host), else path.
 ms_rel :: (root: string, path: string) -> string {
