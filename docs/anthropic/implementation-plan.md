@@ -1,58 +1,52 @@
-# Anthropic compatible API implementation plan
+# Claude migration and OpenAgents Projects API plan
 
-Draft, November 14, 2026. Repository baseline: `d0da2e450e7d`.
+Draft, November 14, 2026. Repository baseline: `7d7d9e6f4604`.
 
-OpenAgents should expose an Anthropic-compatible HTTP API backed by the same
-Coax services that its own apps use. Start with Messages, streaming, model
-discovery and token counting; bring Projects into line with Claude's shared
-instructions, knowledge and private conversations alongside that work. Add
-Files, batches, Skills and managed agents as separately qualified capabilities.
-Each release must identify the endpoints, API versions and model features it
-actually supports.
+Make it easy for someone using Claude to move their work to OpenAgents: bring
+instructions, reference material and conversations, recognize the Project
+workflow, and start a useful new conversation quickly. OpenAgents owns the
+product and its API. Familiar behavior and a good migration experience are
+the goal; reproducing Anthropic's platform is not.
 
-The starting reference is [api.md](api.md). This plan adds an inventory of the
-current protocol and implementation, a Projects migration, and delivery gates.
-It proposes implementation work; it changes no published contract.
+Anthropic Compliance/Admin API parity and copying its internal Project fields
+are outside scope. An SDK adapter can be added when it helps a named
+customer move an integration, without governing the Projects data model or
+blocking the product. [api.md](api.md) remains background reference.
 
-## Compatibility scope and sources
+The schemas below are concrete proposed OpenAgents contracts, including every
+field in this Projects API scope. They are not installed endpoints. Implement
+them in `proto/` with their owning Coax codecs and consumers before publication;
+this document changes no existing wire shape.
 
-There are three related targets:
+## What we take from Claude and what we add
 
-| Target | What OpenAgents should match | Boundary |
+Claude Projects provide instructions used across project chats, reusable
+knowledge, several conversations, view/edit sharing and chat organization.
+Those are useful expectations to preserve. [Project workflow](https://support.claude.com/en/articles/9519177-how-can-i-create-and-manage-projects).
+A shared project does not automatically share personal conversations, and
+organization visibility differs from internet publication.
+[Sharing behavior](https://support.claude.com/en/articles/9519189-manage-project-visibility-and-sharing).
+
+| Capability | Decision for OpenAgents | Origin |
 | --- | --- | --- |
-| Claude API | HTTP paths, headers, JSON, SSE, errors and SDK behavior for supported features | A versioned compatibility adapter over OpenAgents services |
-| Claude app Projects | Project instructions, reusable knowledge, several conversations and access roles | An evolution of OpenAgents Projects, with an OpenAgents API |
-| Claude Platform Workspaces | Organization resources, API key scope, membership, usage and limits | A tenant and billing boundary, distinct from a Project or a filesystem checkout |
+| Name, description, instructions | Simple project creation; instructions apply to new turns across its conversations | Familiar from Claude |
+| Knowledge | Upload files or paste text once, reuse it across chats, show processing failures and let the user remove it | Familiar from Claude |
+| Conversations | Personal by default; explicitly shared conversations; attach, move, remove and archive | Familiar from Claude |
+| Access | Owner, editor and viewer; viewer can use context in a personal chat without editing shared resources | Familiar roles, our policy |
+| Sharing | Private or Workspace audience; public publishing is a separate explicit feature | Familiar privacy, our publication model |
+| Pinned projects | Per-account preference, not shared project metadata | Familiar from Claude |
+| Model choice | An offered model and effort, with truthful limits; no requirement to use Claude | OpenAgents choice |
+| Revisioned context | Inspect which instructions and knowledge revisions a turn used | OpenAgents addition |
+| Repositories and work | Link existing repository scope, work documents and task queues; reuse their owning services | OpenAgents addition |
+| Realms | Link a Project to its realms and existing authoring tools | OpenAgents addition |
+| Agents and environments | Attach explicitly authorized execution targets without giving every project member control of them | OpenAgents addition |
+| Import and export | Preview mappings, preserve provenance, continue imported chats, report missing files and export portable bundles | OpenAgents addition |
 
-The public Messages API is stateless with respect to application project
-context: the caller supplies its conversation and system content. An OpenAgents
-project turn can assemble project context before calling the same inference
-service. It must not silently inject project material into an ordinary
-`/v1/messages` request. [Messages reference](https://platform.claude.com/docs/en/api/http/messages/create).
-
-Use the official [HTTP reference](https://platform.claude.com/docs/en/api/http),
-[beta reference](https://platform.claude.com/docs/en/api/http/beta), and generated
-SDK resource types. Pin the initial SDK comparison to
-[`590783078cd961a0df698d9fddc0275c65ff3afd`](https://github.com/anthropics/anthropic-sdk-typescript/tree/590783078cd961a0df698d9fddc0275c65ff3afd)
-and its [API index](https://github.com/anthropics/anthropic-sdk-typescript/blob/590783078cd961a0df698d9fddc0275c65ff3afd/api.md).
-Before implementation, record per-file hashes, the selected Python SDK version,
-beta headers and fixture provenance in a source manifest under `proto/`.
-An endpoint count is not a coverage claim.
-
-Target `anthropic-version: 2026-10-21` first. Keep `2023-06-01` as a separate
-compatibility profile if required by clients; the existing outbound gateway
-uses that older version. The new version rejects `temperature`, `top_p` and
-`top_k`; it also changes several Admin API fields. Test each accepted version
-independently rather than treating its header as decoration.
-[API versions](https://platform.claude.com/docs/en/api/versioning).
-
-The reviewed SDK has project analytics, and the Enterprise Compliance API can
-retrieve and delete project content. These do not establish a general public
-Project authoring API. Our Project CRUD, context and conversation endpoints
-must be documented as OpenAgents extensions; do not reverse engineer Claude's
-private app endpoints to manufacture a compatibility claim.
-[SDK API index](https://github.com/anthropics/anthropic-sdk-typescript/blob/590783078cd961a0df698d9fddc0275c65ff3afd/api.md),
-[Compliance content API](https://platform.claude.com/docs/en/manage-claude/compliance-content-data).
+A Project needs no repository, realm, public slug, roadmap or execution host.
+Create one with a name, optionally paste instructions and attach knowledge,
+then chat. One canonical Project supports both this simple workflow and our
+additional capabilities. Extensions live in our schemas and services; there
+is no reduced parallel copy of a Project for another provider.
 
 ## Existing protocol and implementation
 
@@ -66,7 +60,7 @@ design inputs, not installed services.
 
 | Area | Current evidence | Reuse and missing work |
 | --- | --- | --- |
-| Provider requests and streams | `provider-request-bodies` is an external registry entry; `coax/lib/gateway/` owns codecs, SSE parsing, usage and rates. `anthropic.coax` sends Messages requests and reads responses. | Reuse and extend this boundary. It is an outbound client, not an Anthropic server. Add inbound admission and outbound response/event writers. |
+| Provider requests and streams | `provider-request-bodies` is an external registry entry; `coax/lib/gateway/` owns codecs, SSE parsing, usage and rates. `anthropic.coax` sends Messages requests and reads responses. | Reuse this outbound client for model calls. An inbound SDK adapter is optional migration work, not a Projects prerequisite. |
 | Normalized model calls | `coax/lib/gateway/types.coax`: `GwMessage` is role plus text; `GwRequest` has tools as raw Chat Completions JSON. | Extend the shared representation for ordered content blocks, tool IDs/results, distinct stop reasons and replayable opaque data. Current Anthropic parsing emits tool input as text and collapses several stop reasons. |
 | Hosted inference | `coax/web/api/inference.c` serves Chat Completions at `/api/v1/inference`, with identity, daily caps, credit and metering. `proto/openagents/api/v1alpha1/inference.proto` describes credit/refusal replies. | Extract shared admission and accounting services behind the existing route. These schemas do not define Anthropic Messages. SQL policy touched by the extraction moves into checked Coax policy. |
 | Local model serving | `proto/openagents/psionic/responses/v1alpha1/` and `psionic/lib/responses/` describe/implement a bounded Responses profile. Its registry row explicitly says the proto has no consumer. | Reuse serving primitives where appropriate; schema adoption remains work. Neither Responses support nor a model checkpoint establishes Messages feature parity. |
@@ -86,314 +80,721 @@ and register each selected surface with a real consumer. Existing Claude Code
 stream-json and provider account codecs remain external client boundaries,
 separate from the new public API.
 
-## Service and schema design
+## Service boundaries and protocol ownership
 
-### One set of services
-
-Use the existing context owners in [the context map](../architecture/contexts.md):
-Identity resolves principals and scopes; Projects owns project state and
-knowledge membership; Chat owns saved conversations; Psionic and inference
-owns model admission and usage; Coder owns agent execution. Protocol owns the
-schemas. Coax owns validation, authorization, lifecycle and accounting
-decisions; C handles HTTP, sockets, database and storage effects.
+Use [the context map](../architecture/contexts.md) and
+[reuse guide](../reuse.md). Projects owns project metadata, instructions,
+knowledge membership, sharing and connections. Chat owns conversations and
+turns. Identity owns accounts, Workspace membership, keys and invitations.
+Psionic and inference owns model admission, token accounting and charging.
+Coder and the existing environment runtime own execution. A decoded record or
+imported tool call grants no authority.
 
 ```mermaid
-flowchart TD
-  SDK[Anthropic SDK clients] --> HTTP[Anthropic HTTP and SSE adapter]
-  Apps[OpenAgents web and native apps] --> Native[OpenAgents API adapters]
-  HTTP --> Auth[Identity and scoped admission]
-  Native --> Auth
-  Auth --> Projects[Projects and context assembly]
-  Auth --> Inference[Shared inference service]
-  Projects --> Inference
-  Auth --> Agents[Managed agent service]
-  Agents --> Runtime[Existing runners and environment runtime]
-  Agents --> Inference
-  Inference --> Gateway[Shared provider codecs and Psionic]
-  Inference --> Usage[Usage reservation and settlement]
+flowchart LR
+  Source[Claude export and user supplied files] --> Preview[Import preview]
+  Preview --> Projects[Projects service]
+  Apps[Web and Coax Native] --> Projects
+  Projects --> Context[Shared context assembly]
+  Apps --> Chat[Shared conversations and turns]
+  Chat --> Context
+  Context --> Models[Existing gateway and Psionic]
+  Chat --> Execution[Authorized runners and environments]
+  Projects --> Links[Existing repository work and realm services]
 ```
 
-Propose `https://api.openagents.com` as the SDK base URL, with canonical relative
-paths such as `/v1/messages`. DNS and ingress provisioning are a deployment
-task. Retain existing `/api/...` routes as adapters to the shared services.
-Avoid parallel inference accounting, project databases or per-app context
-builders. Match SDK pagination independently for each resource; resource APIs
-do not all use the same cursor shape.
+`proto/openagents/project/v1alpha1/` will define the new owned project
+contracts; new rich chat records belong to Chat, not a second project-specific
+transcript format. Imports are external formats with one parser at the import
+boundary. Each wire and stored shape gets one registry row, owning Coax codec,
+goldens and explicit consumer profile in `proto/modules.json`. Freeze descriptor
+baselines before publication. Do not amend account-chat v1, project-link v1,
+Nostr signed originals, HOST or environment-runtime identities in place.
 
-### Protocol work before routes
+Keep the JSON mapper, Markdown parser, upload/scanning/storage code, component
+system, repository index and model codecs shared. C and native hosts perform
+platform effects; Coax decides validation, access, context, lifecycle and money.
+No downloaded export, imported code or source attachment is executed.
 
-Add the following narrowly scoped schema families as their consumers land.
-Paths and names below are proposed; field numbers, limits and registry IDs
-are fixed by the first reviewed schema change.
+## Common API rules and complete shared types
 
-| Proposed family | Contents and owner |
+The new API root is `/api/projects/v1`. It is an OpenAgents versioned product
+API. Explicitly register its routes before the existing slug-based file route;
+`v1` is reserved in that router. Existing private, drops, attachment and chat
+routes remain available through adapters.
+
+All field names below are exact proposed JSON names. Fields in response tables
+are present unless marked optional; `null` is explicit. `?` on a request field
+means it may be omitted. Omission on an update means unchanged; null clears only
+a field declared nullable. Reject unknown request fields and duplicate keys;
+readers tolerate additive response fields. No arbitrary `metadata` object.
+
+- `Id`: opaque string, 1–80 UTF-8 bytes. New Project IDs are `prj_` plus 32
+  lowercase hex digits; other new resource IDs are server-generated opaque IDs.
+  Existing account, thread and domain IDs retain their formats.
+- `Timestamp`: nonnegative integer milliseconds since Unix epoch, at most
+  2^53−1. `Revision`: nonnegative integer in the same exact JSON range.
+- `Digest`: 64 lowercase hex characters, SHA-256. `Text`: valid UTF-8 without NUL.
+  String limits below count UTF-8 bytes. Timestamps imported from another source
+  are converted explicitly, never confused with ingestion time.
+- `Reference`: exactly `{contract: string, id: string, revision: string|null}`.
+  `contract` is a registered owning contract, at most 128 bytes; `id` is that
+  contract's canonical identity, at most 1024 bytes; `revision` is an optional
+  immutable pin, at most 128 bytes. Each connection kind has a closed supported
+  contract list. Unknown combinations refuse rather than accepting a path or
+  inventing a provider-wide identifier.
+- `ModelChoice`: exactly `{model_id: string|null, effort_id: string|null}`.
+  Each non-null string is at most 128 bytes and must be currently offered.
+  Null model uses the account's offered default; effort is validated against
+  the resolved model. An unavailable choice is a visible refusal, not fallback.
+- `Origin`: exactly `{provider: "openagents"|"claude"|"other",
+  source_id: string|null, import_id: Id|null, source_created_at_ms: Timestamp|null,
+  source_updated_at_ms: Timestamp|null}`. Source ID is at most 256 bytes and is
+  provenance only; it can never become a local owner, signature or grant.
+
+Every mutation body has `operation_id: string` (1–80 bytes, caller retained
+across retries), `expected_revision?: Revision`, and `value?:` the exact type
+named in the route table. New Project/import jobs and new conversations omit
+`expected_revision`; shared child creation checks the existing Project revision.
+Updates/actions require their named revision owner, except single-use invitation
+acceptance. Action routes with no value accept only operation ID and expected
+revision. A missing preference reads as revision zero for its first write.
+Operation identity is scoped to principal and route. Same ID and same payload
+returns the recorded result; a different payload returns `operation_conflict`.
+Keep completed operation results for at least 30 days. After expiry, return
+`operation_expired` for a retained expired key; never silently reapply it.
+
+`Project.revision` advances transactionally for each shared project mutation,
+including instructions, knowledge, access and connections. A child `revision`
+is the project revision at which that child last changed. Processing completion
+also advances this revision. Private chat writes, preferences and derived counts
+do not advance it. Conversation, invitation, import and export jobs have their
+own revisions. Each route declares which revision it checks; stale changes
+return 409 with `current_revision`. Never use a UI revision as proof of access.
+
+| Shared response type | Every field |
 | --- | --- |
-| `proto/external/anthropic-api/` | Source manifest and byte-preserving HTTP/JSON/SSE fixtures, including version and beta selection; referenced by the external codec entry |
-| `proto/openagents/inference/v1alpha1/` | Shared lossless content blocks, requests, model capabilities, results and usage; Psionic and inference |
-| `proto/openagents/compat/anthropic/v1alpha1/` | Exact consumed external JSON projections, errors and event unions for the advertised compatibility profiles; same service owner |
-| `proto/openagents/project/v1alpha1/` | Canonical project references, roles, instructions, knowledge references and context snapshots; Projects |
-| New account, file and conversation profiles | Workspace/key scope, file metadata/processing, rich transcript and context references; owning contexts retain their codecs |
-| A new managed-agent HTTP profile | Agent configuration/version, session lifecycle and public event projections; Coder, leaving the current runner profile intact |
+| `ObjectReply<T>` | `schema: "openagents.projects.api.v1alpha1"`, `data: T` |
+| `ListReply<T>` | `schema: "openagents.projects.api.v1alpha1"`, `data: T[]`, `revision: Revision|null` (parent revision, null for project/conversation indexes), `next_cursor: string|null` |
+| `ActionResult` | `id: Id`, `revision: Revision`, `action: "archived"|"restored"|"removed"|"revoked"|"deleted"|"stopped"`, `completed_at_ms: Timestamp` |
+| `Problem` | `code: string`, `message: Text`, `field: string|null`, `current_revision: Revision|null`, `operation_id: string|null` |
+| Error response | `schema: "openagents.projects.api.v1alpha1"`, `error: Problem` |
 
-The boundary is `external JSON → validated Coax domain value → shared service
-→ compatibility JSON`. Clients continue speaking Anthropic JSON and SSE;
-protobuf is our schema source, not a new requirement on those clients. Reuse
-the JSON mapper, SSE and crypto modules from [the reuse guide](../reuse.md).
-Extend `coax/lib/gateway/anthropic.coax` into the shared Anthropic codec boundary
-without retaining a second body/event parser beside it. Keep domain policy
-out of that codec.
+`Problem.code` is one of `invalid_argument`, `not_found`, `unauthorized`,
+`forbidden`, `revision_conflict`, `operation_conflict`, `operation_expired`,
+`limit_exceeded`, `unsupported_source`, `model_unavailable`, `source_missing`,
+`processing_failed`, `insufficient_credit`, `busy`, `unavailable` or `internal`.
+Message is at most 1024 bytes; field is a JSON field path of at most 256 bytes.
+No secrets or private-resource existence appear in errors.
 
-Every new wire or stored shape gets one registry row, one owning codec,
-goldens, presence/unknown-field rules and explicit bounds. Add its consumed
-profile to `proto/modules.json`, generate descriptors, and freeze the baseline
-under the existing compatibility process. Any new OpenAgents envelope uses
-the protocol specification's common API direction; the Anthropic boundary
-must still emit Anthropic's envelope. Do not edit a frozen v1 shape to add
-new meanings, or generate the whole upstream SDK surface before consumers
-exist.
+Successful reads/updates return 200; resource creation returns 201; background
+job/turn admission returns 202. Invalid input returns 400, no identity 401,
+insufficient funding 402, an explicit access refusal 403, hidden/missing content
+404, revision/operation conflicts 409, oversized bodies 413, unsupported source
+or unavailable model 422, admission limits 429 and unavailable services 503.
+The private-resource hiding rule takes precedence over descriptive errors.
 
-## Messages compatibility
+Lists accept `limit?` (1–100, default 40) and `cursor?` (opaque, at most 2048
+bytes). Project index additionally accepts `status?: active|archived|all`
+(default active), `scope?: mine|shared|all` (default all) and `query?: Text`
+(at most 256 bytes). Order projects/conversations by updated time descending,
+ID ascending; knowledge/connections/members by creation time ascending, ID
+ascending; messages by sequence ascending. Cursors bind filters, sort and caller
+and recheck access on every page. A parent list's revision changes invalidate
+its cursor with `revision_conflict`; the client restarts the list. Index cursors
+pin a bounded ordered cut instead, so new activity does not reorder later pages.
 
-The first qualified release should allow supported official SDK versions to
-change their base URL and credential and perform text generation, streaming
-and a client-executed tool round trip. Publish model capability limits beside
-the endpoint coverage. API shape compatibility does not imply the same model
-behavior, tokenizer or supported modalities.
+## Project schema
 
-| Surface | Required implementation |
+### Project and creation
+
+`Project` contains every field below. It contains summaries and references;
+knowledge bytes, messages and memberships are separately paginated.
+
+| Field | Type and meaning | Origin |
+| --- | --- | --- |
+| `id` | Id; stable Project identity | OpenAgents |
+| `revision` | Revision; shared project mutation version | OpenAgents |
+| `owner_account_id` | Id; resolved owner account, never an email or Nostr key substitute | OpenAgents |
+| `workspace_id` | Id or null; optional tenant Workspace, not a filesystem checkout | OpenAgents |
+| `name` | Text, 1–160 bytes, nonblank | Familiar from Claude |
+| `description` | Text, 0–4096 bytes | Familiar from Claude |
+| `status` | `active` or `archived` | Product lifecycle |
+| `sharing` | `Sharing` below | Familiar privacy, our representation |
+| `instructions` | `Instructions` below, including empty instructions | Familiar behavior, revision added |
+| `model` | ModelChoice | OpenAgents |
+| `context_settings` | ContextSettings below | OpenAgents |
+| `created_at_ms` | Timestamp; local creation | Common resource metadata |
+| `updated_at_ms` | Timestamp; last shared mutation | Common resource metadata |
+| `archived_at_ms` | Timestamp or null | Product lifecycle |
+| `created_by_account_id` | Id; original local creator | OpenAgents |
+| `origin` | Origin | Migration provenance |
+| `publication_ref` | Reference or null; existing explicitly published Project record | OpenAgents |
+| `url` | Server-generated relative Project URL, at most 512 bytes | Navigation |
+| `counts` | ProjectCounts below, filtered for the caller | Product summary |
+| `permissions` | Array of Permission values below, caller-specific | OpenAgents policy |
+
+`Sharing` has exactly `audience: "private"|"workspace"` and
+`workspace_role: "viewer"|"editor"|null`. Private requires null role; Workspace
+audience requires a non-null Workspace and role. Membership policy is checked
+by Identity. Ordinary creation is private. Neither value publishes anything
+on the internet or the public relay.
+
+`ProjectCounts` has exactly `knowledge: int`, `conversations: int`,
+`repositories: int`, `work: int`, `realms: int`, `agents: int` and
+`environments: int`, all nonnegative. Conversations counts only those this caller
+may read; knowledge counts attached records including processing failures;
+the remaining counts are connections of that kind, not the number of tasks,
+assets or sessions inside them. Counts never reveal another member's private activity.
+
+`Permission` is one of `read`, `chat`, `edit`, `manage_members`,
+`manage_connections`, `archive`, `transfer`, `delete`, `publish`. The server
+derives this list on every response; clients cannot submit it as a grant.
+
+`ProjectCreate` accepts `name` (required), `description?` (default empty),
+`instructions?` (Text, at most 65536 bytes, default empty), `workspace_id?`
+(default null), `model?` (default both null), `sharing?` (default private),
+`context_settings?` (defaults below). Owner, IDs, timestamps and provenance
+come from the server. `ProjectUpdate` accepts only `name?`, `description?`,
+`model?`, `sharing?`, `context_settings?`; at least one is required. Supplied
+nested objects replace that setting completely. Instructions have their own
+update action. Workspace membership/ownership is not editable through this
+body; a later cross-Workspace transfer requires a separate migration design.
+
+For example, the complete create request can be small; all omitted settings
+take the documented defaults:
+
+```json
+{
+  "operation_id": "create-product-research-1",
+  "value": {
+    "name": "Product research",
+    "description": "Research and launch planning",
+    "instructions": "Use the attached research and cite the source for claims."
+  }
+}
+```
+
+This creates a private Project owned by the authenticated account with no
+repository, realm, execution connection or invitation side effects.
+
+### Instructions and context settings
+
+`Instructions` has exactly `revision: Revision`, `text: Text` (0–65536 bytes),
+`sha256: Digest`, `updated_at_ms: Timestamp`, `updated_by_account_id: Id` and
+`origin: Origin`. Empty instructions still have a digest. `InstructionsWrite`
+has exactly `text: Text`. The revision is the last Project revision that changed
+instructions, not a timestamp. Keep prior revisions in the owning service.
+
+`ContextSettings` has exactly `knowledge_mode: "selected"|"retrieval"` and
+`max_input_tokens: int|null` (1–1048576 when set). Defaults are selected and
+null. Null uses the selected model's admitted limit. A requested limit above
+that limit refuses; it does not expand the model. Retrieval is offered only
+when a qualified index exists; until then `retrieval` refuses visibly.
+
+The name and description identify the Project in the UI. The model receives
+the explicit instructions, selected reference material and conversation, not
+an undocumented serialized dump of the entire Project. No implicit cross-chat
+or cross-project memory is introduced. Future memory gets its own resource,
+consent and scope rather than a reserved field that pretends to work.
+
+### Knowledge and source processing
+
+`Knowledge` has every field below. Only title and selection are editable
+in place. Replacing source content creates a new immutable source revision.
+
+| Field | Type and meaning |
 | --- | --- |
-| Authentication and headers | Accept OpenAgents API keys through the pinned SDK's `x-api-key` path and supported Bearer path. Resolve them to our principal; never accept a provider key as an OpenAgents grant. Enforce version, beta and workspace selection. Pin response request IDs and SDK retry headers. |
-| Request admission | Model, required output cap, top-level system blocks, ordered user/assistant content, tool definitions/choice and matched tool results. Validate omitted versus null values, nesting, counts, UTF-8, body size and model limits before dispatch. |
-| Complete response | Message and block IDs, actual model, ordered content, exact supported stop reasons/sequences and observed usage. Preserve `tool_use` as a distinct completion reason. |
-| Streaming | `message_start`, indexed block start/delta/stop, message delta/stop, pings and in-stream errors. Preserve partial tool JSON and block ordering; incremental UTF-8/SSE framing cannot depend on socket chunk boundaries. |
-| Tool continuation | Preserve names, IDs, structured arguments, result content and error markers across calls. A model tool request authorizes no effect. Stateless Messages returns client tool calls; server tools require separately admitted execution. |
-| Models | List/retrieve only offered models with honest capabilities and pinned SDK pagination. Do not alias a non-Claude model to a Claude model identity. |
-| Token counting | Use the selected model's actual tokenizer and request serialization, or an authorized upstream counter. Share context assembly with generation; never substitute a character estimate for an advertised token counter. |
-| Errors and limits | Emit Anthropic error types/envelopes and request IDs, including failures before headers and inside an open stream. Keep existing OpenAgents route errors unchanged. Bound queues, deadlines, concurrency and slow readers. |
+| `id`, `project_id` | Id; attachment identity and owning Project |
+| `revision` | Revision; last Project revision changing this record |
+| `title` | Text, 1–256 bytes |
+| `source_kind` | `text` or `file` |
+| `file_id` | Id or null; original stored file for file sources |
+| `content_sha256` | Digest; original accepted source bytes |
+| `media_type` | String, 1–128 bytes; verified type |
+| `size_bytes` | Nonnegative integer; original source size |
+| `selected` | Boolean; included in the default knowledge selection |
+| `state` | `pending`, `processing`, `ready` or `failed` |
+| `extraction` | Extraction or null |
+| `error` | Problem or null; non-null on failed processing |
+| `created_by_account_id` | Id |
+| `created_at_ms`, `updated_at_ms` | Timestamp |
+| `origin` | Origin |
 
-Use [the streaming specification](https://platform.claude.com/docs/en/build-with-claude/streaming)
-and [error contract](https://platform.claude.com/docs/en/api/errors) for the
-wire behavior. Disconnection must cancel or reconcile the upstream attempt,
-release resources when their owners finish, and retain accurate usage for
-work already performed. A broken stream must not become a successful complete
-message or cause an automatic replay of tool effects.
+`KnowledgeCreate` has exactly `title: Text`, `source: SourceInput` and
+`selected?: bool` (default true). `SourceInput` is either
+`{kind: "text", text: Text}` (at most 1 MiB), or
+`{kind: "file", file_id: Id}`. File IDs come from the existing checked upload
+service after scanning and ownership checks, never from an arbitrary URL.
+`KnowledgeUpdate` accepts `title?` and `selected?`, at least one.
+`KnowledgeReplace` has exactly `source: SourceInput` and retains attachment ID
+while producing a new source revision; old snapshots retain their source pins.
 
-Expand capabilities in independently tested steps: images/PDFs and citations;
-thinking with signature/opaque block replay; structured output; prompt cache
-controls; containers and server tools. Refuse a requested feature when the
-selected model cannot provide it. Never synthesize thinking signatures,
-pretend to have cached a prompt, ignore a requested tool policy, or silently
-translate strict output into best-effort prompting. Document unsupported
-beta features and the exact refusal behavior in the compatibility matrix.
+`Extraction` has exactly `extractor_id: string` (1–128 bytes),
+`extractor_version: string` (1–128 bytes), `text_sha256: Digest`,
+`text_bytes: int`, `tokenizer_id: string|null` (at most 128 bytes),
+`token_count: int|null`. Token count is an observation for that tokenizer,
+not an estimate valid on every model. `KnowledgeContent` has exactly
+`knowledge_id: Id`, `revision: Revision`, `text: Text|null` (extracted reference
+text, at most 4 MiB), `file_id: Id|null` (original source). File downloads use
+the owning file service and recheck access; no storage credentials appear here.
 
-Usage needs distinct uncached input, cache reads, cache writes and output
-counts. The existing `GwUsage.input_tokens` includes cache components, so
-serializing it directly as Anthropic `input_tokens` would be wrong. Preserve
-provider observations before normalization and test the inverse mapping.
-Reuse reservations, daily limits and settlement with a single attempt owner;
-concurrent admission cannot overdraw credit and retries cannot settle twice.
-Keep Bitcoin/msat balances authoritative. Any future USD-formatted analytics
-is an explicit reporting conversion with a recorded rate, not a new currency
-balance. Preserve the existing Spark receipt and fresh-rate requirements in
-[INVARIANTS.md](../../INVARIANTS.md).
+Reuse current project attachment bounds: 25 MiB per file, 200 attachments and
+1 GiB across a Project and its worlds. These are proposed API ceilings, subject
+to the existing upload service's stricter bounds and verified media support.
+Knowledge selection changes do not detach world assets or publish files. A
+failed extraction does not become empty ready knowledge. Detached sources are
+removed from new context immediately; physical deletion waits for legitimate
+references/retention, with account purge handled by lifecycle policy.
 
-## Projects alignment
+### Members and invitations
 
-### Target behavior and terminology
+`Member` has exactly `id: Id` (membership identity), `project_id: Id`,
+`account_id: Id`, `role: "owner"|"editor"|"viewer"`, `revision: Revision`,
+`created_at_ms: Timestamp`, `granted_by_account_id: Id`. One owner must remain.
+An editor reads/edits metadata, instructions and knowledge, and may create
+personal chats. A viewer reads/uses Project context in personal chats. Both
+can read deliberately shared chats. Neither gains membership, publishing,
+funding, repository writes or computer control merely from that role.
+Only owner manages members, connections, archive, transfer, delete and publish.
+Existing project agents retain their narrower authority, including their
+inability to change titles, members or agreed goals.
 
-Claude Projects apply reusable instructions and knowledge to their chats,
-support use/edit permissions, and offer private or organization sharing.
-Project sharing does not automatically share personal chat transcripts.
-[Project management](https://support.claude.com/en/articles/9519177-how-can-i-create-and-manage-projects),
-[visibility and sharing](https://support.claude.com/en/articles/9519189-manage-project-visibility-and-sharing).
+`MemberWrite` has exactly `account_id: Id`, `role: "editor"|"viewer"`.
+`MemberRoleWrite` has exactly `role: "editor"|"viewer"`.
+Ownership changes only through `TransferWrite`, exactly
+`{owner_account_id: Id}`; target must be a current person member, and the old
+owner becomes editor atomically. Cross-Workspace ownership transfer refuses.
+No owner can remove or demote the last owner using member actions.
 
-OpenAgents should provide that foundation while retaining its repository,
-task, realm and publication features. A Project must be usable without a
-repository, a realm, a public slug, a drafted roadmap or an agent execution
-environment. Those are optional linked capabilities. Creation should allow
-a person to supply a name, instructions and knowledge and start a conversation;
-the current drop/review/publish flow remains available for public work.
+`Invitation` has exactly `id: Id`, `project_id: Id`, `revision: Revision`,
+`email_address: string` (1–254 bytes, private), `role: "editor"|"viewer"`,
+`state: "pending"|"accepted"|"revoked"|"expired"`, `created_at_ms: Timestamp`,
+`expires_at_ms: Timestamp`, `created_by_account_id: Id`,
+`accepted_by_account_id: Id|null`. `InvitationCreate` accepts `email_address`,
+`role`, `expires_in_hours?` (1–168, default 72). Creating one explicitly asks the
+service to send that invitation; no invitation is sent during import preview.
+`InvitationAccept` has exactly `token: string` (at most 256 bytes). Deliver the
+single-use token only to the invitee; store a hash; never list it. Acceptance
+requires that account's verified matching email. Only owner sees pending
+invitation email addresses; ordinary member lists contain no email fields.
 
-Keep these identities separate:
+### Conversations and messages
 
-| Concept | Proposed meaning |
+Use one Chat-owned rich conversation contract for ordinary and project chats.
+`Conversation` has exactly `id: Id`, `revision: Revision`, `project_id: Id|null`,
+`owner_account_id: Id`, `title: Text` (1–256 bytes),
+`visibility: "personal"|"project"`, `status: "active"|"archived"`,
+`created_at_ms: Timestamp`, `updated_at_ms: Timestamp`,
+`archived_at_ms: Timestamp|null`, `message_count: int`,
+`legacy_thread_ref: Reference|null`, `origin: Origin`.
+
+`ConversationCreate` accepts `title?` (default "New conversation") and
+`visibility?` (default personal). A standalone chat has null Project and must
+be personal. `ConversationUpdate` accepts only `title?` and `visibility?`, at
+least one. Sharing is an explicit owner write: it changes who can read the
+entire transcript, including content copied from earlier context. The UI shows
+that consequence before the user submits it. Owner-only `ConversationMove`
+has exactly `project_id: Id|null`. Moving rechecks source/destination access,
+retains personal visibility, records provenance and changes future context;
+shared conversations must first be made personal. A project owner cannot move
+or read another account's personal chat. Imported chats default to personal.
+
+`Message` has exactly `id: Id`, `conversation_id: Id`, `sequence: int` (>0,
+strictly increasing), `role: "user"|"assistant"|"tool"|"notice"`,
+`content: ContentPart[]` (1–64 parts), `turn_id: Id|null`,
+`author_account_id: Id|null`, `source_author: Text|null` (≤256 bytes; imported
+display attribution only), `created_at_ms: Timestamp`, `origin: Origin`.
+Only the live service sets a local author from authenticated identity;
+imported source authors do not resolve to local accounts. New live messages
+are written by Chat; imported messages enter only through the reviewed import
+service.
+
+`ContentPart` is one of these closed shapes:
+
+| `type` | Other fields, all present |
 | --- | --- |
-| Account | Existing login identity; linked Nostr keys and opaque ownership handles retain their current roles |
-| Organization and Workspace | Tenant administration and API resource/cost boundary; an organization's default Workspace and scoped keys follow the selected platform profile |
-| Project | Stable ID, owner and optional Workspace, description, instructions revision, knowledge collection, access policy and conversation associations |
-| Repository workspace | Authorized filesystem root or checkout used by an execution owner; never the meaning of an API billing Workspace |
-| Agent session | One execution lifecycle and event stream; may operate for a Project, but is not the Project or all of its chats |
+| `text` | `text: Text`, at most 65536 bytes |
+| `file` | `file_id: Id`, `name: Text` (1–256 bytes), `media_type: string` (1–128 bytes) |
+| `tool_call` | `call_id: string` (1–128 bytes), `name: string` (1–128 bytes), `arguments_json: string` (valid bounded JSON object, at most 32768 bytes, depth ≤16) |
+| `tool_result` | `call_id: string` (1–128 bytes), `content: (text part or file part)[]` (0–64), `is_error: bool` |
 
-Anthropic Workspaces group keys, membership and limits within an organization.
-Mirror that capability through an explicit tenant mapping; do not rename each
-existing Project into a Workspace. A native runtime's `workspace_id` remains
-its configured execution workspace identifier.
-[Workspaces](https://platform.claude.com/docs/en/manage-claude/workspaces).
+Reuse the shared rich inference representation for these parts. A historical
+tool call/result is inert transcript data and never dispatched or charged as
+new work. Unsupported source blocks stay in the private source archive with an
+import warning and a visible notice; do not invent text, signatures, usage or
+model outputs. Unresolved file parts remain import warnings until skipped or
+reattached, never fabricated file IDs. Cap a message at 256 KiB; paginate long
+histories instead of keeping the old 32-message client limit in the new profile.
 
-### Changes to the current implementation
+Existing `openagents.chat.thread.v1` and project-link v1 keep their bytes,
+limits and immutable association. Their adapter can expose them read-only and
+create a provenance-linked rich continuation; moving the new conversation does
+not relink or overwrite the legacy thread. Preserve the existing shared
+project-agent thread and label it shared in the UI.
 
-| Capability | Current behavior | Planned change |
+### Turns and context snapshots
+
+`TurnCreate` has exactly `content: (text part or file part)[]` (1–16 parts,
+encoded at most 65536 bytes), `knowledge_ids?: Id[]|null` (max 200; null/default
+uses selected knowledge, empty uses none), `model?: ModelChoice|null`
+(default Project/account model), `execution?: "chat"|"agent"` (default chat),
+`connection_id?: Id|null` (default null). Agent execution requires an admitted
+agent/environment connection plus a separate execution grant. A chat turn
+requires null connection ID. References must be visible, ready and compatible
+with the resolved model before admission.
+
+`Turn` has exactly `id: Id`, `revision: Revision`, `conversation_id: Id`,
+`requested_by_account_id: Id`,
+`status: "queued"|"running"|"needs_input"|"completed"|"failed"|"stopped"|"unknown"`,
+`model_id: string`, `context_snapshot_id: Id`, `execution_ref: Reference|null`,
+`user_message_id: Id`, `assistant_message_ids: Id[]` (max 64),
+`usage: Usage|null`, `error: Problem|null`, `created_at_ms: Timestamp`,
+`updated_at_ms: Timestamp`, `completed_at_ms: Timestamp|null`.
+Stop requests reconcile with the execution owner; a lost reply is unknown,
+not proof that model/tool work stopped.
+
+Only the conversation owner sends personal turns. Project owners/editors may
+send turns in explicitly shared conversations; viewers read those and start
+their own personal conversations. Meter each live turn to the admitted caller
+under existing funding rules, never to an imported author or another member
+merely because they own the conversation. Only the requester or an explicitly
+authorized execution controller may stop a turn.
+
+`Usage` has exactly `input_tokens: int|null`, `output_tokens: int|null`,
+`cache_read_tokens: int|null`, `cache_write_tokens: int|null`,
+`charged_msat: int|null`. Counts are nonnegative observed values; null means
+unknown/unreported, not zero. Input here is uncached input, with cache fields
+separate. Reuse one inference admission/reservation/settlement path, existing
+Bitcoin/msat funding and daily limits; retries cannot settle twice. Token
+accounting never derives from an imported transcript. Preserve the Spark
+receipt and fresh-rate rules in [INVARIANTS.md](../../INVARIANTS.md).
+
+`ContextSnapshot` has exactly `id: Id`, `project_id: Id|null`,
+`project_revision: Revision|null`, `conversation_id: Id`, `turn_id: Id`,
+`instructions_revision: Revision|null`, `instructions_sha256: Digest|null`,
+`knowledge: ContextSource[]` (max 200), `model_id: string`,
+`tokenizer_id: string|null`, `input_tokens: int|null`,
+`created_at_ms: Timestamp`. `ContextSource` is exactly
+`{knowledge_id: Id, revision: Revision, content_sha256: Digest,
+text_sha256: Digest|null}`. A standalone chat has null Project/instructions
+fields and no project sources. Snapshots are personal conversation records;
+the public project view does not expose their source selections.
+
+Replace today's arbitrary `left(doc::text,12000)` prefix with this shared
+context service. Pin exact instructions/source versions at admission, count
+with the actual model tokenizer or an authorized upstream counter, and refuse
+an over-capacity manual selection visibly. Add qualified retrieval afterward,
+reusing Psionic and the repository index. Knowledge is reference data, not
+instructions that can grant access or tools. Recheck current membership before
+queued work dispatches; record a refusal if authorization was revoked. Old
+snapshot IDs cannot reopen source bytes after access is removed.
+
+### OpenAgents connections and preferences
+
+`Connection` has exactly `id: Id`, `project_id: Id`, `revision: Revision`,
+`kind: "repository"|"work"|"realm"|"agent"|"environment"`,
+`label: Text` (1–160 bytes), `target: Reference`,
+`path_prefixes: string[]` (0–16, each ≤1024 bytes),
+`state: "available"|"unavailable"`, `created_by_account_id: Id`,
+`created_at_ms: Timestamp`, `updated_at_ms: Timestamp`.
+`ConnectionCreate` accepts `kind`, `label`, `target`, `path_prefixes?`
+(default empty). `ConnectionUpdate` accepts `label?`, `target?`,
+`path_prefixes?`, at least one; kind is immutable.
+
+Repository paths are canonical relative prefixes, never absolute paths or
+`..`; other kinds require an empty list. Connections are references, not
+copies: repository reads reuse `coax/lib/repo/`, work reuses the current work
+item/document/queue owner, realms reuse Authoring, execution reuses Coder and
+HOST/environment admission. A connection may be unavailable without deleting
+its identity. Validate a newly submitted target's visibility and its kind's
+registered contract. Only enable that kind when its owning consumer exists.
+A member can never expand a filesystem or tool grant by editing this record.
+Tasks and realm documents keep their own schemas rather than a second CRUD
+implementation inside Projects. Budget controls remain in the existing money
+and execution services; a future project budget needs a separate checked
+contract, not an unimplemented free-form field.
+
+`ProjectPreference` has exactly `project_id: Id`, `revision: Revision`,
+`pinned: bool`, `last_opened_at_ms: Timestamp|null`. It is private to the
+caller. `PreferenceWrite` has `pinned?: bool` and `mark_opened?: bool`, at least
+one; true mark-opened sets server time, false leaves it unchanged. Preferences
+never change another account's sort order or the shared Project revision.
+
+## Complete route and mutation map
+
+`P` is a canonical Project ID; `K`, `M`, `I`, `C`, `T`, `L` and `J` are the
+knowledge, member, invitation, conversation, turn, connection and job IDs.
+All routes use the root above. Responses use ObjectReply except listed lists
+and content downloads. Shared mutations compare Project revision unless the
+last column names another owner. No GET changes state.
+
+| Method and relative route | `value` type or GET result | Revision owner |
 | --- | --- | --- |
-| Project identity | Private documents and published drops use slugs; public projects also have signed coordinates. Account ownership has an opaque handle. | Add one canonical Project ID and checked mappings to legacy identities. Detect collisions between private/public records and different signers; never merge by slug alone. |
-| Instructions | Structured project rules exist, but no common independently revisioned instruction resource is used by all project conversations. | Add explicit editable instructions with compare-and-swap revision and audit history. Keep reference documents separate from instructions. |
-| Knowledge | Drops and private world/project attachments hold source material; world turns can open selected attachments. | Add a Project knowledge collection over those storage primitives, with ready/processing/failed states, content hashes, extraction provenance and source references. Attaching does not imply processing succeeded. |
-| Context | `account-chat.c` selects `left(doc::text,12000)` or a published name/line; `pc_completion` builds a system prompt from it. | Replace arbitrary prefix truncation with one bounded context service used by saved chats and agents. Record instructions revision, selected knowledge revisions and tokenizer/model identity for each turn. |
-| Conversations | Account-owned threads have immutable v1 project links; the private project agent has a shared conversation. | Preserve both. New personal chats stay private to their account; show the existing project-agent thread explicitly as shared. New rich conversations use a new storage profile, with explicit attach, move and remove operations that recheck both Projects. |
-| Access | Private member documents, published drop ownership and account identity mappings have different checks. | Add a common checked policy for owner, editor and viewer/use access, with adapters for the old rules. Viewer/use permits asking, not project edits or arbitrary tool writes. |
-| Sharing | Public/unlisted/private Nostr publication and member-only documents have established meanings. | Add organization sharing as a separate audience. Claude's organization “public” must never map to OpenAgents' public internet publication. |
-| Lifecycle | Account export, merge and purge already cover project ownership and chat links. | Extend lifecycle registrations to canonical mappings, memberships, instructions, knowledge, indexes and context records; retain referential and ownership consistency. |
+| `GET /` | ListReply<Project> | Index |
+| `POST /` | ProjectCreate → Project | New Project |
+| `GET /P` | Project | Project |
+| `POST /P/update` | ProjectUpdate → Project | Project |
+| `POST /P/archive`, `/P/restore` | No value → Project | Project |
+| `POST /P/transfer` | TransferWrite → Project | Project |
+| `POST /P/delete` | No value → ActionResult | Project |
+| `GET /P/instructions` | Instructions | Project |
+| `POST /P/instructions` | InstructionsWrite → Instructions | Project |
+| `GET /P/knowledge`, `GET /P/knowledge/K` | ListReply<Knowledge>, Knowledge | Project |
+| `POST /P/knowledge` | KnowledgeCreate → Knowledge | Project |
+| `POST /P/knowledge/K/update` | KnowledgeUpdate → Knowledge | Project |
+| `POST /P/knowledge/K/replace` | KnowledgeReplace → Knowledge | Project |
+| `POST /P/knowledge/K/remove` | No value → ActionResult | Project |
+| `GET /P/knowledge/K/content` | KnowledgeContent | Project |
+| `GET /P/members` | ListReply<Member> | Project |
+| `POST /P/members` | MemberWrite → Member | Project |
+| `POST /P/members/M/role` | MemberRoleWrite → Member | Project |
+| `POST /P/members/M/remove` | No value → ActionResult | Project |
+| `GET /P/invitations` | ListReply<Invitation> | Project; owner only |
+| `POST /P/invitations` | InvitationCreate → Invitation | Project |
+| `POST /P/invitations/I/revoke` | No value → Invitation | Invitation |
+| `POST /invitations/accept` | InvitationAccept → Member | No expected revision; single-use token |
+| `GET /P/conversations` | ListReply<Conversation> | Caller-visible conversation index |
+| `POST /P/conversations` | ConversationCreate → Conversation | New conversation; current Project access |
+| `GET /conversations/C` | Conversation | Conversation |
+| `POST /conversations/C/update` | ConversationUpdate → Conversation | Conversation |
+| `POST /conversations/C/move` | ConversationMove → Conversation | Conversation |
+| `POST /conversations/C/archive`, `/conversations/C/restore` | No value → Conversation | Conversation |
+| `GET /conversations/C/messages` | ListReply<Message> | Conversation |
+| `POST /conversations/C/turns` | TurnCreate → Turn | Conversation |
+| `GET /turns/T` | Turn | Turn |
+| `POST /turns/T/stop` | No value → Turn | Turn |
+| `GET /turns/T/context` | ContextSnapshot | Conversation access |
+| `GET /P/connections`, `GET /P/connections/L` | ListReply<Connection>, Connection | Project |
+| `POST /P/connections` | ConnectionCreate → Connection | Project |
+| `POST /P/connections/L/update` | ConnectionUpdate → Connection | Project |
+| `POST /P/connections/L/remove` | No value → ActionResult | Project |
+| `GET /P/preference`, `POST /P/preference` | ProjectPreference; PreferenceWrite → ProjectPreference | Caller preference |
+| `POST /imports`, `GET /imports/J` | ImportCreate → ImportJob; ImportJob | New job; then ImportJob |
+| `GET /imports/J/items` | ListReply<ImportItem> | ImportJob |
+| `POST /imports/J/review` | ImportReview → ImportJob | ImportJob |
+| `POST /imports/J/apply` | No value → ImportJob | ImportJob and pinned target Project revision |
+| `GET /imports/J/mappings` | ListReply<ImportMapping> | ImportJob |
+| `POST /P/exports`, `GET /exports/J` | ExportCreate → ExportJob; ExportJob | Project at capture; then ExportJob |
 
-The context service should start with explicit, bounded selection and supported
-text extraction. Add retrieval when indexing and relevance checks justify it,
-reusing `psionic/` and `coax/lib/repo/` where their contracts fit. Do not rebuild
-repository search or a document parser locally. Keep raw uploaded bytes,
-extracted text and retrieval indexes distinct, and refuse unsupported formats
-or over-capacity selections visibly.
+Polling the typed Turn is the first delivery transport; later event streaming
+reuses Chat's registered stream instead of inventing a project-only SSE log.
+Model discovery, original file upload/download, work/task edits, realm edits,
+agent configuration and execution interactions use their owning service APIs.
+They are dependencies, not undefined objects accepted by this Projects API.
 
-Treat knowledge as untrusted reference content. An attachment cannot change
-access, grant tools or become a system instruction. Resolve every reference
-against current permissions before a model call; source URLs are not permission
-to fetch arbitrary network locations. Record the admitted context snapshot
-without granting access to the private conversation that used it. Future
-project memory is an explicit scoped resource, not implicit copying of every
-member's chats into shared knowledge.
+Archive is reversible and blocks content edits/new turns until restored;
+reads, export and lifecycle actions remain available. Delete is a distinct
+explicit owner action:
+refuse while admitted work is active/unknown, revoke future admission and
+remove project-owned resources through lifecycle cleanup. Personal chats are
+retained by their accounts and detached; deliberately shared project chats
+are deleted with the Project. The UI names those consequences before submission.
+No Anthropic-specific deletion constraints or discriminators are copied.
 
-### Project API and migration
+## Migration schema and experience
 
-Use a new OpenAgents versioned API under `/api/projects/v1/` for Project
-create/list/read/update/archive, instructions read/update, knowledge
-attach/list/status/detach, membership management, and conversation create/list
-and turn submission plus explicit attach/move/remove. Specify resource methods
-and JSON in `proto/` before
-adding routes. Existing `/api/projects/SLUG/files`, `/api/private/...`, drops
-and project-chat v1 routes continue through adapters. These routes are our
-product API, not invented Anthropic endpoints.
+### Import sources and review
 
-Migrate in this order:
+Start with user-supplied Claude exports, manually copied instructions and
+uploaded original knowledge files. Claude's documented export includes
+conversation/account data but excludes original uploaded files. Never promise
+that an export contains the full knowledge collection or instructions.
+[Claude data export](https://support.claude.com/en/articles/9450526-export-your-claude-data).
+Manual Project creation and file/text upload remain a complete migration path
+when export contents are incomplete. No Compliance key, provider password,
+provider OAuth session or private app API is required.
 
-1. Inventory private documents, published drops, signed project coordinates,
-   account owner handles, attachment references and thread associations. Produce
-   a deterministic, rerunnable mapping report; unresolved identity conflicts
-   block only the affected records.
-2. Add canonical IDs and mappings without rewriting signed originals, v1
-   transcripts or public files. Keep one authoritative write path through
-   Projects; old route adapters must not become independently writable stores.
-3. Add instructions and knowledge alongside current project data. Keep existing
-   `rules` as project data until an owner explicitly promotes selected content
-   to instructions. A drop or private attachment never becomes public knowledge
-   as a migration side effect.
-4. Route new project turns through the context service. Retain the current v1
-   thread/link limits and ownership; offer rich threads under a new version.
-   Membership removal prevents new context reads and turns, while account-owned
-   historical transcripts follow their separate retention/access policy.
-5. Add personal Project creation and owner/editor/viewer UI using shared
-   `components/` and `coax/lib/project/`. Roll out to web and Coax Native through
-   the same API; publication still requires the established explicit action.
-6. Verify export, merge, deletion, archive/restore, indexing cleanup and rollback
-   before broad migration. Rollback switches adapters/read selection; it must
-   not discard canonical writes or expose old public snapshots containing new
-   private data.
+Support a source only after reading a real, consented fixture and recording
+its format/version/hash under `proto/external/claude-export/`. Unknown formats
+produce a useful unsupported-source report. Never infer a universal undocumented
+export schema from one sample. The importer is Coax; use existing bounded
+archive/JSON and document modules or extend them in their shared owner.
 
-Keep current privacy boundaries intact. Private project content routes retain
-their indistinguishable non-member/missing-project 404 behavior. Existing
-attachment routes retain their specified 401/403 behavior. New compatibility
-routes translate refusals into their own documented envelopes without leaking
-existence. Project membership alone never authorizes reading someone else's
-personal chats or controlling their computer environment.
+| Type | Every field |
+| --- | --- |
+| `ImportCreate` | `source: "claude_export"|"openagents_bundle"`, `file_ids: Id[]` (1–200 caller-owned uploaded inputs), `source_namespace: string` (1–128 bytes, caller-chosen label separating source accounts), `target_project_id?: Id|null` (default create mapped Projects), `target_project_revision?: Revision|null` (required for an existing target) |
+| `ImportJob` | `id: Id`, `revision: Revision`, `owner_account_id: Id`, `source: enum above`, `source_namespace: string`, `state: "inspecting"|"review"|"applying"|"completed"|"failed"`, `target_project_id: Id|null`, `target_project_revision: Revision|null`, `source_file_ids: Id[]`, `source_sha256: Digest[]` (same order), `item_count: int`, `warning_count: int`, `error: Problem|null`, `created_at_ms: Timestamp`, `updated_at_ms: Timestamp`, `completed_at_ms: Timestamp|null` |
+| `ImportItem` | `id: Id`, `kind: "project"|"instructions"|"knowledge"|"conversation"|"message"`, `title: Text` (1–256 bytes), `parent_item_id: Id|null`, `source_id: string|null` (≤256 bytes), `origin: Origin`, `proposed: ProjectCreate|InstructionsWrite|KnowledgeCreate|ConversationCreate|ImportedMessage|null`, `action: "create"|"attach"|"skip"`, `target_id: Id|null`, `warnings: ImportWarning[]` (≤64) |
+| `ImportedMessage` | `role: Message.role`, `content: ContentPart[]`, `source_author: Text|null` (≤256 bytes), `source_created_at_ms: Timestamp|null`; new IDs, sequence, turn linkage and Origin are supplied by the importer; local author is null |
+| `ImportWarning` | `code: "missing_file"|"missing_instructions"|"unsupported_block"|"unsupported_source"|"duplicate"|"conflicting_identity"|"access_not_imported"|"limit_exceeded"`, `message: Text` (≤1024 bytes), `source_id: string|null` (≤256 bytes) |
+| `ImportReview` | `items: ImportDecision[]` (1–100; omitted items retain their prior decisions) |
+| `ImportDecision` | `item_id: Id`, `action: "create"|"attach"|"skip"`, `target_id: Id|null`, `replacement_files: ImportFileMapping[]` (0–64) |
+| `ImportFileMapping` | `source_id: string` (1–256 bytes; source file identity or stable source record path), `file_id: Id` (explicitly reattached uploaded file) |
+| `ImportMapping` | `item_id: Id`, `source_id: string|null`, `target: Reference|null`, `outcome: "created"|"attached"|"skipped"`, `applied_at_ms: Timestamp` |
 
-## Remaining platform coverage
+The `proposed` union must match `kind`; there is no arbitrary JSON object.
+It is null while missing/unsupported content prevents a valid proposal; such
+items can be repaired or skipped, never applied as fabricated empty resources.
+Project attach can select an existing authorized Project; knowledge attach
+can select an existing authorized identical source; conversation/message attach
+only deduplicates an existing importer mapping. No merge by title, slug or email.
+Instructions changes require an explicit decision and the target revision;
+never silently overwrite existing instructions. Missing file replacements must
+be readable and pass scanning, size, type and source-mapping checks. Reviewed
+file mappings repair knowledge sources and referenced message parts; the
+preview is regenerated and its revision advances before apply.
 
-Implement the larger surface in useful groups rather than calling the entire
-API compatible after Messages works.
+Apply approves the complete reviewed selection at that job revision and starts
+one durable background job. The service processes at most 100 items per internal
+batch, in dependency order, with per-item mapping records committed atomically
+with each created resource; the user does not submit one request per batch.
+The deduplication key is local owner, provider/source, source namespace, kind
+and source ID; when a
+source has no ID, use the pinned source digest and stable record position.
+Changed source bytes at the same identity require review. Retrying an applied
+item reads its existing mapping; it never appends duplicate messages. Revocation
+or a changed target revision stops the next batch with an actionable conflict.
+The job advances its pinned target revision after its own writes; only an
+unexpected change conflicts. A failed resumable job returns to review after
+an explicit review update, retaining all completed mappings; apply resumes it.
+The preview clearly shows partially applied work, and recovery resumes from
+mappings. Keep source archives private; reject archive traversal, decompression
+bombs and records past the announced limits before allocating full output.
 
-| Group | Target resources | Existing base and completion condition |
+The migration flow is: upload → inspect → review names/instructions/knowledge
+and chats → replace missing files or explicitly skip them → apply → open a
+personal continuation chat. Import preserves history as history; it never
+resumes a provider tool call, publishes a Project, sends invitations or imports
+access grants. Sharing and execution targets are configured locally afterward.
+A user sees a migration summary and each unsupported or skipped item.
+
+### Portable export
+
+`ExportCreate` has exactly `include_conversations?: "mine"|"none"` (default
+mine), `include_shared_conversations?: bool` (default false),
+`include_original_files?: bool` (default true). Only authorized content can be
+exported; project ownership cannot override another account's personal privacy.
+
+`ExportJob` has exactly `id: Id`, `revision: Revision`, `project_id: Id`,
+`project_revision: Revision`, `owner_account_id: Id`,
+`state: "preparing"|"ready"|"failed"|"expired"`, `file_id: Id|null`,
+`sha256: Digest|null`, `size_bytes: int|null`, `warnings: ImportWarning[]`
+(max 200), `error: Problem|null`, `created_at_ms: Timestamp`,
+`expires_at_ms: Timestamp` (24 hours after creation). The result is a private
+file downloaded through the owning service, not a public storage URL.
+
+An OpenAgents bundle manifest has exactly
+`schema: "openagents.project.bundle.v1alpha1"`, `project: Project`,
+`knowledge: Knowledge[]`, `members: Member[]`, `connections: Connection[]`,
+`conversations: Conversation[]`, `messages: Message[]`,
+`files: BundleFile[]`, `exported_at_ms: Timestamp`, `warnings: ImportWarning[]`.
+`BundleFile` is exactly `{file_id: Id, path: string, sha256: Digest,
+size_bytes: int}`; path is a safe bundle-relative path of at most 1024 bytes.
+Write large manifests as bounded per-resource pages before final packaging;
+the first release caps a bundle at 1 GiB, 200 files, 100 conversations and
+100000 messages and refuses rather than truncates. The importer enforces the
+same bounds. The shared file service needs a separate private import/export
+archive purpose capped at 1 GiB, with streamed bounded upload and archive scan;
+this does not increase the 25 MiB knowledge-file limit. Implement that profile
+in the existing upload service before offering large bundle transfers.
+Export one pinned resource cut, retain referenced source bytes until packaging
+finishes, and report unavailable originals. Membership and
+connection records are portable descriptions, not authority accepted on import.
+The bundle parser maps source records into the create types above and discards
+source-owned IDs, permissions, roles and timestamps as local authority; it
+retains those values only as provenance where appropriate.
+No credentials, provider tokens, email invitations or execution grants enter
+the bundle.
+
+## Existing OpenAgents data migration
+
+1. Inventory private documents, drops, public signed project coordinates,
+   account-owner handles, attachments and chat links. Assign canonical IDs with
+   a rerunnable mapping; conflicting private/public slugs and distinct signers
+   do not merge. Retain Nostr originals and account ownership semantics.
+2. Add mappings and adapters so old and new routes share one write owner. Keep
+   existing structured `rules` as project data until the owner deliberately
+   selects them as instructions. Existing uploads can be attached as knowledge
+   without duplicating app-private source bytes.
+3. Reuse the shared project wire/draft components for new screens. Add simple
+   Project creation before the public drop/review/publish path. Keep publication
+   explicit and separate from private/Workspace sharing.
+4. Keep frozen v1 chats and immutable project links. Rich continuations get new
+   records linked by provenance; preserve the existing shared project-agent
+   conversation as shared. Changing account clears private caches immediately.
+5. Replace prefix-truncated context with snapshot-backed assembly and current
+   membership checks. Membership removal prevents new source reads/turns;
+   historical personal transcripts retain their separate account lifecycle.
+6. Register new mappings, instructions, knowledge/indexes, membership,
+   preferences, chats, imports and exports with account export/merge/purge.
+   Rollback switches adapters, preserving writes made since cutover and never
+   exposing private additions through older public snapshots.
+
+Preserve current route privacy: private Project content keeps indistinguishable
+non-member/missing-project 404 responses; current attachments keep their own
+401/403 contract. New personal/shared conversation access is checked separately.
+A public project publication does not include knowledge bytes, personal chats,
+member-only work or private execution connections.
+
+## Delivery order and acceptance
+
+| Phase | Deliverable | Completion evidence |
 | --- | --- | --- |
-| Files | Upload/list/metadata/content/delete at `/v1/files` | Reuse private blob storage, scanning and quotas through the owning file service. Add opaque file IDs, Workspace isolation, multipart/streamed transfer, reference accounting, processing and retention. A Project knowledge reference is a separate association. |
-| Message batches | Create/list/retrieve/cancel/delete/results at `/v1/messages/batches` | Reuse inference admission and execution primitives; add a durable item queue, custom IDs, item outcomes, expiry, JSONL results and per-item usage settlement. Cancellation is not proof of zero usage. |
-| Skills | `/v1/skills` and version resources | Reconcile protocol spec section 20.3 and NIP-SKILL first. Add immutable package versions, limits, provenance and safe unpacking. Uploading a Skill grants no execution rights. |
-| Workspace administration | Organization identity; scoped keys; Workspaces, members and limits under `/v1/organizations/...` | Extend current Identity/account services. Separate admin credentials from inference keys; enforce actual Workspace isolation before claiming Admin API parity. |
-| Usage and analytics | Selected usage/cost reports and limits | Derive reports from the same settled attempts and reservations. Keep token counts, estimates, charged msat and optional currency conversion distinct. |
-| Managed agents | `/v1/agents`, versions, `/v1/sessions`, events and `/v1/environments` | Adapt the existing runner/environment services with new public resource schemas, durable event cursors, pinned configuration versions and explicit execution admission. Keep local observed sessions observe-only. |
-| Later resources | Deployments/runs, memory stores, vault bindings, webhooks, user profiles, plugins and telemetry | Reconcile the corresponding protocol/NIP designs individually. Require storage, authority, deletion and consumer evidence for each advertised subset. |
+| 0 | Owned schemas from the field catalog, proto registry/profiles, bounds, source fixtures and legacy mapping rules | Every request/response field has a codec owner, fixture and consumer; no frozen identity is widened |
+| 1 | Simple private Projects, instructions, knowledge, personal conversations, context snapshots and web/native screens | Create a Project with no repo/realm, paste instructions, attach two sources, start independent chats using that context, inspect the admitted sources |
+| 2 | Claude import preview, reviewed apply, missing-file repair, personal chat continuation and portable export | A real supported export plus manual instructions/files migrates with explicit losses, no duplicate imports and no enterprise credentials; exported files/hash round-trip |
+| 3 | Sharing, roles, invitations, preferences and explicit conversation moves | Owner/editor/viewer, revocation, private transcripts and Workspace sharing pass; moving a chat changes future context without exposing it |
+| 4 | Existing repository/work/realm/agent/environment connections | A supported connection invokes its owning service within existing grants; an ordinary member cannot gain repository writes or computer control |
+| 5 | Retrieval and selected integration adapters, driven by customer migrations | Retrieval quality/isolation evidence; any SDK adapter passes the named customer's actual flow with a documented supported subset |
 
-Managed-agent compatibility must pin its beta header and event schema separately
-from Messages. In the pinned SDK, agent configuration/version resources and
-session resources are richer than our hosted runner records.
-[Agent resource](https://github.com/anthropics/anthropic-sdk-typescript/blob/590783078cd961a0df698d9fddc0275c65ff3afd/src/resources/beta/agents/agents.ts),
-[Session resource](https://github.com/anthropics/anthropic-sdk-typescript/blob/590783078cd961a0df698d9fddc0275c65ff3afd/src/resources/beta/sessions/sessions.ts).
-Preserve the environment runtime's generation, command and revision controls
-through any HTTP mapping. Define stream catch-up, retention gaps, interrupts,
-interaction replies and uncertain completion before presenting resumable
-sessions. Never equate an Anthropic sandbox template with a provisioned ENV
-lease, a connected desktop, or a login session.
+Reserve schema fields for the defined phases, but do not accept an action or
+connection kind until its implementation is available. Workspace sharing is
+conditional on real tenant membership; personal Projects ship without waiting
+for an organization platform. Imported transcripts do not remove existing
+funding/model gates on new turns. Publication and account deletion keep their
+current explicit user actions.
 
-## Delivery sequence and acceptance
+Success is measured by a former Claude user completing a useful first Project
+conversation, accurately understanding what migrated and what needs manual
+repair, continuing imported history without redoing setup, and using it on web
+and Coax Native. Record time to first useful conversation, mapping success,
+missing-source repair and user-visible losses. Endpoint counts, Anthropic
+resource names and Compliance API matching are not success metrics.
 
-| Phase | Deliverable | Exit gate |
-| --- | --- | --- |
-| 0 | Pinned source manifest, endpoint/field/capability matrix, approved schema boundaries and first fixtures | Every proposed public operation is classified as supported target, later work or OpenAgents extension; existing identities have explicit preservation rules. |
-| 1 | Shared rich inference values, Anthropic codec extension, scoped key admission and usage service extraction | Existing outbound provider fixtures and inference/account-chat behavior remain intact; block IDs, tool results, usage and stop reasons survive round trips without loss. |
-| 2 | Nonstreaming/streaming Messages, Models and token counting for the first supported models | Pinned Python and TypeScript SDK tests pass with only base URL/credential configuration: text, stream helper, tool round trip, token count, model listing and refusals. |
-| 3 | Canonical Project mapping, instructions, knowledge and context service; shared app adoption | Existing public/private Projects migrate without visibility or identity changes. New private Project with instructions and two sources works across independent chats; all permission and lifecycle cases below pass. |
-| 4 | Files and batches | File/reference isolation, processing failure and removal pass; batch restart/cancel/retry tests produce one terminal item result and correct settlement. |
-| 5 | Workspace/Admin subset and Skills | Revocation, role changes, limits, package/version behavior and tenant isolation pass against the advertised SDK subset. |
-| 6 | Managed-agent beta subset, followed by selected additional resources | Configuration version → admitted session → tool/approval → reconnect/catch-up → terminal result works against the pinned SDK and existing execution owners. |
+Write Coax checks before implementation. Scope, membership, context admission,
+money, upload limits and execution policy are `#authority`: first mutation
+passes have zero survivors or justified equivalents; later changes mutate their
+touched procedures. Required checks include:
 
-Project schema/mapping work in phase 3 can proceed once phase 0 fixes the domain
-boundaries; it does not need to wait for every Messages feature. Workspace
-selection and resource isolation are required as soon as a public endpoint
-accepts scoped keys, even though broader administration arrives in phase 5.
+- Full field/presence/enum/limit round trips; duplicate/unknown request keys;
+  null versus omitted updates; revision conflicts; operation replay and expiry;
+  pagination changes with current access.
+- Private versus shared chats, viewer use without writes, member removal races,
+  account switching, owner transfer and immutable legacy links. Invitations
+  are single use, expire and cannot bind a mismatched verified email.
+- Exact instructions/source pins, overflow without silent truncation, failed
+  extraction, source replacement, source removal and cross-project retrieval.
+- Import preview without effects; unknown blocks/missing files; historical
+  tools never execute; archive attacks; partial-apply recovery; duplicates;
+  namespace collisions; source identity changes; no imported grants.
+- Export source integrity and pinned cuts; authorized chat selection; limits
+  without truncation; account lifecycle cleanup; active/unknown execution
+  preventing deletion; legacy adapter rollback preserving new writes.
+- Model admission and observed usage, Bitcoin/msat settlement exactly once,
+  timeouts/disconnects and authoritative execution state. Never report an
+  unknown stopped task or missing usage as confirmed success/zero cost.
 
-Write Coax `#test`/`#forall` checks before implementation. Money, membership,
-scope, context admission, quotas and tool policies are `#authority`; their
-initial mutation passes reach zero surviving mutants or justified equivalents.
-Subsequent changes mutate the procedures touched. Essential acceptance cases:
+Run touched suites with `coax/remote/check.sh only PATH`. API integration tests
+run through `coax/remote/remote.sh run --` with selected files, not on the Mac.
+Schema changes run `scripts/proto.sh check`; run `wire-check`, `layer-check`,
+`components-check` where relevant and `tools-check` before pushing. Keep jobs
+under 15 minutes; do not rerun unchanged passing slices. Use the existing muted
+headless driver for UI checks. Any non-Coax oracle needs its firm-reason header.
 
-- **Wire fidelity:** official SDK decode/encode, omitted/null fields, arbitrary
-  Unicode and socket/SSE splits, partial tool JSON, multiple blocks, malformed
-  input, unsupported versions/betas/models, exact error envelopes and bounded
-  overflow. Unknown output events remain compatible with the selected profile.
-- **Usage:** cached and uncached counts, missing observations, concurrent credit
-  reservations, disconnect after partial generation, upstream timeout, retry
-  and duplicate finalization. Never invent usage to make a response complete.
-- **Projects:** private/use/edit/owner access, immediate revocation, account
-  switching, organization sharing without internet publication, immutable v1
-  links, shared agent thread versus personal chat, colliding slugs, stale edits,
-  knowledge processing failures, file removal and context limits.
-- **Context:** repeat the same selection from pinned source/instructions
-  revisions, prevent cross-project retrieval and personal transcript leakage,
-  and prove that knowledge cannot promote itself into instructions or tool
-  grants. Test the turn/read race with membership removal.
-- **Lifecycle:** account export/merge/purge, archive and restore, interrupted
-  migration/restart, event replay gaps, uncertain mutation replies and rollback
-  with writes made after cutover.
+## Optional model API migration work
 
-Run touched suites with `coax/remote/check.sh only PATH`; run API integration
-tests through `coax/remote/remote.sh run --` with selected test files. Run
-`scripts/proto.sh check` for schema changes, and `wire-check`, `layer-check`,
-`components-check` where applicable, plus `tools-check` before pushing.
-SDK conformance tests run on owned build hosts; any new non-Coax SDK harness
-must carry the required independent-oracle justification. Keep each job under
-the repository's 15-minute limit and do not rerun passing unchanged slices.
-Use the existing muted headless driver for UI checks.
+The existing Anthropic outbound codec, provider gateway, SSE parser and rich
+inference work remain useful. When an API customer needs it, offer a bounded
+Messages-style adapter over the same inference service so their text/tool
+workflow needs few changes. Test their actual requests, streaming and errors;
+preserve content identity, tool handoff, observed cache/output usage and model
+capability limits. Do not silently imitate a Claude model with another model's
+name or fabricate thinking signatures/cache behavior.
 
-## Initial implementation decisions
-
-Use these defaults to make the first phase concrete:
-
-1. Start with `2026-10-21`, text and client tool use, on explicitly listed model
-   capabilities. Add the old API version when a named client requires it.
-2. Keep Project CRUD and context APIs as OpenAgents extensions. Keep Projects,
-   billing Workspaces and execution workspaces separately identified.
-3. Preserve v1 saved chats and current shared project-agent conversations.
-   Introduce new rich storage rather than widening v1 silently.
-4. Select project knowledge explicitly at first; add retrieval after extraction,
-   indexing and isolation gates pass. Do not add cross-project memory by default.
-5. Treat the complete managed-agent platform as a later product milestone.
-   Reuse its existing runner and environment work rather than making Messages
-   depend on a replacement orchestration system.
-
-The first implementation change should land the pinned compatibility matrix,
-consumed inference/content schema, red codec fixtures and preservation checks.
-That gives the Messages adapter and Projects migration a common, reviewable
-contract before either changes application behavior.
+Pin only the upstream schemas/SDK versions that this selected adapter consumes.
+Do not make full Anthropic Files, batches, Skills, Admin APIs, managed agents,
+vaults or telemetry prerequisites for Projects. Build each capability when it
+serves an OpenAgents use case, reuse its owning service, and expose it through
+our API. The first implementation change is the owned Project/context schema,
+legacy-preservation fixtures and a small Project create → knowledge → chat flow.
