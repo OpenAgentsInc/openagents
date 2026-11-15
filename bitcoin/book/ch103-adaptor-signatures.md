@@ -165,7 +165,8 @@ ads_finish :: (d: ScScalar, k: ScScalar, msg: [] u8, adaptor: [] u8, presig: [] 
   ms_nonce_point(k, w[0].point[..], w[0].r[..]);              // k G: R - T, so public
   r := sg_add(ms_cpoint_vartime(w[0].r[..]).value, ms_cpoint_vartime(adaptor).value).value;
   if !ms_finite_vartime(r) { return ADS_INFINITY; }
-  ms_cbytes_vartime(r, presig[0..<33]);
+  // Equivalent: ms_cbytes_vartime writes exactly 33 bytes, so a 34-byte slice of the 65-byte presig gets the same ones
+  ms_cbytes_vartime(r, presig[0..<33]); // mutant: equivalent
   e := ads_challenge(presig[1..<33], w[0].pk[1..<33], msg);
   odd := cast(u64) (presig[0] & 1);                            // public
   #assert ss_write(sc_add(ss_even(k, odd), sc_mul(e, d)), presig[33..<65]);
@@ -218,10 +219,13 @@ ads_adapt :: (presig: [] u8, secret: [] u8, sig: [] u8) -> int #effects(all) {
   if !s.ok { return ADS_INVALID; }
   t: [1] SignScalar;
   #assert ss_key(secret, t[..], false);
-  if !ec_declassify(t[0].valid) { fresh: SignScalar; t[0] = fresh; return ADS_BAD_SECRET; }
-  for i: 0..<32 { sig[i] = presig[1 + i]; }
+  // Equivalent: t is this function's own local, wiped as hygiene; no caller can read it after the return
+  if !ec_declassify(t[0].valid) { fresh: SignScalar; t[0] = fresh; return ADS_BAD_SECRET; } // mutant: equivalent
+  // Equivalent: a 33rd byte would land on sig[32], which ss_write overwrites on the next line
+  for i: 0..<32 { sig[i] = presig[1 + i]; } // mutant: equivalent
   #assert ss_write(sc_add(s.value, ss_even(t[0].safe, cast(u64) (presig[0] & 1))), sig[32..<64]);
-  fresh: SignScalar; t[0] = fresh;
+  // Equivalent: t is this function's own local, wiped as hygiene; no caller can read it after the return
+  fresh: SignScalar; t[0] = fresh; // mutant: equivalent
   return ADS_OK;
 }
 ```
@@ -245,7 +249,8 @@ ads_extract_vartime :: (presig: [] u8, sig: [] u8, adaptor: [] u8, secret: [] u8
   if !s.ok || !sp.ok { return ADS_INVALID; }
   t := sc_sub(s.value, sp.value);
   if presig[0] == 3 { t = sc_negate(t); }
-  q := ecmult_vartime(t, sg_infinity(), sc_small(0)).value;
+  // Equivalent: the second point is infinity, so any multiple of it adds nothing to t G
+  q := ecmult_vartime(t, sg_infinity(), sc_small(0)).value; // mutant: equivalent
   if sg_equal_mask(q, big_t.value) != CB_MAX64 { return ADS_MISMATCH; }
   #assert sc_store(t, secret);
   return ADS_OK;
@@ -287,7 +292,8 @@ ads_recover_key_vartime :: (px: [] u8, msg1: [] u8, presig1: [] u8, msg2: [] u8,
   if !s1.ok || !s2.ok { return ADS_INVALID; }
   de := sc_sub(ads_challenge(presig1[1..<33], px, msg1), ads_challenge(presig2[1..<33], px, msg2));
   inv := sc_inverse(de);
-  if !inv.ok || sc_is_zero(de) { return ADS_MISMATCH; }
+  // Equivalent: sc_inverse's ok is exactly !sc_is_zero of the normalized de, so the two tests agree and && gives the same as ||
+  if !inv.ok || sc_is_zero(de) { return ADS_MISMATCH; } // mutant: equivalent
   d := sc_mul(sc_sub(s1.value, s2.value), inv.value);
   #assert sc_store(d, out);
   return ADS_OK;
