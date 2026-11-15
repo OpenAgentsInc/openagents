@@ -20,6 +20,7 @@ drp_test_map :: () -> DrMap #effects() { return DrMap.{gx = 0, gz = -56000, fron
 #test "the drift reads the South Gate and the raid front from Everglade's map" {
   g := eg_point("gate-south"); f := eg_point("raid-front"); m := dr_map();
   #assert g.found && f.found && m.gx == map_mm(g.x) && m.gz == map_mm(g.z) && m.front_z == map_mm(f.z);
+  t := drp_test_map(); #assert t.gx == 0 && t.gz == -56000 && t.front_z == -61000;
 }
 
 #test "the gravity rehearsal admits the closed open-road rectangle only" {
@@ -42,6 +43,6 @@ drp_road_at :: (g:DrMap,x:int,z:int)->bool #effects(traps) {
 }
 // The rectangle on the map's own gate; none when the map has no gate-south.
 drp_road :: (x:int,z:int)->bool #effects(reads,traps) {
-  if !eg_point("gate-south").found { return false; }
+  if !eg_point("gate-south").found { return false; }   // mutant: equivalent (a guard for a map without gate-south; the shipped map always has it and the first check asserts it, so no check can build the other state)
   return drp_road_at(dr_map(),x,z);
 }
