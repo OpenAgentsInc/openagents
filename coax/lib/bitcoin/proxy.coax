@@ -67,13 +67,16 @@ px_put_hex :: (out: [] u8, at: int, b: [] u8) -> int #effects(all) {
 // with '=' to a multiple of 8 characters unless told not to.
 px_b32_encode :: (input: [] u8, pad: bool, out: [] u8) -> int #effects(all) {
   alphabet := "abcdefghijklmnopqrstuvwxyz234567";
-  acc := 0; bits := 0; n := 0;
+  // Only the low 12 bits of acc are kept and at most 12 are read, so a
+  // stray bit in the starting value is shifted out before it is used.
+  acc := 0; bits := 0; n := 0; // mutant: equivalent
   for b: input {
     acc = ((acc << 8) | cast(int) b) & 0xfff; bits += 8;
     while bits >= 5 { bits -= 5; n = px_put_byte(out, n, cast(int) alphabet[(acc >> bits) & 31]); }
   }
   if bits > 0 { n = px_put_byte(out, n, cast(int) alphabet[(acc << (5 - bits)) & 31]); }
-  while pad && n >= 0 && n % 8 != 0 { n = px_put_byte(out, n, '='); }
+  // At n = 0, n % 8 is 0 too, so `n > 0` and `n >= 1` end the same loop.
+  while pad && n >= 0 && n % 8 != 0 { n = px_put_byte(out, n, '='); } // mutant: equivalent
   return n;
 }
 // decode32_table: either case decodes.
@@ -90,18 +93,35 @@ px_b32_digit :: (c: u8) -> int #effects(all) {
 px_b32_decode :: (text: string, out: [] u8) -> int #effects(all) {
   if text.count % 8 != 0 { return -1; }
   n := text.count;
-  if n >= 1 && text[n - 1] == '=' { n -= 1; }
-  if n >= 2 && text[n - 2] == '=' && text[n - 1] == '=' { n -= 2; }
-  if n >= 1 && text[n - 1] == '=' { n -= 1; }
-  if n >= 2 && text[n - 2] == '=' && text[n - 1] == '=' { n -= 2; }
-  acc := 0; bits := 0; w := 0;
+  // text.count is 0 or at least 8, and each step takes at most 2, so n is
+  // never 1 or 2 at a bound below: the bounds only keep the reads inside
+  // text, as Core's do, and a bound one higher gives the same n.
+  if n >= 1 // mutant: equivalent
+     && text[n - 1] == '=' { n -= 1; }
+  if n >= 2 // mutant: equivalent
+     && text[n - 2] == '=' && text[n - 1] == '=' { n -= 2; }
+  if n >= 1 // mutant: equivalent
+     && text[n - 1] == '=' { n -= 1; }
+  if n >= 2 // mutant: equivalent
+     && text[n - 2] == '=' && text[n - 1] == '=' { n -= 2; }
+  // As in px_b32_encode, a stray starting bit is shifted out of the 12 kept.
+  acc := 0; bits := 0; w := 0; // mutant: equivalent
   for i: 0..<n {
     v := px_b32_digit(text[i]);
     if v < 0 { return -1; }
     acc = ((acc << 5) | v) & 0xfff; bits += 5;
-    if bits >= 8 { bits -= 8; w = px_put_byte(out, w, (acc >> bits) & 255); if w < 0 { return -1; } }
+    if bits >= 8 {
+      bits -= 8; w = px_put_byte(out, w, (acc >> bits) & 255);
+      // A written w is at least 1, so `w <= 0` and `w < 1` are `w < 0`.
+      if w < 0 { // mutant: equivalent
+        return -1;
+      }
+    }
   }
-  if bits >= 5 || ((acc << (8 - bits)) & 255) != 0 { return -1; }
+  // n is 8 less 0, 1, 3, 4 or 6, which leaves 0, 3, 1, 4 or 2 bits: never 5,
+  // so `bits > 5` and `bits >= 6` refuse the same strings.
+  if bits >= 5 // mutant: equivalent
+     || ((acc << (8 - bits)) & 255) != 0 { return -1; }
   return w;
 }
 // book:end base32
@@ -123,20 +143,23 @@ px_onion_checksum :: (pubkey: [] u8, out: [] u8) #effects(all) {
 px_onion_text :: (pubkey: [] u8, out: [] u8) -> int #effects(all) {
   b: [35] u8;
   for i: 0..<32 { b[i] = pubkey[i]; }
-  px_onion_checksum(pubkey, b[32..<34]);
+  // The checksum writes 2 bytes, so a longer slice holds the same.
+  px_onion_checksum(pubkey, b[32..<34]); // mutant: equivalent
   b[34] = PX_ONION_VERSION;
-  return px_put(out, px_b32_encode(b[..], true, out), ".onion");
+  // 35 bytes are 280 bits, exactly 56 characters: there is nothing to pad.
+  return px_put(out, px_b32_encode(b[..], true, out), ".onion"); // mutant: equivalent
 }
 // book:end onion
 
 // book:begin special
 // What CNetAddr::SetSpecial made of a name: ok, and the address with port 0.
 PxName :: struct { ok: bool; addr: AmAddr; }
+px_lower :: (c: u8) -> u8 #effects(all) { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
 px_ends :: (s: string, suffix: string, fold: bool) -> bool #effects(all) {
   if s.count < suffix.count { return false; }
   for i: 0..<suffix.count {
     c := s[s.count - suffix.count + i];
-    if fold && c >= 'A' && c <= 'Z' { c += 32; }
+    if fold { c = px_lower(c); }
     if c != suffix[i] { return false; }
   }
   return true;
@@ -148,7 +171,8 @@ px_set_tor :: (s: string) -> PxName #effects(all) {
   b: [64] u8;
   n := px_b32_decode(s[0..<s.count - 6], b[..]);
   if n != 35 || b[34] != PX_ONION_VERSION { return PxName.{}; }
-  c: [2] u8; px_onion_checksum(b[0..<32], c[..]);
+  // The checksum reads 32 bytes of the key, so a longer slice reads the same.
+  c: [2] u8; px_onion_checksum(b[0..<32], c[..]); // mutant: equivalent
   if c[0] != b[32] || c[1] != b[33] { return PxName.{}; }
   return PxName.{ok=true, addr=am_bytes(AM_NET_ONION, b[0..<32], 0)};
 }
@@ -157,7 +181,8 @@ px_set_tor :: (s: string) -> PxName #effects(all) {
 px_set_i2p :: (s: string) -> PxName #effects(all) {
   if s.count != PX_I2P_TEXT || !px_ends(s, ".b32.i2p", true) { return PxName.{}; }
   t: [56] u8;
-  for i: 0..<52 { t[i] = s[i]; }
+  // t[52] is padding, written next, so copying one more changes nothing.
+  for i: 0..<52 { t[i] = s[i]; } // mutant: equivalent
   for i: 52..<56 { t[i] = '='; }
   b: [40] u8;
   if px_b32_decode(cast(string) t[..], b[..]) != 32 { return PxName.{}; }
@@ -165,7 +190,9 @@ px_set_i2p :: (s: string) -> PxName #effects(all) {
 }
 // SetSpecial: a name with a NUL in it is refused before either.
 px_set_special :: (s: string) -> PxName #effects(all) {
-  for c: s { if c == 0 { return PxName.{}; } }
+  // A NUL is neither base32 nor part of a suffix, so SetTor and SetI2P
+  // refuse it as well: this check, Core's, changes no answer.
+  for c: s { if c == 0 { return PxName.{}; } } // mutant: equivalent
   t := px_set_tor(s);
   if t.ok { return t; }
   return px_set_i2p(s);
@@ -246,7 +273,9 @@ px_socks_read :: (s: [] PxSocks, in: [] u8, out: [] u8) -> PxStep #effects(all) 
       for i: 0..<s[0].user_n { at = px_put_byte(out, at, cast(int) s[0].user[i]); }
       at = px_put_byte(out, at, s[0].pass_n);
       for i: 0..<s[0].pass_n { at = px_put_byte(out, at, cast(int) s[0].pass[i]); }
-      s[0].state = PX_S_AUTH; s[0].need = 2;
+      s[0].state = PX_S_AUTH;
+      // The greeting's reply was 2 bytes, so need is 2 already.
+      s[0].need = 2; // mutant: equivalent
       return PxStep.{state=PX_S_AUTH, send=at};
     }
     if in[1] == PX_NOAUTH { return px_socks_request(s, out); }
@@ -325,7 +354,9 @@ px_proxy_read :: (p: [] PxProxy, in: [] u8, out: [] u8) -> int #effects(all) {
     return at;
   }
   if st == PX_P_AUTH {
-    if in.count < 2 || in[0] != 1 { return px_proxy_close(p) - 1; }
+    // Two bytes are refused by the length check below as well, so a bound
+    // of 3 closes the same messages.
+    if in.count < 2 || in[0] != 1 { return px_proxy_close(p) - 1; } // mutant: equivalent
     u := cast(int) in[1];
     if in.count < 3 + u || in.count != 3 + u + cast(int) in[2 + u] { return px_proxy_close(p) - 1; }
     for i: 0..<u { p[0].user[i] = in[2 + i]; } p[0].user_n = u;
@@ -335,7 +366,9 @@ px_proxy_read :: (p: [] PxProxy, in: [] u8, out: [] u8) -> int #effects(all) {
     return px_put_byte(out, px_put_byte(out, 0, 1), 0);
   }
   if st == PX_P_REQUEST {
-    if in.count < 5 || in[0] != PX_SOCKS5 || in[1] != PX_CONNECT || in[2] != 0 || in[3] != PX_ATYP_DOMAIN { return px_proxy_close(p) - 1; }
+    // Five or six bytes are refused by the length check below as well.
+    if in.count < 5 // mutant: equivalent
+       || in[0] != PX_SOCKS5 || in[1] != PX_CONNECT || in[2] != 0 || in[3] != PX_ATYP_DOMAIN { return px_proxy_close(p) - 1; }
     n := cast(int) in[4];
     if in.count != 7 + n { return px_proxy_close(p) - 1; }
     for i: 0..<n { p[0].dest[i] = in[5 + i]; } p[0].dest_n = n;
@@ -359,20 +392,28 @@ px_socks_pump :: (s: [] PxSocks, p: [] PxProxy, first: [] u8, rep: int) -> int #
   a: [600] u8; b: [600] u8;
   for i: 0..<first.count { b[i] = first[i]; }
   pending := first.count;
+  // This proxy's replies fit the client exactly: 2 bytes to each greeting
+  // and login, 10 to the CONNECT. So each round ends with the client done,
+  // failed or with something to send (3 bytes or more), and the lines
+  // marked below cannot change the outcome. They guard against a proxy
+  // that answered otherwise.
   while s[0].state != PX_S_DONE && s[0].state != PX_S_FAILED {
     reply := px_proxy_read(p, b[0..<pending], a[..]);
     if reply < 0 { return px_socks_fail(s, PX_E_MALFORMED).state; }
-    if reply == 0 && p[0].state == PX_P_CONNECTING { reply = px_proxy_answer(p, rep, a[..]); }
-    // The client reads the reply in the pieces it asks for.
-    at := 0; pending = 0;
-    while at < reply && s[0].state != PX_S_DONE && s[0].state != PX_S_FAILED {
+    // A reply of 0 always leaves the proxy connecting, and connecting it reads nothing.
+    if reply == 0 && p[0].state == PX_P_CONNECTING { reply = px_proxy_answer(p, rep, a[..]); } // mutant: equivalent
+    // The client reads the reply in the pieces it asks for. Done, it has
+    // read the whole reply.
+    at := 0;
+    pending = 0; // mutant: equivalent
+    while at < reply && s[0].state != PX_S_DONE && s[0].state != PX_S_FAILED { // mutant: equivalent
       need := s[0].need;
-      if at + need > reply { return px_socks_fail(s, PX_E_MALFORMED).state; }
+      if at + need > reply { return px_socks_fail(s, PX_E_MALFORMED).state; } // mutant: equivalent
       step := px_socks_read(s, a[at..<at + need], b[..]);
       at += need;
-      if step.send > 0 { pending = step.send; }
+      if step.send > 0 { pending = step.send; } // mutant: equivalent
     }
-    if pending == 0 && s[0].state != PX_S_DONE && s[0].state != PX_S_FAILED { return px_socks_fail(s, PX_E_MALFORMED).state; }
+    if pending == 0 && s[0].state != PX_S_DONE && s[0].state != PX_S_FAILED { return px_socks_fail(s, PX_E_MALFORMED).state; } // mutant: equivalent
   }
   return s[0].state;
 }
@@ -437,7 +478,9 @@ px_sam_parse :: (line: string) -> PxReply #effects(all) {
     eq := start; while eq < i && line[eq] != '=' { eq += 1; }
     if r.n < PX_SAM_KEYS && px_sam_find(line, r, line[start..<eq]) < 0 {
       r.key[r.n] = start; r.key_n[r.n] = eq - start;
-      r.val[r.n] = ifx eq < i then eq + 1 else -1; r.val_n[r.n] = ifx eq < i then i - eq - 1 else 0;
+      r.val[r.n] = ifx eq < i then eq + 1 else -1;
+      // val_n is read only when val is not -1, that is when eq < i.
+      r.val_n[r.n] = ifx eq < i then i - eq - 1 else 0; // mutant: equivalent
       r.n += 1;
     }
     start = i + 1;
@@ -449,7 +492,9 @@ PxValue :: struct { ok: bool; text: string; }
 px_sam_get :: (line: string, key: string) -> PxValue #effects(all) {
   r := px_sam_parse(line);
   i := px_sam_find(line, r, key);
-  if i < 0 || r.val[i] < 0 { return PxValue.{}; }
+  // A value starts after its '=', so val is -1 or at least 1, never 0.
+  if i < 0
+     || r.val[i] < 0 { return PxValue.{}; } // mutant: equivalent
   return PxValue.{ok=true, text=line[r.val[i]..<r.val[i] + r.val_n[i]]};
 }
 px_sam_ok :: (line: string) -> bool #effects(all) {
@@ -499,7 +544,8 @@ px_sam_create :: (q: [] PxSam, out: [] u8) -> PxStep #effects(all) {
     at = px_put(out, at, " DESTINATION=TRANSIENT SIGNATURE_TYPE=7 i2cp.leaseSetEncType=6,4 inbound.quantity=1 outbound.quantity=1\n");
   } else {
     at = px_put(out, at, " DESTINATION=");
-    if at >= 0 {
+    // at is -1 or past the 45 bytes written, never 0.
+    if at >= 0 { // mutant: equivalent
       n := px_i2p_encode(q[0].key[0..<q[0].key_n], out[at..<out.count]);
       at = ifx n < 0 then -1 else at + n;
     }
@@ -511,7 +557,8 @@ px_sam_create :: (q: [] PxSam, out: [] u8) -> PxStep #effects(all) {
 // The session's own address, from the destination at the start of its key.
 px_sam_me :: (q: [] PxSam) -> PxStep #effects(all) {
   n := px_i2p_dest_len(q[0].key[0..<q[0].key_n]);
-  if n < 0 { return px_sam_fail(q, PX_SAM_E_KEY); }
+  // A length is -1 or at least 387, never 0.
+  if n < 0 { return px_sam_fail(q, PX_SAM_E_KEY); } // mutant: equivalent
   q[0].me = px_i2p_addr(q[0].key[0..<n]);
   q[0].state = PX_Q_DONE;
   return PxStep.{state=PX_Q_DONE};
@@ -625,8 +672,9 @@ PxNet :: struct {
 // ParseNetwork: a name in any case, or NET_UNROUTABLE.
 px_parse_network :: (s: string) -> int #effects(all) {
   t: [8] u8;
-  if s.count > 8 { return AM_NET_UNROUTABLE; }
-  for i: 0..<s.count { c := s[i]; if c >= 'A' && c <= 'Z' { c += 32; } t[i] = c; }
+  // No network's name has 8 letters, so refusing 8 here changes nothing.
+  if s.count > 8 { return AM_NET_UNROUTABLE; } // mutant: equivalent
+  for i: 0..<s.count { t[i] = px_lower(s[i]); }
   low := cast(string) t[0..<s.count];
   if low == "ipv4" { return AM_NET_IPV4; }
   if low == "ipv6" { return AM_NET_IPV6; }
@@ -1098,4 +1146,199 @@ I2P_TEST_PEER :: "IchV608baDoXbqzQKSqFDmTXPVgoDbPAhZJvNRXXxi4hyFXrTxtoOhdurNApKo
   n = px_configure(only[..], all[..], "", true, true, false, -1);
   #assert px_route(n, v4) == PX_R_UNREACHABLE && px_route(n, onion) == PX_R_PROXY && px_route(n, i2p) == PX_R_UNREACHABLE;
   #assert px_route(n, am_v4(10, 0, 0, 1, 8333)) == PX_R_UNREACHABLE;
+}
+
+// ---- each bound and each field, one at a time
+#test "the writers, base32 and the name readers at each bound" {
+  b4: [4] u8;
+  #assert px_put(b4[..], -1, "x") == -1 && px_put(b4[..], 3, "ab") == -1 && px_put(b4[..], 2, "ab") == 4;
+  #assert px_b32_digit('a') == 0 && px_b32_digit('z') == 25 && px_b32_digit('{') == -1;
+  #assert px_b32_digit('A') == 0 && px_b32_digit('Z') == 25 && px_b32_digit('[') == -1 && px_b32_digit('@') == -1;
+  #assert px_b32_digit('2') == 26 && px_b32_digit('7') == 31 && px_b32_digit('8') == -1 && px_b32_digit('1') == -1;
+  b: [8] u8;
+  #assert px_b32_decode("aaaa====", b[..]) == 2;     // four '=' are padding
+  #assert px_b32_decode("aaaa===a", b[..]) == -1;    // an '=' before the last character is not
+  #assert px_b32_decode("aaaaa=a=", b[..]) == -1;    // nor is one before the last two
+  #assert px_b32_decode("m2======", b[..]) == -1;    // the top left-over bit is 1
+  #assert px_b32_decode("mzxw6ytb", b[0..<2]) == -1; // five bytes don't fit in two
+  #assert px_lower('A') == 'a' && px_lower('Z') == 'z' && px_lower('@') == '@' && px_lower('[') == '[' && px_lower('a') == 'a';
+  #assert px_ends(".onion", ".onion", false) && !px_ends("onion", ".onion", false) && !px_ends("xonion", ".onion", false);
+  #assert px_ends("x.B32.I2P", ".b32.i2p", true) && !px_ends("x.B32.I2P", ".b32.i2p", false);
+  #assert !px_test_text(am_v4(1, 2, 3, 4, 0), "1.2.3.5");
+}
+#test "SOCKS5: every state, need and error, and each byte the client sends" {
+  s: [1] PxSocks; out: [600] u8;
+  st := px_socks_begin(s[..], "example.com", 8333, "", "", false, out[..]);
+  r1 := [2] u8.[5, 0];
+  st = px_socks_read(s[..], r1[..], out[..]);
+  #assert cast(string) out[5..<16] == "example.com";
+  r2 := [4] u8.[5, 0, 0, PX_ATYP_IPV4];
+  st = px_socks_read(s[..], r2[..], out[..]);
+  #assert st.state == PX_S_ADDR && s[0].state == PX_S_ADDR && s[0].need == 6;
+  r3: [6] u8;
+  st = px_socks_read(s[..], r3[..], out[..]);
+  #assert st.state == PX_S_DONE && s[0].need == 0;
+  // A read after the end fails, and so does every read after a failure.
+  st = px_socks_read(s[..], r3[0..<0], out[..]);
+  #assert st.state == PX_S_FAILED && s[0].state == PX_S_FAILED && s[0].error == PX_E_MALFORMED && s[0].need == 0;
+  st = px_socks_read(s[..], r3[0..<0], out[..]);
+  #assert st.state == PX_S_FAILED && s[0].error == PX_E_MALFORMED;
+  st = px_socks_begin(s[..], "a", 1, "", "", false, out[..]);
+  bad := [2] u8.[4, 0];
+  #assert px_socks_read(s[..], bad[..], out[..]).state == PX_S_FAILED && s[0].need == 0;
+  // A user name and password of 255 bytes go whole; a password of 256 is refused.
+  long: [256] u8; for i: 0..<256 { long[i] = cast,trunc(u8) (97 + i % 26); }
+  st = px_socks_begin(s[..], "a", 1, cast(string) long[0..<255], cast(string) long[1..<256], true, out[..]);
+  #assert st.send == 4 && out[2] == PX_NOAUTH;
+  up := [2] u8.[5, PX_USER_PASS];
+  st = px_socks_read(s[..], up[..], out[..]);
+  #assert st.state == PX_S_AUTH && st.send == 3 + 255 + 255 && out[1] == 255 && out[257] == 255;
+  for i: 0..<255 { #assert out[2 + i] == long[i] && out[258 + i] == long[1 + i]; }
+  st = px_socks_begin(s[..], "a", 1, "u", cast(string) long[..], true, out[..]);
+  #assert px_socks_read(s[..], up[..], out[..]).state == PX_S_FAILED && s[0].error == PX_E_CREDENTIALS;
+  // A proxy that closes mid-exchange leaves the client with a malformed reply.
+  p: [1] PxProxy;
+  st = px_socks_begin(s[..], "a", 1, "", "", false, out[..]);
+  p[0] = PxProxy.{state=PX_P_CLOSED};
+  #assert px_socks_pump(s[..], p[..], out[0..<st.send], 0) == PX_S_FAILED && s[0].error == PX_E_MALFORMED;
+}
+#test "Socks5ErrorString's text for every reply" {
+  codes := [16] int.[1, 2, 3, 4, 5, 6, 7, 8, 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7];
+  texts := [16] string.["general failure", "connection not allowed", "network unreachable", "host unreachable",
+    "connection refused", "TTL expired", "protocol error", "address type not supported",
+    "onion service descriptor can not be found", "onion service descriptor is invalid",
+    "onion service introduction failed", "onion service rendezvous failed",
+    "onion service missing client authorization", "onion service wrong client authorization",
+    "onion service invalid address", "onion service introduction timed out"];
+  for k: 0..<16 { #assert px_socks_reply_text(codes[k]) == texts[k]; }
+  #assert px_socks_reply_text(0) == "unknown" && px_socks_reply_text(0xf8) == "unknown";
+}
+#test "the test proxy reads every field and refuses a short request" {
+  q: [1] PxProxy; out: [600] u8;
+  none := [2] u8.[5, 0];
+  #assert px_proxy_read(q[..], none[..], out[..]) == 2 && out[1] == PX_NO_ACCEPTABLE && q[0].state == PX_P_CLOSED;
+  q[0] = PxProxy.{}; only := [3] u8.[5, 1, PX_USER_PASS];
+  #assert px_proxy_read(q[..], only[..], out[..]) == 2 && out[1] == PX_USER_PASS && q[0].state == PX_P_AUTH;
+  empty := [3] u8.[1, 0, 0];
+  #assert px_proxy_read(q[..], empty[..], out[..]) == 2 && q[0].user_n == 0 && q[0].pass_n == 0 && q[0].state == PX_P_REQUEST;
+  short := [4] u8.[5, 1, 0, 3];
+  #assert px_proxy_read(q[..], short[..], out[..]) == -1 && q[0].state == PX_P_CLOSED;
+  q[0] = PxProxy.{state=PX_P_AUTH};
+  login := [9] u8.[1, 3, 'u', '-', '7', 3, 'p', 'w', 'd'];
+  #assert px_proxy_read(q[..], login[..], out[..]) == 2;
+  #assert q[0].user_n == 3 && q[0].user[0] == 'u' && q[0].user[1] == '-' && q[0].user[2] == '7';
+  #assert q[0].pass_n == 3 && q[0].pass[0] == 'p' && q[0].pass[1] == 'w' && q[0].pass[2] == 'd';
+  req := [10] u8.[5, 1, 0, 3, 3, 'a', 'b', 'c', 0x20, 0x8d];
+  #assert px_proxy_read(q[..], req[..], out[..]) == 0 && q[0].dest_n == 3 && q[0].port == 8333;
+  #assert q[0].dest[0] == 'a' && q[0].dest[1] == 'b' && q[0].dest[2] == 'c';
+  for i: 0..<10 { out[i] = 0xee; }
+  #assert px_proxy_answer(q[..], 0, out[..]) == 10 && out[0] == 5 && out[1] == 0 && out[2] == 0 && out[3] == PX_ATYP_IPV4;
+  for i: 4..<10 { #assert out[i] == 0; }
+}
+#test "I2P's base64 and the destination length at their bounds" {
+  big: [PX_B64_MAX + 1] u8; for i: 0..<big.count { big[i] = 'A'; }
+  out: [1600] u8;
+  #assert px_i2p_decode(cast(string) big[0..<PX_B64_MAX], out[..]) == 1536;
+  #assert px_i2p_decode(cast(string) big[..], out[..]) == -1;
+  one := [1] u8.[0xfb]; e: [4] u8;
+  #assert px_i2p_encode(one[..], e[..]) == 4 && cast(string) e[..] == "-w==";
+  key: [643] u8;
+  #assert px_i2p_dest_len(key[0..<387]) == 387 && px_i2p_dest_len(key[0..<386]) == -1;
+  key[385] = 1;
+  #assert px_i2p_dest_len(key[..]) == 643 && px_i2p_dest_len(key[0..<642]) == -1;
+}
+#test "SAM replies: the first word, an empty word, a repeated key and seventeen keys" {
+  v := px_sam_get("RESULT=OK", "RESULT"); #assert v.ok && v.text == "OK" && px_sam_ok("RESULT=OK");
+  w := px_sam_get(" A=1", "A"); #assert w.ok && w.text == "1";
+  r := px_sam_parse("A=1 A=2"); #assert r.n == 1 && px_sam_get("A=1 A=2", "A").text == "1";
+  many := "a b c d e f g h i j k l m n o p q=1";
+  #assert px_sam_parse(many).n == PX_SAM_KEYS && !px_sam_get(many, "q").ok;
+}
+#test "SAM: each exchange's state and error at every step" {
+  q: [1] PxSam; out: [4096] u8; line: [2048] u8;
+  for i: 0..<10 { q[0].id[i] = 'c'; }
+  q[0].transient = true;
+  st := px_sam_begin(q[..], PX_SAM_CREATE, out[..]);
+  #assert px_sam_read(q[..], "HELLO REPLY RESULT=NOVERSION", out[..]).state == PX_Q_FAILED && q[0].state == PX_Q_FAILED && q[0].error == PX_SAM_E_RESULT;
+  // The next exchange starts with no error.
+  st = px_sam_begin(q[..], PX_SAM_CREATE, out[..]);
+  #assert q[0].error == 0 && q[0].state == PX_Q_HELLO;
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], "SESSION STATUS RESULT=OK DESTINATION=!!", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_KEY;
+  // An empty DESTINATION empties the key, which then has no destination.
+  q[0].key_n = 5;
+  st = px_sam_begin(q[..], PX_SAM_CREATE, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], "SESSION STATUS RESULT=OK DESTINATION=", out[..]).state == PX_Q_FAILED && q[0].key_n == 0 && q[0].error == PX_SAM_E_KEY;
+  at := px_put(line[..], 0, "SESSION STATUS RESULT=OK DESTINATION="); at = px_put(line[..], at, I2P_TEST_PRIV);
+  st = px_sam_begin(q[..], PX_SAM_CREATE, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], cast(string) line[0..<at], out[..]).state == PX_Q_DONE && q[0].state == PX_Q_DONE;
+  // A key's encoding that doesn't fit leaves nothing to send.
+  small: [100] u8;
+  q[0].transient = false;
+  #assert px_sam_create(q[..], small[..]).send == -1;
+  // A saved key of one byte is still a key: no DEST GENERATE.
+  q[0].key_n = 1;
+  st = px_sam_begin(q[..], PX_SAM_CREATE, out[..]);
+  #assert px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]).state == PX_Q_SESSION;
+  // An empty PRIV is an empty key, and the session is created with it.
+  q[0].key_n = 0;
+  st = px_sam_begin(q[..], PX_SAM_CREATE, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  st = px_sam_read(q[..], "DEST REPLY PRIV=", out[..]);
+  #assert st.state == PX_Q_SESSION && q[0].key_n == 0 && st.send > 0;
+  #assert cast(string) out[0..<st.send] == "SESSION CREATE STYLE=STREAM ID=cccccccccc DESTINATION= i2cp.leaseSetEncType=6,4 inbound.quantity=3 outbound.quantity=3\n";
+  // Accept: its states, a refused STREAM ACCEPT, an empty destination, a lost session.
+  st = px_sam_begin(q[..], PX_SAM_ACCEPT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert st.state == PX_Q_STREAM && q[0].state == PX_Q_STREAM;
+  #assert px_sam_read(q[..], "STREAM STATUS RESULT=CANT_REACH_PEER", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_RESULT;
+  st = px_sam_begin(q[..], PX_SAM_ACCEPT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  st = px_sam_read(q[..], "STREAM STATUS RESULT=OK", out[..]);
+  nothing: [1] u8;
+  #assert px_sam_read(q[..], "", out[..]).state == PX_Q_DONE && q[0].state == PX_Q_DONE && am_same(q[0].peer, px_i2p_addr(nothing[0..<0]));
+  st = px_sam_begin(q[..], PX_SAM_ACCEPT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  st = px_sam_read(q[..], "STREAM STATUS RESULT=OK", out[..]);
+  #assert px_sam_read(q[..], "RESULT=I2P_ERROR", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_CLOSED && q[0].disconnect;
+  // Connect: a failed lookup, then a stream that opens.
+  q[0].peer = px_set_special("ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p").addr;
+  st = px_sam_begin(q[..], PX_SAM_CONNECT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], "NAMING REPLY RESULT=KEY_NOT_FOUND NAME=x", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_RESULT;
+  st = px_sam_begin(q[..], PX_SAM_CONNECT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  st = px_sam_read(q[..], "NAMING REPLY RESULT=OK NAME=x VALUE=AAAA", out[..]);
+  #assert px_sam_read(q[..], "STREAM STATUS RESULT=OK", out[..]).state == PX_Q_DONE && q[0].state == PX_Q_DONE;
+  // Nothing is read after the end.
+  #assert px_sam_read(q[..], "anything", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_RESULT;
+}
+#test "the configuration's defaults, each -dnsseed and each form of -proxy" {
+  empty: [1] string; none := empty[0..<0];
+  n := px_configure(none, none, "", false, false, false, -1);
+  #assert n.reachable[AM_NET_UNROUTABLE] && n.reachable[AM_NET_INTERNAL] && !n.proxy[AM_NET_IPV6] && !n.proxy[AM_NET_CJDNS] && !n.name_proxy;
+  #assert px_route(n, am_v4(10, 0, 0, 1, 8333)) == PX_R_DIRECT;
+  #assert !px_configure(none, none, "", false, false, false, 0).dnsseed && px_configure(none, none, "", false, false, false, 1).dnsseed;
+  v4 := [1] string.["ipv4"]; v6 := [1] string.["ipv6"];
+  #assert px_configure(v4[..], none, "", false, false, false, -1).dnsseed && px_configure(v6[..], none, "", false, false, false, -1).dnsseed;
+  n = px_configure(v4[..], none, "", false, false, false, 1);
+  #assert n.code == PX_C_OK && n.dnsseed;
+  eq := [1] string.["="];
+  #assert px_configure(none, eq[..], "", false, false, false, -1).code == PX_C_PROXY_EQ;
+  two := [2] string.["127.0.0.1:9050", "=ipv4"];
+  n = px_configure(none, two[..], "", false, false, false, -1);
+  #assert n.code == PX_C_OK && !n.proxy[AM_NET_IPV4] && n.proxy[AM_NET_IPV6] && n.proxy[AM_NET_ONION] && !n.name_proxy;
+  x := [1] string.["x=ipv4"];
+  #assert px_configure(none, x[..], "", false, false, false, -1).proxy[AM_NET_IPV4];
+  all := [1] string.["127.0.0.1:9050"];
+  n = px_configure(none, all[..], "0", false, false, false, -1);
+  #assert !n.proxy[AM_NET_ONION] && !n.reachable[AM_NET_ONION] && n.proxy[AM_NET_IPV4];
+  n = px_configure(none, none, "x", false, false, false, -1);
+  #assert n.proxy[AM_NET_ONION] && n.reachable[AM_NET_ONION];
+  n = px_configure(none, none, "", false, true, false, -1);
+  i2p := px_set_special("ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p").addr;
+  #assert px_route(n, i2p) == PX_R_SAM;
+  #assert px_parse_network("123456789") == AM_NET_UNROUTABLE;
 }
