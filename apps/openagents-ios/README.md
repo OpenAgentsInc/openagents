@@ -355,3 +355,20 @@ local account fixtures and real streamed world assets. New native code needs
 signed generation-1 feed matches all twenty resources in the exported IPA;
 the fresh-install/relaunch check confirms no redundant Apply prompt. See
 [the release evidence and screenshots](../../docs/verification/2026-11-14-arcade-mobile/README.md).
+
+## Native account/settings, build 1088
+
+The rail’s Settings opens the Arcade-style Account hub in the shared grayscale
+components. It includes profile editing/publication, WSS relays, privacy, iOS
+security notifications, keys/passkeys, masked identity/login-key backups,
+device sessions and resources. Email-code login and account-managed identity
+provisioning remain; additional nsec/hex login keys never replace that identity.
+See [the complete mapping](../../docs/arcade/07-account-settings.md),
+[the versioned service](../../docs/protocol/account-settings-v1.md), and
+[release evidence](../../docs/verification/2026-11-14-arcade-settings/README.md).
+The focused scheme is `CoaxNativeSettings`. New SDK/key effects require 1088.
+
+1088 is **VALID / IN_BETA_TESTING**, verified in **Owner**. Its generation-1
+feed matches every archived portable resource and passes the installed
+fresh-install/relaunch no-prompt check. Account/settings migration 0202 is
+live in production.

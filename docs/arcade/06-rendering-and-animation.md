@@ -184,3 +184,13 @@ Cross-origin realms keep their sandbox and typed messages. The compositor
 cannot sample another origin's canvas or forward account credentials merely
 to implement blur or texture sharing. The distinction between trusted same-host
 scene textures and isolated realm frames is part of the acceptance test.
+
+## 1088 account/drawer checkpoint
+
+A13 now drives the default phone rail: 70 points, main-surface translation,
+interactive drag, 250 ms settling, RTL and reduced motion. Recent chats opens
+the wider pane. A14’s three-line arrow pose is painted by the shared GPU
+component scene; its geometry is in `UiAnimated`, not the native host.
+The account privacy switches use the existing shared spring-driven switch.
+This advances these paths; it does not claim all A01–A28 animations complete.
+See [the settings port](07-account-settings.md).

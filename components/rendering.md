@@ -403,3 +403,13 @@ demonstrates a shared device and visibility-based rendering. Apple's
 explains dependencies between passes using shared textures. Our budgets,
 scheduler and trust-boundary choices above are design recommendations, not
 features automatically provided by those APIs.
+
+## Account settings adoption (1088)
+
+The shared account screens use the same scene and skin. `drawer_icon` paints
+the hamburger/arrow morph with skin geometry; interactive gestures feed its
+progress, and shared springs settle other states. Native toggles use the
+shared animated switch. Rail action geometry and profile image sizes come
+from the skin. `k_remote_image` accepts explicit caller admission; the native
+host reuses the installed Coax URL policy and performs only bounded, anonymous
+SDK download/thumbnail effects. No component loads a networking library.

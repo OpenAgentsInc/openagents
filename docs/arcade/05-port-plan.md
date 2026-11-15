@@ -5,6 +5,11 @@ folder. It decides what the port builds, in what order, on which modules,
 and who builds each part. It files no issues: section 5 lists them for the
 port's tracker.
 
+**1088 account/settings checkpoint:** the requested account/settings surfaces and
+Arcade-style rail are deployed. [Part 07](07-account-settings.md) records their
+exact mapping, services and bounds. The Nostr inbox/channel phases below remain
+separate.
+
 **2026-11-14 rendering amendment:** the owner requires every Arcade animation
 ported to the shared Coax component library, including dormant/demo effects.
 [Audit 06](06-rendering-and-animation.md) is the completeness list;
