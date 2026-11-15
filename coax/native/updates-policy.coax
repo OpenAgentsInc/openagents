@@ -74,7 +74,11 @@ cn_safe :: (path: string) -> bool #effects(all) {
   for i: 0..<path.count - 1 { if path[i] == '.' && path[i + 1] == '.' { return false; } }
   return true;
 }
+#test "private metadata HTTP admits only its registered delivery and read endpoints" {
+ #assert cn_api("/api/auth/nostr/delivery/v1alpha1") && cn_api("/api/auth/nostr/read/v1");
+ for path:[6]string.["/api/auth/nostr/read/v1/", "/api/auth/nostr/read/v1?x=1", "/api/auth/nostr/delivery/v1alpha1x", "/api/auth/nostr/store/v1alpha1", "/api/auth/nostr/custody/v1alpha1", "/api/auth/nostr/read/v2"] {#assert !cn_api(path);}
+}
 cn_api :: (path: string) -> bool #export_c #effects(all) {
-  return cn_safe(path) && ((path.count >= 10 && path[0..<10] == "/api/chat/") || path == "/api/auth/account");
+  return cn_safe(path) && ((path.count >= 10 && path[0..<10] == "/api/chat/") || path == "/api/auth/account" || path == "/api/auth/nostr/delivery/v1alpha1" || path == "/api/auth/nostr/read/v1");
 }
 cn_health :: (interactive: bool, owner: bool, attempt: int) -> bool #export_c #effects(all) { return interactive && owner && attempt >= 1 && attempt <= 2; }

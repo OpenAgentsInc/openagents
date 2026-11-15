@@ -46,6 +46,14 @@ NostrDmRelays :: struct {
  #assert !p[0].busy && !ndr_stage(p[..],-1,NMS_LIST_EVENT) && ndr_stage(p[..],0,NMS_LIST_EVENT) && !ndr_stage(p[..],0,NMS_LIST_EVENT);
  #assert !ndr_ready(p[..]);out:[8192]u8;#assert ndr_req(p[..],0,r[0].messages,true,1730000000,out[..])>0;
 }
+#test "recoverable authentication closure does not poison completed catchup or erase earlier incomplete history" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;urls:=[1]string.["wss://relay.openagents.com"];
+ #assert ndi_bind(s[..],"a",NMS_LIST_PUB) && ndr_configure(p[..],s[..],urls[..],"");r:=p[0].relays[0..<1];
+ _=rl_start(r[0].relay[..],0);#assert rl_opened(r[0].relay[..],r[0].relay[0].gen,0);o:=rl_next(r[0].relay[..],0);#assert o.kind==RL_OUT_REQ;
+ name:[24]u8;frame:[256]u8;j:[1]Jo;jo_start(j[..],frame[..]);jo_arr(j[..]);jo_str(j[..],"CLOSED");jo_str(j[..],rl_sub_text(o.slot,r[0].relay[0].subs[o.slot].serial,name[..]));jo_str(j[..],"auth-required: authenticate");jo_end(j[..]);
+ #assert ndr_frame(p[..],0,cast(string)frame[0..<j[0].n]) && !r[0].partial;
+ r[0].partial=true;#assert ndr_frame(p[..],0,cast(string)frame[0..<j[0].n]) && r[0].partial;
+}
 ndr_configure :: (p:[]NostrDmRelays,s:[]NostrInbox,urls:[]string,peer:string)->bool #effects(all) {
  if s[0].na==0 || urls.count<1 || urls.count>6 || (peer.count!=0 && (!aw_hex(peer,64) || peer==cast(string)s[0].identity[..])) || p[0].busy {return false;}
  for url,i:urls {if url.count>256 || !nrs_admit(1,i,1,0,cast(string)s[0].identity[..],url) {return false;}for k:0..<i {if urls[k]==url {return false;}}}
@@ -106,7 +114,7 @@ ndr_frame :: (p:[]NostrDmRelays,i:int,raw:string)->bool #effects(all) {
  if m.type==NM_NOTICE {_=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_NOTICE});return true;}
  sub:=nm_text(m,m.sub);slot:=rl_sub_find(r[0].relay[..],sub);if slot<0 {return false;}
  if m.type==NM_EOSE {_=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_EOSE,sub=sub});if slot==r[0].own || slot==r[0].peer {p[0].heads_changed=true;}if slot==r[0].messages && r[0].received>=128 {r[0].partial=true;}return true;}
- if m.type==NM_CLOSED {_=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_CLOSED,sub=sub,auth_required=auth});r[0].partial=true;return true;}
+ if m.type==NM_CLOSED {_=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_CLOSED,sub=sub,auth_required=auth});if !auth {r[0].partial=true;}return true;}
  if m.type!=NM_EVENT {return false;}scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(raw[m.event.from..<m.event.to],scratch[..],false));
  if e.error!=NE_OK || !e.verified {r[0].partial=true;return false;}
  want:=ifx slot==r[0].messages then 1059 else 10050;if e.kind!=want {r[0].partial=true;return false;}

@@ -26,6 +26,13 @@ MessagesWeb :: struct {
  s[0].response_n=nsr_write("store","ingest",id,id,"ok",1,0,"",s[0].response[..]);wm_http_done(s[..],200);
  #assert !c[0].records[0][0].committed && c[0].queues[0].generation==2;
 }
+#test "periodic settings refresh preserves a current private SDK flight" {
+ s:[1]MessagesWeb;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";urls:=[1]string.["wss://relay.openagents.com"];
+ #assert ndm_start(s[0].messenger[..],"a",me,me,urls[..]);s[0].auth=1;s[0].seed_ready=true;s[0].seed=s[0].messenger[0].inbox[0].identity;s[0].identity=s[0].seed;s[0].na=ndi_copy(s[0].account[..],"a");
+ #assert ndm_tick(s[0].messenger[..],0);flight:=s[0].messenger[0].flight;#assert flight!=0;
+ s[0].http=2;s[0].response_n=asw_initial(s[0].response[..]);wm_http_done(s[..],200);
+ #assert s[0].auth==1 && s[0].messenger[0].flight==flight && s[0].messenger[0].started;
+}
 wm_http :: (s:[]MessagesWeb,purpose:int,path:string,body:string)->bool {
  if s[0].http!=0 || path.count>128 || body.count>800000 {return false;}
  s[0].http=purpose;s[0].path_n=ndi_copy(s[0].path[..],path);s[0].request_n=ndi_copy(s[0].request[..],body);s[0].response_n=0;s[0].http_bad=false;s[0].asking=true;return true;

@@ -44,24 +44,26 @@ ndo_clear :: (o:[]NostrOutgoing) #effects(all) {
 }
 ndo_begin :: (o:[]NostrOutgoing,s:[]NostrInbox,operation:string,peer:string,created:int,text:string,reply:string)->bool #effects(all) {
  if s[0].na==0 || (o[0].phase!=0 && !(o[0].phase==3 && o[0].seen)) || !aw_hex(operation,64) {return false;}
- purpose:[100000]u8;defer {secure_zero(purpose[..]);}
- n:=nsp_seal_request(cast(string)s[0].identity[..],peer,created,text,reply,purpose[..]);if n<0 {return false;}
- ndo_clear(o);n=nsc_request("seal",operation,cast(string)s[0].identity[..],cast(string)purpose[0..<n],o[0].request[..]);if n<0 {ndo_clear(o);return false;}
+ purpose:[100000]u8;defer {secure_zero(purpose[..]);} // mutant: equivalent (deferred local zeroing removed: safe Coax cannot observe the dead purpose buffer after return; keep cleanup for native memory hygiene)
+ n:=nsp_seal_request(cast(string)s[0].identity[..],peer,created,text,reply,purpose[..]);if n<0 {return false;} // mutant: equivalent (<0 to <=0 or 0 to 1: the purpose writer returns -1 or a complete nonempty JSON object longer than one byte)
+ ndo_clear(o);n=nsc_request("seal",operation,cast(string)s[0].identity[..],cast(string)purpose[0..<n],o[0].request[..]);if n<0 {ndo_clear(o);return false;} // mutant: equivalent (error-path false to true, <0 to <=0, or 0 to 1: canonical bound owner/operation, the just-validated purpose and the fixed 400000-byte destination make this second writer infallible; it never returns zero or one)
  o[0].generation=s[0].generation;o[0].phase=1;o[0].busy=true;o[0].nr=n;o[0].created=created;
  _=ndi_copy(o[0].operation[..],operation);_=ndi_copy(o[0].peer[..],peer);o[0].nt=ndi_copy(o[0].text[..],text);o[0].reply_n=ndi_copy(o[0].reply[..],reply);return true;
 }
 ndo_retry :: (o:[]NostrOutgoing,s:[]NostrInbox)->bool #effects(all) {
- if o[0].generation!=s[0].generation || o[0].phase!=2 || o[0].busy || o[0].nr<1 {return false;}o[0].phase=1;o[0].busy=true;return true;
+ if o[0].generation!=s[0].generation || o[0].phase!=2 || o[0].busy || o[0].nr<1 {return false;} // mutant: equivalent (request minimum 1 to 2: a retained encoded custody request is longer than one byte; no reachable retry has length one)
+ o[0].phase=1;o[0].busy=true;return true;
 }
 ndo_reply :: (o:[]NostrOutgoing,s:[]NostrInbox,generation:int,raw:string,failed:bool)->bool #effects(all) {
  if !o[0].busy || o[0].phase!=1 || generation!=o[0].generation || generation!=s[0].generation {return false;}
  if failed {o[0].phase=2;o[0].busy=false;return false;}
- r:[1]NsResult;defer {secure_zero(r[0].payload[..]);}
+ r:[1]NsResult;defer {secure_zero(r[0].payload[..]);} // mutant: equivalent (local deferred zeroing removed: the payload has no safe Coax observer after this frame returns; retain native cleanup)
  if !nsr_read(raw,r[..]) || r[0].service!=1 || r[0].action!=3 || cast(string)r[0].identity[..]!=cast(string)s[0].identity[..] || cast(string)r[0].operation[..]!=cast(string)o[0].operation[..] {return false;}
  o[0].busy=false;
  if r[0].status!=0 {o[0].phase=2;o[0].status=r[0].status;return false;}
  p:[1]NsmSealed;if !nsm_sealed_read(cast(string)r[0].payload[0..<r[0].n],p[..]) {o[0].phase=2;o[0].status=10;return false;}
- if !nds_begin(o[0].delivery[..],p[0]) {o[0].phase=2;o[0].status=10;return false;}o[0].phase=3;o[0].status=0;secure_zero(o[0].request[..]);o[0].nr=0;return true;
+ if !nds_begin(o[0].delivery[..],p[0]) {o[0].phase=2;o[0].status=10;return false;} // mutant: equivalent (writes/constants inside the nds_begin refusal branch: nsm_sealed_read already admitted this exact complete receipt and the destination has one slot; nds_begin's re-encoding cannot refuse it)
+ o[0].phase=3;o[0].status=0;secure_zero(o[0].request[..]);o[0].nr=0;return true;
 }
 // Only the owner of a successfully fenced store response calls this projection.
 // One accepting relay per recipient copy is acceptance, never a read receipt.
@@ -86,4 +88,48 @@ ndo_seen :: (o:[]NostrOutgoing,s:[]NostrInbox)->bool #effects(all) {
  o[0].phase=3;o[0].generation=2;_=ndi_copy(o[0].delivery[0].receipt[0].self[..],me);o[0].nt=ndi_copy(o[0].text[..],"draft");
  #assert !ndo_seen(o[..],s[..]) && !o[0].seen && o[0].nt==5;o[0].generation=1;
  #assert ndo_seen(o[..],s[..]) && o[0].seen && o[0].nt==0 && o[0].text[0]==0;
+}
+#test "retiring an outgoing owner clears secrets and all presentation state before another intent" {
+ o:[1]NostrOutgoing;o[0].generation=7;o[0].phase=3;o[0].busy=true;o[0].created=1730000000;o[0].nr=1;o[0].nt=1;o[0].reply_n=64;o[0].seen=true;o[0].status=10;o[0].delivery[0].receipt[0].ok=true;
+ o[0].request[0]='x';o[0].request[399999]='y';o[0].text[0]='a';o[0].text[16383]='b';o[0].reply[0]='c';o[0].operation[0]='d';o[0].peer[0]='e';ndo_clear(o[..]);
+ #assert o[0].generation==0 && o[0].phase==0 && !o[0].busy && o[0].created==0 && o[0].nr==0 && o[0].nt==0 && o[0].reply_n==0 && !o[0].delivery[0].receipt[0].ok && !o[0].seen && o[0].status==0;
+ #assert o[0].request[0]==0 && o[0].request[399999]==0 && o[0].text[0]==0 && o[0].text[16383]==0 && o[0].reply[0]==0 && o[0].operation[0]==0 && o[0].peer[0]==0;
+}
+#test "only idle or an opened committed intent admits a new deliberate send" {
+ s:[1]NostrInbox;o:[1]NostrOutgoing;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert !ndo_begin(o[..],s[..],me,peer,1730000000,"Hello","") && ndi_bind(s[..],"a",me) && !ndo_begin(o[..],s[..],"bad",peer,1730000000,"Hello","");
+ for phase:0..<5 {for seen:0..<2 {
+  ndo_clear(o[..]);o[0].phase=phase;o[0].seen=seen==1;o[0].status=10;o[0].delivery[0].accepted=3;
+  expected:=phase==0 || phase==3 && seen==1;
+  #assert ndo_begin(o[..],s[..],me,peer,1730000000,"Hello",peer)==expected;
+  if expected {#assert o[0].phase==1 && o[0].busy && !o[0].seen && o[0].status==0 && o[0].delivery[0].accepted==0 && o[0].created==1730000000 && o[0].reply_n==64 && cast(string)o[0].reply[..]==peer && cast(string)o[0].peer[..]==peer && cast(string)o[0].text[0..<o[0].nt]=="Hello";}
+ }}
+ ndo_clear(o[..]);#assert ndo_begin(o[..],s[..],me,peer,1730000000,"Hello","");o[0].phase=2;o[0].busy=true;#assert !ndo_retry(o[..],s[..]);o[0].busy=false;o[0].nr=0;#assert !ndo_retry(o[..],s[..]);
+}
+#test "only the exact active seal result can consume an outgoing request and a malformed success stays uncertain" {
+ s:[1]NostrInbox;o:[1]NostrOutgoing;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";b:[4096]u8;p:[2048]u8;
+ #assert ndi_bind(s[..],"a",me);ids:=[2]string.[me,peer];pn:=nsm_sealed_write(ids[..],2,p[..]);
+ for field:0..<7 {
+  ndo_clear(o[..]);#assert ndo_begin(o[..],s[..],me,peer,1730000000,"Hello","");
+  n:=nsr_write(ifx field==0 then "store" else "custody",ifx field==0 then "queue" else ifx field==1 then "open" else "seal",ifx field==2 then peer else me,ifx field==3 then peer else me,"ok",0,0,cast(string)p[0..<pn],b[..]);
+  if field==4 {o[0].busy=false;}if field==5 {o[0].phase=2;}if field==6 {s[0].generation=2;}
+  #assert n>0 && !ndo_reply(o[..],s[..],1,cast(string)b[0..<n],false) && o[0].nr>0 && o[0].phase!=3;s[0].generation=1;
+ }
+ ndo_clear(o[..]);#assert ndo_begin(o[..],s[..],me,peer,1730000000,"Hello","");n:=nsr_write("custody","seal",me,me,"purpose-refused",0,0,"",b[..]);#assert !ndo_reply(o[..],s[..],1,cast(string)b[0..<n],false) && o[0].phase==2 && o[0].status==5 && !o[0].busy && ndo_retry(o[..],s[..]);
+ n=nsr_write("custody","seal",me,me,"ok",0,0,"{}",b[..]);#assert !ndo_reply(o[..],s[..],1,cast(string)b[0..<n],false) && o[0].phase==2 && o[0].status==10 && !o[0].busy && o[0].nr>0;
+ #assert ndo_retry(o[..],s[..]);n=nsr_write("custody","seal",me,me,"ok",0,0,cast(string)p[0..<pn],b[..]);#assert ndo_reply(o[..],s[..],1,cast(string)b[0..<n],false);
+ index:[1]MsIndex;#assert !ndo_delivery(o[..],s[..],index[..]);index[0].ok=true;index[0].revision=2;s[0].generation=2;#assert !ndo_delivery(o[..],s[..],index[..]) && !ndo_seen(o[..],s[..]);s[0].generation=1;o[0].phase=2;#assert !ndo_delivery(o[..],s[..],index[..]) && !ndo_seen(o[..],s[..]);
+}
+#test "every refused seal recovers through its original request and only its own opened copy replaces it" {
+ s:[1]NostrInbox;o:[1]NostrOutgoing;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";b:[4096]u8;p:[2048]u8;
+ #assert ndi_bind(s[..],"a",me);ids:=[2]string.[me,peer];pn:=nsm_sealed_write(ids[..],2,p[..]);
+ for status:1..<NS_STATUSES.count {
+  ndo_clear(o[..]);#assert ndo_begin(o[..],s[..],me,peer,1730000000,"Retained","");original_n:=o[0].nr;
+  n:=nsr_write("custody","seal",me,me,NS_STATUSES[status],0,0,"",b[..]);#assert n>0 && !ndo_reply(o[..],s[..],1,cast(string)b[0..<n],false) && o[0].phase==2 && o[0].status==status && o[0].nr==original_n;
+  #assert ndo_retry(o[..],s[..]) && o[0].phase==1 && o[0].busy;n=nsr_write("custody","seal",me,me,"ok",0,0,cast(string)p[0..<pn],b[..]);
+  #assert ndo_reply(o[..],s[..],1,cast(string)b[0..<n],false) && o[0].phase==3 && o[0].status==0 && o[0].nr==0;
+  // An unrelated provider-opened row is not this send's self copy.
+  s[0].n=1;_=ndi_copy(s[0].messages[0].outer[..],me);#assert !ndo_seen(o[..],s[..]) && !o[0].seen && o[0].nt==8;
+  _=ndi_copy(s[0].messages[0].outer[..],peer);#assert ndo_seen(o[..],s[..]) && o[0].seen && o[0].nt==0;s[0].n=0;
+ }
 }

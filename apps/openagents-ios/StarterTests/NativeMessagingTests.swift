@@ -12,16 +12,21 @@ import UIKit
         let (data,_)=try await URLSession.shared.data(from:fixture.appendingPathComponent("native"))
         let value=try XCTUnwrap(JSONSerialization.jsonObject(with:data) as? [String:Any])
         let origin=try XCTUnwrap(value["origin"] as? String),tokens=try XCTUnwrap(value["tokens"] as? [String:Any]),peer=try XCTUnwrap(value["peer"] as? String)
-        let text=try XCTUnwrap(value["text"] as? String),reply=try XCTUnwrap(value["reply"] as? String)
+        let text=try XCTUnwrap(value["text"] as? String),reply=try XCTUnwrap(value["reply"] as? String),reference=try XCTUnwrap(value["reference"] as? String)
         let login=AppAuth.Tokens(access:try XCTUnwrap(tokens["access_token"] as? String),refresh:try XCTUnwrap(tokens["refresh_token"] as? String),accessUntil:Date().addingTimeInterval(3600),account:try XCTUnwrap(tokens["account"] as? String))
         func progress(_ stage:String)async throws {var q=URLRequest(url:fixture.appendingPathComponent("progress"));q.httpMethod="POST";q.httpBody=Data(stage.utf8);_=try await URLSession.shared.data(for:q)}
         let first=try LiveInbox(origin:origin,tokens:login)
         defer {first.stop()}
         try await first.open(peer:peer)
         try first.program.input("dm.composer",text);try first.program.frame()
-        try await first.until("send readiness") {first.program.nodes.values.contains {$0.id=="dm.composer.send" && $0.attrs["disabled"] != "true"}}
+        try await first.until("send readiness") {first.program.nodes.values.contains {$0.id=="dm.composer.send" && $0.attrs["disabled"]==nil}}
         try first.program.input("dm.composer.send");try first.program.frame()
-        try await first.until("recipient relay acceptance") {first.program.nodes.values.contains {$0.id.hasPrefix("dm.status.") && $0.attrs["aria-label"]=="Accepted by relay"}}
+        var retried=false
+        try await first.until("recipient relay acceptance") {
+            if !retried && first.program.nodes.values.contains(where:{$0.id=="dm.outgoing.status" && $0.attrs["aria-label"]=="Check send"}) {retried=true;try? first.program.input("dm.retry");try? first.program.frame()}
+            return first.program.nodes.values.contains {$0.id.hasPrefix("dm.status.") && $0.attrs["aria-label"]=="Accepted by relay"}
+        }
+        if value["uncertain"] as? Bool==true {XCTAssertTrue(retried)}
         try await progress("native-sent")
         try await first.until("web reply") {first.has(reply)}
         XCTAssertEqual(first.count(text),1);XCTAssertEqual(first.count(reply),1)
@@ -30,6 +35,12 @@ import UIKit
         try await cold.open(peer:peer);try await cold.until("cold journal convergence") {cold.has(text) && cold.has(reply)}
         XCTAssertEqual(cold.count(text),1);XCTAssertEqual(cold.count(reply),1)
         try await progress("native-cold-recovered")
+        try await cold.choose(peer:reference);try cold.program.input("dm.composer",text+" reference");try cold.program.frame()
+        try await cold.until("independent recipient discovery") {cold.program.nodes.values.contains {$0.id=="dm.composer.send" && $0.attrs["disabled"]==nil}}
+        try cold.program.input("dm.composer.send");try cold.program.frame()
+        try await cold.until("independent client reply") {cold.has(reply+" reference")}
+        XCTAssertEqual(cold.count(text+" reference"),1);XCTAssertEqual(cold.count(reply+" reference"),1)
+        try await progress("native-independent-converged")
     }
     @MainActor private final class LiveInbox {
         let program:NativeProgram,host:NativeHost,messaging:NativeMessagingServices,relays:NativeRelayServices
@@ -43,9 +54,10 @@ import UIKit
             try program.event(Int(cnw_enable_event()),0,"");try program.frame()
         }
         func stop() {messaging.retire();relays.reset();host.accountServices.clear()}
-        func count(_ text:String)->Int {program.nodes.values.filter {$0.text==text}.count}
+        func count(_ text:String)->Int {program.nodes.values.filter {$0.id.hasPrefix("dm.message.") && $0.text==text}.count}
         func has(_ text:String)->Bool {count(text)>0}
         func until(_ stage:String,_ predicate:()->Bool)async throws {
+            print("Live native stage:",stage)
             let end=Date().addingTimeInterval(100)
             while Date()<end {
                 if predicate() {return};try await step();try await Task.sleep(for:.milliseconds(25))
@@ -63,7 +75,13 @@ import UIKit
                 if program.nodes.values.contains(where:{$0.id=="dm.enable"}) && !enabled {enabled=true;try? program.input("dm.enable");try? program.frame()}
                 return program.nodes.values.contains {$0.id=="dm.empty" || $0.id.hasPrefix("dm.room.")}
             }
-            try program.input("dm.new");try program.frame();try program.input("dm.recipient",peer);try program.frame();try program.input("dm.recipient.open");try program.frame()
+            try await choose(peer:peer)
+        }
+        func choose(peer:String)async throws {
+            try program.input("dm.new");try program.frame()
+            try await until("recipient picker") {program.nodes.values.contains {$0.id=="dm.recipient"}}
+            try program.input("dm.recipient",peer);try program.frame();try program.input("dm.recipient.open");try program.frame()
+            try await until("selected recipient") {program.nodes.values.contains {$0.id=="dm.title" && $0.text.hasPrefix(String(peer.prefix(10)))}}
         }
         func step()async throws {
             try program.frame(elapsed:0.05);let (op,raw)=try program.action();if op==0 {return}
@@ -81,7 +99,11 @@ import UIKit
                 }
                 let body=op==18 || op>=21 ? result["record"] as? String ?? "":op==4 ? result["body"] as? String ?? "":String(decoding:try JSONSerialization.data(withJSONObject:result),as:UTF8.self)
                 try program.event(100+op,result["status"] as? Int ?? 0,body)
-            }catch {try program.event(200+op,0,"{}")}
+            }catch {
+                if let refusal=error as? NativeFailure {print("Live native effect refused:",op,refusal.localizedDescription)}
+                else {print("Live native effect refused:",op,type(of:error))}
+                try program.event(200+op,0,"{}")
+            }
             try program.frame()
         }
     }

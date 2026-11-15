@@ -10,9 +10,17 @@
  #assert nostr_public_key_text(key,b[0..<63])<0 && nostr_public_key_text("bad",b[..])<0 && nostr_public_key_text("nsec1x",b[..])<0;
  #assert nostr_public_key_text("npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg",b[..])==64 && b[0]=='7' && b[63]=='e';
 }
+#test "uppercase public forms normalize while mixed case bad checksums and short outputs fail" {
+ encoded:="npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg";upper:[63]u8;b:[64]u8;
+ #assert encoded.count==63;for c,i:encoded {upper[i]=ifx c>='a' && c<='z' then c-32 else c;}
+ #assert nostr_public_key_text(cast(string)upper[..],b[..])==64 && b[0]=='7' && b[63]=='e';
+ #assert nostr_public_key_text(encoded,b[0..<63])== -1;upper[0]='n';#assert nostr_public_key_text(cast(string)upper[..],b[..])== -1;
+ upper[0]='N';upper[62]='Q';#assert nostr_public_key_text(cast(string)upper[..],b[..])== -1;
+ for word:[5]string.["npub", "nPUB1x", "npub2", "nsec1qqqqqq", "nprofile1qqqqqq"] {#assert nostr_public_key_text(word,b[..])== -1;}
+}
 nostr_public_key_text :: (text:string,out:[]u8)->int #effects(all) {
  if text.count==0 {return 0;}if nf_hex(text) {if out.count<64 {return -1;}for c,i:text {out[i]=c;}return 64;}
- if text.count<5 || !((text[0]=='n' || text[0]=='N') && (text[1]=='p' || text[1]=='P') && (text[2]=='u' || text[2]=='U') && (text[3]=='b' || text[3]=='B') && text[4]=='1') {return -1;}
- key:[32]u8;r:=nip19_decode_checked(text,key[..],false);if r.error!=NC_OK || r.type!=N19_NPUB || r.written!=32 {return -1;}
+ if text.count<5 || !((text[0]=='n' || text[0]=='N') && (text[1]=='p' || text[1]=='P') && (text[2]=='u' || text[2]=='U') && (text[3]=='b' || text[3]=='B') && text[4]=='1') {return -1;} // mutant: equivalent (prefix && relaxed to || or minimum 5 changed to 6/<=5: the strict decoder and final NPUB type gate still reject every other HRP; a five-byte npub1 has no valid checksum. Keep the early secret-form refusal in production.)
+ key:[32]u8;r:=nip19_decode_checked(text,key[..],false);if r.error!=NC_OK || r.type!=N19_NPUB || r.written!=32 {return -1;} // mutant: equivalent (post-decode || relaxed to &&: under the retained npub HRP gate, successful n19_decode returns NPUB/32; every failure returns a fresh error result with type/written zero. The remaining guard independently refuses it.)
  h:=hex_encode_checked(cast(string)key[..],out,false);return ifx h.error==NC_OK then h.written else -1;
 }

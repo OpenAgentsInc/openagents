@@ -5,6 +5,14 @@
  s[0].account_settings[0].loaded=true;s[0].account_settings[0].np=64;s[0].account_settings[0].na=1;
  na_dm_tick(s[..],0);#assert s[0].action==0 && !s[0].messenger[0].started;na_nav_tick(s[..]);#assert s[0].page==2 && s[0].navigation[0].np==0;
 }
+#test "a send pressed beside a queued SDK action retains its frozen intent until entropy is available" {
+ s:[1]Starter;m:=s[0].messenger[..];a:=s[0].account_settings[..];me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";urls:=[1]string.["wss://relay.openagents.com"];
+ s[0].workspace=true;s[0].account_ready=true;s[0].dm_wanted=true;s[0].page=13;a[0].loaded=true;a[0].np=ndi_copy(a[0].pub[..],me);a[0].na=ndi_copy(a[0].account[..],"a");
+ m[0].started=true;m[0].active=true;m[0].generation=1;m[0].inbox[0].generation=1;m[0].inbox[0].na=ndi_copy(m[0].inbox[0].account[..],"a");_=ndi_copy(m[0].inbox[0].identity[..],me);m[0].own_ready=true;m[0].peer_ready=true;m[0].np=ndi_copy(m[0].peer[..],peer);m[0].relays[0].now=1730000000;
+ s[0].dm_view[0].nd=ndi_copy(s[0].dm_view[0].draft[..],"Frozen send");s[0].action=23;
+ #assert na_dm_event(s[..],1,"dm.composer.send",0) && m[0].prepared[0].pending && cast(string)m[0].prepared[0].text[0..<m[0].prepared[0].nt]=="Frozen send" && s[0].action==23;
+ s[0].action=0;na_dm_tick(s[..],0);#assert s[0].action==11 && s[0].purpose==161 && m[0].prepared[0].pending;
+}
 na_dm_clear :: (s:[]Starter) {
  ndm_clear(s[0].messenger[..]);ndv_clear(s[0].dm_view[..]);s[0].dm_wanted=false;s[0].dm_entropy_generation= -1;s[0].dm_entropy_na=0;
  s[0].markdown[0]=MdDoc.{};secure_zero(s[0].inbox[..]);secure_zero(s[0].outbox[..]);s[0].out_n=0;
@@ -23,6 +31,7 @@ na_dm_tick :: (s:[]Starter,dt:f32) {
  if !a[0].loaded {if !a[0].busy {acs_request(a,"snapshot","","");}return;}
  if m[0].started && (cast(string)m[0].inbox[0].identity[..]!=cast(string)a[0].pub[0..<a[0].np] || cast(string)m[0].inbox[0].account[0..<m[0].inbox[0].na]!=cast(string)a[0].account[0..<a[0].na]) {na_dm_clear(s);s[0].dm_wanted=s[0].page==13;}
  if !m[0].started {if s[0].page!=12 && !f[0].busy && !f[0].reset_all {_=na_dm_entropy(s,false);}return;}
+ if m[0].prepared[0].pending && !(s[0].flight==11 && s[0].purpose==161) {if na_dm_entropy(s,true) {return;}}
  urls:[6]string;for i:0..<a[0].saved[0].relays_n {urls[i]=asw_relay(a[0].saved[..],i);}_=ndm_settings(m,urls[0..<a[0].saved[0].relays_n]);
  paused:=s[0].page==12 || f[0].active || f[0].busy || f[0].reset_all;
  if paused && m[0].active {ndm_pause(m);}
@@ -79,7 +88,7 @@ na_dm_event :: (s:[]Starter,kind:int,id:string,n:int)->bool {
  if id=="dm.latest" {v[0].before=0;return true;}
  if id=="dm.earlier" {if v[0].before<128 {v[0].before+=12;}return true;}
  if id=="dm.reply.cancel" {v[0].nr=0;secure_zero(v[0].reply[..]);return true;}
- if id=="dm.composer.send" {if s[0].flight==0 && ndm_prepare(m,cast(string)v[0].draft[0..<v[0].nd],cast(string)v[0].reply[0..<v[0].nr]) {if !na_dm_entropy(s,true) {ndm_cancel_prepared(m);}}return true;}
+ if id=="dm.composer.send" {if ndm_prepare(m,cast(string)v[0].draft[0..<v[0].nd],cast(string)v[0].reply[0..<v[0].nr]) {_=na_dm_entropy(s,true);}return true;}
  for i:0..<m[0].inbox[0].n {row:=m[0].inbox[0].messages[i];a:[96]u8;b:[96]u8;
   if id==ndv_id("dm.reply.",row.message.rumor_id[..],a[..]) && v[0].open && n17_same(row.message.room[..],v[0].room[..]) {v[0].nr=hex_encode_checked(cast(string)row.message.rumor_id[..],v[0].reply[..],false).written;return true;}
   if id==tr_cat(b[..],ndv_id("dm.message.",row.message.rumor_id[..],a[..]),".copy") {na_text_effect(s,false,cast(string)row.body[0..<row.n],id);return true;}

@@ -18,10 +18,62 @@ NostrDeliveryState :: struct {receipt:[1]NsmSealed;known:u64;accepted:u64;pendin
  d:[1]NostrDeliveryState;r:NsmSealed;index:[1]MsIndex;#assert !nds_begin(d[..],r) && nds_status(d[..])== -1;
  r.ok=true;r.n=12;#assert !nds_begin(d[..],r) && !nds_index(d[..],index[..]);
 }
+#test "delivery validates complete receipt bounds and replaces every observation on a new receipt" {
+ d:[1]NostrDeliveryState;r:[1]NsmSealed;index:[1]MsIndex;b:[2048]u8;ids:[11][64]u8;text:[11]string;
+ for i:0..<11 {for k:0..<64 {ids[i][k]='0';}ids[i][63]=cast(u8)('a'+i%6);ids[i][62]=cast(u8)('0'+i/6);text[i]=cast(string)ids[i][..];}
+ n:=nsm_sealed_write(text[..],7,b[..]);#assert n>0 && nsm_sealed_read(cast(string)b[0..<n],r[..]);
+ #assert nds_begin(d[..],r[0]) && d[0].receipt[0].n==11;
+ d[0].known=2047;d[0].accepted=1023;#assert nds_status(d[..])==1;
+ d[0].receipt[0].n=12;#assert nds_status(d[..])== -1;d[0].receipt[0].n=1;#assert nds_status(d[..])== -1;
+ d[0].receipt[0]=r[0];d[0].receipt[0].ok=false;#assert nds_status(d[..])== -1 && !nds_index(d[..],index[..]);
+ #assert nds_status(d[0..<0])== -1 && !nds_begin(d[0..<0],r[0]);
+ bad:=r[0];bad.ok=false;#assert !nds_begin(d[..],bad);bad=r[0];bad.n=1;#assert !nds_begin(d[..],bad);bad=r[0];bad.self[0]='f';#assert !nds_begin(d[..],bad);
+ bad=r[0];bad.ids[0][0]='z';#assert !nds_begin(d[..],bad);
+ d[0].known=2047;d[0].accepted=2047;d[0].pending=2047;d[0].refused=2047;d[0].revision=99;
+ #assert nds_begin(d[..],r[0]) && d[0].known==0 && d[0].accepted==0 && d[0].pending==0 && d[0].refused==0 && d[0].revision== -1;
+ index[0].revision=7;#assert !nds_index(d[..],index[..]);index[0].ok=true;#assert !nds_index(d[0..<0],index[..]) && !nds_index(d[..],index[0..<0]);index[0].revision=6;#assert !nds_index(d[..],index[..]);
+}
+#test "each recipient retains monotonic acceptance and losing evidence cannot retain a pending or refusal badge" {
+ d:[1]NostrDeliveryState;r:[1]NsmSealed;index:[1]MsIndex;b:[2048]u8;
+ ids:=[3]string.["0000000000000000000000000000000000000000000000000000000000000001","0000000000000000000000000000000000000000000000000000000000000002","0000000000000000000000000000000000000000000000000000000000000003"];
+ n:=nsm_sealed_write(ids[..],7,b[..]);#assert nsm_sealed_read(cast(string)b[0..<n],r[..]) && nds_begin(d[..],r[0]);
+ index[0].ok=true;index[0].revision=7;index[0].n=3;for i:0..<3 {for c,k:ids[i] {index[0].rows[i].id[k]=c;}index[0].rows[i].kind=1059;}
+ for target:0..<3 {
+  #assert nds_begin(d[..],r[0]);for i:0..<3 {index[0].rows[i].accepted=0;index[0].rows[i].pending=0;index[0].rows[i].refused=0;}
+  bit:=cast(u64)1<<target;index[0].rows[target].pending=1;
+  #assert nds_index(d[..],index[..]) && d[0].known==bit && d[0].pending==bit && d[0].refused==0 && d[0].accepted==0;
+  index[0].rows[target].pending=0;#assert nds_index(d[..],index[..]) && d[0].known==0 && d[0].pending==0;
+  index[0].rows[target].refused=1;#assert nds_index(d[..],index[..]) && d[0].known==bit && d[0].refused==bit && d[0].pending==0;
+  index[0].rows[target].pending=1;#assert nds_index(d[..],index[..]) && d[0].refused==0 && d[0].pending==bit;
+  index[0].rows[target].pending=0;#assert nds_index(d[..],index[..]) && d[0].refused==bit && d[0].pending==0;
+  index[0].rows[target].refused=0;#assert nds_index(d[..],index[..]) && d[0].known==0 && d[0].refused==0;
+  index[0].rows[target].refused=1;#assert nds_index(d[..],index[..]) && d[0].refused==bit;
+  index[0].rows[target].accepted=1;
+  #assert nds_index(d[..],index[..]) && d[0].known==bit && d[0].accepted==bit && d[0].pending==0 && d[0].refused==0;
+  index[0].rows[target].accepted=0;#assert nds_index(d[..],index[..]) && d[0].known==bit && d[0].accepted==bit && d[0].pending==0 && d[0].refused==0;
+  #assert nds_begin(d[..],r[0]);index[0].rows[target].refused=0;index[0].rows[target].pending=1;#assert nds_index(d[..],index[..]) && d[0].pending==bit;
+  index[0].rows[target].accepted=1;#assert nds_index(d[..],index[..]) && d[0].pending==0 && d[0].accepted==bit;
+ }
+ #assert nds_begin(d[..],r[0]);d[0].accepted=3;d[0].known=3;#assert nds_status(d[..])==1;d[0].accepted=0;d[0].known=7;#assert nds_status(d[..])==0;d[0].known=2;#assert nds_status(d[..])== -1;
+}
+#test "all sixteen observation transitions obey the acceptance table independently for every copy" {
+ // Rows are the previous observation; columns are the next observation.
+ // 0 unknown, 1 pending, 2 refused, 3 accepted. Acceptance is terminal.
+ expected:=[16]int.[0,1,2,3,0,1,2,3,0,1,2,3,3,3,3,3];
+ ids:=[3]string.["0000000000000000000000000000000000000000000000000000000000000001","0000000000000000000000000000000000000000000000000000000000000002","0000000000000000000000000000000000000000000000000000000000000003"];
+ d:[1]NostrDeliveryState;r:[1]NsmSealed;index:[1]MsIndex;b:[2048]u8;n:=nsm_sealed_write(ids[..],7,b[..]);#assert nsm_sealed_read(cast(string)b[0..<n],r[..]);
+ for target:0..<3 {for before:0..<4 {for after:0..<4 {
+  #assert nds_begin(d[..],r[0]);index[0]=MsIndex.{};index[0].ok=true;index[0].revision=7;index[0].n=1;row:=index[0].rows[0..<1];for c,k:ids[target] {row[0].id[k]=c;}row[0].kind=1059;
+  row[0].pending=ifx before==1 then 1 else 0;row[0].refused=ifx before==2 then 1 else 0;row[0].accepted=ifx before==3 then 1 else 0;#assert nds_index(d[..],index[..]);
+  row[0].pending=ifx after==1 then 1 else 0;row[0].refused=ifx after==2 then 1 else 0;row[0].accepted=ifx after==3 then 1 else 0;#assert nds_index(d[..],index[..]);
+  word:=expected[before*4+after];bit:=cast(u64)1<<target;
+  #assert d[0].known==(ifx word==0 then 0 else bit) && d[0].accepted==(ifx word==3 then bit else 0) && d[0].pending==(ifx word==1 then bit else 0) && d[0].refused==(ifx word==2 then bit else 0);
+ }}}
+}
 nds_begin :: (s:[]NostrDeliveryState,r:NsmSealed)->bool #effects(all) {
  if s.count!=1 || !r.ok || r.n<2 || r.n>11 {return false;}
  receipt:=r;ids:[11]string;for i:0..<receipt.n {ids[i]=cast(string)receipt.ids[i][..];}b:[2048]u8;n:=nsm_sealed_write(ids[0..<receipt.n],receipt.revision,b[..]);checked:[1]NsmSealed;
- if n<0 || !nsm_sealed_read(cast(string)b[0..<n],checked[..]) || cast(string)checked[0].self[..]!=cast(string)receipt.self[..] {return false;}
+ if n<0 || !nsm_sealed_read(cast(string)b[0..<n],checked[..]) || cast(string)checked[0].self[..]!=cast(string)receipt.self[..] {return false;} // mutant: equivalent (<0 to <=0 or 0 to 1: the writer returns -1 or a nonempty manifest longer than one byte, never 0 or 1)
  s[0]=NostrDeliveryState.{};s[0].receipt[0]=checked[0];return true;
 }
 nds_index :: (s:[]NostrDeliveryState,index:[]MsIndex)->bool #effects(all) {
