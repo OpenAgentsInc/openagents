@@ -2,11 +2,30 @@
 #load "../../lib/agent/environment/wire.coax";
 #load "../../lib/agent/accounts/wire.coax";
 #load "../../lib/agent/router/wire.coax";
+#load "../../lib/agent/environment/task-wire.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/sys/clock.coax";
 tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {return 2;}
-  input:[24576]u8;n:=fs_read(args_value(args[..],"--request-file",""),input[..]);q:[1]EaRequest;
+  input:[XT_REQUEST_MAX]u8;n:=fs_read(args_value(args[..],"--request-file",""),input[..]);q:[1]EaRequest;
+  if args_at(args[..],0)=="execution-rpc" {
+    request:[1]XtRequest;arena:[2048]u8;host:=args_value(args[..],"--host","");
+    if n<1 || !ea_id(host,64) || !xt_request_read(cast(string)input[0..<n],request[..],arena[..]) {return 2;}
+    if request[0].method!="ReadTask" && !ea_fresh(request[0].issued,request[0].expires,cxproc_wall_us()/1000) {return 5;}
+    epoch:=args_value(args[..],"--epoch","");if epoch=="98" {return 4;}if epoch=="97" {return 5;}if epoch=="96" {return 7;}if epoch=="95" {print("%\n","{}");return 0;}if epoch=="92" {return 3;}
+    if request[0].method!="ReadTask" && epoch=="91" {return 4;}
+    v:=XtStatus.{binding=ExBinding.{task=request[0].task,conversation="cnv_0123456789abcdef0123456789abcdef",turn="trn_0123456789abcdef0123456789abcdef",route="0123456789abcdef0123456789abcdef",host=host,workspace="default",session="0123456789abcdef0123456789abcdef",command="0123456789abcdef0123456789abcdef",engine="codex",account="system",model="fixture-native-model",effort="high",input_hash="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",input_bytes=251,report_hash="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",report_at=999,issued=1000,expires=301000},state=XT_WAITING,revision=3,interaction="native-request",native="native-session",updated=1000};
+    if request[0].method=="StopTask" {v.state=XT_CANCELED;v.stop=true;v.interaction="";v.revision=4;v.command=request[0].command;}
+    else if request[0].method=="RespondTask" {if request[0].revision!=3 || request[0].interaction!="native-request" {return 6;}v.state=XT_COMPLETED;v.interaction="";v.revision=4;v.command=request[0].command;}
+    else if request[0].method!="ReadTask" {return 2;}
+    if request[0].method!="ReadTask" {ab:[4096]u8;audit:=proc_getenv("OA_ENV_TASK_FIXTURE_AUDIT",ab[..]);if audit!="" {if !fs_append_durable(audit,cast(string)input[0..<n]) || !fs_append_durable(audit,"\n") {return 3;}}}
+    // A negative fixture changes a valid identity after the control preflight.
+    if request[0].method!="ReadTask" && args_value(args[..],"--epoch","")=="99" {v.binding.model="changed-after-preflight";}
+    if request[0].method!="ReadTask" && epoch=="94" {v.command="11111111111111111111111111111111";}
+    out:[8192]u8;made:=xt_status_write(v,out[..]);if made<1 {return 2;}print("%\n",cast(string)out[0..<made]);return 0;
+  }
   // a computer's own report: the broker builds DescribeStation itself and waits 8 seconds at most
   if args_at(args[..],0)=="station-rpc" {
     host:=args_value(args[..],"--host","");if !ea_id(host,64) || args_value(args[..],"--wait-ms","")!="8000" || args_has(args[..],"--request-file") {return 2;}

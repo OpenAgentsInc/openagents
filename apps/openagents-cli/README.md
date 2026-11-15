@@ -61,6 +61,36 @@ follow emits a snapshot and subsequent event pages as JSON Lines. `show` uses
 `next_cursor` as its next `--after`; list uses `next_cursor` as `--cursor`.
 Stop requests cancellation; inspect/follow the turn for its authoritative result.
 
+## Native task controls
+
+`tasks` addresses an already admitted native task on an enrolled computer.
+It uses the account API and its existing login profile, without broker keys.
+The account must own the task's saved conversation/turn and have an exclusive
+connection to its current HOST grant.
+
+```sh
+openagents tasks show "$HOST_PUBKEY" "$TASK_ID"
+openagents tasks approve "$HOST_PUBKEY" "$TASK_ID" --rev 3 --interaction "$REQUEST_ID" --command-file approve.json
+openagents tasks deny "$HOST_PUBKEY" "$TASK_ID" --rev 3 --interaction "$REQUEST_ID" --command-file deny.json
+openagents tasks stop "$HOST_PUBKEY" "$TASK_ID" --command-file stop.json
+openagents tasks retry "$HOST_PUBKEY" --file stop.json
+```
+
+Use the task status's exact `revision` and `interaction_id` to approve or deny.
+Each control requires a command file: its complete original TaskRequest is
+saved privately and synced before HTTP. Repeating the same command and file
+reuses its ID, timestamps and decision; changing any input is refused locally.
+`retry` sends the saved bytes unchanged, including after the original request
+window expires, so the resident can reconcile an existing receipt. An expired
+command without a receipt is refused. Keep command files until reconciled.
+
+HTTP success means the resident accepted the command, not that a running task
+has completed. Inspect `state`, `stop_requested`, `error_code` and
+`native_session_id`. Stop remains available after funding is removed; existing
+account freeze and limited-session rules still apply. This bridge exposes no
+public Start operation. Automatic router dispatch and phone integration remain
+tracked by [#13620](https://github.com/OpenAgentsInc/openagents/issues/13620).
+
 ## Account Projects
 
 Log in to a named profile; approve its device link while signed into the desired

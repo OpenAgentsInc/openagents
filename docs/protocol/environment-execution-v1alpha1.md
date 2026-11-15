@@ -6,8 +6,9 @@ resident task owner for
 `PrepareTask`, `PutTaskInput` and `ReadTaskInput` persist input under the
 current HOST environment grant. `StartTask`, `ReadTask`, `StopTask` and
 `RespondTask` use the existing native Agent engines and their permissions.
-**API router dispatch, task transcript pages and mobile/OpenAgents CLI task
-commands remain unimplemented.** The current environment
+An account API bridge and OpenAgents CLI expose observation, permission replies
+and Stop using these same records. **API router dispatch, task transcript pages
+and mobile task controls remain unimplemented.** The current environment
 runtime remains its separate Claude-only profile. These are source-level
 capabilities, not a claim of a production deployment.
 
@@ -178,7 +179,8 @@ a task's terminal outcome is its status, not this transport exit code.
 Exit 2 means malformed/unsupported,
 3 unavailable/transport failure, 4 forbidden/revoked, 5 expired/stale,
 6 conflicting intent and 7 capacity/rate limit. It never automatically resends
-uncertain work. This internal client is not the future OpenAgents task CLI.
+uncertain work. This internal preparation/dispatch client is separate from the
+public OpenAgents account task controls below.
 
 ## Resident task control
 
@@ -307,7 +309,7 @@ write, HOST authorization or process start.
 The resident consumes these records through authenticated HOST methods and
 owns their durable upload and execution receipts. The task transcript contract
 still needs structured tool pages suitable for reconnecting clients.
-API dispatch, mobile/CLI joins
+API dispatch, mobile/CLI transcript joins
 and a real staging patch/test task remain the acceptance gates in #13620.
 
 Initial qualification: the policy's 93 root-site mutants and input preparation's
@@ -349,3 +351,41 @@ checks across Claude/Codex native fixtures, real file effects, held permissions,
 Stop, exact replay, restart uncertainty and revoked access; 19 filesystem
 observations; and the task/terminal authority gates. These are internal native
 fixtures, not installed app/CLI or external model qualification.
+
+## Account task bridge
+
+`GET /api/chat/task/v1alpha1?host=HOST&task=TASK` builds the existing ReadTask
+request. `POST /api/chat/task/v1alpha1?host=HOST` consumes the existing complete
+TaskRequest for ReadTask, StopTask or RespondTask. Both return the sole
+TaskStatus representation above, with `Cache-Control: no-store, private` and
+`Vary: Cookie, Authorization`. There is no new response wrapper or wire shape.
+StartTask is refused here: a future dispatch service must derive the admitted
+input and route from the account's actual turn rather than trust a caller's
+Binding or routing decision.
+
+Admission requires a verified person account, its exact enrolled host, and
+exactly one account connection for that host/grant pair. A shared ambiguous
+enrollment returns 409. Before any control, the broker observes the task under
+the current native grant and verifies that the returned Binding's turn and
+conversation belong to this account. A connection alone grants no access to a
+foreign conversation. Missing connections and foreign bindings return 404.
+RespondTask additionally requires current funding and unrestricted write
+eligibility; lack of funding does not prohibit observation or Stop. Existing
+global account freeze/limited-session policy remains in force. POST requires
+the normal same-site check; verified CLI NIP-98 uses its existing transport.
+
+The API checks host/task/command correlation on both native replies and the
+entire immutable Binding across preflight and control. It never retries a
+native command automatically. Native denial maps to 403, expired/conflicting
+commands to 409, capacity to 429, malformed/mismatched replies to 502 and
+unobserved transport/process outcomes to 503. A failure after a control may be
+uncertain: reconcile with ReadTask or retry the exact retained original intent.
+The API's broker key remains a server-side file and never enters a response.
+
+The public `openagents tasks` commands use these same records. A control file
+is the primary TaskRequest, mode 0600, atomically replaced and synced before
+HTTP, protected against concurrent local creation with the shared file lock.
+On reuse, method/task/revision/interaction/allow and any explicit command ID
+must still match. The original logical window is retained. The user-selected
+file path is an explicit local storage override; keep it private until the
+command's result has been reconciled.

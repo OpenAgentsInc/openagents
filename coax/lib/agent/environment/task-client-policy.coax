@@ -1,0 +1,28 @@
+// CLI/mobile control intents use the resident's one request codec.
+// coax/bin/coax test coax/lib/agent/environment/task-client-policy.coax --library
+#load "task-wire.coax";
+#authority;
+
+#test "task controls have closed user verbs and exact safe revisions" {
+ #assert xc_method("stop")=="StopTask" && xc_method("approve")=="RespondTask" && xc_method("deny")=="RespondTask";
+ #assert xc_method("start")=="" && xc_method("")=="";
+ #assert xc_revision("1")==1 && xc_revision("9007199254740991")==9007199254740991;
+ for bad:[10]string.["","0","-1","1.0","1e1","9007199254740992","99999999999999999999999","true","{}","01"] {#assert xc_revision(bad)<0;}
+}
+#test "a retained control cannot change task, permission, decision, revision or operation" {
+ q:=XtRequest.{method="RespondTask",task=EX_TEST_ID,command=EX_TEST_ID,revision=3,interaction="held",allow=true,issued=1,expires=300001};
+ #assert xc_match(q,"approve",q.task,3,"held","") && xc_match(q,"approve",q.task,3,"held",q.command);
+ #assert !xc_match(q,"deny",q.task,3,"held","") && !xc_match(q,"stop",q.task,3,"held","");
+ #assert !xc_match(q,"approve","other",3,"held","") && !xc_match(q,"approve",q.task,4,"held","") && !xc_match(q,"approve",q.task,3,"other","");
+ #assert !xc_match(q,"approve",q.task,3,"held","11111111111111111111111111111111");
+ q.method="StopTask";q.revision=0;q.interaction="";q.allow=false;#assert xc_match(q,"stop",q.task,0,"","");
+ q.route="{}";#assert !xc_match(q,"stop",q.task,0,"","");
+}
+
+xc_method :: (verb:string)->string #effects(all) {if verb=="stop" {return "StopTask";}if verb=="approve" || verb=="deny" {return "RespondTask";}return "";}
+xc_revision :: (raw:string)->int #effects(all) {
+ v:[1]Jv;nodes:[2]JvNode;if !jv_parse(v[..],raw,nodes[..]) {return -1;}n:=js_number(v[0],0);return ifx n>0 && n<=9007199254740991 then n else -1;
+}
+xc_match :: (q:XtRequest,verb:string,task:string,revision:int,interaction:string,command:string)->bool #effects(all) {
+ return xt_request_valid(q) && q.method==xc_method(verb) && q.task==task && q.revision==revision && q.interaction==interaction && q.allow==(verb=="approve") && (command=="" || command==q.command);
+}

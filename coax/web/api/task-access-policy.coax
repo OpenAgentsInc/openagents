@@ -1,0 +1,70 @@
+// Account API admission above the resident's independent HOST authority.
+// coax/bin/coax test coax/web/api/task-access-policy.coax --library
+#load "../../lib/agent/environment/task-wire.coax";
+#authority;
+
+#test "task API admission requires a verified account and exclusive connection; Stop survives loss of funding" {
+ #assert ta_admit(2,1,"acct",true,1,"ReadTask",false,true,true)==200;
+ #assert ta_admit(2,1,"acct",true,1,"StopTask",false,true,true)==200;
+ #assert ta_admit(2,1,"acct",true,1,"RespondTask",true,false,false)==200;
+ #assert ta_admit(0,1,"acct",true,1,"ReadTask",true,false,false)==401 && ta_admit(2,1,"",true,1,"ReadTask",true,false,false)==401;
+ #assert ta_admit(2,0,"acct",true,1,"ReadTask",true,false,false)==401 && ta_admit(2,-1,"acct",true,1,"ReadTask",true,false,false)==401;
+ #assert ta_admit(2,2,"acct",true,1,"ReadTask",true,false,false)==200;
+ #assert ta_admit(2,1,"acct",false,1,"ReadTask",true,false,false)==404;
+ #assert ta_admit(2,1,"acct",true,0,"ReadTask",true,false,false)==409 && ta_admit(2,1,"acct",true,2,"ReadTask",true,false,false)==409;
+ #assert ta_admit(2,1,"acct",true,1,"RespondTask",false,false,false)==403;
+ #assert ta_admit(2,1,"acct",true,1,"RespondTask",true,true,false)==403 && ta_admit(2,1,"acct",true,1,"RespondTask",true,false,true)==403;
+ #assert ta_admit(2,1,"acct",true,1,"StartTask",true,false,false)==400 && ta_admit(2,1,"acct",true,1,"other",true,false,false)==400;
+}
+#test "task scope needs the account-owned turn and the exact requested native identity" {
+ #assert ta_scope(true,"h","h","t","t");
+ #assert !ta_scope(false,"h","h","t","t") && !ta_scope(true,"h","other","t","t") && !ta_scope(true,"h","h","t","other");
+ #assert ta_host(EX_TEST_HASH) && !ta_host("bad") && !ta_host("g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+}
+#test "the public task bridge accepts only task observation and controls, never caller dispatch" {
+ q:=XtRequest.{method="ReadTask",task=EX_TEST_ID};out:[4096]u8;n:=xt_request_write(q,out[..]);r:[1]XtRequest;arena:[1024]u8;
+ #assert n>0 && ta_request(cast(string)out[0..<n],r[..],arena[..]) && !ta_write(r[..]);
+ q=XtRequest.{method="StartTask",task=EX_TEST_ID,command=EX_TEST_ID,issued=1,expires=300001,route="{}"};n=xt_request_write(q,out[..]);#assert n>0 && !ta_request(cast(string)out[0..<n],r[..],arena[..]);
+ for method:[2]string.["StopTask","RespondTask"] {q.method=method;q.route="";q.revision=ifx method=="RespondTask" then 1 else 0;q.interaction=ifx method=="RespondTask" then "held" else "";n=xt_request_write(q,out[..]);#assert n>0 && ta_request(cast(string)out[0..<n],r[..],arena[..]) && ta_write(r[..]);}
+ #assert !ta_request("{}",r[..],arena[..]);
+}
+#test "the API validates host task and command before trusting a broker status" {
+ v:=XtStatus.{binding=ex_test_binding(),state=XT_WAITING,revision=3,interaction="native-request",updated=1000};out:[8192]u8;n:=xt_status_write(v,out[..]);r:[1]XtStatus;arena:[2048]u8;raw:=cast(string)out[0..<n];
+ #assert n>0 && ta_status(raw,v.binding.host,v.binding.task,"",r[..],arena[..]);
+ #assert !ta_status(raw,"other",v.binding.task,"",r[..],arena[..]) && !ta_status(raw,v.binding.host,"other","",r[..],arena[..]) && !ta_status(raw,v.binding.host,v.binding.task,EX_TEST_ID,r[..],arena[..]);
+ #assert !ta_status("{}",v.binding.host,v.binding.task,"",r[..],arena[..]);
+ #assert ta_read(v.binding.task,out[..])>0 && ta_read("bad",out[..])<0;
+}
+#test "broker refusals retain conflicts, denied access and uncertain transport separately" {
+ #assert ta_http(1)==200 && ta_http(0)==503 && ta_http(-3000)==503 && ta_http(-2003)==503;
+ #assert ta_http(-2004)==403 && ta_http(-2006)==409 && ta_http(-2005)==409 && ta_http(-2007)==429;
+}
+#test "a control reply cannot replace any immutable binding from its admitted preflight" {
+ a:=[1]XtStatus.[XtStatus.{binding=ex_test_binding()}];b:=a;
+ #assert ta_same_binding(a[..],b[..]);b[0].binding.model="other";#assert !ta_same_binding(a[..],b[..]);
+ b=a;b[0].binding.host="bad";#assert !ta_same_binding(a[..],b[..]);b=a;b[0].binding.task="bad";#assert !ta_same_binding(a[..],b[..]);
+ b=a;b[0].binding.effort="xxxx";#assert !ta_same_binding(a[..],b[..]);
+ b=a;a[0].binding.task="bad";#assert !ta_same_binding(a[..],b[..]);b=a;#assert !ta_same_binding(a[..],b[..]);
+}
+
+ta_admit :: (kind:int,level:int,account:string,connected:bool,connections:int,method:string,funded:bool,limited:bool,frozen:bool)->int #export_c #effects(all) {
+ if kind!=2 || level<1 || account.count==0 {return 401;}if !connected {return 404;}if connections!=1 {return 409;}
+ if method!="ReadTask" && method!="StopTask" && method!="RespondTask" {return 400;}
+ if method=="RespondTask" && (!funded || limited || frozen) {return 403;}return 200;
+}
+ta_scope :: (owns_turn:bool,host:string,observed_host:string,task:string,observed_task:string)->bool #export_c #effects(all) {return owns_turn && host==observed_host && task==observed_task;}
+ta_host :: (host:string)->bool #export_c #effects(all) {return ea_id(host,64);}
+ta_request :: (raw:string,out:[]XtRequest,arena:[]u8)->bool #export_c #effects(all) {return xt_request_read(raw,out,arena) && out[0].method!="StartTask";}
+ta_write :: (q:[]XtRequest)->bool #export_c #effects(all) {return q[0].method!="ReadTask";}
+ta_read :: (task:string,out:[]u8)->int #export_c #effects(all) {return xt_request_write(XtRequest.{method="ReadTask",task=task},out);}
+ta_status :: (raw:string,host:string,task:string,command:string,out:[]XtStatus,arena:[]u8)->bool #export_c #effects(all) {
+ return xt_status_read(raw,out,arena) && out[0].binding.host==host && out[0].binding.task==task && out[0].command==command;
+}
+ta_http :: (result:int)->int #export_c #effects(all) {
+ if result>0 {return 200;}if result== -2004 {return 403;}if result== -2005 || result== -2006 {return 409;}if result== -2007 {return 429;}return 503;
+}
+ta_same_binding :: (a:[]XtStatus,b:[]XtStatus)->bool #export_c #effects(all) {
+ left:[8192]u8;right:[8192]u8;n:=ex_binding_write(a[0].binding,left[..]);m:=ex_binding_write(b[0].binding,right[..]);
+ if n<0 || m<0 {return false;} // mutant: equivalent (both encoders return -1 or a complete Binding longer than one byte, never zero; changing <0 to <=0 or <1 preserves the refusal)
+ return cast(string)left[0..<n]==cast(string)right[0..<m];
+}

@@ -45,7 +45,7 @@ began=$SECONDS
 # and runs its share of the checks below. A check's share is its time on a
 # build host (oa-build-1, 2026-11-11, seconds): longest first, each to the part
 # with the least so far, so the parts take about as long as each other.
-API_PARTS="checks:20 py:721 room_checks:25 checkpoint2_checks:4 verse_packs:3 auth_checks:4 account_settings_checks:1 history_checks:4 projects_checks:4 projects_cli_checks:60 durable_chat_checks:45 durable_store_checks:2 auth_recover_checks:9 agent_checks:8
+API_PARTS="checks:20 py:721 room_checks:25 checkpoint2_checks:4 verse_packs:3 auth_checks:4 account_settings_checks:1 history_checks:4 task_checks:30 projects_checks:4 projects_cli_checks:60 durable_chat_checks:45 durable_store_checks:2 auth_recover_checks:9 agent_checks:8
   auth_life_checks:8 passkey_checks:8 lnaddr_checks:11 auth_device_checks:5 wallet_checks:6 realm_doc_checks:3 realm_record_checks:3 world_checks:8 worldbuilder_checks:8 script_checks:8 script_cli_checks:60 workers_checks:95 cli-auth:17 anime:13 realms:8 audit:1"
 part=""
 if [[ "${1:-}" == --part ]]; then part="${2:-}"; shift 2 || true; fi
@@ -154,13 +154,17 @@ api_sources "$here" "$work" "$cli_coax"
 if [[ $serve == 0 ]]; then
   "$cli_coax" c "$here/environment-broker-fixture.coax" --library > "$work/environment-fixture.c"
   "$cc" -std=c11 -O1 -g -D_DEFAULT_SOURCE -I"$repo_root/coax/platform" \
-    "$work/environment-fixture.c" "$repo_root/coax/platform/tool-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -lm -o "$work/environment-fixture"
+    "$work/environment-fixture.c" "$repo_root/coax/platform/tool-native.c" "$repo_root/coax/platform/store-file-native.c" "$repo_root/coax/platform/process-native.c" -lpthread -lm -o "$work/environment-fixture"
 fi
 if [[ $serve == 0 ]] && runs checks; then
   "$cc" -std=c11 -O1 -g -D_DEFAULT_SOURCE -fsanitize=address,undefined -I"$work" -I"$here" -I"$repo_root/coax/platform" \
-    "$here/tests/environment_proxy.c" "$here/environment-wire-unit.c" "$repo_root/coax/platform/process-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -lm -o "$work/environment-proxy"
+    "$here/tests/environment_proxy.c" "$here/environment-wire-unit.c" "$here/projects-wire-unit.c" "$repo_root/coax/platform/process-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -lm -o "$work/environment-proxy"
   "$work/environment-proxy" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb /unused "$work/environment-request.json" "$work/environment-fixture"
+fi
+if [[ "${API_TESTS_ONLY:-}" == environment_proxy.c ]]; then
+  [[ $serve == 0 ]] && runs checks || { echo 'test.sh: environment_proxy.c runs without --part or --serve' >&2; exit 2; }
+  lap "environment/Projects C ABI and waited broker process oracle"; exit 0
 fi
 if [[ $serve == 0 ]] && runs checks; then
 # The image keeps its own list: the Dockerfile's C files and deploy.sh's Coax units must be this one's.
@@ -416,7 +420,7 @@ if [[ $serve == 0 && -n "$script_job" ]]; then
   for _ in $(seq 100); do curl -s -m 1 "http://127.0.0.1:$SCRIPT_JOB_PORT/healthz" > /dev/null && { script_job_url="http://127.0.0.1:$SCRIPT_JOB_PORT"; break; }; sleep 0.1; done
   [[ -n "$script_job_url" ]] || { echo "test.sh: the compile service didn't start" >&2; cat "$work/script-job.log" >&2; exit 1; }
 fi
-environment_model=();[[ $serve != 0 ]] || environment_model=("OA_ENV_BROKER_PROGRAM=$work/environment-fixture" "OA_ENV_BROKER_KEY_FILE=/unused")
+environment_model=();[[ $serve != 0 ]] || environment_model=("OA_ENV_BROKER_PROGRAM=$work/environment-fixture" "OA_ENV_BROKER_KEY_FILE=/unused" "OA_ENV_TASK_FIXTURE_AUDIT=$work/environment-task-audit")
 OA_SCRIPT_JOB="$script_job" OA_SCRIPT_JOB_URL="$script_job_url" OA_SCRIPT_JOB_TOKEN=test-script-job COAX="$cli_coax" \
 OA_CHAT_RUNNER_URL="http://127.0.0.1:$CHAT_PORT" OA_CHAT_DAILY_USD=1 \
 OA_AGENT_PROJECTS=agent-proj OA_AGENT_WAKE_URL="http://127.0.0.1:$WAKE_PORT/wake" OA_AGENT_WAKE_TOKEN=test-wake \
@@ -525,14 +529,14 @@ if [[ -x "$cli_coax" ]]; then
   coax_failed=0
   # tests/script_cli_checks.coax drives the built CLI (#13467): built here when that check runs.
   realm_cli="$repo_root/apps/openagents-cli/build/openagents"
-  for f in room_checks checkpoint2_checks verse_packs auth_checks account_settings_checks history_checks projects_checks projects_cli_checks durable_chat_checks durable_store_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks worldbuilder_checks script_checks script_cli_checks workers_checks; do
+  for f in room_checks checkpoint2_checks verse_packs auth_checks account_settings_checks history_checks task_checks projects_checks projects_cli_checks durable_chat_checks durable_store_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks worldbuilder_checks script_checks script_cli_checks workers_checks; do
     [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
     runs "$f" || continue
-    if [[ $f == script_cli_checks || $f == projects_cli_checks || $f == durable_chat_checks ]]; then
+    if [[ $f == script_cli_checks || $f == projects_cli_checks || $f == durable_chat_checks || $f == task_checks ]]; then
       (cd "$repo_root" && COAX="$cli_coax" apps/openagents-cli/build.sh --cli > "$work/cli-build.log" 2>&1) || { cat "$work/cli-build.log"; coax_failed=1; continue; }
     fi
     (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" COAX="$cli_coax" API_BIN="$work/api" RESEND_PORT="$RESEND_PORT" CLI="$realm_cli" \
-      OA_AUTH_SEAL_KEY="$k_seal" OA_AUTH_LOOKUP_PEPPER="$k_pepper" OA_INFERENCE_URL="$infer_url" OA_INFERENCE_TOKEN="$infer_token" OA_INFERENCE_DAILY_REQUESTS="$infer_daily" OA_CHAT_DAILY_USD=1 \
+      OA_AUTH_SEAL_KEY="$k_seal" OA_AUTH_LOOKUP_PEPPER="$k_pepper" OA_INFERENCE_URL="$infer_url" OA_INFERENCE_TOKEN="$infer_token" OA_INFERENCE_DAILY_REQUESTS="$infer_daily" OA_CHAT_DAILY_USD=1 OA_ENV_TASK_FIXTURE_AUDIT="$work/environment-task-audit" \
       coax/web/tool.sh "coax/web/api/tests/$f.coax" $([[ $f == room_checks ]] && echo "${API_ROOM_SLICES:-}")) || coax_failed=1
     lap "tests/$f.coax"
   done

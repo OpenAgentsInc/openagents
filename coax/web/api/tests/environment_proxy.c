@@ -19,5 +19,12 @@ int main(int argc,char **argv) {
   if(ok)printf("typed reply rows: %lld; refusal bytes: %lld\n",(long long)view->ns,(long long)view->ne);
   struct sigaction after;sigaction(SIGCHLD,NULL,&after);
   ok=ok && after.sa_handler==SIG_IGN;
+  made=ta_read(s("0123456789abcdef0123456789abcdef"),(coax_v_u8){body,sizeof body});
+  ok=ok && made>0 && ea_payload_file(s(argv[4]),(coax_string){(const char *)body,made});
+  n=environment_task_proxy(s(argv[1]),s(argv[2]),s("0"),s("wss://relay.openagents.com"),s(argv[3]),s(argv[4]),s(argv[5]),(coax_v_u8){out,1048576});
+  coax_t_XtStatus task={0};unsigned char arena[2048];
+  ok=ok && n>0 && ta_status((coax_string){(const char *)out,n},s(argv[1]),s("0123456789abcdef0123456789abcdef"),s(""),(coax_v_t_XtStatus){&task,1},(coax_v_u8){arena,sizeof arena});
+  sigaction(SIGCHLD,NULL,&after);ok=ok && after.sa_handler==SIG_IGN;
+  printf("task adapter result: %lld; typed waiting state: %lld\n",(long long)n,(long long)task.state);
   free(view);free(out);return ok?0:1;
 }

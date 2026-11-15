@@ -4,11 +4,13 @@
 #load "../../lib/agent/accounts/wire.coax";
 #load "../../lib/sys/proc.coax";
 #load "../../lib/sys/fs.coax";
+#load "task-access-policy.coax";
 ea_payload_file :: (path:string,body:string)->bool #export_c #effects(all) {return fs_write(path,body);}
 ea_proxy :: (host:string,grant:string,epoch:string,relay:string,keyfile:string,input:string,program:string,out:[]u8)->int #export_c #effects(all) {
   return ea_proxy_named(host,grant,epoch,relay,keyfile,input,program,"rpc",out);
 }
 pa_proxy :: (host:string,grant:string,epoch:string,relay:string,keyfile:string,input:string,program:string,out:[]u8)->int #export_c #effects(all) {return ea_proxy_named(host,grant,epoch,relay,keyfile,input,program,"accounts-rpc",out);}
+ta_proxy :: (host:string,grant:string,epoch:string,relay:string,keyfile:string,input:string,program:string,out:[]u8)->int #export_c #effects(all) {return ea_proxy_named(host,grant,epoch,relay,keyfile,input,program,"execution-rpc",out);}
 ea_proxy_named :: (host:string,grant:string,epoch:string,relay:string,keyfile:string,input:string,program:string,verb:string,out:[]u8)->int #effects(all) {
   if !ea_id(host,64) || !ea_id(grant,64) {return -1;}
   args:=[14]string.[program,verb,"--host",host,"--grant",grant,"--epoch",epoch,"--relay",relay,"--browser-key",keyfile,"--request-file",input];

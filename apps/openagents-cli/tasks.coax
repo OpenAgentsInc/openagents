@@ -1,0 +1,44 @@
+// Account-owned native task observation and controls over the shared NIP-98
+// transport. Persist the primary TaskRequest before sending any control.
+#load "../../coax/lib/agent/environment/task-client-policy.coax";
+#load "../../coax/lib/sys/clock.coax";
+
+tasks_usage :: () {
+ print("%\n","Native tasks (login first):");
+ print("%\n","  tasks show HOST_PUBKEY TASK_ID");
+ print("%\n","  tasks stop HOST_PUBKEY TASK_ID --command-file FILE");
+ print("%\n","  tasks approve|deny HOST_PUBKEY TASK_ID --rev N --interaction ID --command-file FILE");
+ print("%\n","  tasks retry HOST_PUBKEY --file FILE   resend the original retained control");
+ print("%\n","  Controls save a private command file before HTTP. Repeat with the same file/inputs after a lost reply.");
+}
+// Lock the receipt across read/create. Reusing it preserves command identity,
+// original timestamps and every decision; changed reuse never sends HTTP.
+tcli_intent :: (a:[]Args,verb:string,task:string,out:[]u8)->int {
+ file:=args_value(a,"--command-file","");if file=="" || file=="-" {return -1;}
+ path:[4096]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],file);jo_put(o[..],".lock");if !fs_try_lock(jo_text(o[..])) {return -1;}
+ revision:=ifx verb=="stop" then 0 else xc_revision(args_value(a,"--rev",""));interaction:=args_value(a,"--interaction","");command:=args_value(a,"--operation-id","");
+ n:= -1;q:[1]XtRequest;arena:[2048]u8;kind:=fs_kind(file);
+ if kind==FS_FILE {
+  size:=fs_size(file);if size>0 && size<out.count {n=fs_read(file,out);if n!=size || !xt_request_read(cast(string)out[0..<n],q[..],arena[..]) || !xc_match(q[0],verb,task,revision,interaction,command) {n= -1;}}
+ }else if kind==FS_NONE {
+  operation:[32]u8;if command=="" {random:[16]u8;if cxrand_draw(random[..],16)==0 && cli_hex(random[..],operation[..]) {command=cast(string)operation[..];}}
+  now:=cxproc_wall_us()/1000;q[0]=XtRequest.{method=xc_method(verb),task=task,command=command,revision=revision,interaction=interaction,allow=verb=="approve",issued=now,expires=now+300000};
+  if xc_match(q[0],verb,task,revision,interaction,command) {n=xt_request_write(q[0],out);if n>0 && !fs_replace_durable(file,cast(string)out[0..<n]) {n= -1;}}
+ }
+ _:=fs_unlock();return n;
+}
+tasks_main :: (a:[]Args,r:[]Rep,profile:string,verb:string)->int {
+ host:=positional(a,2);task:=positional(a,3);if !ea_id(host,64) {return fail(r,EXIT_USAGE,"expected the enrolled computer's 64-character host public key");}
+ path:[256]u8;body:[4096]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],"/api/chat/task/v1alpha1?host=");jo_put(o[..],host);n:=0;post:=verb!="show";
+ if !post {if !ea_id(task,32) {return fail(r,EXIT_USAGE,"expected a 32-character task ID");}jo_put(o[..],"&task=");jo_put(o[..],task);}
+ else if verb=="retry" {
+  n=pcli_file(args_value(a,"--file",""),body[..]);q:[1]XtRequest;arena:[2048]u8;if n<1 || n>=body.count || !xt_request_read(cast(string)body[0..<n],q[..],arena[..]) || (q[0].method!="StopTask" && q[0].method!="RespondTask") {return fail(r,EXIT_USAGE,"--file must be the original TaskRequest control, with its original command ID and timestamps");}
+ }else if xc_method(verb)!="" {
+  if !ea_id(task,32) {return fail(r,EXIT_USAGE,"expected a 32-character task ID");}n=tcli_intent(a,verb,task,body[..]);if n<1 {return fail(r,EXIT_USAGE,"provide --command-file FILE and the exact control inputs; a retained command cannot be changed");}
+ }else {return fail(r,EXIT_USAGE,"tasks show|stop|approve|deny|retry");}
+ expected:[1]XtRequest;request_arena:[2048]u8;if post {if !xt_request_read(cast(string)body[0..<n],expected[..],request_arena[..]) {return fail(r,EXIT_USAGE,"invalid retained task command");}task=expected[0].task;tool_errln("Task control retained; reconcile with tasks show, or retry the original command file after a lost response.");}
+ out:[8192]u8;res:=pcli_call(a,r,profile,ifx post then "POST" else "GET",jo_text(o[..]),cast(string)body[0..<n],75000,out[..]);
+ if !api_ok(res) {return api_fail(r,res,cast(string)out[0..<res.n]);}
+ status:[1]XtStatus;arena:[2048]u8;if !xt_status_read(cast(string)out[0..<res.n],status[..],arena[..]) || status[0].binding.host!=host || status[0].binding.task!=task || status[0].command!=(ifx post then expected[0].command else "") {return fail(r,EXIT_FAIL,"invalid task status; reconcile before retrying a control");}
+ print("%\n",cast(string)out[0..<res.n]);return EXIT_OK;
+}
