@@ -260,6 +260,87 @@ fpc_ask :: (bits: u32) -> [FPA_WORDS] u32 #effects(all) {
   t := fpc_ask(16 | 1024 | FPH_PARTICLES_READY); t[5] = 0; t[8] = 7; t[9] = 12;
   n = frame_plan_host(t[..], v[..]); #assert frame_plan_count(v[0..<n]) == 6 && frame_plan_op(v[0..<n], 2).count == 12 && frame_plan_op(v[0..<n], 3).instances == 7;
 }
+// The ask for the next two checks: every word set, so that a word read from the wrong place shows.
+fpc_full_ask :: (bits: u32, facts: u32) -> [FPA_WORDS] u32 #effects(all) {
+  a := fpc_ask(bits);
+  a[5] = 9; a[6] = 2; a[7] = 500; a[8] = 64; a[9] = 0; a[10] = 30; a[11] = 4; a[12] = 8; a[13] = 12; a[14] = facts; a[15] = 3; a[16] = 2; a[17] = 4; a[18] = 8;
+  for t: 0..<4 { a[19 + t * 4] = cast(u32) ((t % 2) * 2048); a[20 + t * 4] = cast(u32) ((t / 2) * 2048); a[21 + t * 4] = 2048; a[22 + t * 4] = 2048; }
+  a[FPA_CUT] = 10; a[FPA_CUT + 1] = 20; a[FPA_CUT + 2] = 300; a[FPA_CUT + 3] = 200;
+  return a;
+}
+#test "a host's ask is the page's plan for every fact, every host bit and the cut" {
+  feat: u32 = 1 | 2 | 4 | 8 | 128 | 1024 | 8192 | FPH_SCENE_READY | FPH_PARTICLES_READY;
+  c := FrameCounts.{width = 1280, height = 800, vertex_stride = 16, hud_vertices = 96, draw_count = 9, water_draws = 2, grass_instances = 500, particle_instances = 64, caster_vertices = 30, caster_instances = 4};
+  v: [2072] u32; w: [2072] u32;
+  for host: 0..<2 {
+    bits := feat | (ifx host == 1 then cast(u32) (FPH_TILES | FPH_CULL | FPH_CHARACTER | FPH_SORT) else 0);
+    for facts: 0..<8 {
+      for lazy_draws: 0..<2 {
+        // the lazy frames have no casters feature, which would open the pass on its own
+        bb := ifx lazy_draws == 0 then bits - (bits & 4) else bits;
+        a := fpc_full_ask(bb, cast(u32) facts);
+        x := RenderShipping.{shadow_draws = 7, cull = true, cull_runs = 12, character = true, character_cast = (facts & 1) != 0, sort = true, grass_last = (facts & 2) != 0,
+                             bloom_passes = 3, shadow_lazy = (facts & 4) != 0, tiles = true, tile_count = 4, tile = 1, clears = 8};
+        for k: 0..<4 { x.rects[k] = [4] int.[(k % 2) * 2048, (k / 2) * 2048, 2048, 2048]; }
+        if host == 1 { x.cut = [4] int.[10, 20, 300, 200]; }
+        cc := c;
+        // the lazy frames: nothing to draw and nothing to cast, where only the lazy fact decides whether a shadow pass opens
+        if lazy_draws == 0 {
+          a[5] = 0; a[6] = 0; a[7] = 0; a[10] = 0; a[11] = 0; a[12] = 0; a[16] = 0; a[17] = 0; a[18] = 0;
+          cc.draw_count = 0; cc.water_draws = 0; cc.grass_instances = 0; cc.caster_vertices = 0; cc.caster_instances = 0;
+          x.shadow_draws = -1; x.tiles = host == 1; x.tile = -1; x.tile_count = 0; x.clears = 0;
+        }
+        n := frame_plan_host(a[..], v[..]); m := frame_plan_page(bb, cc, x, w[..]);
+        #assert n > 8 && n == m;
+        for i: 0..<n { #assert v[i] == w[i]; }
+      }
+    }
+  }
+  // the cull's one word says both whether it runs and how many runs
+  for runs: 0..<3 {
+    a := fpc_full_ask(feat | cast(u32) (FPH_CULL | FPH_TILES), 0); a[13] = cast(u32) runs; a[16] = 0; a[17] = 0; a[18] = 0;
+    x := RenderShipping.{shadow_draws = 7, cull = runs > 0, cull_runs = runs, bloom_passes = 3, tiles = true};
+    n := frame_plan_host(a[..], v[..]); m := frame_plan_page(feat | cast(u32) (FPH_CULL | FPH_TILES), c, x, w[..]);
+    #assert n > 8 && n == m;
+    for i: 0..<n { #assert v[i] == w[i]; }
+  }
+  // the tiles' words are read only when the host's bits say the atlas is tiled: a cut set without them is ignored
+  a := fpc_full_ask(feat, 0); a[16] = 0; a[17] = 0; a[18] = 0;
+  n := frame_plan_host(a[..], v[..]);
+  x := RenderShipping.{shadow_draws = 7, cull = true, cull_runs = 12, bloom_passes = 3};
+  m := frame_plan_page(feat, c, x, w[..]);
+  #assert n > 8 && n == m;
+  for i: 0..<n { #assert v[i] == w[i]; }
+}
+#test "a host's ask: width, height and the HUD vertex size are each needed, each from its own word" {
+  v: [2072] u32;
+  for word: 1..<4 {
+    a := fpc_full_ask(1 | 2 | FPH_SCENE_READY, 0); a[16] = 0; a[17] = 0; a[18] = 0;
+    #assert frame_plan_host(a[..], v[..]) > 8;
+    a[word] = 0; #assert frame_plan_host(a[..], v[..]) == 0 && v[0] == 0;
+  }
+  // a tile to draw is refused when it is past the tiles, however many tiles clear
+  a := fpc_full_ask(1 | 2 | FPH_SCENE_READY, 0); a[16] = 1; a[17] = 0; a[18] = 1;
+  #assert frame_plan_host(a[..], v[..]) == 0;
+  // eight tiles are the most, and the last of them can be the one drawn
+  b := fpc_full_ask(1 | 2 | 4 | FPH_TILES | FPH_SCENE_READY, 0); b[16] = 7; b[17] = 8; b[18] = 128;
+  for t: 0..<8 { b[19 + t * 4] = cast(u32) (t * 64); b[20 + t * 4] = 0; b[21 + t * 4] = 64; b[22 + t * 4] = 64; }
+  #assert frame_plan_host(b[..], v[..]) > 8;
+  b[17] = 9; #assert frame_plan_host(b[..], v[..]) == 0;
+  // the out buffer's first word is cleared when it is the only word, and an empty one is left alone
+  v[0] = 9; z := fpc_full_ask(1, 0); z[14] = 8;
+  #assert frame_plan_host(z[..], v[0..<1]) == 0 && v[0] == 0;
+  v[0] = 9; #assert frame_plan_host(z[..], v[0..<0]) == 0 && v[0] == 9;
+  // a cut left in the ask is ignored when the host's bits do not say the atlas is tiled, even a cut the plan would refuse
+  d := fpc_full_ask(1 | 2 | FPH_SCENE_READY, 0); d[16] = 0; d[17] = 0; d[18] = 0; d[FPA_CUT + 2] = 5; d[FPA_CUT + 3] = 0;
+  #assert frame_plan_host(d[..], v[..]) > 8;
+  d[0] = d[0] | FPH_TILES; d[17] = 1; d[19] = 0; d[20] = 0; d[21] = 8; d[22] = 8;
+  #assert frame_plan_host(d[..], v[..]) == 0;
+  // six bloom stages are refused by the plan as well as by the ask
+  w: [2072] u32;
+  #assert frame_plan_page(1 | 128 | FPH_SCENE_READY, FrameCounts.{width = 1, height = 1, vertex_stride = 1}, RenderShipping.{bloom_passes = 6}, w[..]) == 0;
+  #assert frame_plan_page(1 | 128 | FPH_SCENE_READY, FrameCounts.{width = 1, height = 1, vertex_stride = 1}, RenderShipping.{bloom_passes = 5}, w[..]) > 0;
+}
 #test "a host's ask is refused whole: too few words, an unknown fact, more tiles than there are, a tile past them, six bloom stages" {
   v: [2072] u32;
   good := fpc_ask(FPH_SCENE_READY | 1);
@@ -301,4 +382,38 @@ fpc_ask :: (bits: u32) -> [FPA_WORDS] u32 #effects(all) {
   // a rectangle of a width and no height is refused, and one past the largest texture
   a[FPA_CUT + 3] = 0; #assert frame_plan_host(a[..], v[..]) == 0;
   a[FPA_CUT + 3] = 40000; #assert frame_plan_host(a[..], v[..]) == 0;
+}
+#test "a page's plan: what the host or the features cannot do is dropped, not refused, and the out buffer's first word is cleared" {
+  w: [2072] u32;
+  c := FrameCounts.{width = 1, height = 1, vertex_stride = 1, draw_count = 2};
+  // a one-word buffer is cleared, an empty one is left alone, and the largest host word is a set the features refuse
+  w[0] = 7; #assert frame_plan_page(cast(u32) (FPH_ALL + 1), c, RenderShipping.{}, w[0..<1]) == 0 && w[0] == 0;
+  w[0] = 7; #assert frame_plan_page(cast(u32) FPH_ALL, c, RenderShipping.{}, w[..]) == 0 && w[0] == 0;
+  w[0] = 7; #assert frame_plan_page(1, c, RenderShipping.{}, w[0..<0]) == 0 && w[0] == 7;
+  // a host with no shadow drops the tiles, the shadow list and the character, whatever the page says
+  x := RenderShipping.{tiles = true, tile = 1, tile_count = 4, clears = 2, shadow_draws = 3, character = true, character_cast = true, bloom_passes = 3};
+  for k: 0..<4 { x.rects[k] = [4] int.[(k % 2) * 2048, (k / 2) * 2048, 2048, 2048]; }
+  bits: u32 = 1 | FPH_TILES | FPH_CHARACTER | FPH_SCENE_READY;
+  n := frame_plan_page(bits, c, x, w[..]);
+  v: [2072] u32; m := frame_plan_page(1 | FPH_SCENE_READY, c, RenderShipping.{bloom_passes = 3}, v[..]);
+  #assert n > 8 && n == m;
+  for i: 0..<n { #assert v[i] == w[i]; }
+  // a host with no scene drops the cull and the character
+  y := RenderShipping.{cull = true, cull_runs = 12, character = true, character_cast = true, bloom_passes = 3};
+  n = frame_plan_page(FPH_CULL | FPH_CHARACTER | FPH_SCENE_READY, c, y, w[..]);
+  m = frame_plan_page(FPH_SCENE_READY, c, RenderShipping.{bloom_passes = 3}, v[..]);
+  #assert n > 0 && n == m;
+  for i: 0..<n { #assert v[i] == w[i]; }
+  // a host with no particles drops the sort
+  z := RenderShipping.{sort = true, bloom_passes = 3};
+  n = frame_plan_page(1 | FPH_SORT | FPH_SCENE_READY, c, z, w[..]);
+  m = frame_plan_page(1 | FPH_SCENE_READY, c, RenderShipping.{bloom_passes = 3}, v[..]);
+  #assert n > 8 && n == m;
+  for i: 0..<n { #assert v[i] == w[i]; }
+  // a host without the cull drops its runs: a count the shipping facts would refuse is never looked at
+  r := RenderShipping.{cull = true, cull_runs = 4294967296, bloom_passes = 3};
+  n = frame_plan_page(1 | FPH_SCENE_READY, c, r, w[..]);
+  #assert n > 8;
+  n = frame_plan_page(FPH_SCENE_READY, c, r, w[..]);
+  #assert n > 0;
 }

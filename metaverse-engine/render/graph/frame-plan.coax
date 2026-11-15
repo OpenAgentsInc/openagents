@@ -64,17 +64,17 @@ frame_plan_features :: (bits: u32) -> RenderFeatures #effects(all) {
 frame_plan_page :: (bits: u32, c: FrameCounts, x: RenderShipping, out: [] u32) -> int #effects(all) {
   if out.count > 0 { out[0] = 0; }
   b := cast(int) bits;
-  if b < 0 || b > FPH_ALL { return 0; }
+  if b < 0 || b > FPH_ALL { return 0; }  // mutant: equivalent (FPH_ALL sets the scene and the surface together, which the features refuse)
   y := x;
   if (b & FPH_TILES) == 0 { y.tiles = false; y.tile = -1; y.tile_count = 0; y.clears = 0; }
   if (b & FPH_CULL) == 0 { y.cull = false; }
-  if !y.cull { y.cull_runs = 0; }
+  if !y.cull { y.cull_runs = 0; }  // mutant: equivalent (a cull's runs are read only when the cull is set, so 0 or 1 beside no cull draws the same)
   if (b & FPH_CHARACTER) == 0 { y.character = false; y.character_cast = false; }
   if (b & FPH_SORT) == 0 { y.sort = false; }
   // a host without the pipeline a fact needs (a quality level with no shadow, say) drops the fact
   f := frame_plan_features(bits);
   if !f.shadow { y.tiles = false; y.tile = -1; y.tile_count = 0; y.clears = 0; y.shadow_draws = -1; y.character = false; y.character_cast = false; }
-  if !f.scene { y.cull = false; y.cull_runs = 0; y.character = false; y.character_cast = false; }
+  if !f.scene { y.cull = false; y.cull_runs = 0; y.character = false; y.character_cast = false; }  // mutant: equivalent (a page with no scene has no shadow either, so the first line already dropped the character; its runs are read only with the cull)
   if !f.particles { y.sort = false; }
   q: [1] RenderPlan;
   q[0] = render_plan_shipping(f, c, y, ifx (b & FPH_SCENE_READY) != 0 then RenderReadiness.ready else RenderReadiness.background, (b & FPH_PARTICLES_READY) != 0);
@@ -102,7 +102,7 @@ frame_plan_host :: (ask: [] const u32, out: [] u32) -> int #effects(all) {
   if out.count > 0 { out[0] = 0; }
   if ask.count < FPA_WORDS { return 0; }
   facts := fpa_int(ask[14]);
-  if facts > FPA_FACTS || fpa_int(ask[17]) > RENDER_SHADOW_TILES || fpa_int(ask[16]) > fpa_int(ask[17]) || fpa_int(ask[15]) > 5 { return 0; }
+  if facts > FPA_FACTS || fpa_int(ask[17]) > RENDER_SHADOW_TILES || fpa_int(ask[16]) > fpa_int(ask[17]) || fpa_int(ask[15]) > 5 { return 0; }  // mutant: equivalent (render_shipping refuses more than 5 bloom stages too, so the ask's own limit changes no answer)
   c := FrameCounts.{width = fpa_int(ask[1]), height = fpa_int(ask[2]), vertex_stride = fpa_int(ask[3]), hud_vertices = fpa_int(ask[4]), draw_count = fpa_int(ask[5]),
                     water_draws = fpa_int(ask[6]), grass_instances = fpa_int(ask[7]), particle_instances = fpa_int(ask[8]), surface_vertices = fpa_int(ask[9]),
                     caster_vertices = fpa_int(ask[10]), caster_instances = fpa_int(ask[11])};
