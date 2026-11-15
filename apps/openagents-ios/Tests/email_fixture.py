@@ -17,6 +17,13 @@ objects = {f["sha256"]: a.directory / "Starter" / f["path"] for f in manifest["f
 project_published=False
 project_asks=[]
 project_links={}
+private_projects={}
+private_knowledge={}
+private_links={}
+PROJECT_SCHEMA="openagents.projects.api.v1alpha1"
+def private_reply(value):return dict(schema=PROJECT_SCHEMA,data=value)
+def private_row(project):
+    return dict(project,counts=dict(knowledge=len(private_knowledge[project["id"]]),conversations=sum(p==project["id"] for p in private_links.values())))
 project_draft={"status":"ready","draft":{"card":{"name":"Moon Villa","slug":"moon-villa","line":"A place to grow","owner":"Ada","art_direction":"Soft light"},"mechanics":["Walk"],"design":{"markdown":"A complete design document.","open_questions":["What next?"]},"roadmap":{"initiative":{"slug":"first","title":"First steps","body":"Start small"},"milestones":[{"slug":"garden","title":"Garden","body":"Plant things","tasks":[{"slug":"walk","title":"Walk","body":"Walk around","size":"S","acceptance":["Can walk"]}]}]},"engine_needs":[],"assets":[],"to_make":[]},"edits":0,"approved":False}
 project_calls=[]
 threads = {}
@@ -92,7 +99,20 @@ class Handler(BaseHTTPRequestHandler):
                 chats=[dict(id=k,title=threads[k]["messages"][0]["content"][:80],model="google/gemini-4-hydrogen",folder="moon-villa",updated_ms=1,busy=False) for k,v in project_links.items() if v=="moon-villa"]
                 return self.answer(200,dict(schema="openagents.chat.history.v1",chats=chats))
             return self.answer(404,{"error":"not found"})
-        if self.path == "/api/projects/v1":return self.answer(200,dict(schema="openagents.projects.api.v1alpha1",data=[],revision=None,next_cursor=None))
+        if self.path.startswith("/api/projects/v1"):
+            if self.headers.get("Authorization")!="Bearer oa_at_fixture":return self.answer(401,{})
+            parts=urlparse(self.path).path.split("/")[4:]
+            if not parts:return self.answer(200,dict(private_reply([private_row(p) for p in private_projects.values()]),revision=None,next_cursor=None))
+            pid=parts[0];project=private_projects.get(pid)
+            if not project:return self.answer(404,{})
+            if len(parts)==1:return self.answer(200,private_reply(private_row(project)))
+            if parts[1:]==["instructions"]:return self.answer(200,private_reply(project["instructions"]))
+            if parts[1:]==["knowledge"]:return self.answer(200,dict(private_reply(list(private_knowledge[pid].values())),revision=project["revision"]))
+            if len(parts)==4 and parts[1]=="knowledge" and parts[3]=="content":return self.answer(200,private_reply(private_knowledge[pid][parts[2]]))
+            if parts[1:]==["chats"]:
+                chats=[dict(id=t,title=threads[t]["messages"][0]["content"][:80],model="google/gemini-4-hydrogen",folder=pid,updated_ms=1,busy=False) for t,p in private_links.items() if p==pid]
+                return self.answer(200,dict(schema="openagents.chat.history.v1",chats=chats))
+            return self.answer(404,{})
         if self.path == "/api/projects":
             if self.headers.get("Authorization") != "Bearer oa_at_fixture":return self.answer(401,{})
             return self.answer(200,b"project mobile-kit Mobile Kit\n"+(b"project moon-villa Moon Villa\n" if project_published else b""))
@@ -147,6 +167,35 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         global project_published,account_settings
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+        if self.path.startswith("/api/projects/v1"):
+            if self.headers.get("Authorization")!="Bearer oa_at_fixture":return self.answer(401,{})
+            assert body.get("operation_id") and not set(body)-{"operation_id","expected_revision","value"}
+            parts=self.path.split("/")[4:];value=body.get("value",{})
+            if not parts:
+                pid=f"prj_{len(private_projects)+1:032x}"
+                project=dict(id=pid,revision=1,owner_account_id="acct_fixture",name=value["name"],description=value.get("description",""),instructions=dict(text=value.get("instructions",""),revision=1,updated_at_ms=1),created_at_ms=1,updated_at_ms=1)
+                private_projects[pid]=project;private_knowledge[pid]={}
+                return self.answer(201,private_reply(private_row(project)))
+            pid=parts[0];project=private_projects[pid]
+            assert body["expected_revision"]==project["revision"]
+            if parts[1:]==["complete"]:
+                tid=value["thread_id"];record=threads[tid]
+                assert private_links[tid]==pid and record["revision"]==value["thread_revision"]
+                assert "Cite" in project["instructions"]["text"] and any("violet" in k["text"] for k in private_knowledge[pid].values())
+                record["messages"].append(dict(role="assistant",content="The code is violet."));record["revision"]+=1
+                return self.answer(200,dict(choices=[dict(message=dict(role="assistant",content="The code is violet."))]))
+            project["revision"]+=1
+            if parts[1:]==["instructions"]:
+                project["instructions"]=dict(text=value["text"],revision=project["revision"],updated_at_ms=1)
+                return self.answer(200,private_reply(project["instructions"]))
+            if parts[1:]==["knowledge"]:
+                kid=f"knw_{len(private_knowledge[pid])+1:032x}";source=value["source"];assert source["kind"]=="text"
+                knowledge=dict(id=kid,title=value["title"],text=source["text"],selected=value.get("selected",True),revision=project["revision"])
+                private_knowledge[pid][kid]=knowledge;return self.answer(201,private_reply(knowledge))
+            if parts[1:]==["chats"]:
+                assert value["thread_id"] in threads;private_links[value["thread_id"]]=pid
+                return self.answer(200,private_reply(private_row(project)))
+            return self.answer(404,{})
         if self.path=="/api/auth/settings/v1":
             if self.headers.get("Authorization")!="Bearer oa_at_fixture":return self.answer(401,{})
             if body["revision"]!=account_settings["revision"]:return self.answer(409,{"error":"Settings changed. Reload before saving."})
