@@ -5,6 +5,31 @@ import CryptoKit
 @testable import OpenAgents
 
 @MainActor final class NativeProgramTests:XCTestCase {
+    func testPrivateRecipientPickerAndComposerUseTheShippedNativeModule()throws {
+        let p=try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app",diagnostic:{print("DM program:",$0)})
+        func answer(_ op:Int,_ value:Any,_ status:Int=0)throws {try p.event(100+op,status,String(decoding:JSONSerialization.data(withJSONObject:value),as:UTF8.self));try p.frame()}
+        try p.event(Int(cnw_enable_event()),0,"");try p.frame();_=try p.action();try answer(1,["loggedIn":true]);_=try p.action();try answer(4,["schema":"openagents.chat.history.v1","chats":[]],200)
+        try p.input("chat.composer","Agent draft");try p.frame();try p.input("nav.toggle");try p.frame();try p.input("nav.recent");try p.frame()
+        XCTAssertNotNil(p.nodes.values.first {$0.id=="dm.open"});try p.input("dm.open");try p.frame()
+        let pub="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",peer="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        let settings=try JSONSerialization.jsonObject(with:Data(NativeAccountCodec.write {nas_initial($0)}.utf8))
+        var bootstrapped=false
+        for _ in 0..<16 {
+            try p.frame();let (op,_)=try p.action()
+            if op==4 {try p.event(204,0,"{}");try p.frame()}
+            else if op==18 {try answer(18,["schema":"openagents.native.account.v1","settings":settings,"identity":["pubkey":pub,"source":"account"],"account":["account":"fixture","primary":"fixture@example.test"],"ways":["level":"L1","keys":[],"passkeys":[]],"sessions":["sessions":[]],"permission":"","backup":false,"backup_pubkey":"","message":""])}
+            else if op==11 {try answer(11,["command_id":String(repeating:"1",count:32),"session_id":String(repeating:"2",count:32),"now_ms":1_790_000_000_000]);bootstrapped=true;break}
+            else {XCTAssertEqual(op,0,"Unexpected foreground effect during private picker bootstrap")}
+        }
+        XCTAssertTrue(bootstrapped);XCTAssertNotNil(p.nodes.values.first {$0.id=="dm.new"});try p.input("dm.new");try p.frame();XCTAssertNotNil(p.nodes.values.first {$0.id=="dm.recipient"})
+        try p.input("dm.recipient",peer);try p.frame();try p.input("dm.recipient.open");try p.frame()
+        let surface=NativeControls();surface.view.frame=CGRect(x:0,y:0,width:402,height:874);surface.render(p.elements());surface.view.layoutIfNeeded()
+        XCTAssertNotNil(surface.controls["dm.composer"] as? UITextView)
+        let composer=try XCTUnwrap(surface.controls.values.compactMap {$0 as? NativeComposer}.first);XCTAssertEqual(composer.sendID,"dm.composer.send");XCTAssertFalse(composer.send.isEnabled)
+        XCTAssertNil(surface.controls["chat.composer"]);XCTAssertFalse(p.nodes.values.contains {$0.id=="dm.refresh" || $0.id=="dm.model" || $0.id=="dm.mic"})
+        try p.input("dm.composer","Private draft");try p.frame();try p.input("nav.toggle");try p.frame();try p.input("nav.home");try p.frame();_=try p.action();try p.frame()
+        XCTAssertEqual(p.nodes.values.first {$0.id=="chat.composer"}?.value,"Agent draft")
+    }
     func testEmptyAccountSettingsLogOutRoutesTheNativeButtonToAuth()throws {
         let p=try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app")
         func answer(_ kind:Int,_ status:Int,_ raw:String)throws {try p.event(kind,status,raw);try p.frame()}

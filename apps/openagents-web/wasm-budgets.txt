@@ -416,3 +416,4 @@ project-files-web 94000
 # COMPUTER's wire added to myrealm (about 210 KB) and the kit's settings rows: 302814 bytes on 2026-11-13 on
 # Linux, about 5% room. myrealm lost the wire with it (480286 bytes).
 machine-web 318000
+messages 330000

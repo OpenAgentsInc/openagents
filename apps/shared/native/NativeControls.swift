@@ -188,7 +188,8 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             } else if let l=control as? UILabel {
                 // A page's title reads as text. A section's name, a small fact and a figure are chrome: the skin's label type.
                 let t=NativeSkin.tokens
-                if sidebarMode && (e.role=="heading" || e.hasClass("meta")) {l.attributedText=nil;l.text=e.label;l.font=NativeTypography.font(14);l.textColor=NativeSkin.color(t.ink_muted)}
+                if e.role=="status",let glyph=NativeSkin.status(e) {l.attributedText=glyph}
+                else if sidebarMode && (e.role=="heading" || e.hasClass("meta")) {l.attributedText=nil;l.text=e.label;l.font=NativeTypography.font(14);l.textColor=NativeSkin.color(t.ink_muted)}
                 else if e.role=="heading" && e.type != "h1" {l.attributedText=NativeSkin.label(e.label,size:12,ink:t.ink_muted)}
                 else if e.hasClass("meta") {l.attributedText=NativeSkin.label(e.label,ink:t.ink_muted)}
                 else if e.hasClass("amount") {l.attributedText=NativeSkin.label(e.label,size:24,track:0.02,ink:t.ink_bright,upper:false)}

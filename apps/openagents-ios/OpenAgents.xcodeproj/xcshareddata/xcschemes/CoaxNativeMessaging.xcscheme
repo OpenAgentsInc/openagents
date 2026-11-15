@@ -63,6 +63,15 @@
                <Test
                   Identifier = "AppAuthTests">
                </Test>
+               <Test
+                  Identifier = "NativeProgramTests">
+               </Test>
+               <Test
+                  Identifier = "NativeNavigationTests">
+               </Test>
+               <Test
+                  Identifier = "NativeMarkdownTests">
+               </Test>
             </SelectedTests>
          </TestableReference>
       </Testables>

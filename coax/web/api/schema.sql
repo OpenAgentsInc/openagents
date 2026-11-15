@@ -20299,6 +20299,20 @@ CREATE TABLE auth.nostr_operations_v1alpha1 (
 
 
 --
+-- Name: nostr_read_markers_v1; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.nostr_read_markers_v1 (
+    namespace text NOT NULL,
+    account text NOT NULL,
+    identity text NOT NULL,
+    conversation text NOT NULL,
+    created_at bigint NOT NULL,
+    event text NOT NULL
+);
+
+
+--
 -- Name: notices; Type: TABLE; Schema: auth; Owner: -
 --
 
@@ -24234,6 +24248,14 @@ ALTER TABLE ONLY auth.nostr_operations_v1alpha1
 
 
 --
+-- Name: nostr_read_markers_v1 nostr_read_markers_v1_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.nostr_read_markers_v1
+    ADD CONSTRAINT nostr_read_markers_v1_pkey PRIMARY KEY (namespace, conversation);
+
+
+--
 -- Name: notices notices_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
 --
 
@@ -27145,6 +27167,14 @@ ALTER TABLE ONLY auth.nostr_keys
 
 ALTER TABLE ONLY auth.nostr_operations_v1alpha1
     ADD CONSTRAINT nostr_operations_v1alpha1_account_namespace_fkey FOREIGN KEY (account, namespace) REFERENCES auth.nostr_journals_v1alpha1(account, namespace) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: nostr_read_markers_v1 nostr_read_markers_v1_account_namespace_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.nostr_read_markers_v1
+    ADD CONSTRAINT nostr_read_markers_v1_account_namespace_fkey FOREIGN KEY (account, namespace) REFERENCES auth.nostr_journals_v1alpha1(account, namespace) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --

@@ -42,7 +42,27 @@ reopens these through the actual provider; a label or public journal row
 cannot substitute for decryption and seal/rumor identity checks. Private
 content cannot become agent/tool actions or executable markup.
 
+## Installed resource capacity
+
+The mobile compiler output now exceeds the old per-program 8 MiB ceiling.
+The installed program carrier admits at most 16 MiB, through the shared Coax
+capacity rule. The package keeps its independent 32 MiB bound and exact runtime
+fingerprint check. This requires a new TestFlight runtime; the larger bundle
+must never be published to an older runtime. The browser's complete message
+codecs use the same 8 MiB call-stack reservation as the mobile assembly.
+
 ## Remaining integration gates
+
+### Private read positions
+
+The companion [read-marker profile](../../proto/nostr/read-marker-v1.json)
+stores only each account's monotonic `(rumor timestamp, rumor ID)` position
+per NIP-17 conversation. This is private account metadata, never published to
+relays and never presented as the recipient's read receipt. It uses the
+existing journal namespace, account lifecycle and canonical-identity gate.
+An old device cannot roll it back. Unread excludes authored messages; unknown
+read positions remain unknown until reconciled. Marking follows the admitted
+visible conversation, with Earlier navigation preserving its previous position.
 
 ### Recovering send status
 

@@ -1,7 +1,13 @@
 // Native assembly of the shared messenger and existing account/history UI.
 // SDK21/22/23 have their own owner; ordinary account HTTP keeps its flight.
+#test "queued foreground navigation takes priority over private background bootstrap" {
+ s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].page=13;s[0].navigation[0].open=true;s[0].navigation[0].np=na_copy(s[0].navigation[0].pending[..],"nav.home");
+ s[0].account_settings[0].loaded=true;s[0].account_settings[0].np=64;s[0].account_settings[0].na=1;
+ na_dm_tick(s[..],0);#assert s[0].action==0 && !s[0].messenger[0].started;na_nav_tick(s[..]);#assert s[0].page==2 && s[0].navigation[0].np==0;
+}
 na_dm_clear :: (s:[]Starter) {
  ndm_clear(s[0].messenger[..]);ndv_clear(s[0].dm_view[..]);s[0].dm_wanted=false;s[0].dm_entropy_generation= -1;s[0].dm_entropy_na=0;
+ s[0].markdown[0]=MdDoc.{};secure_zero(s[0].inbox[..]);secure_zero(s[0].outbox[..]);s[0].out_n=0;
  secure_zero(s[0].dm_entropy_account[..]);secure_zero(s[0].dm_entropy_identity[..]);dm_value(s[0].dom[..],"dm.composer","");dm_value(s[0].dom[..],"dm.recipient","");
 }
 na_dm_entropy :: (s:[]Starter,sending:bool)->bool {
@@ -13,9 +19,11 @@ na_dm_tick :: (s:[]Starter,dt:f32) {
  m:=s[0].messenger[..];a:=s[0].account_settings[..];f:=s[0].feed[..];
  if s[0].page==13 {s[0].dm_wanted=true;}
  if !s[0].workspace || !s[0].account_ready || !s[0].dm_wanted || s[0].world_mode {return;}
+ if s[0].navigation[0].np>0 {return;}
  if !a[0].loaded {if !a[0].busy {acs_request(a,"snapshot","","");}return;}
  if m[0].started && (cast(string)m[0].inbox[0].identity[..]!=cast(string)a[0].pub[0..<a[0].np] || cast(string)m[0].inbox[0].account[0..<m[0].inbox[0].na]!=cast(string)a[0].account[0..<a[0].na]) {na_dm_clear(s);s[0].dm_wanted=s[0].page==13;}
  if !m[0].started {if s[0].page!=12 && !f[0].busy && !f[0].reset_all {_=na_dm_entropy(s,false);}return;}
+ urls:[6]string;for i:0..<a[0].saved[0].relays_n {urls[i]=asw_relay(a[0].saved[..],i);}_=ndm_settings(m,urls[0..<a[0].saved[0].relays_n]);
  paused:=s[0].page==12 || f[0].active || f[0].busy || f[0].reset_all;
  if paused && m[0].active {ndm_pause(m);}
  if !paused && !m[0].active && m[0].flight==0 {m[0].active=true;_=ndm_pool(m,ifx m[0].own_ready then 1 else 0,"");m[0].head_wanted=true;m[0].head_peer=false;}
@@ -23,7 +31,7 @@ na_dm_tick :: (s:[]Starter,dt:f32) {
  if ndm_tick(m,dt) || m[0].dirty {s[0].dirty=true;m[0].dirty=false;}
  if m[0].action==0 || s[0].action!=0 {return;}
  if m[0].action==4 {
-  if !m[0].http_available {return;}na_http(s,"/api/auth/nostr/delivery/v1alpha1",cast(string)m[0].body[0..<m[0].nb],162);if s[0].action==4 {m[0].action=0;}
+  if !m[0].http_available {return;}na_http(s,ifx m[0].flight==12 then "/api/auth/nostr/read/v1" else "/api/auth/nostr/delivery/v1alpha1",cast(string)m[0].body[0..<m[0].nb],162);if s[0].action==4 {m[0].action=0;}
  }else {s[0].action=m[0].action;s[0].out_n=na_copy(s[0].outbox[..],cast(string)m[0].body[0..<m[0].nb]);m[0].action=0;}
 }
 na_dm_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->bool {
@@ -68,6 +76,7 @@ na_dm_event :: (s:[]Starter,kind:int,id:string,n:int)->bool {
  if id=="dm.recipient.open" || kind==3 && id=="dm.recipient" {if ndv_peer(m[0].inbox[..],v,cast(string)v[0].recipient[0..<v[0].recipient_n]) {v[0].choosing=false;_=ndm_peer(m,cast(string)v[0].peer[..]);na_nav_restore(s);ndm_note(m,"");}else {ndm_note(m,ifx m[0].started then "Use an npub or public key" else "Connecting…");}return true;}
  if id=="dm.enable" {_=ndm_enable(m);return true;}
  if id=="dm.retry" {_=ndm_retry(m);return true;}
+ if id=="dm.latest" {v[0].before=0;return true;}
  if id=="dm.earlier" {if v[0].before<128 {v[0].before+=12;}return true;}
  if id=="dm.reply.cancel" {v[0].nr=0;secure_zero(v[0].reply[..]);return true;}
  if id=="dm.composer.send" {if s[0].flight==0 && ndm_prepare(m,cast(string)v[0].draft[0..<v[0].nd],cast(string)v[0].reply[0..<v[0].nr]) {if !na_dm_entropy(s,true) {ndm_cancel_prepared(m);}}return true;}
@@ -78,7 +87,8 @@ na_dm_event :: (s:[]Starter,kind:int,id:string,n:int)->bool {
 }
 na_dm_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  m:=s[0].messenger[..];v:=s[0].dm_view[..];v[0].send_ready=ndm_can_send(m);
- ndv_render(m[0].inbox[..],v,m[0].delivery[..],m[0].outgoing[..],t,u,s[0].markdown[..],ndm_ready(m),m[0].prepared[0].pending || m[0].outgoing[0].phase==1);
+ if v[0].open && v[0].before==0 {_=nrp_visible(m[0].read_positions[..],m[0].inbox[..],v[0].room[..]);}
+ ndv_render(m[0].inbox[..],v,m[0].delivery[..],m[0].outgoing[..],m[0].read_positions[..],t,u,s[0].markdown[..],ndm_ready(m),m[0].prepared[0].pending || m[0].outgoing[0].phase==1);
  if m[0].started && !m[0].own_ready && !m[0].head_wanted {x:=k_button(t,u,"dm.enable","Enable messages",BS_PRIMARY);}
  if m[0].nn>0 {x:=k_text(t,u,"dm.note",TG_P,"meta",cast(string)m[0].note[0..<m[0].nn]);}
  if m[0].outgoing[0].phase==2 || m[0].retry {x:=k_link(t,"dm.retry","Retry");}

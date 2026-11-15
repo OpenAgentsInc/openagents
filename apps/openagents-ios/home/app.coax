@@ -1,3 +1,4 @@
+#run_steps 250000000;
 // OpenAgents' mobile account surface. Auth effects/tokens stay in the installed
 // native host; UI, requests and transitions update as Coax/Wasm.
 #load "../../../components/kit/frames.coax";

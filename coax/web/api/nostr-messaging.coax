@@ -6,3 +6,4 @@
 
 #load "../../native/nostr-send.coax";
 #load "../../native/nostr-delivery-wire.coax";
+#load "../../native/nostr-read-wire.coax";

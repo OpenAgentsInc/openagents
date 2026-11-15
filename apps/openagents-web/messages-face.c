@@ -10,6 +10,7 @@ IMPORT("coaxial_random") uint32_t coaxial_random(uint32_t out,int32_t length);
 IMPORT("coaxial_now_seconds") int64_t now_seconds(void);
 IMPORT("dom_stream") void dom_stream(uint32_t p,uint32_t n,uint32_t body,uint32_t len);
 IMPORT("dom_go") void dom_go(uint32_t p,uint32_t n,uint32_t push);
+#undef EXPORT
 #define COAX_ENTROPY_HEADER "messages.h"
 #include "../../coax/platform/entropy-wasm.c"
 static coax_t_MessagesWeb *raw(uint32_t s){return (void *)(uintptr_t)s;}

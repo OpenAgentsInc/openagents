@@ -19,9 +19,7 @@ import JavaScriptCore
         context.setObject(decode,forKeyedSubscript:"cnUTF8" as NSString)
         for path in ["tree-commands.js","build/\(module).js","runtime.js"] {
             let data=try Data(contentsOf:directory.appendingPathComponent(path))
-            // The account module includes the primary router/task protobuf
-            // readers. Keep a fixed bound above its generated 9 MiB program.
-            guard data.count<=16777216,let script=String(data:data,encoding:.utf8) else {throw NativeFailure.refused("Invalid native program")}
+            guard cn_program_bytes(Int64(data.count)),let script=String(data:data,encoding:.utf8) else {throw NativeFailure.refused("Invalid native program")}
             context.evaluateScript(script,withSourceURL:URL(string:"coax-native:///\(path)"))
             if let failure {throw NativeFailure.refused(failure)}
         }
@@ -112,6 +110,7 @@ import JavaScriptCore
                 }
                 if n.classes.split(separator:" ").contains("transcript") {result.append(NativeElement(id:n.id,role:"transcript",label:"Conversation",value:n.attrs["data-state"] ?? "new"))}
                 if n.classes.split(separator:" ").contains("reading-list") {result.append(NativeElement(id:n.id,role:"reading-list",label:"Reading list",value:n.id+"/"+(n.attrs["data-state"] ?? "")))}
+                if n.attrs["role"]=="status",var status=semantic(slot) {status.role="status";status.label=n.attrs["aria-label"] ?? text(slot);result.append(status);return}
                 let tool=n.classes.split(separator:" ").contains("tool")
                 if tool || n.attrs["role"]=="article" || n.attrs["role"]=="toolbar" || n.classes.split(separator:" ").contains("msg-ai") {
                     if var message=semantic(slot) {message.role=tool ? "tool":n.attrs["role"]=="toolbar" ? "toolbar":"message";result.append(message)}

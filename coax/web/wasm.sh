@@ -604,6 +604,9 @@ stack_bytes=1048576
 # Account reset and history can overlap the shared 4096-field project review
 # in one event. Reserve its call stack inside the existing 32 MiB carrier.
 [[ "$coax_file" != "apps/openagents-ios/home/app.coax" ]] || stack_bytes=8388608
+# Private messaging composes the same bounded custody/store/relay codecs as
+# the mobile assembly. Their complete frames need the same call-stack budget.
+[[ "$coax_file" != "apps/openagents-web/messages.coax" ]] || stack_bytes=8388608
 [[ "$render" == 1 ]] && stack_bytes=4194304
 memory_pages="$(cd "$repo" && coax/web/tool.sh metaverse-engine/render/page-render.coax --memory "$name")"
 max_memory=$((memory_pages * 65536))

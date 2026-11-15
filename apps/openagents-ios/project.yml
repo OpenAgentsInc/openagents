@@ -284,7 +284,7 @@ schemes:
       gatherCoverageData: false
       targets:
         - name: OpenAgentsTests
-          selectedTests: [NativeMessagingTests, NativeFeedTests, NativeAccountTests, AppAuthTests]
+          selectedTests: [NativeMessagingTests, NativeFeedTests, NativeAccountTests, AppAuthTests, NativeProgramTests, NativeNavigationTests, NativeMarkdownTests]
   CoaxNativeFeed:
     build:
       targets:

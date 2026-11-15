@@ -4,6 +4,15 @@ import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeNavigationTests:XCTestCase {
+    func testDeliveryStatusUsesAnAccessibleGlyphWithoutAddingAnAction()throws {
+        let icon=NativeElement(id:"delivery.icon",role:"use",label:"",attrs:["href":"/build/icons/check.svg#i"])
+        let status=NativeElement(id:"delivery",role:"status",label:"Accepted by relay",children:[icon],classes:"meta")
+        let surface=NativeControls();surface.view.frame=CGRect(x:0,y:0,width:402,height:874);surface.render([status]);surface.view.layoutIfNeeded()
+        let label=try XCTUnwrap(surface.controls[status.id] as? UILabel)
+        XCTAssertEqual(label.accessibilityLabel,"Accepted by relay")
+        XCTAssertNotNil(label.attributedText?.attribute(.attachment,at:0,effectiveRange:nil))
+        XCTAssertFalse(label.isUserInteractionEnabled);XCTAssertLessThan(label.intrinsicContentSize.height,25)
+    }
     func testHeaderCentersTheTitleAndGroupsTrailingActions()throws {
         let surface=NativeControls();surface.view.frame=CGRect(x:0,y:0,width:402,height:874)
         let bar=NativeElement(id:"test.header",role:"toolbar",label:"",children:[NativeElement(id:"nav.toggle",role:"button",label:"Navigation",classes:"ib"),NativeElement(id:"test.title",role:"text",label:"Projects"),NativeElement(id:"test.action",role:"button",label:"Action",classes:"ib"),NativeElement(id:"projects.new",role:"button",label:"New project",classes:"ib")])

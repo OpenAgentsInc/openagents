@@ -1,6 +1,13 @@
 // Installed update authority: immutable runtime, signature, generation and
 // physical resource observations. Native code supplies facts, not decisions.
 #authority;
+#test "installed programs accept complete larger compiled modules within a fixed ceiling" {
+  #assert cn_program_bytes(0) && cn_program_bytes(8388609) && cn_program_bytes(16777216);
+  #assert !cn_program_bytes(-1) && !cn_program_bytes(16777217);
+}
+// Installed execution capacity, covered by the runtime fingerprint. The signed
+// package's independent 32 MiB admission and immutable runtime match stay exact.
+cn_program_bytes :: (bytes:int)->bool #export_c #effects(all) {return bytes>=0 && bytes<=16777216;}
 #test "fresh bundles and running updates do not download their own contents again" {
   #assert cn_offer(1,0,true)==1;
   #assert cn_offer(9,2,true)==1;

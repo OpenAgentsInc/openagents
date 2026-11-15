@@ -1,0 +1,57 @@
+// Private read position projection. Only opened messages create a conversation;
+// only a current visible transcript advances its local position.
+#load "nostr-inbox.coax";
+#load "../../coax/native/nostr-read-wire.coax";
+#authority;
+NostrReadPosition :: struct {room:[32]u8;created:int= -1;event:[64]u8;ne:int;known:bool;dirty:bool;}
+NostrReadPositions :: struct {generation:int;identity:[64]u8;rows:[128]NostrReadPosition;n:int;pending:bool;query:[1]NrdMarker;}
+#test "read positions exclude authored notes and exact callbacks cannot regress a visible read" {
+ inbox:[1]NostrInbox;s:[1]NostrReadPositions;op:="0000000000000000000000000000000000000000000000000000000000000001";me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";b:[4096]u8;
+ #assert ndi_bind(inbox[..],"a",me) && ndi_begin(inbox[..],op,op);n:=nsr_write("custody","open",op,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(inbox[..],1,cast(string)b[0..<n]);nrp_sync(s[..],inbox[..]);room:=inbox[0].messages[0].message.room;
+ #assert nrp_unread(s[..],inbox[..],room[..])== -1;n=nrp_request(s[..],op,b[..]);#assert n>0 && s[0].pending;
+ #assert nrp_visible(s[..],inbox[..],room[..]) && s[0].rows[0].dirty;
+ q:=s[0].query;q[0].operation[0]='1';n=nrd_write(q[..],true,b[..]);#assert n>0 && !nrp_reply(s[..],inbox[..],cast(string)b[0..<n]) && s[0].pending;
+ q=s[0].query;n=nrd_write(q[..],true,b[..]);#assert nrp_reply(s[..],inbox[..],cast(string)b[0..<n]) && s[0].rows[0].dirty && nrp_unread(s[..],inbox[..],room[..])==0;
+ n=nrp_request(s[..],op,b[..]);#assert n>0 && s[0].query[0].created==1730000000;q=s[0].query;n=nrd_write(q[..],true,b[..]);#assert nrp_reply(s[..],inbox[..],cast(string)b[0..<n]) && !s[0].rows[0].dirty;
+ #assert ndi_bind(inbox[..],"b",me);nrp_sync(s[..],inbox[..]);#assert s[0].n==0 && !s[0].pending;
+}
+#test "unknown positions become unread only after an owned query and authored messages never add unread" {
+ inbox:[1]NostrInbox;s:[1]NostrReadPositions;op:="0000000000000000000000000000000000000000000000000000000000000001";me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";b:[4096]u8;
+ #assert !nrp_work(s[..]) && nrp_request(s[..],"bad",b[..])== -1;
+ #assert ndi_bind(inbox[..],"a",me) && ndi_begin(inbox[..],op,op);n:=nsr_write("custody","open",op,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(inbox[..],1,cast(string)b[0..<n]);nrp_sync(s[..],inbox[..]);room:=inbox[0].messages[0].message.room;
+ #assert nrp_work(s[..]) && nrp_unread(s[..],inbox[..],room[..])== -1;
+ n=nrp_request(s[..],op,b[..]);#assert n>0 && !nrp_work(s[..]) && nrp_request(s[..],op,b[..])== -1;
+ q:=s[0].query;n=nrd_write(q[..],true,b[..]);#assert nrp_reply(s[..],inbox[..],cast(string)b[0..<n]) && nrp_unread(s[..],inbox[..],room[..])==1 && !nrp_work(s[..]);
+ inbox[0].n=2;inbox[0].messages[1]=inbox[0].messages[0];inbox[0].messages[1].message.created_at+=1;#assert ne_lower_hex(me,inbox[0].messages[1].message.author[..]);
+ #assert nrp_unread(s[..],inbox[..],room[..])==1 && nrp_visible(s[..],inbox[..],room[..]) && nrp_unread(s[..],inbox[..],room[..])==0 && nrp_work(s[..]);
+ #assert !nrp_visible(s[..],inbox[..],room[..]);n=nrp_request(s[..],op,b[..]);#assert n>0;q=s[0].query;n=nrd_write(q[..],true,b[..]);#assert nrp_reply(s[..],inbox[..],cast(string)b[0..<n]) && !nrp_work(s[..]) && nrp_request(s[..],op,b[..])==0;
+}
+nrp_find :: (s:[]NostrReadPositions,room:[]u8)->int #effects(all) {for i:0..<s[0].n {if n17_same(s[0].rows[i].room[..],room) {return i;}}return -1;}
+nrp_sync :: (s:[]NostrReadPositions,inbox:[]NostrInbox) #effects(all) {
+ if s[0].generation!=inbox[0].generation || cast(string)s[0].identity[..]!=cast(string)inbox[0].identity[..] {s[0]=NostrReadPositions.{};s[0].generation=inbox[0].generation;s[0].identity=inbox[0].identity;}
+ n:=0;for i:0..<s[0].n {keep:=false;for k:0..<inbox[0].n {if n17_same(s[0].rows[i].room[..],inbox[0].messages[k].message.room[..]) {keep=true;}}if keep {s[0].rows[n]=s[0].rows[i];n+=1;}}for i:n..<s[0].n {s[0].rows[i]=NostrReadPosition.{};}s[0].n=n;
+ for i:0..<inbox[0].n {room:=inbox[0].messages[i].message.room;if nrp_find(s,room[..])<0 && s[0].n<128 {s[0].rows[s[0].n]=NostrReadPosition.{room=room};s[0].n+=1;}}
+}
+nrp_request :: (s:[]NostrReadPositions,operation:string,out:[]u8)->int #effects(all) {
+ if s[0].pending || !aw_hex(operation,64) {return -1;}at:= -1;for i:0..<s[0].n {if s[0].rows[i].dirty {at=i;break;}}if at<0 {for i:0..<s[0].n {if !s[0].rows[i].known {at=i;break;}}}if at<0 {return 0;}
+ row:=s[0].rows[at];q:[1]NrdMarker;_=ndi_copy(q[0].operation[..],operation);q[0].identity=s[0].identity;_=hex_encode_checked(cast(string)row.room[..],q[0].conversation[..],false);
+ if row.dirty {q[0].created=row.created;q[0].event=row.event;q[0].ne=row.ne;}n:=nrd_write(q[..],false,out);if n>0 {s[0].pending=true;s[0].query[0]=q[0];}return n;
+}
+nrp_reply :: (s:[]NostrReadPositions,inbox:[]NostrInbox,raw:string)->bool #effects(all) {
+ if !s[0].pending || s[0].generation!=inbox[0].generation {return false;}q:=s[0].query[0];r:[1]NrdMarker;
+ if !nrd_read(raw,true,r[..]) || cast(string)r[0].operation[..]!=cast(string)q.operation[..] || cast(string)r[0].identity[..]!=cast(string)s[0].identity[..] || cast(string)r[0].conversation[..]!=cast(string)q.conversation[..] {return false;}
+ room:[32]u8;if !ne_lower_hex(cast(string)r[0].conversation[..],room[..]) {return false;}at:=nrp_find(s,room[..]);s[0].pending=false;if at<0 {return true;}
+ row:=s[0].rows[at];if nrd_later(r[0].created,cast(string)r[0].event[0..<r[0].ne],row.created,cast(string)row.event[0..<row.ne]) {s[0].rows[at].created=r[0].created;s[0].rows[at].event=r[0].event;s[0].rows[at].ne=r[0].ne;}
+ row=s[0].rows[at];s[0].rows[at].known=true;s[0].rows[at].dirty=nrd_later(row.created,cast(string)row.event[0..<row.ne],r[0].created,cast(string)r[0].event[0..<r[0].ne]);return true;
+}
+nrp_visible :: (s:[]NostrReadPositions,inbox:[]NostrInbox,room:[]u8)->bool #effects(all) {
+ if s[0].generation!=inbox[0].generation {return false;}at:=nrp_find(s,room);if at<0 {return false;}changed:=false;
+ for i:0..<inbox[0].n {m:=inbox[0].messages[i].message;if !n17_same(m.room[..],room) {continue;}id:[64]u8;_=hex_encode_checked(cast(string)m.rumor_id[..],id[..],false);row:=s[0].rows[at];if nrd_later(m.created_at,cast(string)id[..],row.created,cast(string)row.event[0..<row.ne]) {s[0].rows[at].created=m.created_at;s[0].rows[at].event=id;s[0].rows[at].ne=64;s[0].rows[at].dirty=true;changed=true;}}
+ return changed;
+}
+nrp_unread :: (s:[]NostrReadPositions,inbox:[]NostrInbox,room:[]u8)->int #effects(all) {
+ if s[0].generation!=inbox[0].generation {return -1;}at:=nrp_find(s,room);if at<0 || !s[0].rows[at].known {return -1;}me:[32]u8;if !ne_lower_hex(cast(string)inbox[0].identity[..],me[..]) {return -1;}row:=s[0].rows[at];n:=0;
+ for i:0..<inbox[0].n {m:=inbox[0].messages[i].message;if !n17_same(m.room[..],room) || n17_same(m.author[..],me[..]) {continue;}id:[64]u8;_=hex_encode_checked(cast(string)m.rumor_id[..],id[..],false);if nrd_later(m.created_at,cast(string)id[..],row.created,cast(string)row.event[0..<row.ne]) {n+=1;}}return n;
+}
+
+nrp_work :: (s:[]NostrReadPositions)->bool #effects(all) {if s[0].pending {return false;}for i:0..<s[0].n {if s[0].rows[i].dirty || !s[0].rows[i].known {return true;}}return false;}

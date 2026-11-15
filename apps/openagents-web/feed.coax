@@ -1,3 +1,4 @@
+#run_steps 250000000;
 // /feed: the phone's shared controller and components, with browser effects.
 #load "../shared/nostr-feed-view.coax";
 #load "../shared/browser-relay.coax";

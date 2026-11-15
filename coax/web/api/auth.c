@@ -90,6 +90,7 @@ static const auth_rule RULES[] = {
   R("POST", "/api/auth/nostr/store/v1alpha1", false, AP_HUMAN, "verified account journal; no plaintext private messages"),
   R("POST", "/api/auth/nostr/custody/v1alpha1", false, AP_HUMAN, "typed managed Nostr effects; no raw signing or key export"),
   R("POST", "/api/auth/nostr/operation/v1alpha1", false, AP_HUMAN, "exact public or ciphertext operation receipts"),
+  R("POST", "/api/auth/nostr/read/v1", false, AP_HUMAN, "private monotonic Nostr read positions; no relay read receipts"),
   R("POST", "/api/auth/nostr/delivery/v1alpha1", false, AP_HUMAN, "private successful seal receipt enumeration"),
   R("POST", "/api/auth/nostr/send/v1alpha1", false, AP_HUMAN, "atomic linked ciphertext set and first receipt"),
   R("GET",  "/api/auth/viewer", false, AP_PUBLIC, "who is logged in, as every page reads it"),

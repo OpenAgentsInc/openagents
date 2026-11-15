@@ -52,8 +52,8 @@ ndm_tick :: (m:[]NostrMessenger,dt:f32)->bool #effects(all) {
   if ndj_next(j,m[0].inbox[..]) {m[0].dirty=true;if j[0].phase==0 {m[0].want_receipts=true;_=ndd_begin(m[0].delivery[..],m[0].inbox[..]);}if ndm_take_journal(m) {return true;}}
  }
  if p[0].needs_auth {op:[64]u8;if ndj_allocate(j,op[..]) && ndr_auth(p,m[0].inbox[..],cast(string)op[..]) {return ndm_take_relay(m);}}
- if !p[0].busy && (cast(string)p[0].peer[0..<p[0].np]!=cast(string)m[0].peer[0..<m[0].np] || m[0].mode==1 && m[0].ms>=m[0].discovery_at) && m[0].pub_phase!=3 && m[0].pub_phase!=4 {
-  if ndm_pool(m,0,"") {m[0].discovery_at=m[0].ms+30000;m[0].head_wanted=true;m[0].head_peer=false;m[0].head_index[0]=MsIndex.{};}
+ if !p[0].busy && (m[0].settings_changed || cast(string)p[0].peer[0..<p[0].np]!=cast(string)m[0].peer[0..<m[0].np] || m[0].mode==1 && m[0].ms>=m[0].discovery_at) && m[0].pub_phase!=3 && m[0].pub_phase!=4 {
+  if ndm_pool(m,0,"") {m[0].settings_changed=false;m[0].discovery_at=m[0].ms+30000;m[0].head_wanted=true;m[0].head_peer=false;m[0].head_index[0]=MsIndex.{};}
  }
  none:[1]string;
  if m[0].enable && m[0].setup_n>0 {targets:[6]string;for i:0..<m[0].ns {targets[i]=cast(string)m[0].saved[i][0..<m[0].saved_n[i]];}return ndm_store(m,9,"queue",cast(string)m[0].setup_original[0..<m[0].setup_n],targets[0..<m[0].ns],0,0);}
@@ -78,6 +78,10 @@ ndm_tick :: (m:[]NostrMessenger,dt:f32)->bool #effects(all) {
  if !m[0].want_receipts && m[0].status_at<m[0].delivery[0].n {
   filter:[4096]u8;n:=ndd_filter(m[0].delivery[..],m[0].status_at,filter[..]);if n>0 {return ndm_store(m,11,"index",cast(string)filter[0..<n],none[0..<0],0,0);}
  }
+ if m[0].http_available && nrp_work(m[0].read_positions[..]) {
+  wire:[1024]u8;reference:[64]u8;if ndj_allocate(j,reference[..]) {n:=nrp_request(m[0].read_positions[..],cast(string)reference[..],wire[..]);if n>0 {return ndm_launch(m,4,12,cast(string)wire[0..<n]);}}
+ }
+ if m[0].ms>=m[0].read_at {m[0].read_at=m[0].ms+60000;for i:0..<m[0].read_positions[0].n {m[0].read_positions[0].rows[i].known=false;}}
  if m[0].ms>=m[0].refresh_at || p[0].changed {
   m[0].refresh_at=m[0].ms+5000;p[0].changed=false;
   if j[0].phase==0 && !j[0].busy {_=ndj_refresh(j,m[0].inbox[..]);}if m[0].pub_phase==5 {m[0].pub_phase=0;m[0].pub_cursor=0;m[0].pub_revision=0;}m[0].dirty=true;

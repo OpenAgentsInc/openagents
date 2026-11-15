@@ -1,0 +1,13 @@
+{
+  "about": "Private account-owned NIP-17 read position, #13629. Metadata only; never a relay read receipt.",
+  "http": "POST /api/auth/nostr/read/v1",
+  "request_schema": "openagents.nostr.read-request.v1",
+  "response_schema": "openagents.nostr.read-marker.v1",
+  "fields": ["schema", "operation", "identity", "conversation", "created_at", "event"],
+  "operation": "Fresh 64 lowercase hex read/write reference, echoed exactly. An uncertain retry retains the same bytes.",
+  "identity": "The session's canonical 64 lowercase hex identity; the server owns account and namespace.",
+  "conversation": "The existing NIP-17 two-member conversation hash, 64 lowercase hex. No new room algorithm.",
+  "position": "created_at=-1 and event empty requests the current position; a nonnegative exact safe integer and a 64 lowercase hex inner rumor ID marks it. Response -1/empty means no saved position. Order is timestamp then rumor ID, matching NIP-17 history. A mark only advances; concurrent or old requests cannot regress it.",
+  "storage": "auth.nostr_read_markers_v1: namespace, account, identity, conversation, created_at, event. Namespace follows the existing journal and account lifecycle, including wipe. At most 4096 conversations per namespace; existing conversations can always advance. Merge ambiguity refuses. A position is an account preference, never proof of having decrypted content or authority to publish.",
+  "privacy": "No plaintext, display name, recipient public key, private key or relay publication. A response never counts as another person's read receipt. The client marks only admitted visible current conversations and excludes its own messages from unread counts. Unknown positions stay unknown until fetched."
+}

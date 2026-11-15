@@ -6,6 +6,7 @@
 #load "../../../native/nostr-operation-wire.coax";
 #load "../../../native/nostr-send.coax";
 #load "../../../native/nostr-delivery-wire.coax";
+#load "../../../native/nostr-read-wire.coax";
 #load "../../../native/fixtures/messaging_vectors.coax";
 #load "../../../tests/nostr/nip59_vectors.coax";
 #load "../../../lib/sys/clock.coax";
@@ -103,6 +104,18 @@ nmt_delivery_checks :: (t:[]Ap,a:NmtAccount,b:NmtAccount,operation:string,sealed
  n=ndl_request_write(cast(string)owner.pub[..],"",operation,body[..]);st=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],cookie,"","");ap_check(t,"corrupt delivery receipts are errors rather than an empty success",st==503,"");
  hash:[64]u8;#assert nsm_checksum(sealed,hash[..]);sql[0]=Sb.{};sb(sql[..],"UPDATE auth.nostr_operations_v1alpha1 SET result_sha256='");sb(sql[..],cast(string)hash[..]);sb(sql[..],"' WHERE account='");sb(sql[..],cast(string)owner.account[0..<owner.na]);sb(sql[..],"' AND operation='");sb(sql[..],operation);sb(sql[..],"'");ap_do(t,sb_text(sql[..]));
 }
+nmt_read_checks :: (t:[]Ap,a:NmtAccount,b:NmtAccount) {
+ owner:=a;other:=b;q:[1]NrdMarker;r:[1]NrdMarker;body:[2048]u8;c:[1]Sb;
+ id:="0000000000000000000000000000000000000000000000000000000000000001";for ch,i:id {q[0].operation[i]=ch;q[0].conversation[i]=ch;}q[0].identity=owner.pub;
+ cookie:=ac_cookie_header("__Host-oa_session",cast(string)owner.session[0..<owner.ns],c[..]);n:=nrd_write(q[..],false,body[..]);
+ st:=ac_call(t,"POST","/api/auth/nostr/read/v1",cast(string)body[0..<n],"","","");ap_check(t,"private read positions require an authenticated account",st==401,"");
+ st=ac_call(t,"POST","/api/auth/nostr/read/v1",cast(string)body[0..<n],cookie,"","");ap_check(t,"an unseen conversation has an explicit unknown saved position",st==200 && nrd_read(ap_body(t),true,r[..]) && r[0].created== -1 && cast(string)r[0].operation[..]==id,"");
+ q[0].created=100;q[0].event=q[0].operation;q[0].ne=64;n=nrd_write(q[..],false,body[..]);st=ac_call(t,"POST","/api/auth/nostr/read/v1",cast(string)body[0..<n],cookie,"","");ap_check(t,"a visible conversation read position persists privately",st==200 && nrd_read(ap_body(t),true,r[..]) && r[0].created==100 && ap_has(ac_head(t),"private, no-store"),"");
+ q[0].created=99;n=nrd_write(q[..],false,body[..]);st=ac_call(t,"POST","/api/auth/nostr/read/v1",cast(string)body[0..<n],cookie,"","");ap_check(t,"an older device cannot roll back the saved read position",st==200 && nrd_read(ap_body(t),true,r[..]) && r[0].created==100,"");
+ q[0].created= -1;q[0].ne=0;n=nrd_write(q[..],false,body[..]);st=ac_call(t,"POST","/api/auth/nostr/read/v1",cast(string)body[0..<n],cookie,"","");ap_check(t,"a cold client recovers the exact inner chronology read position",st==200 && nrd_read(ap_body(t),true,r[..]) && r[0].created==100 && cast(string)r[0].event[..]==id,"");
+ q[0].identity=other.pub;n=nrd_write(q[..],false,body[..]);st=ac_call(t,"POST","/api/auth/nostr/read/v1",cast(string)body[0..<n],cookie,"","");ap_check(t,"read positions cannot target another canonical identity",st==403,"");
+ cookie=ac_cookie_header("__Host-oa_session",cast(string)other.session[0..<other.ns],c[..]);st=ac_call(t,"POST","/api/auth/nostr/read/v1",cast(string)body[0..<n],cookie,"","");ap_check(t,"another account cannot see a conversation read position",st==200 && nrd_read(ap_body(t),true,r[..]) && r[0].created== -1,"");
+}
 nmt_checks :: (t:[]Ap,dir:string) {
  a:=nmt_login(t,dir,"nostr-store-a@example.com","203.0.113.131");b:=nmt_login(t,dir,"nostr-store-b@example.com","203.0.113.132");r:[1]NsResult;index:[1]MsIndex;event:=ES_EVENT;
  ap_check(t,"two journal accounts authenticate with distinct canonical identities",a.ok && b.ok && cast(string)a.pub[..]!=cast(string)b.pub[..],"");if !a.ok || !b.ok {return;}
@@ -124,6 +137,7 @@ nmt_checks :: (t:[]Ap,dir:string) {
  st=nmt_call(t,a,"event",2,cast(string)hex[..],r[..]);ap_check(t,"recovered outgoing bytes are byte-for-byte identical",st==200 && r[0].status==0 && cast(string)r[0].payload[0..<r[0].n]==cast(string)event[..],"");
  st=nmt_call(t,a,"wipe",2,"",r[..]);ap_check(t,"email login alone cannot wipe the journal",st==200 && r[0].status==5,"");
  nmt_crypto_checks(t,a,b);
+ nmt_read_checks(t,a,b);
  st=nmt_call(t,a,"snapshot",0,"",r[..]);before_wipe:=r[0].revision;before_items:=ifx ms_index_read(cast(string)r[0].payload[0..<r[0].n],index[..]) then index[0].n else -1;
  // Disposable session facts emulate an already completed strong proof. The
  // shared authority suite separately qualifies that admission boundary.
@@ -134,6 +148,7 @@ nmt_checks :: (t:[]Ap,dir:string) {
  st=nmt_call(t,a,"snapshot",0,"",r[..]);ap_check(t,"failed wipe restores the complete prior journal transaction",st==200 && r[0].status==0 && r[0].revision==before_wipe && ms_index_read(cast(string)r[0].payload[0..<r[0].n],index[..]) && index[0].n==before_items,"");
  st=nmt_call(t,a,"wipe",before_wipe,"",r[..]);ap_check(t,"fresh authorized wipe commits the empty journal",st==200 && r[0].status==0 && r[0].revision==before_wipe+1,"");
  check:[1]Sb;value:[64]u8;sb(check[..],"SELECT count(*)::text FROM auth.nostr_operations_v1alpha1 WHERE account='");sb(check[..],cast(string)a.account[0..<a.na]);sb(check[..],"'");ap_check(t,"authorized wipe removes encrypted operation receipts in the same transaction",ap_ends(ap_sql(t,sb_text(check[..]),value[..]),"0"),"");
+ check[0]=Sb.{};sb(check[..],"SELECT count(*)::text FROM auth.nostr_read_markers_v1 WHERE account='");sb(check[..],cast(string)a.account[0..<a.na]);sb(check[..],"'");ap_check(t,"journal wipe removes private read positions atomically",ap_ends(ap_sql(t,sb_text(check[..]),value[..]),"0"),"");
  // Tampering with committed bytes is corruption, never an empty history.
  q:[1]Sb;sb(q[..],"UPDATE auth.nostr_journals_v1alpha1 SET document=substring(document FROM 1 FOR octet_length(document)-1) WHERE account='");sb(q[..],cast(string)a.account[0..<a.na]);sb(q[..],"'");ap_do(t,sb_text(q[..]));
  st=nmt_call(t,a,"snapshot",0,"",r[..]);ap_check(t,"torn committed journal is refused without repair or empty success",st==200 && r[0].status==10,"");
