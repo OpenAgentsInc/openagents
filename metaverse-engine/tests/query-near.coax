@@ -58,7 +58,7 @@ qn_compare_held :: (seed: int, cell: f32, ground: bool, held: int) -> int {
   first := plain; first.boxes = s[0].boxes[0..<(QN_BOXES - held) * QUERY_BOX]; first.capsules = s[0].capsules[0..<(QN_CAPSULES - held) * QUERY_CAPSULE];
   #assert query_near_build(s[0].near[..], first, cell);
   fast := plain; fast.near = s[0].near[..];
-  named := 0;
+  named := 0; on_index_clear := 0; on_index_sweep := 0;
   for q: 0..<40 {
     p := qn_point(r[..]); e := qn_point(r[..]);
     span := ifx q % 5 == 0 then 1.0f32 else 0.06f32;      // most rays and sweeps are short; some cross the field
@@ -67,7 +67,10 @@ qn_compare_held :: (seed: int, cell: f32, ground: bool, held: int) -> int {
     a := query_ray(plain, p, d, far); b := query_ray(fast, p, d, far); #assert qn_same_hit(a, b);
     if a.hit && (a.shape == QueryShape.box || a.shape == QueryShape.capsule) { named += 1; }
     #assert query_clear(plain, p, d, far).clear == query_clear(fast, p, d, far).clear && query_clear(plain, p, d, far).status == query_clear(fast, p, d, far).status;
+    asked := s[0].n[QUERY_NEAR_PICKS] + s[0].n[QUERY_NEAR_WHOLE]; _ := query_clear(fast, p, d, far); if s[0].n[QUERY_NEAR_PICKS] + s[0].n[QUERY_NEAR_WHOLE] > asked { on_index_clear += 1; }
+    asked = s[0].n[QUERY_NEAR_PICKS] + s[0].n[QUERY_NEAR_WHOLE];
     a = query_sweep(plain, p, radius * 0.3, d); b = query_sweep(fast, p, radius * 0.3, d); #assert qn_same_hit(a, b);
+    if s[0].n[QUERY_NEAR_PICKS] + s[0].n[QUERY_NEAR_WHOLE] > asked { on_index_sweep += 1; }
     if a.hit && (a.shape == QueryShape.box || a.shape == QueryShape.capsule) { named += 1; }
     a = query_sweep(plain, p, radius, world_point(0, 0, 0)); b = query_sweep(fast, p, radius, world_point(0, 0, 0)); #assert qn_same_hit(a, b);
     ia: [12] QueryId; ib: [12] QueryId;
@@ -80,6 +83,8 @@ qn_compare_held :: (seed: int, cell: f32, ground: bool, held: int) -> int {
   }
   // most queries ran on a pick, and the picks held a small share of the colliders
   #assert s[0].n[QUERY_NEAR_PICKS] > 150 && s[0].n[QUERY_NEAR_ASKED] < s[0].n[QUERY_NEAR_PICKS] * QN_SLOTS / 4;
+  // a line of sight and a sweep each go through the index, every time (not through the scan)
+  #assert on_index_clear == 40 && on_index_sweep == 40;
   return named;
 }
 #forall "near: every query answers as the scan of every collider does, bit for bit, in cells of 8 m (1 of 2)" seed: 0..<12 #steps 400000000 { #assert qn_compare(seed, 8, true) > 8; }
