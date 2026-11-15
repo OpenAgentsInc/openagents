@@ -601,6 +601,9 @@ for pid in "${pids[@]}"; do wait "$pid"; done
 # the ordinary 64 MiB imported-memory limit. The Coax page declaration
 # below also bounds the document inspector's larger retained source image.
 stack_bytes=1048576
+# The native account UI's bounded settings and environment JSON readers can
+# overlap in one event. Keep their stack separate from its retained state.
+[[ "$coax_file" != "apps/openagents-ios/home/app.coax" ]] || stack_bytes=2097152
 [[ "$render" == 1 ]] && stack_bytes=4194304
 memory_pages="$(cd "$repo" && coax/web/tool.sh metaverse-engine/render/page-render.coax --memory "$name")"
 max_memory=$((memory_pages * 65536))

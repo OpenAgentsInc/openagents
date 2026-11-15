@@ -5,6 +5,8 @@
 // body itself. Goldens: proto/verse/service-health-v1alpha1.json ("errors"), checked by
 // service-wire-goldens.coax through here and through the JSON mapper.
 #load "../../lib/json/json.coax";
+// Public fixed-length lowercase hex, shared by the identity/settings codecs.
+aw_hex :: (s:string,n:int)->bool {if s.count!=n {return false;}for c:s {if !(c>='0' && c<='9') && !(c>='a' && c<='f') {return false;}}return true;}
 
 // A writer over out that goes on at byte `at` (0: from the start).
 aw_at :: (o: [] Jo, out: [] u8, at: int) #effects(all) {

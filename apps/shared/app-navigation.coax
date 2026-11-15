@@ -8,7 +8,7 @@ NavThread :: struct {host:int;session:EaSession;}
 NavGroup :: struct {loaded:bool;failed:bool;complete:bool;cursor:[128]u8;nc:int;offer:EaOffer;offset:int;}
 NavDraft :: struct {key:[224]u8;nk:int;body:[16384]u8;nb:int;age:int;}
 AppNavigation :: struct {
- open:bool;history_open:bool=true;account_refresh:bool;settings:bool;creating:bool;started:bool;refresh:bool;next:int;page_size:int=32;account_at:int;
+ open:bool;rail:bool=true;history_open:bool=true;account_refresh:bool;settings:bool;creating:bool;started:bool;refresh:bool;next:int;page_size:int=32;account_at:int;
  query:[128]u8;nq:int;browser:[1]EnvironmentApp;groups:[64]NavGroup;rows:[NAV_THREADS]NavThread;n:int;
  drafts:[16]NavDraft;clock:int;pending:[96]u8;np:int;note:[256]u8;nn:int;
 }

@@ -12,12 +12,12 @@ import UIKit
         ["schema":"openagents.environment.runtime.v1alpha1","host_pubkey":host,"method":method,"display_name":host==mac ? "Mac":"CoderOS","sessions":[["session_id":"session-1","workspace_id":"default","title":host==mac ? "Mac task":"CoderOS task","origin":"managed","control":"available","generation":1,"revision":1,"busy":false,"interaction_id":"","updated_at_ms":1]],"items":method=="ReadSession" ? [["item_id":"answer-1","role":"assistant","text":"**Ready.**","tool_name":"","complete":true]]:[],"error":"","complete":true,"next_cursor":"","command_id":"","command_status":"","source_epoch":"fixture","models":[["model_id":"default","display_name":"Claude default","efforts":["low","high"]]],"efforts":[["effort_id":"low","display_name":"Low"],["effort_id":"high","display_name":"High"]],"default_effort":"high"]
     }
     private func loaded(count:Int=1)throws->NativeProgram {
-        let p=try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app")
+        let p=try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app",diagnostic:{print("Navigation program:",$0)})
         try p.event(Int(cnw_enable_event()),0,"");try p.frame();_ = try p.action()
         try p.event(101,0,"{\"loggedIn\":true,\"worldsAvailable\":true}");try p.frame();_ = try p.action()
         try answer(p,["schema":"openagents.chat.history.v1","chats":[]])
         XCTAssertEqual(p.elements().first {$0.role=="navigation"}?.attrs["data-state"],"closed")
-        try p.input("nav.toggle");try p.frame();_ = try p.action()
+        try p.input("nav.toggle");try p.frame();_ = try p.action();try p.input("nav.recent");try p.frame()
         try answer(p,["schema":"openagents.environment.catalog.v1alpha1","environments":[["host_pubkey":mac,"display_name":"Mac"],["host_pubkey":coder,"display_name":"CoderOS"]]])
         var page=view(mac,"ListSessions")
         if count>1 {let base=(page["sessions"] as! [[String:Any]])[0];page["sessions"]=(0..<count).map {i -> [String:Any] in var row=base;row["session_id"]="session-\(i)";row["title"]="Mac task \(i)";return row}}
@@ -32,7 +32,9 @@ import UIKit
         XCTAssertNotNil(detail.controls["chat.composer"] as? UITextView)
         XCTAssertGreaterThan(try XCTUnwrap(detail.controls["home.title"]).convert(.zero,to:detail.view).y,150)
         try p.input("chat.composer","Home draft");try render();try p.input("nav.toggle");try render()
-        XCTAssertEqual(workspace.sidebar.view.frame.width,338,accuracy:1)
+        XCTAssertEqual(workspace.sidebar.view.frame.width,70,accuracy:1)
+        XCTAssertEqual(detail.view.frame.minX,70,accuracy:1)
+        try p.input("nav.recent");try render();XCTAssertEqual(workspace.sidebar.view.frame.width,338,accuracy:1)
         XCTAssertTrue(["nav.home","nav.projects","world.library"].allSatisfy {workspace.sidebar.controls[$0] != nil})
         let shade=try XCTUnwrap(workspace.view.subviews.first {$0.accessibilityIdentifier=="workspace.backdrop"})
         XCTAssertFalse(shade.isHidden);XCTAssertEqual(shade.frame.width-workspace.sidebar.view.frame.width,64,accuracy:1)
@@ -88,10 +90,10 @@ import UIKit
         XCTAssertTrue(editor === detail.controls["env.composer"]);XCTAssertEqual(editor.text,"Unsent draft")
         try p.input("env.effort");try render();XCTAssertTrue(p.elements(dialog:true).contains {$0.id=="env.effort.0"})
         try p.input("env.effort.0");try render();XCTAssertTrue(p.elements(dialog:true).isEmpty)
-        try p.input("nav.toggle");try render()
+        try p.input("nav.toggle");try render();try p.input("nav.recent");try render()
         let coderID=try XCTUnwrap(p.elements(navigation:true).first {$0.label=="CoderOS task"}?.id)
         try p.input(coderID);try render();_ = try p.action();try answer(p,view(coder,"ReadSession"))
-        try p.input("nav.toggle");try render();try p.input(macID);try render();_ = try p.action();try answer(p,view(mac,"ReadSession"));try render()
+        try p.input("nav.toggle");try render();try p.input("nav.recent");try render();try p.input(macID);try render();_ = try p.action();try answer(p,view(mac,"ReadSession"));try render()
         XCTAssertEqual((detail.controls["env.composer"] as? UITextView)?.text,"Unsent draft")
         try p.input("nav.toggle");try render();try p.input("nav.settings");try render()
         XCTAssertTrue(p.elements(dialog:true).contains {$0.id=="app.updates"});XCTAssertFalse(p.elements().contains {$0.id=="app.updates"})

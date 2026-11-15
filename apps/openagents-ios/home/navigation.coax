@@ -12,8 +12,10 @@
  s[0].flight=0;s[0].purpose=0;na_nav_pending(s[..]);#assert s[0].page==3 && s[0].navigation[0].np==0;
 }
 #test "settings keeps update feedback inside its presented panel" {
- s:[1]Starter;s[0].navigation[0].settings=true;s[0].note_n=ea_copy(s[0].note[..],"You have the latest compatible update.");t:[1]Tree;u:[1]Ui;ui_begin(u[..],0,true);tr_begin(t[..]);na_nav_render(s[..],t[..],u[..]);at:=tr_find(t[..],"nav.settings.note");
- #assert at>=0 && t[0].nodes[at].parent==tr_find(t[..],"nav.settings.panel") && tr_text_of(t[..],at)=="You have the latest compatible update.";
+ s:[1]Starter;s[0].account_settings[0].active=true;acs_note(s[0].account_settings[..],"You have the latest compatible update.");t:[1]Tree;u:[1]Ui;ui_begin(u[..],0,true);tr_begin(t[..]);acs_render(s[0].account_settings[..],t[..],u[..]);at:=tr_find(t[..],"nav.settings.note");
+ #assert at>=0;
+ #assert t[0].nodes[at].parent==tr_find(t[..],"nav.settings.panel");
+ #assert tr_text_of(t[..],tr_find(t[..],"nav.settings.note.t"))=="You have the latest compatible update.";
 }
 na_nav_key :: (s:[]Starter,out:[]u8)->string {
  e:=s[0].environments[..];n:=0;
@@ -44,16 +46,17 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
  if na_project_press(s,id) {return true;}
  if na_shell_press(s,id) {return true;}
  if id=="nav.history" {n[0].history_open = !n[0].history_open;return true;}
- if id=="nav.toggle" {n[0].open = !n[0].open;n[0].creating=false;return true;}
+ if id=="nav.toggle" {n[0].open = !n[0].open;n[0].rail=true;n[0].creating=false;return true;}
+ if id=="nav.recent" {n[0].rail=false;n[0].open=true;n[0].history_open=true;return true;}
  if id=="nav.close" {n[0].open=false;n[0].creating=false;return true;}
  if id=="app.components" {na_text_effect(s,true,"https://openagents.com/components-gpu",id);return true;}
- if id=="nav.settings" {n[0].settings=true;return true;}
+ if id=="nav.settings" {n[0].open=false;n[0].settings=false;acs_open(s[0].account_settings[..],false);return true;}
  if id=="nav.settings.close" || id=="extras.more" {n[0].settings=false;return id!="extras.more";}
  if id=="nav.refresh" {if s[0].flight==0 && !e[0].flight && !e[0].random {n[0].open=true;n[0].refresh=true;na_http(s,"/api/chat/history/v1","",71);}return true;}
  if id=="nav.account.older" {n[0].account_at+=n[0].page_size;return true;}
  if id=="nav.account.latest" {n[0].account_at=0;return true;}
  for i:0..<64 {a:[96]u8;if id==tr_join(a[..],"nav.latest.",i) {n[0].groups[i].offset=0;return true;}}
- if id=="nav.new" || id=="nav.compose" {if !e[0].uncertain && !e[0].random {n[0].open=true;n[0].creating=true;n[0].nq=0;dm_value(s[0].dom[..],"nav.search","");}else {nav_note(n,"Reconnect to resolve the current command before changing chats.");}return true;}
+ if id=="nav.new" || id=="nav.compose" {if !e[0].uncertain && !e[0].random {n[0].rail=false;n[0].open=true;n[0].creating=true;n[0].nq=0;dm_value(s[0].dom[..],"nav.search","");}else {nav_note(n,"Reconnect to resolve the current command before changing chats.");}return true;}
  recognized:=id=="nav.account.new";host:= -1;row:= -1;account:= -1;
  for i:0..<n[0].browser[0].catalog[0].n {b:[96]u8;if id==tr_join(b[..],"nav.new.",i) {host=i;recognized=true;}}
  for i:0..<n[0].n {b:[96]u8;if id==nav_row_id(n,i,b[..]) {row=i;host=n[0].rows[i].host;recognized=true;}}
@@ -83,6 +86,15 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
 }
 na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  n:=s[0].navigation[..];b:=n[0].browser[..];x:=k_side(t,"nav.sidebar","Navigation");tr_attr(t,x,AT_STATE,ifx n[0].open then "open" else "closed");
+ tr_attr(t,x,AT_TYPE,ifx n[0].rail then "rail" else "history");
+ if n[0].rail {
+  x=tr_open(t,"nav.rail.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.close",IC_MENU,"Close navigation");tr_close(t);
+  x=k_side_places(t,"nav.rail");x=k_icon_button(t,"nav.home",IC_CHAT,"Chat");tr_attr(t,x,AT_STATE,"rail");tr_attr(t,x,AT_CURRENT,ifx s[0].page<5 then "true" else "false");
+  x=k_icon_button(t,"nav.projects",IC_FOLDER,"Projects");tr_attr(t,x,AT_STATE,"rail");tr_attr(t,x,AT_CURRENT,ifx s[0].page>=5 then "true" else "false");
+  if s[0].worlds_available {x=k_icon_button(t,"world.library",IC_GLOBE,"Worlds");tr_attr(t,x,AT_STATE,"rail");}
+  x=k_icon_button(t,"nav.recent",IC_HISTORY,"Recent chats");tr_attr(t,x,AT_STATE,"rail");tr_close(t);
+  x=tr_open(t,"nav.rail.footer",TG_FOOTER,"side-f");x=k_icon_button(t,"nav.settings",IC_SETTINGS,"Settings");tr_attr(t,x,AT_STATE,"rail");tr_close(t);tr_close(t);return;
+ }
  x=k_side_head(t,"nav.header","OpenAgents","/");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.close",IC_X,"Close navigation");tr_close(t);
  x=k_side_places(t,"nav.sidebar");x=k_row(t,u,"nav.home","Chat","",s[0].page<5);x=k_row(t,u,"nav.projects","Projects","",s[0].page>=5);if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",false);}tr_close(t);
  x=tr_open(t,"nav.history.header",TG_HEADER,"navigation-search");x=k_link(t,"nav.history","Recent chats");tr_attr(t,x,AT_EXPANDED,ifx n[0].history_open then "true" else "false");x=k_icon_button(t,"nav.compose",IC_PLUS,"New chat");x=k_icon_button(t,"nav.refresh",IC_ARROW_ROTATE_CW,"Refresh chats");tr_close(t);

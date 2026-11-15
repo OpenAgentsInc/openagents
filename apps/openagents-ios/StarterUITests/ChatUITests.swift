@@ -9,7 +9,7 @@ final class ChatUITests:XCTestCase {
         let email=app.textFields["Email address"]
         if !email.waitForExistence(timeout:5) {
             app.showAppSettings()
-            let logout=app.buttons["Log out"];XCTAssertTrue(logout.waitForExistence(timeout:15));logout.tap()
+            app.logOutAccount()
         }
         XCTAssertTrue(email.waitForExistence(timeout:15));email.tap();email.typeText("ada@example.com");app.buttons["Send code"].tap()
         let code=app.textFields["Email code"];XCTAssertTrue(code.waitForExistence(timeout:10));code.tap();code.typeText("415926");app.buttons["Log in"].tap()

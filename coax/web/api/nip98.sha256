@@ -1,6 +1,6 @@
-# Qualified compiler SHA-256: f21f74698192eb357a46cbce30cc4ffe366a611ec058fc6c2418a4a84cbdca7a
+# Qualified compiler SHA-256: cc44fdc012c2dcfca2de2797619cf57cbae1ce697313e5cbe485d76ebee71145
 d54a68b3879c699d8fcab3f37d67495fdbc116d3ca21f7d61002ccbbc95b1208  coax/web/api/nip98.coax
 6a5ca7271e28f672c58cb2cfc6bab394ce357bbb48bb7c18b3218ba8098f4df7  coax/web/api/nip98_vectors.coax
 f73f82d16a4eeaa849c6e98544b7712633aaa7f6114fcbef6c5a597d27119ddd  coax/web/api/nip98_testkit.coax
-9bbb4ed96a17b85824898d95a1f1ae3d9dd55efa02209c32d667205fb0408a85  coax/web/api/nip98.generated.c
+b6a6e70913047ce8d37eac21dc88e5f370f0abe7b7626b1ac37f0eaaeb4efe04  coax/web/api/nip98.generated.c
 7f918bccc99926f440f5344ff4d95a99044d2b0c2b7d69aee8e012ed4a636a03  coax/web/api/nip98.generated.h

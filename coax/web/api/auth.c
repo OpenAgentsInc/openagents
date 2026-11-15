@@ -83,6 +83,10 @@ static const auth_rule RULES[] = {
   R("GET",  "/api/auth/account", false, AP_PUBLIC, "who is logged in, or nobody"),
   R("GET",  "/api/auth/identity/v1", false, AP_ACCOUNT, "this account's public Nostr identity; no private key"),
   R("GET",  "/api/auth/limits", false, AP_PUBLIC, "every limit"),
+  R("GET", "/api/auth/settings/v1", false, AP_ACCOUNT, "account-owned profile and preferences"),
+  R("POST", "/api/auth/settings/v1", false, AP_HUMAN, "revision-fenced account profile and preferences"),
+  R("POST", "/api/auth/settings/profile-event/v1", false, AP_HUMAN, "sign only the saved public profile with the existing managed identity"),
+  R("POST", "/api/auth/identity/backup/v1", false, AP_L2_FRESH, "explicit managed identity backup; no wallet or device key"),
   R("GET",  "/api/auth/viewer", false, AP_PUBLIC, "who is logged in, as every page reads it"),
   R("GET",  "/api/auth/me", false, AP_PUBLIC, "the viewer's lines; nobody is a 401"),
   R("POST", "/api/auth/email/start", false, AP_PUBLIC, "log in (or link an email when logged in)"),
@@ -1650,6 +1654,7 @@ bool auth_api_route(const request *q) {
   if (strncmp(q->path, "/api/auth/", 10)) return false;
   const char *op = q->path + 10;
   if (auth_identity_route(q, api_db(), op)) return true;
+  if (account_settings_route(q, api_db(), op)) return true;
   api_route_at("auth_recover_route");
   if (auth_recover_route(q, api_db(), op)) return true;
   api_route_at("auth_life_route");

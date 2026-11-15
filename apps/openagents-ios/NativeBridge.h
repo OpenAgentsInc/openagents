@@ -18,3 +18,5 @@
 #include "../../components/gallery/apple/embedded.h"
 
 #include "../../components/native/apple.h"
+
+#include "Generated/NativeAccount.h"

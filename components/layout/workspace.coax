@@ -1,5 +1,6 @@
 // T3 Code's mobile workspace measures, adapted to the shared native skin.
 // Compact phones overlay a drawer; regular widths keep a column.
+#load "../core/arwes/motion.coax";
 #test "phone history slides as one pane and a regular workspace reserves both columns" {
  p:=workspace_layout(402,false,true);#assert !p.split && p.list==338 && p.offset==0 && p.content==402;
  #assert workspace_layout(402,false,false).offset== -338;
@@ -23,3 +24,30 @@ workspace_layout :: (width:f64,regular:bool,open:bool)->WorkspaceLayout #export_
  #assert workspace_layout(320,false,true).list==256 && workspace_layout(430,false,true).list==360;
  #assert workspace_layout(844,false,true).list==360 && workspace_layout(402,false,false).content==402;
 }
+
+// Arcade's sliding rail; history reuses the existing wider pane.
+WorkspaceArcade :: struct {split:bool;list:f64;content:f64;sidebar_x:f64;detail_x:f64;shade:f64;duration:f64=0.25;}
+#test "Arcade rail moves the whole phone surface, and history retains its readable width" {
+ a:=workspace_arcade(402,false,false,1,false);#assert a.list==70 && a.sidebar_x==0 && a.detail_x==70 && a.content==402;
+ a=workspace_arcade(402,false,false,0,false);#assert a.sidebar_x== -70 && a.detail_x==0 && a.shade==0;
+ a=workspace_arcade(402,false,false,0.5,true);#assert a.sidebar_x==367 && a.detail_x== -35 && a.shade==0.5;
+ a=workspace_arcade(402,false,true,1,false);#assert a.list==338 && a.detail_x==338;
+ a=workspace_arcade(1024,true,false,0,false);#assert a.split && a.list==328 && a.detail_x==328 && a.content==696;
+ #assert workspace_arcade(40,false,false,1,false).list==40;
+}
+#test "a drawer drag tracks the finger, settles by speed or halfway, and supports RTL" {
+ #assert workspace_drag(0,35,70,false)==0.5 && workspace_drag(1,-100,70,false)==0;
+ #assert workspace_drag(0,-35,70,true)==0.5 && workspace_drag(1,100,70,true)==0;
+ #assert workspace_settle(0.6,0,false) && !workspace_settle(0.4,0,false);
+ #assert workspace_settle(0.1,400,false) && !workspace_settle(0.9,-400,false);
+ #assert workspace_settle(0.1,-400,true) && !workspace_settle(0.9,400,true);
+}
+workspace_arcade :: (width:f64,regular:bool,history:bool,progress:f64,rtl:bool)->WorkspaceArcade #export_c #effects(all) {
+ base:=workspace_layout(width,regular,true);p:=cast(f64)am_unit(cast(f32)progress);w:=base.content+ifx base.split then base.list else 0.0;
+ list:=ifx base.split || history then base.list else ifx w<70 then w else 70.0;
+ x:=ifx base.split then 0.0 else -list*(1-p);dx:=ifx base.split then list else list*p;
+ if rtl {x=w-list-x;dx= -dx;if base.split {dx=0;}}
+ return WorkspaceArcade.{split=base.split,list=list,content=ifx base.split then base.content else w,sidebar_x=x,detail_x=dx,shade=ifx base.split then 0.0 else p};
+}
+workspace_drag :: (start:f64,delta:f64,width:f64,rtl:bool)->f64 #export_c #effects(all) {return cast(f64)am_unit(cast(f32)(start+(ifx rtl then -delta else delta)/(ifx width>1 then width else 1.0)));}
+workspace_settle :: (progress:f64,velocity:f64,rtl:bool)->bool #export_c #effects(all) {v:=ifx rtl then -velocity else velocity;return ifx abs(v)>350 then v>0 else progress>=0.5;}

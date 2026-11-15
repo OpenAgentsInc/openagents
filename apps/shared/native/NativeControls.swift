@@ -14,6 +14,13 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     private var composer:NativeComposer?
     private let scroll=UIScrollView()
     private var arcade:NativeArcadeSurface?
+    private lazy var stackLeading=stack.leadingAnchor.constraint(equalTo:scroll.frameLayoutGuide.leadingAnchor,constant:20)
+    private lazy var stackTrailing=stack.trailingAnchor.constraint(equalTo:scroll.frameLayoutGuide.trailingAnchor,constant:-20)
+    private lazy var topLeading=topDock.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:20)
+    private lazy var topTrailing=topDock.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-20)
+    private lazy var headerLeading=header.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:14)
+    private lazy var headerTrailing=header.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-14)
+    var railMode=false {didSet {if oldValue != railMode {loadViewIfNeeded();stackLeading.constant=railMode ? 10:20;stackTrailing.constant=railMode ? -10:-20;topLeading.constant=railMode ? 10:20;topTrailing.constant=railMode ? -10:-20;headerLeading.constant=railMode ? 10:14;headerTrailing.constant=railMode ? -10:-14;view.setNeedsLayout()}}}
     private lazy var emptyTop=topDock.heightAnchor.constraint(equalToConstant:0)
     private lazy var emptyOptions=options.heightAnchor.constraint(equalToConstant:0)
     private lazy var ordinaryTop=stack.topAnchor.constraint(equalTo:scroll.contentLayoutGuide.topAnchor,constant:24)
@@ -32,6 +39,8 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     private var flows:[String:NativeFlow]=[:]
     /// A sheet over something else: the skin's panel, with its corner brackets, stands behind what it holds.
     var sheet=false
+    var secretEdit:((String,String)->Void)?
+    var secretBind:((UITextField,String)->Void)?
     /// A host's own header above what Coax renders: a title and one icon that closes what the host opened.
     func hostHeader(title:String,close:String,action:@escaping()->Void) {
         loadViewIfNeeded();hostAction=action;hostTitle.attributedText=NativeSkin.label(title,size:12,ink:NativeSkin.tokens.ink);hostTitle.accessibilityLabel=title
@@ -66,9 +75,9 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         scroll.addSubview(stack)
         NSLayoutConstraint.activate([
             hostBar.topAnchor.constraint(equalTo:view.safeAreaLayoutGuide.topAnchor,constant:sheet ? 10:0),hostBar.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:8),hostBar.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-20),
-            header.topAnchor.constraint(equalTo:hostBar.bottomAnchor),header.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:14),header.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-14),
+            header.topAnchor.constraint(equalTo:hostBar.bottomAnchor),headerLeading,headerTrailing,
             headerRule.topAnchor.constraint(equalTo:header.bottomAnchor),headerRule.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:14),headerRule.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-14),
-            topDock.topAnchor.constraint(equalTo:header.bottomAnchor),topDock.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:20),topDock.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-20),
+            topDock.topAnchor.constraint(equalTo:header.bottomAnchor),topLeading,topTrailing,
             scroll.topAnchor.constraint(equalTo:topDock.bottomAnchor),
             scroll.bottomAnchor.constraint(equalTo:dock.topAnchor,constant:-6),
             dock.bottomAnchor.constraint(equalTo:view.keyboardLayoutGuide.topAnchor,constant:-6),
@@ -77,8 +86,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             scroll.leadingAnchor.constraint(equalTo:view.leadingAnchor), scroll.trailingAnchor.constraint(equalTo:view.trailingAnchor),
             ordinaryTop,
             ordinaryBottom,
-            stack.leadingAnchor.constraint(equalTo:scroll.frameLayoutGuide.leadingAnchor,constant:20),
-            stack.trailingAnchor.constraint(equalTo:scroll.frameLayoutGuide.trailingAnchor,constant:-20),
+            stackLeading,stackTrailing,
         ])
     }
     override func viewDidAppear(_ animated:Bool) {super.viewDidAppear(animated);arcade?.active=true;arcade?.refresh()}
@@ -98,7 +106,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         }
         for e in elements where e.role=="toolbar" {toolbar(e)}
         headerHeight.constant=bar.isEmpty ? 0:CGFloat(NativeSkin.tokens.header);showHeaderRule()
-        if bar.count==1 {if headerSpacer.superview==nil {header.insertArrangedSubview(headerSpacer,at:0)}}else {headerSpacer.removeFromSuperview()}
+        if bar.count==1 && !railMode {if headerSpacer.superview==nil {header.insertArrangedSubview(headerSpacer,at:0)}}else {headerSpacer.removeFromSuperview()}
         for e in bar {
             let old=controls[e.id],matching=e.role=="button" ? old is NativeButton:old is UILabel
             let control=matching ? old!:make(e)
@@ -113,7 +121,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             else if let label=control as? UILabel {label.attributedText=NativeSkin.label(e.label,size:12,ink:NativeSkin.tokens.ink);label.accessibilityLabel=e.label;label.numberOfLines=1;label.lineBreakMode = .byTruncatingTail;label.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)}
             kept[e.id]=control;if control.superview !== header {header.addArrangedSubview(control)}
         }
-        let ordered=(bar.count==1 ? [headerSpacer]:[])+bar.compactMap {kept[$0.id]}
+        let ordered=(bar.count==1 && !railMode ? [headerSpacer]:[])+bar.compactMap {kept[$0.id]}
         for (i,control) in ordered.enumerated() {
             if i<header.arrangedSubviews.count && header.arrangedSubviews[i] === control {continue}
             header.insertArrangedSubview(control,at:i)
@@ -127,14 +135,15 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             let old=controls[e.id]
             let matches = e.role == "tool" ? old is NativeTool : e.role == "message" ? old is NativeMessage : e.role == "button" ? old is NativeButton : e.role == "field" ? (e.type=="multiline" ? old is UITextView:old is UITextField) : old is UILabel
             let control = matches ? old! : make(e)
-            if let tool=control as? NativeTool {tool.press={ [weak self] id in self?.following=false;self?.press?(id) };tool.render(e)}
+            if let image=control as? NativeRemoteImage {image.render(e)}
+            else if let tool=control as? NativeTool {tool.press={ [weak self] id in self?.following=false;self?.press?(id) };tool.render(e)}
             else if let message=control as? NativeMessage {message.press={ [weak self] id in self?.press?(id) };message.render(e)}
             else if let b=control as? NativeButton {
                 // The kit says which button this is (its class and state); the skin says how each looks.
                 let state=e.attrs["data-state"],select=e.hasClass("sel")
-                b.variant=e.hasClass("ib") ? .icon:e.hasClass("lk") || select || e.label.isEmpty ? .quiet:e.hasClass("row") ? .list:state=="primary" ? .primary:state=="destructive" ? .destructive:.plain
-                b.busy=state=="busy";b.current=e.attrs["aria-current"]=="true";b.isEnabled = !e.disabled
-                b.show(e.label.isEmpty ? e.attrs["aria-label"] ?? "":e.label,symbol:select ? (e.attrs["aria-expanded"]=="true" ? "chevron.up":"chevron.down"):NativeSkin.symbol(e))
+                b.variant=e.hasClass("sw") ? .toggle:state=="rail" ? .rail:e.hasClass("ib") ? .icon:e.hasClass("lk") || select || e.label.isEmpty ? .quiet:e.hasClass("row") ? .list:state=="primary" ? .primary:state=="destructive" ? .destructive:.plain
+                b.busy=state=="busy";b.current=e.attrs["aria-current"]=="true" || e.attrs["aria-pressed"]=="true";b.isEnabled = !e.disabled
+                b.show(e.hasClass("sw") ? e.attrs["aria-label"] ?? e.label:e.label.isEmpty ? e.attrs["aria-label"] ?? "":e.label,symbol:select ? (e.attrs["aria-expanded"]=="true" ? "chevron.up":"chevron.down"):NativeSkin.symbol(e))
             }
             else if let text=control as? UITextView {
                 text.accessibilityLabel=e.label;text.isEditable = !e.disabled
@@ -142,7 +151,10 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
                 text.font=e.attrs["data-lang"] != nil ? NativeTypography.font(15,code:true):NativeTypography.font(16)
             } else if let f=control as? UITextField {
                 f.placeholder=e.label; f.accessibilityLabel=e.label; f.isEnabled = !e.disabled
-                if f.text != e.value { f.text=e.value }
+                let sensitive=e.type=="secret" || e.type=="secret-output"
+                (f as? NativeField)?.sensitive=sensitive
+                f.isUserInteractionEnabled=e.type != "secret-output";f.isSecureTextEntry=sensitive
+                if sensitive {secretBind?(f,e.id);f.accessibilityValue="Private key"}else if f.text != e.value { f.text=e.value }
                 f.keyboardType = e.type == "email" ? .emailAddress : e.type == "tel" ? .numberPad : e.type=="number" ? .decimalPad:.default
                 f.textContentType = e.complete == "one-time-code" ? .oneTimeCode : e.complete == "email" ? .emailAddress : nil
             } else if let l=control as? UILabel {
@@ -195,7 +207,8 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     }
     private func make(_ e:NativeElement)->UIView {
         let control:UIView
-        if e.role=="tool" {control=NativeTool()}
+        if e.role=="image" {control=NativeRemoteImage()}
+        else if e.role=="tool" {control=NativeTool()}
         else if e.role=="message" {control=NativeMessage()}
         else if e.role == "button" {
             let b=NativeButton()
@@ -207,7 +220,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         } else if e.role == "field" {
             let f=NativeField()
             f.autocapitalizationType = .none; f.autocorrectionType = .no
-            f.addAction(UIAction { [weak self,weak f] _ in self?.edit?(e.id,f?.text ?? "") },for:.editingChanged)
+            f.addAction(UIAction { [weak self,weak f] _ in if e.type=="secret" {self?.secretEdit?(e.id,f?.text ?? "")}else {self?.edit?(e.id,f?.text ?? "")} },for:.editingChanged)
             f.addAction(UIAction { [weak self] _ in self?.submit?(e.id) },for:e.type=="number" ? .editingDidEnd:.editingDidEndOnExit)
             control=f
         } else {

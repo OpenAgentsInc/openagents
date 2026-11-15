@@ -121,8 +121,8 @@ import JavaScriptCore
                     result.append(NativeElement(id:n.id,role:"composer",label:"Message",children:children,attrs:n.attrs));return
                 }
                 let field=n.tag=="input" || n.tag=="textarea"
-                let role=n.tag=="button" ? "button" : field ? "field" : n.tag=="h1" || n.tag=="h2" ? "heading" : "text"
-                if field || n.tag=="button" || !n.text.isEmpty {
+                let role=n.tag=="img" ? "image" : n.tag=="button" ? "button" : field ? "field" : n.tag=="h1" || n.tag=="h2" ? "heading" : "text"
+                if field || n.tag=="img" || n.tag=="button" || !n.text.isEmpty {
                     var attrs=n.attrs;if !place.isEmpty {attrs["_nativePlacement"]=place}
                     result.append(NativeElement(id:n.id,role:role,label:field ? n.attrs["aria-label"] ?? n.attrs["placeholder"] ?? "" : n.tag=="button" ? said(slot):n.text,value:n.attrs["value"] ?? n.value,disabled:n.attrs["disabled"] != nil,complete:n.attrs["autocomplete"] ?? "",type:n.tag.hasPrefix("h") ? n.tag:n.tag=="textarea" ? "multiline":n.attrs["type"] ?? "",children:n.children.compactMap {semantic($0)},classes:n.classes,attrs:attrs))
                 }

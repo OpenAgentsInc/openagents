@@ -61,6 +61,17 @@ done:
  return result;
 }
 
+// Opens only the existing canonical managed identity, never a login/wallet key.
+// Caller admission is account-settings-policy.coax; every scratch copy is wiped.
+int auth_identity_secret(PGconn *db,const char *account,char pubkey[65],unsigned char secret[32]) {
+ memset(secret,0,32);int source=auth_identity_ensure(db,account,pubkey);if (source!=2) return source;
+ const char *v[]={account,pubkey};PGresult *r=PQexecParams(db,"SELECT sealed FROM auth.account_identity_keys_v1 WHERE account=$1 AND pubkey=$2",2,NULL,v,NULL,NULL,0);
+ char plain[65]={0},ad[160]={0},derived[65]={0};bool ok=PQresultStatus(r)==PGRES_TUPLES_OK && PQntuples(r)==1;
+ int64_t n=aiw_ad(ais(pubkey),(coax_v_u8){(uint8_t *)ad,sizeof ad-1});if (n>=0) ad[n]=0;
+ ok=ok && n>0 && auth_unseal(ad,PQgetvalue(r,0,0),plain,sizeof plain) && auth_unhex(plain,secret,32) && arc_public((coax_v_u8){secret,32},(coax_v_u8){(uint8_t *)derived,64}) && !strcmp(pubkey,derived);
+ PQclear(r);explicit_bzero(plain,sizeof plain);if (!ok) {explicit_bzero(secret,32);return -1;}return 2;
+}
+
 bool auth_identity_route(const request *q,PGconn *db,const char *op) {
  if (strcmp(op,"identity/v1")) return false;
  api_route_at("auth_identity_route"); // New v1 contract, separate from the frozen auth v1alpha1 answers.

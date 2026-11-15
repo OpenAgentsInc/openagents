@@ -719,6 +719,19 @@ k_image :: (t: [] Tree, id: string, src: string, alt: string, big: bool) -> int 
   tr_close(t);
   return i;
 }
+// Explicit opt-in public remote image, admitted by the caller's URL policy.
+// Hosts fetch without account cookies, credentials or redirects.
+k_remote_image :: (t:[]Tree,id:string,src:string,alt:string,big:bool,admitted:bool)->int {
+  if !admitted || src.count==0 {return -1;}
+  i:=tr_open(t,id,TG_IMG,ifx big then "img img-big" else "img");
+  tr_attr(t,i,AT_SRC,src);tr_attr(t,i,AT_LABEL,alt);tr_close(t);return i;
+}
+#test "remote image admission is explicit and never weakens local image admission" {
+ t:[1]Tree;tr_begin(t[..]);#assert k_image(t[..],"local","https://example.com/p.png","",false)<0;
+ #assert k_remote_image(t[..],"remote","https://example.com/p.png","Profile",false,true)>=0;
+ #assert k_remote_image(t[..],"no","http://example.com/a","",false,false)<0 && k_remote_image(t[..],"no","","",false,true)<0;
+ #assert tr_attr_of(t[..],tr_find(t[..],"remote"),AT_SRC)=="https://example.com/p.png";
+}
 // Document: a document from this site the browser shows paged (a PDF), in a frame as wide as its
 // place. `title` names it for a reader. Nothing for an address that is not a path here.
 k_document :: (t: [] Tree, id: string, src: string, title: string) -> int {

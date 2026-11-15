@@ -1,0 +1,17 @@
+// Frozen account/native profile bytes against their shared product codecs.
+#load "account-wire.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ raw:[8192]u8;out:[8192]u8;
+ n:=fs_read("proto/verse/account-settings-v1.json",raw[..]);k:=asw_initial(out[..]);
+ if k<0 || n!=k+1 || raw[k]!='\n' || cast(string)raw[0..<k]!=cast(string)out[0..<k] {return 1;}
+ n=fs_read("proto/verse/account-identity-backup-v1.json",raw[..]);k=asw_backup("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","0000000000000000000000000000000000000000000000000000000000000001",out[..]);
+ if k<0 || n!=k+1 || raw[k]!='\n' || cast(string)raw[0..<k]!=cast(string)out[0..<k] {return 1;}
+ n=fs_read("proto/coax-native/account-v1.json",raw[..]);nodes:[96]JvNode;d:[1]Jv;
+ if n<0 || !jv_parse(d[..],cast(string)raw[0..<n],nodes[..]) {return 1;}v:=d[0];b:[128]u8;
+ if jv_int(v,jv_get(v,0,"operation"),-1)!=NAC_OP || jv_str(v,jv_get(v,0,"schema"),b[..])!=NAC_SCHEMA.count || cast(string)b[0..<NAC_SCHEMA.count]!=NAC_SCHEMA {return 1;}
+ actions:=jv_get(v,0,"actions");if jv_len(v,actions)!=NAC_ACTIONS.count {return 1;}
+ for i:0..<NAC_ACTIONS.count {count:=jv_str(v,jv_at(v,actions,i),b[..]);if count!=NAC_ACTIONS[i].count || cast(string)b[0..<count]!=NAC_ACTIONS[i] {return 1;}}
+ print("account settings, backup and native action profiles match\n");return 0;
+}

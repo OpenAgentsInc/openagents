@@ -4,6 +4,11 @@ import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeArcadeTests:XCTestCase {
+    func testDrawerMorphUsesVisibleInkFromTheSkin() {
+        let button=NativeButton(.icon);button.show("Navigation",symbol:"line.3.horizontal");button.drawerProgress=1
+        let paint=button.subviews.compactMap {($0 as? NativeArcadeNode)?.arcadePaint}.first {$0.kind==7}
+        XCTAssertNotNil(paint);XCTAssertNotEqual((paint?.ink ?? 0)&255,0)
+    }
     func testMultilineNoticeMeasuresTheSameInsetWidthItDraws() {
         let words="This is a long notice that must remain readable when the phone is narrow and the text size is large."
         let notice=NativeNotice(),label=UILabel();notice.numberOfLines=0;label.numberOfLines=0

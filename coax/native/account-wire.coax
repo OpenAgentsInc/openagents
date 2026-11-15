@@ -1,0 +1,42 @@
+// Public-only native account effects. Secret input/output has no field here.
+#load "../web/api/account-settings-wire.coax";
+NAC_SCHEMA :: "openagents.native.account.v1";NAC_OP :: 18;
+NAC_ACTIONS :: [22]string.["snapshot","save","publish","passkey-add","prove","backup","backup-hide","backup-copy-hex","backup-copy-nsec","key-import","key-login","key-remove","notifications","notifications-request","notifications-settings","push-off","session-remove","logout-all","backup-reveal","key-create","key-backup","passkey-remove"];
+nac_action :: (action:string)->int #export_c #effects(all) {for i:0..<NAC_ACTIONS.count {if action==NAC_ACTIONS[i] {return i+1;}}return 0;}
+nac_request :: (action:string,target:string,payload:string,out:[]u8)->int {
+ if nac_action(action)==0 || target.count>256 || payload.count>8192 {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"action");jo_str(o[..],action);jo_key(o[..],"target");jo_str(o[..],target);jo_key(o[..],"payload");jo_str(o[..],payload);jo_end(o[..]);return aw_len(o[..]);
+}
+nac_observation :: (settings:string,identity:string,account:string,ways:string,sessions:string,permission:string,backup:bool,backup_pubkey:string,message:string,out:[]u8)->int #export_c #effects(all) {
+ values:=[5]string.[settings,identity,account,ways,sessions];names:=[5]string.["settings","identity","account","ways","sessions"];
+ nodes:[512]JvNode;d:[1]Jv;for i:0..<5 {if !jv_parse(d[..],values[i],nodes[..]) || d[0].nodes[0].kind!=JV_OBJECT {return -1;}}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NAC_SCHEMA);for i:0..<5 {jo_key(o[..],names[i]);jo_raw(o[..],values[i]);}jo_key(o[..],"permission");jo_str(o[..],permission);jo_key(o[..],"backup");jo_bool(o[..],backup);jo_key(o[..],"backup_pubkey");jo_str(o[..],backup_pubkey);jo_key(o[..],"message");jo_str(o[..],message);jo_end(o[..]);return aw_len(o[..]);
+}
+#test "account effects cannot transport secret input and only name declared services" {
+ b:[512]u8;n:=nac_request("backup","","",b[..]);#assert n>0 && cast(string)b[0..<n]=="{\"action\":\"backup\",\"target\":\"\",\"payload\":\"\"}";
+ #assert nac_action("snapshot")==1 && nac_action("backup")==6 && nac_action("unknown")==0 && nac_request("unknown","","",b[..])<0;
+ #assert nac_observation("{}","{}","{}","{}","{}","authorized",false,"","",b[..])>0;
+ #assert nac_observation("bad","{}","{}","{}","{}","",false,"","",b[..])<0;
+}
+
+// Opaque IDs are path components, never paths or JSON fragments.
+nac_target :: (action:int,target:string)->bool #export_c #effects(all) {
+ if action==21 {return aw_hex(target,64);}
+ if target.count<1 || target.count>64 {return false;}
+ for c:target {if action==22 {if c<'0' || c>'9' {return false;}}else if !(c>='0' && c<='9' || c>='A' && c<='Z' || c>='a' && c<='z' || c=='_' || c=='-') {return false;}}
+ return action==17 || action==22;
+}
+#test "account effect targets never become a path or another JSON value" {
+ #assert nac_target(17,"session_123-Ab") && !nac_target(17,"../logout") && !nac_target(17,"");
+ #assert nac_target(22,"123") && !nac_target(22,"1a") && !nac_target(21,"x") && !nac_target(9,"abc");
+ #assert nac_target(21,"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+}
+
+nac_current :: (raw:string,target:string)->bool #export_c #effects(all) {
+ nodes:[1024]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];rows:=jv_get(v,0,"sessions");b:[64]u8;
+ for i:0..<jv_len(v,rows) {at:=jv_at(v,rows,i);n:=jv_str(v,jv_get(v,at,"id"),b[..]);if n>=0 && cast(string)b[0..<n]==target {return jv_bool(v,jv_get(v,at,"this"));}}return false;
+}
+#test "ending another session cannot log the current phone out" {
+ raw:="{\"sessions\":[{\"id\":\"one\",\"this\":true},{\"id\":\"two\",\"this\":false}]}";
+ #assert nac_current(raw,"one") && !nac_current(raw,"two") && !nac_current(raw,"three") && !nac_current("bad","one");
+}

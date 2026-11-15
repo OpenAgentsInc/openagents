@@ -45,7 +45,7 @@ began=$SECONDS
 # and runs its share of the checks below. A check's share is its time on a
 # build host (oa-build-1, 2026-11-11, seconds): longest first, each to the part
 # with the least so far, so the parts take about as long as each other.
-API_PARTS="checks:20 py:721 room_checks:25 checkpoint2_checks:4 verse_packs:3 auth_checks:4 history_checks:4 auth_recover_checks:9 agent_checks:8
+API_PARTS="checks:20 py:721 room_checks:25 checkpoint2_checks:4 verse_packs:3 auth_checks:4 account_settings_checks:1 history_checks:4 auth_recover_checks:9 agent_checks:8
   auth_life_checks:8 passkey_checks:8 lnaddr_checks:11 auth_device_checks:5 wallet_checks:6 realm_doc_checks:3 realm_record_checks:3 world_checks:8 worldbuilder_checks:8 script_checks:8 script_cli_checks:60 workers_checks:95 cli-auth:17 anime:13 realms:8 audit:1"
 part=""
 if [[ "${1:-}" == --part ]]; then part="${2:-}"; shift 2 || true; fi
@@ -175,7 +175,7 @@ fi
 # --serve: the local serve mode (OA_LOCAL_SERVE: the local admin, the model's token file and fallback); the
 # checks' build and the image never have it, and test_zchat.py checks that this build refuses the local admin.
 local_serve=(); [[ $serve == 0 ]] || local_serve=(-DOA_LOCAL_SERVE)
-"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -DOA_LNADDR_TEST_FETCH ${local_serve[@]+"${local_serve[@]}"} -fsanitize=address,undefined \
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -DOA_LNADDR_TEST_FETCH ${local_serve[@]+"${local_serve[@]}"} -fsanitize=address,undefined \
   -I"$work" ${pq_inc[@]+"${pq_inc[@]}"} ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} \
   -o "$work/api" "${API_SOURCES[@]}" \
   ${pq_lib[@]+"${pq_lib[@]}"} -lpq ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lssl -lcrypto -lcurl -lz -lpthread -lm
@@ -184,7 +184,7 @@ if runs checks; then
 [[ "$("$work/api" --rule GET /api/no-such-route || true)" == none && "$("$work/api" --rule POST /api/auth/logout-everywhere)" == L2 ]] || { echo "api --rule: the gate's table is wrong" >&2; exit 1; }
 "$work/api" --limits | diff - "$repo_root/apps/openagents-web/docs/limits/index.md" > /dev/null || { echo "apps/openagents-web/docs/limits/index.md is stale: run api --limits > it" >&2; exit 1; }
 # The Coax NIP-98 check against the former C check, on the corpus and seeded mutations.
-"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/nip98_diff" \
   "$here/nip98_diff.c" "$here/nip98_reference.c" "$here/nostr.c" "$here/nip98.generated.c" \
   ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lcrypto
@@ -217,7 +217,7 @@ if [[ -z "$state" || "$("$pgbin/psql" -h "$work" -p $port -U postgres -XAtqc "SE
 fi
 export OA_API_DATABASE="host=$work port=$port user=oa_analytics dbname=oa_analytics"
 # The signer (sign.c), and two throwaway keys: an admin and someone else.
-"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/sign" "$here/sign.c" \
   ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lcrypto
 # The project agent's runner (coax/web/agent/runner.c), run by test_private_runner.py with a stand-in engine.
@@ -236,11 +236,11 @@ export OA_API_DATABASE="host=$work port=$port user=oa_analytics dbname=oa_analyt
 "$cli_coax" c "$here/../agent/seat-runner-wire.coax" --library --header "$work/seat-runner-wire.h" > "$work/seat-runner-wire.c"
 "$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-parameter -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   -c -o "$work/seat-runner-wire.o" "$work/seat-runner-wire.c"
-"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   -I"$work" ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/oa-agent" "$here/../agent/runner.c" "$work/runner-sign.o" "$work/runner-wire.o" "$work/seat-runner-wire.o" \
   ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lcrypto -lcurl -lm
 # The runner's credential sealing with a fixed TEST key and nonce (runner_seal_check.c), for test_zchat.py.
-"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   -I"$work" -I"$here/../agent" ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/runner-seal-check" "$here/../agent/runner_seal_check.c" "$work/runner-sign.o" "$work/runner-wire.o" "$work/seat-runner-wire.o" \
   ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lcrypto -lcurl -lm
 export RUNNER_BIN="$work/oa-agent" RUNNER_BIN_SRC="$here/../agent/runner.c" SEAL_CHECK_BIN="$work/runner-seal-check"
@@ -407,7 +407,7 @@ export SCRIPT_JOB_READY="${script_job:+1}"
 # runs the same job runner (script-job-run.c) inside the service.
 script_job_url=""
 if [[ $serve == 0 && -n "$script_job" ]]; then
-  "$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined -I"$here" \
+  "$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined -I"$here" \
     -o "$work/oa-script-job" "$here/../script-job/serve.c" "$here/script-job-run.c"
   (cd "$repo_root" && OA_SCRIPT_JOB="$script_job" COAX="$cli_coax" exec "$work/oa-script-job" --listen "127.0.0.1:$SCRIPT_JOB_PORT") 2> "$work/script-job.log" & script_job_pid=$!
   for _ in $(seq 100); do curl -s -m 1 "http://127.0.0.1:$SCRIPT_JOB_PORT/healthz" > /dev/null && { script_job_url="http://127.0.0.1:$SCRIPT_JOB_PORT"; break; }; sleep 0.1; done
@@ -421,7 +421,7 @@ OA_PROJECT_KEK="$k_project" OA_PUBLISH_RELAY="ws://127.0.0.1:$RELAY_PORT" OA_SIT
 OA_DROPS_GCS="http://127.0.0.1:$GCS_PORT" OA_DROPS_TOKEN=test-gcs OA_DROPS_BUCKET=drops-test OA_DROPS_PREFIX=test OA_DRAFT_URL="http://127.0.0.1:$GCS_PORT/model" OA_VILLA_URL="http://127.0.0.1:$GCS_PORT/villa-model" \
 OA_INFERENCE_URL="$infer_url" OA_INFERENCE_TOKEN="$infer_token" OA_INFERENCE_DAILY_REQUESTS="$infer_daily" \
 OA_SPARK_URL="http://127.0.0.1:$SPARK_PORT" OA_SPARK_TOKEN=test-spark OA_LNADDR_TEST_PORT="$SPARK_PORT" \
-OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=device-a@example.com,device-b@example.com,life-a@example.com,life-c@example.com,life-d@example.com,life-f@example.com,life-h@example.com,owner@example.com,ada@example.com,frozen@example.com,app@example.com,rec@example.com,push-a@example.com,push-b@example.com,solo@example.com,pk@example.com,newcomer@example.com,wallet@example.com,mobilehistory@example.com,identity-race@example.com,identity-merge@example.com OA_EMAIL_BACKOFF_MS=10 \
+OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=device-a@example.com,device-b@example.com,life-a@example.com,life-c@example.com,life-d@example.com,life-f@example.com,life-h@example.com,owner@example.com,ada@example.com,frozen@example.com,app@example.com,rec@example.com,push-a@example.com,push-b@example.com,solo@example.com,pk@example.com,newcomer@example.com,wallet@example.com,mobilehistory@example.com,identity-race@example.com,identity-merge@example.com,settings@example.com OA_EMAIL_BACKOFF_MS=10 \
 OA_AUTH_SEAL_KEY="$k_seal" OA_AUTH_LOOKUP_PEPPER="$k_pepper" \
 OA_APNS_KEY="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 2>/dev/null)" OA_APNS_KEY_ID=TESTKEY123 OA_APNS_URL="http://127.0.0.1:$RESEND_PORT/apns" OA_APNS_SANDBOX_URL="http://127.0.0.1:$RESEND_PORT/apns-sandbox" \
 OA_FCM_PROJECT=test-project OA_FCM_URL="http://127.0.0.1:$RESEND_PORT/fcm" OA_FCM_TOKEN=test-fcm \
@@ -522,7 +522,7 @@ if [[ -x "$cli_coax" ]]; then
   coax_failed=0
   # tests/script_cli_checks.coax drives the built CLI (#13467): built here when that check runs.
   realm_cli="$repo_root/apps/openagents-cli/build/openagents"
-  for f in room_checks checkpoint2_checks verse_packs auth_checks history_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks worldbuilder_checks script_checks script_cli_checks workers_checks; do
+  for f in room_checks checkpoint2_checks verse_packs auth_checks account_settings_checks history_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks worldbuilder_checks script_checks script_cli_checks workers_checks; do
     [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
     runs "$f" || continue
     if [[ $f == script_cli_checks ]]; then

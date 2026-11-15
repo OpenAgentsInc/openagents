@@ -137,12 +137,12 @@ final class AppAuth: @unchecked Sendable {
 
     /// Logs in with this device's key: a challenge, signed (NIP-98) over the login route and body.
     @discardableResult
-    func keyLogin() async throws -> Tokens {
+    func keyLogin(signer: Sign? = nil) async throws -> Tokens {
         let challenge = try await said { try await self.post("/api/auth/nostr/challenge", ["client": "app"]) }
         guard let ch = challenge["challenge"] as? String else { throw Failure.said("That didn't work. Try again.") }
         let body = "{\"challenge\":\"\(ch)\",\"label\":\"app\"}"
         let url = origin + "/api/auth/nostr"
-        let auth = try sign(url, body, clock())
+        let auth = try (signer ?? sign)(url, body, clock())
         return try keep(try await said { try await self.post("/api/auth/nostr", raw: body, authorization: auth) })
     }
 

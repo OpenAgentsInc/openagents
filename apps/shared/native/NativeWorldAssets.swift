@@ -57,6 +57,13 @@ final class NativeWorldSession:NSObject,URLSessionTaskDelegate,@unchecked Sendab
     }()
     func urlSession(_ session:URLSession,task:URLSessionTask,willPerformHTTPRedirection response:HTTPURLResponse,newRequest request:URLRequest,completionHandler:@escaping(URLRequest?)->Void) {completionHandler(nil)}
     func close() {session.invalidateAndCancel()}
+    /// Bounded SDK response for native account records and public image effects.
+    func fetch(_ request:URLRequest,limit:Int)async throws->(Data,Int) {
+        let (bytes,response)=try await session.bytes(for:request)
+        guard response.expectedContentLength<=limit else {throw NativeFailure.refused("Response too large")}
+        var data=Data();for try await byte in bytes {guard data.count<limit else {throw NativeFailure.refused("Response too large")};data.append(byte)}
+        return (data,(response as? HTTPURLResponse)?.statusCode ?? 0)
+    }
 }
 
 actor NativeWorldAssets {

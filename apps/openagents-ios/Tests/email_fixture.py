@@ -52,6 +52,7 @@ def provider_view(host, body):
     if command:provider_receipts[host,command]=json.loads(json.dumps(value))
     return value
 
+account_settings=dict(schema=json.loads((Path(__file__).resolve().parents[3] / "proto/verse/account-settings-v1.json").read_text())["schema"],revision=0,profile=dict(display_name="Ada",name="ada",nip05="",about="",picture="",banner="",website=""),relays=["wss://relay.openagents.com"],privacy=dict(remote_images=True,private_clipboard=True),notifications=dict(security=True))
 counts = dict(sent=0, wrong=0, verified=0, authorized=0, logout=0, device_bound=0)
 
 class Handler(BaseHTTPRequestHandler):
@@ -68,6 +69,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path in ("/api/auth/settings/v1","/api/auth/identity/v1","/api/auth/account","/api/auth/ways","/api/auth/sessions"):
+            if self.headers.get("Authorization")!="Bearer oa_at_fixture":return self.answer(401,{"error":"Log in first"})
+            values={"/api/auth/settings/v1":account_settings,"/api/auth/identity/v1":dict(pubkey="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",source="account"),"/api/auth/account":dict(account="acct_fixture",primary="ada@example.com"),"/api/auth/ways":dict(level="L1",keys=[],passkeys=[]),"/api/auth/sessions":dict(sessions=[dict(id="fixture-session",name="iPhone",this=True)])}
+            return self.answer(200,values[self.path])
         if a.projects and (self.path.startswith("/projects/") or self.path.startswith("/api/drops") or self.path.startswith("/api/chat/project")):
             if self.headers.get("Authorization") != "Bearer oa_at_fixture":return self.answer(401,{})
             if self.path=="/projects/mobile-kit/api/state":return self.answer(200,b"Y|Ada|member\nP|Mobile Kit|Native project fixture|1|now|Ada\nG|g1|proposed||Build the garden\nD|2026-11-14|Today\nM|2026-11-14|m1|todo|Ada|Plant flowers|\n")
@@ -129,8 +134,14 @@ class Handler(BaseHTTPRequestHandler):
         return self.answer(404, {})
 
     def do_POST(self):
-        global project_published
+        global project_published,account_settings
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+        if self.path=="/api/auth/settings/v1":
+            if self.headers.get("Authorization")!="Bearer oa_at_fixture":return self.answer(401,{})
+            if body["revision"]!=account_settings["revision"]:return self.answer(409,{"error":"Settings changed. Reload before saving."})
+            account_settings=body;account_settings["revision"]+=1;return self.answer(200,account_settings)
+        if self.path=="/api/auth/identity/backup/v1":return self.answer(401,{"error":"Verify with a passkey or login key first."})
+        if self.path.startswith("/api/auth/sessions/") or self.path=="/api/auth/devices/push/off":return self.answer(200,{"ok":True})
         if a.projects and (self.path.startswith("/projects/") or self.path.startswith("/api/drops") or self.path.startswith("/api/chat/project")):
             if self.headers.get("Authorization")!="Bearer oa_at_fixture":return self.answer(401,{})
             project_calls.append(self.path)

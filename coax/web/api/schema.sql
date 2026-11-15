@@ -19775,6 +19775,19 @@ CREATE TABLE auth.account_identity_keys_v1 (
 
 
 --
+-- Name: account_settings_v1; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.account_settings_v1 (
+    account text NOT NULL,
+    revision bigint NOT NULL,
+    document text NOT NULL,
+    CONSTRAINT account_settings_v1_document_check CHECK ((octet_length(document) <= 8192)),
+    CONSTRAINT account_settings_v1_revision_check CHECK ((revision > 0))
+);
+
+
+--
 -- Name: accounts; Type: TABLE; Schema: auth; Owner: -
 --
 
@@ -23729,6 +23742,14 @@ ALTER TABLE ONLY auth.account_identity_keys_v1
 
 
 --
+-- Name: account_settings_v1 account_settings_v1_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.account_settings_v1
+    ADD CONSTRAINT account_settings_v1_pkey PRIMARY KEY (account);
+
+
+--
 -- Name: accounts accounts_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
 --
 
@@ -26512,6 +26533,14 @@ ALTER TABLE ONLY access.redemptions
 
 ALTER TABLE ONLY auth.account_identity_keys_v1
     ADD CONSTRAINT account_identity_keys_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: account_settings_v1 account_settings_v1_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.account_settings_v1
+    ADD CONSTRAINT account_settings_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
 
 
 --

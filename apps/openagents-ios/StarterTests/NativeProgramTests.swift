@@ -86,7 +86,7 @@ import UIKit
         func takeAction()throws->(Int,String) {for _ in 0..<64 {let a=try p.action();if a.0 != 12 {return a};try answer(12,[:])};throw NativeFailure.refused("Unbounded timer chain")}
         let host=String(repeating:"a",count:64),flow=String(repeating:"1",count:32)
         try p.event(15,0,"");try p.frame();_ = try takeAction();try answer(1,["loggedIn":true]);_ = try takeAction();try answer(4,["schema":"openagents.chat.history.v1","chats":[]])
-        try p.input("nav.settings");try p.frame();try p.input("usage.open");try p.frame();XCTAssertEqual(try takeAction().0,4)
+        try p.input("nav.settings");try p.frame();XCTAssertEqual(try takeAction().0,18);try p.event(218,0,"{\"error\":\"Fixture has no settings service\"}");try p.frame();try p.input("usage.open");try p.frame();XCTAssertEqual(try takeAction().0,4)
         try answer(4,["schema":"openagents.environment.catalog.v1alpha1","environments":[["host_pubkey":host,"display_name":"Mac"]]]);XCTAssertEqual(try takeAction().0,4)
         func view(_ method:String,_ command:String,_ login:[String:Any])->[String:Any] {["schema":"openagents.environment.accounts.view.v1","host_pubkey":host,"method":method,"command_id":command,"accounts":[],"login":login,"error":"","retry_after_ms":0]}
         let noLogin:[String:Any]=["login_id":"","account_id":"","state":"","authorization_url":"","expires_at_ms":0]

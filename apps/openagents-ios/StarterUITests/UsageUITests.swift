@@ -4,7 +4,7 @@ final class UsageUITests:XCTestCase {
     func testUsageAndSeparateAccountLogin() {
         let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13493","-OAUpdatesOrigin","http://127.0.0.1:13492"];app.launch()
         let email=app.textFields["Email address"]
-        if !email.waitForExistence(timeout:8) {app.showAppSettings();app.buttons["account.logout"].tap()}
+        if !email.waitForExistence(timeout:8) {app.showAppSettings();app.logOutAccount()}
         if email.waitForExistence(timeout:8) {email.tap();email.typeText("ada@example.com");app.buttons["Send code"].tap();let code=app.textFields["Email code"];XCTAssertTrue(code.waitForExistence(timeout:10));code.tap();code.typeText("415926");app.buttons["Log in"].tap()}
         XCTAssertTrue(app.buttons["nav.toggle"].waitForExistence(timeout:20));app.showAppSettings();app.buttons["usage.open"].tap()
         XCTAssertTrue(app.staticTexts["65% remaining"].firstMatch.waitForExistence(timeout:15));XCTAssertTrue(app.staticTexts["Mac"].firstMatch.exists)

@@ -3,26 +3,6 @@ import UIKit
 import AuthenticationServices
 import Security
 
-@MainActor final class NativePasskey: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
-    let anchor: UIWindow
-    var completion: ((Result<AppAuth.PasskeyAssertion,Error>)->Void)?
-    init(_ anchor:UIWindow) { self.anchor=anchor }
-    func presentationAnchor(for controller:ASAuthorizationController)->ASPresentationAnchor { anchor }
-    func authorizationController(controller:ASAuthorizationController,didCompleteWithAuthorization authorization:ASAuthorization) {
-        guard let c=authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else { completion?(.failure(NativeFailure.refused("No passkey assertion"))); return }
-        completion?(.success(AppAuth.PasskeyAssertion(credentialID:c.credentialID,authenticatorData:c.rawAuthenticatorData,clientData:c.rawClientDataJSON,signature:c.signature,userHandle:c.userID)))
-    }
-    func authorizationController(controller:ASAuthorizationController,didCompleteWithError error:Error) { completion?(.failure(error)) }
-    func get(_ challenge:AppAuth.PasskeyChallenge) async throws -> AppAuth.PasskeyAssertion {
-        try await withCheckedThrowingContinuation { continuation in
-            completion = { [weak self] result in self?.completion=nil; continuation.resume(with:result) }
-            let request=ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier:challenge.rpID).createCredentialAssertionRequest(challenge:challenge.challenge)
-            request.userVerificationPreference = .required
-            let c=ASAuthorizationController(authorizationRequests:[request]); c.delegate=self; c.presentationContextProvider=self; c.performRequests()
-        }
-    }
-}
-
 @MainActor final class NativeHost: UIViewController {
     let updates: NativeUpdates
     var epoch = UUID()
@@ -30,9 +10,10 @@ import Security
     private var httpEpoch=UUID()
     private var httpTask:Task<Void,Never>?
     var health: Task<Void,Never>?
-    var passkey: NativePasskey?
+    var passkey: PasskeyAsk?
     private let wallet=SparkHost()
     private let documents=NativeDocuments()
+    let accountServices=NativeAccountServices()
     private let surface=NativeControls()
     private lazy var workspace=NativeWorkspace(detail:surface)
     private var dialog:NativeControls?
@@ -45,6 +26,7 @@ import Security
         view.addSubview(workspace.view);workspace.didMove(toParent:self)
         surface.press = { [weak self] id in self?.input(id) }
         surface.edit = { [weak self] id,text in self?.input(id,text) }
+        configureSecrets(surface);configureSecrets(workspace.sidebar)
         workspace.press=surface.press;workspace.sidebar.press=surface.press;workspace.sidebar.edit=surface.edit
         load()
     }
@@ -67,6 +49,7 @@ import Security
             try pump()
         } catch {refuse()}
     }
+    private func configureSecrets(_ controls:NativeControls) {controls.secretEdit={ [weak self] id,value in self?.accountServices.editSecret(id,value) };controls.secretBind={ [weak self] field,id in self?.accountServices.bindSecret(field,id:id) }}
     private func refuse() {
         updates.failed()
         surface.render([NativeElement(id:"native.error",role:"notice",label:"The app could not continue. Restart to recover the previous update.")])
@@ -78,10 +61,11 @@ import Security
         workspace.render(primary+extras,history:programs[0].elements(navigation:true))
         let modal=programs.flatMap {$0.elements(dialog:true)}
         if modal.isEmpty {
-            if dialog != nil {dialog?.dismiss(animated:true);dialog=nil}
+            if dialog != nil {accountServices.clear();dialog?.dismiss(animated:true);dialog=nil}
         } else {
             if dialog==nil {
                 let vc=NativeControls();vc.sheet=true;vc.press=surface.press;vc.edit=surface.edit;vc.isModalInPresentation=true
+                configureSecrets(vc)
                 dialog=vc;present(vc,animated:true)
             }
             dialog?.render(modal)
@@ -93,7 +77,7 @@ import Security
             let (op,body)=try p.action()
             if op==0 {continue}
             let owner=epoch,extra=(p === programs.last)
-            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open","environment.commandIDs","environment.wait","world.open","documents.pick","documents.upload","documents.release"]
+            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open","environment.commandIDs","environment.wait","world.open","documents.pick","documents.upload","documents.release","","account.service"]
             guard extra || op>0 && op<ops.count else {throw NativeFailure.refused("Unsupported service")}
             var args=(try? JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] ?? [:]
             if !extra && op==13 {args["nativeWire"]=body}
@@ -108,7 +92,7 @@ import Security
                     let result=try await self.call(extra ? "wallet.balance":ops[op],args)
                     guard self.epoch==owner,op != 4 || self.httpEpoch==requestOwner else {return}
                     let record=result as? [String:Any] ?? [:]
-                    let raw=extra ? record["record"] as? String ?? "" : op==4 ? record["body"] as? String ?? "" : String(decoding:try JSONSerialization.data(withJSONObject:result),as:UTF8.self)
+                    let raw=extra || op==18 ? record["record"] as? String ?? "" : op==4 ? record["body"] as? String ?? "" : String(decoding:try JSONSerialization.data(withJSONObject:result),as:UTF8.self)
                     try p.event(extra ? 21:100+op,record["status"] as? Int ?? 0,raw)
                     try self.pump()
                 } catch {
@@ -122,6 +106,7 @@ import Security
     }
     func call(_ op:String,_ b:[String:Any]) async throws -> Any {
         switch op {
+        case "account.service":return try await accountServices.perform(b,presenter:dialog ?? self)
         case "world.open":
             let wire=b["nativeWire"] as? String ?? ""
             let q=UnsafeMutablePointer<coax_t_NwOpen>.allocate(capacity:1);q.initialize(to:coax_t_NwOpen());defer {q.deinitialize(count:1);q.deallocate()}
@@ -193,12 +178,12 @@ import Security
         case "auth.keyLogin": _ = try await AppAuth.shared.keyLogin(); return ["loggedIn":true]
         case "auth.passkeyLogin":
             guard let window=view.window, passkey==nil else { throw NativeFailure.refused("Authentication busy") }
-            let challenge=try await AppAuth.shared.passkeyChallenge(); let p=NativePasskey(window); passkey=p; defer { passkey=nil }
-            _ = try await AppAuth.shared.passkeyLogin(challenge,try await p.get(challenge)); return ["loggedIn":true]
-        case "auth.logout": await AppAuth.shared.logout(); return ["loggedIn":false]
+            let challenge=try await AppAuth.shared.passkeyChallenge(); let p=PasskeyAsk(anchor:window); passkey=p; defer { passkey=nil }
+            _ = try await AppAuth.shared.passkeyLogin(challenge,try await p.assert(challenge)); return ["loggedIn":true]
+        case "auth.logout": accountServices.clear();await AppAuth.shared.logout(); return ["loggedIn":false]
         case "clipboard.write":
             guard let text=b["text"] as? String,text.utf8.count<=65536 else {throw NativeFailure.refused("Text is too large")}
-            UIPasteboard.general.string=text;return ["copied":true]
+            if accountServices.privateClipboard {UIPasteboard.general.setItems([[UIPasteboard.typeAutomatic:text]],options:[.localOnly:true,.expirationDate:Date().addingTimeInterval(60)])}else {UIPasteboard.general.string=text};return ["copied":true]
         case "link.open":
             let raw=b["url"] as? String ?? ""
             if raw=="https://openagents.com/components-gpu" {

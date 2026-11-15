@@ -36,7 +36,7 @@ MonoNative :: struct {
   dash: f64;          // a dashed line's dash and gap
   march: f64;         // seconds a busy line takes to move one dash and gap
   turn: f64;          // seconds a running glyph's ring takes to turn once
-  grid_step: f64; grid_parts: int;
+  grid_step: f64; grid_parts: int;profile_picture:f64;profile_banner:f64;
 }
 mono_native :: () -> MonoNative #export_c #effects(all) {
   return MonoNative.{ground = MONO_GROUND, surface = MONO_SURFACE, raised = MONO_RAISED, pressed = MONO_PRESSED,
@@ -44,7 +44,7 @@ mono_native :: () -> MonoNative #export_c #effects(all) {
     ink = MONO_INK, ink_muted = MONO_INK_MUTED, ink_faint = MONO_INK_FAINT, ink_bright = MONO_INK_BRIGHT,
     primary = MONO_PRIMARY, primary_lit = MONO_PRIMARY_LIT, on_primary = MONO_ON_PRIMARY,
     hairline = 1, hit = 44, header = 44, gutter = 20, gap = 12, label = 11, track = 0.18, dash = 3, march = 0.6, turn = 1.8,
-    grid_step = MONO_GRID_STEP, grid_parts = MONO_GRID_PARTS};
+    grid_step = MONO_GRID_STEP, grid_parts = MONO_GRID_PARTS,profile_picture=88,profile_banner=140};
 }
 
 // One filled rectangle of the grid's tile.
@@ -69,12 +69,12 @@ mono_native_frame :: (role: int, width: f64, height: f64, out: [] AfPoint) -> in
 // The numbers a host names a frame role, a button variant and a state by, so it writes none of them itself.
 MonoNames :: struct {
   button: int; panel: int; field: int; notice: int; header: int; row: int; bubble: int; box: int;
-  plain: int; primary: int; quiet: int; icon: int; destructive: int; list: int; action: int;
+  plain: int; primary: int; quiet: int; icon: int; destructive: int; list: int; action: int; rail:int;
   rest: int; pressed: int; disabled: int; busy: int; current: int;
 }
 mono_names :: () -> MonoNames #export_c #effects(all) {
   return MonoNames.{button = MF_BUTTON, panel = MF_PANEL, field = MF_FIELD, notice = MF_NOTICE, header = MF_HEADER, row = MF_ROW, bubble = MF_BUBBLE, box = MF_BOX,
-    plain = MB_DEFAULT, primary = MB_PRIMARY, quiet = MB_QUIET, icon = MB_ICON, destructive = MB_DESTRUCTIVE, list = MB_ROW, action = MB_ACTION,
+    plain = MB_DEFAULT, primary = MB_PRIMARY, quiet = MB_QUIET, icon = MB_ICON, destructive = MB_DESTRUCTIVE, list = MB_ROW, action = MB_ACTION,rail=MB_RAIL,
     rest = MS_REST, pressed = MS_PRESSED, disabled = MS_DISABLED, busy = MS_BUSY, current = MS_CURRENT};
 }
 
@@ -86,7 +86,7 @@ MB_ICON :: 3;          // only an icon, in a small square when pressed
 MB_DESTRUCTIVE :: 4;   // a bright outline that fills when pressed; its words say what it removes
 MB_ROW :: 5;           // a line of a list: its text as written, boxed when it is the current one
 MB_ACTION :: 6;        // an icon button that is the one action beside a field: a small filled square
-MB_COUNT :: 7;
+MB_RAIL :: 7; MB_COUNT :: 8;
 MS_REST :: 0; MS_PRESSED :: 1; MS_DISABLED :: 2; MS_BUSY :: 3; MS_CURRENT :: 4;
 MS_COUNT :: 5;
 
@@ -128,6 +128,7 @@ mono_button :: (variant: int, state: int) -> MonoButton #export_c #effects(all) 
     b.bg = MONO_SURFACE; b.line = MONO_LINE_BRIGHT; b.ink = MONO_INK_BRIGHT;
     if variant == MB_ICON { b.bg = MONO_CLEAR; b.line = MONO_CLEAR; }   // an icon that says a thing is so: bright, unboxed
   }
+  if variant==MB_RAIL {b.height=50;b.side=50;b.pad=0;b.icon=20;b.bg=ifx state==MS_CURRENT then MONO_PRIMARY else MONO_RAISED;b.line=ifx state==MS_CURRENT then MONO_PRIMARY else MONO_LINE_DIM;b.ink=ifx state==MS_CURRENT then MONO_ON_PRIMARY else MONO_INK;}
   return b;
 }
 

@@ -195,6 +195,7 @@ UiFloat :: struct { dy: [2] f32; blur: [2] f32; spread: [2] f32; }
 UiAnimated :: struct {
  frame_corner_stroke:f32=3;frame_square_fraction:f32=0.1;frame_square_limit:f32;
  activity_sweep:f32=0.25;frame_stroke:f32=1.5;activity_stroke:f32=2;progress_stroke:f32=3;
+ drawer_gap:f32=6;drawer_half:f32=9;drawer_shift:f32=2;drawer_head:f32=9;drawer_tip:f32=1;drawer_stroke:f32=2;
  switch_inset:f32=3;drawer_radius:f32=6;reply_radius:f32=4;
  frame_wash:f32=0.7;activity_wash:f32=0.12;switch_wash:f32=0.35;reply_wash:f32=0.15;
 }

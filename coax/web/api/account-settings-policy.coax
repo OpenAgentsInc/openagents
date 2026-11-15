@@ -1,0 +1,36 @@
+// Account settings admission and bounded public profile/relay validation.
+#load "../../lib/net/uri.coax";
+#authority;
+#test "only a live unrestricted human session changes account settings" {
+ #assert asp_write(2,true,false,0);
+ #assert !asp_write(1,true,false,0) && !asp_write(3,true,false,0);
+ #assert !asp_write(2,false,false,0) && !asp_write(2,true,true,0) && !asp_write(2,true,false,1) && !asp_write(2,true,false,2);
+}
+#test "identity backup needs the real account session and a fresh strong proof" {
+ #assert asp_backup(2,true,false,0,2,0) && asp_backup(2,true,false,0,2,300000);
+ #assert !asp_backup(2,true,false,0,1,0) && !asp_backup(2,true,false,0,2,-1) && !asp_backup(2,true,false,0,2,300001);
+ #assert !asp_backup(1,true,false,0,2,0) && !asp_backup(2,false,false,0,2,0) && !asp_backup(2,true,true,0,2,0) && !asp_backup(2,true,false,1,2,0);
+ #assert !asp_backup(2,true,false,0,3,0) && !asp_backup(2,true,false,-1,2,0);
+}
+#forall "profile text admits exact printable bytes plus tab and newline" byte:0..<256 {
+ b:=[1]u8.[cast(u8)byte];allowed:=byte>=32 && byte!=127 || byte==9 || byte==10;
+ #assert asp_text(cast(string)b[..],1)==allowed && !asp_text(cast(string)b[..],0);
+}
+#test "public URL and relay length limits are exact" {
+ b:[513]u8;for i:0..<513 {b[i]='a';}head:="https://example.com/";for i:0..<head.count {b[i]=head[i];}
+ #assert asp_url(cast(string)b[0..<512]) && !asp_url(cast(string)b[..]);
+ head="wss://relay.example/";for i:0..<head.count {b[i]=head[i];}
+ #assert asp_relay(cast(string)b[0..<200]) && !asp_relay(cast(string)b[0..<201]);
+ #assert !asp_url("wss://relay.example") && !asp_url("bad");
+}
+#test "relay settings use the shared URI parser, encrypted sockets and bounded values" {
+ #assert asp_relay("wss://relay.openagents.com") && asp_relay("wss://relay.example/path");
+ for s:[8]string.["ws://relay.example","https://relay.example","wss://user@relay.example","wss://relay.example#x","wss://relay.example?x","wss://","wss://relay.example\n","wss://localhost"] {#assert !asp_relay(s);}
+ #assert asp_url("") && asp_url("https://example.com/a.png") && !asp_url("javascript:alert(1)") && !asp_url("http://example.com");
+ #assert asp_text("hello",5) && !asp_text("hello",4) && !asp_text("a\0b",10);
+}
+asp_write :: (kind:int,session:bool,limited:bool,frozen:int)->bool #export_c #effects(all) {return kind==2 && session && !limited && frozen==0;}
+asp_backup :: (kind:int,session:bool,limited:bool,frozen:int,level:int,age:int)->bool #export_c #effects(all) {return asp_write(kind,session,limited,frozen) && level==2 && age>=0 && age<=300000;}
+asp_text :: (s:string,cap:int)->bool #effects(all) {if s.count>cap {return false;}for c:s {if c==127 || c<32 && c!='\n' && c!='\t' {return false;}}return true;}
+asp_url :: (s:string)->bool #effects(all) {if s.count==0 {return true;}p:=uri_parse(s);return s.count<=512 && p.ok && p.scheme==URI_HTTPS;}
+asp_relay :: (s:string)->bool #effects(all) {p:=uri_parse(s);return s.count<=200 && p.ok && p.scheme==URI_WSS && !p.has_query && cast(string)s[p.host_from..<p.host_to]!="localhost";}

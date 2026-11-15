@@ -1,0 +1,153 @@
+// Arcade account/settings flows, in shared Coax components. No private keys.
+#load "../../coax/native/account-wire.coax";
+#load "../../components/kit/settings.coax";
+#load "../../coax/lib/nostr/nip19-core.coax";
+#load "../../coax/lib/nostr/hex.coax";
+AccountMethod :: struct {id:int;pub:[64]u8;np:int;label:[128]u8;nl:int;}
+AccountDevice :: struct {id:[64]u8;ni:int;label:[128]u8;nl:int;current:bool;}
+AccountSettingsApp :: struct {
+ active:bool;signing_in:bool;section:int;loaded:bool;busy:bool;action:int;body:[16384]u8;nb:int;
+ saved:[1]AccountSettings;draft:[1]AccountSettings;note:[512]u8;nn:int;
+ account:[64]u8;na:int;email:[256]u8;ne:int;pub:[64]u8;np:int;managed:bool;level:int;
+ keys:[16]AccountMethod;nk:int;passkeys:[16]AccountMethod;passkeys_n:int;devices:[32]AccountDevice;nd:int;
+ relay:[200]u8;nr:int;confirm:int;target:int;backup:bool;backup_pub:[64]u8;backup_np:int;permission:[64]u8;permission_n:int;last:[32]u8;last_n:int;
+}
+acs_copy :: (out:[]u8,text:string)->int {if text.count>out.count {return 0;}for i:0..<text.count {out[i]=text[i];}return text.count;}
+acs_public :: (s:[]AccountSettingsApp,out:[]u8)->string {b:[32]u8;if hex_decode_checked(cast(string)s[0].pub[0..<s[0].np],b[..],false).error!=NC_OK {return "";}r:=nip19_encode_checked(N19_NPUB,cast(string)b[..],out,false);return ifx r.error==NC_OK then cast(string)out[0..<r.written] else "";}
+acs_note :: (s:[]AccountSettingsApp,text:string) {s[0].nn=acs_copy(s[0].note[..],text);}
+acs_request :: (s:[]AccountSettingsApp,action:string,target:string,payload:string) {
+ if s[0].busy {return;}n:=nac_request(action,target,payload,s[0].body[..]);if n<0 {acs_note(s,"Request too large");return;}
+ s[0].last_n=acs_copy(s[0].last[..],action);s[0].action=NAC_OP;s[0].nb=n;s[0].busy=true;acs_note(s,"");
+}
+acs_open :: (s:[]AccountSettingsApp,login:bool) {s[0].active=true;s[0].signing_in=login;s[0].section=ifx login then 8 else 0;s[0].confirm=0;s[0].backup=false;if !login {acs_request(s,"snapshot","","");}}
+acs_string :: (v:Jv,obj:int,key:string,out:[]u8)->int {n:=jv_str(v,jv_get(v,obj,key),out);return ifx n>0 then n else 0;}
+acs_reply :: (s:[]AccountSettingsApp,raw:string,failed:bool)->bool {
+ s[0].busy=false;s[0].action=0;nodes:[1024]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {acs_note(s,"Account unavailable");return false;}v:=d[0];b:[128]u8;
+ if failed {n:=acs_string(v,0,"error",s[0].note[..]);s[0].nn=n;return false;}
+ if acs_string(v,0,"schema",b[..])!=NAC_SCHEMA.count || cast(string)b[0..<NAC_SCHEMA.count]!=NAC_SCHEMA {acs_note(s,"Account unavailable");return false;}
+ settings:=jv_get(v,0,"settings");next:[1]AccountSettings;
+ if !asw_read(jv_raw(v,settings),next[..]) {acs_note(s,"Settings unavailable");return false;}
+ s[0].saved[0]=next[0];s[0].draft[0]=next[0];s[0].loaded=true;
+ identity:=jv_get(v,0,"identity");s[0].np=acs_string(v,identity,"pubkey",s[0].pub[..]);s[0].managed=acs_string(v,identity,"source",b[..])==7 && cast(string)b[0..<7]=="account";
+ account:=jv_get(v,0,"account");s[0].na=acs_string(v,account,"account",s[0].account[..]);s[0].ne=acs_string(v,account,"primary",s[0].email[..]);
+ ways:=jv_get(v,0,"ways");s[0].level=ifx acs_string(v,ways,"level",b[..])==2 && cast(string)b[0..<2]=="L2" then 2 else 1;
+ s[0].nk=0;s[0].passkeys_n=0;
+ for kind:0..<2 {a:=jv_get(v,ways,ifx kind==0 then "keys" else "passkeys");for i:0..<jv_len(v,a) {if i>=16 {break;}at:=jv_at(v,a,i);m:AccountMethod;m.id=jv_int(v,jv_get(v,at,"id"),0);m.np=acs_string(v,at,"pubkey",m.pub[..]);m.nl=acs_string(v,at,ifx kind==0 then "label" else "name",m.label[..]);if m.nl==0 {m.nl=acs_copy(m.label[..],ifx kind==0 then "Nostr login key" else "Passkey");}if kind==0 {s[0].keys[i]=m;s[0].nk+=1;}else {s[0].passkeys[i]=m;s[0].passkeys_n+=1;}}}
+ sessions:=jv_get(v,jv_get(v,0,"sessions"),"sessions");s[0].nd=0;
+ for i:0..<jv_len(v,sessions) {if i>=32 {break;}at:=jv_at(v,sessions,i);r:AccountDevice;r.ni=acs_string(v,at,"id",r.id[..]);r.nl=acs_string(v,at,"name",r.label[..]);if r.nl==0 {r.nl=acs_string(v,at,"label",r.label[..]);}if r.nl==0 {r.nl=acs_copy(r.label[..],"Signed-in device");}r.current=jv_bool(v,jv_get(v,at,"this"));s[0].devices[i]=r;s[0].nd+=1;}
+ s[0].permission_n=acs_string(v,0,"permission",s[0].permission[..]);s[0].backup=jv_bool(v,jv_get(v,0,"backup"));s[0].backup_np=acs_string(v,0,"backup_pubkey",s[0].backup_pub[..]);s[0].nn=acs_string(v,0,"message",s[0].note[..]);
+ last:=cast(string)s[0].last[0..<s[0].last_n];if last=="save" {s[0].section=0;}if last=="key-backup" {s[0].section=7;}if last=="key-import" {s[0].section=6;}if last=="key-create" {s[0].section=6;}return true;
+}
+acs_save :: (s:[]AccountSettingsApp) {b:[8192]u8;n:=asw_write(s[0].draft[..],b[..]);if n<0 {acs_note(s,"Check the profile and relay values");return;}acs_request(s,"save","",cast(string)b[0..<n]);}
+acs_edit :: (s:[]AccountSettingsApp,id:string,value:string)->bool {
+ if s[0].busy {return false;}for i:0..<7 {b:[96]u8;if id==tr_join(b[..],"settings.profile.",i) {if value.count>1024 {acs_note(s,"Value too long");return true;}s[0].draft[0].lengths[i]=acs_copy(s[0].draft[0].fields[i][..],value);return true;}}
+ if id=="settings.relay.url" {s[0].nr=acs_copy(s[0].relay[..],value);return true;}return false;
+}
+acs_press :: (s:[]AccountSettingsApp,id:string)->bool {
+ if id=="nav.settings.close" {s[0].active=false;s[0].backup=false;acs_request(s,"backup-hide","","");return true;}
+ if id=="settings.back" {if s[0].section==0 || s[0].signing_in {s[0].active=false;}else {s[0].section=0;s[0].draft[0]=s[0].saved[0];}s[0].backup=false;s[0].confirm=0;acs_request(s,"backup-hide","","");return true;}
+ if s[0].busy {return id.count>=9 && cast(string)id[0..<9]=="settings.";}
+ names:=[10]string.["settings.profile","settings.edit","settings.relays","settings.privacy","settings.notifications","settings.keys","settings.backup","settings.import","settings.devices","settings.changelog"];
+ for i:0..<10 {if id==names[i] {s[0].section=i+1;s[0].confirm=0;if i==1 {s[0].draft[0]=s[0].saved[0];}if i==4 {acs_request(s,"notifications","","");}return true;}}
+ if id=="settings.backup-open" {acs_request(s,"backup","","");return true;}
+ if id=="settings.save" {acs_save(s);return true;}
+ if id=="settings.publish" {acs_request(s,"publish","","");return true;}
+ if id=="settings.reload" {acs_request(s,"snapshot","","");return true;}
+ if id=="settings.privacy.images" {s[0].draft[0].remote_images = !s[0].draft[0].remote_images;return true;}
+ if id=="settings.privacy.clipboard" {s[0].draft[0].private_clipboard = !s[0].draft[0].private_clipboard;return true;}
+ if id=="settings.relay.add" {
+  p:=s[0].draft[..];url:=cast(string)s[0].relay[0..<s[0].nr];if !asp_relay(url) || p[0].relays_n>=6 {acs_note(s,"Use a wss:// relay · maximum 6");return true;}
+  for i:0..<p[0].relays_n {if asw_relay(p,i)==url {acs_note(s,"Already added");return true;}}
+  i:=p[0].relays_n;p[0].relay_n[i]=acs_copy(p[0].relays[i][..],url);p[0].relays_n+=1;s[0].nr=0;acs_save(s);return true;
+ }
+ for i:0..<6 {b:[96]u8;if id==tr_join(b[..],"settings.relay.remove.",i) {if s[0].draft[0].relays_n<=1 {acs_note(s,"Keep one relay");return true;}s[0].confirm=1;s[0].target=i;return true;}}
+ for i:0..<16 {b:[96]u8;if id==tr_join(b[..],"settings.key.backup.",i) && i<s[0].nk {m:=s[0].keys[i];acs_request(s,"key-backup",cast(string)m.pub[0..<m.np],"");return true;}if id==tr_join(b[..],"settings.passkey.remove.",i) && i<s[0].passkeys_n {s[0].confirm=6;s[0].target=i;return true;}if id==tr_join(b[..],"settings.key.remove.",i) {s[0].confirm=2;s[0].target=i;return true;}}
+ for i:0..<32 {b:[96]u8;if id==tr_join(b[..],"settings.device.remove.",i) {s[0].confirm=3;s[0].target=i;return true;}}
+ if id=="settings.logout" {s[0].confirm=4;return true;}if id=="settings.logout-all" {s[0].confirm=5;return true;}
+ if id=="settings.cancel" {s[0].confirm=0;return true;}
+ if id=="settings.confirm" {
+  kind:=s[0].confirm;at:=s[0].target;s[0].confirm=0;
+  if kind==1 && at<s[0].draft[0].relays_n {for i:at..<s[0].draft[0].relays_n-1 {s[0].draft[0].relays[i]=s[0].draft[0].relays[i+1];s[0].draft[0].relay_n[i]=s[0].draft[0].relay_n[i+1];}s[0].draft[0].relays_n-=1;acs_save(s);}
+  if kind==2 && at<s[0].nk {m:=s[0].keys[at];acs_request(s,"key-remove",cast(string)m.pub[0..<m.np],"");}
+  if kind==3 && at<s[0].nd {m:=s[0].devices[at];acs_request(s,"session-remove",cast(string)m.id[0..<m.ni],"");}
+  if kind==6 && at<s[0].passkeys_n {b:[32]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_int(o[..],s[0].passkeys[at].id);acs_request(s,"passkey-remove",jo_text(o[..]),"");}
+  if kind==5 {acs_request(s,"logout-all","","");}return true;
+ }
+ actions:=[9]string.["passkey-add","prove","backup","backup-hide","backup-copy-hex","backup-copy-nsec","key-import","key-login","backup-reveal"];
+ for i:0..<9 {b:[96]u8;if id==tr_cat(b[..],"settings.",actions[i]) {acs_request(s,actions[i],"","");return true;}}
+ if id=="settings.key-create" {acs_request(s,"key-create","","");return true;}
+ if id=="settings.notifications.request" {acs_request(s,"notifications-request","","");return true;}
+ if id=="settings.notifications.system" {acs_request(s,"notifications-settings","","");return true;}
+ if id=="settings.notifications.off" {acs_request(s,"push-off","","");return true;}
+ return false;
+}
+acs_notice :: (t:[]Tree,u:[]Ui,id:string,kind:string,text:string)->int {x:=k_notice(t,u,id,kind,text);tr_close(t);return x;}
+acs_row :: (t:[]Tree,u:[]Ui,id:string,label:string,detail:string)->int {return k_row(t,u,id,label,detail,false);}
+acs_render :: (s:[]AccountSettingsApp,t:[]Tree,u:[]Ui) {
+ x:=tr_open(t,"nav.settings.panel",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Settings");
+ x=tr_open(t,"settings.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"settings.back",IC_ARROW_LEFT,"Back");
+ titles:=[11]string.["Account","Your profile","Edit profile","Relays","Privacy","Notifications","Keys","Backup","Import key","Devices","Changelog"];
+ x=k_text(t,u,"settings.title",TG_SPAN,"",titles[s[0].section]);if !s[0].signing_in {x=k_icon_button(t,"settings.reload",IC_ARROW_ROTATE_CW,"Reload settings");}x=k_icon_button(t,"nav.settings.close",IC_X,"Close settings");tr_close(t);
+ if s[0].busy {x=k_text(t,u,"settings.busy",TG_P,"meta","Loading…");}
+ if s[0].confirm>0 {
+  words:=[6]string.["Remove relay?","Remove login key?","End this session?","Log out?","Log out everywhere?","Remove passkey?"];
+  x=acs_notice(t,u,"settings.confirm.text","",words[s[0].confirm-1]);x=k_button(t,u,"settings.confirm","Confirm",BS_DESTRUCTIVE);x=k_button(t,u,"settings.cancel","Cancel",BS_PLAIN);
+ }else if s[0].section==0 {
+  if s[0].saved[0].remote_images && asw_field(s[0].saved[..],5).count>0 {x=k_remote_image(t,"settings.banner",asw_field(s[0].saved[..],5),"Profile banner",true,asp_url(asw_field(s[0].saved[..],5)));}
+  name:=asw_field(s[0].saved[..],0);if name.count==0 {name=cast(string)s[0].email[0..<s[0].ne];}if name.count==0 {name="OpenAgents";}
+  if s[0].saved[0].remote_images && asw_field(s[0].saved[..],4).count>0 {x=k_remote_image(t,"settings.avatar",asw_field(s[0].saved[..],4),"Profile picture",false,asp_url(asw_field(s[0].saved[..],4)));}
+  x=k_text(t,u,"settings.name",TG_H1,"",name);
+  x=acs_row(t,u,"settings.profile","Your profile","");x=acs_row(t,u,"settings.keys","Keys",ifx s[0].managed then "Account managed" else "External identity");x=acs_row(t,u,"settings.devices","Devices","");
+  x=k_text(t,u,"settings.group.settings",TG_H2,"","Settings");
+  x=acs_row(t,u,"settings.relays","Relays","");x=acs_row(t,u,"settings.notifications","Notifications","");x=acs_row(t,u,"settings.privacy","Privacy","");x=acs_row(t,u,"settings.backup","Backup","");x=acs_row(t,u,"usage.open","Usage","");
+  x=k_text(t,u,"settings.group.resources",TG_H2,"","Resources");x=acs_row(t,u,"settings.changelog","Changelog","");x=acs_row(t,u,"app.details","About","");x=acs_row(t,u,"app.updates","Updates","");x=acs_row(t,u,"app.components","Components","");x=acs_row(t,u,"extras.more","Extras","");x=acs_row(t,u,"settings.source","GitHub","");x=acs_row(t,u,"settings.website","OpenAgents","");
+  x=acs_row(t,u,"settings.logout","Log out","");
+ }else if s[0].section==1 {
+  labels:=[7]string.["Display name","Username","NIP-05","About","Picture","Banner","Website"];
+  for i:0..<7 {b:[96]u8;x=k_text(t,u,tr_join(b[..],"settings.profile.label.",i),TG_H3,"",labels[i]);x=k_text(t,u,tr_join(b[..],"settings.profile.value.",i),TG_P,"",asw_field(s[0].saved[..],i));}
+  x=k_button(t,u,"settings.edit","Edit profile",BS_PRIMARY);x=k_button(t,u,"settings.publish","Publish profile",BS_PLAIN);
+ }else if s[0].section==2 {
+  labels:=[7]string.["Display name","Username","NIP-05","About","Picture URL","Banner URL","Website"];
+  for i:0..<7 {b:[96]u8;if i==3 {x=k_field(t,u,tr_join(b[..],"settings.profile.",i),labels[i],labels[i]);}else {x=k_input(t,u,tr_join(b[..],"settings.profile.",i),labels[i],labels[i],"text","off");}tr_attr(t,x,AT_VALUE,asw_field(s[0].draft[..],i));}
+  x=k_button(t,u,"settings.save","Save",BS_PRIMARY);
+ }else if s[0].section==3 {
+  for i:0..<s[0].draft[0].relays_n {b:[96]u8;x=acs_row(t,u,tr_join(b[..],"settings.relay.remove.",i),asw_relay(s[0].draft[..],i),"Remove");}
+  x=k_input(t,u,"settings.relay.url","wss://","Relay URL","url","off");x=k_button(t,u,"settings.relay.add","Add relay",BS_PRIMARY);
+ }else if s[0].section==4 {
+  x=k_switch(t,"settings.privacy.images","Remote profile images",s[0].draft[0].remote_images);
+  x=k_switch(t,"settings.privacy.clipboard","Private clipboard",s[0].draft[0].private_clipboard);
+  x=k_text(t,u,"settings.privacy.note",TG_P,"meta","Key copies always expire. Wallet keys stay separate.");x=k_button(t,u,"settings.save","Save",BS_PRIMARY);
+ }else if s[0].section==5 {
+  x=k_text(t,u,"settings.notifications.status",TG_P,"",cast(string)s[0].permission[0..<s[0].permission_n]);x=k_button(t,u,"settings.notifications.request","Enable security alerts",BS_PRIMARY);x=k_button(t,u,"settings.notifications.system","iOS settings",BS_PLAIN);x=k_button(t,u,"settings.notifications.off","Disable this device’s push",BS_PLAIN);
+ }else if s[0].section==6 {
+  x=k_text(t,u,"settings.key.custody",TG_P,"",ifx s[0].managed then "Account identity · encrypted on server" else "Identity · held outside OpenAgents");pub:[128]u8;x=acs_row(t,u,"settings.public","Public key",acs_public(s,pub[..]));
+  x=k_button(t,u,"settings.prove","Verify account",BS_PLAIN);x=k_button(t,u,"settings.passkey-add","Add passkey",BS_PRIMARY);x=acs_row(t,u,"settings.import","Import login key","");x=k_button(t,u,"settings.key-create","Create login key",BS_PLAIN);
+  for i:0..<s[0].nk {b:[96]u8;m:=s[0].keys[i];x=acs_row(t,u,tr_join(b[..],"settings.key.remove.",i),cast(string)m.label[0..<m.nl],cast(string)m.pub[0..<m.np]);x=k_button(t,u,tr_join(b[..],"settings.key.backup.",i),"Back up login key",BS_PLAIN);}
+  for i:0..<s[0].passkeys_n {b:[96]u8;m:=s[0].passkeys[i];x=acs_row(t,u,tr_join(b[..],"settings.passkey.remove.",i),cast(string)m.label[0..<m.nl],"Remove passkey");}
+ }else if s[0].section==7 {
+  x=acs_notice(t,u,"settings.backup.warning","","Private keys give full identity access. Keep them secret.");
+  if !s[0].backup {x=k_button(t,u,"settings.prove","Verify account",BS_PLAIN);x=k_button(t,u,"settings.backup-open","Open backup",BS_PRIMARY);if s[0].passkeys_n==0 {x=k_button(t,u,"settings.passkey-add","Add passkey",BS_PLAIN);}}
+  else {x=k_text(t,u,"settings.backup.identity",TG_P,"meta",ifx s[0].backup_np==s[0].np && cast(string)s[0].backup_pub[0..<s[0].backup_np]==cast(string)s[0].pub[0..<s[0].np] then "Account identity" else "Login key");x=k_input(t,u,"settings.secret.hex","Private key (hex)","Private key (hex)","secret-output","off");x=k_input(t,u,"settings.secret.nsec","Private key (nsec)","Private key (nsec)","secret-output","off");x=k_button(t,u,"settings.backup-reveal","Show / hide",BS_PLAIN);x=k_button(t,u,"settings.backup-copy-hex","Copy hex",BS_PLAIN);x=k_button(t,u,"settings.backup-copy-nsec","Copy nsec",BS_PLAIN);x=k_button(t,u,"settings.backup-hide","Hide backup",BS_PLAIN);}
+ }else if s[0].section==8 {
+  x=k_input(t,u,"settings.secret.input","nsec or hex","Private login key","secret","off");if !s[0].signing_in {x=acs_notice(t,u,"settings.import.note","","Your account identity stays the same.");x=k_button(t,u,"settings.key-import","Link key",BS_PRIMARY);}else {x=k_button(t,u,"settings.key-login","Log in with key",BS_PRIMARY);}
+ }else if s[0].section==9 {
+  for i:0..<s[0].nd {b:[96]u8;m:=s[0].devices[i];x=acs_row(t,u,tr_join(b[..],"settings.device.remove.",i),cast(string)m.label[0..<m.nl],ifx m.current then "This device" else "End session");}
+  x=k_button(t,u,"settings.logout-all","Log out everywhere",BS_DESTRUCTIVE);
+ }else if s[0].section==10 {
+  x=k_text(t,u,"settings.changelog.version",TG_H2,"","1.0.0 · 1088");x=k_text(t,u,"settings.changelog.current",TG_P,"","Account, keys, relays and privacy. Sliding icon drawer.");x=k_text(t,u,"settings.changelog.previous",TG_P,"","1087 · Grayscale Arcade components and shared GPU motion.");
+ }
+ if s[0].nn>0 {x=acs_notice(t,u,"nav.settings.note","",cast(string)s[0].note[0..<s[0].nn]);}tr_close(t);
+}
+
+#test "settings uses registered account effects and keeps secret values out of the tree" {
+ s:[1]AccountSettingsApp;acs_open(s[..],false);#assert s[0].active && s[0].busy && s[0].action==18;
+ s[0].busy=false;s[0].section=7;s[0].backup=true;t:[1]Tree;u:[1]Ui;tr_begin(t[..]);ui_begin(u[..],0,true);acs_render(s[..],t[..],u[..]);
+ #assert tr_find(t[..],"settings.secret.nsec")>=0 && tr_find(t[..],"settings.secret.hex")>=0;
+ #assert acs_press(s[..],"settings.back") && !s[0].backup && s[0].section==0;
+}
+#test "editing and removing relays is explicit and keeps the last relay" {
+ s:[1]AccountSettingsApp;s[0].saved[0]=asw_default();s[0].draft[0]=s[0].saved[0];
+ #assert acs_edit(s[..],"settings.profile.0","Ada") && asw_field(s[0].draft[..],0)=="Ada" && asw_field(s[0].saved[..],0)=="";
+ #assert acs_press(s[..],"settings.relay.remove.0") && s[0].confirm==0 && s[0].draft[0].relays_n==1;
+ #assert acs_edit(s[..],"settings.relay.url","wss://relay.damus.io") && acs_press(s[..],"settings.relay.add") && s[0].draft[0].relays_n==2 && s[0].busy;
+}

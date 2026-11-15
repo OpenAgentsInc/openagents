@@ -16,6 +16,7 @@
 #load "../../../coax/native/worlds/open-wire.coax";
 #load "../../../coax/native/documents-wire.coax";
 #load "../../shared/projects-app.coax";
+#load "../../shared/account-settings.coax";
 
 Starter :: struct {
   ready:bool;dirty:bool=true;time:f32;action:int;flight:int;purpose:int;page:int= -1;
@@ -28,6 +29,7 @@ Starter :: struct {
   project:[1]ProjectApp;project_thread:[64]u8;project_thread_n:int;project_link_pending:bool;
   workspace:bool;navigation:[1]AppNavigation;usage:[1]ProviderUsage;projects:[SS_WORLDS_MAX]SsWorld;projects_n:int;projects_loaded:bool;projects_failed:bool;
   local_available:bool;account_ready:bool;worlds_available:bool;
+  account_settings:[1]AccountSettingsApp;
   world_mode:bool;world:[1]WorldTurn;world_flight:[1]WorldTurn;world_wire:[WT_BYTES]u8;world_n:int;world_plan:[WP_BYTES]u8;world_plan_n:int;
   tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;css:[24576]u8;
 }
@@ -45,7 +47,7 @@ na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[
 na_world :: (s:[]Starter,realm:string,path:string,edit:bool) {
  if s[0].flight!=0 {return;}n:=nwo_write(realm,path,edit,s[0].outbox[..]);if n<0 {na_note(s,"This world is unavailable.");return;}s[0].out_n=n;s[0].action=13;s[0].flight=13;s[0].dirty=true;
 }
-na_history_clear :: (s:[]Starter) {s[0].project[0]=ProjectApp.{};s[0].project_thread_n=0;s[0].project_link_pending=false;s[0].projects_n=0;s[0].projects_loaded=false;s[0].projects_failed=false;s[0].usage[0]=ProviderUsage.{};dm_value(s[0].dom[..],"usage.code","");dm_value(s[0].dom[..],"usage.label","");s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
+na_history_clear :: (s:[]Starter) {s[0].account_settings[0]=AccountSettingsApp.{};s[0].project[0]=ProjectApp.{};s[0].project_thread_n=0;s[0].project_link_pending=false;s[0].projects_n=0;s[0].projects_loaded=false;s[0].projects_failed=false;s[0].usage[0]=ProviderUsage.{};dm_value(s[0].dom[..],"usage.code","");dm_value(s[0].dom[..],"usage.label","");s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
 na_secrets_clear :: (s:[]Starter) {
   for i:0..<s[0].email.count {s[0].email[i]=0;}s[0].email_n=0;
   dm_value(s[0].dom[..],"login.email","");
@@ -146,6 +148,12 @@ na_text_effect :: (s:[]Starter,link:bool,value:string,id:string) {
   na_reply(s[..],9,0,"{}",false);#assert !s[0].text_busy && s[0].flight==4 && s[0].purpose==5;
 }
 na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
+  if op==NAC_OP {
+    last:=cast(string)s[0].account_settings[0].last[0..<s[0].account_settings[0].last_n];key_login:=last=="key-login";logout_all:=last=="logout-all" || last=="session-remove";
+    if acs_reply(s[0].account_settings[..],raw,failed) && key_login {na_history_clear(s);na_secrets_clear(s);s[0].account_settings[0].active=false;s[0].account_ready=true;na_list(s);}
+    if !failed && logout_all && s[0].account_settings[0].na==0 {na_history_clear(s);na_secrets_clear(s);s[0].account_ready=false;s[0].page=0;}
+    s[0].dirty=true;return;
+  }
   if na_project_reply(s,op,status,raw,failed) {na_nav_pending(s);return;}
   if na_projects_reply(s,op,status,raw,failed) {return;}
   if na_usage_reply(s,op,status,raw,failed) {if s[0].workspace {na_nav_pending(s);}return;}
@@ -215,8 +223,8 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
     if ok && jv_bool(v,jv_get(v,0,"loggedIn")) {na_secrets_clear(s);na_history_clear(s);na_list(s);}
     else {na_note(s,"The code was not accepted. Try again.");}return;
   }
-  if op==5 {na_new(s);na_secrets_clear(s);na_history_clear(s);s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};s[0].account_ready=false;s[0].page=0;na_note(s,"");return;}
-  if op==6 || op==7 {n:=ifx ok then jv_str(v,jv_get(v,0,"message"),s[0].note[..]) else -1;s[0].note_n=ifx n>0 then n else 0;return;}
+  if op==5 {na_new(s);na_secrets_clear(s);na_history_clear(s);s[0].account_settings[0]=AccountSettingsApp.{};s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};s[0].account_ready=false;s[0].page=0;na_note(s,"");return;}
+  if op==6 || op==7 {n:=ifx ok then jv_str(v,jv_get(v,0,"message"),s[0].note[..]) else -1;s[0].note_n=ifx n>0 then n else 0;if s[0].account_settings[0].active {acs_note(s[0].account_settings[..],cast(string)s[0].note[0..<s[0].note_n]);}return;}
   if op==4 {
     if status==401 {na_history_clear(s);s[0].page=0;na_secrets_clear(s);na_note(s,"Log in again to see your chats.");return;}
     if status!=200 {na_note(s,ifx status==403 then "This account cannot access these saved chats." else "Your chats could not be loaded. Refresh to try again.");return;}
@@ -273,6 +281,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     x=k_text(t,u,"login.title",TG_H1,"","Log in");
     x=k_input(t,u,"login.email","you@example.com","Email address","email","email");if busy {tr_attr(t,x,AT_DISABLED,"disabled");}
     x=k_button(t,u,"login.send",ifx busy then "Sending code…" else "Send code",ifx busy then BS_BUSY else BS_PRIMARY);
+    x=k_link(t,"login.key","Nostr key");
     if s[0].worlds_available {x=k_button(t,u,"world.library","Worlds",ifx busy then BS_DISABLED else BS_PLAIN);}
     if s[0].local_available {x=k_button(t,u,"environments.local","Use this computer",ifx busy then BS_DISABLED else BS_PLAIN);}
   } else if s[0].page==1 {
@@ -317,9 +326,11 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   }
   if s[0].note_n>0 {x=k_text(t,u,"account.note",TG_P,"note",cast(string)s[0].note[0..<s[0].note_n]);tr_attr(t,x,AT_LIVE,"polite");}
   if (!s[0].workspace || s[0].page<2) && s[0].page!=3 && s[0].page!=4 {x=tr_open(t,"app.tools",TG_FOOTER,"");x=k_icon_button(t,"app.updates",IC_ARROW_ROTATE_CW,"Check for updates");if busy {tr_attr(t,x,AT_DISABLED,"");}x=k_icon_button(t,"app.details",IC_SETTINGS,"Build details");if busy {tr_attr(t,x,AT_DISABLED,"");}tr_close(t);}
+  if s[0].account_settings[0].active {acs_render(s[0].account_settings[..],t,u);}
   tr_close(t);
   if s[0].copied_n>0 {copy:=tr_find(t,cast(string)s[0].copied[0..<s[0].copied_n]);if copy>=0 {tr_attr(t,copy,AT_LABEL,"Copied");for k:copy+1..<t[0].n {if t[0].nodes[k].parent==copy && t[0].nodes[k].tag==TG_SPAN {tr_text(t,k,"Copied");break;}}}}
   if s[0].action==0 && s[0].environments[0].action!=0 {e:=s[0].environments[..];s[0].action=e[0].action;s[0].out_n=na_copy(s[0].outbox[..],cast(string)e[0].body[0..<e[0].nb]);e[0].action=0;}
+  if s[0].action==0 && s[0].account_settings[0].action!=0 {a:=s[0].account_settings[..];s[0].action=a[0].action;s[0].out_n=na_copy(s[0].outbox[..],cast(string)a[0].body[0..<a[0].nb]);a[0].action=0;}
   ui_end(u);s[0].dirty=false;return dm_flush(d,t,s[0].sets[..]);
 }
 st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
@@ -333,8 +344,17 @@ st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
     s[0].world[0]=context[0];s[0].world_n=na_copy(s[0].world_wire[..],cast(string)s[0].inbox[0..<n]);s[0].dirty=true;return;
   }
   if kind==1 && s[0].world_mode && dm_slot_id(s[0].dom[..],slot)=="chat.back" {s[0].action=529;return;}
-  if kind>=100 && kind<217 {op:=ifx kind>=200 then kind-200 else kind-100;if n>=0 && n<=1048576 {na_reply(s,op,slot,cast(string)s[0].inbox[0..<n],kind>=200);}return;}
+  if kind>=100 && kind<219 {op:=ifx kind>=200 then kind-200 else kind-100;if n>=0 && n<=1048576 {na_reply(s,op,slot,cast(string)s[0].inbox[0..<n],kind>=200);}return;}
   i:= -1;for k:0..<s[0].tree[0].n {if s[0].dom[0].of[k]==slot {i=k;break;}}id:=tr_id(s[0].tree[..],i);
+  if kind==1 && id=="login.key" {acs_open(s[0].account_settings[..],true);s[0].dirty=true;return;}
+  if s[0].account_settings[0].active && (id=="usage.open" || id=="extras.more") {s[0].account_settings[0].active=false;}
+  if s[0].account_settings[0].active {
+    a:=s[0].account_settings[..];
+    if kind==1 && id=="settings.confirm" && a[0].confirm==4 {na_request(s,5,"");return;}
+    if kind==1 && id=="settings.public" {pub:[128]u8;na_text_effect(s,false,acs_public(a,pub[..]),id);return;}
+    if kind==1 && (id=="settings.source" || id=="settings.website") {na_text_effect(s,true,ifx id=="settings.source" then "https://github.com/OpenAgentsInc/openagents" else "https://openagents.com",id);return;}
+    if kind==2 && n>=0 && acs_edit(a,id,cast(string)s[0].inbox[0..<n]) || kind==1 && acs_press(a,id) {s[0].dirty=true;return;}
+  }
   if kind==2 && n>=0 && na_project_edit(s,id,cast(string)s[0].inbox[0..<n]) {s[0].dirty=true;return;}
   if (kind==1 || kind==2) && na_usage_event(s,kind,id,n) {s[0].dirty=true;return;}
   if s[0].workspace {

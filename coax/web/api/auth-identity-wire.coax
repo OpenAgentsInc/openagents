@@ -35,7 +35,7 @@ AIW_G :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
  #assert !aiw_record("a",AIW_G,cast(string)seal[..],-1) && !aiw_record("",AIW_G,cast(string)seal[..],0);
 }
 aiw_hex :: (s:string,n:int)->bool #effects(all) {
- if s.count!=n {return false;}for c:s {if !(c>='0' && c<='9') && !(c>='a' && c<='f') {return false;}}return true;
+ return aw_hex(s,n);
 }
 aiw_record :: (account:string,pubkey:string,sealed:string,created_ms:int)->bool #export_c #effects(all) {
  return account.count>0 && aiw_hex(pubkey,64) && aiw_hex(sealed,210) && created_ms>=0;

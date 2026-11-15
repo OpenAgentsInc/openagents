@@ -1,0 +1,50 @@
+// The one JSON codec for saved account settings and private identity backups.
+#load "api-wire.coax";
+#load "account-settings-policy.coax";
+ASW_SCHEMA :: "openagents.account.settings.v1";
+ASW_BACKUP :: "openagents.account.identity.backup.v1";
+ASW_FIELDS :: [7]string.["display_name","name","nip05","about","picture","banner","website"];
+AccountSettings :: struct {revision:int;fields:[7][1024]u8;lengths:[7]int;relays:[6][200]u8;relay_n:[6]int;relays_n:int;remote_images:bool=true;private_clipboard:bool=true;security:bool=true;}
+asw_default :: ()->AccountSettings {s:AccountSettings;s.relays_n=1;s.relay_n[0]=26;for i:0..<26 {s.relays[0][i]="wss://relay.openagents.com"[i];}return s;}
+asw_initial :: (out:[]u8)->int #export_c #effects(all) {s:=[1]AccountSettings.[asw_default()];return asw_write(s[..],out);}
+#test "settings default round trips and secrets do not enter a public profile" {
+ s:=[1]AccountSettings.[asw_default()];b:[8192]u8;n:=asw_write(s[..],b[..]);next:[1]AccountSettings;
+ #assert n>0 && asw_read(cast(string)b[0..<n],next[..]) && next[0].revision==0 && next[0].relays_n==1 && next[0].remote_images && next[0].private_clipboard;
+ #assert asw_profile(s[..],b[..])>0 && !asw_read("{}",next[..]);
+ #assert asw_write(s[..],b[0..<10])<0;
+}
+#test "malformed settings and relay duplicates refuse transactionally" {
+ s:=[1]AccountSettings.[asw_default()];s[0].revision=7;
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":-1}",s[..]) && s[0].revision==7;
+ s[0].relays_n=0;b:[8192]u8;#assert asw_write(s[..],b[..])<0;
+ s[0]=asw_default();s[0].relays_n=2;s[0].relays[1]=s[0].relays[0];s[0].relay_n[1]=s[0].relay_n[0];#assert !asw_valid(s[..]);
+}
+asw_field :: (s:[]AccountSettings,i:int)->string {return cast(string)s[0].fields[i][0..<s[0].lengths[i]];}
+asw_relay :: (s:[]AccountSettings,i:int)->string {return cast(string)s[0].relays[i][0..<s[0].relay_n[i]];}
+asw_valid :: (s:[]AccountSettings)->bool {
+ if s[0].revision<0 || s[0].revision>2147483646 || s[0].relays_n<1 || s[0].relays_n>6 {return false;}
+ for i:0..<7 {n:=s[0].lengths[i];if n<0 || n>1024 || !asp_text(asw_field(s,i),ifx i==3 then 1024 else ifx i>=4 then 512 else 128) {return false;}if i>=4 && !asp_url(asw_field(s,i)) {return false;}}
+ for i:0..<s[0].relays_n {if s[0].relay_n[i]<1 || s[0].relay_n[i]>200 || !asp_relay(asw_relay(s,i)) {return false;}for j:0..<i {if asw_relay(s,i)==asw_relay(s,j) {return false;}}}return true;
+}
+asw_read :: (raw:string,s:[]AccountSettings)->bool #export_c #effects(all) {
+ nodes:[96]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];b:[128]u8;
+ if jv_str(v,jv_get(v,0,"schema"),b[..])!=ASW_SCHEMA.count || cast(string)b[0..<ASW_SCHEMA.count]!=ASW_SCHEMA {return false;}
+ next:[1]AccountSettings;rev:=jv_get(v,0,"revision");if rev<0 || v.nodes[rev].kind!=JV_NUMBER {return false;}next[0].revision=jv_int(v,rev,-1);
+ p:=jv_get(v,0,"profile");names:=ASW_FIELDS;
+ for i:0..<7 {n:=jv_str(v,jv_get(v,p,names[i]),next[0].fields[i][..]);if n<0 {return false;}next[0].lengths[i]=n;}
+ r:=jv_get(v,0,"relays");if r<0 || v.nodes[r].kind!=JV_ARRAY {return false;}k:=v.nodes[r].first;
+ while k>=0 {i:=next[0].relays_n;if i>=6 {return false;}n:=jv_str(v,k,next[0].relays[i][..]);if n<0 {return false;}next[0].relay_n[i]=n;next[0].relays_n+=1;k=v.nodes[k].next;}
+ privacy:=jv_get(v,0,"privacy");remote:=jv_get(v,privacy,"remote_images");clip:=jv_get(v,privacy,"private_clipboard");notify:=jv_get(v,jv_get(v,0,"notifications"),"security");
+ if remote<0 || clip<0 || notify<0 || (v.nodes[remote].kind!=JV_TRUE && v.nodes[remote].kind!=JV_FALSE) || (v.nodes[clip].kind!=JV_TRUE && v.nodes[clip].kind!=JV_FALSE) || (v.nodes[notify].kind!=JV_TRUE && v.nodes[notify].kind!=JV_FALSE) {return false;}
+ next[0].remote_images=jv_bool(v,remote);next[0].private_clipboard=jv_bool(v,clip);next[0].security=jv_bool(v,notify);
+ if !asw_valid(next[..]) {return false;}s[0]=next[0];return true;
+}
+asw_profile_at :: (s:[]AccountSettings,o:[]Jo) {names:=ASW_FIELDS;jo_obj(o);for i:0..<7 {jo_key(o,names[i]);jo_str(o,asw_field(s,i));}jo_end(o);}
+asw_profile :: (s:[]AccountSettings,out:[]u8)->int #export_c #effects(all) {if !asw_valid(s) {return -1;}o:[1]Jo;jo_start(o[..],out);asw_profile_at(s,o[..]);return aw_len(o[..]);}
+asw_write :: (s:[]AccountSettings,out:[]u8)->int #export_c #effects(all) {
+ if !asw_valid(s) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],ASW_SCHEMA);jo_key(o[..],"revision");jo_int(o[..],s[0].revision);
+ jo_key(o[..],"profile");asw_profile_at(s,o[..]);jo_key(o[..],"relays");jo_arr(o[..]);for i:0..<s[0].relays_n {jo_str(o[..],asw_relay(s,i));}jo_end(o[..]);jo_key(o[..],"privacy");jo_obj(o[..]);jo_key(o[..],"remote_images");jo_bool(o[..],s[0].remote_images);jo_key(o[..],"private_clipboard");jo_bool(o[..],s[0].private_clipboard);jo_end(o[..]);jo_key(o[..],"notifications");jo_obj(o[..]);jo_key(o[..],"security");jo_bool(o[..],s[0].security);jo_end(o[..]);jo_end(o[..]);return aw_len(o[..]);
+}
+asw_backup :: (pubkey:string,secret:string,out:[]u8)->int #export_c #effects(all) {
+ if !aw_hex(pubkey,64) || !aw_hex(secret,64) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],ASW_BACKUP);jo_key(o[..],"pubkey");jo_str(o[..],pubkey);jo_key(o[..],"secret");jo_str(o[..],secret);jo_end(o[..]);return aw_len(o[..]);
+}

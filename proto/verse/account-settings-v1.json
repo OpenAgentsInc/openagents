@@ -1,0 +1,1 @@
+{"schema":"openagents.account.settings.v1","revision":0,"profile":{"display_name":"","name":"","nip05":"","about":"","picture":"","banner":"","website":""},"relays":["wss://relay.openagents.com"],"privacy":{"remote_images":true,"private_clipboard":true},"notifications":{"security":true}}

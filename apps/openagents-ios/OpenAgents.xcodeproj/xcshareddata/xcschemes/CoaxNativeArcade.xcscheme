@@ -60,6 +60,18 @@
                <Test
                   Identifier = "NativeMarkdownTests">
                </Test>
+               <Test
+                  Identifier = "NativeAccountTests">
+               </Test>
+               <Test
+                  Identifier = "NativeNavigationTests">
+               </Test>
+               <Test
+                  Identifier = "NativeProgramTests">
+               </Test>
+               <Test
+                  Identifier = "NativeProjectTests">
+               </Test>
             </SelectedTests>
          </TestableReference>
          <TestableReference

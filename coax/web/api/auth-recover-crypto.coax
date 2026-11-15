@@ -201,6 +201,25 @@ arc_public :: (key:[]u8,out:[]u8)->bool #export_c #effects(all) {
 }
 
 // ---------------------------------------------------------------- the API's exports
+#test "saved profile signing fixes kind zero, empty tags and the real identity" #steps 600000000 {
+ key:[32]u8;key[31]=1;aux:[32]u8;out:[4096]u8;
+ n:=arc_profile_event(key[..],aux[..],100,"{\"name\":\"Ada\"}",out[..]);
+ read:[4096]u8;#assert n>0;e:=nostr_event_read(cast(string)out[0..<n],read[..],false);#assert e.error==0 && e.kind==0 && e.created_at==100;
+ #assert arc_profile_event(key[0..<31],aux[..],100,"{}",out[..])<0;
+ #assert arc_profile_event(key[..],aux[0..<31],100,"{}",out[..])<0;
+ #assert arc_profile_event(key[..],aux[..],-1,"{}",out[..])<0;
+ large:[8193]u8;for i:0..<large.count {large[i]='a';}wide:[16384]u8;
+ #assert arc_profile_event(key[..],aux[..],0,cast(string)large[0..<8192],wide[..])>0;
+ #assert arc_profile_event(key[..],aux[..],0,cast(string)large[..],wide[..])<0;
+ extra:[33]u8;#assert arc_profile_event(extra[..],aux[..],0,"{}",out[..])<0 && arc_profile_event(key[..],extra[..],0,"{}",out[..])<0;
+}
+arc_profile_event :: (key:[]u8,aux:[]u8,now:int,content:string,out:[]u8)->int #export_c #effects(all) {
+ // Key, nonce and timestamp admission belong to nostr_event_sign_step.
+ // This service adds only its public-profile content bound.
+ if content.count>8192 {return -1;}
+ work:[1]NostrSignWork;scratch:[16384]u8;
+ result:=EVENT_MORE;while result==EVENT_MORE {result=nostr_event_sign_step(key,aux,now,0,"[]",content,work[..],scratch[..],out,false);}return result;
+}
 // The phrase's length, or a negative refusal.
 arc_words :: (entropy: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if entropy.count != ARC_ENTROPY { return -1; }

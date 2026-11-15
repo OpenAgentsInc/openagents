@@ -1,5 +1,11 @@
 # Arcade port
 
+**Account/settings checkpoint, 1088:** the native Account hub now includes profile
+editing, relay management, privacy, notification permission/security push, public
+keys, additional login keys/passkeys, protected backups, device sessions and
+resources. The drawer follows Arcade’s 70-point sliding icon rail, while Recent
+chats keeps the wider history pane. See [the settings mapping](07-account-settings.md).
+
 **Mobile checkpoint, 1087:** current app chrome now uses the shared GPU
 Arcade component scene with a white/grayscale skin and several shared
 animations. Native text/input/accessibility adapters remain. See

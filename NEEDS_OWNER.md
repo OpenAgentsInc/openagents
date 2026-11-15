@@ -1513,3 +1513,12 @@ not a pending request for a key.
       behavior. Installed simulator flows pass; physical-phone accessibility
       and power/frame-time measurements are not claimed. See
       [the release evidence and pictures](docs/verification/2026-11-14-arcade-mobile/README.md).
+
+## iOS 1088 account/settings (2026-11-14)
+
+- [ ] Install TestFlight **1088**. Open the rail’s Settings, add a passkey,
+      verify the account and open its masked Backup on the actual iPhone.
+      Check Face ID/cancellation, capture/background clearing, security-push
+      permission/receipt and VoiceOver/large text. Simulator fixtures cover
+      account screens and server admission; real Apple ceremonies and push
+      delivery remain physical-device checks. Wallet keys remain separate.

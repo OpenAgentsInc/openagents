@@ -114,6 +114,7 @@ that already touches the file (#13267 to #13269, #13280).
 | Word | Meaning | Owner |
 | --- | --- | --- |
 | Key | A secp256k1 key pair. Nostr identity keys and wallet keys have separate custody by default ([auth decisions](../auth/decisions.md)). | Bitcoin 121 |
+| Account settings | Revisioned public profile, relay choices and private account preferences. Secrets are separate native effects and never settings fields. | [Identity](../protocol/account-settings-v1.md) |
 | Account identity key | An existing linked Nostr public key or a server-encrypted keypair automatically provisioned for a keyless account. A managed identity is not a login authenticator or wallet seed. | [Identity v1](../protocol/account-identity-v1.md) |
 | Event | A signed Nostr record with an ID that is the hash of its contents. | Nostr 21 |
 | Relay | A server that stores and forwards events. | Nostr Part V |
@@ -137,3 +138,4 @@ that already touches the file (#13267 to #13269, #13280).
 | Refusal | A defined result that says work was not admitted, and why. |
 | Route | A set of commands from a clean checkout with an exact expected output. See [paths](paths.md). |
 | Capstone | A route across several books that ends in something a person can see. |
+

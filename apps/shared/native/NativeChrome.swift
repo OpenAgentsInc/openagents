@@ -25,7 +25,7 @@ enum NativeSkin {
         func href(_ e:NativeElement)->String? {if let h=e.attrs["href"],h.contains("/icons/") {return h};return e.children.compactMap(href).first}
         guard let h=href(element),let raw=h.split(separator:"/").last else{return nil}
         let name=String(raw).components(separatedBy:".svg")[0]
-        return ["sidebar":"line.3.horizontal","menu":"line.3.horizontal","plus":"square.and.pencil","x":"xmark","settings":"gearshape","arrow-rotate-cw":"arrow.clockwise"][name]
+        return ["sidebar":"line.3.horizontal","menu":"line.3.horizontal","plus":"square.and.pencil","x":"xmark","settings":"gearshape","arrow-rotate-cw":"arrow.clockwise","chat":"bubble.left.and.bubble.right","folder":"folder","globe":"globe","history":"clock.arrow.circlepath","arrow-left":"arrow.left","avatar-profile":"person.crop.circle","bell":"bell","key":"key","shield-lock":"lock.shield"][name]
     }
     static var drawerShade:NativePlatformColor {color(mono_drawer_shade())}
     static let tokens=mono_native()
@@ -200,10 +200,10 @@ final class NativeOverlayView:UIView {
 /// The label is drawn in the skin's chrome type; what VoiceOver and UI tests read is the label as it was given.
 final class NativeButton:UIButton {
     enum Variant {
-        case plain,primary,quiet,icon,destructive,list,action
-        var number:Int64 {let n=NativeSkin.names;switch self {case .plain:return n.plain;case .primary:return n.primary;case .quiet:return n.quiet;case .icon:return n.icon;case .destructive:return n.destructive;case .list:return n.list;case .action:return n.action}}
+        case plain,primary,quiet,icon,destructive,list,action,rail,toggle
+        var number:Int64 {let n=NativeSkin.names;switch self {case .plain:return n.plain;case .primary:return n.primary;case .quiet,.toggle:return n.quiet;case .icon:return n.icon;case .destructive:return n.destructive;case .list:return n.list;case .action:return n.action;case .rail:return n.rail}}
         /// Only an icon, in a small square.
-        var square:Bool {self == .icon || self == .action}
+        var square:Bool {self == .icon || self == .action || self == .rail}
     }
     var variant:Variant {didSet {if variant != oldValue {restyle()}}}
     /// It is doing what it was pressed for: it can't be pressed, and its line moves.
@@ -214,6 +214,10 @@ final class NativeButton:UIButton {
     var floating=false {didSet {restyle()}}
     /// A list row's hairline. A row that sets its own spacing (a tool call) goes without.
     var ruled=true {didSet {restyle()}}
+    var drawerProgress:Float? {didSet {if (oldValue==nil) != (drawerProgress==nil) {restyle()};drawerPaint()}}
+    var drawerInteractive=false {didSet {drawerPaint()}}
+    var drawerRTL=false {didSet {drawerPaint()}}
+    private func drawerPaint() {if let drawerProgress {chrome.arcadePaint.kind=7;chrome.arcadePaint.ink=style.ink;chrome.arcadePaint.value=drawerProgress;chrome.arcadePaint.flags=(drawerInteractive ? 4:0)|(drawerRTL ? 8:0)}}
     private let chrome=NativeFrameView(role:NativeSkin.names.button),caption=UILabel(),glyph=UIImageView(),ring=NativeRingView(),rule=NativeRuleView()
     private var words=""
     private(set) var symbol:String?
@@ -242,23 +246,25 @@ final class NativeButton:UIButton {
         if floating && state_==NativeSkin.names.rest {bg=t.ground & 0xffffff8c;line=t.line_dim}
         chrome.paint(role:s.role,bg:bg,line:line,deco:line,dashed:s.dashed,march:s.march)
         chrome.arcadePaint.flags=isHighlighted ? 1:0
-        chrome.arcadePaint.kind=variant == .action ? 5:0
+        chrome.arcadePaint.kind=variant == .action || variant == .rail ? 5:variant == .toggle ? 6:0
+        chrome.arcadePaint.value=variant == .toggle && current ? 1:0
+        if variant == .toggle {chrome.arcadePaint.ink=s.ink}
         let font:UIFont=s.upper ? NativeSkin.labelFont(CGFloat(s.type)):NativeTypography.font(CGFloat(s.type))
         caption.attributedText=NSAttributedString(string:s.upper ? words.uppercased():words,attributes:[.font:font,.kern:font.pointSize*CGFloat(s.track),.foregroundColor:NativeSkin.color(s.ink)])
         caption.textAlignment=variant == .list ? .natural:.center;caption.isHidden=variant.square
         // A row of a list stands over a hairline, unless it is boxed as the current one.
         rule.isHidden=variant != .list || !ruled || current || isHighlighted
         let spinning=variant.square && busy
-        glyph.isHidden=symbol==nil || spinning;ring.isHidden = !spinning;ring.paint(s.ink)
+        glyph.isHidden=symbol==nil || spinning || drawerProgress != nil;ring.isHidden = !spinning;ring.paint(s.ink)
         glyph.image=symbol.flatMap {UIImage(systemName:$0,withConfiguration:UIImage.SymbolConfiguration(pointSize:CGFloat(variant.square ? s.icon:s.type),weight:.medium))};glyph.tintColor=NativeSkin.color(s.ink)
-        invalidateIntrinsicContentSize();setNeedsLayout()
+        drawerPaint();if variant == .toggle {accessibilityValue=current ? "On":"Off"};invalidateIntrinsicContentSize();setNeedsLayout()
     }
     /// Room at a label's end for a mark beside it (a select's chevron).
     private var mark:CGFloat {!variant.square && symbol != nil ? CGFloat(style.icon)+6:0}
     private func textHeight(_ width:CGFloat)->CGFloat {ceil(caption.sizeThatFits(CGSize(width:max(1,width),height:.greatestFiniteMagnitude)).height)}
     override var intrinsicContentSize:CGSize {
         let s=style,hit=CGFloat(NativeSkin.tokens.hit)
-        if variant.square {return CGSize(width:hit,height:hit)}
+        if variant.square {return CGSize(width:max(hit,CGFloat(s.side)),height:max(hit,CGFloat(s.height)))}
         let natural=ceil(caption.sizeThatFits(CGSize(width:CGFloat.greatestFiniteMagnitude,height:.greatestFiniteMagnitude)).width)+CGFloat(s.pad)*2+mark
         let width=bounds.width>0 ? bounds.width:natural
         return CGSize(width:natural,height:max(hit,max(CGFloat(s.height),textHeight(width-CGFloat(s.pad)*2-mark)+16)))
@@ -270,6 +276,7 @@ final class NativeButton:UIButton {
             chrome.frame=CGRect(x:(bounds.width-side)/2,y:(bounds.height-side)/2,width:side,height:side).integral
             glyph.frame=bounds;ring.frame=CGRect(x:(bounds.width-18)/2,y:(bounds.height-18)/2,width:18,height:18);return
         }
+        if variant == .toggle {caption.frame=CGRect(x:0,y:0,width:max(1,bounds.width-64),height:bounds.height);chrome.frame=CGRect(x:bounds.width-52,y:(bounds.height-28)/2,width:52,height:28);return}
         let pad=CGFloat(s.pad),inner=max(1,bounds.width-pad*2-mark),text=textHeight(inner)
         let tall=min(bounds.height,max(CGFloat(s.height),text+16))
         chrome.frame=CGRect(x:0,y:(bounds.height-tall)/2,width:bounds.width,height:tall).integral
@@ -356,6 +363,8 @@ final class NativeFlow:UIView {
 
 /// A native editor with shared animated focus chrome.
 final class NativeField:UITextField {
+    var sensitive=false {didSet {if sensitive && !oldValue {NotificationCenter.default.addObserver(self,selector:#selector(clearSensitive),name:UIApplication.willResignActiveNotification,object:nil)}}}
+    @objc private func clearSensitive() {if sensitive {text=nil;isSecureTextEntry=true}}
     private let chrome=NativeFrameView(role:NativeSkin.names.field)
     override init(frame:CGRect) {
         super.init(frame:frame);borderStyle = .none;backgroundColor = .clear;keyboardAppearance = .dark

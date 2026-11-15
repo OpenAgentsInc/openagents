@@ -66,3 +66,17 @@ round_action :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,size:f32,progress:f32) {
 composer_frame :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32) {
  p:=am_unit(progress);_:=sheet_box(sh,x,y,w,h,s.cmp.radius,1,opacity(s.surface,p),opacity(s.accent,p));
 }
+
+// Arcade A14: one spring-owned hamburger-to-arrow pose, mirrored for RTL.
+drawer_icon :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32,rtl:bool) {
+ p:=am_unit(progress);cx:=x+w/2;cy:=y+h/2;sign:=ifx rtl then -1.0f32 else 1.0f32;
+ a:=s.animated;for i:0..<3 {y0:=(cast(f32)i-1)*a.drawer_gap;ax:= -a.drawer_half+a.drawer_shift*p;bx:=a.drawer_half-(ifx i==1 then 0.0f32 else a.drawer_head)*p;
+  ay:=y0*(1-p);by:=y0+(ifx i==0 then -a.drawer_tip else ifx i==2 then a.drawer_tip else 0.0f32)*p;
+  sh[0].nu=prim_line(sh[0].under,sh[0].nu,cx+sign*ax,cy+ay,cx+sign*bx,cy+by,a.drawer_stroke,s.ink);
+ }
+}
+#test "drawer icon is three shared vector segments at closed, open and mirrored poses" {
+ b:[8]Prim;sh:=[1]Sheet.[Sheet.{under=b[..]}];s:=UiSkin.{};drawer_icon(sh[..],s,0,0,44,44,0,false);#assert sh[0].nu==3 && b[0].x==13 && b[0].y==16;
+ sh[0].nu=0;drawer_icon(sh[..],s,0,0,44,44,1,false);#assert b[0].x==15 && b[0].y==22;
+ sh[0].nu=0;drawer_icon(sh[..],s,0,0,44,44,1,true);#assert b[0].x==29 && b[0].y==22;
+}

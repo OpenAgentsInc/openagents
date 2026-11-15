@@ -78,6 +78,8 @@ enum NostrKey {
         default: throw Failure.unavailable(status)
         }
     }
+    /// Explicit native account recovery only; never makes or replaces a key.
+    static func existingSecret() throws -> Data? {try load()}
 
     /// A new key, added only if none is stored: an existing item is never replaced.
     private static func create() throws -> Data {
