@@ -1003,8 +1003,10 @@ at a time; a second one says which is running and stops.
    `docs/` (verification records: frozen copies of old inputs),
    `coax/tests/` (the compiler's fixtures, some red or weak on purpose),
    `coax/book/` and `coax/examples/` (listings whose survivors the book
-   shows) and `psionic/` (`psionic/check.sh` mutates each of its units to
-   zero survivors). On 2026-11-14 that was 1,264 of the repo's 1,953
+   shows) and the `psionic/` files no suite outside `psionic/` reaches
+   (`psionic/check.sh` mutates those to zero survivors). A `psionic/` file a
+   suite outside it reaches, as `coax/lib/gateway/pylon.coax` reaches
+   `psionic/lib/responses/`, is swept under that suite. On 2026-11-14 that was 1,264 of the repo's 1,953
    `#authority` files, under 611 suites.
 2. Each suite's files are split into one part per eight files, at most
    four. A part is one `coax mutate SUITE --unit A --unit B ... --native

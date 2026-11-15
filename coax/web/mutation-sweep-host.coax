@@ -173,7 +173,7 @@ tool_main :: () -> int #export_c #effects(all) {
   ms_put(rep[..], "Each night sweeps the parts never swept first, then those changed or not run since their last sweep, then the oldest, for as many hours as its budget allows; each row says the commit and night of its file's last sweep. ");
   ms_put(rep[..], "The sweep closes this issue when every part's last sweep ran and no file has a survivor, and reopens it on a night that finds one.\n\n");
   ms_put(rep[..], "The files: each `#authority` file under the suite whose `#load` closure reaching it is smallest, and each one no suite reaches under the smallest file with checks that reaches it. ");
-  ms_put(rep[..], "Not swept: `docs/` (verification records), `coax/tests/` (the compiler's fixtures), `coax/book/` and `coax/examples/` (the book's listings), and `psionic/` (`psionic/check.sh` mutates each of its units to zero survivors).\n\n");
+  ms_put(rep[..], "Not swept: `docs/` (verification records), `coax/tests/` (the compiler's fixtures), `coax/book/` and `coax/examples/` (the book's listings), and the `psionic/` files no suite outside `psionic/` reaches (`psionic/check.sh` mutates those to zero survivors); a `psionic/` file such a suite reaches is swept under it.\n\n");
   ms_put(rep[..], "| File | Suite | Swept | Result |\n|---|---|---|---|\n");
   total := 0; with := 0; reported := 0; undecided := 0; mutants := 0; killed := 0; equivalent := 0;
   unswept := 0; not_ran := 0; tonight := 0;
