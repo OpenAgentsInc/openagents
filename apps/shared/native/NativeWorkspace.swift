@@ -24,7 +24,7 @@ import UIKit
         addChild(detail);view.addSubview(detail.view);detail.didMove(toParent:self)
         backdrop.backgroundColor=NativeSkin.drawerShade;backdrop.accessibilityIdentifier="workspace.backdrop";backdrop.accessibilityLabel="Close navigation";backdrop.addAction(UIAction { [weak self] _ in self?.press?("nav.close") },for:.touchUpInside);view.addSubview(backdrop)
         sidebarClip.clipsToBounds=true;view.addSubview(sidebarClip)
-        addChild(sidebar);sidebar.view.autoresizingMask=[];sidebarClip.addSubview(sidebar.view);sidebar.didMove(toParent:self);sidebar.view.accessibilityIdentifier="workspace.history"
+        sidebar.sidebarMode=true;addChild(sidebar);sidebar.view.autoresizingMask=[];sidebarClip.addSubview(sidebar.view);sidebar.didMove(toParent:self);sidebar.view.accessibilityIdentifier="workspace.history"
         edge.addTarget(self,action:#selector(pan(_:)));edge.edges = .left;view.addGestureRecognizer(edge)
         close.addTarget(self,action:#selector(pan(_:)));close.delegate=self;sidebar.view.addGestureRecognizer(close)
     }

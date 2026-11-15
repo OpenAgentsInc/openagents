@@ -301,8 +301,8 @@ final class NativeButton:UIButton {
         let pad=CGFloat(s.pad),inner=max(1,bounds.width-pad*2-mark),text=textHeight(inner)
         let tall=min(bounds.height,max(CGFloat(s.height),text+16))
         chrome.frame=CGRect(x:0,y:(bounds.height-tall)/2,width:bounds.width,height:tall).integral
-        caption.frame=CGRect(x:pad,y:(bounds.height-text)/2,width:inner,height:text)
-        glyph.frame=CGRect(x:bounds.width-pad-mark+6,y:0,width:max(0,mark-6),height:bounds.height)
+        caption.frame=CGRect(x:pad+(variant == .list ? mark:0),y:(bounds.height-text)/2,width:inner,height:text)
+        glyph.frame=CGRect(x:variant == .list ? pad:bounds.width-pad-mark+6,y:0,width:max(0,mark-6),height:bounds.height)
         rule.frame=CGRect(x:0,y:bounds.height-CGFloat(NativeSkin.tokens.hairline),width:bounds.width,height:CGFloat(NativeSkin.tokens.hairline))
         if abs(intrinsicContentSize.height-bounds.height)>0.5 {invalidateIntrinsicContentSize()}
     }
@@ -356,6 +356,7 @@ final class NativeMenu:UIControl {
 /// Quiet buttons that follow one another share a line, each as wide as its words, and wrap to the next.
 final class NativeFlow:UIView {
     var centered=false {didSet {setNeedsLayout()}}
+    var edgeAligned=false {didSet {setNeedsLayout()}}
     var items:[UIView]=[] {
         didSet {
             for v in oldValue where v.superview === self && !items.contains(where:{$0 === v}) {v.removeFromSuperview()}
@@ -366,7 +367,11 @@ final class NativeFlow:UIView {
     private var laid:CGFloat=0
     private func arrange(_ width:CGFloat,apply:Bool)->CGFloat {
         let gap=CGFloat(NativeSkin.tokens.gap)*2/3;var x:CGFloat=0,y:CGFloat=0,row:CGFloat=0,start=0
-        func centerRow(_ end:Int) {guard apply,centered,end>start else{return};let shift=max(0,(width-(x-gap))/2);for i in start..<end {items[i].frame.origin.x += shift}}
+        func centerRow(_ end:Int) {
+            guard apply,end>start else{return}
+            if edgeAligned && end-start==2 {items[end-1].frame.origin.x=max(items[end-1].frame.origin.x,width-items[end-1].frame.width);return}
+            guard centered else{return};let shift=max(0,(width-(x-gap))/2);for i in start..<end {items[i].frame.origin.x += shift}
+        }
         for (index,v) in items.enumerated() {
             let size=v.intrinsicContentSize,w=min(size.width,width)
             if x>0 && x+w>width {centerRow(index);start=index;x=0;y+=row;row=0}

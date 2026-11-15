@@ -21,6 +21,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     private lazy var headerLeading=header.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:14)
     private lazy var headerTrailing=header.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-14)
     var railMode=false {didSet {if oldValue != railMode {loadViewIfNeeded();stackLeading.constant=railMode ? 10:20;stackTrailing.constant=railMode ? -10:-20;topLeading.constant=railMode ? 10:20;topTrailing.constant=railMode ? -10:-20;headerLeading.constant=railMode ? 10:14;headerTrailing.constant=railMode ? -10:-14;view.setNeedsLayout()}}}
+    var sidebarMode=false
     private lazy var emptyTop=topDock.heightAnchor.constraint(equalToConstant:0)
     private lazy var emptyOptions=options.heightAnchor.constraint(equalToConstant:0)
     private lazy var ordinaryTop=stack.topAnchor.constraint(equalTo:scroll.contentLayoutGuide.topAnchor,constant:24)
@@ -66,7 +67,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         header.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(header);headerHeight.isActive=true
         for group in [headerLeft,headerRight] {group.axis = .horizontal;group.alignment = .center;group.spacing=0;group.translatesAutoresizingMaskIntoConstraints=false;header.addSubview(group)}
         headerTitle.translatesAutoresizingMaskIntoConstraints=false;header.addSubview(headerTitle)
-        NSLayoutConstraint.activate([headerLeft.leadingAnchor.constraint(equalTo:header.leadingAnchor),headerLeft.centerYAnchor.constraint(equalTo:header.centerYAnchor),headerRight.trailingAnchor.constraint(equalTo:header.trailingAnchor),headerRight.centerYAnchor.constraint(equalTo:header.centerYAnchor),headerTitle.centerXAnchor.constraint(equalTo:header.centerXAnchor),headerTitle.centerYAnchor.constraint(equalTo:header.centerYAnchor),titleWidth])
+        NSLayoutConstraint.activate([headerLeft.leadingAnchor.constraint(equalTo:header.leadingAnchor),headerLeft.centerYAnchor.constraint(equalTo:header.centerYAnchor),headerRight.trailingAnchor.constraint(equalTo:header.trailingAnchor),headerRight.centerYAnchor.constraint(equalTo:header.centerYAnchor),sidebarMode ? headerTitle.leadingAnchor.constraint(equalTo:header.leadingAnchor):headerTitle.centerXAnchor.constraint(equalTo:header.centerXAnchor),headerTitle.centerYAnchor.constraint(equalTo:header.centerYAnchor),titleWidth])
         hostBar.axis = .horizontal;hostBar.alignment = .center;hostBar.spacing=8;hostBar.translatesAutoresizingMaskIntoConstraints=false;hostBar.isHidden=true;view.addSubview(hostBar);hostHeight.isActive=true
         hostTitle.accessibilityTraits.insert(.header);hostTitle.setContentHuggingPriority(.defaultLow,for:.horizontal)
         hostClose.addAction(UIAction { [weak self] _ in self?.hostAction?() },for:.primaryActionTriggered)
@@ -141,7 +142,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             guard let control=kept[e.id] else {continue}
             if index==titleIndex {
                 if control.superview !== headerTitle {headerTitle.subviews.forEach {$0.removeFromSuperview()};control.translatesAutoresizingMaskIntoConstraints=false;headerTitle.addSubview(control);NSLayoutConstraint.activate([control.leadingAnchor.constraint(equalTo:headerTitle.leadingAnchor),control.trailingAnchor.constraint(equalTo:headerTitle.trailingAnchor),control.topAnchor.constraint(equalTo:headerTitle.topAnchor),control.bottomAnchor.constraint(equalTo:headerTitle.bottomAnchor)])}
-                (control as? UILabel)?.textAlignment = .center
+                (control as? UILabel)?.textAlignment = sidebarMode ? .natural:.center
             } else if (titleIndex.map {index<$0} ?? railMode) {leading.append(control)}else {trailing.append(control)}
         }
         for (group,items) in [(headerLeft,leading),(headerRight,trailing)] {
@@ -204,14 +205,14 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         // Quiet buttons that follow one another share a line, each as wide as its words; everything else has its own.
         var rows:[(view:UIView,first:NativeElement,last:NativeElement)]=[];var used:[String:NativeFlow]=[:];var at=0
         // On a sheet every button but a list's row does: a sheet's tools are many and its room is small.
-        func quiet(_ e:NativeElement)->Bool {guard e.role=="button",let variant=(kept[e.id] as? NativeButton)?.variant else {return false};return variant == .quiet || variant == .icon || sheet && variant != .list}
+        func quiet(_ e:NativeElement)->Bool {guard e.role=="button",let variant=(kept[e.id] as? NativeButton)?.variant else {return false};return variant == .quiet || variant == .icon || sheet && variant != .list || sidebarMode && e.attrs["_nativePlacement"]=="dock" && variant == .primary}
         while at<ordinary.count {
             let e=ordinary[at];guard let control=kept[e.id] else {at+=1;continue}
             guard quiet(e) else {rows.append((control,e,e));at+=1;continue}
             var end=at;var items:[UIView]=[]
             while end<ordinary.count,quiet(ordinary[end]),ordinary[end].attrs["_nativePlacement"]==e.attrs["_nativePlacement"],let c=kept[ordinary[end].id] {items.append(c);end+=1}
             let flow=flows[e.id] ?? NativeFlow();if flow.items.count != items.count || !zip(flow.items,items).allSatisfy({$0 === $1}) {flow.items=items}
-            flow.centered=centered;used[e.id]=flow;rows.append((flow,e,ordinary[end-1]));at=end
+            flow.centered=centered;flow.edgeAligned=sidebarMode && e.attrs["_nativePlacement"]=="dock";used[e.id]=flow;rows.append((flow,e,ordinary[end-1]));at=end
         }
         for (id,flow) in flows where used[id] !== flow {flow.items=[];flow.removeFromSuperview()}
         flows=used

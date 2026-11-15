@@ -6,6 +6,14 @@
  #assert na_nav_press(s[..],"nav.new") && e[0].uncertain && e[0].page==2 && e[0].nd==15;
  #assert na_nav_press(s[..],"nav.close") && !s[0].navigation[0].open;
 }
+#test "opening navigation shows the full drawer and keeps recent chats available" {
+ s:[1]Starter;s[0].workspace=true;s[0].page=2;
+ #assert na_nav_press(s[..],"nav.toggle") && s[0].navigation[0].open && !s[0].navigation[0].rail;
+ t:[1]Tree;u:[1]Ui;ui_begin(u[..],0,true);tr_begin(t[..]);na_nav_render(s[..],t[..],u[..]);
+ #assert tr_find(t[..],"nav.home")>=0 && tr_find(t[..],"nav.projects")>=0;
+ #assert tr_find(t[..],"nav.search")>=0 && tr_find(t[..],"nav.compose")>=0 && tr_find(t[..],"nav.settings")>=0;
+ #assert t[0].nodes[tr_find(t[..],"nav.compose")].parent==tr_find(t[..],"nav.footer");
+}
 #test "history selection is deferred while its metadata request owns HTTP" {
  s:[1]Starter;s[0].workspace=true;s[0].flight=4;s[0].purpose=70;
  #assert na_nav_press(s[..],"nav.account.new") && s[0].navigation[0].np>0 && s[0].page== -1;
@@ -49,7 +57,7 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
  if na_project_press(s,id) {return true;}
  if na_shell_press(s,id) {return true;}
  if id=="nav.history" {n[0].history_open = !n[0].history_open;return true;}
- if id=="nav.toggle" {n[0].open = !n[0].open;n[0].rail=true;n[0].creating=false;return true;}
+ if id=="nav.toggle" {n[0].open = !n[0].open;n[0].rail=false;n[0].creating=false;return true;}
  if id=="nav.recent" {n[0].rail=false;n[0].open=true;n[0].history_open=true;return true;}
  if id=="nav.close" {n[0].open=false;n[0].creating=false;return true;}
  if id=="app.components" {na_text_effect(s,true,"https://openagents.com/components-gpu",id);return true;}
@@ -100,8 +108,8 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
   x=tr_open(t,"nav.rail.footer",TG_FOOTER,"side-f");x=k_icon_button(t,"nav.settings",IC_SETTINGS,"Settings");tr_attr(t,x,AT_STATE,"rail");tr_close(t);tr_close(t);return;
  }
  x=k_side_head(t,"nav.header","OpenAgents","/");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.close",IC_X,"Close navigation");tr_close(t);
- x=k_side_places(t,"nav.sidebar");x=k_row(t,u,"nav.home","Chat","",s[0].page<5);x=k_row(t,u,"nav.projects","Projects","",((s[0].page>=5 && s[0].page<=9) || s[0].page==11));if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",s[0].page==10);}x=k_row(t,u,"nav.feed","Feed","",s[0].page==12);tr_close(t);
- x=tr_open(t,"nav.history.header",TG_HEADER,"navigation-search");x=k_link(t,"nav.history","Recent chats");tr_attr(t,x,AT_EXPANDED,ifx n[0].history_open then "true" else "false");x=k_icon_button(t,"nav.compose",IC_PLUS,"New chat");tr_close(t);
+ x=k_side_places(t,"nav.sidebar");x=k_icon_row(t,u,"nav.home",IC_CHAT,"Chat",s[0].page<5);x=k_icon_row(t,u,"nav.projects",IC_FOLDER,"Projects",((s[0].page>=5 && s[0].page<=9) || s[0].page==11));if s[0].worlds_available {x=k_icon_row(t,u,"world.library",IC_GLOBE,"Worlds",s[0].page==10);}x=k_icon_row(t,u,"nav.feed",IC_NEWS_PAPER,"Feed",s[0].page==12);tr_close(t);
+ x=tr_open(t,"nav.history.header",TG_HEADER,"navigation-search");x=k_link(t,"nav.history","Recents");tr_attr(t,x,AT_EXPANDED,ifx n[0].history_open then "true" else "false");tr_close(t);
  if n[0].history_open {
  x=tr_open(t,"nav.search-wrap",TG_DIV,"navigation-search");x=k_input(t,u,"nav.search","Search chats","Search chats","search","off");tr_close(t);
  x=k_side_folds(t,"nav.sidebar");visible:=0;account_matches:=0;for i:0..<s[0].chats[0].n {r:=s[0].chats[0].items[i];if nav_match(n,cast(string)r.title[0..<r.title_n],"Account") {account_matches+=1;}}
@@ -135,7 +143,7 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  }
  if n[0].nn>0 {x=k_text(t,u,"nav.note",TG_P,"meta",cast(string)n[0].note[0..<n[0].nn]);}
  k_side_end(t);}
- x=tr_open(t,"nav.footer",TG_FOOTER,"side-f");x=k_row(t,u,"nav.settings","Settings","",false);tr_close(t);tr_close(t);
+ x=tr_open(t,"nav.footer",TG_FOOTER,"side-f");x=k_icon_button(t,"nav.settings",IC_AVATAR_PROFILE,"Settings");x=k_button(t,u,"nav.compose","New chat",BS_PRIMARY);tr_close(t);tr_close(t);
  if n[0].settings {
   x=tr_open(t,"nav.settings.panel",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Settings");x=k_text(t,u,"nav.settings.title",TG_H2,"","Settings");
   x=k_icon_button(t,"nav.settings.close",IC_X,"Close settings");x=k_link(t,"app.updates","Updates");x=k_link(t,"app.details","About");x=k_link(t,"usage.open","Usage");x=k_link(t,"app.components","Components");x=k_link(t,"extras.more","Extras");x=k_link(t,"account.logout","Log out");if s[0].note_n>0 {x=k_text(t,u,"nav.settings.note",TG_P,"meta",cast(string)s[0].note[0..<s[0].note_n]);}tr_close(t);

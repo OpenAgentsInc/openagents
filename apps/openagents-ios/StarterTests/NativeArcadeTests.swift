@@ -4,6 +4,19 @@ import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeArcadeTests:XCTestCase {
+    func testListButtonPlacesItsIconBeforeTheLabel() throws {
+        let button=NativeButton(.list);button.show("Projects",symbol:"folder");button.frame=CGRect(x:0,y:0,width:280,height:44);button.layoutIfNeeded()
+        let glyph=try XCTUnwrap(button.subviews.compactMap {$0 as? UIImageView}.first)
+        let caption=try XCTUnwrap(button.subviews.compactMap {$0 as? UILabel}.first)
+        XCTAssertFalse(glyph.isHidden);XCTAssertLessThanOrEqual(glyph.frame.maxX,caption.frame.minX)
+        XCTAssertEqual(button.accessibilityLabel,"Projects")
+    }
+    func testFlowCanPlaceFooterActionsAtOppositeEdges() {
+        let flow=NativeFlow(),left=NativeButton(.icon),right=NativeButton(.quiet)
+        right.show("New chat");flow.items=[left,right];flow.edgeAligned=true
+        flow.frame=CGRect(x:0,y:0,width:280,height:44);flow.layoutIfNeeded()
+        XCTAssertEqual(left.frame.minX,0,accuracy:0.1);XCTAssertEqual(right.frame.maxX,280,accuracy:0.1)
+    }
     func testGlassDrawerKeepsAVisibleNavigationGlyph() {
         let button=NativeButton(.icon);button.show("Navigation",symbol:"line.3.horizontal")
         button.glass=true;button.drawerProgress=0

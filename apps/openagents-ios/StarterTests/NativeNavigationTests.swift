@@ -81,8 +81,10 @@ import UIKit
         XCTAssertEqual(modelRequest["realm"] as? String,"microduck");XCTAssertEqual(modelRequest["path"] as? String,"/microduck")
         try p.event(113,0,"{}");try render();XCTAssertEqual((detail.controls["chat.composer"] as? UITextView)?.text,"Home draft")
         try p.input("nav.toggle");try render()
-        XCTAssertEqual(workspace.sidebar.view.frame.width,70,accuracy:1)
-        XCTAssertEqual(detail.view.frame.minX,70,accuracy:1)
+        XCTAssertEqual(workspace.sidebar.view.frame.width,338,accuracy:1)
+        XCTAssertEqual(detail.view.frame.minX,338,accuracy:1)
+        let drawer=UIGraphicsImageRenderer(bounds:window.bounds).image {ctx in window.layer.render(in:ctx.cgContext)}
+        let drawerPicture=XCTAttachment(image:drawer);drawerPicture.name="OpenAgents navigation drawer";drawerPicture.lifetime = .keepAlways;add(drawerPicture)
         try p.input("nav.recent");try render();XCTAssertEqual(workspace.sidebar.view.frame.width,338,accuracy:1)
         XCTAssertTrue(["nav.home","nav.projects","world.library"].allSatisfy {workspace.sidebar.controls[$0] != nil})
         let shade=try XCTUnwrap(workspace.view.subviews.first {$0.accessibilityIdentifier=="workspace.backdrop"})

@@ -7,8 +7,8 @@ final class SettingsUITests:XCTestCase {
         let email=app.textFields["Email address"]
         if email.waitForExistence(timeout:5) {email.tap();email.typeText("ada@example.com");app.buttons["Send code"].tap();let code=app.textFields["Email code"];XCTAssertTrue(code.waitForExistence(timeout:10));code.tap();code.typeText("415926");app.buttons["Log in"].tap()}
         let menu=app.buttons["nav.toggle"];XCTAssertTrue(menu.waitForExistence(timeout:20));menu.tap()
-        let projects=app.buttons["nav.projects"];XCTAssertTrue(projects.waitForExistence(timeout:5));XCTAssertEqual(projects.frame.width,50,accuracy:2)
-        XCTAssertTrue(app.buttons["nav.recent"].exists);capture(app,"Arcade sliding rail")
+        let projects=app.buttons["nav.projects"];XCTAssertTrue(projects.waitForExistence(timeout:5));XCTAssertGreaterThan(projects.frame.width,200)
+        XCTAssertTrue(app.buttons["nav.history"].exists);capture(app,"Navigation drawer")
         app.buttons["nav.settings"].tap();let profile=app.buttons["settings.profile"];XCTAssertTrue(profile.waitForExistence(timeout:10));waitLoaded(app)
         capture(app,"Account settings")
         profile.tap();app.buttons["settings.edit"].tap()
