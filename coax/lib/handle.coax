@@ -14,6 +14,14 @@ Store :: struct($T: copyable) {
   state: [] StoreState;
 }
 
+HandleProbe :: struct { n: int; }
+#test "a handle is present from value 1 up; only the zero value is absent" {
+  none: Handle(HandleProbe); one: Handle(HandleProbe) = Handle.{value = 1}; big: Handle(HandleProbe) = Handle.{value = 18446744073709551615};
+  late: Handle(HandleProbe) = Handle.{value = 21474836483};   // generation 5, slot 3
+  #assert !handle_present(none) && handle_present(one) && handle_present(big) && handle_present(late);
+  #assert handle_slot(one) == 1 && handle_generation(one) == 0 && !handle_same(none, one) && handle_same(one, one);
+  #assert handle_slot(late) == 3 && handle_generation(late) == 5 && handle_slot(big) == 4294967295 && handle_generation(big) == 4294967295;
+}
 handle_present :: (h: Handle($T: copyable)) -> bool #effects(computes) { return h.value != 0; }
 handle_same :: (a: Handle($T: copyable), b: Handle($T: copyable)) -> bool #effects(computes) { return a.value == b.value; }
 handle_slot :: (h: Handle($T: copyable)) -> int #effects(traps) { return cast(int) (h.value & 4294967295); }
