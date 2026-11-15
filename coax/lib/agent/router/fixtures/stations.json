@@ -51,7 +51,6 @@
   },
   {
    "station_id": "coderos",
-   "display_name": "coderos",
    "reported_at_ms": 1794699995000,
    "os": "linux",
    "cpu_cores": 32,

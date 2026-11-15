@@ -485,7 +485,11 @@ shaping it before any app calls it:
   answers by script and seed, and a recorded answer replayed.
 - **A command line.** `coax/web/tool.sh coax/lib/agent/router/router.coax decide "TASK"`.
 
-It starts no agent. Its computers come from a file, not from live reports.
+- **This computer's report.** `router.coax report` and `--here` read the
+  computer the tool runs on: disk, memory, load, agents, logins and running
+  agents.
+
+It starts no agent, and one computer's report does not reach another yet.
 
 ### Build order from here
 
@@ -501,9 +505,10 @@ Each step is tried from the command line and held by checks before the next.
    timeouts and rate limits are checked through `curl` as a live call goes.
    `coax/lib/systemone/gemini_fake.py` does this for the decision client
    today.
-5. **A real station report.** A collector for one computer (disk, memory,
-   load, running agents, logins), `openagents router stations` printing this
-   computer's own report, then `DescribeStation` in the environment runtime.
+5. **A real station report.** Done for one computer: a collector for disk,
+   memory, load, running agents and logins. Left: account quota, whether
+   someone is using the computer, then `DescribeStation` in the environment
+   runtime so reports reach the router from every computer.
 6. **The record and the allowance.** `coder.route.v3` as a projection of
    `RouteDecision`, and the daily count.
 7. **The first caller: the iPhone app.** It sends a task and reads a

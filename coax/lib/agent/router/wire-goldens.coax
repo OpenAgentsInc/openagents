@@ -2,7 +2,7 @@
 // proto/coder/router-v1alpha1.json names each body byte for byte. Every
 // record goes through the generated JSON mapper and comes back as the same
 // bytes, and every RouteRequest also reads through wire.coax's
-// rtr_request_read. Then the reader's refusals, the decision writer against
+// rtr_request_read and is written back by rtr_request_write to the same bytes. Then the reader's refusals, the decision writer against
 // a decision built here, and every decision of decide.coax's fuzz written
 // and read back.
 //
@@ -31,6 +31,12 @@ rtrg_record :: (message: string, name: string, line: string) -> bool {
     got = cast(string) v.wire;
     q: [1] RtrRequest; wire2: [RTR_REQUEST_MAX] u8;
     if !rtr_request_read(line, nodes[..], wire2[..], q[..]) { return rtrg_fail("the request does not read through wire.coax", name); }
+    again: [RTR_REQUEST_MAX] u8;
+    an := rtr_request_write(q[..], again[..]);
+    if an <= 0 || cast(string) again[0..<an] != line {
+      print("FAIL % is not written back by wire.coax byte for byte\n  want %\n  got  %\n", name, line, ifx an > 0 then cast(string) again[0..<an] else "(nothing)");
+      return false;
+    }
   } else if message == "RouteDecision" {
     m := RTP_RouteDecision_from_json(line, nodes[..], wire[..]);
     if m.error != 0 { return rtrg_fail("the decision does not read through the mapper", name); }

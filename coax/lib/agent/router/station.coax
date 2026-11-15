@@ -1,0 +1,316 @@
+// This computer's station report (docs/router/README.md, "What each computer
+// reports"): what it is, its disk, memory and load, the coding agents
+// installed and logged in, and the agents running now. rtrs_collect fills one
+// row of a request from the system; the delegation router then reads this
+// computer as it reads any other.
+//
+// Where each fact comes from:
+//
+//   name, id        hostname -s
+//   cores           sysctl -n hw.ncpu (macOS), nproc (Linux)
+//   memory          sysctl -n hw.memsize and vm_stat (macOS: free, inactive
+//                   and speculative pages count as free), /proc/meminfo
+//                   (Linux: MemAvailable)
+//   load            sysctl -n vm.loadavg (macOS), /proc/loadavg (Linux)
+//   disk            df -Pk on the folder the tool runs in
+//   Apple builds    macOS with /Applications/Xcode.app
+//   GPU             nvidia-smi's first GPU name, when it is installed
+//   agents          claude and codex on PATH; logged in when the agent's own
+//                   account file says so (below)
+//   running work    the process list, by executable name (observe/processes.coax)
+//   repository      the name of the folder's git origin
+//
+// What it never reads: a token, the Keychain, a process's arguments, a
+// transcript or a file's content. Whether Claude Code is logged in is whether
+// ~/.claude.json has an oauthAccount member (or ~/.claude/.credentials.json
+// exists, where the CLI keeps one); for Codex, whether ~/.codex/auth.json
+// exists. Neither file's values are kept.
+//
+// Not collected yet: how much of an account's quota is used (the usage
+// reader, coax/lib/agent/accounts/, asks the provider with the account's
+// token), whether someone is using the computer, and agent versions. The
+// person's rules for the computer are the caller's to set.
+//
+// The parsers are pure and checked here against output captured from a Mac
+// and a Linux host on 2026-11-14. The collector runs the commands.
+#load "wire.coax";
+#load "../observe/processes-host.coax";
+#load "../engine/route.coax";             // agr_on_path
+#load "../../sys/tool.coax";
+
+RTRS_DISK_FLOOR_MB :: 20480;     // a computer takes no new work under 20 GB free, unless the person says otherwise
+RTRS_STORE :: 1024;              // the bytes a report's strings need
+
+// A host name as a station_id: lower case, anything outside a-z, 0-9 and "-"
+// becomes "-", runs of "-" are one, at most 32, and "this-computer" when
+// nothing is left or the name is "none".
+rtrs_id :: (host: string, out: [] u8) -> string {
+  n := 0;
+  for c: host {
+    b := ifx c >= 'A' && c <= 'Z' then c + 32 else c;
+    ok := (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9');
+    if n == RTR_ID_MAX || n >= out.count { break; }
+    if ok { out[n] = b; n += 1; }
+    else if n > 0 && out[n - 1] != '-' { out[n] = '-'; n += 1; }
+  }
+  while n > 0 && out[n - 1] == '-' { n -= 1; }
+  id := cast(string) out[0..<n];
+  return ifx rtr_id_ok(id) then id else "this-computer";
+}
+
+// The first whole number in text, or -1.
+rtrs_first_int :: (text: string) -> int {
+  at := 0; while at < text.count && (text[at] < '0' || text[at] > '9') { at += 1; }
+  if at == text.count { return -1; }
+  v := 0;
+  while at < text.count && text[at] >= '0' && text[at] <= '9' {
+    if v > 100000000000000 { return -1; }
+    v = v * 10 + cast(int) (text[at] - '0'); at += 1;
+  }
+  return v;
+}
+
+// Decimal number k (from 0) of text, times 1,000: "{ 11.62 6.44 5.58 }" and
+// "3.19 4.63 7.10 3/421 665870" both give 11620 or 3190 for k = 0. -1 when
+// there is no such number.
+rtrs_load_milli :: (text: string, k: int) -> int {
+  at := 0; seen := 0;
+  while at < text.count {
+    if text[at] < '0' || text[at] > '9' { at += 1; continue; }
+    whole := 0;
+    while at < text.count && text[at] >= '0' && text[at] <= '9' { if whole < 1000000 { whole = whole * 10 + cast(int) (text[at] - '0'); } at += 1; }
+    frac := 0; digits := 0;
+    if at < text.count && text[at] == '.' {
+      at += 1;
+      while at < text.count && text[at] >= '0' && text[at] <= '9' { if digits < 3 { frac = frac * 10 + cast(int) (text[at] - '0'); digits += 1; } at += 1; }
+    }
+    while digits < 3 { frac *= 10; digits += 1; }
+    if seen == k { return whole * 1000 + frac; }
+    seen += 1;
+  }
+  return -1;
+}
+
+// The number after a line's label: "MemAvailable:   58114612 kB" gives 58114612 for "MemAvailable:". -1 when no line starts with label.
+rtrs_labelled :: (text: string, label: string) -> int {
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    if line.count > label.count && cast(string) line[0..<label.count] == label { return rtrs_first_int(cast(string) line[label.count..<line.count]); }
+    at = e + 1;
+  }
+  return -1;
+}
+
+// Free memory in MB from vm_stat's output: free, inactive and speculative pages at the page size it names. -1 when it can't be read.
+rtrs_vm_stat_free_mb :: (text: string) -> int {
+  mark := "page size of ";
+  page := -1;
+  for i: 0..<text.count { if page < 0 && i + mark.count <= text.count && cast(string) text[i..<i + mark.count] == mark { page = rtrs_first_int(cast(string) text[i + mark.count..<text.count]); } }
+  free := rtrs_labelled(text, "Pages free:"); inactive := rtrs_labelled(text, "Pages inactive:"); speculative := rtrs_labelled(text, "Pages speculative:");
+  if page <= 0 || free < 0 || inactive < 0 { return -1; }
+  pages := free + inactive + (ifx speculative > 0 then speculative else 0);
+  return (pages / 1024) * page / 1024;
+}
+
+// Free disk in MB from df -Pk's output: the Available column of its last line. -1 when it can't be read.
+rtrs_df_free_mb :: (text: string) -> int {
+  end := text.count; while end > 0 && (text[end - 1] == 10 || text[end - 1] == 13) { end -= 1; }
+  start := end; while start > 0 && text[start - 1] != 10 { start -= 1; }
+  line := cast(string) text[start..<end];
+  at := 0; field := 0;
+  while at < line.count {
+    while at < line.count && line[at] == ' ' { at += 1; }
+    e := at; while e < line.count && line[e] != ' ' { e += 1; }
+    if field == 3 {
+      for c: cast(string) line[at..<e] { if c < '0' || c > '9' { return -1; } }
+      kb := rtrs_first_int(cast(string) line[at..<e]);
+      return ifx kb < 0 then -1 else kb / 1024;
+    }
+    field += 1; at = e;
+  }
+  return -1;
+}
+
+// A repository's name from its origin: "https://github.com/OpenAgentsInc/openagents.git" and "git@github.com:OpenAgentsInc/openagents" give "openagents".
+rtrs_repo_name :: (url: string) -> string {
+  end := url.count; while end > 0 && (url[end - 1] == 10 || url[end - 1] == 13 || url[end - 1] == '/') { end -= 1; }
+  if end >= 4 && cast(string) url[end - 4..<end] == ".git" { end -= 4; }
+  start := end; while start > 0 && url[start - 1] != '/' && url[start - 1] != ':' { start -= 1; }
+  return cast(string) url[start..<end];
+}
+
+// Pieces of agent work running now: Claude Code and Codex processes whose parent is not one of them (an agent's own helpers are not counted twice).
+rtrs_work :: (r: [] LaInventory, q: [] RtrRequest, row: int) {
+  q[0].stations[row].work = 0;
+  for i: 0..<r[0].n {
+    engine := r[0].agents[i].engine;
+    if engine != 0 && engine != 1 { continue; }
+    child := false;
+    for k: 0..<r[0].n { if r[0].agents[k].pid == r[0].agents[i].parent && (r[0].agents[k].engine == 0 || r[0].agents[k].engine == 1) { child = true; } }
+    if child || q[0].stations[row].work == RTR_WORK { continue; }
+    w := q[0].stations[row].work;
+    q[0].stations[row].work_engine[w] = ifx engine == 0 then "claude" else "codex";
+    q[0].stations[row].work_model[w] = ""; q[0].stations[row].work_title[w] = ""; q[0].stations[row].work_state[w] = "working";
+    q[0].stations[row].work_started_at_ms[w] = 0;
+    q[0].stations[row].work += 1;
+  }
+}
+
+// ---- the collector
+
+// One command's output into out, "" when it did not run or failed.
+rtrs_run :: (argv: [] string, out: [] u8) -> string {
+  err: [1024] u8;
+  r := proc_run(argv, 5000, out, err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out { return ""; }
+  return cast(string) out[0..<r.out_n];
+}
+
+// A path under HOME.
+rtrs_home :: (rest: string, out: [] u8) -> string {
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  n := 0;
+  for c: home { if n < out.count { out[n] = c; n += 1; } }
+  for c: rest { if n < out.count { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+// Whether Claude Code's account file says an account is logged in. Only the
+// member's presence is read; the buffer is wiped before this returns.
+rtrs_claude_logged_in :: () -> bool {
+  pb: [1200] u8;
+  if fs_exists(rtrs_home("/.claude/.credentials.json", pb[..])) { return true; }
+  path := rtrs_home("/.claude.json", pb[..]);
+  size := fs_size(path);
+  buf: [4194304] u8;
+  if size <= 0 || size >= buf.count { return false; }
+  n := fs_read(path, buf[..]);
+  found := false;
+  mark := "\"oauthAccount\"";
+  if n > mark.count { for i: 0..<n - mark.count { if !found && buf[i] == '"' && cast(string) buf[i..<i + mark.count] == mark { found = true; } } }
+  for i: 0..<buf.count { buf[i] = 0; }
+  return found;
+}
+
+// This computer into row of q, with the time. Strings borrow store
+// (RTRS_STORE) and constants. False when the facts a decision needs most
+// could not be read: the name, the memory or the disk.
+rtrs_collect :: (q: [] RtrRequest, row: int, store: [] u8) -> bool {
+  if row < 0 || row >= RTR_STATIONS || store.count < RTRS_STORE { return false; }
+  out: [16384] u8; pb: [1200] u8;
+  mac := tool_os() == TOOL_MAC;
+  c_host := [2] string.["hostname", "-s"];
+  c_ncpu := [3] string.["sysctl", "-n", "hw.ncpu"];
+  c_mem := [3] string.["sysctl", "-n", "hw.memsize"];
+  c_vm := [1] string.["vm_stat"];
+  c_load := [3] string.["sysctl", "-n", "vm.loadavg"];
+  c_nproc := [1] string.["nproc"];
+  c_gpu := [3] string.["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"];
+  c_df := [3] string.["df", "-Pk", "."];
+  c_git := [4] string.["git", "remote", "get-url", "origin"];
+  q[0].stations[row] = RtrStation.{};
+  q[0].stations[row].os = ifx mac then "macos" else "linux";
+  q[0].stations[row].reported_at_ms = cxproc_wall_us() / 1000;
+  q[0].stations[row].disk_floor_mb = RTRS_DISK_FLOOR_MB;
+  // the name
+  host := rtrs_run(c_host[..], out[..]);
+  if host.count == 0 { return false; }
+  hn := 0; for c: host { if hn < 128 && c != 10 && c != 13 { store[hn] = c; hn += 1; } }
+  q[0].stations[row].name = cast(string) store[0..<hn];
+  q[0].stations[row].id = rtrs_id(q[0].stations[row].name, store[128..<192]);
+  // cores, memory, load
+  if mac {
+    q[0].stations[row].cores = rtrs_first_int(rtrs_run(c_ncpu[..], out[..]));
+    bytes := rtrs_first_int(rtrs_run(c_mem[..], out[..]));
+    q[0].stations[row].memory_total_mb = ifx bytes > 0 then bytes / 1048576 else -1;
+    q[0].stations[row].memory_free_mb = rtrs_vm_stat_free_mb(rtrs_run(c_vm[..], out[..]));
+    load := rtrs_run(c_load[..], out[..]);
+    q[0].stations[row].load_1m_milli = rtrs_load_milli(load, 0); q[0].stations[row].load_15m_milli = rtrs_load_milli(load, 2);
+    q[0].stations[row].apple_builds = fs_exists("/Applications/Xcode.app");
+  } else {
+    q[0].stations[row].cores = rtrs_first_int(rtrs_run(c_nproc[..], out[..]));
+    mn := fs_read("/proc/meminfo", out[..]);
+    info := cast(string) out[0..<ifx mn > 0 then mn else 0];
+    total := rtrs_labelled(info, "MemTotal:"); free := rtrs_labelled(info, "MemAvailable:");
+    q[0].stations[row].memory_total_mb = ifx total > 0 then total / 1024 else -1;
+    q[0].stations[row].memory_free_mb = ifx free >= 0 then free / 1024 else -1;
+    ln := fs_read("/proc/loadavg", out[..]);
+    load := cast(string) out[0..<ifx ln > 0 then ln else 0];
+    q[0].stations[row].load_1m_milli = rtrs_load_milli(load, 0); q[0].stations[row].load_15m_milli = rtrs_load_milli(load, 2);
+    if agr_on_path("nvidia-smi") {
+      gpu := rtrs_run(c_gpu[..], out[..]);
+      gn := 0; for c: gpu { if c == 10 { break; } if gn < 96 { store[192 + gn] = c; gn += 1; } }
+      q[0].stations[row].gpu = cast(string) store[192..<192 + gn];
+    }
+  }
+  q[0].stations[row].disk_free_mb = rtrs_df_free_mb(rtrs_run(c_df[..], out[..]));
+  if q[0].stations[row].memory_total_mb <= 0 || q[0].stations[row].memory_free_mb < 0 || q[0].stations[row].disk_free_mb < 0 { return false; }
+  if q[0].stations[row].cores < 0 { q[0].stations[row].cores = 0; }
+  if q[0].stations[row].load_1m_milli < 0 { q[0].stations[row].load_1m_milli = 0; }
+  if q[0].stations[row].load_15m_milli < 0 { q[0].stations[row].load_15m_milli = 0; }
+  // the agents, and whether each is logged in
+  if agr_on_path("claude") { q[0].stations[row].agents[0] = RtrAgent.{reported = true, installed = true, logged_in = rtrs_claude_logged_in()}; }
+  if agr_on_path("codex") { q[0].stations[row].agents[1] = RtrAgent.{reported = true, installed = true, logged_in = fs_exists(rtrs_home("/.codex/auth.json", pb[..]))}; }
+  // what runs now
+  r: [1] LaInventory;
+  la_collect(r[..]);
+  rtrs_work(r[..], q, row);
+  // the repository this folder is a checkout of
+  origin := rtrs_run(c_git[..], out[..]);
+  name := rtrs_repo_name(origin);
+  if name.count > 0 && name.count <= 128 {
+    rn := 0; for c: name { store[320 + rn] = c; rn += 1; }
+    q[0].stations[row].repos[0] = cast(string) store[320..<320 + rn]; q[0].stations[row].nrepos = 1;
+  }
+  return true;
+}
+
+// ---- checks
+
+#test "a host name becomes an id a decision can name" {
+  b: [64] u8;
+  #assert rtrs_id("Christophers-MacBook-Pro-2", b[..]) == "christophers-macbook-pro-2" && rtrs_id("oa-build-4", b[..]) == "oa-build-4";
+  #assert rtrs_id("My Mac (2).local", b[..]) == "my-mac-2-local" && rtrs_id("--x__y--", b[..]) == "x-y";
+  #assert rtrs_id("", b[..]) == "this-computer" && rtrs_id("none", b[..]) == "this-computer" && rtrs_id("???", b[..]) == "this-computer";
+  #assert rtrs_id("a-very-long-host-name-that-goes-on-and-on-and-on", b[..]) == "a-very-long-host-name-that-goes" && rtrs_id("0123456789012345678901234567890123", b[..]).count == 32;
+}
+
+#test "numbers out of what the system prints" {
+  #assert rtrs_first_int("18\n") == 18 && rtrs_first_int("137438953472") == 137438953472 && rtrs_first_int("  30") == 30 && rtrs_first_int("") == -1 && rtrs_first_int("none") == -1;
+  #assert rtrs_load_milli("{ 11.62 6.44 5.58 }", 0) == 11620 && rtrs_load_milli("{ 11.62 6.44 5.58 }", 2) == 5580;
+  #assert rtrs_load_milli("3.19 4.63 7.10 3/421 665870", 0) == 3190 && rtrs_load_milli("3.19 4.63 7.10 3/421 665870", 2) == 7100;
+  #assert rtrs_load_milli("0.05 0 12", 0) == 50 && rtrs_load_milli("0.05 0 12", 1) == 0 && rtrs_load_milli("0.05 0 12", 2) == 12000 && rtrs_load_milli("0.05", 1) == -1 && rtrs_load_milli("", 0) == -1;
+  #assert rtrs_load_milli("1.23456", 0) == 1234;
+}
+
+#test "memory from /proc/meminfo and from vm_stat, as a Linux host and a Mac printed them" {
+  meminfo := "MemTotal:       60689228 kB\nMemFree:        44833536 kB\nMemAvailable:   58114612 kB\nBuffers:          278752 kB\nCached:         12987020 kB\n";
+  #assert rtrs_labelled(meminfo, "MemTotal:") == 60689228 && rtrs_labelled(meminfo, "MemAvailable:") == 58114612 && rtrs_labelled(meminfo, "MemFree:") == 44833536;
+  #assert rtrs_labelled(meminfo, "SwapTotal:") == -1 && rtrs_labelled("", "MemTotal:") == -1;
+  vm := "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                             1516097.\nPages active:                           2114385.\nPages inactive:                         1962387.\nPages speculative:                       146863.\nPages throttled:                              0.\nPages wired down:                        424015.\n";
+  // 3,625,347 pages of 16 KB: 56,645 MB
+  #assert rtrs_vm_stat_free_mb(vm) == 56640;
+  #assert rtrs_vm_stat_free_mb("Pages free: 10.\nPages inactive: 10.\n") == -1 && rtrs_vm_stat_free_mb("") == -1;
+}
+
+#test "free disk from df -Pk, as a Mac and a Linux host printed it" {
+  #assert rtrs_df_free_mb("Filesystem   1024-blocks       Used Available Capacity  Mounted on\n/dev/disk3s5  1948404040 1873703396  48291248    98%    /System/Volumes/Data\n") == 47159;
+  #assert rtrs_df_free_mb("Filesystem     1024-blocks     Used Available Capacity Mounted on\n/dev/nvme0n1p1   206168404 63199624 134465780      32% /") == 131314;
+  #assert rtrs_df_free_mb("Filesystem 1024-blocks Used Available Capacity Mounted on") == -1 && rtrs_df_free_mb("") == -1 && rtrs_df_free_mb("a b c\n") == -1;
+}
+
+#test "a repository's name from its origin" {
+  #assert rtrs_repo_name("https://github.com/OpenAgentsInc/openagents\n") == "openagents" && rtrs_repo_name("https://github.com/OpenAgentsInc/openagents.git") == "openagents";
+  #assert rtrs_repo_name("git@github.com:OpenAgentsInc/openagents.git\n") == "openagents" && rtrs_repo_name("/srv/git/coax/") == "coax" && rtrs_repo_name("") == "";
+}
+
+#test "running work: agents by executable name, an agent's own children counted once" {
+  r: [1] LaInventory; q: [1] RtrRequest;
+  #assert la_process_line(r[..], "  100    1 /usr/local/bin/claude") && la_process_line(r[..], "  101  100 /usr/local/bin/claude");
+  #assert la_process_line(r[..], "  200    1 /opt/homebrew/bin/codex") && la_process_line(r[..], "  300    1 /usr/bin/node") && la_process_line(r[..], "  400    1 /tmp/coder-abc");
+  rtrs_work(r[..], q[..], 0);
+  #assert q[0].stations[0].work == 2 && q[0].stations[0].work_engine[0] == "claude" && q[0].stations[0].work_engine[1] == "codex" && q[0].stations[0].work_state[0] == "working";
+  empty: [1] LaInventory; rtrs_work(empty[..], q[..], 0); #assert q[0].stations[0].work == 0;
+}

@@ -22,6 +22,10 @@
 //         --show            also print the request sent to the door
 //   coax/web/tool.sh coax/lib/agent/router/router.coax stations [--stations FILE] [--now MS]
 //       each computer as the model reads it, or the fact that rules it out
+//       --here in place of --stations: this computer, read now (its disk, memory, load, agents,
+//       logins and running agents), with --keep-clear, --nothing-heavy and --max-agents N as your rules for it
+//   coax/web/tool.sh coax/lib/agent/router/router.coax report [--keep-clear] [--nothing-heavy] [--max-agents N]
+//       this computer's report as a RouteRequest's JSON, to keep and pass to --stations
 //   coax/web/tool.sh coax/lib/agent/router/router.coax sweep "TASK" [--seeds N] [--mock SCRIPT] [--stations FILE]
 //       N seeded stand-in answers (default 200): how often each computer and agent ran
 //   coax/web/tool.sh coax/lib/agent/router/router.coax eval [--labels FILE] [--stations FILE] [options]
@@ -33,12 +37,13 @@
 // A developer's tool for shaping the router. It starts no agent.
 #import "Basic";
 #load "eval.coax";
+#load "station.coax";
 #load "../../sys/tool.coax";
 #load "../../sys/args.coax";
 #load "../../sys/fs.coax";
 
 RTRC_STATIONS :: "coax/lib/agent/router/fixtures/stations.json";
-RTRC_USAGE :: "usage: router.coax decide \"TASK\" [--stations FILE] [--door mock|google|replay] [--mock SCRIPT] [--seed N] [--answer FILE] [--save FILE] [--url URL] [--repo NAME] [--on ID] [--with NAME] [--summary TEXT] [--now MS] [--json] [--show]\n       router.coax stations [--stations FILE] [--now MS]\n       router.coax sweep \"TASK\" [--seeds N] [--mock SCRIPT] [--stations FILE]\n       router.coax eval [--labels FILE] [--door replay --answers DIR | --door google [--save DIR] | --requests DIR]";
+RTRC_USAGE :: "usage: router.coax decide \"TASK\" [--stations FILE] [--door mock|google|replay] [--mock SCRIPT] [--seed N] [--answer FILE] [--save FILE] [--url URL] [--repo NAME] [--on ID] [--with NAME] [--summary TEXT] [--now MS] [--json] [--show]\n       router.coax stations [--stations FILE | --here] [--now MS]\n       router.coax report [--keep-clear] [--nothing-heavy] [--max-agents N]\n       router.coax sweep \"TASK\" [--seeds N] [--mock SCRIPT] [--stations FILE]\n       router.coax eval [--labels FILE] [--door replay --answers DIR | --door google [--save DIR] | --requests DIR]";
 
 // A flag's whole number, or fallback.
 rtrc_int :: (a: [] Args, name: string, fallback: int) -> int {
@@ -50,14 +55,30 @@ rtrc_int :: (a: [] Args, name: string, fallback: int) -> int {
 }
 
 // The computers from --stations, with the task, the repository and the time from the command line.
+// This computer, read now, as the request's one computer; --keep-clear, --nothing-heavy and --max-agents N are the person's rules for it.
+rtrc_here :: (a: [] Args, q: [] RtrRequest, store: [] u8) -> bool {
+  q[0] = RtrRequest.{};
+  if !rtrs_collect(q, 0, store) { tool_errln("router: this computer's name, memory or disk could not be read"); return false; }
+  q[0].n = 1;
+  q[0].now_ms = q[0].stations[0].reported_at_ms;
+  q[0].stations[0].keep_clear = args_has(a, "--keep-clear"); q[0].stations[0].nothing_heavy = args_has(a, "--nothing-heavy");
+  q[0].stations[0].max_agents = rtrc_int(a, "--max-agents", 0);
+  if q[0].stations[0].nrepos > 0 { q[0].repo = q[0].stations[0].repos[0]; }
+  return true;
+}
+
 rtrc_load :: (a: [] Args, task: string, raw: [] u8, nodes: [] JvNode, wire: [] u8, q: [] RtrRequest) -> bool {
-  path := args_value(a, "--stations", RTRC_STATIONS);
-  n := fs_read(path, raw);
-  if n <= 0 { tool_err("router: can't read "); tool_errln(path); return false; }
-  if n >= raw.count { tool_err("router: too large: "); tool_errln(path); return false; }
-  if !rtr_request_read(cast(string) raw[0..<n], nodes, wire, q) {
-    tool_err("router: not a RouteRequest (openagents.router.request.v1alpha1): "); tool_errln(path);
-    return false;
+  if args_has(a, "--here") {
+    if !rtrc_here(a, q, raw[0..<RTRS_STORE]) { return false; }
+  } else {
+    path := args_value(a, "--stations", RTRC_STATIONS);
+    n := fs_read(path, raw);
+    if n <= 0 { tool_err("router: can't read "); tool_errln(path); return false; }
+    if n >= raw.count { tool_err("router: too large: "); tool_errln(path); return false; }
+    if !rtr_request_read(cast(string) raw[0..<n], nodes, wire, q) {
+      tool_err("router: not a RouteRequest (openagents.router.request.v1alpha1): "); tool_errln(path);
+      return false;
+    }
   }
   if task.count > 0 { q[0].text = task; }
   repo := args_value(a, "--repo", "");
@@ -106,11 +127,13 @@ rtrc_print :: (q: [] RtrRequest, d: [] RtrDecision) {
     if d[0].answers[i].milli >= 0 { print("  (% of 1000)", d[0].answers[i].milli); }
     print("\n");
   }
-  print("\ncould run: ");
-  for i: 0..<d[0].neligible_stations { if i > 0 { print(", "); } print("%", d[0].eligible_stations[i]); }
-  print(" with ");
-  for i: 0..<d[0].neligible_engines { if i > 0 { print(", "); } print("%", d[0].eligible_engines[i]); }
-  print("\n");
+  if d[0].neligible_stations > 0 {
+    print("\ncould run: ");
+    for i: 0..<d[0].neligible_stations { if i > 0 { print(", "); } print("%", d[0].eligible_stations[i]); }
+    print(" with ");
+    for i: 0..<d[0].neligible_engines { if i > 0 { print(", "); } print("%", d[0].eligible_engines[i]); }
+    print("\n");
+  } else { print("\n"); }
   for i: 0..<d[0].nblocked {
     ib: [64] u8;
     print("ruled out: %: %\n", rtr_blocked_id(d[0].blocked[i], ib[..]), rtr_fact_text(d[0].blocked[i].fact));
@@ -256,6 +279,14 @@ tool_main :: () -> int #export_c #effects(all) {
     if !rtrc_load(a[..], task, raw[..], nodes[..], wire[..], q[..]) { return 1; }
     if verb == "decide" { return rtrc_decide(a[..], q[..]); }
     return rtrc_sweep(a[..], q[..]);
+  }
+  if verb == "report" {
+    if !rtrc_here(a[..], q[..], raw[0..<RTRS_STORE]) { return 1; }
+    out: [RTR_REQUEST_MAX] u8;
+    n := rtr_request_write(q[..], out[..]);
+    if n <= 0 { tool_errln("router: the report does not fit"); return 1; }
+    print("%\n", cast(string) out[0..<n]);
+    return 0;
   }
   if verb == "eval" {
     if !rtrc_load(a[..], "", raw[..], nodes[..], wire[..], q[..]) { return 1; }

@@ -6,8 +6,9 @@
 // option), so the keys are the schema's json_names in field-number order and
 // a zero, empty or false field without presence is left out.
 //
-// rtr_request_read turns a request's JSON into an RtrRequest; rtr_decision_write
-// turns an RtrDecision into JSON. Every string in an RtrRequest borrows the
+// rtr_request_read turns a request's JSON into an RtrRequest and
+// rtr_request_write turns it back; rtr_decision_write turns an RtrDecision
+// into JSON. Every string in an RtrRequest borrows the
 // reader's wire buffer; every string in an RtrDecision borrows what its maker
 // gave it (the request, or a constant).
 //
@@ -23,7 +24,8 @@ RTR_REQUEST_SCHEMA :: "openagents.router.request.v1alpha1";
 RTR_DECISION_SCHEMA :: "openagents.router.decision.v1alpha1";
 RTR_STATIONS :: 16;      // computers in one request
 RTR_ENGINES :: 4;        // claude, codex, micro, psionic
-RTR_REPOS :: 16;         // repositories one computer reports
+RTR_REPOS :: 16;
+RTR_WORK :: 16;          // pieces of work one computer reports         // repositories one computer reports
 RTR_REASONS :: 12;
 RTR_ANSWERS :: 16;
 RTR_BLOCKED :: 80;       // every computer, and every agent on every computer
@@ -62,6 +64,11 @@ RtrStation :: struct {
   in_use: bool;
   agents: [RTR_ENGINES] RtrAgent;   // by ca_index
   work: int;                      // pieces of work it runs now
+  work_engine: [RTR_WORK] string;
+  work_model: [RTR_WORK] string;
+  work_title: [RTR_WORK] string;
+  work_state: [RTR_WORK] string;
+  work_started_at_ms: [RTR_WORK] int;
   repos: [RTR_REPOS] string;
   nrepos: int;
   keep_clear: bool;
@@ -201,7 +208,16 @@ rtr_station_read :: (v: RTP_Station, q: [] RtrRequest, i: int) -> bool {
     ai = RTP_Station_next_agents(ai);
   }
   wi := RTP_Station_iter_work(v);
-  while wi.has_value { q[0].stations[i].work += 1; wi = RTP_Station_next_work(wi); }
+  while wi.has_value {
+    k := q[0].stations[i].work;
+    if k == RTR_WORK { return false; }
+    we := RTP_StationWork_get_engine(wi.value); wm := RTP_StationWork_get_model(wi.value); wt := RTP_StationWork_get_title(wi.value);
+    ws := RTP_StationWork_get_state(wi.value); wa := RTP_StationWork_get_started_at_ms(wi.value);
+    q[0].stations[i].work_engine[k] = we.value; q[0].stations[i].work_model[k] = wm.value; q[0].stations[i].work_title[k] = wt.value;
+    q[0].stations[i].work_state[k] = ws.value; q[0].stations[i].work_started_at_ms[k] = cast(int) wa.value;
+    q[0].stations[i].work += 1;
+    wi = RTP_Station_next_work(wi);
+  }
   ri := RTP_Station_iter_repos(v);
   while ri.has_value {
     if q[0].stations[i].nrepos == RTR_REPOS { return false; }
@@ -234,6 +250,95 @@ rtr_request_read :: (text: string, nodes: [] JvNode, wire: [] u8, q: [] RtrReque
     si = RTP_RouteRequest_next_stations(si);
   }
   return true;
+}
+
+// The computer in row i as a Station message. It is built in sa and sb (each
+// at least RTR_STATION_MAX) and borrows one of them; ca and cb hold its
+// children while they are built.
+RTR_STATION_MAX :: 8192;
+rtr_station_message :: (q: [] RtrRequest, i: int, sa: [] u8, sb: [] u8, ca: [] u8, cb: [] u8) -> RTP_Station {
+  names := RTR_ENGINE_NAMES;
+  m := RTP_Station_new();
+  m = RTP_Station_set_station_id(m, q[0].stations[i].id, sa);
+  // a computer with no display name is called by its id: that name is not written back
+  m = RTP_Station_set_display_name(m, ifx q[0].stations[i].name == q[0].stations[i].id then "" else q[0].stations[i].name, sb);
+  m = RTP_Station_set_reported_at_ms(m, cast(s64) q[0].stations[i].reported_at_ms, sa);
+  m = RTP_Station_set_os(m, q[0].stations[i].os, sb);
+  m = RTP_Station_set_cpu_cores(m, cast(s32) q[0].stations[i].cores, sa);
+  m = RTP_Station_set_memory_total_mb(m, cast(s64) q[0].stations[i].memory_total_mb, sb);
+  m = RTP_Station_set_memory_free_mb(m, cast(s64) q[0].stations[i].memory_free_mb, sa);
+  m = RTP_Station_set_disk_free_mb(m, cast(s64) q[0].stations[i].disk_free_mb, sb);
+  m = RTP_Station_set_disk_floor_mb(m, cast(s64) q[0].stations[i].disk_floor_mb, sa);
+  m = RTP_Station_set_load_1m_milli(m, cast(s32) q[0].stations[i].load_1m_milli, sb);
+  m = RTP_Station_set_load_15m_milli(m, cast(s32) q[0].stations[i].load_15m_milli, sa);
+  m = RTP_Station_set_apple_builds(m, q[0].stations[i].apple_builds, sb);
+  m = RTP_Station_set_gpu(m, q[0].stations[i].gpu, sa);
+  // m is in sa
+  to_a := false;
+  for k: 0..<RTR_ENGINES {
+    if !q[0].stations[i].agents[k].reported { continue; }
+    g := q[0].stations[i].agents[k];
+    c := RTP_StationAgent_new();
+    c = RTP_StationAgent_set_engine(c, names[k], ca);
+    c = RTP_StationAgent_set_installed(c, g.installed, cb);
+    c = RTP_StationAgent_set_logged_in(c, g.logged_in, ca);
+    c = RTP_StationAgent_set_quota_used_up(c, g.quota_used_up, cb);
+    c = RTP_StationAgent_set_cooldown(c, g.cooldown, ca);
+    c = RTP_StationAgent_set_version(c, g.version, cb);
+    c = RTP_StationAgent_set_plan(c, g.plan, ca);
+    c = RTP_StationAgent_set_quota_resets_at(c, g.quota_resets_at, cb);
+    if to_a { m = RTP_Station_append_agents(m, c, sa); } else { m = RTP_Station_append_agents(m, c, sb); }
+    to_a = !to_a;
+  }
+  for k: 0..<q[0].stations[i].work {
+    c := RTP_StationWork_new();
+    c = RTP_StationWork_set_engine(c, q[0].stations[i].work_engine[k], ca);
+    c = RTP_StationWork_set_model(c, q[0].stations[i].work_model[k], cb);
+    c = RTP_StationWork_set_title(c, q[0].stations[i].work_title[k], ca);
+    c = RTP_StationWork_set_state(c, q[0].stations[i].work_state[k], cb);
+    c = RTP_StationWork_set_started_at_ms(c, cast(s64) q[0].stations[i].work_started_at_ms[k], ca);
+    if to_a { m = RTP_Station_append_work(m, c, sa); } else { m = RTP_Station_append_work(m, c, sb); }
+    to_a = !to_a;
+  }
+  for k: 0..<q[0].stations[i].nrepos {
+    if to_a { m = RTP_Station_append_repos(m, q[0].stations[i].repos[k], sa); } else { m = RTP_Station_append_repos(m, q[0].stations[i].repos[k], sb); }
+    to_a = !to_a;
+  }
+  if q[0].stations[i].keep_clear || q[0].stations[i].nothing_heavy || q[0].stations[i].max_agents != 0 {
+    c := RTP_StationRules_new();
+    c = RTP_StationRules_set_keep_clear(c, q[0].stations[i].keep_clear, ca);
+    c = RTP_StationRules_set_nothing_heavy(c, q[0].stations[i].nothing_heavy, cb);
+    c = RTP_StationRules_set_max_agents(c, cast(s32) q[0].stations[i].max_agents, ca);
+    if to_a { m = RTP_Station_set_rules(m, c, sa); } else { m = RTP_Station_set_rules(m, c, sb); }
+    to_a = !to_a;
+  }
+  if to_a { m = RTP_Station_set_in_use(m, q[0].stations[i].in_use, sa); } else { m = RTP_Station_set_in_use(m, q[0].stations[i].in_use, sb); }
+  return m;
+}
+
+// A request's JSON into out: its length, or 0 when it doesn't fit or a
+// string is not UTF-8. What rtr_request_read read is written back byte for
+// byte (an agent the router doesn't know is not kept).
+rtr_request_write :: (q: [] RtrRequest, out: [] u8) -> int {
+  x: [RTR_REQUEST_MAX] u8; y: [RTR_REQUEST_MAX] u8;
+  sa: [RTR_STATION_MAX] u8; sb: [RTR_STATION_MAX] u8; ca: [1024] u8; cb: [1024] u8;
+  m := RTP_RouteRequest_new();
+  m = RTP_RouteRequest_set_text(m, q[0].text, x[..]);
+  m = RTP_RouteRequest_set_summary(m, q[0].summary, y[..]);
+  m = RTP_RouteRequest_set_repo(m, q[0].repo, x[..]);
+  m = RTP_RouteRequest_set_current_station(m, q[0].current_station, y[..]);
+  m = RTP_RouteRequest_set_current_engine(m, q[0].current_engine, x[..]);
+  m = RTP_RouteRequest_set_current_model(m, q[0].current_model, y[..]);
+  m = RTP_RouteRequest_set_now_ms(m, cast(s64) q[0].now_ms, x[..]);
+  to_x := false;
+  for i: 0..<q[0].n {
+    s := rtr_station_message(q, i, sa[..], sb[..], ca[..], cb[..]);
+    if s.error != 0 { return 0; }
+    if to_x { m = RTP_RouteRequest_append_stations(m, s, x[..]); } else { m = RTP_RouteRequest_append_stations(m, s, y[..]); }
+    to_x = !to_x;
+  }
+  v := RTP_RouteRequest_to_json(m, out);
+  return ifx v.error != 0 then 0 else v.wire.count;
 }
 
 // "coderos", or "coderos/codex" for an agent on a computer.

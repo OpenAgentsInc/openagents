@@ -18,6 +18,11 @@ R=coax/lib/agent/router
 # Which computers can take work, as the decision model reads them
 coax/web/tool.sh $R/router.coax stations
 
+# This computer, read now: its disk, memory, load, agents, logins and running agents
+coax/web/tool.sh $R/router.coax stations --here
+coax/web/tool.sh $R/router.coax decide "Fix the typo in the README title" --here --door google
+coax/web/tool.sh $R/router.coax report --nothing-heavy > /tmp/this-computer.json
+
 # A decision from the stand-in: no network, no key
 coax/web/tool.sh $R/router.coax decide "Fix the typo in the README title"
 
@@ -65,7 +70,14 @@ It needs `curl` 8.3 or later, as every decision client here does. The
 build hosts have 7.88, so a run there that calls Google (or a stand-in with
 `--url URL`) needs a newer `curl` first on `PATH`.
 
-The computers come from [`fixtures/stations.json`](fixtures/stations.json).
+`--here` reads this computer in place of a file, and `report` prints what it
+read as a `RouteRequest` you can edit and pass to `--stations`. Your rules for
+the computer are flags: `--keep-clear`, `--nothing-heavy`, `--max-agents N`.
+The collector was run on a Linux build host. Its macOS path (`sysctl`,
+`vm_stat`) has checks against output captured from this Mac, but the tool
+itself has not been run on a Mac yet.
+
+Otherwise the computers come from [`fixtures/stations.json`](fixtures/stations.json).
 Copy it, change a computer's disk, logins or rules, and pass your copy with
 `--stations FILE`. Its `now_ms` is fixed, so a report's age is the difference
 between `now_ms` and `reported_at_ms` in the file, not the clock.
@@ -124,8 +136,9 @@ what runs differs from the answer.
 
 | File | What |
 | --- | --- |
-| `wire.coax` | The one codec of `openagents.router.v1alpha1` ([schema](../../../../proto/openagents/router/v1alpha1/router.proto)): reads a `RouteRequest`, writes a `RouteDecision`, through the generated JSON mapper. |
+| `wire.coax` | The one codec of `openagents.router.v1alpha1` ([schema](../../../../proto/openagents/router/v1alpha1/router.proto)): reads and writes a `RouteRequest`, writes a `RouteDecision`, through the generated JSON mapper. |
 | `policy.coax` | Eligibility and the pick. Pure. |
+| `station.coax` | This computer's report: what each fact is read from, pure parsers, and the collector. It reads no token, no Keychain item and no process arguments. |
 | `ask.coax` | The request for the decision model, and reading its answer. |
 | `mock.coax` | The stand-in for Google's Decisions API, in process. It answers by script and seed, and refuses what Google refuses about a request's shape. |
 | `decide.coax` | One decision end to end: `rtr_begin`, a door, `rtr_finish`. |
@@ -139,7 +152,7 @@ what runs differs from the answer.
 Run them on a build host, not the Mac:
 
 ```sh
-coax/remote/remote.sh run -- bash -c 'for f in policy mock decide; do coax/bin/coax test coax/lib/agent/router/$f.coax | tail -1; done'
+coax/remote/remote.sh run -- bash -c 'for f in eval station; do coax/bin/coax test coax/lib/agent/router/$f.coax | tail -1; done'
 coax/remote/remote.sh run -- coax/web/tool.sh coax/lib/agent/router/wire-goldens.coax
 coax/remote/remote.sh run -- coax/web/tool.sh coax/lib/agent/router/replay-check.coax
 ```
@@ -189,6 +202,7 @@ establish calibration.
 
 In the specification's order: another account when one runs out; Fable for
 very hard tasks where an account offers it; `#authority` and its mutation
-pass on `policy.coax`; station reports from real computers
-(`DescribeStation`); the daily allowance; `coder.route.v3`; starting the
-agent.
+pass on `policy.coax`; in a station report, how much of each account's quota
+is used, whether someone is using the computer, and agent versions; sending
+reports between computers (`DescribeStation`); the daily allowance;
+`coder.route.v3`; starting the agent.
