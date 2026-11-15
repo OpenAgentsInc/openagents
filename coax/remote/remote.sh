@@ -26,7 +26,7 @@
 #   OA_REMOTE_DAILY_USD          the most the hosts may cost over 24 hours (default: what
 #                                OA_REMOTE_MAX_HOSTS hosts cost running all day, so the host
 #                                count is the one control)
-#   OA_REMOTE_MAX_HOSTS          hosts at once (default 6)
+#   OA_REMOTE_MAX_HOSTS          hosts at once (default 12 for the #13586 survivor push, owner 2026-11-15; back to 6 after)
 #   OA_REMOTE_MACHINE            machine type (default c3d-highcpu-30, spot)
 #   OA_REMOTE_IDLE_MINUTES       a host stops itself after this long idle (default 15)
 #   OA_REMOTE_SLOTS              jobs at once on one host (default 3): slots OA_REMOTE_SLOT_FIRST
@@ -49,7 +49,7 @@ export LC_ALL=C
 here="$(cd "$(dirname "$0")" && pwd -P)"
 project="${OA_REMOTE_PROJECT:-openagentsgemini}"
 state="${OA_REMOTE_STATE:-$HOME/.openagents/remote}"
-max_hosts="${OA_REMOTE_MAX_HOSTS:-6}"
+max_hosts="${OA_REMOTE_MAX_HOSTS:-12}"
 machine="${OA_REMOTE_MACHINE:-c3d-highcpu-30}"
 idle="${OA_REMOTE_IDLE_MINUTES:-15}"
 slots="${OA_REMOTE_SLOTS:-3}"
