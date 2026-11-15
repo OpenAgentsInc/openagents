@@ -100,6 +100,17 @@ SmcDigits :: struct { magnitude: [65] u64; negative: [65] u64; }
   #assert rz.value.x.limb[0] == 1 && rz.value.y.limb[0] == 1 && rz.value.z.limb[0] == 0;
 }
 
+#test "the 5x52 pick reads a non-infinity first entry" {
+  table:[1]Cg;table[0]=cg_from_sg32(sg32_from_point(sg_generator()));
+  #assert sg_equal_mask(sg32_to_point(cg_to_sg32(smc_cg_pick(table[..],0))),sg_generator())==CB_MAX64;
+}
+#test "the 8x32 reference refuses an oversized peer and reports validity" #steps 100000000 {
+  p := sg_generator(); p.x.limb[0] = CB_MAX64; refused := smc_multiply_sg32(sc_small(1),p);
+  #assert !refused.ok && refused.value.x.limb[0] == 1 && refused.value.y.limb[0] == 1 && refused.value.z.limb[0] == 0;
+  good := smc_multiply_sg32(sc_small(1),sg_generator());
+  #assert good.ok && sg_equal_mask(good.value,sg_generator()) == CB_MAX64;
+  bad:SgPoint; invalid := smc_multiply_sg32(sc_small(1),bad); #assert !invalid.ok;
+}
 #test "secret recoding normalization matches the independent scalar path" {
   max:ScScalar;for i:0..<8 {max.limbs[i]=4294967295;}
   #assert sc_equal(smc_scalar(max),sc_normalize(max));
@@ -179,7 +190,9 @@ smc_multiply :: (input: ScScalar,peer: SgPoint) -> SgResult #export_c #effects(a
 // The same digits, table and complete-mask selections on the fixed-work
 // 5x52 group of secp_ct_group.coax (#13454). point is valid or infinity.
 smc_multiply_cg :: (input: ScScalar,point: Cg) -> Cg #effects(all) {
-  table: [9] Cg;defer {for i: 0..<9 {secure_zero(table[i].x.n[..]);secure_zero(table[i].y.n[..]);secure_zero(table[i].z.n[..]);}for e: table {for w: e.x.n {#assert w == 0;}for w: e.y.n {#assert w == 0;}for w: e.z.n {#assert w == 0;}}}
+  // table[0] is cg_infinity(): its x, y and z limbs are already zero, as
+  // the defer's own asserts check, so zeroing it or not is the same.
+  table: [9] Cg;defer {for i: 0..<9 {secure_zero(table[i].x.n[..]);secure_zero(table[i].y.n[..]);secure_zero(table[i].z.n[..]);}for e: table {for w: e.x.n {#assert w == 0;}for w: e.y.n {#assert w == 0;}for w: e.z.n {#assert w == 0;}}}  // mutant: equivalent (table[0] is infinity with zero limbs)
   table[0] = cg_infinity(); table[1] = point; table[2] = cg_double(point);
   for i: 3..<9 { table[i] = cg_add(table[i-1],point); }
   digits := smc_recode(input);defer {secure_zero(digits.magnitude[..]);#assert crypto_zeroed(digits.magnitude[..]);}defer {secure_zero(digits.negative[..]);#assert crypto_zeroed(digits.negative[..]);}
@@ -197,7 +210,9 @@ smc_cg_pick :: (table: [] Cg,which: u64) -> Cg #effects(all) {
   return chosen;
 }
 smc_cg_signed :: (point: Cg,negative: u64) -> Cg #effects(all) {
-  r := point; r.y = cg_select(negative,cg_weak(fe_negate(point.y,1)),point.y); return r;
+  // y has magnitude 1. A bound of 2 gives 6p - y for 4p - y: the same value, and
+  // cg_weak brings either to magnitude 1 before any consumer sees it.
+  r := point; r.y = cg_select(negative,cg_weak(fe_negate(point.y,1)),point.y); return r;  // mutant: equivalent (any larger bound negates to the same value mod p)
 }
 #forall "the 5x52 ladder equals the 8x32 ladder" seed: 0..<4 #steps 2000000000 {
   k: ScScalar; for i: 0..<8 { k.limbs[i] = cast,trunc(u32)(mul_wrap(cast(u64)(seed*8+i+3),2654435761)); }
