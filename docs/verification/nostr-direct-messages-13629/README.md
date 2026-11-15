@@ -23,7 +23,13 @@ Logs below live in the isolated `oa-arcade-dm` worktree's ignored `build/`.
 | Opened inbox admission and bounded chronology | 210 mutants: 207 killed, 3 reviewed equivalents, no survivors | `dm-inbox-final-qualified.log` |
 | Public-key display adapter | 66 mutants: 58 killed, 8 reviewed equivalents, no survivors | `dm-public-key-qualified.log` |
 | Changed installed program-size and HTTP admission rules | 14 mutants killed, no survivors | `dm-native-metadata-policy.log` |
+| Immutable outgoing intent, recovery and sender-copy recognition | 244 mutants: 225 killed, 19 reviewed equivalents, no survivors | `dm-outgoing-recovery-qualified.log` |
+| Extracted unsigned-rumor adapter | 63 mutants killed, no survivors | `dm-rumor-initial-qualified.log` |
+| Extracted kind-10050 relay projection | 78 mutants killed, no survivors | `dm-receipt-baseline-and-relay-projection.log` |
 | Actual native recipient picker/composer and accessible delivery glyph | Passed on the isolated signed simulator | `dm-native-final-ui-tests.log` |
+| Shared DOM adapter, including complete digest IDs, focus and field values | 19 checks passed | `dm-full-id-modules.log` |
+| Compiled native/web/reference exchange, native cold history-row selection, exact committed-send retry | Passed, signed iOS simulator and real relay/API | `dm-id128-live-tests.log`, `dm-id128-live-reference.log` |
+| Browser cold recovery through the real history row | Passed; both texts recovered | `dm-id128-cold-result.log`, `dm-id128-cold-final.png` |
 | Tools, wire registry and component layers | Passed | `dm-tools-latest.log`, `dm-wire-latest.log`, `dm-components-latest.log` |
 
 Equivalent annotations name the specific redundant condition or unobservable
@@ -47,18 +53,18 @@ The `--lose-seal-response` mode returns one 503 **after** the real server has
 committed a seal, then checks that the retry's complete request is byte-identical.
 It does not replace the custody, journal, cryptography or relay implementation.
 
-Observed live stages include native → web, web → native, recovery of sent and
-received history by a cold native client, and retry after the deliberately lost
-seal response. An earlier independent-client run reached both reply directions,
-but its final assertion incorrectly counted the reply preview as another
-message. That oracle now counts only message-body nodes.
+The complete live case passed at 17:49 on November 15: native → web → native,
+native cold recovery through the actual conversation row, then an independent
+client's verified open and encrypted reply. Counts are exactly one body for
+each message and exclude reply previews. The fixture confirmed both the lost
+committed response and a byte-identical retry. A fresh browser also recovered
+both messages by selecting the history row. The native test waits for the
+actual recipient picker/title before interacting with it.
 
-The current complete live case is **not yet green**: switching the cold native
-client to the independent recipient exposed repeated installed relay refusals.
-The test now waits for the actual recipient picker/title and records the SDK's
-public refusal reason. This must be resolved and the full case rerun before
-closing the issue. A Mac restart interrupted the subsequent diagnostic run;
-the retained API database is separate from that Mac's process lifetime.
+The fixture hit the development API's accumulated account-creation limit after
+repeated interrupted test sessions. Only `auth.limit_counts` in the isolated
+throwaway PostgreSQL database was reset before this final fixture run. No
+production account, limit, key, inbox or service was changed.
 
 ## Defects corrected during verification
 
@@ -75,18 +81,20 @@ the retained API database is separate from that Mac's process lifetime.
   replacing that effect's request or generating another intent.
 - Same-owner settings refreshes preserve current SDK requests and resume a
   paused messenger. They cannot silently change its owner.
+- Shared DOM slot IDs now retain up to 128 bytes. The previous 64-byte bound
+  truncated complete digest-based conversation IDs while drawing the full ID,
+  so a visible history row could not dispatch its own selection. The fix also
+  preserves complete field/focus IDs and prevents suffix collisions.
 
 ## Remaining release work
 
-1. Resolve the independent-recipient transition and pass the complete live
-   native/web/reference case, including cold web recovery and exact retry.
-2. Finish initial mutation qualification of the remaining new coordinator,
+1. Finish initial mutation qualification of the remaining new coordinator,
    relay, journal, outgoing, receipt-codec/cache and extracted primitive units.
    Retained survivor/timeout reports are not successful qualification.
-3. Rebase onto current main, retain its concurrent app/world work, and run the
+2. Rebase onto current main, retain its concurrent app/world work, and run the
    final touched checks and existing agent/account/environment regressions.
-4. Deploy the API and web page. Generate the complete native release from the
+3. Deploy the API and web page. Generate the complete native release from the
    final source tree, with its current world resources and runtime fingerprint;
    the older world binaries copied for simulator tests are not release assets.
-5. Push main and upload a new TestFlight build. Do not wait for Apple processing
+4. Push main and upload a new TestFlight build. Do not wait for Apple processing
    before continuing the next issue.

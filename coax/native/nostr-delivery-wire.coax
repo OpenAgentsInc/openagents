@@ -2,6 +2,7 @@
 #load "nostr-send-wire.coax";
 #load "../lib/nostr/nip17-message.coax";
 #authority;
+#load "nostr-delivery-checks.coax" #test;
 NDL_REQUEST :: "openagents.nostr.delivery-request.v1alpha1";
 NDL_PAGE :: "openagents.nostr.delivery-page.v1alpha1";
 NdlRequest :: struct {operation:[64]u8;identity:[64]u8;after:[64]u8;na:int;}

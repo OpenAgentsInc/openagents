@@ -32,7 +32,7 @@ import UIKit
         XCTAssertEqual(first.count(text),1);XCTAssertEqual(first.count(reply),1)
         first.stop();try await progress("native-received")
         let cold=try LiveInbox(origin:origin,tokens:login);defer {cold.stop()}
-        try await cold.open(peer:peer);try await cold.until("cold journal convergence") {cold.has(text) && cold.has(reply)}
+        try await cold.open(peer:peer,history:true);try await cold.until("cold journal convergence") {cold.has(text) && cold.has(reply)}
         XCTAssertEqual(cold.count(text),1);XCTAssertEqual(cold.count(reply),1)
         try await progress("native-cold-recovered")
         try await cold.choose(peer:reference);try cold.program.input("dm.composer",text+" reference");try cold.program.frame()
@@ -65,7 +65,7 @@ import UIKit
             let note=program.nodes.values.first {$0.id=="dm.note"}?.text ?? ""
             XCTFail("Live messaging timed out during \(stage): \(note)");throw NativeFailure.refused("Live messaging timed out")
         }
-        func open(peer:String)async throws {
+        func open(peer:String,history:Bool=false)async throws {
             try await until("home") {program.nodes.values.contains {$0.id=="chat.composer"}}
             try program.input("nav.toggle");try program.frame();try program.input("nav.recent");try program.frame()
             try await until("messages navigation") {program.nodes.values.contains {$0.id=="dm.open"}}
@@ -75,7 +75,12 @@ import UIKit
                 if program.nodes.values.contains(where:{$0.id=="dm.enable"}) && !enabled {enabled=true;try? program.input("dm.enable");try? program.frame()}
                 return program.nodes.values.contains {$0.id=="dm.empty" || $0.id.hasPrefix("dm.room.")}
             }
-            try await choose(peer:peer)
+            if history {
+                let row=try XCTUnwrap(program.nodes.values.first {$0.tag=="button" && $0.id.hasPrefix("dm.room.")})
+                XCTAssertEqual(row.id.utf8.count,72)
+                try program.input(row.id);try program.frame()
+                try await until("recovered conversation selection") {program.nodes.values.contains {$0.id=="dm.composer"}}
+            }else {try await choose(peer:peer)}
         }
         func choose(peer:String)async throws {
             try program.input("dm.new");try program.frame()

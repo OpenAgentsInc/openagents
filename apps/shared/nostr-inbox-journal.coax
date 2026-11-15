@@ -57,6 +57,47 @@ NostrInboxJournal :: struct {
   #assert ndj_refresh(j[..],s[..]);
  }
 }
+#test "journal reset erases every retained request cursor and operation namespace" {
+ j:[1]NostrInboxJournal;
+ for i:0..<j[0].body.count {j[0].body[i]=165;}for i:0..<64 {j[0].seed[i]=165;j[0].operation[i]=165;}
+ j[0].generation=9;j[0].serial=7;j[0].phase=3;j[0].busy=true;j[0].action=21;j[0].nb=50;j[0].at=4;j[0].cursor=5;j[0].revision=6;j[0].ready=true;j[0].failed=true;j[0].retry=true;j[0].rejected=2;j[0].index[0].n=1;
+ ndj_clear(j[..]);#assert crypto_zeroed(j[0].body[..]) && crypto_zeroed(j[0].seed[..]) && crypto_zeroed(j[0].operation[..]);
+ #assert j[0].generation==0 && j[0].serial==0 && j[0].phase==0 && !j[0].busy && j[0].action==0 && j[0].nb==0 && j[0].at==0 && j[0].cursor==0 && j[0].revision==0 && !j[0].ready && !j[0].failed && !j[0].retry && j[0].rejected==0 && j[0].index[0].n==0;
+}
+#test "journal refresh and retry refuse every blocked owner independently" {
+ s:[1]NostrInbox;j:[1]NostrInboxJournal;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(s[..],"a",id) && ndj_start(j[..],s[..],id);
+ for blocked:0..<5 {
+  j[0].generation=ifx blocked==0 then 2 else 1;s[0].na=ifx blocked==1 then 0 else 1;j[0].busy=blocked==2;s[0].pending=blocked==3;j[0].retry=blocked==4;
+  #assert !ndj_refresh(j[..],s[..]);
+ }
+ j[0].generation=1;s[0].na=1;j[0].busy=false;s[0].pending=false;j[0].retry=false;j[0].revision=9;j[0].cursor=12;j[0].ready=true;j[0].failed=true;
+ #assert ndj_refresh(j[..],s[..]) && j[0].phase==1 && j[0].revision==0 && j[0].cursor==0 && !j[0].ready && !j[0].failed;
+ for blocked:0..<4 {
+  j[0].generation=ifx blocked==0 then 2 else 1;j[0].retry=blocked!=1;j[0].busy=blocked==2;j[0].nb=ifx blocked==3 then 0 else 10;
+  #assert !ndj_retry(j[..],s[..]);
+ }
+ j[0].busy=false;j[0].retry=true;j[0].nb=10;j[0].phase=1;j[0].failed=true;
+ #assert ndj_retry(j[..],s[..]) && !j[0].retry && !j[0].failed && j[0].busy && j[0].action==22;
+}
+#test "journal pagination skips exactly known originals and pins every requested cursor" {
+ s:[1]NostrInbox;j:[1]NostrInboxJournal;q:[1]MsRequest;b:[20000]u8;p:[4096]u8;rows:[1]MsIndexRow;
+ id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(s[..],"a",id) && ndj_start(j[..],s[..],id);
+ j[0].phase=2;j[0].index[0].n=3;j[0].index[0].cursor=7;j[0].index[0].rows[1].id[0]='1';j[0].index[0].rows[2].id[0]='2';s[0].n=2;s[0].messages[1].outer[0]='1';
+ // The first two are known. The third is not, so its exact ID is requested.
+ for i:0..<64 {j[0].index[0].rows[2].id[i]='2';}
+ #assert ndj_next(j[..],s[..]) && j[0].at==2 && nms_request_read(cast(string)j[0].body[0..<j[0].nb],q[..]);
+ #assert q[0].action==6 && q[0].revision==0 && q[0].cursor==0 && q[0].subscription==0 && cast(string)q[0].payload[0..<q[0].n]==cast(string)j[0].index[0].rows[2].id[..];
+ j[0].busy=false;j[0].at=3;j[0].revision=11;
+ #assert ndj_next(j[..],s[..]) && j[0].phase==1 && j[0].cursor==7 && nms_request_read(cast(string)j[0].body[0..<j[0].nb],q[..]) && q[0].cursor==7 && q[0].revision==11;
+ // A nonadvancing page cannot silently repeat the same bounded window.
+ n:=ms_index_write(11,7,false,rows[0..<0],p[..]);n=nsr_write("store","index",cast(string)j[0].operation[..],id,"ok",11,7,cast(string)p[0..<n],b[..]);
+ #assert !ndj_reply(j[..],s[..],1,cast(string)b[0..<n],false) && j[0].failed;
+ j[0].busy=true;j[0].failed=false;j[0].ready=true;n=nsr_write("store","index",cast(string)j[0].operation[..],id,"conflict",11,0,"",b[..]);
+ #assert n>0 && ndj_reply(j[..],s[..],1,cast(string)b[0..<n],false) && j[0].phase==1 && j[0].revision==0 && j[0].cursor==0 && !j[0].ready;
+ #assert ndj_filter("bad",p[..])== -1;
+}
 ndj_clear :: (j:[]NostrInboxJournal) #effects(all) {
  for i:0..<j[0].body.count {j[0].body[i]=0;}j[0].index[0]=MsIndex.{};
  for i:0..<64 {j[0].seed[i]=0;j[0].operation[i]=0;}
@@ -110,7 +151,7 @@ ndj_filter :: (identity:string,out:[]u8)->int #effects(all) {
 ndj_reply :: (j:[]NostrInboxJournal,s:[]NostrInbox,generation:int,raw:string,failed:bool)->bool #effects(all) {
  if !j[0].busy || generation!=j[0].generation || generation!=s[0].generation {return false;}
  if failed {j[0].busy=false;j[0].failed=true;j[0].retry=true;return false;}
- r:[1]NsResult;defer {secure_zero(r[0].payload[..]);}
+ r:[1]NsResult;defer {secure_zero(r[0].payload[..]);} // mutant: equivalent (removing this deferred local erasure is unobservable to a safe Coax caller after return; retain it for native stack hygiene)
  if !nsr_read(raw,r[..]) || cast(string)r[0].identity[..]!=cast(string)s[0].identity[..] || cast(string)r[0].operation[..]!=cast(string)j[0].operation[..] {return false;}
  expected:=ifx j[0].phase==1 then 5 else ifx j[0].phase==2 then 6 else 4;
  if r[0].service!=(ifx j[0].phase==3 then 1 else 2) || r[0].action!=expected {return false;}

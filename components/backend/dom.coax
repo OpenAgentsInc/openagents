@@ -35,7 +35,7 @@
 #load "../core/arwes/frames.coax";
 
 DM_OUT :: 524288;      // bytes of commands one flush can hold
-DM_ID :: 64;           // bytes of an id kept
+DM_ID :: 128;          // includes a complete digest plus component prefix/suffix
 DM_NONE :: 65535;
 DC_MAKE :: 1; DC_REMOVE :: 2; DC_PLACE :: 3; DC_TEXT :: 4; DC_CLASS :: 5; DC_ATTR :: 6; DC_UNATTR :: 7; DC_FRAME :: 8; DC_STYLE :: 9; DC_VALUE :: 10; DC_FOCUS :: 11;
 DM_VALUE :: 16384;     // complete shared 16 KiB composer drafts on restore
@@ -333,6 +333,19 @@ dm_test_u32 :: (d: [] Dom, i: int) -> int {
   #assert dm_slot_id(d, 1) == "send" && dm_find(d, "note") == 3;
   n = dm_flush(d, t, sets[..]);
   #assert n == 0 && d[0].sent == 0;
+}
+
+#test "digest component ids keep their complete event focus and value identities" {
+  t:[1]Tree;d:[1]Dom;sets:[1]AfSettings;sets[0]=af_settings(3);
+  // The last digest byte distinguishes these conversations. Never truncate it.
+  a:="dm.room.0000000000000000000000000000000000000000000000000000000000000001";
+  b:="dm.room.0000000000000000000000000000000000000000000000000000000000000002";
+  tr_begin(t[..]);_=tr_open(t[..],a,TG_BUTTON,"");tr_close(t[..]);_=tr_open(t[..],b,TG_INPUT,"");tr_close(t[..]);
+  #assert dm_flush(d[..],t[..],sets[..])>0 && dm_slot_id(d[..],0)==a && dm_slot_id(d[..],1)==b;
+  #assert dm_find(d[..],a)==0 && dm_find(d[..],b)==1 && dm_flush(d[..],t[..],sets[..])==0;
+  dm_value(d[..],b,"draft");dm_focus(d[..],b);
+  #assert cast(string)d[0].value_id[0][0..<d[0].value_id_n[0]]==b && cast(string)d[0].focus_id[0..<d[0].focus_id_n]==b;
+  #assert dm_flush(d[..],t[..],sets[..])>0 && dm_test_count(d[..],d[0].out_n,DC_VALUE)==1;
 }
 
 #test "one changed label is one command, and a node that goes is removed" {

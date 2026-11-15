@@ -33,6 +33,14 @@ MessagesWeb :: struct {
  s[0].http=2;s[0].response_n=asw_initial(s[0].response[..]);wm_http_done(s[..],200);
  #assert s[0].auth==1 && s[0].messenger[0].flight==flight && s[0].messenger[0].started;
 }
+#test "a recovered conversation row dispatches its complete digest through the DOM adapter" {
+ s:[1]MessagesWeb;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";op:="0000000000000000000000000000000000000000000000000000000000000001";b:[2048]u8;id:[96]u8;
+ s[0].ready=true;s[0].auth=1;s[0].http=1;#assert ndi_bind(s[0].messenger[0].inbox[..],"a",me) && ndi_begin(s[0].messenger[0].inbox[..],op,op);
+ n:=nsr_write("custody","open",op,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(s[0].messenger[0].inbox[..],1,cast(string)b[0..<n]);
+ #assert wm_frame(s[..],0,true,1730000000)>0;
+ key:=ndv_id("dm.room.",s[0].messenger[0].inbox[0].messages[0].message.room[..],id[..]);slot:=dm_find(s[0].dom[..],key);#assert key.count==72 && slot>=0;
+ wm_event(s[..],1,slot,0);#assert s[0].view[0].open && wm_frame(s[..],0,true,1730000000)>0 && dm_find(s[0].dom[..],"dm.composer")>=0;
+}
 wm_http :: (s:[]MessagesWeb,purpose:int,path:string,body:string)->bool {
  if s[0].http!=0 || path.count>128 || body.count>800000 {return false;}
  s[0].http=purpose;s[0].path_n=ndi_copy(s[0].path[..],path);s[0].request_n=ndi_copy(s[0].request[..],body);s[0].response_n=0;s[0].http_bad=false;s[0].asking=true;return true;

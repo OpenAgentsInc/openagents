@@ -41,7 +41,9 @@ ndd_begin :: (s:[]NostrDeliveries,inbox:[]NostrInbox)->bool #effects(all) {
  }for i:n..<s[0].n {s[0].rows[i]=InboxDelivery.{};}s[0].n=n;return true;
 }
 ndd_request :: (s:[]NostrDeliveries,operation:string,out:[]u8)->int #effects(all) {
- n:=ndl_request_write(cast(string)s[0].identity[..],cast(string)s[0].after[0..<s[0].na],operation,out);if n>0 {_=ndi_copy(s[0].operation[..],operation);}return n;
+ n:=ndl_request_write(cast(string)s[0].identity[..],cast(string)s[0].after[0..<s[0].na],operation,out);
+ if n>0 {_=ndi_copy(s[0].operation[..],operation);} // mutant: equivalent (0 -> 1 or > -> >=: the closed request writer returns -1 or an entire nonempty JSON object longer than one byte, never 0 or 1)
+ return n;
 }
 ndd_find :: (s:[]NostrDeliveries,rumor:[]u8)->int #effects(all) {for i:0..<s[0].n {if n17_same(s[0].rows[i].rumor[..],rumor) {return i;}}return -1;}
 ndd_same :: (a:NsmSealed,b:NsmSealed)->bool #effects(all) {
@@ -53,11 +55,15 @@ ndd_page :: (s:[]NostrDeliveries,inbox:[]NostrInbox,generation:int,raw:string)->
  page:[1]NdlPage;if !ndl_page_read(raw,page[..]) || cast(string)page[0].operation[..]!=cast(string)s[0].operation[..] || cast(string)page[0].identity[..]!=cast(string)s[0].identity[..] || cast(string)page[0].after[0..<page[0].na]!=cast(string)s[0].after[0..<s[0].na] {return false;}
  // Check immutable receipts before publishing any rows from this page.
  for i:0..<page[0].n {item:=page[0].items[i];for k:0..<s[0].n {if cast(string)item.operation[..]==cast(string)s[0].rows[k].operation[..] && !ndd_same(item.receipt[0],s[0].rows[k].state[0].receipt[0]) {s[0].corrupt=true;return false;}}}
- me:[32]u8;if !ne_lower_hex(cast(string)s[0].identity[..],me[..]) {return false;}
+ me:[32]u8;if !ne_lower_hex(cast(string)s[0].identity[..],me[..]) {return false;} // mutant: equivalent (false -> true: the decoded page's canonical identity already exactly matched this 64-byte identity; its 32-byte decode cannot fail)
  for i:0..<page[0].n {
   item:=page[0].items[i];message:= -1;for k:0..<inbox[0].n {row:=inbox[0].messages[k];if cast(string)row.outer[..]==cast(string)item.receipt[0].self[..] && n17_same(row.message.author[..],me[..]) {message=k;break;}}
   if message<0 {continue;}at:= -1;for k:0..<s[0].n {if cast(string)s[0].rows[k].operation[..]==cast(string)item.operation[..] {at=k;break;}}
-  if at<0 {if s[0].n==128 {s[0].full=true;return false;}at=s[0].n;if !nds_begin(s[0].rows[at].state[..],item.receipt[0]) {s[0].corrupt=true;return false;}s[0].rows[at].operation=item.operation;s[0].n+=1;}
+  if at<0 {
+   if s[0].n==128 {s[0].full=true;return false;}at=s[0].n;
+   if !nds_begin(s[0].rows[at].state[..],item.receipt[0]) {s[0].corrupt=true;return false;} // mutant: equivalent (failure-arm mutations: ndl_page_read has already admitted the complete sealed receipt through nsm_sealed_read, including ok, 2..11 canonical distinct IDs and self equal to the last ID; nds_begin therefore cannot refuse)
+   s[0].rows[at].operation=item.operation;s[0].n+=1;
+  }
   m:=inbox[0].messages[message].message;s[0].rows[at].room=m.room;s[0].rows[at].rumor=m.rumor_id;s[0].rows[at].created=m.created_at;s[0].rows[at].visited=true;
  }
  s[0].after=page[0].next;s[0].na=page[0].nn;
@@ -79,4 +85,66 @@ ndd_index :: (s:[]NostrDeliveries,inbox:[]NostrInbox,generation:int,at:int,index
  #assert n>0 && ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);old:=ndl_page_write(p[..],late[..]);
  n=ndd_request(s[..],op,b[..]);#assert n>0 && !ndd_page(s[..],inbox[..],1,cast(string)late[0..<old]) && !s[0].complete;
  #assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);n=ndl_page_write(p[..],b[..]);#assert ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].complete;
+}
+
+#test "receipt cache compacts both windows and resets every owner-specific observation" {
+ inbox:[1]NostrInbox;s:[1]NostrDeliveries;
+ me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert !ndd_begin(s[..],inbox[..]) && ndi_bind(inbox[..],"a",me) && ndd_begin(s[..],inbox[..]);
+ s[0].n=3;for i:0..<3 {s[0].rows[i].visited=true;s[0].rows[i].created=10+i;s[0].rows[i].state[0].receipt[0].self[0]=cast(u8)('a'+i);}
+ inbox[0].n=2;inbox[0].messages[0].outer[0]='b';inbox[0].messages[1].outer[0]='c';s[0].na=64;s[0].complete=true;s[0].full=true;s[0].corrupt=true;
+ #assert ndd_begin(s[..],inbox[..]) && s[0].n==2 && s[0].rows[0].created==11 && s[0].rows[1].created==12 && s[0].rows[2].created==0;
+ #assert !s[0].rows[0].visited && !s[0].rows[1].visited && s[0].na==0 && !s[0].complete && !s[0].full && !s[0].corrupt;
+ s[0].generation+=1;#assert ndd_begin(s[..],inbox[..]) && s[0].n==0 && s[0].generation==inbox[0].generation;
+ s[0].n=1;s[0].identity[0]='0';s[0].rows[0].created=99;#assert ndd_begin(s[..],inbox[..]) && s[0].n==0 && cast(string)s[0].identity[..]==me;
+ a:NsmSealed;b:NsmSealed;a.n=2;b.n=2;a.revision=3;b.revision=3;
+ #assert ndd_same(a,b);b.ids[1][0]='f';#assert !ndd_same(a,b);b=a;b.self[0]='f';#assert !ndd_same(a,b);b=a;b.revision=4;#assert !ndd_same(a,b);b=a;b.n=3;#assert !ndd_same(a,b);
+ rumor:[32]u8;#assert ndd_find(s[..],rumor[..])== -1;s[0].n=2;s[0].rows[0].rumor[0]=1;s[0].rows[1].rumor=rumor;#assert ndd_find(s[..],rumor[..])==1;
+ _=op;
+}
+
+#test "receipt pages retain exact membership pagination metadata and observation guards" {
+ inbox:[1]NostrInbox;s:[1]NostrDeliveries;q:[1]NdlRequest;p:[1]NdlPage;b:[32768]u8;r:[2048]u8;index:[1]MsIndex;work:[2048]u8;
+ me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(inbox[..],"a",me) && ndd_begin(s[..],inbox[..]);
+ // Two receipts with two distinct, actually opened sender copies.
+ ids:[3][64]u8;for i:0..<3 {for k:0..<64 {ids[i][k]='0';}ids[i][63]=cast(u8)('1'+i);}
+ texts:=[2]string.[cast(string)ids[0][..],cast(string)ids[1][..]];
+ inbox[0].n=2;for i:0..<2 {row:=inbox[0].messages[i..<i+1];row[0].outer=ids[i+1];row[0].message.created_at=21+i;row[0].message.room[0]=cast(u8)(7+i);row[0].message.rumor_id[0]=cast(u8)(11+i);#assert ne_lower_hex(me,row[0].message.author[..]);}
+ n:=ndd_request(s[..],op,b[..]);#assert n>0 && ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);nr:=nsm_sealed_write(texts[..],7,r[..]);#assert ndl_put(p[..],cast(string)ids[0][..],cast(string)r[0..<nr]);
+ p[0].next=ids[0];p[0].nn=64;n=ndl_page_write(p[..],b[..]);
+ #assert n>0 && ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && !s[0].complete && s[0].na==64 && cast(string)s[0].after[..]==cast(string)ids[0][..] && s[0].n==1;
+ #assert s[0].rows[0].room[0]==7 && s[0].rows[0].rumor[0]==11 && s[0].rows[0].created==21 && s[0].rows[0].visited;
+ nf:=ndd_filter(s[..],0,work[..]);#assert nf>0 && cast(string)work[0..<nf]=="{\"ids\":[\"0000000000000000000000000000000000000000000000000000000000000001\",\"0000000000000000000000000000000000000000000000000000000000000002\"],\"kinds\":[1059]}";
+ #assert ndd_filter(s[..],-1,work[..])== -1;
+ n=ndd_request(s[..],me,b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);texts[0]=cast(string)ids[1][..];texts[1]=cast(string)ids[2][..];nr=nsm_sealed_write(texts[..],8,r[..]);#assert ndl_put(p[..],cast(string)ids[1][..],cast(string)r[0..<nr]);n=ndl_page_write(p[..],b[..]);
+ #assert ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].complete && s[0].n==2 && s[0].rows[1].created==22 && s[0].rows[1].room[0]==8;
+ #assert !ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]);s[0].complete=false;s[0].corrupt=true;#assert !ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]);s[0].corrupt=false;s[0].full=true;#assert !ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]);s[0].full=false;
+ inbox[0].generation=2;#assert !ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && !ndd_index(s[..],inbox[..],1,0,index[..]);inbox[0].generation=1;
+ s[0].rows[2]=s[0].rows[0];index[0].ok=true;index[0].revision=7;
+ #assert !ndd_index(s[..],inbox[..],1,-1,index[..]) && !ndd_index(s[..],inbox[..],1,2,index[..]);
+ // A complete next pass removes an unvisited prefix, retaining the second row.
+ #assert ndd_begin(s[..],inbox[..]);n=ndd_request(s[..],op,b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]) && ndl_put(p[..],cast(string)ids[1][..],cast(string)r[0..<nr]);n=ndl_page_write(p[..],b[..]);
+ #assert ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].n==1 && s[0].rows[0].created==22 && s[0].rows[1].created==0;
+}
+
+#test "receipt admission requires the exact current query and an opened sender copy" {
+ inbox:[1]NostrInbox;s:[1]NostrDeliveries;q:[1]NdlRequest;p:[1]NdlPage;b:[32768]u8;r:[2048]u8;
+ me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";ids:=[2]string.[op,me];nr:=nsm_sealed_write(ids[..],7,r[..]);
+ #assert ndi_bind(inbox[..],"a",me) && ndd_begin(s[..],inbox[..]);n:=ndd_request(s[..],op,b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]) && ndl_put(p[..],op,cast(string)r[0..<nr]);
+ for mismatch:0..<4 {
+  saved:=p[0];
+  if mismatch==0 {p[0].operation=p[0].identity;}if mismatch==1 {p[0].identity=p[0].operation;}if mismatch==2 {p[0].after=p[0].identity;p[0].na=64;}
+  n=ndl_page_write(p[..],b[..]);#assert n>0;generation:=1;if mismatch==3 {generation=2;}
+  #assert !ndd_page(s[..],inbox[..],generation,cast(string)b[0..<n]) && s[0].n==0 && !s[0].complete;p[0]=saved;
+ }
+ #assert !ndd_page(s[..],inbox[..],1,"{}");
+ // A valid receipt is not enough: a received copy or a missing outer cannot attach it.
+ for mismatch:0..<2 {
+  #assert ndd_begin(s[..],inbox[..]);inbox[0].n=1;row:=inbox[0].messages[0..<1];_=ndi_copy(row[0].outer[..],ifx mismatch==0 then op else me);#assert ne_lower_hex(ifx mismatch==0 then me else op,row[0].message.author[..]);
+  n=ndl_page_write(p[..],b[..]);#assert ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].n==0;
+ }
+ // A full cache refuses a new row without corrupting an existing receipt.
+ #assert ndd_begin(s[..],inbox[..]);s[0].n=128;#assert ne_lower_hex(me,inbox[0].messages[0].message.author[..]);
+ n=ndl_page_write(p[..],b[..]);#assert !ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].full && !s[0].corrupt && s[0].n==128;
 }

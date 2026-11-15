@@ -1,0 +1,42 @@
+// Closed-shape and pagination boundaries for the one delivery receipt codec.
+#test "delivery readers refuse malformed closed owner and cursor fields independently" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";q:[2]NdlRequest;p:[2]NdlPage;b:[40000]u8;
+ for page:0..<2 {for mode:0..<16 {
+  o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],ifx mode==0 then "wrong" else ifx page==1 then NDL_PAGE else NDL_REQUEST);
+  jo_key(o[..],"operation");if mode==1 {jo_null(o[..]);}else {jo_str(o[..],ifx mode==2 then "bad" else ifx mode==3 then "G000000000000000000000000000000000000000000000000000000000000001" else id);}
+  jo_key(o[..],"identity");jo_str(o[..],ifx mode==4 then "bad" else ifx mode==5 then "G000000000000000000000000000000000000000000000000000000000000001" else id);
+  if mode!=6 {jo_key(o[..],"after");if mode==7 {jo_null(o[..]);}else {jo_str(o[..],ifx mode==8 then "bad" else ifx mode==9 then "G000000000000000000000000000000000000000000000000000000000000001" else "");}}
+  if page==1 {jo_key(o[..],"next");jo_str(o[..],ifx mode==10 then "bad" else "");jo_key(o[..],"items");if mode==11 {jo_null(o[..]);}else {jo_arr(o[..]);jo_end(o[..]);}}
+  else if mode==10 || mode==11 {jo_key(o[..],"unexpected");jo_int(o[..],0);}
+  if mode==12 {jo_key(o[..],"extra");jo_int(o[..],0);}if mode==13 {jo_key(o[..],"after");jo_str(o[..],"");}jo_end(o[..]);if mode==14 {jo_raw(o[..],"false");}
+  raw:=cast(string)b[0..<o[0].n];if page==1 {#assert ndl_page_read(raw,p[0..<1])==(mode==15);}else {#assert ndl_request_read(raw,q[0..<1])==(mode==15);}
+ }}
+ #assert !ndl_request_read("{}",q[..]) && !ndl_page_read("{}",p[..]) && !ndl_begin(p[0..<0],q[0..<1]) && !ndl_begin(p[0..<1],q[..]);
+ n:=ndl_request_write(id,"",id,b[..]);for i:n..<513 {b[i]=' ';}#assert ndl_request_read(cast(string)b[0..<512],q[0..<1]) && !ndl_request_read(cast(string)b[0..<513],q[0..<1]);
+ #assert ndl_begin(p[0..<1],q[0..<1]);n=ndl_page_write(p[0..<1],b[..]);for i:n..<32769 {b[i]=' ';}#assert ndl_page_read(cast(string)b[0..<32768],p[1..<2]) && !ndl_page_read(cast(string)b[0..<32769],p[1..<2]);
+}
+#test "delivery pages round trip all sixteen rows and eleven immutable copy ids" {
+ q:[1]NdlRequest;p:[1]NdlPage;r:[1]NdlPage;b:[40000]u8;receipt:[2048]u8;keys:[18][64]u8;text:[11]string;
+ for i:0..<18 {for k:0..<64 {keys[i][k]='0';}keys[i][62]=cast(u8)('0'+i/10);keys[i][63]=cast(u8)('0'+i%10);}
+ for i:0..<11 {text[i]=cast(string)keys[i][..];}
+ n:=ndl_request_write(cast(string)keys[17][..],cast(string)keys[0][..],cast(string)keys[16][..],b[..]);#assert n>0 && ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);
+ nr:=nsm_sealed_write(text[..],MS_SERIAL,receipt[..]);#assert nr>0;
+ for i:1..<17 {#assert ndl_put(p[..],cast(string)keys[i][..],cast(string)receipt[0..<nr]) && p[0].n==i;}
+ #assert !ndl_put(p[..],cast(string)keys[17][..],cast(string)receipt[0..<nr]);p[0].nn=64;p[0].next=keys[16];n=ndl_page_write(p[..],b[..]);
+ #assert n>0 && ndl_page_read(cast(string)b[0..<n],r[..]) && r[0].n==16 && r[0].nn==64 && r[0].na==64;
+ for i:0..<16 {#assert cast(string)r[0].items[i].operation[..]==cast(string)keys[i+1][..] && r[0].items[i].receipt[0].n==11 && r[0].items[i].receipt[0].revision==MS_SERIAL;for k:0..<11 {#assert cast(string)r[0].items[i].receipt[0].ids[k][..]==text[k];}}
+ #assert ndl_page_write(p[..],b[0..<n])==n && ndl_page_write(p[..],b[0..<n-1])== -1;
+ #assert ndl_page_write(p[0..<0],b[..])== -1 && !ndl_put(p[0..<0],cast(string)keys[17][..],cast(string)receipt[0..<nr]);
+}
+#test "delivery writers reject every malformed in-memory cursor receipt and count" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";next:="0000000000000000000000000000000000000000000000000000000000000002";
+ q:[1]NdlRequest;p:[1]NdlPage;b:[32768]u8;receipt:[2048]u8;ids:=[2]string.[id,next];
+ n:=ndl_request_write(id,"",id,b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]);
+ for mode:0..<6 {saved:=q[0];if mode==0 {q[0].operation[0]='g';}if mode==1 {q[0].identity[0]='g';}if mode==2 {q[0].na=1;}if mode==3 {q[0].na=65;}if mode==4 {q[0].na=64;q[0].after[0]='g';}if mode==5 {q[0].na= -1;}#assert !ndl_begin(p[..],q[..]);q[0]=saved;}
+ #assert ndl_begin(p[..],q[..]);nr:=nsm_sealed_write(ids[..],7,receipt[..]);#assert ndl_put(p[..],id,cast(string)receipt[0..<nr]);
+ for mode:0..<13 {saved:=p[0];
+  if mode==0 {p[0].operation[0]='g';}if mode==1 {p[0].identity[0]='g';}if mode==2 {p[0].n= -1;}if mode==3 {p[0].n=17;}if mode==4 {p[0].na=1;}if mode==5 {p[0].na=64;p[0].after[0]='g';}if mode==6 {p[0].nn=1;}if mode==7 {p[0].nn=64;p[0].next=p[0].identity;p[0].next[63]='3';}if mode==8 {p[0].nn=64;p[0].n=0;}if mode==9 {p[0].items[0].receipt[0].n=1;}if mode==10 {p[0].items[0].receipt[0].n=12;}if mode==11 {p[0].items[0].receipt[0].ids[0][0]='g';}if mode==12 {p[0].items[0].operation[0]='g';}
+  #assert ndl_page_write(p[..],b[..])== -1;p[0]=saved;
+ }
+ for mode:0..<5 {saved:=p[0];if mode==0 {p[0].n= -1;}if mode==1 {p[0].n=16;}if mode==2 {p[0].identity[0]='g';}if mode==3 {p[0].na=1;}if mode==4 {p[0].na=64;p[0].after[0]='g';}#assert !ndl_put(p[..],next,cast(string)receipt[0..<nr]);p[0]=saved;}
+}
