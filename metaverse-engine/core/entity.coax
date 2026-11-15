@@ -60,6 +60,7 @@ EntityStore :: struct {
 #test "decoded entity handles need canonical words and admitted slot/generation ranges" {
  b:[1]OracleBacking;w:=oracle_store(b[..]);a:=entity_spawn(w);entity_flush(w);
  #assert entity_alive(w,a.handle);
+ #assert !handle_present(ENTITY_NONE) && handle_present(Handle(Entity).{value=1}) && handle_present(a.handle);   // handle_present's own copy for Entity handles
  #assert entity_canonical(Handle(Entity).{value=ENTITY_HANDLE_MAX}) && !entity_canonical(Handle(Entity).{value=ENTITY_HANDLE_MAX+1});
  #assert !entity_canonical(Handle(Entity).{value=17596481011712}); // generation 4097, slot zero
  #assert entity_handle(ENTITY_SLOT_MASK,EntityGeneration.{value=ENTITY_GEN_MASK}).value==ENTITY_HANDLE_MAX;
