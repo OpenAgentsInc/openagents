@@ -50,7 +50,7 @@ MS_SUITES :: 1024;
 MS_UNITS :: 64;                // #authority files one part mutates
 MS_PARTS_MAX :: 16;            // parts a suite
 MS_PER_PART :: 8;              // files a part holds before a suite splits: each part repeats the baseline
-MS_JOBS :: 18;                 // parts at once: 6 hosts x 3 slots (remote.sh's defaults)
+MS_JOBS :: 14;                 // parts at once: the process table holds 16 children (CXPROC_MAX), and ms_run needs one
 MS_TEXT :: 4194304;            // the suite list, a part's output, the report
 MS_BODY :: 60000;              // a GitHub issue body holds 65,536 characters
 MS_SHOW :: 12;                 // survivors shown a file

@@ -8,7 +8,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !args_load(a[..]) { tool_errln("mutation-sweep: too many arguments"); return 2; }
   parts_max := 4; jobs := 6;
   if args_has(a[..], "--parts") { v := args_number(args_value(a[..], "--parts", "")); if !v.ok || v.value < 1 || v.value > MS_PARTS_MAX { tool_errln("mutation-sweep: --parts N, 1 to 16"); return 2; } parts_max = cast(int) v.value; }
-  if args_has(a[..], "--jobs") { v := args_number(args_value(a[..], "--jobs", "")); if !v.ok || v.value < 1 || v.value > MS_JOBS { tool_errln("mutation-sweep: --jobs J, 1 to 18"); return 2; } jobs = cast(int) v.value; }
+  if args_has(a[..], "--jobs") { v := args_number(args_value(a[..], "--jobs", "")); if !v.ok || v.value < 1 || v.value > MS_JOBS { tool_errln("mutation-sweep: --jobs J, 1 to 14"); return 2; } jobs = cast(int) v.value; }
   minutes := MS_PART_MINUTES;
   if args_has(a[..], "--part-minutes") { v := args_number(args_value(a[..], "--part-minutes", "")); if !v.ok || v.value < 1 || v.value > 1440 { tool_errln("mutation-sweep: --part-minutes M, 1 to 1440"); return 2; } minutes = cast(int) v.value; }
   hours := MS_HOURS;
@@ -99,10 +99,12 @@ tool_main :: () -> int #export_c #effects(all) {
     if running == 0 && (next >= np || !may) { break; }
     for l: 0..<jobs {
       if lane_part[l] < 0 && next < np && ms_may_start(hours, proc_now_ms() - t0) {
+        // no free process handle: the part waits for one, it is not a part that did not run
+        h := proc_new();
+        if h < 0 { continue; }
         p := order[next]; next += 1;
         s := suites[parts[p].suite];
-        h := proc_new();
-        ok := h >= 0 && proc_cwd(h, root) && proc_arg(h, "coax/remote/remote.sh") && proc_arg(h, "run");
+        ok := proc_cwd(h, root) && proc_arg(h, "coax/remote/remote.sh") && proc_arg(h, "run");
         if local { ok = ok && proc_arg(h, "--local"); }
         ok = ok && proc_arg(h, "--") && proc_arg(h, "coax/bin/coax") && proc_arg(h, "mutate") && proc_arg(h, s.path);
         for u: 0..<s.nunits { if u % parts[p].parts == parts[p].part { ok = ok && proc_arg(h, "--unit") && proc_arg(h, ms_item(s.units, u)); } }
@@ -117,7 +119,7 @@ tool_main :: () -> int #export_c #effects(all) {
         outs[l].used = 0; outs[l].full = false;
         parts[p].started_ms = proc_now_ms(); parts[p].tonight = true;
         if !ok || proc_start(h) != 0 {
-          if h >= 0 { r := proc_release(h); }
+          r := proc_release(h);
           print("FAIL % part %/%: remote.sh did not start\n", s.path, parts[p].part + 1, parts[p].parts);
           failed += 1; done += 1;
           mw0 := fs_write(ms_part_file(state, "parts", s.path, parts[p].part + 1, ".meta", mp[..]), ms_meta_line(head, night, "remote.sh did not start", mb[..]));

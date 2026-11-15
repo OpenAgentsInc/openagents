@@ -8,7 +8,7 @@
 # mutation-sweep/ folder, which the move keeps. The parts run on the build pool through
 # coax/remote/remote.sh, inside its spend cap (OA_REMOTE_DAILY_USD) and host count;
 # OA_REMOTE_HOST keeps them on one host. One sweep runs at a time: a second one stops.
-#   coax/remote/mutation-sweep.sh [ARGS...]   ARGS pass to the sweep (--dry-run, --only, --parts, --jobs, --part-minutes)
+#   coax/remote/mutation-sweep.sh [ARGS...]   ARGS pass to the sweep (--dry-run, --only, --parts, --jobs, --part-minutes, --hours)
 #   coax/remote/mutation-sweep.sh install     run it each night at 02:00 Chicago time: on Linux the systemd user
 #                                             timer com.openagents.mutation-sweep (OA_SWEEP_ARGS are its ARGS;
 #                                             OA_REMOTE_STATE, OA_REMOTE_HOST and CLOUDSDK_CONFIG are kept when set);

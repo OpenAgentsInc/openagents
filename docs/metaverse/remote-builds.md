@@ -1012,7 +1012,8 @@ at a time; a second one says which is running and stops.
    one baseline; every part repeats it, which is why a suite splits only
    when it has many files. Native code finds each mutant's killer and the
    evaluator confirms it (`coax/docs/native-mutants.md`). At
-   most six parts run at once (`--jobs`). A part stops after
+   most six parts run at once (`--jobs`, at most 14: a Coax tool holds 16
+   child processes, and the sweep keeps one for git and gh). A part stops after
    `--part-minutes` (180 by default, through `OA_REMOTE_TIMEOUT`) and the
    report says so; a part ran only when it reported every file it was given.
    The sweep rolls: a night starts no part after `--hours` (6 by default; 0
