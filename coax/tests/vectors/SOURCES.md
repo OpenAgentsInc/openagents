@@ -426,7 +426,9 @@ that a maliciously replaced manifest is authentic.
   `silent.py` runs `reference.py` on the vectors, and
   `make_silent_vectors.py` checks every case against
   `silent_reference.py`, a Python implementation, and adds constructed
-  addresses for the version rules.
+  addresses for the version rules, keys from a seed by a BIP-32
+  derivation, labels, and a scan of outputs out of order. Those are
+  generated values, not published ones.
 - **Multisig (Bitcoin chapter 100):** BIP-67 and BIP-387 at bips
   revision `5aadddb5`, whose test-vector sections hold the sorted-key
   2-of-n vectors and the `multi_a` and `sortedmulti_a` descriptors with

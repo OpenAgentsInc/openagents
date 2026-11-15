@@ -14,7 +14,8 @@ the published sets), and the receiver's addresses, input key sum, tweak,
 shared secret, found outputs with their secret tweaks, and the BIP-340
 signature each found output's key makes. coax/tests/bitcoin/silent.py
 also runs the BIP's own reference.py over the same file. Then it
-constructs addresses for the version rules the vectors don't reach.
+constructs addresses for the version rules the vectors don't reach, keys
+from a seed by a BIP-32 derivation, labels and a scan.
 """
 import hashlib, json, sys
 from pathlib import Path
@@ -135,7 +136,14 @@ def constructed():
             ('mixed case', R.raw('sp', 0, body)[:10] + R.raw('sp', 0, body)[10:].upper()),
             ('a character changed', flip(R.raw('sp', 0, body))),
             ('a scan key off the curve', R.raw('sp', 0, off + spend)),
-            ('over 1023 characters', R.raw('sp', 1, body + bytes(600)))]
+            ('over 1023 characters', R.raw('sp', 1, body + bytes(600))),
+            ('exactly 1023 characters', R.raw('sp', 1, body + bytes(567))),
+            ('1024 characters on a testnet', R.raw('tsp', 1, body + bytes(567))),
+            ('no data', words('sp', [])), ('version 31 alone', words('sp', [31])),
+            ('version 0 with a spare zero group', words('sp', [0] + R._regroup(body, 8, 5, True) + [0])),
+            ('version 1 with five spare zero bits', words('sp', [1] + R._regroup(body + bytes(4), 8, 5, True) + [0])),
+            ('version 0 with a padding bit set', words('sp', [0] + R._regroup(body, 8, 5, True)[:-1] + [R._regroup(body, 8, 5, True)[-1] | 2]))]
+    assert len(rows[-7][1]) == 1023 and len(rows[-6][1]) == 1024
     out = []
     for what, text in rows:
         reason, testnet, version, s, m = R.decode(text)
@@ -143,7 +151,62 @@ def constructed():
     return out
 
 
-def render(inputs, cases, recipients, receives, addresses):
+def words(hrp, data):
+    """Bech32m of 5-bit groups as they are, padding and all."""
+    c = R._polymod(R._expand(hrp) + data + [0] * 6) ^ R.BECH32M
+    return hrp + '1' + ''.join(R.CHARSET[d] for d in data + [c >> 5 * (5 - i) & 31 for i in range(6)])
+
+
+def bip32_key(seed, path):
+    """BIP-32's private derivation from a seed along path."""
+    import hmac
+    I = hmac.new(b'Bitcoin seed', seed, hashlib.sha512).digest()
+    k, c = int.from_bytes(I[:32], 'big'), I[32:]
+    for i in path:
+        data = (b'\0' + k.to_bytes(32, 'big') if i >= 2 ** 31 else R.ser_p(R.base(k))) + i.to_bytes(4, 'big')
+        I = hmac.new(c, data, hashlib.sha512).digest()
+        k, c = (int.from_bytes(I[:32], 'big') + k) % R.N, I[32:]
+    return k.to_bytes(32, 'big')
+
+
+def keys_labels_scan():
+    """Constructed known answers the published vectors don't reach: keys
+    from a seed at BIP-352's paths, labels with m's high bytes set, and a
+    scan whose outputs are found out of order and far apart."""
+    H = 2 ** 31
+    keys = []
+    for seed, coin, account in ((bytes(range(16)), 1, 2), (bytes([0x51]) * 32, 0, H - 1)):
+        keys.append(dict(seed=seed.hex(), coin=coin, account=account,
+                         scan=bip32_key(seed, [H + 352, H + coin, H + account, H + 1, 0]).hex(),
+                         spend=bip32_key(seed, [H + 352, H + coin, H + account, H, 0]).hex()))
+    b_scan = int.from_bytes(hashlib.sha256(b'silent scan key').digest(), 'big') % R.N
+    labels = []
+    for m in (0x01020304, 0xffffffff, 7):
+        t = R.label(b_scan, m)
+        labels.append(dict(m=m, tweak=t.to_bytes(32, 'big').hex(), point=R.ser_p(R.base(t)).hex()))
+    b_spend = int.from_bytes(hashlib.sha256(b'silent spend key').digest(), 'big') % R.N
+    tw = R.base(int.from_bytes(hashlib.sha256(b'silent tweak').digest(), 'big') % R.N)
+    ecdh = R.mul(b_scan, tw)
+    t = [R.shared_tweak(ecdh, k) for k in range(7)]
+    pk = [R.add(R.base(b_spend), R.base(x)) for x in t]
+    # The outputs found out of order and far apart, in a list of 400.
+    at = [0, 17, 9, 8, 16, 18, 370]
+    outs = [bytes(32)] * 400
+    for k, i in enumerate(at): outs[i] = R.xonly(pk[k])
+    ih = 1  # the tweak is tw itself: input_hash A with A = tw, input_hash 1
+    assert R.scan(b_scan, R.base(b_spend), tw, ih, outs, [])[2] == [(R.xonly(pk[k]), t[k]) for k in range(7)]
+    # A labeled output first, then an unlabeled one.
+    lab = R.label(b_scan, 7)
+    two = [R.xonly(R.add(pk[0], R.base(lab))), R.xonly(pk[1])]
+    found = R.scan(b_scan, R.base(b_spend), tw, ih, two, [7])[2]
+    assert found == [(two[0], (t[0] + lab) % R.N), (two[1], t[1])]
+    scan = dict(b_scan=b_scan.to_bytes(32, 'big').hex(), spend=R.ser_p(R.base(b_spend)).hex(), tweak=R.ser_p(tw).hex(),
+                keys=''.join(R.xonly(p).hex() for p in pk), tweaks=''.join(x.to_bytes(32, 'big').hex() for x in t),
+                labeled=two[0].hex(), labeled_tweak=found[0][1].to_bytes(32, 'big').hex())
+    return keys, labels, scan
+
+
+def render(inputs, cases, recipients, receives, addresses, extra):
     L = ['// Generated by make_silent_vectors.py from BIP-352\'s pinned',
          '// send_and_receive_test_vectors.json (coax/tests/vectors/upstream/bip352/,',
          '// listed in SOURCES.md) and from addresses it constructs. Published values,',
@@ -188,14 +251,30 @@ def render(inputs, cases, recipients, receives, addresses):
     for a in addresses:
         L.append(f'  SlAddressCase.{{what="{a["what"]}", address="{a["address"]}", reason={a["reason"]}, '
                  f'testnet={"true" if a["testnet"] else "false"}, version={a["version"]}, scan="{a["scan"]}", spend="{a["spend"]}"}},')
-    L.append('];')
+    keys, labels, scan = extra
+    L += ['];', '// Keys from a seed at BIP-352\'s paths, by a BIP-32 derivation in Python:',
+          '// b_scan at m/352\'/coin\'/account\'/1\'/0, b_spend at m/352\'/coin\'/account\'/0\'/0.',
+          'SlKeysCase :: struct { seed: string; coin: int; account: int; scan: string; spend: string; }',
+          f'SL_KEYS :: [{len(keys)}] SlKeysCase.[']
+    for k in keys:
+        L.append(f'  SlKeysCase.{{seed="{k["seed"]}", coin={k["coin"]}, account={k["account"]}, scan="{k["scan"]}", spend="{k["spend"]}"}},')
+    L += ['];', '// Labels of the scan key in SL_SCAN: m, the tweak and its point.',
+          'SlLabelCase :: struct { m: int; tweak: string; point: string; }',
+          f'SL_LABELS :: [{len(labels)}] SlLabelCase.[']
+    for l in labels:
+        L.append(f'  SlLabelCase.{{m={l["m"]}, tweak="{l["tweak"]}", point="{l["point"]}"}},')
+    L += ['];', '// A constructed receiver: b_scan, B_spend, the tweak, P_0 to P_6 (x-only)',
+          '// and t_0 to t_6, and P_0 plus label 7\'s point (x-only) with its tweak.',
+          'SlScanCase :: struct { b_scan: string; spend: string; tweak: string; keys: string; tweaks: string; labeled: string; labeled_tweak: string; }',
+          f'SL_SCAN :: SlScanCase.{{b_scan="{scan["b_scan"]}", spend="{scan["spend"]}", tweak="{scan["tweak"]}", keys="{scan["keys"]}", '
+          f'tweaks="{scan["tweaks"]}", labeled="{scan["labeled"]}", labeled_tweak="{scan["labeled_tweak"]}"}};']
     return '\n'.join(L) + '\n'
 
 
 def main():
     inputs, cases, recipients, receives = build()
     addresses = constructed()
-    text = render(inputs, cases, recipients, receives, addresses)
+    text = render(inputs, cases, recipients, receives, addresses, keys_labels_scan())
     if '--write' in sys.argv: OUT.write_text(text)
     assert OUT.read_text() == text, 'silent_vectors.coax is not current: run with --write'
     print(f'silent_vectors.coax matches: {len(cases)} cases, {len(inputs)} inputs, {len(recipients)} recipients, '

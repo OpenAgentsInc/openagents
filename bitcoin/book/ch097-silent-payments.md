@@ -118,7 +118,8 @@ silent_keys :: (seed: [] u8, coin: int, account: int, scan: [] u8, spend: [] u8)
   ok := bip32_path(seed, path[..], scan, chain[..]);
   path[3] = BIP32_HARDENED;
   ok = ok && bip32_path(seed, path[..], spend, chain[..]);
-  for i: 0..<32 { chain[i] = 0; }
+  // Equivalent: chain is a local no caller sees; clearing it is erasure, not output.
+  for i: 0..<32 { chain[i] = 0; } // mutant: equivalent
   return ok;
 }
 ```
@@ -138,11 +139,14 @@ designed for. `b32_encode` with `extended` set allows that.
 // 66 bytes ser_P(B_scan) || ser_P(B_m) in 5-bit groups: 116 characters on
 // mainnet, 117 on a testnet. Returns the length written, or -1.
 silent_address_vartime :: (testnet: bool, scan: [] u8, spend: [] u8, out: [] u8) -> int #export_c #effects(all) {
-  if scan.count != 33 || spend.count != 33 || !sl_decode_vartime(scan).ok || !sl_decode_vartime(spend).ok { return -1; }
+  // Equivalent: sl_decode_vartime refuses every length but 33, so each length test only repeats the key test after it.
+  if scan.count != 33 || spend.count != 33 || !sl_decode_vartime(scan).ok || !sl_decode_vartime(spend).ok { return -1; } // mutant: equivalent
   body: [66] u8; words: [107] u8;
   for i: 0..<33 { body[i] = scan[i]; body[33 + i] = spend[i]; }
-  words[0] = 0;
-  for i: 0..<106 { words[1 + i] = b32_word(cast(string) body[..], true, i); }
+  // Equivalent: words starts zeroed, and words[1] is the loop's first write.
+  words[0] = 0; // mutant: equivalent
+  // Equivalent: word 0 is the top five bits of scan[0], 02 or 03, so 0, as words starts.
+  for i: 0..<106 { words[1 + i] = b32_word(cast(string) body[..], true, i); } // mutant: equivalent
   r := b32_encode(ifx testnet then "tsp" else "sp", cast(string) words[..], false, out, true, false, B32_BECH32M);
   return ifx r.error == NC_OK then r.written else -1;
 }
@@ -172,7 +176,8 @@ silent_decode_vartime :: (text: string) -> SlAddress #export_c #effects(all) {
   version := cast(int) words[0];
   if version == 31 { r.reason = SLA_VERSION; return r; }
   // 5-bit groups to bytes: the spare bits must be fewer than 5, and zero.
-  body: [SL_ADDRESS_MAX] u8; n := 0; acc := 0; bits := 0;
+  // Equivalent: a 1 in acc's start reaches bit 10 at the second group, where the first byte read masks it off, and the third shift drops it past bit 11.
+  body: [SL_ADDRESS_MAX] u8; n := 0; acc := 0; bits := 0; // mutant: equivalent
   for i: 1..<d.written {
     acc = ((acc << 5) | cast(int) words[i]) & 0xfff; bits += 5;
     if bits >= 8 { bits -= 8; body[n] = cast(u8) ((acc >> bits) & 255); n += 1; }
@@ -209,14 +214,17 @@ SlLabel :: struct { m: int; point: [33] u8; tweak: [32] u8; }
 silent_label :: (b_scan: [] u8, m: int, out: [] SlLabel, w: [] SlWork) -> int #export_c #effects(all) {
   if b_scan.count != 32 || out.count != 1 || w.count != 1 || m < 0 || m > 0xffffffff { return SL_CAPACITY; }
   for i: 0..<32 { w[0].data[i] = b_scan[i]; }
-  sl_put32(w[0].data[32..<36], m);
+  // Equivalent: sl_put32 writes four bytes, and data has 37.
+  sl_put32(w[0].data[32..<36], m); // mutant: equivalent
   sl_tagged(w, "BIP0352/Label", w[0].data[0..<36]);
   t := sl_digest_scalar(w);
-  if !t.ok { return sl_done(w, SL_HASH_RANGE); }
+  // Equivalent: no input is known whose SHA-256 is 0 or at least n.
+  if !t.ok { return sl_done(w, SL_HASH_RANGE); } // mutant: equivalent
   out[0].m = m;
   #assert sc_store(t.value, out[0].tweak[..]);
   #assert sl_encode(smb_multiply_web(t.value), out[0].point[..]);
-  t = ScLoad.{};
+  // Equivalent: t is a local no caller sees; clearing it is erasure, not output.
+  t = ScLoad.{}; // mutant: equivalent
   return sl_done(w, SL_OK);
 }
 // B_m = B_spend + the label's point, into out (33 bytes).
@@ -294,7 +302,8 @@ silent_input_key_vartime :: (script_sig: [] u8, witness: [] u8, prevout: [] u8, 
     return kind;
   }
   if prevout.count == 34 && prevout[0] == 0x51 && prevout[1] == 0x20 && n > 0 {
-    if n > 1 && last.count > 0 && last[0] == 0x50 { n -= 1; }
+    // Equivalent: the && chain groups to the left, so a mutant there differs only for one item starting 0x50: n becomes 0 rather than staying 1, and the control-block test below needs n > 1 either way.
+    if n > 1 && last.count > 0 && last[0] == 0x50 { n -= 1; } // mutant: equivalent
     if n > 1 {
       control := witness[items[n-1].at..<items[n-1].at + items[n-1].n];
       nums := SL_NUMS;
@@ -369,7 +378,8 @@ silent_input_hash_vartime :: (outpoints: [] u8, a_point: [] u8, out: [] u8) -> b
   for k: 1..<outpoints.count / 36 {
     for i: 0..<36 {
       a := outpoints[36*k + i]; b := outpoints[36*low + i];
-      if a != b { if a < b { low = k; } break; }
+      // Equivalent: inside a != b, a <= b is a < b.
+      if a != b { if a < b { low = k; } break; } // mutant: equivalent
     }
   }
   w: [1] SlWork; data: [69] u8;
@@ -409,17 +419,20 @@ silent_key_sum :: (keys: [] u8, taproot: [] bool, out: [] u8, a_point: [] u8, w:
   a := sc_small(0);
   for k: 0..<taproot.count {
     d := sc_load(keys[32*k..<32*k+32]);
-    if !d.ok || sc_is_zero(d.value) { a = ScScalar.{}; return sl_done(w, SL_BAD_KEY); }
+    // Equivalent: a is a local no caller sees; clearing it is erasure, not output.
+    if !d.ok || sc_is_zero(d.value) { a = ScScalar.{}; return sl_done(w, SL_BAD_KEY); } // mutant: equivalent
     if taproot[k] {
       #assert sl_encode(smb_multiply_web(d.value), w[0].shared[..]);
       d.value = sc_select(cast(u64) (w[0].shared[0] & 1), sc_negate(d.value), d.value);
     }
     a = sc_add(a, d.value);
-    d = ScLoad.{};
+    // Equivalent: d is a local no caller sees; clearing it is erasure, not output.
+    d = ScLoad.{}; // mutant: equivalent
   }
   if sc_is_zero(a) { return sl_done(w, SL_ZERO_SUM); }
   #assert sc_store(a, out) && sl_encode(smb_multiply_web(a), a_point);
-  a = ScScalar.{};
+  // Equivalent: a is a local no caller sees; clearing it is erasure, not output.
+  a = ScScalar.{}; // mutant: equivalent
   return sl_done(w, SL_OK);
 }
 ```
@@ -453,6 +466,22 @@ sl_output :: (b_m: SgPoint, t: ScScalar, out: [] u8) -> bool #effects(all) {
 <!-- source: coax/lib/bitcoin/silent.coax send -->
 ```jai
 SlSent :: struct { code: int; count: int; }
+// Whether every group of recipients (66 bytes each) that share a scan key
+// has at most limit members. A recipient starts a group when no earlier
+// recipient has its scan key.
+sl_groups_fit_vartime :: (recipients: [] u8, limit: int) -> bool #effects(all) {
+  r := recipients.count / 66;
+  for i: 0..<r {
+    first := true;
+    // Equivalent: these mutants only call more recipients a group's first, and counting a group again from a later member gives no more members.
+    for j: 0..<i { if sl_same_vartime(recipients[66*j..<66*j+33], recipients[66*i..<66*i+33]) { first = false; break; } } // mutant: equivalent
+    if !first { continue; }
+    size := 0;
+    for j: i..<r { if sl_same_vartime(recipients[66*j..<66*j+33], recipients[66*i..<66*i+33]) { size += 1; } }
+    if size > limit { return false; }
+  }
+  return true;
+}
 // The outputs for recipients, 66 bytes each (B_scan || B_m, as decoded),
 // into outputs, 32 bytes each: x-only Taproot keys, in groups by scan
 // key, each group in the order its recipients appear. Recipients sharing
@@ -469,17 +498,11 @@ silent_send :: (keys: [] u8, taproot: [] bool, outpoints: [] u8, recipients: [] 
   a: [32] u8; a_point: [33] u8; h: [32] u8;
   code := silent_key_sum(keys, taproot, a[..], a_point[..], w);
   if code != SL_OK { return SlSent.{code=code}; }
-  if !silent_input_hash_vartime(outpoints, a_point[..], h[..]) { sl_wipe(a[..]); return SlSent.{code=SL_HASH_RANGE}; }
-  // The groups: a recipient starts one when no earlier recipient has its
-  // scan key. Check every group's size before making any output.
-  for i: 0..<r {
-    first := true;
-    for j: 0..<i { if sl_same_vartime(recipients[66*j..<66*j+33], recipients[66*i..<66*i+33]) { first = false; break; } }
-    if !first { continue; }
-    size := 0;
-    for j: i..<r { if sl_same_vartime(recipients[66*j..<66*j+33], recipients[66*i..<66*i+33]) { size += 1; } }
-    if size > SL_K_MAX { sl_wipe(a[..]); return SlSent.{code=SL_GROUP_LIMIT}; }
-  }
+  // Equivalent: a is a local no caller sees; wiping it is erasure, not output.
+  if !silent_input_hash_vartime(outpoints, a_point[..], h[..]) { sl_wipe(a[..]); return SlSent.{code=SL_HASH_RANGE}; } // mutant: equivalent
+  // Check every group's size before making any output.
+  // Equivalent: a is a local no caller sees; wiping it is erasure, not output.
+  if !sl_groups_fit_vartime(recipients, SL_K_MAX) { sl_wipe(a[..]); return SlSent.{code=SL_GROUP_LIMIT}; } // mutant: equivalent
   // Each group: ecdh_shared_secret = (input_hash a) B_scan, then its outputs.
   written := 0;
   for i: 0..<r {
@@ -487,25 +510,33 @@ silent_send :: (keys: [] u8, taproot: [] bool, outpoints: [] u8, recipients: [] 
     for j: 0..<i { if sl_same_vartime(recipients[66*j..<66*j+33], recipients[66*i..<66*i+33]) { first = false; break; } }
     if !first { continue; }
     scan := sl_decode_vartime(recipients[66*i..<66*i+33]);
-    if !scan.ok { sl_wipe(a[..]); return SlSent.{code=sl_done(w, SL_BAD_KEY)}; }
+    // Equivalent: a is a local no caller sees; wiping it is erasure, not output.
+    if !scan.ok { sl_wipe(a[..]); return SlSent.{code=sl_done(w, SL_BAD_KEY)}; } // mutant: equivalent
     s := sc_mul(sc_load(h[..]).value, sc_load(a[..]).value);
     e := smc_multiply(s, scan.value);
-    s = ScScalar.{};
-    if !sl_encode(e.value, w[0].shared[..]) { sl_wipe(a[..]); return SlSent.{code=sl_done(w, SL_BAD_KEY)}; }
-    e = SgResult.{};
+    // Equivalent: s is a local no caller sees; clearing it is erasure, not output.
+    s = ScScalar.{}; // mutant: equivalent
+    // Equivalent: s is input_hash times a, both in 1 to n - 1, so not 0 mod the prime n, and B_scan decoded to a point of order n: s B_scan is never infinity. a is a local.
+    if !sl_encode(e.value, w[0].shared[..]) { sl_wipe(a[..]); return SlSent.{code=sl_done(w, SL_BAD_KEY)}; } // mutant: equivalent
+    // Equivalent: e is a local no caller sees; clearing it is erasure, not output.
+    e = SgResult.{}; // mutant: equivalent
     k := 0;
     for j: i..<r {
       if !sl_same_vartime(recipients[66*j..<66*j+33], recipients[66*i..<66*i+33]) { continue; }
       b_m := sl_decode_vartime(recipients[66*j+33..<66*j+66]);
       t := sl_t(k, w);
-      if !b_m.ok || !t.ok { sl_wipe(a[..]); return SlSent.{code=sl_done(w, ifx b_m.ok then SL_HASH_RANGE else SL_BAD_KEY)}; }
-      if !sl_output(b_m.value, t.value, outputs[32*written..<32*written+32]) { sl_wipe(a[..]); return SlSent.{code=sl_done(w, SL_BAD_KEY)}; }
-      t = ScLoad.{};
+      // Equivalent: no input is known whose SHA-256 is 0 or at least n, so t is ok and the code is SL_BAD_KEY; a is a local.
+      if !b_m.ok || !t.ok { sl_wipe(a[..]); return SlSent.{code=sl_done(w, ifx b_m.ok then SL_HASH_RANGE else SL_BAD_KEY)}; } // mutant: equivalent
+      // Equivalent: P_k is infinity only when t_k is the negated discrete log of B_m, a hash no one can aim; a is a local.
+      if !sl_output(b_m.value, t.value, outputs[32*written..<32*written+32]) { sl_wipe(a[..]); return SlSent.{code=sl_done(w, SL_BAD_KEY)}; } // mutant: equivalent
+      // Equivalent: t is a local no caller sees; clearing it is erasure, not output.
+      t = ScLoad.{}; // mutant: equivalent
       if shared.count != 0 { for b: 0..<33 { shared[33*j + b] = w[0].shared[b]; } }
       written += 1; k += 1;
     }
   }
-  sl_wipe(a[..]);
+  // Equivalent: a is a local no caller sees; wiping it is erasure, not output.
+  sl_wipe(a[..]); // mutant: equivalent
   sl_clear(w);
   return SlSent.{code=SL_OK, count=written};
 }
@@ -551,7 +582,8 @@ silent_tweak_vartime :: (pubs: [] u8, outpoints: [] u8, tweak: [] u8, a_point: [
   if !sl_encode(sum, a_point) { return SL_ZERO_SUM; }
   h: [32] u8;
   if !silent_input_hash_vartime(outpoints, a_point, h[..]) { return SL_HASH_RANGE; }
-  return ifx sl_encode(ecmult_vartime(sc_small(0), sum, sc_load(h[..]).value).value, tweak) then SL_OK else SL_ZERO_SUM;
+  // Equivalent: input_hash is in 1 to n - 1 and A is not infinity (refused above), so input_hash A, in a group of prime order n, is not infinity.
+  return ifx sl_encode(ecmult_vartime(sc_small(0), sum, sc_load(h[..]).value).value, tweak) then SL_OK else SL_ZERO_SUM; // mutant: equivalent
 }
 // ecdh_shared_secret = b_scan (input_hash A), the same point the sender
 // made as (input_hash a) B_scan, into w.shared. Copies it to out (33
@@ -560,13 +592,17 @@ silent_shared :: (b_scan: [] u8, tweak: [] u8, out: [] u8, w: [] SlWork) -> int 
   if b_scan.count != 32 || w.count != 1 || (out.count != 0 && out.count != 33) { return SL_CAPACITY; }
   p := sl_decode_vartime(tweak);
   b := sc_load(b_scan);
-  if !p.ok || !b.ok || sc_is_zero(b.value) { b = ScLoad.{}; return SL_BAD_KEY; }
+  // Equivalent: b is a local no caller sees; clearing it is erasure, not output.
+  if !p.ok || !b.ok || sc_is_zero(b.value) { b = ScLoad.{}; return SL_BAD_KEY; } // mutant: equivalent
   e := smc_multiply(b.value, p.value);
-  b = ScLoad.{};
+  // Equivalent: b is a local no caller sees; clearing it is erasure, not output.
+  b = ScLoad.{}; // mutant: equivalent
   ok := sl_encode(e.value, w[0].shared[..]);
-  e = SgResult.{};
+  // Equivalent: e is a local no caller sees; clearing it is erasure, not output.
+  e = SgResult.{}; // mutant: equivalent
   for i: 0..<out.count { out[i] = w[0].shared[i]; }
-  return ifx ok then SL_OK else SL_BAD_KEY;
+  // Equivalent: b is in 1 to n - 1 and the tweak decoded to a point of order n, so b times it is never infinity.
+  return ifx ok then SL_OK else SL_BAD_KEY; // mutant: equivalent
 }
 ```
 
@@ -589,7 +625,8 @@ SlScan :: struct { code: int; count: int; }
 // The label whose point is p's compressed encoding, or -1.
 sl_label_of_vartime :: (p: SgPoint, labels: [] SlLabel) -> int #effects(all) {
   e := sg_encode_public(p);
-  if e.length != 33 { return -1; }
+  // Equivalent: p is infinity only when the output's point is P_k or -P_k, whose x the plain comparison before it already matched.
+  if e.length != 33 { return -1; } // mutant: equivalent
   for i: 0..<labels.count { if sl_same_vartime(e.bytes[..], labels[i].point[..]) { return i; } }
   return -1;
 }
@@ -611,12 +648,14 @@ sl_scan_upto :: (b_scan: [] u8, spend: [] u8, tweak: [] u8, outputs: [] u8, labe
   k := 0;
   while k < limit {
     t := sl_t(k, w);
-    if !t.ok { return SlScan.{code=sl_done(w, SL_HASH_RANGE), count=k}; }
+    // Equivalent: no input is known whose SHA-256 is 0 or at least n.
+    if !t.ok { return SlScan.{code=sl_done(w, SL_HASH_RANGE), count=k}; } // mutant: equivalent
     p := sg_add(b_spend.value, smb_multiply_web(t.value)).value;
     e := sg_encode_public(p);
     hit := -1; label := -1;
     for i: 0..<n {
-      if ((used[i / 8] >> (i % 8)) & 1) == 1 { continue; }
+      // Equivalent: never skipping, or marking less, changes nothing: a found output is P_j, or P_j plus a label, for an earlier j, and matching it again needs t_k to equal t_j (plus a difference of labels), a hash no one can aim.
+      if ((used[i / 8] >> (i % 8)) & 1) == 1 { continue; } // mutant: equivalent
       out := outputs[32*i..<32*i+32];
       if sl_same_vartime(e.bytes[1..<33], out) { hit = i; break; }
       if labels.count == 0 { continue; }
@@ -627,15 +666,19 @@ sl_scan_upto :: (b_scan: [] u8, spend: [] u8, tweak: [] u8, outputs: [] u8, labe
       if label < 0 { label = sl_label_of_vartime(sg_add(sg_negate(o.value).value, minus).value, labels); }
       if label >= 0 { hit = i; break; }
     }
-    if hit < 0 { t = ScLoad.{}; break; }
-    if k == found.count { t = ScLoad.{}; return SlScan.{code=sl_done(w, SL_CAPACITY), count=k}; }
-    used[hit / 8] |= cast(u8) (1 << (hit % 8));
+    // Equivalent: t is a local no caller sees; clearing it is erasure, not output.
+    if hit < 0 { t = ScLoad.{}; break; } // mutant: equivalent
+    // Equivalent: t is a local no caller sees; clearing it is erasure, not output.
+    if k == found.count { t = ScLoad.{}; return SlScan.{code=sl_done(w, SL_CAPACITY), count=k}; } // mutant: equivalent
+    // Equivalent: never skipping, or marking less, changes nothing: a found output is P_j, or P_j plus a label, for an earlier j, and matching it again needs t_k to equal t_j (plus a difference of labels), a hash no one can aim.
+    used[hit / 8] |= cast(u8) (1 << (hit % 8)); // mutant: equivalent
     found[k].output = hit;
     found[k].label = ifx label >= 0 then labels[label].m else -1;
     for i: 0..<32 { found[k].key[i] = outputs[32*hit + i]; }
     total := ifx label >= 0 then sc_add(t.value, sc_load(labels[label].tweak[..]).value) else t.value;
     #assert sc_store(total, found[k].tweak[..]);
-    total = ScScalar.{}; t = ScLoad.{};
+    // Equivalent: total and t are locals no caller sees; clearing them is erasure, not output.
+    total = ScScalar.{}; t = ScLoad.{}; // mutant: equivalent
     k += 1;
   }
   sl_clear(w);
@@ -663,12 +706,14 @@ is d·G itself.
 // TapTweak: the output key is d G itself. A BIP-340 signer negates d
 // when d G has an odd y.
 silent_spend_key :: (b_spend: [] u8, tweak: [] u8, out: [] u8) -> bool #export_c #effects(all) {
-  if b_spend.count != 32 || tweak.count != 32 || out.count != 32 { return false; }
+  // Equivalent: sc_load refuses any length but 32, so b_spend's and the tweak's lengths are refused either way; out's is not, and is checked.
+  if b_spend.count != 32 || tweak.count != 32 || out.count != 32 { return false; } // mutant: equivalent
   b := sc_load(b_spend); t := sc_load(tweak);
   d := sc_add(b.value, t.value);
   ok := b.ok && t.ok && !sc_is_zero(d);
   ok = ok && sc_store(d, out);
-  b = ScLoad.{}; t = ScLoad.{}; d = ScScalar.{};
+  // Equivalent: b, t and d are locals no caller sees; clearing them is erasure, not output.
+  b = ScLoad.{}; t = ScLoad.{}; d = ScScalar.{}; // mutant: equivalent
   return ok;
 }
 ```
@@ -853,7 +898,7 @@ main :: () {
   print("  sending: % of % cases make a published output set, or fail as published\n", pass, SL_CASES.count);
   pass = 0;
   for r: SL_RECEIVES {
-    if sl_receiver_addresses(r) && sl_receiver_finds(r, SL_K_MAX) { pass += 1; }
+    if sl_receiver_addresses(r) == (r.addresses.count + 1) / 117 && sl_receiver_finds(r) { pass += 1; }
     if r.n == SL_K_MAX { kmax = r.outputs.count / 64; }
   }
   print("  receiving: % of % find the published outputs, tweaks and signatures;\n", pass, SL_RECEIVES.count);
@@ -899,7 +944,7 @@ The BIP-352 vectors:
   sending: 29 of 29 cases make a published output set, or fail as published
   receiving: 30 of 30 find the published outputs, tweaks and signatures;
     one stops at K_max, finding 2323 of its 2324 outputs
-  addresses: 15 of 15 constructed ones decode as decided
+  addresses: 22 of 22 constructed ones decode as decided
 ```
 
 The receiver finds both of its outputs, k = 0 and k = 1, the second
@@ -1016,22 +1061,42 @@ BIP-352's `send_and_receive_test_vectors.json`:
   published outputs with their tweaks, and signs with each found key
   the BIP-340 signature the vectors publish.
 
-The K_max receiver's full scan, 2,323 rounds, is too slow for the
-checker; the example runs it natively. The checks run that scan
-stopped at 3, which finds the first 3 outputs, and show that output
-2,323 is P_2323 with the change label, so that only the limit stops it.
-Fifteen constructed addresses cover the version rules: versions 1 and
-30 with extra bytes, version 31, the wrong length for versions 0 and 1,
-a Bech32 checksum, the `bc` prefix, mixed case, a changed character, a
-key off the curve and an address over 1,023 characters. Other checks
-cover inputs the vectors don't (a P2TR witness with trailing bytes,
-future witness versions) and the refusals.
+The K_max receiver's full scan finds 2,323 outputs. The checks also run
+that scan stopped at 3, which finds the first 3 outputs, and show that
+output 2,323 is P_2323 with the change label, so that only the limit
+stops it.
+
+Twenty-two constructed addresses cover the version rules: versions 1
+and 30 with extra bytes, version 31 with and without data, the wrong
+length for versions 0 and 1, no data at all, a spare 5-bit group, a
+padding bit set, a Bech32 checksum, the `bc` prefix, mixed case, a
+changed character, a key off the curve, and addresses of exactly 1,023
+and 1,024 characters.
+
+Constructed known answers, from Python in `make_silent_vectors.py`,
+cover what the published vectors don't reach:
+
+- keys from a seed at BIP-352's paths, by a BIP-32 derivation;
+- labels whose m has its high bytes set;
+- a scan whose outputs sit out of order and far apart in a list of
+  400, so that the bitmap of outputs already found is exercised;
+- a labeled output, found with its label and summed tweak.
+
+Other checks cover:
+
+- each input template with one byte changed;
+- a scriptSig that is the key alone, and witnesses of one item;
+- the bounds of each length, index and count, each refusal alone;
+- that each return clears the workspace.
+
+Every mutant of the file is killed or marked equivalent, with its
+reason on the line above.
 
 ```shell
 coax/bin/coax test coax/lib/bitcoin/silent.coax
 ```
 
-`coax test` runs 441 checks, including those of the files it loads, on 2026-11-03. Mutation testing: not run (owner speed order).
+`coax test` runs 566 checks, including those of the files it loads, on 2026-11-15. Mutation testing: 1,289 mutants, 1,227 killed, 62 marked equivalent, 0 survived.
 
 ### Python
 

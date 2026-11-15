@@ -119,7 +119,7 @@ main :: () {
   print("  sending: % of % cases make a published output set, or fail as published\n", pass, SL_CASES.count);
   pass = 0;
   for r: SL_RECEIVES {
-    if sl_receiver_addresses(r) && sl_receiver_finds(r, SL_K_MAX) { pass += 1; }
+    if sl_receiver_addresses(r) == (r.addresses.count + 1) / 117 && sl_receiver_finds(r) { pass += 1; }
     if r.n == SL_K_MAX { kmax = r.outputs.count / 64; }
   }
   print("  receiving: % of % find the published outputs, tweaks and signatures;\n", pass, SL_RECEIVES.count);
