@@ -3,10 +3,15 @@
 The native client uses the web's existing project list, private-project page
 operations and project drops. Existing published contracts keep their bytes.
 `coax/lib/project/wire.coax` reads private page cells; the browser's private
-reader calls the same cell codec. The JSON parser/writer and editable field
-projection are shared (`components/core/json-fields.coax`), including complete
-values, path-array edits, booleans and string-list append slots. A failed or
-oversized response is an error, never an empty project.
+reader calls the same cell codec; both private pages index their lines with
+`pj_index_fit`. The JSON parser/writer and field walk (`components/adapters/json-fields.coax`)
+and the draft review rows (`coax/lib/project/draft.coax`) are shared: the web
+page and the native app draw the same section headings, group headers, readable
+names, "+ add" rows and save bodies (`{"path":[...],"value":"..."}`). The browser
+only sends the draft JSON (`V|state|edits|note|name|grow|bytes` then the JSON) and
+posts the body the page builds. Both read drafts up to 256 KB and 8192 values and
+show up to 4096 fields; past a bound the review says so on screen with the count.
+A failed or oversized response is an error, never an empty project.
 
 Public creation is the website's drop → read → review → explicit publish
 sequence. Add to project creates a grow drop with its public project key.

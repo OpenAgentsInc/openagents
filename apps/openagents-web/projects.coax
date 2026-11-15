@@ -25,6 +25,7 @@
 #load "textkeys.coax";
 #load "projects/list.coax";
 #load "../../coax/web/analytics.coax";
+#load "../../coax/lib/project/draft.coax";
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 60000;
@@ -34,10 +35,10 @@ MODE_STROKE :: 0.0;
 GAP :: 0.34;
 SPACE :: 0.95;
 MAX_SHOWN :: 256;
-INBOX :: 65536;
-OUTBOX :: 20032;
+INBOX :: PJ_DRAFT_MAX + 1024;   // a review: its V line and the draft
+DROPS :: 65536;
+OUTBOX :: 6 * EDIT_MAX + 4096;   // an edit's body, its value escaped
 EDIT_MAX :: 20000;   // the most one field holds (0020_project_review.sql allows 20000)
-MAX_REVIEW :: 1024;  // the review's rows
 
 // the rows' columns
 C_SLUG :: 0; C_NAME :: 1; C_DESC :: 2; C_CONTRIB :: 3; C_VIS :: 4; C_OPEN :: 5; C_READY :: 6; C_DONE :: 7;
@@ -57,13 +58,11 @@ ACT_HASH :: 3;       // the location's hash: "new" while the drop area is open
 ACT_PICK :: 20;      // open the browser's file picker
 ACT_SIGNIN :: 22;    // sign in with the browser's Nostr signer
 ACT_DRAFT :: 23;     // ask the agent to read the drop and draft the project
-MSG_REVIEW :: 41;    // the draft as rows to review (rc-review): see review_text
-MSG_VALUE :: 42;     // "row|its whole value", after ACT_EDIT
+MSG_REVIEW :: 41;    // the review: its V line, then the draft as JSON (rc-review): see review_message
 MSG_PUBLISHED :: 43; // /projects/published.txt (host.js, data-lines): rows like PROJECTS_ROWS, projects
                      // published from a drop since this build (coax/web/api/drops.c, rc-publish)
 TABLE_CAP :: 16384;
-ACT_EDIT :: 24;      // the outbox's row is being changed: send its whole value
-ACT_SAVE :: 25;      // "row|new value": keep the change
+ACT_SAVE :: 25;      // the outbox is the edit route's body, {"path":[...],"value":"..."}: keep the change
 ACT_PUBLISH :: 26;   // PUBLISH the reviewed draft
 ACT_DISCARD :: 27;   // DISCARD the drop
 K_ESCAPE :: -1;
@@ -85,11 +84,14 @@ ProjectsState :: struct {
   scroll: f32;                       // device pixels the list is scrolled
   viewer: [64] u8; viewer_n: int;
   drop_open: bool;                   // NEW PROJECT's drop area is in the list's place
-  drops: [INBOX] u8; drops_n: int;   // the last MSG_DROPS
+  drops: [DROPS] u8; drops_n: int;   // the last MSG_DROPS
   review_open: bool;                 // the draft's review is in the drop area's place
   review: [INBOX] u8; review_n: int; // the last MSG_REVIEW
+  vline_n: int;                      // its V line's length; the draft follows it
   table: [TABLE_CAP] u8; table_n: int;   // PROJECTS_ROWS with the projects published since the build (MSG_PUBLISHED)
-  review_at: [MAX_REVIEW] int; review_rows: int;   // where each of its lines starts
+  nodes: [PJ_NODES] JvNode; nodes_n: int;          // the draft, parsed (coax/lib/project/draft.coax)
+  form: [1] PjForm;                                // its rows
+  scratch: [PJ_DRAFT_MAX] u8;                      // a value, whole, while its preview is drawn
   scroll_l: f32; scroll_r: f32; point_x: f32;      // the review's columns, scrolled; where the pointer was
   confirm: int;                      // HIT_PUBLISH or HIT_DISCARD while asking, else 0
   edit_row: int;                     // the row being changed, plus one; 0: none
@@ -1004,9 +1006,10 @@ projects_key_mods :: (s: [] ProjectsState, table: string, key: int, mods: int) -
 // The viewer: MSG_VIEWER with a hex pubkey from the inbox signs in; an empty one signs out.
 projects_message :: (s: [] ProjectsState, kind: int, length: int) {
   if s.count < 1 || length < 0 || length > INBOX { return; }
-  if kind == MSG_REVIEW || kind == MSG_VALUE || kind == MSG_TEXT { review_message(s, kind, length); return; }
+  if kind == MSG_REVIEW || kind == MSG_TEXT { review_message(s, kind, length); return; }
   if kind == MSG_PUBLISHED { published_message(s, length); return; }
   if kind == MSG_DROPS {
+    if length > DROPS { return; }
     for i: 0..<length { s[0].drops[i] = s[0].inbox[i]; }
     s[0].drops_n = length;
     if drop_flag(drops_of(s), 3) { open_drop(s, true); }   // files dragged over the page open the drop area
@@ -1057,40 +1060,43 @@ coaxial_projects_uniform_floats :: () -> int #export_c #effects(all) { return UN
 
 // ---------------------------------------------------------------- REVIEW: the owner corrects the draft (rc-review)
 
-// MSG_REVIEW's lines: "V|state|edits|note|name" (state ready, saving, approved, published or discarded), then a
-// row each, "R|column|kind|label|preview": kind H a section, G a group (a milestone, a task), T a text,
-// B a yes or no, A a list's "add one". A row's number is its place after the V line.
-review_text :: (s: [] ProjectsState) -> string { return cast(string) s[0].review[0..<s[0].review_n]; }
-review_line :: (s: [] ProjectsState, r: int) -> string {
-  if r < 0 || r >= s[0].review_rows { return ""; }
-  a := s[0].review_at[r];
-  b := s[0].review_n;
-  if r + 1 < s[0].review_rows { b = s[0].review_at[r + 1] - 1; }
-  else if b > a && s[0].review[b - 1] == '\n' { b -= 1; }
-  if b < a { b = a; }
-  return cast(string) s[0].review[a..<b];
+// MSG_REVIEW: "V|state|edits|note|name|grow|bytes" (state ready, saving, approved, published or discarded;
+// grow 1 when the draft is proposals for a project a drop grows, rc-later-drops; bytes the draft's length), then
+// the draft as JSON once it is ready. Its rows are coax/lib/project/draft.coax's, the apps' rows too:
+// kind N a notice, H a section, G a group (a milestone, a task), T a text, B a yes or no, A a list's "add one".
+// (fields 1 to 6 are read, never the V itself, so the line from byte 1 reads the same)
+review_line :: (s: [] ProjectsState) -> string { return cast(string) s[0].review[0..<s[0].vline_n]; } // mutant: equivalent
+review_jv :: (s: [] ProjectsState) -> Jv {
+  at := ifx s[0].vline_n < s[0].review_n then s[0].vline_n + 1 else s[0].review_n;
+  // (a draft of one value has no rows, so no row reads ok for it)
+  return Jv.{text = cast(string) s[0].review[at..<s[0].review_n], nodes = s[0].nodes[..], count = s[0].nodes_n,
+    ok = s[0].nodes_n > 0}; // mutant: equivalent
 }
-review_items :: (s: [] ProjectsState) -> int { return ifx s[0].review_rows > 1 then s[0].review_rows - 1 else 0; }
-item :: (s: [] ProjectsState, i: int) -> string { return review_line(s, i + 1); }
-item_kind :: (line: string) -> u8 { f := field(line, 0, 2); return ifx f.count > 0 then f[0] else cast(u8) '?'; }
-item_col :: (line: string) -> int { return ifx same(field(line, 0, 1), "1") then 1 else 0; }
-editable :: (kind: u8) -> bool { return kind == 'T' || kind == 'B' || kind == 'A'; }
-review_state :: (s: [] ProjectsState) -> string { return field(review_line(s, 0), 0, 1); }
-// V's sixth field: 1 when the draft is proposals for a project a drop grows (rc-later-drops).
-review_grows :: (s: [] ProjectsState) -> bool { return same(field(review_line(s, 0), 0, 5), "1"); }
+review_items :: (s: [] ProjectsState) -> int { return s[0].form[0].n; }
+item_kind :: (s: [] ProjectsState, i: int) -> u8 { return ifx i >= 0 && i < review_items(s) then s[0].form[0].rows[i].kind else cast(u8) '?'; }
+item_col :: (s: [] ProjectsState, i: int) -> int { return ifx i >= 0 && i < review_items(s) then s[0].form[0].rows[i].col else 0; }
+item_label :: (s: [] ProjectsState, i: int, out: [] u8) -> string { return pj_label(review_jv(s), s[0].form[..], i, out); }
+editable :: (kind: u8) -> bool { return pj_editable(kind); }
+review_state :: (s: [] ProjectsState) -> string { return field(review_line(s), 0, 1); }
+review_grows :: (s: [] ProjectsState) -> bool { return same(field(review_line(s), 0, 5), "1"); }
 review_approved :: (s: [] ProjectsState) -> bool { return same(review_state(s), "approved") || same(review_state(s), "published"); }
 
-index_review :: (s: [] ProjectsState) {
-  n := 0;
-  if s[0].review_n > 0 { s[0].review_at[0] = 0; n = 1; }
-  for i: 0..<s[0].review_n {
-    if s[0].review[i] == '\n' && i + 1 < s[0].review_n && n < MAX_REVIEW { s[0].review_at[n] = i + 1; n += 1; }
-  }
-  s[0].review_rows = n;
+// The draft after the V line, read into its rows; one the host cut short, or past the bounds, says so in a notice row.
+read_review :: (s: [] ProjectsState) {
+  s[0].nodes_n = 0; s[0].form[0].n = 0; s[0].form[0].notice = 0;
+  at := ifx s[0].vline_n < s[0].review_n then s[0].vline_n + 1 else s[0].review_n;
+  json := cast(string) s[0].review[at..<s[0].review_n];
+  if json.count == 0 { return; } // mutant: equivalent (a one-byte draft is a number or a word: no rows either way)
+  bytes := parse(field(review_line(s), 0, 6));
+  if bytes > json.count { pj_form_refused(s[0].form[..], PJ_NOTICE_SIZE, bytes); return; }
+  d: [1] Jv;
+  if !pj_draft_read(d[..], json, s[0].nodes[..], s[0].form[..]) { return; }
+  s[0].nodes_n = d[0].count;
+  pj_form(review_jv(s), 0, s[0].form[..]);
 }
 
 item_h :: (kind: u8, d: f32) -> f32 {
-  if kind == 'H' { return 32 * d; }
+  if kind == 'H' || kind == 'N' { return 32 * d; }
   if kind == 'G' { return 26 * d; }
   if kind == 'A' { return 22 * d; }
   return 44 * d;
@@ -1130,12 +1136,12 @@ review_layout :: (l: Layout, d: f32) -> ReviewLayout {
 }
 
 // Each column's rows from its top, scrolled; the narrow page is one column.
-col_of :: (k: ReviewLayout, line: string) -> int { return ifx k.wide then item_col(line) else 0; }
+col_of :: (k: ReviewLayout, s: [] ProjectsState, i: int) -> int { return ifx k.wide then item_col(s, i) else 0; }
 col_box :: (k: ReviewLayout, c: int) -> Box { return ifx c == 1 then k.col1 else k.col0; }
 col_scroll :: (s: [] ProjectsState, c: int) -> f32 { return ifx c == 1 then s[0].scroll_r else s[0].scroll_l; }
 col_height :: (s: [] ProjectsState, k: ReviewLayout, c: int, d: f32) -> f32 {
   h := 0.0f32;
-  for i: 0..<review_items(s) { line := item(s, i); if col_of(k, line) == c { h += item_h(item_kind(line), d); } }
+  for i: 0..<review_items(s) { if col_of(k, s, i) == c { h += item_h(item_kind(s, i), d); } }
   return h;
 }
 clamp_review :: (s: [] ProjectsState, k: ReviewLayout, d: f32) {
@@ -1147,7 +1153,7 @@ clamp_review :: (s: [] ProjectsState, k: ReviewLayout, d: f32) {
 review_row_at :: (s: [] ProjectsState, k: ReviewLayout, d: f32, x: f32, y: f32) -> int {
   ys := [2] f32.[0, 0];
   for i: 0..<review_items(s) {
-    line := item(s, i); c := col_of(k, line); kind := item_kind(line);
+    c := col_of(k, s, i); kind := item_kind(s, i);
     cb := col_box(k, c); h := item_h(kind, d);
     y0 := cb.y0 + ys[c] - col_scroll(s, c);
     ys[c] += h;
@@ -1157,8 +1163,9 @@ review_row_at :: (s: [] ProjectsState, k: ReviewLayout, d: f32, x: f32, y: f32) 
   return -1;
 }
 
-draw_item :: (out: [] f32, at: int, line: string, b: Box, p: Pen, lit_up: bool, open: bool) -> int {
-  d := p.d; v := at; kind := item_kind(line); label := field(line, 0, 3); preview := field(line, 0, 4);
+draw_item :: (out: [] f32, at: int, s: [] ProjectsState, i: int, b: Box, p: Pen, lit_up: bool, open: bool) -> int {
+  d := p.d; v := at; kind := item_kind(s, i); lb: [512] u8; pb: [1024] u8; label := item_label(s, i, lb[..]);
+  preview := pj_preview(review_jv(s), s[0].form[..], i, s[0].scratch[..], pb[..]);
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
   w := box_w(b);
   if kind == 'H' {
@@ -1166,6 +1173,7 @@ draw_item :: (out: [] f32, at: int, line: string, b: Box, p: Pen, lit_up: bool, 
     return rule(out, v, b.x0, b.y0 + 26 * d, b.x1, b.y0 + 26 * d, accent, 0.25 * p.fade);
   }
   if kind == 'G' { return put_fit(out, v, label, b.x0, b.y0 + 17 * d, 7.5 * d, pale, w); }
+  if kind == 'N' { return put_wrapped(out, v, label, b.x0, b.y0 + 12 * d, 6.5 * d, pale, w, 11 * d, 2); }
   if kind == 'A' { return put_fit(out, v, label, b.x0, b.y0 + 14 * d, 6.5 * d, ifx lit_up then accent else faint, w); }
   if lit_up && open { v = rule(out, v, b.x0 - 7 * d, b.y0 + 4 * d, b.x0 - 7 * d, b.y1 - 6 * d, accent, 0.9 * p.fade); }
   v = put_fit(out, v, label, b.x0, b.y0 + 11 * d, 5.5 * d, ifx lit_up then accent else dim, w);
@@ -1184,7 +1192,7 @@ draw_review :: (out: [] f32, at: int, s: [] ProjectsState, l: Layout, p: Pen) ->
   v = chip(out, v, ifx grows then "DECLINE" else "DISCARD", k.discard.x0, k.discard.y1 - 5 * d, cap, ifx hot == HIT_DISCARD || s[0].confirm == HIT_DISCARD then white else dim, p);
   if !approved { v = chip(out, v, ifx grows then "ACCEPT" else "PUBLISH", k.publish.x0, k.publish.y1 - 5 * d, cap, ifx hot == HIT_PUBLISH then white else accent, p); }
   tx := b.x0 + 26 * d; ty := b.y0 + title_room(p) + 12 * d; tw := box_w(b) - 52 * d;
-  note := field(review_line(s, 0), 0, 3);
+  note := field(review_line(s), 0, 3);
   if s[0].confirm == HIT_PUBLISH {
     v = put_fit(out, v, ifx grows then "Accept these changes? The project's key signs them and they go live on its page."
                 else "Publish this project? Its key, page, roadmap and files go public.", tx, ty, 6.5 * d, white, tw);
@@ -1208,12 +1216,12 @@ draw_review :: (out: [] f32, at: int, s: [] ProjectsState, l: Layout, p: Pen) ->
   clamp_review(s, k, d);
   ys := [2] f32.[0, 0];
   for i: 0..<review_items(s) {
-    line := item(s, i); c := col_of(k, line); kind := item_kind(line);
+    c := col_of(k, s, i); kind := item_kind(s, i);
     cb := col_box(k, c); h := item_h(kind, d);
     y0 := cb.y0 + ys[c] - col_scroll(s, c);
     ys[c] += h;
     if y0 < cb.y0 - 1 || y0 + h > cb.y1 + 1 { continue; }
-    v = draw_item(out, v, line, Box.{x0 = cb.x0, y0 = y0, x1 = cb.x1, y1 = y0 + h}, p, hot == i || s[0].sel == i, !approved);
+    v = draw_item(out, v, s, i, Box.{x0 = cb.x0, y0 = y0, x1 = cb.x1, y1 = y0 + h}, p, hot == i || s[0].sel == i, !approved);
   }
   if l.wide { mid := (b.x0 + b.x1) * 0.5; v = rule(out, v, mid, k.col0.y0, mid, k.col0.y1, dim, 0.1 * p.fade); }
   if review_items(s) == 0 { v = put(out, v, "No draft yet.", k.col0.x0, k.col0.y0 + 20 * d, 7 * d, faint); }
@@ -1259,20 +1267,21 @@ edit_cut :: (s: [] ProjectsState, a: int, b: int) {
   s[0].caret = a;
 }
 
+// A field opens with its whole value, from the draft the page holds.
 open_edit :: (s: [] ProjectsState, i: int) {
-  line := item(s, i);
-  if review_approved(s) || !editable(item_kind(line)) { return; }
-  s[0].edit_row = i + 1; s[0].edit_n = 0; s[0].caret = 0; s[0].edit_top = 0; s[0].edit_all = false; s[0].saving = false; s[0].loaded = false;
+  if review_approved(s) || !editable(item_kind(s, i)) { return; }
+  s[0].edit_row = i + 1; s[0].edit_n = 0; s[0].caret = 0; s[0].edit_top = 0; s[0].edit_all = false; s[0].saving = false;
   s[0].confirm = 0; s[0].hot = HIT_NONE;
-  s[0].out_n = put_int(s[0].outbox[..], 0, i);
-  s[0].action = ACT_EDIT;
+  n := pj_value(review_jv(s), s[0].form[..], i, s[0].scratch[..]);
+  // (inserting nothing changes nothing, so n >= 0 reads the same)
+  if n > 0 { edit_insert(s, cast(string) s[0].scratch[0..<n]); } // mutant: equivalent
+  s[0].loaded = true;
 }
 close_edit :: (s: [] ProjectsState) { s[0].edit_row = 0; s[0].saving = false; s[0].hot = HIT_NONE; }
 save_edit :: (s: [] ProjectsState) {
-  if s[0].edit_row <= 0 || s[0].saving || !s[0].loaded { return; }
-  n := put_int(s[0].outbox[..], 0, s[0].edit_row - 1);
-  n += put_text(s[0].outbox[..], n, "|");
-  for i: 0..<s[0].edit_n { if n < OUTBOX { s[0].outbox[n] = s[0].edit[i]; n += 1; } }
+  if s[0].saving || !s[0].loaded || !editable(item_kind(s, s[0].edit_row - 1)) { return; }   // no field open: row -1, which isn't one
+  n := pj_edit_body(review_jv(s), s[0].form[..], s[0].edit_row - 1, edit_text(s), s[0].outbox[..]);
+  if n < 0 { return; } // mutant: equivalent (a body is never empty: it is at least {"path":[],"value":""})
   s[0].out_n = n; s[0].action = ACT_SAVE; s[0].saving = true;
 }
 
@@ -1324,16 +1333,16 @@ least :: (a: int, b: int) -> int { if a < b { return a; } return b; }
 draw_editor :: (out: [] f32, at: int, s: [] ProjectsState, k: ReviewLayout, p: Pen) -> int {
   d := p.d; v := at; hot := s[0].hot; cap := FILTER_CAP * d;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); faint := ink(p, INK_FAINT);
-  line := item(s, s[0].edit_row - 1);
-  v = put_fit(out, v, field(line, 0, 3), k.text.x0, k.save.y1 - 5 * d, 7 * d, accent, k.save.x0 - k.text.x0 - 12 * d);
+  row := s[0].edit_row - 1; lb: [512] u8;
+  v = put_fit(out, v, item_label(s, row, lb[..]), k.text.x0, k.save.y1 - 5 * d, 7 * d, accent, k.save.x0 - k.text.x0 - 12 * d);
   v = chip(out, v, ifx s[0].saving then "SAVING" else "SAVE", k.save.x0, k.save.y1 - 5 * d, cap, ifx hot == HIT_SAVE then white else accent, p);
   v = chip(out, v, "CANCEL", k.cancel.x0, k.cancel.y1 - 5 * d, cap, ifx hot == HIT_CANCEL then white else dim, p);
   tb := k.text;
   xs := [5] f32.[tb.x0, tb.x1, tb.x1, tb.x0, tb.x0];
   ys := [5] f32.[tb.y0, tb.y0, tb.y1, tb.y1, tb.y0];
   for e: 0..<4 { v = rule(out, v, xs[e], ys[e], xs[e + 1], ys[e + 1], dim, 0.35 * p.fade); }
-  hint := ifx item_kind(line) == 'B' then "yes or no.  Enter saves, Esc cancels." else
-          (ifx item_kind(line) == 'A' then "A new item at the list's end.  Enter saves, Esc cancels." else
+  hint := ifx item_kind(s, row) == 'B' then "yes or no.  Enter saves, Esc cancels." else
+          (ifx item_kind(s, row) == 'A' then "A new item at the list's end.  Enter saves, Esc cancels." else
           "Enter saves, Shift+Enter starts a new line, Esc cancels. Emptied, a list's item leaves the list.");
   v = put_fit(out, v, hint, tb.x0, tb.y1 + 14 * d, 6 * d, faint, box_w(tb));
   if !s[0].loaded { return put(out, v, "...", tb.x0 + 10 * d, tb.y0 + 20 * d, 7 * d, dim); }
@@ -1407,25 +1416,16 @@ review_act :: (s: [] ProjectsState, target: int) {
 
 review_message :: (s: [] ProjectsState, kind: int, length: int) {
   if kind == MSG_REVIEW {
-    for i: 0..<length { s[0].review[i] = s[0].inbox[i]; }
+    for i: 0..<length { s[0].review[i] = s[0].inbox[i]; } // mutant: equivalent (byte 0 is the V, as review_line says)
     s[0].review_n = length;
-    index_review(s);
+    s[0].vline_n = 0; while s[0].vline_n < length && s[0].review[s[0].vline_n] != '\n' { s[0].vline_n += 1; }
+    read_review(s);
     state := review_state(s);
     if same(state, "discarded") { s[0].review_open = false; s[0].edit_row = 0; s[0].confirm = 0; }
     if s[0].saving && !same(state, "saving") {
       s[0].saving = false;
-      if field(review_line(s, 0), 0, 3).count == 0 { s[0].edit_row = 0; }
+      if field(review_line(s), 0, 3).count == 0 { s[0].edit_row = 0; }
     }
-    return;
-  }
-  if kind == MSG_VALUE && s[0].edit_row > 0 {
-    text := cast(string) s[0].inbox[0..<length];
-    bar := 0;
-    while bar < text.count && text[bar] != '|' { bar += 1; }
-    if bar >= text.count || parse(text[0..<bar]) != s[0].edit_row - 1 { return; }
-    s[0].edit_n = 0; s[0].caret = 0;
-    edit_insert(s, text[bar + 1..<text.count]);
-    s[0].loaded = true;
     return;
   }
   if kind == MSG_TEXT && s[0].edit_row > 0 && s[0].loaded && !s[0].saving { edit_insert(s, cast(string) s[0].inbox[0..<length]); }
@@ -1759,7 +1759,7 @@ drop_message :: (s: [] ProjectsState, text: string) {
   }
 }
 
-REVIEW_FIXTURE :: "V|ready|0||Moon Villa\nR|0|H|CARD|\nR|0|T|Name|Moon Villa\nR|0|T|Design document|# Planetary Villa. A world on the OpenAgents Metaverse where two moons rise over a garden of glowing flowers.\nR|0|A|+ add a mechanic|\nR|1|H|ROADMAP|\nR|1|G|MILESTONE 1  Flowers|\nR|1|T|Title|Flowers\nR|1|B|Reuses an engine task|yes\n";
+REVIEW_DRAFT :: "{\"card\":{\"name\":\"Moon Villa\"},\"design\":{\"markdown\":\"# Planetary Villa. A world on the OpenAgents Metaverse where two moons rise over a garden of glowing flowers.\"},\"mechanics\":[],\"roadmap\":{\"milestones\":[{\"title\":\"Flowers\",\"reuses\":true}]}}";
 
 send_to :: (s: [] ProjectsState, kind: int, text: string) {
   for i: 0..<text.count { s[0].inbox[i] = text[i]; }
@@ -1770,6 +1770,13 @@ tap :: (s: [] ProjectsState, b: Box) -> bool {
   return projects_pointer(s, FIXTURE, x, y, P_DOWN, 0) && projects_pointer(s, FIXTURE, x, y, P_UP, 0);
 }
 outbox_is :: (s: [] ProjectsState, text: string) -> bool { return same(cast(string) s[0].outbox[0..<s[0].out_n], text); }
+// MSG_REVIEW as drop.js sends it: the V line, the draft's length, then the draft.
+send_review :: (s: [] ProjectsState, line: string, draft: string) {
+  n := put_text(s[0].inbox[..], 0, line); n += put_text(s[0].inbox[..], n, "|");
+  n += put_int(s[0].inbox[..], n, draft.count); n += put_text(s[0].inbox[..], n, "\n"); n += put_text(s[0].inbox[..], n, draft);
+  projects_message(s, MSG_REVIEW, n);
+}
+item_is :: (s: [] ProjectsState, i: int, kind: u8, label: string) -> bool { b: [512] u8; return item_kind(s, i) == kind && same(item_label(s, i, b[..]), label); }
 
 #test "REVIEW shows every field; a field is changed and saved; PUBLISH and DISCARD ask first" {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
@@ -1786,8 +1793,9 @@ outbox_is :: (s: [] ProjectsState, text: string) -> bool { return same(cast(stri
     dl := drop_layout(l, 2, true);
     #assert within(dl.review, l.list) && apart(dl.review, dl.ask) && apart(dl.review, dl.draft);
     #assert tap(s[..], dl.review) && s[0].review_open;
-    send_to(s[..], MSG_REVIEW, REVIEW_FIXTURE);
-    #assert review_items(s[..]) == 8 && same(field(item(s[..], 1), 0, 3), "Name");
+    send_review(s[..], "V|ready|0||Moon Villa|0", REVIEW_DRAFT);
+    #assert review_items(s[..]) == 10 && item_is(s[..], 0, 'H', "CARD") && item_is(s[..], 1, 'T', "Name") && item_is(s[..], 3, 'A', "+ add a mechanic");
+    #assert item_is(s[..], 7, 'G', "MILESTONE 1  Flowers") && item_is(s[..], 9, 'B', "Reuses an engine task") && item_col(s[..], 9) == 1 && item_col(s[..], 5) == 0;
     nv := projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
     #assert nv > 600 && nv < MAX_VERTICES && on_canvas(out[..], nv, w, h, 2);
     k := review_layout(l, 2);
@@ -1796,10 +1804,9 @@ outbox_is :: (s: [] ProjectsState, text: string) -> bool { return same(cast(stri
     hy := k.col0.y0 + 10; ny := k.col0.y0 + 32 * 2 + 20;
     #assert review_row_at(s[..], k, 2, k.col0.x0 + 20, hy) == -1 && review_row_at(s[..], k, 2, k.col0.x0 + 20, ny) == 1;
     #assert tap(s[..], Box.{x0 = k.col0.x0 + 10, y0 = ny, x1 = k.col0.x0 + 30, y1 = ny + 2});
-    #assert s[0].action == ACT_EDIT && outbox_is(s[..], "1") && s[0].edit_row == 2 && !coaxial_projects_wants_text(s[..]) == false;
-    coaxial_projects_action_done(s[..]);
-    send_to(s[..], MSG_VALUE, "1|Moon Villa");
-    #assert s[0].loaded && s[0].edit_n == 10 && s[0].caret == 10;
+    // the field opens with its whole value, from the draft the page holds
+    #assert s[0].action == 0 && s[0].edit_row == 2 && coaxial_projects_wants_text(s[..]);
+    #assert s[0].loaded && s[0].edit_n == 10 && s[0].caret == 10 && same(edit_text(s[..]), "Moon Villa");
     send_to(s[..], MSG_TEXT, " II");
     #assert projects_key_mods(s[..], FIXTURE, K_BACKSPACE, 0) && same(edit_text(s[..]), "Moon Villa I");
     #assert projects_key_mods(s[..], FIXTURE, K_HOME, 0) && projects_key_mods(s[..], FIXTURE, 'A', 1) && same(edit_text(s[..]), "AMoon Villa I");
@@ -1819,20 +1826,20 @@ outbox_is :: (s: [] ProjectsState, text: string) -> bool { return same(cast(stri
     ev := projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
     #assert ev > 300 && ev < MAX_VERTICES && on_canvas(out[..], ev, w, h, 2) && s[0].field[2] > s[0].field[0] && s[0].field[3] > s[0].field[1];
     // Enter saves; a refusal keeps the editor open with the text
-    #assert projects_key_mods(s[..], FIXTURE, K_ENTER, 0) && s[0].action == ACT_SAVE && outbox_is(s[..], "1|Moon Villa I") && s[0].saving;
+    #assert projects_key_mods(s[..], FIXTURE, K_ENTER, 0) && s[0].action == ACT_SAVE && outbox_is(s[..], "{\"path\":[\"card\",\"name\"],\"value\":\"Moon Villa I\"}") && s[0].saving;
     coaxial_projects_action_done(s[..]);
-    send_to(s[..], MSG_REVIEW, "V|ready|0|Not saved: that would leave no name|Moon Villa\nR|0|T|Name|Moon Villa\n");
+    send_review(s[..], "V|ready|0|Not saved: that would leave no name|Moon Villa|0", "{\"card\":{\"name\":\"Moon Villa\"}}");
     #assert !s[0].saving && s[0].edit_row == 2 && same(edit_text(s[..]), "Moon Villa I");
     #assert tap(s[..], k.save) && s[0].action == ACT_SAVE;
     coaxial_projects_action_done(s[..]);
-    send_to(s[..], MSG_REVIEW, REVIEW_FIXTURE);
+    send_review(s[..], "V|ready|0||Moon Villa|0", REVIEW_DRAFT);
     #assert s[0].edit_row == 0 && !coaxial_projects_wants_text(s[..]);
     // PUBLISH asks first; NO and Escape take it back
     #assert tap(s[..], k.publish) && s[0].confirm == HIT_PUBLISH && s[0].action == 0;
     #assert tap(s[..], k.no) && s[0].confirm == 0;
     #assert tap(s[..], k.publish) && tap(s[..], k.yes) && s[0].action == ACT_PUBLISH;
     coaxial_projects_action_done(s[..]);
-    send_to(s[..], MSG_REVIEW, "V|approved|1||Moon Villa\nR|0|T|Name|Moon Villa I\n");
+    send_review(s[..], "V|approved|1||Moon Villa|0", "{\"card\":{\"name\":\"Moon Villa I\"}}");
     #assert hit(s[..], FIXTURE, (k.publish.x0 + k.publish.x1) * 0.5, (k.publish.y0 + k.publish.y1) * 0.5) != HIT_PUBLISH;
     #assert tap(s[..], Box.{x0 = k.col0.x0 + 10, y0 = k.col0.y0 + 10, x1 = k.col0.x0 + 30, y1 = k.col0.y0 + 12}) && s[0].edit_row == 0;
     #assert tap(s[..], k.discard) && s[0].confirm == HIT_DISCARD && projects_key(s[..], FIXTURE, K_ESCAPE) && s[0].confirm == 0 && s[0].review_open;
@@ -1859,22 +1866,26 @@ outbox_is :: (s: [] ProjectsState, text: string) -> bool { return same(cast(stri
   l := layout(w, h, 2);
   dl := drop_layout(l, 2, true);
   #assert tap(s[..], dl.review) && s[0].review_open;
-  send_to(s[..], MSG_REVIEW, "V|ready|0||Planetary Villa|1\nR|0|H|WHAT IT ADDS|\nR|0|T|Line|Fireflies at dusk.\nR|1|H|PROPOSED WORK|\nR|1|B|Adds to a milestone it has|yes\n");
-  #assert review_grows(s[..]) && review_items(s[..]) == 4;
+  send_review(s[..], "V|ready|0||Planetary Villa|1", "{\"grow\":{\"project\":\"pv\"},\"card\":{\"name\":\"PV\",\"line\":\"Fireflies at dusk.\"},\"roadmap\":{\"milestones\":[{\"existing\":true}]}}");
+  #assert review_grows(s[..]) && review_items(s[..]) == 5 && item_is(s[..], 0, 'H', "WHAT IT ADDS") && item_is(s[..], 1, 'T', "One line") && item_is(s[..], 4, 'B', "Adds to a milestone it has");
   nv = projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
   #assert nv > 300 && on_canvas(out[..], nv, w, h, 2);
-  send_to(s[..], MSG_REVIEW, "V|ready|0||Moon Villa\nR|0|T|Name|Moon Villa\n");
-  #assert !review_grows(s[..]);
+  send_review(s[..], "V|ready|0||Moon Villa|0", "{\"card\":{\"name\":\"Moon Villa\"}}");
+  #assert !review_grows(s[..]) && item_is(s[..], 0, 'H', "CARD");
 }
 
 #test "a long review scrolls each column, and the editor takes a long text" {
-  big: [INBOX] u8; n := put_text(big[..], 0, "V|ready|0||X\n");
-  for r: 0..<200 { n += put_text(big[..], n, ifx r % 2 == 0 then "R|0|T|Check|A check someone could run, with words enough to wrap onto a second line here.\n" else "R|1|T|Body|b\n"); }
   s: [1] ProjectsState;
+  big: [32768] u8; o: [1] Jo; jo_start(o[..], big[..]); jo_obj(o[..]);
+  long: [16000] u8; m := 0;
+  for r: 0..<300 { m += put_text(long[..], m, "Line of the design document, long enough to wrap. "); }
+  jo_key(o[..], "mechanics"); jo_arr(o[..]); jo_str(o[..], cast(string) long[0..<m]);
+  for r: 1..<100 { jo_str(o[..], "A check someone could run, with words enough to wrap onto a second line here."); }
+  jo_end(o[..]); jo_key(o[..], "to_make"); jo_arr(o[..]); for r: 0..<100 { jo_str(o[..], "b"); } jo_end(o[..]); jo_end(o[..]);
+  #assert !o[0].bad;
   s[0].drop_open = true; s[0].review_open = true;
-  for i: 0..<n { s[0].inbox[i] = big[i]; }
-  projects_message(s[..], MSG_REVIEW, n);
-  #assert review_items(s[..]) == 200;
+  send_review(s[..], "V|ready|0||X|0", jo_text(o[..]));
+  #assert review_items(s[..]) == 204 && s[0].form[0].notice == 0;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   uniforms: [UNIFORM_FLOATS] f32;
   #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], 1440, 900, 1, 0, true) > 0;
@@ -1885,13 +1896,84 @@ outbox_is :: (s: [] ProjectsState, text: string) -> bool { return same(cast(stri
   #assert s[0].scroll_r > 0 && s[0].scroll_l == 0 && v > 600 && v < MAX_VERTICES && on_canvas(out[..], v, 1440, 900, 1);
   k := review_layout(layout(1440, 900, 1), 1);
   #assert s[0].scroll_r <= col_height(s[..], k, 1, 1);
-  open_edit(s[..], 0);
-  coaxial_projects_action_done(s[..]);
-  m := put_text(big[..], 0, "0|");
-  for r: 0..<300 { m += put_text(big[..], m, "Line of the design document, long enough to wrap. "); }
-  for i: 0..<m { s[0].inbox[i] = big[i]; }
-  projects_message(s[..], MSG_VALUE, m);
-  #assert s[0].loaded && s[0].edit_n == m - 2;
+  open_edit(s[..], 1);
+  #assert s[0].loaded && s[0].edit_n == m && s[0].action == 0;
   e := projects_frame(s[..], FIXTURE, out[..], uniforms[..], 1440, 900, 1, 0, true);
   #assert e > 600 && e < MAX_VERTICES && on_canvas(out[..], e, 1440, 900, 1) && s[0].edit_top > 0;
+}
+
+#test "a draft the review can't hold whole says so in a notice row, and what it holds stays editable" {
+  s: [1] ProjectsState; b: [512] u8;
+  s[0].drop_open = true; s[0].review_open = true;
+  // the host cut the message: the draft is longer than what came
+  n := put_text(s[0].inbox[..], 0, "V|ready|0||X|0|300000\n{\"card\":{");
+  projects_message(s[..], MSG_REVIEW, n);
+  #assert review_items(s[..]) == 1 && item_is(s[..], 0, 'N', "This draft is 293 KB; the editor reads drafts up to 256 KB.") && !editable(item_kind(s[..], 0));
+  open_edit(s[..], 0);
+  #assert s[0].edit_row == 0;
+  // nothing ready yet: no rows; a discarded drop: none
+  send_review(s[..], "V|reading|0||X|0", "");
+  #assert review_items(s[..]) == 0;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; uniforms: [UNIFORM_FLOATS] f32;
+  send_review(s[..], "V|ready|0||X|0", "{\"card\":{\"a\":{\"b\":{\"c\":{\"d\":{\"e\":{\"f\":{\"g\":{\"h\":{\"i\":{\"j\":\"x\"}}}}}}}}},\"name\":\"N\"}}");
+  #assert item_is(s[..], 0, 'N', "Some of it is nested too deeply to show here.") && item_is(s[..], 1, 'H', "CARD") && item_is(s[..], 2, 'T', "Name");
+  #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], 1440, 900, 1, 0, true) > 0;
+  open_edit(s[..], 2);
+  #assert s[0].loaded && same(edit_text(s[..]), "N");
+}
+
+#test "the review takes only messages that fit, its rows end where they end, and a field opens fresh and saves only when open" {
+  s: [1] ProjectsState; b: [512] u8;
+  s[0].drop_open = true; s[0].review_open = true;
+  // a roadmap alone starts in the second column
+  send_review(s[..], "V|ready|0||X|0", "{\"roadmap\":{\"milestones\":[{\"title\":\"M\"}]}}");
+  #assert review_items(s[..]) == 3 && item_col(s[..], 0) == 1 && item_kind(s[..], 0) == 'H' && same(field(review_line(s[..]), 0, 6), "42");
+  send_review(s[..], "V|ready|0||X|0", "{\"roadmap\":{\"milestones\":[{\"title\":\"M\"}]},\"card\":{\"name\":\"N\",\"line\":\"L\"}}");
+  #assert review_items(s[..]) == 6 && item_kind(s[..], -1) == '?' && item_kind(s[..], 6) == '?' && item_col(s[..], -1) == 0 && item_col(s[..], 6) == 0;
+  #assert item_col(s[..], 3) == 1 && !item_is(s[..], 0, 'T', "CARD") && !item_is(s[..], 0, 'H', "Name") && item_is(s[..], 4, 'G', "MILESTONE 1  M");
+  #assert item_h('H', 2) == 64 && item_h('N', 1) == 32 && item_h('G', 1) == 26 && item_h('A', 1) == 22 && item_h('T', 1) == 44 && item_h('B', 2) == 88;
+  wide := review_layout(layout(1440, 900, 1), 1); narrow := review_layout(layout(390, 844, 1), 1);
+  #assert wide.wide && !narrow.wide && col_height(s[..], wide, 0, 1) == 120 && col_height(s[..], wide, 1, 1) == 102 && col_of(narrow, s[..], 3) == 0 && col_height(s[..], narrow, 0, 1) == 222;
+  // a message that is no length, or longer than the inbox, changes nothing; one as long as the inbox is read
+  n := s[0].review_n;
+  projects_message(s[..], MSG_REVIEW, -1); projects_message(s[..], MSG_REVIEW, INBOX + 1);
+  #assert s[0].review_n == n && review_items(s[..]) == 6;
+  k := put_text(s[0].inbox[..], 0, "V|ready|0||X|0|300000\n"); for i: k..<INBOX { s[0].inbox[i] = ' '; }
+  projects_message(s[..], MSG_REVIEW, INBOX);
+  #assert review_items(s[..]) == 1 && item_kind(s[..], 0) == 'N' && s[0].form[0].notice == PJ_NOTICE_SIZE;
+  // a V line alone (nothing ready) clears what was read before, notice and values too
+  send_to(s[..], MSG_REVIEW, "V|reading|0||X|0|0");
+  #assert review_items(s[..]) == 0 && s[0].form[0].notice == 0 && s[0].nodes_n == 0 && same(review_state(s[..]), "reading");
+  send_to(s[..], MSG_DROPS, "S|0|0|0|\n");
+  d := s[0].drops_n;
+  for i: 0..<DROPS { s[0].inbox[i] = 'x'; }
+  projects_message(s[..], MSG_DROPS, DROPS + 1);
+  #assert s[0].drops_n == d;
+  projects_message(s[..], MSG_DROPS, DROPS);
+  #assert s[0].drops_n == DROPS;
+  // a field opens with only its own value and a fresh editor
+  send_review(s[..], "V|ready|0||X|0", "{\"card\":{\"name\":\"Nm\",\"line\":\"L\"}}");
+  open_edit(s[..], 1);
+  #assert s[0].edit_row == 2 && same(edit_text(s[..]), "Nm");
+  s[0].edit_all = true; s[0].edit_top = 5; s[0].confirm = HIT_PUBLISH; s[0].hot = 0; s[0].saving = true;
+  open_edit(s[..], 2);
+  #assert s[0].edit_row == 3 && same(edit_text(s[..]), "L") && s[0].caret == 1 && s[0].edit_top == 0 && !s[0].edit_all && !s[0].saving && s[0].confirm == 0 && s[0].hot == HIT_NONE;
+  // typing reaches only an open, loaded field that isn't saving
+  send_to(s[..], MSG_TEXT, "x"); #assert same(edit_text(s[..]), "Lx");
+  s[0].loaded = false; send_to(s[..], MSG_TEXT, "y"); save_edit(s[..]); #assert same(edit_text(s[..]), "Lx") && s[0].action == 0;
+  s[0].loaded = true; s[0].saving = true; send_to(s[..], MSG_TEXT, "y"); save_edit(s[..]); #assert same(edit_text(s[..]), "Lx") && s[0].action == 0;
+  s[0].saving = false;
+  // a review that comes while a field is open, and nothing is saving, leaves it open
+  send_review(s[..], "V|ready|0||X|0", "{\"card\":{\"name\":\"Nm\",\"line\":\"L\"}}");
+  #assert s[0].edit_row == 3 && same(edit_text(s[..]), "Lx");
+  save_edit(s[..]); #assert s[0].action == ACT_SAVE && outbox_is(s[..], "{\"path\":[\"card\",\"line\"],\"value\":\"Lx\"}");
+  coaxial_projects_action_done(s[..]); s[0].saving = false;
+  close_edit(s[..]); send_to(s[..], MSG_TEXT, "z"); save_edit(s[..]);
+  #assert s[0].edit_row == 0 && same(edit_text(s[..]), "Lx") && s[0].action == 0;
+  // a heading isn't saved even when it is the open row
+  s[0].edit_row = 1; save_edit(s[..]); #assert s[0].action == 0;
+  // a discard closes the editor and any question
+  s[0].edit_row = 2; s[0].confirm = HIT_DISCARD;
+  send_to(s[..], MSG_REVIEW, "V|discarded|0||\n");
+  #assert !s[0].review_open && s[0].edit_row == 0 && s[0].confirm == 0;
 }

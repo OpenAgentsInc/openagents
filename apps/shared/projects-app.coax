@@ -1,13 +1,14 @@
 // State shared by project surfaces. HTTP/file effects remain installed services.
 #load "../../coax/lib/project/wire.coax";
-#load "../../components/adapters/json-fields.coax";
+#load "../../coax/lib/project/draft.coax";
 ProjectApp :: struct {
  slug:[64]u8;ns:int;title:[256]u8;nt:int;key:[64]u8;nk:int;private_project:bool;
  data:[262144]u8;nd:int;starts:[2048]int;ends:[2048]int;rows:int;
  talk:[131072]u8;nc:int;ts:[512]int;te:[512]int;turns:int;tools:[512]bool;agent:bool;busy:bool;wait:int;
  article:[131072]u8;na:int;note:[512]u8;nn:int;uncertain:bool;
  drops:[65536]u8;nl:int;drop:[24]u8;ndrop:int;drop_info:[65536]u8;ninfo:int;
- draft:[262144]u8;ndraft:int;fields:[1]JsonFields;field:int= -1;field_at:int;
+ draft:[PJ_DRAFT_MAX]u8;ndraft:int;nodes:[PJ_NODES]JvNode;nnodes:int;form:[1]PjForm;field:int= -1;field_at:int;refused:int;refused_bytes:int;
+ scratch:[PJ_DRAFT_MAX]u8;
  edit:[20000]u8;ne:int;notes:[20000]u8;nnotes:int;confirm:int;
  token:[64]u8;nToken:int;file:[256]u8;nfile:int;bytes:int;file_id:[24]u8;nfile_id:int;upload:[4096]u8;nu:int;
  grow:bool;may:bool;loaded:bool;request:int;mutation:bool;chats:[1]ChatHistory;
@@ -18,11 +19,39 @@ pja_note :: (p:[]ProjectApp,value:string) {p[0].nn=pja_copy(p[0].note[..],value)
 pja_slug :: (p:[]ProjectApp)->string {return cast(string)p[0].slug[0..<p[0].ns];}
 pja_drop :: (p:[]ProjectApp)->string {return cast(string)p[0].drop[0..<p[0].ndrop];}
 pja_path :: (project:bool,id:string,op:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],ifx project then "/projects/" else "/api/drops/");jo_put(o[..],id);if op.count>0 {jo_put(o[..],ifx project then "/api/" else "/");jo_put(o[..],op);}return jo_text(o[..]);}
+// The draft as read: its text and the nodes pja_load_draft parsed it into (not ok before one was read).
+// (a draft answer of one value is refused, so ok on one node is never read)
+pja_jv :: (p:[]ProjectApp)->Jv {return Jv.{text=cast(string)p[0].draft[0..<p[0].ndraft],nodes=p[0].nodes[..],count=p[0].nnodes,ok=p[0].nnodes>0};} // mutant: equivalent
+// A draft answer ({"status":...,"draft":{...}}) read into the draft and its rows (coax/lib/project/draft.coax,
+// the website's rows). false keeps the draft read before; refused then says why one could not be read (PJ_NOTICE_*).
 pja_load_draft :: (p:[]ProjectApp,raw:string)->bool {
- d:[1]Jv;nodes:[4096]JvNode;if raw.count>p[0].draft.count || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];if jv_kind(v,0)!=JV_OBJECT || jv_get(v,0,"status")<0 {return false;}
- root:=jv_get(v,0,"draft");if jv_raw(v,jv_get(v,0,"status"))=="ready" && jv_kind(v,root)!=JV_OBJECT {return false;}p[0].fields[0]=JsonFields.{};if jv_kind(v,root)==JV_OBJECT {jf_build(v,root,p[0].fields[..]);}if p[0].fields[0].overflow {return false;}p[0].ndraft=pja_copy(p[0].draft[..],raw);kept:=0;grow:=jv_kind(v,jv_path(v,root,"grow"))==JV_OBJECT;for i:0..<p[0].fields[0].n {f:=p[0].fields[0].fields[i];key:=cast(string)f.keys[0][0..<f.sizes[0]];allowed:=false;for section:[7]string.["card","mechanics","design","roadmap","engine_needs","assets","to_make"] {if key==section {allowed=true;}}if grow && key=="card" && (f.depth<2 || cast(string)f.keys[1][0..<f.sizes[1]]!="line") {allowed=false;}if allowed {p[0].fields[0].fields[kept]=f;kept+=1;}}p[0].fields[0].n=kept;return true;
+ p[0].refused=0;p[0].refused_bytes=raw.count;d:[1]Jv;
+ ok:=pj_draft_read(d[..],raw,p[0].nodes[..],p[0].form[..]);if !ok {p[0].refused=p[0].form[0].notice;}
+ v:=d[0];root:=jv_get(v,0,"draft");
+ // (a member is never node 0, the root, so -1 is the only answer below 1)
+ if ok && (jv_kind(v,0)!=JV_OBJECT || jv_get(v,0,"status")<0 || (jv_raw(v,jv_get(v,0,"status"))=="ready" && jv_kind(v,root)!=JV_OBJECT)) {ok=false;} // mutant: equivalent
+ if !ok {pja_reread(p);return false;}
+ p[0].ndraft=pja_copy(p[0].draft[..],raw);p[0].nnodes=d[0].count;pja_rows(p,root);return true;
 }
-#test "project drafts retain complete values and paginate their editable leaves" {
- p:[1]ProjectApp;#assert pja_load_draft(p[..],"{\"status\":\"ready\",\"draft\":{\"card\":{\"name\":\"Moon\",\"slug\":\"moon\"},\"mechanics\":[\"Walk\"]}}");#assert p[0].fields[0].n==4;
- #assert !pja_load_draft(p[..],"<html>error</html>") && pja_slug(p[..])=="";
+pja_rows :: (p:[]ProjectApp,root:int) {v:=pja_jv(p);if jv_kind(v,root)==JV_OBJECT {pj_form(v,root,p[0].form[..]);}else {p[0].form[0].n=0;p[0].form[0].notice=0;}}
+// The draft read before, parsed again after an answer that could not be read.
+pja_reread :: (p:[]ProjectApp) {
+ d:[1]Jv;p[0].form[0].n=0;
+ // (a draft kept is a whole answer, never one byte, and nodes are only counted from one)
+ p[0].nnodes=0;if p[0].ndraft>0 && jv_parse(d[..],cast(string)p[0].draft[0..<p[0].ndraft],p[0].nodes[..]) {p[0].nnodes=d[0].count;pja_rows(p,jv_get(d[0],0,"draft"));}} // mutant: equivalent
+// Why the last draft answer could not be read, plainly.
+pja_refusal :: (p:[]ProjectApp,out:[]u8)->string {if p[0].refused==0 {return "The draft could not be read completely. Refresh to retry.";}return pj_notice_text(p[0].refused,p[0].refused_bytes,0,0,false,out);} // mutant: equivalent (a refusal is size or values; neither notice reads the field counts)
+#test "project drafts read into the website's rows, and an answer that can't be read keeps the draft before and says why" {
+ p:[1]ProjectApp;#assert pja_load_draft(p[..],"{\"status\":\"ready\",\"draft\":{\"card\":{\"name\":\"Moon\",\"slug\":\"moon\"},\"mechanics\":[\"Walk\"]}}");
+ #assert p[0].form[0].n==6 && p[0].form[0].rows[0].kind=='H' && p[0].form[0].rows[1].kind=='T' && p[0].form[0].rows[5].kind=='A';
+ b:[512]u8;#assert pj_label(pja_jv(p[..]),p[0].form[..],2,b[..])=="Slug" && pj_label(pja_jv(p[..]),p[0].form[..],5,b[..])=="+ add a mechanic";
+ #assert !pja_load_draft(p[..],"<html>error</html>") && pja_slug(p[..])=="" && p[0].form[0].n==6 && pja_jv(p[..]).ok;
+ #assert pja_refusal(p[..],b[..])=="The draft could not be read completely. Refresh to retry.";
+ big:[PJ_DRAFT_MAX+2]u8;#assert !pja_load_draft(p[..],cast(string)big[..]) && pja_refusal(p[..],b[..])=="This draft is 257 KB; the editor reads drafts up to 256 KB." && p[0].form[0].n==6;
+ #assert !pja_load_draft(p[..],"{\"status\":\"ready\",\"draft\":[]}") && !pja_load_draft(p[..],"{\"draft\":{}}") && pja_load_draft(p[..],"{\"status\":\"reading\"}") && p[0].form[0].n==0;
+ // a status with no draft clears what the last refusal said; a refusal after a good read says its own reason
+ #assert !pja_load_draft(p[..],cast(string)big[..]) && p[0].refused==PJ_NOTICE_SIZE && pja_load_draft(p[..],"{\"status\":\"reading\"}") && p[0].refused==0 && p[0].form[0].notice==0;
+ #assert !pja_load_draft(p[..],"nope") && pja_refusal(p[..],b[..])=="The draft could not be read completely. Refresh to retry.";
+ // the first answer, refused with nothing read before: no rows, not even its notice (the note says why)
+ q:[1]ProjectApp;#assert !pja_load_draft(q[..],cast(string)big[..]) && q[0].form[0].n==0 && q[0].nnodes==0 && q[0].refused==PJ_NOTICE_SIZE;
 }

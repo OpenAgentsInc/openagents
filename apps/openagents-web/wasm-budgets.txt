@@ -266,7 +266,9 @@ oneshot 410000
 orbitleague 300000
 private 280000
 project 2400000
-projects 110000
+# #13604: the draft review rows the apps share (coax/lib/project/draft.coax and the JSON field walk) move
+# here from drop.js: 92,453 -> 113,505 bytes measured 2026-11-14 (macOS build); about 15% room.
+projects 130000
 # #13454: width-10 G table and public divsteps; 117,297 bytes measured 2026-11-13, about 5% room.
 pylon 124000
 # The Haunted House links its renderer carrier again (carriers/realm.coax loads metaverse/haunt.coax, #13513): 584,383 bytes measured on Linux; about 5% room.

@@ -1,0 +1,192 @@
+// A project draft as its review shows it, on the website and in the apps: its sections
+// in a fixed order, a heading for each, a group for each milestone, task or other
+// object, and a row for each value a member may change (a text, a yes or no, a list's
+// next item), each named as a person reads it. The rows are data; each surface draws
+// them. The draft's values, paths and saves come from components/adapters/json-fields.coax.
+// A draft that is past the bounds still shows the rows that fit, with a notice row
+// first that says how many it shows (PJ_NOTICE_*).
+#load "../../../components/adapters/json-fields.coax";
+PJ_DRAFT_MAX :: 262144;   // bytes of a draft's answer a surface reads (twice what the drafter writes at most)
+PJ_NODES :: 8192;         // JSON values in it (about three times a full draft's)
+PJ_ROWS :: JF_MAX + 8;    // the entries, the seven headings and the notice
+PJ_KEYS :: [7] string.["card", "mechanics", "design", "roadmap", "engine_needs", "assets", "to_make"];
+PJ_COLS :: [7] int.[0, 0, 0, 1, 1, 1, 1];
+PJ_TITLES :: [7] string.["CARD", "MECHANICS", "DESIGN", "ROADMAP", "ENGINE NEEDS", "ASSETS", "TO MAKE"];
+// a drop that grows a project proposes additions to it: only the card's line is the member's to change
+PJ_GROW_TITLES :: [7] string.["WHAT IT ADDS", "NEW MECHANICS", "DESIGN NOTES", "PROPOSED WORK", "ENGINE NEEDS", "ASSETS", "TO MAKE"];
+PJ_NAME_KEYS :: [27] string.["name", "line", "owner", "slug", "cover", "art_direction", "markdown", "open_questions", "initiative", "title", "body",
+  "size", "acceptance", "mechanics", "needs", "existing", "why", "reuses", "file", "kind", "licence", "use", "milestones", "tasks", "engine_needs", "assets", "to_make"];
+PJ_NAMES :: [27] string.["Name", "One line", "Owner", "Slug", "Cover", "Art direction", "Design document", "Open question", "Initiative", "Title", "Body",
+  "Size", "Check", "Mechanic", "Needs", "Adds to a milestone it has", "Why", "Reuses an engine task", "File", "Kind", "Licence", "Use", "Milestone", "Task", "Engine need", "Asset", "To make"];
+// an object's keys come in this order, then the rest in the browser's collation
+PJ_ORDER :: [23] string.["name", "title", "slug", "line", "owner", "size", "file", "kind", "licence", "use", "why", "reuses", "cover",
+  "art_direction", "markdown", "open_questions", "body", "acceptance", "mechanics", "needs", "initiative", "milestones", "tasks"];
+PJ_ONE_KEYS :: [4] string.["open_questions", "acceptance", "mechanics", "needs"];
+PJ_ONES :: [4] string.["an open question", "a check", "a mechanic", "a need"];
+PJ_LABEL :: 90;      // UTF-16 units of a row's name
+PJ_PREVIEW :: 140;   // UTF-16 units of a value's preview
+// why a draft shows no rows, or only some (0: it shows every row)
+PJ_NOTICE_SIZE :: 1; PJ_NOTICE_VALUES :: 2; PJ_NOTICE_FIELDS :: 3;
+
+// kind: 'N' the notice, 'H' a section's heading, 'G' a group, 'T' a text, 'B' a yes or no, 'A' a list's next item
+PjRow :: struct {kind:u8;col:int;entry:int;section:int;}
+PjForm :: struct {fields:[1]JsonFields;rows:[PJ_ROWS]PjRow;n:int;grow:bool;notice:int;bytes:int;}
+
+pj_editable :: (kind:u8)->bool {return kind=='T' || kind=='B' || kind=='A';}
+pj_section :: (key:string)->int {for k,i:PJ_KEYS {if k==key {return i;}}return -1;}
+pj_key_rank :: (key:string)->int {for k,i:PJ_ORDER {if k==key {return i;}}return PJ_ORDER.count;}
+// A value as JavaScript's truthiness takes it (the draft's grow, a group's title).
+pj_truthy :: (v:Jv,node:int)->bool {
+ kind:=jv_kind(v,node);if kind==JV_OBJECT || kind==JV_ARRAY || kind==JV_TRUE {return true;}
+ if kind==JV_STRING {return jv_raw(v,node).count>0;}
+ if kind!=JV_NUMBER {return false;}
+ // after e or E only the exponent is left; - + . and 0 sort below '1', so a byte above '0' is a nonzero digit
+ for c:jv_raw(v,node) {if c=='e' || c=='E' {return false;}if c>'0' {return true;}}
+ return false;
+}
+
+// The draft (root, an object) as rows, into f. Its parts past the bounds are counted, not shown.
+pj_form :: (v:Jv,root:int,f:[]PjForm) {
+ f[0].n=0;f[0].notice=0;f[0].bytes=0;f[0].grow=pj_truthy(v,jv_get(v,root,"grow"));out:=f[0].fields[..];out[0]=JsonFields.{};
+ if jv_kind(v,root)!=JV_OBJECT {return;}
+ top:JsonField;
+ for key,s:PJ_KEYS {
+  // a member is never node 0 (the root), so -1 is the only answer below 1
+  m:=jv_get(v,root,key);if m<0 {continue;} // mutant: equivalent
+  path:=jf_member(top,root,m);
+  if !f[0].grow || s!=0 {jf_walk(v,m,path,out);continue;}
+  line:=jv_get(v,m,"line");if line>=0 {jf_walk(v,line,jf_member(path,m,line),out);} // mutant: equivalent (as above)
+ }
+ // the entries in review order: a stable merge sort by pj_before. A run past n takes only
+ // its first half (b starts at or past end), and a pass at width n or more copies order
+ // unchanged, so end>=n and width<=n sort the same; order is zero before it is filled.
+ n:=out[0].n;order:[JF_MAX]int;spare:[JF_MAX]int;for i:0..<n {order[i]=i;} // mutant: equivalent
+ width:=1;while width<n {at:=0;while at<n {mid:=at+width;end:=mid+width;if end>n {end=n;} // mutant: equivalent
+   a:=at;b:=mid;k:=at;
+   while k<end {if b>=end || (a<mid && pj_before(v,out[0].fields[order[a]],out[0].fields[order[b]])) {spare[k]=order[a];a+=1;}else {spare[k]=order[b];b+=1;}k+=1;}
+   at=end;}
+  // (the first entry walked is the first section's own object, which sorts first: position 0 never moves)
+  for i:0..<n {order[i]=spare[i];}width*=2;} // mutant: equivalent
+ if out[0].overflow {f[0].notice=PJ_NOTICE_FIELDS;pj_row(f,'N',0,-1,-1);}
+ next:=0;
+ for key,s:PJ_KEYS {
+  if jv_get(v,root,key)<0 {continue;} // mutant: equivalent (as above)
+  pj_row(f,'H',PJ_COLS[s],-1,s);
+  while next<n {e:=out[0].fields[order[next]];if pj_entry_section(v,e)!=s {break;}kind:=pj_kind(e);if kind!=0 {pj_row(f,kind,PJ_COLS[s],order[next],s);}next+=1;}
+ }
+}
+// A surface that could not read the draft at all says why with a notice row alone.
+pj_form_refused :: (f:[]PjForm,notice:int,bytes:int) {f[0].n=0;f[0].grow=false;f[0].fields[0]=JsonFields.{};f[0].notice=notice;f[0].bytes=bytes;pj_row(f,'N',0,-1,-1);}
+// (never full: at most JF_MAX entries, seven headings and the notice, which is PJ_ROWS)
+pj_row :: (f:[]PjForm,kind:u8,col:int,entry:int,section:int) {if f[0].n>=PJ_ROWS {return;} // mutant: equivalent
+f[0].rows[f[0].n]=PjRow.{kind=kind,col=col,entry=entry,section=section};f[0].n+=1;}
+pj_entry_section :: (v:Jv,e:JsonField)->int {key:[JF_KEY]u8;k:=jf_key(v,e,0,key[..]);return pj_section(cast(string)key[0..<k]);}
+// The row an entry makes: a value, or a group for an object under a key or anything in a list.
+pj_kind :: (e:JsonField)->u8 {
+ if e.kind==JV_TRUE || e.kind==JV_FALSE {return 'B';}
+ // an entry is never node 0 (the root): a list's next item is node -1
+ if e.kind==JV_STRING {return ifx e.node<0 then 'A' else 'T';} // mutant: equivalent
+ if e.depth<2 {return 0;}
+ return ifx jf_is_array(e,e.depth-1) || e.kind==JV_OBJECT then 'G' else 0;
+}
+// Whether entry a comes before entry b: sections in their order, a list's items by place,
+// an object's keys by PJ_ORDER and then collation, a group before what it holds.
+pj_before :: (v:Jv,a:JsonField,b:JsonField)->bool {
+ i:=0;while i<a.depth && i<b.depth {
+  ka:[JF_KEY]u8;kb:[JF_KEY]u8;na:=jf_key(v,a,i,ka[..]);nb:=jf_key(v,b,i,kb[..]);x:=cast(string)ka[0..<na];y:=cast(string)kb[0..<nb];
+  if i==0 {sa:=pj_section(x);sb:=pj_section(y);if sa<sb {return true;}if sa>sb {return false;}}
+  else if jf_is_array(a,i) {if a.at[i]<b.at[i] {return true;}if a.at[i]>b.at[i] {return false;}}
+  else {ra:=pj_key_rank(x);rb:=pj_key_rank(y);if ra<rb {return true;}if ra>rb {return false;}c:=jf_collate(x,y);if c<0 {return true;}if c>0 {return false;}}
+  i+=1;
+ }
+ // the shorter path is the group the longer one is in; two entries never share a whole path
+ return a.depth<=b.depth; // mutant: equivalent
+}
+
+// ---------------------------------------------------------------- the words
+
+pj_append :: (out:[]u8,at:int,s:string)->int {n:=at;for c:s {if n<out.count {out[n]=c;n+=1;}}return n;}
+pj_decimal :: (out:[]u8,at:int,value:int)->int {d:[24]u8;o:[1]Jo;jo_start(o[..],d[..]);jo_int(o[..],value);return pj_append(out,at,jo_text(o[..]));}
+// A key as a person reads it: its name, else its words with the first one capitalised.
+pj_named :: (key:string,out:[]u8,at:int)->int {
+ for k,i:PJ_NAME_KEYS {if k==key {return pj_append(out,at,PJ_NAMES[i]);}}
+ n:=at;for c,i:key {if n<out.count {out[n]=ifx c=='_' then ' ' else ifx i==0 && c>='a' && c<='z' then c-'a'+'A' else c;n+=1;}}
+ return n;
+}
+pj_upper :: (out:[]u8,from:int,to:int) {for i:from..<to {if out[i]>='a' && out[i]<='z' {out[i]=out[i]-'a'+'A';}}}
+pj_one :: (key:string)->string {for k,i:PJ_ONE_KEYS {if k==key {return PJ_ONES[i];}}return "one";}
+// A group's title, as String(x.title || x.file || x.slug || "") gives it.
+pj_group_title :: (v:Jv,node:int,out:[]u8,at:int)->int {
+ if jv_kind(v,node)!=JV_OBJECT {return at;}
+ for key:[3]string.["title","file","slug"] {
+  t:=jv_get(v,node,key);if !pj_truthy(v,t) {continue;}kind:=jv_kind(v,t);
+  // (an empty title is falsy and skipped above, so n is never 0 here)
+  if kind==JV_STRING {n:=jv_unescape(jv_raw(v,t),out[at..<out.count]);return ifx n<0 then out.count else at+n;} // mutant: equivalent
+  if kind==JV_TRUE {return pj_append(out,at,"true");}
+  if kind==JV_OBJECT {return pj_append(out,at,"[object Object]");}
+  return pj_append(out,at,jv_raw(v,t));
+ }
+ return at;
+}
+// What a notice says, plainly: notice is PJ_NOTICE_*, bytes the draft's length, leaves and kept its fields and those shown.
+pj_notice_text :: (notice:int,bytes:int,leaves:int,kept:int,unread:bool,out:[]u8)->string {
+ n:=0;
+ if notice==PJ_NOTICE_SIZE {n=pj_append(out,n,"This draft is ");n=pj_decimal(out,n,(bytes+1023)/1024);n=pj_append(out,n," KB; the editor reads drafts up to ");n=pj_decimal(out,n,PJ_DRAFT_MAX/1024);n=pj_append(out,n," KB.");}
+ else if notice==PJ_NOTICE_VALUES {n=pj_append(out,n,"This draft has more than ");n=pj_decimal(out,n,PJ_NODES);n=pj_append(out,n," values; the editor can't read it.");}
+ else if notice==PJ_NOTICE_FIELDS {
+  if kept<leaves {n=pj_append(out,n,"This draft has ");n=pj_decimal(out,n,leaves);n=pj_append(out,n," fields; the editor shows ");n=pj_decimal(out,n,kept);n=pj_append(out,n," of them.");}
+  if unread {if kept<leaves {n=pj_append(out,n," ");}n=pj_append(out,n,"Some of it is nested too deeply to show here.");}
+ }
+ return cast(string)out[0..<n];
+}
+pj_notice :: (f:[]PjForm,out:[]u8)->string {x:=f[0].fields[0].leaves;k:=f[0].fields[0].kept;return pj_notice_text(f[0].notice,f[0].bytes,x,k,f[0].fields[0].unread,out);}
+// Row r's name, at most PJ_LABEL units, its separators as spaces.
+pj_label :: (v:Jv,f:[]PjForm,r:int,out:[]u8)->string {
+ row:=f[0].rows[r];raw:[1024]u8;n:=0;
+ if row.kind=='N' {return pj_notice(f,out);}
+ if row.kind=='H' {n=pj_append(out,0,ifx f[0].grow then PJ_GROW_TITLES[row.section] else PJ_TITLES[row.section]);return cast(string)out[0..<n];}
+ e:=f[0].fields[0].fields[row.entry];d:=e.depth;key:[JF_KEY]u8;
+ if row.kind=='A' {k:=jf_key(v,e,d-2,key[..]);n=pj_append(raw[..],0,"+ add ");n=pj_append(raw[..],n,pj_one(cast(string)key[0..<k]));}
+ else if row.kind=='G' && jf_is_array(e,d-1) {
+  k:=jf_key(v,e,d-2,key[..]);n=pj_named(cast(string)key[0..<k],raw[..],0);
+  pj_upper(raw[..],0,n); // mutant: equivalent (pj_named starts with a capital or a byte no case changes)
+  n=pj_append(raw[..],n," ");n=pj_decimal(raw[..],n,e.at[d-1]+1);n=pj_append(raw[..],n,"  ");n=pj_group_title(v,e.node,raw[..],n);
+ }
+ else if row.kind=='G' {
+  k:=jf_key(v,e,d-1,key[..]);n=pj_named(cast(string)key[0..<k],raw[..],0);
+  pj_upper(raw[..],0,n); // mutant: equivalent (as above)
+ }
+ else if jf_is_array(e,d-1) {
+  if !jf_is_array(e,d-2) {k:=jf_key(v,e,d-2,key[..]);n=pj_named(cast(string)key[0..<k],raw[..],0);}
+  n=pj_append(raw[..],n," ");n=pj_decimal(raw[..],n,e.at[d-1]+1);
+ }
+ else {k:=jf_key(v,e,d-1,key[..]);n=pj_named(cast(string)key[0..<k],raw[..],0);}
+ return jf_clip(cast(string)raw[0..<n],PJ_LABEL,false,out);
+}
+// Row r's value in full, as its editor starts: a text, "yes" or "no", or "" for a list's next item. -1: longer than out.
+pj_value :: (v:Jv,f:[]PjForm,r:int,out:[]u8)->int {
+ row:=f[0].rows[r];if !pj_editable(row.kind) {return 0;}e:=f[0].fields[0].fields[row.entry];
+ if row.kind=='A' {return 0;}
+ if row.kind=='B' {return pj_append(out,0,ifx e.kind==JV_TRUE then "yes" else "no");}
+ return jv_str(v,e.node,out);
+}
+// Row r's value as the review shows it: PJ_PREVIEW units and "..." when cut. scratch holds the whole value.
+// (an empty value clips to "" too, so n<=0 reads the same)
+pj_preview :: (v:Jv,f:[]PjForm,r:int,scratch:[]u8,out:[]u8)->string {n:=pj_value(v,f,r,scratch);if n<0 {return "";} // mutant: equivalent
+ return jf_clip(cast(string)scratch[0..<n],PJ_PREVIEW,true,out);}
+// The edit route's body for row r: {"path":[...],"value":"..."}. -1 when out is too small.
+pj_edit_body :: (v:Jv,f:[]PjForm,r:int,value:string,out:[]u8)->int {
+ row:=f[0].rows[r];if !pj_editable(row.kind) {return -1;}
+ // the longest path: JF_DEPTH keys of JF_KEY bytes, each escaped to at most six, quoted, with commas
+ path:[JF_DEPTH*(6*JF_KEY+3)+2]u8;k:=jf_path(v,f[0].fields[0].fields[row.entry],path[..]);if k<0 {return -1;} // mutant: equivalent (it fits)
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"path");jo_raw(o[..],cast(string)path[0..<k]);jo_key(o[..],"value");jo_str(o[..],value);jo_end(o[..]);
+ return ifx o[0].bad then -1 else o[0].n;
+}
+// A draft's answer read into a form: false when it is no JSON object (f says why when it could not be read).
+pj_draft_read :: (d:[]Jv,raw:string,nodes:[]JvNode,f:[]PjForm)->bool {
+ if raw.count>PJ_DRAFT_MAX {pj_form_refused(f,PJ_NOTICE_SIZE,raw.count);return false;}
+ if !jv_parse(d,raw,nodes) {if d[0].err==nodes.count {pj_form_refused(f,PJ_NOTICE_VALUES,raw.count);}else {f[0].n=0;f[0].notice=0;}return false;}
+ return true;
+}
+
+#load "draft-checks.coax" #test;

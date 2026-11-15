@@ -1,0 +1,102 @@
+// Checks of draft.coax: the rows match what the website drew before (draft-oracle.coax),
+// the bounds say what they show, and a draft that can't be read says why.
+#load "draft-oracle.coax";
+
+pjc_lines :: (v:Jv,f:[]PjForm,out:[]u8)->string {
+ n:=0;scratch:[4096]u8;
+ for r:0..<f[0].n {
+  row:=f[0].rows[r];
+  label:[512]u8;preview:[1024]u8;
+  if r>0 {n=pj_append(out,n,"\n");}
+  n=pj_append(out,n,"R|");n=pj_decimal(out,n,row.col);n=pj_append(out,n,"|");out[n]=row.kind;n+=1;n=pj_append(out,n,"|");
+  n=pj_append(out,n,pj_label(v,f,r,label[..]));n=pj_append(out,n,"|");n=pj_append(out,n,pj_preview(v,f,r,scratch[..],preview[..]));
+ }
+ return cast(string)out[0..<n];
+}
+#test "the shared rows are the website's rows: order, names, headings, groups, previews and save bodies" {
+ at:=0;
+ for text,i:PJC_DRAFTS {
+  d:[1]Jv;nodes:[512]JvNode;f:[1]PjForm;#assert jv_parse(d[..],text,nodes[..]);v:=d[0];pj_form(v,0,f[..]);
+  out:[16384]u8;#assert pjc_lines(v,f[..],out[..])==PJC_ROWS[i];
+  k:=0;for r:0..<f[0].n {
+   if !pj_editable(f[0].rows[r].kind) {continue;}
+   value:[4096]u8;vn:=pj_value(v,f[..],r,value[..]);body:[8192]u8;bn:=pj_edit_body(v,f[..],r,cast(string)value[0..<vn],body[..]);
+   #assert vn>=0 && bn>0 && cast(string)body[0..<bn]==PJC_BODIES[at+k];k+=1;
+  }
+  #assert k==PJC_BODY_COUNTS[i] && f[0].notice==0;at+=k;
+ }
+}
+#test "an edit body escapes as JSON.stringify does" {
+ d:[1]Jv;nodes:[16]JvNode;f:[1]PjForm;#assert jv_parse(d[..],"{\"card\":{\"a\\\"b\\\\c\":\"x\"}}",nodes[..]);pj_form(d[0],0,f[..]);
+ #assert f[0].n==2 && f[0].rows[1].kind=='T';body:[256]u8;n:=pj_edit_body(d[0],f[..],1,"q\"\\\n\t\r😀",body[..]);
+ #assert cast(string)body[0..<n]=="{\"path\":[\"card\",\"a\\\"b\\\\c\"],\"value\":\"q\\\"\\\\\\n\\t\\r😀\"}";
+ #assert pj_edit_body(d[0],f[..],0,"x",body[..])== -1 && pj_edit_body(d[0],f[..],1,"x",body[0..<8])== -1;
+ nb:[8]u8;#assert pj_value(d[0],f[..],0,nb[..])==0 && pj_value(d[0],f[..],1,nb[0..<0])== -1;
+}
+#test "a grow draft is one when grow is truthy, as the website took it" {
+ d:[1]Jv;nodes:[32]JvNode;f:[1]PjForm;
+ for g:[7] string.["{}","true","\"x\"","1","[]","0.5","1e-3"] {
+  t:[128]u8;n:=pj_append(t[..],0,"{\"grow\":");n=pj_append(t[..],n,g);n=pj_append(t[..],n,",\"card\":{\"name\":\"N\",\"line\":\"L\"}}");
+  #assert jv_parse(d[..],cast(string)t[0..<n],nodes[..]);pj_form(d[0],0,f[..]);#assert f[0].grow && f[0].n==2;
+ }
+ for g:[7] string.["false","null","\"\"","0","-0","0.0","0e5"] {
+  t:[128]u8;n:=pj_append(t[..],0,"{\"grow\":");n=pj_append(t[..],n,g);n=pj_append(t[..],n,",\"card\":{\"name\":\"N\",\"line\":\"L\"}}");
+  #assert jv_parse(d[..],cast(string)t[0..<n],nodes[..]);pj_form(d[0],0,f[..]);#assert !f[0].grow && f[0].n==3;
+ }
+ #assert jv_parse(d[..],"[1]",nodes[..]);pj_form(d[0],0,f[..]);#assert f[0].n==0;
+ #assert jv_parse(d[..],"{\"grow\":1,\"card\":[\"x\"],\"mechanics\":[]}",nodes[..]);pj_form(d[0],0,f[..]);#assert f[0].n==3 && f[0].rows[2].kind=='A';
+}
+#test "past the bounds the rows that fit show, after a notice that counts them" {
+ text:[65536]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_obj(o[..]);jo_key(o[..],"mechanics");jo_arr(o[..]);for i:0..<JF_MAX+10 {jo_str(o[..],"m");}jo_end(o[..]);jo_end(o[..]);
+ d:[1]Jv;nodes:[JF_MAX+16]JvNode;f:[1]PjForm;#assert jv_parse(d[..],jo_text(o[..]),nodes[..]);pj_form(d[0],0,f[..]);
+ #assert f[0].notice==PJ_NOTICE_FIELDS && f[0].rows[0].kind=='N' && f[0].rows[1].kind=='H' && f[0].n==JF_MAX+1;
+ #assert f[0].rows[0].col==0 && f[0].rows[0].entry== -1 && f[0].rows[0].section== -1;
+ b:[512]u8;#assert pj_label(d[0],f[..],0,b[..])=="This draft has 4107 fields; the editor shows 4095 of them.";
+ #assert !pj_editable('N') && pj_value(d[0],f[..],0,b[..])==0;
+ deep:="{\"card\":{\"a\":{\"b\":{\"c\":{\"d\":{\"e\":{\"f\":{\"g\":{\"h\":{\"i\":{\"j\":\"x\"}}}}}}}}}}}";
+ #assert jv_parse(d[..],deep,nodes[..]);pj_form(d[0],0,f[..]);#assert pj_label(d[0],f[..],0,b[..])=="Some of it is nested too deeply to show here.";
+ f[0].fields[0].leaves=9;f[0].fields[0].kept=2;#assert pj_label(d[0],f[..],0,b[..])=="This draft has 9 fields; the editor shows 2 of them. Some of it is nested too deeply to show here.";
+}
+#test "a draft too large or with too many values says so instead of showing nothing" {
+ d:[1]Jv;nodes:[4]JvNode;f:[1]PjForm;b:[512]u8;
+ #assert !pj_draft_read(d[..],"[1,2,3,4,5,6]",nodes[..],f[..]) && f[0].n==1 && pj_label(d[0],f[..],0,b[..])=="This draft has more than 8192 values; the editor can't read it.";
+ big:[PJ_DRAFT_MAX+1]u8;#assert !pj_draft_read(d[..],cast(string)big[..],nodes[..],f[..]) && f[0].notice==PJ_NOTICE_SIZE;
+ #assert pj_label(d[0],f[..],0,b[..])=="This draft is 257 KB; the editor reads drafts up to 256 KB.";
+ #assert !pj_draft_read(d[..],"{x",nodes[..],f[..]) && f[0].n==0 && f[0].notice==0;
+ #assert pj_draft_read(d[..],"{}",nodes[..],f[..]) && pj_draft_read(d[..],cast(string)big[0..<0],nodes[..],f[..])==false;
+}
+#test "the rows' own fields, a form read again and a refusal after a form start clean" {
+ d:[1]Jv;nodes:[64]JvNode;f:[1]PjForm;b:[512]u8;
+ #assert pj_section("card")==0 && pj_section("to_make")==6 && pj_section("grow")== -1 && pj_key_rank("name")==0 && pj_key_rank("tasks")==22 && pj_key_rank("zeta")==23;
+ #assert jv_parse(d[..],"{\"grow\":true,\"card\":{\"name\":\"N\",\"line\":\"L\"},\"mechanics\":[\"m\"]}",nodes[..]);pj_form(d[0],0,f[..]);
+ #assert f[0].grow && f[0].rows[0].kind=='H' && f[0].rows[0].entry== -1 && f[0].rows[0].section==0 && f[0].rows[2].kind=='H' && f[0].rows[2].entry== -1;
+ pj_form_refused(f[..],PJ_NOTICE_SIZE,300000);
+ #assert f[0].n==1 && !f[0].grow && f[0].fields[0].n==0 && f[0].fields[0].leaves==0 && f[0].rows[0].kind=='N' && f[0].rows[0].col==0 && f[0].rows[0].entry== -1 && f[0].rows[0].section== -1;
+ #assert pj_label(d[0],f[..],0,b[..])=="This draft is 293 KB; the editor reads drafts up to 256 KB.";
+ pj_form(d[0],0,f[..]);#assert f[0].notice==0 && f[0].bytes==0 && f[0].n==5;
+ #assert pj_notice_text(PJ_NOTICE_SIZE,1024,0,0,false,b[..])=="This draft is 1 KB; the editor reads drafts up to 256 KB." && pj_notice_text(PJ_NOTICE_SIZE,1025,0,0,false,b[..])=="This draft is 2 KB; the editor reads drafts up to 256 KB.";
+ #assert pj_notice_text(PJ_NOTICE_FIELDS,0,3,3,false,b[..])=="" && pj_notice_text(PJ_NOTICE_FIELDS,0,3,3,true,b[..])=="Some of it is nested too deeply to show here." && pj_notice_text(0,9,9,1,true,b[..])=="";
+}
+#test "names, capitals and copies stop at their buffer, and a byte with no case keeps it" {
+ b:[4]u8;#assert pj_append(b[0..<2],0,"abc")==2 && cast(string)b[0..<2]=="ab" && pj_append(b[..],3,"xy")==4;
+ #assert pj_named("{x",b[..],0)==2 && cast(string)b[0..<2]=="{x" && pj_named("zoo_ab",b[0..<3],0)==3 && cast(string)b[0..<3]=="Zoo";
+ #assert pj_named("name",b[..],0)==4 && cast(string)b[0..<4]=="Name";
+ c:[6]u8;for x,i:"z{aZ`" {c[i]=x;}pj_upper(c[..],0,5);#assert cast(string)c[0..<5]=="Z{AZ`";
+}
+#test "a number is truthy as JavaScript takes it, whatever its exponent's letter" {
+ d:[1]Jv;nodes:[4]JvNode;
+ for g:[6] string.["9","-1","0.000001","1E5","10","-9e9"] {#assert jv_parse(d[..],g,nodes[..]) && pj_truthy(d[0],0);}
+ for g:[5] string.["0E5","-0.0","0e-9","0.0E1","0"] {#assert jv_parse(d[..],g,nodes[..]) && !pj_truthy(d[0],0);}
+}
+#test "a draft as long as the bound is read; one byte more is refused" {
+ d:[1]Jv;nodes:[4]JvNode;f:[1]PjForm;big:[PJ_DRAFT_MAX]u8;
+ #assert !pj_draft_read(d[..],cast(string)big[..],nodes[..],f[..]) && f[0].notice!=PJ_NOTICE_SIZE;
+}
+#test "an entry comes before another by section, by place in a list, and as the group before what it holds" {
+ d:[1]Jv;nodes:[64]JvNode;f:[1]PjForm;
+ #assert jv_parse(d[..],"{\"card\":{\"name\":\"N\"},\"roadmap\":{\"milestones\":[{\"title\":\"M\"},{\"title\":\"P\"}]}}",nodes[..]);pj_form(d[0],0,f[..]);
+ // walked: card, name, roadmap, milestones, milestone 1, its title, milestone 2, its title
+ v:=d[0];e:=f[0].fields[0].fields[..];#assert f[0].fields[0].n==8 && e[4].depth==3 && e[5].depth==4 && e[6].depth==3;
+ #assert pj_before(v,e[1],e[2]) && !pj_before(v,e[2],e[1]) && pj_before(v,e[4],e[6]) && !pj_before(v,e[6],e[4]) && !pj_before(v,e[7],e[5]);
+ #assert pj_before(v,e[4],e[5]) && !pj_before(v,e[5],e[4]) && pj_before(v,e[3],e[4]) && !pj_before(v,e[4],e[3]) && pj_before(v,e[5],e[6]);
+}

@@ -1,23 +1,11 @@
 // Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
-const STATE_KIND = 40, VIEWER_KIND = 3, REVIEW_KIND = 41, VALUE_KIND = 42;
-const ACT_PICK = 20, ACT_SIGNIN = 22, ACT_DRAFT = 23, ACT_EDIT = 24, ACT_SAVE = 25, ACT_PUBLISH = 26, ACT_DISCARD = 27;
+const STATE_KIND = 40, VIEWER_KIND = 3, REVIEW_KIND = 41;
+const ACT_PICK = 20, ACT_SIGNIN = 22, ACT_DRAFT = 23, ACT_SAVE = 25, ACT_PUBLISH = 26, ACT_DISCARD = 27;
 const PARALLEL = 3;
 // A drop on a project (/projects?add=SLUG&key=KEY#new, from its page's ADD TO PROJECT) grows it: the
 // draft is proposals for it (rc-later-drops), reviewed as a new project's draft is and ACCEPTed.
-const GROW_SECTIONS = [["card", 0, "WHAT IT ADDS"], ["mechanics", 0, "NEW MECHANICS"], ["design", 0, "DESIGN NOTES"], ["roadmap", 1, "PROPOSED WORK"],
-  ["engine_needs", 1, "ENGINE NEEDS"], ["assets", 1, "ASSETS"], ["to_make", 1, "TO MAKE"]];
-const SECTIONS = [["card", 0, "CARD"], ["mechanics", 0, "MECHANICS"], ["design", 0, "DESIGN"], ["roadmap", 1, "ROADMAP"],
-  ["engine_needs", 1, "ENGINE NEEDS"], ["assets", 1, "ASSETS"], ["to_make", 1, "TO MAKE"]];
-const NAMES = { name: "Name", line: "One line", owner: "Owner", slug: "Slug", cover: "Cover", art_direction: "Art direction",
-  markdown: "Design document", open_questions: "Open question", initiative: "Initiative", title: "Title", body: "Body",
-  size: "Size", acceptance: "Check", mechanics: "Mechanic", needs: "Needs", existing: "Adds to a milestone it has", why: "Why", reuses: "Reuses an engine task",
-  file: "File", kind: "Kind", licence: "Licence", use: "Use", milestones: "Milestone", tasks: "Task", engine_needs: "Engine need",
-  assets: "Asset", to_make: "To make" };
-const ORDER = ["name", "title", "slug", "line", "owner", "size", "file", "kind", "licence", "use", "why", "reuses", "cover",
-  "art_direction", "markdown", "open_questions", "body", "acceptance", "mechanics", "needs", "initiative", "milestones", "tasks"];
-const ONE = { open_questions: "an open question", acceptance: "a check", mechanics: "a mechanic", needs: "a need" };
-const named = (k) => NAMES[k] || String(k).replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
-const ordered = (o) => Object.keys(o).sort((a, b) => ((ORDER.indexOf(a) + 1 || 99) - (ORDER.indexOf(b) + 1 || 99)) || a.localeCompare(b));
+// The review's rows, their names and the edit's body are the page's (coax/lib/project/draft.coax, shared
+// with the apps): this file sends it the draft and posts what it asks.
 
 function target() {
   const q = new URLSearchParams(location.search), slug = q.get("add") || "", key = q.get("key") || "";
@@ -28,7 +16,7 @@ export function startDrops({ send }) {
   const files = [], add = target();
   const blocked = () => !!add && !add.member;   // signed in, but not one of the project's members
   let signed = "", dragging = false, dropId = "", making = null, depth = 0, note = "", draft = null, resumed = false;
-  let fields = [], reviewNote = "", reviewState = "";
+  let reviewNote = "", reviewState = "";
   const picker = Object.assign(document.createElement("input"), { type: "file", multiple: true });
   picker.hidden = true;
   document.body.appendChild(picker);
@@ -49,61 +37,20 @@ export function startDrops({ send }) {
     return `D|${x.status}|${clean(d.card?.name).slice(0, 80)}|${clean(d.card?.line).slice(0, 200)}|${ms.length}|${tasks}|${d.mechanics?.length || 0}|${d.design?.open_questions?.length || 0}|${d.engine_needs?.length || 0}|${clean(x.note).slice(0, 120)}|${x.approved ? 1 : 0}`;
   }
 
-  function flatten(d) {
-    const out = [];
-    const row = (col, kind, label, path, value) => out.push({ col, kind, label, path, value });
-    const walk = (col, v, path, label) => {
-      if (Array.isArray(v)) {
-        const strings = v.every((x) => typeof x === "string");
-        v.forEach((x, i) => {
-          if (x && typeof x === "object") { row(col, "G", `${named(path[path.length - 1]).toUpperCase()} ${i + 1}  ${x.title || x.file || x.slug || ""}`, null, ""); walk(col, x, [...path, i], ""); }
-          else walk(col, x, [...path, i], `${label} ${i + 1}`);
-        });
-        if (strings) row(col, "A", `+ add ${ONE[path[path.length - 1]] || "one"}`, [...path, v.length], "");
-      } else if (v && typeof v === "object") {
-        for (const k of ordered(v)) {
-          if (v[k] && typeof v[k] === "object" && !Array.isArray(v[k])) row(col, "G", named(k).toUpperCase(), null, "");
-          walk(col, v[k], [...path, k], named(k));
-        }
-      } else if (typeof v === "boolean") row(col, "B", label, path, v ? "yes" : "no");
-      else if (typeof v === "string") row(col, "T", label, path, v);
-    };
-    const grows = !!d.grow;
-    for (const [key, col, title] of grows ? GROW_SECTIONS : SECTIONS) {
-      if (d[key] === undefined) continue;
-      row(col, "H", title, null, "");
-      // what a drop grows is the project's own: only what it adds is the member's to change
-      walk(col, grows && key === "card" ? { line: d.card.line } : d[key], [key], named(key));
-    }
-    return out;
-  }
-
+  // V|state|edits|note|name|grow|bytes, then the draft once it is ready (apps/openagents-web/projects.coax, MSG_REVIEW)
   function pushReview() {
     const d = draft?.draft;
-    fields = d && draft.status === "ready" ? flatten(d) : [];
+    const json = d && draft.status === "ready" ? JSON.stringify(d) : "";
     const state = reviewState || (draft?.published ? "published" : draft?.approved ? "approved" : "ready");
-    const lines = [`V|${state}|${draft?.edits || 0}|${clean(reviewNote).slice(0, 160)}|${clean(d?.card?.name).slice(0, 80)}|${d?.grow ? 1 : 0}`];
-    let room = 60000;
-    for (const f of fields) {
-      const line = `R|${f.col}|${f.kind}|${clean(f.label).slice(0, 90)}|${clean(f.value).slice(0, 140)}${f.value.length > 140 ? "..." : ""}`;
-      room -= line.length + 1;
-      if (room < 0) break;
-      lines.push(line);
-    }
-    send(REVIEW_KIND, lines.join("\n"));
+    send(REVIEW_KIND, `V|${state}|${draft?.edits || 0}|${clean(reviewNote).slice(0, 160)}|${clean(d?.card?.name).slice(0, 80)}|${d?.grow ? 1 : 0}|${new TextEncoder().encode(json).length}\n${json}`);
   }
 
-  function edit(i) {
-    const f = fields[i];
-    if (f) send(VALUE_KIND, `${i}|${f.value}`);
-  }
-
-  async function save(text) {
-    const bar = text.indexOf("|"), f = fields[Number(text.slice(0, bar))];
-    if (!dropId || bar < 0 || !f?.path) return;
+  // body: the page's {"path":[...],"value":"..."}
+  async function save(body) {
+    if (!dropId || !body) return;
     reviewState = "saving"; reviewNote = "";
     try {
-      const [s, x] = await post(`/api/drops/${dropId}/draft/edit`, { path: f.path.map(String), value: text.slice(bar + 1) });
+      const [s, x] = await post(`/api/drops/${dropId}/draft/edit`, body);
       if (s === 200) draft = x; else reviewNote = `Not saved: ${x.error || "refused"}`;
     } catch { reviewNote = "Not saved: no answer"; }
     reviewState = "";
@@ -199,7 +146,7 @@ export function startDrops({ send }) {
   }
 
   async function post(url, body) {
-    const r = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    const r = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: typeof body === "string" ? body : JSON.stringify(body || {}) });
     const j = await r.json().catch(() => ({}));
     return [r.status, j];
   }
@@ -259,7 +206,6 @@ export function startDrops({ send }) {
     else if (code === ACT_PICK && signed) picker.click();
     else if (code === ACT_SIGNIN) signin();
     else if (code === ACT_DRAFT) read();
-    else if (code === ACT_EDIT) edit(Number(e.detail.text));
     else if (code === ACT_SAVE) save(e.detail.text || "");
     else if (code === ACT_PUBLISH) finish("publish");
     else if (code === ACT_DISCARD) finish("discard");
