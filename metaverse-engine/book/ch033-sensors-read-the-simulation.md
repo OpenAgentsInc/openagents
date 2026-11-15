@@ -41,6 +41,15 @@ sample time, delay and calibration identity. Tactile models are labelled
 by whether they are calibrated against a real sensor; uncalibrated ones say
 so in their provenance (R20).
 
+The [Omniverse-informed runtime-view plan](../../docs/metaverse/2026-11-15-omniverse-comparison.md#4-completed-world-views-for-physics-sensors-and-presentation)
+makes the publication boundary explicit. Sample an admitted completed state
+with its world revision, runtime epoch, simulation time, calibration and
+retained resource ownership. A producer's completion sequence is not itself
+a clock or a retained snapshot. A missing/expired view or incomplete update
+refuses rather than mixing current and old bodies. Physics, sensor sampling
+and presentation keep distinct rates on the existing clock contract; a
+picture or sensor request never advances physics. These remain planned checks.
+
 ## What it builds
 
 - `metaverse-engine/physics/sim/sensors.coax`: joint, IMU, force/torque, contact,

@@ -16,9 +16,12 @@ and can be read at any point after it. Parts IX–XI plan the rest of a game eng
 water, weather, effects, creatures and other world systems; the Metaverse Engine's
 generation tools; and what a realm needs to ship. Part XII builds a multiplayer
 engine, from one headless server to the full Everglade room. Part XIII builds
-the action pipeline that every class and monster uses: ask, act, present. You need the Coax language (its book's
-Parts I–III) and, for Part IV onward, Psionic's tensor programs
-([Psionic chapters 3–6 and 37–38](../../psionic/book/ch037-a-coax-compute-subset.md)).
+the action pipeline that every class and monster uses: ask, act, present, and
+the shared World of columns, systems and a spatial index. You need the Coax language (its book's
+Parts I–III). For Part IV, Psionic's tensor/compute chapters
+([3–6 and 37–38](../../psionic/book/ch037-a-coax-compute-subset.md)) are useful
+algorithmic reading, not a product dependency: the engine stays below Psionic
+and uses shared lower-level numerics or explicit caller boundaries.
 
 The [plan](PLAN.md) gives the order, the prerequisites of each branch and the
 Coax features each part waits for. The [contents](SUMMARY.md) list every
@@ -29,9 +32,10 @@ chapter.
 - **What you build.** A real-time engine, one checked piece per chapter,
   and then the realms that run on it.
 - **What you need.** The Coax book's Parts I–III. Part IV onward also needs
-  Psionic chapters 3–6, 37 and 38.
+  the algorithms in Psionic chapters 3–6, 37 and 38 as reading; engine
+  implementation follows the downward context rule.
 - **The core path.** To make a playable, shared realm, read Parts I–III
-  (chapters 1–17), then chapters 51–55 (a realm as a document, published
+  (chapters 1–16), then chapters 51–55 (a realm as a document, published
   and forked), then Part XII (chapters 86–101, many players) and
   [chapter 102](ch102-ask-act-present.md) (actions). Parts IV and V, physics
   and spacecraft, are an advanced branch. You don't need them to make a

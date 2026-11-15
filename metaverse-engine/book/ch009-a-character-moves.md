@@ -135,7 +135,7 @@ The rest of the step runs in this order:
   under := StandHit.{y = surface.y, gx = surface.gx, gz = surface.gz};
   ground := under.y;
   above := next.pos.y - ground;
-  falls := true;
+  falls := true;   // mutant: equivalent (both branches below assign falls before it is read)
   next.sliding = false;
   steep := above <= w.locomotion.ride_height && next.vel.y <= 0 && stand_steep(under);
   if steep {

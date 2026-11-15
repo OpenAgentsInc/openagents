@@ -15,6 +15,17 @@
 > as typed states, and the cast and drop packers on the same path. See
 > [Still to do](#still-to-do).
 
+**Planned interoperability extension:** the
+[Omniverse comparison](../../docs/metaverse/2026-11-15-omniverse-comparison.md)
+adds reusable assembly metadata, workflow-specific asset-readiness reports
+and bounded USDA export from a resolved admitted world. Extend this chapter's
+registry/pack/import owners; preserve immutable sources, explicit instance
+overrides and closed content-hashed dependencies. Compare the first static
+export with an independent USD tool and report unsupported/lost properties.
+VPK1 remains the existing runtime pack path. Chapter 35 owns later physical
+USD import; a general USD composition engine is not implied. This proposal
+changes neither the chapter's status nor the published V1 pack contract.
+
 An asset arrives from outside the engine: a CC0 kit's mesh, a character with
 its clips, a photo of someone's dog, a model a project owner dropped. Before a
 realm may use it, the engine must know what it is (a content hash), what it

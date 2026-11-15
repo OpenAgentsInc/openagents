@@ -1,45 +1,58 @@
-# The Metaverse
+# The Metaverse Engine
 
-The OpenAgents Metaverse is OpenAgents' real-time engine (formerly named Metareal). The same
-name covers the world and experience it runs, the Metaverse, whose individual
-worlds are realms. Coax is the target implementation language for the engine and
-for OpenAgents' other surfaces; the current compiler is a scalar bootstrap.
+The **OpenAgents Metaverse Engine** is the Coax engine for the Metaverse's
+worlds: frame loop, entities, spatial queries, rendering, physics, hosts,
+networking and the tools for creating and editing worlds. The **Metaverse**
+is the collection of worlds and experiences it runs. The
+[root glossary](../books/glossary.md) and [engine naming history](engine-name.md)
+keep those meanings distinct; old published wire names retain their identity.
 
-The defining interchange contract is the
-[OpenAgents Protocol](../protocol/openagents-protocol-spec.md), with
-[the Metaverse's chapter](openagents-verse-protocol.md). The shared engine namespace
-stays `openagents.engine.*`; world, simulation and product contracts use
-`openagents.verse.*`. A brand rename does not duplicate those namespaces.
+## Current sources and plans
 
-The current OpenAgents checkout contains Coax and the recovered protocol
-foundation. The native engine implementation and previous app are historical
-migration sources. A reduced [native iOS home](../../apps/openagents-ios/README.md)
-now ports graph/HUD behavior and scalar shader math into Coax, with a thin
-native storage/Metal adapter. The rest of the engine and app are not restored.
-The source archive
-and renamed identifiers are recorded in
-[the migration registry](../../proto/migrations/metareal-v1.json).
+- [Engine source and owner inventory](../../metaverse-engine/README.md): the
+  shared modules and downward dependency rules. `metaverse/` keeps world
+  content; individual migrations and remaining private copies are tracked.
+- [Engine book and chapter registry](../../metaverse-engine/book/README.md):
+  implemented, partly implemented and draft profiles, with qualified targets
+  and adoption recorded separately.
+- [Construction plan](../../metaverse-engine/book/PLAN.md): the playable-world,
+  editor/publication, physics, streaming and multiplayer routes. Advanced
+  physical simulation is not a prerequisite for every world.
+- [World editor](../../metaverse-engine/editor/README.md) and its
+  [product plan](aethyrforge.md): typed documents, one edit log, admitted
+  assets, pinned publication and forks, plus remaining editor work.
+- [Omniverse comparison](2026-11-15-omniverse-comparison.md): proposed reusable
+  assemblies, readiness reports, bounded OpenUSD exchange, completed runtime
+  views and consistent sensor/data outputs, assigned to existing owners.
 
-The native reference path is Swift → C ABI → engine → metal-cpp → Metal.
-Preserve resident host ownership, GPU buffers, frame scheduling and platform
-rules while moving subsystems into Coax. Browser delivery has an independent
-Wasm/host-binding/shader integration gate. A successful native compile does
-not prove that browser path.
+The old description of this checkout as only a scalar compiler, recovered
+protocol and reduced Metal home is historical. Current engine and host
+profiles have their own source and evidence; the links above say exactly
+what they establish. Historical native code remains a migration/reference
+source, not a workspace to restore wholesale.
 
-The earlier performance plan identified five independent improvements:
+## Contracts and boundaries
 
-1. A reloadable game layer behind a versioned C interface on a development host.
-2. Plain data and short C++ bootstrap builds while Coax grows.
-3. Data-oriented storage and jobs with validated effects and aliases.
-4. GPU-driven rendering with checked upload/resource layouts.
-5. SIMD only where measured workloads justify it.
+The [OpenAgents Protocol](../protocol/openagents-protocol-spec.md) and
+[Metaverse protocol chapter](openagents-verse-protocol.md) define published
+interchange. Naming or branding changes do not duplicate protocol namespaces.
+New stored/exchanged shapes begin with their specification, owning context,
+registered version and one codec.
 
-Coax provides a way to share checked declarations and metadata across those
-systems. Native CPU layout, GPU layout, protocol encoding and reload/save
-migration remain separate. Keep working native code and platform shims until
-actual Coax consumer parity is demonstrated; no whole-engine rewrite is
-claimed here.
+Coax owns product logic and numerical arithmetic. Host code performs platform
+effects. CPU layout, GPU resources, wire encoding, save migration and scene
+interchange are distinct contracts. A native compile, a C API, a rendered
+picture or a data-format import does not qualify the other paths.
 
-Characters: [MetaHuman support](metahuman-support.md) is the design for
-loading, animating and drawing private Epic MetaHuman characters in the OpenAgents Metaverse Engine,
-with a first plan for 5E Lab's figures.
+Engine product dependencies go downward into shared libraries; Psionic and
+product contexts consume the engine. Authoring changes the world document,
+simulation changes running state, and durable character/item state keeps its
+own authority. Existing clocks, edit logs, resource lifetimes, asset admission
+and host recovery are the starting owners for new integrations.
+
+For the native/browser transition and recorded target limits, use the
+[native GPU plan](native-gpu.md) and the engine's host/render evidence, rather
+than assuming every target shares one implementation or qualification.
+
+Characters: [MetaHuman support](metahuman-support.md) remains a separate design
+for private Epic characters, with its own artifact and runtime requirements.

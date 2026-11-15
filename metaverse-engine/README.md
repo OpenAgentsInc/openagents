@@ -25,6 +25,12 @@ kernels beside pinned Rapier and Jolt references. It runs six shared seeded
 scenes on coderos-4080, with JSON metrics, deterministic the Metaverse Engine repeats and
 headless captures. Reference engines stay in its ignored lab cache.
 
+The [Omniverse comparison](../docs/metaverse/2026-11-15-omniverse-comparison.md)
+proposes reusable assemblies, asset-readiness reports, bounded OpenUSD exchange
+and completed scene views for sensors and presentation. The [book plan](book/PLAN.md#omniverse-informed-extensions)
+assigns these to existing owners. These are planned integrations, not claims
+of current USD, RTX, reconstructed-world or sensor-training support.
+
 ## Layers
 
 Loads go down the layers, never up (#13264). `metaverse-engine/` is the engine:

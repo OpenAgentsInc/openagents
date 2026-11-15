@@ -49,3 +49,19 @@ The product spec, what is on screen and what to build, is
 
 The page side lives in `apps/openagents-web/` (`builder.coax` today, `myrealm.coax` as the
 canvas) and the shared edit layer in `metaverse/edit/edit.coax`.
+
+## Planned assembly and interchange work
+
+The [Omniverse comparison](../../docs/metaverse/2026-11-15-omniverse-comparison.md)
+adds reusable assemblies/instance overrides, readiness reports and bounded
+USD export to the existing document/edit/pack/publication owners. Keep one
+edit log and revision fence, explicit source-to-instance identity mapping,
+immutable originals and named reimport conflicts. The current made-world
+document is not already a general CAD hierarchy or a full USD composition engine.
+
+An interchange tool consumes a resolved admitted world and produces a closed,
+content-identified package with explicit supported/lost properties. New stored
+or wire fields require their owning specification/version/registry entry;
+existing V1 records do not change in place. Runtime inspection remains
+read-only until an explicit supported authoring operation is applied, and
+never writes durable character/item state. These extensions remain proposals.

@@ -8,6 +8,11 @@ imports, coupling or another backend. Those later integrations remain part of
 the chapter's stated completion checks. The [contents](SUMMARY.md) give the
 reading order and the [introduction](README.md) the result of each chapter.
 
+The [Omniverse comparison and proposed slices](../../docs/metaverse/2026-11-15-omniverse-comparison.md)
+review current external capabilities against these owners. It adds concrete
+assembly, exchange, readiness and observation work below, without promoting
+chapter status or making a vendor runtime part of the engine.
+
 ## The order
 
 | Part | Chapters | What the reader has at the end |
@@ -24,7 +29,7 @@ reading order and the [introduction](README.md) the result of each chapter.
 | X. Generating worlds | 79–80 | A set piece chosen from a typed catalogue by a semantic selector, and terrain and scatter laid out from a seed. |
 | XI. Shipping realms | 81–85 | Saves that survive schema changes, code changed while a realm runs, inspection and profiling of a running realm, one realm on every host, and accessibility and languages. |
 | XII. Many players | 86–101 | One headless server that owns the scene; shared step, rules and world; signed seats; intents and acknowledgements; prediction; one replication model with a budget and one interpolation buffer; effects as state; offline as a local server; combat rules under latency; interest without leaks; versions, deploys and reconnect; measurement; the drift proof; the Everglade room. |
-| XIII. Actions and conditions | 102 | One pipeline for every action (ask, act, present), one bearing that drives the pose, the input lock and the hotbar from a body's conditions, and a feel contract that a check enforces. |
+| XIII. Actions and conditions | 102–103 | One action pipeline and bearing/feel contract, plus the shared World: entity columns, declared systems and a spatial index. |
 
 ## Engine-core tasks
 
@@ -52,8 +57,8 @@ consolidates the existing Coax shader and host paths in `metaverse/gpu/`.
 
 ## Completion milestones
 
-The registry currently has 14 implemented chapters, 53 partly implemented
-chapters and 34 design drafts. These counts
+At the November 15 review the registry has 103 chapters: 14 implemented,
+57 partly implemented and 32 design drafts. These counts
 describe teaching profiles, not a percentage of the engine completed. Existing
 realm code can already provide a feature whose shared Metaverse Engine module is a draft.
 
@@ -78,9 +83,11 @@ realm code can already provide a feature whose shared Metaverse Engine module is
 3. **Make Forge publications reproducible.** Complete the typed document
    (51), one edit log for every operation (52), admitted assets (53), a
    publication that pins document, engine build and asset hashes (54), and
-   isolated forks (55). Existing revision publication is the starting point;
-   it does not yet freeze the engine build. This route does not require the
-   spacecraft fidelity ladder or the full multi-material physics engine.
+   isolated forks (55). Made-world publication already pins the engine manifest
+   and served-file identities; chapter 54 records the checked route. Finish
+   the per-version release gates, broader publication/fork cases and remaining
+   document/import work. This route does not require the spacecraft fidelity
+   ladder or the full multi-material physics engine.
 4. **Qualify a rigid simulation profile.** Build the scene and rigid chain
    (17–22), then rigid batching (31), asset import (35), replay (36), and a
    Psionic control/environment consumer (167–171). Start chapter 37's
@@ -99,6 +106,37 @@ Each milestone retains the chapter-promotion requirements in the
 [introduction](README.md#promoting-a-draft-to-a-teaching-chapter). A passing
 example or a working product path alone does not complete the chapter's full
 declared profile.
+
+## Omniverse-informed extensions
+
+The comparison's OV-00…OV-08 labels are proposed slices, not new chapters,
+protocol IDs or qualified features. Keep the current playable-world route,
+realm convergence and selected robotics collector moving independently.
+
+| Extension | Existing chapter owners | First acceptance result |
+| --- | --- | --- |
+| Reusable assemblies and overrides | 51–55; existing registry and edit log | Two instances share one source; an override, fork and reload preserve identity and leave the other instance unchanged; incompatible reimport refuses |
+| Workflow-specific asset readiness | 16, 35, 53 | Versioned visual/collision requirements report exact failures and preserve immutable sources; later robot/sensor/manufacturing profiles retain their separate evidence |
+| Bounded OpenUSD exchange | 53 export first; 35 resolved import later | An independent USD reader agrees on the supported fixture's geometry, transforms and camera; unsupported/lost properties are explicit and dependencies remain closed/offline |
+| Completed runtime views | 1, 5, 16–18, 31, 36, 84, 103; existing World and render/host owners | All required producers finish before publication; a partial failure, late callback or replacement cannot expose mixed-epoch values; retained views have explicit lifetimes |
+| Consistent sensor/data outputs | 33–34, 36–37, 80 | One small RGB/depth/ID sample has a shared manifest, independent geometric answers and unchanged physics state; then solo/batch and device qualification |
+| Agent validation and inspection | 51–55, 79, 83; existing CLI/MCP and components | The same revision-fenced operations inspect, edit, validate, capture and undo; no parallel edit history or durable-state write |
+| Captured worlds and remote review, later | 35, 53, renderer and host/media owners | One permitted capture has explicit visual/physical representations; one remote-view profile has measured latency and resource/input lifecycle, with local execution retained |
+
+Start with a shared tiny fixture and its support ledger, then the assembly,
+readiness and export slices that have actual editor/workcell consumers.
+URDF/MJCF articulation import remains the first physical robot-import path;
+a static USDA exporter need not wait for full robot simulation. Full USD
+composition, NuRec reconstruction, RTX parity and remote streaming are not
+prerequisites for the editor MVP or state-only training.
+
+Extend existing owners: `core/world.coax`, `physics/sim/scene.coax`, editor
+records and logs, the asset registry, render resources and host lifetimes.
+Define their mapping and read-only views rather than introducing a second
+World or simulator. New exchanged/stored shapes start in `proto/` with an
+owning context, version and one codec; existing V1 contracts keep their identity.
+A reference SDK remains an independently qualified comparison, not a hidden
+production dependency. Product logic and tools remain Coax.
 
 ## Minimum prerequisites and later integrations
 
@@ -190,8 +228,11 @@ coupling, batched environments, selective gradients, sensors, observation
 rendering, assets, replay and published measurement. The
 [parity plan](../../psionic/docs/genesis-parity.md) maps each Genesis
 capability to a chapter and a Coax phase and states where we deliberately
-differ. The solvers are written on Psionic's tensor programs and compute
-subset; Psionic's robot chapters (167–171) and world models use the engine.
+differ. The solvers are written in Coax, with lower-level shared numerical
+primitives where needed. Psionic's tensor/transform chapters are algorithmic
+reading and its robot chapters (167–171) and world models are consumers above
+the engine. Engine code does not load Psionic; extract a reusable primitive
+downward with its checks or pass admitted values across an explicit boundary.
 
 Rigid work comes first: 17–22, then rigid batching 31, assets 35, replay 36 and
 Psionic's control chapter 167, which together can replace MuJoCo behind
@@ -261,7 +302,7 @@ Server authority, for realms like Everglade, is Part XII (chapters 86–101).
 | Robot-model import (R17) | planned | 19, 35 | A checked URDF subset parsed by library code. |
 | Stamped sensors and supervision (R18) | planned | 33, 45 | Stamp fields in plain records. |
 | Parameter provenance and rule modules (R20) | planned | 17, 31, 48, 51 | Provenance recorded beside each tunable in data. |
-| Logical tensors over layouts, compile budgets, device graphs and zero-copy buffers, kernel derivatives (R21–R24) | planned | 17–37 | An explicit environment dimension, library-level CUDA graph replay, leased DLPack views and hand-written reverse kernels checked against finite differences. |
+| Logical tensors over layouts, compile budgets, device graphs and zero-copy buffers, kernel derivatives (R21–R24) | planned | 17–37 | An explicit environment dimension, library-level device graph replay, leased interop views and explicit Coax reverse programs checked against finite differences. |
 | Direct WGSL graphics modules | shipped, bounded | 11–15 | — |
 
 Real robot hardware, flight hardware and production multiplayer authority

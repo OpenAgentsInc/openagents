@@ -156,6 +156,13 @@ the lower layer when a selected workload exposes a missing operation; the
 portfolio table is a map of possible reuse, not a prerequisite list for
 finishing either robot.
 
+For the Omniverse row, the [engine comparison and delivery slices](../metaverse/2026-11-15-omniverse-comparison.md)
+now distinguish OpenUSD exchange, source/instance overrides, asset readiness,
+completed scene views, sensors and dataset outputs. Current `ovstage`/`ovrtx`
+SDK descriptions do not turn them into an open portable runtime dependency.
+The engine plan takes the useful contracts into existing Coax owners, with
+external tools retained as separately qualified references.
+
 ## 5. Purpose-built languages and frameworks
 
 Existing workflows span Python, C++ kernels, vendor libraries, configuration,

@@ -8,7 +8,8 @@ A vision policy learns from images, so the simulator must produce images:
 many cameras, many environments, every step, at resolutions small enough to
 train on and fast enough not to dominate the step. Training does not need a
 beautiful picture; it needs a picture whose statistics resemble a real
-camera's, with depth and segmentation alongside for free. Presentation
+camera's, with depth and segmentation from a consistent sample. These
+outputs have their own work and storage costs. Presentation
 renderers and observation renderers are therefore different things that
 read the same state.
 
@@ -49,6 +50,30 @@ Neither may write state. Image randomization specs are data with
 provenance like physics randomization (chapter 31). Ray-traced realism is a
 later profile, measured for whether it changes policy transfer before it is
 built.
+
+## Planned observation and annotation contract
+
+The [Omniverse/Replicator comparison](../../docs/metaverse/2026-11-15-omniverse-comparison.md#5-one-observation-sample-several-consistent-outputs)
+adds a complete sample manifest: world/asset/engine identity, completed step
+and runtime epoch, camera calibration, logical environment/episode, seed and
+randomization. RGB, depth, normals, masks and semantic/instance IDs must name
+that same sample. Keep axial depth distinct from ray range, declare color
+space and background validity, and map runtime slots/generations to stable
+source labels. Teacher-only labels are not silently policy-visible inputs.
+
+Begin with one camera at 32 × 32 on analytic shapes and check projection,
+ray depth, occlusion and IDs independently. Then qualify multiple cameras,
+solo/batch invariance and each device profile. The 4,096-by-2, 128-by-128
+fixture below remains the larger target, with its whole memory/work budget
+admitted first; dimensions alone do not establish support. Reuse existing
+camera, geometry, renderer and resource owners. State-only collection can
+run without this observation renderer.
+
+A sample writer stages complete images and metadata before publication.
+Late GPU callbacks, readback failures and device replacement cannot publish
+an old epoch under a new step. Measure host copies and end-to-end latency;
+the intended device-resident profile needs actual zero-copy evidence, while
+an earlier copied correctness fixture must label its different scope.
 
 ## What it builds
 

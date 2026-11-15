@@ -44,7 +44,26 @@ addressed scene asset that build (chapter 17) reads, so a run names the
 exact asset bytes it used. Each imported field records provenance (R20):
 measured, from the vendor file, or inferred (for example, inertia computed
 from a mesh and a density). MJCF features we do not support are refused by
-name, not ignored. USD is later.
+name, not ignored. USD is a separate later import profile.
+
+## Planned OpenUSD exchange boundary
+
+The [Omniverse comparison](../../docs/metaverse/2026-11-15-omniverse-comparison.md)
+refines that later work. Chapter 53 can first export a bounded, resolved
+static scene for independent inspection without waiting for robot import.
+This chapter later admits an explicitly supported resolved USD subset into
+the same checked asset/scene records. It does not silently adopt a vendor
+scene runtime or postpone the first URDF/MJCF physical profile.
+
+Preserve source revision, units, axis/transform conventions, instance
+identity, material support and the complete asset dependency set. Unsupported
+composition arcs, physics schemas or learned reconstruction representations
+must be named or refused. USD prim paths need an explicit mapping to our
+authoring identities and runtime entities; they are not permanent global IDs.
+Compare the supported geometry/transforms with an independent USD reader,
+and refuse cycles, escaping/missing references and unsupported properties
+before installation. The full articulation/inertia and mesh checks below
+remain required for physical imports; a visual exchange does not pass them.
 
 ## What it builds
 

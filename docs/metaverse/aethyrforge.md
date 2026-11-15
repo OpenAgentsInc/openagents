@@ -242,3 +242,28 @@ Cut to the audio track, every shot a real recording of `/forge` at 1080p
   open realm shows in the forge within a second.
 - The same sequence of edits replayed gives the same frames (the video can be re-cut).
 - Each slice has its `#test`s; the forge has a headless journey in the release checks.
+
+## Planned extensions after the current editor route
+
+The [Omniverse comparison](2026-11-15-omniverse-comparison.md) adds useful
+assembly and inspection work to the existing engine plan. It does not replace
+the one-screen MVP or require a vendor runtime.
+
+- Inspect a selected object's source/revision and the overrides on that
+  instance; duplicate an assembly without copying its immutable source.
+  Reimport shows conflicting source changes before applying a new revision.
+- Show readiness for the intended visual, collision or sensor profile, with
+  named missing properties and a preview of any proposed correction. A
+  correction produces a derived revision and goes through the same edit log.
+- Export a supported resolved scene and its dependency manifest for external
+  USD inspection. Keep unsupported properties and losses visible.
+- Inspect a named completed simulation state and, later, its sensor samples
+  alongside the human view. Runtime inspection is read-only; baking a pose
+  into the authored world requires an explicit supported edit.
+
+The UI, CLI and agent tools use the same revision-fenced operations, inverses
+and current permissions. No second history or automatic write from a live
+simulation into authored or durable character/item state is introduced.
+The [delivery slices](2026-11-15-omniverse-comparison.md#proposed-delivery-slices)
+name the owners and acceptance work; none of these extensions is claimed
+implemented by this note.

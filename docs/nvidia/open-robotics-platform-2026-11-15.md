@@ -154,6 +154,14 @@ The desktop workcell, repaired hardware and modular parts are our additional
 contribution. They turn the software platform into something a person can
 own and reproduce.
 
+The [engine/Omniverse comparison](../metaverse/2026-11-15-omniverse-comparison.md)
+now makes the workbench/simulation side concrete: reusable assemblies,
+workflow-specific asset readiness, bounded USDA export, completed runtime
+views and consistent sensor/annotation samples. These extend existing engine,
+editor and registry owners. General USD composition, reconstructed worlds
+and remote rendering remain separate later profiles; none is a new dependency
+for the first collector or a claim of NVIDIA SDK adoption.
+
 ## 4. Surviving the loss of a vendor
 
 Preserve four things independently: **source, model artifacts, build inputs
