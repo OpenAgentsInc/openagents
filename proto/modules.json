@@ -239,7 +239,8 @@
     ],
     "environment-execution": [
       "openagents/environment/execution/v1alpha1/execution.proto",
-      "openagents/environment/execution/v1alpha1/preparation.proto"
+      "openagents/environment/execution/v1alpha1/preparation.proto",
+      "openagents/environment/execution/v1alpha1/task.proto"
     ],
     "account-identity": [
       "openagents/account/identity/v1/identity.proto"
@@ -430,7 +431,9 @@
       "openagents.environment.accounts.v1"
     ],
     "environment-execution": [
-      "openagents.environment.execution.v1alpha1"
+      "openagents.environment.execution.v1alpha1",
+      "openagents.router.v1alpha1",
+      "openagents.options.v1alpha1"
     ],
     "account-identity": [
       "openagents.account.identity.v1"

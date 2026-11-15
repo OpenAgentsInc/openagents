@@ -1,0 +1,37 @@
+// Native terminal facts, shared by execution owners. Stop is an intent;
+// only an explicit terminal status confirms completion or interruption.
+// coax/bin/coax test coax/lib/agent/engine/outcome.coax --library
+#load "../session/kinds.coax";
+#load "../claude/messages.coax";
+#authority;
+
+#test "Claude uses typed terminal reasons rather than a Stop flag or result prose" {
+ #assert e_result_outcome(ClResultKind.success,ClTerminal.completed,false,true)==S_END_SUCCESS;
+ #assert e_result_outcome(ClResultKind.success,ClTerminal.none,false,true)==S_END_UNKNOWN;
+ #assert e_result_outcome(ClResultKind.success,ClTerminal.none,false,false)==S_END_SUCCESS;
+ #assert e_result_outcome(ClResultKind.error_during_execution,ClTerminal.none,false,true)==S_END_FAILED;
+ #assert e_result_outcome(ClResultKind.success,ClTerminal.completed,true,false)==S_END_FAILED;
+ #assert e_result_outcome(ClResultKind.success,ClTerminal.aborted_streaming,false,false)==S_END_CANCELED;
+ #assert e_result_outcome(ClResultKind.error_during_execution,ClTerminal.aborted_tools,true,true)==S_END_CANCELED;
+ for reason:[6]ClTerminal.[ClTerminal.unknown,ClTerminal.background_requested,ClTerminal.tool_deferred,ClTerminal.tool_deferred_unavailable,ClTerminal.stop_hook_prevented,ClTerminal.hook_stopped] {#assert e_result_outcome(ClResultKind.success,reason,false,false)==S_END_UNKNOWN;}
+}
+#test "Codex recognizes explicit outcomes and retains missing or future status as unknown" {
+ #assert cxe_result_outcome("completed",false)==S_END_SUCCESS;
+ #assert cxe_result_outcome("interrupted",false)==S_END_CANCELED;
+ #assert cxe_result_outcome("interrupted",true)==S_END_CANCELED;
+ #assert cxe_result_outcome("failed",false)==S_END_FAILED;
+ #assert cxe_result_outcome("completed",true)==S_END_FAILED;
+ #assert cxe_result_outcome("",false)==S_END_UNKNOWN && cxe_result_outcome("future",false)==S_END_UNKNOWN;
+}
+
+e_result_outcome :: (result:ClResultKind,terminal:ClTerminal,failed:bool,stop:bool)->int #effects(all) {
+ if terminal==ClTerminal.aborted_streaming || terminal==ClTerminal.aborted_tools {return S_END_CANCELED;}
+ if terminal==ClTerminal.unknown || terminal==ClTerminal.background_requested || terminal==ClTerminal.tool_deferred || terminal==ClTerminal.tool_deferred_unavailable || terminal==ClTerminal.stop_hook_prevented || terminal==ClTerminal.hook_stopped {return S_END_UNKNOWN;}
+ if failed || result!=ClResultKind.success {return S_END_FAILED;}
+ if terminal==ClTerminal.completed {return S_END_SUCCESS;}
+ return ifx stop then S_END_UNKNOWN else S_END_SUCCESS;
+}
+cxe_result_outcome :: (status:string,has_error:bool)->int #effects(all) {
+ if status=="interrupted" {return S_END_CANCELED;}if has_error || status=="failed" {return S_END_FAILED;}
+ return ifx status=="completed" then S_END_SUCCESS else S_END_UNKNOWN;
+}

@@ -1,0 +1,86 @@
+// The task owner supplies native observations and current authorization facts.
+// coax/bin/coax test coax/lib/agent/environment/task-policy.coax --library
+#load "execution-policy.coax";
+#load "../session/kinds.coax";
+#authority;
+XT_QUEUED :: 0; XT_RUNNING :: 1; XT_WAITING :: 2; XT_COMPLETED :: 3; XT_FAILED :: 4; XT_CANCELED :: 5; XT_UNKNOWN :: 6;
+XT_STATES :: [7]string.["queued","running","waiting","completed","failed","canceled","unknown"];
+XT_ERRORS :: [13]string.["","engine_lost","login_required","engine_unavailable","model_unavailable","record_limit","storage_unavailable","expired","revoked","native_failed","resident_restarted","route_refused","native_unknown"];
+XT_TASKS :: 512; XT_BYTES :: 67108864; XT_CONTROLS :: 512;
+
+#test "task methods have closed rights and a permission response needs review" {
+ #assert xt_right("StartTask")==1 && xt_right("ReadTask")==0 && xt_right("StopTask")==1 && xt_right("RespondTask")==3;
+ #assert xt_right("")== -1 && xt_right("RunCommand")== -1;
+}
+#test "task state names have an exact closed round trip" {
+ for name,i:XT_STATES {#assert xt_state(name)==i && xt_name(i)==name;#assert xt_terminal(i)==(i>=XT_COMPLETED);}
+ #assert xt_state("")== -1 && xt_state("stopped")== -1 && xt_name(-1)=="" && xt_name(7)=="";
+ #assert !xt_terminal(-1) && !xt_terminal(7);
+ for code:XT_ERRORS {#assert xt_error(code);}#assert !xt_error("other");
+}
+#test "native facts are required for completion, failure, interruption and unknown outcomes" {
+ #assert xt_observe(XT_QUEUED,false,false,false,S_END_NONE)==XT_QUEUED;
+ #assert xt_observe(XT_QUEUED,true,true,false,S_END_NONE)==XT_RUNNING;
+ #assert xt_observe(XT_RUNNING,true,true,true,S_END_NONE)==XT_WAITING;
+ #assert xt_observe(XT_WAITING,true,false,false,S_END_SUCCESS)==XT_COMPLETED;
+ #assert xt_observe(XT_RUNNING,true,false,false,S_END_FAILED)==XT_FAILED;
+ #assert xt_observe(XT_RUNNING,true,false,false,S_END_CANCELED)==XT_CANCELED;
+ #assert xt_observe(XT_RUNNING,true,false,false,S_END_UNKNOWN)==XT_UNKNOWN;
+ #assert xt_observe(XT_RUNNING,true,false,false,S_END_NONE)==XT_UNKNOWN;
+ #assert xt_observe(XT_RUNNING,true,true,false,S_END_SUCCESS)==XT_UNKNOWN;
+ #assert xt_observe(XT_RUNNING,false,false,false,S_END_NONE)==XT_UNKNOWN;
+ for state:XT_COMPLETED..<XT_UNKNOWN+1 {#assert xt_observe(state,true,true,true,S_END_NONE)==state;}
+ #assert xt_observe(-1,true,true,false,S_END_NONE)==XT_UNKNOWN;
+ #assert xt_observe(7,true,true,false,S_END_NONE)==XT_UNKNOWN;
+}
+#test "command receipts reconcile exact retries after expiry and reject changed reuse" {
+ #assert xt_control(1,"RespondTask",XT_COMPLETED,1,2,false,1,300001,500000)==2;
+ #assert xt_control(2,"StopTask",XT_RUNNING,0,1,false,1,300001,1)== -1;
+ #assert xt_control(0,"StopTask",XT_RUNNING,0,1,false,1,300001,300002)== -2;
+ #assert xt_control(0,"RespondTask",XT_WAITING,3,3,true,1,300001,1)==1;
+ #assert xt_control(0,"RespondTask",XT_WAITING,2,3,true,1,300001,1)== -1;
+ #assert xt_control(0,"RespondTask",XT_WAITING,3,3,false,1,300001,1)== -1;
+ #assert xt_control(0,"RespondTask",XT_RUNNING,3,3,true,1,300001,1)== -1;
+ #assert xt_control(0,"StopTask",XT_COMPLETED,0,3,false,1,300001,1)==1;
+ #assert xt_control(0,"ReadTask",XT_RUNNING,0,1,false,1,300001,1)== -1;
+ #assert xt_control(-1,"StopTask",XT_RUNNING,0,1,false,1,300001,1)== -1;
+}
+#test "task retention accounts for complete enumeration and actual retained bytes" {
+ #assert xt_room(0,0,1,false) && xt_room(XT_TASKS-1,XT_BYTES-1,1,false) && xt_room(0,0,EX_INPUT_MAX,false);
+ #assert !xt_room(XT_TASKS,0,1,false) && !xt_room(-1,0,1,false);
+ #assert !xt_room(0,-1,1,false) && !xt_room(0,XT_BYTES,1,false);
+ #assert !xt_room(0,0,0,false) && !xt_room(0,0,EX_INPUT_MAX+1,false);
+ #assert !xt_room(0,0,1,true);
+}
+#test "a start intent matches the prepared task command and unchanged logical window" {
+ b:=ExBinding.{task="task",command="command",issued=1,expires=300001};
+ #assert xt_start_match(b,"task","command",1,300001);
+ #assert !xt_start_match(b,"other","command",1,300001) && !xt_start_match(b,"task","other",1,300001);
+ #assert !xt_start_match(b,"task","command",2,300001) && !xt_start_match(b,"task","command",1,300000);
+}
+#test "control retention leaves one Stop receipt after permission capacity is exhausted" {
+ #assert xt_control_room(0,false,false) && xt_control_room(XT_CONTROLS-2,false,false);
+ #assert !xt_control_room(XT_CONTROLS-1,false,false) && xt_control_room(XT_CONTROLS-1,false,true);
+ #assert !xt_control_room(XT_CONTROLS,false,true) && !xt_control_room(-1,false,true) && !xt_control_room(0,true,true);
+}
+
+xt_right :: (method:string)->int #effects(all) {if method=="ReadTask" {return 0;}if method=="RespondTask" {return 3;}if method=="StartTask" || method=="StopTask" {return 1;}return -1;}
+xt_state :: (state:string)->int #effects(all) {for name,i:XT_STATES {if name==state {return i;}}return -1;}
+xt_name :: (state:int)->string #effects(all) {names:=XT_STATES;return ifx state>=0 && state<names.count then names[state] else "";}
+xt_terminal :: (state:int)->bool #effects(all) {return state>=XT_COMPLETED && state<=XT_UNKNOWN;}
+xt_error :: (code:string)->bool #effects(all) {for name:XT_ERRORS {if name==code {return true;}}return false;}
+xt_observe :: (state:int,dispatched:bool,live:bool,asking:bool,outcome:int)->int #effects(all) {
+ if xt_terminal(state) {return state;}if state<XT_QUEUED || state>XT_WAITING {return XT_UNKNOWN;} // mutant: equivalent (upper bound 2 to 3 only admits completed, which the preceding terminal guard has already returned)
+ if !dispatched {return ifx state==XT_QUEUED then XT_QUEUED else XT_UNKNOWN;}
+ if live {return ifx outcome!=S_END_NONE then XT_UNKNOWN else ifx asking then XT_WAITING else XT_RUNNING;}
+ if outcome==S_END_SUCCESS {return XT_COMPLETED;}if outcome==S_END_FAILED {return XT_FAILED;}if outcome==S_END_CANCELED {return XT_CANCELED;}return XT_UNKNOWN;
+}
+// 1 record then effect/no-op, 2 exact replay; negative conflict or expiry.
+xt_control :: (receipt:int,method:string,state:int,expected:int,revision:int,interaction:bool,issued:int,expires:int,now:int)->int #effects(all) {
+ if receipt==1 {return 2;}if receipt!=0 {return -1;}if !ea_fresh(issued,expires,now) {return -2;}
+ if method=="StopTask" {return 1;}
+ if method=="RespondTask" && state==XT_WAITING && expected==revision && interaction {return 1;}return -1;
+}
+xt_room :: (tasks:int,bytes:int,input:int,incomplete:bool)->bool #effects(all) {return tasks>=0 && tasks<XT_TASKS && bytes>=0 && input>0 && input<=EX_INPUT_MAX && bytes<=XT_BYTES-input && !incomplete;}
+xt_start_match :: (b:ExBinding,task:string,command:string,issued:int,expires:int)->bool #effects(all) {return b.task==task && b.command==command && b.issued==issued && b.expires==expires;}
+xt_control_room :: (count:int,incomplete:bool,stop:bool)->bool #effects(all) {return count>=0 && count<XT_CONTROLS-(ifx stop then 0 else 1) && !incomplete;}

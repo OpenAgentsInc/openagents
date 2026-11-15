@@ -1,0 +1,36 @@
+// Exact typed task bytes and nested router/binding codec ownership.
+#load "task-wire.coax";
+#load "../router/wire.coax";
+#load "../../proto/importer.coax";
+#load "../../proto/golden-keys.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ pb:[65536]u8;n:=fs_read("proto/descriptors/environment-execution.pb",pb[..]);g:[1]PkDescriptor;if n<1 || pk_load(g[..],cast(string)pb[0..<n])!="" {return 2;}
+ file:[32768]u8;fn:=fs_read("proto/coder/environment-task-v1alpha1.json",file[..]);d:[1]Jv;nodes:[2048]JvNode;if fn<1 || !jv_parse(d[..],cast(string)file[0..<fn],nodes[..]) {return 2;}
+ requests:=[5]string.["start","read","stop","allow","deny"];statuses:=[5]string.["queued","waiting","completed","canceled","unknown"];o:[1]Jo;
+ for key:requests {
+  raw:[XT_REQUEST_MAX]u8;jo_start(o[..],raw[..]);jv_write(d[0],jv_get(d[0],0,key),o[..]);text:=jo_text(o[..]);fields:[512]JvNode;
+  // Exact applies recursively, whereas RouteDecision intentionally omits
+  // absent optional fields. Check the full outer shape with a null message;
+  // the original nested value is separately held to its sole generated codec.
+  descriptor_text:=text;outer:[XT_REQUEST_MAX]u8;
+  if key=="start" {doc:[1]Jv;parts:[4096]JvNode;if !jv_parse(doc[..],text,parts[..]) {return 1;}jo_start(o[..],outer[..]);jo_obj(o[..]);
+   for i:0..<jv_len(doc[0],0) {field:=jv_at(doc[0],0,i);name:=jv_key(doc[0],field);jo_key(o[..],name);if name=="route_decision" {jo_null(o[..]);}else {jv_write(doc[0],field,o[..]);}}
+   jo_end(o[..]);descriptor_text=jo_text(o[..]);
+  }
+  why:=pk_text_keys(g[0].state[..],".openagents.environment.execution.v1alpha1.TaskRequest",descriptor_text,true,false,fields[..]);if why!="" {print("FAIL task request descriptor %: %\n",key,why);return 1;}
+  q:[1]XtRequest;arena:[1024]u8;encoded:[XT_REQUEST_MAX]u8;if !xt_request_read(text,q[..],arena[..]) {return 1;}made:=xt_request_write(q[0],encoded[..]);
+  if made!=text.count || cast(string)encoded[0..<ifx made>0 then made else 0]!=text {print("FAIL task request golden: %\n",key);return 1;}
+  if key=="start" {rn:[4096]JvNode;wire:[RTR_DECISION_MAX]u8;decision:[1]RtrDecision;route:[RTR_DECISION_MAX]u8;
+   if !rtr_decision_read(q[0].route,rn[..],wire[..],decision[..]) {return 1;}nr:=rtr_decision_write(decision[..],route[..]);if nr!=q[0].route.count || cast(string)route[0..<ifx nr>0 then nr else 0]!=q[0].route {print("FAIL nested router codec\n");return 1;}
+  }
+ }
+ for key:statuses {
+  raw:[8192]u8;jo_start(o[..],raw[..]);jv_write(d[0],jv_get(d[0],0,key),o[..]);text:=jo_text(o[..]);fields:[512]JvNode;
+  if pk_text_keys(g[0].state[..],".openagents.environment.execution.v1alpha1.TaskStatus",text,true,false,fields[..])!="" {print("FAIL task status descriptor: %\n",key);return 1;}
+  q:[1]XtStatus;arena:[2048]u8;encoded:[8192]u8;if !xt_status_read(text,q[..],arena[..]) {return 1;}made:=xt_status_write(q[0],encoded[..]);
+  if made!=text.count || cast(string)encoded[0..<ifx made>0 then made else 0]!=text {print("FAIL task status golden: %\n",key);return 1;}
+ }
+ print("Task requests/statuses match exact bytes, descriptors and the sole nested router codec\n");return 0;
+}

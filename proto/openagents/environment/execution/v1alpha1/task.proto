@@ -1,0 +1,34 @@
+syntax = "proto3";
+package openagents.environment.execution.v1alpha1;
+import "openagents/environment/execution/v1alpha1/execution.proto";
+import "openagents/router/v1alpha1/router.proto";
+
+// A task's control intent, independent of HOST's transport request identity.
+// All JSON fields are required; route_decision is null except for StartTask.
+message TaskRequest {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.task-request.v1alpha1
+  string method = 2 [json_name="method"]; // StartTask, ReadTask, StopTask, RespondTask
+  string task_id = 3 [json_name="task_id"];
+  string command_id = 4 [json_name="command_id"]; // empty on ReadTask
+  int64 expected_revision = 5 [json_name="expected_revision"]; // positive only for RespondTask
+  string interaction_id = 6 [json_name="interaction_id"]; // exact native pending ID on RespondTask
+  bool allow = 7 [json_name="allow"]; // false except an affirmative RespondTask
+  int64 issued_at_ms = 8 [json_name="issued_at_ms"]; // zero on ReadTask
+  int64 expires_at_ms = 9 [json_name="expires_at_ms"]; // zero on ReadTask
+  openagents.router.v1alpha1.RouteDecision route_decision = 10 [json_name="route_decision"];
+}
+// Also the resident's private status record (empty command, replay false).
+// This is a lifecycle view; structured transcript pages use a separate profile.
+message TaskStatus {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.task-status.v1alpha1
+  Binding binding = 2 [json_name="binding"];
+  string state = 3 [json_name="state"]; // queued, running, waiting, completed, failed, canceled, unknown
+  int64 revision = 4 [json_name="revision"];
+  bool stop_requested = 5 [json_name="stop_requested"];
+  string native_session_id = 6 [json_name="native_session_id"];
+  string interaction_id = 7 [json_name="interaction_id"];
+  string error_code = 8 [json_name="error_code"];
+  int64 updated_at_ms = 9 [json_name="updated_at_ms"];
+  string command_id = 10 [json_name="command_id"];
+  bool replay = 11 [json_name="replay"];
+}

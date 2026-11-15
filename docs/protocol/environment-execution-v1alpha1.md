@@ -1,11 +1,13 @@
 # Routed execution handoff v1alpha1
 
-Status, 2026-11-15: checked handoff records and an authenticated resident input
-preparation consumer for
+Status, 2026-11-15: handoff records, authenticated input preparation and a
+resident task owner for
 [#13620](https://github.com/OpenAgentsInc/openagents/issues/13620).
 `PrepareTask`, `PutTaskInput` and `ReadTaskInput` persist input under the
-current HOST environment grant. **Task start, router dispatch and mobile or
-OpenAgents CLI task commands remain unimplemented.** The current environment
+current HOST environment grant. `StartTask`, `ReadTask`, `StopTask` and
+`RespondTask` use the existing native Agent engines and their permissions.
+**API router dispatch, task transcript pages and mobile/OpenAgents CLI task
+commands remain unimplemented.** The current environment
 runtime remains its separate Claude-only profile. These are source-level
 capabilities, not a claim of a production deployment.
 
@@ -158,9 +160,9 @@ complete view merely because the file length matches.
 At most four stages per grant and 512 upload receipts per stage are retained.
 Preparing a new task collects expired **input-only** stages; unknown entries
 conservatively consume capacity. This cache owns no engine or session. A
-future start consumer must retain its execution receipt and complete input
-outside this cache before launching, and reconcile task identity there even
-after cache collection. Capacity refusal grants no retry with a new task ID.
+task owner retains its execution receipt and complete input outside this
+cache before launching, and reconciles task identity there even after cache
+collection. Capacity refusal grants no retry with a new task ID.
 
 The broker/operator client uses existing HOST key handling and correlation:
 
@@ -169,12 +171,117 @@ coder/tui/coder.sh host execution-rpc --host HOST --browser-key PRIVATE_KEY_FILE
   --grant GRANT --epoch EPOCH --relay RELAY --request-file REQUEST_JSON
 ```
 
-The request schema selects one of the three methods. The client validates the
+The request schema selects preparation or task control. The client validates the
 returned host, task, command, input hash and length where supplied. It emits
-the shared PreparationView. Exit 0 means success; 2 malformed/unsupported,
+the shared PreparationView or TaskStatus. Exit 0 means the RPC was accepted;
+a task's terminal outcome is its status, not this transport exit code.
+Exit 2 means malformed/unsupported,
 3 unavailable/transport failure, 4 forbidden/revoked, 5 expired/stale,
 6 conflicting intent and 7 capacity/rate limit. It never automatically resends
 uncertain work. This internal client is not the future OpenAgents task CLI.
+
+## Resident task control
+
+[`task.proto`](../../proto/openagents/environment/execution/v1alpha1/task.proto)
+adds the following closed records through the single `task-wire.coax` codec.
+Every field is required, including false, zero, empty and null values.
+
+`TaskRequest.schema` is `openagents.environment.execution.task-request.v1alpha1`.
+
+| Field | Meaning and bound |
+| --- | --- |
+| `schema` | Exact task-request identity |
+| `method` | `StartTask`, `ReadTask`, `StopTask` or `RespondTask`; matches HOST's method |
+| `task_id` | 32 lowercase hex; retained task identity |
+| `command_id` | 32 lowercase hex for a write; empty on Read |
+| `expected_revision` | Exact positive status revision on Respond, at most 2^53−1; otherwise zero |
+| `interaction_id` | Exact pending native permission ID, 1–256 UTF-8 bytes on Respond; otherwise empty |
+| `allow` | True only for an affirmative Respond; false elsewhere |
+| `issued_at_ms` | Original positive logical intent time; zero on Read |
+| `expires_at_ms` | Greater than issue and at most 300,000 ms later; zero on Read |
+| `route_decision` | Existing router-owned `RouteDecision` object on Start, at most 32,768 bytes; null elsewhere |
+
+The encoded request is at most 40,960 bytes, within existing HOST carriage.
+Start's task, command and logical window exactly match its prepared Binding.
+The resident normalizes the nested route through `rtr_decision_read/write`;
+there is no second router codec. Its host/station, engine, exact model/effort
+and original report provenance must match. Unknown hard needs and weights
+refuse. Actual current resources, repository identities and router eligibility
+are rechecked immediately before sending the native prompt.
+
+`TaskStatus.schema` is `openagents.environment.execution.task-status.v1alpha1`.
+
+| Field | Meaning and bound |
+| --- | --- |
+| `schema` | Exact task-status identity |
+| `binding` | Complete immutable Binding through its existing codec |
+| `state` | `queued`, `running`, `waiting`, `completed`, `failed`, `canceled` or `unknown` |
+| `revision` | Positive observation revision through 2^53−1 |
+| `stop_requested` | Retained Stop intent; independently true or false for any outcome |
+| `native_session_id` | Actual SDK session/thread identity, at most 128 UTF-8 bytes; empty until observed |
+| `interaction_id` | Exact held native permission ID, 1–256 UTF-8 bytes iff waiting; otherwise empty |
+| `error_code` | Nonempty iff failed/unknown; closed codes below |
+| `updated_at_ms` | Positive last observation time through 2^53−1 |
+| `command_id` | This write's 32-hex ID; empty on Read and in the private record |
+| `replay` | True only when observing an already committed exact command; false in the private record |
+
+Error codes are `engine_lost`, `login_required`, `engine_unavailable`,
+`model_unavailable`, `record_limit`, `storage_unavailable`, `expired`,
+`revoked`, `native_failed`, `resident_restarted`, `route_refused` and
+`native_unknown`. Status is at most 8,192 bytes.
+
+Read requires observe, Start/Stop operate, and Respond review on the current
+HOST grant. Explicit operator environment enable provides review authority
+for that exact enrolled device, as the existing runtime does. Every method
+rechecks scope before storage access. Live tasks recheck enrollment and grant
+expiry/revocation while pumping; an uncertain interrupted effect stays unknown.
+
+The owner uses the resident's existing four slots, `Agent`, Claude/Codex SDKs,
+permission controls and native process cleanup. Claude can select the system
+login or an existing managed profile without changing the global selection;
+Codex currently supports its system login only. Native `auth status`/`login
+status` and actual SDK model discovery precede any prompt. Claude's execution
+catalog excludes curated display defaults and preserves exact native model
+IDs/effort ladders. Unsupported selections refuse; they never fall back under
+the retained Binding.
+
+Before any native process effect, Start privately copies the entire canonical
+input and pinned report into
+`execution-tasks/<grant>/tasks/<task>/`, reserves
+`execution-tasks/<grant>/sessions/<session>`, writes queued status, then
+publishes the original Start request at `execution-tasks/<grant>/commands/<command>`
+as its commit marker. The directory also retains `binding.json`, `input.json`,
+`report.json`, `status.json`, the actual `dispatch-report.json` and a content
+prefix `session.jsonl`. Directories/files are 0700/0600. The frozen content log
+does not supply task terminal state; TaskStatus owns that fact.
+
+Accepted Start consumes and reclaims the upload stage. Further preparation,
+upload or input-cache reads for that accepted task refuse `conflict`; clients
+reconcile through ReadTask or the original Start. Relay history cannot recreate
+consumed stages. A preparation receipt is not a task execution receipt.
+
+Task/session/command identity cannot be replaced. Start retries only observe;
+they never run another agent, even after the original logical window or a
+resident restart. Without a surviving active owner, nonterminal status becomes
+unknown (`resident_restarted`). Missing or mismatched binding/session/start
+markers fail closed. Uncommitted preparations may recover; an accepted Start
+cannot be automatically redispatched.
+
+Each grant retains at most 512 tasks and 64 MiB of complete input bytes. Each
+task retains at most 512 control intents, reserving its last entry for Stop.
+Control intent and global command marker precede an SDK answer/Stop effect.
+Respond requires the currently held exact revision and native interaction ID.
+Changed command reuse or a stale permission cannot reach the SDK. A repeated
+exact command reads current state, including after its logical expiry, under
+fresh HOST authorization. A terminal Stop is an idempotent no-op.
+
+The complete input is sent through the existing text-oriented Agent as a
+canonical JSON conversation preceded by a fixed context instruction. This
+retains every admitted instruction, reference and history byte; only the final
+user message is the new task. No historical tool effects are replayed.
+Confirmed SDK completion/interruption/failure and native process loss are
+distinct observations. A requested Stop alone cannot establish cancellation.
+Missing or ambiguous terminal facts remain unknown.
 
 ## Checks and remaining integration
 
@@ -197,11 +304,10 @@ The effect owner must supply distinct retained/chunk/output buffers and only
 commit a successful preparation durably. These pure helpers perform no file
 write, HOST authorization or process start.
 
-The resident now consumes these records through authenticated HOST methods and
-owns their durable upload receipts. Provider selection and process effects
-remain the next execution integration.
-The task event/control contract must carry structured tool correlation, held
-permissions and truthful Stop/unknown outcomes. API dispatch, mobile/CLI joins
+The resident consumes these records through authenticated HOST methods and
+owns their durable upload and execution receipts. The task transcript contract
+still needs structured tool pages suitable for reconnecting clients.
+API dispatch, mobile/CLI joins
 and a real staging patch/test task remain the acceptance gates in #13620.
 
 Initial qualification: the policy's 93 root-site mutants and input preparation's
@@ -236,3 +342,10 @@ must reconcile uncertain outcomes rather than assume an unobserved effect failed
 With the fixture's explicit burst budget, the complete native smoke passed all
 49 checks without a resident publication error. This qualifies the stated
 fixture capacity, not delivery under an exhausted production relay quota.
+
+The resident task owner's source qualification is recorded in
+[resident tasks](../verification/2026-11-15-resident-tasks.md): 69 signed HOST
+checks across Claude/Codex native fixtures, real file effects, held permissions,
+Stop, exact replay, restart uncertainty and revoked access; 19 filesystem
+observations; and the task/terminal authority gates. These are internal native
+fixtures, not installed app/CLI or external model qualification.

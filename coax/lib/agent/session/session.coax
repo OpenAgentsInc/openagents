@@ -27,7 +27,6 @@ P_USER :: 0; P_TEXT :: 1; P_THINK :: 2; P_TOOL :: 3; P_NOTICE :: 4;
 // also a model loading on the GPU (gpu.coax, tk TK_LOAD).
 P_ROUTE :: 5;
 S_DIFF_MAX :: 40;          // lines an edit's diff keeps a side (Zeron caps the chip's body too)
-
 SPart :: struct {
   kind: int;
   at: int; n: int;          // its text in the pool: the message, text, thought or notice
@@ -48,6 +47,7 @@ Session :: struct {
   parts: [S_PARTS] SPart; n: int;
   live: bool;               // a turn is running
   stopping: bool;           // STOP was pressed in it
+  outcome: int;            // S_END_*; NONE while live, UNKNOWN without a confirmed result
   noticed: bool;            // it already has its error chip
   secs: f32;                // its elapsed seconds
   turns: int;
@@ -60,7 +60,7 @@ Session :: struct {
   frames: bool;             // text and thinking come from whole assistant frames, not stream deltas (an engine run without partial messages)
 }
 
-s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].asking = -1; s[0].exhausted=false; }
+s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].asking = -1; s[0].exhausted=false; s[0].outcome=S_END_NONE; }
 
 // For a surface that prints a conversation as it comes (a terminal, a wire) rather than
 // redrawing it: where it has read up to, and the next thing it has not read.
@@ -147,7 +147,7 @@ s_user :: (s: [] Session, text: string) {
   if s[0].hint { s[0].n = 0; s[0].np = 0; s[0].hint = false; }
   k := s_part(s, P_USER);
   if k >= 0 { s_append(s, k, text); }
-  s[0].live = true; s[0].stopping = false; s[0].noticed = false; s[0].secs = 0; s[0].turns += 1;
+  s[0].live = true; s[0].stopping = false; s[0].outcome=S_END_NONE; s[0].noticed = false; s[0].secs = 0; s[0].turns += 1;
 }
 // A text or thinking delta (TextDelta, ReasoningDelta): the trailing part of
 // its kind grows, else a new one starts.
@@ -199,12 +199,37 @@ s_problem :: (text: string) -> int {
   return N_ERROR;
 }
 
-// The end of a turn: stopped, failed (its error chip once) or done.
+#test "a requested stop is distinct from a confirmed native terminal observation" {
+ s:[1]Session;pool:[1024]u8;s_init(s[..],pool[..]);#assert s[0].outcome==S_END_NONE;
+ s_user(s[..],"a");s[0].stopping=true;s_turn_end(s[..],false,"");#assert !s[0].live && s[0].outcome==S_END_UNKNOWN;
+ s_turn_known(s[..],S_END_SUCCESS,"");#assert s[0].outcome==S_END_UNKNOWN;
+ s_user(s[..],"b");#assert s[0].outcome==S_END_NONE;s[0].stopping=true;
+ s_turn_known(s[..],S_END_SUCCESS,"");#assert !s[0].live && s[0].outcome==S_END_SUCCESS && s[0].stopping;
+ s_user(s[..],"c");s_turn_known(s[..],S_END_CANCELED,"");#assert s[0].outcome==S_END_CANCELED && !s[0].live;
+ s_user(s[..],"d");s_notice(s[..],N_ERROR,"already shown");s_turn_end(s[..],true,"failure");#assert s[0].outcome==S_END_FAILED;
+ s_user(s[..],"e");s_turn_known(s[..],S_END_UNKNOWN,"native process lost");#assert s[0].outcome==S_END_UNKNOWN && !s[0].live;
+ s_user(s[..],"f");s_turn_known(s[..],99,"");#assert s[0].outcome==S_END_UNKNOWN;
+ s_init(s[..],pool[..]);#assert s[0].outcome==S_END_NONE;
+}
+#test "reused sessions clear the complete turn state and distinguish unknown from invalid outcomes" {
+ s:[1]Session;pool:[2048]u8;s[0].np=20;s[0].n=3;s[0].asking=2;s[0].exhausted=true;s[0].outcome=S_END_FAILED;
+ s_init(s[..],pool[..]);#assert s[0].np==0 && s[0].n==0 && s[0].asking== -1 && !s[0].exhausted && s[0].outcome==S_END_NONE;
+ s[0].hint=true;s[0].n=1;s[0].np=10;s[0].noticed=true;s[0].stopping=true;s[0].secs=10;s[0].outcome=S_END_FAILED;s[0].live=false;
+ s_user(s[..],"a");#assert !s[0].hint && s[0].n==1 && s[0].np==1 && s_text_of(s[..],0)=="a" && !s[0].noticed && !s[0].stopping && s[0].secs==0 && s[0].outcome==S_END_NONE && s[0].live;
+ s[0].changed=false;s_turn_known(s[..],S_END_UNKNOWN,"x");#assert s[0].changed && s[0].n==2 && s_text_of(s[..],1)=="x" && s[0].parts[1].notice==N_ERROR;
+ s_user(s[..],"b");s_turn_known(s[..],S_END_UNKNOWN+1,"");#assert s[0].outcome==S_END_UNKNOWN;
+}
+// Legacy producers have a success/failure flag. A Stop flag alone supplies no
+// confirmed outcome. Native adapters use s_turn_known for their actual result.
 s_turn_end :: (s: [] Session, failed: bool, why: string) {
+  s_turn_known(s,ifx s[0].stopping then S_END_UNKNOWN else ifx failed then S_END_FAILED else S_END_SUCCESS,why);
+}
+s_turn_known :: (s: [] Session, outcome:int, why: string) {
   if !s[0].live { return; }
+  s[0].outcome=ifx outcome>=S_END_SUCCESS && outcome<=S_END_UNKNOWN then outcome else S_END_UNKNOWN;
   s[0].live = false; s[0].changed = true;
   if s[0].stopping { s_notice(s, N_STOPPED, ""); return; }
-  if failed && !s[0].noticed { s_notice(s, s_problem(why), ifx why.count > 0 then why else "The turn failed."); }
+  if (s[0].outcome==S_END_FAILED || s[0].outcome==S_END_UNKNOWN) && !s[0].noticed { s_notice(s, s_problem(why), ifx why.count > 0 then why else "The turn failed."); }
 }
 
 // A whole number (0 or more) as decimal digits into buf at at; where it ends.

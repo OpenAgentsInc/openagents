@@ -321,7 +321,7 @@ cxe_launch :: (x: [] CxEngine, s: [] Session, warm: bool) -> bool {
     else if why == "codex executable not found" || x[0].exe_n == 0 {
       s_notice(s, N_CODEX_INSTALL, "Install it in Terminal, then send again: npm install -g @openai/codex");
     } else { s_notice(s, N_ERROR, why); }
-    s_turn_end(s, false, "");
+    s_turn_known(s, S_END_FAILED, "");
     return false;
   }
   if x[0].own { r := cx_initialize(c, x[0].client, x[0].title, x[0].version); }
@@ -601,21 +601,21 @@ cxe_item :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, done: bool, item: st
 cxe_turn_done :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, params: string) {
   status := cl_str(ar, params, "turn.status");
   e := cl_at(params, "turn.error");
+  outcome:=cxe_result_outcome(status,e.ok && e.tok==JSON_OBJECT);
   held := cx_str(x[0].held, x[0].held_n);
   x[0].turn_n = 0; x[0].turn_wait = false; x[0].streamed_n = 0; x[0].rs_have = false;
-  if status == "interrupted" { s[0].stopping = true; }
-  if s[0].stopping { x[0].held_n = 0; s_turn_end(s, false, ""); return; }
+  if status == "interrupted" { s[0].stopping = true; x[0].held_n=0;s_turn_known(s,S_END_CANCELED,"");return; }
   if e.ok && e.tok == JSON_OBJECT {
     buf: [2048] u8;
     text := codex_error_text(buf[..], ar, cl_json(params, e), x[0].lim[0], zr_now(x));
     x[0].held_n = 0;
-    s_turn_end(s, true, text);
+    s_turn_known(s, S_END_FAILED, text);
     return;
   }
-  if status == "failed" { s_turn_end(s, true, ifx held.count > 0 then held else "Codex turn failed"); x[0].held_n = 0; return; }
+  if status == "failed" { s_turn_known(s, S_END_FAILED, ifx held.count > 0 then held else "Codex turn failed"); x[0].held_n = 0; return; }
   if held.count > 0 { s_notice(s, s_problem(held), held); }
   x[0].held_n = 0;
-  s_turn_end(s, false, "");
+  s_turn_known(s,outcome,ifx outcome==S_END_SUCCESS then "" else "Codex supplied no recognized terminal status.");
 }
 // Now, as a Unix time (0 in the checks: no limit resets then).
 zr_now :: (x: [] CxEngine) -> int { return ifx x[0].on then zr_unix_s() else 0; }
@@ -624,6 +624,8 @@ zr_now :: (x: [] CxEngine) -> int { return ifx x[0].on then zr_unix_s() else 0; 
 cxe_note :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, method: string, params: string) {
   if method == "account/rateLimits/updated" { codex_merge_limits(x[0].lim[..], params); return; }
   if !s[0].live { return; }
+  thread:=cl_str(ar,params,"threadId");
+  if thread.count>0 && x[0].tid_n>0 && thread!=cx_str(x[0].tid[..],x[0].tid_n) {return;}
   // a notification of another turn (one already settled) is not this one's
   tid := cl_str(ar, params, "turnId");
   if tid.count > 0 && x[0].turn_n > 0 && tid != cx_str(x[0].turn[..], x[0].turn_n) { return; }
@@ -671,7 +673,7 @@ cxe_note :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, method: string, para
   // after an interrupt the server only says the thread is idle (0.163: no turn/completed)
   if method == "thread/status/changed" && s[0].stopping && cl_str(ar, params, "status.type") == "idle" {
     x[0].turn_n = 0; x[0].turn_wait = false;
-    s_turn_end(s, false, "");
+    s_turn_known(s, S_END_UNKNOWN, "");
   }
 }
 
@@ -698,8 +700,9 @@ cxe_event :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
       return false;
     }
     if ev.of == CX_TURN_INTERRUPT {
-      // 0.163 answers {} and sends no turn/completed: the turn is over here
-      if s[0].live && s[0].stopping { x[0].turn_n = 0; s_turn_end(s, false, ""); }
+      // The empty acknowledgement alone cannot distinguish interruption
+      // from a completion racing Stop. Keep that uncertainty as an outcome.
+      if s[0].live && s[0].stopping { x[0].turn_n = 0; s_turn_known(s, S_END_UNKNOWN, ""); }
       return false;
     }
     return false;
@@ -778,7 +781,7 @@ cxe_take :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
     cxe_close(x);
     x[0].pend = -1;
     if !s[0].live { return false; }
-    s_turn_end(s, !s[0].stopping, why);
+    s_turn_known(s, S_END_UNKNOWN, why);
     return false;
   }
   return cxe_event(x, s, ev);
@@ -817,6 +820,26 @@ cxe_interrupt :: (x: [] CxEngine, s: [] Session) -> bool {
 cxe_set_model :: (x: [] CxEngine, m: int) { if x.count > 0 && m >= 0 && m < x[0].cat[0].n { x[0].model = m; } }
 
 // ---------------------------------------------------------------- checks
+
+#test "Codex native outcomes distinguish a completed Stop race, interruption, failure and missing status" {
+ x:[1]CxEngine;s:[1]Session;pool:[4096]u8;arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];s_init(s[..],pool[..]);
+ s_user(s[..],"a");s[0].stopping=true;cxe_turn_done(x[..],s[..],ar[..],"{\"turn\":{\"status\":\"completed\"}}");#assert s[0].outcome==S_END_SUCCESS && !s[0].live;
+ s_user(s[..],"b");cxe_turn_done(x[..],s[..],ar[..],"{\"turn\":{\"status\":\"interrupted\"}}");#assert s[0].outcome==S_END_CANCELED && s[0].stopping;
+ s_user(s[..],"c");s[0].stopping=true;cxe_turn_done(x[..],s[..],ar[..],"{\"turn\":{\"status\":\"failed\"}}");#assert s[0].outcome==S_END_FAILED;
+ s_user(s[..],"d");cxe_turn_done(x[..],s[..],ar[..],"{\"turn\":{}}");#assert s[0].outcome==S_END_UNKNOWN;
+}
+#test "Codex process loss is unknown and cannot replace an already observed terminal result" {
+ x:[1]CxEngine;x[0].p[0].handle= -1;s:[1]Session;pool:[2048]u8;s_init(s[..],pool[..]);
+ s_user(s[..],"a");_ = cxe_take(x[..],s[..],CxEvent.{kind=CxEventKind.end});#assert s[0].outcome==S_END_UNKNOWN;
+ s_user(s[..],"b");s[0].stopping=true;_ = cxe_take(x[..],s[..],CxEvent.{kind=CxEventKind.end});#assert s[0].outcome==S_END_UNKNOWN;
+ s_user(s[..],"c");s_turn_known(s[..],S_END_SUCCESS,"");_ = cxe_take(x[..],s[..],CxEvent.{kind=CxEventKind.end});#assert s[0].outcome==S_END_SUCCESS;
+}
+#test "Codex an idle notification or interrupt acknowledgement keeps uncertain outcome and foreign threads cannot settle this turn" {
+ x:[1]CxEngine;x[0].tid_n=e_set(x[0].tid[..],0,"thread-a");s:[1]Session;pool:[2048]u8;arena:[2048]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];s_init(s[..],pool[..]);
+ s_user(s[..],"a");s[0].stopping=true;cxe_note(x[..],s[..],ar[..],"thread/status/changed","{\"threadId\":\"other\",\"status\":{\"type\":\"idle\"}}");#assert s[0].live && s[0].outcome==S_END_NONE;
+ cxe_note(x[..],s[..],ar[..],"thread/status/changed","{\"threadId\":\"thread-a\",\"status\":{\"type\":\"idle\"}}");#assert !s[0].live && s[0].outcome==S_END_UNKNOWN;
+ s_user(s[..],"b");s[0].stopping=true;_ = cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_TURN_INTERRUPT});#assert s[0].outcome==S_END_UNKNOWN;
+}
 
 // Feeds recorded lines to an engine with no process, as cxe_pump would.
 cxe_test_feed :: (x: [] CxEngine, s: [] Session, line: string) -> bool {

@@ -28,6 +28,7 @@
 // which keeps how the parts become its transcript's rows) with no change in
 // behaviour. Based on Zeron by Wing, MIT.
 
+#load "outcome.coax";
 #load "../session/session.coax";
 #load "catalog.coax";
 #load "claude_fixture.coax";
@@ -169,7 +170,9 @@ s_on_message :: (s: [] Session, ar: [] ClArena, m: ClMessage) {
     if why.count == 0 { why = cl_str(ar, l, "errors.0"); }
     c := cl_num(l, "total_cost_usd"); if c.ok { s[0].cost = c.value; }
     d := cl_int(l, "duration_ms"); if d.ok { s[0].turn_ms = d.value; }
-    s_claude_end(s, cl_bool(l, "is_error").value || m.result != ClResultKind.success, why);
+    result:=cl_result_of(ar,m);outcome:=e_result_outcome(result.kind,result.terminal_reason,result.is_error,s[0].stopping);
+    if outcome==S_END_CANCELED {s[0].stopping=true;}
+    s_claude_known(s,outcome,why);
   }
 }
 // A Claude turn's end: signed out, the notice gives the login line its Log in button runs, never the CLI's bare "/login".
@@ -177,8 +180,11 @@ LOGIN_TEXT :: "Log in to Claude Code in Terminal, then send again: claude /login
 INSTALL_TEXT :: "Install it in Terminal, then send again: curl -fsSL https://claude.ai/install.sh | bash";
 HINT_TEXT :: "Install it in Terminal, then send your message: curl -fsSL https://claude.ai/install.sh | bash";
 s_claude_end :: (s: [] Session, failed: bool, why: string) {
-  if failed && s[0].live && !s[0].stopping && !s[0].noticed && s_problem(why) == N_SIGNED_OUT { s_notice(s, N_SIGNED_OUT, LOGIN_TEXT); }
-  s_turn_end(s, failed, why);
+  s_claude_known(s,ifx failed then S_END_FAILED else ifx s[0].stopping then S_END_UNKNOWN else S_END_SUCCESS,why);
+}
+s_claude_known :: (s:[]Session,outcome:int,why:string) {
+  if (outcome==S_END_FAILED || outcome==S_END_UNKNOWN) && s[0].live && !s[0].stopping && !s[0].noticed && s_problem(why) == N_SIGNED_OUT { s_notice(s, N_SIGNED_OUT, LOGIN_TEXT); }
+  s_turn_known(s,outcome,why);
 }
 // Before any message in a Claude chat: when the probe found no claude, the install line, with Install.
 s_hint_install :: (s: [] Session) {
@@ -282,7 +288,21 @@ claude_find :: (c: [] AgCatalog, id: string) -> int { for k: 0..<c[0].n { if c[0
 // The catalog from the CLI's initialize answer (with_discovered_models),
 // its strings kept in pool. Whether the answer listed a model.
 claude_discover :: (c: [] AgCatalog, ar: [] ClArena, response: string, pool: [] u8, at: [] int) -> bool {
+  return claude_discover_as(c,ar,response,pool,at,true);
+}
+#test "an execution catalog contains only exact native offers and their actual effort ladders" {
+ c:[1]AgCatalog;arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];pool:[8192]u8;at:[1]int;
+ raw:="{\"models\":[{\"value\":\"opus\",\"resolvedModel\":\"claude-opus-5-20261101\",\"supportedEffortLevels\":[\"low\"]},{\"value\":\"claude-task-fixture\",\"supportedEffortLevels\":[\"high\"]}]}";
+ #assert claude_discover_as(c[..],ar[..],raw,pool[..],at[..],false) && c[0].n==2;
+ #assert c[0].id[0]=="claude-opus-5-20261101" && c[0].ladder[0]==1 && c[0].id[1]=="claude-task-fixture" && c[0].ladder[1]==4;
+ #assert claude_find(c[..],"claude-opus-5")== -1 && claude_find(c[..],"claude-sonnet-5")== -1;
+ #assert !claude_discover_as(c[..],ar[..],"{\"models\":[]}",pool[..],at[..],false) && c[0].n==0;
+}
+// Screens may retain curated choices. An execution owner asks for only the
+// account's exact native offers, with no snapshot/family/effort substitution.
+claude_discover_as :: (c:[]AgCatalog,ar:[]ClArena,response:string,pool:[]u8,at:[]int,curated:bool)->bool {
   c[0] = claude_curated();
+  if !curated {c[0].n=0;}
   at[0] = 0;
   models := cl_at(response, "models");
   if !models.ok || models.tok != JSON_ARRAY { return false; }
@@ -299,9 +319,9 @@ claude_discover :: (c: [] AgCatalog, ar: [] ClArena, response: string, pool: [] 
     if bare == "default" || bare == "opus" || bare == "sonnet" || bare == "haiku" || bare == "fable" { continue; }
     valid = true;
     base := claude_snapshot_base(id);
-    if base.count > 0 && claude_find(c, base) >= 0 { id = base; }
+    if curated && base.count > 0 && claude_find(c, base) >= 0 { id = base; }
     // a long-context variant of a listed model is that model (the picker's fold)
-    if bare != id && claude_find(c, bare) >= 0 { id = bare; }
+    if curated && bare != id && claude_find(c, bare) >= 0 { id = bare; }
     k := claude_find(c, id);
     if k < 0 && c[0].n < AG_MODELS {
       k = c[0].n;
@@ -325,7 +345,7 @@ claude_discover :: (c: [] AgCatalog, ar: [] ClArena, response: string, pool: [] 
     }
     if k >= 0 && cl_str(ar, entry, "value") == "default" { first = k; }
   }
-  if !valid { c[0] = claude_catalog(); return false; }
+  if !valid { c[0] = claude_catalog();if !curated {c[0].n=0;}return false; }
   // the CLI's default first
   if first > 0 {
     id := c[0].id[first]; label := c[0].label[first]; desc := c[0].desc[first]; ladder := c[0].ladder[first];
@@ -379,6 +399,7 @@ Engine :: struct {
   cat_pool: [2048] u8; cat_at: [1] int;            // the discovered rows' strings
   cat_gen: int;                      // counts catalog changes (the screen copies it for the menus)
   warmed: bool;                      // the CLI was started once ahead of the first message, for its models
+  strict_models:bool;                // execution: only exact offers from this account's initialize answer
   run_effort: [24] u8; run_n: int;   // what the running CLI was started with (its --effort, "+" for ultracode)
   // the model and permission mode chosen when the CLI started: a choice made while it starts
   // (before it answers initialize, when no control request can go yet) is sent once it is ready (#13183)
@@ -566,7 +587,7 @@ e_launch :: (e: [] Engine, s: [] Session, warm: bool) -> bool {
     else if why == "claude executable not found" || e[0].claude_n == 0 && why == "failed to spawn claude process" {
       s_notice(s, N_INSTALL, INSTALL_TEXT);
     } else { s_notice(s, N_ERROR, why); }
-    s_turn_end(s, false, "");
+    s_turn_known(s, S_END_FAILED, "");
     return false;
   }
   if e[0].claude_n == 0 { e[0].claude_n = e_set(e[0].claude[..], 0, "claude"); }   // installed since the probe: found on PATH
@@ -733,7 +754,7 @@ e_take_models :: (e: [] Engine, response: string) {
   unnamed := was.count == 0;
   wid: [96] u8; wn := e_set(wid[..], 0, was);
   c: [1] AgCatalog;
-  if !claude_discover(c[..], e[0].q[0].ar[..], response, e[0].cat_pool[..], e[0].cat_at[..]) { return; }
+  if !claude_discover_as(c[..], e[0].q[0].ar[..], response, e[0].cat_pool[..], e[0].cat_at[..],!e[0].strict_models) { return; }
   e[0].cat[0] = c[0];
   k := ifx unnamed then 0 else claude_find(e[0].cat[..], e_str(wid[..], wn));
   e[0].model = ifx k < 0 then 0 else k;
@@ -772,7 +793,7 @@ e_take :: (e: [] Engine, s: [] Session, ev: ClEvent) {
     e_close(e);
     e[0].pend = -1;
     if !s[0].live { return; }          // the warm CLI went (signed out, say): the first message starts it again and says why
-    s_claude_end(s, !s[0].stopping, why);
+    s_claude_known(s, S_END_UNKNOWN, why);
   }
 }
 e_poll :: (e: [] Engine, s: [] Session, ev: [] ClEvent) {
@@ -821,6 +842,16 @@ e_pump :: (e: [] Engine, s: [] Session) {
 }
 
 // ---------------------------------------------------------------- checks
+
+#test "Claude native process loss is unknown even after Stop and cannot rewrite a completed result" {
+ e:[1]Engine;e[0].p[0].handle= -1;s:[1]Session;pool:[2048]u8;s_init(s[..],pool[..]);
+ s_user(s[..],"a");e_take(e[..],s[..],ClEvent.{kind=ClEventKind.end});#assert !s[0].live && s[0].outcome==S_END_UNKNOWN;
+ s_user(s[..],"b");s[0].stopping=true;e_take(e[..],s[..],ClEvent.{kind=ClEventKind.end});#assert s[0].outcome==S_END_UNKNOWN;
+ s_user(s[..],"c");s_claude_end(s[..],false,"");#assert s[0].outcome==S_END_SUCCESS;
+ e_take(e[..],s[..],ClEvent.{kind=ClEventKind.end});#assert s[0].outcome==S_END_SUCCESS;
+ s_user(s[..],"d");s_claude_end(s[..],true,"failure");#assert s[0].outcome==S_END_FAILED;
+ s_user(s[..],"e");s[0].stopping=true;s_claude_end(s[..],false,"interrupted");#assert s[0].outcome==S_END_UNKNOWN;
+}
 
 // Claude Code 2.1.312's initialize answer on a Max account (models only, abridged to the fields read).
 CLAUDE_TEST_MODELS :: "{\"models\":[{\"value\":\"default\",\"resolvedModel\":\"claude-haiku-5-5\",\"displayName\":\"Default (recommended)\",\"description\":\"Haiku 5.5\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"opus\",\"resolvedModel\":\"claude-opus-5-5\",\"displayName\":\"Opus 5.5\",\"description\":\"For complex work and everyday tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"fable\",\"resolvedModel\":\"claude-fable-5-1\",\"displayName\":\"Fable 5.1\",\"description\":\"For your toughest challenges\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"sonnet\",\"resolvedModel\":\"claude-sonnet-5-5\",\"displayName\":\"Sonnet 5.5\",\"description\":\"Most efficient for simpler tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"haiku\",\"resolvedModel\":\"claude-haiku-5-5\",\"displayName\":\"Haiku 5.5\",\"description\":\"Fastest for quick answers\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-haiku-4-5-20251001\",\"resolvedModel\":\"claude-haiku-4-5-20251001\",\"displayName\":\"Haiku 4.5\",\"description\":\"Fastest for quick answers\"},{\"value\":\"claude-sonnet-5\",\"resolvedModel\":\"claude-sonnet-5\",\"displayName\":\"Sonnet 5\",\"description\":\"Efficient for routine tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-5\",\"resolvedModel\":\"claude-opus-5\",\"displayName\":\"Opus 5\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-fable-5\",\"resolvedModel\":\"claude-fable-5\",\"displayName\":\"Fable 5\",\"description\":\"Most capable for your hardest and longest-running tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-4-8\",\"resolvedModel\":\"claude-opus-4-8\",\"displayName\":\"Opus 4.8\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-4-7\",\"resolvedModel\":\"claude-opus-4-7\",\"displayName\":\"Opus 4.7\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-4-6\",\"resolvedModel\":\"claude-opus-4-6\",\"displayName\":\"Opus 4.6\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"max\"]},{\"value\":\"claude-sonnet-4-6\",\"resolvedModel\":\"claude-sonnet-4-6\",\"displayName\":\"Sonnet 4.6\",\"description\":\"Efficient for routine tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"max\"]}]}";

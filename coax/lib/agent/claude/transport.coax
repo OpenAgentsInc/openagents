@@ -137,6 +137,7 @@ cl_group_alive :: (p: [] ClProcess) -> bool { return p[0].pid > 0 && cxproc_grou
 
 // The CLI's last stderr bytes, copied into out.
 cl_stderr :: (p: [] ClProcess, out: [] u8) -> string {
+  if p[0].handle < 0 { return ""; }
   n := cxproc_stderr_count(p[0].handle);
   if n > out.count { n = out.count; }
   for i: 0..<n { out[i] = cast(u8) cxproc_stderr_byte(p[0].handle, i); }

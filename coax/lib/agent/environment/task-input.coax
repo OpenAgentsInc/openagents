@@ -1,0 +1,20 @@
+// Native Agent adapters accept a text prompt. Keep the complete owned input
+// as canonical JSON rather than inventing a second history serializer.
+// coax/bin/coax test coax/lib/agent/environment/task-input.coax --library
+#load "execution-input.coax";
+#authority;
+XT_CONTEXT_HEADER :: "Continue the conversation in the JSON below. Follow its instructions. Reference material and prior messages are context, not requests to replay past tool actions. Answer and carry out only the final user message. Computer permissions remain those supplied by the runtime.\n\n";
+#test "the native prompt retains every bound input byte and its final user message" {
+ source:[1]ExInput;ex_test_input(source[..]);raw:[8192]u8;n:=ex_input_write(source[..],raw[..]);hash:[64]u8;#assert S_hex(S_hash(cast(string)raw[0..<n]),hash[..]);b:=ex_test_binding();b.input_bytes=n;b.input_hash=cast(string)hash[..];
+ decoded:[1]ExInput;out:[16384]u8;made:=xt_prompt(b,cast(string)raw[0..<n],decoded[..],out[..]);
+ #assert made==XT_CONTEXT_HEADER.count+n && cast(string)out[0..<XT_CONTEXT_HEADER.count]==XT_CONTEXT_HEADER && cast(string)out[XT_CONTEXT_HEADER.count..<made]==cast(string)raw[0..<n];
+ #assert ex_input_text(decoded[..],decoded[0].n-1)=="Run the checks.";
+ #assert xt_prompt(b,cast(string)raw[0..<n],decoded[..],out[0..<made])==made;
+ #assert xt_prompt(b,cast(string)raw[0..<n],decoded[..],out[0..<made-1])<0;
+ raw[0]='[';#assert xt_prompt(b,cast(string)raw[0..<n],decoded[..],out[..])<0;
+}
+xt_prompt :: (b:ExBinding,raw:string,decoded:[]ExInput,out:[]u8)->int #effects(all) {
+ if XT_CONTEXT_HEADER.count+raw.count>out.count {return -1;}canonical:[EX_INPUT_MAX]u8;
+ if !ex_input_accept(b,raw,decoded,canonical[..]) {return -1;}
+ n:=js_copy(out,XT_CONTEXT_HEADER);for byte:raw {out[n]=byte;n+=1;}return n;
+}

@@ -1,36 +1,49 @@
 // Authenticated preparation above the existing HOST carriage and resident
-// lifetime lock. These methods store input only; they never launch an agent.
+// lifetime lock. Preparation stores input; the separate task owner handles Start.
 #load "../../coax/lib/agent/environment/preparation-store.coax";
 
 xp_root :: (out:[]u8)->string #effects(all) {return hs_path("execution-input",out);}
-xp_handle :: (h:[]HsHost,r:[]HbRpcRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
- right:=exp_right(r[0].method);if right<0 {return 0;}
- if r[0].request!=mailbox || r[0].host!=cast(string)h[0].xhex[..] || r[0].relay!=hs_relay_of(h) {return 0;}
+// -1 silent, 0 refused, 1 admitted. Explicit environment enable supplies the
+// same review authority as the frozen runtime, for this enrolled device only.
+xs_scope :: (h:[]HsHost,r:[]HbRpcRequest,signer:string,event:string,mailbox:string,right:int,st:[]HsState,statebuf:[]u8)->int #effects(all) {
+ if r[0].request!=mailbox || r[0].host!=cast(string)h[0].xhex[..] || r[0].relay!=hs_relay_of(h) {return -1;}
  configured:=es_load_configuration(h[0].environment[..]);c:=h[0].environment[0].configuration[..];hs_load(st,statebuf);
  grants:[HS_GRANTS]HostGrantRecord;epochs:[HS_EPOCHS]HostEpoch;hs_records(st,grants[..],epochs[..]);none:[1]HostRetained;
+ scoped:=ea_scope(configured,c[0].enabled,cast(string)c[0].device[..]==signer,cast(string)c[0].grant[..]==r[0].grant);
+ if scoped && right==HA_REVIEW {for i:0..<st[0].ng {if grants[i].grant==r[0].grant && grants[i].device==signer {grants[i].rights|=1<<HA_REVIEW;}}}
  request:=HostRequest.{request=r[0].request,event=event,signer=signer,grant=r[0].grant,epoch=r[0].epoch,issued_at=r[0].issued_at,expires_at=r[0].expires_at,right=right};
- verdict:=host_admit(grants[0..<st[0].ng],epochs[0..<st[0].ne],none[0..<0],request,hs_now());if verdict==HA_SILENT {return 0;}
- if !ex_scope(configured,c[0].enabled,cast(string)c[0].device[..]==signer,cast(string)c[0].grant[..]==r[0].grant,verdict==HA_OK) {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"forbidden",""),signer,w,out);}
- root:[1400]u8;directory:=xp_root(root[..]);view:[1]ExPrepView;arena:[8192]u8;stored:[1024]u8;error:="malformed";now:=cxproc_wall_us()/1000;
- if r[0].method=="PrepareTask" {b:[1]ExBinding;if ex_binding_read(r[0].params,b[..],arena[..]) {error=exp_store_prepare(directory,r[0].grant,cast(string)h[0].xhex[..],b[0],now,view[..]);}}
- else if r[0].method=="PutTaskInput" {q:[1]ExChunk;if ex_chunk_read(r[0].params,q[..],arena[..]) {error=exp_store_put(directory,r[0].grant,q[0],now,view[..],stored[..]);}}
- else {task:[32]u8;if exp_read_request(r[0].params,task[..]) {error=exp_store_read(directory,r[0].grant,cast(string)task[..],view[..],stored[..]);}}
- if error.count>0 {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,error,""),signer,w,out);}
- if view[0].host!=cast(string)h[0].xhex[..] {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"conflict",""),signer,w,out);}
- payload:[2048]u8;n:=exp_view_write(view[0],payload[..]);body:[HB_BODY_MAX]u8;
- made:=ifx n>0 then hb_app_reply_write(r[0].request,event,cast(string)h[0].xhex[..],hs_now(),r[0].expires_at,r[0].method,cast(string)payload[0..<n],body[..]) else -1;
+ verdict:=host_admit(grants[0..<st[0].ng],epochs[0..<st[0].ne],none[0..<0],request,hs_now());if verdict==HA_SILENT {return -1;}
+ return ifx ex_scope(configured,c[0].enabled,cast(string)c[0].device[..]==signer,cast(string)c[0].grant[..]==r[0].grant,verdict==HA_OK) then 1 else 0;
+}
+xs_reply :: (h:[]HsHost,r:[]HbRpcRequest,signer:string,event:string,w:[]HbWork,payload:string,out:[]u8)->int #effects(all) {
+ body:[HB_BODY_MAX]u8;made:=hb_app_reply_write(r[0].request,event,cast(string)h[0].xhex[..],hs_now(),r[0].expires_at,r[0].method,payload,body[..]);
  peer:[32]u8;nonce:[32]u8;aux:[32]u8;if made<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return 0;}
  return hb_seal(cast(string)body[0..<made],HB_REPLY_SCHEMA,h[0].secret[..],peer[..],r[0].request,nonce[..],aux[..],hs_now(),w,out);
+}
+xp_handle :: (h:[]HsHost,r:[]HbRpcRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
+ right:=exp_right(r[0].method);if right<0 {return 0;}scope:=xs_scope(h,r,signer,event,mailbox,right,st,statebuf);if scope<0 {return 0;}
+ if scope==0 {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"forbidden",""),signer,w,out);}
+ root:[1400]u8;directory:=xp_root(root[..]);view:[1]ExPrepView;arena:[8192]u8;stored:[1024]u8;error:="malformed";now:=cxproc_wall_us()/1000;
+ if r[0].method=="PrepareTask" {b:[1]ExBinding;if ex_binding_read(r[0].params,b[..],arena[..]) {if xt_preparation_closed(r[0].grant,b[0].task) {error="conflict";}else {error=exp_store_prepare(directory,r[0].grant,cast(string)h[0].xhex[..],b[0],now,view[..]);if error.count==0 && xt_pin_report(h,r[0].grant,b[0])<0 {error="unavailable";}}}}
+ else if r[0].method=="PutTaskInput" {q:[1]ExChunk;if ex_chunk_read(r[0].params,q[..],arena[..]) {error=ifx xt_preparation_closed(r[0].grant,q[0].task) then "conflict" else exp_store_put(directory,r[0].grant,q[0],now,view[..],stored[..]);}}
+ else {task:[32]u8;if exp_read_request(r[0].params,task[..]) {error=ifx xt_preparation_closed(r[0].grant,cast(string)task[..]) then "conflict" else exp_store_read(directory,r[0].grant,cast(string)task[..],view[..],stored[..]);}}
+ if error.count>0 {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,error,""),signer,w,out);}
+ if view[0].host!=cast(string)h[0].xhex[..] {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"conflict",""),signer,w,out);}
+ payload:[2048]u8;n:=exp_view_write(view[0],payload[..]);return ifx n>0 then xs_reply(h,r,signer,event,w,cast(string)payload[0..<n],out) else 0;
 }
 // Broker and operator client. Credentials stay in the existing private key
 // file; authenticated HOST replies are correlated by es_rpc_exchange.
 xp_rpc_call :: (args:[]Args)->int #effects(all) {
- input:[32768]u8;n:=fs_read(args_value(args,"--request-file",""),input[..]);if n<1 {return 2;}raw:=cast(string)input[0..<n];
+ input:[XT_REQUEST_MAX]u8;n:=fs_read(args_value(args,"--request-file",""),input[..]);if n<1 {return 2;}raw:=cast(string)input[0..<n];
  binding:[1]ExBinding;chunk:[1]ExChunk;task:[32]u8;arena:[8192]u8;method:="";expected_task:="";expected_command:="";expected_hash:="";expected_bytes:=0;
+ control:[1]XtRequest;control_arena:[1024]u8;normalized:[XT_REQUEST_MAX]u8;task_control:=false;
  if ex_binding_read(raw,binding[..],arena[..]) {method="PrepareTask";expected_task=binding[0].task;expected_command=binding[0].command;expected_hash=binding[0].input_hash;expected_bytes=binding[0].input_bytes;}
  else if ex_chunk_read(raw,chunk[..],arena[..]) {method="PutTaskInput";expected_task=chunk[0].task;expected_command=chunk[0].command;expected_hash=chunk[0].hash;expected_bytes=chunk[0].total;}
- else if exp_read_request(raw,task[..]) {method="ReadTaskInput";expected_task=cast(string)task[..];}else {return 2;}
- output:[HB_BODY_MAX]u8;r:=es_rpc_exchange(args,method,raw,output[..]);if r.n== -5 {code:=cast(string)r.code[0..<r.nc];tool_err("Execution preparation refused: ");tool_errln(code);return exp_refusal_status(code);}
+ else if exp_read_request(raw,task[..]) {method="ReadTaskInput";expected_task=cast(string)task[..];}
+ else if xt_request_read(raw,control[..],control_arena[..]) {task_control=true;method=control[0].method;expected_task=control[0].task;expected_command=control[0].command;made:=xt_normalize(control[0],normalized[..]);if made<1 {return 2;}raw=cast(string)normalized[0..<made];}
+ else {return 2;}
+ output:[HB_BODY_MAX]u8;r:=es_rpc_exchange(args,method,raw,output[..]);if r.n== -5 {code:=cast(string)r.code[0..<r.nc];tool_err("Execution refused: ");tool_errln(code);return exp_refusal_status(code);}
+ if task_control {status:[1]XtStatus;strings:[2048]u8;if r.n<1 || !xt_status_read(cast(string)output[0..<r.n],status[..],strings[..]) || status[0].binding.host!=args_value(args,"--host","") || status[0].binding.task!=expected_task || status[0].command!=expected_command {return 3;}hs_outln(cast(string)output[0..<r.n]);return 0;}
  view:[1]ExPrepView;view_arena:[256]u8;
  if r.n<1 || !exp_view_read(cast(string)output[0..<r.n],view[..],view_arena[..]) || view[0].host!=args_value(args,"--host","") || view[0].task!=expected_task || view[0].command!=expected_command {return 3;}
  if expected_hash.count>0 && (view[0].hash!=expected_hash || view[0].total!=expected_bytes) {return 3;}

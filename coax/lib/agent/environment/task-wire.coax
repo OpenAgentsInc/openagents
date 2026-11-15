@@ -1,0 +1,112 @@
+// One task-control/status codec. The router owns route_decision's codec;
+// this carrier only checks its JSON object boundary. The effect owner must
+// decode it with rtr_decision_read and match its choice before admitting Start.
+// coax/bin/coax test coax/lib/agent/environment/task-wire.coax --library
+#load "execution-wire.coax";
+#load "task-policy.coax";
+XT_REQUEST :: "openagents.environment.execution.task-request.v1alpha1";
+XT_STATUS :: "openagents.environment.execution.task-status.v1alpha1";
+XT_REQUEST_MAX :: 40960;
+XtRequest :: struct {method:string;task:string;command:string;revision:int;interaction:string;allow:bool;issued:int;expires:int;route:string;}
+XtStatus :: struct {binding:ExBinding;state:int;revision:int;stop:bool;native:string;interaction:string;error:string;updated:int;command:string;replay:bool;}
+
+#test "task requests round trip closed control intents and an opaque router-owned object" {
+ q:=XtRequest.{method="StartTask",task=EX_TEST_ID,command=EX_TEST_ID,issued=1,expires=300001,route="{}"};out:[8192]u8;again:[8192]u8;arena:[4096]u8;got:[1]XtRequest;n:=xt_request_write(q,out[..]);
+ #assert n>0 && xt_request_read(cast(string)out[0..<n],got[..],arena[..]) && got[0].route=="{}" && got[0].command==q.command;
+ #assert xt_request_write(got[0],again[..])==n && cast(string)again[0..<n]==cast(string)out[0..<n];
+ for key:[10]string.["schema","method","task_id","command_id","expected_revision","interaction_id","allow","issued_at_ms","expires_at_ms","route_decision"] {
+  raw:=cast(string)out[0..<n];#assert !xt_request_read(ex_test_field(raw,key,"",again[..]),got[..],arena[..]);#assert !xt_request_read(ex_test_field(raw,key,"null",again[..]),got[..],arena[..]);#assert !xt_request_read(ex_test_alias(raw,key,again[..]),got[..],arena[..]);
+ }
+ q.method="StopTask";q.route="";n=xt_request_write(q,out[..]);#assert n>0 && xt_request_read(cast(string)out[0..<n],got[..],arena[..]) && got[0].route=="";
+ q.method="RespondTask";q.revision=1;q.interaction="native-request";q.allow=true;n=xt_request_write(q,out[..]);#assert n>0 && xt_request_read(cast(string)out[0..<n],got[..],arena[..]) && got[0].allow;
+ q=XtRequest.{method="ReadTask",task=EX_TEST_ID};n=xt_request_write(q,out[..]);#assert n>0 && xt_request_read(cast(string)out[0..<n],got[..],arena[..]);
+ #assert xt_request_write(q,again[0..<n-1])<0 && !xt_request_read(cast(string)out[0..<n],got[..],arena[0..<1]);
+}
+#test "task request fields cannot silently select a method, window, interaction or route" {
+ q:=XtRequest.{method="StartTask",task=EX_TEST_ID,command=EX_TEST_ID,issued=1,expires=2,route="{}"};#assert xt_request_valid(q);
+ q.route="[]";#assert !xt_request_valid(q);q.route="{";#assert !xt_request_valid(q);q.route="";#assert !xt_request_valid(q);q.route="{}";
+ q.revision=1;#assert !xt_request_valid(q);q.revision=0;q.interaction="x";#assert !xt_request_valid(q);q.interaction="";q.allow=true;#assert !xt_request_valid(q);q.allow=false;
+ q.issued=0;#assert !xt_request_valid(q);q.issued=1;q.expires=300002;#assert !xt_request_valid(q);q.expires=2;q.command="bad";#assert !xt_request_valid(q);q.command=EX_TEST_ID;q.task="bad";#assert !xt_request_valid(q);q.task=EX_TEST_ID;
+ q.method="Other";#assert !xt_request_valid(q);q.method="StopTask";#assert !xt_request_valid(q);q.route="";#assert xt_request_valid(q);
+ q.method="RespondTask";#assert !xt_request_valid(q);q.revision=1;#assert !xt_request_valid(q);q.interaction="id";#assert xt_request_valid(q);q.revision=9007199254740992;#assert !xt_request_valid(q);
+ q=XtRequest.{method="ReadTask",task=EX_TEST_ID};#assert xt_request_valid(q);q.issued=1;#assert !xt_request_valid(q);q.issued=0;q.expires=1;#assert !xt_request_valid(q);q.expires=0;q.command=EX_TEST_ID;#assert !xt_request_valid(q);q.command="";q.revision=-1;#assert !xt_request_valid(q);
+}
+#test "task status keeps the exact binding and typed lifecycle facts" {
+ b:=ex_test_binding();v:=XtStatus.{binding=b,state=XT_QUEUED,revision=1,updated=1};out:[8192]u8;again:[8192]u8;arena:[2048]u8;got:[1]XtStatus;n:=xt_status_write(v,out[..]);
+ #assert n>0 && xt_status_read(cast(string)out[0..<n],got[..],arena[..]) && got[0].binding.engine==b.engine && got[0].revision==1;
+ #assert xt_status_write(got[0],again[..])==n && cast(string)again[0..<n]==cast(string)out[0..<n];
+ for key:[11]string.["schema","binding","state","revision","stop_requested","native_session_id","interaction_id","error_code","updated_at_ms","command_id","replay"] {
+  raw:=cast(string)out[0..<n];#assert !xt_status_read(ex_test_field(raw,key,"",again[..]),got[..],arena[..]);#assert !xt_status_read(ex_test_field(raw,key,"null",again[..]),got[..],arena[..]);#assert !xt_status_read(ex_test_alias(raw,key,again[..]),got[..],arena[..]);
+ }
+ v.state=XT_WAITING;#assert !xt_status_valid(v);v.interaction="request";v.native="thread";v.stop=true;v.replay=true;v.command=EX_TEST_ID;n=xt_status_write(v,out[..]);#assert n>0 && xt_status_read(cast(string)out[0..<n],got[..],arena[..]) && got[0].stop && got[0].replay;
+ v.state=XT_UNKNOWN;v.interaction="";v.error="engine_lost";n=xt_status_write(v,out[..]);#assert n>0 && xt_status_read(cast(string)out[0..<n],got[..],arena[..]) && got[0].state==XT_UNKNOWN;
+ #assert xt_status_write(v,again[0..<n-1])<0 && !xt_status_read(cast(string)out[0..<n],got[..],arena[0..<1023]);
+}
+#test "task status scalar boundaries and contradictions refuse before publication" {
+ v:=XtStatus.{binding=ex_test_binding(),state=XT_COMPLETED,revision=1,updated=1};#assert xt_status_valid(v);
+ v.state=-1;#assert !xt_status_valid(v);v.state=7;#assert !xt_status_valid(v);v.state=XT_COMPLETED;v.error="native_failed";#assert !xt_status_valid(v);
+ v.state=XT_FAILED;#assert xt_status_valid(v);v.error="";#assert !xt_status_valid(v);v.error="other";#assert !xt_status_valid(v);v.error="native_failed";
+ v.revision=0;#assert !xt_status_valid(v);v.revision=9007199254740992;#assert !xt_status_valid(v);v.revision=9007199254740991;#assert xt_status_valid(v);v.revision=1;
+ v.updated=0;#assert !xt_status_valid(v);v.updated=9007199254740992;#assert !xt_status_valid(v);v.updated=1;
+ v.interaction="old";#assert !xt_status_valid(v);v.interaction="";v.command="bad";#assert !xt_status_valid(v);v.command="";v.binding.host="bad";#assert !xt_status_valid(v);
+}
+#test "task controls hold independent Stop fields, one-byte permissions and exact revision and text limits" {
+ q:=XtRequest.{method="StopTask",task=EX_TEST_ID,command=EX_TEST_ID,issued=1,expires=2};#assert xt_request_valid(q);
+ q.route="1";#assert !xt_request_valid(q);q.route="";q.revision=1;#assert !xt_request_valid(q);q.revision=0;q.interaction="x";#assert !xt_request_valid(q);q.interaction="";q.allow=true;#assert !xt_request_valid(q);q.allow=false;
+ q.method="RespondTask";q.interaction="x";#assert !xt_request_valid(q);q.revision=9007199254740991;#assert xt_request_valid(q);q.revision=1;
+ text:[257]u8;for i:0..<text.count {text[i]='a';}q.interaction=cast(string)text[0..<256];#assert xt_request_valid(q);q.interaction=cast(string)text[..];#assert !xt_request_valid(q);
+ out:[8192]u8;#assert xt_request_write(q,out[..])<0;
+ v:=XtStatus.{binding=ex_test_binding(),state=XT_WAITING,revision=1,updated=9007199254740991,interaction="x"};#assert xt_status_valid(v);
+ v.interaction=cast(string)text[0..<256];v.native=cast(string)text[0..<128];#assert xt_status_valid(v);
+ v.interaction=cast(string)text[..];#assert !xt_status_valid(v);v.interaction="x";v.native=cast(string)text[0..<129];#assert !xt_status_valid(v);
+ v.native="";v.binding.host="bad";#assert xt_status_write(v,out[..])<0;
+}
+#test "task route and record readers admit exact byte ceilings and refuse the next byte" {
+ route:[32769]u8;route[0]='{';route[1]='"';route[2]='x';route[3]='"';route[4]=':';route[5]='"';for i:6..<32767 {route[i]='a';}route[32766]='"';route[32767]='}';
+ #assert xt_route_object(cast(string)route[0..<32768]);route[32766]='a';route[32767]='"';route[32768]='}';#assert !xt_route_object(cast(string)route[..]);
+ small:[8192]u8;padded:[XT_REQUEST_MAX+1]u8;arena:[2048]u8;request:[1]XtRequest;status:[1]XtStatus;
+ q:=XtRequest.{method="ReadTask",task=EX_TEST_ID};n:=xt_request_write(q,small[..]);for i:0..<n {padded[i]=small[i];}for i:n..<padded.count {padded[i]=' ';}
+ #assert xt_request_read(cast(string)padded[0..<XT_REQUEST_MAX],request[..],arena[..]) && !xt_request_read(cast(string)padded[..],request[..],arena[..]);
+ #assert !xt_request_read("{",request[..],arena[..]);
+ v:=XtStatus.{binding=ex_test_binding(),state=XT_QUEUED,revision=1,updated=1};n=xt_status_write(v,small[..]);for i:0..<n {padded[i]=small[i];}for i:n..<8193 {padded[i]=' ';}
+ #assert xt_status_read(cast(string)padded[0..<8192],status[..],arena[..]) && !xt_status_read(cast(string)padded[0..<8193],status[..],arena[..]);
+ #assert xt_status_read(cast(string)small[0..<n],status[..],arena[0..<1030]) && !xt_status_read(cast(string)small[0..<n],status[..],arena[0..<1029]);
+ #assert !xt_status_read("{",status[..],arena[..]);
+}
+
+xt_route_object :: (raw:string)->bool #effects(all) {d:[1]Jv;nodes:[4096]JvNode;return raw.count<=32768 && jv_parse(d[..],raw,nodes[..]) && jv_kind(d[0],0)==JV_OBJECT;}
+xt_request_valid :: (q:XtRequest)->bool #effects(all) {
+ if xt_right(q.method)<0 || !ea_id(q.task,32) || q.revision<0 || q.revision>9007199254740991 || !ex_text_valid(q.interaction,256) {return false;}
+ if q.method=="ReadTask" {return q.command.count==0 && q.revision==0 && q.interaction.count==0 && !q.allow && q.issued==0 && q.expires==0 && q.route.count==0;}
+ if !ea_id(q.command,32) || !ea_fresh(q.issued,q.expires,q.issued) {return false;}
+ if q.method=="StartTask" {return q.revision==0 && q.interaction.count==0 && !q.allow && xt_route_object(q.route);}
+ if q.route.count>0 {return false;}
+ if q.method=="StopTask" {return q.revision==0 && q.interaction.count==0 && !q.allow;}
+ return q.revision>0 && q.interaction.count>0;
+}
+xt_request_write :: (q:XtRequest,out:[]u8)->int #effects(all) {
+ if !xt_request_valid(q) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],XT_REQUEST);jo_key(o[..],"method");jo_str(o[..],q.method);jo_key(o[..],"task_id");jo_str(o[..],q.task);jo_key(o[..],"command_id");jo_str(o[..],q.command);jo_key(o[..],"expected_revision");jo_int(o[..],q.revision);jo_key(o[..],"interaction_id");jo_str(o[..],q.interaction);jo_key(o[..],"allow");jo_bool(o[..],q.allow);jo_key(o[..],"issued_at_ms");jo_int(o[..],q.issued);jo_key(o[..],"expires_at_ms");jo_int(o[..],q.expires);jo_key(o[..],"route_decision");jo_raw(o[..],ifx q.route.count>0 then q.route else "null");jo_end(o[..]);return ex_encoded(o[..]); // mutant: equivalent (route count threshold 0 to 1: a valid Start object has at least two bytes; every other method has an empty route)
+}
+xt_request_read :: (raw:string,out:[]XtRequest,arena:[]u8)->bool #effects(all) {
+ d:[1]Jv;nodes:[4096]JvNode;if raw.count>XT_REQUEST_MAX || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[10]string.["schema","method","task_id","command_id","expected_revision","interaction_id","allow","issued_at_ms","expires_at_ms","route_decision"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=keys.count || jv_raw(v,jv_get(v,0,"schema"))!=XT_REQUEST {return false;}
+ a:=[1]ExArena.[ExArena.{buf=arena}];q:XtRequest;q.method=ex_string(v,0,"method",a[..]);q.task=ex_string(v,0,"task_id",a[..]);q.command=ex_string(v,0,"command_id",a[..]);q.interaction=ex_string(v,0,"interaction_id",a[..]);
+ q.revision=js_number(v,jv_get(v,0,"expected_revision"));q.issued=js_number(v,jv_get(v,0,"issued_at_ms"));q.expires=js_number(v,jv_get(v,0,"expires_at_ms"));allowed:=jv_kind(v,jv_get(v,0,"allow"));if allowed!=JV_TRUE && allowed!=JV_FALSE {return false;}q.allow=allowed==JV_TRUE;
+ route:=jv_get(v,0,"route_decision");if jv_kind(v,route)!=JV_NULL {q.route=jv_raw(v,route);}if a[0].bad || !xt_request_valid(q) {return false;}out[0]=q;return true;
+}
+xt_status_valid :: (v:XtStatus)->bool #effects(all) {
+ return ex_binding_valid(v.binding) && xt_name(v.state).count>0 && v.revision>0 && v.revision<=9007199254740991 && v.updated>0 && v.updated<=9007199254740991 && // mutant: equivalent (state-name count threshold 0 to 1: the closed nonempty state names all have at least six bytes)
+  ex_text_valid(v.native,128) && ex_text_valid(v.interaction,256) && (v.command.count==0 || ea_id(v.command,32)) && xt_error(v.error) &&
+  ((v.state==XT_WAITING)==(v.interaction.count>0)) && ((v.state==XT_FAILED || v.state==XT_UNKNOWN)==(v.error.count>0)); // mutant: equivalent (error count threshold 0 to 1: xt_error's closed set has no one-byte code)
+}
+xt_status_write :: (v:XtStatus,out:[]u8)->int #effects(all) {
+ if !xt_status_valid(v) {return -1;}binding:[8192]u8;n:=ex_binding_write(v.binding,binding[..]);if n<1 {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],XT_STATUS);jo_key(o[..],"binding");jo_raw(o[..],cast(string)binding[0..<n]);jo_key(o[..],"state");jo_str(o[..],xt_name(v.state));jo_key(o[..],"revision");jo_int(o[..],v.revision);jo_key(o[..],"stop_requested");jo_bool(o[..],v.stop);jo_key(o[..],"native_session_id");jo_str(o[..],v.native);jo_key(o[..],"interaction_id");jo_str(o[..],v.interaction);jo_key(o[..],"error_code");jo_str(o[..],v.error);jo_key(o[..],"updated_at_ms");jo_int(o[..],v.updated);jo_key(o[..],"command_id");jo_str(o[..],v.command);jo_key(o[..],"replay");jo_bool(o[..],v.replay);jo_end(o[..]);return ex_encoded(o[..]); // mutant: equivalent (the second refusal is unreachable: a validated Binding has a bounded ASCII encoding below 2 KiB, so its fixed 8 KiB buffer produces neither an error nor a one-byte record)
+}
+xt_status_read :: (raw:string,out:[]XtStatus,arena:[]u8)->bool #effects(all) {
+ if arena.count<1024 {return false;}d:[1]Jv;nodes:[128]JvNode;if raw.count>8192 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[11]string.["schema","binding","state","revision","stop_requested","native_session_id","interaction_id","error_code","updated_at_ms","command_id","replay"]; // mutant: equivalent (early arena threshold 1024 to 1025: every accepted status additionally needs at least six bytes after that reserved span)
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=keys.count || jv_raw(v,jv_get(v,0,"schema"))!=XT_STATUS {return false;}
+ b:[1]ExBinding;if !ex_binding_read(jv_raw(v,jv_get(v,0,"binding")),b[..],arena[0..<1024]) {return false;} // mutant: equivalent (binding span begins at 1 or ends at 1025: its bounded decoded ASCII strings use under 1 KiB and neither change affects returned values or overlaps the later strings)
+ a:=[1]ExArena.[ExArena.{buf=arena[1024..<arena.count]}];q:XtStatus;q.binding=b[0];q.state=xt_state(ex_string(v,0,"state",a[..]));q.native=ex_string(v,0,"native_session_id",a[..]);q.interaction=ex_string(v,0,"interaction_id",a[..]);q.error=ex_string(v,0,"error_code",a[..]);q.command=ex_string(v,0,"command_id",a[..]);
+ q.revision=js_number(v,jv_get(v,0,"revision"));q.updated=js_number(v,jv_get(v,0,"updated_at_ms"));stop:=jv_kind(v,jv_get(v,0,"stop_requested"));replay:=jv_kind(v,jv_get(v,0,"replay"));if (stop!=JV_TRUE && stop!=JV_FALSE) || (replay!=JV_TRUE && replay!=JV_FALSE) {return false;}q.stop=stop==JV_TRUE;q.replay=replay==JV_TRUE;
+ if a[0].bad || !xt_status_valid(q) {return false;}out[0]=q;return true;
+}

@@ -13,9 +13,10 @@ web ([glossary](../docs/books/glossary.md)).
 - [Registry of wire shapes](registry.json), checked by `coax/web/tool.sh wire-check`
   ([how to register a shape](#register-a-wire-shape))
 - [Routed execution handoff](../docs/protocol/environment-execution-v1alpha1.md)
-  (`environment-execution`): pinned selection, complete admitted context, bounded input chunks
-  and authenticated resident preparation with durable receipts. Task start,
-  router dispatch and mobile/OpenAgents CLI task consumers remain #13620 work.
+  (`environment-execution`): pinned selection, complete admitted context, bounded input chunks,
+  authenticated preparation, durable resident Start/Read/Stop/Respond and truthful
+  native outcomes. API router dispatch and mobile/OpenAgents CLI task consumers
+  remain #13620 work.
 - [Compliance plan](../docs/protocol/2026-11-11-compliance-plan.md): which shapes move here, and in what order
 - [The OpenAgents Book](../openagents/book/README.md), which says why each record exists and which chapter sends it. Start with [chapter 65, one schema, three carriages](../openagents/book/ch065-one-schema-three-carriages.md), and [chapter 66, the compliance rule](../openagents/book/ch066-the-compliance-rule.md)
 

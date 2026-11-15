@@ -28,11 +28,19 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/agent/claude/messages.coax";
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
 SI_LINE :: 262144;
+SI_INIT :: "{\"type\":\"system\",\"subtype\":\"init\",\"uuid\":\"init-fixture\",\"session_id\":\"standin\",\"apiKeySource\":\"none\",\"claude_code_version\":\"native-fixture\",\"cwd\":\"\",\"tools\":[],\"mcp_servers\":[],\"model\":\"claude-task-fixture\",\"permissionMode\":\"default\",\"slash_commands\":[],\"output_style\":\"default\",\"skills\":[],\"plugins\":[]}";
+#test "stand-in native identity and terminal results satisfy the actual SDK decoder" {
+ storage:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=storage[..]}];m:=cl_classify(ar[..],SI_INIT);#assert m.kind==ClKind.system && m.system==ClSystem.init && m.session_id=="standin";
+ out:[4096]u8;raw:=si_result_text(false,"interrupted","aborted_streaming",out[..]);m=cl_classify(ar[..],raw);#assert m.kind==ClKind.result && m.result==ClResultKind.error_during_execution;
+ #assert cl_result_of(ar[..],m).terminal_reason==ClTerminal.aborted_streaming;
+ raw=si_result_text(true,"done","completed",out[..]);m=cl_classify(ar[..],raw);#assert m.kind==ClKind.result && cl_result_of(ar[..],m).terminal_reason==ClTerminal.completed;
+}
 St :: struct {
   line: [SI_LINE] u8; n: int; eof: bool;
   hook: [128] u8; nhook: int;
@@ -135,7 +143,7 @@ si_control :: (s: [] St, d: Jv) -> bool {
   jo_key(o[..], "response"); jo_obj(o[..]); jo_key(o[..], "subtype"); jo_str(o[..], "success");
   jo_key(o[..], "request_id"); jo_str(o[..], cast(string) rb[0..<ifx rn > 0 then rn else 0]);
   jo_key(o[..], "response"); jo_obj(o[..]);
-  if sub == "initialize" { jo_key(o[..], "commands"); jo_arr(o[..]); jo_end(o[..]); jo_key(o[..], "models"); jo_arr(o[..]); jo_end(o[..]); }
+  if sub == "initialize" { jo_key(o[..], "commands"); jo_arr(o[..]); jo_end(o[..]); jo_key(o[..], "models"); jo_raw(o[..], "[{\"value\":\"claude-task-fixture\",\"resolvedModel\":\"claude-task-fixture\",\"displayName\":\"Task fixture\",\"supportedEffortLevels\":[\"low\",\"high\"]}]"); }
   jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
   si_send(jo_text(o[..]));
   return sub == "interrupt";
@@ -179,7 +187,13 @@ si_result_of :: (id: string, text: string, error: bool) {
   si_send(jo_text(o[..]));
 }
 si_result :: (ok: bool, text: string) {
-  o: [1] Jo; b: [4096] u8; jo_start(o[..], b[..]);
+  si_result_known(ok,text,"completed");
+}
+si_result_known :: (ok:bool,text:string,terminal:string) {
+  b:[4096]u8;si_send(si_result_text(ok,text,terminal,b[..]));
+}
+si_result_text :: (ok:bool,text:string,terminal:string,out:[]u8)->string {
+  o: [1] Jo; jo_start(o[..], out);
   jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "result"); jo_key(o[..], "subtype"); jo_str(o[..], ifx ok then "success" else "error_during_execution");
   jo_key(o[..], "is_error"); jo_bool(o[..], !ok); jo_key(o[..], "result"); jo_str(o[..], text);
   jo_key(o[..], "uuid"); jo_str(o[..], "u-result"); jo_key(o[..], "session_id"); jo_str(o[..], "standin");
@@ -187,8 +201,10 @@ si_result :: (ok: bool, text: string) {
   jo_key(o[..], "total_cost_usd"); jo_raw(o[..], "0.0");
   jo_key(o[..], "usage"); jo_raw(o[..], "{\"input_tokens\":1,\"output_tokens\":1}"); jo_key(o[..], "modelUsage"); jo_raw(o[..], "{}");
   jo_key(o[..], "permission_denials"); jo_raw(o[..], "[]");
+  jo_key(o[..], "terminal_reason"); jo_str(o[..],terminal);
+  if !ok {jo_key(o[..],"errors");jo_arr(o[..]);jo_str(o[..],text);jo_end(o[..]);}
   jo_end(o[..]);
-  si_send(jo_text(o[..]));
+  return jo_text(o[..]);
 }
 
 si_put :: (o: [] u8, m: int, s: string) -> int { k := m; for c: s { if k < o.count { o[k] = c; k += 1; } } return k; }
@@ -248,6 +264,7 @@ si_call :: (s: [] St, k: int, name: string, input: string, spec: string) {
 tool_main :: () -> int #export_c #effects(all) {
   av: [1] Args;
   if args_load(av[..]) && args_has(av[..], "--version") { si_send("0.0.0 (a stand-in claude for Coder's checks)"); return 0; }
+  if args_at(av[..],0)=="auth" && args_at(av[..],1)=="status" {si_send("{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}");return 0;}
   s_b: [1] St; s := s_b[..];
   ob: [1024] u8; o := proc_getenv("CLAUDE_STANDIN_OUT", ob[..]);
   for c: o { s[0].out[s[0].nout] = c; s[0].nout += 1; }
@@ -272,8 +289,12 @@ tool_main :: () -> int #export_c #effects(all) {
     }
   }
   if s[0].eof { return 0; }
-  si_send("{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"standin\",\"cwd\":\"\",\"tools\":[],\"model\":\"standin\"}");
+  si_send(SI_INIT);
   prompt := cast(string) s[0].prompt[0..<s[0].nprompt];
+  if si_has(prompt,"openagents.environment.execution.input.v1alpha1") {
+    path:[1200]u8;np:=si_put(path[..],0,cast(string)s[0].out[0..<s[0].nout]);np=si_put(path[..],np,".prompt");_ = fs_write(cast(string)path[0..<np],prompt);
+    si_note(s,"{\"task_started\":true}");
+  }
   sb: [64] u8; slug := si_slug(prompt, sb[..]);
   pb: [1024] u8; spec := proc_getenv("CLAUDE_STANDIN_SPEC", pb[..]);
   if si_has(prompt, "slowly") {
@@ -293,13 +314,17 @@ tool_main :: () -> int #export_c #effects(all) {
         tb2: [32] u8; tn2 := ifx jv_parse(d[..], line, nodes[..]) then jv_str(d[0], jv_get(d[0], 0, "type"), tb2[..]) else -1;
         if tn2 == 15 && cast(string) tb2[0..<15] == "control_request" && si_control(s, d[0]) {
           si_note(s, "{\"interrupted\":true}");
-          si_result(false, "interrupted");
+          si_result_known(false, "interrupted","aborted_streaming");
           while !s[0].eof { x := si_read(s, -1); }
           return 0;
         }
       }
     }
     si_result(true, "done working");
+  } else if si_has(prompt,"routed-task-smoke") {
+    si_call(s,91,"Write","{\"file_path\":\"note.txt\",\"content\":\"hi\"}","");
+    si_assistant("text","task-continuation","","","The native fixture consumed its correlated tool result.");
+    si_result(true,"Task fixture complete.");
   } else {
     q: [1] Jo; qb: [512] u8; jo_start(q[..], qb[..]); jo_obj(q[..]); jo_key(q[..], "slug"); jo_str(q[..], slug); jo_end(q[..]);
     show := jo_text(q[..]);

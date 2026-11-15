@@ -1,0 +1,94 @@
+// Effect adapter under the resident's existing lifetime lock. The owner admits
+// HOST scope, the actual route/provider/report and a free engine slot first.
+// A durable control intent is the commit marker, preceding every process effect.
+#load "task-wire.coax";
+#load "preparation-store.coax";
+XtBudget :: struct {tasks:int;bytes:int;incomplete:bool;}
+xt_grant_dir :: (root:string,grant:string,out:[]u8)->string #effects(all) {return ifx ea_id(grant,64) then fs_join(root,grant,out) else "";}
+xt_task_dir :: (root:string,grant:string,task:string,out:[]u8)->string #effects(all) {
+ if !ea_id(task,32) {return "";}g:[FS_PATH_MAX]u8;t:[FS_PATH_MAX]u8;base:=xt_grant_dir(root,grant,g[..]);return ifx base.count>0 then fs_join(fs_join(base,"tasks",t[..]),task,out) else "";
+}
+xt_command_file :: (root:string,grant:string,command:string,out:[]u8)->string #effects(all) {
+ if !ea_id(command,32) {return "";}g:[FS_PATH_MAX]u8;c:[FS_PATH_MAX]u8;base:=xt_grant_dir(root,grant,g[..]);return ifx base.count>0 then fs_join(fs_join(base,"commands",c[..]),command,out) else "";
+}
+xt_session_file :: (root:string,grant:string,session:string,out:[]u8)->string #effects(all) {
+ if !ea_id(session,32) {return "";}g:[FS_PATH_MAX]u8;s:[FS_PATH_MAX]u8;base:=xt_grant_dir(root,grant,g[..]);return ifx base.count>0 then fs_join(fs_join(base,"sessions",s[..]),session,out) else "";
+}
+// 0 absent, 1 exact bytes, 2 conflicting/unreadable. The owner supplies the
+// canonical request through its single codec, including the normalized route.
+xt_command_match :: (root:string,grant:string,command:string,raw:string)->int #effects(all) {
+ p:[FS_PATH_MAX]u8;file:=xt_command_file(root,grant,command,p[..]);if file.count==0 {return 2;}if !fs_exists(file) {return 0;}
+ data:[XT_REQUEST_MAX]u8;n:=fs_read(file,data[..]);return ifx n==raw.count && n>0 && cast(string)data[0..<n]==raw then 1 else 2;
+}
+xt_command_publish :: (root:string,grant:string,command:string,raw:string)->bool #effects(all) {
+ state:=xt_command_match(root,grant,command,raw);if state!=0 {return state==1;}
+ g:[FS_PATH_MAX]u8;c:[FS_PATH_MAX]u8;p:[FS_PATH_MAX]u8;directory:=fs_join(xt_grant_dir(root,grant,g[..]),"commands",c[..]);
+ return fs_mkdir_private(directory) && fs_replace_durable(xt_command_file(root,grant,command,p[..]),raw);
+}
+xt_status_save :: (directory:string,status:XtStatus)->bool #effects(all) {
+ v:=status;v.command="";v.replay=false;encoded:[8192]u8;n:=xt_status_write(v,encoded[..]);path:[FS_PATH_MAX]u8;
+ return n>0 && fs_replace_durable(fs_join(directory,"status.json",path[..]),cast(string)encoded[0..<n]);
+}
+// View strings borrow the caller's arena. A queued status alone is a partial
+// preparation; only the original StartTask command marker admits observation.
+xt_status_load :: (root:string,grant:string,task:string,out:[]XtStatus,arena:[]u8)->string #effects(all) {
+ if out.count<1 {return "malformed";}
+ p:[FS_PATH_MAX]u8;directory:=xt_task_dir(root,grant,task,p[..]);if directory.count==0 {return "malformed";}
+ file:[FS_PATH_MAX]u8;bytes:[8192]u8;n:=fs_read(fs_join(directory,"status.json",file[..]),bytes[..]);v:[1]XtStatus;
+ if n<1 || !xt_status_read(cast(string)bytes[0..<ifx n>0 then n else 0],v[..],arena) || v[0].binding.task!=task || v[0].command.count>0 || v[0].replay {return "unavailable";}
+ binding:[8192]u8;encoded:[8192]u8;bn:=fs_read(fs_join(directory,"binding.json",file[..]),binding[..]);en:=ex_binding_write(v[0].binding,encoded[..]);
+ if bn<1 || en!=bn || cast(string)binding[0..<bn]!=cast(string)encoded[0..<ifx en>0 then en else 0] {return "unavailable";}
+ claim:[FS_PATH_MAX]u8;bn=fs_read(xt_session_file(root,grant,v[0].binding.session,claim[..]),binding[..]);
+ if bn!=en || bn<1 || cast(string)binding[0..<bn]!=cast(string)encoded[0..<en] {return "unavailable";}
+ command:[FS_PATH_MAX]u8;intent:[XT_REQUEST_MAX]u8;got:=fs_read(xt_command_file(root,grant,v[0].binding.command,command[..]),intent[..]);q:[1]XtRequest;qa:[1024]u8;
+ if got<1 || !xt_request_read(cast(string)intent[0..<ifx got>0 then got else 0],q[..],qa[..]) || q[0].method!="StartTask" || !xt_start_match(v[0].binding,q[0].task,q[0].command,q[0].issued,q[0].expires) {return "unavailable";}
+ out[0]=v[0];return "";
+}
+xt_budget :: (root:string,grant:string,own:string)->XtBudget #effects(all) {
+ result:XtBudget;g:[FS_PATH_MAX]u8;t:[FS_PATH_MAX]u8;directory:=fs_join(xt_grant_dir(root,grant,g[..]),"tasks",t[..]);if !fs_exists(directory) {return result;}
+ list:[1]FsList;n:=fs_list(directory,list[..]);if n<0 || list[0].full {result.incomplete=true;return result;}
+ for i:0..<n {name:=fs_entry(list[..],i);if name==own {continue;}result.tasks+=1;
+  if !ea_id(name,32) {result.incomplete=true;continue;}d:[FS_PATH_MAX]u8;p:[FS_PATH_MAX]u8;task:=fs_join(directory,name,d[..]);input:=fs_join(task,"input.json",p[..]);
+  if fs_kind(task)!=FS_DIR {result.incomplete=true;continue;}if fs_exists(input) {size:=fs_size(input);if size<0 || size>EX_INPUT_MAX {result.incomplete=true;continue;}result.bytes+=size;}
+ }return result;
+}
+// Complete private input and the pinned report leave the expiring upload cache
+// before the accepted Start marker. This routine itself never starts a process.
+xt_store_start :: (root:string,staging:string,grant:string,b:ExBinding,q:XtRequest,raw:string,now:int,out:[]XtStatus)->string #effects(all) {
+ if out.count<1 || !ex_binding_valid(b) || !xt_request_valid(q) || q.method!="StartTask" || !xt_start_match(b,q.task,q.command,q.issued,q.expires) {return "malformed";}
+ if !ea_fresh(b.issued,b.expires,now) {return "expired";}
+ normalized:[XT_REQUEST_MAX]u8;nq:=xt_request_write(q,normalized[..]);if nq!=raw.count || cast(string)normalized[0..<ifx nq>0 then nq else 0]!=raw {return "malformed";}
+ if xt_command_match(root,grant,q.command,raw)!=0 {return "conflict";}
+ owned:[FS_PATH_MAX]u8;owned_file:[FS_PATH_MAX]u8;existing:=fs_join(xt_task_dir(root,grant,b.task,owned[..]),"binding.json",owned_file[..]);
+ binding:[8192]u8;nb:=ex_binding_write(b,binding[..]);
+ if fs_exists(existing) {old:[8192]u8;got:=fs_read(existing,old[..]);if got!=nb || cast(string)old[0..<ifx got>0 then got else 0]!=cast(string)binding[0..<nb] {return "conflict";}}
+ stage:[FS_PATH_MAX]u8;source:=exp_task_dir(staging,grant,b.task,stage[..]);p:[FS_PATH_MAX]u8;input:[EX_INPUT_MAX]u8;n:=fs_read(fs_join(source,"input.json",p[..]),input[..]);decoded:[1]ExInput;canonical:[EX_INPUT_MAX]u8;
+ if n<1 || !ex_input_accept(b,cast(string)input[0..<ifx n>0 then n else 0],decoded[..],canonical[..]) {return "conflict";}
+ report:[32768]u8;nr:=fs_read(fs_join(source,"report.json",p[..]),report[..]);hash:[64]u8;
+ if nr<1 || !S_hex(S_hash(cast(string)report[0..<ifx nr>0 then nr else 0]),hash[..]) || cast(string)hash[..]!=b.report_hash {return "unavailable";}
+ budget:=xt_budget(root,grant,b.task);if !xt_room(budget.tasks,budget.bytes,n,budget.incomplete) {return "bounds";}
+ g:[FS_PATH_MAX]u8;tasks:[FS_PATH_MAX]u8;d:[FS_PATH_MAX]u8;sessions:[FS_PATH_MAX]u8;granted:=xt_grant_dir(root,grant,g[..]);directory:=xt_task_dir(root,grant,b.task,d[..]);
+ if granted.count==0 || directory.count==0 || !fs_mkdir_private(root) || !fs_mkdir_private(granted) || !fs_mkdir_private(fs_join(granted,"tasks",tasks[..])) || !fs_mkdir_private(directory) || !fs_mkdir_private(fs_join(granted,"sessions",sessions[..])) {return "unavailable";}
+ session_path:[FS_PATH_MAX]u8;claim:=xt_session_file(root,grant,b.session,session_path[..]);
+ if fs_exists(claim) {old:[8192]u8;got:=fs_read(claim,old[..]);if got!=nb || cast(string)old[0..<ifx got>0 then got else 0]!=cast(string)binding[0..<nb] {return "conflict";}}
+ else if !fs_replace_durable(claim,cast(string)binding[0..<nb]) {return "unavailable";}
+ if !fs_replace_durable(fs_join(directory,"binding.json",p[..]),cast(string)binding[0..<nb]) || !fs_replace_durable(fs_join(directory,"input.json",p[..]),cast(string)input[0..<n]) || !fs_replace_durable(fs_join(directory,"report.json",p[..]),cast(string)report[0..<nr]) {return "unavailable";}
+ status:=XtStatus.{binding=b,state=XT_QUEUED,revision=1,updated=now};if !xt_status_save(directory,status) || !xt_command_publish(root,grant,q.command,raw) {return "unavailable";}
+ out[0]=status;return "";
+}
+// The per-task intent precedes the global command marker and every SDK effect.
+// Exact local recovery does not consume another receipt. One entry is reserved
+// for Stop even after permission-response capacity has been used up.
+xt_store_control :: (root:string,grant:string,q:XtRequest,raw:string)->string #effects(all) {
+ if !xt_request_valid(q) || (q.method!="StopTask" && q.method!="RespondTask") {return "malformed";}
+ encoded:[XT_REQUEST_MAX]u8;n:=xt_request_write(q,encoded[..]);if n!=raw.count || cast(string)encoded[0..<ifx n>0 then n else 0]!=raw {return "malformed";}
+ if xt_command_match(root,grant,q.command,raw)!=0 {return "conflict";}
+ d:[FS_PATH_MAX]u8;c:[FS_PATH_MAX]u8;p:[FS_PATH_MAX]u8;directory:=fs_join(xt_task_dir(root,grant,q.task,d[..]),"controls",c[..]);file:=fs_join(directory,q.command,p[..]);
+ if fs_exists(file) {prior:[XT_REQUEST_MAX]u8;got:=fs_read(file,prior[..]);if got!=raw.count || cast(string)prior[0..<ifx got>0 then got else 0]!=raw {return "conflict";}}
+ else {
+  list:[1]FsList;count:=ifx fs_exists(directory) then fs_list(directory,list[..]) else 0;
+  if !xt_control_room(count,list[0].full,q.method=="StopTask") {return "bounds";}
+  if !fs_mkdir_private(directory) || !fs_replace_durable(file,raw) {return "unavailable";}
+ }
+ return ifx xt_command_publish(root,grant,q.command,raw) then "" else "unavailable";
+}

@@ -6,12 +6,19 @@
 #load "../../coax/lib/agent/observe/claude-files.coax";
 #load "../../coax/lib/agent/environment/history.coax";
 #load "../../coax/lib/agent/session/log.coax";
+#load "../../coax/lib/agent/environment/task-store.coax";
+#load "../../coax/lib/agent/accounts/claude.coax";
 
 ES_SLOTS :: 4;
+XtRun :: struct {
+ active:bool;dispatched:bool;status:[1]XtStatus;strings:[2048]u8;route:[32768]u8;nroute:int;
+ auth:[1]PaProbe;auth_account:[1]PaAccount;auth_done:bool;auth_ok:bool;deadline:int;
+}
 EsSlot :: struct {
   occupied:bool;summary:EaSession;grant:[64]u8;device:[64]u8;engine:[1]Engine;s:[1]Session;
+  mode:int;codex:[1]CxEngine;codex_mem:[CX_MEM]u8;execution:[1]XtRun;
   provider:[32]u8;nprovider:int;options:[1]ClOptions;pool:[524288]u8;line:[1048576]u8;arena:[1048576]u8;
-  out:[262144]u8;scratch:[262144]u8;prompt:[16384]u8;last_saved:int;failed:bool;started:bool;
+  out:[2*EX_INPUT_MAX+8192]u8;scratch:[2*EX_INPUT_MAX+8192]u8;prompt:[EX_INPUT_MAX+1024]u8;last_saved:int;failed:bool;started:bool;
 }
 EsHost :: struct {slots:[ES_SLOTS]EsSlot;configuration:[1]EaConfiguration;configured:bool;}
 
@@ -19,7 +26,7 @@ EsHost :: struct {slots:[ES_SLOTS]EsSlot;configuration:[1]EaConfiguration;config
 // owns Send, pumping, approvals and Stop. The frozen runtime profile is Claude
 // only. A routed multi-engine profile must pin its engine before using this view.
 es_agent :: (slot:[]EsSlot)->Agent #effects(all) {
-  return Agent.{mode=MODE_CLAUDE,claude=slot[0].engine[..],session=slot[0].s[..]};
+  none:[]CxEngine;return Agent.{mode=slot[0].mode,claude=slot[0].engine[..],codex=ifx slot[0].mode==MODE_CODEX then slot[0].codex[..] else none,session=slot[0].s[..]};
 }
 
 // The same registered RuntimeRequest/View, newline framed over an owner-only
@@ -85,7 +92,10 @@ es_find :: (e:[]EsHost,id:string,grant:string)->int #effects(all) {
   return -1;
 }
 es_file :: (slot:[]EsSlot,extension:string,out:[]u8)->string #effects(all) {
-  b:[256]u8;n:=hs_cat(b[..],0,"environment-");n=hs_cat(b[..],n,cast(string)slot[0].grant[..]);n=hs_cat(b[..],n,"-");n=hs_cat(b[..],n,cast(string)slot[0].summary.id[0..<slot[0].summary.ni]);n=hs_cat(b[..],n,extension);
+  return es_named_file(cast(string)slot[0].grant[..],cast(string)slot[0].summary.id[0..<slot[0].summary.ni],extension,out);
+}
+es_named_file :: (grant:string,id:string,extension:string,out:[]u8)->string #effects(all) {
+  b:[256]u8;n:=hs_cat(b[..],0,"environment-");n=hs_cat(b[..],n,grant);n=hs_cat(b[..],n,"-");n=hs_cat(b[..],n,id);n=hs_cat(b[..],n,extension);
   return es_path(cast(string)b[0..<n],out);
 }
 es_save :: (slot:[]EsSlot,host:string,label:string)->bool #effects(all) {
@@ -99,7 +109,7 @@ es_save :: (slot:[]EsSlot,host:string,label:string)->bool #effects(all) {
 }
 es_tick :: (h:[]HsHost) #effects(all) {
   e:=h[0].environment[..];
-  for i:0..<ES_SLOTS {slot:=e[0].slots[i..<i+1];if !slot[0].occupied || slot[0].failed {continue;}
+  for i:0..<ES_SLOTS {slot:=e[0].slots[i..<i+1];if !slot[0].occupied || slot[0].failed || slot[0].execution[0].active {continue;}
     s:=slot[0].s[..];before:=s[0].live;asking:=s[0].asking;
     slot[0].started=slot[0].started || slot[0].engine[0].running;ag_poll(es_agent(slot),0.016,true);
     if s[0].exhausted {slot[0].failed=true;ag_stop(es_agent(slot));}
@@ -191,8 +201,8 @@ es_rpc_exchange :: (args:[]Args,method:string,raw:string,response:[]u8)->EsRpcRe
 es_snapshot :: (h:[]HsHost,q:[]EaRequest,grant:string,v:[]EaView) #effects(all) {
   e:=h[0].environment[..];v[0]=EaView.{};v[0].nh=ea_copy(v[0].host[..],cast(string)h[0].xhex[..]);es_offer(v);
   c:=e[0].configuration[..];v[0].nl=ea_copy(v[0].label[..],cast(string)c[0].label[0..<c[0].nl]);v[0].nm=ea_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);v[0].complete=true;
-  for i:0..<ES_SLOTS {g:=e[0].slots[i].grant;if e[0].slots[i].occupied && cast(string)g[..]==grant {v[0].sessions[v[0].ns]=e[0].slots[i].summary;v[0].ns+=1;}}
-  id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);if k<0 {return;}
+  for i:0..<ES_SLOTS {g:=e[0].slots[i].grant;if e[0].slots[i].occupied && !e[0].slots[i].execution[0].active && cast(string)g[..]==grant {v[0].sessions[v[0].ns]=e[0].slots[i].summary;v[0].ns+=1;}}
+  id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);if k<0 || e[0].slots[k].execution[0].active {return;}
   slot:=e[0].slots[k..<k+1];es_project(slot[0].s[..],q,v);
   if slot[0].failed {for i:0..<v[0].ns {if cast(string)v[0].sessions[i].id[0..<v[0].sessions[i].ni]==id {v[0].sessions[i].nc=ea_copy(v[0].sessions[i].control[..],"unknown");}}es_refuse(v,"record_limit");}
 
@@ -331,6 +341,7 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   if cast(string)q[0].workspace[0..<q[0].nw]!="default" {es_refuse(v,"workspace_refused");return;}
   if method=="ListSessions" {if q[0].before==0 {es_saved_list(h,grant,v);}else {v[0].ns=0;}es_native_list(h,q,v);return;}
   id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);
+  if k>=0 && e[0].slots[k].execution[0].active {es_refuse(v,"unsupported_profile");return;}
   if method=="ReadSession" {if k<0 {if ea_id(id,32) {es_read_saved(h,q,grant,v);}else {es_native_read(h,q,v);}}return;}
   if !ea_id(cast(string)q[0].command[0..<q[0].nc],32) || !ea_id(id,32) {es_refuse(v,"malformed");return;}
   command:[24576]u8;n:=ea_write(q,command[..]);if n<0 {es_refuse(v,"malformed");return;}
@@ -342,6 +353,7 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   }
   if !ea_fresh(q[0].issued,q[0].expires,cxproc_wall_us()/1000) {es_refuse(v,"expired");return;}
   if method=="OpenSession" {
+    if xt_claimed_session(grant,id) {es_refuse(v,"conflict");return;}
     if k>=0 || !ea_text(cast(string)q[0].text[0..<q[0].nt]) {es_refuse(v,"conflict");return;}
     for i:0..<ES_SLOTS {if !e[0].slots[i].occupied {k=i;break;}}
     if k<0 {es_refuse(v,"capacity");return;}

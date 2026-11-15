@@ -20,6 +20,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/args.coax";
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
@@ -32,6 +33,7 @@ Xs :: struct {
   cwd: [1024] u8; ncwd: int;
   never: bool;                  // the thread's approval policy is never: nothing is asked
   turns: int;
+  task:bool;                    // actual file effect only in the routed task fixture
 }
 
 xs_send :: (text: string) {
@@ -165,7 +167,7 @@ xs_command :: (s: [] Xs, turn: string) {
 
 // A file change with its diff, asked first the same way.
 xs_edit :: (s: [] Xs, turn: string) {
-  pb: [1100] u8; pn := xs_put(pb[..], 0, cast(string) s[0].cwd[0..<s[0].ncwd]); pn = xs_put(pb[..], pn, "/notes.txt");
+  pb: [1100] u8; pn := xs_put(pb[..], 0, cast(string) s[0].cwd[0..<s[0].ncwd]); pn = xs_put(pb[..], pn, ifx s[0].task then "/note.txt" else "/notes.txt");
   path := cast(string) pb[0..<pn];
   ch: [1] Jo; cb: [2048] u8; jo_start(ch[..], cb[..]);
   jo_arr(ch[..]); jo_obj(ch[..]); jo_key(ch[..], "path"); jo_str(ch[..], path); jo_key(ch[..], "kind"); jo_raw(ch[..], "{\"type\":\"update\",\"move_path\":null}");
@@ -179,6 +181,7 @@ xs_edit :: (s: [] Xs, turn: string) {
       rb: [1024] u8; got := xs_ask(s, "1", "item/fileChange/requestApproval", jo_text(p[..]), rb[..]);
       accepted = xs_has(got, "\"accept\"");
     }
+    if done==1 && accepted && s[0].task {_ = fs_write(path,"hi\n");}
     item: [1] Jo; ib: [4096] u8; jo_start(item[..], ib[..]);
     jo_obj(item[..]); jo_key(item[..], "type"); jo_str(item[..], "fileChange"); jo_key(item[..], "id"); jo_str(item[..], "patch-1");
     jo_key(item[..], "changes"); jo_raw(item[..], changes);
@@ -220,6 +223,7 @@ xs_turn :: (s: [] Xs, id: string, d: Jv) {
   xs_result(id, jo_text(r[..]));
   mb: [16384] u8; mn := jv_str(d, jv_path(d, 0, "params.input[0].text"), mb[..]);
   msg := ifx mn > 0 then cast(string) mb[0..<mn] else "";
+  s[0].task=xs_has(msg,"routed-task-smoke");
   st: [1] Jo; sb: [256] u8; jo_start(st[..], sb[..]);
   jo_obj(st[..]); jo_key(st[..], "threadId"); jo_str(st[..], XS_THREAD); jo_key(st[..], "turn"); jo_obj(st[..]); jo_key(st[..], "id"); jo_str(st[..], turn);
   jo_key(st[..], "items"); jo_raw(st[..], "[]"); jo_key(st[..], "status"); jo_str(st[..], "inProgress"); jo_end(st[..]); jo_end(st[..]);
@@ -262,6 +266,9 @@ xs_answer :: (s: [] Xs, d: Jv, line: string) {
 }
 
 tool_main :: () -> int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) {return 2;}
+  if args_has(args[..],"--version") {xs_send("codex-standin/0.0.1");return 0;}
+  if args_at(args[..],0)=="login" && args_at(args[..],1)=="status" {xs_send("Logged in using ChatGPT (native fixture)");return 0;}
   s: [1] Xs;
   ob: [1024] u8; out := proc_getenv("CODEX_STANDIN_OUT", ob[..]);
   s[0].nout = xs_put(s[0].out[..], 0, out);

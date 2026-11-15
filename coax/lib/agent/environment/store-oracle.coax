@@ -1,0 +1,10 @@
+// Shared native store observations, outside product admission policy.
+#load "../../sys/fs.coax";
+#load "../../sys/proc.coax";
+ExpOracle :: struct {checks:int;failed:int;}
+exp_o_check :: (o:[]ExpOracle,ok:bool,name:string) #effects(all) {o[0].checks+=1;if !ok {o[0].failed+=1;}print("% %\n",ifx ok then "ok" else "FAIL",name);}
+exp_o_mode :: (path:string,out:[]u8)->string #effects(all) {
+ err:[1024]u8;args:=[4]string.["stat","-c","%a",path];r:=proc_run(args[..],10000,out,err[..]);
+ if r.status!=0 {mac:=[4]string.["/usr/bin/stat","-f","%Lp",path];r=proc_run(mac[..],10000,out,err[..]);}
+ n:=r.out_n;while n>0 && (out[n-1]==10 || out[n-1]==13) {n-=1;}return cast(string)out[0..<n];
+}

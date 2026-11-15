@@ -1,0 +1,53 @@
+// Native filesystem observations of accepted Start ownership and replay.
+// No native agent is started by this adapter qualification.
+#import "Basic";
+#load "task-store.coax";
+#load "store-oracle.coax";
+
+tool_main :: ()->int #export_c #effects(all) {
+ o:[1]ExpOracle;fixture:[16384]u8;fn:=fs_read("proto/coder/environment-execution-v1alpha1.json",fixture[..]);d:[1]Jv;nodes:[256]JvNode;
+ if fn<1 || !jv_parse(d[..],cast(string)fixture[0..<fn],nodes[..]) {return 2;}
+ bytes:[XT_REQUEST_MAX]u8;writer:[1]Jo;jo_start(writer[..],bytes[..]);jv_write(d[0],jv_get(d[0],0,"binding"),writer[..]);binding:[1]ExBinding;ba:[1024]u8;
+ if !ex_binding_read(jo_text(writer[..]),binding[..],ba[..]) {return 2;}b:=binding[0];
+ jo_start(writer[..],bytes[..]);jv_write(d[0],jv_get(d[0],0,"chunk"),writer[..]);chunk:[1]ExChunk;ca:[8192]u8;
+ if !ex_chunk_read(jo_text(writer[..]),chunk[..],ca[..]) {return 2;}input:=chunk[0].text;
+ report:="fixture resident report bytes";rh:[64]u8;if !S_hex(S_hash(report),rh[..]) {return 2;}b.report_hash=cast(string)rh[..];
+ temp:[FS_PATH_MAX]u8;temporary:=fs_temp("oa-execution-tasks-",temp[..]);r:[FS_PATH_MAX]u8;s:[FS_PATH_MAX]u8;root:=fs_join(temporary,"tasks",r[..]);staging:=fs_join(temporary,"staging",s[..]);grant:=b.host;
+ prep:[1]ExPrepView;pa:[1024]u8;chunk[0].command="11111111111111111111111111111111";
+ if temporary.count==0 || exp_store_prepare(staging,grant,b.host,b,1000,prep[..]).count>0 || exp_store_put(staging,grant,chunk[0],1000,prep[..],pa[..]).count>0 {return 2;}
+ sd:[FS_PATH_MAX]u8;p:[FS_PATH_MAX]u8;stage:=exp_task_dir(staging,grant,b.task,sd[..]);if !fs_replace_durable(fs_join(stage,"report.json",p[..]),report) {return 2;}
+ q:=XtRequest.{method="StartTask",task=b.task,command=b.command,issued=b.issued,expires=b.expires,route="{}"};n:=xt_request_write(q,bytes[..]);raw:=cast(string)bytes[0..<n];status:[1]XtStatus;arena:[2048]u8;
+ exp_o_check(o[..],xt_store_start(root,staging,grant,b,q,raw,301001,status[..])=="expired","unaccepted expired Start cannot retain an intent");
+ error:=xt_store_start(root,staging,grant,b,q,raw,1000,status[..]);exp_o_check(o[..],error=="" && status[0].state==XT_QUEUED && status[0].revision==1,"Start retains a queued owner before any process effect");
+ task_path:[FS_PATH_MAX]u8;directory:=xt_task_dir(root,grant,b.task,task_path[..]);file:[FS_PATH_MAX]u8;owned_input:=fs_join(directory,"input.json",file[..]);retained:[EX_INPUT_MAX]u8;got:=fs_read(owned_input,retained[..]);
+ exp_o_check(o[..],got==input.count && cast(string)retained[0..<ifx got>0 then got else 0]==input,"the owned input is the complete canonical byte sequence");
+ mode:[32]u8;exp_o_check(o[..],exp_o_mode(directory,mode[..])=="700" && exp_o_mode(owned_input,mode[..])=="600","retained task and input have owner-only modes");
+ exp_o_check(o[..],fs_remove(stage) && xt_status_load(root,grant,b.task,status[..],arena[..])=="","accepted ownership survives deletion of the expiring upload cache");
+ exp_o_check(o[..],xt_status_load(root,"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",b.task,status[..],arena[..])=="unavailable","another grant cannot observe the task");
+ stamp:=fs_mtime_ns(owned_input);exp_o_check(o[..],xt_command_match(root,grant,q.command,raw)==1,"a separate read reconstructs the exact original command receipt");
+ exp_o_check(o[..],xt_store_start(root,staging,grant,b,q,raw,1001,status[..])=="conflict" && fs_mtime_ns(owned_input)==stamp,"an accepted Start is never rewritten or reaccepted");
+ other:=b;other.command="22222222222222222222222222222222";other.session=other.command;changed:=q;changed.command=other.command;alt:[XT_REQUEST_MAX]u8;na:=xt_request_write(changed,alt[..]);
+ exp_o_check(o[..],xt_store_start(root,staging,grant,other,changed,cast(string)alt[0..<na],1001,status[..])=="conflict" && fs_mtime_ns(owned_input)==stamp,"changing command and session cannot overwrite a retained task identity");
+ status[0]=XtStatus.{binding=b,state=XT_WAITING,revision=2,native="actual-native-session",interaction="held-permission",updated=1001};
+ exp_o_check(o[..],xt_status_save(directory,status[0]) && xt_status_load(root,grant,b.task,status[..],arena[..])=="" && status[0].interaction=="held-permission","pending native correlation survives a fresh status decode");
+ status[0].binding.model="other-model";exp_o_check(o[..],xt_status_save(directory,status[0]) && xt_status_load(root,grant,b.task,status[..],arena[..])=="unavailable","a modified status cannot change the immutable owned binding");
+ status[0]=XtStatus.{binding=b,state=XT_QUEUED,revision=1,updated=1000};if !xt_status_save(directory,status[0]) {return 2;}
+ command_path:[FS_PATH_MAX]u8;marker:=xt_command_file(root,grant,q.command,command_path[..]);
+ exp_o_check(o[..],fs_remove(marker) && xt_status_load(root,grant,b.task,status[..],arena[..])=="unavailable","a status without the final Start marker is unaccepted preparation");
+ if !xt_command_publish(root,grant,q.command,raw) {return 2;}
+ claim_path:[FS_PATH_MAX]u8;claim:=xt_session_file(root,grant,b.session,claim_path[..]);exp_o_check(o[..],fs_replace_durable(claim,"corrupt") && xt_status_load(root,grant,b.task,status[..],arena[..])=="unavailable","a mismatched durable session claim fails closed");
+ binding_bytes:[8192]u8;bn:=ex_binding_write(b,binding_bytes[..]);if !fs_replace_durable(claim,cast(string)binding_bytes[0..<bn]) {return 2;}
+ control:=XtRequest.{method="RespondTask",task=b.task,command="33333333333333333333333333333333",revision=2,interaction="held-permission",allow=true,issued=1000,expires=301000};
+ n=xt_request_write(control,alt[..]);cr:=cast(string)alt[0..<n];exp_o_check(o[..],xt_store_control(root,grant,control,cr)=="" && xt_command_match(root,grant,control.command,cr)==1,"a permission intent owns its global command identity before the effect");
+ exp_o_check(o[..],xt_store_control(root,grant,control,cr)=="conflict","a recorded control is reconciled by its owner without another effect");
+ marker=xt_command_file(root,grant,control.command,command_path[..]);exp_o_check(o[..],fs_remove(marker) && xt_store_control(root,grant,control,cr)=="","an uncommitted local control intent recovers its global marker once");
+ controls_path:[FS_PATH_MAX]u8;controls:=fs_join(directory,"controls",controls_path[..]);
+ for i:1..<XT_CONTROLS-1 {number:[32]u8;jo_start(writer[..],number[..]);jo_int(writer[..],i);id:[64]u8;if !S_hex(S_hash(jo_text(writer[..])),id[..]) {return 2;}
+  entry:[FS_PATH_MAX]u8;if !fs_replace_durable(fs_join(controls,cast(string)id[0..<32],entry[..]),"bounded fixture") {return 2;}
+ }
+ control.command="44444444444444444444444444444444";n=xt_request_write(control,alt[..]);exp_o_check(o[..],xt_store_control(root,grant,control,cast(string)alt[0..<n])=="bounds","permission receipts cannot consume the reserved Stop entry");
+ control.method="StopTask";control.revision=0;control.interaction="";control.allow=false;n=xt_request_write(control,alt[..]);exp_o_check(o[..],xt_store_control(root,grant,control,cast(string)alt[0..<n])=="","Stop remains recordable at the permission receipt ceiling");
+ control.command="55555555555555555555555555555555";n=xt_request_write(control,alt[..]);exp_o_check(o[..],xt_store_control(root,grant,control,cast(string)alt[0..<n])=="bounds","the actual control directory enforces the final retained bound");
+ print("Task filesystem: % checks, % failed\n",o[0].checks,o[0].failed);
+ if o[0].failed==0 {_ = fs_remove(temporary);}else {print("Evidence: %\n",temporary);}return ifx o[0].failed==0 then 0 else 1;
+}

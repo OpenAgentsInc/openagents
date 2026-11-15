@@ -1,0 +1,239 @@
+// Routed tasks share the resident's slots, Agent interface, native engines,
+// permission controls and session log. No second process/model/tool runner.
+#load "../../coax/lib/agent/router/policy.coax";
+#load "../../coax/lib/agent/environment/task-store.coax";
+#load "../../coax/lib/agent/environment/task-input.coax";
+
+xt_root :: (out:[]u8)->string #effects(all) {return hs_path("execution-tasks",out);}
+// Preparation is consumed by an accepted Start. Relay history must never
+// resurrect its upload cache after the task owner has retained the input.
+xt_preparation_closed :: (grant:string,task:string)->bool #effects(all) {
+ root:[1400]u8;d:[FS_PATH_MAX]u8;p:[FS_PATH_MAX]u8;directory:=xt_task_dir(xt_root(root[..]),grant,task,d[..]);file:=fs_join(directory,"binding.json",p[..]);if !fs_exists(file) {return false;}
+ raw:[8192]u8;n:=fs_read(file,raw[..]);b:[1]ExBinding;arena:[1024]u8;
+ if n<1 || !ex_binding_read(cast(string)raw[0..<ifx n>0 then n else 0],b[..],arena[..]) || b[0].task!=task {return true;}
+ command:[FS_PATH_MAX]u8;return fs_exists(xt_command_file(xt_root(root[..]),grant,b[0].command,command[..]));
+}
+xt_claimed_session :: (grant:string,session:string)->bool #effects(all) {r:[1400]u8;p:[FS_PATH_MAX]u8;return fs_exists(xt_session_file(xt_root(r[..]),grant,session,p[..]));}
+xt_find :: (h:[]HsHost,grant:string,task:string)->int #effects(all) {
+ for i:0..<ES_SLOTS {slot:=h[0].environment[0].slots[i..<i+1];if slot[0].occupied && slot[0].execution[0].active && cast(string)slot[0].grant[..]==grant && slot[0].execution[0].status[0].binding.task==task {return i;}}return -1;
+}
+// Optional during preparation, mandatory for Start: only this resident's
+// actual matching report can be copied into a staged task's provenance.
+xt_pin_report :: (h:[]HsHost,grant:string,b:ExBinding)->int #effects(all) {
+ cache:=h[0].station[..];if cache[0].n<1 {return 0;}raw:=cast(string)cache[0].json[0..<cache[0].n];hash:[64]u8;
+ if !S_hex(S_hash(raw),hash[..]) || cast(string)hash[..]!=b.report_hash {return 0;}
+ q:[1]RtrRequest;nodes:[2048]JvNode;wire:[RTR_REPORT_MAX]u8;host:[64]u8;
+ if !rtr_report_read(raw,nodes[..],wire[..],q[..],0,host[..]) || cast(string)host[..]!=b.host || q[0].stations[0].reported_at_ms!=b.report_at {return -1;}
+ root:[1400]u8;d:[FS_PATH_MAX]u8;p:[FS_PATH_MAX]u8;directory:=exp_task_dir(xp_root(root[..]),grant,b.task,d[..]);file:=fs_join(directory,"report.json",p[..]);
+ if fs_exists(file) {prior:[RTR_REPORT_MAX]u8;n:=fs_read(file,prior[..]);return ifx n==raw.count && cast(string)prior[0..<ifx n>0 then n else 0]==raw then 1 else -1;}
+ return ifx fs_replace_durable(file,raw) then 1 else -1;
+}
+// The router remains the only codec of its decision. Canonicalize it before
+// retaining a TaskRequest so alternate outer formatting cannot change intent.
+xt_normalize :: (q:XtRequest,out:[]u8)->int #effects(all) {
+ next:=q;if q.method!="StartTask" {return xt_request_write(next,out);}
+ nodes:[4096]JvNode;wire:[RTR_DECISION_MAX]u8;d:[1]RtrDecision;route:[RTR_DECISION_MAX]u8;
+ if !rtr_decision_read(q.route,nodes[..],wire[..],d[..]) {return -1;}n:=rtr_decision_write(d[..],route[..]);if n<1 {return -1;}next.route=cast(string)route[0..<n];return xt_request_write(next,out);
+}
+xt_current_scope :: (h:[]HsHost,slot:[]EsSlot)->bool #effects(all) {
+ e:=h[0].environment[..];if !es_load_configuration(e) {return false;}c:=e[0].configuration[..];
+ st:[1]HsState;buf:[HS_STATE_MAX]u8;hs_load(st[..],buf[..]);current:=false;
+ for i:0..<st[0].ng {if cast(string)st[0].grants[i].grant[..]==cast(string)slot[0].grant[..] && cast(string)st[0].grants[i].device[..]==cast(string)slot[0].device[..] && hs_current(st[..],i,hs_now()) {current=true;}}
+ return ex_scope(true,c[0].enabled,cast(string)c[0].device[..]==cast(string)slot[0].device[..],cast(string)c[0].grant[..]==cast(string)slot[0].grant[..],current);
+}
+// Match the original report/hash and exact resolved choice, then apply the
+// shared router's physical eligibility and hard needs to a fresh local report.
+// auth -1 checks queue resource admission without claiming a provider login;
+// 0/1 are the selected profile's actual native auth probe result at dispatch.
+xt_route_admit :: (h:[]HsHost,grant:string,b:ExBinding,route:string,original:string,auth:int)->string #effects(all) {
+ hash:[64]u8;if !S_hex(S_hash(original),hash[..]) || cast(string)hash[..]!=b.report_hash {return "stale";}
+ nodes:[4096]JvNode;wire:[RTR_DECISION_MAX]u8;d:[1]RtrDecision;if !rtr_decision_read(route,nodes[..],wire[..],d[..]) || !d[0].ok || d[0].engine!=b.engine || d[0].model!=b.model || d[0].effort!=b.effort {return "conflict";}
+ before:[1]RtrRequest;bw:[RTR_REPORT_MAX]u8;host:[64]u8;
+ if !rtr_report_read(original,nodes[..],bw[..],before[..],0,host[..]) || cast(string)host[..]!=b.host || before[0].stations[0].reported_at_ms!=b.report_at || before[0].stations[0].id!=d[0].station {return "stale";}
+ fresh:[RTR_REPORT_MAX]u8;n:=st_report(h,true,fresh[..]);current:[1]RtrRequest;cw:[RTR_REPORT_MAX]u8;
+ if n<1 || !rtr_report_read(cast(string)fresh[0..<n],nodes[..],cw[..],current[..],0,host[..]) || cast(string)host[..]!=b.host || current[0].stations[0].id!=d[0].station {return "unavailable";}
+ if current[0].stations[0].nrepos!=before[0].stations[0].nrepos {return "conflict";}
+ for i:0..<before[0].stations[0].nrepos {if before[0].stations[0].repos[i]!=current[0].stations[0].repos[i] {return "conflict";}}
+ engine:=ca_index(b.engine);if engine<0 {return "unsupported";}
+ current[0].n=1;current[0].now_ms=cxproc_wall_us()/1000;current[0].current_station=current[0].stations[0].id;needs:=0;
+ if d[0].needs=="apple" {needs=RTR_NEED_APPLE;}else if d[0].needs=="gpu" {needs=RTR_NEED_GPU;}else if d[0].needs=="this_computer" {needs=RTR_NEED_THIS;}else if d[0].needs.count>0 && d[0].needs!="none" {return "unsupported";}
+ weight:=ifx d[0].weight== -1 then RTR_HEAVY else d[0].weight;if weight<0 || weight>RTR_HEAVY {return "unsupported";}
+ if auth<0 {a:=current[0].stations[0].agents[engine];return ifx rtr_station_fact(current[..],0).count==0 && a.reported && a.installed && rtr_need_ok(current[..],0,needs) && rtr_weight_ok(current[..],0,weight) then "" else "unavailable";}
+ if auth!=1 {return "forbidden";}current[0].stations[0].agents[engine].logged_in=true;
+ eligible:[1]RtrEligible;ignored:[1]RtrDecision;rtr_eligible(current[..],eligible[..],ignored[..]);if !rtr_can(current[..],eligible[..],0,engine,weight,needs) {return "unavailable";}
+ effective:[RTR_REPORT_MAX]u8;made:=rtr_report_write(current[..],0,b.host,effective[..]);root:[1400]u8;path:[FS_PATH_MAX]u8;file:[FS_PATH_MAX]u8;directory:=xt_task_dir(xt_root(root[..]),grant,b.task,path[..]);
+ if made<1 || !fs_replace_durable(fs_join(directory,"dispatch-report.json",file[..]),cast(string)effective[0..<made]) {return "unavailable";}return "";
+}
+xt_read :: (h:[]HsHost,grant:string,task:string,out:[]XtStatus,arena:[]u8)->string #effects(all) {
+ root:[1400]u8;directory:=xt_root(root[..]);error:=xt_status_load(directory,grant,task,out,arena);if error.count>0 {return error;}
+ c:=h[0].environment[0].configuration[..];if out[0].binding.host!=cast(string)h[0].xhex[..] || out[0].binding.workspace!="default" || cast(string)c[0].grant[..]!=grant {return "forbidden";}
+ if xt_find(h,grant,task)<0 && !xt_terminal(out[0].state) {
+  if out[0].revision>=9007199254740991 {return "bounds";}out[0].state=XT_UNKNOWN;out[0].error="resident_restarted";out[0].interaction="";out[0].revision+=1;out[0].updated=cxproc_wall_us()/1000;
+  path:[FS_PATH_MAX]u8;if !xt_status_save(xt_task_dir(directory,grant,task,path[..]),out[0]) {return "unavailable";}
+ }return "";
+}
+
+xt_provider_present :: (h:[]HsHost,b:ExBinding,grant:string)->bool #effects(all) {
+ if b.engine=="codex" {return b.account=="system";}
+ m:=h[0].providers[..];if !pa_load(m) {p:[1400]u8;return b.account=="system" && !m[0].loaded && !fs_exists(pa_store_file(p[..]));}
+ s:=m[0].native[0].store[..];return cast(string)s[0].grant[..]==grant && pa_find_profile(m,b.account)>=0 && !pa_login_busy(m,b.account);
+}
+xt_save :: (slot:[]EsSlot)->bool #effects(all) {
+ run:=slot[0].execution[..];b:=run[0].status[0].binding;root:[1400]u8;d:[FS_PATH_MAX]u8;path:[FS_PATH_MAX]u8;directory:=xt_task_dir(xt_root(root[..]),cast(string)slot[0].grant[..],b.task,d[..]);
+ // The frozen v1 content log is a prefix only. TaskStatus owns lifecycle;
+ // emitting v1's terminal record here would invent completion on uncertainty.
+ content_log:[2097152]u8;n:=sl_lines(slot[0].s[..],0,slot[0].s[0].n,false,content_log[..]);
+ return n>=0 && fs_replace_durable(fs_join(directory,"session.jsonl",path[..]),cast(string)content_log[0..<ifx n>=0 then n else 0]) && xt_status_save(directory,run[0].status[0]);
+}
+xt_close :: (slot:[]EsSlot) #effects(all) {
+ probe:=slot[0].execution[0].auth[..];if probe[0].h>=0 {_ = proc_release(probe[0].h);probe[0].h= -1;}
+ e_close(slot[0].engine[..]);cxe_close(slot[0].codex[..]);
+}
+xt_finish :: (slot:[]EsSlot,state:int,error:string) #effects(all) {
+ run:=slot[0].execution[..];v:=run[0].status[..];v[0].state=state;v[0].error=error;v[0].interaction="";v[0].revision+=1;v[0].updated=cxproc_wall_us()/1000;
+ // Preserve native IDs and the final session before closing their owners.
+ saved:=xt_save(slot);xt_close(slot);slot[0].occupied=false;run[0].active=false;
+}
+xt_fail :: (slot:[]EsSlot,error:string) #effects(all) {
+ xt_finish(slot,ifx slot[0].execution[0].dispatched then XT_UNKNOWN else XT_FAILED,error);
+}
+xt_codex_auth_start :: ()->int #effects(all) {
+ h:=proc_new();if h<0 {return -1;}good:=proc_arg(h,"codex") && proc_arg(h,"login") && proc_arg(h,"status") && proc_err_to_out(h);
+ good=good && proc_unset(h,"OPENAI_API_KEY") && proc_unset(h,"CODEX_API_KEY") && proc_env(h,"BROWSER=/usr/bin/true") && proc_env(h,"NO_OPEN_BROWSER=1");
+ if !good || proc_start(h)!=0 {_ = proc_release(h);return -1;}return h;
+}
+// Reset the independent owners separately. Clearing the aggregate would make
+// the checker enumerate every borrowed leaf of both SDKs in one expression.
+// Buffer extents are reset by their owners before they can be observed.
+xt_reset :: (slot:[]EsSlot) #effects(all) {
+ slot[0].occupied=false;slot[0].summary=EaSession.{};slot[0].engine[0]=Engine.{};
+ slot[0].codex[0]=CxEngine.{};slot[0].execution[0]=XtRun.{};slot[0].options[0]=ClOptions.{};
+ slot[0].mode=MODE_CLAUDE;slot[0].nprovider=0;slot[0].last_saved=0;slot[0].failed=false;slot[0].started=false;
+}
+xt_attach_claude :: (h:[]HsHost,slot:[]EsSlot) #effects(all) {
+ run:=slot[0].execution[..];b:=run[0].status[0].binding;grant:=cast(string)slot[0].grant[..];e:=slot[0].engine[..];
+ if !pa_bind_profile(h,slot,b.session,grant,b.account) {xt_fail(slot,"login_required");return;}
+ exe:[1400]u8;e[0].claude_n=js_copy(e[0].claude[..],pa_program(exe[..]));e[0].strict_models=true;e[0].warmed=false;
+ root:[1400]u8;directory:[1400]u8;profile:=pa_directory(pa_root(root[..]),b.account,directory[..]);run[0].auth[0].h=pa_cli_start(profile,b.account=="system",false);
+}
+xt_attach_codex :: (slot:[]EsSlot,workspace:string) #effects(all) {
+ slot[0].nprovider=js_copy(slot[0].provider[..],"system");e:=slot[0].engine[..];e[0].on=false;e[0].codex_exe="codex";
+ path:[E_PATH]u8;current:=proc_getenv("PATH",path[..]);if current.count+5>e[0].path_env.count {xt_fail(slot,"engine_unavailable");return;}
+ e[0].path_n=js_copy(e[0].path_env[..],"PATH=");for byte:current {e[0].path_env[e[0].path_n]=byte;e[0].path_n+=1;}
+ x:=slot[0].codex[..];cxe_attach(x,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].codex_mem[..],workspace);x[0].prompt=slot[0].prompt[..];x[0].want_warm=true;
+ slot[0].execution[0].auth[0].h=xt_codex_auth_start();
+}
+// All effects here follow the durable Start marker. The shared engines warm
+// their real catalogs first; no task prompt is sent before exact choice/auth.
+xt_attach :: (h:[]HsHost,index:int,grant:string,device:string,task:string,route:string)->bool #effects(all) {
+ slot:=h[0].environment[0].slots[index..<index+1];xt_reset(slot);run:=slot[0].execution[..];root:[1400]u8;
+ if xt_status_load(xt_root(root[..]),grant,task,run[0].status[..],run[0].strings[..]).count>0 {return false;}
+ slot[0].occupied=true;run[0].active=true;_ = js_copy(slot[0].grant[..],grant);_ = js_copy(slot[0].device[..],device);b:=run[0].status[0].binding;
+ run[0].nroute=js_copy(run[0].route[..],route);run[0].deadline=cxproc_wall_us()/1000+20000;slot[0].mode=ifx b.engine=="codex" then MODE_CODEX else MODE_CLAUDE;
+ s_init(slot[0].s[..],slot[0].pool[..]);e:=slot[0].engine[..];e_attach(e,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].scratch[..],slot[0].prompt[..]);
+ c:=h[0].environment[0].configuration[..];e[0].cwd_n=js_copy(e[0].cwd[..],cast(string)c[0].workspace[0..<c[0].nw]);e[0].access=ACC_SUPERVISED;
+ slot[0].summary.ni=ea_copy(slot[0].summary.id[..],b.session);slot[0].summary.nw=ea_copy(slot[0].summary.workspace[..],"default");
+ if run[0].nroute<1 || e[0].cwd_n<1 || !xt_provider_present(h,b,grant) {xt_fail(slot,"login_required");return true;}
+ if b.engine=="claude" {xt_attach_claude(h,slot);}else {xt_attach_codex(slot,cast(string)c[0].workspace[0..<c[0].nw]);}
+ if !run[0].active {return true;}
+ run[0].auth[0].deadline=cxproc_wall_us()/1000+15000;if run[0].auth[0].h<0 {xt_fail(slot,"engine_unavailable");}return true;
+}
+xt_auth_tick :: (slot:[]EsSlot,now:int) #effects(all) {
+ run:=slot[0].execution[..];if run[0].auth_done {return;}p:=run[0].auth[..];status:=pa_child_tick(p,now);if p[0].h>=0 {return;}
+ run[0].auth_done=true;run[0].auth_ok=status==0;
+ if slot[0].mode==MODE_CLAUDE {run[0].auth_ok=run[0].auth_ok && pa_status(cast(string)p[0].raw[0..<p[0].n],run[0].auth_account[..]);}
+ for i:0..<p[0].raw.count {p[0].raw[i]=0;}p[0].n=0;
+}
+xt_pending :: (slot:[]EsSlot)->string #effects(all) {
+ if slot[0].s[0].asking<0 {return "";}if slot[0].mode==MODE_CODEX {c:=slot[0].codex[0].c[..];return cast(string)c[0].ask_id[0..<c[0].ask_id_n];}return cl_pending_id(slot[0].engine[0].q[..]);
+}
+xt_native :: (slot:[]EsSlot)->string #effects(all) {
+ if slot[0].mode==MODE_CODEX {x:=slot[0].codex[..];return cast(string)x[0].tid[0..<x[0].tid_n];}return cast(string)slot[0].engine[0].sid[0..<slot[0].engine[0].sid_n];
+}
+xt_send :: (h:[]HsHost,slot:[]EsSlot) #effects(all) {
+ run:=slot[0].execution[..];v:=run[0].status[..];b:=v[0].binding;grant:=cast(string)slot[0].grant[..];root:[1400]u8;d:[FS_PATH_MAX]u8;p:[FS_PATH_MAX]u8;directory:=xt_task_dir(xt_root(root[..]),grant,b.task,d[..]);
+ report:[RTR_REPORT_MAX]u8;nr:=fs_read(fs_join(directory,"report.json",p[..]),report[..]);
+ if nr<1 || xt_route_admit(h,grant,b,cast(string)run[0].route[0..<run[0].nroute],cast(string)report[0..<ifx nr>0 then nr else 0],ifx run[0].auth_ok then 1 else 0).count>0 {xt_fail(slot,"route_refused");return;}
+ input:[EX_INPUT_MAX]u8;n:=fs_read(fs_join(directory,"input.json",p[..]),input[..]);decoded:[1]ExInput;
+ made:=ifx n>0 then xt_prompt(b,cast(string)input[0..<n],decoded[..],slot[0].prompt[..]) else -1;
+ signin:=slot[0].mode==MODE_CLAUDE && pa_login_busy(h[0].providers[..],b.account);
+ if made<1 || !ex_pin(b,cast(string)h[0].xhex[..],"default",b.input_hash,n,ifx slot[0].mode==MODE_CODEX then "codex" else "claude",cast(string)slot[0].provider[0..<slot[0].nprovider],run[0].auth_ok,signin) {xt_fail(slot,"login_required");return;}
+ if !xt_current_scope(h,slot) {xt_fail(slot,"revoked");return;}if !ea_fresh(b.issued,b.expires,cxproc_wall_us()/1000) {xt_fail(slot,"expired");return;}
+ run[0].dispatched=true;v[0].state=XT_RUNNING;v[0].revision+=1;v[0].updated=cxproc_wall_us()/1000;
+ if !xt_status_save(directory,v[0]) {xt_fail(slot,"storage_unavailable");return;}
+ ag_send(es_agent(slot),ex_input_text(decoded[..],decoded[0].n-1),cast(string)slot[0].prompt[0..<made]);
+ if !xt_save(slot) {xt_fail(slot,"storage_unavailable");}
+}
+xt_tick :: (h:[]HsHost) #effects(all) {
+ for i:0..<ES_SLOTS {slot:=h[0].environment[0].slots[i..<i+1];run:=slot[0].execution[..];if !slot[0].occupied || !run[0].active {continue;}v:=run[0].status[..];now:=cxproc_wall_us()/1000;
+  if !xt_current_scope(h,slot) {v[0].stop=true;ag_stop(es_agent(slot));xt_fail(slot,"revoked");continue;}
+  if !run[0].dispatched && !ea_fresh(v[0].binding.issued,v[0].binding.expires,now) {xt_fail(slot,"expired");continue;}
+  if !run[0].auth_done {xt_auth_tick(slot,now);if !run[0].auth_done {continue;}}
+  if !run[0].auth_ok {xt_fail(slot,"login_required");continue;}
+  old_native:[128]u8;old_interaction:[256]u8;nn:=js_copy(old_native[..],v[0].native);ni:=js_copy(old_interaction[..],v[0].interaction);before:=v[0].state;
+  ag_poll(es_agent(slot),0.016,true);
+  if !run[0].dispatched {
+   ready:=ifx slot[0].mode==MODE_CODEX then slot[0].codex[0].ready && slot[0].codex[0].cat_gen>0 else slot[0].engine[0].ready && slot[0].engine[0].cat_gen>0;
+   if !ready {if now>=run[0].deadline {xt_fail(slot,"engine_unavailable");}continue;}
+   cat:=ifx slot[0].mode==MODE_CODEX then slot[0].codex[0].cat[..] else slot[0].engine[0].cat[..];choice:=ex_choice(cat,v[0].binding.model,v[0].binding.effort);
+   if !choice.ok {xt_fail(slot,"model_unavailable");continue;}
+   if slot[0].mode==MODE_CODEX {slot[0].codex[0].model=choice.model;slot[0].codex[0].effort=choice.effort;}
+   else {e_set_model(slot[0].engine[..],choice.model);slot[0].engine[0].effort=choice.effort;}
+   xt_send(h,slot);continue;
+  }
+  if slot[0].s[0].exhausted {ag_stop(es_agent(slot));xt_fail(slot,"record_limit");continue;}
+  v[0].native=xt_native(slot);v[0].interaction=xt_pending(slot);v[0].state=xt_observe(before,true,slot[0].s[0].live,slot[0].s[0].asking>=0,slot[0].s[0].outcome);
+  if xt_terminal(v[0].state) {v[0].interaction="";xt_finish(slot,v[0].state,ifx v[0].state==XT_FAILED then "native_failed" else ifx v[0].state==XT_UNKNOWN then "native_unknown" else "");continue;}
+  if slot[0].s[0].changed || before!=v[0].state || nn<0 || ni<0 || cast(string)old_native[0..<ifx nn>0 then nn else 0]!=v[0].native || cast(string)old_interaction[0..<ifx ni>0 then ni else 0]!=v[0].interaction {
+   v[0].revision+=1;v[0].updated=now;if !xt_save(slot) {ag_stop(es_agent(slot));xt_fail(slot,"storage_unavailable");continue;}slot[0].s[0].changed=false;
+  }
+ }
+}
+xt_command :: (h:[]HsHost,grant:string,device:string,q:XtRequest,raw:string,out:[]XtStatus,arena:[]u8)->string #effects(all) {
+ root:[1400]u8;directory:=xt_root(root[..]);
+ if q.method=="ReadTask" {return xt_read(h,grant,q.task,out,arena);}
+ retained:=xt_command_match(directory,grant,q.command,raw);
+ if retained==2 {return "conflict";}
+ if retained==1 {error:=xt_read(h,grant,q.task,out,arena);if error.count==0 {out[0].command=q.command;out[0].replay=true;}return error;}
+ now:=cxproc_wall_us()/1000;if !ea_fresh(q.issued,q.expires,now) {return "expired";}
+ if q.method=="StartTask" {
+  upload:[1400]u8;stage:[FS_PATH_MAX]u8;path:[FS_PATH_MAX]u8;source:=exp_task_dir(xp_root(upload[..]),grant,q.task,stage[..]);binding_bytes:[8192]u8;nb:=fs_read(fs_join(source,"binding.json",path[..]),binding_bytes[..]);b:[1]ExBinding;ba:[1024]u8;
+  if nb<1 || !ex_binding_read(cast(string)binding_bytes[0..<ifx nb>0 then nb else 0],b[..],ba[..]) || !xt_start_match(b[0],q.task,q.command,q.issued,q.expires) {return "conflict";}
+  if b[0].host!=cast(string)h[0].xhex[..] || b[0].workspace!="default" || !xt_provider_present(h,b[0],grant) {return "forbidden";}
+  if es_find(h[0].environment[..],b[0].session,grant)>=0 || fs_exists(es_named_file(grant,b[0].session,".json",path[..])) || fs_exists(pa_binding_file(grant,b[0].session,path[..])) {return "conflict";}
+  free:= -1;for i:0..<ES_SLOTS {if !h[0].environment[0].slots[i].occupied {free=i;break;}}if free<0 {return "bounds";}
+  report:[RTR_REPORT_MAX]u8;nr:=fs_read(fs_join(source,"report.json",path[..]),report[..]);if nr<1 {return "stale";}
+  error:=xt_route_admit(h,grant,b[0],q.route,cast(string)report[0..<nr],-1);if error.count>0 {return error;}
+  if !ea_fresh(q.issued,q.expires,cxproc_wall_us()/1000) {return "expired";}
+  stored:[1]XtStatus;error=xt_store_start(directory,xp_root(upload[..]),grant,b[0],q,raw,cxproc_wall_us()/1000,stored[..]);if error.count>0 {return error;}
+  // Accepted ownership now lives outside the upload cache. Reclaim this
+  // complete stage so four recent tasks cannot block the next preparation.
+  _ = fs_remove(source);
+  if !xt_attach(h,free,grant,device,q.task,q.route) {return "unavailable";}
+  error=xt_read(h,grant,q.task,out,arena);if error.count==0 {out[0].command=q.command;}return error;
+ }
+ error:=xt_read(h,grant,q.task,out,arena);if error.count>0 {return error;}if out[0].revision>=9007199254740991 {return "bounds";}
+ verdict:=xt_control(0,q.method,out[0].state,q.revision,out[0].revision,q.interaction==out[0].interaction,q.issued,q.expires,now);if verdict<0 {return ifx verdict== -2 then "expired" else "conflict";}
+ error=xt_store_control(directory,grant,q,raw);if error.count>0 {return error;}
+ k:=xt_find(h,grant,q.task);
+ if k>=0 && !xt_terminal(out[0].state) {
+  slot:=h[0].environment[0].slots[k..<k+1];
+  if q.method=="StopTask" {slot[0].execution[0].status[0].stop=true;
+   if !slot[0].execution[0].dispatched {xt_finish(slot,XT_CANCELED,"");}
+   else {ag_stop(es_agent(slot));slot[0].s[0].changed=true;xt_tick(h);}
+  }else {ag_answer(es_agent(slot),q.allow);slot[0].s[0].changed=true;xt_tick(h);}
+ }
+ error=xt_read(h,grant,q.task,out,arena);if error.count==0 {out[0].command=q.command;}return error;
+}
+xt_handle :: (h:[]HsHost,r:[]HbRpcRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
+ right:=xt_right(r[0].method);scope:=xs_scope(h,r,signer,event,mailbox,right,st,statebuf);if scope<0 {return 0;}
+ if scope==0 {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"forbidden",""),signer,w,out);}
+ q:[1]XtRequest;qa:[1024]u8;normalized:[XT_REQUEST_MAX]u8;error:="malformed";status:[1]XtStatus;arena:[2048]u8;
+ if xt_request_read(r[0].params,q[..],qa[..]) && q[0].method==r[0].method {
+  n:=xt_normalize(q[0],normalized[..]);if n>0 {canonical:[1]XtRequest;ca:[1024]u8;
+   if xt_request_read(cast(string)normalized[0..<n],canonical[..],ca[..]) {error=xt_command(h,r[0].grant,signer,canonical[0],cast(string)normalized[0..<n],status[..],arena[..]);}
+  }
+ }
+ if error.count>0 {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,error,""),signer,w,out);}
+ payload:[8192]u8;n:=xt_status_write(status[0],payload[..]);return ifx n>0 then xs_reply(h,r,signer,event,w,cast(string)payload[0..<n],out) else 0;
+}

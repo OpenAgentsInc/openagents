@@ -7,6 +7,8 @@
 // new kind takes the next number and none is ever reused.
 
 TK_THOUGHT :: 0; TK_EXEC :: 1; TK_READ :: 2; TK_EDIT :: 3; TK_SEARCH :: 4; TK_FETCH :: 5;
+// Internal native turn observations; the frozen content-log wire is unchanged.
+S_END_NONE :: 0; S_END_SUCCESS :: 1; S_END_FAILED :: 2; S_END_CANCELED :: 3; S_END_UNKNOWN :: 4;
 // The rest of Zeron's ToolCall kinds (proto view.rs tool_chip_content):
 // Write, Glob, Web (a web search), Todo, MCP ("server · tool"), Agent (a
 // subagent, its description) and any other tool by its name.

@@ -102,10 +102,19 @@ pa_rpc_call :: (args:[]Args)->int {
 // This binding is fixed before the command receipt permits starting a CLI.
 pa_bind :: (h:[]HsHost,slot:[]EsSlot,id:string,grant:string)->bool {
  m:=h[0].providers[..];if !pa_load(m) {path:[1400]u8;return !m[0].loaded && !fs_exists(pa_store_file(path[..]));}s:=m[0].native[0].store[..];if cast(string)s[0].grant[..]!=grant {return false;}
- selected:=cast(string)s[0].selected[0..<s[0].ns];if pa_find_profile(m,selected)<0 || pa_login_busy(m,selected) {return false;}
+ return pa_bind_profile(h,slot,id,grant,cast(string)s[0].selected[0..<s[0].ns]);
+}
+pa_binding_file :: (grant:string,id:string,out:[]u8)->string {
+ name:[256]u8;size:=hs_cat(name[..],0,"provider-binding-");size=hs_cat(name[..],size,grant);size=hs_cat(name[..],size,"-");size=hs_cat(name[..],size,id);size=hs_cat(name[..],size,".json");return es_path(cast(string)name[0..<size],out);
+}
+// Exact per-task profile selection never changes the computer's selected
+// profile for another conversation. An absent store has only its system login.
+pa_bind_profile :: (h:[]HsHost,slot:[]EsSlot,id:string,grant:string,selected:string)->bool {
+ m:=h[0].providers[..];if !pa_load(m) {path:[1400]u8;if selected!="system" || m[0].loaded || fs_exists(pa_store_file(path[..])) {return false;}slot[0].nprovider=pa_copy(slot[0].provider[..],selected);return true;}
+ s:=m[0].native[0].store[..];if cast(string)s[0].grant[..]!=grant || pa_find_profile(m,selected)<0 || pa_login_busy(m,selected) {return false;}
  slot[0].nprovider=pa_copy(slot[0].provider[..],selected);
  if selected!="system" {root:[1400]u8;engine:=slot[0].engine[..];dir:=pa_directory(pa_root(root[..]),selected,engine[0].config_dir[..]);engine[0].config_n=dir.count;if dir.count==0 {return false;}}
- b:[512]u8;n:=pa_binding_write(grant,id,selected,b[..]);name:[256]u8;size:=hs_cat(name[..],0,"provider-binding-");size=hs_cat(name[..],size,grant);size=hs_cat(name[..],size,"-");size=hs_cat(name[..],size,id);size=hs_cat(name[..],size,".json");path:[1400]u8;return n>0 && fs_replace_durable(es_path(cast(string)name[0..<size],path[..]),cast(string)b[0..<n]);
+ b:[512]u8;n:=pa_binding_write(grant,id,selected,b[..]);path:[1400]u8;return n>0 && fs_replace_durable(pa_binding_file(grant,id,path[..]),cast(string)b[0..<n]);
 }
 
 #test "account snapshots preserve command correlation and independent profile selection" {
