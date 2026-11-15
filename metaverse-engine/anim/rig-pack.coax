@@ -223,7 +223,7 @@ vrg_put_floats :: (out: [] u8, s: VrgSet, part: int, v: [] f32) -> bool #effects
   at := vrg_at(s, part);
   if part == VRG_KEYS_R && s.quant {
     // a version 2 key: a component outside -1 to 1 has no 16 bits, so the part is refused
-    for w: 0..<v.count { if w % 5 != 0 && !(v[w] >= -1 && v[w] <= 1) { return false; } }
+    for w: 0..<v.count { if w % 5 != 0 && !(v[w] >= -1 && v[w] <= 1) { return false; } }   // mutant: equivalent (starting at 1 skips w == 0, which is a key's time and which the w % 5 test skips already)
     for k: 0..<s.keys_r {
       scan_put(out, at + k * 12, f32_bits(v[k * 5]));
       scan_put(out, at + k * 12 + 4, vrg_q(v[k * 5 + 1]) | (vrg_q(v[k * 5 + 2]) << 16));

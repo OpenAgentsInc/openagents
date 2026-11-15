@@ -167,6 +167,9 @@ vrg_t_refused_1 :: (b: [] u8, at: int, v: u32) -> bool {
   g := f; g[4] = 1.0001; #assert !vrg_put_floats(c[..], s, VRG_KEYS_R, g[..]); g[4] = -1.0001; #assert !vrg_put_floats(c[..], s, VRG_KEYS_R, g[..]);
   g[4] = f[4]; g[11] = 2; #assert !vrg_put_floats(c[..], s, VRG_KEYS_R, g[..]); g[11] = 0; g[10] = -7; #assert vrg_put_floats(c[..], s, VRG_KEYS_R, g[..]) && scan_float(c[..], 284) == -7;
   #assert !vrg_put_floats(c[..], s, VRG_KEYS_R, g[0..<9]) && !vrg_put_floats(c[..], s, VRG_KEYS_R, g[0..<14]);
+  // every key's x lands in its own slot (the fixture's later keys have x of 0, the unset value)
+  h: [15] f32; for w: 0..<15 { h[w] = 9; } g[6] = 0.25; g[11] = -0.5;
+  #assert vrg_put_floats(c[..], s, VRG_KEYS_R, g[..]) && vrg_floats(c[..], s, VRG_KEYS_R, h[..]) && h[5] == 1.5 && h[6] == vrg_unq(vrg_q(0.25)) && h[10] == -7 && h[11] == vrg_unq(vrg_q(-0.5));
   // the halves on their own
   #assert vrg_unq(0x7fff) == 1 && vrg_unq(0x8001) == -1 && vrg_unq(0x8000) == -32768.0 / 32767.0 && vrg_unq(0xffff) == -1.0 / 32767.0 && vrg_unq(0x12340001) == 1.0 / 32767.0 && vrg_unq(0) == 0;
   #assert vrg_q(1) == 0x7fff && vrg_q(-1) == 0x8001 && vrg_q(0) == 0 && vrg_q(0.5) == 0x4000 && vrg_q(-0.5) == 0xc001 && vrg_q(0.00001) == 0 && vrg_q(-0.00001) == 0 && vrg_q(0.00002) == 1 && vrg_q(-0.00002) == 0xffff;
@@ -174,6 +177,8 @@ vrg_t_refused_1 :: (b: [] u8, at: int, v: u32) -> bool {
   #assert vrg_t_refused_1(b[..], 260, 0x7f800000) && vrg_t_refused_1(b[..], 284, 0x7fc00000) && !vrg_t_refused_1(b[..], 260, 0x7f7fffff);
   #assert vrg_t_refused_1(b[..], 264, 0x80018000) && vrg_t_refused_1(b[..], 264, 0x80007fff) && vrg_t_refused_1(b[..], 268, 0xc0018000) && vrg_t_refused_1(b[..], 268, 0x80002000);
   #assert vrg_t_refused_1(b[..], 288, 0x00008000) && vrg_t_refused_1(b[..], 292, 0x8000e000) && !vrg_t_refused_1(b[..], 264, 0x80018001) && !vrg_t_refused_1(b[..], 264, 0x80808000 + 0x80) && !vrg_t_refused_1(b[..], 264, 0x00807f80);
+  // a half of 0x8001 is no fault in any key, whatever bytes lie before the key: only a zero low byte under 0x80 is
+  #assert !vrg_t_refused_1(b[..], 276, 0x80018001) && !vrg_t_refused_1(b[..], 288, 0x00018001) && !vrg_t_refused_1(b[..], 292, 0x80018001);
   // the version decides the size: the same row under version 1 is 24 bytes short, and no version but 1 and 2 is read
   #assert vrg_t_refused_1(b[..], 4, 1) && vrg_t_refused_1(b[..], 4, 3) && vrg_t_refused_1(b[..], 4, 0);
   o: [512] u8; #assert vrg_begin(o[..], 1, 0) == 0 && vrg_begin(o[..], 1, 3) == 0 && vrg_begin(o[..], 1, 2) == 80 && scan_u32(o[..], 4) == 2 && vrg_set(o[..], 0, "v", 1, 1, 0, 3, 80).n == 216 && vrg_set(o[..], 0, "v", 1, 1, 0, 3, 80).quant;
