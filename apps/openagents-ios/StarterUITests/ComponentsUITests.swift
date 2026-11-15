@@ -2,6 +2,20 @@
 import XCTest
 
 final class ComponentsUITests:XCTestCase {
+    func testLoginFocusAndOutsideTapKeepNativeInputBehavior() {
+        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13567","-OAUpdatesOrigin","http://127.0.0.1:9"];app.launch()
+        let email=app.textFields["Email address"]
+        if !email.waitForExistence(timeout:3) {app.showAppSettings();let logout=app.buttons["Log out"];XCTAssertTrue(logout.waitForExistence(timeout:10));logout.tap()}
+        XCTAssertTrue(email.waitForExistence(timeout:15))
+        let login=XCTAttachment(screenshot:app.screenshot());login.name="Arcade login";login.lifetime = .keepAlways;add(login)
+        email.tap();email.typeText("ada@example.com");XCTAssertTrue(app.keyboards.firstMatch.exists)
+        let focus=XCTAttachment(screenshot:app.screenshot());focus.name="Arcade input focus";focus.lifetime = .keepAlways;add(focus)
+        app.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.18)).tap()
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        let frame=email.frame;app.firstMatch.pinch(withScale:2,velocity:1)
+        XCTAssertEqual(email.frame.width,frame.width,accuracy:1)
+        XCTAssertEqual(email.frame.minX,frame.minX,accuracy:1)
+    }
     func testSettingsOpensMetalGallery() {
         let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13567","-OAUpdatesOrigin","http://127.0.0.1:9"];app.launch()
         let email=app.textFields["Email address"]
