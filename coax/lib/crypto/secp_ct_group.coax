@@ -45,16 +45,17 @@ Cga :: struct {x:Fe;y:Fe;inf:u64;}
 // docs/verification/2026-11-13-secp-followups/README.md).
 // Value = sum over k of (l_k + h_k)*2^(52k): l at limbs 0 to 8, h at 1 to 9.
 cg_reduce_columns :: (l0:u64,l1:u64,l2:u64,l3:u64,l4:u64,l5:u64,l6:u64,l7:u64,l8:u64,h1:u64,h2:u64,h3:u64,h4:u64,h5:u64,h6:u64,h7:u64,h8:u64,h9:u64)->Fe #inline #effects(all) {
-  t:=l0;e0:=t & FE_M52;t=l1+h1+(t>>52);e1:=t & FE_M52;t=l2+h2+(t>>52);e2:=t & FE_M52;
+  t:=l0;e0:=t & FE_M52;t=l1+h1+(t>>52);e1:=t & FE_M52;t=l2+h2+(t>>52);e2:=t & FE_M52;  // mutant: equivalent (t is l0, one product's low half below 2^52, so t>>52 is 0)
   t=l3+h3+(t>>52);e3:=t & FE_M52;t=l4+h4+(t>>52);e4:=t & FE_M52;t=l5+h5+(t>>52);e5:=t & FE_M52;
   t=l6+h6+(t>>52);e6:=t & FE_M52;t=l7+h7+(t>>52);e7:=t & FE_M52;t=l8+h8+(t>>52);e8:=t & FE_M52;
-  t=h9+(t>>52);e9:=t & FE_M52;e10:=t>>52;   // e10 is 0 for magnitude-8 operands; kept for any input
+  // e10 is 0 for magnitude-8 operands; kept for any input
+  t=h9+(t>>52);e9:=t & FE_M52;e10:=t>>52;  // mutant: equivalent (for operands of magnitude 8 or less t is below 2^52 here, so t>>52 and t>>53 are both 0)
   // Limbs 5 to 10 fold down by 2^260 = FE_R (mod p), each product split at bit 52.
   p:=mul_wide(e5,FE_R);f0:=e0+(p.lo & FE_M52);g1:=(p.lo>>52)|(p.hi<<12);
   p=mul_wide(e6,FE_R);f1:=e1+(p.lo & FE_M52);g2:=(p.lo>>52)|(p.hi<<12);
   p=mul_wide(e7,FE_R);f2:=e2+(p.lo & FE_M52);g3:=(p.lo>>52)|(p.hi<<12);
   p=mul_wide(e8,FE_R);f3:=e3+(p.lo & FE_M52);g4:=(p.lo>>52)|(p.hi<<12);
-  p=mul_wide(e9,FE_R);f4:=e4+(p.lo & FE_M52);g5:=((p.lo>>52)|(p.hi<<12))+e10*FE_R;
+  p=mul_wide(e9,FE_R);f4:=e4+(p.lo & FE_M52);g5:=((p.lo>>52)|(p.hi<<12))+e10*FE_R;  // mutant: equivalent (e10 is 0, so the sign of e10*FE_R changes nothing)
   t=f0;r0:=t & FE_M52;t=f1+g1+(t>>52);r1:=t & FE_M52;t=f2+g2+(t>>52);r2:=t & FE_M52;
   t=f3+g3+(t>>52);r3:=t & FE_M52;t=f4+g4+(t>>52);r4:=t & FE_M52;t=g5+(t>>52);
   // What stands at 2^256 and above folds by FE_R1.
@@ -160,25 +161,25 @@ cg_to_sg32 :: (p:Cg)->Sg32 #effects(all) {
 // y is never 0 on secp256k1, so Z3 = 0 only at infinity.
 cg_double :: (p:Cg)->Cg #effects(all) {
   a:=cg_sqr(p.x);b:=cg_sqr(p.y);c:=cg_sqr(b);
-  d:=cg_weak(fe_add(fe_add(cg_sqr(fe_add(p.x,b)),fe_negate(a,1)),fe_negate(c,1)));   // 5 -> 1
+  d:=cg_weak(fe_add(fe_add(cg_sqr(fe_add(p.x,b)),fe_negate(a,1)),fe_negate(c,1)));  // mutant: equivalent (5 -> 1; a larger bound adds 2p: the same value mod p, still in bounds)
   d=fe_add(d,d);                                                                    // 2
   e:=fe_scale(a,3);                                                                 // 3
-  r:Cg;r.x=cg_weak(fe_add(cg_sqr(e),fe_negate(fe_add(d,d),4)));                    // 1 + 5
-  r.y=cg_weak(fe_add(cg_mul(e,fe_add(d,fe_negate(r.x,1))),fe_negate(fe_scale(c,8),8)));   // 1 + 9
+  r:Cg;r.x=cg_weak(fe_add(cg_sqr(e),fe_negate(fe_add(d,d),4)));  // mutant: equivalent (1 + 5; a larger bound adds 2p: the same value mod p, still in bounds)
+  r.y=cg_weak(fe_add(cg_mul(e,fe_add(d,fe_negate(r.x,1))),fe_negate(fe_scale(c,8),8)));  // mutant: equivalent (1 + 9; a larger bound adds 2p: the same value mod p, still in bounds)
   r.z=cg_weak(fe_scale(cg_mul(p.y,p.z),2));r.inf=p.inf;return r;
 }
 // The shared tail: U1, U2, S1, S2 at magnitude 1 and z, the product of the
 // two inputs' Z (magnitude 1). Returns the sum, finite unless Z3 = 0.
 cg_add_finish :: (u1:Fe,u2:Fe,s1:Fe,s2:Fe,z:Fe)->Cg #effects(all) {
   t:=fe_add(u1,u2);m:=fe_add(s1,s2);                                // 2, 2
-  rr:=fe_add(cg_sqr(t),cg_mul(u1,fe_negate(u2,1)));                  // T^2 - U1*U2: 2
+  rr:=fe_add(cg_sqr(t),cg_mul(u1,fe_negate(u2,1)));  // mutant: equivalent (T^2 - U1*U2: 2; a larger bound adds 2p: the same value mod p, still in bounds)
   degenerate:=cg_zero_mask(m)&cg_zero_mask(rr);
   ralt:=cg_select(degenerate,fe_scale(s1,2),rr);                     // S1 - S2 = 2*S1 there: 2
-  malt:=cg_select(degenerate,fe_add(u1,fe_negate(u2,1)),m);          // 3
-  n:=cg_sqr(malt);q:=cg_mul(fe_negate(t,2),n);                       // Q = -T*Malt^2: 1
+  malt:=cg_select(degenerate,fe_add(u1,fe_negate(u2,1)),m);  // mutant: equivalent (3; a larger bound adds 2p: the same value mod p, still in bounds)
+  n:=cg_sqr(malt);q:=cg_mul(fe_negate(t,2),n);  // mutant: equivalent (Q = -T*Malt^2: 1; a larger bound adds 2p: the same value mod p, still in bounds)
   n=cg_select(degenerate,m,cg_sqr(n));                               // M^3*Malt: Malt^4, or M = 0: 2
   x:=fe_add(cg_sqr(ralt),q);                                         // 2
-  y:=fe_negate(fe_add(cg_mul(fe_add(fe_scale(x,2),q),ralt),n),3);    // 2*Y3 at this scale: 4
+  y:=fe_negate(fe_add(cg_mul(fe_add(fe_scale(x,2),q),ralt),n),3);  // mutant: equivalent (2*Y3 at this scale: 4; a larger bound adds 2p: the same value mod p, still in bounds)
   r:Cg;r.x=cg_weak(fe_scale(x,4));r.y=cg_weak(fe_scale(y,4));r.z=cg_weak(fe_scale(cg_mul(z,malt),2));
   r.inf=cg_zero_mask(r.z);return r;
 }
@@ -206,13 +207,13 @@ cg_choose :: (mask:u64,a:Cg,b:Cg)->Cg #effects(all) {
 // 64 affine additions, each lookup reading all 16 entries of its block.
 cg_comb_digit :: (k:ScScalar,block:int,row:int)->u64 #effects(all) {
   limb:=cast(u64)k.limbs[block];digit:u64;
-  for tooth:0..<4 {digit|=((limb>>(tooth*8+row))&1)<<tooth;}return digit;
+  for tooth:0..<4 {digit|=((limb>>(tooth*8+row))&1)<<tooth;}return digit;  // mutant: equivalent (limb holds 32 bits, so a fifth tooth at bit 32 + row reads 0)
 }
 cg_comb_entry :: (block:int,digit:u64)->Cga #effects(all) {
   // The chosen words become the returned point's coordinates, which live in
   // by-value locals like every coordinate here; the scratch is not erased.
   words:[8]u64;
-  for entry:0..<16 {
+  for entry:0..<16 {  // mutant: equivalent (entry 0 of every block is eight zero words, which words already holds; inf comes from digit == 0)
     mask:=sg_word_equal(digit,cast(u64)entry);at:=(block*16+entry)*8;
     for i:0..<8 {words[i]^=(words[i]^CG_COMB_WORDS[at+i])&mask;}
   }
@@ -222,7 +223,8 @@ cg_comb :: (input:ScScalar)->Cg #effects(all) {
   k:=sc_normalize(input);defer {secure_zero(k.limbs[..]);#assert crypto_zeroed(k.limbs[..]);}
   r:=cg_infinity();
   for round:0..<CG_SPACING {
-    if round>0 {r=cg_double(r);}   // a public loop index
+    // a public loop index
+    if round>0 {r=cg_double(r);}  // mutant: equivalent (doubling infinity gives infinity, so a doubling in round 0 changes nothing)
     for block:0..<CG_BLOCKS {r=cg_add_affine(r,cg_comb_entry(block,cg_comb_digit(k,block,CG_SPACING-1-round)));}
   }
   return r;
@@ -329,8 +331,8 @@ cg_scalar_mul :: (a:ScScalar,b:ScScalar)->ScScalar #effects(all) {
   wp=a7*b6;wl13+=wp & CG_M32;wh14+=wp>>32;
   wp=a7*b7;wl14+=wp & CG_M32;wh15+=wp>>32;
   wt:u64;
-  wt=wl0+wh0+(wt>>32);w0:=wt & CG_M32;
-  wt=wl1+wh1+(wt>>32);w1:=wt & CG_M32;
+  wt=wl0+wh0+(wt>>32);w0:=wt & CG_M32;  // mutant: equivalent (wt starts at 0, and no high half lands in column 0)
+  wt=wl1+wh1+(wt>>32);w1:=wt & CG_M32;  // mutant: equivalent (wt is wl0 here, below 2^32, so wt>>32 is 0)
   wt=wl2+wh2+(wt>>32);w2:=wt & CG_M32;
   wt=wl3+wh3+(wt>>32);w3:=wt & CG_M32;
   wt=wl4+wh4+(wt>>32);w4:=wt & CG_M32;
@@ -410,7 +412,7 @@ cg_scalar_mul :: (a:ScScalar,b:ScScalar)->ScScalar #effects(all) {
   mp=w15*0x45512319;ml10+=mp & CG_M32;mh11+=mp>>32;
   ml11+=w15;
   mt:u64;
-  mt=ml0+mh0+(mt>>32);m0:=mt & CG_M32;
+  mt=ml0+mh0+(mt>>32);m0:=mt & CG_M32;  // mutant: equivalent (mt starts at 0, and no high half lands in word 0)
   mt=ml1+mh1+(mt>>32);m1:=mt & CG_M32;
   mt=ml2+mh2+(mt>>32);m2:=mt & CG_M32;
   mt=ml3+mh3+(mt>>32);m3:=mt & CG_M32;
@@ -422,7 +424,7 @@ cg_scalar_mul :: (a:ScScalar,b:ScScalar)->ScScalar #effects(all) {
   mt=ml9+mh9+(mt>>32);m9:=mt & CG_M32;
   mt=ml10+mh10+(mt>>32);m10:=mt & CG_M32;
   mt=ml11+mh11+(mt>>32);m11:=mt & CG_M32;
-  mt=ml12+mh12+(mt>>32);m12:=mt & CG_M32;
+  mt=ml12+mh12+(mt>>32);m12:=mt & CG_M32;  // mutant: equivalent (no fold's high half lands in word 12, so mh12 is 0)
   qp:u64;
   ql0:u64;qh0:u64;
   ql1:u64;qh1:u64;
@@ -462,13 +464,17 @@ cg_scalar_mul :: (a:ScScalar,b:ScScalar)->ScScalar #effects(all) {
   qp=m11*0x50B75FC4;ql5+=qp & CG_M32;qh6+=qp>>32;
   qp=m11*0x45512319;ql6+=qp & CG_M32;qh7+=qp>>32;
   ql7+=m11;
-  qp=m12*0x2FC9BEBF;ql4+=qp & CG_M32;qh5+=qp>>32;
-  qp=m12*0x402DA173;ql5+=qp & CG_M32;qh6+=qp>>32;
-  qp=m12*0x50B75FC4;ql6+=qp & CG_M32;qh7+=qp>>32;
-  qp=m12*0x45512319;ql7+=qp & CG_M32;qh8+=qp>>32;
+  // Bounds the marks below rely on: w < 2^512 and c < 2^129, so
+  // m = w_low + w_high*c < 2^256*(1 + c): m12 = m>>384 is 0 or 1, and
+  // m>>256 is at most c. Then q = m_low + (m>>256)*c < 2^256 + c^2 <
+  // 2.7*2^256, so q8 is at most 2, and r = q_low + q8*c < 2^256 + 2c.
+  qp=m12*0x2FC9BEBF;ql4+=qp & CG_M32;qh5+=qp>>32;  // mutant: equivalent (m12 is 0 or 1, so this product is below 2^32 and its high half is 0)
+  qp=m12*0x402DA173;ql5+=qp & CG_M32;qh6+=qp>>32;  // mutant: equivalent (m12 is 0 or 1, so this product is below 2^32 and its high half is 0)
+  qp=m12*0x50B75FC4;ql6+=qp & CG_M32;qh7+=qp>>32;  // mutant: equivalent (m12 is 0 or 1, so this product is below 2^32 and its high half is 0)
+  qp=m12*0x45512319;ql7+=qp & CG_M32;qh8+=qp>>32;  // mutant: equivalent (m12 is 0 or 1: the high half is 0, and qh8 reaches q8 only through its low 32 bits)
   ql8+=m12;
   qt:u64;
-  qt=ql0+qh0+(qt>>32);q0:=qt & CG_M32;
+  qt=ql0+qh0+(qt>>32);q0:=qt & CG_M32;  // mutant: equivalent (qt starts at 0, and no high half lands in word 0)
   qt=ql1+qh1+(qt>>32);q1:=qt & CG_M32;
   qt=ql2+qh2+(qt>>32);q2:=qt & CG_M32;
   qt=ql3+qh3+(qt>>32);q3:=qt & CG_M32;
@@ -476,7 +482,7 @@ cg_scalar_mul :: (a:ScScalar,b:ScScalar)->ScScalar #effects(all) {
   qt=ql5+qh5+(qt>>32);q5:=qt & CG_M32;
   qt=ql6+qh6+(qt>>32);q6:=qt & CG_M32;
   qt=ql7+qh7+(qt>>32);q7:=qt & CG_M32;
-  qt=ql8+qh8+(qt>>32);q8:=qt & CG_M32;
+  qt=ql8+qh8+(qt>>32);q8:=qt & CG_M32;  // mutant: equivalent (qh8 is 0, as line 468's high half is)
   rp:u64;
   rl0:u64;rh0:u64;
   rl1:u64;rh1:u64;
@@ -496,30 +502,30 @@ cg_scalar_mul :: (a:ScScalar,b:ScScalar)->ScScalar #effects(all) {
   rl5=q5;
   rl6=q6;
   rl7=q7;
-  rp=q8*0x2FC9BEBF;rl0+=rp & CG_M32;rh1+=rp>>32;
-  rp=q8*0x402DA173;rl1+=rp & CG_M32;rh2+=rp>>32;
-  rp=q8*0x50B75FC4;rl2+=rp & CG_M32;rh3+=rp>>32;
-  rp=q8*0x45512319;rl3+=rp & CG_M32;rh4+=rp>>32;
+  rp=q8*0x2FC9BEBF;rl0+=rp & CG_M32;rh1+=rp>>32;  // mutant: equivalent (q8 is at most 2, so this product is below 2^32 and its high half is 0)
+  rp=q8*0x402DA173;rl1+=rp & CG_M32;rh2+=rp>>32;  // mutant: equivalent (q8 is at most 2, so this product is below 2^32 and its high half is 0)
+  rp=q8*0x50B75FC4;rl2+=rp & CG_M32;rh3+=rp>>32;  // mutant: equivalent (q8 is at most 2, so this product is below 2^32 and its high half is 0)
+  rp=q8*0x45512319;rl3+=rp & CG_M32;rh4+=rp>>32;  // mutant: equivalent (q8 is at most 2, so this product is below 2^32 and its high half is 0)
   rl4+=q8;
   rt:u64;
-  rt=rl0+rh0+(rt>>32);r0:=rt & CG_M32;
-  rt=rl1+rh1+(rt>>32);r1:=rt & CG_M32;
-  rt=rl2+rh2+(rt>>32);r2:=rt & CG_M32;
-  rt=rl3+rh3+(rt>>32);r3:=rt & CG_M32;
-  rt=rl4+rh4+(rt>>32);r4:=rt & CG_M32;
-  rt=rl5+rh5+(rt>>32);r5:=rt & CG_M32;
-  rt=rl6+rh6+(rt>>32);r6:=rt & CG_M32;
-  rt=rl7+rh7+(rt>>32);r7:=rt & CG_M32;
-  rt=rl8+rh8+(rt>>32);r8:=rt & CG_M32;
+  rt=rl0+rh0+(rt>>32);r0:=rt & CG_M32;  // mutant: equivalent (rt starts at 0, and rh0 is never added to)
+  rt=rl1+rh1+(rt>>32);r1:=rt & CG_M32;  // mutant: equivalent (rh1 is 0: q8 is at most 2)
+  rt=rl2+rh2+(rt>>32);r2:=rt & CG_M32;  // mutant: equivalent (rh2 is 0: q8 is at most 2)
+  rt=rl3+rh3+(rt>>32);r3:=rt & CG_M32;  // mutant: equivalent (rh3 is 0: q8 is at most 2)
+  rt=rl4+rh4+(rt>>32);r4:=rt & CG_M32;  // mutant: equivalent (rh4 is 0: q8 is at most 2)
+  rt=rl5+rh5+(rt>>32);r5:=rt & CG_M32;  // mutant: equivalent (for '+' between rl5 and rh5: rh5 is never added to)
+  rt=rl6+rh6+(rt>>32);r6:=rt & CG_M32;  // mutant: equivalent (for '+' between rl6 and rh6: rh6 is never added to)
+  rt=rl7+rh7+(rt>>32);r7:=rt & CG_M32;  // mutant: equivalent (for '+' between rl7 and rh7: rh7 is never added to)
+  rt=rl8+rh8+(rt>>32);r8:=rt & CG_M32;  // mutant: equivalent (rh8 is never added to, and r8 only sets the mask, the same for 0xFFFFFFFF as for 1)
   // r8 is 0 or 1 and r < 2n: subtract n once, as adding c, when r8 is set or r0..r7 + c reaches 2^256.
   t:u64;
-  t=r0+0x2FC9BEBF+(t>>32);s0:=t & CG_M32;
+  t=r0+0x2FC9BEBF+(t>>32);s0:=t & CG_M32;  // mutant: equivalent (t starts at 0)
   t=r1+0x402DA173+(t>>32);s1:=t & CG_M32;
   t=r2+0x50B75FC4+(t>>32);s2:=t & CG_M32;
   t=r3+0x45512319+(t>>32);s3:=t & CG_M32;
   t=r4+1+(t>>32);s4:=t & CG_M32;
   t=r5+(t>>32);s5:=t & CG_M32;
-  t=r6+(t>>32);s6:=t & CG_M32;
+  t=r6+(t>>32);s6:=t & CG_M32;  // mutant: equivalent (s is used only when the mask is set, and then words 5 to 7 of r are all ones with every carry set, or all zero with none)
   t=r7+(t>>32);s7:=t & CG_M32;
   mask:=value_barrier(sg_word_equal(r8|(t>>32),0)^CB_MAX64);
   return ScScalar.{limbs=[8]u32.[cast,trunc(u32)(r0^((r0^s0)&mask)),cast,trunc(u32)(r1^((r1^s1)&mask)),cast,trunc(u32)(r2^((r2^s2)&mask)),cast,trunc(u32)(r3^((r3^s3)&mask)),cast,trunc(u32)(r4^((r4^s4)&mask)),cast,trunc(u32)(r5^((r5^s5)&mask)),cast,trunc(u32)(r6^((r6^s6)&mask)),cast,trunc(u32)(r7^((r7^s7)&mask))]};
@@ -528,9 +534,9 @@ cg_scalar_mul :: (a:ScScalar,b:ScScalar)->ScScalar #effects(all) {
 // public, so its digits may choose the table entry and skip a zero digit.
 // 1/0 is 0.
 cg_scalar_inverse :: (a:ScScalar)->ScScalar #effects(all) {
-  table:[16]ScScalar;defer {for i:0..<16 {secure_zero(table[i].limbs[..]);}for e:table {for w:e.limbs {#assert w==0;}}}
+  table:[16]ScScalar;defer {for i:0..<16 {secure_zero(table[i].limbs[..]);}for e:table {for w:e.limbs {#assert w==0;}}}  // mutant: equivalent (table[0] is never written and starts zeroed)
   table[1]=sc_normalize(a);for i:2..<16 {table[i]=cg_scalar_mul(table[i-1],table[1]);}
-  e:=SC_N_MINUS_TWO;acc:=table[cast(int)((e.limbs[7]>>28)&15)];
+  e:=SC_N_MINUS_TWO;acc:=table[cast(int)((e.limbs[7]>>28)&15)];  // mutant: equivalent (the top four bits of n - 2 are 1111, so &15 and |15 both give 15)
   for window:1..<64 {
     at:=63-window;digit:=cast(int)((e.limbs[at/8]>>((at%8)*4))&15);
     for i:0..<4 {acc=cg_scalar_mul(acc,acc);}

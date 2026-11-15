@@ -29,6 +29,19 @@ cgt_scalar :: (seed:int)->ScScalar #effects(all) {
   #assert cgt_same(cg_double(cg_double(a)),cgt_point(4));
   #assert cg_double(cg_infinity()).inf==CB_MAX64;
 }
+#test "addition of P and lambda P, where T^2 - U1*U2 is zero but M is not" #steps 100000000 {
+  // beta is a cube root of 1 mod p, so x2 = beta*x1 with y2 = y1 makes
+  // U1^2 + U1*U2 + U2^2 = 0 while M = 2*y1 is not: the case is not the
+  // degenerate one. P + lambda P = -lambda^2 P = (beta^2*x, -y).
+  beta:=SecpField.{limb=[10]u64.[26542574,39520796,10050579,30690262,27062345,51187002,38042090,1851833,36398460,2013786]};
+  g:=sg_generator();l:=g;l.x=sf_normalize(sf_multiply(g.x,beta));
+  want:=g;want.x=sf_normalize(sf_multiply(l.x,beta));want.y=sf_normalize(sf_negate(g.y));
+  #assert sg_equal_mask(sg_add_valid(g,l),want)==CB_MAX64;
+  a:=cg_double(cg_from_sg32(sg32_from_point(g)));b:=cg_from_sg32(sg32_from_point(l));   // 2G at z != 1
+  #assert cgt_same(cg_add(cg_from_sg32(sg32_from_point(g)),b),want);
+  la:=sg_to_affine_valid(l);#assert cgt_same(cg_add_affine(cg_from_sg32(sg32_from_point(g)),Cga.{x=cg_from_field(la.x),y=cg_from_field(la.y)}),want);
+  #assert cgt_same(cg_add(a,b),sg_add_valid(sg_double_valid(g),l));
+}
 #forall "Jacobian addition covers distinct, equal, opposite and infinite points" left:0..<4,right:0..<4 #steps 400000000 {
   p:=cgt_point(cast(u32)left+1);q:=cgt_point(cast(u32)right+1);
   a:=cg_double(cg_from_sg32(sg32_from_point(p)));b:=cg_from_sg32(sg32_from_point(q));   // a = 2p, at z != 1
@@ -101,15 +114,30 @@ cgt_scalar :: (seed:int)->ScScalar #effects(all) {
 }
 #test "the scalar product reduces inputs at or above n, through its last subtraction" {
   // 1*b leaves b in place, so b from n to 2^256 - 1 reaches the masked
-  // subtraction with the low words plus c at or above 2^256. (The other
-  // trigger, bit 256 after the third fold, is checked against a model of
-  // this code over chosen 512-bit products; no 256-bit pair is known.)
+  // subtraction with the low words plus c at or above 2^256. The other
+  // trigger, bit 256 after the third fold, is the next test's last case.
   b:=SC_N;b.limbs[0]+=5;
   #assert sc_equal(cg_scalar_mul(sc_small(1),b),sc_small(5)) && sc_equal(cg_scalar_mul(b,sc_small(1)),sc_small(5));
   #assert sc_is_zero(cg_scalar_mul(sc_small(1),SC_N));
   ones:ScScalar;for i:0..<8 {ones.limbs[i]=0xFFFFFFFF;}
   r:=sc_normalize(ones);
   #assert sc_equal(cg_scalar_mul(sc_small(1),ones),r) && sc_equal(cg_scalar_mul(ones,ones),sc_mul(r,r));
+}
+#test "the scalar product's last carries and its bit-256 subtraction" #steps 100000000 {
+  // (n + 1)/2 has words 4 to 7 all ones but is below n: adding c to test
+  // for n carries through every word, and the mask must keep the sum out.
+  half:=ScScalar.{limbs=[8]u32.[1746608289,3756601158,1470386205,1566010995,4294967295,4294967295,4294967295,2147483647]};
+  #assert sc_equal(cg_scalar_mul(sc_small(1),half),half);
+  // (n + 1)·2^255 = 2^255 (mod n): carries run through words 5 to 7 of r.
+  above:=SC_N;above.limbs[0]+=1;top:ScScalar;top.limbs[7]=0x80000000;
+  #assert sc_equal(cg_scalar_mul(above,top),top);
+  // (2^256 - 1)·b, with b found by solving the folds for q = 2^257 - c
+  // (Python integers): after the third fold r is at or above 2^256, so bit
+  // 256 alone calls for the subtraction. The product is from Python too.
+  ones:ScScalar;for i:0..<8 {ones.limbs[i]=0xFFFFFFFF;}
+  b:=ScScalar.{limbs=[8]u32.[1916592953,3815483242,2804300010,3943216590,4294967138,4294967295,4294967295,4294967295]};
+  want:=ScScalar.{limbs=[8]u32.[3939548758,3770735873,1889443927,2106082350,1,0,0,0]};
+  #assert sc_equal(cg_scalar_mul(ones,b),want) && sc_equal(sc_mul(sc_normalize(ones),b),want);
 }
 #forall "the fixed-work scalar inverse equals chapter 14's" seed:0..<6 #steps 400000000 {
   a:=sc_normalize(cgt_scalar(seed));if seed==0 {a=sc_sub(SC_N,sc_small(1));} if seed==1 {a=sc_small(1);}
