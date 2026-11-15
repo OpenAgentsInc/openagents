@@ -19,6 +19,8 @@
 #load "../../shared/account-settings.coax";
 #load "../../shared/durable-chat.coax";
 #load "../../shared/nostr-feed-view.coax";
+#load "../../shared/nostr-messenger.coax";
+#load "../../shared/nostr-inbox-view.coax";
 
 Starter :: struct {
   ready:bool;dirty:bool=true;time:f32;action:int;flight:int;purpose:int;page:int= -1;
@@ -35,6 +37,7 @@ Starter :: struct {
   local_available:bool;account_ready:bool;worlds_available:bool;
   account_settings:[1]AccountSettingsApp;
   feed:[1]NostrFeed;
+  messenger:[1]NostrMessenger;dm_view:[1]NostrConversation;dm_wanted:bool;dm_entropy_generation:int;dm_entropy_account:[128]u8;dm_entropy_na:int;dm_entropy_identity:[64]u8;
   sync_elapsed:f32;sync_background:bool;
   route_lines:[32]RouteLine;route_note:[RTR_NOTE_MAX+1]u8;route_note_n:int;route_catalog_asked:bool;route_reports:[NA_ROUTE_REPORTS]RouteReport;route_reports_left:int;route_report_next:int;
   world_mode:bool;world:[1]WorldTurn;world_flight:[1]WorldTurn;world_wire:[WT_BYTES]u8;world_n:int;world_plan:[WP_BYTES]u8;world_plan_n:int;
@@ -50,6 +53,7 @@ Starter :: struct {
 #load "durable.coax";
 #load "native-task.coax";
 #load "feed.coax";
+#load "messages.coax";
 na_copy :: (out:[]u8,text:string)->int {n:=ifx text.count<out.count then text.count else out.count;for i:0..<n {out[i]=text[i];}return n;}
 na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[0].dirty=true;}
 #test "native worlds launch through the registered service and preserve the current account surface" {
@@ -60,7 +64,7 @@ na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[
 na_world :: (s:[]Starter,realm:string,path:string,edit:bool) {
  if s[0].flight!=0 {return;}n:=nwo_write(realm,path,edit,s[0].outbox[..]);if n<0 {na_note(s,"This world is unavailable.");return;}s[0].out_n=n;s[0].action=13;s[0].flight=13;s[0].dirty=true;
 }
-na_history_clear :: (s:[]Starter) {na_task_clear(s);nfeed_clear(s[0].feed[..]);s[0].durable[0]=DurableChat.{};s[0].durable_index[0]=CtIndex.{};s[0].durable_project_index[0]=CtIndex.{};s[0].durable_refresh=false;s[0].durable_project_refresh=false;s[0].account_settings[0]=AccountSettingsApp.{};s[0].project[0]=ProjectApp.{};s[0].private_projects[0]=PrIndex.{};s[0].private_projects_failed=false;s[0].project_thread_n=0;s[0].project_link_pending=false;s[0].projects_n=0;s[0].projects_loaded=false;s[0].projects_failed=false;s[0].usage[0]=ProviderUsage.{};dm_value(s[0].dom[..],"usage.code","");dm_value(s[0].dom[..],"usage.label","");s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;na_route_clear(s);for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
+na_history_clear :: (s:[]Starter) {na_task_clear(s);na_dm_clear(s);nfeed_clear(s[0].feed[..]);s[0].durable[0]=DurableChat.{};s[0].durable_index[0]=CtIndex.{};s[0].durable_project_index[0]=CtIndex.{};s[0].durable_refresh=false;s[0].durable_project_refresh=false;s[0].account_settings[0]=AccountSettingsApp.{};s[0].project[0]=ProjectApp.{};s[0].private_projects[0]=PrIndex.{};s[0].private_projects_failed=false;s[0].project_thread_n=0;s[0].project_link_pending=false;s[0].projects_n=0;s[0].projects_loaded=false;s[0].projects_failed=false;s[0].usage[0]=ProviderUsage.{};dm_value(s[0].dom[..],"usage.code","");dm_value(s[0].dom[..],"usage.label","");s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;na_route_clear(s);for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
 na_secrets_clear :: (s:[]Starter) {
   for i:0..<s[0].email.count {s[0].email[i]=0;}s[0].email_n=0;
   dm_value(s[0].dom[..],"login.email","");
@@ -169,6 +173,7 @@ na_text_effect :: (s:[]Starter,link:bool,value:string,id:string) {
   na_reply(s[..],9,0,"{}",false);#assert !s[0].text_busy && s[0].flight==4 && s[0].purpose==5;
 }
 na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
+  if na_dm_reply(s,op,status,raw,failed) {s[0].dirty=true;return;}
   if op==NRR_OP {_:=nfeed_reply(s[0].feed[..],raw,failed);s[0].dirty=true;return;}
   if na_durable_reply(s,op,status,raw,failed) {na_nav_pending(s);return;}
   if na_task_reply(s,op,status,raw,failed) {na_nav_pending(s);return;}
@@ -299,6 +304,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   if !s[0].ready {s[0].ready=true;n:=mono_frames(s[0].sets[..]);na_request(s,1,"");}
   na_durable_tick(s,dt);na_sync_tick(s,dt);
   na_feed_tick(s,dt);
+  na_dm_tick(s,dt);
   if s[0].workspace {eu_pause(s[0].environments[..],s[0].navigation[0].open || s[0].flight!=0 || s[0].usage[0].active || s[0].account_settings[0].active || s[0].page!=4);na_nav_tick(s);}
   if dt>0 && dt<1 {s[0].time+=dt;}na_usage_tick(s);na_project_tick(s);if !s[0].dirty && !s[0].ui[0].busy && s[0].environments[0].action==0 && s[0].account_settings[0].action==0 {return 0;}
   t:=s[0].tree[..];u:=s[0].ui[..];d:=s[0].dom[..];
@@ -310,6 +316,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   if !s[0].workspace && s[0].page!=3 && !(s[0].page==4 && s[0].environments[0].page==2) {x:=k_text(t,u,"account.brand",TG_P,"meta","OPENAGENTS");}x:= -1;busy:=s[0].flight!=0;
   if s[0].workspace && s[0].account_ready && s[0].page>=2 {na_nav_render(s,t,u);}
   if s[0].usage[0].active {pu_render(s[0].usage[..],t,u,s[0].usage[0].intent_host>=0);}
+  else if s[0].page==13 {na_dm_render(s,t,u);}
   else if s[0].page==12 {nfeed_render(s[0].feed[..],t,u,s[0].markdown[..],s[0].account_settings[0].saved[0].remote_images);}
   else if s[0].page==5 {na_projects_render(s,t,u);}
   else if s[0].page>=6 && s[0].page<=9 {na_project_render(s,t,u);}
@@ -391,9 +398,10 @@ st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
     s[0].world[0]=context[0];s[0].world_n=na_copy(s[0].world_wire[..],cast(string)s[0].inbox[0..<n]);s[0].dirty=true;return;
   }
   if kind==1 && s[0].world_mode && dm_slot_id(s[0].dom[..],slot)=="chat.back" {s[0].action=529;return;}
-  if kind>=100 && kind<=220 {op:=ifx kind>=200 then kind-200 else kind-100;if n>=0 && n<=1048576 {na_reply(s,op,slot,cast(string)s[0].inbox[0..<n],kind>=200);}return;}
+  if kind>=100 && kind<=223 {op:=ifx kind>=200 then kind-200 else kind-100;if n>=0 && n<=1048576 {na_reply(s,op,slot,cast(string)s[0].inbox[0..<n],kind>=200);}return;}
   i:= -1;for k:0..<s[0].tree[0].n {if s[0].dom[0].of[k]==slot {i=k;break;}}id:=tr_id(s[0].tree[..],i);
   if na_feed_event(s,kind,id,n) {s[0].dirty=true;return;}
+  if na_dm_event(s,kind,id,n) {s[0].dirty=true;return;}
   if kind==1 && na_durable_press(s,id) {s[0].dirty=true;return;}
   if kind==1 && id=="login.key" {acs_open(s[0].account_settings[..],true);s[0].dirty=true;return;}
   if s[0].account_settings[0].active && (id=="usage.open" || id=="extras.more") {s[0].account_settings[0].active=false;}

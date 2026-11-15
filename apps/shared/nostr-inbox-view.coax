@@ -1,14 +1,17 @@
 // Shared inbox/transcript projection using the same kit and Markdown as chat.
 #load "nostr-inbox.coax";
+#load "nostr-outgoing.coax";
+#load "nostr-delivery.coax";
 #load "../../components/kit/stage.coax";
 #load "../../coax/native/conversation-wire.coax";
 #load "../../coax/lib/nostr/public-key-text.coax";
-NostrConversation :: struct {open:bool;room:[32]u8;peer:[64]u8;draft:[NDI_TEXT]u8;nd:int;reply:[64]u8;nr:int;before:int;}
+#load "../../coax/lib/nostr/nip51.coax";
+NostrConversation :: struct {open:bool;choosing:bool;recipient:[96]u8;recipient_n:int;send_ready:bool;room:[32]u8;peer:[64]u8;draft:[NDI_TEXT]u8;nd:int;reply:[64]u8;nr:int;before:int;}
 #test "Nostr text uses the existing selectable message and simple composer without agent tools" {
- s:[1]NostrInbox;v:[1]NostrConversation;t:[1]Tree;u:[1]Ui;doc:[1]MdDoc;
+ s:[1]NostrInbox;v:[1]NostrConversation;t:[1]Tree;u:[1]Ui;doc:[1]MdDoc;delivery:[1]NostrDeliveries;outgoing:[1]NostrOutgoing;
  me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";op:="0000000000000000000000000000000000000000000000000000000000000001";
  b:[2048]u8;#assert ndi_bind(s[..],"a",me) && ndi_begin(s[..],op,op);n:=nsr_write("custody","open",op,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(s[..],1,cast(string)b[0..<n]);
- #assert ndv_select(s[..],v[..],0);tr_begin(t[..]);ui_begin(u[..],0,true);ndv_render(s[..],v[..],t[..],u[..],doc[..],true,false);
+ #assert ndv_select(s[..],v[..],0);tr_begin(t[..]);ui_begin(u[..],0,true);ndv_render(s[..],v[..],delivery[..],outgoing[..],t[..],u[..],doc[..],true,false);
  #assert tr_find(t[..],"dm.composer")>=0 && tr_find(t[..],"dm.message.6cb5d5d7777d282781248a294413a0ff0f730bf3822b08050e23c42c36bab265")>=0 && tr_find(t[..],"dm.refresh")<0 && tr_find(t[..],"env.composer")<0;
  #assert tr_find(t[..],"dm.message.6cb5d5d7777d282781248a294413a0ff0f730bf3822b08050e23c42c36bab265.body")>=0 && tr_find(t[..],"dm.reply.6cb5d5d7777d282781248a294413a0ff0f730bf3822b08050e23c42c36bab265")>=0;
  #assert ndv_reference(s[..],v[..],b[..])>0;
@@ -43,20 +46,23 @@ ndv_reference :: (s:[]NostrInbox,v:[]NostrConversation,out:[]u8)->int #effects(a
  if !v[0].open {return -1;}id:[64]u8;r:=hex_encode_checked(cast(string)v[0].room[..],id[..],false);if r.error!=NC_OK {return -1;}
  return ncv_write("nip17",cast(string)id[..],cast(string)s[0].identity[..],out);
 }
-ndv_render :: (s:[]NostrInbox,v:[]NostrConversation,t:[]Tree,u:[]Ui,doc:[]MdDoc,ready:bool,busy:bool) #effects(all) {
+ndv_rows :: (s:[]NostrInbox,v:[]NostrConversation,t:[]Tree,u:[]Ui,limit:int,query:string)->int #effects(all) {
+ shown:=0;for k:0..<s[0].n {i:=s[0].n-1-k;m:=s[0].messages[i].message;newest:=true;for j:i+1..<s[0].n {if n17_same(s[0].messages[j].message.room[..],m.room[..]) {newest=false;}}
+  if !newest {continue;}peer:[64]u8;me:[32]u8;if !ne_lower_hex(cast(string)s[0].identity[..],me[..]) {continue;}
+  for p:0..<2 {key:=m.member[p*32..<p*32+32];if !n17_same(key,me[..]) {_=hex_encode_checked(cast(string)key,peer[..],false);}}
+  if query.count>0 && !nl_contains_folded(cast(string)peer[..],query) && !nl_contains_folded("Messages",query) {continue;}
+  if shown>=limit {break;}id:[96]u8;label:[96]u8;x:=k_row(t,u,ndv_id("dm.room.",m.room[..],id[..]),k_mid(label[..],cast(string)peer[..],12,8),"",v[0].open && n17_same(v[0].room[..],m.room[..]));shown+=1;
+ }return shown;
+}
+ndv_render :: (s:[]NostrInbox,v:[]NostrConversation,delivery:[]NostrDeliveries,outgoing:[]NostrOutgoing,t:[]Tree,u:[]Ui,doc:[]MdDoc,ready:bool,busy:bool) #effects(all) {
  x:=tr_open(t,"dm.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");name:[96]u8;
  x=k_text(t,u,"dm.title",TG_SPAN,"",ifx v[0].open then k_mid(name[..],cast(string)v[0].peer[..],10,6) else "Messages");
  x=k_icon_button(t,"dm.new",IC_PLUS,"New message");tr_close(t);
+ if v[0].choosing {x=k_input(t,u,"dm.recipient","npub or public key","Recipient","text","off");tr_attr(t,x,AT_VALUE,cast(string)v[0].recipient[0..<v[0].recipient_n]);x=k_button(t,u,"dm.recipient.open","Continue",BS_PRIMARY);if v[0].recipient_n==0 {tr_attr(t,x,AT_DISABLED,"true");}return;}
  if !v[0].open {
-  if !ready {x=k_text(t,u,"dm.loading",TG_P,"meta","Connecting…");}
+  if !ready {x=k_text(t,u,"dm.loading",TG_SPAN,"meta","…");tr_attr(t,x,AT_LABEL,"Connecting");}
   else if s[0].n==0 {x=k_text(t,u,"dm.empty",TG_P,"","No messages yet");}
-  // Latest message for each room, descending activity. Rows retain one stable
-  // conversation reference; no flattened environment/account IDs are reused.
-  for k:0..<s[0].n {i:=s[0].n-1-k;m:=s[0].messages[i].message;newest:=true;for j:i+1..<s[0].n {if n17_same(s[0].messages[j].message.room[..],m.room[..]) {newest=false;}}
-   if !newest {continue;}id:[96]u8;peer:[64]u8;me:[32]u8;_=ne_lower_hex(cast(string)s[0].identity[..],me[..]);
-   for p:0..<2 {key:=m.member[p*32..<p*32+32];if !n17_same(key,me[..]) {_=hex_encode_checked(cast(string)key,peer[..],false);}}
-   label:[96]u8;x=k_row(t,u,ndv_id("dm.room.",m.room[..],id[..]),k_mid(label[..],cast(string)peer[..],12,8),"",false);
-  }
+  _=ndv_rows(s,v,t,u,128,"");
   if s[0].full {x=k_text(t,u,"dm.bounded",TG_P,"meta","More history available");}return;
  }
  x=k_reading_list(t,"dm.transcript",cast(string)v[0].peer[..]);count:=0;for i:0..<s[0].n {if n17_same(s[0].messages[i].message.room[..],v[0].room[..]) {count+=1;}}
@@ -64,9 +70,27 @@ ndv_render :: (s:[]NostrInbox,v:[]NostrConversation,t:[]Tree,u:[]Ui,doc:[]MdDoc,
  if start>0 {x=k_link(t,"dm.earlier","Earlier");}
  for i:0..<s[0].n {row:=s[0].messages[i];if !n17_same(row.message.room[..],v[0].room[..]) {continue;}include:=at>=start && at<end;at+=1;if !include {continue;}
   id:[96]u8;own:=n17_same(row.message.author[..],me[..]);x=k_message(t,u,ndv_id("dm.message.",row.message.rumor_id[..],id[..]),!own,doc,cast(string)row.body[0..<row.n]);
+  if row.message.has_reply {reply:[96]u8;label:="Reply";for k:0..<s[0].n {other:=s[0].messages[k];if n17_same(other.message.rumor_id[..],row.message.reply[..]) && n17_same(other.message.room[..],v[0].room[..]) {label=k_mid(reply[..],cast(string)other.body[0..<other.n],60,0);break;}}x=k_text(t,u,ndv_id("dm.context.",row.message.rumor_id[..],id[..]),TG_P,"meta",label);}
   x=k_link(t,ndv_id("dm.reply.",row.message.rumor_id[..],id[..]),"Reply");
+  if own {receipt_at:=ndd_find(delivery,row.message.rumor_id[..]);status:= -1;if receipt_at>=0 {status=nds_status(delivery[0].rows[receipt_at].state[..]);}ndv_status(t,u,ndv_id("dm.status.",row.message.rumor_id[..],id[..]),status);}
+
+ }
+ o:=outgoing[..];if o[0].phase!=0 && !o[0].seen && cast(string)o[0].peer[..]==cast(string)v[0].peer[..] {
+  x=k_message(t,u,"dm.outgoing",false,doc,cast(string)o[0].text[0..<o[0].nt]);ndv_status(t,u,"dm.outgoing.status",ifx o[0].phase==2 then 3 else ifx o[0].phase==1 then 0 else o[0].status);
  }
  tr_close(t);
  if v[0].nr>0 {x=k_link(t,"dm.reply.cancel","Replying · Cancel");}
- x=k_composer_begin(t,u,"dm.composer","Message");tr_attr(t,x,AT_VALUE,cast(string)v[0].draft[0..<v[0].nd]);k_composer_end(t,u,"dm.composer","Send",ready && !busy && v[0].nd>0);
+ x=k_composer_begin(t,u,"dm.composer","Message");tr_attr(t,x,AT_VALUE,cast(string)v[0].draft[0..<v[0].nd]);k_composer_end(t,u,"dm.composer","Send",v[0].send_ready && !busy && v[0].nd>0);
+}
+
+ndv_status :: (t:[]Tree,u:[]Ui,id:string,status:int) #effects(all) {
+ x:=tr_open(t,id,TG_SPAN,"meta");tr_attr(t,x,AT_ROLE,"status");label:=ifx status==1 then "Accepted by relay" else ifx status==2 then "Relay refused" else ifx status==3 then "Check send" else ifx status==0 then "Pending" else "Delivery unknown";tr_attr(t,x,AT_LABEL,label);
+ b:[128]u8;x=k_icon(t,tr_cat(b[..],id,".icon"),ifx status==1 then IC_CHECK else ifx status==2 || status==3 then IC_WARNING else ifx status==0 then IC_CLOCK else IC_CIRCLE);tr_close(t);
+}
+#test "optimistic text and real relay states use shared components without a second message bubble" {
+ s:[1]NostrInbox;v:[1]NostrConversation;delivery:[1]NostrDeliveries;o:[1]NostrOutgoing;t:[1]Tree;u:[1]Ui;doc:[1]MdDoc;
+ me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s[..],"a",me) && ndv_peer(s[..],v[..],peer) && ndo_begin(o[..],s[..],me,peer,1730000000,"Visible while sending","");
+ tr_begin(t[..]);ui_begin(u[..],0,true);ndv_render(s[..],v[..],delivery[..],o[..],t[..],u[..],doc[..],false,true);#assert tr_find(t[..],"dm.outgoing")>=0 && tr_find(t[..],"dm.outgoing.status")>=0;
+ o[0].seen=true;tr_begin(t[..]);ndv_render(s[..],v[..],delivery[..],o[..],t[..],u[..],doc[..],true,false);#assert tr_find(t[..],"dm.outgoing")<0;
 }

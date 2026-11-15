@@ -1,0 +1,25 @@
+// Freeze the intended peer, reply and text before asking the platform for a
+// fresh operation reference. A later view or draft edit cannot retarget it.
+#authority;
+ndm_can_send :: (m:[]NostrMessenger)->bool #effects(all) {
+ o:=m[0].outgoing[..];return m[0].started && m[0].active && m[0].own_ready && m[0].peer_ready && m[0].np==64 && m[0].relays[0].now>=172800 && !m[0].submit && !m[0].prepared[0].pending && (o[0].phase==0 || o[0].phase==3 && o[0].seen);
+}
+ndm_prepare :: (m:[]NostrMessenger,text:string,reply:string)->bool #effects(all) {
+ if !ndm_can_send(m) {return false;}b:[100000]u8;defer {secure_zero(b[..]);}
+ n:=nsp_seal_request(cast(string)m[0].inbox[0].identity[..],cast(string)m[0].peer[..],m[0].relays[0].now,text,reply,b[..]);if n<0 {return false;}
+ p:=m[0].prepared[..];p[0].pending=true;p[0].generation=m[0].inbox[0].generation;p[0].peer=m[0].peer;p[0].nt=ndi_copy(p[0].text[..],text);p[0].nr=ndi_copy(p[0].reply[..],reply);m[0].dirty=true;return true;
+}
+ndm_cancel_prepared :: (m:[]NostrMessenger) #effects(all) {m[0].prepared[0]=NostrPrepared.{};}
+ndm_submit_prepared :: (m:[]NostrMessenger,operation:string,created:int)->bool #effects(all) {
+ p:=m[0].prepared[..];if !p[0].pending || !m[0].started || p[0].generation!=m[0].inbox[0].generation {return false;}
+ if !ndo_begin(m[0].outgoing[..],m[0].inbox[..],operation,cast(string)p[0].peer[..],created,cast(string)p[0].text[0..<p[0].nt],cast(string)p[0].reply[0..<p[0].nr]) {return false;}
+ m[0].submit=true;ndm_cancel_prepared(m);ndm_note(m,"");return true;
+}
+#test "entropy cannot retarget a prepared message after the visible conversation changes" {
+ m:[1]NostrMessenger;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";other:="f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+ #assert ndi_bind(m[0].inbox[..],"a",me);m[0].started=true;m[0].active=true;m[0].own_ready=true;m[0].peer_ready=true;m[0].np=ndi_copy(m[0].peer[..],peer);m[0].relays[0].now=1730000000;
+ #assert ndm_prepare(m[..],"Frozen","") && !ndm_prepare(m[..],"Another","");
+ m[0].np=ndi_copy(m[0].peer[..],other);m[0].peer_ready=false;
+ #assert ndm_submit_prepared(m[..],other,1730000001) && cast(string)m[0].outgoing[0].peer[..]==peer && cast(string)m[0].outgoing[0].text[0..<m[0].outgoing[0].nt]=="Frozen" && !m[0].prepared[0].pending;
+ ndm_clear(m[..]);#assert m[0].outgoing[0].text[0]==0 && m[0].prepared[0].text[0]==0;
+}

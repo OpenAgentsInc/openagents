@@ -1,0 +1,51 @@
+// In-memory SDK carrier check. Effects use real codecs and the actual custody
+// materializer with public test keys; no production account or relay is used.
+#load "../../coax/native/nostr-custody-crypto.coax";
+DmTestHost :: struct {head:bool;queued:bool;acked:bool;auth:bool;raw:[65536]u8;n:int;id:[64]u8;revision:int;}
+ndm_test_effect :: (m:[]NostrMessenger,h:[]DmTestHost)->bool #effects(all) {
+ op:=m[0].action;if op==0 {return false;}m[0].action=0;wire:=cast(string)m[0].body[0..<m[0].nb];out:[800000]u8;n:= -1;
+ if op==23 {
+  q:[1]NrsRequest;#assert nrs_read(wire,q[..]);i:=q[0].slot;r:=m[0].relays[0].relays[i..<i+1];payload:=cast(string)q[0].payload[0..<q[0].n];
+  if q[0].action==5 {n=0;}
+  else if q[0].action==6 {n=nrs_observation(i,q[0].generation,0,NMS_LIST_PUB,"clock","1730000000",out[..]);}
+  else if q[0].action==1 {h[0].auth=false;n=nrs_observation(i,q[0].generation,1,NMS_LIST_PUB,"open","",out[..]);}
+  else if q[0].action==4 {n=nrs_observation(i,q[0].generation,q[0].sequence,NMS_LIST_PUB,"closed","",out[..]);}
+  else if q[0].action==2 {n=nrs_observation(i,q[0].generation,r[0].ack,NMS_LIST_PUB,"idle","",out[..]);}
+  else {
+   frame:[4096]u8;fn:= -1;
+   if !h[0].auth {h[0].auth=true;fn=ndi_copy(frame[..],"[\"AUTH\",\"fixture\"]");}
+   else {
+    for k:0..<RL_SUBS {if r[0].relay[0].subs[k].state==RS_LIVE {o:[1]Jo;b:[24]u8;jo_start(o[..],frame[..]);jo_arr(o[..]);jo_str(o[..],"EOSE");jo_str(o[..],rl_sub_text(k,r[0].relay[0].subs[k].serial,b[..]));jo_end(o[..]);fn=o[0].n;break;}}
+    if fn<0 && r[0].relay[0].auth==RA_SENT {o:[1]Jo;b:[64]u8;_=hex_encode_checked(cast(string)r[0].relay[0].auth_id[..],b[..],false);jo_start(o[..],frame[..]);jo_arr(o[..]);jo_str(o[..],"OK");jo_str(o[..],cast(string)b[..]);jo_bool(o[..],true);jo_str(o[..],"");jo_end(o[..]);fn=o[0].n;}
+    if fn<0 {for k:0..<RL_PUBS {if r[0].relay[0].pubs[k].state==RP_SENT {o:[1]Jo;b:[64]u8;_=hex_encode_checked(cast(string)r[0].relay[0].pubs[k].id[..],b[..],false);jo_start(o[..],frame[..]);jo_arr(o[..]);jo_str(o[..],"OK");jo_str(o[..],cast(string)b[..]);jo_bool(o[..],true);jo_str(o[..],"");jo_end(o[..]);fn=o[0].n;h[0].acked=true;break;}}}
+   }
+   n=nrs_observation(i,q[0].generation,ifx fn>=0 then r[0].ack+1 else r[0].ack,NMS_LIST_PUB,ifx fn>=0 then "message" else "idle",ifx fn>=0 then cast(string)frame[0..<fn] else "",out[..]);
+  }
+ }else if op==21 {
+  q:[1]NscRequest;#assert nsc_read(wire,q[..]);#assert q[0].action==2 || q[0].action==5;
+  if q[0].action==5 {#assert ndm_lists_ready(m) && m[0].mode==0;}
+  key:=n59_bob();fresh:[1]Nip59Fresh;fresh[0]=n59_fresh(3)[0];payload:[65536]u8;facts:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_MANAGED,provider=NS_SERVER};
+  effect:=nsc_materialize(q[..],facts,key[..],fresh[..],1730000000,"",payload[..]);#assert effect.status==0;n=nsc_response(q[..],effect,payload[..],out[..]);
+ }else if op==22 {
+  q:[1]MsRequest;#assert nms_request_read(wire,q[..]);index:[1]MsIndexRow;payload:[65536]u8;pn:=0;action:=q[0].action;
+  if action==3 {
+   #assert q[0].targets_n==1 && ms_target(q[..],0)=="wss://relay.openagents.com";h[0].n=ndi_copy(h[0].raw[..],cast(string)q[0].payload[0..<q[0].n]);scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(cast(string)h[0].raw[0..<h[0].n],scratch[..],false));#assert e.verified && e.kind==10050;_=hex_encode_checked(cast(string)e.id[..],h[0].id[..],false);h[0].head=true;h[0].queued=true;h[0].revision+=1;
+  }else if action==6 {#assert h[0].head && cast(string)q[0].payload[0..<q[0].n]==cast(string)h[0].id[..];pn=ndi_copy(payload[..],cast(string)h[0].raw[0..<h[0].n]);}
+  else {
+   include:=action==9 && h[0].queued && !h[0].acked;
+   if action==5 {d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],cast(string)q[0].payload[0..<q[0].n],nodes[..]);kinds:=jv_get(d[0],0,"kinds");include=js_number(d[0],jv_at(d[0],kinds,0))==10050 && h[0].head;}
+   if include {index[0].id=h[0].id;_=ndi_copy(index[0].author[..],NMS_LIST_PUB);index[0].kind=10050;index[0].created=1730000000;index[0].pending=ifx h[0].acked then 0 else 1;index[0].accepted=ifx h[0].acked then 1 else 0;}
+   urls:=[1]string.["wss://relay.openagents.com"];pn=ms_index_write_relays(h[0].revision,0,true,urls[..],index[0..<(ifx include then 1 else 0)],payload[..]);
+  }
+  n=nsr_write("store",MS_ACTIONS[action-1],cast(string)q[0].operation[..],NMS_LIST_PUB,"ok",h[0].revision,0,cast(string)payload[0..<pn],out[..]);
+ }else if op==4 {
+  q:[1]NdlRequest;p:[1]NdlPage;#assert ndl_request_read(wire,q[..]) && ndl_begin(p[..],q[..]);n=ndl_page_write(p[..],out[..]);
+ }
+ #assert n>=0;return ndm_reply(m,op,m[0].generation,200,cast(string)out[0..<n],false);
+}
+#test "inbox setup crosses completed discovery signing queue publish and a real ACK before settling" {
+ m:[1]NostrMessenger;h:[1]DmTestHost;urls:=[1]string.["wss://relay.openagents.com"];
+ #assert ndm_start(m[..],"account",NMS_LIST_PUB,NMS_LIST_PUB,urls[..]) && ndm_enable(m[..]);
+ for step:0..<180 {_=ndm_tick(m[..],1);if m[0].action!=0 {_=ndm_test_effect(m[..],h[..]);}if h[0].acked && ndm_ready(m[..]) {break;}}
+ #assert h[0].head && h[0].queued && h[0].acked && m[0].own_ready && !m[0].enable && ndm_ready(m[..]);
+}

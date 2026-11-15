@@ -6,12 +6,12 @@
 #load "../../coax/lib/nostr/filter.coax";
 #authority;
 InboxDelivery :: struct {operation:[64]u8;state:[1]NostrDeliveryState;room:[32]u8;rumor:[32]u8;created:int;visited:bool;}
-NostrDeliveries :: struct {generation:int;identity:[64]u8;rows:[128]InboxDelivery;n:int;after:[64]u8;na:int;complete:bool;full:bool;corrupt:bool;}
+NostrDeliveries :: struct {operation:[64]u8;generation:int;identity:[64]u8;rows:[128]InboxDelivery;n:int;after:[64]u8;na:int;complete:bool;full:bool;corrupt:bool;}
 #test "cold receipt recovery links only an opened sender copy and keeps exact operation ownership" {
  inbox:[1]NostrInbox;s:[1]NostrDeliveries;q:[1]NdlRequest;p:[1]NdlPage;b:[8192]u8;r:[2048]u8;index:[1]MsIndex;
  me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
  #assert ndi_bind(inbox[..],"a",me) && ndi_begin(inbox[..],op,me);n:=nsr_write("custody","open",op,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(inbox[..],1,cast(string)b[0..<n]);
- #assert ndd_begin(s[..],inbox[..]);n=ndd_request(s[..],b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);ids:=[2]string.[op,me];nr:=nsm_sealed_write(ids[..],7,r[..]);#assert ndl_put(p[..],op,cast(string)r[0..<nr]);n=ndl_page_write(p[..],b[..]);
+ #assert ndd_begin(s[..],inbox[..]);n=ndd_request(s[..],me,b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);ids:=[2]string.[op,me];nr:=nsm_sealed_write(ids[..],7,r[..]);#assert ndl_put(p[..],op,cast(string)r[0..<nr]);n=ndl_page_write(p[..],b[..]);
  #assert !ndd_page(s[..],inbox[..],2,cast(string)b[0..<n]) && ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].n==1 && s[0].complete;
  #assert ndd_find(s[..],inbox[0].messages[0].message.rumor_id[..])==0 && nds_status(s[0].rows[0].state[..])== -1;
  #assert ndd_filter(s[..],0,b[..])>0 && ndd_filter(s[..],1,b[..])<0;
@@ -27,7 +27,7 @@ NostrDeliveries :: struct {generation:int;identity:[64]u8;rows:[128]InboxDeliver
  inbox:[1]NostrInbox;s:[1]NostrDeliveries;q:[1]NdlRequest;p:[1]NdlPage;b:[2048]u8;
  me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
  #assert ndi_bind(inbox[..],"a",me) && ndd_begin(s[..],inbox[..]);s[0].n=1;s[0].rows[0].visited=true;
- #assert ndd_begin(s[..],inbox[..]);n:=ndd_request(s[..],b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);n=ndl_page_write(p[..],b[..]);
+ #assert ndd_begin(s[..],inbox[..]);n:=ndd_request(s[..],me,b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);n=ndl_page_write(p[..],b[..]);
  #assert ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].n==0 && s[0].complete;
 }
 ndd_clear :: (s:[]NostrDeliveries) #effects(all) {s[0]=NostrDeliveries.{};}
@@ -40,7 +40,9 @@ ndd_begin :: (s:[]NostrDeliveries,inbox:[]NostrInbox)->bool #effects(all) {
   if keep {s[0].rows[n]=s[0].rows[i];s[0].rows[n].visited=false;n+=1;}
  }for i:n..<s[0].n {s[0].rows[i]=InboxDelivery.{};}s[0].n=n;return true;
 }
-ndd_request :: (s:[]NostrDeliveries,out:[]u8)->int #effects(all) {return ndl_request_write(cast(string)s[0].identity[..],cast(string)s[0].after[0..<s[0].na],out);}
+ndd_request :: (s:[]NostrDeliveries,operation:string,out:[]u8)->int #effects(all) {
+ n:=ndl_request_write(cast(string)s[0].identity[..],cast(string)s[0].after[0..<s[0].na],operation,out);if n>0 {_=ndi_copy(s[0].operation[..],operation);}return n;
+}
 ndd_find :: (s:[]NostrDeliveries,rumor:[]u8)->int #effects(all) {for i:0..<s[0].n {if n17_same(s[0].rows[i].rumor[..],rumor) {return i;}}return -1;}
 ndd_same :: (a:NsmSealed,b:NsmSealed)->bool #effects(all) {
  x:=a;y:=b;if x.n!=y.n || x.revision!=y.revision || cast(string)x.self[..]!=cast(string)y.self[..] {return false;}
@@ -48,7 +50,7 @@ ndd_same :: (a:NsmSealed,b:NsmSealed)->bool #effects(all) {
 }
 ndd_page :: (s:[]NostrDeliveries,inbox:[]NostrInbox,generation:int,raw:string)->bool #effects(all) {
  if generation!=s[0].generation || generation!=inbox[0].generation || s[0].complete || s[0].corrupt || s[0].full {return false;}
- page:[1]NdlPage;if !ndl_page_read(raw,page[..]) || cast(string)page[0].identity[..]!=cast(string)s[0].identity[..] || cast(string)page[0].after[0..<page[0].na]!=cast(string)s[0].after[0..<s[0].na] {return false;}
+ page:[1]NdlPage;if !ndl_page_read(raw,page[..]) || cast(string)page[0].operation[..]!=cast(string)s[0].operation[..] || cast(string)page[0].identity[..]!=cast(string)s[0].identity[..] || cast(string)page[0].after[0..<page[0].na]!=cast(string)s[0].after[0..<s[0].na] {return false;}
  // Check immutable receipts before publishing any rows from this page.
  for i:0..<page[0].n {item:=page[0].items[i];for k:0..<s[0].n {if cast(string)item.operation[..]==cast(string)s[0].rows[k].operation[..] && !ndd_same(item.receipt[0],s[0].rows[k].state[0].receipt[0]) {s[0].corrupt=true;return false;}}}
  me:[32]u8;if !ne_lower_hex(cast(string)s[0].identity[..],me[..]) {return false;}
@@ -68,4 +70,13 @@ ndd_filter :: (s:[]NostrDeliveries,at:int,out:[]u8)->int #effects(all) {
 }
 ndd_index :: (s:[]NostrDeliveries,inbox:[]NostrInbox,generation:int,at:int,index:[]MsIndex)->bool #effects(all) {
  if generation!=s[0].generation || generation!=inbox[0].generation || at<0 || at>=s[0].n {return false;}return nds_index(s[0].rows[at].state[..],index);
+}
+
+#test "a late empty page cannot clear receipts from a newer read at the same cursor" {
+ inbox:[1]NostrInbox;s:[1]NostrDeliveries;q:[1]NdlRequest;p:[1]NdlPage;b:[2048]u8;late:[2048]u8;
+ me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(inbox[..],"a",me) && ndd_begin(s[..],inbox[..]);n:=ndd_request(s[..],me,b[..]);
+ #assert n>0 && ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);old:=ndl_page_write(p[..],late[..]);
+ n=ndd_request(s[..],op,b[..]);#assert n>0 && !ndd_page(s[..],inbox[..],1,cast(string)late[0..<old]) && !s[0].complete;
+ #assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);n=ndl_page_write(p[..],b[..]);#assert ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].complete;
 }

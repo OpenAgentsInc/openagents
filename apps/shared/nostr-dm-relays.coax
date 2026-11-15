@@ -74,8 +74,11 @@ ndr_req :: (p:[]NostrDmRelays,i:int,sub:int,resume:bool,since:int,out:[]u8)->int
  else {tags[0].name='p';tags[0].values=values[..];f[0].tags=tags[..];f[0].has_since=resume && since>172800;f[0].since=ifx since>172800 then since-172800 else 0;}
  f[0].has_limit=true;f[0].limit=ifx list then 1 else 128;b:[24]u8;name:=rl_sub_text(sub,r[0].relay[0].subs[sub].serial,b[..]);return nostr_message_write_req(name,f[..],out,false);
 }
-ndr_tick :: (p:[]NostrDmRelays,dt:f32)->bool #effects(all) {
+ndr_advance :: (p:[]NostrDmRelays,dt:f32) #effects(all) {
  if dt>0 && dt<=1 {p[0].ms+=cast(int)(dt*1000);p[0].drained=0;}
+}
+ndr_tick :: (p:[]NostrDmRelays,dt:f32)->bool #effects(all) {
+ ndr_advance(p,dt);
  if p[0].busy || p[0].action!=0 || p[0].needs_auth {return false;}
  if p[0].reset {p[0].reset=false;return ndr_do(p,5,0,"");}
  if !p[0].active || p[0].drained>=12 {return false;}

@@ -11,7 +11,7 @@ IMPORT("dom_go") void dom_go(uint32_t p,uint32_t n,uint32_t push);
 static coax_t_FeedWeb *raw(uint32_t s){return (void *)(uintptr_t)s;}
 static coax_v_t_FeedWeb at(uint32_t s){return (coax_v_t_FeedWeb){raw(s),1};}
 static void drain(uint32_t s){
- coax_t_FeedWeb *a=raw(s);coax_t_Pipe *p=&a->pipe.e[0];
+ coax_t_FeedWeb *a=raw(s);coax_t_Pipe *p=&a->carrier.e[0].pipe.e[0];
  for(int64_t i=0;i<p->n;i++){
   uint32_t b=(uint32_t)(uintptr_t)&p->buf.e[p->from.e[i]],n=(uint32_t)p->len.e[i];
   if(p->op.e[i]==1)wf_opened(at(s),p->id.e[i],socket_open(b,n));

@@ -1,0 +1,86 @@
+// Foreground scheduling. Every socket/custody/store effect uses its shared
+// owner; the queue's signed original and targets survive a disconnected UI.
+#authority;
+ndm_enable :: (m:[]NostrMessenger)->bool #effects(all) {
+ if !m[0].started || !m[0].active || m[0].own_ready || m[0].enable || m[0].retry {return false;}
+ m[0].enable=true;m[0].head_wanted=true;m[0].head_peer=false;m[0].discovery_at=0;ndm_note(m,"");return true;
+}
+ndm_take_journal :: (m:[]NostrMessenger)->bool #effects(all) {
+ j:=m[0].journal[..];if j[0].action==0 {return false;}
+ op:=j[0].action;if !ndm_launch(m,op,1,cast(string)j[0].body[0..<j[0].nb]) {return false;}j[0].action=0;return true;
+}
+ndm_take_relay :: (m:[]NostrMessenger)->bool #effects(all) {
+ p:=m[0].relays[..];if p[0].action==0 {return false;}
+ op:=p[0].action;if !ndm_launch(m,op,2,cast(string)p[0].body[0..<p[0].nb]) {return false;}p[0].action=0;return true;
+}
+ndm_outbox :: (m:[]NostrMessenger)->bool #effects(all) {
+ none:[1]string;
+ if m[0].pub_phase==0 {return ndm_store(m,4,"outbox","",none[0..<0],m[0].pub_revision,m[0].pub_cursor);}
+ if m[0].pub_phase==1 {
+  index:=m[0].outbox[..];
+  while m[0].pub_at<index[0].n {
+   row:=index[0].rows[m[0].pub_at];while m[0].pub_target<index[0].relays_n {bit:=cast(u64)1<<m[0].pub_target;if (row.pending&bit)!=0 {m[0].pub_phase=2;return ndm_store(m,5,"event",cast(string)row.id[..],none[0..<0],0,0);}m[0].pub_target+=1;}
+   m[0].pub_at+=1;m[0].pub_target=0;
+  }
+  if index[0].cursor>0 {m[0].pub_cursor=index[0].cursor;m[0].pub_phase=0;return true;}
+  m[0].pub_phase=5;m[0].pub_cursor=0;m[0].pub_revision=0;return true;
+ }
+ if m[0].pub_phase==3 {
+  index:=m[0].outbox[..];url:=cast(string)index[0].relays[m[0].pub_target][0..<index[0].nr[m[0].pub_target]];p:=m[0].relays[..];slot:= -1;
+  for i:0..<p[0].nr {if url==cast(string)p[0].relays[i].url[0..<p[0].relays[i].nu] {slot=i;}}
+  if slot<0 {if !p[0].busy && ndm_pool(m,2,url) {return true;}return false;}
+  if p[0].relays[slot].relay[0].state!=RL_OPEN {return false;}
+  if ndr_stage(p,slot,cast(string)m[0].original[0..<m[0].original_n]) {m[0].pub_phase=4;return true;}return false;
+ }
+ if m[0].pub_phase==4 && m[0].relays[0].publish_n==0 {m[0].pub_phase=0;m[0].pub_cursor=0;m[0].pub_revision=0;m[0].original_n=0;return true;}
+ return false;
+}
+ndm_tick :: (m:[]NostrMessenger,dt:f32)->bool #effects(all) {
+ if dt>0 && dt<=1 {m[0].ms+=cast(int)(dt*1000);}
+ ndr_advance(m[0].relays[..],dt);
+ if !m[0].started {return false;}
+ if m[0].flight!=0 {
+  if m[0].ms>=m[0].deadline {_=ndm_reply(m,m[0].op,m[0].generation,0,"",true);return true;}return false;
+ }
+ if m[0].retry {if m[0].ms<m[0].retry_at {return false;}m[0].flight=m[0].retry_task;m[0].action=m[0].op;m[0].deadline=m[0].ms+45000;m[0].retry=false;return true;}
+ if !m[0].active {if m[0].relays[0].active {ndr_pause(m[0].relays[..]);}_=ndr_tick(m[0].relays[..],0);return ndm_take_relay(m);}
+ if m[0].submit && m[0].outgoing[0].phase==1 && m[0].outgoing[0].busy {return ndm_launch(m,NSC_OP,3,cast(string)m[0].outgoing[0].request[0..<m[0].outgoing[0].nr]);}
+ if ndm_take_journal(m) || ndm_take_relay(m) {return true;}
+ j:=m[0].journal[..];p:=m[0].relays[..];
+ if j[0].retry && m[0].ms>=m[0].refresh_at {m[0].refresh_at=m[0].ms+5000;_=ndj_retry(j,m[0].inbox[..]);return ndm_take_journal(m);}
+ if j[0].phase!=0 && !j[0].failed {
+  if ndj_next(j,m[0].inbox[..]) {m[0].dirty=true;if j[0].phase==0 {m[0].want_receipts=true;_=ndd_begin(m[0].delivery[..],m[0].inbox[..]);}if ndm_take_journal(m) {return true;}}
+ }
+ if p[0].needs_auth {op:[64]u8;if ndj_allocate(j,op[..]) && ndr_auth(p,m[0].inbox[..],cast(string)op[..]) {return ndm_take_relay(m);}}
+ if !p[0].busy && (cast(string)p[0].peer[0..<p[0].np]!=cast(string)m[0].peer[0..<m[0].np] || m[0].mode==1 && m[0].ms>=m[0].discovery_at) && m[0].pub_phase!=3 && m[0].pub_phase!=4 {
+  if ndm_pool(m,0,"") {m[0].discovery_at=m[0].ms+30000;m[0].head_wanted=true;m[0].head_peer=false;m[0].head_index[0]=MsIndex.{};}
+ }
+ none:[1]string;
+ if m[0].enable && m[0].setup_n>0 {targets:[6]string;for i:0..<m[0].ns {targets[i]=cast(string)m[0].saved[i][0..<m[0].saved_n[i]];}return ndm_store(m,9,"queue",cast(string)m[0].setup_original[0..<m[0].setup_n],targets[0..<m[0].ns],0,0);}
+ if m[0].head_index[0].n==1 {return ndm_store(m,7,"event",cast(string)m[0].head_index[0].rows[0].id[..],none[0..<0],0,0);}
+ if p[0].heads_changed && !m[0].head_wanted {p[0].heads_changed=false;m[0].head_wanted=true;m[0].head_peer=false;}
+ if m[0].head_wanted && ndm_lists_ready(m) {
+  filter:[1024]u8;m[0].head_for_peer=m[0].head_peer;
+  _=ndi_copy(m[0].head_pub[..],ifx m[0].head_for_peer then cast(string)m[0].peer[..] else cast(string)m[0].inbox[0].identity[..]);n:=ndm_head_filter(cast(string)m[0].head_pub[..],filter[..]);
+  if n>0 {return ndm_store(m,6,"index",cast(string)filter[0..<n],none[0..<0],0,0);}
+ }
+ if m[0].enable && !m[0].head_wanted && ndm_lists_ready(m) {
+  if m[0].mode!=0 {if !p[0].busy {_=ndm_pool(m,0,"");}return true;}
+  purpose:[4096]u8;base:=ifx aw_hex(cast(string)m[0].own_id[..],64) then cast(string)m[0].own_id[..] else "";
+  n:=nsp_list_request(cast(string)m[0].inbox[0].identity[..],10050,base,"relay",cast(string)m[0].saved[0][0..<m[0].saved_n[0]],true,purpose[..]);if n>0 {return ndm_custody(m,8,"publish-list",cast(string)purpose[0..<n]);}
+ }
+ if m[0].pub_phase!=5 {if ndm_outbox(m) && m[0].flight!=0 {return true;}}
+ else if m[0].mode==2 && !p[0].busy {if ndm_pool(m,ifx m[0].own_ready then 1 else 0,"") {return true;}}
+ if !m[0].head_wanted && m[0].own_ready && m[0].mode==0 && m[0].pub_phase==5 && !p[0].busy {if ndm_pool(m,1,"") {m[0].discovery_at=m[0].ms+30000;return true;}}
+ if m[0].want_receipts && j[0].phase==0 && m[0].http_available {
+  wire:[512]u8;op:[64]u8;if !ndj_allocate(j,op[..]) {return false;}n:=ndd_request(m[0].delivery[..],cast(string)op[..],wire[..]);if n>0 {return ndm_launch(m,4,10,cast(string)wire[0..<n]);}
+ }
+ if !m[0].want_receipts && m[0].status_at<m[0].delivery[0].n {
+  filter:[4096]u8;n:=ndd_filter(m[0].delivery[..],m[0].status_at,filter[..]);if n>0 {return ndm_store(m,11,"index",cast(string)filter[0..<n],none[0..<0],0,0);}
+ }
+ if m[0].ms>=m[0].refresh_at || p[0].changed {
+  m[0].refresh_at=m[0].ms+5000;p[0].changed=false;
+  if j[0].phase==0 && !j[0].busy {_=ndj_refresh(j,m[0].inbox[..]);}if m[0].pub_phase==5 {m[0].pub_phase=0;m[0].pub_cursor=0;m[0].pub_revision=0;}m[0].dirty=true;
+ }
+ if ndr_tick(p,0) {m[0].dirty=true;}return ndm_take_relay(m);
+}

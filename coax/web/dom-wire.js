@@ -83,7 +83,7 @@ export function wireImports(memory, module, deliver, cap) {
       const slots = exports.coaxial_socket_slots?.();
       if (Number.isInteger(slots) && slots >= 1 && slots <= 6) { sockets.length = slots; sockets.fill(null); }
       const limit = exports.coaxial_socket_text_limit?.();
-      if (Number.isInteger(limit) && limit > 0 && limit <= 65536) strictTextLimit = limit;
+      if (Number.isInteger(limit) && limit > 0 && limit <= 131072) strictTextLimit = limit;
       pauseInBackground = exports.coaxial_socket_pause_background?.() === 1;
       random.bind(exports);
     },

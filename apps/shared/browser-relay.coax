@@ -1,0 +1,52 @@
+// One browser socket/observation carrier for public reads and private sessions.
+// Private frames remain hidden until their durable ingest/ACK commit succeeds.
+#load "../../coax/native/relay-read-queue.coax";
+#load "../../coax/native/relay-session-state.coax";
+#load "../../coax/web/socket.coax";
+BrowserRelayRecord :: struct {kind:int;from:int;n:int;sequence:int;committed:bool;}
+BrowserRelayCarrier :: struct {
+ dirty:bool;session:bool;identity:[64]u8;owners:[6]NrsOwner;
+ queues:[6]NrQueue;records:[6][64]BrowserRelayRecord;data:[6][NRQ_BYTES]u8;physical:[6]int;logical:[6]int;
+ pipe:[1]Pipe;service:[NRS_WIRE]u8;
+}
+#test "private observations cannot pass a frame before the journal commit" {
+ s:[1]BrowserRelayCarrier;brc_init(s[..]);s[0].session=true;id:="0000000000000000000000000000000000000000000000000000000000000001";
+ for c,i:id {s[0].identity[i]=c;}#assert nrq_open(s[0].queues[0..<1],1);
+ brc_enqueue(s[..],0,3,"[\"NOTICE\",\"test\"]");n:=brc_poll(s[..],0,1,0);o:[1]NrsObservation;
+ #assert n>0 && nrs_observe(cast(string)s[0].service[0..<n],o[..]) && o[0].kind==6 && s[0].queues[0].delivered==0;
+ s[0].records[0][0].committed=true;n=brc_poll(s[..],0,1,0);#assert n>0 && nrs_observe(cast(string)s[0].service[0..<n],o[..]) && o[0].kind==3 && o[0].sequence==1;
+}
+brc_init :: (s:[]BrowserRelayCarrier) {for i:0..<6 {s[0].physical[i]= -1;s[0].logical[i]= -1;}}
+brc_record :: (s:[]BrowserRelayCarrier,slot:int,generation:int,sequence:int,kind:string,payload:string)->int {
+ if s[0].session {return nrs_observation(slot,generation,sequence,cast(string)s[0].identity[..],kind,payload,s[0].service[..]);}return nrr_observation(slot,generation,sequence,kind,payload,s[0].service[..]);
+}
+brc_enqueue :: (s:[]BrowserRelayCarrier,slot:int,kind:int,payload:string) {
+ q:=s[0].queues[slot..<slot+1];at:=(q[0].head+q[0].count)%64;from:=q[0].bytes;seq:=nrq_push_bounded(q,payload.count,ifx s[0].session then NRS_FRAME else NRR_FRAME);
+ if seq<0 {brc_finish(s,slot,5);return;}
+ for c,i:payload {s[0].data[slot][from+i]=c;}s[0].records[slot][at]=BrowserRelayRecord.{kind=kind,from=from,n=payload.count,sequence=seq,committed= !s[0].session || kind!=3};
+}
+brc_detach :: (s:[]BrowserRelayCarrier,slot:int) {id:=s[0].physical[slot];if id>=0 && id<6 {s[0].logical[id]= -1;_=pipe_close(s[0].pipe[..],id);}s[0].physical[slot]= -1;nrs_retire(s[0].owners[slot..<slot+1]);}
+brc_finish :: (s:[]BrowserRelayCarrier,slot:int,kind:int) {
+ q:=s[0].queues[slot..<slot+1];at:=(q[0].head+q[0].count)%64;seq:=nrq_terminal(q,0);
+ if seq>0 {s[0].records[slot][at]=BrowserRelayRecord.{kind=kind,from=q[0].bytes,n=0,sequence=seq,committed=true};}brc_detach(s,slot);s[0].dirty=true;
+}
+brc_ack :: (s:[]BrowserRelayCarrier,slot:int,ack:int)->int {
+ q:=s[0].queues[slot..<slot+1];before:=q[0].bytes;next:=nrq_poll(q,ack);if next<0 {return -1;}removed:=before-q[0].bytes;
+ if removed>0 {for i:0..<q[0].bytes {s[0].data[slot][i]=s[0].data[slot][i+removed];}for i:0..<q[0].count {at:=(q[0].head+i)%64;s[0].records[slot][at].from-=removed;}}
+ return next;
+}
+brc_poll :: (s:[]BrowserRelayCarrier,slot:int,generation:int,ack:int)->int {
+ q:=s[0].queues[slot..<slot+1];if generation!=q[0].generation {return -1;}next:=brc_ack(s,slot,ack);if next<0 {return -1;}
+ if next==0 {return brc_record(s,slot,generation,ack,"idle","");}
+ r:=s[0].records[slot][q[0].head];if r.sequence!=next {return -1;}if !r.committed {q[0].delivered=q[0].ack;return brc_record(s,slot,generation,ack,"idle","");}
+ return brc_record(s,slot,generation,next,NRR_KINDS[r.kind-1],cast(string)s[0].data[slot][r.from..<r.from+r.n]);
+}
+brc_opened :: (s:[]BrowserRelayCarrier,slot:int,id:int) #export_c #effects(all) {
+ if slot<0 || slot>=6 {return;}if id<0 || id>=6 {brc_finish(s,slot,7);return;}s[0].physical[slot]=id;s[0].logical[id]=slot;
+}
+brc_socket :: (s:[]BrowserRelayCarrier,kind:int,raw:string) {
+ e:=socket_event_limit(kind,6);if e.id<0 {return;}slot:=s[0].logical[e.id];if slot<0 || slot>=6 || s[0].physical[slot]!=e.id || !s[0].queues[slot].live {return;}
+ if e.event==SOCKET_OPENED {brc_enqueue(s,slot,2,"");}
+ else if e.event==SOCKET_FRAME {if raw.count>(ifx s[0].session then NRS_FRAME else NRR_FRAME) || !js_utf8(raw) {brc_finish(s,slot,7);}else {brc_enqueue(s,slot,3,raw);}}
+ else {brc_finish(s,slot,ifx e.event==SOCKET_ERROR then 7 else 4);}s[0].dirty=true;
+}

@@ -1,0 +1,91 @@
+// One account-owned coordinator for the installed Nostr effects. Native and
+// browser hosts execute its existing wire requests; neither chooses a recipient,
+// fabricates readiness, decrypts in the view, or substitutes a key provider.
+#run_steps 250000000;
+#load "nostr-inbox-journal.coax";
+#load "nostr-dm-relays.coax";
+#load "nostr-outgoing.coax";
+#load "nostr-delivery.coax";
+#load "../../coax/lib/nostr/nip17-relays.coax";
+#authority;
+NostrPrepared :: struct {pending:bool;generation:int;peer:[64]u8;text:[16384]u8;nt:int;reply:[64]u8;nr:int;}
+NostrMessenger :: struct {
+ inbox:[1]NostrInbox;journal:[1]NostrInboxJournal;relays:[1]NostrDmRelays;outgoing:[1]NostrOutgoing;delivery:[1]NostrDeliveries;prepared:[1]NostrPrepared;
+ started:bool;active:bool;dirty:bool;http_available:bool=true;ms:int;refresh_at:int;discovery_at:int;deadline:int;
+ saved:[6][256]u8;saved_n:[6]int;ns:int;peer:[64]u8;np:int;mode:int;
+ own:[1]N17Relays;own_id:[64]u8;own_ready:bool;peer_ready:bool;head_wanted:bool;head_peer:bool;head_for_peer:bool;head_pub:[64]u8;head_index:[1]MsIndex;
+ action:int;op:int;flight:int;generation:int;body:[800000]u8;nb:int;operation:[64]u8;expected:int;
+ retry:bool;retry_at:int;retry_task:int;submit:bool;enable:bool;want_receipts:bool;status_at:int;
+ outbox:[1]MsIndex;pub_phase:int;pub_at:int;pub_target:int;pub_cursor:int;pub_revision:int;original:[65536]u8;original_n:int;setup_original:[65536]u8;setup_n:int;
+ note:[160]u8;nn:int;
+}
+#load "nostr-messenger-store.coax";
+#load "nostr-messenger-loop.coax";
+#load "nostr-messenger-compose.coax";
+#load "nostr-messenger-checks.coax" #test;
+#test "messenger bootstrap binds one account and cold-replays before claiming an empty live inbox" {
+ m:[1]NostrMessenger;q:[1]MsRequest;b:[4096]u8;p:[2048]u8;rows:[1]MsIndexRow;
+ me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";urls:=[1]string.["wss://relay.example"];
+ #assert ndm_start(m[..],"a",me,me,urls[..]) && ndm_tick(m[..],0) && m[0].flight==1 && m[0].action==22;
+ #assert nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==5;
+ n:=ms_index_write(0,0,true,rows[0..<0],p[..]);n=nsr_write("store","index",cast(string)q[0].operation[..],me,"ok",0,0,cast(string)p[0..<n],b[..]);
+ #assert !ndm_reply(m[..],22,2,200,cast(string)b[0..<n],false) && m[0].flight==1;
+ #assert ndm_reply(m[..],22,1,200,cast(string)b[0..<n],false) && m[0].flight==0 && !ndm_ready(m[..]);
+ ndm_pause(m[..]);#assert !m[0].active;ndm_clear(m[..]);#assert m[0].inbox[0].na==0 && m[0].outgoing[0].nt==0 && !m[0].started;
+}
+ndm_note :: (m:[]NostrMessenger,text:string) #effects(all) {m[0].nn=ndi_copy(m[0].note[..],text);m[0].dirty=true;}
+#test "send remains bound to its peer and an uncertain response never authorizes another intent" {
+ m:[1]NostrMessenger;urls:=[1]string.["wss://relay.example"];
+ me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndm_start(m[..],"a",me,me,urls[..]) && !ndm_peer(m[..],me) && ndm_peer(m[..],peer) && !ndm_send(m[..],peer,1730000000,"Hello","");
+ #assert ndm_enable(m[..]) && !ndm_enable(m[..]) && !ndm_retry(m[..]);m[0].enable=false;
+ m[0].journal[0].phase=0;m[0].journal[0].ready=true;m[0].own_ready=true;m[0].peer_ready=true;m[0].mode=1;
+ p:=m[0].relays[..];p[0].now=1730000000;p[0].relays[0].relay[0].state=RL_OPEN;p[0].relays[0].relay[0].subs[p[0].relays[0].messages].state=RS_CAUGHT;
+ #assert ndm_send(m[..],peer,1730000000,"Hello","") && ndm_tick(m[..],0) && m[0].flight==3;
+ #assert ndm_reply(m[..],21,1,0,"",true) && m[0].outgoing[0].phase==2 && m[0].flight==0;
+ #assert ndm_retry(m[..]) && m[0].submit && ndm_tick(m[..],0) && cast(string)m[0].outgoing[0].peer[..]==peer;
+ ndm_clear(m[..]);#assert m[0].outgoing[0].request[0]==0 && m[0].outgoing[0].text[0]==0 && m[0].setup_n==0;
+}
+ndm_clear :: (m:[]NostrMessenger) #effects(all) {
+ ndi_clear(m[0].inbox[..]);ndj_clear(m[0].journal[..]);ndo_clear(m[0].outgoing[..]);ndd_clear(m[0].delivery[..]);ndr_pause(m[0].relays[..]);ndm_cancel_prepared(m);
+ secure_zero(m[0].body[..]);secure_zero(m[0].original[..]);secure_zero(m[0].setup_original[..]);secure_zero(m[0].peer[..]);secure_zero(m[0].operation[..]);secure_zero(m[0].own_id[..]);secure_zero(m[0].head_pub[..]);secure_zero(m[0].note[..]);
+ m[0].started=false;m[0].active=false;m[0].dirty=true;m[0].action=0;m[0].op=0;m[0].flight=0;m[0].nb=0;m[0].generation=0;m[0].retry=false;m[0].retry_task=0;m[0].submit=false;m[0].enable=false;m[0].want_receipts=false;m[0].ns=0;m[0].np=0;m[0].mode=0;m[0].own[0]=N17Relays.{};m[0].own_ready=false;m[0].peer_ready=false;m[0].head_wanted=false;m[0].head_peer=false;m[0].head_for_peer=false;m[0].head_index[0]=MsIndex.{};m[0].outbox[0]=MsIndex.{};m[0].pub_phase=0;m[0].pub_at=0;m[0].pub_target=0;m[0].pub_cursor=0;m[0].pub_revision=0;m[0].original_n=0;m[0].setup_n=0;m[0].nn=0;m[0].status_at=0;
+}
+ndm_start :: (m:[]NostrMessenger,account:string,identity:string,seed:string,urls:[]string)->bool #effects(all) {
+ if m[0].flight!=0 || !aw_hex(seed,64) || urls.count<1 || urls.count>6 {return false;}
+ for url,i:urls {if url.count>256 || !nrs_admit(1,i,1,0,identity,url) {return false;}for k:0..<i {if urls[k]==url {return false;}}}
+ if m[0].inbox[0].na>0 && (account!=cast(string)m[0].inbox[0].account[0..<m[0].inbox[0].na] || identity!=cast(string)m[0].inbox[0].identity[..]) {ndm_clear(m);}
+ if m[0].started {m[0].active=true;m[0].discovery_at=0;return true;}
+ if !ndi_bind(m[0].inbox[..],account,identity) || !ndj_start(m[0].journal[..],m[0].inbox[..],seed) {return false;}
+ m[0].generation=m[0].inbox[0].generation;m[0].ns=urls.count;for url,i:urls {m[0].saved_n[i]=ndi_copy(m[0].saved[i][..],url);}
+ if !ndr_configure(m[0].relays[..],m[0].inbox[..],urls,"") {return false;}
+ m[0].started=true;m[0].active=true;m[0].dirty=true;m[0].mode=0;m[0].head_wanted=true;m[0].refresh_at=m[0].ms+5000;return true;
+}
+ndm_launch :: (m:[]NostrMessenger,op:int,task:int,body:string)->bool #effects(all) {
+ if m[0].flight!=0 || body.count>m[0].body.count {return false;}m[0].nb=ndi_copy(m[0].body[..],body);m[0].op=op;m[0].action=op;m[0].flight=task;m[0].deadline=m[0].ms+45000;m[0].retry=false;return true;
+}
+ndm_pause :: (m:[]NostrMessenger) #effects(all) {m[0].active=false;ndr_pause(m[0].relays[..]);m[0].dirty=true;}
+ndm_ready :: (m:[]NostrMessenger)->bool #effects(all) {return m[0].started && m[0].active && m[0].own_ready && m[0].journal[0].ready && m[0].mode==1 && ndr_ready(m[0].relays[..]);}
+ndm_peer :: (m:[]NostrMessenger,peer:string)->bool #effects(all) {
+ if !m[0].started || (peer.count!=0 && (!aw_hex(peer,64) || peer==cast(string)m[0].inbox[0].identity[..])) {return false;}
+ if peer==cast(string)m[0].peer[0..<m[0].np] {return true;}m[0].np=ndi_copy(m[0].peer[..],peer);m[0].peer_ready=false;m[0].head_wanted=true;m[0].head_peer=false;m[0].discovery_at=0;m[0].dirty=true;return true;
+}
+ndm_send :: (m:[]NostrMessenger,operation:string,created:int,text:string,reply:string)->bool #effects(all) {
+ if !ndm_can_send(m) || !ndo_begin(m[0].outgoing[..],m[0].inbox[..],operation,cast(string)m[0].peer[..],created,text,reply) {return false;}
+ m[0].submit=true;ndm_note(m,"");return true;
+}
+ndm_retry :: (m:[]NostrMessenger)->bool #effects(all) {
+ if m[0].flight!=0 || !m[0].active {return false;}
+ if m[0].outgoing[0].phase==2 {if !ndo_retry(m[0].outgoing[..],m[0].inbox[..]) {return false;}m[0].submit=true;return true;}
+ if m[0].journal[0].retry {return ndj_retry(m[0].journal[..],m[0].inbox[..]);}
+ if m[0].retry {m[0].retry_at=0;return true;}return false;
+}
+ndm_reply :: (m:[]NostrMessenger,op:int,generation:int,status:int,raw:string,failed:bool)->bool #effects(all) {
+ if m[0].flight==0 || op!=m[0].op || generation!=m[0].generation || generation!=m[0].inbox[0].generation {return false;}
+ task:=m[0].flight;handled:=false;finished:=false;
+ if task==1 {handled=ndj_reply(m[0].journal[..],m[0].inbox[..],generation,raw,failed);finished= !m[0].journal[0].busy || m[0].journal[0].action!=0;}
+ else if task==2 {handled=ndr_reply(m[0].relays[..],m[0].inbox[..],generation,raw,failed);finished= !m[0].relays[0].busy || m[0].relays[0].action!=0;}
+ else if task==3 {handled=ndo_reply(m[0].outgoing[..],m[0].inbox[..],generation,raw,failed);finished= !m[0].outgoing[0].busy;if finished {m[0].submit=false;if m[0].outgoing[0].phase==3 {m[0].pub_phase=0;m[0].pub_cursor=0;m[0].pub_revision=0;m[0].want_receipts=true;_=ndj_refresh(m[0].journal[..],m[0].inbox[..]);}else {ndm_note(m,ifx m[0].outgoing[0].status==2 then "Inbox unavailable" else "Check send");}}}
+ else {handled=ndm_store_reply(m,task,status,raw,failed);finished=handled;}
+ if finished {_=ndo_seen(m[0].outgoing[..],m[0].inbox[..]);m[0].flight=0;m[0].action=0;m[0].dirty=true;}return handled || finished;
+}

@@ -1,0 +1,6 @@
+// Shared complete-frame extraction for the installed and browser carriers.
+#load "../lib/nostr/message.coax";
+nsm_incoming :: (frame:string,out:[]u8)->int #export_c #effects(all) {
+ m:=nostr_message_read(frame);if m.error!=NM_OK || m.type!=NM_EVENT {return 0;}n:=m.event.to-m.event.from;if n<1 || n>65536 || n>out.count {return -1;}for i:0..<n {out[i]=frame[m.event.from+i];}return n;
+}
+nsm_frame_type :: (frame:string)->int #export_c #effects(all) {m:=nostr_message_read(frame);return ifx m.error==NM_OK then m.type else 0;}

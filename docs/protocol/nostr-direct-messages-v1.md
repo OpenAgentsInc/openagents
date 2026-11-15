@@ -31,6 +31,11 @@ Capacity is explicit; it does not manufacture an empty or complete history.
 The DM consumer requires a two-member kind-14 room. Later encrypted-group and
 attachment issues own their respective contracts.
 
+Each new seal intent adds an encrypted `oa-op` extension tag to its rumor,
+using the stable operation reference. Two deliberate identical messages in the
+same second remain distinct inner IDs. This tag never appears on a public wrap.
+Retry still returns the committed originals; it never encrypts a second batch.
+
 Private plaintext stays in memory. The durable source remains the account's
 NCJ2 verified ciphertext originals and exact outbox. Cold-start recovery
 reopens these through the actual provider; a label or public journal row
@@ -44,7 +49,9 @@ content cannot become agent/tool actions or executable markup.
 `POST /api/auth/nostr/delivery/v1alpha1` enumerates immutable successful seal
 receipts from the existing account-owned operation table. Its companion
 [profile](../../proto/nostr/delivery-v1alpha1.json) defines closed request/page
-shapes. Pages contain operation IDs and the existing complete sealed receipt;
+shapes. A fresh read operation is echoed exactly with the identity and cursor;
+a response for an older read cannot replace a newer projection. Read retries
+retain that same reference. Pages contain seal operation IDs and the existing complete sealed receipt;
 they never contain plaintext, private intent digests, or custody keys. The
 sender's self wrap locates the verified opened rumor; its other outer IDs
 locate recipient ACK masks. An acceptance is one real accepting relay for

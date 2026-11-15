@@ -1,0 +1,83 @@
+// Existing store/custody codecs and a separate private receipt HTTP request.
+// Included by nostr-messenger.coax after the coordinator's state declaration.
+#authority;
+ndm_store :: (m:[]NostrMessenger,task:int,action:string,payload:string,targets:[]string,revision:int,cursor:int)->bool #effects(all) {
+ if m[0].flight!=0 || !ndj_allocate(m[0].journal[..],m[0].operation[..]) {return false;}
+ wire:[400000]u8;n:=nms_request_write(action,cast(string)m[0].operation[..],cast(string)m[0].inbox[0].identity[..],"",targets,0,revision,cursor,payload,wire[..]);if n<0 {return false;}
+ m[0].expected=ms_action(action);return ndm_launch(m,MS_OP,task,cast(string)wire[0..<n]);
+}
+ndm_custody :: (m:[]NostrMessenger,task:int,action:string,payload:string)->bool #effects(all) {
+ if m[0].flight!=0 || !ndj_allocate(m[0].journal[..],m[0].operation[..]) {return false;}
+ wire:[400000]u8;n:=nsc_request(action,cast(string)m[0].operation[..],cast(string)m[0].inbox[0].identity[..],payload,wire[..]);if n<0 {return false;}
+ m[0].expected=nsc_action(action);return ndm_launch(m,NSC_OP,task,cast(string)wire[0..<n]);
+}
+ndm_head_filter :: (pub:string,out:[]u8)->int #effects(all) {
+ if !aw_hex(pub,64) {return -1;}f:NostrFilter;kinds:=[1]int.[10050];authors:=[1]string.[pub];f.has_kinds=true;f.kinds=kinds[..];f.has_authors=true;f.authors=authors[..];f.has_limit=true;f.limit=1;return nf_write(f,out,false);
+}
+ndm_pool :: (m:[]NostrMessenger,mode:int,target:string)->bool #effects(all) {
+ urls:[6]string;n:=0;
+ if mode==2 {urls[0]=target;n=1;}
+ else {
+  if mode==1 && m[0].own_ready {for i:0..<m[0].own[0].count {if n==6 {break;}url:=cast(string)m[0].own[0].url[i*N17_URL_MOST..<i*N17_URL_MOST+m[0].own[0].url_n[i]];if !nrs_admit(1,n,1,0,cast(string)m[0].inbox[0].identity[..],url) {ndm_note(m,"Secure inbox unavailable");return false;}urls[n]=url;n+=1;}}
+  for i:0..<m[0].ns {url:=cast(string)m[0].saved[i][0..<m[0].saved_n[i]];has:=false;for k:0..<n {if urls[k]==url {has=true;}}if !has && n<6 {urls[n]=url;n+=1;}}
+ }
+ if !ndr_configure(m[0].relays[..],m[0].inbox[..],urls[0..<n],cast(string)m[0].peer[0..<m[0].np]) {return false;}m[0].mode=mode;return true;
+}
+ndm_lists_ready :: (m:[]NostrMessenger)->bool #effects(all) {
+ p:=m[0].relays[..];if !p[0].active || p[0].nr==0 {return false;}
+ for i:0..<p[0].nr {r:=p[0].relays[i];if r.relay[0].state!=RL_OPEN || r.own<0 || r.relay[0].subs[r.own].state!=RS_CAUGHT || (m[0].np>0 && (r.peer<0 || r.relay[0].subs[r.peer].state!=RS_CAUGHT)) {return false;}}return true;
+}
+ndm_store_reply :: (m:[]NostrMessenger,task:int,status:int,raw:string,failed:bool)->bool #effects(all) {
+ if failed || (m[0].op==4 && status!=200) {
+  m[0].retry=true;m[0].retry_task=task;m[0].retry_at=ifx task==8 || task==9 then 9007199254740991 else m[0].ms+5000;ndm_note(m,ifx task==8 || task==9 then "Check inbox setup" else "Connection lost");return true;
+ }
+ if task==10 {
+  if !ndd_page(m[0].delivery[..],m[0].inbox[..],m[0].generation,raw) {return false;}
+  if m[0].delivery[0].complete {m[0].want_receipts=false;m[0].status_at=0;}return true;
+ }
+ r:[1]NsResult;defer {secure_zero(r[0].payload[..]);}
+ if !nsr_read(raw,r[..]) || r[0].service!=(ifx task==8 then 1 else 2) || r[0].action!=m[0].expected || cast(string)r[0].identity[..]!=cast(string)m[0].inbox[0].identity[..] || cast(string)r[0].operation[..]!=cast(string)m[0].operation[..] {return false;}
+ if r[0].status!=0 {
+  if r[0].status==9 {m[0].pub_phase=0;m[0].pub_cursor=0;m[0].pub_revision=0;m[0].head_wanted=true;}
+  else {ndm_note(m,ifx r[0].status==2 then "Inbox unavailable" else ifx r[0].status==4 then "Log in again" else "History unavailable");m[0].refresh_at=m[0].ms+5000;}
+  return true;
+ }
+ payload:=cast(string)r[0].payload[0..<r[0].n];
+ if task==4 {
+  next:[1]MsIndex;if !ms_index_read(payload,next[..]) || next[0].revision!=r[0].revision || next[0].cursor!=r[0].cursor {return false;}
+  m[0].outbox[0]=next[0];m[0].pub_revision=next[0].revision;m[0].pub_at=0;m[0].pub_target=0;m[0].pub_phase=1;return true;
+ }
+ if task==5 {
+  scratch:[65536]u8;e:=nostr_event_read(payload,scratch[..],false);id:[64]u8;
+  if e.error!=NE_OK || hex_encode_checked(cast(string)e.id[..],id[..],false).error!=NC_OK || cast(string)id[..]!=cast(string)m[0].outbox[0].rows[m[0].pub_at].id[..] {return false;}
+  m[0].original_n=ndi_copy(m[0].original[..],payload);m[0].pub_phase=3;return true;
+ }
+ if task==6 {
+  next:[1]MsIndex;if !ms_index_read(payload,next[..]) || next[0].revision!=r[0].revision || next[0].n>1 {return false;}
+  if m[0].head_for_peer && cast(string)m[0].head_pub[..]!=cast(string)m[0].peer[0..<m[0].np] {m[0].head_wanted=true;m[0].head_peer=false;return true;}
+  m[0].head_index[0]=next[0];
+  if next[0].n==0 {if m[0].head_for_peer {m[0].peer_ready=false;}else {m[0].own_ready=false;secure_zero(m[0].own_id[..]);m[0].own[0]=N17Relays.{};}m[0].head_wanted= !m[0].head_for_peer && m[0].np>0;m[0].head_peer=true;}
+  return true;
+ }
+ if task==7 {
+  if m[0].head_for_peer && cast(string)m[0].head_pub[..]!=cast(string)m[0].peer[0..<m[0].np] {m[0].head_wanted=true;m[0].head_peer=false;m[0].head_index[0]=MsIndex.{};return true;}
+  scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(payload,scratch[..],false));pub:[32]u8;id:[64]u8;
+  if !ne_lower_hex(cast(string)m[0].head_pub[..],pub[..]) || e.error!=NE_OK || !e.verified || hex_encode_checked(cast(string)e.id[..],id[..],false).error!=NC_OK || cast(string)id[..]!=cast(string)m[0].head_index[0].rows[0].id[..] {return false;}list:=n17_relays(e,pub[..]);
+  if m[0].head_for_peer {m[0].peer_ready=list.error==N17_OK;m[0].head_wanted=false;}
+  else {m[0].own[0]=list;m[0].own_ready=list.error==N17_OK;_=hex_encode_checked(cast(string)e.id[..],m[0].own_id[..],false);m[0].head_peer=true;m[0].head_wanted=m[0].np>0;}
+  m[0].head_index[0]=MsIndex.{};return true;
+ }
+ if task==8 {
+  // The SDK has signed one exact list against the completed read barrier.
+  // Queue that original on every saved discovery relay before any EVENT send.
+  scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(payload,scratch[..],false));me:[32]u8;
+  if !ne_lower_hex(cast(string)m[0].inbox[0].identity[..],me[..]) || e.error!=NE_OK || !e.verified || e.kind!=10050 || !n17_same(e.public_key[..],me[..]) {return false;}
+  m[0].setup_n=ndi_copy(m[0].setup_original[..],payload);m[0].enable=true;return true;
+ }
+ if task==9 {m[0].enable=false;m[0].setup_n=0;m[0].pub_phase=0;m[0].pub_cursor=0;m[0].pub_revision=0;m[0].head_wanted=true;m[0].head_peer=false;m[0].head_index[0]=MsIndex.{};return true;}
+ if task==11 {
+  index:[1]MsIndex;if !ms_index_read(payload,index[..]) || index[0].revision!=r[0].revision || index[0].cursor!=0 {return false;}
+  _=ndd_index(m[0].delivery[..],m[0].inbox[..],m[0].generation,m[0].status_at,index[..]);_=ndo_delivery(m[0].outgoing[..],m[0].inbox[..],index[..]);m[0].status_at+=1;return true;
+ }
+ return false;
+}

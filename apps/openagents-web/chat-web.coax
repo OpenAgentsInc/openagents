@@ -395,7 +395,7 @@ cw_side :: (s: [] ChatWeb) {
   l := k_side_folds(t, "side");
   names := SS_NAMES; adds := SS_NEW_LABELS; icons := [3] int.[IC_CHATS, IC_FOLDER, IC_GLOBE]; ids := [3] string.["fold.chats", "fold.projects", "fold.worlds"];
   for k: 0..<SS_PLACES {
-    if k==SS_FEED {_=k_sub_place(t,u,"side.feed",names[k],"/feed");continue;}
+    if k==SS_FEED {_=k_sub_place(t,u,"side.feed",names[k],"/feed");_=k_sub_place(t,u,"side.messages","Messages","/messages");continue;}
     open := (s[0].shut & (1 << k)) == 0;
     f := k_fold(t, u, ids[k], icons[k], names[k], open, (k == SS_CHATS && s[0].page == SS_CHATS) || (s[0].page == SS_SIDE && k == s[0].here), adds[k]);
     if open && k == SS_CHATS && s[0].local == 1 && !s[0].local_off && s[0].ns + s[0].nc > 0 {

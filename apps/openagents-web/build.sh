@@ -537,6 +537,8 @@ chat_web=$!
 # /milestone (unlisted): the OpenAgents book's first milestone, the shared app the iPhone runs too
 timed feed "$here/../../coax/web/wasm.sh" "$here/feed.coax" "$here/feed-face.c" "$here/build/feed.wasm" &
 feed=$!
+timed messages "$here/../../coax/web/wasm.sh" "$here/messages.coax" "$here/messages-face.c" "$here/build/messages.wasm" &
+messages=$!
 # (apps/shared/openagents-app.coax), drawn by the browser with the kit (milestone.coax). Fake services only.
 timed milestone "$here/../../coax/web/wasm.sh" "$here/milestone.coax" "$here/milestone-face.c" "$here/build/milestone.wasm" &
 milestone=$!
@@ -564,6 +566,7 @@ wait "$editor_shell"
 wait "$chat_web"
 wait "$milestone"
 wait "$feed"
+wait "$messages"
 wait "$nostr_chat"
 wait "$agents_page"
 wait "$nip01"

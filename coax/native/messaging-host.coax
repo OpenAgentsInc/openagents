@@ -6,10 +6,7 @@
 #load "relay-session-wire.coax";
 #load "relay-session-state.coax";
 nsm_erase :: (bytes:[]u8) #export_c #effects(all) {secure_zero(bytes);}
-nsm_incoming :: (frame:string,out:[]u8)->int #export_c #effects(all) {
- m:=nostr_message_read(frame);if m.error!=NM_OK || m.type!=NM_EVENT {return 0;}n:=m.event.to-m.event.from;if n<1 || n>65536 || n>out.count {return -1;}for i:0..<n {out[i]=frame[m.event.from+i];}return n;
-}
-nsm_frame_type :: (frame:string)->int #export_c #effects(all) {m:=nostr_message_read(frame);return ifx m.error==NM_OK then m.type else 0;}
+#load "messaging-input.coax";
 nsm_head_filter :: (identity:string,kind:int,out:[]u8)->int #export_c #effects(all) {
  if !aw_hex(identity,64) || !ns_list_kind(kind) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"authors");jo_arr(o[..]);jo_str(o[..],identity);jo_end(o[..]);jo_key(o[..],"kinds");jo_arr(o[..]);jo_int(o[..],kind);jo_end(o[..]);jo_key(o[..],"limit");jo_int(o[..],1);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
 }

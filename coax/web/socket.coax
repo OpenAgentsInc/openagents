@@ -12,6 +12,7 @@ SOCKET_OPENED :: 0; SOCKET_FRAME :: 1; SOCKET_CLOSED :: 2; SOCKET_ERROR :: 3;
 PIPE_OPEN :: 1; PIPE_SEND :: 2; PIPE_CLOSE :: 3;
 PIPE_COMMANDS :: 32;
 PIPE_CAP :: 16384;
+PIPE_FRAME_CAP :: 131072;
 
 Pipe :: struct {
   n: int;                          // commands queued
@@ -20,7 +21,7 @@ Pipe :: struct {
   from: [PIPE_COMMANDS] int;       // its bytes in buf: a URL or a frame
   len: [PIPE_COMMANDS] int;
   used: int;
-  buf: [PIPE_CAP] u8;
+  buf: [PIPE_FRAME_CAP] u8;
 }
 
 // A message kind from the host as a socket event, or -1 when it isn't one.
@@ -38,7 +39,10 @@ socket_event_limit :: (kind:int,most:int)->SocketEvent {
 // Queues a command with its bytes. False when the queue or its buffer is full
 // (nothing is queued then: a frame is never cut).
 pipe_put :: (p: [] Pipe, op: int, id: int, text: string) -> bool {
-  if p[0].n >= PIPE_COMMANDS || p[0].used + text.count > PIPE_CAP { return false; }
+  return pipe_put_limit(p,op,id,text,PIPE_CAP);
+}
+pipe_put_limit :: (p:[]Pipe,op:int,id:int,text:string,limit:int)->bool {
+  if limit<1 || limit>PIPE_FRAME_CAP || p[0].n >= PIPE_COMMANDS || p[0].used + text.count > limit { return false; }
   k := p[0].n;
   p[0].op[k] = op; p[0].id[k] = id; p[0].from[k] = p[0].used; p[0].len[k] = text.count;
   for i: 0..<text.count { p[0].buf[p[0].used + i] = text[i]; }
@@ -71,4 +75,10 @@ pipe_bytes :: (p: [] Pipe, k: int) -> string { return cast(string) p[0].buf[p[0]
   #assert !pipe_send(p[..], 0, cast(string) big[..]) && p[0].n == 0;
   for k: 0..<PIPE_COMMANDS { #assert pipe_close(p[..], 0); }
   #assert !pipe_close(p[..], 0) && p[0].n == PIPE_COMMANDS;
+}
+
+#test "private socket frames opt into a larger whole-frame pipe without widening existing users" {
+ p:[1]Pipe;b:[PIPE_FRAME_CAP+1]u8;
+ #assert !pipe_send(p[..],0,cast(string)b[0..<PIPE_CAP+1]) && pipe_put_limit(p[..],PIPE_SEND,0,cast(string)b[0..<PIPE_FRAME_CAP],PIPE_FRAME_CAP);
+ pipe_drained(p[..]);#assert !pipe_put_limit(p[..],PIPE_SEND,0,cast(string)b[..],PIPE_FRAME_CAP) && !pipe_put_limit(p[..],PIPE_SEND,0,"a",PIPE_FRAME_CAP+1);
 }

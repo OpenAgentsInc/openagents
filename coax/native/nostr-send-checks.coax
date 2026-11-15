@@ -6,6 +6,12 @@
  send:[1]NsmSend;#assert nsm_send_read(cast(string)out[0..<r.n],send[..]) && send[0].n==2 && send[0].heads_n==2;
  work:[NIP59_WORK]u8;rumor:[65536]u8;bob:=n59_bob();bob_pub:[32]u8;#assert ne_lower_hex(NMS_LIST_PUB,bob_pub[..]);opened:=nip17_open(bob[..],bob_pub[..],nsm_send_event(send[..],0),work[..],rumor[..]);#assert opened.error==N17_OK && opened.kind==14;first:=opened.rumor_id;
  key[31]=1;me:[32]u8;#assert ne_lower_hex(id,me[..]);opened=nip17_open(key[..],me[..],nsm_send_event(send[..],1),work[..],rumor[..]);#assert opened.error==N17_OK && n17_same(first[..],opened.rumor_id[..]);
+ // A second explicit intent at the same second with identical text must not
+ // collapse into the first rumor on any NIP-17 client. An uncertain retry uses
+ // the cached operation's original bytes, not this materializer again.
+ other_q:[1]NscRequest;other_q[0]=q[0];for c,i:NMS_LIST_PUB {other_q[0].operation[i]=c;}second:[NSM_BYTES]u8;fresh[0]=n59_fresh(3)[0];fresh[1]=n59_fresh(4)[0];key[31]=1;
+ r2:=nsm_seal(other_q[..],f,key[..],fresh[..],heads[..],1730000000,second[..]);other_send:[1]NsmSend;#assert r2.status==0 && nsm_send_read(cast(string)second[0..<r2.n],other_send[..]);
+ bob=n59_bob();opened=nip17_open(bob[..],bob_pub[..],nsm_send_event(other_send[..],0),work[..],rumor[..]);#assert opened.error==N17_OK && !n17_same(first[..],opened.rumor_id[..]);
  // Actual account journal staging binds every frozen inbox ID and commits
  // two complete originals and their exact targets in one revision.
  document:[1048576]u8;arena:[1048576]u8;recs:[512]RsdRec;state:[1]Nms;j:[1]Cj;scope:[32]u8;#assert nms_scope("send-fixture",id,scope[..]);opened_j:=cj_open_v2(j[..],document[..],0,me,scope);#assert opened_j.status==CJO_NEW;relay:=cj_relay(j[..],document[..],"wss://relay.openagents.com");none:[1][32]u8;
@@ -16,5 +22,5 @@
  #assert nms_mount(state[..],document[..],staged.length,"send-fixture",id,1,false,arena[..],recs[..],1730000000)==0 && state[0].j[0].pubs==2 && state[0].j[0].pub[0].pending==1 && state[0].j[0].pub[1].pending==1;
  recovered:[65536]u8;nr:=nms_original(state[..],document[..],cast(string)manifest[0].self[..],recovered[..]);#assert nr>0 && cast(string)recovered[0..<nr]==nsm_send_event(send[..],1);
  // A missing or wrong sender inbox refuses before any partial ciphertext.
- heads[0].lens[1]=0;fresh[0]=n59_fresh(3)[0];fresh[1]=n59_fresh(4)[0];r=nsm_seal(q[..],f,key[..],fresh[..],heads[..],1730000000,out[..]);#assert r.status==2 && crypto_zeroed(out[..]) && crypto_zeroed(key[..]);
+ heads[0].lens[1]=0;key[31]=1;fresh[0]=n59_fresh(3)[0];fresh[1]=n59_fresh(4)[0];r=nsm_seal(q[..],f,key[..],fresh[..],heads[..],1730000000,out[..]);#assert r.status==2 && crypto_zeroed(out[..]) && crypto_zeroed(key[..]);
 }

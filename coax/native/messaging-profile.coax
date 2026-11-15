@@ -57,7 +57,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if nr<0 || !nsc_read(cast(string)request[0..<nr],q[..]) || !nso_digest(q[..],key[..],digest[..]) || cast(string)digest[..]!=jv_raw(d[0],jv_get(d[0],0,"digest")) {return 1;}
  delivery:[4096]u8;nd:=fs_read("proto/nostr/delivery-v1alpha1.json",delivery[..]);dd:[1]Jv;dn:[128]JvNode;
  if nd<0 || !jv_parse(dd[..],cast(string)delivery[0..<nd],dn[..]) {return 1;}
- dr:[1]NdlRequest;dp:[1]NdlPage;n=ndl_request_write(op,"",out[..]);golden:[4096]u8;ng:=js_string(dd[0],jv_get(dd[0],0,"golden_request"),golden[..]);
+ dr:[1]NdlRequest;dp:[1]NdlPage;n=ndl_request_write(op,"",op,out[..]);golden:[4096]u8;ng:=js_string(dd[0],jv_get(dd[0],0,"golden_request"),golden[..]);
  if n<0 || n!=ng || cast(string)out[0..<n]!=cast(string)golden[0..<ng] || !ndl_request_read(cast(string)out[0..<n],dr[..]) || !ndl_begin(dp[..],dr[..]) {return 1;}
  n=ndl_page_write(dp[..],out[..]);ng=js_string(dd[0],jv_get(dd[0],0,"golden_empty_page"),golden[..]);
  if n<0 || n!=ng || cast(string)out[0..<n]!=cast(string)golden[0..<ng] {return 1;}

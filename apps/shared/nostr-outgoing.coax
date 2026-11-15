@@ -68,6 +68,22 @@ ndo_reply :: (o:[]NostrOutgoing,s:[]NostrInbox,generation:int,raw:string,failed:
 ndo_delivery :: (o:[]NostrOutgoing,s:[]NostrInbox,index:[]MsIndex)->bool #effects(all) {
  if o[0].generation!=s[0].generation || o[0].phase!=3 || !nds_index(o[0].delivery[..],index) {return false;}
  o[0].status=nds_status(o[0].delivery[..]);
- for i:0..<s[0].n {if cast(string)s[0].messages[i].outer[..]==cast(string)o[0].delivery[0].receipt[0].self[..] {o[0].seen=true;secure_zero(o[0].text[..]);o[0].nt=0;}}
+ _=ndo_seen(o,s);
  return true;
+}
+
+// The verified self copy replaces the optimistic row without waiting for an
+// unrelated receipt enumeration HTTP request. A public outer ID is not enough:
+// the current inbox only holds provider-opened, member-checked messages.
+ndo_seen :: (o:[]NostrOutgoing,s:[]NostrInbox)->bool #effects(all) {
+ if o[0].generation!=s[0].generation || o[0].phase!=3 {return false;}
+ for i:0..<s[0].n {if cast(string)s[0].messages[i].outer[..]==cast(string)o[0].delivery[0].receipt[0].self[..] {o[0].seen=true;secure_zero(o[0].text[..]);o[0].nt=0;return true;}}return false;
+}
+#test "an opened sender copy replaces the optimistic row independently of receipt HTTP" {
+ s:[1]NostrInbox;o:[1]NostrOutgoing;b:[4096]u8;
+ me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(s[..],"a",me) && ndi_begin(s[..],op,me);n:=nsr_write("custody","open",op,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(s[..],1,cast(string)b[0..<n]);
+ o[0].phase=3;o[0].generation=2;_=ndi_copy(o[0].delivery[0].receipt[0].self[..],me);o[0].nt=ndi_copy(o[0].text[..],"draft");
+ #assert !ndo_seen(o[..],s[..]) && !o[0].seen && o[0].nt==5;o[0].generation=1;
+ #assert ndo_seen(o[..],s[..]) && o[0].seen && o[0].nt==0 && o[0].text[0]==0;
 }

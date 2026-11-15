@@ -83,24 +83,24 @@ nmt_linked_checks :: (t:[]Ap,original:NmtAccount) {
 }
 nmt_delivery_checks :: (t:[]Ap,a:NmtAccount,b:NmtAccount,operation:string,sealed:string) {
  owner:=a;other:=b;body:[2048]u8;p:[1]NdlPage;c:[1]Sb;sql:[1]Sb;
- n:=ndl_request_write(cast(string)owner.pub[..],"",body[..]);
+ n:=ndl_request_write(cast(string)owner.pub[..],"",operation,body[..]);
  st:=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],"","","");ap_check(t,"delivery enumeration refuses anonymous access",st==401,"");
  cookie:=ac_cookie_header("__Host-oa_session",cast(string)owner.session[0..<owner.ns],c[..]);
  st=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],cookie,"","");
- ap_check(t,"cold client recovers the immutable complete seal receipt without plaintext",st==200 && ndl_page_read(ap_body(t),p[..]) && p[0].n==1 && p[0].nn==0 && cast(string)p[0].items[0].operation[..]==operation && !ap_has(ap_body(t),"private receipt") && ap_has(ac_head(t),"private, no-store"),"");
- n=ndl_request_write(cast(string)other.pub[..],"",body[..]);st=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],cookie,"","");ap_check(t,"delivery enumeration refuses another canonical identity",st==403,"");
+ ap_check(t,"cold client recovers the immutable complete seal receipt without plaintext",st==200 && ndl_page_read(ap_body(t),p[..]) && p[0].n==1 && p[0].nn==0 && cast(string)p[0].operation[..]==operation && cast(string)p[0].items[0].operation[..]==operation && !ap_has(ap_body(t),"private receipt") && ap_has(ac_head(t),"private, no-store"),"");
+ n=ndl_request_write(cast(string)other.pub[..],"",operation,body[..]);st=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],cookie,"","");ap_check(t,"delivery enumeration refuses another canonical identity",st==403,"");
  cookie=ac_cookie_header("__Host-oa_session",cast(string)other.session[0..<other.ns],c[..]);st=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],cookie,"","");ap_check(t,"another account sees none of the sender receipts",st==200 && ndl_page_read(ap_body(t),p[..]) && p[0].n==0,"");
  cookie=ac_cookie_header("__Host-oa_session",cast(string)owner.session[0..<owner.ns],c[..]);
  // Synthetic immutable receipt rows exercise SQL pagination only. They do
  // not claim that multiple copies of this real ciphertext were published.
  sb(sql[..],"INSERT INTO auth.nostr_operations_v1alpha1 SELECT namespace,account,identity,lpad(g::text,64,'0'),action,digest,source,result,result_sha256 FROM auth.nostr_operations_v1alpha1 CROSS JOIN generate_series(100,116) AS g WHERE account='");sb(sql[..],cast(string)owner.account[0..<owner.na]);sb(sql[..],"' AND operation='");sb(sql[..],operation);sb(sql[..],"'");ap_do(t,sb_text(sql[..]));
- n=ndl_request_write(cast(string)owner.pub[..],"",body[..]);st=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],cookie,"","");
+ n=ndl_request_write(cast(string)owner.pub[..],"",operation,body[..]);st=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],cookie,"","");
  ap_check(t,"delivery page is bounded at sixteen and retains its exclusive continuation",st==200 && ndl_page_read(ap_body(t),p[..]) && p[0].n==16 && p[0].nn==64,"");
- n=ndl_request_write(cast(string)owner.pub[..],cast(string)p[0].next[0..<p[0].nn],body[..]);st=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],cookie,"","");
+ n=ndl_request_write(cast(string)owner.pub[..],cast(string)p[0].next[0..<p[0].nn],operation,body[..]);st=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],cookie,"","");
  ap_check(t,"delivery continuation returns the remaining receipts without echoing the boundary",st==200 && ndl_page_read(ap_body(t),p[..]) && p[0].n==2 && p[0].nn==0,"");
  sql[0]=Sb.{};sb(sql[..],"DELETE FROM auth.nostr_operations_v1alpha1 WHERE account='");sb(sql[..],cast(string)owner.account[0..<owner.na]);sb(sql[..],"' AND action=3 AND operation<>'");sb(sql[..],operation);sb(sql[..],"'");ap_do(t,sb_text(sql[..]));
  sql[0]=Sb.{};sb(sql[..],"UPDATE auth.nostr_operations_v1alpha1 SET result_sha256=repeat('0',64) WHERE account='");sb(sql[..],cast(string)owner.account[0..<owner.na]);sb(sql[..],"' AND operation='");sb(sql[..],operation);sb(sql[..],"'");ap_do(t,sb_text(sql[..]));
- n=ndl_request_write(cast(string)owner.pub[..],"",body[..]);st=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],cookie,"","");ap_check(t,"corrupt delivery receipts are errors rather than an empty success",st==503,"");
+ n=ndl_request_write(cast(string)owner.pub[..],"",operation,body[..]);st=ac_call(t,"POST","/api/auth/nostr/delivery/v1alpha1",cast(string)body[0..<n],cookie,"","");ap_check(t,"corrupt delivery receipts are errors rather than an empty success",st==503,"");
  hash:[64]u8;#assert nsm_checksum(sealed,hash[..]);sql[0]=Sb.{};sb(sql[..],"UPDATE auth.nostr_operations_v1alpha1 SET result_sha256='");sb(sql[..],cast(string)hash[..]);sb(sql[..],"' WHERE account='");sb(sql[..],cast(string)owner.account[0..<owner.na]);sb(sql[..],"' AND operation='");sb(sql[..],operation);sb(sql[..],"'");ap_do(t,sb_text(sql[..]));
 }
 nmt_checks :: (t:[]Ap,dir:string) {
