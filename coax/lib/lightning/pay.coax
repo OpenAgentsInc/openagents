@@ -121,8 +121,8 @@ pay_map_graph :: (m: [] PayMap, g: [] GspGraph) -> int #effects(all) {
       e.fee_base = cast(int) p.fee_base; e.fee_ppm = cast(int) p.fee_ppm; e.cltv = p.cltv;
       e.htlc_min = cast(int) p.htlc_min; e.htlc_max = cast(int) p.htlc_max;
       e.disabled = (p.channel_flags & 2) != 0;
-      if e.hi > e.htlc_max { e.hi = e.htlc_max; }
-      if e.lo > e.hi { e.lo = e.hi; }
+      if e.hi > e.htlc_max { e.hi = e.htlc_max; }   // mutant: equivalent (an equal hi is the same after the assignment)
+      if e.lo > e.hi { e.lo = e.hi; }   // mutant: equivalent (an equal lo is the same after the assignment)
       m[0].edges[k] = e;
     }
   }
@@ -163,7 +163,7 @@ pay_usable :: (e: PayEdge, amount: int) -> bool #effects(all) {
 // the same in every implementation.
 pay_risk :: (e: PayEdge, amount: int) -> int #effects(all) {
   lo := e.lo - e.inflight; hi := e.hi - e.inflight;
-  if lo < 0 { lo = 0; }
+  if lo < 0 { lo = 0; }   // mutant: equivalent (lo is an integer, so lo < 0, lo <= 0 and lo < 1 all leave 0 as 0)
   if amount <= lo { return 0; }
   return PAY_RISK * (amount - lo) / (hi - lo + 1);
 }
@@ -179,7 +179,7 @@ pay_node_index :: (ids: [] [33] u8, n: [] int, id: [] u8) -> int #effects(all) {
   if n[0] == PAY_MAX_NODES { return -1; }
   for i: 0..<33 { ids[n[0]][i] = id[i]; }
   n[0] += 1;
-  return n[0] - 1;
+  return n[0] - 1;   // mutant: equivalent (a node added here is only tested against -1, at n of 3 or more, or dropped with first_two)
 }
 // Dijkstra's algorithm from the payee back to the payer. Each node's
 // label is the cost, amount and expiry an HTLC must arrive with there;
@@ -190,7 +190,7 @@ pay_node_index :: (ids: [] [33] u8, n: [] int, id: [] u8) -> int #effects(all) {
 // index, payee 0 and payer 1, then nodes in the order edges name them.
 pay_find_route :: (m: [] PayMap, payer: [] u8, payee: [] u8, amount: int, final_cltv: int, height: int) -> PayRoute #effects(all) {
   ids: [PAY_MAX_NODES] [33] u8; n: [1] int;
-  first_two := pay_node_index(ids[..], n[..], payee) + pay_node_index(ids[..], n[..], payer);
+  first_two := pay_node_index(ids[..], n[..], payee) + pay_node_index(ids[..], n[..], payer);   // mutant: equivalent (the sum is dropped: the calls only make the payee index 0 and the payer index 1)
   if lnh_same(payer, payee) || amount <= 0 { return PayRoute.{code = PAY_NO_ROUTE}; }
   for i: 0..<m[0].n {
     if pay_node_index(ids[..], n[..], m[0].edges[i].from[..]) < 0 || pay_node_index(ids[..], n[..], m[0].edges[i].to[..]) < 0 {
@@ -199,10 +199,10 @@ pay_find_route :: (m: [] PayMap, payer: [] u8, payee: [] u8, amount: int, final_
   }
   cost: [PAY_MAX_NODES] int; need: [PAY_MAX_NODES] int; cltv: [PAY_MAX_NODES] int; hops: [PAY_MAX_NODES] int;
   next: [PAY_MAX_NODES] int; reached: [PAY_MAX_NODES] bool; done: [PAY_MAX_NODES] bool;
-  reached[0] = true; need[0] = amount; cltv[0] = final_cltv; next[0] = -1;
+  reached[0] = true; need[0] = amount; cltv[0] = final_cltv; next[0] = -1;   // mutant: equivalent (the walk back starts at the payer, which is reached before it is settled, and stops at the payee, so next[0] is never read)
   while true {
     u := -1;
-    for i: 0..<n[0] { if reached[i] && !done[i] && (u < 0 || cost[i] < cost[u]) { u = i; } }
+    for i: 0..<n[0] { if reached[i] && !done[i] && (u < 0 || cost[i] < cost[u]) { u = i; } }   // mutant: equivalent (for u < 0 against u <= 0 or u < 1: u is 0 only in the first pass, when the payee alone is reached)
     if u < 0 { return PayRoute.{code = PAY_NO_ROUTE}; }
     done[u] = true;
     if u == 1 { break; }
@@ -428,19 +428,19 @@ pay_on_htlc :: (net: [] PayNet, k: int, j: int) -> int #effects(all) {
   p := onion_peel(node[0].secret[..], x.onion[..], x.hash[..], payload[..], next[..]);
   for i: 0..<32 { node[0].ins[j].ss[i] = p.ss[i]; }
   hop := ifx p.code == ONION_OK then pay_read_payload(payload[0..<p.payload_n]) else PayHop.{code = PAY_INVALID_ONION_PAYLOAD};
-  if hop.code != PAY_OK { return pay_fail_code(net, k, j, hop.code, 0); }
+  if hop.code != PAY_OK { return pay_fail_code(net, k, j, hop.code, 0); }   // mutant: equivalent (hop.code here is PAY_INVALID_ONION_PAYLOAD, whose failure message carries no value)
   if !p.last {
-    if !hop.has_scid { return pay_fail_code(net, k, j, PAY_INVALID_ONION_PAYLOAD, 0); }
-    l := -1; s := 0;
+    if !hop.has_scid { return pay_fail_code(net, k, j, PAY_INVALID_ONION_PAYLOAD, 0); }   // mutant: equivalent (for the value: invalid_onion_payload's failure message carries no value)
+    l := -1; s := 0;   // mutant: equivalent (s is set with l, and read only when a link matched)
     for i: 0..<net[0].links_n {
       for e: 0..<2 { if net[0].links[i].scid == hop.scid && net[0].links[i].node[e] == k { l = i; s = e; } }
     }
-    if l < 0 { return pay_fail_code(net, k, j, PAY_UNKNOWN_NEXT_PEER, 0); }
+    if l < 0 { return pay_fail_code(net, k, j, PAY_UNKNOWN_NEXT_PEER, 0); }   // mutant: equivalent (for the value: unknown_next_peer's failure message carries no value)
     policy := net[0].links[l].policy[s];
     if x.amount - hop.amount < pay_fee(policy.fee_base, policy.fee_ppm, hop.amount) { return pay_fail_code(net, k, j, PAY_FEE_INSUFFICIENT, x.amount); }
     if x.expiry - policy.cltv < hop.cltv { return pay_fail_code(net, k, j, PAY_INCORRECT_CLTV_EXPIRY, x.expiry); }
     if pay_offer(net, l, s, hop.amount, x.hash[..], hop.cltv, next[..], j, -1) != LNH_OK {
-      return pay_fail_code(net, k, j, PAY_TEMPORARY_CHANNEL_FAILURE, 0);
+      return pay_fail_code(net, k, j, PAY_TEMPORARY_CHANNEL_FAILURE, 0);   // mutant: equivalent (temporary_channel_failure's failure message carries no value)
     }
     node[0].ins[j].state = PAY_IN_FORWARDED;
     return PAY_OK;
@@ -547,7 +547,7 @@ pay_run :: (net: [] PayNet) -> int #effects(all) {
     if moved < 0 { return PAY_CHANNEL; }
     if moved == 0 { return PAY_OK; }
   }
-  return PAY_OK;
+  return PAY_OK;   // mutant: equivalent (unreachable: the loop above only returns)
 }
 // book:end run
 
@@ -589,7 +589,7 @@ pay_spendable :: (end: [] LnhNode) -> int #effects(all) {
   s := lnh_spec(end, true, LNH_ALL);
   fee := ifx end[0].funder then lnc_commit_fee(end[0].feerate, s.n + 1, false) else 0;
   v := s.to_local_msat - (end[0].their_cfg.reserve_sat + fee) * 1000;
-  return ifx v < 0 then 0 else v;
+  return ifx v < 0 then 0 else v;   // mutant: equivalent (for v < 0 against v <= 0 or v < 1: a v of 0 is returned as 0 either way)
 }
 // Each part's session key: SHA-256 of the payer's secret and the part's
 // number, so every onion is new and the example repeats.
@@ -609,7 +609,7 @@ pay_launch :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment, r: PayRoute, amou
   if pay_onion(m, r, part.session[..], p[0].hash[..], p[0].secret[..], p[0].total, onion[..]) != ONION_OK { return PAY_CAPACITY; }
   lnh_sha(onion[..], part.onion_hash[..]);
   for h: 0..<r.hops { m[0].edges[r.edge[h]].inflight += r.amount[h]; }
-  l := -1; s := 0; first := m[0].edges[r.edge[0]].scid;
+  l := -1; s := 0; first := m[0].edges[r.edge[0]].scid;   // mutant: equivalent (for s: it is set with l, and read only when a link matched)
   for x: 0..<net[0].links_n { for e: 0..<2 { if net[0].links[x].scid == first && net[0].links[x].node[e] == k { l = x; s = e; } } }
   if l < 0 || pay_offer(net, l, s, r.amount[0], p[0].hash[..], r.cltv[0], onion[..], -1, i) != LNH_OK {
     // The payer's own channel refused: it knows that much now.
@@ -658,8 +658,8 @@ pay_learn :: (m: [] PayMap, p: [] PayPayment, i: int, reason: [] u8) #effects(al
     for k: 0..<m[0].n { if lnh_same(m[0].edges[k].from[..], bad[..]) || lnh_same(m[0].edges[k].to[..], bad[..]) { m[0].edges[k].failed = true; } }
   } else if code == PAY_TEMPORARY_CHANNEL_FAILURE {
     hi := m[0].edges[e].inflight - 1;
-    if hi < m[0].edges[e].hi { m[0].edges[e].hi = hi; }
-    if m[0].edges[e].lo > m[0].edges[e].hi { m[0].edges[e].lo = m[0].edges[e].hi; }
+    if hi < m[0].edges[e].hi { m[0].edges[e].hi = hi; }   // mutant: equivalent (an equal hi is the same after the assignment)
+    if m[0].edges[e].lo > m[0].edges[e].hi { m[0].edges[e].lo = m[0].edges[e].hi; }   // mutant: equivalent (for lo > hi against lo >= hi: an equal lo is the same after the assignment)
   } else {
     m[0].edges[e].failed = true;
   }
@@ -711,7 +711,7 @@ pay_round :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment) -> int #effects(al
       pay_learn(m, p, i, o.reason[0..<o.reason_n]);
       pay_settle_part(m, p, i); node[0].outs[part.out].state = PAY_OUT_FREE; changed = true;
       if !p[0].refused { p[0].waiting[p[0].waiting_n] = part.amount; p[0].waiting_n += 1; }
-    } else { flying += 1; }
+    } else { flying += 1; }   // mutant: equivalent (flying is only compared with 0, and every flying part makes it nonzero)
   }
   if p[0].settled >= p[0].total && flying == 0 { p[0].code = PAY_OK; }
   else if p[0].refused && flying == 0 { p[0].code = PAY_REFUSED; }
@@ -770,7 +770,7 @@ pay_policy :: (net: [] PayNet, l: int, s: int, base: int, ppm: int, cltv: int, h
 pay_announce :: (net: [] PayNet, l: int, g: [] GspGraph, timestamp: u64, disabled: int) -> int #effects(all) {
   x := net[0].links[l]; m: [512] u8; f: [1] u8;
   a := net[0].nodes[x.node[0]].secret; b := net[0].nodes[x.node[1]].secret;
-  n := gossip_announcement_write_vartime(g[0].chain[..], x.scid, a[..], b[..], x.end[0].funding_secret[..], x.end[1].funding_secret[..], f[0..<0], m[..]);
+  n := gossip_announcement_write_vartime(g[0].chain[..], x.scid, a[..], b[..], x.end[0].funding_secret[..], x.end[1].funding_secret[..], f[0..<0], m[..]);   // mutant: equivalent (the graph keeps no features, and an empty field and one zero byte both sign and verify)
   code := gossip_graph_add_vartime(g, m[0..<n]);
   for s: 0..<2 {
     key := ifx s == 0 then a[..] else b[..];
@@ -801,7 +801,7 @@ pay_write_invoice :: (net: [] PayNet, payee: int, amount: int, k: int, hints: []
   d: [11] u8; t0 := inv_text("Chapter 113", d[..]);
   code = invoice_put_bytes_vartime(w[..], INV_D, d[..]);
   code = invoice_put_features_vartime(w[..], features[..]);
-  if hints.count > 0 { code = invoice_put_route_vartime(w[..], hints); }
+  if hints.count > 0 { code = invoice_put_route_vartime(w[..], hints); }   // mutant: equivalent (for the assignment: code is never read; the signer refuses a writer whose route failed)
   t := invoice_sign_vartime(w[..], node[0].secret[..], out);
   return ifx t.code == INV_OK then t.length else -1;
 }
@@ -812,18 +812,17 @@ pay_balance :: (net: [] PayNet, l: int, s: int) -> int #effects(all) { return ln
 // ---- checks
 pay_test_id :: (k: int) -> [33] u8 #effects(all) { id: [33] u8; id[0] = 2; for i: 1..<33 { id[i] = cast(u8) (k + i); } return id; }
 // An edge from node a to node b of the test map, with a policy.
-pay_test_edge :: (m: [] PayMap, scid: u64, a: int, b: int, base: int, ppm: int, cltv: int, hi: int) -> int #effects(all) {
+pay_test_edge :: (m: [] PayMap, scid: u64, a: int, b: int, base: int, ppm: int, cltv: int, hi: int) #effects(all) {
   x := pay_test_id(a); y := pay_test_id(b);
   k := pay_add_edge(m, scid, x[..], y[..], hi);
   m[0].edges[k].fee_base = base; m[0].edges[k].fee_ppm = ppm; m[0].edges[k].cltv = cltv;
   m[0].edges[k].htlc_min = 1000; m[0].edges[k].htlc_max = hi;
-  return k;
 }
 // The payer 0, the payee 3, and two paths: 0 > 1 > 3 and 0 > 2 > 3.
 pay_test_map :: (m: [] PayMap) #effects(all) {
   m[0] = PayMap.{};
-  e := pay_test_edge(m, 1, 0, 1, 0, 0, 0, 900000000) + pay_test_edge(m, 2, 1, 3, 1000, 100, 40, 900000000);
-  e += pay_test_edge(m, 3, 0, 2, 0, 0, 0, 900000000) + pay_test_edge(m, 4, 2, 3, 500, 50, 80, 900000000);
+  pay_test_edge(m, 1, 0, 1, 0, 0, 0, 900000000); pay_test_edge(m, 2, 1, 3, 1000, 100, 40, 900000000);
+  pay_test_edge(m, 3, 0, 2, 0, 0, 0, 900000000); pay_test_edge(m, 4, 2, 3, 500, 50, 80, 900000000);
 }
 pay_test_route :: (m: [] PayMap, amount: int) -> PayRoute #effects(all) {
   a := pay_test_id(0); b := pay_test_id(3);
@@ -844,6 +843,11 @@ pay_test_route :: (m: [] PayMap, amount: int) -> PayRoute #effects(all) {
   // Below what is known to be there, no risk; in-flight parts use some up.
   f.lo = 300000; #assert pay_risk(f, 300000) == 0 && pay_risk(f, 300001) == 0 && pay_risk(f, 650000) == 5000;
   f.inflight = 300000; #assert pay_risk(f, 1) == 0 && pay_risk(f, 350000) == 5000;
+  // More in flight than is known to be there: lo is held at 0, and hi is 900.
+  g := PayEdge.{hi = 1000, inflight = 100};
+  #assert pay_risk(g, 450) == 4994;
+  // In flight past hi itself: an amount of 0 risks nothing, with no division by zero.
+  #assert pay_risk(PayEdge.{hi = 5, inflight = 6}, 0) == 0;
 }
 #test "BOLT 4's failure messages, without channel_update" {
   out: [16] u8;
@@ -856,6 +860,17 @@ pay_test_route :: (m: [] PayMap, amount: int) -> PayRoute #effects(all) {
   #assert pay_failure(PAY_FINAL_INCORRECT_AMOUNT, 5, 0, out[..]) == 10 && ln_hex_is(out[0..<10], "00130000000000000005");
   #assert pay_failure(PAY_INVALID_ONION_PAYLOAD, 0, 0, out[..]) == 5 && ln_hex_is(out[0..<5], "4016000000");
   #assert pay_failure(PAY_MPP_TIMEOUT, 0, 0, out[..]) == 2 && ln_hex_is(out[0..<2], "0017");
+  // Every byte is written: over a buffer of 0xff, with a value in every byte.
+  codes := [8] int.[PAY_TEMPORARY_CHANNEL_FAILURE, PAY_UNKNOWN_NEXT_PEER, PAY_FEE_INSUFFICIENT, PAY_INCORRECT_CLTV_EXPIRY,
+                    PAY_INCORRECT_OR_UNKNOWN, PAY_FINAL_INCORRECT_CLTV, PAY_FINAL_INCORRECT_AMOUNT, PAY_INVALID_ONION_PAYLOAD];
+  want := [8] string.["10070000", "400a", "100c01020304050607080000", "100d0a0b0c0d0000", "400f0102030405060708090a0b0c",
+                      "00120a0b0c0d", "00130102030405060708", "4016000000"];
+  for c: 0..<8 {
+    for i: 0..<16 { out[i] = cast(u8) 255; }
+    v := ifx codes[c] == PAY_INCORRECT_CLTV_EXPIRY || codes[c] == PAY_FINAL_INCORRECT_CLTV then 0x0a0b0c0d else 0x0102030405060708;
+    n := pay_failure(codes[c], v, 0x090a0b0c, out[..]);
+    #assert ln_hex_is(out[0..<n], want[c]) && out[n] == 255;
+  }
 }
 #test "the search: the cheaper path, its fees and expiries, back from the payee" {
   m: [1] PayMap; pay_test_map(m[..]);
@@ -875,11 +890,15 @@ pay_test_route :: (m: [] PayMap, amount: int) -> PayRoute #effects(all) {
     r = pay_test_route(m[..], 50000000);
     #assert r.code == PAY_OK && r.edge[0] == 0 && r.edge[1] == 1 && r.fee == 6000 && r.cltv[0] == 1058;
   }
-  // Below both htlc_minimums, and above both limits: no route.
-  pay_test_map(m[..]);
+  // pay_test_map starts over: the changes above are gone.
+  pay_test_map(m[..]); r = pay_test_route(m[..], 50000000);
+  #assert r.code == PAY_OK && r.edge[0] == 2 && m[0].n == 4;
+  // Below both htlc_minimums, and above both limits: no route. At the minimum, one.
   #assert pay_test_route(m[..], 999).code == PAY_NO_ROUTE && pay_test_route(m[..], 900000001).code == PAY_NO_ROUTE;
+  #assert pay_test_route(m[..], 1000).code == PAY_OK;
   // The payer's own channel counts its balance exactly.
   pay_map_local(m[..], 2, 40000000);
+  #assert m[0].edges[2].lo == 40000000 && m[0].edges[2].hi == 40000000;
   r = pay_test_route(m[..], 50000000);
   #assert r.code == PAY_OK && r.edge[0] == 0;
   // CLTV deltas that would lock funds past PAY_MAX_CLTV are refused.
@@ -890,11 +909,11 @@ pay_test_route :: (m: [] PayMap, amount: int) -> PayRoute #effects(all) {
 }
 #test "the search: a long chain stops at PAY_MAX_HOPS" #steps 400000000 {
   m: [1] PayMap;
-  for k: 0..<PAY_MAX_HOPS { e := pay_test_edge(m[..], cast(u64) (10 + k), k, k + 1, 1, 0, 1, 900000000); }
+  for k: 0..<PAY_MAX_HOPS { pay_test_edge(m[..], cast(u64) (10 + k), k, k + 1, 1, 0, 1, 900000000); }
   a := pay_test_id(0); b := pay_test_id(PAY_MAX_HOPS); c := pay_test_id(PAY_MAX_HOPS + 1);
   r := pay_find_route(m[..], a[..], b[..], 1000000, 1018, 1000);
   #assert r.code == PAY_OK && r.hops == PAY_MAX_HOPS && r.fee == PAY_MAX_HOPS - 1 && r.cltv[0] == 1018 + PAY_MAX_HOPS - 1;
-  e := pay_test_edge(m[..], 99, PAY_MAX_HOPS, PAY_MAX_HOPS + 1, 1, 0, 1, 900000000);
+  pay_test_edge(m[..], 99, PAY_MAX_HOPS, PAY_MAX_HOPS + 1, 1, 0, 1, 900000000);
   #assert pay_find_route(m[..], a[..], c[..], 1000000, 1018, 1000).code == PAY_NO_ROUTE;
 }
 #test "a route hint adds the payee's private channel" {
@@ -923,6 +942,21 @@ pay_test_route :: (m: [] PayMap, amount: int) -> PayRoute #effects(all) {
   // An unknown even type, a missing amount, a long scid: invalid_onion_payload.
   bad := [3] string.["0201010401010a00", "040101", "020101040101060900000000000000000000"];
   for t: bad { x: [32] u8; #assert pay_read_payload(ln_unhex(t, x[..])).code == PAY_INVALID_ONION_PAYLOAD; }
+  // An amount longer than 8 bytes, an expiry longer than 4, a padded amount; a
+  // short_channel_id of 9 bytes and of 7; payment_data of 31 bytes, with a total
+  // longer than 8 bytes, and with a padded total.
+  worse := [8] string.["0209010000000000000000040101", "02010104050100000000", "02020001040101", "0201010401010609000000000000000000",
+                       "020101040101060700000000000000", "020101040101081f00000000000000000000000000000000000000000000000000000000000000",
+                       "02010104010108290000000000000000000000000000000000000000000000000000000000000000010000000000000000",
+                       "0201010401010821000000000000000000000000000000000000000000000000000000000000000000"];
+  for t: worse { x: [64] u8; #assert pay_read_payload(ln_unhex(t, x[..])).code == PAY_INVALID_ONION_PAYLOAD; }
+  // At the limits: an 8-byte amount, a 4-byte expiry, payment_data of exactly 32 bytes
+  // (a total of 0); then a short_channel_id and an 8-byte total together.
+  xb: [64] u8;
+  h = pay_read_payload(ln_unhex("020801000000000000000404ffffffff08201111111111111111111111111111111111111111111111111111111111111111", xb[..]));
+  #assert h.code == PAY_OK && h.amount == 72057594037927936 && h.cltv == 4294967295 && h.has_data && h.total == 0 && h.secret[0] == 17 && !h.has_scid;
+  h = pay_read_payload(ln_unhex("02010104010106080102030405060708082822222222222222222222222222222222222222222222222222222222222222220102030405060708", xb[..]));
+  #assert h.code == PAY_OK && h.has_scid && h.scid == 0x0102030405060708 && h.has_data && h.total == 0x0102030405060708 && h.secret[31] == 34;
 }
 #test "a route's onion peels hop by hop to its payloads" #steps 4000000000 {
   m: [1] PayMap; s: [3] [32] u8;
@@ -945,7 +979,7 @@ pay_test_route :: (m: [] PayMap, amount: int) -> PayRoute #effects(all) {
     onion = next;
   }
 }
-#test "gossip becomes the map: both ends' policies, signed by the nodes" #steps 20000000000 {
+#test "gossip becomes the map: both ends' policies, signed by the nodes" #steps 40000000000 {
   net: [1] PayNet; m: [1] PayMap; g: [1] GspGraph; chain: [32] u8; seed: [32] u8;
   for k: 0..<2 { s: [32] u8; for i: 0..<32 { s[i] = cast(u8) (11 * k + i + 1); } n := pay_node(net[..], s[..]); }
   net[0].links_n = 1; net[0].links[0].node[1] = 1; net[0].links[0].scid = gossip_scid(101, 1, 0);
@@ -964,6 +998,13 @@ pay_test_route :: (m: [] PayMap, amount: int) -> PayRoute #effects(all) {
   // A refresh keeps what was learned, cut to a lower htlc_max.
   m[0].edges[0].hi = 5000000; m[0].edges[1].lo = 7;
   #assert pay_map_graph(m[..], g[..]) == PAY_OK && m[0].n == 2 && m[0].edges[0].hi == 5000000 && m[0].edges[1].lo == 7;
+  // With end 0 disabled instead, end 1's direction bit is still not a disable bit.
+  g2: [1] GspGraph; m2: [1] PayMap; gossip_graph_begin(g2[..], chain[..]);
+  #assert pay_announce(net[..], 0, g2[..], 1762156800, 0) == GSP_OK && pay_map_graph(m2[..], g2[..]) == PAY_OK && m2[0].n == 2;
+  for s: 0..<2 {
+    k := pay_find_edge(m2[..], net[0].links[0].scid, net[0].nodes[s].id[..]);
+    #assert k >= 0 && m2[0].edges[k].disabled == (s == 0);
+  }
 }
 // Every check has a fixed limit on the work it may do, and each
 // commitment a channel signs costs a large part of it. A payment over two
@@ -1022,13 +1063,14 @@ pay_test_onion :: (net: [] PayNet, m: [] PayMap, payee: int, amount: int, total:
   t: PayTestOnion;
   lnh_preimage(1, t.preimage[..], t.hash[..]);
   for i: 0..<32 { t.session[i] = cast(u8) (i + 5); t.secret[i] = cast(u8) (2 * i + 2); }
-  t.r = pay_find_route(m, net[0].nodes[0].id[..], net[0].nodes[payee].id[..], amount, 1018, 1000);
+  t.r = pay_find_route(m, net[0].nodes[0].id[..], net[0].nodes[payee].id[..], amount, 1018, net[0].height);
   t.r.code = pay_onion(m, t.r, t.session[..], t.hash[..], t.secret[..], total, t.onion[..]);
   return t;
 }
 // The failure in the update_fail_htlc an end just queued, opened by the
-// payer: the erring hop and the failure code.
-pay_test_failure :: (m: [] PayMap, t: PayTestOnion, end: [] LnhNode) -> [2] int #effects(all) {
+// payer: the erring hop, the failure code, and whether the route's keys
+// made the shared secrets.
+pay_test_failure :: (m: [] PayMap, t: PayTestOnion, end: [] LnhNode) -> [3] int #effects(all) {
   k := end[0].out_n - 1; msg := end[0].out[k];
   pubkeys: [99] u8;
   for h: 0..<t.r.hops { for b: 0..<33 { pubkeys[33 * h + b] = m[0].edges[t.r.edge[h]].to[b]; } }
@@ -1036,17 +1078,44 @@ pay_test_failure :: (m: [] PayMap, t: PayTestOnion, end: [] LnhNode) -> [2] int 
   code := onion_route(session[..], pubkeys[0..<33 * t.r.hops], route[..]);
   n := ln_u16(msg.b[..], 42);
   f := onion_error_open(route[..], msg.b[44..<44 + n]);
-  return [2] int.[f.hop, ln_u16(msg.b[..], 44 + f.failure)];
+  return [3] int.[f.hop, ln_u16(msg.b[..], 44 + f.failure), code];
 }
 #test "Bob checks his fee and expiry, then offers the HTLC on with the next onion" #steps 20000000000 {
-  net: [1] PayNet; m: [1] PayMap; pay_test_net(net[..], m[..], 2);
+  net: [1] PayNet; m: [1] PayMap; m[0].n = 3; pay_test_net(net[..], m[..], 2);
+  // The network the comment above describes, on a map that starts over.
+  #assert net[0].n == 3 && net[0].links_n == 2 && m[0].n == 4 && net[0].height == 1000;
+  for k: 0..<3 { for i: 0..<32 { #assert net[0].nodes[k].secret[i] == cast(u8) (11 * k + i + 1); } }
+  sd: [32] u8; fs: [32] u8;
+  for l: 0..<2 {
+    #assert net[0].links[l].node[0] == l && net[0].links[l].node[1] == l + 1 && net[0].links[l].scid == gossip_scid(cast(u64) (101 + l), 1, 0);
+    ea := pay_end(net[..], l, 0); eb := pay_end(net[..], l, 1);
+    #assert ea[0].funder && !eb[0].funder && ea[0].funding_sat == (ifx l == 0 then 1000000 else 300000) && pay_balance(net[..], l, 1) == 0;
+    #assert ea[0].cfg.to_self_delay == 144 && eb[0].cfg.to_self_delay == 720 && eb[0].cfg.push_msat == 0;
+    #assert ea[0].cfg.spk[2] == cast(u8) (0x10 * l + 2) && eb[0].cfg.spk[21] == cast(u8) (0x10 * (l + 1) + 21) && lnh_same(ea[0].temporary_id[..], eb[0].temporary_id[..]);
+    for s: 0..<2 {
+      for i: 0..<32 { sd[i] = cast(u8) (0x40 + 2 * l); #assert pay_end(net[..], l, s)[0].funding_txid[i] == cast(u8) (0x80 + l + i); }
+      sd[0] += cast(u8) s; lnh_secret(sd[..], 1, fs[..]);
+      #assert lnh_same(fs[..], pay_end(net[..], l, s)[0].funding_secret[..]);
+      pol := net[0].links[l].policy[s];
+      #assert pol.fee_base == 1000 && pol.fee_ppm == 100 && pol.cltv == 40 && pol.htlc_min == 1000 && pol.htlc_max == 290000000;
+      me := m[0].edges[2 * l + s];
+      #assert me.scid == net[0].links[l].scid && me.fee_base == 1000 && me.fee_ppm == 100 && me.cltv == 40 && me.htlc_min == 1000 && me.htlc_max == 290000000 && me.hi == 290000000;
+      #assert lnh_same(me.from[..], net[0].nodes[l + s].id[..]) && lnh_same(me.to[..], net[0].nodes[l + 1 - s].id[..]);
+    }
+  }
   t := pay_test_onion(net[..], m[..], 2, 50000000, 50000000);
   #assert t.r.code == ONION_OK && t.r.hops == 2 && t.r.amount[0] == 50006000 && t.r.cltv[0] == 1058;
+  for i: 0..<32 { #assert t.session[i] == cast(u8) (i + 5) && t.secret[i] == cast(u8) (2 * i + 2); }
   j := pay_test_inject(net[..], 0, t.r.amount[0], t.r.cltv[0], t.hash[..], t.onion[..]);
+  // The HTLC is in both ends' tables and in Bob's first slot, added.
+  x0 := pay_end(net[..], 0, 0); y0 := pay_end(net[..], 0, 1); in0 := net[0].nodes[1].ins[0];
+  #assert j == 0 && in0.state == PAY_IN_ADDED && in0.link == 0 && in0.side == 1 && in0.id == 0 && in0.amount == t.r.amount[0];
+  #assert x0[0].n_htlcs == 1 && x0[0].next_id == 1 && x0[0].htlcs[0].mine && x0[0].htlcs[0].removing == LNH_NONE && x0[0].htlcs[0].add == LNH_DONE;
+  #assert y0[0].n_htlcs == 1 && y0[0].their_next_id == 1 && !y0[0].htlcs[0].mine && y0[0].htlcs[0].removal == LNH_KEEP;
   #assert pay_on_htlc(net[..], 1, j) == PAY_OK && net[0].nodes[1].ins[j].state == PAY_IN_FORWARDED;
   out := pay_end(net[..], 1, 0); msg := out[0].out[0];
   #assert out[0].out_n == 1 && ln_u16(msg.b[..], 0) == LNH_ADD && lnh_get(msg.b[..], 42, 8) == 50000000 && lnh_get(msg.b[..], 82, 4) == 1018;
-  #assert net[0].nodes[1].outs[0].state == PAY_OUT_OFFERED && net[0].nodes[1].outs[0].in_slot == j;
+  #assert net[0].nodes[1].outs[0].state == PAY_OUT_OFFERED && net[0].nodes[1].outs[0].in_slot == j && net[0].nodes[1].outs[0].part == -1;
   // Carol peels the onion Bob passed on and finds the final payload.
   payload: [ONION_PAYLOADS] u8; next: [ONION_PACKET] u8;
   p := onion_peel(net[0].nodes[2].secret[..], msg.b[86..<86 + ONION_PACKET], t.hash[..], payload[..], next[..]);
@@ -1060,9 +1129,10 @@ pay_test_failure :: (m: [] PayMap, t: PayTestOnion, end: [] LnhNode) -> [2] int 
     if c == 2 { pay_end(net[..], 1, 0)[0].their_cfg.htlc_minimum_msat = 60000000; }
     if c == 3 { net[0].links[1].scid = 5; }
     j = pay_test_inject(net[..], 0, amount, expiry, t.hash[..], t.onion[..]);
-    #assert pay_on_htlc(net[..], 1, j) == PAY_OK && net[0].nodes[1].ins[j].state == PAY_IN_FREE;
-    f := pay_test_failure(m[..], t, pay_end(net[..], 0, 1));
-    #assert f[0] == 0 && f[1] == cases[c];
+    #assert j == 1 && pay_on_htlc(net[..], 1, j) == PAY_OK && net[0].nodes[1].ins[j].state == PAY_IN_FREE;
+    f := pay_test_failure(m[..], t, y0);
+    // The error packet is 292 bytes: the HMAC, then 256 of failure and padding with their lengths.
+    #assert f[2] == ONION_OK && f[0] == 0 && f[1] == cases[c] && ln_u16(y0[0].out[y0[0].out_n - 1].b[..], 42) == 292;
   }
 }
 #test "the payee holds parts until they reach total_msat, then fulfills them all" #steps 20000000000 {
@@ -1070,6 +1140,8 @@ pay_test_failure :: (m: [] PayMap, t: PayTestOnion, end: [] LnhNode) -> [2] int 
   text: [600] u8; hint: [1] InvHop;
   n := pay_write_invoice(net[..], 1, 30000000, 1, hint[0..<0], text[..]);
   inv := net[0].nodes[1].invoices[0];
+  #assert net[0].nodes[1].invoices_n == 1 && inv.amount == 30000000;
+  for i: 0..<32 { #assert inv.secret[i] == cast(u8) (2 * i + 2); }
   t := pay_test_onion(net[..], m[..], 1, 10000000, 30000000);
   for i: 0..<32 { t.secret[i] = inv.secret[i]; }
   t.r.code = pay_onion(m[..], t.r, t.session[..], t.hash[..], t.secret[..], 30000000, t.onion[..]);
@@ -1117,13 +1189,25 @@ pay_test_failure :: (m: [] PayMap, t: PayTestOnion, end: [] LnhNode) -> [2] int 
     hop := ifx c == 3 then 1 else 0;
     n := onion_error_create(route[0].ss[32 * hop..<32 * hop + 32], f[0..<pay_failure(codes[c], 0, 0, f[..])], 256, packet[..]);
     if hop == 1 { onion_error_forward(route[0].ss[0..<32], packet[0..<n]); }
-    m[0].edges[bc].inflight = 50000000; p[0].refused = false;
+    m[0].edges[bc].inflight = 50000000; m[0].edges[bc].lo = 50000000; p[0].refused = false;
     pay_learn(m[..], p[..], 0, packet[0..<n]);
     #assert p[0].parts[0].fail_hop == hop && p[0].parts[0].fail_code == codes[c];
-    if c == 0 { #assert m[0].edges[bc].hi == 49999999 && !m[0].edges[bc].failed; }
+    if c == 0 { #assert m[0].edges[bc].hi == 49999999 && m[0].edges[bc].lo == 49999999 && !m[0].edges[bc].failed; }
     if c == 1 { #assert m[0].edges[bc].failed && !m[0].edges[t.r.edge[0]].failed; }
     if c == 2 { #assert m[0].edges[t.r.edge[0]].failed && m[0].edges[bc].failed; }
     if c == 3 { #assert p[0].refused; }
+  }
+  // A failure of one byte, too short for a code, ends the payment; mpp_timeout
+  // from the payee does not: the payer may send the parts again.
+  for c: 0..<2 {
+    f: [16] u8; packet: [300] u8; f[0] = cast(u8) 0x40;
+    flen := ifx c == 0 then 1 else pay_failure(PAY_MPP_TIMEOUT, 0, 0, f[..]);
+    n := onion_error_create(route[0].ss[32 * c..<32 * c + 32], f[0..<flen], 256, packet[..]);
+    if c == 1 { onion_error_forward(route[0].ss[0..<32], packet[0..<n]); }
+    p[0].refused = false; p[0].parts[0].fail_hop = 7;
+    pay_learn(m[..], p[..], 0, packet[0..<n]);
+    if c == 0 { #assert p[0].refused && p[0].parts[0].fail_hop == -2; }
+    if c == 1 { #assert !p[0].refused && p[0].parts[0].fail_hop == 1 && p[0].parts[0].fail_code == PAY_MPP_TIMEOUT; }
   }
   // A packet nobody on the route made ends the payment.
   junk: [292] u8; p[0].refused = false;
@@ -1134,12 +1218,24 @@ pay_test_failure :: (m: [] PayMap, t: PayTestOnion, end: [] LnhNode) -> [2] int 
   net: [1] PayNet; m: [1] PayMap;
   for k: 0..<2 { s: [32] u8; for i: 0..<32 { s[i] = cast(u8) (11 * k + i + 1); } n := pay_node(net[..], s[..]); }
   net[0].height = 1000;
+  // The channel is link 1: link 0 stays empty, and link 1's nodes start as junk.
+  net[0].links_n = 1; net[0].links[1].node[0] = 3; net[0].links[1].node[1] = 4;
   #assert pay_open(net[..], 0, 1, 1000000, 0, gossip_scid(101, 1, 0), true) == LNH_OK;
-  #assert pay_end(net[..], 0, 0)[0].state == LNH_NORMAL && pay_end(net[..], 0, 1)[0].state == LNH_NORMAL;
+  x := pay_end(net[..], 1, 0); y := pay_end(net[..], 1, 1);
+  #assert x[0].state == LNH_NORMAL && y[0].state == LNH_NORMAL && net[0].links_n == 2;
+  #assert net[0].links[1].node[0] == 0 && net[0].links[1].node[1] == 1 && net[0].links[1].scid == gossip_scid(101, 1, 0) && net[0].links[1].announced;
+  #assert x[0].cfg.to_self_delay == 144 && y[0].cfg.to_self_delay == 720 && x[0].funding_index == 0 && y[0].funding_index == 0;
+  // Each end's secrets come from its seed, 0x40 plus twice the link, then plus its side.
+  sd: [32] u8; fs: [32] u8;
   for s: 0..<2 {
-    pay_policy(net[..], 0, s, 1000, 100, 40, 290000000);
+    for i: 0..<32 { sd[i] = cast(u8) 0x42; #assert pay_end(net[..], 1, s)[0].funding_txid[i] == cast(u8) (0x81 + i); }
+    sd[0] += cast(u8) s; lnh_secret(sd[..], 1, fs[..]);
+    #assert lnh_same(fs[..], pay_end(net[..], 1, s)[0].funding_secret[..]);
+  }
+  for s: 0..<2 {
+    pay_policy(net[..], 1, s, 1000, 100, 40, 290000000);
     a := net[0].nodes[s].id; b := net[0].nodes[1 - s].id;
-    k := pay_add_edge(m[..], net[0].links[0].scid, a[..], b[..], 290000000);
+    k := pay_add_edge(m[..], net[0].links[1].scid, a[..], b[..], 290000000);
     m[0].edges[k].htlc_max = 290000000;
   }
   text: [600] u8; hint: [1] InvHop; inv: [1] Invoice; p: [1] PayPayment;
@@ -1147,9 +1243,10 @@ pay_test_failure :: (m: [] PayMap, t: PayTestOnion, end: [] LnhNode) -> [2] int 
   #assert invoice_decode_vartime(cast(string) text[0..<n], inv[..]) == INV_OK && pay_map_hints(m[..], inv[..]) == PAY_OK;
   #assert pay_begin(p[..], 0, inv[..], net[0].height) == PAY_PENDING && p[0].mpp;
   #assert pay_invoice(net[..], m[..], p[..]) == PAY_OK && p[0].parts_n == 1 && p[0].settled == 20000000;
+  #assert p[0].parts[0].state == PAY_PART_SETTLED && net[0].nodes[0].outs[p[0].parts[0].out].state == PAY_OUT_FREE && m[0].edges[0].inflight == 0;
   h: [32] u8; lnh_sha(p[0].preimage[..], h[..]); #assert lnh_same(h[..], p[0].hash[..]);
-  #assert pay_balance(net[..], 0, 1) == 20000000 && pay_balance(net[..], 0, 0) == 980000000;
-  #assert pay_spendable(pay_end(net[..], 0, 0)) == 980000000 - (10000 + 2240) * 1000;
+  #assert pay_balance(net[..], 1, 1) == 20000000 && pay_balance(net[..], 1, 0) == 980000000;
+  #assert pay_spendable(x) == 980000000 - (10000 + 2240) * 1000 && pay_spendable(y) == 20000000 - 10000 * 1000;
   // An invoice without an amount is refused before any route.
   inv[0].has_amount = false;
   #assert pay_begin(p[..], 0, inv[..], net[0].height) == PAY_BAD_INVOICE && pay_round(net[..], m[..], p[..]) == PAY_BAD_INVOICE;
@@ -1165,4 +1262,487 @@ pay_test_failure :: (m: [] PayMap, t: PayTestOnion, end: [] LnhNode) -> [2] int 
   #assert p[0].parts[0].fail_hop == 0 && p[0].parts[0].fail_code == PAY_INCORRECT_OR_UNKNOWN;
   x := pay_end(net[..], 0, 0);
   #assert pay_balance(net[..], 0, 0) == 1000000000 && x[0].n_htlcs == 0 && m[0].edges[0].inflight == 0;
+}
+#test "the test map is the one its comment draws" {
+  id := pay_test_id(5);
+  #assert id[0] == 2 && id[1] == 6 && id[32] == 37;
+  m: [1] PayMap; m[0].n = 3; pay_test_map(m[..]);
+  scids := [4] u64.[1, 2, 3, 4]; from := [4] int.[0, 1, 0, 2]; to := [4] int.[1, 3, 2, 3];
+  base := [4] int.[0, 1000, 0, 500]; ppm := [4] int.[0, 100, 0, 50]; cltv := [4] int.[0, 40, 0, 80];
+  #assert m[0].n == 4;
+  for k: 0..<4 {
+    e := m[0].edges[k]; a := pay_test_id(from[k]); b := pay_test_id(to[k]);
+    #assert e.scid == scids[k] && lnh_same(e.from[..], a[..]) && lnh_same(e.to[..], b[..]);
+    #assert e.fee_base == base[k] && e.fee_ppm == ppm[k] && e.cltv == cltv[k] && e.htlc_min == 1000 && e.htlc_max == 900000000 && e.hi == 900000000 && e.lo == 0;
+  }
+}
+#test "the map: its limit, hints that chain, a graph's policies and a refresh" {
+  m: [1] PayMap; a := pay_test_id(1); b := pay_test_id(2);
+  for k: 0..<PAY_MAX_EDGES { #assert pay_add_edge(m[..], cast(u64) (k + 1), a[..], b[..], 5) == k; }
+  #assert pay_add_edge(m[..], 99, a[..], b[..], 5) == -1 && m[0].n == PAY_MAX_EDGES && pay_add_edge(m[..], 7, a[..], b[..], 5) == 6;
+  inv: [1] Invoice; inv[0].hops_n = 1; inv[0].hops[0] = InvHop.{pubkey = pay_test_id(5), scid = 500};
+  #assert pay_map_hints(m[..], inv[..]) == PAY_CAPACITY;
+  g: [1] GspGraph; g[0].count = 1;
+  g[0].channels[0] = GspChannel.{scid = 600, node1 = pay_test_id(6), node2 = pay_test_id(7)};
+  g[0].channels[0].policy[0] = GspPolicy.{present = true, channel_flags = 1, cltv = 9, htlc_min = 10, fee_base = 11, fee_ppm = 12, htlc_max = 1000};
+  g[0].channels[0].policy[1] = GspPolicy.{present = true, channel_flags = 3, htlc_max = 2000};
+  #assert pay_map_graph(m[..], g[..]) == PAY_CAPACITY;
+  // A hint of one channel ends at the payee; a hint of two goes through its next node.
+  m[0] = PayMap.{}; inv[0] = Invoice.{}; inv[0].payee = pay_test_id(9);
+  inv[0].hops[0] = InvHop.{pubkey = pay_test_id(7), scid = 51, hint = 0};
+  inv[0].hops[1] = InvHop.{pubkey = pay_test_id(8), scid = 52, hint = 1};
+  inv[0].hops[2] = InvHop.{pubkey = pay_test_id(5), scid = 53, fee_base = 1, fee_ppm = 2, cltv = 3, hint = 2};
+  inv[0].hops[3] = InvHop.{pubkey = pay_test_id(6), scid = 54, fee_base = 4, fee_ppm = 5, cltv = 6, hint = 2};
+  inv[0].hops_n = 4;
+  #assert pay_map_hints(m[..], inv[..]) == PAY_OK && m[0].n == 4;
+  ends := [4] int.[9, 9, 6, 9];
+  for k: 0..<4 {
+    e := m[0].edges[k]; c := pay_test_id(ends[k]);
+    #assert e.scid == cast(u64) (51 + k) && lnh_same(e.to[..], c[..]) && e.hi == 1099511627776 && e.htlc_max == 1099511627776 && e.lo == 0;
+  }
+  #assert m[0].edges[2].fee_base == 1 && m[0].edges[2].fee_ppm == 2 && m[0].edges[2].cltv == 3;
+  #assert m[0].edges[3].fee_base == 4 && m[0].edges[3].fee_ppm == 5 && m[0].edges[3].cltv == 6;
+  // The graph: a direction bit is not the disable bit, and what was learned is cut
+  // to the new htlc_max.
+  m[0] = PayMap.{}; x := pay_test_id(6); y := pay_test_id(7);
+  first := pay_add_edge(m[..], 600, x[..], y[..], 1 << 40); m[0].edges[first].lo = 1 << 39;
+  #assert pay_map_graph(m[..], g[..]) == PAY_OK && m[0].n == 2;
+  ge := m[0].edges[0];
+  #assert !ge.disabled && ge.hi == 1000 && ge.lo == 1000 && ge.htlc_max == 1000 && ge.cltv == 9 && ge.htlc_min == 10 && ge.fee_base == 11 && ge.fee_ppm == 12;
+  gf := m[0].edges[1];
+  #assert gf.disabled && gf.hi == 2000 && gf.lo == 0 && lnh_same(gf.from[..], y[..]) && lnh_same(gf.to[..], x[..]);
+  pay_map_local(m[..], 1, 77);
+  #assert m[0].edges[1].lo == 77 && m[0].edges[1].hi == 77;
+}
+#test "the search: a full node table, a zero amount, ties to the lower index, and the CLTV limit's edge" {
+  m: [1] PayMap; p := pay_test_id(100); q := pay_test_id(101);
+  // 25 nodes: the payee, the payer, 0 to 21 in pairs, and 22, whose channel goes to the payer.
+  for k: 0..<11 { pay_test_edge(m[..], cast(u64) (k + 1), 2 * k, 2 * k + 1, 0, 0, 0, 900000000); }
+  pay_test_edge(m[..], 12, 22, 101, 0, 0, 0, 900000000);
+  #assert pay_find_route(m[..], q[..], p[..], 5000, 1018, 1000).code == PAY_CAPACITY;
+  // An amount of 0 is no payment, even where htlc_minimum_msat is 0.
+  pay_test_map(m[..]); for k: 0..<4 { m[0].edges[k].htlc_min = 0; }
+  #assert pay_test_route(m[..], 0).code == PAY_NO_ROUTE && pay_test_route(m[..], 1).code == PAY_OK;
+  // Equal costs: node 1, first in the table, settles first and keeps the payer.
+  pay_test_map(m[..]); m[0].edges[3].fee_base = 1000; m[0].edges[3].fee_ppm = 100; m[0].edges[3].cltv = 40;
+  r := pay_test_route(m[..], 50000000);
+  #assert r.code == PAY_OK && r.edge[0] == 0 && r.edge[1] == 1 && r.fee == 6000;
+  // Exactly PAY_MAX_CLTV blocks past the height is allowed; one more is not.
+  pay_test_map(m[..]); m[0].edges[1].cltv = 5000; m[0].edges[3].cltv = 1998;
+  r = pay_test_route(m[..], 50000000);
+  #assert r.code == PAY_OK && r.edge[0] == 2 && r.cltv[0] == 3016 && r.cltv[1] == 1018;
+  m[0].edges[3].cltv = 1999;
+  #assert pay_test_route(m[..], 50000000).code == PAY_NO_ROUTE;
+}
+#test "a payment begins from the invoice's fields, and each part's session key is its own" {
+  inv: [1] Invoice; inv[0].has_amount = true; inv[0].amount_msat = 5000; inv[0].min_final_cltv = 18; inv[0].features_n = 3;
+  inv[0].payee = pay_test_id(4);
+  for i: 0..<32 { inv[0].payment_hash[i] = cast(u8) (i + 1); inv[0].secret[i] = cast(u8) (i + 2); }
+  p: [1] PayPayment; p[0].parts_n = 5; p[0].settled = 9; p[0].refused = true; p[0].waiting_n = 4;
+  inv[0].features[1] = cast(u8) 0x80;   // payment_secret, optional: bit 15
+  #assert pay_begin(p[..], 3, inv[..], 1000) == PAY_PENDING && p[0].code == PAY_PENDING && !p[0].mpp;
+  #assert p[0].payer == 3 && p[0].parts_n == 0 && p[0].settled == 0 && !p[0].refused && p[0].total == 5000 && p[0].final_cltv == 1018;
+  #assert p[0].waiting_n == 1 && p[0].waiting[0] == 5000 && p[0].hash[0] == 1 && p[0].secret[31] == 33 && p[0].payee[1] == 5;
+  inv[0].features[1] = cast(u8) 0x40; inv[0].features[0] = cast(u8) 1;   // bits 14 and 16
+  #assert pay_begin(p[..], 3, inv[..], 1000) == PAY_PENDING && p[0].mpp;
+  inv[0].features[0] = cast(u8) 2;   // bits 14 and 17
+  #assert pay_begin(p[..], 3, inv[..], 1000) == PAY_PENDING && p[0].mpp;
+  inv[0].features[0] = cast(u8) 0; inv[0].features[1] = cast(u8) 0;
+  #assert pay_begin(p[..], 3, inv[..], 1000) == PAY_BAD_INVOICE;
+  inv[0].features[1] = cast(u8) 0x40; inv[0].amount_msat = 0;
+  #assert pay_begin(p[..], 3, inv[..], 1000) == PAY_BAD_INVOICE && p[0].code == PAY_BAD_INVOICE;
+  // SHA-256 of the payer's secret, then the part's number.
+  node: [1] PayNode; b: [33] u8; want: [32] u8; got: [32] u8;
+  for i: 0..<32 { node[0].secret[i] = cast(u8) (i + 1); b[i] = cast(u8) (i + 1); }
+  b[32] = cast(u8) 5;
+  lnh_sha(b[..], want[..]); pay_session(node[..], 5, got[..]);
+  #assert lnh_same(got[..], want[..]);
+  // The channels' configurations: chapter 109's, with this funding, push and closing script.
+  c := pay_config(true, 123456, 789, 2); d := pay_config(false, 123456, 789, 3);
+  #assert c.funding_sat == 123456 && c.push_msat == 789 && c.to_self_delay == 144 && d.to_self_delay == 720;
+  #assert c.spk[1] == 20 && c.spk[2] == 0x22 && c.spk[21] == 0x35 && c.spk[22] == 0 && d.spk[2] == 0x32;
+}
+#test "the wire: what a node writes into its channel's messages, and what it reads out of them" #steps 2000000000 {
+  c: [1] LnhNode; c[0].out_n = 2;
+  onion: [ONION_PACKET] u8; for i: 0..<ONION_PACKET { onion[i] = cast(u8) (i % 251 + 1); }
+  pay_put_onion(c[..], onion[..]);
+  #assert lnh_same(c[0].out[1].b[86..<86 + ONION_PACKET], onion[..]) && c[0].out[0].b[86] == 0;
+  reason: [5] u8; for i: 0..<5 { reason[i] = cast(u8) (0xa0 + i); }
+  pay_put_reason(c[..], reason[..]);
+  #assert c[0].out[1].n == 49 && ln_u16(c[0].out[1].b[..], 42) == 5 && lnh_same(c[0].out[1].b[44..<49], reason[..]);
+  // The out slots: a free one, and a match on every field.
+  node: [1] PayNode;
+  #assert pay_free_out(node[..]) == 0 && pay_find_out(node[..], 0, 0, 0) == -1;
+  node[0].outs[3] = PayOut.{state = PAY_OUT_OFFERED, link = 2, side = 1, id = 5};
+  node[0].outs[4] = PayOut.{state = PAY_OUT_FREE, link = 3, side = 0, id = 6};
+  #assert pay_find_out(node[..], 2, 1, 5) == 3 && pay_find_out(node[..], 2, 1, 4) == -1 && pay_find_out(node[..], 1, 1, 5) == -1;
+  #assert pay_find_out(node[..], 2, 0, 5) == -1 && pay_find_out(node[..], 3, 0, 6) == -1;
+  for i: 0..<PAY_SLOTS { node[0].outs[i].state = PAY_OUT_FAILED; }
+  #assert pay_free_out(node[..]) == -1;
+  // Node 4, the last a network holds, on channels that never opened.
+  net: [1] PayNet; net[0].n = 5; net[0].links_n = 2;
+  net[0].links[0].node[0] = 3; net[0].links[0].node[1] = 4; net[0].links[1].node[0] = 4; net[0].links[1].node[1] = 3;
+  m: [1452] u8;
+  w := lnh_put(m[..], 0, LNH_ADD, 2); w = lnh_put(m[..], 34, 0x0a0b0c0d, 8); w = lnh_put(m[..], 42, 0x01020304050607, 8);
+  for i: 0..<32 { m[50 + i] = cast(u8) (i + 1); }
+  w = lnh_put(m[..], 82, 0x12345, 4);
+  for i: 0..<ONION_PACKET { m[86 + i] = onion[i]; }
+  #assert pay_observe(net[..], 0, 1, m[..]) == PAY_OK;
+  x := net[0].nodes[4].ins[0];
+  #assert x.state == PAY_IN_ADDED && x.link == 0 && x.side == 1 && x.id == 0x0a0b0c0d && x.amount == 0x01020304050607 && x.expiry == 0x12345;
+  #assert lnh_same(x.hash[..], m[50..<82]) && lnh_same(x.onion[..], onion[..]);
+  #assert pay_observe(net[..], 0, 1, m[..]) == PAY_OK && net[0].nodes[4].ins[1].state == PAY_IN_ADDED;
+  for i: 0..<PAY_SLOTS { net[0].nodes[4].ins[i].state = PAY_IN_HELD; }
+  #assert pay_observe(net[..], 0, 1, m[..]) == PAY_CAPACITY;
+  for i: 0..<PAY_SLOTS { net[0].nodes[4].ins[i].state = PAY_IN_FREE; }
+  // A fulfill of out 0, the payer's own part, keeps the preimage.
+  net[0].nodes[4].outs[0] = PayOut.{state = PAY_OUT_OFFERED, link = 0, side = 1, id = 9, in_slot = -1};
+  f: [74] u8; w = lnh_put(f[..], 0, LNH_FULFILL, 2); w = lnh_put(f[..], 34, 9, 8);
+  for i: 0..<32 { f[42 + i] = cast(u8) (i + 100); }
+  #assert pay_observe(net[..], 0, 1, f[..]) == PAY_OK && net[0].nodes[4].outs[0].state == PAY_OUT_FULFILLED;
+  #assert lnh_same(net[0].nodes[4].outs[0].preimage[..], f[42..<74]);
+  // A fulfill of an HTLC the node never offered means nothing to it.
+  w = lnh_put(f[..], 34, 12345, 8);
+  #assert pay_observe(net[..], 0, 1, f[..]) == PAY_OK;
+  w = lnh_put(f[..], 34, 9, 8);
+  // A fulfill passed back to an incoming HTLC its channel refuses: a broken node.
+  net[0].nodes[4].ins[0] = PayIn.{state = PAY_IN_FORWARDED, link = 1, side = 0, id = 3};
+  net[0].nodes[4].outs[0] = PayOut.{state = PAY_OUT_OFFERED, link = 0, side = 1, id = 9, in_slot = 0};
+  #assert pay_observe(net[..], 0, 1, f[..]) == PAY_CHANNEL && net[0].nodes[4].ins[0].state == PAY_IN_FORWARDED;
+  // Failures: a reason of 300 bytes is kept; one longer, or longer than the message, is not.
+  net[0].nodes[4].outs[1] = PayOut.{state = PAY_OUT_OFFERED, link = 0, side = 1, id = 11, in_slot = -1};
+  e: [345] u8; w = lnh_put(e[..], 0, LNH_FAIL, 2); w = lnh_put(e[..], 34, 11, 8);
+  for i: 0..<301 { e[44 + i] = cast(u8) (i % 200 + 1); }
+  w = lnh_put(e[..], 42, 300, 2);
+  #assert pay_observe(net[..], 0, 1, e[0..<344]) == PAY_OK && net[0].nodes[4].outs[1].state == PAY_OUT_FAILING;
+  #assert net[0].nodes[4].outs[1].reason_n == 300 && lnh_same(net[0].nodes[4].outs[1].reason[..], e[44..<344]);
+  w = lnh_put(e[..], 42, 301, 2);
+  #assert pay_observe(net[..], 0, 1, e[..]) == PAY_OK && net[0].nodes[4].outs[1].reason_n == 0;
+  w = lnh_put(e[..], 42, 10, 2);
+  #assert pay_observe(net[..], 0, 1, e[0..<50]) == PAY_OK && net[0].nodes[4].outs[1].reason_n == 0;
+  // Node 4's other calls, each refused by a channel that never opened or a full table.
+  #assert pay_fail_in(net[..], 4, 0, reason[..]) == PAY_CHANNEL && pay_fail_code(net[..], 4, 0, PAY_MPP_TIMEOUT, 0) == PAY_CHANNEL;
+  hash: [32] u8;
+  #assert pay_offer(net[..], 1, 0, 5000, hash[..], 1100, onion[..], -1, 0) == LNH_WRONG_STATE;
+  for i: 0..<PAY_SLOTS { net[0].nodes[4].outs[i].state = PAY_OUT_FAILED; }
+  #assert pay_offer(net[..], 1, 0, 5000, hash[..], 1100, onion[..], -1, 0) == LNH_FULL;
+  net[0].nodes[4].ins[2] = PayIn.{state = PAY_IN_ADDED, link = 0, side = 1, id = 1};
+  net[0].nodes[4].ins[2].onion[0] = cast(u8) 255;
+  #assert pay_on_htlc(net[..], 4, 2) == PAY_CHANNEL && pay_on_final(net[..], 4, 2, PayHop.{cltv = 1 << 30}) == PAY_CHANNEL;
+  map: [1] PayMap; p: [1] PayPayment; r: PayRoute;
+  p[0].payer = 4; p[0].parts_n = PAY_MAX_PARTS;
+  #assert pay_launch(net[..], map[..], p[..], r, 5000) == PAY_TOO_MANY;
+  text: [600] u8; none: [1] InvHop;
+  #assert pay_write_invoice(net[..], 4, 5000, 1, none[0..<0], text[..]) == -1;
+  quiet: [1] PayNet; quiet[0].n = 5; p[0] = PayPayment.{code = PAY_PENDING, payer = 4};
+  #assert pay_round(quiet[..], map[..], p[..]) == PAY_OK;
+}
+#test "a step that a channel refuses ends the run" #steps 2000000000 {
+  // A message the receiving end cannot read.
+  net: [1] PayNet; net[0].n = 2; net[0].links_n = 1; net[0].links[0].node[1] = 1;
+  c := pay_end(net[..], 0, 0); c[0].out_n = 1; c[0].out[0].n = 2; c[0].out[0].b[1] = cast(u8) 2;
+  #assert pay_run(net[..]) == PAY_CHANNEL;
+  c[0].out_n = 1;
+  #assert pay_step(net[..]) == -1;
+  // A failure passed back to an HTLC on a channel that never opened.
+  net[0] = PayNet.{n = 2, links_n = 1};
+  net[0].nodes[0].outs[0] = PayOut.{state = PAY_OUT_FAILING, link = 0, side = 0, id = 5, in_slot = 0};
+  net[0].nodes[0].ins[0] = PayIn.{state = PAY_IN_FORWARDED, link = 0, side = 1, id = 3};
+  #assert pay_run(net[..]) == PAY_CHANNEL && net[0].nodes[0].outs[0].state == PAY_OUT_FAILING;
+  // An HTLC its end holds, whose failure that end refuses.
+  net[0] = PayNet.{n = 2, links_n = 1};
+  d := pay_end(net[..], 0, 1); d[0].htlcs[0] = LnhHtlc.{id = 3, add = LNH_DONE, removal = LNH_KEEP, removing = LNH_NONE}; d[0].n_htlcs = 1;
+  net[0].nodes[1].ins[0] = PayIn.{state = PAY_IN_ADDED, link = 0, side = 1, id = 3};
+  net[0].nodes[1].ins[0].onion[0] = cast(u8) 255;
+  #assert pay_step(net[..]) == -1;
+  // Changes to sign on an end that never opened.
+  net[0] = PayNet.{n = 2, links_n = 1};
+  c[0].htlcs[0] = LnhHtlc.{mine = true, add = LNH_PROPOSED, removing = LNH_NONE}; c[0].n_htlcs = 1;
+  #assert pay_step(net[..]) == -1 && pay_run(net[..]) == PAY_CHANNEL;
+}
+#test "a step: a failure waits for its removal, passes back once, and a full outbox waits to sign" #steps 20000000000 {
+  net: [1] PayNet; m: [1] PayMap; pay_test_net(net[..], m[..], 1);
+  x := pay_end(net[..], 0, 0); y := pay_end(net[..], 0, 1);
+  hash: [32] u8; junk: [ONION_PACKET] u8;
+  // An add Bob has no slot for.
+  #assert lnh_add(x, 5000000, hash[..], 1100) == LNH_OK;
+  for i: 0..<PAY_SLOTS { net[0].nodes[1].ins[i].state = PAY_IN_HELD; }
+  #assert pay_step(net[..]) == -1;
+  for i: 0..<PAY_SLOTS { net[0].nodes[1].ins[i].state = PAY_IN_FREE; }
+  x[0].n_htlcs = 0; y[0].n_htlcs = 0;
+  // Alice's own part failed, but Bob's removal is not final yet: it waits.
+  j := pay_test_inject(net[..], 0, 5000000, 1100, hash[..], junk[..]);
+  net[0].nodes[1].ins[j].state = PAY_IN_FORWARDED;
+  net[0].nodes[0].outs[0] = PayOut.{state = PAY_OUT_FAILING, link = 0, side = 0, id = 1, in_slot = -1};
+  #assert j == 0 && pay_step(net[..]) == 0 && net[0].nodes[0].outs[0].state == PAY_OUT_FAILING;
+  x[0].htlcs[0].removal = LNH_FAILED; x[0].htlcs[0].removing = LNH_DONE;
+  #assert pay_step(net[..]) == 1 && net[0].nodes[0].outs[0].state == PAY_OUT_FAILED;
+  // Bob's out 2 failed back to him, for Alice's HTLC in his slot 0. Its removal is
+  // not in his table, so it is final: he passes the error back under his layer.
+  for i: 0..<32 { net[0].nodes[1].ins[j].ss[i] = cast(u8) (i + 9); }
+  net[0].nodes[1].outs[2] = PayOut.{state = PAY_OUT_FAILING, link = 0, side = 1, id = 99, in_slot = j, reason_n = 292};
+  want: [292] u8;
+  for i: 0..<292 { net[0].nodes[1].outs[2].reason[i] = cast(u8) (i % 250 + 3); want[i] = cast(u8) (i % 250 + 3); }
+  onion_error_forward(net[0].nodes[1].ins[j].ss[..], want[..]);
+  // Bob's outbox is full of odd messages Alice ignores; the failure is the last to fit.
+  for i: 0..<LNH_QUEUE { y[0].out[i].n = 2; y[0].out[i].b[0] = cast(u8) 0; y[0].out[i].b[1] = cast(u8) 1; }
+  y[0].out_n = LNH_QUEUE;
+  #assert pay_step(net[..]) == 2 && net[0].nodes[1].ins[j].state == PAY_IN_FREE && net[0].nodes[1].outs[2].state == PAY_OUT_FREE;
+  last := y[0].out[LNH_QUEUE - 1];
+  #assert y[0].out_n == LNH_QUEUE && !y[0].waiting && ln_u16(last.b[..], 0) == LNH_FAIL && ln_u16(last.b[..], 42) == 292 && lnh_same(last.b[44..<336], want[..]);
+  // The next step delivers one more, which leaves room to sign the failure.
+  #assert pay_step(net[..]) == 2 && y[0].waiting && y[0].out_n == LNH_QUEUE;
+}
+#test "the payee: each refusal's code and value, held parts of two payments, and a wrong preimage" #steps 20000000000 {
+  net: [1] PayNet; m: [1] PayMap; pay_test_net(net[..], m[..], 1);
+  x := pay_end(net[..], 0, 0); y := pay_end(net[..], 0, 1); node := net[0].nodes[1..<2];
+  a := PayInvoice.{amount = 30000000}; lnh_preimage(1, a.preimage[..], a.hash[..]);
+  b := PayInvoice.{amount = 30000000}; lnh_preimage(2, b.preimage[..], b.hash[..]);
+  for i: 0..<32 { a.secret[i] = cast(u8) (i + 7); b.secret[i] = cast(u8) (i + 7); }
+  node[0].invoices[0] = a; node[0].invoices[1] = b; node[0].invoices_n = 2;
+  junk: [ONION_PACKET] u8; zero: [32] u8; f: [16] u8; packet: [300] u8;
+  // Each case: the amount, the onion's amount, its total, then the failure and its
+  // value, or 0 when the part is held.
+  cases := [20] int.[9999999, 10000000, 30000000, PAY_FINAL_INCORRECT_AMOUNT, 9999999,
+                     30000000, 30000000, 60000001, PAY_INCORRECT_OR_UNKNOWN, 30000000,
+                     30000000, 30000000, 60000000, 0, 0,
+                     10000000, 10000000, 30000000, PAY_INCORRECT_OR_UNKNOWN, 10000000];
+  for c: 0..<4 {
+    j := pay_test_inject(net[..], 0, cases[5 * c], 1018, a.hash[..], junk[..]);
+    hop := PayHop.{amount = cases[5 * c + 1], cltv = 1018, has_data = true, total = cases[5 * c + 2]}; hop.secret = a.secret;
+    #assert pay_on_final(net[..], 1, j, hop) == PAY_OK;
+    if cases[5 * c + 3] == 0 { #assert node[0].ins[j].state == PAY_IN_HELD && node[0].ins[j].total == cases[5 * c + 2] && y[0].out_n == 0; }
+    else {
+      n := onion_error_create(zero[..], f[0..<pay_failure(cases[5 * c + 3], cases[5 * c + 4], 1000, f[..])], 256, packet[..]);
+      msg := y[0].out[y[0].out_n - 1];
+      #assert node[0].ins[j].state == PAY_IN_FREE && ln_u16(msg.b[..], 0) == LNH_FAIL && ln_u16(msg.b[..], 42) == n && lnh_same(msg.b[44..<44 + n], packet[0..<n]);
+      y[0].out_n = 0;
+    }
+  }
+  // One msat short of the total is held, not fulfilled.
+  for i: 0..<PAY_SLOTS { node[0].ins[i].state = PAY_IN_FREE; }
+  x[0].n_htlcs = 0; y[0].n_htlcs = 0;
+  jc := pay_test_inject(net[..], 0, 29999999, 1018, a.hash[..], junk[..]);
+  hc := PayHop.{amount = 29999999, cltv = 1018, has_data = true, total = 30000000}; hc.secret = a.secret;
+  #assert pay_on_final(net[..], 1, jc, hc) == PAY_OK && node[0].ins[jc].state == PAY_IN_HELD && y[0].out_n == 0;
+  node[0].ins[jc].state = PAY_IN_FREE; x[0].n_htlcs = 0; y[0].n_htlcs = 0;
+  // Parts of two payments: each set counts only its own hash.
+  ja := pay_test_inject(net[..], 0, 20000000, 1018, a.hash[..], junk[..]);
+  ha := PayHop.{amount = 20000000, cltv = 1018, has_data = true, total = 30000000}; ha.secret = a.secret;
+  #assert pay_on_final(net[..], 1, ja, ha) == PAY_OK && node[0].ins[ja].state == PAY_IN_HELD;
+  hb := PayHop.{amount = 15000000, cltv = 1018, has_data = true, total = 30000000}; hb.secret = b.secret;
+  jb1 := pay_test_inject(net[..], 0, 15000000, 1018, b.hash[..], junk[..]);
+  #assert pay_on_final(net[..], 1, jb1, hb) == PAY_OK && node[0].ins[jb1].state == PAY_IN_HELD && node[0].ins[ja].state == PAY_IN_HELD;
+  jb2 := pay_test_inject(net[..], 0, 15000000, 1018, b.hash[..], junk[..]);
+  #assert pay_on_final(net[..], 1, jb2, hb) == PAY_OK && node[0].ins[jb1].state == PAY_IN_FREE && node[0].ins[jb2].state == PAY_IN_FREE;
+  #assert node[0].ins[ja].state == PAY_IN_HELD && y[0].out_n == 2 && ln_u16(y[0].out[0].b[..], 0) == LNH_FULFILL && lnh_same(y[0].out[1].b[42..<74], b.preimage[..]);
+  // A preimage that does not match its own hash: the channel refuses the fulfill.
+  node[0].invoices[0].preimage[0] ^= 1;
+  jd := pay_test_inject(net[..], 0, 10000000, 1018, a.hash[..], junk[..]);
+  hd := PayHop.{amount = 10000000, cltv = 1018, has_data = true, total = 30000000}; hd.secret = a.secret;
+  #assert pay_on_final(net[..], 1, jd, hd) == PAY_CHANNEL;
+}
+#test "Bob's refusals: an onion he cannot read, a next channel back to Alice, and a payload with no next channel" #steps 20000000000 {
+  net: [1] PayNet; m: [1] PayMap; pay_test_net(net[..], m[..], 1);
+  x := pay_end(net[..], 0, 0); y := pay_end(net[..], 0, 1);
+  hash: [32] u8; pre: [32] u8; lnh_preimage(1, pre[..], hash[..]);
+  junk: [ONION_PACKET] u8; junk[0] = cast(u8) 255;
+  j := pay_test_inject(net[..], 0, 5000000, 1100, hash[..], junk[..]);
+  #assert net[0].nodes[1].ins[j].onion[0] == 255;
+  // A step: Bob fails it, then signs the failure.
+  #assert pay_step(net[..]) == 2 && net[0].nodes[1].ins[j].state == PAY_IN_FREE && y[0].waiting;
+  zero: [32] u8; f: [16] u8; packet: [300] u8;
+  n := onion_error_create(zero[..], f[0..<pay_failure(PAY_INVALID_ONION_PAYLOAD, 0, 0, f[..])], 256, packet[..]);
+  #assert y[0].out_n == 2 && ln_u16(y[0].out[0].b[..], 0) == LNH_FAIL && lnh_same(y[0].out[0].b[44..<44 + n], packet[0..<n]);
+  // Alice reads the failure; until it is committed, her balance still holds the HTLC.
+  buffer: [LNH_MSG] u8; k := lnh_take(y, buffer[..]);
+  #assert lnh_receive(x, buffer[0..<k]) == LNH_OK && pay_balance(net[..], 0, 0) == 1000000000 - 5000000;
+  // An onion that sends Bob's HTLC back to Alice on the channel it came in on. His
+  // end of it has nothing to send, so the channel fails, not the peer.
+  r: PayRoute; r.hops = 2; r.edge[0] = 0; r.edge[1] = 1;
+  r.amount[0] = 4001400; r.amount[1] = 4000000; r.cltv[0] = 1140; r.cltv[1] = 1100;
+  t: PayTestOnion; t.r = r; for i: 0..<32 { t.session[i] = cast(u8) (i + 5); }
+  secret: [32] u8;
+  #assert pay_onion(m[..], r, t.session[..], hash[..], secret[..], 4000000, t.onion[..]) == ONION_OK;
+  j = pay_test_inject(net[..], 0, 4001400, 1140, hash[..], t.onion[..]);
+  #assert pay_on_htlc(net[..], 1, j) == PAY_OK && net[0].nodes[1].ins[j].state == PAY_IN_FREE;
+  g := pay_test_failure(m[..], t, y);
+  #assert g[2] == ONION_OK && g[0] == 0 && g[1] == PAY_TEMPORARY_CHANNEL_FAILURE;
+  // A final hop's payload, with no next channel, for Bob, who is not the last hop.
+  h: [1] OnionHops; pl: [64] u8;
+  q := r; q.hops = 1;
+  w := pay_payload(m[..], q, 0, secret[..], 4000000, pl[..]);
+  #assert onion_add_hop_vartime(h[..], m[0].edges[0].to[..], pl[0..<w]) == ONION_OK;
+  w = pay_payload(m[..], r, 1, secret[..], 4000000, pl[..]);
+  #assert onion_add_hop_vartime(h[..], m[0].edges[1].to[..], pl[0..<w]) == ONION_OK;
+  #assert onion_wrap(t.session[..], h[0].pubkeys[0..<h[0].keys_n], h[0].payloads[0..<h[0].payloads_n], hash[..], t.onion[..]) == ONION_OK;
+  j = pay_test_inject(net[..], 0, 4001400, 1140, hash[..], t.onion[..]);
+  #assert pay_on_htlc(net[..], 1, j) == PAY_OK && net[0].nodes[1].ins[j].state == PAY_IN_FREE;
+  g = pay_test_failure(m[..], t, y);
+  #assert g[2] == ONION_OK && g[0] == 0 && g[1] == PAY_INVALID_ONION_PAYLOAD;
+}
+#test "the payer launches a part on its own channel, and learns from its channel's refusal" #steps 20000000000 {
+  net: [1] PayNet; m: [1] PayMap; pay_test_net(net[..], m[..], 1);
+  // Alice's funded end is side 1 of the link here, and Bob's side 0.
+  e0 := net[0].links[0].end[0]; net[0].links[0].end[0] = net[0].links[0].end[1]; net[0].links[0].end[1] = e0;
+  net[0].links[0].node[0] = 1; net[0].links[0].node[1] = 0;
+  alice := net[0].nodes[0].id; bob := net[0].nodes[1].id;
+  m[0] = PayMap.{}; u := pay_test_id(5); v := pay_test_id(6);
+  k0 := pay_add_edge(m[..], 555, u[..], v[..], 1 << 30);
+  k1 := pay_add_edge(m[..], net[0].links[0].scid, alice[..], bob[..], 290000000);
+  m[0].edges[k1].htlc_min = 1000; m[0].edges[k1].htlc_max = 290000000;
+  r := pay_find_route(m[..], alice[..], bob[..], 5000000, 1018, 1000);
+  #assert k0 == 0 && r.code == PAY_OK && r.hops == 1 && r.edge[0] == 1;
+  p: [1] PayPayment; pre: [32] u8; p[0].payer = 0; p[0].total = 5000000; lnh_preimage(1, pre[..], p[0].hash[..]);
+  for i: 0..<32 { p[0].secret[i] = cast(u8) (i + 3); }
+  #assert pay_launch(net[..], m[..], p[..], r, 5000000) == PAY_OK && p[0].parts_n == 1;
+  part := p[0].parts[0]; end := pay_end(net[..], 0, 1);
+  #assert part.state == PAY_PART_FLYING && part.amount == 5000000 && part.out >= 0 && m[0].edges[1].inflight == 5000000;
+  o := net[0].nodes[0].outs[part.out];
+  #assert o.state == PAY_OUT_OFFERED && o.link == 0 && o.side == 1 && o.id == 0 && o.part == 0 && o.in_slot == -1 && end[0].out_n == 1;
+  oh: [32] u8; lnh_sha(end[0].out[0].b[86..<86 + ONION_PACKET], oh[..]);
+  #assert lnh_same(oh[..], part.onion_hash[..]);
+  // Alice on side 0 again, and a route whose first channel is not one of hers: her own
+  // channel refused, so she knows it cannot carry the amount.
+  e0 = net[0].links[0].end[0]; net[0].links[0].end[0] = net[0].links[0].end[1]; net[0].links[0].end[1] = e0;
+  net[0].links[0].node[0] = 0; net[0].links[0].node[1] = 1;
+  m[0].edges[1].scid = 777;
+  #assert pay_launch(net[..], m[..], p[..], r, 5000000) == PAY_OK && p[0].parts_n == 2;
+  part = p[0].parts[1];
+  #assert part.state == PAY_PART_FAILED && part.fail_hop == -1 && part.out == -1 && part.amount == 5000000;
+  #assert m[0].edges[1].inflight == 5000000 && m[0].edges[1].hi == 4999999 && p[0].waiting_n == 1 && p[0].waiting[0] == 5000000;
+  // A route to a key that is not a point: no onion, so a full table.
+  bad: [33] u8; bad[0] = cast(u8) 2; for i: 1..<33 { bad[i] = cast(u8) 255; }
+  k2 := pay_add_edge(m[..], 888, alice[..], bad[..], 290000000); m[0].edges[k2].htlc_min = 1000; m[0].edges[k2].htlc_max = 290000000;
+  r = pay_find_route(m[..], alice[..], bad[..], 5000000, 1018, 1000);
+  #assert r.code == PAY_OK && pay_launch(net[..], m[..], p[..], r, 5000000) == PAY_CAPACITY;
+}
+#test "a round maps the payer's own channels at their spendable balance" #steps 20000000000 {
+  net: [1] PayNet; m: [1] PayMap; pay_test_net(net[..], m[..], 1);
+  x := pay_end(net[..], 0, 0);
+  m[0].edges[0].inflight = 5;
+  p: [1] PayPayment; p[0] = PayPayment.{code = PAY_PENDING, total = 1};
+  #assert pay_round(net[..], m[..], p[..]) == PAY_STUCK && m[0].edges[0].lo == pay_spendable(x) + 5 && m[0].edges[0].hi == pay_spendable(x) + 5;
+  // Bob's end holds nothing: nothing to spend, not less than nothing.
+  #assert pay_spendable(pay_end(net[..], 0, 1)) == 0;
+  // An HTLC Alice only proposed already counts against what she can spend, with the
+  // fee of a commitment that holds it.
+  before := pay_spendable(x); hash: [32] u8;
+  #assert lnh_add(x, 5000000, hash[..], 1100) == LNH_OK;
+  #assert pay_spendable(x) == before - 5000000 - (lnc_commit_fee(x[0].feerate, 2, false) - lnc_commit_fee(x[0].feerate, 1, false)) * 1000;
+  // Bob forwarded Alice's HTLC as his out 3: the fulfill of out 3 claims hers at once.
+  pre: [32] u8; ph: [32] u8; lnh_preimage(1, pre[..], ph[..]); junk: [ONION_PACKET] u8;
+  j := pay_test_inject(net[..], 0, 5000000, 1100, ph[..], junk[..]);
+  net[0].nodes[1].ins[j].state = PAY_IN_FORWARDED;
+  net[0].nodes[1].outs[3] = PayOut.{state = PAY_OUT_OFFERED, link = 0, side = 1, id = 77, in_slot = j};
+  f: [74] u8; w := lnh_put(f[..], 0, LNH_FULFILL, 2); w = lnh_put(f[..], 34, 77, 8);
+  for i: 0..<32 { f[42 + i] = pre[i]; }
+  y := pay_end(net[..], 0, 1);
+  #assert pay_observe(net[..], 0, 1, f[..]) == PAY_OK && net[0].nodes[1].ins[j].state == PAY_IN_FREE && net[0].nodes[1].outs[3].state == PAY_OUT_FREE;
+  #assert y[0].out_n == 1 && ln_u16(y[0].out[0].b[..], 0) == LNH_FULFILL && lnh_same(y[0].out[0].b[42..<74], pre[..]);
+}
+#test "a round with a part still out after the network settles goes on" #steps 30000000000 {
+  net: [1] PayNet; m: [1] PayMap; pay_test_net(net[..], m[..], 1);
+  // Only Alice acts: Bob's channel end signs and revokes, but Bob never reads the onion.
+  net[0].n = 1;
+  p: [1] PayPayment; pre: [32] u8;
+  p[0] = PayPayment.{code = PAY_PENDING, payer = 0, payee = net[0].nodes[1].id, total = 5000000, final_cltv = 1018, waiting_n = 1};
+  p[0].waiting[0] = 5000000; lnh_preimage(1, pre[..], p[0].hash[..]);
+  #assert pay_round(net[..], m[..], p[..]) == PAY_PENDING && p[0].parts_n == 1 && p[0].parts[0].state == PAY_PART_FLYING;
+  #assert net[0].nodes[1].ins[0].state == PAY_IN_ADDED && m[0].edges[0].inflight == 5000000;
+}
+#test "a round: the waiting amounts, their halves, and what came back" #steps 2000000000 {
+  net: [1] PayNet; net[0].n = 1; net[0].height = 1000; net[0].nodes[0].id = pay_test_id(0);
+  m: [1] PayMap; pay_test_map(m[..]); p: [1] PayPayment;
+  // Nothing waits and nothing came back: the payment is stuck.
+  p[0] = PayPayment.{code = PAY_PENDING, total = 5};
+  #assert pay_round(net[..], m[..], p[..]) == PAY_STUCK && p[0].code == PAY_STUCK;
+  // Without basic_mpp, the first amount no route carries ends the payment; the rest wait.
+  p[0] = PayPayment.{code = PAY_PENDING, total = 5, payee = pay_test_id(9), waiting_n = 3};
+  p[0].waiting[0] = 7000; p[0].waiting[1] = 8000; p[0].waiting[2] = 9000;
+  #assert pay_round(net[..], m[..], p[..]) == PAY_NO_ROUTE && p[0].code == PAY_NO_ROUTE && p[0].waiting_n == 2 && p[0].waiting[0] == 8000 && p[0].waiting[1] == 9000;
+  // With it, an amount of at least twice PAY_MIN_PART splits in two while the parts fit.
+  for c: 0..<3 {
+    p[0] = PayPayment.{code = PAY_PENDING, total = 5, payee = pay_test_id(9), mpp = true};
+    n := ifx c == 0 then 1 else (ifx c == 1 then 15 else 16);
+    p[0].waiting[0] = ifx c == 0 then 2 * PAY_MIN_PART else 40000001;
+    for i: 1..<n { p[0].waiting[i] = 1; }
+    p[0].waiting_n = n;
+    #assert pay_round(net[..], m[..], p[..]) == PAY_NO_ROUTE;
+    if c == 0 { #assert p[0].waiting_n == 1 && p[0].waiting[0] == PAY_MIN_PART; }
+    if c == 1 { #assert p[0].waiting_n == 15 && p[0].waiting[12] == 1 && p[0].waiting[13] == 20000000 && p[0].waiting[14] == 20000001; }
+    if c == 2 { #assert p[0].waiting_n == 15 && p[0].waiting[14] == 1; }
+  }
+  // A route, and no part left to send on it.
+  p[0] = PayPayment.{code = PAY_PENDING, total = 50000000, payee = pay_test_id(3), parts_n = PAY_MAX_PARTS, waiting_n = 1};
+  p[0].waiting[0] = 50000000;
+  #assert pay_round(net[..], m[..], p[..]) == PAY_TOO_MANY && p[0].code == PAY_TOO_MANY;
+  // A message the channel cannot read ends the round.
+  net[0].links_n = 1; ce := pay_end(net[..], 0, 0); ce[0].out_n = 1; ce[0].out[0].n = 2; ce[0].out[0].b[1] = cast(u8) 2;
+  p[0] = PayPayment.{code = PAY_PENDING, total = 5};
+  #assert pay_round(net[..], m[..], p[..]) == PAY_CHANNEL && p[0].code == PAY_CHANNEL;
+  net[0].links_n = 0;
+  // A part fulfilled and a part still out: the round settles one and goes on, though
+  // the settled part alone is the total.
+  for pass: 0..<2 {
+    p[0] = PayPayment.{code = PAY_PENDING, total = 6, parts_n = 2};
+    p[0].parts[0] = PayPart.{state = PAY_PART_FLYING, amount = 6, out = 0};
+    p[0].parts[0].route.hops = 1; p[0].parts[0].route.amount[0] = 6;
+    p[0].parts[1] = PayPart.{state = PAY_PART_FLYING, amount = 4, out = 1};
+    m[0].edges[0].inflight = 6;
+    net[0].nodes[0].outs[0] = PayOut.{state = PAY_OUT_FULFILLED}; for i: 0..<32 { net[0].nodes[0].outs[0].preimage[i] = cast(u8) (i + 40); }
+    net[0].nodes[0].outs[1] = PayOut.{state = PAY_OUT_OFFERED};
+    if pass == 0 { #assert pay_round(net[..], m[..], p[..]) == PAY_PENDING; }
+    // Run to its end, the same payment stops when a round changes nothing.
+    if pass == 1 { #assert pay_invoice(net[..], m[..], p[..]) == PAY_STUCK; }
+    #assert p[0].parts[0].state == PAY_PART_SETTLED && p[0].settled == 6 && p[0].parts[1].state == PAY_PART_FLYING;
+    #assert p[0].preimage[0] == 40 && p[0].preimage[31] == 71 && m[0].edges[0].inflight == 0 && net[0].nodes[0].outs[0].state == PAY_OUT_FREE;
+  }
+  // A part whose error no hop made: the payment is refused, with a part still out.
+  p[0] = PayPayment.{code = PAY_PENDING, total = 10, parts_n = 2};
+  p[0].parts[0] = PayPart.{state = PAY_PART_FLYING, amount = 6, out = 0};
+  p[0].parts[0].route.hops = 1; p[0].parts[0].route.amount[0] = 6;
+  p[0].parts[1] = PayPart.{state = PAY_PART_FLYING, amount = 4, out = 1};
+  m[0].edges[0].inflight = 6;
+  net[0].nodes[0].outs[0] = PayOut.{state = PAY_OUT_FAILED, reason_n = 292};
+  net[0].nodes[0].outs[1] = PayOut.{state = PAY_OUT_OFFERED};
+  #assert pay_round(net[..], m[..], p[..]) == PAY_PENDING && p[0].refused && p[0].parts[0].state == PAY_PART_FAILED && p[0].waiting_n == 0;
+  #assert net[0].nodes[0].outs[0].state == PAY_OUT_FREE && m[0].edges[0].inflight == 0;
+}
+#test "a round: a temporary failure from the route's middle sends the amount again" #steps 4000000000 {
+  net: [1] PayNet; net[0].n = 1; net[0].height = 1000;
+  s: [3] [32] u8;
+  for k: 0..<3 { for i: 0..<32 { s[k][i] = cast(u8) (5 * k + i + 1); } }
+  ids := [3] [33] u8.[gsp_public(s[0][..]), gsp_public(s[1][..]), gsp_public(s[2][..])];
+  net[0].nodes[0].id = ids[0];
+  m: [1] PayMap;
+  k0 := pay_add_edge(m[..], 1, ids[0][..], ids[1][..], 900000000); k1 := pay_add_edge(m[..], 2, ids[1][..], ids[2][..], 900000000);
+  p: [1] PayPayment; p[0] = PayPayment.{code = PAY_PENDING, total = 10, parts_n = 1};
+  p[0].parts[0] = PayPart.{state = PAY_PART_FLYING, amount = 10, out = 0};
+  p[0].parts[0].route.hops = 2; p[0].parts[0].route.edge[1] = k1; p[0].parts[0].route.amount[0] = 10; p[0].parts[0].route.amount[1] = 10;
+  for i: 0..<32 { p[0].parts[0].session[i] = cast(u8) (i + 1); }
+  m[0].edges[0].inflight = 10; m[0].edges[1].inflight = 10;
+  pubkeys: [66] u8; for b: 0..<33 { pubkeys[b] = ids[1][b]; pubkeys[33 + b] = ids[2][b]; }
+  route: [1] OnionRoute;
+  #assert k0 == 0 && onion_route(p[0].parts[0].session[..], pubkeys[..], route[..]) == ONION_OK;
+  f: [16] u8; o := net[0].nodes[0].outs[0..<1];
+  o[0] = PayOut.{state = PAY_OUT_FAILED};
+  o[0].reason_n = onion_error_create(route[0].ss[0..<32], f[0..<pay_failure(PAY_TEMPORARY_CHANNEL_FAILURE, 0, 0, f[..])], 256, o[0].reason[..]);
+  #assert pay_round(net[..], m[..], p[..]) == PAY_PENDING && !p[0].refused && p[0].parts[0].fail_hop == 0;
+  #assert p[0].waiting_n == 1 && p[0].waiting[0] == 10 && m[0].edges[1].hi == 9 && m[0].edges[0].inflight == 0;
+}
+#test "the payee's invoice: its features, timestamp, payment_secret and route hint" #steps 4000000000 {
+  net: [1] PayNet; s: [32] u8; for i: 0..<32 { s[i] = cast(u8) (i + 1); }
+  k := pay_node(net[..], s[..]);
+  hint: [1] InvHop; hint[0] = InvHop.{pubkey = net[0].nodes[0].id, scid = 9, fee_base = 1, fee_ppm = 2, cltv = 3};
+  text: [700] u8; inv: [1] Invoice;
+  n := pay_write_invoice(net[..], 0, 7000000, 5, hint[..], text[..]);
+  #assert k == 0 && n > 0 && invoice_decode_vartime(cast(string) text[0..<n], inv[..]) == INV_OK;
+  f := inv[0].features[0..<inv[0].features_n];
+  #assert ln_feature_set(f, 8) && ln_feature_set(f, 14) && ln_feature_set(f, 17) && !ln_feature_set(f, 9) && !ln_feature_set(f, 15) && !ln_feature_set(f, 16);
+  #assert inv[0].timestamp == 1700000005 && inv[0].amount_msat == 7000000 && inv[0].hops_n == 1 && inv[0].hops[0].scid == 9 && inv[0].hops[0].cltv == 3;
+  v := net[0].nodes[0].invoices[0]; pre: [32] u8; hash: [32] u8; lnh_preimage(5, pre[..], hash[..]);
+  #assert net[0].nodes[0].invoices_n == 1 && v.amount == 7000000 && lnh_same(v.preimage[..], pre[..]) && lnh_same(v.hash[..], hash[..]) && lnh_same(inv[0].payment_hash[..], hash[..]);
+  for i: 0..<32 { #assert v.secret[i] == cast(u8) (5 + 2 * i + 1) && inv[0].secret[i] == v.secret[i]; }
+  #assert pay_write_invoice(net[..], 0, 7000000, 5, hint[0..<0], text[0..<20]) == -1;
 }
