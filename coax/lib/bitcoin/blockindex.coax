@@ -94,9 +94,9 @@ BiEntry :: struct {
 // Core's GetSkipHeight: the height a skip pointer jumps back to. Even
 // heights clear their lowest set bit; odd ones clear the two lowest set
 // bits of height - 1 and add one back.
-bi_invert_lowest_one :: (n: int) -> int #effects(all) { return n & (n - 1); }
+bi_invert_lowest_one :: (n: int) -> int #effects(all) { return n & (n - 1); }  // mutant: equivalent (every call passes an even n, where n - 1 and n - 2 differ only in bit 0, which n lacks)
 bi_skip_height :: (height: int) -> int #export_c #effects(all) {
-  if height < 2 { return 0; }
+  if height < 2 { return 0; }  // mutant: equivalent (height 2 clears its one bit to 0 either way)
   if height & 1 != 0 { return bi_invert_lowest_one(bi_invert_lowest_one(height - 1)) + 1; }
   return bi_invert_lowest_one(height);
 }
@@ -112,11 +112,11 @@ bi_ancestor_walk :: (l: [] BiLink, i: int, height: int) -> BiWalk #export_c #eff
   while at > height {
     skip := bi_skip_height(at);
     skip_prev := bi_skip_height(at - 1);
-    if l[w.index].skip >= 0 && (skip == height || (skip > height && !(skip_prev < skip - 2 && skip_prev >= height))) {
+    if l[w.index].skip >= 0 && (skip == height || (skip > height && !(skip_prev < skip - 2 && skip_prev >= height))) { // mutant: equivalent (skip >= height reads the same, since skip == height is taken first; skip_prev <= skip - 2 too, since skip_prev is never skip - 2)
       w.index = l[w.index].skip;
       at = skip;
     } else {
-      #assert l[w.index].prev >= 0;
+      #assert l[w.index].prev >= 0;  // mutant: equivalent (a step to the parent never leaves height 1: its skip pointer is genesis, and height 0 is taken by skip == height)
       w.index = l[w.index].prev;
       at -= 1;
     }
@@ -136,8 +136,8 @@ bi_build_skip :: (l: [] BiLink, i: int) #effects(all) {
 // skip heights, so the two walks stay level.
 bi_last_common_ancestor :: (l: [] BiLink, pa: int, pb: int) -> int #export_c #effects(all) {
   a := pa; b := pb;
-  if l[a].height > l[b].height { a = bi_ancestor(l, a, l[b].height); }
-  else if l[b].height > l[a].height { b = bi_ancestor(l, b, l[a].height); }
+  if l[a].height > l[b].height { a = bi_ancestor(l, a, l[b].height); }  // mutant: equivalent (at equal heights the ancestor is the entry itself)
+  else if l[b].height > l[a].height { b = bi_ancestor(l, b, l[a].height); }  // mutant: equivalent (at equal heights the ancestor is the entry itself)
   while a != b {
     while l[a].skip != l[b].skip { a = l[a].skip; b = l[b].skip; }
     a = l[a].prev; b = l[b].prev;
@@ -161,7 +161,7 @@ BlockTree :: struct {
 }
 bi_slot :: (t: [] BlockTree, hash: [] u8) -> int #effects(all) {
   key := 0;
-  for k: 0..<7 { key |= cast(int) hash[k] << (8 * k); }
+  for k: 0..<7 { key |= cast(int) hash[k] << (8 * k); }  // mutant: equivalent (for 0..<8 only: an eighth byte lands at bit 56, above any table's mask)
   return key & (t[0].slots.count - 1);
 }
 bi_same :: (a: [] u8, b: [] u8) -> bool #effects(all) {
@@ -214,7 +214,7 @@ bi_add_vartime :: (t: [] BlockTree, h: BlockHeader, hash: [] u8) -> int #export_
     l[i].height = l[prev].height + 1;
     bi_build_skip(l, i);
   }
-  e[i].time_max = ifx prev >= 0 && e[prev].time_max > x.time then e[prev].time_max else x.time;
+  e[i].time_max = ifx prev >= 0 && e[prev].time_max > x.time then e[prev].time_max else x.time;  // mutant: equivalent (for >= only: equal times give the same maximum)
   base := ifx prev >= 0 then e[prev].work else u256_small(0);
   e[i].work = u256_add(base, pow_work_vartime(x.bits));
   status := [1] u32.[e[i].status];
@@ -321,8 +321,8 @@ bi_reason :: (code: int) -> string #effects(all) {
 // came first; then the lower pointer, here the lower position.
 bi_worse :: (e: [] BiEntry, a: int, b: int) -> bool #export_c #effects(all) {
   c := u256_compare_vartime(e[a].work, e[b].work);
-  if c != 0 { return c < 0; }
-  if e[a].seq != e[b].seq { return e[a].seq > e[b].seq; }
+  if c != 0 { return c < 0; }  // mutant: equivalent (c is -1 or 1 here)
+  if e[a].seq != e[b].seq { return e[a].seq > e[b].seq; }  // mutant: equivalent (the ids differ here)
   return a > b;
 }
 // book:end compare
@@ -344,7 +344,7 @@ bi_set_tip :: (t: [] BlockTree, i: int) #effects(all) {
 // FindFork: the last block of the active chain that is an ancestor of i.
 bi_find_fork :: (t: [] BlockTree, index: int) -> int #export_c #effects(all) {
   i := index;
-  if t[0].l[i].height > t[0].height { i = bi_ancestor(t[0].l, i, t[0].height); }
+  if t[0].l[i].height > t[0].height { i = bi_ancestor(t[0].l, i, t[0].height); }  // mutant: equivalent (for >= or no jump: the walk by parents below reaches the same block, as bi_contains refuses heights above the tip)
   while i >= 0 && !bi_contains(t, i) { i = t[0].l[i].prev; }
   return i;
 }
@@ -356,7 +356,7 @@ bi_locator :: (l: [] BiLink, index: int, out: [] int) -> int #export_c #effects(
     out[n] = i; n += 1;
     if l[i].height == 0 { break; }
     h := l[i].height - step;
-    if h < 0 { h = 0; }
+    if h < 0 { h = 0; }  // mutant: equivalent (for <= 0 and < 1: h = 0 assigns what is there)
     i = bi_ancestor(l, i, h);
     if n > 10 { step *= 2; }
   }
@@ -405,12 +405,12 @@ bi_received_block_vartime :: (t: [] BlockTree, i: int, ntx: int) #export_c #effe
     // m_blocks_unlinked's entries under k, oldest first.
     while true {
       child := -1;
-      for c: 0..<t[0].count {
-        if l[c].prev == k && e[c].arrived > 0 && (child < 0 || e[c].arrived < e[child].arrived) { child = c; }
+      for c: 0..<t[0].count {  // mutant: equivalent (entry 0 is never a child: it was added first, so no parent was found)
+        if l[c].prev == k && e[c].arrived > 0 && (child < 0 || e[c].arrived < e[child].arrived) { child = c; }  // mutant: equivalent (child is never 0, and arrival numbers are distinct)
       }
-      if child < 0 { break; }
+      if child < 0 { break; }  // mutant: equivalent (child is never 0)
       e[child].arrived = 0;
-      #assert tail < queue.count;
+      #assert tail < queue.count;  // mutant: equivalent (with <= the next store is out of bounds, so the run fails either way)
       queue[tail] = child; tail += 1;
     }
   }
@@ -435,10 +435,10 @@ bi_find_most_work_chain :: (t: [] BlockTree) -> int #export_c #effects(all) {
   while true {
     best := bi_best_candidate(t);
     if best < 0 { return -1; }
-    bad := -1; failed := false;
+    bad := -1; failed := false;  // mutant: equivalent (failed is read only after the walk sets it)
     j := best;
     while j >= 0 && !bi_contains(t, j) {
-      #assert e[j].chain_tx != 0 || l[j].height == 0;
+      #assert e[j].chain_tx != 0 || l[j].height == 0;  // mutant: equivalent (a candidate's path has chain_tx at least its height + 1, so the first clause always holds)
       failed = e[j].status & BLOCK_FAILED_VALID != 0;
       if failed || e[j].status & BLOCK_HAVE_DATA == 0 { bad = j; break; }
       j = l[j].prev;
@@ -454,7 +454,7 @@ bi_find_most_work_chain :: (t: [] BlockTree) -> int #export_c #effects(all) {
     }
     e[bad].candidate = false;
   }
-  return -1;
+  return -1;  // mutant: equivalent (after while true: unreachable)
 }
 // PruneBlockIndexCandidates: drop every candidate worse than the tip.
 bi_prune_candidates :: (t: [] BlockTree) #effects(all) {
@@ -484,7 +484,7 @@ bi_recalculate_best_header :: (t: [] BlockTree) #effects(all) {
   e := t[0].e;
   l := t[0].l;
   b := bi_tip(t);
-  for c: 0..<t[0].count {
+  for c: 0..<t[0].count {  // mutant: equivalent (entry 0 is genesis, never more work than the tip it is an ancestor of)
     if e[c].status & BLOCK_FAILED_VALID == 0 && u256_compare_vartime(e[b].work, e[c].work) < 0 { b = c; }
   }
   t[0].best_header = b;
@@ -496,11 +496,11 @@ bi_invalid_chain_found :: (t: [] BlockTree, i: int) #export_c #effects(all) {
   e := t[0].e;
   l := t[0].l;
   if t[0].best_invalid < 0 || u256_compare_vartime(e[i].work, e[t[0].best_invalid].work) > 0 { t[0].best_invalid = i; }
-  for c: 0..<t[0].count {
+  for c: 0..<t[0].count {  // mutant: equivalent (entry 0 has no parent, so it descends from nothing)
     if c != i && bi_ancestor(l, c, l[i].height) == i { e[c].status |= BLOCK_FAILED_VALID; }
   }
   b := t[0].best_header;
-  if b >= 0 && bi_ancestor(l, b, l[i].height) == i { bi_recalculate_best_header(t); }
+  if b >= 0 && bi_ancestor(l, b, l[i].height) == i { bi_recalculate_best_header(t); }  // mutant: equivalent (for > 0 forms: a best header of genesis has no more-work entry to move to)
 }
 // InvalidBlockFound: block i failed a check of its data or of
 // ConnectBlock. A mutated block (chapter 46's or 49's) is not marked: the
@@ -536,7 +536,7 @@ bi_invalidate_block :: (t: [] BlockTree, i: int) #export_c #effects(all) {
 bi_difficulty :: (bits: u32) -> f64 #export_c #effects(all) {
   shift := cast(int) (bits >> 24) & 0xff;
   d := cast(f64) 0xffff / cast(f64) (bits & 0x00ffffff);
-  while shift < 29 { d *= 256.0; shift += 1; }
+  while shift < 29 { d *= 256.0; shift += 1; }  // mutant: equivalent (one step past 29 is undone by the loop below, and times 256 then over 256 is exact)
   while shift > 29 { d /= 256.0; shift -= 1; }
   return d;
 }
@@ -557,7 +557,7 @@ bi_line :: (l: [] BiLink, n: int, first: int, base: int) #effects(all) {
   for k: 0..<n {
     i := first + k;
     l[i].height = base + k;
-    l[i].prev = ifx k == 0 then (ifx base == 0 then -1 else base - 1) else i - 1;
+    l[i].prev = ifx k == 0 then base - 1 else i - 1;
     bi_build_skip(l, i);
   }
 }
@@ -586,8 +586,13 @@ bi_line :: (l: [] BiLink, n: int, first: int, base: int) #effects(all) {
   }
   // "max 110 steps to go back up to 2**18 blocks"
   most := 0;
-  for to: 0..<262144 { s := bi_ancestor_walk(l[..], 262143, to).steps; if s > most { most = s; } }
-  #assert most <= 110;
+  total := 0;
+  for to: 0..<262144 { s := bi_ancestor_walk(l[..], 262143, to).steps; total += s; if s > most { most = s; } }
+  // Exactly Core's GetAncestor path: blockindex.py's transliteration counts
+  // the same steps.
+  #assert most <= 110 && most == 105 && total == 13558686;
+  // The skip pointer to genesis, and the parent's closer skip both ways.
+  #assert bi_ancestor_walk(l[..], 2, 0).steps == 1 && bi_ancestor_walk(l[..], 6, 0).steps == 3 && bi_ancestor_walk(l[..], 6, 1).steps == 2;
   #assert bi_ancestor(l[..], 5, 6) == -1 && bi_ancestor(l[..], 5, -1) == -1;
 }
 #test "Core's getlocator_test: a main chain and a branch" #steps 4000000000 {
@@ -608,6 +613,11 @@ bi_line :: (l: [] BiLink, n: int, first: int, base: int) #effects(all) {
     // A branch tip's locator stays on the branch until it passes 49,999.
     for i: 0..<count { if l[out[i]].height >= 50000 { #assert (out[i] >= 100000) == (tip >= 100000); } }
   }
+  // The locator of 99,999 entry by entry: 11 one apart, then doubling steps.
+  count := bi_locator(l[..], 99999, out[..]);
+  want := [28] int.[99999, 99998, 99997, 99996, 99995, 99994, 99993, 99992, 99991, 99990, 99989, 99988, 99986, 99982, 99974, 99958, 99926, 99862, 99734, 99478, 98966, 97942, 95894, 91798, 83606, 67222, 34454, 0];
+  #assert count == 28;
+  for i: 0..<28 { #assert out[i] == want[i]; }
   #assert bi_last_common_ancestor(l[..], 149999, 99999) == 49999 && bi_last_common_ancestor(l[..], 100000, 50000) == 49999;
   #assert bi_last_common_ancestor(l[..], 120000, 40000) == 40000 && bi_last_common_ancestor(l[..], 77, 77) == 77;
 }
@@ -629,9 +639,9 @@ bi_near :: (a: f64, b: f64) -> bool #effects(all) { return a - b < 0.00001 && b 
 bi_regtest :: (t: [] BlockTree, l: [] BiLink, e: [] BiEntry, slots: [] int, chain: [] int) #effects(all) {
   #assert bi_init(t, CHAIN_REGTEST_PARAMS, l, e, slots, chain);
   g: [CHAIN_GENESIS_MAX] u8;
-  #assert chain_genesis_block_vartime(CHAIN_REGTEST_PARAMS.genesis, g[..]) > 0;
-  a := bi_accept_header_vartime(t, g[0..<80], 0);
-  #assert a.code == BI_OK && a.index == 0;
+  #assert chain_genesis_block_vartime(CHAIN_REGTEST_PARAMS.genesis, g[..]) > 0;  // mutant: equivalent (the genesis block is 285 bytes)
+  a := bi_accept_header_vartime(t, g[0..<80], 0);  // mutant: equivalent (genesis skips the header rules, so the clock is not read)
+  #assert a.code == BI_OK && a.index == 0;  // mutant: equivalent (|| weakens an assert that holds)
   bi_received_block_vartime(t, 0, 1);
   #assert bi_activate_best_chain(t) == 0;
 }
@@ -645,13 +655,13 @@ bi_mine :: (t: [] BlockTree, prev: int, time: u32, tag: u8, out: [] u8) -> [] u8
     if pow_header_check_vartime(out[0..<80], t[0].p.retarget.pow_limit) == POW_OK { return out[0..<80]; }
     h.nonce += 1;
   }
-  return out[0..<80];
+  return out[0..<80];  // mutant: equivalent (after while true: unreachable)
 }
 bi_extend :: (t: [] BlockTree, parent: int, n: int, tag: u8, data: bool) -> int #effects(all) {
   raw: [80] u8; prev := parent;
   for k: 0..<n {
     time := cast(u32) (1296688602 + 600 * (t[0].l[prev].height + 1)) + cast(u32) tag;
-    a := bi_accept_header_vartime(t, bi_mine(t, prev, time, tag, raw[..]), 1296688602 + 600 * 1000);
+    a := bi_accept_header_vartime(t, bi_mine(t, prev, time, tag, raw[..]), 1296688602 + 600 * 1000);  // mutant: equivalent (the clock is only past every mined time; one second more admits the same headers)
     #assert a.code == BI_OK;
     if data { bi_received_block_vartime(t, a.index, 1); }
     prev = a.index;
@@ -723,16 +733,324 @@ bi_extend :: (t: [] BlockTree, parent: int, n: int, tag: u8, data: bool) -> int 
 #test "the first 2,017 mainnet headers" #steps 20000000000 {
   l: [2048] BiLink; e: [2048] BiEntry; slots: [4096] int; chain: [2048] int; t: [1] BlockTree;
   #assert bi_init(t[..], CHAIN_MAINNET_PARAMS, l[..], e[..], slots[..], chain[..]);
-  raw: [80] u8;
+  raw: [80] u8; time_max: u32;
   for k: 0..<BI_MAINNET_COUNT {
     #assert cp_unhex(BI_MAINNET_HEADERS[160 * k..<160 * (k + 1)], raw[..]) == 80;
     a := bi_accept_header_vartime(t[..], raw[..], BI_NOW);
     #assert a.code == BI_OK && a.index == k && l[k].height == k;
     bi_received_block_vartime(t[..], k, 1);
+    // Its skip pointer, its running maximum time, and its status: data
+    // and transactions, no witness flag before segwit.
+    #assert l[k].skip == (ifx k == 0 then -1 else bi_skip_height(k)) && e[k].seq == k + 2;
+    if k == 0 || e[k].time > time_max { time_max = e[k].time; }
+    #assert e[k].time_max == time_max && e[k].status == (BLOCK_VALID_TRANSACTIONS | BLOCK_HAVE_DATA);
   }
+  #assert bi_median_time_past(l[..], e[..], 0) == 1231006505;
   tip := bi_activate_best_chain(t[..]);
   #assert tip == 2016 && t[0].best_header == 2016 && e[tip].chain_tx == 2017;
   want := retarget_chain_work_vartime(u256_small(0), 0x1d00ffff, 2017);
   #assert u256_compare_vartime(e[tip].work, want) == 0;
   #assert bi_median_time_past(l[..], e[..], 2016) == 1233057128;
+}
+#test "status: a raise from the reserved level, and none to the same level" {
+  s := [1] u32.[BLOCK_VALID_RESERVED];
+  #assert bi_raise_validity(s[..], BLOCK_VALID_TREE) && s[0] == BLOCK_VALID_TREE;
+  #assert !bi_raise_validity(s[..], BLOCK_VALID_TREE) && s[0] == BLOCK_VALID_TREE;
+}
+#test "the check helpers: the generator, nearness and hash equality" {
+  r := [1] BiRng.[BiRng.{s=1}];
+  #assert bi_rand(r[..], 2147483647) == 48271 && bi_rand(r[..], 2147483647) == 182605794 && bi_rand(r[..], 1000) == 1291394886 % 1000;
+  #assert !bi_near(1.0, 2.0) && !bi_near(2.0, 1.0) && !bi_near(0.0, 0.00001) && !bi_near(0.00001, 0.0) && bi_near(1.0, 1.000001);
+  a: [32] u8; b: [32] u8; b[0] = 1;
+  #assert !bi_same(a[..], b[..]) && bi_same(a[..], a[..]);
+}
+#test "a hash's slot: its first bytes little-endian, masked to the table" {
+  t: [1] BlockTree; slots: [4096] int;
+  t[0].slots = slots[..];
+  h: [32] u8; h[0] = 0x34; h[1] = 0x0a; h[2] = 0xff;
+  #assert bi_slot(t[..], h[..]) == 0xa34;
+  h[0] = 0x35; h[1] = 0x0b;
+  #assert bi_slot(t[..], h[..]) == 0xb35;
+}
+#test "bi_init: each refusal, and a clean start" {
+  l: [8] BiLink; e: [8] BiEntry; slots: [16] int; chain: [8] int; t: [1] BlockTree;
+  p := CHAIN_REGTEST_PARAMS;
+  #assert !bi_init(t[..], p, l[0..<4], e[..], slots[..], chain[..]);
+  #assert !bi_init(t[..], p, l[0..<5], e[0..<5], slots[0..<8], chain[0..<5]);
+  #assert !bi_init(t[..], p, l[0..<4], e[0..<4], slots[0..<12], chain[0..<4]);
+  #assert !bi_init(t[..], p, l[0..<4], e[0..<4], slots[0..<8], chain[0..<3]);
+  #assert bi_init(t[..], p, l[0..<0], e[0..<0], slots[0..<1], chain[0..<0]);
+  for s: 0..<16 { slots[s] = 3; }
+  #assert bi_init(t[..], p, l[0..<4], e[0..<4], slots[0..<8], chain[0..<4]);
+  for s: 0..<8 { #assert slots[s] == 0; }
+  #assert t[0].height == -1 && bi_tip(t[..]) == -1 && t[0].best_header == -1 && t[0].best_invalid == -1;
+  #assert t[0].next_seq == 2 && t[0].next_arrival == 1 && t[0].count == 0 && bi_activate_best_chain(t[..]) == -1;
+}
+// A header with no known parent, tagged in its merkle root, added
+// without the header rules; its raw bytes go to out.
+bi_orphan :: (t: [] BlockTree, tag: u8, out: [] u8) -> int #effects(all) {
+  h: BlockHeader;
+  h.version = 4; h.time = 1296688602; h.bits = 0x207fffff;
+  for k: 0..<32 { h.prev[k] = 0xab; h.merkle_root[k] = tag; }
+  hash: [32] u8;
+  #assert pow_header_write_vartime(h, out[0..<80]) && pow_block_hash_vartime(out[0..<80], hash[..]) == POW_OK;
+  return bi_add_vartime(t, h, hash[..]);
+}
+// Entry i's header, from its fields and its parent's hash.
+bi_raw :: (t: [] BlockTree, i: int, out: [] u8) -> [] u8 #effects(all) {
+  h: BlockHeader; e := t[0].e;
+  h.version = e[i].version; h.time = e[i].time; h.bits = e[i].bits; h.nonce = e[i].nonce;
+  p := t[0].l[i].prev;
+  for k: 0..<32 { h.merkle_root[k] = e[i].merkle_root[k]; if p >= 0 { h.prev[k] = e[p].hash[k]; } }
+  #assert pow_header_write_vartime(h, out[0..<80]);
+  return out[0..<80];
+}
+#test "a regtest tree's fields: genesis, mined blocks, and headers seen again" #steps 4000000000 {
+  l: [64] BiLink; e: [64] BiEntry; slots: [128] int; chain: [64] int; t: [1] BlockTree;
+  for k: 0..<64 { chain[k] = 99; }
+  bi_regtest(t[..], l[..], e[..], slots[..], chain[..]);
+  // Genesis: on the chain, sequence id 2, one transaction, no skip, data
+  // with witnesses (segwit is active from regtest's genesis).
+  #assert bi_tip(t[..]) == 0 && chain[0] == 0 && bi_contains(t[..], 0) && e[0].seq == 2 && e[0].chain_tx == 1 && l[0].skip == -1;
+  #assert e[0].status == (BLOCK_VALID_TRANSACTIONS | BLOCK_HAVE_DATA | BLOCK_OPT_WITNESS);
+  a := bi_extend(t[..], 0, 3, 1, true);
+  #assert bi_activate_best_chain(t[..]) == a && bi_contains(t[..], a) && e[a].candidate && !e[0].candidate;
+  // The miner's fields, Core's nonce search (blockindex.py's SHA-256d), and
+  // the sequence ids 3, 4 and 5.
+  #assert e[a].version == 4 && e[a].merkle_root[0] == 1 && e[a].time == cast(u32) (1296688602 + 600 * 3 + 1) && e[a].nonce == 2;
+  #assert e[a].seq == 5 && e[a].chain_tx == 4 && l[a].skip == bi_ancestor(l[..], a, bi_skip_height(3));
+  side := bi_extend(t[..], 0, 1, 2, false);
+  #assert e[side].nonce == 1 && e[side].seq == SEQ_ID_INIT_FROM_DISK && e[side].status == BLOCK_VALID_TREE;
+  // Genesis and a known header again: their entries, nothing added.
+  g: [CHAIN_GENESIS_MAX] u8; raw: [80] u8;
+  #assert chain_genesis_block_vartime(CHAIN_REGTEST_PARAMS.genesis, g[..]) > 0;
+  n := t[0].count;
+  r := bi_accept_header_vartime(t[..], g[0..<80], 0);
+  #assert r.code == BI_OK && r.index == 0 && t[0].count == n;
+  r = bi_accept_header_vartime(t[..], bi_raw(t[..], a, raw[..]), 0);
+  #assert r.code == BI_OK && r.index == a && t[0].count == n;
+  r = bi_accept_header_vartime(t[..], bi_raw(t[..], side, raw[..]), 0);
+  #assert r.code == BI_OK && r.index == side;
+  e[side].status |= BLOCK_FAILED_VALID;
+  r = bi_accept_header_vartime(t[..], bi_raw(t[..], side, raw[..]), 0);
+  #assert r.code == BI_DUPLICATE_INVALID && r.index == side;
+  // A child of genesis with an earlier time keeps genesis's time as its
+  // maximum.
+  h: BlockHeader; hash: [32] u8;
+  h.version = 4; h.time = e[0].time - 100; h.bits = 0x207fffff; h.prev = e[0].hash;
+  #assert pow_header_write_vartime(h, raw[..]) && pow_block_hash_vartime(raw[..], hash[..]) == POW_OK;
+  early := bi_add_vartime(t[..], h, hash[..]);
+  #assert e[early].time == e[0].time - 100 && e[early].time_max == e[0].time && l[early].height == 1;
+}
+#test "AcceptBlockHeader's refusals, each with no entry" #steps 4000000000 {
+  l: [64] BiLink; e: [64] BiEntry; slots: [128] int; chain: [64] int; t: [1] BlockTree;
+  bi_regtest(t[..], l[..], e[..], slots[..], chain[..]);
+  a := bi_extend(t[..], 0, 3, 1, true);
+  raw: [80] u8;
+  child := bi_mine(t[..], a, e[a].time + 600, 9, raw[..]);
+  n := t[0].count;
+  r := bi_accept_header_vartime(t[..], child[0..<79], 0);
+  #assert r.code == BI_HIGH_HASH && r.index == -1;
+  // Proof of work short of its own nBits: mainnet's target on regtest.
+  h := pow_header_read_vartime(child);
+  h.bits = 0x1d00ffff;
+  #assert pow_header_write_vartime(h, raw[..]);
+  r = bi_accept_header_vartime(t[..], raw[..], 0);
+  #assert r.code == BI_HIGH_HASH && r.index == -1;
+  // A parent never seen.
+  o: [80] u8; mined: [80] u8;
+  h = pow_header_read_vartime(bi_mine(t[..], a, e[a].time + 600, 9, mined[..]));
+  for k: 0..<32 { h.prev[k] = 0xab; }
+  h.nonce = 0;
+  for k: 0..<2000 {
+    #assert pow_header_write_vartime(h, o[..]);
+    if pow_header_check_vartime(o[..], t[0].p.retarget.pow_limit) == POW_OK { break; }
+    h.nonce += 1;
+  }
+  r = bi_accept_header_vartime(t[..], o[..], 0);
+  #assert r.code == BI_PREV_NOT_FOUND && r.index == -1;
+  // A time at the median time past is too old.
+  mtp := bi_median_time_past(l[..], e[..], a);
+  old := bi_mine(t[..], a, cast(u32) mtp, 9, raw[..]);
+  r = bi_accept_header_vartime(t[..], old, mtp);
+  #assert r.code == BI_HEADER + HEADER_TIME_TOO_OLD && r.index == -1 && t[0].count == n;
+  #assert bi_reason(BI_HEADER) == "ok" && bi_reason(BI_HEADER + HEADER_CONTEXT) == "bad context" && bi_reason(BI_FULL) == "no room";
+  #assert bi_reason(BI_HEADER + HEADER_TIME_TOO_OLD) == "time-too-old";
+}
+#test "a full tree refuses another header" {
+  l: [1] BiLink; e: [1] BiEntry; slots: [2] int; chain: [1] int; t: [1] BlockTree;
+  bi_regtest(t[..], l[..], e[..], slots[..], chain[..]);
+  raw: [80] u8;
+  r := bi_accept_header_vartime(t[..], bi_mine(t[..], 0, e[0].time + 600, 1, raw[..]), 1296688602 + 600 * 1000);
+  #assert r.code == BI_FULL && r.index == -1 && t[0].count == 1;
+}
+#test "a header known at entry 0 is its entry, not a missing parent" {
+  l: [4] BiLink; e: [4] BiEntry; slots: [8] int; chain: [4] int; t: [1] BlockTree;
+  #assert bi_init(t[..], CHAIN_REGTEST_PARAMS, l[..], e[..], slots[..], chain[..]);
+  raw: [80] u8;
+  #assert bi_orphan(t[..], 1, raw[..]) == 0;
+  // regtest's genesis fields, a prev of 0xab bytes and the tag as merkle root
+  #assert raw[0] == 4 && raw[1] == 0 && raw[4] == 0xab && raw[35] == 0xab && raw[36] == 1 && raw[67] == 1;
+  #assert raw[68] == 0xda && raw[69] == 0xe5 && raw[70] == 0x49 && raw[71] == 0x4d && raw[72] == 0xff && raw[73] == 0xff && raw[74] == 0x7f && raw[75] == 0x20;
+  r := bi_accept_header_vartime(t[..], raw[..], 0);
+  #assert r.code == BI_OK && r.index == 0 && t[0].count == 1;
+}
+#test "equal work: an orphan header is no better than genesis" #steps 4000000000 {
+  l: [8] BiLink; e: [8] BiEntry; slots: [16] int; chain: [8] int; t: [1] BlockTree;
+  bi_regtest(t[..], l[..], e[..], slots[..], chain[..]);
+  raw: [80] u8;
+  o := bi_orphan(t[..], 1, raw[..]);
+  #assert o == 1 && t[0].best_header == 0 && e[o].status == BLOCK_VALID_TREE && e[o].seq == SEQ_ID_INIT_FROM_DISK;
+  // With data it is worse than the tip, a later sequence id at equal work,
+  // so not a candidate.
+  bi_received_block_vartime(t[..], o, 1);
+  #assert !e[o].candidate && e[o].chain_tx == 1 && e[o].seq == 3;
+  // The best candidate is the better of the two.
+  e[o].candidate = true;
+  #assert e[0].candidate && bi_best_candidate(t[..]) == 0;
+  // The tip moves only to a better chain.
+  e[0].candidate = false;
+  #assert bi_activate_best_chain(t[..]) == 0;
+  // A failed candidate of no more work than the best invalid one does not
+  // replace it.
+  t[0].best_invalid = 0;
+  e[o].candidate = true; e[o].status |= BLOCK_FAILED_VALID;
+  #assert bi_find_most_work_chain(t[..]) == -1 && t[0].best_invalid == 0 && !e[o].candidate;
+  bi_invalid_block_found(t[..], o, false);
+  #assert t[0].best_invalid == 0;
+  // Two roots: a fork search from the one off the chain finds nothing.
+  l2: [4] BiLink; e2: [4] BiEntry; slots2: [8] int; chain2: [4] int; u: [1] BlockTree;
+  #assert bi_init(u[..], CHAIN_REGTEST_PARAMS, l2[..], e2[..], slots2[..], chain2[..]);
+  #assert bi_orphan(u[..], 1, raw[..]) == 0 && bi_orphan(u[..], 2, raw[..]) == 1;
+  bi_set_tip(u[..], 1);
+  #assert bi_tip(u[..]) == 1 && bi_find_fork(u[..], 0) == -1;
+}
+#test "no candidate: a genesis without data, and a genesis that failed" {
+  l: [4] BiLink; e: [4] BiEntry; slots: [8] int; chain: [4] int; t: [1] BlockTree;
+  #assert bi_init(t[..], CHAIN_REGTEST_PARAMS, l[..], e[..], slots[..], chain[..]);
+  g: [CHAIN_GENESIS_MAX] u8;
+  #assert chain_genesis_block_vartime(CHAIN_REGTEST_PARAMS.genesis, g[..]) > 0;
+  #assert bi_accept_header_vartime(t[..], g[0..<80], 0).index == 0;
+  #assert bi_find_most_work_chain(t[..]) == -1 && bi_activate_best_chain(t[..]) == -1;
+  bi_received_block_vartime(t[..], 0, 1);
+  e[0].status |= BLOCK_FAILED_VALID;
+  #assert bi_find_most_work_chain(t[..]) == -1 && t[0].best_invalid == 0 && bi_tip(t[..]) == -1;
+}
+#test "data before its parent's: arrival order, then sequence ids" #steps 4000000000 {
+  l: [8] BiLink; e: [8] BiEntry; slots: [16] int; chain: [8] int; t: [1] BlockTree;
+  #assert bi_init(t[..], CHAIN_REGTEST_PARAMS, l[..], e[..], slots[..], chain[..]);
+  g: [CHAIN_GENESIS_MAX] u8;
+  #assert chain_genesis_block_vartime(CHAIN_REGTEST_PARAMS.genesis, g[..]) > 0;
+  #assert bi_accept_header_vartime(t[..], g[0..<80], 0).index == 0;
+  c2 := bi_extend(t[..], 0, 2, 1, false);
+  c1 := l[c2].prev;
+  bi_received_block_vartime(t[..], c1, 1);
+  #assert e[c1].chain_tx == 0 && e[c1].arrived == 1 && t[0].next_arrival == 2;
+  // A block already past the transactions level keeps its level.
+  e[c2].status = BLOCK_VALID_CHAIN;
+  bi_received_block_vartime(t[..], c2, 1);
+  #assert e[c2].arrived == 2 && t[0].next_arrival == 3 && e[c2].status == (BLOCK_VALID_CHAIN | BLOCK_HAVE_DATA | BLOCK_OPT_WITNESS);
+  bi_received_block_vartime(t[..], 0, 1);
+  #assert e[0].seq == 2 && e[c1].seq == 3 && e[c2].seq == 4 && t[0].next_seq == 5;
+  #assert e[0].chain_tx == 1 && e[c1].chain_tx == 2 && e[c2].chain_tx == 3 && e[c1].arrived == 0 && e[c2].arrived == 0;
+  #assert bi_activate_best_chain(t[..]) == c2;
+}
+#test "FindMostWorkChain: missing data waits again, a failed ancestor is remembered" #steps 4000000000 {
+  l: [64] BiLink; e: [64] BiEntry; slots: [128] int; chain: [64] int; t: [1] BlockTree;
+  bi_regtest(t[..], l[..], e[..], slots[..], chain[..]);
+  a := bi_extend(t[..], 0, 3, 1, true);
+  #assert bi_activate_best_chain(t[..]) == a;
+  // Heights 2 to 5 off block 1; block 3 of them loses its data.
+  b5 := bi_extend(t[..], 1, 4, 2, true);
+  b4 := l[b5].prev; b3 := l[b4].prev;
+  e[b3].status = e[b3].status - BLOCK_HAVE_DATA;
+  #assert bi_activate_best_chain(t[..]) == a && t[0].best_invalid == -1;
+  #assert e[b5].arrived == 1 && e[b4].arrived == 2 && t[0].next_arrival == 3 && !e[b5].candidate && !e[b4].candidate;
+  // Heights 2 to 6 off block 1; block 3 of them failed, alone.
+  c6 := bi_extend(t[..], 1, 5, 3, true);
+  c5 := l[c6].prev;
+  e[bi_ancestor(l[..], c6, 3)].status |= BLOCK_FAILED_VALID;
+  #assert bi_activate_best_chain(t[..]) == a && t[0].best_invalid == c6;
+  #assert e[c6].arrived == 0 && e[c5].arrived == 0 && !e[c6].candidate && !e[c5].candidate && t[0].next_arrival == 3;
+  // A failed block of more work replaces the best invalid one; one of
+  // equal work does not. Each failed one and its descendants are marked
+  // failed at their own level.
+  d7 := bi_extend(t[..], c6, 1, 4, false);
+  d8 := bi_extend(t[..], d7, 1, 4, false);
+  d7b := bi_extend(t[..], c6, 1, 5, false);
+  bi_invalid_block_found(t[..], d7, false);
+  #assert t[0].best_invalid == d7 && e[d7].status == (BLOCK_FAILED_VALID | BLOCK_VALID_TREE) && e[d8].status == (BLOCK_FAILED_VALID | BLOCK_VALID_TREE);
+  bi_invalid_block_found(t[..], d7b, false);
+  #assert t[0].best_invalid == d7;
+  // A failed candidate stops being one.
+  #assert e[a].candidate;
+  bi_invalid_block_found(t[..], a, false);
+  #assert !e[a].candidate;
+}
+#test "RecalculateBestHeader: the most work that has not failed, the first of equals" #steps 4000000000 {
+  l: [64] BiLink; e: [64] BiEntry; slots: [128] int; chain: [64] int; t: [1] BlockTree;
+  bi_regtest(t[..], l[..], e[..], slots[..], chain[..]);
+  a := bi_extend(t[..], 0, 3, 1, true);
+  #assert bi_activate_best_chain(t[..]) == a;
+  x := bi_extend(t[..], 1, 3, 2, false);
+  y := bi_extend(t[..], 1, 3, 3, true);
+  z := bi_extend(t[..], 1, 3, 4, false);
+  #assert t[0].best_header == x && bi_find_fork(t[..], x) == 1 && bi_find_fork(t[..], z) == 1;
+  bi_invalid_block_found(t[..], bi_ancestor(l[..], x, 2), false);
+  #assert t[0].best_header == y;
+  // A tip of equal work to the best header: a failure elsewhere keeps it.
+  l2: [64] BiLink; e2: [64] BiEntry; slots2: [128] int; chain2: [64] int; u: [1] BlockTree;
+  bi_regtest(u[..], l2[..], e2[..], slots2[..], chain2[..]);
+  hx := bi_extend(u[..], 0, 4, 2, false);
+  ha := bi_extend(u[..], 0, 4, 1, true);
+  #assert bi_activate_best_chain(u[..]) == ha && u[0].best_header == hx;
+  raw: [80] u8;
+  o := bi_orphan(u[..], 7, raw[..]);
+  bi_invalid_block_found(u[..], o, false);
+  #assert u[0].best_header == hx;
+}
+#test "InvalidateBlock: off the chain, a header, and the first block" #steps 4000000000 {
+  l: [64] BiLink; e: [64] BiEntry; slots: [128] int; chain: [64] int; t: [1] BlockTree;
+  bi_regtest(t[..], l[..], e[..], slots[..], chain[..]);
+  a := bi_extend(t[..], 0, 3, 1, true);
+  #assert bi_activate_best_chain(t[..]) == a;
+  s := bi_extend(t[..], 1, 1, 2, true);
+  bi_invalidate_block(t[..], s);
+  #assert bi_tip(t[..]) == a && e[a].candidate;
+  h := bi_extend(t[..], a, 1, 3, false);
+  bi_invalidate_block(t[..], h);
+  #assert e[h].status == (BLOCK_FAILED_VALID | BLOCK_VALID_TREE) && bi_tip(t[..]) == a;
+  bi_invalidate_block(t[..], 1);
+  #assert bi_tip(t[..]) == 0 && e[0].candidate && bi_activate_best_chain(t[..]) == 0;
+}
+#test "GetNextWorkRequired: a retarget, and testnet's minimum-difficulty walk" {
+  l: [2016] BiLink; e: [2016] BiEntry; slots: [4096] int; chain: [2016] int; t: [1] BlockTree;
+  #assert bi_init(t[..], CHAIN_MAINNET_PARAMS, l[..], e[..], slots[..], chain[..]);
+  bi_line(l[..], 2016, 0, 0);
+  for k: 0..<2016 { e[k].time = cast(u32) (1000000 + 300 * k); e[k].bits = 0x1c00ffff; }
+  // Twice as fast: 2015 * 300 seconds over 1,209,600 (Core's pow.cpp,
+  // blockindex.py) halves the target.
+  #assert bi_next_bits_vartime(t[..], 2015, 0) == 0x1b7fef3f;
+  // Within a period mainnet keeps the last nBits.
+  e[3].bits = 0x1c0ffff0;
+  #assert bi_next_bits_vartime(t[..], 3, e[3].time + 5000) == 0x1c0ffff0;
+  // Testnet3: past 20 minutes the minimum; otherwise the last block that is
+  // not a minimum-difficulty one, or a period's first.
+  l3: [4] BiLink; e3: [4] BiEntry; slots3: [8] int; chain3: [4] int; u: [1] BlockTree;
+  #assert bi_init(u[..], CHAIN_TESTNET3_PARAMS, l3[..], e3[..], slots3[..], chain3[..]);
+  bi_line(l3[..], 4, 0, 0);
+  for k: 0..<4 { e3[k].time = cast(u32) (1000 + 600 * k); e3[k].bits = 0x1d00ffff; }
+  e3[0].bits = 0x1c0fffff;
+  #assert bi_next_bits_vartime(u[..], 3, e3[3].time + 1201) == 0x1d00ffff;
+  #assert bi_next_bits_vartime(u[..], 3, e3[3].time + 1200) == 0x1c0fffff;
+  e3[2].bits = 0x1c0ffff0;
+  #assert bi_next_bits_vartime(u[..], 3, e3[3].time + 1200) == 0x1c0ffff0;
+  // The walk stops at a period's first block even when it holds the minimum.
+  l4: [2018] BiLink; e4: [2018] BiEntry; slots4: [4096] int; chain4: [2018] int; v: [1] BlockTree;
+  #assert bi_init(v[..], CHAIN_TESTNET3_PARAMS, l4[..], e4[..], slots4[..], chain4[..]);
+  bi_line(l4[..], 2018, 0, 0);
+  for k: 0..<2018 { e4[k].time = cast(u32) (1000 + 600 * k); e4[k].bits = 0x1d00ffff; }
+  e4[2015].bits = 0x1c0ffff0;
+  #assert bi_next_bits_vartime(v[..], 2017, e4[2017].time + 1200) == 0x1d00ffff;
+  #assert bi_next_bits_vartime(v[..], 2014, e4[2014].time + 1200) == 0x1d00ffff;  // 2015 itself ends the period, so 2016 retargets
 }
