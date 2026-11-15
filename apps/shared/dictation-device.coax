@@ -11,6 +11,14 @@
  ids:[513]u8;for i:0..<ids.count {ids[i]='x';}
  #assert dci_matches(cast(string)ids[0..<512],cast(string)ids[0..<512],false);
  #assert !dci_matches(cast(string)ids[..],cast(string)ids[..],false);
+ // An empty observed device is never a match, one character is; a bad observed id refuses even the default.
+ #assert !dci_matches("", "", true) && dci_matches("", "u", true) && !dci_matches("", "bad\nuid", true);
+ // Control bytes below 32 and DEL are refused; a space and bytes from 128 are kept.
+ b:[1]u8;
+ b[0]=31; #assert !dci_matches("", cast(string)b[..], true);
+ b[0]=32; #assert dci_matches("", cast(string)b[..], true);
+ b[0]=127; #assert !dci_matches("", cast(string)b[..], true);
+ b[0]=128; #assert dci_matches("", cast(string)b[..], true);
 }
 #forall "dictation device transport admits supported rates and exact channel strides" rate:0..<6,channels:0..<34,interleaved:bool {
  rates:=[6]int.[0,16000,24000,44100,48000,96000];stride:=ifx interleaved then channels else 1;
