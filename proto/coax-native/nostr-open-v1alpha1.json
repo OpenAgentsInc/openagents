@@ -1,0 +1,10 @@
+{
+  "schema": "coax.native.nostr-open.v1alpha1",
+  "action": "open",
+  "encoding": "complete original kind-1059 event as the custody payload string",
+  "limits": {
+    "original_bytes": 65536,
+    "rumor_bytes": 28672
+  },
+  "purpose": "Verify and decrypt every NIP-59 layer with the actual current provider, require NIP-17 membership, and return a complete kind-14 text rumor in a no-store response. Kind-15 attachments remain unsupported until their SDK owns the attachment keys; no file key is returned to generic UI. Never persist plaintext results."
+}

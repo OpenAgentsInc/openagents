@@ -1,0 +1,86 @@
+// Real signed originals come from the shared independent signing corpus.
+#load "../tests/nostr/event_sign_vectors.coax";
+#load "fixtures/messaging_vectors.coax";
+#test "client history accepts a verified large follows list independently of relay ingress quotas" #steps 120000000 {
+ scratch:[65536]u8;event:=nms_event(NMS_FOLLOWS_EVENT,NMS_LIST_AT,scratch[..]);#assert event.reason==RS_ACCEPT && event.e.verified && event.e.kind==3;
+ s:[1]Nms;buf:[65536]u8;arena:[65536]u8;recs:[16]RsdRec;out:[65536]u8;none:[1][32]u8;
+ #assert nms_mount(s[..],buf[..],0,"acct_fixture",NMS_LIST_PUB,0,false,arena[..],recs[..],NMS_LIST_AT)==0 && cj_relay(s[0].j[..],buf[..],"wss://relay.example")==0;
+ #assert cj_deliver(s[0].j[..],buf[..],0,0,NMS_LIST_AT,event.e.id,event.e.public_key,NMS_FOLLOWS_EVENT,none[0..<0])==CJD_NEW;
+ length:=s[0].j[0].len;#assert nms_mount(s[..],buf[..],length,"acct_fixture",NMS_LIST_PUB,1,false,arena[..],recs[..],NMS_LIST_AT)==0 && nms_head(s[..],NMS_LIST_PUB,3,NMS_LIST_AT,out[..])==NMS_FOLLOWS_EVENT.count;
+}
+#test "completed delivery observations survive a checkpoint without consuming active publish capacity" #steps 120000000 {
+ id:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";s:[1]Nms;q:[1]MsRequest;buf:[65536]u8;next:[65536]u8;arena:[65536]u8;out:[65536]u8;recs:[32]RsdRec;facts:=MsFacts.{authorized=true,matched=true,fresh=true};event:=ES_EVENT;
+ #assert nms_mount(s[..],buf[..],0,"acct_fixture",id,0,false,arena[..],recs[..],ES_CREATED)==0 && nms_t_request(q[..],"queue",cast(string)event[..],0);
+ r:=nms_prepare(s[..],buf[..],next[..],q[..],facts,ES_CREATED,out[..]);pub:=s[0].j[0].pub[0];#assert r.status==0;
+ #assert cj_ok(s[0].j[..],buf[..],pub.id,0,CJ_ACCEPTED)==CJK_ACKED && cj_ok(s[0].j[..],buf[..],pub.id,1,CJ_REFUSED)==CJK_ACKED && s[0].j[0].pubs==0;
+ length:=s[0].j[0].len;#assert nms_mount(s[..],buf[..],length,"acct_fixture",id,r.revision,false,arena[..],recs[..],ES_CREATED)==0;
+ r=nms_checkpoint(s[..],buf[..],next[..],ES_CREATED);#assert r.status==0;
+ #assert nms_mount(s[..],next[..],r.length,"acct_fixture",id,r.revision,false,arena[..],recs[..],ES_CREATED)==0 && s[0].j[0].pubs==0;
+ index:[1]MsIndex;n:=nms_page(s[..],"",0,ES_CREATED,out[..]);#assert n>0 && ms_index_read(cast(string)out[0..<n],index[..]) && index[0].n==1 && index[0].rows[0].pending==0 && index[0].rows[0].accepted==1 && index[0].rows[0].refused==2;
+}
+#test "the list writer resolves a complete verified current head by author and kind" #steps 120000000 {
+ s:[1]Nms;buf:[65536]u8;arena:[65536]u8;out:[65536]u8;recs:[32]RsdRec;owner:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert nms_mount(s[..],buf[..],0,"acct_fixture",owner,0,false,arena[..],recs[..],NMS_LIST_AT)==0;
+ #assert nms_head(s[..],NMS_LIST_PUB,10050,NMS_LIST_AT,out[..])==0 && nms_head(s[..],"bad",10050,NMS_LIST_AT,out[..])<0;
+ scratch:[65536]u8;e:=nms_event(NMS_LIST_EVENT,NMS_LIST_AT,scratch[..]);#assert e.reason==RS_ACCEPT;
+ #assert rsd_admit(s[0].store[..],e,NMS_LIST_EVENT)==RS_ACCEPT;
+ n:=nms_head(s[..],NMS_LIST_PUB,10050,NMS_LIST_AT,out[..]);#assert n==NMS_LIST_EVENT.count && cast(string)out[0..<n]==NMS_LIST_EVENT;
+ #assert nms_head(s[..],owner,10050,NMS_LIST_AT,out[..])==0 && nms_head(s[..],NMS_LIST_PUB,3,NMS_LIST_AT,out[..])==0 && nms_head(s[..],NMS_LIST_PUB,10050,NMS_LIST_AT,out[0..<1])<0;
+}
+#test "account namespaces bind the complete account and identity" {
+ id:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";a:[32]u8;b:[32]u8;hex:[64]u8;
+ #assert nms_scope("acct_fixture",id,a[..]);encoded:=hex_encode_checked(cast(string)a[..],hex[..],false);
+ #assert encoded.error==NC_OK && cast(string)hex[..]=="4e5232a0ad6fc585fdc47b9959cc60ff843682e30569430fdd35c4bcca9cb7c1";
+ #assert nms_scope("acct_other",id,b[..]) && cast(string)a[..]!=cast(string)b[..];
+ #assert !nms_scope("",id,b[..]) && !nms_scope("acct_fixture","bad",b[..]) && !nms_scope("acct_fixture",id,b[0..<31]);
+}
+#test "a database mount refuses torn committed bytes and another account" {
+ id:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";s:[1]Nms;buf:[4096]u8;arena:[4096]u8;recs:[16]RsdRec;
+ #assert nms_mount(s[..],buf[..],0,"acct_fixture",id,0,false,arena[..],recs[..],1700000000)==0;
+ #assert cj_relay(s[0].j[..],buf[..],"wss://relay.example")==0;n:=s[0].j[0].len;
+ #assert nms_mount(s[..],buf[..],n,"acct_other",id,1,false,arena[..],recs[..],1700000000)==10;
+ #assert nms_mount(s[..],buf[..],n-1,"acct_fixture",id,1,false,arena[..],recs[..],1700000000)==10;
+}
+nms_t_request :: (q:[]MsRequest,action:string,payload:string,revision:int)->bool #effects(all) {
+ id:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:="0000000000000000000000000000000000000000000000000000000000000001";
+ targets:=[2]string.["wss://relay.example","wss://other.example"];b:[400000]u8;
+ n:=nms_request_write(action,op,id,ifx action=="ingest" || action=="ack" then targets[0] else "",ifx action=="queue" then targets[..] else targets[0..<0],0,revision,0,payload,b[..]);
+ return n>0 && nms_request_read(cast(string)b[0..<n],q);
+}
+#test "messaging verified originals survive commit and uncommitted writes do not become history" #steps 100000000 {
+ id:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";s:[1]Nms;q:[1]MsRequest;buf:[65536]u8;next:[65536]u8;arena:[65536]u8;out:[65536]u8;recs:[32]RsdRec;facts:=MsFacts.{authorized=true,matched=true,fresh=true};event:=ES_EVENT;
+ bad_bytes:=ES_EVENT;bad_bytes[ES_EVENT.count-3]=ifx bad_bytes[ES_EVENT.count-3]=='a' then 'b' else 'a';
+ #assert nms_mount(s[..],buf[..],0,"acct_fixture",id,0,false,arena[..],recs[..],ES_CREATED)==0 && nms_t_request(q[..],"ingest",cast(string)bad_bytes[..],0);
+ bad:=nms_prepare(s[..],buf[..],next[..],q[..],facts,ES_CREATED,out[..]);#assert bad.status==5 && !bad.changed && s[0].j[0].events==0;
+ #assert nms_t_request(q[..],"ingest",cast(string)event[..],0);change:=nms_prepare(s[..],buf[..],next[..],q[..],facts,ES_CREATED,out[..]);#assert change.status==0 && change.changed && change.revision==1 && s[0].j[0].events==1;
+ // The failed SDK write persisted nothing. A fresh mount sees no event.
+ saved:[65536]u8;for i:0..<change.length {saved[i]=buf[i];}
+ #assert nms_mount(s[..],buf[..],0,"acct_fixture",id,0,false,arena[..],recs[..],ES_CREATED)==0 && s[0].j[0].events==0;
+ // The successful SDK write persisted the complete original and its cursor.
+ #assert nms_mount(s[..],saved[..],change.length,"acct_fixture",id,1,false,arena[..],recs[..],ES_CREATED)==0;
+ idx:[1]MsIndex;n:=nms_page(s[..],"",0,ES_CREATED,out[..]);#assert n>0 && ms_index_read(cast(string)out[0..<n],idx[..]) && idx[0].revision==1 && idx[0].n==1 && idx[0].complete;
+ e:=s[0].j[0].event[0];hex:[64]u8;encoded:=hex_encode_checked(cast(string)e.id[..],hex[..],false);n=nms_original(s[..],saved[..],cast(string)hex[..],out[..]);#assert n==ES_EVENT.count && cast(string)out[0..<n]==cast(string)event[..] && cj_since(s[0].j[..],0,0)==ES_CREATED;
+ #assert nms_t_request(q[..],"ingest",cast(string)event[..],1);change=nms_prepare(s[..],saved[..],next[..],q[..],facts,ES_CREATED,out[..]);#assert change.status==0 && !change.changed && change.revision==1;
+}
+#test "messaging queued exact bytes and individual relay outcomes survive checkpoint and restart" #steps 120000000 {
+ id:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";s:[1]Nms;q:[1]MsRequest;buf:[65536]u8;next:[65536]u8;arena:[65536]u8;out:[65536]u8;recs:[32]RsdRec;facts:=MsFacts.{authorized=true,matched=true,fresh=true};event:=ES_EVENT;
+ #assert nms_mount(s[..],buf[..],0,"acct_fixture",id,0,false,arena[..],recs[..],ES_CREATED)==0 && nms_t_request(q[..],"queue",cast(string)event[..],0);
+ change:=nms_prepare(s[..],buf[..],next[..],q[..],facts,ES_CREATED,out[..]);#assert change.status==0 && change.changed && s[0].j[0].pubs==1 && s[0].j[0].pub[0].pending==3;
+ #assert nms_mount(s[..],buf[..],change.length,"acct_fixture",id,change.revision,false,arena[..],recs[..],ES_CREATED)==0;
+ p:=s[0].j[0].pub[0];#assert cast(string)buf[p.from..<p.to]==cast(string)event[..] && cj_ok(s[0].j[..],buf[..],p.id,0,CJ_ACCEPTED)==CJK_ACKED;
+ checkpoint:=nms_checkpoint(s[..],buf[..],next[..],ES_CREATED);#assert checkpoint.status==0 && !checkpoint.pruned;
+ #assert nms_mount(s[..],next[..],checkpoint.length,"acct_fixture",id,checkpoint.revision,false,arena[..],recs[..],ES_CREATED)==0;
+ p=s[0].j[0].pub[0];#assert p.pending==2 && p.accepted==1 && p.refused==0 && cast(string)next[p.from..<p.to]==cast(string)event[..];
+ #assert nms_t_request(q[..],"queue",cast(string)event[..],checkpoint.revision);change=nms_prepare(s[..],next[..],buf[..],q[..],facts,ES_CREATED,out[..]);#assert change.status==0 && !change.changed;
+ #assert nms_t_request(q[..],"wipe","",checkpoint.revision);facts.fresh=false;change=nms_prepare(s[..],next[..],buf[..],q[..],facts,ES_CREATED,out[..]);#assert change.status==5 && !change.changed;
+ facts.fresh=true;change=nms_prepare(s[..],next[..],buf[..],q[..],facts,ES_CREATED,out[..]);#assert change.status==0 && change.changed && change.replaced && change.length==68 && change.clear_operations;
+}
+#test "messaging outbox retains pending bytes and stable relay targets after ordinary history expires" #steps 120000000 {
+ id:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";s:[1]Nms;q:[1]MsRequest;buf:[65536]u8;next:[65536]u8;arena:[65536]u8;out:[65536]u8;recs:[32]RsdRec;facts:=MsFacts.{authorized=true,matched=true,fresh=true};
+ #assert nms_mount(s[..],buf[..],0,"acct_fixture",id,0,false,arena[..],recs[..],NMS_LIST_AT)==0 && nms_t_request(q[..],"queue",NMS_EXPIRING_EVENT,0);
+ r:=nms_prepare(s[..],buf[..],next[..],q[..],facts,NMS_LIST_AT,out[..]);#assert r.status==0 && r.changed;
+ #assert nms_mount(s[..],buf[..],r.length,"acct_fixture",id,r.revision,false,arena[..],recs[..],NMS_LIST_AT+11)==0;
+ index:[1]MsIndex;n:=nms_page(s[..],"",0,NMS_LIST_AT+11,out[..]);#assert n>0 && ms_index_read(cast(string)out[0..<n],index[..]) && index[0].n==0;
+ #assert nms_t_request(q[..],"outbox","",r.revision);r=nms_prepare(s[..],buf[..],next[..],q[..],facts,NMS_LIST_AT+11,out[..]);#assert r.status==0 && r.payload_n>0 && ms_index_read(cast(string)out[0..<r.payload_n],index[..]);
+ #assert index[0].n==1 && index[0].rows[0].pending==3 && index[0].relays_n==2 && cast(string)index[0].relays[0][0..<index[0].nr[0]]=="wss://relay.example" && cast(string)index[0].relays[1][0..<index[0].nr[1]]=="wss://other.example";
+}

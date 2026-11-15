@@ -1,0 +1,66 @@
+// Account-store admission over trusted host/account observations. None of
+// these facts is accepted from the generic request body.
+#authority;
+#test "new arrivals enforce the client future window without treating an older replay as corrupt" {
+ #assert ms_arrival_time(0,0) && ms_arrival_time(900,0) && !ms_arrival_time(901,0) && !ms_arrival_time(-1,0) && !ms_arrival_time(0,-1);
+ #assert ms_arrival_time(1,1000000000) && ms_arrival_time(9007199254740991,9007199254740991) && !ms_arrival_time(9007199254740992,9007199254740991) && !ms_arrival_time(0,9007199254740992);
+}
+ms_arrival_time :: (created:int,now:int)->bool #effects(all) {return created>=0 && now>=0 && created<=9007199254740991 && now<=9007199254740991 && created<=now+900;}
+MS_ACTIONS :: [9]string.["snapshot","ingest","queue","ack","index","event","checkpoint","wipe","outbox"];
+NS_STATUSES :: [12]string.["ok","unsupported","not-ready","identity-mismatch","session-expired","purpose-refused","revoked","capacity","cancelled","conflict","corrupt","incomplete"];
+MS_SERIAL :: 2147483647;
+MS_HISTORY_BYTES :: 3145728;
+MsFacts :: struct {authorized:bool;matched:bool;fresh:bool;}
+
+#test "store authority requires the current authorized account and matching canonical identity" {
+ f:=MsFacts.{authorized=true,matched=true,fresh=true};
+ for action:1..<10 {#assert ms_permit(f,action,3,3)==0;}
+ for action:1..<10 {#assert ms_permit(f,action,0,0)==0;}
+ f.authorized=false;for action:1..<10 {#assert ms_permit(f,action,3,3)==5;}f.authorized=true;f.matched=false;
+ for action:1..<10 {#assert ms_permit(f,action,3,3)==3;}
+ f.matched=true;f.fresh=false;#assert ms_permit(f,8,3,3)==5 && ms_permit(f,7,3,3)==0;
+}
+#test "store revision ownership prevents mixed history pages and stale destructive writes" {
+ f:=MsFacts.{authorized=true,matched=true,fresh=true};
+ for action:[5]int.[5,6,7,8,9] {#assert ms_permit(f,action,2,3)==9;}
+ #assert ms_permit(f,5,1,2)==9 && ms_permit(f,6,1,2)==9;
+ #assert ms_permit(f,5,0,3)==0 && ms_permit(f,6,0,3)==0 && ms_permit(f,7,0,3)==9 && ms_permit(f,8,0,3)==9;
+ for action:[4]int.[1,2,3,4] {#assert ms_permit(f,action,2,3)==0;}
+ for action:[3]int.[-1,0,10] {#assert ms_permit(f,action,3,3)==1;}
+ #assert ms_permit(f,2,-1,3)==5 && ms_permit(f,2,3,-1)==5 && ms_permit(f,2,MS_SERIAL+1,3)==5 && ms_permit(f,2,3,MS_SERIAL+1)==5;
+ #assert ms_permit(f,2,MS_SERIAL,MS_SERIAL)==0 && ms_action("index")==5 && ms_action("sign")==0;
+}
+#test "the durable journal admits public protocol originals and encrypted wraps but no plaintext messages" {
+ for kind:[12]int.[0,1,3,5,10000,10002,10009,10050,1059,30000,30002,22242] {#assert ms_kind(kind);}
+ for kind:[10]int.[-1,4,9,13,14,15,99,21059,65536,99999] {#assert !ms_kind(kind);}
+}
+ms_action :: (name:string)->int #effects(all) {for value,i:MS_ACTIONS {if name==value {return i+1;}}return 0;}
+ms_permit :: (f:MsFacts,action:int,expected:int,current:int)->int #export_c #effects(all) {
+ if action<1 || action>9 {return 1;}if !f.authorized {return 5;}if !f.matched {return 3;}
+ if expected<0 || current<0 || expected>MS_SERIAL || current>MS_SERIAL {return 5;}
+ if (action==7 || action==8 || (action==5 || action==6 || action==9) && expected>0) && expected!=current {return 9;}
+ if action==8 && !f.fresh {return 5;}return 0;
+}
+ms_kind :: (kind:int)->bool #export_c #effects(all) {
+ for value:[12]int.[0,1,3,5,10000,10002,10009,10050,1059,30000,30002,22242] {if kind==value {return true;}}return false;
+}
+#test "AUTH receipts stay outside the ordinary incoming and outgoing message journal" {
+ #assert ms_journal_kind(1) && ms_journal_kind(3) && ms_journal_kind(1059) && !ms_journal_kind(22242) && !ms_journal_kind(14) && !ms_journal_kind(-1);
+}
+ms_journal_kind :: (kind:int)->bool #effects(all) {return ms_kind(kind) && kind!=22242;}
+#test "checkpoint ordinary history has both a byte and an event budget while heads remain pinned" {
+ for class:0..<5 {for count:[4]int.[0,255,256,512] {for bytes:[4]int.[0,MS_HISTORY_BYTES-1,MS_HISTORY_BYTES,MS_HISTORY_BYTES+1] {for cost:[5]int.[0,1,2,65536,65537] {
+  valid:=bytes>=0 && bytes<=MS_HISTORY_BYTES && count>=0 && count<=512 && cost>=1 && cost<=65536;
+  want:=valid && (class==1 || class==3 || class==0 && count<256 && bytes<=MS_HISTORY_BYTES-cost);
+  #assert ms_history_keep(class,count,bytes,cost)==want;
+ }}}}
+ #assert !ms_history_keep(0,-1,0,1) && !ms_history_keep(0,513,0,1) && !ms_history_keep(0,0,-1,1) && !ms_history_keep(-1,0,0,1);
+ #assert !ms_history_keep(1,513,0,1) && !ms_history_keep(3,513,0,1);
+ #assert ms_history_keep(0,255,MS_HISTORY_BYTES-65536,65536) && !ms_history_keep(0,255,MS_HISTORY_BYTES-65535,65536);
+}
+// NIP-01 classes: 0 ordinary, 1 replaceable, 2 ephemeral, 3 addressable.
+// Pending outgoing events are pinned separately, regardless of this budget.
+ms_history_keep :: (class:int,count:int,bytes:int,cost:int)->bool #effects(all) {
+ if count<0 || count>512 || bytes<0 || bytes>MS_HISTORY_BYTES || cost<1 || cost>65536 {return false;}
+ return class==1 || class==3 || class==0 && count<256 && bytes<=MS_HISTORY_BYTES-cost;
+}

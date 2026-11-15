@@ -1,0 +1,59 @@
+// Complete ciphertext preparation, decoded with the shared streaming JSON reader.
+#load "nostr-send-policy.coax";
+#load "nostr-purpose-wire.coax";
+NSM_SEND :: "coax.native.nostr-send.v1alpha1";NSM_SEALED :: "coax.native.nostr-sealed.v1alpha1";
+NsmSend :: struct {ok:bool;operation:[64]u8;identity:[64]u8;digest:[64]u8;n:int;heads_n:int;heads:[11][64]u8;from:[11]int;to:[11]int;raw:[NSM_BYTES]u8;}
+NsmSealed :: struct {ok:bool;n:int;ids:[11][64]u8;self:[64]u8;revision:int;}
+#test "sealed receipt records every distinct outer original and the final sender copy" {
+ ids:=[2]string.["0000000000000000000000000000000000000000000000000000000000000001","0000000000000000000000000000000000000000000000000000000000000002"];out:[2048]u8;q:[1]NsmSealed;
+ n:=nsm_sealed_write(ids[..],7,out[..]);#assert n>0 && nsm_sealed_read(cast(string)out[0..<n],q[..]) && q[0].n==2 && q[0].revision==7 && cast(string)q[0].self[..]==ids[1];
+ #assert nsm_sealed_write(ids[0..<1],7,out[..])<0 && nsm_sealed_write(ids[..],-1,out[..])<0;ids[1]=ids[0];#assert nsm_sealed_write(ids[..],7,out[..])<0;
+ #assert !nsm_sealed_read("{}",q[..]) && !nsm_sealed_read("{}",q[0..<0]);
+}
+#test "send codec requires all six fields and matching bounded heads and raw objects" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";heads:=[2]string.[id,id];events:=[2]string.["{}","{}"];b:[4096]u8;q:[1]NsmSend;
+ n:=nsm_send_write(id,id,id,heads[..],events[..],b[..]);#assert n>0 && nsm_send_read(cast(string)b[0..<n],q[..]) && q[0].n==2 && q[0].heads_n==2 && nsm_send_event(q[..],1)=="{}";
+ #assert !nsm_send_read("{}",q[..]) && nsm_send_write(id,id,id,heads[0..<1],events[..],b[..])<0 && nsm_send_write("bad",id,id,heads[..],events[..],b[..])<0;
+ events[0]="[]";#assert nsm_send_write(id,id,id,heads[..],events[..],b[..])<0;
+}
+nsm_hex_token :: (j:[]Json,out:[]u8)->bool #effects(all) {return j[0].tok==JSON_STRING && json_unescape(json_text(j),out)==64 && aw_hex(cast(string)out,64);}
+nsm_send_read :: (raw:string,q:[]NsmSend)->bool #export_c #effects(all) {
+ if q.count!=1 {return false;}q[0].ok=false;q[0].n=0;q[0].heads_n=0;if raw.count>NSM_BYTES || !js_utf8(raw) {return false;}
+ j:[1]Json;json_start_bounded(j[..],raw,NSM_BYTES,65536);if json_next(j[..])!=JSON_OBJECT {return false;}seen:=0;t:=json_next(j[..]);
+ while t!=JSON_OBJECT_END {
+  if t!=JSON_STRING || !j[0].key {return false;}names:=[6]string.["schema","operation","identity","digest","heads","events"];field:=-1;for name,i:names {if json_is(json_text(j[..]),name) {field=i;}}
+  if field<0 || (seen&(1<<field))!=0 {return false;}seen|=1<<field;t=json_next(j[..]);
+  if field==0 {if t!=JSON_STRING || !json_is(json_text(j[..]),NSM_SEND) {return false;}}
+  else if field==1 {if !nsm_hex_token(j[..],q[0].operation[..]) {return false;}}
+  else if field==2 {if !nsm_hex_token(j[..],q[0].identity[..]) {return false;}}
+  else if field==3 {if !nsm_hex_token(j[..],q[0].digest[..]) {return false;}}
+  else {
+   if t!=JSON_ARRAY {return false;}t=json_next(j[..]);n:=0;
+   while t!=JSON_ARRAY_END {
+    if n==NSM_COPIES {return false;}
+    if field==4 {if !nsm_hex_token(j[..],q[0].heads[n][..]) {return false;}}
+    else {if t!=JSON_OBJECT {return false;}q[0].from[n]=j[0].from;if !json_skip(j[..]) {return false;}q[0].to[n]=j[0].to;if q[0].to[n]-q[0].from[n]>65536 {return false;}}
+    n+=1;t=json_next(j[..]);
+   }
+   if field==4 {q[0].heads_n=n;}else {q[0].n=n;}
+  }t=json_next(j[..]);
+ }
+ if seen!=63 || q[0].n<2 || q[0].heads_n!=q[0].n || json_next(j[..])!=JSON_END {return false;}
+ for c,i:raw {q[0].raw[i]=c;}q[0].ok=true;return true;
+}
+nsm_send_event :: (q:[]NsmSend,i:int)->string #export_c #effects(all) {return ifx q.count==1 && q[0].ok && i>=0 && i<q[0].n then cast(string)q[0].raw[q[0].from[i]..<q[0].to[i]] else "";}
+nsm_send_write :: (operation:string,identity:string,digest:string,heads:[]string,events:[]string,out:[]u8)->int #export_c #effects(all) {
+ if !aw_hex(operation,64) || !aw_hex(identity,64) || !aw_hex(digest,64) || events.count<2 || events.count>NSM_COPIES || heads.count!=events.count {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NSM_SEND);jo_key(o[..],"operation");jo_str(o[..],operation);jo_key(o[..],"identity");jo_str(o[..],identity);jo_key(o[..],"digest");jo_str(o[..],digest);jo_key(o[..],"heads");jo_arr(o[..]);
+ for h:heads {if !aw_hex(h,64) {return -1;}jo_str(o[..],h);}jo_end(o[..]);jo_key(o[..],"events");jo_arr(o[..]);
+ for event:events {j:[1]Json;json_start_bounded(j[..],event,65536,65536);if !js_utf8(event) || json_next(j[..])!=JSON_OBJECT || !json_skip(j[..]) || json_next(j[..])!=JSON_END {return -1;}jo_raw(o[..],event);}jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad || o[0].n>NSM_BYTES then -1 else o[0].n;
+}
+nsm_sealed_read :: (raw:string,q:[]NsmSealed)->bool #export_c #effects(all) {
+ if q.count!=1 {return false;}q[0]=NsmSealed.{};d:[1]Jv;nodes:[32]JvNode;if raw.count>2048 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[4]string.["schema","events","self","queued_revision"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=4 || jv_raw(v,jv_get(v,0,"schema"))!=NSM_SEALED {return false;}a:=jv_get(v,0,"events");n:=jv_len(v,a);if jv_kind(v,a)!=JV_ARRAY || n<2 || n>11 {return false;}
+ for i:0..<n {if js_string(v,jv_at(v,a,i),q[0].ids[i][..])!=64 || !aw_hex(cast(string)q[0].ids[i][..],64) {return false;}for k:0..<i {if cast(string)q[0].ids[k][..]==cast(string)q[0].ids[i][..] {return false;}}}
+ q[0].revision=js_number(v,jv_get(v,0,"queued_revision"));if js_string(v,jv_get(v,0,"self"),q[0].self[..])!=64 || cast(string)q[0].self[..]!=cast(string)q[0].ids[n-1][..] || q[0].revision<0 || q[0].revision>MS_SERIAL {return false;}q[0].n=n;q[0].ok=true;return true;
+}
+nsm_sealed_write :: (ids:[]string,revision:int,out:[]u8)->int #effects(all) {
+ if ids.count<2 || ids.count>11 {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NSM_SEALED);jo_key(o[..],"events");jo_arr(o[..]);for id:ids {jo_str(o[..],id);}jo_end(o[..]);jo_key(o[..],"self");jo_str(o[..],ids[ids.count-1]);jo_key(o[..],"queued_revision");jo_int(o[..],revision);jo_end(o[..]);q:[1]NsmSealed;return ifx !o[0].bad && nsm_sealed_read(jo_text(o[..]),q[..]) then o[0].n else -1;
+}

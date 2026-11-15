@@ -1,0 +1,36 @@
+// One result envelope for the installed custody and account-journal services.
+// Structural decoding is not event verification or a new permission source.
+#load "nostr-custody-wire.coax";
+#load "messaging-store-policy.coax";
+NSR_SCHEMA :: "coax.native.nostr-result.v1alpha1";
+NsResult :: struct {ok:bool;service:int;action:int;operation:[64]u8;identity:[64]u8;status:int;revision:int;cursor:int;n:int;payload:[65536]u8;}
+
+#test "Nostr service results echo exact ownership and retain complete private text without an authority flag" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";b:[2048]u8;r:[1]NsResult;
+ n:=nsr_write("custody","open",id,id,"ok",0,0,"café\n\"hello\"",b[..]);
+ #assert n>0 && nsr_read(cast(string)b[0..<n],r[..]) && r[0].service==1 && r[0].action==4 && r[0].status==0 && cast(string)r[0].payload[0..<r[0].n]=="café\n\"hello\"";
+ #assert nsr_write("store","index",id,id,"incomplete",7,16,"{}",b[..])>0;
+ for status:NS_STATUSES {n=nsr_write("store","snapshot",id,id,status,MS_SERIAL,MS_SERIAL,"",b[..]);#assert n>0 && nsr_read(cast(string)b[0..<n],r[..]);}
+ #assert nsr_write("store","open",id,id,"ok",0,0,"",b[..])<0 && nsr_write("custody","index",id,id,"ok",0,0,"",b[..])<0;
+ #assert nsr_write("bad","open",id,id,"ok",0,0,"",b[..])<0 && nsr_write("store","event",id,id,"verified",0,0,"",b[..])<0;
+ #assert nsr_write("store","event","bad",id,"ok",0,0,"",b[..])<0 && nsr_write("store","event",id,"bad","ok",0,0,"",b[..])<0;
+ #assert nsr_write("store","event",id,id,"ok",-1,0,"",b[..])<0 && nsr_write("store","event",id,id,"ok",0,MS_SERIAL+1,"",b[..])<0;
+ n=nsr_write("store","event",id,id,"ok",0,0,"",b[..]);#assert !nsr_read("{}",r[..]) && !r[0].ok && !nsr_read(cast(string)b[0..<n],r[0..<0]);
+ #assert nsr_write("store","event",id,id,"ok",0,0,"",b[0..<2])<0;
+}
+nsr_status :: (name:string)->int #effects(all) {for value,i:NS_STATUSES {if name==value {return i;}}return -1;}
+nsr_action :: (service:int,name:string)->int #effects(all) {return ifx service==1 then nsc_action(name) else ifx service==2 then ms_action(name) else 0;}
+nsr_read :: (raw:string,r:[]NsResult)->bool #export_c #effects(all) {
+ if r.count!=1 {return false;}r[0]=NsResult.{};d:[1]Jv;nodes:[24]JvNode;
+ if raw.count>400000 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[9]string.["schema","service","action","operation","identity","status","revision","cursor","payload"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=9 || jv_raw(v,jv_get(v,0,"schema"))!=NSR_SCHEMA {return false;}
+ service:=jv_raw(v,jv_get(v,0,"service"));r[0].service=ifx service=="custody" then 1 else ifx service=="store" then 2 else 0;r[0].action=nsr_action(r[0].service,jv_raw(v,jv_get(v,0,"action")));
+ op:=js_string(v,jv_get(v,0,"operation"),r[0].operation[..]);identity:=js_string(v,jv_get(v,0,"identity"),r[0].identity[..]);r[0].status=nsr_status(jv_raw(v,jv_get(v,0,"status")));
+ r[0].revision=js_number(v,jv_get(v,0,"revision"));r[0].cursor=js_number(v,jv_get(v,0,"cursor"));r[0].n=js_string(v,jv_get(v,0,"payload"),r[0].payload[..]);
+ r[0].ok=r[0].action>0 && op==64 && identity==64 && aw_hex(cast(string)r[0].operation[..],64) && aw_hex(cast(string)r[0].identity[..],64) && r[0].status>=0 && r[0].revision>=0 && r[0].revision<=MS_SERIAL && r[0].cursor>=0 && r[0].cursor<=MS_SERIAL && r[0].n>=0;return r[0].ok;
+}
+nsr_write :: (service:string,action:string,operation:string,identity:string,status:string,revision:int,cursor:int,payload:string,out:[]u8)->int #export_c #effects(all) {
+ s:=ifx service=="custody" then 1 else ifx service=="store" then 2 else 0;
+ if nsr_action(s,action)==0 || !aw_hex(operation,64) || !aw_hex(identity,64) || nsr_status(status)<0 || revision<0 || revision>MS_SERIAL || cursor<0 || cursor>MS_SERIAL || payload.count>65536 || !js_utf8(payload) {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NSR_SCHEMA);jo_key(o[..],"service");jo_str(o[..],service);jo_key(o[..],"action");jo_str(o[..],action);jo_key(o[..],"operation");jo_str(o[..],operation);jo_key(o[..],"identity");jo_str(o[..],identity);jo_key(o[..],"status");jo_str(o[..],status);jo_key(o[..],"revision");jo_int(o[..],revision);jo_key(o[..],"cursor");jo_int(o[..],cursor);jo_key(o[..],"payload");jo_str(o[..],payload);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}

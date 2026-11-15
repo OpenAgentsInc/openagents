@@ -1,0 +1,7 @@
+// One generated API unit; product decisions remain in the shared owners.
+#load "../../native/messaging-state.coax";
+#load "account-settings-policy.coax";
+#load "../../native/nostr-custody-crypto.coax";
+#load "../../native/nostr-operation-admit.coax";
+
+#load "../../native/nostr-send.coax";

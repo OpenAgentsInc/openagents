@@ -1,0 +1,60 @@
+// Typed cryptographic materialization, shared by actual native and account
+// providers. It makes no socket or storage effect. The installed session first
+// admits its live observations through nsc_preflight, then commits cacheable
+// results before returning or publishing them. Private opening is never cached.
+#load "nostr-custody-policy.coax";
+#load "nostr-result-wire.coax";
+#load "../web/api/auth-recover-crypto.coax";
+#load "../lib/nostr/nip17.coax";
+#load "../lib/nostr/event_verify_fast.coax";
+#load "nostr-custody-crypto-checks.coax" #test;
+NscEffect :: struct {status:int;n:int;cacheable:bool;}
+nsc_response :: (q:[]NscRequest,r:NscEffect,payload:[]u8,out:[]u8)->int #export_c #effects(all) {
+ if q.count!=1 || q[0].action<1 || q[0].action>6 || r.status<0 || r.status>=NS_STATUSES.count || (r.status==0 && (r.n<0 || r.n>payload.count)) {return -1;}
+ return nsr_write("custody",NSC_ACTIONS[q[0].action-1],cast(string)q[0].operation[..],cast(string)q[0].identity[..],NS_STATUSES[r.status],0,0,ifx r.status==0 then cast(string)payload[0..<r.n] else "",out);
+}
+nsc_caps :: (identity:string,source:string,actions:int,out:[]u8)->int #effects(all) {
+ if !aw_hex(identity,64) || (source!="managed-server" && source!="linked-device" && source!="external" && source!="unavailable") || actions<0 || actions>31 || (source=="unavailable" && actions!=0) {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NSP_CAPS);jo_key(o[..],"identity");jo_str(o[..],identity);jo_key(o[..],"source");jo_str(o[..],source);jo_key(o[..],"actions");jo_arr(o[..]);for action:1..<6 {if (actions&(1<<action-1))!=0 {jo_str(o[..],NSC_ACTIONS[action-1]);}}jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+nsc_extra :: (p:[]NscPurpose,out:[]u8)->int #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);if p[0].ns>0 {jo_arr(o[..]);jo_str(o[..],"subject");jo_str(o[..],cast(string)p[0].subject[0..<p[0].ns]);jo_end(o[..]);}
+ if p[0].has_reply {hex:[64]u8;encoded:=hex_encode_checked(cast(string)p[0].reply[..],hex[..],false);jo_arr(o[..]);jo_str(o[..],"e");jo_str(o[..],cast(string)hex[..]);jo_str(o[..],"");jo_str(o[..],"reply");jo_end(o[..]);}jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+nsc_materialize :: (q:[]NscRequest,facts:NsFacts,secret:[]u8,fresh:[]Nip59Fresh,now:int,current_base:string,out:[]u8)->NscEffect #export_c #effects(all) {
+ result:=NscEffect.{status=5};n59_zero(out);defer {secure_zero(secret);if fresh.count==1 {clean:Nip59Fresh;fresh[0]=clean;}if result.status!=0 {n59_zero(out);}}
+ if q.count!=1 || !q[0].ok || !ns_permit(facts,q[0].action) {return result;}
+ if q[0].action==6 {result.status=1;return result;}
+ identity:=cast(string)q[0].identity[..];p:[1]NscPurpose;if !nsp_read(q[0].action,identity,cast(string)q[0].payload[0..<q[0].n],p[..]) {return result;}
+ if q[0].action==1 {
+  source:=ifx facts.source==NS_MANAGED then "managed-server" else ifx facts.provider==NS_DEVICE then "linked-device" else "external";
+  result.n=nsc_caps(identity,source,31,out);result.status=ifx result.n>=0 then 0 else 7;return result;
+ }
+ if secret.count!=32 || fresh.count!=1 || now<0 || now>9007199254740991 {result.status=2;return result;}
+ actual:[64]u8;if !arc_public(secret,actual[..]) || cast(string)actual[..]!=identity {result.status=3;return result;}
+ if q[0].action==4 {
+  me:[32]u8;decoded:=hex_decode_checked(identity,me[..],false);work:[NIP59_WORK]u8;
+  opened:=nip17_open(secret,me[..],cast(string)q[0].payload[0..<q[0].n],work[..],out);if opened.error!=N17_OK || opened.kind!=N17_CHAT {result.status=5;return result;}
+  result.status=0;result.n=opened.written;return result;
+ }
+ // Seal is coordinated only through nsm_seal + atomic nsm_stage.
+ if q[0].action==3 {result.status=1;return result;}
+ tags:[65536]u8;content:[65536]u8;tn:=-1;cn:=0;sign_at:=now;
+ if q[0].action==2 {
+  auth:[1]Nip42;frame:[4096]u8;if nip42_init(auth[..],cast(string)p[0].url[0..<p[0].nu])!=N42_OK {return result;}
+  issued:=nip42_issue(auth[..],p[0].generation,cast(string)p[0].challenge[0..<p[0].nc],frame[..]);if issued.error!=N42_OK {return result;}
+  template:=nip42_template(auth[..],p[0].generation,now,tags[..]);if template.error!=N42_OK {return result;}tn=template.tags.count;p[0].kind=22242;
+ } else {
+  if p[0].nb==0 {if current_base.count!=0 {result.status=9;return result;}tn=nl_edit_new(p[0].kind,cast(string)p[0].name[0..<p[0].nn],cast(string)p[0].value[0..<p[0].nv],p[0].enabled,tags[..]);}
+  else {
+   scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(current_base,scratch[..],false));me:[32]u8;decoded:=hex_decode_checked(identity,me[..],false);
+   head:[32]u8;if !ne_lower_hex(cast(string)p[0].base[..],head[..]) || e.error!=NE_OK || !e.verified || cast(string)e.id[..]!=cast(string)head[..] || cast(string)e.public_key[..]!=cast(string)me[..] || e.kind!=p[0].kind {result.status=9;return result;}
+   sign_at=nsc_list_time(e.created_at,now);if sign_at<0 {result.status=9;return result;}
+   tn=nl_edit_public(e,cast(string)p[0].name[0..<p[0].nn],cast(string)p[0].value[0..<p[0].nv],p[0].enabled,tags[..]);cn=json_unescape(e.original[e.content_from..<e.content_to],content[..]);
+  }
+ }
+ if tn<0 || cn<0 {result.status=7;return result;}
+ sw:[1]NostrSignWork;defer {n59_erase_sign(sw[..]);}scratch:[65536]u8;
+ result.n=n59_sign(secret,fresh[0].seal_aux[..],sign_at,p[0].kind,cast(string)tags[0..<tn],cast(string)content[0..<cn],sw[..],scratch[..],out);
+ if result.n<0 {result.status=7;return result;}result.status=0;result.cacheable=true;return result;
+}

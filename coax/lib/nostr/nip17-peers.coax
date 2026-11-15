@@ -1,0 +1,34 @@
+// The one NIP-17 participant/membership policy, shared by relay planning and
+// the typed custody purpose. Byte references are not proof of key possession.
+#authority;
+#test "the sender cannot be the first recipient" {
+ sender:[32]u8;sender[31]=1;keys:[32]u8;keys[31]=1;
+ #assert n17_peer_bad(sender[..],keys[..])==0;
+}
+N17_MOST :: 10;
+#test "participant checks retain the exact first bad peer index" {
+ sender:[32]u8;sender[0]=9;keys:[352]u8;
+ for i:0..<11 {keys[i*32]=cast(u8)i;}
+ #assert n17_peer_bad(sender[..],keys[0..<32])== -1 && n17_peer_bad(sender[..],keys[0..<9*32])== -1 && n17_peer_bad(sender[..],keys[0..<10*32])==9;
+ #assert n17_peer_bad(sender[..],keys[..])== -2 && n17_peer_bad(sender[0..<31],keys[0..<32])== -2 && n17_peer_bad(sender[..],keys[0..<31])== -2 && n17_peer_bad(sender[..],keys[0..<0])== -2;
+ keys[2*32]=1;#assert n17_peer_bad(sender[..],keys[0..<3*32])==2;keys[2*32]=2;keys[32]=9;#assert n17_peer_bad(sender[..],keys[0..<3*32])==1;
+ sender[0]=99;for i:0..<11 {keys[i*32]=cast(u8)i;}#assert n17_peer_bad(sender[..],keys[0..<10*32])== -1;
+}
+#test "one wrap can address only a valid participant or the explicit sender copy" {
+ sender:[32]u8;sender[0]=9;keys:[64]u8;keys[0]=1;keys[32]=2;other:[32]u8;other[0]=3;
+ #assert n17_peer_recipient(sender[..],keys[..],keys[0..<32]) && n17_peer_recipient(sender[..],keys[..],keys[32..<64]) && n17_peer_recipient(sender[..],keys[..],sender[..]);
+ #assert !n17_peer_recipient(sender[..],keys[..],other[..]) && !n17_peer_recipient(sender[..],keys[..],other[0..<31]);keys[32]=1;#assert !n17_peer_recipient(sender[..],keys[..],sender[..]);
+ #assert n17_same(keys[0..<0],other[0..<0]) && !n17_same(keys[0..<1],other[0..<0]);other[0]=1;#assert n17_same(keys[0..<32],other[..]);other[31]=1;#assert !n17_same(keys[0..<32],other[..]);
+}
+n17_same :: (a:[]u8,b:[]u8)->bool #effects(all) {
+ if a.count!=b.count {return false;}for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;
+}
+// -2 invalid views/count; -1 valid; otherwise the first invalid peer's index.
+n17_peer_bad :: (sender:[]u8,peers:[]u8)->int #effects(all) {
+ n:=peers.count/32;if sender.count!=32 || peers.count%32!=0 || n<1 || n>N17_MOST {return -2;}
+ for i:0..<n {if n17_same(peers[i*32..<i*32+32],sender) {return i;}for k:0..<i {if n17_same(peers[i*32..<i*32+32],peers[k*32..<k*32+32]) {return i;}}}return -1;
+}
+n17_peer_recipient :: (sender:[]u8,peers:[]u8,recipient:[]u8)->bool #effects(all) {
+ if n17_peer_bad(sender,peers)!= -1 || recipient.count!=32 {return false;}if n17_same(sender,recipient) {return true;}
+ for i:0..<peers.count/32 {if n17_same(peers[i*32..<i*32+32],recipient) {return true;}}return false;
+}

@@ -1,0 +1,159 @@
+// The account journal's projection. The SDK owns atomic byte storage; this
+// module owns replay, original verification, replacement, paging and staging.
+#load "messaging-store-wire.coax";
+#load "../lib/nostr/client_journal.coax";
+#load "../lib/nostr/store.coax";
+#load "../lib/nostr/event_verify_fast.coax";
+#load "../lib/crypto/sha256.coax";
+#load "../lib/nostr/message.coax";
+#load "messaging-state-checks.coax" #test;
+
+Nms :: struct {j:[1]Cj;store:[1]RsdStore;revision:int;pruned:bool;status:int;}
+NmsChange :: struct {status:int;length:int;revision:int;changed:bool;replaced:bool;cursor:int;pruned:bool;payload_n:int;clear_operations:bool;}
+nms_response :: (q:[]MsRequest,r:NmsChange,payload:[]u8,out:[]u8)->int #export_c #effects(all) {
+ if q.count!=1 || r.status<0 || r.status>=NS_STATUSES.count || r.payload_n<0 || r.payload_n>payload.count || q[0].action<1 || q[0].action>MS_ACTIONS.count {return -1;}
+ return nsr_write("store",MS_ACTIONS[q[0].action-1],cast(string)q[0].operation[..],cast(string)q[0].identity[..],NS_STATUSES[r.status],r.revision,r.cursor,ifx r.status==0 then cast(string)payload[0..<r.payload_n] else "",out);
+}
+
+// The account namespace is independent of authentication tokens and paths.
+nms_scope :: (account:string,identity:string,out:[]u8)->bool #export_c #effects(all) {
+ if account.count<1 || account.count>65535 || !js_utf8(account) || !aw_hex(identity,64) || out.count!=32 {return false;}
+ bytes:[65600]u8;n:=json_raw(bytes[..],0,"OpenAgents Nostr Store v1");bytes[n]=0;n+=1;
+ bytes[n]=cast(u8)((account.count>>8)&255);bytes[n+1]=cast(u8)(account.count&255);n+=2;
+ for c:account {bytes[n]=c;n+=1;}pub:[32]u8;if hex_decode_checked(identity,pub[..],false).error!=NC_OK {return false;}
+ for c:pub {bytes[n]=c;n+=1;}return sha256_hash_checked(bytes[0..<n],out,false)==SHA_OK;
+}
+// Atomically stored DB bytes cannot legitimately have a torn final record.
+// CJO_CUT remains a file-recovery result, never a successful database mount.
+nms_mount :: (s:[]Nms,buf:[]u8,total:int,account:string,identity:string,revision:int,pruned:bool,arena:[]u8,recs:[]RsdRec,now:int)->int #export_c #effects(all) {
+ if s.count!=1 {return 10;}s[0]=Nms.{};s[0].status=10;
+ owner:[32]u8;scope:[32]u8;if !nms_scope(account,identity,scope[..]) || hex_decode_checked(identity,owner[..],false).error!=NC_OK || revision<0 || revision>MS_SERIAL || now<0 {return 10;}
+ opened:=cj_open_v2(s[0].j[..],buf,total,owner,scope);
+ if (total==0 && opened.status!=CJO_NEW) || (total>0 && opened.status!=CJO_DONE) {return 10;}
+ s[0].revision=revision;s[0].pruned=pruned;s[0].store[0].arena=arena;s[0].store[0].recs=recs;
+ for i:0..<s[0].j[0].events {
+  ce:=s[0].j[0].event[i];raw:=cast(string)buf[ce.from..<ce.to];scratch:[65536]u8;read:=rs_event_read(raw,scratch[..]);
+  if read.e.error!=NE_OK || !ms_kind(read.e.kind) {return 10;}verified:=ne_signed_fast(read.e);
+  if verified.error!=NE_OK || !verified.verified || cast(string)ce.id[..]!=cast(string)verified.id[..] || cast(string)ce.author[..]!=cast(string)verified.public_key[..] || (ce.created_at!=verified.created_at && ce.sub>=0) {return 10;}
+  // Old queued AUTH is an outbox receipt, never an ordinary readable event.
+  if read.e.kind==22242 || cj_tombed(s[0].j[..],ce.id,ce.author) || !rs_live(read.expiration,now) {continue;}
+  admitted:=rs_admit_verified(read,verified);if admitted.reason!=RS_ACCEPT {return 10;}
+  result:=rsd_admit(s[0].store[..],admitted,raw);if result!=RS_ACCEPT && result!=RS_DUP && result!=RS_SUPERSEDED {return 7;}
+ }
+ s[0].status=0;return 0;
+}
+// An incoming kind 5 uses the existing typed NIP-01 tag reader. Deletion
+// authority remains the journal's (event ID, actual author) tombstone pair.
+nms_deletes :: (e:NostrEvent,out:[][32]u8)->int #effects(all) {
+ if e.kind!=5 {return 0;}n:=0;for i:0..<e.tags {t:=nostr_tag(e,i);if t.error==NT_OK && t.type==NT_E {if n==out.count {return -1;}out[n]=t.id;n+=1;}}return n;
+}
+nms_event :: (raw:string,now:int,scratch:[]u8)->RsAdmit #effects(all) {
+ read:=rs_event_read(raw,scratch);if read.reason!=RS_ACCEPT || !ms_journal_kind(read.e.kind) || !ms_arrival_time(read.e.created_at,now) || !rs_live(read.expiration,now) {read.reason=RS_BAD_EVENT;return read;}return rs_admit_verified(read,ne_signed_fast(read.e));
+}
+// Complete originals are returned separately, never a clipped preview.
+nms_original :: (s:[]Nms,buf:[]u8,id:string,out:[]u8)->int #export_c #effects(all) {
+ key:[32]u8;if s.count!=1 || s[0].status!=0 || hex_decode_checked(id,key[..],false).error!=NC_OK || id.count!=64 {return -1;}
+ at:=cj_find(s[0].j[..],key);if at<0 || !cj_live(s[0].j[..],at) {return -1;}ce:=s[0].j[0].event[at];n:=ce.to-ce.from;if n>out.count {return -1;}for i:0..<n {out[i]=buf[ce.from+i];}return n;
+}
+nms_page :: (s:[]Nms,filter:string,cursor:int,now:int,out:[]u8)->int #export_c #effects(all) {
+ if s.count!=1 || s[0].status!=0 || cursor<0 || cursor>CJ_V2_EVENTS {return -1;}
+ f:[1]NostrFilter;sp:[1]FrSpace;strs:[64]string;ints:[32]int;tags:[16]NostrTagFilter;bytes:[8192]u8;
+ sp[0]=FrSpace.{strs=strs[..],ints=ints[..],tags=tags[..],bytes=bytes[..]};
+ if filter.count>0 && filter_read(filter,f[..],sp[..])!=FR_OK {return -1;}
+ // Apply the filter's limit to the complete ordered projection before paging.
+ limit:=ifx f[0].has_limit then f[0].limit else CJ_V2_EVENTS;
+ indices:[CJ_V2_EVENTS]int;count:=rsd_query_bounded(s[0].store[..],f[0],now,limit,indices[..]);rows:[16]MsIndexRow;n:=0;if cursor>count {return -1;}
+ for k:cursor..<count {if n==16 {break;}at:=indices[k];rec:=s[0].store[0].recs[at];row:=rows[n..<n+1];
+  encoded:=hex_encode_checked(cast(string)rec.id[..],row[0].id[..],false);encoded=hex_encode_checked(cast(string)rec.author[..],row[0].author[..],false);row[0].kind=rec.kind;row[0].created=rec.created;
+  event:=cj_find(s[0].j[..],rec.id);if event>=0 {ce:=s[0].j[0].event[event];row[0].pending=ce.relays&cj_not(ce.accepted|ce.refused);row[0].accepted=ce.accepted;row[0].refused=ce.refused;}n+=1;
+ }
+ next:=cursor+n;return nms_index(s,ifx next<count then next else 0,!s[0].pruned && next>=count,rows[0..<n],out);
+}
+nms_index :: (s:[]Nms,cursor:int,complete:bool,rows:[]MsIndexRow,out:[]u8)->int #effects(all) {
+ urls:[64]string;for i:0..<s[0].j[0].pool[0].relays {urls[i]=cast(string)s[0].j[0].pool[0].url[i*N65_URL_MOST..<i*N65_URL_MOST+s[0].j[0].pool[0].url_n[i]];}
+ return ms_index_write_relays(s[0].revision,cursor,complete,urls[0..<s[0].j[0].pool[0].relays],rows,out);
+}
+// The shared verified store already selected replacement/tie/expiry heads.
+nms_head :: (s:[]Nms,author:string,kind:int,now:int,out:[]u8)->int #export_c #effects(all) {
+ key:[32]u8;if s.count!=1 || s[0].status!=0 || !ne_lower_hex(author,key[..]) {return -1;}
+ for index:0..<s[0].store[0].n {rec:=s[0].store[0].recs[index];if rec.live && rec.kind==kind && cast(string)rec.author[..]==cast(string)key[..] && (rec.expiry<0 || rec.expiry>now) {text:=rsd_text(s[0].store[..],index);if text.count>out.count {return -1;}for c,i:text {out[i]=c;}return text.count;}}
+ return 0;
+}
+nms_outbox :: (s:[]Nms,buf:[]u8,cursor:int,out:[]u8)->int #effects(all) {
+ if cursor<0 || cursor>s[0].j[0].pubs {return -1;}rows:[16]MsIndexRow;n:=0;
+ for i:cursor..<s[0].j[0].pubs {
+  if n==16 {break;}p:=s[0].j[0].pub[i];scratch:[65536]u8;e:=nostr_event_read(cast(string)buf[p.from..<p.to],scratch[..],false);if e.error!=NE_OK {return -1;}
+  row:=rows[n..<n+1];encoded:=hex_encode_checked(cast(string)e.id[..],row[0].id[..],false);encoded=hex_encode_checked(cast(string)e.public_key[..],row[0].author[..],false);row[0].kind=e.kind;row[0].created=e.created_at;row[0].pending=p.pending;row[0].accepted=p.accepted;row[0].refused=p.refused;n+=1;
+ }
+ next:=cursor+n;return nms_index(s,ifx next<s[0].j[0].pubs then next else 0,next>=s[0].j[0].pubs,rows[0..<n],out);
+}
+// Prepares a transaction. The caller commits the whole returned document
+// before returning an OK result or using it to publish. On refusal it discards
+// all prepared bytes, including any partially prepared compound operation.
+nms_prepare :: (s:[]Nms,buf:[]u8,next:[]u8,q:[]MsRequest,facts:MsFacts,now:int,out:[]u8)->NmsChange #export_c #effects(all) {
+ r:NmsChange;if s.count!=1 || q.count!=1 || !q[0].ok {r.status=5;return r;}r.length=s[0].j[0].len;r.revision=s[0].revision;r.pruned=s[0].pruned;
+ if s[0].status!=0 {r.status=s[0].status;return r;}r.status=ms_permit(facts,q[0].action,q[0].revision,s[0].revision);if r.status!=0 {return r;}
+ action:=q[0].action;raw:=cast(string)q[0].payload[0..<q[0].n];old:=s[0].j[0].len;
+ if action==1 || action==5 {r.payload_n=nms_page(s,ifx action==1 then "" else raw,q[0].cursor,now,out);if r.payload_n<0 {r.status=5;r.payload_n=0;}else {index:[1]MsIndex;if !ms_index_read(cast(string)out[0..<r.payload_n],index[..]) {r.status=10;r.payload_n=0;}else {r.cursor=index[0].cursor;}}return r;}
+ if action==6 {r.payload_n=nms_original(s,buf,raw,out);if r.payload_n<0 {r.status=2;r.payload_n=0;}return r;}
+ if action==9 {
+  if q[0].cursor>s[0].j[0].pubs {r.status=5;return r;}r.payload_n=nms_outbox(s,buf,q[0].cursor,out);index:[1]MsIndex;
+  if r.payload_n<0 || !ms_index_read(cast(string)out[0..<r.payload_n],index[..]) {r.status=10;r.payload_n=0;}else {r.cursor=index[0].cursor;}return r;
+ }
+ if s[0].revision==MS_SERIAL {r.status=7;return r;}
+ if action==7 {return nms_checkpoint(s,buf,next,now);}
+ if action==8 {
+  fresh:[1]Cj;opened:=cj_open_v2(fresh[..],next,0,s[0].j[0].owner,s[0].j[0].scope);if opened.status!=CJO_NEW {r.status=7;return r;}
+  r.length=fresh[0].len;r.revision+=1;r.changed=true;r.replaced=true;r.pruned=false;r.clear_operations=true;return r;
+ }
+ if action==2 || action==3 {
+  scratch:[65536]u8;event:=nms_event(raw,now,scratch[..]);if event.reason!=RS_ACCEPT {r.status=5;return r;}
+  result:=-1;
+  if action==2 {
+   relay:=cj_relay(s[0].j[..],buf,cast(string)q[0].relay[0..<q[0].nr]);if relay<0 {r.status=7;return r;}
+   deletes:[256][32]u8;n:=nms_deletes(event.e,deletes[..]);if n<0 {r.status=7;return r;}
+   result=cj_deliver(s[0].j[..],buf,q[0].subscription,relay,event.e.created_at,event.e.id,event.e.public_key,raw,deletes[0..<n]);
+  } else {
+   mask:u64;for i:0..<q[0].targets_n {relay:=cj_relay(s[0].j[..],buf,ms_target(q,i));if relay<0 {r.status=7;return r;}mask|=cast(u64)1<<cast(u32)relay;}
+   result=cj_queue_event(s[0].j[..],buf,event.e,mask);
+  }
+  if result<0 {r.status=ifx result== -CJ_FULL then 7 else 5;return r;}
+ } else if action==4 {
+  m:=nostr_message_read(raw);if m.error!=NM_OK || m.type!=NM_ACCEPT {r.status=5;return r;}relay:=-1;for i:0..<s[0].j[0].pool[0].relays {if ob_is(s[0].j[0].pool[..],i,cast(string)q[0].relay[0..<q[0].nr]) {relay=i;}}
+  // Shared Relay classifies transient refusals: keep the original pending.
+  if !m.accepted && (m.prefix==4 || nm_text(m,m.message).count>=14 && nm_text(m,m.message)[0..<14]=="auth-required:") {return r;}
+  result:=cj_ok(s[0].j[..],buf,m.id,relay,ifx m.accepted then CJ_ACCEPTED else CJ_REFUSED);if result<0 {r.status=7;return r;}
+ } else {r.status=1;return r;}
+ r.length=s[0].j[0].len;r.changed=r.length!=old;if r.changed {r.revision+=1;}return r;
+}
+// A checkpoint pins every unresolved outgoing original and every live
+// replacement/addressable head. Other history keeps the newest 256 entries.
+// Tombstones and all inclusive cursors survive even when history is pruned.
+nms_checkpoint :: (s:[]Nms,buf:[]u8,next:[]u8,now:int)->NmsChange #effects(all) {
+ r:=NmsChange.{length=s[0].j[0].len,revision=s[0].revision,pruned=s[0].pruned};keep:[CJ_V2_EVENTS]bool;
+ indices:[CJ_V2_EVENTS]int;f:NostrFilter;count:=rsd_query_bounded(s[0].store[..],f,now,CJ_V2_EVENTS,indices[..]);ordinary:=0;ordinary_bytes:=0;
+ for k:0..<count {rec:=s[0].store[0].recs[indices[k]];class:=rs_class(rec.kind);take:=ms_history_keep(class,ordinary,ordinary_bytes,rec.to-rec.from);if class==RS_REGULAR && take {ordinary+=1;ordinary_bytes+=rec.to-rec.from;}at:=cj_find(s[0].j[..],rec.id);if take && at>=0 {keep[at]=true;}}
+ for i:0..<s[0].j[0].pubs {p:=s[0].j[0].pub[i];if p.pending!=0 {at:=cj_find(s[0].j[..],p.id);if at<0 {r.status=10;return r;}keep[at]=true;}}
+ fresh:[1]Cj;opened:=cj_open_v2(fresh[..],next,0,s[0].j[0].owner,s[0].j[0].scope);if opened.status!=CJO_NEW {r.status=7;return r;}
+ for i:0..<s[0].j[0].pool[0].relays {url:=cast(string)s[0].j[0].pool[0].url[i*N65_URL_MOST..<i*N65_URL_MOST+s[0].j[0].pool[0].url_n[i]];if cj_relay(fresh[..],next,url)!=i {r.status=7;return r;}}
+ for i:0..<s[0].j[0].events {
+  if !keep[i] {r.pruned=true;continue;}ce:=s[0].j[0].event[i];n:=CJ_EVENT_FIXED+ce.to-ce.from;
+  if !cj_room(fresh[..],next,n) {r.status=7;return r;}b:=cj_begin(fresh[..],next,CJ_R_EVENT,n);
+  scratch:[65536]u8;e:=nostr_event_read(cast(string)buf[ce.from..<ce.to],scratch[..],false);if e.error!=NE_OK {r.status=10;return r;}
+  next[b]=ifx ce.sub<0 then 255 else cast(u8)ce.sub;next[b+1]=ifx ce.relay<0 then 255 else cast(u8)ce.relay;cj_put(next,b+2,cast(u64)e.created_at,8);cj_put_id(next,b+10,e.id);cj_put_id(next,b+42,e.public_key);for k:0..<ce.to-ce.from {next[b+74+k]=buf[ce.from+k];}if !cj_commit(fresh[..],next,n) {r.status=10;return r;}
+ }
+ for i:0..<s[0].j[0].events {
+  p:=s[0].j[0].event[i];if p.relays==0 || cj_find(fresh[..],p.id)<0 {continue;}
+  // Reference the retained original; mounting already verified it.
+  if !cj_room(fresh[..],next,41) {r.status=7;return r;}b:=cj_begin(fresh[..],next,CJ_R_QUEUE_REF,41);cj_put_id(next,b,p.id);cj_put(next,b+32,p.relays,8);if !cj_commit(fresh[..],next,41) {r.status=10;return r;}
+  for relay:0..<s[0].j[0].pool[0].relays {bit:=cast(u64)1<<cast(u32)relay;outcome:=ifx (p.accepted&bit)!=0 then CJ_ACCEPTED else ifx (p.refused&bit)!=0 then CJ_REFUSED else -1;if outcome>=0 && cj_ok(fresh[..],next,p.id,relay,outcome)<0 {r.status=7;return r;}}
+ }
+ for i:0..<s[0].j[0].tombs {
+  if !cj_room(fresh[..],next,65) {r.status=7;return r;}t:=s[0].j[0].tomb[i];b:=cj_begin(fresh[..],next,CJ_R_DELETE,65);cj_put_id(next,b,t.id);cj_put_id(next,b+32,t.signer);if !cj_commit(fresh[..],next,65) {r.status=10;return r;}
+ }
+ for sub:0..<CJ_SUBS {for relay:0..<s[0].j[0].pool[0].relays {
+  cursor:=cj_since(s[0].j[..],sub,relay);if cursor<0 || cj_since(fresh[..],sub,relay)>=cursor {continue;}
+  if !cj_room(fresh[..],next,11) {r.status=7;return r;}b:=cj_begin(fresh[..],next,CJ_R_CURSOR,11);next[b]=cast(u8)sub;next[b+1]=cast(u8)relay;cj_put(next,b+2,cast(u64)cursor,8);if !cj_commit(fresh[..],next,11) {r.status=10;return r;}
+ }}
+ r.length=fresh[0].len;r.changed=r.pruned!=s[0].pruned || cast(string)buf[0..<s[0].j[0].len]!=cast(string)next[0..<r.length];r.replaced=r.changed;if r.changed {r.revision+=1;}return r;
+}

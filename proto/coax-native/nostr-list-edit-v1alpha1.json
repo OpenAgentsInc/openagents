@@ -1,0 +1,26 @@
+{
+  "schema": "coax.native.nostr-list-edit.v1alpha1",
+  "action": "publish-list",
+  "fields": [
+    "schema",
+    "kind",
+    "base",
+    "name",
+    "value",
+    "enabled"
+  ],
+  "limits": {
+    "value_bytes": 256,
+    "wire_bytes": 65536,
+    "base_hex_bytes": 64
+  },
+  "purpose": "One supported public item edit after the session\u2019s fresh read barrier. The signed owned base must match the selected current head. Unknown tags and private encrypted content are retained. Failed/partial reads never authorize an empty base.",
+  "initial_service_kinds": [
+    3,
+    10000,
+    10002,
+    10050
+  ],
+  "sets": "The shared editor also supports public item edits to existing sets; new set coordinates and their service/UI capability belong to the contacts/lists stage.",
+  "base": "full event ID of the verified observed current head, or empty only after a completed absence read; no raw original is supplied by the caller. The provider obtains the complete original from its verified store and preserves unknown tags/content."
+}

@@ -20231,6 +20231,22 @@ CREATE TABLE auth.nip98_seen (
 
 
 --
+-- Name: nostr_journals_v1alpha1; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.nostr_journals_v1alpha1 (
+    namespace text NOT NULL,
+    account text NOT NULL,
+    origin_account text NOT NULL,
+    identity text NOT NULL,
+    revision bigint NOT NULL,
+    pruned boolean DEFAULT false NOT NULL,
+    document bytea NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: nostr_keys; Type: TABLE; Schema: auth; Owner: -
 --
 
@@ -20263,6 +20279,23 @@ CREATE SEQUENCE auth.nostr_keys_id_seq
 --
 
 ALTER SEQUENCE auth.nostr_keys_id_seq OWNED BY auth.nostr_keys.id;
+
+
+--
+-- Name: nostr_operations_v1alpha1; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.nostr_operations_v1alpha1 (
+    namespace text NOT NULL,
+    account text NOT NULL,
+    identity text NOT NULL,
+    operation text NOT NULL,
+    action smallint NOT NULL,
+    digest text NOT NULL,
+    source smallint NOT NULL,
+    result text NOT NULL,
+    result_sha256 text NOT NULL
+);
 
 
 --
@@ -24143,6 +24176,22 @@ ALTER TABLE ONLY auth.nip98_seen
 
 
 --
+-- Name: nostr_journals_v1alpha1 nostr_journals_v1alpha1_account_namespace_key; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.nostr_journals_v1alpha1
+    ADD CONSTRAINT nostr_journals_v1alpha1_account_namespace_key UNIQUE (account, namespace);
+
+
+--
+-- Name: nostr_journals_v1alpha1 nostr_journals_v1alpha1_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.nostr_journals_v1alpha1
+    ADD CONSTRAINT nostr_journals_v1alpha1_pkey PRIMARY KEY (namespace);
+
+
+--
 -- Name: nostr_keys nostr_keys_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
 --
 
@@ -24156,6 +24205,14 @@ ALTER TABLE ONLY auth.nostr_keys
 
 ALTER TABLE ONLY auth.nostr_keys
     ADD CONSTRAINT nostr_keys_pubkey_key UNIQUE (pubkey);
+
+
+--
+-- Name: nostr_operations_v1alpha1 nostr_operations_v1alpha1_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.nostr_operations_v1alpha1
+    ADD CONSTRAINT nostr_operations_v1alpha1_pkey PRIMARY KEY (namespace, operation);
 
 
 --
@@ -25957,6 +26014,13 @@ CREATE INDEX merges_survivor ON auth.merges USING btree (survivor);
 
 
 --
+-- Name: nostr_journal_owner_v1alpha1; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE INDEX nostr_journal_owner_v1alpha1 ON auth.nostr_journals_v1alpha1 USING btree (account, identity, namespace);
+
+
+--
 -- Name: nostr_keys_account; Type: INDEX; Schema: auth; Owner: -
 --
 
@@ -27034,11 +27098,27 @@ ALTER TABLE ONLY auth.merges
 
 
 --
+-- Name: nostr_journals_v1alpha1 nostr_journals_v1alpha1_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.nostr_journals_v1alpha1
+    ADD CONSTRAINT nostr_journals_v1alpha1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
 -- Name: nostr_keys nostr_keys_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
 --
 
 ALTER TABLE ONLY auth.nostr_keys
     ADD CONSTRAINT nostr_keys_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: nostr_operations_v1alpha1 nostr_operations_v1alpha1_account_namespace_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.nostr_operations_v1alpha1
+    ADD CONSTRAINT nostr_operations_v1alpha1_account_namespace_fkey FOREIGN KEY (account, namespace) REFERENCES auth.nostr_journals_v1alpha1(account, namespace) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --

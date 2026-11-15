@@ -1,0 +1,18 @@
+{
+  "schema": "coax.native.nostr-capabilities.v1alpha1",
+  "action": "capabilities",
+  "request": "empty payload string",
+  "fields": [
+    "schema",
+    "identity",
+    "source",
+    "actions"
+  ],
+  "sources": [
+    "managed-server",
+    "linked-device",
+    "external",
+    "unavailable"
+  ],
+  "purpose": "Only actions actually installed and ready at the current key provider; group remains absent until its own implementation."
+}

@@ -1,0 +1,10 @@
+{
+  "schema":"coax.native.nostr-result.v1alpha1",
+  "fields":["schema","service","action","operation","identity","status","revision","cursor","payload"],
+  "services":["custody","store"],
+  "statuses":["ok","unsupported","not-ready","identity-mismatch","session-expired","purpose-refused","revoked","capacity","cancelled","conflict","corrupt","incomplete"],
+  "limits":{"wire_bytes":400000,"payload_bytes":65536,"serial":2147483647},
+  "payload":"Complete purpose-specific result, original event/rumor, or bounded index. Parsing this envelope alone does not verify an event or assert permission.",
+  "cursor":"next stable index position, zero for end; revision prevents mixing pages from different journal snapshots",
+  "operation":"echo the admitted request's complete operation ID"
+}

@@ -7,7 +7,7 @@ settings:
   base:
     DEVELOPMENT_TEAM: HQWSG26L43
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1092"
+    CURRENT_PROJECT_VERSION: "1093"
     OA_IOS_BUNDLE_ID: com.openagents.app
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "18.0"
@@ -30,6 +30,7 @@ targets:
       - NativePresentationUnit.c
       - NativeAccountUnit.c
       - NativeRelayUnit.c
+      - NativeMessagingUnit.c
       - path: ../../components/native/apple.c
         compilerFlags: "-IGenerated -I../shared/host/linux"
       - path: Generated/gallery.c
@@ -123,7 +124,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: "$(OA_IOS_BUNDLE_ID)"
         PRODUCT_NAME: OpenAgents
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1092"
+        CURRENT_PROJECT_VERSION: "1093"
         PROVISIONING_PROFILE_SPECIFIER: "$(OA_APP_PROVISIONING_PROFILE)"
         OTHER_LDFLAGS: ["$(inherited)", "-Wl,-export_dynamic"]
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COAX_NATIVE_BALANCE"
@@ -233,7 +234,7 @@ targets:
   OpenAgentsTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [StarterTests]
+    sources: [StarterTests, UnitTests/AppAuthTests.swift]
     dependencies:
       - target: OpenAgents
     settings:
@@ -251,6 +252,15 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app.starter.uitests
 schemes:
+  CoaxNativeMessaging:
+    build:
+      targets:
+        OpenAgents: all
+    test:
+      gatherCoverageData: false
+      targets:
+        - name: OpenAgentsTests
+          selectedTests: [NativeMessagingTests, NativeFeedTests, NativeAccountTests, AppAuthTests]
   CoaxNativeFeed:
     build:
       targets:

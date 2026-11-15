@@ -302,18 +302,31 @@ rs_admit_policy :: (e: NostrEvent, expiration: int, now: int, auth_required: boo
 // Reads and checks an EVENT's object text (id, then policy), cheapest
 // first; scratch holds the id preimage. RS_ACCEPT here means "verify the
 // signature next": only rs_admit_verified admits.
+#test "shared event metadata reading does not impose a relay's admission or retention policy" {
+ scratch:[65536]u8;r:=rs_event_read(RST_TAGS,scratch[..]);#assert r.reason==RS_ACCEPT && r.e.tags==257 && !r.e.verified;
+ #assert rs_admit_read(RST_TAGS,1000,false,false,scratch[..]).reason==RS_TAGS;
+ r=rs_event_read(RST_AUTH,scratch[..]);#assert r.reason==RS_ACCEPT && r.e.kind==22242 && rs_admit_read(RST_AUTH,1000,false,false,scratch[..]).reason==RS_AUTH_KIND;
+ r=rs_event_read(RST_ENVELOPE,scratch[..]);#assert r.reason==RS_ACCEPT && r.expiration== -1 && rs_admit_read(RST_ENVELOPE,1000,false,false,scratch[..]).expiration==605800;
+}
 rs_admit_read :: (text: string, now: int, auth_required: bool, authed: bool, scratch: [] u8) -> RsAdmit #effects(all) {
+ r:=rs_event_read(text,scratch);if r.reason!=RS_ACCEPT {return r;}
+ r.expiration=rs_retained(r.e.kind,r.e.created_at,r.expiration);r.reason=rs_admit_policy(r.e,r.expiration,now,auth_required,authed);return r;
+}
+// Common parsed/hashed metadata. It grants no signature or host admission.
+// Relay admission above retains its original limits and retention behavior;
+// durable clients apply their own bounded history policy after verification.
+rs_event_read :: (text:string,scratch:[]u8)->RsAdmit #effects(all) {
   r: RsAdmit; r.reason = RS_BAD_EVENT;
   e := nostr_event_read(text, scratch, false);
   if e.error == NE_ID { r.reason = RS_BAD_ID; r.e = e; return r; }
   if e.error != NE_OK { return r; }
-  r.e = e; r.kclass = rs_class(e.kind); r.expiration = rs_retained(e.kind, e.created_at, rs_expiration(e));
+  r.e = e; r.kclass = rs_class(e.kind); r.expiration = rs_expiration(e);
   if r.kclass == RS_ADDRESSABLE {
     n := rs_d(e, r.d[..]);
     if n < 0 { return r; }
     r.d_n = n;
   }
-  r.reason = rs_admit_policy(e, r.expiration, now, auth_required, authed);
+  r.reason = RS_ACCEPT;
   return r;
 }
 // Completes admission with the signature check's result v (event.coax's

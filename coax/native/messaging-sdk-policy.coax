@@ -1,0 +1,67 @@
+// Actual HTTP/provider observations are bound before the SDK hands a result
+// to the updateable application or uses an outbox row to send a frame.
+#load "messaging-store-wire.coax";
+#load "nostr-operation-policy.coax";
+#load "../lib/nostr/event_verify_fast.coax";
+#load "../web/api/account-settings-wire.coax";
+#load "../web/api/auth-identity-wire.coax";
+#load "fixtures/messaging_vectors.coax" #test;
+#authority;
+#test "SDK metadata refuses malformed wrong-schema and unknown-source observations" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";
+ #assert nsm_source("{","a",id)==0;
+ #assert nsm_source("{\"schema\":\"wrong\",\"account\":\"a\",\"pubkey\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"source\":\"account\"}","a",id)==0;
+ #assert nsm_source("{\"schema\":\"openagents.account.identity.v1\",\"account\":\"a\",\"pubkey\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"source\":\"unknown\"}","a",id)==0;
+}
+#test "outbox target masks include the high relay bit and missing events remain unavailable" #steps 40000000 {
+ q:[1]MsIndex;q[0].ok=true;q[0].revision=7;q[0].n=1;q[0].relays_n=64;
+ for i:0..<64 {n:=json_raw(q[0].relays[i][..],0,"wss://r");n=json_write_int(q[0].relays[i][..],n,i);n=json_raw(q[0].relays[i][..],n,".example");q[0].nr[i]=n;}
+ for c,i:NMS_LIST_ID_HEX {q[0].rows[0].id[i]=c;}q[0].rows[0].pending=cast(u64)1<<63;
+ #assert nsm_pending(q[..],7,"wss://r63.example",NMS_LIST_EVENT) && !nsm_pending(q[..],7,"wss://r62.example",NMS_LIST_EVENT);
+ q[0].rows[0].id[63]='0';#assert !nsm_pending(q[..],7,"wss://r63.example",NMS_LIST_EVENT);q[0].n=0;#assert !nsm_pending(q[..],7,"wss://r63.example",NMS_LIST_EVENT);
+ #assert !nsm_pending(q[0..<0],7,"wss://r63.example",NMS_LIST_EVENT);
+}
+#test "SDK reply ownership requires every current service intent and identity reference" {
+ r:[1]NsResult;r[0].ok=true;r[0].service=1;r[0].action=3;id:="0000000000000000000000000000000000000000000000000000000000000001";op:="0000000000000000000000000000000000000000000000000000000000000002";
+ for c,i:id {r[0].identity[i]=c;}for c,i:op {r[0].operation[i]=c;}
+ #assert nsm_reply(r[..],1,3,op,id) && !nsm_reply(r[..],2,3,op,id) && !nsm_reply(r[..],1,4,op,id) && !nsm_reply(r[..],1,3,id,id) && !nsm_reply(r[..],1,3,op,op);
+ r[0].ok=false;#assert !nsm_reply(r[..],1,3,op,id) && !nsm_reply(r[0..<0],1,3,op,id);
+}
+#test "only an exact selected relay from complete account settings is authorized" {
+ s:[1]AccountSettings;s[0]=asw_default();b:[8192]u8;n:=asw_write(s[..],b[..]);#assert n>0;
+ #assert nsm_saved(cast(string)b[0..<n],"wss://relay.openagents.com") && !nsm_saved(cast(string)b[0..<n],"wss://other.example") && !nsm_saved("{}","wss://relay.openagents.com");
+}
+#test "canonical metadata identifies the account provider without accepting a wire permission flag" {
+ raw:="{\"schema\":\"openagents.account.identity.v1\",\"account\":\"a\",\"pubkey\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"source\":\"account\"}";id:="0000000000000000000000000000000000000000000000000000000000000001";
+ #assert nsm_source(raw,"a",id)==NS_MANAGED && nsm_source(raw,"b",id)==0 && nsm_source("{}","a",id)==0 && nsm_source(raw,"a","bad")==0;
+ other:="0000000000000000000000000000000000000000000000000000000000000002";#assert nsm_source(raw,"a",other)==0 && nsm_source(raw,"aa",id)==0;
+ linked:="{\"schema\":\"openagents.account.identity.v1\",\"account\":\"a\",\"pubkey\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"source\":\"linked\"}";#assert nsm_source(linked,"a",id)==NS_LINKED;
+}
+#test "a relay send can use only its own pending bit from the revision-pinned durable outbox" #steps 40000000 {
+ q:[1]MsIndex;q[0].ok=true;q[0].revision=7;q[0].n=1;q[0].relays_n=1;q[0].nr[0]=17;url:="wss://one.example";q[0].nr[0]=url.count;for c,i:url {q[0].relays[0][i]=c;}for c,i:NMS_LIST_ID_HEX {q[0].rows[0].id[i]=c;}q[0].rows[0].pending=1;
+ #assert nsm_pending(q[..],7,url,NMS_LIST_EVENT) && !nsm_pending(q[..],8,url,NMS_LIST_EVENT) && !nsm_pending(q[..],7,"wss://other.example",NMS_LIST_EVENT) && !nsm_pending(q[..],7,url,"{}");
+ q[0].rows[0].pending=0;#assert !nsm_pending(q[..],7,url,NMS_LIST_EVENT);q[0].rows[0].pending=1;q[0].ok=false;#assert !nsm_pending(q[..],7,url,NMS_LIST_EVENT);
+}
+nsm_source :: (metadata:string,account:string,identity:string)->int #export_c #effects(all) {
+ a:[128]u8;pub:[64]u8;length:[1]int;source:=aiw_read(metadata,a[..],pub[..],length[..]);if source==0 || !aw_hex(identity,64) || cast(string)pub[..]!=identity || account.count!=length[0] {return 0;} // mutant: equivalent (first || -> &&: if the codec returns source 0, nso_source(0) below also returns 0; malformed identity still differs from the codec-verified public key)
+ return ifx cast(string)a[0..<length[0]]==account then nso_source(source) else 0;
+}
+nsm_saved :: (settings:string,url:string)->bool #export_c #effects(all) {
+ s:[1]AccountSettings;if !asw_read(settings,s[..]) {return false;}for i:0..<s[0].relays_n {if cast(string)s[0].relays[i][0..<s[0].relay_n[i]]==url {return true;}}return false;
+}
+nsm_reply :: (r:[]NsResult,service:int,action:int,operation:string,identity:string)->bool #export_c #effects(all) {
+ return r.count==1 && r[0].ok && r[0].service==service && r[0].action==action && cast(string)r[0].operation[..]==operation && cast(string)r[0].identity[..]==identity;
+}
+nsm_pending :: (index:[]MsIndex,revision:int,relay:string,original:string)->bool #export_c #effects(all) {
+ if index.count!=1 || !index[0].ok || index[0].revision!=revision {return false;}scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(original,scratch[..],false));if e.error!=NE_OK || !e.verified {return false;} // mutant: equivalent (event-error || -> &&: ne_signed_fast sets verified exactly when error is NE_OK)
+ id:[64]u8;_=hex_encode_checked(cast(string)e.id[..],id[..],false);slot:=-1;for i:0..<index[0].relays_n {if cast(string)index[0].relays[i][0..<index[0].nr[i]]==relay {slot=i;}}if slot<0 {return false;}
+ for i:0..<index[0].n {row:=index[0].rows[i];if cast(string)row.id[..]==cast(string)id[..] {return (row.pending&(cast(u64)1<<cast(u32)slot))!=0;}}return false;
+}
+#test "only an exact frozen pending delivery target can open an unsaved relay" {
+ i:[1]MsIndex;i[0].ok=true;i[0].revision=7;i[0].n=1;i[0].relays_n=1;i[0].nr[0]=19;url:="wss://inbox.example";i[0].nr[0]=url.count;for c,k:url {i[0].relays[0][k]=c;}i[0].rows[0].pending=1;
+ #assert nsm_outbox_target(i[..],7,url) && !nsm_outbox_target(i[..],6,url) && !nsm_outbox_target(i[..],7,"wss://other.example");i[0].rows[0].pending=0;#assert !nsm_outbox_target(i[..],7,url);i[0].ok=false;#assert !nsm_outbox_target(i[..],7,url) && !nsm_outbox_target(i[0..<0],7,url);i[0].ok=true;i[0].relays_n=2;i[0].nr[1]=url.count;for c,k:url {i[0].relays[1][k]=c;}i[0].nr[0]=0;i[0].rows[0].pending=2;#assert nsm_outbox_target(i[..],7,url);
+}
+nsm_outbox_target :: (index:[]MsIndex,revision:int,url:string)->bool #export_c #effects(all) {
+ if index.count!=1 || !index[0].ok || index[0].revision!=revision {return false;}
+ for k:0..<index[0].relays_n {if url!=cast(string)index[0].relays[k][0..<index[0].nr[k]] {continue;}bit:=cast(u64)1<<cast(u32)k;for i:0..<index[0].n {if (index[0].rows[i].pending&bit)!=0 {return true;}}}return false;
+}

@@ -61,7 +61,7 @@ N17_NOT_MEMBER :: 11; // the opened message's room does not include the reader
 N17_CHAT :: 14;
 N17_FILE_KIND :: 15;
 N17_RELAY_LIST :: 10050;
-N17_MOST :: 10;           // recipients; NIP-17: past ten, use another scheme
+#load "nip17-peers.coax";
 N17_RELAYS_MOST :: 8;     // relays in one list; NIP-17 asks for one to three
 N17_URL_MOST :: 256;
 N17_VALUE_MOST :: 256;
@@ -200,6 +200,7 @@ N17_TWO :: "[[\"relay\",\"wss://inbox.nostr.wine\"],[\"relay\",\"wss://myrelay.n
   p=nip17_plan(alice[..],keys[..],lists[0..<4]);#assert p.error==N17_MEMBERS && p.who==2;
   same:=n17_keys(2,3,2);p=nip17_plan(alice[..],same[..],lists[0..<4]);#assert p.error==N17_MEMBERS && p.who==2;
   same=n17_keys(2,3,3);p=nip17_plan(alice[..],same[..],lists[0..<4]);#assert p.error==N17_MEMBERS && p.who==2;
+  same=n17_keys(1,3,2);p=nip17_plan(alice[..],same[..],lists[0..<4]);#assert p.error==N17_MEMBERS && p.who==0;
   // Eleven recipients is one more than NIP-17's scheme is for.
   many:[11*32]u8;for i:0..<11 {many[i*32]=cast(u8)(i+10);}
   #assert nip17_plan(alice[..],many[..],lists[..]).error==N17_MEMBERS;
@@ -474,10 +475,10 @@ nip17_plan :: (sender_x:[]u8,recipients:[]u8,lists:[]NostrEvent)->N17Plan #effec
   if sender_x.count!=32 || recipients.count%32!=0 || lists.count!=n+1 {return p;}
   p.error=N17_MEMBERS;
   if n==0 || n>N17_MOST {return p;}
+  bad:=n17_peer_bad(sender_x,recipients);
   for i:0..<n {
     for c:0..<32 {p.pub[i*32+c]=recipients[i*32+c];}
-    if n17_same(recipients[i*32..<i*32+32],sender_x) {p.who=i;return p;}
-    for k:0..<i {if n17_same(recipients[i*32..<i*32+32],recipients[k*32..<k*32+32]) {p.who=i;return p;}}
+    if i==bad {p.who=i;return p;}
   }
   for c:0..<32 {p.pub[n*32+c]=sender_x[c];}
   p.recipients=n;
@@ -612,13 +613,6 @@ n17_less_at :: (keys:[]u8,i:int,k:int)->bool #effects(all) {
   }
   return false;
 }
-// Whether a and b are the same bytes, count included.
-n17_same :: (a:[]u8,b:[]u8)->bool #effects(all) {
-  if a.count!=b.count {return false;}
-  for i:0..<a.count {if a[i]!=b[i] {return false;}}
-  return true;
-}
-
 // book:begin read
 // An opened rumor read as a NIP-17 message for the reader me. rumor is the
 // JSON that nip59_unwrap_checked wrote, and o its result.

@@ -1,0 +1,106 @@
+// The one account-journal request and bounded index codec. Crypto verification
+// and session admission happen after structural decoding, in the store owner.
+#load "nostr-result-wire.coax";
+#load "relay-read-policy.coax";
+#load "../lib/nostr/hex.coax";
+MS_SCHEMA :: "coax.native.nostr-store.v1alpha1";MS_OP :: 22;
+MS_INDEX_SCHEMA :: "coax.native.nostr-index.v1alpha1";
+MS_INDEX_BYTES :: 65536;
+MsRequest :: struct {ok:bool;action:int;operation:[64]u8;identity:[64]u8;relay:[256]u8;nr:int;targets:[8][256]u8;nt:[8]int;targets_n:int;subscription:int;revision:int;cursor:int;n:int;payload:[65536]u8;}
+MsIndexRow :: struct {id:[64]u8;author:[64]u8;kind:int;created:int;pending:u64;accepted:u64;refused:u64;}
+MsIndex :: struct {ok:bool;revision:int;cursor:int;complete:bool;relays:[64][256]u8;nr:[64]int;relays_n:int;n:int;rows:[16]MsIndexRow;}
+
+#test "store requests pin their scope and preserve exact originals without a caller account field" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";out:[2048]u8;q:[1]MsRequest;targets:=[2]string.["wss://relay.example/a","wss://other.example"];
+ n:=nms_request_write("ingest",id,id,"wss://relay.example/a",targets[0..<0],7,0,0,"{\"signed\":\"original\"}",out[..]);
+ #assert n>0 && nms_request_read(cast(string)out[0..<n],q[..]) && q[0].action==2 && q[0].subscription==7 && q[0].targets_n==0 && q[0].nr==21 && cast(string)q[0].payload[0..<q[0].n]=="{\"signed\":\"original\"}";
+ n=nms_request_write("queue",id,id,"",targets[..],0,0,0,"signed original",out[..]);#assert n>0 && nms_request_read(cast(string)out[0..<n],q[..]) && q[0].targets_n==2 && cast(string)q[0].targets[1][0..<q[0].nt[1]]==targets[1];
+ #assert nms_request_write("queue",id,id,"",targets[0..<0],0,0,0,"x",out[..])<0;
+ targets[1]=targets[0];#assert nms_request_write("queue",id,id,"",targets[..],0,0,0,"x",out[..])<0;targets[1]="ws://other.example";#assert nms_request_write("queue",id,id,"",targets[..],0,0,0,"x",out[..])<0;
+ #assert nms_request_write("ingest",id,id,"ws://relay.example",targets[0..<0],0,0,0,"x",out[..])<0 && nms_request_write("ingest",id,id,"wss://relay.example",targets[0..<0],8,0,0,"x",out[..])<0;
+ #assert nms_request_write("event",id,id,"",targets[0..<0],0,0,0,"bad id",out[..])<0;
+ #assert nms_request_write("snapshot",id,id,"",targets[0..<0],0,0,0,"not empty",out[..])<0;
+ #assert !nms_request_read("{}",q[..]);n=nms_request_write("snapshot",id,id,"",targets[0..<0],0,0,0,"",out[..]);#assert n>0 && !nms_request_read(cast(string)out[0..<n],q[0..<0]);
+ #assert nms_request_write("snapshot",id,id,"",targets[0..<0],0,0,0,"",out[0..<1])<0;
+}
+#test "index pages retain complete IDs revisions masks and no plaintext preview" {
+ rows:[1]MsIndexRow;rows[0].id[63]='1';rows[0].author[63]='2';for i:0..<63 {rows[0].id[i]='0';rows[0].author[i]='0';}rows[0].kind=1059;rows[0].created=1700000000;rows[0].pending=18446744073709551615;rows[0].accepted=9007199254740993;rows[0].refused=2;
+ b:[2048]u8;idx:[1]MsIndex;n:=ms_index_write(7,16,false,rows[..],b[..]);
+ #assert n>0 && ms_index_read(cast(string)b[0..<n],idx[..]) && idx[0].revision==7 && idx[0].cursor==16 && !idx[0].complete && idx[0].n==1;
+ #assert idx[0].rows[0].pending==18446744073709551615 && idx[0].rows[0].accepted==9007199254740993 && idx[0].rows[0].refused==2;
+ #assert ms_index_write(0,0,true,rows[0..<0],b[..])>0 && !ms_index_read("{}",idx[..]);
+ #assert ms_index_write(-1,0,true,rows[..],b[..])<0 && ms_index_write(0,0,true,rows[..],b[0..<1])<0;
+}
+#test "outbox requests page under a pinned revision and eight targets fit one frozen publish" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";out:[8192]u8;q:[1]MsRequest;
+ urls:=[9]string.["wss://r0.example","wss://r1.example","wss://r2.example","wss://r3.example","wss://r4.example","wss://r5.example","wss://r6.example","wss://r7.example","wss://r8.example"];
+ n:=nms_request_write("queue",id,id,"",urls[0..<8],0,0,0,"original",out[..]);#assert n>0 && nms_request_read(cast(string)out[0..<n],q[..]) && q[0].targets_n==8;
+ #assert nms_request_write("queue",id,id,"",urls[..],0,0,0,"original",out[..])<0;
+ n=nms_request_write("outbox",id,id,"",urls[0..<0],0,7,16,"",out[..]);#assert n>0 && nms_request_read(cast(string)out[0..<n],q[..]) && q[0].action==9 && q[0].cursor==16 && q[0].revision==7;
+ #assert nms_request_write("outbox",id,id,"",urls[0..<0],0,7,16,"not empty",out[..])<0;
+ rows:[1]MsIndexRow;index:[1]MsIndex;n=ms_index_write_relays(7,0,true,urls[0..<8],rows[0..<0],out[..]);#assert n>0 && ms_index_read(cast(string)out[0..<n],index[..]) && index[0].relays_n==8;
+ urls[1]=urls[0];#assert ms_index_write_relays(7,0,true,urls[0..<2],rows[0..<0],out[..])<0;
+}
+ms_target :: (q:[]MsRequest,i:int)->string #effects(all) {return cast(string)q[0].targets[i][0..<q[0].nt[i]];}
+ms_shape :: (q:[]MsRequest)->bool #effects(all) {
+ if q[0].action<1 || q[0].action>9 || q[0].subscription<0 || q[0].subscription>=8 || q[0].revision<0 || q[0].revision>MS_SERIAL || q[0].cursor<0 || q[0].cursor>MS_SERIAL || q[0].n<0 {return false;}
+ if !aw_hex(cast(string)q[0].operation[..],64) || !aw_hex(cast(string)q[0].identity[..],64) {return false;}
+ if q[0].action==2 || q[0].action==4 {return q[0].n>0 && q[0].targets_n==0 && q[0].cursor==0 && nrr_admit(1,0,1,0,cast(string)q[0].relay[0..<q[0].nr]);}
+ if q[0].nr!=0 || q[0].subscription!=0 {return false;}
+ if q[0].action==3 {
+  if q[0].n<1 || q[0].targets_n<1 || q[0].cursor!=0 {return false;}
+  for i:0..<q[0].targets_n {url:=ms_target(q,i);if !nrr_admit(1,0,1,0,url) {return false;}for k:0..<i {if url==ms_target(q,k) {return false;}}}return true;
+ }
+ if q[0].targets_n!=0 {return false;}
+ if q[0].action==9 {return q[0].n==0;}
+ if q[0].action==6 {return q[0].cursor==0 && aw_hex(cast(string)q[0].payload[0..<q[0].n],64);}
+ if q[0].action==5 {return q[0].n==0 || js_utf8(cast(string)q[0].payload[0..<q[0].n]);}
+ return q[0].cursor==0 && q[0].n==0;
+}
+nms_request_read :: (raw:string,q:[]MsRequest)->bool #export_c #effects(all) {
+ if q.count!=1 {return false;}q[0]=MsRequest.{};d:[1]Jv;nodes:[32]JvNode;if raw.count>400000 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[10]string.["schema","action","operation","identity","relay","targets","subscription","revision","cursor","payload"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=10 || jv_raw(v,jv_get(v,0,"schema"))!=MS_SCHEMA {return false;}
+ q[0].action=ms_action(jv_raw(v,jv_get(v,0,"action")));op:=js_string(v,jv_get(v,0,"operation"),q[0].operation[..]);identity:=js_string(v,jv_get(v,0,"identity"),q[0].identity[..]);q[0].nr=js_string(v,jv_get(v,0,"relay"),q[0].relay[..]);
+ list:=jv_get(v,0,"targets");if jv_kind(v,list)!=JV_ARRAY || jv_len(v,list)>8 || op!=64 || identity!=64 || q[0].nr<0 {return false;}q[0].targets_n=jv_len(v,list);
+ for i:0..<q[0].targets_n {q[0].nt[i]=js_string(v,jv_at(v,list,i),q[0].targets[i][..]);if q[0].nt[i]<0 {return false;}}
+ q[0].subscription=js_number(v,jv_get(v,0,"subscription"));q[0].revision=js_number(v,jv_get(v,0,"revision"));q[0].cursor=js_number(v,jv_get(v,0,"cursor"));q[0].n=js_string(v,jv_get(v,0,"payload"),q[0].payload[..]);q[0].ok=ms_shape(q);return q[0].ok;
+}
+nms_request_write :: (action:string,operation:string,identity:string,relay:string,targets:[]string,subscription:int,revision:int,cursor:int,payload:string,out:[]u8)->int #export_c #effects(all) {
+ if targets.count>8 || payload.count>65536 || !js_utf8(payload) {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],MS_SCHEMA);jo_key(o[..],"action");jo_str(o[..],action);jo_key(o[..],"operation");jo_str(o[..],operation);jo_key(o[..],"identity");jo_str(o[..],identity);jo_key(o[..],"relay");jo_str(o[..],relay);jo_key(o[..],"targets");jo_arr(o[..]);for url:targets {jo_str(o[..],url);}jo_end(o[..]);jo_key(o[..],"subscription");jo_int(o[..],subscription);jo_key(o[..],"revision");jo_int(o[..],revision);jo_key(o[..],"cursor");jo_int(o[..],cursor);jo_key(o[..],"payload");jo_str(o[..],payload);jo_end(o[..]);q:[1]MsRequest;
+ return ifx !o[0].bad && nms_request_read(jo_text(o[..]),q[..]) then o[0].n else -1;
+}
+ms_mask :: (value:u64,out:[]u8)->string #effects(all) {
+ bytes:[8]u8;for i:0..<8 {bytes[i]=cast(u8)((value>>cast(u32)((7-i)*8))&255);}r:=hex_encode_checked(cast(string)bytes[..],out,false);return ifx r.error==NC_OK then cast(string)out[0..<r.written] else "";
+}
+ms_mask_read :: (raw:string,out:[]u64)->bool #effects(all) {
+ if out.count!=1 || raw.count!=16 || !aw_hex(raw,16) {return false;}bytes:[8]u8;if hex_decode_checked(raw,bytes[..],false).error!=NC_OK {return false;}out[0]=0;for b:bytes {out[0]=(out[0]<<8)|cast(u64)b;}return true;
+}
+ms_index_write :: (revision:int,cursor:int,complete:bool,rows:[]MsIndexRow,out:[]u8)->int #export_c #effects(all) {
+ none:[1]string;return ms_index_write_relays(revision,cursor,complete,none[0..<0],rows,out);
+}
+ms_index_write_relays :: (revision:int,cursor:int,complete:bool,relays:[]string,rows:[]MsIndexRow,out:[]u8)->int #effects(all) {
+ if revision<0 || revision>MS_SERIAL || cursor<0 || cursor>MS_SERIAL || rows.count>16 || relays.count>64 {return -1;}
+ for url,i:relays {if !nrr_admit(1,0,1,0,url) {return -1;}for k:0..<i {if relays[k]==url {return -1;}}}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],MS_INDEX_SCHEMA);jo_key(o[..],"revision");jo_int(o[..],revision);jo_key(o[..],"cursor");jo_int(o[..],cursor);jo_key(o[..],"complete");jo_bool(o[..],complete);jo_key(o[..],"relays");jo_arr(o[..]);for url:relays {jo_str(o[..],url);}jo_end(o[..]);jo_key(o[..],"items");jo_arr(o[..]);
+ for value:rows {
+  row:=value;
+  if !aw_hex(cast(string)row.id[..],64) || !aw_hex(cast(string)row.author[..],64) || row.kind<0 || row.kind>65535 || row.created<0 || row.created>9007199254740991 {return -1;}
+  jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],cast(string)row.id[..]);jo_key(o[..],"author");jo_str(o[..],cast(string)row.author[..]);jo_key(o[..],"kind");jo_int(o[..],row.kind);jo_key(o[..],"created_at");jo_int(o[..],row.created);
+  mask:[16]u8;jo_key(o[..],"pending");jo_str(o[..],ms_mask(row.pending,mask[..]));jo_key(o[..],"accepted");jo_str(o[..],ms_mask(row.accepted,mask[..]));jo_key(o[..],"refused");jo_str(o[..],ms_mask(row.refused,mask[..]));jo_end(o[..]);
+ }jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad || o[0].n>MS_INDEX_BYTES then -1 else o[0].n;
+}
+ms_index_read :: (raw:string,out:[]MsIndex)->bool #export_c #effects(all) {
+ if out.count!=1 {return false;}out[0]=MsIndex.{};d:[1]Jv;nodes:[256]JvNode;if raw.count>MS_INDEX_BYTES || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[6]string.["schema","revision","cursor","complete","relays","items"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=6 || jv_raw(v,jv_get(v,0,"schema"))!=MS_INDEX_SCHEMA {return false;}
+ out[0].revision=js_number(v,jv_get(v,0,"revision"));out[0].cursor=js_number(v,jv_get(v,0,"cursor"));c:=jv_get(v,0,"complete");if (jv_kind(v,c)!=JV_TRUE && jv_kind(v,c)!=JV_FALSE) || out[0].revision<0 || out[0].revision>MS_SERIAL || out[0].cursor<0 || out[0].cursor>MS_SERIAL {return false;}out[0].complete=jv_raw(v,c)=="true";
+ pool:=jv_get(v,0,"relays");if jv_kind(v,pool)!=JV_ARRAY || jv_len(v,pool)>64 {return false;}out[0].relays_n=jv_len(v,pool);
+ for i:0..<out[0].relays_n {out[0].nr[i]=js_string(v,jv_at(v,pool,i),out[0].relays[i][..]);if out[0].nr[i]<1 {return false;}url:=cast(string)out[0].relays[i][0..<out[0].nr[i]];if !nrr_admit(1,0,1,0,url) {return false;}for k:0..<i {if url==cast(string)out[0].relays[k][0..<out[0].nr[k]] {return false;}}}
+ list:=jv_get(v,0,"items");if jv_kind(v,list)!=JV_ARRAY || jv_len(v,list)>16 {return false;}out[0].n=jv_len(v,list);keys:=[7]string.["id","author","kind","created_at","pending","accepted","refused"];
+ for i:0..<out[0].n {
+  at:=jv_at(v,list,i);if !js_fields(v,at,keys[..]) || jv_len(v,at)!=7 {return false;}row:=out[0].rows[i..<i+1];
+  a:=js_string(v,jv_get(v,at,"id"),row[0].id[..]);b:=js_string(v,jv_get(v,at,"author"),row[0].author[..]);row[0].kind=js_number(v,jv_get(v,at,"kind"));row[0].created=js_number(v,jv_get(v,at,"created_at"));
+  mask:[1]u64;if a!=64 || b!=64 || !aw_hex(cast(string)row[0].id[..],64) || !aw_hex(cast(string)row[0].author[..],64) || row[0].kind<0 || row[0].kind>65535 || row[0].created<0 || row[0].created>9007199254740991 {return false;}
+  if !ms_mask_read(jv_raw(v,jv_get(v,at,"pending")),mask[..]) {return false;}row[0].pending=mask[0];if !ms_mask_read(jv_raw(v,jv_get(v,at,"accepted")),mask[..]) {return false;}row[0].accepted=mask[0];if !ms_mask_read(jv_raw(v,jv_get(v,at,"refused")),mask[..]) {return false;}row[0].refused=mask[0];
+ }out[0].ok=true;return true;
+}

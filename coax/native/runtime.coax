@@ -5,9 +5,9 @@
 #load "../lib/sys/tool.coax";
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 2 { return 2; }
-  data: [2097152] u8; encoded: [16384] u8; hex: [64] u8; o:[1]Jo; jo_start(o[..],encoded[..]); jo_arr(o[..]);
+  data: [4194304] u8; encoded: [16384] u8; hex: [64] u8; o:[1]Jo; jo_start(o[..],encoded[..]); jo_arr(o[..]);
   for i:1..<args_count(a[..]) {
-    file:=args_at(a[..],i); n:=fs_read(file,data[..]); if n<0 { tool_errln(file); return 1; }
+    file:=args_at(a[..],i); n:=fs_read(file,data[..]); if n<0 { tool_errln("Runtime input is missing or exceeds 4 MiB:"); tool_errln(file); return 1; }
     if !S_hex(S_hash(cast(string)data[0..<n]),hex[..]) { return 1; }
     jo_arr(o[..]);jo_str(o[..],file);jo_str(o[..],cast(string)hex[..]);jo_end(o[..]);
   }

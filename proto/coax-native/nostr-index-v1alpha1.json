@@ -1,0 +1,32 @@
+{
+  "schema": "coax.native.nostr-index.v1alpha1",
+  "fields": [
+    "schema",
+    "revision",
+    "cursor",
+    "complete",
+    "relays",
+    "items"
+  ],
+  "item_fields": [
+    "id",
+    "author",
+    "kind",
+    "created_at",
+    "pending",
+    "accepted",
+    "refused"
+  ],
+  "limits": {
+    "items": 16,
+    "wire_bytes": 65536,
+    "serial": 2147483647,
+    "relays": 64,
+    "relay_bytes": 256
+  },
+  "selection": "live verified replacement/addressable heads and ordinary originals, newest timestamp then lowest complete ID; plaintext previews are absent",
+  "relay_masks": "pending/accepted/refused use exact nonnegative hexadecimal u64 strings, avoiding JavaScript integer rounding",
+  "original": "fetch by the full ID through the store event operation; the index is not a signature-verification receipt",
+  "relays": "immutable journal relay-pool order; item masks index this array, independently of current saved relay settings or the six active SDK sockets",
+  "outbox": "the outbox operation uses the same row codec but retains all outgoing records, even if an original has expired from ordinary history; completion concerns this projection, separately from pruned history"
+}

@@ -1,0 +1,10 @@
+{
+  "schema":"coax.native.nostr-sealed.v1alpha1",
+  "fields":["schema","events","self","queued_revision"],
+  "limits":{"events":11,"event_id_hex_bytes":64,"wire_bytes":2048},
+  "events":"the complete committed outer event IDs, recipient copies first and the sender copy last",
+  "self":"the sender-copy outer event ID; enables recovery through the verified account journal and the current actual key provider",
+  "queued_revision":"the revision that first committed the whole batch, not a claim of relay acceptance",
+  "privacy":"no inner rumor ID, room ID, plaintext preview, recipient plaintext list or private key is retained",
+  "meaning":"durable complete send preparation; relay pending/accepted/refused observations remain separate facts"
+}

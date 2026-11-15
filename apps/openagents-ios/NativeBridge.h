@@ -21,3 +21,4 @@
 
 #include "Generated/NativeAccount.h"
 #include "Generated/NativeRelay.h"
+#include "Generated/NativeMessaging.h"

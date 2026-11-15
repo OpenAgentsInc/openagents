@@ -1,0 +1,66 @@
+// Fresh SDK observations supplement the common account/provider gate. None of
+// these observations comes from fields in an updateable request envelope.
+#load "nostr-purpose-wire.coax";
+#load "../lib/nostr/nip42.coax";
+#load "fixtures/messaging_vectors.coax" #test;
+#authority;
+NsListRead :: struct {ready:bool;kind:int;has_head:bool;head:[32]u8;}
+#test "SDK AUTH observation matching refuses absent malformed or unparsed purposes" {
+ p:[1]NscPurpose;n:[1]Nip42;#assert !nsc_auth_current(p[0..<0],n[..]) && !nsc_auth_current(p[..],n[..]);
+ p[0].ok=true;p[0].nu=3;p[0].url[0]='b';p[0].url[1]='a';p[0].url[2]='d';#assert !nsc_auth_current(p[..],n[..]);
+}
+#test "AUTH purpose cannot replace the SDK's live generation URL or challenge" {
+ me:="0000000000000000000000000000000000000000000000000000000000000001";q:[1]NscPurpose;n:[1]Nip42;f:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_MANAGED,provider=NS_SERVER};list:NsListRead;
+ raw:="{\"schema\":\"coax.native.nostr-auth.v1alpha1\",\"url\":\"wss://relay.example/\",\"generation\":2,\"challenge\":\"current\"}";
+ #assert nsp_read(2,me,raw,q[..]) && nsc_preflight(f,2,q[..],n[..],list)==2;
+ #assert nip42_init(n[..],"wss://relay.example/")==N42_OK && nip42_challenge(n[..],2,"[\"AUTH\",\"current\"]")==N42_OK && nsc_preflight(f,2,q[..],n[..],list)==0;
+ #assert nsc_preflight(f,2,q[..],n[0..<0],list)==2;
+ q[0].generation=1;#assert nsc_preflight(f,2,q[..],n[..],list)==2;q[0].generation=2;q[0].challenge[0]='x';#assert nsc_preflight(f,2,q[..],n[..],list)==2;q[0].challenge[0]='c';q[0].url[6]='x';#assert nsc_preflight(f,2,q[..],n[..],list)==2;
+ f.live=false;#assert nsc_preflight(f,2,q[..],n[..],list)==5;
+}
+#test "an absent list requires a completed current read and never follows a failed read" {
+ q:[1]NscPurpose;q[0].ok=true;q[0].kind=10050;n:[1]Nip42;f:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_MANAGED,provider=NS_SERVER};list:=NsListRead.{kind=10050};
+ #assert nsc_preflight(f,5,q[..],n[..],list)==2;list.ready=true;#assert nsc_preflight(f,5,q[..],n[..],list)==0;
+ list.kind=10002;#assert nsc_preflight(f,5,q[..],n[..],list)==2;list.kind=10050;list.has_head=true;#assert nsc_preflight(f,5,q[..],n[..],list)==9;
+ #assert nsc_seal_time(172800,172800) && nsc_seal_time(172800,259200) && !nsc_seal_time(172799,172800) && !nsc_seal_time(172800,259201);
+ #assert nsc_seal_time(172860,172800) && !nsc_seal_time(172861,172800) && !nsc_seal_time(172800,-1);
+ #assert nsc_seal_time(9007199254740991,9007199254740991) && !nsc_seal_time(9007199254740991,9007199254740992) && !nsc_seal_time(9007199254740992,9007199254740991);
+}
+#test "list edits advance the selected head even within one second without escaping the relay time window" {
+ #assert nsc_list_time(-1,0)==0 && nsc_list_time(0,0)==1 && nsc_list_time(99,100)==100 && nsc_list_time(100,100)==101;
+ #assert nsc_list_time(999,100)==1000 && nsc_list_time(1000,100)== -1 && nsc_list_time(-2,100)== -1 && nsc_list_time(100,-1)== -1;
+ #assert nsc_list_time(9007199254740990,9007199254740991)==9007199254740991 && nsc_list_time(9007199254740991,9007199254740991)== -1 && nsc_list_time(-1,9007199254740992)== -1;
+}
+#test "a completed list read pins the entire actual head ID before an edit" {
+ q:[1]NscPurpose;q[0].ok=true;q[0].kind=10050;q[0].nb=64;for c,i:NMS_LIST_ID_HEX {q[0].base[i]=c;}
+ list:=NsListRead.{ready=true,kind=10050,has_head=true,head=NMS_LIST_ID};n:[1]Nip42;f:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_MANAGED,provider=NS_SERVER};
+ #assert nsc_preflight(f,5,q[..],n[..],list)==0;list.head[31]^=1;#assert nsc_preflight(f,5,q[..],n[..],list)==9;list.head[31]^=1;
+ q[0].base[0]='G';#assert nsc_preflight(f,5,q[..],n[..],list)==9;q[0].ok=false;#assert nsc_preflight(f,5,q[..],n[..],list)==5 && nsc_preflight(f,5,q[0..<0],n[..],list)==5;
+ q[0].ok=true;#assert nsc_preflight(f,6,q[..],n[..],list)==1;
+ q[0].nb=1;list.has_head=false;#assert nsc_preflight(f,5,q[..],n[..],list)==9;
+}
+nsc_list_time :: (previous:int,now:int)->int #effects(all) {
+ if now<0 || now>9007199254740991 || previous< -1 || previous>=9007199254740991 || previous>now+899 {return -1;}
+ return ifx previous>=now then previous+1 else now;
+}
+nsc_seal_time :: (created:int,now:int)->bool #effects(all) {
+ if now<0 {return false;} // mutant: equivalent (< -> <= and 0 -> 1: now zero cannot admit created >=172800 within its 60-second future bound)
+ return now<=9007199254740991 && created>=172800 && created<=9007199254740991 && created<=now+60 && created>=now-86400;
+}
+nsc_auth_current :: (purpose:[]NscPurpose,auth:[]Nip42)->bool #export_c #effects(all) {
+ if purpose.count!=1 || !purpose[0].ok {return false;}
+ canonical:[256]u8;url:=nip42_url(cast(string)purpose[0].url[0..<purpose[0].nu],canonical[..]);
+ return auth.count==1 && url.error==N42U_OK && nip42_ready(auth,purpose[0].generation)==N42_OK && nip42_url_text(auth)==cast(string)canonical[0..<url.count] && nip42_challenge_text(auth)==cast(string)purpose[0].challenge[0..<purpose[0].nc];
+}
+nsc_preflight :: (facts:NsFacts,action:int,purpose:[]NscPurpose,auth:[]Nip42,list:NsListRead)->int #export_c #effects(all) {
+ if !ns_permit(facts,action) {return 5;}if purpose.count!=1 || !purpose[0].ok {return 5;}
+ if action==6 {return 1;}
+ if action==2 {
+  if !nsc_auth_current(purpose,auth) {return 2;}
+ }
+ if action==5 {
+  if !list.ready || list.kind!=purpose[0].kind {return 2;}
+  if list.has_head!=(purpose[0].nb>0) {return 9;}
+  if list.has_head {current_head:=list.head;requested:[32]u8;if purpose[0].nb!=64 || !ne_lower_hex(cast(string)purpose[0].base[..],requested[..]) || cast(string)requested[..]!=cast(string)current_head[..] {return 9;}}
+ }return 0;
+}

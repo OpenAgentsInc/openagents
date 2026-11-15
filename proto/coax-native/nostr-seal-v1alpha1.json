@@ -1,0 +1,20 @@
+{
+  "schema": "coax.native.nostr-seal.v1alpha1",
+  "action": "seal",
+  "fields": [
+    "schema",
+    "created_at",
+    "participants",
+    "content",
+    "subject",
+    "reply"
+  ],
+  "limits": {
+    "participants": 10,
+    "content_bytes": 16384,
+    "subject_bytes": 256,
+    "wire_bytes": 65536
+  },
+  "purpose": "The published seal action prepares one complete kind-14 NIP-17 send: all distinct peers and the sender copy. The actual provider reads every verified kind-10050 head before generating any wrap, then atomically commits the complete batch and its first receipt before success. No caller-selected kind, template, key, nonce or ephemeral secret.",
+  "result": "coax.native.nostr-sealed.v1alpha1"
+}

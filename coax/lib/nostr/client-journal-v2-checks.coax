@@ -1,0 +1,194 @@
+// Shared journal v2 checks. Loaded only by the journal's test assembly.
+#test "NCJ2 legacy queue completion freezes masks and bytes without retaining an active slot" {
+ j:[1]Cj;buf:[2048]u8;none:[1][32]u8;id:=cj_t_id(2);body:[40]u8;
+ #assert cj_open_v2(j[..],buf[..],0,cj_t_id(9),cj_t_id(10)).status==CJO_NEW && cj_relay(j[..],buf[..],CJ_T_R1)==0 && cj_relay(j[..],buf[..],CJ_T_R2)==1;
+ #assert cj_deliver(j[..],buf[..],0,0,1,id,cj_t_id(9),"x",none[0..<0])==CJD_NEW;
+ #assert cj_queue(j[..],buf[..],id,1,"x")==0 && j[0].event[0].relays==1;
+ #assert cj_ok(j[..],buf[..],id,0,CJ_ACCEPTED)==CJK_ACKED && j[0].pubs==0 && j[0].event[0].accepted==1;
+ size:=j[0].len;#assert cj_queue(j[..],buf[..],id,1,"x")==0 && j[0].len==size;
+ #assert cj_queue(j[..],buf[..],id,2,"x")== -CJ_ARG && cj_queue(j[..],buf[..],id,1,"other")== -CJ_ARG;
+ cj_put_id(body[..],0,id);cj_put(body[..],32,1,8);#assert !cj_t_apply_body(j[..],buf[..],CJ_R_QUEUE_REF,body[..]);
+ raw:[41]u8;cj_put_id(raw[..],0,id);cj_put(raw[..],32,1,8);raw[40]='x';#assert !cj_t_apply_body(j[..],buf[..],CJ_R_QUEUE,raw[..]);
+ // A second original queued from scratch also records its frozen targets.
+ #assert cj_queue(j[..],buf[..],cj_t_id(3),2,"y")==0 && j[0].event[1].relays==2;
+}
+#test "removing the first publication in a full NCJ2 queue never reads beyond its table" #steps 200000000 {
+ j:[1]Cj;buf:[70000]u8;#assert cj_open_v2(j[..],buf[..],0,cj_t_id(9),cj_t_id(10)).status==CJO_NEW && cj_relay(j[..],buf[..],CJ_T_R1)==0;
+ for i:0..<64 {#assert cj_queue(j[..],buf[..],cj_t_id(i),1,"x")==i;}
+ #assert cj_ok(j[..],buf[..],cj_t_id(0),0,CJ_ACCEPTED)==CJK_ACKED && j[0].pubs==63 && cj_eq(j[0].pub[62].id,cj_t_id(63));
+}
+#test "NCJ2 completed publications release active slots while exact outcomes survive replay" #steps 200000000 {
+ j:[1]Cj;k:[1]Cj;buf:[70000]u8;e:NostrEvent;e.error=NE_OK;e.verified=true;e.public_key=cj_t_id(31);e.created_at=10;e.original="encrypted original";
+ owner:=cj_t_id(9);scope:=cj_t_id(10);#assert cj_open_v2(j[..],buf[..],0,owner,scope).status==CJO_NEW;
+ #assert cj_relay(j[..],buf[..],CJ_T_R1)==0 && cj_relay(j[..],buf[..],CJ_T_R2)==1;
+ for i:0..<80 {
+  e.id=cj_t_id(i);#assert cj_queue_event(j[..],buf[..],e,3)==0 && j[0].pubs==1;
+  #assert cj_ok(j[..],buf[..],e.id,0,CJ_ACCEPTED)==CJK_ACKED && j[0].pubs==1;
+  #assert cj_ok(j[..],buf[..],e.id,1,CJ_REFUSED)==CJK_ACKED && j[0].pubs==0;
+  ce:=j[0].event[i];#assert ce.relays==3 && ce.accepted==1 && ce.refused==2;
+  size:=j[0].len;#assert cj_queue_event(j[..],buf[..],e,3)==0 && j[0].len==size && cj_queue_event(j[..],buf[..],e,1)== -CJ_ARG;
+  #assert cj_ok(j[..],buf[..],e.id,0,CJ_ACCEPTED)==CJK_UNKNOWN;
+ }
+ #assert cj_open_v2(k[..],buf[..],j[0].len,owner,scope).status==CJO_DONE && cj_same(j[..],k[..]) && k[0].pubs==0 && k[0].events==80;
+ for i:0..<80 {#assert k[0].event[i].relays==3 && k[0].event[i].accepted==1 && k[0].event[i].refused==2;}
+ k[0].event[0].accepted=0;#assert !cj_same(j[..],k[..]);k[0]=j[0];k[0].event[0].refused=0;#assert !cj_same(j[..],k[..]);k[0]=j[0];k[0].event[0].relays=1;#assert !cj_same(j[..],k[..]);
+}
+#test "NCJ2 final ACK removes only its active slot and preserves a later pending publication" {
+ j:[1]Cj;buf:[2048]u8;e:NostrEvent;e.error=NE_OK;e.verified=true;e.public_key=cj_t_id(31);e.original="encrypted";
+ #assert cj_open_v2(j[..],buf[..],0,cj_t_id(9),cj_t_id(10)).status==CJO_NEW && cj_relay(j[..],buf[..],CJ_T_R1)==0;
+ for i:0..<3 {e.id=cj_t_id(i);#assert cj_queue_event(j[..],buf[..],e,1)==i;}
+ #assert cj_ok(j[..],buf[..],cj_t_id(1),0,CJ_ACCEPTED)==CJK_ACKED && j[0].pubs==2 && cj_eq(j[0].pub[0].id,cj_t_id(0)) && cj_eq(j[0].pub[1].id,cj_t_id(2)) && j[0].pub[1].pending==1;
+ #assert cj_ok(j[..],buf[..],cj_t_id(0),0,CJ_DUPLICATE)==CJK_ACKED && j[0].pubs==1 && cj_eq(j[0].pub[0].id,cj_t_id(2));
+ #assert cj_ok(j[..],buf[..],cj_t_id(2),0,CJ_REFUSED)==CJK_ACKED && j[0].pubs==0 && j[0].event[2].refused==1;
+}
+#test "NCJ2 is explicit and a different account cannot replay the same public identity's journal" {
+ j:[1]Cj;k:[1]Cj;buf:[512]u8;owner:=cj_t_id(9);scope:=cj_t_id(10);other:=cj_t_id(11);
+ o:=cj_open_v2(j[..],buf[..],0,owner,scope);#assert o.status==CJO_NEW && j[0].len==68 && buf[3]==2;
+ #assert cj_relay(j[..],buf[..],CJ_T_R1)==0;
+ o=cj_open_v2(k[..],buf[..],j[0].len,owner,scope);#assert o.status==CJO_DONE && cj_same(j[..],k[..]);
+ #assert cj_open(k[..],buf[..],j[0].len,owner).status==CJO_VERSION;
+ #assert cj_open_v2(k[..],buf[..],j[0].len,owner,other).status==CJO_SCOPE && !k[0].open;
+ #assert cj_open_v2(k[..],buf[..],j[0].len,other,scope).status==CJO_OWNER;
+ #assert cj_t_open(k[..],buf[..],0)==CJO_NEW && k[0].len==36;
+ #assert cj_open_v2(j[..],buf[..],k[0].len,owner,scope).status==CJO_VERSION;
+}
+#test "NCJ2 records use four-byte lengths and preserve a complete 64 KiB original across restart" #steps 200000000 {
+ j:[1]Cj;k:[1]Cj;buf:[140000]u8;payload:[65537]u8;for i:0..<payload.count {payload[i]=cast(u8)('a'+i%23);}
+ #assert cj_open_v2(j[..],buf[..],0,cj_t_id(9),cj_t_id(10)).status==CJO_NEW;
+ #assert cj_relay(j[..],buf[..],CJ_T_R1)==0;
+ at:=j[0].len;id:=cj_t_id(20);key:=cj_t_id(21);deletes:[1][32]u8;
+ #assert cj_deliver(j[..],buf[..],0,0,100,id,key,cast(string)payload[0..<65536],deletes[0..<0])==CJD_NEW;
+ #assert cj_get(buf[..],at,4)==65611 && cj_get(buf[..],at+4,4)==4294901684;
+ #assert cj_get(buf[..],at,4)+cj_get(buf[..],at+4,4)==4294967295;
+ #assert cj_open_v2(k[..],buf[..],j[0].len,cj_t_id(9),cj_t_id(10)).status==CJO_DONE && cj_same(j[..],k[..]);
+ e:=k[0].event[0];#assert e.to-e.from==65536 && cast(string)buf[e.from..<e.to]==cast(string)payload[0..<65536] && cj_since(k[..],0,0)==100;
+ #assert cj_deliver(j[..],buf[..],0,0,101,cj_t_id(22),key,cast(string)payload[..],deletes[0..<0])== -CJ_ARG;
+ #assert cj_queue(j[..],buf[..],cj_t_id(23),1,cast(string)payload[0..<65536])>=0;
+ #assert cj_queue(j[..],buf[..],cj_t_id(24),1,cast(string)payload[..])== -CJ_ARG;
+}
+#test "NCJ2 torn headers and trailing appends recover while interior corruption refuses" {
+ j:[1]Cj;k:[1]Cj;buf:[512]u8;owner:=cj_t_id(9);scope:=cj_t_id(10);
+ for size:1..<68 {
+  #assert cj_open_v2(j[..],buf[..],0,owner,scope).status==CJO_NEW;
+  o:=cj_open_v2(k[..],buf[..],size,owner,scope);#assert o.status==CJO_CUT && k[0].len==68;
+ }
+ #assert cj_open_v2(j[..],buf[..],0,owner,scope).status==CJO_NEW;#assert cj_relay(j[..],buf[..],CJ_T_R1)==0;
+ first:=j[0].len;#assert cj_relay(j[..],buf[..],CJ_T_R2)==1;end:=j[0].len;
+ for size:first+1..<end {o:=cj_open_v2(k[..],buf[..],size,owner,scope);#assert o.status==CJO_CUT && o.at==first && k[0].pool[0].relays==1;}
+ original:=buf[68+8];buf[68+8]^=1;#assert cj_open_v2(k[..],buf[..],end,owner,scope).status==CJO_CORRUPT;buf[68+8]=original;
+ buf[end-1]^=1;o:=cj_open_v2(k[..],buf[..],end,owner,scope);#assert o.status==CJO_CUT && o.at==first;
+}
+#test "NCJ2 larger index bounds do not widen the frozen NCJ1 admission" #steps 200000000 {
+ j:[1]Cj;buf:[200000]u8;del:[1][32]u8;
+ for version:1..<3 {
+  if version==1 {_=cj_open(j[..],buf[..],0,cj_t_id(9));}else {_=cj_open_v2(j[..],buf[..],0,cj_t_id(9),cj_t_id(10));}
+  #assert cj_relay(j[..],buf[..],CJ_T_R1)==0;
+  limit:=ifx version==1 then 64 else 512;
+  for i:0..<limit {id:[32]u8;id[0]=cast(u8)(i%256);id[1]=cast(u8)(i/256);#assert cj_deliver(j[..],buf[..],0,0,i,id,cj_t_id(20),"x",del[0..<0])==CJD_NEW;}
+  #assert cj_deliver(j[..],buf[..],0,0,1000,cj_t_id(22),cj_t_id(20),"x",del[0..<0])== -CJ_FULL;
+ }
+}
+#test "NCJ2 outgoing and deletion bounds retain their exact independent capacities" #steps 200000000 {
+ j:[1]Cj;buf:[70000]u8;targets:[1][32]u8;
+ for version:1..<3 {
+  if version==1 {_=cj_open(j[..],buf[..],0,cj_t_id(9));}else {_=cj_open_v2(j[..],buf[..],0,cj_t_id(9),cj_t_id(10));}
+  #assert cj_relay(j[..],buf[..],CJ_T_R1)==0;limit:=ifx version==1 then 16 else 64;
+  for i:0..<limit {id:[32]u8;id[0]=cast(u8)i;#assert cj_queue(j[..],buf[..],id,1,"x")==i;}
+  #assert cj_queue(j[..],buf[..],cj_t_id(22),1,"x")== -CJ_FULL && j[0].pubs==limit;
+  #assert cj_eq(j[0].event[0].author,cj_t_id(9));
+  if version==1 {_=cj_open(j[..],buf[..],0,cj_t_id(9));}else {_=cj_open_v2(j[..],buf[..],0,cj_t_id(9),cj_t_id(10));}
+  #assert cj_relay(j[..],buf[..],CJ_T_R1)==0;limit=ifx version==1 then 32 else 256;
+  for i:0..<limit+1 {
+   id:[32]u8;id[0]=cast(u8)(i%256);id[1]=cast(u8)(i/256);id[31]=1;targets[0]=id;targets[0][31]=2;
+   result:=cj_deliver(j[..],buf[..],0,0,i,id,cj_t_id(20),"x",targets[..]);
+   #assert result==(ifx i<limit then CJD_NEW else -CJ_FULL);
+  }
+  #assert j[0].tombs==limit && j[0].events==limit;
+ }
+}
+#test "journal identity scope magic version and state-count refusals are distinct" {
+ j:[2]Cj;k:[1]Cj;buf:[128]u8;owner:=cj_t_id(9);scope:=cj_t_id(10);
+ for count:[2]int.[0,2] {#assert cj_open_v2(j[0..<count],buf[..],0,owner,scope).status==CJO_SMALL;}
+ #assert cj_open_v2(j[0..<1],buf[..],0,owner,scope).status==CJO_NEW && cj_eq(j[0].owner,owner) && cj_eq(j[0].scope,scope);
+ k[0]=j[0];#assert cj_same(j[0..<1],k[..]);k[0].version=1;#assert !cj_same(j[0..<1],k[..]);k[0]=j[0];k[0].owner[0]^=1;#assert !cj_same(j[0..<1],k[..]);k[0]=j[0];k[0].scope[0]^=1;#assert !cj_same(j[0..<1],k[..]);
+ buf[0]='X';#assert cj_open_v2(k[..],buf[..],68,owner,scope).status==CJO_MAGIC;buf[0]='N';buf[3]=3;
+ #assert cj_open_v2(k[..],buf[..],68,owner,scope).status==CJO_VERSION;
+}
+#test "NCJ2 byte ceilings apply without widening NCJ1 or admitting an oversized framed record" #steps 200000000 {
+ j:[1]Cj;buf:[65700]u8;owner:=cj_t_id(9);scope:=cj_t_id(10);
+ for version:1..<3 {
+  j[0].version=version;
+  for size:[5]int.[0,8388607,8388608,8388609,9000000] {#assert cj_capacity(j[..],size)==(ifx version==2 && size>8388608 then 8388608 else size);}
+ }
+ #assert cj_open_v2(j[..],buf[..],0,owner,scope).status==CJO_NEW;
+ #assert cj_relay(j[..],buf[0..<96],CJ_T_R1)== -CJ_FULL && j[0].len==68;
+ #assert cj_relay(j[..],buf[0..<97],CJ_T_R1)==0 && j[0].len==97;
+ #assert cj_open_v2(j[..],buf[..],0,owner,scope).status==CJO_NEW;
+ n:=65612;cj_put(buf[..],68,cast(u64)n,4);cj_put(buf[..],72,cast(u64)(n^4294967295),4);buf[76]=4;
+ h:=cj_format_check(buf[..],68,n,8);for i:0..<4 {buf[76+n+i]=h[i];}
+ #assert cj_open_v2(j[..],buf[..],68+12+n,owner,scope).status==CJO_CORRUPT;
+}
+#test "a gift wrap keeps its actual ephemeral signer and exact bytes when queued and replayed" {
+ j:[1]Cj;k:[1]Cj;buf:[2048]u8;owner:=cj_t_id(9);scope:=cj_t_id(10);e:NostrEvent;e.error=NE_OK;e.id=cj_t_id(30);e.public_key=cj_t_id(31);e.created_at=123;e.original="exact encrypted gift wrap";
+ #assert cj_open_v2(j[..],buf[..],0,owner,scope).status==CJO_NEW && cj_relay(j[..],buf[..],CJ_T_R1)==0 && cj_relay(j[..],buf[..],CJ_T_R2)==1;
+ #assert cj_queue_event(j[..],buf[..],e,3)== -CJ_ARG;e.verified=true;#assert cj_queue_event(j[..],buf[..],e,3)==0;
+ #assert j[0].events==1 && cj_eq(j[0].event[0].author,e.public_key) && j[0].event[0].created_at==123 && j[0].event[0].sub== -1 && j[0].event[0].relay== -1;
+ #assert cj_since(j[..],0,0)== -1 && cj_since(j[..],0,1)== -1;
+ p:=j[0].pub[0];#assert cast(string)buf[p.from..<p.to]==e.original && p.pending==3;
+ size:=j[0].len;#assert cj_queue_event(j[..],buf[..],e,3)==0 && j[0].len==size && cj_queue_event(j[..],buf[..],e,1)== -CJ_ARG;
+ #assert cj_ok(j[..],buf[..],e.id,0,CJ_ACCEPTED)==CJK_ACKED;
+ #assert cj_open_v2(k[..],buf[..],j[0].len,owner,scope).status==CJO_DONE && cj_same(j[..],k[..]) && k[0].pub[0].pending==2 && k[0].pub[0].accepted==1;
+ #assert cj_open(j[..],buf[..],0,owner).status==CJO_NEW && cj_queue_event(j[..],buf[..],e,1)== -CJ_ARG;
+}
+cj_t_apply_body :: (j:[]Cj,buf:[]u8,type:int,body:[]u8)->bool #effects(all) {
+ at:=buf.count-body.count-1; // mutant: equivalent (1 -> 2: these fixtures have a spare byte; either position supplies the same complete record and matching offset to cj_apply)
+ buf[at]=cast(u8)type;for b,i:body {buf[at+1+i]=b;}return cj_apply(j,buf,at,body.count+1);
+}
+#test "NCJ2 queue references refuse missing originals masks duplicate publishes capacities and legacy versions" {
+ base:[1]Cj;j:[1]Cj;buf:[2048]u8;body:[41]u8;owner:=cj_t_id(9);scope:=cj_t_id(10);id:=cj_t_id(20);none:[1][32]u8;
+ #assert cj_open_v2(base[..],buf[..],0,owner,scope).status==CJO_NEW && cj_relay(base[..],buf[..],CJ_T_R1)==0;
+ #assert cj_deliver(base[..],buf[..],0,0,0,id,owner,"x",none[0..<0])==CJD_NEW;
+ cj_put_id(body[..],0,id);cj_put(body[..],32,1,8);
+ j[0]=base[0];#assert cj_t_apply_body(j[..],buf[..],CJ_R_QUEUE_REF,body[0..<40]) && j[0].pubs==1 && j[0].pub[0].pending==1;
+ #assert !cj_t_apply_body(j[..],buf[..],CJ_R_QUEUE_REF,body[0..<40]);
+ j[0]=base[0];j[0].version=1;#assert !cj_t_apply_body(j[..],buf[..],CJ_R_QUEUE_REF,body[0..<40]);
+ for n:[2]int.[39,41] {j[0]=base[0];#assert !cj_t_apply_body(j[..],buf[..],CJ_R_QUEUE_REF,body[0..<n]);}
+ j[0]=base[0];j[0].events=0;#assert !cj_t_apply_body(j[..],buf[..],CJ_R_QUEUE_REF,body[0..<40]);
+ for mask:[2]u64.[0,2] {j[0]=base[0];cj_put(body[..],32,mask,8);#assert !cj_t_apply_body(j[..],buf[..],CJ_R_QUEUE_REF,body[0..<40]);}cj_put(body[..],32,1,8);
+ j[0]=base[0];j[0].pubs=CJ_V2_PUBS;#assert !cj_t_apply_body(j[..],buf[..],CJ_R_QUEUE_REF,body[0..<40]);
+}
+#test "owned event markers require both bytes and NCJ2, never advance an incoming cursor" {
+ base:[1]Cj;j:[1]Cj;buf:[1024]u8;body:[75]u8;owner:=cj_t_id(9);scope:=cj_t_id(10);id:=cj_t_id(21);
+ #assert cj_open_v2(base[..],buf[..],0,owner,scope).status==CJO_NEW && cj_relay(base[..],buf[..],CJ_T_R1)==0;
+ cj_put_id(body[..],10,id);cj_put_id(body[..],42,owner);body[74]='x';
+ for pair:[3][2]u8.[[2]u8.[255,0],[2]u8.[0,255],[2]u8.[255,255]] {
+  for version:1..<3 {j[0]=base[0];j[0].version=version;body[0]=pair[0];body[1]=pair[1];ok:=cj_t_apply_body(j[..],buf[..],CJ_R_EVENT,body[..]);#assert ok==(version==2 && pair[0]==255 && pair[1]==255);if ok {#assert j[0].event[0].sub== -1 && j[0].event[0].relay== -1 && cj_since(j[..],0,0)== -1;}}
+ }
+}
+#test "owned queue admission includes closed bad event zero time one byte and complete maximum original boundaries" #steps 200000000 {
+ j:[1]Cj;buf:[66000]u8;bytes:[65537]u8;for i:0..<bytes.count {bytes[i]='x';}e:NostrEvent;e.error=NE_OK;e.verified=true;e.id=cj_t_id(22);e.public_key=cj_t_id(23);e.original=cast(string)bytes[0..<1];owner:=cj_t_id(9);scope:=cj_t_id(10);
+ #assert cj_queue_event(j[..],buf[..],e,1)== -CJ_SHUT;
+ #assert cj_open_v2(j[..],buf[..],0,owner,scope).status==CJO_NEW && cj_relay(j[..],buf[..],CJ_T_R1)==0;old:=j[0].len;
+ e.error=NE_SIGNATURE;#assert cj_queue_event(j[..],buf[..],e,1)== -CJ_ARG;e.error=NE_OK;e.created_at= -1;#assert cj_queue_event(j[..],buf[..],e,1)== -CJ_ARG;e.created_at=0;
+ e.original="";#assert cj_queue_event(j[..],buf[..],e,1)== -CJ_ARG;e.original=cast(string)bytes[..];#assert cj_queue_event(j[..],buf[..],e,1)== -CJ_ARG;
+ e.original=cast(string)bytes[0..<1];#assert cj_queue_event(j[..],buf[..],e,0)== -CJ_ARG && cj_queue_event(j[..],buf[..],e,2)== -CJ_ARG;
+ #assert cj_queue_event(j[..],buf[0..<old+87],e,1)== -CJ_FULL && j[0].len==old;
+ #assert cj_queue_event(j[..],buf[0..<old+88],e,1)== -CJ_FULL && j[0].events==1 && j[0].pubs==0 && j[0].len==old+88;
+ #assert cj_queue_event(j[..],buf[0..<old+141],e,1)==0 && j[0].events==1 && j[0].pubs==1 && j[0].len==old+141;
+ #assert cj_open_v2(j[..],buf[..],0,owner,scope).status==CJO_NEW && cj_relay(j[..],buf[..],CJ_T_R1)==0;e.original=cast(string)bytes[0..<65536];
+ #assert cj_queue_event(j[..],buf[..],e,1)==0 && j[0].pub[0].to-j[0].pub[0].from==65536;
+}
+#test "owned queue refuses a full event or publish table without claiming success" {
+ j:[1]Cj;buf:[2048]u8;e:NostrEvent;e.error=NE_OK;e.verified=true;e.id=cj_t_id(22);e.public_key=cj_t_id(23);e.original="x";owner:=cj_t_id(9);scope:=cj_t_id(10);
+ #assert cj_open_v2(j[..],buf[..],0,owner,scope).status==CJO_NEW && cj_relay(j[..],buf[..],CJ_T_R1)==0;
+ j[0].events=CJ_V2_EVENTS;#assert cj_queue_event(j[..],buf[..],e,1)== -CJ_FULL;
+ j[0].events=0;j[0].pubs=CJ_V2_PUBS;#assert cj_queue_event(j[..],buf[..],e,1)== -CJ_FULL;
+}
+#test "owned queue never silently substitutes a different original representation of the same event ID" {
+ j:[1]Cj;buf:[2048]u8;owner:=cj_t_id(9);scope:=cj_t_id(10);e:NostrEvent;e.error=NE_OK;e.verified=true;e.id=cj_t_id(22);e.public_key=cj_t_id(23);e.created_at=10;e.original="first original";none:[1][32]u8;
+ #assert cj_open_v2(j[..],buf[..],0,owner,scope).status==CJO_NEW && cj_relay(j[..],buf[..],CJ_T_R1)==0;
+ #assert cj_deliver(j[..],buf[..],0,0,10,e.id,e.public_key,e.original,none[0..<0])==CJD_NEW;
+ before:=j[0].len;e.original="different spelling";#assert cj_queue_event(j[..],buf[..],e,1)== -CJ_ARG && j[0].len==before && j[0].pubs==0;
+ e.original="first original";#assert cj_queue_event(j[..],buf[..],e,1)==0 && j[0].events==1;
+ before=j[0].len;e.original="different spelling";#assert cj_queue_event(j[..],buf[..],e,1)== -CJ_ARG && j[0].len==before && j[0].pubs==1;
+}

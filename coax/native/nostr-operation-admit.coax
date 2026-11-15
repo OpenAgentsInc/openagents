@@ -1,0 +1,32 @@
+// A durable candidate is a complete signed public original. This check does
+// not assert the author of a NIP-59 inner seal or any live relay permission.
+#load "nostr-operation-wire.coax";
+#load "nostr-send-wire.coax";
+#load "../lib/nostr/event_verify_fast.coax";
+#load "fixtures/messaging_vectors.coax" #test;
+#load "../tests/nostr/nip59_vectors.coax" #test;
+#authority;
+#test "a complete signed receipt at 64 KiB is accepted but an extra byte refuses" #steps 200000000 {
+ padded:[65537]u8;for i:0..<padded.count {padded[i]=' ';}for c,i:NMS_AUTH_EVENT {padded[i]=c;}
+ #assert nso_candidate(2,NMS_LIST_PUB,cast(string)padded[0..<65536]) && !nso_candidate(2,NMS_LIST_PUB,cast(string)padded[..]);
+}
+#test "AUTH receipts require the canonical author while a gift wrap retains its actual outer signer" #steps 40000000 {
+ #assert nso_candidate(2,NMS_LIST_PUB,NMS_AUTH_EVENT) && !nso_candidate(5,NMS_LIST_PUB,NMS_AUTH_EVENT);
+ wrap:=N59_TS_WRAP;#assert !nso_candidate(3,NMS_LIST_PUB,cast(string)wrap[..]) && !nso_candidate(2,NMS_LIST_PUB,cast(string)wrap[..]);
+ #assert !nso_candidate(3,NMS_LIST_PUB,"");too_big:[65537]u8;#assert !nso_candidate(3,NMS_LIST_PUB,cast(string)too_big[..]);
+}
+#test "a list receipt is verified and signed by this exact canonical identity" #steps 40000000 {
+ #assert nso_candidate(5,NMS_LIST_PUB,NMS_LIST_EVENT);
+ #assert !nso_candidate(4,NMS_LIST_PUB,NMS_LIST_EVENT) && !nso_candidate(2,NMS_LIST_PUB,NMS_LIST_EVENT) && !nso_candidate(3,NMS_LIST_PUB,NMS_LIST_EVENT);
+ #assert !nso_candidate(5,"0000000000000000000000000000000000000000000000000000000000000001",NMS_LIST_EVENT) && !nso_candidate(5,"bad",NMS_LIST_EVENT) && !nso_candidate(5,NMS_LIST_PUB,"{}");
+}
+#test "seal receipts are complete manifests rather than one recipient envelope" {
+ ids:=[2]string.["0000000000000000000000000000000000000000000000000000000000000001","0000000000000000000000000000000000000000000000000000000000000002"];b:[2048]u8;n:=nsm_sealed_write(ids[..],1,b[..]);#assert n>0 && nso_candidate(3,NMS_LIST_PUB,cast(string)b[0..<n]) && !nso_candidate(2,NMS_LIST_PUB,cast(string)b[0..<n]);
+}
+nso_candidate :: (action:int,identity:string,raw:string)->bool #export_c #effects(all) {
+ if !nso_cache_action(action) || !aw_hex(identity,64) || raw.count<1 || raw.count>65536 {return false;} // mutant: equivalent (<1 -> <=1 and 1 -> 2: no one-byte input is a complete signed event; the shared event reader independently refuses it)
+ if action==3 {manifest:[1]NsmSealed;return nsm_sealed_read(raw,manifest[..]);}
+ scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(raw,scratch[..],false));if e.error!=NE_OK || !e.verified {return false;} // mutant: equivalent (|| -> &&: ne_signed_fast sets verified exactly when error is NE_OK)
+ me:[32]u8;if hex_decode_checked(identity,me[..],false).error!=NC_OK || cast(string)e.public_key[..]!=cast(string)me[..] {return false;}
+ return ifx action==2 then e.kind==22242 else ns_list_kind(e.kind);
+}

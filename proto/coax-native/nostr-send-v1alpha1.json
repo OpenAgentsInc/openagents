@@ -1,0 +1,14 @@
+{
+  "schema":"coax.native.nostr-send.v1alpha1",
+  "http":"POST /api/auth/nostr/send/v1alpha1",
+  "fields":["schema","operation","identity","digest","heads","events"],
+  "limits":{"wire_bytes":1048576,"events":11,"original_bytes":65536,"head_id_hex_bytes":64,"operation_hex_bytes":64,"identity_hex_bytes":64,"digest_hex_bytes":64},
+  "heads":"one verified current kind-10050 head ID per envelope, in the same order; recipient copies first and the canonical sender copy last",
+  "events":"complete original signed kind-1059 JSON objects, not reserialized strings; every recipient and the sender have exactly one copy",
+  "authority":"actual full human principal, matching current canonical independently held identity; managed sends are constructed inside the managed provider and cannot be replaced by submitted candidates",
+  "admission":"verify every outer signature, distinct recipients, sender copy, current signed inbox heads and frozen target lists before staging the complete batch",
+  "commit":"the complete NCJ2 transaction and the first operation receipt commit together before any success or external EVENT; failure discards every prepared byte",
+  "replay":"private-provider HMAC of the complete canonical custody request; same operation/digest returns the first complete sealed manifest, with no second envelope set",
+  "privacy":"only original public routing heads and encrypted envelopes cross this endpoint; no private content, inner rumor/room ID, conversation key or signing key",
+  "result":"coax.native.nostr-result.v1alpha1, custody service, seal action, and coax.native.nostr-sealed.v1alpha1 payload"
+}

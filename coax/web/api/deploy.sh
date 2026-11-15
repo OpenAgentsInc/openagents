@@ -4,6 +4,8 @@
 #
 #   coax/web/api/deploy.sh            # build, staging, smoke, production, smoke
 #   coax/web/api/deploy.sh --staging  # stop after staging
+#   coax/web/api/deploy.sh --prepare ABS_DIR  # remote compilation, no cloud calls
+#   coax/web/api/deploy.sh --prepared ABS_DIR # SDK deploy of that exact commit
 #   coax/web/api/deploy.sh --lock TOKEN [--staging]   # the release that holds staging (below)
 #
 # Every deploy puts the API on staging first, so it asks for staging's lock before anything else
@@ -44,17 +46,22 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(git -C "$here" rev-parse --show-toplevel)"
-prod=true; lock="${OA_STAGING_LOCK:-}"
+prod=true; lock="${OA_STAGING_LOCK:-}"; prepare=""; prepared=""
 while (( $# )); do
   case "$1" in
     --staging) prod=false ;;
+    --prepare) prepare="${2:?absolute output directory}"; shift ;;
+    --prepared) prepared="${2:?prepared context directory}"; shift ;;
     --lock) lock="${2:?usage: deploy.sh [--lock TOKEN] [--staging]}"; shift ;;
     *) echo 'usage: deploy.sh [--lock TOKEN] [--staging]' >&2; exit 1 ;;
   esac
   shift
 done
+[[ -z "$prepare" || -z "$prepared" ]] || { echo "api: choose --prepare or --prepared" >&2; exit 2; }
+if [[ -z "$prepare" ]]; then
 "$here/../room/vm-deploy.sh" lock check ${lock:+--lock "$lock"} ||
   { echo "api: REFUSED. Staging is held by a release (coax/web/room/vm-deploy.sh lock status): the API is not deployed to staging or production" >&2; exit 1; }
+fi
 # the lock's own check (coax/web/room/test-vm-deploy.sh): nothing is deployed from a stand-in
 [[ -z "${OA_ROOM_VM_STANDIN:-}" ]] || { echo "api: staging's lock allows this deploy (a stand-in: nothing is deployed)"; exit 0; }
 commit="$(git -C "$repo" rev-parse --verify HEAD)"
@@ -76,6 +83,13 @@ if [[ -n "${OA_API_DEPLOY_TESTS:-}" ]]; then "$here/test.sh"; fi
 stage="$work/context"
 mkdir -p "$stage/src"
 cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Dockerfile" "$stage/"
+# A remote compiler can prepare this immutable context. Only the local SDK
+# phase needs cloud credentials; generated files are bound to the exact commit.
+if [[ -n "$prepared" ]]; then
+  [[ -f "$prepared/commit.txt" && "$(cat "$prepared/commit.txt")" == "$commit" ]] || { echo "api: prepared context belongs to another commit" >&2; exit 1; }
+  [[ -d "$prepared/gen" && -f "$prepared/host/environment.c" ]] || { echo "api: incomplete prepared context" >&2; exit 1; }
+  cp -R "$prepared/gen" "$prepared/host" "$stage/"
+else
 # The API's Coax modules become C here, with this commit's checked compiler:
 # coax/build.sh installs the release-cached build for these compiler sources
 # (seconds) or bootstraps and gates it. The image used to bootstrap the whole
@@ -83,7 +97,7 @@ cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Docker
 # deploy; release.sh already gates the compiler before it ships.
 (cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
 mkdir -p "$stage/gen"
-for m in projects-wire auth-identity-policy auth-identity-wire account-settings-wire nip98 mesh-policy mesh-gemini router-wire caller-policy anime-director-policy seat-policy progress-policy item-policy moderation-policy character-policy worldbuilder-policy npc-personas auth-policy account-chat-wire environment-wire chat-history-wire auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto auth-push ticket-sign service-policy service-wire realm-wire seat-wire jobs-wire email-wire packs-wire error-wire mesh-wire auth-wire auth-recover-wire auth-life-wire auth-device-wire passkeys-wire chat-wire player-wire rooms-wire lnaddr-wire makers-wire worldbuilder-wire world-policy script-store; do
+for m in nostr-messaging projects-wire auth-identity-policy auth-identity-wire account-settings-wire nip98 mesh-policy mesh-gemini router-wire caller-policy anime-director-policy seat-policy progress-policy item-policy moderation-policy character-policy worldbuilder-policy npc-personas auth-policy account-chat-wire environment-wire chat-history-wire auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto auth-push ticket-sign service-policy service-wire realm-wire seat-wire jobs-wire email-wire packs-wire error-wire mesh-wire auth-wire auth-recover-wire auth-life-wire auth-device-wire passkeys-wire chat-wire player-wire rooms-wire lnaddr-wire makers-wire worldbuilder-wire world-policy script-store; do
   src="$m"; [[ "$m" != account-chat-wire ]] || src=account-chat-service
   "$work/source/coax/bin/coax" c "$here/$src.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
 done
@@ -100,6 +114,12 @@ mkdir -p "$stage/host"
 cp "$work/source/coax/platform/"*.c "$work/source/coax/platform/"*.h "$work/source/coax/platform/"*.inc "$stage/host/"
 "$work/source/coax/bin/coax" c "$work/source/coder/tui/host.coax" --run-steps 250000000 --library > "$stage/host/environment.c"
 "$work/source/coax/bin/coax" c "$work/source/coax/lib/crypto/entropy.coax" --library --header "$stage/host/entropy-policy.h" > "$stage/host/entropy.c"
+fi
+if [[ -n "$prepare" ]]; then
+  [[ "$prepare" = /* && ! -e "$prepare" ]] || { echo "api: --prepare requires a fresh absolute directory" >&2; exit 1; }
+  mkdir -p "$prepare"; cp -R "$stage/." "$prepare/"; printf '%s\n' "$commit" > "$prepare/commit.txt"
+  echo "api: prepared compiler output for $commit"; exit 0
+fi
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"
 # Capture the authenticated build result, not the mutable tag's later value.
 # The image compiles C only (the Coax modules arrive as C in gen/).

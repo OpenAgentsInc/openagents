@@ -1,0 +1,13 @@
+{
+  "profile":"nostr-client-journal-v1",
+  "magic_hex":"4e434a01",
+  "header_bytes":36,
+  "record_length_bytes":2,
+  "length_complement":"ones complement, same width",
+  "record_checksum":"first four SHA-256 bytes of type/body",
+  "record_body_max":4096,
+  "bounds":{"events":64,"publishes":16,"tombstones":32},
+  "fixture":"proto/nostr/fixtures/client-journal-v1.hex",
+  "codec":"coax/lib/nostr/client_journal.coax",
+  "compatibility":"frozen original NCJ1; explicit v1 entry point"
+}

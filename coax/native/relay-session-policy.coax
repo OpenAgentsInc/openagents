@@ -1,0 +1,50 @@
+// Write permission is derived from current SDK observations, never wire flags.
+#load "relay-read-policy.coax";
+#load "../lib/nostr/message.coax";
+#load "../lib/nostr/event_verify_fast.coax";
+#load "../lib/nostr/nip42.coax";
+#load "../lib/nostr/tags.coax";
+#load "fixtures/messaging_vectors.coax" #test;
+#authority;
+NRS_FRAME :: 131072;NRS_WIRE :: 800000;
+#test "outbound frame and complete original bounds include their exact maximum and refuse trailing data" #steps 200000000 {
+ b:[131073]u8;p:="[\"EVENT\",{\"x\":\"";for c,i:p {b[i]=c;}for i:p.count..<65543 {b[i]='a';}b[65543]='"';b[65544]='}';b[65545]=']';
+ for i:65546..<b.count {b[i]=' ';}
+ #assert nrs_original(cast(string)b[0..<131072]).count==65536 && nrs_original(cast(string)b[..])=="";
+ b[65543]='a';b[65544]='"';b[65545]='}';b[65546]=']';#assert nrs_original(cast(string)b[0..<65547])=="";
+ #assert nrs_original("[\"EVENT\",{}]true")=="" && nrs_original("[\"EVENT\",{},2]")=="";
+ bad:=[18]u8.[91,34,69,86,69,78,84,34,44,123,34,120,34,58,34,255,34,125];frame:[19]u8;for c,i:bad {frame[i]=c;}frame[18]=']';#assert nrs_original(cast(string)frame[..])=="";
+ auth:[1]Nip42;#assert nrs_send("[\"EVENT\",{}]",NMS_LIST_PUB,true,"{}",true,auth[..],1,NMS_LIST_AT)==0;
+}
+#test "a publish requires the exact committed original and an actual pending relay target" #steps 40000000 {
+ b:[131072]u8;n:=nostr_message_write_event(NMS_LIST_EVENT,b[..],false);auth:[1]Nip42;
+ #assert n>0 && nrs_send(cast(string)b[0..<n],NMS_LIST_PUB,true,NMS_LIST_EVENT,true,auth[..],1,NMS_LIST_AT)==2;
+ #assert nrs_send(cast(string)b[0..<n],NMS_LIST_PUB,false,NMS_LIST_EVENT,true,auth[..],1,NMS_LIST_AT)==0 && nrs_send(cast(string)b[0..<n],NMS_LIST_PUB,true,"",true,auth[..],1,NMS_LIST_AT)==0 && nrs_send(cast(string)b[0..<n],NMS_LIST_PUB,true,NMS_LIST_EVENT,false,auth[..],1,NMS_LIST_AT)==0;
+ #assert nrs_send("[\"REQ\",\"x\",{}]",NMS_LIST_PUB,true,"",false,auth[..],1,NMS_LIST_AT)==1 && nrs_send("[\"REQ\",\"x\",{}]",NMS_LIST_PUB,false,"",false,auth[..],1,NMS_LIST_AT)==0;
+}
+#test "AUTH is current challenge permission and cannot become an ordinary publication" #steps 40000000 {
+ b:[131072]u8;n:=json_raw(b[..],0,"[\"AUTH\",");n=json_raw(b[..],n,NMS_AUTH_EVENT);n=json_raw(b[..],n,"]");auth:[1]Nip42;
+ #assert nrs_send(cast(string)b[0..<n],NMS_LIST_PUB,true,"",false,auth[..],7,NMS_LIST_AT)==0;
+ #assert nip42_init(auth[..],"wss://relay.example/")==N42_OK && nip42_challenge(auth[..],7,"[\"AUTH\",\"fixture\"]")==N42_OK;
+ #assert nrs_send(cast(string)b[0..<n],NMS_LIST_PUB,true,"",false,auth[..],7,NMS_LIST_AT)==3 && nrs_send(cast(string)b[0..<n],NMS_LIST_PUB,true,"",false,auth[..],8,NMS_LIST_AT)==0;
+ #assert nrs_send(cast(string)b[0..<n],"0000000000000000000000000000000000000000000000000000000000000001",true,"",false,auth[..],7,NMS_LIST_AT)==0;
+ _=nip42_challenge(auth[..],7,"[\"AUTH\",\"replaced\"]");#assert nrs_send(cast(string)b[0..<n],NMS_LIST_PUB,true,"",false,auth[..],7,NMS_LIST_AT)==0;
+ n=nostr_message_write_event(NMS_AUTH_EVENT,b[..],false);#assert nrs_send(cast(string)b[0..<n],NMS_LIST_PUB,true,NMS_AUTH_EVENT,true,auth[..],7,NMS_LIST_AT)==0;
+}
+// A complete outbound event object span, using the one shared JSON scanner.
+nrs_original :: (frame:string)->string #export_c #effects(all) {
+ if frame.count>NRS_FRAME || !js_utf8(frame) {return "";}j:[1]Json;json_start(j[..],frame); // mutant: equivalent (131072 -> 131073: the shared UTF8 view independently refuses every input longer than 131072)
+ if json_next(j[..])!=JSON_ARRAY || json_next(j[..])!=JSON_STRING {return "";}
+ label:=json_text(j[..]);if label!="EVENT" && label!="AUTH" {return "";}
+ if json_next(j[..])!=JSON_OBJECT {return "";}from:=j[0].from;if !json_skip(j[..]) {return "";}to:=j[0].to;
+ if to-from>65536 || json_next(j[..])!=JSON_ARRAY_END || json_next(j[..])!=JSON_END {return "";}return frame[from..<to];
+}
+// 0 refusal, 1 read command, 2 durable EVENT, 3 current AUTH.
+nrs_send :: (frame:string,identity:string,live:bool,committed:string,pending:bool,auth:[]Nip42,generation:int,now:int)->int #export_c #effects(all) {
+ if !live {return 0;}if nrr_read_command(frame) {return 1;}original:=nrs_original(frame);scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(original,scratch[..],false));if e.error!=NE_OK || !e.verified {return 0;} // mutant: equivalent (|| -> &&: ne_signed_fast returns verified exactly when error is NE_OK; neither flag alone grants permission)
+ j:[1]Json;json_start(j[..],frame);_=json_next(j[..]);_=json_next(j[..]);if json_is(json_text(j[..]),"AUTH") {
+  me:[32]u8;if e.kind!=22242 || !ne_lower_hex(identity,me[..]) || cast(string)e.public_key[..]!=cast(string)me[..] || auth.count!=1 || nip42_ready(auth,generation)!=N42_OK {return 0;}
+  return ifx nip42_judge(auth,generation,now,e.kind,e.created_at,e.original[e.tags_from..<e.tags_to])==N42_OK then 3 else 0;
+ }
+ return ifx e.kind!=22242 && pending && original==committed then 2 else 0;
+}

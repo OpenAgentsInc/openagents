@@ -1,0 +1,16 @@
+{
+  "schema": "coax.native.nostr-auth.v1alpha1",
+  "action": "relay-auth",
+  "fields": [
+    "schema",
+    "url",
+    "generation",
+    "challenge"
+  ],
+  "limits": {
+    "url_bytes": 256,
+    "challenge_bytes": 256,
+    "generation": 2147483647
+  },
+  "purpose": "Only kind 22242 AUTH for the saved exact WSS URL and the installed session owner’s currently observed challenge/generation. The SDK checks these observations, rather than trusting request fields as proof."
+}

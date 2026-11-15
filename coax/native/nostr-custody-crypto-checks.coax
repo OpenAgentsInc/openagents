@@ -1,0 +1,27 @@
+#test "custody refuses unavailable authority and never reveals or retains a supplied key" {
+ q:[1]NscRequest;key:[32]u8;key[31]=1;fresh:[1]Nip59Fresh;out:[1024]u8;f:NsFacts;
+ r:=nsc_materialize(q[..],f,key[..],fresh[..],1700000000,"",out[..]);#assert r.status==5 && !r.cacheable && crypto_zeroed(key[..]);
+}
+#test "capabilities enumerate installed typed operations without raw signing or group support" {
+ q:[1]NscRequest;q[0].ok=true;q[0].action=1;id:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";for c,i:id {q[0].identity[i]=c;}
+ f:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_MANAGED,provider=NS_SERVER};key:[32]u8;fresh:[1]Nip59Fresh;out:[1024]u8;r:=nsc_materialize(q[..],f,key[..],fresh[..],1700000000,"",out[..]);
+ #assert r.status==0 && r.n>0 && !r.cacheable;d:[1]Jv;nodes:[32]JvNode;#assert jv_parse(d[..],cast(string)out[0..<r.n],nodes[..]) && jv_len(d[0],jv_get(d[0],0,"actions"))==5;
+}
+#test "uncoordinated seal cannot return a partial envelope success" {
+ id:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";raw:="{\"schema\":\"coax.native.nostr-seal.v1alpha1\",\"created_at\":1700000000,\"participants\":[\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],\"content\":\"hello\",\"subject\":\"\",\"reply\":\"\"}";
+ q:[1]NscRequest;b:[65536]u8;n:=nsc_request("seal",id,id,raw,b[..]);#assert n>0 && nsc_read(cast(string)b[0..<n],q[..]);key:[32]u8;key[31]=1;fresh:=n59_fresh(1);f:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_MANAGED,provider=NS_SERVER};r:=nsc_materialize(q[..],f,key[..],fresh[..],1700000000,"",b[..]);#assert r.status==1 && !r.cacheable && crypto_zeroed(key[..]) && crypto_zeroed(b[..]);
+}
+#test "custody list signing preserves opaque content unknown tags and wins a same-second edit" #steps 1200000000 {
+ payload:[65536]u8;request:[400000]u8;out:[65536]u8;q:[1]NscRequest;key:=n59_bob();fresh:=n59_fresh(1);op:="0000000000000000000000000000000000000000000000000000000000000001";
+ f:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_MANAGED,provider=NS_SERVER};n:=nsp_list_request(NMS_LIST_PUB,10050,NMS_LIST_ID_HEX,"relay","wss://new.example",true,payload[..]);
+ #assert n>0;n=nsc_request("publish-list",op,NMS_LIST_PUB,cast(string)payload[0..<n],request[..]);#assert n>0 && nsc_read(cast(string)request[0..<n],q[..]);
+ r:=nsc_materialize(q[..],f,key[..],fresh[..],NMS_LIST_AT,NMS_LIST_EVENT,out[..]);#assert r.status==0 && r.cacheable && crypto_zeroed(key[..]);
+ scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(cast(string)out[0..<r.n],scratch[..],false));#assert e.verified && e.kind==10050 && e.created_at==NMS_LIST_AT+1;
+ content:[256]u8;cn:=json_unescape(e.original[e.content_from..<e.content_to],content[..]);#assert cn>0 && cast(string)content[0..<cn]=="opaque-encrypted-content";
+ d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],e.original[e.tags_from..<e.tags_to],nodes[..]) && jv_len(d[0],0)==3 && jv_raw(d[0],jv_at(d[0],0,1))=="[\"x-future\",\"leave me\",\"extra\"]";
+}
+#test "generic opening refuses file rumors rather than exposing attachment decryption keys" #steps 1200000000 {
+ id:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";key:[32]u8;key[31]=1;me:[32]u8;#assert ne_lower_hex(id,me[..]);fresh:=n59_fresh(1);work:[NIP59_WORK]u8;wrap:[65536]u8;
+ w:=nip59_wrap_checked(key[..],me[..],1730000000,15,N17_FILE_TAGS,"https://files.example/encrypted",1059,fresh[..],work[..],wrap[..],false);#assert w.error==NIP59_OK;
+ raw:[400000]u8;q:[1]NscRequest;n:=nsc_request("open",id,id,cast(string)wrap[0..<w.written],raw[..]);#assert n>0 && nsc_read(cast(string)raw[0..<n],q[..]);f:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_LINKED,provider=NS_DEVICE};fresh=n59_fresh(2);out:[65536]u8;r:=nsc_materialize(q[..],f,key[..],fresh[..],1730000000,"",out[..]);#assert r.status==5 && !r.cacheable && crypto_zeroed(out[..]) && crypto_zeroed(key[..]);
+}

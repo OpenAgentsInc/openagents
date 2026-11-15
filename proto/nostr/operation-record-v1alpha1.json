@@ -1,0 +1,32 @@
+{
+  "schema": "openagents.nostr.operation-record.v1alpha1",
+  "storage": "auth.nostr_operations_v1alpha1",
+  "fields": [
+    "namespace",
+    "account",
+    "identity",
+    "operation",
+    "action",
+    "digest",
+    "source",
+    "result",
+    "result_sha256"
+  ],
+  "key": [
+    "namespace",
+    "operation"
+  ],
+  "namespace": "the immutable original account-journal namespace; its current authenticated owner follows account lifecycle",
+  "source": "trusted canonical custody source: 1 managed or 2 independently linked; not supplied by the generic caller as authorization",
+  "action": "only relay-auth, seal or publish-list",
+  "result": "Complete signed public original for AUTH/list, or a nostr-sealed manifest for atomic sends; never plaintext open results",
+  "commit": "serialize with the parent journal account; first operation result commits before any success response or external send",
+  "replay": "current source/identity/session must still match; matching digest/action returns the first exact bytes; changed intent conflicts",
+  "lifecycle": "follows journal owner on merge and is deleted with journal/account purge or explicit fresh-proof wipe",
+  "limits": {
+    "records_per_namespace": 1024,
+    "result_bytes": 65536
+  },
+  "capacity": "known operations remain replayable at capacity; a new operation refuses before cryptography/publication. No unresolved receipt is silently pruned. Explicit fresh-proof wipe removes receipts with the journal.",
+  "result_sha256": "SHA-256 of the exact result UTF-8 detects corrupt receipt storage"
+}

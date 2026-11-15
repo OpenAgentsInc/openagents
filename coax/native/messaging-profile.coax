@@ -1,0 +1,58 @@
+// The independent NCJ fixtures pin both public journal formats. Their bytes
+// were made with Python hashlib, not by either product writer.
+#run_steps 250000000;
+#load "../lib/nostr/client_journal.coax";
+#load "../lib/nostr/hex.coax";
+#load "../lib/json/shape.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/tool.coax";
+#load "messaging-store-wire.coax";
+#load "nostr-operation-wire.coax";
+#load "relay-session-wire.coax";
+#load "nostr-send-wire.coax";
+nms_fixture :: (path:string,actual:string)->bool #effects(all) {
+ b:[400000]u8;n:=fs_read(path,b[..]);return n==actual.count+1 && b[n-1]=='\n' && cast(string)b[0..<n-1]==actual;
+}
+tool_main :: ()->int #export_c #effects(all) {
+ owner:[32]u8;scope:[32]u8;
+ if hex_decode_checked("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",owner[..],false).error!=NC_OK || hex_decode_checked("4e5232a0ad6fc585fdc47b9959cc60ff843682e30569430fdd35c4bcca9cb7c1",scope[..],false).error!=NC_OK {return 1;}
+ profiles:=[2]string.["proto/nostr/client-journal-v1.json","proto/nostr/client-journal-v2.json"];
+ fixtures:=[2]string.["proto/nostr/fixtures/client-journal-v1.hex","proto/nostr/fixtures/client-journal-v2.hex"];
+ for i:0..<2 {
+  raw:[2048]u8;expected:[1024]u8;buf:[1024]u8;j:[1]Cj;k:[1]Cj;
+  n:=fs_read(fixtures[i],raw[..]);if n<1 || raw[n-1]!='\n' {return 1;}decoded:=hex_decode_checked(cast(string)raw[0..<n-1],expected[..],false);if decoded.error!=NC_OK {return 1;}
+  opened:=ifx i==0 then cj_open(j[..],buf[..],0,owner) else cj_open_v2(j[..],buf[..],0,owner,scope);
+  if opened.status!=CJO_NEW || cj_relay(j[..],buf[..],"wss://r1.example")!=0 || j[0].len!=decoded.written || cast(string)buf[0..<j[0].len]!=cast(string)expected[0..<decoded.written] {return 1;}
+  opened=ifx i==0 then cj_open(k[..],expected[..],decoded.written,owner) else cj_open_v2(k[..],expected[..],decoded.written,owner,scope);
+  if opened.status!=CJO_DONE || !cj_same(j[..],k[..]) {return 1;}
+  n=fs_read(profiles[i],raw[..]);d:[1]Jv;nodes:[128]JvNode;if n<0 || !jv_parse(d[..],cast(string)raw[0..<n],nodes[..]) {return 1;}
+  v:=d[0];if js_number(v,jv_get(v,0,"header_bytes"))!=(ifx i==0 then CJ_HEADER else CJ_V2_HEADER) || js_number(v,jv_get(v,0,"record_body_max"))!=(ifx i==0 then CJ_RECORD_MOST else CJ_V2_RECORD) || js_number(v,jv_get(v,0,"record_length_bytes"))!=cj_width(j[..]) {return 1;}
+ }
+ id:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:="0000000000000000000000000000000000000000000000000000000000000001";out:[400000]u8;none:[1]string;
+ n:=nms_request_write("snapshot",op,id,"",none[0..<0],0,0,0,"",out[..]);if n<0 || !nms_fixture("proto/coax-native/fixtures/nostr-store-v1alpha1.json",cast(string)out[0..<n]) {return 1;}
+ n=nsr_write("store","snapshot",op,id,"ok",7,0,"",out[..]);if n<0 || !nms_fixture("proto/coax-native/fixtures/nostr-result-v1alpha1.json",cast(string)out[0..<n]) {return 1;}
+ rows:[1]MsIndexRow;for c,i:op {rows[0].id[i]=c;}for c,i:id {rows[0].author[i]=c;}rows[0].kind=1059;rows[0].created=1700000000;rows[0].pending=18446744073709551615;rows[0].accepted=9007199254740993;rows[0].refused=2;
+ n=ms_index_write(7,0,true,rows[..],out[..]);if n<0 || !nms_fixture("proto/coax-native/fixtures/nostr-index-v1alpha1.json",cast(string)out[0..<n]) {return 1;}
+ files:=[3]string.["proto/coax-native/nostr-store-v1alpha1.json","proto/coax-native/nostr-result-v1alpha1.json","proto/coax-native/nostr-index-v1alpha1.json"];
+ schemas:=[3]string.[MS_SCHEMA,NSR_SCHEMA,MS_INDEX_SCHEMA];
+ for i:0..<3 {
+  b:[8192]u8;n=fs_read(files[i],b[..]);d:[1]Jv;nodes:[256]JvNode;if n<0 || !jv_parse(d[..],cast(string)b[0..<n],nodes[..]) || jv_raw(d[0],jv_get(d[0],0,"schema"))!=schemas[i] {return 1;}
+  limits:=jv_get(d[0],0,"limits");if js_number(d[0],jv_get(d[0],limits,"wire_bytes"))!=(ifx i==2 then MS_INDEX_BYTES else 400000) {return 1;}
+  if i==0 {
+   if js_number(d[0],jv_get(d[0],0,"operation"))!=MS_OP || js_number(d[0],jv_get(d[0],limits,"events"))!=CJ_V2_EVENTS || js_number(d[0],jv_get(d[0],limits,"publishes"))!=CJ_V2_PUBS || js_number(d[0],jv_get(d[0],limits,"tombstones"))!=CJ_V2_TOMBS || js_number(d[0],jv_get(d[0],limits,"file_bytes"))!=CJ_V2_BYTES {return 1;}
+   actions:=jv_get(d[0],0,"actions");if jv_len(d[0],actions)!=MS_ACTIONS.count {return 1;}for name,k:MS_ACTIONS {if jv_raw(d[0],jv_at(d[0],actions,k))!=name {return 1;}}
+  } else if i==1 {statuses:=jv_get(d[0],0,"statuses");if jv_len(d[0],statuses)!=NS_STATUSES.count {return 1;}for name,k:NS_STATUSES {if jv_raw(d[0],jv_at(d[0],statuses,k))!=name {return 1;}}}
+ }
+ extra:=[10]string.["proto/coax-native/nostr-seal-v1alpha1.json","proto/coax-native/nostr-auth-v1alpha1.json","proto/coax-native/nostr-list-edit-v1alpha1.json","proto/coax-native/nostr-open-v1alpha1.json","proto/coax-native/nostr-capabilities-v1alpha1.json","proto/coax-native/nostr-operation-v1alpha1.json","proto/nostr/operation-record-v1alpha1.json","proto/coax-native/relay-session-v1alpha1.json","proto/coax-native/nostr-send-v1alpha1.json","proto/coax-native/nostr-sealed-v1alpha1.json"];
+ expected:=[10]string.["coax.native.nostr-seal.v1alpha1","coax.native.nostr-auth.v1alpha1","coax.native.nostr-list-edit.v1alpha1","coax.native.nostr-open.v1alpha1","coax.native.nostr-capabilities.v1alpha1",NSO_SCHEMA,"openagents.nostr.operation-record.v1alpha1",NRS_SCHEMA,NSM_SEND,NSM_SEALED];
+ for path,i:extra {
+  b:[8192]u8;n=fs_read(path,b[..]);d:[1]Jv;nodes:[256]JvNode;if n<0 || !jv_parse(d[..],cast(string)b[0..<n],nodes[..]) || jv_raw(d[0],jv_get(d[0],0,"schema"))!=expected[i] {return 1;}
+  limits:=jv_get(d[0],0,"limits");if i==5 && js_number(d[0],jv_get(d[0],limits,"wire_bytes"))!=400000 {return 1;}
+  if i==6 && js_number(d[0],jv_get(d[0],limits,"records_per_namespace"))!=NSO_RECORDS {return 1;}
+  if i==7 && (js_number(d[0],jv_get(d[0],0,"operation"))!=NRS_OP || js_number(d[0],jv_get(d[0],limits,"frame_bytes"))!=NRS_FRAME || js_number(d[0],jv_get(d[0],limits,"wire_bytes"))!=NRS_WIRE || js_number(d[0],jv_get(d[0],limits,"slots"))!=NRR_SLOTS) {return 1;}
+ }
+ fixture:[4096]u8;nf:=fs_read("proto/coax-native/fixtures/nostr-operation-digest-v1alpha1.json",fixture[..]);d:[1]Jv;nodes:[16]JvNode;if nf<0 || !jv_parse(d[..],cast(string)fixture[0..<nf],nodes[..]) {return 1;}
+ request:[1024]u8;nr:=js_string(d[0],jv_get(d[0],0,"request"),request[..]);q:[1]NscRequest;key:[32]u8;key[31]=1;digest:[64]u8;
+ if nr<0 || !nsc_read(cast(string)request[0..<nr],q[..]) || !nso_digest(q[..],key[..],digest[..]) || cast(string)digest[..]!=jv_raw(d[0],jv_get(d[0],0,"digest")) {return 1;}
+ print("NCJ1/NCJ2, custody, store, receipts and authenticated relay profiles agree with independent fixtures and bounds\n");return 0;
+}

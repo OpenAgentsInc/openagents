@@ -1,0 +1,51 @@
+// Closed custody purposes. The outer custody envelope supplies identity and
+// operation references, never a secret or a caller-selected signing template.
+#load "nostr-custody-wire.coax";
+#load "../lib/nostr/list-edit.coax";
+#load "../lib/nostr/nip17-peers.coax";
+NSP_SEAL :: "coax.native.nostr-seal.v1alpha1";
+NSP_AUTH :: "coax.native.nostr-auth.v1alpha1";
+NSP_LIST :: "coax.native.nostr-list-edit.v1alpha1";
+NSP_CAPS :: "coax.native.nostr-capabilities.v1alpha1";
+NscPurpose :: struct {
+ ok:bool;created:int;peers:[10][32]u8;peers_n:int;content:[16384]u8;n:int;subject:[256]u8;ns:int;reply:[32]u8;has_reply:bool;
+ url:[256]u8;nu:int;generation:int;challenge:[256]u8;nc:int;
+ kind:int;name:[5]u8;nn:int;value:[256]u8;nv:int;enabled:bool;base:[64]u8;nb:int;
+}
+#test "seal purpose fixes the message kind and binds recipients to the same conversation" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";raw:="{\"schema\":\"coax.native.nostr-seal.v1alpha1\",\"created_at\":1700000000,\"participants\":[\"0000000000000000000000000000000000000000000000000000000000000002\"],\"content\":\"hello\",\"subject\":\"\",\"reply\":\"\"}";q:[1]NscPurpose;
+ #assert nsp_read(3,id,raw,q[..]) && q[0].n==5 && q[0].peers_n==1 && !q[0].has_reply;
+ #assert !nsp_read(3,"0000000000000000000000000000000000000000000000000000000000000003",raw,q[0..<0]) && !nsp_read(3,id,"{}",q[..]);
+ #assert nsp_read(1,id,"",q[..]) && !nsp_read(1,id,"{}",q[..]) && !nsp_read(6,id,"",q[..]);
+}
+nsp_key :: (v:Jv,at:int,out:[]u8)->bool #effects(all) {hex:[64]u8;n:=js_string(v,at,hex[..]);return n==64 && ne_lower_hex(cast(string)hex[..],out);}
+nsp_read :: (action:int,identity:string,raw:string,q:[]NscPurpose)->bool #export_c #effects(all) {
+ if q.count!=1 {return false;}q[0]=NscPurpose.{};me:[32]u8;if !ne_lower_hex(identity,me[..]) {return false;}
+ if action==1 {q[0].ok=raw.count==0;return q[0].ok;}
+ if action==4 {if raw.count<1 || raw.count>65536 {return false;}scratch:[65536]u8;e:=nostr_event_read(raw,scratch[..],false);q[0].ok=e.error==NE_OK && e.kind==1059;return q[0].ok;}
+ if action!=2 && action!=3 && action!=5 {return false;}
+ d:[1]Jv;nodes:[64]JvNode;if raw.count>65536 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];
+ if action==2 {
+  fields:=[4]string.["schema","url","generation","challenge"];if !js_fields(v,0,fields[..]) || jv_len(v,0)!=4 || jv_raw(v,jv_get(v,0,"schema"))!=NSP_AUTH {return false;}
+  q[0].nu=js_string(v,jv_get(v,0,"url"),q[0].url[..]);q[0].nc=js_string(v,jv_get(v,0,"challenge"),q[0].challenge[..]);q[0].generation=js_number(v,jv_get(v,0,"generation"));
+  if q[0].nu<1 || q[0].nc<1 || q[0].generation<1 || q[0].generation>2147483647 {return false;}url:=uri_parse(cast(string)q[0].url[0..<q[0].nu]);q[0].ok=url.ok && url.scheme==URI_WSS;return q[0].ok;
+ }
+ if action==5 {
+  fields:=[6]string.["schema","kind","base","name","value","enabled"];if !js_fields(v,0,fields[..]) || jv_len(v,0)!=6 || jv_raw(v,jv_get(v,0,"schema"))!=NSP_LIST {return false;}
+  q[0].kind=js_number(v,jv_get(v,0,"kind"));q[0].nb=js_string(v,jv_get(v,0,"base"),q[0].base[..]);q[0].nn=js_string(v,jv_get(v,0,"name"),q[0].name[..]);q[0].nv=js_string(v,jv_get(v,0,"value"),q[0].value[..]);enabled:=jv_get(v,0,"enabled");
+  if q[0].nb<0 || (q[0].nb!=0 && (q[0].nb!=64 || !aw_hex(cast(string)q[0].base[..],64))) || q[0].nn<0 || q[0].nv<0 || (jv_kind(v,enabled)!=JV_TRUE && jv_kind(v,enabled)!=JV_FALSE) {return false;}q[0].enabled=jv_kind(v,enabled)==JV_TRUE;
+  q[0].ok=ns_list_kind(q[0].kind) && nl_edit_allowed(q[0].kind,cast(string)q[0].name[0..<q[0].nn],cast(string)q[0].value[0..<q[0].nv]);return q[0].ok;
+ }
+ fields:=[6]string.["schema","created_at","participants","content","subject","reply"];if !js_fields(v,0,fields[..]) || jv_len(v,0)!=6 || jv_raw(v,jv_get(v,0,"schema"))!=NSP_SEAL {return false;}
+ q[0].created=js_number(v,jv_get(v,0,"created_at"));q[0].n=js_string(v,jv_get(v,0,"content"),q[0].content[..]);q[0].ns=js_string(v,jv_get(v,0,"subject"),q[0].subject[..]);reply:[64]u8;nr:=js_string(v,jv_get(v,0,"reply"),reply[..]);
+ if q[0].created<172800 || q[0].created>9007199254740991 || q[0].n<1 || q[0].ns<0 || nr<0 {return false;}
+ if nr>0 {if nr!=64 || !ne_lower_hex(cast(string)reply[..],q[0].reply[..]) {return false;}q[0].has_reply=true;}
+ peers:=jv_get(v,0,"participants");if jv_kind(v,peers)!=JV_ARRAY || jv_len(v,peers)<1 || jv_len(v,peers)>N17_MOST {return false;}q[0].peers_n=jv_len(v,peers);keys:[N17_MOST*32]u8;
+ for i:0..<q[0].peers_n {
+  if !nsp_key(v,jv_at(v,peers,i),q[0].peers[i][..]) {return false;}for k:0..<32 {keys[i*32+k]=q[0].peers[i][k];}
+ }q[0].ok=n17_peer_bad(me[..],keys[0..<q[0].peers_n*32])== -1;return q[0].ok;
+}
+nsp_list_request :: (identity:string,kind:int,base:string,name:string,value:string,enabled:bool,out:[]u8)->int #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NSP_LIST);jo_key(o[..],"kind");jo_int(o[..],kind);jo_key(o[..],"base");jo_str(o[..],base);jo_key(o[..],"name");jo_str(o[..],name);jo_key(o[..],"value");jo_str(o[..],value);jo_key(o[..],"enabled");jo_bool(o[..],enabled);jo_end(o[..]);q:[1]NscPurpose;
+ return ifx !o[0].bad && nsp_read(5,identity,jo_text(o[..]),q[..]) then o[0].n else -1;
+}

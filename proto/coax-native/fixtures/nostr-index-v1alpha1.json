@@ -1,0 +1,1 @@
+{"schema":"coax.native.nostr-index.v1alpha1","revision":7,"cursor":0,"complete":true,"relays":[],"items":[{"id":"0000000000000000000000000000000000000000000000000000000000000001","author":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","kind":1059,"created_at":1700000000,"pending":"ffffffffffffffff","accepted":"0020000000000001","refused":"0000000000000002"}]}

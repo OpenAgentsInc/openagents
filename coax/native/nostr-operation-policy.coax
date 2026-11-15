@@ -1,0 +1,37 @@
+// Receipt admission from authenticated current account/source observations.
+// The generic app never supplies these observations as permission fields.
+#load "nostr-capability.coax";
+#load "messaging-store-policy.coax";
+#load "../web/api/api-wire.coax";
+#authority;
+NSO_RECORDS :: 1024;
+#test "only encrypted or public signing purposes can have durable crypto receipts" {
+ for action: -1..<8 {#assert nso_cache_action(action)==(action==2 || action==3 || action==5);}
+}
+#test "a linked holder can commit its candidate but cannot replace a managed server operation" {
+ f:=MsFacts.{authorized=true,matched=true};
+ #assert nso_cache_permit(f,NS_MANAGED,false)==0 && nso_cache_permit(f,NS_LINKED,false)==0 && nso_cache_permit(f,NS_LINKED,true)==0 && nso_cache_permit(f,NS_MANAGED,true)==5;
+ #assert nso_cache_permit(f,0,false)==6 && nso_cache_permit(f,3,false)==6;
+ f.authorized=false;#assert nso_cache_permit(f,NS_LINKED,false)==5;f.authorized=true;f.matched=false;#assert nso_cache_permit(f,NS_LINKED,false)==3;
+}
+#test "a receipt replay matches the complete intent and current custody source" {
+ d:="0000000000000000000000000000000000000000000000000000000000000001";other:="0000000000000000000000000000000000000000000000000000000000000002";
+ #assert nso_replay(3,d,NS_MANAGED,3,d,NS_MANAGED)==0 && nso_replay(3,d,NS_LINKED,3,d,NS_MANAGED)==6;
+ #assert nso_replay(3,d,NS_LINKED,3,d,NS_LINKED)==0 && nso_replay(3,d,NS_MANAGED,3,d,3)==10;
+ #assert nso_replay(3,other,NS_MANAGED,3,d,NS_MANAGED)==9 && nso_replay(2,d,NS_MANAGED,3,d,NS_MANAGED)==9;
+ #assert nso_replay(3,d,NS_MANAGED,4,d,NS_MANAGED)==10 && nso_replay(3,d,NS_MANAGED,3,"bad",NS_MANAGED)==10 && nso_replay(3,d,NS_MANAGED,3,d,0)==10;
+}
+#test "receipt source and capacity come from observations rather than body fields" {
+ #assert nso_source(2)==NS_MANAGED && nso_source(1)==NS_LINKED && nso_source(0)==0 && nso_source(3)==0 && nso_source(-1)==0;
+ #assert nso_room(0) && nso_room(1023) && !nso_room(1024) && !nso_room(-1);
+}
+nso_source :: (auth_source:int)->int #export_c #effects(all) {return ifx auth_source==2 then NS_MANAGED else ifx auth_source==1 then NS_LINKED else 0;}
+nso_room :: (records:int)->bool #export_c #effects(all) {return records>=0 && records<NSO_RECORDS;}
+nso_cache_action :: (action:int)->bool #export_c #effects(all) {return action==2 || action==3 || action==5;}
+nso_cache_permit :: (facts:MsFacts,source:int,write:bool)->int #export_c #effects(all) {
+ if !facts.authorized {return 5;}if !facts.matched {return 3;}if source!=NS_MANAGED && source!=NS_LINKED {return 6;}if write && source!=NS_LINKED {return 5;}return 0;
+}
+nso_replay :: (action:int,digest:string,source:int,stored_action:int,stored_digest:string,stored_source:int)->int #export_c #effects(all) {
+ if !nso_cache_action(stored_action) || !aw_hex(stored_digest,64) || (stored_source!=NS_MANAGED && stored_source!=NS_LINKED) {return 10;}
+ if source!=stored_source {return 6;}if action!=stored_action || digest!=stored_digest {return 9;}return 0;
+}

@@ -1,0 +1,14 @@
+{
+  "schema":"openagents.nostr.account-journal.v1alpha1",
+  "storage":"auth.nostr_journals_v1alpha1",
+  "fields":["namespace","account","origin_account","identity","revision","pruned","document"],
+  "namespace":"64 lowercase hex; nms_scope(origin_account,identity); original namespace is immutable across an explicit account merge",
+  "account":"authenticated owner; follows account merge and purge",
+  "origin_account":"immutable namespace provenance, not authorization; retained only with its owned row",
+  "identity":"canonical 64 lowercase hex key for this journal",
+  "revision":"0 through 2147483647; serialized by the row transaction",
+  "pruned":"monotone history-incomplete flag, cleared only by explicit fresh-proof wipe",
+  "document":"complete NCJ2 bytes, at most 8388608; new journal is its 68-byte header",
+  "admission":"authenticated current owner and canonical identity; integrity plus actual original ID/signature verification on mount; never accept CJO_CUT for a committed database row",
+  "merge":"preserve original namespaces; if multiple owned journals match the current identity, report incomplete and require explicit reconciliation rather than overwrite one"
+}

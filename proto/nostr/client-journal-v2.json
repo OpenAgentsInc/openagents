@@ -1,0 +1,17 @@
+{
+  "profile":"nostr-client-journal-v2",
+  "magic_hex":"4e434a02",
+  "header_bytes":68,
+  "header_fields":["magic/version","identity:32","account_namespace:32"],
+  "record_length_bytes":4,
+  "length_complement":"ones complement, same width",
+  "record_checksum":"first four SHA-256 bytes of type/body",
+  "record_body_max":65611,
+  "bounds":{"file_bytes":8388608,"events":512,"publishes":64,"tombstones":256},
+  "owned_event":"EVENT record subscription/relay bytes 255/255 mean a locally staged verified original, with its actual signing key and timestamp; no relay cursor is advanced",
+  "queue_reference":"type 7: id:32 and target-relay-mask:u64be; references a previously retained original and never stores a second representation; unavailable in NCJ1",
+  "completed_publications":"The final OK retires its active publish slot. Frozen targets and accepted/refused observations stay with the retained original and survive checkpoint/replay; the 64-publish bound counts unresolved outgoing events. NCJ1 behavior is unchanged.",
+  "fixture":"proto/nostr/fixtures/client-journal-v2.hex",
+  "codec":"coax/lib/nostr/client_journal.coax",
+  "compatibility":"new explicit account-scoped NCJ2; never reinterprets NCJ1"
+}

@@ -1,6 +1,7 @@
 // The one codec for account identity metadata and its sealed scalar store.
 // proto/openagents/account/identity/v1/identity.proto; no secret in Identity.
 #load "api-wire.coax";
+#load "../../lib/json/shape.coax";
 AIW_SCHEMA :: "openagents.account.identity.v1";
 AIW_G :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
@@ -13,6 +14,17 @@ AIW_G :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
  #assert aiw_write("",AIW_G,2,b[..])<0 && aiw_write("acct_example","bad",2,b[..])<0;
  #assert aiw_write("acct_example",AIW_G,0,b[..])<0 && aiw_write("acct_example",AIW_G,3,b[..])<0;
  #assert aiw_write("acct_example",AIW_G,2,b[0..<20])<0;
+}
+#test "identity metadata reads through its one codec with closed fields and bounded outputs" {
+ b:[512]u8;account:[128]u8;pub:[64]u8;length:[1]int;n:=aiw_write("fixture",AIW_G,2,b[..]);#assert n>0 && aiw_read(cast(string)b[0..<n],account[..],pub[..],length[..])==2 && cast(string)account[0..<7]=="fixture" && cast(string)pub[..]==AIW_G;
+ n=aiw_write("fixture",AIW_G,1,b[..]);#assert n>0 && aiw_read(cast(string)b[0..<n],account[..],pub[..],length[..])==1;
+ #assert aiw_read("{}",account[..],pub[..],length[..])==0 && aiw_read("{",account[..],pub[..],length[..])==0 && aiw_read(cast(string)b[0..<n],account[0..<6],pub[..],length[..])==0 && aiw_read(cast(string)b[0..<n],account[..],pub[0..<63],length[..])==0;
+}
+aiw_read :: (raw:string,account:[]u8,pub:[]u8,length:[]int)->int #export_c #effects(all) {
+ if length.count!=1 {return 0;}length[0]=0;d:[1]Jv;nodes:[12]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return 0;}v:=d[0];fields:=[4]string.["schema","account","pubkey","source"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=4 || jv_raw(v,jv_get(v,0,"schema"))!=AIW_SCHEMA {return 0;}
+ n:=js_string(v,jv_get(v,0,"account"),account);if n<1 || n>127 || js_string(v,jv_get(v,0,"pubkey"),pub)!=64 || pub.count!=64 || !aw_hex(cast(string)pub,64) {return 0;}
+ length[0]=n;source:=jv_raw(v,jv_get(v,0,"source"));return ifx source=="account" then 2 else ifx source=="linked" then 1 else 0;
 }
 #test "the immutable public key binds the sealed store; malformed records refuse" {
  b:[160]u8;n:=aiw_ad(AIW_G,b[..]);

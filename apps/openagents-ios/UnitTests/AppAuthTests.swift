@@ -67,6 +67,31 @@ final class AppAuthTests: XCTestCase {
         XCTAssertEqual(AppAuth.next(t, now: now.addingTimeInterval(541)), .refresh("oa_rt_R"))   // under a minute left
         XCTAssertEqual(AppAuth.next(t, now: now.addingTimeInterval(700)), .refresh("oa_rt_R"))
     }
+    func testRetiredRefreshCannotRestoreLogoutOrOverwriteAnotherLogin() async throws {
+        final class Gate:@unchecked Sendable {
+            let started:XCTestExpectation;let lock=NSLock();var reply:CheckedContinuation<(Data,Int),Never>?
+            init(_ started:XCTestExpectation) {self.started=started}
+            func wait()async->(Data,Int) {await withCheckedContinuation {c in lock.lock();reply=c;lock.unlock();started.fulfill()}}
+            func finish(_ data:Data,_ status:Int) {lock.lock();let c=reply;reply=nil;lock.unlock();c?.resume(returning:(data,status))}
+        }
+        for newLogin in [false,true] {for status in [200,401] {
+            let store=Memory(),began=expectation(description:"old refresh began"),gate=Gate(began)
+            store.tokens = .init(access:"oa_at_old",refresh:"oa_rt_old",accessUntil:now.addingTimeInterval(-5),account:"acct_old")
+            let answer="{\"access_token\":\"oa_at_new\",\"refresh_token\":\"oa_rt_new\",\"expires_in\":3600,\"account\":\"acct_new\"}"
+            let auth=AppAuth(origin:"https://example.test",send:{request in
+                if request.url?.path=="/api/auth/refresh" {return await gate.wait()}
+                return (Data(answer.utf8),200)
+            },store:store,clock:{self.now},device:nil)
+            let owner=auth.sessionOwner,old=Task {try await auth.refreshed()}
+            await fulfillment(of:[began],timeout:5)
+            if newLogin {try await auth.emailVerify(code:"111111",pending:"p")}else {await auth.logout()}
+            XCTAssertNotEqual(owner,auth.sessionOwner)
+            gate.finish(Data((status==200 ? pair(2):"{\"error\":\"expired\"}").utf8),status)
+            do {_ = try await old.value;XCTFail("retired refresh succeeded")}catch {}
+            XCTAssertEqual(store.tokens?.account,newLogin ? "acct_new":nil)
+            XCTAssertEqual(store.tokens?.access,newLogin ? "oa_at_new":nil)
+        }}
+    }
 
     func testEmailLoginKeepsThePairAndAccount() async throws {
         let server = Server(), store = Memory()

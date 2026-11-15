@@ -35,3 +35,7 @@ ns_permit :: (f:NsFacts,action:int)->bool #export_c #effects(all) {
  return action>=1 && action<=6 && f.live && f.human && !f.limited && !f.frozen && f.matched && f.approved &&
   ((f.source==NS_MANAGED && f.provider==NS_SERVER) || (f.source==NS_LINKED && (f.provider==NS_DEVICE || f.provider==NS_REMOTE)));
 }
+#test "the foundation service initially edits follows mutes and the two relay lists" {
+ for kind:[11]int.[-1,0,1,3,10000,10001,10002,10050,30000,30002,65536] {#assert ns_list_kind(kind)==(kind==3 || kind==10000 || kind==10002 || kind==10050);}
+}
+ns_list_kind :: (kind:int)->bool #effects(all) {return kind==3 || kind==10000 || kind==10002 || kind==10050;}

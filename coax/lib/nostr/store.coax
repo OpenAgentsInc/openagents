@@ -121,8 +121,14 @@ rsd_match_scoped :: (f: NostrFilter, e: NostrEvent, groups: [] NgGroup) -> bool 
 // Up to rs_limit(f) (and out.count) live, unexpired records matching f,
 // newest first, then lowest id, as indexes into out: the count.
 rsd_query :: (s: [] RsdStore, f: NostrFilter, now: int, out: [] int) -> int {
+  return rsd_query_bounded(s,f,now,rs_limit(f),out);
+}
+// Non-relay consumers (the durable account journal) supply their own page
+// budget. Relay requests continue to use rs_limit through rsd_query above.
+rsd_query_bounded :: (s:[]RsdStore,f:NostrFilter,now:int,limit:int,out:[]int)->int {
   later := ns_store_seen(s, now);
-  limit := rs_limit(f); n := 0;
+  n := 0;
+  if limit<0 {return 0;}
   for i: 0..<s[0].n {
     if !ns_store_visible(s, i, now) || !rsd_match_scoped(f, rsd_event(s, i), s[0].groups) { continue; }
     n = ns_store_insert(s, i, n, limit, out);

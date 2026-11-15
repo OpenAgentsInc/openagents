@@ -24,6 +24,7 @@ bool auth_seal(const char *ad, const char *text, char *out, size_t cap);
 int auth_identity_ensure(PGconn *db, const char *account, char pubkey[65]);
 int auth_identity_secret(PGconn *db,const char *account,char pubkey[65],unsigned char secret[32]);
 bool account_settings_route(const request *q,PGconn *db,const char *op);
+bool nostr_messaging_route(const request *q,PGconn *db,const char *op);
 bool auth_identity_route(const request *q, PGconn *db, const char *op);
 bool auth_normal_email(const char *raw, char *out, size_t cap);
 void auth_mask_email(const char *email, char *out, size_t cap);

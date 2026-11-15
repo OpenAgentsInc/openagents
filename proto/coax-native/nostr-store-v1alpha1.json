@@ -1,0 +1,51 @@
+{
+  "schema": "coax.native.nostr-store.v1alpha1",
+  "operation": 22,
+  "reply_event": 122,
+  "failure_event": 222,
+  "http": "POST /api/auth/nostr/store/v1alpha1",
+  "request_fields": [
+    "schema",
+    "action",
+    "operation",
+    "identity",
+    "relay",
+    "targets",
+    "subscription",
+    "revision",
+    "cursor",
+    "payload"
+  ],
+  "actions": [
+    "snapshot",
+    "ingest",
+    "queue",
+    "ack",
+    "index",
+    "event",
+    "checkpoint",
+    "wipe",
+    "outbox"
+  ],
+  "limits": {
+    "wire_bytes": 400000,
+    "payload_bytes": 65536,
+    "relay_bytes": 256,
+    "subscriptions": 8,
+    "index_page": 16,
+    "file_bytes": 8388608,
+    "events": 512,
+    "publishes": 64,
+    "tombstones": 256,
+    "targets": 8
+  },
+  "identity": "expected current canonical public key, not an account selector",
+  "namespace": "server principal's account + canonical identity, domain-separated SHA-256; caller supplies neither account nor path",
+  "result": "coax.native.nostr-result.v1alpha1",
+  "persistence": "transactionally committed NCJ2; verified originals and exact outgoing bytes only; no plaintext rumors, previews or private drafts",
+  "revision": "nonnegative current journal revision; index/event/outbox pin it when nonzero; snapshot reads current history; destructive checkpoint/wipe require an exact current revision",
+  "operation_id": "64 lowercase hex, chosen before a write; ingestion/outgoing event identities deduplicate exact originals across retry",
+  "targets": "queue freezes one to eight distinct explicit WSS targets with the exact signed original; other actions use an empty array; a repeated event cannot silently change its original bytes or targets",
+  "read_scope": "ack and ingestion retain relay/subscription ownership; received fields are untrusted until event verification and current session admission",
+  "outbox": "page every retained publish, including unresolved originals outside the live history/expiry projection; index reply carries the stable full relay pool so masks remain usable after restart"
+}

@@ -1,0 +1,39 @@
+// The one operation receipt codec. HTTP/SQL SDKs retain opaque signed results;
+// actual provider/session gates and original verification remain separate.
+#load "nostr-operation-policy.coax";
+#load "nostr-result-wire.coax";
+#load "../lib/crypto/hmac.coax";
+#load "../lib/nostr/hex.coax";
+NSO_SCHEMA :: "coax.native.nostr-operation.v1alpha1";
+NsoRequest :: struct {ok:bool;action:int;operation:[64]u8;identity:[64]u8;digest:[64]u8;n:int;result:[65536]u8;}
+#test "private intent digest agrees with the independent HMAC oracle and changes with the actual provider key" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";raw:[1024]u8;q:[1]NscRequest;key:[32]u8;key[31]=1;out:[64]u8;
+ n:=nsc_request("capabilities",id,id,"",raw[..]);#assert n>0 && nsc_read(cast(string)raw[0..<n],q[..]);
+ #assert nso_digest(q[..],key[..],out[..]) && cast(string)out[..]=="ae662dc0c49b35f5b16b3a77b03a8fc0ccbc984c1d4231f9d4ebaca59778e08f";
+ key[31]=2;#assert nso_digest(q[..],key[..],out[..]) && cast(string)out[..]!="ae662dc0c49b35f5b16b3a77b03a8fc0ccbc984c1d4231f9d4ebaca59778e08f";
+ #assert !nso_digest(q[..],key[0..<31],out[..]) && !nso_digest(q[..],key[..],out[0..<63]);q[0].ok=false;#assert !nso_digest(q[..],key[..],out[..]);
+}
+#test "operation lookups contain the chosen intent reference and no plaintext or permission flags" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";q:[1]NsoRequest;b:[2048]u8;
+ n:=nso_request("seal",id,id,id,"",b[..]);#assert n>0 && nso_read(cast(string)b[0..<n],q[..]) && q[0].action==3 && q[0].n==0;
+ #assert nso_request("open",id,id,id,"",b[..])<0 && nso_request("group",id,id,id,"",b[..])<0 && nso_request("seal",id,id,"bad","",b[..])<0 && !nso_read("{}",q[..]);
+}
+nso_read :: (raw:string,q:[]NsoRequest)->bool #export_c #effects(all) {
+ if q.count!=1 {return false;}q[0]=NsoRequest.{};d:[1]Jv;nodes:[20]JvNode;if raw.count>400000 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[6]string.["schema","action","operation","identity","digest","result"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=6 || jv_raw(v,jv_get(v,0,"schema"))!=NSO_SCHEMA {return false;}
+ q[0].action=nsc_action(jv_raw(v,jv_get(v,0,"action")));op:=js_string(v,jv_get(v,0,"operation"),q[0].operation[..]);identity:=js_string(v,jv_get(v,0,"identity"),q[0].identity[..]);digest:=js_string(v,jv_get(v,0,"digest"),q[0].digest[..]);q[0].n=js_string(v,jv_get(v,0,"result"),q[0].result[..]);
+ q[0].ok=nso_cache_action(q[0].action) && op==64 && identity==64 && digest==64 && aw_hex(cast(string)q[0].operation[..],64) && aw_hex(cast(string)q[0].identity[..],64) && aw_hex(cast(string)q[0].digest[..],64) && q[0].n>=0;return q[0].ok;
+}
+nso_request :: (action:string,operation:string,identity:string,digest:string,result:string,out:[]u8)->int #export_c #effects(all) {
+ if result.count>65536 || !js_utf8(result) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NSO_SCHEMA);jo_key(o[..],"action");jo_str(o[..],action);jo_key(o[..],"operation");jo_str(o[..],operation);jo_key(o[..],"identity");jo_str(o[..],identity);jo_key(o[..],"digest");jo_str(o[..],digest);jo_key(o[..],"result");jo_str(o[..],result);jo_end(o[..]);q:[1]NsoRequest;return ifx !o[0].bad && nso_read(jo_text(o[..]),q[..]) then o[0].n else -1;
+}
+nso_digest :: (q:[]NscRequest,key:[]u8,out:[]u8)->bool #export_c #effects(all) {
+ if q.count!=1 || !q[0].ok || q[0].action<1 || q[0].action>6 || q[0].n<0 || q[0].n>65536 || key.count!=32 || out.count!=64 {return false;}
+ bytes:[400064]u8;defer {secure_zero(bytes[..]);}prefix:="OpenAgents Nostr Operation v1";p:=prefix.count;for c,i:prefix {bytes[i]=c;}bytes[p]=0;p+=1;
+ n:=nsc_request(NSC_ACTIONS[q[0].action-1],cast(string)q[0].operation[..],cast(string)q[0].identity[..],cast(string)q[0].payload[0..<q[0].n],bytes[p..<bytes.count]);if n<0 {return false;}
+ digest:[32]u8;defer {secure_zero(digest[..]);}if hmac_sha256_checked(key,bytes[0..<p+n],digest[..],false)!=SHA_OK {return false;}return hex_encode_checked(cast(string)digest[..],out,false).error==NC_OK;
+}
+nso_response :: (q:[]NsoRequest,status:int,payload:string,out:[]u8)->int #export_c #effects(all) {
+ if q.count!=1 || status<0 || status>=NS_STATUSES.count || !nso_cache_action(q[0].action) {return -1;}
+ return nsr_write("custody",NSC_ACTIONS[q[0].action-1],cast(string)q[0].operation[..],cast(string)q[0].identity[..],NS_STATUSES[status],0,0,ifx status==0 then payload else "",out);
+}

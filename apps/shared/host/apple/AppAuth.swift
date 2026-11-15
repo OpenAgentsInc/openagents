@@ -88,6 +88,15 @@ final class AppAuth: @unchecked Sendable {
     private let sign: Sign
     private var refreshing: Task<Tokens, Error>?
     private let lock = NSLock()
+    private var owner=UUID()
+    /// A login lifetime, unchanged by token renewal; SDK callbacks bind to it.
+    var sessionOwner:UUID {lock.lock();defer {lock.unlock()};return owner}
+    @discardableResult private func forgetSession(ifOwner expected:UUID?=nil)->Bool {
+        lock.lock()
+        if let expected,expected != owner {lock.unlock();return false}
+        owner=UUID();refreshing?.cancel();refreshing=nil;store.clear();lock.unlock()
+        device?.forget();NotificationCenter.default.post(name:AppAuth.didChangeSession,object:self);return true
+    }
 
     /// Debug builds take -OAAPIOrigin http://127.0.0.1:PORT for tests.
     static var defaultOrigin: String {
@@ -265,6 +274,7 @@ final class AppAuth: @unchecked Sendable {
 
     /// Posted when a login completes (not a refresh), so the app can give its push target.
     static let didLogIn = Notification.Name("OAAppAuthDidLogIn")
+    static let didChangeSession = Notification.Name("OAAppAuthDidChangeSession")
     /// Which of Apple's push services this build's token is for: a development build's token is
     /// only good on Apple's sandbox (coax/web/api/auth-device-policy.coax, dk_push_service).
     /// The Mac build sets OA_PUSH_SANDBOX when it is signed with a development profile (#13388).
@@ -329,9 +339,9 @@ final class AppAuth: @unchecked Sendable {
     }
     /// "This wasn't me": freezes the account. Every login ends, this one too, so the app forgets it.
     func freeze() async throws {
+        let current=sessionOwner
         _ = try await said { try await self.authed("/api/auth/freeze", [:]) }
-        store.clear()
-        device?.forget()
+        forgetSession(ifOwner:current)
     }
     /// A GET with this login's access token: the answer's object.
     private func get(_ path: String) async throws -> [String: Any] {
@@ -358,11 +368,10 @@ final class AppAuth: @unchecked Sendable {
 
     /// Ends this login on the server (best effort) and forgets the tokens.
     func logout() async {
-        if let t = tokens {
+        let t=tokens;forgetSession()
+        if let t {
             _ = try? await post("/api/auth/logout", [:], authorization: "Bearer " + t.access)
         }
-        store.clear()
-        device?.forget()   // one key lasts one login
     }
 
     // MARK: using it
@@ -387,15 +396,15 @@ final class AppAuth: @unchecked Sendable {
         if let running = refreshing { lock.unlock(); return try await running.value }
         // Another request renewed it a moment ago: use that pair.
         if let t = store.load(), case .useAccess = AppAuth.next(t, now: clock()) { lock.unlock(); return t }
+        let current=owner
+        guard let old=store.load() else {lock.unlock();throw Failure.said("Log in first.")}
         let task = Task<Tokens, Error> { [self] in
-            guard let t = store.load() else { throw Failure.said("Log in first.") }
             do {
-                return try keep(try await renew(t), account: t.account, bound: t.deviceBound)
+                return try keep(try await renew(old), account: old.account, bound: old.deviceBound,expectedOwner:current)
             } catch let r as Refused where r.status == 401 {
                 // The login ended (a reused token, idle, logged out elsewhere, or its device was
                 // removed): forget it, and its device key with it.
-                store.clear()
-                device?.forget()
+                forgetSession(ifOwner:current)
                 throw Failure.said(r.words)
             } catch let r as Refused {
                 throw Failure.said(r.words)   // a limit and the like: the login stays
@@ -403,7 +412,7 @@ final class AppAuth: @unchecked Sendable {
         }
         refreshing = task
         lock.unlock()
-        defer { lock.lock(); refreshing = nil; lock.unlock() }
+        defer { lock.lock();if owner==current {refreshing = nil};lock.unlock() }
         return try await task.value
     }
 
@@ -471,15 +480,18 @@ final class AppAuth: @unchecked Sendable {
 
     /// Keeps a logged-in answer's tokens; refresh answers carry no account, so it stays.
     @discardableResult
-    private func keep(_ answer: [String: Any], account: String? = nil, bound: Bool? = nil) throws -> Tokens {
+    private func keep(_ answer: [String: Any], account: String? = nil, bound: Bool? = nil,expectedOwner:UUID?=nil) throws -> Tokens {
         guard let access = answer["access_token"] as? String, access.hasPrefix("oa_at_"),
               let refresh = answer["refresh_token"] as? String, refresh.hasPrefix("oa_rt_") else { throw Failure.said("That didn't work. Try again.") }
         let seconds = (answer["expires_in"] as? NSNumber)?.doubleValue ?? 3600
         let t = Tokens(access: access, refresh: refresh, accessUntil: clock().addingTimeInterval(seconds),
                        account: (answer["account"] as? String) ?? account ?? tokens?.account ?? "",
                        deviceBound: (answer["device_bound"] as? Bool) == true ? true : bound)
-        store.save(t)
-        if account == nil { NotificationCenter.default.post(name: AppAuth.didLogIn, object: self) }   // a login, not a refresh
+        lock.lock()
+        if let expectedOwner,expectedOwner != owner {lock.unlock();throw CancellationError()}
+        if account==nil {owner=UUID();refreshing?.cancel();refreshing=nil}
+        store.save(t);lock.unlock()
+        if account == nil {NotificationCenter.default.post(name:AppAuth.didChangeSession,object:self);NotificationCenter.default.post(name: AppAuth.didLogIn, object: self)}   // a login, not a refresh
         return t
     }
 

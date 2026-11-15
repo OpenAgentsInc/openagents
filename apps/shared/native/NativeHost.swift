@@ -15,7 +15,8 @@ import Security
     private let wallet=SparkHost()
     private let documents=NativeDocuments()
     let accountServices:NativeAccountServices
-    private let relayServices=NativeRelayServices()
+    private lazy var relayServices=NativeRelayServices(auth:auth)
+    private lazy var messagingServices=NativeMessagingServices(auth:auth,account:accountServices)
     private var relayEpoch=UUID()
     private let surface=NativeControls()
     private lazy var workspace=NativeWorkspace(detail:surface)
@@ -43,7 +44,9 @@ import Security
         load()
     }
     func load() {
-        epoch=UUID();relayEpoch=UUID();relayServices.reset();health?.cancel();documents.release();programs=[]
+        epoch=UUID();relayEpoch=UUID();messagingServices.retire();relayServices.reset();health?.cancel();documents.release();programs=[]
+        let relays=relayServices;relays.messaging=messagingServices
+        messagingServices.admitCustody={ [weak relays] raw in guard let relays else {throw CancellationError()};return try await relays.authorizeCustody(raw)}
         let directory=updates.boot()
         do {
             programs=try [NativeProgram(directory:directory,module:"app"),NativeProgram(directory:directory,module:"extras")]
@@ -96,14 +99,16 @@ import Security
             let (op,body)=try p.action()
             if op==0 {continue}
             let owner=epoch,extra=(p === programs.last)
-            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open","environment.commandIDs","environment.wait","world.open","documents.pick","documents.upload","documents.release","","account.service","clipboard.write.v2","relay.read"]
+            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open","environment.commandIDs","environment.wait","world.open","documents.pick","documents.upload","documents.release","","account.service","clipboard.write.v2","relay.read","nostr.custody","nostr.store","nostr.session"]
             guard extra || op>0 && op<ops.count else {throw NativeFailure.refused("Unsupported service")}
             var args=(try? JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] ?? [:]
             if !extra && op==13 {args["nativeWire"]=body}
             if !extra && op==20 {args["nativeWire"]=body;relayEpoch=UUID()}
+            if !extra && op>=21 && op<=23 {args["nativeWire"]=body}
             if !extra && op==8 {httpEpoch=UUID();httpTask?.cancel();httpTask=nil}
             let requestOwner=httpEpoch
             let relayOwner=relayEpoch
+            let loginOwner=auth.sessionOwner
             services += 1
             let task=Task { [weak self,weak p] in
                 guard let self else {return}
@@ -112,12 +117,14 @@ import Security
                 do {
                     let result=try await self.call(extra ? "wallet.balance":ops[op],args)
                     guard self.epoch==owner,op != 4 || self.httpEpoch==requestOwner,op != 20 || self.relayEpoch==relayOwner else {return}
+                    guard extra || op<21 || op>23 || self.auth.sessionOwner==loginOwner else {return}
                     let record=result as? [String:Any] ?? [:]
-                    let raw=extra || op==18 || op==20 ? record["record"] as? String ?? "" : op==4 ? record["body"] as? String ?? "" : String(decoding:try JSONSerialization.data(withJSONObject:result),as:UTF8.self)
+                    let raw=extra || op==18 || op>=20 && op<=23 ? record["record"] as? String ?? "" : op==4 ? record["body"] as? String ?? "" : String(decoding:try JSONSerialization.data(withJSONObject:result),as:UTF8.self)
                     try p.event(extra ? 21:100+op,record["status"] as? Int ?? 0,raw)
                     try self.pump()
                 } catch {
                     guard self.epoch==owner,op != 4 || self.httpEpoch==requestOwner,op != 20 || self.relayEpoch==relayOwner else {return}
+                    guard extra || op<21 || op>23 || self.auth.sessionOwner==loginOwner else {return}
                     let raw=String(decoding:(try? JSONSerialization.data(withJSONObject:["error":error.localizedDescription])) ?? Data(),as:UTF8.self)
                     do {try p.event(extra ? 21:200+op,0,extra ? "":raw);try self.pump()} catch {self.refuse()}
                 }
@@ -128,6 +135,9 @@ import Security
     func call(_ op:String,_ b:[String:Any]) async throws -> Any {
         switch op {
         case "relay.read":return try await relayServices.perform(b["nativeWire"] as? String ?? "")
+        case "nostr.custody":return try await messagingServices.custody(b["nativeWire"] as? String ?? "")
+        case "nostr.store":return try await messagingServices.store(b["nativeWire"] as? String ?? "")
+        case "nostr.session":return try await relayServices.performSession(b["nativeWire"] as? String ?? "")
         case "account.service":return try await accountServices.perform(b,presenter:dialog ?? self)
         case "world.open":
             let wire=b["nativeWire"] as? String ?? ""
@@ -202,7 +212,7 @@ import Security
             guard let window=view.window, passkey==nil else { throw NativeFailure.refused("Authentication busy") }
             let challenge=try await auth.passkeyChallenge(); let p=PasskeyAsk(anchor:window); passkey=p; defer { passkey=nil }
             _ = try await auth.passkeyLogin(challenge,try await p.assert(challenge)); return ["loggedIn":true]
-        case "auth.logout": relayEpoch=UUID();relayServices.reset();accountServices.clear();await auth.logout(); return ["loggedIn":false]
+        case "auth.logout": relayEpoch=UUID();messagingServices.retire();relayServices.reset();accountServices.clear();await auth.logout(); return ["loggedIn":false]
         case "clipboard.write", "clipboard.write.v2":
             guard let text=b["text"] as? String,nt_copy_admit(op == "clipboard.write.v2" ? 2:1,Int64(text.utf8.count)) else {throw NativeFailure.refused("Text is too large")}
             if accountServices.privateClipboard {UIPasteboard.general.setItems([[UIPasteboard.typeAutomatic:text]],options:[.localOnly:true,.expirationDate:Date().addingTimeInterval(60)])}else {UIPasteboard.general.string=text};return ["copied":true]

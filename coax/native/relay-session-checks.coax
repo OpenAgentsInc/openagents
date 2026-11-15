@@ -1,0 +1,51 @@
+// Only the oracle assembly loads this file. No socket or account effects.
+nrs_t_req :: (sub:string,filter:string,out:[]u8)->string #effects(all) {
+ n:=json_raw(out,0,"[\"REQ\",");n=json_write_string(out,n,sub);n=json_raw(out,n,",");n=json_raw(out,n,filter);n=json_raw(out,n,"]");return cast(string)out[0..<n];
+}
+NRS_T_ID :: "0000000000000000000000000000000000000000000000000000000000000001";
+NRS_T_FILTER :: "{\"authors\":[\"0000000000000000000000000000000000000000000000000000000000000001\"],\"kinds\":[3]}";
+#test "native session bind owns exact fields retires old barriers and refuses invalid views and URLs" {
+ s:[2]NrsOwner;b:[2048]u8;
+ for n:[2]int.[0,2] {#assert !nrs_bind(s[0..<n],1,NRS_T_ID,"wss://relay.example") && !nrs_owned(s[0..<n],1);nrs_retire(s[0..<n]);}
+ for url:[4]string.["bad","ws://relay.example","wss://relay.example?x=1","wss://a@relay.example"] {#assert !nrs_bind(s[0..<1],1,NRS_T_ID,url);}
+ #assert !nrs_bind(s[0..<1],0,NRS_T_ID,"wss://relay.example") && !nrs_bind(s[0..<1],1,"bad","wss://relay.example");
+ #assert nrs_bind(s[0..<1],7,NRS_T_ID,"wss://relay.example") && s[0].n==19 && cast(string)s[0].url[0..<s[0].n]=="wss://relay.example" && cast(string)s[0].identity[..]==NRS_T_ID;
+ #assert nrs_watch(s[0..<1],7,nrs_t_req("a",NRS_T_FILTER,b[..]))==1 && nrs_input(s[0..<1],7,"[\"EOSE\",\"a\"]")==1;
+ #assert nrs_watch(s[0..<1],6,nrs_t_req("a",NRS_T_FILTER,b[..]))==0 && !nrs_read_ready(s[0..<1],6,NRS_T_ID,3);
+ s[0].live=false;#assert !nrs_owned(s[0..<1],7) && !nrs_read_ready(s[0..<1],7,NRS_T_ID,3);s[0].live=true;
+ #assert nrs_bind(s[0..<1],8,NRS_T_ID,"wss://other.example") && s[0].reads[0].n==0 && !s[0].reads[0].done && !nrs_read_ready(s[0..<1],8,NRS_T_ID,3);
+ nrs_retire(s[0..<1]);#assert !s[0].live && s[0].generation==0 && s[0].n==0;
+}
+#test "read barriers refuse filtered nonarray wrong-author empty-limit and unsupported-kind requests" {
+ s:[1]NrsOwner;b:[2048]u8;#assert nrs_bind(s[..],7,NRS_T_ID,"wss://relay.example");
+ for filter:[8]string.[
+ "{\"authors\":[\"0000000000000000000000000000000000000000000000000000000000000001\"],\"kinds\":[3],\"since\":1}",
+ "{\"authors\":[\"0000000000000000000000000000000000000000000000000000000000000001\"],\"kinds\":{\"x\":3}}",
+ "{\"authors\":{\"x\":\"0000000000000000000000000000000000000000000000000000000000000001\"},\"kinds\":[3]}",
+ "{\"authors\":[\"0000000000000000000000000000000000000000000000000000000000000002\"],\"kinds\":[3]}",
+ "{\"authors\":[\"short\"],\"kinds\":[3]}",
+ "{\"authors\":[\"0000000000000000000000000000000000000000000000000000000000000001\"],\"kinds\":[3],\"limit\":0}",
+ "{\"authors\":[\"0000000000000000000000000000000000000000000000000000000000000001\"],\"kinds\":[14]}",
+ "{\"authors\":[],\"kinds\":[3]}"
+ ] {#assert nrs_watch(s[..],7,nrs_t_req("a",filter,b[..]))==0 && !nrs_read_ready(s[..],7,NRS_T_ID,3);}
+ #assert nrs_watch(s[..],7,"[\"CLOSE\",\"a\"]")==0 && nrs_watch(s[..],7,"[\"REQ\",\"a\",{},{}]")==0 && nrs_watch(s[..],7,"{")==0;
+}
+#test "replacement subscriptions reset both completed and failed reads rather than inheriting the old label" {
+ s:[1]NrsOwner;b:[2048]u8;#assert nrs_bind(s[..],7,NRS_T_ID,"wss://relay.example");
+ #assert nrs_watch(s[..],7,nrs_t_req("a",NRS_T_FILTER,b[..]))==1 && nrs_input(s[..],7,"[\"EOSE\",\"a\"]")==1 && nrs_read_ready(s[..],7,NRS_T_ID,3);
+ #assert nrs_watch(s[..],7,nrs_t_req("b",NRS_T_FILTER,b[..]))==1 && !nrs_read_ready(s[..],7,NRS_T_ID,3);
+ #assert nrs_input(s[..],7,"[\"CLOSED\",\"b\",\"error: failed\"]")==1 && s[0].reads[0].failed && !s[0].reads[0].done;
+ #assert nrs_watch(s[..],7,nrs_t_req("c",NRS_T_FILTER,b[..]))==1 && !s[0].reads[0].failed && !s[0].reads[0].done;
+ #assert nrs_input(s[..],7,"[\"EOSE\",\"c\"]")==1 && nrs_read_ready(s[..],7,NRS_T_ID,3);
+ #assert nrs_input(s[..],7,"[\"CLOSED\",\"c\",\"error: late failure\"]")==1 && s[0].reads[0].failed && !s[0].reads[0].done && !nrs_read_ready(s[..],7,NRS_T_ID,3);
+}
+#test "only a valid EOSE for the observed subscription completes a barrier and AUTH retains its own classification" {
+ s:[1]NrsOwner;b:[4096]u8;#assert nrs_bind(s[..],7,NRS_T_ID,"wss://relay.example") && nrs_watch(s[..],7,nrs_t_req("a",NRS_T_FILTER,b[..]))==1;
+ #assert nrs_input(s[..],7,"[\"EOSE\",\"z\"]")==0 && !nrs_read_ready(s[..],7,NRS_T_ID,3);
+ n:=json_raw(b[..],0,"[\"EVENT\",\"a\",");n=json_raw(b[..],n,NMS_LIST_EVENT);n=json_raw(b[..],n,"]");#assert nrs_input(s[..],7,cast(string)b[0..<n])==0 && !nrs_read_ready(s[..],7,NRS_T_ID,3);
+ n=json_raw(b[..],0,"[\"EOSE\",\"a\"");for i:0..<NM_MAX_EOSE_EXTRA+1 {n=json_raw(b[..],n,",0");}n=json_raw(b[..],n,"]");#assert nrs_input(s[..],7,cast(string)b[0..<n])==0 && !nrs_read_ready(s[..],7,NRS_T_ID,3);
+ n=json_raw(b[..],0,"[\"EOSE\",\"");for i:0..<40 {n=json_raw(b[..],n,"é");}n=json_raw(b[..],n,"\"]");#assert nrs_input(s[..],7,cast(string)b[0..<n])==0;
+ #assert nrs_input(s[..],7,"[\"NOTICE\",\"hello\"]")==0 && nrs_input(s[..],7,"{")==0;
+ #assert nrs_input(s[..],7,"[\"AUTH\",\"live challenge\"]")==2 && nip42_challenge_text(s[0].auth[..])=="live challenge";
+ #assert nrs_input(s[..],7,"[\"EOSE\",\"a\"]")==1 && nrs_read_ready(s[..],7,NRS_T_ID,3);
+}

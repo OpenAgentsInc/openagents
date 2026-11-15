@@ -10,6 +10,7 @@
 		01122364B289DF707A54AFA6 /* ProjectUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CD892177F785608B4FF583C /* ProjectUITests.swift */; };
 		01688BBD7E8AAF51B8278EED /* NativeRemoteImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB3A54860A68487AA4BBDAEB /* NativeRemoteImage.swift */; };
 		03AF362E64D9222AA06F0E40 /* NativePolicy.c in Sources */ = {isa = PBXBuildFile; fileRef = DCD62FA8D277D57B999CBF47 /* NativePolicy.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
+		07FD0B08B02E6555CF275536 /* nostr-inboxes.json in Resources */ = {isa = PBXBuildFile; fileRef = 7A935338A51BFCABE0AA113A /* nostr-inboxes.json */; };
 		081BC189AB524F65D78C03E4 /* AppAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABE3F6DB32D91F73A83323E9 /* AppAnalytics.swift */; };
 		095EEDDBD0F5949696F6B490 /* NativeProgramTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25D8936BC22A37E1214E454F /* NativeProgramTests.swift */; };
 		0F64B5AFCEDD256C035DF6D8 /* ChatUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B07580CC0A27104C07B9B5C /* ChatUITests.swift */; };
@@ -18,6 +19,7 @@
 		1654B08E3C265E5E8E899CA8 /* NativeText.c in Sources */ = {isa = PBXBuildFile; fileRef = 2863347EB50F2C00D1ED1869 /* NativeText.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		171CE627CDE58FB3A075E4EA /* WorldShaders in Resources */ = {isa = PBXBuildFile; fileRef = C975A4FE2A0E54E394405786 /* WorldShaders */; };
 		18803B656260B6B61CB3A3C4 /* NativeAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 806FA1794392F02814D56A4B /* NativeAccount.swift */; };
+		188C6B4AA4BC88228ACF134E /* NativeMessaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD9C289E57EEE12AFEDDC339 /* NativeMessaging.swift */; };
 		18FDCC1A0A5965D7D479402D /* NativeWorldProgram-test.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93CE4D9A643E98E31E87C926 /* NativeWorldProgram-test.swift */; };
 		1A20716CC355EDA8BC21C154 /* NativeRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 061619840F40E0836F925635 /* NativeRelay.swift */; };
 		1A28B8DC4FECD39D3063F83A /* Grid.c in Sources */ = {isa = PBXBuildFile; fileRef = D95AEE2F92F9B46112435148 /* Grid.c */; };
@@ -73,7 +75,9 @@
 		6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0AAC9508FA4369A9715A69 /* AppAuth.swift */; };
 		704C961857BA052BD602FE8A /* MadeRealmRuntime.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		711805FE18B74F48101A84C4 /* NativeTranscriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3EDDA42FA80D738F2AF2B3 /* NativeTranscriptTests.swift */; };
+		7602ED0EF160C7F0A85F185B /* NativeMessagingUnit.c in Sources */ = {isa = PBXBuildFile; fileRef = 19B9822D27AF08201367026E /* NativeMessagingUnit.c */; };
 		77214AC5E50DDE33A8E5057E /* NativeWorldHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE6F7A293A2BF2130273E7A /* NativeWorldHost.swift */; };
+		78FC01DBBAB02183BA2A18CC /* AppAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7059FB56C33A4938F817F834 /* AppAuthTests.swift */; };
 		790A92BCF9A5C6628FA9E10E /* NativeControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68A32BEE57050EF541CA1A16 /* NativeControls.swift */; };
 		7AF8A667DDA6EC805E8356D3 /* OpenagentsAppUnit.c in Sources */ = {isa = PBXBuildFile; fileRef = A06EC60CB2CB2474370174C3 /* OpenagentsAppUnit.c */; };
 		7D6894FC51AC087B87D7926C /* DMSans-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B041C1F00C1751C3053A0E44 /* DMSans-BoldItalic.ttf */; };
@@ -101,6 +105,7 @@
 		B8F46A110910EFA234713835 /* myrealm.face.c in Sources */ = {isa = PBXBuildFile; fileRef = 0AACACD5A7200A22E0D99877 /* myrealm.face.c */; };
 		B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C83152B91DFEEF873AAD56 /* NativeHost.swift */; };
 		BBCD33281D47033AC1DB4BF7 /* PageHost.m in Sources */ = {isa = PBXBuildFile; fileRef = 02972CD305F4FD3F384DE808 /* PageHost.m */; };
+		BC9E645589B29B21210F2B73 /* NativeMessagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B2F7FD331C12AF2C910FF82 /* NativeMessagingTests.swift */; };
 		BF64602A4EA2BC57DB1534AF /* NativeArcade.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1845629DDEA34592F87E3FD /* NativeArcade.swift */; };
 		BFE34625B35451186BA445E4 /* NativeMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7284237748CD21A99F8480AC /* NativeMessage.swift */; };
 		C0B0BC79860337C450B78A5D /* PhoneSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */; };
@@ -217,6 +222,7 @@
 		0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceUITests.swift; sourceTree = "<group>"; };
 		12732C0F80796C53136B0DC3 /* NativeComposer-T3-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "NativeComposer-T3-LICENSE.txt"; sourceTree = "<group>"; };
 		131BDA8ADB97609206195533 /* bip39-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bip39-english.txt"; sourceTree = "<group>"; };
+		19B9822D27AF08201367026E /* NativeMessagingUnit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeMessagingUnit.c; sourceTree = "<group>"; };
 		1AF7AD81A684A2291C02A25A /* River.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = River.c; sourceTree = "<group>"; };
 		1B7444B08092B9624B2F186F /* MetalAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalAudio.swift; sourceTree = "<group>"; };
 		1E4AB3936542305917B3BC82 /* NavigationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationUITests.swift; sourceTree = "<group>"; };
@@ -253,6 +259,7 @@
 		550581B2872EB638FBFB4619 /* gallery.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = gallery.c; sourceTree = "<group>"; };
 		56E9C5471E75811CB4C59AC9 /* LookUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookUITests.swift; sourceTree = "<group>"; };
 		5995A6D421346543098BA23D /* NativeChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeChrome.swift; sourceTree = "<group>"; };
+		5B2F7FD331C12AF2C910FF82 /* NativeMessagingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessagingTests.swift; sourceTree = "<group>"; };
 		5DB2D6E0FD423967C52276CF /* TranscriptUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptUITests.swift; sourceTree = "<group>"; };
 		5DE15337BAC2E10225C3C1CB /* NativeWire.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeWire.c; sourceTree = "<group>"; };
 		60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMarkdownTests.swift; sourceTree = "<group>"; };
@@ -261,10 +268,12 @@
 		68A32BEE57050EF541CA1A16 /* NativeControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeControls.swift; sourceTree = "<group>"; };
 		69E87B7AE608F14798614E2E /* client.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = client.c; sourceTree = "<group>"; };
 		6AFA212E9934ACB660A7E250 /* UsageUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageUITests.swift; sourceTree = "<group>"; };
+		7059FB56C33A4938F817F834 /* AppAuthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuthTests.swift; sourceTree = "<group>"; };
 		7284237748CD21A99F8480AC /* NativeMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessage.swift; sourceTree = "<group>"; };
 		7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePackageTests.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		77B06C5399D3C53DAFA386F6 /* NativeWorldEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldEditor.swift; sourceTree = "<group>"; };
+		7A935338A51BFCABE0AA113A /* nostr-inboxes.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "nostr-inboxes.json"; sourceTree = "<group>"; };
 		806FA1794392F02814D56A4B /* NativeAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAccount.swift; sourceTree = "<group>"; };
 		8229C5D27BC40A99010E48D9 /* OpenAgents.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenAgents.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8477A24ADD8E8A749294EEEE /* NativeTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTypes.swift; sourceTree = "<group>"; };
@@ -295,6 +304,7 @@
 		BBABC7D52E5BD89513705FE4 /* NativePasskey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePasskey.swift; sourceTree = "<group>"; };
 		BC347727510CEB5F0963D925 /* Everglade-step.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Everglade-step.c"; sourceTree = "<group>"; };
 		BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = precomputed_ecmult_gen.c; sourceTree = "<group>"; };
+		BD9C289E57EEE12AFEDDC339 /* NativeMessaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessaging.swift; sourceTree = "<group>"; };
 		BE3E54671A8869C147608A21 /* WalletBalance.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = WalletBalance.c; sourceTree = "<group>"; };
 		BE5C04823E6E6E322FD7E33C /* WalletKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletKeychain.swift; sourceTree = "<group>"; };
 		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
@@ -405,6 +415,14 @@
 			path = "../../metaverse-engine/host/apple";
 			sourceTree = "<group>";
 		};
+		653E7B06FDCB7DAD944BCD01 /* UnitTests */ = {
+			isa = PBXGroup;
+			children = (
+				7059FB56C33A4938F817F834 /* AppAuthTests.swift */,
+			);
+			path = UnitTests;
+			sourceTree = "<group>";
+		};
 		71A2ECE12A4F32216053EEC0 /* StarterTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -413,6 +431,7 @@
 				C680CE7EE33AD753C2110442 /* NativeArcadeTests.swift */,
 				0C7E58D455D3499DCC49CA03 /* NativeFeedTests.swift */,
 				60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */,
+				5B2F7FD331C12AF2C910FF82 /* NativeMessagingTests.swift */,
 				2F75A26BBCE628290F7BADC0 /* NativeNavigationTests.swift */,
 				7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */,
 				25D8936BC22A37E1214E454F /* NativeProgramTests.swift */,
@@ -421,6 +440,7 @@
 				2090461DEB661585A0B8576E /* NativeWorldDownload-test.swift */,
 				93CE4D9A643E98E31E87C926 /* NativeWorldProgram-test.swift */,
 				9EE12087F6CBB97147B8BD05 /* NativeWorldTests.swift */,
+				7A935338A51BFCABE0AA113A /* nostr-inboxes.json */,
 				FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */,
 			);
 			path = StarterTests;
@@ -488,6 +508,7 @@
 				C1AA3819D538A01C3EBF524A /* NativeDocuments.swift */,
 				01C83152B91DFEEF873AAD56 /* NativeHost.swift */,
 				7284237748CD21A99F8480AC /* NativeMessage.swift */,
+				BD9C289E57EEE12AFEDDC339 /* NativeMessaging.swift */,
 				BBABC7D52E5BD89513705FE4 /* NativePasskey.swift */,
 				09C29607A719DC46C635E2BB /* NativeProgram.swift */,
 				061619840F40E0836F925635 /* NativeRelay.swift */,
@@ -641,6 +662,7 @@
 				DA6976CE4AA8C31947C48C5D /* Native.plist */,
 				660A52449B03C526BE085810 /* NativeAccountUnit.c */,
 				87B62191D8926016DED19A04 /* NativeAudioUnit.c */,
+				19B9822D27AF08201367026E /* NativeMessagingUnit.c */,
 				2776D3A11BB440CD95AD7EF7 /* NativePresentationUnit.c */,
 				882BFF7B3185EFCF3ACA0DA9 /* NativeRelayUnit.c */,
 				460986BD3808434A301E2974 /* NativeWorldUnit.c */,
@@ -667,6 +689,7 @@
 				8A366ADC38979696589B7858 /* src */,
 				71A2ECE12A4F32216053EEC0 /* StarterTests */,
 				C9674C796927111E3430D894 /* StarterUITests */,
+				653E7B06FDCB7DAD944BCD01 /* UnitTests */,
 				980C20719E4EAD0DDDFF2531 /* Wallet */,
 				A399D11B8F0035506E68EDB0 /* Products */,
 			);
@@ -791,6 +814,7 @@
 			buildConfigurationList = FD5F82D9C7CB002A18146475 /* Build configuration list for PBXNativeTarget "OpenAgentsTests" */;
 			buildPhases = (
 				50F756062D7ED0894535DCE8 /* Sources */,
+				B5A1EA4C2C33217125BFFC08 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -893,6 +917,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B5A1EA4C2C33217125BFFC08 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				07FD0B08B02E6555CF275536 /* nostr-inboxes.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -920,6 +952,8 @@
 				514CF680606D1D6BE5BCB654 /* NativeDocuments.swift in Sources */,
 				B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */,
 				BFE34625B35451186BA445E4 /* NativeMessage.swift in Sources */,
+				188C6B4AA4BC88228ACF134E /* NativeMessaging.swift in Sources */,
+				7602ED0EF160C7F0A85F185B /* NativeMessagingUnit.c in Sources */,
 				7FAFE0A840AB71D35F54394D /* NativePasskey.swift in Sources */,
 				FA600EC72A02C836ED58F068 /* NativePlayerBind.c in Sources */,
 				03AF362E64D9222AA06F0E40 /* NativePolicy.c in Sources */,
@@ -1005,11 +1039,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				78FC01DBBAB02183BA2A18CC /* AppAuthTests.swift in Sources */,
 				F32496C8B07DE3345D303531 /* LookTests.swift in Sources */,
 				43702F2A857C263ED9546C2D /* NativeAccountTests.swift in Sources */,
 				F1BB475BB041B27E67EBA7C3 /* NativeArcadeTests.swift in Sources */,
 				ABAA1F540A60EDEF611C50ED /* NativeFeedTests.swift in Sources */,
 				2C15AE18F335A39F71D3ECC5 /* NativeMarkdownTests.swift in Sources */,
+				BC9E645589B29B21210F2B73 /* NativeMessagingTests.swift in Sources */,
 				55AC91DF997D5A13F8191302 /* NativeNavigationTests.swift in Sources */,
 				DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */,
 				095EEDDBD0F5949696F6B490 /* NativeProgramTests.swift in Sources */,
@@ -1182,7 +1218,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1092;
+				CURRENT_PROJECT_VERSION = 1093;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -1418,7 +1454,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1092;
+				CURRENT_PROJECT_VERSION = 1093;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1451,7 +1487,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1092;
+				CURRENT_PROJECT_VERSION = 1093;
 				EXPORTED_SYMBOLS_FILE = "$(SRCROOT)/../../metaverse-engine/host/apple/page-host.exports";
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1655,7 +1691,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1092;
+				CURRENT_PROJECT_VERSION = 1093;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

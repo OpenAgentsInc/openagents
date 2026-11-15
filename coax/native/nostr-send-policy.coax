@@ -1,0 +1,34 @@
+// A successful seal means one complete, recoverable NIP-17 envelope set.
+#load "nostr-capability.coax";
+#load "messaging-store-policy.coax";
+#load "../lib/nostr/nip17-peers.coax";
+#authority;
+NSM_COPIES :: 11;NSM_BYTES :: 1048576;
+#test "complete preparation requires actual custody and every peer and sender inbox" {
+ f:=NsFacts.{live=true,human=true,matched=true,approved=true,source=NS_MANAGED,provider=NS_SERVER};
+ #assert nsm_prepare_permit(f,1,2,true) && nsm_prepare_permit(f,10,11,true);
+ #assert !nsm_prepare_permit(f,0,1,true) && !nsm_prepare_permit(f,11,12,true) && !nsm_prepare_permit(f,1,1,true) && !nsm_prepare_permit(f,1,2,false);
+ f.matched=false;#assert !nsm_prepare_permit(f,1,2,true);
+}
+#test "managed batch candidates are internal and linked candidates require their actual account source" {
+ f:=MsFacts.{authorized=true,matched=true};
+ #assert nsm_commit_permit(f,NS_MANAGED,true)==0 && nsm_commit_permit(f,NS_LINKED,false)==0;
+ #assert nsm_commit_permit(f,NS_MANAGED,false)==5 && nsm_commit_permit(f,NS_LINKED,true)==5 && nsm_commit_permit(f,0,false)==6 && nsm_commit_permit(f,3,false)==6;
+ f.authorized=false;#assert nsm_commit_permit(f,NS_LINKED,false)==5;f.authorized=true;f.matched=false;#assert nsm_commit_permit(f,NS_LINKED,false)==3;
+}
+#test "a whole recipient set has distinct peers and exactly one final sender copy" {
+ me:[32]u8;me[31]=1;keys:[96]u8;keys[31]=2;keys[63]=3;keys[95]=1;
+ #assert nsm_copy_order(me[..],keys[..]) && nsm_copy_order(me[..],keys[32..<96]);
+ #assert !nsm_copy_order(me[0..<31],keys[..]) && !nsm_copy_order(me[..],keys[0..<64]) && !nsm_copy_order(me[..],keys[64..<96]) && !nsm_copy_order(me[..],keys[0..<95]) && !nsm_copy_order(me[..],keys[0..<0]);
+ many:[352]u8;for i:0..<10 {many[i*32+31]=cast(u8)(i+2);}many[351]=1;#assert nsm_copy_order(me[..],many[..]);
+ keys[63]=2;#assert !nsm_copy_order(me[..],keys[..]);keys[63]=1;#assert !nsm_copy_order(me[..],keys[..]);
+}
+nsm_prepare_permit :: (f:NsFacts,peers:int,heads:int,ready:bool)->bool #effects(all) {return ns_permit(f,3) && peers>=1 && peers<=N17_MOST && heads==peers+1 && ready;} // mutant: equivalent (action 3 -> 4: ns_permit deliberately grants the same necessary custody gate to every supported typed action; nsm_seal independently requires action 3)
+nsm_commit_permit :: (f:MsFacts,source:int,internal:bool)->int #export_c #effects(all) {
+ if !f.authorized {return 5;}if !f.matched {return 3;}if source!=NS_MANAGED && source!=NS_LINKED {return 6;}
+ return ifx (source==NS_MANAGED)==internal then 0 else 5;
+}
+nsm_copy_order :: (sender:[]u8,keys:[]u8)->bool #effects(all) {
+ if sender.count!=32 || keys.count<64 || keys.count>NSM_COPIES*32 || keys.count%32!=0 {return false;} // mutant: equivalent (remaining || -> && and 352 -> 353: n17_peer_bad independently refuses a non-32-byte sender and invalid peer length/count; 353 bytes cannot be a whole key set)
+ last:=keys.count-32;return n17_peer_bad(sender,keys[0..<last])== -1 && n17_same(sender,keys[last..<keys.count]);
+}

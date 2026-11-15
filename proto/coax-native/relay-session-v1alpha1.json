@@ -1,0 +1,15 @@
+{
+  "schema":"coax.native.relay-session.v1alpha1",
+  "operation":23,
+  "reply_event":123,
+  "failure_event":223,
+  "request_fields":["schema","action","slot","generation","sequence","identity","payload"],
+  "observation_fields":["schema","kind","slot","generation","sequence","identity","payload"],
+  "actions":["open","send","poll","close","reset","clock"],
+  "kinds":["connecting","open","message","closed","overflow","idle","failed","clock"],
+  "limits":{"slots":6,"frame_bytes":131072,"wire_bytes":800000,"original_bytes":65536,"retained_bytes":1048576,"retained_records":64,"url_bytes":256},
+  "ownership":"authenticated account + actual canonical identity + native owner epoch + exact saved WSS URL + nonwrapping generation; public operation 20 cannot operate these slots",
+  "writes":"REQ/CLOSE remain read commands. EVENT requires actual signature verification and exact original, frozen relay target and pending observation from the committed account outbox. AUTH requires verified kind 22242 by the canonical identity and the current URL/generation/challenge, validated again immediately before sending.",
+  "read_barriers":"list writes require current-generation completed reads on every selected relay; failed or partial reads are never absent lists; list-head selection uses the shared verified store",
+  "codec":"coax/native/relay-session-wire.coax"
+}

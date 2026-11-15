@@ -20,7 +20,7 @@ enum NativeAccountCodec {
         let n=output.withUnsafeMutableBufferPointer {body(coax_v_u8(data:$0.baseAddress,count:Int64($0.count)))}
         guard n>=0,n<=cap else {throw NativeFailure.refused("Account unavailable")};return String(decoding:output.prefix(Int(n)),as:UTF8.self)
     }
-    static func part(_ raw:String,_ path:String)->String {(try? write(8192) {out in text(raw) {r in text(path) {nas_part(r,$0,out)}}}) ?? ""}
+    static func part(_ raw:String,_ path:String,cap:Int=8192)->String {(try? write(cap) {out in text(raw) {r in text(path) {nas_part(r,$0,out)}}}) ?? ""}
     static func flag(_ raw:String,_ path:String)->Bool {text(raw) {r in text(path) {nas_flag(r,$0)}}}
     static func encode(_ key:Data,secret:Bool)throws->String {try write(128) {out in bytes(key) {nas_encode($0,secret,out)}}}
     static func key(_ typed:String)throws->Data {
@@ -88,6 +88,8 @@ struct NativeLoginKeys {
         if let key=try vault.read(pub) {return key}
         if var key=try NostrKey.existingSecret() {let actual=try NativeAccountCodec.publicKey(key).map {String(format:"%02x",$0)}.joined();if actual==pub {return key};key.resetBytes(in:0..<key.count)};return nil
     }
+    // Installed custody SDK only. No bridge or updateable screen receives this.
+    func custodyKey(_ pub:String)throws->Data? {try localKey(pub)}
     private func prove(_ presenter:UIViewController)async throws {
         let raw=try await request("/api/auth/ways")
         for index in 0..<16 {let pub=NativeAccountCodec.part(raw,"keys[\(index)].pubkey");guard !pub.isEmpty else{break};if var key=try localKey(pub) {defer {key.resetBytes(in:0..<key.count)};try await authenticate();let url=try await auth.proofChallenge(purpose:"stepup");guard url.hasPrefix(auth.origin+"/api/auth/step-up?c=") else {throw AppAuth.Failure.unreachable};let header=try NativeAccountCodec.header(key,url:url,body:"",bind:false);_ = try await request(String(url.dropFirst(auth.origin.count)),method:"POST",body:try json(["proof":String(header.dropFirst(6))]));return}}

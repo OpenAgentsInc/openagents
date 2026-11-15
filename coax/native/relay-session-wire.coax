@@ -1,0 +1,46 @@
+// Versioned authenticated session, beside the frozen read-only operation 20.
+#load "relay-session-policy.coax";
+#load "relay-read-wire.coax";
+#load "../web/api/api-wire.coax";
+NRS_SCHEMA :: "coax.native.relay-session.v1alpha1";NRS_OP :: 23;
+NrsRequest :: struct {ok:bool;action:int;slot:int;generation:int;sequence:int;identity:[64]u8;n:int;payload:[NRS_FRAME]u8;}
+NrsObservation :: struct {ok:bool;kind:int;slot:int;generation:int;sequence:int;identity:[64]u8;n:int;payload:[NRS_FRAME]u8;}
+#test "authenticated transport has a separate closed identity-bound envelope" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";b:[2048]u8;q:[1]NrsRequest;r:[1]NrrRequest;
+ n:=nrs_request("open",0,7,0,id,"wss://relay.example",b[..]);#assert n>0 && nrs_read(cast(string)b[0..<n],q[..]) && q[0].generation==7 && q[0].action==1;
+ #assert !nrr_read(cast(string)b[0..<n],r[..]) && !nrs_read("{}",q[..]);
+ #assert nrs_request("open",0,7,0,id,"ws://relay.example",b[..])<0 && nrs_request("poll",0,7,0,"bad","",b[..])<0;
+ #assert nrs_request("reset",0,0,0,id,"",b[..])>0 && nrs_request("reset",1,0,0,id,"",b[..])<0;
+}
+#test "session observations carry complete larger frames and the same canonical identity" #steps 200000000 {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";b:[800000]u8;raw:[131073]u8;o:[1]NrsObservation;for i:0..<raw.count {raw[i]=1;}
+ n:=nrs_observation(0,7,3,id,"message",cast(string)raw[0..<131072],b[..]);#assert n>786432 && nrs_observe(cast(string)b[0..<n],o[..]) && o[0].n==131072;
+ #assert nrs_observation(0,7,3,id,"message",cast(string)raw[..],b[..])<0 && nrs_observation(0,7,3,id,"unknown","",b[..])<0;
+ #assert nrs_observation(0,7,0,id,"clock","1700000000",b[..])>0 && nrs_observation(0,7,0,id,"clock","-1",b[..])<0;
+}
+nrs_admit :: (action:int,slot:int,generation:int,sequence:int,identity:string,payload:string)->bool #effects(all) {
+ if !aw_hex(identity,64) {return false;}if action==2 {return nrr_owner(slot,generation,sequence) && sequence==0 && payload.count>0 && payload.count<=NRS_FRAME && js_utf8(payload);}
+ return nrr_admit(action,slot,generation,sequence,payload);
+}
+nrs_read :: (raw:string,q:[]NrsRequest)->bool #export_c #effects(all) {
+ if q.count!=1 {return false;}q[0]=NrsRequest.{};d:[1]Jv;nodes:[18]JvNode;if raw.count>NRS_WIRE || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[7]string.["schema","action","slot","generation","sequence","identity","payload"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=7 || jv_raw(v,jv_get(v,0,"schema"))!=NRS_SCHEMA {return false;}
+ q[0].action=nrr_id(jv_raw(v,jv_get(v,0,"action")),NRR_ACTIONS[..]);q[0].slot=js_number(v,jv_get(v,0,"slot"));q[0].generation=js_number(v,jv_get(v,0,"generation"));q[0].sequence=js_number(v,jv_get(v,0,"sequence"));
+ ni:=js_string(v,jv_get(v,0,"identity"),q[0].identity[..]);q[0].n=js_string(v,jv_get(v,0,"payload"),q[0].payload[..]);q[0].ok=ni==64 && q[0].n>=0 && nrs_admit(q[0].action,q[0].slot,q[0].generation,q[0].sequence,cast(string)q[0].identity[..],cast(string)q[0].payload[0..<q[0].n]);return q[0].ok;
+}
+nrs_write :: (label:string,slot:int,generation:int,sequence:int,identity:string,payload:string,observation:bool,out:[]u8)->int #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NRS_SCHEMA);jo_key(o[..],ifx observation then "kind" else "action");jo_str(o[..],label);jo_key(o[..],"slot");jo_int(o[..],slot);jo_key(o[..],"generation");jo_int(o[..],generation);jo_key(o[..],"sequence");jo_int(o[..],sequence);jo_key(o[..],"identity");jo_str(o[..],identity);jo_key(o[..],"payload");jo_str(o[..],payload);jo_end(o[..]);return ifx o[0].bad || o[0].n>NRS_WIRE then -1 else o[0].n;
+}
+nrs_request :: (action:string,slot:int,generation:int,sequence:int,identity:string,payload:string,out:[]u8)->int #export_c #effects(all) {
+ return ifx nrs_admit(nrr_id(action,NRR_ACTIONS[..]),slot,generation,sequence,identity,payload) then nrs_write(action,slot,generation,sequence,identity,payload,false,out) else -1;
+}
+nrs_observation :: (slot:int,generation:int,sequence:int,identity:string,kind:string,payload:string,out:[]u8)->int #export_c #effects(all) {
+ k:=nrr_id(kind,NRR_KINDS[..]);if !nrr_owner(slot,generation,sequence) || !aw_hex(identity,64) || k<1 || payload.count>NRS_FRAME || !js_utf8(payload) || (k==8 && nrr_seconds(payload)<0) {return -1;}
+ return nrs_write(kind,slot,generation,sequence,identity,payload,true,out);
+}
+nrs_observe :: (raw:string,o:[]NrsObservation)->bool #export_c #effects(all) {
+ if o.count!=1 {return false;}o[0]=NrsObservation.{};d:[1]Jv;nodes:[18]JvNode;if raw.count>NRS_WIRE || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[7]string.["schema","kind","slot","generation","sequence","identity","payload"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=7 || jv_raw(v,jv_get(v,0,"schema"))!=NRS_SCHEMA {return false;}
+ o[0].kind=nrr_id(jv_raw(v,jv_get(v,0,"kind")),NRR_KINDS[..]);o[0].slot=js_number(v,jv_get(v,0,"slot"));o[0].generation=js_number(v,jv_get(v,0,"generation"));o[0].sequence=js_number(v,jv_get(v,0,"sequence"));ni:=js_string(v,jv_get(v,0,"identity"),o[0].identity[..]);o[0].n=js_string(v,jv_get(v,0,"payload"),o[0].payload[..]);
+ o[0].ok=ni==64 && aw_hex(cast(string)o[0].identity[..],64) && nrr_owner(o[0].slot,o[0].generation,o[0].sequence) && o[0].kind>=1 && o[0].n>=0 && (o[0].kind!=8 || nrr_seconds(cast(string)o[0].payload[0..<o[0].n])>=0);return o[0].ok;
+}

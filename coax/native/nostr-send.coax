@@ -1,0 +1,58 @@
+// Atomic NIP-17 preparation. No socket effect exists until this entire result
+// and its operation receipt have committed under the account journal lock.
+#load "nostr-send-wire.coax";
+#load "nostr-custody-crypto.coax";
+#load "messaging-state.coax";
+#load "nostr-operation-wire.coax";
+#load "nostr-send-checks.coax" #test;
+NsmHeads :: struct {n:int;lens:[11]int;raw:[11][65536]u8;}
+nsm_head_put :: (h:[]NsmHeads,i:int,raw:string)->bool #export_c #effects(all) {
+ if h.count!=1 || i<0 || i>=11 || raw.count>65536 {return false;}for c,k:raw {h[0].raw[i][k]=c;}h[0].lens[i]=raw.count;if i>=h[0].n {h[0].n=i+1;}return true;
+}
+nsm_peer :: (q:[]NscRequest,i:int,out:[]u8)->int #export_c #effects(all) {
+ p:[1]NscPurpose;if q.count!=1 || q[0].action!=3 || !nsp_read(3,cast(string)q[0].identity[..],cast(string)q[0].payload[0..<q[0].n],p[..]) || i<0 || i>p[0].peers_n || out.count<64 {return -1;}
+ if i==p[0].peers_n {for k:0..<64 {out[k]=q[0].identity[k];}}else {if hex_encode_checked(cast(string)p[0].peers[i][..],out[0..<64],false).error!=NC_OK {return -1;}}return 64;
+}
+nsm_seal :: (q:[]NscRequest,facts:NsFacts,secret:[]u8,fresh:[]Nip59Fresh,heads:[]NsmHeads,now:int,out:[]u8)->NscEffect #export_c #effects(all) {
+ r:=NscEffect.{status=5};defer {secure_zero(secret);for i:0..<fresh.count {clean:Nip59Fresh;fresh[i]=clean;}if r.status!=0 {secure_zero(out);}}
+ if q.count!=1 || !q[0].ok || q[0].action!=3 || heads.count!=1 {return r;}
+ identity:=cast(string)q[0].identity[..];p:[1]NscPurpose;defer {secure_zero(p[0].content[..]);}
+ if !nsp_read(3,identity,cast(string)q[0].payload[0..<q[0].n],p[..]) || !nsc_seal_time(p[0].created,now) || !nsm_prepare_permit(facts,p[0].peers_n,heads[0].n,true) || fresh.count!=heads[0].n {return r;}
+ actual:[64]u8;me:[32]u8;if !arc_public(secret,actual[..]) || cast(string)actual[..]!=identity || !ne_lower_hex(identity,me[..]) {r.status=3;return r;}
+ lists:[11]NostrEvent;ids:[11][64]u8;peers:[320]u8;for i:0..<p[0].peers_n {for k:0..<32 {peers[i*32+k]=p[0].peers[i][k];}}
+ for i:0..<heads[0].n {n:=heads[0].lens[i];if n<1 || n>65536 {r.status=2;return r;}scratch:[65536]u8;lists[i]=ne_signed_fast(nostr_event_read(cast(string)heads[0].raw[i][0..<n],scratch[..],false));if lists[i].error!=NE_OK || !lists[i].verified {return r;}encoded:=hex_encode_checked(cast(string)lists[i].id[..],ids[i][..],false);}
+ plan:=nip17_plan(me[..],peers[0..<p[0].peers_n*32],lists[0..<heads[0].n]);if plan.error!=N17_OK {r.status=2;return r;}
+ extra:[2048]u8;en:=nsc_extra(p[..],extra[..]);if en<0 {r.status=7;return r;}work:[NIP59_WORK]u8;wraps:[11*65536]u8;defer {secure_zero(work[..]);secure_zero(wraps[..]);secure_zero(extra[..]);}
+ sent:=nip17_send(secret,plan,p[0].created,14,cast(string)extra[0..<en],cast(string)p[0].content[0..<p[0].n],fresh,work[..],wraps[..],false);defer {secure_zero(sent.rumor_id[..]);}
+ if sent.error!=N17_OK {r.status=ifx sent.error==N17_OUTPUT then 7 else 5;return r;}
+ head_text:[11]string;events:[11]string;for i:0..<sent.wraps {head_text[i]=cast(string)ids[i][..];events[i]=cast(string)wraps[sent.at[i]..<sent.at[i]+sent.n[i]];}
+ digest:[64]u8;if !nso_digest(q,secret,digest[..]) {return r;}r.n=nsm_send_write(cast(string)q[0].operation[..],identity,cast(string)digest[..],head_text[0..<sent.wraps],events[0..<sent.wraps],out);r.status=ifx r.n>=0 then 0 else 7;r.cacheable=r.status==0;return r;
+}
+// Host must discard the whole prepared document on any refusal, including a
+// late capacity failure. The single SQL transaction owns journal + receipt.
+nsm_stage :: (s:[]Nms,document:[]u8,q:[]NsmSend,facts:MsFacts,source:int,internal:bool,now:int,out:[]u8)->NmsChange #export_c #effects(all) {
+ r:=NmsChange.{status=5};if s.count!=1 || q.count!=1 || !q[0].ok {return r;}r.status=nsm_commit_permit(facts,source,internal);if r.status!=0 {return r;}
+ if s[0].status!=0 {r.status=s[0].status;return r;}if s[0].revision>=MS_SERIAL {r.status=7;return r;}
+ me:[32]u8;if !ne_lower_hex(cast(string)q[0].identity[..],me[..]) || cast(string)me[..]!=cast(string)s[0].j[0].owner[..] {r.status=3;return r;}
+ keys:[352]u8;events:[11]NostrEvent;relays:[11]N17Relays;ids:[11][64]u8;
+ // All signatures, recipients and current heads are checked before staging.
+ for i:0..<q[0].n {
+  scratch:[65536]u8;read:=nms_event(nsm_send_event(q,i),now,scratch[..]);e:=read.e;
+  if read.reason!=RS_ACCEPT || e.kind!=1059 || e.tags!=1 {r.status=5;return r;}t:=nostr_tag(e,0);if t.error!=NT_OK || t.type!=NT_P {r.status=5;return r;}
+  for k:0..<32 {keys[i*32+k]=t.pubkey[k];}events[i]=e;encoded:=hex_encode_checked(cast(string)e.id[..],ids[i][..],false);for k:0..<i {if cast(string)ids[k][..]==cast(string)ids[i][..] {r.status=5;return r;}}
+  pub:[64]u8;encoded=hex_encode_checked(cast(string)t.pubkey[..],pub[..],false);head:[65536]u8;n:=nms_head(s,cast(string)pub[..],10050,now,head[..]);if n<=0 {r.status=2;return r;}
+  e=nostr_event_read(cast(string)head[0..<n],scratch[..],false);id:[64]u8;encoded=hex_encode_checked(cast(string)e.id[..],id[..],false);if e.error!=NE_OK || cast(string)id[..]!=cast(string)q[0].heads[i][..] {r.status=9;return r;}
+  relays[i]=n17_relays(e,t.pubkey[..]);if relays[i].error!=N17_OK {r.status=2;return r;}
+ }
+ if !nsm_copy_order(me[..],keys[0..<q[0].n*32]) {r.status=5;return r;}
+ for i:0..<q[0].n {
+  mask:u64;for k:0..<relays[i].count {url:=cast(string)relays[i].url[k*256..<k*256+relays[i].url_n[k]];relay:=cj_relay(s[0].j[..],document,url);if relay<0 {r.status=7;return r;}mask|=cast(u64)1<<cast(u32)relay;}
+  if cj_queue_event(s[0].j[..],document,events[i],mask)<0 {r.status=7;return r;}
+ }
+ r.revision=s[0].revision+1;r.length=s[0].j[0].len;r.changed=true;r.pruned=s[0].pruned;text:[11]string;for i:0..<q[0].n {text[i]=cast(string)ids[i][..];}r.payload_n=nsm_sealed_write(text[0..<q[0].n],r.revision,out);r.status=ifx r.payload_n>=0 then 0 else 7;return r;
+}
+
+nsm_checksum :: (raw:string,out:[]u8)->bool #export_c #effects(all) {digest:[32]u8;bytes:[65536]u8;if raw.count>bytes.count {return false;}for c,i:raw {bytes[i]=c;}return out.count==64 && sha256_hash_checked(bytes[0..<raw.count],digest[..],false)==SHA_OK && hex_encode_checked(cast(string)digest[..],out,false).error==NC_OK;}
+nsm_inbox_target :: (raw:string,identity:string,url:string)->bool #export_c #effects(all) {
+ key:[32]u8;if !ne_lower_hex(identity,key[..]) {return false;}scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(raw,scratch[..],false));if e.error!=NE_OK || !e.verified {return false;}r:=n17_relays(e,key[..]);if r.error!=N17_OK {return false;}for i:0..<r.count {if n17_url(r,i,url) {return true;}}return false;
+}

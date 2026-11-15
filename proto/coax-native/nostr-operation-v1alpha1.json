@@ -1,0 +1,31 @@
+{
+  "schema": "coax.native.nostr-operation.v1alpha1",
+  "http": "POST /api/auth/nostr/operation/v1alpha1",
+  "fields": [
+    "schema",
+    "action",
+    "operation",
+    "identity",
+    "digest",
+    "result"
+  ],
+  "actions": [
+    "relay-auth",
+    "seal",
+    "publish-list"
+  ],
+  "limits": {
+    "wire_bytes": 400000,
+    "result_bytes": 65536,
+    "operation_hex_bytes": 64,
+    "identity_hex_bytes": 64,
+    "digest_hex_bytes": 64
+  },
+  "digest": "HMAC-SHA256 under the actual canonical key provider, over OpenAgents Nostr Operation v1, one zero byte, and the complete canonical custody request. The private provider computes this opaque reference; no plaintext hash or key is stored or supplied by the generic UI.",
+  "lookup": "empty result asks for the existing operation; not-ready is absence, never proof that a prior uncertain write failed",
+  "commit": "an independently held provider submits its complete public signed/ciphertext candidate; the server validates it and atomically retains the first result for this namespace/operation/digest. Managed results are committed internally by the managed provider, never accepted as caller-supplied replacements.",
+  "replay": "same intent returns the first committed result; changed action/digest conflicts. Recheck current principal, canonical identity and provider before exposing or using a cached result. A receipt is not a live AUTH/list-read permission.",
+  "privacy": "no private opening result, secret, nonce, preview or draft is stored; a candidate receipt is not proof of a NIP-59 inner author until the recipient verifies it.",
+  "result": "coax.native.nostr-result.v1alpha1, custody service and echoed purpose/operation/identity",
+  "provider": "A linked provider without the installed private digest capability reports not-ready; it never falls back to a public plaintext digest or the server-managed key."
+}
