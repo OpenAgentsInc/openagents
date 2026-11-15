@@ -27,14 +27,14 @@ lb_once :: (s:[]LbSeen,id:[]u8)->bool #effects(all) {
   for i:0..<32 {s[0].ids[s[0].n*32+i]=id[i];}s[0].n+=1;return true;
 }
 lb_begin :: (s:[]LbSeen,mode:int,keys:string,now:int,out:[]u8)->int #export_c #effects(all) {
-  n:=lb_request(mode,keys,now,out);if n>0 && mode==2 && !s[0].started {s[0].start=now;s[0].started=true;}return n;
+  n:=lb_request(mode,keys,now,out);if n>0 && mode==2 && !s[0].started {s[0].start=now;s[0].started=true;}return n; // mutant: equivalent (n is -1 or a whole REQ's length, so n>0, n>=0 and n>1 agree)
 }
 lb_request :: (mode:int,keys:string,now:int,out:[]u8)->int #export_c #effects(all) {
-  if mode>=3 && mode<=5 {return ifx now<0 || now>NF_SAFE then -1 else lx_request(mode-3,out);}
-  if mode<0 || mode>2 || now<0 || now>NF_SAFE {return -1;}
+  if mode>=3 && mode<=5 {return ifx now<0 || now>NF_SAFE then -1 else lx_request(mode-3,out);} // mutant: equivalent (mode 6 with 5 became 6 reads lx_request(3), which refuses as line 34 does)
+  if mode<0 || mode>2 || now<0 || now>NF_SAFE {return -1;} // mutant: equivalent (mode>3 for mode>2: modes 3 to 5 return on line 33, so mode 3 never reaches here)
   authors:[8]string;count:=lr_ids(keys,authors[..]);if count<1 {return -1;}
   f:NostrFilter;kinds:[9]int;values:=[1]string.[PB_MARKER];tags:=[1]NostrTagFilter.[NostrTagFilter.{name='t',values=values[..]}];
-  f.has_kinds=true;f.has_since=true;f.since=ifx mode==0 then (ifx now>300 then now-300 else 0) else now;
+  f.has_kinds=true;f.has_since=true;f.since=ifx mode==0 then (ifx now>300 then now-300 else 0) else now; // mutant: equivalent (now>=300 for now>300: at 300 both write since 0)
   sub:="home-beacons";
   if mode==0 {kinds[0]=PB_KIND;f.kinds=kinds[0..<1];f.tags=tags[..];f.has_limit=true;f.limit=128;}
   if mode==1 {sub="home-projects";kinds=[9]int.[30617,30621,30623,1621,1111,1630,1631,1632,1633];f.kinds=kinds[..];f.has_authors=true;f.authors=authors[0..<count];}
@@ -48,17 +48,17 @@ lb_message :: (seen:[]LbSeen,text:string,keys:string,now:int,out:[]u8)->LbMessag
     // A refused XP watch never takes the Pylon and project watches down with it.
     if m.type==NM_EOSE {return LbMessage.{code=ifx sub==LX_SUB then 5 else ifx sub==LX_WORK_SUB then 6 else 7};}if m.type!=NM_EVENT {return LbMessage.{};}
     xe:=nm_text(m,m.event);xs:[NE_MAX_OUTPUT]u8;x:=lr_event(xe,xs[..]);
-    if x.error!=NE_OK || !x.verified || now<0 || x.created_at>now+30 {return LbMessage.{code= -4};}
-    w:=lx_record(x,out);return ifx w>0 then LbMessage.{code=4,written=w} else LbMessage.{};
+    if x.error!=NE_OK || !x.verified || now<0 || x.created_at>now+30 {return LbMessage.{code= -4};} // mutant: equivalent (lr_event sets verified only when error is NE_OK, so error!=NE_OK and !verified agree and their '||' forms read the same)
+    w:=lx_record(x,out);return ifx w>0 then LbMessage.{code=4,written=w} else LbMessage.{}; // mutant: equivalent (lx_record returns 0 or a whole record, so w>0 and w>1 agree)
   }
   if sub!="home-beacons" && sub!="home-projects" && sub!="home-work" {return LbMessage.{};}
   if m.type==NM_CLOSED {return LbMessage.{code= -3};}
   if m.type==NM_EOSE && sub=="home-beacons" {return LbMessage.{code=3};}
   if m.type!=NM_EVENT {return LbMessage.{};}
   original:=nm_text(m,m.event);scratch:[NE_MAX_OUTPUT]u8;e:=lr_event(original,scratch[..]);
-  if e.error!=NE_OK || !e.verified || now<0 || e.created_at>now+30 {return LbMessage.{code= -4};}
+  if e.error!=NE_OK || !e.verified || now<0 || e.created_at>now+30 {return LbMessage.{code= -4};} // mutant: equivalent (lr_event sets verified only when error is NE_OK, so error!=NE_OK and !verified agree and their '||' forms read the same)
   if sub=="home-beacons" {
-    n:=lr_beacon(original,now,out);return ifx n>0 then LbMessage.{code=1,written=n} else LbMessage.{code= -4};
+    n:=lr_beacon(original,now,out);return ifx n>0 then LbMessage.{code=1,written=n} else LbMessage.{code= -4}; // mutant: equivalent (lr_beacon returns -1 or a whole beacon's byte count, so n>0, n>=0 and n>1 agree)
   }
   if sub=="home-projects" {
     if e.kind!=30617 && e.kind!=30621 && e.kind!=30623 && e.kind!=1621 && e.kind!=1111 && (e.kind<1630 || e.kind>1633) {return LbMessage.{};}
@@ -90,17 +90,17 @@ lb_frame :: (s:[]LrQuery,c:[]HcCache,k:int,text:string)->int #export_c #effects(
   if s[0].state!=2 {return -1;}
   m:=nostr_message_read(text);
   if m.error!=NM_OK {return ifx lr_auth(text) then 0 else -2;}
-  if m.type==NM_NOTICE {return 0;}
+  if m.type==NM_NOTICE {return 0;} // mutant: equivalent (a NOTICE that falls through carries no subscription, so line 95 returns 0 for it)
   sub:[64]u8;n:=lr_sub(s,sub[..]);
   if !json_is(nm_text(m,m.sub),cast(string)sub[0..<n]) {return 0;}
   if m.type==NM_CLOSED {s[0].state= -1;return -3;}
   if m.type==NM_EOSE {
-    if s[0].count>s[0].peak {s[0].peak=s[0].count;}
+    if s[0].count>s[0].peak {s[0].peak=s[0].count;} // mutant: equivalent ('>=' writes the same peak when count equals it)
     until:=lr_page_end(s[0].until,s[0].oldest,s[0].count,lr_finish(text),s[0].pages,s[0].peak);
     if until== -2 {s[0].state= -1;return -5;}
     s[0].until=until;s[0].state=ifx until== -1 then 3 else 1;return 2;
   }
-  if m.type!=NM_EVENT {return 0;}
+  if m.type!=NM_EVENT {return 0;} // mutant: equivalent (only EVENT reaches here: OK and NOTICE carry no subscription and return on line 95)
   original:=nm_text(m,m.event);scratch:[NE_MAX_OUTPUT]u8;e:=nostr_event_read(original,scratch[..],false);
   if e.error!=NE_OK {s[0].state= -1;return -4;}
   known:=hc_find(c,e.id[..])>=0;
@@ -108,7 +108,151 @@ lb_frame :: (s:[]LrQuery,c:[]HcCache,k:int,text:string)->int #export_c #effects(
   strs:[1024]string;ints:[1024]int;tags:[64]NostrTagFilter;bytes:[8192]u8;
   sp:=[1]FrSpace.[FrSpace.{strs=strs[..],ints=ints[..],tags=tags[..],bytes=bytes[..]}];f:[1]NostrFilter;
   if !lr_parse_filter(cast(string)s[0].filter[0..<s[0].filter_n],f[..],sp[..]) || !nf_match(f[0],e) || (s[0].until>=0 && e.created_at>s[0].until) {return -6;}
-  s[0].count+=1;if s[0].oldest<0 || e.created_at<s[0].oldest {s[0].oldest=e.created_at;}
+  s[0].count+=1;if s[0].oldest<0 || e.created_at<s[0].oldest {s[0].oldest=e.created_at;} // mutant: equivalent ('<=' writes the same oldest when created_at equals it)
   if known {return 0;}
   r:=hc_add(c,k,e);if r<0 {s[0].state= -1;return -7;}return r;
+}
+
+// Events signed by secret key 3 (public key PB_KEY) with zero aux, for the checks below.
+LB_KEY1 :: "[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]";
+LB_KEY2 :: "[\"0000000000000000000000000000000000000000000000000000000000000001\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]";
+LB_BEACON :: "{\"id\":\"5e8c454542809f9066eb59e6f944b697b6a57008230eefb3b70812bc6a4a057f\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1791400000,\"kind\":30200,\"tags\":[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"a200d2649d0fdabc548e70175b18b0f274674b21f587fae8bc4c5d1be9797664\"],[\"expiration\",\"1791400300\"]],\"content\":\"{\\\"class\\\":{\\\"family\\\":\\\"gpu\\\",\\\"memory_gb\\\":16,\\\"tier\\\":\\\"medium\\\"},\\\"generation\\\":7,\\\"label\\\":\\\"Studio GPU\\\",\\\"observed_at\\\":1791400000,\\\"pools\\\":[],\\\"provider\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\\\",\\\"pylon\\\":\\\"studio-gpu\\\",\\\"requires\\\":[],\\\"services\\\":[{\\\"capability\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\\\",\\\"lanes\\\":[\\\"cj-decision\\\"],\\\"model\\\":\\\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\\\",\\\"offering\\\":null,\\\"price_hint_msat\\\":null}],\\\"settlement\\\":[\\\"free-v1\\\"],\\\"since\\\":1791380000,\\\"slots\\\":{\\\"free\\\":1,\\\"total\\\":1},\\\"status\\\":\\\"online\\\",\\\"v\\\":\\\"openagents.pylon-beacon.v1\\\",\\\"valid_until\\\":1791400300}\",\"sig\":\"c9c6479ccb9ed5d93a202f27f1e1dfa236b1f82ee6b32ab22de0ad477c0e32cb27e7be15ae55aaa47398187dccf4f9b60092de91434adfef991ffab5a0e759fe\"}";
+LB_AT0 :: "{\"id\":\"91eb0721f88a8064979731d224204864cc7c565b53def8853d594cf2dca70aa8\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":0,\"kind\":1,\"tags\":[],\"content\":\"zero\",\"sig\":\"a28908c36c482783b09e57f252268d4fc8f090bea24c8e8c9c8c4f17ab655004ff7fd591f2d329730dde653224a5f0252b70d4803a6931dddf99a315d58e2bd0\"}";
+LB_AT100 :: "{\"id\":\"95253d24d60150580bcb4ae8073b1bd19268d9a6f7f46b36fedb2d54e47bc88b\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":100,\"kind\":1,\"tags\":[],\"content\":\"a\",\"sig\":\"1384721b737a084051336b3b08c9ef188750768116388ad58bdaa82466a994c13da0d2274e3f3c792fd4a4f204a2a8ca09db3c3c52cc890cf580c0f37678c44a\"}";
+LB_AT100B :: "{\"id\":\"1d392e7d8244e09affe00962c201580db916501cd21b4fe79167929e7aa7795e\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":100,\"kind\":1,\"tags\":[],\"content\":\"b\",\"sig\":\"01eff57624cf652997368fc6bfa1f159943c3b55ef7358731aae6b40505ea26677391d713641ccd85fd57ceb8aba8cca6ae1122f4d369c134e2a15a3e0b8dd2b\"}";
+LB_AT200 :: "{\"id\":\"4e72b4d0207e49b99e9422d1bdaa8739ad3e9740e6d29843340238b2571b0013\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":200,\"kind\":1,\"tags\":[],\"content\":\"c\",\"sig\":\"7d62293f9b7ad7b0a7827f81c676c5fa60f92c4466fddbd21e7ef5d71b8535a7b03c9b99602d2791df9fd9bd9c9a0c5c501ac54ab94b1d284f6b6a9283fd0ad4\"}";
+LB_REPO200 :: "{\"id\":\"dc43f49c09fe9329a5e27e9144be084623e72a6415dbca64ff9f4f6c59458933\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":200,\"kind\":30617,\"tags\":[[\"d\",\"x\"]],\"content\":\"new\",\"sig\":\"58dc51f2b2b4768c5848daef6c36ecc501078bfb9d3bab20f28d1b0bc8f0594275300f5a7b8e0b2177d428f0dc625e7c3b8f5383cfb2a9fcd5ff97a02c4d0fc8\"}";
+LB_REPO100 :: "{\"id\":\"fabddee8902997815449a5da4ae1a9996d4a6ec6f2c491a1de43ff016f654d91\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":100,\"kind\":30617,\"tags\":[[\"d\",\"x\"]],\"content\":\"old\",\"sig\":\"b967ca999da86824bd1b63824cec1970332f85a6edfcd8087347bff075d34842f5595bb1a99d071b31cb5708ae9861941d72a5908cc9b997c9cfc6e94c7019ec\"}";
+LB_K30621 :: "{\"id\":\"e046b9d82a19afd4883134dded2000ca64c9581d874a1b3983a79681027c84dc\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1000,\"kind\":30621,\"tags\":[],\"content\":\"p\",\"sig\":\"962cbae33d4631856bbab586f6a9484b0651c253e41908ce6c3ae8fdf230e6382b5371d2caaeed732c01d853fd51e6ca42909b1c99f2deeaa0db55d02f7894b1\"}";
+LB_K30623 :: "{\"id\":\"d76f2d764735133e9264e66f024e38fd420c02c0ccf4cc8168102193a5c84e16\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1000,\"kind\":30623,\"tags\":[],\"content\":\"p\",\"sig\":\"c03d2b7ff197e313311f1f88be8d1cbe014a1eb9fb9c40db3ee3c8331b4b37c165253ca6b9ae36efc14962a125e5320db5f8940435953729c39e27632f74054c\"}";
+LB_K1621 :: "{\"id\":\"70432d855df2f1fe2ba4126daf676ac439b6bca7893c8235c3dab7b5ecbc1944\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1000,\"kind\":1621,\"tags\":[],\"content\":\"p\",\"sig\":\"999180ef52b1ffb5291fa76ed146e8dd2c8126cb60c1ece2c144b0b035b46e5dc1d5d3e5a24b406f7c69a211e25b8bc7db858c089648de7aa6458099b2512cdf\"}";
+LB_K1111 :: "{\"id\":\"b758e1ad315ec715ae92d257f736b98214c50567edad8da0247e170e2d5bff5e\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1000,\"kind\":1111,\"tags\":[],\"content\":\"p\",\"sig\":\"d44f8290903ff72927f65c22f03d04e24ebcedb162cdaa4799fd301f4ba1d53e0606416c85361692489d6b90024d03a6688121837c9643e28604a6b4311393a1\"}";
+LB_K1630 :: "{\"id\":\"971aef83796aa82638274a49b2d0fa37b8f997eeeadffb5238ac4a4a215bdc75\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1000,\"kind\":1630,\"tags\":[],\"content\":\"p\",\"sig\":\"d5d593ab5bd76907d23ee42026b2bdbe78576bcfbdada9dfab5e0670a63dd818c49bd3de0ae4d3214916400295426bc5f5d23a2c1a801efb1e59f714352bb57f\"}";
+LB_K1633 :: "{\"id\":\"74d11cf46602a6be5626711d3de7c2baecbdc496e86332bc7395bc3e123d0cca\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1000,\"kind\":1633,\"tags\":[],\"content\":\"p\",\"sig\":\"7dfcf8597346e2d7e094d500351188564e8c1f6ee5f9872fb68cd28591857e082ff0e4122f998c77bd9f8045f6a65ae0552727b2f9df9fe2027612ee18b8ee60\"}";
+LB_K1629 :: "{\"id\":\"96e1013d4af23ca040838f003352d20f0b4f3382f753b5ac541035fbd4890417\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1000,\"kind\":1629,\"tags\":[],\"content\":\"p\",\"sig\":\"7f37199ba4b0cd8e1dea5fe58fb3810f65d0e1e0f1df1520aa50b769a746ee7506eabb0e5a305fca9197fa27e295e199b4b02b8cb24d8205db91ed170fb38868\"}";
+LB_K1634 :: "{\"id\":\"d1501f26d0c08bf815af6d4f4ce4d78f3c7d9dd186562eb0e1fc73092a788cd3\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1000,\"kind\":1634,\"tags\":[],\"content\":\"p\",\"sig\":\"0754d31e094022b58f3f4ce1debd957dc4cd215554986d8ca14b5290a03f742c5b8ae1faf90db3496c35eb0f0ce3f90ef191bbbd0af259e2c554623dd7f8a47e\"}";
+LB_WORK1000 :: "{\"id\":\"8b4df10911580b28683d763fa393a4fffaf92d2d6e9ea0584eee34ac003bbb33\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1000,\"kind\":26910,\"tags\":[],\"content\":\"w\",\"sig\":\"b9bf504db4ccf80cc4d4579370739923c072b5b72c1d2316de913adec68c4eed212b374d79091e2fcbdfc61b2c324244ca92c7b22dca8a58c7f5c2a08a327263\"}";
+LB_WORK1001 :: "{\"id\":\"859d155e2df33b26ceb25552cb575a17208a4824254d4142d846bf54cb708bdb\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1001,\"kind\":27010,\"tags\":[],\"content\":\"w\",\"sig\":\"6badf47126636e6d7852c14578d3b9a5da0fe8e6ecbcb83a1bdbacddea94ec7bf408456a32e746e77097c88842de32ea47ac84060185d3e5a456d5f6c8bb0344\"}";
+LB_WORK999 :: "{\"id\":\"0f02602b3a1c3d8c01a2c7cc6a2c9c80ead81fef3708c5064be18d8ebd9ab397\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":999,\"kind\":26910,\"tags\":[],\"content\":\"w\",\"sig\":\"3dee4d8e9292296f2a9b968a5eed2d10edabd0f3558aa92ac5e49b4e6fc5fd6cf229252389423e17a7a307a713415eb9c786a1193c6c90e90260ecc2d493936a\"}";
+LB_K1634_BADSIG :: "{\"id\":\"d1501f26d0c08bf815af6d4f4ce4d78f3c7d9dd186562eb0e1fc73092a788cd3\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1000,\"kind\":1634,\"tags\":[],\"content\":\"p\",\"sig\":\"0754d31e094022b58f3f4ce1debd957dc4cd215554986d8ca14b5290a03f742c5b8ae1faf90db3496c35eb0f0ce3f90ef191bbbd0af259e2c554623dd7f8a470\"}";
+lb_ev :: (sub:string,event:string,out:[]u8)->string #effects(all) {
+  n:=json_raw(out,0,"[\"EVENT\",\"");n=json_raw(out,n,sub);n=json_raw(out,n,"\",");n=json_raw(out,n,event);n=json_raw(out,n,"]");return cast(string)out[0..<n];
+}
+#test "lb_once keeps 32-byte ids in order, refuses a short id and stops at LR_EVENTS" {
+  held:[1]LbSeen;a:[32]u8;b:[32]u8;for i:0..<32 {a[i]=cast(u8)(i+1);b[i]=cast(u8)(200-i);}
+  #assert lb_once(held[..],a[..]) && lb_once(held[..],b[..]) && held[0].n==2;
+  #assert !lb_once(held[..],b[..]) && !lb_once(held[..],a[..]) && held[0].n==2;
+  #assert lr_equal_id(held[0].ids[0..<32],a[..]) && lr_equal_id(held[0].ids[32..<64],b[..]) && held[0].ids[64]==0;
+  #assert !lb_once(held[..],a[0..<31]) && held[0].n==2 && held[0].ids[64]==0;
+  full:[1]LbSeen;full[0].n=LR_EVENTS-1;c:[32]u8;c[0]=7;c[31]=8;
+  #assert lb_once(full[..],c[..]) && full[0].n==LR_EVENTS && lr_equal_id(full[0].ids[(LR_EVENTS-1)*32..<LR_EVENTS*32],c[..]);
+  d:[32]u8;d[0]=9;#assert !lb_once(full[..],d[..]) && full[0].n==LR_EVENTS;
+}
+#test "the homepage REQs are exact, and a clock or mode out of range is refused" {
+  out:[8192]u8;n:=lb_request(0,LB_KEY1,2000000000,out[..]);
+  #assert cast(string)out[0..<n]=="[\"REQ\",\"home-beacons\",{\"kinds\":[30200],\"#t\":[\"oa:pylon-beacon:v1\"],\"since\":1999999700,\"limit\":128}]";
+  n=lb_request(0,LB_KEY1,0,out[..]);#assert cast(string)out[0..<n]=="[\"REQ\",\"home-beacons\",{\"kinds\":[30200],\"#t\":[\"oa:pylon-beacon:v1\"],\"since\":0,\"limit\":128}]";
+  n=lb_request(0,LB_KEY1,301,out[..]);#assert cast(string)out[0..<n]=="[\"REQ\",\"home-beacons\",{\"kinds\":[30200],\"#t\":[\"oa:pylon-beacon:v1\"],\"since\":1,\"limit\":128}]";
+  n=lb_request(1,LB_KEY2,1000,out[..]);
+  #assert cast(string)out[0..<n]=="[\"REQ\",\"home-projects\",{\"authors\":[\"0000000000000000000000000000000000000000000000000000000000000001\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],\"kinds\":[30617,30621,30623,1621,1111,1630,1631,1632,1633],\"since\":1000}]";
+  n=lb_request(2,LB_KEY1,1000,out[..]);#assert cast(string)out[0..<n]=="[\"REQ\",\"home-work\",{\"kinds\":[26910,27010],\"since\":1000}]";
+  want:[4096]u8;
+  for mode:3..<6 {
+    w:=lx_request(mode-3,want[..]);#assert w>0;
+    n=lb_request(mode,LB_KEY1,0,out[..]);#assert n==w && cast(string)out[0..<n]==cast(string)want[0..<w];
+    #assert lb_request(mode,LB_KEY1,NF_SAFE,out[..])==w;
+    #assert lb_request(mode,LB_KEY1,-1,out[..])== -1 && lb_request(mode,LB_KEY1,NF_SAFE+1,out[..])== -1;
+  }
+  for mode:0..<3 {
+    #assert lb_request(mode,LB_KEY1,NF_SAFE,out[..])>0;
+    #assert lb_request(mode,LB_KEY1,-1,out[..])== -1 && lb_request(mode,LB_KEY1,NF_SAFE+1,out[..])== -1;
+  }
+  #assert lb_request(-1,LB_KEY1,1000,out[..])== -1 && lb_request(6,LB_KEY1,1000,out[..])== -1;
+}
+#test "only an accepted work watch starts the work clock, and once" {
+  held:[1]LbSeen;out:[8192]u8;
+  #assert lb_begin(held[..],0,LB_KEY1,1000,out[..])>0 && !held[0].started && held[0].start==0;
+  #assert lb_begin(held[..],2,LB_KEY1,-1,out[..])== -1 && !held[0].started && held[0].start==0;
+  n:=lb_begin(held[..],2,LB_KEY1,1000,out[..]);
+  #assert cast(string)out[0..<n]=="[\"REQ\",\"home-work\",{\"kinds\":[26910,27010],\"since\":1000}]" && held[0].started && held[0].start==1000;
+  #assert lb_begin(held[..],2,LB_KEY1,2000,out[..])>0 && held[0].started && held[0].start==1000;
+}
+#test "XP watches: each EOSE has its code, a signed record is written and the clock bounds it" {
+  held:[1]LbSeen;out:[8192]u8;frame:[8192]u8;want:[8192]u8;scratch:[NE_MAX_OUTPUT]u8;
+  #assert lb_message(held[..],"[\"EOSE\",\"home-xp-work\"]",LB_KEY1,0,out[..]).code==6;
+  #assert lb_message(held[..],"[\"EOSE\",\"home-xp-checks\"]",LB_KEY1,0,out[..]).code==7;
+  e:=nostr_event_read(LX_FIX_QUEST,scratch[..],false);w:=lx_record(e,want[..]);#assert w>0;
+  m:=lb_message(held[..],lb_ev("home-xp",LX_FIX_QUEST,frame[..]),LB_KEY1,1790706031,out[..]);
+  #assert m.code==4 && m.written==w && cast(string)out[0..<w]==cast(string)want[0..<w];
+  m=lb_message(held[..],lb_ev("home-xp",LX_FIX_QUEST,frame[..]),LB_KEY1,1790706030,out[..]);#assert m.code== -4 && m.written==0;
+  m=lb_message(held[..],lb_ev("home-xp-checks",LB_AT0,frame[..]),LB_KEY1,0,out[..]);#assert m.code==0 && m.written==0;
+  #assert lb_message(held[..],lb_ev("home-xp-work",LB_AT0,frame[..]),LB_KEY1,-1,out[..]).code== -4;
+  #assert lb_message(held[..],lb_ev("home-xp",LB_K1634_BADSIG,frame[..]),LB_KEY1,1000,out[..]).code== -4;
+}
+#test "a signed beacon is passed on while it is valid, and refused after" {
+  held:[1]LbSeen;out:[8192]u8;frame:[8192]u8;
+  m:=lb_message(held[..],lb_ev("home-beacons",LB_BEACON,frame[..]),LB_KEY1,1791400000,out[..]);
+  #assert m.code==1 && m.written==PB_CONTENT.count && cast(string)out[0..<m.written]==PB_CONTENT;
+  m=lb_message(held[..],lb_ev("home-beacons",LB_BEACON,frame[..]),LB_KEY1,1791400300,out[..]);#assert m.code== -4 && m.written==0;
+  #assert lb_message(held[..],lb_ev("home-other",LB_BEACON,frame[..]),LB_KEY1,1791400000,out[..]).code==0;
+  #assert lb_message(held[..],"[\"EOSE\",\"home-projects\"]",LB_KEY1,0,out[..]).code==0;
+  #assert lb_message(held[..],"[\"EOSE\",\"home-work\"]",LB_KEY1,0,out[..]).code==0;
+  #assert lb_message(held[..],"[\"CLOSED\",\"home-work\",\"error: x\"]",LB_KEY1,0,out[..]).code== -3;
+  #assert lb_message(held[..],lb_ev("home-projects",LB_AT0,frame[..]),LB_KEY1,0,out[..]).code==0;
+  #assert lb_message(held[..],lb_ev("home-projects",LB_AT0,frame[..]),LB_KEY1,-1,out[..]).code== -4;
+  #assert lb_message(held[..],lb_ev("home-work",LB_K1634_BADSIG,frame[..]),LB_KEY1,1000,out[..]).code== -4;
+  #assert lb_message(held[..],lb_ev("home-work",LB_WORK1000,frame[..]),LB_KEY1,969,out[..]).code== -4;
+}
+#test "project events of the watched kinds name the author's place in the key list" {
+  held:[1]LbSeen;out:[8192]u8;frame:[8192]u8;
+  kept:=[8]string.[LB_REPO200,LB_K30621,LB_K30623,LB_K1621,LB_K1111,LB_K1630,LB_K1633,LB_REPO100];
+  for ev:kept {#assert lb_message(held[..],lb_ev("home-projects",ev,frame[..]),LB_KEY2,1000,out[..]).code==11;}
+  #assert lb_message(held[..],lb_ev("home-projects",LB_REPO200,frame[..]),LB_KEY1,1000,out[..]).code==10;
+  #assert lb_message(held[..],lb_ev("home-projects",LB_REPO200,frame[..]),"[\"0000000000000000000000000000000000000000000000000000000000000001\"]",1000,out[..]).code==0;
+  for ev:[2]string.[LB_K1629,LB_K1634] {#assert lb_message(held[..],lb_ev("home-projects",ev,frame[..]),LB_KEY2,1000,out[..]).code==0;}
+}
+#test "work events count once, inside the started clock, and are written exactly" {
+  idle:[1]LbSeen;held:[1]LbSeen;out:[8192]u8;frame:[8192]u8;
+  #assert lb_message(idle[..],lb_ev("home-work",LB_WORK1000,frame[..]),LB_KEY1,1000,out[..]).code==0 && idle[0].n==0;
+  #assert lb_begin(held[..],2,LB_KEY1,1000,out[..])>0;
+  #assert lb_message(held[..],lb_ev("home-work",LB_WORK1000,frame[..]),LB_KEY1,970,out[..]).code==0;
+  m:=lb_message(held[..],lb_ev("home-work",LB_WORK1000,frame[..]),LB_KEY1,1000,out[..]);
+  #assert m.code==2 && cast(string)out[0..<m.written]=="{\"provider\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"kind\":26910,\"at\":1000}";
+  #assert lb_message(held[..],lb_ev("home-work",LB_WORK1000,frame[..]),LB_KEY1,1000,out[..]).code==0;
+  #assert lb_message(held[..],lb_ev("home-work",LB_WORK1001,frame[..]),LB_KEY1,1000,out[..]).code==0;
+  m=lb_message(held[..],lb_ev("home-work",LB_WORK1001,frame[..]),LB_KEY1,1001,out[..]);
+  #assert m.code==2 && cast(string)out[0..<m.written]=="{\"provider\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"kind\":27010,\"at\":1001}";
+  #assert lb_message(held[..],lb_ev("home-work",LB_WORK999,frame[..]),LB_KEY1,1001,out[..]).code==0;
+  #assert lb_message(held[..],lb_ev("home-work",LB_K1629,frame[..]),LB_KEY1,1001,out[..]).code==0 && held[0].n==2;
+}
+#test "the catch-up pages: states, new and known events, the until bound and the refusals" {
+  q:[1]LrQuery;c:[1]HcCache;r:[1]HcRoom;hc_test(c[..],r[..]);out:[8192]u8;frame:[8192]u8;
+  #assert lb_frame(q[..],c[..],3,"[\"EOSE\",\"land-1\"]")== -1 && q[0].state==0;
+  #assert lr_begin(q[..],"{\"kinds\":[1]}") && lr_request(q[..],out[..])>0;
+  #assert lb_frame(q[..],c[..],3,"[\"AUTH\",\"challenge\"]")==0 && lb_frame(q[..],c[..],3,"[\"NOTICE\",\"land-1\"]")==0;
+  #assert lb_frame(q[..],c[..],3,"[")== -2 && lb_frame(q[..],c[..],3,"[\"EOSE\",\"land-0\"]")==0 && q[0].state==2;
+  #assert lb_frame(q[..],c[..],3,lb_ev("land-1",LB_AT200,frame[..]))==1 && lb_frame(q[..],c[..],3,lb_ev("land-1",LB_AT0,frame[..]))==1;
+  #assert lb_frame(q[..],c[..],3,lb_ev("land-1",LB_AT100,frame[..]))==1 && lb_frame(q[..],c[..],3,lb_ev("land-1",LB_AT100,frame[..]))==0;
+  #assert lb_frame(q[..],c[..],3,lb_ev("land-1",LB_K1629,frame[..]))== -6 && q[0].state==2;
+  #assert q[0].count==4 && q[0].oldest==0 && c[0].n==3 && c[0].project[0]==3;
+  #assert lb_frame(q[..],c[..],3,"[\"EOSE\",\"land-1\"]")==2 && q[0].state==1 && q[0].until==0 && q[0].peak==4;
+  #assert lr_request(q[..],out[..])>0 && q[0].state==2;
+  #assert lb_frame(q[..],c[..],3,lb_ev("land-2",LB_AT100B,frame[..]))== -6 && lb_frame(q[..],c[..],3,lb_ev("land-2",LB_K1629,frame[..]))== -6;
+  #assert lb_frame(q[..],c[..],3,lb_ev("land-2",LB_AT0,frame[..]))==0 && q[0].state==2 && q[0].count==1 && c[0].n==3;
+  #assert lb_frame(q[..],c[..],3,"[\"EOSE\",\"land-2\"]")==2 && q[0].state==3 && q[0].until== -1 && q[0].peak==4;
+  #assert lr_begin(q[..],"{\"kinds\":[1],\"until\":100}") && lr_request(q[..],out[..])>0;
+  #assert lb_frame(q[..],c[..],3,"[\"CLOSED\",\"land-3\",\"error: x\"]")== -3 && q[0].state== -1;
+  #assert lr_begin(q[..],"{\"kinds\":[1],\"until\":100}") && lr_request(q[..],out[..])>0;
+  #assert lb_frame(q[..],c[..],3,lb_ev("land-4",LB_AT100,frame[..]))==0 && lb_frame(q[..],c[..],3,lb_ev("land-4",LB_AT100B,frame[..]))==1;
+  #assert lb_frame(q[..],c[..],3,"[\"EOSE\",\"land-4\"]")== -5 && q[0].state== -1 && q[0].peak==2;
+  #assert lr_begin(q[..],"{}") && lr_request(q[..],out[..])>0;
+  #assert lb_frame(q[..],c[..],3,lb_ev("land-5",LB_K1634_BADSIG,frame[..]))== -4 && q[0].state== -1;
+  #assert lr_begin(q[..],"{}") && lr_request(q[..],out[..])>0;
+  #assert lb_frame(q[..],c[..],8,lb_ev("land-6",LB_WORK1000,frame[..]))== -7 && q[0].state== -1 && c[0].n==4;
+  #assert lr_begin(q[..],"{}") && lr_request(q[..],out[..])>0;
+  bad:=lb_ev("land-7",LB_WORK1001,frame[..]);odd:[8192]u8;for i:0..<bad.count {odd[i]=bad[i];}odd[25]='0';
+  #assert lb_frame(q[..],c[..],3,cast(string)odd[0..<bad.count])== -4 && q[0].state== -1;
+  #assert lr_begin(q[..],"{\"kinds\":[30617]}") && lr_request(q[..],out[..])>0;
+  #assert lb_frame(q[..],c[..],3,lb_ev("land-8",LB_REPO200,frame[..]))==1 && lb_frame(q[..],c[..],3,lb_ev("land-8",LB_REPO100,frame[..]))==0;
+  #assert q[0].state==2 && q[0].count==2 && q[0].oldest==100;
 }
