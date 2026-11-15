@@ -25,7 +25,7 @@ angle_atan2 :: (y: f32, x: f32) -> f32 {
   ax := abs(x); ay := abs(y);
   if ax == 0 && ay == 0 { return 0; }
   a := ifx ay > ax then f32(ANGLE_PI) / 2 - angle_atan_unit(ax / ay) else angle_atan_unit(ay / ax);
-  if x < 0 { a = f32(ANGLE_PI) - a; }
+  if x < 0 { a = f32(ANGLE_PI) - a; }   // mutant: equivalent (at x == 0 the angle is already PI/2 and PI - PI/2 is PI/2 exactly)
   if y < 0 { a = -a; }
   return a;
 }
@@ -63,6 +63,11 @@ angle_near :: (a: f32, b: f32, tolerance: f32) -> bool { return abs(a - b) <= to
   #assert angle_near(sin(w), sin(a), 0.0005) && angle_near(cos(w), cos(a), 0.0005);
 }
 
+#test "the diagonal takes the shallow branch, and angle_near accepts a gap exactly at its tolerance" {
+  // atan_unit(1) is the polynomial's coefficient sum, 0.7853965; the steep branch would give PI/2 less that, 0.7853998
+  #assert abs(angle_atan2(1, 1) - 0.7853965) < 0.000001 && abs(angle_atan2(-1, -1) + 2.3561961) < 0.000001;
+  #assert angle_near(1, 1.5, 0.5) && angle_near(1.5, 1, 0.5) && !angle_near(1, 1.5, 0.4);
+}
 #test "yaw 0 faces +Z and a quarter turn faces +X" {
   #assert angle_near(angle_yaw_of(0, 1), 0, 0.0001) && angle_near(angle_yaw_of(1, 0), f32(ANGLE_PI) / 2, 0.0001);
 }
