@@ -174,13 +174,13 @@ cc_combat_field :: (q:int,n:int)->bool #effects(all) {
   return n<=(ifx q<CC_COMBAT_HEAD then CC_COMBAT_HIGH[q] else CC_AURA_HIGH[(q-CC_COMBAT_HEAD)%CC_AURA]);
 }
 // A `combat` list's length: the head and whole records, no more than CC_AURAS of them.
-cc_combat_count :: (n:int)->bool #effects(all) {return n>=CC_COMBAT_HEAD&&n<=CC_COMBAT&&(n-CC_COMBAT_HEAD)%CC_AURA==0;}
+cc_combat_count :: (n:int)->bool #effects(all) {return n>=CC_COMBAT_HEAD&&n<=CC_COMBAT&&(n-CC_COMBAT_HEAD)%CC_AURA==0;}   // mutant: equivalent (a count past 133 that passes n<=134 is 134..140, and none of those is a whole number of records after the head, so the modulus refuses it first)
 cc_parse :: (text:string,ingress:bool,rest:[]CharacterRest)->CharacterCapture #effects(all) {
   c:=CharacterCapture.{};if text.count>CC_BODY{return c;}
   nodes:[320]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]){return c;}
   if jv_kind(d[0],0)!=JV_OBJECT{return c;}
   for i:0..<17{if i==5&&!ingress{continue;}n:=cc_integer(d[0],jv_get(d[0],0,CC_KEYS[i]));if !cc_number(i,n){return CharacterCapture.{};}c.n[i]=n;}
-  v3:=c.n[0]==3;more:=v3&&jv_get(d[0],0,"uses")>=0;fought:=v3&&jv_get(d[0],0,"combat")>=0;
+  v3:=c.n[0]==3;more:=v3&&jv_get(d[0],0,"uses")>=0;fought:=v3&&jv_get(d[0],0,"combat")>=0;   // mutant: equivalent (jv_get returns -1 for a missing key and a node index of at least 1 for a present one, because node 0 is the root object itself, so >=0, >0 and >=1 agree)
   if jv_len(d[0],0)!=(ifx ingress then 21 else 20)+(ifx v3 then 1 else 0)+(ifx more then 1 else 0)+(ifx fought then 1 else 0){return CharacterCapture.{};}
   if !ingress{c.n[5]=c.n[4];}
   c.pid_n=jv_str(d[0],jv_get(d[0],0,"pid"),c.pid[..]);c.room_n=jv_str(d[0],jv_get(d[0],0,"room"),c.room[..]);
