@@ -2,7 +2,7 @@
 
 ## Microduck, build 1094 (2026-11-15)
 
-- [ ] Install TestFlight **1094** when available. On Home, open **Microduck**;
+- [ ] Install TestFlight **1094** (verified available in **Owner**). On Home, open **Microduck**;
       let the first model download finish, drag to orbit and pinch to zoom.
       Try the floating menu's camera views and Normals, close and reopen the
       viewer. Simulator Metal rendering, real asset delivery, offline cache

@@ -76,7 +76,9 @@ They do not claim physical-iPhone acceptance or accessibility/power measurements
 
 Build **1094** archived/exported and App Store Connect accepted its upload
 without errors on November 15 at 19:38 UTC. Apple processing is separate and
-was not waited on.
+was not waited on. While the source push was finishing, the build became
+**VALID** and was assigned to the existing **Owner** group; membership and
+**IN_BETA_TESTING** were verified.
 
 - Delivery UUID: `85eb4466-562e-4586-93d7-51e1feebe2be`.
 - IPA: **21,132,120 bytes**; SHA-256

@@ -3,7 +3,8 @@
 Build **1094** adds **Home → Microduck**, the existing Coax model viewer on
 native Metal. Drag orbits; pinch zooms. The model streams on first use and
 reopens from its verified cache. Its floating menu has camera views, Normals,
-Reset and License. [Pictures, checks and delivery](../../docs/verification/microduck-native-2026-11-15/README.md).
+Reset and License. It is **VALID / IN_BETA_TESTING** in **Owner**.
+[Pictures, checks and delivery](../../docs/verification/microduck-native-2026-11-15/README.md).
 
 Build **1093** contains the installed Nostr custody/journal/relay foundation.
 It is **VALID / IN_BETA_TESTING** in **Owner**; its matching production API is
