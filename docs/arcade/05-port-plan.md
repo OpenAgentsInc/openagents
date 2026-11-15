@@ -1,5 +1,11 @@
 # Arcade port, part 5: the port plan
 
+**Execution update, 2026-11-15:** [part 08](08-delivery.md) supersedes this
+plan's issue order and unsettled product assumptions. It covers all 65 rows
+and A01–A28, adds the owner's kind-1 social feed before messaging, preserves
+managed account identity and 1090's simplified UI, and records the serial
+issue/release schedule. The earlier analysis below remains useful context.
+
 Tracking issue: #13607. This plan follows from the four audits in this
 folder. It decides what the port builds, in what order, on which modules,
 and who builds each part. It files no issues: section 5 lists them for the

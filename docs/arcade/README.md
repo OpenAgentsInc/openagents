@@ -1,5 +1,13 @@
 # Arcade port
 
+**Execution plan, 2026-11-15:** [part 08](08-delivery.md) is the current
+65-feature / A01–A28 delivery map for [#13624](https://github.com/OpenAgentsInc/openagents/issues/13624).
+The owner selected one issue at a time, pushing each completed change. A live
+NIP-01 kind-1 feed ships **before** the messaging foundation; the first
+TestFlight upload follows that feed, then another after each major feature.
+Continue work while Apple processes uploads. Part 08 supersedes older
+phone-first identity, refresh/composer-control and release-order assumptions.
+
 **Account/settings checkpoint, 1088:** the native Account hub now includes profile
 editing, relay management, privacy, notification permission/security push, public
 keys, additional login keys/passkeys, protected backups, device sessions and
@@ -41,6 +49,8 @@ grayscale (issue #13607).
 | [04-target-app.md](04-target-app.md) | OpenAgents iOS and Coax Native at `450ca4738f`: screens, controls, state, networking, crypto, the Update versus TestFlight line, and what the port needs from the host |
 | [05-port-plan.md](05-port-plan.md) | The plan: scope and a disposition for every inventory row, the Nostr design, the one native build, the design system, phases with issues to file, ownership, owner decisions, risks |
 | [06-rendering-and-animation.md](06-rendering-and-animation.md) | Complete animation catalog (A01–A28), CPU/UI-thread versus GPU assessment, shared native GPU visuals with platform services, DOM GPU islands and several inline worlds |
+| [07-account-settings.md](07-account-settings.md) | Shipped 1088 account/settings mapping and 1090 workspace corrections |
+| [08-delivery.md](08-delivery.md) | Current issue order, release gates, all 65 feature dispositions, all 28 motion cases and acceptance requirements |
 
 **2026-11-14 rendering update:** the owner requires every Arcade animation to
 be portable, including dormant/demo effects. Part 06 and
@@ -135,6 +145,11 @@ Headline findings:
   budgeting; today's Apple `phCurrent` binds one page at a time.
 
 ## Decisions waiting on the owner
+
+This is the historical decision inventory from the initial plan. Use
+[part 08](08-delivery.md) for current execution: managed account identity,
+drawer navigation, grayscale components, simplified composer and automatic
+sync already have owner decisions and must not be requested again.
 
 The full list, with options, recommendations, reasons and what each blocks,
 is [05-port-plan.md §7](05-port-plan.md#7-decisions-for-the-owner). The ones
