@@ -724,7 +724,7 @@ mutants_records() {   # log
     END { flush() }' "$1"
 }
 mutants_report() {   # head base dir status...: the report (markdown); status 1 when it has no action item
-  local head="$1" base="$2" dir="$3" i=0 s n_s=0 n_u=0 n_t=0 n_c=0 alone="coax/remote/remote.sh run -- coax/remote/check.sh"; shift 3
+  local head="$1" base="$2" dir="$3" i=0 s n_s=0 n_u=0 n_t=0 n_c=0 n_o=0 line alone="coax/remote/remote.sh run -- coax/remote/check.sh"; shift 3
   : > "$dir/records.tsv"
   for s in "$@"; do
     i=$((i + 1))
@@ -741,7 +741,13 @@ mutants_report() {   # head base dir status...: the report (markdown); status 1 
     p="$(mutants_path "$(dirname "$suite")" "${at%%:*}")"; line="${at#*:}"; line="${line%%:*}"
     proc="$(mutants_proc "$head" "$p" "$line")"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$p" "$proc" "$line" "$suite" "$summ" "$what"
-  done < <(awk -F'\t' '$1 == "S"' "$dir/records.tsv") | sort -t$'\t' -k1,1 -k2,2 -k3,3n > "$dir/survivors.tsv"
+  done < <(awk -F'\t' '$1 == "S"' "$dir/records.tsv") | sort -t$'\t' -k1,1 -k2,2 -k3,3n > "$dir/survivors.all"
+  # A survivor in a file the change didn't touch is outside it: coax mutate --changed counts the
+  # procedures #import_proto generates as changed every time (#13614). One line a file, not an item.
+  : > "$dir/survivors.tsv"; : > "$dir/outside.tsv"
+  while IFS= read -r line; do
+    if mutants_touched "$head" "$base" "${line%%$'\t'*}"; then echo "$line" >> "$dir/survivors.tsv"; else echo "$line" >> "$dir/outside.tsv"; fi
+  done < "$dir/survivors.all"
   if [[ -s "$dir/survivors.tsv" ]]; then
     echo; echo "Surviving mutants (a check that fails for each, or \`// mutant: equivalent\` on a line that can't change behaviour):"
     while IFS=$'\t' read -r p proc; do
@@ -769,6 +775,10 @@ mutants_report() {   # head base dir status...: the report (markdown); status 1 
       else echo "- \`$suite\`: $summ${what:+: \`$what\`}. Run alone: \`$alone only $suite $base\`"; fi
     done < <(awk -F'\t' '$1 == "T" || $1 == "P"' "$dir/records.tsv")
   fi
+  if [[ -s "$dir/outside.tsv" ]]; then
+    echo; echo "Survivors outside the change (not action items: their files did not change from ${base:0:10} to ${head:0:10}; coax mutate --changed also mutates the procedures #import_proto generates, #13614):"
+    while IFS=$'\t' read -r p n; do n_o=$((n_o + 1)); echo "- \`$p\`: $n mutant(s) survived"; done < <(awk -F'\t' '{ n[$1]++; if (!($1 in s)) { s[$1] = 1; o[++k] = $1 } } END { for (i = 1; i <= k; i++) printf "%s\t%d\n", o[i], n[o[i]] }' "$dir/outside.tsv")
+  fi
   # Check units: survivors in procedures only checks reach, one line a file, never an action item.
   if awk -F'\t' '$1 == "C"' "$dir/records.tsv" | grep -q .; then
     echo; echo "Check-only helper code (not action items: these procedures are in files the suite loads only with \`#load ... #test;\`, so no compile ships them, and a mutant there that still lets every check pass is not a gap in what ships; Chapter 11):"
@@ -793,11 +803,15 @@ mutants_report() {   # head base dir status...: the report (markdown); status 1 
 # summary; an item reopens a closed one, or files one when there is none; the issue is the number
 # kept in mutants-issue, else the newest with the title in any state. One comment a head at most.
 mutants_out="$results/mutants-outstanding.tsv"
+mutants_touched() {   # head base path: whether the change from base to head touched the file
+  ! git diff --quiet "$2" "$1" -- "$3" 2> /dev/null
+}
 mutants_items() {   # head base records: the action items in records, as OUTSTANDING rows
   local head="$1" base="$2" k suite summ at what p line
   while IFS=$'\t' read -r k suite summ at what; do
     case "$k" in
       S) p="$(mutants_path "$(dirname "$suite")" "${at%%:*}")"; line="${at#*:}"; line="${line%%:*}"
+         mutants_touched "$head" "$base" "$p" || continue
          printf 'S\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$p" "$(mutants_proc "$head" "$p" "$line")" "$line" "$what" "$suite" "$base" "$head" ;;
       U) printf 'U\t%s\t%s\t-\t-\t%s\t%s\t%s\n' "$suite" "$at" "$suite" "$base" "$head" ;;
       T|P) printf '%s\t%s\t%s\t-\t%s\t%s\t%s\t%s\n' "$k" "$suite" "$summ" "${at:--}" "$suite" "$base" "$head" ;;
@@ -856,13 +870,16 @@ mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows sti
     fi
   done 3< "$dir/plan.tsv"
   # An item in a judged suite stays only when the recheck finds it again (its new rows replace it).
-  awk -F'\t' -v OFS='\t' -v kept="$dir/kept.tsv" -v cleared="$dir/cleared.tsv" "$mutants_key_awk"'
+  awk -F'\t' -v OFS='\t' -v kept="$dir/kept.tsv" -v cleared="$dir/cleared.tsv" -v found="$dir/found.tsv" "$mutants_key_awk"'
     FILENAME == ARGV[1] { j[$1 "\t" $2] = 1; next }
-    FILENAME == ARGV[2] { k = key(); again[k] = again[k] $0 "\n"; next }
+    FILENAME == ARGV[2] { k = key(); if (!(k in again) && (($6 "\t" $7) in j)) o[++m] = k; again[k] = again[k] $0 "\n"; next }
     !(($6 "\t" $7) in j) || $1 == "P" { print > kept; next }
-    { k = key(); if (k in again) { if (!(k in done)) { printf "%s", again[k] > kept; done[k] = 1 } } else print > cleared }' \
+    { k = key(); if (k in again) { if (!(k in done)) { printf "%s", again[k] > kept; done[k] = 1 } } else print > cleared }
+    # what the recheck found that no item had: survivors the report could not list before (it lists 39 a suite)
+    END { for (i = 1; i <= m; i++) if (!(o[i] in done)) printf "%s", again[o[i]] > found }' \
     "$dir/judged.tsv" "$dir/again.tsv" "$mutants_out"
   [[ -f "$dir/kept.tsv" ]] || : > "$dir/kept.tsv"
+  [[ -f "$dir/found.tsv" ]] || : > "$dir/found.tsv"
   # A part: cleared once the hosts finish it, and what it found joins the items.
   j=0
   while IFS=$'\t' read -r pp pb ph <&3; do
@@ -888,7 +905,7 @@ mutants_lifecycle() {   # head base dir: OUTSTANDING after this report, and the 
     mv "$mutants_out.seed" "$mutants_out"
   fi
   mutants_recheck "$head" "$dir"
-  mutants_items "$head" "$base" "$dir/records.tsv" > "$dir/items.tsv"
+  { mutants_items "$head" "$base" "$dir/records.tsv"; cat "$dir/found.tsv"; } > "$dir/items.tsv"
   # This head's items replace the same keys.
   awk -F'\t' "$mutants_key_awk"' FILENAME == ARGV[1] { n[key()] = 1; next } !(key() in n)' "$dir/items.tsv" "$dir/kept.tsv" > "$mutants_out.new"
   cat "$dir/items.tsv" >> "$mutants_out.new"; mv "$mutants_out.new" "$mutants_out"
@@ -902,6 +919,7 @@ mutants_lifecycle() {   # head base dir: OUTSTANDING after this report, and the 
       echo "Nothing to act on in the change from ${base:0:10} to ${head:0:10}."
       (( ${nc:-0} == 0 )) || { echo; awk '/^Check-only helper code/ { on = 1 } on && /^$/ { exit } on' "$dir/report.md"; }
     fi
+    if [[ -s "$dir/found.tsv" ]]; then echo; echo "Found by the recheck of earlier items' suites at ${head:0:10} (survivors an earlier report could not list):"; mutants_list "$dir/found.tsv"; fi
     if (( cleared > 0 )); then echo; echo "Cleared by the recheck at ${head:0:10} (killed, marked, or the tool finished):"; mutants_list "$dir/cleared.tsv"; fi
     if awk -F'\t' -v h="$head" '$8 != h' "$mutants_out" | grep -q .; then
       echo; echo "Still outstanding from earlier heads:"; awk -F'\t' -v h="$head" '$8 != h' "$mutants_out" | mutants_list

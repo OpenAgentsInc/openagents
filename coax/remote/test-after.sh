@@ -35,6 +35,7 @@
 #  19. survivors only in check units (files loaded with #load ... #test) are one line a file in the
 #      report and neither open it nor hold it open
 #  20. a tool problem keeps it open while it still reproduces, and it closes once it doesn't
+#  21. survivors in a file the change didn't touch are one line a file, not an item
 # And the service watch (#13379):
 #  13. a production crash alert's bucket gets one GitHub issue: none while GitHub can't be asked,
 #      none for staging, no second when the watcher's memory is gone, a new one after its alert
@@ -376,6 +377,12 @@ issue_is OPEN && [[ "$(gh_n reopen)" == 3 && "$(gh_n close)" == 3 ]] && outstand
 rm -f "$w/repo/mutate-no-summary"; echo 'twenty :: 20;' >> "$w/repo/lib/a.coax"; push agent-mut "the tool finishes"; s="$(run15)"
 issue_is CLOSED && [[ "$(gh_n close)" == 4 && "$(out_n)" == 0 && "$(gh_n create)" == 1 ]] &&
   ok "20: once it stops reproducing, the issue closes" || { bad "20: state $(cat "$w/gh15-state"), $(gh_n close) close(s), $(out_n) outstanding"; cat "$w/pl/releases/after/mutants-outstanding.tsv" "$w/gh15.log" "$w/run.log"; }
+# 21: survivors in a file the change didn't touch (coax mutate --changed mutates what #import_proto
+# generates every time, #13614) are one line a file, not an item
+touch "$w/repo/mutant-survives"; echo 'twentyone :: 21;' >> "$w/repo/lib/a.coax"; push agent-mut "survivors outside the change"; c21="$(g rev-parse HEAD)"; s="$(run15)"
+issue_is CLOSED && [[ "$(gh_n reopen)" == 3 && "$(out_n)" == 0 ]] && grep -qF '`lib/b.coax`: 2 mutant(s) survived' "$w/pl/releases/after/$c21/mutants/report.md" &&
+  ok "21: survivors outside the change are one line a file and don't reopen the issue" || { bad "21: state $(cat "$w/gh15-state"), $(out_n) outstanding"; cat "$w/pl/releases/after/$c21/mutants/report.md"; }
+rm -f "$w/repo/mutant-survives"
 
 (( fails == 0 )) && echo "test-after: every case passed" || echo "test-after: $fails case(s) failed"
 exit $(( fails > 0 ))

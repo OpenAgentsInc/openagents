@@ -36,6 +36,27 @@ GP_NO_CLIP :: 1000000.0;
  gpu_monochrome(out[..],6);#assert out[4]==10 && out[15]==0.4 && out[12]==0.7 && out[13]==0.7 && out[14]==0.7;
  #assert out[16]==1 && out[17]==1 && out[18]==1 && out[19]==1;
 }
+#test "monochrome sets each color to its largest channel on every vertex, and stops at a vertex that doesn't fit" {
+ // three vertices, each color's largest channel in a different place; every other float is its own index, negated
+ c:=[24]f32.[0.9,0.2,0.1,0.5, 0.1,0.8,0.3,0.6, 0.1,0.2,0.7,0.4, 0,-0.0,-0.0,1, 0.3,0.6,0.1,0.2, 0.25,0.5,0.5,0.3];
+ want:=[24]f32.[0.9,0.9,0.9,0.5, 0.8,0.8,0.8,0.6, 0.7,0.7,0.7,0.4, 0,0,0,1, 0.6,0.6,0.6,0.2, 0.5,0.5,0.5,0.3];
+ a:[84]f32;b:[83]f32;one:[84]f32;
+ for i:0..<84 {f:=cast(f32)(0-i);a[i]=f;one[i]=f;if i<83 {b[i]=f;}}
+ for v:0..<3 {for k:0..<8 {a[v*28+12+k]=c[v*8+k];one[v*28+12+k]=c[v*8+k];b[v*28+12+k]=c[v*8+k];}}
+ gpu_monochrome(a[..],3);
+ for i:0..<84 {
+  v:=i/28;o:=i%28;
+  if o>=12 && o<20 {#assert a[i]==want[v*8+o-12];} else {#assert a[i]==cast(f32)(0-i);}
+ }
+ // a channel equal to the largest one keeps the first: +0, not -0
+ #assert (f32_bits(a[28+16])>>31)==0 && (f32_bits(a[28+17])>>31)==0 && (f32_bits(a[28+18])>>31)==0;
+ // one float short: the third vertex is left as it was
+ gpu_monochrome(b[..],3);
+ #assert b[12]==0.9 && b[28+12]==0.7 && b[56+12]==0.3 && b[56+14]==0.1 && b[56+16]==0.25 && b[56+18]==0.5;
+ // fewer vertices than the buffer holds: only those
+ gpu_monochrome(one[..],1);
+ #assert one[12]==0.9 && one[28+12]==0.1 && one[28+14]==0.7;
+}
 gpu_monochrome :: (out:[]f32,vertices:int) {
  for i:0..<vertices {at:=i*GP_VERTEX_FLOATS;if at+GP_VERTEX_FLOATS>out.count {return;}
   for k:0..<2 {p:=at+12+k*4;v:=out[p];if out[p+1]>v {v=out[p+1];}if out[p+2]>v {v=out[p+2];}out[p]=v;out[p+1]=v;out[p+2]=v;}

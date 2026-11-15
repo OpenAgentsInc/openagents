@@ -602,6 +602,12 @@ a helper that still lets every check pass is not a gap in what ships (Chapter
 unchanged: it still mutates a changed check unit in an `#authority` suite and
 stops on a survivor there.
 
+Survivors in a file the change didn't touch (`git diff BASE HEAD` doesn't
+list the file) are not on the list either. They get one line per file under
+"Survivors outside the change". They come from the tool:
+`coax mutate --changed` counts the procedures that `#import_proto` generates
+as changed on every run (#13614).
+
 The action items stay outstanding in `releases/after/mutants-outstanding.tsv`,
 one row each: the kind, the file, the procedure, the line, the mutation, the
 suite, the base and the head. Before it posts anything, each report runs the
