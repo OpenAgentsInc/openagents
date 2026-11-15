@@ -34,6 +34,11 @@ MAL_SIG_N :: 71;
   n := mal_reencode_vartime(sig, false, o[..]);              // s gains its 0x00
   #assert n == 72 && der_check_vartime(o[0..<n]) == DER_OK && !der_low_s_vartime(o[0..<n]) && o[n-1] == 0x01;
   #assert o[3] == 0x20 && o[37] == 0x21 && o[38] == 0 && o[39] == 0xdd;
+  // out needs 73 bytes, the most DER and the sighash byte can take: 73
+  // write these 72, and 72 refuse.
+  e: [73] u8;
+  #assert mal_reencode_vartime(sig, false, e[..]) == 72 && e[70] == o[70] && e[71] == 0x01;
+  #assert mal_reencode_vartime(sig, false, e[0..<72]) == -1;
   m := mal_reencode_vartime(sig, true, p[..]);               // n - s is low and needs no 0x00
   #assert m == 71 && der_check_vartime(p[0..<m]) == DER_OK && der_low_s_vartime(p[0..<m]) && p[m-1] == 0x01;
   #assert tx_hex_is(p[38..<70], "223ea13203caf853b71e97e5cc149f65547d1d7ab98c96353d0d8318934e7716");
@@ -81,6 +86,13 @@ MAL_SIG_N :: 71;
   #assert mal_replace_vartime(s, at, big[..], p[0..<n-1]) == -1;
   z := [3] u8.[5, 1, 2];
   #assert mal_replace_vartime(z[..], 0, y[..], o[..]) == -1;           // a field past the end
+  #assert mal_replace_vartime(p[0..<n], at, big[..], o[0..<n]) == n;    // out exactly the size
+  // After a byte before it: a field one byte past the end, and one that
+  // ends exactly at the end.
+  f := [4] u8.[9, 3, 1, 2];
+  #assert mal_replace_vartime(f[..], 1, y[..], o[..]) == -1;
+  f[1] = 2; o[0] = 7; o[1] = 7; o[2] = 7;
+  #assert mal_replace_vartime(f[..], 1, y[..], o[..]) == 3 && o[0] == 9 && o[1] == 1 && o[2] == 0;
   #assert mal_replace_vartime(s[0..<0], 0, y[..], o[..]) == -1;        // no length at all
 }
 #test "pushes: the shortest form, OP_PUSHDATA1, and too long" {
@@ -95,6 +107,8 @@ MAL_SIG_N :: 71;
   #assert mal_push_vartime(d[0..<255], true, o[..], 0) == 257 && o[1] == 255;
   #assert mal_push_vartime(d[0..<256], true, o[..], 0) == -1;
   #assert mal_push_vartime(d[0..<75], true, o[0..<75], 0) == -1;
+  #assert mal_push_vartime(d[0..<75], true, o[0..<76], 0) == 76;       // out exactly the size
+  #assert mal_push_vartime(d[0..<75], false, o[0..<77], 0) == 77 && mal_push_vartime(d[0..<75], false, o[0..<76], 0) == -1;
 }
 #test "witnesses: the stripped P2WPKH spend and its stack give the mainnet bytes" {
   b: [512] u8; w: [512] u8; o: [600] u8;
@@ -105,8 +119,12 @@ MAL_SIG_N :: 71;
   stripped := w[0..<n];
   l := tx_read_vartime(stripped, false, ins[..], outs[..], items[..]);
   stack := s[t.witness..<t.locktime];
+  for i: 0..<600 { o[i] = 0xff; }                                     // every byte written, none left over
   m := mal_add_witness_vartime(stripped, l, stack, o[..]);
   #assert m == s.count;
+  for i: 0..<m { #assert o[i] == s[i]; }
+  for i: 0..<600 { o[i] = 0xff; }
+  #assert mal_add_witness_vartime(stripped, l, stack, o[0..<m]) == m;  // out exactly the size
   for i: 0..<m { #assert o[i] == s[i]; }
   #assert mal_add_witness_vartime(stripped, l, stack, o[0..<m-1]) == -1;
   #assert mal_add_witness_vartime(s, t, stack, o[..]) == -1;           // it has witnesses already
@@ -121,13 +139,17 @@ MAL_SIG_N :: 71;
 // the signature, r or s is zero, or out has fewer than 73 bytes.
 mal_reencode_vartime :: (sig: [] u8, flip: bool, out: [] u8) -> int #export_c #effects(all) {
   compact: [64] u8;
-  if sig.count < 2 || out.count < 73 || !der_read_lax_vartime(sig[0..<sig.count-1], compact[..]) { return -1; }
+  // sig.count < 2 keeps the slice in range; the lax parser refuses every
+  // DER part shorter than 3 bytes too, so a bound of 3 refuses the same.
+  if sig.count < 2 || out.count < 73 || !der_read_lax_vartime(sig[0..<sig.count-1], compact[..]) { return -1; } // mutant: equivalent
   if flip {
     s := sc_load(compact[32..<64]);
     #assert sc_store(sc_negate(s.value), compact[32..<64]);
   }
   n := ecdsa_der(compact[..], out);
-  if n < 0 { return -1; }
+  // ecdsa_der returns -1 or a length of at least 8, so n <= 0 or n < 1
+  // refuse the same.
+  if n < 0 { return -1; } // mutant: equivalent
   out[n] = sig[sig.count-1];
   return n + 1;
 }
@@ -184,7 +206,8 @@ mal_add_witness_vartime :: (b: [] u8, t: Tx, stacks: [] u8, out: [] u8) -> int #
   if t.code != TX_OK || t.segwit { return -1; }
   size := t.total + 2 + stacks.count;
   if size > out.count { return -1; }
-  for i: 0..<4 { out[i] = b[i]; }
+  // The version; a fifth byte copied here is overwritten by the marker.
+  for i: 0..<4 { out[i] = b[i]; } // mutant: equivalent
   out[4] = 0x00; out[5] = 0x01;
   for i: 4..<t.locktime { out[i+2] = b[i]; }
   at := t.locktime + 2;

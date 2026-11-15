@@ -77,13 +77,17 @@ with the lax parser and writes it in strict DER, with either `s`:
 // the signature, r or s is zero, or out has fewer than 73 bytes.
 mal_reencode_vartime :: (sig: [] u8, flip: bool, out: [] u8) -> int #export_c #effects(all) {
   compact: [64] u8;
-  if sig.count < 2 || out.count < 73 || !der_read_lax_vartime(sig[0..<sig.count-1], compact[..]) { return -1; }
+  // sig.count < 2 keeps the slice in range; the lax parser refuses every
+  // DER part shorter than 3 bytes too, so a bound of 3 refuses the same.
+  if sig.count < 2 || out.count < 73 || !der_read_lax_vartime(sig[0..<sig.count-1], compact[..]) { return -1; } // mutant: equivalent
   if flip {
     s := sc_load(compact[32..<64]);
     #assert sc_store(sc_negate(s.value), compact[32..<64]);
   }
   n := ecdsa_der(compact[..], out);
-  if n < 0 { return -1; }
+  // ecdsa_der returns -1 or a length of at least 8, so n <= 0 or n < 1
+  // refuse the same.
+  if n < 0 { return -1; } // mutant: equivalent
   out[n] = sig[sig.count-1];
   return n + 1;
 }
@@ -233,7 +237,8 @@ mal_add_witness_vartime :: (b: [] u8, t: Tx, stacks: [] u8, out: [] u8) -> int #
   if t.code != TX_OK || t.segwit { return -1; }
   size := t.total + 2 + stacks.count;
   if size > out.count { return -1; }
-  for i: 0..<4 { out[i] = b[i]; }
+  // The version; a fifth byte copied here is overwritten by the marker.
+  for i: 0..<4 { out[i] = b[i]; } // mutant: equivalent
   out[4] = 0x00; out[5] = 0x01;
   for i: 4..<t.locktime { out[i+2] = b[i]; }
   at := t.locktime + 2;
