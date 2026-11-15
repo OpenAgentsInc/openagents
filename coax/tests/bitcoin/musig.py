@@ -81,6 +81,27 @@ def check_lib():
         assert message.replace("'", "\\'").encode() in pinned('reference.py') or message.encode() in pinned('reference.py'), message
     assert reasons[V.MS_INVALID] == 'invalid' and codes[V.MS_INVALID] == 'MS_INVALID'
     assert (HERE / 'musig_vectors.coax').read_text() == V.render(), 'musig_vectors.coax differs; run make_musig_vectors.py --write'
+    m = re.search(r'MS_TEST_TWO_OF_TWO :: "([0-9a-f]{128})";', lib)
+    assert m and m.group(1) == two_of_two().hex(), f'MS_TEST_TWO_OF_TWO should be {two_of_two().hex()}'
+
+
+def two_of_two():
+    """The signature of musig.coax's 2-of-2 Taproot test, by the reference:
+    test keys 1 and 2, the aggregate key tweaked by TapTweak with no script
+    tree, nonces from rand 0x01... and 0x02..., and the message 0, 1, ..., 31."""
+    sks = [test_key(i)[0] for i in range(2)]
+    pks = [test_key(i)[1] for i in range(2)]
+    tweak = R.tagged_hash('TapTweak', xb(R.key_agg(pks)))
+    q = xb(R.key_agg_and_tweak(pks, [tweak], [True]))
+    msg = bytes(range(32))
+    secs, pubs = [], []
+    for i in range(2):
+        sec, pub = R.nonce_gen_internal(bytes([i + 1]) * 32, sks[i], pks[i], q, msg, b'')
+        secs.append(sec); pubs.append(pub)
+    ctx = R.SessionContext(R.nonce_agg(pubs), pks, [tweak], [True], msg)
+    sig = R.partial_sig_agg([R.sign(secs[i], sks[i], ctx) for i in range(2)], ctx)
+    assert R.schnorr_verify(msg, q, sig)
+    return sig
 
 
 REASONS = ['ok', 'pubkey', 'pubnonce', 'aggnonce', 'aggothernonce', 'psig'] + list(V.VALUE) + ['invalid', 'capacity']

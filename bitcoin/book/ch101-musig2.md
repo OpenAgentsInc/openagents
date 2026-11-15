@@ -202,15 +202,18 @@ ms_key_sort_vartime :: (keys: [] u8) #effects(all) {
   u := keys.count / 33; t: [33] u8;
   for i: 1..<u {
     j := i;
-    while j > 0 && ms_less_vartime(keys[33*j..<33*j+33], keys[33*(j-1)..<33*j]) {
+    // Equivalent: ms_less_vartime reads a.count = 33 bytes of b, so b's slice ending at 33*j or one byte later reads the same key
+    while j > 0 && ms_less_vartime(keys[33*j..<33*j+33], keys[33*(j-1)..<33*j]) { // mutant: equivalent
       for k: 0..<33 { t[k] = keys[33*j+k]; keys[33*j+k] = keys[33*(j-1)+k]; keys[33*(j-1)+k] = t[k]; }
       j -= 1;
     }
   }
 }
 ms_less_vartime :: (a: [] u8, b: [] u8) -> bool #effects(all) {
-  for i: 0..<a.count { if a[i] != b[i] { return a[i] < b[i]; } }
-  return false;
+  // Equivalent: the bytes differ here, so < and <= agree
+  for i: 0..<a.count { if a[i] != b[i] { return a[i] < b[i]; } } // mutant: equivalent
+  // Equivalent: only equal keys get here, and swapping two equal keys in the sort leaves the same bytes
+  return false; // mutant: equivalent
 }
 // HashKeys: L, the tagged hash of every key in order.
 ms_hash_keys_vartime :: (keys: [] u8, out: [] u8) #effects(all) {
@@ -226,7 +229,8 @@ ms_second_key_vartime :: (keys: [] u8) -> int #effects(all) {
 // KeyAggCoeffInternal: 1 for the second key, otherwise
 // hash_KeyAgg coefficient(L || pk) mod n.
 ms_coeff_vartime :: (keys: [] u8, l: [] u8, second: int, pk: [] u8) -> ScScalar #effects(all) {
-  if second >= 0 && bt_same(pk, keys[33*second..<33*second+33]) { return sc_small(1); }
+  // Equivalent: second is -1 or at least 1 (ms_second_key_vartime starts at j = 1), so >= 0, > 0 and >= 1 agree
+  if second >= 0 && bt_same(pk, keys[33*second..<33*second+33]) { return sc_small(1); } // mutant: equivalent
   w: [1] ShaOwned;
   ms_tag(w[..], "KeyAgg coefficient"); ms_add(w[..], l); ms_add(w[..], pk);
   return ms_reduce(w[..]);
@@ -304,7 +308,8 @@ ms_taproot_tweak_vartime :: (keys: [] u8, merkle: [] u8, out: [] u8) -> int #eff
   k := ms_key_agg_vartime(keys);
   if k.code != MS_OK { return k.code; }
   m: [64] u8;
-  ms_xbytes_vartime(k.q, m[0..<32]);
+  // Equivalent: ms_xbytes_vartime writes exactly 32 bytes, so a 33-byte slice gets the same ones
+  ms_xbytes_vartime(k.q, m[0..<32]); // mutant: equivalent
   for i: 0..<merkle.count { m[32 + i] = merkle[i]; }
   bt_tagged(BH_TAPTWEAK, m[0..<32+merkle.count], out);
   return MS_OK;
@@ -384,7 +389,8 @@ ms_nonce_point :: (k: ScScalar, w: [] SignPoint, out: [] u8) #effects(all) {
 // (k_1 G and k_2 G, 66 bytes), which goes to the other signers.
 ms_nonce_gen :: (rand_: [] u8, sk: [] u8, pk: [] u8, aggpk: [] u8, msg: [] u8, has_msg: bool, extra: [] u8, secnonce: [] u8, pubnonce: [] u8, w: [] MsNonceWork) -> int #effects(all) {
   if w.count != 1 || rand_.count != 32 || (sk.count != 0 && sk.count != 32) || pk.count != 33 || (aggpk.count != 0 && aggpk.count != 32) { return MS_CAPACITY; }
-  if secnonce.count != 97 || pubnonce.count != 66 || extra.count > 0xffffffff { return MS_CAPACITY; }
+  // Equivalent: extra.count at 2^32 - 1 or 2^32 needs a 4 GiB slice, which no check can allocate; the bound is BIP-327's 4-byte length
+  if secnonce.count != 97 || pubnonce.count != 66 || extra.count > 0xffffffff { return MS_CAPACITY; } // mutant: equivalent
   // With a secret key, rand = sk XOR hash_MuSig/aux(rand_): a weak random
   // source then still gives nonces nobody without sk can predict.
   for j: 0..<32 { w[0].rand[j] = rand_[j]; }
@@ -396,14 +402,17 @@ ms_nonce_gen :: (rand_: [] u8, sk: [] u8, pk: [] u8, aggpk: [] u8, msg: [] u8, h
   for i: 0..<2 {
     k := ms_nonce_hash(w, pk, aggpk, msg, has_msg, extra, i);
     nonzero := ec_nonzero(k);
-    w[0].valid &= nonzero;
-    w[0].k[i] = sc_select(nonzero, k, sc_small(1));   // masked, never a branch on k
+    // Equivalent: k is 0 only when a SHA-256 output is 0 mod n, probability about 2^-256, so valid stays 1 and the select keeps k
+    w[0].valid &= nonzero; // mutant: equivalent
+    // Equivalent: as above, the fallback for k = 0 is never taken. The select is masked, never a branch on k.
+    w[0].k[i] = sc_select(nonzero, k, sc_small(1)); // mutant: equivalent
   }
   // k_i = 0 happens with negligible probability (BIP-327 asserts it).
   #assert ec_declassify(w[0].valid);
   for i: 0..<2 {
     ms_nonce_point(w[0].k[i], w[0].point[..], pubnonce[33*i..<33*i+33]);
-    #assert ss_write(w[0].k[i], secnonce[32*i..<32*i+32]);
+    // Equivalent: ss_write writes the first 32 bytes of any slice of 32 or more, so the slice's end can move within secnonce
+    #assert ss_write(w[0].k[i], secnonce[32*i..<32*i+32]); // mutant: equivalent
   }
   for j: 0..<33 { secnonce[64 + j] = pk[j]; }
   ms_nonce_clear(w);
@@ -573,7 +582,8 @@ everyone's shares before aggregating can name the one who misbehaved.
 // from this signer's nonce, negated when R has an odd y. g is Q's sign.
 ms_partial_verify_session_vartime :: (psig: [] u8, pubnonce: [] u8, pk: [] u8, x: MsSession, keys: [] u8) -> MsResult #effects(all) {
   s := sc_load(psig);
-  if psig.count != 32 || !s.ok { return ms_fail(MS_INVALID, -1); }
+  // Equivalent: sc_load refuses every length but 32, and a 32-byte psig at or above n loads as 0, whose s G - c P is Re only for a forgery, so it still ends MS_INVALID
+  if psig.count != 32 || !s.ok { return ms_fail(MS_INVALID, -1); } // mutant: equivalent
   r1 := ms_cpoint_vartime(pubnonce[0..<33]);
   r2 := ms_cpoint_vartime(pubnonce[33..<66]);
   if !r1.ok || !r2.ok { return ms_fail(MS_BAD_PUBNONCE, -1); }
@@ -592,7 +602,8 @@ ms_partial_verify_session_vartime :: (psig: [] u8, pubnonce: [] u8, pk: [] u8, x
 // nonces and keys. MS_OK, MS_INVALID, or the contribution that refused.
 ms_partial_verify_vartime :: (psig: [] u8, pubnonces: [] u8, keys: [] u8, tweaks: [] u8, xonly: [] bool, msg: [] u8, i: int) -> MsResult #effects(all) {
   u := keys.count / 33;
-  if pubnonces.count != 66 * u || keys.count % 33 != 0 || i < 0 || i >= u { return ms_fail(MS_CAPACITY, -1); }
+  // Equivalent: for the second ||, keys that are not 33 bytes each also refuse in KeyAgg as MS_CAPACITY with signer -1, which ms_session_vartime returns
+  if pubnonces.count != 66 * u || keys.count % 33 != 0 || i < 0 || i >= u { return ms_fail(MS_CAPACITY, -1); } // mutant: equivalent
   agg: [66] u8;
   n := ms_nonce_agg_vartime(pubnonces, agg[..]);
   if n.code != MS_OK { return n; }
@@ -623,7 +634,8 @@ ms_partial_agg_vartime :: (psigs: [] u8, x: MsSession, out: [] u8) -> MsResult #
     s = sc_add(s, si.value);
   }
   s = sc_add(s, sc_mul(sc_mul(x.e, ms_parity_vartime(x.q)), x.tacc));
-  ms_xbytes_vartime(x.r, out[0..<32]);
+  // Equivalent: ms_xbytes_vartime writes exactly 32 bytes, and sc_store then writes out[32..<64]
+  ms_xbytes_vartime(x.r, out[0..<32]); // mutant: equivalent
   #assert sc_store(s, out[32..<64]);
   return ms_ok();
 }
@@ -672,13 +684,16 @@ ms_det_sign :: (sk: [] u8, aggother: [] u8, keys: [] u8, tweaks: [] u8, xonly: [
     ms_end(s, n[0].h[..]);
     ki := sc_reduce_bytes(n[0].h[..]).value;
     nonzero := ec_nonzero(ki);
-    n[0].valid &= nonzero;
-    n[0].k[i] = sc_select(nonzero, ki, sc_small(1));
+    // Equivalent: k is 0 only when a SHA-256 output is 0 mod n, probability about 2^-256, so valid stays 1 and the select keeps k
+    n[0].valid &= nonzero; // mutant: equivalent
+    // Equivalent: as above, the fallback for k = 0 is never taken
+    n[0].k[i] = sc_select(nonzero, ki, sc_small(1)); // mutant: equivalent
   }
   #assert ec_declassify(n[0].valid);
   for i: 0..<2 {
     ms_nonce_point(n[0].k[i], n[0].point[..], pubnonce[33*i..<33*i+33]);
-    #assert ss_write(n[0].k[i], w[0].secnonce[32*i..<32*i+32]);
+    // Equivalent: ss_write writes the first 32 bytes of any slice of 32 or more, so the slice's end can move within secnonce
+    #assert ss_write(n[0].k[i], w[0].secnonce[32*i..<32*i+32]); // mutant: equivalent
   }
   // The secnonce's public key: IndividualPubkey(sk).
   d := w[0].sign[0].d[..];
@@ -697,125 +712,150 @@ ms_det_sign :: (sk: [] u8, aggother: [] u8, keys: [] u8, tweaks: [] u8, xonly: [
 BIP-327 publishes eight vector files. Each case states a result or the
 error it raises and whom the error blames. `make_musig_vectors.py`
 copies every case into `musig_vectors.coax`, with the JSON's indices
-resolved into the bytes they name. Each `msv_` procedure counts the cases
-of one file that give their stated result. A signing case that signs
+resolved into the bytes they name. Each `msv_` procedure asserts that
+every case of one file gives its stated result, one fact at a time, and
+returns how many cases it checked. A signing case that signs
 also checks that the same secnonce then refuses, and every deterministic
 partial signature is verified, and every aggregate signature passes
 chapter 23's verifier.
 
 <!-- source: coax/lib/bitcoin/musig.coax vectors -->
 ```jai
-// Each BIP-327 vector file: the number of its cases that give their
-// stated result, a value or the refusal with the signer it blames.
+// Each BIP-327 vector file: every case gives its stated result, a value
+// or the refusal with the signer it blames. Each asserts every fact on
+// its own and returns the number of cases it checked.
 msv_key_sort :: () -> int #effects(all) {
   k: [256] u8; e: [256] u8;
   keys := ms_hex(MS_SORT_KEYS, k[..]);
   ms_key_sort_vartime(keys);
-  return ifx bt_same(keys, ms_hex(MS_SORT_SORTED, e[..])) then 1 else 0;
+  #assert bt_same(keys, ms_hex(MS_SORT_SORTED, e[..]));
+  return 1;
 }
 msv_key_agg :: () -> int #effects(all) {
-  passed := 0;
+  checked := 0;
   for i: 0..<MS_KEY_AGG.count {
     c := MS_KEY_AGG[i];
     k: [512] u8; t: [256] u8; f: [8] bool; q: [32] u8;
     r := ms_key_agg_tweak_vartime(ms_hex(c.keys, k[..]), ms_hex(c.tweaks, t[..]), ms_flags(c.xonly, f[..]));
-    ms_xbytes_vartime(r.q, q[..]);
-    if r.code == c.code && r.signer == c.signer && (r.code != MS_OK || bt_hex_is(q[..], c.expected)) { passed += 1; }
+    #assert r.code == c.code;
+    #assert r.signer == c.signer;
+    if r.code == MS_OK { ms_xbytes_vartime(r.q, q[..]); #assert bt_hex_is(q[..], c.expected); }
+    checked += 1;
   }
-  return passed;
+  return checked;
 }
 msv_nonce_gen :: () -> int #effects(all) {
-  passed := 0; w: [1] MsNonceWork;
+  checked := 0; w: [1] MsNonceWork;
   for i: 0..<MS_NONCE_GEN.count {
     c := MS_NONCE_GEN[i];
     r: [32] u8; sk: [32] u8; pk: [33] u8; aggpk: [32] u8; msg: [64] u8; extra: [32] u8; sec: [97] u8; pub: [66] u8;
     code := ms_nonce_gen(ms_hex(c.rand, r[..]), ms_hex(c.sk, sk[..]), ms_hex(c.pk, pk[..]), ms_hex(c.aggpk, aggpk[..]), ms_hex(c.msg, msg[..]), c.has_msg,
       ms_hex(c.extra, extra[..]), sec[..], pub[..], w[..]);
-    if code == MS_OK && bt_hex_is(sec[..], c.secnonce) && bt_hex_is(pub[..], c.pubnonce) { passed += 1; }
+    #assert code == MS_OK;
+    #assert bt_hex_is(sec[..], c.secnonce);
+    #assert bt_hex_is(pub[..], c.pubnonce);
+    checked += 1;
   }
-  return passed;
+  return checked;
 }
 msv_nonce_agg :: () -> int #effects(all) {
-  passed := 0;
+  checked := 0; got := 0; want := 0;
   for i: 0..<MS_NONCE_AGG.count {
     c := MS_NONCE_AGG[i];
     n: [256] u8; out: [66] u8;
     r := ms_nonce_agg_vartime(ms_hex(c.nonces, n[..]), out[..]);
-    if r.code == c.code && r.signer == c.signer && (r.code != MS_OK || bt_hex_is(out[..], c.expected)) { passed += 1; }
+    #assert r.code == c.code;
+    #assert r.signer == c.signer;
+    if c.code == MS_OK { want += 1; }
+    if r.code == MS_OK { got += 1; #assert bt_hex_is(out[..], c.expected); }
+    checked += 1;
   }
-  return passed;
+  #assert got == want;
+  return checked;
 }
 // Sign, from sign_verify_vectors and tweak_vectors, cases lo to hi - 1.
 // A case that signs also refuses a second time with the same secnonce.
 msv_sign :: (lo: int, hi: int) -> int #effects(all) {
-  passed := 0; w: [1] MsSignWork;
+  checked := 0; w: [1] MsSignWork;
   for i: lo..<hi {
     c := MS_SIGN[i];
     sec: [97] u8; sk: [32] u8; agg: [66] u8; k: [256] u8; t: [256] u8; f: [8] bool; m: [64] u8; psig: [32] u8;
     keys := ms_hex(c.keys, k[..]); tweaks := ms_hex(c.tweaks, t[..]); xonly := ms_flags(c.xonly, f[..]); msg := ms_hex(c.msg, m[..]);
     r := ms_sign(ms_hex(c.secnonce, sec[..]), ms_hex(c.sk, sk[..]), ms_hex(c.aggnonce, agg[..]), keys, tweaks, xonly, msg, psig[..], w[..]);
-    ok := r.code == c.code && r.signer == c.signer;
+    #assert r.code == c.code;
+    #assert r.signer == c.signer;
     if r.code == MS_OK {
-      ok = ok && bt_hex_is(psig[..], c.expected);
-      ok = ok && ms_sign(sec[..], sk[..], agg[..], keys, tweaks, xonly, msg, psig[..], w[..]).code == MS_SECNONCE_1;
+      #assert bt_hex_is(psig[..], c.expected);
+      #assert ms_sign(sec[..], sk[..], agg[..], keys, tweaks, xonly, msg, psig[..], w[..]).code == MS_SECNONCE_1;
     }
-    if ok { passed += 1; }
+    checked += 1;
   }
-  return passed;
+  return checked;
 }
 // PartialSigVerify, from the same two files, cases lo to hi - 1.
 msv_verify :: (lo: int, hi: int) -> int #effects(all) {
-  passed := 0;
+  checked := 0;
   for i: lo..<hi {
     c := MS_VERIFY[i];
     s: [32] u8; k: [256] u8; n: [256] u8; t: [256] u8; f: [8] bool; m: [64] u8;
     r := ms_partial_verify_vartime(ms_hex(c.sig, s[..]), ms_hex(c.nonces, n[..]), ms_hex(c.keys, k[..]), ms_hex(c.tweaks, t[..]),
       ms_flags(c.xonly, f[..]), ms_hex(c.msg, m[..]), c.index);
-    if r.code == c.code && r.signer == c.signer { passed += 1; }
+    #assert r.code == c.code;
+    #assert r.signer == c.signer;
+    checked += 1;
   }
-  return passed;
+  return checked;
 }
 // DeterministicSign, cases lo to hi - 1. A partial signature it makes
 // also verifies.
 msv_det_sign :: (lo: int, hi: int) -> int #effects(all) {
-  passed := 0; w: [1] MsDetWork;
+  checked := 0; w: [1] MsDetWork;
   for i: lo..<hi {
     c := MS_DET_SIGN[i];
     sk: [32] u8; o: [66] u8; k: [256] u8; t: [64] u8; f: [4] bool; m: [64] u8; rd: [32] u8; pub: [66] u8; psig: [32] u8;
     keys := ms_hex(c.keys, k[..]); tweaks := ms_hex(c.tweaks, t[..]); xonly := ms_flags(c.xonly, f[..]); msg := ms_hex(c.msg, m[..]);
     other := ms_hex(c.aggother, o[..]);
     r := ms_det_sign(ms_hex(c.sk, sk[..]), other, keys, tweaks, xonly, msg, ms_hex(c.rand, rd[..]), pub[..], psig[..], w[..]);
-    ok := r.code == c.code && r.signer == c.signer;
+    #assert r.code == c.code;
+    #assert r.signer == c.signer;
     if r.code == MS_OK {
       both: [132] u8; agg: [66] u8;
       for j: 0..<66 { both[j] = other[j]; both[66 + j] = pub[j]; }
-      ok = ok && bt_hex_is(pub[..], c.pubnonce) && bt_hex_is(psig[..], c.psig) && ms_nonce_agg_vartime(both[..], agg[..]).code == MS_OK;
+      #assert bt_hex_is(pub[..], c.pubnonce);
+      #assert bt_hex_is(psig[..], c.psig);
+      #assert ms_nonce_agg_vartime(both[..], agg[..]).code == MS_OK;
       x := ms_session_vartime(agg[..], keys, tweaks, xonly, msg);
-      ok = ok && ms_partial_verify_session_vartime(psig[..], pub[..], keys[33*c.index..<33*c.index+33], x, keys).code == MS_OK;
+      #assert ms_partial_verify_session_vartime(psig[..], pub[..], keys[33*c.index..<33*c.index+33], x, keys).code == MS_OK;
     }
-    if ok { passed += 1; }
+    checked += 1;
   }
-  return passed;
+  return checked;
 }
 // PartialSigAgg. Each signature it makes is a valid BIP-340 signature
 // under the aggregate key.
 msv_sig_agg :: () -> int #effects(all) {
-  passed := 0;
+  checked := 0; got := 0; want := 0;
   for i: 0..<MS_SIG_AGG.count {
     c := MS_SIG_AGG[i];
     agg: [66] u8; n: [256] u8; k: [256] u8; t: [256] u8; f: [8] bool; p: [256] u8; m: [64] u8; sig: [64] u8; check: [66] u8; q: [32] u8;
     keys := ms_hex(c.keys, k[..]); tweaks := ms_hex(c.tweaks, t[..]); xonly := ms_flags(c.xonly, f[..]); msg := ms_hex(c.msg, m[..]);
-    ok := ms_nonce_agg_vartime(ms_hex(c.nonces, n[..]), check[..]).code == MS_OK && bt_same(check[..], ms_hex(c.aggnonce, agg[..]));
+    #assert ms_nonce_agg_vartime(ms_hex(c.nonces, n[..]), check[..]).code == MS_OK;
+    #assert bt_same(check[..], ms_hex(c.aggnonce, agg[..]));
     x := ms_session_vartime(agg[..], keys, tweaks, xonly, msg);
     r := ms_partial_agg_vartime(ms_hex(c.psigs, p[..]), x, sig[..]);
-    ok = ok && r.code == c.code && r.signer == c.signer;
+    #assert r.code == c.code;
+    #assert r.signer == c.signer;
+    if c.code == MS_OK { want += 1; }
     if r.code == MS_OK {
+      got += 1;
       ms_xbytes_vartime(x.q, q[..]);
-      ok = ok && bt_hex_is(sig[..], c.expected) && schnorr_verify_vartime(msg, q[..], sig[..]);
+      #assert bt_hex_is(sig[..], c.expected);
+      #assert schnorr_verify_vartime(msg, q[..], sig[..]);
     }
-    if ok { passed += 1; }
+    checked += 1;
   }
-  return passed;
+  #assert got == want;
+  return checked;
 }
 ```
 
