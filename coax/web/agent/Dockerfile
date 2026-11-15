@@ -14,7 +14,7 @@ COPY src/ /src/
 RUN gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I/src -o /oa-agent /src/runner.c /src/runner-sign.c /src/runner-wire.c /src/seat-runner-wire.c /src/durable-runner-wire.c -lsecp256k1 -lcrypto -lcurl -lm \
  && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -o /oa-turn /src/turn.c /src/process-native.c /src/engine-io.c /src/confine-native.c -lm \
  && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -o /oa-chat-turn /src/chat.c /src/process-native.c /src/engine-io.c /src/confine-native.c -lm \
- && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -o /oa-chat-micro /src/chat-micro.c /src/process-native.c /src/engine-io.c /src/confine-native.c -lm \
+ && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -o /oa-chat-micro /src/chat-micro.c /src/process-native.c /src/engine-io.c /src/confine-native.c /src/store-file-native.c -lm \
  && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -o /oa-chat-devbox /src/devbox.c /src/process-native.c /src/engine-io.c /src/store-file-native.c -lm \
  && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I/src/seat -o /oa-seat /src/seat/seat.c /src/seat/tool-native.c /src/seat/process-native.c \
       /src/seat/store-file-native.c /src/seat/read-file-native.c /src/seat/socket-native.c /src/seat/entropy-native.c \

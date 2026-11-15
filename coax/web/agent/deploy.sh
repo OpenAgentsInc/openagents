@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deploys the project agent's runner (runner.c + the turn.coax engine) to
-# Cloud Run: oa-agent-staging, then oa-agent, from one image. Scale to zero,
-# at most one instance, CPU kept while a turn runs after the wake's answer,
+# Cloud Run: oa-agent-staging, then oa-agent, from one image. One resident
+# instance, CPU allocated outside requests so saved work survives a missed wake,
 # reachable only with an identity token (oa-api's service account invokes it).
 #
 #   coax/web/agent/deploy.sh            # build, staging, production
