@@ -3,7 +3,7 @@
 #authority;
 CT_QUEUED :: 1; CT_RUNNING :: 2; CT_COMPLETED :: 3;
 CT_FAILED :: 4; CT_CANCELLED :: 5; CT_UNKNOWN :: 6;
-CT_STARTED :: 1; CT_TEXT :: 2; CT_USAGE :: 3; CT_STOP :: 4;
+CT_STARTED :: 1; CT_TEXT_DELTA :: 2; CT_USAGE :: 3; CT_STOP :: 4;
 CT_DONE :: 5; CT_ERROR :: 6; CT_LOST :: 7; CT_CANCEL :: 8;
 CT_SEQUENCE_MAX :: 2147483645;
 
@@ -33,7 +33,7 @@ CT_SEQUENCE_MAX :: 2147483645;
 }
 #test "stream events stay live and cancellation remains a request until observed" {
  for stopped:[2]bool.[false,true] {
-  #assert ct_transition(CT_RUNNING,CT_TEXT,stopped)==CT_RUNNING;
+  #assert ct_transition(CT_RUNNING,CT_TEXT_DELTA,stopped)==CT_RUNNING;
   #assert ct_transition(CT_RUNNING,CT_USAGE,stopped)==CT_RUNNING;
   #assert ct_transition(CT_RUNNING,CT_STOP,stopped)==CT_RUNNING;
   #assert ct_transition(CT_RUNNING,CT_DONE,stopped)==CT_COMPLETED;
@@ -45,7 +45,7 @@ CT_SEQUENCE_MAX :: 2147483645;
 }
 #test "terminal turns never restart or accept later events" {
  for state:CT_COMPLETED..<CT_UNKNOWN+1 {for event:CT_STARTED..<CT_CANCEL+1 {#assert ct_transition(state,event,false)==0 && ct_transition(state,event,true)==0;}}
- for state:[3]int.[-1,0,7] {#assert ct_transition(state,CT_TEXT,false)==0;}
+ for state:[3]int.[-1,0,7] {#assert ct_transition(state,CT_TEXT_DELTA,false)==0;}
  for event:[3]int.[-1,0,9] {#assert ct_transition(CT_RUNNING,event,false)==0 && ct_transition(CT_QUEUED,event,false)==0;}
 }
 ct_terminal :: (state:int)->bool #export_c #effects(all) {return state>=CT_COMPLETED && state<=CT_UNKNOWN;}
@@ -61,7 +61,7 @@ ct_transition :: (state:int,event:int,stop_requested:bool)->int #export_c #effec
   return 0;
  }
  if state!=CT_RUNNING {return 0;}
- if event==CT_TEXT || event==CT_USAGE || event==CT_STOP {return CT_RUNNING;}
+ if event==CT_TEXT_DELTA || event==CT_USAGE || event==CT_STOP {return CT_RUNNING;}
  if event==CT_DONE {return CT_COMPLETED;}
  if event==CT_ERROR {return CT_FAILED;}
  if event==CT_LOST {return CT_UNKNOWN;}

@@ -1,0 +1,145 @@
+// Complete, bounded model input from owned saved turns and a pinned legacy cut.
+// The gateway remains the only provider request writer.
+// coax test coax/web/api/account-chat-input.coax --library
+#load "account-chat-turn-record.coax";
+#load "account-chat-work-policy.coax";
+#load "account-chat-wire.coax";
+#load "../../lib/project/context-budget.coax";
+#load "../../../components/core/text.coax";
+#authority;
+CtInput :: struct {n:int;bytes:int;roles:[128]bool;starts:[128]int;counts:[128]int;data:[131072]u8;}
+#test "single-byte history and context values are never omitted or shifted" {
+ h:[1]CtInput;raw:[2048]u8;out:[8192]u8;one:=[1]string.["Q"];n:=ct_submit_write("op","",0,"",-1,"",-1,one[..],raw[..]);#assert cti_legacy(h[..],"") && h[0].n==0 && !cti_legacy(h[..],"{");
+ #assert cti_history(h[..],cast(string)raw[0..<n],"A",CT_COMPLETED) && h[0].n==2 && cti_text(h[..],1)=="A";
+ t:[1]AccountThread;t[0].n=1;t[0].messages[0].n=js_copy(t[0].messages[0].text[..],"Z");n=act_write(t[..],raw[..]);#assert n>0;n=cti_legacy_message(cast(string)raw[0..<n],CT_TEST_CONVERSATION,0,0,out[..]);#assert n>0;d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]) && jv_raw(d[0],jv_path(d[0],0,"content[0].text"))=="Z";
+ h[0]=CtInput.{};#assert cti_add(h[..],false,"Q");n=cti_write(h[..],"","",out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]) && jv_len(d[0],jv_get(d[0],0,"messages"))==2;
+ n=cti_write(h[..],"I","r",out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]) && jv_len(d[0],jv_get(d[0],0,"messages"))==3 && jv_raw(d[0],jv_path(d[0],0,"messages[0].content"))=="I" && jv_raw(d[0],jv_path(d[0],0,"messages[1].content"))=="r" && jv_raw(d[0],jv_path(d[0],0,"messages[2].content"))=="Q";
+ h[0].n=129;#assert cti_write(h[..],"","",out[..])== -1;
+}
+#test "titles keep complete first graphemes at exact byte boundaries and reject malformed cursors" {
+ raw:[4096]u8;out:[161]u8;text:[201]u8;for i:0..<text.count {text[i]='x';}one:=[1]string.["x"];n:=ct_submit_write("op","",0,"",-1,"",-1,one[..],raw[..]);#assert cti_title(cast(string)raw[0..<n],out[..])==1 && out[0]=='x';
+ for size:[2]int.[160,161] {one[0]=cast(string)text[0..<size];n=ct_submit_write("op","",0,"",-1,"",-1,one[..],raw[..]);#assert cti_title(cast(string)raw[0..<n],out[..])==160 && out[159]=='x';}
+ text[0]='a';for i:0..<100 {text[1+2*i]=204;text[2+2*i]=129;}one[0]=cast(string)text[..];n=ct_submit_write("op","",0,"",-1,"",-1,one[..],raw[..]);#assert cti_title(cast(string)raw[0..<n],out[..])==8 && cast(string)out[0..<8]=="New chat";
+ #assert cta_cursor("{")== -1 && cta_cursor("[")== -1;
+ v:[1]CtView;u:[1]CtUsage;#assert cta_restore(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN,CT_RUNNING,1,false,"","","",u[..]);#assert !cta_restore(v[..],"bad",CT_TEST_TURN,CT_RUNNING,1,false,"","","",u[..]);
+}
+#test "history overflow rolls back the complete admitted cut and preserves partial answers" {
+ h:[1]CtInput;raw:[2048]u8;one:=[1]string.["Q"];n:=ct_submit_write("x","",0,"",-1,"",-1,one[..],raw[..]);request:=cast(string)raw[0..<n];
+ for i:0..<127 {#assert cti_add(h[..],false,"x");}#assert !cti_history(h[..],request,"answer",CT_COMPLETED) && h[0].n==127 && h[0].bytes==127;
+ t:[1]AccountThread;t[0].n=2;for i:0..<2 {t[0].messages[i].n=js_copy(t[0].messages[i].text[..],"old");}b:[4096]u8;m:=act_write(t[..],b[..]);#assert m>0 && !cti_legacy(h[..],cast(string)b[0..<m]) && h[0].n==127 && h[0].bytes==127;
+ h[0]=CtInput.{};#assert cti_history(h[..],request,"",CT_CANCELLED) && h[0].n==1 && h[0].bytes==1 && cti_text(h[..],0)=="Q";
+ #assert !cti_history(h[..],request,"\0",CT_UNKNOWN) && h[0].n==1 && !cti_history(h[..],"{}","answer",CT_FAILED) && h[0].n==1;
+ #assert cti_legacy_count("")==0 && cti_legacy_count("{}")== -1 && cti_legacy_message("{}",CT_TEST_CONVERSATION,0,0,b[..])== -1 && cti_legacy_message(cast(string)b[0..<m],CT_TEST_CONVERSATION,-1,0,b[..])== -1;
+}
+#test "complete input validates its system reference and exact capacity before transport" #steps 30000000 {
+ h:[1]CtInput;b:[1048576]u8;#assert cti_write(h[..],"","",b[..])== -1;#assert cti_add(h[..],false,"Q");
+ n:=cti_write(h[..],"","",b[..]);#assert n>0;d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && jv_raw(d[0],jv_path(d[0],0,"messages[0].content"))=="You are OpenAgents, a helpful assistant. Be clear and concise.";
+ #assert cti_write(h[..],"","",b[0..<n-1])== -1 && cti_write(h[..],"","",b[0..<n])==n;
+ #assert cti_write(h[..],"\0","",b[..])== -1 && cti_write(h[..],"","\0",b[..])== -1;
+ max:[32769]u8;for i:0..<max.count {max[i]='x';}#assert cti_write(h[..],cast(string)max[0..<32768],"",b[..])>0 && cti_write(h[..],cast(string)max[0..<32768],"x",b[..])== -1 && cti_write(h[..],"",cast(string)max[..],b[..])== -1;
+ h[0].roles[0]=true;#assert cti_write(h[..],"","",b[..])== -1;
+ h[0]=CtInput.{};for i:0..<128 {#assert cti_add(h[..],false,"x");}#assert cti_write(h[..],"","ref",b[..])>0;
+}
+#test "materialized adapter restores every state and event through the sole reducer" {
+ v:[1]CtView;e:[1]CtEvent;u:=[1]CtUsage.[CtUsage.{input=1,output=2,cache_read=3,cache_write=4,reasoning=5}];
+ #assert !cta_restore(v[..],"bad",CT_TEST_TURN,CT_RUNNING,1,false,"","","",u[..]);
+ for state:CT_RUNNING..<CT_UNKNOWN+1 {reason:=ifx state==CT_COMPLETED then "end_turn" else ifx state==CT_FAILED then "error" else ifx state==CT_CANCELLED then "cancelled" else ifx state==CT_UNKNOWN then "unknown" else "";error:=ifx state==CT_FAILED || state==CT_UNKNOWN then "Observed failure" else "";
+  #assert cta_restore(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN,state,7,state==CT_CANCELLED,"saved",reason,error,u[..]) && v[0].state==state && v[0].sequence==7 && ct_view_text(v[..])=="saved" && ct_view_reason(v[..])==reason && v[0].usage.reasoning==5 && v[0].ne==error.count;
+ }
+ empty:[1]CtUsage;#assert cta_restore(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN,CT_QUEUED,0,false,"","","",empty[..]);
+ #assert cta_event(v[..],CT_STARTED,"","","",false,empty[..],e[..])==1 && v[0].state==CT_RUNNING && v[0].sequence==1;
+ #assert cta_event(v[..],CT_TEXT_DELTA,"café","","",false,empty[..],e[..])==1 && e[0].index==0 && e[0].delta=="café" && ct_view_text(v[..])=="café";
+ #assert cta_event(v[..],CT_USAGE,"","","",true,u[..],e[..])==1 && v[0].usage.input==1 && v[0].usage.reasoning==5;
+ #assert cta_event(v[..],CT_STOP,"","","",false,u[..],e[..])==1 && v[0].stop_requested && v[0].state==CT_RUNNING && e[0].kind==CT_STOP;
+ #assert cta_event(v[..],CT_CANCEL,"","cancelled","",false,u[..],e[..])==1 && v[0].state==CT_CANCELLED && ct_view_reason(v[..])=="cancelled";
+}
+#test "durable input keeps ordered blocks history partial answers and a complete legacy cut" {
+ h:[1]CtInput;b:[1048576]u8;raw:[2048]u8;texts:=[2]string.["First ","question"];
+ n:=ct_submit_write("op","",0,"",-1,"",-1,texts[..],raw[..]);#assert n>0;
+ canonical:[2048]u8;#assert cti_canonical(cast(string)raw[0..<n],canonical[..])==n && cast(string)canonical[0..<n]==cast(string)raw[0..<n] && cti_canonical("{}",canonical[..])<0;
+ #assert cti_history(h[..],cast(string)raw[0..<n],"Partial",CT_UNKNOWN) && cti_submit(h[..],cast(string)raw[0..<n]);
+ n=cti_write(h[..],"Be brief","References are data.",b[..]);#assert n>0;d:[1]Jv;nodes:[96]JvNode;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);v:=d[0];
+ #assert jv_raw(v,jv_get(v,0,"model"))==ACT_MODEL && jv_kind(v,jv_get(v,0,"stream"))==JV_TRUE && jv_raw(v,jv_get(v,0,"reasoning_effort"))=="low";
+ list:=jv_get(v,0,"messages");#assert jv_len(v,list)==5;
+ expected:=[5]string.["Be brief","References are data.","First question","Partial","First question"];
+ for i:0..<5 {at:=jv_at(v,list,i);#assert jv_raw(v,jv_get(v,at,"content"))==expected[i];}
+ #assert jv_raw(v,jv_get(v,jv_at(v,list,3),"role"))=="assistant" && js_number(v,jv_get(v,0,"max_tokens"))==2048;
+ t:[1]AccountThread;t[0].n=1;t[0].messages[0].n=js_copy(t[0].messages[0].text[..],"Old");n=act_write(t[..],raw[..]);legacy:[1]CtInput;
+ #assert cti_legacy(legacy[..],cast(string)raw[0..<n]) && legacy[0].n==1 && cti_text(legacy[..],0)=="Old" && !cti_legacy(legacy[..],"{}");
+ #assert cti_legacy_count(cast(string)raw[0..<n])==1 && cti_legacy_message(cast(string)raw[0..<n],"cnv_0123456789abcdef0123456789abcdef",0,0,b[..])>0 && cti_legacy_message(cast(string)raw[0..<n],"cnv_0123456789abcdef0123456789abcdef",1,0,b[..])==0;
+}
+cti_legacy_count :: (raw:string)->int #export_c #effects(all) {if raw.count==0 {return 0;}t:[1]AccountThread;return ifx act_read(raw,t[..]) then t[0].n else -1;}
+cti_legacy_message :: (raw:string,conversation:string,index:int,created:int,out:[]u8)->int #export_c #effects(all) {t:[1]AccountThread;if index<0 || !act_read(raw,t[..]) {return -1;}if index>=t[0].n {return 0;}return ctr_historical_message(conversation,index,t[0].messages[index].assistant,cast(string)t[0].messages[index].text[0..<t[0].messages[index].n],created,out);}
+#test "durable input refuses live history invalid text and complete-input overflow" #steps 100000000 {
+ h:[1]CtInput;raw:[2048]u8;b:[1048576]u8;one:=[1]string.["Q"];n:=ct_submit_write("x","",0,"",-1,"",-1,one[..],raw[..]);
+ #assert !cti_history(h[..],cast(string)raw[0..<n],"",CT_RUNNING) && h[0].n==0 && !cti_submit(h[..],"{}");
+ #assert !cti_add(h[..],false,"") && !cti_add(h[..],false,"\0") && !cti_add(h[..],true,"\0");
+ full:[131073]u8;for i:0..<full.count {full[i]='x';}
+ #assert !cti_add(h[..],true,cast(string)full[..]) && h[0].n==0;
+ #assert cti_add(h[..],true,cast(string)full[0..<131072]) && !cti_add(h[..],false,"x") && h[0].n==1 && h[0].bytes==131072;
+ #assert cti_write(h[..],"","",b[..])<0;
+ h[0]=CtInput.{};for i:0..<128 {#assert cti_add(h[..],false,"x");}#assert !cti_add(h[..],false,"x") && h[0].n==128;
+ #assert cti_text(h[..],-1)=="" && cti_text(h[..],128)=="" && cti_write(h[..],"","",b[0..<1])<0;
+ context:[32769]u8;for i:0..<context.count {context[i]='a';}#assert cti_write(h[..],cast(string)context[..],"",b[..])<0;
+}
+cti_text :: (h:[]CtInput,i:int)->string #effects(all) {if i<0 || i>=h[0].n {return "";}at:=h[0].starts[i];return cast(string)h[0].data[at..<at+h[0].counts[i]];}
+cti_add :: (h:[]CtInput,assistant:bool,text:string)->bool #effects(all) {
+ if h[0].n>=128 || text.count<1 || text.count>131072-h[0].bytes || !ct_valid_text(text,131072) {return false;} // mutant: equivalent (a widened UTF8 ceiling cannot bypass the remaining-input bound or js_utf8's fixed 131072-byte span)
+ i:=h[0].n;h[0].starts[i]=h[0].bytes;h[0].counts[i]=text.count;h[0].roles[i]=assistant;_=js_copy(h[0].data[h[0].bytes..<131072],text);h[0].bytes+=text.count;h[0].n+=1;return true;
+}
+cti_submit :: (h:[]CtInput,raw:string)->bool #export_c #effects(all) {
+ r:[1]CtSubmit;arena:[174]u8;if !ct_submit_read(raw,r[..],arena[..]) {return false;}
+ return cti_add(h,false,cast(string)r[0].data[0..<r[0].bytes]);
+}
+cti_history :: (h:[]CtInput,raw:string,answer:string,state:int)->bool #export_c #effects(all) {
+ if !ct_terminal(state) || !ct_valid_text(answer,131072) {return false;} // mutant: equivalent (js_utf8 still refuses a reply longer than its fixed 131072-byte span)
+ // Admission is atomic even when only the answer would overflow the input.
+ before_n:=h[0].n;before_bytes:=h[0].bytes;
+ if !cti_submit(h,raw) {return false;}
+ if answer.count>0 && !cti_add(h,true,answer) {h[0].n=before_n;h[0].bytes=before_bytes;return false;}return true;
+}
+cti_legacy :: (h:[]CtInput,raw:string)->bool #export_c #effects(all) {
+ if raw.count==0 {return true;}t:[1]AccountThread;if !act_read(raw,t[..]) {return false;}
+ before_n:=h[0].n;before_bytes:=h[0].bytes;
+ for i:0..<t[0].n {if !cti_add(h,t[0].messages[i].assistant,cast(string)t[0].messages[i].text[0..<t[0].messages[i].n]) {h[0].n=before_n;h[0].bytes=before_bytes;return false;}}return true;
+}
+cti_write :: (h:[]CtInput,instructions:string,reference:string,out:[]u8)->int #export_c #effects(all) {
+ if h[0].n<1 || h[0].n>128 || h[0].roles[h[0].n-1] || !pcb_context(instructions.count+reference.count) || !ct_valid_text(instructions,32768) || !ct_valid_text(reference,32768) {return -1;} // mutant: equivalent (either per-field ceiling widened by one still fails the combined 32768-byte context admission)
+ msgs:[129]GwMessage;offset:=ifx reference.count>0 then 1 else 0;if offset==1 {msgs[0]=GwMessage.{role="user",text=reference};}
+ for i:0..<h[0].n {msgs[i+offset]=GwMessage.{role=ifx h[0].roles[i] then "assistant" else "user",text=cti_text(h,i)};}
+ return gw_chat_body(GwRequest.{model=ACT_MODEL,system=ifx instructions.count>0 then instructions else "You are OpenAgents, a helpful assistant. Be clear and concise.",messages=msgs[0..<h[0].n+offset],max_tokens=2048,effort="low",stream=true},GW_CHAT_LEGACY_MAX_TOKENS,out);
+}
+cti_canonical :: (raw:string,out:[]u8)->int #export_c #effects(all) {
+ r:[1]CtSubmit;arena:[174]u8;if !ct_submit_read(raw,r[..],arena[..]) {return -1;}texts:[16]string;for i:0..<r[0].blocks {texts[i]=ct_submit_text(r[..],i);}
+ return ct_submit_write(r[0].operation,r[0].conversation,r[0].revision,r[0].project,r[0].project_revision,r[0].legacy,r[0].legacy_revision,texts[0..<r[0].blocks],out);
+}
+#test "durable API adapters use the same identities cursors reducer and UTF8 title boundary" {
+ #assert cta_id("cnv_0123456789abcdef0123456789abcdef",false) && cta_id("trn_0123456789abcdef0123456789abcdef",true) && !cta_id("bad",false);
+ #assert cta_cursor("")==0 && cta_cursor("0")==0 && cta_cursor("2147483645")==CT_SEQUENCE_MAX && cta_cursor("2147483646")== -1 && cta_cursor("-1")== -1 && cta_cursor("1.5")== -1;
+ raw:[2048]u8;out:[161]u8;text:[164]u8;for i:0..<158 {text[i]='x';}text[158]=240;text[159]=159;text[160]=152;text[161]=128;
+ one:=[1]string.[cast(string)text[0..<162]];n:=ct_submit_write("x","",0,"",-1,"",-1,one[..],raw[..]);#assert cti_title(cast(string)raw[0..<n],out[..])==158;
+ #assert cti_title("{}",out[..])<0;
+ v:[1]CtView;e:[1]CtEvent;u:[1]CtUsage;
+ #assert cta_restore(v[..],"cnv_0123456789abcdef0123456789abcdef","trn_0123456789abcdef0123456789abcdef",CT_QUEUED,0,false,"","","",u[..]);
+ #assert cta_event(v[..],CT_STOP,"","","",false,u[..],e[..])==1 && v[0].state==CT_CANCELLED && v[0].stop_requested && e[0].kind==CT_CANCEL;
+ #assert cta_event(v[..],CT_STOP,"","","",false,u[..],e[..])==2 && v[0].sequence==1;
+}
+cta_id :: (value:string,turn:bool)->bool #export_c #effects(all) {return ct_id(value,ifx turn then "trn_" else "cnv_",32);}
+cta_cursor :: (value:string)->int #export_c #effects(all) {if value.count==0 {return 0;}d:[1]Jv;nodes:[2]JvNode;if !jv_parse(d[..],value,nodes[..]) {return -1;}n:=js_number(d[0],0);return ifx n<=CT_SEQUENCE_MAX then n else -1;}
+cti_title :: (raw:string,out:[]u8)->int #export_c #effects(all) {
+ r:[1]CtSubmit;arena:[174]u8;if !ct_submit_read(raw,r[..],arena[..]) {return -1;}text:=cast(string)r[0].data[0..<r[0].bytes];at:=0;
+ while at<text.count {n:=cluster_len(text,at);if at+n>160 {break;}at+=n;}
+ return js_copy(out,ifx at>0 then text[0..<at] else "New chat");
+}
+cta_restore :: (v:[]CtView,conversation:string,turn:string,state:int,cursor:int,stopped:bool,text:string,reason:string,error:string,usage:[]CtUsage)->bool #export_c #effects(all) {
+ if !ct_view_begin(v,conversation,turn) || !ct_valid_text(text,131072) || !ct_valid_text(reason,80) || !ct_valid_text(error,512) {return false;} // mutant: equivalent (widening a text span still fails js_utf8 or the exact destination capacity and final ctr_view_valid check)
+ v[0].state=state;v[0].sequence=cursor;v[0].stop_requested=stopped;v[0].bytes=js_copy(v[0].content[..],text);v[0].nr=js_copy(v[0].reason[..],reason);v[0].ne=js_copy(v[0].error[..],error);v[0].usage=usage[0];return ctr_view_valid(v);
+}
+// 1 newly applied; 2 already terminal (a Stop reconciles without a new event).
+cta_event :: (v:[]CtView,kind:int,delta:string,reason:string,error:string,has_usage:bool,usage:[]CtUsage,e:[]CtEvent)->int #export_c #effects(all) {
+ if ct_terminal(v[0].state) {return 2;}
+ actual:=ifx kind==CT_STOP && v[0].state==CT_QUEUED then CT_CANCEL else kind;
+ action:=ifx actual==CT_CANCEL && v[0].state==CT_QUEUED then CT_STOP else actual;
+ e[0]=CtEvent.{conversation=cast(string)v[0].conversation[..],turn=cast(string)v[0].turn[..],sequence=v[0].sequence+1,kind=actual,state=ct_transition(v[0].state,action,v[0].stop_requested),stop_requested=v[0].stop_requested || kind==CT_STOP,index=ifx actual==CT_TEXT_DELTA then 0 else -1,delta=delta,reason=ifx actual==CT_CANCEL then "cancelled" else reason,error=error,has_usage=has_usage,usage=usage[0]};
+ return ct_view_apply(v,e);
+}

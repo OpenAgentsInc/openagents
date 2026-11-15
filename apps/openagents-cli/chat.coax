@@ -1,0 +1,65 @@
+// Durable account and private Project conversations through the shared owned
+// codecs and the existing profile/NIP-98 transport. Never owns model execution.
+#load "../../coax/web/api/account-chat-turn-record.coax";
+
+chat_usage :: () {
+ print("%\n","Durable account and Project chat (login first):");
+ print("%\n","  chat list [--project ID] [--cursor ID]");
+ print("%\n","  chat show CONVERSATION_ID [--after N] | turn TURN_ID");
+ print("%\n","  chat events TURN_ID [--after N]");
+ print("%\n","  chat new --file FILE|- [--project ID --project-rev N]");
+ print("%\n","  chat send CONVERSATION_ID --rev N --file FILE|- [--project ID --project-rev N]");
+ print("%\n","  chat stop TURN_ID [--operation-id ID]");
+ print("%\n","  chat follow TURN_ID [--timeout MS]   resume saved deltas, no new inference");
+ print("%\n","  new/send accept --operation-id ID and --legacy-thread ID --legacy-rev N on new.");
+}
+#test "chat CLI cursor and revision parsing preserve exact zero and upper bounds" {
+ #assert ccli_number("0")==0 && ccli_number("2147483645")==CT_SEQUENCE_MAX;
+ for bad:[6]string.["","-1","1.5","2147483646","true","1e1"] {#assert ccli_number(bad)== -1;}
+}
+ccli_number :: (text:string)->int {if text=="0" {return 0;}return pcli_revision(text);}
+ccli_path :: (name:string,id:string,after:string,out:[]u8)->string {
+ o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/api/chat/");jo_put(o[..],name);jo_put(o[..],"/v2alpha1");if id.count>0 {jo_put(o[..],"?id=");jo_put(o[..],id);}if after.count>0 {jo_put(o[..],"&after=");jo_put(o[..],after);}return jo_text(o[..]);
+}
+ccli_follow :: (a:[]Args,r:[]Rep,profile:string,id:string)->int {
+ out:[HTTP_BODY_MAX]u8;path:[512]u8;arena:[1476]u8;v:[1]CtView;i:[1]CtInfo;p:[1]CtPage;
+ res:=pcli_call(a,r,profile,"GET",ccli_path("turn",id,"",path[..]),"",CLI_HTTP_MS,out[..]);if !api_ok(res) {return api_fail(r,res,cast(string)out[0..<res.n]);}
+ if !ctr_turn_read(cast(string)out[0..<res.n],v[..],i[..],arena[..]) {return fail(r,EXIT_FAIL,"invalid saved turn; reopen it to reconcile");}
+ // JSON mode emits complete snapshots and event pages, one object per line.
+ // Text mode emits each owned text byte once; Markdown remains literal here.
+ if r[0].json {print("%\n",cast(string)out[0..<res.n]);}else {print("%",ct_view_text(v[..]));}
+ timeout:=args_value(a,"--timeout","300000");ms:=ccli_number(timeout);if ms<1000 || ms>900000 {return fail(r,EXIT_USAGE,"--timeout is 1000 to 900000 milliseconds");}deadline:=proc_now_ms()+ms;
+ while !ct_terminal(v[0].state) && proc_now_ms()<deadline {
+  number:[32]u8;before:=v[0].bytes;o:[1]Jo;jo_start(o[..],number[..]);jo_int(o[..],v[0].sequence);
+  res=pcli_call(a,r,profile,"GET",ccli_path("events",id,jo_text(o[..]),path[..]),"",CLI_HTTP_MS,out[..]);if !api_ok(res) {return api_fail(r,res,cast(string)out[0..<res.n]);}
+  if !ctr_page_apply(cast(string)out[0..<res.n],v[..],p[..]) {return fail(r,EXIT_FAIL,"invalid or gapped event page; follow again from the saved turn");}
+  if r[0].json {print("%\n",cast(string)out[0..<res.n]);}else {print("%",cast(string)v[0].content[before..<v[0].bytes]);}
+  // Product subscription cadence, not a build/check readiness loop. Execution
+  // remains on the resident worker if this command exits or is interrupted.
+  if !p[0].more && !ct_terminal(v[0].state) {proc_sleep(400);}
+ }
+ if !r[0].json {print("%","\n");tool_errln(ct_state_name(v[0].state));}
+ return ifx v[0].state==CT_COMPLETED || v[0].state==CT_CANCELLED then EXIT_OK else EXIT_FAIL;
+}
+chat_main :: (a:[]Args,r:[]Rep,profile:string,verb:string)->int {
+ id:=positional(a,2);out:[HTTP_BODY_MAX]u8;path:[1024]u8;body:[131072]u8;name:="";post:=false;after:=args_value(a,"--after","");
+ if after!="" && ccli_number(after)<0 {return fail(r,EXIT_USAGE,"--after must be a nonnegative event/message cursor");}
+ if verb=="list" {
+  project:=args_value(a,"--project","");cursor:=args_value(a,"--cursor","");if (project!="" && !ct_id(project,"prj_",32)) || (cursor!="" && !ct_id(cursor,"cnv_",32)) {return fail(r,EXIT_USAGE,"invalid Project or conversation cursor");}
+  o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],"/api/chat/conversations/v2alpha1?project_id=");jo_put(o[..],project);jo_put(o[..],"&cursor=");jo_put(o[..],cursor);
+  res:=pcli_call(a,r,profile,"GET",jo_text(o[..]),"",CLI_HTTP_MS,out[..]);return pcli_reply(r,res,out[..]);
+ }
+ if verb=="show" {name="conversation";if !ct_id(id,"cnv_",32) {return fail(r,EXIT_USAGE,"expected a conversation ID");}}
+ else if verb=="turn" || verb=="events" || verb=="follow" || verb=="stop" {if !ct_id(id,"trn_",32) {return fail(r,EXIT_USAGE,"expected a turn ID");}if verb=="follow" {return ccli_follow(a,r,profile,id);}name=verb;post=verb=="stop";}
+ else if verb=="new" || verb=="send" {post=true;name="submit";if verb=="new" {id="";}else if !ct_id(id,"cnv_",32) {return fail(r,EXIT_USAGE,"expected a conversation ID");}}
+ else {return fail(r,EXIT_USAGE,"chat list|show|turn|events|new|send|stop|follow");}
+ route:=ccli_path(name,ifx post then "" else id,ifx post then "" else after,path[..]);if !post {res:=pcli_call(a,r,profile,"GET",route,"",CLI_HTTP_MS,out[..]);return pcli_reply(r,res,out[..]);}
+ operation:[32]u8;op:=args_value(a,"--operation-id","");if op=="" {random:[16]u8;if cxrand_draw(random[..],16)!=0 || !cli_hex(random[..],operation[..]) {return fail(r,EXIT_FAIL,"cannot make an operation ID");}op=cast(string)operation[..];}
+ n:=0;if verb=="stop" {n=ct_stop_write(op,id,body[..]);}else {
+  text:[16385]u8;nt:=pcli_file(args_value(a,"--file",""),text[..]);if nt<1 || nt>16384 {return fail(r,EXIT_USAGE,"--file FILE|- must contain 1 to 16384 UTF-8 bytes");}
+  revision:=ifx verb=="new" then 0 else pcli_revision(args_value(a,"--rev",""));project:=args_value(a,"--project","");pr:=ifx project=="" then -1 else pcli_revision(args_value(a,"--project-rev",""));legacy:=args_value(a,"--legacy-thread","");lr:=ifx legacy=="" then -1 else pcli_revision(args_value(a,"--legacy-rev",""));texts:=[1]string.[cast(string)text[0..<nt]];
+  n=ct_submit_write(op,id,revision,project,pr,legacy,lr,texts[..],body[..]);
+ }if n<1 {return fail(r,EXIT_USAGE,"invalid chat identity, revision, operation or message");}
+ tool_errln("Chat operation ID (reuse with the exact inputs after a lost response):");tool_errln(op);
+ res:=pcli_call(a,r,profile,"POST",route,cast(string)body[0..<n],CLI_HTTP_MS,out[..]);return pcli_reply(r,res,out[..]);
+}

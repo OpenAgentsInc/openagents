@@ -5,6 +5,28 @@
 #authority;
 CTW_CLAIM_MS :: 60000;
 CTW_LOST_MS :: 450000;
+#forall "dispatch rechecks funding account lifecycle and current context ownership" facts:0..<16 {
+ #assert ctw_grant((facts&1)!=0,(facts&2)!=0,(facts&4)!=0,(facts&8)!=0)==(facts==9);
+}
+ctw_grant :: (funded:bool,frozen:bool,deleted:bool,context_owned:bool)->bool #export_c #effects(all) {return funded && !frozen && !deleted && context_owned;}
+#test "worker deadlines use safe server milliseconds and exact claim and loss durations" {
+ #assert ctw_claim_end(0)==60000 && ctw_claim_end(9007199254680991)==9007199254740991 && ctw_claim_end(-1)== -1 && ctw_claim_end(9007199254680992)== -1;
+ #assert ctw_cutoff(450000)==0 && ctw_cutoff(450001)==1 && ctw_cutoff(449999)== -1;
+}
+ctw_claim_end :: (now:int)->int #export_c #effects(all) {return ifx now>=0 && now<=9007199254680991 then now+CTW_CLAIM_MS else -1;}
+ctw_cutoff :: (now:int)->int #export_c #effects(all) {return ifx now>=CTW_LOST_MS then now-CTW_LOST_MS else -1;}
+#test "an account can queue at most thirty two active turns" {#assert ctw_queue(0) && ctw_queue(31) && !ctw_queue(-1) && !ctw_queue(32);}
+ctw_queue :: (active:int)->bool #export_c #effects(all) {return active>=0 && active<32;}
+#test "trusted runners match whole configured keys rather than substrings" {
+ k:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ #assert ctw_runner(k,k) && ctw_runner(k," aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ");
+ #assert ctw_runner(k,"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") && ctw_runner(k,",aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+ #assert !ctw_runner(k,"xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") && !ctw_runner(k,"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaax") && !ctw_runner(k,"") && !ctw_runner("a","a");
+}
+ctw_runner :: (key:string,list:string)->bool #export_c #effects(all) {
+ if key.count!=64 {return false;}start:=0;
+ for i:0..<list.count+1 {if i==list.count || list[i]==',' {a:=start;b:=i;while a<b && list[a]==' ' {a+=1;}while b>a && list[b-1]==' ' {b-=1;}if list[a..<b]==key {return true;}start=i+1;}}return false;
+}
 #test "durable chat needs a verified exact person owner" {
  #assert ctw_owns(2,1,"a","a") && ctw_owns(2,2,"a","a");
  #assert !ctw_owns(2,0,"a","a") && !ctw_owns(2,1,"a","b") && !ctw_owns(2,1,"","");

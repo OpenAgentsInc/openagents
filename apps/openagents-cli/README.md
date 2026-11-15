@@ -33,6 +33,32 @@ coax/remote/remote.sh run -- apps/openagents-cli/build.sh --emit-c
 coax/remote/remote.sh run --local -- apps/openagents-cli/build.sh --link-c
 ```
 
+## Durable chat
+
+The new `chat` domain uses the durable v2alpha1 service and the existing account
+profile. It requires the service/runner deployment; it does not start a local
+model. Existing `projects chat` commands retain their v1 behavior.
+
+```sh
+openagents chat list
+openagents chat new --file question.txt --operation-id first-question
+openagents chat follow "$TURN_ID"
+openagents chat show "$CONVERSATION_ID"
+openagents chat send "$CONVERSATION_ID" --rev 1 --file followup.txt --operation-id followup
+openagents chat stop "$TURN_ID" --operation-id stop-turn
+openagents chat events "$TURN_ID" --after 3
+```
+
+For a Project, pass `--project "$P" --project-rev N` to both `new` and `send`.
+To copy a legacy account chat on creation, add `--legacy-thread "$T"` and
+`--legacy-rev N`. Reuse the exact operation/input/revisions after a lost response.
+`new` and `send` return the saved conversation, turn and revision immediately;
+`follow` restores that turn then applies contiguous event pages. Interrupting it
+leaves execution with the resident worker; follow again to reconcile. `--json`
+follow emits a snapshot and subsequent event pages as JSON Lines. `show` uses
+`next_cursor` as its next `--after`; list uses `next_cursor` as `--cursor`.
+Stop requests cancellation; inspect/follow the turn for its authoritative result.
+
 ## Account Projects
 
 Log in to a named profile; approve its device link while signed into the desired

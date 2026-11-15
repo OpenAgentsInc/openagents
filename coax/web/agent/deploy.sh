@@ -43,6 +43,8 @@ mkdir -p "$stage/src"
 "$repo/coax/bin/coax" c "$here/runner-wire.coax" --library --header "$stage/src/runner-wire.h" > "$stage/src/runner-wire.c"
 # a hosted seat's bodies as the runner reads and writes them (seat-runner-wire.coax, openagents.verse.seat.v1alpha1)
 "$repo/coax/bin/coax" c "$here/seat-runner-wire.coax" --library --header "$stage/src/seat-runner-wire.h" > "$stage/src/seat-runner-wire.c"
+# Durable account turns use the owned codec; the runner carries no provider key for them.
+"$repo/coax/bin/coax" c "$repo/coax/web/api/account-chat-turn-record.coax" --library --header "$stage/src/durable-runner-wire.h" > "$stage/src/durable-runner-wire.c"
 cp "$here/runner.c" "$here/chat-runner.c" "$here/seat-runner.c" "$here/engine-io.c" "$here/confine-native.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/process-native.h" "$repo/coax/platform/store-file-native.c" "$repo/coax/platform/store-file-native.h" "$stage/src/"
 # oa-seat, the hosted seats' engine (seat.coax, docs/metaverse/realm-seat.md slice 5): its C, the platform's C and the entropy policy
 mkdir -p "$stage/src/seat"
@@ -107,7 +109,7 @@ deploy() {  # service api-origin repos-secret model chat-suffix
   fi
   gcloud run deploy "$1" --image "$image" --project "$project" --region "$region" \
     --no-allow-unauthenticated --service-account "$sa" --no-cpu-throttling \
-    --port 8080 --cpu 1 --memory 4Gi --min-instances 0 --max-instances 1 --concurrency 20 --timeout 900 \
+    --port 8080 --cpu 1 --memory 4Gi --min-instances 1 --max-instances 1 --concurrency 20 --timeout 900 \
     --execution-environment gen2 --clear-volumes --clear-volume-mounts \
     --add-volume "name=sessions,type=cloud-storage,bucket=$project-oa-chat-sessions$5,mount-options=uid=1000;gid=1000" \
     --add-volume-mount volume=sessions,mount-path=/sessions \

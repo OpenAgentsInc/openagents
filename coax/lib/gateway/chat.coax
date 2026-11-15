@@ -93,6 +93,11 @@ gw_chat_finish_of :: (s: string) -> int {
 
 // usage: prompt_tokens, completion_tokens and their details.
 gw_chat_usage_of :: (usage: string) -> GwUsage {
+  u:=gw_chat_usage_observed(usage);return ifx u.ok then u else GwUsage.{};
+}
+// Presence is useful before both token totals arrive. Existing complete-usage
+// consumers retain their old result through gw_chat_usage_of above.
+gw_chat_usage_observed :: (usage:string)->GwUsage {
   u: GwUsage;
   if usage.count == 0 { return u; }
   i := cl_int(usage, "prompt_tokens");
@@ -102,15 +107,16 @@ gw_chat_usage_of :: (usage: string) -> GwUsage {
     t := cl_int(usage, "total_tokens");
     if t.ok && i.ok { o = JsonInt.{ok = true, value = t.value - i.value}; }
   }
-  if !i.ok || !o.ok { return u; }
-  u = GwUsage.{ok = true, observed = 3, input_tokens = i.value, output_tokens = o.value, cost_usd_micros = gw_cost_micros(usage, "cost")};
+  u = GwUsage.{ok = i.ok && o.ok, cost_usd_micros = gw_cost_micros(usage, "cost")};
+  if i.ok {u.input_tokens=i.value;u.observed=u.observed|1;}
+  if o.ok {u.output_tokens=o.value;u.observed=u.observed|2;}
   c := cl_int(usage, "prompt_tokens_details.cached_tokens");
   if c.ok { u.cached_tokens = c.value; u.observed = u.observed | 4; }
   r := cl_int(usage, "completion_tokens_details.reasoning_tokens");
   if r.ok { u.reasoning_tokens = r.value; u.observed = u.observed | 8; }
   // Vertex counts reasoning beside completion_tokens, not inside it: the total says which
   t := cl_int(usage, "total_tokens");
-  if r.ok && r.value > 0 && t.ok && t.value == u.input_tokens + u.output_tokens + r.value { u.output_tokens += r.value; }
+  if i.ok && o.ok && r.ok && r.value > 0 && t.ok && t.value == u.input_tokens + u.output_tokens + r.value { u.output_tokens += r.value; }
   return u;
 }
 

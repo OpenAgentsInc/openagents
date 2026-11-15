@@ -1,4 +1,5 @@
 // Private Projects: identity, mutation and context admission. SQL stores facts only.
+#load "../../lib/project/context-budget.coax";
 #authority;
 #test "private projects belong to an exact verified person account" {
  #assert prp_access(2,true,"a","a") && !prp_access(2,false,"a","a") && !prp_access(2,true,"a","b") && !prp_access(2,true,"","");
@@ -24,7 +25,7 @@ prp_change :: (owns:bool,limited:bool,frozen:bool,archived:bool)->bool #export_c
 prp_id :: (id:string)->bool #export_c #effects(all) {if id.count!=36 || id[0..<4]!="prj_" {return false;}for i:4..<36 {c:=id[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
 prp_revision :: (asked:int,current:int)->bool #export_c #effects(all) {return asked>=0 && asked==current && asked<2147483646;}
 prp_capacity :: (count:int,bytes:int)->bool #export_c #effects(all) {return count>=0 && count<200 && bytes>=0 && bytes<=1048576;}
-prp_context :: (bytes:int)->bool #export_c #effects(all) {return bytes>=0 && bytes<=32768;}
+prp_context :: (bytes:int)->bool #export_c #effects(all) {return pcb_context(bytes);}
 #test "knowledge file sources are owned scanned UTF8 text, bounded before fetching" {
  #assert prp_file(true,true,"txt",1) && prp_file(true,true,"md",65536);
  #assert !prp_file(false,true,"txt",1) && !prp_file(true,false,"txt",1) && !prp_file(true,true,"pdf",1) && !prp_file(true,true,"txt",0) && !prp_file(true,true,"txt",65537);

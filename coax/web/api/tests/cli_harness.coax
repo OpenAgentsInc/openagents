@@ -6,6 +6,9 @@ Sc :: struct {
   out: [SC_OUT] u8; n: int; status: int;
   nodes: [4096] JvNode; d: [1] Jv; word: [SC_OUT] u8;
 }
+// A fixture key stays in the child environment, never in command-line args or
+// printed output. Shared by the Project and durable-chat process checks.
+sc_key :: (c:[]Sc,path:string)->bool {b:[128]u8;n:=fs_read(path,b[..]);if n<64 {return false;}pre:="OPENAGENTS_NSEC=";for ch,i:pre {c[0].key_env[i]=ch;}c[0].key_n=pre.count;for i:0..<64 {c[0].key_env[c[0].key_n+i]=b[i];b[i]=0;}c[0].key_n+=64;return true;}
 // The built CLI with --json --origin API, the admin's key only in its environment: its exit status
 // (-1 when it did not finish), its output in c.out. Output is never echoed but on a failed check.
 sc_cli :: (t: [] Ap, c: [] Sc, words: [] string) -> int {

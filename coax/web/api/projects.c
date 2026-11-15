@@ -18,7 +18,7 @@ static bool run(PGconn *db,const char *sql,int n,const char *const *v) {PGresult
 static void respond(const request *q,int status,const char *body,size_t n) {api_respond(q->fd,status,"application/json","Cache-Control: private, no-store\r\nVary: Cookie, Authorization\r\n",body,n);}
 static void problem(const request *q,int status,const char *code,const char *message,long long revision,const char *op) {unsigned char b[4096];int64_t n=pr_error(prs(code),prs(message),revision,prs(op),prb(b,sizeof b));respond(q,status,(const char *)b,n>0?(size_t)n:0);}
 static void digest(const char *body,size_t n,char out[65]) {(void)pr_hash((coax_string){body,(int64_t)n},prb(out,64));out[64]=0;}
-static bool identity(char out[37],const char *prefix) {unsigned char r[16];if(RAND_bytes(r,16)!=1)return false;memcpy(out,prefix,4);for(int i=0;i<16;i++)snprintf(out+4+2*i,3,"%02x",r[i]);return true;}
+bool api_object_id(char out[37],const char *prefix) {unsigned char r[16];if(RAND_bytes(r,16)!=1)return false;memcpy(out,prefix,4);for(int i=0;i<16;i++)snprintf(out+4+2*i,3,"%02x",r[i]);return true;}
 static void integer(char out[32],long long value) {snprintf(out,32,"%lld",value);}
 static PGresult *project_rows(PGconn *db,const char *account,const char *id,bool lock) {
  const char *v[]={account,id};return PQexecParams(db,lock?
@@ -38,6 +38,31 @@ static bool load_knowledge(PGresult *r,int row,const char *account,coax_t_PrKnow
 static PGresult *knowledge_rows(PGconn *db,const char *id) {return PQexecParams(db,"SELECT id,project,title,body,file_id,selected,revision,created_ms,updated_ms FROM projects.knowledge_v1 WHERE project=$1 ORDER BY id",1,NULL,&id,NULL,NULL,0);}
 static bool receipt(PGconn *db,const char *account,const char *operation,const char *path,const char *hash,const char *state,int status,const char *reply,long long now) {
  char st[32],ms[32];integer(st,status);integer(ms,now);const char *v[]={account,operation,path,hash,state,st,reply,ms};return run(db,"INSERT INTO projects.operations_v1(account,operation,path,digest,state,status,reply,created_ms) VALUES($1,$2,$3,$4,$5,$6::int,$7,$8::bigint)",8,v);
+}
+static bool project_context_from(PGconn *db,const char *account,const char *id,coax_t_PrProject *p,const char *conversation,const char *operation,long long now,project_context *out) {
+ PGresult *kr=knowledge_rows(db,id);bool ok=rows(kr) && PQntuples(kr)<=200;int count=0;
+ coax_string texts[200],titles[200],sources[200];char *owned[200]={0};
+ coax_t_PrKnowledge *k=calloc(1,sizeof *k);unsigned char *kb=calloc(1,131072),*reference=calloc(1,32769),*snapshot=calloc(1,131072);
+ ok=ok && k && kb && reference && snapshot;
+ for(int i=0;ok && i<PQntuples(kr);i++){if(PQgetvalue(kr,i,5)[0]!='t')continue;memset(k,0,sizeof *k);ok=load_knowledge(kr,i,account,k);int64_t n=ok?pr_knowledge_write((coax_v_t_PrKnowledge){k,1},prb(kb,131071)):-1;
+  if(n<1){ok=false;break;} // Retain the object only: the list/context writer owns JSON composition.
+  int64_t raw_n=pr_knowledge_object((coax_v_t_PrKnowledge){k,1},prb(kb,131071));if(raw_n<1){ok=false;break;}kb[raw_n]=0;
+  owned[count]=strdup((const char *)kb);ok=owned[count]!=NULL;if(!ok)break;texts[count]=prs(PQgetvalue(kr,i,3));titles[count]=prs(PQgetvalue(kr,i,2));sources[count]=prs(owned[count]);count++;
+ }
+ int64_t rn=ok?pr_reference((coax_v_string){texts,count},(coax_v_string){titles,count},prb(reference,32768)):-1;
+ ok=ok && rn>=0 && prp_context(p->nt+rn);char snapshot_id[37]={0};ok=ok && api_object_id(snapshot_id,"ctx_");
+ int64_t sn=ok?pr_snapshot((coax_v_t_PrProject){p,1},prs(snapshot_id),prs(conversation),prs(operation),(coax_v_string){sources,count},now,prb(snapshot,131071)):-1;
+ char *system=calloc(1,(size_t)p->nt+1);if(system)memcpy(system,p->instructions.e,(size_t)p->nt);else ok=false;
+ ok=ok && sn>0;
+ if(ok){out->instructions=system;out->reference=(char *)reference;out->snapshot=(char *)snapshot;memcpy(out->snapshot_id,snapshot_id,37);out->revision=p->revision;}
+ else {free(system);free(reference);free(snapshot);}
+ for(int i=0;i<count;i++){free(owned[i]);}
+ free(k);free(kb);PQclear(kr);return ok;
+}
+void projects_context_free(project_context *c) {free(c->instructions);free(c->reference);free(c->snapshot);memset(c,0,sizeof *c);}
+int projects_context(PGconn *db,const char *account,const char *id,const char *conversation,const char *operation,long long revision,long long now,project_context *out) {
+ coax_t_PrProject *p=calloc(1,sizeof *p);if(!p)return 503;PGresult *r=project_rows(db,account,id,true);bool ok=load_project(r,0,p);PQclear(r);
+ int status=!ok?404:!prp_revision(revision,p->revision)?409:project_context_from(db,account,id,p,conversation,operation,now,out)?200:413;free(p);return status;
 }
 // Called inside the inference child, before exposing a successful answer.
 // The existing metered inference route is the only model caller.
@@ -62,25 +87,15 @@ static bool complete(const request *q,PGconn *db,const auth_principal *actor,coa
  if(!rows(tr) || PQntuples(tr)!=1 || !prp_revision(req->thread_revision,atoll(PQgetvalue(tr,0,1)))) {PQclear(tr);run(db,"ROLLBACK",0,NULL);problem(q,409,"revision_conflict","Reopen the saved Project conversation.",p->revision,operation);return true;}
  if(!act_funded(actor->kind,prs(actor->account),actor->team)){PQclear(tr);run(db,"ROLLBACK",0,NULL);problem(q,403,"forbidden","Agent chat is currently available to the team beta.",p->revision,operation);return true;}
  char turn_revision[32];integer(turn_revision,req->thread_revision);const char *prior[]={actor->account,thread,turn_revision};PGresult *attempt=PQexecParams(db,"SELECT operation FROM projects.contexts_v1 WHERE account=$1 AND thread=$2 AND thread_revision=$3::bigint",3,NULL,prior,NULL,NULL,0);bool available=rows(attempt) && prp_attempt(PQntuples(attempt)>0);PQclear(attempt);if(!available){PQclear(tr);run(db,"ROLLBACK",0,NULL);problem(q,409,"attempt_exists","This saved turn already has a model attempt. Reopen the conversation to check its result.",p->revision,operation);return true;}
- PGresult *kr=knowledge_rows(db,project_id);bool ok=rows(kr) && PQntuples(kr)<=200;int count=0;
- coax_string texts[200],titles[200],sources[200];char *owned[200]={0};
- coax_t_PrKnowledge *k=calloc(1,sizeof *k);unsigned char *kb=calloc(1,131072),*reference=calloc(1,32769),*request_body=calloc(1,262144),*snapshot=calloc(1,131072);
- ok=ok && k && kb && reference && request_body && snapshot;
- for(int i=0;ok && i<PQntuples(kr);i++){if(PQgetvalue(kr,i,5)[0]!='t')continue;memset(k,0,sizeof *k);ok=load_knowledge(kr,i,actor->account,k);int64_t n=ok?pr_knowledge_write((coax_v_t_PrKnowledge){k,1},prb(kb,131071)):-1;
-  if(n<1){ok=false;break;} // Retain the object only: the list/context writer owns JSON composition.
-  int64_t raw_n=pr_knowledge_object((coax_v_t_PrKnowledge){k,1},prb(kb,131071));if(raw_n<1){ok=false;break;}kb[raw_n]=0;
-  owned[count]=strdup((const char *)kb);ok=owned[count]!=NULL;if(!ok)break;texts[count]=prs(PQgetvalue(kr,i,3));titles[count]=prs(PQgetvalue(kr,i,2));sources[count]=prs(owned[count]);count++;
- }
- int64_t rn=ok?pr_reference((coax_v_string){texts,count},(coax_v_string){titles,count},prb(reference,32768)):-1;
- ok=ok && rn>=0 && prp_context(p->nt+rn);char snapshot_id[37]={0};ok=ok && identity(snapshot_id,"ctx_");
- long long now=(long long)api_now_ms();int64_t sn=ok?pr_snapshot((coax_v_t_PrProject){p,1},prs(snapshot_id),prs(thread),prs(operation),(coax_v_string){sources,count},now,prb(snapshot,131071)):-1;
- char *system=calloc(1,(size_t)p->nt+1);if(system)memcpy(system,p->instructions.e,(size_t)p->nt);else ok=false;
- int64_t bn=ok?act_project_completion(prs(PQgetvalue(tr,0,0)),prs(system),prs((const char *)reference),prb(request_body,262143)):-1;
+ project_context context={0};long long now=(long long)api_now_ms();
+ bool ok=project_context_from(db,actor->account,project_id,p,thread,operation,now,&context);
+ unsigned char *request_body=calloc(1,262144);ok=ok && request_body;
+ int64_t bn=ok?act_project_completion(prs(PQgetvalue(tr,0,0)),prs(context.instructions),prs(context.reference),prb(request_body,262143)):-1;
  project_answer a={0};snprintf(a.account,sizeof a.account,"%s",actor->account);snprintf(a.project,sizeof a.project,"%.*s",(int)p->ni,p->id.e);snprintf(a.thread,sizeof a.thread,"%s",thread);snprintf(a.operation,sizeof a.operation,"%s",operation);a.revision=req->thread_revision;a.record=rows(tr)?strdup(PQgetvalue(tr,0,0)):NULL;
- ok=ok && bn>0 && sn>0 && a.record;char rev[32];integer(rev,p->revision);const char *sv[]={actor->account,project_id,operation,thread,rev,turn_revision,(const char *)snapshot,(const char *)request_body};
+ ok=ok && bn>0 && a.record;char rev[32];integer(rev,p->revision);const char *sv[]={actor->account,project_id,operation,thread,rev,turn_revision,context.snapshot,(const char *)request_body};
  if(ok)ok=receipt(db,actor->account,operation,q->path,hash,"running",202,"",now) && run(db,"INSERT INTO projects.contexts_v1(account,project,operation,thread,revision,thread_revision,snapshot,input_json) VALUES($1,$2,$3,$4,$5::bigint,$6::bigint,$7,$8)",8,sv) && run(db,"COMMIT",0,NULL);
  if(!ok)run(db,"ROLLBACK",0,NULL);
- for(int i=0;i<count;i++)free(owned[i]);free(k);free(kb);free(snapshot);free(reference);free(system);PQclear(kr);PQclear(tr);
+ projects_context_free(&context);PQclear(tr);
  if(!ok){free(a.record);free(request_body);problem(q,413,"limit_exceeded","The complete Project context does not fit. Remove knowledge or start a shorter conversation.",p->revision,operation);return true;}
  char subject[128],who[65];snprintf(subject,sizeof subject,"openagents.account-chat.v1:%s",actor->account);digest(subject,strlen(subject),who);
  request next=*q;next.body=(const char *)request_body;next.body_len=(size_t)bn;
@@ -130,13 +145,13 @@ bool projects_route(const request *q) {
  }
  if(!post){status=404;err="not found";goto done;}
  long long now=(long long)api_now_ms();char ms[32],rev[32];integer(ms,now);integer(rev,p->revision+1);
- if(kind==1){if(!identity(id,"prj_")){status=503;err="ID unavailable.";goto done;}PF(p,id,ni,id);PF(p,owner,no,actor->account);memcpy(p->name.e,req->name.e,(size_t)req->nn);p->nn=req->nn;memcpy(p->description.e,req->description.e,(size_t)req->nd);p->nd=req->nd;memcpy(p->instructions.e,req->text.e,(size_t)req->nt);p->nt=req->nt;p->revision=1;p->instructions_revision=1;p->instructions_updated=now;p->created=now;p->updated=now;
+ if(kind==1){if(!api_object_id(id,"prj_")){status=503;err="ID unavailable.";goto done;}PF(p,id,ni,id);PF(p,owner,no,actor->account);memcpy(p->name.e,req->name.e,(size_t)req->nn);p->nn=req->nn;memcpy(p->description.e,req->description.e,(size_t)req->nd);p->nd=req->nd;memcpy(p->instructions.e,req->text.e,(size_t)req->nt);p->nt=req->nt;p->revision=1;p->instructions_revision=1;p->instructions_updated=now;p->created=now;p->updated=now;
   char name[161]={0},desc[4097]={0},text[65537]={0};memcpy(name,p->name.e,(size_t)p->nn);memcpy(desc,p->description.e,(size_t)p->nd);memcpy(text,p->instructions.e,(size_t)p->nt);const char *v[]={id,actor->account,name,desc,text,ms};if(!run(db,"INSERT INTO projects.private_v1(id,account,name,description,instructions,revision,instructions_revision,instructions_updated_ms,created_ms,updated_ms) VALUES($1,$2,$3,$4,$5,1,1,$6::bigint,$6::bigint,$6::bigint)",6,v)){status=503;err="Project could not be saved.";goto done;}status=201;
  }else if(kind==2 || kind==3){char name[161]={0},desc[4097]={0},text[65537]={0};if(req->nn>=0){memcpy(p->name.e,req->name.e,(size_t)req->nn);p->nn=req->nn;}if(req->nd>=0){memcpy(p->description.e,req->description.e,(size_t)req->nd);p->nd=req->nd;}if(kind==3){memcpy(p->instructions.e,req->text.e,(size_t)req->nt);p->nt=req->nt;p->instructions_revision=p->revision+1;p->instructions_updated=now;}memcpy(name,p->name.e,(size_t)p->nn);memcpy(desc,p->description.e,(size_t)p->nd);memcpy(text,p->instructions.e,(size_t)p->nt);char ir[32];integer(ir,p->instructions_revision);const char *v[]={id,name,desc,text,rev,ir,ms};if(!run(db,"UPDATE projects.private_v1 SET name=$2,description=$3,instructions=$4,revision=$5::bigint,instructions_revision=$6::bigint,updated_ms=$7::bigint,instructions_updated_ms=CASE WHEN instructions_revision=$6::bigint THEN instructions_updated_ms ELSE $7::bigint END WHERE id=$1",7,v)){status=503;err="Project could not be saved.";goto done;}p->revision++;p->updated=now;
  }else if(kind==4){if(req->nf>0){char fid[25]={0},subject[65]={0};memcpy(fid,req->file.e,(size_t)req->nf);if(!project_subject(q,db,subject)){status=503;err="Upload identity unavailable.";goto done;}
    const char *v[]={fid,subject,actor->pubkey};PGresult *r=PQexecParams(db,"SELECT d.owner,f.status,f.ext,f.bytes,f.object FROM drops.files f JOIN drops.drops d ON d.id=f.drop_id WHERE f.id=$1 AND d.owner IN($2,$3)",3,NULL,v,NULL,NULL,0);
    bool ok=rows(r) && PQntuples(r)==1 && prp_file(true,!strcmp(PQgetvalue(r,0,1),"scanned"),prs(PQgetvalue(r,0,2)),atoll(PQgetvalue(r,0,3)));size_t n=0;unsigned char *bytes=ok?drops_fetch(PQgetvalue(r,0,4),65536,&n):NULL;ok=ok && bytes && n==(size_t)atoll(PQgetvalue(r,0,3)) && pr_text_valid((coax_string){(const char *)bytes,(int64_t)n});if(ok){memcpy(req->text.e,bytes,n);req->nt=(int64_t)n;}free(bytes);PQclear(r);if(!ok){status=422;err="Choose an owned scanned UTF-8 text or Markdown file up to 64 KiB.";goto done;}}
-  if(!prp_capacity(p->knowledge,req->nt)){status=413;err="Project knowledge is full.";goto done;}char ki[37];if(!identity(ki,"knw_")){status=503;err="ID unavailable.";goto done;}PF(k,id,ni,ki);PF(k,project,np,id);PF(k,owner,no,actor->account);memcpy(k->title.e,req->title.e,(size_t)req->nl);k->nn=req->nl;memcpy(k->text.e,req->text.e,(size_t)req->nt);k->nt=req->nt;memcpy(k->file.e,req->file.e,(size_t)req->nf);k->nf=req->nf;k->selected=req->selected;k->revision=p->revision+1;k->created=now;k->updated=now;
+  if(!prp_capacity(p->knowledge,req->nt)){status=413;err="Project knowledge is full.";goto done;}char ki[37];if(!api_object_id(ki,"knw_")){status=503;err="ID unavailable.";goto done;}PF(k,id,ni,ki);PF(k,project,np,id);PF(k,owner,no,actor->account);memcpy(k->title.e,req->title.e,(size_t)req->nl);k->nn=req->nl;memcpy(k->text.e,req->text.e,(size_t)req->nt);k->nt=req->nt;memcpy(k->file.e,req->file.e,(size_t)req->nf);k->nf=req->nf;k->selected=req->selected;k->revision=p->revision+1;k->created=now;k->updated=now;
   char title[257]={0},body[65537]={0},file[25]={0};memcpy(title,k->title.e,(size_t)k->nn);memcpy(body,k->text.e,(size_t)k->nt);memcpy(file,k->file.e,(size_t)k->nf);const char *v[]={ki,id,title,body,file,k->selected?"true":"false",rev,ms};if(!run(db,"INSERT INTO projects.knowledge_v1(id,project,title,body,file_id,selected,revision,created_ms,updated_ms) VALUES($1,$2,$3,$4,$5,$6::bool,$7::bigint,$8::bigint,$8::bigint)",8,v)){status=503;err="Knowledge could not be saved.";goto done;}p->knowledge++;status=201;
  }else if(kind==5){const char *v[]={id,kid};PGresult *r=PQexecParams(db,"DELETE FROM projects.knowledge_v1 WHERE project=$1 AND id=$2 RETURNING id",2,NULL,v,NULL,NULL,0);bool ok=rows(r) && PQntuples(r)==1;PQclear(r);if(!ok){status=404;err="not found";goto done;}p->knowledge--;
  }else if(kind==6){char thread[25]={0};memcpy(thread,req->thread.e,(size_t)req->nthread);const char *v[]={actor->account,thread,id};PGresult *r=PQexecParams(db,"SELECT t.account,coalesce(l.project,old.project,'') FROM chat.account_threads_v1 t LEFT JOIN chat.project_threads_v1 old ON old.account=t.account AND old.thread=t.id LEFT JOIN projects.thread_links_v1 l ON l.account=t.account AND l.thread=t.id WHERE t.account=$1 AND t.id=$2 FOR UPDATE OF t",2,NULL,v,NULL,NULL,0);

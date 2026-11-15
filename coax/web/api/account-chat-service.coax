@@ -1,0 +1,3 @@
+// One API binary unit for the existing account chat and durable continuation.
+#load "account-chat-input.coax";
+#load "account-chat-stream.coax";

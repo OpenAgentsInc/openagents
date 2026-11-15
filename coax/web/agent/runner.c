@@ -61,6 +61,7 @@
 #include <openssl/sha.h>
 #include <poll.h>
 #include "runner-sign.h"   // runner_coax_pubkey, runner_coax_auth: deploy.sh compiles runner-sign.coax
+#include "durable-runner-wire.h"
 #include "runner-wire.h"   // the lines and bodies (rw_*_write): deploy.sh compiles runner-wire.coax
 #include <signal.h>
 #include <stdarg.h>
@@ -487,9 +488,9 @@ static long repo_post(const char *body, text *out) {
 // Completions request, posted as it is to oa-api's /api/chat/runner/complete?t=TURN, signed, which our
 // inference route answers for the turn's asker. The nonce goes in the query, so the body reaches the
 // model unchanged. The answer's body in *out; its status.
-static long model_post(long long turn, const char *body, text *out) {
+static long signed_post(const char *path,const char *body,long timeout,text *out) {
   char url[1024], auth[8192];
-  snprintf(url, sizeof url, "%s/api/chat/runner/complete?t=%lld&n=%lu-%lld", env("OA_API_ORIGIN", "https://openagents.com"), turn, ++nonce, (long long)now_ms());
+  snprintf(url,sizeof url,"%s%s%cn=%lu-%lld",env("OA_API_ORIGIN","https://openagents.com"),path,strchr(path,'?')?'&':'?',++nonce,(long long)now_ms());
   nip98("POST", url, body, auth, sizeof auth);
   CURL *h = curl_easy_init();
   struct curl_slist *hd = curl_slist_append(curl_slist_append(NULL, auth), "Content-Type: application/json");
@@ -500,10 +501,26 @@ static long model_post(long long turn, const char *body, text *out) {
   curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, take);
   curl_easy_setopt(h, CURLOPT_WRITEDATA, out);
   curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT, 10L);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT, 280L);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, timeout);
   if (curl_easy_perform(h) == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
   curl_slist_free_all(hd); curl_easy_cleanup(h);
   return status;
+}
+
+static long model_post(long long turn,const char *body,text *out){char path[128];snprintf(path,sizeof path,"/api/chat/runner/complete?t=%lld",turn);return signed_post(path,body,280,out);}
+// The same signed transport, one run request only. Lost responses never repeat
+// model dispatch: the API owns its fence, progress and recovery.
+static void durable_turns(void){
+ char worker[81],operation[81],body[4096];snprintf(worker,sizeof worker,"%.24s:%ld:%lld",env("HOSTNAME","worker"),(long)getpid(),(long long)now_ms());
+ for(int i=0;i<64;i++){
+  snprintf(operation,sizeof operation,"claim-%.60s-%d",worker,i);
+  int64_t n=cwr_write(1,cs(operation),cs(worker),cs(""),cs(""),(coax_v_u8){(uint8_t *)body,sizeof body-1});if(n<1)break;body[n]=0;
+  text out={0};long status=signed_post("/api/chat/runner/v2alpha1",body,30,&out);coax_t_CtJob job;uint8_t arena[108];
+  bool got=status==200&&cwr_job_read(cs(out.p?out.p:""),(coax_v_t_CtJob){&job,1},(coax_v_u8){arena,sizeof arena});free(out.p);if(!got||!job.has_work)break;
+  snprintf(operation,sizeof operation,"run-%.60s-%d",worker,i);n=cwr_write(2,cs(operation),cs(worker),job.turn,job.dispatch,(coax_v_u8){(uint8_t *)body,sizeof body-1});if(n<1)break;body[n]=0;
+  out=(text){0};status=signed_post("/api/chat/runner/v2alpha1",body,360,&out);free(out.p);
+  if(status!=200)say("durable run: HTTP %ld; the saved attempt owns reconciliation",status);
+ }
 }
 
 // Runs the engine for an ask in dir; fills the end's fields. Returns its status word.
@@ -837,7 +854,7 @@ static void wake(const char *slug) {
   }
   if (free_slot < 0) return;
   pid_t pid = fork();
-  if (pid == 0) { if (!strcmp(slug, "@chat")) chat_turns(); else turns(slug); _exit(0); }
+  if (pid == 0) { if (!strcmp(slug,"@durable")) durable_turns(); else if (!strcmp(slug, "@chat")) chat_turns(); else turns(slug); _exit(0); }
   if (pid > 0) { snprintf(loops[free_slot].slug, sizeof loops[free_slot].slug, "%s", slug); loops[free_slot].pid = pid; loops[free_slot].again = false; }
 }
 static void respond(int fd, int status, const char *body) {
@@ -872,7 +889,7 @@ static void serve(int fd) {
     return;
   }
   if (!strncmp(req, "POST /wake ", 11) && strstr(end + 4, "\"chat\":true")) {
-    respond(fd, 202, "{\"ok\":true}"); shutdown(fd, SHUT_WR); wake("@chat"); say("wake chat"); return;
+    respond(fd, 202, "{\"ok\":true}"); shutdown(fd, SHUT_WR); wake("@chat"); wake("@durable"); say("wake chat"); return;
   }
   if (!strncmp(req, "POST /wake ", 11)) {
     char *slug = jstr(end + 4, "slug", "");
@@ -907,12 +924,14 @@ int main(int argc, char **argv) {
   struct sockaddr_in a = {0}; a.sin_family = AF_INET; a.sin_port = htons((uint16_t)port); inet_pton(AF_INET, host, &a.sin_addr);
   if (bind(lfd, (struct sockaddr *)&a, sizeof a) || listen(lfd, 64)) { perror("oa-agent: listen"); return 1; }
   say("listening on %s:%d as %.8s", host, port, pubhex);
+  double durable_scan=now_ms();wake("@durable");
   for (;;) {
     // hosted seats close after their idle limit: wake at least every 30 s to look
     struct pollfd lp = {lfd, POLLIN, 0};
     // and every 100 ms while a loop that was woken again may be ending (reap starts it again)
     int ready = poll(&lp, 1, waking() ? 100 : 30000);
     reap(); seats_idle();
+    if(now_ms()-durable_scan>=30000){durable_scan=now_ms();wake("@durable");}
     if (ready <= 0) continue;
     int fd = accept(lfd, NULL, NULL);
     if (fd < 0) { if (errno == EINTR) continue; reap(); continue; }

@@ -2,12 +2,69 @@
 
 ## Current checkpoint
 
-Protocol, shared client/server primitives, the queue schema and claim/dispatch
-policy are implemented. **#13619 remains open.** Transactional API adapters,
-actual claim/recovery, resident-worker integration, metered live streaming,
-mobile and CLI adoption and installed end-to-end evidence are still required.
+Protocol, transactional API adapters, resident-worker dispatch/streaming and CLI
+adoption are implemented. **#13619 remains open.** Native adoption, installed
+mobile integration, live staging inference and the remaining restart/lost-worker
+and legacy-continuation integration cases are still required.
 No new TestFlight build or signed app update is published.
 The final release waits for #13619–#13623 and the complete Arcade port.
+
+The actual HTTP/CLI milestone now passes **41 checks**: save a queued turn,
+recover a missed wake with the real runner, observe an actual provider delta
+before completion, resume after its saved event cursor, reconcile a repeated
+dispatch without another model call, Stop a running transport and retain its
+partial answer, reopen and continue private Project chats through the built,
+NIP-98-authenticated CLI. The fake provider observes exactly four calls across
+the HTTP and CLI scenarios, including their retries; the existing inference
+ledger meters each actual attempt once. This is real HTTP/Postgres/runner
+integration with a deliberately delayed provider, not live Gemini or an installed
+mobile flow.
+
+The selected remote API command (`API_TESTS_ONLY=durable_chat_checks.coax,test_inference.py`)
+completed successfully in **777 seconds**. It also passed the existing
+inference/credit/drawdown cases, 72 common CLI-auth checks, 77 animation API checks,
+schema matching for all 212 migrations, and the NIP-98 differential's 33,286
+cases. The separately selected Project regression passed all 29 checks after
+the shared context loader was factored out. Neither is a claim that the complete
+API suite or #13619's installed acceptance is finished.
+
+Shared `ctr_turn_read` and `ctr_page_apply` restore snapshots and apply whole
+event pages atomically through the existing reducer. The CLI's `chat` domain
+uses them for list/show/new/send/turn/events/follow/stop and legacy continuation.
+Project instructions and selected knowledge still use the existing context
+assembler; its byte-budget profile is shared without importing Project access
+policy into Chat. The layer gate remains at 30 existing context crossings;
+no allowlist was raised. The new budget helper kills all five of its mutants.
+
+Changed input assembly: **257 mutants, 250 killed, seven reviewed equivalents,
+zero unclassified survivors**. Stream adapter: **292 mutants, 286 killed, six
+reviewed equivalents, zero unclassified survivors**. These cover independent
+usage-presence bits, single-byte text/context, exact bounds, UTF-8/graphemes,
+escaped provider strings, partial/error/unknown outcomes and cancellation.
+The resource-reader audit covers all three changed procedures: **337 mutants,
+329 killed, eight reviewed equivalents, zero unclassified survivors**. Its
+independent malformed-field, coupled-cursor, stale-page, exact encoded-capacity
+and historical-message cases retain atomic refusal and full text. Reader
+validation is not inferred from the producer passing. Changed queue/grant
+policy kills all **58** mutants; the renamed lifecycle transition kills all
+**49** changed-scope mutants. Previously passing untouched scopes are retained.
+The final assembled service passes **280 checks** in the evaluator. The final
+generated account/Project units compile and link together, and both C adapters
+pass strict syntax/warning checks. The moved Project wrapper has no remaining
+mutation site; the shared context-budget implementation's five sites all die.
+
+Initial integration failures were fixture errors: the disposable email allowlist
+omitted the new addresses, the direct runner replay omitted `Nostr` in its
+authorization header, the CLI assertion searched separate JSON deltas for one
+concatenated answer, and the snapshot assertion expected instruction text rather
+than its saved hash. All were corrected before the 41-check pass. Mutation
+baselines also needed explicit evaluator budgets for the actual large legacy
+and fully escaped reply fixtures; their assertions and byte ceilings were kept.
+
+The API remains request-owned during a runner's inference request; phone reads
+own no execution. Deployment configuration requests one always-CPU runner and a
+360-second API request timeout. No service or app deployment has been performed
+at this checkpoint.
 
 The [new protocol](../protocol/account-chat-turn-v2alpha1.md) defines rich
 conversation/turn records, ordered content variants, submission and Stop,
@@ -70,7 +127,7 @@ Detailed logs and the generated native reader are retained locally under
 `~/.openagents/verification/durable-chat-2026-11-15/`. The corpus is synthetic;
 no real account content or credentials are in the repository.
 
-## Next implementation boundary
+## Earlier protocol checkpoint: next implementation boundary
 
 Reuse the existing resident `oa-agent` service, whose CPU is allocated between
 requests. An API child forked after a 202 on the request-throttled API service is
@@ -80,7 +137,7 @@ attempt as unknown. Then connect the same snapshots/events to CLI and native
 chat, verify actual staging inference/reconnect/Stop and legacy continuation,
 and only then complete #13619 and move to #13620.
 
-## Service and storage checkpoint
+## Earlier service and storage checkpoint
 
 The additive `service.proto` owns control replies, conversation summaries/index,
 event pages, runner requests and jobs. The resource codec also writes the

@@ -1,0 +1,7 @@
+// Published private-text context profile shared by Projects admission and Chat
+// assembly. No Project ownership, mutation policy or storage is imported here.
+#authority;
+#test "the complete private-text context fits the published byte budget or refuses" {
+ #assert pcb_context(0) && pcb_context(32768) && !pcb_context(-1) && !pcb_context(32769);
+}
+pcb_context :: (bytes:int)->bool #export_c #effects(all) {return bytes>=0 && bytes<=32768;}

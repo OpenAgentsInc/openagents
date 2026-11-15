@@ -5,10 +5,9 @@
 #load "../account-chat-wire.coax";
 #load "../../../lib/project/api-wire.coax";
 
-pct_key :: (c:[]Sc,path:string)->bool {b:[128]u8;n:=fs_read(path,b[..]);if n<64 {return false;}pre:="OPENAGENTS_NSEC=";for ch,i:pre {c[0].key_env[i]=ch;}c[0].key_n=pre.count;for i:0..<64 {c[0].key_env[c[0].key_n+i]=b[i];b[i]=0;}c[0].key_n+=64;return true;}
 pct_member :: (c:[]Sc,path:string,out:[]u8)->string {return ap_member(sc_text(c),path,out);}
 pct_checks :: (t:[]Ap,c:[]Sc,infer:string) {
- kb:[1024]u8;key:=fs_join(c[0].dir,"key",kb[..]);pkb:[128]u8;pk:=ac_newkey(t,key,pkb[..]);if !pct_key(c,key) || pk.count!=64 {ap_check(t,"CLI test key created privately",false,"");return;}
+ kb:[1024]u8;key:=fs_join(c[0].dir,"key",kb[..]);pkb:[128]u8;pk:=ac_newkey(t,key,pkb[..]);if !sc_key(c,key) || pk.count!=64 {ap_check(t,"CLI test key created privately",false,"");return;}
  list:=[2]string.["projects","list"];st:=sc_cli(t,c,list[..]);ap_check(t,"a signed key without an account cannot read private Projects",st==3,sc_text(c));
  q:[1]Sb;sb(q[..],"SELECT acct FROM auth.account_for_key('");sb(q[..],pk);sb(q[..],"','Projects CLI fixture')");ab:[80]u8;account:=ap_sql(t,sb_text(q[..]),ab[..]);sb_clear(q[..]);sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
  create:=[6]string.["projects","create","CLI test drive","--description","A real private Project","--json"];st=sc_cli(t,c,create[..]);idb:[40]u8;id:=pct_member(c,"data.id",idb[..]);ap_check(t,"linked NIP98 person creates a private Project through the CLI",st==0 && id.count==36 && ap_has(sc_text(c),"\"audience\":\"private\""),sc_text(c));if st!=0 || id.count!=36 {return;}
@@ -37,7 +36,7 @@ pct_checks :: (t:[]Ap,c:[]Sc,infer:string) {
  link:=[7]string.["projects","chat","link",oid,tid,"--rev","1"];st=sc_cli(t,c,link[..]);ap_check(t,"CLI cannot reassign a chat from another Project",st==5,sc_text(c));
  wrong:=[5]string.["projects","chat","show",oid,tid];st=sc_cli(t,c,wrong[..]);ap_check(t,"scoped chat reads refuse a different Project",st==6,sc_text(c));
  rm:=[7]string.["projects","knowledge","remove",id,kid,"--rev","6"];st=sc_cli(t,c,rm[..]);ap_check(t,"CLI removes knowledge",st==0 && ap_has(sc_text(c),"removed"),sc_text(c));
- key2b:[1024]u8;key2:=fs_join(c[0].dir,"other-key",key2b[..]);pk2b:[128]u8;pk2:=ac_newkey(t,key2,pk2b[..]);keyed:=pct_key(c,key2);sb_clear(q[..]);sb(q[..],"SELECT acct FROM auth.account_for_key('");sb(q[..],pk2);sb(q[..],"','Stranger fixture')");ap_do(t,sb_text(q[..]));
+ key2b:[1024]u8;key2:=fs_join(c[0].dir,"other-key",key2b[..]);pk2b:[128]u8;pk2:=ac_newkey(t,key2,pk2b[..]);keyed:=sc_key(c,key2);sb_clear(q[..]);sb(q[..],"SELECT acct FROM auth.account_for_key('");sb(q[..],pk2);sb(q[..],"','Stranger fixture')");ap_do(t,sb_text(q[..]));
  st=sc_cli(t,c,list[..]);ap_check(t,"another CLI account cannot list the owner's Projects",keyed && st==0 && !ap_has(sc_text(c),id),sc_text(c));st=sc_cli(t,c,show[..]);ap_check(t,"another CLI account cannot read the Project",st==6,sc_text(c));st=sc_cli(t,c,reopen[..]);ap_check(t,"another CLI account cannot read the Project chat",st==6,sc_text(c));st=sc_cli(t,c,stale[..]);ap_check(t,"another CLI account cannot write instructions",st==6,sc_text(c));
 }
 tool_main :: ()->int #export_c #effects(all) {

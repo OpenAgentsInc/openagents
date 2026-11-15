@@ -1,0 +1,106 @@
+// Actual HTTP/database/inference integration for the owned durable turn API.
+// tool.sh: tls
+#load "auth_harness.coax";
+#load "cli_harness.coax";
+#load "../account-chat-input.coax";
+#load "../projects-wire.coax";
+dc_z :: (b:[]u8)->string {n:=0;while n<b.count && b[n]!=0 {n+=1;}return cast(string)b[0..<n];}
+dc_get :: (t:[]Ap,auth:string,path:string,id:string,after:int)->int {q:[1]Sb;sb(q[..],path);sb(q[..],"?id=");sb(q[..],id);sb(q[..],"&after=");sb_int(q[..],after);return ac_call(t,"GET",sb_text(q[..]),"",auth,"","");}
+dc_post :: (t:[]Ap,auth:string,op:string,conversation:string,rev:int,project:string,pr:int,text:string)->int {b:[131072]u8;one:=[1]string.[text];n:=ct_submit_write(op,conversation,rev,project,pr,"",-1,one[..],b[..]);return ac_call(t,"POST","/api/chat/submit/v2alpha1",cast(string)b[0..<n],auth,"","");}
+dc_stop :: (t:[]Ap,auth:string,op:string,turn:string)->int {b:[1024]u8;n:=ct_stop_write(op,turn,b[..]);return ac_call(t,"POST","/api/chat/stop/v2alpha1",cast(string)b[0..<n],auth,"","");}
+dc_wake :: (t:[]Ap) {url:[1]Sb;sb(url[..],"http://127.0.0.1:");sb_int(url[..],ap_whole(ap_env(t,"WAKE_PORT"))+1);sb(url[..],"/wake");_=ac_call(t,"POST",sb_text(url[..]),"{\"chat\":true}","","","");}
+// Follow emits a snapshot and incremental JSON Lines, so reconstruct it with
+// the same owned reducer instead of searching for one concatenated JSON string.
+dc_cli_followed :: (raw:string,turn:string)->bool {
+ v:[1]CtView;i:[1]CtInfo;p:[1]CtPage;arena:[1476]u8;first:=true;start:=0;
+ for at:0..<raw.count+1 {if at==raw.count || raw[at]=='\n' {if at>start {line:=raw[start..<at];if first {if !ctr_turn_read(line,v[..],i[..],arena[..]) {return false;}first=false;}else if !ctr_page_apply(line,v[..],p[..]) {return false;}}start=at+1;}}
+ return !first && cast(string)v[0].turn[..]==turn && v[0].state==CT_COMPLETED && ct_view_text(v[..])=="Hello world";
+}
+dc_cli_checks :: (t:[]Ap) {
+ c:[1]Sc;c[0].cli=ap_env(t,"CLI");dir:[1024]u8;c[0].dir=fs_temp("durable-cli",dir[..]);path:[1100]u8;key:=fs_join(c[0].dir,"key",path[..]);pub:[128]u8;pk:=ac_newkey(t,key,pub[..]);if !sc_key(c[..],key) || pk.count!=64 {ap_check(t,"durable CLI key is created privately",false,"");return;}
+ q:[1]Sb;sb(q[..],"SELECT acct FROM auth.account_for_key('");sb(q[..],pk);sb(q[..],"','Durable CLI fixture')");owner:[80]u8;account:=ap_sql(t,sb_text(q[..]),owner[..]);sb_clear(q[..]);sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+ ib:[1100]u8;instructions:=sc_file(c[..],"instructions","Answer in violet prose.",ib[..]);create:=[5]string.["projects","create","Durable CLI Project","--instructions",instructions];st:=sc_cli(t,c[..],create[..]);pid:[40]u8;project:=ap_member(sc_text(c[..]),"data.id",pid[..]);ap_check(t,"the built CLI creates a private Project for durable chats",st==0 && project.count==36,sc_text(c[..]));if st!=0 || project.count!=36 {return;}
+ messageb:[1100]u8;message:=sc_file(c[..],"question","A durable Project question",messageb[..]);start:=[10]string.["chat","new","--project",project,"--project-rev","1","--file",message,"--operation-id","cli-durable-new"];st=sc_cli(t,c[..],start[..]);control:[1]CtControl;arena:[72]u8;ok:=st==0 && ctr_control_read(sc_text(c[..]),control[..],arena[..]);ap_check(t,"the built CLI queues a durable Project turn through signed HTTP",ok,sc_text(c[..]));if !ok {return;}
+ conversation:[36]u8;turn:[36]u8;_=js_copy(conversation[..],control[0].conversation);_=js_copy(turn[..],control[0].turn);cid:=cast(string)conversation[..];tid:=cast(string)turn[..];
+ st=sc_cli(t,c[..],start[..]);ap_check(t,"the built CLI replays its same submitted operation",st==0 && ctr_control_read(sc_text(c[..]),control[..],arena[..]) && control[0].turn==tid,sc_text(c[..]));dc_wake(t);
+ follow:=[5]string.["chat","follow",tid,"--timeout","12000"];st=sc_cli(t,c[..],follow[..]);ap_check(t,"the CLI follows the same saved events through actual completion",st==0 && dc_cli_followed(sc_text(c[..]),tid),sc_text(c[..]));
+ show:=[3]string.["chat","show",cid];st=sc_cli(t,c[..],show[..]);ap_check(t,"the CLI reopens the exact durable Project transcript",st==0 && ap_has(sc_text(c[..]),"A durable Project question") && ap_has(sc_text(c[..]),"Hello world") && ap_has(sc_text(c[..]),project),sc_text(c[..]));
+ send:=[13]string.["chat","send",cid,"--rev","1","--project",project,"--project-rev","1","--file",message,"--operation-id","cli-durable-next"];st=sc_cli(t,c[..],send[..]);ok=st==0 && ctr_control_read(sc_text(c[..]),control[..],arena[..]);ap_check(t,"the CLI continues an existing durable Project conversation",ok && control[0].revision==2,sc_text(c[..]));if ok {_=js_copy(turn[..],control[0].turn);dc_wake(t);follow[2]=cast(string)turn[..];st=sc_cli(t,c[..],follow[..]);ap_check(t,"the continued CLI turn completes once",st==0 && ap_has(sc_text(c[..]),"completed"),sc_text(c[..]));}
+ list:=[4]string.["chat","list","--project",project];st=sc_cli(t,c[..],list[..]);ap_check(t,"CLI durable history filters by its private Project",st==0 && ap_has(sc_text(c[..]),cid),sc_text(c[..]));
+ sb_clear(q[..]);sb(q[..],"SELECT count(*) FROM chat.turns_v2 WHERE conversation='");sb(q[..],cid);sb(q[..],"' AND snapshot_json::jsonb#>>'{data,instructions_sha256}'=encode(sha256(convert_to('Answer in violet prose.','UTF8')),'hex') AND input_json LIKE '%Answer in violet prose.%'");count:[80]u8;ap_check(t,"both real CLI calls pin the actual Project instructions",ap_sql(t,sb_text(q[..]),count[..])=="2","");
+ _=fs_remove(c[0].dir);
+}
+dc_worker :: (t:[]Ap)->int {
+ bin:=ap_env(t,"RUNNER_BIN");keyfile:=ap_env(t,"RUN_KEY_FILE");port:=ap_whole(ap_env(t,"WAKE_PORT"))+1;key:[128]u8;n:=fs_read(keyfile,key[..]);if n<64 {return -1;}
+ h:=proc_new();q:[1]Sb;sb(q[..],"127.0.0.1:");sb_int(q[..],port);ok:=h>=0 && proc_arg(h,bin) && proc_arg(h,"--listen") && proc_arg(h,sb_text(q[..]));
+ sb_clear(q[..]);sb(q[..],"OA_API_ORIGIN=");sb(q[..],t[0].api);ok=ok && proc_env(h,sb_text(q[..]));sb_clear(q[..]);sb(q[..],"OA_RUNNER_KEY=");sb(q[..],cast(string)key[0..<64]);ok=ok && proc_env(h,sb_text(q[..])) && proc_quiet(h);
+ if !ok || proc_start(h)!=0 {if h>=0 {_=proc_release(h);}return -1;}return h;
+}
+dc_await :: (t:[]Ap,auth:string,turn:string,worker:int,partial:bool)->bool {
+ deadline:=proc_now_ms()+12000;
+ while proc_now_ms()<deadline && proc_wait(worker,0)==PROC_RUNNING {
+  st:=dc_get(t,auth,"/api/chat/turn/v2alpha1",turn,0);body:=ap_body(t);
+  if st==200 && ap_has(body,ifx partial then "\"state\":\"running\"" else "\"state\":\"completed\"") && ap_has(body,ifx partial then "\"text\":\"Hello\"" else "Hello world") {return true;}
+  if !partial && st==200 && (ap_has(body,"\"state\":\"failed\"") || ap_has(body,"\"state\":\"unknown\"")) {return false;}
+  _=proc_wait(worker,100);
+ }return false;
+}
+dc_run_again :: (t:[]Ap,turn:string)->int {
+ q:[1]Sb;row:[512]u8;sb(q[..],"SELECT worker||'|'||dispatch FROM chat.turns_v2 WHERE id='");sb(q[..],turn);sb(q[..],"'");facts:=ap_sql(t,sb_text(q[..]),row[..]);at:=ac_find(facts,"|");if at<1 {return -1;}
+ body:[4096]u8;n:=cwr_write(2,"replayed-run",facts[0..<at],turn,facts[at+1..<facts.count],body[..]);if n<1 {return -1;}
+ sb_clear(q[..]);sb(q[..],t[0].api);sb(q[..],"/api/chat/runner/v2alpha1?replay=1");signature:[4096]u8;keyfile:=ap_env(t,"RUN_KEY_FILE");auth:=ap_nostr(t,keyfile,"POST",sb_text(q[..]),cast(string)body[0..<n],true,signature[..]);head:[1]Sb;sb(head[..],"Authorization: Nostr ");sb(head[..],auth);
+ return ac_call(t,"POST",sb_text(q[..]),cast(string)body[0..<n],sb_text(head[..]),"","");
+}
+dc_stream_checks :: (t:[]Ap,auth:string,account:string,conversation:string,turn:string) {
+ worker:=dc_worker(t);ap_check(t,"the actual resident runner starts",worker>=0,"");if worker<0 {return;}
+ // This turn was queued before the worker existed: startup reconciliation must
+ // recover a missed wake without a phone-owned request or another submit.
+ ok:=dc_await(t,auth,turn,worker,true);ap_check(t,"a missed wake is recovered and real HTTP deltas persist before completion",ok,ap_body(t));
+ st:=dc_get(t,auth,"/api/chat/events/v2alpha1",turn,0);cursor:=ap_member_int(ap_body(t),"next_cursor",-1);ap_check(t,"a reconnect can save the exact running event cursor",st==200 && cursor>=2 && ap_has(ap_body(t),"Hello"),ap_body(t));
+ ok=dc_await(t,auth,turn,worker,false);ap_check(t,"the worker saves the exact completed stream and observed usage",ok && ap_has(ap_body(t),"\"input_tokens\":9") && ap_has(ap_body(t),"\"output_tokens\":2") && ap_has(ap_body(t),"\"cache_read_tokens\":0") && ap_has(ap_body(t),"\"cache_write_tokens\":null"),ap_body(t));
+ st=dc_get(t,auth,"/api/chat/events/v2alpha1",turn,cursor);ap_check(t,"cursor resume returns only later text usage and completion",st==200 && !ap_has(ap_body(t),"\"text\":\"Hello\"") && ap_has(ap_body(t)," world") && ap_has(ap_body(t),"completed"),ap_body(t));
+ st=dc_run_again(t,turn);ap_check(t,"a repeated dispatched run reconciles its completed attempt",st==200 && ap_has(ap_body(t),"completed"),ap_body(t));
+ st=dc_post(t,auth,"stream-stop",conversation,2,"",-1,"Cancel this response");arena:[72]u8;control:[1]CtControl;ok=st==202 && ctr_control_read(ap_body(t),control[..],arena[..]);id:[36]u8;if ok {_=js_copy(id[..],control[0].turn);}ap_check(t,"a second live turn is admitted into the same conversation",ok,ap_body(t));
+ if ok {
+  next:=cast(string)id[..];dc_wake(t);
+  ok=dc_await(t,auth,next,worker,true);ap_check(t,"the next response streams before Stop",ok,ap_body(t));
+  st=dc_stop(t,auth,"live-stop",next);ap_check(t,"live Stop records a request before its authoritative outcome",st==200 && ap_has(ap_body(t),"\"stop_requested\":true"),ap_body(t));
+  deadline:=proc_now_ms()+12000;cancelled:=false;while !cancelled && proc_now_ms()<deadline && proc_wait(worker,0)==PROC_RUNNING {_=dc_get(t,auth,"/api/chat/turn/v2alpha1",next,0);cancelled=ap_has(ap_body(t),"\"state\":\"cancelled\"");if !cancelled {_=proc_wait(worker,100);}}
+  ap_check(t,"Stop terminates the actual transport and preserves the partial answer",cancelled && ap_has(ap_body(t),"\"text\":\"Hello\"") && !ap_has(ap_body(t),"Hello world"),ap_body(t));
+ }
+ q:[1]Sb;counts:[128]u8;sb(q[..],"SELECT count(*) FROM inference.calls WHERE pubkey=encode(sha256(convert_to('openagents.account-chat.v1:");sb(q[..],account);sb(q[..],"','UTF8')),'hex')");
+ ap_check(t,"run replay and cancellation meter each actual model attempt once",ap_sql(t,sb_text(q[..]),counts[..])=="2","");
+ sb_clear(q[..]);sb(q[..],"SELECT count(*) FROM chat.turns_v2 WHERE conversation='");sb(q[..],conversation);sb(q[..],"' AND dispatched_ms IS NOT NULL");ap_check(t,"queued cancellation and run replay dispatch exactly two saved attempts",ap_sql(t,sb_text(q[..]),counts[..])=="2","");
+ dc_cli_checks(t);
+ _=proc_kill(worker,PROC_SIGTERM);_=proc_wait(worker,5000);_=proc_release(worker);
+}
+dc_checks :: (t:[]Ap,mail:string) {
+ authb:[512]u8;otherb:[512]u8;accountb:[80]u8;otheraccount:[80]u8;arena:[72]u8;control:[1]CtControl;
+ ok:=ac_person_login(t,mail,"durablechat@example.com","203.0.113.131",authb[..],accountb[..]) && ac_person_login(t,mail,"durablestranger@example.com","203.0.113.132",otherb[..],otheraccount[..]);ap_check(t,"durable chat uses verified independent account logins",ok,"");if !ok {return;}auth:=dc_z(authb[..]);stranger:=dc_z(otherb[..]);account:=dc_z(accountb[..]);
+ ap_check(t,"durable conversation index requires an account",dc_get(t,"","/api/chat/conversations/v2alpha1","",0)==401,ap_body(t));
+ ap_check(t,"durable submission retains the existing funded beta gate",dc_post(t,auth,"unfunded","",0,"",-1,"Hello")==403,ap_body(t));
+ q:[1]Sb;sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+ st:=dc_post(t,auth,"first","",0,"",-1,"First café");ok=st==202 && ctr_control_read(ap_body(t),control[..],arena[..]);ap_check(t,"submission saves one queued durable turn before responding",ok && control[0].state==CT_QUEUED && control[0].cursor==0 && control[0].revision==1,ap_body(t));if !ok {return;}
+ cid:[36]u8;tid:[36]u8;_=js_copy(cid[..],control[0].conversation);_=js_copy(tid[..],control[0].turn);conversation:=cast(string)cid[..];turn:=cast(string)tid[..];
+ st=dc_post(t,auth,"first","",0,"",-1,"First café");ap_check(t,"exact operation replay returns its existing turn",st==202 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].turn==turn && control[0].conversation==conversation,ap_body(t));
+ ap_check(t,"conflicting operation reuse cannot replace admitted input",dc_post(t,auth,"first","",0,"",-1,"Different")==409,ap_body(t));
+ ap_check(t,"an active turn prevents another inference admission",dc_post(t,auth,"overlap",conversation,1,"",-1,"Overlap")==409,ap_body(t));
+ ap_check(t,"a stale conversation revision cannot append",dc_post(t,auth,"stale",conversation,2,"",-1,"Stale")==409,ap_body(t));
+ st=dc_get(t,auth,"/api/chat/turn/v2alpha1",turn,0);ap_check(t,"the saved turn exposes its actual selection and nullable usage",st==200 && ap_has(ap_body(t),ACT_MODEL) && ap_has(ap_body(t),"\"input_tokens\":null") && ap_has(ap_body(t),"\"state\":\"queued\""),ap_body(t));
+ ap_check(t,"another account cannot read a private turn",dc_get(t,stranger,"/api/chat/turn/v2alpha1",turn,0)==404,ap_body(t));
+ ap_check(t,"another account cannot replay private events",dc_get(t,stranger,"/api/chat/events/v2alpha1",turn,0)==404,ap_body(t));
+ ap_check(t,"another account cannot cancel a private turn",dc_stop(t,stranger,"steal",turn)==404,ap_body(t));
+ st=dc_get(t,stranger,"/api/chat/conversations/v2alpha1","",0);ap_check(t,"another account's history excludes this conversation",st==200 && !ap_has(ap_body(t),conversation),ap_body(t));
+ st=dc_get(t,auth,"/api/chat/conversation/v2alpha1",conversation,0);ap_check(t,"saved conversation reopens its exact user text",st==200 && ap_has(ap_body(t),"First café"),ap_body(t));
+ st=dc_stop(t,auth,"stop-first",turn);ap_check(t,"queued Stop cancels without a model dispatch",st==200 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].state==CT_CANCELLED && control[0].stopped && control[0].cursor==1,ap_body(t));
+ st=dc_stop(t,auth,"stop-first",turn);ap_check(t,"Stop retries reconcile without another event",st==200 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].cursor==1,ap_body(t));
+ st=dc_get(t,auth,"/api/chat/events/v2alpha1",turn,0);ap_check(t,"event replay returns the durable cancellation at its exact cursor",st==200 && ap_has(ap_body(t),"\"type\":\"cancelled\"") && ap_has(ap_body(t),"\"next_cursor\":1"),ap_body(t));
+ st=dc_get(t,auth,"/api/chat/events/v2alpha1",turn,1);ap_check(t,"resuming after the cursor emits no duplicate event",st==200 && ap_has(ap_body(t),"\"events\":[]") && ap_has(ap_body(t),"\"has_more\":false"),ap_body(t));
+ st=dc_post(t,auth,"next",conversation,1,"",-1,"Next question");ap_check(t,"a new operation continues the same conversation after cancellation",st==202 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].conversation==conversation && control[0].revision==2 && control[0].turn!=turn,ap_body(t));
+ if st==202 {next:[36]u8;_=js_copy(next[..],control[0].turn);dc_stream_checks(t,auth,account,conversation,cast(string)next[..]);}
+}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) {return 2;}if args_count(a[..])==3 && args_at(a[..],0)=="mail" {return am_main(ap_whole(args_at(a[..],1)),args_at(a[..],2));}
+ if args_count(a[..])==3 && args_at(a[..],0)=="infer" {return am_response_parts(ap_whole(args_at(a[..],1)),args_at(a[..],2),"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n","data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":2,\"prompt_tokens_details\":{\"cached_tokens\":0}}}\n\ndata: [DONE]\n\n",2000);}
+ t:[1]Ap;if !ap_open(t[..]) {return 2;}b:[4096]u8;ib:[4096]u8;mail:=fs_temp("durable-chat-mail",b[..]);infer:=fs_temp("durable-chat-infer",ib[..]);h:=ac_mail_start(t[..],"coax/web/api/tests/durable_chat_checks.coax",mail);provider:=ac_server_start(t[..],"coax/web/api/tests/durable_chat_checks.coax",infer,"infer","INFER_PORT");if h>=0 && provider>=0 {dc_checks(t[..],mail);path:[4200]u8;data:[65536]u8;n:=fs_read(fs_join(infer,"all",path[..]),data[..]);calls:=0;if n>0 {for c:data[0..<n] {if c=='\n' {calls+=1;}}}ap_check(t[..],"HTTP and CLI turns make exactly four upstream requests across retries",calls==4,"");}if h>=0 {ac_mail_stop(h,mail);}if provider>=0 {ac_mail_stop(provider,infer);}return ap_done(t[..],"durable chat API");
+}

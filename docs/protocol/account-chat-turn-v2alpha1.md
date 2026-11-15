@@ -8,9 +8,46 @@ resources/worker envelopes use `account-chat-turn-record.coax`. Lifecycle and
 queue decisions are `account-chat-turn-policy.coax` and
 `account-chat-work-policy.coax`. The initial consumer is **durable-text**.
 
-**Status:** protocol and checked lifecycle implementation in progress. No route,
-installed app integration, live inference or issue completion is claimed by this
-document. TestFlight waits for the complete Claude-port and Arcade goal.
+**Status:** transactional routes, the resident-worker adapter and CLI integration
+are implemented and undergoing runtime verification. Native adoption and live
+staging evidence remain pending; #13619 is open. No deployment or release is
+claimed here. TestFlight waits for the complete Claude-port and Arcade goal.
+
+## HTTP consumer
+
+All routes below are account-owned, private/no-store and versioned separately
+from the frozen v1 routes. Only the configured, freshly signed runner key may
+use the runner door; that key is not an account credential.
+
+| Method and path | Request / response |
+| --- | --- |
+| `POST /api/chat/submit/v2alpha1` | SubmitRequest → 202 ControlReply |
+| `POST /api/chat/stop/v2alpha1` | StopRequest → 200 ControlReply |
+| `GET /api/chat/turn/v2alpha1?id=TURN` | Complete materialized Turn and its cursor |
+| `GET /api/chat/events/v2alpha1?id=TURN&after=N` | EventPage, at most 32 events and 131,072 encoded bytes |
+| `GET /api/chat/conversations/v2alpha1?project_id=PROJECT&cursor=CONVERSATION` | ConversationList, at most 60 summaries, ID order |
+| `GET /api/chat/conversation/v2alpha1?id=CONVERSATION&after=N` | Conversation with at most 32 messages; `after` is a message offset |
+| `POST /api/chat/runner/v2alpha1` | RunnerRequest → RunnerJob (`next`) or ControlReply (`run`, `lost`) |
+
+Omitted `after` is zero. Omitted Project/index cursor means unfiltered/first
+page. Cursors ahead of the current resource conflict; malformed values refuse.
+The index's next cursor is its last returned ID; conversation pages use a
+decimal message offset. Each request checks ownership again.
+
+Conversation revision counts admitted user turns. Events, Stop and model output
+advance the event cursor and updated time, not the conversation revision. A
+new turn requires the latest conversation revision and preserves its Project
+association. The initial funded team beta admits at most 32 queued/running
+turns per account, one per conversation, with complete history limited to 128
+messages / 131,072 decoded bytes and selected Project context to 32,768 bytes.
+The fixed automatic initial model has a 2,048 output-token request cap. Later
+capability/routing work belongs to #13622.
+
+Clients restore a Turn through `ctr_turn_read`, then atomically apply whole
+pages through `ctr_page_apply` and the existing reducer. A bad later event,
+wrong identity or gap publishes no part of that page. Duplicate pages never
+append text again. This first HTTP consumer exposes bounded polling/replay;
+the event codec's SSE framing is available for a later streaming subscription.
 
 ## Service envelopes and storage
 
@@ -109,11 +146,11 @@ immutable input, events and metering. A replayed wake can claim only the same
 undispatched job; the worker's claim is fenced before upstream I/O. A dispatched
 worker loss ends as unknown rather than reissuing the model call. Recovery must
 scan committed queued work as well as accept wakes, so a lost wake cannot strand
-a saved turn. The existing runner still deploys with `--min-instances 0`:
-CPU allocation alone is insufficient once it scales to zero. Enabling durable
-work must also keep a resident scanning worker available (minimum one instance)
-and exercise recovery after a missed wake and service restart. No phone-held
-socket owns execution.
+a saved turn. The runner deployment now requests `--min-instances 1`; CPU
+allocation alone is insufficient once it scales to zero. The worker scans on
+startup and every 30 seconds, in addition to the shared wake transport. Exercise
+recovery after a missed wake and service restart before enabling it in a live
+environment. No phone-held socket owns execution.
 
 Reuse the existing runner's signed inference door: the resident worker can hold
 an authenticated inference HTTP request open while the API persists normalized
@@ -143,6 +180,11 @@ conversation with immutable provenance and its existing private Project
 association. Later v1 edits cannot change this cut. Original v1 records and links
 remain readable. Paginate history; choose a complete bounded model context or
 refuse it explicitly, without silently omitting old messages.
+
+Copied v1 messages use stable IDs `CONVERSATION.legacy.INDEX` and an empty
+`turn_id`: they have original text/role and no rich turn receipt. The new
+conversation pins the source thread ID/revision. Its copy timestamps record
+the copy, because v1 messages have no per-message timestamp to recover.
 
 Mobile and CLI consume the same protocol, persisted turn and event stream.
 Reuse shared transcripts, Markdown, composer, auth and context assembly. Switching

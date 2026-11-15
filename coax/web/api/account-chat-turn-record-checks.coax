@@ -1,5 +1,96 @@
 // Synthetic, independently pinned service records. No account data.
 CT_TEST_DISPATCH :: "run_0123456789abcdef0123456789abcdef";
+#test "readers refuse partial decoded identities bad nullable kinds and escaped nested keys" #steps 100000000 {
+ v:[1]CtView;ct_record_running(v[..]);i:=[1]CtInfo.[CtInfo.{operation="op",model="m",provider="p",effort="low",route="r",why="why",snapshot="ctx_0123456789abcdef0123456789abcdef",revision=1,created=0,updated=1}];raw:[8192]u8;b:[8192]u8;inner:[2048]u8;arena:[1476]u8;next:[1]CtView;info:[1]CtInfo;n:=ctr_turn_write(v[..],i[..],raw[..]);source:=cast(string)raw[0..<n];
+ #assert !ctr_turn_read(ct_check_replace(source,"id","\"trn_0123456789abcdef0123456789abcdefx\"",b[..]),next[..],info[..],arena[..]);
+ #assert !ctr_turn_read(ct_check_replace(source,"conversation_id","\"cnv_0123456789abcdef0123456789abcdefx\"",b[..]),next[..],info[..],arena[..]);
+ for key:[3]string.["stop_reason","error","context_snapshot_id"] {for value:[3]string.["false","0","\"\\u0000\""] {#assert !ctr_turn_read(ct_check_replace(source,key,value,b[..]),next[..],info[..],arena[..]);}}
+ for content:[2]string.["[{\"\\u0074ype\":\"text\",\"text\":\"x\"}]","[{\"type\":\"text\",\"\\u0074ext\":\"x\"}]"] {#assert !ctr_turn_read(ct_check_replace(source,"content",content,b[..]),next[..],info[..],arena[..]);}
+ d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],source,nodes[..]);select:=jv_raw(d[0],jv_get(d[0],0,"selection"));
+ for key:[3]string.["model_id","provider_id","reason"] {changed:=ct_check_replace(select,key,"null",inner[..]);#assert !ctr_turn_read(ct_check_replace(source,"selection",changed,b[..]),next[..],info[..],arena[..]);}
+ changed:=ct_check_alias(select,"model_id",inner[..]);#assert !ctr_turn_read(ct_check_replace(source,"selection",changed,b[..]),next[..],info[..],arena[..]);
+ changed=ct_check_replace(select,"route_decision_id","\"\"",inner[..]);#assert !ctr_turn_read(ct_check_replace(source,"selection",changed,b[..]),next[..],info[..],arena[..]);
+ #assert !ctr_turn_read(ct_check_replace(source,"context_snapshot_id","\"\"",b[..]),next[..],info[..],arena[..]);
+}
+#test "encoded snapshot and event-page ceilings admit their exact last byte" #steps 100000000 {
+ v:[1]CtView;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);i:=[1]CtInfo.[CtInfo.{operation="op",model="m",provider="p",revision=1}];raw:[1048577]u8;arena:[1476]u8;next:[1]CtView;info:[1]CtInfo;n:=ctr_turn_write(v[..],i[..],raw[..]);#assert n>0;for at:n..<raw.count {raw[at]=' ';}
+ #assert ctr_turn_read(cast(string)raw[0..<1048576],next[..],info[..],arena[..]) && !ctr_turn_read(cast(string)raw[..],next[..],info[..],arena[..]);
+ empty:[1]string;n=ctr_events(v[..],0,empty[0..<0],raw[..]);#assert n>0;for at:n..<131073 {raw[at]=' ';}p:[1]CtPage;
+ #assert ctr_page_apply(cast(string)raw[0..<131072],v[..],p[..]) && !ctr_page_apply(cast(string)raw[0..<131073],v[..],p[..]);
+ v[0].usage.input=0;#assert !ctr_page_apply(cast(string)raw[0..<n],v[..],p[..]);
+}
+#test "event pages reject malformed phase and coupled cursors but allow older duplicate cuts" #steps 100000000 {
+ v:[1]CtView;ct_record_running(v[..]);v[0].sequence=1;e:=[1]CtEvent.[CtEvent.{conversation=CT_TEST_CONVERSATION,turn=CT_TEST_TURN,sequence=1,kind=CT_STARTED,state=CT_RUNNING}];event:[2048]u8;n:=ct_event_write(e[..],event[..]);records:=[1]string.[cast(string)event[0..<n]];raw:[8192]u8;b:[8192]u8;c:[8192]u8;array:[4096]u8;client:[1]CtView;p:[1]CtPage;
+ n=ctr_events(v[..],0,records[..],raw[..]);#assert n>0;source:=cast(string)raw[0..<n];#assert ct_view_begin(client[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
+ partial:[8192]u8;v[0].sequence=2;pn:=ctr_events(v[..],0,records[..],partial[..]);#assert pn>0 && !ctr_page_apply(ct_check_replace(cast(string)partial[0..<pn],"state","\"none\"",b[..]),client[..],p[..]);
+ #assert !ctr_page_apply(ct_check_replace(source,"events","[{}]",b[..]),client[..],p[..]);
+ e[0].kind=CT_TEXT_DELTA;e[0].index=0;e[0].delta="x";m:=ct_event_write(e[..],event[..]);o:[1]Jo;jo_start(o[..],array[..]);jo_arr(o[..]);jo_raw(o[..],cast(string)event[0..<m]);jo_end(o[..]);#assert !ctr_page_apply(ct_check_replace(source,"events",jo_text(o[..]),b[..]),client[..],p[..]);
+ // Fully materialized newer state accepts the old contiguous page without
+ // overwriting its content, state, reason or cursor.
+ ct_record_running(client[..]);client[0].sequence=3;client[0].state=CT_COMPLETED;client[0].nr=js_copy(client[0].reason[..],"end_turn");#assert ctr_page_apply(source,client[..],p[..]) && client[0].state==CT_COMPLETED && client[0].sequence==3;
+ // Reordering already-applied events is still invalid, even though reducing
+ // either duplicate individually would append no content.
+ e[0]=CtEvent.{conversation=CT_TEST_CONVERSATION,turn=CT_TEST_TURN,sequence=1,kind=CT_STARTED,state=CT_RUNNING};m=ct_event_write(e[..],event[..]);jo_start(o[..],array[..]);jo_arr(o[..]);jo_raw(o[..],cast(string)event[0..<m]);jo_raw(o[..],cast(string)event[0..<m]);jo_end(o[..]);#assert !ctr_page_apply(ct_check_replace(source,"events",jo_text(o[..]),b[..]),client[..],p[..]);
+ empty:[1]string;n=ctr_events(client[..],3,empty[0..<0],raw[..]);source=cast(string)raw[0..<n];
+ for value:[2]string.["-1","4"] {changed:=ct_check_replace(source,"after",value,b[..]);#assert !ctr_page_apply(ct_check_replace(changed,"next_cursor",value,c[..]),client[..],p[..]);}
+ client[0].sequence=CT_SEQUENCE_MAX;n=ctr_events(client[..],CT_SEQUENCE_MAX,empty[0..<0],raw[..]);#assert n>0 && ctr_page_apply(cast(string)raw[0..<n],client[..],p[..]);
+}
+#test "historical messages retain a single byte and the exact legacy text ceiling" #steps 30000000 {
+ b:[131072]u8;text:[16385]u8;for at:0..<text.count {text[at]='x';}
+ #assert ctr_historical_message(CT_TEST_CONVERSATION,0,false,"x",0,b[..])>0 && ctr_historical_message(CT_TEST_CONVERSATION,0,false,cast(string)text[0..<16384],0,b[..])>0 && ctr_historical_message(CT_TEST_CONVERSATION,0,false,cast(string)text[..],0,b[..])<0;
+}
+#test "turn readers retain every metadata field and each distinct terminal observation" #steps 100000000 {
+ v:[1]CtView;ct_record_running(v[..]);v[0].stop_requested=true;v[0].usage=CtUsage.{input=11,output=22,cache_read=33,cache_write=44,reasoning=55};v[0].bytes=js_copy(v[0].content[..],"x");
+ i:=[1]CtInfo.[CtInfo.{operation="op",model="model",provider="provider",effort="high",route="r",why="Actual choice",snapshot="ctx_0123456789abcdef0123456789abcdef",revision=9,created=10,updated=20}];raw:[8192]u8;b:[8192]u8;arena:[1476]u8;next:[1]CtView;info:[1]CtInfo;n:=ctr_turn_write(v[..],i[..],raw[..]);#assert n>0;
+ #assert ctr_turn_read(cast(string)raw[0..<n],next[..],info[..],arena[..]) && next[0].stop_requested && ct_view_text(next[..])=="x";
+ #assert info[0].operation=="op" && info[0].model=="model" && info[0].provider=="provider" && info[0].effort=="high" && info[0].route=="r" && info[0].why=="Actual choice" && info[0].snapshot==i[0].snapshot && info[0].revision==9 && info[0].created==10 && info[0].updated==20;
+ #assert next[0].usage.input==11 && next[0].usage.output==22 && next[0].usage.cache_read==33 && next[0].usage.cache_write==44 && next[0].usage.reasoning==55;
+ keys:=[16]string.["schema","id","conversation_id","operation_id","state","stop_requested","stop_reason","usage","selection","content","event_cursor","conversation_revision","context_snapshot_id","error","created_at_ms","updated_at_ms"];
+ values:=[16]string.["\"bad\"","\"bad\"","\"bad\"","\"\"","\"none\"","null","\"\"","{}","{}","null","0","0","\"bad\"","\"\"","-1","-1"];
+ for key,index:keys {#assert !ctr_turn_read(ct_check_replace(cast(string)raw[0..<n],key,values[index],b[..]),next[..],info[..],arena[..]);#assert !ctr_turn_read(ct_check_alias(cast(string)raw[0..<n],key,b[..]),next[..],info[..],arena[..]);}
+ #assert !ctr_turn_read("[",next[..],info[..],arena[..]);
+ for content:[4]string.["[{\"type\":\"text\",\"text\":\"a\"},{\"type\":\"text\",\"text\":\"b\"}]","[{\"type\":\"image\",\"text\":\"x\"}]","[{\"type\":\"text\",\"text\":\"\"}]","[{\"type\":\"text\",\"text\":\"x\",\"unexpected\":1}]"] {#assert !ctr_turn_read(ct_check_replace(cast(string)raw[0..<n],"content",content,b[..]),next[..],info[..],arena[..]);}
+ for state:CT_COMPLETED..<CT_UNKNOWN+1 {v[0].state=state;v[0].nr=js_copy(v[0].reason[..],ifx state==CT_COMPLETED then "end_turn" else ifx state==CT_FAILED then "error" else ifx state==CT_CANCELLED then "cancelled" else "unknown");v[0].ne=js_copy(v[0].error[..],ifx state==CT_FAILED || state==CT_UNKNOWN then "failure" else "");n=ctr_turn_write(v[..],i[..],raw[..]);#assert n>0 && ctr_turn_read(cast(string)raw[0..<n],next[..],info[..],arena[..]) && next[0].state==state && ct_view_reason(next[..])==ct_view_reason(v[..]) && next[0].ne==v[0].ne;}
+ #assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);n=ctr_turn_write(v[..],i[..],raw[..]);#assert n>0 && ctr_turn_read(cast(string)raw[0..<n],next[..],info[..],arena[..]) && next[0].bytes==0 && next[0].sequence==0 && !next[0].stop_requested;
+}
+#test "replay readers validate empty pages exact page limits and independent peer facts" #steps 100000000 {
+ source:[1]CtView;client:[1]CtView;#assert ct_view_begin(source[..],CT_TEST_CONVERSATION,CT_TEST_TURN);e:=[1]CtEvent.[CtEvent.{conversation=CT_TEST_CONVERSATION,turn=CT_TEST_TURN,sequence=1,kind=CT_STARTED,state=CT_RUNNING}];
+ storage:[33][1024]u8;events:[33]string;for index:0..<33 {if index>0 {e[0].kind=CT_TEXT_DELTA;e[0].index=0;e[0].delta="x";e[0].sequence=index+1;}n:=ct_event_write(e[..],storage[index][..]);#assert n>0 && ct_view_apply(source[..],e[..])==1;events[index]=cast(string)storage[index][0..<n];}
+ page:[65536]u8;bad:[65536]u8;p:[1]CtPage;#assert ct_view_begin(client[..],CT_TEST_CONVERSATION,CT_TEST_TURN);n:=ctr_events(source[..],0,events[0..<32],page[..]);#assert n>0 && ctr_page_apply(cast(string)page[0..<n],client[..],p[..]) && client[0].sequence==32 && p[0].next==32 && p[0].more && p[0].state==CT_RUNNING;
+ n=ctr_events(source[..],32,events[32..<33],page[..]);#assert n>0 && ctr_page_apply(cast(string)page[0..<n],client[..],p[..]) && client[0].sequence==33 && !p[0].more;
+ empty:[1]string;n=ctr_events(source[..],33,empty[0..<0],page[..]);#assert n>0 && ctr_page_apply(cast(string)page[0..<n],client[..],p[..]) && p[0].next==33 && !p[0].more;
+ #assert !ctr_page_apply(ct_check_replace(cast(string)page[0..<n],"has_more","true",bad[..]),client[..],p[..]);
+ for key:[8]string.["schema","conversation_id","turn_id","after","events","next_cursor","has_more","state"] {#assert !ctr_page_apply(ct_check_replace(cast(string)page[0..<n],key,"null",bad[..]),client[..],p[..]);#assert !ctr_page_apply(ct_check_alias(cast(string)page[0..<n],key,bad[..]),client[..],p[..]);}
+ for value:[4]string.["-1","34","2147483646","1.5"] {#assert !ctr_page_apply(ct_check_replace(cast(string)page[0..<n],"after",value,bad[..]),client[..],p[..]);#assert !ctr_page_apply(ct_check_replace(cast(string)page[0..<n],"next_cursor",value,bad[..]),client[..],p[..]);}
+ #assert !ctr_page_apply(ct_check_replace(cast(string)page[0..<n],"state","\"completed\"",bad[..]),client[..],p[..]);
+ #assert ct_view_begin(client[..],CT_TEST_CONVERSATION,CT_TEST_TURN);n=ctr_events(source[..],0,events[..],page[..]);#assert n>0 && !ctr_page_apply(cast(string)page[0..<n],client[..],p[..]);
+ #assert !ctr_page_apply("{",client[..],p[..]);client[0].state=0;#assert !ctr_page_apply("{}",client[..],p[..]);
+}
+#test "clients restore a materialized turn without losing nullable usage or selection" {
+ v:[1]CtView;ct_record_running(v[..]);i:=[1]CtInfo.[CtInfo.{operation="op",model="m",provider="p",why="Automatic",revision=2,created=0,updated=1}];
+ raw:[8192]u8;arena:[1476]u8;next:[1]CtView;info:[1]CtInfo;n:=ctr_turn_write(v[..],i[..],raw[..]);#assert n>0;
+ #assert ctr_turn_read(cast(string)raw[0..<n],next[..],info[..],arena[..]) && next[0].sequence==2 && next[0].state==CT_RUNNING && ct_view_text(next[..])=="Hello café\n" && next[0].usage.input== -1 && info[0].model=="m" && info[0].revision==2;
+ #assert !ctr_turn_read("{}",next[..],info[..],arena[..]) && next[0].sequence==2 && !ctr_turn_read(cast(string)raw[0..<n],next[..],info[..],arena[0..<1475]);
+ changed:[8192]u8;for key:[4]string.["id","usage","selection","content"] {#assert !ctr_turn_read(ct_check_replace(cast(string)raw[0..<n],key,"null",changed[..]),next[..],info[..],arena[..]) && next[0].sequence==2;}
+}
+#test "client replay pages apply atomically and ignore duplicates while refusing gaps" {
+ source:[1]CtView;#assert ct_view_begin(source[..],CT_TEST_CONVERSATION,CT_TEST_TURN);e:=[1]CtEvent.[CtEvent.{conversation=CT_TEST_CONVERSATION,turn=CT_TEST_TURN,sequence=1,kind=CT_STARTED,state=CT_RUNNING}];
+ first:[4096]u8;second:[4096]u8;page:[16384]u8;a:=ct_event_write(e[..],first[..]);#assert ct_view_apply(source[..],e[..])==1;
+ e[0].kind=CT_TEXT_DELTA;e[0].sequence=2;e[0].index=0;e[0].delta="Hello";b:=ct_event_write(e[..],second[..]);#assert ct_view_apply(source[..],e[..])==1;
+ events:=[2]string.[cast(string)first[0..<a],cast(string)second[0..<b]];n:=ctr_events(source[..],0,events[..],page[..]);client:[1]CtView;p:[1]CtPage;#assert ct_view_begin(client[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
+ #assert ctr_page_apply(cast(string)page[0..<n],client[..],p[..]) && client[0].sequence==2 && ct_view_text(client[..])=="Hello" && !p[0].more;
+ #assert ctr_page_apply(cast(string)page[0..<n],client[..],p[..]) && ct_view_text(client[..])=="Hello";
+ #assert ct_view_begin(client[..],CT_TEST_CONVERSATION,CT_TEST_TURN);n=ctr_events(source[..],1,events[1..<2],page[..]);#assert !ctr_page_apply(cast(string)page[0..<n],client[..],p[..]) && client[0].sequence==0;
+ // A valid first event followed by an invalid event must publish neither.
+ bad:[16384]u8;n=ctr_events(source[..],0,events[..],page[..]);raw:=ct_check_replace(cast(string)page[0..<n],"next_cursor","1",bad[..]);#assert !ctr_page_apply(raw,client[..],p[..]) && client[0].sequence==0;
+}
+#test "a preserved legacy message keeps stable provenance without inventing a rich turn" {
+ b:[4096]u8;n:=ctr_historical_message(CT_TEST_CONVERSATION,0,false,"Old",10,b[..]);
+ #assert n>0 && cast(string)b[0..<n]=="{\"id\":\"cnv_0123456789abcdef0123456789abcdef.legacy.0\",\"turn_id\":\"\",\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Old\"}],\"created_at_ms\":10}";
+ #assert ctr_historical_message(CT_TEST_CONVERSATION,31,true,"Old",10,b[..])>0;
+ #assert ctr_historical_message(CT_TEST_CONVERSATION,32,true,"Old",10,b[..])<0 && ctr_historical_message("bad",0,false,"Old",10,b[..])<0 && ctr_historical_message(CT_TEST_CONVERSATION,-1,false,"Old",10,b[..])<0;
+ #assert ctr_historical_message(CT_TEST_CONVERSATION,0,false,"",10,b[..])<0 && ctr_historical_message(CT_TEST_CONVERSATION,0,false,"Old",-1,b[..])<0 && ctr_historical_message(CT_TEST_CONVERSATION,0,false,"Old",10,b[0..<1])<0;
+}
 #test "control reply has the exact public envelope and borrowed IDs" {
  v:[1]CtView;r:[1]CtControl;b:[2048]u8;arena:[72]u8;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
  n:=ctr_control_write(v[..],1,b[..]);raw:=cast(string)b[0..<n];
@@ -135,7 +226,9 @@ ct_record_running :: (v:[]CtView) {
  ct_record_running(v[..]);v[0].bytes=1;n=ctr_turn_write(v[..],i[..],b[..]);#assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && jv_len(d[0],jv_get(d[0],0,"content"))==1;
  n=ctr_answer_message(v[..],0,b[..]);#assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]);at:=jv_at(d[0],jv_get(d[0],0,"content"),0);#assert jv_raw(d[0],jv_get(d[0],at,"text"))=="H";
 }
-#test "full replies validate every byte without a hidden 64KiB limit" #steps 100000000 {
+// Three full escaped writes plus the independent decode exceed 100M evaluator
+// steps; the native check and mutation baseline exercise the same full ceiling.
+#test "full replies validate every byte without a hidden 64KiB limit" #steps 200000000 {
  v:[1]CtView;ct_record_running(v[..]);v[0].sequence=CT_SEQUENCE_MAX;v[0].bytes=131072;for j:0..<v[0].bytes {v[0].content[j]='x';}#assert ctr_view_valid(v[..]);
  // Every byte needs a six-byte JSON escape. Test the actual writer, its
  // decoded content and its exact encoded capacity, not only a view validator.

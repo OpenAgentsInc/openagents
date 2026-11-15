@@ -14,6 +14,7 @@ CtConversation :: struct {id:string;title:string;revision:int;project:string;leg
 CtControl :: struct {conversation:string;turn:string;revision:int;state:int;stopped:bool;cursor:int;}
 CtWorker :: struct {operation:int;id:string;worker:string;turn:string;dispatch:string;}
 CtJob :: struct {has_work:bool;turn:string;conversation:string;dispatch:string;}
+CtPage :: struct {next:int;more:bool;state:int;}
 ctr_time :: (n:int)->bool {return n>=0 && n<=9007199254740991;}
 ctr_view_valid :: (v:[]CtView)->bool {
  if !ct_id(cast(string)v[0].conversation[..],"cnv_",32) || !ct_id(cast(string)v[0].turn[..],"trn_",32) {return false;}
@@ -51,6 +52,34 @@ ctr_turn_write :: (v:[]CtView,i:[]CtInfo,out:[]u8)->int #export_c #effects(all) 
  jo_key(o[..],"selection");jo_obj(o[..]);jo_key(o[..],"model_id");jo_str(o[..],i[0].model);jo_key(o[..],"provider_id");jo_str(o[..],i[0].provider);jo_key(o[..],"effort");jo_str(o[..],i[0].effort);jo_key(o[..],"route_decision_id");ct_optional_text(o[..],i[0].route);jo_key(o[..],"reason");jo_str(o[..],i[0].why);jo_end(o[..]);
  jo_key(o[..],"content");jo_arr(o[..]);if v[0].bytes>0 {ctr_text(o[..],ct_view_text(v));}jo_end(o[..]);jo_key(o[..],"event_cursor");jo_int(o[..],v[0].sequence);jo_key(o[..],"conversation_revision");jo_int(o[..],i[0].revision);jo_key(o[..],"context_snapshot_id");ct_optional_text(o[..],i[0].snapshot);jo_key(o[..],"error");ct_optional_text(o[..],cast(string)v[0].error[0..<v[0].ne]);jo_key(o[..],"created_at_ms");jo_int(o[..],i[0].created);jo_key(o[..],"updated_at_ms");jo_int(o[..],i[0].updated);jo_end(o[..]);return ct_len(o[..]);
 }
+// The API, CLI and native host share the same reader. Metadata strings borrow
+// the caller's 1,476-byte arena; the reply and event cursor are owned by CtView.
+ctr_turn_read :: (raw:string,out:[]CtView,info:[]CtInfo,arena:[]u8)->bool #export_c #effects(all) {
+ if raw.count>1048576 || arena.count<1476 {return false;}d:[1]Jv;nodes:[128]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];
+ keys:=[16]string.["schema","id","conversation_id","operation_id","state","stop_requested","stop_reason","usage","selection","content","event_cursor","conversation_revision","context_snapshot_id","error","created_at_ms","updated_at_ms"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=16 || jv_raw(v,jv_get(v,0,"schema"))!=CTR_TURN {return false;}
+ next:[1]CtView;n:=js_string(v,jv_get(v,0,"conversation_id"),next[0].conversation[..]);m:=js_string(v,jv_get(v,0,"id"),next[0].turn[..]);if n!=36 || m!=36 {return false;}
+ next[0].state=ct_state_of(jv_raw(v,jv_get(v,0,"state")));next[0].sequence=js_number(v,jv_get(v,0,"event_cursor"));stop:=jv_kind(v,jv_get(v,0,"stop_requested"));if stop!=JV_TRUE && stop!=JV_FALSE {return false;}next[0].stop_requested=stop==JV_TRUE;
+ next[0].nr=ct_nullable_string(v,jv_get(v,0,"stop_reason"),next[0].reason[..]);next[0].ne=ct_nullable_string(v,jv_get(v,0,"error"),next[0].error[..]);if next[0].nr<0 || next[0].ne<0 {return false;} // mutant: equivalent (changing only this OR to AND still reaches ctr_view_valid's independent negative-length refusals)
+ if (next[0].nr==0 && jv_kind(v,jv_get(v,0,"stop_reason"))!=JV_NULL) || (next[0].ne==0 && jv_kind(v,jv_get(v,0,"error"))!=JV_NULL) {return false;}
+ u:[1]CtUsage;if !ct_usage_read(v,jv_get(v,0,"usage"),u[..]) {return false;}next[0].usage=u[0];
+ content:=jv_get(v,0,"content");if jv_kind(v,content)!=JV_ARRAY || jv_len(v,content)>1 {return false;}if jv_len(v,content)==1 {at:=jv_at(v,content,0);fields:=[2]string.["type","text"];if !js_fields(v,at,fields[..]) || jv_len(v,at)!=2 || jv_raw(v,jv_get(v,at,"type"))!="text" {return false;}next[0].bytes=js_string(v,jv_get(v,at,"text"),next[0].content[..]);if next[0].bytes<1 {return false;}}
+ select:=jv_get(v,0,"selection");fields:=[5]string.["model_id","provider_id","effort","route_decision_id","reason"];if !js_fields(v,select,fields[..]) || jv_len(v,select)!=5 {return false;}
+ lengths:[7]int;lengths[0]=js_string(v,jv_get(v,0,"operation_id"),arena[0..<80]);lengths[1]=js_string(v,jv_get(v,select,"model_id"),arena[80..<240]);lengths[2]=js_string(v,jv_get(v,select,"provider_id"),arena[240..<320]);lengths[3]=js_string(v,jv_get(v,select,"effort"),arena[320..<336]);lengths[4]=ct_nullable_string(v,jv_get(v,select,"route_decision_id"),arena[336..<416]);lengths[5]=js_string(v,jv_get(v,select,"reason"),arena[416..<1440]);lengths[6]=ct_nullable_string(v,jv_get(v,0,"context_snapshot_id"),arena[1440..<1476]);for value:lengths {if value<0 {return false;}} // mutant: equivalent (widening an individual metadata slice by one still fails ctr_info_valid's own byte ceiling)
+ if (lengths[4]==0 && jv_kind(v,jv_get(v,select,"route_decision_id"))!=JV_NULL) || (lengths[6]==0 && jv_kind(v,jv_get(v,0,"context_snapshot_id"))!=JV_NULL) {return false;}
+ i:=[1]CtInfo.[CtInfo.{operation=cast(string)arena[0..<lengths[0]],model=cast(string)arena[80..<80+lengths[1]],provider=cast(string)arena[240..<240+lengths[2]],effort=cast(string)arena[320..<320+lengths[3]],route=cast(string)arena[336..<336+lengths[4]],why=cast(string)arena[416..<416+lengths[5]],snapshot=cast(string)arena[1440..<1440+lengths[6]],revision=js_number(v,jv_get(v,0,"conversation_revision")),created=js_number(v,jv_get(v,0,"created_at_ms")),updated=js_number(v,jv_get(v,0,"updated_at_ms"))}];
+ if !ctr_view_valid(next[..]) || !ctr_info_valid(i[..]) {return false;}out[0]=next[0];info[0]=i[0];return true;
+}
+// Apply a whole replay page to a temporary view. A malformed later event or
+// cursor never leaves a client with a partially applied page.
+ctr_page_apply :: (raw:string,out:[]CtView,page:[]CtPage)->bool #export_c #effects(all) {
+ if raw.count>131072 || !ctr_view_valid(out) {return false;}d:[1]Jv;nodes:[1600]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[8]string.["schema","conversation_id","turn_id","after","events","next_cursor","has_more","state"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=8 || jv_raw(v,jv_get(v,0,"schema"))!=CTR_EVENTS || jv_raw(v,jv_get(v,0,"conversation_id"))!=cast(string)out[0].conversation[..] || jv_raw(v,jv_get(v,0,"turn_id"))!=cast(string)out[0].turn[..] {return false;}
+ after:=js_number(v,jv_get(v,0,"after"));cursor:=js_number(v,jv_get(v,0,"next_cursor"));state:=ct_state_of(jv_raw(v,jv_get(v,0,"state")));more:=jv_kind(v,jv_get(v,0,"has_more"));if after<0 || after>out[0].sequence || cursor<after || cursor>CT_SEQUENCE_MAX || state==0 || (more!=JV_TRUE && more!=JV_FALSE) {return false;} // mutant: equivalent (widening only the cursor cap still fails last==cursor: after and every decoded event sequence remain at most CT_SEQUENCE_MAX)
+ list:=jv_get(v,0,"events");count:=jv_len(v,list);if jv_kind(v,list)!=JV_ARRAY || count>32 || (count==0 && more==JV_TRUE) {return false;}next:=[1]CtView.[out[0]];last:=after;arena:[17048]u8;e:[1]CtEvent;
+ for index:0..<count {if !ct_event_read(jv_raw(v,jv_at(v,list,index)),e[..],arena[..]) || !ct_sequence(last,e[0].sequence) {return false;}result:=ct_view_apply(next[..],e[..]);if result!=1 && result!=2 {return false;}last=e[0].sequence;}
+ if last!=cursor || (next[0].sequence==cursor && more==JV_FALSE && next[0].state!=state) {return false;}out[0]=next[0];page[0]=CtPage.{next=cursor,more=more==JV_TRUE,state=state};return true;
+}
 ctr_text :: (o:[]Jo,text:string) {jo_obj(o);jo_key(o,"type");jo_str(o,"text");jo_key(o,"text");jo_str(o,text);jo_end(o);}
 ctr_summary :: (c:[]CtConversation,out:[]u8)->int #export_c #effects(all) {
  if !ctr_conversation_valid(c) || !ct_valid_text(c[0].title,160) {return -1;}
@@ -70,6 +99,13 @@ ctr_user_message :: (raw:string,turn:string,created:int,out:[]u8)->int #export_c
 ctr_answer_message :: (v:[]CtView,created:int,out:[]u8)->int #export_c #effects(all) {if !ctr_view_valid(v) || !ctr_time(created) {return -1;}o:[1]Jo;jo_start(o[..],out);ctr_message_start(o[..],cast(string)v[0].turn[..],true);if v[0].bytes>0 {ctr_text(o[..],ct_view_text(v));}ctr_message_end(o[..],created);return ct_len(o[..]);}
 ctr_message_start :: (o:[]Jo,turn:string,assistant:bool) {jo_obj(o);jo_key(o,"id");b:[64]u8;q:[1]Jo;jo_start(q[..],b[..]);jo_put(q[..],turn);jo_put(q[..],ifx assistant then ".assistant" else ".user");jo_str(o,jo_text(q[..]));jo_key(o,"turn_id");jo_str(o,turn);jo_key(o,"role");jo_str(o,ifx assistant then "assistant" else "user");jo_key(o,"content");jo_arr(o);}
 ctr_message_end :: (o:[]Jo,created:int) {jo_end(o);jo_key(o,"created_at_ms");jo_int(o,created);jo_end(o);}
+// A preserved legacy message has no rich turn receipt. Empty turn_id expresses
+// that fact; stable identity is scoped to the new conversation and source index.
+ctr_historical_message :: (conversation:string,index:int,assistant:bool,text:string,created:int,out:[]u8)->int #export_c #effects(all) {
+ if !ct_id(conversation,"cnv_",32) || index<0 || index>=32 || text.count<1 || !ct_valid_text(text,16384) || !ctr_time(created) {return -1;}
+ id:[64]u8;q:[1]Jo;jo_start(q[..],id[..]);jo_put(q[..],conversation);jo_put(q[..],".legacy.");jo_int(q[..],index);
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],jo_text(q[..]));jo_key(o[..],"turn_id");jo_str(o[..],"");jo_key(o[..],"role");jo_str(o[..],ifx assistant then "assistant" else "user");jo_key(o[..],"content");jo_arr(o[..]);ctr_text(o[..],text);ctr_message_end(o[..],created);return ct_len(o[..]);
+}
 ctr_events :: (v:[]CtView,after:int,events:[]string,out:[]u8)->int #export_c #effects(all) {
  if after<0 || after>v[0].sequence || !ctr_view_valid(v) {return -1;}last:=after;arena:[17048]u8;e:[1]CtEvent;
  for raw:events {

@@ -94,7 +94,7 @@ ct_stop_read :: (raw:string,operation:[]u8,turn:[]u8)->int #export_c #effects(al
  if !ct_id(cast(string)id[0..<nt],"trn_",32) || n>operation.count || nt>turn.count {return -1;}
  _=js_copy(operation,cast(string)op[0..<n]);_=js_copy(turn,cast(string)id[0..<nt]);return n;
 }
-ct_stop_write :: (operation:string,turn:string,out:[]u8)->int {
+ct_stop_write :: (operation:string,turn:string,out:[]u8)->int #export_c #effects(all) {
  if operation.count<1 || !ct_valid_text(operation,80) || !ct_id(turn,"trn_",32) {return -1;}
  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CT_STOP_SCHEMA);jo_key(o[..],"operation_id");jo_str(o[..],operation);jo_key(o[..],"turn_id");jo_str(o[..],turn);jo_end(o[..]);return ct_len(o[..]);
 }
@@ -103,7 +103,7 @@ ct_state_name :: (state:int)->string {
 }
 ct_state_of :: (name:string)->int {for state:CT_QUEUED..<CT_UNKNOWN+1 {if ct_state_name(state)==name {return state;}}return 0;}
 ct_event_name :: (kind:int)->string {
- if kind==CT_STARTED {return "started";}if kind==CT_TEXT {return "text_delta";}if kind==CT_USAGE {return "usage";}if kind==CT_STOP {return "stop_requested";}if kind==CT_DONE {return "completed";}if kind==CT_ERROR {return "failed";}if kind==CT_LOST {return "unknown";}if kind==CT_CANCEL {return "cancelled";}return "";
+ if kind==CT_STARTED {return "started";}if kind==CT_TEXT_DELTA {return "text_delta";}if kind==CT_USAGE {return "usage";}if kind==CT_STOP {return "stop_requested";}if kind==CT_DONE {return "completed";}if kind==CT_ERROR {return "failed";}if kind==CT_LOST {return "unknown";}if kind==CT_CANCEL {return "cancelled";}return "";
 }
 ct_event_of :: (name:string)->int {for kind:CT_STARTED..<CT_CANCEL+1 {if ct_event_name(kind)==name {return kind;}}return 0;}
 ct_usage_at :: (o:[]Jo,u:CtUsage) {
@@ -120,7 +120,7 @@ ct_event_valid :: (e:[]CtEvent)->bool {
  if !ct_id(e[0].conversation,"cnv_",32) || !ct_id(e[0].turn,"trn_",32) || e[0].sequence<1 || e[0].sequence>CT_SEQUENCE_MAX || e[0].kind<CT_STARTED || e[0].kind>CT_CANCEL {return false;}
  expected:=ifx e[0].kind==CT_STARTED then CT_RUNNING else ct_transition(CT_RUNNING,e[0].kind,true);
  if e[0].state!=expected {return false;}
- if e[0].kind==CT_TEXT {if e[0].index!=0 || e[0].delta.count<1 || !ct_valid_text(e[0].delta,16384) {return false;}}
+ if e[0].kind==CT_TEXT_DELTA {if e[0].index!=0 || e[0].delta.count<1 || !ct_valid_text(e[0].delta,16384) {return false;}}
  else if e[0].index!= -1 || e[0].delta.count!=0 {return false;}
  if (e[0].kind==CT_STOP || e[0].kind==CT_CANCEL) && !e[0].stop_requested {return false;}
  if e[0].kind==CT_STARTED && e[0].stop_requested {return false;}
@@ -183,7 +183,7 @@ ct_view_apply :: (v:[]CtView,e:[]CtEvent)->int {
  if state!=e[0].state {return 0;}
  if action!=CT_STOP && e[0].stop_requested!=v[0].stop_requested {return 0;}
  if e[0].delta.count>v[0].content.count-v[0].bytes {return 4;} // mutant: equivalent (content.count is the fixed array capacity, independent of the receiver index)
- if e[0].kind==CT_TEXT {_=js_copy(v[0].content[v[0].bytes..<v[0].content.count],e[0].delta);v[0].bytes+=e[0].delta.count;} // mutant: equivalent (the same fixed content.count capacity)
+ if e[0].kind==CT_TEXT_DELTA {_=js_copy(v[0].content[v[0].bytes..<v[0].content.count],e[0].delta);v[0].bytes+=e[0].delta.count;} // mutant: equivalent (the same fixed content.count capacity)
  if e[0].has_usage {v[0].usage=e[0].usage;}
  v[0].nr=js_copy(v[0].reason[..],e[0].reason);v[0].ne=js_copy(v[0].error[..],e[0].error);
  v[0].sequence=e[0].sequence;v[0].state=state;v[0].stop_requested=e[0].stop_requested;return 1;

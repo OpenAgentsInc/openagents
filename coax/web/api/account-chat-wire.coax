@@ -238,7 +238,7 @@ act_project_answer :: (raw:string,model_reply:string,out:[]u8)->int #export_c #e
  #assert act_project_completion(cast(string)b[0..<m],"","",raw[..])<0;
 }
 
-#test "Project answers never persist a transcript that its unchanged saved-chat reader refuses" {
+#test "Project answers never persist a transcript that its unchanged saved-chat reader refuses" #steps 100000000 {
  t:[1]AccountThread;t[0].revision=1;t[0].n=3;for i:0..<3 {t[0].messages[i].n=16000;for j:0..<16000 {t[0].messages[i].text[j]='H';}}raw:[65536]u8;out:[131072]u8;n:=act_write(t[..],raw[..]);#assert n>0 && act_project_completion(cast(string)raw[0..<n],"","",out[..])<0;
  #assert act_project_answer(cast(string)raw[0..<n],"{\"choices\":[{\"message\":{\"content\":\"A\"}}]}",out[..])<0;
  t[0].n=2;for i:0..<2 {t[0].messages[i].n=16000;for j:0..<16000 {t[0].messages[i].text[j]='"';}}n=act_write(t[..],raw[..]);#assert n>0;

@@ -84,7 +84,8 @@ cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Docker
 (cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
 mkdir -p "$stage/gen"
 for m in projects-wire auth-identity-policy auth-identity-wire account-settings-wire nip98 mesh-policy mesh-gemini router-wire caller-policy anime-director-policy seat-policy progress-policy item-policy moderation-policy character-policy worldbuilder-policy npc-personas auth-policy account-chat-wire environment-wire chat-history-wire auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto auth-push ticket-sign service-policy service-wire realm-wire seat-wire jobs-wire email-wire packs-wire error-wire mesh-wire auth-wire auth-recover-wire auth-life-wire auth-device-wire passkeys-wire chat-wire player-wire rooms-wire lnaddr-wire makers-wire worldbuilder-wire world-policy script-store; do
-  "$work/source/coax/bin/coax" c "$here/$m.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
+  src="$m"; [[ "$m" != account-chat-wire ]] || src=account-chat-service
+  "$work/source/coax/bin/coax" c "$here/$src.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
 done
 # The money rules are the Payments context's (pay/, #13320): SOURCE:GENERATED.
 for m in lnaddr-policy:lnaddr-policy wallet-policy:wallet-policy wallet-vault-store:wallet-vault; do
@@ -218,7 +219,7 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   env+="~OA_BUILD_SHA=$commit~OA_RELEASE_ID=$release"
   api_verified_rollout "$1" "$3" "$image" "$commit" "$release" "$work/$1" \
     --allow-unauthenticated --ingress internal-and-cloud-load-balancing \
-    --port 8080 --cpu 1 --memory 512Mi --min-instances 0 --max-instances 4 --concurrency 40 \
+    --port 8080 --cpu 1 --memory 512Mi --min-instances 0 --max-instances 4 --concurrency 40 --timeout 360 \
     --add-cloudsql-instances "$instance" --set-secrets "$secrets" --set-env-vars "$env"
 }
 deploy oa-api-staging oa-api-staging-database-url staging.openagents.com oa-agent-projects-staging oa-agent-staging staging oa-analytics-staging-database-url

@@ -1,3 +1,4 @@
+#define pcb_context acw_pcb_context
 #define cb_load_be32 acw_cb_load_be32
 #define cb_load_be64 acw_cb_load_be64
 #define cb_load_le32 acw_cb_load_le32

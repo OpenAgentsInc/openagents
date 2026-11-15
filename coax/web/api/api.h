@@ -59,6 +59,13 @@ void admin_roots(char *out, size_t cap);  // the roots as a Postgres text array 
 int admin_who(const request *q, PGconn *db, char who[65]);   // 0 an admin (cookie or NIP-98), else 401/403
 bool chat_route(const request *q);        // chat.c
 bool projects_route(const request *q);
+typedef struct {char *instructions,*reference,*snapshot;char snapshot_id[37];long long revision;} project_context;
+bool api_object_id(char out[37],const char *prefix);
+int projects_context(PGconn *db,const char *account,const char *id,const char *conversation,const char *operation,long long revision,long long now,project_context *out);
+void projects_context_free(project_context *context);
+bool account_chat_turn_route(const request *q);
+int chat_runner_who(const request *q,PGconn *db,char pubkey[65]);
+bool chat_wake(void);
 bool account_chat_route(const request *q); // account-owned mobile chat
 bool account_thread_id(char out[25]); // platform entropy for the shared saved-chat identity
 bool environment_route(const request *q); // account-owned computer connections
@@ -125,6 +132,12 @@ bool worlds_route(const request *q);       // worlds.c: a world's document by ID
 bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen);
 bool inference_route(const request *q);   // inference.c: POST /api/v1/inference, our models for the Mac app
 bool inference_ask(const request *q, const char *pubkey, bool free_key);   // inference.c: the same ask for a caller another route named (chat.c)
+typedef struct {
+ bool (*bytes)(void *context,int status,const char *data,size_t size);
+ bool (*keep)(void *context);
+ void (*end)(void *context,int status,bool clean,double taken_ms);
+} inference_observer;
+bool inference_ask_observed(const request *q,const char *pubkey,bool free_key,const inference_observer *observer,void *context);
 // Our Spark wallet (inference.c, OA_SPARK_URL): POST path with json (GET with none); its status (0 unreached), its body into *out.
 long api_spark(const char *path, const char *json, long timeout_s, char **out);
 // An identity token for a sibling Cloud Run service whose URL is aud (inference.c), or the token in the

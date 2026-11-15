@@ -339,7 +339,7 @@ static bool credit_route(const request *q) {
 // The relay: Vertex's status line once its first bytes come, then its bytes
 // as they come; everything also kept (to 4 MB) for the usage at the end.
 // hold (the local serve mode): an answer that isn't a 200 is kept, not relayed (held), and answered in words.
-typedef struct { int fd; CURL *h; bool stream, started, gone, hold, held, deferred; buf all; } relay_t;
+typedef struct { int fd; CURL *h; bool stream, started, gone, hold, held, deferred; buf all; const inference_observer *observer;void *context; } relay_t;
 static bool send_all(int fd, const char *p, size_t n) {
   while (n) { ssize_t k = write(fd, p, n); if (k <= 0) return false; p += k; n -= (size_t)k; }
   return true;
@@ -354,6 +354,7 @@ static void start(relay_t *r, long status) {
 }
 static size_t relay(char *data, size_t size, size_t n, void *user) {
   relay_t *r = user; size_t k = size * n;
+  if(r->observer){long status=0;curl_easy_getinfo(r->h,CURLINFO_RESPONSE_CODE,&status);if(k>(4u<<20)||r->all.n>(4u<<20)-k||keep(&r->all,data,k)!=k)return 0;return r->observer->bytes(r->context,(int)status,data,k)?k:0;}
   if (r->deferred) {if (k>(1u<<20) || r->all.n>(1u<<20)-k) return 0;return keep(&r->all, data, k);}
   if (!r->started && !r->held) {
     long status = 0; curl_easy_getinfo(r->h, CURLINFO_RESPONSE_CODE, &status);
@@ -363,6 +364,12 @@ static size_t relay(char *data, size_t size, size_t n, void *user) {
   if (!r->gone && !send_all(r->fd, data, k)) r->gone = true;   // the caller left: stop asking Vertex
   if (r->all.n < (4u << 20)) keep(&r->all, data, k);
   return r->gone ? 0 : k;
+}
+
+// Network progress is a platform effect. The owner decides whether the request
+// is still admitted or cancellation was requested; no phone socket owns it.
+static int observer_progress(void *opaque,curl_off_t down,curl_off_t got,curl_off_t up,curl_off_t sent){
+ (void)down;(void)got;(void)up;(void)sent;relay_t *r=opaque;return r->observer&&r->observer->keep&&!r->observer->keep(r->context)?1:0;
 }
 
 // The last "name": N in text (a stream reports its usage in its last chunk), or 0.
@@ -442,11 +449,11 @@ static void local_refuse(int fd, int status, const char *words) {
 
 // In the child: asks Vertex, relays its answer, keeps the call. original: the asker's own body (the local
 // serve mode sends it on to our deployed API, which reads the model's name, not Vertex's).
-static void answer(int fd, const char *who, const char *model, const char *request, const char *original, bool stream, bool free_key, bool (*save)(void *,int,const char *,size_t), void *context) {
-  relay_t r = {.fd = fd, .stream = stream, .deferred = save != NULL};
+static void answer(int fd, const char *who, const char *model, const char *request, const char *original, bool stream, bool free_key, bool (*save)(void *,int,const char *,size_t),const inference_observer *observer, void *context) {
+  relay_t r = {.fd = fd, .stream = stream, .deferred = save != NULL || observer != NULL,.observer=observer,.context=context};
   char tok[12000], auth[12100];
   long status = 0;
-  double t0 = api_now_ms();
+  double t0 = api_now_ms();CURLcode transport=CURLE_FAILED_INIT;
   const char *url = env_or("OA_INFERENCE_URL", VERTEX_CHAT), *send = request;
   bool have = token(tok, sizeof tok);
   snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
@@ -458,9 +465,9 @@ static void answer(int fd, const char *who, const char *model, const char *reque
     via = 'o'; url = remote; send = original;
     have = local_sign(remote, original, tok, sizeof tok);
     snprintf(auth, sizeof auth, "Authorization: %s", tok);
-    if (!have && !save) { local_refuse(fd, 502, local_words('o', -1)); r.started = true; }
+    if (!have && !save && !observer) { local_refuse(fd, 502, local_words('o', -1)); r.started = true; }
   }
-  if (!have && !via && !save) { local_refuse(fd, 503, local_words(0, 0)); r.started = true; }
+  if (!have && !via && !save && !observer) { local_refuse(fd, 503, local_words(0, 0)); r.started = true; }
   r.hold = true;
 #endif
   if (have) {
@@ -472,12 +479,14 @@ static void answer(int fd, const char *who, const char *model, const char *reque
     curl_easy_setopt(r.h, CURLOPT_WRITEFUNCTION, relay);
     curl_easy_setopt(r.h, CURLOPT_WRITEDATA, &r);
     curl_easy_setopt(r.h, CURLOPT_TIMEOUT, 300L);
-    if (curl_easy_perform(r.h) == CURLE_OK || r.started || r.held) curl_easy_getinfo(r.h, CURLINFO_RESPONSE_CODE, &status);
+    if(observer){curl_easy_setopt(r.h,CURLOPT_NOPROGRESS,0L);curl_easy_setopt(r.h,CURLOPT_XFERINFOFUNCTION,observer_progress);curl_easy_setopt(r.h,CURLOPT_XFERINFODATA,&r);}
+    transport=curl_easy_perform(r.h);
+    if(transport==CURLE_OK || r.started || r.held || observer)curl_easy_getinfo(r.h,CURLINFO_RESPONSE_CODE,&status);
     curl_slist_free_all(hd); curl_easy_cleanup(r.h);
   } else api_log("inference: no token");
   memset(tok, 0, sizeof tok); memset(auth, 0, sizeof auth);
 #ifdef OA_LOCAL_SERVE
-  if (!save && !r.started && via) local_refuse(fd, status == 401 || status == 403 || status == 0 ? 502 : (int)status, local_words(via, status));
+  if (!save && !observer && !r.started && via) local_refuse(fd, status == 401 || status == 403 || status == 0 ? 502 : (int)status, local_words(via, status));
   r.started = true;
 #endif
   if (!r.started && !r.deferred) api_error(fd, 502, "the model was not reached");
@@ -493,6 +502,7 @@ static void answer(int fd, const char *who, const char *model, const char *reque
   if (status != 200) api_log("inference: the model answered %ld", status);
   if (q) PQclear(q);
   if (db) PQfinish(db);
+  if(observer){observer->end(context,(int)status,transport==CURLE_OK,api_now_ms()-t0);}
   if (save) {
     bool kept=save(context,(int)status,r.all.p ? r.all.p : "",r.all.n);
     if (kept && status==200) api_respond(fd,200,"application/json","Cache-Control: private, no-store\r\n",r.all.p,r.all.n);
@@ -520,16 +530,16 @@ bool inference_route(const request *q) {
 // The request q's Chat Completions body asked of Vertex for this key, answered as it comes, under the
 // same caps and metering as the signed route. /chat's door (chat.c, POST /api/chat/complete) calls
 // this for an admin its cookie named, so the page asks without a Nostr signature.
-static bool inference_ask_impl(const request *q, const char *pubkey, bool free_key, bool (*save)(void *,int,const char *,size_t), void *context) {
+static bool inference_ask_impl(const request *q, const char *pubkey, bool free_key, bool (*save)(void *,int,const char *,size_t), const inference_observer *observer,void *context) {
   PGconn *db = api_db();
-  if (!db) { api_error(q->fd, 503, "no database"); return true; }
+  if (!db) {if(observer)observer->end(context,503,true,0);else api_error(q->fd, 503, "no database");return true;}
   if (!free_key) {
     // The wallet's daily limit holds for credit too (wallet.c, pay/wallet-policy.coax's wp_credit; #13330).
     if (wallet_credit_refused(q, db, pubkey)) return true;
     rate_refresh(db);
   }
   char *body = malloc(q->body_len + 1);
-  if (!body) { api_error(q->fd, 503, "memory"); return true; }
+  if (!body) {if(observer)observer->end(context,503,true,0);else api_error(q->fd,503,"memory");return true;}
   memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
   char origin[600]; snprintf(origin, sizeof origin, "%s/api/v1/inference/credit", env_or("OA_API_ORIGIN", "https://openagents.com"));
   const char *v[6] = {pubkey, body, env_or("OA_INFERENCE_DAILY_REQUESTS", "500"), env_or("OA_INFERENCE_DAILY_USD_MICROS", "2000000"),
@@ -540,35 +550,38 @@ static bool inference_ask_impl(const request *q, const char *pubkey, bool free_k
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     api_log("inference: %s", PQerrorMessage(db));
     PQclear(r); free(body);
-    api_error(q->fd, 500, "not asked");
+    if(observer)observer->end(context,500,true,0);else api_error(q->fd,500,"not asked");
     return true;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
   if (status == 402) {   // no credit: where to buy it
     char out[600]; snprintf(out, sizeof out, "%s", PQgetvalue(r, 0, 5));
     PQclear(r); free(body);
-    api_json(q->fd, 402, out);
+    if(observer)observer->end(context,402,true,0);else api_json(q->fd,402,out);
     return true;
   }
   if (status != 200) {
     char out[200]; api_error_text(out, sizeof out, PQgetvalue(r, 0, 1));
     PQclear(r); free(body);
-    api_json(q->fd, status, out);
+    if(observer)observer->end(context,status,true,0);else api_json(q->fd,status,out);
     return true;
   }
   char *request = strdup(PQgetvalue(r, 0, 2)), *model = strdup(PQgetvalue(r, 0, 3));
   bool stream = !strcmp(PQgetvalue(r, 0, 4), "true");
   PQclear(r);
+  if(!request||!model){free(request);free(model);free(body);if(observer)observer->end(context,503,true,0);else api_error(q->fd,503,"memory");return true;}
   signal(SIGCHLD, SIG_IGN);   // children are never waited for
   pid_t pid = fork();
   if (pid == 0) {             // the child answers; the parent's database connection is never touched here
-    answer(q->fd, pubkey, model, request, body, stream, free_key, save, context);
+    answer(q->fd, pubkey, model, request, body, stream, free_key, save, observer,context);
     _exit(0);
   }
-  if (pid < 0) api_error(q->fd, 503, "busy");
+  if(pid<0){if(observer)observer->end(context,503,true,0);else api_error(q->fd,503,"busy");}
   free(request); free(model); free(body);
   return true;   // the parent closes its copy of the connection
 }
 
-bool inference_ask(const request *q,const char *pubkey,bool free_key) {return inference_ask_impl(q,pubkey,free_key,NULL,NULL);}
-bool inference_ask_saved(const request *q,const char *pubkey,bool free_key,bool (*save)(void *,int,const char *,size_t),void *context) {return inference_ask_impl(q,pubkey,free_key,save,context);}
+bool inference_ask(const request *q,const char *pubkey,bool free_key) {return inference_ask_impl(q,pubkey,free_key,NULL,NULL,NULL);}
+bool inference_ask_saved(const request *q,const char *pubkey,bool free_key,bool (*save)(void *,int,const char *,size_t),void *context) {return inference_ask_impl(q,pubkey,free_key,save,NULL,context);}
+
+bool inference_ask_observed(const request *q,const char *pubkey,bool free_key,const inference_observer *observer,void *context){return inference_ask_impl(q,pubkey,free_key,NULL,observer,context);}

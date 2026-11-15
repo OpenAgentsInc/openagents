@@ -5,22 +5,16 @@
 #load "../account-chat-wire.coax";
 #load "../chat-history-wire.coax";
 
-pr_login :: (t:[]Ap,dir:string,email:string,auth:[]u8,account:[]u8)->bool {
- b:[128]u8;code:[6]u8;link:[64]u8;token:[256]u8;q:[1]Sb;
- st:=ac_start(t,email,"203.0.113.129",true,b[..]);pending:=ap_member(ap_body(t),"pending",b[..]);if st!=200 || !ac_mail(dir,code[..],link[..]) {return false;}
- sb(q[..],"{\"code\":\"");sb(q[..],cast(string)code[..]);sb(q[..],"\",\"pending\":\"");sb(q[..],pending);sb(q[..],"\"}");
- st=ac_call(t,"POST","/api/auth/email/verify",sb_text(q[..]),"","","");tok:=ap_member(ap_body(t),"access_token",token[..]);ac:=ap_member(ap_body(t),"account",account);sb_clear(q[..]);sb(q[..],"Authorization: Bearer ");sb(q[..],tok);n:=pr_copy(auth,sb_text(q[..]));return st==200 && ac.count>0 && tok.count>0 && n>0;
-}
 pr_post :: (t:[]Ap,auth:string,id:string,suffix:string,op:string,rev:int,value:string)->int {b:[131072]u8;path:[256]u8;n:=pr_mutation(op,rev,value,b[..]);return ac_call(t,"POST",pr_route(id,suffix,path[..]),cast(string)b[0..<n],auth,"","");}
 pr_get :: (t:[]Ap,auth:string,id:string,suffix:string)->int {b:[256]u8;return ac_call(t,"GET",pr_route(id,suffix,b[..]),"",auth,"","");}
 pr_api_checks :: (t:[]Ap,mail:string,infer:string) {
  st_legacy:=ac_call(t,"GET","/api/projects/v1/files","","","","");ap_check(t,"a legacy v1 slug keeps its attachment route",ap_has(ac_head(t),"X-OA-Route: world_files_project_route"),"legacy route dispatch");
  authb:[512]u8;acct:[80]u8;otherb:[512]u8;other:[80]u8;
- ok:=pr_login(t,mail,"privateprojects@example.com",authb[..],acct[..]);ap_check(t,"verified email owns private Projects",ok,"");if !ok {return;}
+ ok:=ac_person_login(t,mail,"privateprojects@example.com","203.0.113.129",authb[..],acct[..]);ap_check(t,"verified email owns private Projects",ok,"");if !ok {return;}
  auth:="";
  // Buffers are zero initialized; keep the header using its actual JSON-derived token length.
  an:=0;while an<authb.count && authb[an]!=0 {an+=1;}auth=cast(string)authb[0..<an];
- ok=pr_login(t,mail,"otherprojects@example.com",otherb[..],other[..]);ap_check(t,"independent second account",ok,"");if !ok {return;}on:=0;while on<otherb.count && otherb[on]!=0 {on+=1;}stranger:=cast(string)otherb[0..<on];
+ ok=ac_person_login(t,mail,"otherprojects@example.com","203.0.113.129",otherb[..],other[..]);ap_check(t,"independent second account",ok,"");if !ok {return;}on:=0;while on<otherb.count && otherb[on]!=0 {on+=1;}stranger:=cast(string)otherb[0..<on];
  ap_check(t,"private index requires a session",pr_get(t,"","","")==401,ap_body(t));
  st:=pr_post(t,auth,"","","create",-1,"{\"name\":\"Private research\",\"instructions\":\"Answer in short sentences.\"}");p:[1]PrProject;ok=st==201 && pr_project_read(ap_body(t),p[..]);ap_check(t,"create is private and needs no repository or public slug",ok && ap_has(ap_body(t),"\"audience\":\"private\""),ap_body(t));if !ok {return;}id:=cast(string)p[0].id[0..<p[0].ni];
  st=pr_post(t,auth,"","","create",-1,"{\"name\":\"Private research\",\"instructions\":\"Answer in short sentences.\"}");ap_check(t,"create retries return the same Project",st==201 && ap_has(ap_body(t),id),ap_body(t));

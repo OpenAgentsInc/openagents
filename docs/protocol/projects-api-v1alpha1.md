@@ -75,6 +75,9 @@ Every selected source is included in the next turn, following the explicit
 instructions as delimited reference material. The whole instructions/reference
 payload must fit 32,768 UTF-8 bytes; an oversized context is refused before asking
 the model. Nothing is silently truncated or fetched from an unowned file ID.
+The shared bound is `coax/lib/project/context-budget.coax`; Project admission
+and durable Chat assembly use that published profile without sharing Project
+ownership or mutation policy.
 
 An admitted attempt keeps the Project/instructions/knowledge revisions and hashes,
 model ID and existing conversation ID. The private context row also retains the

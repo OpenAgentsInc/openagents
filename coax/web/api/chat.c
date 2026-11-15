@@ -40,6 +40,8 @@
 #include "api.h"
 #include "nostr.h"
 #include "chat-wire.generated.h"
+#include "account-chat-wire.generated.h"
+#include "caller-policy.generated.h"
 #include <ctype.h>
 #include <curl/curl.h>
 #include <signal.h>
@@ -112,14 +114,16 @@ static long to_runner(const char *path, const char *body, long timeout, wbuf *ou
 // The asker: 0 an admin (pubkey in who), else 401 or 403. The runner: 0 with *runner.
 static bool runner_key(const char *pubkey) {
   const char *list = getenv("OA_AGENT_RUNNER_PUBKEYS");
-  return list && strlen(pubkey) == 64 && strstr(list, pubkey) != NULL;
+  return ctw_runner(cs(pubkey),cs(list));
 }
-static int runner_who(const request *q, PGconn *db) {
+int chat_runner_who(const request *q, PGconn *db,char pubkey[65]) {
+  pubkey[0]=0;
   char auth[4096];
   if (!api_header(q, "Authorization", auth, sizeof auth) || strncmp(auth, "Nostr ", 6)) return 401;
   char url[4300]; snprintf(url, sizeof url, "%s%s", origin(), q->target);
   nostr_event ev; char err[160];
   if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err)) return 401;
+  if (!cp_wants_seen(true,true,!strcmp(q->method,"GET")||!strcmp(q->method,"HEAD"),ev.payload[0]!=0)) return 401;
   if (!runner_key(ev.pubkey)) return 403;
   char ms[32]; snprintf(ms, sizeof ms, "%lld", (long long)api_now_ms());
   const char *v[3] = {ev.id, ev.pubkey, ms};
@@ -127,8 +131,11 @@ static int runner_who(const request *q, PGconn *db) {
                              3, NULL, v, NULL, NULL, 0);
   bool once = PQresultStatus(r) == PGRES_COMMAND_OK && !strcmp(PQcmdTuples(r), "1");
   PQclear(r);
+  if(once)memcpy(pubkey,ev.pubkey,65);
   return once ? 0 : 401;
 }
+static int runner_who(const request *q,PGconn *db){char pubkey[65];return chat_runner_who(q,db,pubkey);}
+bool chat_wake(void){char ask[128];wbuf out={0};long status=to_runner("/wake",fin(ask,chw_wake_write(OUT(ask))),2,&out);free(out.p);return status==202;}
 // The admin sign-in or the phone sign-in's site session, for a key in admins.conf (admin.c).
 static int chat_who(const request *q, PGconn *db, char who[65]) { return admin_who(q, db, who); }
 

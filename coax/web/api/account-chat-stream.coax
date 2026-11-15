@@ -1,0 +1,113 @@
+// Incremental HTTP bytes -> shared SSE/Chat Completions -> durable text/usage.
+// This adapter owns no network or storage. A terminal result is released only
+// after the transport ends; observing a finish chunk is not an HTTP success.
+// coax test coax/web/api/account-chat-stream.coax --library
+#load "account-chat-turn-record.coax";
+#load "../../lib/gateway/types.coax";
+#load "../../lib/gateway/chat.coax";
+#load "../../../components/core/text.coax";
+#authority;
+CtStream :: struct {sse:[1]GwSse;name:[64]u8;data:[131072]u8;line:[131072]u8;ln:int;arena:[262144]u8;ar:[1]ClArena;parse:[1]GwParse;events:[16]GwEvent;n:int;usage:CtUsage;dirty:bool;done:bool;finish:int;bad:string;unknown:bool;}
+#test "stream adapter emits text before completion and accumulates partial observed usage" {
+ s:[1]CtStream;cts_init(s[..]);u:[1]CtUsage;b:[16384]u8;
+ a:="data: {\"choices\":[{\"delta\":{\"content\":\"Hello café\"}}]}\n\n";#assert cts_feed(s[..],a,0)==a.count && s[0].n==1 && cts_kind(s[..],0)==CT_TEXT_DELTA && !s[0].done;
+ #assert cts_text(s[..],0,0,b[..])==11 && cast(string)b[0..<11]=="Hello café" && !cts_take_usage(s[..],u[..]);
+ a="data: {\"choices\":[],\"usage\":{\"prompt_tokens\":0}}\n\n";#assert cts_feed(s[..],a,0)==a.count && cts_take_usage(s[..],u[..]) && u[0].input==0 && u[0].output== -1 && !cts_take_usage(s[..],u[..]);
+ a="data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"completion_tokens\":7}}\n\ndata: [DONE]\n\n";
+ at:=0;while at<a.count {at=cts_feed(s[..],a,at);#assert at>0;}#assert s[0].done && cts_end(s[..],true)==CT_COMPLETED && cts_reason(s[..])=="max_tokens" && cts_take_usage(s[..],u[..]) && u[0].input==0 && u[0].output==7 && u[0].cache_read== -1;
+}
+#test "split transport bytes preserve complete SSE UTF8 and never invent a successful finish" {
+ s:[1]CtStream;cts_init(s[..]);a:="data: {\"choices\":[{\"delta\":{\"content\":\"café\"}}]}\r\n\r\n";count:=0;b:[16]u8;
+ for i:0..<a.count {#assert cts_feed(s[..],a[i..<i+1],0)==1;if s[0].n>0 {#assert cts_text(s[..],0,0,b[..])==5 && cast(string)b[0..<5]=="café";count+=1;}}
+ #assert count==1 && cts_end(s[..],true)==CT_UNKNOWN;
+ cts_init(s[..]);a="data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";#assert cts_feed(s[..],a,0)==a.count && cts_end(s[..],false)==CT_UNKNOWN;
+ cts_init(s[..]);#assert cts_feed(s[..],a,0)==a.count && cts_end(s[..],true)==CT_COMPLETED && cts_reason(s[..])=="end_turn";
+}
+#test "malformed peers unsupported tools and unknown stop reasons fail with partial state retained" {
+ s:[1]CtStream;
+ for a:[4]string.["data: {\n\n","data: {\"choices\":[{\"delta\":{\"content\":1}}]}\n\n","data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"other\"}]}\n\n","data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"run\",\"arguments\":\"{}\"}}]}}]}\n\n"] {cts_init(s[..]);#assert cts_feed(s[..],a,0)<0 && cts_end(s[..],true)==CT_FAILED && s[0].bad.count>0;}
+ cts_init(s[..]);a:="data: [DONE]\n\n";#assert cts_feed(s[..],a,0)<0 && cts_end(s[..],true)==CT_UNKNOWN;
+ #assert cts_kind(s[..],-1)==0 && cts_kind(s[..],16)==0;
+}
+#test "each observed usage dimension retains its exact presence and independent numeric bounds" {
+ bits:=[5]int.[1,2,4,16,8];s:[1]CtStream;got:[1]CtUsage;
+ cts_init(s[..]);#assert cts_observe(s[..],GwUsage.{input_tokens=11,output_tokens= -9,cached_tokens= -9,cache_write_tokens= -9,reasoning_tokens= -9,observed=1});
+ for bit,index:bits {
+  cts_init(s[..]);u:=GwUsage.{input_tokens=11,output_tokens=22,cached_tokens=33,cache_write_tokens=44,reasoning_tokens=55,observed=bit};
+  #assert cts_observe(s[..],u) && cts_take_usage(s[..],got[..]);values:=[5]int.[got[0].input,got[0].output,got[0].cache_read,got[0].cache_write,got[0].reasoning];for value,i:values {#assert value==ifx i==index then (i+1)*11 else -1;}
+  for edge:[3]int.[-1,CT_SEQUENCE_MAX,CT_SEQUENCE_MAX+1] {
+   cts_init(s[..]);u=GwUsage.{input_tokens=edge,output_tokens=edge,cached_tokens=edge,cache_write_tokens=edge,reasoning_tokens=edge,observed=bit};#assert cts_observe(s[..],u)==(edge==CT_SEQUENCE_MAX);
+  }
+  cts_init(s[..]);u=GwUsage.{input_tokens= -9,output_tokens= -9,cached_tokens= -9,cache_write_tokens= -9,reasoning_tokens= -9};#assert cts_observe(s[..],u) && !cts_take_usage(s[..],got[..]);
+ }
+}
+#test "escaped provider strings use a fresh shared arena on every event" {
+ s:[1]CtStream;cts_init(s[..]);b:[32]u8;a:="data: {\"choices\":[{\"delta\":{\"content\":\"\\u0068\\u00e9\"}}]}\n\n";
+ #assert s[0].ar[0].buf.count==262144 && cts_feed(s[..],a,0)==a.count && cts_text(s[..],0,0,b[..])==3 && cast(string)b[0..<3]=="hé" && s[0].ar[0].at==3;
+ s[0].ar[0].full=true;s[0].ar[0].at=262144;#assert cts_feed(s[..],a,0)==a.count && !s[0].ar[0].full && s[0].ar[0].at==3 && cts_text(s[..],0,0,b[..])==3;
+ #assert cts_feed(s[..],": keepalive\n",0)==12 && s[0].n==0 && cts_kind(s[..],0)==0;
+ #assert cts_feed(s[..],a,-1)== -1 && cts_feed(s[..],a,a.count+1)== -1 && cts_feed(s[..],a,a.count)==a.count;
+ #assert cts_fail(s[..],"x")== -1 && cts_feed(s[..],"\n",0)== -1 && cts_end(s[..],true)==CT_FAILED;
+}
+#test "provider refusal tool-only finish and incomplete framing keep distinct truthful outcomes" {
+ s:[1]CtStream;cts_init(s[..]);a:="data: {\"choices\":[{\"delta\":{\"content\":null},\"finish_reason\":\"content_filter\"}]}\n\ndata: [DONE]\n\n";at:=0;while at<a.count {at=cts_feed(s[..],a,at);#assert at>0;}#assert cts_end(s[..],true)==CT_COMPLETED && cts_reason(s[..])=="refusal";
+ cts_init(s[..]);a="data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"function_call\"}]}\n\n";#assert cts_feed(s[..],a,0)==a.count && cts_end(s[..],true)==CT_FAILED && s[0].bad=="Unsupported tool continuation";
+ cts_init(s[..]);a="data: {\"error\":{\"message\":\"denied\"}}\n\n";#assert cts_feed(s[..],a,0)== -1 && s[0].bad=="Provider refused or interrupted the response" && !s[0].unknown && cts_end(s[..],true)==CT_FAILED;
+ cts_init(s[..]);a="data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";#assert cts_feed(s[..],a,0)==a.count && cts_feed(s[..],"\r",0)==1 && cts_end(s[..],true)==CT_UNKNOWN;
+ cts_init(s[..]);#assert cts_feed(s[..],a,0)==a.count && cts_feed(s[..],"data: {}\n",0)==9 && cts_end(s[..],true)==CT_UNKNOWN;
+}
+#test "stream text and line capacities refuse overflow without splitting UTF8" #steps 30000000 {
+ s:[1]CtStream;cts_init(s[..]);s[0].ln=131071;#assert cts_feed(s[..],"x",0)==1 && s[0].ln==131072 && cts_feed(s[..],"y",0)== -1 && s[0].bad=="Provider line exceeded its limit";
+ cts_init(s[..]);s[0].sse[0].has_data=true;s[0].sse[0].overflow=true;#assert cts_feed(s[..],"\n",0)== -1 && s[0].bad=="Provider event exceeded its limit";
+ cts_init(s[..]);s[0].done=true;#assert cts_feed(s[..],"data: {}\n\n",0)== -1;
+ cts_init(s[..]);text:[16385]u8;for i:0..<16385 {text[i]='x';}s[0].n=1;s[0].events[0]=GwEvent.{kind=GW_EV_TEXT,text=cast(string)text[..]};out:[16385]u8;
+ #assert cts_text(s[..],0,0,out[..])==16384 && cts_text(s[..],0,16384,out[..])==1 && cts_text(s[..],0,16385,out[..])==0;
+ #assert cts_text(s[..],0,-1,out[..])== -1 && cts_text(s[..],0,16386,out[..])== -1 && cts_text(s[..],1,0,out[..])== -1 && cts_text(s[..],0,0,out[0..<0])== -1;
+ #assert cts_text(s[..],0,3,out[0..<7])==7;
+ s[0].events[0].text="aéx";#assert cts_text(s[..],0,1,out[0..<2])==2 && cast(string)out[0..<2]=="é" && cts_text(s[..],0,1,out[0..<1])== -1;
+ s[0].events[0].text="\0";#assert !cts_events(s[..]) && s[0].bad=="Invalid provider text";
+ cts_init(s[..]);s[0].n=1;s[0].events[0]=GwEvent.{kind=GW_EV_TOOL};#assert !cts_events(s[..]) && s[0].bad=="This consumer does not execute tool calls";
+ cts_init(s[..]);s[0].n=1;s[0].ar[0].full=true;#assert !cts_events(s[..]);
+}
+cts_init :: (s:[]CtStream) #export_c #effects(all) {s[0]=CtStream.{};gw_sse_init(s[0].sse[..],s[0].name[..],s[0].data[..]);s[0].ar[0]=ClArena.{buf=s[0].arena[..]};}
+cts_fail :: (s:[]CtStream,why:string)->int #export_c #effects(all) {s[0].bad=why;return -1;}
+cts_observe :: (s:[]CtStream,u:GwUsage)->bool #effects(all) {
+ values:=[5]int.[u.input_tokens,u.output_tokens,u.cached_tokens,u.cache_write_tokens,u.reasoning_tokens];bits:=[5]int.[1,2,4,16,8];
+ for n,i:values {if (u.observed&bits[i])!=0 && (n<0 || n>CT_SEQUENCE_MAX) {return false;}}
+ if (u.observed&1)!=0 {s[0].usage.input=u.input_tokens;}if (u.observed&2)!=0 {s[0].usage.output=u.output_tokens;}if (u.observed&4)!=0 {s[0].usage.cache_read=u.cached_tokens;}if (u.observed&16)!=0 {s[0].usage.cache_write=u.cache_write_tokens;}if (u.observed&8)!=0 {s[0].usage.reasoning=u.reasoning_tokens;}
+ if u.observed!=0 {s[0].dirty=true;}return true;
+}
+cts_events :: (s:[]CtStream)->bool #effects(all) {
+ for i:0..<s[0].n {e:=s[0].events[i];
+  if e.kind==GW_EV_TEXT {if !ct_valid_text(e.text,131072) {s[0].bad="Invalid provider text";return false;}} // mutant: equivalent (widening the text limit by one still fails js_utf8's fixed 131072-byte validation span)
+  else if e.kind==GW_EV_TOOL {s[0].bad="This consumer does not execute tool calls";return false;}
+  else if e.kind==GW_EV_REFUSED {if e.reason=="content_filter" {s[0].done=true;s[0].finish=GW_FIN_FILTER;}else {s[0].unknown=e.reason=="the stream ended before the response finished";s[0].bad="Provider refused or interrupted the response";return false;}}
+  else if e.kind==GW_EV_DONE {if e.reason=="tool_calls" {s[0].bad="Unsupported tool continuation";return false;}s[0].done=true;s[0].finish=ifx e.reason=="length" then GW_FIN_LENGTH else GW_FIN_STOP;}
+ }return !s[0].ar[0].full;
+}
+cts_feed :: (s:[]CtStream,bytes:string,start:int)->int #export_c #effects(all) {
+ s[0].n=0;if start<0 || start>bytes.count || s[0].bad.count>0 {return -1;}at:=start;
+ while at<bytes.count {c:=bytes[at];at+=1;if c!='\n' {if s[0].ln>=131072 {return cts_fail(s,"Provider line exceeded its limit");}s[0].line[s[0].ln]=c;s[0].ln+=1;continue;}
+  event:=gw_sse_line(s[0].sse[..],cast(string)s[0].line[0..<s[0].ln]);s[0].ln=0;if !event.ready {continue;}
+  if event.truncated {return cts_fail(s,"Provider event exceeded its limit");}if s[0].done {return cts_fail(s,"Provider sent data after completion");}
+  if event.data!="[DONE]" {d:[1]Jv;nodes:[512]JvNode;if !jv_parse(d[..],event.data,nodes[..]) {return cts_fail(s,"Malformed provider JSON");}v:=d[0];content:=jv_path(v,0,"choices[0].delta.content");kind:=jv_kind(v,content);if content>=0 && kind!=JV_NULL && kind!=JV_STRING {return cts_fail(s,"Invalid provider text type");} // mutant: equivalent (this nested member is -1 or a positive child index, never root node zero)
+   finish:=jv_path(v,0,"choices[0].finish_reason");if jv_kind(v,finish)==JV_STRING {name:=jv_raw(v,finish);if name!="stop" && name!="length" && name!="tool_calls" && name!="function_call" && name!="content_filter" {return cts_fail(s,"Unsupported provider finish reason");}}
+   if !cts_observe(s,gw_chat_usage_observed(cl_raw(event.data,"usage"))) {return cts_fail(s,"Invalid provider usage");}
+  }
+  s[0].ar[0].at=0;s[0].ar[0].full=false;s[0].n=gw_chat_chunk(s[0].parse[..],s[0].ar[..],event.data,s[0].events[..]);if !cts_events(s) {if s[0].bad.count==0 {s[0].bad="Provider strings exceeded their limit";}return -1;}return at; // mutant: equivalent (reachable event failures set a fixed nonempty category; decoded bytes cannot fill the 262144-byte arena from a 131072-byte event, so deleting the fallback or testing <=1 changes nothing)
+ }return at;
+}
+cts_kind :: (s:[]CtStream,index:int)->int #export_c #effects(all) {return ifx index>=0 && index<s[0].n && s[0].events[index].kind==GW_EV_TEXT then CT_TEXT_DELTA else 0;}
+cts_text :: (s:[]CtStream,index:int,start:int,out:[]u8)->int #export_c #effects(all) {
+ if cts_kind(s,index)!=CT_TEXT_DELTA {return -1;}text:=s[0].events[index].text;if start<0 || start>text.count {return -1;}at:=start;
+ while at<text.count {n:=rune_at(text,at).len;if at+n-start>16384 || at+n-start>out.count {break;}at+=n;}
+ if at==start && start<text.count {return -1;}return js_copy(out,text[start..<at]);
+}
+cts_take_usage :: (s:[]CtStream,out:[]CtUsage)->bool #export_c #effects(all) {if !s[0].dirty {return false;}out[0]=s[0].usage;s[0].dirty=false;return true;}
+cts_end :: (s:[]CtStream,clean:bool)->int #export_c #effects(all) {
+ if s[0].bad.count>0 {return ifx s[0].unknown then CT_UNKNOWN else CT_FAILED;}
+ if !clean || s[0].ln>0 || (s[0].sse[0].has_data && !s[0].sse[0].spent) {return CT_UNKNOWN;}
+ if !s[0].done {s[0].n=gw_chat_end(s[0].parse[..],s[0].events[..]);if !cts_events(s) {return CT_FAILED;}}
+ return ifx s[0].done then CT_COMPLETED else CT_UNKNOWN;
+}
+cts_reason :: (s:[]CtStream)->string #export_c #effects(all) {return ifx s[0].finish==GW_FIN_FILTER then "refusal" else ifx s[0].finish==GW_FIN_LENGTH then "max_tokens" else "end_turn";}

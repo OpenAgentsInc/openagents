@@ -7,7 +7,10 @@
 // DIR/heads; it answers 200 with an id.
 // It stops when DIR/stop exists.
 am_main :: (port: int, dir: string) -> int {return am_response(port,dir,"");}
-am_response :: (port: int, dir: string, response: string) -> int {
+am_response :: (port: int, dir: string, response: string) -> int {return am_response_parts(port,dir,response,"",0);}
+// A delayed second part exercises actual incremental HTTP delivery. The one
+// deliberate delay models a provider's latency; it is not a readiness poll.
+am_response_parts :: (port:int,dir:string,response:string,tail:string,pause_ms:int)->int {
   listener := cxsock_listen(port);
   if listener < 0 { tool_errln("auth_checks mail: can't listen"); return 1; }
   pb: [1100] u8; ready := fs_write(fs_join(dir, "ready", pb[..]), "1");
@@ -44,11 +47,15 @@ am_response :: (port: int, dir: string, response: string) -> int {
     if response.count>0 {sb_clear(reply[..]);sb(reply[..],response);}
     s: [1] Sb;
     sb(s[..], ifx gone then "HTTP/1.1 410 Gone" else "HTTP/1.1 200 OK");
-    sb(s[..], "\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "); sb_int(s[..], reply[0].n); sb(s[..], "\r\n\r\n");
+    sb(s[..], ifx pause_ms>0 then "\r\nContent-Type: text/event-stream" else "\r\nContent-Type: application/json");
+    sb(s[..], "\r\nConnection: close\r\nContent-Length: "); sb_int(s[..], reply[0].n+tail.count); sb(s[..], "\r\n\r\n");
     sb(s[..], sb_text(reply[..]));
     good := true;
     for c: sb_text(s[..]) { if good && cxsock_write(h, cast(int) c) != 0 { good = false; } }
     if good { f := cxsock_flush(h, 5000); }
+    if pause_ms>0 {proc_sleep(pause_ms);}
+    for c:tail {if good && cxsock_write(h,cast(int)c)!=0 {good=false;}}
+    if good && tail.count>0 {f:=cxsock_flush(h,5000);}
     c := cxsock_close(h);
   }
   c := cxsock_close(listener);
@@ -157,4 +164,12 @@ ac_mail_stop :: (h: int, work: string) {
   sb_: [4200] u8; stopped := fs_write(fs_join(work, "stop", sb_[..]), "1");
   w := proc_wait(h, 5000); r := proc_release(h);
   gone := fs_remove(work);
+}
+
+// A verified app login shared by private Project and durable-chat HTTP checks.
+ac_person_login :: (t:[]Ap,dir:string,email:string,ip:string,auth:[]u8,account:[]u8)->bool {
+ b:[128]u8;code:[6]u8;link:[64]u8;token:[256]u8;q:[1]Sb;
+ st:=ac_start(t,email,ip,true,b[..]);pending:=ap_member(ap_body(t),"pending",b[..]);if st!=200 || !ac_mail(dir,code[..],link[..]) {return false;}
+ sb(q[..],"{\"code\":\"");sb(q[..],cast(string)code[..]);sb(q[..],"\",\"pending\":\"");sb(q[..],pending);sb(q[..],"\"}");
+ st=ac_call(t,"POST","/api/auth/email/verify",sb_text(q[..]),"","","");tok:=ap_member(ap_body(t),"access_token",token[..]);ac:=ap_member(ap_body(t),"account",account);sb_clear(q[..]);sb(q[..],"Authorization: Bearer ");sb(q[..],tok);header:=sb_text(q[..]);if header.count>auth.count {return false;}for c,i:header {auth[i]=c;}n:=header.count;return st==200 && ac.count>0 && tok.count>0 && n>0;
 }

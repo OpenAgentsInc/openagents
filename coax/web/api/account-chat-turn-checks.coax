@@ -60,7 +60,7 @@ CT_TEST_PROJECT :: "prj_0123456789abcdef0123456789abcdef";
  for kind:CT_STARTED..<CT_CANCEL+1 {
   e[0].kind=kind;e[0].state=ifx kind==CT_STARTED then CT_RUNNING else ct_transition(CT_RUNNING,kind,true);
   e[0].stop_requested=kind==CT_STOP || kind==CT_CANCEL;
-  e[0].index=ifx kind==CT_TEXT then 0 else -1;e[0].delta=ifx kind==CT_TEXT then "Hello café\n" else "";
+  e[0].index=ifx kind==CT_TEXT_DELTA then 0 else -1;e[0].delta=ifx kind==CT_TEXT_DELTA then "Hello café\n" else "";
   e[0].has_usage=kind==CT_USAGE;e[0].usage=CtUsage.{input=0,output=7};
   e[0].reason=ifx kind==CT_DONE then "end_turn" else ifx kind==CT_ERROR then "error" else ifx kind==CT_LOST then "unknown" else ifx kind==CT_CANCEL then "cancelled" else "";
   e[0].error=ifx kind==CT_ERROR || kind==CT_LOST then "Provider result unavailable" else "";
@@ -71,7 +71,7 @@ CT_TEST_PROJECT :: "prj_0123456789abcdef0123456789abcdef";
  }
 }
 #test "an event cannot claim an inconsistent state or payload" {
- b:[131072]u8;e:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_TEXT;e[0].state=CT_RUNNING;e[0].index=0;e[0].delta="X";
+ b:[131072]u8;e:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_TEXT_DELTA;e[0].state=CT_RUNNING;e[0].index=0;e[0].delta="X";
  #assert ct_event_write(e[..],b[..])>0;
  e[0].state=CT_COMPLETED;#assert ct_event_write(e[..],b[..])<0;e[0].state=CT_RUNNING;
  e[0].index=1;#assert ct_event_write(e[..],b[..])<0;e[0].index=0;
@@ -87,7 +87,7 @@ CT_TEST_PROJECT :: "prj_0123456789abcdef0123456789abcdef";
  v:[1]CtView;e:[1]CtEvent;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
  e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_STARTED;e[0].state=CT_RUNNING;
  #assert ct_view_apply(v[..],e[..])==1 && v[0].sequence==1 && v[0].state==CT_RUNNING;
- e[0].kind=CT_TEXT;e[0].index=0;e[0].delta="Hello café";e[0].sequence=3;
+ e[0].kind=CT_TEXT_DELTA;e[0].index=0;e[0].delta="Hello café";e[0].sequence=3;
  #assert ct_view_apply(v[..],e[..])==3 && v[0].sequence==1 && v[0].bytes==0;
  e[0].sequence=2;#assert ct_view_apply(v[..],e[..])==1 && ct_view_text(v[..])=="Hello café";
  #assert ct_view_apply(v[..],e[..])==2 && ct_view_text(v[..])=="Hello café" && v[0].sequence==2;
@@ -95,7 +95,7 @@ CT_TEST_PROJECT :: "prj_0123456789abcdef0123456789abcdef";
  e[0].turn=CT_TEST_TURN;e[0].kind=CT_DONE;e[0].index= -1;e[0].delta="";e[0].state=CT_COMPLETED;e[0].reason="max_tokens";e[0].has_usage=true;e[0].usage.output=0;
  #assert ct_view_apply(v[..],e[..])==1 && v[0].state==CT_COMPLETED && v[0].usage.output==0 && v[0].usage.input== -1;
  #assert ct_view_reason(v[..])=="max_tokens" && ct_view_text(v[..])=="Hello café";
- e[0].sequence=4;e[0].kind=CT_TEXT;e[0].index=0;e[0].delta="extra";e[0].reason="";e[0].state=CT_RUNNING;e[0].has_usage=false;
+ e[0].sequence=4;e[0].kind=CT_TEXT_DELTA;e[0].index=0;e[0].delta="extra";e[0].reason="";e[0].state=CT_RUNNING;e[0].has_usage=false;
  #assert ct_view_apply(v[..],e[..])==0 && v[0].sequence==3 && ct_view_text(v[..])=="Hello café";
 }
 #test "reducer cancellation is observed, monotone and handles undispatched cancellation" {
@@ -112,14 +112,14 @@ CT_TEST_PROJECT :: "prj_0123456789abcdef0123456789abcdef";
 #test "the reducer refuses capacity overflow atomically and preserves partial unknown outcomes" #steps 100000000 {
  v:[1]CtView;e:[1]CtEvent;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
  e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_STARTED;e[0].state=CT_RUNNING;#assert ct_view_apply(v[..],e[..])==1;
- text:[16384]u8;for i:0..<text.count {text[i]='X';}e[0].kind=CT_TEXT;e[0].index=0;e[0].delta=cast(string)text[..];
+ text:[16384]u8;for i:0..<text.count {text[i]='X';}e[0].kind=CT_TEXT_DELTA;e[0].index=0;e[0].delta=cast(string)text[..];
  for i:0..<8 {e[0].sequence=i+2;#assert ct_view_apply(v[..],e[..])==1;}
  #assert v[0].bytes==131072;e[0].sequence=10;#assert ct_view_apply(v[..],e[..])==4 && v[0].bytes==131072 && v[0].sequence==9;
  e[0].kind=CT_LOST;e[0].state=CT_UNKNOWN;e[0].delta="";e[0].index= -1;e[0].reason="unknown";e[0].error="Worker lost after dispatch";
  #assert ct_view_apply(v[..],e[..])==1 && v[0].state==CT_UNKNOWN && v[0].bytes==131072 && cast(string)v[0].error[0..<v[0].ne]=="Worker lost after dispatch";
 }
 #test "durable event SSE uses the same JSON and shared stream codec" {
- e:[1]CtEvent;r:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=12;e[0].kind=CT_TEXT;e[0].state=CT_RUNNING;e[0].index=0;e[0].delta="Hello café\n";
+ e:[1]CtEvent;r:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=12;e[0].kind=CT_TEXT_DELTA;e[0].state=CT_RUNNING;e[0].index=0;e[0].delta="Hello café\n";
  b:[131200]u8;name:[64]u8;data:[131072]u8;arena:[17048]u8;s:[1]GwSse;
  n:=ct_event_sse(e[..],b[..]);#assert n>0 && cast(string)b[0..<25]=="id: 12\nevent: turn\ndata: ";
  gw_sse_init(s[..],name[..],data[..]);from:=0;count:=0;
@@ -134,7 +134,7 @@ ct_check_replace :: (raw:string,key:string,value:string,out:[]u8)->string {
  jo_end(o[..]);return jo_text(o[..]);
 }
 #test "event readers reject malformed peer fields before publishing any observation" {
- e:[1]CtEvent;r:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_TEXT;e[0].state=CT_RUNNING;e[0].index=0;e[0].delta="X";
+ e:[1]CtEvent;r:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_TEXT_DELTA;e[0].state=CT_RUNNING;e[0].index=0;e[0].delta="X";
  b:[131073]u8;c:[131073]u8;arena:[17048]u8;n:=ct_event_write(e[..],b[..]);#assert n>0;raw:=cast(string)b[0..<n];
  keys:=[12]string.["schema","conversation_id","turn_id","sequence","type","state","stop_requested","block_index","delta","usage","stop_reason","error"];
  bad_values:=[12]string.["\"bad\"","\"bad\"","\"bad\"","0","\"bad\"","\"completed\"","null","1","\"\"","{}","\"\"","\"\""];
@@ -173,7 +173,7 @@ ct_check_replace :: (raw:string,key:string,value:string,out:[]u8)->string {
  #assert ct_state_name(0)=="" && ct_state_name(7)=="" && ct_event_name(0)=="" && ct_event_name(9)=="";
 }
 #test "typed event producers also enforce byte, reason and cancellation boundaries" {
- e:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=CT_SEQUENCE_MAX;e[0].kind=CT_TEXT;e[0].state=CT_RUNNING;e[0].index=0;
+ e:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=CT_SEQUENCE_MAX;e[0].kind=CT_TEXT_DELTA;e[0].state=CT_RUNNING;e[0].index=0;
  b:[131072]u8;text:[16385]u8;for i:0..<text.count {text[i]='x';}e[0].delta=cast(string)text[0..<16384];#assert ct_event_write(e[..],b[..])>0;
  e[0].delta=cast(string)text[..];#assert ct_event_write(e[..],b[..])<0;
  for delta:[2]string.["\0","a\0b"] {e[0].delta=delta;#assert ct_event_write(e[..],b[..])<0;}
@@ -202,7 +202,7 @@ ct_check_replace :: (raw:string,key:string,value:string,out:[]u8)->string {
 #test "model stream cannot change identity or request cancellation implicitly" {
  v:[1]CtView;e:[1]CtEvent;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
  e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_STARTED;e[0].state=CT_RUNNING;#assert ct_view_apply(v[..],e[..])==1;
- e[0].sequence=2;e[0].kind=CT_TEXT;e[0].index=0;e[0].delta="X";e[0].conversation="cnv_ffffffffffffffffffffffffffffffff";#assert ct_view_apply(v[..],e[..])==0;e[0].conversation=CT_TEST_CONVERSATION;
+ e[0].sequence=2;e[0].kind=CT_TEXT_DELTA;e[0].index=0;e[0].delta="X";e[0].conversation="cnv_ffffffffffffffffffffffffffffffff";#assert ct_view_apply(v[..],e[..])==0;e[0].conversation=CT_TEST_CONVERSATION;
  e[0].delta="";#assert ct_view_apply(v[..],e[..])==0 && v[0].sequence==1;
  e[0].delta="X";e[0].stop_requested=true;#assert ct_view_apply(v[..],e[..])==0 && v[0].sequence==1;
 }
