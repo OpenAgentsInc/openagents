@@ -1,7 +1,8 @@
 # One router: no agent, model or effort pickers
 
 Written 2026-11-14. Status: specification, not built. Owner decision of the
-same day.
+same day; the owner settled the open questions that evening
+([Decisions](#decisions)).
 
 ## The decision
 
@@ -173,8 +174,8 @@ The state is one JSON object, as today, with more in it:
   context for Elephant; Gemini has room for more).
 - The surface (web, phone, desktop, terminal) and where the work would run
   (hosted, this computer, a named computer, a cloud box).
-- Each engine's state: installed, logged in, in a cooldown, and how much of
-  its quota is left when the usage reader knows
+- Each engine's state: installed, logged in, in a cooldown, and whether its
+  quota is used up when the usage reader knows
   (`coax/lib/agent/accounts/`).
 - Whether a local model server is running, and whether the person asked to
   keep work on this machine.
@@ -192,12 +193,17 @@ This split exists today and stays:
 2. **The decision model chooses among eligible engines.** An answer naming an
    ineligible engine cannot dispatch.
 3. **Below a probability of 0.5, or with no decision, the default runs.** The
-   default is the first eligible engine in a fixed order. Change that order's
-   rule to "the most capable eligible engine", so an unsure router errs toward
-   quality.
+   default is the most capable eligible engine, so an unsure router errs
+   toward quality. (Today it is a fixed order starting with Claude Code.)
 4. **A named engine wins when it is eligible.** When it is not, the router
    picks otherwise and the result line says why ("Codex isn't logged in on
    this computer").
+5. **An account out of quota refuses.** It is not eligible, and nothing is
+   quietly downgraded to keep going. When another eligible engine exists, it
+   takes the message and the line says why. When none does, the message is
+   refused with what ran out and when it resets ("Claude's weekly limit is
+   used up; it resets Thursday at 9:00 AM"), and the text stays in the
+   composer.
 
 ### Model and effort
 
@@ -248,19 +254,37 @@ the message as sent at once. If the decision is late, the default runs and the
 line says so. Measure the added delay per surface before removing each
 picker, and record it.
 
-### Doors and consent
+### Doors and the daily allowance
 
-The door order is unchanged: Gemini Decision 1, then Elephant at the
-configured Decisions URL, then Mammoth. A request rule or a safety block from
-Gemini is final. Any other Gemini failure asks the fallback.
+**All routing goes through Google for now** (owner, 2026-11-14). Gemini
+Decision 1 answers every route on every surface, for hosted chat and for work
+on your own computer alike. There is no question to the person first and no
+per-computer setting.
 
-Routing sends the message to Google. For hosted chat the message already goes
-to a hosted model. For work on your computer, the consent ledger decides
-first, as today (`agr_needs_grant`). When there is no grant and a local
-Elephant is configured, Elephant answers and nothing leaves the machine. When
-there is neither, the default engine runs and the line says routing was off.
-The first time a computer would route through Google, the product asks once in
-plain words and remembers the answer.
+- A request rule or a safety block from Gemini is final.
+- When Gemini does not answer (a rate limit, a server error, no network, the
+  allowance below used up), the default engine runs and the line on the answer
+  says routing was unavailable. The router does not ask another decision model
+  in this version. The Elephant and Mammoth doors stay in
+  `coax/lib/systemone` for the callers that use them; the product router does
+  not depend on them.
+- The message, a bounded summary of the conversation and the environment
+  object go to Google. No credential, token or file content does. The privacy
+  page says so in one plain sentence.
+
+**Start with 10,000 decisions a day**, across the whole product, and raise it
+as use grows.
+
+- 10,000 a day is also the daily limit of Google's free tier. That tier allows
+  200 requests and 50,000 tokens a minute, which is about 90 routes a minute
+  at 520 tokens each. If the minute limit binds before the daily one, move to
+  the paid tier: 10,000 routes cost about $0.52 a day there, and Tier 1 allows
+  1,500 requests a minute and 50,000 a day.
+- The server counts decisions for hosted chat. A computer's resident service
+  counts its own and shares the same key and total through the Decisions API.
+- The allowance is shown, not hidden: Settings, Usage has a line with today's
+  count and the limit. When it runs out, answers still come, from the default
+  engine, and each says routing was off for the rest of the day.
 
 ### What you see
 
@@ -342,17 +366,23 @@ Each step removes one picker and ends in something a person can use.
 Steps 2 to 5 are independent after step 1. Each needs its measured delay and
 its outcome comparison before the picker goes.
 
-## Open decisions
+## Decisions
 
-| # | Decision | Recommendation |
+Settled by the owner on 2026-11-14.
+
+| # | Question | Decision |
 | --- | --- | --- |
 | 1 | Do terminal flags (`--engine`, `--model`, `--effort`) stay? | Yes, for scripts and tests only; never in an interactive screen. |
-| 2 | When unsure, which engine runs? | The most capable eligible one. Today it is a fixed order starting with Claude Code. |
-| 3 | May the router switch engines mid-conversation on its own? | Only when the current engine can't run, or the message starts different work. Otherwise keep it. |
-| 4 | Routing through Google for work on your own computer: ask once, or on by default? | Ask once per computer in plain words; local Elephant when declined. |
-| 5 | Does spend shape the choice (your subscription's quota, OpenAgents credits)? | Yes, as eligibility: an account out of quota is not eligible. Never downgrade quality to save money without saying so. |
-| 6 | Which Codex and hosted models fill the profile table? | Take them from each provider's live model list at build time; review the table when a provider ships a model. |
-| 7 | Where does the server-side router run for hosted chat? | In the chat API, through `/api/v1/systemone` with `"model":"auto"`, so one door order serves everything. |
+| 2 | When unsure, which engine runs? | The most capable eligible one. |
+| 3 | May the router switch engines mid-conversation on its own? | Only when the current engine can't run, or the message starts different work. Otherwise it keeps the engine. |
+| 4 | Routing through Google for work on your own computer: ask first? | No. All routing goes through Google for now, on every surface, with no question and no local decision model in the path. |
+| 5 | Does spend shape the choice? | An account out of quota refuses. Nothing is downgraded to save money. |
+| 6 | Which Codex and hosted models fill the profile table? | Taken from each provider's live model list at build time; reviewed when a provider ships a model. |
+| 7 | Where does the server-side router run for hosted chat? | In the chat API, through the Decisions API. |
+| 8 | How many decisions to start? | 10,000 a day across the product, shown in Settings, raised as use grows. |
+
+Still open: whether the 10,000 is one total for everyone or becomes a share
+per account once many people use it. This spec starts with one total.
 
 ## Not in this spec
 
