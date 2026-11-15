@@ -379,8 +379,9 @@ def proofs_of_funds(msg, bounds):
     # Past what the reference checks: an output index past the earlier
     # input's transaction, a spent scriptPubKey of 65 bytes, and a proof
     # that isn't finalized.
-    bounds.append(('a proof of funds: an output index past the earlier input\'s transaction', address, msg,
-                   build([(prev, 0, keys[0], 'nw'), (prev, 5, b'\x51', '')]), R.INVALID, R.R_SHAPE, 'pof'))
+    for index in (3, 5):
+        bounds.append((f'a proof of funds: output {index} of the earlier input\'s transaction, which has 3', address, msg,
+                       build([(prev, 0, keys[0], 'nw'), (prev, index, b'\x51', '')]), R.INVALID, R.R_SHAPE, 'pof'))
     data = bytes([0x5a]) * 63
     held = prev_tx([(30000, bytes([63]) + data + b'\x87')], 3)
     bounds.append(('a proof of funds: a spent scriptPubKey of 65 bytes', address, msg,

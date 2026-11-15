@@ -154,7 +154,7 @@ b322_success :: (op: int) -> bool #effects(all) {
 B322_CHECKSIGADD :: 0xba;
 B322_TAP_KNOWN :: [19] int.[0x4f, 0x61, 0x69, 0x6a, 0x75, 0x76, 0x7c, 0x82, 0x87, 0x88, 0x9c, 0x9d, 0xa8, 0xa9, 0xac, 0xad, 0xb1, 0xb2, 0xba];
 b322_known :: (op: int) -> bool #effects(all) {
-  if op >= OP_1 && op <= OP_16 { return true; }
+  if op >= OP_1 && op <= OP_16 { return true; }  // mutant: equivalent (OP_16 + 1 is OP_NOP, which is known)
   for k: B322_TAP_KNOWN { if op == k { return true; } }
   return false;
 }
@@ -173,7 +173,7 @@ b322_tap_sig :: (sp: ScriptSpend, x: [] B322Work, op: int) -> int #effects(all) 
   n := ScriptNum.{ok=true};
   if op == B322_CHECKSIGADD { n = script_num_vartime(si_bytes(sp, w, si_top(w, 2)), true, 4); }
   if !n.ok { return B322_INVALID; }
-  if sig.count > 0 { x[0].budget -= 50; if x[0].budget < 0 { return B322_INVALID; } }
+  if sig.count > 0 { x[0].budget -= 50; if x[0].budget < 0 { return B322_INVALID; } }  // mutant: equivalent (a signature of 1 byte fails whatever the budget)
   if key.count == 0 { return B322_INVALID; }
   if key.count != 32 { return B322_INCONCLUSIVE; }
   ok := sig.count > 0;
@@ -338,7 +338,7 @@ b322_pof_spent :: (x: [] B322Work, n: int) -> bool #effects(all) {
   for k: 1..<n {
     if found { break; }
     p := psbt_find1_vartime(m, PSBT_INPUT, k, 0x00);
-    if p < 0 || !ps_equal(b[x[0].ins[k].outpoint..<x[0].ins[k].outpoint+32], b[at..<at+32]) { continue; }
+    if p < 0 || !ps_equal(b[x[0].ins[k].outpoint..<x[0].ins[k].outpoint+32], b[at..<at+32]) { continue; }  // mutant: equivalent (pair 0 is the global unsigned tx, never an input's UTXO)
     prev := pm_value(m, p);
     t := tx_read_vartime(prev, true, w[0].pins[..], w[0].pouts[..], w[0].pitems[..]);
     index := tx_le_vartime(b, at + 32, 4);
@@ -366,13 +366,13 @@ b322_decode :: (format: int, text: string, x: [] B322Work) -> int #effects(all) 
   #assert base64_decode_checked(text, x[0].raw[0..<n], false).error == NC_OK;
   raw := x[0].raw[0..<n];
   if format == B322_FULL_FORMAT {
-    if n > B322_TX { return B322_FULL; }
+    if n > B322_TX { return B322_FULL; }  // mutant: equivalent (raw holds at most B322_RAW = B322_TX bytes)
     x[0].tx_n = tx_put(x[0].tx[..], 0, raw);
   } else if format == B322_POF {
     p := psbt_read_vartime(raw, x[0].fields[..], x[0].read[..]);
     if p.code != PSBT_OK || !psbt_maps_vartime(raw, p, x[0].fields[..], x[0].maps[..]) { return B322_FULL; }
     x[0].tx_n = psbt_extract_vartime(x[0].maps[..], x[0].tx[..], x[0].sign[..]);
-    if x[0].tx_n < 0 { return B322_FULL; }
+    if x[0].tx_n < 0 { return B322_FULL; }  // mutant: equivalent (extraction gives -1 or at least 10 bytes)
   } else {
     // to_sign with the witness: segwit's marker and flag after the
     // version, the witness before the lock time. An empty stack (the
@@ -415,10 +415,10 @@ bip322_verify_vartime :: (address: string, signature: string, message: string, x
   r.reason = b322_decode(r.format, body, x);
   if r.reason != B322_OK { return r; }
   t := x[0].t; b := x[0].tx[0..<x[0].tx_n];
-  first := ifx t.nin > 0 then b[x[0].ins[0].outpoint..<x[0].ins[0].outpoint+36] else b[0..<0];
+  first := ifx t.nin > 0 then b[x[0].ins[0].outpoint..<x[0].ins[0].outpoint+36] else b[0..<0];  // mutant: equivalent (with no inputs first is not 36 bytes either way)
   spends := first.count == 36 && ps_equal(first[0..<32], x[0].txid[..]) && tx_le_vartime(first, 32, 4) == 0;
   pays := t.nout == 1 && tx_le_vartime(b, x[0].outs[0].value, 8) == 0 && x[0].outs[0].script_n == 1 && b[x[0].outs[0].script] == OP_RETURN;
-  if !spends || !pays || (r.format != B322_POF && t.nin != 1) || t.nin > BT_IO { r.reason = B322_SHAPE; return r; }
+  if !spends || !pays || (r.format != B322_POF && t.nin != 1) || t.nin > BT_IO { r.reason = B322_SHAPE; return r; }  // mutant: equivalent (tx_read refuses more than BT_IO inputs)
   // Each input's spent output: to_spend's for the first.
   x[0].amounts[0] = 0; x[0].spks[0].n = x[0].spk_n;
   for k: 0..<x[0].spk_n { x[0].spks[0].b[k] = x[0].spk[k]; }
@@ -452,7 +452,7 @@ b322_else_branch :: (m: [] PsbtMaps) -> bool #effects(all) {
   ws := psbt_find1_vartime(m, PSBT_INPUT, 0, 0x05);
   sig := -1;  // mutant: equivalent (pair 0 is the global unsigned tx, never input 0's signature)
   for j: 0..<m[0].n { if m[0].pairs[j].map == PSBT_INPUT && m[0].pairs[j].index == 0 && pm_type(m, j) == 0x02 { sig = j; } }  // mutant: equivalent (pair 0 is the global unsigned tx, never input 0's signature)
-  if ws < 0 || sig < 0 { return false; }
+  if ws < 0 || sig < 0 { return false; }  // mutant: equivalent (pair 0 is the global unsigned tx, never input 0's script or signature)
   wit: [PSBT_TX] u8;
   at := tx_compact_write_vartime(wit[..], 0, 3);
   at = tx_compact_write_vartime(wit[..], at, pm_value(m, sig).count); at = tx_put(wit[..], at, pm_value(m, sig));
@@ -474,15 +474,15 @@ b322_sign_leaf :: (x: [] B322Work, unsigned: [] u8, key: [] u8, script: [] u8, a
   leaf: [32] u8; hash: [32] u8; pub: [33] u8; q: [32] u8; sig: [64] u8;
   if taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, script, leaf[..]) != TR_OK { return false; }  // mutant: equivalent (the leaf hash refuses no script the signer passes it)
   #assert bt_sighash_taproot_ext(unsigned, bt_tx_read(unsigned), 0, amounts[..], spks[..], BT_DEFAULT, unsigned[0..<0], leaf[..], BT_NO_CODESEP, hash[..]);
-  if !bip32_public(key, pub[..]) { return false; }
+  if !bip32_public(key, pub[..]) { return false; }  // mutant: equivalent (a leaf left without its witness is refused when it is encoded)
   parity := taproot_output_key_vartime(pub[1..<33], leaf[..], q[..]);
-  if parity < 0 || !ps_equal(q[..], x[0].spk[2..<34]) { return false; }
+  if parity < 0 || !ps_equal(q[..], x[0].spk[2..<34]) { return false; }  // mutant: equivalent (a leaf left without its witness is refused when it is encoded)
   w := x[0].sign[0].tap[0].sign[..];
   status := 0;  // mutant: equivalent (the loop sets status first)
   for k: 0..<6 { status = schnorr_sign_step(key, aux, hash[..], w, sig[..], false); }
   if status != SIGN_DONE { return false; }  // mutant: equivalent (signing always finishes in six steps)
   wit: [256 + SCRIPT_MAX_SIZE] u8;
-  if script.count > SCRIPT_MAX_SIZE { return false; }
+  if script.count > SCRIPT_MAX_SIZE { return false; }  // mutant: equivalent (a leaf left without its witness is refused when it is encoded)
   at := tx_compact_write_vartime(wit[..], 0, 4);
   at = tx_compact_write_vartime(wit[..], at, 64); at = tx_put(wit[..], at, sig[..]);
   wit[at] = 0; at += 1;  // mutant: equivalent (wit starts as zeros)
@@ -502,7 +502,7 @@ b322_sign_leaf :: (x: [] B322Work, unsigned: [] u8, key: [] u8, script: [] u8, a
 // to_spend as the input's UTXO, signed without low-R grinding, finalized
 // and extracted. Returns the text's length, or -1.
 bip322_sign_vartime :: (address: string, message: string, keys: [] u8, script: [] u8, format: int, version: int, locktime: int, sequence: int, aux: [] u8, x: [] B322Work, out: [] u8) -> int #export_c #effects(all) {
-  if !b322_spend(address, message, x) || keys.count == 0 || keys.count % 32 != 0 || message.count > B322_MESSAGE { return -1; }
+  if !b322_spend(address, message, x) || keys.count == 0 || keys.count % 32 != 0 || message.count > B322_MESSAGE { return -1; }  // mutant: equivalent (with no keys nothing signs and the finalizer refuses)
   spk := x[0].spk[0..<x[0].spk_n];
   if format == B322_LEGACY {
     if !ps_p2pkh(spk) || keys.count != 32 || out.count < SM_SIGNATURE_TEXT { return -1; }
@@ -552,6 +552,7 @@ bip322_sign_vartime :: (address: string, message: string, keys: [] u8, script: [
     data = pm_value(m, j);
   } else {
     x[0].tx_n = psbt_extract_vartime(m, x[0].tx[..], x[0].sign[..]);
+    if x[0].tx_n < 0 { return -1; }  // mutant: equivalent (extraction gives -1 or at least 10 bytes)
     data = x[0].tx[0..<x[0].tx_n];
   }
   if out.count < 3 + base64_encode_size(data.count) { return -1; }
@@ -690,6 +691,30 @@ b322_case_signs :: (c: B322Case, x: [] B322Work) -> bool #effects(all) {
   #assert bip322_sign_vartime(p.address, p.message, keys[..], keys[0..<0], B322_SIMPLE, 0, 0, 0, aux[..], x[..], out[..]) == p.ours.count;
   one := [1] u8.[0x51];
   #assert bip322_sign_vartime(p.address, p.message, keys[..], one[..], B322_SIMPLE, 0, 0, 0, aux[..], x[..], out[..]) == -1;
+}
+#test "the signer: a P2SH script the finalizer can't satisfy, a leaf of output parity 0, and the leaf's size limit" #steps 20000000000 {
+  x: [1] B322Work; keys: [32] u8; script: [SCRIPT_MAX_SIZE + 1] u8; out: [16384] u8; aux: [32] u8;
+  // Case 15's time lock under P2SH, not P2WSH: neither the finalizer nor
+  // the ELSE branch's witness signs it.
+  c := B322_CASES[15];
+  #assert c.type == "p2wsh-time-lock" && b322_keys(c.keys, keys[..]) == 32;
+  s := tx_unhex(c.script, script[..]);
+  #assert bip322_sign_vartime("33drHnqYru5JC4Pvvq8wYsVmqc3R7HTK6X", c.message, keys[..], s, B322_FULL_FORMAT, c.version, c.locktime, c.sequence, aux[..], x[..], out[..]) == -1;
+  // The leaf DROP DROP OP_1 under the key 32 x 0x96 has an output key of
+  // even parity: its control block starts 0xc0.
+  for j: 0..<32 { keys[j] = 0x96; }
+  script[0] = 0x75; script[1] = 0x75; script[2] = 0x51;
+  a := "bc1pzdypstcf4pyq7z7npaqkrse66xa8wasp6hy9wuuu4kukra8fajesgf067h";
+  k := bip322_sign_vartime(a, "m", keys[..], script[0..<3], B322_FULL_FORMAT, 0, 0, 0, aux[..], x[..], out[..]);
+  #assert k > 0;
+  r := bip322_verify_vartime(a, cast(string) out[0..<k], "m", x[..]);
+  #assert r.state == B322_VALID && r.format == B322_FULL_FORMAT;
+  // A leaf of 10000 bytes signs; 10001 does not.
+  for j: 0..<script.count { script[j] = 0x51; }
+  #assert bip322_sign_vartime("bc1pfps430lrz0aqplmxkra6j498ekf5wt628g6rvps0z4mwzn7ljr9q7aulec", "m", keys[..], script[0..<SCRIPT_MAX_SIZE], B322_SIMPLE, 0, 0, 0, aux[..], x[..], out[..]) > 0;
+  #assert bip322_sign_vartime("bc1p9t5egwveks5lkh0rhfra0wuj3etnefulvsay5vu8g9fzvywa5kts2vqgx6", "m", keys[..], script[..], B322_SIMPLE, 0, 0, 0, aux[..], x[..], out[..]) == -1;
+  // As a full signature the 10000-byte leaf's to_sign is more than B322_TX holds.
+  #assert bip322_sign_vartime("bc1pfps430lrz0aqplmxkra6j498ekf5wt628g6rvps0z4mwzn7ljr9q7aulec", "m", keys[..], script[0..<SCRIPT_MAX_SIZE], B322_FULL_FORMAT, 0, 0, 0, aux[..], x[..], out[..]) == -1;
 }
 #test "a legacy signature round trip, and what the signer refuses" #steps 2000000000 {
   x: [1] B322Work; key: [32] u8; out: [4096] u8; aux: [32] u8; pub: [33] u8; h: [20] u8; address: [40] u8;
