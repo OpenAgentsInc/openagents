@@ -16,7 +16,11 @@
  #assert nwp_route("/worlds/everglade")=="everglade" && nwp_route("/worlds/splice-bots")=="splice-bots" && nwp_route("/worlds/everglade2")=="everglade2" && nwp_route("/worlds")=="catalog" && nwp_route("/worlds/my-forest")=="myrealm";
  #assert nwp_route("https://evil.test/worlds/x")=="" && nwp_route("/worlds/a?key=x")=="";
 }
-nwp_route :: (path:string)->string #export_c #effects(all) {for realm:[5]string.["catalog","splice-bots","everglade","everglade2","myrealm"] {if nwp_open(realm,path) {return realm;}}return "";}
+#test "Microduck admits only its installed viewer path" {
+ #assert nwp_route("/microduck")=="microduck" && nwp_open("microduck","/microduck");
+ for path:[5]string.["/worlds/microduck","/microduck/","/microduck?url=x","https://evil.test/microduck","/microduck#x"] {#assert !nwp_open("microduck",path);}
+}
+nwp_route :: (path:string)->string #export_c #effects(all) {for realm:[6]string.["catalog","splice-bots","everglade","everglade2","myrealm","microduck"] {if nwp_open(realm,path) {return realm;}}return "";}
 #test "world presentation admits only installed profiles and plain world paths" {
  #assert nwp_open("splice-bots","/worlds/splice-bots") && nwp_open("everglade2","/worlds/everglade2") && nwp_open("catalog","/worlds") && nwp_open("myrealm","/worlds/my-world");
  for p:[7]string.["https://evil.test","/worlds/a?token=x","/worlds/../x","/worlds/a/b","/worlds/","//worlds/a","/worlds/a#x"] {#assert !nwp_open("myrealm",p);}
@@ -27,6 +31,7 @@ nwp_open :: (realm:string,path:string)->bool #export_c #effects(all) {
  if realm=="splice-bots" {return path=="/worlds/splice-bots";}
  if realm=="everglade" {return path=="/worlds/everglade";}
  if realm=="everglade2" {return path=="/worlds/everglade2";}
+ if realm=="microduck" {return path=="/microduck";}
  if realm=="catalog" {return path=="/worlds";}
  if realm!="myrealm" || path.count<9 || path.count>56 || path[0..<8]!="/worlds/" || path[8]=='-' {return false;}
  for c:path[8..<path.count] {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}return true;

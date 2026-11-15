@@ -98,3 +98,18 @@ coax/web/tool.sh shot http://127.0.0.1:9123/demos/microduck/ /tmp/microduck.png 
 The first shot in a fresh checkout can omit `--keep`; every following shot
 reuses the shared headless browser. Verification and the rendered screenshot
 are recorded in [the viewer receipt](../../docs/verification/microduck-viewer-2026-11-15/README.md).
+
+## OpenAgents mobile
+
+Home's **Microduck** button opens this same viewer through the app's native
+Metal engine host. One finger orbits; pinch zooms. The floating menu offers
+Front, Side, Top, Normals, Reset, the model license and Close. Its interface uses
+the app's grayscale components. The mobile captions retain source attribution.
+
+The app installs the small Coax producer and Metal shaders. The 50,927,404-byte
+pinned assembly downloads on first opening and stays in the shared verified
+world cache. The signed inventory and installed producer fingerprint prevent
+an update from substituting a different native program. The optional full-pack
+digest gate rejects altered geometry before parsing/upload, on both hosts.
+No GLB source copy or model geometry is bundled into the app. This remains a
+static research viewer, with the model's CC BY-NC-SA terms above.

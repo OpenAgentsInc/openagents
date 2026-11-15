@@ -36,3 +36,13 @@ SHA-256 and byte count. Tests corrupt every digest lane and both exact length
 boundaries. The real browser journey edits a byte inside the vertex payload,
 preserving the complete pack length, and observes Coax refusal before upload.
 It also checks exact rendered pixels and realm state across device loss.
+
+## Apple native producer
+
+The Apple engine host also supports this optional gate. It uses the existing
+Coax asset SHA-256 through `engine_core_digest`, checks the complete 32-byte
+capacity and calls admission before the shared pack parser or any GPU upload.
+A native producer uses `cx_face_addr` for addresses; counts remain `u32`.
+Microduck pins the same complete VPK1 assembly on web and iOS. Its native test
+opens the actual model, reads back changed surface pixels for orbit/zoom/normals,
+and alters a vertex-payload byte to verify refusal before rendering.

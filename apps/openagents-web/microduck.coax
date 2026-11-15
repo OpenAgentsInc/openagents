@@ -6,7 +6,7 @@
 
 MD_HUD_VERTICES :: 32768;
 Microduck :: struct {
-  ready: bool; admitted: bool; digest: [32] u8;
+  native:bool; ready: bool; admitted: bool; digest: [32] u8;
   yaw: f32 = 3.85; pitch: f32 = 0.24; zoom: f32 = 0.74;
   mode: int; drag: bool; pointer_id: int; px: f32; py: f32; dpr: f32 = 1;
   draws: [4] u32;
@@ -36,6 +36,14 @@ Microduck :: struct {
   #assert md_frame(s[..], out[..], u[..], 0, 800, 1) == 0;
 }
 
+#test "pinch zoom uses the shared orbit radius and rejects invalid gesture scales" {
+ s:[1]Microduck;#assert md_pinch(s[..],2) && s[0].zoom==0.37f32 && !s[0].drag;
+ #assert md_pinch(s[..],1000) && s[0].zoom==0.28f32 && md_pinch(s[..],0.001) && s[0].zoom==1.6f32;
+ #assert !md_pinch(s[..],0) && !md_pinch(s[..],-1) && s[0].zoom==1.6f32;
+}
+md_pinch :: (s:[]Microduck,ratio:f32)->bool #export_c #effects(all) {
+ if !(ratio>0) {return false;}s[0].zoom=shot_clamp(s[0].zoom/ratio,0.28,1.6);s[0].drag=false;return true;
+}
 md_reset :: (s: [] Microduck) { s[0].yaw = 3.85; s[0].pitch = 0.24; s[0].zoom = 0.74; s[0].mode = 0; s[0].drag = false; }
 md_key :: (s: [] Microduck, key: int) -> bool #export_c #effects(all) {
   if key == 114 || key == 82 { md_reset(s); return true; }
@@ -78,7 +86,7 @@ md_frame :: (s: [] Microduck, out: [] f32, u: [] f32, w: f32, h: f32, d: f32) ->
   u[24] = lens.focal; u[25] = cast(f32) s[0].mode; u[26] = lens.cx; u[27] = lens.cy;
   s[0].draws[0] = 0; s[0].draws[1] = ifx s[0].ready then 2390406 else 0;
   s[0].draws[2] = 0; s[0].draws[3] = 1;
-  pen := HdPen.{d = d, top = 0, bottom = h / d, cyan = true};
+  pen := HdPen.{d = d, top = 0, bottom = h / d, cyan = !s[0].native};
   pen.sans = false; // mutant: equivalent (all captions are >=9 CSS px; uses_sans selects sans only below 9, so either flag draws Filament)
   n := 0; width := w / d; height := h / d;
   n = hd_text(out, n, "OPENAGENTS / ROBOTICS LAB", 32, 38, 11, pen, 1);
@@ -95,9 +103,14 @@ md_frame :: (s: [] Microduck, out: [] f32, u: [] f32, w: f32, h: f32, d: f32) ->
   }
   n = hd_text(out, n, ifx s[0].ready then (ifx s[0].mode == 0 then "VIEW / MATERIALS" else "VIEW / NORMALS") else "LOADING ASSEMBLY", 32, height - 100, 11, pen, 1);
   n = hd_line(out, n, 32, height - 80, width - 32, height - 80, pen, 2, 0.4);
-  n = hd_text(out, n, "DRAG ORBIT / SCROLL ZOOM / R RESET / N NORMALS", 32, height - 54, 10, pen, 0);
-  n = hd_text(out, n, "POLLEN ROBOTICS + NVIDIA DLI / CC BY-NC-SA 4.0 / RESEARCH VIEWER", 32, height - 29, 9, pen, 2);
+  n = hd_text(out, n, (ifx s[0].native then "DRAG ORBIT / PINCH ZOOM" else "DRAG ORBIT / SCROLL ZOOM / R RESET / N NORMALS"), 32, height - 54, 10, pen, 0);
+  n = hd_text(out, n, (ifx s[0].native then "POLLEN + NVIDIA / CC BY-NC-SA 4.0" else "POLLEN ROBOTICS + NVIDIA DLI / CC BY-NC-SA 4.0 / RESEARCH VIEWER"), 32, height - 29, 9, pen, 2);
   return n;
 }
 
 #load "microduck-checks.coax" #test;
+
+#test "hiding the model viewer retires a held orbit gesture" {
+ s:[1]Microduck;#assert md_pointer(s[..],1,1,0,1,3);md_message(s[..],602);#assert s[0].drag;md_message(s[..],601);#assert !s[0].drag;
+}
+md_message :: (s:[]Microduck,kind:int) #export_c #effects(all) {if kind==601 {s[0].drag=false;}}

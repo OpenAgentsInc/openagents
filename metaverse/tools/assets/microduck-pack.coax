@@ -50,7 +50,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   out: [MD_BUDGET] u8; size := pack_write(sources[..], MD_BUDGET, out[..]); read: [1] PackRead;
   if size < 1 || !pack_read(cast(string) out[0..<size], read[..]) { tool_errln(read[0].why); return 1; }
-  if !fs_write(args_at(args[..], 1), cast(string) out[0..<size]) { tool_errln("cannot write Microduck pack"); return 1; }
+  if !fs_mkdir(fs_dir(args_at(args[..], 1))) || !fs_write(args_at(args[..], 1), cast(string) out[0..<size]) { tool_errln("cannot write Microduck pack"); return 1; }
   if !asset_hex_of(cast(string) out[0..<size], hash[..]) { return 1; }
   print("Microduck: % vertices, % triangles, % bytes, SHA256 %\n", made[0].vertices, made[0].indices / 3, size, cast(string) hash[..]);
   return 0;

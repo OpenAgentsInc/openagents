@@ -16,6 +16,14 @@
 #load "../byte-storage.coax";
 #load "../transport.coax";
 
+#test "host pack digest matches the published SHA256 and requires its complete 32 bytes" {
+ bytes:[32]u8;#assert engine_core_digest("abc",bytes[..]) && bytes[0]==0xba && bytes[1]==0x78 && bytes[30]==0x15 && bytes[31]==0xad;
+ #assert !engine_core_digest("abc",bytes[0..<31]);
+}
+// Existing asset identity, projected as the pack-gate ABI's big-endian bytes.
+engine_core_digest :: (content:string,out:[]u8)->bool #export_c #effects(all) {
+ if out.count!=32 {return false;}id:=asset_id(content);for i:0..<8 {if !cb_store_be32(out,i*4,id.words[i]) {return false;}}return true;
+}
 // The whole size of the pack image a VPK3 file holds, from the file's bytes: 0 when the file is
 // not a VPK3 file (a host then reads it as the pack itself), -1 when it is one that can't be used.
 engine_core_paged :: (file: string) -> int #export_c #effects(all) {

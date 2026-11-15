@@ -10,8 +10,9 @@ import UIKit
         let world=NativeWorldHost(directory:FileManager.default.temporaryDirectory,realm:"splice-bots",path:"/worlds/splice-bots",edit:false,finished:{})
         let nav=NativeWorldNavigation(rootViewController:world);nav.loadViewIfNeeded();world.loadViewIfNeeded();world.view.frame=CGRect(x:0,y:0,width:402,height:874);world.view.layoutIfNeeded()
         XCTAssertTrue(nav.isNavigationBarHidden);XCTAssertTrue(nav.childForStatusBarHidden === world);XCTAssertTrue(world.prefersStatusBarHidden)
-        let menu=try XCTUnwrap(world.view.subviews.compactMap {$0 as? UIButton}.first)
-        XCTAssertEqual(world.view.subviews.compactMap {$0 as? UIButton}.count,1)
+        func buttons(_ view:UIView)->[UIButton] {(view as? UIButton).map {[$0]} ?? view.subviews.flatMap {buttons($0)}}
+        let menu=try XCTUnwrap(buttons(world.view).first)
+        XCTAssertEqual(buttons(world.view).count,1)
         XCTAssertEqual(menu.accessibilityIdentifier,"world.menu");XCTAssertEqual(menu.frame.size,CGSize(width:44,height:44))
         XCTAssertEqual(menu.frame.maxX,world.view.safeAreaLayoutGuide.layoutFrame.maxX-8,accuracy:0.5)
         XCTAssertEqual(menu.frame.minY,8,accuracy:0.5)

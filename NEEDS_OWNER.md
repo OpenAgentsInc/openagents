@@ -1,5 +1,14 @@
 # Owner actions
 
+## Microduck, build 1094 (2026-11-15)
+
+- [ ] Install TestFlight **1094** when available. On Home, open **Microduck**;
+      let the first model download finish, drag to orbit and pinch to zoom.
+      Try the floating menu's camera views and Normals, close and reopen the
+      viewer. Simulator Metal rendering, real asset delivery, offline cache
+      and altered-pack refusal passed; physical touch remains an owner check.
+      [Pictures and release evidence](docs/verification/microduck-native-2026-11-15/README.md).
+
 ## Private Projects and routing, build 1091
 
 **1091 is available in TestFlight (Owner), verified IN_BETA_TESTING.** Install

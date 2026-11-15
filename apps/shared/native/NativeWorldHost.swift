@@ -95,7 +95,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     private let menuButton=NativeButton(.icon)
     private let chromeRoot=NativeOverlayView()
     private var arcade:NativeArcadeSurface?
-    private var editorAvailable=false,loadFailed=false
+    private var editorAvailable=false,loadFailed=false,modelViewer=false
     private var presentation:MTLCommandBuffer?
     init(directory:URL,realm:String,path:String,edit:Bool,finished:@escaping()->Void) {
         self.directory=directory;self.realm=realm;self.path=path;editRequested=edit;self.finished=finished;super.init(nibName:nil,bundle:nil)
@@ -110,7 +110,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     override func viewDidLoad() {
         super.viewDidLoad();view.backgroundColor=NativeSkin.ground
         let profile=realm.withCString {nwr_profile(coax_string(data:$0,count:Int64(realm.utf8.count)))}
-        title=Self.text(profile.title)
+        title=Self.text(profile.title);modelViewer=profile.model
         navigationController?.setNavigationBarHidden(true,animated:false)
         let chrome=nwh_chrome(false,false,false)
         // The one control over the world: the library's icon button, on a dim ground so it reads on any scene.
@@ -120,7 +120,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
         // Status chrome is hidden. Use the free upper corner above the realm's
         // title/HUD, retaining horizontal protection from landscape cutouts.
         chromeRoot.frame=view.bounds;chromeRoot.autoresizingMask=[.flexibleWidth,.flexibleHeight];view.addSubview(chromeRoot);arcade=NativeArcadeSurface(in:chromeRoot);chromeRoot.addSubview(menuButton);NSLayoutConstraint.activate([menuButton.widthAnchor.constraint(equalToConstant:CGFloat(chrome.side)),menuButton.heightAnchor.constraint(equalToConstant:CGFloat(chrome.side)),menuButton.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-CGFloat(chrome.inset)),menuButton.topAnchor.constraint(equalTo:view.topAnchor,constant:CGFloat(chrome.inset))]);updateMenu()
-        status.numberOfLines=0;status.textColor=NativeSkin.color(NativeSkin.tokens.ink);status.font=NativeTypography.font(16);status.adjustsFontForContentSizeCategory=true;status.textAlignment = .center;status.text="Preparing world…";status.translatesAutoresizingMaskIntoConstraints=false
+        status.numberOfLines=0;status.textColor=NativeSkin.color(NativeSkin.tokens.ink);status.font=NativeTypography.font(16);status.adjustsFontForContentSizeCategory=true;status.textAlignment = .center;status.text=Self.text(nwh_loading(0));status.translatesAutoresizingMaskIntoConstraints=false
         progress.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(status);chromeRoot.addSubview(progress)
         NSLayoutConstraint.activate([status.centerYAnchor.constraint(equalTo:view.centerYAnchor),status.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:24),status.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-24),progress.topAnchor.constraint(equalTo:status.bottomAnchor,constant:20),progress.leadingAnchor.constraint(equalTo:status.leadingAnchor),progress.trailingAnchor.constraint(equalTo:status.trailingAnchor)])
         NotificationCenter.default.addObserver(self,selector:#selector(background),name:UIApplication.willResignActiveNotification,object:nil)
@@ -134,7 +134,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
             let inventory=try NativeWorldInventory(raw)
             let versions=try PropertyListSerialization.propertyList(from:Data(contentsOf:Bundle.main.url(forResource:"WorldRuntimes",withExtension:"plist")!),format:nil) as! [String:String]
             guard inventory.realm==realm,versions[realm]==inventory.runtime else {throw NativeFailure.refused("This world needs a newer TestFlight build.")}
-            status.text="Downloading world assets…"
+            status.text=Self.text(nwh_loading(1))
             let root=try await Self.assets.prepare(inventory) { [weak self] n,total in Task { @MainActor in self?.progress.progress=total>0 ? Float(n)/Float(total):1 } }
             try Task.checkCancellation()
             guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else {throw NativeFailure.refused("Metal is unavailable on this device.")}
@@ -168,7 +168,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
                     }
                 }
             }
-            status.text="Opening world…";progress.isHidden=true
+            status.text=Self.text(nwh_loading(2));progress.isHidden=true
             let opened:AEPageHost=try await withCheckedThrowingContinuation {continuation in
                 Self.deep.begin {var why:NSString?;if let p=AEPageHost.open(c,device:device,queue:queue,why:&why) {continuation.resume(returning:p)}else {continuation.resume(throwing:NativeFailure.refused(why as String? ?? "World could not open"))}}
             }
@@ -177,7 +177,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
             if closed || Task.isCancelled {Self.deep.run {opened.close()};return}
             page=opened;status.isHidden=true;updateMenu()
             audio=AEPageAudio(page:opened,resources:root,offline:c.automated)
-            canvas=NativeWorldCanvas(frame:view.bounds,device:device);canvas.world=self;turn.view=canvas;turn.moved={AppAnalytics.shared.gyro("world")};canvas.delegate=self;canvas.isMultipleTouchEnabled=true;canvas.preferredFramesPerSecond=60;canvas.colorPixelFormat = .bgra8Unorm;canvas.framebufferOnly=false;canvas.translatesAutoresizingMaskIntoConstraints=false
+            canvas=NativeWorldCanvas(frame:view.bounds,device:device);canvas.world=self;if modelViewer {canvas.addGestureRecognizer(UIPinchGestureRecognizer(target:self,action:#selector(pinch(_:))))};turn.view=canvas;turn.moved={AppAnalytics.shared.gyro("world")};canvas.delegate=self;canvas.isMultipleTouchEnabled=true;canvas.preferredFramesPerSecond=60;canvas.colorPixelFormat = .bgra8Unorm;canvas.framebufferOnly=false;canvas.translatesAutoresizingMaskIntoConstraints=false
             canvas.accessibilityIdentifier="world.canvas";canvas.isAccessibilityElement=true;canvas.accessibilityTraits = .image;canvas.accessibilityLabel=Self.text(profile.title)
             view.addSubview(canvas);NSLayoutConstraint.activate([canvas.topAnchor.constraint(equalTo:view.topAnchor),canvas.bottomAnchor.constraint(equalTo:view.bottomAnchor),canvas.leadingAnchor.constraint(equalTo:view.leadingAnchor),canvas.trailingAnchor.constraint(equalTo:view.trailingAnchor)]);view.bringSubviewToFront(chromeRoot)
             optional=Task { [weak self] in await Self.assets.optional(inventory) {name in Task { @MainActor in
@@ -191,9 +191,19 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     private(set) var menuItems:[NativeMenu.Item]=[]
     private func updateMenu() {
         let chrome=nwh_chrome(page != nil,editorAvailable,loadFailed);var items:[NativeMenu.Item]=[]
+        if modelViewer && page != nil {
+            for i in 0..<6 {
+                let recipe=nwh_model_action(Int64(i));let text=Self.text(recipe.title),symbol=Self.text(recipe.symbol),key=recipe.key,url=Self.text(recipe.url)
+                items.append(.init(id:"model.action.\(i)",title:text,symbol:symbol) { [weak self] in
+                    guard let self else {return}
+                    if key>0,let page=self.page {Self.deep.run {_ = page.key(Int32(key),mods:0,down:true);_ = page.key(Int32(key),mods:0,down:false)}}
+                    else if let url=URL(string:url) {UIApplication.shared.open(url)}
+                })
+            }
+        }
         if chrome.show_editor {items.append(.init(id:"world.editor",title:Self.text(chrome.editor),symbol:"slider.horizontal.3") { [weak self] in self?.openEditor() })}
         if chrome.show_retry {items.append(.init(id:"world.retry",title:Self.text(chrome.retry),symbol:"arrow.clockwise") { [weak self] in guard let self else{return};let realm=self.realm;let profile=realm.withCString {nwr_profile(coax_string(data:$0,count:Int64(realm.utf8.count)))};self.loading=Task {await self.open(profile)} })}
-        items.append(.init(id:"world.close",title:Self.text(chrome.leave),symbol:"xmark") { [weak self] in self?.leave() })
+        items.append(.init(id:"world.close",title:Self.text(modelViewer ? nwh_model_action(6).title:chrome.leave),symbol:"xmark") { [weak self] in self?.leave() })
         menuItems=items
     }
     private func showMenu() {
@@ -220,6 +230,10 @@ private final class NativeWorldCancellation:@unchecked Sendable {
         if editRequested,!editorOffered,editor==nil,editorAvailable {editorOffered=true;openEditor()}
     }
     func mtkView(_ view:MTKView,drawableSizeWillChange size:CGSize) {last=0}
+    @objc private func pinch(_ gesture:UIPinchGestureRecognizer) {
+        guard modelViewer,let page,gesture.state == .changed else {return}
+        let ratio=Float(gesture.scale);gesture.scale=1;Self.deep.run {page.pinch(ratio)}
+    }
     func touch(_ point:CGPoint,phase:Int32,id:Int32) {guard let page else {return};if phase==0 {view.window?.endEditing(true);audio?.gesture()};Self.deep.run {page.touch(point,phase:phase,finger:id)}}
     func text(_ value:String) {guard let page else {return};Self.deep.run {if value=="\n" {_ = page.key(-2,mods:0,down:true);_ = page.key(-2,mods:0,down:false)}else {page.text(value)}}}
     func backspace() {guard let page else {return};Self.deep.run {_ = page.key(-3,mods:0,down:true);_ = page.key(-3,mods:0,down:false)}}

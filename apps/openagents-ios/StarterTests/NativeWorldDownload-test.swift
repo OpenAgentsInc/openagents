@@ -49,6 +49,18 @@ private final class WorldDownloadOracle:URLProtocol {
             XCTAssertEqual(try Data(contentsOf:file),data)
         }
     }
+    func testMicroduckSignedInventoryStreamsAndReopensOffline()async throws {
+        let bundle=try XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil))
+        let inventory=try NativeWorldInventory(Data(contentsOf:bundle.appendingPathComponent("worlds/microduck.json")))
+        let versions=try PropertyListSerialization.propertyList(from:Data(contentsOf:XCTUnwrap(Bundle.main.url(forResource:"WorldRuntimes",withExtension:"plist"))),format:nil) as! [String:String]
+        XCTAssertEqual(inventory.realm,"microduck");XCTAssertEqual(inventory.runtime,versions["microduck"])
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);defer {try? FileManager.default.removeItem(at:root)}
+        let assets=NativeWorldAssets(home:root),installed=try await assets.prepare(inventory,progress:{_,_ in})
+        let result=try NativeWorldAssets.hash(installed.appendingPathComponent("base.pack"))
+        XCTAssertEqual(result.0,50927404);XCTAssertEqual(result.1,"44a2b852208c8a29d17851e2a99401d257c2f711bc59cf92fe8b4a4c20bd681e")
+        WorldDownloadOracle.reset(Data(),status:503);let offline=cache(root)
+        let reopened=try await offline.prepare(inventory,progress:{_,_ in});XCTAssertEqual(reopened,installed);XCTAssertEqual(WorldDownloadOracle.count,0)
+    }
     private func inventory(_ data:Data)throws->NativeWorldInventory {
         let hash=NativePackage.hex(Data(SHA256.hash(data:data)))
         return try NativeWorldInventory(JSONSerialization.data(withJSONObject:["schema":"coax.native.world.assets.v1","realm":"splice-bots","runtime":String(repeating:"a",count:64),"files":[["path":"base.pack","sha256":hash,"bytes":data.count,"required":true]]]))

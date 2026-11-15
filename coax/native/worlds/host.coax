@@ -25,3 +25,22 @@ nwh_chrome :: (ready:bool,editable:bool,failed:bool)->NwhChrome #export_c #effec
 nwh_path :: (home:string,leaf:string,out:[]u8)->int #export_c #effects(all) {
  return oa_path(home,leaf,out).count;
 }
+
+NwhModelAction :: struct {title:string;symbol:string;key:int;url:string;}
+#test "model viewer menu is the shared camera controls and a labelled license" {
+ #assert nwh_model_action(0).key==49 && nwh_model_action(1).key==50 && nwh_model_action(2).key==51 && nwh_model_action(3).key==110 && nwh_model_action(4).key==114;
+ #assert nwh_model_action(5).title=="License" && nwh_model_action(5).url=="https://creativecommons.org/licenses/by-nc-sa/4.0/" && nwh_model_action(-1).title=="" && nwh_model_action(6).title=="Close" && nwh_model_action(7).title=="";
+}
+nwh_model_action :: (index:int)->NwhModelAction #export_c #effects(all) {
+ if index==0 {return NwhModelAction.{title="Front",symbol="viewfinder",key=49};}
+ if index==1 {return NwhModelAction.{title="Side",symbol="cube",key=50};}
+ if index==2 {return NwhModelAction.{title="Top",symbol="square.stack.3d.up",key=51};}
+ if index==3 {return NwhModelAction.{title="Normals",symbol="circle.lefthalf.filled",key=110};}
+ if index==4 {return NwhModelAction.{title="Reset",symbol="arrow.counterclockwise",key=114};}
+ if index==5 {return NwhModelAction.{title="License",symbol="info.circle",url="https://creativecommons.org/licenses/by-nc-sa/4.0/"};}
+ if index==6 {return NwhModelAction.{title="Close",symbol="xmark"};}
+ return NwhModelAction.{};
+}
+
+#test "shared loading text stays concise across worlds and model viewers" {#assert nwh_loading(0)=="Loading…" && nwh_loading(1)=="Downloading…" && nwh_loading(2)=="Opening…";}
+nwh_loading :: (stage:int)->string #export_c #effects(all) {return ifx stage==1 then "Downloading…" else ifx stage==2 then "Opening…" else "Loading…";}

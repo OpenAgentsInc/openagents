@@ -64,6 +64,8 @@
 // A finger on a touch screen, in the same points and phases; `finger` is its own number from down to up.
 - (void)touch:(CGPoint)at phase:(int32_t)phase finger:(int32_t)finger;
 - (void)wheel:(float)dy;
+// Incremental positive touch scale; an optional producer capability.
+- (void)pinch:(float)ratio;
 - (void)focus:(BOOL)focused;
 // The page out of sight (another world is open, or the window is hidden) and shown again: the realm
 // hears it as a hidden browser tab's does (messages 601 and 602), and its held keys are let go.

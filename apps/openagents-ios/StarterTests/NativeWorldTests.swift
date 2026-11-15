@@ -48,4 +48,47 @@ import MetalKit
             if let image {let shot=XCTAttachment(image:image);shot.name="native-\(realm)";shot.lifetime = .keepAlways;add(shot)}
         }
     }
+    func testMicroduckRendersActualGeometryOrbitPinchAndRefusesAnAlteredPack()throws {
+        let device=try XCTUnwrap(MTLCreateSystemDefaultDevice()),queue=try XCTUnwrap(device.makeCommandQueue())
+        let repo=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let c=AEPageConfig(),size=CGSize(width:430,height:900),pack=repo.appendingPathComponent("apps/openagents-ios/build/world-assets/microduck.pack")
+        c.producer=Bundle.main.privateFrameworksURL!.appendingPathComponent("MicroduckRuntime.framework/MicroduckRuntime").path
+        c.shaders=Bundle.main.resourceURL!.appendingPathComponent("WorldShaders/microduck").path;c.pack=pack.path
+        c.fonts=repo.appendingPathComponent("apps/openagents-web/realms/splice-bots/assets/fonts").path;c.reading="IBMPlexMono-Medium";c.title="Michroma-Regular"
+        c.store=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path;c.path="/microduck";c.origin="https://openagents.com";c.realm="microduck";c.slot="microduck";c.offline=true;c.automated=true;c.touch=true;c.screen=size
+        var page:AEPageHost?,why:NSString?
+        NativeWorldHost.deep.run {page=AEPageHost.open(c,device:device,queue:queue,why:&why)}
+        let viewer=try XCTUnwrap(page,"Microduck: \(why ?? "unknown")");defer {NativeWorldHost.deep.run {viewer.close()}}
+        func frame(_ name:String)throws->Data {
+            var pixels=Data(),image:UIImage?
+            NativeWorldHost.deep.run {
+                guard let texture=viewer.frame(size,scale:1,dt:0.016,wait:true) else {return}
+                let row=((texture.width*4+255)/256)*256,total=row*texture.height
+                guard let read=device.makeBuffer(length:total,options:.storageModeShared),let cmd=queue.makeCommandBuffer(),let copy=cmd.makeBlitCommandEncoder() else {return}
+                copy.copy(from:texture,sourceSlice:0,sourceLevel:0,sourceOrigin:MTLOrigin(x:0,y:0,z:0),sourceSize:MTLSize(width:texture.width,height:texture.height,depth:1),to:read,destinationOffset:0,destinationBytesPerRow:row,destinationBytesPerImage:total);copy.endEncoding();cmd.commit();cmd.waitUntilCompleted()
+                pixels=Data(bytes:read.contents(),count:total)
+                if let provider=CGDataProvider(data:pixels as CFData),let cg=CGImage(width:texture.width,height:texture.height,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:row,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGBitmapInfo(rawValue:CGImageAlphaInfo.premultipliedFirst.rawValue).union(.byteOrder32Little),provider:provider,decode:nil,shouldInterpolate:false,intent:.defaultIntent) {image=UIImage(cgImage:cg)}
+            }
+            XCTAssertFalse(pixels.isEmpty);let picture=try XCTUnwrap(image);let shot=XCTAttachment(image:picture);shot.name=name;shot.lifetime = .keepAlways;add(shot);return pixels
+        }
+        func changed(_ a:Data,_ b:Data)->Int {
+            guard a.count==b.count else {return 0};let row=((430*4+255)/256)*256
+            return a.withUnsafeBytes {aa in b.withUnsafeBytes {bb in let x=aa.bindMemory(to:UInt8.self),y=bb.bindMemory(to:UInt8.self);var n=0
+                // Excludes HUD captions: only actual assembly pixels can change.
+                for v in 250..<680 {for u in 80..<350 {let i=v*row+u*4;if abs(Int(x[i])-Int(y[i]))+abs(Int(x[i+1])-Int(y[i+1]))+abs(Int(x[i+2])-Int(y[i+2]))>15 {n+=1}}};return n
+            }}
+        }
+        let material=try frame("Microduck native materials")
+        NativeWorldHost.deep.run {_ = viewer.key(110,mods:0,down:true)}
+        let normals=try frame("Microduck native normals");XCTAssertGreaterThan(changed(material,normals),1000,"The surface pass did not draw the model")
+        NativeWorldHost.deep.run {_ = viewer.key(110,mods:0,down:true);viewer.touch(CGPoint(x:230,y:450),phase:0,finger:8);viewer.touch(CGPoint(x:310,y:460),phase:1,finger:8);viewer.touch(CGPoint(x:310,y:460),phase:2,finger:8)}
+        let orbit=try frame("Microduck native orbit");XCTAssertGreaterThan(changed(material,orbit),1000)
+        NativeWorldHost.deep.run {viewer.pinch(1.4)}
+        let zoom=try frame("Microduck native pinch");XCTAssertGreaterThan(changed(orbit,zoom),1000)
+        let bad=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+".pack");try FileManager.default.copyItem(at:pack,to:bad);defer {try? FileManager.default.removeItem(at:bad)}
+        let file=try FileHandle(forUpdating:bad);try file.seek(toOffset:10000);let old=try XCTUnwrap(file.read(upToCount:1));try file.seek(toOffset:10000);try file.write(contentsOf:Data([old[0]^1]));try file.close()
+        c.pack=bad.path;var refused:AEPageHost?;why=nil;NativeWorldHost.deep.run {refused=AEPageHost.open(c,device:device,queue:queue,why:&why)}
+        XCTAssertNil(refused);XCTAssertTrue((why as String? ?? "").contains("SHA256"),"\(why ?? "missing refusal")")
+    }
+
 }

@@ -1,0 +1,1 @@
+Microduck is on Home. Open the native 3D viewer, drag to orbit and pinch to zoom. Its menu has camera views, normals and reset. The model downloads on first use and is cached for later.

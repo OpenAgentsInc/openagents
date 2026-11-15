@@ -1,5 +1,14 @@
 # OpenAgents iOS
 
+Build **1094** adds **Home → Microduck**, the existing Coax model viewer on
+native Metal. Drag orbits; pinch zooms. The model streams on first use and
+reopens from its verified cache. Its floating menu has camera views, Normals,
+Reset and License. [Pictures, checks and delivery](../../docs/verification/microduck-native-2026-11-15/README.md).
+
+Build **1093** contains the installed Nostr custody/journal/relay foundation.
+It is **VALID / IN_BETA_TESTING** in **Owner**; its matching production API is
+deployed. [Foundation evidence](../../docs/verification/2026-11-15-nostr-foundation.md).
+
 Build **1092** is **VALID / IN_BETA_TESTING** in **Owner**. **Feed** in the drawer
 reads live public Nostr notes from your saved relays, with relay, author, time
 and hashtag filters. It uses shared Coax state/components and a read-only native

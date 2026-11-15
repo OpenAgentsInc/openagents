@@ -37,6 +37,7 @@ typedef uintptr_t A;
  F(uint32_t,frame,(A,A,A,float,float,float,float,uint32_t)) F(uint32_t,pixel_budget,(void)) \
  F(uint32_t,key,(A,int32_t,int32_t)) F(uint32_t,key_up,(A,int32_t,int32_t)) F(void,blur,(A)) F(void,focus,(A)) \
  F(uint32_t,pointer,(A,float,float,int32_t,int32_t,int32_t)) F(uint32_t,pointer_buttons_v1,(A,float,float,int32_t,int32_t,int32_t,int32_t)) \
+ F(uint32_t,pinch,(A,float)) F(uint32_t,pack_gate_version,(void)) F(A,pack_digest,(A)) F(uint32_t,pack_digest_capacity,(void)) F(uint32_t,pack_admit,(A,uint32_t)) \
  F(uint32_t,wheel,(A,float)) F(int32_t,mouselook,(A)) F(void,look_delta,(A,float,float)) F(void,pointer_lock,(A,int32_t)) F(int32_t,cursor,(A)) \
  F(void,tilt,(A,float,float)) F(int32_t,gyro,(A)) F(void,gyro_status,(A,int32_t)) \
  F(uint32_t,wants_text,(A)) F(A,inbox,(A)) F(uint32_t,inbox_cap,(void)) F(void,message,(A,int32_t,uint32_t)) \
@@ -633,6 +634,13 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  if (!config.pack.length) return nil;
  packBytes = phPackImage(config.pack, device);
  const uint8_t *b = packBytes.bytes; size_t n = packBytes.length;
+ // Match the browser's optional v1 full-pack pin before parsing or GPU upload.
+ if (x.pack_gate_version) {
+  if (x.pack_gate_version()!=1 || !x.pack_digest || !x.pack_digest_capacity || !x.pack_admit || x.pack_digest_capacity()!=32 || n>UINT32_MAX) return @"unsupported asset pack gate";
+  A digest=x.pack_digest(state);
+  if (!digest || !engine_core_digest((coax_string){(const char *)b,(int64_t)n},(coax_v_u8){(uint8_t *)digest,32}) || x.pack_admit(state,(uint32_t)n)!=1) return @"asset pack SHA256 refused by Coax";
+ }
+
  // The host core sorts the pack's entries through the one pack reader (metaverse-engine/host/pack-table.coax
  // pack_table): every extent is checked against the whole file before a byte of it is read here.
  static EngineCorePack pack;
@@ -1276,6 +1284,7 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  else if (x.pointer) x.pointer(state, (float)(at.x * dpr), (float)(at.y * dpr), phase, 1, finger);
  [self after];
 }
+- (void)pinch:(float)ratio { if (!closed && x.pinch) { phCurrent = self; x.pinch(state, ratio); } }
 - (void)wheel:(float)dy { if (!closed && x.wheel) { phCurrent = self; x.wheel(state, dy); } }
 - (void)focus:(BOOL)focused { if (closed) return; phCurrent = self; if (focused) { if (x.focus) x.focus(state); } else if (x.blur) x.blur(state); }
 - (void)shown:(BOOL)shown {

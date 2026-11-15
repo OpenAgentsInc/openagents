@@ -37,7 +37,7 @@ nwp_identity :: (directory:string,out:[]u8)->bool {
 }
 nwp_versions :: ()->bool {
  plist:[4096]u8;po:[1]Jo;jo_start(po[..],plist[..]);jo_put(po[..],"<?xml version=\"1.0\"?><plist version=\"1.0\"><dict>");
- for realm:[4]string.["splice-bots","everglade","everglade2","myrealm"] {
+ for realm:NWR_REALMS {
   paths:[2][4096]u8;dir:=fs_join("apps/openagents-ios/Generated/Worlds",realm,paths[0][..]);hash:[64]u8;
   if fs_read(fs_join(dir,"identity.txt",paths[1][..]),hash[..])!=64 || !nw_hash_valid(cast(string)hash[..]) {return false;}
   jo_put(po[..],"<key>");jo_put(po[..],realm);jo_put(po[..],"</key><string>");jo_put(po[..],cast(string)hash[..]);jo_put(po[..],"</string>");
@@ -59,18 +59,18 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(a[..])!=1 {tool_errln("package OUTPUT | --rebind INVENTORY PRODUCER_DIR OUTPUT_INVENTORY");return 2;}
  root:=args_at(a[..],0);if !fs_mkdir(root) {return 1;}paths:[6][4096]u8;objects:=fs_join(root,"objects",paths[0][..]);manifests:=fs_join(root,"manifests",paths[1][..]);
  if !fs_mkdir(objects) || !fs_mkdir(manifests) {return 1;}
- for realm:[4]string.["splice-bots","everglade","everglade2","myrealm"] {
+ for realm:NWR_REALMS {
   w:[1]NwpWork;w[0].no=nw_copy(w[0].objects[..],objects);m:=w[0].manifest[..];m[0].nr=nw_copy(m[0].realm[..],realm);profile:=nwr_profile(realm);dir:=fs_join("apps/openagents-ios/Generated/Worlds",realm,paths[2][..]);
   if !nwp_identity(dir,m[0].runtime[..]) {tool_errln("world identity missing");return 1;}
   if !fs_write(fs_join(dir,"identity.txt",paths[3][..]),cast(string)m[0].runtime[..]) {return 1;}
   fontdir:=fs_join("apps/openagents-web",profile.font_dir,paths[3][..]);
   if !nwp_add(w[..],fs_join(fontdir,profile.reading,paths[4][..]),"fonts/reading.ttf",true) || !nwp_add(w[..],fs_join(fontdir,profile.heading,paths[4][..]),"fonts/title.ttf",true) {return 1;}
-  if profile.pack!="" && !nwp_add(w[..],fs_join("apps/openagents-web",profile.pack,paths[3][..]),"base.pack",true) {return 1;}
+  if profile.pack!="" && !nwp_add(w[..],ifx realm=="microduck" then "apps/openagents-ios/build/world-assets/microduck.pack" else fs_join("apps/openagents-web",profile.pack,paths[3][..]),"base.pack",true) {return 1;}
   // Existing base packs already have their required entry; skip them in the
   // optional tree by walking only the public sounds/images folders below.
   if realm=="splice-bots" {
    if !nwp_walk(w[..],"apps/openagents-web/realms/splice-bots/assets/sounds","web/realms/splice-bots/assets/sounds",0) {return 1;}
-  } else {
+  } else if realm!="microduck" {
    for folder:[4]string.["realms/everglade/sfx","realms/everglade/pcm-v1","realms/everglade/hotbar","realms/5e-mmo/hotbar"] {
     if !nwp_walk(w[..],fs_join("apps/openagents-web",folder,paths[3][..]),fs_join("web",folder,paths[4][..]),0) {return 1;}
    }

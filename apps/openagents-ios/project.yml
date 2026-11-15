@@ -7,7 +7,7 @@ settings:
   base:
     DEVELOPMENT_TEAM: HQWSG26L43
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1093"
+    CURRENT_PROJECT_VERSION: "1094"
     OA_IOS_BUNDLE_ID: com.openagents.app
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "18.0"
@@ -119,12 +119,14 @@ targets:
         embed: true
       - target: MadeRealmRuntime
         embed: true
+      - target: MicroduckRuntime
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: "$(OA_IOS_BUNDLE_ID)"
         PRODUCT_NAME: OpenAgents
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1093"
+        CURRENT_PROJECT_VERSION: "1094"
         PROVISIONING_PROFILE_SPECIFIER: "$(OA_APP_PROVISIONING_PROFILE)"
         OTHER_LDFLAGS: ["$(inherited)", "-Wl,-export_dynamic"]
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COAX_NATIVE_BALANCE"
@@ -231,6 +233,24 @@ targets:
         OTHER_CFLAGS: ["$(inherited)", "-Wno-unknown-attributes", "-Wno-unused-function", "-ffp-contract=off", "-fno-fast-math"]
         OTHER_LDFLAGS: ["$(inherited)", "-Wl,-undefined,dynamic_lookup"]
         HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated/Worlds/myrealm"]
+  MicroduckRuntime:
+    type: framework
+    platform: iOS
+    sources:
+      - Generated/Worlds/microduck/microduck.c
+      - Generated/Worlds/microduck/microduck.face.c
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.runtime.microduck
+        GENERATE_INFOPLIST_FILE: YES
+        DEFINES_MODULE: NO
+        GCC_SYMBOLS_PRIVATE_EXTERN: NO
+        DEAD_CODE_STRIPPING: YES
+        EXPORTED_SYMBOLS_FILE: "$(SRCROOT)/../../metaverse-engine/host/apple/page-producer.exports"
+        GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "COAXIAL_NATIVE_ADDRESS=1"]
+        OTHER_CFLAGS: ["$(inherited)", "-Wno-unknown-attributes", "-Wno-unused-function", "-ffp-contract=off", "-fno-fast-math"]
+        OTHER_LDFLAGS: ["$(inherited)", "-Wl,-undefined,dynamic_lookup"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated/Worlds/microduck"]
   OpenAgentsTests:
     type: bundle.unit-test
     platform: iOS
