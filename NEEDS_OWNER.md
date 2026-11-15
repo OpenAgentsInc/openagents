@@ -1,5 +1,15 @@
 # Owner actions
 
+## Private Projects and routing, build 1091
+
+**1091 is available in TestFlight (Owner), verified IN_BETA_TESTING.** Install
+it, open Projects and reopen the private Project created through the approved
+CLI account. Create another Project, edit instructions, attach a text/Markdown
+file and continue a saved chat. In account Chat, send a coding request and
+check the reported computer/agent/model/effort. That choice remains a preview;
+it does not launch work. Physical-phone appearance, document consent and touch
+remain owner observations. [Release evidence](docs/verification/2026-11-15-native-projects-router-1091.md).
+
 ## Projects CLI account test
 
 Completed 2026-11-15: the owner approved **Projects CLI account test** and

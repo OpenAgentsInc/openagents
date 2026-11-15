@@ -50,6 +50,16 @@ compatible presentation changes can use Updates. The
 [runtime contract](../../docs/protocol/environment-runtime-v1alpha1.md) records
 the implemented scope and current bounds.
 
+## Private Projects and routing, build 1091
+
+1091 is **VALID / IN_BETA_TESTING**, verified in the existing **Owner** group.
+It packages the private Projects client and the latest live-computer-report
+routing preview. Create a Project, edit its instructions, add knowledge and
+continue saved chats in the same account used by the CLI. Account chat shows
+the selected computer, agent, model and effort; this is a routing preview and
+does not start work on that computer yet. Its signed generation-1 feed matches
+the archive. [Release and focused checks](../../docs/verification/2026-11-15-native-projects-router-1091.md).
+
 ## Private Projects
 
 The Projects drawer now creates account-owned private Projects, edits instructions,
