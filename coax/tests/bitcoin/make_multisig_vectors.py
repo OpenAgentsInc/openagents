@@ -318,6 +318,51 @@ def match_cases():
     return out
 
 
+def match_edges():
+    """More scripts for the matchers: each key header CPubKey::ValidSize
+    reads, each way GetScriptNumber refuses, each piece of MatchMultiA."""
+    k = [bytes.fromhex(x) for x in ('02fe6f0a5a297eb38c391581c4413e084773ea23954d93f7753db7dc0adc188b2f',
+                                     '02ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f8')]
+    x = bytes(range(32))
+    two = multisig(2, k, False)
+    cases = [
+        ('a hybrid key, 06', b'\x51\x41\x06' + bytes(64) + b'\x51\xae'),
+        ('a hybrid key, 07', b'\x51\x41\x07' + bytes(64) + b'\x51\xae'),
+        ('a 65-byte key after 05', b'\x51\x41\x05' + bytes(64) + b'\x51\xae'),
+        ('a 65-byte key after 02', b'\x51\x41\x02' + bytes(64) + b'\x51\xae'),
+        ('a 33-byte key after 04', b'\x51\x21\x04' + bytes(32) + b'\x51\xae'),
+        ('a 33-byte key after 03', b'\x51\x21\x03' + bytes(32) + b'\x51\xae'),
+        ('an empty push for a key', b'\x51\x00\x51\xae'),
+        ('m of -2, pushed', b'\x01\x82' + two[1:]),
+        ('m pushed in 5 bytes', b'\x05\x01\x00\x00\x00\x00' + two[1:]),
+        ('m an opcode, not a number', b'\x61' + two[1:]),
+        ('n an opcode, not a number', two[:-2] + b'\x61\xae'),
+        ('m pushed as PUSHDATA1', b'\x4c\x01\x11' + b''.join(b'\x21' + k[0] for _ in range(17)) + number(17) + b'\xae'),
+        ('only OP_CHECKMULTISIG', b'\xae'),
+        ('m cut short', b'\x02\x01'),
+        ('multi_a, no OP_NUMEQUAL', multi_a(1, [x], False)[:-1] + b'\x51'),
+        ('multi_a, first key 33 bytes', b'\x21\x02' + x + b'\xac\x51\x9c'),
+        ('multi_a, a short key after the first', b'\x20' + x + b'\xac\x1f' + x[:31] + b'\xba\x51\x9c'),
+        ('multi_a, a byte before OP_NUMEQUAL', multi_a(1, [x], False)[:-1] + b'\x61\x9c'),
+        ('multi_a, threshold an opcode', multi_a(1, [x], False)[:-2] + b'\x61\x9c'),
+        ('multi_a, threshold 0', multi_a(1, [x], False)[:-2] + b'\x00\x9c'),
+        ('multi_a, threshold cut short', multi_a(1, [x], False)[:-2] + b'\x02\x01\x9c'),
+        ('multi_a, 16 of 16', multi_a(16, [x] * 16, False)),
+        ('multi_a, OP_CHECKSIGADD first', multi_a(1, [x], False).replace(b'\xac', b'\xba')),
+        ('a key pushed with PUSHDATA1', b'\x51\x4c\x21' + k[0] + b'\x51\xae'),
+        ('a key pushed with PUSHDATA2', b'\x51\x4d\x21\x00' + k[0] + b'\x51\xae'),
+        ('a key pushed with PUSHDATA4', b'\x51\x4e\x21\x00\x00\x00' + k[0] + b'\x51\xae'),
+        ('m as OP_NOP, then 17 keys', b'\x61' + b''.join(b'\x21' + k[0] for _ in range(17)) + number(17) + b'\xae'),
+        ('multi_a, OP_NUMEQUAL twice', multi_a(1, [x], False) + b'\x9c'),
+    ]
+    out = []
+    for name, s in cases:
+        tap = name.startswith('multi_a')
+        r = (match_multi_a if tap else match_multisig)(s)
+        out.append((name, s.hex(), tap, r[0] if r else 0, r[1] if r else 0))
+    return out
+
+
 def q(s):
     return '"' + s + '"'
 
@@ -347,6 +392,13 @@ def render():
               'MsMatch :: struct { name: string; script: string; tapscript: bool; m: int; n: int; }']
     c = match_cases()
     lines.append(f'MS_MATCH :: [{len(c)}] MsMatch.[')
+    for name, s, tap, m, n in c:
+        lines.append(f'  MsMatch.{{name={q(name)}, script={q(s)}, tapscript={"true" if tap else "false"}, m={m}, n={n}}},')
+    lines.append('];')
+    lines += ['// More scripts for the matchers, decided the same way: each key header,',
+              '// each refused number, each piece of MatchMultiA.']
+    c = match_edges()
+    lines.append(f'MS_MATCH_EDGES :: [{len(c)}] MsMatch.[')
     for name, s, tap, m, n in c:
         lines.append(f'  MsMatch.{{name={q(name)}, script={q(s)}, tapscript={"true" if tap else "false"}, m={m}, n={n}}},')
     lines.append('];')
