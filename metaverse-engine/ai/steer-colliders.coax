@@ -8,6 +8,7 @@
 #authority;
 #load "../physics/query.coax";
 #load "steer.coax";
+#load "../physics/ground.coax" as mesh;
 
 NAV_COLLIDERS_IDS :: 8;   // colliders a cell's test lists at most: more is a crowd, so closed
 
@@ -82,4 +83,52 @@ NAV_TC_POST :: [7] f32.[6, 0, 2, 6, 2, 2, 0.4];
     if at < 0 && nav_len(a[0].x, a[0].z - 10) <= t.reach { at = k; }
   }
   #assert through > 2.5 && through < 4.5 && at > 0;
+}
+
+#test "a cell is closed where there is no ground, where the sphere cannot be asked, and where nine colliders crowd it" {
+  b := nav_tc_boxes();
+  none := Colliders.{ground_enabled = false};
+  #assert !nav_stand_ok(none, 0, 0, 0, 0.35);
+  c: Colliders; c.boxes = b[..];
+  #assert nav_stand_ok(c, 0, 0, 0, 0.35) && !nav_stand_ok(c, 0, 0, 0, 0);   // a body of no radius asks nothing
+  // a ridge beside the standing point: each copy of its field touches the sphere, and eight are not a crowd
+  heights := [4] f32.[0, 20, 0, 0];
+  fields: [9] QueryHeightfield;
+  for i: 0..<9 { fields[i] = QueryHeightfield.{ground = mesh.Ground.{n = 1, cell = 10, west = -5, south = -5}, heights = heights[..]}; }
+  ids: [9] QueryId;
+  one := Colliders.{heightfields = fields[0..<1]};
+  #assert query_overlap_checked(one, world_point(0, 0.9, 0.0625), 0.35, ids[..]).count == 1 && query_stand_checked(one, 0, 0.0625, 0, 0.35).y == 0;
+  eight := Colliders.{heightfields = fields[0..<8]}; nine := Colliders.{heightfields = fields[..]};
+  #assert nav_stand_ok(one, 0, 0.0625, 0, 0.35) && nav_stand_ok(eight, 0, 0.0625, 0, 0.35);
+  #assert !nav_stand_ok(nine, 0, 0.0625, 0, 0.35);
+}
+
+// A rock for the checks: a metre-and-a-bit box from x -1 to 1 and z -1 to 1, its heights `lo` to `hi`.
+nav_tc_rock :: (out: [] f32, lo: f32, hi: f32) #effects(all) {
+  h := [27] f32.[6, lo, hi,  1, 0, 0, 1,  -1, 0, 0, 1,  0, 0, 1, 1,  0, 0, -1, 1,  0, -1, 0, -lo,  0, 1, 0, hi];
+  for i: 0..<27 { out[i] = h[i]; }
+}
+
+#test "a hull too high to step onto closes a cell by the slice at a step and a hair, or at the body's middle" {
+  low: [27] f32; nav_tc_rock(low[..], 0.55, 0.75);    // a rock that starts a hair under a step and a hair above: the slice at 0.6 only
+  high: [27] f32; nav_tc_rock(high[..], 0.7, 1.5);    // one whose heights are only at the body's middle, 1.05 for a radius of a half
+  c1 := Colliders.{hulls = low[..]}; c2 := Colliders.{hulls = high[..]};
+  #assert !nav_stand_ok(c1, 1.4375, 0, 0, 0.5) && nav_stand_ok(c1, 1.5, 0, 0, 0.5) && nav_stand_ok(c1, 1.5625, 0, 0, 0.5);
+  #assert !nav_stand_ok(c2, 1.4375, 0, 0, 0.5) && nav_stand_ok(c2, 1.5, 0, 0, 0.5) && nav_stand_ok(c2, 1.5625, 0, 0, 0.5);
+}
+
+#test "the window is filled cell by cell, the first too" {
+  b := nav_tc_boxes();
+  c: Colliders; c.boxes = b[..];
+  w: [1] NavWindow; a := nav_agent(0, 6.5, 0); a.tx = 0; a.tz = 7;
+  nav_window_place(w[..], NavTune.{span = 4}, a);
+  nav_window_fill(w[..], c, 0, 0.35);
+  #assert w[0].grid.nx == 8 && nav_window_spot(w[..], 0)[1] == 5;
+  open := 0;
+  for i: 0..<nav_window_cells(w[..]) {
+    p := nav_window_spot(w[..], i);
+    #assert w[0].walk[i] == nav_stand_ok(c, p[0], p[1], 0, 0.35);
+    if w[0].walk[i] { open += 1; }
+  }
+  #assert !w[0].walk[0] && open > 0 && open < 64;
 }
