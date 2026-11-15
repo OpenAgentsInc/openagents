@@ -2,7 +2,8 @@
 
 **Date:** November 15, 2026. **Status:** speculation. This document qualifies
 nothing, opens no issues and changes no priority. It supplements the
-[robotics report](robotics-report-2026-11-15.md), the
+[robotics report](robotics-report-2026-11-15.md) (and its longer
+[PDF edition](NVIDIA_Robotics_Report_2026-11-15.pdf)), the
 [open robotics platform proposal](open-robotics-platform-2026-11-15.md) and
 the [Microduck capstone](microduck-pipeline-2026-11-15.md), and widens them
 from robotics to the whole stack that [Psionic](../../psionic/README.md) and
@@ -29,6 +30,11 @@ Reported, as of this date:
   $13 billion, has not closed. Press coverage says its handling under the
   interim CEO is unclear.
   ([TechCrunch](https://techcrunch.com/2026/11/12/jensen-huangs-exit-puts-nvidias-support-for-open-source-in-question/))
+  The SEC filing records commitments to keep the platform open and to
+  support other silicon vendors
+  ([filing](https://www.sec.gov/Archives/edgar/data/1045810/000104581026000078/nvda-20260902.htm)).
+  Those commitments take effect only if the deal closes, and how they would
+  be enforced afterwards is not something this document can assess.
 - Commentators disagree about the effect on open work. Some call it a major
   setback for an American open-model ecosystem
   ([Interconnects](https://www.interconnects.ai/p/open-source-ai-without-jensen));
@@ -40,6 +46,11 @@ Reported, as of this date:
 These facts come from search summaries of the linked pages. The pages
 themselves could not be fetched from this session, so check them before
 quoting any detail.
+
+The PDF report in this folder has the same November 15 cutoff and does not
+mention the change of CEO. Its account of products, licences and partners
+is unaffected, but its strategic sections describe NVIDIA's direction under
+the previous leadership.
 
 **Assumed for planning:** openness narrows by degrees over one to two years
 rather than ending in one announcement. Nothing in this document depends on
@@ -60,6 +71,19 @@ Closure works through everything around them:
 | Maintainers leave | Newton, Warp, RAPIDS, Isaac Lab and cuOpt lose their paid engineers | Projects that are open but have one employer |
 | Funding for open labs stops | Investments in labs that publish weights are cut back | The supply of new open weights from outside NVIDIA |
 | The platform licence tightens | The CUDA EULA already restricts what may be done with the SDK ([EULA](https://docs.nvidia.com/cuda/eula/contents.html)); a stricter reading reaches translation layers and redistribution | Anyone whose independence strategy is "run CUDA elsewhere" |
+
+Parts of the stack are already closed in the sense that matters here. The
+PDF report's licence table (its section 16) lists them per artifact: cuMotion
+may only be used on systems with NVIDIA GPUs, the cuVSLAM library has an
+NVIDIA-platform restriction, GR00T N1.7's weights carry the NVIDIA Open
+Model License while its code is Apache-2.0, Isaac Sim's Apache-2.0 source
+sits beside separately licensed Kit components and assets, parts of Isaac
+Capture have their own terms, and some healthcare weights are
+noncommercial. The report also notes that permissive source does not make a
+system hardware independent: CUDA dependencies, optimised operators, driver
+support, rendering and test coverage all create practical dependence. A
+narrowing would extend terms that already exist. It would not need to invent
+new ones.
 
 Two conclusions follow. Retention is urgent and cheap, and it is a matter of
 days. Replacement is slow and expensive, so it has to be chosen carefully.
@@ -83,7 +107,12 @@ inputs and qualification evidence, each separately. Add urgency and an order:
    A repository plus recorded inputs, intermediate tensors and outputs is an
    oracle a rewrite can be tested against for years. Record them now, on
    hardware that still has working drivers.
-4. **Build inputs:** driver and toolkit installers for the machines we own,
+4. **Evaluation suites.** The report says evaluation is becoming a larger
+   part of the platform (Isaac Lab-Arena, Cosmos Evaluator, the industrial
+   dexterity tasks announced at CoRL). Task definitions and scoring code are
+   small, and they are what makes a later claim comparable with published
+   results. Retain them with the references.
+5. **Build inputs:** driver and toolkit installers for the machines we own,
    container images, and the exact versions every reference needs.
 
 Retaining a copy grants no right to redistribute it. Keep the proposal's
@@ -238,6 +267,17 @@ be short. That is the argument for recording oracles before writing code.
 - **Closed is not gone.** If NVIDIA keeps shipping good closed tools, many
   teams will use them. The open stack has to be better on the things it
   claims: portability, inspection, repair, and evidence.
+- **A worker boundary is still a dependency.** The PDF report recommends
+  (its section 18) keeping our own interface and connecting to an Isaac or
+  `ovphysx` worker across a process boundary. That is sound advice while the
+  worker stays available on today's terms. Under this document's assumption,
+  use such a worker as an independent comparator for the owned
+  implementation, which is the role MuJoCo already has, and never as the
+  shipped runtime.
+- **Their churn is our cost too.** The report lists renamed workflows and
+  fast version changes as a risk for NVIDIA's own users. A reference we
+  retain is one exact version; recorded outputs belong to that version and
+  no other.
 - **Licences need a reader.** Several conclusions above turn on licence
   text. A person with legal training should read OpenMDW-1.1, the NVIDIA
   Open Model License and the CUDA EULA before anything is redistributed.
@@ -258,6 +298,9 @@ Ordered by cost, cheapest first. Each is a proposal for the owner.
 | 8 | Portable batched simulation | The Microduck collector running on the Vulkan target | Solo-versus-batch invariance holds on two devices |
 | 9 | Training across Pylons | One distributed training job type with admission, cancellation and a checker | Reproduces a single-machine result within its noise floor |
 | 10 | Real-time Coax profile | Bounded-time subset and one microcontroller target | Measured worst case on the named board; no allocation proven |
+
+Item 3 can start from the PDF report's licence table and its 92-entry
+source directory, which already name most of the artifacts and their terms.
 
 Items 1 to 3 need no new code and lose value every week. Item 4 changes the
 most for the least: it turns "CPU and Metal are the escape path" into "any
@@ -282,6 +325,11 @@ and 7 falls and the ordinary roadmap order applies. Items 1 to 3 are worth
 doing in either case.
 
 ## Sources and limits
+
+The [PDF report](NVIDIA_Robotics_Report_2026-11-15.pdf) was read in full
+for this revision. It is the longer edition of the Markdown report, with a
+numbered source directory, a history from 2014 and more detail on licences,
+evaluation and deployment evidence. Nothing in it contradicts this document.
 
 News and licence links above were found by web search on November 15, 2026.
 Direct page fetches were blocked in the session that wrote this, so
