@@ -414,7 +414,8 @@
       "openagents.coder.session_reader.v1"
     ],
     "environment-access": [
-      "openagents.environment.access.v1alpha1"
+      "openagents.environment.access.v1alpha1",
+      "openagents.environment.accounts.v1"
     ],
     "account-identity": [
       "openagents.account.identity.v1"
