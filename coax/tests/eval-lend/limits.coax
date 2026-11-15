@@ -1,0 +1,17 @@
+// What a copy charges is charged without it (#13609): the same traversal
+// visits, value slots and storages, so the same checks pass, come near a limit
+// and are refused, with the same report. tests/eval-lend.coax compares this
+// file's output with the sharing on, off and checked.
+Big :: struct { v: [600000] int; }
+Cell :: struct { v: [2] int; }
+Grid :: struct { c: [40000] Cell; }
+
+first :: (b: Big) -> int { return b.v[0]; }
+hold :: (b: Big, n: int) -> int { if n == 0 { return b.v[0]; } return hold(b, n - 1) + 1; }
+hold_grid :: (g: Grid, n: int) -> int { if n == 0 { return g.c[0].v[0]; } return hold_grid(g, n - 1) + 1; }
+
+#test "copies held down a recursion come near the value slots" #steps 100000000 { b: Big; #assert hold(b, 45) == 45; }
+#test "copies held down a recursion run out of value slots" #steps 100000000 { b: Big; #assert hold(b, 60) == 60; }
+#test "copies held down a recursion run out of arrays and structs" #steps 100000000 { g: Grid; #assert hold_grid(g, 40) == 40; }
+#test "copies in a loop come near the traversal limit" #steps 100000000 { b: Big; t := 0; for i: 0..<180 { t += first(b); } #assert t == 0; }
+#test "copies in a loop run out of traversal" #steps 100000000 { b: Big; t := 0; for i: 0..<300 { t += first(b); } #assert t == 0; }

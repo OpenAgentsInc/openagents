@@ -1081,6 +1081,14 @@ Aggregate cloning, assignment, view detection, field default and struct or
 array literal initialization charge a separate traversal meter before each
 visited value or field. This includes recursive copies and work done before a
 failed operation; the original expression/statement step counts are unchanged.
+A struct or array argument is a copy, and is charged as one: its visits, and
+its slots and containers until the callee returns. The evaluator makes the
+copy only where a program could observe it, and otherwise lets the parameter
+read the argument's storage: the callee and its other parameters must hold no
+writable view, the callee must take no slice of the parameter and have no
+`#transaction`, and no later argument may be able to write. Results, steps,
+the meters and every refusal are the same either way
+([evaluator arguments](docs/evaluator-arguments.md)).
 The meter resets per frontend evaluation and per individual check, including a
 check's quantified cases. Cleanup does not spend traversal work: aggregate
 live-slot/container limits and the bounded weak-storage registry bound a single

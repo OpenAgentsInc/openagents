@@ -108,6 +108,9 @@ unit_traversal() { COAX_NATIVE_CHECKS=0 python3 tests/traversal_work.py; }
 unit_provenance() { python3 tests/provenance.py && web/tool.sh tests/stale-compiler.coax "$PWD" "$COAX_ABS"; }
 unit_query() { web/tool.sh tests/query.coax "$COAX_ABS"; }
 unit_steps() { COAX_NATIVE_CHECKS=0 web/tool.sh tests/steps.coax "$COAX_ABS"; }
+# By-value aggregate arguments passed without a copy (#13609): the same answers,
+# steps, traversal, storage and refusals with the sharing on, off and checked.
+unit_eval_lend() { web/tool.sh tests/eval-lend.coax "$COAX_ABS"; }
 unit_library_checks() { web/tool.sh tests/library-checks.coax "$COAX_ABS"; }
 unit_authority_cache() { web/tool.sh tests/authority-cache.coax "$COAX_ABS"; }
 unit_check_reuse() { web/tool.sh tests/check-reuse.coax "$COAX_ABS"; }
@@ -293,7 +296,7 @@ UNITS=(pass fail examples pulse python native strict_math native_checks lexer pa
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
   sequence bounded kept clock debugging nostr constant_time wrapping inline integer_ops nominal_ids handles effect_contracts script_profile transactions compat mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks
-  unit_algebra unit_forms spatial_policy borrow_summary spatial_operators spatial proto_json native_mutants)
+  unit_algebra unit_forms spatial_policy borrow_summary spatial_operators spatial proto_json native_mutants eval_lend)
 
 usage() { echo "usage: tests/run.sh [--list | --only UNIT... | --part I/N]" >&2; exit 2; }
 selected=()

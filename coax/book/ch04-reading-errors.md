@@ -598,7 +598,10 @@ page.coax:8:33: error[E0400]: compile-time aggregate traversal limit exceeded: 1
 ```
 
 Each call copies the struct's 1,025 values, so the copies at line 8, column
-28, used almost the whole budget. The `top users` lines list at most five,
+28, used almost the whole budget. The compiler charges a by-value argument as
+a copy even when it can tell that `step` only reads `g` and lets it read the
+caller's storage: the visits and the report are the same, and only the time
+differs. The `top users` lines list at most five,
 largest first, each with its amount, where it is and what it is:
 
 - For steps and traversal work, a procedure's own use (`in 'build'`, at its

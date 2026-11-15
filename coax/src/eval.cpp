@@ -75,6 +75,14 @@ void CtMemory::remember(const std::shared_ptr<CtStorage> &storage) {
   s->linked = true;
   ++live_count;
 }
+void CtMemory::remember(CtStorage *s) noexcept {
+  s->live_prev = nullptr;
+  s->live_next = live;
+  if (live) live->live_prev = s;
+  live = s;
+  s->linked = true;
+  ++live_count;
+}
 void CtMemory::forget(CtStorage *s) noexcept {
   if (!s->linked) return;
   if (s->live_prev) s->live_prev->live_next = s->live_next;
@@ -109,6 +117,11 @@ std::vector<CtMemory::Holder> CtMemory::holders(bool by_storages, uint64_t reque
     if (!h.proc) h.proc = s->origin_proc;
     h.slots += s->capacity();
     h.storages++;
+    if (s->stand_in) {
+      const CtStandIn *stand = static_cast<const CtStandIn *>(s);
+      h.slots += stand->slots;
+      h.storages += stand->storages;
+    }
   }
   std::vector<Holder> out;
   for (auto &[offset, h] : at) out.push_back(h);
@@ -140,16 +153,22 @@ void CtMemory::take_slots(size_t n) {
     peak_slots = slots;
     // The holders near the peak, for the near-limit report: once the use
     // passes the threshold, then at each further 1/32 of the limit.
-    if (!snapshot_from) {
-      uint64_t lo = 0, hi = slot_limit;  // the least use capacity_near reports
-      while (lo < hi) { const uint64_t mid = lo + (hi - lo) / 2; if (capacity_near(mid, slot_limit)) hi = mid; else lo = mid + 1; }
-      snapshot_from = lo ? lo : 1;
-    }
+    if (!snapshot_from) snapshot_from = snapshot_threshold();
     if (peak_slots >= snapshot_from) {
       try { at_peak = holders(false, n); at_peak_slots = peak_slots; } catch (...) {}
       snapshot_from = peak_slots + std::max<uint64_t>(slot_limit / 32, 1);
     }
   }
+}
+uint64_t CtMemory::snapshot_threshold() const {
+  uint64_t lo = 0, hi = slot_limit;  // the least use capacity_near reports
+  while (lo < hi) { const uint64_t mid = lo + (hi - lo) / 2; if (capacity_near(mid, slot_limit)) hi = mid; else lo = mid + 1; }
+  return lo ? lo : 1;
+}
+bool CtMemory::admits_quietly(uint64_t containers_wanted, uint64_t slots_wanted) const {
+  if (!CB_admit(containers, containers_wanted, container_limit) || !CB_admit(slots, slots_wanted, slot_limit)) return false;
+  const uint64_t peak = slots + slots_wanted;
+  return peak <= peak_slots || peak < (snapshot_from ? snapshot_from : snapshot_threshold());
 }
 void CtMemory::take_string(size_t n) {
   if (!CB_admit(string_bytes, n, CB_string_live_limit())) throw CtStringLimit{};
@@ -194,6 +213,7 @@ struct CtLocal {
   Str name;
   Value value;
   bool initialized = true;
+  bool lent = false;  // a parameter that shares its argument's storage: never written or borrowed (#13609)
 };
 
 struct CtFrame {
@@ -704,6 +724,318 @@ struct Evaluator {
     } else {
       dst = src;
     }
+  }
+
+  // ---- aggregate arguments passed without a copy (#13609) ----
+  //
+  // A struct or array argument is a copy: the callee sees the value as it was
+  // at the call. Making the copy is most of what a check on large records
+  // costs, and nearly every callee only reads it. So a parameter shares its
+  // argument's storage when nothing can tell: the callee cannot write or
+  // borrow the parameter, and nothing that runs before the callee returns can
+  // write the argument. Then the parameter's value at every read is the
+  // argument's at the call, which is what the copy holds.
+  //
+  // What makes it so (docs: coax/docs/evaluator-arguments.md):
+  //  1. Parameters are immutable (E0344), so the callee has no assignment to
+  //     the parameter or a part of it. lendable() still looks for one.
+  //  2. The callee takes no slice of the parameter (lendable()): a slice
+  //     would be a view of the argument, which can outlive the call.
+  //  3. No parameter of the callee is or holds a writable view (writable()).
+  //     A compile-time procedure reaches storage it did not make only through
+  //     its arguments (there is no global variable, and a constant is frozen),
+  //     and writes it only through a writable view. So neither the callee nor
+  //     anything it calls can write the argument, however it is aliased.
+  //  4. No later argument of the same call can write (lend_from()): arguments
+  //     are evaluated in order, only a call can write, and by 3 only a call
+  //     whose callee is handed a writable view.
+  //  5. The callee has no #transaction (lendable()): a transaction saves and
+  //     restores its frame's storage by identity.
+  // A procedure value does not exist in this language: every call names its
+  // callee. When any of this is not known to hold, the argument is copied.
+  //
+  // The copy's accounting is kept, to the unit: the traversal visits it would
+  // charge, and the storages and slots it would hold until the callee returns
+  // (a stand-in storage in the live list, so a later refusal or near-limit
+  // report names the same holders). When the copy itself would be refused, or
+  // would be a new peak whose holders are recorded, the copy is made as before.
+  // Steps are not involved: a copy charges none.
+  //
+  // COAX_LEND_ARGS=0 copies every argument, as before. COAX_LEND_ARGS=check
+  // makes the copy too, checks that what it charged is what was predicted,
+  // and checks when the callee returns that the argument still equals it; it
+  // stops the compiler when either is not so. Both are for the differential
+  // test (tests/eval-lend.coax).
+  static int lend_mode() {
+    static const int mode = [] {
+      const char *s = getenv("COAX_LEND_ARGS");
+      return !s ? 1 : !strcmp(s, "0") ? 0 : !strcmp(s, "check") ? 2 : 1;
+    }();
+    return mode;
+  }
+  // Whether a writable view is reachable from a value of type t, through
+  // fields, elements, payloads and views of either kind.
+  static bool writable_walk(Type t, std::vector<Type> &seen) {
+    if (!t || t->ct_writable == 1) return false;
+    if (t->ct_writable == 2) return true;
+    if (std::find(seen.begin(), seen.end(), t) != seen.end()) return false;
+    seen.push_back(t);
+    switch (t->kind) {
+      case TypeKind::view: return t->length == 0 || writable_walk(t->elem, seen);
+      case TypeKind::array: return writable_walk(t->elem, seen);
+      case TypeKind::struct_:
+        if (!t->struct_decl) return true;
+        for (const Field &f : t->struct_decl->fields) if (writable_walk(f.type, seen)) return true;
+        return false;
+      case TypeKind::optional: return writable_walk(t->elem, seen);
+      case TypeKind::result: return writable_walk(t->elem, seen) || writable_walk(t->sum_error, seen);
+      case TypeKind::union_:
+        if (!t->union_decl) return true;
+        for (const UnionVariant &v : t->union_decl->variants) if (writable_walk(v.type, seen)) return true;
+        return false;
+      case TypeKind::integer: case TypeKind::floating: case TypeKind::bool_: case TypeKind::enum_:
+      case TypeKind::string_: case TypeKind::void_:
+        return false;
+      default: return true;  // a type the evaluator never holds: not lent
+    }
+  }
+  static bool writable(Type t) {
+    if (t->ct_writable) return t->ct_writable == 2;
+    std::vector<Type> seen;
+    const bool yes = writable_walk(t, seen);
+    // The whole walk found none: none is reachable from any type it visited.
+    // It found one: only t itself is known to reach it.
+    if (yes) t->ct_writable = 2;
+    else for (Type visited : seen) visited->ct_writable = 1;
+    return yes;
+  }
+  // The parameters a statement or expression rooted at `place` names lose their bit.
+  static void lend_drop(const Expr *place, const ProcDecl *p, uint64_t *bits) {
+    while (place && (place->kind == ExprKind::field || place->kind == ExprKind::index || place->kind == ExprKind::slice ||
+                     place->kind == ExprKind::cast))
+      place = place->lhs;
+    if (!place || place->kind != ExprKind::ident) return;
+    for (int32_t i = 0; i < p->params.count && i < 64; i++)
+      if (CtFrame::same_name(p->params[i].name, place->text)) *bits &= ~(UINT64_C(1) << i);
+  }
+  static void lend_scan(const Expr *e, const ProcDecl *p, uint64_t *bits) {
+    if (!e || !*bits) return;
+    if (e->kind == ExprKind::slice) lend_drop(e->lhs, p, bits);
+    lend_scan(e->lhs, p, bits);
+    lend_scan(e->rhs, p, bits);
+    lend_scan(e->third, p, bits);
+    for (const Expr *a : e->args) lend_scan(a, p, bits);
+    for (const FieldInit &f : e->fields) lend_scan(f.value, p, bits);
+  }
+  static void lend_scan(const Stmt *s, const ProcDecl *p, uint64_t *bits) {
+    if (!s || !*bits) return;
+    if (s->kind == StmtKind::transaction_) { *bits = 0; return; }
+    if (s->kind == StmtKind::assign) lend_drop(s->target, p, bits);
+    lend_scan(s->expr, p, bits);
+    lend_scan(s->expr2, p, bits);
+    lend_scan(s->target, p, bits);
+    for (const Stmt *child : s->body) lend_scan(child, p, bits);
+    lend_scan(s->then_, p, bits);
+    lend_scan(s->else_, p, bits);
+    for (const SwitchCase *arm : s->cases) lend_scan(arm->body, p, bits);
+  }
+  // A copy this small costs less than standing in for it (a Vec3, a pair): at
+  // most LEND_SMALL numbers, bools, enums, strings or views in one storage.
+  // Either way is the same program, so this is only a matter of time.
+  static constexpr int64_t LEND_SMALL = 8;
+  static bool small(Type t) {
+    if (t->kind == TypeKind::array) return t->length <= LEND_SMALL && leaf(t->elem);
+    if (t->kind != TypeKind::struct_ || !t->struct_decl || t->struct_decl->fields.count > LEND_SMALL) return false;
+    for (const Field &f : t->struct_decl->fields) if (!leaf(f.type)) return false;
+    return true;
+  }
+  // Bit i: parameter i of p may share its argument's storage (2, 3 and 5
+  // above). Asked once for each evaluator: a mutant changes the tree between
+  // evaluators, never during one.
+  __attribute__((always_inline)) uint64_t lendable(ProcDecl *p) {
+    if (__builtin_expect(p->ct_lend_mark == cost_mark, 1)) return p->ct_lend;
+    return lendable_scan(p);
+  }
+  __attribute__((noinline)) uint64_t lendable_scan(ProcDecl *p) {
+    p->ct_lend_mark = cost_mark;
+    uint64_t bits = 0;
+    for (int32_t i = 0; i < p->params.count; i++) {
+      if (writable(p->params[i].type)) { bits = 0; break; }
+      if (i < 64 && is_aggregate(p->params[i].type) && !small(p->params[i].type)) bits |= UINT64_C(1) << i;
+    }
+    if (bits) lend_scan(p->body, p, &bits);
+    return p->ct_lend = bits;
+  }
+  // What clone() of a value would charge and hold: the visits, the storages
+  // and their slots. False when the value is not the plain tree its type
+  // describes; then it is copied, and clone() decides.
+  struct Shape { uint64_t visits = 0, storages = 0, slots = 0; };
+  static bool leaf(Type t) {
+    const TypeKind k = t->kind;
+    return k == TypeKind::integer || k == TypeKind::floating || k == TypeKind::bool_ || k == TypeKind::enum_ ||
+           k == TypeKind::string_ || k == TypeKind::view;
+  }
+  // v's storage and everything below it; v's own visit is its owner's.
+  static bool shape_below(const Value &v, Shape &s) {
+    const Type t = v.type;
+    const CtStorage &a = *v.agg;
+    const size_t n = a.size();
+    s.storages++;
+    s.slots += n;
+    s.visits += n;
+    if (t->kind == TypeKind::struct_) {
+      const StructDecl *d = t->struct_decl;
+      if (!d || n != (size_t)d->fields.count) return false;
+      // A field of a number, bool, enum, string or view type holds one such
+      // value: one visit, nothing below it.
+      for (size_t i = 0; i < n; i++)
+        if (!leaf(d->fields[(int32_t)i].type) && !shape_of(a[i], s)) return false;
+      return true;
+    }
+    if (t->kind == TypeKind::array) {
+      if ((int64_t)n != t->length) return false;
+      if (leaf(t->elem)) return true;
+    }
+    for (size_t i = 0; i < n; i++) if (!shape_of(a[i], s)) return false;
+    return true;
+  }
+  // A nested value whose visit is counted: what its copy adds below it.
+  static bool shape_of(const Value &v, Shape &s) {
+    const Type t = v.type;
+    if (is_aggregate(t)) return v.agg && shape_below(v, s);
+    if (is_sum(t)) {
+      // valid_sum, without reporting: an invalid sum is clone()'s to refuse.
+      Type payload = nullptr;
+      if (t->kind == TypeKind::result) { if (v.sum_tag < 2) payload = v.sum_tag == 0 ? t->elem : t->sum_error; }
+      else if (t->kind == TypeKind::optional) { if (v.sum_tag < 2) payload = v.sum_tag == 0 ? &T_VOID : t->elem; }
+      else if (t->union_decl && v.sum_tag < (uint32_t)t->union_decl->variants.count) {
+        const UnionVariant &variant = t->union_decl->variants[(int32_t)v.sum_tag];
+        if (variant.ordinal == v.sum_tag) payload = variant.type;
+      }
+      if (!payload) return false;
+      const size_t count = payload == &T_VOID ? 0 : 1;
+      if ((v.agg ? v.agg->size() : 0) != count || (count && (*v.agg)[0].type != payload)) return false;
+      return !v.agg || shape_below(v, s);
+    }
+    return true;
+  }
+  // COAX_LEND_ARGS=check: whether two values are the same, storage by storage.
+  static bool same_value(const Value &a, const Value &b) {
+    if (a.type != b.type || a.bits != b.bits || memcmp(&a.f, &b.f, sizeof a.f) != 0 || a.sum_tag != b.sum_tag ||
+        a.offset != b.offset || a.count != b.count || a.s.data != b.s.data || a.s.count != b.s.count ||
+        a.string_owner != b.string_owner)
+      return false;
+    if (!(is_aggregate(a.type) || is_sum(a.type))) return a.agg == b.agg;  // a view or a borrowed string: the same storage
+    if (!a.agg || !b.agg) return !a.agg && !b.agg;
+    if (a.agg->size() != b.agg->size()) return false;
+    for (size_t i = 0; i < a.agg->size(); i++) if (!same_value((*a.agg)[i], (*b.agg)[i])) return false;
+    return true;
+  }
+  [[noreturn]] void lend_stop(const char *what, Loc loc) {
+    const SourcePoint at = source_point(file->src, loc);
+    fprintf(stderr, "coax: internal error: an argument passed without a copy %s at %s:%d:%d (COAX_LEND_ARGS=check, #13609)\n",
+            what, at.path.c_str(), at.loc.line, at.loc.col);
+    abort();
+  }
+  // The arguments of one call that share storage: each one's stand-in for the
+  // copy it did not make, released when the callee's frame is.
+  struct Lent {
+    Evaluator &ev;
+    std::optional<CtStandIn> first;
+    std::vector<std::unique_ptr<CtStandIn>> more;
+    struct Checked { Value argument, copy; Loc loc; };
+    std::vector<Checked> checked;  // COAX_LEND_ARGS=check
+    explicit Lent(Evaluator &ev) : ev(ev) {}
+    ~Lent() { if (__builtin_expect(!checked.empty(), 0)) compare(); }
+    __attribute__((noinline)) void compare() {
+      for (const Checked &c : checked)
+        if (!same_value(c.argument, c.copy)) ev.lend_stop("changed while its callee ran", c.loc);
+    }
+    void stand(const Shape &s, Loc origin) {
+      const std::shared_ptr<CtMemory> &memory = ev.file->ct_memory;
+      CtStandIn *node;
+      if (!first) { first.emplace(memory); node = &*first; }
+      else { more.push_back(std::make_unique<CtStandIn>(memory)); node = more.back().get(); }
+      // The stand-in is one storage itself; its destructor gives all of it back.
+      memory->take_containers(1);
+      node->origin = origin;
+      node->origin_proc = ev.active.empty() ? nullptr : ev.active.back();
+      memory->remember(node);
+      memory->take_containers(s.storages - 1);
+      node->storages = s.storages - 1;
+      if (s.slots) memory->take_slots((size_t)s.slots);
+      node->slots = s.slots;
+    }
+  };
+  // The value a parameter takes for the argument at *v: the argument itself,
+  // sharing its storage (lent), or its copy.
+  Value lend(const Value &v, Loc loc, Lent &lent, bool *shared) {
+    *shared = false;
+    Shape s;
+    s.visits = 1;
+    const bool plain = is_aggregate(v.type) && v.agg && shape_below(v, s) && s.visits > (uint64_t)LEND_SMALL + 1 &&
+                       CB_admit(traversal_work, s.visits, traversal_limit) &&
+                       file->ct_memory->admits_quietly(s.storages, s.slots);
+    if (lend_mode() == 2) {
+      const CtMemory &m = *file->ct_memory;
+      const uint64_t visits = traversal_work, storages = m.containers, slots = m.slots;
+      Value copy = clone(v);
+      if (!plain || failed) return copy;
+      if (traversal_work - visits != s.visits || m.containers - storages != s.storages || m.slots - slots != s.slots)
+        lend_stop("was charged differently from its copy", loc);
+      lent.checked.push_back({v, std::move(copy), loc});
+      *shared = true;
+      return v;
+    }
+    if (!plain) return clone(v);
+    lent.stand(s, current_loc);
+    traversal_work += s.visits;
+    *shared = true;
+    return v;
+  }
+  // Whether evaluating e can write storage that exists before it does: only
+  // a call can, and by 3 only one whose callee is handed a writable view
+  // (secure_zero is handed one).
+  static bool may_write(const Expr *e) {
+    if (!e) return false;
+    if (e->kind == ExprKind::call) {
+      if (e->byte_intrinsic == ByteIntrinsic::secure_zero) return true;
+      if (e->proc) for (const Param &param : e->proc->params) if (writable(param.type)) return true;
+    }
+    if (may_write(e->lhs) || may_write(e->rhs) || may_write(e->third)) return true;
+    for (const Expr *a : e->args) if (may_write(a)) return true;
+    for (const FieldInit &f : e->fields) if (may_write(f.value)) return true;
+    return false;
+  }
+  // One argument into the callee's frame, lent or copied: expression()'s
+  // reading of a place, step for step, up to its copy. An outcome when the
+  // call does not go on (a failure, or a propagation out of the argument).
+  // Kept out of expression(), whose frame every evaluated node pays for.
+  __attribute__((noinline)) std::optional<ExprOutcome> lend_argument(Expr *arg, Str name, CtFrame &frame, CtFrame &callee,
+                                                                     bool allow_calls, Lent &lent) {
+    if (!tick(arg->loc)) return ExprOutcome{};
+    Holder h;
+    CtLocal *root = nullptr;
+    refund();
+    auto located = place(arg, frame, h, allow_calls, &root);
+    if (located.returning) return ExprOutcome::returned(std::move(located.returned_value));
+    Value *v = located.value;
+    if (!v || failed) return ExprOutcome{};
+    if (root && !root->initialized) {
+      err(arg->loc, "E0405", "compile-time read of an uninitialized variable");
+      return ExprOutcome{};
+    }
+    bool shared = false;
+    Value value = lend(*v, arg->loc, lent, &shared);
+    if (failed) return ExprOutcome{};
+    callee.locals.push_back({name, std::move(value), true, shared});
+    return std::nullopt;
+  }
+  // The first argument after which no argument can write (4 above).
+  __attribute__((noinline)) static int32_t lend_from(const Expr *call) {
+    int32_t from = 0;
+    for (int32_t i = 0; i < call->args.count; i++) if (may_write(call->args[i])) from = i;
+    return from;
   }
 
   struct TxBefore {
@@ -1418,6 +1750,12 @@ struct Evaluator {
           std::vector<CtLocal> &locals;
           ~ReturnLocals() { locals.clear(); pool[depth].swap(locals); }
         } return_locals{local_pool, depth, callee.locals};
+        // Aggregate arguments this callee can take without a copy (#13609).
+        // Nothing is set up for a callee that can take none: most calls.
+        const uint64_t lendable_bits = lend_mode() && e->args.count ? lendable(e->proc) : 0;
+        int32_t lend_after = 0;
+        std::optional<Lent> lent;
+        if (lendable_bits) { lend_after = lend_from(e); lent.emplace(*this); }
         // Argument copies are charged to this call site, not to the caller (#12926).
         const uint64_t args_traversal = traversal_work;
         const uint64_t args_inner = open.empty() ? site_inner.traversal : open.back().traversal;
@@ -1448,7 +1786,14 @@ struct Evaluator {
             callee.locals.push_back({e->proc->params[i].name, scalar_value(v), true});
             continue;
           }
-          CT_EVAL(value,e->args[i]);
+          Expr *arg = e->args[i];
+          if (i < 64 && ((lendable_bits >> i) & 1) && i >= lend_after && is_aggregate(arg->type) &&
+              (arg->kind == ExprKind::ident || arg->kind == ExprKind::index || (arg->kind == ExprKind::field && arg->field_index >= 0))) {
+            std::optional<ExprOutcome> early = lend_argument(arg, e->proc->params[i].name, frame, callee, allow_calls, *lent);
+            if (early) return std::move(*early);
+            continue;
+          }
+          CT_EVAL(value,arg);
           if (failed) return {};
           callee.locals.push_back({e->proc->params[i].name, std::move(value), true});
         }
@@ -1599,8 +1944,10 @@ struct Evaluator {
         Value base;
         int64_t count = 0;
         if (lt->kind == TypeKind::array) {
-          auto located=place(e->lhs,frame,h,allow_calls);if(located.returning)return ExprOutcome::returned(std::move(located.returned_value));Value *storage=located.value;
+          CtLocal *root = nullptr;
+          auto located=place(e->lhs,frame,h,allow_calls,&root);if(located.returning)return ExprOutcome::returned(std::move(located.returned_value));Value *storage=located.value;
           if (!storage || failed) return {};
+          if (root && root->lent) { err(e->loc, "E0401", "internal: a view of a parameter that shares its argument's storage"); return {}; }
           base.type = e->type;
           base.agg = storage->agg;
           base.offset = 0;
@@ -1658,6 +2005,7 @@ struct Evaluator {
         std::vector<TxBefore> log;std::set<std::tuple<uintptr_t,int64_t,int64_t,uintptr_t>> seen;
         std::set<std::tuple<uintptr_t,int64_t,int64_t>> saved;
         std::vector<CtLocal> locals_before=frame.locals;
+        for(const CtLocal &local:locals_before)if(local.lent){err(s->loc,"E0401","internal: a transaction in a frame whose parameter shares its argument's storage");return Flow::normal;}
         for(auto at=locals_before.rbegin();at!=locals_before.rend();++at){
           if(at->initialized)transaction_capture(at->value,log,seen,saved,s->loc);
           if(failed)return Flow::normal;
@@ -1711,6 +2059,7 @@ struct Evaluator {
         if(located.returning){*returned=std::move(located.returned_value);return Flow::ret;}
         Value *place=located.value;
         if(!place || failed)return Flow::normal;
+        if(root && root->lent){err(s->loc,"E0401","internal: a write to a parameter that shares its argument's storage");return Flow::normal;}
         Value value;
         if (scalar_type(s->expr->type)) { CT_STMT_SCALAR(scalar,s->expr);value=scalar_value(scalar); }
         else { CT_STMT_EVAL(computed,s->expr);value=std::move(computed); }

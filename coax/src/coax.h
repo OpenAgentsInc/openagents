@@ -368,6 +368,7 @@ struct TypeInfo {
   int32_t sum_payload_offset = 0;
   int32_t sum_default = -1;  // checked default tag; -1 means no implicit construction
   mutable uint8_t transaction_presence = 0; // physical mutable-view graph: unknown/no/yes
+  mutable uint8_t ct_writable = 0; // a writable view is reachable from a value of this type: unknown/no/yes (eval.cpp, #13609)
 };
 using Type = const TypeInfo *;
 
@@ -412,6 +413,7 @@ struct CtMemory {
   bool draining = false;
   void dispose(CtStorage *storage) noexcept;
   void remember(const std::shared_ptr<CtStorage> &storage);
+  void remember(CtStorage *storage) noexcept;
   void forget(CtStorage *storage) noexcept;
   void clear_cycles() noexcept;
   // Who holds the slots (#12926): the live storages grouped by where they
@@ -433,6 +435,13 @@ struct CtMemory {
   void take_slots(size_t n);
   void release_slots(size_t n) noexcept { slots -= n; }
   void take_container();
+  // An argument passed without its copy (#13609) still holds what the copy
+  // would: `containers` storages and `slots` slots, taken at once. True when
+  // the copy's own requests would all be admitted and none would be a new
+  // peak that snapshots its holders, so taking them at once is the same.
+  bool admits_quietly(uint64_t containers_wanted, uint64_t slots_wanted) const;
+  void take_containers(uint64_t n) noexcept { containers += n; if (containers > peak_containers) peak_containers = containers; }
+  uint64_t snapshot_threshold() const;
   void take_string(size_t n);
   void release_string(size_t n) noexcept { string_bytes -= n; }
   void release_container() noexcept { --containers; }
@@ -468,10 +477,19 @@ struct CtStorage : std::vector<Value, CtAllocator<Value>>, std::enable_shared_fr
   CtStorage *pending_next = nullptr;
   CtStorage *live_prev = nullptr, *live_next = nullptr;  // CtMemory::live
   bool linked = false;
+  bool stand_in = false;                       // a CtStandIn (below)
   Loc origin;                                  // the expression that made it (#12926)
   const struct ProcDecl *origin_proc = nullptr; // the procedure evaluating it, if any
   explicit CtStorage(std::shared_ptr<CtMemory> memory);
   ~CtStorage();
+};
+// An empty storage standing for an argument's copy that was not made
+// (#13609): the slots and the further storages that copy would hold. It is
+// counted and reported as they would be, and gives them back when it goes.
+struct CtStandIn : CtStorage {
+  uint64_t slots = 0, storages = 0;
+  explicit CtStandIn(std::shared_ptr<CtMemory> memory) : CtStorage(std::move(memory)) { stand_in = true; }
+  ~CtStandIn() { owner->release_slots(slots); owner->containers -= storages; }
 };
 
 struct Value {
@@ -607,6 +625,9 @@ struct ProcDecl {
   uint64_t ct_executed_mark = 0;  // the evaluator that last recorded entering it (Evaluator::executed)
   uint64_t ct_cost_mark = 0;      // the evaluator whose cost row ct_cost_row is (Evaluator::costs, #12926)
   uint32_t ct_cost_row = 0;
+  // The evaluator whose answer ct_lend is: bit i, parameter i may be passed
+  // without a copy (Evaluator::lendable, #13609).
+  uint64_t ct_lend_mark = 0, ct_lend = 0;
   Str name;
   int32_t scope = 0;  // a name two modules declare: its C spelling's module scope (0: the plain name)
   Loc loc;

@@ -1,0 +1,13 @@
+// #run with by-value arguments: the compilation's steps, traversal and storage peaks (#13609).
+Rec :: struct { x: int; v: [64] int; rows: [8] Row; }
+Row :: struct { a: int; v: [4] int; }
+sum :: (r: Rec, k: int) -> int { t := r.x; for i: 0..<64 { t += r.v[i]; } return t + r.rows[k % 8].v[k % 4] + r.rows[k % 8].a; }
+down :: (r: Rec, n: int) -> int { if n == 0 { return sum(r, 0); } return down(r, n - 1) + sum(r, n); }
+work :: () -> int {
+  r: Rec; t := 0;
+  for i: 0..<64 { r.v[i] = i; }
+  for k: 0..<200 { r.x = k; r.rows[k % 8].v[k % 4] = k; t += sum(r, k) + down(r, k % 40); }
+  return t;
+}
+W :: #run work();
+main :: () {}

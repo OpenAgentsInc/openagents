@@ -97,6 +97,15 @@ Commit: [`09101c58f972b76c8fcdd6f9315d1026b6a95837`](https://github.com/OpenAgen
   mutant, and a native kill there is the verdict; a loop still runs out of
   ticks. The report names each such check and why, and counts a mutant native
   code could not run it for as "not decided". `coax mutate` takes `--slots N`.
+- Follow-up 2026-11-14 (#13609): the evaluator passes a struct or array
+  argument without copying it when no program can tell: the callee and its
+  other parameters hold no writable view, the callee takes no slice of the
+  parameter and has no `#transaction`, and no later argument can write.
+  Results, steps, traversal work, value slots and every refusal are the same
+  as with the copy, which is still made in every other case. Checks on large
+  records run faster: the rules' battle baseline under `coax mutate` went
+  from 148 s to 87 s on the same 1,291,611,592 steps. See
+  [evaluator arguments](docs/evaluator-arguments.md).
 
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 

@@ -1,0 +1,4 @@
+// An uninitialized record as a by-value argument is refused where it is read (#13609).
+Rec :: struct { x: int; v: [3] int; }
+get :: (r: Rec) -> int { return r.x; }
+#test "an uninitialized argument" { r: Rec = ---; #assert get(r) == 0; }

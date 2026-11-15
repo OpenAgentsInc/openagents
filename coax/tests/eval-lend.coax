@@ -1,0 +1,206 @@
+// By-value aggregate arguments in the evaluator (#13609, coax/docs/evaluator-arguments.md).
+//   coax/web/tool.sh coax/tests/eval-lend.coax COMPILER
+// Run from coax/. The evaluator passes a struct or array argument without
+// copying it when nothing can tell. This holds it to that, three ways each:
+// as it ships, with every argument copied (COAX_LEND_ARGS=0), and with the
+// copy made and compared (COAX_LEND_ARGS=check, which stops the compiler when
+// an argument changed under its callee or was charged differently).
+//   tests/eval-lend/cases.coax   every way a program could tell: its checks
+//     and #run constants carry the answers native code prints, and each
+//     check's steps are the ones the compiler charged before the change.
+//   tests/eval-lend/limits.coax  what a copy charges is still charged: the
+//     same checks pass, come near a limit and are refused, with one report.
+//   tests/eval-lend/uninit.coax  an uninitialized argument is refused at its read.
+//   tests/eval-lend/run.coax     a compilation's steps, traversal and storage peaks.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+// Whether part occurs anywhere in text.
+has :: (text: string, part: string) -> bool {
+  for at: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[at + j] != part[j] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+#test "has finds a part anywhere and nothing that is not there" {
+  #assert has("abc", "a") && has("abc", "bc") && has("abc", "abc") && has("abc", "");
+  #assert !has("abc", "abcd") && !has("abc", "cb") && !has("", "a") && !has("ab", "bb");
+}
+
+// text without its times: each "N ms" loses its digits, since a time is the one part of a
+// report that may differ between two runs.
+strip_ms :: (text: string, out: [] u8) -> string {
+  n := 0;
+  for i: 0..<text.count {
+    c := text[i];
+    if c >= '0' && c <= '9' {
+      j := i;
+      while j < text.count && text[j] >= '0' && text[j] <= '9' { j += 1; }
+      if j + 2 < text.count && text[j] == ' ' && text[j + 1] == 'm' && text[j + 2] == 's' { continue; }
+    }
+    if n < out.count { out[n] = c; n += 1; }
+  }
+  return cast(string) out[0..<n];
+}
+#test "strip_ms drops the digits of a time and nothing else" {
+  out: [64] u8;
+  #assert strip_ms("ok (1 case, 853 steps, 12 ms)", out[..]) == "ok (1 case, 853 steps,  ms)";
+  #assert strip_ms("FAIL x (0 ms) 17:3 ms", out[..]) == "FAIL x ( ms) 17: ms";
+  #assert strip_ms("12 m 34 msx 5", out[..]) == "12 m  msx 5" && strip_ms("", out[..]) == "";
+}
+
+// The number after "key": in a JSON report, or -1.
+number_at :: (text: string, key: string) -> int {
+  for at: 0..<text.count - key.count + 1 {
+    same := true;
+    for j: 0..<key.count { if text[at + j] != key[j] { same = false; break; } }
+    if !same { continue; }
+    v := 0; i := at + key.count; any := false;
+    while i < text.count && text[i] >= '0' && text[i] <= '9' { v = v * 10 + cast(int) (text[i] - '0'); i += 1; any = true; }
+    return ifx any then v else -1;
+  }
+  return -1;
+}
+#test "number_at reads the digits after a key" {
+  #assert number_at("{\"a\":12,\"steps\":345}", "\"steps\":") == 345 && number_at("{\"a\":12}", "\"a\":") == 12;
+  #assert number_at("{\"a\":x}", "\"a\":") == -1 && number_at("{}", "\"a\":") == -1;
+}
+
+MODES :: 3;
+mode_name :: (m: int) -> string { return ifx m == 0 then "" else ifx m == 1 then "0" else "check"; }
+mode_says :: (m: int) -> string { return ifx m == 0 then "as shipped" else ifx m == 1 then "every argument copied" else "copies compared"; }
+
+// Runs `COMPILER VERB FILE REST` in the evaluator alone (no native checks, no resident compiler,
+// its own empty check cache) under a mode; out gets stdout and stderr.
+SCRIPT :: "if [ -n \"$5\" ]; then export COAX_LEND_ARGS=\"$5\"; else unset COAX_LEND_ARGS; fi; export COAX_SERVE=0 COAX_NATIVE_CHECKS=0; COAX_CHECK_CACHE=\"$(mktemp -d)\"; export COAX_CHECK_CACHE; \"$1\" $2 \"$3\" $4 2>&1; rc=$?; rm -rf \"$COAX_CHECK_CACHE\"; exit $rc";
+run :: (compiler: string, verb: string, file: string, rest: string, m: int, out: [] u8) -> ProcRun {
+  argv := [8] string.["sh", "-c", SCRIPT, "sh", compiler, verb, file, rest];
+  full := [9] string.[argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6], argv[7], mode_name(m)];
+  err: [1024] u8;
+  return proc_run(full[..], 300000, out, err[..]);
+}
+// `COMPILER check FILE --timings T`, then T's text.
+TIMED :: "if [ -n \"$3\" ]; then export COAX_LEND_ARGS=\"$3\"; else unset COAX_LEND_ARGS; fi; export COAX_SERVE=0; t=\"$(mktemp)\"; \"$1\" check \"$2\" --run-steps 250000000 --timings \"$t\" 2>&1; rc=$?; cat \"$t\"; rm -f \"$t\"; exit $rc";
+timed :: (compiler: string, file: string, m: int, out: [] u8) -> ProcRun {
+  argv := [7] string.["sh", "-c", TIMED, "sh", compiler, file, mode_name(m)];
+  err: [1024] u8;
+  return proc_run(argv[..], 300000, out, err[..]);
+}
+
+CASES :: "tests/eval-lend/cases.coax";
+// What `coax run` of the scenes prints: each line, the evaluator's #run answer and native code's.
+ANSWERS :: [13] string.[
+  "copy 65933 65933", "nested 68150 68150", "alias 2117244175 2117244175", "order 4205141542615 4205141542615",
+  "borrow 12997 12997", "recursion 47823000 47823000", "transaction 808900070917 808900070917", "defer 50990 50990",
+  "values 313776 313776", "returned 5381 5381", "reads 3105858 3105858", "later 132042542225 132042542225",
+  "wide 65006112300 65006112300"];
+// Each check with the steps the evaluator charged before it lent an argument (coax0 0.52.0, 4b67632989).
+STEPS :: [13] string.[
+  "ok   #test the callee writes a copy of its parameter (1 case, 1110 steps,",
+  "ok   #test a nested field and an element as the argument (1 case, 657 steps,",
+  "ok   #test the argument's storage behind a writable view (1 case, 454 steps,",
+  "ok   #test a later argument's call writes an earlier argument (1 case, 321 steps,",
+  "ok   #test the callee borrows its parameter (1 case, 361 steps,",
+  "ok   #test recursion and a caller that writes between calls (1 case, 2451 steps,",
+  "ok   #test a transaction in the callee (1 case, 857 steps,",
+  "ok   #test deferred statements read the parameter (1 case, 240 steps,",
+  "ok   #test a constant and a call's result as the argument (1 case, 978 steps,",
+  "ok   #test the parameter returned and kept (1 case, 318 steps,",
+  "ok   #test the parameter iterated, passed twice and passed on (1 case, 1815 steps,",
+  "ok   #test a later argument that calls (1 case, 559 steps,",
+  "ok   #test a whole array read and behind a writable view (1 case, 621 steps,"];
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: eval-lend.coax COMPILER"); return 2; }
+  compiler := args_at(a[..], 0);
+  bad := 0;
+  out: [131072] u8;
+  first: [131072] u8; first_n := 0;
+  plain: [131072] u8;
+
+  // The scenes: #run and native code agree with the answers, in every mode.
+  for m: 0..<MODES {
+    r := run(compiler, "run", CASES, "", m, out[..]);
+    t := cast(string) out[0..<r.out_n];
+    all := r.status == 0;
+    for line: ANSWERS { if !has(t, line) { all = false; } }
+    bad += check(all, mode_says(m));
+    if !all { print("%\n", t); }
+  }
+  print("the scenes, compiled and run\n");
+
+  // The same as checks, with the steps of before.
+  for m: 0..<MODES {
+    r := run(compiler, "test", CASES, "", m, out[..]);
+    t := cast(string) out[0..<r.out_n];
+    all := r.status == 0 && has(t, "13 checks, 13 passed, 0 failed");
+    for line: STEPS { if !has(t, line) { all = false; } }
+    bad += check(all, mode_says(m));
+    if !all { print("%\n", t); }
+  }
+  print("the scenes, as checks with their steps\n");
+
+  // The generated C is the same text whether or not arguments were lent while compiling.
+  for m: 0..<MODES {
+    r := run(compiler, "c", CASES, "", m, out[..]);
+    t := cast(string) out[0..<r.out_n];
+    if m == 0 { for i: 0..<r.out_n { first[i] = out[i]; } first_n = r.out_n; }
+    bad += check(r.status == 0 && !r.cut && r.out_n > 1000 && t == cast(string) first[0..<first_n], mode_says(m));
+  }
+  print("the scenes' generated C\n");
+
+  // The limits: one report for every mode, with what it must say.
+  for m: 0..<MODES {
+    r := run(compiler, "test", "tests/eval-lend/limits.coax", "--library", m, out[..]);
+    t := strip_ms(cast(string) out[0..<r.out_n], plain[..]);
+    if m == 0 {
+      for i: 0..<t.count { first[i] = plain[i]; } first_n = t.count;
+      bad += check(r.status == 1 && has(t, "5 checks, 2 passed, 3 failed"), "two checks pass near a limit and three are refused");
+      bad += check(has(t, "ok   #test copies held down a recursion come near the value slots (1 case, 600604 steps,"), "near the value slots, with its steps");
+      bad += check(has(t, "compile-time aggregate storage limit exceeded: 33600056 value slots needed, the limit is 33554432"), "out of value slots at the same request");
+      bad += check(has(t, "32400054 slots  tests/eval-lend/limits.coax:10:76  108 arrays and structs made here in 'hold'"), "the copies down the recursion hold the slots");
+      bad += check(has(t, "compile-time aggregate storage limit exceeded: 2097153 arrays and structs needed, the limit is 2097152"), "out of arrays and structs at the same request");
+      bad += check(has(t, "1937149 arrays and structs  tests/eval-lend/limits.coax:11:92  1937149 arrays and structs made here in 'hold_grid'"), "the copies down the recursion hold the storages");
+      bad += check(has(t, "ok   #test copies in a loop come near the traversal limit (1 case, 601991 steps,"), "near the traversal limit, with its steps");
+      bad += check(has(t, "compile-time aggregate traversal limit exceeded: 134217729 value and field visits needed, the limit is 134217728"), "out of traversal at the same visit");
+      bad += check(has(t, "133617727 visits  tests/eval-lend/limits.coax:17:104  copying arguments into 'first' (223 calls)"), "the visits are the argument copies'");
+      bad += check(has(t, "compile-time traversal work: 108600361 of 134217728 used (80%)"), "the traversal use near its limit");
+      bad += check(has(t, "compile-time value slots: 33000056 of 33554432 used (98%)"), "the value slots' peak near its limit");
+      if bad != 0 { print("%\n", t); }
+    } else {
+      bad += check(t == cast(string) first[0..<first_n], mode_says(m));
+    }
+  }
+  print("the limits\n");
+
+  for m: 0..<MODES {
+    r := run(compiler, "test", "tests/eval-lend/uninit.coax", "--library", m, out[..]);
+    t := cast(string) out[0..<r.out_n];
+    bad += check(r.status == 1 && has(t, "tests/eval-lend/uninit.coax:4:63: error[E0405]: compile-time read of an uninitialized variable"), mode_says(m));
+  }
+  print("an uninitialized argument\n");
+
+  // A compilation's own meters.
+  for m: 0..<MODES {
+    r := timed(compiler, "tests/eval-lend/run.coax", m, out[..]);
+    t := cast(string) out[0..<r.out_n];
+    bad += check(r.status == 0 && number_at(t, "\"evaluated_steps\":") == 2117938 && number_at(t, "\"aggregate_traversal_work\":") == 1041729 &&
+                 number_at(t, "\"aggregate_peak_slots\":") == 5167 && number_at(t, "\"aggregate_peak_containers\":") == 798, mode_says(m));
+  }
+  print("a compilation's steps, traversal and storage peaks\n");
+
+  if bad == 0 { print("eval-lend: ok\n"); return 0; }
+  print("eval-lend: % failed\n", bad);
+  return 1;
+}
