@@ -1,0 +1,76 @@
+// psionic.robotics.experiment.v1: the one RXE1 codec. See docs/protocol/robotics-experiment-v1.md.
+#load "experiment-policy.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+#authority;
+RXW_HEAD :: 240;
+RXW_MAX :: 2096;
+RXW_JOINTS :: 16; // published v1 caps stay fixed if a future decoded profile grows
+RXW_OBSERVATIONS :: 32;
+RexWireStatus :: enum u8 {ok;shape;length;magic;identity;policy;number;}
+RexWireResult :: struct {status:RexWireStatus;policy:RexStatus;bytes:int;digest:[32]u8;}
+#load "experiment-wire-checks.coax" #test;
+
+rxw_size :: (joints:int,observations:int)->int #effects(all) {
+  if joints<1 || joints>RXW_JOINTS || observations<1 || observations>RXW_OBSERVATIONS {return 0;}
+  return RXW_HEAD+52*joints+32*observations;
+}
+rxw_digest :: (bytes:[]u8)->[32]u8 #effects(all) {
+  digest:[32]u8;#assert sha256_tagged_checked("psionic.robotics.experiment.v1",bytes,digest[..],false)==SHA_OK;return digest;
+}
+rxw_u32 :: (b:[]u8,at:int)->int #effects(all) {r:=cb_load_le32(b,at);#assert r.ok;return cast(int)r.value;}
+rxw_u64 :: (b:[]u8,at:int)->u64 #effects(all) {r:=cb_load_le64(b,at);#assert r.ok;return r.value;}
+rxw_put32 :: (b:[]u8,at:int,v:int) #effects(all) {#assert cb_store_le32(b,at,cast,trunc(u32)v);}
+rxw_put64 :: (b:[]u8,at:int,v:f64) #effects(all) {#assert cb_store_le64(b,at,f64_bits(v));}
+rxw_put_id :: (b:[]u8,at:int,id:[32]u8) #effects(all) {copy:=id;#assert cb_copy_checked(copy[..],b[at..<at+32],false);} // mutant: equivalent (a 33-byte destination still copies only the 32 source bytes)
+rxw_get_id :: (b:[]u8,at:int)->[32]u8 #effects(all) {id:[32]u8;#assert cb_copy_checked(b[at..<at+32],id[..],false);return id;}
+
+rxw_write :: (c:RexExperiment,expected:RexEmbodiment,out:[]u8)->RexWireResult #export_c #effects(all) {
+  size:=rxw_size(c.embodiment.count,c.observation_count);
+  if size==0 || out.count!=size {return RexWireResult.{status=RexWireStatus.shape};}
+  status:=rex_check(c,expected);if status!=RexStatus.ok {return RexWireResult.{status=RexWireStatus.policy,policy=status};}
+  stage:[RXW_MAX]u8;stage[0]='R';stage[1]='X';stage[2]='E';stage[3]='1';
+  meta:=[11]int.[size,c.embodiment.count,c.observation_count,c.frame,c.target,c.physics_ns,c.control_ns,c.worlds,c.horizon,c.cycles,c.seed];
+  for i:0..<11 {rxw_put32(stage[..],4+i*4,meta[i]);}
+  rxw_put_id(stage[..],48,c.embodiment.model);rxw_put_id(stage[..],80,c.embodiment.assembly);rxw_put_id(stage[..],112,c.embodiment.calibration);
+  rxw_put_id(stage[..],144,c.task);rxw_put_id(stage[..],176,c.partition);rxw_put_id(stage[..],208,c.evaluator);
+  at:=RXW_HEAD;
+  for i:0..<c.embodiment.count {
+    j:=c.embodiment.joints[i];ints:=[5]int.[j.joint,j.motor,j.sign,j.unit,j.mode];values:=[4]f64.[j.home.value,j.scale.value,j.low.value,j.high.value];
+    for k:0..<5 {rxw_put32(stage[..],at+4*k,ints[k]);}for k:0..<4 {rxw_put64(stage[..],at+20+8*k,values[k]);}at+=52;
+  }
+  for i:0..<c.observation_count {
+    o:=c.observations[i];ints:=[4]int.[o.joint,o.signal,o.unit,o.frame];
+    for k:0..<4 {rxw_put32(stage[..],at+4*k,ints[k]);}rxw_put64(stage[..],at+16,o.offset);rxw_put64(stage[..],at+24,o.scale);at+=32;
+  }
+  digest:=rxw_digest(stage[0..<size]);#assert cb_copy_checked(stage[0..<size],out,false);
+  return RexWireResult.{status=RexWireStatus.ok,bytes=size,digest=digest};
+}
+
+rxw_read :: (bytes:[]u8,expected:RexEmbodiment,artifact:[32]u8,out:[]RexExperiment)->RexWireResult #export_c #effects(all) {
+  if out.count!=1 {return RexWireResult.{status=RexWireStatus.shape};}
+  if bytes.count<RXW_HEAD || bytes.count>RXW_MAX {return RexWireResult.{status=RexWireStatus.length};}
+  if bytes[0]!='R' || bytes[1]!='X' || bytes[2]!='E' || bytes[3]!='1' {return RexWireResult.{status=RexWireStatus.magic};}
+  n:=rxw_u32(bytes,8);m:=rxw_u32(bytes,12);size:=rxw_size(n,m);
+  if size==0 || size!=bytes.count || rxw_u32(bytes,4)!=size {return RexWireResult.{status=RexWireStatus.length};} // mutant: equivalent (size 0 cannot equal the already admitted positive input length, so 0->1 is redundant)
+  digest:=rxw_digest(bytes);if !rex_same_digest(digest,artifact) {return RexWireResult.{status=RexWireStatus.identity};}
+  stage:RexExperiment;stage.embodiment.count=n;stage.observation_count=m;
+  stage.frame=rxw_u32(bytes,16);stage.target=rxw_u32(bytes,20);stage.physics_ns=rxw_u32(bytes,24);stage.control_ns=rxw_u32(bytes,28);
+  stage.worlds=rxw_u32(bytes,32);stage.horizon=rxw_u32(bytes,36);stage.cycles=rxw_u32(bytes,40);stage.seed=rxw_u32(bytes,44);
+  stage.embodiment.model=rxw_get_id(bytes,48);stage.embodiment.assembly=rxw_get_id(bytes,80);stage.embodiment.calibration=rxw_get_id(bytes,112);
+  stage.task=rxw_get_id(bytes,144);stage.partition=rxw_get_id(bytes,176);stage.evaluator=rxw_get_id(bytes,208);
+  at:=RXW_HEAD;
+  for i:0..<n {
+    words:=[4]u64.[rxw_u64(bytes,at+20),rxw_u64(bytes,at+28),rxw_u64(bytes,at+36),rxw_u64(bytes,at+44)];
+    if !rex_joint_numbers(words) {return RexWireResult.{status=RexWireStatus.number};}
+    j:RexJoint;j.joint=rxw_u32(bytes,at);j.motor=rxw_u32(bytes,at+4);j.sign=cast(int)cast,trunc(s32)rxw_u32(bytes,at+8);j.unit=rxw_u32(bytes,at+12);j.mode=rxw_u32(bytes,at+16);
+    j.home.value=f64_from_bits(words[0]);j.scale.value=f64_from_bits(words[1]);j.low.value=f64_from_bits(words[2]);j.high.value=f64_from_bits(words[3]);stage.embodiment.joints[i]=j;at+=52;
+  }
+  for i:0..<m {
+    offset:=rxw_u64(bytes,at+16);scale:=rxw_u64(bytes,at+24);
+    if !rgp_finite2(offset,scale) {return RexWireResult.{status=RexWireStatus.number};}
+    o:RexObservation;o.joint=rxw_u32(bytes,at);o.signal=rxw_u32(bytes,at+4);o.unit=rxw_u32(bytes,at+8);o.frame=rxw_u32(bytes,at+12);
+    o.offset=f64_from_bits(offset);o.scale=f64_from_bits(scale);stage.observations[i]=o;at+=32;
+  }
+  status:=rex_admit(stage,expected,out);if status!=RexStatus.ok {return RexWireResult.{status=RexWireStatus.policy,policy=status};}
+  return RexWireResult.{status=RexWireStatus.ok,bytes=size,digest=digest};
+}

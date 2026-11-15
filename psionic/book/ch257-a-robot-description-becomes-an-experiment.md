@@ -1,8 +1,9 @@
 # 257. A robot description becomes an experiment
 
-> **Status: partly implemented.** The `decoded-joint-experiment-f64-v1` CPU
-> profile now admits decoded contracts and maps normalized joint actions.
-> Its wire codec, general robot import and physical integration remain open.
+> **Implemented profile: decoded-joint-experiment-f64-v1 with RXE1.** The CPU
+> profile admits decoded contracts, maps normalized joint actions and writes/reads
+> an identity-bound canonical record. General import and physical integration
+> remain separate work.
 
 A policy cannot discover what its action coordinates mean by looking at their
 shape. Fourteen numbers could be joint angles, angular increments, velocities
@@ -41,12 +42,13 @@ mapping must refuse the second, rather than silently accepting fourteen outputs.
 
 ## A small contract before a general importer
 
-The implemented first slice accepts already decoded bounded records and checks
+The implemented profile accepts decoded bounded records and checks
 their consistency. It does not start with an XML parser, online downloader or
 general robot compiler. Use a two-joint analytic fixture before a pinned biped.
 
-Record, conceptually, the following groups; wire field names and IDs are not
-published by this draft:
+The decoded profile and its registered RXE1 record carry these groups.
+Descriptions of source rights, general sensors and arbitrary robot models
+remain broader importer work:
 
 - Model and assembly revision, joint names/order, frame/unit conventions,
   source bytes and their rights.
@@ -68,6 +70,19 @@ universal small-robot interface.
 Every persistent or exchanged record starts with a specification and row in
 [the protocol registry](../../proto/README.md). Reuse its owning codec.
 The memory layout of a Coax struct is not the persistent schema.
+
+The [RXE1 specification](../../docs/protocol/robotics-experiment-v1.md) and
+[independent golden](../../proto/psionic/robotics-experiment-v1.json) now fix
+`psionic.robotics.experiment.v1`. The header is 240 bytes; each active joint
+adds 52 bytes and each observation 32. Our two-joint/four-observation fixture
+is therefore 240 + 2×52 + 4×32 = **472 bytes**. There are no inactive slots
+or padding in the record. The reader creates their declared defaults.
+
+The artifact digest is tagged SHA-256 over the entire record. The caller
+supplies its expected digest and expected embodiment before read publication.
+Unknown versions, wrong lengths, altered bytes, nonfinite words and inadmissible
+conventions refuse. A digest selected by the caller does not authenticate the
+physical origin of an assembly or authorize a motor.
 
 ## Independent checks and refusals
 
@@ -135,6 +150,7 @@ coax/bin/coax run psionic/examples/robot-experiment.coax
 
 ```text
 experiment: 2 joints, 4 observations, 4 worlds x 8 steps
+record RXE1: 472 bytes, digest bound
 joint 0 motor 1: requested -200 mrad, limited -100 mrad, saturated 1
 joint 1 motor 0: requested -375 mrad, limited -250 mrad, saturated 1
 changed map: status 6 (identity), targets unchanged
@@ -143,7 +159,8 @@ changed map: status 6 (identity), targets unchanged
 The robotics dispatcher compares this complete transcript in debug and release.
 Its native qualifier separately checks the hand-derived action table and
 nonfinite values with ASan/UBSan. [The receipt](../../docs/verification/robotics-experiment-rb01-2026-11-15.md)
-states what passed and what remains open.
+and [record receipt](../../docs/verification/robotics-experiment-wire-2026-11-15.md)
+state what passed and what remains open.
 
 ## Existing owners and the next slice
 
@@ -154,6 +171,6 @@ admission remains engine/Coax work; fixed Panda coefficients do not become a
 generic importer by renaming them.
 
 [RB-01 in the implementation roadmap](../docs/robotics/microduck-implementation-roadmap.md#rb-01-experiment-and-embodiment-admission)
-records the implemented first slice and the next codec work. [Chapter 258](ch258-a-servo-that-behaves-like-the-motor.md)
+records the completed RB-01 CPU component and the next actuator work. [Chapter 258](ch258-a-servo-that-behaves-like-the-motor.md)
 then gives the admitted joint a response model instead of assuming that it
 instantly reaches its target.

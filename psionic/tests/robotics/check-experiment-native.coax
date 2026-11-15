@@ -4,7 +4,12 @@
 tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) || args_count(args[..])>1 {return 2;}
   phase:=ifx args_count(args[..])==0 then "all" else args_at(args[..],0);
-  if phase!="all" && phase!="native" && phase!="example" {tool_errln("usage: check-experiment-native [all|native|example]");return 2;}
+  if phase=="wire" {
+    command:=[3]string.["python3","-I","psionic/tests/robotics/experiment_wire_oracle.py"];out:[4096]u8;
+    n:=nc_run(command[..],30,out[..]);if n<0 {return 1;}print("%\n",cast(string)out[0..<n]);
+    return nc_qualify("psionic/tests/robotics/experiment-wire-native.coax","experiment_wire_native_checks");
+  }
+  if phase!="all" && phase!="native" && phase!="example" {tool_errln("usage: check-experiment-native [all|native|example|wire]");return 2;}
   if phase!="example" {status:=nc_qualify("psionic/tests/robotics/experiment-native.coax","experiment_native_checks");if status!=0 {return status;}}
   if phase=="native" {return 0;}
   expected:[4096]u8;out:[65536]u8;k:=fs_read("psionic/fixtures/robotics/experiment/example.out",expected[..]);#assert k>0;

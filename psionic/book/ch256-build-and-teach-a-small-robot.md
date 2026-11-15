@@ -32,8 +32,8 @@ is [257: contract](ch257-a-robot-description-becomes-an-experiment.md),
 [263: package/runtime](ch263-export-a-policy-and-supervise-its-steps.md),
 [264: physical commissioning](ch264-run-the-policy-on-a-real-robot.md), and
 [265: the final route](ch265-a-course-a-flock-and-a-repeatable-result.md).
-Chapter 257 is now partly implemented for decoded CPU admission and action
-mapping. The other chapters remain design drafts until their own checks and
+Chapter 257 now implements decoded CPU admission, action mapping and
+identity-bound canonical records. The other chapters remain design drafts until their own checks and
 runnable evidence exist.
 
 The [coding-agent roadmap](../docs/robotics/microduck-implementation-roadmap.md)

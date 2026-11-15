@@ -1,7 +1,7 @@
 # Implementing the small-robot pipeline in Psionic
 
 **Date:** November 15, 2026. **Status:** coding-agent implementation brief.
-Design baseline: `5ed34eedcb`. RB-00 and the decoded RB-01a query now have
+Design baseline: `5ed34eedcb`. RB-00 and the complete RB-01 CPU query/record profile now have
 source and CPU component evidence. The remaining packages are plans; no
 hardware authorization or purchase is recorded here.
 
@@ -13,14 +13,16 @@ labels, not published protocol IDs or newly created GitHub issues.
 
 ## What an agent should implement first
 
-Continue **RB-01b** next: register the versioned inert experiment record,
-independent golden bytes and the owning codec. RB-01a's decoded two-joint
-contract, action map and atomic refusals are implemented. Preserve its
-expected-embodiment comparison and quantity semantics; its structs are not
-a stored format. The [freeze and inventory](experiment-contract-rb01.md)
-and [CPU receipt](../../../docs/verification/robotics-experiment-rb01-2026-11-15.md)
-state the boundary. Do not begin with a new simulator, a large model, an
-online asset fetcher or an experiment on motors.
+Continue **RB-02** next: the requested/limited actuator force, explicit delay
+state and independently checked scalar motion profile. RB-01a and RB-01b now
+implement decoded admission, action mapping and a registered identity-bound
+RXE1 record with one codec. Preserve its expected-embodiment comparison,
+quantity semantics and canonical active-record encoding. The
+[freeze and inventory](experiment-contract-rb01.md),
+[query receipt](../../../docs/verification/robotics-experiment-rb01-2026-11-15.md)
+and [record receipt](../../../docs/verification/robotics-experiment-wire-2026-11-15.md)
+state that CPU component boundary. Do not begin with a new simulator, a large
+model, an online asset fetcher or an experiment on motors.
 
 Then deliver RB-02 and RB-03 against independent scalar/analytic fixtures.
 Build vector policy scores and the shared neural update in RB-04/05, and
@@ -140,11 +142,13 @@ refusal and target. No expected numerical result comes only from the new code.
 
 ## RB-01: experiment and embodiment admission
 
-**Chapter 257. Dependencies:** RB-00. **State:** RB-01a is component qualified
-on CPU; the full package remains open. Shared `experiment-types.coax` and
-`experiment-policy.coax` now exist under `psionic/lib/robotics/`, with the
-runnable example and focused `robotics/experiment-policy` suite. RB-01b
-adds the owning `experiment-wire.coax` after schema/registry work.
+**Chapter 257. Dependencies:** RB-00. **State:** RB-01a and RB-01b are
+component qualified on CPU and integrated in the runnable example. Shared
+`experiment-types.coax`, `experiment-policy.coax` and `experiment-wire.coax`
+now exist under `psionic/lib/robotics/`. The focused suites are
+`robotics/experiment-policy` and `robotics/experiment-wire`; the registered
+persistent identity is `psionic.robotics.experiment.v1`. No product adoption
+or hardware qualification is recorded.
 
 Implement decoded bounded contract admission and the two-joint action map.
 Then add the versioned inert record and its one codec using shared formats.

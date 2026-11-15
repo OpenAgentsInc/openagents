@@ -1,0 +1,27 @@
+// Actual native RXE1 publication/refusal observations, including hostile IEEE words.
+#load "../../lib/robotics/experiment-wire.coax";
+#load "../../lib/robotics/experiment-fixtures.coax";
+#load "../../lib/robotics/experiment-wire-golden.coax";
+experiment_wire_native_checks :: ()->int #export_c #effects(all) {
+  c:=rex_fixture();b:[472]u8;out:=[1]RexExperiment.[c];
+  r:=rxw_write(c,c.embodiment,b[..]);#assert r.status==RexWireStatus.ok;
+  for k:0..<472 {#assert b[k]==RXW_GOLDEN[k];}for k:0..<32 {#assert r.digest[k]==RXW_GOLDEN_DIGEST[k];}
+  r=rxw_read(b[..],c.embodiment,RXW_GOLDEN_DIGEST,out[..]);#assert r.status==RexWireStatus.ok;rex_same_experiment(out[0],c);
+  for role:0..<6 {for bits:[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001,0x7ff0000000000001,0xfff8000000000001] {
+    bad:=c;value:=f64_from_bits(bits);for k:0..<472 {b[k]=165;}
+    if role==0 {bad.embodiment.joints[0].home.value=value;}if role==1 {bad.embodiment.joints[0].scale.value=value;}if role==2 {bad.embodiment.joints[0].low.value=value;}if role==3 {bad.embodiment.joints[0].high.value=value;}
+    if role==4 {bad.observations[0].offset=value;}if role==5 {bad.observations[0].scale=value;}
+    r=rxw_write(bad,bad.embodiment,b[..]);#assert r.status==RexWireStatus.policy && r.policy==RexStatus.number && r.bytes==0;
+    for v:b {#assert v==165;}
+    b=RXW_GOLDEN;at:=ifx role<4 then 260+8*role else 360+8*(role-4);#assert cb_store_le64(b[..],at,bits);
+    digest:=rxw_digest(b[..]);out[0]=c;out[0].seed=123;old:=out[0];r=rxw_read(b[..],c.embodiment,digest,out[..]);
+    #assert r.status==RexWireStatus.number && r.bytes==0;rex_same_experiment(out[0],old);
+  }}
+  full:[473]u8;for k:0..<472 {full[k]=RXW_GOLDEN[k];}
+  for length:0..<474 {out[0]=c;out[0].seed=123;old:=out[0];r=rxw_read(full[0..<length],c.embodiment,RXW_GOLDEN_DIGEST,out[..]);
+    if length==472 {#assert r.status==RexWireStatus.ok;}else {#assert r.status==RexWireStatus.length;rex_same_experiment(out[0],old);}
+  }
+  c=rex_fixture();c.observations[0].offset=f64_from_bits(0x8000000000000000);r=rxw_write(c,c.embodiment,b[..]);#assert r.status==RexWireStatus.ok;
+  r=rxw_read(b[..],c.embodiment,r.digest,out[..]);#assert r.status==RexWireStatus.ok && f64_bits(out[0].observations[0].offset)==0x8000000000000000;
+  return 0;
+}

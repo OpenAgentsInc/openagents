@@ -29,9 +29,11 @@ Keeping an old identity while swapping slots, signs or scales therefore refuses.
 This matches caller-provided expectations; it does not verify source files,
 licences, signatures, or the origin of an expected embodiment.
 
-The in-memory structs are not a persistent schema. The next RB-01 slice must
-register the versioned inert shape and independent golden bytes before adding
-its owning codec. No struct-memory dump is permitted as a shortcut.
+The in-memory structs are not a persistent schema. RB-01b now supplies the
+registered [RXE1 companion](../../../docs/protocol/robotics-experiment-v1.md)
+with independently frozen bytes and one owning codec. It stores only active
+records and reconstructs inactive slots at their declared type defaults.
+No struct-memory dump is permitted.
 
 ## Frozen supported profile
 
@@ -65,7 +67,7 @@ Saturation reports whether requested and limited differ. Results retain the
 joint and motor identifiers in action-slot order. All inputs and metadata
 are checked before staged targets are published. A refusal writes no output.
 Inactive fixed-array slots are copied by decoded admission but are not active
-bindings; the later codec must define canonical handling for those slots.
+bindings; the RXE1 codec omits those slots and restores their declared defaults.
 
 ## Independent fixture, fixed before the product functions
 
