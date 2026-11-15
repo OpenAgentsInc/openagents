@@ -83,6 +83,8 @@ import UIKit
         try p.input("nav.toggle");try render()
         XCTAssertEqual(workspace.sidebar.view.frame.width,338,accuracy:1)
         XCTAssertEqual(detail.view.frame.minX,338,accuracy:1)
+        XCTAssertTrue((workspace.sidebar.controls["nav.projects"] as? NativeButton)?.reference == true)
+        XCTAssertTrue((workspace.sidebar.controls["nav.search"] as? NativeField)?.reference == true)
         let drawer=UIGraphicsImageRenderer(bounds:window.bounds).image {ctx in window.layer.render(in:ctx.cgContext)}
         let drawerPicture=XCTAttachment(image:drawer);drawerPicture.name="OpenAgents navigation drawer";drawerPicture.lifetime = .keepAlways;add(drawerPicture)
         try p.input("nav.recent");try render();XCTAssertEqual(workspace.sidebar.view.frame.width,338,accuracy:1)

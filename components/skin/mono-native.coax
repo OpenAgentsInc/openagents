@@ -92,6 +92,18 @@ MonoButton :: struct {
   side: f64;          // an icon button's square
   icon: f64;          // an icon's size
 }
+#test "reference native buttons keep the mono palette without arcade typography" {
+ r:=reference_native_button(MB_ROW,MS_CURRENT);p:=reference_native_button(MB_PRIMARY,MS_REST);q:=reference_native_button(MB_QUIET,MS_REST);
+ #assert !r.upper && r.track==0 && r.bg==MONO_RAISED && r.line==MONO_CLEAR;
+ #assert !p.upper && p.bg==MONO_PRIMARY && p.ink==MONO_ON_PRIMARY && p.height==44;
+ #assert !q.upper && q.track==0 && q.height==44;
+}
+reference_native_button :: (variant:int,state:int)->MonoButton #export_c #effects(all) {
+ b:=mono_button(variant,state);b.upper=false;b.track=0;b.type=16;b.height=44;
+ if variant==MB_ROW {b.line=MONO_CLEAR;if state==MS_CURRENT {b.bg=MONO_RAISED;}}
+ if variant==MB_ICON && state==MS_REST {b.bg=MONO_SURFACE;b.line=MONO_LINE_DIM;}
+ return b;
+}
 mono_button :: (variant: int, state: int) -> MonoButton #export_c #effects(all) {
   b := MonoButton.{role = MF_BUTTON, bg = MONO_SURFACE, line = MONO_LINE, ink = MONO_INK, height = 44, pad = 18, type = 11, track = 0.18, upper = true, side = 32, icon = 16};
   if variant == MB_PRIMARY { b.bg = MONO_PRIMARY; b.line = MONO_PRIMARY; b.ink = MONO_ON_PRIMARY; }
@@ -123,6 +135,9 @@ mono_button :: (variant: int, state: int) -> MonoButton #export_c #effects(all) 
 
 // A field: one underline, bright while it is typed in.
 MonoField :: struct { role: int; bg: u32; line: u32; ink: u32; hint: u32; height: f64; pad: f64; }
+reference_native_field :: (focused:bool,disabled:bool)->MonoField #export_c #effects(all) {
+ f:=mono_field(focused,disabled);f.bg=MONO_SURFACE;return f;
+}
 mono_field :: (focused: bool, disabled: bool) -> MonoField #export_c #effects(all) {
   f := MonoField.{role = MF_FIELD, bg = MONO_CLEAR, line = MONO_LINE, ink = MONO_INK, hint = MONO_INK_FAINT, height = 44, pad = 12};
   if focused { f.line = MONO_LINE_BRIGHT; }

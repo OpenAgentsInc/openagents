@@ -214,6 +214,8 @@ final class NativeButton:UIButton {
     var floating=false {didSet {restyle()}}
     /// Native Liquid Glass for floating controls; older iOS keeps the shared frame.
     var glass=false {didSet {if glass != oldValue {restyle()}}}
+    /// Rounded reference controls with the shared monochrome palette.
+    var reference=false {didSet {if reference != oldValue {restyle()}}}
     /// A list row's hairline. A row that sets its own spacing (a tool call) goes without.
     var ruled=true {didSet {restyle()}}
     var drawerProgress:Float? {didSet {if (oldValue==nil) != (drawerProgress==nil) {restyle()};drawerPaint()}}
@@ -221,8 +223,8 @@ final class NativeButton:UIButton {
     var drawerRTL=false {didSet {drawerPaint()}}
     private func drawerPaint() {
         guard let drawerProgress else {return}
-        chrome.arcadePaint.kind=7;chrome.arcadePaint.ink=style.ink;chrome.arcadePaint.value=drawerProgress;chrome.arcadePaint.flags=(drawerInteractive ? 4:0)|(drawerRTL ? 8:0)
-        if glassView != nil {
+        if !reference {chrome.arcadePaint.kind=7;chrome.arcadePaint.ink=style.ink;chrome.arcadePaint.value=drawerProgress;chrome.arcadePaint.flags=(drawerInteractive ? 4:0)|(drawerRTL ? 8:0)}
+        if glassView != nil || reference {
             let name=drawerProgress < 0.5 ? "line.3.horizontal":drawerRTL ? "arrow.right":"arrow.left"
             glyph.image=UIImage(systemName:name,withConfiguration:UIImage.SymbolConfiguration(pointSize:CGFloat(style.icon),weight:.medium));glyph.isHidden=false
         }
@@ -249,7 +251,7 @@ final class NativeButton:UIButton {
     override var isHighlighted:Bool {didSet {if isHighlighted != oldValue {restyle()}}}
     override var isEnabled:Bool {didSet {if isEnabled != oldValue {restyle()}}}
     private var state_:Int64 {let n=NativeSkin.names;return busy ? n.busy:!isEnabled ? n.disabled:isHighlighted ? n.pressed:current ? n.current:n.rest}
-    private var style:coax_t_MonoButton {mono_button(variant.number,state_)}
+    private var style:coax_t_MonoButton {reference ? reference_native_button(variant.number,state_):mono_button(variant.number,state_)}
     private func restyle() {
         let s=style,t=NativeSkin.tokens
         #if compiler(>=6.2)
@@ -266,7 +268,7 @@ final class NativeButton:UIButton {
         if floating && state_==NativeSkin.names.rest {bg=t.ground & 0xffffff8c;line=t.line_dim}
         chrome.paint(role:s.role,bg:bg,line:line,deco:line,dashed:s.dashed,march:s.march)
         chrome.arcadePaint.flags=isHighlighted ? 1:0
-        chrome.arcadePaint.kind=variant == .action || variant == .rail ? 5:variant == .toggle ? 6:0
+        chrome.arcadePaint.kind=reference ? 8:variant == .action || variant == .rail ? 5:variant == .toggle ? 6:0
         chrome.arcadePaint.value=variant == .toggle && current ? 1:0
         if variant == .toggle {chrome.arcadePaint.ink=s.ink}
         let font:UIFont=s.upper ? NativeSkin.labelFont(CGFloat(s.type)):NativeTypography.font(CGFloat(s.type))
@@ -389,6 +391,7 @@ final class NativeFlow:UIView {
 
 /// A native editor with shared animated focus chrome.
 final class NativeField:UITextField {
+    var reference=false {didSet {if reference != oldValue {restyle()}}}
     var sensitive=false {didSet {if sensitive && !oldValue {NotificationCenter.default.addObserver(self,selector:#selector(clearSensitive),name:UIApplication.willResignActiveNotification,object:nil)}}}
     @objc private func clearSensitive() {if sensitive {text=nil;isSecureTextEntry=true}}
     private let chrome=NativeFrameView(role:NativeSkin.names.field)
@@ -402,9 +405,9 @@ final class NativeField:UITextField {
     required init?(coder:NSCoder) {fatalError()}
     override var isEnabled:Bool {didSet {restyle()}}
     override var placeholder:String? {didSet {restyle()}}
-    private var style:coax_t_MonoField {mono_field(isFirstResponder,!isEnabled)}
+    private var style:coax_t_MonoField {reference ? reference_native_field(isFirstResponder,!isEnabled):mono_field(isFirstResponder,!isEnabled)}
     private func restyle() {
-        let s=style;chrome.paint(role:s.role,bg:s.bg,line:s.line,deco:s.line);chrome.arcadePaint.flags=2 | (isFirstResponder ? 1:0);textColor=NativeSkin.color(s.ink)
+        let s=style;chrome.paint(role:s.role,bg:s.bg,line:s.line,deco:s.line);chrome.arcadePaint.kind=reference ? 8:0;chrome.arcadePaint.flags=2 | (isFirstResponder ? 1:0);textColor=NativeSkin.color(s.ink)
         if let placeholder {attributedPlaceholder=NSAttributedString(string:placeholder,attributes:[.foregroundColor:NativeSkin.color(s.hint),.font:NativeTypography.font(16)])}
     }
     override var intrinsicContentSize:CGSize {CGSize(width:UIView.noIntrinsicMetric,height:max(CGFloat(style.height),ceil((font?.lineHeight ?? 20)+20)))}

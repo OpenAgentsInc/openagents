@@ -2,16 +2,25 @@
 // input/semantics; shared kit components paint and animate those same bounds.
 // No text parser, editor, network or platform drawing is implemented here.
 #load "../skin/arcade.coax";
+#load "../skin/claude-reference.coax";
 #load "../kit/animated.coax";
 #load "../backend/gpu.coax";
 ARCADE_NODES :: 512; ARCADE_PRIMS :: 8192; ARCADE_VERTICES :: 32768;
 ARCADE_FRAME :: 0; ARCADE_ACTIVITY :: 1; ARCADE_PROGRESS :: 2; ARCADE_RULE :: 3; ARCADE_BOX :: 4; ARCADE_ACTION :: 5;
+ARCADE_REFERENCE :: 8;
 ArcadeNode :: struct {
  key:int;seen:bool;kind:int;role:int;x:f32;y:f32;w:f32;h:f32;cl:f32;ct:f32;cr:f32;cb:f32;
  bg:u32;line:u32;ink:u32;alpha:f32;value:f32;flags:int;
  entry:[1]ArMotion;press:[1]ArMotion;progress:[1]UiSpring;
 }
 ArcadeScene :: struct {nodes:[ARCADE_NODES]ArcadeNode;order:[ARCADE_NODES]int;prims:[ARCADE_PRIMS]Prim;atlas:[1]Atlas;clock:f32;dt:f32;reduced:bool;offered:int;refused:int;painted:int;}
+
+#test "reference frames use rounded shared controls rather than arcade corners" #steps 100000000 {
+ s:[1]ArcadeScene;out:[20000]f32;arcade_scene_begin(s[..],true);
+ #assert arcade_scene_add(s[..],1,ARCADE_REFERENCE,MF_ROW,10,20,100,44,0,0,400,800,MONO_RAISED,MONO_CLEAR,MONO_INK,1,0,0);
+ _:=arcade_scene_frame(s[..],out[..],400,800,1,0.016);
+ #assert s[0].painted==1 && s[0].prims[1].kind==PRIM_BOX && s[0].prims[1].radius>0;
+}
 
 #test "scene retains keyed motion, reverses press, obeys reduced motion and clips measured bounds" #steps 100000000 {
  s:[1]ArcadeScene;arcade_scene_begin(s[..],false);
@@ -61,6 +70,10 @@ arcade_scene_frame :: (s:[]ArcadeScene,out:[]f32,width:f32,height:f32,dpr:f32,dt
   else if n.kind==ARCADE_ACTION {round_action(sh[..],skin,n.x,n.y,n.w,n.entry[0].value);}
   else if n.kind==6 {animated_switch(sh[..],skin,n.x,n.y,n.w,n.h,n.progress[0].value);}
   else if n.kind==7 {drawer_icon(sh[..],skin,n.x,n.y,n.w,n.h,ifx (n.flags&4)!=0 then n.value else n.progress[0].value,(n.flags&8)!=0);}
+  else if n.kind==ARCADE_REFERENCE {
+   ref:=claude_reference_skin();radius:=ifx n.role==MF_ROW then ref.radius else ref.radius_control;
+   sh[0].nu=prim_box(sh[0].under,sh[0].nu,n.x,n.y,n.w,n.h,radius,ref.border,skin.surface,skin.accent);
+  }
   else if n.kind==ARCADE_BOX {sh[0].nu=prim_box(sh[0].under,sh[0].nu,n.x,n.y,n.w,n.h,0,0.5,skin.surface,skin.accent);}
   else if n.role==MF_PANEL && (n.flags&2)!=0 {composer_frame(sh[..],skin,n.x,n.y,n.w,n.h,n.entry[0].value);}
   else {p:=n.entry[0].value;if (n.flags&2)!=0 {p*=0.65+0.35*n.press[0].value;}animated_frame(sh[..],skin,n.x,n.y,n.w,n.h,p,1);}

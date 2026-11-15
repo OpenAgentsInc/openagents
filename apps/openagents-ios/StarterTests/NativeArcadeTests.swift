@@ -4,6 +4,14 @@ import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeArcadeTests:XCTestCase {
+    func testReferenceButtonAndFieldUseRoundedSharedFrames() throws {
+        let button=NativeButton(.list);button.reference=true;button.current=true;button.show("Projects",symbol:"folder")
+        let frame=try XCTUnwrap(button.subviews.compactMap {$0 as? NativeFrameView}.first)
+        let caption=try XCTUnwrap(button.subviews.compactMap {$0 as? UILabel}.first)
+        XCTAssertEqual(frame.arcadePaint.kind,8);XCTAssertEqual(caption.text,"Projects")
+        let field=NativeField();field.reference=true
+        XCTAssertEqual(try XCTUnwrap(field.subviews.compactMap {$0 as? NativeFrameView}.first).arcadePaint.kind,8)
+    }
     func testListButtonPlacesItsIconBeforeTheLabel() throws {
         let button=NativeButton(.list);button.show("Projects",symbol:"folder");button.frame=CGRect(x:0,y:0,width:280,height:44);button.layoutIfNeeded()
         let glyph=try XCTUnwrap(button.subviews.compactMap {$0 as? UIImageView}.first)

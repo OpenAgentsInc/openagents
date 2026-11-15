@@ -49,7 +49,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         loadViewIfNeeded();hostAction=action;hostTitle.attributedText=NativeSkin.label(title,size:12,ink:NativeSkin.tokens.ink);hostTitle.accessibilityLabel=title
         hostClose.show(close,symbol:"xmark");hostClose.glass=true;hostHeight.constant=CGFloat(NativeSkin.tokens.header);hostBar.isHidden=false;showHeaderRule()
     }
-    private func showHeaderRule() {headerRule.isHidden=headerHeight.constant==0 && hostHeight.constant==0}
+    private func showHeaderRule() {headerRule.isHidden=sidebarMode || headerHeight.constant==0 && hostHeight.constant==0}
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor=NativeSkin.ground;view.tintColor=NativeSkin.color(NativeSkin.tokens.ink)
@@ -123,6 +123,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             let old=controls[e.id],matching=e.role=="button" ? old is NativeButton:old is UILabel
             let control=matching ? old!:make(e)
             if let button=control as? NativeButton {
+                button.reference=sidebarMode
                 button.isEnabled = !e.disabled
                 if let state=e.attrs["data-state"],["loading","ready","offline","idle"].contains(state) {
                     // A status: how it stands is shown by the icon and its brightness, and said by its label.
@@ -133,7 +134,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
                 // keep it unobscured until it has a native glass foreground.
                 button.glass=button.variant == .icon && !button.busy
             }
-            else if let label=control as? UILabel {label.attributedText=NativeSkin.label(e.label,size:12,ink:NativeSkin.tokens.ink);label.accessibilityLabel=e.label;label.numberOfLines=1;label.lineBreakMode = .byTruncatingTail;label.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)}
+            else if let label=control as? UILabel {if sidebarMode {label.attributedText=nil;label.text=e.label;label.font=NativeTypography.font(20,strong:true);label.textColor=NativeSkin.color(NativeSkin.tokens.ink)}else {label.attributedText=NativeSkin.label(e.label,size:12,ink:NativeSkin.tokens.ink)};label.accessibilityLabel=e.label;label.numberOfLines=1;label.lineBreakMode = .byTruncatingTail;label.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)}
             kept[e.id]=control
         }
         let titleIndex=bar.firstIndex {$0.role != "button"}
@@ -164,6 +165,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             else if let tool=control as? NativeTool {tool.press={ [weak self] id in self?.following=false;self?.press?(id) };tool.render(e)}
             else if let message=control as? NativeMessage {message.press={ [weak self] id in self?.press?(id) };message.render(e)}
             else if let b=control as? NativeButton {
+                b.reference=sidebarMode;b.ruled = !sidebarMode
                 // The kit says which button this is (its class and state); the skin says how each looks.
                 let state=e.attrs["data-state"],select=e.hasClass("sel")
                 b.variant=e.hasClass("sw") ? .toggle:state=="rail" ? .rail:e.hasClass("ib") ? .icon:e.hasClass("lk") || select || e.label.isEmpty ? .quiet:e.hasClass("row") ? .list:state=="primary" ? .primary:state=="destructive" ? .destructive:.plain
@@ -175,6 +177,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
                 if text.text != e.value {let selection=text.selectedRange;text.text=e.value;text.selectedRange=NSRange(location:min(selection.location,(e.value as NSString).length),length:0)}
                 text.font=e.attrs["data-lang"] != nil ? NativeTypography.font(15,code:true):NativeTypography.font(16)
             } else if let f=control as? UITextField {
+                (f as? NativeField)?.reference=sidebarMode
                 f.placeholder=e.label; f.accessibilityLabel=e.label; f.isEnabled = !e.disabled
                 let sensitive=e.type=="secret" || e.type=="secret-output"
                 (f as? NativeField)?.sensitive=sensitive
@@ -185,7 +188,8 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             } else if let l=control as? UILabel {
                 // A page's title reads as text. A section's name, a small fact and a figure are chrome: the skin's label type.
                 let t=NativeSkin.tokens
-                if e.role=="heading" && e.type != "h1" {l.attributedText=NativeSkin.label(e.label,size:12,ink:t.ink_muted)}
+                if sidebarMode && (e.role=="heading" || e.hasClass("meta")) {l.attributedText=nil;l.text=e.label;l.font=NativeTypography.font(14);l.textColor=NativeSkin.color(t.ink_muted)}
+                else if e.role=="heading" && e.type != "h1" {l.attributedText=NativeSkin.label(e.label,size:12,ink:t.ink_muted)}
                 else if e.hasClass("meta") {l.attributedText=NativeSkin.label(e.label,ink:t.ink_muted)}
                 else if e.hasClass("amount") {l.attributedText=NativeSkin.label(e.label,size:24,track:0.02,ink:t.ink_bright,upper:false)}
                 else {
