@@ -214,6 +214,44 @@ G_UNCOMPRESSED :: "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f
   #assert ad_hex_is(q[0..<32], "a82f29944d65b86ae6b5e5cc75e294ead6c59391a1edc5e016e3498c67fc7bbb");
 }
 
+#test "the Taproot output key with a script tree: BIP-341's scriptPubKey vectors 1 and 2" #steps 600000000 {
+  // coax/tests/vectors/upstream/bip341/wallet-test-vectors.json: the
+  // internal key, the Merkle root, the tweaked key, and the parity its
+  // control blocks carry (c1: odd, c0: even).
+  internal: [32] u8; root: [33] u8; q: [33] u8;
+  for i: 0..<33 { q[i] = 0xa5; }
+  #assert ad_unhex("187791b6f712a8ea41c8ecdd0ee77fab3e85263b37e1ec18a3651926b3a6cf27", internal[..]).count == 32;
+  #assert ad_unhex("5b75adecf53548f3ec6ad7d78383bf84cc57b55a3127c72b9a2481752dd88b21", root[0..<32]).count == 32;
+  #assert taproot_output_key_vartime(internal[..], root[0..<32], q[..]) == 1 && q[32] == 0xa5;
+  #assert ad_hex_is(q[0..<32], "147c9c57132f6e7ecddba9800bb0c4449251c92a1e60371ee77557b6620f3ea3");
+  #assert ad_unhex("93478e9488f956df2396be2ce6c5cced75f900dfa18e7dabd2428aae78451820", internal[..]).count == 32;
+  #assert ad_unhex("c525714a7f49c28aedbbba78c005931a81c234b2f6c99a73e4d06082adc8bf2b", root[0..<32]).count == 32;
+  #assert taproot_output_key_vartime(internal[..], root[0..<32], q[..]) == 0;
+  #assert ad_hex_is(q[0..<32], "e4d810fd50586274face62b8a807eb9719cef49c04177cc6b76a9a4251d5450e");
+  // A root of 31 or 33 bytes is neither empty nor a root, and writes nothing.
+  for i: 0..<33 { q[i] = 0xa5; }
+  #assert taproot_output_key_vartime(internal[..], root[0..<31], q[..]) == AD_BAD_ROOT && q[0] == 0xa5;
+  #assert taproot_output_key_vartime(internal[..], root[..], q[..]) == AD_BAD_ROOT && q[0] == 0xa5;
+}
+#test "adding a tweak given directly: 1, n - 1 and n" #steps 400000000 {
+  gx: [32] u8; t: [32] u8; q: [33] u8;
+  #assert ad_unhex("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", gx[..]).count == 32;
+  // G + 1G = 2G, whose y (1ae168fe...e52a) is even.
+  t[31] = 1;
+  #assert taproot_add_tweak_vartime(gx[..], t[..], q[..]) == 0;
+  #assert ad_hex_is(q[0..<32], "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5");
+  // The views: the output, the key and the tweak each one byte short.
+  for i: 0..<33 { q[i] = 0xa5; }
+  #assert taproot_add_tweak_vartime(gx[..], t[..], q[0..<31]) == AD_CAPACITY;
+  #assert taproot_add_tweak_vartime(gx[0..<31], t[..], q[..]) == AD_BAD_KEY;
+  #assert taproot_add_tweak_vartime(gx[..], t[0..<31], q[..]) == AD_BAD_KEY;
+  // G + (n - 1)G is the point at infinity; a tweak of n is not a scalar.
+  #assert ad_unhex("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140", t[..]).count == 32;
+  #assert taproot_add_tweak_vartime(gx[..], t[..], q[..]) == AD_BAD_TWEAK;
+  #assert ad_unhex("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", t[..]).count == 32;
+  #assert taproot_add_tweak_vartime(gx[..], t[..], q[..]) == AD_BAD_TWEAK;
+  for b: q { #assert b == 0xa5; }
+}
 #test "script kinds" {
   s: [43] u8;
   #assert script_kind_vartime(ad_unhex("76a914751e76e8199196d454941c45d1b3a323f1433bd688ac", s[..])) == AD_P2PKH;
