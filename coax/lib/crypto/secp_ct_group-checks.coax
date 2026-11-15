@@ -167,3 +167,12 @@ cgt_max :: (m:u64)->Fe #effects(all) {return Fe.{n=[5]u64.[2*m*FE_M52,2*m*FE_M52
   a=fe_scale(a,cast(u64)(seed%8+1));
   #assert fe_equal_vartime(cg_mul(a,b),fe_mul(a,b)) && fe_equal_vartime(cg_sqr(a),fe_sqr(a)) && fe_equal_vartime(cg_sqr(b),fe_mul(b,b));
 }
+
+// The reasons behind two reviewed equivalences in secp_ct_group.coax (#13586): the comb's entry 0 of
+// every block is eight zero words (cg_comb_entry starts from zeros and takes inf from digit == 0), and a
+// product of two magnitude-8 operands is below 2^520, so what stands at limb 9 is below 2^52 and e10 is 0.
+#test "the comb's entry 0 is zero in every block, and the largest product leaves nothing above limb 9" {
+  for block:0..<CG_BLOCKS {for i:0..<8 {#assert CG_COMB_WORDS[block*16*8+i]==0;}}
+  a:=cgt_max(8);
+  #assert fe_equal_vartime(cg_mul(a,a),fe_mul(a,a)) && fe_equal_vartime(cg_sqr(a),fe_mul(a,a));
+}
