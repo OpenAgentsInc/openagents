@@ -27,7 +27,14 @@
 #      moves); a surviving mutant is in the report with its file, procedure, lines, counts and the
 #      command with its base, in one GitHub issue, and nothing goes on the red list or is reverted
 #  16. a mutation part the tool could not finish ("no summary") and one the hosts could not: tool
-#      problems in the report, a comment on that issue, no flaky entry, green
+#      problems in the report, a comment on that issue, no flaky entry, green; once they finish,
+#      nothing is outstanding
+# And its lifecycle (#13610): one issue, open exactly while an action item is outstanding:
+#  17. survivors, then a later report's recheck that finds them killed, close it
+#  18. a new survivor reopens it (never a second issue)
+#  19. survivors only in check units (files loaded with #load ... #test) are one line a file in the
+#      report and neither open it nor hold it open
+#  20. a tool problem keeps it open while it still reproduces, and it closes once it doesn't
 # And the service watch (#13379):
 #  13. a production crash alert's bucket gets one GitHub issue: none while GitHub can't be asked,
 #      none for staging, no second when the watcher's memory is gone, a new one after its alert
@@ -77,7 +84,7 @@ if [[ "${OA_REMOTE_FRESH_COMPILER:-0}" != 1 ]]; then
   has toolchain-moved && { echo "check $1: not judged (97): the host's compiler doesn't match this tree"; exit 97; }
   has host-full && exit 1
 fi
-has host-broken && { echo "remote: the pool is off: the cap: the hosts cost about \$40.00 over 24 hours and OA_REMOTE_DAILY_USD is \$39.60. Fix: coax/remote/remote.sh status"; exit 97; }
+has host-broken && [[ ! -e "$OA_TEST_W/hosts-back" ]] && { echo "remote: the pool is off: the cap: the hosts cost about \$40.00 over 24 hours and OA_REMOTE_DAILY_USD is \$39.60. Fix: coax/remote/remote.sh status"; exit 97; }
 # one-bad-host: the job fails on oa-bad (where it goes first), passes anywhere else
 if has one-bad-host; then
   h=oa-bad; [[ "${OA_REMOTE_AVOID:-}" != oa-bad ]] || h=oa-good
@@ -90,22 +97,31 @@ case "$1" in
   since)
     if has flaky-once && [[ ! -e "$OA_TEST_W/flaked" ]]; then : > "$OA_TEST_W/flaked"; fail "$1" "suite lib/a.coax"; fi ;;
   suites|only) has full-break && fail "$1" "suite lib/a.coax" ;;
-  mutate-since)
-    log="$dir/build/pipeline/mutate-since.log"; : > "$log"
-    has mutate-host-down && [[ "$3" == 2/* ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
-    [[ "$3" == 1/* ]] || exit 0
+  mutate-since|mutate-only)
+    log="$dir/build/pipeline/$1.log"; : > "$log"; mb="$2"
+    if [[ "$1" == mutate-only ]]; then mb="$3"
+    else
+      has mutate-host-down && [[ "$3" == 2/* && ! -e "$OA_TEST_W/hosts-back" ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
+      [[ "$3" == 1/* ]] || exit 0
+    fi
     if has mutant-survives; then
-      { echo "FAIL lib/a.coax (mutate --changed $2): 5 mutants, 3 killed, 2 survived (2 s)"
+      { echo "FAIL lib/a.coax (mutate --changed $mb): 5 mutants, 3 killed, 2 survived (2 s)"
         echo "       b.coax:2:12: mutant survived: '+' became '-'"
-        echo "       b.coax:3:5: mutant survived: 2 became 3"; } >> "$log"
+        echo "       b.coax:3:5: mutant survived: 2 became 3"; echo "suites: 0 of 1 passed in 2 s (0 skipped)"; } >> "$log"
       fail "$1" "suite lib/a.coax"
     fi
     if has mutate-no-summary; then
-      { echo "FAIL lib/a.coax (mutate --changed $2): no summary (9 s)"
+      { echo "FAIL lib/a.coax (mutate --changed $mb): no summary (9 s)"
         echo "       "; echo "    ^"
-        echo "b.coax:2:3: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget"; } >> "$log"
+        echo "b.coax:2:3: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget"; echo "suites: 0 of 1 passed in 9 s (0 skipped)"; } >> "$log"
       fail "$1" "suite lib/a.coax"
-    fi ;;
+    fi
+    if has mutant-check-only; then
+      { echo "FAIL lib/a.coax (mutate --changed $mb): 9 mutants, 2 killed, 7 survived (2 s)"
+        echo "       check-only: lib/c-checks.coax: 7 mutant(s) survived in procedures only checks reach (a check unit)"; echo "suites: 0 of 1 passed in 2 s (0 skipped)"; } >> "$log"
+      fail "$1" "suite lib/a.coax"
+    fi
+    { echo "ok   lib/a.coax (mutate --changed $mb): 5 mutants, 5 killed, 0 survived (1 s)"; echo "suites: 1 of 1 passed in 1 s (0 skipped)"; } >> "$log" ;;
 esac
 exit 0
 EOF
@@ -207,10 +223,21 @@ s="$(run)"
 rm -f "$w/repo/one-bad-host"; push agent-bh "off the bad host"; c10b="$(g rev-parse HEAD)"; s="$(run)"
 
 # 15: the mutation report, with a stand-in for gh (its calls logged; one open issue at most).
+# The stand-in keeps one issue's number (gh15-open) and state (gh15-state).
 mkdir -p "$w/fake15"
-printf '%s\n' '#!/usr/bin/env bash' 'echo "$*" | head -1 >> "$OA_TEST_W/gh15.log"' 'case "$1 $2" in' \
-  '  "issue list") cat "$OA_TEST_W/gh15-open" 2> /dev/null ;;' \
-  '  "issue create") echo 950 > "$OA_TEST_W/gh15-open"; echo "https://github.com/x/y/issues/950" ;;' 'esac' > "$w/fake15/gh"
+cat > "$w/fake15/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" | head -1 >> "$OA_TEST_W/gh15.log"
+n="$(cat "$OA_TEST_W/gh15-open" 2> /dev/null)"; st="$(cat "$OA_TEST_W/gh15-state" 2> /dev/null)"
+case "$1 $2" in
+  "issue list") [[ -z "$n" ]] || echo "$n $st" ;;
+  "issue view") [[ "$3" == "$n" ]] && echo "$st" ;;
+  "issue create") echo 950 > "$OA_TEST_W/gh15-open"; echo OPEN > "$OA_TEST_W/gh15-state"; echo "https://github.com/x/y/issues/950" ;;
+  "issue close") echo CLOSED > "$OA_TEST_W/gh15-state" ;;
+  "issue reopen") echo OPEN > "$OA_TEST_W/gh15-state" ;;
+esac
+exit 0
+EOF
 chmod +x "$w/fake15/gh"
 run15() { (cd "$w/repo" && PATH="$w/fake15:$PATH" OA_PIPELINE_ISSUES=1 coax/remote/after.sh --once) > "$w/run.log" 2>&1; tail -1 "$w/pl/releases/after/runs.tsv" | cut -f4; }
 reds15="$(jq length "$red")"
@@ -236,7 +263,9 @@ grep -qF '`lib/a.coax`: no summary: `b.coax:2:3: error[E0400]' "$rep16" 2> /dev/
   grep -qF "check.sh mutate-since $c15 2/3\`" "$rep16" && grep -qF "check.sh only lib/a.coax $c15\`" "$rep16" &&
   [[ "$(grep -c '^issue create' "$w/gh15.log")" == 1 && "$(grep -c '^issue comment 950' "$w/gh15.log")" == 1 ]] &&
   ok "16: they are tool problems in the report, with the commands from their base, as a comment on its issue" || { bad "16: the report"; cat "$rep16" "$w/gh15.log" "$w/run.log" 2> /dev/null; }
-rm -f "$w/repo/mutate-no-summary" "$w/repo/mutate-host-down"; push agent-mut "off the mutants"; c10b="$(g rev-parse HEAD)"; s="$(run)"
+touch "$w/hosts-back"; rm -f "$w/repo/mutate-no-summary" "$w/repo/mutate-host-down"; push agent-mut "off the mutants"; c10b="$(g rev-parse HEAD)"; s="$(run)"
+! awk -F'\t' '$1 != "P"' "$w/pl/releases/after/mutants-outstanding.tsv" | grep -q . && [[ "$(grep -c "^P" "$w/pl/releases/after/mutants-outstanding.tsv")" == 1 ]] &&
+  ok "16: once its suite runs again, its survivor and tool problem are cleared; with the hosts back, the oldest three parts they could not finish are run again and cleared" || { bad "16: still outstanding"; cat "$w/pl/releases/after/mutants-outstanding.tsv" "$w/run.log"; }
 
 # 12
 echo "$c10b" > "$w/pl/releases/after/full-green"
@@ -314,6 +343,39 @@ touch "$w/gcloud-down"; health14; s=$?; rm -f "$w/gcloud-down"
 [[ "$s" == 0 && "$(quiet14)" == 0 ]] && grep -q "can't be read now" "$w/health14.log" && ok "14: state that can't be read raises no quiet alarm" || { bad "14: status $s, $(quiet14) quiet alarm(s)"; cat "$w/health14.log"; }
 state14 1500; echo 0 > "$w/pl14/mirror/fetched"; health14; s=$?
 [[ "$s" == 1 && "$(quiet14)" == 1 ]] && ok "14: state read with a 25-minute-old heartbeat raises the quiet alarm" || { bad "14: status $s, $(quiet14) quiet alarm(s)"; cat "$w/health14.log"; }
+
+# 17-20: the mutation report's lifecycle (#13610), on the same issue: one at most, open exactly while
+# something is outstanding, one comment a head at most.
+gh_n() { grep -c "^issue $1" "$w/gh15.log" || true; }
+out_n() { cat "$w/pl/releases/after/mutants-outstanding.tsv" 2> /dev/null | wc -l | tr -d ' '; }
+outstanding() { awk -F'\t' -v k="$1" -v f="$2" -v p="$3" '$1 == k && $2 == f && $3 ~ p' "$w/pl/releases/after/mutants-outstanding.tsv" | grep -q .; }
+issue_is() { [[ "$(cat "$w/gh15-state")" == "$1" ]]; }
+rm -f "$w/repo/full-break"; echo 'fourteen :: 14;' >> "$w/repo/lib/a.coax"; push agent-a "an ordinary change again"; s="$(run15)"
+issue_is CLOSED && [[ "$(gh_n close)" == 1 && "$(out_n)" == 0 ]] && grep -q "is closed: nothing outstanding" "$w/run.log" &&
+  ok "17: with nothing outstanding the open issue closes" || { bad "17: state $(cat "$w/gh15-state"), $(gh_n close) close(s), $(out_n) outstanding"; cat "$w/gh15.log" "$w/run.log"; }
+printf 'bee :: (x: int) -> int {\n  return x * 3;\n}\n' > "$w/repo/lib/b.coax"
+touch "$w/repo/mutant-survives"; push agent-mut "survivors again"; s="$(run15)"
+issue_is OPEN && [[ "$(gh_n reopen)" == 1 && "$(gh_n create)" == 1 && "$(out_n)" == 2 ]] && outstanding S lib/b.coax '^bee$' &&
+  ok "18: a new survivor reopens the one issue (no second one) and is outstanding with its file and procedure" || { bad "18: state $(cat "$w/gh15-state"), $(gh_n reopen) reopen(s), $(gh_n create) create(s)"; cat "$w/pl/releases/after/mutants-outstanding.tsv" "$w/gh15.log" "$w/run.log"; }
+rm -f "$w/repo/mutant-survives"; echo 'fifteen :: 15;' >> "$w/repo/lib/a.coax"; push agent-mut "the checks kill them"; s="$(run15)"
+issue_is CLOSED && [[ "$(gh_n close)" == 2 && "$(out_n)" == 0 && "$(grep -c "^issue comment" "$w/gh15.log")" == 1 ]] &&
+  awk -F'\t' '$2 == "lib/b.coax" && $3 == "bee"' "$w/pl/releases/after/$(g rev-parse HEAD)/mutants/cleared.tsv" | grep -q . &&
+  ok "17: survivors, then a recheck that finds them killed, close the issue, with no comment beside the close" || { bad "17: state $(cat "$w/gh15-state"), $(gh_n close) close(s), $(out_n) outstanding"; cat "$w/gh15.log" "$w/run.log"; }
+touch "$w/repo/mutant-check-only"; echo 'sixteen :: 16;' >> "$w/repo/lib/a.coax"; push agent-mut "only helper survivors"; c19="$(g rev-parse HEAD)"; s="$(run15)"
+issue_is CLOSED && [[ "$(gh_n reopen)" == 1 && "$(out_n)" == 0 ]] && grep -qF '`lib/c-checks.coax`: 7 mutant(s) survived' "$w/pl/releases/after/$c19/mutants/report.md" &&
+  ! grep -q "^Surviving mutants" "$w/pl/releases/after/$c19/mutants/report.md" &&
+  ok "19: check-only survivors are one line a file in the report and don't reopen the issue" || { bad "19: state $(cat "$w/gh15-state"), $(out_n) outstanding"; cat "$w/pl/releases/after/$c19/mutants/report.md" "$w/gh15.log"; }
+rm -f "$w/repo/mutant-check-only"; touch "$w/repo/mutant-survives"; printf 'bee :: (x: int) -> int {\n  return x * 4;\n}\n' > "$w/repo/lib/b.coax"; push agent-mut "a survivor"; s="$(run15)"
+rm -f "$w/repo/mutant-survives"; touch "$w/repo/mutant-check-only"; echo 'seventeen :: 17;' >> "$w/repo/lib/a.coax"; push agent-mut "killed, helpers left"; s="$(run15)"
+issue_is CLOSED && [[ "$(gh_n reopen)" == 2 && "$(gh_n close)" == 3 && "$(out_n)" == 0 ]] &&
+  ok "19: with only check-only survivors left, the issue closes" || { bad "19: state $(cat "$w/gh15-state"), $(gh_n reopen) reopen(s), $(gh_n close) close(s), $(out_n) outstanding"; cat "$w/gh15.log" "$w/run.log"; }
+rm -f "$w/repo/mutant-check-only"; touch "$w/repo/mutate-no-summary"; echo 'eighteen :: 18;' >> "$w/repo/lib/a.coax"; push agent-mut "the tool can't finish"; s="$(run15)"
+echo 'nineteen :: 19;' >> "$w/repo/lib/a.coax"; push agent-mut "still can't"; s="$(run15)"
+issue_is OPEN && [[ "$(gh_n reopen)" == 3 && "$(gh_n close)" == 3 ]] && outstanding T lib/a.coax '^no summary$' &&
+  ok "20: a tool problem that still reproduces keeps the issue open" || { bad "20: state $(cat "$w/gh15-state"), $(gh_n reopen) reopen(s), $(gh_n close) close(s)"; cat "$w/pl/releases/after/mutants-outstanding.tsv" "$w/gh15.log" "$w/run.log"; }
+rm -f "$w/repo/mutate-no-summary"; echo 'twenty :: 20;' >> "$w/repo/lib/a.coax"; push agent-mut "the tool finishes"; s="$(run15)"
+issue_is CLOSED && [[ "$(gh_n close)" == 4 && "$(out_n)" == 0 && "$(gh_n create)" == 1 ]] &&
+  ok "20: once it stops reproducing, the issue closes" || { bad "20: state $(cat "$w/gh15-state"), $(gh_n close) close(s), $(out_n) outstanding"; cat "$w/pl/releases/after/mutants-outstanding.tsv" "$w/gh15.log" "$w/run.log"; }
 
 (( fails == 0 )) && echo "test-after: every case passed" || echo "test-after: $fails case(s) failed"
 exit $(( fails > 0 ))

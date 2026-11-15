@@ -59,7 +59,7 @@ pl_publish() {
   [[ "$pl_shared" != 0 ]] || return 0
   local t f files=() e2
   t="$(mktemp -d "${TMPDIR:-/tmp}/oa-pl-pub.XXXXXXXX")" || return 0
-  for f in heartbeat red.json runs.tsv flaky.txt flaky.tsv lag.tsv production full-green full-head; do
+  for f in heartbeat red.json runs.tsv flaky.txt flaky.tsv lag.tsv production full-green full-head mutants-head mutants-outstanding.tsv mutants-issue; do
     [[ ! -f "$pl_dir/releases/after/$f" ]] || files+=("releases/after/$f")
   done
   # The newest Everglade II measurement, at its own path (after.sh state lists it).

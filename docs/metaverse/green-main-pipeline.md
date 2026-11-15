@@ -590,14 +590,57 @@ starts a bisect or a revert, and is never a flaky entry. It is
   not finish (a timeout or a host fault), with its command. These are the
   tool's, not the commit's.
 
-A report with any of these goes to one GitHub issue, "Mutation report:
-survivors and tool problems after landing", opened when none is open, with
-one comment a head. One report runs at a time. A head that lands while one
+Survivors in check-only code are not on that list. A check unit is a file
+that the suite's `#load` closure reaches only through `#test` loads
+(`#load "battle-strike-checks.coax" #test;`): no compile ships its
+procedures, so only checks reach them. `tool.sh suites --mutate-only` finds
+these files from the load graph (`su_check_units`), not from names, and
+prints one line per file with its count of survivors. The report shows those
+lines under "Check-only helper code". They are not action items: a mutant in
+a helper that still lets every check pass is not a gap in what ships (Chapter
+11 of the Coax book, "Survivors in check-only code"). The pre-push gate is
+unchanged: it still mutates a changed check unit in an `#authority` suite and
+stops on a survivor there.
+
+The action items stay outstanding in `releases/after/mutants-outstanding.tsv`,
+one row each: the kind, the file, the procedure, the line, the mutation, the
+suite, the base and the head. Before it posts anything, each report runs the
+earlier heads' items again at its own head (`check.sh mutate-only SUITES
+BASE`, from each item's base), at most `OA_AFTER_MUTATE_RECHECK` (6) suites,
+and up to `OA_AFTER_MUTATE_PARTS` parts that the hosts could not finish, each
+at its own head. A recheck runs in the report job, after its parts, and never
+in a verdict job. An item that the recheck no longer finds is cleared: it is
+killed, marked equivalent, or the tool now finishes it. An item that the
+recheck can't judge stays, for example when the tool again gives no summary.
+
+The report has one GitHub issue, "Mutation report: survivors and tool
+problems after landing". Its number is kept in `releases/after/mutants-issue`;
+without it, the issue is the newest one with that title in any state. The
+steps are the nightly sweep's (`ms_issue_step` in `coax/web/mutation-sweep.coax`):
+
+- Nothing outstanding and the issue open: it closes, with a comment that
+  says what the recheck cleared.
+- Something outstanding and the issue closed: it reopens, with this head's
+  report as the comment.
+- Something outstanding and no issue: one is filed.
+- Something outstanding and the issue open: one comment, only when this head
+  added or cleared an item.
+
+So a head gets one comment at most, and survivors in check-only code never
+open the issue or keep it open. When GitHub can't say where the issue is,
+nothing is posted, and the next report follows the state it finds then.
+`after.sh state` shows the last report's head, how many items are
+outstanding, and the issue. The first report run with this lifecycle took the
+items of the reports before it. One report runs at a time. A head that lands while one
 runs gets none, and the next report starts from the head the last one
 covered (`releases/after/mutants-head`), so every change is mutated once.
 `OA_AFTER_MUTATE=0` turns the report off. `coax/remote/test-after.sh` cases
 15 and 16 check that a failing mutation part leaves the verdict to the
 suites, and that survivors and tool problems are reported and nothing else.
+Cases 17 to 20 check the lifecycle (#13610). Survivors, then a recheck that
+finds them killed, close the issue. A new survivor reopens it, and no second
+issue is filed. Survivors only in check units neither open it nor keep it
+open. A tool problem keeps it open while it still happens.
 
 Before this, the `since` jobs ran the mutants themselves (#13583). A slow
 mutate run then held the whole job past its time limit, so the run was

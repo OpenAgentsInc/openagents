@@ -55,6 +55,7 @@ tool_main :: () -> int #export_c #effects(all) {
     i = e + 1;
   }
   loads: [SU_LOADS] string; nl := 0;
+  load_test: [SU_LOADS] bool;  // that #load is a check load (`#load "x-checks.coax" #test;`)
   load_by: [SU_LOADS] int;     // the file each #load is in
   tested: [SU_FILES] bool;     // that file has checks of its own
   authority: [SU_FILES] bool;  // that file, or one it loads at any depth, is #authority
@@ -69,7 +70,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if n < 0 { continue; }
     text := cast(string) big[0..<n];
     from := nl;
-    nl = su_loads(text, path, arena[..], loads[..], nl);
+    nl = su_loads(text, path, arena[..], loads[..], load_test[..], nl);
     for k: from..<nl { load_by[k] = f; }
     tested[f] = su_in(path) && (su_has_tests(text) || su_head(text, su_base(path)).found);   // and so runs here
     authority[f] = su_has_authority(text); own_authority[f] = authority[f];
@@ -343,6 +344,17 @@ tool_main :: () -> int #export_c #effects(all) {
 
   lanes: [16] Lane;
   for l: 0..<16 { lanes[l].h = -1; }
+  // --mutate-only (the after-landing report, #13610): each lane's suite's check units (su_check_units),
+  // whose survivors are counted a file rather than listed. The loads as each file's list, once.
+  marks: [16] [SU_FILES] u8; cu_first: [SU_FILES + 1] int; cu_to: [SU_LOADS] int; cu_test: [SU_LOADS] bool; cu_todo: [SU_FILES] int;
+  if mutate_only {
+    cu_fill: [SU_FILES] int;
+    for l: 0..<nl { cu_first[load_by[l] + 1] += 1; }
+    for f: 0..<nf { cu_first[f + 1] += cu_first[f]; }
+    for f: 0..<nf { cu_fill[f] = cu_first[f]; }
+    for l: 0..<nl { k := cu_fill[load_by[l]]; cu_to[k] = load_to[l]; cu_test[k] = load_test[l]; cu_fill[load_by[l]] += 1; }
+  }
+  sb: [1024] u8;
   next := 0; done := 0; failed := 0;
   t0 := proc_now_ms();
   line: [65536] u8; db2: [4096] u8;
@@ -381,7 +393,12 @@ tool_main :: () -> int #export_c #effects(all) {
         }
         lanes[l].tmp_n = 0;
         if ok && s.native.count > 0 { lanes[l].tmp_n = run_n - 7; for k: 0..<run_n - 7 { lanes[l].tmp[k] = run_buf[k]; } }   // less "/checks"
-        lanes[l].suite = next; lanes[l].last_n = 0; lanes[l].fails_kept = 0; lanes[l].started_ms = proc_now_ms();
+        lanes[l].suite = next; lanes[l].last_n = 0; lanes[l].fails_kept = 0; lanes[l].started_ms = proc_now_ms(); lanes[l].co_k = 0;
+        if mutate_only {
+          start := -1;
+          for f: 0..<nf { if files[f] == s.path { start = f; break; } }
+          su_check_units(start, cu_first[0..<nf + 1], cu_to[0..<nl], cu_test[0..<nl], marks[l][0..<nf], cu_todo[0..<nf]);
+        }
         next += 1;
         if !ok || proc_start(h) != 0 {
           if h >= 0 { r := proc_release(h); }
@@ -405,7 +422,23 @@ tool_main :: () -> int #export_c #effects(all) {
         summary := ifx mutating then (su_contains(t, " killed, ") && su_contains(t, " survived")) || su_starts(t, 0, "nothing to mutate")
                    else su_contains(t, " passed, ") && su_contains(t, " failed");
         unreached := su_starts(t, 0, "not reached by any check");
-        if mutating && (su_contains(t, ": mutant survived: ") || unreached) && lanes[l].fails_kept < (ifx unreached then SU_FAILS else SU_FAILS - 1) {
+        check_only := false;
+        if mutate_only && su_contains(t, ": mutant survived: ") {
+          // a check unit's survivor: counted under its file, not kept
+          p := su_survivor_file(t, suites[lanes[l].suite].path, sb[..]);
+          for f: 0..<nf {
+            if files[f] != p { continue; }
+            if marks[l][f] == 2 {
+              check_only = true;
+              c := 0;
+              while c < lanes[l].co_k && lanes[l].co_file[c] != f { c += 1; }
+              if c == lanes[l].co_k && c < SU_CO { lanes[l].co_file[c] = f; lanes[l].co_n[c] = 0; lanes[l].co_k += 1; }
+              if c < lanes[l].co_k { lanes[l].co_n[c] += 1; }
+            }
+            break;
+          }
+        }
+        if mutating && !check_only && (su_contains(t, ": mutant survived: ") || unreached) && lanes[l].fails_kept < (ifx unreached then SU_FAILS else SU_FAILS - 1) {
           f := lanes[l].fails_kept; m := ifx n > 256 then 256 else n;
           for k: 0..<m { lanes[l].fails[f][k] = line[k]; }
           lanes[l].fail_n[f] = m; lanes[l].fails_kept += 1;
@@ -444,6 +477,7 @@ tool_main :: () -> int #export_c #effects(all) {
       print(" (% s)\n", (proc_now_ms() - lanes[l].started_ms) / 1000);
       if !passed {
         for f: 0..<lanes[l].fails_kept { su_say("       "); su_say(cast(string) lanes[l].fails[f][0..<lanes[l].fail_n[f]]); su_say("\n"); }
+        for c: 0..<lanes[l].co_k { print("       check-only: %: % mutant(s) survived in procedures only checks reach (a check unit)\n", files[lanes[l].co_file[c]], lanes[l].co_n[c]); }
         if lanes[l].last_n == 0 && tail.count > 0 { su_say("       "); su_say(tail); su_say("\n"); }
       }
     }

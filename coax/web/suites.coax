@@ -19,7 +19,10 @@
 //                                              # (#13583); a survivor fails it as a failed check does
 //   coax/web/tool.sh suites --mutate-changed REF --mutate-only  # those mutants alone, no `coax test`: the
 //                                              # after-landing mutation job's (coax/remote/check.sh mutate-since); --part
-//                                              # then splits the #authority suites, not every suite
+//                                              # then splits the #authority suites, not every suite. A survivor in a check
+//                                              # unit (a file the suite reaches only through `#load "x-checks.coax" #test;`,
+//                                              # whose procedures only checks reach, su_check_units) is counted, one line a
+//                                              # file ("check-only: PATH: N mutant(s) ..."), not listed (#13610)
 //   coax test coax/web/suites.coax --library   # its own checks
 //
 // The convention. A suite is a .coax file under apps/openagents-web/,
@@ -249,8 +252,9 @@ su_head :: (text: string, base: string) -> SuHead {
   return h;
 }
 
-// Each #load's repo path, from the file at path, kept in a.
-su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, from: int) -> int {
+// Each #load's repo path, from the file at path, kept in a, and in tests whether it is a check load
+// (`#load "x-checks.coax" #test;`).
+su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, tests: [] bool, from: int) -> int {
   n := from;
   dir := su_dir(path);
   buf: [1024] u8;
@@ -265,7 +269,7 @@ su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, from: 
         r := q + 1;
         while r < text.count && text[r] != '"' && text[r] != '\n' { r += 1; }
         p := su_norm(dir, text[q + 1..<r], buf[..]);
-        if p.count > 0 && n < loads.count { loads[n] = su_keep(a, p); n += 1; }
+        if p.count > 0 && n < loads.count && n < tests.count { loads[n] = su_keep(a, p); tests[n] = su_test_load(text, j); n += 1; }
       }
     }
     while i < text.count && text[i] != '\n' { i += 1; }
@@ -382,9 +386,70 @@ su_web_input :: (path: string, faces: bool) -> bool {
   #assert q.found && q.only == "" && !q.library && q.steps == "7";
 }
 #test "loads: each #load's repo path, comments and strings that only mention it left out" {
-  keep: [4096] u8; a: [1] SuArena; a[0].bytes = keep[..]; loads: [8] string;
-  n := su_loads("#load \"font.coax\";\n  #load \"../../metaverse/camera.coax\";\n// see #loading\n", "apps/openagents-web/x.coax", a[..], loads[..], 0);
-  #assert n == 2 && loads[0] == "apps/openagents-web/font.coax" && loads[1] == "metaverse/camera.coax";
+  keep: [4096] u8; a: [1] SuArena; a[0].bytes = keep[..]; loads: [8] string; tests: [8] bool;
+  n := su_loads("#load \"font.coax\";\n  #load \"../../metaverse/camera.coax\";\n// see #loading\n#load \"font-checks.coax\" #test;\n", "apps/openagents-web/x.coax", a[..], loads[..], tests[..], 0);
+  #assert n == 3 && loads[0] == "apps/openagents-web/font.coax" && loads[1] == "metaverse/camera.coax" && loads[2] == "apps/openagents-web/font-checks.coax";
+  #assert !tests[0] && !tests[1] && tests[2];
+  short: [1] bool;
+  #assert su_loads("#load \"a.coax\";\n#load \"b.coax\";\n", "x.coax", a[..], loads[..], short[..], 0) == 1;
+}
+
+// The check units a suite reaches (#13610): the files its #load closure holds only through check
+// loads (`#load "x-checks.coax" #test;`, Chapter 10), whose procedures no compile emits (E0616): only
+// checks reach them. mark[f] is 1 when plain loads reach f from start (it ships with whatever loads
+// the suite), 2 when only a path through a check load does (a check unit), 0 when the suite doesn't
+// reach f. first, to and test are each file's loads: first[f]..<first[f + 1] index to (the file the
+// load names, -1 when it is not in the tree) and test (a check load). todo holds mark.count files.
+su_check_units :: (start: int, first: [] int, to: [] int, test: [] bool, mark: [] u8, todo: [] int) {
+  for f: 0..<mark.count { mark[f] = 0; }
+  if start < 0 || start >= mark.count { return; }
+  mark[start] = 1; todo[0] = start; sp := 1;
+  while sp > 0 {
+    sp -= 1; f := todo[sp];
+    for k: first[f]..<first[f + 1] { t := to[k]; if t >= 0 && !test[k] && mark[t] == 0 { mark[t] = 1; todo[sp] = t; sp += 1; } }
+  }
+  for f: 0..<mark.count { if mark[f] == 1 { todo[sp] = f; sp += 1; } }
+  while sp > 0 {
+    sp -= 1; f := todo[sp];
+    for k: first[f]..<first[f + 1] { t := to[k]; if t >= 0 && mark[t] == 0 { mark[t] = 2; todo[sp] = t; sp += 1; } }
+  }
+}
+#test "a file only check loads reach is a check unit; one a plain load also reaches ships" {
+  // 0 the suite: plain 1, check 2; 1: plain 3; 2 (checks): plain 4, plain 3; 3: one off the tree; 5, 6 unreached
+  first := [8] int.[0, 2, 3, 5, 6, 6, 6, 6];
+  to := [6] int.[1, 2, 3, 4, 3, -1];
+  test := [6] bool.[false, true, false, false, false, false];
+  mark: [7] u8; todo: [7] int;
+  su_check_units(0, first[..], to[..], test[..], mark[..], todo[..]);
+  #assert mark[0] == 1 && mark[1] == 1 && mark[3] == 1 && mark[2] == 2 && mark[4] == 2 && mark[5] == 0 && mark[6] == 0;
+  // the same tree from the checks file itself: everything it loads ships with it
+  su_check_units(2, first[..], to[..], test[..], mark[..], todo[..]);
+  #assert mark[2] == 1 && mark[3] == 1 && mark[4] == 1 && mark[0] == 0 && mark[1] == 0;
+  // a check load of a check load, and a check load back to a shipped file
+  first2 := [4] int.[0, 1, 3, 3]; to2 := [3] int.[1, 2, 0]; test2 := [3] bool.[true, true, true];
+  m2: [3] u8; t2: [3] int;
+  su_check_units(0, first2[..], to2[..], test2[..], m2[..], t2[..]);
+  #assert m2[0] == 1 && m2[1] == 2 && m2[2] == 2;
+  su_check_units(-1, first2[..], to2[..], test2[..], m2[..], t2[..]);
+  #assert m2[0] == 0 && m2[1] == 0 && m2[2] == 0;
+  su_check_units(3, first2[..], to2[..], test2[..], m2[..], t2[..]);
+  #assert m2[0] == 0;
+}
+
+// A mutate run's survivor line ("../x.coax:2:12: mutant survived: '+' became '-'") as its file's repo
+// path, from the folder of the suite it ran in; "" when the line names no file.
+su_survivor_file :: (line: string, suite: string, out: [] u8) -> string {
+  e := 0;
+  while e < line.count && line[e] != ':' { e += 1; }
+  if e == 0 || e >= line.count { return ""; }
+  return su_norm(su_dir(suite), line[0..<e], out);
+}
+#test "a survivor's file is a repo path from its suite's folder" {
+  b: [256] u8;
+  #assert su_survivor_file("battle-strike-checks.coax:30:5: mutant survived: 2 became 3", "rules/srd/battle.coax", b[..]) == "rules/srd/battle-strike-checks.coax";
+  #assert su_survivor_file("../web/x.coax:1:1: mutant survived: x", "coax/lib/a.coax", b[..]) == "coax/web/x.coax";
+  #assert su_survivor_file("a.coax:1:1: x", "a.coax", b[..]) == "a.coax";
+  #assert su_survivor_file("no file here", "a.coax", b[..]) == "" && su_survivor_file(":1:1: x", "a.coax", b[..]) == "";
 }
 
 su_say :: (s: string) { print("%", s); }
@@ -459,7 +524,8 @@ su_contains :: (hay: string, needle: string) -> bool {
 // The lines a failing suite's report keeps: its first failing checks, or a mutate run's survivors (the
 // after-landing mutation report lists them, coax/remote/after.sh) with the last kept for "not reached".
 SU_FAILS :: 40;
-Lane :: struct { h: int; suite: int; started_ms: int; last: [512] u8; last_n: int; fails: [SU_FAILS] [256] u8; fail_n: [SU_FAILS] int; fails_kept: int; tmp: [4096] u8; tmp_n: int; }   // tmp: a native suite's build, removed when it ends
+SU_CO :: 64;   // check units a lane counts survivors in
+Lane :: struct { h: int; suite: int; started_ms: int; last: [512] u8; last_n: int; fails: [SU_FAILS] [256] u8; fail_n: [SU_FAILS] int; fails_kept: int; tmp: [4096] u8; tmp_n: int; co_file: [SU_CO] int; co_n: [SU_CO] int; co_k: int; }   // tmp: a native suite's build, removed when it ends
 
 // --mutate-only: the suites that have mutants (an #authority file's, not a native suite's, whose
 // checks don't run in the evaluator), first and in order, each marked to mutate. The count kept.

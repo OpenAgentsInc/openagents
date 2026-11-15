@@ -940,6 +940,36 @@ sweep of every `#authority` file runs nightly on the build pool
 survivors, closes it on a night with none, and blocks nothing. A unit's first pass still goes to zero
 survivors or marked equivalents.
 
+The after-landing report keeps one issue open while it has something to act
+on. Each report first runs again the suites of what earlier reports listed,
+from the same base, and drops each survivor that is now killed or marked and
+each tool problem that no longer happens. When nothing is left, the issue
+closes itself. The next report that finds something reopens it.
+
+### Survivors in check-only code
+
+Checks often need helpers: fixtures, oracles, procedures that build a
+scene. Chapter 10 puts them in a file that the unit loads with `#test`, as
+`rules/srd/battle.coax` loads its strike checks:
+`#load "battle-strike-checks.coax" #test;`. That file is a check unit. No compile ships its procedures, and shipped code
+can't call one (E0616). `coax mutate` still mutates them, because checks
+reach them, and some of those mutants survive. A scene builder that stages
+one more creature still lets every check pass, and so does a helper whose
+result one check never reads.
+
+A mutant like that isn't a gap in what ships, so the after-landing report
+doesn't treat it as one. It lists survivors in shipped code as things to
+act on: a procedure that a module, a service or a tool reaches. It counts
+the survivors in each check unit on one line per file, and those lines
+don't open its issue or keep it open. The report doesn't decide by name.
+A check unit is a file that the suite's `#load` closure reaches only
+through `#test` loads (`tool.sh suites`, `su_check_units`).
+
+Read those lines anyway. A helper's survivor can mean that a check asserts
+less than its name says. The gate that blocks a change works as before: a
+push that changes a check unit of an `#authority` suite mutates the
+procedures it changed, and a survivor there stops the push like any other.
+
 ### Running mutants in parallel
 
 Mutants are independent: each one changes one site, runs the checks in a

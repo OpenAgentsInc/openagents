@@ -17,6 +17,10 @@
 #                                         the I-th of N parts of the mutants of what changed
 #                                         since BASE in those suites (after.sh's mutation
 #                                         job: a report, never a verdict)
+#   coax/remote/check.sh mutate-only PATH,PATH BASE
+#                                         those suites' mutants of what changed since BASE,
+#                                         alone (the mutation report's recheck of what it
+#                                         still lists, #13610)
 #   coax/remote/check.sh web BASE         the web modules the change since BASE touched,
 #                                         and the report checks (a fast run)
 #   coax/remote/check.sh room-since BASE [PROD]
@@ -719,6 +723,9 @@ case "$mode" in
     changed_since
     if grep -qvE '(\.md$|^docs/)' "$out/changed"; then suites --since "$arg" --mutate-changed "$arg" --mutate-only --part "$part" || status=1
     else echo "== suites: skipped, the change is only documents" >> "$log"; fi ;;
+  mutate-only)
+    [[ -n "$arg" && -n "${also[0]:-}" ]] || { echo "check.sh: mutate-only PATH,PATH BASE" >&2; exit 2; }
+    suites --only "$arg" --mutate-changed "${also[0]}" --mutate-only || status=1 ;;
   web)
     changed_since
     web_since
@@ -735,7 +742,7 @@ case "$mode" in
     changed_since
     if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room "${also[0]:-}"
     else echo "== room-build: skipped, the change doesn't reach the room" >> "$log"; fi ;;
-  *) run "$mode" "$arg" || { sed -n '8,49p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
+  *) run "$mode" "$arg" || { sed -n '8,53p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
 esac
 limits; sizes
 # A failure that says nothing of the commit: the host could not run the check
