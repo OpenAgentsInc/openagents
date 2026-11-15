@@ -2,7 +2,8 @@
 
 Observed 2026-11-15 in the iPhone app, version 1.261113.19. This is a
 visual reference, not a specification or a claim about every account or app
-state. The screenshots are private and remain on the owner's Desktop under
+state. See the [component inventory](component-inventory.md) for a decomposition
+of the captured interface into atoms, molecules and organisms. The screenshots are private and remain on the owner's Desktop under
 `iPhone Screenshots/Claude Projects/` and `iPhone Screenshots/Claude Code and Chats/`.
 The repository does not contain them. Filenames below identify those local
 captures; the descriptions omit account details and conversation contents.
