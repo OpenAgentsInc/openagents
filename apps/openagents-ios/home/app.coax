@@ -292,7 +292,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   if !s[0].ready {s[0].ready=true;n:=mono_frames(s[0].sets[..]);na_request(s,1,"");}
   na_durable_tick(s,dt);na_sync_tick(s,dt);
   if s[0].workspace {eu_pause(s[0].environments[..],s[0].navigation[0].open || s[0].flight!=0 || s[0].usage[0].active || s[0].account_settings[0].active || s[0].page!=4);na_nav_tick(s);}
-  if dt>0 && dt<1 {s[0].time+=dt;}na_usage_tick(s);na_project_tick(s);if !s[0].dirty && !s[0].ui[0].busy && s[0].environments[0].action==0 {return 0;}
+  if dt>0 && dt<1 {s[0].time+=dt;}na_usage_tick(s);na_project_tick(s);if !s[0].dirty && !s[0].ui[0].busy && s[0].environments[0].action==0 && s[0].account_settings[0].action==0 {return 0;}
   t:=s[0].tree[..];u:=s[0].ui[..];d:=s[0].dom[..];
   if !d[0].styled {
     n:=mono_css(s[0].css[..]);n=mc(s[0].css[..],n,"body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}.account-app{max-width:600px;margin:auto;padding:88px 24px 40px;display:flex;flex-direction:column;gap:22px}.account-app>*{margin:0}.account-app h1{font-size:32px;line-height:1.2}.account-app p{color:var(--ink-muted)}.account-app .btn{min-height:48px}.account-app .chat-row{text-align:left;text-transform:none;letter-spacing:normal}.account-app .note{white-space:pre-wrap}.account-app input{font-size:18px}.account-app footer{display:flex;flex-direction:column;gap:12px;margin-top:32px}");dm_style(d,cast(string)s[0].css[0..<n]);

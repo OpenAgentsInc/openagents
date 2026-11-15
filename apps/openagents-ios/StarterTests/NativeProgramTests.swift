@@ -4,6 +4,30 @@ import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeProgramTests:XCTestCase {
+    func testEmptyAccountSettingsLogOutRoutesTheNativeButtonToAuth()throws {
+        let p=try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app")
+        func answer(_ kind:Int,_ status:Int,_ raw:String)throws {try p.event(kind,status,raw);try p.frame()}
+        try p.event(Int(cnw_enable_event()),0,"");try p.frame();_=try p.action()
+        try answer(101,0,"{\"loggedIn\":true}");_=try p.action()
+        try answer(104,200,"{\"schema\":\"openagents.chat.history.v1\",\"chats\":[]}")
+        try p.input("nav.toggle");try p.frame();_=try p.action()
+        try answer(104,200,"{\"schema\":\"openagents.environment.catalog.v1alpha1\",\"environments\":[]}")
+        try p.input("nav.recent");try p.frame();try p.input("nav.settings");try p.frame();XCTAssertEqual(try p.action().0,18)
+        let settings=try JSONSerialization.jsonObject(with:Data(NativeAccountCodec.write {nas_initial($0)}.utf8))
+        let snapshot:[String:Any]=["schema":"openagents.native.account.v1","settings":settings,"identity":["source":"account"],"account":["account":"acct_other","primary":"grace@example.com"],"ways":["level":"L1","keys":[],"passkeys":[]],"sessions":["sessions":[]],"permission":"Not enabled","backup":false,"backup_pubkey":"","message":""]
+        try answer(118,0,String(decoding:JSONSerialization.data(withJSONObject:snapshot),as:UTF8.self))
+        try p.frame(elapsed:9);try p.frame(elapsed:1);XCTAssertEqual(try p.action().0,18)
+        XCTAssertTrue(p.nodes.values.contains {$0.id=="settings.busy"})
+        try answer(118,0,String(decoding:JSONSerialization.data(withJSONObject:snapshot),as:UTF8.self))
+        let surface=NativeControls();surface.sheet=true;surface.view.frame=CGRect(x:0,y:0,width:402,height:874)
+        surface.render(p.elements(dialog:true));surface.view.layoutIfNeeded()
+        surface.press={id in do {try p.input(id);try p.frame();surface.render(p.elements(dialog:true))}catch {XCTFail("Native settings input failed")}}
+        let logout=try XCTUnwrap(surface.controls["settings.logout"] as? NativeButton)
+        logout.sendActions(for:.primaryActionTriggered)
+        let confirm=try XCTUnwrap(surface.controls["settings.confirm"] as? NativeButton)
+        confirm.sendActions(for:.primaryActionTriggered)
+        XCTAssertEqual(try p.action().0,5)
+    }
     func testDurableTurnStreamsResumesStopsAndCopiesCompleteReply()throws {
         let p=try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app")
         let conversation="cnv_0123456789abcdef0123456789abcdef",turn="trn_0123456789abcdef0123456789abcdef",nilValue=NSNull()

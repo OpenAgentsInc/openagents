@@ -1,5 +1,12 @@
 // Foreground read synchronization. The platform supplies elapsed time only;
 // Coax owns cadence and which read may run. Never replay a mutation here.
+#test "settings refresh reaches the native host without waiting for a user tap" #steps 100000000 {
+ s:[1]Starter;s[0].ready=true;s[0].workspace=true;s[0].account_ready=true;s[0].page=2;a:=s[0].account_settings[..];a[0].active=true;a[0].loaded=true;
+ _:=st_frame(s[..],0,true);st_done(s[..]);s[0].sync_elapsed=9;
+ _:=st_frame(s[..],1,true);
+ #assert s[0].action==NAC_OP && a[0].busy && a[0].action==0;
+ #assert tr_find(s[0].tree[..],"settings.busy")>=0;
+}
 #test "mobile sync reads projects without replacing cached rows on a network failure" {
  s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].page=5;s[0].projects_n=1;
  na_sync_tick(s[..],9);#assert s[0].action==0;
