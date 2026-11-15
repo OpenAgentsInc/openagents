@@ -80,6 +80,68 @@ GLV_NEAR_BOUNDS :: [20] string.[
   "d363ad4cc05c30e0a5261c0288126459f85915d77825b696beebc5c2833ede13", "d363ad4cc05c30e0a5261c0288126459f85915d77825b696beebc5c2833ede14",
   "26c75a9980b861c14a4c38051024c8b4704d760ee95e7cd3de1bfdb1ce2c5a42", "26c75a9980b861c14a4c38051024c8b4704d760ee95e7cd3de1bfdb1ce2c5a43",
   "26c75a9980b861c14a4c38051024c8b4704d760ee95e7cd3de1bfdb1ce2c5a44", "26c75a9980b861c14a4c38051024c8b4704d760ee95e7cd3de1bfdb1ce2c5a45"];
+#test "the 384-bit shift is exact for full-width inputs" {
+  // round(k·g / 2^384) from Python integers, k = GLV_NEAR_BOUNDS[0].
+  k := glv_unhex(GLV_NEAR_BOUNDS[0]);
+  #assert sc_equal(glv_mul_shift_vartime(k, GLV_G1), ScScalar.{limbs=[8] u32.[3940982075,4186867529,3521619471,690816246,0,0,0,0]});
+  #assert sc_equal(glv_mul_shift_vartime(k, GLV_G2), ScScalar.{limbs=[8] u32.[1254900770,3276316110,181886024,3249518786,0,0,0,0]});
+  // (2^256 - 1)^2 / 2^384 rounds to 2^128: the rounding carry runs through
+  // all four result limbs into the fifth.
+  ones: ScScalar; for i: 0..<8 { ones.limbs[i] = 0xffffffff; }
+  top: ScScalar; top.limbs[4] = 1;
+  #assert sc_equal(glv_mul_shift_vartime(ones, ones), top);
+  // (2^127 + 1)(2^256 - 1) = 2^383 + 2^256 - 2^127 - 1 rounds up to 1; the
+  // low limb's product (the + 1, times 2^256 - 1) is what puts it at 2^383.
+  edge: ScScalar; edge.limbs[0] = 1; edge.limbs[3] = 0x80000000;
+  #assert sc_equal(glv_mul_shift_vartime(edge, ones), sc_small(1)) && sc_equal(glv_mul_shift_vartime(ones, edge), sc_small(1));
+}
+#test "a half compares the whole of 2r with n" {
+  // (n - 1)/2 and (n + 1)/2 share the top bit and differ only in limb 0.
+  below := ScScalar.{limbs=[8] u32.[1746608288,3756601158,1470386205,1566010995,4294967295,4294967295,4294967295,2147483647]};
+  above := ScScalar.{limbs=[8] u32.[1746608289,3756601158,1470386205,1566010995,4294967295,4294967295,4294967295,2147483647]};
+  h := glv_half_vartime(below); #assert !h.negative && sc_equal(h.value, below);
+  h = glv_half_vartime(above); #assert h.negative && sc_equal(h.value, below);
+}
+#test "the check helpers read hex and test every top limb" {
+  #assert sc_equal(glv_unhex("5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72"), GLV_LAMBDA);
+  for i: 4..<8 { wide: GlvHalf; wide.value.limbs[i] = 1; #assert !glv_small_half(wide); }
+  low: GlvHalf; low.value.limbs[3] = 0xffffffff; #assert glv_small_half(low);
+}
+#test "the odd table normalizes its first entry" {
+  // The same x with limb 0 above 26 bits: sg_normalize carries it back.
+  q := sg_generator(); q.x.limb[0] += 1 << 26; q.x.limb[1] -= 1;
+  t := glv_odd_table_vartime(q);
+  for i: 0..<10 { #assert t[0].x.limb[i] == SG_GX[i]; }
+}
+#test "one signed digit adds plus or minus its odd multiple" {
+  g := sg_generator(); inf := sg_infinity(); minus := sg_negate(g).value;
+  #assert sg_equal_mask(glv_add_digit(inf, GLV_G_TABLE, 1, false), g) == CB_MAX64;
+  #assert sg_equal_mask(glv_add_digit(inf, GLV_G_TABLE, 1, true), minus) == CB_MAX64;
+  #assert sg_equal_mask(glv_add_digit(inf, GLV_G_TABLE, -1, false), minus) == CB_MAX64;
+  #assert sg_equal_mask(glv_add_digit(inf, GLV_G_TABLE, -15, true), GLV_G_TABLE[7]) == CB_MAX64;
+  #assert sg_equal_mask(glv_add_digit(g, GLV_G_TABLE, 3, false), sg_double_valid(sg_double_valid(g))) == CB_MAX64;   // G + 3G
+}
+#test "chapter 16's counts: one doubling per digit, one addition per nonzero digit" {
+  c := glv_strauss_count_vartime(sc_small(1), sc_small(1)); #assert c.doubles == 1 && c.additions == 2;
+  c = glv_strauss_count_vartime(sc_small(1), sc_small(0)); #assert c.doubles == 1 && c.additions == 1;
+  c = glv_strauss_count_vartime(sc_small(0), sc_small(1)); #assert c.doubles == 1 && c.additions == 1;
+}
+#test "the endomorphism counts: one doubling per digit after the first, one addition per nonzero digit" #steps 1000000000 {
+  a := glv_unhex(GLV_NEAR_BOUNDS[0]); b := glv_unhex(GLV_NEAR_BOUNDS[9]);
+  sa := glv_split_vartime(a); sb := glv_split_vartime(b);
+  w: [4] SmWnaf;
+  w[0] = sm_wnaf_vartime(glv_half_vartime(sa.r1).value, SM_P_WINDOW); w[1] = sm_wnaf_vartime(glv_half_vartime(sa.r2).value, SM_P_WINDOW);
+  w[2] = sm_wnaf_vartime(glv_half_vartime(sb.r1).value, SM_P_WINDOW); w[3] = sm_wnaf_vartime(glv_half_vartime(sb.r2).value, SM_P_WINDOW);
+  length := 0; nonzero := 0;
+  for j: 0..<4 {
+    each := 0;
+    for bit: 0..<257 { if w[j].digits[bit] != 0 { each += 1; if bit + 1 > length { length = bit + 1; } } }
+    #assert each > 0;
+    nonzero += each;
+  }
+  c := glv_ecmult_counted_vartime(a, sg_generator(), b);
+  #assert c.doubles == length - 1 && c.additions == nonzero;
+}
 #forall "the split recombines and both halves are below 2^128 near the bounds" i: 0..<24 {
   k := ifx i < 20 then glv_unhex(GLV_NEAR_BOUNDS[i]) else ScScalar.{};
   if i == 21 { k = sc_small(1); } else if i == 22 { k = sc_negate(sc_small(1)); } else if i == 23 { k = GLV_LAMBDA; }
@@ -219,8 +281,8 @@ GLV_G_LAMBDA_TABLE :: [8] SgPoint.[
 // when d and the half's sign differ.
 glv_add_digit :: (result: SgPoint, table: [8] SgPoint, digit: int, negative: bool) -> SgPoint #effects(all) {
   d := ifx negative then -digit else digit;
-  selected := table[((ifx d < 0 then -d else d) - 1) / 2];
-  if d < 0 { selected.y = sf_negate(selected.y); }
+  selected := table[((ifx d < 0 then -d else d) - 1) / 2];  // mutant: equivalent (at d = 0, -d is d; every caller passes a nonzero digit)
+  if d < 0 { selected.y = sf_negate(selected.y); }  // mutant: equivalent (d = 0 never arrives: each call sits under digits[bit] != 0)
   return sg_add_valid(result, selected);
 }
 // a·G + b·P with a = a1 + λ·a2 and b = b1 + λ·b2: four width-5 wNAFs of
@@ -235,7 +297,7 @@ glv_ecmult_counted_vartime :: (a: ScScalar, point: SgPoint, b: ScScalar) -> GlvC
   w3 := sm_wnaf_vartime(b1.value, SM_P_WINDOW); w4 := sm_wnaf_vartime(b2.value, SM_P_WINDOW);
   length := sm_joint_length_vartime(w1, w2);
   other := sm_joint_length_vartime(w3, w4);
-  if other > length { length = other; }
+  if other > length { length = other; }  // mutant: equivalent (at other == length the assignment keeps the same value)
   r := GlvCount.{value=sg_infinity()};
   for round: 0..<length {
     bit := length-1-round;
