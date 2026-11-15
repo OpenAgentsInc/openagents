@@ -100,6 +100,8 @@ bool makers_route(const request *q);      // makers.c: a realm's maker and their
 bool upgrades_route(const request *q);    // makers.c: listed fairy upgrades, paid straight to their maker
 void makers_init(void);                   // checks makers.c's numbers against pay/makerpay-policy.coax
 void makers_print_limits(FILE *out);      // api --limits: the tips and upgrades section of /docs/limits
+long mesh_post_json(const char *url, const char *body, size_t n, const char *header, long timeout_ms, char **data, size_t *count);   // mesh.c: one JSON POST; 0: no response
+bool router_route(const request *q);       // router.c: which computer and agent take a task (docs/router/README.md)
 bool mesh_route(const request *q);         // mesh.c: authenticated native SystemOne mesh
 bool anime_route(const request *q);        // anime.c: typed Anime Lab directions
 bool worldbuilder_route(const request *q); // worldbuilder.c: /create-world's chat, the day's $50 cap and anti-flood

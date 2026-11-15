@@ -85,18 +85,26 @@ static bool iam_token(const char *url, char out[4096]) {
   return api_id_token_for_url(url, NULL, out, 4096);
 }
 // One POST of n bytes to url with an optional extra header; the reply goes into b.
-static CURLcode post(const char *url, const char *body, size_t n, const char *header, bytes *b, long *http) {
+static CURLcode post(const char *url, const char *body, size_t n, const char *header, long timeout_ms, bytes *b, long *http) {
   CURL *h = curl_easy_init(); if (!h) return CURLE_FAILED_INIT;
   struct curl_slist *headers = curl_slist_append(NULL, "Content-Type: application/json");
   if (header && *header) headers = curl_slist_append(headers, header);
   curl_easy_setopt(h, CURLOPT_URL, url); curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers);
   curl_easy_setopt(h, CURLOPT_POSTFIELDS, body); curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, (long)n);
   curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, receive); curl_easy_setopt(h, CURLOPT_WRITEDATA, b);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 30000L); curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 3000L);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, timeout_ms); curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 3000L);
   curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https"); curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 0L);
   curl_easy_setopt(h, CURLOPT_PROXY, "");
   CURLcode rc = curl_easy_perform(h); curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, http);
   curl_slist_free_all(headers); curl_easy_cleanup(h); return rc;
+}
+// The same POST for another route file (router.c): the HTTP status and the reply in *data (the
+// caller frees it), or 0 when no response came. header is one extra header line, or NULL.
+long mesh_post_json(const char *url, const char *body, size_t n, const char *header, long timeout_ms, char **data, size_t *count) {
+  bytes b = {0}; long http = 0;
+  CURLcode rc = post(url, body, n, header, timeout_ms, &b, &http);
+  *data = b.data; *count = b.count;
+  return rc == CURLE_OK ? http : 0;
 }
 // A fleet door: the body as it is, the answer checked against the route's identity.
 static int fleet(coax_t_MgRoute route, const char *body, size_t n, bytes *b) {
@@ -105,7 +113,7 @@ static int fleet(coax_t_MgRoute route, const char *body, size_t n, bytes *b) {
   long http = 0; CURLcode rc = CURLE_FAILED_INIT;
   if (iam_token(url, token)) {
     auth[0] = 0; if (token[0]) snprintf(auth, sizeof auth, "Authorization: Bearer %s", token);
-    rc = post(url, body, n, auth, b, &http);
+    rc = post(url, body, n, auth, 30000L, b, &http);
   }
   memset(token, 0, sizeof token); memset(auth, 0, sizeof auth);
   if (rc != CURLE_OK) return rc == CURLE_OPERATION_TIMEDOUT ? 504 : 502;
@@ -123,7 +131,7 @@ static int gemini(coax_t_MgRoute route, const char *body, size_t n, bytes *out) 
   if (m < 0) { free(g); return 422; }
   char header[300]; snprintf(header, sizeof header, "x-goog-api-key: %s", key);
   bytes b = {0}; long http = 0;
-  CURLcode rc = post(url, g, (size_t)m, header, &b, &http);
+  CURLcode rc = post(url, g, (size_t)m, header, 30000L, &b, &http);
   memset(header, 0, sizeof header); free(g);
   if (rc == CURLE_OPERATION_TIMEDOUT) { free(b.data); return 504; }
   char *o = malloc(MESH_MAX + 1); if (!o) { free(b.data); return 503; }

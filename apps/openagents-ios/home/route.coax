@@ -1,0 +1,121 @@
+// Where a chat message would run (docs/router/README.md). Before the hosted model answers a
+// message in an account chat, the app asks POST /api/chat/route/v1 which of your computers, which
+// coding agent, model and effort would take it, shows that as one quiet line, and passes it to
+// the model with the chat (POST /api/chat/delegated/complete/v1), so the answer can say what it is
+// about to hand off. Nothing is started yet: starting the agent on that computer comes next.
+//
+// The request is a RouteRequest and the answer a RouteDecision (openagents.router.v1alpha1; the
+// one codec is coax/lib/agent/router/wire.coax). What the app knows of each computer today is
+// its name, whether its last read worked, and its busy Claude conversations: a computer's
+// resident service does not report its disk, memory, load or OS yet, so those go unsaid.
+//
+// When there is no computer, the route fails, or the server is older than the route, the chat
+// completes as it did before.
+#load "../../../coax/lib/agent/router/words.coax";
+
+NA_ROUTE_LINE :: 320;
+NA_ROUTE_IDS :: RTR_STATIONS * 40;
+RouteLine :: struct {text:[NA_ROUTE_LINE]u8;n:int;}
+
+// text cut to at most limit bytes on a UTF-8 boundary, appended to out at n.
+na_route_clip :: (out:[]u8,n:int,text:string,limit:int)->int {
+  end:=ifx text.count<limit then text.count else limit;
+  while end>0 && end<text.count && (text[end] & 0xc0)==0x80 {end-=1;}
+  return rtr_put(out,n,cast(string)text[0..<end]);
+}
+#test "a clipped turn ends on a whole character" {
+  b:[16]u8;#assert na_route_clip(b[..],0,"abcdef",4)==4 && na_route_clip(b[..],0,"ab",4)==2 && na_route_clip(b[..],0,"aé",2)==1 && na_route_clip(b[..],0,"aé",3)==3;
+}
+
+na_route_clear :: (s:[]Starter) {for i:0..<32 {s[0].route_lines[i].n=0;}s[0].route_note_n=0;s[0].route_catalog_asked=false;}
+
+// The request for the chat's latest message: the task, the turn before it, and your connected
+// computers. ids (NA_ROUTE_IDS) and summary hold what the request's strings borrow. False when
+// this chat is not one to route, or no computer is connected.
+na_route_request :: (s:[]Starter,q:[]RtrRequest,ids:[]u8,summary:[]u8)->bool {
+  c:=s[0].navigation[0].browser[0].catalog[..];t:=s[0].thread[..];
+  if !s[0].workspace || s[0].world_mode || s[0].project_thread_n>0 || c[0].n<1 || t[0].n<1 || ids.count<NA_ROUTE_IDS {return false;}
+  // the task is the last message the person typed
+  last:=t[0].n-1;while last>=0 && t[0].messages[last].assistant {last-=1;}
+  if last<0 {return false;}
+  q[0]=RtrRequest.{};
+  q[0].text=cast(string)t[0].messages[last].text[0..<t[0].messages[last].n];
+  sn:=0;
+  if last>=2 {
+    sn=na_route_clip(summary,sn,cast(string)t[0].messages[last-2].text[0..<t[0].messages[last-2].n],400);sn=rtr_put(summary,sn,"\n");
+    sn=na_route_clip(summary,sn,cast(string)t[0].messages[last-1].text[0..<t[0].messages[last-1].n],600);
+  }
+  q[0].summary=cast(string)summary[0..<sn];
+  // the phone has no report times yet: a computer whose last read worked reported now
+  q[0].now_ms=1000;
+  for i:0..<c[0].n {
+    k:=q[0].n;if k==RTR_STATIONS {break;}
+    name:=cast(string)c[0].entries[i].label[0..<c[0].entries[i].nl];
+    id:=rtr_id_from_name(name,ids[k*40..<k*40+40]);
+    if rtr_station_index(q,id)>=0 {continue;}
+    q[0].stations[k]=RtrStation.{};q[0].stations[k].id=id;q[0].stations[k].name=ifx name.count>0 then name else id;
+    q[0].stations[k].reported_at_ms=ifx i<64 && s[0].navigation[0].groups[i].failed then 0 else 1000;
+    // a connected computer runs Claude Code on its own login; other agents are not reported yet
+    q[0].stations[k].agents[0]=RtrAgent.{reported=true,installed=true,logged_in=true};
+    for r:0..<s[0].navigation[0].n {
+      w:=q[0].stations[k].work;
+      if s[0].navigation[0].rows[r].host==i && s[0].navigation[0].rows[r].session.busy && w<RTR_WORK {
+        q[0].stations[k].work_engine[w]="claude";q[0].stations[k].work_state[w]="working";q[0].stations[k].work=w+1;
+      }
+    }
+    q[0].n+=1;
+  }
+  return q[0].n>0;
+}
+
+// Asks where the latest message would run. False when nothing was sent: the chat then completes plainly.
+na_route :: (s:[]Starter)->bool {
+  q:[1]RtrRequest;ids:[NA_ROUTE_IDS]u8;summary:[1100]u8;
+  s[0].route_note_n=0;
+  if s[0].flight!=0 || !na_route_request(s,q[..],ids[..],summary[..]) {return false;}
+  n:=rtr_request_write(q[..],s[0].wire[..]);if n<1 {return false;}
+  na_http(s,"/api/chat/route/v1",cast(string)s[0].wire[0..<n],7);
+  return s[0].flight!=0;
+}
+
+// Routes the latest message, first reading which computers are connected when the menu has not
+// loaded them yet (it loads them only once it is opened). False when nothing was sent.
+na_route_start :: (s:[]Starter)->bool {
+  if s[0].flight!=0 || !s[0].workspace || s[0].world_mode || s[0].project_thread_n>0 {return false;}
+  if s[0].navigation[0].browser[0].catalog[0].n<1 && !s[0].route_catalog_asked {
+    s[0].route_catalog_asked=true;
+    na_http(s,"/api/chat/environments/v1","",72);
+    return s[0].flight!=0;
+  }
+  return na_route(s);
+}
+// The connected computers, read for the route: kept where the menu keeps them. Then the route, or the plain chat.
+na_route_catalog_reply :: (s:[]Starter,status:int,raw:string,failed:bool) {
+  c:[1]EaCatalog;
+  if !failed && status==200 && ea_catalog_read(raw,c[..]) && c[0].ok {s[0].navigation[0].browser[0].catalog[0]=c[0];}
+  if !na_route(s) {na_complete(s);}
+}
+
+// The route's answer: the line for the answer to come and the note for the model. Whatever it
+// was, the chat completes next.
+na_route_reply :: (s:[]Starter,status:int,raw:string,failed:bool) {
+  s[0].route_note_n=0;
+  q:[1]RtrRequest;ids:[NA_ROUTE_IDS]u8;summary:[1100]u8;d:[1]RtrDecision;nodes:[2048]JvNode;wire:[RTR_DECISION_MAX]u8;
+  if !failed && status==200 && na_route_request(s,q[..],ids[..],summary[..]) && rtr_decision_read(raw,nodes[..],wire[..],d[..]) && d[0].door.count>0 {
+    k:=s[0].thread[0].n;lb:[256]u8;
+    if k<32 {
+      n:=0;
+      if d[0].ok {
+        n=rtr_put(s[0].route_lines[k].text[..],0,rtr_line(q[..],d[..],lb[..]));
+        for i:0..<d[0].nreasons {
+          why:=rtr_reason_text(d[0].reasons[i]);
+          if why.count>0 && n+why.count+2<NA_ROUTE_LINE {n=rtr_put(s[0].route_lines[k].text[..],n,"\n");n=rtr_put(s[0].route_lines[k].text[..],n,why);}
+        }
+      } else {n=rtr_put(s[0].route_lines[k].text[..],0,"Nothing would run. ");n=rtr_put(s[0].route_lines[k].text[..],n,rtr_error_text(d[..]));}
+      s[0].route_lines[k].n=n;
+    }
+    note:=rtr_note(q[..],d[..],s[0].route_note[..]);s[0].route_note_n=note.count;
+  }
+  s[0].dirty=true;
+  na_complete(s);
+}

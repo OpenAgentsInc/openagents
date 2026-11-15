@@ -43,6 +43,13 @@ rtrg_record :: (message: string, name: string, line: string) -> bool {
     v := RTP_RouteDecision_to_json(m, out[..]);
     if v.error != 0 { return rtrg_fail("the decision is not written", name); }
     got = cast(string) v.wire;
+    d: [1] RtrDecision; wire2: [RTR_DECISION_MAX] u8; again: [RTR_DECISION_MAX] u8;
+    if !rtr_decision_read(line, nodes[..], wire2[..], d[..]) { return rtrg_fail("the decision does not read through wire.coax", name); }
+    an := rtr_decision_write(d[..], again[..]);
+    if an <= 0 || cast(string) again[0..<an] != line {
+      print("FAIL % is not written back by wire.coax byte for byte\n  want %\n  got  %\n", name, line, ifx an > 0 then cast(string) again[0..<an] else "(nothing)");
+      return false;
+    }
   } else { return rtrg_fail("unknown message", message); }
   if got != line {
     print("FAIL % is not written back byte for byte\n  want %\n  got  %\n", name, line, got);

@@ -128,10 +128,16 @@ rtr_weight_ok :: (q: [] RtrRequest, i: int, weight: int) -> bool {
   return !(q[0].stations[i].nothing_heavy && weight >= RTR_HEAVY);
 }
 
-// Whether the computer in row i has what the task needs.
+// Whether the computer in row i reports what it is: its OS. One that doesn't
+// (its resident service is older than station reports) is known by name only.
+rtr_facts_known :: (q: [] RtrRequest, i: int) -> bool { return q[0].stations[i].os.count > 0; }
+
+// Whether the computer in row i has what the task needs. A computer that
+// reports no facts is not ruled out by a need it can't be asked about: the
+// model chose it by name, and an older computer must stay usable.
 rtr_need_ok :: (q: [] RtrRequest, i: int, needs: int) -> bool {
-  if needs == RTR_NEED_APPLE { return q[0].stations[i].apple_builds; }
-  if needs == RTR_NEED_GPU { return q[0].stations[i].gpu.count > 0; }
+  if needs == RTR_NEED_APPLE { return q[0].stations[i].apple_builds || !rtr_facts_known(q, i); }
+  if needs == RTR_NEED_GPU { return q[0].stations[i].gpu.count > 0 || !rtr_facts_known(q, i); }
   if needs == RTR_NEED_THIS { return q[0].current_station.count == 0 || q[0].stations[i].id == q[0].current_station; }
   return true;
 }
@@ -399,6 +405,9 @@ rtr_fx_pick :: (q: [] RtrRequest, a: RtrAnswers, d: [] RtrDecision) {
   #assert rtr_need_ok(q[..], 0, RTR_NEED_APPLE) && !rtr_need_ok(q[..], 1, RTR_NEED_APPLE) && rtr_need_ok(q[..], 1, RTR_NEED_GPU) && !rtr_need_ok(q[..], 0, RTR_NEED_GPU);
   #assert rtr_need_ok(q[..], 0, RTR_NEED_THIS) && !rtr_need_ok(q[..], 1, RTR_NEED_THIS) && rtr_need_ok(q[..], 1, RTR_NEED_NONE);
   q[0].current_station = ""; #assert rtr_need_ok(q[..], 1, RTR_NEED_THIS);
+  // a computer that reports no facts is not ruled out by a Mac or a GPU need
+  q[0].stations[1].os = ""; #assert rtr_need_ok(q[..], 1, RTR_NEED_APPLE) && !rtr_facts_known(q[..], 1);
+  q[0].stations[0].os = ""; #assert rtr_need_ok(q[..], 0, RTR_NEED_GPU);
 }
 
 #test "what the person named wins when it can run, and the decision says when it can't" {

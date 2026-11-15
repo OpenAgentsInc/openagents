@@ -41,22 +41,8 @@
 RTRS_DISK_FLOOR_MB :: 20480;     // a computer takes no new work under 20 GB free, unless the person says otherwise
 RTRS_STORE :: 1024;              // the bytes a report's strings need
 
-// A host name as a station_id: lower case, anything outside a-z, 0-9 and "-"
-// becomes "-", runs of "-" are one, at most 32, and "this-computer" when
-// nothing is left or the name is "none".
-rtrs_id :: (host: string, out: [] u8) -> string {
-  n := 0;
-  for c: host {
-    b := ifx c >= 'A' && c <= 'Z' then c + 32 else c;
-    ok := (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9');
-    if n == RTR_ID_MAX || n >= out.count { break; }
-    if ok { out[n] = b; n += 1; }
-    else if n > 0 && out[n - 1] != '-' { out[n] = '-'; n += 1; }
-  }
-  while n > 0 && out[n - 1] == '-' { n -= 1; }
-  id := cast(string) out[0..<n];
-  return ifx rtr_id_ok(id) then id else "this-computer";
-}
+// A host name as a station_id (wire.coax's rule for any computer's name).
+rtrs_id :: (host: string, out: [] u8) -> string { return rtr_id_from_name(host, out); }
 
 // The first whole number in text, or -1.
 rtrs_first_int :: (text: string) -> int {

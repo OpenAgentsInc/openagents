@@ -159,6 +159,40 @@ rtr_id_ok :: (id: string) -> bool {
   return true;
 }
 
+// Appends s to out at n: the new length (what does not fit is dropped).
+rtr_put :: (out: [] u8, n: int, s: string) -> int {
+  m := n;
+  for c: s { if m < out.count { out[m] = c; m += 1; } }
+  return m;
+}
+
+// A computer's name as a station_id: lower case, anything outside a-z, 0-9
+// and "-" becomes "-", runs of "-" are one, at most 32, and "this-computer"
+// when nothing is left or the name is "none".
+rtr_id_from_name :: (name: string, out: [] u8) -> string {
+  n := 0; keep := 0;       // keep: the length up to the last letter or digit, so no id ends in "-"
+  for c: name {
+    if n == RTR_ID_MAX || n == out.count { break; }
+    upper := c >= 'A' && c <= 'Z';
+    if upper || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') { out[n] = ifx upper then c + 32 else c; n += 1; keep = n; }
+    else if keep == n && n != 0 { out[n] = '-'; n += 1; }
+  }
+  id := cast(string) out[0..<keep];
+  return ifx rtr_id_ok(id) then id else "this-computer";
+}
+#test "a name becomes an id: letters lowered, digits kept, anything else one dash, never at an end" {
+  b: [64] u8;
+  #assert rtr_id_from_name("AZaz09", b[..]) == "azaz09" && rtr_id_from_name("MacBook Pro", b[..]) == "macbook-pro" && rtr_id_from_name("My Mac (2).local", b[..]) == "my-mac-2-local";
+  // the bytes beside each range are not letters or digits: @ [ ` { / :
+  #assert rtr_id_from_name("a@b", b[..]) == "a-b" && rtr_id_from_name("a[b", b[..]) == "a-b" && rtr_id_from_name("a`b", b[..]) == "a-b";
+  #assert rtr_id_from_name("a{b", b[..]) == "a-b" && rtr_id_from_name("a/b", b[..]) == "a-b" && rtr_id_from_name("a:b", b[..]) == "a-b";
+  #assert rtr_id_from_name("--x__y--", b[..]) == "x-y" && rtr_id_from_name("a-", b[..]) == "a" && rtr_id_from_name("-a", b[..]) == "a" && rtr_id_from_name("a--b", b[..]) == "a-b";
+  #assert rtr_id_from_name("", b[..]) == "this-computer" && rtr_id_from_name("none", b[..]) == "this-computer" && rtr_id_from_name("???", b[..]) == "this-computer";
+  // at most 32, and no more than the buffer holds
+  #assert rtr_id_from_name("0123456789012345678901234567890123", b[..]) == "01234567890123456789012345678901" && rtr_id_from_name("a-very-long-host-name-that-goes-on-and-on", b[..]) == "a-very-long-host-name-that-goes";
+  #assert rtr_id_from_name("abcdef", b[0..<4]) == "abcd" && rtr_id_from_name("abc-ef", b[0..<4]) == "abc";
+}
+
 // The computer called id in q: its index, or -1.
 rtr_station_index :: (q: [] RtrRequest, id: string) -> int {
   for i: 0..<q[0].n { if q[0].stations[i].id == id { return i; } }
@@ -350,6 +384,48 @@ rtr_blocked_id :: (b: RtrBlocked, out: [] u8) -> string {
     for c: b.engine { if n < out.count { out[n] = c; n += 1; } }
   }
   return cast(string) out[0..<n];
+}
+
+// A decision's JSON into d: false for a body that is not a RouteDecision or
+// a list over its bound. wire must not overlap text, and d's strings borrow it.
+rtr_decision_read :: (text: string, nodes: [] JvNode, wire: [] u8, d: [] RtrDecision) -> bool {
+  m := RTP_RouteDecision_from_json(text, nodes, wire);
+  if m.error != 0 { return false; }
+  rtr_decision_clear(d);
+  ok := RTP_RouteDecision_get_ok(m); station := RTP_RouteDecision_get_station(m); engine := RTP_RouteDecision_get_engine(m);
+  model := RTP_RouteDecision_get_model(m); effort := RTP_RouteDecision_get_effort(m);
+  difficulty := RTP_RouteDecision_get_difficulty(m); weight := RTP_RouteDecision_get_weight(m);
+  door := RTP_RouteDecision_get_door(m); problem := RTP_RouteDecision_get_door_problem(m);
+  tokens := RTP_RouteDecision_get_input_tokens(m); ms := RTP_RouteDecision_get_latency_ms(m);
+  error := RTP_RouteDecision_get_error(m); needs := RTP_RouteDecision_get_needs(m);
+  d[0].ok = ok.value; d[0].station = station.value; d[0].engine = engine.value; d[0].model = model.value; d[0].effort = effort.value;
+  if difficulty.present { d[0].difficulty = cast(int) difficulty.value; }
+  if weight.present { d[0].weight = cast(int) weight.value; }
+  d[0].door = door.value; d[0].door_problem = problem.value;
+  d[0].input_tokens = cast(int) tokens.value; d[0].latency_ms = cast(int) ms.value; d[0].error = error.value; d[0].needs = needs.value;
+  ri := RTP_RouteDecision_iter_reasons(m);
+  while ri.has_value { if d[0].nreasons == RTR_REASONS { return false; } d[0].reasons[d[0].nreasons] = ri.value; d[0].nreasons += 1; ri = RTP_RouteDecision_next_reasons(ri); }
+  ai := RTP_RouteDecision_iter_answers(m);
+  while ai.has_value {
+    if d[0].nanswers == RTR_ANSWERS { return false; }
+    key := RTP_RouteAnswer_get_key(ai.value); choice := RTP_RouteAnswer_get_choice(ai.value);
+    level := RTP_RouteAnswer_get_level(ai.value); milli := RTP_RouteAnswer_get_probability_milli(ai.value);
+    rtr_answer(d, key.value, choice.value, ifx level.present then cast(int) level.value else -1, ifx milli.present then cast(int) milli.value else -1);
+    ai = RTP_RouteDecision_next_answers(ai);
+  }
+  si := RTP_RouteDecision_iter_eligible_stations(m);
+  while si.has_value { if d[0].neligible_stations == RTR_STATIONS { return false; } d[0].eligible_stations[d[0].neligible_stations] = si.value; d[0].neligible_stations += 1; si = RTP_RouteDecision_next_eligible_stations(si); }
+  ei := RTP_RouteDecision_iter_eligible_engines(m);
+  while ei.has_value { if d[0].neligible_engines == RTR_ENGINES { return false; } d[0].eligible_engines[d[0].neligible_engines] = ei.value; d[0].neligible_engines += 1; ei = RTP_RouteDecision_next_eligible_engines(ei); }
+  bi := RTP_RouteDecision_iter_blocked(m);
+  while bi.has_value {
+    if d[0].nblocked == RTR_BLOCKED { return false; }
+    id := RTP_RouteBlocked_get_id(bi.value); fact := RTP_RouteBlocked_get_fact(bi.value);
+    slash := 0; while slash < id.value.count && id.value[slash] != '/' { slash += 1; }
+    rtr_block(d, cast(string) id.value[0..<slash], ifx slash < id.value.count then cast(string) id.value[slash + 1..<id.value.count] else "", fact.value);
+    bi = RTP_RouteDecision_next_blocked(bi);
+  }
+  return true;
 }
 
 // A decision's JSON into out: its length, or 0 when it doesn't fit or a

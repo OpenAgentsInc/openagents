@@ -1,0 +1,26 @@
+{
+ "schema": "openagents.chat.delegated.v1",
+ "transport": "POST /api/chat/delegated/complete/v1",
+ "authentication": "As openagents.chat.thread.v1's completion: a verified person account the team funds, under the existing inference daily quotas.",
+ "fields": {
+  "schema": "literal openagents.chat.delegated.v1",
+  "note": "where the latest message would run, in words, from a RouteDecision the phone got from POST /api/chat/route/v1: 1..1200 UTF-8 bytes, no control byte but a line end. It enters the model's system prompt as data.",
+  "thread": "an openagents.chat.thread.v1 object"
+ },
+ "limits": "70000 encoded request bytes; exactly these three members; the answer is the completion's, as for openagents.chat.thread.v1. Nothing is started: the model says what it is about to hand off.",
+ "golden": {
+  "schema": "openagents.chat.delegated.v1",
+  "note": "Would run: Codex · low · on Mac",
+  "thread": {
+   "schema": "openagents.chat.thread.v1",
+   "id": "",
+   "revision": 0,
+   "messages": [
+    {
+     "role": "user",
+     "content": "Fix the typo"
+    }
+   ]
+  }
+ }
+}

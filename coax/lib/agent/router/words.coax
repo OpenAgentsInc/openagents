@@ -1,0 +1,118 @@
+// What a routing decision says to a person (docs/router/README.md, "What you
+// see"): the one line, each reason in plain words, and why nothing runs. Pure,
+// and loaded by anything that shows a decision: the command line, and the
+// phone, which gets a RouteDecision from POST /api/chat/route/v1.
+//
+// Nothing here says "route", "door", "engine" or "probability" except the one
+// sentence the specification gives for a decision made without an answer.
+#load "wire.coax";
+
+RTR_NOTE_MAX :: 1200;
+
+rtr_engine_title :: (engine: string) -> string {
+  return ifx engine == "claude" then "Claude Code" else ifx engine == "codex" then "Codex"
+    else ifx engine == "micro" then "Microcoder" else ifx engine == "psionic" then "Microcoder on this computer" else engine;
+}
+
+// "Claude Code · Opus · high · on MacBook Pro": what ran, as a fact.
+rtr_line :: (q: [] RtrRequest, d: [] RtrDecision, out: [] u8) -> string {
+  if !d[0].ok { return ""; }
+  n := rtr_put(out, 0, rtr_engine_title(d[0].engine));
+  if d[0].model.count > 0 && n < out.count {
+    n = rtr_put(out, n, " · ");
+    first := d[0].model[0];
+    out[n] = ifx first >= 'a' && first <= 'z' then first - 32 else first; n += 1;
+    n = rtr_put(out, n, cast(string) d[0].model[1..<d[0].model.count]);
+  }
+  n = rtr_put(out, n, " · "); n = rtr_put(out, n, d[0].effort);
+  i := rtr_station_index(q, d[0].station);
+  n = rtr_put(out, n, " · on "); n = rtr_put(out, n, ifx i >= 0 then q[0].stations[i].name else d[0].station);
+  return cast(string) out[0..<n];
+}
+
+// A reason code in plain words, or "" for one a person needn't read.
+rtr_reason_text :: (code: string) -> string {
+  if code == "door_unavailable" { return "Routing was unavailable, so the default ran."; }
+  if code == "unsure_engine" { return "No agent was a clear choice, so the most capable one runs."; }
+  if code == "unsure_station" { return "No computer was a clear choice, so the one with the most room runs."; }
+  if code == "engine_not_eligible" { return "The agent that was chosen can't take work now."; }
+  if code == "station_not_eligible" { return "That computer can't take work now."; }
+  if code == "station_lacks_engine" { return "That agent can't run on that computer."; }
+  if code == "station_lacks_need" { return "That computer doesn't have what the task needs."; }
+  if code == "engine_moved" { return "No computer could run the chosen agent for this task, so another agent runs it."; }
+  if code == "continued" { return "The conversation stays where it is."; }
+  if code == "current_cannot" { return "The conversation can't stay where it was."; }
+  if code == "named_engine" { return "You asked for this agent."; }
+  if code == "named_station" { return "You asked for this computer."; }
+  if code == "named_engine_cannot" { return "The agent you asked for can't take work now."; }
+  if code == "named_station_cannot" { return "The computer you asked for can't run this."; }
+  if code == "faster" { return "You asked for speed, so the effort is one step lower."; }
+  if code == "more_careful" { return "You asked for care, so the effort is one step higher."; }
+  if code == "too_heavy_for_station" { return "That computer takes nothing heavy."; }
+  return "";
+}
+
+// Why nothing runs, in plain words.
+rtr_error_text :: (d: [] RtrDecision) -> string {
+  if d[0].error == "no_task" { return "There is no task."; }
+  if d[0].error == "bad_request" { return "The task could not be sent to be routed."; }
+  if d[0].error == "refused_by_door" { return "The task was refused before routing."; }
+  if d[0].neligible_stations == 0 { return "No computer can take work now."; }
+  last := ifx d[0].nreasons > 0 then d[0].reasons[d[0].nreasons - 1] else "";
+  if last == "station_lacks_need" {
+    return ifx d[0].needs == "apple" then "This needs a Mac that builds for Apple platforms, and none can take work now."
+      else ifx d[0].needs == "gpu" then "This needs a GPU, and no computer with one can take work now."
+      else "This needs the conversation's computer, and it can't take work now.";
+  }
+  if d[0].needs == "apple" { return "This is heavy work that needs a Mac, and the Macs that can take work take nothing heavy."; }
+  return "This is heavy work, and the computers that could run it take nothing heavy.";
+}
+
+// A blocking fact in plain words.
+rtr_fact_text :: (fact: string) -> string {
+  if fact == "not_reachable" { return "hasn't reported in the last two minutes"; }
+  if fact == "keep_clear" { return "you keep it clear"; }
+  if fact == "disk_below_floor" { return "its free disk is below its floor"; }
+  if fact == "at_agent_limit" { return "it is running as many agents as you allow"; }
+  if fact == "no_agent" { return "no agent on it can take work"; }
+  if fact == "not_installed" { return "not installed"; }
+  if fact == "logged_out" { return "not logged in"; }
+  if fact == "quota_used_up" { return "its limit is used up"; }
+  if fact == "cooldown" { return "resting after a refusal"; }
+  return fact;
+}
+
+// A decision as a short note for the model that answers the person (the
+// chat's completion gets it as data): what would run and why, or why nothing
+// can. "" when it does not fit.
+rtr_note :: (q: [] RtrRequest, d: [] RtrDecision, out: [] u8) -> string {
+  lb: [256] u8; n := 0;
+  if d[0].ok {
+    n = rtr_put(out, n, "Would run: "); n = rtr_put(out, n, rtr_line(q, d, lb[..])); n = rtr_put(out, n, "\n");
+    for i: 0..<d[0].nreasons {
+      text := rtr_reason_text(d[0].reasons[i]);
+      if text.count > 0 { n = rtr_put(out, n, "Why: "); n = rtr_put(out, n, text); n = rtr_put(out, n, "\n"); }
+    }
+  } else {
+    n = rtr_put(out, n, "Nothing can run: "); n = rtr_put(out, n, rtr_error_text(d)); n = rtr_put(out, n, "\n");
+  }
+  if d[0].needs == "apple" { n = rtr_put(out, n, "The task needs: a Mac that builds for Apple platforms\n"); }
+  if d[0].needs == "gpu" { n = rtr_put(out, n, "The task needs: a GPU\n"); }
+  if d[0].needs == "this_computer" { n = rtr_put(out, n, "The task needs: the computer this conversation is on\n"); }
+  levels := [5] string.["trivial", "easy", "moderate", "hard", "very hard"]; weights := [3] string.["light", "medium", "heavy"];
+  if d[0].difficulty >= 0 && d[0].difficulty < 5 { n = rtr_put(out, n, "How hard the task is: "); n = rtr_put(out, n, levels[d[0].difficulty]); n = rtr_put(out, n, "\n"); }
+  if d[0].weight >= 0 && d[0].weight < 3 { n = rtr_put(out, n, "How much of a computer it takes: "); n = rtr_put(out, n, weights[d[0].weight]); n = rtr_put(out, n, "\n"); }
+  if n >= out.count || n > RTR_NOTE_MAX { return ""; }
+  return cast(string) out[0..<n];
+}
+
+#test "a decision's note says what would run and why, or why nothing can" {
+  q: [1] RtrRequest; d: [1] RtrDecision; b: [RTR_NOTE_MAX + 1] u8;
+  q[0].n = 1; q[0].stations[0].id = "mac"; q[0].stations[0].name = "MacBook Pro";
+  rtr_decision_clear(d[..]); d[0].ok = true; d[0].station = "mac"; d[0].engine = "claude"; d[0].model = "opus"; d[0].effort = "high"; d[0].difficulty = 3; d[0].weight = 1; d[0].needs = "apple";
+  rtr_reason(d[..], "named_station"); rtr_reason(d[..], "unsure_engine");
+  #assert rtr_note(q[..], d[..], b[..]) == "Would run: Claude Code · Opus · high · on MacBook Pro\nWhy: You asked for this computer.\nWhy: No agent was a clear choice, so the most capable one runs.\nThe task needs: a Mac that builds for Apple platforms\nHow hard the task is: hard\nHow much of a computer it takes: medium\n";
+  rtr_decision_clear(d[..]); d[0].error = "no_station"; d[0].needs = "gpu"; d[0].eligible_stations[0] = "mac"; d[0].neligible_stations = 1; rtr_reason(d[..], "station_lacks_need");
+  #assert rtr_note(q[..], d[..], b[..]) == "Nothing can run: This needs a GPU, and no computer with one can take work now.\nThe task needs: a GPU\n";
+  #assert rtr_note(q[..], d[..], b[0..<20]) == "" && rtr_line(q[..], d[..], b[..]) == "";
+}

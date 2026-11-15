@@ -340,6 +340,15 @@ schemes:
         - name: OpenAgentsTests
           selectedTests: [LookTests]
 
+  CoaxNativeRoute:
+    build:
+      targets:
+        OpenAgents: all
+    test:
+      targets:
+        - name: OpenAgentsUITests
+          selectedTests: [RouteUITests]
+
   CoaxNativeNavigation:
     build:
       targets:

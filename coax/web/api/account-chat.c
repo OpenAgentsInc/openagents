@@ -98,7 +98,8 @@ static bool ac_project(const request *q) {
 bool account_chat_route(const request *q) {
   if (!strcmp(q->path,"/api/chat/project/v1") || !strcmp(q->path,"/api/chat/project/complete/v1")) return ac_project(q);
   bool world=!strcmp(q->path,"/api/chat/world/complete/v1"),player=!strcmp(q->path,"/api/chat/world/player/v1");
-  bool complete=world || !strcmp(q->path,"/api/chat/complete/v1"),thread=!strcmp(q->path,"/api/chat/thread/v1");
+  bool delegated=!strcmp(q->path,"/api/chat/delegated/complete/v1");
+  bool complete=world || delegated || !strcmp(q->path,"/api/chat/complete/v1"),thread=!strcmp(q->path,"/api/chat/thread/v1");
   if (!complete && !thread && !player) return false;
   const auth_principal *p=auth_principal_of(q);
   if (!p || !act_owns(p->kind,acs(p->account),acs(p->account))) {api_error(q->fd,401,"Log in first.");return true;}
@@ -113,8 +114,8 @@ bool account_chat_route(const request *q) {
     // Accept the thread profile, then translate with the one gateway codec.
     coax_t_AccountThread *t=calloc(1,sizeof *t);unsigned char body[131072];
     if (!t) {api_error(q->fd,503,"Memory unavailable.");return true;}
-    bool ok=act_read((coax_string){q->body,(int64_t)q->body_len},(coax_v_t_AccountThread){t,1});
-    int64_t n=world ? awc_completion((coax_string){q->body,(int64_t)q->body_len},(coax_v_u8){body,sizeof body}):ok ? act_completion((coax_v_t_AccountThread){t,1},(coax_v_u8){body,sizeof body}):-1;free(t);
+    bool ok=!delegated && act_read((coax_string){q->body,(int64_t)q->body_len},(coax_v_t_AccountThread){t,1});
+    int64_t n=delegated ? acd_completion((coax_string){q->body,(int64_t)q->body_len},(coax_v_u8){body,sizeof body}):world ? awc_completion((coax_string){q->body,(int64_t)q->body_len},(coax_v_u8){body,sizeof body}):ok ? act_completion((coax_v_t_AccountThread){t,1},(coax_v_u8){body,sizeof body}):-1;free(t);
     if (n<1) {api_error(q->fd,400,"Invalid chat request.");return true;}
     request next=*q;next.body=(const char *)body;next.body_len=(size_t)n;return inference_ask(&next,who,true);
   }

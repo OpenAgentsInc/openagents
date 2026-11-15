@@ -35,11 +35,6 @@
 RTR_LABEL :: 512;            // one computer's facts
 RTR_WEIGHT_LABELS :: [3] string.["Light: edits, reading and questions", "Medium: running tests or one build", "Heavy: long builds, many processes or much memory"];
 
-rtr_put :: (out: [] u8, n: int, s: string) -> int {
-  m := n;
-  for c: s { if m < out.count { out[m] = c; m += 1; } }
-  return m;
-}
 rtr_put_int :: (out: [] u8, n: int, v: int) -> int {
   m := json_write_int(out, n, v);
   return ifx m < 0 then n else m;
@@ -52,6 +47,8 @@ rtr_put_hundredths :: (out: [] u8, n: int, milli: int) -> int {
   return rtr_put_int(out, m, h % 100);
 }
 
+// A computer whose resident service does not send a station report yet (no
+// DescribeStation) is known by its name, its agents and its running work only.
 // One computer's facts as the model reads them, and as the Your computers
 // screen will say them: "MacBook Pro: macos, 12 cores, load 1.20, 21 of 64 GB
 // memory free, 175 GB disk free, 1 agent working, has this repository; can
@@ -59,12 +56,14 @@ rtr_put_hundredths :: (out: [] u8, n: int, milli: int) -> int {
 rtr_station_label :: (q: [] RtrRequest, e: [] RtrEligible, i: int, out: [] u8) -> string {
   names := RTR_ENGINE_NAMES;
   n := rtr_put(out, 0, q[0].stations[i].name); n = rtr_put(out, n, ": ");
-  n = rtr_put(out, n, ifx q[0].stations[i].os.count > 0 then q[0].stations[i].os else "unknown OS");
-  n = rtr_put(out, n, ", "); n = rtr_put_int(out, n, q[0].stations[i].cores); n = rtr_put(out, n, " cores, load ");
-  n = rtr_put_hundredths(out, n, q[0].stations[i].load_1m_milli);
-  n = rtr_put(out, n, ", "); n = rtr_put_int(out, n, q[0].stations[i].memory_free_mb / 1024); n = rtr_put(out, n, " of ");
-  n = rtr_put_int(out, n, q[0].stations[i].memory_total_mb / 1024); n = rtr_put(out, n, " GB memory free, ");
-  n = rtr_put_int(out, n, q[0].stations[i].disk_free_mb / 1024); n = rtr_put(out, n, " GB disk free, ");
+  if rtr_facts_known(q, i) {
+    n = rtr_put(out, n, q[0].stations[i].os);
+    n = rtr_put(out, n, ", "); n = rtr_put_int(out, n, q[0].stations[i].cores); n = rtr_put(out, n, " cores, load ");
+    n = rtr_put_hundredths(out, n, q[0].stations[i].load_1m_milli);
+    n = rtr_put(out, n, ", "); n = rtr_put_int(out, n, q[0].stations[i].memory_free_mb / 1024); n = rtr_put(out, n, " of ");
+    n = rtr_put_int(out, n, q[0].stations[i].memory_total_mb / 1024); n = rtr_put(out, n, " GB memory free, ");
+    n = rtr_put_int(out, n, q[0].stations[i].disk_free_mb / 1024); n = rtr_put(out, n, " GB disk free, ");
+  } else { n = rtr_put(out, n, "it has not reported what it is or how busy it is, "); }
   n = rtr_put_int(out, n, q[0].stations[i].work); n = rtr_put(out, n, ifx q[0].stations[i].work == 1 then " agent working" else " agents working");
   if q[0].repo.count > 0 {
     has := false;

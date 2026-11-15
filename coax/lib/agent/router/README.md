@@ -6,7 +6,9 @@ coding task. The specification is [docs/router/README.md](../../../../docs/route
 So far: the types, the rules in code, the questions for the decision model,
 a stand-in for Google's Decisions API, two labelled sets scored against
 answers Google gave, and a command line to try decisions with. It starts no
-agent, and no app calls it yet.
+agent. The iPhone app's account chat calls it through the API
+(`coax/web/api/router.c`, `apps/openagents-ios/home/route.coax`) and shows
+what would run.
 
 ## Try it
 
@@ -142,6 +144,7 @@ what runs differs from the answer.
 | `ask.coax` | The request for the decision model, and reading its answer. |
 | `mock.coax` | The stand-in for Google's Decisions API, in process. It answers by script and seed, and refuses what Google refuses about a request's shape. |
 | `decide.coax` | One decision end to end: `rtr_begin`, a door, `rtr_finish`. |
+| `words.coax` | What a decision says to a person: the one line, each reason and why nothing runs, and the note the chat's model gets. Pure; the phone loads it. |
 | `router.coax` | The command line. |
 | `wire-goldens.coax` | The codec against `proto/coder/router-v1alpha1.json`, and 2,048 fuzzed decisions written and read back. |
 | `eval.coax` | The labelled sets: reading `fixtures/labels.tsv`, scoring a decision want by want, and deciding a task from a recorded exchange. |

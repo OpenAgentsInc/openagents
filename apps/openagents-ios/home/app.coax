@@ -31,6 +31,7 @@ Starter :: struct {
   local_available:bool;account_ready:bool;worlds_available:bool;
   account_settings:[1]AccountSettingsApp;
   sync_elapsed:f32;sync_background:bool;
+  route_lines:[32]RouteLine;route_note:[RTR_NOTE_MAX+1]u8;route_note_n:int;route_catalog_asked:bool;
   world_mode:bool;world:[1]WorldTurn;world_flight:[1]WorldTurn;world_wire:[WT_BYTES]u8;world_n:int;world_plan:[WP_BYTES]u8;world_plan_n:int;
   tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;css:[24576]u8;
 }
@@ -39,6 +40,7 @@ Starter :: struct {
 #load "shell.coax";
 #load "projects.coax";
 #load "sync.coax";
+#load "route.coax";
 na_copy :: (out:[]u8,text:string)->int {n:=ifx text.count<out.count then text.count else out.count;for i:0..<n {out[i]=text[i];}return n;}
 na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[0].dirty=true;}
 #test "native worlds launch through the registered service and preserve the current account surface" {
@@ -49,7 +51,7 @@ na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[
 na_world :: (s:[]Starter,realm:string,path:string,edit:bool) {
  if s[0].flight!=0 {return;}n:=nwo_write(realm,path,edit,s[0].outbox[..]);if n<0 {na_note(s,"This world is unavailable.");return;}s[0].out_n=n;s[0].action=13;s[0].flight=13;s[0].dirty=true;
 }
-na_history_clear :: (s:[]Starter) {s[0].account_settings[0]=AccountSettingsApp.{};s[0].project[0]=ProjectApp.{};s[0].project_thread_n=0;s[0].project_link_pending=false;s[0].projects_n=0;s[0].projects_loaded=false;s[0].projects_failed=false;s[0].usage[0]=ProviderUsage.{};dm_value(s[0].dom[..],"usage.code","");dm_value(s[0].dom[..],"usage.label","");s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
+na_history_clear :: (s:[]Starter) {s[0].account_settings[0]=AccountSettingsApp.{};s[0].project[0]=ProjectApp.{};s[0].project_thread_n=0;s[0].project_link_pending=false;s[0].projects_n=0;s[0].projects_loaded=false;s[0].projects_failed=false;s[0].usage[0]=ProviderUsage.{};dm_value(s[0].dom[..],"usage.code","");dm_value(s[0].dom[..],"usage.label","");s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;na_route_clear(s);for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
 na_secrets_clear :: (s:[]Starter) {
   for i:0..<s[0].email.count {s[0].email[i]=0;}s[0].email_n=0;
   dm_value(s[0].dom[..],"login.email","");
@@ -91,7 +93,7 @@ na_http :: (s:[]Starter,path:string,body:string,purpose:int) {
   s[0].out_n=o[0].n;s[0].purpose=purpose;s[0].action=4;s[0].flight=4;s[0].dirty=true;
 }
 na_new :: (s:[]Starter) {
-  s[0].project_thread_n=0;s[0].project_link_pending=false;  if s[0].flight!=0 {return;}empty:AccountThread;s[0].thread[0]=empty;s[0].draft_n=0;s[0].retry=false;s[0].page=3;
+  s[0].project_thread_n=0;s[0].project_link_pending=false;  if s[0].flight!=0 {return;}empty:AccountThread;s[0].thread[0]=empty;na_route_clear(s);s[0].draft_n=0;s[0].retry=false;s[0].page=3;
   dm_value(s[0].dom[..],"chat.composer","");na_note(s,"");
 }
 na_save :: (s:[]Starter,purpose:int) {
@@ -104,6 +106,11 @@ na_complete :: (s:[]Starter) {
   if s[0].world_mode {
     n:=awc_write(s[0].thread[..],cast(string)s[0].world_wire[0..<s[0].world_n],s[0].wire[..]);if n<1 {na_note(s,"This world conversation is full. Start a new chat.");return;}
     s[0].world_flight[0]=s[0].world[0];na_http(s,"/api/chat/world/complete/v1",cast(string)s[0].wire[0..<n],5);s[0].retry=false;return;
+  }
+  // told where its task would run (route.coax), when a route answered
+  if s[0].route_note_n>0 {
+    n:=acd_write(s[0].thread[..],cast(string)s[0].route_note[0..<s[0].route_note_n],s[0].wire[..]);
+    if n>0 {na_http(s,"/api/chat/delegated/complete/v1",cast(string)s[0].wire[0..<n],5);na_note(s,"");s[0].retry=false;return;}
   }
   n:=act_write(s[0].thread[..],s[0].wire[..]);if n<1 {return;}
   na_http(s,"/api/chat/complete/v1",cast(string)s[0].wire[0..<n],5);na_note(s,"");s[0].retry=false;
@@ -181,6 +188,8 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
   if op==4 && s[0].purpose>=3 {
     background:=background_read;
     purpose:=s[0].purpose;s[0].purpose=0;
+    if purpose==7 && status!=401 {na_route_reply(s,status,raw,failed);return;}
+    if purpose==72 && status!=401 {na_route_catalog_reply(s,status,raw,failed);return;}
     if status==401 {if s[0].world_mode {s[0].retry=false;na_note(s,"Close the world and log in again to continue.");return;}na_history_clear(s);na_new(s);s[0].page=0;na_secrets_clear(s);na_note(s,"Log in again to continue.");return;}
     if failed || status!=200 {
       if background {return;}
@@ -198,14 +207,15 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
         else if p[0].edit {plan:=wp_write(p[..],s[0].world_plan[..]);s[0].world_plan_n=plan.count;}
         n=na_copy(t[0].messages[i].text[..],cast(string)p[0].say[0..<p[0].say_n]);if n==0 {n=na_copy(t[0].messages[i].text[..],"The world plan is ready.");}
       }
-      t[0].messages[i].n=n;t[0].messages[i].assistant=true;t[0].n+=1;na_save(s,6);return;
+      t[0].messages[i].n=n;t[0].messages[i].assistant=true;t[0].n+=1;s[0].route_note_n=0;na_save(s,6);return;
     }
     if !act_read(raw,s[0].thread[..]) {na_note(s,"The chat service returned an unreadable conversation.");return;}
+    if purpose==3 {na_route_clear(s);}
     if purpose==6 && s[0].world_mode && s[0].world_plan_n>0 {
       s[0].out_n=na_copy(s[0].outbox[..],cast(string)s[0].world_plan[0..<s[0].world_plan_n]);s[0].world_plan_n=0;s[0].action=520;s[0].dirty=true;return;
     }
     if s[0].workspace && (purpose==4 || purpose==6) {s[0].navigation[0].account_refresh=true;nav_keep_draft(s[0].navigation[..],"account/","");}
-    if purpose==4 {if s[0].project_thread_n>0 {s[0].project_link_pending=true;}s[0].draft_n=0;dm_value(s[0].dom[..],"chat.composer","");na_complete(s);return;}
+    if purpose==4 {if s[0].project_thread_n>0 {s[0].project_link_pending=true;}s[0].draft_n=0;dm_value(s[0].dom[..],"chat.composer","");if !na_route_start(s) {na_complete(s);}return;}
     s[0].page=3;s[0].retry=false;if purpose==3 && s[0].workspace {na_nav_restore(s);}na_note(s,"");return;
   }
   if failed {
@@ -309,8 +319,13 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     x=tr_open(t,"chat.messages",TG_SECTION,"transcript");tr_attr(t,x,AT_STATE,ifx s[0].thread[0].id_n>0 then cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n] else "new");
     for k:0..<s[0].thread[0].n {id:[96]u8;m:=s[0].thread[0].messages[k];
       x=k_message(t,u,tr_join(id[..],"message.",k),m.assistant,s[0].markdown[..],cast(string)m.text[0..<m.n]);
+      // where this answer's task would run (route.coax): a fact under the answer, not a control
+      if m.assistant && s[0].route_lines[k].n>0 {rid:[96]u8;x=k_meta(t,tr_join(rid[..],"route.",k),cast(string)s[0].route_lines[k].text[0..<s[0].route_lines[k].n]);}
     }
-    if s[0].purpose==5 && busy {x=k_reply_open(t,"chat.thinking",true,true);x=k_text(t,u,"chat.thinking.text",TG_P,"","Thinking…");tr_close(t);}
+    if (s[0].purpose==5 || s[0].purpose==7 || s[0].purpose==72) && busy {
+      x=k_reply_open(t,"chat.thinking",true,true);x=k_text(t,u,"chat.thinking.text",TG_P,"",ifx s[0].purpose==5 then "Thinking…" else "Choosing where this would run…");tr_close(t);
+      pending:=s[0].thread[0].n;if s[0].purpose==5 && pending<32 && s[0].route_lines[pending].n>0 {x=k_meta(t,"route.pending",cast(string)s[0].route_lines[pending].text[0..<s[0].route_lines[pending].n]);}
+    }
     tr_close(t);
     if s[0].retry {x=k_icon_button(t,"chat.retry",IC_ARROW_ROTATE_CW,"Retry turn");if busy {tr_attr(t,x,AT_DISABLED,"");}}
     if s[0].purpose==6 && !busy {x=k_button(t,u,"chat.save","Save reply",BS_PRIMARY);}

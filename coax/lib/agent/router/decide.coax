@@ -16,6 +16,7 @@
 // the default runs and the decision says so. A rule of the request or a
 // safety block is final: nothing runs.
 #load "ask.coax";
+#load "words.coax";
 #load "mock.coax";
 
 RTR_DOOR_MOCK :: "mock";
@@ -76,81 +77,6 @@ rtr_decide_mock :: (q: [] RtrRequest, script: string, seed: int, d: [] RtrDecisi
   e: [1] RtrEligible;
   if rtr_begin(q, e[..], d, w, RTR_DOOR_MOCK).count == 0 { return; }
   rtr_finish(q, e[..], rtr_mock(w, script, seed), d, w);
-}
-
-// ---- what a person reads
-
-rtr_engine_title :: (engine: string) -> string {
-  return ifx engine == "claude" then "Claude Code" else ifx engine == "codex" then "Codex"
-    else ifx engine == "micro" then "Microcoder" else ifx engine == "psionic" then "Microcoder on this computer" else engine;
-}
-
-// "Claude Code · Opus · high · on MacBook Pro": what ran, as a fact.
-rtr_line :: (q: [] RtrRequest, d: [] RtrDecision, out: [] u8) -> string {
-  if !d[0].ok { return ""; }
-  n := rtr_put(out, 0, rtr_engine_title(d[0].engine));
-  if d[0].model.count > 0 && n < out.count {
-    n = rtr_put(out, n, " · ");
-    first := d[0].model[0];
-    out[n] = ifx first >= 'a' && first <= 'z' then first - 32 else first; n += 1;
-    n = rtr_put(out, n, cast(string) d[0].model[1..<d[0].model.count]);
-  }
-  n = rtr_put(out, n, " · "); n = rtr_put(out, n, d[0].effort);
-  i := rtr_station_index(q, d[0].station);
-  n = rtr_put(out, n, " · on "); n = rtr_put(out, n, ifx i >= 0 then q[0].stations[i].name else d[0].station);
-  return cast(string) out[0..<n];
-}
-
-// A reason code in plain words, or "" for one a person needn't read.
-rtr_reason_text :: (code: string) -> string {
-  if code == "door_unavailable" { return "Routing was unavailable, so the default ran."; }
-  if code == "unsure_engine" { return "No agent was a clear choice, so the most capable one runs."; }
-  if code == "unsure_station" { return "No computer was a clear choice, so the one with the most room runs."; }
-  if code == "engine_not_eligible" { return "The agent that was chosen can't take work now."; }
-  if code == "station_not_eligible" { return "That computer can't take work now."; }
-  if code == "station_lacks_engine" { return "That agent can't run on that computer."; }
-  if code == "station_lacks_need" { return "That computer doesn't have what the task needs."; }
-  if code == "engine_moved" { return "No computer could run the chosen agent for this task, so another agent runs it."; }
-  if code == "continued" { return "The conversation stays where it is."; }
-  if code == "current_cannot" { return "The conversation can't stay where it was."; }
-  if code == "named_engine" { return "You asked for this agent."; }
-  if code == "named_station" { return "You asked for this computer."; }
-  if code == "named_engine_cannot" { return "The agent you asked for can't take work now."; }
-  if code == "named_station_cannot" { return "The computer you asked for can't run this."; }
-  if code == "faster" { return "You asked for speed, so the effort is one step lower."; }
-  if code == "more_careful" { return "You asked for care, so the effort is one step higher."; }
-  if code == "too_heavy_for_station" { return "That computer takes nothing heavy."; }
-  return "";
-}
-
-// Why nothing runs, in plain words.
-rtr_error_text :: (d: [] RtrDecision) -> string {
-  if d[0].error == "no_task" { return "There is no task."; }
-  if d[0].error == "bad_request" { return "The task could not be sent to be routed."; }
-  if d[0].error == "refused_by_door" { return "The task was refused before routing."; }
-  if d[0].neligible_stations == 0 { return "No computer can take work now."; }
-  last := ifx d[0].nreasons > 0 then d[0].reasons[d[0].nreasons - 1] else "";
-  if last == "station_lacks_need" {
-    return ifx d[0].needs == "apple" then "This needs a Mac that builds for Apple platforms, and none can take work now."
-      else ifx d[0].needs == "gpu" then "This needs a GPU, and no computer with one can take work now."
-      else "This needs the conversation's computer, and it can't take work now.";
-  }
-  if d[0].needs == "apple" { return "This is heavy work that needs a Mac, and the Macs that can take work take nothing heavy."; }
-  return "This is heavy work, and the computers that could run it take nothing heavy.";
-}
-
-// A blocking fact in plain words.
-rtr_fact_text :: (fact: string) -> string {
-  if fact == "not_reachable" { return "hasn't reported in the last two minutes"; }
-  if fact == "keep_clear" { return "you keep it clear"; }
-  if fact == "disk_below_floor" { return "its free disk is below its floor"; }
-  if fact == "at_agent_limit" { return "it is running as many agents as you allow"; }
-  if fact == "no_agent" { return "no agent on it can take work"; }
-  if fact == "not_installed" { return "not installed"; }
-  if fact == "logged_out" { return "not logged in"; }
-  if fact == "quota_used_up" { return "its limit is used up"; }
-  if fact == "cooldown" { return "resting after a refusal"; }
-  return fact;
 }
 
 // ---- checks

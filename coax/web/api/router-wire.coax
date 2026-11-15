@@ -1,0 +1,49 @@
+// The delegation router behind POST /api/chat/route/v1 (docs/router/README.md, router.c): the
+// body is a RouteRequest (openagents.router.request.v1alpha1), the answer a RouteDecision
+// (openagents.router.decision.v1alpha1). The one codec of both is coax/lib/agent/router/wire.coax;
+// this file is the route's two steps around the one network call, which is C's:
+//
+//   rw_begin   reads the request, decides in code what is eligible, and writes the request for
+//              Google's Decisions API (0: nothing to ask, the decision is made already)
+//   rw_finish  holds Google's answer to that request, picks what runs, and writes the decision
+//
+// The decision key never comes here, and nothing here opens a socket.
+#load "../../lib/agent/router/decide.coax";
+
+RW_REQUEST :: 65536;        // a RouteRequest's JSON
+RW_GOOGLE :: 32768;         // the request for Google
+RW_DECISION :: RTR_DECISION_MAX;
+
+RwState :: struct {
+  q: [1] RtrRequest; e: [1] RtrEligible; d: [1] RtrDecision; w: [1] RtrWork;
+  nodes: [4096] JvNode; wire: [RW_REQUEST] u8;
+  asked: bool;
+}
+
+// The request for Google into out: its length, 0 when there is nothing to ask (no task, no
+// computer that can take work), or -1 for a body that is not a RouteRequest.
+rw_begin :: (s: [] RwState, raw: string, out: [] u8) -> int #export_c #effects(all) {
+  s[0].asked = false;
+  if raw.count == 0 || raw.count >= RW_REQUEST { return -1; }
+  if !rtr_request_read(raw, s[0].nodes[..], s[0].wire[..], s[0].q[..]) { return -1; }
+  body := rtr_begin(s[0].q[..], s[0].e[..], s[0].d[..], s[0].w[..], GD_MODEL);
+  if body.count == 0 { return 0; }
+  if body.count > out.count { return -1; }
+  for i: 0..<body.count { out[i] = body[i]; }
+  s[0].asked = true;
+  return body.count;
+}
+
+// The decision's JSON into out: its length, or 0 when it does not fit. status is Google's HTTP
+// status (0: no response, or no key) and answer its body; ms how long the call took.
+rw_finish :: (s: [] RwState, status: int, answer: string, ms: int, out: [] u8) -> int #export_c #effects(all) {
+  if s[0].asked {
+    ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    gr: GdResult;
+    if status == 0 { gr = GdResult.{error = GdError.{kind = GdErrorKind.transport}, problem = gd_problem_of(GdErrorKind.transport)}; }
+    else { gr = gd_result(s[0].w[0].body[..], ar[..], status, answer); }
+    rtr_finish(s[0].q[..], s[0].e[..], gr, s[0].d[..], s[0].w[..]);
+    s[0].d[0].latency_ms = ifx ms > 0 && ms < 1000000 then ms else 0;
+  }
+  return rtr_decision_write(s[0].d[..], out);
+}

@@ -60,6 +60,7 @@
 		5CE5990EB9BF682AAAB22BAD /* EvergladeRuntime.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43575EA619337B30779C47AD /* EvergladeRuntime.framework */; };
 		5D0BF1EA9B7BD485D8260C0D /* everglade5e.c in Sources */ = {isa = PBXBuildFile; fileRef = 9CF10D05CEBE1FF96A9E94F6 /* everglade5e.c */; };
 		5DC336D026702B482A075377 /* MadeRealmRuntime.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */; };
+		5E9E3E4399EACA9845CE6B85 /* RouteUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F39AC1FE65EED3BABFD63D34 /* RouteUITests.swift */; };
 		5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */ = {isa = PBXBuildFile; productRef = 6A07344B6842FB168B7EEED5 /* BreezSdkSpark */; };
 		5FCD0C43CB70DA62BB5DE214 /* precomputed_ecmult.c in Sources */ = {isa = PBXBuildFile; fileRef = FA482D60928E6CCB2F0BDDA5 /* precomputed_ecmult.c */; settings = {COMPILER_FLAGS = "-DECMULT_WINDOW_SIZE=8"; }; };
 		6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */ = {isa = PBXBuildFile; fileRef = BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */; settings = {COMPILER_FLAGS = "-DECMULT_WINDOW_SIZE=8"; }; };
@@ -315,6 +316,7 @@
 		ED0BF4D0079AFBF3E14D42FB /* splice-bots.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "splice-bots.c"; sourceTree = "<group>"; };
 		EE83E3BBB4A5E7F30389A371 /* splice-bots.face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "splice-bots.face.c"; sourceTree = "<group>"; };
 		F1D217C6F37EE5CCCA813BE7 /* engine-core-face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "engine-core-face.c"; sourceTree = "<group>"; };
+		F39AC1FE65EED3BABFD63D34 /* RouteUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteUITests.swift; sourceTree = "<group>"; };
 		F67E8831801F1502315023B7 /* EvergladeForestRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = EvergladeForestRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		FA482D60928E6CCB2F0BDDA5 /* precomputed_ecmult.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = precomputed_ecmult.c; sourceTree = "<group>"; };
 		FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkBalanceTests.swift; sourceTree = "<group>"; };
@@ -585,6 +587,7 @@
 				56E9C5471E75811CB4C59AC9 /* LookUITests.swift */,
 				1E4AB3936542305917B3BC82 /* NavigationUITests.swift */,
 				2CD892177F785608B4FF583C /* ProjectUITests.swift */,
+				F39AC1FE65EED3BABFD63D34 /* RouteUITests.swift */,
 				BA0FC513FFA5C6691E003921 /* SettingsUITests.swift */,
 				09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */,
 				84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */,
@@ -962,6 +965,7 @@
 				4ABB8E0033250A5AD954D6A0 /* LookUITests.swift in Sources */,
 				9032E72477D42E6F48D6BB4E /* NavigationUITests.swift in Sources */,
 				01122364B289DF707A54AFA6 /* ProjectUITests.swift in Sources */,
+				5E9E3E4399EACA9845CE6B85 /* RouteUITests.swift in Sources */,
 				6CCBBD131CBEB238852FA633 /* SettingsUITests.swift in Sources */,
 				103180BD57D2AA2E93F4A6B7 /* SharedAppDeviceUITests.swift in Sources */,
 				A05D687346C45546701CEFF7 /* SharedAppUITests.swift in Sources */,

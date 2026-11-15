@@ -20,6 +20,7 @@ project_links={}
 project_draft={"status":"ready","draft":{"card":{"name":"Moon Villa","slug":"moon-villa","line":"A place to grow","owner":"Ada","art_direction":"Soft light"},"mechanics":["Walk"],"design":{"markdown":"A complete design document.","open_questions":["What next?"]},"roadmap":{"initiative":{"slug":"first","title":"First steps","body":"Start small"},"milestones":[{"slug":"garden","title":"Garden","body":"Plant things","tasks":[{"slug":"walk","title":"Walk","body":"Walk around","size":"S","acceptance":["Can walk"]}]}]},"engine_needs":[],"assets":[],"to_make":[]},"edits":0,"approved":False}
 project_calls=[]
 threads = {}
+routes = []
 if a.environment_transcript:
     threads["m_00000000000000000001"] = dict(schema="openagents.chat.thread.v1", id="m_00000000000000000001", revision=1, model="google/gemini-4-hydrogen", messages=[dict(role="user", content="Account fixture"), dict(role="assistant", content="Saved account answer.")])
 provider_accounts = {}
@@ -164,6 +165,23 @@ class Handler(BaseHTTPRequestHandler):
         if urlparse(self.path).path=="/api/chat/environment/accounts/v1":
             if self.headers.get("Authorization")!="Bearer oa_at_fixture":return self.answer(401,{})
             return self.answer(200,provider_view(parse_qs(urlparse(self.path).query)["host"][0],body))
+        # Where a message would run (docs/router/README.md): a fixed decision for the Mac, and the
+        # completion that was told it. The request must be a RouteRequest naming the fixture's computers.
+        if self.path == "/api/chat/route/v1":
+            if self.headers.get("Authorization") != "Bearer oa_at_fixture":
+                return self.answer(401, {})
+            assert body["schema"] == "openagents.router.request.v1alpha1" and body["text"]
+            assert [s["station_id"] for s in body["stations"]] == ["mac", "coderos"]
+            assert all(s["agents"] == [dict(engine="claude", installed=True, logged_in=True)] for s in body["stations"])
+            routes.append(body["text"])
+            return self.answer(200, dict(schema="openagents.router.decision.v1alpha1", ok=True, station="mac", engine="claude", model="opus", effort="high",
+                difficulty=3, weight=1, door="gemini-decision-1", reasons=["named_station"], eligible_stations=["mac", "coderos"], eligible_engines=["claude"], input_tokens=900, latency_ms=300))
+        if self.path == "/api/chat/delegated/complete/v1":
+            if self.headers.get("Authorization") != "Bearer oa_at_fixture":
+                return self.answer(401, {})
+            assert body["schema"] == "openagents.chat.delegated.v1" and body["thread"]["schema"] == "openagents.chat.thread.v1"
+            assert body["note"].startswith("Would run: Claude Code · Opus · high · on Mac\nWhy: You asked for this computer.\n"), body["note"]
+            return self.answer(200, dict(choices=[dict(message=dict(role="assistant", content="I'm about to hand this to Claude Code on Mac."), finish_reason="stop")]))
         if self.path in ("/api/chat/thread/v1", "/api/chat/complete/v1"):
             if self.headers.get("Authorization") != "Bearer oa_at_fixture":
                 return self.answer(401, {})

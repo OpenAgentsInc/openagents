@@ -22,5 +22,6 @@ pj_index_fit :: (raw:string,starts:[]int,ends:[]int)->int {n:=pj_index(raw,start
 pj_cell :: (row:string,col:int)->string {at:=0;c:=0;while at<row.count && c<col {if row[at]=='|' {c+=1;}at+=1;}if c!=col {return "";}end:=at;while end<row.count && row[end]!='|' {end+=1;}return row[at..<end];}
 pj_slug :: (value:string)->bool {if value.count<1 || value.count>64 || value[0]=='-' {return false;}for c:value {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}return true;}
 pj_object :: (v:Jv,node:int,out:[]u8)->int {o:[1]Jo;jo_start(o[..],out);jv_write(v,node,o[..]);return ifx o[0].bad then -1 else o[0].n;}
-pj_text :: (v:Jv,node:int,out:[]u8)->string {n:=jv_str(v,node,out);return ifx n<0 then "" else cast(string)out[0..<n];}
+// (pjw_: coax/lib/proto/json.coax, which an app that reads a proto shape also loads, has a pj_text of its own.)
+pjw_text :: (v:Jv,node:int,out:[]u8)->string {n:=jv_str(v,node,out);return ifx n<0 then "" else cast(string)out[0..<n];}
 pj_body :: (key:string,value:string,out:[]u8)->int {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],key);jo_str(o[..],value);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;}

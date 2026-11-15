@@ -489,7 +489,17 @@ shaping it before any app calls it:
   computer the tool runs on: disk, memory, load, agents, logins and running
   agents.
 
+- **The phone's chat.** In the iPhone app's account chat, each message is
+  routed before the hosted model answers. The app sends a `RouteRequest` to
+  `POST /api/chat/route/v1`, shows the decision as one line under the answer,
+  and passes it to the model through `POST /api/chat/delegated/complete/v1`,
+  so the answer begins with what it is about to hand off. Nothing is started.
+
 It starts no agent, and one computer's report does not reach another yet.
+The phone knows each connected computer's name, whether its last read worked
+and its busy Claude conversations. It does not know a computer's disk,
+memory, load or OS, so a decision in the app is made on names and running
+work, and a computer that reports no facts is not ruled out by a need.
 
 ### Build order from here
 
@@ -511,10 +521,11 @@ Each step is tried from the command line and held by checks before the next.
    runtime so reports reach the router from every computer.
 6. **The record and the allowance.** `coder.route.v3` as a projection of
    `RouteDecision`, and the daily count.
-7. **The first caller: the iPhone app.** It sends a task and reads a
-   decision and the one line. The decision runs on the server or on a
-   computer's resident service, never on the phone, because the key stays off
-   the phone.
+7. **The first caller: the iPhone app.** Done for the account chat: the app
+   sends a task and reads a decision and the one line, and the decision runs
+   on the server, where the key is. Left: the line on a computer's own
+   conversations, and keeping the line with a saved chat (it is in memory
+   only, so reopening a chat shows the answers without it).
 8. **The delegation agent** starts the work on the chosen computer.
 
 ## Rollout
