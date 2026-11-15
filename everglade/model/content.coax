@@ -261,6 +261,8 @@ eq_offer_open :: (d: [] ContentDoc, quest: int, dialogue: int, stages: [] int) -
   // a beat with no phase table is not Everglade's, nor a column of another name
   #assert ec_reads(ec_sub(full, "table troop_phase id troop:ref.troop hp:int after:int style:int run:int\n1|1|50|0|1|700\n2|1|0|90|2|0\n", "", q[..])) && !ec_takes(ec_sub(full, "table troop_phase id troop:ref.troop hp:int after:int style:int run:int\n1|1|50|0|1|700\n2|1|0|90|2|0\n", "", q[..]));
   #assert ec_reads(ec_sub(full, "point:ref.point rest:int", "point:ref.point wait:int", q[..])) && !ec_takes(ec_sub(full, "point:ref.point rest:int", "point:ref.point wait:int", q[..]));
+  // every beat row is checked, to the last: a third beat row, past the two phase rows, with a rest too long
+  #assert ec_takes(ec_sub(full, "2|1|3|0\n", "2|1|3|0\n3|1|2|600\n", q[..])) && !ec_takes(ec_sub(full, "2|1|3|0\n", "2|1|3|0\n3|1|2|601\n", q[..]));
   // a rest of ten minutes is the longest
   #assert ec_takes(ec_sub(full, "1|1|2|2\n", "1|1|2|600\n", q[..])) && !ec_takes(ec_sub(full, "1|1|2|2\n", "1|1|2|601\n", q[..])) && ec_reads(ec_sub(full, "1|1|2|2\n", "1|1|2|601\n", q[..]));
   // a phase: Hit Points of 1 to 100 percent or a time, and a style that fights (pack, melee, archer)
@@ -362,4 +364,18 @@ eq_offer_open :: (d: [] ContentDoc, quest: int, dialogue: int, stages: [] int) -
   // its own quest's talk never closes its own offer; stages that do not reach a quest's row close it
   st[0] = 0; #assert eq_offer_open(d[..], 1, 1, st[..]) && !eq_offer_open(d[..], 2, 1, st[0..<0]);
   st[0] = q1; #assert eq_offer_open(d[..], 2, 1, st[0..<1]);
+  // a quest asks for no dialogue unless one of its steps talks to it: a quest that does not never closes an offer, even with no stages
+  #assert eq_offer_open(d[..], 1, 1, st[0..<0]);
+  // a third quest, with no reward (quests outnumber rewards) and rewards whose IDs are not the quests', whose first step is a talk to dialogue 2: it offers quest 2 only after that first step
+  t3 := ec_sub(ec_swap("1|1|3|25|100\n2|2|4|50|150\n", "5|1|3|25|100\n6|2|4|50|150\n", o[..]), "2|The goblin camp\n", "2|The goblin camp\n3|One talk\n", p[..]);
+  t3 = ec_sub(t3, "6|2|0|0|0|2|1\n", "6|2|0|0|0|2|1\n7|3|0|0|0|2|1\n", o[..]);
+  #assert ct_read(d[..], t3) && ec_ok(d[..]) && eq_talk_at(d[..], 3, 2) == 1 && eq_talk_at(d[..], 2, 2) == 4;
+  s3: [3] int;
+  for a: 0..<3 { s3[0] = 9; s3[1] = 9; s3[2] = a; #assert eq_offer_open(d[..], 2, 2, s3[..]) == (a >= 1); }
+  s3[2] = 0; #assert eq_offer_open(d[..], 3, 2, s3[..]) && !eq_offer_open(d[..], 2, 2, s3[0..<2]);
+}
+#test "everglade content: ec_sub replaces the first match, at either end, and none when there is none" {
+  o: [64] u8;
+  #assert ec_sub("abc", "a", "xy", o[..]) == "xybc" && ec_sub("abc", "c", "xy", o[..]) == "abxy" && ec_sub("abc", "abc", "z", o[..]) == "z";
+  #assert ec_sub("abc", "z", "x", o[..]) == "" && ec_sub("aXbX", "X", "-", o[..]) == "a-bX";
 }
