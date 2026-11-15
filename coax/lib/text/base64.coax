@@ -33,6 +33,11 @@ B64_CHARS :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   #assert n == 344 && b64_decode(cast(string) text[0..<n], back[..]) == 256;
   for i: 0..<256 { #assert back[i] == cast(u8) i; }
   #assert b64_value('A') == 0 && b64_value('/') == 63 && b64_value('+') == 62 && b64_value('a') == 26 && b64_value('9') == 61 && b64_value('-') == -1;
+  // the character just past each range edge is not a digit
+  #assert b64_value('[') == -1 && b64_value('{') == -1 && b64_value(':') == -1 && b64_value('@') == -1 && b64_value('`') == -1 && b64_value('/' - 1) == -1;
+  #assert b64_value('Z') == 25 && b64_value('z') == 51 && b64_value('0') == 52;
+  // a tab is skipped like the other whitespace
+  #assert b64_decode("Zm9v\tYmFy", out[..]) == 6 && b64_decode("\t", out[..]) == 0;
 }
 b64_encoded_size :: (n: int) -> int #effects(all) { return (n + 2) / 3 * 4; }
 // At most how many bytes text of n characters decodes to.
@@ -64,7 +69,7 @@ b64_value :: (c: u8) -> int #effects(all) {
 // text decoded into out: the length, or -1 when it is not base64 or out is
 // too small. Whitespace is skipped; padding is optional but only at the end.
 b64_decode :: (text: string, out: [] u8) -> int #effects(all) {
-  acc: u32 = 0; bits := 0; n := 0; pad := 0; chars := 0;
+  acc: u32 = 0; bits := 0; n := 0; pad := 0; chars := 0;  // mutant: equivalent (a nonzero start is shifted out of the 24-bit window or truncated by the u8 cast before any byte is read)
   for c: text {
     if c == ' ' || c == '\n' || c == '\r' || c == '\t' { continue; }
     if c == '=' { pad += 1; continue; }
@@ -81,6 +86,6 @@ b64_decode :: (text: string, out: [] u8) -> int #effects(all) {
     }
   }
   tail := chars % 4;
-  if tail == 1 || pad > 2 || (pad > 0 && (chars + pad) % 4 != 0) { return -1; }
+  if tail == 1 || pad > 2 || (pad > 0 && (chars + pad) % 4 != 0) { return -1; }  // mutant: equivalent (pad 3 always has tail 1 or an unaligned total, both refused anyway)
   return n;
 }
