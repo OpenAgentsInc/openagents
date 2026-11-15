@@ -62,7 +62,8 @@ final class NavigationUITests:XCTestCase {
 // Shared navigation paths for SDK smoke checks; actions still go through Coax.
 extension XCUIApplication {
     func showChatHistory() {if buttons["nav.toggle"].isHittable {buttons["nav.toggle"].tap()};if buttons["nav.recent"].waitForExistence(timeout:3) {buttons["nav.recent"].tap()}}
-    func logOutAccount() {let logout=buttons["settings.logout"];XCTAssertTrue(logout.waitForExistence(timeout:15));logout.tap();let confirm=buttons["settings.confirm"];XCTAssertTrue(confirm.waitForExistence(timeout:5));confirm.tap()}
+    func revealAppButton(_ id:String) {if keyboards.firstMatch.exists {staticTexts["settings.title"].firstMatch.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.5)).tap()};for _ in 0..<10 {if buttons[id].isHittable {return};scrollViews.containing(.button,identifier:id).firstMatch.swipeUp()};XCTAssertTrue(buttons[id].isHittable)}
+    func logOutAccount() {XCTAssertTrue(staticTexts["settings.busy"].waitForNonExistence(timeout:20));let logout=buttons["settings.logout"];XCTAssertTrue(logout.waitForExistence(timeout:15));revealAppButton("settings.logout");logout.tap();let confirm=buttons["settings.confirm"];XCTAssertTrue(confirm.waitForExistence(timeout:5));confirm.tap()}
     func showAppSettings() {showChatHistory();let settings=buttons["nav.settings"];XCTAssertTrue(settings.waitForExistence(timeout:15));settings.tap()}
     func openAppExtras() {if buttons["More"].isHittable {buttons["More"].tap()}else {showAppSettings();buttons["extras.more"].tap()}}
     func newAccountChat() {showChatHistory();let compose=buttons["nav.compose"];XCTAssertTrue(compose.waitForExistence(timeout:15));compose.tap();buttons["nav.account.new"].tap()}

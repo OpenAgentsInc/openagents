@@ -2,8 +2,9 @@
 import XCTest
 final class ProjectUITests:XCTestCase {
     func testPrivateProjectInstructionsKnowledgeAndSavedChatThroughNativeHTTP() {
-        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13496","-OAUpdatesOrigin","http://127.0.0.1:13492"];app.launch()
+        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13496","-OAUpdatesOrigin","http://127.0.0.1:9"];app.launch()
         let email=app.textFields["Email address"]
+        if !email.waitForExistence(timeout:5) {app.showAppSettings();app.logOutAccount()}
         if email.waitForExistence(timeout:5) {email.tap();email.typeText("ada@example.com");app.buttons["Send code"].tap();let code=app.textFields["Email code"];XCTAssertTrue(code.waitForExistence(timeout:10));code.tap();code.typeText("415926");app.buttons["Log in"].tap()}
         XCTAssertTrue(app.buttons["nav.toggle"].waitForExistence(timeout:15));app.buttons["nav.toggle"].tap();app.buttons["nav.projects"].tap()
         let create=app.buttons["projects.new"];XCTAssertTrue(create.waitForExistence(timeout:10));create.tap()
@@ -19,7 +20,7 @@ final class ProjectUITests:XCTestCase {
         let composer=app.textViews["chat.composer"];XCTAssertTrue(composer.waitForExistence(timeout:10));composer.tap();composer.typeText("What is the code?");app.buttons["chat.composer.send"].tap()
         let answer=app.textViews.matching(NSPredicate(format:"value == %@","The code is violet.")).firstMatch;XCTAssertTrue(answer.waitForExistence(timeout:20));attach(app,"Private Project saved answer")
         app.buttons["project.chat.back"].tap()
-        let saved=app.buttons["private.chat.0"];XCTAssertTrue(saved.waitForExistence(timeout:10));saved.tap();XCTAssertTrue(answer.waitForExistence(timeout:10));XCTAssertEqual(app.webViews.count,0);attach(app,"Reopened private Project chat")
+        let saved=app.buttons["private.rich.0"];XCTAssertTrue(saved.waitForExistence(timeout:10));saved.tap();XCTAssertTrue(answer.waitForExistence(timeout:10));XCTAssertEqual(app.webViews.count,0);attach(app,"Reopened private Project chat")
     }
     func testManageDraftPublishAndOpenProjectChatsInNativeViews() {
         let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13496","-OAUpdatesOrigin","http://127.0.0.1:13492"];app.launch()

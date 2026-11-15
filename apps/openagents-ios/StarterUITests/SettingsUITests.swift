@@ -27,6 +27,6 @@ final class SettingsUITests:XCTestCase {
         app.buttons["nav.settings.close"].tap();XCTAssertTrue(menu.waitForExistence(timeout:5));XCTAssertEqual(app.webViews.count,0)
     }
     private func waitLoaded(_ app:XCUIApplication) {let done=NSPredicate(format:"exists == false");expectation(for:done,evaluatedWith:app.staticTexts["settings.busy"]);waitForExpectations(timeout:20)}
-    private func reveal(_ app:XCUIApplication,_ id:String) {if app.keyboards.firstMatch.exists {app.staticTexts["settings.title"].firstMatch.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.5)).tap()};for _ in 0..<10 {if app.buttons[id].isHittable {return};app.swipeUp()};XCTAssertTrue(app.buttons[id].isHittable)}
+    private func reveal(_ app:XCUIApplication,_ id:String) {app.revealAppButton(id)}
     private func capture(_ app:XCUIApplication,_ name:String) {let shot=XCTAttachment(screenshot:app.screenshot());shot.name=name;shot.lifetime = .keepAlways;add(shot)}
 }
