@@ -117,6 +117,7 @@ na_durable_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->bool
   if purpose==131 {d[0].uncertain=failed || status==0 || status>=500;if !d[0].uncertain {d[0].pending=0;d[0].body_n=0;}na_note(s,ifx d[0].uncertain then "The request may be saved. Check its saved result to continue." else ifx status==409 then "This chat or Project changed. Reopen it before sending again." else ifx status==403 then "Chat is available to the funded team beta." else "The chat request was refused. Your draft is kept.");}
   else if purpose==132 || purpose==133 {na_note(s,"Could not read the saved chat. Reconnect to try again.");}
   else if purpose==135 || purpose==136 {na_note(s,"Saved chats could not be refreshed. Cached rows are kept.");}
+  else if purpose==137 {na_note(s,"Could not refresh this Project. Your draft is kept. Try sending again.");}
   return true;
  }
  d[0].elapsed=0;

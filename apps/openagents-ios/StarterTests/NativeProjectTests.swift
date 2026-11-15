@@ -22,6 +22,11 @@ import UIKit
         try p.input("chat.composer","Original submitted text");try p.frame();try p.input("chat.composer.send");try p.frame();_=try request("/api/projects/v1/"+pid)
         let composer=try XCTUnwrap(p.elements().first {$0.role=="composer"})
         XCTAssertTrue(try XCTUnwrap(composer.children.first {$0.id=="chat.composer"}).disabled)
+        try answer(4,503,[:]);XCTAssertEqual(try p.action().0,0)
+        let released=try XCTUnwrap(p.elements().first {$0.role=="composer"})
+        XCTAssertFalse(try XCTUnwrap(released.children.first {$0.id=="chat.composer"}).disabled)
+        XCTAssertTrue(p.nodes.values.contains {$0.text=="Could not refresh this Project. Your draft is kept. Try sending again."})
+        try p.input("chat.composer.send");try p.frame();_=try request("/api/projects/v1/"+pid)
         // A text event queued by the native editor before it became disabled
         // must not alter the message whose Send has already been accepted.
         try p.input("chat.composer","Next draft");try p.frame()

@@ -12,6 +12,7 @@
 #test "durable mobile failed Project refresh releases preparation without creating an operation" {
  s:[1]Starter;s[0].workspace=true;s[0].page=3;d:=s[0].durable[..];d[0].enabled=true;d[0].loaded=true;d[0].id_n=js_copy(d[0].id[..],CT_TEST_CONVERSATION);d[0].revision=1;d[0].project_n=js_copy(d[0].project[..],"prj_0123456789abcdef0123456789abcdef");s[0].draft_n=na_copy(s[0].draft[..],"Original");na_durable_send(s[..]);st_done(s[..]);na_reply(s[..],4,503,"{}",false);
  #assert !d[0].preparing && d[0].pending==0 && s[0].draft_n==8 && s[0].action==0 && s[0].flight==0;
+ #assert cast(string)s[0].note[0..<s[0].note_n]=="Could not refresh this Project. Your draft is kept. Try sending again.";
 }
 #test "durable mobile lost-write reconciliation preserves the operation and clears only an accepted draft" #steps 100000000 {
  s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].page=2;s[0].draft_n=na_copy(s[0].draft[..],"Hello");na_send(s[..]);#assert s[0].flight==11 && s[0].purpose==130 && s[0].draft_n==5;st_done(s[..]);
