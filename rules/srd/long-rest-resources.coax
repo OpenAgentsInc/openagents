@@ -29,3 +29,59 @@ rs_long_rest_resources :: (c:[]RsCreature)->bool #effects(all) {
   c[0].uses[RS_USE_FOCUS] = -1; c[0].slots[1]=0;
   #assert !rs_long_rest_resources(c[..]) && c[0].slots[1]==0;
 }
+#test "a Long Rest restores every use bank, every slot level and the Hit Dice, clears the rest flags and temporary Hit Points, and keeps what a bank holds over its maximum" {
+  c:[1]RsCreature; c[0]=rs_wizard("Reader",0,5);
+  for u:0..<RS_USES { c[0].uses[u]=0; c[0].uses_max[u]=3; c[0].uses_back[u]=99; }
+  for slot:1..<10 { c[0].slots[slot]=0; c[0].slots_max[slot]=2; c[0].created_slots[slot]=0; c[0].slot_back[slot]=99; }
+  c[0].rest.dice=0; c[0].rest.recovery_used=true; c[0].rest.restoration_used=true; c[0].note[RS_NT_RESURGED]=1; c[0].temp=9;
+  #assert rs_long_rest_resources(c[..]);
+  for u:0..<RS_USES { #assert c[0].uses[u]==3 && c[0].uses_back[u]==0; }
+  for slot:1..<10 { #assert c[0].slots[slot]==2 && c[0].slot_back[slot]==0 && c[0].created_slots[slot]==0; }
+  #assert c[0].rest.dice==c[0].rest.dice_max && c[0].rest.dice_max>0 && !c[0].rest.recovery_used && !c[0].rest.restoration_used && c[0].note[RS_NT_RESURGED]==0 && c[0].temp==0;
+  // created slots end with the rest; a bank over its maximum is kept
+  for slot:1..<10 { c[0].slots[slot]=10; c[0].created_slots[slot]=6; }
+  c[0].uses[2]=9; c[0].uses_max[2]=1;
+  #assert rs_long_rest_resources(c[..]);
+  for slot:1..<10 { #assert c[0].slots[slot]==4 && c[0].created_slots[slot]==0; }
+  #assert c[0].uses[2]==9 && c[0].uses[0]==3;
+  // seeded dice come back to the maximum
+  c[0].rest.seeded=true; c[0].rest.die=8; c[0].rest.dice=1; c[0].rest.dice_max=5;
+  #assert rs_long_rest_resources(c[..]) && c[0].rest.dice==5;
+}
+#test "a Long Rest refuses a negative or inconsistent bank, in every use and every slot level, before changing anything" {
+  for u:0..<RS_USES { for maximum:0..<2 {
+    c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); c[0].slots[1]=0; c[0].temp=7;
+    if maximum==0 { c[0].uses[u] = -1; } else { c[0].uses_max[u] = -1; }
+    #assert !rs_long_rest_banks_valid(c[0]) && !rs_long_rest_resources(c[..]) && !c[0].rest.seeded && c[0].slots[1]==0 && c[0].temp==7;
+  } }
+  for slot:1..<10 { for field:0..<4 {
+    c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); c[0].temp=7;
+    if field==0 { c[0].slots[slot] = -1; } if field==1 { c[0].slots_max[slot] = -1; }
+    if field==2 { c[0].created_slots[slot] = -1; } if field==3 { c[0].created_slots[slot]=c[0].slots[slot]+1; }
+    #assert !rs_long_rest_banks_valid(c[0]) && !rs_long_rest_resources(c[..]) && !c[0].rest.seeded && c[0].temp==7;
+  } }
+  c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3);
+  for slot:1..<10 { c[0].created_slots[slot]=c[0].slots[slot]; }   // exactly all of a bank created is allowed
+  #assert rs_long_rest_banks_valid(c[0]);
+}
+#test "a Long Rest accepts seeded Hit Dice only when whole: counts not negative, not over the maximum, and a die when there are dice" {
+  for field:0..<4 {
+    c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3);
+    c[0].rest.seeded=true; c[0].rest.die=6; c[0].rest.dice=1; c[0].rest.dice_max=3;
+    if field==0 { c[0].rest.dice = -1; } if field==1 { c[0].rest.dice_max = -1; }
+    if field==2 { c[0].rest.dice=4; } if field==3 { c[0].rest.die=5; c[0].rest.dice=0; c[0].rest.dice_max=1; }
+    #assert !rs_long_rest_banks_valid(c[0]) && !rs_long_rest_resources(c[..]);
+  }
+  c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3);
+  c[0].rest.seeded=true; c[0].rest.die=6; c[0].rest.dice=0; c[0].rest.dice_max=0;
+  #assert rs_long_rest_banks_valid(c[0]);                       // zero dice and no die is whole
+  c[0].rest.die=0; #assert rs_long_rest_banks_valid(c[0]);
+  c[0].rest.dice=3; c[0].rest.dice_max=3; c[0].rest.die=6; #assert rs_long_rest_banks_valid(c[0]);   // exactly the maximum
+  c[0].rest.dice=0; c[0].rest.dice_max=0; c[0].rest.dice=0;
+  c[0].rest.seeded=false; c[0].rest.die=5; c[0].rest.dice = -1; c[0].rest.dice_max = -1;
+  #assert rs_long_rest_banks_valid(c[0]);                       // unseeded metadata is not read
+  c[0].rest.seeded=true; c[0].rest.die=5; c[0].rest.dice=0; c[0].rest.dice_max=1;
+  #assert !rs_long_rest_banks_valid(c[0]);
+  c[0].rest.dice=1; c[0].rest.dice_max=0; #assert !rs_long_rest_banks_valid(c[0]);
+  c[0].rest.dice=0; c[0].rest.dice_max=-1; #assert !rs_long_rest_banks_valid(c[0]);
+}
