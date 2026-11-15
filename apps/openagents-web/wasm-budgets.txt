@@ -258,7 +258,9 @@ og 60000
 # 8a7a268650 +2,239, rituals c98934bc94 +1,887, the rest #13044/#13039): 314,068 measured 2026-11-08; about 5% room
 # Rock hulls in aethyr walk/collide/query (7afe501d33): 330,940 bytes; about 5% room
 # Ability and Aura records, the battle split into units and the aura list (#13285, #13287): 359,786 measured 2026-11-13; about 5% room
-oneshot 378000
+# The spell records, source classes and weapons as constant tables read by index (#13593: 8bb54ae1ba and its
+# neighbours; the battle root's checks went from 15.3 to 1.3 billion steps): 388,911 measured 2026-11-14; about 5% room
+oneshot 410000
 # Orbit v2 adds authoritative input/snapshot codecs while retaining the published legacy profile.
 # 292,500 final Linux release bytes at #12845; 2.5% room in this 300,000-byte bound.
 orbitleague 300000
