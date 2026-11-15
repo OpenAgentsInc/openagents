@@ -4,7 +4,8 @@ The OpenAgents command line, in Coax. The plan for v1.0.0 is
 [docs/cli/2026-11-01-openagents-cli-v1.md](../../docs/cli/2026-11-01-openagents-cli-v1.md).
 Its domains include `nostr`, your NIP-06 identity and a relay client;
 `pylon`, which starts and stops this computer's Pylon; `project`, the
-project queue at openagents.com/projects/SLUG; `transcribe`, speech to
+project queue at openagents.com/projects/SLUG; `projects`, account-owned private
+Projects, instructions, knowledge and saved chats; `transcribe`, speech to
 text on this computer; and `labs`, repeatable shots, clips, decks, cuts and
 playtests.
 
@@ -23,6 +24,79 @@ none and on NixOS ([coax/platform/tls-env.sh](../../coax/platform/tls-env.sh);
 `coax/web/tool.sh coax/tests/net/tls-env.coax` checks which it picks). A binary
 linked with Nix's OpenSSL carries Nix's glibc and does not start on an ordinary
 distribution.
+
+To build for macOS while doing Coax compilation on the build pool, emit portable
+C there and link it here against Apple's SDK:
+
+```sh
+coax/remote/remote.sh run -- apps/openagents-cli/build.sh --emit-c
+coax/remote/remote.sh run --local -- apps/openagents-cli/build.sh --link-c
+```
+
+## Account Projects
+
+Log in to a named profile; approve its device link while signed into the desired
+account. Use a separate profile for staging. Keys remain in the existing private
+CLI store; requests use NIP-98 with the exact URL, method and body hash.
+
+```sh
+openagents --profile personal login --machine 'Projects CLI'
+openagents --profile personal whoami --json
+openagents --profile personal projects list --json
+openagents --profile personal projects create 'Research' --instructions instructions.md
+```
+
+Use the returned Project ID as `P` below. `--rev` is its current revision; writes
+to metadata, instructions, knowledge and chat associations advance it. Successful
+output is complete API JSON, with IDs and revisions preserved. `projects list`
+returns up to 32 Projects; pass `--cursor` with `next_cursor` for the next page.
+
+```sh
+openagents projects show "$P"
+openagents projects update "$P" --rev 1 --description 'Working notes'
+openagents projects instructions "$P" --rev 2 --file instructions.md
+openagents projects instructions "$P"
+openagents projects knowledge add "$P" --rev 3 --title Notes --file notes.md
+openagents projects knowledge list "$P"
+openagents projects knowledge show "$P" "$K"
+openagents projects chat new "$P" --rev 4 --file question.txt --operation-id research-first
+openagents projects chats "$P"
+openagents projects chat show "$P" "$T"
+openagents projects chat send "$P" "$T" --rev 5 --thread-rev 2 --file followup.txt
+openagents projects context "$P" "$COMPLETION_OPERATION_ID"
+openagents projects knowledge remove "$P" "$K" --rev 5
+```
+
+All commands accept `--profile NAME` and `--origin URL`; omitted values use the
+existing profile and its saved server. For staging, log in with
+`--profile staging --origin https://staging.openagents.com`. The default profile
+is `default`. The `personal` examples above require retaining `--profile personal`
+or setting `OPENAGENTS_PROFILE=personal` for the commands that follow.
+
+`--file -` reads stdin. Knowledge `attach` uses `--file-id` for an existing owned,
+scanned text/Markdown Drop. `--unselected` keeps a source out of context.
+`chat link P T --rev N` links an existing account thread. `chat new` and `chat send`
+save the user turn, complete it through the metered API, then reopen the saved
+transcript. Add `--save-only` to stop after saving; use
+`chat complete P T --rev N --thread-rev N` to complete explicitly. The existing
+team beta inference gate applies. Completion waits at most five minutes;
+`--timeout MS` can lower it.
+
+Every write prints its operation ID to stderr before HTTP. Preserve it, the
+revision and the exact input bytes. After an uncertain response, repeat the
+same command with `--operation-id ID`; the API replays the committed result.
+The new/send commands derive their completion operation from the same ID, so
+retrying the whole command cannot create duplicate chats or model attempts.
+A changed request under the same ID conflicts. An admitted pending/failed model
+attempt cannot be redispatched: reopen the saved chat to inspect its result.
+Exit 3 means login required, 4 forbidden, 5 revision/operation conflict and 6 not
+found. `project` (singular) remains the existing public work queue.
+
+`projects legacy list` reads the existing member/owned-published Project index;
+`projects legacy show SLUG` reads an existing private member Project's state.
+These preserve the server's original response format (including the index's
+line format), even with `--json`. They make existing account Projects inspectable
+without converting their published identities into canonical private Project IDs.
 
 ## Generated authoring help
 

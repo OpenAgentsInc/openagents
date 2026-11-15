@@ -403,7 +403,7 @@ project_capture :: (a: [] Args, r: [] Rep) -> int {
   p[0].public_only = true;
   bad := pj_open(p[..], a);
   if bad.count > 0 { pj_close(p[..]); return fail(r, EXIT_USAGE, bad); }
-  slug := pj_slug(p[..]); pk := pj_pk(p[..]); relay := pj_cfg_relay(p[..]);
+  slug := pq_slug(p[..]); pk := pj_pk(p[..]); relay := pj_cfg_relay(p[..]);
   cfg := p[0].cfg[..];
   name := pc(cfg, cfg[0].name);
   root := pj_root(p[..]);

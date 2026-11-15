@@ -354,7 +354,7 @@ pj_order_tags :: (p: [] Proj, t: [] TagList, rows: [] int, rs: [] PrRanks, n: in
   tl_clear(t);
   pc_: [256] u8; cn := pj_coord(p, KIND_PROJECT, pc_[..]);
   cfg := p[0].cfg[..];
-  tl_2(t, "d", pj_slug(p)); tl_3(t, "a", cast(string) pc_[0..<cn], pj_cfg_relay(p));
+  tl_2(t, "d", pq_slug(p)); tl_3(t, "a", cast(string) pc_[0..<cn], pj_cfg_relay(p));
   for k: 0..<n { tl_3(t, "item", pj_id(p, rows[k]), pr_rank(rs, k)); }
   al: [1] Ln; ln_s(al[..], "The "); ln_s(al[..], pc(cfg, cfg[0].name)); ln_s(al[..], " project's task order");
   tl_2(t, "alt", ln_text(al[..]));

@@ -1,0 +1,84 @@
+// Account-owned private Projects. The public Nostr work queue keeps `project`.
+// Every request uses the API's codec and the existing profile/NIP-98 transport.
+#load "../../coax/web/api/projects-chat-wire.coax";
+#load "../../coax/lib/net/uri.coax";
+#load "../../coax/web/api/account-chat-wire.coax";
+
+projects_usage :: () {
+ print("%\n","Account Projects (login first; --origin and --profile choose the account):");
+ print("%\n","  projects list [--cursor ID] | show ID");
+ print("%\n","  projects create NAME [--description TEXT] [--instructions FILE|-]");
+ print("%\n","  projects update ID --rev N [--name NAME] [--description TEXT]");
+ print("%\n","  projects instructions ID [--file FILE|- --rev N]");
+ print("%\n","  projects knowledge list ID | show ID KNOWLEDGE_ID");
+ print("%\n","  projects knowledge add ID --title TITLE --file FILE|- --rev N [--unselected]");
+ print("%\n","  projects knowledge attach ID --title TITLE --file-id FILE_ID --rev N [--unselected]");
+ print("%\n","  projects knowledge remove ID KNOWLEDGE_ID --rev N");
+ print("%\n","  projects chats ID | chat show ID THREAD_ID");
+ print("%\n","  projects chat new ID --rev N --file FILE|- [--save-only]");
+ print("%\n","  projects chat send ID THREAD_ID --rev N --thread-rev N --file FILE|- [--save-only]");
+ print("%\n","  projects chat link ID THREAD_ID --rev N");
+ print("%\n","  projects chat complete ID THREAD_ID --rev N --thread-rev N");
+ print("%\n","  projects context ID OPERATION_ID");
+ print("%\n","  projects legacy list | legacy show SLUG   existing member/public Project API, original response format");
+ print("%\n","  Writes print an operation ID before sending. Retry the same command and inputs with --operation-id ID.");
+ print("%\n","  Complete waits up to 5 minutes (--timeout MS). Replies are complete API JSON, including revisions.");
+}
+#test "Project CLI paths refuse separators and ambiguous revisions before HTTP" {
+ #assert pcli_id("prj_0123456789abcdef0123456789abcdef","prj_",36) && !pcli_id("prj_0123456789abcdef0123456789abcdeg","prj_",36);
+ #assert pcli_id("m_00000000000000000001","m_",22) && !pcli_id("m_0000000000000000000/","m_",22);
+ #assert pcli_revision("1")==1 && pcli_revision("2147483645")==2147483645 && pcli_revision("")== -1 && pcli_revision("1.0")== -1 && pcli_revision("-1")== -1 && pcli_revision("2147483646")== -1;
+}
+pcli_id :: (id:string,prefix:string,n:int)->bool {if id.count!=n || id[0..<prefix.count]!=prefix {return false;}for i:prefix.count..<n {c:=id[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+pcli_revision :: (s:string)->int {if s.count<1 || s.count>10 {return -1;}n:=0;for c:s {if c<'0' || c>'9' {return -1;}n=n*10+cast(int)(c-'0');if n>=2147483646 {return -1;}}return ifx n<1 then -1 else n;}
+pcli_file :: (file:string,out:[]u8)->int {
+ if file=="" {return -1;}n:=ifx file=="-" then cxcli_read_stdin(out) else fs_read(file,out);
+ if n<0 || !pr_utf8(cast(string)out[0..<n]) {return -1;}for i:0..<n {if out[i]==0 {return -1;}}return n;
+}
+pcli_call :: (a:[]Args,r:[]Rep,profile:string,method:string,path:string,body:string,timeout:int,out:[]u8)->ApiAnswer {
+ return api_send_wait(a,profile,method,path,body,"Content-Type: application/json","",timeout,out);
+}
+pcli_reply :: (r:[]Rep,res:ApiAnswer,out:[]u8)->int {body:=cast(string)out[0..<res.n];if !api_ok(res) {return api_fail(r,res,body);}print("%\n",body);return EXIT_OK;}
+projects_main :: (a:[]Args,r:[]Rep,profile:string,verb:string)->int {
+ sub:=positional(a,2);id:=sub;item:=positional(a,3);suffix:="";kind:=0;fresh_chat:=false;chat_write:=false;get:=false;
+ path:[1024]u8;sp:[512]u8;o:[1]Jo;jo_start(o[..],sp[..]);
+ if verb=="legacy" {if sub=="list" {route:="/api/projects";answer:[HTTP_BODY_MAX]u8;return pcli_reply(r,pcli_call(a,r,profile,"GET",route,"",CLI_HTTP_MS,answer[..]),answer[..]);}if sub!="show" || !pj_slug(item) {return fail(r,EXIT_USAGE,"projects legacy list | legacy show SLUG");}jo_put(o[..],"/projects/");jo_put(o[..],item);jo_put(o[..],"/api/state");answer:[HTTP_BODY_MAX]u8;return pcli_reply(r,pcli_call(a,r,profile,"GET",jo_text(o[..]),"",CLI_HTTP_MS,answer[..]),answer[..]);}
+ if verb=="list" {id="";get=true;cursor:=args_value(a,"--cursor","");if cursor!="" {if !pcli_id(cursor,"prj_",36) {return fail(r,EXIT_USAGE,"--cursor must be a Project ID");}jo_put(o[..],"?cursor=");jo_put(o[..],cursor);}}
+ else if verb=="create" {id="";kind=1;}
+ else if verb=="show" {get=true;}
+ else if verb=="update" {kind=2;suffix="update";}
+ else if verb=="instructions" {suffix="instructions";get=!args_has(a,"--file");kind=3;}
+ else if verb=="knowledge" {id=item;item=positional(a,4);if sub=="list" {get=true;suffix="knowledge";}else if sub=="show" || sub=="remove" {if !pcli_id(item,"knw_",36) {return fail(r,EXIT_USAGE,"expected a knowledge ID");}jo_put(o[..],"knowledge/");jo_put(o[..],item);jo_put(o[..],ifx sub=="show" then "/content" else "/remove");get=sub=="show";kind=5;}else if sub=="add" || sub=="attach" {kind=4;suffix="knowledge";}else {return fail(r,EXIT_USAGE,"projects knowledge list|show|add|attach|remove");}}
+ else if verb=="chats" {get=true;suffix="chats";}
+ else if verb=="chat" {id=item;item=positional(a,4);if sub=="new" {fresh_chat=true;chat_write=true;kind=8;suffix="chats/new";}else {if !pcli_id(item,"m_",22) {return fail(r,EXIT_USAGE,"expected a saved chat ID");}if sub=="show" || sub=="send" {jo_put(o[..],"chats/");jo_put(o[..],item);get=sub=="show";if !get {jo_put(o[..],"/messages");kind=9;chat_write=true;}}else if sub=="link" {kind=6;suffix="chats";}else if sub=="complete" {kind=7;suffix="complete";}else {return fail(r,EXIT_USAGE,"projects chat new|show|send|link|complete");}}}
+ else if verb=="context" {get=true;op:=item;if op.count<1 || op.count>80 {return fail(r,EXIT_USAGE,"expected the completion operation ID");}encoded:[256]u8;en:=uri_component(op,encoded[..]);if en<0 {return fail(r,EXIT_USAGE,"operation ID too long");}jo_put(o[..],"context?operation_id=");jo_put(o[..],cast(string)encoded[0..<en]);}
+ else {return fail(r,EXIT_USAGE,"projects list|create|show|update|instructions|knowledge|chats|chat|context");}
+ if id!="" && !pcli_id(id,"prj_",36) {return fail(r,EXIT_USAGE,"expected a Project ID (prj_ and 32 hex digits)");}
+ if id=="" && verb!="list" && verb!="create" {return fail(r,EXIT_USAGE,"expected a Project ID");}
+ if o[0].n>0 {suffix=jo_text(o[..]);}
+ route:="";if verb=="list" && suffix!="" {pb:[1]Jo;jo_start(pb[..],path[..]);jo_put(pb[..],"/api/projects/v1");jo_put(pb[..],suffix);route=jo_text(pb[..]);}else {route=pr_route(id,suffix,path[..]);}
+ out:[HTTP_BODY_MAX]u8;if get {return pcli_reply(r,pcli_call(a,r,profile,"GET",route,"",CLI_HTTP_MS,out[..]),out[..]);}
+ revision:=ifx kind==1 then -1 else pcli_revision(args_value(a,"--rev",""));if kind!=1 && revision<1 {return fail(r,EXIT_USAGE,"writes require --rev with the Project's current revision");}
+ tr:=pcli_revision(args_value(a,"--thread-rev",""));if (kind==7 || kind==9) && tr<1 {return fail(r,EXIT_USAGE,"--thread-rev is the saved chat's current revision");}
+ text:[65536]u8;nt:=0;file:=args_value(a,ifx kind==1 then "--instructions" else "--file","");
+ if (kind==1 && file!="") || kind==3 || (kind==4 && sub=="add") || chat_write {nt=pcli_file(file,text[0..<ifx chat_write then 16384 else 65536]);if nt<0 {return fail(r,EXIT_USAGE,"cannot read the complete UTF-8 file (or - for stdin); text must fit the API limit");}}
+ value:[131072]u8;v:="";
+ if kind==1 || kind==2 {v=pr_metadata_value(kind==1,ifx kind==1 then sub else args_value(a,"--name",""),args_has(a,"--name"),args_value(a,"--description",""),args_has(a,"--description"),cast(string)text[0..<nt],value[..]);}
+ else if kind==3 {v=pr_value(3,"",cast(string)text[0..<nt],value[..]);}
+ else if kind==4 {v=pr_knowledge_value(args_value(a,"--title",""),ifx sub=="attach" then args_value(a,"--file-id","") else cast(string)text[0..<nt],sub=="attach",!args_has(a,"--unselected"),value[..]);}
+ else if kind==6 || kind==7 {v=pr_chat_value(item,ifx kind==6 then 0 else tr,value[..]);}
+ operation:[80]u8;op:=args_value(a,"--operation-id","");if op=="" {random:[16]u8;if cxrand_draw(random[..],16)!=0 || !cli_hex(random[..],operation[0..<32]) {return fail(r,EXIT_FAIL,"cannot make an operation ID");}op=cast(string)operation[0..<32];}
+ if op.count<1 || op.count>80 {return fail(r,EXIT_USAGE,"--operation-id is 1 to 80 UTF-8 bytes");}
+ body:[131072]u8;n:=ifx chat_write then pr_chat_write(op,revision,cast(string)text[0..<nt],ifx fresh_chat then -1 else tr,body[..]) else pr_mutation(op,revision,v,body[..]);req:[1]PrRequest;
+ if n<1 || !(ifx chat_write then pr_chat_request(cast(string)body[0..<n],fresh_chat,req[..]) else pr_request(cast(string)body[0..<n],kind,req[..])) {return fail(r,EXIT_USAGE,"Project fields exceed their limits or required values are missing");}
+ timeout:=300000;ts:=args_value(a,"--timeout","");if ts!="" {timeout=pcli_revision(ts);if timeout<1000 || timeout>300000 {return fail(r,EXIT_USAGE,"--timeout is 1000 to 300000 milliseconds");}}
+ tool_errln("Project operation ID (reuse it on retry):");tool_errln(op);
+ res:=pcli_call(a,r,profile,"POST",route,cast(string)body[0..<n],ifx kind==7 then timeout else CLI_HTTP_MS,out[..]);if !api_ok(res) {return api_fail(r,res,cast(string)out[0..<res.n]);}
+ if !chat_write || args_has(a,"--save-only") {return pcli_reply(r,res,out[..]);}
+ t:[1]AccountThread;if !act_read(cast(string)out[0..<res.n],t[..]) {return fail(r,EXIT_FAIL,"chat was saved; reopen it before completing (invalid server reply)");}
+ tid:=cast(string)t[0].id[0..<t[0].id_n];tool_errln("Saved chat:");tool_errln(tid);
+ hash_input:[96]u8;ho:[1]Jo;jo_start(ho[..],hash_input[..]);jo_put(ho[..],op);jo_put(ho[..],":complete");hash:[64]u8;completion_op:=pr_hash(jo_text(ho[..]),hash[..]);
+ v=pr_chat_value(tid,t[0].revision,value[..]);n=pr_mutation(completion_op,revision+ifx fresh_chat then 1 else 0,v,body[..]);route=pr_route(id,"complete",path[..]);tool_errln("Completion operation ID:");tool_errln(completion_op);
+ res=pcli_call(a,r,profile,"POST",route,cast(string)body[0..<n],timeout,out[..]);if !api_ok(res) {return api_fail(r,res,cast(string)out[0..<res.n]);}
+ jo_start(o[..],sp[..]);jo_put(o[..],"chats/");jo_put(o[..],tid);route=pr_route(id,jo_text(o[..]),path[..]);return pcli_reply(r,pcli_call(a,r,profile,"GET",route,"",CLI_HTTP_MS,out[..]),out[..]);
+}

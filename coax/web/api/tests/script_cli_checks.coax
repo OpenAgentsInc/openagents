@@ -11,48 +11,8 @@
 #load "../../../../metaverse-engine/script/store.coax";
 #load "../../../../metaverse-engine/script/wasm-make.coax";
 
-SC_OUT :: 65536;
-Sc :: struct {
-  cli: string; key_env: [160] u8; key_n: int; dir: string;
-  out: [SC_OUT] u8; n: int; status: int;
-  nodes: [4096] JvNode; d: [1] Jv; word: [SC_OUT] u8;
-}
-// The built CLI with --json --origin API, the admin's key only in its environment: its exit status
-// (-1 when it did not finish), its output in c.out. Output is never echoed but on a failed check.
-sc_cli :: (t: [] Ap, c: [] Sc, words: [] string) -> int {
-  c[0].n = 0; c[0].status = -1;
-  h := proc_new(); if h < 0 { return -1; }
-  ok := proc_arg(h, c[0].cli) && proc_env(h, "OPENAGENTS_KEYCHAIN=0") && proc_env(h, cast(string) c[0].key_env[0..<c[0].key_n]);
-  for w: words { ok = ok && proc_arg(h, w); }
-  ok = ok && proc_arg(h, "--json") && proc_arg(h, "--origin") && proc_arg(h, t[0].api);
-  if !ok || proc_start(h) != 0 { done := proc_release(h); return -1; }
-  until := proc_now_ms() + 60000; line: [SC_OUT] u8; complete := false;
-  while proc_now_ms() < until {
-    n := proc_line(h, 10, line[..]);
-    if n == PROC_EOF { complete = true; break; }
-    if n == PROC_TIMEOUT { continue; }
-    if n < 0 || c[0].n + n + 1 > SC_OUT { break; }
-    if c[0].n > 0 { c[0].out[c[0].n] = '\n'; c[0].n += 1; }
-    for i: 0..<n { c[0].out[c[0].n + i] = line[i]; } c[0].n += n;
-  }
-  if !complete { killed := proc_kill(h, PROC_SIGKILL); }
-  c[0].status = proc_wait(h, 2000); done := proc_release(h);
-  return ifx complete then c[0].status else -1;
-}
-sc_text :: (c: [] Sc) -> string { return cast(string) c[0].out[0..<c[0].n]; }
-// A member of the CLI's JSON answer as text (a string's value, else its raw JSON); "" when none.
-sc_get :: (c: [] Sc, key: string) -> string {
-  if !jv_parse(c[0].d[..], sc_text(c), c[0].nodes[..]) { return ""; }
-  at := jv_get(c[0].d[0], 0, key);
-  if at < 0 { return ""; }
-  n := jv_str(c[0].d[0], at, c[0].word[..]);
-  return ifx n >= 0 then cast(string) c[0].word[0..<n] else jv_raw(c[0].d[0], at);
-}
-sc_ok :: (c: [] Sc) -> bool { return jv_parse(c[0].d[..], sc_text(c), c[0].nodes[..]) && jv_bool(c[0].d[0], jv_get(c[0].d[0], 0, "ok")); }
-sc_file :: (c: [] Sc, name: string, bytes: string, out: [] u8) -> string {
-  path := fs_join(c[0].dir, name, out);
-  return ifx path != "" && fs_write(path, bytes) then path else "";
-}
+#load "cli_harness.coax";
+
 // The manifest coax/web/script.sh writes beside NAME.wasm, as the CLI's --fields reads it.
 sc_manifest :: (out: [] u8) -> string {
   m := ScriptManifest.{ok = true, bytes = 1234, pages = 1, state = 16, slots = 1, handlers = 1, powers = 3, calls = (1 << SA_X) | (1 << SA_MOVE)};

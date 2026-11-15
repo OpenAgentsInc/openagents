@@ -1,0 +1,40 @@
+#load "../../lib/project/api-wire.coax";
+PR_CHAT_SCHEMA :: "openagents.projects.chat.v1alpha1";
+#test "Project chat writes are closed, bounded and fence both revisions" {
+ b:[131072]u8;r:[1]PrRequest;n:=pr_chat_write("one",2,"Hi café",-1,b[..]);
+ #assert n>0 && pr_chat_request(cast(string)b[0..<n],true,r[..]) && r[0].nt==8 && r[0].revision==2;
+ #assert !pr_chat_request(cast(string)b[0..<n],false,r[..]);
+ n=pr_chat_write("two",2,"Next",4,b[..]);#assert pr_chat_request(cast(string)b[0..<n],false,r[..]) && r[0].thread_revision==4 && !pr_chat_request(cast(string)b[0..<n],true,r[..]);
+ #assert !pr_chat_request("{}",true,r[..]);
+ #assert !pr_chat_request("{\"schema\":\"openagents.projects.chat.v1alpha1\",\"operation_id\":\"x\",\"expected_revision\":1,\"value\":{\"content\":\"\"}}",true,r[..]);
+ #assert !pr_chat_request("{\"schema\":\"openagents.projects.chat.v1alpha1\",\"operation_id\":\"x\",\"expected_revision\":1,\"value\":{\"content\":\"a\",\"content\":\"b\"}}",true,r[..]);
+ #assert !pr_chat_request("{\"schema\":\"openagents.projects.chat.v1alpha1\",\"operation_id\":\"x\",\"expected_revision\":1.5,\"value\":{\"content\":\"a\"}}",true,r[..]);
+}
+#test "chat request boundaries include one byte, maximum text and retiring revisions" {
+ b:[131073]u8;r:[1]PrRequest;text:[16385]u8;for i:0..<text.count {text[i]='Z';}
+ for revision:[2]int.[1,2147483645] {n:=pr_chat_write("x",revision,"Q",revision,b[..]);#assert pr_chat_request(cast(string)b[0..<n],false,r[..]) && r[0].no==1 && r[0].operation[0]=='x' && r[0].nt==1 && r[0].text[0]=='Q' && r[0].thread_revision==revision && r[0].revision==revision;}
+ n:=pr_chat_write("x",1,cast(string)text[0..<16384],-1,b[..]);#assert pr_chat_request(cast(string)b[0..<n],true,r[..]) && r[0].nt==16384;for i:0..<16384 {#assert r[0].text[i]=='Z';}
+ n=pr_chat_write("x",1,cast(string)text[..],-1,b[..]);#assert !pr_chat_request(cast(string)b[0..<n],true,r[..]);
+ n=pr_chat_write("",1,"Q",-1,b[..]);#assert !pr_chat_request(cast(string)b[0..<n],true,r[..]);
+ for revision:[2]int.[0,2147483646] {n=pr_chat_write("x",revision,"Q",-1,b[..]);#assert !pr_chat_request(cast(string)b[0..<n],true,r[..]);n=pr_chat_write("x",1,"Q",revision,b[..]);#assert !pr_chat_request(cast(string)b[0..<n],false,r[..]);}
+ n=pr_chat_write("x",1,"Q",0,b[..]);d:[1]Jv;nodes:[32]JvNode;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && pr_number(d[0],jv_path(d[0],0,"value.thread_revision"))==0;
+ n=pr_chat_write("x",1,"Q",-1,b[..]);for i:n..<b.count {b[i]=' ';}#assert pr_chat_request(cast(string)b[0..<131072],true,r[..]) && !pr_chat_request(cast(string)b[..],true,r[..]);
+ #assert !pr_chat_request("{",true,r[..]);
+ #assert !pr_chat_request("{\"schema\":\"openagents.projects.chat.v1alpha1\",\"extra\":1,\"operation_id\":\"x\",\"expected_revision\":1,\"value\":{\"content\":\"Q\"}}",true,r[..]);
+}
+pr_chat_request :: (raw:string,fresh:bool,r:[]PrRequest)->bool #export_c #effects(all) {
+ d:[1]Jv;nodes:[32]JvNode;next:[1]PrRequest;
+ if raw.count>131072 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];top:=[4]string.["schema","operation_id","expected_revision","value"];
+ if !pr_fields(v,0,top[..]) || jv_raw(v,jv_get(v,0,"schema"))!=PR_CHAT_SCHEMA {return false;}
+ next[0].no=pr_string(v,jv_get(v,0,"operation_id"),next[0].operation[..]);next[0].revision=pr_number(v,jv_get(v,0,"expected_revision"));
+ if next[0].no<1 || next[0].revision<1 || next[0].revision>=2147483646 {return false;}
+ at:=jv_get(v,0,"value");keys:=[2]string.["content","thread_revision"];
+ if !pr_fields(v,at,keys[0..<ifx fresh then 1 else 2]) {return false;}
+ next[0].nt=pr_string(v,jv_get(v,at,"content"),next[0].text[0..<16384]);
+ if next[0].nt<1 {return false;}
+ if !fresh {next[0].thread_revision=pr_number(v,jv_get(v,at,"thread_revision"));if next[0].thread_revision<1 || next[0].thread_revision>=2147483646 {return false;}}
+ r[0]=next[0];return true;
+}
+pr_chat_write :: (op:string,revision:int,content:string,thread_revision:int,out:[]u8)->int {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],PR_CHAT_SCHEMA);jo_key(o[..],"operation_id");jo_str(o[..],op);jo_key(o[..],"expected_revision");jo_int(o[..],revision);jo_key(o[..],"value");jo_obj(o[..]);jo_key(o[..],"content");jo_str(o[..],content);if thread_revision>=0 {jo_key(o[..],"thread_revision");jo_int(o[..],thread_revision);}jo_end(o[..]);jo_end(o[..]);return pr_len(o[..]);
+}

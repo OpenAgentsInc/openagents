@@ -351,7 +351,7 @@ pj_far :: (p: [] Proj, w: [] Work) -> bool {
       nd := wk_ref(w, q);
       colon := 0; while nd[colon] != ':' { colon += 1; }
       other := nd[0..<colon]; slug := nd[colon + 1..<nd.count];
-      if equal(other, pj_slug(p)) { pj_say(p, "a need on ", other, " is in this project: use blocked_by"); return false; }
+      if equal(other, pq_slug(p)) { pj_say(p, "a need on ", other, " is in this project: use blocked_by"); return false; }
       oc: [1] PCfg; jb: [2048] u8;
       bad := pc_load(oc[..], fs_join(projects, other, jb[..]));
       if bad.count > 0 { pj_say(p, other, ": ", bad); return false; }
@@ -388,7 +388,7 @@ pj_repo_tags :: (p: [] Proj, t: [] TagList) {
 pj_project_tags :: (p: [] Proj, t: [] TagList) {
   c := p[0].cfg[..]; tl_clear(t);
   rc: [256] u8; rn := pj_coord(p, KIND_REPO, rc[..]); repo := cast(string) rc[0..<rn];
-  tl_2(t, "d", pj_slug(p)); tl_2(t, "name", pc(c, c[0].name)); tl_2(t, "description", pc(c, c[0].description));
+  tl_2(t, "d", pq_slug(p)); tl_2(t, "name", pc(c, c[0].name)); tl_2(t, "description", pc(c, c[0].description));
   tl_3(t, "a", repo, pc(c, c[0].relay)); tl_3(t, "path", repo, pc(c, c[0].path));
   tl_2(t, "contributions", pc(c, c[0].contributions)); tl_2(t, "license", pc(c, c[0].license));
   vis := pc(c, c[0].visibility);
@@ -432,7 +432,7 @@ project_publish :: (p: [] Proj, a: [] Args, r: [] Rep, check: bool) -> int {
   pj_repo_tags(p, t[..]);
   if !tl_same(t[..], s, f[0].repo) { if !pj_send(p, KIND_REPO, t[..], "", pj_join(wh[..], "repository ", pc(p[0].cfg[..], p[0].cfg[0].repo_d), "")) { return pj_fail(p, r); } }
   pj_project_tags(p, t[..]);
-  if !tl_same(t[..], s, f[0].project) { if !pj_send(p, KIND_PROJECT, t[..], "", pj_join(wh[..], "project ", pj_slug(p), "")) { return pj_fail(p, r); } }
+  if !tl_same(t[..], s, f[0].project) { if !pj_send(p, KIND_PROJECT, t[..], "", pj_join(wh[..], "project ", pq_slug(p), "")) { return pj_fail(p, r); } }
   if !pj_far(p, w[..]) { return pj_fail(p, r); }
   rc: [256] u8; rn := pj_coord(p, KIND_REPO, rc[..]); repo := cast(string) rc[0..<rn];
   pcd: [256] u8; pn := pj_coord(p, KIND_PROJECT, pcd[..]); proj := cast(string) pcd[0..<pn];

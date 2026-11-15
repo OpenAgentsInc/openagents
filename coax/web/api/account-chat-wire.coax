@@ -6,6 +6,43 @@
 #load "account-chat-player-bind.coax";
 ACT_SCHEMA :: "openagents.chat.thread.v1";
 ACT_MODEL :: "google/gemini-4-hydrogen";
+#test "Project chat creation and user append reuse the saved transcript and reserve an answer" {
+ b:[65536]u8;c:[65536]u8;t:[1]AccountThread;
+ n:=act_project_start("m_00000000000000000001","First",b[..]);#assert n>0 && act_read(cast(string)b[0..<n],t[..]) && t[0].revision==1 && t[0].n==1;
+ #assert act_project_user(cast(string)b[0..<n],"Second",c[..])<0;
+ m:=act_project_answer(cast(string)b[0..<n],"{\"choices\":[{\"message\":{\"content\":\"Answer\"}}]}",c[..]);
+ n=act_project_user(cast(string)c[0..<m],"Second",b[..]);#assert n>0 && act_read(cast(string)b[0..<n],t[..]) && t[0].revision==3 && t[0].n==3 && !t[0].messages[2].assistant;
+ #assert act_project_start("bad","First",b[..])<0 && act_project_start("m_00000000000000000001","",b[..])<0 && act_project_user("{}","Next",b[..])<0;
+ t[0].n=31;t[0].messages[30].assistant=true;n=act_write(t[..],b[..]);#assert act_project_user(cast(string)b[0..<n],"Next",c[..])<0;
+}
+act_project_start :: (id:string,content:string,out:[]u8)->int #export_c #effects(all) {
+ if id.count!=22 || content.count<1 || content.count>16384 {return -1;}
+ t:[1]AccountThread;t[0].id_n=id.count;for c,i:id {t[0].id[i]=c;}t[0].revision=1;t[0].n=1;t[0].messages[0].n=content.count;for c,i:content {t[0].messages[0].text[i]=c;}
+ n:=act_write(t[..],out);return ifx n>65536 then -1 else n;
+}
+act_project_user :: (raw:string,content:string,out:[]u8)->int #export_c #effects(all) {
+ t:[1]AccountThread;if !act_read(raw,t[..]) || !t[0].messages[t[0].n-1].assistant || content.count<1 || content.count>16384 {return -1;}
+ total:=content.count+1;for i:0..<t[0].n {total+=t[0].messages[i].n;}if !act_save(t[0].revision+1,t[0].revision+1,t[0].n+2,total) {return -1;}
+ at:=t[0].n;t[0].messages[at].n=content.count;for c,i:content {t[0].messages[at].text[i]=c;}t[0].n+=1;t[0].revision+=1;
+ n:=act_write(t[..],out);return ifx n>65536 then -1 else n;
+}
+#test "Project user writes preserve identity, complete bytes and exact transcript limits" #steps 100000000 {
+ id:="m_00000000000000000001";text:[16385]u8;for i:0..<text.count {text[i]='Z';}b:[131072]u8;c:[131072]u8;t:[1]AccountThread;q:[1]AccountThread;
+ for size:[2]int.[1,16384] {n:=act_project_start(id,cast(string)text[0..<size],b[..]);#assert n>0 && act_read(cast(string)b[0..<n],t[..]) && t[0].id_n==22 && cast(string)t[0].id[0..<22]==id && t[0].revision==1 && t[0].messages[0].n==size && cast(string)t[0].messages[0].text[0..<size]==cast(string)text[0..<size];
+  t[0].messages[0].assistant=true;n=act_write(t[..],b[..]);m:=act_project_user(cast(string)b[0..<n],cast(string)text[0..<size],c[..]);#assert m>0 && act_read(cast(string)c[0..<m],q[..]) && q[0].id_n==22 && q[0].revision==2 && q[0].n==2 && q[0].messages[1].n==size && cast(string)q[0].messages[1].text[0..<size]==cast(string)text[0..<size];}
+ #assert act_project_start(id,cast(string)text[..],b[..])<0;
+ n:=act_write(t[..],b[..]);#assert act_project_user(cast(string)b[0..<n],"",c[..])<0 && act_project_user(cast(string)b[0..<n],cast(string)text[..],c[..])<0;
+ t[0].n=30;for i:0..<30 {t[0].messages[i].n=1;t[0].messages[i].text[0]='A';t[0].messages[i].assistant=i==29;}n=act_write(t[..],b[..]);m:=act_project_user(cast(string)b[0..<n],"Z",c[..]);#assert m>0 && act_read(cast(string)c[0..<m],q[..]) && q[0].n==31;
+ t[0].n=31;t[0].messages[29].assistant=false;t[0].messages[30].n=1;t[0].messages[30].text[0]='A';t[0].messages[30].assistant=true;n=act_write(t[..],b[..]);#assert act_project_user(cast(string)b[0..<n],"Z",c[..])<0;
+ t[0].n=3;for i:0..<3 {t[0].messages[i].n=16000;t[0].messages[i].assistant=i==2;for j:0..<16000 {t[0].messages[i].text[j]='A';}}
+ t[0].messages[2].n=15997;n=act_write(t[..],b[..]);#assert act_project_user(cast(string)b[0..<n],"ZZ",c[..])>0;
+ t[0].messages[2].n=15998;n=act_write(t[..],b[..]);#assert act_project_user(cast(string)b[0..<n],"ZZ",c[..])<0;
+ t[0].n=2;for i:0..<2 {t[0].messages[i].n=16000;t[0].messages[i].assistant=i==1;for j:0..<16000 {t[0].messages[i].text[j]='"';}}n=act_write(t[..],b[..]);m=act_project_user(cast(string)b[0..<n],"Z",c[..]);size:=65536-m+1;#assert size>0 && size<16384 && act_project_user(cast(string)b[0..<n],cast(string)text[0..<size],c[..])==65536 && act_project_user(cast(string)b[0..<n],cast(string)text[0..<size+1],c[..])<0;
+ // One 6-byte JSON escape plus ordinary bytes reaches the start writer's exact encoded boundary.
+ for i:0..<text.count {text[i]=1;}#assert act_project_start(id,cast(string)text[0..<16384],b[..])<0;
+ n=act_project_start(id,"Z",b[..]);overhead:=n-1;escaped:=(65536-overhead)/6;extra:=(65536-overhead)%6;for i:escaped..<escaped+extra+1 {text[i]='Z';}
+ #assert act_project_start(id,cast(string)text[0..<escaped+extra],b[..])==65536 && act_project_start(id,cast(string)text[0..<escaped+extra+1],b[..])<0;
+}
 AWC_SCHEMA :: "openagents.world.account-turn.v1";
 AccountMessage :: struct {assistant:bool;text:[16384]u8;n:int;}
 AccountThread :: struct {ok:bool;id:[24]u8;id_n:int;revision:int;n:int;messages:[32]AccountMessage;}

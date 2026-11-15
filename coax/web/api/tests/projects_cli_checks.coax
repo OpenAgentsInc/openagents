@@ -1,0 +1,46 @@
+// Real built CLI -> signed HTTP -> disposable Postgres -> fake metered model.
+// tool.sh: tls
+#load "cli_harness.coax";
+#load "auth_harness.coax";
+#load "../account-chat-wire.coax";
+#load "../../../lib/project/api-wire.coax";
+
+pct_key :: (c:[]Sc,path:string)->bool {b:[128]u8;n:=fs_read(path,b[..]);if n<64 {return false;}pre:="OPENAGENTS_NSEC=";for ch,i:pre {c[0].key_env[i]=ch;}c[0].key_n=pre.count;for i:0..<64 {c[0].key_env[c[0].key_n+i]=b[i];b[i]=0;}c[0].key_n+=64;return true;}
+pct_member :: (c:[]Sc,path:string,out:[]u8)->string {return ap_member(sc_text(c),path,out);}
+pct_checks :: (t:[]Ap,c:[]Sc,infer:string) {
+ kb:[1024]u8;key:=fs_join(c[0].dir,"key",kb[..]);pkb:[128]u8;pk:=ac_newkey(t,key,pkb[..]);if !pct_key(c,key) || pk.count!=64 {ap_check(t,"CLI test key created privately",false,"");return;}
+ list:=[2]string.["projects","list"];st:=sc_cli(t,c,list[..]);ap_check(t,"a signed key without an account cannot read private Projects",st==3,sc_text(c));
+ q:[1]Sb;sb(q[..],"SELECT acct FROM auth.account_for_key('");sb(q[..],pk);sb(q[..],"','Projects CLI fixture')");ab:[80]u8;account:=ap_sql(t,sb_text(q[..]),ab[..]);sb_clear(q[..]);sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+ create:=[6]string.["projects","create","CLI test drive","--description","A real private Project","--json"];st=sc_cli(t,c,create[..]);idb:[40]u8;id:=pct_member(c,"data.id",idb[..]);ap_check(t,"linked NIP98 person creates a private Project through the CLI",st==0 && id.count==36 && ap_has(sc_text(c),"\"audience\":\"private\""),sc_text(c));if st!=0 || id.count!=36 {return;}
+ legacy:=[3]string.["projects","legacy","list"];st=sc_cli(t,c,legacy[..]);ap_check(t,"CLI retains read access to the existing Project index",st==0,sc_text(c));
+ st=sc_cli(t,c,list[..]);ap_check(t,"CLI lists its owned Project",st==0 && ap_has(sc_text(c),id),sc_text(c));
+ show:=[3]string.["projects","show",id];st=sc_cli(t,c,show[..]);ap_check(t,"CLI reopens the complete Project",st==0 && ap_has(sc_text(c),"A real private Project"),sc_text(c));
+ update:=[7]string.["projects","update",id,"--rev","1","--name","CLI updated"];st=sc_cli(t,c,update[..]);ap_check(t,"CLI updates metadata with compare-and-swap",st==0 && ap_has(sc_text(c),"CLI updated"),sc_text(c));
+ large:[12000]u8;for i:0..<large.count {large[i]='x';}ib:[1024]u8;instructions:=sc_file(c,"instructions",cast(string)large[..],ib[..]);
+ set:=[7]string.["projects","instructions",id,"--rev","2","--file",instructions];st=sc_cli(t,c,set[..]);ap_check(t,"CLI instruction writes exceed the retired 8 KiB account helper",st==0 && ap_has(sc_text(c),cast(string)large[..]),sc_text(c));
+ inst:=[3]string.["projects","instructions",id];st=sc_cli(t,c,inst[..]);text:[16384]u8;ap_check(t,"CLI reads all saved instruction bytes",st==0 && pct_member(c,"data.text",text[..]).count==12000,"");
+ nb:[1024]u8;notes:=sc_file(c,"notes","The launch code is violet.",nb[..]);add:=[10]string.["projects","knowledge","add",id,"--rev","3","--title","Launch notes","--file",notes];st=sc_cli(t,c,add[..]);kidb:[40]u8;kid:=pct_member(c,"data.id",kidb[..]);ap_check(t,"CLI adds selected knowledge",st==0 && kid.count==36,sc_text(c));if st!=0 || kid.count!=36 {return;}
+ read:=[5]string.["projects","knowledge","show",id,kid];st=sc_cli(t,c,read[..]);ap_check(t,"CLI reads complete knowledge content",st==0 && ap_has(sc_text(c),"launch code is violet"),sc_text(c));
+ ks:=[4]string.["projects","knowledge","list",id];st=sc_cli(t,c,ks[..]);ap_check(t,"CLI knowledge list contains metadata",st==0 && ap_has(sc_text(c),kid),sc_text(c));
+ ub:[1024]u8;unused:=sc_file(c,"unused","NEVER_SEND_UNSELECTED",ub[..]);unselected:=[11]string.["projects","knowledge","add",id,"--rev","4","--title","Not selected","--file",unused,"--unselected"];st=sc_cli(t,c,unselected[..]);ap_check(t,"CLI supports unselected knowledge",st==0 && ap_has(sc_text(c),"\"selected\":false"),sc_text(c));
+ mb:[1024]u8;message:=sc_file(c,"message","What is the launch code?",mb[..]);start:=[10]string.["projects","chat","new",id,"--rev","5","--file",message,"--operation-id","cli-new"];st=sc_cli(t,c,start[..]);thread:[1]AccountThread;ok:=st==0 && act_read(sc_text(c),thread[..]);tb:[24]u8;tn:=0;if ok {tn=thread[0].id_n;for i:0..<tn {tb[i]=thread[0].id[i];}}tid:=cast(string)tb[0..<tn];ap_check(t,"CLI creates a Project chat and persists the model answer",ok && thread[0].n==2 && thread[0].revision==2,sc_text(c));if !ok {return;}
+ st=sc_cli(t,c,start[..]);ap_check(t,"retrying the exact chat command replays creation and completion",st==0 && act_read(sc_text(c),thread[..]) && thread[0].n==2 && cast(string)thread[0].id[0..<thread[0].id_n]==tid,sc_text(c));
+ chats:=[3]string.["projects","chats",id];st=sc_cli(t,c,chats[..]);ap_check(t,"CLI lists the Project's saved chat",st==0 && ap_has(sc_text(c),tid),sc_text(c));
+ reopen:=[5]string.["projects","chat","show",id,tid];st=sc_cli(t,c,reopen[..]);ap_check(t,"CLI reopens a scoped chat",st==0 && act_read(sc_text(c),thread[..]) && thread[0].n==2,sc_text(c));
+ send:=[13]string.["projects","chat","send",id,tid,"--rev","6","--thread-rev","2","--file",message,"--operation-id","cli-next"];st=sc_cli(t,c,send[..]);ap_check(t,"CLI continues the existing saved Project chat",st==0 && act_read(sc_text(c),thread[..]) && thread[0].revision==4 && thread[0].n==4,sc_text(c));
+ st=sc_cli(t,c,send[..]);ap_check(t,"retrying a continued turn cannot append or dispatch it twice",st==0 && act_read(sc_text(c),thread[..]) && thread[0].n==4,sc_text(c));
+ hb:[64]u8;ctxop:=pr_hash("cli-new:complete",hb[..]);context:=[4]string.["projects","context",id,ctxop];st=sc_cli(t,c,context[..]);ap_check(t,"CLI reads the exact admitted Project context",st==0 && ap_has(sc_text(c),kid),sc_text(c));
+ pb:[1024]u8;request:[65536]u8;n:=fs_read(fs_join(infer,"last",pb[..]),request[..]);raw:=cast(string)request[0..<ifx n>0 then n else 0];ap_check(t,"CLI model call contains instructions and selected knowledge",ap_has(raw,cast(string)large[..]) && ap_has(raw,"launch code is violet") && !ap_has(raw,"NEVER_SEND_UNSELECTED"),"");
+ n=fs_read(fs_join(infer,"all",pb[..]),request[..]);lines:=0;for i:0..<ifx n>0 then n else 0 {if request[i]=='\n' {lines+=1;}}ap_check(t,"two user turns made exactly two model calls across retries",lines==2,"");
+ stale:=[7]string.["projects","instructions",id,"--rev","1","--file",notes];st=sc_cli(t,c,stale[..]);ap_check(t,"CLI exposes stale writes as conflict exit 5",st==5 && ap_has(sc_text(c),"409"),sc_text(c));
+ other:=[3]string.["projects","create","Other private Project"];st=sc_cli(t,c,other[..]);ob:[40]u8;oid:=pct_member(c,"data.id",ob[..]);if st!=0 {ap_check(t,"CLI creates independent Project",false,sc_text(c));return;}
+ link:=[7]string.["projects","chat","link",oid,tid,"--rev","1"];st=sc_cli(t,c,link[..]);ap_check(t,"CLI cannot reassign a chat from another Project",st==5,sc_text(c));
+ wrong:=[5]string.["projects","chat","show",oid,tid];st=sc_cli(t,c,wrong[..]);ap_check(t,"scoped chat reads refuse a different Project",st==6,sc_text(c));
+ rm:=[7]string.["projects","knowledge","remove",id,kid,"--rev","6"];st=sc_cli(t,c,rm[..]);ap_check(t,"CLI removes knowledge",st==0 && ap_has(sc_text(c),"removed"),sc_text(c));
+ key2b:[1024]u8;key2:=fs_join(c[0].dir,"other-key",key2b[..]);pk2b:[128]u8;pk2:=ac_newkey(t,key2,pk2b[..]);keyed:=pct_key(c,key2);sb_clear(q[..]);sb(q[..],"SELECT acct FROM auth.account_for_key('");sb(q[..],pk2);sb(q[..],"','Stranger fixture')");ap_do(t,sb_text(q[..]));
+ st=sc_cli(t,c,list[..]);ap_check(t,"another CLI account cannot list the owner's Projects",keyed && st==0 && !ap_has(sc_text(c),id),sc_text(c));st=sc_cli(t,c,show[..]);ap_check(t,"another CLI account cannot read the Project",st==6,sc_text(c));st=sc_cli(t,c,reopen[..]);ap_check(t,"another CLI account cannot read the Project chat",st==6,sc_text(c));st=sc_cli(t,c,stale[..]);ap_check(t,"another CLI account cannot write instructions",st==6,sc_text(c));
+}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) {return 2;}if args_count(a[..])==3 && args_at(a[..],0)=="infer" {return am_response(ap_whole(args_at(a[..],1)),args_at(a[..],2),"{\"choices\":[{\"message\":{\"content\":\"The code is violet.\"}}],\"usage\":{\"prompt_tokens\":40,\"completion_tokens\":6}}");}
+ t:[1]Ap;c:[1]Sc;if !ap_open(t[..]) {return 2;}cli:[1024]u8;c[0].cli=proc_getenv("CLI",cli[..]);db:[1024]u8;c[0].dir=fs_temp("projects-cli",db[..]);ib:[1024]u8;infer:=fs_temp("projects-cli-model",ib[..]);h:=ac_server_start(t[..],"coax/web/api/tests/projects_cli_checks.coax",infer,"infer","INFER_PORT");if h>=0 {pct_checks(t[..],c[..],infer);ac_mail_stop(h,infer);}gone:=fs_remove(c[0].dir);return ap_done(t[..],"Projects CLI");
+}

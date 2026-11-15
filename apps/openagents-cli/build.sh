@@ -5,6 +5,8 @@
 #   apps/openagents-cli/build.sh            then: apps/openagents-cli/build/openagents help
 #   apps/openagents-cli/build.sh --cli      only build/openagents, not the dictation host (the web build,
 #                                           apps/openagents-web/build.sh, runs only its project verbs)
+#   apps/openagents-cli/build.sh --emit-c   portable C into build/generated (on a build host)
+#   apps/openagents-cli/build.sh --link-c   link that C with this platform's SDK
 # --cli keeps the built CLI in the tools' cache (COAX_TOOL_CACHE, default ~/.cache/coax-tools;
 # 0: none) under what it is made from: the compiler's bytes, every file main.coax loads, the
 # native C, and the C compiler with its flags. A fresh tree with the same CLI sources (each
@@ -20,6 +22,8 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"; p="$repo/coax/platform"
 only_cli=false; [[ "${1:-}" != --cli ]] || only_cli=true
+emit_c=false; [[ "${1:-}" != --emit-c ]] || emit_c=true
+link_c=false; [[ "${1:-}" != --link-c ]] || link_c=true
 coax="${COAX:-$repo/coax/bin/coax}"
 [[ -x "$coax" ]] || { echo "build the compiler first: coax/build.sh" >&2; exit 2; }
 if [[ "$(uname -s)" == Darwin ]]; then
@@ -27,9 +31,22 @@ if [[ "$(uname -s)" == Darwin ]]; then
   dlibs=(-framework AVFoundation -framework AudioToolbox -framework CoreAudio -framework Metal -framework Foundation); dmac=("$here/dictate-mac.m" -fobjc-arc)
 else cc=("${CC:-gcc}" -D_DEFAULT_SOURCE); libs=(-lpthread); dlibs=(-ldl); dmac=(); fi
 . "$p/tls-env.sh"
+cli_units=("$here/cli-native.c" "$p/tool-native.c" "$p/process-native.c" "$p/store-file-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/socket-native.c" "$p/tls-native.c")
+# Emit on a build host; link those portable C sources with the local platform SDK.
+if $emit_c; then
+  mkdir -p "$here/build/generated"
+  "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$here/build/generated/entropy-policy.h" > "$here/build/generated/entropy.c"
+  (cd "$repo" && "$coax" c apps/openagents-cli/main.coax --library) > "$here/build/generated/openagents.c"
+  exit 0
+fi
+if $link_c; then
+  # shellcheck disable=SC2086
+  "${cc[@]}" -std=c11 -O2 $CXTLS_CFLAGS -I"$here/build/generated" -I"$p" -o "$here/build/openagents" "$here/build/generated/openagents.c" "${cli_units[@]}" "$here/build/generated/entropy.c" "${libs[@]}" $CXTLS_LIBS -lm
+  echo "$here/build/openagents"
+  exit 0
+fi
 (cd "$repo" && COAX="$coax" "$repo/coax/web/tool.sh" metaverse-engine/tools/agent-help-build.coax --check) > /dev/null
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
-cli_units=("$here/cli-native.c" "$p/tool-native.c" "$p/process-native.c" "$p/store-file-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/socket-native.c" "$p/tls-native.c")
 if $only_cli; then
   cache="${COAX_TOOL_CACHE:-$HOME/.cache/coax-tools}"; key=""
   if [[ "$cache" != 0 ]] && loads="$(cd "$repo" && { COAX="$coax" coax/web/tool.sh wasm-size sources apps/openagents-cli/main.coax && COAX="$coax" coax/web/tool.sh wasm-size sources coax/lib/crypto/entropy.coax; })" && [[ -n "$loads" ]]; then

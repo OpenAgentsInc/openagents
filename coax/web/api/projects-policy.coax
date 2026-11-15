@@ -19,7 +19,7 @@
 #test "context is complete or refused including every selected source" {
  #assert prp_context(0) && prp_context(32768) && !prp_context(-1) && !prp_context(32769);
 }
-prp_access :: (kind:int,session:bool,account:string,owner:string)->bool #export_c #effects(all) {return kind==2 && session && account.count>0 && account==owner;}
+prp_access :: (kind:int,verified:bool,account:string,owner:string)->bool #export_c #effects(all) {return kind==2 && verified && account.count>0 && account==owner;}
 prp_change :: (owns:bool,limited:bool,frozen:bool,archived:bool)->bool #export_c #effects(all) {return owns && !limited && !frozen && !archived;}
 prp_id :: (id:string)->bool #export_c #effects(all) {if id.count!=36 || id[0..<4]!="prj_" {return false;}for i:4..<36 {c:=id[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
 prp_revision :: (asked:int,current:int)->bool #export_c #effects(all) {return asked>=0 && asked==current && asked<2147483646;}

@@ -1,0 +1,19 @@
+syntax = "proto3";
+package openagents.project.chat.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+
+// Additive Project chat writes. Replies retain openagents.chat.thread.v1.
+// POST /api/projects/v1/ID/chats/new atomically creates and links a user turn.
+// POST /api/projects/v1/ID/chats/THREAD/messages appends to that owned chat.
+// Both use the existing account-scoped operation ledger. A replay is exact.
+message UserTurn {
+ string content = 1 [json_name="content", (openagents.options.v1alpha1.max_bytes)=16384];
+ // Required for append, absent for create. The last saved turn must be assistant.
+ optional int64 thread_revision = 2 [json_name="thread_revision"];
+}
+message WriteRequest {
+ string schema = 1 [json_name="schema"]; // openagents.projects.chat.v1alpha1
+ string operation_id = 2 [json_name="operation_id", (openagents.options.v1alpha1.max_bytes)=80];
+ int64 expected_revision = 3 [json_name="expected_revision"];
+ UserTurn value = 4 [json_name="value"];
+}

@@ -1,5 +1,12 @@
 # Owner actions
 
+## Projects CLI account test
+
+Completed 2026-11-15: the owner approved **Projects CLI account test** and
+`projects-owner` resolves to the email-linked browser account. Staging uses its
+separate verified `projects-staging` profile. Authentication needs no further
+owner action. [Test record](docs/verification/2026-11-15-projects-cli.md).
+
 ## Mobile workspace, build 1090
 
 **1090 is available in TestFlight (Owner), verified IN_BETA_TESTING.**

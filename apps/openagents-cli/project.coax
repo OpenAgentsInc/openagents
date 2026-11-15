@@ -149,7 +149,7 @@ Proj :: struct {
 }
 pj_root :: (p: [] Proj) -> string { return cast(string) p[0].root[0..<p[0].root_n]; }
 pj_dir :: (p: [] Proj) -> string { return cast(string) p[0].dir[0..<p[0].dir_n]; }
-pj_slug :: (p: [] Proj) -> string { return cast(string) p[0].slug[0..<p[0].slug_n]; }
+pq_slug :: (p: [] Proj) -> string { return cast(string) p[0].slug[0..<p[0].slug_n]; }
 pj_pk :: (p: [] Proj) -> string { return cast(string) p[0].pk[..]; }
 pj_url :: (p: [] Proj) -> string { return cast(string) p[0].relay[0..<p[0].relay_n]; }
 pj_cfg_relay :: (p: [] Proj) -> string { return pc(p[0].cfg[..], p[0].cfg[0].relay); }
@@ -204,7 +204,7 @@ pj_open :: (p: [] Proj, a: [] Args) -> string {
   path := args_value(a, "--key", "");
   if path == "" {
     n := copy("openagents-project-", ks[..]);
-    m := copy(pj_slug(p), ks[n..<2048]);
+    m := copy(pq_slug(p), ks[n..<2048]);
     o := copy(".key", ks[n + m..<2048]);
     path = fs_join(fs_join(home(hb[..]), "work/.secrets", kf[..]), cast(string) ks[0..<n + m + o], ks[1024..<2048]);
   }
@@ -343,7 +343,7 @@ pj_read :: (p: [] Proj) -> bool {
   coord: [256] u8;
   cn := pj_coord(p, KIND_PROJECT, coord[..]);
   repo_k := [1] int.[KIND_REPO]; proj_k := [2] int.[KIND_PROJECT, KIND_ORDER]; issue_k := [1] int.[KIND_ISSUE];
-  rd := [1] string.[pc(cfg, cfg[0].repo_d)]; sd := [1] string.[pj_slug(p)]; ca := [1] string.[cast(string) coord[0..<cn]];
+  rd := [1] string.[pc(cfg, cfg[0].repo_d)]; sd := [1] string.[pq_slug(p)]; ca := [1] string.[cast(string) coord[0..<cn]];
   pf_start(f[..], repo_k[..], pk); pf_tag(f[..], "#d", rd[..]);
   if !pj_all(p, s, pk, pf_text(f[..])) { return false; }
   pf_start(f[..], proj_k[..], pk); pf_tag(f[..], "#d", sd[..]);
@@ -372,7 +372,7 @@ pj_read :: (p: [] Proj) -> bool {
     if !pj_all(p, s, pk, pf_text(f[..])) { return false; }
   }
   if s[0].overflow { pj_say(p, "the project has more events than the CLI holds", "", ""); return false; }
-  fold(s, p[0].f[..], pj_slug(p));
+  fold(s, p[0].f[..], pq_slug(p));
   if p[0].f[0].n >= FOLD_ISSUES { pj_say(p, "the project has more issues than the CLI holds", "", ""); return false; }
   for e: 0..<s[0].n { if s[0].at[e] > p[0].last { p[0].last = s[0].at[e]; } }
   return true;
@@ -383,7 +383,7 @@ pj_coord :: (p: [] Proj, kind: int, out: [] u8) -> int {
   t: [24] u8;
   l: [1] Ln;
   ln_s(l[..], int_text(kind, t[..])); ln_c(l[..], ':'); ln_s(l[..], pj_pk(p)); ln_c(l[..], ':');
-  ln_s(l[..], ifx kind == KIND_REPO then pc(cfg, cfg[0].repo_d) else pj_slug(p));
+  ln_s(l[..], ifx kind == KIND_REPO then pc(cfg, cfg[0].repo_d) else pq_slug(p));
   return copy(ln_text(l[..]), out);
 }
 
@@ -392,7 +392,7 @@ pj_coord :: (p: [] Proj, kind: int, out: [] u8) -> int {
 // answers short never makes it look unpublished.
 pj_cache_path :: (p: [] Proj, out: [] u8) -> string {
   d: [1024] u8; j: [1024] u8; nm: [128] u8;
-  n := copy(pj_slug(p), nm[..]); m := copy(".ids", nm[n..<128]);
+  n := copy(pq_slug(p), nm[..]); m := copy(".ids", nm[n..<128]);
   return fs_join(fs_join(cli_dir(d[..]), "projects", j[..]), cast(string) nm[0..<n + m], out);
 }
 PJ_CACHE :: 262144;
@@ -527,11 +527,11 @@ pj_rank :: (p: [] Proj, r: int) -> string { rk := p[0].f[0].rank[r]; return ifx 
 pj_claimed :: (p: [] Proj, r: int) -> string { return str(p[0].s[..], p[0].f[0].claimed[r]); }
 pj_commit :: (p: [] Proj, r: int) -> string { return str(p[0].s[..], p[0].f[0].commit[r]); }
 pj_id :: (p: [] Proj, r: int) -> string { return stored_id(p[0].s[..], p[0].f[0].root[r]); }
-pj_body :: (p: [] Proj, r: int) -> string { return content_of(p[0].s[..], p[0].f[0].fields[r]); }
+pq_body :: (p: [] Proj, r: int) -> string { return content_of(p[0].s[..], p[0].f[0].fields[r]); }
 
 // The project's naddr (kind 30621, its d, the config's relay, the key).
 pj_naddr :: (p: [] Proj, out: [] u8) -> string {
-  n := name_naddr(KIND_PROJECT, pj_pk(p), pj_slug(p), pj_cfg_relay(p), out);
+  n := name_naddr(KIND_PROJECT, pj_pk(p), pq_slug(p), pj_cfg_relay(p), out);
   return cast(string) out[0..<n];
 }
 
@@ -631,7 +631,7 @@ project_show :: (p: [] Proj, r: [] Rep, what: string) -> int {
     rep_str(r, "alias", pj_alias(p, i)); rep_str(r, "slug", pj_item_slug(p, i)); rep_str(r, "id", pj_id(p, i));
     rep_str(r, "kind", KIND_NAMES[f[0].kind[i]]); rep_str(r, "state", ifx st < 3 then PJ_WORD[st] else pj_status(p, i));
     rep_str(r, "status", pj_status(p, i)); rep_str(r, "title", pj_title(p, i)); rep_str(r, "rank", pj_rank(p, i));
-    rep_str(r, "claimed_by", pj_claimed(p, i)); rep_str(r, "commit", pj_commit(p, i)); rep_str(r, "body", trimmed(pj_body(p, i)));
+    rep_str(r, "claimed_by", pj_claimed(p, i)); rep_str(r, "commit", pj_commit(p, i)); rep_str(r, "body", trimmed(pq_body(p, i)));
     if f[0].plan[i] >= 0 { rep_str(r, "plan", content_of(s, f[0].plan[i])); }
     return rep_done(r, EXIT_OK);
   }
@@ -665,7 +665,7 @@ project_show :: (p: [] Proj, r: [] Rep, what: string) -> int {
   else { ln_s(l[..], "not claimed"); }
   ln_out(l[..]);
   if pj_commit(p, i).count > 0 { ln_s(l[..], "done in "); ln_s(l[..], pj_commit(p, i)); ln_out(l[..]); }
-  print("\n%\n\n", trimmed(pj_body(p, i)));
+  print("\n%\n\n", trimmed(pq_body(p, i)));
   if f[0].plan[i] >= 0 { print("%\n\n", "## Plan"); pj_print_plan(p, i, l[..]); print("%", "\n"); }
   if f[0].note_cnt[i] > 0 {
     print("%\n\n", "## Notes");

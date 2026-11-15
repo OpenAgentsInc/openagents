@@ -100,7 +100,8 @@ copy :: (s: string, out: [] u8) -> int {
 // ---- arguments: flags anywhere, positionals in order ----------------------
 
 // Flags that take a value, a domain's on its own line ("" pads the array).
-VALUE_FLAGS :: [94] string.["--profile",
+VALUE_FLAGS :: [102] string.["--profile",
+  "--file", "--instructions", "--description", "--title", "--file-id", "--operation-id", "--thread-rev", "--cursor", // private Projects
   "--kind", "--content", "--tags", "--method", "--body", "--relay", "--limit", "--timeout",   // nostr
   "--model", "--label", "--slug", "--device", "--model-cache", "--source", "--wait", "--lines", "--port", "--trainer",   // pylon
   "--project", "--key", "--by", "--commit", "--before", "--after", "--dir", "--order",   // project

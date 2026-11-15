@@ -33,6 +33,7 @@
 #load "account.coax";
 #load "agent.coax";
 #load "project.coax";
+#load "projects.coax";
 #load "realm.coax";
 #load "realm-play.coax";
 #load "admin.coax";
@@ -71,6 +72,7 @@ usage :: () {
   vault_usage();
   pylon_usage();
   project_usage();
+  projects_usage();
   account_usage();
   agent_usage();
   realm_usage();
@@ -137,6 +139,7 @@ cli_dispatch :: (a: [] Args, r: [] Rep, profile: string, domain: string, verb: s
   if domain == "pylon" { return pylon_main(a, r, profile, verb); }
   if domain == "http" { return cli_http(a, r); }   // hidden: one request through coax/lib/net/http.coax
   if domain == "project" { return project_main(a, r, verb); }
+  if domain == "projects" { return projects_main(a, r, profile, verb); }
   if domain == "realm" { return realm_main(a, r, profile, verb); }
   if domain == "admin" { return admin_main(a, r, profile, verb); }
   if domain == "transcribe" { return transcribe_main(a, r, verb); }

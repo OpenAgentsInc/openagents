@@ -459,6 +459,11 @@ api_call :: (a: [] Args, profile: string, method: string, path: string, body: st
 // The same with the body's own type (a header line, sent with a body) and one more header line ("": none):
 // a realm script's module or source and its state fields (realm-world.coax, #13467).
 api_send :: (a: [] Args, profile: string, method: string, path: string, body: string, kind: string, extra: string, out: [] u8) -> ApiAnswer {
+  return api_send_wait(a, profile, method, path, body, kind, extra, CLI_HTTP_MS, out);
+}
+// The same signed transport with a bounded caller deadline: saved model turns
+// can outlast an ordinary API request. Redirects remain refused.
+api_send_wait :: (a: [] Args, profile: string, method: string, path: string, body: string, kind: string, extra: string, timeout: int, out: [] u8) -> ApiAnswer {
   res: ApiAnswer;
   env: [300] u8; url: [2400] u8;
   origin := acct_origin(a, profile, env[..]);
@@ -481,7 +486,7 @@ api_send :: (a: [] Args, profile: string, method: string, path: string, body: st
   if body.count > 0 { hs[hn] = kind; hn += 1; }
   if extra.count > 0 { hs[hn] = extra; hn += 1; }
   w: [1] HttpWork; got: [HTTP_BODY_MAX] u8;
-  r := http_do(w[..], method, u, hs[0..<hn], body, CLI_HTTP_MS, 0, got[..]);
+  r := http_do(w[..], method, u, hs[0..<hn], body, timeout, 0, got[..]);
   wipe(auth[..]);
   res.error = r.error; res.status = r.code;
   if r.n > out.count { res.error = HTTP_E_TOO_BIG; res.n = 0; return res; }
@@ -503,6 +508,7 @@ api_why :: (body: string, out: [] u8) -> string {
   if jv_parse(d[..], body, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT {
     e := jv_get(d[0], 0, "error");
     if jv_kind(d[0], e) == JV_STRING { n := jv_str(d[0], e, out); if n > 0 { return cast(string) out[0..<n]; } }
+    if jv_kind(d[0], e) == JV_OBJECT { n := jv_str(d[0], jv_get(d[0], e, "message"), out); if n > 0 { return cast(string) out[0..<n]; } }
   }
   n := 0;
   while n < body.count && n < out.count && body[n] != '\n' { out[n] = body[n]; n += 1; }

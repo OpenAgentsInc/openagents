@@ -241,7 +241,8 @@
       "openagents/account/identity/v1/identity.proto"
     ],
     "projects": [
-      "openagents/project/v1alpha1/project.proto"
+      "openagents/project/v1alpha1/project.proto",
+      "openagents/project/chat/v1alpha1/chat.proto"
     ]
   },
   "profile_namespaces": {

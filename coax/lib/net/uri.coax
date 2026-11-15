@@ -117,3 +117,16 @@ uri_parse :: (text:string)->UriParts #export_c #effects(all) {
  }
  p.ok=true;return p;
 }
+#test "URI components preserve only RFC3986 unreserved bytes and refuse partial output" {
+ b:[64]u8;n:=uri_component("café /?&=+#%~_-.",b[..]);#assert n>0 && cast(string)b[0..<n]=="caf%C3%A9%20%2F%3F%26%3D%2B%23%25~_-.";
+ #assert uri_component("abc",b[0..<2])<0 && uri_component("/",b[0..<2])<0 && uri_component("",b[..])==0;
+}
+// A single query value or path segment, never an entire URL.
+uri_component :: (text:string,out:[]u8)->int #effects(all) {
+ at:=0;for c:text {plain:=(c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='-' || c=='_' || c=='.' || c=='~';n:=ifx plain then 1 else 3;if at+n>out.count {return -1;}if plain {out[at]=c;}else {out[at]='%';out[at+1]="0123456789ABCDEF"[cast(int)c/16];out[at+2]="0123456789ABCDEF"[cast(int)c%16];}at+=n;}return at;
+}
+#forall "URI component bytes match the unreserved alphabet" byte:0..<256 {
+ c:=[1]u8.[cast(u8)byte];b:=[5]u8.[42,42,42,42,42];alphabet:="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.~";plain:=false;for a:alphabet {if a==c[0] {plain=true;}}
+ n:=uri_component(cast(string)c[..],b[1..<4]);#assert b[0]==42 && b[4]==42 && n==ifx plain then 1 else 3;
+ if plain {#assert b[1]==c[0];}else {#assert b[1]=='%' && b[2]=="0123456789ABCDEF"[byte/16] && b[3]=="0123456789ABCDEF"[byte%16];}
+}

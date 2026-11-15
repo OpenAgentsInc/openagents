@@ -15,7 +15,8 @@ unknown or duplicate fields, invalid UTF-8, NULs and fractional revisions.
 ## Routes
 
 `P` is `/api/projects/v1/prj_<32 lowercase hex digits>`. Every request uses the
-existing verified person account session. Reads resolve that account's rows only;
+existing verified person account session or NIP-98 key linked to that account.
+An unlinked signer cannot access this API. Reads resolve that account's rows only;
 a different owner receives 404. Writes also retain same-site, limited-account and
 frozen-account restrictions. No creator grant is needed to create a private Project
 or paste knowledge. `Project.url` points at its owned API resource in this native-first consumer.
@@ -36,6 +37,9 @@ public publication capability.
 | `POST P/knowledge/K/remove` | `RemoveRequest` → `ActionReply` |
 | `GET P/chats` | Existing `openagents.chat.history.v1` response; `folder` is the Project ID |
 | `POST P/chats` | `ChatLinkRequest` → `ProjectReply`; links an owned saved account thread |
+| `GET P/chats/THREAD` | Existing `openagents.chat.thread.v1`, scoped to this Project and account |
+| `POST P/chats/new` | Additive `openagents.projects.chat.v1alpha1.WriteRequest` → saved thread, 201; atomically creates and links a user turn |
+| `POST P/chats/THREAD/messages` | Same additive request → saved thread; appends a user turn after an assistant reply |
 | `POST P/complete` | `ChatCompleteRequest` → existing non-streaming Chat Completions response |
 | `GET P/context?operation_id=OP` | `ContextReply`, the context admitted for that attempt |
 
@@ -49,7 +53,7 @@ public publication capability.
 
 Encoded mutation bodies are at most 131,072 bytes. `operation_id` is 1–80 UTF-8 bytes. The client retains it with the exact request
 until its result is known. All existing-Project writes require `expected_revision`.
-Every successful change advances the Project revision; instructions retain their
+Every metadata, knowledge or chat-association change advances the Project revision; instructions retain their
 own revision, timestamp and SHA-256. A stale write returns 409. A retry of an
 already committed operation returns its stored status/body; reusing its ID with a
 different path or body returns 409. Lists and errors are private and non-cacheable.
@@ -97,6 +101,32 @@ returns that response without another model call. An in-progress or failed attem
 is never automatically dispatched again; the client reopens its saved chat to
 check the result. A saved thread revision admits only one model attempt, even with different operation
 identities. A fresh attempt requires another saved user turn and a new operation identity.
+
+The CLI uses the additive chat-write schema in
+`proto/openagents/project/chat/v1alpha1/chat.proto` and its one codec
+`coax/web/api/projects-chat-wire.coax`. A request carries `schema`, `operation_id`,
+`expected_revision` and `value.content` (1–16,384 UTF-8 bytes). Append also requires
+`value.thread_revision`; create refuses that field. New-chat creation advances the
+Project revision once; appending a message advances only the thread revision.
+Both save the transcript and operation receipt in one transaction. A lost create
+response can be retried without making another thread. The existing published
+Project and account-thread schemas keep their identities.
+
+## Command line
+
+`openagents projects` exposes every operation above using the same account and
+codecs as the phone. [CLI commands and examples](../../apps/openagents-cli/README.md#account-projects)
+cover creation, metadata, instructions, knowledge, chat creation/linking,
+continuation, completion, scoped reopening and context inspection. The singular
+`project` namespace retains the older public Nostr work queue.
+
+Mutating commands print an operation ID on stderr before sending. To reconcile
+an uncertain response, rerun the same command, revision, file bytes and options
+with `--operation-id ID`. Chat new/send also derive a stable completion operation
+from that ID, so repeating the whole command replays both stages. `--save-only`
+saves the user turn without starting inference; `chat complete` exposes the
+completion stage explicitly. Successful output is the full API JSON, without
+the ordinary CLI report's 64 KiB truncation boundary.
 
 The native Projects list exposes **New Project** for this private flow and a
 separate **Publish a public project** for existing drafts. Native screens create

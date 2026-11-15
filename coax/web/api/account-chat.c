@@ -8,6 +8,10 @@
 #include <openssl/rand.h>
 #include <stdlib.h>
 #include <string.h>
+bool account_thread_id(char out[25]) {
+ unsigned char random[10];if(RAND_bytes(random,sizeof random)!=1)return false;
+ memcpy(out,"m_",2);for(int i=0;i<10;i++)snprintf(out+2+2*i,3,"%02x",random[i]);return true;
+}
 static coax_string acs(const char *s) {return (coax_string){s,(int64_t)strlen(s)};}
 static void ac_reply(int fd,const char *body,size_t n) {api_respond(fd,200,"application/json","Cache-Control: no-store\r\nVary: Cookie, Authorization\r\n",body,n);}
 static void ac_player(const request *q,const auth_principal *p) {
@@ -134,8 +138,7 @@ bool account_chat_route(const request *q) {
   if (!act_read((coax_string){q->body,(int64_t)q->body_len},(coax_v_t_AccountThread){t,1})) {free(t);api_error(q->fd,400,"Invalid chat record.");return true;}
   char id[25]={0},revision[32];memcpy(id,t->id.e,(size_t)t->id_n);bool fresh=t->id_n==0;
   if (fresh) {
-    unsigned char random[10];if (RAND_bytes(random,sizeof random)!=1) {free(t);api_error(q->fd,503,"ID unavailable.");return true;}
-    memcpy(id,"m_",2);for (int i=0;i<10;i++) snprintf(id+2+2*i,3,"%02x",random[i]);
+    if (!account_thread_id(id)) {free(t);api_error(q->fd,503,"ID unavailable.");return true;}
     memcpy(t->id.e,id,22);t->id_n=22;
   }
   int64_t before=t->revision;snprintf(revision,sizeof revision,"%lld",(long long)before);

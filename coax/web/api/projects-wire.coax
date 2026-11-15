@@ -1,2 +1,3 @@
 #load "../../lib/project/api-wire.coax";
+#load "projects-chat-wire.coax";
 #load "projects-policy.coax";

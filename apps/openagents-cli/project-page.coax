@@ -439,7 +439,7 @@ project_snapshot :: (a: [] Args, r: [] Rep) -> int {
 
 pg_snapshot :: (p: [] Proj, a: [] Args, r: [] Rep) -> int {
   cfg := p[0].cfg[..];
-  slug := pj_slug(p); pk := pj_pk(p);
+  slug := pq_slug(p); pk := pj_pk(p);
   ob: [2048] u8;
   out := fs_join(pj_dir(p), "work.coax", ob[..]);
   if pg_fresh(out, pg_minutes(a)) { return EXIT_OK; }

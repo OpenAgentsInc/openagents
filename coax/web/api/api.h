@@ -60,6 +60,7 @@ int admin_who(const request *q, PGconn *db, char who[65]);   // 0 an admin (cook
 bool chat_route(const request *q);        // chat.c
 bool projects_route(const request *q);
 bool account_chat_route(const request *q); // account-owned mobile chat
+bool account_thread_id(char out[25]); // platform entropy for the shared saved-chat identity
 bool environment_route(const request *q); // account-owned computer connections
 bool chat_history_route(const request *q); // read-only account history
 void chat_key(const request *q, const char *pubkey, bool member);   // KEY for a signed-in admin, or a project member (private.c)

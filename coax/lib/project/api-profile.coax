@@ -1,5 +1,6 @@
 // Descriptor oracle for the one owned JSON codec; deliberately outside product code.
 #load "api-wire.coax";
+#load "../../web/api/projects-chat-wire.coax";
 #load "../proto/importer.coax";
 #load "../proto/golden-keys.coax";
 #load "../sys/tool.coax";
@@ -20,6 +21,8 @@ tool_main :: ()->int #export_c #effects(all) {
  n=pr_records(records[..],2,"",out[..]);ok=pr_profile(g[..],"KnowledgeList",cast(string)out[0..<n]) && ok;
  rn=pr_summary(p[..],raw[..]);records[0]=cast(string)raw[0..<rn];n=pr_records(records[..],-1,"",out[..]);ok=pr_profile(g[..],"ProjectList",cast(string)out[0..<n]) && ok;
  // The oracle itself refuses an unregistered wire field.
+ n=pr_chat_write("first",1,"Hello café",-1,out[..]);cn:[128]JvNode;why:=pk_text_keys(g[0].state[..],".openagents.project.chat.v1alpha1.WriteRequest",cast(string)out[0..<n],false,false,cn[..]);if why!="" {print("FAIL Project chat create: %\n",why);}ok=why=="" && ok;
+ n=pr_chat_write("next",2,"Next",3,out[..]);why=pk_text_keys(g[0].state[..],".openagents.project.chat.v1alpha1.WriteRequest",cast(string)out[0..<n],false,false,cn[..]);if why!="" {print("FAIL Project chat append: %\n",why);}ok=why=="" && ok;
  nodes:[32]JvNode;ok=pk_text_keys(g[0].state[..],".openagents.project.v1alpha1.CreateRequest","{\"unknown\":true}",false,false,nodes[..])!="" && ok;
  print("%\n",ifx ok then "Projects JSON keys hold to their descriptor" else "Projects descriptor check failed");return ifx ok then 0 else 1;
 }
