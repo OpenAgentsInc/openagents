@@ -212,6 +212,8 @@ final class NativeButton:UIButton {
     var current=false {didSet {if current != oldValue {restyle()}}}
     /// Over a picture (a world): a dim ground stays behind the icon so it reads on anything.
     var floating=false {didSet {restyle()}}
+    /// Native Liquid Glass for floating controls; older iOS keeps the shared frame.
+    var glass=false {didSet {if glass != oldValue {restyle()}}}
     /// A list row's hairline. A row that sets its own spacing (a tool call) goes without.
     var ruled=true {didSet {restyle()}}
     var drawerProgress:Float? {didSet {if (oldValue==nil) != (drawerProgress==nil) {restyle()};drawerPaint()}}
@@ -219,6 +221,7 @@ final class NativeButton:UIButton {
     var drawerRTL=false {didSet {drawerPaint()}}
     private func drawerPaint() {if let drawerProgress {chrome.arcadePaint.kind=7;chrome.arcadePaint.ink=style.ink;chrome.arcadePaint.value=drawerProgress;chrome.arcadePaint.flags=(drawerInteractive ? 4:0)|(drawerRTL ? 8:0)}}
     private let chrome=NativeFrameView(role:NativeSkin.names.button),caption=UILabel(),glyph=UIImageView(),ring=NativeRingView(),rule=NativeRuleView()
+    private var glassView:UIVisualEffectView?
     private var words=""
     private(set) var symbol:String?
     init(_ variant:Variant = .plain) {
@@ -242,6 +245,16 @@ final class NativeButton:UIButton {
     private var style:coax_t_MonoButton {mono_button(variant.number,state_)}
     private func restyle() {
         let s=style,t=NativeSkin.tokens
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *),glass {
+            if glassView == nil {
+                let effect=UIGlassEffect(style:.regular);effect.isInteractive=true
+                let view=UIVisualEffectView(effect:effect);view.isUserInteractionEnabled=false
+                view.clipsToBounds=true;insertSubview(view,aboveSubview:chrome);glassView=view
+            }
+        } else {glassView?.removeFromSuperview();glassView=nil}
+        #endif
+        chrome.isHidden=glassView != nil
         var bg=s.bg,line=s.line
         if floating && state_==NativeSkin.names.rest {bg=t.ground & 0xffffff8c;line=t.line_dim}
         chrome.paint(role:s.role,bg:bg,line:line,deco:line,dashed:s.dashed,march:s.march)
@@ -271,6 +284,7 @@ final class NativeButton:UIButton {
     }
     override func layoutSubviews() {
         super.layoutSubviews();let s=style
+        glassView?.frame=bounds;glassView?.layer.cornerRadius=min(bounds.width,bounds.height)/2
         if variant.square {
             let side=min(CGFloat(s.side),min(bounds.width,bounds.height))
             chrome.frame=CGRect(x:(bounds.width-side)/2,y:(bounds.height-side)/2,width:side,height:side).integral

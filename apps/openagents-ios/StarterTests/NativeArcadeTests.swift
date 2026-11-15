@@ -4,6 +4,20 @@ import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeArcadeTests:XCTestCase {
+    func testGlassButtonUsesNativeEffectAndRestoresSharedFrame() {
+        let button=NativeButton(.icon);button.frame=CGRect(x:0,y:0,width:44,height:44)
+        button.glass=true;button.layoutIfNeeded()
+        let effect=button.subviews.compactMap {$0 as? UIVisualEffectView}.first
+        if #available(iOS 26.0, *) {
+            XCTAssertTrue(effect?.effect is UIGlassEffect)
+            XCTAssertEqual(effect?.frame,CGRect(x:0,y:0,width:44,height:44))
+            XCTAssertFalse(effect?.isUserInteractionEnabled ?? true)
+            XCTAssertTrue(button.subviews.compactMap {$0 as? NativeFrameView}.first!.isHidden)
+        } else {XCTAssertNil(effect)}
+        button.glass=false
+        XCTAssertNil(button.subviews.compactMap {$0 as? UIVisualEffectView}.first)
+        XCTAssertFalse(button.subviews.compactMap {$0 as? NativeFrameView}.first!.isHidden)
+    }
     func testDrawerMorphUsesVisibleInkFromTheSkin() {
         let button=NativeButton(.icon);button.show("Navigation",symbol:"line.3.horizontal");button.drawerProgress=1
         let paint=button.subviews.compactMap {($0 as? NativeArcadeNode)?.arcadePaint}.first {$0.kind==7}

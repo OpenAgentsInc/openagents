@@ -15,6 +15,7 @@ import UIKit
         super.viewDidLoad();view.backgroundColor=NativeSkin.ground;navigationController?.setNavigationBarHidden(true,animated:false)
         header.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(header)
         let close=NativeButton(.icon),options=NativeButton(.icon),title=UILabel()
+        close.glass=true;options.glass=true
         close.show("Close components",symbol:"xmark");close.accessibilityIdentifier="components.close";close.addAction(UIAction { [weak self] _ in self?.finish() },for:.primaryActionTriggered)
         options.show("Gallery options",symbol:"slider.horizontal.3");options.accessibilityIdentifier="components.options";options.addAction(UIAction { [weak self,weak options] _ in guard let self,let options else{return};self.showOptions(from:options) },for:.primaryActionTriggered)
         title.attributedText=NativeSkin.label("Components",size:12,ink:NativeSkin.tokens.ink);title.accessibilityLabel="Components";title.accessibilityTraits.insert(.header)

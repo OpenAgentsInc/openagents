@@ -377,6 +377,9 @@ Motion, Controls, HUD and ARWES sections have interactive specimens; the
 native options menu also exposes section, playback, reduced motion and skin
 choices. The carrier stops drawing offscreen/backgrounded and releases its
 atlas/state when dismissed. Installing 1086 is required for the native carrier.
+The gallery's top icon buttons use UIKit Liquid Glass on iOS 26 and later;
+older iOS versions retain the shared button frame. The shared native button
+offers this appearance as an opt-in for other floating controls.
 The gallery's compiled components require a new build to change; the ordinary
 Coax app screens continue through Updates.
 
