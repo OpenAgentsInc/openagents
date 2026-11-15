@@ -60,7 +60,8 @@ hpk_hex :: (text:string,out:[]u8)->bool #effects(all) {
 hpk_private :: (raw:string)->HostPrivatePack #export_c #effects(all) {
  r:=HostPrivatePack.{};if raw.count>HOST_PACK_METADATA{return r;}nodes:[128]JvNode;s:[1]PkswSession;
  if !pksw_read_session(raw,nodes[..],s[..]){return r;}
- source:=ifx s[0].size<0 then 0 else s[0].size;plain:=ifx s[0].bytes<0 then 31 else s[0].bytes;
+ source:=ifx s[0].size<0 then 0 else s[0].size;   // mutant: equivalent (a size of 0 gives 0 either way, and every size below 1 is refused just below)
+ plain:=ifx s[0].bytes<0 then 31 else s[0].bytes;   // mutant: equivalent (a size below 0 reads as 31 and a size of 0 as 0; both are under PACK_HEADER (32) and refused just below)
  if source<1||source>HOST_PACK_BYTES||plain<PACK_HEADER||plain>HOST_PACK_BYTES{return r;}
  next:=HostPrivatePack.{source_bytes=source,plain_bytes=plain};url:=pksw_url(s[..]);if !htr_http_path(url){return r;}
  for c,i:url{next.url[i]=c;}next.url_bytes=url.count;
