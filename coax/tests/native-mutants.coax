@@ -344,7 +344,7 @@ tool_main :: () -> int #export_c #effects(all) {
   r = run(compiler, dir, SOLE, out[..]);
   sole := cast(string) out[0..<r.out_n];
   print("%", sole);
-  bad += check(has(sole, "sole same status=0\n17 mutants, 17 killed, 0 survived\nmutation-outcome 13 1\nmutation-outcome 14 1\nmutation-outcome 15 1\nmutation-outcome 16 1\n"),
+  bad += check(has(sole, "sole same status=0\n17 mutants, 17 killed, 0 survived\nmutation-outcome 13 1\nmutation-outcome 14 1\nmutation-outcome 15 1\nmutation-outcome 16 1"),
                "the heaviest check, the only one that reaches a procedure, kills its mutants: evaluator alone, --native, whole and in chunks, at --jobs 1, 3 and 8");
 
   // Checks the evaluator cannot run (#13605): over its traversal limit, over
