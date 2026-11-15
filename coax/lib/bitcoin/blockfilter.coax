@@ -68,18 +68,28 @@ bf_sift :: (v: [] u64, idx: [] int, start: int, end: int) #effects(all) {
   root := start;
   while 2 * root + 1 < end {
     child := 2 * root + 1;
-    if child + 1 < end && v[child] < v[child+1] { child += 1; }
-    if v[root] >= v[child] { return; }
+    // Between equal children either one keeps the heap; the choice only
+    // orders indices of equal values, which no caller reads (see bf_sort).
+    if child + 1 < end && v[child] < v[child+1] { child += 1; } // mutant: equivalent
+    // A root equal to its larger child may stop or swap: the values come out
+    // the same, and only indices of equal values change places.
+    if v[root] >= v[child] { return; } // mutant: equivalent
     t := v[root]; v[root] = v[child]; v[child] = t;
     j := idx[root]; idx[root] = idx[child]; idx[child] = j;
     root = child;
   }
 }
+// The order of indices among equal values is unspecified: bf_build_vartime
+// compares every element of a run of equal hashes, and the filter and the
+// match read only the values.
 bf_sort :: (v: [] u64, idx: [] int, n: int) #effects(all) {
-  s := n / 2 - 1;
+  // Starting higher (n/2 + 1, 2n - 1) only adds bf_sift calls on leaves or
+  // past the end, which return at once: 2 * root + 1 >= end there.
+  s := n / 2 - 1; // mutant: equivalent
   while s >= 0 { bf_sift(v, idx, s, n); s -= 1; }
   e := n - 1;
-  while e > 0 {
+  // One more pass at e = 0 swaps v[0] with itself and sifts an empty heap.
+  while e > 0 { // mutant: equivalent
     t := v[0]; v[0] = v[e]; v[e] = t;
     j := idx[0]; idx[0] = idx[e]; idx[e] = j;
     bf_sift(v, idx, 0, e);
@@ -159,14 +169,16 @@ bf_build_vartime :: (key: BfKey, pool: [] u8, spans: [] BfSpan, n: int, values: 
   }
   head := tx_compact_size_vartime(unique);
   if out.count < head { return BfFilter.{code = BF_CAPACITY}; }
-  for i: 0..<out.count { out[i] = 0; }
+  // Skipping out[0] changes nothing: the CompactSize below always writes it.
+  for i: 0..<out.count { out[i] = 0; } // mutant: equivalent
   #assert tx_compact_write_vartime(out, 0, unique) == head;
   f := cast(u64) unique * BF_M;
   pos := head * 8; last := cast(u64) 0;
   for i: 0..<unique {
     v := bf_range(values[i], f);
     pos = bf_golomb_put(out, pos, v - last);
-    if pos < 0 { return BfFilter.{code = BF_CAPACITY}; }
+    // bf_golomb_put returns -1 or at least 20 bits past the CompactSize: never 0.
+    if pos < 0 { return BfFilter.{code = BF_CAPACITY}; } // mutant: equivalent
     last = v;
   }
   return BfFilter.{size = (pos + 7) / 8, n = unique};
@@ -183,11 +195,14 @@ bf_same :: (pool: [] u8, a: BfSpan, b: BfSpan) -> bool #effects(all) {
 // and exactly N codes, with nothing after the byte the last one ends in.
 bf_read_vartime :: (filter: [] u8) -> BfRead #effects(all) {
   c := tx_compact_read_vartime(filter, 0);
-  if c.code != TX_OK || c.value > 0xffffffff { return BfRead.{code = BF_BAD_FILTER}; }
+  // Core's "N must be <2^32" needs no test of its own here: the CompactSize
+  // reader refuses any value above MAX_SIZE (2^25) first, as Core's does.
+  if c.code != TX_OK { return BfRead.{code = BF_BAD_FILTER}; }
   pos := c.next * 8;
   for i: 0..<c.value {
     g := bf_golomb_get(filter, pos);
-    if g.next < 0 { return BfRead.{code = BF_BAD_FILTER}; }
+    // bf_golomb_get returns next = -1 or a position 20 bits on: never 0.
+    if g.next < 0 { return BfRead.{code = BF_BAD_FILTER}; } // mutant: equivalent
     pos = g.next;
   }
   if (pos + 7) / 8 != filter.count { return BfRead.{code = BF_BAD_FILTER}; }
@@ -201,7 +216,8 @@ bf_match_any_vartime :: (key: BfKey, filter: [] u8, pool: [] u8, spans: [] BfSpa
   if r.code != BF_OK { return BfMatch.{code = r.code}; }
   if values.count < n || idx.count < n || spans.count < n { return BfMatch.{code = BF_CAPACITY}; }
   f := cast(u64) r.n * BF_M;
-  for i: 0..<n { values[i] = bf_hash_vartime(key, pool[spans[i].at..<spans[i].at+spans[i].n], f); idx[i] = i; }
+  // idx is scratch the sort carries along; nothing here reads it.
+  for i: 0..<n { values[i] = bf_hash_vartime(key, pool[spans[i].at..<spans[i].at+spans[i].n], f); idx[i] = i; } // mutant: equivalent
   bf_sort(values, idx, n);
   pos := r.bits; value := cast(u64) 0; q := 0;
   for i: 0..<r.n {
@@ -284,7 +300,9 @@ bf_block_hash :: (block: [] u8, out: [] u8) #effects(all) {
 // is 32 zero bytes.
 bf_filter_header :: (filter: [] u8, prev: [] u8, out: [] u8) #effects(all) {
   pair: [64] u8;
-  #assert sha256d_checked(filter, pair[0..<32], false) == SHA_OK;
+  // sha256d_checked takes any view of at least 32 bytes and writes its first
+  // 32, so a 33-byte view writes the same bytes (pair[32..] is set next).
+  #assert sha256d_checked(filter, pair[0..<32], false) == SHA_OK; // mutant: equivalent
   for i: 0..<32 { pair[32+i] = prev[i]; }
   #assert sha256d_checked(pair[..], out, false) == SHA_OK;
 }
@@ -358,19 +376,17 @@ bf_shown_is :: (h: [] u8, text: string) -> bool #effects(all) {
   for i: 0..<32 { r[i] = h[31-i]; }
   return tx_hex_is(r[..], text);
 }
-// One BIP-158 block's filter and header, through the whole pipeline.
-bf_vector_ok :: (v: BfVector) -> bool #effects(all) {
-  block: [2048] u8; prev: [1024] u8; ph: [32] u8; pool: [2048] u8; out: [256] u8; header: [32] u8;
+// One BIP-158 block's filter and header, through the whole pipeline, into
+// out and header.
+bf_vector_run :: (v: BfVector, out: [] u8, header: [] u8) -> BfFilter #effects(all) {
+  block: [2048] u8; prev: [1024] u8; ph: [32] u8; pool: [2048] u8;
   ins: [16] TxIn; outs: [32] TxOut; items: [32] TxItem; spans: [64] BfSpan; values: [64] u64; idx: [64] int;
   b := tx_unhex(v.block, block[..]);
   p := tx_unhex(v.prevouts, prev[..]);
   shown := tx_unhex(v.prev_header, ph[..]);
   h: [32] u8;
   for i: 0..<32 { h[i] = shown[31-i]; }
-  f := bf_basic_vartime(b, p, h[..], ins[..], outs[..], items[..], pool[..], spans[..], values[..], idx[..], out[..], header[..]);
-  if f.code != BF_OK || !tx_hex_is(out[0..<f.size], v.filter) || !bf_shown_is(header[..], v.header) { return false; }
-  r := bf_read_vartime(out[0..<f.size]);
-  return r.code == BF_OK && r.n == f.n;
+  return bf_basic_vartime(b, p, h[..], ins[..], outs[..], items[..], pool[..], spans[..], values[..], idx[..], out, header);
 }
 #test "the check helpers notice every difference" {
   h: [32] u8; h[0] = 1;
@@ -378,7 +394,12 @@ bf_vector_ok :: (v: BfVector) -> bool #effects(all) {
   #assert !bf_shown_is(h[..], "0100000000000000000000000000000000000000000000000000000000000000");
 }
 #forall "BIP-158's testnet-19 blocks: filters and filter headers" i: 0..<BF_VECTORS_COUNT #steps 2000000000 {
-  #assert bf_vector_ok(BF_VECTORS[i]);
+  v := BF_VECTORS[i];
+  out: [256] u8; header: [32] u8;
+  f := bf_vector_run(v, out[..], header[..]);
+  #assert f.code == BF_OK && tx_hex_is(out[0..<f.size], v.filter) && bf_shown_is(header[..], v.header);
+  r := bf_read_vartime(out[0..<f.size]);
+  #assert r.code == BF_OK && r.n == f.n;
 }
 #test "bits go most significant first, and the last byte is padded" {
   out: [4] u8;
@@ -458,6 +479,11 @@ bf_vector_ok :: (v: BfVector) -> bool #effects(all) {
   #assert bf_read_vartime(f[0..<b.count+1]).code == BF_BAD_FILTER;
   big := [9] u8.[0xff, 0, 0, 0, 0, 1, 0, 0, 0];
   #assert bf_read_vartime(big[..]).code == BF_BAD_FILTER;
+  // N = 2^32 - 1 and N = MAX_SIZE + 1 are refused as CompactSizes.
+  most := [5] u8.[0xfe, 0xff, 0xff, 0xff, 0xff];
+  #assert bf_read_vartime(most[..]).code == BF_BAD_FILTER;
+  past := [5] u8.[0xfe, 0x01, 0x00, 0x00, 0x02];
+  #assert bf_read_vartime(past[..]).code == BF_BAD_FILTER;
   #assert bf_match_vartime(BfKey.{}, b[0..<1], b).code == BF_BAD_FILTER;
 }
 #test "a block's elements match its filter; other scripts do not" {
@@ -524,4 +550,186 @@ bf_vector_ok :: (v: BfVector) -> bool #effects(all) {
   #assert bf_basic_c(b, none[0..<0], ph[..], p2[..], f2[..], h[..], fields[..]) == BF_OK;
   #assert tx_hex_is(f2[0..<cast(int) fields[0]], v.filter);
   #assert bf_basic_c(b, none[0..<0], ph[..], p2[..], f2[..], h[..], fields[0..<1]) == BF_CAPACITY;
+}
+
+// ---- boundaries: each limit just inside and just outside
+#test "Golomb-Rice codes that fill the buffer exactly" {
+  // q = 4: four ones, a zero, then 19 bits, 24 bits in all.
+  x := cast(u64) 4 * 524288 + 5;
+  out: [3] u8;
+  #assert bf_golomb_put(out[..], 0, x) == 24;
+  #assert out[0] == 0xf0 && out[1] == 0x00 && out[2] == 0x05;
+  g := bf_golomb_get(out[..], 0);
+  #assert g.value == x && g.next == 24;
+  // One bit later does not fit, and nothing past the buffer is written.
+  more: [3] u8;
+  #assert bf_golomb_put(more[..], 1, x) == -1;
+  #assert more[0] == 0 && more[1] == 0 && more[2] == 0;
+  // The smallest code (20 bits) ending on the last bit, and one bit late.
+  z: [3] u8;
+  #assert bf_golomb_put(z[..], 4, 0) == 24 && bf_golomb_put(z[..], 5, 0) == -1;
+  #assert bf_golomb_get(z[..], 4).next == 24 && bf_golomb_get(z[..], 5).next == -1;
+}
+#forall "heapsort sorts every length to 40 and keeps each value with its index" n: 0..<41 {
+  for seed: 0..<6 {
+    v: [40] u64; idx: [40] int; orig: [40] u64;
+    // Pseudorandom values with many repeats (a 64-bit LCG's top 5 bits).
+    x := cast(u64) (seed * 41 + n);
+    for i: 0..<n {
+      x = add_wrap(mul_wrap(x, 6364136223846793005), 1442695040888963407);
+      v[i] = (x >> 59) << 58; idx[i] = i;
+    }
+    for i: 0..<n { orig[i] = v[i]; }
+    bf_sort(v[..], idx[..], n);
+    seen: [40] bool;
+    for i: 0..<n {
+      #assert i == 0 || v[i-1] <= v[i];
+      #assert idx[i] >= 0 && idx[i] < n && !seen[idx[i]] && orig[idx[i]] == v[i];
+      seen[idx[i]] = true;
+    }
+  }
+}
+#test "heapsort: a descending run, which every sift must move" {
+  v: [9] u64; idx: [9] int;
+  for i: 0..<9 { v[i] = cast(u64) (9 - i); idx[i] = i; }
+  bf_sort(v[..], idx[..], 9);
+  for i: 0..<9 { #assert v[i] == cast(u64) (i + 1) && idx[i] == 8 - i; }
+  // The last internal node out of order: only its sift fixes it.
+  w := [6] u64.[3, 4, 1, 5, 6, 2];
+  wi := [6] int.[0, 1, 2, 3, 4, 5];
+  bf_sort(w[..], wi[..], 6);
+  for i: 0..<6 { #assert w[i] == cast(u64) (i + 1); }
+}
+// Two messages whose SipHash-2-4 under the key (1, 2) is the same 64 bits,
+// found offline with Pollard's rho: a 9-byte and an 8-byte element. Core's
+// ElementSet keeps both, since it compares bytes, not hashes.
+BF_COLLIDE_A :: "afcc138aa90ef42500";
+BF_COLLIDE_B :: "180e7639f85f0c1c";
+#test "elements whose hashes collide are both kept, and both match" {
+  pool: [64] u8;
+  a := tx_unhex(BF_COLLIDE_A, pool[0..<9]);
+  b := tx_unhex(BF_COLLIDE_B, pool[9..<17]);
+  k := BfKey.{k0 = 1, k1 = 2};
+  #assert siphash24(1, 2, a) == siphash24(1, 2, b) && siphash24(1, 2, a) == 0xcb56c0653d6b5718;
+  A := BfSpan.{at = 0, n = 9}; B := BfSpan.{at = 9, n = 8};
+  // Every order of two, three, four and five of them: always two distinct.
+  orders := [10] string.["AB", "BA", "ABA", "BAB", "AAB", "BBA", "ABAB", "AABB", "ABABA", "BAAAB"];
+  for o: 0..<orders.count {
+    spans: [8] BfSpan; values: [8] u64; idx: [8] int; out: [32] u8;
+    w := orders[o];
+    for i: 0..<w.count { spans[i] = ifx w[i] == 'A' then A else B; idx[i] = 1000; }
+    f := bf_build_vartime(k, pool[..], spans[..], w.count, values[..], idx[..], out[..]);
+    #assert f.code == BF_OK && f.n == 2 && out[0] == 2;
+    #assert bf_match_vartime(k, out[0..<f.size], a).found && bf_match_vartime(k, out[0..<f.size], b).found;
+  }
+}
+#test "duplicates: one element twice or three times is one, whatever the scratch held" {
+  pool := [3] u8.[7, 8, 9];
+  k := BfKey.{k0 = 1, k1 = 2};
+  for copies: 2..<4 {
+    spans: [3] BfSpan; values: [3] u64; idx: [3] int; out: [16] u8;
+    for i: 0..<copies { spans[i] = BfSpan.{at = 0, n = 3}; idx[i] = -5; values[i] = 0xffffffffffffffff; }
+    f := bf_build_vartime(k, pool[..], spans[..], copies, values[..], idx[..], out[..]);
+    #assert f.code == BF_OK && f.n == 1 && out[0] == 1 && f.size == 4;
+  }
+  // An empty set needs exactly its one CompactSize byte.
+  none: [1] u8; none[0] = 9;
+  spans: [1] BfSpan; values: [1] u64; idx: [1] int;
+  f := bf_build_vartime(k, pool[..], spans[..], 0, values[..], idx[..], none[..]);
+  #assert f.code == BF_OK && f.size == 1 && none[0] == 0;
+}
+#test "comparing elements: length, then every byte" {
+  pool := [6] u8.[1, 2, 3, 9, 2, 3];
+  #assert bf_same(pool[..], BfSpan.{at = 0, n = 3}, BfSpan.{at = 0, n = 3});
+  #assert !bf_same(pool[..], BfSpan.{at = 0, n = 3}, BfSpan.{at = 3, n = 3});
+  #assert !bf_same(pool[..], BfSpan.{at = 1, n = 2}, BfSpan.{at = 0, n = 2});
+  #assert !bf_same(pool[..], BfSpan.{at = 1, n = 2}, BfSpan.{at = 1, n = 3});
+  #assert bf_same(pool[..], BfSpan.{at = 1, n = 2}, BfSpan.{at = 4, n = 2});
+  #assert bf_same(pool[..], BfSpan.{at = 1, n = 0}, BfSpan.{at = 5, n = 0});
+}
+#test "matching many queries: they are sorted first, in any order given" {
+  pool: [64] u8;
+  for i: 0..<64 { pool[i] = cast(u8) ((i * 37 + 11) % 256); }
+  k := BfKey.{k0 = 3, k1 = 4};
+  // The filter holds the 4-byte elements at 0, 4, 8, 12 and 16.
+  spans: [16] BfSpan; values: [16] u64; idx: [16] int; out: [64] u8;
+  for i: 0..<5 { spans[i] = BfSpan.{at = 4 * i, n = 4}; }
+  f := bf_build_vartime(k, pool[..], spans[..], 5, values[..], idx[..], out[..]);
+  #assert f.code == BF_OK && f.n == 5;
+  filter := out[0..<f.size];
+  // Nine others, then one member: found wherever the member sorts.
+  for member: 0..<5 {
+    q: [10] BfSpan;
+    for i: 0..<9 { q[i] = BfSpan.{at = 20 + 4 * i, n = 4}; }
+    q[9] = BfSpan.{at = 4 * member, n = 4};
+    m := bf_match_any_vartime(k, filter, pool[..], q[..], 10, values[..], idx[..]);
+    #assert m.code == BF_OK && m.found;
+    #assert !bf_match_any_vartime(k, filter, pool[..], q[..], 9, values[..], idx[..]).found;
+  }
+}
+// A block of two transactions: a coinbase paying a one-byte script (51), an
+// OP_RETURN script (6a) and an empty one, and a spend paying 5253. Its one
+// input spends a one-byte script, 54.
+BF_SMALL_BLOCK :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000201000000010000000000000000000000000000000000000000000000000000000000000000ffffffff025151ffffffff03000000000000000001510000000000000000016a00000000000000000000000000010000000111111111111111111111111111111111111111111111111111111111111111110000000000ffffffff01000000000000000002525300000000";
+#test "the basic filter's elements: one-byte scripts count, OP_RETURN and empty ones do not" #steps 400000000 {
+  block: [256] u8; pool: [8] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem; spans: [4] BfSpan;
+  b := tx_unhex(BF_SMALL_BLOCK, block[..]);
+  p := [2] u8.[0x01, 0x54];
+  #assert b.count == 225;
+  g := bf_gather_vartime(b, p[..], ins[..], outs[..], items[..], pool[0..<4], spans[0..<3]);
+  #assert g.code == BF_OK && g.n == 3 && g.used == 4;
+  #assert spans[0].at == 0 && spans[0].n == 1 && spans[1].at == 1 && spans[1].n == 2 && spans[2].at == 3 && spans[2].n == 1;
+  #assert pool[0] == 0x51 && pool[1] == 0x52 && pool[2] == 0x53 && pool[3] == 0x54;
+  // One byte or one span short.
+  #assert bf_gather_vartime(b, p[..], ins[..], outs[..], items[..], pool[0..<3], spans[..]).code == BF_CAPACITY;
+  #assert bf_gather_vartime(b, p[..], ins[..], outs[..], items[..], pool[..], spans[0..<2]).code == BF_CAPACITY;
+  // Refusals say where: a header alone ends at byte 80, trailing bytes start
+  // after the last transaction, and a cut inside a transaction is inside it.
+  g = bf_gather_vartime(b[0..<80], p[..], ins[..], outs[..], items[..], pool[..], spans[..]);
+  #assert g.code == BF_BAD_BLOCK && g.at == 80;
+  g = bf_gather_vartime(block[0..<226], p[..], ins[..], outs[..], items[..], pool[..], spans[..]);
+  #assert g.code == BF_BAD_BLOCK && g.at == 225;
+  g = bf_gather_vartime(b[0..<100], p[..], ins[..], outs[..], items[..], pool[..], spans[..]);
+  #assert g.code == BF_BAD_BLOCK && g.at > 81 && g.at <= 100;
+  // The filter holds 51, 5253 and 54, and not the OP_RETURN script.
+  zero: [32] u8; out: [32] u8; header: [32] u8; values: [4] u64; idx: [4] int; hash: [32] u8;
+  f := bf_basic_vartime(b, p[..], zero[..], ins[..], outs[..], items[..], pool[..], spans[..], values[..], idx[..], out[..], header[..]);
+  #assert f.code == BF_OK && f.n == 3;
+  bf_block_hash(b, hash[..]);
+  k := bf_key(hash[..]);
+  #assert bf_match_vartime(k, out[0..<f.size], pool[0..<1]).found && bf_match_vartime(k, out[0..<f.size], pool[1..<3]).found;
+  #assert bf_match_vartime(k, out[0..<f.size], pool[3..<4]).found && !bf_match_vartime(k, out[0..<f.size], b[200..<200]).found;
+  op_return := [1] u8.[0x6a];
+  #assert !bf_match_vartime(k, out[0..<f.size], op_return[..]).found;
+}
+#test "the C interface's edges: no elements, exact sizes, a miss" #steps 400000000 {
+  pool := [5] u8.[1, 2, 3, 4, 5];
+  spans: [2] BfSpan;
+  two := [2] u64.[2, 3];
+  #assert bf_spans_of(two[..], pool[..], spans[..]) == 2;
+  #assert spans[0].at == 0 && spans[0].n == 2 && spans[1].at == 2 && spans[1].n == 3;
+  #assert bf_spans_of(two[..], pool[..], spans[0..<1]) == -1;
+  over := [2] u64.[2, 4];
+  #assert bf_spans_of(over[..], pool[..], spans[..]) == -1;
+  none: [1] u64;
+  out: [16] u8; fields := [2] u64.[7, 7];
+  #assert bf_build_c(1, 2, pool[..], none[0..<0], out[..], fields[..]) == BF_OK && fields[0] == 1 && fields[1] == 0;
+  #assert bf_build_c(1, 2, pool[..], two[..], out[..], fields[..]) == BF_OK && fields[1] == 2;
+  filter := out[0..<cast(int) fields[0]];
+  fields[0] = 7;
+  #assert bf_match_c(1, 2, filter, pool[..], none[0..<0], fields[..]) == BF_OK && fields[0] == 0;
+  fields[0] = 7;
+  #assert bf_match_c(1, 2, filter, pool[0..<3], two[0..<1], fields[0..<1]) == BF_OK && fields[0] == 1;
+  other := [1] u64.[1];
+  fields[0] = 7;
+  #assert bf_match_c(1, 2, filter, pool[4..<5], other[..], fields[0..<1]) == BF_OK && fields[0] == 0;
+  // The basic filter's element count.
+  v := BF_VECTORS[5];
+  block: [2048] u8; ph: [32] u8; prev: [1024] u8; big: [2048] u8; f2: [256] u8; h: [32] u8;
+  b := tx_unhex(v.block, block[..]);
+  p := tx_unhex(v.prevouts, prev[..]);
+  fields[1] = 0;
+  #assert bf_basic_c(b, p, ph[..], big[..], f2[..], h[..], fields[..]) == BF_OK;
+  #assert fields[1] > 0 && cast(int) fields[1] == bf_read_c(f2[0..<cast(int) fields[0]]);
 }
