@@ -78,6 +78,7 @@ Additional pictures: [focus](input-focus.png), [controls](controls.png),
 
 ## Release artifact
 
+- TestFlight **1087: VALID / IN_BETA_TESTING**, explicitly verified in **Owner**.
 - Product source commit: `cb28ed9acbe0080f69224347c7ad2b9f11f2cfcf`.
 - Bundle: `com.openagents.app`, version `1.0.0`, build `1087`.
 - Installed runtime: `c0170334adad35610e486564d214c750754640e945234d7fb5d071343af06ae1`.

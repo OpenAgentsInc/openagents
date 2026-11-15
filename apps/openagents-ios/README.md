@@ -350,3 +350,8 @@ Markdown/transcript and gallery tests. Navigation, Chat, Usage, Project,
 Balance and Worlds UI suites qualify the existing flows against independent
 local account fixtures and real streamed world assets. New native code needs
 1087; later compatible Coax app-screen changes can continue through Updates.
+
+1087 is **VALID / IN_BETA_TESTING**, explicitly verified in **Owner**. Its
+signed generation-1 feed matches all twenty resources in the exported IPA;
+the fresh-install/relaunch check confirms no redundant Apply prompt. See
+[the release evidence and screenshots](../../docs/verification/2026-11-14-arcade-mobile/README.md).

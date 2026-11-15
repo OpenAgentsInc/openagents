@@ -7,5 +7,6 @@ coax/bin/coax test coax/native/updates-wire.coax
 coax/bin/coax test coax/native/starter/app.coax
 coax/web/tool.sh coax/native/profile.coax
 coax/bin/coax test components/skin/mono-native.coax
+coax/bin/coax test components/native/scene.coax
 coax/bin/coax test coax/native/stock-style.coax
 coax/web/tool.sh coax/native/stock-style.coax apps/shared/native/*.swift apps/openagents-desktop/native/*.swift

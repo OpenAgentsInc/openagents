@@ -1,5 +1,12 @@
 # Arcade port
 
+**Mobile checkpoint, 1087:** current app chrome now uses the shared GPU
+Arcade component scene with a white/grayscale skin and several shared
+animations. Native text/input/accessibility adapters remain. See
+[the mapping](03-design-and-components.md#1087-current-mobile-component-mapping)
+and [the release evidence](../verification/2026-11-14-arcade-mobile/README.md).
+This does not complete the full A01–A28 parity catalog.
+
 Arcade (`OpenAgentsInc/arcade`, formerly `ArcadeLabsInc/arcade`) is the Nostr
 and AI chat app OpenAgents built in 2023 on React Native 0.71 and Expo 48. It
 put public channels, encrypted direct messages, small encrypted groups and an
