@@ -15,7 +15,9 @@
 // this repository (REAL below), or the units given instead of them.
 // Then a check within its budget as native code and over it in the evaluator
 // (tests/native-mutants/heavy.coax, #13602): the baseline passes and every
-// mutant dies. Then checks the evaluator cannot run (tests/native-mutants/
+// mutant dies. Then a heavy check that is the only killer of a procedure's
+// mutants (tests/native-mutants/sole.coax, #13613): they die by it with and
+// without --native, whole and in chunks, at --jobs 1, 3 and 8. Then checks the evaluator cannot run (tests/native-mutants/
 // traversal.coax, slots.coax and nan.coax, #13605): each runs as native code
 // for every mutant, and without native code their mutants are not decided.
 // Then the cases where native code can't run: without a C compiler, with one
@@ -197,6 +199,13 @@ FUNCTIONS :: "pair() { n=$1; u=$2; shift 2; COAX_NATIVE_CHECKS=0 \"$C\" mutate \
 // and "same" when the second run's report and status are an unstopped run's.
 JOBS_FUNCTIONS :: "mo() { grep '^mutation-outcome' \"$1\" > \"$2\"; }; jobs() { n=$1; u=$2; shift 2; e=\"COAX_NATIVE_CHECKS=0\"; env $e \"$C\" mutate \"$u\" \"$@\" --jobs 1 --mutation-trace > \"$D/$n.t0.out\" 2> \"$D/$n.t0.err\"; t0=$?; mo \"$D/$n.t0.err\" \"$D/$n.t0.trace\"; env $e \"$C\" mutate \"$u\" \"$@\" --jobs 1 > \"$D/$n.r0.out\" 2> /dev/null; r0=$?; r=same; for v in COAX_MUTATE_CHUNK_ALL=0 COAX_MUTATE_CHUNK_ALL=1 COAX_MUTATE_CHUNK_ALL=1,COAX_MUTATE_CHUNK_CHECKS=1; do w=$(echo $v | tr , ' '); for j in 3 8; do env $e $w \"$C\" mutate \"$u\" \"$@\" --jobs $j --mutation-trace > \"$D/$n.t.out\" 2> \"$D/$n.t.err\"; t=$?; mo \"$D/$n.t.err\" \"$D/$n.t.trace\"; { cmp -s \"$D/$n.t0.out\" \"$D/$n.t.out\" && cmp -s \"$D/$n.t0.trace\" \"$D/$n.t.trace\" && [ $t = $t0 ]; } || [ $r != same ] || r=\"different: trace, $v --jobs $j\"; env $e $w \"$C\" mutate \"$u\" \"$@\" --jobs $j > \"$D/$n.r.out\" 2> /dev/null; t=$?; { cmp -s \"$D/$n.r0.out\" \"$D/$n.r.out\" && [ $t = $r0 ]; } || [ $r != same ] || r=\"different: report, $v --jobs $j\"; done; done; env $e \"$C\" mutate \"$u\" \"$@\" --jobs 1 --native --mutation-trace > \"$D/$n.n0.out\" 2> \"$D/$n.n0.err\"; t=$?; mo \"$D/$n.n0.err\" \"$D/$n.n0.trace\"; { cmp -s \"$D/$n.t0.out\" \"$D/$n.n0.out\" && [ $t = $t0 ]; } || [ $r != same ] || r=\"different: --native report, --jobs 1\"; for j in 3 8; do env $e \"$C\" mutate \"$u\" \"$@\" --jobs $j --native --mutation-trace > \"$D/$n.n.out\" 2> \"$D/$n.n.err\"; t=$?; mo \"$D/$n.n.err\" \"$D/$n.n.trace\"; { cmp -s \"$D/$n.n0.out\" \"$D/$n.n.out\" && cmp -s \"$D/$n.n0.trace\" \"$D/$n.n.trace\" && [ $t = $t0 ]; } || [ $r != same ] || r=\"different: --native trace, --jobs $j\"; done; echo \"jobs $n $r\"; }; resume() { u=$1; shift; k=\"$D/resume.tsv\"; rm -f \"$k\"; e=\"COAX_NATIVE_CHECKS=0 COAX_NATIVE_MUTANTS_TRACE=1\"; env $e \"$C\" mutate \"$u\" \"$@\" --jobs 1 --native --killers \"$k\" > \"$D/resume.1.out\" 2> \"$D/resume.1.err\" & p=$!; i=0; while [ ! -s \"$k\" ] && kill -0 $p 2> /dev/null && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done; kill $p 2> /dev/null; wait $p 2> /dev/null; ended=stopped; grep -q ' mutants, ' \"$D/resume.1.out\" && ended=ended; lines=$(cat \"$k\" 2> /dev/null | wc -l | tr -d ' '); env $e \"$C\" mutate \"$u\" \"$@\" --jobs 1 --native --killers \"$k\" > \"$D/resume.2.out\" 2> \"$D/resume.2.err\"; s2=$?; COAX_NATIVE_CHECKS=0 \"$C\" mutate \"$u\" \"$@\" --jobs 1 > \"$D/resume.0.out\" 2> /dev/null; s0=$?; same=different; cmp -s \"$D/resume.0.out\" \"$D/resume.2.out\" && [ $s0 = $s2 ] && same=same; echo \"resume $ended lines=$lines $same\"; grep -h '^coax: native mutants: ' \"$D/resume.1.err\" \"$D/resume.2.err\"; }";
 
+// tests/native-mutants/sole.coax with native checks on, as coax test runs
+// it: the report and the trace of the evaluator alone at --jobs 1 against
+// --jobs 3 and 8, with --native, and with --native in chunks (every mutant,
+// and one check a chunk). Prints "sole same status=S" or what differed
+// first, the report's last line, and the outcomes of half's mutants (13-16).
+SOLE :: "u=tests/native-mutants/sole.coax; m() { env -u COAX_NATIVE_CHECKS \"$@\" > \"$D/sole.out\" 2> \"$D/sole.err\"; s=$?; grep '^mutation-outcome' \"$D/sole.err\" > \"$D/sole.trace\"; }; m \"$C\" mutate $u --library --jobs 1 --mutation-trace; s0=$s; cp \"$D/sole.out\" \"$D/sole0.out\"; cp \"$D/sole.trace\" \"$D/sole0.trace\"; r=same; for v in X=0 X=0,--native COAX_MUTATE_CHUNK_ALL=1,--native COAX_MUTATE_CHUNK_ALL=1,COAX_MUTATE_CHUNK_CHECKS=1,--native; do e=$(echo $v | tr , ' ' | sed 's/ --native//'); f=; case $v in *--native) f=--native;; esac; for j in 1 3 8; do m env $e \"$C\" mutate $u --library --jobs $j $f --mutation-trace; { cmp -s \"$D/sole0.out\" \"$D/sole.out\" && cmp -s \"$D/sole0.trace\" \"$D/sole.trace\" && [ $s = $s0 ]; } || [ $r != same ] || r=\"different: $v --jobs $j\"; done; done; echo \"sole $r status=$s0\"; tail -1 \"$D/sole0.out\"; grep -E '^mutation-outcome 1[3-6] ' \"$D/sole0.trace\"";
+
 // Real #authority units, from the repository root.
 REAL :: [7] string.["../rules/srd/long-rest-state.coax", "../rules/srd/import-policy.coax", "../rules/srd/long-rest-timing.coax",
                     "../pay/wallet.coax", "lib/compiler/budget.coax", "lib/crypto/bytes.coax", "lib/nostr/hex.coax"];
@@ -328,6 +337,15 @@ tool_main :: () -> int #export_c #effects(all) {
   print("%", heavy);
   bad += check(has(heavy, "heavy status=0\n17 mutants, 17 killed, 0 survived\n1\n1"),
                "a check that passes as native code but needs more evaluator steps than its budget passes the baseline, and every mutant dies within ten times its steps");
+
+  // A heavy check that is the only killer (#13613): over the evaluator's default
+  // budget, passed by the baseline because native code passed it first, and the
+  // only check that reaches half. Its mutants die by it in every mode, at every --jobs.
+  r = run(compiler, dir, SOLE, out[..]);
+  sole := cast(string) out[0..<r.out_n];
+  print("%", sole);
+  bad += check(has(sole, "sole same status=0\n17 mutants, 17 killed, 0 survived\nmutation-outcome 13 1\nmutation-outcome 14 1\nmutation-outcome 15 1\nmutation-outcome 16 1\n"),
+               "the heaviest check, the only one that reaches a procedure, kills its mutants: evaluator alone, --native, whole and in chunks, at --jobs 1, 3 and 8");
 
   // Checks the evaluator cannot run (#13605): over its traversal limit, over
   // its value-slot limit, on a NaN bit pattern (E0412). Native code passed

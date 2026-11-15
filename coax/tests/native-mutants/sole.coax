@@ -1,0 +1,20 @@
+// A heavy check that is the only killer (tests/native-mutants.coax, #13613).
+// "a long spin, halved" is the heaviest check, about 30 million evaluator
+// steps against the file's 20 million, so the baseline passes it only because
+// it passed as native code first (#13602). It is the only check that calls
+// half, so it is the only check that can kill half's mutants. Every mutant of
+// half must be killed by it, the same for the evaluator alone, with --native,
+// whole or in chunks, at every --jobs; spin's are killed by the short spin.
+#import "Basic";
+#authority;
+
+spin :: (n: int) -> int #effects(all) {
+  s := 0;
+  i := 0;
+  while i < n { s += (i & 3) + 1; i += 1; }
+  return s;
+}
+half :: (x: int) -> int #effects(all) { return x / 2 + 1; }
+#test "a short spin" { #assert spin(5) == 11 && spin(1) == 1; }
+#test "a long spin, halved" { #assert half(spin(2500000)) == 3125001; }
+main :: () { }

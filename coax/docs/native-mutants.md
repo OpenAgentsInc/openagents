@@ -262,7 +262,10 @@ and the trace of `--jobs 1` must be those of `--jobs 3` and `--jobs 8`, whole,
 with every mutant in chunks, and with one check a chunk, and with `--native`
 the trace must be the same for every `--jobs`. `tests/native-mutants/chunks.coax`
 holds a mutant two checks kill, the later one the heaviest, so it runs and
-fails first, and the earlier stays the killer. `tests/native-mutants/resume.coax`
+fails first, and the earlier stays the killer. `tests/native-mutants/sole.coax` holds the heaviest check, over the
+evaluator's default budget, as the only check that reaches a procedure: its
+mutants die by it with and without `--native`, whole and in chunks, at
+`--jobs` 1, 3 and 8 (#13613). `tests/native-mutants/resume.coax`
 is stopped after its native pass and run again: the file holds the native
 kills, every mutant dies on its recorded check, and the report is that of a
 run that was never stopped. `tests/native-mutants/traversal.coax`, `slots.coax`
