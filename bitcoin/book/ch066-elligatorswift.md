@@ -271,8 +271,10 @@ ellswift_encode :: (x_bytes: [] u8, rnd: [] u8, out: [] u8) -> bool #effects(all
   x := sf_load(x_bytes).value;
   if es_valid_x(x) != CB_MAX64 { return false; }  // x is public; refuse a bad one
   seed: [37] u8; for i: 0..<32 { seed[i] = rnd[i]; }
-  draw: [32] u8; pick: [32] u8; ok := false;
-  for attempt: 0..<ELLSWIFT_ATTEMPTS {
+  // Equivalent: ok stays false only when all 1024 attempts fail, which happens with probability (3/4)^1024 for a valid x, so no check reaches it
+  draw: [32] u8; pick: [32] u8; ok := false; // mutant: equivalent
+  // Equivalent: the bound is 1025 instead of 1024 only when the first 1024 attempts fail, as above; starting at 1 is killed by the encode rows that succeed at attempt 0
+  for attempt: 0..<ELLSWIFT_ATTEMPTS { // mutant: equivalent
     stored := cb_store_le32(seed[..], 32, cast(u32) attempt);
     seed[36] = 0; #assert sha256_hash_checked(seed[..], draw[..], false) == SHA_OK;
     seed[36] = 1; #assert sha256_hash_checked(seed[..], pick[..], false) == SHA_OK;
@@ -284,7 +286,8 @@ ellswift_encode :: (x_bytes: [] u8, rnd: [] u8, out: [] u8) -> bool #effects(all
       ok = true; break;
     }
   }
-  for i: 0..<37 { seed[i] = 0; } for i: 0..<32 { draw[i] = 0; pick[i] = 0; }
+  // Equivalent: wipes of this function's own locals, which no caller can read after it returns; the encoding works on public data, and they are wiped as libsecp256k1 does
+  for i: 0..<37 { seed[i] = 0; } for i: 0..<32 { draw[i] = 0; pick[i] = 0; } // mutant: equivalent
   return ok;
 }
 // A key's encoding: x(secret * G), encoded with rnd. EC_OK or ecdh_stage's
@@ -294,7 +297,8 @@ ellswift_create :: (secret: [] u8, rnd: [] u8, out: [] u8, work: [] EcdhScratch)
   generator_x := ECDH_TEST_PEER;
   code := ecdh_stage(secret, generator_x[..], work);
   if code != EC_OK { return code; }
-  if !ellswift_encode(work[0].staged[..], rnd, out) { return EC_PEER; }
+  // Equivalent: the lengths are checked above and x(secret * G) is a valid x, so the encoder refuses only when 1024 attempts fail, as above
+  if !ellswift_encode(work[0].staged[..], rnd, out) { return EC_PEER; } // mutant: equivalent
   return EC_OK;
 }
 ```
@@ -328,7 +332,8 @@ gets a different secret.
 ellswift_xdh :: (ours: [] u8, theirs: [] u8, secret: [] u8, initiating: bool, out: [] u8, work: [] EcdhScratch) -> u32 #effects(all) {
   if ours.count != 64 || theirs.count != 64 || out.count != 32 { return EC_LENGTH; }
   their_x: [32] u8;
-  if !ellswift_decode(theirs, their_x[..]) { return EC_LENGTH; }
+  // Equivalent: theirs is 64 bytes and their_x 32, checked above, and every 64 bytes decode, so ellswift_decode never refuses here
+  if !ellswift_decode(theirs, their_x[..]) { return EC_LENGTH; } // mutant: equivalent
   code := ecdh_stage(secret, their_x[..], work);
   if code != EC_OK { return code; }
   input: [160] u8;
@@ -337,8 +342,10 @@ ellswift_xdh :: (ours: [] u8, theirs: [] u8, secret: [] u8, initiating: bool, ou
   for i: 0..<64 { input[i] = first[i]; input[64 + i] = second[i]; }
   for i: 0..<32 { input[128 + i] = work[0].staged[i]; }
   hashed := sha256_tagged_checked(ELLSWIFT_TAG, input[..], out, false);
-  for i: 0..<160 { input[i] = 0; }
-  if hashed != SHA_OK { return EC_METADATA; }
+  // Equivalent: a wipe of this function's own input, which no caller can read after it returns
+  for i: 0..<160 { input[i] = 0; } // mutant: equivalent
+  // Equivalent: the tag and the 160-byte input are fixed lengths sha256_tagged_checked accepts, and out is 32 bytes, checked above, so it never refuses
+  if hashed != SHA_OK { return EC_METADATA; } // mutant: equivalent
   return EC_OK;
 }
 ```

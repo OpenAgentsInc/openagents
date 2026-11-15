@@ -164,8 +164,10 @@ ellswift_encode :: (x_bytes: [] u8, rnd: [] u8, out: [] u8) -> bool #effects(all
   x := sf_load(x_bytes).value;
   if es_valid_x(x) != CB_MAX64 { return false; }  // x is public; refuse a bad one
   seed: [37] u8; for i: 0..<32 { seed[i] = rnd[i]; }
-  draw: [32] u8; pick: [32] u8; ok := false;
-  for attempt: 0..<ELLSWIFT_ATTEMPTS {
+  // Equivalent: ok stays false only when all 1024 attempts fail, which happens with probability (3/4)^1024 for a valid x, so no check reaches it
+  draw: [32] u8; pick: [32] u8; ok := false; // mutant: equivalent
+  // Equivalent: the bound is 1025 instead of 1024 only when the first 1024 attempts fail, as above; starting at 1 is killed by the encode rows that succeed at attempt 0
+  for attempt: 0..<ELLSWIFT_ATTEMPTS { // mutant: equivalent
     stored := cb_store_le32(seed[..], 32, cast(u32) attempt);
     seed[36] = 0; #assert sha256_hash_checked(seed[..], draw[..], false) == SHA_OK;
     seed[36] = 1; #assert sha256_hash_checked(seed[..], pick[..], false) == SHA_OK;
@@ -177,7 +179,8 @@ ellswift_encode :: (x_bytes: [] u8, rnd: [] u8, out: [] u8) -> bool #effects(all
       ok = true; break;
     }
   }
-  for i: 0..<37 { seed[i] = 0; } for i: 0..<32 { draw[i] = 0; pick[i] = 0; }
+  // Equivalent: wipes of this function's own locals, which no caller can read after it returns; the encoding works on public data, and they are wiped as libsecp256k1 does
+  for i: 0..<37 { seed[i] = 0; } for i: 0..<32 { draw[i] = 0; pick[i] = 0; } // mutant: equivalent
   return ok;
 }
 // A key's encoding: x(secret * G), encoded with rnd. EC_OK or ecdh_stage's
@@ -187,7 +190,8 @@ ellswift_create :: (secret: [] u8, rnd: [] u8, out: [] u8, work: [] EcdhScratch)
   generator_x := ECDH_TEST_PEER;
   code := ecdh_stage(secret, generator_x[..], work);
   if code != EC_OK { return code; }
-  if !ellswift_encode(work[0].staged[..], rnd, out) { return EC_PEER; }
+  // Equivalent: the lengths are checked above and x(secret * G) is a valid x, so the encoder refuses only when 1024 attempts fail, as above
+  if !ellswift_encode(work[0].staged[..], rnd, out) { return EC_PEER; } // mutant: equivalent
   return EC_OK;
 }
 // book:end encode
@@ -199,7 +203,8 @@ ellswift_create :: (secret: [] u8, rnd: [] u8, out: [] u8, work: [] EcdhScratch)
 ellswift_xdh :: (ours: [] u8, theirs: [] u8, secret: [] u8, initiating: bool, out: [] u8, work: [] EcdhScratch) -> u32 #effects(all) {
   if ours.count != 64 || theirs.count != 64 || out.count != 32 { return EC_LENGTH; }
   their_x: [32] u8;
-  if !ellswift_decode(theirs, their_x[..]) { return EC_LENGTH; }
+  // Equivalent: theirs is 64 bytes and their_x 32, checked above, and every 64 bytes decode, so ellswift_decode never refuses here
+  if !ellswift_decode(theirs, their_x[..]) { return EC_LENGTH; } // mutant: equivalent
   code := ecdh_stage(secret, their_x[..], work);
   if code != EC_OK { return code; }
   input: [160] u8;
@@ -208,8 +213,10 @@ ellswift_xdh :: (ours: [] u8, theirs: [] u8, secret: [] u8, initiating: bool, ou
   for i: 0..<64 { input[i] = first[i]; input[64 + i] = second[i]; }
   for i: 0..<32 { input[128 + i] = work[0].staged[i]; }
   hashed := sha256_tagged_checked(ELLSWIFT_TAG, input[..], out, false);
-  for i: 0..<160 { input[i] = 0; }
-  if hashed != SHA_OK { return EC_METADATA; }
+  // Equivalent: a wipe of this function's own input, which no caller can read after it returns
+  for i: 0..<160 { input[i] = 0; } // mutant: equivalent
+  // Equivalent: the tag and the 160-byte input are fixed lengths sha256_tagged_checked accepts, and out is 32 bytes, checked above, so it never refuses
+  if hashed != SHA_OK { return EC_METADATA; } // mutant: equivalent
   return EC_OK;
 }
 // book:end xdh
@@ -283,4 +290,46 @@ es_field :: (text: string) -> SecpField #effects(all) { b: [32] u8; return sf_lo
   for i: 0..<32 { #assert x[i] == want[i]; }
   bad: [32] u8;  // x = 0 is not on the curve
   #assert !ellswift_encode(bad[..], rnd[..], ell[..]) && !ellswift_encode(x[..], rnd[0..<31], ell[..]);
+}
+// Decode rows on every path: u = 0, t = 0 and u^3 + t^2 + 7 = 0 with x1,
+// x2 and x3 the first valid candidate, u or t at least p.
+ES_DECODE_PICKS :: [10] int.[0, 4, 11, 13, 16, 17, 22, 30, 31, 75];
+#test "BIP-324 decode rows on each path" #steps 400000000 {
+  for k: 0..<10 {
+    row := ELLSWIFT_DECODE[ES_DECODE_PICKS[k]]; ell: [64] u8; x: [32] u8;
+    #assert ellswift_decode(es_unhex(row.ellswift, ell[..]), x[..]) && es_hex_is(x[..], row.x);
+  }
+}
+// Inverse rows with the rarer refusals: r = 0 in the odd cases of row 13,
+// and s = 0 in row 26.
+#test "BIP-324 inverse rows with r = 0 and s = 0, every case" #steps 400000000 {
+  picks := [2] int.[13, 26];
+  for k: 0..<2 {
+    row := ELLSWIFT_INVERSE[picks[k]]; x := es_field(row.x); u := es_field(row.u);
+    for which: 0..<8 {
+      got := ellswift_xswiftec_inv(x, u, which);
+      #assert (got.ok == CB_MAX64) == (row.t[which].count > 0);
+      if got.ok == CB_MAX64 { b: [32] u8; #assert sf_store(got.t, b[..]) && es_hex_is(b[..], row.t[which]); }
+    }
+  }
+}
+// The encoder's exact bytes: each row is its draw scheme run on BIP-324's
+// reference.py, succeeding at the attempt and case the row names.
+#test "the encoder writes reference.py's bytes for each row" #steps 600000000 {
+  for k: 0..<ELLSWIFT_ENCODE.count {
+    row := ELLSWIFT_ENCODE[k]; xb: [32] u8; rb: [32] u8; ell: [64] u8;
+    #assert ellswift_encode(es_unhex(row.x, xb[..]), es_unhex(row.rnd, rb[..]), ell[..]);
+    #assert es_hex_is(ell[..], row.ell);
+  }
+}
+#test "create writes the first row's bytes and refuses each wrong length" #steps 600000000 {
+  row := ELLSWIFT_ENCODE[0]; key: [32] u8; key[31] = cast(u8) row.key;
+  rb: [33] u8; r := es_unhex(row.rnd, rb[0..<32]); ell: [65] u8; work: [1] EcdhScratch;
+  #assert ellswift_create(key[..], rb[0..<32], ell[0..<64], work[..]) == EC_OK;
+  #assert es_hex_is(ell[0..<64], row.ell) && es_hex_is(work[0].staged[..], row.x);
+  work[0] = EcdhScratch.{};
+  #assert ellswift_create(key[..], rb[0..<31], ell[0..<64], work[..]) == EC_LENGTH;
+  #assert ellswift_create(key[..], rb[..], ell[0..<64], work[..]) == EC_LENGTH;
+  #assert ellswift_create(key[..], rb[0..<32], ell[0..<63], work[..]) == EC_LENGTH;
+  #assert ellswift_create(key[..], rb[0..<32], ell[..], work[..]) == EC_LENGTH;
 }

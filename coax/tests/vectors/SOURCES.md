@@ -333,7 +333,10 @@ that a maliciously replaced manifest is authentic.
   of each of the eight cases, and `packet_encoding_test_vectors.csv` seven
   key exchanges, whose decoded x, shared x and shared secret chapter 66
   claims. `make_ellswift_vectors.py` reads all three, and `ellswift.py`
-  runs `reference.py` as the cross-check's oracle.
+  runs `reference.py` as the cross-check's oracle. `make_ellswift_vectors.py`
+  also runs the encoder's draw scheme on `reference.py`'s `xswiftec_inv`
+  for three keys and random strings, and writes the 64 bytes it gives;
+  those are generated values, not published ones.
 - **The v2 transport (Bitcoin chapter 67):** BIP-324's
   `packet_encoding_test_vectors.csv` and `reference.py`, pinned above for
   chapter 66, give seven packets with every derived key, terminator and

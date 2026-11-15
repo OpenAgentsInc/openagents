@@ -13,11 +13,17 @@ From BIP-324's test vectors, pinned in coax/tests/vectors/upstream/bip324/:
 - ELLSWIFT_XDH: the key-exchange columns of every row of
   packet_encoding_test_vectors.csv: our secret key and both encodings, who
   initiates, both decoded x, the shared x and the hashed shared secret.
+- ELLSWIFT_ENCODE: an x, 32 random bytes and the 64 bytes ellswift_encode
+  writes for them. BIP-324 draws u and the case at random; this file's
+  encoder draws them from SHA-256(rnd || LE32(attempt) || 0) and
+  SHA-256(rnd || LE32(attempt) || 1), and each row is that scheme run on
+  reference.py's xswiftec_inv, with the attempt and case that succeeded.
 
 Every pinned file's SHA-256 must equal its pin.
 """
 import csv
 import hashlib
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -27,6 +33,7 @@ PINS = {
     'ellswift_decode_test_vectors.csv': 'a238a66b093bed3c571d5b57cb2bb1f69487788f0f872f7ea7501b5b98be20b0',
     'xswiftec_inv_test_vectors.csv': 'b5e8e0e9edfdee14c3ec4db3c6763543a9f17290a84a93de0ae2671c16f4432a',
     'packet_encoding_test_vectors.csv': '61704507945e2fa99e6c799fab888593eb7a2c3d2018f42ee4a3c3abe0684269',
+    'reference.py': 'cb074b4e64bcb096ff4a2f1ee3a0580c383bb1d02662b7dccdd4968bc6b7af4f',
 }
 
 
@@ -34,6 +41,32 @@ def rows(name):
     data = (UP / name).read_bytes()
     assert hashlib.sha256(data).hexdigest() == PINS[name], f'{name} differs from its pin'
     return list(csv.DictReader(data.decode().splitlines()))
+
+
+def reference():
+    data = (UP / 'reference.py').read_bytes()
+    assert hashlib.sha256(data).hexdigest() == PINS['reference.py'], 'reference.py differs from its pin'
+    sys.path.insert(0, str(UP))
+    import reference as R  # noqa: E402
+    return R
+
+
+def encode(R, x, rnd):
+    """The encoder's draws, run on reference.py: (attempt, case, u || t)."""
+    for attempt in range(1024):
+        seed = rnd + attempt.to_bytes(4, 'little')
+        u = R.FE(int.from_bytes(hashlib.sha256(seed + b'\0').digest(), 'big'))
+        case = hashlib.sha256(seed + b'\1').digest()[0] & 7
+        t = R.xswiftec_inv(x, u, case)
+        if t is not None and u != 0:
+            return attempt, case, u.to_bytes() + t.to_bytes()
+    raise AssertionError('no attempt succeeded')
+
+
+# (key, rnd): the key 7 with rnd 0, 1, ..., 31, as chapter 66's check uses,
+# succeeds at attempt 3; the next two succeed at attempt 0.
+ENCODE_INPUTS = [(7, bytes(range(32))), (7, hashlib.sha256(b'ellswift encode 7 1').digest()),
+                 (3, hashlib.sha256(b'ellswift encode 3 4').digest())]
 
 
 def main():
@@ -63,9 +96,19 @@ def main():
                     f'theirs="{r["in_ellswift_theirs"]}", initiating={init}, x_ours="{r["mid_x_ours"]}", '
                     f'x_theirs="{r["mid_x_theirs"]}", x_shared="{r["mid_x_shared"]}", '
                     f'shared_secret="{r["mid_shared_secret"]}"}},')
+    R = reference()
+    text += ['];', 'EsEncodeRow :: struct { key: int; x: string; rnd: string; ell: string; attempt: int; which: int; }',
+             f'ELLSWIFT_ENCODE :: [{len(ENCODE_INPUTS)}] EsEncodeRow.[']
+    for key, rnd in ENCODE_INPUTS:
+        x = (key * R.SECP256K1_G).x
+        attempt, case, ell = encode(R, x, rnd)
+        assert R.ellswift_decode(ell) == x.to_bytes()
+        text.append(f'  EsEncodeRow.{{key={key}, x="{x.to_bytes().hex()}", rnd="{rnd.hex()}", ell="{ell.hex()}", '
+                    f'attempt={attempt}, which={case}}},')
     text += ['];', '']
     OUT.write_text('\n'.join(text))
-    print(f'wrote {OUT.name}: {len(decode)} decodings, {len(inverse)} inverses, {len(packets)} exchanges')
+    print(f'wrote {OUT.name}: {len(decode)} decodings, {len(inverse)} inverses, {len(packets)} exchanges, '
+          f'{len(ENCODE_INPUTS)} encodings')
 
 
 if __name__ == '__main__':
