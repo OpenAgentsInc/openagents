@@ -1,0 +1,44 @@
+{
+  "input": {
+    "schema": "openagents.environment.execution.input.v1alpha1",
+    "instructions": "Be brief.",
+    "reference": "Reference: café",
+    "messages": [
+      {"role": "user", "text": "Old question"},
+      {"role": "assistant", "text": "Old answer"},
+      {"role": "user", "text": "Run the checks."}
+    ]
+  },
+  "binding": {
+    "schema": "openagents.environment.execution.binding.v1alpha1",
+    "task_id": "0123456789abcdef0123456789abcdef",
+    "conversation_id": "cnv_0123456789abcdef0123456789abcdef",
+    "turn_id": "trn_0123456789abcdef0123456789abcdef",
+    "route_id": "0123456789abcdef0123456789abcdef",
+    "host_pubkey": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "workspace_id": "default",
+    "session_id": "0123456789abcdef0123456789abcdef",
+    "command_id": "0123456789abcdef0123456789abcdef",
+    "engine_id": "codex",
+    "account_id": "system",
+    "model_id": "gpt-6-astra",
+    "effort_id": "high",
+    "input_sha256": "01a0353c521c0211993a17f3f27eaa46daafb36e210246523029c3248901cf3b",
+    "input_bytes": 251,
+    "report_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "report_observed_at_ms": 999,
+    "issued_at_ms": 1000,
+    "expires_at_ms": 301000
+  },
+  "chunk": {
+    "schema": "openagents.environment.execution.chunk.v1alpha1",
+    "task_id": "0123456789abcdef0123456789abcdef",
+    "command_id": "0123456789abcdef0123456789abcdef",
+    "input_sha256": "01a0353c521c0211993a17f3f27eaa46daafb36e210246523029c3248901cf3b",
+    "input_bytes": 251,
+    "offset": 0,
+    "text": "{\"schema\":\"openagents.environment.execution.input.v1alpha1\",\"instructions\":\"Be brief.\",\"reference\":\"Reference: café\",\"messages\":[{\"role\":\"user\",\"text\":\"Old question\"},{\"role\":\"assistant\",\"text\":\"Old answer\"},{\"role\":\"user\",\"text\":\"Run the checks.\"}]}",
+    "issued_at_ms": 1000,
+    "expires_at_ms": 301000
+  }
+}

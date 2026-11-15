@@ -1,0 +1,17 @@
+// Routed handoff data. Strings borrow a caller arena; Input owns decoded text.
+EX_INPUT_MAX :: 1048576;
+EX_CHUNK_MAX :: 4096;
+EX_HISTORY_MAX :: 131072;
+EX_MESSAGES :: 128;
+ExBinding :: struct {
+ task:string;conversation:string;turn:string;route:string;host:string;workspace:string;
+ session:string;command:string;engine:string;account:string;model:string;effort:string;
+ input_hash:string;input_bytes:int;report_hash:string;report_at:int;issued:int;expires:int;
+}
+ExChunk :: struct {task:string;command:string;hash:string;total:int;offset:int;text:string;issued:int;expires:int;}
+ExInput :: struct {
+ instructions:[32768]u8;ni:int;reference:[32768]u8;nr:int;
+ assistant:[EX_MESSAGES]bool;starts:[EX_MESSAGES]int;counts:[EX_MESSAGES]int;n:int;
+ text:[EX_HISTORY_MAX]u8;bytes:int;
+}
+ExChoice :: struct {ok:bool;model:int= -1;effort:int= -1;}

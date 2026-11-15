@@ -237,6 +237,9 @@
       "openagents/environment/access/v1alpha1/runtime.proto",
       "openagents/environment/accounts/v1/accounts.proto"
     ],
+    "environment-execution": [
+      "openagents/environment/execution/v1alpha1/execution.proto"
+    ],
     "account-identity": [
       "openagents/account/identity/v1/identity.proto"
     ],
@@ -424,6 +427,9 @@
     "environment-access": [
       "openagents.environment.access.v1alpha1",
       "openagents.environment.accounts.v1"
+    ],
+    "environment-execution": [
+      "openagents.environment.execution.v1alpha1"
     ],
     "account-identity": [
       "openagents.account.identity.v1"

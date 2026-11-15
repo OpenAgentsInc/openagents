@@ -1,0 +1,64 @@
+// Pure preparation before a resident publishes input bytes. The effect owner
+// supplies the retained file, writes only an ok result durably, then starts an
+// engine only on complete. Upload retries never themselves execute anything.
+#load "execution-wire.coax";
+#load "../../crypto/sha256-kernel.coax";
+#authority;
+ExPrepared :: struct {ok:bool;complete:bool;replay:bool;bytes:int;}
+
+#test "execution input accepts only the bound canonical bytes with the actual complete SHA256" {
+ v:[1]ExInput;read:[1]ExInput;ex_test_input(v[..]);raw:[8192]u8;canonical:[8192]u8;n:=ex_input_write(v[..],raw[..]);hash:[64]u8;
+ #assert S_hex(S_hash(cast(string)raw[0..<n]),hash[..]);b:=ex_test_binding();b.input_hash=cast(string)hash[..];b.input_bytes=n;
+ #assert ex_input_accept(b,cast(string)raw[0..<n],read[..],canonical[..]) && read[0].n==3 && read[0].nr==16;
+ read[0].n=7;b.input_bytes=n+1;#assert !ex_input_accept(b,cast(string)raw[0..<n],read[..],canonical[..]) && read[0].n==7;
+ b.input_bytes=n;b.input_hash=EX_TEST_HASH;#assert !ex_input_accept(b,cast(string)raw[0..<n],read[..],canonical[..]) && read[0].n==7;
+ b.input_hash=cast(string)hash[..];#assert !ex_input_accept(b,cast(string)raw[0..<n],read[..],canonical[0..<n-1]);
+ b.engine="micro";#assert !ex_input_accept(b,cast(string)raw[0..<n],read[..],canonical[..]);
+}
+#test "a matching hash cannot admit malformed unsupported or noncanonical input" {
+ b:=ex_test_binding();read:[1]ExInput;canonical:[8192]u8;hash:[64]u8;
+ for raw:[3]string.["{}","{\"schema\":\"openagents.environment.execution.input.v1alpha1\",\"instructions\":\"\",\"reference\":\"\",\"messages\":[{\"role\":\"tool\",\"text\":\"run this\"}]}","{ \"schema\":\"openagents.environment.execution.input.v1alpha1\",\"instructions\":\"\",\"reference\":\"\",\"messages\":[{\"role\":\"user\",\"text\":\"x\"}]}"] {
+  #assert S_hex(S_hash(raw),hash[..]);b.input_hash=cast(string)hash[..];b.input_bytes=raw.count;#assert !ex_input_accept(b,raw,read[..],canonical[..]);
+ }
+}
+#test "chunk preparation resumes complete bytes and exact retries without repeating a range" {
+ v:[1]ExInput;ex_test_input(v[..]);raw:[8192]u8;n:=ex_input_write(v[..],raw[..]);hash:[64]u8;#assert S_hex(S_hash(cast(string)raw[0..<n]),hash[..]);
+ b:=ex_test_binding();b.input_hash=cast(string)hash[..];b.input_bytes=n;
+ c:=ExChunk.{task=b.task,command=b.command,hash=b.input_hash,total=n,text=cast(string)raw[0..<100],issued=b.issued,expires=b.expires};
+ empty:[]u8;first:[8192]u8;second:[8192]u8;r:=ex_input_prepare(b,c,empty,first[0..<100]);#assert r.ok && !r.complete && !r.replay && r.bytes==100;
+ r=ex_input_prepare(b,c,first[0..<100],second[..]);#assert r.ok && !r.complete && r.replay && r.bytes==100 && cast(string)second[0..<100]==cast(string)raw[0..<100];
+ c.offset=100;c.text=cast(string)raw[100..<n];r=ex_input_prepare(b,c,first[0..<100],second[..]);#assert r.ok && r.complete && !r.replay && r.bytes==n && cast(string)second[0..<n]==cast(string)raw[0..<n];
+ r=ex_input_prepare(b,c,second[0..<n],first[..]);#assert r.ok && r.complete && r.replay && r.bytes==n;
+ c.offset=0;c.text=cast(string)raw[0..<100];r=ex_input_prepare(b,c,second[0..<n],first[..]);#assert r.ok && r.complete && r.replay && r.bytes==n;
+}
+#test "chunk preparation refuses changed identities gaps overlap corruption and short output" {
+ v:[1]ExInput;ex_test_input(v[..]);raw:[8192]u8;n:=ex_input_write(v[..],raw[..]);hash:[64]u8;#assert S_hex(S_hash(cast(string)raw[0..<n]),hash[..]);
+ b:=ex_test_binding();b.input_hash=cast(string)hash[..];b.input_bytes=n;
+ c:=ExChunk.{task=b.task,command=b.command,hash=b.input_hash,total=n,text=cast(string)raw[0..<100],issued=b.issued,expires=b.expires};
+ out:[8192]u8;empty:[]u8;#assert !ex_input_prepare(b,c,empty,out[0..<99]).ok;
+ b.engine="micro";#assert !ex_input_prepare(b,c,empty,out[..]).ok;b.engine="codex";
+ c.task="11111111111111111111111111111111";#assert !ex_input_prepare(b,c,empty,out[..]).ok;c.task=b.task;
+ c.hash=EX_TEST_HASH;#assert !ex_input_prepare(b,c,empty,out[..]).ok;c.hash=b.input_hash;
+ c.total=n+1;#assert !ex_input_prepare(b,c,empty,out[..]).ok;c.total=n;
+ c.text="changed";#assert !ex_input_prepare(b,c,raw[0..<100],out[..]).ok;c.text=cast(string)raw[0..<100];
+ c.offset=101;#assert !ex_input_prepare(b,c,raw[0..<100],out[..]).ok;
+ c.offset=50;#assert !ex_input_prepare(b,c,raw[0..<100],out[..]).ok;
+ c.offset=100;c.text=cast(string)raw[100..<n];raw[0]='[';#assert !ex_input_prepare(b,c,raw[0..<100],out[..]).ok;
+ c.text="";#assert !ex_input_prepare(b,c,empty,out[..]).ok;
+}
+
+ex_input_accept :: (b:ExBinding,raw:string,out:[]ExInput,canonical:[]u8)->bool #effects(all) {
+ if !ex_binding_valid(b) || raw.count!=b.input_bytes {return false;}hash:[64]u8;if !S_hex(S_hash(raw),hash[..]) || cast(string)hash[..]!=b.input_hash {return false;}
+ next:[1]ExInput;if !ex_input_read(raw,next[..]) {return false;}n:=ex_input_write(next[..],canonical);
+ if n!=raw.count || cast(string)canonical[0..<n]!=raw {return false;}out[0]=next[0];return true;
+}
+ex_input_prepare :: (b:ExBinding,c:ExChunk,retained:[]u8,out:[]u8)->ExPrepared #effects(all) {
+ no:ExPrepared;if !ex_binding_valid(b) || !ex_chunk_valid(c) || c.task!=b.task || c.hash!=b.input_hash || c.total!=b.input_bytes {return no;}
+ end:=c.offset+c.text.count;matches:=end<=retained.count && cast(string)retained[c.offset..<end]==c.text;
+ action:=ex_chunk_action(c.offset,c.text.count,c.total,retained.count,matches);if action==0 {return no;}
+ count:=ifx action==1 then end else retained.count;if count>out.count {return no;}
+ for byte,i:retained {out[i]=byte;}if action==1 {for byte,i:c.text {out[c.offset+i]=byte;}}
+ complete:=count==c.total;
+ if complete {decoded:[1]ExInput;canonical:[EX_INPUT_MAX]u8;if !ex_input_accept(b,cast(string)out[0..<count],decoded[..],canonical[..]) {return no;}}
+ return ExPrepared.{ok=true,complete=complete,replay=action==2,bytes=count};
+}

@@ -1,0 +1,95 @@
+// Authority for the routed profile. This never infers execution from Project
+// membership, a model decision, a cached name or an implicit provider selection.
+#load "execution-types.coax";
+#load "policy.coax";
+#load "../accounts/policy.coax";
+#load "../engine/catalog.coax";
+#authority;
+
+#test "execution scope requires HOST admission and every configured device and grant fact" {
+ #assert ex_scope(true,true,true,true,true);
+ #assert !ex_scope(false,true,true,true,true) && !ex_scope(true,false,true,true,true);
+ #assert !ex_scope(true,true,false,true,true) && !ex_scope(true,true,true,false,true);
+ #assert !ex_scope(true,true,true,true,false);
+}
+#test "execution references keep their namespace and exact hex identity" {
+ #assert ex_reference("cnv_0123456789abcdef0123456789abcdef","cnv_");
+ #assert !ex_reference("trn_0123456789abcdef0123456789abcdef","cnv_");
+ #assert !ex_reference("cnv_0123456789abcdef0123456789abcdeF","cnv_");
+ #assert !ex_reference("cnv_0123456789abcdef0123456789abcde","cnv_");
+ #assert !ex_reference("cnv_0123456789abcdef0123456789abcdef0","cnv_") && !ex_reference("","cnv_");
+}
+#test "execution pins the exact host workspace input and authenticated provider account" {
+ b:=ExBinding.{host="host",workspace="workspace",input_hash="hash",input_bytes=12,account="account"};
+ #assert ex_pin(b,"host","workspace","hash",12,"account",true,false);
+ #assert !ex_pin(b,"other","workspace","hash",12,"account",true,false);
+ #assert !ex_pin(b,"host","other","hash",12,"account",true,false);
+ #assert !ex_pin(b,"host","workspace","other",12,"account",true,false);
+ #assert !ex_pin(b,"host","workspace","hash",13,"account",true,false);
+ #assert !ex_pin(b,"host","workspace","hash",12,"other",true,false);
+ #assert !ex_pin(b,"host","workspace","hash",12,"account",false,false);
+ #assert !ex_pin(b,"host","workspace","hash",12,"account",true,true);
+}
+#test "a model and effort must match the actual offer without catalog fallback" {
+ c:[1]AgCatalog;c[0].n=2;c[0].levels=3;c[0].default_level=1;
+ c[0].id[0]="model-a";c[0].id[1]="model-b";c[0].ladder[0]=5;
+ c[0].level_id[0]="low";c[0].level_id[1]="medium";c[0].level_id[2]="high";
+ a:=ex_choice(c[..],"model-a","high");#assert a.ok && a.model==0 && a.effort==2;
+ a=ex_choice(c[..],"model-a","low");#assert a.ok && a.effort==0;
+ #assert !ex_choice(c[..],"model-a","medium").ok && !ex_choice(c[..],"model-a","").ok;
+ #assert !ex_choice(c[..],"default","high").ok && !ex_choice(c[..],"model-a","ultra").ok;
+ a=ex_choice(c[..],"model-b","");#assert a.ok && a.model==1 && a.effort== -1;
+ #assert !ex_choice(c[..],"model-b","low").ok && !ex_choice(c[..],"","low").ok;
+ c[0].n=0;#assert !ex_choice(c[..],"model-a","high").ok;
+ c[0].n=AG_MODELS+1;#assert !ex_choice(c[..],"model-a","high").ok;
+ c[0].n=2;c[0].levels=AG_LEVELS+1;#assert !ex_choice(c[..],"model-a","high").ok;
+ c[0].levels= -1;#assert !ex_choice(c[..],"model-a","high").ok;
+}
+#test "input ranges append once replay exact bytes and refuse gaps or changed retained bytes" {
+ #assert ex_chunk_action(0,1,1,0,false)==1;
+ #assert ex_chunk_action(0,EX_CHUNK_MAX,EX_INPUT_MAX,0,false)==1;
+ #assert ex_chunk_action(EX_INPUT_MAX-1,1,EX_INPUT_MAX,EX_INPUT_MAX-1,false)==1;
+ #assert ex_chunk_action(0,1,1,1,true)==2 && ex_chunk_action(0,1,2,2,true)==2;
+ #assert ex_chunk_action(0,1,1,1,false)==0;
+ #assert ex_chunk_action(1,1,2,0,true)==0 && ex_chunk_action(0,2,3,1,true)==0;
+ #assert ex_chunk_action(-1,1,1,0,true)==0 && ex_chunk_action(0,0,1,0,true)==0;
+ #assert ex_chunk_action(0,EX_CHUNK_MAX+1,EX_INPUT_MAX,0,true)==0;
+ #assert ex_chunk_action(0,1,0,0,true)==0 && ex_chunk_action(0,1,EX_INPUT_MAX+1,0,true)==0;
+ #assert ex_chunk_action(0,2,1,0,true)==0 && ex_chunk_action(0,1,1,-1,true)==0;
+ #assert ex_chunk_action(0,1,1,2,true)==0;
+}
+#test "exact catalog endpoints include one-byte IDs no-effort catalogs and the final model and level" {
+ none:[]AgCatalog;#assert !ex_choice(none,"m","h").ok;
+ c:[1]AgCatalog;c[0].n=1;c[0].levels=1;c[0].id[0]="m";c[0].level_id[0]="h";c[0].ladder[0]=1;
+ a:=ex_choice(c[..],"m","h");#assert a.ok && a.model==0 && a.effort==0;
+ c[0].level_id[0]="";#assert !ex_choice(c[..],"m","").ok;
+ c[0].levels=0;c[0].ladder[0]=0;a=ex_choice(c[..],"m","");#assert a.ok && a.effort== -1;
+ c[0].levels=AG_LEVELS;c[0].n=AG_MODELS;c[0].id[AG_MODELS-1]="last";c[0].ladder[AG_MODELS-1]=1<<(AG_LEVELS-1);c[0].level_id[AG_LEVELS-1]="last";
+ a=ex_choice(c[..],"last","last");#assert a.ok && a.model==AG_MODELS-1 && a.effort==AG_LEVELS-1;
+ c[0].n= -1;#assert !ex_choice(c[..],"m","").ok;
+}
+
+ex_scope :: (configured:bool,enabled:bool,device:bool,grant:bool,admitted:bool)->bool #effects(all) {
+ return admitted && ea_scope(configured,enabled,device,grant);
+}
+ex_reference :: (value:string,prefix:string)->bool #effects(all) {
+ return value.count==prefix.count+32 && value[0..<prefix.count]==prefix && ea_id(cast(string)value[prefix.count..<value.count],32);
+}
+ex_pin :: (b:ExBinding,host:string,workspace:string,hash:string,bytes:int,account:string,authenticated:bool,signing_in:bool)->bool #effects(all) {
+ return b.host==host && b.workspace==workspace && b.input_hash==hash && b.input_bytes==bytes && b.account==account && pa_select(true,authenticated,signing_in);
+}
+ex_choice :: (cat:[]AgCatalog,model:string,effort:string)->ExChoice #effects(all) {
+ no:ExChoice;if cat.count==0 || cat[0].n>AG_MODELS || cat[0].levels<0 || cat[0].levels>AG_LEVELS || model.count==0 {return no;}
+ for m:0..<cat[0].n {if cat[0].id[m]!=model {continue;}
+  if cat[0].ladder[m]==0 {return ifx effort.count==0 then ExChoice.{ok=true,model=m} else no;}
+  for k:0..<cat[0].levels {if effort.count>0 && cat[0].level_id[k]==effort && (cat[0].ladder[m] & (1<<k))!=0 {return ExChoice.{ok=true,model=m,effort=k};}}
+  return no;
+ }return no;
+}
+// 0 refused, 1 append at the retained end, 2 exact replay of an existing range.
+// The owner verifies the final SHA256 before publishing a complete input.
+ex_chunk_action :: (offset:int,size:int,total:int,retained:int,matches:bool)->int #effects(all) {
+ if offset<0 || size<1 || size>EX_CHUNK_MAX || total<1 || total>EX_INPUT_MAX || retained<0 || retained>total || offset>total-size {return 0;}
+ if offset==retained {return 1;}
+ if offset+size<=retained && matches {return 2;}return 0;
+}

@@ -1,0 +1,58 @@
+syntax = "proto3";
+package openagents.environment.execution.v1alpha1;
+
+// The routed execution handoff, separate from the frozen Claude-only runtime.
+// JSON is closed, includes every field, and uses exact integer numbers.
+// This handoff is data, never an execution grant. HOST admission and the
+// configured device/workspace must be checked by its resident consumer.
+message Binding {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.binding.v1alpha1
+  string task_id = 2 [json_name="task_id"]; // 32 lowercase hex
+  string conversation_id = 3 [json_name="conversation_id"]; // cnv_ + 32 lowercase hex
+  string turn_id = 4 [json_name="turn_id"]; // trn_ + 32 lowercase hex
+  string route_id = 5 [json_name="route_id"]; // 32 lowercase hex; retained decision identity
+  string host_pubkey = 6 [json_name="host_pubkey"]; // 64 lowercase hex
+  string workspace_id = 7 [json_name="workspace_id"]; // configured ID, never a supplied path
+  string session_id = 8 [json_name="session_id"]; // 32 lowercase hex; resident-owned session
+  string command_id = 9 [json_name="command_id"]; // 32 lowercase hex; retained across retries
+  string engine_id = 10 [json_name="engine_id"]; // claude or codex in this consumer profile
+  string account_id = 11 [json_name="account_id"]; // system or 32 lowercase hex; scoped to engine and host
+  string model_id = 12 [json_name="model_id"]; // named actual offer, never an implicit default
+  string effort_id = 13 [json_name="effort_id"]; // empty only for a model with no effort ladder
+  string input_sha256 = 14 [json_name="input_sha256"]; // canonical Input JSON bytes, 64 lowercase hex
+  int64 input_bytes = 15 [json_name="input_bytes"]; // 1..1048576, including the complete JSON encoding
+  string report_sha256 = 16 [json_name="report_sha256"]; // exact authenticated report used by the router
+  int64 report_observed_at_ms = 17 [json_name="report_observed_at_ms"];
+  int64 issued_at_ms = 18 [json_name="issued_at_ms"];
+  int64 expires_at_ms = 19 [json_name="expires_at_ms"]; // at most five minutes after issue; unchanged on retry
+}
+
+// Approved Project instructions/reference material and the admitted conversation
+// cut. Imported/history text never grants tools or permission. The final message
+// is the current user request. Tools and attachments await their real consumer.
+message InputMessage {
+  string role = 1 [json_name="role"]; // user or assistant
+  string text = 2 [json_name="text"]; // complete nonempty UTF-8 without NUL
+}
+message Input {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.input.v1alpha1
+  string instructions = 2 [json_name="instructions"];
+  string reference = 3 [json_name="reference"]; // instructions + reference <=32768 UTF-8 bytes
+  repeated InputMessage messages = 4 [json_name="messages"]; // 1..128; combined text <=131072 bytes
+}
+
+// Uploads do not start work. The resident stores chunks privately under the
+// authenticated grant/task/input identity. An exact repeated range is a replay;
+// a gap, changed range, changed total/hash or final hash mismatch is refused.
+// Chunk JSON fits the existing HOST envelope even at worst-case JSON escaping.
+message InputChunk {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.chunk.v1alpha1
+  string task_id = 2 [json_name="task_id"];
+  string command_id = 3 [json_name="command_id"];
+  string input_sha256 = 4 [json_name="input_sha256"];
+  int64 input_bytes = 5 [json_name="input_bytes"];
+  int64 offset = 6 [json_name="offset"]; // decoded byte offset, never a character count
+  string text = 7 [json_name="text"]; // 1..4096 complete UTF-8 bytes; no NUL
+  int64 issued_at_ms = 8 [json_name="issued_at_ms"];
+  int64 expires_at_ms = 9 [json_name="expires_at_ms"];
+}
