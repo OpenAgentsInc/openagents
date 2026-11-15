@@ -187,3 +187,125 @@ rps_kinds :: (q: RenderPlan, want: [] const RenderOpKind) -> bool #effects(all) 
   f.casters = true; c.draw_count = 0;
   q = render_plan_shipping(f, c, x, RenderReadiness.ready, true); #assert q.ops[0].depth == RenderTarget.shadow_map;
 }
+
+// ---- the program's numbers: every draw's first, count and instances, and the limits of the facts ----
+rps_of :: (q: RenderPlan, pass: RenderPassId) -> int #effects(all) {
+  n := 0;
+  for i: 0..<q.count { if q.ops[i].kind == RenderOpKind.draw && q.ops[i].pass == pass { n += 1; } }
+  return n;
+}
+rps_kind_of :: (q: RenderPlan, kind: RenderOpKind) -> int #effects(all) {
+  n := 0;
+  for i: 0..<q.count { if q.ops[i].kind == kind { n += 1; } }
+  return n;
+}
+// Every draw starts at 0; the fixed ones are 3 (a full-screen triangle), 6 (a particle quad) or 1 long, one instance
+// unless they say how many: grass and particles their instances, the late scene its runs.
+rps_draw_numbers :: (q: RenderPlan, grass: int, sparks: int, runs: int) #effects(all) {
+  for i: 0..<q.count {
+    o := q.ops[i];
+    if o.kind != RenderOpKind.draw { continue; }
+    #assert o.first == 0;
+    if o.pass == RenderPassId.background || o.pass == RenderPassId.shadow_clear { #assert o.count == 3 && o.instances == 1; }
+    if o.pass == RenderPassId.character_cast || o.pass == RenderPassId.character { #assert o.count == 1 && o.instances == 1; }
+    if o.pass == RenderPassId.water_transmit || o.pass == RenderPassId.water_emit { #assert o.count == 1 && o.instances == 1; }
+    if o.pass == RenderPassId.scene_late { #assert o.count == runs && o.instances == 1; }
+    if o.pass == RenderPassId.grass { #assert o.count == 3 && o.instances == grass; }
+    if o.pass == RenderPassId.particle || o.pass == RenderPassId.particle_over { #assert o.count == 6 && o.instances == sparks; }
+    if o.pass == RenderPassId.shadow || o.pass == RenderPassId.scene || o.pass == RenderPassId.surface { #assert o.instances == 1; }
+  }
+}
+rps_all_features :: () -> RenderFeatures #effects(all) {
+  return RenderFeatures.{scene = true, shadow = true, casters = true, grass = true, water = true, water_copy = true, post = true, particles = true, particle_depth = true, particle_over = true, media = true};
+}
+#test "shipping: a one-draw frame still culls, sorts, draws its character and puts the tile's clears and cut where the host said" {
+  f := rps_all_features();
+  x := rps_everglade(); x.tile = 3; x.clears = 6; x.shadow_draws = 1; x.character = true; x.character_cast = true; x.sort = true; x.cut = [4] int.[0, 0, 1, 1];
+  c := rps_counts(); c.draw_count = 1; c.grass_instances = 7; c.particle_instances = 5; c.caster_vertices = 2; c.caster_instances = 3;
+  q := render_plan_shipping(f, c, x, RenderReadiness.ready, true);
+  #assert q.status == RenderPlanStatus.ok;
+  rps_draw_numbers(q, 7, 5, 12);
+  #assert rps_of(q, RenderPassId.shadow_clear) == 2 && rps_of(q, RenderPassId.shadow) == 1 && rps_of(q, RenderPassId.character_cast) == 1 && rps_of(q, RenderPassId.character) == 1;
+  #assert rps_kind_of(q, RenderOpKind.cull_early) == 1 && rps_kind_of(q, RenderOpKind.cull_late) == 1 && rps_kind_of(q, RenderOpKind.particle_sort) == 1 && rps_of(q, RenderPassId.scene_late) == 1;
+  // the first scissor is the cut; the viewports are the cleared tiles' rectangles (x in the low half, y in the high), then the whole target
+  views := [3] int.[2048 | (0 << 16), 0 | (2048 << 16), 0]; vcounts := [3] int.[2048 | (2048 << 16), 2048 | (2048 << 16), 0];
+  vi := 0; si := 0;
+  for i: 0..<q.count {
+    if q.ops[i].kind == RenderOpKind.viewport && vi < 3 { #assert q.ops[i].first == views[vi] && q.ops[i].count == vcounts[vi]; vi += 1; }
+    if q.ops[i].kind == RenderOpKind.scissor { #assert q.ops[i].first == 0 && q.ops[i].count == 1 | (1 << 16); si += 1; }
+  }
+  #assert vi == 3 && si == 1;
+  // without a cut the scissor is the drawn tile's own rectangle
+  x.cut = [4] int.[0, 0, 0, 0];
+  q = render_plan_shipping(f, c, x, RenderReadiness.ready, true);
+  for i: 0..<q.count { if q.ops[i].kind == RenderOpKind.scissor { #assert q.ops[i].first == 2048 | (2048 << 16) && q.ops[i].count == 2048 | (2048 << 16); } }
+  // a shadow list of one draw still draws the tile; a scene of none draws no cull, no sort, no character
+  x.shadow_draws = 0;
+  q = render_plan_shipping(f, c, x, RenderReadiness.ready, true);
+  #assert rps_of(q, RenderPassId.shadow) == 0 && rps_of(q, RenderPassId.shadow_clear) == 0 && rps_kind_of(q, RenderOpKind.cull_early) == 1;
+  x.shadow_draws = 1; c.draw_count = 0;
+  q = render_plan_shipping(f, c, x, RenderReadiness.ready, true);
+  #assert q.status == RenderPlanStatus.ok && rps_kind_of(q, RenderOpKind.cull_early) == 0 && rps_kind_of(q, RenderOpKind.cull_late) == 0 && rps_kind_of(q, RenderOpKind.particle_sort) == 0;
+  #assert rps_of(q, RenderPassId.character) == 0 && rps_of(q, RenderPassId.character_cast) == 0 && rps_of(q, RenderPassId.scene) == 0 && rps_of(q, RenderPassId.shadow) == 1;
+  rps_draw_numbers(q, 7, 0, 12);
+  // grass_last with one scene draw moves the grass after it
+  c.draw_count = 1;
+  q = render_plan_shipping(f, c, x, RenderReadiness.ready, true);
+  gi := -1; si = -1;
+  for i: 0..<q.count { if q.ops[i].kind == RenderOpKind.draw && q.ops[i].pass == RenderPassId.grass { gi = i; } if q.ops[i].kind == RenderOpKind.draw && q.ops[i].pass == RenderPassId.scene { si = i; } }
+  #assert si > 0 && gi > si;
+  x.grass_last = false;
+  q = render_plan_shipping(f, c, x, RenderReadiness.ready, true);
+  for i: 0..<q.count { if q.ops[i].kind == RenderOpKind.draw && q.ops[i].pass == RenderPassId.grass { gi = i; } if q.ops[i].kind == RenderOpKind.draw && q.ops[i].pass == RenderPassId.scene { si = i; } }
+  #assert gi > 0 && gi < si;
+}
+#test "shipping: with no tiles the shadow pass, the casters and the character draw their numbers; a traced page's puffs draw six corners each" {
+  f := rps_all_features();
+  x := RenderShipping.{shadow_lazy = true, character = true, character_cast = true, sort = true};
+  c := rps_counts(); c.draw_count = 1; c.grass_instances = 4; c.particle_instances = 1; c.caster_vertices = 2; c.caster_instances = 3;
+  q := render_plan_shipping(f, c, x, RenderReadiness.ready, true);
+  #assert q.status == RenderPlanStatus.ok && rps_of(q, RenderPassId.shadow) == 1 && rps_of(q, RenderPassId.caster) == 1 && rps_of(q, RenderPassId.character_cast) == 1 && rps_kind_of(q, RenderOpKind.particle_sort) == 1;
+  rps_draw_numbers(q, 4, 1, 0);
+  // a lazy shadow pass opens on one draw alone, or on one casting draw alone
+  g := RenderFeatures.{scene = true, shadow = true};
+  x = RenderShipping.{shadow_lazy = true, shadow_draws = 0};
+  c = rps_counts(); c.draw_count = 1;
+  q = render_plan_shipping(g, c, x, RenderReadiness.ready, false);
+  #assert q.ops[0].depth == RenderTarget.shadow_map && rps_of(q, RenderPassId.shadow) == 0;
+  x.shadow_draws = 1; c.draw_count = 0;
+  q = render_plan_shipping(g, c, x, RenderReadiness.ready, false);
+  #assert q.ops[0].depth == RenderTarget.shadow_map && rps_of(q, RenderPassId.shadow) == 1;
+  // a traced page's one puff is drawn, six corners, one group
+  h := RenderFeatures.{particles = true, particle_over = true};
+  c = rps_counts(); c.draw_count = 0; c.particle_instances = 1;
+  q = render_plan_shipping(h, c, RenderShipping.{}, RenderReadiness.ready, true);
+  #assert q.status == RenderPlanStatus.ok && rps_of(q, RenderPassId.particle) == 1 && rps_of(q, RenderPassId.particle_over) == 1;
+  rps_draw_numbers(q, 0, 1, 0);
+}
+#test "shipping: the limits of the facts, each at its edge and each alone" {
+  f := rps_features(); x := rps_everglade();
+  // a tile count of 9, the rectangles one short, a clear set of one, a width or height of one, the biggest rectangle and cut: admitted or refused alone
+  y := RenderShipping.{tiles = false, tile = -1, tile_count = 1}; #assert !render_shipping(f, y);
+  y = RenderShipping.{tiles = false, tile = 0, tile_count = 0}; #assert !render_shipping(f, y);
+  y = RenderShipping.{tiles = true, tile = -1, tile_count = 1, clears = 0}; y.rects[0] = [4] int.[0, 0, 1, 1]; #assert render_shipping(f, y);
+  y.rects[0] = [4] int.[0, 0, 1, 0]; #assert !render_shipping(f, y);
+  y.rects[0] = [4] int.[0, 0, 0, 1]; #assert !render_shipping(f, y);
+  y.rects[0] = [4] int.[32767, 32767, 1, 1]; #assert render_shipping(f, y);
+  y.rects[0] = [4] int.[0, 32768, 1, 1]; #assert !render_shipping(f, y);
+  y = RenderShipping.{cut = [4] int.[0, 0, 1, 1]}; #assert render_shipping(f, y);
+  y.cut = [4] int.[0, 0, 1, 0]; #assert !render_shipping(f, y);
+  y.cut = [4] int.[0, 0, 0, 1]; #assert !render_shipping(f, y);
+  y.cut = [4] int.[-1, 0, 0, 0]; #assert !render_shipping(f, y);
+  y.cut = [4] int.[0, -1, 0, 0]; #assert !render_shipping(f, y);
+  y.cut = [4] int.[32767, 32767, 32767, 32767]; #assert render_shipping(f, y);
+  y.cut = [4] int.[0, 32768, 0, 0]; #assert !render_shipping(f, y);
+  y.cut = [4] int.[0, 0, 32768, 1]; #assert !render_shipping(f, y);
+  y = RenderShipping.{shadow_draws = 4294967296}; #assert !render_shipping(f, y);
+  y = RenderShipping.{shadow_draws = 4294967295}; #assert render_shipping(f, y);
+  y = RenderShipping.{cull_runs = 4294967296}; #assert !render_shipping(f, y);
+  y = RenderShipping.{cull_runs = -1}; #assert !render_shipping(f, y);
+  y = RenderShipping.{cull = true, cull_runs = 1}; #assert render_shipping(f, y);
+  y = RenderShipping.{cull = true, cull_runs = 0}; #assert !render_shipping(f, y);
+  y = RenderShipping.{cull = false, cull_runs = 1}; #assert render_shipping(f, y);
+  #assert render_shipping(f, x);
+}

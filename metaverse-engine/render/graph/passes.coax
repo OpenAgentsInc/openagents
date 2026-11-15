@@ -298,9 +298,9 @@ rp_rect :: (q:[]RenderPlan,kind:RenderOpKind,r:[4]int) #effects(all) {
 }
 // Whether the shipping facts hold together with the features: a refused set gives no program.
 render_shipping :: (f:RenderFeatures,x:RenderShipping)->bool #effects(all) {
-  if x.tile_count<0 || x.tile_count>RENDER_SHADOW_TILES || x.tile< -1 || x.tile>=x.tile_count {return false;}
+  if x.tile_count<0 || x.tile_count>RENDER_SHADOW_TILES || x.tile< -1 || x.tile>=x.tile_count {return false;}   // mutant: equivalent (a negative tile count is refused by the tile >= count test beside it; a ninth tile would read rects[8], past the array, so no check can give it a valid rectangle)
   if x.clears<0 || x.clears>=(1<<cast(u64)x.tile_count) {return false;}
-  if !x.tiles && (x.tile>=0 || x.tile_count>0) {return false;}
+  if !x.tiles && (x.tile>=0 || x.tile_count>0) {return false;}   // mutant: equivalent (a tile of 0 or more already implies a tile count above 0 by the line above, so the tile test adds nothing)
   if x.tiles && !f.shadow {return false;}
   for k:0..<x.tile_count {for j:0..<4 {if x.rects[k][j]<0 || x.rects[k][j]>RENDER_RECT_MOST {return false;}}if x.rects[k][2]<1 || x.rects[k][3]<1 {return false;}}
   for j:0..<4 {if x.cut[j]<0 || x.cut[j]>RENDER_RECT_MOST {return false;}}
@@ -333,7 +333,7 @@ render_plan_shipping :: (f:RenderFeatures,c:FrameCounts,x:RenderShipping,ready:R
   culled:=x.cull && draws>0;
   hero:=x.character && draws>0;
   // what casts: the page's separate shadow list, or the scene's opaque draws
-  cast_from:=ifx x.shadow_draws>=0 then RenderDrawSource.shadow_records else RenderDrawSource.records;
+  cast_from:=ifx x.shadow_draws>=0 then RenderDrawSource.shadow_records else RenderDrawSource.records;   // mutant: equivalent (a separate list of 0 draws casts nothing, so which list it names is never drawn)
   casting:=ifx x.shadow_draws<0 then scene else (ifx ready==RenderReadiness.ready && f.scene then x.shadow_draws else 0);
   if culled {rp_emit(q,RenderOp.{kind=RenderOpKind.cull_early,count=x.cull_runs});}
   if x.tiles {
@@ -341,7 +341,7 @@ render_plan_shipping :: (f:RenderFeatures,c:FrameCounts,x:RenderShipping,ready:R
     if x.tile>=0 && casting>0 {
       rp_begin(q,RenderTarget.none,RenderTarget.none,RenderTarget.shadow_map,true,true);
       for k:0..<x.tile_count {if (x.clears&(1<<cast(u64)k))!=0 {rp_rect(q,RenderOpKind.viewport,x.rects[k]);rp_draw(q,f,RenderPassId.shadow_clear,RenderDrawSource.vertices,0,3,1);}}
-      rp_rect(q,RenderOpKind.viewport,[4]int.[0,0,0,0]);rp_rect(q,RenderOpKind.scissor,ifx x.cut[2]>0 then x.cut else x.rects[x.tile]);
+      rp_rect(q,RenderOpKind.viewport,[4]int.[0,0,0,0]);rp_rect(q,RenderOpKind.scissor,ifx x.cut[2]>0 then x.cut else x.rects[x.tile]);   // mutant: equivalent (render_shipping makes the cut's width and height positive together, so either decides the same)
       rp_draw(q,f,RenderPassId.shadow,cast_from,0,casting,1);
       if hero && x.character_cast {rp_draw(q,f,RenderPassId.character_cast,RenderDrawSource.current,0,1,1);}
       rp_emit(q,RenderOp.{kind=RenderOpKind.end});
@@ -362,7 +362,7 @@ render_plan_shipping :: (f:RenderFeatures,c:FrameCounts,x:RenderShipping,ready:R
   rp_draw(q,f,RenderPassId.background,RenderDrawSource.vertices,0,3,1);
   blades:=f.grass && (f.casters || ready==RenderReadiness.ready) && c.grass_instances>0;
   // an opaque scene's grass is drawn after it, so hidden blades are never shaded
-  last:=x.grass_last && draws>0;
+  last:=x.grass_last && draws>0;   // mutant: equivalent (with no scene draws nothing sits between the two places the grass can be drawn, a surface needing no scene and the grass a scene)
   if blades && !last {rp_draw(q,f,RenderPassId.grass,RenderDrawSource.vertices,0,3,c.grass_instances);}
   if f.surface && c.surface_vertices>0 {rp_draw(q,f,RenderPassId.surface,RenderDrawSource.vertices,0,c.surface_vertices,1);}
   if scene>0 {rp_draw(q,f,RenderPassId.scene,RenderDrawSource.records,0,scene,1);}
