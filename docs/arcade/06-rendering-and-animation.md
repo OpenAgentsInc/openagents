@@ -120,13 +120,16 @@ Both speed and power benefits must be measured against the current native UI.
 
 This fits the existing architecture, but is not already available end to end:
 
-- The GPU display-list backend skips arcs/images today; A05/A09/A21/A23
-  require those paths. Sweep/radial gradients, general transform groups and
-  background/image blur need more than the existing box-shadow primitive.
+- The first gallery now renders arcs through bounded shared GPU segments
+  and includes A05/A09-inspired activity/progress specimens. Images remain
+  unsupported. Full A05/A09/A21/A23 parity, sweep/radial gradients, transform
+  groups and background/image blur need more than the box-shadow primitive.
 - `core/arwes/motion.coax` supplies much of easing/scheduling/text reveal;
-  it is not a complete Reanimated-style spring/gesture runtime.
-- The shipped iOS app uses a UIKit/JSC projection. Native mono frames do
-  not make it a GPU component host. Existing Vulkan Android drawing is not
+  `core/spring.coax` now adds analytic damped springs with interruption. These
+  still do not form a complete Reanimated-style spring/gesture runtime.
+- The production iOS app uses a UIKit/JSC projection; 1086 adds a shared Metal
+  component gallery in Settings. This qualifies an inspectable visual carrier,
+  not full chat/IME/semantics parity. Existing Vulkan Android drawing is not
   proof of text input, TalkBack or mobile app parity.
 - The native world host has `phCurrent` with a one-page-at-a-time comment.
   Three inline worlds need explicit per-view state, async callbacks and

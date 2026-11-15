@@ -264,15 +264,18 @@ it does not add another host or copy their layout/paint rules.
 ### Motion and composed surfaces (2026-11-14)
 
 Motion is component state evaluated by shared Coax CPU code and rendered by
-the chosen backend. Extend `core/arwes/motion.coax`; keep skin timings and
+the chosen backend. Reuse `core/arwes/motion.coax` and its physical spring
+companion `core/spring.coax`; keep skin timings and
 shared gesture/cancellation rules. GPU drawing alone does not free animations
 from a blocked application loop. The proposed installed presentation runtime
 must sample retained animation requests without per-property JSC/Swift calls.
 
 The paint/backend extension needs arcs, images, transform/opacity groups,
 nested clips, sweep/radial gradients and bounded offscreen blur/composition.
-`PRIM_ARC` and `PRIM_IMAGE` are currently skipped by `gpu_draws`; their names
-in the primitive list above are not evidence of a working implementation.
+`PRIM_ARC` now lowers through at most 64 shared antialiased GPU segments.
+`PRIM_IMAGE` is still skipped by `gpu_draws`; a primitive name alone is not
+evidence of an image resource/renderer implementation. The first gallery
+checkpoint is described in [README.md](README.md#try-it).
 Keep one source for shader math; additional effect passes are generated from
 Coax. Preserve existing vertex/profile consumers through versioned adapters.
 

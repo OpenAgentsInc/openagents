@@ -11,10 +11,10 @@ are retained under `~/.openagents/releases/openagents-ios-1086/`.
 
 ## Checks
 
-- Shared gallery run: 116 of 117 passed initially. The old slanted-line check
-  assumed arcs emitted no vertices; after updating its index for the newly
-  rendered arc, all 22 GPU backend checks passed. The other 116 checks were
-  unchanged, including all 25 ARWES specimens, HUD controls and shared parsers.
+- Final rebuilt shared gallery: **117/117 checks passed**. DOM gallery:
+  **82/82 passed**. JSON-fields adapter and shared JSON dependencies:
+  **76/76 passed**. The older line-rendering assertion now indexes the final
+  line after the newly emitted arc vertices; arcs are no longer silently skipped.
 - New animation check passed after moving geometry/paint strengths into
   `UiAnimated` skin tokens. It covers frame, activity/progress, switch and
   drawer/reply surfaces. Spring analytic position, partitioning, interruption,
@@ -26,7 +26,8 @@ are retained under `~/.openagents/releases/openagents-ios-1086/`.
   not replace the active conversation request.
 - Installed simulator test passed section switching, touch scrolling, options,
   app background/resume and retained rendering. The Settings test uses the
-  independent local email oracle on port 13567. Simulator authentication
+  independent local email oracle on port 13567. Both the direct-gallery and
+  Settings-entry tests passed. Simulator authentication
   requires Xcode ad hoc signing (`CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-`);
   an unsigned build cannot retain the account token in Keychain. Manual deep
   signing was refused by the simulator; use Xcode's generated entitlements.
@@ -71,4 +72,7 @@ change. Production chat keeps its existing native text/input path.
   Returning from Settings retains the existing drawer state; the check closes
   that drawer before asserting the composer is visible.
 - The HTML-to-GPU navigation uses the shared `k_go` anchor; its Coax regression
-  check passes. It does not depend on a gallery-specific JavaScript handler.
+  and actual browser tap/navigation checks pass. The deployed DOM module hash
+  matches the checked artifact, and the production element is an anchor. It
+  does not depend on a gallery-specific JavaScript handler.
+- All five archive dSYMs were kept in the shared symbols bucket.
