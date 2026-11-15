@@ -158,7 +158,7 @@ offer_text_decode_vartime :: (text: string, out: [] u8) -> OfrText #effects(all)
   r: OfrText;
   for p: 0..<4 { if cast(string) kept[0..<one] == OFR_PREFIXES[p] { r.kind = p + 1; } }
   if r.kind == 0 { return OfrText.{code = OFR_BAD_PREFIX}; }
-  acc: u32 = 0; bits := 0;
+  acc: u32 = 0; bits := 0;   // mutant: equivalent (acc's first bit leaves the 12 kept bits before any byte or padding reads it)
   for k: one + 1..<n {
     d := -1;
     for j: 0..<32 { if OFR_CHARSET[j] == kept[k] { d = j; } }
@@ -182,7 +182,7 @@ offer_text_encode_vartime :: (kind: int, data: [] u8, out: [] u8) -> int #effect
   if out.count < 4 + (data.count * 8 + 4) / 5 { return -1; }
   for i: 0..<3 { out[i] = prefix[i]; }
   out[3] = '1'; n := 4;
-  acc: u32 = 0; bits := 0;
+  acc: u32 = 0; bits := 0;   // mutant: equivalent (acc's first bit leaves the 12 kept bits before any character reads it)
   for x: data {
     acc = ((acc << 8) | cast(u32) x) & 0xfff; bits += 8;
     while bits >= 5 { bits -= 5; out[n] = OFR_CHARSET[cast(int) ((acc >> cast(u32) bits) & 31)]; n += 1; }
@@ -199,11 +199,11 @@ ofr_utf8_vartime :: (b: [] u8) -> bool #effects(all) {
   at := 0;
   while at < b.count {
     c := cast(int) b[at];
-    n := 0; low := 0; least := 0;
+    n := 0; low := 0; least := 0;   // mutant: equivalent (each branch sets n, low and least before they are read)
     if c < 0x80 { at += 1; continue; }
-    if c >= 0xc2 && c <= 0xdf { n = 1; least = 0x80; low = c & 0x1f; }
+    if c >= 0xc2 && c <= 0xdf { n = 1; least = 0x80; low = c & 0x1f; }   // mutant: equivalent (a lead byte of c2 to df gives at least 0x80, and c | 0x1f gives a valid code point too)
     else if c >= 0xe0 && c <= 0xef { n = 2; least = 0x800; low = c & 0x0f; }
-    else if c >= 0xf0 && c <= 0xf4 { n = 3; least = 0x10000; low = c & 0x07; }
+    else if c >= 0xf0 && c <= 0xf4 { n = 3; least = 0x10000; low = c & 0x07; }   // mutant: equivalent (f5 and above give more than U+10FFFF)
     else { return false; }
     if at + n >= b.count { return false; }
     v := low;
@@ -246,17 +246,17 @@ ofr_paths_vartime :: (v: [] u8, which: int) -> OfrPaths #effects(all) {
   r: OfrPaths; at := 0;
   while at < v.count {
     if v[at] == 0 || v[at] == 1 {
-      if v.count - at < 9 { return OfrPaths.{code = OFR_BAD_PATH}; }
+      if v.count - at < 9 { return OfrPaths.{code = OFR_BAD_PATH}; }   // mutant: equivalent (the path key's check, next, refuses what this one would)
       at += 9;
     } else {
-      if v.count - at < 33 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }
+      if v.count - at < 33 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }   // mutant: equivalent (with exactly 33 bytes left the path key's check refuses)
       at += 33;
     }
-    if v.count - at < 34 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }
+    if v.count - at < 34 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }   // mutant: equivalent (with exactly 34 bytes left there is no room for a hop)
     hops := cast(int) v[at + 33]; at += 34;
     if hops == 0 { return OfrPaths.{code = OFR_BAD_PATH}; }
     for h: 0..<hops {
-      if v.count - at < 33 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }
+      if v.count - at < 33 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }   // mutant: equivalent (with exactly 33 bytes left the length's check refuses)
       if v.count - at < 35 { return OfrPaths.{code = OFR_BAD_PATH}; }
       n := ln_u16(v, at + 33);
       if v.count - at - 35 < n { return OfrPaths.{code = OFR_BAD_PATH}; }
@@ -301,9 +301,9 @@ ofr_in_range :: (kind: int, t: u64) -> bool #effects(all) {
   return (t >= 1 && t <= 1005) || (t >= OFR_BILLION && t <= 3999999999);
 }
 ofr_known :: (kind: int, t: u64) -> bool #effects(all) {
-  offer := t >= 2 && t <= 22 && t % 2 == 0;
+  offer := t >= 2 && t <= 22 && t % 2 == 0;   // mutant: equivalent (23 is odd)
   request := t == 0 || t == 80 || t == 82 || t == 84 || t == 86 || t == 88 || t == 89 || t == 90 || t == 91 || t == 240;
-  invoice := t >= 160 && t <= 176 && t % 2 == 0;
+  invoice := t >= 160 && t <= 176 && t % 2 == 0;   // mutant: equivalent (177 is odd)
   if kind == OFR_OFFER { return offer; }
   if kind == OFR_REQUEST { return offer || request; }
   if kind == OFR_INVOICE { return offer || request || invoice; }
@@ -324,14 +324,14 @@ ofr_record_vartime :: (kind: int, t: u64, v: [] u8) -> int #effects(all) {
   if t == INV_RELATIVE_EXPIRY { return ofr_tu_code(v, 4); }
   if t == OFR_FEATURES || t == REQ_FEATURES { return ofr_features_code(v, none[..]); }
   if t == INV_FEATURES { return ofr_features_code(v, mpp[..]); }
-  if t == OFR_PATHS || t == REQ_PATHS || t == INV_PATHS { return ofr_paths_vartime(v, 0).code; }
+  if t == OFR_PATHS || t == REQ_PATHS || t == INV_PATHS { return ofr_paths_vartime(v, 0).code; }   // mutant: equivalent (which path's last hop is kept does not change the code)
   if t == OFR_ISSUER_ID || t == REQ_PAYER_ID || t == INV_NODE_ID { return ifx ofr_point_vartime(v) then OFR_OK else OFR_BAD_POINT; }
   if t == REQ_CHAIN || t == INV_PAYMENT_HASH || t == PROOF_PREIMAGE { return ifx v.count == 32 then OFR_OK else OFR_BAD_LENGTH; }
   if t == REQ_BIP_353_NAME {
-    if v.count < 1 || v.count < 2 + cast(int) v[0] { return OFR_BAD_LENGTH; }
+    if v.count < 1 || v.count < 2 + cast(int) v[0] { return OFR_BAD_LENGTH; }   // mutant: equivalent (a value of one byte is shorter than 2 + its first byte)
     name := cast(int) v[0]; domain := cast(int) v[1 + name];
     if v.count != 2 + name + domain { return OFR_BAD_LENGTH; }
-    for i: 0..<v.count {
+    for i: 0..<v.count {   // mutant: equivalent (i 0 is skipped either way)
       if i == 0 || i == 1 + name { continue; }
       c := v[i];
       ok := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-' || c == '_' || c == '.';
@@ -365,7 +365,7 @@ ofr_record_vartime :: (kind: int, t: u64, v: [] u8) -> int #effects(all) {
 // The records of b[0].data[0..<n]: first the framing of the whole stream,
 // then each record against its type.
 ofr_frame_vartime :: (b: [] Bolt12) -> int #effects(all) {
-  b[0].count = 0; at := 0; previous: u64 = 0;
+  b[0].count = 0; at := 0; previous: u64 = 0;   // mutant: equivalent (the first record is read without comparing its type to previous)
   while at < b[0].n {
     r := tlv_next_vartime(b[0].data[0..<b[0].n], at, previous, b[0].count == 0);
     if r.code == LN_TRUNCATED { return OFR_TRUNCATED; }
@@ -405,7 +405,7 @@ ofr_tagged :: (t: [] u8, a: [] u8, b: [] u8, out: [] u8) #effects(all) {
   #assert so_update(sha[..], a, false) && so_update(sha[..], b, false) && so_finish(sha[..], out, false);
 }
 ofr_less :: (a: [] u8, b: [] u8) -> bool #effects(all) {
-  for i: 0..<32 { if a[i] != b[i] { return a[i] < b[i]; } }
+  for i: 0..<32 { if a[i] != b[i] { return a[i] < b[i]; } }   // mutant: equivalent (two bytes that differ are never equal)
   return false;
 }
 ofr_branch :: (t: [] u8, a: [] u8, b: [] u8, out: [] u8) #effects(all) {
@@ -417,7 +417,7 @@ ofr_tags :: (first: [] u8) -> OfrTags #effects(all) {
   r: OfrTags; m: [4200] u8;
   ofr_tag(ofr_text("LnLeaf", m[..]), r.leaf[..]); ofr_tag(ofr_text("LnBranch", m[..]), r.branch[..]);
   word := "LnNonce";
-  for i: 0..<7 { m[i] = word[i]; }
+  for i: 0..<7 { m[i] = word[i]; }   // mutant: equivalent (m already starts with the L of LnBranch)
   for i: 0..<first.count { m[7 + i] = first[i]; }
   ofr_tag(m[0..<7 + first.count], r.nonce[..]);
   return r;
@@ -511,7 +511,7 @@ ofr_check_request_vartime :: (b: [] Bolt12) -> int #effects(all) {
     if ofr_has(b, OFR_AMOUNT) && !ofr_has(b, OFR_CURRENCY) && ofr_has(b, REQ_AMOUNT) {
       q: u64 = ifx ofr_has(b, REQ_QUANTITY) then ofr_number(b, REQ_QUANTITY) else 1;
       a := ofr_number(b, OFR_AMOUNT);
-      if q != 0 && a > CB_MAX64 / q { return OFR_BAD_AMOUNT; }
+      if q != 0 && a > CB_MAX64 / q { return OFR_BAD_AMOUNT; }   // mutant: equivalent (a quantity of 0 is refused before this, so q is at least 1)
       if ofr_number(b, REQ_AMOUNT) < a * q { return OFR_BAD_AMOUNT; }
     }
   } else {
@@ -532,7 +532,7 @@ ofr_check_invoice_vartime :: (b: [] Bolt12) -> int #effects(all) {
     return OFR_REQUIRED;
   }
   if !ofr_has(b, INV_PATHS) || !ofr_has(b, INV_BLINDEDPAY) { return OFR_REQUIRED; }
-  paths := ofr_paths_vartime(ofr_value(b, INV_PATHS), 0); pay := ofr_payinfo_vartime(ofr_value(b, INV_BLINDEDPAY));
+  paths := ofr_paths_vartime(ofr_value(b, INV_PATHS), 0); pay := ofr_payinfo_vartime(ofr_value(b, INV_BLINDEDPAY));   // mutant: equivalent (which path's last hop is kept does not change the count)
   if paths.count != pay.count || pay.usable == 0 { return OFR_BAD_PATH; }
   if !ofr_has(b, OFR_SIGNATURE) { return OFR_REQUIRED; }
   if !ofr_verify_vartime(b, "signature", ofr_value(b, INV_NODE_ID), ofr_value(b, OFR_SIGNATURE)) { return OFR_BAD_SIGNATURE; }
@@ -589,7 +589,7 @@ OfrSub :: struct { code: int; known: bool; kept: bool; hash: [32] u8; }
 ofr_proof_tree :: (tags: [] OfrTags, nodes: [] OfrNode, lo: int, hi: int, h: [] OfrHashes, reading: bool) -> OfrSub #effects(all) {
   if hi - lo == 1 {
     n := nodes[lo];
-    return OfrSub.{known = n.state != OFR_UNKNOWN, kept = n.state == OFR_KEPT, hash = n.hash};
+    return OfrSub.{known = n.state != OFR_UNKNOWN, kept = n.state == OFR_KEPT, hash = n.hash};   // mutant: equivalent (a hidden subtree is replaced by a missing hash wherever it meets a kept one, so known matters only with no kept leaf, and a proof always keeps some)
   }
   k := ofr_split(hi - lo);
   a := ofr_proof_tree(tags, nodes, lo, lo + k, h, reading);
@@ -603,13 +603,13 @@ ofr_proof_tree :: (tags: [] OfrTags, nodes: [] OfrNode, lo: int, hi: int, h: [] 
       for i: 0..<32 { side.hash[i] = h[0].bytes[32 * h[0].taken + i]; }
       side.known = true; h[0].taken += 1;
     } else {
-      if h[0].n == 64 { return OfrSub.{code = OFR_CAPACITY}; }
+      if h[0].n == 64 { return OfrSub.{code = OFR_CAPACITY}; }   // mutant: equivalent (a tree of at most 64 leaves has at most 63 missing hashes)
       for i: 0..<32 { h[0].bytes[32 * h[0].n + i] = side.hash[i]; }
       h[0].n += 1;
     }
     if a.kept { c = side; } else { a = side; }
   }
-  r := OfrSub.{known = a.known && c.known, kept = a.kept || c.kept};
+  r := OfrSub.{known = a.known && c.known, kept = a.kept || c.kept};   // mutant: equivalent (in a proof read back, a subtree with no kept leaf is never known)
   if r.known { ofr_branch(tags[0].branch[..], a.hash[..], c.hash[..], r.hash[..]); }
   return r;
 }
@@ -660,16 +660,16 @@ ofr_check_proof_vartime :: (b: [] Bolt12) -> int #effects(all) {
   if leaves.count / 32 != nk { return OFR_BAD_LEAVES; }
   // The invoice's leaves in type order: 0 and the markers hidden, the
   // kept fields from their records and nonces.
-  if nk + m + 1 > 128 { return OFR_CAPACITY; }
-  nodes: [128] OfrNode; n := 0; tags: [1] OfrTags; tags[0] = ofr_tags(b[0].data[0..<0]);
-  nodes[0].state = OFR_UNKNOWN; n = 1;
+  if nk + m + 1 > 128 { return OFR_CAPACITY; }   // mutant: equivalent (a proof has at most 59 kept types besides its own fields, and 64 markers)
+  nodes: [128] OfrNode; n := 0; tags: [1] OfrTags; tags[0] = ofr_tags(b[0].data[0..<0]);   // mutant: equivalent (n is set next, and the nonce tag is not used when reading)
+  nodes[0].state = OFR_UNKNOWN; n = 1;   // mutant: equivalent (a hidden leaf never meets the tree but through a missing hash)
   ki := 0; mi := 0;
   while ki < nk || mi < m {
-    if mi < m && (ki == nk || marks[mi] < kept[ki]) { nodes[n].state = OFR_UNKNOWN; mi += 1; }
+    if mi < m && (ki == nk || marks[mi] < kept[ki]) { nodes[n].state = OFR_UNKNOWN; mi += 1; }   // mutant: equivalent (a marker is never a kept type, and a hidden leaf's state is never read but as not kept)
     else {
       j := ofr_find(b, kept[ki]);
       ofr_leaf(tags[..], ofr_raw(b, j), leaves[32 * ki..<32 * ki + 32], nodes[n].hash[..]);
-      nodes[n].state = OFR_KEPT; ki += 1;
+      nodes[n].state = OFR_KEPT; ki += 1;   // mutant: equivalent (nodes start as zeros, which is OFR_KEPT)
     }
     n += 1;
   }
@@ -742,7 +742,7 @@ offer_stream_vartime :: (w: [] OfrWriter, b: [] Bolt12) -> int #effects(all) {
   at := 0;
   for i: 0..<w[0].count {
     at = tlv_write_vartime(b[0].data[..], at, w[0].types[i], w[0].pool[w[0].starts[i]..<w[0].starts[i] + w[0].lengths[i]]);
-    if at < 0 { return OFR_CAPACITY; }
+    if at < 0 { return OFR_CAPACITY; }   // mutant: equivalent (tlv_write_vartime returns -1 or more than 0)
   }
   b[0].n = at;
   return ofr_stream_vartime(b);
@@ -756,7 +756,7 @@ offer_sign_vartime :: (w: [] OfrWriter, type: u64, name: string, key: [] u8) -> 
   if code != OFR_OK { return code; }
   if !ofr_merkle_vartime(b[..], root[..]) { return OFR_REQUIRED; }
   ofr_sig_hash(w[0].kind, name, root[..], h[..]);
-  status := SIGN_REFUSED;
+  status := SIGN_REFUSED;   // mutant: equivalent (the loop sets status)
   for k: 0..<6 { status = schnorr_sign_step(key, aux[..], h[..], work[..], sig[..], false); }
   if status != SIGN_DONE { w[0].code = OFR_BAD_SIGNATURE; return w[0].code; }
   return offer_put_vartime(w, type, sig[..]);
@@ -829,8 +829,8 @@ offer_proof_vartime :: (invoice: [] Bolt12, preimage: [] u8, keep: [] u64, payer
   tags: [1] OfrTags; tags[0] = ofr_tags(ofr_raw(invoice, 0));
   nodes: [64] OfrNode; n := 0;
   nonces: [2048] u8; nn := 0;
-  marks: [576] u8; mn := 0; last: u64 = 0; count := 0;
-  previous_kept := false; previous_type: u64 = 0;
+  marks: [576] u8; mn := 0; last: u64 = 0; count := 0;   // mutant: equivalent (the first marker is 1 whatever last holds)
+  previous_kept := false; previous_type: u64 = 0;   // mutant: equivalent (the first marker is 1 either way)
   for i: 0..<invoice[0].count {
     t := invoice[0].records[i].type;
     if ofr_signed_type(t) { continue; }
@@ -838,13 +838,13 @@ offer_proof_vartime :: (invoice: [] Bolt12, preimage: [] u8, keep: [] u64, payer
     ofr_leaf(tags[..], ofr_raw(invoice, i), nonce[..], nodes[n].hash[..]);
     shown := false; for k: keep { if k == t && t != 0 { shown = true; } }
     if shown {
-      nodes[n].state = OFR_KEPT;
+      nodes[n].state = OFR_KEPT;   // mutant: equivalent (nodes start as zeros, which is OFR_KEPT)
       for j: 0..<32 { nonces[32 * nn + j] = nonce[j]; } nn += 1;
       code := offer_put_vartime(w, t, invoice[0].data[invoice[0].records[i].start..<invoice[0].records[i].start + invoice[0].records[i].length]);
     } else {
       nodes[n].state = OFR_HIDDEN;
       if t != 0 {
-        last = ofr_marker(previous_kept, previous_type, last, count); count += 1;
+        last = ofr_marker(previous_kept, previous_type, last, count); count += 1;   // mutant: equivalent (count is only compared with 0)
         mn = bigsize_write_vartime(marks[..], mn, last);
       }
     }
@@ -852,7 +852,7 @@ offer_proof_vartime :: (invoice: [] Bolt12, preimage: [] u8, keep: [] u64, payer
   }
   missing: [1] OfrHashes;
   root := ofr_proof_tree(tags[..], nodes[0..<n], 0, n, missing[..], false);
-  if root.code != OFR_OK { w[0].code = root.code; return w[0].code; }
+  if root.code != OFR_OK { w[0].code = root.code; return w[0].code; }   // mutant: equivalent (a writer's tree never runs out of room for missing hashes)
   code := offer_put_vartime(w, OFR_SIGNATURE, ofr_value(invoice, OFR_SIGNATURE));
   code = offer_put_vartime(w, PROOF_PREIMAGE, preimage);
   if count > 0 || explicit { code = offer_put_vartime(w, PROOF_OMITTED, marks[0..<mn]); }
@@ -1069,4 +1069,334 @@ ofr_lower :: (s: string, out: [] u8) -> string #effects(all) {
   offer_begin(w[..], OFR_OFFER);
   #assert offer_put_number_vartime(w[..], OFR_AMOUNT, 0) == OFR_OK && offer_stream_vartime(w[..], b[..]) == OFR_OK;
   #assert ofr_value(b[..], OFR_AMOUNT).count == 0 && ofr_check_offer_vartime(b[..]) == OFR_BAD_AMOUNT;
+}
+
+#test "text at the edges: each case boundary, '+' at either end, a '1' first, and 8,192 characters" #steps 400000000 {
+  out: [8192] u8; big: [8193] u8;
+  #assert ofr_lower_char('[') == '[' && ofr_lower_char('Z') == 'z' && !ofr_alnum('{') && !ofr_alnum(':') && ofr_space('\t');
+  // Mixed case refuses, whichever letter is the odd one out.
+  mixed := [4] string.["LNO1aQ", "LNO1zQ", "lno1Aq", "lno1Zq"];
+  for s: mixed { #assert offer_text_decode_vartime(s, out[..]).code == OFR_BAD_TEXT; }
+  #assert offer_text_decode_vartime("lno1aq", out[..]).code == OFR_OK && offer_text_decode_vartime("lno1zq", out[..]).code == OFR_OK;
+  #assert offer_text_decode_vartime("+lno1qq", out[..]).code == OFR_BAD_TEXT && offer_text_decode_vartime("lno1qq+", out[..]).code == OFR_BAD_TEXT;
+  #assert offer_text_decode_vartime("1qq", out[..]).code == OFR_BAD_PREFIX;
+  // 8,192 characters are the most this reader keeps; past them it says so
+  // before it looks at the characters, a '{' or '[' among them.
+  big[0] = 'l'; big[1] = 'n'; big[2] = 'o'; big[3] = '1';
+  for i: 4..<8193 { big[i] = 'q'; }
+  r := offer_text_decode_vartime(cast(string) big[0..<8192], out[..]);
+  #assert r.code == OFR_OK && r.kind == OFR_OFFER && r.length == 5117;
+  #assert offer_text_decode_vartime(cast(string) big[0..<8193], out[..]).code == OFR_CAPACITY;
+  big[0] = '{'; for i: 1..<8193 { big[i] = 'Q'; }
+  #assert offer_text_decode_vartime(cast(string) big[..], out[..]).code == OFR_CAPACITY;
+  big[0] = '['; for i: 1..<8193 { big[i] = 'q'; }
+  #assert offer_text_decode_vartime(cast(string) big[..], out[..]).code == OFR_CAPACITY;
+  // The writer needs exactly 4 + ceil(8n / 5) characters.
+  data := [5] u8.[0xff, 0x00, 0x81, 0x42, 0x07];
+  #assert offer_text_encode_vartime(OFR_INVOICE, data[0..<3], out[0..<9]) == 9 && offer_text_encode_vartime(OFR_INVOICE, data[0..<3], out[0..<8]) == -1;
+  #assert offer_text_encode_vartime(OFR_INVOICE, data[..], out[0..<12]) == 12 && offer_text_encode_vartime(OFR_INVOICE, data[..], out[0..<11]) == -1;
+}
+
+#test "UTF-8 at each boundary: the first and last of each length, overlong forms, surrogates and U+10FFFF" {
+  t: [16] u8;
+  valid := [10] string.["c280", "c2bf", "dfbf", "e0a080", "efbfbf", "ee8080", "f0908080", "f09f9880", "f1808080", "f48fbfbf"];
+  invalid := [9] string.["41c0", "c241", "c2c0", "e08080", "edbfbf", "f0808080", "c1808080", "f4908080", "f5808080"];
+  for s: valid { #assert ofr_utf8_vartime(ln_unhex(s, t[..])); }
+  for s: invalid { #assert !ofr_utf8_vartime(ln_unhex(s, t[..])); }
+}
+
+#test "the ranges and the types each stream knows, at their ends" {
+  kinds := [21] int.[OFR_OFFER, OFR_OFFER, OFR_OFFER, OFR_OFFER, OFR_OFFER, OFR_REQUEST, OFR_REQUEST, OFR_REQUEST, OFR_REQUEST,
+    OFR_REQUEST, OFR_INVOICE, OFR_INVOICE, OFR_INVOICE, OFR_INVOICE, OFR_INVOICE, OFR_PROOF, OFR_PROOF, OFR_PROOF, OFR_PROOF,
+    OFR_PROOF, OFR_PROOF];
+  types := [21] u64.[1, 79, 1000000000, 1999999999, 2000000000, 1000, 1001, 1000000000, 2999999999, 3000000000, 1000, 1001,
+    1000000000, 3999999999, 4000000000, 1, 1005, 1006, 1000000000, 3999999999, 4000000000];
+  ins := [21] bool.[true, true, true, true, false, true, false, true, true, false, true, false, true, true, false, true, true,
+    false, true, true, false];
+  for i: 0..<21 { #assert ofr_in_range(kinds[i], types[i]) == ins[i]; }
+  kk := [13] int.[OFR_REQUEST, OFR_REQUEST, OFR_REQUEST, OFR_REQUEST, OFR_REQUEST, OFR_INVOICE, OFR_INVOICE, OFR_PROOF,
+    OFR_PROOF, OFR_PROOF, OFR_PROOF, OFR_PROOF, OFR_PROOF];
+  kt := [13] u64.[80, 81, 84, 89, 90, 178, 150, 1007, 241, 1001, 1005, 1006, 0];
+  known := [13] bool.[true, false, true, true, true, false, false, false, true, true, true, false, false];
+  for i: 0..<13 { #assert ofr_known(kk[i], kt[i]) == known[i]; }
+  #assert ofr_signed_type(1000) && !ofr_signed_type(1001);
+  #assert ofr_invoice_type(239) && !ofr_invoice_type(240) && ofr_invoice_type(1000000000) && ofr_invoice_type(3999999999) && !ofr_invoice_type(4000000000);
+}
+
+#test "each field's format refused for its reason" {
+  t: [64] u8; v: [64] u8;
+  // Every truncated number refuses a leading zero, and amounts more than 8 bytes.
+  nk := [7] int.[OFR_OFFER, OFR_OFFER, OFR_OFFER, OFR_REQUEST, OFR_REQUEST, OFR_INVOICE, OFR_INVOICE];
+  nt := [7] u64.[OFR_AMOUNT, OFR_ABSOLUTE_EXPIRY, OFR_QUANTITY_MAX, REQ_AMOUNT, REQ_QUANTITY, INV_CREATED_AT, INV_AMOUNT];
+  for i: 0..<7 { #assert ofr_record_vartime(nk[i], nt[i], ln_unhex("0001", t[..])) == OFR_NOT_MINIMAL; }
+  #assert ofr_record_vartime(OFR_INVOICE, INV_AMOUNT, ln_unhex("010203040506070809", t[..])) == OFR_BAD_LENGTH;
+  #assert ofr_record_vartime(OFR_REQUEST, REQ_FEATURES, ln_unhex("0001", t[..])) == OFR_NOT_MINIMAL;
+  none := OFR_NO_FEATURES;
+  #assert ofr_features_code(t[0..<0], none[..]) == OFR_OK && ofr_features_code(ln_unhex("00", t[..]), none[..]) == OFR_NOT_MINIMAL;
+  #assert ofr_record_vartime(OFR_INVOICE, INV_PATHS, t[0..<0]) == OFR_BAD_PATH;
+  bad := ln_unhex("0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", v[..]);
+  #assert ofr_record_vartime(OFR_REQUEST, REQ_PAYER_ID, bad) == OFR_BAD_POINT && ofr_record_vartime(OFR_INVOICE, INV_NODE_ID, bad) == OFR_BAD_POINT;
+  #assert ofr_record_vartime(OFR_REQUEST, REQ_CHAIN, t[0..<31]) == OFR_BAD_LENGTH && ofr_record_vartime(OFR_INVOICE, INV_PAYMENT_HASH, t[0..<31]) == OFR_BAD_LENGTH;
+  #assert ofr_record_vartime(OFR_PROOF, PROOF_PREIMAGE, t[0..<31]) == OFR_BAD_LENGTH && ofr_record_vartime(OFR_INVOICE, INV_BLINDEDPAY, t[0..<27]) == OFR_BAD_LENGTH;
+  #assert ofr_record_vartime(OFR_REQUEST, OFR_SIGNATURE, t[0..<63]) == OFR_BAD_LENGTH && ofr_record_vartime(OFR_PROOF, PROOF_SIGNATURE, t[0..<63]) == OFR_BAD_LENGTH;
+  #assert ofr_record_vartime(OFR_PROOF, PROOF_MISSING, t[0..<31]) == OFR_BAD_LENGTH;
+  #assert ofr_record_vartime(OFR_REQUEST, REQ_PAYER_NOTE, ln_unhex("c0af", t[..])) == OFR_BAD_UTF8 && ofr_record_vartime(OFR_PROOF, PROOF_NOTE, ln_unhex("c0af", t[..])) == OFR_BAD_UTF8;
+  // BIP-353 names: an empty domain, a length that disagrees, each allowed
+  // character at the edges of its class, and the characters just outside.
+  #assert ofr_record_vartime(OFR_REQUEST, REQ_BIP_353_NAME, ln_unhex("03626f6200", t[..])) == OFR_OK;
+  #assert ofr_record_vartime(OFR_REQUEST, REQ_BIP_353_NAME, ln_unhex("03626f62016566", t[..])) == OFR_BAD_LENGTH;
+  #assert ofr_record_vartime(OFR_REQUEST, REQ_BIP_353_NAME, ln_unhex("093039617a415a2d5f2e0178", t[..])) == OFR_OK;
+  outside := [6] string.["013a0178", "017b0178", "015b0178", "012f0178", "01400178", "01600178"];
+  for s: outside { #assert ofr_record_vartime(OFR_REQUEST, REQ_BIP_353_NAME, ln_unhex(s, t[..])) == OFR_BAD_VALUE; }
+  // Fallbacks: a version and an empty program, two of them, and each
+  // kind of truncation.
+  #assert ofr_record_vartime(OFR_INVOICE, INV_FALLBACKS, ln_unhex("000000", t[..])) == OFR_OK;
+  #assert ofr_record_vartime(OFR_INVOICE, INV_FALLBACKS, ln_unhex("000000000000", t[..])) == OFR_OK;
+  short := [4] string.["00000000", "000005ab", "000000000005ab", "0000010500"];
+  for s: short { #assert ofr_record_vartime(OFR_INVOICE, INV_FALLBACKS, ln_unhex(s, t[..])) == OFR_BAD_LENGTH; }
+}
+
+#test "blinded paths and payinfo: which path's last hop, and each truncation" #steps 400000000 {
+  t: [512] u8;
+  two := ln_unhex("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980202c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5000002f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f900000279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980202e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd1300000379be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000", t[..]);
+  p := ofr_paths_vartime(two, 0);
+  #assert p.code == OFR_OK && p.count == 2 && ln_hex_is(p.final[..], "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9");
+  p = ofr_paths_vartime(two, 1);
+  #assert p.code == OFR_OK && p.count == 2 && ln_hex_is(p.final[..], "0379be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert ofr_paths_vartime(ln_unhex("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000", t[..]), 0).code == OFR_OK;
+  bad := [9] string.["0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000", "0200000000000000000000", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000000000000000", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980100000000000000000000", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798000a0000000000"];
+  for s: bad { #assert ofr_paths_vartime(ln_unhex(s, t[..]), 0).code == OFR_BAD_PATH; }
+  pay := ofr_payinfo_vartime(ln_unhex("0000000100000002000300000000000000040000000000000005000000000009000000080007000000000000000400000000000000050000", t[..]));
+  #assert pay.code == OFR_OK && pay.count == 2 && pay.usable == 2 && pay.fee_base == 1 && pay.fee_ppm == 2 && pay.cltv == 3;
+  #assert ofr_payinfo_vartime(ln_unhex("0000000100000002000300000000000000040000000000000005000000000000000000000000", t[..])).code == OFR_BAD_LENGTH;
+  #assert ofr_payinfo_vartime(ln_unhex("0000000100000002000300000000000000040000000000000005000000000009000000080007000000000000000400000000000000050005abcd", t[..])).code == OFR_BAD_LENGTH;
+}
+
+#test "framing: a second read starts over, BigSize types, 64 records, and an all-signature stream" {
+  b: [1] Bolt12; fresh: Bolt12; root: [32] u8;
+  // An amount of 9 bytes frames, and reads as no number.
+  b[0] = fresh; b[0].kind = OFR_OFFER; b[0].n = ln_unhex("0809010203040506070809", b[0].data[..]).count;
+  #assert ofr_frame_vartime(b[..]) == OFR_OK && ofr_frame_vartime(b[..]) == OFR_OK && b[0].count == 1 && ofr_number(b[..], OFR_AMOUNT) == 0;
+  b[0] = fresh; b[0].n = ln_unhex("fd000100", b[0].data[..]).count;
+  #assert ofr_frame_vartime(b[..]) == OFR_NOT_MINIMAL;
+  for n: 64..<66 {
+    b[0] = fresh;
+    for i: 0..<n { b[0].data[2*i] = cast(u8) (i + 1); b[0].data[2*i+1] = 0; }
+    b[0].n = 2 * n;
+    #assert ofr_frame_vartime(b[..]) == (ifx n == 64 then OFR_OK else OFR_CAPACITY);
+  }
+  #assert b[0].count == 64;
+  // A stream of signatures only has no Merkle root.
+  b[0] = fresh; b[0].kind = OFR_REQUEST; b[0].n = ln_unhex("f000", b[0].data[..]).count;
+  #assert ofr_frame_vartime(b[..]) == OFR_OK && !ofr_merkle_vartime(b[..], root[..]);
+  #assert !ofr_less(root[..], root[..]);
+  // A key of 32 bytes verifies nothing.
+  #assert offer_decode_vartime(OFFER_REQUEST, b[..]) == OFR_OK;
+  #assert !ofr_verify_vartime(b[..], "signature", ofr_value(b[..], REQ_PAYER_ID)[0..<32], ofr_value(b[..], OFR_SIGNATURE));
+  // A failed read leaves nothing of the stream before it, and the code says why.
+  #assert offer_decode_vartime("lno1qb", b[..]) == OFR_BAD_TEXT && b[0].code == OFR_BAD_TEXT && b[0].kind == 0 && b[0].count == 0;
+  // proof_omitted_tlvs: non-minimal, more than out holds, and two.
+  b[0] = fresh; b[0].n = ln_unhex("fd03ea03fd00fc", b[0].data[..]).count;
+  marks: [4] u64;
+  #assert ofr_frame_vartime(b[..]) == OFR_OK && ofr_markers(b[..], marks[..]) == -1;
+  b[0] = fresh; b[0].n = ln_unhex("fd03ea03010203", b[0].data[..]).count;
+  #assert ofr_frame_vartime(b[..]) == OFR_OK && ofr_markers(b[..], marks[0..<2]) == -1 && ofr_markers(b[..], marks[..]) == 3 && marks[2] == 3;
+  // A payer accepts an invoice that copies the request's ranges, 159 and
+  // the billions up to 2,999,999,999, and may add above them.
+  req: [1] Bolt12; inv: [1] Bolt12;
+  req[0] = fresh; req[0].n = ln_unhex("0001aa9f0101fe3b9aca000102feb2d05dff0103", req[0].data[..]).count;
+  inv[0] = fresh; inv[0].n = ln_unhex("0001aa9f0101fe3b9aca000102feb2d05dff0103feb2d05e000104", inv[0].data[..]).count;
+  #assert ofr_frame_vartime(req[..]) == OFR_OK && ofr_frame_vartime(inv[..]) == OFR_OK && offer_matches_vartime(req[..], inv[..]);
+}
+
+#test "an invoice request's rules, each with a signed request" #steps 16000000000 {
+  req_cases := [18] string.[
+  "0001aa08020bb80a06636f6666656514010416210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "0001aa08020bb80a06636f6666656514010416210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817985600",
+  "0001aa08020bb80a06636f6666656514010416210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798560101",
+  "0001aa08020bb80a06636f6666656514010416210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798560104",
+  "0001aa08020bb80a06636f66666565140016210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798560105",
+  "0001aa08020bb80a06636f6666656516210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798560102",
+  "0001aa08020bb80a06636f6666656510660279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000",
+  "0001aa0a06636f6666656516210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179852021388",
+  "0001aa0a06636f6666656516210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "0001aa060355534408020bb80a06636f6666656516210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798520101",
+  "0001aa08020bb80a06636f6666656516210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179852020bb8",
+  "0001aa080855555555555555550a06636f66666565140016210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817985208ffffffffffffffff560103",
+  "0001aa080855555555555555550a06636f66666565140016210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817985208ffffffffffffffff560104",
+  "0001aa520203e8",
+  "0001aa02200000000000000000000000000000000000000000000000000000000000000000520203e8",
+  "0001aa0c0102520203e8",
+  "0001aa140104520203e8",
+  "0001aa59026869"];
+  req_codes := [18] int.[OFR_BAD_QUANTITY, OFR_BAD_QUANTITY, OFR_OK, OFR_OK, OFR_OK, OFR_BAD_QUANTITY, OFR_OK, OFR_OK, OFR_REQUIRED, OFR_OK, OFR_OK, OFR_OK, OFR_BAD_AMOUNT, OFR_OK, OFR_FORBIDDEN, OFR_FORBIDDEN, OFR_FORBIDDEN, OFR_REQUIRED];
+  b: [1] Bolt12; fresh: Bolt12; w: [1] OfrWriter; key: [32] u8; out: [2048] u8;
+  for i: 0..<32 { key[i] = 0x42; }
+  payer := offer_public(key[..]);
+  for i: 0..<req_cases.count {
+    b[0] = fresh; b[0].n = ln_unhex(req_cases[i], b[0].data[..]).count;
+    #assert ofr_frame_vartime(b[..]) == OFR_OK;
+    offer_begin(w[..], OFR_REQUEST);
+    for k: 0..<b[0].count { r := b[0].records[k]; #assert offer_put_vartime(w[..], r.type, b[0].data[r.start..<r.start + r.length]) == OFR_OK; }
+    #assert offer_put_vartime(w[..], REQ_PAYER_ID, payer[..]) == OFR_OK && offer_sign_vartime(w[..], OFR_SIGNATURE, "signature", key[..]) == OFR_OK;
+    n := offer_write_vartime(w[..], out[..]);
+    #assert n > 0 && offer_decode_vartime(cast(string) out[0..<n], b[..]) == req_codes[i] && b[0].code == req_codes[i];
+  }
+  // Without a signature that verifies, or the fields it needs.
+  ureq_cases := [3] string.[
+  "58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "0001aaf04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "0001aa58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"];
+  ureq_codes := [3] int.[OFR_REQUIRED, OFR_REQUIRED, OFR_BAD_SIGNATURE];
+  for i: 0..<ureq_cases.count {
+    b[0] = fresh; b[0].kind = OFR_REQUEST; b[0].n = ln_unhex(ureq_cases[i], b[0].data[..]).count;
+    #assert ofr_frame_vartime(b[..]) == OFR_OK && ofr_check_request_vartime(b[..]) == ureq_codes[i];
+  }
+}
+
+#test "an invoice's rules, the expiry, and the writer's refusals" #steps 16000000000 {
+  uinv_cases := [9] string.[
+  "0001aa58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a0660279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000a21c00000001000000020003000000000000000400000000000000050000a40101a8200000000000000000000000000000000000000000000000000000000000000000b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "0001aa58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a0660279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000a21c00000001000000020003000000000000000400000000000000050000a8200000000000000000000000000000000000000000000000000000000000000000aa0203e8b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "0001aa58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a0660279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000a21c00000001000000020003000000000000000400000000000000050000a40101aa0203e8b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "0001aa58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a0660279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000a21c00000001000000020003000000000000000400000000000000050000a40101a8200000000000000000000000000000000000000000000000000000000000000000aa0203e8f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "0001aa58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a21c00000001000000020003000000000000000400000000000000050000a40101a8200000000000000000000000000000000000000000000000000000000000000000aa0203e8b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "0001aa58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a0660279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000a40101a8200000000000000000000000000000000000000000000000000000000000000000aa0203e8b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "0001aa58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a0660279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000a2380000000100000002000300000000000000040000000000000005000000000009000000080007000000000000000400000000000000050000a40101a8200000000000000000000000000000000000000000000000000000000000000000aa0203e8b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "0001aa58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a0660279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000a21c00000001000000020003000000000000000400000000000000050000a40101a8200000000000000000000000000000000000000000000000000000000000000000aa0203e8b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "0001aa58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a0660279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798010279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980000a21c00000001000000020003000000000000000400000000000000050000a40101a8200000000000000000000000000000000000000000000000000000000000000000aa0203e8b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"];
+  uinv_codes := [9] int.[OFR_REQUIRED, OFR_REQUIRED, OFR_REQUIRED, OFR_REQUIRED, OFR_REQUIRED, OFR_REQUIRED, OFR_BAD_PATH, OFR_REQUIRED, OFR_BAD_SIGNATURE];
+  b: [1] Bolt12; fresh: Bolt12; w: [1] OfrWriter; out: [2048] u8;
+  for i: 0..<uinv_cases.count {
+    b[0] = fresh; b[0].kind = OFR_INVOICE; b[0].n = ln_unhex(uinv_cases[i], b[0].data[..]).count;
+    #assert ofr_frame_vartime(b[..]) == OFR_OK && ofr_check_invoice_vartime(b[..]) == uinv_codes[i];
+  }
+  // invoice_relative_expiry replaces the two hours.
+  offer_begin(w[..], OFR_INVOICE);
+  #assert offer_put_number_vartime(w[..], INV_CREATED_AT, 100) == OFR_OK && offer_put_number_vartime(w[..], INV_RELATIVE_EXPIRY, 50) == OFR_OK;
+  #assert offer_stream_vartime(w[..], b[..]) == OFR_OK && b[0].kind == OFR_INVOICE;
+  #assert !offer_invoice_expired_vartime(b[..], 150) && offer_invoice_expired_vartime(b[..], 151);
+  // The writer: 64 records, a pool of 4,096 bytes, one of each type.
+  v: [4097] u8;
+  offer_begin(w[..], OFR_OFFER);
+  for i: 0..<64 { #assert offer_put_vartime(w[..], cast(u64) (2 * i + 1), v[0..<0]) == OFR_OK; }
+  #assert offer_put_vartime(w[..], 1001, v[0..<0]) == OFR_CAPACITY && w[0].code == OFR_CAPACITY && offer_write_vartime(w[..], out[..]) == -1;
+  // A refused writer leaves an empty stream, not the invoice read before it.
+  #assert b[0].n > 0 && offer_stream_vartime(w[..], b[..]) == OFR_CAPACITY && b[0].n == 0 && b[0].count == 0 && b[0].kind == OFR_OFFER;
+  offer_begin(w[..], OFR_OFFER);
+  #assert offer_put_vartime(w[..], 1, v[..]) == OFR_CAPACITY && w[0].code == OFR_CAPACITY;
+  offer_begin(w[..], OFR_OFFER);
+  #assert offer_put_vartime(w[..], 1, v[0..<4096]) == OFR_OK && offer_stream_vartime(w[..], b[..]) == OFR_CAPACITY;
+  offer_begin(w[..], OFR_OFFER);
+  #assert offer_put_vartime(w[..], 2, v[0..<1]) == OFR_OK && offer_put_vartime(w[..], 2, v[0..<1]) == OFR_ORDER;
+  // One byte in the pool leaves room for 4,095 more, not 4,096.
+  offer_begin(w[..], OFR_OFFER);
+  #assert offer_put_vartime(w[..], 2, v[0..<1]) == OFR_OK && offer_put_vartime(w[..], 4, v[0..<4096]) == OFR_CAPACITY;
+  offer_begin(w[..], OFR_OFFER);
+  #assert offer_put_vartime(w[..], 2, v[0..<1]) == OFR_OK && offer_put_vartime(w[..], 4, v[0..<4095]) == OFR_OK;
+  // Signing needs a field to sign and a key that is one.
+  zero: [32] u8;
+  offer_begin(w[..], OFR_REQUEST);
+  #assert offer_put_vartime(w[..], OFR_SIGNATURE, v[0..<64]) == OFR_OK && offer_sign_vartime(w[..], PROOF_SIGNATURE, "x", zero[..]) == OFR_REQUIRED;
+  offer_begin(w[..], OFR_OFFER);
+  #assert offer_put_vartime(w[..], OFR_DESCRIPTION, v[0..<0]) == OFR_OK;
+  #assert offer_sign_vartime(w[..], OFR_SIGNATURE, "signature", zero[..]) == OFR_BAD_SIGNATURE && w[0].code == OFR_BAD_SIGNATURE;
+}
+
+#test "payer proofs checked: markers at their edges, and 64 or 65 missing hashes" #steps 4000000000 {
+  prf_cases := [6] string.[
+  "58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a82066687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f14000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fd03e9200000000000000000000000000000000000000000000000000000000000000000fd03ea410102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f4041fd03eb00fd03ec00",
+  "58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a82066687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ef0100f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f14000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fd03e9200000000000000000000000000000000000000000000000000000000000000000fd03ea01f0fd03eb00fd03ec00",
+  "58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a82066687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f14000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fd03e9200000000000000000000000000000000000000000000000000000000000000000fd03ea02a959fd03eb00fd03ec00",
+  "58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a82066687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f14000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fd03e9200000000000000000000000000000000000000000000000000000000000000000fd03ea02a9a9fd03eb00fd03ec00",
+  "58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a82066687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f14000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fd03e9200000000000000000000000000000000000000000000000000000000000000000fd03ea0601fe3b9aca00fd03eb00fd03ec00",
+  "58210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a82066687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925b0210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ee0100f04000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f14000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fd03e9200000000000000000000000000000000000000000000000000000000000000000fd03ea06effe3b9aca00fd03eb00fd03ec00"];
+  prf_codes := [6] int.[OFR_CAPACITY, OFR_BAD_OMITTED, OFR_BAD_OMITTED, OFR_BAD_OMITTED, OFR_BAD_OMITTED, OFR_BAD_LEAVES];
+  b: [1] Bolt12; fresh: Bolt12; w: [1] OfrWriter; z: [2080] u8;
+  for i: 0..<prf_cases.count {
+    b[0] = fresh; b[0].kind = OFR_PROOF; b[0].n = ln_unhex(prf_cases[i], b[0].data[..]).count;
+    #assert ofr_frame_vartime(b[..]) == OFR_OK && ofr_check_proof_vartime(b[..]) == prf_codes[i];
+  }
+  // The base of those cases, with 64 missing hashes (more than its tree
+  // needs) and then 65 (more than this reader keeps).
+  for k: 64..<66 {
+    b[0] = fresh; b[0].kind = OFR_PROOF; b[0].n = ln_unhex(prf_cases[0], b[0].data[..]).count;
+    #assert ofr_frame_vartime(b[..]) == OFR_OK;
+    offer_begin(w[..], OFR_PROOF);
+    for j: 0..<b[0].count {
+      r := b[0].records[j];
+      if r.type == PROOF_OMITTED { continue; }
+      if r.type == PROOF_MISSING { #assert offer_put_vartime(w[..], r.type, z[0..<32 * k]) == OFR_OK; }
+      else if r.type == PROOF_LEAVES { #assert offer_put_vartime(w[..], r.type, z[0..<96]) == OFR_OK; }
+      else { #assert offer_put_vartime(w[..], r.type, b[0].data[r.start..<r.start + r.length]) == OFR_OK; }
+    }
+    code := offer_stream_vartime(w[..], b[..]);
+    #assert ofr_check_proof_vartime(b[..]) == (ifx k == 64 then OFR_BAD_MISSING else OFR_CAPACITY);
+  }
+  // 2,049 bytes of missing hashes, framed but not format-checked: one byte past
+  // what the reader keeps.
+  b[0] = fresh; b[0].kind = OFR_PROOF; b[0].n = ln_unhex(prf_cases[0], b[0].data[..]).count;
+  #assert ofr_frame_vartime(b[..]) == OFR_OK;
+  offer_begin(w[..], OFR_PROOF);
+  for j: 0..<b[0].count {
+    r := b[0].records[j];
+    if r.type == PROOF_OMITTED { continue; }
+    if r.type == PROOF_MISSING { #assert offer_put_vartime(w[..], r.type, z[0..<2049]) == OFR_OK; }
+    else if r.type == PROOF_LEAVES { #assert offer_put_vartime(w[..], r.type, z[0..<96]) == OFR_OK; }
+    else { #assert offer_put_vartime(w[..], r.type, b[0].data[r.start..<r.start + r.length]) == OFR_OK; }
+  }
+  #assert offer_stream_vartime(w[..], b[..]) == OFR_BAD_LENGTH && ofr_frame_vartime(b[..]) == OFR_OK && ofr_check_proof_vartime(b[..]) == OFR_CAPACITY;
+}
+
+#test "the flow's refusals: the wrong kind, a refused stream, an empty invoice, and what each writer leaves out" #steps 16000000000 {
+  offer: [1] Bolt12; req: [1] Bolt12; inv: [1] Bolt12; proof: [1] Bolt12; bad: [1] Bolt12; w: [1] OfrWriter;
+  payer: [32] u8; node: [32] u8; meta: [16] u8; hash: [32] u8; pre: [32] u8; out: [2048] u8; note: [1] u8; none: [1] u64;
+  #assert ln_unhex(PROOF_PAYER_KEY, payer[..]).count == 32 && ln_unhex(PROOF_NODE_KEY, node[..]).count == 32;
+  id := offer_public(node[..]);
+  // An offer of 0 refuses, and keeps that code.
+  offer_begin(w[..], OFR_OFFER);
+  #assert offer_put_vartime(w[..], OFR_DESCRIPTION, ofr_text("tea", out[..])) == OFR_OK && offer_put_number_vartime(w[..], OFR_AMOUNT, 0) == OFR_OK;
+  #assert offer_put_vartime(w[..], OFR_ISSUER_ID, id[..]) == OFR_OK;
+  n := offer_write_vartime(w[..], out[..]);
+  #assert offer_decode_vartime(cast(string) out[0..<n], bad[..]) == OFR_BAD_AMOUNT && bad[0].code == OFR_BAD_AMOUNT && bad[0].kind == OFR_OFFER;
+  #assert offer_request_vartime(bad[..], meta[..], payer[..], 0, 0, w[..]) == OFR_FORBIDDEN && w[0].code == OFR_FORBIDDEN;
+  offer_begin(w[..], OFR_OFFER);
+  #assert offer_put_vartime(w[..], OFR_DESCRIPTION, ofr_text("coffee", out[..])) == OFR_OK && offer_put_number_vartime(w[..], OFR_AMOUNT, 3000) == OFR_OK;
+  #assert offer_put_number_vartime(w[..], OFR_QUANTITY_MAX, 4) == OFR_OK && offer_put_vartime(w[..], OFR_ISSUER_ID, id[..]) == OFR_OK;
+  n = offer_write_vartime(w[..], out[..]);
+  #assert offer_decode_vartime(cast(string) out[0..<n], offer[..]) == OFR_OK;
+  // A quantity of 1 is written: the offer has a quantity rule.
+  #assert offer_request_vartime(offer[..], meta[..], payer[..], 6000, 1, w[..]) == OFR_OK;
+  n = offer_write_vartime(w[..], out[..]);
+  #assert offer_decode_vartime(cast(string) out[0..<n], req[..]) == OFR_OK && ofr_number(req[..], REQ_QUANTITY) == 1;
+  // The wrong kind of stream, each way.
+  #assert offer_request_vartime(req[..], meta[..], payer[..], 0, 0, w[..]) == OFR_FORBIDDEN && w[0].code == OFR_FORBIDDEN;
+  path: [102] u8; pay: [28] u8;
+  for i: 0..<33 { path[i] = id[i]; path[33 + i] = id[i]; path[67 + i] = id[i]; }
+  path[66] = 1;
+  #assert sha256_hash_checked(pre[..], hash[..], false) == SHA_OK;
+  #assert offer_invoice_vartime(offer[..], node[..], path[..], pay[..], 1762156800, hash[..], 6000, w[..]) == OFR_FORBIDDEN && w[0].code == OFR_FORBIDDEN;
+  #assert offer_proof_vartime(req[..], pre[..], none[..], payer[..], meta[0..<0], false, w[..]) == OFR_FORBIDDEN && w[0].code == OFR_FORBIDDEN;
+  // An invoice for less than the request names refuses.
+  #assert offer_invoice_vartime(req[..], node[..], path[..], pay[..], 1762156800, hash[..], 5999, w[..]) == OFR_OK;
+  n = offer_write_vartime(w[..], out[..]);
+  #assert offer_decode_vartime(cast(string) out[0..<n], inv[..]) == OFR_BAD_AMOUNT;
+  #assert offer_proof_vartime(inv[..], pre[..], none[..], payer[..], meta[0..<0], false, w[..]) == OFR_FORBIDDEN && w[0].code == OFR_FORBIDDEN;
+  fresh: Bolt12; bad[0] = fresh; bad[0].kind = OFR_INVOICE;
+  #assert offer_proof_vartime(bad[..], pre[..], none[..], payer[..], meta[0..<0], false, w[..]) == OFR_FORBIDDEN && w[0].code == OFR_FORBIDDEN;
+  #assert offer_invoice_vartime(req[..], node[..], path[..], pay[..], 1762156800, hash[..], 6000, w[..]) == OFR_OK;
+  n = offer_write_vartime(w[..], out[..]);
+  #assert offer_decode_vartime(cast(string) out[0..<n], inv[..]) == OFR_OK;
+  // Field 0 is never shown, even when asked for; one hidden field is still
+  // listed in proof_omitted_tlvs; a one-byte note is kept.
+  keep: [64] u64; nk := 0;
+  for i: 0..<inv[0].count {
+    t := inv[0].records[i].type;
+    if t != OFR_DESCRIPTION && !ofr_signed_type(t) { keep[nk] = t; nk += 1; }
+  }
+  note[0] = 'x';
+  #assert offer_proof_vartime(inv[..], pre[..], keep[0..<nk], payer[..], note[..], false, w[..]) == OFR_OK;
+  n = offer_write_vartime(w[..], out[..]);
+  #assert offer_decode_vartime(cast(string) out[0..<n], proof[..]) == OFR_OK;
+  #assert !ofr_has(proof[..], 0) && ofr_has(proof[..], PROOF_OMITTED) && ofr_has(proof[..], PROOF_NOTE) && !ofr_has(proof[..], OFR_DESCRIPTION);
 }
