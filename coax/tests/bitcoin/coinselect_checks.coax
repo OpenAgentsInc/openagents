@@ -3,60 +3,7 @@
 // (coinselect_vectors.coax), wallets drawn with a fixed seed and decided by the
 // Python transliteration of Core (coinselect_random.coax), and the boundaries of
 // every threshold. Test code only.
-// A pool from its spec: "value/vsize*count,..." with absolute values and
-// input sizes in virtual bytes (-1 for unknown), at feerate and long_term.
-cs_parse_int :: (s: string, at: int) -> [2] int #effects(all) {
-  neg := false; i := at;
-  if i < s.count && s[i] == '-' { neg = true; i += 1; }
-  v := 0;
-  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(int) (s[i] - '0'); i += 1; }
-  return [2] int.[ifx neg then -v else v, i];
-}
-cs_pool :: (spec: string, feerate: int, long_term: int, out: [] CsGroup) -> int #effects(all) {
-  n := 0; at := 0;
-  while at < spec.count {
-    v := cs_parse_int(spec, at); s := cs_parse_int(spec, v[1] + 1); c := cs_parse_int(spec, s[1] + 1);
-    for k: 0..<c[0] { out[n] = cs_coin(v[0], s[0], feerate, long_term); n += 1; }
-    at = c[1] + 1;
-  }
-  return n;
-}
-// The values of the marked groups, sorted, written "a,b,..." into out.
-cs_values_match :: (pool: [] CsGroup, marks: [] int, algo: int, want: string) -> bool #effects(all) {
-  vals: [64] int; n := 0;
-  for i: 0..<pool.count { if (marks[i] >> algo) & 1 == 1 { if n == 64 { return false; } vals[n] = pool[i].value; n += 1; } }
-  for i: 1..<n { j := i; while j > 0 && vals[j] < vals[j-1] { t := vals[j]; vals[j] = vals[j-1]; vals[j-1] = t; j -= 1; } }
-  at := 0; k := 0;
-  while at < want.count {
-    x := cs_parse_int(want, at);
-    if k >= n || vals[k] != x[0] { return false; }
-    k += 1; at = x[1] + 1;
-  }
-  return k == n;
-}
-CS_SEED :: [32] u8.[0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95,
-                    0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95];
-// One of Core's cases, run as its test runs it; true when it gives the
-// published result.
-cs_case_passes :: (c: CsCase, pool: [] CsGroup, marks: [] int, work: [] int) -> bool #effects(all) {
-  n := cs_pool(c.pool, c.feerate, c.long_term, pool);
-  p := pool[0..<n]; mk := marks[0..<n]; w := work[0..<5*n];
-  for i: 0..<n { mk[i] = 0; }
-  seed := CS_SEED; rng: [1] CsRng; rng[0] = cs_rng(seed[..]);
-  r: CsResult;
-  if c.algo == CS_BNB { r = cs_bnb(p, c.target, c.extra, c.max_weight, mk, w); }
-  else if c.algo == CS_CG { r = cs_coin_grinder(p, c.target, c.extra, c.max_weight, mk, w); }
-  else if c.algo == CS_SRD { r = cs_srd(p, c.target, c.extra, c.max_weight, rng[..], mk, w); }
-  else { r = cs_knapsack(p, c.target, c.extra, c.max_weight, rng[..], mk, w); }
-  if r.code != c.code { return false; }
-  if r.code != CS_OK { return true; }
-  if c.tries >= 0 && r.tries != c.tries { return false; }
-  if c.algo == CS_SRD { return r.effective >= c.target + c.extra + CS_CHANGE_LOWER && r.weight <= c.max_weight; }
-  if c.count >= 0 && r.count != c.count { return false; }
-  if c.total >= 0 && r.value != c.total { return false; }
-  return c.want.count == 0 || cs_values_match(p, mk, c.algo, c.want);
-}
-
+#load "coinselect_cases.coax";
 #test "the fee of a coin and its effective value, as effective_value_test" {
   #assert cs_amount(cs_coin(10000, 148, 1000, 0)) == 9852;
   #assert cs_amount(cs_coin(10000, -1, 1000, 0)) == 10000;
@@ -66,20 +13,51 @@ cs_case_passes :: (c: CsCase, pool: [] CsGroup, marks: [] int, work: [] int) -> 
   // GetFee rounds up: 68 vB at 1 sat/kvB is 1 satoshi.
   #assert cs_coin(1, 68, 1, 0).fee == 1 && cs_coin(1, 0, 1000, 0).fee == 0;
 }
-// The coins in a pool spec.
-cs_pool_count :: (spec: string) -> int #effects(all) {
-  n := 0; at := 0;
-  while at < spec.count {
-    v := cs_parse_int(spec, at); s := cs_parse_int(spec, v[1] + 1); c := cs_parse_int(spec, s[1] + 1);
-    n += c[0]; at = c[1] + 1;
-  }
-  return n;
-}
 #forall "every one of Core's selection cases gives its result" i: 0..<CS_CASES.count #steps 3000000000 {
   if cs_pool_count(CS_CASES[i].pool) <= 1100 {
     pool: [1100] CsGroup; marks: [1100] int; work: [5500] int;
     #assert cs_case_passes(CS_CASES[i], pool[..], marks[..], work[..]);
   }
+}
+// The comparison sees what Core's test checks: a result one off in the
+// code, the attempts, the coin count, the total, a coin, or (SRD) the
+// change or the weight disagrees.
+#forall "one of Core's cases one off where Core checks disagrees" i: 0..<CS_CASES.count #steps 3000000000 {
+  c := CS_CASES[i];
+  if cs_pool_count(c.pool) <= 1100 {
+    pool: [1100] CsGroup; marks: [1100] int; work: [5500] int;
+    r := cs_case_compute(c, pool[..], marks[..], work[..]);
+    n := cs_pool_count(c.pool); p := pool[0..<n]; mk := marks[0..<n];
+    #assert cs_case_agrees(c, p, mk, r);
+    x := r; x.code += 1; #assert !cs_case_agrees(c, p, mk, x);
+    if c.code == CS_OK {
+      if c.tries >= 0 { x = r; x.tries += 1; #assert !cs_case_agrees(c, p, mk, x); }
+      if c.algo == CS_SRD {
+        x = r; x.effective = c.target + c.extra + CS_CHANGE_LOWER; #assert cs_case_agrees(c, p, mk, x);
+        x.effective -= 1; #assert !cs_case_agrees(c, p, mk, x);
+        x = r; x.weight = c.max_weight; #assert cs_case_agrees(c, p, mk, x);
+        x.weight += 1; #assert !cs_case_agrees(c, p, mk, x);
+      } else {
+        if c.count >= 0 { x = r; x.count += 1; #assert !cs_case_agrees(c, p, mk, x); }
+        if c.total >= 0 { x = r; x.value += 1; #assert !cs_case_agrees(c, p, mk, x); }
+        if c.want.count > 0 { mk[0] ^= 1 << c.algo; #assert !cs_case_agrees(c, p, mk, r); mk[0] ^= 1 << c.algo; }
+      }
+    }
+  }
+}
+#test "the marked values are compared as a sorted list, all of them and no more" {
+  pool := [3] CsGroup.[CsGroup.{value=30}, CsGroup.{value=10}, CsGroup.{value=20}];
+  marks := [3] int.[1, 0, 1]; twos := [3] int.[2, 2, 2];
+  #assert cs_values_match(pool[..], marks[..], 0, "20,30") && !cs_values_match(pool[..], marks[..], 0, "30,20");
+  #assert !cs_values_match(pool[..], marks[..], 0, "20") && !cs_values_match(pool[..], marks[..], 0, "20,30,40") && !cs_values_match(pool[..], marks[..], 0, "");
+  #assert !cs_values_match(pool[..], marks[..], 0, "20,31") && !cs_values_match(pool[..], marks[..], 0, "10,30");
+  #assert cs_values_match(pool[..], marks[..], 1, "") && cs_values_match(pool[..], twos[..], 1, "10,20,30");
+  many: [65] CsGroup; all: [65] int;
+  for i: 0..<65 { many[i] = CsGroup.{value=i}; all[i] = 1; }
+  #assert !cs_values_match(many[..], all[..], 0, "");
+  #assert cs_parse_int("-12,3", 0)[0] == -12 && cs_parse_int("-12,3", 0)[1] == 3 && cs_parse_int("-12,3", 4)[0] == 3 && cs_parse_int("90", 0)[0] == 90;
+  out: [4] CsGroup;
+  #assert cs_pool("5/-1*2,9/68*1", 1000, 0, out[..]) == 3 && out[1].value == 5 && out[2].fee == 68 && cs_pool_count("5/-1*2,9/68*1") == 3;
 }
 // The ten pools of 50,003 coins, one array for all.
 #test "Core's 50,000 clones at every feerate" #steps 3000000000 {
@@ -185,48 +163,83 @@ cs_seed_rng :: (seed: int) -> CsRng #effects(all) {
   key: [32] u8; key[0] = cast(u8) seed;
   return cs_rng(key[..]);
 }
-// One run of CS_RUNS gives the whole result Python gave: the code, the
-// attempts, whether the search finished, every sum and the coins.
-cs_run_passes :: (c: CsRun) -> bool #effects(all) {
-  pool: [16] CsGroup; marks: [16] int; work: [80] int;
-  n := cs_pool(c.pool, c.feerate, c.long_term, pool[..]);
+// One run of CS_RUNS: the pool from its spec, every mark bit set (the
+// algorithm's own must be cleared, the rest stay), and the algorithm's result.
+cs_run_compute :: (c: CsRun, pool: [] CsGroup, marks: [] int, work: [] int) -> CsResult #effects(all) {
+  n := cs_pool(c.pool, c.feerate, c.long_term, pool);
   p := pool[0..<n]; mk := marks[0..<n]; w := work[0..<5*n];
-  for i: 0..<n { mk[i] = 0x3f; }                         // every bit set: the algorithm's own must be cleared, the rest stay
+  for i: 0..<n { mk[i] = 0x3f; }
   rng: [1] CsRng; rng[0] = cs_seed_rng(c.seed);
-  r: CsResult;
-  if c.algo == CS_BNB { r = cs_bnb(p, c.target, c.extra, c.max_weight, mk, w); }
-  else if c.algo == CS_CG { r = cs_coin_grinder(p, c.target, c.extra, c.max_weight, mk, w); }
-  else if c.algo == CS_SRD { r = cs_srd(p, c.target, c.extra, c.max_weight, rng[..], mk, w); }
-  else { r = cs_knapsack(p, c.target, c.extra, c.max_weight, rng[..], mk, w); }
-  for i: 0..<n { if (mk[i] | (1 << c.algo)) != 0x3f { return false; } }
+  if c.algo == CS_BNB { return cs_bnb(p, c.target, c.extra, c.max_weight, mk, w); }
+  if c.algo == CS_CG { return cs_coin_grinder(p, c.target, c.extra, c.max_weight, mk, w); }
+  if c.algo == CS_SRD { return cs_srd(p, c.target, c.extra, c.max_weight, rng[..], mk, w); }
+  return cs_knapsack(p, c.target, c.extra, c.max_weight, rng[..], mk, w);
+}
+// Whether r and the marks are the whole result Python gave: the code, the
+// attempts, whether the search finished, every sum and the coins.
+cs_run_agrees :: (c: CsRun, p: [] CsGroup, mk: [] int, r: CsResult) -> bool #effects(all) {
+  for i: 0..<p.count { if (mk[i] | (1 << c.algo)) != 0x3f { return false; } }
   if r.code != c.code || r.algo != c.algo { return false; }
   if (c.algo == CS_BNB || c.algo == CS_CG) && r.tries != c.tries { return false; }
   if r.code != CS_OK {
-    for i: 0..<n { if (mk[i] >> c.algo) & 1 == 1 { return false; } }
+    for i: 0..<p.count { if (mk[i] >> c.algo) & 1 == 1 { return false; } }
     return true;
   }
   if c.completed >= 0 && r.completed != (c.completed == 1) { return false; }
   if r.target != c.target || r.count != c.count || r.value != c.value || r.effective != c.effective { return false; }
   if r.weight != c.weight || r.fee != c.fee || r.long_term_fee != c.long_term_fee { return false; }
-  if r.weight > c.max_weight { return false; }
   return cs_values_match(p, mk, c.algo, c.want);
 }
 #forall "every drawn wallet gives each algorithm's result as the Python transliteration of Core does" i: 0..<CS_RUNS.count #steps 400000000 {
-  #assert cs_run_passes(CS_RUNS[i]);
-}
-// One choice of CS_PICKS: the change target the parameters draw, every
-// algorithm's own result in the marks, and the winner with its waste.
-cs_pick_passes :: (c: CsPick) -> bool #effects(all) {
   pool: [16] CsGroup; marks: [16] int; work: [80] int;
-  n := cs_pool(c.pool, c.feerate, c.long_term, pool[..]);
+  c := CS_RUNS[i];
+  r := cs_run_compute(c, pool[..], marks[..], work[..]);
+  n := cs_pool_count(c.pool);
+  #assert cs_run_agrees(c, pool[0..<n], marks[0..<n], r) && (r.code != CS_OK || r.weight <= c.max_weight);
+}
+// The comparison sees every field: a result one off in any of them, or one
+// mark bit wrong, disagrees.
+#forall "a drawn wallet's result one off anywhere disagrees with Python's" i: 0..<CS_RUNS.count #steps 400000000 {
+  pool: [16] CsGroup; marks: [16] int; work: [80] int;
+  c := CS_RUNS[i];
+  r := cs_run_compute(c, pool[..], marks[..], work[..]);
+  n := cs_pool_count(c.pool); p := pool[0..<n]; mk := marks[0..<n];
+  for k: 0..<11 {
+    x := r;
+    if k == 0 { x.code += 1; } else if k == 1 { x.algo += 1; } else if k == 2 { x.tries += 1; } else if k == 3 { x.completed = !x.completed; }
+    else if k == 4 { x.target += 1; } else if k == 5 { x.count += 1; } else if k == 6 { x.value += 1; } else if k == 7 { x.effective += 1; }
+    else if k == 8 { x.weight += 1; } else if k == 9 { x.fee += 1; } else if k == 10 { x.long_term_fee += 1; }
+    // Which fields a result must match: the code and algorithm always, the attempts for a
+    // search, the rest only for a selection (completed only when Python states it).
+    seen := k <= 1 || (k == 2 && (c.algo == CS_BNB || c.algo == CS_CG)) || (k >= 4 && k <= 10 && c.code == CS_OK) || (k == 3 && c.code == CS_OK && c.completed >= 0);
+    if seen { #assert !cs_run_agrees(c, p, mk, x); }
+  }
+  for g: 0..<n {
+    mk[g] ^= 1 << c.algo;                                  // one coin in or out
+    #assert !cs_run_agrees(c, p, mk, r);
+    mk[g] ^= 1 << c.algo;
+    other := (c.algo + 1) % 6;
+    mk[g] ^= 1 << other;                                    // another caller's bit lost
+    #assert !cs_run_agrees(c, p, mk, r);
+    mk[g] ^= 1 << other;
+  }
+  #assert cs_run_agrees(c, p, mk, r);
+}
+// One choice of CS_PICKS: the parameters it draws and cs_choose's result.
+cs_pick_compute :: (c: CsPick, pool: [] CsGroup, marks: [] int, work: [] int, q: [] CsParams) -> CsResult #effects(all) {
+  n := cs_pool(c.pool, c.feerate, c.long_term, pool);
   p := pool[0..<n]; mk := marks[0..<n]; w := work[0..<5*n];
   for i: 0..<n { mk[i] = 0; }
   rng: [1] CsRng; rng[0] = cs_seed_rng(c.seed);
   spk: [22] u8; spk[1] = 20;
-  q := cs_params(c.feerate, c.long_term, 3000, spk[..], 68, c.noinputs, c.payment, 1, rng[..]);
-  if q.min_change_target != c.change_target { return false; }
+  q[0] = cs_params(c.feerate, c.long_term, 3000, spk[..], 68, c.noinputs, c.payment, 1, rng[..]);
   target := c.payment + fee_for_rate_vartime(c.feerate, c.noinputs);
-  r := cs_choose(p, target, q, c.max_tx, rng[..], mk, w);
+  return cs_choose(p, target, q[0], c.max_tx, rng[..], mk, w);
+}
+// Whether the choice is Python's: the change target, the winner with its
+// waste, and every algorithm's own result in the marks.
+cs_pick_agrees :: (c: CsPick, p: [] CsGroup, mk: [] int, q: CsParams, r: CsResult) -> bool #effects(all) {
+  if q.min_change_target != c.change_target { return false; }
   if r.code != c.code || r.algo != c.algo { return false; }
   if r.code != CS_OK { return true; }
   if r.waste != c.waste || r.waste != cs_waste(r, q.min_viable_change, q.cost_of_change, q.change_fee) { return false; }
@@ -235,7 +248,36 @@ cs_pick_passes :: (c: CsPick) -> bool #effects(all) {
   return true;
 }
 #forall "every drawn wallet's choice is the Python transliteration's, algorithm by algorithm" i: 0..<CS_PICKS.count #steps 400000000 {
-  #assert cs_pick_passes(CS_PICKS[i]);
+  pool: [16] CsGroup; marks: [16] int; work: [80] int; q: [1] CsParams;
+  c := CS_PICKS[i];
+  r := cs_pick_compute(c, pool[..], marks[..], work[..], q[..]);
+  n := cs_pool_count(c.pool);
+  #assert cs_pick_agrees(c, pool[0..<n], marks[0..<n], q[0], r);
+}
+#forall "a choice one off anywhere disagrees with Python's" i: 0..<CS_PICKS.count #steps 400000000 {
+  pool: [16] CsGroup; marks: [16] int; work: [80] int; q: [1] CsParams;
+  c := CS_PICKS[i];
+  r := cs_pick_compute(c, pool[..], marks[..], work[..], q[..]);
+  n := cs_pool_count(c.pool); p := pool[0..<n]; mk := marks[0..<n];
+  y := q[0]; y.min_change_target += 1;
+  #assert !cs_pick_agrees(c, p, mk, y, r);
+  x := r; x.code += 1; #assert !cs_pick_agrees(c, p, mk, q[0], x);
+  x = r; x.algo += 1; #assert !cs_pick_agrees(c, p, mk, q[0], x);
+  if c.code == CS_OK {
+    x = r; x.waste += 1; #assert !cs_pick_agrees(c, p, mk, q[0], x);
+    // A waste that is Python's but not the result's own.
+    x = r; x.fee += 1; #assert !cs_pick_agrees(c, p, mk, q[0], x);
+    for a: 0..<4 {
+      if a == r.algo || c.codes[a] == CS_OK {
+        for g: 0..<n {
+          mk[g] ^= 1 << a;
+          #assert !cs_pick_agrees(c, p, mk, q[0], r);
+          mk[g] ^= 1 << a;
+        }
+      }
+    }
+  }
+  #assert cs_pick_agrees(c, p, mk, q[0], r);
 }
 
 // ---- each threshold at, below and above (values from coinselect_reference.py)

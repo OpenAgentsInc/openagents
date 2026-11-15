@@ -774,6 +774,7 @@ and the transaction it pays for. Last, it runs all of Core's cases.
 <!-- source: bitcoin/examples/coinselect.coax example -->
 ```jai
 #load "../../coax/lib/bitcoin/coinselect.coax";
+#load "../../coax/tests/bitcoin/coinselect_cases.coax";
 #import "Basic";
 
 // The wallet: ten coins, each with what spending it costs in virtual
@@ -1039,8 +1040,12 @@ coax/bin/coax test bitcoin/examples/checks/coinselect.coax
 
 `coinselect.coax` is an `#authority` file. Its checks live in
 [coinselect_checks.coax](../../coax/tests/bitcoin/coinselect_checks.coax),
-which it loads, so that `coax mutate` breaks only the selectors and not
-the code that checks them. They run all 344 of
+a check unit it loads with `#test`, so that `coax mutate` breaks the
+selectors and the compiled code leaves the checks out;
+[coinselect_cases.coax](../../coax/tests/bitcoin/coinselect_cases.coax)
+runs Core's cases for the checks and for the example. Each comparison is
+itself checked: a result one off in any field it compares, or one mark
+bit wrong, must disagree. They run all 344 of
 Core's selection cases: `bnb_test` and `srd_test` at all ten of their
 feerates, `bnb_exhaustion_with_solution_test`,
 `bnb_feerate_sensitivity_test`, `coin_grinder_tests`, the
@@ -1075,7 +1080,7 @@ attempts with no solution, and the MAX_MONEY starting bests.
 coax/bin/coax test coax/lib/bitcoin/coinselect.coax
 ```
 
-`coax test` runs 100 checks, including those of the files it loads, on 2026-11-14.
+`coax test` runs 104 checks, including those of the files it loads, on 2026-11-14.
 `coax mutate` (both `coinselect.coax` and `fees.coax`) leaves no
 survivors; the mutants it marks equivalent each have their reason on the
 line above.

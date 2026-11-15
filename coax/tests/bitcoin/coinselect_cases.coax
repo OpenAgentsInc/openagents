@@ -1,0 +1,75 @@
+// Running Bitcoin Core's coin-selection cases (coinselect_vectors.coax)
+// through coax/lib/bitcoin/coinselect.coax: the pool from its spec, the
+// marked values against the published ones, and one case as Core's test runs
+// it. Loaded by coinselect_checks.coax and by bitcoin/examples/coinselect.coax,
+// which prints how many pass. Test code only.
+// A pool from its spec: "value/vsize*count,..." with absolute values and
+// input sizes in virtual bytes (-1 for unknown), at feerate and long_term.
+cs_parse_int :: (s: string, at: int) -> [2] int #effects(all) {
+  neg := false; i := at;
+  if i < s.count && s[i] == '-' { neg = true; i += 1; }
+  v := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(int) (s[i] - '0'); i += 1; }
+  return [2] int.[ifx neg then -v else v, i];
+}
+cs_pool :: (spec: string, feerate: int, long_term: int, out: [] CsGroup) -> int #effects(all) {
+  n := 0; at := 0;
+  while at < spec.count {
+    v := cs_parse_int(spec, at); s := cs_parse_int(spec, v[1] + 1); c := cs_parse_int(spec, s[1] + 1);
+    for k: 0..<c[0] { out[n] = cs_coin(v[0], s[0], feerate, long_term); n += 1; }
+    at = c[1] + 1;
+  }
+  return n;
+}
+// The values of the marked groups, sorted, written "a,b,..." into out.
+cs_values_match :: (pool: [] CsGroup, marks: [] int, algo: int, want: string) -> bool #effects(all) {
+  vals: [64] int; n := 0;
+  for i: 0..<pool.count { if (marks[i] >> algo) & 1 == 1 { if n == 64 { return false; } vals[n] = pool[i].value; n += 1; } }
+  for i: 1..<n { j := i; while j > 0 && vals[j] < vals[j-1] { t := vals[j]; vals[j] = vals[j-1]; vals[j-1] = t; j -= 1; } }
+  at := 0; k := 0;
+  while at < want.count {
+    x := cs_parse_int(want, at);
+    if k >= n || vals[k] != x[0] { return false; }
+    k += 1; at = x[1] + 1;
+  }
+  return k == n;
+}
+CS_SEED :: [32] u8.[0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95,
+                    0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95];
+// One of Core's cases, run as its test runs it.
+cs_case_compute :: (c: CsCase, pool: [] CsGroup, marks: [] int, work: [] int) -> CsResult #effects(all) {
+  n := cs_pool(c.pool, c.feerate, c.long_term, pool);
+  p := pool[0..<n]; mk := marks[0..<n]; w := work[0..<5*n];
+  for i: 0..<n { mk[i] = 0; }
+  seed := CS_SEED; rng: [1] CsRng; rng[0] = cs_rng(seed[..]);
+  if c.algo == CS_BNB { return cs_bnb(p, c.target, c.extra, c.max_weight, mk, w); }
+  if c.algo == CS_CG { return cs_coin_grinder(p, c.target, c.extra, c.max_weight, mk, w); }
+  if c.algo == CS_SRD { return cs_srd(p, c.target, c.extra, c.max_weight, rng[..], mk, w); }
+  return cs_knapsack(p, c.target, c.extra, c.max_weight, rng[..], mk, w);
+}
+// Whether r is the published result: the code, and what Core checks of a
+// selection (SRD: that it covers the target, the change fee and 50,000
+// satoshis of change within the weight limit).
+cs_case_agrees :: (c: CsCase, p: [] CsGroup, mk: [] int, r: CsResult) -> bool #effects(all) {
+  if r.code != c.code { return false; }
+  if r.code != CS_OK { return true; }
+  if c.tries >= 0 && r.tries != c.tries { return false; }
+  if c.algo == CS_SRD { return r.effective >= c.target + c.extra + CS_CHANGE_LOWER && r.weight <= c.max_weight; }
+  if c.count >= 0 && r.count != c.count { return false; }
+  if c.total >= 0 && r.value != c.total { return false; }
+  return c.want.count == 0 || cs_values_match(p, mk, c.algo, c.want);
+}
+cs_case_passes :: (c: CsCase, pool: [] CsGroup, marks: [] int, work: [] int) -> bool #effects(all) {
+  r := cs_case_compute(c, pool, marks, work);
+  n := cs_pool_count(c.pool);
+  return cs_case_agrees(c, pool[0..<n], marks[0..<n], r);
+}
+// The coins in a pool spec.
+cs_pool_count :: (spec: string) -> int #effects(all) {
+  n := 0; at := 0;
+  while at < spec.count {
+    v := cs_parse_int(spec, at); s := cs_parse_int(spec, v[1] + 1); c := cs_parse_int(spec, s[1] + 1);
+    n += c[0]; at = c[1] + 1;
+  }
+  return n;
+}

@@ -23,7 +23,7 @@
 #load "../crypto/chacha20.coax";
 #load "../../tests/bitcoin/coinselect_vectors.coax";
 #load "../../tests/bitcoin/coinselect_random.coax";
-#load "../../tests/bitcoin/coinselect_checks.coax";
+#load "../../tests/bitcoin/coinselect_checks.coax" #test;
 #authority;
 
 // book:begin params

@@ -1,5 +1,6 @@
 // book:begin example
 #load "../../coax/lib/bitcoin/coinselect.coax";
+#load "../../coax/tests/bitcoin/coinselect_cases.coax";
 #import "Basic";
 
 // The wallet: ten coins, each with what spending it costs in virtual
