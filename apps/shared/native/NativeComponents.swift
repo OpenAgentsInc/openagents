@@ -37,7 +37,7 @@ import UIKit
     }
     private func showOptions(from anchor:UIView) {
         var items:[NativeMenu.Item]=[]
-        for (index,name) in ["All","Motion","Controls","HUD","ARWES"].enumerated() {items.append(.init(id:"components.section.\(index)",title:name) { [weak self] in guard let owner=self?.owner else{return};cg_section(owner,Int32(index)) })}
+        for (index,name) in ["All","Motion","Controls","HUD","ARWES","Reference"].enumerated() {items.append(.init(id:"components.section.\(index)",title:name) { [weak self] in guard let owner=self?.owner else{return};cg_section(owner,Int32(index)) })}
         for (index,name) in [(0,"Replay"),(1,"Pause / play"),(2,"Reduce motion"),(3,"Toggle specimen"),(4,"Zeron"),(5,"Everglade"),(6,"Verse")] {items.append(.init(id:"components.motion.\(index)",title:name) { [weak self] in guard let owner=self?.owner else{return};cg_motion(owner,Int32(index)) })}
         NativeMenu.show(from:anchor,items:items)
     }

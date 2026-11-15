@@ -148,7 +148,7 @@ void *cg_view(void *owner) {return owner ? ui_view(((App *)owner)->host) : NULL;
 void cg_monochrome(void *owner,int enabled) {if (owner) coaxial_components_monochrome(state_of(owner),enabled!=0);}
 void cg_frame(void *owner) {if (owner) ui_frame(((App *)owner)->host);}
 void cg_close(void *owner) {if (owner) {gallery_free(owner);free(owner);}}
-void cg_section(void *owner,int section) {if (owner && section>=0 && section<=4) {App *a=owner;coaxial_components_section(state_of(a),section);}}
+void cg_section(void *owner,int section) {if (owner && section>=0 && section<=5) {App *a=owner;coaxial_components_section(state_of(a),section);}}
 void cg_motion(void *owner,int action) {if (owner) {App *a=owner;coaxial_components_motion(state_of(a),action);}}
 void cg_scroll(void *owner,float dy) {if (owner) on_wheel(owner,dy);}
 #else

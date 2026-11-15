@@ -76,6 +76,14 @@ are requirements and source findings, not claims of implemented components.
   carriers share the atlas and native entry in `gallery/linux/main.c`; the iOS
   app compiles its embedded profile rather than copying it.
 
+The **Reference** gallery section is an early visual study of four atoms from
+the Claude iOS captures: two button styles, a switch and a progress bar. It
+uses the shared control kit and a separate reference skin; it is not a product
+skin or a pixel-parity qualification. Its colors are approximate and its text
+still uses the gallery atlas. Select it from Gallery options on iPhone or from
+the gallery navigation on the web. The reference section retains its color
+even when the rest of the phone gallery is monochrome.
+
 The motion lab has replay, pause, reduced motion, three visual skins and tap
 reversal. It adds reusable corner frames, activity/progress arcs, spring
 switches and drawer/reply surfaces. The existing four-skin controls/Markdown,

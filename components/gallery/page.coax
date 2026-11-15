@@ -23,6 +23,7 @@
 #load "hud-cards.coax";           // the game HUD set's cards, under the skins'
 #load "arwes.coax";
 #load "motion.coax";
+#load "../skin/claude-reference.coax";
 
 GL_MAX_VERTICES :: 200000;
 GL_UNDER :: 4096; GL_OVER :: 12288; GL_LINES :: 1024; GL_HITS :: 256; GL_POOL :: 4096;
@@ -225,9 +226,20 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
   nl := text_wrap(m, uiskin_faces(z), lead, no_runs[0..<0], w - 2 * gutter, lines[..]);
   for k: 0..<nl { lw := sheet_text(sh[..], m, -1, gutter, y, z.body.line, z.body.face, z.muted, cast(string) lead[lines[k].from..<lines[k].to]); y += z.body.line; }
   y += GL_GAP;
-  sections:=[5]string.["All","Motion","Controls","HUD","ARWES"];
+  sections:=[6]string.["All","Motion","Controls","HUD","ARWES","Reference"];
   y+=gl_buttons(sh[..],m,z,gutter,y,w-2*gutter,sections[..],g[0].section,GL_HIT_SECTION,0)+8;
   if g[0].section==0 || g[0].section==1 {y+=gl_motion_layout(g[0].motion[..],sh[..],m,gutter,y,w-2*gutter);}
+  if g[0].section==5 {
+    ref:=claude_reference_skin(); x:=gutter; y+=8;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Reference atoms");y+=32;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.muted,"Buttons, switch and progress");y+=38;
+    primary:=ref;primary.accent=ref.ink;primary.on_accent=ref.canvas;
+    _:=button(sh[..],m,primary,x,y,"New session",UISKIN_PRIMARY,GL_HIT_BUTTON,0);y+=60;
+    _:=button(sh[..],m,ref,x,y,"Add device",UISKIN_REST,GL_HIT_BUTTON,0);y+=68;
+    switch_skin:=ref;switch_skin.control_h=52;switch_skin.muted=ref.ink;
+    _:=toggle(sh[..],m,switch_skin,x,y,"Notifications",g[0].cards[0].toggles[0],GL_HIT_TOGGLE,0);y+=64;
+    _:=bar(sh[..],ref,x,y,w-2*gutter,0.36,ref.accent);y+=48;
+  }
   // the cards, row by row; a row is as tall as its tallest card
   id := 0;
   while id < UISKINS && (g[0].section==0 || g[0].section==2) {
@@ -300,7 +312,7 @@ gl_frame :: (g: [] GalleryState, out: [] f32, uniforms: [] f32, width: f32, heig
     ty := (h - th) * g[0].scroll / gl_max_scroll(g);
     v = paint_quad(out, v, d, w - 7, ty + 2, 4, th - 4, 2, 0, z.hover, z.hover);
   }
-  if g[0].monochrome {gpu_monochrome(out,v);}
+  if g[0].monochrome && g[0].section!=5 {gpu_monochrome(out,v);}
   return v;
 }
 
@@ -422,6 +434,17 @@ coaxial_components_cell_ready :: (g: [] GalleryState, cell: int) #export_c #effe
     for i:0..<g[0].no {p:=g[0].over[i];if p.text=="04 / Drawer" {drawer_y=p.y;}if p.text=="05 / Reply" {reply_y=p.y;}}
     #assert drawer_y>0 && (reply_y>=drawer_y+172 || width>=700);
   }
+}
+
+#test "reference atoms appear in gallery and toggle through shared hits" #steps 400000000 {
+ g:[1]GalleryState;o:[1]GlOut;u:[4]f32;gl_test_atlas(g[0].atlas[..]);
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);g[0].section=5;
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);
+ found:=false;for i:0..<g[0].no {if g[0].over[i].text=="Reference atoms" {found=true;}}
+ #assert found;
+ h:=gl_test_hit(g[..],GL_HIT_TOGGLE,0,0);#assert h.w>0;
+ before:=g[0].cards[0].toggles[0];_:=gl_pointer(g[..],h.x+2,h.y+2,0);
+ #assert g[0].cards[0].toggles[0]!=before;
 }
 
 // A fixed atlas: every glyph 8 wide, the monospace faces 7.
@@ -660,7 +683,7 @@ gl_touch :: (g:[]GalleryState,x:f32,y:f32,phase:int)->bool {
  _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);#assert g[0].nh==16 && g[0].content_h<1400;
 }
 
-coaxial_components_section :: (g:[]GalleryState,section:int) #export_c #effects(all) {if g.count>0 && section>=0 && section<=4 {g[0].section=section;g[0].scroll=0;}}
+coaxial_components_section :: (g:[]GalleryState,section:int) #export_c #effects(all) {if g.count>0 && section>=0 && section<=5 {g[0].section=section;g[0].scroll=0;}}
 coaxial_components_motion :: (g:[]GalleryState,action:int) #export_c #effects(all) {if g.count>0 {gl_motion_press(g[0].motion[..],action);}}
 
 coaxial_components_monochrome :: (g:[]GalleryState,enabled:bool) #export_c #effects(all) {if g.count>0 {g[0].monochrome=enabled;}}
