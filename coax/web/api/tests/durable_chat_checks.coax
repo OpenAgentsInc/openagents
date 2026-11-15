@@ -16,7 +16,7 @@ dc_cli_followed :: (raw:string,turn:string)->bool {
  for at:0..<raw.count+1 {if at==raw.count || raw[at]=='\n' {if at>start {line:=raw[start..<at];if first {if !ctr_turn_read(line,v[..],i[..],arena[..]) {return false;}first=false;}else if !ctr_page_apply(line,v[..],p[..]) {return false;}}start=at+1;}}
  return !first && cast(string)v[0].turn[..]==turn && v[0].state==CT_COMPLETED && ct_view_text(v[..])=="Hello world";
 }
-dc_cli_checks :: (t:[]Ap) {
+dc_cli_checks :: (t:[]Ap,stranger:string) {
  c:[1]Sc;c[0].cli=ap_env(t,"CLI");dir:[1024]u8;c[0].dir=fs_temp("durable-cli",dir[..]);path:[1100]u8;key:=fs_join(c[0].dir,"key",path[..]);pub:[128]u8;pk:=ac_newkey(t,key,pub[..]);if !sc_key(c[..],key) || pk.count!=64 {ap_check(t,"durable CLI key is created privately",false,"");return;}
  q:[1]Sb;sb(q[..],"SELECT acct FROM auth.account_for_key('");sb(q[..],pk);sb(q[..],"','Durable CLI fixture')");owner:[80]u8;account:=ap_sql(t,sb_text(q[..]),owner[..]);sb_clear(q[..]);sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
  ib:[1100]u8;instructions:=sc_file(c[..],"instructions","Answer in violet prose.",ib[..]);create:=[5]string.["projects","create","Durable CLI Project","--instructions",instructions];st:=sc_cli(t,c[..],create[..]);pid:[40]u8;project:=ap_member(sc_text(c[..]),"data.id",pid[..]);ap_check(t,"the built CLI creates a private Project for durable chats",st==0 && project.count==36,sc_text(c[..]));if st!=0 || project.count!=36 {return;}
@@ -28,6 +28,14 @@ dc_cli_checks :: (t:[]Ap) {
  send:=[13]string.["chat","send",cid,"--rev","1","--project",project,"--project-rev","1","--file",message,"--operation-id","cli-durable-next"];st=sc_cli(t,c[..],send[..]);ok=st==0 && ctr_control_read(sc_text(c[..]),control[..],arena[..]);ap_check(t,"the CLI continues an existing durable Project conversation",ok && control[0].revision==2,sc_text(c[..]));if ok {_=js_copy(turn[..],control[0].turn);dc_wake(t);follow[2]=cast(string)turn[..];st=sc_cli(t,c[..],follow[..]);ap_check(t,"the continued CLI turn completes once",st==0 && ap_has(sc_text(c[..]),"completed"),sc_text(c[..]));}
  list:=[4]string.["chat","list","--project",project];st=sc_cli(t,c[..],list[..]);ap_check(t,"CLI durable history filters by its private Project",st==0 && ap_has(sc_text(c[..]),cid),sc_text(c[..]));
  sb_clear(q[..]);sb(q[..],"SELECT count(*) FROM chat.turns_v2 WHERE conversation='");sb(q[..],cid);sb(q[..],"' AND snapshot_json::jsonb#>>'{data,instructions_sha256}'=encode(sha256(convert_to('Answer in violet prose.','UTF8')),'hex') AND input_json LIKE '%Answer in violet prose.%'");count:[80]u8;ap_check(t,"both real CLI calls pin the actual Project instructions",ap_sql(t,sb_text(q[..]),count[..])=="2","");
+ inspect:=[3]string.["chat","context",tid];st=sc_cli(t,c[..],inspect[..]);saved:[4096]u8;sn:=js_copy(saved[..],sc_text(c[..]));ap_check(t,"CLI reads the immutable admitted Project context",st==0 && sn>0 && ap_member_int(sc_text(c[..]),"data.project_revision",-1)==1 && ap_has(sc_text(c[..]),cid),sc_text(c[..]));
+ inspect[1]="input";st=sc_cli(t,c[..],inspect[..]);input:[4096]u8;in_n:=js_copy(input[..],sc_text(c[..]));ap_check(t,"CLI reads the exact admitted gateway input",st==0 && in_n>0 && ap_has(sc_text(c[..]),"Answer in violet prose.") && ap_has(sc_text(c[..]),"A durable Project question"),sc_text(c[..]));
+ ap_check(t,"another account cannot inspect private admitted context",dc_get(t,stranger,"/api/chat/context/v2alpha1",tid,0)==404,ap_body(t));
+ ap_check(t,"another account cannot inspect private model input",dc_get(t,stranger,"/api/chat/input/v2alpha1",tid,0)==404,ap_body(t));
+ proj:=[3]string.["projects","show",project];st=sc_cli(t,c[..],proj[..]);ap_check(t,"Project chat count includes one rich conversation and ignores its extra turn",st==0 && ap_member_int(sc_text(c[..]),"data.counts.conversations",-1)==1 && ap_member_int(sc_text(c[..]),"data.revision",-1)==1,sc_text(c[..]));
+ updatedb:[1100]u8;updated:=sc_file(c[..],"new-instructions","Answer in green prose.",updatedb[..]);edit:=[7]string.["projects","instructions",project,"--rev","1","--file",updated];st=sc_cli(t,c[..],edit[..]);ap_check(t,"Project instructions can change after admission",st==0,sc_text(c[..]));
+ inspect[1]="context";st=sc_cli(t,c[..],inspect[..]);ap_check(t,"changing Project instructions preserves the historical context bytes",st==0 && sc_text(c[..])==cast(string)saved[0..<ifx sn>0 then sn else 0],sc_text(c[..]));
+ inspect[1]="input";st=sc_cli(t,c[..],inspect[..]);ap_check(t,"changing Project instructions preserves the historical model input bytes",st==0 && sc_text(c[..])==cast(string)input[0..<ifx in_n>0 then in_n else 0] && !ap_has(sc_text(c[..]),"Answer in green prose."),sc_text(c[..]));
  _=fs_remove(c[0].dir);
 }
 dc_worker :: (t:[]Ap)->int {
@@ -51,7 +59,76 @@ dc_run_again :: (t:[]Ap,turn:string)->int {
  sb_clear(q[..]);sb(q[..],t[0].api);sb(q[..],"/api/chat/runner/v2alpha1?replay=1");signature:[4096]u8;keyfile:=ap_env(t,"RUN_KEY_FILE");auth:=ap_nostr(t,keyfile,"POST",sb_text(q[..]),cast(string)body[0..<n],true,signature[..]);head:[1]Sb;sb(head[..],"Authorization: Nostr ");sb(head[..],auth);
  return ac_call(t,"POST",sb_text(q[..]),cast(string)body[0..<n],sb_text(head[..]),"","");
 }
-dc_stream_checks :: (t:[]Ap,auth:string,account:string,conversation:string,turn:string) {
+// Actual separately owned API processes let the fixture kill the transport
+// owner, not merely the phone or the resident worker waiting on that owner.
+dc_api :: (t:[]Ap,port:int)->int {
+ h:=proc_new();p:[1]Sb;sb(p[..],"127.0.0.1:");sb_int(p[..],port);e:[1]Sb;sb(e[..],"OA_API_ORIGIN=");sb(e[..],t[0].api);
+ ok:=h>=0 && proc_arg(h,ap_env(t,"API_BIN")) && proc_arg(h,"--listen") && proc_arg(h,sb_text(p[..])) && proc_env(h,sb_text(e[..])) && proc_quiet(h);
+ if !ok || proc_start(h)!=0 {if h>=0 {_=proc_release(h);}return -1;}
+ deadline:=proc_now_ms()+15000;while proc_now_ms()<deadline && proc_wait(h,0)==PROC_RUNNING {if ac_call(t,"GET","/api/playtest/health","","","","")==200 {return h;}_=proc_wait(h,25);}
+ _=proc_release(h);return -1;
+}
+dc_signed :: (t:[]Ap,kind:int,op:string,worker:string,turn:string,fence:string,tag:string)->int {
+ body:[4096]u8;n:=cwr_write(kind,op,worker,turn,fence,body[..]);if n<1 {return -1;}
+ url:[1]Sb;sb(url[..],t[0].api);sb(url[..],"/api/chat/runner/v2alpha1?attempt=");sb(url[..],tag);signature:[4096]u8;
+ signed:=ap_nostr(t,ap_env(t,"RUN_KEY_FILE"),"POST",sb_text(url[..]),cast(string)body[0..<n],true,signature[..]);head:[1]Sb;sb(head[..],"Authorization: Nostr ");sb(head[..],signed);
+ return ac_call(t,"POST",sb_text(url[..]),cast(string)body[0..<n],sb_text(head[..]),"","");
+}
+dc_recovery_checks :: (parent:[]Ap,auth:string) {
+ // The secondary harness owns its URL for its entire process lifetime; never
+ // retain a callee-local URL in the caller's primary harness.
+ secondary:[1]Ap;if !ap_open(secondary[..]) {ap_check(parent,"the process recovery harness loads its environment",false,"");return;}t:=secondary[..];
+ port:=ap_whole(ap_env(t,"WAKE_PORT"))+2;url:[1]Sb;sb(url[..],"http://127.0.0.1:");sb_int(url[..],port);t[0].api=sb_text(url[..]);api:=dc_api(t,port);
+ ap_check(t,"a separate real API starts on the same durable database",api>=0,"");if api<0 {parent[0].checks+=t[0].checks;parent[0].failed+=t[0].failed;return;}
+ st:=dc_post(t,auth,"expired-claim","",0,"",-1,"Do not dispatch this expired claim");c:[1]CtControl;a:[72]u8;ok:=st==202 && ctr_control_read(ap_body(t),c[..],a[..]);turn:[36]u8;if ok {_=js_copy(turn[..],c[0].turn);}ap_check(t,"claim recovery starts with an actually admitted queued turn",ok,ap_body(t));
+ if ok {
+  tid:=cast(string)turn[..];j:[1]CtJob;ja:[108]u8;fence:[36]u8;st=dc_signed(t,1,"claim-old","worker-old","","","claim-first");ok=st==200 && cwr_job_read(ap_body(t),j[..],ja[..]) && j[0].has_work && j[0].turn==tid;if ok {_=js_copy(fence[..],j[0].dispatch);}ap_check(t,"a signed worker receives a durable claim receipt",ok,ap_body(t));
+  if ok {
+   q:[1]Sb;sb(q[..],"UPDATE chat.turns_v2 SET claim_until_ms=(extract(epoch FROM clock_timestamp())*1000)::bigint-1 WHERE id='");sb(q[..],tid);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+   st=dc_signed(t,2,"expired-run","worker-old",tid,cast(string)fence[..],"claim-expired");ap_check(t,"an expired claim cannot start an upstream request",st==409,ap_body(t));
+   st=dc_signed(t,1,"claim-new","worker-new","","","claim-replacement");ap_check(t,"expired queued work receives a new fenced claim",st==200 && cwr_job_read(ap_body(t),j[..],ja[..]) && j[0].turn==tid && j[0].dispatch!=cast(string)fence[..],ap_body(t));
+   st=dc_signed(t,1,"claim-old","worker-old","","","claim-replay");ap_check(t,"a replaced claim replays its original receipt and fence",st==200 && cwr_job_read(ap_body(t),j[..],ja[..]) && j[0].turn==tid && j[0].dispatch==cast(string)fence[..],ap_body(t));
+   st=dc_signed(t,1,"claim-old","worker-new","","","claim-wrong-worker");ap_check(t,"claim replay cannot change its owning worker",st==409,ap_body(t));
+   st=dc_signed(t,2,"stale-run","worker-old",tid,cast(string)fence[..],"claim-stale-run");ap_check(t,"a replaced fence cannot dispatch its old attempt",st==409,ap_body(t));
+  }
+  _=dc_stop(t,auth,"expired-cancel",tid);
+ }
+ st=dc_post(t,auth,"restart-live","",0,"",-1,"Recover this interrupted answer");ok=st==202 && ctr_control_read(ap_body(t),c[..],a[..]);conv:[36]u8;if ok {_=js_copy(turn[..],c[0].turn);_=js_copy(conv[..],c[0].conversation);}ap_check(t,"process recovery admits one new saved operation",ok,ap_body(t));
+ worker:= -1;cursor:= -1;
+ if ok {worker=dc_worker(t);ok=worker>=0 && dc_await(t,auth,cast(string)turn[..],worker,true);ap_check(t,"the separate API persists a real partial model answer",ok,ap_body(t));if ok {_=dc_get(t,auth,"/api/chat/events/v2alpha1",cast(string)turn[..],0);cursor=ap_member_int(ap_body(t),"next_cursor",-1);}}
+ // SIGKILL includes the API's inference children. No graceful completion can
+ // turn this into a test of an uninterrupted provider request.
+ _=proc_kill(api,PROC_SIGKILL);_=proc_wait(api,5000);_=proc_release(api);
+ if worker>=0 {_=proc_kill(worker,PROC_SIGKILL);_=proc_wait(worker,5000);_=proc_release(worker);worker= -1;}
+ api=dc_api(t,port);ap_check(t,"the API restarts against its existing saved state",api>=0,"");
+ if ok && api>=0 {
+  st=dc_get(t,auth,"/api/chat/turn/v2alpha1",cast(string)turn[..],0);ap_check(t,"API process loss retains the exact partial answer and cursor",st==200 && ap_has(ap_body(t),"\"state\":\"running\"") && ap_has(ap_body(t),"\"text\":\"Hello\"") && ap_member_int(ap_body(t),"event_cursor",-1)==cursor,ap_body(t));
+  q:[1]Sb;sb(q[..],"UPDATE chat.turns_v2 SET heartbeat_ms=(extract(epoch FROM clock_timestamp())*1000)::bigint-450001 WHERE id='");sb(q[..],cast(string)turn[..]);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+  worker=dc_worker(t);deadline:=proc_now_ms()+12000;unknown:=false;while worker>=0 && !unknown && proc_now_ms()<deadline && proc_wait(worker,0)==PROC_RUNNING {_=dc_get(t,auth,"/api/chat/turn/v2alpha1",cast(string)turn[..],0);unknown=ap_has(ap_body(t),"\"state\":\"unknown\"");if !unknown {_=proc_wait(worker,50);}}
+  ap_check(t,"runner startup recovers a lost dispatched attempt as unknown with its partial text",unknown && ap_has(ap_body(t),"\"text\":\"Hello\"") && !ap_has(ap_body(t),"Hello world"),ap_body(t));
+  st=dc_get(t,auth,"/api/chat/events/v2alpha1",cast(string)turn[..],cursor);ap_check(t,"cursor resume after both processes restart appends only the unknown outcome",st==200 && ap_has(ap_body(t),"\"type\":\"unknown\"") && !ap_has(ap_body(t),"\"text\":\"Hello\"") && ap_member_int(ap_body(t),"next_cursor",-1)==cursor+1,ap_body(t));
+  st=dc_post(t,auth,"restart-live","",0,"",-1,"Recover this interrupted answer");ap_check(t,"a lost submit response reconciles the original unknown turn without redispatch",st==202 && ctr_control_read(ap_body(t),c[..],a[..]) && c[0].turn==cast(string)turn[..] && c[0].conversation==cast(string)conv[..] && c[0].state==CT_UNKNOWN,ap_body(t));
+  st=dc_run_again(t,cast(string)turn[..]);ap_check(t,"an explicit replay of the interrupted dispatch returns its saved unknown result",st==200 && ap_has(ap_body(t),"unknown"),ap_body(t));
+ }
+ if worker>=0 {_=proc_kill(worker,PROC_SIGTERM);_=proc_wait(worker,5000);_=proc_release(worker);}if api>=0 {_=proc_kill(api,PROC_SIGTERM);_=proc_wait(api,5000);_=proc_release(api);}parent[0].checks+=t[0].checks;parent[0].failed+=t[0].failed;parent[0].sql_bad+=t[0].sql_bad;
+}
+dc_legacy_checks :: (t:[]Ap,auth:string,stranger:string) {
+ b:[131072]u8;n:=pr_mutation("legacy-project",-1,"{\"name\":\"Legacy continuation\",\"instructions\":\"Keep the original context.\"}",b[..]);st:=ac_call(t,"POST","/api/projects/v1",cast(string)b[0..<n],auth,"","");p:[1]PrProject;ok:=st==201 && pr_project_read(ap_body(t),p[..]);ap_check(t,"legacy continuation uses a real private Project",ok,ap_body(t));if !ok {return;}project:=cast(string)p[0].id[0..<p[0].ni];
+ old:[1]AccountThread;old[0].n=2;old[0].messages[0].n=js_copy(old[0].messages[0].text[..],"Original legacy question");old[0].messages[1].assistant=true;old[0].messages[1].n=js_copy(old[0].messages[1].text[..],"Original legacy answer");n=act_write(old[..],b[..]);st=ac_call(t,"POST","/api/chat/thread/v1",cast(string)b[0..<n],auth,"","");ok=st==200 && act_read(ap_body(t),old[..]);ap_check(t,"the frozen v1 transcript remains writable through its existing codec",ok,ap_body(t));if !ok {return;}legacy:=cast(string)old[0].id[0..<old[0].id_n];
+ value:[256]u8;path:[256]u8;n=pr_mutation("legacy-link",1,pr_chat_value(legacy,0,value[..]),b[..]);st=ac_call(t,"POST",pr_route(project,"chats",path[..]),cast(string)b[0..<n],auth,"","");ap_check(t,"the existing Project link retains its v1 identity",st==200,ap_body(t));
+ text:=[1]string.["Continue with rich streaming"];n=ct_submit_write("legacy-copy","",0,project,2,legacy,old[0].revision,text[..],b[..]);
+ ap_check(t,"a different account cannot copy a private legacy Project chat",ac_call(t,"POST","/api/chat/submit/v2alpha1",cast(string)b[0..<n],stranger,"","")==404,ap_body(t));
+ stale:[131072]u8;ns:=ct_submit_write("legacy-stale","",0,project,2,legacy,old[0].revision+1,text[..],stale[..]);ap_check(t,"legacy continuation refuses a changed source revision",ac_call(t,"POST","/api/chat/submit/v2alpha1",cast(string)stale[0..<ns],auth,"","")==409,ap_body(t));
+ ns=ct_submit_write("legacy-unlinked","",0,"",-1,legacy,old[0].revision,text[..],stale[..]);ap_check(t,"legacy continuation cannot drop the original private Project association",ac_call(t,"POST","/api/chat/submit/v2alpha1",cast(string)stale[0..<ns],auth,"","")==409,ap_body(t));
+ st=ac_call(t,"POST","/api/chat/submit/v2alpha1",cast(string)b[0..<n],auth,"","");c:[1]CtControl;a:[72]u8;ok=st==202 && ctr_control_read(ap_body(t),c[..],a[..]);ap_check(t,"authorized legacy continuation creates a new rich conversation",ok,ap_body(t));if !ok {return;}cid:[36]u8;tid:[36]u8;_=js_copy(cid[..],c[0].conversation);_=js_copy(tid[..],c[0].turn);_=dc_stop(t,auth,"legacy-no-inference",cast(string)tid[..]);
+ st=dc_get(t,auth,"/api/chat/conversation/v2alpha1",cast(string)cid[..],0);history:[1]CtHistory;ap_check(t,"rich history preserves exact legacy roles text and source provenance",st==200 && ctr_history_read(ap_body(t),history[..]) && history[0].n==3 && ap_has(ap_body(t),"Original legacy question") && ap_has(ap_body(t),"Original legacy answer") && ap_has(ap_body(t),"Continue with rich streaming") && ap_has(ap_body(t),legacy) && ap_has(ap_body(t),".legacy.0"),ap_body(t));
+ st=dc_get(t,auth,"/api/chat/input/v2alpha1",cast(string)tid[..],0);ap_check(t,"admitted input contains the complete copied history and Project instructions",st==200 && ap_has(ap_body(t),"Original legacy question") && ap_has(ap_body(t),"Original legacy answer") && ap_has(ap_body(t),"Keep the original context."),ap_body(t));
+ old[0].n=3;old[0].messages[2].n=js_copy(old[0].messages[2].text[..],"LATER_LEGACY_EDIT");n=act_write(old[..],b[..]);st=ac_call(t,"POST","/api/chat/thread/v1",cast(string)b[0..<n],auth,"","");ap_check(t,"the original legacy chat remains independently editable",st==200,ap_body(t));
+ st=dc_get(t,auth,"/api/chat/conversation/v2alpha1",cast(string)cid[..],0);ap_check(t,"later legacy edits cannot rewrite the admitted rich copy",st==200 && !ap_has(ap_body(t),"LATER_LEGACY_EDIT") && ap_has(ap_body(t),"Original legacy answer"),ap_body(t));
+ st=ac_call(t,"GET",pr_route(project,"",path[..]),"",auth,"","");ap_check(t,"Project count includes its original legacy link and deliberate rich copy",st==200 && ap_member_int(ap_body(t),"data.counts.conversations",-1)==2 && ap_member_int(ap_body(t),"data.revision",-1)==2,ap_body(t));
+ q:[1]Sb;sb(q[..],"/api/chat/thread/v1?id=");sb(q[..],legacy);st=ac_call(t,"GET",sb_text(q[..]),"",auth,"","");ap_check(t,"the frozen v1 source remains readable with its latest edits",st==200 && ap_has(ap_body(t),"LATER_LEGACY_EDIT"),ap_body(t));
+}
+dc_stream_checks :: (t:[]Ap,auth:string,stranger:string,account:string,conversation:string,turn:string) {
  worker:=dc_worker(t);ap_check(t,"the actual resident runner starts",worker>=0,"");if worker<0 {return;}
  // This turn was queued before the worker existed: startup reconciliation must
  // recover a missed wake without a phone-owned request or another submit.
@@ -71,15 +148,17 @@ dc_stream_checks :: (t:[]Ap,auth:string,account:string,conversation:string,turn:
  q:[1]Sb;counts:[128]u8;sb(q[..],"SELECT count(*) FROM inference.calls WHERE pubkey=encode(sha256(convert_to('openagents.account-chat.v1:");sb(q[..],account);sb(q[..],"','UTF8')),'hex')");
  ap_check(t,"run replay and cancellation meter each actual model attempt once",ap_sql(t,sb_text(q[..]),counts[..])=="2","");
  sb_clear(q[..]);sb(q[..],"SELECT count(*) FROM chat.turns_v2 WHERE conversation='");sb(q[..],conversation);sb(q[..],"' AND dispatched_ms IS NOT NULL");ap_check(t,"queued cancellation and run replay dispatch exactly two saved attempts",ap_sql(t,sb_text(q[..]),counts[..])=="2","");
- dc_cli_checks(t);
+ dc_cli_checks(t,stranger);
  _=proc_kill(worker,PROC_SIGTERM);_=proc_wait(worker,5000);_=proc_release(worker);
+ dc_recovery_checks(t,auth);
+ dc_legacy_checks(t,auth,stranger);
 }
 dc_checks :: (t:[]Ap,mail:string) {
  authb:[512]u8;otherb:[512]u8;accountb:[80]u8;otheraccount:[80]u8;arena:[72]u8;control:[1]CtControl;
  ok:=ac_person_login(t,mail,"durablechat@example.com","203.0.113.131",authb[..],accountb[..]) && ac_person_login(t,mail,"durablestranger@example.com","203.0.113.132",otherb[..],otheraccount[..]);ap_check(t,"durable chat uses verified independent account logins",ok,"");if !ok {return;}auth:=dc_z(authb[..]);stranger:=dc_z(otherb[..]);account:=dc_z(accountb[..]);
  ap_check(t,"durable conversation index requires an account",dc_get(t,"","/api/chat/conversations/v2alpha1","",0)==401,ap_body(t));
  ap_check(t,"durable submission retains the existing funded beta gate",dc_post(t,auth,"unfunded","",0,"",-1,"Hello")==403,ap_body(t));
- q:[1]Sb;sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+ q:[1]Sb;sb(q[..],"UPDATE auth.accounts SET team=true WHERE id IN ('");sb(q[..],account);sb(q[..],"','");sb(q[..],dc_z(otheraccount[..]));sb(q[..],"')");ap_do(t,sb_text(q[..]));
  st:=dc_post(t,auth,"first","",0,"",-1,"First café");ok=st==202 && ctr_control_read(ap_body(t),control[..],arena[..]);ap_check(t,"submission saves one queued durable turn before responding",ok && control[0].state==CT_QUEUED && control[0].cursor==0 && control[0].revision==1,ap_body(t));if !ok {return;}
  cid:[36]u8;tid:[36]u8;_=js_copy(cid[..],control[0].conversation);_=js_copy(tid[..],control[0].turn);conversation:=cast(string)cid[..];turn:=cast(string)tid[..];
  st=dc_post(t,auth,"first","",0,"",-1,"First café");ap_check(t,"exact operation replay returns its existing turn",st==202 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].turn==turn && control[0].conversation==conversation,ap_body(t));
@@ -88,6 +167,9 @@ dc_checks :: (t:[]Ap,mail:string) {
  ap_check(t,"a stale conversation revision cannot append",dc_post(t,auth,"stale",conversation,2,"",-1,"Stale")==409,ap_body(t));
  st=dc_get(t,auth,"/api/chat/turn/v2alpha1",turn,0);ap_check(t,"the saved turn exposes its actual selection and nullable usage",st==200 && ap_has(ap_body(t),ACT_MODEL) && ap_has(ap_body(t),"\"input_tokens\":null") && ap_has(ap_body(t),"\"state\":\"queued\""),ap_body(t));
  ap_check(t,"another account cannot read a private turn",dc_get(t,stranger,"/api/chat/turn/v2alpha1",turn,0)==404,ap_body(t));
+ ap_check(t,"input inspection requires account authentication",dc_get(t,"","/api/chat/input/v2alpha1",turn,0)==401,ap_body(t));
+ ap_check(t,"ordinary turns have no invented Project context",dc_get(t,auth,"/api/chat/context/v2alpha1",turn,0)==404,ap_body(t));
+ st=dc_get(t,auth,"/api/chat/input/v2alpha1",turn,0);ap_check(t,"admitted input inspection returns exact text privately",st==200 && ap_has(ap_body(t),"First café") && ap_has(ac_head(t),"private, no-store"),ap_body(t));
  ap_check(t,"another account cannot replay private events",dc_get(t,stranger,"/api/chat/events/v2alpha1",turn,0)==404,ap_body(t));
  ap_check(t,"another account cannot cancel a private turn",dc_stop(t,stranger,"steal",turn)==404,ap_body(t));
  st=dc_get(t,stranger,"/api/chat/conversations/v2alpha1","",0);ap_check(t,"another account's history excludes this conversation",st==200 && !ap_has(ap_body(t),conversation),ap_body(t));
@@ -97,10 +179,10 @@ dc_checks :: (t:[]Ap,mail:string) {
  st=dc_get(t,auth,"/api/chat/events/v2alpha1",turn,0);ap_check(t,"event replay returns the durable cancellation at its exact cursor",st==200 && ap_has(ap_body(t),"\"type\":\"cancelled\"") && ap_has(ap_body(t),"\"next_cursor\":1"),ap_body(t));
  st=dc_get(t,auth,"/api/chat/events/v2alpha1",turn,1);ap_check(t,"resuming after the cursor emits no duplicate event",st==200 && ap_has(ap_body(t),"\"events\":[]") && ap_has(ap_body(t),"\"has_more\":false"),ap_body(t));
  st=dc_post(t,auth,"next",conversation,1,"",-1,"Next question");ap_check(t,"a new operation continues the same conversation after cancellation",st==202 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].conversation==conversation && control[0].revision==2 && control[0].turn!=turn,ap_body(t));
- if st==202 {next:[36]u8;_=js_copy(next[..],control[0].turn);dc_stream_checks(t,auth,account,conversation,cast(string)next[..]);}
+ if st==202 {next:[36]u8;_=js_copy(next[..],control[0].turn);dc_stream_checks(t,auth,stranger,account,conversation,cast(string)next[..]);}
 }
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}if args_count(a[..])==3 && args_at(a[..],0)=="mail" {return am_main(ap_whole(args_at(a[..],1)),args_at(a[..],2));}
  if args_count(a[..])==3 && args_at(a[..],0)=="infer" {return am_response_parts(ap_whole(args_at(a[..],1)),args_at(a[..],2),"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n","data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":2,\"prompt_tokens_details\":{\"cached_tokens\":0}}}\n\ndata: [DONE]\n\n",2000);}
- t:[1]Ap;if !ap_open(t[..]) {return 2;}b:[4096]u8;ib:[4096]u8;mail:=fs_temp("durable-chat-mail",b[..]);infer:=fs_temp("durable-chat-infer",ib[..]);h:=ac_mail_start(t[..],"coax/web/api/tests/durable_chat_checks.coax",mail);provider:=ac_server_start(t[..],"coax/web/api/tests/durable_chat_checks.coax",infer,"infer","INFER_PORT");if h>=0 && provider>=0 {dc_checks(t[..],mail);path:[4200]u8;data:[65536]u8;n:=fs_read(fs_join(infer,"all",path[..]),data[..]);calls:=0;if n>0 {for c:data[0..<n] {if c=='\n' {calls+=1;}}}ap_check(t[..],"HTTP and CLI turns make exactly four upstream requests across retries",calls==4,"");}if h>=0 {ac_mail_stop(h,mail);}if provider>=0 {ac_mail_stop(provider,infer);}return ap_done(t[..],"durable chat API");
+ t:[1]Ap;if !ap_open(t[..]) {return 2;}b:[4096]u8;ib:[4096]u8;mail:=fs_temp("durable-chat-mail",b[..]);infer:=fs_temp("durable-chat-infer",ib[..]);h:=ac_mail_start(t[..],"coax/web/api/tests/durable_chat_checks.coax",mail);provider:=ac_server_start(t[..],"coax/web/api/tests/durable_chat_checks.coax",infer,"infer","INFER_PORT");if h>=0 && provider>=0 {dc_checks(t[..],mail);path:[4200]u8;data:[65536]u8;n:=fs_read(fs_join(infer,"all",path[..]),data[..]);calls:=0;if n>0 {for c:data[0..<n] {if c=='\n' {calls+=1;}}}ap_check(t[..],"HTTP CLI and process-recovery turns make exactly five upstream requests across retries",calls==5,"");}if h>=0 {ac_mail_stop(h,mail);}if provider>=0 {ac_mail_stop(provider,infer);}return ap_done(t[..],"durable chat API");
 }

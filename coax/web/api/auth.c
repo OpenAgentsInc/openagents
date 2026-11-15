@@ -185,6 +185,8 @@ static const auth_rule RULES[] = {
   R("*", "/api/chat/submit/v2alpha1", false, AP_HUMAN, "queue an owned durable turn with pinned input"),
   R("*", "/api/chat/stop/v2alpha1", false, AP_HUMAN, "request cancellation of an owned durable turn"),
   R("*", "/api/chat/turn/v2alpha1", false, AP_ACCOUNT, "an owned durable turn and observed usage"),
+  R("*", "/api/chat/context/v2alpha1", false, AP_ACCOUNT, "the owned turn's immutable Project context"),
+  R("*", "/api/chat/input/v2alpha1", false, AP_ACCOUNT, "the owned turn's immutable admitted model input"),
   R("*", "/api/chat/events/v2alpha1", false, AP_ACCOUNT, "replay owned durable events after a cursor"),
   R("*", "/api/chat/conversations/v2alpha1", false, AP_ACCOUNT, "owned durable conversation index"),
   R("*", "/api/chat/conversation/v2alpha1", false, AP_ACCOUNT, "paged owned durable conversation"),

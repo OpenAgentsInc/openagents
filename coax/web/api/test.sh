@@ -532,6 +532,7 @@ if [[ -x "$cli_coax" ]]; then
       (cd "$repo_root" && COAX="$cli_coax" apps/openagents-cli/build.sh --cli > "$work/cli-build.log" 2>&1) || { cat "$work/cli-build.log"; coax_failed=1; continue; }
     fi
     (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" COAX="$cli_coax" API_BIN="$work/api" RESEND_PORT="$RESEND_PORT" CLI="$realm_cli" \
+      OA_AUTH_SEAL_KEY="$k_seal" OA_AUTH_LOOKUP_PEPPER="$k_pepper" OA_INFERENCE_URL="$infer_url" OA_INFERENCE_TOKEN="$infer_token" OA_INFERENCE_DAILY_REQUESTS="$infer_daily" OA_CHAT_DAILY_USD=1 \
       coax/web/tool.sh "coax/web/api/tests/$f.coax" $([[ $f == room_checks ]] && echo "${API_ROOM_SLICES:-}")) || coax_failed=1
     lap "tests/$f.coax"
   done

@@ -13,21 +13,25 @@ na_durable_index :: (s:[]Starter,project:bool,more:bool) {
  index:=ifx project then s[0].durable_project_index[..] else s[0].durable_index[..];path:[256]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],"/api/chat/conversations/v2alpha1?project_id=");if project {jo_put(o[..],na_pr_id(s));}jo_put(o[..],"&cursor=");if more {jo_put(o[..],cast(string)index[0].next[0..<index[0].next_n]);}na_http(s,jo_text(o[..]),"",ifx project then 136 else 135);
 }
 na_durable_dispatch :: (s:[]Starter) {d:=s[0].durable[..];path:[128]u8;na_http(s,dca_path(ifx d[0].pending==2 then "stop" else "submit","",-1,path[..]),cast(string)d[0].body[0..<d[0].body_n],131);}
+na_durable_prepare :: (s:[]Starter) {
+ d:=s[0].durable[..];d[0].pending=1;d[0].body_n=0;d[0].uncertain=false;s[0].page=3;s[0].purpose=130;na_request(s,11,"");na_note(s,"");
+}
 na_durable_send :: (s:[]Starter) {
- d:=s[0].durable[..];if d[0].pending!=0 {na_note(s,"Check the saved request before sending another message.");return;}
+ d:=s[0].durable[..];if d[0].pending!=0 || d[0].preparing {na_note(s,"Check the saved request before sending another message.");return;}
  if dca_working(d) {d[0].want_stop=true;s[0].dirty=true;return;}
  if s[0].flight!=0 || s[0].action!=0 || s[0].draft_n==0 {return;}
  if d[0].id_n>0 && !d[0].loaded {na_note(s,"Read the saved conversation before sending another message.");return;}
+ d[0].submitted_n=js_copy(d[0].submitted[..],cast(string)s[0].draft[0..<s[0].draft_n]);if d[0].submitted_n<1 {na_note(s,"Messages can be at most 16,384 bytes.");return;}
  if d[0].id_n==0 {
   d[0].revision=0;d[0].project_n=0;d[0].project_revision= -1;d[0].legacy_n=0;d[0].legacy_revision= -1;
   if s[0].project_thread_n==36 && s[0].project[0].canonical {d[0].project_n=js_copy(d[0].project[..],na_pr_id(s));d[0].project_revision=s[0].project[0].api[0].revision;}
   if s[0].thread[0].id_n>0 {d[0].legacy_n=js_copy(d[0].legacy[..],cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]);d[0].legacy_revision=s[0].thread[0].revision;}
- }else if d[0].project_n>0 {
-  if !s[0].project[0].canonical || !s[0].project[0].api_loaded || na_pr_id(s)!=dca_project(d) {path:[256]u8;na_http(s,pr_route(dca_project(d),"",path[..]),"",137);return;}
+ }
+ if d[0].project_n>0 {
+  if !s[0].project[0].canonical || !s[0].project[0].api_loaded || na_pr_id(s)!=dca_project(d) {d[0].preparing=true;path:[256]u8;na_http(s,pr_route(dca_project(d),"",path[..]),"",137);na_note(s,"Preparing message…");return;}
   d[0].project_revision=s[0].project[0].api[0].revision;
  }
- d[0].submitted_n=js_copy(d[0].submitted[..],cast(string)s[0].draft[0..<s[0].draft_n]);if d[0].submitted_n<1 {na_note(s,"Messages can be at most 16,384 bytes.");return;}
- d[0].pending=1;d[0].body_n=0;d[0].uncertain=false;s[0].page=3;s[0].purpose=130;na_request(s,11,"");na_note(s,"");
+ na_durable_prepare(s);
 }
 na_durable_turn :: (s:[]Starter) {d:=s[0].durable[..];if !d[0].has_view {return;}path:[256]u8;na_http(s,dca_path("turn",cast(string)d[0].view[0].turn[..],-1,path[..]),"",133);}
 na_durable_tick :: (s:[]Starter,dt:f32) {
@@ -101,6 +105,7 @@ na_durable_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
 na_durable_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->bool {
  purpose:=s[0].purpose;if purpose<130 || purpose>137 || (op!=4 && !(op==11 && purpose==130)) {return false;}
  s[0].flight=0;s[0].purpose=0;s[0].dirty=true;d:=s[0].durable[..];
+ if purpose==137 {d[0].preparing=false;}
  if op==4 && status==401 {na_history_clear(s);na_secrets_clear(s);s[0].account_ready=false;s[0].page=0;na_note(s,"Log in again to see your chats.");return true;}
  if purpose==130 {
   v:[1]Jv;nodes:[16]JvNode;command:[32]u8;n:= -1;if !failed && jv_parse(v[..],raw,nodes[..]) {n=js_string(v[0],jv_get(v[0],0,"command_id"),command[..]);}
@@ -134,7 +139,7 @@ na_durable_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->bool
  }
  if purpose==134 {page:[1]CtPage;if !ctr_page_apply(raw,d[0].view[..],page[..]) {na_durable_turn(s);return true;}if page[0].more {d[0].elapsed=1;}if ct_terminal(d[0].view[0].state) {d[0].want_stop=false;if !d[0].terminal_refreshed {d[0].terminal_refreshed=true;d[0].page=0;na_durable_history(s,0,true);}}return true;}
  if purpose==135 || purpose==136 {index:=ifx purpose==135 then s[0].durable_index[..] else s[0].durable_project_index[..];if !ctr_index_read(raw,index) {na_note(s,"The saved chat index could not be read completely.");}return true;}
- if purpose==137 {p:=s[0].project[..];if !pr_project_read(raw,p[0].api[..]) || cast(string)p[0].api[0].id[0..<p[0].api[0].ni]!=dca_project(d) {na_note(s,"Project context could not be refreshed. Your draft is kept.");return true;}p[0].canonical=true;p[0].api_loaded=true;na_durable_send(s);return true;}
+ if purpose==137 {p:=s[0].project[..];next:[1]PrProject;if !pr_project_read(raw,next[..]) || cast(string)next[0].id[0..<next[0].ni]!=dca_project(d) {na_note(s,"Project context could not be refreshed. Your draft is kept.");return true;}p[0].api[0]=next[0];p[0].canonical=true;p[0].api_loaded=true;d[0].project_revision=next[0].revision;na_durable_prepare(s);return true;}
  return true;
 }
 #load "durable-checks.coax" #test;

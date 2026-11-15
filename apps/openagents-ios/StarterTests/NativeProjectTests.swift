@@ -4,6 +4,35 @@ import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeProjectTests:XCTestCase {
+    func testReopenedProjectChatPinsMetadataWithoutReplacingTheSubmittedDraft()throws {
+        let p=try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app")
+        let cid="cnv_0123456789abcdef0123456789abcdef",pid="prj_0123456789abcdef0123456789abcdef",null=NSNull()
+        func answer(_ op:Int,_ status:Int,_ value:[String:Any])throws {try p.event(100+op,status,String(decoding:JSONSerialization.data(withJSONObject:value),as:UTF8.self));try p.frame()}
+        func request(_ path:String)throws->[String:Any] {
+            let action=try p.action();XCTAssertEqual(action.0,4,"Expected \(path)")
+            let value=try XCTUnwrap(JSONSerialization.jsonObject(with:Data(action.1.utf8)) as? [String:Any]);XCTAssertEqual(value["path"] as? String,path);return value
+        }
+        try p.event(Int(cnw_enable_event()),0,"");try p.frame();_=try p.action();try answer(1,0,["loggedIn":true]);_=try p.action();try answer(4,200,["schema":"openagents.chat.history.v1","chats":[]])
+        try p.input("nav.toggle");try p.frame();_=try request("/api/chat/environments/v1");try answer(4,200,["schema":"openagents.environment.catalog.v1alpha1","environments":[]])
+        try p.input("nav.recent");try p.frame()
+        try p.frame(elapsed:0.5);_=try request("/api/chat/conversations/v2alpha1?project_id=&cursor=")
+        try answer(4,200,["schema":"openagents.chat.index.v2alpha1","items":[["id":cid,"title":"Saved Project chat","revision":1,"project_id":pid,"active_turn_id":null,"updated_at_ms":1]],"next_cursor":null])
+        try p.input("nav.rich.0");try p.frame();_=try request("/api/chat/conversation/v2alpha1?id="+cid+"&after=0")
+        try answer(4,200,["schema":"openagents.chat.conversation.v2alpha1","id":cid,"revision":1,"project_id":pid,"legacy_thread_id":null,"legacy_thread_revision":null,"messages":[],"active_turn_id":null,"created_at_ms":1,"updated_at_ms":1,"next_cursor":null])
+        try p.input("chat.composer","Original submitted text");try p.frame();try p.input("chat.composer.send");try p.frame();_=try request("/api/projects/v1/"+pid)
+        let composer=try XCTUnwrap(p.elements().first {$0.role=="composer"})
+        XCTAssertTrue(try XCTUnwrap(composer.children.first {$0.id=="chat.composer"}).disabled)
+        // A text event queued by the native editor before it became disabled
+        // must not alter the message whose Send has already been accepted.
+        try p.input("chat.composer","Next draft");try p.frame()
+        try answer(4,200,["schema":"openagents.projects.api.v1alpha1","data":["id":pid,"revision":7,"owner_account_id":"acct_one","name":"Research","description":"","instructions":["text":"Current instructions","revision":7,"updated_at_ms":1],"created_at_ms":1,"updated_at_ms":1,"counts":["knowledge":0,"conversations":1]]])
+        XCTAssertEqual(try p.action().0,11);try answer(11,0,["command_id":"0123456789abcdef0123456789abcdef"])
+        let http=try request("/api/chat/submit/v2alpha1"),raw=try XCTUnwrap(http["body"] as? String),submit=try XCTUnwrap(JSONSerialization.jsonObject(with:Data(raw.utf8)) as? [String:Any])
+        XCTAssertEqual(submit["conversation_id"] as? String,cid);XCTAssertEqual(submit["expected_project_revision"] as? Int,7)
+        XCTAssertEqual((submit["content"] as? [[String:Any]])?.first?["text"] as? String,"Original submitted text")
+        let surface=NativeControls();surface.render(p.elements())
+        XCTAssertEqual((surface.controls["chat.composer"] as? UITextView)?.text,"Next draft")
+    }
     func testDraftReviewUsesNativeFieldsAndDoesNotOpenTheBrowser()throws {
         let p=try NativeProgram(directory:try XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app",diagnostic:{print("Project program:",$0)})
         func answer(_ op:Int,_ value:Any,status:Int=200)throws {let raw:String;if let text=value as? String {raw=text}else {raw=String(decoding:try JSONSerialization.data(withJSONObject:value),as:UTF8.self)};try p.event(100+op,status,raw);try p.frame()}

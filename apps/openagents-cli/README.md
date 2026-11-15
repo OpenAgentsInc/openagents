@@ -47,6 +47,8 @@ openagents chat show "$CONVERSATION_ID"
 openagents chat send "$CONVERSATION_ID" --rev 1 --file followup.txt --operation-id followup
 openagents chat stop "$TURN_ID" --operation-id stop-turn
 openagents chat events "$TURN_ID" --after 3
+openagents chat context "$TURN_ID"
+openagents chat input "$TURN_ID"
 ```
 
 For a Project, pass `--project "$P" --project-rev N` to both `new` and `send`.

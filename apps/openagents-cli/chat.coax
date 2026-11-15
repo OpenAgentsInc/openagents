@@ -7,6 +7,7 @@ chat_usage :: () {
  print("%\n","  chat list [--project ID] [--cursor ID]");
  print("%\n","  chat show CONVERSATION_ID [--after N] | turn TURN_ID");
  print("%\n","  chat events TURN_ID [--after N]");
+ print("%\n","  chat context TURN_ID | input TURN_ID   inspect immutable admitted context/input");
  print("%\n","  chat new --file FILE|- [--project ID --project-rev N]");
  print("%\n","  chat send CONVERSATION_ID --rev N --file FILE|- [--project ID --project-rev N]");
  print("%\n","  chat stop TURN_ID [--operation-id ID]");
@@ -57,9 +58,9 @@ chat_main :: (a:[]Args,r:[]Rep,profile:string,verb:string)->int {
   res:=pcli_call(a,r,profile,"GET",jo_text(o[..]),"",CLI_HTTP_MS,out[..]);return pcli_reply(r,res,out[..]);
  }
  if verb=="show" {name="conversation";if !ct_id(id,"cnv_",32) {return fail(r,EXIT_USAGE,"expected a conversation ID");}}
- else if verb=="turn" || verb=="events" || verb=="follow" || verb=="stop" {if !ct_id(id,"trn_",32) {return fail(r,EXIT_USAGE,"expected a turn ID");}if verb=="follow" {return ccli_follow(a,r,profile,id);}name=verb;post=verb=="stop";}
+ else if verb=="turn" || verb=="events" || verb=="context" || verb=="input" || verb=="follow" || verb=="stop" {if !ct_id(id,"trn_",32) {return fail(r,EXIT_USAGE,"expected a turn ID");}if verb=="follow" {return ccli_follow(a,r,profile,id);}name=verb;post=verb=="stop";}
  else if verb=="new" || verb=="send" {if !ccli_references(a,verb=="new") {return fail(r,EXIT_USAGE,"Project and legacy IDs require their revision flags; legacy provenance belongs to chat new");}post=true;name="submit";if verb=="new" {id="";}else if !ct_id(id,"cnv_",32) {return fail(r,EXIT_USAGE,"expected a conversation ID");}}
- else {return fail(r,EXIT_USAGE,"chat list|show|turn|events|new|send|stop|follow");}
+ else {return fail(r,EXIT_USAGE,"chat list|show|turn|events|context|input|new|send|stop|follow");}
  route:=ccli_path(name,ifx post then "" else id,ifx post then "" else after,path[..]);if !post {res:=pcli_call(a,r,profile,"GET",route,"",CLI_HTTP_MS,out[..]);return pcli_reply(r,res,out[..]);}
  operation:[32]u8;op:=args_value(a,"--operation-id","");if op=="" {random:[16]u8;if cxrand_draw(random[..],16)!=0 || !cli_hex(random[..],operation[..]) {return fail(r,EXIT_FAIL,"cannot make an operation ID");}op=cast(string)operation[..];}
  n:=0;if verb=="stop" {n=ct_stop_write(op,id,body[..]);}else {

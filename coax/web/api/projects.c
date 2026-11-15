@@ -22,8 +22,8 @@ bool api_object_id(char out[37],const char *prefix) {unsigned char r[16];if(RAND
 static void integer(char out[32],long long value) {snprintf(out,32,"%lld",value);}
 static PGresult *project_rows(PGconn *db,const char *account,const char *id,bool lock) {
  const char *v[]={account,id};return PQexecParams(db,lock?
- "SELECT id,account,name,description,instructions,revision,instructions_revision,created_ms,updated_ms,(SELECT count(*) FROM projects.knowledge_v1 k WHERE k.project=p.id),(SELECT count(*) FROM projects.thread_links_v1 l WHERE l.project=p.id AND l.account=p.account),instructions_updated_ms FROM projects.private_v1 p WHERE account=$1 AND id=$2 FOR UPDATE OF p":
- "SELECT id,account,name,description,instructions,revision,instructions_revision,created_ms,updated_ms,(SELECT count(*) FROM projects.knowledge_v1 k WHERE k.project=p.id),(SELECT count(*) FROM projects.thread_links_v1 l WHERE l.project=p.id AND l.account=p.account),instructions_updated_ms FROM projects.private_v1 p WHERE account=$1 AND id=$2",2,NULL,v,NULL,NULL,0);
+ "SELECT id,account,name,description,instructions,revision,instructions_revision,created_ms,updated_ms,(SELECT count(*) FROM projects.knowledge_v1 k WHERE k.project=p.id),(SELECT count(*) FROM projects.thread_links_v1 l WHERE l.project=p.id AND l.account=p.account)+(SELECT count(*) FROM chat.conversations_v2 c WHERE c.project=p.id AND c.account=p.account),instructions_updated_ms FROM projects.private_v1 p WHERE account=$1 AND id=$2 FOR UPDATE OF p":
+ "SELECT id,account,name,description,instructions,revision,instructions_revision,created_ms,updated_ms,(SELECT count(*) FROM projects.knowledge_v1 k WHERE k.project=p.id),(SELECT count(*) FROM projects.thread_links_v1 l WHERE l.project=p.id AND l.account=p.account)+(SELECT count(*) FROM chat.conversations_v2 c WHERE c.project=p.id AND c.account=p.account),instructions_updated_ms FROM projects.private_v1 p WHERE account=$1 AND id=$2",2,NULL,v,NULL,NULL,0);
 }
 static bool load_project(PGresult *r,int row,coax_t_PrProject *p) {
  if(!rows(r) || row>=PQntuples(r))return false;

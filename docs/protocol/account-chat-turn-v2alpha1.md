@@ -9,8 +9,8 @@ queue decisions are `account-chat-turn-policy.coax` and
 `account-chat-work-policy.coax`. The initial consumer is **durable-text**.
 
 **Status:** transactional routes, the resident-worker adapter and CLI integration
-are implemented and undergoing runtime verification. Native adoption and live
-staging evidence remain pending; #13619 is open. No deployment or release is
+and native adoption are implemented and undergoing runtime verification. Live
+staging evidence remains pending; #13619 is open. No deployment or release is
 claimed here. TestFlight waits for the complete Claude-port and Arcade goal.
 
 ## HTTP consumer
@@ -24,6 +24,8 @@ use the runner door; that key is not an account credential.
 | `POST /api/chat/submit/v2alpha1` | SubmitRequest → 202 ControlReply |
 | `POST /api/chat/stop/v2alpha1` | StopRequest → 200 ControlReply |
 | `GET /api/chat/turn/v2alpha1?id=TURN` | Complete materialized Turn and its cursor |
+| `GET /api/chat/context/v2alpha1?id=TURN` | Immutable Project ContextReply, or 404 for an ordinary turn |
+| `GET /api/chat/input/v2alpha1?id=TURN` | Exact immutable gateway request admitted for this turn |
 | `GET /api/chat/events/v2alpha1?id=TURN&after=N` | EventPage, at most 32 events and 131,072 encoded bytes |
 | `GET /api/chat/conversations/v2alpha1?project_id=PROJECT&cursor=CONVERSATION` | ConversationList, at most 60 summaries, ID order |
 | `GET /api/chat/conversation/v2alpha1?id=CONVERSATION&after=N` | Conversation with at most 32 messages; `after` is a message offset |
@@ -33,6 +35,14 @@ Omitted `after` is zero. Omitted Project/index cursor means unfiltered/first
 page. Cursors ahead of the current resource conflict; malformed values refuse.
 The index's next cursor is its last returned ID; conversation pages use a
 decimal message offset. Each request checks ownership again.
+
+Inspection reads the admitted bytes, including historical instructions and
+selected knowledge, even after the Project changes. Context uses the existing
+Project codec; input uses the sole gateway request codec, without credentials
+or an extra JSON-in-string envelope. `chat context TURN` and `chat input TURN`
+expose these same private reads through the CLI. Project `chat_count` includes
+both legacy links and rich conversations. A deliberate legacy copy is a new
+conversation; adding turns does not increase the count or Project revision.
 
 Conversation revision counts admitted user turns. Events, Stop and model output
 advance the event cursor and updated time, not the conversation revision. A

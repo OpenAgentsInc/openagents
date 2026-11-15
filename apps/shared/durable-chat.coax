@@ -5,13 +5,13 @@ DurableChat :: struct {
  enabled:bool;id:[36]u8;id_n:int;revision:int;project:[36]u8;project_n:int;project_revision:int= -1;legacy:[22]u8;legacy_n:int;legacy_revision:int= -1;
  history:[1]CtHistory;loaded:bool;view:[1]CtView;has_view:bool;
  model:[160]u8;model_n:int;provider:[80]u8;provider_n:int;effort:[16]u8;effort_n:int;why:[1024]u8;why_n:int;
- submitted:[16384]u8;submitted_n:int;pending:int;body:[131072]u8;body_n:int;uncertain:bool;want_stop:bool;
+ submitted:[16384]u8;submitted_n:int;preparing:bool;pending:int;body:[131072]u8;body_n:int;uncertain:bool;want_stop:bool;
  elapsed:f32;history_after:int;pages:[128]int;page:int;latest:bool;window_end:int=32;window_start:int;terminal_refreshed:bool;
 }
 dca_id :: (d:[]DurableChat)->string {return cast(string)d[0].id[0..<d[0].id_n];}
 dca_project :: (d:[]DurableChat)->string {return cast(string)d[0].project[0..<d[0].project_n];}
 dca_working :: (d:[]DurableChat)->bool {return d[0].has_view && !ct_terminal(d[0].view[0].state);}
-dca_blocked :: (d:[]DurableChat)->bool {return d[0].pending!=0 || d[0].want_stop;}
+dca_blocked :: (d:[]DurableChat)->bool {return d[0].preparing || d[0].pending!=0 || d[0].want_stop;}
 dca_path :: (name:string,id:string,cursor:int,out:[]u8)->string {
  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/api/chat/");jo_put(o[..],name);jo_put(o[..],"/v2alpha1");if id.count>0 {jo_put(o[..],"?id=");jo_put(o[..],id);}if cursor>=0 {jo_put(o[..],"&after=");jo_int(o[..],cursor);}return jo_text(o[..]);
 }

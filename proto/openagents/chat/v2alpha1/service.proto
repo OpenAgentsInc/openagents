@@ -5,6 +5,11 @@ import "openagents/chat/v2alpha1/conversation.proto";
 // Additive service envelopes; the previously published conversation messages
 // retain their fields. Public routes use the person's account; runner routes
 // additionally require the existing trusted runner's signed identity.
+// Inspection reuses existing bodies without a new envelope:
+// GET /api/chat/context/v2alpha1?id=TURN returns the immutable
+// openagents.project.v1alpha1.ContextReply (404 without a Project snapshot).
+// GET /api/chat/input/v2alpha1?id=TURN returns the immutable gateway request
+// body admitted for this turn. Both require the owning account and are no-store.
 message ControlReply {
  string schema = 1 [json_name="schema"]; // openagents.chat.control.v2alpha1
  string conversation_id = 2 [json_name="conversation_id"];
