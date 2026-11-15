@@ -1,0 +1,70 @@
+// Durable turn decisions. Storage serializes these decisions with the event
+// append. An expired dispatched attempt is unknown, never automatically retried.
+#authority;
+CT_QUEUED :: 1; CT_RUNNING :: 2; CT_COMPLETED :: 3;
+CT_FAILED :: 4; CT_CANCELLED :: 5; CT_UNKNOWN :: 6;
+CT_STARTED :: 1; CT_TEXT :: 2; CT_USAGE :: 3; CT_STOP :: 4;
+CT_DONE :: 5; CT_ERROR :: 6; CT_LOST :: 7; CT_CANCEL :: 8;
+CT_SEQUENCE_MAX :: 2147483645;
+
+#test "terminal states include unknown and refuse unknown numeric states" {
+ for state: -1..<9 {#assert ct_terminal(state)==(state>=CT_COMPLETED && state<=CT_UNKNOWN);}
+}
+#forall "operation identity replays exact bytes and conflicts on different input" flags:0..<4 {
+ found:=(flags&1)!=0;same:=(flags&2)!=0;
+ #assert ct_operation(found,same)==(ifx !found then 1 else ifx same then 2 else 0);
+}
+#forall "new work requires every independent admission fact" flags:0..<128 {
+ owns:=(flags&1)!=0;funded:=(flags&2)!=0;limited:=(flags&4)!=0;frozen:=(flags&8)!=0;
+ active:=(flags&16)!=0;context:=(flags&32)!=0;revision:=(flags&64)!=0;
+ #assert ct_admit(owns,funded,limited,frozen,active,context,revision)==(flags==99);
+}
+#test "event sequencing is exact and retires before integer overflow" {
+ #assert ct_sequence(0,1) && ct_sequence(17,18) && ct_sequence(CT_SEQUENCE_MAX-1,CT_SEQUENCE_MAX);
+ #assert !ct_sequence(-1,0) && !ct_sequence(0,0) && !ct_sequence(1,1) && !ct_sequence(1,3);
+ #assert !ct_sequence(CT_SEQUENCE_MAX,CT_SEQUENCE_MAX+1) && !ct_sequence(CT_SEQUENCE_MAX+1,CT_SEQUENCE_MAX+2);
+}
+#test "queued tasks start once or cancel without contacting the provider" {
+ #assert ct_transition(CT_QUEUED,CT_STARTED,false)==CT_RUNNING;
+ #assert ct_transition(CT_QUEUED,CT_STOP,false)==CT_CANCELLED;
+ #assert ct_transition(CT_QUEUED,CT_ERROR,false)==CT_FAILED;
+ #assert ct_transition(CT_QUEUED,CT_STARTED,true)==0;
+ for event:CT_STARTED..<CT_CANCEL+1 {if event!=CT_STARTED && event!=CT_STOP && event!=CT_ERROR {#assert ct_transition(CT_QUEUED,event,false)==0;}}
+}
+#test "stream events stay live and cancellation remains a request until observed" {
+ for stopped:[2]bool.[false,true] {
+  #assert ct_transition(CT_RUNNING,CT_TEXT,stopped)==CT_RUNNING;
+  #assert ct_transition(CT_RUNNING,CT_USAGE,stopped)==CT_RUNNING;
+  #assert ct_transition(CT_RUNNING,CT_STOP,stopped)==CT_RUNNING;
+  #assert ct_transition(CT_RUNNING,CT_DONE,stopped)==CT_COMPLETED;
+  #assert ct_transition(CT_RUNNING,CT_ERROR,stopped)==CT_FAILED;
+  #assert ct_transition(CT_RUNNING,CT_LOST,stopped)==CT_UNKNOWN;
+  #assert ct_transition(CT_RUNNING,CT_CANCEL,stopped)==(ifx stopped then CT_CANCELLED else 0);
+  #assert ct_transition(CT_RUNNING,CT_STARTED,stopped)==0;
+ }
+}
+#test "terminal turns never restart or accept later events" {
+ for state:CT_COMPLETED..<CT_UNKNOWN+1 {for event:CT_STARTED..<CT_CANCEL+1 {#assert ct_transition(state,event,false)==0 && ct_transition(state,event,true)==0;}}
+ for state:[3]int.[-1,0,7] {#assert ct_transition(state,CT_TEXT,false)==0;}
+ for event:[3]int.[-1,0,9] {#assert ct_transition(CT_RUNNING,event,false)==0 && ct_transition(CT_QUEUED,event,false)==0;}
+}
+ct_terminal :: (state:int)->bool #export_c #effects(all) {return state>=CT_COMPLETED && state<=CT_UNKNOWN;}
+// 1 create; 2 replay the original operation; 0 identity conflict.
+ct_operation :: (found:bool,same_request:bool)->int #export_c #effects(all) {if !found {return 1;}return ifx same_request then 2 else 0;}
+ct_admit :: (owns:bool,funded:bool,limited:bool,frozen:bool,active:bool,context:bool,revision:bool)->bool #export_c #effects(all) {return owns && funded && !limited && !frozen && !active && context && revision;}
+ct_sequence :: (previous:int,next:int)->bool #export_c #effects(all) {return previous>=0 && previous<CT_SEQUENCE_MAX && next==previous+1;}
+ct_transition :: (state:int,event:int,stop_requested:bool)->int #export_c #effects(all) {
+ if state==CT_QUEUED {
+  if event==CT_STARTED && !stop_requested {return CT_RUNNING;}
+  if event==CT_STOP {return CT_CANCELLED;}
+  if event==CT_ERROR {return CT_FAILED;}
+  return 0;
+ }
+ if state!=CT_RUNNING {return 0;}
+ if event==CT_TEXT || event==CT_USAGE || event==CT_STOP {return CT_RUNNING;}
+ if event==CT_DONE {return CT_COMPLETED;}
+ if event==CT_ERROR {return CT_FAILED;}
+ if event==CT_LOST {return CT_UNKNOWN;}
+ if event==CT_CANCEL && stop_requested {return CT_CANCELLED;}
+ return 0;
+}

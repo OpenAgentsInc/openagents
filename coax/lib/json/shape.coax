@@ -1,0 +1,49 @@
+// Shared bounded JSON field checks. A parser supplies syntax; these supply
+// closed objects, exact nonnegative integers and complete UTF-8 strings.
+#load "json.coax";
+#load "../proto/wire.coax";
+#authority;
+
+#test "closed objects reject unknown, repeated and noncanonical escaped keys" {
+ d:[1]Jv;nodes:[32]JvNode;keys:=[2]string.["a","b"];
+ for raw:[3]string.["{}","{\"a\":1}","{\"b\":2,\"a\":1}"] {
+  #assert jv_parse(d[..],raw,nodes[..]) && js_fields(d[0],0,keys[..]);
+ }
+ for raw:[6]string.["[]","null","{\"c\":1}","{\"a\":1,\"a\":2}","{\"a\":1,\"\\u0061\":2}","{\"\\u0061\":1}"] {
+  #assert jv_parse(d[..],raw,nodes[..]) && !js_fields(d[0],0,keys[..]);
+ }
+ #assert jv_parse(d[..],"{\"a\":1}",nodes[..]) && js_fields(d[0],0,keys[0..<1]) && !js_fields(d[0],0,keys[0..<0]);
+}
+#test "unsigned JSON integers retain exact spelling and reject other scalar kinds" {
+ d:[1]Jv;nodes:[2]JvNode;
+ for raw:[3]string.["0","1","9007199254740991"] {#assert jv_parse(d[..],raw,nodes[..]) && js_number(d[0],0)==jv_int(d[0],0,-2);}
+ for raw:[9]string.["-0","-1","1.0","1e0","true","null","\"1\"","[]","9223372036854775808"] {#assert jv_parse(d[..],raw,nodes[..]) && js_number(d[0],0)== -1;}
+ #assert js_number(d[0],-1)== -1;
+ // The helper also refuses a malformed caller-built numeric node.
+ nodes[0]=JvNode.{kind=JV_NUMBER,from=0,to=0};d[0]=Jv.{text="",nodes=nodes[..],count=1};#assert js_number(d[0],0)== -1;
+}
+#test "shared UTF8 validation admits its full buffer and refuses overflow" {
+ b:[65537]u8;for i:0..<b.count {b[i]='a';}
+ #assert js_utf8(cast(string)b[0..<65536]) && !js_utf8(cast(string)b[..]);
+}
+#test "decoded strings and copies are complete bounded UTF8 without NUL" {
+ d:[1]Jv;nodes:[2]JvNode;b:[8]u8;
+ #assert jv_parse(d[..],"\"caf\\u00e9\"",nodes[..]) && js_string(d[0],0,b[..])==5 && cast(string)b[0..<5]=="café";
+ #assert js_string(d[0],0,b[0..<4])== -1;
+ #assert jv_parse(d[..],"\"\"",nodes[..]) && js_string(d[0],0,b[0..<0])==0;
+ for raw:[3]string.["null","\"\\u0000\"","\"a\\u0000b\""] {#assert jv_parse(d[..],raw,nodes[..]) && js_string(d[0],0,b[..])== -1;}
+ raw:[3]u8;raw[0]='"';raw[1]=255;raw[2]='"';#assert jv_parse(d[..],cast(string)raw[..],nodes[..]) && js_string(d[0],0,b[..])== -1;
+ #assert js_copy(b[0..<1],"ab")== -1 && js_copy(b[0..<2],"ab")==2 && b[0]=='a' && b[1]=='b' && js_copy(b[0..<0],"")==0;
+ #assert js_utf8("") && js_utf8("café") && !js_utf8(cast(string)raw[1..<2]);
+}
+js_utf8 :: (text:string)->bool #effects(all) {b:[65536]u8;n:=js_copy(b[..],text);return n>=0 && PB_utf8(b[0..<n]);}
+js_copy :: (dst:[]u8,s:string)->int #effects(all) {if s.count>dst.count {return -1;}for c,i:s {dst[i]=c;}return s.count;}
+js_string :: (v:Jv,node:int,out:[]u8)->int #effects(all) {n:=jv_str(v,node,out);if n<0 || !PB_utf8(out[0..<n]) {return -1;}for i:0..<n {if out[i]==0 {return -1;}}return n;}
+js_fields :: (v:Jv,node:int,allowed:[]string)->bool #effects(all) {if jv_kind(v,node)!=JV_OBJECT {return false;}for i:0..<jv_len(v,node) {at:=jv_at(v,node,i);found:=false;for key:allowed {if jv_key(v,at)==key {if jv_get(v,node,key)!=at {return false;}found=true;}}if !found {return false;}}return true;}
+js_number :: (v:Jv,at:int)->int #effects(all) {
+ if jv_kind(v,at)!=JV_NUMBER {return -1;}raw:=jv_raw(v,at);if raw.count==0 {return -1;}
+ for c:raw {
+  if c<'0' || c>'9' {return -1;} // mutant: equivalent ('9' -> ':' only passes a colon to jv_int, whose own digit check refuses it; a parsed JSON number never contains a colon)
+ }
+ return jv_int(v,at,-1);
+}

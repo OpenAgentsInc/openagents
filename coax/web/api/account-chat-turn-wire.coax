@@ -1,0 +1,196 @@
+// One durable-text codec for API, mobile and CLI. Decoded identity/event views
+// borrow an explicit caller arena, as the shared SSE parser does. Keep it alive.
+// coax test coax/web/api/account-chat-turn-wire.coax --library
+#load "../../lib/json/shape.coax";
+#load "../../lib/gateway/sse.coax";
+#load "account-chat-turn-policy.coax";
+CT_SUBMIT_SCHEMA :: "openagents.chat.submit.v2alpha1";
+CT_STOP_SCHEMA :: "openagents.chat.stop.v2alpha1";
+CT_EVENT_SCHEMA :: "openagents.chat.event.v2alpha1";
+CtSubmit :: struct {
+ operation:string;conversation:string;project:string;legacy:string;
+ revision:int;project_revision:int= -1;legacy_revision:int= -1;
+ blocks:int;bytes:int;starts:[16]int;counts:[16]int;data:[16384]u8;
+}
+CtUsage :: struct {input:int= -1;output:int= -1;cache_read:int= -1;cache_write:int= -1;reasoning:int= -1;}
+CtEvent :: struct {
+ conversation:string;turn:string;sequence:int;kind:int;state:int;stop_requested:bool;
+ index:int= -1;delta:string;has_usage:bool;usage:CtUsage;reason:string;error:string;
+}
+ct_id :: (value:string,prefix:string,hex:int)->bool {
+ if value.count!=prefix.count+hex || value[0..<prefix.count]!=prefix {return false;}
+ for i:prefix.count..<value.count {c:=value[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+ return true;
+}
+ct_len :: (o:[]Jo)->int {return ifx o[0].bad then -1 else o[0].n;}
+ct_valid_text :: (text:string,maximum:int)->bool {
+ if text.count>maximum || !js_utf8(text) {return false;}for c:text {if c==0 {return false;}}return true;
+}
+ct_nullable_string :: (v:Jv,at:int,out:[]u8)->int {
+ if jv_kind(v,at)==JV_NULL {return 0;}return js_string(v,at,out);
+}
+ct_nullable_number :: (v:Jv,at:int)->int {
+ if jv_kind(v,at)==JV_NULL {return -1;}n:=js_number(v,at);
+ return ifx n<0 || n>CT_SEQUENCE_MAX then -2 else n; // mutant: equivalent (widening the upper limit by one still fails the caller's revision, block-index or usage bound)
+}
+ct_submit_text :: (r:[]CtSubmit,index:int)->string {
+ if index<0 || index>=r[0].blocks {return "";}
+ at:=r[0].starts[index];return cast(string)r[0].data[at..<at+r[0].counts[index]];
+}
+ct_submit_valid :: (r:[]CtSubmit)->bool {
+ if r[0].operation.count<1 || r[0].operation.count>80 || !ct_valid_text(r[0].operation,80) || r[0].revision<0 || r[0].revision>CT_SEQUENCE_MAX {return false;} // mutant: equivalent (the only caller decoded operation into an 80-byte span, so either 80 -> 81 limit change admits nothing)
+ if r[0].conversation.count==0 {if r[0].revision!=0 {return false;}}
+ else if !ct_id(r[0].conversation,"cnv_",32) || r[0].revision<1 {return false;}
+ if r[0].project.count==0 {if r[0].project_revision!= -1 {return false;}}
+ else if !ct_id(r[0].project,"prj_",32) || r[0].project_revision<1 || r[0].project_revision>CT_SEQUENCE_MAX {return false;} // mutant: equivalent (the nullable-number reader already refused a revision above CT_SEQUENCE_MAX)
+ if r[0].legacy.count==0 {if r[0].legacy_revision!= -1 {return false;}}
+ else if r[0].conversation.count!=0 || !ct_id(r[0].legacy,"m_",20) || r[0].legacy_revision<1 || r[0].legacy_revision>CT_SEQUENCE_MAX {return false;} // mutant: equivalent (the nullable-number reader already refused a revision above CT_SEQUENCE_MAX)
+ return true;
+}
+ct_submit_read :: (raw:string,r:[]CtSubmit,storage:[]u8)->bool #export_c #effects(all) {
+ d:[1]Jv;nodes:[128]JvNode;next:[1]CtSubmit;
+ if storage.count<174 || raw.count>131072 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];
+ keys:=[9]string.["schema","operation_id","conversation_id","expected_revision","project_id","expected_project_revision","legacy_thread_id","legacy_thread_revision","content"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=keys.count || jv_raw(v,jv_get(v,0,"schema"))!=CT_SUBMIT_SCHEMA {return false;}
+ no:=js_string(v,jv_get(v,0,"operation_id"),storage[0..<80]);nc:=js_string(v,jv_get(v,0,"conversation_id"),storage[80..<116]); // mutant: equivalent (a one-byte wider span is still refused by operation length or exact ID length)
+ np:=ct_nullable_string(v,jv_get(v,0,"project_id"),storage[116..<152]);nl:=ct_nullable_string(v,jv_get(v,0,"legacy_thread_id"),storage[152..<174]); // mutant: equivalent (a 37-byte Project ID still fails its exact ID check)
+ if no<0 {return false;} // mutant: equivalent (an empty operation is refused by ct_submit_valid too)
+ if nc<0 || np<0 || nl<0 {return false;}
+ // Absent references are null, not an empty string masquerading as null.
+ if (np==0 && jv_kind(v,jv_get(v,0,"project_id"))!=JV_NULL) || (nl==0 && jv_kind(v,jv_get(v,0,"legacy_thread_id"))!=JV_NULL) {return false;}
+ next[0].operation=cast(string)storage[0..<no];next[0].conversation=cast(string)storage[80..<80+nc];
+ next[0].project=cast(string)storage[116..<116+np];next[0].legacy=cast(string)storage[152..<152+nl];
+ next[0].revision=js_number(v,jv_get(v,0,"expected_revision"));next[0].project_revision=ct_nullable_number(v,jv_get(v,0,"expected_project_revision"));next[0].legacy_revision=ct_nullable_number(v,jv_get(v,0,"legacy_thread_revision"));
+ if !ct_submit_valid(next[..]) {return false;}
+ content:=jv_get(v,0,"content");count:=jv_len(v,content);block_keys:=[2]string.["type","text"];
+ if jv_kind(v,content)!=JV_ARRAY || count<1 || count>16 {return false;}
+ for i:0..<count {
+  at:=jv_at(v,content,i);if !js_fields(v,at,block_keys[..]) || jv_len(v,at)!=2 || jv_raw(v,jv_get(v,at,"type"))!="text" {return false;}
+  n:=js_string(v,jv_get(v,at,"text"),next[0].data[next[0].bytes..<next[0].data.count]);if n<1 {return false;} // mutant: equivalent (next[0].data.count is the fixed array capacity, independent of the receiver index)
+  next[0].starts[i]=next[0].bytes;next[0].counts[i]=n;next[0].bytes+=n;
+ }
+ next[0].blocks=count;r[0]=next[0];return true;
+}
+ct_optional_text :: (o:[]Jo,s:string) {if s.count==0 {jo_null(o);}else {jo_str(o,s);}}
+ct_optional_number :: (o:[]Jo,n:int) {if n<0 {jo_null(o);}else {jo_int(o,n);}}
+ct_submit_write :: (operation:string,conversation:string,revision:int,project:string,project_revision:int,legacy:string,legacy_revision:int,texts:[]string,out:[]u8)->int {
+ if project_revision< -1 || legacy_revision< -1 {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CT_SUBMIT_SCHEMA);
+ jo_key(o[..],"operation_id");jo_str(o[..],operation);jo_key(o[..],"conversation_id");jo_str(o[..],conversation);jo_key(o[..],"expected_revision");jo_int(o[..],revision);
+ jo_key(o[..],"project_id");ct_optional_text(o[..],project);jo_key(o[..],"expected_project_revision");ct_optional_number(o[..],project_revision);
+ jo_key(o[..],"legacy_thread_id");ct_optional_text(o[..],legacy);jo_key(o[..],"legacy_thread_revision");ct_optional_number(o[..],legacy_revision);
+ jo_key(o[..],"content");jo_arr(o[..]);for text:texts {jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"text");jo_key(o[..],"text");jo_str(o[..],text);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);
+ n:=ct_len(o[..]);r:[1]CtSubmit;arena:[174]u8;
+ if n<0 {return -1;} // mutant: equivalent (the writer returns -1 or a nonempty JSON object, never zero or one)
+ if !ct_submit_read(cast(string)out[0..<n],r[..],arena[..]) {return -1;}return n;
+}
+ct_stop_read :: (raw:string,operation:[]u8,turn:[]u8)->int #export_c #effects(all) {
+ d:[1]Jv;nodes:[8]JvNode;op:[80]u8;id:[36]u8;
+ if raw.count>1024 || !jv_parse(d[..],raw,nodes[..]) {return -1;}v:=d[0];keys:=[3]string.["schema","operation_id","turn_id"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=3 || jv_raw(v,jv_get(v,0,"schema"))!=CT_STOP_SCHEMA {return -1;}
+ n:=js_string(v,jv_get(v,0,"operation_id"),op[..]);nt:=js_string(v,jv_get(v,0,"turn_id"),id[..]);
+ if n<1 {return -1;}
+ if nt<0 {return -1;} // mutant: equivalent (an empty turn ID fails ct_id too)
+ if !ct_id(cast(string)id[0..<nt],"trn_",32) || n>operation.count || nt>turn.count {return -1;}
+ _=js_copy(operation,cast(string)op[0..<n]);_=js_copy(turn,cast(string)id[0..<nt]);return n;
+}
+ct_stop_write :: (operation:string,turn:string,out:[]u8)->int {
+ if operation.count<1 || !ct_valid_text(operation,80) || !ct_id(turn,"trn_",32) {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CT_STOP_SCHEMA);jo_key(o[..],"operation_id");jo_str(o[..],operation);jo_key(o[..],"turn_id");jo_str(o[..],turn);jo_end(o[..]);return ct_len(o[..]);
+}
+ct_state_name :: (state:int)->string {
+ if state==CT_QUEUED {return "queued";}if state==CT_RUNNING {return "running";}if state==CT_COMPLETED {return "completed";}if state==CT_FAILED {return "failed";}if state==CT_CANCELLED {return "cancelled";}if state==CT_UNKNOWN {return "unknown";}return "";
+}
+ct_state_of :: (name:string)->int {for state:CT_QUEUED..<CT_UNKNOWN+1 {if ct_state_name(state)==name {return state;}}return 0;}
+ct_event_name :: (kind:int)->string {
+ if kind==CT_STARTED {return "started";}if kind==CT_TEXT {return "text_delta";}if kind==CT_USAGE {return "usage";}if kind==CT_STOP {return "stop_requested";}if kind==CT_DONE {return "completed";}if kind==CT_ERROR {return "failed";}if kind==CT_LOST {return "unknown";}if kind==CT_CANCEL {return "cancelled";}return "";
+}
+ct_event_of :: (name:string)->int {for kind:CT_STARTED..<CT_CANCEL+1 {if ct_event_name(kind)==name {return kind;}}return 0;}
+ct_usage_at :: (o:[]Jo,u:CtUsage) {
+ jo_obj(o);jo_key(o,"input_tokens");ct_optional_number(o,u.input);jo_key(o,"output_tokens");ct_optional_number(o,u.output);jo_key(o,"cache_read_tokens");ct_optional_number(o,u.cache_read);jo_key(o,"cache_write_tokens");ct_optional_number(o,u.cache_write);jo_key(o,"reasoning_tokens");ct_optional_number(o,u.reasoning);jo_end(o);
+}
+ct_usage_read :: (v:Jv,at:int,u:[]CtUsage)->bool {
+ keys:=[5]string.["input_tokens","output_tokens","cache_read_tokens","cache_write_tokens","reasoning_tokens"];
+ if !js_fields(v,at,keys[..]) || jv_len(v,at)!=5 {return false;}
+ a:=ct_nullable_number(v,jv_get(v,at,keys[0]));b:=ct_nullable_number(v,jv_get(v,at,keys[1]));c:=ct_nullable_number(v,jv_get(v,at,keys[2]));d:=ct_nullable_number(v,jv_get(v,at,keys[3]));e:=ct_nullable_number(v,jv_get(v,at,keys[4]));
+ if a< -1 || b< -1 || c< -1 || d< -1 || e< -1 {return false;} // mutant: equivalent (all decoded usage fields are checked again by ct_event_valid before publication)
+ u[0]=CtUsage.{input=a,output=b,cache_read=c,cache_write=d,reasoning=e};return true;
+}
+ct_event_valid :: (e:[]CtEvent)->bool {
+ if !ct_id(e[0].conversation,"cnv_",32) || !ct_id(e[0].turn,"trn_",32) || e[0].sequence<1 || e[0].sequence>CT_SEQUENCE_MAX || e[0].kind<CT_STARTED || e[0].kind>CT_CANCEL {return false;}
+ expected:=ifx e[0].kind==CT_STARTED then CT_RUNNING else ct_transition(CT_RUNNING,e[0].kind,true);
+ if e[0].state!=expected {return false;}
+ if e[0].kind==CT_TEXT {if e[0].index!=0 || e[0].delta.count<1 || !ct_valid_text(e[0].delta,16384) {return false;}}
+ else if e[0].index!= -1 || e[0].delta.count!=0 {return false;}
+ if (e[0].kind==CT_STOP || e[0].kind==CT_CANCEL) && !e[0].stop_requested {return false;}
+ if e[0].kind==CT_STARTED && e[0].stop_requested {return false;}
+ if e[0].kind==CT_USAGE {if !e[0].has_usage {return false;}}
+ else if !ct_terminal(e[0].state) && e[0].has_usage {return false;}
+ if e[0].has_usage {for n:[5]int.[e[0].usage.input,e[0].usage.output,e[0].usage.cache_read,e[0].usage.cache_write,e[0].usage.reasoning] {if n< -1 || n>CT_SEQUENCE_MAX {return false;}}}
+ if e[0].kind==CT_DONE {
+  if e[0].reason!="end_turn" && e[0].reason!="max_tokens" && e[0].reason!="tool_use" && e[0].reason!="stop_sequence" && e[0].reason!="refusal" {return false;}
+ }else if e[0].kind==CT_ERROR {if e[0].reason!="error" {return false;}}
+ else if e[0].kind==CT_LOST {if e[0].reason!="unknown" {return false;}}
+ else if e[0].kind==CT_CANCEL {if e[0].reason!="cancelled" {return false;}}
+ else if e[0].reason.count!=0 {return false;}
+ if e[0].kind==CT_ERROR || e[0].kind==CT_LOST {if e[0].error.count<1 || !ct_valid_text(e[0].error,512) {return false;}}
+ else if e[0].error.count!=0 {return false;}
+ return true;
+}
+ct_event_write :: (e:[]CtEvent,out:[]u8)->int #export_c #effects(all) {
+ if !ct_event_valid(e) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CT_EVENT_SCHEMA);
+ jo_key(o[..],"conversation_id");jo_str(o[..],e[0].conversation);jo_key(o[..],"turn_id");jo_str(o[..],e[0].turn);jo_key(o[..],"sequence");jo_int(o[..],e[0].sequence);
+ jo_key(o[..],"type");jo_str(o[..],ct_event_name(e[0].kind));jo_key(o[..],"state");jo_str(o[..],ct_state_name(e[0].state));jo_key(o[..],"stop_requested");jo_bool(o[..],e[0].stop_requested);
+ jo_key(o[..],"block_index");ct_optional_number(o[..],e[0].index);jo_key(o[..],"delta");ct_optional_text(o[..],e[0].delta);
+ jo_key(o[..],"usage");if e[0].has_usage {ct_usage_at(o[..],e[0].usage);}else {jo_null(o[..]);}
+ jo_key(o[..],"stop_reason");ct_optional_text(o[..],e[0].reason);jo_key(o[..],"error");ct_optional_text(o[..],e[0].error);jo_end(o[..]);return ct_len(o[..]);
+}
+ct_event_read :: (raw:string,e:[]CtEvent,storage:[]u8)->bool #export_c #effects(all) {
+ d:[1]Jv;nodes:[48]JvNode;n:[1]CtEvent;
+ if storage.count<17048 || raw.count>131072 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[12]string.["schema","conversation_id","turn_id","sequence","type","state","stop_requested","block_index","delta","usage","stop_reason","error"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=12 || jv_raw(v,jv_get(v,0,"schema"))!=CT_EVENT_SCHEMA {return false;}
+ nc:=js_string(v,jv_get(v,0,"conversation_id"),storage[0..<36]);nt:=js_string(v,jv_get(v,0,"turn_id"),storage[36..<72]); // mutant: equivalent (a wider span cannot bypass the exact ID-length check)
+ nd:=ct_nullable_string(v,jv_get(v,0,"delta"),storage[72..<16456]);nr:=ct_nullable_string(v,jv_get(v,0,"stop_reason"),storage[16456..<16536]);ne:=ct_nullable_string(v,jv_get(v,0,"error"),storage[16536..<17048]); // mutant: equivalent (widening by one still fails the delta length or exact stop-reason check)
+ if nc<0 || nt<0 {return false;} // mutant: equivalent (zero-length identities fail ct_event_valid too)
+ if nd<0 || nr<0 || ne<0 {return false;}
+ n[0].conversation=cast(string)storage[0..<nc];n[0].turn=cast(string)storage[36..<36+nt];n[0].delta=cast(string)storage[72..<72+nd];n[0].reason=cast(string)storage[16456..<16456+nr];n[0].error=cast(string)storage[16536..<16536+ne];
+ n[0].sequence=js_number(v,jv_get(v,0,"sequence"));n[0].kind=ct_event_of(jv_raw(v,jv_get(v,0,"type")));n[0].state=ct_state_of(jv_raw(v,jv_get(v,0,"state")));n[0].index=ct_nullable_number(v,jv_get(v,0,"block_index"));
+ stop:=jv_kind(v,jv_get(v,0,"stop_requested"));if stop!=JV_TRUE && stop!=JV_FALSE {return false;}n[0].stop_requested=stop==JV_TRUE;
+ at:=jv_get(v,0,"usage");if jv_kind(v,at)!=JV_NULL {u:[1]CtUsage;if !ct_usage_read(v,at,u[..]) {return false;}n[0].has_usage=true;n[0].usage=u[0];}
+ // Nullability is part of the contract: non-text events have no delta, and
+ // nonterminal events have no stop reason or error, not empty placeholders.
+ if (nd==0 && jv_kind(v,jv_get(v,0,"delta"))!=JV_NULL) || (nr==0 && jv_kind(v,jv_get(v,0,"stop_reason"))!=JV_NULL) || (ne==0 && jv_kind(v,jv_get(v,0,"error"))!=JV_NULL) {return false;}
+ if !ct_event_valid(n[..]) {return false;}e[0]=n[0];return true;
+}
+CtView :: struct {
+ conversation:[36]u8;turn:[36]u8;sequence:int;state:int;stop_requested:bool;
+ usage:CtUsage;content:[131072]u8;bytes:int;reason:[80]u8;nr:int;error:[512]u8;ne:int;
+}
+ct_view_begin :: (v:[]CtView,conversation:string,turn:string)->bool {
+ if !ct_id(conversation,"cnv_",32) || !ct_id(turn,"trn_",32) {return false;}
+ v[0]=CtView.{state=CT_QUEUED};_=js_copy(v[0].conversation[..],conversation);_=js_copy(v[0].turn[..],turn);return true;
+}
+ct_view_text :: (v:[]CtView)->string {return cast(string)v[0].content[0..<v[0].bytes];}
+ct_view_reason :: (v:[]CtView)->string {return cast(string)v[0].reason[0..<v[0].nr];}
+// 1 applied; 2 duplicate; 3 gap (replay/refetch); 4 reply capacity; 0 invalid.
+// Every refusal preserves the prior materialized view and cursor.
+ct_view_apply :: (v:[]CtView,e:[]CtEvent)->int {
+ if !ct_event_valid(e) || e[0].conversation!=cast(string)v[0].conversation[..] || e[0].turn!=cast(string)v[0].turn[..] {return 0;}
+ if e[0].sequence<=v[0].sequence {return 2;}
+ if !ct_sequence(v[0].sequence,e[0].sequence) {return 3;}
+ action:=ifx v[0].state==CT_QUEUED && e[0].kind==CT_CANCEL then CT_STOP else e[0].kind;
+ state:=ct_transition(v[0].state,action,v[0].stop_requested);
+ if state!=e[0].state {return 0;}
+ if action!=CT_STOP && e[0].stop_requested!=v[0].stop_requested {return 0;}
+ if e[0].delta.count>v[0].content.count-v[0].bytes {return 4;} // mutant: equivalent (content.count is the fixed array capacity, independent of the receiver index)
+ if e[0].kind==CT_TEXT {_=js_copy(v[0].content[v[0].bytes..<v[0].content.count],e[0].delta);v[0].bytes+=e[0].delta.count;} // mutant: equivalent (the same fixed content.count capacity)
+ if e[0].has_usage {v[0].usage=e[0].usage;}
+ v[0].nr=js_copy(v[0].reason[..],e[0].reason);v[0].ne=js_copy(v[0].error[..],e[0].error);
+ v[0].sequence=e[0].sequence;v[0].state=state;v[0].stop_requested=e[0].stop_requested;return 1;
+}
+ct_event_sse :: (e:[]CtEvent,out:[]u8)->int #export_c #effects(all) {
+ b:[131072]u8;n:=ct_event_write(e,b[..]);if n<0 {return -1;} // mutant: equivalent (a valid event is a nonempty JSON object, never length zero or one)
+ id:[32]u8;o:[1]Jo;jo_start(o[..],id[..]);jo_int(o[..],e[0].sequence);
+ return gw_sse_frame(jo_text(o[..]),"turn",cast(string)b[0..<n],out);
+}
+#load "account-chat-turn-checks.coax" #test;

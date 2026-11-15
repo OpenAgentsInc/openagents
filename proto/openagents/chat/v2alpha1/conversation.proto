@@ -1,0 +1,137 @@
+syntax = "proto3";
+package openagents.chat.v2alpha1;
+import "openagents/options/v1alpha1/options.proto";
+
+// Owned rich conversations. JSON uses the explicit names below, integer
+// numbers, and null for absent optional fields. First consumer: durable-text.
+// This is separate from, and does not change, openagents.chat.thread.v1.
+message FileReference {
+  string file_id = 1 [json_name="file_id"];
+  string content_sha256 = 2 [json_name="content_sha256"];
+  string media_type = 3 [json_name="media_type"];
+}
+message ToolCall {
+  string call_id = 1 [json_name="call_id"];
+  string name = 2 [json_name="name"];
+  string input_json = 3 [json_name="input_json"];
+}
+message ToolResult {
+  string call_id = 1 [json_name="call_id"];
+  string output = 2 [json_name="output"];
+  bool is_error = 3 [json_name="is_error"];
+}
+message Citation {
+  string knowledge_id = 1 [json_name="knowledge_id"];
+  int64 revision = 2 [json_name="revision"];
+  string content_sha256 = 3 [json_name="content_sha256"];
+  optional int64 page = 4 [json_name="page"];
+  optional int64 start = 5 [json_name="start"];
+  optional int64 end = 6 [json_name="end"];
+}
+message OpaqueBlock {
+  string provider_id = 1 [json_name="provider_id"];
+  string model_id = 2 [json_name="model_id"];
+  string encoding = 3 [json_name="encoding"];
+  string data = 4 [json_name="data"];
+}
+message ContentBlock {
+  // text, image, document, tool_call, tool_result, citation, opaque.
+  // durable-text accepts text only; other forms await their real consumer.
+  string type = 1 [json_name="type"];
+  oneof value {
+    string text = 2 [json_name="text", (openagents.options.v1alpha1.max_bytes)=131072];
+    FileReference image = 3 [json_name="image"];
+    FileReference document = 4 [json_name="document"];
+    ToolCall tool_call = 5 [json_name="tool_call"];
+    ToolResult tool_result = 6 [json_name="tool_result"];
+    Citation citation = 7 [json_name="citation"];
+    OpaqueBlock opaque = 8 [json_name="opaque"];
+  }
+}
+message Message {
+  string id = 1 [json_name="id"];
+  string turn_id = 2 [json_name="turn_id"];
+  string role = 3 [json_name="role"];
+  repeated ContentBlock content = 4 [json_name="content", (openagents.options.v1alpha1.max_count)=16];
+  int64 created_at_ms = 5 [json_name="created_at_ms"];
+}
+message Usage {
+  // Cumulative provider observations. Null means unknown; zero is observed zero.
+  optional int64 input_tokens = 1 [json_name="input_tokens"];
+  optional int64 output_tokens = 2 [json_name="output_tokens"];
+  optional int64 cache_read_tokens = 3 [json_name="cache_read_tokens"];
+  optional int64 cache_write_tokens = 4 [json_name="cache_write_tokens"];
+  optional int64 reasoning_tokens = 5 [json_name="reasoning_tokens"];
+}
+message Selection {
+  string model_id = 1 [json_name="model_id"];
+  string provider_id = 2 [json_name="provider_id"];
+  string effort = 3 [json_name="effort"];
+  optional string route_decision_id = 4 [json_name="route_decision_id"];
+  string reason = 5 [json_name="reason"];
+}
+message Conversation {
+  string schema = 1 [json_name="schema"]; // openagents.chat.conversation.v2alpha1
+  string id = 2 [json_name="id"];
+  int64 revision = 3 [json_name="revision"];
+  optional string project_id = 4 [json_name="project_id"];
+  optional string legacy_thread_id = 5 [json_name="legacy_thread_id"];
+  optional int64 legacy_thread_revision = 6 [json_name="legacy_thread_revision"];
+  repeated Message messages = 7 [json_name="messages"];
+  optional string active_turn_id = 8 [json_name="active_turn_id"];
+  int64 created_at_ms = 9 [json_name="created_at_ms"];
+  int64 updated_at_ms = 10 [json_name="updated_at_ms"];
+  optional string next_cursor = 11 [json_name="next_cursor"];
+}
+message SubmitRequest {
+  string schema = 1 [json_name="schema"]; // openagents.chat.submit.v2alpha1
+  string operation_id = 2 [json_name="operation_id", (openagents.options.v1alpha1.max_bytes)=80];
+  // Empty creates a conversation; cnv_<32 hex> appends to an owned one.
+  string conversation_id = 3 [json_name="conversation_id"];
+  int64 expected_revision = 4 [json_name="expected_revision"];
+  optional string project_id = 5 [json_name="project_id"];
+  optional int64 expected_project_revision = 6 [json_name="expected_project_revision"];
+  // An explicit continuation copies a pinned v1 cut; the v1 record stays intact.
+  optional string legacy_thread_id = 7 [json_name="legacy_thread_id"];
+  optional int64 legacy_thread_revision = 8 [json_name="legacy_thread_revision"];
+  repeated ContentBlock content = 9 [json_name="content", (openagents.options.v1alpha1.max_count)=16];
+}
+message StopRequest {
+  string schema = 1 [json_name="schema"]; // openagents.chat.stop.v2alpha1
+  string operation_id = 2 [json_name="operation_id", (openagents.options.v1alpha1.max_bytes)=80];
+  string turn_id = 3 [json_name="turn_id"];
+}
+message Turn {
+  string schema = 1 [json_name="schema"]; // openagents.chat.turn.v2alpha1
+  string id = 2 [json_name="id"];
+  string conversation_id = 3 [json_name="conversation_id"];
+  string operation_id = 4 [json_name="operation_id"];
+  // queued, running, completed, failed, cancelled, unknown.
+  string state = 5 [json_name="state"];
+  bool stop_requested = 6 [json_name="stop_requested"];
+  optional string stop_reason = 7 [json_name="stop_reason"];
+  Usage usage = 8 [json_name="usage"];
+  Selection selection = 9 [json_name="selection"];
+  repeated ContentBlock content = 10 [json_name="content"];
+  int64 event_cursor = 11 [json_name="event_cursor"];
+  int64 conversation_revision = 12 [json_name="conversation_revision"];
+  optional string context_snapshot_id = 13 [json_name="context_snapshot_id"];
+  optional string error = 14 [json_name="error"];
+  int64 created_at_ms = 15 [json_name="created_at_ms"];
+  int64 updated_at_ms = 16 [json_name="updated_at_ms"];
+}
+message Event {
+  string schema = 1 [json_name="schema"]; // openagents.chat.event.v2alpha1
+  string conversation_id = 2 [json_name="conversation_id"];
+  string turn_id = 3 [json_name="turn_id"];
+  int64 sequence = 4 [json_name="sequence"];
+  // started, text_delta, usage, stop_requested, completed, failed, unknown, cancelled.
+  string type = 5 [json_name="type"];
+  string state = 6 [json_name="state"];
+  bool stop_requested = 7 [json_name="stop_requested"];
+  optional int64 block_index = 8 [json_name="block_index"];
+  optional string delta = 9 [json_name="delta", (openagents.options.v1alpha1.max_bytes)=16384];
+  optional Usage usage = 10 [json_name="usage"];
+  optional string stop_reason = 11 [json_name="stop_reason"];
+  optional string error = 12 [json_name="error"];
+}

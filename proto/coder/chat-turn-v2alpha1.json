@@ -1,0 +1,8 @@
+{
+  "profile": "durable-text",
+  "issue": 13619,
+  "submit": {"schema":"openagents.chat.submit.v2alpha1","operation_id":"op-1","conversation_id":"","expected_revision":0,"project_id":null,"expected_project_revision":null,"legacy_thread_id":null,"legacy_thread_revision":null,"content":[{"type":"text","text":"Hello café"},{"type":"text","text":"\nSecond\"block"}]},
+  "stop": {"schema":"openagents.chat.stop.v2alpha1","operation_id":"stop-1","turn_id":"trn_0123456789abcdef0123456789abcdef"},
+  "event": {"schema":"openagents.chat.event.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","sequence":2,"type":"text_delta","state":"running","stop_requested":false,"block_index":0,"delta":"Hello café\n","usage":null,"stop_reason":null,"error":null},
+  "usage_event": {"schema":"openagents.chat.event.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","sequence":3,"type":"usage","state":"running","stop_requested":false,"block_index":null,"delta":null,"usage":{"input_tokens":0,"output_tokens":7,"cache_read_tokens":null,"cache_write_tokens":null,"reasoning_tokens":null},"stop_reason":null,"error":null}
+}

@@ -1,0 +1,248 @@
+// Checks loaded only by the owned durable-turn codec.
+CT_TEST_CONVERSATION :: "cnv_0123456789abcdef0123456789abcdef";
+CT_TEST_TURN :: "trn_0123456789abcdef0123456789abcdef";
+CT_TEST_PROJECT :: "prj_0123456789abcdef0123456789abcdef";
+#test "durable submit preserves ordered UTF8 blocks and explicit nullable references" {
+ b:[131072]u8;r:[1]CtSubmit;arena:[174]u8;texts:=[2]string.["Hello café","\nSecond\"block"];
+ n:=ct_submit_write("op-1","",0,"",-1,"",-1,texts[..],b[..]);
+ #assert n>0 && ct_submit_read(cast(string)b[0..<n],r[..],arena[..]);
+ #assert r[0].operation=="op-1" && r[0].conversation=="" && r[0].revision==0 && r[0].project=="" && r[0].project_revision== -1 && r[0].legacy=="" && r[0].legacy_revision== -1;
+ #assert r[0].blocks==2 && ct_submit_text(r[..],0)==texts[0] && ct_submit_text(r[..],1)==texts[1] && ct_submit_text(r[..],-1)=="" && ct_submit_text(r[..],2)=="";
+ n=ct_submit_write("op-2",CT_TEST_CONVERSATION,5,CT_TEST_PROJECT,9,"",-1,texts[..],b[..]);
+ #assert n>0 && ct_submit_read(cast(string)b[0..<n],r[..],arena[..]) && r[0].conversation==CT_TEST_CONVERSATION && r[0].project==CT_TEST_PROJECT && r[0].revision==5 && r[0].project_revision==9;
+ n=ct_submit_write("op-3","",0,CT_TEST_PROJECT,9,"m_00000000000000000001",2,texts[..],b[..]);
+ #assert n>0 && ct_submit_read(cast(string)b[0..<n],r[..],arena[..]) && r[0].legacy=="m_00000000000000000001" && r[0].legacy_revision==2;
+ #assert ct_submit_write("op","",0,"",-1,"",-1,texts[..],b[0..<10])<0;
+}
+#test "durable request identity and paired references cannot be widened" {
+ b:[131072]u8;r:[1]CtSubmit;arena:[174]u8;one:=[1]string.["Q"];
+ #assert ct_submit_write("","",0,"",-1,"",-1,one[..],b[..])<0;
+ #assert ct_submit_write("x",CT_TEST_CONVERSATION,0,"",-1,"",-1,one[..],b[..])<0;
+ #assert ct_submit_write("x","",1,"",-1,"",-1,one[..],b[..])<0;
+ #assert ct_submit_write("x","",0,CT_TEST_PROJECT,-1,"",-1,one[..],b[..])<0;
+ #assert ct_submit_write("x","",0,"",1,"",-1,one[..],b[..])<0;
+ #assert ct_submit_write("x","",0,"",-2,"",-1,one[..],b[..])<0 && ct_submit_write("x","",0,"",-1,"",-2,one[..],b[..])<0;
+ #assert ct_submit_write("x","",0,"",-1,"m_00000000000000000001",-1,one[..],b[..])<0;
+ #assert ct_submit_write("x","",0,"",-1,"",1,one[..],b[..])<0;
+ #assert ct_submit_write("x",CT_TEST_CONVERSATION,1,"",-1,"m_00000000000000000001",1,one[..],b[..])<0;
+ for bad:[5]string.["bad","cnv_0123456789abcdef0123456789abcdeg","cnv_0123456789abcdef0123456789abcde","cnv_0123456789abcdef0123456789abcdef0","cnv_0123456789ABCDEF0123456789abcdef"] {#assert !ct_id(bad,"cnv_",32) && ct_submit_write("x",bad,1,"",-1,"",-1,one[..],b[..])<0;}
+ #assert !ct_submit_read("{}",r[..],arena[..]) && !ct_submit_read("[",r[..],arena[..]);
+}
+#test "durable submit refuses unsupported content, missing members and duplicate aliases" {
+ r:[1]CtSubmit;arena:[174]u8;
+ head:="{\"schema\":\"openagents.chat.submit.v2alpha1\",\"operation_id\":\"x\",\"conversation_id\":\"\",\"expected_revision\":0,\"project_id\":null,\"expected_project_revision\":null,\"legacy_thread_id\":null,\"legacy_thread_revision\":null,";
+ tails:=[9]string.["\"content\":[]}","\"content\":[{\"type\":\"image\",\"text\":\"x\"}]}","\"content\":[{\"type\":\"text\",\"text\":\"\"}]}","\"content\":[{\"type\":\"text\",\"text\":\"x\",\"text\":\"y\"}]}","\"content\":[{\"type\":\"text\",\"text\":\"x\",\"extra\":1}]}","\"content\":[{\"text\":\"x\"}]}","\"content\":[{\"type\":\"text\",\"text\":\"\\u0000\"}]}","\"content\":null}","\"content\":[{\"type\":\"text\",\"text\":\"x\"}],\"operation_id\":\"y\"}"];
+ b:[2048]u8;
+ for tail:tails {o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],head);jo_put(o[..],tail);#assert !ct_submit_read(jo_text(o[..]),r[..],arena[..]);}
+}
+#test "request count, byte, operation and revision bounds include their exact edge" #steps 100000000 {
+ b:[131073]u8;r:[1]CtSubmit;arena:[174]u8;text:[16385]u8;op:[81]u8;for i:0..<text.count {text[i]='Z';}for i:0..<op.count {op[i]='x';}
+ one:=[1]string.[cast(string)text[0..<16384]];
+ n:=ct_submit_write(cast(string)op[0..<80],"",0,"",-1,"",-1,one[..],b[..]);#assert n>0 && ct_submit_read(cast(string)b[0..<n],r[..],arena[..]) && r[0].bytes==16384;
+ one[0]=cast(string)text[..];#assert ct_submit_write("x","",0,"",-1,"",-1,one[..],b[..])<0;
+ one[0]="x";#assert ct_submit_write(cast(string)op[..],"",0,"",-1,"",-1,one[..],b[..])<0;
+ many:[17]string;for i:0..<many.count {many[i]="x";}
+ #assert ct_submit_write("x","",0,"",-1,"",-1,many[0..<16],b[..])>0 && ct_submit_write("x","",0,"",-1,"",-1,many[..],b[..])<0;
+ n=ct_submit_write("x","",0,"",-1,"",-1,one[..],b[..]);for i:n..<b.count {b[i]=' ';}
+ #assert ct_submit_read(cast(string)b[0..<131072],r[..],arena[..]) && !ct_submit_read(cast(string)b[..],r[..],arena[..]);
+ #assert ct_submit_write("x",CT_TEST_CONVERSATION,CT_SEQUENCE_MAX,"",-1,"",-1,one[..],b[..])>0;
+ #assert ct_submit_write("x",CT_TEST_CONVERSATION,CT_SEQUENCE_MAX+1,"",-1,"",-1,one[..],b[..])<0;
+}
+#test "Stop has its own operation and exact turn identity" {
+ b:[512]u8;op:[81]u8;turn:[36]u8;n:=ct_stop_write("stop-1",CT_TEST_TURN,b[..]);
+ #assert n>0 && ct_stop_read(cast(string)b[0..<n],op[..],turn[..])==6 && cast(string)op[0..<6]=="stop-1" && cast(string)turn[..]==CT_TEST_TURN;
+ #assert ct_stop_write("",CT_TEST_TURN,b[..])<0 && ct_stop_write("x","bad",b[..])<0 && ct_stop_write("x",CT_TEST_TURN,b[0..<5])<0;
+ #assert ct_stop_read("{}",op[..],turn[..])<0;
+}
+#test "events round trip every lifecycle kind and preserve unknown versus zero usage" {
+ b:[131072]u8;e:[1]CtEvent;r:[1]CtEvent;event_arena:[17048]u8;
+ e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;
+ for kind:CT_STARTED..<CT_CANCEL+1 {
+  e[0].kind=kind;e[0].state=ifx kind==CT_STARTED then CT_RUNNING else ct_transition(CT_RUNNING,kind,true);
+  e[0].stop_requested=kind==CT_STOP || kind==CT_CANCEL;
+  e[0].index=ifx kind==CT_TEXT then 0 else -1;e[0].delta=ifx kind==CT_TEXT then "Hello café\n" else "";
+  e[0].has_usage=kind==CT_USAGE;e[0].usage=CtUsage.{input=0,output=7};
+  e[0].reason=ifx kind==CT_DONE then "end_turn" else ifx kind==CT_ERROR then "error" else ifx kind==CT_LOST then "unknown" else ifx kind==CT_CANCEL then "cancelled" else "";
+  e[0].error=ifx kind==CT_ERROR || kind==CT_LOST then "Provider result unavailable" else "";
+  n:=ct_event_write(e[..],b[..]);#assert n>0 && ct_event_read(cast(string)b[0..<n],r[..],event_arena[..]);
+  #assert r[0].conversation==e[0].conversation && r[0].turn==e[0].turn && r[0].sequence==1 && r[0].kind==kind && r[0].state==e[0].state && r[0].stop_requested==e[0].stop_requested && r[0].index==e[0].index && r[0].delta==e[0].delta && r[0].reason==e[0].reason && r[0].error==e[0].error && r[0].has_usage==e[0].has_usage;
+  if r[0].has_usage {#assert r[0].usage.input==0 && r[0].usage.output==7 && r[0].usage.cache_read== -1 && r[0].usage.cache_write== -1 && r[0].usage.reasoning== -1;}
+  #assert ct_event_write(e[..],b[0..<10])<0;
+ }
+}
+#test "an event cannot claim an inconsistent state or payload" {
+ b:[131072]u8;e:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_TEXT;e[0].state=CT_RUNNING;e[0].index=0;e[0].delta="X";
+ #assert ct_event_write(e[..],b[..])>0;
+ e[0].state=CT_COMPLETED;#assert ct_event_write(e[..],b[..])<0;e[0].state=CT_RUNNING;
+ e[0].index=1;#assert ct_event_write(e[..],b[..])<0;e[0].index=0;
+ e[0].delta="";#assert ct_event_write(e[..],b[..])<0;e[0].delta="X";
+ e[0].sequence=0;#assert ct_event_write(e[..],b[..])<0;e[0].sequence=CT_SEQUENCE_MAX+1;#assert ct_event_write(e[..],b[..])<0;e[0].sequence=1;
+ e[0].reason="end_turn";#assert ct_event_write(e[..],b[..])<0;e[0].reason="";
+ e[0].error="Error";#assert ct_event_write(e[..],b[..])<0;e[0].error="";
+ e[0].has_usage=true;#assert ct_event_write(e[..],b[..])<0;
+ e[0].kind=CT_USAGE;e[0].index= -1;e[0].delta="";e[0].usage.input= -2;#assert ct_event_write(e[..],b[..])<0;
+ e[0].usage.input=0;#assert ct_event_write(e[..],b[..])>0;
+}
+#test "durable text reducer requires contiguous events and ignores already applied deltas" {
+ v:[1]CtView;e:[1]CtEvent;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
+ e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_STARTED;e[0].state=CT_RUNNING;
+ #assert ct_view_apply(v[..],e[..])==1 && v[0].sequence==1 && v[0].state==CT_RUNNING;
+ e[0].kind=CT_TEXT;e[0].index=0;e[0].delta="Hello café";e[0].sequence=3;
+ #assert ct_view_apply(v[..],e[..])==3 && v[0].sequence==1 && v[0].bytes==0;
+ e[0].sequence=2;#assert ct_view_apply(v[..],e[..])==1 && ct_view_text(v[..])=="Hello café";
+ #assert ct_view_apply(v[..],e[..])==2 && ct_view_text(v[..])=="Hello café" && v[0].sequence==2;
+ e[0].sequence=3;e[0].turn="trn_ffffffffffffffffffffffffffffffff";#assert ct_view_apply(v[..],e[..])==0 && v[0].sequence==2;
+ e[0].turn=CT_TEST_TURN;e[0].kind=CT_DONE;e[0].index= -1;e[0].delta="";e[0].state=CT_COMPLETED;e[0].reason="max_tokens";e[0].has_usage=true;e[0].usage.output=0;
+ #assert ct_view_apply(v[..],e[..])==1 && v[0].state==CT_COMPLETED && v[0].usage.output==0 && v[0].usage.input== -1;
+ #assert ct_view_reason(v[..])=="max_tokens" && ct_view_text(v[..])=="Hello café";
+ e[0].sequence=4;e[0].kind=CT_TEXT;e[0].index=0;e[0].delta="extra";e[0].reason="";e[0].state=CT_RUNNING;e[0].has_usage=false;
+ #assert ct_view_apply(v[..],e[..])==0 && v[0].sequence==3 && ct_view_text(v[..])=="Hello café";
+}
+#test "reducer cancellation is observed, monotone and handles undispatched cancellation" {
+ v:[1]CtView;e:[1]CtEvent;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
+ e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_CANCEL;e[0].state=CT_CANCELLED;e[0].stop_requested=true;e[0].reason="cancelled";
+ #assert ct_view_apply(v[..],e[..])==1 && v[0].state==CT_CANCELLED && v[0].stop_requested;
+ #assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);e[0].kind=CT_STARTED;e[0].state=CT_RUNNING;e[0].stop_requested=false;e[0].reason="";#assert ct_view_apply(v[..],e[..])==1;
+ e[0].sequence=2;e[0].kind=CT_STOP;e[0].stop_requested=true;#assert ct_view_apply(v[..],e[..])==1 && v[0].state==CT_RUNNING;
+ e[0].sequence=3;e[0].kind=CT_USAGE;e[0].has_usage=true;e[0].stop_requested=false;#assert ct_view_apply(v[..],e[..])==0 && v[0].sequence==2;
+ e[0].stop_requested=true;#assert ct_view_apply(v[..],e[..])==1;
+ e[0].sequence=4;e[0].kind=CT_CANCEL;e[0].has_usage=false;e[0].state=CT_CANCELLED;e[0].reason="cancelled";#assert ct_view_apply(v[..],e[..])==1;
+ #assert !ct_view_begin(v[..],"bad",CT_TEST_TURN) && v[0].state==CT_CANCELLED;
+}
+#test "the reducer refuses capacity overflow atomically and preserves partial unknown outcomes" #steps 100000000 {
+ v:[1]CtView;e:[1]CtEvent;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
+ e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_STARTED;e[0].state=CT_RUNNING;#assert ct_view_apply(v[..],e[..])==1;
+ text:[16384]u8;for i:0..<text.count {text[i]='X';}e[0].kind=CT_TEXT;e[0].index=0;e[0].delta=cast(string)text[..];
+ for i:0..<8 {e[0].sequence=i+2;#assert ct_view_apply(v[..],e[..])==1;}
+ #assert v[0].bytes==131072;e[0].sequence=10;#assert ct_view_apply(v[..],e[..])==4 && v[0].bytes==131072 && v[0].sequence==9;
+ e[0].kind=CT_LOST;e[0].state=CT_UNKNOWN;e[0].delta="";e[0].index= -1;e[0].reason="unknown";e[0].error="Worker lost after dispatch";
+ #assert ct_view_apply(v[..],e[..])==1 && v[0].state==CT_UNKNOWN && v[0].bytes==131072 && cast(string)v[0].error[0..<v[0].ne]=="Worker lost after dispatch";
+}
+#test "durable event SSE uses the same JSON and shared stream codec" {
+ e:[1]CtEvent;r:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=12;e[0].kind=CT_TEXT;e[0].state=CT_RUNNING;e[0].index=0;e[0].delta="Hello café\n";
+ b:[131200]u8;name:[64]u8;data:[131072]u8;arena:[17048]u8;s:[1]GwSse;
+ n:=ct_event_sse(e[..],b[..]);#assert n>0 && cast(string)b[0..<25]=="id: 12\nevent: turn\ndata: ";
+ gw_sse_init(s[..],name[..],data[..]);from:=0;count:=0;
+ for i:0..<n {if b[i]=='\n' {event:=gw_sse_line(s[..],cast(string)b[from..<i]);if event.ready {count+=1;#assert event.name=="turn" && !event.truncated && ct_event_read(event.data,r[..],arena[..]) && r[0].sequence==12 && r[0].delta==e[0].delta;}from=i+1;}}
+ #assert count==1 && ct_event_sse(e[..],b[0..<20])<0;
+}
+// Alter one field of a valid wire observation, independently of its typed
+// writer, to exercise malformed peers and persisted-record corruption.
+ct_check_replace :: (raw:string,key:string,value:string,out:[]u8)->string {
+ d:[1]Jv;nodes:[64]JvNode;o:[1]Jo;if !jv_parse(d[..],raw,nodes[..]) {return "";}jo_start(o[..],out);jo_obj(o[..]);
+ for i:0..<jv_len(d[0],0) {at:=jv_at(d[0],0,i);name:=jv_key(d[0],at);jo_key(o[..],name);if name==key {jo_raw(o[..],value);}else {jv_write(d[0],at,o[..]);}}
+ jo_end(o[..]);return jo_text(o[..]);
+}
+#test "event readers reject malformed peer fields before publishing any observation" {
+ e:[1]CtEvent;r:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_TEXT;e[0].state=CT_RUNNING;e[0].index=0;e[0].delta="X";
+ b:[131073]u8;c:[131073]u8;arena:[17048]u8;n:=ct_event_write(e[..],b[..]);#assert n>0;raw:=cast(string)b[0..<n];
+ keys:=[12]string.["schema","conversation_id","turn_id","sequence","type","state","stop_requested","block_index","delta","usage","stop_reason","error"];
+ bad_values:=[12]string.["\"bad\"","\"bad\"","\"bad\"","0","\"bad\"","\"completed\"","null","1","\"\"","{}","\"\"","\"\""];
+ for i:0..<keys.count {candidate:=ct_check_replace(raw,keys[i],bad_values[i],c[..]);#assert !ct_event_read(candidate,r[..],arena[..]);}
+ for value:[6]string.["-1","1.5","2147483646","\"1\"","null","true"] {#assert !ct_event_read(ct_check_replace(raw,"sequence",value,c[..]),r[..],arena[..]);}
+ for value:[4]string.["null","false","\"\\u0000\"","1"] {#assert !ct_event_read(ct_check_replace(raw,"delta",value,c[..]),r[..],arena[..]);}
+ for value:[4]string.["null","-1","0.5","\"0\""] {#assert !ct_event_read(ct_check_replace(raw,"block_index",value,c[..]),r[..],arena[..]);}
+ for value:[3]string.["null","1","false"] {#assert !ct_event_read(ct_check_replace(raw,"stop_reason",value,c[..]),r[..],arena[..])==(value!="null");}
+ #assert !ct_event_read(raw,r[..],arena[0..<17047]) && !ct_event_read("{}",r[..],arena[..]) && !ct_event_read("{",r[..],arena[..]);
+ for i:n..<b.count {b[i]=' ';}#assert ct_event_read(cast(string)b[0..<131072],r[..],arena[..]) && !ct_event_read(cast(string)b[..],r[..],arena[..]);
+}
+#test "every cumulative usage field distinguishes an observation from malformed or missing input" {
+ e:[1]CtEvent;r:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_USAGE;e[0].state=CT_RUNNING;e[0].has_usage=true;
+ e[0].usage=CtUsage.{input=CT_SEQUENCE_MAX,output=1,cache_read=2,cache_write=3,reasoning=4};
+ b:[4096]u8;c:[4096]u8;u:[2048]u8;arena:[17048]u8;n:=ct_event_write(e[..],b[..]);#assert n>0 && ct_event_read(cast(string)b[0..<n],r[..],arena[..]);
+ #assert r[0].usage.input==CT_SEQUENCE_MAX && r[0].usage.output==1 && r[0].usage.cache_read==2 && r[0].usage.cache_write==3 && r[0].usage.reasoning==4;
+ d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);usage:=jv_raw(d[0],jv_get(d[0],0,"usage"));
+ keys:=[5]string.["input_tokens","output_tokens","cache_read_tokens","cache_write_tokens","reasoning_tokens"];
+ for key:keys {for value:[5]string.["-1","1.5","2147483646","\"1\"","true"] {
+  modified:=ct_check_replace(usage,key,value,u[..]);#assert !ct_event_read(ct_check_replace(cast(string)b[0..<n],"usage",modified,c[..]),r[..],arena[..]);
+ }}
+ #assert !ct_event_read(ct_check_replace(cast(string)b[0..<n],"usage","null",c[..]),r[..],arena[..]);
+}
+#test "Stop reader validates complete shape, bounds and output ownership" {
+ b:[1025]u8;c:[2048]u8;op:[80]u8;turn:[36]u8;n:=ct_stop_write("x",CT_TEST_TURN,b[..]);raw:=cast(string)b[0..<n];
+ for key:[3]string.["schema","operation_id","turn_id"] {#assert ct_stop_read(ct_check_replace(raw,key,"null",c[..]),op[..],turn[..])<0;}
+ #assert ct_stop_read(raw,op[0..<0],turn[..])<0 && ct_stop_read(raw,op[..],turn[0..<35])<0;
+ for i:n..<b.count {b[i]=' ';}#assert ct_stop_read(cast(string)b[0..<1024],op[..],turn[..])==1 && ct_stop_read(cast(string)b[..],op[..],turn[..])<0;
+}
+#test "lifecycle spellings match the published protocol independently of codec round trips" {
+ states:=[6]string.["queued","running","completed","failed","cancelled","unknown"];
+ kinds:=[8]string.["started","text_delta","usage","stop_requested","completed","failed","unknown","cancelled"];
+ for name,i:states {#assert ct_state_name(i+1)==name && ct_state_of(name)==i+1;}
+ for name,i:kinds {#assert ct_event_name(i+1)==name && ct_event_of(name)==i+1;}
+ for name:[2]string.["","bad"] {#assert ct_state_of(name)==0 && ct_event_of(name)==0;}
+ #assert ct_state_name(0)=="" && ct_state_name(7)=="" && ct_event_name(0)=="" && ct_event_name(9)=="";
+}
+#test "typed event producers also enforce byte, reason and cancellation boundaries" {
+ e:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=CT_SEQUENCE_MAX;e[0].kind=CT_TEXT;e[0].state=CT_RUNNING;e[0].index=0;
+ b:[131072]u8;text:[16385]u8;for i:0..<text.count {text[i]='x';}e[0].delta=cast(string)text[0..<16384];#assert ct_event_write(e[..],b[..])>0;
+ e[0].delta=cast(string)text[..];#assert ct_event_write(e[..],b[..])<0;
+ for delta:[2]string.["\0","a\0b"] {e[0].delta=delta;#assert ct_event_write(e[..],b[..])<0;}
+ text[0]=255;e[0].delta=cast(string)text[0..<1];#assert ct_event_write(e[..],b[..])<0;text[0]=1;#assert ct_event_write(e[..],b[..])>0;
+ e[0].delta="";e[0].index= -1;e[0].kind=CT_CANCEL;e[0].state=CT_CANCELLED;e[0].reason="cancelled";#assert ct_event_write(e[..],b[..])<0;
+ e[0].stop_requested=true;#assert ct_event_write(e[..],b[..])>0;e[0].reason="bad";#assert ct_event_write(e[..],b[..])<0;
+ e[0].stop_requested=false;e[0].kind=CT_STARTED;e[0].state=CT_RUNNING;e[0].reason="";e[0].index=0;#assert ct_event_write(e[..],b[..])<0;e[0].index= -1;e[0].delta="X";#assert ct_event_write(e[..],b[..])<0;e[0].delta="";
+ e[0].stop_requested=true;#assert ct_event_write(e[..],b[..])<0;e[0].stop_requested=false;
+ e[0].kind=CT_DONE;e[0].state=CT_COMPLETED;
+ for reason:[5]string.["end_turn","max_tokens","tool_use","stop_sequence","refusal"] {e[0].reason=reason;#assert ct_event_write(e[..],b[..])>0;}
+ e[0].reason="other";#assert ct_event_write(e[..],b[..])<0;
+ for kind:[2]int.[CT_ERROR,CT_LOST] {
+  e[0].kind=kind;e[0].state=ifx kind==CT_ERROR then CT_FAILED else CT_UNKNOWN;e[0].reason=ifx kind==CT_ERROR then "error" else "unknown";e[0].error="X";#assert ct_event_write(e[..],b[..])>0;
+  e[0].error=cast(string)text[0..<512];#assert ct_event_write(e[..],b[..])>0;e[0].error=cast(string)text[0..<513];#assert ct_event_write(e[..],b[..])<0;
+  e[0].error="";#assert ct_event_write(e[..],b[..])<0;e[0].error="X";e[0].reason="bad";#assert ct_event_write(e[..],b[..])<0;
+ }
+ e[0].kind=9;e[0].state=0;e[0].error="";e[0].reason="";#assert ct_event_write(e[..],b[..])<0 && ct_event_sse(e[..],b[..])== -1;
+}
+#test "new and imported conversation revision boundaries survive direct wire admission" {
+ b:[131072]u8;one:=[1]string.["X"];r:[1]CtSubmit;arena:[174]u8;
+ n:=ct_submit_write("x",CT_TEST_CONVERSATION,1,CT_TEST_PROJECT,1,"",-1,one[..],b[..]);#assert n>0 && ct_submit_read(cast(string)b[0..<n],r[..],arena[..]);
+ n=ct_submit_write("x","",0,CT_TEST_PROJECT,CT_SEQUENCE_MAX,"m_00000000000000000001",CT_SEQUENCE_MAX,one[..],b[..]);#assert n>0 && ct_submit_read(cast(string)b[0..<n],r[..],arena[..]);
+ #assert ct_submit_write("x","",0,CT_TEST_PROJECT,CT_SEQUENCE_MAX+1,"",-1,one[..],b[..])<0 && ct_submit_write("x","",0,"",-1,"m_00000000000000000001",CT_SEQUENCE_MAX+1,one[..],b[..])<0;
+ #assert ct_submit_write("x","",0,"",-1,"m_00000000000000000001",1,one[..],b[..])>0;
+}
+#test "model stream cannot change identity or request cancellation implicitly" {
+ v:[1]CtView;e:[1]CtEvent;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
+ e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_STARTED;e[0].state=CT_RUNNING;#assert ct_view_apply(v[..],e[..])==1;
+ e[0].sequence=2;e[0].kind=CT_TEXT;e[0].index=0;e[0].delta="X";e[0].conversation="cnv_ffffffffffffffffffffffffffffffff";#assert ct_view_apply(v[..],e[..])==0;e[0].conversation=CT_TEST_CONVERSATION;
+ e[0].delta="";#assert ct_view_apply(v[..],e[..])==0 && v[0].sequence==1;
+ e[0].delta="X";e[0].stop_requested=true;#assert ct_view_apply(v[..],e[..])==0 && v[0].sequence==1;
+}
+#forall "canonical hex identity uses precisely the sixteen published ASCII digits" byte:0..<128 {
+ id:[36]u8;_=js_copy(id[..],CT_TEST_CONVERSATION);id[35]=cast(u8)byte;
+ allowed:="0123456789abcdef";expected:=false;for c:allowed {if cast(int)c==byte {expected=true;}}
+ #assert ct_id(cast(string)id[..],"cnv_",32)==expected;
+}
+ct_check_alias :: (raw:string,key:string,out:[]u8)->string {
+ d:[1]Jv;nodes:[128]JvNode;o:[1]Jo;if !jv_parse(d[..],raw,nodes[..]) {return "";}at:=jv_get(d[0],0,key);
+ if at<0 {return "";} // mutant: equivalent (an object member is node 1 or later, or -1 when missing; it is never root node 0)
+ start:=d[0].nodes[at].key_from;digits:="0123456789abcdef";c:=raw[start];
+ jo_start(o[..],out);jo_put(o[..],cast(string)raw[0..<start]);jo_put(o[..],"\\u00");
+ high:=cast(int)c>>4;low:=cast(int)c&15;jo_put(o[..],cast(string)digits[high..<high+1]);jo_put(o[..],cast(string)digits[low..<low+1]);jo_put(o[..],cast(string)raw[start+1..<raw.count]);return jo_text(o[..]);
+}
+#test "escaped-key oracle constructs valid JSON with exact independently pinned bytes" {
+ b:[1024]u8;raw:="{\"schema\":\"v\",\"other\":1}";
+ alias:=ct_check_alias(raw,"schema",b[..]);#assert alias=="{\"\\u0073chema\":\"v\",\"other\":1}";
+ d:[1]Jv;nodes:[16]JvNode;#assert jv_parse(d[..],alias,nodes[..]) && jv_raw(d[0],jv_get(d[0],0,"schema"))=="v" && jv_int(d[0],jv_get(d[0],0,"other"),-1)==1;
+ #assert ct_check_alias("{","schema",b[..])=="" && ct_check_alias(raw,"missing",b[..])=="";
+}
+#test "canonical field spelling is enforced at every protocol envelope and nested object" {
+ b:[4096]u8;c:[4096]u8;inner:[1024]u8;changed:[1024]u8;arena:[17048]u8;r:[1]CtSubmit;e:[1]CtEvent;op:[80]u8;id:[36]u8;
+ one:=[1]string.["X"];n:=ct_submit_write("x","",0,"",-1,"",-1,one[..],b[..]);raw:=cast(string)b[0..<n];
+ for key:[9]string.["schema","operation_id","conversation_id","expected_revision","project_id","expected_project_revision","legacy_thread_id","legacy_thread_revision","content"] {#assert !ct_submit_read(ct_check_alias(raw,key,c[..]),r[..],arena[..]);}
+ #assert !ct_submit_read(ct_check_replace(raw,"project_id","\"\"",c[..]),r[..],arena[..]) && !ct_submit_read(ct_check_replace(raw,"legacy_thread_id","\"\"",c[..]),r[..],arena[..]);
+ for key:[2]string.["type","text"] {alias:=ct_check_alias("{\"type\":\"text\",\"text\":\"X\"}",key,inner[..]);o:[1]Jo;jo_start(o[..],changed[..]);jo_put(o[..],"[");jo_put(o[..],alias);jo_put(o[..],"]");#assert !ct_submit_read(ct_check_replace(raw,"content",jo_text(o[..]),c[..]),r[..],arena[..]);}
+ n=ct_stop_write("x",CT_TEST_TURN,b[..]);raw=cast(string)b[0..<n];for key:[3]string.["schema","operation_id","turn_id"] {#assert ct_stop_read(ct_check_alias(raw,key,c[..]),op[..],id[..])<0;}
+ e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_USAGE;e[0].state=CT_RUNNING;e[0].has_usage=true;
+ n=ct_event_write(e[..],b[..]);raw=cast(string)b[0..<n];next:[1]CtEvent;#assert ct_event_read(raw,next[..],arena[..]) && next[0].usage.input== -1 && next[0].usage.output== -1;
+ for key:[12]string.["schema","conversation_id","turn_id","sequence","type","state","stop_requested","block_index","delta","usage","stop_reason","error"] {#assert !ct_event_read(ct_check_alias(raw,key,c[..]),next[..],arena[..]);}
+ d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],raw,nodes[..]);usage:=jv_raw(d[0],jv_get(d[0],0,"usage"));
+ for key:[5]string.["input_tokens","output_tokens","cache_read_tokens","cache_write_tokens","reasoning_tokens"] {alias:=ct_check_alias(usage,key,inner[..]);#assert !ct_event_read(ct_check_replace(raw,"usage",alias,c[..]),next[..],arena[..]);}
+ #assert !ct_event_read(ct_check_replace(raw,"usage","{}",c[..]),next[..],arena[..]);
+}
+#test "producer and consumer limits agree at full block and operation capacities" {
+ b:[4096]u8;r:[1]CtSubmit;arena:[174]u8;many:[16]string;for i:0..<16 {many[i]="X";}n:=ct_submit_write("x","",0,"",-1,"",-1,many[..],b[..]);#assert n>0 && ct_submit_read(cast(string)b[0..<n],r[..],arena[..]) && ct_submit_text(r[..],16)=="";
+ op:[81]u8;for i:0..<op.count {op[i]='x';}out:[80]u8;id:[36]u8;
+ n=ct_stop_write(cast(string)op[0..<80],CT_TEST_TURN,b[..]);#assert n>0 && ct_stop_read(cast(string)b[0..<n],out[..],id[..])==80;
+ #assert ct_stop_write(cast(string)op[..],CT_TEST_TURN,b[..])<0;
+ e:[1]CtEvent;e[0].conversation=CT_TEST_CONVERSATION;e[0].turn=CT_TEST_TURN;e[0].sequence=1;e[0].kind=CT_USAGE;e[0].state=CT_RUNNING;e[0].has_usage=true;
+ for field:0..<5 {values:[5]int;values[field]=CT_SEQUENCE_MAX+1;e[0].usage=CtUsage.{input=values[0],output=values[1],cache_read=values[2],cache_write=values[3],reasoning=values[4]};#assert ct_event_write(e[..],b[..])<0;}
+}

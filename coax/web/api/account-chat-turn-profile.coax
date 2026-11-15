@@ -1,0 +1,29 @@
+// Descriptor and exact-byte oracle for the shared durable turn codec.
+#load "account-chat-turn-wire.coax";
+#load "../../lib/proto/importer.coax";
+#load "../../lib/proto/golden-keys.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+ct_profile_keys :: (g:[]PkDescriptor,name:string,raw:string)->bool {
+ b:[160]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],".openagents.chat.v2alpha1.");jo_put(o[..],name);
+ nodes:[256]JvNode;why:=pk_text_keys(g[0].state[..],jo_text(o[..]),raw,false,false,nodes[..]);
+ if why!="" {print("FAIL %: %\n",name,why);}return why=="";
+}
+tool_main :: ()->int #export_c #effects(all) {
+ pb:[65536]u8;n:=fs_read("proto/descriptors/chat-turn.pb",pb[..]);g:[1]PkDescriptor;
+ if n<1 || pk_load(g[..],cast(string)pb[0..<n])!="" {return 2;}
+ fixture:[8192]u8;fn:=fs_read("proto/coder/chat-turn-v2alpha1.json",fixture[..]);d:[1]Jv;nodes:[256]JvNode;
+ if fn<1 || !jv_parse(d[..],cast(string)fixture[0..<fn],nodes[..]) {return 2;}
+ b:[131072]u8;c:[131072]u8;ok:=true;texts:=[2]string.["Hello café","\nSecond\"block"];
+ n=ct_submit_write("op-1","",0,"",-1,"",-1,texts[..],b[..]);o:[1]Jo;jo_start(o[..],c[..]);jv_write(d[0],jv_get(d[0],0,"submit"),o[..]);
+ ok=n>0 && cast(string)b[0..<n]==jo_text(o[..]) && ct_profile_keys(g[..],"SubmitRequest",jo_text(o[..])) && ok;
+ n=ct_stop_write("stop-1","trn_0123456789abcdef0123456789abcdef",b[..]);jo_start(o[..],c[..]);jv_write(d[0],jv_get(d[0],0,"stop"),o[..]);
+ ok=n>0 && cast(string)b[0..<n]==jo_text(o[..]) && ct_profile_keys(g[..],"StopRequest",jo_text(o[..])) && ok;
+ for key:[2]string.["event","usage_event"] {
+  e:[1]CtEvent;arena:[17048]u8;jo_start(o[..],c[..]);jv_write(d[0],jv_get(d[0],0,key),o[..]);raw:=jo_text(o[..]);
+  valid:=ct_event_read(raw,e[..],arena[..]);n=ifx valid then ct_event_write(e[..],b[..]) else -1;
+  ok=n>0 && cast(string)b[0..<n]==raw && ct_profile_keys(g[..],"Event",raw) && ok;
+ }
+ bad:[8]JvNode;ok=pk_text_keys(g[0].state[..],".openagents.chat.v2alpha1.Event","{\"unknown\":true}",false,false,bad[..])!="" && ok;
+ print("%\n",ifx ok then "Durable turn fixtures match their codec and descriptor" else "Durable turn profile failed");return ifx ok then 0 else 1;
+}

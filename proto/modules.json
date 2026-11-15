@@ -240,6 +240,9 @@
     "account-identity": [
       "openagents/account/identity/v1/identity.proto"
     ],
+    "chat-turn": [
+      "openagents/chat/v2alpha1/conversation.proto"
+    ],
     "projects": [
       "openagents/project/v1alpha1/project.proto",
       "openagents/project/chat/v1alpha1/chat.proto"
@@ -423,6 +426,10 @@
     ],
     "account-identity": [
       "openagents.account.identity.v1"
+    ],
+    "chat-turn": [
+      "openagents.chat.v2alpha1",
+      "openagents.options.v1alpha1"
     ],
     "projects": [
       "openagents.project.",

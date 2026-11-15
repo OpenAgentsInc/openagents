@@ -1,0 +1,8 @@
+// Thin native ABI surface for the independent Python/stdlib JSON oracle.
+#load "../account-chat-turn-wire.coax";
+ct_oracle_accept :: (kind:int,raw:string)->int #export_c #effects(all) {
+ if kind==1 {r:[1]CtSubmit;arena:[174]u8;return ifx ct_submit_read(raw,r[..],arena[..]) then 1 else 0;}
+ if kind==2 {e:[1]CtEvent;arena:[17048]u8;return ifx ct_event_read(raw,e[..],arena[..]) then 1 else 0;}
+ if kind==3 {operation:[80]u8;turn:[36]u8;return ifx ct_stop_read(raw,operation[..],turn[..])>0 then 1 else 0;}
+ return -1;
+}

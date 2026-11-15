@@ -22,6 +22,33 @@ GwSseEvent :: struct {
   truncated: bool;
 }
 
+#test "SSE frames preserve joined data lines and reject header injection or clipping" {
+ b:[256]u8;s:[1]GwSse;name:[32]u8;data:[64]u8;
+ n:=gw_sse_frame("12","turn","a\nb\n",b[..]);
+ #assert n>0 && cast(string)b[0..<n]=="id: 12\nevent: turn\ndata: a\ndata: b\ndata: \n\n";
+ gw_sse_init(s[..],name[..],data[..]);from:=0;last:=GwSseEvent.{};
+ for i:0..<n {if b[i]=='\n' {e:=gw_sse_line(s[..],cast(string)b[from..<i]);if e.ready {last=e;}from=i+1;}}
+ #assert last.ready && last.name=="turn" && last.data=="a\nb\n" && !last.truncated;
+ #assert gw_sse_frame("","","",b[..])==21;
+ #assert gw_sse_frame("12","turn","x",b[0..<2])<0;
+ for bad:[3]string.["x\ny","x\ry","x\0y"] {#assert gw_sse_frame(bad,"turn","x",b[..])<0 && gw_sse_frame("1",bad,"x",b[..])<0;}
+ #assert gw_sse_frame("1","turn","x\ry",b[..])<0;
+ control:[3]u8;control[0]='x';control[1]=1;control[2]='y';
+ #assert gw_sse_frame("1","turn","x\0y",b[..])<0 && gw_sse_frame("1","turn",cast(string)control[..],b[..])>0;
+}
+// The writer and parser share the same bounded append primitive. LF-separated
+// data round trips including a final empty line; CR is refused, not normalized.
+gw_sse_frame :: (id:string,name:string,data:string,out:[]u8)->int {
+ for header:[2]string.[id,name] {for c:header {if c=='\r' || c=='\n' || c==0 {return -1;}}}
+ for c:data {if c=='\r' || c==0 {return -1;}}
+ // After the first append n is -1 or at least 4; testing >0 or >=1 is equivalent.
+ n:=gw_sse_append(out,0,"id: ");if n>=0 {n=gw_sse_append(out,n,id);}if n>=0 {n=gw_sse_append(out,n,"\nevent: ");}if n>=0 {n=gw_sse_append(out,n,name);}if n>=0 {n=gw_sse_append(out,n,"\n");} // mutant: equivalent (the nonnegative offset is already at least 4)
+ from:=0;for i:0..<data.count+1 {if i==data.count || data[i]=='\n' {
+  if n>=0 {n=gw_sse_append(out,n,"data: ");}if n>=0 {n=gw_sse_append(out,n,cast(string)data[from..<i]);}if n>=0 {n=gw_sse_append(out,n,"\n");}from=i+1; // mutant: equivalent (the same -1 or at-least-4 offset invariant)
+ }}
+ if n>=0 {n=gw_sse_append(out,n,"\n");}return n; // mutant: equivalent (the same -1 or at-least-4 offset invariant)
+}
+
 gw_sse_init :: (s: [] GwSse, name_buf: [] u8, data_buf: [] u8) {
   s[0] = GwSse.{name = name_buf, data = data_buf};
 }
