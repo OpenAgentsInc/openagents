@@ -4,10 +4,9 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/native-check.coax";
 ccn_run :: (args:[]string,seconds:int,out:[]u8)->int {
-    err:[65536]u8;r:=proc_run(args,seconds*1000,out,err[..]);
-    if r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}
-    return r.out_n;
+    return nc_run(args,seconds,out);
 }
 // proc_run joins stdout lines without the final newline. Saved transcripts
 // are newline-terminated; compare every captured byte under that API contract.
@@ -15,18 +14,7 @@ ccn_transcript :: (out:[]u8,n:int,expected:[]u8,k:int)->bool {
     return n>=0 && k==n+1 && expected[k-1]=='\n' && cast(string)out[0..<n]==cast(string)expected[0..<k-1];
 }
 ccn_native :: ()->int {
-    path:[1024]u8;dir:=fs_temp("construction-native-",path[..]);#assert dir.count>0;
-    cb:[1024]u8;exe:[1024]u8;cpath:=fs_join(dir,"check.c",cb[..]);binary:=fs_join(dir,"check",exe[..]);out:[16777216]u8;
-    for mode:0..<2 {
-        args:=[5]string.["coax/bin/coax","c","psionic/tests/construction-native.coax","--library","--release"];
-        n:=ccn_run(args[0..<4+mode],120,out[..]);if n<0 {return 1;}
-        #assert fs_write(cpath,cast(string)out[0..<n]);#assert fs_append(cpath,"\nint main(void) { return (int)construction_native_checks(); }\n");
-        for sanitized:0..<2 {
-            flags:=[12]string.["cc","-std=c11",ifx mode==0 then "-O0" else "-O2","-ffp-contract=off","-fno-fast-math",cpath,"-lm","-o",binary,"-g","-fsanitize=address,undefined","-fno-omit-frame-pointer"];
-            if ccn_run(flags[0..<10+sanitized*2],120,out[..])<0 {return 1;}
-            run:=[1]string.[binary];if ccn_run(run[..],60,out[..])<0 {return 1;}print("native: mode %, sanitizers %: passed\n",mode,sanitized);
-        }
-    }#assert fs_remove(dir);return 0;
+    return nc_qualify("psionic/tests/construction-native.coax","construction_native_checks");
 }
 tool_main :: ()->int #export_c #effects(all) {
     a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("usage: check-construction all|checks|mutate|native|book");return 2;}

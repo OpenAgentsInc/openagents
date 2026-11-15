@@ -3658,6 +3658,17 @@
         "release"
       ],
       "timeout": 180
+    },
+    {
+      "source": "psionic/examples/robot-experiment.coax",
+      "chapter": "psionic/book/ch257-a-robot-description-becomes-an-experiment.md",
+      "stdout": "psionic/fixtures/robotics/experiment/example.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ],
   "libraries": [

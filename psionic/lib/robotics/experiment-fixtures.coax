@@ -1,0 +1,29 @@
+// Owned illustrative fixture, independently specified in the RB-01 freeze.
+#load "experiment-types.coax";
+rex_fixture :: ()->RexExperiment {
+  r:RexExperiment;r.embodiment.count=2;
+  for k:0..<32 {r.embodiment.model[k]=1;r.embodiment.assembly[k]=2;r.embodiment.calibration[k]=3;r.task[k]=4;r.partition[k]=5;r.evaluator[k]=6;}
+  a:RexJoint;a.joint=0;a.motor=1;a.sign=1;a.home.value=0.2;a.scale.value=0.4;a.low.value=-0.1;a.high.value=0.7;
+  b:RexJoint;b.joint=1;b.motor=0;b.sign=-1;b.home.value=-0.125;b.scale.value=0.25;b.low.value=-0.25;b.high.value=0.125;
+  r.embodiment.joints[0]=a;r.embodiment.joints[1]=b;r.observation_count=4;
+  for k:0..<4 {r.observations[k].joint=k/2;r.observations[k].signal=1+k%2;r.observations[k].unit=1+k%2;}
+  r.physics_ns=2000000;r.control_ns=20000000;r.worlds=4;r.horizon=8;r.cycles=256;r.seed=7;return r;
+}
+rex_poison :: ()->RexTarget {r:RexTarget;r.joint=101;r.motor=102;r.requested.value=103;r.limited.value=104;r.saturated=true;return r;}
+rex_same_target :: (a:RexTarget,b:RexTarget) {
+  #assert a.joint==b.joint && a.motor==b.motor && f64_bits(a.requested.value)==f64_bits(b.requested.value) && f64_bits(a.limited.value)==f64_bits(b.limited.value) && a.saturated==b.saturated;
+}
+rex_same_experiment :: (a:RexExperiment,b:RexExperiment) {
+  #assert a.embodiment.count==b.embodiment.count && a.observation_count==b.observation_count && a.frame==b.frame && a.target==b.target;
+  #assert a.physics_ns==b.physics_ns && a.control_ns==b.control_ns && a.worlds==b.worlds && a.horizon==b.horizon && a.cycles==b.cycles && a.seed==b.seed;
+  for k:0..<32 {#assert a.embodiment.model[k]==b.embodiment.model[k] && a.embodiment.assembly[k]==b.embodiment.assembly[k] && a.embodiment.calibration[k]==b.embodiment.calibration[k] && a.task[k]==b.task[k] && a.partition[k]==b.partition[k] && a.evaluator[k]==b.evaluator[k];}
+  for k:0..<16 {
+    x:=a.embodiment.joints[k];y:=b.embodiment.joints[k];
+    #assert x.joint==y.joint && x.motor==y.motor && x.sign==y.sign && x.unit==y.unit && x.mode==y.mode;
+    #assert f64_bits(x.home.value)==f64_bits(y.home.value) && f64_bits(x.scale.value)==f64_bits(y.scale.value) && f64_bits(x.low.value)==f64_bits(y.low.value) && f64_bits(x.high.value)==f64_bits(y.high.value);
+  }
+  for k:0..<32 {
+    x:=a.observations[k];y:=b.observations[k];
+    #assert x.joint==y.joint && x.signal==y.signal && x.unit==y.unit && x.frame==y.frame && f64_bits(x.offset)==f64_bits(y.offset) && f64_bits(x.scale)==f64_bits(y.scale);
+  }
+}

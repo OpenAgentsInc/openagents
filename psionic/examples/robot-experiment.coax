@@ -1,0 +1,16 @@
+#import "Basic";
+#load "../lib/robotics/experiment-policy.coax";
+#load "../lib/robotics/experiment-fixtures.coax";
+main :: () {
+  c:=rex_fixture();admitted:[1]RexExperiment;
+  #assert rex_admit(c,c.embodiment,admitted[..])==RexStatus.ok;
+  print("experiment: % joints, % observations, % worlds x % steps\n",admitted[0].embodiment.count,admitted[0].observation_count,admitted[0].worlds,admitted[0].horizon);
+  actions:=[2]f64.[-1,1];out:[2]RexTarget;
+  #assert rex_map(c,c.embodiment,actions[..],out[..])==RexStatus.ok;
+  for p:out {print("joint % motor %: requested % mrad, limited % mrad, saturated %\n",p.joint,p.motor,cast(int)(p.requested.value*1000),cast(int)(p.limited.value*1000),ifx p.saturated then 1 else 0);}
+  expected:=c.embodiment;expected.joints[1].sign=1;
+  for i:0..<2 {out[i]=rex_poison();}
+  refused:=rex_map(c,expected,actions[..],out[..]);#assert refused==RexStatus.identity;
+  for p:out {rex_same_target(p,rex_poison());}
+  print("changed map: status % (identity), targets unchanged\n",cast(int)refused);
+}

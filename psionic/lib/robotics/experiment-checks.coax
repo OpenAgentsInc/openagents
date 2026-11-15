@@ -1,0 +1,121 @@
+// Checks precede product implementation; literal tables come from the experiment freeze.
+#load "experiment-fixtures.coax";
+#test "experiment hand targets preserve action order motor permutation and saturation" {
+  c:=rex_fixture();out:[2]RexTarget;
+  actions:=[2]f64.[-0.5,-0.5];#assert rex_map(c,c.embodiment,actions[..],out[..])==RexStatus.ok;
+  #assert out[0].joint==0 && out[0].motor==1 && out[0].requested.value==0 && out[0].limited.value==0 && !out[0].saturated;
+  #assert out[1].joint==1 && out[1].motor==0 && out[1].requested.value==0 && out[1].limited.value==0 && !out[1].saturated;
+  actions[0]=-1;actions[1]=1;#assert rex_map(c,c.embodiment,actions[..],out[..])==RexStatus.ok;
+  #assert out[0].requested.value== -0.2 && out[0].limited.value== -0.1 && out[0].saturated;
+  #assert out[1].requested.value== -0.375 && out[1].limited.value== -0.25 && out[1].saturated;
+  actions[0]=1;actions[1]=-1;#assert rex_map(c,c.embodiment,actions[..],out[..])==RexStatus.ok;
+  #assert abs(out[0].requested.value-0.6)<1e-15 && out[0].limited.value==out[0].requested.value && !out[0].saturated;
+  #assert out[1].requested.value==0.125 && out[1].limited.value==0.125 && !out[1].saturated;
+}
+#test "experiment decoded admission publishes the complete query descriptor" {
+  c:=rex_fixture();out:[1]RexExperiment;
+  #assert rex_admit(c,c.embodiment,out[..])==RexStatus.ok;
+  rex_same_experiment(out[0],c);
+  #assert out[0].embodiment.count==2 && out[0].observation_count==4 && out[0].worlds==4 && out[0].horizon==8 && out[0].cycles==256 && out[0].seed==7;
+  #assert out[0].physics_ns==2000000 && out[0].control_ns==20000000 && out[0].frame==1 && out[0].target==1;
+  for k:0..<32 {#assert out[0].embodiment.model[k]==1 && out[0].embodiment.assembly[k]==2 && out[0].embodiment.calibration[k]==3 && out[0].task[k]==4 && out[0].partition[k]==5 && out[0].evaluator[k]==6;}
+  for k:0..<2 {j:=out[0].embodiment.joints[k];a:=c.embodiment.joints[k];#assert j.joint==a.joint && j.motor==a.motor && j.sign==a.sign && j.unit==a.unit && j.mode==a.mode && j.home.value==a.home.value && j.scale.value==a.scale.value && j.low.value==a.low.value && j.high.value==a.high.value;}
+  for k:0..<4 {o:=out[0].observations[k];#assert o.joint==k/2 && o.signal==1+k%2 && o.unit==1+k%2 && o.frame==1 && o.offset==0 && o.scale==1;}
+}
+#forall "experiment shape refusals precede all indexing" field:0..<9 {
+  c:=rex_fixture();a:=[3]f64.[0,0,0];out:=[3]RexTarget.[rex_poison(),rex_poison(),rex_poison()];expected:=c.embodiment;
+  av:=a[0..<2];ov:=out[0..<2];
+  if field==0 {c.embodiment.count=0;}if field==1 {c.embodiment.count=17;}if field==2 {c.observation_count=0;}if field==3 {c.observation_count=33;}
+  if field==4 {av=a[0..<1];}if field==5 {av=a[..];}if field==6 {ov=out[0..<1];}if field==7 {ov=out[..];}if field==8 {expected.count=1;}
+  #assert rex_map(c,expected,av,ov)==RexStatus.shape;for p:out {rex_same_target(p,rex_poison());}
+}
+#forall "experiment identity covers every digest lane and every physical map field" role:0..<3,k:0..<32 {
+  c:=rex_fixture();expected:=c.embodiment;if role==0 {expected.model[k]^=1;}if role==1 {expected.assembly[k]^=1;}if role==2 {expected.calibration[k]^=1;}
+  a:=[2]f64.[0,0];out:=[2]RexTarget.[rex_poison(),rex_poison()];#assert rex_map(c,expected,a[..],out[..])==RexStatus.identity;for p:out {rex_same_target(p,rex_poison());}
+}
+#forall "experiment stale action maps refuse even when all advertised identities match" field:0..<9 {
+  c:=rex_fixture();expected:=c.embodiment;
+  if field==0 {expected.joints[0].joint=1;}if field==1 {expected.joints[0].motor=0;}if field==2 {expected.joints[0].sign=-1;}
+  if field==3 {expected.joints[0].unit=2;}if field==4 {expected.joints[0].mode=2;}
+  if field==5 {expected.joints[0].home.value=0.3;}if field==6 {expected.joints[0].scale.value=0.5;}
+  if field==7 {expected.joints[0].low.value=-0.2;}if field==8 {expected.joints[0].high.value=0.8;}
+  #assert rex_check(c,expected)==RexStatus.identity;
+}
+#forall "experiment conventions duplicates and scalar ranges are admitted before mapping" field:0..<23 {
+  c:=rex_fixture();want:=RexStatus.range;
+  if field==0 {c.frame=0;want=RexStatus.convention;}if field==1 {c.target=2;want=RexStatus.convention;}
+  if field==2 {c.embodiment.joints[0].unit=0;want=RexStatus.convention;}if field==3 {c.embodiment.joints[0].mode=2;want=RexStatus.convention;}
+  if field==4 {c.embodiment.joints[0].sign=0;want=RexStatus.convention;}
+  if field==5 {c.embodiment.joints[1].joint=0;want=RexStatus.duplicate;}if field==6 {c.embodiment.joints[1].motor=1;want=RexStatus.duplicate;}
+  if field==7 {c.embodiment.joints[0].joint=2;}if field==8 {c.embodiment.joints[0].motor=-1;}
+  if field==9 {c.embodiment.joints[0].scale.value=0;}if field==10 {c.embodiment.joints[0].low.value=0.3;}if field==11 {c.embodiment.joints[0].high.value=0.1;}
+  if field==12 {c.observations[0].signal=0;want=RexStatus.convention;}if field==13 {c.observations[0].unit=2;want=RexStatus.convention;}
+  if field==14 {c.observations[0].frame=2;want=RexStatus.convention;}if field==15 {c.observations[0].joint=2;}
+  if field==16 {c.observations[1]=c.observations[0];want=RexStatus.duplicate;}if field==17 {c.observations[0].scale=0;}
+  if field==18 {c.physics_ns=0;}if field==19 {c.control_ns=21000000;}if field==20 {c.worlds=17;}if field==21 {c.horizon=129;}if field==22 {c.cycles=0;}
+  #assert rex_check(c,c.embodiment)==want;
+}
+#forall "experiment all joint numeric words receive finite-first preflight" role:0..<4,bad:0..<3 {
+  bits:=[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001];words:=[4]u64.[f64_bits(0.2),f64_bits(0.4),f64_bits(-0.1),f64_bits(0.7)];
+  #assert rex_joint_numbers(words);words[role]=bits[bad];#assert !rex_joint_numbers(words);
+}
+#forall "experiment every required identity must be present" role:0..<6 {
+  c:=rex_fixture();for k:0..<32 {if role==0 {c.embodiment.model[k]=0;}if role==1 {c.embodiment.assembly[k]=0;}if role==2 {c.embodiment.calibration[k]=0;}if role==3 {c.task[k]=0;}if role==4 {c.partition[k]=0;}if role==5 {c.evaluator[k]=0;}}
+  #assert rex_check(c,c.embodiment)==RexStatus.identity;
+}
+#test "experiment maximum joint observation and collection capacities are literal admitted endpoints" {
+  c:=rex_fixture();c.embodiment.count=16;c.observation_count=32;c.worlds=16;c.horizon=128;c.cycles=4096;c.seed=2147483647;c.physics_ns=1;c.control_ns=128;
+  for i:0..<16 {c.embodiment.joints[i]=c.embodiment.joints[0];c.embodiment.joints[i].joint=i;c.embodiment.joints[i].motor=15-i;}
+  for i:0..<32 {c.observations[i].joint=i/2;c.observations[i].signal=1+i%2;c.observations[i].unit=1+i%2;}
+  #assert rex_check(c,c.embodiment)==RexStatus.ok;
+  a:[16]f64;out:[16]RexTarget;#assert rex_map(c,c.embodiment,a[..],out[..])==RexStatus.ok;
+  for i:0..<16 {#assert out[i].joint==i && out[i].motor==15-i && out[i].requested.value==0.2 && out[i].limited.value==0.2 && !out[i].saturated;}
+  c.control_ns=129;#assert rex_check(c,c.embodiment)==RexStatus.range;c.physics_ns=1000000000;c.control_ns=1000000000;#assert rex_check(c,c.embodiment)==RexStatus.ok;
+}
+#forall "experiment scalar inclusive caps and adjacent IEEE values have independent refusals" field:0..<11,negative:bool {
+  c:=rex_fixture();v:=ifx negative then -100.0 else 100.0;
+  if field==0 {c.embodiment.joints[0].home.value=v;c.embodiment.joints[0].low.value=-100;c.embodiment.joints[0].high.value=100;}
+  if field==1 {c.embodiment.joints[0].scale.value=100;}
+  if field==2 {c.embodiment.joints[0].low.value=-100;}
+  if field==3 {c.embodiment.joints[0].high.value=100;}
+  if field==4 {c.observations[0].offset=ifx negative then -1000000.0 else 1000000.0;}
+  if field==5 {c.observations[0].scale=1000000;}
+  if field==6 {c.worlds=1;}if field==7 {c.horizon=1;}if field==8 {c.cycles=1;}if field==9 {c.seed=0;}if field==10 {c.control_ns=c.physics_ns;}
+  #assert rex_check(c,c.embodiment)==RexStatus.ok;
+  if field==0 {c.embodiment.joints[0].home.value=f64_from_bits(f64_bits(v)+1);}
+  if field==1 {c.embodiment.joints[0].scale.value=f64_from_bits(f64_bits(100.0)+1);}
+  if field==2 {c.embodiment.joints[0].low.value=f64_from_bits(f64_bits(-100.0)+1);}
+  if field==3 {c.embodiment.joints[0].high.value=f64_from_bits(f64_bits(100.0)+1);}
+  if field==4 {c.observations[0].offset=f64_from_bits(f64_bits(c.observations[0].offset)+1);}
+  if field==5 {c.observations[0].scale=f64_from_bits(f64_bits(1000000.0)+1);}
+  if field==6 {c.worlds=0;}if field==7 {c.horizon=0;}if field==8 {c.cycles=4097;}if field==9 {c.seed=2147483648;}if field==10 {c.control_ns=c.physics_ns-1;}
+  #assert rex_check(c,c.embodiment)==RexStatus.range;
+}
+#test "experiment latent zero signs and boundary neighbors have staged atomic results" {
+  c:=rex_fixture();a:=[2]f64.[0,f64_from_bits(0x8000000000000000)];out:[2]RexTarget;
+  #assert rex_map(c,c.embodiment,a[..],out[..])==RexStatus.ok && out[0].requested.value==0.2 && out[1].requested.value==-0.125 && !out[0].saturated && !out[1].saturated;
+  for negative:[2]bool.[false,true] {a[1]=f64_from_bits(f64_bits(ifx negative then -1.0 else 1.0)+1);for i:0..<2 {out[i]=rex_poison();}#assert rex_map(c,c.embodiment,a[..],out[..])==RexStatus.range;for p:out {rex_same_target(p,rex_poison());}}
+  many:[2]RexExperiment;#assert rex_admit(c,c.embodiment,many[0..<0])==RexStatus.shape && rex_admit(c,c.embodiment,many[..])==RexStatus.shape;
+  many[0]=c;many[0].seed=123;old:=many[0];bad:=c;bad.target=0;#assert rex_admit(bad,c.embodiment,many[0..<1])==RexStatus.convention;rex_same_experiment(many[0],old);
+}
+#test "experiment minimum cardinalities and direct malformed cardinalities exercise admission itself" {
+  c:=rex_fixture();c.embodiment.count=1;c.embodiment.joints[0].motor=0;c.observation_count=1;
+  #assert rex_check(c,c.embodiment)==RexStatus.ok;
+  for n:[4]int.[-1,0,17,9223372036854775807] {bad:=c;bad.embodiment.count=n;#assert rex_check(bad,bad.embodiment)==RexStatus.shape;}
+  for n:[4]int.[-1,0,33,9223372036854775807] {bad:=c;bad.observation_count=n;#assert rex_check(bad,bad.embodiment)==RexStatus.shape;}
+}
+#test "experiment unsupported signals matching their own unit still refuse and equal joint limits are empty" {
+  c:=rex_fixture();for signal:[2]int.[0,3] {bad:=c;bad.observations[0].signal=signal;bad.observations[0].unit=signal;#assert rex_check(bad,bad.embodiment)==RexStatus.convention;}
+  c.embodiment.joints[0].motor=2;#assert rex_check(c,c.embodiment)==RexStatus.range;
+  c=rex_fixture();c.embodiment.joints[0].low.value=0.2;c.embodiment.joints[0].high.value=0.2;#assert rex_check(c,c.embodiment)==RexStatus.range;
+  c=rex_fixture();c.physics_ns=142857143;c.control_ns=1000000001;#assert rex_check(c,c.embodiment)==RexStatus.range;
+}
+#test "experiment exact target boundaries retain requested negative-zero bits" {
+  for upper:[2]bool.[false,true] {
+    c:=rex_fixture();j:=c.embodiment.joints[0];j.home.value=f64_from_bits(0x8000000000000000);j.scale.value=1;
+    j.low.value=ifx upper then -1.0 else 0.0;j.high.value=ifx upper then 0.0 else 1.0;c.embodiment.joints[0]=j;
+    actions:=[2]f64.[f64_from_bits(0x8000000000000000),0];out:[2]RexTarget;
+    #assert rex_map(c,c.embodiment,actions[..],out[..])==RexStatus.ok;
+    #assert f64_bits(out[0].requested.value)==0x8000000000000000 && f64_bits(out[0].limited.value)==0x8000000000000000 && !out[0].saturated;
+  }
+}

@@ -1,0 +1,4 @@
+experiment: 2 joints, 4 observations, 4 worlds x 8 steps
+joint 0 motor 1: requested -200 mrad, limited -100 mrad, saturated 1
+joint 1 motor 0: requested -375 mrad, limited -250 mrad, saturated 1
+changed map: status 6 (identity), targets unchanged

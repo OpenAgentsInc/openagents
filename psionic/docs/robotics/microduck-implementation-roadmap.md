@@ -1,21 +1,26 @@
 # Implementing the small-robot pipeline in Psionic
 
 **Date:** November 15, 2026. **Status:** coding-agent implementation brief.
-Baseline: `5ed34eedcb`. This document specifies work; it records no new
-implementation, qualification, hardware authorization or purchase.
+Design baseline: `5ed34eedcb`. RB-00 and the decoded RB-01a query now have
+source and CPU component evidence. The remaining packages are plans; no
+hardware authorization or purchase is recorded here.
 
 Start with [chapter 256](../../book/ch256-build-and-teach-a-small-robot.md) and
 the [pipeline specification](../../../docs/nvidia/microduck-pipeline-2026-11-15.md).
-Chapters 257–265 now draft the calculations, boundaries, refusals and outcomes
-that the implementation must make runnable. RB numbers below are work-package
+Chapter 257 now runs the decoded query. Chapters 258–265 draft the calculations,
+boundaries, refusals and outcomes still to implement. RB numbers below are work-package
 labels, not published protocol IDs or newly created GitHub issues.
 
 ## What an agent should implement first
 
-Implement **RB-01** first: a bounded, already-decoded two-joint experiment
-contract, its action map and atomic refusal cases. Register the persistent
-shape before writing its codec. Do not begin with a new simulator, a large
-model, a robotics UI, an online asset fetcher or an experiment on motors.
+Continue **RB-01b** next: register the versioned inert experiment record,
+independent golden bytes and the owning codec. RB-01a's decoded two-joint
+contract, action map and atomic refusals are implemented. Preserve its
+expected-embodiment comparison and quantity semantics; its structs are not
+a stored format. The [freeze and inventory](experiment-contract-rb01.md)
+and [CPU receipt](../../../docs/verification/robotics-experiment-rb01-2026-11-15.md)
+state the boundary. Do not begin with a new simulator, a large model, an
+online asset fetcher or an experiment on motors.
 
 Then deliver RB-02 and RB-03 against independent scalar/analytic fixtures.
 Build vector policy scores and the shared neural update in RB-04/05, and
@@ -116,6 +121,10 @@ Finish one reviewable commit per package or smaller independent slice.
 
 ## RB-00: inventory and experiment freeze
 
+**State:** complete for the decoded CPU slice; see the
+[inventory and frozen input/oracle](experiment-contract-rb01.md). Later
+plant, neural and hardware packages need their own experiment freezes.
+
 Read current AGENTS, relevant invariants, glossary, reuse catalog, source
 headers and chapter registries. Identify the existing entry points above and
 confirm capacity/target limitations. Prepare the exact fixture/experiment
@@ -131,10 +140,11 @@ refusal and target. No expected numerical result comes only from the new code.
 
 ## RB-01: experiment and embodiment admission
 
-**Chapter 257. Dependencies:** RB-00. Proposed new shared units:
-`psionic/lib/robotics/experiment-types.coax`, `experiment-policy.coax` and
-the owning `experiment-wire.coax` after schema/registry work. Prefer a current
-equivalent owner if the inventory finds one.
+**Chapter 257. Dependencies:** RB-00. **State:** RB-01a is component qualified
+on CPU; the full package remains open. Shared `experiment-types.coax` and
+`experiment-policy.coax` now exist under `psionic/lib/robotics/`, with the
+runnable example and focused `robotics/experiment-policy` suite. RB-01b
+adds the owning `experiment-wire.coax` after schema/registry work.
 
 Implement decoded bounded contract admission and the two-joint action map.
 Then add the versioned inert record and its one codec using shared formats.

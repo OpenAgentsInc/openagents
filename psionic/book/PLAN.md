@@ -907,7 +907,7 @@ their evidence from the capabilities we must deliver.
 | Chapter | What it builds and verifies |
 | --- | --- |
 | [256. Build and teach a small robot](ch256-build-and-teach-a-small-robot.md) — design draft | Overview, experiment ledger and counters for the full asset-to-training-to-hardware route; later chapters own the component and final-route gates. |
-| [257. A robot description becomes an experiment](ch257-a-robot-description-becomes-an-experiment.md) — design draft | Decoded bounded embodiment/task admission, explicit observation/action meaning, identity and atomic refusal; two-joint hand mapping before a generic importer. |
+| [257. A robot description becomes an experiment](ch257-a-robot-description-becomes-an-experiment.md) — partly implemented | Decoded bounded embodiment/task admission, explicit observation/action meaning, identity and atomic refusal; two-joint hand mapping before a generic importer. |
 | [258. A servo that behaves like the motor](ch258-a-servo-that-behaves-like-the-motor.md) — design draft | Requested/delivered force, delay state, identified actuator terms and checkpoints; independent torque/inertia and queue traces before hardware. |
 | [259. Rollouts from independent worlds](ch259-rollouts-from-independent-worlds.md) — design draft | Final-before-reset observations, frozen normalization, detached old-policy data, bounded collection, independent counters and complete mid-rollout restore. |
 | [260. Train a neural walking policy](ch260-train-a-neural-walking-policy.md) — design draft | Vector Gaussian scores and one joint PPO ratio, shared actor/critic backward/trainer, fresh analytic-plant learning followed by actual biped/contact integration; no copied scalar optimizer. |

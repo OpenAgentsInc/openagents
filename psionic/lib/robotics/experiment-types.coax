@@ -1,0 +1,32 @@
+// RB-01 decoded CPU query profile. These structs are not a stored or wire format.
+#load "../../../coax/lib/quantity.coax" as rxu;
+REX_JOINTS :: 16;
+REX_OBSERVATIONS :: 32; // joint angle and angular rate only; no 61-channel vendor profile
+RexStatus :: enum u8 {ok;shape;number;range;convention;duplicate;identity;}
+// book:begin experiment-joint
+RexJoint :: struct {
+  joint:int; motor:int; sign:int; unit:int=1; mode:int=1;
+  home:rxu.Quantity(rxu.Radian,f64); scale:rxu.Quantity(rxu.Radian,f64);
+  low:rxu.Quantity(rxu.Radian,f64); high:rxu.Quantity(rxu.Radian,f64);
+}
+// book:end experiment-joint
+RexObservation :: struct {
+  joint:int; signal:int; unit:int; frame:int=1;
+  offset:f64; scale:f64=1;
+}
+RexEmbodiment :: struct {
+  model:[32]u8; assembly:[32]u8; calibration:[32]u8;
+  count:int; joints:[REX_JOINTS]RexJoint;
+}
+RexExperiment :: struct {
+  embodiment:RexEmbodiment;
+  observation_count:int; observations:[REX_OBSERVATIONS]RexObservation;
+  task:[32]u8; partition:[32]u8; evaluator:[32]u8;
+  frame:int=1; target:int=1; // 1: joint-local radians / CPU F64 query
+  physics_ns:int; control_ns:int; worlds:int; horizon:int; cycles:int; seed:int;
+}
+RexTarget :: struct {
+  joint:int; motor:int;
+  requested:rxu.Quantity(rxu.Radian,f64); limited:rxu.Quantity(rxu.Radian,f64);
+  saturated:bool;
+}

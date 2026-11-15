@@ -1,8 +1,8 @@
 # 257. A robot description becomes an experiment
 
-> **Status: unimplemented — design draft.** This chapter specifies the first
-> bounded experiment/embodiment admission slice. The examples below are worked
-> design calculations, not executed programs or a new robot-import profile.
+> **Status: partly implemented.** The `decoded-joint-experiment-f64-v1` CPU
+> profile now admits decoded contracts and maps normalized joint actions.
+> Its wire codec, general robot import and physical integration remain open.
 
 A policy cannot discover what its action coordinates mean by looking at their
 shape. Fourteen numbers could be joint angles, angular increments, velocities
@@ -41,7 +41,7 @@ mapping must refuse the second, rather than silently accepting fourteen outputs.
 
 ## A small contract before a general importer
 
-The first implementation accepts already decoded bounded records and checks
+The implemented first slice accepts already decoded bounded records and checks
 their consistency. It does not start with an XML parser, online downloader or
 general robot compiler. Use a two-joint analytic fixture before a pinned biped.
 
@@ -79,9 +79,71 @@ an otherwise compatible artifact with the wrong assembly revision.
 
 Refusal must preserve the entire caller output. An independently authored
 table interpreter supplies the expected mapping, including the identity
-mismatches. The first example should show a valid contract and a deliberately
-swapped joint map; its diagnostic spelling is fixed when the API is implemented.
-This draft invents no compiler error number or recorded test transcript.
+mismatches. The runnable example shows a valid contract and then a changed joint sign
+under unchanged advertised identities. It returns `RexStatus.identity` (6)
+and preserves every output target. This is a query refusal, not a motor stop.
+
+## Run the decoded query
+
+The [frozen profile and independent table](../docs/robotics/experiment-contract-rb01.md)
+state its bounds and meaning. Model, assembly and calibration identities are
+matched against a caller-provided expected embodiment, together with every
+active joint mapping field. The check does not authenticate an asset file or
+establish where that expected embodiment came from.
+
+The joint keeps the physical angle unit through the map:
+
+<!-- source: psionic/lib/robotics/experiment-types.coax experiment-joint -->
+```jai
+RexJoint :: struct {
+  joint:int; motor:int; sign:int; unit:int=1; mode:int=1;
+  home:rxu.Quantity(rxu.Radian,f64); scale:rxu.Quantity(rxu.Radian,f64);
+  low:rxu.Quantity(rxu.Radian,f64); high:rxu.Quantity(rxu.Radian,f64);
+}
+```
+
+Admission is a complete publication after all checks succeed:
+
+<!-- source: psionic/lib/robotics/experiment-policy.coax experiment-admit -->
+```jai
+rex_admit :: (c:RexExperiment,expected:RexEmbodiment,output:[]RexExperiment)->RexStatus #export_c #effects(all) {
+  if output.count!=1 {return RexStatus.shape;}
+  status:=rex_check(c,expected);if status!=RexStatus.ok {return status;}
+  output[0]=c;return RexStatus.ok;
+}
+```
+
+The action map stages every target, retaining the original request as well
+as the limited value. Equality at a limit preserves requested signed-zero bits:
+
+<!-- source: psionic/lib/robotics/experiment-policy.coax experiment-map -->
+```jai
+  stage:[REX_JOINTS]RexTarget;
+  for i:0..<n {
+    j:=c.embodiment.joints[i];requested:=j.home+j.scale*(cast(f64)j.sign*actions[i]);
+    limited:=ifx requested<j.low then j.low else ifx requested>j.high then j.high else requested;
+    stage[i]=RexTarget.{joint=j.joint,motor=j.motor,requested=requested,limited=limited,saturated=requested!=limited};
+  }
+  for i:0..<n {output[i]=stage[i];}return RexStatus.ok;
+```
+
+Run the [example](../examples/robot-experiment.coax):
+
+```shell
+coax/bin/coax run psionic/examples/robot-experiment.coax
+```
+
+```text
+experiment: 2 joints, 4 observations, 4 worlds x 8 steps
+joint 0 motor 1: requested -200 mrad, limited -100 mrad, saturated 1
+joint 1 motor 0: requested -375 mrad, limited -250 mrad, saturated 1
+changed map: status 6 (identity), targets unchanged
+```
+
+The robotics dispatcher compares this complete transcript in debug and release.
+Its native qualifier separately checks the hand-derived action table and
+nonfinite values with ASan/UBSan. [The receipt](../../docs/verification/robotics-experiment-rb01-2026-11-15.md)
+states what passed and what remains open.
 
 ## Existing owners and the next slice
 
@@ -92,6 +154,6 @@ admission remains engine/Coax work; fixed Panda coefficients do not become a
 generic importer by renaming them.
 
 [RB-01 in the implementation roadmap](../docs/robotics/microduck-implementation-roadmap.md#rb-01-experiment-and-embodiment-admission)
-names the proposed files and checks. [Chapter 258](ch258-a-servo-that-behaves-like-the-motor.md)
+records the implemented first slice and the next codec work. [Chapter 258](ch258-a-servo-that-behaves-like-the-motor.md)
 then gives the admitted joint a response model instead of assuming that it
 instantly reaches its target.

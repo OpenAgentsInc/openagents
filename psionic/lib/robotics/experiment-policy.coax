@@ -1,0 +1,71 @@
+// RB-01a: already-decoded joint-angle experiment admission, no persistent codec or effects.
+// The caller supplies its expected embodiment; matching IDs alone never authorize a changed map.
+#load "experiment-types.coax";
+#load "locomotion/gaussian-density.coax"; // rgp_finite: reuse IEEE F64 admission
+#load "../../../coax/lib/crypto/bytes.coax";
+#authority;
+#load "experiment-checks.coax" #test;
+
+rex_present :: (digest:[32]u8)->bool #effects(all) {
+  copy:=digest;zero:[32]u8;return cb_ct_equal(copy[..],zero[..])==0;
+}
+rex_same_digest :: (a:[32]u8,b:[32]u8)->bool #effects(all) {
+  left:=a;right:=b;return cb_ct_equal(left[..],right[..])!=0;
+}
+rex_joint_numbers :: (words:[4]u64)->bool #effects(all) {
+  return rgp_finite2(words[0],words[1]) && rgp_finite2(words[2],words[3]);
+}
+rex_check :: (c:RexExperiment,expected:RexEmbodiment)->RexStatus #export_c #effects(all) {
+  n:=c.embodiment.count;
+  if n<1 || n>REX_JOINTS || c.observation_count<1 || c.observation_count>REX_OBSERVATIONS || expected.count!=n {return RexStatus.shape;}
+  if c.frame!=1 || c.target!=1 {return RexStatus.convention;}
+  if c.physics_ns<1 || c.physics_ns>1000000000 || c.control_ns<c.physics_ns || c.control_ns>1000000000 {return RexStatus.range;} // mutant: equivalent (raising only the physics cap by 1 is still excluded by physics<=control<=1000000000)
+  if c.control_ns%c.physics_ns!=0 || c.control_ns/c.physics_ns>128 {return RexStatus.range;}
+  if c.worlds<1 || c.worlds>16 || c.horizon<1 || c.horizon>128 || c.cycles<1 || c.cycles>4096 || c.seed<0 || c.seed>2147483647 {return RexStatus.range;}
+  if !rex_present(c.embodiment.model) || !rex_present(c.embodiment.assembly) || !rex_present(c.embodiment.calibration) || !rex_present(c.task) || !rex_present(c.partition) || !rex_present(c.evaluator) {return RexStatus.identity;}
+  if !rex_same_digest(c.embodiment.model,expected.model) || !rex_same_digest(c.embodiment.assembly,expected.assembly) || !rex_same_digest(c.embodiment.calibration,expected.calibration) {return RexStatus.identity;}
+  for i:0..<n {
+    j:=c.embodiment.joints[i];
+    words:=[4]u64.[f64_bits(j.home.value),f64_bits(j.scale.value),f64_bits(j.low.value),f64_bits(j.high.value)];
+    if !rex_joint_numbers(words) {return RexStatus.number;}
+    if j.unit!=1 || j.mode!=1 || (j.sign!=1 && j.sign!= -1) {return RexStatus.convention;}
+    if j.joint<0 || j.joint>=n || j.motor<0 || j.motor>=n {return RexStatus.range;}
+    if abs(j.home.value)>100 || j.scale.value<=0 || j.scale.value>100 || abs(j.low.value)>100 || abs(j.high.value)>100 || j.low.value>=j.high.value || j.home.value<j.low.value || j.home.value>j.high.value {return RexStatus.range;}
+    for k:0..<i {if c.embodiment.joints[k].joint==j.joint || c.embodiment.joints[k].motor==j.motor {return RexStatus.duplicate;}}
+  }
+  for i:0..<c.observation_count {
+    o:=c.observations[i];
+    if !rgp_finite2(f64_bits(o.offset),f64_bits(o.scale)) {return RexStatus.number;}
+    if o.signal<1 || o.signal>2 || o.unit!=o.signal || o.frame!=1 {return RexStatus.convention;}
+    if o.joint<0 || o.joint>=n || abs(o.offset)>1000000 || o.scale<=0 || o.scale>1000000 {return RexStatus.range;}
+    for k:0..<i {if c.observations[k].joint==o.joint && c.observations[k].signal==o.signal {return RexStatus.duplicate;}}
+  }
+  for i:0..<n {
+    a:=c.embodiment.joints[i];b:=expected.joints[i];
+    if a.joint!=b.joint || a.motor!=b.motor || a.sign!=b.sign || a.unit!=b.unit || a.mode!=b.mode
+      || f64_bits(a.home.value)!=f64_bits(b.home.value) || f64_bits(a.scale.value)!=f64_bits(b.scale.value)
+      || f64_bits(a.low.value)!=f64_bits(b.low.value) || f64_bits(a.high.value)!=f64_bits(b.high.value) {return RexStatus.identity;}
+  }
+  return RexStatus.ok;
+}
+// book:begin experiment-admit
+rex_admit :: (c:RexExperiment,expected:RexEmbodiment,output:[]RexExperiment)->RexStatus #export_c #effects(all) {
+  if output.count!=1 {return RexStatus.shape;}
+  status:=rex_check(c,expected);if status!=RexStatus.ok {return status;}
+  output[0]=c;return RexStatus.ok;
+}
+// book:end experiment-admit
+rex_map :: (c:RexExperiment,expected:RexEmbodiment,actions:[]f64,output:[]RexTarget)->RexStatus #export_c #effects(all) {
+  n:=c.embodiment.count;if actions.count!=n || output.count!=n {return RexStatus.shape;}
+  status:=rex_check(c,expected);if status!=RexStatus.ok {return status;}
+  for a:actions {if !rgp_finite(f64_bits(a)) {return RexStatus.number;}if a< -1 || a>1 {return RexStatus.range;}}
+  // book:begin experiment-map
+  stage:[REX_JOINTS]RexTarget;
+  for i:0..<n {
+    j:=c.embodiment.joints[i];requested:=j.home+j.scale*(cast(f64)j.sign*actions[i]);
+    limited:=ifx requested<j.low then j.low else ifx requested>j.high then j.high else requested;
+    stage[i]=RexTarget.{joint=j.joint,motor=j.motor,requested=requested,limited=limited,saturated=requested!=limited};
+  }
+  for i:0..<n {output[i]=stage[i];}return RexStatus.ok;
+// book:end experiment-map
+}

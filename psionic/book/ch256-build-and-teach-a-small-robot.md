@@ -32,7 +32,9 @@ is [257: contract](ch257-a-robot-description-becomes-an-experiment.md),
 [263: package/runtime](ch263-export-a-policy-and-supervise-its-steps.md),
 [264: physical commissioning](ch264-run-the-policy-on-a-real-robot.md), and
 [265: the final route](ch265-a-course-a-flock-and-a-repeatable-result.md).
-Each remains a design draft until its own checks and runnable evidence exist.
+Chapter 257 is now partly implemented for decoded CPU admission and action
+mapping. The other chapters remain design drafts until their own checks and
+runnable evidence exist.
 
 The [coding-agent roadmap](../docs/robotics/microduck-implementation-roadmap.md)
 defines source owners, concrete work packages, dependencies and what an agent
