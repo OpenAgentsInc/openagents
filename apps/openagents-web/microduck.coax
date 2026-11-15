@@ -1,0 +1,103 @@
+// Standalone research viewer. The model is Pollen Robotics' Microduck, CC BY-NC-SA 4.0.
+// Uses the Metaverse Engine's orbit shot, lens and HUD; no robot simulation is claimed.
+#load "../../metaverse-engine/cam/shot.coax";
+#load "../../metaverse-engine/ui/draw.coax";
+#load "../../metaverse/microduck/pack-policy.coax";
+
+MD_HUD_VERTICES :: 32768;
+Microduck :: struct {
+  ready: bool; admitted: bool; digest: [32] u8;
+  yaw: f32 = 3.85; pitch: f32 = 0.24; zoom: f32 = 0.74;
+  mode: int; drag: bool; pointer_id: int; px: f32; py: f32; dpr: f32 = 1;
+  draws: [4] u32;
+}
+
+#test "research viewer resets a changed view and bounds orbit and zoom input" {
+  s: [1] Microduck;
+  #assert md_pointer(s[..], 100, 100, 0, 0, 7);
+  #assert md_pointer(s[..], 180, 9000, 1, 0, 7);
+  #assert s[0].pitch <= 1.3 && s[0].yaw != 3.85;
+  #assert !md_pointer(s[..], 200, 200, 1, 0, 8);
+  md_wheel(s[..], 100000); #assert s[0].zoom == 1.6;
+  md_wheel(s[..], -100000); #assert s[0].zoom == 0.28;
+  #assert md_key(s[..], 110) && s[0].mode == 1;
+  #assert md_key(s[..], 114) && s[0].mode == 0 && s[0].zoom == 0.74 && !s[0].drag;
+}
+#test "a frame uses a finite shared lens and never draws the assembly before its catalog arrives" {
+  s: [1] Microduck; out: [MD_HUD_VERTICES * 12] f32; u: [64] f32;
+  #assert md_frame(s[..], out[..], u[..], 1280, 800, 1) > 0;
+  #assert s[0].draws[1] == 0;
+  for v: u[..] { #assert v == v && abs(v) < 10000; }
+  md_asset(s[..], 200); #assert !s[0].ready;
+  for k: 0..<32 { s[0].digest[k] = cast(u8) (asset_digit(MD_PACK_SHA[k * 2]) * 16 + asset_digit(MD_PACK_SHA[k * 2 + 1])); }
+  #assert md_gate(s[..], MD_PACK_BYTES);
+  md_asset(s[..], 200);
+  #assert md_frame(s[..], out[..], u[..], 800, 1000, 2) > 0 && s[0].draws[1] > 0;
+  #assert md_frame(s[..], out[..], u[..], 0, 800, 1) == 0;
+}
+
+md_reset :: (s: [] Microduck) { s[0].yaw = 3.85; s[0].pitch = 0.24; s[0].zoom = 0.74; s[0].mode = 0; s[0].drag = false; }
+md_key :: (s: [] Microduck, key: int) -> bool #export_c #effects(all) {
+  if key == 114 || key == 82 { md_reset(s); return true; }
+  if key == 110 || key == 78 { s[0].mode = 1 - s[0].mode; return true; }
+  if key == -4 || key == -5 { s[0].yaw += ifx key == -4 then -0.12f32 else 0.12f32; return true; }
+  if key == 49 { s[0].yaw = 3.85; s[0].pitch = 0.24; return true; }
+  if key == 50 { s[0].yaw = 4.712389; s[0].pitch = 0.05; return true; }
+  if key == 51 { s[0].pitch = 1.3; return true; }
+  return false;
+}
+md_pointer :: (s: [] Microduck, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+  if phase == 0 { s[0].drag = true; s[0].pointer_id = id; s[0].px = x; s[0].py = y; return true; }
+  if !s[0].drag || s[0].pointer_id != id { return false; }
+  if phase == 1 {
+    s[0].yaw -= (x - s[0].px) / s[0].dpr * 0.006;
+    s[0].pitch = shot_clamp(s[0].pitch + (y - s[0].py) / s[0].dpr * 0.006, -0.15, 1.3);
+    s[0].px = x; s[0].py = y;
+  } else { s[0].drag = false; }
+  return true;
+}
+md_wheel :: (s: [] Microduck, delta: f32) #export_c #effects(all) { s[0].zoom = shot_clamp(s[0].zoom + delta * 0.0005, 0.28, 1.6); }
+md_gate :: (s: [] Microduck, bytes: int) -> bool #export_c #effects(all) {
+  s[0].admitted = md_pack_accept(s[0].digest[..], bytes); s[0].ready = false; return s[0].admitted;
+}
+md_asset :: (s: [] Microduck, bytes: int) #export_c #effects(all) { s[0].ready = s[0].admitted && bytes > 0; }
+md_vec :: (u: [] f32, at: int, p: WorldPoint) { u[at] = p.x; u[at + 1] = p.y; u[at + 2] = p.z; }
+md_frame :: (s: [] Microduck, out: [] f32, u: [] f32, w: f32, h: f32, d: f32) -> int #export_c #effects(all) {
+  if !(w > 0) || !(h > 0) || !(d > 0) || u.count < 64 { return 0; }
+  s[0].dpr = d;
+  for k: 0..<64 { // mutant: equivalent (starting at 1 omits only u[0], overwritten by w below)
+    u[k] = 0;
+  }
+  u[0] = w; u[1] = h; u[3] = 1;
+  f := shot_orbit_forward(s[0].yaw, s[0].pitch);
+  ray := ShotRay.{from = world_point(0, 0.135, 0), dir = world_scale(f, -1), far = s[0].zoom};
+  shot := shot_orbit(ray, ray.far, s[0].yaw, s[0].pitch);
+  lens := lens_at(shot.eye, shot.at, w * 0.5, h * 0.52,
+    (ifx w < h then w else h) * 1.8, 0.01); // mutant: equivalent (< and <= choose equal values when w == h)
+  md_vec(u, 8, lens.eye); md_vec(u, 12, lens.right); md_vec(u, 16, lens.up); md_vec(u, 20, lens.ahead);
+  u[24] = lens.focal; u[25] = cast(f32) s[0].mode; u[26] = lens.cx; u[27] = lens.cy;
+  s[0].draws[0] = 0; s[0].draws[1] = ifx s[0].ready then 2390406 else 0;
+  s[0].draws[2] = 0; s[0].draws[3] = 1;
+  pen := HdPen.{d = d, top = 0, bottom = h / d, cyan = true};
+  pen.sans = false; // mutant: equivalent (all captions are >=9 CSS px; uses_sans selects sans only below 9, so either flag draws Filament)
+  n := 0; width := w / d; height := h / d;
+  n = hd_text(out, n, "OPENAGENTS / ROBOTICS LAB", 32, 38, 11, pen, 1);
+  n = hd_text(out, n, "MICRODUCK", 30, 84, 32, pen, 0);
+  n = hd_text(out, n, "POLLEN ROBOTICS", 32, 108, 11, pen, 2);
+  n = hd_line(out, n, 32, 126, width - 32, 126, pen, 2, 0.4);
+  if width >= 900 {
+    n = hd_text(out, n, "ASSEMBLY STUDY / 001", width - 282, 44, 11, pen, 1);
+    n = hd_text(out, n, "METAVERSE ENGINE", width - 282, 68, 11, pen, 2);
+    n = hd_text(out, n, "SOURCE STAND POSE", 32, 178, 11, pen, 0);
+    n = hd_text(out, n, "70 NODES / 38 MESHES", 32, 202, 10, pen, 2);
+    n = hd_text(out, n, "796802 TRIANGLES", 32, 224, 10, pen, 2);
+    n = hd_text(out, n, "METRES / Y UP", 32, 246, 10, pen, 2);
+  }
+  n = hd_text(out, n, ifx s[0].ready then (ifx s[0].mode == 0 then "VIEW / MATERIALS" else "VIEW / NORMALS") else "LOADING ASSEMBLY", 32, height - 100, 11, pen, 1);
+  n = hd_line(out, n, 32, height - 80, width - 32, height - 80, pen, 2, 0.4);
+  n = hd_text(out, n, "DRAG ORBIT / SCROLL ZOOM / R RESET / N NORMALS", 32, height - 54, 10, pen, 0);
+  n = hd_text(out, n, "POLLEN ROBOTICS + NVIDIA DLI / CC BY-NC-SA 4.0 / RESEARCH VIEWER", 32, height - 29, 9, pen, 2);
+  return n;
+}
+
+#load "microduck-checks.coax" #test;

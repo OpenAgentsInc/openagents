@@ -346,6 +346,9 @@ old timed portallab "$here/../../coax/web/wasm.sh" "$here/old/labs/portallab.coa
 portallab=$!
 timed valleycanyon "$here/../../coax/web/wasm.sh" "$here/valleycanyon.coax" "$here/valleycanyon-face.c" "$here/build/valleycanyon.wasm" &
 valleycanyon=$!
+# The standalone research viewer; its licensed geometry stays in the local shared asset store.
+timed microduck "$here/../../coax/web/wasm.sh" "$here/microduck.coax" "$here/microduck-face.c" "$here/build/microduck.wasm" &
+microduck=$!
 # The character pass's runtime, loaded beside a world that places a character (coax/web/character-host.js).
 timed character-host "$here/../../coax/web/wasm.sh" "$here/character-host.coax" "$here/character-host-face.c" "$here/build/character-host.wasm" &
 characterhost=$!
@@ -577,6 +580,7 @@ wait "$waterlab"
 wait "$bitcoin_lab"
 wait "$valleylab"
 wait "$portallab"
+wait "$microduck"
 wait "$valleycanyon"
 wait "$characterhost"
 wait "$animationlab"

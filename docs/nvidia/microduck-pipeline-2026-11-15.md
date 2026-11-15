@@ -6,6 +6,13 @@ demonstrated at GTC Berlin using OpenAgents' own maintained stack, including
 training new skills and deploying them to physical hardware. No part of this
 new capstone is qualified merely by specifying it.
 
+The first implemented inspection surface is the standalone
+[Microduck assembly viewer](../../metaverse/microduck/README.md). It imports a
+pinned Pollen/NVIDIA workshop assembly into the Metaverse Engine's existing
+glTF/VPK1 path and renders it with orbit and normals inspection. This establishes
+asset provenance and static visualization; the training and physical deployment
+gates below remain open.
+
 ## 1. The demonstration and what its sources establish
 
 The event was **Jensen Huang's October 21, 2026 GTC Berlin keynote**. The

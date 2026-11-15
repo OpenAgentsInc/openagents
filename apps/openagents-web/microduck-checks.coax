@@ -1,0 +1,81 @@
+// Input journeys and a quantized geometry receipt for the HUD and shared camera.
+#load "../../metaverse-engine/core/replay.coax";
+
+#test "both key cases, presets and arrow directions operate on the retained orbit" {
+  s: [1] Microduck;
+  for key: [2] int.[110, 78] { s[0].mode = 0; #assert md_key(s[..], key) && s[0].mode == 1; #assert md_key(s[..], key) && s[0].mode == 0; }
+  for key: [2] int.[114, 82] {
+    s[0].yaw = 1; s[0].pitch = 1; s[0].zoom = 1; s[0].mode = 1; s[0].drag = true;
+    #assert md_key(s[..], key) && s[0].yaw == 3.85 && s[0].pitch == 0.24 && s[0].zoom == 0.74 && s[0].mode == 0 && !s[0].drag;
+  }
+  s[0].yaw = 0; #assert md_key(s[..], -4) && s[0].yaw == -0.12;
+  #assert md_key(s[..], -5) && s[0].yaw == 0;
+  s[0].yaw = 0; s[0].pitch = 0; #assert md_key(s[..], 49) && s[0].yaw == 3.85 && s[0].pitch == 0.24;
+  #assert md_key(s[..], 50) && s[0].yaw == 4.712389 && s[0].pitch == 0.05;
+  #assert md_key(s[..], 51) && s[0].pitch == 1.3;
+  for key: [8] int.[-6, -3, 48, 52, 79, 83, 111, 115] { #assert !md_key(s[..], key); }
+}
+#test "pointer ownership, DPR and release preserve the exact orbit deltas" {
+  s: [1] Microduck;
+  #assert !md_pointer(s[..], 100, 100, 1, 0, 1);
+  s[0].yaw = 0; s[0].pitch = 0; s[0].dpr = 2;
+  #assert md_pointer(s[..], 10, 20, 0, 0, 7) && s[0].drag && s[0].pointer_id == 7 && s[0].px == 10 && s[0].py == 20;
+  #assert !md_pointer(s[..], 40, 60, 1, 0, 8) && s[0].px == 10;
+  #assert md_pointer(s[..], 30, 60, 1, 0, 7);
+  #assert abs(s[0].yaw + 0.06) < 0.000001 && abs(s[0].pitch - 0.12) < 0.000001 && s[0].px == 30 && s[0].py == 60;
+  #assert md_pointer(s[..], 30, -10000, 1, 0, 7) && s[0].pitch == -0.15;
+  #assert md_pointer(s[..], 30, 10000, 1, 0, 7) && s[0].pitch == 1.3;
+  #assert md_pointer(s[..], 30, 60, 2, 0, 7) && !s[0].drag;
+  #assert !md_pointer(s[..], 30, 60, 2, 0, 7);
+  s[0].zoom = 1; md_wheel(s[..], 100); #assert abs(s[0].zoom - 1.05) < 0.000001;
+}
+#test "a refused replacement pack clears the old ready state before a later catalog" {
+  s: [1] Microduck;
+  for k: 0..<32 { s[0].digest[k] = cast(u8) (asset_digit(MD_PACK_SHA[k * 2]) * 16 + asset_digit(MD_PACK_SHA[k * 2 + 1])); }
+  #assert md_gate(s[..], MD_PACK_BYTES) && s[0].admitted && !s[0].ready;
+  md_asset(s[..], 0); #assert !s[0].ready;
+  md_asset(s[..], 1); #assert s[0].ready;
+  #assert !md_gate(s[..], 0) && !s[0].admitted && !s[0].ready;
+  md_asset(s[..], 200); #assert !s[0].ready;
+}
+md_receipt :: (w: f32, h: f32, d: f32, mode: int, ready: bool) -> int {
+  s: [1] Microduck; out: [MD_HUD_VERTICES * 12] f32; u: [64] f32;
+  s[0].ready = ready; s[0].mode = mode;
+  // Retained frame buffers contain the preceding frame, never promised zeroes.
+  for k: 0..<64 { u[k] = 123; } // mutant: equivalent (test scratch prefill; the correct frame overwrites every lane before the receipt)
+  for k: 0..<4 { s[0].draws[k] = 123; } // mutant: equivalent (test prefill; all four draw words are overwritten by the correct frame)
+  n := md_frame(s[..], out[..], u[..], w, h, d);
+  // A stroke's first vertex carries its position, length, weight and full colour.
+  // Quantization keeps platform libm's last bit out of the layout receipt.
+  receipt := replay_mix(2166136261, n);
+  for stroke: 0..<n / 6 { for lane: 0..<12 { receipt = replay_mix(receipt, cast(int) floor(out[stroke * 72 + lane] * 1024 + 0.5)); } }
+  for value: u[..] { receipt = replay_mix(receipt, cast(int) floor(value * 65536 + 0.5)); }
+  for value: s[0].draws[..] { receipt = replay_mix(receipt, cast(int) value); }
+  receipt = replay_mix(receipt, cast(int) floor(s[0].dpr * 1024));
+  return receipt;
+}
+#test "the wide, portrait and exact sidebar boundary retain their drawn geometry" {
+  #assert md_receipt(1440, 1000, 1, 0, true) == 1153569288;
+  #assert md_receipt(800, 1000, 2, 1, false) == 3253051927;
+  #assert md_receipt(900, 800, 1, 0, true) == 1756791304;
+  #assert md_receipt(899, 800, 1, 0, true) == 700447215;
+}
+#test "a small high-DPR viewport clips the header through the shared pen" {
+  s: [1] Microduck; out: [MD_HUD_VERTICES * 12] f32; u: [64] f32;
+  n := md_frame(s[..], out[..], u[..], 900, 100, 2);
+  // Every stroke's first vertex remains near this short viewport; no y=108 header can escape.
+  for stroke: 0..<n / 6 { #assert out[stroke * 72 + 1] < 125; }
+}
+#test "invalid dimensions and a short uniform span produce no frame" {
+  s: [1] Microduck; out: [1] f32; u: [64] f32;
+  for value: [2] f32.[0, -1] {
+    s[0].dpr = 9; u[0] = 777;
+    #assert md_frame(s[..], out[..], u[..], value, 800, 1) == 0;
+    #assert s[0].dpr == 9 && u[0] == 777;
+    #assert md_frame(s[..], out[..], u[..], 1280, value, 1) == 0;
+    #assert s[0].dpr == 9 && u[0] == 777;
+    #assert md_frame(s[..], out[..], u[..], 1280, 800, value) == 0;
+    #assert s[0].dpr == 9 && u[0] == 777;
+  }
+  #assert md_frame(s[..], out[..], u[0..<63], 1280, 800, 1) == 0;
+}

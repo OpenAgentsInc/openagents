@@ -1,0 +1,57 @@
+// Research assembly viewer. Shared engine shader math and Filament strokes.
+#load "splash.coax";
+
+#test "Microduck unpacking preserves the engine's packed material colour" {
+  c := md_colour(0x00332211);
+  #assert abs(c.x - 17.0f32 / 255.0f32) < 0.00001f32;
+  #assert abs(c.y - 34.0f32 / 255.0f32) < 0.00001f32 && abs(c.z - 0.2f32) < 0.00001f32;
+}
+md_colour :: (word: u32) -> V3 { return v3(cast(f32) (word & 255) / 255.0f32, cast(f32) ((word >> 8) & 255) / 255.0f32, cast(f32) ((word >> 16) & 255) / 255.0f32); }
+md_vec :: (u: [] f32, at: int) -> V3 { return v3(u[at], u[at + 1], u[at + 2]); }
+md_bg_vs :: (i: u32, j: u32) -> V4 { return splash_bg_vs(i, j); }
+md_bg_fs :: (pos: V4, u: [] f32) -> V4 {
+  x := (pos.x - u[26]) / u[24]; y := (u[27] - pos.y) / u[24];
+  ray := wg_normalize3(wg_add_f3f3(md_vec(u, 20), wg_add_f3f3(wg_mul_f3f(md_vec(u, 12), x), wg_mul_f3f(md_vec(u, 16), y))));
+  eye := md_vec(u, 8); base := v3(0.027f32, 0.041f32, 0.058f32);
+  glow := exp(-(x * x + y * y) * 3.0f32);
+  base = wg_add_f3f3(base, wg_mul_f3f(v3(0.022f32, 0.038f32, 0.052f32), glow));
+  if ray.y < -0.0001f32 {
+    t := (-0.004f32 - eye.y) / ray.y;
+    p := wg_add_f3f3(eye, wg_mul_f3f(ray, t));
+    radius := sqrt(p.x * p.x + p.z * p.z);
+    grid := pow(fmax(abs(cos(p.x * 62.83185f32)), abs(cos(p.z * 62.83185f32))), 100.0f32);
+    fade := exp(-radius * radius * 5.0f32);
+    shadow := exp(-(p.x * p.x / 0.005f32 + p.z * p.z / 0.008f32));
+    base = wg_add_f3f3(base, wg_mul_f3f(v3(0.08f32, 0.12f32, 0.14f32), fade * (0.32f32 + grid * 0.28f32) * (1.0f32 - 0.8f32 * shadow)));
+    ring := exp(-pow((radius - 0.22f32) * 900.0f32, 2.0f32));
+    base = wg_add_f3f3(base, wg_mul_f3f(v3(0.08f32, 0.29f32, 0.32f32), ring * 0.5f32));
+  }
+  return v4(base.x, base.y, base.z, 1.0f32);
+}
+MdSurface :: struct { pos: V4; world: V3; normal: V3; colour: V3; }
+md_scene_vs :: (i: u32, j: u32, u: [] f32, vertices: [] u32) -> MdSurface {
+  at := cast(int) i * 12;
+  p := v3(f32_from_bits(vertices[at]), f32_from_bits(vertices[at + 1]), f32_from_bits(vertices[at + 2]));
+  normal := v3(f32_from_bits(vertices[at + 3]), f32_from_bits(vertices[at + 4]), f32_from_bits(vertices[at + 5]));
+  r := sub3(p, md_vec(u, 8)); z := wg_dot3(r, md_vec(u, 20));
+  clip := v4(2.0f32 * (wg_dot3(r, md_vec(u, 12)) * u[24] + (u[26] - u[0] * 0.5f32) * z) / u[0],
+    2.0f32 * (wg_dot3(r, md_vec(u, 16)) * u[24] + (u[1] * 0.5f32 - u[27]) * z) / u[1],
+    10.0f32 / 9.99f32 * (z - 0.01f32), z);
+  return MdSurface.{pos = clip, world = p, normal = normal, colour = md_colour(vertices[at + 8])};
+}
+md_scene_fs :: (v: MdSurface, u: [] f32) -> V4 {
+  n := wg_normalize3(v.normal);
+  if u[25] > 0.5f32 { return v4(n.x * 0.5f32 + 0.5f32, n.y * 0.5f32 + 0.5f32, n.z * 0.5f32 + 0.5f32, 1.0f32); }
+  key := wg_normalize3(v3(-0.6f32, 0.9f32, -0.8f32)); fill := wg_normalize3(v3(0.9f32, 0.4f32, 0.5f32));
+  light := 0.3f32 + fmax(wg_dot3(n, key), 0.0f32) * 0.65f32 + fmax(wg_dot3(n, fill), 0.0f32) * 0.3f32;
+  view := wg_normalize3(sub3(md_vec(u, 8), v.world)); half := wg_normalize3(wg_add_f3f3(key, view));
+  spec := pow(fmax(wg_dot3(n, half), 0.0f32), 48.0f32) * 0.18f32;
+  rim := pow(1.0f32 - abs(wg_dot3(n, view)), 3.0f32) * 0.08f32;
+  colour := wg_add_f3f3(wg_mul_f3f(v.colour, light), v3(spec + rim * 0.4f32, spec + rim * 0.8f32, spec + rim));
+  return v4(colour.x, colour.y, colour.z, 1.0f32);
+}
+MdStroke :: struct { a: V4; b: V4; c: V4; }
+md_fx_vs :: (i: u32, j: u32, a: MdStroke, u: [] f32) -> SplashV {
+  return splash_fx_vs(i, j, splash_fx_vs_in.{a = a.a, b = a.b, c = a.c, d = v4(0.0f32, 0.0f32, 0.0f32, 0.0f32)}, u);
+}
+md_fx_fs :: (v: SplashV, u: [] f32) -> V4 { return splash_fx_fs(v, u); }

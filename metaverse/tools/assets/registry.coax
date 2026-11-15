@@ -69,7 +69,12 @@ ar_inventory :: (root:string,rel:string,o:[]Jo,depth:int)->bool {
  #assert ar_license("Quaternius Asset License (QAL) v1.0")=="LicenseRef-Quaternius-QAL-1.0" && ar_license("all rights reserved")=="";
 }
 ar_cc0 :: (text:string)->bool {return ar_contains(text,"CC0 1.0");}
-ar_license :: (text:string)->string {if ar_cc0(text) {return "CC0-1.0";}if ar_contains(text,"Quaternius Asset License (QAL) v1.0") {return "LicenseRef-Quaternius-QAL-1.0";}if ar_contains(text,"Wildfire Games") && ar_contains(text,"Creative Commons Attribution-Share Alike 3.0") {return "CC-BY-SA-3.0";}return "";}
+#test "Pollen model terms stay noncommercial and cannot be indexed as CC0" {
+ #assert ar_license("Copyright Pollen Robotics / CC BY-NC-SA 4.0")=="CC-BY-NC-SA-4.0";
+ #assert !ar_cc0("Copyright Pollen Robotics / CC BY-NC-SA 4.0");
+ #assert ar_license("Pollen Robotics Apache-2.0")=="" && ar_license("CC BY-NC-SA 4.0")=="";
+}
+ar_license :: (text:string)->string {if ar_contains(text,"Pollen Robotics") && ar_contains(text,"CC BY-NC-SA 4.0") {return "CC-BY-NC-SA-4.0";}if ar_cc0(text) {return "CC0-1.0";}if ar_contains(text,"Quaternius Asset License (QAL) v1.0") {return "LicenseRef-Quaternius-QAL-1.0";}if ar_contains(text,"Wildfire Games") && ar_contains(text,"Creative Commons Attribution-Share Alike 3.0") {return "CC-BY-SA-3.0";}return "";}
 ar_pkg_cc0 :: (pkg:string)->bool {nb:[256]u8;name:=ar_cat(pkg,".files.json",nb[..]);pb:[4096]u8;path:=fs_join("assets/registry/packages",name,pb[..]);b:[1024]u8;size:=fs_size(path);if size<1 {return false;}n:=ifx size<b.count then size else b.count;if fs_read_at(path,0,b[0..<n])!=n {return false;}return ar_contains(cast(string)b[0..<n],"\"license\":\"CC0-1.0\"");}
 ar_pkg_0ad :: (pkg:string)->bool {nb:[256]u8;name:=ar_cat(pkg,".files.json",nb[..]);pb:[4096]u8;path:=fs_join("assets/registry/packages",name,pb[..]);b:[1024]u8;size:=fs_size(path);if size<1 {return false;}n:=ifx size<b.count then size else b.count;if fs_read_at(path,0,b[0..<n])!=n {return false;}return ar_contains(cast(string)b[0..<n],"\"license\":\"CC-BY-SA-3.0\"");}
 ar_pkg_qal :: (pkg:string)->bool {nb:[256]u8;name:=ar_cat(pkg,".files.json",nb[..]);pb:[4096]u8;path:=fs_join("assets/registry/packages",name,pb[..]);b:[1024]u8;size:=fs_size(path);if size<1 {return false;}n:=ifx size<b.count then size else b.count;if fs_read_at(path,0,b[0..<n])!=n {return false;}return ar_contains(cast(string)b[0..<n],"\"license\":\"LicenseRef-Quaternius-QAL-1.0\"");}

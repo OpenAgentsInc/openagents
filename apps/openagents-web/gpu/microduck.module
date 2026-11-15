@@ -1,0 +1,3 @@
+--vertices md_bg_vs,md_scene_vs,md_fx_vs
+--fragments md_bg_fs,md_scene_fs,md_fx_fs
+--bindings apps/openagents-web/gpu/microduck.bindings --strip md_
