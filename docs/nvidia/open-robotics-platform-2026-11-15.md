@@ -13,6 +13,11 @@ and its book plan track that work as a design draft. The tabletop workcell
 below remains an independent manufacturing/product route; it does not gate
 the biped program.
 
+**Wider speculation, 2026-11-15:** [After the open era](after-the-open-era-2026-11-15.md)
+takes the case where NVIDIA keeps operating but its open ecosystem narrows,
+and proposes additions beyond robotics. It is speculation and changes no
+priority here.
+
 ## 1. The goal and the first product
 
 Assume, as a planning exercise, that NVIDIA stops operating: new hardware,
