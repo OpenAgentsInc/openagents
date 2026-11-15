@@ -1,5 +1,12 @@
 # Owner actions
 
+## Liquid Glass, build 1096 (2026-11-15)
+
+- [ ] Install OpenAgents TestFlight **1096** (verified in **Owner**) on iOS 26
+      or later. Open **Settings → Components** and inspect the Liquid Glass
+      buttons at the top; physical-device appearance and interaction remain
+      to be checked.
+
 ## Microduck, build 1094 (2026-11-15)
 
 - [ ] Install TestFlight **1094** (verified available in **Owner**). On Home, open **Microduck**;
