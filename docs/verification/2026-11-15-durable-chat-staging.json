@@ -1,12 +1,16 @@
 {
   "issue": 13619,
-  "status": "in_progress",
+  "status": "qualified",
   "date": "2026-11-15",
   "source_commits": {
     "api": "616fce485bfca85c0bc14d0c92c67b3e29f236ac",
     "mobile_failure_feedback": "b59c037d26773e5319e7d574d1ee598d4ffe89c3",
     "legacy_assertion": "999c3017e608ef70ea6e180c619351dd32577366",
-    "worker": "1de33a3df83f56d2c23b4896f6e09c494826c248"
+    "worker": "1de33a3df83f56d2c23b4896f6e09c494826c248",
+    "mobile_oracles": "9f6dfaa3228298d1300035240076c000e722a3d0",
+    "provider_failure_checks": "fc02ef4364b909a592ac68ea63483bee167b2939",
+    "mobile_refresh_fix": "09da6b96af46123c311366a8fd86db7c94877e5f",
+    "native_staging": "d2219375133ba2192effb19f5019367be06bb368"
   },
   "staging": {
     "api_revision": "oa-api-staging-00231-sb5",
@@ -21,12 +25,18 @@
   "checks": {
     "mobile_native": {
       "full_checks_passed": 786,
-      "subsequent_changed_failure_check_passed": true
+      "subsequent_changed_failure_check_passed": true,
+      "current_coax_checks_passed": 787,
+      "current_command": "coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-ios/home/app.coax --run-steps 250000000",
+      "current_command_seconds": 6
     },
     "native_sdk_cases_passed": [
       "stream/replay/Stop/complete 128 KiB copy",
       "private Project instructions, knowledge and two saved turns",
-      "reopened Project metadata refresh, failed-refresh retry and preservation of submitted text versus a newer draft"
+      "reopened Project metadata refresh, failed-refresh retry and preservation of submitted text versus a newer draft",
+      "Automatic settings refresh dispatches without consuming the next button press",
+      "Actual staging phone-key/device login, Project instructions/knowledge, running deltas, confirmed Stop, completed follow-up and reopen",
+      "Actual staging ordinary account chat, running deltas, completion and cold-program reopen"
     ],
     "projects_http_checks_passed": 29,
     "durable_storage_checks_passed": 15,
@@ -38,7 +48,29 @@
       "full_run_repeated_after_fixture_correction": false
     },
     "worker_image_context": "Both affected engines linked from an isolated copy of the exact staged platform context; the full worker image then built and deployed.",
-    "prepush": "Normal hooks passed on all source pushes."
+    "prepush": "Normal hooks passed on all source pushes.",
+    "installed_uikit_cases_passed": [
+      "Backgrounded server-owned completion, app termination/relaunch, exact reopen, Stop and account switching (67.700 s)",
+      "Native email account send, full Markdown/copy, saved reopen and keyboard composer layout (51.634 s)",
+      "Private Project creation, edited instructions, selected knowledge, saved answer and reopen through Project chats (56.625 s)"
+    ],
+    "durable_provider_failures": {
+      "checks_passed": 40,
+      "fixture_modes": [
+        "HTTP 503 refusal",
+        "SSE error after saved text",
+        "truncated HTTP body after saved text",
+        "max_tokens with observed usage"
+      ],
+      "asserted": [
+        "Persisted terminal state and stop reason",
+        "Exact retained partial answer and error presence",
+        "Observed zero versus missing/unknown usage",
+        "Submit/run replay retains the result without additional upstream work"
+      ],
+      "command": "API_TESTS_ONLY=durable_chat_checks.coax API_DURABLE_ONLY=failures coax/web/api/test.sh",
+      "remote_run_seconds": 636
+    }
   },
   "live_cli_verified": [
     "Private Project creation, instructions, selected knowledge, immutable admitted input/context reads",
@@ -59,10 +91,61 @@
     "Startup reconciled an aged dispatched attempt as unknown without retrying the model",
     "Exactly five upstream requests across the fixture, including all retries and recovery"
   ],
-  "remaining": [
-    "Installed native HTTP/background/foreground/process-restart and account-switch flows on the v2 consumer",
-    "Live staging iOS inference using native account authentication",
-    "Actual HTTP provider-error, mid-stream-error and output-limit cases beyond existing shared stream unit/mutation coverage",
-    "Complete every acceptance criterion before closing issue 13619"
+  "remaining": [],
+  "release_status": "Source and staging qualification; production and TestFlight remain deferred until the complete Claude and Arcade port.",
+  "live_staging_native": {
+    "origin": "https://staging.openagents.com",
+    "native_phone_auth": true,
+    "isolated_tokens": true,
+    "existing_team_beta_enrolled_test_account": true,
+    "same_account_cli_profile": "durable-native-staging",
+    "project_running_delta": true,
+    "project_knowledge_used": true,
+    "stop_confirmed": "cancelled",
+    "completed_project_followup_reopened": true,
+    "ordinary_running_delta": true,
+    "ordinary_completed_and_reopened": true,
+    "actual_selection": {
+      "effort": "low",
+      "model_id": "google/gemini-4-hydrogen",
+      "provider_id": "google",
+      "reason": "Account chat beta",
+      "route_decision_id": null
+    },
+    "project_usage": {
+      "cache_read_tokens": null,
+      "cache_write_tokens": null,
+      "input_tokens": 193,
+      "output_tokens": 132,
+      "reasoning_tokens": 117
+    },
+    "cli_comparison": {
+      "project_messages": 4,
+      "ordinary_messages": 2,
+      "project_completed_sha256": "1e9267bde57905ffa8944dd49267e15643c410687e278d21f956f646b3c1dcfc",
+      "ordinary_completed_sha256": "13a497d7d74784013322c40d4491ffee6b73a668ea9067aee4fd0cfd531556df",
+      "ordinary_stop_reason": "end_turn",
+      "ordinary_usage": {
+        "input_tokens": 82,
+        "output_tokens": 1318,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null,
+        "reasoning_tokens": 94
+      },
+      "native_cli_exact_match": true
+    },
+    "earlier_stopped_partial_cli_sha256": "273c5b8aea8a065e96852ebdf7abd697141cb33c85981c49b89446e499b1fbef",
+    "context_hash_and_admitted_input_verified": true,
+    "project_suite_seconds": 18.292
+  },
+  "installed_program_sha256": {
+    "app.wasm": "ce7e3365fe0a8393137b2ce4f97af4f27f7e5907d2fca47ad99cbcc5727c5840",
+    "app.js": "bec1db790c7b632db5f07e6b8d606b77409947417e46408c129276c4ce6959a5"
+  },
+  "qualification_limits": [
+    "The original 81-case durable HTTP run was not repeated after correcting its fixture predicate; its captured-body acceptance and wrong-role refusal remain the evidence for that correction.",
+    "The latest targeted provider run passed; this record does not claim a rerun of the entire API suite.",
+    "UIKit lifecycle tests use the independent HTTP oracle; actual inference/native account transport is separately exercised against staging.",
+    "No production deployment, TestFlight upload or physical-device release qualification was performed in this milestone."
   ]
 }

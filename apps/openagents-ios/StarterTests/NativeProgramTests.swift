@@ -13,12 +13,12 @@ import UIKit
         try p.input("nav.toggle");try p.frame();_=try p.action()
         try answer(104,200,"{\"schema\":\"openagents.environment.catalog.v1alpha1\",\"environments\":[]}")
         try p.input("nav.recent");try p.frame();try p.input("nav.settings");try p.frame();XCTAssertEqual(try p.action().0,18)
-        let settings=try JSONSerialization.jsonObject(with:Data(NativeAccountCodec.write {nas_initial($0)}.utf8))
-        let snapshot:[String:Any]=["schema":"openagents.native.account.v1","settings":settings,"identity":["source":"account"],"account":["account":"acct_other","primary":"grace@example.com"],"ways":["level":"L1","keys":[],"passkeys":[]],"sessions":["sessions":[]],"permission":"Not enabled","backup":false,"backup_pubkey":"","message":""]
-        try answer(118,0,String(decoding:JSONSerialization.data(withJSONObject:snapshot),as:UTF8.self))
+        let settings=try NativeAccountCodec.write {nas_initial($0)}
+        let snapshot=try NativeAccountCodec.write(131072) {out in NativeAccountCodec.text(settings) {s in NativeAccountCodec.text("{}") {object in NativeAccountCodec.text("") {blank in nac_observation(s,object,object,object,object,blank,false,blank,blank,out)}}}}
+        try answer(118,0,snapshot)
         try p.frame(elapsed:9);try p.frame(elapsed:1);XCTAssertEqual(try p.action().0,18)
         XCTAssertTrue(p.nodes.values.contains {$0.id=="settings.busy"})
-        try answer(118,0,String(decoding:JSONSerialization.data(withJSONObject:snapshot),as:UTF8.self))
+        try answer(118,0,snapshot)
         let surface=NativeControls();surface.sheet=true;surface.view.frame=CGRect(x:0,y:0,width:402,height:874)
         surface.render(p.elements(dialog:true));surface.view.layoutIfNeeded()
         surface.press={id in do {try p.input(id);try p.frame();surface.render(p.elements(dialog:true))}catch {XCTFail("Native settings input failed")}}
