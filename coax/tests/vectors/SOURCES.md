@@ -408,7 +408,9 @@ that a maliciously replaced manifest is authentic.
   Single Random Draw, Knapsack and waste case, runs it through
   `coinselect_reference.py`, a transliteration of Core's selectors with
   its ChaCha20 random draws, and checks the result against the one Core's
-  test states.
+  test states. `make_coinselect_random.py` draws wallets with a fixed seed,
+  and searches for more that tell Core's selectors from one-character
+  changes to them, and writes each with the transliteration's full result.
 - **Generic signed messages (Bitcoin chapter 96):** BIP-322 and its
   `basic-test-vectors.json` and `generated-test-vectors.json` at bips
   revision `5aadddb5`. `make_bip322_vectors.py` checks every hash,

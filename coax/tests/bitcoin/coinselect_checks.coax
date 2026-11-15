@@ -1,0 +1,342 @@
+// The checks of coax/lib/bitcoin/coinselect.coax (Bitcoin chapter 95), which loads
+// this file: Bitcoin Core's coinselection_tests.cpp and coinselector_tests.cpp cases
+// (coinselect_vectors.coax), wallets drawn with a fixed seed and decided by the
+// Python transliteration of Core (coinselect_random.coax), and the boundaries of
+// every threshold. Test code only.
+// A pool from its spec: "value/vsize*count,..." with absolute values and
+// input sizes in virtual bytes (-1 for unknown), at feerate and long_term.
+cs_parse_int :: (s: string, at: int) -> [2] int #effects(all) {
+  neg := false; i := at;
+  if i < s.count && s[i] == '-' { neg = true; i += 1; }
+  v := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(int) (s[i] - '0'); i += 1; }
+  return [2] int.[ifx neg then -v else v, i];
+}
+cs_pool :: (spec: string, feerate: int, long_term: int, out: [] CsGroup) -> int #effects(all) {
+  n := 0; at := 0;
+  while at < spec.count {
+    v := cs_parse_int(spec, at); s := cs_parse_int(spec, v[1] + 1); c := cs_parse_int(spec, s[1] + 1);
+    for k: 0..<c[0] { out[n] = cs_coin(v[0], s[0], feerate, long_term); n += 1; }
+    at = c[1] + 1;
+  }
+  return n;
+}
+// The values of the marked groups, sorted, written "a,b,..." into out.
+cs_values_match :: (pool: [] CsGroup, marks: [] int, algo: int, want: string) -> bool #effects(all) {
+  vals: [64] int; n := 0;
+  for i: 0..<pool.count { if (marks[i] >> algo) & 1 == 1 { if n == 64 { return false; } vals[n] = pool[i].value; n += 1; } }
+  for i: 1..<n { j := i; while j > 0 && vals[j] < vals[j-1] { t := vals[j]; vals[j] = vals[j-1]; vals[j-1] = t; j -= 1; } }
+  at := 0; k := 0;
+  while at < want.count {
+    x := cs_parse_int(want, at);
+    if k >= n || vals[k] != x[0] { return false; }
+    k += 1; at = x[1] + 1;
+  }
+  return k == n;
+}
+CS_SEED :: [32] u8.[0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95,
+                    0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x95];
+// One of Core's cases, run as its test runs it; true when it gives the
+// published result.
+cs_case_passes :: (c: CsCase, pool: [] CsGroup, marks: [] int, work: [] int) -> bool #effects(all) {
+  n := cs_pool(c.pool, c.feerate, c.long_term, pool);
+  p := pool[0..<n]; mk := marks[0..<n]; w := work[0..<5*n];
+  for i: 0..<n { mk[i] = 0; }
+  seed := CS_SEED; rng: [1] CsRng; rng[0] = cs_rng(seed[..]);
+  r: CsResult;
+  if c.algo == CS_BNB { r = cs_bnb(p, c.target, c.extra, c.max_weight, mk, w); }
+  else if c.algo == CS_CG { r = cs_coin_grinder(p, c.target, c.extra, c.max_weight, mk, w); }
+  else if c.algo == CS_SRD { r = cs_srd(p, c.target, c.extra, c.max_weight, rng[..], mk, w); }
+  else { r = cs_knapsack(p, c.target, c.extra, c.max_weight, rng[..], mk, w); }
+  if r.code != c.code { return false; }
+  if r.code != CS_OK { return true; }
+  if c.tries >= 0 && r.tries != c.tries { return false; }
+  if c.algo == CS_SRD { return r.effective >= c.target + c.extra + CS_CHANGE_LOWER && r.weight <= c.max_weight; }
+  if c.count >= 0 && r.count != c.count { return false; }
+  if c.total >= 0 && r.value != c.total { return false; }
+  return c.want.count == 0 || cs_values_match(p, mk, c.algo, c.want);
+}
+
+#test "the fee of a coin and its effective value, as effective_value_test" {
+  #assert cs_amount(cs_coin(10000, 148, 1000, 0)) == 9852;
+  #assert cs_amount(cs_coin(10000, -1, 1000, 0)) == 10000;
+  #assert cs_amount(cs_coin(10000, 148, 100000, 0)) == -4800;
+  c := cs_coin(10000, 68, 5000, 10000);
+  #assert c.fee == 340 && c.long_term_fee == 680 && c.weight == 272 && c.count == 1;
+  // GetFee rounds up: 68 vB at 1 sat/kvB is 1 satoshi.
+  #assert cs_coin(1, 68, 1, 0).fee == 1 && cs_coin(1, 0, 1000, 0).fee == 0;
+}
+// The coins in a pool spec.
+cs_pool_count :: (spec: string) -> int #effects(all) {
+  n := 0; at := 0;
+  while at < spec.count {
+    v := cs_parse_int(spec, at); s := cs_parse_int(spec, v[1] + 1); c := cs_parse_int(spec, s[1] + 1);
+    n += c[0]; at = c[1] + 1;
+  }
+  return n;
+}
+#forall "every one of Core's selection cases gives its result" i: 0..<CS_CASES.count #steps 3000000000 {
+  if cs_pool_count(CS_CASES[i].pool) <= 1100 {
+    pool: [1100] CsGroup; marks: [1100] int; work: [5500] int;
+    #assert cs_case_passes(CS_CASES[i], pool[..], marks[..], work[..]);
+  }
+}
+// The ten pools of 50,003 coins, one array for all.
+#test "Core's 50,000 clones at every feerate" #steps 3000000000 {
+  pool: [50100] CsGroup; marks: [50100] int; work: [250500] int;
+  for i: 0..<CS_CASES.count {
+    if cs_pool_count(CS_CASES[i].pool) > 1100 { #assert cs_case_passes(CS_CASES[i], pool[..], marks[..], work[..]); }
+  }
+}
+#test "waste, as waste_test" {
+  for i: 0..<CS_WASTE.count {
+    c := CS_WASTE[i];
+    r := CsResult.{target=c.target, effective=c.inputs - c.fees, fee=c.fees, long_term_fee=c.long_term_fees, count=2};
+    #assert cs_waste(r, c.min_viable_change, c.change_cost, c.change_fee) == c.waste;
+  }
+}
+#test "change: the dust threshold, the change target and the parameters" {
+  p2wpkh: [22] u8; p2wpkh[1] = 20; p2pkh: [25] u8; p2pkh[0] = 0x76; p2pkh[1] = 0xa9; p2pkh[2] = 20; p2tr: [34] u8; p2tr[0] = 0x51; p2tr[1] = 32;
+  ret: [1] u8; ret[0] = 0x6a;
+  // policy.cpp's own comments: 294 and 546 satoshis at 3,000 sat/kvB.
+  #assert cs_dust_threshold_vartime(p2wpkh[..], 3000) == 294 && cs_dust_threshold_vartime(p2pkh[..], 3000) == 546;
+  #assert cs_dust_threshold_vartime(p2tr[..], 3000) == 330 && cs_dust_threshold_vartime(ret[..], 3000) == 0;
+  seed := CS_SEED; rng: [1] CsRng; rng[0] = cs_rng(seed[..]);
+  #assert cs_change_target(25000, 155, rng[..]) == 50155;
+  for i: 0..<200 {
+    t := cs_change_target(400000, 155, rng[..]);
+    #assert t >= 50155 && t < 800155;
+    u := cs_change_target(5000000, 155, rng[..]);
+    #assert u >= 50155 && u < 1000155;
+  }
+  // init_cs_params in coinselection_tests.cpp, at 5,000 sat/kvB.
+  p := cs_params(5000, 10000, 3000, p2wpkh[..], 68, 42, 100000, 1, rng[..]);
+  #assert p.change_output_size == 31 && p.change_fee == 155 && p.cost_of_change == 359 && p.min_viable_change == 294;
+}
+#test "the random stream is FastRandomContext's" {
+  // Seed 0: ChaCha20's all-zero keystream begins 76 b8 e0 ad a0 f1 3d 90.
+  zero: [32] u8; rng: [1] CsRng; rng[0] = cs_rng(zero[..]);
+  #assert cs_rand64(rng[..]) == 0x903df1a0ade0b876;
+  rng[0] = cs_rng(zero[..]);
+  #assert cs_randbits(rng[..], 4) == 6 && cs_randbits(rng[..], 4) == 7 && cs_randbool(rng[..]) == false;
+  for i: 0..<1000 { #assert cs_randrange(rng[..], 7) < 7; }
+}
+#test "avoid-reuse groups: one address, one group, at most 100 coins" {
+  coins: [205] CsGroup; owner: [205] int; out: [8] CsGroup; out_owner: [8] int;
+  for i: 0..<205 { coins[i] = cs_coin(1000, 68, 1000, 1000); owner[i] = ifx i < 202 then 7 else i; }
+  n := cs_group_by_owner(coins[..], owner[..], out[..], out_owner[..]);
+  #assert n == 6 && out[0].count == 100 && out[1].count == 100 && out[2].count == 2 && out[3].count == 1;
+  #assert out[0].value == 100000 && out[0].fee == 6800 && out[0].weight == 27200;
+}
+#test "the refusals" {
+  pool: [3] CsGroup; marks: [3] int; work: [15] int; rng: [1] CsRng;
+  b := cs_bnb(pool[..], 1, 0, 100, marks[0..<2], work[..]); g := cs_coin_grinder(pool[..], 1, 0, 100, marks[..], work[0..<14]);
+  d := cs_srd(pool[..], 1, 0, 100, rng[..], marks[..], work[0..<1]); q := cs_knapsack(pool[..], 1, 0, 100, rng[..], marks[..], work[0..<1]);
+  #assert b.code == CS_CAPACITY && g.code == CS_CAPACITY && d.code == CS_CAPACITY && q.code == CS_CAPACITY;
+  #assert b.algo == CS_BNB && g.algo == CS_CG && d.algo == CS_SRD && q.algo == CS_KNAPSACK;
+  // Knapsack: the smaller coins add up to the target exactly but are too
+  // heavy together, so it falls back to the smallest larger coin, or fails.
+  heavy := [3] CsGroup.[CsGroup.{value=500, weight=300, count=1}, CsGroup.{value=500, weight=300, count=1}, CsGroup.{value=9000, weight=100, count=1}];
+  k := cs_knapsack(heavy[..], 1000, 1000, 500, rng[..], marks[..], work[..]);
+  #assert k.code == CS_OK && k.count == 1 && k.value == 9000 && marks[2] == 1 << CS_KNAPSACK && marks[0] == 0;
+  #assert cs_knapsack(heavy[0..<2], 1000, 1000, 500, rng[..], marks[0..<2], work[0..<10]).code == CS_MAX_WEIGHT;
+  // No coins: insufficient funds.
+  #assert cs_bnb(pool[0..<0], 1, 0, 100, marks[0..<0], work[0..<0]).code == CS_INSUFFICIENT;
+  #assert cs_knapsack(pool[0..<0], 1, 0, 100, rng[..], marks[0..<0], work[0..<0]).code == CS_INSUFFICIENT;
+}
+// Random wallets: whatever wins, the transaction pays at least its
+// feerate; without change it overpays by less than a change output would
+// have returned; and no algorithm that ran had less waste.
+#forall "a chosen selection pays its feerate, and overpays by less than the change it skips" s: 0..<60 #steps 1000000000 {
+  seed: [32] u8; seed[0] = cast(u8) s; rng: [1] CsRng; rng[0] = cs_rng(seed[..]);
+  pool: [14] CsGroup; marks: [14] int; work: [70] int;
+  feerate := 1000 + cs_randrange(rng[..], 60000); long_term := 10000;
+  for i: 0..<14 { pool[i] = cs_coin(5000 + cs_randrange(rng[..], 3000000), ifx i % 2 == 0 then 68 else 58, feerate, long_term); }
+  change_spk: [22] u8; change_spk[1] = 20;
+  payment := 10000 + cs_randrange(rng[..], 15000000);
+  p := cs_params(feerate, long_term, 3000, change_spk[..], 68, 11 + 31, payment, 1, rng[..]);
+  target := payment + fee_for_rate_vartime(feerate, p.tx_noinputs_size);
+  r := cs_choose(pool[..], target, p, FEE_MAX_STANDARD_WEIGHT, rng[..], marks[..], work[..]);
+  total := 0;
+  for i: 0..<14 { if cs_amount(pool[i]) > 0 { total += cs_amount(pool[i]); } }
+  if total < target { #assert r.code == CS_INSUFFICIENT; }
+  if r.code == CS_OK {
+    #assert r.effective >= target && r.waste == cs_waste(r, p.min_viable_change, p.cost_of_change, p.change_fee);
+    change := cs_change(r, p.min_viable_change, p.change_fee);
+    paid := r.value - payment - change;                       // the fee the transaction pays
+    vsize := p.tx_noinputs_size + r.weight / TX_SCALE + (ifx change > 0 then p.change_output_size else 0);
+    #assert paid >= fee_for_rate_vartime(feerate, vsize);
+    if change == 0 { #assert r.effective - target < p.min_viable_change + p.change_fee; }
+    else { #assert paid == r.fee + fee_for_rate_vartime(feerate, p.tx_noinputs_size) + p.change_fee; }
+    for a: 0..<4 {
+      if a != CS_CG || p.feerate > 3 * p.long_term {
+        x := CsResult.{algo=a, target=target};
+        found := false;
+        for i: 0..<14 { if (marks[i] >> a) & 1 == 1 { x = cs_add(x, pool[..], i, work[0..<14]); found = true; } }
+        if found { #assert cs_waste(x, p.min_viable_change, p.cost_of_change, p.change_fee) >= r.waste; }
+      }
+    }
+  }
+}
+
+// ---- wallets drawn with a fixed seed, against the Python transliteration
+// The key FastRandomContext gets for a run: its seed byte, then zeros.
+cs_seed_rng :: (seed: int) -> CsRng #effects(all) {
+  key: [32] u8; key[0] = cast(u8) seed;
+  return cs_rng(key[..]);
+}
+// One run of CS_RUNS gives the whole result Python gave: the code, the
+// attempts, whether the search finished, every sum and the coins.
+cs_run_passes :: (c: CsRun) -> bool #effects(all) {
+  pool: [16] CsGroup; marks: [16] int; work: [80] int;
+  n := cs_pool(c.pool, c.feerate, c.long_term, pool[..]);
+  p := pool[0..<n]; mk := marks[0..<n]; w := work[0..<5*n];
+  for i: 0..<n { mk[i] = 0x3f; }                         // every bit set: the algorithm's own must be cleared, the rest stay
+  rng: [1] CsRng; rng[0] = cs_seed_rng(c.seed);
+  r: CsResult;
+  if c.algo == CS_BNB { r = cs_bnb(p, c.target, c.extra, c.max_weight, mk, w); }
+  else if c.algo == CS_CG { r = cs_coin_grinder(p, c.target, c.extra, c.max_weight, mk, w); }
+  else if c.algo == CS_SRD { r = cs_srd(p, c.target, c.extra, c.max_weight, rng[..], mk, w); }
+  else { r = cs_knapsack(p, c.target, c.extra, c.max_weight, rng[..], mk, w); }
+  for i: 0..<n { if (mk[i] | (1 << c.algo)) != 0x3f { return false; } }
+  if r.code != c.code || r.algo != c.algo { return false; }
+  if (c.algo == CS_BNB || c.algo == CS_CG) && r.tries != c.tries { return false; }
+  if r.code != CS_OK {
+    for i: 0..<n { if (mk[i] >> c.algo) & 1 == 1 { return false; } }
+    return true;
+  }
+  if c.completed >= 0 && r.completed != (c.completed == 1) { return false; }
+  if r.target != c.target || r.count != c.count || r.value != c.value || r.effective != c.effective { return false; }
+  if r.weight != c.weight || r.fee != c.fee || r.long_term_fee != c.long_term_fee { return false; }
+  if r.weight > c.max_weight { return false; }
+  return cs_values_match(p, mk, c.algo, c.want);
+}
+#forall "every drawn wallet gives each algorithm's result as the Python transliteration of Core does" i: 0..<CS_RUNS.count #steps 400000000 {
+  #assert cs_run_passes(CS_RUNS[i]);
+}
+// One choice of CS_PICKS: the change target the parameters draw, every
+// algorithm's own result in the marks, and the winner with its waste.
+cs_pick_passes :: (c: CsPick) -> bool #effects(all) {
+  pool: [16] CsGroup; marks: [16] int; work: [80] int;
+  n := cs_pool(c.pool, c.feerate, c.long_term, pool[..]);
+  p := pool[0..<n]; mk := marks[0..<n]; w := work[0..<5*n];
+  for i: 0..<n { mk[i] = 0; }
+  rng: [1] CsRng; rng[0] = cs_seed_rng(c.seed);
+  spk: [22] u8; spk[1] = 20;
+  q := cs_params(c.feerate, c.long_term, 3000, spk[..], 68, c.noinputs, c.payment, 1, rng[..]);
+  if q.min_change_target != c.change_target { return false; }
+  target := c.payment + fee_for_rate_vartime(c.feerate, c.noinputs);
+  r := cs_choose(p, target, q, c.max_tx, rng[..], mk, w);
+  if r.code != c.code || r.algo != c.algo { return false; }
+  if r.code != CS_OK { return true; }
+  if r.waste != c.waste || r.waste != cs_waste(r, q.min_viable_change, q.cost_of_change, q.change_fee) { return false; }
+  if !cs_values_match(p, mk, r.algo, c.want) { return false; }
+  for a: 0..<4 { if c.codes[a] == CS_OK && !cs_values_match(p, mk, a, c.wants[a]) { return false; } }
+  return true;
+}
+#forall "every drawn wallet's choice is the Python transliteration's, algorithm by algorithm" i: 0..<CS_PICKS.count #steps 400000000 {
+  #assert cs_pick_passes(CS_PICKS[i]);
+}
+
+// ---- each threshold at, below and above (values from coinselect_reference.py)
+#test "the random stream: 64 bits at once, a carry across words, and every range width" {
+  zero: [32] u8; rng: [1] CsRng; rng[0] = cs_rng(zero[..]);
+  #assert cs_randbits(rng[..], 64) == 0x903df1a0ade0b876 && cs_randbits(rng[..], 60) == 629807217791098176;
+  #assert cs_randbits(rng[..], 8) == 210 && cs_randbits(rng[..], 64) == 14343251830567286440;
+  rng[0] = cs_rng(zero[..]);
+  #assert cs_randrange(rng[..], 1) == 0 && cs_randrange(rng[..], 2) == 0 && cs_randrange(rng[..], 3) == 2;
+  #assert cs_randrange(rng[..], 1000) == 451 && cs_randrange(rng[..], 1 << 40) == 532093688769;
+  #assert cs_randrange(rng[..], 1 << 62) == 4254960237552501024;
+}
+#test "the dust threshold at the edges of a witness program" {
+  s: [43] u8;
+  // [first byte, push, length, threshold at 3,000 sat/kvB]
+  cases := [9] [4] int.[[4] int.[0x00, 2, 4, 240], [4] int.[0x00, 3, 4, 483], [4] int.[0x60, 2, 4, 240], [4] int.[0x61, 2, 4, 483],
+                        [4] int.[0x50, 2, 4, 483], [4] int.[0x51, 40, 42, 354], [4] int.[0x51, 41, 43, 600], [4] int.[0x00, 1, 3, 480],
+                        [4] int.[0x51, 2, 4, 240]];
+  for c: cases {
+    s[0] = cast(u8) c[0]; s[1] = cast(u8) c[1];
+    #assert cs_dust_threshold_vartime(s[0..<c[2]], 3000) == c[3];
+  }
+  ret: [1] u8; ret[0] = 0x6a; empty := ret[0..<0];
+  #assert cs_dust_threshold_vartime(ret[..], 1000000) == 0 && cs_dust_threshold_vartime(empty, 3000) == fee_for_rate_vartime(3000, 9 + 148);
+}
+#test "the change target: a small payment at 25,000 and one satoshi above" {
+  seed := CS_SEED; rng: [1] CsRng; rng[0] = cs_rng(seed[..]);
+  #assert cs_change_target(25000, 155, rng[..]) == 50155;
+  #assert cs_change_target(25001, 155, rng[..]) == 50156 && cs_change_target(25001, 155, rng[..]) == 50155;
+}
+#test "the smallest change: the spend fee plus one, or dust, whichever is more" {
+  p2wpkh: [22] u8; p2wpkh[1] = 20;
+  seed := CS_SEED; rng: [1] CsRng; rng[0] = cs_rng(seed[..]);
+  // Spending the change with 200 vB at 3,000 sat/kvB costs 600: more than its dust, 294.
+  p := cs_params(5000, 10000, 3000, p2wpkh[..], 200, 42, 100000, 1, rng[..]);
+  #assert p.min_viable_change == 601 && p.cost_of_change == 755 && p.feerate == 5000 && p.long_term == 10000 && p.discard == 3000;
+  #assert p.change_spend_size == 200 && p.tx_noinputs_size == 42;
+  // Two recipients sharing 50,000: each is paid 25,000, a small payment.
+  p = cs_params(5000, 10000, 3000, p2wpkh[..], 68, 42, 50000, 2, rng[..]);
+  #assert p.min_change_target == 50155 && p.min_viable_change == 294;
+  p = cs_params(0, 10000, 0, p2wpkh[..], 68, 42, 50000, 1, rng[..]);
+  #assert p.min_viable_change == 1 && p.change_fee == 0 && p.cost_of_change == 0;
+}
+#test "change exactly at the smallest change is made; one satoshi less goes to the miners" {
+  r := CsResult.{target=100000, effective=100000 + 155 + 294, fee=500, long_term_fee=300};
+  #assert cs_change(r, 294, 155) == 294 && cs_waste(r, 294, 359, 155) == 200 + 359;
+  r.effective -= 1;
+  #assert cs_change(r, 294, 155) == 0 && cs_waste(r, 294, 359, 155) == 200 + 155 + 293;
+}
+#test "avoid-reuse groups fill the room they are given and refuse one more address" {
+  coins: [3] CsGroup; owner := [3] int.[1, 2, 1]; out: [2] CsGroup; out_owner: [2] int;
+  for i: 0..<3 { coins[i] = cs_coin(1000 * (i + 1), 68, 1000, 2000); }
+  #assert cs_group_by_owner(coins[..], owner[..], out[..], out_owner[..]) == 2;
+  #assert out[0].value == 4000 && out[0].count == 2 && out[0].long_term_fee == 272 && out[1].value == 2000 && out_owner[1] == 2;
+  owner[2] = 3;
+  #assert cs_group_by_owner(coins[..], owner[..], out[..], out_owner[..]) == CS_CAPACITY;
+  // Room that held other groups is reset before it is used again.
+  owner[2] = 2;
+  #assert cs_group_by_owner(coins[..], owner[..], out[..], out_owner[..]) == 2;
+  #assert out[0].value == 1000 && out[0].count == 1 && out[1].value == 5000 && out[1].count == 2 && out[1].fee == 136;
+}
+#test "the random stream: a request for exactly the bits left takes them" {
+  zero: [32] u8; rng: [1] CsRng; rng[0] = cs_rng(zero[..]);
+  #assert cs_randbits(rng[..], 4) == 6 && cs_randbits(rng[..], 60) == 649608074215951239 && cs_randbits(rng[..], 3) == 0;
+  // Then the buffer is empty again: 64 bits are the next word whole.
+  rng[0] = cs_rng(zero[..]);
+  #assert cs_randbits(rng[..], 4) == 6 && cs_randbits(rng[..], 60) == 649608074215951239 && cs_randbits(rng[..], 64) == 2935650227004792128;
+}
+#test "a coin of size 0 is priced like any other size, through fee_for_rate" {
+  c := cs_coin(1000, 0, 1000, 1000);
+  #assert c.fee == 0 && c.weight == 0 && c.count == 1;
+  // An invalid rate gives fee_for_rate's -1 for a size of 0 too, as for every known size.
+  #assert cs_coin(1000, 0, -1, 0).fee == -1 && cs_coin(1000, 68, -1, 0).fee == -1 && cs_coin(1000, -1, -1, 0).fee == 0;
+}
+#test "the change target above 500,000 draws below 1,000,000 + the change fee" {
+  // Seed 542,769 (little-endian in the first 4 bytes): the first 20-bit draw is
+  // 950,000, the one value randrange(950,000) rejects (coinselect_reference.py).
+  seed: [32] u8; seed[0] = 49; seed[1] = 72; seed[2] = 8;
+  rng: [1] CsRng; rng[0] = cs_rng(seed[..]);
+  #assert cs_change_target(600000, 155, rng[..]) == 177353;
+}
+#test "CoinGrinder orders equal value and weight by pool order: the group of two coins first" {
+  // Two coins of 68 vB and one of 136 vB: the same value, fee and weight.
+  two := cs_group_add(cs_coin(50000, 68, 1000, 1000), cs_coin(50000, 68, 1000, 1000));
+  one := cs_coin(100000, 136, 1000, 1000);
+  #assert two.value == one.value && two.fee == one.fee && two.weight == one.weight && two.count == 2;
+  pool := [2] CsGroup.[two, one]; marks: [2] int; work: [10] int;
+  r := cs_coin_grinder(pool[..], 99864, 0, 400000, marks[..], work[..]);
+  #assert r.code == CS_OK && r.count == 2 && marks[0] == 1 << CS_CG && marks[1] == 0;
+  pool = [2] CsGroup.[one, two];
+  r = cs_coin_grinder(pool[..], 99864, 0, 400000, marks[..], work[..]);
+  #assert r.code == CS_OK && r.count == 1 && marks[0] == 1 << CS_CG && marks[1] == 0;
+}
+// 100,001 coins of 1 satoshi and unknown size, for 100,001 satoshis: the
+// search stops at 100,000 attempts, one coin short, with no solution
+// (coinselect_reference.py gives the same).
+#test "CoinGrinder that runs out of attempts before any solution fails as insufficient funds" #steps 3000000000 {
+  pool: [100001] CsGroup; marks: [100001] int; work: [500005] int;
+  for i: 0..<100001 { pool[i] = cs_coin(1, -1, 1000, 1000); }
+  r := cs_coin_grinder(pool[..], 100001, 0, 400000, marks[..], work[..]);
+  #assert r.code == CS_INSUFFICIENT && r.tries == 100000 && r.algo == CS_CG;
+  r = cs_coin_grinder(pool[..], 100000, 0, 400000, marks[..], work[..]);
+  #assert r.code == CS_OK && r.count == 100000 && r.tries == 100000 && !r.completed;
+}

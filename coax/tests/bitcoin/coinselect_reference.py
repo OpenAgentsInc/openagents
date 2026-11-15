@@ -54,6 +54,7 @@ def check_core():
     assert 'static constexpr size_t OUTPUT_GROUP_MAX_ENTRIES{100};' in spend
     assert 'if (coin_selection_params.m_effective_feerate > CFeeRate{3 * coin_selection_params.m_long_term_feerate}) {' in spend
     assert 'coin_selection_params.min_viable_change = std::max(change_spend_fee + 1, dust);' in spend
+    assert 'if (max_selection_weight <= 0) {' in spend and 'if (max_selection_weight < 0 && results.empty()) {' in spend
     assert 'CAmount nFee = CAmount(m_feerate.EvaluateFeeUp(virtual_bytes));' in rate
     assert 'nSize += (32 + 4 + 1 + (107 / WITNESS_SCALE_FACTOR) + 4);' in policy
 
@@ -389,11 +390,15 @@ def choose(pool, target, p, max_tx_weight, rng):
     """ChooseSelectionResult: every algorithm's result, then the least waste."""
     max_weight = max_tx_weight - 4 * p.tx_noinputs_size
     results, first_error, ran = [], INSUFFICIENT, {}
+    if max_weight <= 0:                       # "Maximum transaction weight is less than transaction weight without inputs"
+        return fail(MAX_WEIGHT), ran
     b = bnb(pool, target, p.cost_of_change, max_weight)
     ran[BNB] = b
     if b.code == OK: results.append(b)
     elif b.code == MAX_WEIGHT: first_error = MAX_WEIGHT
     max_weight -= 4 * p.change_output_size
+    if max_weight < 0 and not results:        # "Maximum transaction weight is too low, can not accommodate change output"
+        return fail(MAX_WEIGHT), ran
     k = knapsack(pool, target, p.min_change_target, max_weight, rng)
     ran[KNAPSACK] = k
     if k.code == OK: results.append(k)

@@ -184,7 +184,11 @@ cs_dust_threshold_vartime :: (spk: [] u8, rate: int) -> int #effects(all) {
 // or 1,000,000, whichever is less, so change doesn't give the payment away.
 cs_change_target :: (payment: int, change_fee: int, r: [] CsRng) -> int #effects(all) {
   if payment <= CS_CHANGE_LOWER / 2 { return change_fee + CS_CHANGE_LOWER; }
-  upper := ifx payment * 2 < CS_CHANGE_UPPER then payment * 2 else CS_CHANGE_UPPER;
+  // Both arms are CHANGE_UPPER when payment * 2 equals it, and payment * 2 is
+  // even, so it never equals CHANGE_UPPER + 1: the comparison's `<=` and a
+  // first bound one higher give the same upper.
+  upper := ifx payment * 2 < CS_CHANGE_UPPER then payment * 2 else // mutant: equivalent
+           CS_CHANGE_UPPER;
   return change_fee + cs_randrange(r, upper - CS_CHANGE_LOWER) + CS_CHANGE_LOWER;
 }
 // The parameters as CreateTransactionInternal sets them for a change
@@ -200,7 +204,8 @@ cs_params :: (feerate: int, long_term: int, discard: int, change_spk: [] u8, cha
   p.cost_of_change = spend + p.change_fee;
   p.min_change_target = cs_change_target(payments / recipients, p.change_fee, r);
   dust := cs_dust_threshold_vartime(change_spk, discard);
-  p.min_viable_change = ifx spend + 1 > dust then spend + 1 else dust;
+  // When dust is spend + 1 both arms are equal, so `>=` and `spend + 2 > dust` agree.
+  p.min_viable_change = ifx spend + 1 > dust then spend + 1 else dust; // mutant: equivalent
   return p;
 }
 ```
@@ -284,7 +289,8 @@ cs_eligible :: (pool: [] CsGroup, order: [] int, positive: bool) -> int #effects
 // lighter first, as descending_effval_weight, or less waste (fee -
 // long_term_fee) first, as descending. A stable insertion sort.
 cs_before :: (a: CsGroup, b: CsGroup, by_weight: bool) -> bool #effects(all) {
-  if cs_amount(a) != cs_amount(b) { return cs_amount(a) > cs_amount(b); }
+  // The amounts differ here, so `>` and `>=` agree.
+  if cs_amount(a) != cs_amount(b) { return cs_amount(a) > cs_amount(b); } // mutant: equivalent
   if by_weight { return a.weight < b.weight; }
   return a.fee - a.long_term_fee < b.fee - b.long_term_fee;
 }
@@ -331,7 +337,9 @@ cs_bnb :: (pool: [] CsGroup, target: int, cost_of_change: int, max_weight: int, 
   if marks.count != pool.count || work.count < 5 * pool.count { return cs_fail(CS_BNB, CS_CAPACITY); }
   order := work[0..<pool.count];
   n := cs_eligible(pool, order, true);
-  look := work[pool.count..<2*pool.count]; curr := work[2*pool.count..<3*pool.count]; best := work[3*pool.count..<4*pool.count];
+  // Each slice is read and written only below n <= pool.count from its start, and
+  // work holds 5 * pool.count, so a longer slice changes nothing.
+  look := work[pool.count..<2*pool.count]; curr := work[2*pool.count..<3*pool.count]; best := work[3*pool.count..<4*pool.count]; // mutant: equivalent
   cs_unmark(marks, CS_BNB);
   cs_sort(pool, order, n, false);
   // lookahead[i]: the effective value of every group after position i.
@@ -356,7 +364,7 @@ cs_bnb :: (pool: [] CsGroup, target: int, cost_of_change: int, max_weight: int, 
       w := waste + amount - target;
       if w <= best_waste { for k: 0..<ncurr { best[k] = curr[k]; } nbest = ncurr; best_waste = w; }
     }
-    if tries >= CS_TOTAL_TRIES { r.completed = false; break; }
+    if tries >= CS_TOTAL_TRIES { break; }                                 // completed stays false
     if next == n { cut = true; }
     if cut {                                                              // omit the last, then shift past the one before
       h := pool[order[curr[ncurr-1]]];
@@ -414,15 +422,20 @@ cs_coin_grinder :: (pool: [] CsGroup, target: int, change_target: int, max_weigh
   m := pool.count;
   order := work[0..<m];
   n := cs_eligible(pool, order, true);
-  look := work[m..<2*m]; min_tail := work[2*m..<3*m]; curr := work[3*m..<4*m]; best := work[4*m..<5*m];
+  // As in cs_bnb: each slice is used only below n <= m from its start.
+  look := work[m..<2*m]; min_tail := work[2*m..<3*m]; curr := work[3*m..<4*m]; best := work[4*m..<5*m]; // mutant: equivalent
   cs_unmark(marks, CS_CG);
   cs_sort(pool, order, n, true);
-  total := 0; lightest := 0x7fffffff;
+  total := 0;
+  // min_tail of the last group: it is only compared when that group is the tail,
+  // and then next == n cuts whichever branch is taken.
+  lightest := 0x7fffffff; // mutant: equivalent
   for k: 0..<n {
     i := n - 1 - k;
     look[i] = total; min_tail[i] = lightest;
     total += cs_amount(pool[order[i]]);
-    if pool[order[i]].weight < lightest { lightest = pool[order[i]].weight; }
+    // On a tie either side gives the same lightest.
+    if pool[order[i]].weight < lightest { lightest = pool[order[i]].weight; } // mutant: equivalent
   }
   goal := target + change_target;
   if total < goal { return cs_fail(CS_CG, CS_INSUFFICIENT); }
@@ -436,7 +449,9 @@ cs_coin_grinder :: (pool: [] CsGroup, target: int, change_target: int, max_weigh
     tail := curr[ncurr-1];
     if amount + look[tail] < goal { cut = true; }
     else if weight > best_weight {
-      if weight > max_weight { exceeded = true; }
+      // exceeded matters only when no solution was found, and then best_weight is
+      // still max_weight, so weight > best_weight is weight > max_weight already.
+      if weight > max_weight { exceeded = true; } // mutant: equivalent
       // Heavier than the best: cut if the last group was the lightest left.
       if pool[order[tail]].weight <= min_tail[tail] { cut = true; } else { shift = true; }
     } else if amount >= goal {
@@ -452,7 +467,7 @@ cs_coin_grinder :: (pool: [] CsGroup, target: int, change_target: int, max_weigh
         if pool[order[tail]].weight <= min_tail[tail] { cut = true; } else { shift = true; }
       }
     }
-    if tries >= CS_TOTAL_TRIES { r.completed = false; break; }
+    if tries >= CS_TOTAL_TRIES { break; }                                 // completed stays false
     if next == n { cut = true; }
     if cut {
       h := pool[order[curr[ncurr-1]]]; amount -= cs_amount(h); weight -= h.weight; ncurr -= 1;
@@ -532,7 +547,8 @@ cs_randrange :: (r: [] CsRng, range: int) -> int #effects(all) {
     v := cs_randbits(r, bits);
     if v <= maxval { return cast(int) v; }
   }
-  return 0;
+  // Not reached: the loop above returns.
+  return 0; // mutant: equivalent
 }
 cs_randbool :: (r: [] CsRng) -> bool #effects(all) { return cs_randbits(r, 1) == 1; }
 // A Fisher-Yates shuffle of a[0..<n], from the back. Core calls
@@ -540,7 +556,8 @@ cs_randbool :: (r: [] CsRng) -> bool #effects(all) { return cs_randbits(r, 1) ==
 // matches every Core build; Core's tests check only what holds for all.
 cs_shuffle :: (r: [] CsRng, a: [] int, n: int) #effects(all) {
   i := n - 1;
-  while i > 0 {
+  // At i = 0 the swap is a[0] with itself, and randrange(1) reads 0 bits.
+  while i > 0 { // mutant: equivalent
     j := cs_randrange(r, i + 1);
     t := a[i]; a[i] = a[j]; a[j] = t;
     i -= 1;
@@ -562,7 +579,8 @@ ones first.
 cs_srd :: (pool: [] CsGroup, target: int, change_fee: int, max_weight: int, r: [] CsRng, marks: [] int, work: [] int) -> CsResult #effects(all) {
   if marks.count != pool.count || work.count < 5 * pool.count { return cs_fail(CS_SRD, CS_CAPACITY); }
   m := pool.count;
-  order := work[0..<m]; held := work[m..<2*m];
+  // As in cs_bnb: each slice is used only below n <= m from its start.
+  order := work[0..<m]; held := work[m..<2*m]; // mutant: equivalent
   n := cs_eligible(pool, order, true);
   cs_unmark(marks, CS_SRD);
   cs_shuffle(r, order, n);
@@ -621,7 +639,9 @@ cs_approximate :: (pool: [] CsGroup, groups: [] int, n: int, total_lower: int, t
     for i: 0..<n { included[i] = 0; }
     total := 0; weight := 0; reached := false;
     pass := 0;
-    while pass < 2 && !reached {
+    // A third pass would take nothing: after the second every group is in, since
+    // only reaching the target backs one out, and reaching it ends the passes.
+    while pass < 2 && !reached { // mutant: equivalent
       for i: 0..<n {
         take := included[i] == 0;
         if pass == 0 { take = cs_randbool(r); }      // a coin flip per group, every time
@@ -650,7 +670,8 @@ cs_knapsack :: (pool: [] CsGroup, target: int, change_target: int, max_weight: i
   if marks.count != pool.count || work.count < 5 * pool.count { return cs_fail(CS_KNAPSACK, CS_CAPACITY); }
   cs_unmark(marks, CS_KNAPSACK);
   m := pool.count;
-  order := work[0..<m]; applicable := work[m..<2*m]; best := work[2*m..<3*m]; included := work[3*m..<4*m];
+  // As in cs_bnb: each slice is used only below n <= m from its start.
+  order := work[0..<m]; applicable := work[m..<2*m]; best := work[2*m..<3*m]; included := work[3*m..<4*m]; // mutant: equivalent
   n := cs_eligible(pool, order, false);                 // the mixed groups: Knapsack may spend dust
   cs_shuffle(r, order, n);
   exceeded := false; larger := -1; napp := 0; total_lower := 0;
@@ -664,10 +685,14 @@ cs_knapsack :: (pool: [] CsGroup, target: int, change_target: int, max_weight: i
   if total_lower == target {
     for k: 0..<napp { res = cs_add(res, pool, applicable[k], marks); }
     if res.weight <= max_weight { return res; }
-    exceeded = true;
+    // exceeded is read again only below total_lower < target, which is false here.
+    exceeded = true; // mutant: equivalent
     res = cs_clear(res, marks);
   }
-  if total_lower < target {
+  // With total_lower == target the approximation keeps every group (its search
+  // stops at once, drawing nothing), which is over the weight limit again: the
+  // larger group or the same failure follows, as it does here.
+  if total_lower < target { // mutant: equivalent
     if larger < 0 { return cs_fail(CS_KNAPSACK, ifx exceeded then CS_MAX_WEIGHT else CS_INSUFFICIENT); }
     return cs_add(res, pool, larger, marks);
   }
@@ -681,8 +706,8 @@ cs_knapsack :: (pool: [] CsGroup, target: int, change_target: int, max_weight: i
   }
   for k: 0..<napp { if best[k] == 1 { res = cs_add(res, pool, applicable[k], marks); } }
   if res.weight > max_weight {
+    res = cs_clear(res, marks);                         // a failed selection leaves no marks
     if larger < 0 { return cs_fail(CS_KNAPSACK, CS_MAX_WEIGHT); }
-    res = cs_clear(res, marks);
     res = cs_add(res, pool, larger, marks);
   }
   return res;
@@ -710,14 +735,20 @@ cs_choose :: (pool: [] CsGroup, target: int, p: CsParams, max_tx_weight: int, r:
   if max_weight <= 0 { return cs_fail(CS_MANUAL, CS_MAX_WEIGHT); }
   results: [4] CsResult; nres := 0; first_error := CS_INSUFFICIENT;
   b := cs_bnb(pool, target, p.cost_of_change, max_weight, marks, work);
-  if b.code == CS_OK { results[nres] = b; nres += 1; } else if b.code == CS_MAX_WEIGHT { first_error = CS_MAX_WEIGHT; }
+  if b.code == CS_OK { results[nres] = b; nres += 1; }
+  // When every algorithm fails, SRD has drawn every positive group: it reports
+  // MAX_WEIGHT too unless their total weight fits its limit, and then no subset of
+  // them passes BnB's limit, which is larger. So this is never the only MAX_WEIGHT.
+  else if b.code == CS_MAX_WEIGHT { first_error = CS_MAX_WEIGHT; } // mutant: equivalent
   max_weight -= TX_SCALE * p.change_output_size;
   if max_weight < 0 && nres == 0 { return cs_fail(CS_MANUAL, CS_MAX_WEIGHT); }
   k := cs_knapsack(pool, target, p.min_change_target, max_weight, r, marks, work);
   if k.code == CS_OK { results[nres] = k; nres += 1; } else if k.code == CS_MAX_WEIGHT { first_error = CS_MAX_WEIGHT; }
   if p.feerate > 3 * p.long_term {
     c := cs_coin_grinder(pool, target, p.min_change_target, max_weight, marks, work);
-    if c.code == CS_OK { results[nres] = c; nres += 1; } else if c.code == CS_MAX_WEIGHT { first_error = CS_MAX_WEIGHT; }
+    if c.code == CS_OK { results[nres] = c; nres += 1; }
+    // As BnB's: CoinGrinder's limit is SRD's, and it searches the same positive groups.
+    else if c.code == CS_MAX_WEIGHT { first_error = CS_MAX_WEIGHT; } // mutant: equivalent
   }
   s := cs_srd(pool, target, p.change_fee, max_weight, r, marks, work);
   if s.code == CS_OK { results[nres] = s; nres += 1; } else if s.code == CS_MAX_WEIGHT { first_error = CS_MAX_WEIGHT; }
@@ -1006,7 +1037,10 @@ coax/bin/coax test bitcoin/examples/checks/coinselect.coax
 
 ### The library's own checks
 
-`coinselect.coax` is an `#authority` file. Its checks run all 344 of
+`coinselect.coax` is an `#authority` file. Its checks live in
+[coinselect_checks.coax](../../coax/tests/bitcoin/coinselect_checks.coax),
+which it loads, so that `coax mutate` breaks only the selectors and not
+the code that checks them. They run all 344 of
 Core's selection cases: `bnb_test` and `srd_test` at all ten of their
 feerates, `bnb_exhaustion_with_solution_test`,
 `bnb_feerate_sensitivity_test`, `coin_grinder_tests`, the
@@ -1020,11 +1054,31 @@ that a chosen selection pays its feerate, overpays by less than the
 change it skips, and has no more waste than any other algorithm's
 result.
 
+Then 272 wallets drawn with a fixed seed run through each algorithm, and
+88 through the whole choice, and each must give the Python
+transliteration's result in full: the code, the attempts, whether the
+search finished, every sum, the coins, the marks it leaves and the ones
+it must not touch. The draws lean on the edges: coins worth no more than
+their fee, equal values, equal effective values at other weights, coins
+of unknown size, targets at and one past BnB's window, weight limits at a
+subset's weight and below. Some of the wallets were found by search: for
+a one-character change to Core's code that the other wallets missed,
+[make_coinselect_random.py](../../coax/tests/bitcoin/make_coinselect_random.py)
+draws wallets until the changed code disagrees with Core's, and keeps
+them with Core's answer. The thresholds are checked at, below and above:
+the 25,000-satoshi small payment, a change target draw of exactly
+950,000, the change at exactly the smallest change, the weight limit
+that leaves nothing for inputs or for change, CoinGrinder's 100,000
+attempts with no solution, and the MAX_MONEY starting bests.
+
 ```shell
 coax/bin/coax test coax/lib/bitcoin/coinselect.coax
 ```
 
-`coax test` runs 84 checks, including those of the files it loads, on 2026-11-03. Mutation testing: not run (owner speed order).
+`coax test` runs 100 checks, including those of the files it loads, on 2026-11-14.
+`coax mutate` (both `coinselect.coax` and `fees.coax`) leaves no
+survivors; the mutants it marks equivalent each have their reason on the
+line above.
 
 ### Python
 
@@ -1035,12 +1089,16 @@ the lines it follows still read that way in the pinned sources.
 copies each case from the pinned tests, checks that its title is there,
 recomputes Core's published result with the Python transliteration, and
 writes `coinselect_vectors.coax`.
+[make_coinselect_random.py](../../coax/tests/bitcoin/make_coinselect_random.py)
+writes `coinselect_random.coax`, the drawn and searched-for wallets with
+the transliteration's results.
 [coinselect.py](../../coax/tests/bitcoin/coinselect.py) writes the
 transcript the example must print, with the same seeds and the random
 stream of chapter 69's `addrman.py`.
 
 ```shell
 python3 -I coax/tests/bitcoin/make_coinselect_vectors.py
+python3 -I coax/tests/bitcoin/make_coinselect_random.py
 python3 -I coax/tests/bitcoin/coinselect.py --coax coax/bin/coax
 ```
 
