@@ -193,6 +193,12 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   #assert r.tracked_legacy && !r.shared && r.profile == -1;
   #assert !render_adoption("crew", "splice").tracked_legacy && !render_adoption("splice", "crew").tracked_legacy && !render_adoption("cre", "crew").tracked_legacy;
 }
+#test "Splice Bots binds its passes only to its own producer" {
+  r := render_adoption("splice-bots", "splice-bots");
+  #assert r.tracked_legacy && !r.shared && r.profile == -1;
+  #assert !render_adoption("splice-bots", "splice").tracked_legacy && !render_adoption("splice", "splice-bots").tracked_legacy && !render_adoption("splice-bot", "splice-bots").tracked_legacy;
+  #assert !render_adoption("splice-bots", "crew").tracked_legacy && !render_adoption("crew", "splice-bots").tracked_legacy;
+}
 #test "WorldBuilder binds its own passes only to its own producer" {
   r := render_adoption("create-world", "worldbuilder");
   #assert r.tracked_legacy && !r.shared && r.profile == -1;
