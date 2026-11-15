@@ -3,9 +3,10 @@
 This library decides which computer, coding agent, model and effort take a
 coding task. The specification is [docs/router/README.md](../../../../docs/router/README.md).
 
-This is the first piece: the types, the rules in code, the question for the
-decision model, a stand-in for Google's Decisions API, and a command line to
-try decisions with. It starts no agent, and no app calls it yet.
+So far: the types, the rules in code, the questions for the decision model,
+a stand-in for Google's Decisions API, two labelled sets scored against
+answers Google gave, and a command line to try decisions with. It starts no
+agent, and no app calls it yet.
 
 ## Try it
 
@@ -22,7 +23,15 @@ coax/web/tool.sh $R/router.coax decide "Fix the typo in the README title"
 
 # Say what the stand-in answers, and see what code does with it
 coax/web/tool.sh $R/router.coax decide "Refactor the session store" \
-  --mock "station=oa-build-2,engine=claude,difficulty=3,weight=1"
+  --mock "engine=claude,station_claude=coderos,difficulty=3,weight=1"
+coax/web/tool.sh $R/router.coax decide "Use Codex on coderos: run the tests" \
+  --mock "named_engine=codex,named_station=coderos"
+coax/web/tool.sh $R/router.coax decide "Build the iOS app" --mock "needs=apple,weight=2"
+
+# A follow-up in a conversation that is on the Mac with Claude Code
+coax/web/tool.sh $R/router.coax decide "Now do the same for the help text" \
+  --on mac --with claude --summary "We renamed Settings to Preferences." \
+  --mock "continue=950,engine=codex"
 
 # A decision from Google (Gemini Decision 1), about $0.0001
 coax/web/tool.sh $R/router.coax decide "Refactor the session store" --door google
@@ -41,6 +50,12 @@ coax/web/tool.sh $R/router.coax sweep "Refactor the session store" --seeds 500
 
 # The decision as JSON
 coax/web/tool.sh $R/router.coax decide "Fix the typo" --json
+
+# The labelled set against the answers Google gave on 2026-11-14
+coax/web/tool.sh $R/router.coax eval --door replay --answers $R/fixtures/google
+
+# The labelled set against Google now (33 tasks, under one cent)
+coax/web/tool.sh $R/router.coax eval --door google
 ```
 
 The Google door reads `GEMINI_API_KEY`, or
@@ -55,10 +70,15 @@ Copy it, change a computer's disk, logins or rules, and pass your copy with
 `--stations FILE`. Its `now_ms` is fixed, so a report's age is the difference
 between `now_ms` and `reported_at_ms` in the file, not the clock.
 
-`--mock` takes `station=ID`, `engine=NAME`, `difficulty=0..4`,
-`effort=low|medium|high`, `weight=0..2`, `p=0..1000` (the named option's
-probability, 900 by default) and `fail=rate|server|safety|invalid|key|not_found|malformed|transport`.
-`--seed N` picks whatever the script doesn't name.
+`--mock` takes a value for any question by its name: `engine=NAME`,
+`station_claude=ID` or `station_codex=ID`, `difficulty=0..4`,
+`effort=low|medium|high`, `weight=0..2`, `needs=none|apple|gpu|this_computer`,
+`named_engine=NAME`, `named_station=ID`, `named_depth=faster|more_careful`
+and `continue=0..1000`. It also takes `p=0..1000` (the named option's
+probability, 900 by default) and
+`fail=rate|server|safety|invalid|key|not_found|malformed|transport`.
+`--seed N` picks whatever the script doesn't name. Seed 0, the default, gives
+the plain answer: nothing named, nothing needed.
 
 ## How a decision is made
 
@@ -67,16 +87,35 @@ probability, 900 by default) and `fail=rate|server|safety|invalid|key|not_found|
    keep it clear, its free disk is below its floor, or it runs as many agents
    as you allow. An agent on a computer is ruled out when it is not
    installed, not logged in, out of quota or resting.
-2. **One request asks typed questions** (`ask.coax`): `station` and `engine`
-   among the eligible ones only, then `difficulty`, `effort` and `weight`. A
-   question with one option is not asked.
+2. **One request asks typed questions** (`ask.coax`), about 1,500 input
+   tokens with six computers:
+
+   | Question | Answers |
+   | --- | --- |
+   | `engine` | The agents that can run somewhere |
+   | `station_claude`, `station_codex`, ... | For each agent, the computer if that agent takes the task. Only the computers that run it |
+   | `difficulty`, `effort`, `weight` | Trivial to very hard; low to high; light, medium, heavy |
+   | `needs` | Nothing, a Mac that builds for Apple platforms, a GPU, or the conversation's own computer |
+   | `named_engine`, `named_station`, `named_depth` | What the person asked for in so many words, or none |
+   | `continue` | Whether the task continues the conversation's work. Asked only in a conversation |
+
+   A question with one option is not asked.
 3. **A door answers.** Google (`coax/lib/systemone/gemini.coax`), the
    stand-in (`mock.coax`) or a recorded answer.
-4. **Code picks what runs** (`policy.coax`, `rtr_pick`). An answer below 0.5,
-   or one that names something code ruled out, gives way to the default: the
-   most capable eligible agent on the computer with the most room. A computer
-   marked "nothing heavy" takes no heavy work. With no answer, the default
-   runs and the work is taken to be heavy.
+4. **Code picks what runs** (`policy.coax`, `rtr_pick`).
+   - The agent, in this order: the one you named, the conversation's while
+     the task continues its work, the model's answer when it is at least 0.5
+     sure, else the most capable eligible agent.
+   - The computer, in the same order: the one you named, the conversation's,
+     the model's answer for the agent that runs, else the one with the most
+     room.
+   - Every candidate must be eligible, run that agent, take work of the
+     task's weight and have what the task needs. One that can't is passed
+     over, and the decision says why.
+   - When no computer can run the agent for this task, the most capable
+     agent that some computer can run takes it.
+   - With no answer, a conversation stays where it is. Otherwise the default
+     runs, and the work is taken to be heavy.
 
 The decision lists the door's answers, what was ruled out and each reason
 what runs differs from the answer.
@@ -92,7 +131,8 @@ what runs differs from the answer.
 | `decide.coax` | One decision end to end: `rtr_begin`, a door, `rtr_finish`. |
 | `router.coax` | The command line. |
 | `wire-goldens.coax` | The codec against `proto/coder/router-v1alpha1.json`, and 2,048 fuzzed decisions written and read back. |
-| `replay-check.coax` | Three exchanges recorded with Google on 2026-11-14 (`fixtures/google/`): the request bytes, the answer check and what runs. |
+| `eval.coax` | The labelled sets: reading `fixtures/labels.tsv`, scoring a decision want by want, and deciding a task from a recorded exchange. |
+| `replay-check.coax` | Both labelled sets against the exchanges recorded with Google on 2026-11-14 (`fixtures/google/`, `fixtures/google-held/`): the request bytes, the answer check and the score. |
 
 ## Checks
 
@@ -104,34 +144,51 @@ coax/remote/remote.sh run -- coax/web/tool.sh coax/lib/agent/router/wire-goldens
 coax/remote/remote.sh run -- coax/web/tool.sh coax/lib/agent/router/replay-check.coax
 ```
 
-`decide.coax` loads the other files, so its run covers their checks too.
-Three of the checks are exhaustive: 4,096 mixes of rules and answers through
-the pick, every probability and option count through the stand-in's
-distribution, and 2,048 seeded answers through a whole decision. Each holds
-that what runs is something code allows.
+`eval.coax` loads the other files, so its run covers their checks too (203
+checks). Three are exhaustive or fuzzed: 30,000 mixes of rules, logins,
+conversations and answers through the pick, every probability and option
+count through the stand-in's distribution, and 2,048 seeded answers through a
+whole decision. Each holds that what runs is something code allows, and the
+first also holds that what you named runs whenever it can.
 
 Generated proto code can't run inside a compile-time `#test`, so the codec's
 checks are in `wire-goldens.coax`.
 
-## What Google's answers showed
+## The labelled sets
 
-From the three recorded exchanges (about 740 input tokens and 0.3 to 0.5
-seconds each):
+`fixtures/labels.tsv` has 33 tasks and `fixtures/labels-held.tsv` has 20.
+Each row says what the decision model should answer and, for some, what
+should run. The computers are `fixtures/stations.json`.
 
-- **The computer and the agent are answered apart.** For the refactor,
-  Google chose Claude Code, and a computer where Claude Code is not logged
-  in. Code moved the work. The request should ask about them together, or
-  list only the computers that run the chosen agent.
-- **The router must ask what a task needs.** Google sent an iOS build to a
-  Linux computer. The `needs` question and its rule in code are the next
-  step.
-- **A probability under 0.5 is rare with two or three options.** The
-  threshold seldom applies, so it needs measuring before it is trusted.
+| Set | Tasks | Wants right with Gemini Decision 1, 2026-11-14 |
+| --- | --- | --- |
+| Tuned: the wording of the questions was changed twice against it | 33 | 66 of 66 |
+| Held out: written afterwards, scored once | 20 | 30 of 31 |
+
+The held-out miss: "Fix the crash that happens when a laptop wakes from
+sleep" was answered as needing a Mac.
+
+What the tuning changed:
+
+- **A task that mentions an agent is not a request for it.** "Fix the bug
+  where Codex sessions show the wrong model name" was first read as asking
+  for Codex. The question now asks whether the person tells you which agent
+  must do the task.
+- **The computer is asked once for each agent.** One question for the
+  computer and one for the agent got answers that didn't go together: Claude
+  Code, and a computer where it was logged out.
+- **A named computer can sit anywhere in the sentence.** After the first
+  fix, "Run the unit tests on coderos" stopped counting. The question now
+  gives that form as an example.
+
+These sets measure the questions against one door on one set of computers.
+They don't measure which agent writes the better patch, and 53 tasks don't
+establish calibration.
 
 ## Not built yet
 
-In the specification's order: the `needs`, `named_station`, `named_engine`,
-`named_depth` and `continue` questions; another account when one runs out;
-`#authority` and its mutation pass on `policy.coax`; station reports from
-real computers (`DescribeStation`); the daily allowance; `coder.route.v3`;
-starting the agent.
+In the specification's order: another account when one runs out; Fable for
+very hard tasks where an account offers it; `#authority` and its mutation
+pass on `policy.coax`; station reports from real computers
+(`DescribeStation`); the daily allowance; `coder.route.v3`; starting the
+agent.

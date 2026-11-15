@@ -43,6 +43,12 @@
    "message": "RouteDecision",
    "name": "the default, when the door gave no answer",
    "json": "{\"schema\":\"openagents.router.decision.v1alpha1\",\"ok\":true,\"station\":\"mac\",\"engine\":\"claude\",\"model\":\"opus\",\"effort\":\"high\",\"door\":\"gemini-decision-1\",\"door_problem\":\"Google's rate limit: rate\",\"reasons\":[\"door_unavailable\"],\"eligible_stations\":[\"mac\",\"coderos\"],\"eligible_engines\":[\"claude\",\"codex\"],\"blocked\":[{\"id\":\"coderos/claude\",\"fact\":\"logged_out\"}]}"
+  },
+  {
+   "id": "openagents.router.decision.v1alpha1",
+   "message": "RouteDecision",
+   "name": "nothing runs: heavy work that needs a Mac",
+   "json": "{\"schema\":\"openagents.router.decision.v1alpha1\",\"door\":\"gemini-decision-1\",\"reasons\":[\"too_heavy_for_station\"],\"answers\":[{\"key\":\"needs\",\"choice\":\"apple\",\"probability_milli\":996},{\"key\":\"named_station\",\"choice\":\"none\",\"probability_milli\":917}],\"eligible_stations\":[\"mac\",\"coderos\"],\"eligible_engines\":[\"claude\",\"codex\"],\"input_tokens\":1530,\"error\":\"no_station\",\"needs\":\"apple\"}"
   }
  ]
 }

@@ -24,8 +24,8 @@ RTR_DECISION_SCHEMA :: "openagents.router.decision.v1alpha1";
 RTR_STATIONS :: 16;      // computers in one request
 RTR_ENGINES :: 4;        // claude, codex, micro, psionic
 RTR_REPOS :: 16;         // repositories one computer reports
-RTR_REASONS :: 8;
-RTR_ANSWERS :: 8;
+RTR_REASONS :: 12;
+RTR_ANSWERS :: 16;
 RTR_BLOCKED :: 80;       // every computer, and every agent on every computer
 RTR_ID_MAX :: 32;        // a station_id: 1 to 32 of [a-z0-9-]
 RTR_TEXT_MAX :: 16384;   // the task
@@ -117,6 +117,7 @@ RtrDecision :: struct {
   input_tokens: int;
   latency_ms: int;
   error: string;
+  needs: string;         // apple, gpu, this_computer; "": nothing
 }
 
 // A decision with nothing decided.
@@ -142,10 +143,11 @@ rtr_answer :: (d: [] RtrDecision, key: string, choice: string, level: int, milli
   d[0].nanswers += 1;
 }
 
-// Whether id can name a computer: 1 to 32 of a-z, 0-9 and "-". It becomes an
-// option key of the station question, so nothing else is taken.
+// Whether id can name a computer: 1 to 32 of a-z, 0-9 and "-", and not
+// "none". It becomes an option key of the station questions, where "none"
+// means that the person named no computer, so nothing else is taken.
 rtr_id_ok :: (id: string) -> bool {
-  if id.count == 0 || id.count > RTR_ID_MAX { return false; }
+  if id.count == 0 || id.count > RTR_ID_MAX || id == "none" { return false; }
   for c: id { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
   return true;
 }
@@ -307,11 +309,13 @@ rtr_decision_write :: (d: [] RtrDecision, out: [] u8) -> int {
   if to_x { m = RTP_RouteDecision_set_latency_ms(m, cast(s32) d[0].latency_ms, x[..]); } else { m = RTP_RouteDecision_set_latency_ms(m, cast(s32) d[0].latency_ms, y[..]); }
   to_x = !to_x;
   if to_x { m = RTP_RouteDecision_set_error(m, d[0].error, x[..]); } else { m = RTP_RouteDecision_set_error(m, d[0].error, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP_RouteDecision_set_needs(m, d[0].needs, x[..]); } else { m = RTP_RouteDecision_set_needs(m, d[0].needs, y[..]); }
   v := RTP_RouteDecision_to_json(m, out);
   return ifx v.error != 0 then 0 else v.wire.count;
 }
 
 #test "a computer's id: 1 to 32 of a-z, 0-9 and -" {
   #assert rtr_id_ok("oa-build-1") && rtr_id_ok("a") && rtr_id_ok("01234567890123456789012345678901");
-  #assert !rtr_id_ok("") && !rtr_id_ok("A") && !rtr_id_ok("a/b") && !rtr_id_ok("my mac") && !rtr_id_ok("012345678901234567890123456789012");
+  #assert !rtr_id_ok("none") && !rtr_id_ok("") && !rtr_id_ok("A") && !rtr_id_ok("a/b") && !rtr_id_ok("my mac") && !rtr_id_ok("012345678901234567890123456789012");
 }

@@ -56,7 +56,7 @@ message StationRules {
 message Station {
   option (openagents.options.v1alpha1.json) = "";
   option (openagents.options.v1alpha1.json_int64_numbers) = true;
-  string station_id = 1 [json_name = "station_id"];           // [a-z0-9-], 1 to 32; what a decision names
+  string station_id = 1 [json_name = "station_id"];           // [a-z0-9-], 1 to 32, never "none"; what a decision names
   string display_name = 2 [json_name = "display_name"];
   int64 reported_at_ms = 3 [json_name = "reported_at_ms"];    // a report over two minutes old is not reachable
   string os = 4 [json_name = "os"];                           // macos, linux
@@ -93,7 +93,10 @@ message RouteRequest {
 // One typed answer of the decision model, as the router read it.
 message RouteAnswer {
   option (openagents.options.v1alpha1.json) = "";
-  string key = 1 [json_name = "key"];                         // station, engine, difficulty, effort, weight
+  // engine, station_ENGINE (the computer if that agent takes the task),
+  // difficulty, effort, weight, needs, named_station, named_engine,
+  // named_depth, continue
+  string key = 1 [json_name = "key"];
   string choice = 2 [json_name = "choice"];                   // a choice's option; a score's level name
   optional int32 level = 3 [json_name = "level"];             // a score's most likely level, from 0
   optional int32 probability_milli = 4 [json_name = "probability_milli"];
@@ -122,9 +125,11 @@ message RouteDecision {
   string door = 8 [json_name = "door"];                       // gemini-decision-1, mock, replay, none
   string door_problem = 9 [json_name = "door_problem"];       // why the door gave no answer
   // Why what runs differs from what the door answered, as closed codes:
-  // door_unavailable, one_station, one_engine, unsure_engine, unsure_station,
-  // station_not_eligible, station_lacks_engine, too_heavy_for_station,
-  // engine_not_eligible
+  // door_unavailable, unsure_engine, unsure_station, station_not_eligible,
+  // station_lacks_engine, too_heavy_for_station, station_lacks_need,
+  // engine_not_eligible, engine_moved, continued, current_cannot,
+  // named_engine, named_station, named_engine_cannot, named_station_cannot,
+  // faster, more_careful
   repeated string reasons = 10 [json_name = "reasons"];
   repeated RouteAnswer answers = 11 [json_name = "answers"];
   repeated string eligible_stations = 12 [json_name = "eligible_stations"];
@@ -133,4 +138,5 @@ message RouteDecision {
   int32 input_tokens = 15 [json_name = "input_tokens"];
   int32 latency_ms = 16 [json_name = "latency_ms"];
   string error = 17 [json_name = "error"];                    // when not ok: no_task, no_station, bad_request, refused_by_door
+  string needs = 18 [json_name = "needs"];                    // what the task needs of a computer: apple, gpu, this_computer; empty: nothing
 }

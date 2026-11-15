@@ -1,0 +1,34 @@
+id	current	summary	want	task
+typo	-	-	engine=codex,needs=none,named_engine=none,named_station=none,named_depth=none,weight=light	Fix the typo in the README title
+refactor	-	-	engine=claude,needs=none,named_engine=none,named_station=none,run_engine=claude	Refactor the session store across the web and desktop apps so both share one module, then update every caller and test
+ios-release	-	-	needs=apple,named_station=none	Build the iOS app for TestFlight and run the full simulator test suite
+ios-small	-	-	needs=apple,run_station=mac	Rename the Settings tab title in the iOS app's SwiftUI view and check that it compiles in Xcode
+xcode-test	-	-	needs=apple	Run the Swift unit tests with xcodebuild and fix the one that fails
+gpu-train	-	-	needs=gpu,run_station=coderos	Fine-tune the small decision model on the new labels with CUDA and report the eval loss
+named-codex	-	-	named_engine=codex,run_engine=codex	Use Codex for this: bump the version to 1.4.2 in the package metadata
+named-opus	-	-	named_engine=claude,run_engine=claude	Have Opus review the auth module for security problems
+named-coderos	-	-	named_station=coderos,run_station=coderos	Run the unit tests on coderos and tell me what fails
+named-mac	-	-	named_station=mac,run_station=mac	On the MacBook Pro, update the changelog for this release
+named-cloud	-	-	named_station=oa-build-2,run_station=oa-build-2	Do this on Cloud box 2: regenerate the API reference pages
+named-both	-	-	named_engine=claude,named_station=coderos,run_engine=claude,run_station=coderos	Use Claude Code on coderos to add retries to the upload client
+named-kept-clear	-	-	named_station=studio	Run this on the Mac Studio: rebuild the asset pack
+named-local	-	-	named_engine=psionic	Keep this on a local model: summarize the notes file
+quick	-	-	named_depth=faster	Quick answer: what does the --json flag print?
+careful	-	-	named_depth=more_careful	Think hard about this one: why does the session log lose its last line on a crash, and how should we fix it?
+big-model	-	-	named_depth=more_careful	Use the big model and be thorough: audit the payment rules for rounding errors
+all-tests	-	-	weight=medium|heavy,needs=none	Run the complete test suite for every package and fix whatever fails
+question	-	-	weight=light,needs=none,named_engine=none	What does this repository do?
+design	-	-	engine=claude,difficulty=hard|very hard	Design a migration plan to move the chat history from SQLite to Postgres with no downtime, and write it up
+push	-	-	engine=codex,weight=light	Commit the staged changes with a short message and push
+root-cause	-	-	engine=claude,difficulty=hard|very hard	Find out why the relay drops messages under load: reproduce it, trace it through the socket layer, and fix the root cause
+newline	-	-	difficulty=trivial|easy,engine=codex	Add a newline at the end of LICENSE
+about-codex	-	-	named_engine=none	Fix the bug where Codex sessions show the wrong model name in the list
+about-claude	-	-	named_engine=none	Update the README section that describes how Claude Code sessions are imported
+about-coderos	-	-	named_station=none	Write a page in the ops guide on how coderos is set up
+about-opus	-	-	named_engine=none,named_depth=none	Add Opus 5.5 to the table of supported models in the docs
+about-mac	-	-	named_station=none,needs=none	Update the docs page that explains how to install on a Mac
+about-gpu	-	-	needs=none	Fix the typo in the GPU setup guide
+follow-up	mac/claude	We are renaming the Settings screen to Preferences across the app. The title and the menu item are done.	continue=yes,run_station=mac,run_engine=claude	Now do the same for the keyboard shortcut help text
+new-work	mac/claude	We are renaming the Settings screen to Preferences across the app. The title and the menu item are done.	continue=no	Separately, write a script that reports disk usage for each folder
+my-files	mac/claude	We are tidying my desktop.	needs=this_computer,run_station=mac	Find the three largest files in my Downloads folder and tell me what they are
+my-screen	mac/codex	-	needs=this_computer,run_station=mac	Take a screenshot of the app that is open on my screen and describe what is wrong with its layout

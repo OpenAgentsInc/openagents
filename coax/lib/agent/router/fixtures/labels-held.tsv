@@ -1,0 +1,21 @@
+id	current	summary	want	task
+rename-var	-	-	engine=codex,named_engine=none,needs=none	Rename the variable tmp to buffer in parser.c
+split-service	-	-	engine=claude	Work out how to split the monolith's billing code into its own service and list the risks
+ipad-layout	-	-	needs=apple	Fix the layout bug on iPad in landscape and confirm it in the simulator
+notarize	-	-	needs=apple	Notarize the macOS build and staple the ticket
+gpu-profile	-	-	needs=gpu	Profile the attention kernel on the GPU and find the slowest step
+named-sonnet	-	-	named_engine=claude,run_engine=claude	Let Sonnet handle this: add a docstring to each public function in utils
+named-gpt	-	-	named_engine=codex,run_engine=codex	Ask GPT to write the release notes from the last ten commits
+on-cloud	-	-	named_station=oa-build-2,run_station=oa-build-2	Run the migration script on Cloud box 2
+on-studio	-	-	named_station=studio	Kick off the nightly export on the Mac Studio
+about-laptop	-	-	named_station=none,needs=none	Fix the crash that happens when a laptop wakes from sleep
+short-version	-	-	named_depth=faster	Just give me the short version: which file defines the router's rules?
+thorough	-	-	named_depth=more_careful	Take your time and be thorough: review the migration for data loss
+plain	-	-	named_depth=none,named_engine=none,named_station=none	Add a unit test for the empty-input case in the tokenizer
+goes-on	coderos/codex	We are adding retries to the upload client. The retry loop is written.	continue=yes,run_station=coderos,run_engine=codex	Add a test that covers the third retry failing
+unrelated	coderos/codex	We are adding retries to the upload client. The retry loop is written.	continue=no	Unrelated: why is the docs site build slow?
+my-desktop	mac/claude	-	needs=this_computer,run_station=mac	Look at the file I just saved to my Desktop and fix its formatting
+about-pricing	-	-	named_engine=none	Update the table that compares Codex and Claude Code pricing
+rebuild-all	-	-	weight=heavy	Rebuild every container image from scratch and run the whole integration suite
+port	-	-	weight=light	What is the default port of the dev server?
+own-machine	-	-	named_engine=psionic	Do this with the model on my own machine: tidy the TODO list

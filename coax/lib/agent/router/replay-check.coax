@@ -1,69 +1,59 @@
 // The router against answers Google gave (docs/router/README.md). On
-// 2026-11-14 three tasks went to Gemini Decision 1 with the sample computers
-// (fixtures/stations.json); fixtures/google/ holds each request as it was
-// sent and each answer as it came back. This check rebuilds each request and
-// holds it to the recorded bytes, holds the recorded answer to the request as
-// a live one is held, and compares what runs.
+// 2026-11-14 every task of the two labelled sets went to Gemini Decision 1
+// with the sample computers (fixtures/stations.json): fixtures/labels.tsv,
+// which the questions' wording was tuned on, and fixtures/labels-held.tsv,
+// which was written afterwards and scored once. fixtures/google/ and
+// fixtures/google-held/ hold each request as it was sent and each answer as
+// it came back. This check rebuilds each request and holds it to the recorded
+// bytes, holds each recorded answer to its request as a live one is held,
+// decides, and scores the wants. It fails when a request changed, an answer
+// no longer holds, or fewer wants are right than on that day.
 //
 // A change to the questions, the labels or the sample computers changes the
-// request, and this check then fails by design: record the answers again
-// (router.coax decide TASK --door google --save FILE, and --show for the
-// request) and update what runs below.
+// requests, and this check then fails by design. Record both sets again and
+// set the two numbers below to what the new answers score:
+//   coax/web/tool.sh coax/lib/agent/router/router.coax eval --door google --save coax/lib/agent/router/fixtures/google
+//   coax/web/tool.sh coax/lib/agent/router/router.coax eval --door google --labels coax/lib/agent/router/fixtures/labels-held.tsv --save coax/lib/agent/router/fixtures/google-held
+// Tune wording on the first set only. A change that lowers either score
+// needs a reason in its commit.
 //   coax/web/tool.sh coax/lib/agent/router/replay-check.coax
 #import "Basic";
-#load "decide.coax";
+#load "eval.coax";
 #load "../../sys/tool.coax";
 #load "../../sys/args.coax";
-#load "../../sys/fs.coax";
 
 RTRR_STATIONS :: "coax/lib/agent/router/fixtures/stations.json";
-RTRR_GOOGLE :: "coax/lib/agent/router/fixtures/google/";
+RTRR_TUNED_RIGHT :: 66;     // of 66 wants, 33 tasks, on 2026-11-14
+RTRR_HELD_RIGHT :: 30;      // of 31 wants, 20 tasks, on 2026-11-14
 
-// A file's bytes without its last line end, or "" when it can't be read.
-rtrr_file :: (dir: string, name: string, suffix: string, out: [] u8) -> string {
-  pb: [512] u8; n := rtr_put(pb[..], 0, dir); n = rtr_put(pb[..], n, name); n = rtr_put(pb[..], n, suffix);
-  k := fs_read(cast(string) pb[0..<n], out);
-  if k <= 0 || k >= out.count { return ""; }
-  while k > 0 && (out[k - 1] == 10 || out[k - 1] == 13) { k -= 1; }
-  return cast(string) out[0..<k];
-}
-
-// One recorded exchange: what runs must be this agent, model and effort on this computer, for this reason ("" for none).
-rtrr_case :: (name: string, task: string, station: string, engine: string, model: string, effort: string, reason: string) -> bool {
-  raw: [RTR_REQUEST_MAX] u8; nodes: [16384] JvNode; wire: [RTR_REQUEST_MAX] u8; q: [1] RtrRequest;
-  sent: [32768] u8; got: [32768] u8; ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+// One labelled set against its recorded exchanges: true when every exchange holds and at least floor wants are right.
+rtrr_set :: (name: string, labels: string, dir: string, needed: int, q: [] RtrRequest) -> bool {
+  lraw: [131072] u8; rows: [RTREV_ROWS] RtrevRow;
+  ln := fs_read(labels, lraw[..]);
+  n := ifx ln > 0 && ln < lraw.count then rtrev_rows(cast(string) lraw[0..<ln], rows[..]) else -1;
+  if n <= 0 { print("FAIL %: the labels do not read\n", name); return false; }
   d: [1] RtrDecision; w: [1] RtrWork; e: [1] RtrEligible;
-  stations := rtrr_file(RTRR_STATIONS, "", "", raw[..]);
-  if stations.count == 0 || !rtr_request_read(stations, nodes[..], wire[..], q[..]) { print("FAIL %: the sample computers do not read\n", name); return false; }
-  q[0].text = task;
-  request := rtr_begin(q[..], e[..], d[..], w[..], "replay");
-  recorded := rtrr_file(RTRR_GOOGLE, name, ".request.json", sent[..]);
-  if recorded.count == 0 { print("FAIL %: no recorded request\n", name); return false; }
-  if request != recorded { print("FAIL %: the request is not the one that was sent\n  recorded %\n  now      %\n", name, recorded, request); return false; }
-  answer := rtrr_file(RTRR_GOOGLE, name, ".answer.json", got[..]);
-  if answer.count == 0 { print("FAIL %: no recorded answer\n", name); return false; }
-  gr := gd_result(w[0].body[..], ar[..], 200, answer);
-  if gr.problem.count > 0 { print("FAIL %: the recorded answer does not hold to its request: %\n", name, gr.error.message); return false; }
-  rtr_finish(q[..], e[..], gr, d[..], w[..]);
-  lb: [256] u8;
-  why := ifx d[0].nreasons > 0 then d[0].reasons[0] else "";
-  if !d[0].ok || d[0].station != station || d[0].engine != engine || d[0].model != model || d[0].effort != effort || why != reason || d[0].nanswers != 5 {
-    print("FAIL %: what runs changed: % (reason %)\n", name, rtr_line(q[..], d[..], lb[..]), why);
-    return false;
+  sent: [32768] u8; got: [65536] u8; ab: [4096] u8; ar: [1] ClArena; miss: [256] u8; nm: [1] int;
+  wants := 0; right := 0; bad := 0;
+  for i: 0..<n {
+    ar[0] = ClArena.{buf = ab[..]};
+    problem := rtrev_replay(dir, q, e[..], rows[i], d[..], w[..], sent[..], got[..], ar[..]);
+    if problem.count > 0 { print("FAIL %, %: %\n", name, rows[i].id, problem); bad += 1; continue; }
+    s := rtrev_score(d[..], rows[i].want, miss[..], nm[..]);
+    wants += s.wants; right += s.right;
+    if s.right < s.wants { print("miss  %, %: %\n", name, rows[i].id, cast(string) miss[0..<nm[0]]); }
   }
-  print("ok  %: % (% input tokens)\n", name, rtr_line(q[..], d[..], lb[..]), d[0].input_tokens);
-  return true;
+  print("%: % tasks, % of % wants right (% needed), % exchanges that no longer hold\n", name, n, right, wants, needed, bad);
+  return bad == 0 && right >= needed;
 }
 
 tool_main :: () -> int #export_c #effects(all) {
-  good := true;
-  // Google chose Cloud box 2 and Codex, and that is what runs.
-  good = rtrr_case("typo", "Fix the typo in the README title", "oa-build-2", "codex", "", "low", "") && good;
-  // Google chose Claude Code, and Cloud box 2, where Claude Code is not logged in: code moves the work to a computer that runs it.
-  good = rtrr_case("refactor", "Refactor the session store across the web and desktop apps so both share one module, then update every caller and test", "mac", "claude", "opus", "high", "station_lacks_engine") && good;
-  // Google chose a Linux computer for an iOS build. The router does not ask what a task needs yet (docs/router/README.md, rollout step 2); this case records that.
-  good = rtrr_case("ios", "Build the iOS app for TestFlight and run the full simulator test suite", "coderos", "codex", "", "high", "") && good;
+  raw: [RTR_REQUEST_MAX] u8; nodes: [16384] JvNode; wire: [RTR_REQUEST_MAX] u8; q: [1] RtrRequest;
+  sn := fs_read(RTRR_STATIONS, raw[..]);
+  if sn <= 0 || !rtr_request_read(cast(string) raw[0..<sn], nodes[..], wire[..], q[..]) { print("FAIL the sample computers do not read\n"); return 1; }
+  good := rtrr_set("tuned", "coax/lib/agent/router/fixtures/labels.tsv", "coax/lib/agent/router/fixtures/google", RTRR_TUNED_RIGHT, q[..]);
+  good = rtrr_set("held out", "coax/lib/agent/router/fixtures/labels-held.tsv", "coax/lib/agent/router/fixtures/google-held", RTRR_HELD_RIGHT, q[..]) && good;
   if !good { print("router replay fails\n"); return 1; }
-  print("router replay holds: three recorded exchanges with Gemini Decision 1\n");
+  print("router replay holds\n");
   return 0;
 }

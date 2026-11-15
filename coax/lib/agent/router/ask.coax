@@ -1,15 +1,27 @@
 // The delegation router's question (docs/router/README.md, "One request,
 // several typed questions"): one request to Google's Decisions API with the
-// task as its input and up to five typed questions.
+// task as its input and typed questions.
 //
-//   station     choice   the eligible computers, each labelled with its facts
-//   engine      choice   the coding agents that can run on one of them
-//   difficulty  score    trivial to very hard
-//   effort      choice   low, medium, high
-//   weight      score    light, medium, heavy: how much room the work needs
+//   engine          choice   the coding agents that can run somewhere
+//   station_ENGINE  choice   for each agent, the computer if that agent takes
+//                            the task: only the computers that run it
+//   difficulty      score    trivial to very hard
+//   effort          choice   low, medium, high
+//   weight          score    light, medium, heavy: how much room the work needs
+//   needs           choice   nothing, a Mac, a GPU, the conversation's computer
+//   named_station   choice   the computer the person asked for, or none
+//   named_engine    choice   the agent or model the person asked for, or none
+//   named_depth     choice   the person asked for speed, for care, or neither
+//   continue        yes/no   the task continues the conversation's work
+//                            (asked only when there is a conversation)
 //
-// A choice takes at least two options, so with one eligible computer, or one
-// eligible agent, that question is not asked and code picks the only one.
+// The computer is asked once for each agent, because one question for the
+// computer and one for the agent get answers that don't go together: on
+// 2026-11-14 Google chose Claude Code, and a computer where it was logged out.
+//
+// A choice takes at least two options, so with one eligible agent, or one
+// computer that runs an agent, that question is not asked and code picks the
+// only one.
 // rtr_ask_body writes the request (google.coax is the one codec of Google's
 // bodies); rtr_ask_read reads a checked answer into RtrAnswers and into the
 // decision's answers list.
@@ -87,6 +99,24 @@ rtr_ask_state :: (q: [] RtrRequest, out: [] u8) -> string {
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 
+RTR_STATION_KEYS :: [RTR_ENGINES] string.["station_claude", "station_codex", "station_micro", "station_psionic"];
+RTR_ENGINE_TITLES :: [RTR_ENGINES] string.["Claude Code", "Codex", "Microcoder", "Microcoder on a local model"];
+RTR_NEED_LABELS :: [4] string.[
+  "Nothing special: any computer with the repository's code can do it",
+  "A Mac: the task builds, runs, tests, signs or ships software for Apple platforms (iOS, iPadOS, macOS, Xcode, the simulator, TestFlight)",
+  "A GPU: the task trains or runs a model on a GPU, or runs GPU code",
+  "The computer the conversation is on: the task is about files, apps, a screen or a device that only that computer has"];
+RTR_NAMED_ENGINE_LABELS :: [5] string.[
+  "No instruction about which agent or model does the task, even when the task is about an agent or mentions one",
+  "The person tells you to use Claude Code or Claude, or one of its models (Opus, Sonnet, Haiku, Fable), to do the task",
+  "The person tells you to use Codex, or a GPT model, to do the task",
+  "The person tells you to use Microcoder to do the task",
+  "The person tells you to use a local model, or a model that runs on their own computer, to do the task"];
+RTR_DEPTH_LABELS :: [3] string.[
+  "The person says nothing about speed or care",
+  "The person asks for a quick or short answer, or to spend less effort",
+  "The person asks to think harder, take more care, be thorough, or use a stronger model"];
+
 // Writes the request into b (over buf): "" when it is ready for gd_body,
 // else why not. labels holds the computers' facts (RTR_STATIONS * RTR_LABEL)
 // and state the input; both must outlive b.
@@ -95,28 +125,53 @@ rtr_ask_body :: (q: [] RtrRequest, e: [] RtrEligible, b: [] GdBody, buf: [] u8, 
   if labels.count < RTR_STATIONS * RTR_LABEL { return "the labels buffer is too small"; }
   input := rtr_ask_state(q, state);
   if input.count == 0 { return "the task does not fit the request"; }
+  names := RTR_ENGINE_NAMES; titles := RTR_ENGINE_TITLES;
   gd_begin(b, buf, GD_MODEL);
   gd_text(b, input);
-  if e[0].nstations >= 2 {
-    keys: [RTR_STATIONS] string; facts: [RTR_STATIONS] string; n := 0;
-    for i: 0..<q[0].n {
-      if !e[0].station[i] { continue; }
-      keys[n] = q[0].stations[i].id;
-      facts[n] = rtr_station_label(q, e, i, labels[n * RTR_LABEL..<(n + 1) * RTR_LABEL]);
-      n += 1;
-    }
-    gd_choice(b, "station", "Which computer should run this coding task? Choose one with room for it (free memory and disk, low load, few agents working) that runs an agent suited to the task. Prefer one that already has the task's repository. Leave a computer someone is using for light work.", keys[0..<n], facts[0..<n]);
-  }
   if e[0].nengines >= 2 {
-    names := RTR_ENGINE_NAMES; engine_labels := AGR_ENGINE_LABELS;
+    engine_labels := AGR_ENGINE_LABELS;
     keys: [RTR_ENGINES] string; says: [RTR_ENGINES] string; n := 0;
     for k: 0..<RTR_ENGINES { if e[0].engine[k] { keys[n] = names[k]; says[n] = engine_labels[k]; n += 1; } }
     gd_choice(b, "engine", "Which coding agent should handle the task?", keys[0..<n], says[0..<n]);
+  }
+  // each eligible computer's facts, written once
+  facts: [RTR_STATIONS] string;
+  for i: 0..<q[0].n { if e[0].station[i] { facts[i] = rtr_station_label(q, e, i, labels[i * RTR_LABEL..<(i + 1) * RTR_LABEL]); } }
+  // for each agent, the computer if that agent takes the task: only the computers that run it
+  station_keys := RTR_STATION_KEYS;
+  ib: [RTR_ENGINES * 256] u8;
+  for k: 0..<RTR_ENGINES {
+    keys: [RTR_STATIONS] string; says: [RTR_STATIONS] string; n := 0;
+    for i: 0..<q[0].n { if e[0].station[i] && e[0].pair[i * RTR_ENGINES + k] { keys[n] = q[0].stations[i].id; says[n] = facts[i]; n += 1; } }
+    if n < 2 { continue; }
+    m := rtr_put(ib[k * 256..<(k + 1) * 256], 0, "If "); m = rtr_put(ib[k * 256..<(k + 1) * 256], m, titles[k]);
+    m = rtr_put(ib[k * 256..<(k + 1) * 256], m, " takes the task, which computer should run it? Choose one with room for the task: free memory and disk, low load, few agents working. Prefer one that has the repository.");
+    gd_choice(b, station_keys[k], cast(string) ib[k * 256..<k * 256 + m], keys[0..<n], says[0..<n]);
   }
   levels := AGR_LEVELS; efforts := AGR_EFFORTS; effort_labels := AGR_EFFORT_LABELS; weights := RTR_WEIGHT_LABELS;
   gd_score(b, "difficulty", "How hard is the task to do well?", levels[..]);
   gd_choice(b, "effort", "How much reasoning should the agent spend on the task? Hard tasks need more.", efforts[..], effort_labels[..]);
   gd_score(b, "weight", "How much of a computer does doing the task take?", weights[..]);
+  // what the task needs of a computer; "this computer" only when the conversation is on one
+  need_keys := RTR_NEED_NAMES; need_labels := RTR_NEED_LABELS;
+  need_n := ifx q[0].current_station.count > 0 then 4 else 3;
+  gd_choice(b, "needs", "What does the task need of the computer that runs it?", need_keys[0..<need_n], need_labels[0..<need_n]);
+  // what the person asked for in so many words
+  if q[0].n >= 1 {
+    keys: [RTR_STATIONS + 1] string; says: [RTR_STATIONS + 1] string;
+    keys[0] = "none"; says[0] = "The person does not say which computer should do the work";
+    for i: 0..<q[0].n { keys[i + 1] = q[0].stations[i].id; says[i + 1] = q[0].stations[i].name; }
+    gd_choice(b, "named_station", "Does the person say where the work should happen? Saying it anywhere in the task counts: \"run it on coderos\", \"on the Mac, update the changelog\", \"run the tests on coderos\". A task whose subject is a computer (documenting it, describing its setup) or that mentions a kind of computer says nothing about where to work.", keys[0..<q[0].n + 1], says[0..<q[0].n + 1]);
+  }
+  named_keys: [RTR_ENGINES + 1] string; named_labels := RTR_NAMED_ENGINE_LABELS;
+  named_keys[0] = "none";
+  for k: 0..<RTR_ENGINES { named_keys[k + 1] = names[k]; }
+  gd_choice(b, "named_engine", "Does the person tell you which agent or model must do the task? Only a direct instruction counts, such as \"use Codex\" or \"have Opus do it\". A task that is about an agent, or mentions one, gives no instruction.", named_keys[..], named_labels[..]);
+  depth_keys := RTR_DEPTH_NAMES; depth_labels := RTR_DEPTH_LABELS;
+  gd_choice(b, "named_depth", "Does the task itself ask, in so many words, for speed or for care?", depth_keys[..], depth_labels[..]);
+  if q[0].current_station.count > 0 || q[0].current_engine.count > 0 {
+    gd_noul(b, "continue", "Does the task continue the same piece of work as the conversation so far?", "It follows up on, corrects or extends the work the conversation is doing", "It starts different work");
+  }
   return ifx b[0].at < 0 then b[0].problem else "";
 }
 
@@ -128,16 +183,18 @@ rtr_milli :: (p: f64) -> int { return cast(int) (p * 1000.0 + 0.5); }
 rtr_ask_read :: (q: [] RtrRequest, body: string, ar: [] ClArena, d: [] RtrDecision) -> RtrAnswers {
   a := rtr_no_answers(); a.has = true;
   names := RTR_ENGINE_NAMES; efforts := RTR_EFFORT_NAMES; levels := RTR_LEVEL_NAMES; weights := RTR_WEIGHT_NAMES;
-  s := gd_choice_of(ar, body, "station");
-  if s.ok {
-    a.station = rtr_station_index(q, s.choice); a.station_milli = rtr_milli(s.probability);
-    if a.station >= 0 { rtr_answer(d, "station", q[0].stations[a.station].id, -1, a.station_milli); }
-  }
+  station_keys := RTR_STATION_KEYS; need_names := RTR_NEED_NAMES; depth_names := RTR_DEPTH_NAMES;
   g := gd_choice_of(ar, body, "engine");
   if g.ok {
     k := ca_index(g.choice);
     a.engine = ifx k >= 0 && k < RTR_ENGINES then k else -1; a.engine_milli = rtr_milli(g.probability);
     if a.engine >= 0 { rtr_answer(d, "engine", names[a.engine], -1, a.engine_milli); }
+  }
+  for k: 0..<RTR_ENGINES {
+    s := gd_choice_of(ar, body, station_keys[k]);
+    if !s.ok { continue; }
+    a.station_for[k] = rtr_station_index(q, s.choice); a.station_for_milli[k] = rtr_milli(s.probability);
+    if a.station_for[k] >= 0 { rtr_answer(d, station_keys[k], q[0].stations[a.station_for[k]].id, -1, a.station_for_milli[k]); }
   }
   h := gd_score_of(body, "difficulty");
   if h.ok && h.level >= 0 && h.level < 5 { a.difficulty = h.level; rtr_answer(d, "difficulty", levels[h.level], h.level, rtr_milli(h.confidence)); }
@@ -148,6 +205,30 @@ rtr_ask_read :: (q: [] RtrRequest, body: string, ar: [] ClArena, d: [] RtrDecisi
   }
   w := gd_score_of(body, "weight");
   if w.ok && w.level >= 0 && w.level < 3 { a.weight = w.level; rtr_answer(d, "weight", weights[w.level], w.level, rtr_milli(w.confidence)); }
+  n := gd_choice_of(ar, body, "needs");
+  if n.ok {
+    for i: 0..<4 { if need_names[i] == n.choice { a.needs = i; } }
+    if a.needs >= 0 { rtr_answer(d, "needs", need_names[a.needs], -1, rtr_milli(n.probability)); }
+  }
+  ns := gd_choice_of(ar, body, "named_station");
+  if ns.ok {
+    a.named_station = rtr_station_index(q, ns.choice); a.named_station_milli = rtr_milli(ns.probability);
+    rtr_answer(d, "named_station", ifx a.named_station >= 0 then q[0].stations[a.named_station].id else "none", -1, a.named_station_milli);
+  }
+  ne := gd_choice_of(ar, body, "named_engine");
+  if ne.ok {
+    k := ca_index(ne.choice);
+    a.named_engine = ifx k >= 0 && k < RTR_ENGINES then k else -1; a.named_engine_milli = rtr_milli(ne.probability);
+    rtr_answer(d, "named_engine", ifx a.named_engine >= 0 then names[a.named_engine] else "none", -1, a.named_engine_milli);
+  }
+  nd := gd_choice_of(ar, body, "named_depth");
+  if nd.ok {
+    for i: 0..<3 { if depth_names[i] == nd.choice { a.depth = i; } }
+    a.depth_milli = rtr_milli(nd.probability);
+    if a.depth >= 0 { rtr_answer(d, "named_depth", depth_names[a.depth], -1, a.depth_milli); }
+  }
+  c := gd_noul_of(body, "continue");
+  if c.ok { a.continue_milli = rtr_milli(c.noul); rtr_answer(d, "continue", ifx a.continue_milli >= RTR_SURE_MILLI then "yes" else "no", -1, a.continue_milli); }
   return a;
 }
 
@@ -160,21 +241,33 @@ rtr_ask_read :: (q: [] RtrRequest, body: string, ar: [] ClArena, d: [] RtrDecisi
   #assert rtr_station_label(q[..], e[..], 0, lb[0..<11]) == "MacBook Pro";
 }
 
-#test "the request asks about the eligible computers and agents only, and skips a question with one option" {
+#test "the request asks about the eligible computers and agents only, a computer for each agent, and skips a question with one option" {
   q: [1] RtrRequest; e: [1] RtrEligible; d: [1] RtrDecision;
   b: [1] GdBody; buf: [16384] u8; state: [20000] u8; labels: [RTR_STATIONS * RTR_LABEL] u8;
   rtr_fx_two(q[..]); rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
   #assert rtr_ask_body(q[..], e[..], b[..], buf[..], state[..], labels[..]) == "";
   body := gd_body(b[..]);
-  #assert body.count > 0 && b[0].questions == 5 && cl_raw(body, "model") == "\"gemini-decision-1\"";
-  #assert cl_raw(body, "questions.station.criteria.mac").count > 0 && cl_raw(body, "questions.station.criteria.coderos").count > 0;
+  // engine, station_codex (two computers run Codex; one runs Claude Code), difficulty, effort, weight, needs and the three named questions
+  #assert body.count > 0 && b[0].questions == 9 && cl_raw(body, "model") == "\"gemini-decision-1\"";
+  #assert cl_raw(body, "questions.station_codex.criteria.mac").count > 0 && cl_raw(body, "questions.station_codex.criteria.coderos").count > 0;
+  #assert cl_raw(body, "questions.station_claude").count == 0 && cl_raw(body, "questions.station").count == 0 && cl_raw(body, "questions.continue").count == 0;
   #assert cl_raw(body, "questions.engine.criteria.claude").count > 0 && cl_raw(body, "questions.engine.criteria.codex").count > 0 && cl_raw(body, "questions.engine.criteria.micro").count == 0;
   #assert cl_raw(body, "questions.weight.type") == "\"score\"" && cl_raw(body, "questions.effort.type") == "\"choice\"";
-  // the Mac is kept clear: one computer and one agent are left, and neither is a question
+  #assert cl_raw(body, "questions.needs.criteria.apple").count > 0 && cl_raw(body, "questions.needs.criteria.gpu").count > 0 && cl_raw(body, "questions.needs.criteria.this_computer").count == 0;
+  #assert cl_raw(body, "questions.named_station.criteria.none").count > 0 && cl_raw(body, "questions.named_station.criteria.coderos") == "\"coderos\"";
+  #assert cl_raw(body, "questions.named_engine.criteria.psionic").count > 0 && cl_raw(body, "questions.named_depth.criteria.more_careful").count > 0;
+  // a conversation: whether the task continues it, and "this computer" as a need
+  q[0].current_station = "mac"; q[0].current_engine = "claude";
+  #assert rtr_ask_body(q[..], e[..], b[..], buf[..], state[..], labels[..]) == "";
+  body = gd_body(b[..]);
+  #assert b[0].questions == 10 && cl_raw(body, "questions.continue.type") == "\"noul\"" && cl_raw(body, "questions.needs.criteria.this_computer").count > 0;
+  // the Mac is kept clear: one computer and one agent are left, and neither is a question; a kept-clear computer can still be named
+  q[0].current_station = ""; q[0].current_engine = "";
   q[0].stations[0].keep_clear = true; rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
   #assert rtr_ask_body(q[..], e[..], b[..], buf[..], state[..], labels[..]) == "";
   body = gd_body(b[..]);
-  #assert b[0].questions == 3 && cl_raw(body, "questions.station").count == 0 && cl_raw(body, "questions.engine").count == 0 && cl_raw(body, "questions.difficulty").count > 0;
+  #assert b[0].questions == 7 && cl_raw(body, "questions.station_codex").count == 0 && cl_raw(body, "questions.engine").count == 0 && cl_raw(body, "questions.difficulty").count > 0;
+  #assert cl_raw(body, "questions.named_station.criteria.mac").count > 0;
   q[0].text = ""; #assert rtr_ask_body(q[..], e[..], b[..], buf[..], state[..], labels[..]) == "no task";
 }
 
@@ -190,13 +283,17 @@ rtr_ask_read :: (q: [] RtrRequest, body: string, ar: [] ClArena, d: [] RtrDecisi
 #test "an answer reads into indexes, and names nothing the request doesn't have" {
   q: [1] RtrRequest; d: [1] RtrDecision; ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   rtr_fx_two(q[..]); rtr_decision_clear(d[..]);
-  body := "{\"answers\":{\"station\":{\"type\":\"choice\",\"choice\":\"coderos\",\"confidence\":0.9,\"probabilities\":{\"coderos\":0.9,\"mac\":0.1}},\"engine\":{\"type\":\"choice\",\"choice\":\"codex\",\"confidence\":0.75,\"probabilities\":{\"claude\":0.25,\"codex\":0.75}},\"difficulty\":{\"type\":\"score\",\"score\":0.2,\"confidence\":0.8,\"probabilities\":{\"0\":0.8,\"1\":0.2,\"2\":0.0,\"3\":0.0,\"4\":0.0}},\"effort\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.6,\"probabilities\":{\"high\":0.1,\"low\":0.6,\"medium\":0.3}},\"weight\":{\"type\":\"score\",\"score\":1.9,\"confidence\":0.9,\"probabilities\":{\"0\":0.0,\"1\":0.1,\"2\":0.9}}}}";
+  body := "{\"answers\":{\"station_codex\":{\"type\":\"choice\",\"choice\":\"coderos\",\"confidence\":0.9,\"probabilities\":{\"coderos\":0.9,\"mac\":0.1}},\"engine\":{\"type\":\"choice\",\"choice\":\"codex\",\"confidence\":0.75,\"probabilities\":{\"claude\":0.25,\"codex\":0.75}},\"difficulty\":{\"type\":\"score\",\"score\":0.2,\"confidence\":0.8,\"probabilities\":{\"0\":0.8,\"1\":0.2,\"2\":0.0,\"3\":0.0,\"4\":0.0}},\"effort\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.6,\"probabilities\":{\"high\":0.1,\"low\":0.6,\"medium\":0.3}},\"weight\":{\"type\":\"score\",\"score\":1.9,\"confidence\":0.9,\"probabilities\":{\"0\":0.0,\"1\":0.1,\"2\":0.9}},\"needs\":{\"type\":\"choice\",\"choice\":\"gpu\",\"confidence\":0.7,\"probabilities\":{\"apple\":0.1,\"gpu\":0.7,\"none\":0.2}},\"named_station\":{\"type\":\"choice\",\"choice\":\"mac\",\"confidence\":0.8,\"probabilities\":{\"coderos\":0.1,\"mac\":0.8,\"none\":0.1}},\"named_engine\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.95,\"probabilities\":{\"claude\":0.05,\"none\":0.95}},\"named_depth\":{\"type\":\"choice\",\"choice\":\"more_careful\",\"confidence\":0.6,\"probabilities\":{\"faster\":0.1,\"more_careful\":0.6,\"none\":0.3}},\"continue\":{\"type\":\"noul\",\"noul\":0.3,\"confidence\":0.7}}}";
   a := rtr_ask_read(q[..], body, ar[..], d[..]);
-  #assert a.has && a.station == 1 && a.station_milli == 900 && a.engine == 1 && a.engine_milli == 750 && a.difficulty == 0 && a.effort == 0 && a.weight == 2;
-  #assert d[0].nanswers == 5 && d[0].answers[0].key == "station" && d[0].answers[0].choice == "coderos" && d[0].answers[0].milli == 900 && d[0].answers[0].level == -1;
+  #assert a.has && a.engine == 1 && a.engine_milli == 750 && a.station_for[1] == 1 && a.station_for_milli[1] == 900 && a.station_for[0] == -1;
+  #assert a.difficulty == 0 && a.effort == 0 && a.weight == 2 && a.needs == RTR_NEED_GPU;
+  #assert a.named_station == 0 && a.named_station_milli == 800 && a.named_engine == -1 && a.named_engine_milli == 950;
+  #assert a.depth == RTR_DEPTH_CAREFUL && a.depth_milli == 600 && a.continue_milli == 300;
+  #assert d[0].nanswers == 10 && d[0].answers[0].key == "engine" && d[0].answers[1].key == "station_codex" && d[0].answers[1].choice == "coderos" && d[0].answers[1].milli == 900 && d[0].answers[1].level == -1;
   #assert d[0].answers[2].key == "difficulty" && d[0].answers[2].choice == "trivial" && d[0].answers[2].level == 0 && d[0].answers[4].choice == "heavy";
+  #assert d[0].answers[5].choice == "gpu" && d[0].answers[6].choice == "mac" && d[0].answers[7].choice == "none" && d[0].answers[8].choice == "more_careful" && d[0].answers[9].key == "continue" && d[0].answers[9].choice == "no";
   // a computer and an agent the request doesn't have, and no other answers
   rtr_decision_clear(d[..]);
-  a = rtr_ask_read(q[..], "{\"answers\":{\"station\":{\"type\":\"choice\",\"choice\":\"moon\",\"confidence\":1.0,\"probabilities\":{\"moon\":1.0}},\"engine\":{\"type\":\"choice\",\"choice\":\"antigravity\",\"confidence\":1.0,\"probabilities\":{\"antigravity\":1.0}}}}", ar[..], d[..]);
-  #assert a.has && a.station == -1 && a.engine == -1 && a.difficulty == -1 && a.effort == -1 && a.weight == -1 && d[0].nanswers == 0;
+  a = rtr_ask_read(q[..], "{\"answers\":{\"station_codex\":{\"type\":\"choice\",\"choice\":\"moon\",\"confidence\":1.0,\"probabilities\":{\"moon\":1.0}},\"engine\":{\"type\":\"choice\",\"choice\":\"antigravity\",\"confidence\":1.0,\"probabilities\":{\"antigravity\":1.0}}}}", ar[..], d[..]);
+  #assert a.has && a.station_for[1] == -1 && a.engine == -1 && a.difficulty == -1 && a.effort == -1 && a.weight == -1 && a.needs == -1 && a.named_station == -1 && a.continue_milli == -1 && d[0].nanswers == 0;
 }

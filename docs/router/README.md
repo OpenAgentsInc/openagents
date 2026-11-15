@@ -476,7 +476,11 @@ shaping it before any app calls it:
   `Station`, `RouteRequest` and `RouteDecision`. Alpha.
 - **Rules in code.** Which computers and agents are eligible and the fact
   that rules each other one out, then the pick.
-- **Five questions.** `station`, `engine`, `difficulty`, `effort`, `weight`.
+- **The questions.** `engine`, a computer for each agent, `difficulty`,
+  `effort`, `weight`, `needs`, `named_engine`, `named_station`, `named_depth`
+  and `continue`, with the rule in code for each.
+- **Two labelled sets**, scored against answers Google gave: 66 of 66 wants
+  on the set the wording was tuned on, 30 of 31 on a held-out set.
 - **Three doors.** Google's Gemini Decision 1, an in-process stand-in that
   answers by script and seed, and a recorded answer replayed.
 - **A command line.** `coax/web/tool.sh coax/lib/agent/router/router.coax decide "TASK"`.
@@ -487,13 +491,10 @@ It starts no agent. Its computers come from a file, not from live reports.
 
 Each step is tried from the command line and held by checks before the next.
 
-1. **The rest of the questions.** `needs`, the three `named_` questions and
-   `continue`, each with its rule in code. Ask about the computer and the
-   agent together: Google's first answers chose an agent and a computer that
-   doesn't run it.
-2. **A labelled set for delegation.** Tasks that differ by computer, weight
-   and need, each with the right answer, recorded with Google and replayed in
-   checks. `route_eval.py` scores engine choice only.
+1. Done: the rest of the questions, with the computer asked once for each
+   agent.
+2. Done: a labelled set for delegation, recorded with Google and replayed in
+   checks. It grows as wording changes.
 3. **`policy.coax` becomes `#authority`**, with its mutation pass, once the
    rules stop moving.
 4. **A stand-in over HTTP**, so the client's exact bytes, key header,

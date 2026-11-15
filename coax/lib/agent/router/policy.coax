@@ -2,20 +2,32 @@
 // what is possible; the model decides among it"). Two steps, both pure:
 //
 //   rtr_eligible  which computers may take new work and which coding agents
-//                can run on each, from the request's facts, with the one fact
-//                that ruled each other one out. Numbers are compared here,
-//                never by the model.
+//                 can run on each, from the request's facts, with the one
+//                 fact that ruled each other one out. Numbers are compared
+//                 here, never by the model.
 //   rtr_pick      what runs, from the eligible sets and the decision model's
-//                answers (RtrAnswers; has is false when no door answered). An
-//                answer that names a computer or an agent that is not
-//                eligible cannot be picked. Below RTR_SURE_MILLI, or with no
-//                answer, the most capable eligible agent runs on the computer
-//                with the most room.
+//                 answers (RtrAnswers; has is false when no door answered).
 //
-// Not here yet (docs/router/README.md, rollout step 2): the task's needs (a
-// Mac, a GPU), a computer or agent the person named, keeping a conversation
-// on its computer, another account when one runs out, and #authority with
-// its mutation pass.
+// What rtr_pick holds to, whatever the model answers:
+//
+//   - What runs is an eligible agent on an eligible computer that has that
+//     agent, takes work of the task's weight, and has what the task needs (a
+//     Mac that builds for Apple platforms, a GPU, or the conversation's own
+//     computer).
+//   - The agent, in this order: the one the person named, when it is
+//     eligible; the conversation's, while the message continues the same
+//     work; the model's answer, when it is sure (RTR_SURE_MILLI); else the
+//     most capable eligible one.
+//   - The computer, in the same order: the one the person named; the
+//     conversation's; the model's answer for the agent that runs; else the
+//     one with the most room.
+//   - When no computer can run that agent for this task, the most capable
+//     agent that some computer can run takes it, and the decision says so.
+//   - With no answer, the conversation's agent and computer are kept, else
+//     the defaults run, and the work is taken to be heavy.
+//
+// Not here yet (docs/router/README.md): another account when one runs out,
+// and #authority with its mutation pass.
 #load "wire.coax";
 #load "../engine/route-policy.coax";   // cr_model: the model profile for a difficulty
 
@@ -25,6 +37,10 @@ RTR_HEAVY :: 2;             // the weight a "nothing heavy" computer refuses
 RTR_EFFORT_NAMES :: [3] string.["low", "medium", "high"];
 RTR_LEVEL_NAMES :: [5] string.["trivial", "easy", "moderate", "hard", "very hard"];
 RTR_WEIGHT_NAMES :: [3] string.["light", "medium", "heavy"];
+RTR_NEED_NONE :: 0; RTR_NEED_APPLE :: 1; RTR_NEED_GPU :: 2; RTR_NEED_THIS :: 3;
+RTR_NEED_NAMES :: [4] string.["none", "apple", "gpu", "this_computer"];
+RTR_DEPTH_NONE :: 0; RTR_DEPTH_FASTER :: 1; RTR_DEPTH_CAREFUL :: 2;
+RTR_DEPTH_NAMES :: [3] string.["none", "faster", "more_careful"];
 
 RtrEligible :: struct {
   station: [RTR_STATIONS] bool;                 // may take new work, and an agent can run there
@@ -37,17 +53,29 @@ RtrEligible :: struct {
 // What the decision model answered, as indexes. A question that was not
 // asked, or an answer that names nothing known, is -1.
 RtrAnswers :: struct {
-  has: bool;               // a door answered
-  station: int;            // a row of the request
-  station_milli: int;
-  engine: int;             // ca_index
+  has: bool;                               // a door answered
+  engine: int;                             // ca_index
   engine_milli: int;
-  difficulty: int;         // 0 to 4
-  effort: int;             // 0 to 2
-  weight: int;             // 0 to 2
+  station_for: [RTR_ENGINES] int;          // the computer if that agent takes the task: a row of the request
+  station_for_milli: [RTR_ENGINES] int;
+  difficulty: int;                         // 0 to 4
+  effort: int;                             // 0 to 2
+  weight: int;                             // 0 to 2
+  needs: int;                              // RTR_NEED_
+  named_station: int;                      // the computer the person asked for: a row; -1 for none
+  named_station_milli: int;
+  named_engine: int;                       // the agent the person asked for: ca_index; -1 for none
+  named_engine_milli: int;
+  depth: int;                              // RTR_DEPTH_
+  depth_milli: int;
+  continue_milli: int;                     // P(the message continues the conversation's work); -1 when not asked
 }
 
-rtr_no_answers :: () -> RtrAnswers { return RtrAnswers.{station = -1, engine = -1, difficulty = -1, effort = -1, weight = -1}; }
+rtr_no_answers :: () -> RtrAnswers {
+  a := RtrAnswers.{engine = -1, difficulty = -1, effort = -1, weight = -1, needs = -1, named_station = -1, named_engine = -1, depth = -1, continue_milli = -1};
+  for k: 0..<RTR_ENGINES { a.station_for[k] = -1; }
+  return a;
+}
 
 // "" when the computer in row i may take new work, else the one fact that
 // rules it out.
@@ -100,9 +128,25 @@ rtr_weight_ok :: (q: [] RtrRequest, i: int, weight: int) -> bool {
   return !(q[0].stations[i].nothing_heavy && weight >= RTR_HEAVY);
 }
 
-// Whether row i can run engine at this weight.
-rtr_can :: (q: [] RtrRequest, e: [] RtrEligible, i: int, engine: int, weight: int) -> bool {
-  return i >= 0 && i < q[0].n && engine >= 0 && engine < RTR_ENGINES && e[0].station[i] && e[0].pair[i * RTR_ENGINES + engine] && rtr_weight_ok(q, i, weight);
+// Whether the computer in row i has what the task needs.
+rtr_need_ok :: (q: [] RtrRequest, i: int, needs: int) -> bool {
+  if needs == RTR_NEED_APPLE { return q[0].stations[i].apple_builds; }
+  if needs == RTR_NEED_GPU { return q[0].stations[i].gpu.count > 0; }
+  if needs == RTR_NEED_THIS { return q[0].current_station.count == 0 || q[0].stations[i].id == q[0].current_station; }
+  return true;
+}
+
+// Why row i can't run engine for this task, as a reason code; "" when it can.
+rtr_why_not :: (q: [] RtrRequest, e: [] RtrEligible, i: int, engine: int, weight: int, needs: int) -> string {
+  if i < 0 || i >= q[0].n || engine < 0 || engine >= RTR_ENGINES || !e[0].station[i] { return "station_not_eligible"; }
+  if !e[0].pair[i * RTR_ENGINES + engine] { return "station_lacks_engine"; }
+  if !rtr_need_ok(q, i, needs) { return "station_lacks_need"; }
+  if !rtr_weight_ok(q, i, weight) { return "too_heavy_for_station"; }
+  return "";
+}
+
+rtr_can :: (q: [] RtrRequest, e: [] RtrEligible, i: int, engine: int, weight: int, needs: int) -> bool {
+  return rtr_why_not(q, e, i, engine, weight, needs).count == 0;
 }
 
 // Whether row a has more room than row b: less work running, then more free
@@ -113,20 +157,55 @@ rtr_more_room :: (q: [] RtrRequest, a: int, b: int) -> bool {
   return q[0].stations[a].disk_free_mb > q[0].stations[b].disk_free_mb;
 }
 
-// The computer with the most room that can run engine at this weight, or -1.
-rtr_roomiest :: (q: [] RtrRequest, e: [] RtrEligible, engine: int, weight: int) -> int {
+// The computer with the most room that can run engine for this task, or -1.
+rtr_roomiest :: (q: [] RtrRequest, e: [] RtrEligible, engine: int, weight: int, needs: int) -> int {
   best := -1;
   for i: 0..<q[0].n {
-    if !rtr_can(q, e, i, engine, weight) { continue; }
+    if !rtr_can(q, e, i, engine, weight, needs) { continue; }
     if best < 0 || rtr_more_room(q, i, best) { best = i; }
   }
   return best;
 }
 
+// Whether the conversation's agent and computer are kept: the model says the
+// message continues its work, or no door answered and there is a conversation.
+rtr_continues :: (q: [] RtrRequest, a: RtrAnswers) -> bool {
+  if a.has { return a.continue_milli >= RTR_SURE_MILLI; }
+  return q[0].current_station.count > 0 || q[0].current_engine.count > 0;
+}
+
+// The computer that runs engine for this task, or -1: the one the person
+// named, then the conversation's, then the model's answer for this agent,
+// then the one with the most room. With explain, d's reasons say which, and
+// why an earlier one was passed over.
+rtr_place :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, engine: int, weight: int, needs: int, d: [] RtrDecision, explain: bool) -> int {
+  if a.has && a.named_station >= 0 && a.named_station < q[0].n && a.named_station_milli >= RTR_SURE_MILLI {
+    if rtr_can(q, e, a.named_station, engine, weight, needs) { if explain { rtr_reason(d, "named_station"); } return a.named_station; }
+    if explain { rtr_reason(d, "named_station_cannot"); rtr_reason(d, rtr_why_not(q, e, a.named_station, engine, weight, needs)); }
+  }
+  if rtr_continues(q, a) {
+    cur := rtr_station_index(q, q[0].current_station);
+    if cur >= 0 {
+      if rtr_can(q, e, cur, engine, weight, needs) { if explain { rtr_reason(d, "continued"); } return cur; }
+      if explain { rtr_reason(d, "current_cannot"); rtr_reason(d, rtr_why_not(q, e, cur, engine, weight, needs)); }
+    }
+  }
+  answer := ifx a.has then a.station_for[engine] else -1;
+  if answer >= 0 && a.station_for_milli[engine] >= RTR_SURE_MILLI && rtr_can(q, e, answer, engine, weight, needs) { return answer; }
+  if explain && a.has {
+    runs := 0;
+    for i: 0..<q[0].n { if e[0].station[i] && e[0].pair[i * RTR_ENGINES + engine] { runs += 1; } }
+    if runs == 1 { }     // that question was not asked: nothing differs from an answer
+    else if answer < 0 || answer >= q[0].n || rtr_can(q, e, answer, engine, weight, needs) { rtr_reason(d, "unsure_station"); }
+    else { rtr_reason(d, rtr_why_not(q, e, answer, engine, weight, needs)); }
+  }
+  return rtr_roomiest(q, e, engine, weight, needs);
+}
+
 // What runs. d already holds rtr_eligible's lists; this sets ok, station,
-// engine, model, effort, difficulty, weight, reasons and error.
+// engine, model, effort, difficulty, weight, needs, reasons and error.
 rtr_pick :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, d: [] RtrDecision) {
-  names := RTR_ENGINE_NAMES; efforts := RTR_EFFORT_NAMES;
+  names := RTR_ENGINE_NAMES; efforts := RTR_EFFORT_NAMES; need_names := RTR_NEED_NAMES;
   d[0].ok = false;
   if e[0].nstations == 0 { d[0].error = "no_station"; return; }
   if !a.has { rtr_reason(d, "door_unavailable"); }
@@ -134,45 +213,58 @@ rtr_pick :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, d: [] RtrDecisi
   weight := ifx a.has && a.weight >= 0 && a.weight <= 2 then a.weight else RTR_HEAVY;
   difficulty := ifx a.has && a.difficulty >= 0 && a.difficulty <= 4 then a.difficulty else -1;
   effort := ifx a.has && a.effort >= 0 && a.effort <= 2 then a.effort else 2;
-  // the agent: the answer when it is sure and eligible, else the most capable eligible one
+  needs := ifx a.has && a.needs >= 1 && a.needs <= 3 then a.needs else RTR_NEED_NONE;
+  // the agent: named, the conversation's, the answer when it is sure, the most capable
   engine := -1;
-  if a.has && a.engine >= 0 && a.engine < RTR_ENGINES && e[0].engine[a.engine] && a.engine_milli >= RTR_SURE_MILLI { engine = a.engine; }
-  else {
-    for k: 0..<RTR_ENGINES { if engine < 0 && e[0].engine[k] { engine = k; } }
-    if a.has {
-      if e[0].nengines == 1 { rtr_reason(d, "one_engine"); }
-      else if a.engine >= 0 && a.engine < RTR_ENGINES && !e[0].engine[a.engine] { rtr_reason(d, "engine_not_eligible"); }
-      else { rtr_reason(d, "unsure_engine"); }
+  if a.has && a.named_engine >= 0 && a.named_engine < RTR_ENGINES && a.named_engine_milli >= RTR_SURE_MILLI {
+    if e[0].engine[a.named_engine] { engine = a.named_engine; rtr_reason(d, "named_engine"); }
+    else { rtr_reason(d, "named_engine_cannot"); }
+  }
+  if engine < 0 && rtr_continues(q, a) {
+    cur := ca_index(q[0].current_engine);
+    if cur >= 0 && cur < RTR_ENGINES {
+      if e[0].engine[cur] { engine = cur; rtr_reason(d, "continued"); }
+      else { rtr_reason(d, "current_cannot"); rtr_reason(d, "engine_not_eligible"); }
     }
   }
-  // the computer: the answer when it is sure and can run that agent at this weight, else the one with the most room
-  station := -1;
-  if a.has && a.station_milli >= RTR_SURE_MILLI && rtr_can(q, e, a.station, engine, weight) { station = a.station; }
-  else {
-    station = rtr_roomiest(q, e, engine, weight);
-    if a.has {
-      if e[0].nstations == 1 { rtr_reason(d, "one_station"); }
-      else if a.station < 0 || a.station >= q[0].n { rtr_reason(d, "unsure_station"); }
-      else if !e[0].station[a.station] { rtr_reason(d, "station_not_eligible"); }
-      else if !e[0].pair[a.station * RTR_ENGINES + engine] { rtr_reason(d, "station_lacks_engine"); }
-      else if !rtr_weight_ok(q, a.station, weight) { rtr_reason(d, "too_heavy_for_station"); }
-      else { rtr_reason(d, "unsure_station"); }
-    }
-  }
-  if station < 0 {
-    // no computer runs that agent at this weight: the most capable agent one does
-    for k: 0..<RTR_ENGINES {
-      if station < 0 && e[0].engine[k] {
-        s := rtr_roomiest(q, e, k, weight);
-        if s >= 0 { station = s; engine = k; rtr_reason(d, "station_lacks_engine"); }
+  if engine < 0 {
+    if a.has && a.engine >= 0 && a.engine < RTR_ENGINES && e[0].engine[a.engine] && a.engine_milli >= RTR_SURE_MILLI { engine = a.engine; }
+    else {
+      for k: 0..<RTR_ENGINES { if engine < 0 && e[0].engine[k] { engine = k; } }
+      if a.has {
+        if e[0].nengines == 1 { }     // that question was not asked
+        else if a.engine >= 0 && a.engine < RTR_ENGINES && !e[0].engine[a.engine] { rtr_reason(d, "engine_not_eligible"); }
+        else { rtr_reason(d, "unsure_engine"); }
       }
     }
   }
-  if station < 0 { rtr_reason(d, "too_heavy_for_station"); d[0].error = "no_station"; return; }
+  station := rtr_place(q, e, a, engine, weight, needs, d, true);
+  if station < 0 {
+    // no computer runs that agent for this task: the most capable agent one does
+    for k: 0..<RTR_ENGINES {
+      if station < 0 && k != engine && e[0].engine[k] {
+        s := rtr_place(q, e, a, k, weight, needs, d, false);
+        if s >= 0 { station = s; engine = k; rtr_reason(d, "engine_moved"); }
+      }
+    }
+  }
+  if station < 0 {
+    // why nothing can: no eligible computer has what the task needs, or those that do take nothing this heavy
+    has_need := false;
+    for i: 0..<q[0].n { if e[0].station[i] && rtr_need_ok(q, i, needs) { has_need = true; } }
+    rtr_reason(d, ifx has_need then "too_heavy_for_station" else "station_lacks_need");
+    d[0].error = "no_station"; d[0].needs = ifx needs != RTR_NEED_NONE then need_names[needs] else "";
+    return;
+  }
+  if a.has && a.depth_milli >= RTR_SURE_MILLI {
+    if a.depth == RTR_DEPTH_FASTER { if effort > 0 { effort -= 1; } rtr_reason(d, "faster"); }
+    if a.depth == RTR_DEPTH_CAREFUL { if effort < 2 { effort += 1; } rtr_reason(d, "more_careful"); }
+  }
   d[0].ok = true;
   d[0].station = q[0].stations[station].id;
   d[0].engine = names[engine];
   d[0].difficulty = difficulty; d[0].weight = ifx a.has then weight else -1;
+  d[0].needs = ifx needs != RTR_NEED_NONE then need_names[needs] else "";
   d[0].effort = efforts[effort];
   d[0].model = cr_model(names[engine], ifx difficulty >= 0 then difficulty else 4);
 }
@@ -236,82 +328,215 @@ rtr_fx_two :: (q: [] RtrRequest) {
   #assert e[0].nstations == 0 && e[0].nengines == 0 && d[0].nblocked == 4 && d[0].blocked[3].fact == "no_agent" && d[0].blocked[2].fact == "quota_used_up";
 }
 
+// Answers with the agent and the computer for it, both sure, and the rest plain.
+rtr_fx_answer :: (engine: int, station: int) -> RtrAnswers {
+  a := rtr_no_answers(); a.has = true;
+  a.engine = engine; a.engine_milli = 900;
+  for k: 0..<RTR_ENGINES { a.station_for[k] = station; a.station_for_milli[k] = 900; }
+  a.difficulty = 1; a.effort = 1; a.weight = 0; a.needs = RTR_NEED_NONE; a.depth = RTR_DEPTH_NONE; a.depth_milli = 900;
+  return a;
+}
+// One pick on the two computers, from a clean decision.
+rtr_fx_pick :: (q: [] RtrRequest, a: RtrAnswers, d: [] RtrDecision) {
+  e: [1] RtrEligible;
+  rtr_decision_clear(d); rtr_eligible(q, e[..], d); rtr_pick(q, e[..], a, d);
+}
+
 #test "what runs: a sure answer, the default when unsure, and never what code ruled out" {
-  q: [1] RtrRequest; e: [1] RtrEligible; d: [1] RtrDecision;
-  rtr_fx_two(q[..]); rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
-  a := rtr_no_answers(); a.has = true; a.station = 1; a.station_milli = 900; a.engine = 1; a.engine_milli = 900; a.difficulty = 0; a.effort = 0; a.weight = 0;
-  rtr_pick(q[..], e[..], a, d[..]);
-  #assert d[0].ok && d[0].station == "coderos" && d[0].engine == "codex" && d[0].effort == "low" && d[0].difficulty == 0 && d[0].weight == 0 && d[0].model == "" && d[0].nreasons == 0;
+  q: [1] RtrRequest; d: [1] RtrDecision; rtr_fx_two(q[..]);
+  a := rtr_fx_answer(1, 1); a.difficulty = 0; a.effort = 0;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].station == "coderos" && d[0].engine == "codex" && d[0].effort == "low" && d[0].difficulty == 0 && d[0].weight == 0 && d[0].model == "" && d[0].needs == "" && d[0].nreasons == 0;
   // a hard task for Claude Code on the Mac
-  rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
-  a.station = 0; a.engine = 0; a.difficulty = 3; a.effort = 2; a.weight = 1;
-  rtr_pick(q[..], e[..], a, d[..]);
+  a = rtr_fx_answer(0, 0); a.difficulty = 3; a.effort = 2; a.weight = 1;
+  rtr_fx_pick(q[..], a, d[..]);
   #assert d[0].ok && d[0].station == "mac" && d[0].engine == "claude" && d[0].model == "opus" && d[0].effort == "high" && d[0].nreasons == 0;
   // the same, heavy: the Mac takes nothing heavy and coderos has no Claude Code login, so Codex runs on coderos
-  rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
   a.weight = 2;
-  rtr_pick(q[..], e[..], a, d[..]);
-  #assert d[0].ok && d[0].station == "coderos" && d[0].engine == "codex" && d[0].nreasons == 2 && d[0].reasons[0] == "too_heavy_for_station" && d[0].reasons[1] == "station_lacks_engine";
-  // Claude Code on coderos, where it is logged out: it runs on the Mac
-  rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
-  a.weight = 1; a.station = 1;
-  rtr_pick(q[..], e[..], a, d[..]);
-  #assert d[0].ok && d[0].station == "mac" && d[0].engine == "claude" && d[0].nreasons == 1 && d[0].reasons[0] == "station_lacks_engine";
-  // an unsure agent: the most capable eligible one; an unsure computer: the one with the most room that runs it
-  rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
-  a.engine = 1; a.engine_milli = 499; a.station = 1; a.station_milli = 499;
-  rtr_pick(q[..], e[..], a, d[..]);
-  #assert d[0].ok && d[0].engine == "claude" && d[0].station == "mac" && d[0].nreasons == 2 && d[0].reasons[0] == "unsure_engine" && d[0].reasons[1] == "station_lacks_engine";
-  a.engine_milli = 900;
-  rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]); rtr_pick(q[..], e[..], a, d[..]);
-  #assert d[0].ok && d[0].engine == "codex" && d[0].station == "coderos" && d[0].reasons[0] == "unsure_station";   // coderos runs no work: more room
-  // an agent that is not eligible anywhere
-  rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
-  a.engine = 2; a.station_milli = 900;
-  rtr_pick(q[..], e[..], a, d[..]);
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].station == "coderos" && d[0].engine == "codex" && d[0].nreasons == 1 && d[0].reasons[0] == "engine_moved";
+  // the model answers a computer per agent: Claude Code's is the Mac whatever it says for Codex
+  a = rtr_fx_answer(0, 1); a.station_for[0] = 0;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].station == "mac" && d[0].engine == "claude" && d[0].nreasons == 0;
+  // an unsure agent: the most capable eligible one, and only the Mac runs it
+  a = rtr_fx_answer(1, 1); a.engine_milli = 499;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].engine == "claude" && d[0].station == "mac" && d[0].nreasons == 1 && d[0].reasons[0] == "unsure_engine";
+  // a sure agent and an unsure computer: the one with the most room
+  a = rtr_fx_answer(1, 0); a.station_for_milli[1] = 499;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].engine == "codex" && d[0].station == "coderos" && d[0].nreasons == 1 && d[0].reasons[0] == "unsure_station";
+  // an agent that is eligible nowhere
+  a = rtr_fx_answer(2, 0);
+  rtr_fx_pick(q[..], a, d[..]);
   #assert d[0].ok && d[0].engine == "claude" && d[0].station == "mac" && d[0].reasons[0] == "engine_not_eligible";
 }
 
-#test "no door: the most capable agent, the work taken to be heavy, and the reason" {
-  q: [1] RtrRequest; e: [1] RtrEligible; d: [1] RtrDecision;
-  rtr_fx_two(q[..]); rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
-  rtr_pick(q[..], e[..], rtr_no_answers(), d[..]);
-  // Claude Code is the most capable, and only the Mac runs it, and the Mac takes nothing heavy: Codex on coderos
+#test "what a task needs: a Mac that builds for Apple platforms, a GPU, this computer" {
+  q: [1] RtrRequest; d: [1] RtrDecision; rtr_fx_two(q[..]); q[0].stations[1].gpu = "RTX 4080";
+  // Codex on coderos, but the task is an iOS build: the Mac
+  a := rtr_fx_answer(1, 1); a.needs = RTR_NEED_APPLE;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].station == "mac" && d[0].engine == "codex" && d[0].needs == "apple" && d[0].nreasons == 1 && d[0].reasons[0] == "station_lacks_need";
+  // Claude Code on the Mac, but the task needs a GPU: only coderos has one, and it runs Codex only
+  a = rtr_fx_answer(0, 0); a.needs = RTR_NEED_GPU;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].station == "coderos" && d[0].engine == "codex" && d[0].needs == "gpu" && d[0].nreasons == 1 && d[0].reasons[0] == "engine_moved";
+  // a heavy iOS build: the only Mac takes nothing heavy, so nothing runs
+  a = rtr_fx_answer(1, 1); a.needs = RTR_NEED_APPLE; a.weight = 2;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert !d[0].ok && d[0].error == "no_station" && d[0].needs == "apple" && d[0].station == "" && d[0].reasons[d[0].nreasons - 1] == "too_heavy_for_station";
+  // a task that needs a GPU when no eligible computer has one
+  q[0].stations[1].keep_clear = true; a = rtr_fx_answer(1, 0); a.needs = RTR_NEED_GPU;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert !d[0].ok && d[0].error == "no_station" && d[0].needs == "gpu" && d[0].reasons[d[0].nreasons - 1] == "station_lacks_need";
+  q[0].stations[1].keep_clear = false;
+  // this computer's files: the conversation's computer, whatever was answered
+  q[0].current_station = "mac"; a = rtr_fx_answer(1, 1); a.needs = RTR_NEED_THIS; a.continue_milli = 100;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].station == "mac" && d[0].needs == "this_computer";
+  #assert rtr_need_ok(q[..], 0, RTR_NEED_APPLE) && !rtr_need_ok(q[..], 1, RTR_NEED_APPLE) && rtr_need_ok(q[..], 1, RTR_NEED_GPU) && !rtr_need_ok(q[..], 0, RTR_NEED_GPU);
+  #assert rtr_need_ok(q[..], 0, RTR_NEED_THIS) && !rtr_need_ok(q[..], 1, RTR_NEED_THIS) && rtr_need_ok(q[..], 1, RTR_NEED_NONE);
+  q[0].current_station = ""; #assert rtr_need_ok(q[..], 1, RTR_NEED_THIS);
+}
+
+#test "what the person named wins when it can run, and the decision says when it can't" {
+  q: [1] RtrRequest; d: [1] RtrDecision; rtr_fx_two(q[..]);
+  // "do it with Codex", though the model would pick Claude Code
+  a := rtr_fx_answer(0, 0); a.named_engine = 1; a.named_engine_milli = 950;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].engine == "codex" && d[0].station == "mac" && d[0].reasons[0] == "named_engine";
+  // "run it on coderos"
+  a = rtr_fx_answer(1, 0); a.named_station = 1; a.named_station_milli = 950;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].station == "coderos" && d[0].engine == "codex" && d[0].reasons[0] == "named_station";
+  // "use Claude Code on coderos": it is logged out there, so it runs on the Mac
+  a = rtr_fx_answer(1, 1); a.named_engine = 0; a.named_engine_milli = 950; a.named_station = 1; a.named_station_milli = 950;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].engine == "claude" && d[0].station == "mac" && d[0].nreasons == 3;
+  #assert d[0].reasons[0] == "named_engine" && d[0].reasons[1] == "named_station_cannot" && d[0].reasons[2] == "station_lacks_engine";
+  // "use Microcoder": it is installed nowhere
+  a = rtr_fx_answer(1, 1); a.named_engine = 2; a.named_engine_milli = 950;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].engine == "codex" && d[0].station == "coderos" && d[0].nreasons == 1 && d[0].reasons[0] == "named_engine_cannot";
+  // an unsure name is no name
+  a = rtr_fx_answer(0, 0); a.named_engine = 1; a.named_engine_milli = 400; a.named_station = 1; a.named_station_milli = 400;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].engine == "claude" && d[0].station == "mac" && d[0].nreasons == 0;
+  // "quick answer" and "think harder" move the effort one step, inside low to high
+  a = rtr_fx_answer(1, 1); a.depth = RTR_DEPTH_FASTER;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].effort == "low" && d[0].reasons[0] == "faster";
+  a.effort = 0; rtr_fx_pick(q[..], a, d[..]); #assert d[0].effort == "low";
+  a.effort = 1; a.depth = RTR_DEPTH_CAREFUL; rtr_fx_pick(q[..], a, d[..]); #assert d[0].effort == "high" && d[0].reasons[0] == "more_careful";
+  a.effort = 2; rtr_fx_pick(q[..], a, d[..]); #assert d[0].effort == "high";
+  a.effort = 1; a.depth_milli = 400; rtr_fx_pick(q[..], a, d[..]); #assert d[0].effort == "medium" && d[0].nreasons == 0;
+}
+
+#test "a conversation keeps its agent and computer while the message continues its work" {
+  q: [1] RtrRequest; d: [1] RtrDecision; rtr_fx_two(q[..]);
+  q[0].current_station = "mac"; q[0].current_engine = "claude";
+  // the model would send this follow-up to Codex on coderos; the conversation stays, and the model follows the message
+  a := rtr_fx_answer(1, 1); a.continue_milli = 900; a.difficulty = 3;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].engine == "claude" && d[0].station == "mac" && d[0].model == "opus" && d[0].nreasons == 1 && d[0].reasons[0] == "continued";
+  // different work: the answer runs
+  a.continue_milli = 200;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].engine == "codex" && d[0].station == "coderos" && d[0].nreasons == 0;
+  // a named agent beats the conversation's, and the conversation's computer is kept when it runs that agent
+  a.continue_milli = 900; a.named_engine = 1; a.named_engine_milli = 950;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].engine == "codex" && d[0].station == "mac" && d[0].reasons[0] == "named_engine" && d[0].reasons[1] == "continued";
+  // the conversation's agent has run out: the answer runs, and the decision says why
+  a = rtr_fx_answer(1, 1); a.continue_milli = 900; q[0].stations[0].agents[0].quota_used_up = true;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].engine == "codex" && d[0].station == "mac" && d[0].reasons[0] == "current_cannot" && d[0].reasons[1] == "engine_not_eligible" && d[0].reasons[2] == "continued";
+  // the conversation's computer is kept clear now: its agent moves to where it can run
+  q[0].stations[0].agents[0].quota_used_up = false; q[0].stations[1].agents[0].logged_in = true; q[0].stations[0].keep_clear = true;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].engine == "claude" && d[0].station == "coderos" && d[0].reasons[0] == "continued" && d[0].reasons[1] == "current_cannot" && d[0].reasons[2] == "station_not_eligible";
+}
+
+#test "no door: the conversation is kept, else the most capable agent, the work taken to be heavy" {
+  q: [1] RtrRequest; d: [1] RtrDecision; rtr_fx_two(q[..]);
+  rtr_fx_pick(q[..], rtr_no_answers(), d[..]);
+  // Claude Code is the most capable, only the Mac runs it, and the Mac takes nothing heavy: Codex on coderos
   #assert d[0].ok && d[0].engine == "codex" && d[0].station == "coderos" && d[0].effort == "high" && d[0].difficulty == -1 && d[0].weight == -1;
-  #assert d[0].nreasons == 2 && d[0].reasons[0] == "door_unavailable" && d[0].reasons[1] == "station_lacks_engine";
-  q[0].stations[0].nothing_heavy = false; rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
-  rtr_pick(q[..], e[..], rtr_no_answers(), d[..]);
+  #assert d[0].nreasons == 2 && d[0].reasons[0] == "door_unavailable" && d[0].reasons[1] == "engine_moved";
+  q[0].stations[0].nothing_heavy = false;
+  rtr_fx_pick(q[..], rtr_no_answers(), d[..]);
   #assert d[0].ok && d[0].engine == "claude" && d[0].station == "mac" && d[0].model == "opus" && d[0].nreasons == 1;
+  // a conversation on Codex on coderos stays there
+  q[0].current_station = "coderos"; q[0].current_engine = "codex";
+  rtr_fx_pick(q[..], rtr_no_answers(), d[..]);
+  #assert d[0].ok && d[0].engine == "codex" && d[0].station == "coderos" && d[0].reasons[0] == "door_unavailable" && d[0].reasons[1] == "continued";
   // nothing eligible, and only computers that take nothing heavy
-  q[0].stations[0].keep_clear = true; q[0].stations[1].keep_clear = true; rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
-  rtr_pick(q[..], e[..], rtr_no_answers(), d[..]);
+  q[0].current_station = ""; q[0].current_engine = "";
+  q[0].stations[0].keep_clear = true; q[0].stations[1].keep_clear = true;
+  rtr_fx_pick(q[..], rtr_no_answers(), d[..]);
   #assert !d[0].ok && d[0].error == "no_station" && d[0].station == "";
-  q[0].stations[0].keep_clear = false; q[0].stations[0].nothing_heavy = true; rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
-  rtr_pick(q[..], e[..], rtr_no_answers(), d[..]);
+  q[0].stations[0].keep_clear = false; q[0].stations[0].nothing_heavy = true;
+  rtr_fx_pick(q[..], rtr_no_answers(), d[..]);
   #assert !d[0].ok && d[0].error == "no_station" && d[0].reasons[1] == "too_heavy_for_station";
 }
 
-// Every combination of the two computers' rules and logins, with every answer
-// the model could give: what runs is always a computer code allows, running
-// an agent that can run there, at a weight its rules take.
-#forall "whatever the model answers, what runs is eligible" bits:0..<4096 {
-  q: [1] RtrRequest; e: [1] RtrEligible; d: [1] RtrDecision;
-  rtr_fx_two(q[..]);
-  q[0].stations[0].keep_clear = (bits & 1) != 0; q[0].stations[1].nothing_heavy = (bits & 2) != 0;
-  q[0].stations[0].agents[0].logged_in = (bits & 4) != 0; q[0].stations[1].agents[1].quota_used_up = (bits & 8) != 0;
+// Draw k of case v: 0 to n - 1.
+rtr_fx_draw :: (v: int, k: int, n: int) -> int {
+  x := ((v % 65521) * 31 + k * 7919 + 17) % 65521;
+  x = (x * 1103 + 12345) % 65521;
+  x = (x * 1103 + 12345) % 65521;
+  return x % n;
+}
+// Case v of the pick's fuzz: the two computers under a mix of rules, logins
+// and a conversation, and answers drawn from v, past the tables too.
+rtr_fx_case :: (q: [] RtrRequest, v: int) -> RtrAnswers {
+  rtr_fx_two(q);
+  q[0].stations[1].gpu = "RTX 4080";
+  q[0].stations[0].keep_clear = rtr_fx_draw(v, 1, 4) == 0; q[0].stations[1].nothing_heavy = rtr_fx_draw(v, 2, 2) == 0;
+  q[0].stations[0].agents[0].logged_in = rtr_fx_draw(v, 3, 3) != 0; q[0].stations[1].agents[0].logged_in = rtr_fx_draw(v, 4, 2) == 0;
+  q[0].stations[1].agents[1].quota_used_up = rtr_fx_draw(v, 5, 4) == 0;
+  cs := rtr_fx_draw(v, 6, 3); ce := rtr_fx_draw(v, 7, 3);
+  q[0].current_station = ifx cs == 1 then "mac" else ifx cs == 2 then "coderos" else "";
+  q[0].current_engine = ifx ce == 1 then "claude" else ifx ce == 2 then "codex" else "";
   a := rtr_no_answers();
-  a.has = (bits & 16) != 0;
-  a.station = ((bits >> 5) & 3) - 1; a.engine = ((bits >> 7) & 7) - 1;        // -1 to 2, and -1 to 6: past the tables too
-  a.station_milli = ifx (bits & 1024) != 0 then 900 else 100; a.engine_milli = ifx (bits & 2048) != 0 then 900 else 100;
-  a.weight = (bits >> 5) & 3; a.difficulty = (bits >> 7) & 7; a.effort = bits & 3;
+  a.has = rtr_fx_draw(v, 8, 8) != 0;
+  a.engine = rtr_fx_draw(v, 9, 7) - 1; a.engine_milli = ifx rtr_fx_draw(v, 10, 3) == 0 then 100 else 900;
+  for k: 0..<RTR_ENGINES { a.station_for[k] = rtr_fx_draw(v, 11 + k, 4) - 1; a.station_for_milli[k] = ifx rtr_fx_draw(v, 15 + k, 3) == 0 then 100 else 900; }
+  a.difficulty = rtr_fx_draw(v, 19, 7) - 1; a.effort = rtr_fx_draw(v, 20, 5) - 1; a.weight = rtr_fx_draw(v, 21, 5) - 1;
+  a.needs = rtr_fx_draw(v, 22, 6) - 1;
+  a.named_station = rtr_fx_draw(v, 23, 6) - 3; a.named_station_milli = ifx rtr_fx_draw(v, 24, 2) == 0 then 100 else 900;
+  a.named_engine = rtr_fx_draw(v, 25, 9) - 4; a.named_engine_milli = ifx rtr_fx_draw(v, 26, 2) == 0 then 100 else 900;
+  a.depth = rtr_fx_draw(v, 27, 4) - 1; a.depth_milli = ifx rtr_fx_draw(v, 28, 2) == 0 then 100 else 900;
+  a.continue_milli = ifx rtr_fx_draw(v, 29, 3) == 0 then -1 else ifx rtr_fx_draw(v, 30, 2) == 0 then 100 else 900;
+  return a;
+}
+
+// Whatever the model answers: what runs is a computer code allows, running
+// an agent that can run there, at a weight its rules take, with what the
+// task needs. What the person named runs whenever it can.
+#forall "whatever the model answers, what runs is allowed, and what was named runs when it can" v:0..<30000 {
+  q: [1] RtrRequest; e: [1] RtrEligible; d: [1] RtrDecision;
+  a := rtr_fx_case(q[..], v);
   rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]); rtr_pick(q[..], e[..], a, d[..]);
+  weight := ifx a.has && a.weight >= 0 && a.weight <= 2 then a.weight else RTR_HEAVY;
+  needs := ifx a.has && a.needs >= 1 && a.needs <= 3 then a.needs else RTR_NEED_NONE;
   if d[0].ok {
     s := rtr_station_index(q[..], d[0].station); k := ca_index(d[0].engine);
     #assert s >= 0 && k >= 0 && k < RTR_ENGINES && e[0].station[s] && e[0].pair[s * RTR_ENGINES + k];
     #assert rtr_station_fact(q[..], s) == "" && rtr_agent_fact(q[0].stations[s].agents[k]) == "";
-    #assert rtr_weight_ok(q[..], s, ifx d[0].weight >= 0 then d[0].weight else RTR_HEAVY);
+    #assert rtr_weight_ok(q[..], s, weight) && rtr_need_ok(q[..], s, needs);
     #assert d[0].error == "" && d[0].effort.count > 0;
+    named_engine := a.has && a.named_engine >= 0 && a.named_engine < RTR_ENGINES && a.named_engine_milli >= RTR_SURE_MILLI;
+    if named_engine && rtr_roomiest(q[..], e[..], a.named_engine, weight, needs) >= 0 { #assert k == a.named_engine; }
+    named_station := a.has && a.named_station >= 0 && a.named_station < q[0].n && a.named_station_milli >= RTR_SURE_MILLI;
+    if named_station && rtr_can(q[..], e[..], a.named_station, k, weight, needs) { #assert s == a.named_station; }
+    // a conversation that continues keeps its computer when that computer can run what runs, and nothing was named
+    cur := rtr_station_index(q[..], q[0].current_station);
+    if !named_station && rtr_continues(q[..], a) && cur >= 0 && rtr_can(q[..], e[..], cur, k, weight, needs) { #assert s == cur; }
   } else {
     #assert d[0].error == "no_station" && d[0].station == "" && d[0].engine == "";
+    // nothing ran only because nothing could: no eligible agent has a computer for this task
+    for k: 0..<RTR_ENGINES { #assert rtr_roomiest(q[..], e[..], k, weight, needs) == -1; }
   }
 }
