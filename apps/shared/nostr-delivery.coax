@@ -1,0 +1,71 @@
+// Volatile sender receipt projection. A receipt is associated only through
+// the current provider-opened sender copy, never by text, time or an author label.
+#load "nostr-inbox.coax";
+#load "nostr-delivery-state.coax";
+#load "../../coax/native/nostr-delivery-wire.coax";
+#load "../../coax/lib/nostr/filter.coax";
+#authority;
+InboxDelivery :: struct {operation:[64]u8;state:[1]NostrDeliveryState;room:[32]u8;rumor:[32]u8;created:int;visited:bool;}
+NostrDeliveries :: struct {generation:int;identity:[64]u8;rows:[128]InboxDelivery;n:int;after:[64]u8;na:int;complete:bool;full:bool;corrupt:bool;}
+#test "cold receipt recovery links only an opened sender copy and keeps exact operation ownership" {
+ inbox:[1]NostrInbox;s:[1]NostrDeliveries;q:[1]NdlRequest;p:[1]NdlPage;b:[8192]u8;r:[2048]u8;index:[1]MsIndex;
+ me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(inbox[..],"a",me) && ndi_begin(inbox[..],op,me);n:=nsr_write("custody","open",op,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(inbox[..],1,cast(string)b[0..<n]);
+ #assert ndd_begin(s[..],inbox[..]);n=ndd_request(s[..],b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);ids:=[2]string.[op,me];nr:=nsm_sealed_write(ids[..],7,r[..]);#assert ndl_put(p[..],op,cast(string)r[0..<nr]);n=ndl_page_write(p[..],b[..]);
+ #assert !ndd_page(s[..],inbox[..],2,cast(string)b[0..<n]) && ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].n==1 && s[0].complete;
+ #assert ndd_find(s[..],inbox[0].messages[0].message.rumor_id[..])==0 && nds_status(s[0].rows[0].state[..])== -1;
+ #assert ndd_filter(s[..],0,b[..])>0 && ndd_filter(s[..],1,b[..])<0;
+ index[0].ok=true;index[0].revision=8;index[0].n=1;index[0].rows[0].kind=1059;index[0].rows[0].accepted=1;for c,i:op {index[0].rows[0].id[i]=c;}
+ #assert ndd_index(s[..],inbox[..],1,0,index[..]) && nds_status(s[0].rows[0].state[..])==1;
+ #assert !ndd_index(s[..],inbox[..],2,0,index[..]);
+ #assert ndd_begin(s[..],inbox[..]);n=ndl_page_write(p[..],b[..]);#assert ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].n==1 && nds_status(s[0].rows[0].state[..])==1;
+ #assert ndd_begin(s[..],inbox[..]);p[0].items[0].receipt[0].revision=8;n=ndl_page_write(p[..],b[..]);
+ #assert n>0 && !ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].corrupt && s[0].rows[0].state[0].receipt[0].revision==7;
+ ndd_clear(s[..]);#assert s[0].n==0 && s[0].identity[0]==0;
+}
+#test "receipt absence on the next complete pass clears stale state after journal wipe" {
+ inbox:[1]NostrInbox;s:[1]NostrDeliveries;q:[1]NdlRequest;p:[1]NdlPage;b:[2048]u8;
+ me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(inbox[..],"a",me) && ndd_begin(s[..],inbox[..]);s[0].n=1;s[0].rows[0].visited=true;
+ #assert ndd_begin(s[..],inbox[..]);n:=ndd_request(s[..],b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);n=ndl_page_write(p[..],b[..]);
+ #assert ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].n==0 && s[0].complete;
+}
+ndd_clear :: (s:[]NostrDeliveries) #effects(all) {s[0]=NostrDeliveries.{};}
+ndd_begin :: (s:[]NostrDeliveries,inbox:[]NostrInbox)->bool #effects(all) {
+ if inbox[0].na==0 {return false;}if s[0].generation!=inbox[0].generation || cast(string)s[0].identity[..]!=cast(string)inbox[0].identity[..] {ndd_clear(s);}
+ s[0].generation=inbox[0].generation;s[0].identity=inbox[0].identity;s[0].na=0;s[0].complete=false;s[0].full=false;s[0].corrupt=false;
+ // The receipt cache follows the bounded plaintext window. Otherwise old
+ // rows could fill it forever and prevent new sender history from recovering.
+ n:=0;for i:0..<s[0].n {keep:=false;for k:0..<inbox[0].n {if cast(string)inbox[0].messages[k].outer[..]==cast(string)s[0].rows[i].state[0].receipt[0].self[..] {keep=true;}}
+  if keep {s[0].rows[n]=s[0].rows[i];s[0].rows[n].visited=false;n+=1;}
+ }for i:n..<s[0].n {s[0].rows[i]=InboxDelivery.{};}s[0].n=n;return true;
+}
+ndd_request :: (s:[]NostrDeliveries,out:[]u8)->int #effects(all) {return ndl_request_write(cast(string)s[0].identity[..],cast(string)s[0].after[0..<s[0].na],out);}
+ndd_find :: (s:[]NostrDeliveries,rumor:[]u8)->int #effects(all) {for i:0..<s[0].n {if n17_same(s[0].rows[i].rumor[..],rumor) {return i;}}return -1;}
+ndd_same :: (a:NsmSealed,b:NsmSealed)->bool #effects(all) {
+ x:=a;y:=b;if x.n!=y.n || x.revision!=y.revision || cast(string)x.self[..]!=cast(string)y.self[..] {return false;}
+ for i:0..<x.n {if cast(string)x.ids[i][..]!=cast(string)y.ids[i][..] {return false;}}return true;
+}
+ndd_page :: (s:[]NostrDeliveries,inbox:[]NostrInbox,generation:int,raw:string)->bool #effects(all) {
+ if generation!=s[0].generation || generation!=inbox[0].generation || s[0].complete || s[0].corrupt || s[0].full {return false;}
+ page:[1]NdlPage;if !ndl_page_read(raw,page[..]) || cast(string)page[0].identity[..]!=cast(string)s[0].identity[..] || cast(string)page[0].after[0..<page[0].na]!=cast(string)s[0].after[0..<s[0].na] {return false;}
+ // Check immutable receipts before publishing any rows from this page.
+ for i:0..<page[0].n {item:=page[0].items[i];for k:0..<s[0].n {if cast(string)item.operation[..]==cast(string)s[0].rows[k].operation[..] && !ndd_same(item.receipt[0],s[0].rows[k].state[0].receipt[0]) {s[0].corrupt=true;return false;}}}
+ me:[32]u8;if !ne_lower_hex(cast(string)s[0].identity[..],me[..]) {return false;}
+ for i:0..<page[0].n {
+  item:=page[0].items[i];message:= -1;for k:0..<inbox[0].n {row:=inbox[0].messages[k];if cast(string)row.outer[..]==cast(string)item.receipt[0].self[..] && n17_same(row.message.author[..],me[..]) {message=k;break;}}
+  if message<0 {continue;}at:= -1;for k:0..<s[0].n {if cast(string)s[0].rows[k].operation[..]==cast(string)item.operation[..] {at=k;break;}}
+  if at<0 {if s[0].n==128 {s[0].full=true;return false;}at=s[0].n;if !nds_begin(s[0].rows[at].state[..],item.receipt[0]) {s[0].corrupt=true;return false;}s[0].rows[at].operation=item.operation;s[0].n+=1;}
+  m:=inbox[0].messages[message].message;s[0].rows[at].room=m.room;s[0].rows[at].rumor=m.rumor_id;s[0].rows[at].created=m.created_at;s[0].rows[at].visited=true;
+ }
+ s[0].after=page[0].next;s[0].na=page[0].nn;
+ if s[0].na==0 {s[0].complete=true;n:=0;for i:0..<s[0].n {if s[0].rows[i].visited {s[0].rows[n]=s[0].rows[i];n+=1;}}for i:n..<s[0].n {s[0].rows[i]=InboxDelivery.{};}s[0].n=n;}
+ return true;
+}
+ndd_filter :: (s:[]NostrDeliveries,at:int,out:[]u8)->int #effects(all) {
+ if at<0 || at>=s[0].n {return -1;}receipt:=s[0].rows[at].state[0].receipt[0];ids:[11]string;for i:0..<receipt.n {ids[i]=cast(string)s[0].rows[at].state[0].receipt[0].ids[i][..];}
+ f:NostrFilter;kinds:=[1]int.[1059];f.has_ids=true;f.ids=ids[0..<receipt.n];f.has_kinds=true;f.kinds=kinds[..];return nf_write(f,out,false);
+}
+ndd_index :: (s:[]NostrDeliveries,inbox:[]NostrInbox,generation:int,at:int,index:[]MsIndex)->bool #effects(all) {
+ if generation!=s[0].generation || generation!=inbox[0].generation || at<0 || at>=s[0].n {return false;}return nds_index(s[0].rows[at].state[..],index);
+}

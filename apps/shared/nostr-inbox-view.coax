@@ -1,0 +1,72 @@
+// Shared inbox/transcript projection using the same kit and Markdown as chat.
+#load "nostr-inbox.coax";
+#load "../../components/kit/stage.coax";
+#load "../../coax/native/conversation-wire.coax";
+#load "../../coax/lib/nostr/public-key-text.coax";
+NostrConversation :: struct {open:bool;room:[32]u8;peer:[64]u8;draft:[NDI_TEXT]u8;nd:int;reply:[64]u8;nr:int;before:int;}
+#test "Nostr text uses the existing selectable message and simple composer without agent tools" {
+ s:[1]NostrInbox;v:[1]NostrConversation;t:[1]Tree;u:[1]Ui;doc:[1]MdDoc;
+ me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";op:="0000000000000000000000000000000000000000000000000000000000000001";
+ b:[2048]u8;#assert ndi_bind(s[..],"a",me) && ndi_begin(s[..],op,op);n:=nsr_write("custody","open",op,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(s[..],1,cast(string)b[0..<n]);
+ #assert ndv_select(s[..],v[..],0);tr_begin(t[..]);ui_begin(u[..],0,true);ndv_render(s[..],v[..],t[..],u[..],doc[..],true,false);
+ #assert tr_find(t[..],"dm.composer")>=0 && tr_find(t[..],"dm.message.6cb5d5d7777d282781248a294413a0ff0f730bf3822b08050e23c42c36bab265")>=0 && tr_find(t[..],"dm.refresh")<0 && tr_find(t[..],"env.composer")<0;
+ #assert tr_find(t[..],"dm.message.6cb5d5d7777d282781248a294413a0ff0f730bf3822b08050e23c42c36bab265.body")>=0 && tr_find(t[..],"dm.reply.6cb5d5d7777d282781248a294413a0ff0f730bf3822b08050e23c42c36bab265")>=0;
+ #assert ndv_reference(s[..],v[..],b[..])>0;
+}
+#test "a conversation is selected by admitted membership and clearing erases its draft" {
+ s:[1]NostrInbox;v:[1]NostrConversation;#assert !ndv_select(s[..],v[..],0) && !v[0].open;
+ v[0].nd=ndi_copy(v[0].draft[..],"unsent");ndv_clear(v[..]);#assert v[0].nd==0 && !v[0].open && v[0].draft[0]==0;
+}
+#test "peer switches isolate drafts and typed references while selecting the same peer keeps them" {
+ s:[1]NostrInbox;v:[1]NostrConversation;a:[224]u8;b:[224]u8;
+ me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";alice:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";carol:="f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+ #assert ndi_bind(s[..],"a",me) && !ndv_peer(s[..],v[..],me) && !ndv_peer(s[..],v[..],"nsec1x") && ndv_peer(s[..],v[..],alice);
+ na:=ndv_reference(s[..],v[..],a[..]);#assert na>0;v[0].nd=ndi_copy(v[0].draft[..],"Private draft");v[0].nr=ndi_copy(v[0].reply[..],alice);
+ #assert ndv_peer(s[..],v[..],alice) && v[0].nd==13 && v[0].nr==64;
+ #assert ndv_peer(s[..],v[..],carol) && v[0].nd==0 && v[0].draft[0]==0 && v[0].nr==0;
+ nb:=ndv_reference(s[..],v[..],b[..]);#assert nb>0 && cast(string)a[0..<na]!=cast(string)b[0..<nb];
+}
+ndv_clear :: (v:[]NostrConversation) #effects(all) {v[0]=NostrConversation.{};}
+ndv_id :: (prefix:string,key:[]u8,out:[]u8)->string #effects(all) {
+ hex:[64]u8;r:=hex_encode_checked(cast(string)key,hex[..],false);if r.error!=NC_OK || r.written!=64 {return "";}return tr_cat(out,prefix,cast(string)hex[..]);
+}
+ndv_peer :: (s:[]NostrInbox,v:[]NostrConversation,text:string)->bool #effects(all) {
+ if s[0].na==0 {return false;}peer:[64]u8;keys:[64]u8;if nostr_public_key_text(text,peer[..])!=64 || !ne_lower_hex(cast(string)s[0].identity[..],keys[0..<32]) || !ne_lower_hex(cast(string)peer[..],keys[32..<64]) || n17_peer_bad(keys[0..<32],keys[32..<64])>=0 {return false;}
+ room:=n17_room(keys[..],2);if !v[0].open || !n17_same(v[0].room[..],room[..]) {ndv_clear(v);}v[0].open=true;v[0].room=room;v[0].peer=peer;v[0].before=0;return true;
+}
+ndv_select :: (s:[]NostrInbox,v:[]NostrConversation,index:int)->bool #effects(all) {
+ if index<0 || index>=s[0].n {return false;}m:=s[0].messages[index].message;me:[32]u8;if !ne_lower_hex(cast(string)s[0].identity[..],me[..]) || m.members!=2 {return false;}
+ peer:[64]u8;found:=false;for i:0..<2 {key:=m.member[i*32..<i*32+32];if !n17_same(key,me[..]) {r:=hex_encode_checked(cast(string)key,peer[..],false);if r.error!=NC_OK {return false;}found=true;}}
+ if !found {return false;}return ndv_peer(s,v,cast(string)peer[..]);
+}
+ndv_reference :: (s:[]NostrInbox,v:[]NostrConversation,out:[]u8)->int #effects(all) {
+ if !v[0].open {return -1;}id:[64]u8;r:=hex_encode_checked(cast(string)v[0].room[..],id[..],false);if r.error!=NC_OK {return -1;}
+ return ncv_write("nip17",cast(string)id[..],cast(string)s[0].identity[..],out);
+}
+ndv_render :: (s:[]NostrInbox,v:[]NostrConversation,t:[]Tree,u:[]Ui,doc:[]MdDoc,ready:bool,busy:bool) #effects(all) {
+ x:=tr_open(t,"dm.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");name:[96]u8;
+ x=k_text(t,u,"dm.title",TG_SPAN,"",ifx v[0].open then k_mid(name[..],cast(string)v[0].peer[..],10,6) else "Messages");
+ x=k_icon_button(t,"dm.new",IC_PLUS,"New message");tr_close(t);
+ if !v[0].open {
+  if !ready {x=k_text(t,u,"dm.loading",TG_P,"meta","Connecting…");}
+  else if s[0].n==0 {x=k_text(t,u,"dm.empty",TG_P,"","No messages yet");}
+  // Latest message for each room, descending activity. Rows retain one stable
+  // conversation reference; no flattened environment/account IDs are reused.
+  for k:0..<s[0].n {i:=s[0].n-1-k;m:=s[0].messages[i].message;newest:=true;for j:i+1..<s[0].n {if n17_same(s[0].messages[j].message.room[..],m.room[..]) {newest=false;}}
+   if !newest {continue;}id:[96]u8;peer:[64]u8;me:[32]u8;_=ne_lower_hex(cast(string)s[0].identity[..],me[..]);
+   for p:0..<2 {key:=m.member[p*32..<p*32+32];if !n17_same(key,me[..]) {_=hex_encode_checked(cast(string)key,peer[..],false);}}
+   label:[96]u8;x=k_row(t,u,ndv_id("dm.room.",m.room[..],id[..]),k_mid(label[..],cast(string)peer[..],12,8),"",false);
+  }
+  if s[0].full {x=k_text(t,u,"dm.bounded",TG_P,"meta","More history available");}return;
+ }
+ x=k_reading_list(t,"dm.transcript",cast(string)v[0].peer[..]);count:=0;for i:0..<s[0].n {if n17_same(s[0].messages[i].message.room[..],v[0].room[..]) {count+=1;}}
+ start:=count-12-v[0].before;if start<0 {start=0;}end:=start+12;if end>count {end=count;}at:=0;me:[32]u8;_=ne_lower_hex(cast(string)s[0].identity[..],me[..]);
+ if start>0 {x=k_link(t,"dm.earlier","Earlier");}
+ for i:0..<s[0].n {row:=s[0].messages[i];if !n17_same(row.message.room[..],v[0].room[..]) {continue;}include:=at>=start && at<end;at+=1;if !include {continue;}
+  id:[96]u8;own:=n17_same(row.message.author[..],me[..]);x=k_message(t,u,ndv_id("dm.message.",row.message.rumor_id[..],id[..]),!own,doc,cast(string)row.body[0..<row.n]);
+  x=k_link(t,ndv_id("dm.reply.",row.message.rumor_id[..],id[..]),"Reply");
+ }
+ tr_close(t);
+ if v[0].nr>0 {x=k_link(t,"dm.reply.cancel","Replying · Cancel");}
+ x=k_composer_begin(t,u,"dm.composer","Message");tr_attr(t,x,AT_VALUE,cast(string)v[0].draft[0..<v[0].nd]);k_composer_end(t,u,"dm.composer","Send",ready && !busy && v[0].nd>0);
+}

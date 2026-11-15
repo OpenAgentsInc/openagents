@@ -37,12 +37,13 @@ carry no `e` tag. NIP-EE is `unrecommended` and not implemented.
 
 | File | Procedure | What it does |
 | --- | --- | --- |
-| [nip17.coax](../../coax/lib/nostr/nip17.coax) | `n17_relays(e, owner)` | Reads one participant's kind 10050 relays, or refuses (`#authority`) |
-| | `nip17_plan(sender_x, recipients, lists)` | Checks the member set and reads every participant's list before any wrap exists |
+| [nip17-relays.coax](../../coax/lib/nostr/nip17-relays.coax) | `n17_relays(e, owner)` | Reads one participant's kind 10050 relays, or refuses (`#authority`) |
+| [nip17.coax](../../coax/lib/nostr/nip17.coax) | `nip17_plan(sender_x, recipients, lists)` | Checks the member set and reads every participant's list before any wrap exists |
 | | `nip17_send(sender, plan, now, kind, tags, content, fresh, work, out, overlap)` | Writes the rumor's `p` tags and makes N+1 wraps with `nip59_wrap_checked` |
 | | `nip17_open(recipient, recipient_x, wrap, work, out)` | Opens a wrap with `nip59_unwrap_checked`, then reads it as a NIP-17 message with `n17_read` |
-| | `n17_room(keys, count)`, `nip17_order(m, room, order)`, `nip17_subject(m, order)` | The room id, a room's messages in time order, and its current subject |
-| | `n17_extra`, `n17_file`, `n17_value`, `n17_rumor_tags` | The caller's tags, kind 15's file tags, one tag's first value, the rumor's tags |
+| [nip17-message.coax](../../coax/lib/nostr/nip17-message.coax) | `n17_room(keys, count)`, `nip17_order(m, room, order)`, `nip17_subject(m, order)` | The room id, a room's messages in time order, and its current subject |
+| | `n17_file`, `n17_value` | Kind 15's file tags and one tag's first value |
+| [nip17.coax](../../coax/lib/nostr/nip17.coax) | `n17_extra`, `n17_rumor_tags` | The caller's tags and the rumor's tags |
 | [nip59.coax](../../coax/lib/nostr/nip59.coax) | `nip59_wrap_checked`, `nip59_unwrap_checked` | Chapter 25's rumor, seal and wrap |
 | [tags.coax](../../coax/lib/nostr/tags.coax), [relay_uri.coax](../../coax/lib/net/relay_uri.coax) | `nostr_tag`, `relay_uri` | Chapter 22's tag reader and chapter 28's relay URL check |
 | [nipa4.coax](../../coax/lib/nostr/nipa4.coax) | `na4_message(e)` | A kind 24 public message: its receivers, quotes and expiration, refusing an `e` tag (`#authority`) |
@@ -109,10 +110,10 @@ nip17_plan :: (sender_x:[]u8,recipients:[]u8,lists:[]NostrEvent)->N17Plan #effec
   if sender_x.count!=32 || recipients.count%32!=0 || lists.count!=n+1 {return p;}
   p.error=N17_MEMBERS;
   if n==0 || n>N17_MOST {return p;}
+  bad:=n17_peer_bad(sender_x,recipients);
   for i:0..<n {
     for c:0..<32 {p.pub[i*32+c]=recipients[i*32+c];}
-    if n17_same(recipients[i*32..<i*32+32],sender_x) {p.who=i;return p;}
-    for k:0..<i {if n17_same(recipients[i*32..<i*32+32],recipients[k*32..<k*32+32]) {p.who=i;return p;}}
+    if i==bad {p.who=i;return p;}
   }
   for c:0..<32 {p.pub[n*32+c]=sender_x[c];}
   p.recipients=n;
@@ -128,7 +129,7 @@ nip17_plan :: (sender_x:[]u8,recipients:[]u8,lists:[]NostrEvent)->N17Plan #effec
 values are ignored. Each URL must pass chapter 28's `relay_uri`, is kept
 once, and at most eight are kept (NIP-17 asks for one to three).
 
-<!-- source: coax/lib/nostr/nip17.coax relays -->
+<!-- source: coax/lib/nostr/nip17-relays.coax relays -->
 ```jai
 // A participant's kind 10050 relays. e is the newest list found for owner,
 // or an unparsed NostrEvent when none was found.
@@ -224,7 +225,7 @@ sender could seal a rumor that names Alice as its author. `nip17_open`
 reports either as `N17_WRAP` with the NIP-59 status in `wrap_error`, then
 reads the rumor:
 
-<!-- source: coax/lib/nostr/nip17.coax read -->
+<!-- source: coax/lib/nostr/nip17-message.coax read -->
 ```jai
 // An opened rumor read as a NIP-17 message for the reader me. rumor is the
 // JSON that nip59_unwrap_checked wrote, and o its result.
@@ -271,7 +272,7 @@ else.
 with the same `created_at` are ordered by rumor id, so every member sees the
 same order.
 
-<!-- source: coax/lib/nostr/nip17.coax order -->
+<!-- source: coax/lib/nostr/nip17-message.coax order -->
 ```jai
 // The indexes of the opened messages in room, oldest first; equal times by
 // rumor id. Returns their count, or -1 when order is too small.

@@ -14,7 +14,7 @@ static bool sql_ok(PGconn *db,const char *sql) {
  PGresult *r=PQexec(db,sql);bool ok=PQresultStatus(r)==PGRES_COMMAND_OK;PQclear(r);return ok;
 }
 bool nostr_messaging_route(const request *q,PGconn *db,const char *op) {
- int effect=!strcmp(op,"nostr/store/v1alpha1") ? 1:!strcmp(op,"nostr/custody/v1alpha1") ? 2:!strcmp(op,"nostr/operation/v1alpha1") ? 3:!strcmp(op,"nostr/send/v1alpha1") ? 4:0;
+ int effect=!strcmp(op,"nostr/store/v1alpha1") ? 1:!strcmp(op,"nostr/custody/v1alpha1") ? 2:!strcmp(op,"nostr/operation/v1alpha1") ? 3:!strcmp(op,"nostr/send/v1alpha1") ? 4:!strcmp(op,"nostr/delivery/v1alpha1") ? 5:0;
  if (!effect) return false;
  api_route_at("nostr_messaging_route");
  const auth_principal *p=auth_principal_of(q);
@@ -24,17 +24,18 @@ bool nostr_messaging_route(const request *q,PGconn *db,const char *op) {
  coax_t_MsRequest *input=calloc(1,sizeof *input);coax_t_Nms *state=calloc(1,sizeof *state);
  coax_t_NscRequest *custody=calloc(1,sizeof *custody);coax_t_NsoRequest *receipt=calloc(1,sizeof *receipt);coax_t_NscPurpose *purpose=calloc(1,sizeof *purpose);coax_t_Nip59Fresh *fresh=calloc(11,sizeof *fresh);
  coax_t_NsmHeads *heads=calloc(1,sizeof *heads);coax_t_NsmSend *batch=calloc(1,sizeof *batch);unsigned char *send_body=calloc(1,1048576);
+ coax_t_NdlRequest *delivery=calloc(1,sizeof *delivery);coax_t_NdlPage *delivery_page=calloc(1,sizeof *delivery_page);
  coax_t_RsdRec *records=calloc(512,sizeof *records);
  unsigned char *document=calloc(1,8388608),*replacement=calloc(1,8388608),*arena=calloc(1,8388608),*payload=calloc(1,65537),*response=calloc(1,400000),*head=calloc(1,65536);
  unsigned char secret[32]={0};char digest[65]={0},operation[65]={0};int64_t source=0;bool save_receipt=false;coax_t_NscEffect crypto={0};
  bool txn=false;int error=503;const char *message="Store unavailable.";coax_t_NmsChange result={0};
- if (!input || !state || !records || !document || !replacement || !arena || !payload || !response || !custody || !receipt || !purpose || !fresh || !head || !heads || !batch || !send_body) goto done;
+ if (!input || !state || !records || !document || !replacement || !arena || !payload || !response || !custody || !receipt || !purpose || !fresh || !head || !heads || !batch || !send_body || !delivery || !delivery_page) goto done;
  coax_v_t_MsRequest iv={input,1};coax_v_t_Nms sv={state,1};
  coax_v_t_NscRequest cv={custody,1};coax_v_t_NsoRequest ov={receipt,1};coax_v_t_NsmSend bv={batch,1};coax_v_t_NsmHeads hv={heads,1};coax_string body={q->body,(int64_t)q->body_len};
- if (q->body_len>(effect==4 ? 1048576:400000) || !(effect==1 ? nms_request_read(body,iv):effect==2 ? nsc_read(body,cv):effect==3 ? nso_read(body,ov):nsm_send_read(body,bv))) {error=400;message="Invalid Nostr request.";goto done;}
+ if (q->body_len>(effect==4 ? 1048576:400000) || !(effect==1 ? nms_request_read(body,iv):effect==2 ? nsc_read(body,cv):effect==3 ? nso_read(body,ov):effect==4 ? nsm_send_read(body,bv):ndl_request_read(body,(coax_v_t_NdlRequest){delivery,1}))) {error=400;message="Invalid Nostr request.";goto done;}
  if (effect==4) {receipt->action=3;memcpy(receipt->identity.e,batch->identity.e,64);memcpy(receipt->operation.e,batch->operation.e,64);memcpy(receipt->digest.e,batch->digest.e,64);}
  char expected[65]={0},canonical[65]={0},scope_hex[65]={0},origin[128]={0};unsigned char scope[32];
- memcpy(expected,effect==1 ? input->identity.e:effect==2 ? custody->identity.e:receipt->identity.e,64);
+ memcpy(expected,effect==1 ? input->identity.e:effect==2 ? custody->identity.e:effect==5 ? delivery->identity.e:receipt->identity.e,64);
  coax_t_MsFacts facts={.authorized=asp_write(p->kind,true,p->limited,p->frozen),.fresh=asp_backup(p->kind,true,p->limited,p->frozen,p->level,p->l2_age_ms)};
  if (!facts.authorized) {error=403;message="Verify your account first.";goto done;}
  int auth_source=auth_identity_ensure(db,p->account,canonical);if (auth_source<0) goto done;
@@ -62,6 +63,22 @@ bool nostr_messaging_route(const request *q,PGconn *db,const char *op) {
  // The namespace column must match the identity-bound original header too.
  if (!nms_scope(nss(origin),nss(canonical),nb(scope,32))) {result.status=10;goto answer;}
  char actual_scope[65];auth_hex(scope,32,actual_scope);if (strcmp(scope_hex,actual_scope)) {result.status=10;goto answer;}
+ if (effect==5) {
+  if (!ndl_begin((coax_v_t_NdlPage){delivery_page,1},(coax_v_t_NdlRequest){delivery,1})) goto done;
+  char after[65]={0};memcpy(after,delivery->after.e,(size_t)delivery->na);
+  const char *keys[]={scope_hex,p->account,canonical,after};
+  row=PQexecParams(db,"SELECT operation,result,result_sha256 FROM auth.nostr_operations_v1alpha1 WHERE namespace=$1 AND account=$2 AND identity=$3 AND action=3 AND operation COLLATE \"C\">$4 ORDER BY operation COLLATE \"C\" LIMIT 17",4,NULL,keys,NULL,NULL,0);
+  if (PQresultStatus(row)!=PGRES_TUPLES_OK) {PQclear(row);goto done;}
+  int count=PQntuples(row);ok=true;
+  for (int i=0;i<count && i<16;i++) {
+   char checksum[65]={0};coax_string sealed={PQgetvalue(row,i,1),PQgetlength(row,i,1)};
+   if (!nsm_checksum(sealed,nb(checksum,64)) || strcmp(checksum,PQgetvalue(row,i,2)) || !ndl_put((coax_v_t_NdlPage){delivery_page,1},nss(PQgetvalue(row,i,0)),sealed)) {ok=false;break;}
+  }
+  if (count>16) {delivery_page->nn=64;memcpy(delivery_page->next.e,delivery_page->items.e[15].operation.e,64);}
+  PQclear(row);if (!ok) {result.status=10;goto answer;}
+  result.payload_n=ndl_page_write((coax_v_t_NdlPage){delivery_page,1},nb(payload,65536));if (result.payload_n<0) goto done;
+  goto answer;
+ }
  // Re-observe the canonical source under the same lock as the result commit.
  if (effect!=1) {
   auth_source=auth_identity_secret(db,p->account,canonical,secret);if (auth_source<0) goto done;
@@ -137,6 +154,10 @@ bool nostr_messaging_route(const request *q,PGconn *db,const char *op) {
 answer:
  if (txn) {sql_ok(db,"ROLLBACK");txn=false;}
  {
+  if (effect==5) {
+   if (result.status) {error=result.status==3 ? 403:result.status==11 ? 409:503;message=result.status==3 ? "Identity changed.":result.status==11 ? "History needs reconciliation.":"History unavailable.";goto done;}
+   api_respond(q->fd,200,"application/json","Cache-Control: private, no-store\r\nVary: Cookie, Authorization\r\n",(const char *)payload,(size_t)result.payload_n);error=0;goto done;
+  }
   crypto.status=result.status;crypto.n=result.payload_n;
   int64_t n=effect==1 ? nms_response(iv,result,nb(payload,65536),nb(response,400000)):effect==2 ? nsc_response(cv,crypto,nb(payload,65536),nb(response,400000)):nso_response(ov,result.status,(coax_string){(char *)payload,result.payload_n},nb(response,400000));if (n<0) goto done;
   api_respond(q->fd,200,"application/json","Cache-Control: private, no-store\r\nVary: Cookie, Authorization\r\n",(const char *)response,(size_t)n);error=0;
@@ -146,5 +167,6 @@ done:
  if (payload) explicit_bzero(payload,65536);if (response) explicit_bzero(response,400000);
  explicit_bzero(secret,sizeof secret);if (custody) explicit_bzero(custody,sizeof *custody);if (purpose) explicit_bzero(purpose,sizeof *purpose);if (fresh) explicit_bzero(fresh,11*sizeof *fresh);
  free(input);free(state);free(records);free(document);free(replacement);free(arena);free(payload);free(response);free(custody);free(receipt);free(purpose);free(fresh);free(head);free(heads);free(batch);free(send_body);
+ free(delivery);free(delivery_page);
  if (error) api_error(q->fd,error,message);return true;
 }

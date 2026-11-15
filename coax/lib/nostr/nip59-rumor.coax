@@ -1,0 +1,40 @@
+// One unsigned-rumor writer/reader adapter, shared by custody and public projections.
+#load "nip59-types.coax";
+#load "event.coax";
+#load "../crypto/erasure.coax";
+#authority;
+N59_SIG_FIELD :: ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"";
+
+n59_signed_copy :: (rumor:string,out:[]u8)->int #effects(all) {
+  end:=n59_rumor_end(rumor);
+  if end<0 || rumor[end]!='}' {return -1;}
+  n:=json_raw(out,0,rumor[0..<end]);n=json_raw(out,n,N59_SIG_FIELD);
+  return json_raw(out,n,rumor[end..<rumor.count]);
+}
+
+n59_rumor_end :: (rumor:string)->int #effects(all) {
+  end:=rumor.count-1;
+  while end>=0 && (rumor[end]==' ' || rumor[end]==9 || rumor[end]==10 || rumor[end]==13) {end-=1;}
+  return end;
+}
+
+n59_rumor :: (pub:[]u8,at:int,kind:int,tags:string,content:string,pre:[]u8,out:[]u8,id:[]u8)->int #effects(all) {
+  decoded:[NIP59_REGION]u8;defer {secure_zero(decoded[..]);#assert crypto_zeroed(decoded[..]);}
+  hex:[64]u8;idhex:[64]u8;
+  h:=hex_encode_checked(cast(string)pub,hex[..],false);
+  n:=json_raw(pre,ne_writer_start(h.error),"[0,");n=json_write_string(pre,n,cast(string)hex[..]);
+  n=json_raw(pre,n,",");n=json_write_int(pre,n,at);n=json_raw(pre,n,",");n=json_write_int(pre,n,kind);
+  n=json_raw(pre,n,",");n=ne_write_tags(tags,pre,n,decoded[..]);n=json_raw(pre,n,",");
+  n=json_write_string(pre,n,content);n=json_raw(pre,n,"]");
+  if n==NE_WRITE_FAILED {return -1;}
+  #assert id.count==32;
+  #assert sha256_hash_checked(pre[0..<n],id,false)==SHA_OK;
+  hi:=hex_encode_checked(cast(string)id,idhex[..],false);
+  m:=json_raw(out,ne_writer_start(hi.error),"{\"id\":");m=json_write_string(out,m,cast(string)idhex[..]);
+  m=json_raw(out,m,",\"pubkey\":");m=json_write_string(out,m,cast(string)hex[..]);
+  m=json_raw(out,m,",\"created_at\":");m=json_write_int(out,m,at);
+  m=json_raw(out,m,",\"kind\":");m=json_write_int(out,m,kind);
+  m=json_raw(out,m,",\"tags\":");m=ne_write_tags(tags,out,m,decoded[..]);
+  m=json_raw(out,m,",\"content\":");m=json_write_string(out,m,content);
+  return json_raw(out,m,"}");
+}

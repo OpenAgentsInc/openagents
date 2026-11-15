@@ -6,7 +6,7 @@
 #load "../lib/nostr/tags.coax";
 #load "fixtures/messaging_vectors.coax" #test;
 #authority;
-NRS_FRAME :: 131072;NRS_WIRE :: 800000;
+#load "relay-session-limits.coax";
 #test "outbound frame and complete original bounds include their exact maximum and refuse trailing data" #steps 200000000 {
  b:[131073]u8;p:="[\"EVENT\",{\"x\":\"";for c,i:p {b[i]=c;}for i:p.count..<65543 {b[i]='a';}b[65543]='"';b[65544]='}';b[65545]=']';
  for i:65546..<b.count {b[i]=' ';}

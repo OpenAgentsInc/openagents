@@ -1,0 +1,34 @@
+// Independent canonical NIP-01 hash made with Python hashlib/JSON, no product writer.
+DM_OPENED_GOLDEN :: "{\"id\":\"6cb5d5d7777d282781248a294413a0ff0f730bf3822b08050e23c42c36bab265\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1730000000,\"kind\":14,\"tags\":[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]],\"content\":\"hello **Bob**\"}";
+#test "opened projection retains exact identity membership content and chronological position" {
+ me:[32]u8;#assert ne_lower_hex("dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",me[..]);m:=nip17_read_opened(DM_OPENED_GOLDEN,me[..]);
+ #assert m.error==N17_OK && m.members==2 && m.kind==14 && m.created_at==1730000000 && !m.has_reply;
+ text:[64]u8;n:=json_unescape(DM_OPENED_GOLDEN[m.content_from..<m.content_to],text[..]);#assert n==13 && cast(string)text[0..<n]=="hello **Bob**";
+ id:[32]u8;#assert ne_lower_hex("6cb5d5d7777d282781248a294413a0ff0f730bf3822b08050e23c42c36bab265",id[..]) && n17_same(id[..],m.rumor_id[..]);
+ me[0]=0;#assert nip17_read_opened(DM_OPENED_GOLDEN,me[..]).error==N17_NOT_MEMBER;
+ #assert nip17_read_opened(DM_OPENED_GOLDEN,me[0..<31]).error!=N17_OK;
+}
+#test "projection refuses altered IDs signed rumors malformed and oversized plaintext" {
+ me:[32]u8;#assert ne_lower_hex("dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",me[..]);bad:[32768]u8;
+ for c,i:DM_OPENED_GOLDEN {bad[i]=c;}bad[7]=ifx bad[7]=='0' then '1' else '0';#assert nip17_read_opened(cast(string)bad[0..<DM_OPENED_GOLDEN.count],me[..]).error!=N17_OK;
+ copy:[65536]u8;n:=n59_signed_copy(DM_OPENED_GOLDEN,copy[..]);#assert n>0 && nip17_read_opened(cast(string)copy[0..<n],me[..]).error!=N17_OK;
+ #assert nip17_read_opened("{}",me[..]).error!=N17_OK && nip17_read_opened("",me[..]).error!=N17_OK;
+ #assert nip17_read_opened(cast(string)bad[..],me[..]).error!=N17_OK;
+}
+#test "the shared unsigned writer agrees with the independent opened golden" {
+ pub:[32]u8;#assert ne_lower_hex("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",pub[..]);
+ pre:[4096]u8;out:[4096]u8;id:[32]u8;
+ tags:="[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]";
+ n:=n59_rumor(pub[..],1730000000,14,tags,"hello **Bob**",pre[..],out[..],id[..]);
+ #assert n==DM_OPENED_GOLDEN.count && cast(string)out[0..<n]==DM_OPENED_GOLDEN;
+ n=n59_rumor(pub[..],1730000000,15,tags,"file",pre[..],out[..],id[..]);
+ #assert nip17_read_opened(cast(string)out[0..<n],pub[..]).error==N17_FILE;
+}
+#test "message order and subject keep chronology room boundaries ties and capacity" {
+ me:[32]u8;#assert ne_lower_hex("dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",me[..]);
+ m:[3]N17Message;m[0]=nip17_read_opened(DM_OPENED_GOLDEN,me[..]);m[1]=m[0];m[1].created_at-=1;m[1].subject_n=1;m[2]=m[0];m[2].error=N17_KIND;
+ order:[3]int;#assert nip17_order(m[..],m[0].room[..],order[..])==2 && order[0]==1 && order[1]==0;
+ #assert nip17_subject(m[..],order[0..<2])==1 && nip17_order(m[..],m[0].room[..],order[0..<1])== -1;
+ m[0].subject_n=0;#assert nip17_subject(m[..],order[0..<0])== -1;
+ m[1].created_at=m[0].created_at;m[1].rumor_id[0]=0;#assert n17_before(m[1],m[0]) && !n17_before(m[0],m[1]);
+}

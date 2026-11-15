@@ -1,0 +1,141 @@
+// Account-scoped, volatile NIP-17 projection. The custody bridge authenticates
+// seals; this controller never handles keys or persists opened plaintext.
+#load "../../coax/lib/nostr/nip17-message.coax";
+#load "../../coax/native/nostr-result-wire.coax";
+#authority;
+NDI_MESSAGES :: 128;
+NDI_TEXT :: 16384;
+InboxMessage :: struct {message:N17Message;outer:[64]u8;body:[NDI_TEXT]u8;n:int;}
+NostrInbox :: struct {
+ generation:int;account:[128]u8;na:int;identity:[64]u8;
+ messages:[NDI_MESSAGES]InboxMessage;n:int;full:bool;
+ pending:bool;operation:[64]u8;outer:[64]u8;
+}
+#test "opening is fenced to the exact account generation operation and identity" {
+ s:[1]NostrInbox;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ op:="0000000000000000000000000000000000000000000000000000000000000001";b:[2048]u8;
+ #assert ndi_bind(s[..],"account-a",id) && s[0].generation==1 && ndi_begin(s[..],op,op);
+ n:=nsr_write("custody","open",op,id,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert n>0;
+ #assert !ndi_opened(s[..],2,cast(string)b[0..<n]) && s[0].pending && s[0].n==0;
+ #assert ndi_opened(s[..],1,cast(string)b[0..<n]) && !s[0].pending && s[0].n==1;
+ #assert !ndi_opened(s[..],1,cast(string)b[0..<n]) && s[0].n==1;
+ #assert ndi_bind(s[..],"account-b",id) && s[0].generation==2 && s[0].n==0 && s[0].messages[0].body[0]==0;
+ #assert !ndi_opened(s[..],1,cast(string)b[0..<n]);
+}
+#test "a second wrap of the same rumor is one message and failed open publishes no content" {
+ s:[1]NostrInbox;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ op:="0000000000000000000000000000000000000000000000000000000000000001";b:[2048]u8;
+ #assert ndi_bind(s[..],"a",id) && ndi_begin(s[..],op,op);
+ n:=nsr_write("custody","open",op,id,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(s[..],1,cast(string)b[0..<n]);
+ #assert ndi_begin(s[..],op,id) && ndi_opened(s[..],1,cast(string)b[0..<n]) && s[0].n==1;
+ #assert ndi_begin(s[..],op,op);n=nsr_write("custody","open",op,id,"purpose-refused",0,0,"",b[..]);
+ #assert !ndi_opened(s[..],1,cast(string)b[0..<n]) && !s[0].pending && s[0].n==1;
+}
+#test "bad binding operation and outer identities never replace a current owner" {
+ s:[1]NostrInbox;#assert !ndi_bind(s[..],"","bad") && s[0].generation==0;
+ #assert !ndi_begin(s[..],"bad","bad");
+}
+ndi_copy :: (out:[]u8,value:string)->int #effects(all) {if value.count>out.count {return -1;}for c,i:value {out[i]=c;}return value.count;}
+ndi_bind :: (s:[]NostrInbox,account:string,identity:string)->bool #effects(all) {
+ if s.count!=1 || account.count<1 || account.count>128 || !js_utf8(account) || !aw_hex(identity,64) {return false;}
+ if s[0].na==account.count && cast(string)s[0].account[0..<s[0].na]==account && cast(string)s[0].identity[..]==identity {return true;}
+ if s[0].generation==2147483647 {return false;}
+ ndi_clear(s);s[0].na=ndi_copy(s[0].account[..],account);_=ndi_copy(s[0].identity[..],identity);return true;
+}
+ndi_clear :: (s:[]NostrInbox) #effects(all) {
+ for i:0..<NDI_MESSAGES {s[0].messages[i]=InboxMessage.{};}
+ s[0].n=0;s[0].full=false;s[0].pending=false;s[0].na=0;for i:0..<128 {s[0].account[i]=0;}for i:0..<64 {s[0].identity[i]=0;s[0].operation[i]=0;s[0].outer[i]=0;}
+ if s[0].generation<2147483647 {s[0].generation+=1;}
+}
+ndi_begin :: (s:[]NostrInbox,operation:string,outer:string)->bool #effects(all) {
+ if s.count!=1 || s[0].na==0 || s[0].pending || !aw_hex(operation,64) || !aw_hex(outer,64) {return false;}
+ _=ndi_copy(s[0].operation[..],operation);_=ndi_copy(s[0].outer[..],outer);s[0].pending=true;return true;
+}
+ndi_opened :: (s:[]NostrInbox,generation:int,raw:string)->bool #effects(all) {
+ if s.count!=1 || generation!=s[0].generation || !s[0].pending {return false;}
+ r:[1]NsResult;defer {secure_zero(r[0].payload[..]);}if !nsr_read(raw,r[..]) || r[0].service!=1 || r[0].action!=4 || cast(string)r[0].operation[..]!=cast(string)s[0].operation[..] || cast(string)r[0].identity[..]!=cast(string)s[0].identity[..] {return false;}
+ s[0].pending=false;if r[0].status!=0 {return false;}
+ me:[32]u8;if !ne_lower_hex(cast(string)s[0].identity[..],me[..]) {return false;} // mutant: equivalent (return false -> true: nsr_read already requires canonical lower hex and the preceding exact identity comparison makes this fixed 32-byte decode infallible)
+ rumor:=cast(string)r[0].payload[0..<r[0].n];m:=nip17_read_opened(rumor,me[..]);if m.error!=N17_OK || m.kind!=14 || m.members!=2 {return false;}
+ for i:0..<s[0].n {if n17_same(m.rumor_id[..],s[0].messages[i].message.rumor_id[..]) {return true;}}
+ row:InboxMessage;row.message=m;row.outer=s[0].outer;row.n=json_unescape(rumor[m.content_from..<m.content_to],row.body[..]);if row.n<0 {return false;}
+ if s[0].n==NDI_MESSAGES {
+  s[0].full=true;if !n17_before(s[0].messages[0].message,m) {return false;}
+  for i:1..<NDI_MESSAGES {s[0].messages[i-1]=s[0].messages[i];}s[0].n-=1;s[0].messages[s[0].n]=InboxMessage.{};
+ }
+ at:=s[0].n;while at>0 && n17_before(m,s[0].messages[at-1].message) {s[0].messages[at]=s[0].messages[at-1];at-=1;}
+ s[0].messages[at]=row;s[0].n+=1;return true;
+}
+#test "mismatched open replies preserve pending ownership and valid failures end it" {
+ s:[1]NostrInbox;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";op:="0000000000000000000000000000000000000000000000000000000000000001";
+ b:[2048]u8;#assert ndi_bind(s[..],"a",id) && ndi_bind(s[..],"a",id) && s[0].generation==1 && ndi_begin(s[..],op,op);
+ #assert !ndi_begin(s[..],op,op) && !ndi_opened(s[..],1,"{}") && s[0].pending;
+ for field:0..<4 {
+  n:=nsr_write(ifx field==0 then "store" else "custody",ifx field==0 then "event" else ifx field==1 then "seal" else "open",ifx field==2 then id else op,ifx field==3 then op else id,"ok",0,0,DM_OPENED_GOLDEN,b[..]);
+  #assert n>0 && !ndi_opened(s[..],1,cast(string)b[0..<n]) && s[0].pending && s[0].n==0;
+ }
+ n:=nsr_write("custody","open",op,id,"ok",0,0,"{}",b[..]);#assert !ndi_opened(s[..],1,cast(string)b[0..<n]) && !s[0].pending;
+ #assert ndi_begin(s[..],op,op);s[0].n=NDI_MESSAGES;for i:0..<NDI_MESSAGES {s[0].messages[i].message.created_at=1730000100+i;}n=nsr_write("custody","open",op,id,"ok",0,0,DM_OPENED_GOLDEN,b[..]);
+ #assert !ndi_opened(s[..],1,cast(string)b[0..<n]) && s[0].full && s[0].n==NDI_MESSAGES;
+}
+#test "inbox clock exhaustion and malformed bindings cannot recycle a stale owner" {
+ s:[1]NostrInbox;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";b:[2]u8;
+ #assert ndi_copy(b[..],"abc")== -1;
+ #assert !ndi_bind(s[0..<0],"a",id) && !ndi_bind(s[..],"a","bad");
+ long:[129]u8;for i:0..<129 {long[i]='a';}#assert !ndi_bind(s[..],cast(string)long[..],id);
+ #assert ndi_bind(s[..],"a",id);s[0].generation=2147483647;
+ #assert !ndi_bind(s[..],"b",id) && s[0].na==1;ndi_clear(s[..]);#assert s[0].generation==2147483647 && s[0].na==0;
+ #assert !ndi_begin(s[0..<0],id,id) && !ndi_opened(s[0..<0],1,"");
+}
+#test "owner retirement erases pending ownership and every retained plaintext slot" {
+ s:[1]NostrInbox;s[0].n=2;s[0].full=true;s[0].pending=true;s[0].na=128;
+ for i:0..<128 {s[0].account[i]=7;}for i:0..<64 {s[0].identity[i]=9;s[0].operation[i]=11;s[0].outer[i]=13;}
+ s[0].messages[0].body[0]=1;s[0].messages[127].body[16383]=2;s[0].messages[127].outer[63]=3;
+ ndi_clear(s[..]);#assert s[0].n==0 && !s[0].full && !s[0].pending && s[0].na==0 && s[0].generation==1;
+ for i:0..<128 {#assert s[0].account[i]==0;}for i:0..<64 {#assert s[0].identity[i]==0 && s[0].operation[i]==0 && s[0].outer[i]==0;}
+ #assert s[0].messages[0].body[0]==0 && s[0].messages[127].body[16383]==0 && s[0].messages[127].outer[63]==0;
+}
+#test "empty text and out-of-order arrivals retain exact rumor chronology" {
+ s:[1]NostrInbox;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s[..],"a",me);pub:[32]u8;#assert ne_lower_hex(peer,pub[..]);pre:[2048]u8;rumor:[2048]u8;id:[32]u8;b:[4096]u8;
+ tags:="[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]";
+ for at:[3]int.[1730000012,1730000010,1730000011] {
+  n:=n59_rumor(pub[..],at,14,tags,"",pre[..],rumor[..],id[..]);#assert n>0 && ndi_begin(s[..],peer,peer);
+  n=nsr_write("custody","open",peer,me,"ok",0,0,cast(string)rumor[0..<n],b[..]);#assert n>0 && ndi_opened(s[..],1,cast(string)b[0..<n]);
+ }
+ #assert s[0].n==3;for i:0..<3 {#assert s[0].messages[i].message.created_at==1730000010+i && s[0].messages[i].n==0;}
+}
+#test "account and operation bounds admit exact endpoints and refuse each independent malformed field" {
+ s:[1]NostrInbox;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ a:[128]u8;for i:0..<128 {a[i]='a';}#assert ndi_bind(s[..],cast(string)a[..],me) && s[0].na==128;
+ bad:=[1]u8.[255];#assert !ndi_bind(s[..],cast(string)bad[..],me) && s[0].na==128;
+ #assert !ndi_begin(s[..],"bad",peer) && !ndi_begin(s[..],peer,"bad") && !s[0].pending;
+ #assert ndi_begin(s[..],me,peer) && cast(string)s[0].operation[..]==me && cast(string)s[0].outer[..]==peer;
+ s[0].generation=2147483647;#assert ndi_bind(s[..],cast(string)a[..],me) && s[0].pending;
+ out:[2]u8;#assert ndi_copy(out[..],"ab")==2 && cast(string)out[..]=="ab" && ndi_copy(out[0..<0],"")==0;
+}
+#test "a malformed result envelope cannot consume a current valid-looking open" {
+ s:[1]NostrInbox;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";op:="0000000000000000000000000000000000000000000000000000000000000001";
+ b:[4096]u8;bad:[4096]u8;d:[1]Jv;nodes:[32]JvNode;#assert ndi_bind(s[..],"a",me) && ndi_begin(s[..],op,op);
+ n:=nsr_write("custody","open",op,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);raw:=cast(string)b[0..<n];#assert jv_parse(d[..],raw,nodes[..]);
+ token:=d[0].nodes[jv_get(d[0],0,"revision")];nb:=json_raw(bad[..],0,raw[0..<token.from]);nb=json_raw(bad[..],nb,"-1");nb=json_raw(bad[..],nb,raw[token.to..<n]);
+ #assert nb>0 && !ndi_opened(s[..],1,cast(string)bad[0..<nb]) && s[0].pending && s[0].n==0;
+}
+#test "opened content exceeding the text projection ceiling is refused without a partial row" {
+ s:[1]NostrInbox;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s[..],"a",me) && ndi_begin(s[..],peer,peer);pub:[32]u8;#assert ne_lower_hex(peer,pub[..]);text:[16385]u8;for i:0..<text.count {text[i]='a';}
+ pre:[32768]u8;rumor:[32768]u8;id:[32]u8;b:[65536]u8;tags:="[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]";
+ n:=n59_rumor(pub[..],1730000000,14,tags,cast(string)text[..],pre[..],rumor[..],id[..]);#assert n>0;
+ n=nsr_write("custody","open",peer,me,"ok",0,0,cast(string)rumor[0..<n],b[..]);#assert n>0 && !ndi_opened(s[..],1,cast(string)b[0..<n]) && !s[0].pending && s[0].n==0;
+}
+#test "a full bounded inbox keeps newly arriving messages and evicts only its oldest row" {
+ s:[1]NostrInbox;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s[..],"a",me);s[0].n=NDI_MESSAGES;for i:0..<NDI_MESSAGES {s[0].messages[i].message.created_at=1730000100+i;s[0].messages[i].n=1;s[0].messages[i].body[0]='a';}
+ pub:[32]u8;#assert ne_lower_hex(peer,pub[..]);pre:[2048]u8;rumor:[2048]u8;id:[32]u8;b:[4096]u8;
+ tags:="[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]";
+ n:=n59_rumor(pub[..],1730001000,14,tags,"Latest",pre[..],rumor[..],id[..]);#assert n>0 && ndi_begin(s[..],peer,peer);
+ n=nsr_write("custody","open",peer,me,"ok",0,0,cast(string)rumor[0..<n],b[..]);#assert n>0 && ndi_opened(s[..],1,cast(string)b[0..<n]);
+ #assert s[0].full && s[0].n==128 && s[0].messages[0].message.created_at==1730000101 && s[0].messages[126].message.created_at==1730000227 && s[0].messages[127].message.created_at==1730001000;
+ #assert cast(string)s[0].messages[127].body[0..<s[0].messages[127].n]=="Latest";
+ #assert ndi_begin(s[..],peer,me) && ndi_opened(s[..],1,cast(string)b[0..<n]) && s[0].n==128;
+}

@@ -1,0 +1,55 @@
+// The shared NIP-17 public layouts, constants and participant policy.
+N17_OK :: 0;
+N17_INPUT :: 1;       // a key, recipient or fresh view is the wrong size
+N17_KIND :: 2;        // the message is not kind 14 or 15
+N17_MEMBERS :: 3;     // no recipient, more than N17_MOST, one repeated, or the sender
+N17_TAGS :: 4;        // the tags don't read, or the caller's tags hold a p tag
+N17_FILE :: 5;        // a kind 15 without its file tags
+N17_NO_LIST :: 6;     // no kind 10050 list, or one with no relay: not ready to receive
+N17_LIST :: 7;        // the list is not kind 10050, or a relay tag or URL is refused
+N17_LIST_AUTHOR :: 8; // the list is signed by someone other than its participant
+N17_WRAP :: 9;        // nip59 refused; its status is in wrap_error
+N17_OUTPUT :: 10;     // out is too small for every wrap
+N17_NOT_MEMBER :: 11; // the opened message's room does not include the reader
+
+N17_CHAT :: 14;
+N17_FILE_KIND :: 15;
+N17_RELAY_LIST :: 10050;
+#load "nip17-peers.coax";
+N17_RELAYS_MOST :: 8;     // relays in one list; NIP-17 asks for one to three
+N17_URL_MOST :: 256;
+N17_VALUE_MOST :: 256;
+N17_TAGS_MOST :: 8192;    // the rumor's tags, p tags included
+N17_ABSENT :: -1;         // n17_value: no tag of that name
+N17_BAD :: -2;            // n17_value: the tags don't read, or the tag has no string value
+
+// book:begin records
+// One participant's kind 10050 relays, in tag order, each URL once.
+N17Relays :: struct {
+  error:int=N17_NO_LIST; tag:int;   // tag: the refused tag's index
+  count:int; url:[N17_RELAYS_MOST*N17_URL_MOST]u8; url_n:[N17_RELAYS_MOST]int;
+}
+// Who gets a wrap and where it goes: recipients 0..<recipients, then the
+// sender at index recipients. who names the refused participant.
+N17Plan :: struct {
+  error:int=N17_INPUT; who:int=-1; recipients:int;
+  pub:[(N17_MOST+1)*32]u8; relays:[N17_MOST+1]N17Relays;
+}
+// The wraps in out: wrap i is out[at[i]..<at[i]+n[i]], addressed to plan
+// participant i (the last one is the sender's own copy).
+N17Sent :: struct {
+  error:int=N17_INPUT; who:int=-1; wrap_error:u32; wraps:int;
+  rumor_id:[32]u8; at:[N17_MOST+1]int; n:[N17_MOST+1]int;
+}
+// An opened message. The spans index the rumor JSON in out; content is raw
+// JSON string text. members holds the room's keys, the author first.
+N17Message :: struct {
+  error:int=N17_INPUT; wrap_error:u32; written:int;
+  author:[32]u8; rumor_id:[32]u8; kind:int; created_at:int;
+  members:int; member:[(N17_MOST+1)*32]u8; room:[32]u8;
+  subject_n:int=N17_ABSENT; subject:[N17_VALUE_MOST]u8;
+  has_reply:bool; reply:[32]u8;
+  content_from:int; content_to:int;
+}
+// book:end records
+

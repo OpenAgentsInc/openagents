@@ -1,0 +1,73 @@
+// One in-flight text intent. Lost replies retain the exact custody operation;
+// a committed batch is delivered by the durable outbox, never resealed here.
+#load "nostr-inbox.coax";
+#load "../../coax/native/nostr-purpose-wire.coax";
+#load "../../coax/native/nostr-send-wire.coax";
+#load "../../coax/native/messaging-store-wire.coax";
+#load "nostr-delivery-state.coax";
+#authority;
+NostrOutgoing :: struct {
+ generation:int;phase:int;busy:bool;operation:[64]u8;peer:[64]u8;created:int;
+ request:[400000]u8;nr:int;text:[NDI_TEXT]u8;nt:int;reply:[64]u8;reply_n:int;
+ delivery:[1]NostrDeliveryState;seen:bool;status:int;
+}
+#test "an uncertain send retries identical bytes and cannot become a second intent" {
+ s:[1]NostrInbox;o:[1]NostrOutgoing;q:[1]NscRequest;
+ me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s[..],"a",me) && ndo_begin(o[..],s[..],me,peer,1730000000,"Hello","");
+ #assert nsc_read(cast(string)o[0].request[0..<o[0].nr],q[..]) && q[0].action==3 && cast(string)q[0].operation[..]==me;
+ n:=o[0].nr;#assert !ndo_reply(o[..],s[..],1,"",true) && o[0].phase==2 && !o[0].busy;
+ #assert !ndo_begin(o[..],s[..],peer,peer,1730000001,"Another","") && ndo_retry(o[..],s[..]) && o[0].nr==n && cast(string)o[0].operation[..]==me;
+ #assert !ndo_reply(o[..],s[..],2,"{}",false) && o[0].busy;
+ #assert !ndo_reply(o[..],s[..],1,"{}",false) && o[0].busy;
+}
+#test "queued means a complete committed batch and accepted means real relay acknowledgements" {
+ s:[1]NostrInbox;o:[1]NostrOutgoing;b:[4096]u8;p:[2048]u8;index:[1]MsIndex;
+ me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s[..],"a",me) && ndo_begin(o[..],s[..],me,peer,1730000000,"Hello","");
+ ids:=[2]string.[me,peer];n:=nsm_sealed_write(ids[..],2,p[..]);n=nsr_write("custody","seal",me,me,"ok",0,0,cast(string)p[0..<n],b[..]);
+ #assert ndo_reply(o[..],s[..],1,cast(string)b[0..<n],false) && o[0].phase==3 && o[0].status==0 && o[0].request[0]==0 && o[0].nr==0;
+ index[0].ok=true;index[0].revision=2;index[0].n=2;_=ndi_copy(index[0].rows[0].id[..],me);_=ndi_copy(index[0].rows[1].id[..],peer);index[0].rows[0].kind=1059;index[0].rows[1].kind=1059;
+ index[0].rows[0].accepted=1;index[0].rows[1].pending=1;
+ #assert ndo_delivery(o[..],s[..],index[..]) && o[0].status==1 && !o[0].seen;
+ #assert !ndo_retry(o[..],s[..]);ndo_clear(o[..]);#assert o[0].nt==0 && o[0].text[0]==0 && o[0].generation==0;
+}
+#test "invalid peers replies and account transitions cannot alter an outgoing intent" {
+ s:[1]NostrInbox;o:[1]NostrOutgoing;
+ me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s[..],"a",me) && !ndo_begin(o[..],s[..],me,me,1730000000,"Hello","") && !ndo_begin(o[..],s[..],me,peer,1,"Hello","") && !ndo_begin(o[..],s[..],me,peer,1730000000,"Hello","bad");
+ #assert ndo_begin(o[..],s[..],me,peer,1730000000,"Hello","") && ndi_bind(s[..],"b",me) && !ndo_reply(o[..],s[..],1,"",true) && !ndo_retry(o[..],s[..]);
+}
+ndo_clear :: (o:[]NostrOutgoing) #effects(all) {
+ secure_zero(o[0].request[..]);secure_zero(o[0].text[..]);secure_zero(o[0].reply[..]);secure_zero(o[0].operation[..]);secure_zero(o[0].peer[..]);
+ o[0].generation=0;o[0].phase=0;o[0].busy=false;o[0].created=0;o[0].nr=0;o[0].nt=0;o[0].reply_n=0;o[0].delivery[0]=NostrDeliveryState.{};o[0].seen=false;o[0].status=0;
+}
+ndo_begin :: (o:[]NostrOutgoing,s:[]NostrInbox,operation:string,peer:string,created:int,text:string,reply:string)->bool #effects(all) {
+ if s[0].na==0 || (o[0].phase!=0 && !(o[0].phase==3 && o[0].seen)) || !aw_hex(operation,64) {return false;}
+ purpose:[100000]u8;defer {secure_zero(purpose[..]);}
+ n:=nsp_seal_request(cast(string)s[0].identity[..],peer,created,text,reply,purpose[..]);if n<0 {return false;}
+ ndo_clear(o);n=nsc_request("seal",operation,cast(string)s[0].identity[..],cast(string)purpose[0..<n],o[0].request[..]);if n<0 {ndo_clear(o);return false;}
+ o[0].generation=s[0].generation;o[0].phase=1;o[0].busy=true;o[0].nr=n;o[0].created=created;
+ _=ndi_copy(o[0].operation[..],operation);_=ndi_copy(o[0].peer[..],peer);o[0].nt=ndi_copy(o[0].text[..],text);o[0].reply_n=ndi_copy(o[0].reply[..],reply);return true;
+}
+ndo_retry :: (o:[]NostrOutgoing,s:[]NostrInbox)->bool #effects(all) {
+ if o[0].generation!=s[0].generation || o[0].phase!=2 || o[0].busy || o[0].nr<1 {return false;}o[0].phase=1;o[0].busy=true;return true;
+}
+ndo_reply :: (o:[]NostrOutgoing,s:[]NostrInbox,generation:int,raw:string,failed:bool)->bool #effects(all) {
+ if !o[0].busy || o[0].phase!=1 || generation!=o[0].generation || generation!=s[0].generation {return false;}
+ if failed {o[0].phase=2;o[0].busy=false;return false;}
+ r:[1]NsResult;defer {secure_zero(r[0].payload[..]);}
+ if !nsr_read(raw,r[..]) || r[0].service!=1 || r[0].action!=3 || cast(string)r[0].identity[..]!=cast(string)s[0].identity[..] || cast(string)r[0].operation[..]!=cast(string)o[0].operation[..] {return false;}
+ o[0].busy=false;
+ if r[0].status!=0 {o[0].phase=2;o[0].status=r[0].status;return false;}
+ p:[1]NsmSealed;if !nsm_sealed_read(cast(string)r[0].payload[0..<r[0].n],p[..]) {o[0].phase=2;o[0].status=10;return false;}
+ if !nds_begin(o[0].delivery[..],p[0]) {o[0].phase=2;o[0].status=10;return false;}o[0].phase=3;o[0].status=0;secure_zero(o[0].request[..]);o[0].nr=0;return true;
+}
+// Only the owner of a successfully fenced store response calls this projection.
+// One accepting relay per recipient copy is acceptance, never a read receipt.
+ndo_delivery :: (o:[]NostrOutgoing,s:[]NostrInbox,index:[]MsIndex)->bool #effects(all) {
+ if o[0].generation!=s[0].generation || o[0].phase!=3 || !nds_index(o[0].delivery[..],index) {return false;}
+ o[0].status=nds_status(o[0].delivery[..]);
+ for i:0..<s[0].n {if cast(string)s[0].messages[i].outer[..]==cast(string)o[0].delivery[0].receipt[0].self[..] {o[0].seen=true;secure_zero(o[0].text[..]);o[0].nt=0;}}
+ return true;
+}

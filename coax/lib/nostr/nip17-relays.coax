@@ -1,0 +1,42 @@
+// Structural kind-10050 routing projection. The caller owns signature and head verification.
+#load "nip17-types.coax";
+#load "tags.coax";
+#load "../net/relay_uri.coax";
+#authority;
+n17_url :: (r:N17Relays,k:int,s:string)->bool #effects(all) {
+  url:=r.url;return cast(string)url[k*N17_URL_MOST..<k*N17_URL_MOST+r.url_n[k]]==s;
+}
+// book:begin relays
+// A participant's kind 10050 relays. e is the newest list found for owner,
+// or an unparsed NostrEvent when none was found.
+n17_relays :: (e:NostrEvent,owner:[]u8)->N17Relays #effects(all) {
+  r:N17Relays;j:[1]Json;
+  if !nt_start(j[..],e) {return r;}
+  if e.kind!=N17_RELAY_LIST {return n17_list_fail(r,N17_LIST,0);}
+  signer:=e.public_key;
+  if !n17_same(signer[..],owner) {return n17_list_fail(r,N17_LIST_AUTHOR,0);}
+  k:=0;t:=json_next(j[..]);
+  while t!=JSON_ARRAY_END {
+    if t!=JSON_ARRAY {return n17_list_fail(r,N17_LIST,k);}
+    depth:=j[0].depth;t=json_next(j[..]);
+    named:=t==JSON_STRING && json_is(json_text(j[..]),"relay");
+    if named {
+      t=json_next(j[..]);
+      if t!=JSON_STRING {return n17_list_fail(r,N17_LIST,k);}
+      url:[N17_URL_MOST]u8;n:=json_unescape(json_text(j[..]),url[..]);
+      if n== -1 || !relay_uri(cast(string)url[0..<n]).ok {return n17_list_fail(r,N17_LIST,k);}
+      at:=r.count;
+      for i:0..<r.count {if n17_url(r,i,cast(string)url[0..<n]) {at=i;}}
+      if at==N17_RELAYS_MOST {return n17_list_fail(r,N17_LIST,k);}
+      if at==r.count {for i:0..<n {r.url[at*N17_URL_MOST+i]=url[i];}r.url_n[at]=n;r.count+=1;}
+    }
+    // The rest of the tag, whatever it holds.
+    while j[0].depth>=depth {if json_next(j[..])==JSON_ERROR {return n17_list_fail(r,N17_LIST,k);}}
+    k+=1;t=json_next(j[..]);
+  }
+  if r.count==0 {return n17_list_fail(r,N17_NO_LIST,0);}
+  return n17_list_fail(r,N17_OK,0);
+}
+// book:end relays
+n17_list_fail :: (r:N17Relays,error:int,tag:int)->N17Relays #effects(all) {x:=r;x.error=error;x.tag=tag;return x;}
+

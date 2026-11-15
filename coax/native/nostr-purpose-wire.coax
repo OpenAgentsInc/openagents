@@ -49,3 +49,26 @@ nsp_list_request :: (identity:string,kind:int,base:string,name:string,value:stri
  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NSP_LIST);jo_key(o[..],"kind");jo_int(o[..],kind);jo_key(o[..],"base");jo_str(o[..],base);jo_key(o[..],"name");jo_str(o[..],name);jo_key(o[..],"value");jo_str(o[..],value);jo_key(o[..],"enabled");jo_bool(o[..],enabled);jo_end(o[..]);q:[1]NscPurpose;
  return ifx !o[0].bad && nsp_read(5,identity,jo_text(o[..]),q[..]) then o[0].n else -1;
 }
+
+#test "portable DM purpose writers preserve text replies and the original closed schemas" {
+ me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ peer:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ b:[4096]u8;p:[1]NscPurpose;
+ n:=nsp_seal_request(me,peer,1730000000,"hello\n**Bob**","",b[..]);
+ #assert n>0 && nsp_read(3,me,cast(string)b[0..<n],p[..]) && p[0].peers_n==1 && p[0].n==13 && !p[0].has_reply;
+ n=nsp_seal_request(me,peer,1730000000,"reply",me,b[..]);#assert n>0 && nsp_read(3,me,cast(string)b[0..<n],p[..]) && p[0].has_reply;
+ #assert nsp_seal_request(me,me,1730000000,"x","",b[..])<0 && nsp_seal_request(me,peer,0,"x","",b[..])<0 && nsp_seal_request(me,peer,1730000000,"","",b[..])<0;
+ #assert nsp_seal_request(me,peer,1730000000,"x","bad",b[..])<0 && nsp_seal_request(me,peer,1730000000,"x","",b[0..<1])<0;
+ n=nsp_auth_request(me,"wss://relay.example",7,"challenge",b[..]);#assert n>0 && nsp_read(2,me,cast(string)b[0..<n],p[..]) && p[0].generation==7 && p[0].nc==9;
+ #assert nsp_auth_request(me,"ws://relay.example",7,"challenge",b[..])<0 && nsp_auth_request(me,"wss://relay.example",0,"challenge",b[..])<0;
+ #assert nsp_auth_request(me,"wss://relay.example",7,"",b[..])<0 && nsp_auth_request(me,"wss://relay.example",7,"challenge",b[0..<1])<0;
+}
+nsp_seal_request :: (identity:string,peer:string,created:int,content:string,reply:string,out:[]u8)->int #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NSP_SEAL);jo_key(o[..],"created_at");jo_int(o[..],created);
+ jo_key(o[..],"participants");jo_arr(o[..]);jo_str(o[..],peer);jo_end(o[..]);jo_key(o[..],"content");jo_str(o[..],content);jo_key(o[..],"subject");jo_str(o[..],"");jo_key(o[..],"reply");jo_str(o[..],reply);jo_end(o[..]);p:[1]NscPurpose;
+ return ifx !o[0].bad && nsp_read(3,identity,jo_text(o[..]),p[..]) then o[0].n else -1;
+}
+nsp_auth_request :: (identity:string,url:string,generation:int,challenge:string,out:[]u8)->int #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NSP_AUTH);jo_key(o[..],"url");jo_str(o[..],url);jo_key(o[..],"generation");jo_int(o[..],generation);jo_key(o[..],"challenge");jo_str(o[..],challenge);jo_end(o[..]);p:[1]NscPurpose;
+ return ifx !o[0].bad && nsp_read(2,identity,jo_text(o[..]),p[..]) then o[0].n else -1;
+}

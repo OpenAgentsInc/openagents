@@ -7,6 +7,7 @@
 #load "../../coax/lib/nostr/event_verify_fast.coax";
 #load "../../coax/lib/nostr/metadata.coax";
 #load "../../coax/lib/nostr/nip19-core.coax";
+#load "../../coax/lib/nostr/public-key-text.coax";
 #load "../../coax/native/relay-read-wire.coax";
 #load "nostr-feed-checks.coax" #test;
 
@@ -85,10 +86,7 @@ nfeed_clear :: (f:[]NostrFeed) {
 }
 
 nfeed_author :: (text:string,out:[]u8)->int {
- if text.count==0 {return 0;}if nf_hex(text) {return nfeed_copy(out,text);}
- if text.count<5 || !((text[0]=='n' || text[0]=='N') && (text[1]=='p' || text[1]=='P') && (text[2]=='u' || text[2]=='U') && (text[3]=='b' || text[3]=='B') && text[4]=='1') {return -1;}
- key:[32]u8;r:=nip19_decode_checked(text,key[..],false);if r.error!=NC_OK || r.type!=N19_NPUB || r.written!=32 {return -1;}
- h:=hex_encode_checked(cast(string)key[..],out,false);return ifx h.error==NC_OK then h.written else -1;
+ return nostr_public_key_text(text,out);
 }
 nfeed_tag :: (text:string,out:[]u8)->int {
  if text.count==0 {return 0;}s:=ifx text[0]=='#' then text[1..<text.count] else text;

@@ -40,71 +40,17 @@
 // default 100000. Loaded, this is ignored: the loading program declares its own.
 #run_steps 100000000;
 #load "nip59.coax";
+#load "nip17-relays.coax";
 #load "tags.coax";
 #load "../net/relay_uri.coax";
 #load "../crypto/bip32.coax";
 #authority;
 
-N17_OK :: 0;
-N17_INPUT :: 1;       // a key, recipient or fresh view is the wrong size
-N17_KIND :: 2;        // the message is not kind 14 or 15
-N17_MEMBERS :: 3;     // no recipient, more than N17_MOST, one repeated, or the sender
-N17_TAGS :: 4;        // the tags don't read, or the caller's tags hold a p tag
-N17_FILE :: 5;        // a kind 15 without its file tags
-N17_NO_LIST :: 6;     // no kind 10050 list, or one with no relay: not ready to receive
-N17_LIST :: 7;        // the list is not kind 10050, or a relay tag or URL is refused
-N17_LIST_AUTHOR :: 8; // the list is signed by someone other than its participant
-N17_WRAP :: 9;        // nip59 refused; its status is in wrap_error
-N17_OUTPUT :: 10;     // out is too small for every wrap
-N17_NOT_MEMBER :: 11; // the opened message's room does not include the reader
-
-N17_CHAT :: 14;
-N17_FILE_KIND :: 15;
-N17_RELAY_LIST :: 10050;
-#load "nip17-peers.coax";
-N17_RELAYS_MOST :: 8;     // relays in one list; NIP-17 asks for one to three
-N17_URL_MOST :: 256;
-N17_VALUE_MOST :: 256;
-N17_TAGS_MOST :: 8192;    // the rumor's tags, p tags included
-N17_ABSENT :: -1;         // n17_value: no tag of that name
-N17_BAD :: -2;            // n17_value: the tags don't read, or the tag has no string value
-
-// book:begin records
-// One participant's kind 10050 relays, in tag order, each URL once.
-N17Relays :: struct {
-  error:int=N17_NO_LIST; tag:int;   // tag: the refused tag's index
-  count:int; url:[N17_RELAYS_MOST*N17_URL_MOST]u8; url_n:[N17_RELAYS_MOST]int;
-}
-// Who gets a wrap and where it goes: recipients 0..<recipients, then the
-// sender at index recipients. who names the refused participant.
-N17Plan :: struct {
-  error:int=N17_INPUT; who:int=-1; recipients:int;
-  pub:[(N17_MOST+1)*32]u8; relays:[N17_MOST+1]N17Relays;
-}
-// The wraps in out: wrap i is out[at[i]..<at[i]+n[i]], addressed to plan
-// participant i (the last one is the sender's own copy).
-N17Sent :: struct {
-  error:int=N17_INPUT; who:int=-1; wrap_error:u32; wraps:int;
-  rumor_id:[32]u8; at:[N17_MOST+1]int; n:[N17_MOST+1]int;
-}
-// An opened message. The spans index the rumor JSON in out; content is raw
-// JSON string text. members holds the room's keys, the author first.
-N17Message :: struct {
-  error:int=N17_INPUT; wrap_error:u32; written:int;
-  author:[32]u8; rumor_id:[32]u8; kind:int; created_at:int;
-  members:int; member:[(N17_MOST+1)*32]u8; room:[32]u8;
-  subject_n:int=N17_ABSENT; subject:[N17_VALUE_MOST]u8;
-  has_reply:bool; reply:[32]u8;
-  content_from:int; content_to:int;
-}
-// book:end records
+#load "nip17-message.coax";
 
 n17_key :: (b:int)->[32]u8 #effects(all) {k:[32]u8;k[0]=cast(u8)b;k[31]=cast(u8)(b+1);return k;}
 n17_list :: (owner:[32]u8,kind:int,tags:string)->NostrEvent #effects(all) {e:=nt_event(tags);e.kind=kind;e.public_key=owner;return e;}
 // Whether relay k of the list is exactly the bytes s.
-n17_url :: (r:N17Relays,k:int,s:string)->bool #effects(all) {
-  url:=r.url;return cast(string)url[k*N17_URL_MOST..<k*N17_URL_MOST+r.url_n[k]]==s;
-}
 n17_pub_of :: (p:N17Plan,i:int)->[32]u8 #effects(all) {k:[32]u8;for c:0..<32 {k[c]=p.pub[i*32+c];}return k;}
 n17_keys :: (a:int,b:int,c:int)->[96]u8 #effects(all) {
   ka:=n17_key(a);kb:=n17_key(b);kc:=n17_key(c);out:[96]u8;
@@ -432,40 +378,6 @@ N17_BOB_P :: "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b
 
 // ---- the implementation
 
-// book:begin relays
-// A participant's kind 10050 relays. e is the newest list found for owner,
-// or an unparsed NostrEvent when none was found.
-n17_relays :: (e:NostrEvent,owner:[]u8)->N17Relays #effects(all) {
-  r:N17Relays;j:[1]Json;
-  if !nt_start(j[..],e) {return r;}
-  if e.kind!=N17_RELAY_LIST {return n17_list_fail(r,N17_LIST,0);}
-  signer:=e.public_key;
-  if !n17_same(signer[..],owner) {return n17_list_fail(r,N17_LIST_AUTHOR,0);}
-  k:=0;t:=json_next(j[..]);
-  while t!=JSON_ARRAY_END {
-    if t!=JSON_ARRAY {return n17_list_fail(r,N17_LIST,k);}
-    depth:=j[0].depth;t=json_next(j[..]);
-    named:=t==JSON_STRING && json_is(json_text(j[..]),"relay");
-    if named {
-      t=json_next(j[..]);
-      if t!=JSON_STRING {return n17_list_fail(r,N17_LIST,k);}
-      url:[N17_URL_MOST]u8;n:=json_unescape(json_text(j[..]),url[..]);
-      if n== -1 || !relay_uri(cast(string)url[0..<n]).ok {return n17_list_fail(r,N17_LIST,k);}
-      at:=r.count;
-      for i:0..<r.count {if n17_url(r,i,cast(string)url[0..<n]) {at=i;}}
-      if at==N17_RELAYS_MOST {return n17_list_fail(r,N17_LIST,k);}
-      if at==r.count {for i:0..<n {r.url[at*N17_URL_MOST+i]=url[i];}r.url_n[at]=n;r.count+=1;}
-    }
-    // The rest of the tag, whatever it holds.
-    while j[0].depth>=depth {if json_next(j[..])==JSON_ERROR {return n17_list_fail(r,N17_LIST,k);}}
-    k+=1;t=json_next(j[..]);
-  }
-  if r.count==0 {return n17_list_fail(r,N17_NO_LIST,0);}
-  return n17_list_fail(r,N17_OK,0);
-}
-// book:end relays
-n17_list_fail :: (r:N17Relays,error:int,tag:int)->N17Relays #effects(all) {x:=r;x.error=error;x.tag=tag;return x;}
-
 // book:begin plan
 // Who gets a wrap and which relays it goes to. recipients is N 32-byte keys;
 // lists holds N+1 kind 10050 events: the recipients' in order, then the
@@ -492,34 +404,10 @@ nip17_plan :: (sender_x:[]u8,recipients:[]u8,lists:[]NostrEvent)->N17Plan #effec
 
 // The first value of the first tag named name, decoded into out: its length,
 // N17_ABSENT, or N17_BAD.
-n17_value :: (e:NostrEvent,name:string,out:[]u8)->int #effects(all) {
-  j:[1]Json;if !nt_start(j[..],e) {return N17_BAD;}
-  t:=json_next(j[..]);
-  while t!=JSON_ARRAY_END {
-    if t!=JSON_ARRAY {return N17_BAD;}
-    depth:=j[0].depth;t=json_next(j[..]);
-    if t==JSON_STRING && json_is(json_text(j[..]),name) {
-      if json_next(j[..])!=JSON_STRING {return N17_BAD;}
-      n:=json_unescape(json_text(j[..]),out);
-      if n<0 {return N17_BAD;}
-      return n;
-    }
-    while j[0].depth>=depth {if json_next(j[..])==JSON_ERROR {return N17_BAD;}}
-    t=json_next(j[..]);
-  }
-  return N17_ABSENT;
-}
+
 // A kind 15's file tags: a type, the aes-gcm algorithm, a key, a nonce and
 // the encrypted file's SHA-256 as lowercase hex.
-n17_file :: (e:NostrEvent)->bool #effects(all) {
-  v:[N17_VALUE_MOST]u8;x:[32]u8;
-  if n17_value(e,"file-type",v[..])<=0 {return false;}
-  n:=n17_value(e,"encryption-algorithm",v[..]);
-  if n!=7 || cast(string)v[0..<7]!="aes-gcm" {return false;}
-  if n17_value(e,"decryption-key",v[..])<=0 || n17_value(e,"decryption-nonce",v[..])<=0 {return false;}
-  n=n17_value(e,"x",v[..]);
-  return n==64 && ne_lower_hex(cast(string)v[0..<64],x[..]);
-}
+
 // The caller's own tags for a message: one JSON array that reads, written
 // "[]" when empty, with no p tag (the plan names the room), and a kind 15's
 // file tags.
@@ -588,67 +476,10 @@ nip17_send :: (sender:[]u8,given:N17Plan,now:int,kind:int,tags:string,content:st
 }
 // book:end send
 
-// book:begin room
-// The room id: SHA-256 of the count members' keys (32 bytes each, in keys)
-// sorted ascending. The same set in any order gives the same id.
-n17_room :: (keys:[]u8,count:int)->[32]u8 #effects(all) {
-  sorted:[(N17_MOST+1)*32]u8;id:[32]u8;
-  for i:0..<count*32 {sorted[i]=keys[i];}
-  for i:1..<count {
-    k:=i;
-    while k>0 && n17_less_at(sorted[..],k,k-1) {
-      for c:0..<32 {b:=sorted[k*32+c];sorted[k*32+c]=sorted[(k-1)*32+c];sorted[(k-1)*32+c]=b;}
-      k-=1;
-    }
-  }
-  if sha256_hash_checked(sorted[0..<count*32],id[..],false)!=SHA_OK {zero:[32]u8;return zero;}
-  return id;
-}
-// book:end room
+
 // Whether 32-byte key i of keys sorts before key k.
-n17_less_at :: (keys:[]u8,i:int,k:int)->bool #effects(all) {
-  for c:0..<32 {
-    if keys[i*32+c]<keys[k*32+c] {return true;}
-    if keys[i*32+c]>keys[k*32+c] {return false;}
-  }
-  return false;
-}
-// book:begin read
-// An opened rumor read as a NIP-17 message for the reader me. rumor is the
-// JSON that nip59_unwrap_checked wrote, and o its result.
-n17_read :: (o:Nip59Opened,rumor:string,me:[]u8)->N17Message #effects(all) {
-  m:N17Message;
-  if me.count!=32 {return m;}
-  if o.kind!=N17_CHAT && o.kind!=N17_FILE_KIND {m.error=N17_KIND;return m;}
-  e:NostrEvent;e.error=NE_OK;e.original=rumor;e.tags_from=o.tags_from;e.tags_to=o.tags_to;
-  m.members=1;for c:0..<32 {m.member[c]=o.author[c];}
-  i:=0;t:=nostr_tag(e,0);
-  while t.error!=NT_INDEX {
-    if t.error!=NT_OK {m.error=N17_TAGS;return m;}
-    if t.type==NT_P {
-      known:=false;
-      for k:0..<m.members {if n17_same(m.member[k*32..<k*32+32],t.pubkey[..]) {known=true;}}
-      if !known {
-        if m.members==N17_MOST+1 {m.error=N17_MEMBERS;return m;}
-        for c:0..<32 {m.member[m.members*32+c]=t.pubkey[c];}
-        m.members+=1;
-      }
-    }
-    if t.type==NT_E && !m.has_reply {m.has_reply=true;m.reply=t.id;}
-    i+=1;t=nostr_tag(e,i);
-  }
-  m.subject_n=n17_value(e,"subject",m.subject[..]);
-  if m.subject_n==N17_BAD {m.error=N17_TAGS;return m;}
-  if o.kind==N17_FILE_KIND && !n17_file(e) {m.error=N17_FILE;return m;}
-  member:=false;
-  for k:0..<m.members {if n17_same(m.member[k*32..<k*32+32],me) {member=true;}}
-  if !member {m.error=N17_NOT_MEMBER;return m;}
-  m.room=n17_room(m.member[..],m.members);
-  m.written=o.written;m.author=o.author;m.rumor_id=o.rumor_id;m.kind=o.kind;m.created_at=o.created_at;
-  m.content_from=o.content_from;m.content_to=o.content_to;m.error=N17_OK;
-  return m;
-}
-// book:end read
+
+
 
 // Opens a gift wrap as a NIP-17 message for recipient (secret, x-only key).
 // out receives the rumor JSON, cleared on any refusal.
@@ -660,29 +491,7 @@ nip17_open :: (recipient:[]u8,recipient_x:[]u8,wrap:string,work:[]u8,out:[]u8)->
   return m;
 }
 
-// book:begin order
-// The indexes of the opened messages in room, oldest first; equal times by
-// rumor id. Returns their count, or -1 when order is too small.
-nip17_order :: (m:[]N17Message,room:[]u8,order:[]int)->int #effects(all) {
-  n:=0;
-  for i:0..<m.count {
-    if m[i].error!=N17_OK || !n17_same(m[i].room[..],room) {continue;}
-    if n==order.count {return -1;}
-    k:=n;order[n]=i;n+=1;
-    while k>0 && n17_before(m[order[k]],m[order[k-1]]) {x:=order[k];order[k]=order[k-1];order[k-1]=x;k-=1;}
-  }
-  return n;
-}
-// book:end order
-n17_before :: (a:N17Message,b:N17Message)->bool #effects(all) {
-  if a.created_at<b.created_at {return true;}
-  if a.created_at>b.created_at {return false;}
-  ids:[64]u8;for c:0..<32 {ids[c]=a.rumor_id[c];ids[32+c]=b.rumor_id[c];}
-  return n17_less_at(ids[..],0,1);
-}
+
+
 // The message in order whose subject names the room now: the newest one
 // with a subject tag, or -1.
-nip17_subject :: (m:[]N17Message,order:[]int)->int #effects(all) {
-  for k:0..<order.count {i:=order[order.count-1-k];if m[i].subject_n>=0 {return i;}}
-  return -1;
-}

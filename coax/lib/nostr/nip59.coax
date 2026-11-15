@@ -47,46 +47,8 @@
 #load "nip59/sign-erasure.coax";
 #authority;
 
-NIP59_OK :: cast(u32)0;
-NIP59_INPUT :: cast(u32)1;          // a key or fresh view is not exactly one, a kind, time or tags not admitted
-NIP59_ALIAS :: cast(u32)2;
-NIP59_OUTPUT :: cast(u32)3;         // work below NIP59_WORK, or out too small for the result
-NIP59_CAPACITY :: cast(u32)4;       // rumor over NIP59_MAX_RUMOR, wrap over NIP59_MAX_WRAP
-NIP59_KEY :: cast(u32)5;            // the author's or recipient's secret, or the recipient's public key, is refused
-NIP59_FRESH :: cast(u32)6;          // the fresh wrap key is not a valid secret, or is the author's own
-NIP59_WRAP :: cast(u32)7;           // not an event with its own id, or not kind 1059/21059
-NIP59_WRAP_SIGNATURE :: cast(u32)8;
-NIP59_RECIPIENT :: cast(u32)9;      // no ["p", recipient] tag
-NIP59_WRAP_PAYLOAD :: cast(u32)10;  // the wrap's content does not decrypt for this recipient
-NIP59_SEAL :: cast(u32)11;          // not an event with its own id, not kind 13, or tags not empty
-NIP59_SEAL_SIGNATURE :: cast(u32)12;
-NIP59_SEAL_PAYLOAD :: cast(u32)13;
-NIP59_RUMOR :: cast(u32)14;         // not an unsigned event with its own id
-NIP59_IDENTITY :: cast(u32)15;      // the rumor's pubkey is not the seal's
-NIP59_INTERNAL :: cast(u32)16;      // an admitted primitive refused; unreachable by construction
-
-NIP59_SEAL_KIND :: 13;
-NIP59_WRAP_KIND :: 1059;
-NIP59_EPHEMERAL_KIND :: 21059;
-NIP59_WINDOW :: 172800;             // two days, in seconds
-NIP59_MAX_RUMOR :: 28672;
-NIP59_MAX_SEAL :: 40960;
-NIP59_MAX_WRAP :: 65536;
-NIP59_REGION :: 65536;
-NIP59_WORK :: 458752;               // seven regions; the NIP-44 work takes two
-
-// Host entropy for one wrap: 32-byte values from the platform's random source.
-// wrap_key is the one-time secret; *_back pick the seal and wrap times.
-Nip59Fresh :: struct {
-  wrap_key:[32]u8; seal_nonce:[32]u8; wrap_nonce:[32]u8; seal_aux:[32]u8; wrap_aux:[32]u8;
-  seal_back:u64; wrap_back:u64;
-}
-Nip59Wrapped :: struct { error:u32=NIP59_INPUT; written:int; rumor_id:[32]u8; seal_at:int; wrap_at:int; }
-// Spans index out, which holds the rumor JSON exactly as the seal carried it.
-Nip59Opened :: struct {
-  error:u32=NIP59_INPUT; written:int; author:[32]u8; rumor_id:[32]u8; wrap_key:[32]u8;
-  kind:int; created_at:int; tags_from:int; tags_to:int; tags:int; content_from:int; content_to:int;
-}
+#load "nip59-types.coax";
+#load "nip59-rumor.coax";
 
 #test "status values and limits are the host ABI" {
   #assert NIP59_OK==0 && NIP59_INPUT==1 && NIP59_CAPACITY==4 && NIP59_IDENTITY==15 && NIP59_INTERNAL==16;
@@ -258,7 +220,7 @@ N59_SEAL_FIXED :: 343;
 // {"id":"<64>","pubkey":"<64>","created_at":1793300000,"kind":14,"tags":[["p","<64>"]],"content":""}
 // n59_wrap_text's rumor: the bytes around its content.
 N59_RUMOR_FIXED :: 278;
-N59_SIG_FIELD :: ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"";
+
 
 n59_back :: (now:int,r:u64)->int #effects(all) {return now-cast(int)(r%cast(u64)NIP59_WINDOW);}
 n59_zero :: (b:[]u8) #effects(all) {secure_zero(b);}
@@ -290,18 +252,9 @@ n59_addressed :: (tags:string,recipient_x:[]u8)->bool #effects(all) {
 // NIP-01 reader can parse it and recompute its id. A rumor that already has a
 // "sig" (signed, which NIP-59 forbids) then repeats the key and is refused.
 // Returns the copy's length, or -1.
-n59_signed_copy :: (rumor:string,out:[]u8)->int #effects(all) {
-  end:=n59_rumor_end(rumor);
-  if end<0 || rumor[end]!='}' {return -1;}
-  n:=json_raw(out,0,rumor[0..<end]);n=json_raw(out,n,N59_SIG_FIELD);
-  return json_raw(out,n,rumor[end..<rumor.count]);
-}
+
 // Index of the final non-whitespace byte, or -1 for an empty rumor.
-n59_rumor_end :: (rumor:string)->int #effects(all) {
-  end:=rumor.count-1;
-  while end>=0 && (rumor[end]==' ' || rumor[end]==9 || rumor[end]==10 || rumor[end]==13) {end-=1;}
-  return end;
-}
+
 #test "rumor trimming reports the boundary even when the whole string is whitespace" {
   #assert n59_rumor_end("")==-1 && n59_rumor_end("}")==0;
   for space:[4]u8.[32,9,10,13] {b:=[1]u8.[space];#assert n59_rumor_end(cast(string)b[..])==-1;}
@@ -319,26 +272,7 @@ n59_sign :: (key:[]u8,aux:[]u8,at:int,kind:int,tags:string,content:string,sw:[]N
   return k;
 }
 // The rumor's JSON into out (its NIP-01 preimage in pre first), its id in id.
-n59_rumor :: (pub:[]u8,at:int,kind:int,tags:string,content:string,pre:[]u8,out:[]u8,id:[]u8)->int #effects(all) {
-  decoded:[NIP59_REGION]u8;defer {secure_zero(decoded[..]);#assert crypto_zeroed(decoded[..]);}
-  hex:[64]u8;idhex:[64]u8;
-  h:=hex_encode_checked(cast(string)pub,hex[..],false);
-  n:=json_raw(pre,ne_writer_start(h.error),"[0,");n=json_write_string(pre,n,cast(string)hex[..]);
-  n=json_raw(pre,n,",");n=json_write_int(pre,n,at);n=json_raw(pre,n,",");n=json_write_int(pre,n,kind);
-  n=json_raw(pre,n,",");n=ne_write_tags(tags,pre,n,decoded[..]);n=json_raw(pre,n,",");
-  n=json_write_string(pre,n,content);n=json_raw(pre,n,"]");
-  if n==NE_WRITE_FAILED {return -1;}
-  #assert id.count==32;
-  #assert sha256_hash_checked(pre[0..<n],id,false)==SHA_OK;
-  hi:=hex_encode_checked(cast(string)id,idhex[..],false);
-  m:=json_raw(out,ne_writer_start(hi.error),"{\"id\":");m=json_write_string(out,m,cast(string)idhex[..]);
-  m=json_raw(out,m,",\"pubkey\":");m=json_write_string(out,m,cast(string)hex[..]);
-  m=json_raw(out,m,",\"created_at\":");m=json_write_int(out,m,at);
-  m=json_raw(out,m,",\"kind\":");m=json_write_int(out,m,kind);
-  m=json_raw(out,m,",\"tags\":");m=ne_write_tags(tags,out,m,decoded[..]);
-  m=json_raw(out,m,",\"content\":");m=json_write_string(out,m,content);
-  return json_raw(out,m,"}");
-}
+
 n59_ck :: (secret:[]u8,pub:[]u8,out:[]u8)->u32 #effects(all) {
   work:[1]EcdhScratch;return nip44_conversation_key_from_keys_checked(secret,pub,work[..],out,false);
 }

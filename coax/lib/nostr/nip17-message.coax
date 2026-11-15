@@ -1,0 +1,133 @@
+// Read/order already-opened NIP-17 rumors. This module supplies no signature or custody authority.
+#load "nip17-types.coax";
+#load "nip59-rumor.coax";
+#load "tags.coax";
+#authority;
+n17_value :: (e:NostrEvent,name:string,out:[]u8)->int #effects(all) {
+  j:[1]Json;if !nt_start(j[..],e) {return N17_BAD;}
+  t:=json_next(j[..]);
+  while t!=JSON_ARRAY_END {
+    if t!=JSON_ARRAY {return N17_BAD;}
+    depth:=j[0].depth;t=json_next(j[..]);
+    if t==JSON_STRING && json_is(json_text(j[..]),name) {
+      if json_next(j[..])!=JSON_STRING {return N17_BAD;}
+      n:=json_unescape(json_text(j[..]),out);
+      if n<0 {return N17_BAD;}
+      return n;
+    }
+    while j[0].depth>=depth {if json_next(j[..])==JSON_ERROR {return N17_BAD;}}
+    t=json_next(j[..]);
+  }
+  return N17_ABSENT;
+}
+
+n17_file :: (e:NostrEvent)->bool #effects(all) {
+  v:[N17_VALUE_MOST]u8;x:[32]u8;
+  if n17_value(e,"file-type",v[..])<=0 {return false;}
+  n:=n17_value(e,"encryption-algorithm",v[..]);
+  if n!=7 || cast(string)v[0..<7]!="aes-gcm" {return false;}
+  if n17_value(e,"decryption-key",v[..])<=0 || n17_value(e,"decryption-nonce",v[..])<=0 {return false;}
+  n=n17_value(e,"x",v[..]);
+  return n==64 && ne_lower_hex(cast(string)v[0..<64],x[..]);
+}
+
+// book:begin room
+// The room id: SHA-256 of the count members' keys (32 bytes each, in keys)
+// sorted ascending. The same set in any order gives the same id.
+n17_room :: (keys:[]u8,count:int)->[32]u8 #effects(all) {
+  sorted:[(N17_MOST+1)*32]u8;id:[32]u8;
+  for i:0..<count*32 {sorted[i]=keys[i];}
+  for i:1..<count {
+    k:=i;
+    while k>0 && n17_less_at(sorted[..],k,k-1) {
+      for c:0..<32 {b:=sorted[k*32+c];sorted[k*32+c]=sorted[(k-1)*32+c];sorted[(k-1)*32+c]=b;}
+      k-=1;
+    }
+  }
+  if sha256_hash_checked(sorted[0..<count*32],id[..],false)!=SHA_OK {zero:[32]u8;return zero;}
+  return id;
+}
+// book:end room
+
+n17_less_at :: (keys:[]u8,i:int,k:int)->bool #effects(all) {
+  for c:0..<32 {
+    if keys[i*32+c]<keys[k*32+c] {return true;}
+    if keys[i*32+c]>keys[k*32+c] {return false;}
+  }
+  return false;
+}
+
+// book:begin read
+// An opened rumor read as a NIP-17 message for the reader me. rumor is the
+// JSON that nip59_unwrap_checked wrote, and o its result.
+n17_read :: (o:Nip59Opened,rumor:string,me:[]u8)->N17Message #effects(all) {
+  m:N17Message;
+  if me.count!=32 {return m;}
+  if o.kind!=N17_CHAT && o.kind!=N17_FILE_KIND {m.error=N17_KIND;return m;}
+  e:NostrEvent;e.error=NE_OK;e.original=rumor;e.tags_from=o.tags_from;e.tags_to=o.tags_to;
+  m.members=1;for c:0..<32 {m.member[c]=o.author[c];}
+  i:=0;t:=nostr_tag(e,0);
+  while t.error!=NT_INDEX {
+    if t.error!=NT_OK {m.error=N17_TAGS;return m;}
+    if t.type==NT_P {
+      known:=false;
+      for k:0..<m.members {if n17_same(m.member[k*32..<k*32+32],t.pubkey[..]) {known=true;}}
+      if !known {
+        if m.members==N17_MOST+1 {m.error=N17_MEMBERS;return m;}
+        for c:0..<32 {m.member[m.members*32+c]=t.pubkey[c];}
+        m.members+=1;
+      }
+    }
+    if t.type==NT_E && !m.has_reply {m.has_reply=true;m.reply=t.id;}
+    i+=1;t=nostr_tag(e,i);
+  }
+  m.subject_n=n17_value(e,"subject",m.subject[..]);
+  if m.subject_n==N17_BAD {m.error=N17_TAGS;return m;}
+  if o.kind==N17_FILE_KIND && !n17_file(e) {m.error=N17_FILE;return m;}
+  member:=false;
+  for k:0..<m.members {if n17_same(m.member[k*32..<k*32+32],me) {member=true;}}
+  if !member {m.error=N17_NOT_MEMBER;return m;}
+  m.room=n17_room(m.member[..],m.members);
+  m.written=o.written;m.author=o.author;m.rumor_id=o.rumor_id;m.kind=o.kind;m.created_at=o.created_at;
+  m.content_from=o.content_from;m.content_to=o.content_to;m.error=N17_OK;
+  return m;
+}
+// book:end read
+
+// book:begin order
+// The indexes of the opened messages in room, oldest first; equal times by
+// rumor id. Returns their count, or -1 when order is too small.
+nip17_order :: (m:[]N17Message,room:[]u8,order:[]int)->int #effects(all) {
+  n:=0;
+  for i:0..<m.count {
+    if m[i].error!=N17_OK || !n17_same(m[i].room[..],room) {continue;}
+    if n==order.count {return -1;}
+    k:=n;order[n]=i;n+=1;
+    while k>0 && n17_before(m[order[k]],m[order[k-1]]) {x:=order[k];order[k]=order[k-1];order[k-1]=x;k-=1;}
+  }
+  return n;
+}
+// book:end order
+
+n17_before :: (a:N17Message,b:N17Message)->bool #effects(all) {
+  if a.created_at<b.created_at {return true;}
+  if a.created_at>b.created_at {return false;}
+  ids:[64]u8;for c:0..<32 {ids[c]=a.rumor_id[c];ids[32+c]=b.rumor_id[c];}
+  return n17_less_at(ids[..],0,1);
+}
+
+nip17_subject :: (m:[]N17Message,order:[]int)->int #effects(all) {
+  for k:0..<order.count {i:=order[order.count-1-k];if m[i].subject_n>=0 {return i;}}
+  return -1;
+}
+
+// Structural projection only: callers must first admit the exact custody
+// operation/account/identity response. No plaintext label is a proof of a seal.
+nip17_read_opened :: (rumor:string,me:[]u8)->N17Message #effects(all) {
+ m:N17Message;if rumor.count<1 || rumor.count>NIP59_MAX_RUMOR || me.count!=32 {return m;}
+ copy:[65536]u8;pre:[65536]u8;defer {secure_zero(copy[..]);secure_zero(pre[..]);}n:=n59_signed_copy(rumor,copy[..]);if n<0 {return m;}
+ e:=nostr_event_read(cast(string)copy[0..<n],pre[..],false);if e.error!=NE_OK {return m;}
+ o:=Nip59Opened.{error=NIP59_OK,written=rumor.count,author=e.public_key,rumor_id=e.id,kind=e.kind,created_at=e.created_at,tags_from=e.tags_from,tags_to=e.tags_to,tags=e.tags,content_from=e.content_from,content_to=e.content_to};
+ return n17_read(o,rumor,me);
+}
+#load "nip17-message-checks.coax" #test;

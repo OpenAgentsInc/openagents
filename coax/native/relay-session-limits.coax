@@ -1,0 +1,3 @@
+// Public authenticated-relay envelope bounds; signing permission stays in the SDK policy.
+NRS_FRAME :: 131072;
+NRS_WIRE :: 800000;

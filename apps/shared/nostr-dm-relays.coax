@@ -1,0 +1,153 @@
+// The existing Relay machine over installed authenticated operation 23.
+// SDK observations arrive only after durable EVENT/OK ingestion. Browser SDKs
+// must preserve that ordering too. No signing or private keys live here.
+#load "nostr-inbox.coax";
+#load "../../coax/native/relay-session-wire.coax";
+#load "../../coax/native/nostr-purpose-wire.coax";
+#load "../../coax/lib/nostr/nip42.coax";
+#load "../../coax/lib/nostr/event_verify_fast.coax";
+#load "../../coax/lib/nostr/message.coax";
+#load "../../coax/native/fixtures/messaging_vectors.coax" #test;
+#authority;
+DmRelay :: struct {url:[256]u8;nu:int;relay:[1]Relay;auth:[1]Nip42;ack:int;idle:int;own:int= -1;peer:int= -1;messages:int= -1;partial:bool;received:int;}
+NostrDmRelays :: struct {
+ generation:int;identity:[64]u8;peer:[64]u8;np:int;relays:[6]DmRelay;nr:int;
+ active:bool;reset:bool;busy:bool;action:int;pending:int;slot:int;next:int;ms:int;now:int;clock_at:int;drained:int;
+ body:[800000]u8;nb:int;needs_auth:bool;auth_operation:[64]u8;auth_gen:int;
+ changed:bool;heads_changed:bool;partial:bool;
+ publish:[65536]u8;publish_n:int;publish_slot:int;publish_entry:int= -1;
+}
+#test "authenticated relay ownership starts with a reset and cannot consume an older account reply" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;q:[1]NrsRequest;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ urls:=[1]string.["wss://relay.example"];
+ #assert ndi_bind(s[..],"a",me) && ndr_configure(p[..],s[..],urls[..],"") && ndr_tick(p[..],0);
+ #assert p[0].action==23 && nrs_read(cast(string)p[0].body[0..<p[0].nb],q[..]) && q[0].action==5;
+ #assert !ndr_reply(p[..],s[..],2,"",false) && p[0].busy;
+ #assert ndr_reply(p[..],s[..],1,"",false) && ndr_tick(p[..],0) && p[0].pending==6;
+ #assert ndi_bind(s[..],"b",me) && !ndr_reply(p[..],s[..],1,"",true);
+}
+#test "relay configuration never accepts an insecure URL or a self recipient" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ urls:=[1]string.["ws://relay.example"];#assert ndi_bind(s[..],"a",me) && !ndr_configure(p[..],s[..],urls[..],"");
+ urls[0]="wss://relay.example";#assert !ndr_configure(p[..],s[..],urls[..],me) && ndr_configure(p[..],s[..],urls[..],"");
+ ndr_pause(p[..]);#assert !p[0].active && p[0].reset && p[0].publish_n==0;
+}
+#test "current challenge AUTH uses custody and the existing signed AUTH adapter" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;q:[1]NrsRequest;b:[16000]u8;urls:=[1]string.["wss://relay.example/"];
+ #assert ndi_bind(s[..],"a",NMS_LIST_PUB) && ndr_configure(p[..],s[..],urls[..],"");
+ p[0].reset=false;p[0].now=NMS_LIST_AT;p[0].clock_at=60000;r:=p[0].relays[0..<1];r[0].relay[0].state=RL_OPEN;r[0].relay[0].gen=7;
+ _=rl_next(r[0].relay[..],0);_=rl_next(r[0].relay[..],0);
+ #assert ndr_frame(p[..],0,"[\"AUTH\",\"fixture\"]") && ndr_tick(p[..],0) && p[0].needs_auth;
+ #assert ndr_auth(p[..],s[..],NMS_LIST_PUB) && p[0].action==21;
+ n:=nsr_write("custody","relay-auth",NMS_LIST_PUB,NMS_LIST_PUB,"ok",0,0,NMS_AUTH_EVENT,b[..]);
+ #assert ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && p[0].action==23 && r[0].relay[0].auth==RA_SENT;
+ #assert nrs_read(cast(string)p[0].body[0..<p[0].nb],q[..]) && q[0].action==2 && cast(string)q[0].payload[0..<8]=="[\"AUTH\",";
+ n=nrs_observation(0,7,0,NMS_LIST_PUB,"idle","",b[..]);_=ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false);
+ #assert !p[0].busy && !ndr_stage(p[..],-1,NMS_LIST_EVENT) && ndr_stage(p[..],0,NMS_LIST_EVENT) && !ndr_stage(p[..],0,NMS_LIST_EVENT);
+ #assert !ndr_ready(p[..]);out:[8192]u8;#assert ndr_req(p[..],0,r[0].messages,true,1730000000,out[..])>0;
+}
+ndr_configure :: (p:[]NostrDmRelays,s:[]NostrInbox,urls:[]string,peer:string)->bool #effects(all) {
+ if s[0].na==0 || urls.count<1 || urls.count>6 || (peer.count!=0 && (!aw_hex(peer,64) || peer==cast(string)s[0].identity[..])) || p[0].busy {return false;}
+ for url,i:urls {if url.count>256 || !nrs_admit(1,i,1,0,cast(string)s[0].identity[..],url) {return false;}for k:0..<i {if urls[k]==url {return false;}}}
+ same:=p[0].generation==s[0].generation && p[0].nr==urls.count && cast(string)p[0].peer[0..<p[0].np]==peer;
+ for url,i:urls {if url!=cast(string)p[0].relays[i].url[0..<p[0].relays[i].nu] {same=false;}}
+ if same && p[0].active {return true;}
+ ndr_pause(p);p[0].generation=s[0].generation;p[0].identity=s[0].identity;p[0].np=ndi_copy(p[0].peer[..],peer);p[0].nr=urls.count;p[0].active=true;p[0].partial=false;p[0].clock_at=0;p[0].now=0;p[0].changed=true;p[0].heads_changed=false;
+ for i:0..<6 {gen:=p[0].relays[i].relay[0].gen;p[0].relays[i]=DmRelay.{};p[0].relays[i].relay[0].gen=gen;if i<urls.count {r:=p[0].relays[i..<i+1];r[0].nu=ndi_copy(r[0].url[..],urls[i]);_=nip42_init(r[0].auth[..],urls[i]);r[0].own=rl_subscribe(r[0].relay[..]);if peer.count>0 {r[0].peer=rl_subscribe(r[0].relay[..]);}r[0].messages=rl_subscribe(r[0].relay[..]);}}
+ return true;
+}
+ndr_pause :: (p:[]NostrDmRelays) #effects(all) {
+ p[0].active=false;p[0].reset=true;p[0].needs_auth=false;p[0].publish_n=0;p[0].publish_entry= -1;secure_zero(p[0].publish[..]);
+ for i:0..<6 {rl_shutdown(p[0].relays[i].relay[..]);}
+}
+ndr_do :: (p:[]NostrDmRelays,action:int,slot:int,payload:string)->bool #effects(all) {
+ gen:=ifx action==5 then 0 else ifx action==6 then p[0].generation else p[0].relays[slot].relay[0].gen;
+ ack:=ifx action==3 || action==4 then p[0].relays[slot].ack else 0;
+ n:=nrs_request(NRR_ACTIONS[action-1],slot,gen,ack,cast(string)p[0].identity[..],payload,p[0].body[..]);if n<0 {p[0].partial=true;return false;}
+ p[0].nb=n;p[0].pending=action;p[0].slot=slot;p[0].action=NRS_OP;p[0].busy=true;return true;
+}
+ndr_req :: (p:[]NostrDmRelays,i:int,sub:int,resume:bool,since:int,out:[]u8)->int #effects(all) {
+ r:=p[0].relays[i..<i+1];list:=sub==r[0].own || sub==r[0].peer;f:[1]NostrFilter;kinds:=[1]int.[ifx list then 10050 else 1059];f[0].has_kinds=true;f[0].kinds=kinds[..];
+ authors:=[1]string.[ifx sub==r[0].peer then cast(string)p[0].peer[..] else cast(string)p[0].identity[..]];
+ tags:[1]NostrTagFilter;values:=[1]string.[cast(string)p[0].identity[..]];
+ if list {f[0].has_authors=true;f[0].authors=authors[..];}
+ else {tags[0].name='p';tags[0].values=values[..];f[0].tags=tags[..];f[0].has_since=resume && since>172800;f[0].since=ifx since>172800 then since-172800 else 0;}
+ f[0].has_limit=true;f[0].limit=ifx list then 1 else 128;b:[24]u8;name:=rl_sub_text(sub,r[0].relay[0].subs[sub].serial,b[..]);return nostr_message_write_req(name,f[..],out,false);
+}
+ndr_tick :: (p:[]NostrDmRelays,dt:f32)->bool #effects(all) {
+ if dt>0 && dt<=1 {p[0].ms+=cast(int)(dt*1000);p[0].drained=0;}
+ if p[0].busy || p[0].action!=0 || p[0].needs_auth {return false;}
+ if p[0].reset {p[0].reset=false;return ndr_do(p,5,0,"");}
+ if !p[0].active || p[0].drained>=12 {return false;}
+ if p[0].ms>=p[0].clock_at {p[0].clock_at=p[0].ms+60000;return ndr_do(p,6,0,"");}
+ for turn:0..<p[0].nr {
+  i:=(p[0].next+turn)%p[0].nr;r:=p[0].relays[i..<i+1];state:=r[0].relay[0].state;todo:=rl_tick(r[0].relay[..],p[0].ms);
+  if todo==RL_DO_TIMEOUT {_=rl_dropped(r[0].relay[..],r[0].relay[0].gen,p[0].ms,i*117);r[0].partial=true;return ndr_do(p,4,i,"");}
+  if state==RL_IDLE || todo==RL_DO_CONNECT {if r[0].relay[0].gen>=NRR_SERIAL {r[0].partial=true;continue;}_=rl_start(r[0].relay[..],p[0].ms);r[0].ack=0;r[0].idle=0;_=nip42_init(r[0].auth[..],cast(string)r[0].url[0..<r[0].nu]);p[0].next=(i+1)%p[0].nr;return ndr_do(p,1,i,cast(string)r[0].url[0..<r[0].nu]);}
+  if state==RL_OPEN {
+   if p[0].publish_n>0 && p[0].publish_slot==i && p[0].publish_entry>=0 {pub:=r[0].relay[0].pubs[p[0].publish_entry].state;if pub==RP_ACCEPTED || pub==RP_REFUSED {_=rl_cancel_publish(r[0].relay[..],p[0].publish_entry);p[0].publish_n=0;p[0].publish_entry= -1;p[0].changed=true;}}
+   o:=rl_next(r[0].relay[..],p[0].ms);
+   if o.kind==RL_OUT_AUTH {p[0].needs_auth=true;p[0].slot=i;return true;}
+   if o.kind==RL_OUT_REQ {out:[8192]u8;n:=ndr_req(p,i,o.slot,o.has_since,o.since,out[..]);if n<0 {r[0].partial=true;continue;}return ndr_do(p,2,i,cast(string)out[0..<n]);}
+   if o.kind==RL_OUT_CLOSE {out:[128]u8;b:[24]u8;n:=nostr_message_write_close(rl_sub_text(o.slot,r[0].relay[0].subs[o.slot].serial,b[..]),out[..],false);return ndr_do(p,2,i,cast(string)out[0..<n]);}
+   if o.kind==RL_OUT_EVENT && p[0].publish_n>0 && p[0].publish_slot==i && p[0].publish_entry==o.slot {out:[131072]u8;n:=nostr_message_write_event(cast(string)p[0].publish[0..<p[0].publish_n],out[..],false);if n>0 {return ndr_do(p,2,i,cast(string)out[0..<n]);}}
+  }
+  if (state==RL_OPEN || state==RL_CONNECTING) && p[0].ms>=r[0].idle {p[0].next=(i+1)%p[0].nr;p[0].drained+=1;return ndr_do(p,3,i,"");}
+ }return false;
+}
+ndr_frame :: (p:[]NostrDmRelays,i:int,raw:string)->bool #effects(all) {
+ r:=p[0].relays[i..<i+1];gen:=r[0].relay[0].gen;if nip42_input(r[0].relay[..],r[0].auth[..],gen,raw)==RL_AUTH {return true;}
+ m:=nostr_message_read(raw);if m.error!=NM_OK {r[0].partial=true;return false;}
+ text:=nm_text(m,m.message);auth:=text.count>=14 && text[0..<14]=="auth-required:";
+ if m.type==NM_ACCEPT {_=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_OK,id=m.id,accepted=m.accepted,auth_required=auth});p[0].changed=true;return true;}
+ if m.type==NM_NOTICE {_=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_NOTICE});return true;}
+ sub:=nm_text(m,m.sub);slot:=rl_sub_find(r[0].relay[..],sub);if slot<0 {return false;}
+ if m.type==NM_EOSE {_=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_EOSE,sub=sub});if slot==r[0].own || slot==r[0].peer {p[0].heads_changed=true;}if slot==r[0].messages && r[0].received>=128 {r[0].partial=true;}return true;}
+ if m.type==NM_CLOSED {_=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_CLOSED,sub=sub,auth_required=auth});r[0].partial=true;return true;}
+ if m.type!=NM_EVENT {return false;}scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(raw[m.event.from..<m.event.to],scratch[..],false));
+ if e.error!=NE_OK || !e.verified {r[0].partial=true;return false;}
+ want:=ifx slot==r[0].messages then 1059 else 10050;if e.kind!=want {r[0].partial=true;return false;}
+ verdict:=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_EVENT,sub=sub,id=e.id,created_at=e.created_at,verified=true});
+ if verdict!=RL_DELIVER && verdict!=RL_DUPLICATE {return false;}if want==10050 {p[0].heads_changed=true;}else {r[0].received+=1;p[0].changed=true;}return true;
+}
+ndr_auth :: (p:[]NostrDmRelays,s:[]NostrInbox,operation:string)->bool #effects(all) {
+ if p[0].busy || !p[0].needs_auth || p[0].generation!=s[0].generation || !aw_hex(operation,64) {return false;}
+ r:=p[0].relays[p[0].slot..<p[0].slot+1];purpose:[2048]u8;gen:=r[0].relay[0].gen;
+ n:=nsp_auth_request(cast(string)p[0].identity[..],cast(string)r[0].url[0..<r[0].nu],gen,nip42_challenge_text(r[0].auth[..]),purpose[..]);if n<0 {return false;}
+ n=nsc_request("relay-auth",operation,cast(string)p[0].identity[..],cast(string)purpose[0..<n],p[0].body[..]);if n<0 {return false;}
+ _=ndi_copy(p[0].auth_operation[..],operation);p[0].auth_gen=gen;p[0].nb=n;p[0].action=NSC_OP;p[0].pending=7;p[0].busy=true;return true;
+}
+ndr_stage :: (p:[]NostrDmRelays,i:int,original:string)->bool #effects(all) {
+ if !p[0].active || p[0].publish_n!=0 || i<0 || i>=p[0].nr || original.count>65536 || p[0].relays[i].relay[0].state!=RL_OPEN {return false;}
+ scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(original,scratch[..],false));if e.error!=NE_OK || !e.verified || e.kind==22242 {return false;}
+ k:=rl_publish(p[0].relays[i].relay[..],e.id[..]);if k<0 {return false;}p[0].publish_n=ndi_copy(p[0].publish[..],original);p[0].publish_slot=i;p[0].publish_entry=k;return true;
+}
+ndr_ready :: (p:[]NostrDmRelays)->bool #effects(all) {
+ if !p[0].active || p[0].nr==0 || p[0].partial {return false;}
+ for i:0..<p[0].nr {r:=p[0].relays[i];if r.partial || r.relay[0].state!=RL_OPEN || r.messages<0 || r.relay[0].subs[r.messages].state!=RS_CAUGHT {return false;}}return true;
+}
+ndr_reply :: (p:[]NostrDmRelays,s:[]NostrInbox,generation:int,raw:string,failed:bool)->bool #effects(all) {
+ if !p[0].busy || generation!=p[0].generation || generation!=s[0].generation {return false;}action:=p[0].pending;i:=p[0].slot;
+ if !p[0].active && action!=5 {p[0].busy=false;p[0].action=0;p[0].needs_auth=false;return false;}
+ if action==7 {
+  r:=p[0].relays[i..<i+1];result:[1]NsResult;
+  if !failed && (!nsr_read(raw,result[..]) || result[0].service!=1 || result[0].action!=2 || cast(string)result[0].operation[..]!=cast(string)p[0].auth_operation[..] || cast(string)result[0].identity[..]!=cast(string)p[0].identity[..]) {return false;}
+  p[0].busy=false;p[0].action=0;p[0].needs_auth=false;
+  if failed || result[0].status!=0 {r[0].partial=true;_=rl_dropped(r[0].relay[..],r[0].relay[0].gen,p[0].ms,0);return true;}
+  signed:=cast(string)result[0].payload[0..<result[0].n];scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(signed,scratch[..],false));me:[32]u8;out:[131072]u8;
+  read:=e.error==NE_OK && e.verified && ne_lower_hex(cast(string)p[0].identity[..],me[..]) && n17_same(me[..],e.public_key[..]);
+  if !read {r[0].partial=true;return true;}
+  f:=nip42_send_fields(r[0].relay[..],r[0].auth[..],p[0].auth_gen,p[0].now,true,e.kind,e.created_at,signed[e.tags_from..<e.tags_to],e.id[..],signed,out[..]);
+  if f.error!=N42_OK {r[0].partial=true;return true;}return ndr_do(p,2,i,cast(string)out[0..<f.written]);
+ }
+ if action==5 {p[0].busy=false;p[0].action=0;if failed {p[0].reset=true;}return true;}
+ if failed {p[0].busy=false;p[0].action=0;if action==6 {p[0].clock_at=p[0].ms+5000;}else {p[0].relays[i].partial=true;_=rl_dropped(p[0].relays[i].relay[..],p[0].relays[i].relay[0].gen,p[0].ms,i*117);}return true;}
+ q:[1]NrsObservation;if !nrs_observe(raw,q[..]) || cast(string)q[0].identity[..]!=cast(string)p[0].identity[..] || q[0].slot!=i || q[0].generation!=(ifx action==6 then p[0].generation else p[0].relays[i].relay[0].gen) {return false;}
+ if action==6 && q[0].kind!=8 {return false;}
+ p[0].busy=false;p[0].action=0;if action==6 {p[0].now=nrr_seconds(cast(string)q[0].payload[0..<q[0].n]);return true;}
+ if action==4 {return true;}r:=p[0].relays[i..<i+1];if q[0].kind==6 {r[0].idle=p[0].ms+500;return false;}
+ if q[0].sequence<=r[0].ack {return false;}if q[0].sequence!=r[0].ack+1 {r[0].partial=true;_=rl_dropped(r[0].relay[..],r[0].relay[0].gen,p[0].ms,0);return true;}r[0].ack=q[0].sequence;
+ if q[0].kind==2 {if rl_opened(r[0].relay[..],r[0].relay[0].gen,p[0].ms) {r[0].partial=false;r[0].received=0;}return true;}
+ if q[0].kind==3 {return ndr_frame(p,i,cast(string)q[0].payload[0..<q[0].n]);}
+ if q[0].kind==4 || q[0].kind==5 || q[0].kind==7 {r[0].partial=true;_=rl_dropped(r[0].relay[..],r[0].relay[0].gen,p[0].ms,i*117);return true;}return false;
+}

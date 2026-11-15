@@ -1,0 +1,73 @@
+// One read-only codec for account-owned immutable seal receipt enumeration.
+#load "nostr-send-wire.coax";
+#load "../lib/nostr/nip17-message.coax";
+#authority;
+NDL_REQUEST :: "openagents.nostr.delivery-request.v1alpha1";
+NDL_PAGE :: "openagents.nostr.delivery-page.v1alpha1";
+NdlRequest :: struct {identity:[64]u8;after:[64]u8;na:int;}
+NdlItem :: struct {operation:[64]u8;receipt:[1]NsmSealed;}
+NdlPage :: struct {identity:[64]u8;after:[64]u8;na:int;next:[64]u8;nn:int;items:[16]NdlItem;n:int;}
+#test "delivery request and empty page have fixed closed bytes and echo the exact cursor" {
+ id:="0000000000000000000000000000000000000000000000000000000000000001";b:[4096]u8;q:[1]NdlRequest;p:[1]NdlPage;r:[1]NdlPage;
+ n:=ndl_request_write(id,"",b[..]);#assert n>0 && ndl_request_read(cast(string)b[0..<n],q[..]) && q[0].na==0;
+ #assert cast(string)b[0..<n]=="{\"schema\":\"openagents.nostr.delivery-request.v1alpha1\",\"identity\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"after\":\"\"}";
+ #assert ndl_begin(p[..],q[..]);n=ndl_page_write(p[..],b[..]);#assert n>0 && ndl_page_read(cast(string)b[0..<n],r[..]);
+ #assert cast(string)b[0..<n]=="{\"schema\":\"openagents.nostr.delivery-page.v1alpha1\",\"identity\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"after\":\"\",\"next\":\"\",\"items\":[]}";
+ #assert !ndl_request_read("{}",q[..]) && !ndl_page_read("{}",r[..]) && ndl_request_write("bad","",b[..])<0 && ndl_request_write(id,"bad",b[..])<0;
+ #assert ndl_request_write(id,id,b[0..<1])<0 && !ndl_request_read("{}",q[0..<0]) && !ndl_page_read("{}",r[0..<0]);
+}
+#test "delivery pages preserve complete receipts and refuse duplicate or reversed operations" {
+ a:="0000000000000000000000000000000000000000000000000000000000000001";b:="0000000000000000000000000000000000000000000000000000000000000002";c:="0000000000000000000000000000000000000000000000000000000000000003";
+ q:[1]NdlRequest;p:[1]NdlPage;r:[1]NdlPage;wire:[32768]u8;receipt:[2048]u8;ids:=[2]string.[a,b];n:=ndl_request_write(a,a,wire[..]);#assert ndl_request_read(cast(string)wire[0..<n],q[..]) && ndl_begin(p[..],q[..]);
+ nr:=nsm_sealed_write(ids[..],7,receipt[..]);#assert !ndl_put(p[..],a,cast(string)receipt[0..<nr]) && ndl_put(p[..],b,cast(string)receipt[0..<nr]) && !ndl_put(p[..],b,cast(string)receipt[0..<nr]) && ndl_put(p[..],c,cast(string)receipt[0..<nr]);
+ for ch,i:c {p[0].next[i]=ch;}p[0].nn=64;n=ndl_page_write(p[..],wire[..]);#assert n>0 && ndl_page_read(cast(string)wire[0..<n],r[..]) && r[0].n==2 && r[0].items[1].receipt[0].revision==7;
+ #assert cast(string)r[0].items[0].receipt[0].self[..]==b && !ndl_put(p[..],c,"{}");
+ p[0].next=p[0].items[0].operation;#assert ndl_page_write(p[..],wire[..])<0;
+ #assert !ndl_after(b,a) && !ndl_after(a,"bad") && !ndl_after("bad",b) && ndl_after("",a);
+}
+ndl_after :: (a:string,b:string)->bool #effects(all) {
+ keys:[64]u8;if !ne_lower_hex(b,keys[32..<64]) {return false;}if a.count==0 {return true;}
+ return ne_lower_hex(a,keys[0..<32]) && n17_less_at(keys[..],0,1);
+}
+ndl_request_read :: (raw:string,q:[]NdlRequest)->bool #export_c #effects(all) {
+ if q.count!=1 {return false;}q[0]=NdlRequest.{};d:[1]Jv;nodes:[12]JvNode;
+ if raw.count>512 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[3]string.["schema","identity","after"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=3 || jv_raw(v,jv_get(v,0,"schema"))!=NDL_REQUEST || js_string(v,jv_get(v,0,"identity"),q[0].identity[..])!=64 {return false;}
+ q[0].na=js_string(v,jv_get(v,0,"after"),q[0].after[..]);return aw_hex(cast(string)q[0].identity[..],64) && (q[0].na==0 || q[0].na==64 && aw_hex(cast(string)q[0].after[..],64));
+}
+ndl_request_write :: (identity:string,after:string,out:[]u8)->int #effects(all) {
+ if !aw_hex(identity,64) || (after.count!=0 && !aw_hex(after,64)) {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NDL_REQUEST);jo_key(o[..],"identity");jo_str(o[..],identity);jo_key(o[..],"after");jo_str(o[..],after);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+ndl_begin :: (p:[]NdlPage,q:[]NdlRequest)->bool #export_c #effects(all) {
+ if p.count!=1 || q.count!=1 || !aw_hex(cast(string)q[0].identity[..],64) || (q[0].na!=0 && (q[0].na!=64 || !aw_hex(cast(string)q[0].after[..],64))) {return false;}
+ p[0]=NdlPage.{};p[0].identity=q[0].identity;p[0].after=q[0].after;p[0].na=q[0].na;return true;
+}
+ndl_put :: (p:[]NdlPage,operation:string,raw:string)->bool #export_c #effects(all) {
+ if p.count!=1 || p[0].n<0 || p[0].n>=16 || !aw_hex(cast(string)p[0].identity[..],64) || (p[0].na!=0 && (p[0].na!=64 || !aw_hex(cast(string)p[0].after[..],64))) {return false;}
+ prev:=ifx p[0].n==0 then cast(string)p[0].after[0..<p[0].na] else cast(string)p[0].items[p[0].n-1].operation[..];
+ receipt:[1]NsmSealed;if !ndl_after(prev,operation) || !nsm_sealed_read(raw,receipt[..]) {return false;}
+ for c,i:operation {p[0].items[p[0].n].operation[i]=c;}p[0].items[p[0].n].receipt[0]=receipt[0];p[0].n+=1;return true;
+}
+ndl_page_write :: (p:[]NdlPage,out:[]u8)->int #export_c #effects(all) {
+ if p.count!=1 || !aw_hex(cast(string)p[0].identity[..],64) || p[0].n<0 || p[0].n>16 || (p[0].na!=0 && (p[0].na!=64 || !aw_hex(cast(string)p[0].after[..],64))) || (p[0].nn!=0 && (p[0].nn!=64 || p[0].n==0 || cast(string)p[0].next[..]!=cast(string)p[0].items[p[0].n-1].operation[..])) {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],NDL_PAGE);jo_key(o[..],"identity");jo_str(o[..],cast(string)p[0].identity[..]);jo_key(o[..],"after");jo_str(o[..],cast(string)p[0].after[0..<p[0].na]);jo_key(o[..],"next");jo_str(o[..],cast(string)p[0].next[0..<p[0].nn]);jo_key(o[..],"items");jo_arr(o[..]);
+ prev:=cast(string)p[0].after[0..<p[0].na];
+ for i:0..<p[0].n {
+  row:=p[0].items[i];id:=cast(string)row.operation[..];if !ndl_after(prev,id) {return -1;}prev=cast(string)p[0].items[i].operation[..];
+  receipt:=row.receipt[0];if receipt.n<2 || receipt.n>11 {return -1;}ids:[11]string;for k:0..<receipt.n {ids[k]=cast(string)receipt.ids[k][..];}
+  b:[2048]u8;n:=nsm_sealed_write(ids[0..<receipt.n],receipt.revision,b[..]);if n<0 {return -1;}
+  jo_obj(o[..]);jo_key(o[..],"operation");jo_str(o[..],id);jo_key(o[..],"receipt");jo_raw(o[..],cast(string)b[0..<n]);jo_end(o[..]);
+ }jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad || o[0].n>32768 then -1 else o[0].n;
+}
+ndl_page_read :: (raw:string,p:[]NdlPage)->bool #effects(all) {
+ if p.count!=1 {return false;}p[0]=NdlPage.{};d:[1]Jv;nodes:[1024]JvNode;
+ if raw.count>32768 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[5]string.["schema","identity","after","next","items"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=5 || jv_raw(v,jv_get(v,0,"schema"))!=NDL_PAGE || js_string(v,jv_get(v,0,"identity"),p[0].identity[..])!=64 || !aw_hex(cast(string)p[0].identity[..],64) {return false;}
+ p[0].na=js_string(v,jv_get(v,0,"after"),p[0].after[..]);p[0].nn=js_string(v,jv_get(v,0,"next"),p[0].next[..]);
+ if (p[0].na!=0 && (p[0].na!=64 || !aw_hex(cast(string)p[0].after[..],64))) || (p[0].nn!=0 && (p[0].nn!=64 || !aw_hex(cast(string)p[0].next[..],64))) {return false;}
+ list:=jv_get(v,0,"items");if jv_kind(v,list)!=JV_ARRAY || jv_len(v,list)>16 {return false;}
+ names:=[2]string.["operation","receipt"];
+ for i:0..<jv_len(v,list) {row:=jv_at(v,list,i);op:[64]u8;if !js_fields(v,row,names[..]) || jv_len(v,row)!=2 || js_string(v,jv_get(v,row,"operation"),op[..])!=64 || !ndl_put(p,cast(string)op[..],jv_raw(v,jv_get(v,row,"receipt"))) {return false;}}
+ return p[0].nn==0 || p[0].n>0 && cast(string)p[0].next[..]==cast(string)p[0].items[p[0].n-1].operation[..];
+}

@@ -1,0 +1,18 @@
+// One public-key text adapter for feed filters and message destinations.
+// It normalizes display text; possession and curve/admission checks remain
+// with their existing owners. Secret display forms are never accepted here.
+#load "filter.coax";
+#load "nip19-core.coax";
+#authority;
+#test "public destination text accepts npub and canonical hex but never a secret form" {
+ b:[64]u8;key:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert nostr_public_key_text("",b[0..<0])==0 && nostr_public_key_text(key,b[..])==64 && cast(string)b[..]==key;
+ #assert nostr_public_key_text(key,b[0..<63])<0 && nostr_public_key_text("bad",b[..])<0 && nostr_public_key_text("nsec1x",b[..])<0;
+ #assert nostr_public_key_text("npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg",b[..])==64 && b[0]=='7' && b[63]=='e';
+}
+nostr_public_key_text :: (text:string,out:[]u8)->int #effects(all) {
+ if text.count==0 {return 0;}if nf_hex(text) {if out.count<64 {return -1;}for c,i:text {out[i]=c;}return 64;}
+ if text.count<5 || !((text[0]=='n' || text[0]=='N') && (text[1]=='p' || text[1]=='P') && (text[2]=='u' || text[2]=='U') && (text[3]=='b' || text[3]=='B') && text[4]=='1') {return -1;}
+ key:[32]u8;r:=nip19_decode_checked(text,key[..],false);if r.error!=NC_OK || r.type!=N19_NPUB || r.written!=32 {return -1;}
+ h:=hex_encode_checked(cast(string)key[..],out,false);return ifx h.error==NC_OK then h.written else -1;
+}

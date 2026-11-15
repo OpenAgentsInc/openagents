@@ -5,3 +5,4 @@
 #load "../../native/nostr-operation-admit.coax";
 
 #load "../../native/nostr-send.coax";
+#load "../../native/nostr-delivery-wire.coax";

@@ -1219,6 +1219,8 @@
    ],
    "source": [
     "coax/lib/nostr/nip17.coax",
+    "coax/lib/nostr/nip17-relays.coax",
+    "coax/lib/nostr/nip17-message.coax",
     "coax/lib/nostr/nipa4.coax",
     "coax/tests/nostr/nip17_reference.py",
     "nostr/examples/checks/public-messages.coax",

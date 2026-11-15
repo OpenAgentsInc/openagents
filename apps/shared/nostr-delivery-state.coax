@@ -1,0 +1,43 @@
+// One presentation of a committed send's real journal ACK masks. These are
+// observations, never authorization to send or a claim that a person read it.
+#load "../../coax/native/nostr-send-wire.coax";
+#load "../../coax/native/messaging-store-wire.coax";
+#authority;
+NostrDeliveryState :: struct {receipt:[1]NsmSealed;known:u64;accepted:u64;pending:u64;refused:u64;revision:int= -1;}
+#test "recipient acceptance requires a real recipient ACK and cannot be inferred from the sender copy" {
+ d:[1]NostrDeliveryState;r:[1]NsmSealed;index:[1]MsIndex;b:[2048]u8;
+ a:="0000000000000000000000000000000000000000000000000000000000000001";z:="0000000000000000000000000000000000000000000000000000000000000002";ids:=[2]string.[a,z];n:=nsm_sealed_write(ids[..],7,b[..]);#assert nsm_sealed_read(cast(string)b[0..<n],r[..]) && nds_begin(d[..],r[0]);
+ #assert nds_status(d[..])== -1;index[0].ok=true;index[0].revision=7;index[0].n=2;for c,i:a {index[0].rows[0].id[i]=c;}for c,i:z {index[0].rows[1].id[i]=c;}index[0].rows[0].kind=1059;index[0].rows[1].kind=1059;index[0].rows[0].pending=1;index[0].rows[1].accepted=1;
+ #assert nds_index(d[..],index[..]) && nds_status(d[..])==0;
+ index[0].rows[0].pending=0;index[0].rows[0].refused=1;#assert nds_index(d[..],index[..]) && nds_status(d[..])==2;
+ index[0].revision=8;index[0].rows[0].refused=0;index[0].rows[0].pending=2;#assert nds_index(d[..],index[..]) && nds_status(d[..])==0;
+ index[0].revision=9;index[0].rows[0].accepted=2;#assert nds_index(d[..],index[..]) && nds_status(d[..])==1;
+ index[0].revision=8;#assert !nds_index(d[..],index[..]) && nds_status(d[..])==1;
+}
+#test "missing or unqueued originals are unknown and malformed manifests cannot become delivery state" {
+ d:[1]NostrDeliveryState;r:NsmSealed;index:[1]MsIndex;#assert !nds_begin(d[..],r) && nds_status(d[..])== -1;
+ r.ok=true;r.n=12;#assert !nds_begin(d[..],r) && !nds_index(d[..],index[..]);
+}
+nds_begin :: (s:[]NostrDeliveryState,r:NsmSealed)->bool #effects(all) {
+ if s.count!=1 || !r.ok || r.n<2 || r.n>11 {return false;}
+ receipt:=r;ids:[11]string;for i:0..<receipt.n {ids[i]=cast(string)receipt.ids[i][..];}b:[2048]u8;n:=nsm_sealed_write(ids[0..<receipt.n],receipt.revision,b[..]);checked:[1]NsmSealed;
+ if n<0 || !nsm_sealed_read(cast(string)b[0..<n],checked[..]) || cast(string)checked[0].self[..]!=cast(string)receipt.self[..] {return false;}
+ s[0]=NostrDeliveryState.{};s[0].receipt[0]=checked[0];return true;
+}
+nds_index :: (s:[]NostrDeliveryState,index:[]MsIndex)->bool #effects(all) {
+ if s.count!=1 || index.count!=1 || !s[0].receipt[0].ok || !index[0].ok || index[0].revision<s[0].receipt[0].revision || index[0].revision<s[0].revision {return false;}
+ for i:0..<index[0].n {row:=index[0].rows[i];if row.kind!=1059 {continue;}for k:0..<s[0].receipt[0].n {
+  if cast(string)row.id[..]!=cast(string)s[0].receipt[0].ids[k][..] {continue;}bit:=cast(u64)1<<k;off:=cast(u64)18446744073709551615^bit;
+  if row.accepted!=0 {s[0].accepted|=bit;s[0].known|=bit;s[0].pending&=off;s[0].refused&=off;}
+  else if (s[0].accepted&bit)==0 {
+   if row.pending!=0 {s[0].known|=bit;s[0].pending|=bit;s[0].refused&=off;}
+   else if row.refused!=0 {s[0].known|=bit;s[0].refused|=bit;s[0].pending&=off;}
+   else {s[0].known&=off;s[0].pending&=off;s[0].refused&=off;}
+  }
+ }}s[0].revision=index[0].revision;return true;
+}
+nds_status :: (s:[]NostrDeliveryState)->int #effects(all) {
+ if s.count!=1 || !s[0].receipt[0].ok || s[0].receipt[0].n<2 || s[0].receipt[0].n>11 {return -1;}
+ mask:=(cast(u64)1<<(s[0].receipt[0].n-1))-1;
+ if (s[0].accepted&mask)==mask {return 1;}if (s[0].refused&mask)!=0 {return 2;}if (s[0].known&mask)!=mask {return -1;}return 0;
+}

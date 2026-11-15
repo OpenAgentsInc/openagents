@@ -2,6 +2,7 @@
 // challenge and which complete list reads reached EOSE on this exact socket.
 #load "nostr-custody-policy.coax";
 #load "relay-session-wire.coax";
+#load "relay-session-policy.coax";
 #load "relay-session-checks.coax" #test;
 #authority;
 NRS_LIST_KINDS :: [4]int.[3,10000,10002,10050];

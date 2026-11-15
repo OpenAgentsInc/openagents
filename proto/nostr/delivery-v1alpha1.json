@@ -1,0 +1,15 @@
+{
+  "about": "Private account-scoped enumeration of immutable successful NIP-17 seal receipts, #13629. No plaintext, keys, intent digests, or signing permission.",
+  "http": "POST /api/auth/nostr/delivery/v1alpha1",
+  "request_schema": "openagents.nostr.delivery-request.v1alpha1",
+  "request_fields": ["schema", "identity", "after"],
+  "response_schema": "openagents.nostr.delivery-page.v1alpha1",
+  "response_fields": ["schema", "identity", "after", "next", "items"],
+  "item_fields": ["operation", "receipt"],
+  "receipt": "coax.native.nostr-sealed.v1alpha1",
+  "limits": {"items": 16, "bytes": 32768, "identity_hex": 64, "operation_hex": 64},
+  "ordering": "Strict ascending operation ID within the authenticated journal namespace. after is empty or exclusive; next is empty at the observed end, otherwise the last emitted operation. Immutable receipts inserted before a cursor appear on the next pass from the beginning; this is not an atomic snapshot.",
+  "authority": "The server derives account and canonical identity from the current human session and refuses mismatches. It resolves exactly one journal namespace, including account-merge ambiguity refusal. A page does not authorize a publish or prove delivery: each original and its relay ACK masks still come from the journal.",
+  "golden_request": "{\"schema\":\"openagents.nostr.delivery-request.v1alpha1\",\"identity\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"after\":\"\"}",
+  "golden_empty_page": "{\"schema\":\"openagents.nostr.delivery-page.v1alpha1\",\"identity\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"after\":\"\",\"next\":\"\",\"items\":[]}"
+}

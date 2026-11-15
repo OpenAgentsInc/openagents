@@ -1,0 +1,42 @@
+// Shared public NIP-59 result layouts and constants; no key handling or signing.
+NIP59_OK :: cast(u32)0;
+NIP59_INPUT :: cast(u32)1;          // a key or fresh view is not exactly one, a kind, time or tags not admitted
+NIP59_ALIAS :: cast(u32)2;
+NIP59_OUTPUT :: cast(u32)3;         // work below NIP59_WORK, or out too small for the result
+NIP59_CAPACITY :: cast(u32)4;       // rumor over NIP59_MAX_RUMOR, wrap over NIP59_MAX_WRAP
+NIP59_KEY :: cast(u32)5;            // the author's or recipient's secret, or the recipient's public key, is refused
+NIP59_FRESH :: cast(u32)6;          // the fresh wrap key is not a valid secret, or is the author's own
+NIP59_WRAP :: cast(u32)7;           // not an event with its own id, or not kind 1059/21059
+NIP59_WRAP_SIGNATURE :: cast(u32)8;
+NIP59_RECIPIENT :: cast(u32)9;      // no ["p", recipient] tag
+NIP59_WRAP_PAYLOAD :: cast(u32)10;  // the wrap's content does not decrypt for this recipient
+NIP59_SEAL :: cast(u32)11;          // not an event with its own id, not kind 13, or tags not empty
+NIP59_SEAL_SIGNATURE :: cast(u32)12;
+NIP59_SEAL_PAYLOAD :: cast(u32)13;
+NIP59_RUMOR :: cast(u32)14;         // not an unsigned event with its own id
+NIP59_IDENTITY :: cast(u32)15;      // the rumor's pubkey is not the seal's
+NIP59_INTERNAL :: cast(u32)16;      // an admitted primitive refused; unreachable by construction
+
+NIP59_SEAL_KIND :: 13;
+NIP59_WRAP_KIND :: 1059;
+NIP59_EPHEMERAL_KIND :: 21059;
+NIP59_WINDOW :: 172800;             // two days, in seconds
+NIP59_MAX_RUMOR :: 28672;
+NIP59_MAX_SEAL :: 40960;
+NIP59_MAX_WRAP :: 65536;
+NIP59_REGION :: 65536;
+NIP59_WORK :: 458752;               // seven regions; the NIP-44 work takes two
+
+// Host entropy for one wrap: 32-byte values from the platform's random source.
+// wrap_key is the one-time secret; *_back pick the seal and wrap times.
+Nip59Fresh :: struct {
+  wrap_key:[32]u8; seal_nonce:[32]u8; wrap_nonce:[32]u8; seal_aux:[32]u8; wrap_aux:[32]u8;
+  seal_back:u64; wrap_back:u64;
+}
+Nip59Wrapped :: struct { error:u32=NIP59_INPUT; written:int; rumor_id:[32]u8; seal_at:int; wrap_at:int; }
+// Spans index out, which holds the rumor JSON exactly as the seal carried it.
+Nip59Opened :: struct {
+  error:u32=NIP59_INPUT; written:int; author:[32]u8; rumor_id:[32]u8; wrap_key:[32]u8;
+  kind:int; created_at:int; tags_from:int; tags_to:int; tags:int; content_from:int; content_to:int;
+}
+

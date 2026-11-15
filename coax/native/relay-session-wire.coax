@@ -1,5 +1,5 @@
 // Versioned authenticated session, beside the frozen read-only operation 20.
-#load "relay-session-policy.coax";
+#load "relay-session-limits.coax";
 #load "relay-read-wire.coax";
 #load "../web/api/api-wire.coax";
 NRS_SCHEMA :: "coax.native.relay-session.v1alpha1";NRS_OP :: 23;
