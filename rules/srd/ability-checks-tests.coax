@@ -306,3 +306,14 @@ ac_field :: (b: [] RsBattle, actor: RsCreature, wisdom: int) {
   #assert rs_put_effect(b,1,RsEffect.{kind=EF_ZONE_RESTRAIN,cond=0,by=0,spell=SP_ENTANGLE,until=60,save=-1});
   b[0].who = 1; b[0].dice[0].rolled = 0;
 }
+
+#test "a malformed check keeps a held Help, which the next matching check spends for Advantage" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
+  _ := rs_add(b[..],rs_rogue("Helper",0,3),1,1); _ := rs_add(b[..],rs_rogue("Seeker",0,3),2,1);
+  #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_HELP_CHECK,cond=SK_PERCEPTION,by=0,spell=-1,save=-1});
+  look := RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=10};
+  r := rs_ability_check(b[..],1,RsAbilityRequest.{ability=6,skill=SK_PERCEPTION,dc=10});
+  #assert !r.accepted && rs_help_check(b[..],1,look,false);
+  r = rs_ability_check(b[..],1,look);
+  #assert r.accepted && r.edge == 1 && !rs_help_check(b[..],1,look,false);
+}
