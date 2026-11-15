@@ -43,6 +43,13 @@ Preserve older runtime feeds and verify compatible OTA activation/rollback.
 New installed services, shaders, SDKs or entitlements require a binary; do not
 promise that a new capability fits an older fingerprint.
 
+Delivered: #13625 inventory, #13626 versioned service/custody contracts, and
+#13627's shared live read-only feed. The first feed binary is **1092**, verified
+in TestFlight's existing Owner group. Its source, runtime, physical relay and
+lifecycle probes, web checks and matching signed package are recorded in the
+[release evidence](../verification/2026-11-15-nip01-feed-1092.md). #13628 follows;
+the feed release does not imply that custody signing or DMs are installed.
+
 ## Current foundation and integration rules
 
 Baseline source inspection: `dc0d9ef17a`. These are existing release records,

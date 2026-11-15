@@ -1,5 +1,12 @@
 # OpenAgents iOS
 
+Build **1092** is **VALID / IN_BETA_TESTING** in **Owner**. **Feed** in the drawer
+reads live public Nostr notes from your saved relays, with relay, author, time
+and hashtag filters. It uses shared Coax state/components and a read-only native
+relay service; `/feed` is the web consumer. Its matching signed generation-1
+package is bundled, so a fresh installation needs no identical update.
+[Release and device evidence](../../docs/verification/2026-11-15-nip01-feed-1092.md).
+
 The replacement app is the [Coax Native starter](../../coax/native/README.md):
 Coax-generated portable modules, native UIKit controls, native account
 services, and optional signed Updates. The OpenAgents book starts here and

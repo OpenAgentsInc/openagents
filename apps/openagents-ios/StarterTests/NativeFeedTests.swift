@@ -57,7 +57,7 @@ import UIKit
         defer {try? FileManager.default.removeItem(at:home)}
         let host=NativeHost(updates:try NativeUpdates(home:home),auth:auth);host.accountServices.send=send
         let p=try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app")
-        var opened=Set<Int>(),events=Set<Int>(),requests=0
+        var opened=Set<Int>(),events=Set<Int>(),requests=0,generations:[Int:Int]=[:]
         func drain()async throws {
             let names=[1:"auth.state",4:"http",8:"http.cancel",11:"environment.commandIDs",12:"environment.wait",18:"account.service",20:"relay.read"]
             for _ in 0..<64 {
@@ -69,7 +69,7 @@ import UIKit
                     else if op==18 || op==20 {raw=result["record"] as? String ?? ""}
                     else {raw=String(decoding:try JSONSerialization.data(withJSONObject:result),as:UTF8.self)}
                     if op==20,let observation=(try? JSONSerialization.jsonObject(with:Data(raw.utf8))) as? [String:Any],let slot=observation["slot"] as? Int {
-                        if observation["kind"] as? String=="open" {opened.insert(slot)}
+                        if observation["kind"] as? String=="open" {opened.insert(slot);generations[slot]=observation["generation"] as? Int}
                         if observation["kind"] as? String=="message",let text=observation["payload"] as? String,let frame=(try? JSONSerialization.jsonObject(with:Data(text.utf8))) as? [Any],frame.first as? String=="EVENT",frame.count==3,let event=frame[2] as? [String:Any],event["kind"] as? Int==1 {events.insert(slot)}
                     }
                     try p.event(100+op,result["status"] as? Int ?? 0,raw)
@@ -93,6 +93,18 @@ import UIKit
         shot.name="Native kind-1 feed";shot.lifetime = .keepAlways;add(shot)
         let receipt:[String:Any]=["selected_relays":urls,"opened_slots":opened.sorted(),"kind1_slots":events.sorted(),"carrier_requests":requests,"native_note_present":p.nodes.values.contains {$0.id=="feed.note.0"},"remote_images":false]
         let evidence=XCTAttachment(data:try JSONSerialization.data(withJSONObject:receipt,options:.prettyPrinted),uniformTypeIdentifier:"public.json");evidence.name="Native feed relay receipts";evidence.lifetime = .keepAlways;add(evidence)
+        // Exercise the SDK lifecycle on the physical device. Inject its actual
+        // notification, then advance the portable retry clock independently of
+        // wall time; neither a new identity nor a second socket stack is used.
+        let previous=generations
+        NotificationCenter.default.post(name:UIApplication.willResignActiveNotification,object:nil)
+        NotificationCenter.default.post(name:UIApplication.didBecomeActiveNotification,object:nil)
+        let reconnectDeadline=Date().addingTimeInterval(20)
+        while Date()<reconnectDeadline && ![0,1].allSatisfy({(generations[$0] ?? 0)>(previous[$0] ?? 0)}) {
+            try await Task.sleep(for:.milliseconds(100));try p.frame(elapsed:0.5);try await drain()
+        }
+        XCTAssertTrue([0,1].allSatisfy {(generations[$0] ?? 0)>(previous[$0] ?? 0)},"Foreground must open fresh owned generations on both selected relays")
+        XCTAssertTrue(p.nodes.values.contains {$0.id.hasPrefix("feed.note.")})
         _=try await host.call("relay.read",["nativeWire":wire("reset",generation:0)])
     }
 }
