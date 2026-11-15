@@ -39,12 +39,12 @@ locktime_final_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, height: int, time: int
 // count it is the upper of the two middle times, as in Core.
 LOCKTIME_MEDIAN_SPAN :: 11;
 locktime_median_time_past_vartime :: (times: [] int) -> int #effects(all) {
-  #assert times.count >= 1 && times.count <= LOCKTIME_MEDIAN_SPAN;
+  #assert times.count >= 1 && times.count <= LOCKTIME_MEDIAN_SPAN;   // mutant: equivalent (a precondition: calling it with another count traps, which no check can observe, and a count of 12 or more traps on sorted's bounds either way)
   sorted: [LOCKTIME_MEDIAN_SPAN] int;
   n := times.count;
   for i: 0..<n {
     v := times[i]; j := i;
-    while j > 0 && sorted[j-1] > v { sorted[j] = sorted[j-1]; j -= 1; }
+    while j > 0 && sorted[j-1] > v { sorted[j] = sorted[j-1]; j -= 1; }   // mutant: equivalent (moving an equal integer past an equal one leaves the same sorted list)
     sorted[j] = v;
   }
   return sorted[n / 2];
@@ -93,7 +93,7 @@ locktime_sequence_locks_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, enforce: bool
   lock := LockPair.{height=-1, time=-1};
   if !enforce || tx_le_vartime(b, 0, 4) < 2 { return lock; }
   for k: 0..<t.nin {
-    r := locktime_relative_vartime(tx_le_vartime(b, ins[k].sequence, 4));
+    r := locktime_relative_vartime(tx_le_vartime(b, ins[k].sequence, 4));   // mutant: equivalent (a fifth byte is bit 32 or up of the sequence, and the masks read only bits 0 to 31)
     if !r.enabled { continue; }
     if r.by_time {
       lock.time = lt_max(lock.time, times[k] + r.seconds - 1);
@@ -109,7 +109,7 @@ locktime_sequence_ok_vartime :: (lock: LockPair, height: int, prev_mtp: int) -> 
   return lock.height < height && lock.time < prev_mtp;
 }
 // book:end sequencelocks
-lt_max :: (a: int, b: int) -> int #effects(all) { return ifx a > b then a else b; }
+lt_max :: (a: int, b: int) -> int #effects(all) { return ifx a > b then a else b; }   // mutant: equivalent (at a == b both branches are the same integer)
 
 // ---- checks
 // Reads a transaction from hex into fixed room.
@@ -182,4 +182,26 @@ lt_read :: (x: [] LtTx, text: string) -> Tx #effects(all) {
   lock := locktime_sequence_locks_vartime(x[0].b[..], t, x[0].ins[..], v.enforce, heights[0..<t.nin], times[0..<t.nin]);
   #assert lock.height == v.lock_height && lock.time == v.lock_time;
   #assert locktime_sequence_ok_vartime(lock, v.height, v.prev_mtp) == v.ok;
+}
+#test "a lock time is four bytes: a byte after it is not part of it" {
+  x: [1] LtTx;
+  t := lt_read(x[..], "020000000100000000000000000000000000000000000000000000000000000000000000000000000000feffffff01000000000000000000ff64cd1d");
+  for k: 0..<4 { x[0].b[t.locktime+k] = 0; }
+  x[0].b[t.locktime+4] = 1;
+  // lock time 0 is final at any height, and the byte after the four is not read
+  #assert locktime_final_vartime(x[0].b[..], t, x[0].ins[..], 0, 0);
+}
+#test "a segwit serialization is read, and its lock time decides finality" {
+  x: [1] LtTx;
+  // version 2, marker and flag, one input (sequence 0xfffffffe), one empty output, a one-item witness, lock time 1
+  t := lt_read(x[..], "0200000000010100000000000000000000000000000000000000000000000000000000000000000000000000feffffff0100000000000000000001010001000000");
+  #assert t.segwit && tx_le_vartime(x[0].b[..], t.locktime, 4) == 1;
+  #assert !locktime_final_vartime(x[0].b[..], t, x[0].ins[..], 1, 0) && locktime_final_vartime(x[0].b[..], t, x[0].ins[..], 2, 0);
+}
+#test "BIP-68: a negative second count is refused, and a lock is past only when both of its limits are strictly below the block's" {
+  #assert locktime_sequence_seconds_vartime(-1) == -1 && locktime_sequence_seconds_vartime(0) == 0x00400000;
+  // EvaluateSequenceLocks: locked while lock.height >= height or lock.time >= prev_mtp
+  l := LockPair.{height = 9, time = 99};
+  #assert locktime_sequence_ok_vartime(l, 10, 100) && !locktime_sequence_ok_vartime(l, 9, 100) && !locktime_sequence_ok_vartime(l, 10, 99);
+  #assert locktime_sequence_ok_vartime(LockPair.{height = -1, time = -1}, 0, 0);
 }
