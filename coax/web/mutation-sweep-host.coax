@@ -250,7 +250,10 @@ tool_main :: () -> int #export_c #effects(all) {
         ms_put(rep[..], ms_itoa(parts[p].part + 1, nb2[..])); ms_put(rep[..], " of "); ms_put(rep[..], ms_itoa(parts[p].parts, nb2[..]));
       }
       ms_put(rep[..], " | `"); ms_put(rep[..], s.path); ms_put(rep[..], "` | "); ms_put(rep[..], swept); ms_put(rep[..], " | ");
-      ms_put(rep[..], m.why); ms_put(rep[..], " |\n");
+      ms_put(rep[..], m.why);
+      own := ms_owner(s.path);
+      if own.count > 0 { ms_put(rep[..], "; "); ms_put(rep[..], own); }
+      ms_put(rep[..], " |\n");
     }
   }
   clean := failed == 0 && unswept == 0 && not_ran == 0 && total == 0 && undecided == 0 && reported == files;

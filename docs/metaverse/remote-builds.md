@@ -999,7 +999,15 @@ at a time; a second one says which is running and stops.
    suite: the one whose `#load` closure reaching it is smallest, so its
    baseline is the cheapest. A file no suite reaches (`apps/openagents-cli/`,
    `os/`, `nostr/relay/`, `tools/coax-nostr/` and the like) goes under the
-   smallest file with checks that reaches it, usually itself. It leaves out
+   smallest file with checks that reaches it, usually itself. Such a file is
+   tested with its own `coax test` line's flags, or, without one, with the
+   compile-time budget of its `// tool.sh: run-steps N` line
+   (`bitcoin/lab/stress-record.coax`). A fragment that compiles only inside
+   the program that loads it gives way to that program, built as its own
+   build does: `apps/openagents-cli/labs.coax` uses `out.coax`'s names, so
+   `apps/openagents-cli/main.coax --library` is the root (`su_fragment_root`).
+   A part that does not run under `tools/coax-nostr/` or `coax/lib/nostr/`
+   says it is the Nostr agent's. It leaves out
    `docs/` (verification records: frozen copies of old inputs),
    `coax/tests/` (the compiler's fixtures, some red or weak on purpose),
    `coax/book/` and `coax/examples/` (listings whose survivors the book

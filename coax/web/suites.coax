@@ -202,6 +202,41 @@ su_has_main :: (text: string) -> bool {
 
 // The `coax test` line in the first SU_HEAD_LINES lines that names a file
 // called base, and the budget and flags on it.
+// The compile-time budget a tool is built with: N from its "// tool.sh: run-steps N" line
+// (coax/web/tool.sh), else "".
+su_tool_run_steps :: (text: string) -> string {
+  w := "// tool.sh: run-steps ";
+  i := 0;
+  while true {
+    if su_starts(text, i, w) {
+      from := i + w.count; z := from;
+      while z < text.count && text[z] >= '0' && text[z] <= '9' { z += 1; }
+      if z == text.count || text[z] == '\n' { return text[from..<z]; }  // "" when no digits
+    }
+    while i < text.count && text[i] != '\n' { i += 1; }
+    if i == text.count { return ""; }
+    i += 1;
+  }
+  return "";
+}
+// A file with checks that compiles only inside the program that loads it (it uses that program's
+// names), the program, and whether that program is built as a library, as its own build does
+// (#13586). labs.coax uses out.coax's Rep; apps/openagents-cli/build.sh runs `coax c main.coax --library`.
+SuFragment :: struct { root: string; library: bool; }
+su_fragment_root :: (path: string) -> SuFragment {
+  if path == "apps/openagents-cli/labs.coax" { return SuFragment.{root = "apps/openagents-cli/main.coax", library = true}; }
+  return SuFragment.{};
+}
+#test "a tool's compile-time budget comes from its tool.sh line, and a fragment's root is its program" {
+  #assert su_tool_run_steps("// tool.sh: run-steps 100000000\n#load \"x.coax\";\n") == "100000000";
+  #assert su_tool_run_steps("#load \"x.coax\";\n// tool.sh: run-steps 7") == "7";
+  #assert su_tool_run_steps("// tool.sh: run-steps \n") == "" && su_tool_run_steps("// tool.sh: run-steps 12x\n") == "" && su_tool_run_steps("") == "";
+  #assert su_tool_run_steps("x // tool.sh: run-steps 5\n") == "" && su_tool_run_steps("// tool.sh: run-steps 9\n// tool.sh: run-steps 8\n") == "9";
+  #assert su_tool_run_steps("// tool.sh: run-steps 1/\n") == "" && su_tool_run_steps("// tool.sh: run-steps 1:\n") == "" && su_tool_run_steps("x\n\n// tool.sh: run-steps 3") == "3";
+  fr := su_fragment_root("apps/openagents-cli/labs.coax");
+  #assert fr.root == "apps/openagents-cli/main.coax" && fr.library;
+  #assert su_fragment_root("apps/openagents-cli/main.coax").root == "" && !su_fragment_root("x.coax").library;
+}
 su_head :: (text: string, base: string) -> SuHead {
   h: SuHead;
   i := 0; line := 0;

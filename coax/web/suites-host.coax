@@ -89,8 +89,17 @@ tool_main :: () -> int #export_c #effects(all) {
       // #authority file no suite reaches (#13586); its own `coax test` line's flags, as a suite's
       hx := su_head(text, su_base(path));
       if (su_has_tests(text) || hx.found) && hx.native.count == 0 {
-        extra[nx] = Suite.{path = path, steps = su_keep(arena[..], hx.steps), run_steps = su_keep(arena[..], hx.run_steps), traversal = su_keep(arena[..], hx.traversal), library = hx.library || !su_has_main(text), root_only = hx.root_only, only = su_keep(arena[..], hx.only), authority = true};
-        extra_file[nx] = f; nx += 1;
+        // a tool's "// tool.sh: run-steps N" is the compile-time budget it is built with
+        rs := ifx hx.run_steps.count > 0 then hx.run_steps else su_tool_run_steps(text);
+        extra[nx] = Suite.{path = path, steps = su_keep(arena[..], hx.steps), run_steps = su_keep(arena[..], rs), traversal = su_keep(arena[..], hx.traversal), library = hx.library || !su_has_main(text), root_only = hx.root_only, only = su_keep(arena[..], hx.only), authority = true};
+        extra_file[nx] = f;
+        // a fragment compiles only inside the program that loads it: that program is the root, built
+        // as its own build does (su_fragment_root)
+        fr := su_fragment_root(path);
+        if fr.root.count > 0 {
+          for g: 0..<nf { if files[g] == fr.root { extra[nx] = Suite.{path = files[g], library = fr.library, authority = true}; extra_file[nx] = g; } }
+        }
+        nx += 1;
       }
     }
   }

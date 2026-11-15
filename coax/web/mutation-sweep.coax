@@ -360,6 +360,16 @@ ms_found :: (line: string) -> MsFound {
   #assert ms_found("x5 OPEN").number == "" && ms_found("1090 OPEN").number == "1090" && ms_found("12: OPEN").number == "";
   #assert ms_found(" OPEN").state == "" && ms_found("7 OPEN").number == "7" && ms_found("3 ZAP").state == "ZAP" && ms_found("3 OPEN[").state == "OPEN";
 }
+// Who owns a suite's files when the sweep does not: the Nostr tools belong to the Nostr agent
+// (#13586), so a part of theirs that did not run says so. "" for the rest.
+ms_owner :: (suite: string) -> string {
+  if ms_starts(suite, "tools/coax-nostr/") || ms_starts(suite, "coax/lib/nostr/") { return "the Nostr agent's"; }
+  return "";
+}
+#test "a Nostr tool's part names its owner" {
+  #assert ms_owner("tools/coax-nostr/secret-check/aggregate.coax") == "the Nostr agent's" && ms_owner("coax/lib/nostr/keys.coax") == "the Nostr agent's";
+  #assert ms_owner("tools/coax-nostrx/a.coax") == "" && ms_owner("coax/lib/bitcoin/fees.coax") == "" && ms_owner("") == "";
+}
 // What a part that did not run says: stopped at the limit, its output cut, its files not all reported.
 ms_why :: (status: int, got: int, want: int, cut: bool, minutes: int, out: [] u8) -> string {
   t: [1] MsText; t[0].bytes = out; nb: [32] u8;
