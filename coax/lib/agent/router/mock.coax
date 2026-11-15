@@ -1,0 +1,252 @@
+// A stand-in for Google's Decisions API (Gemini Decision 1), in process, for
+// the router's checks and its command line. It takes the bytes of a request
+// as google.coax writes them and answers with the bytes Google would send:
+// one typed answer for each question, each a distribution over that
+// question's own options, and a usage count. It opens no socket and needs no
+// key, so a check can ask thousands of questions.
+//
+// It does not judge the task. What it answers comes from a script and a seed:
+//
+//   station=coderos,engine=codex   the option a choice names
+//   difficulty=3,weight=2          the level a score names, from 0
+//   p=700                          the named option's probability, out of 1,000 (900 when absent)
+//   fail=rate                      a refusal instead: invalid, safety, not_found, key, rate,
+//                                  server, malformed (200 with no answers), transport (no response)
+//
+// A question the script doesn't name gets an option picked from the seed and
+// the question's place, so one seed always gives one answer. As with Google,
+// the choice an answer names is its most likely option: p=100 on a question
+// with two options names the other one, at 0.9.
+//
+// It refuses what Google refuses about a request's shape: a model that is not
+// gemini-decision-1 (404), no questions, or a choice or score with fewer than
+// two options (400). coax/lib/systemone/gemini_fake.py is the stand-in over
+// HTTP that holds the client's exact bytes and its key header; this one holds
+// the router's handling of answers.
+#load "../../systemone/google.coax";
+#load "../../json/json.coax";
+
+RTRM_P :: 900;
+RTRM_INVALID :: "{\"error\":{\"message\":\"* CreateDecisionRequest.questions[k].choice.criteria: must have between 2 and 255 options\\n\",\"code\":\"invalid_request\"}}";
+RTRM_SAFETY :: "{\"error\":{\"code\":\"safety\",\"message\":\"Request blocked due to safety violations (harmful content). Please modify your input and retry.\"}}";
+RTRM_NOT_FOUND :: "{\"error\":{\"message\":\"Requested model not found.\",\"code\":\"not_found\"}}";
+RTRM_BAD_KEY :: "{\"error\":{\"code\":400,\"message\":\"API key not valid. Please pass a valid API key.\",\"status\":\"INVALID_ARGUMENT\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"API_KEY_INVALID\"}]}}";
+RTRM_QUOTA :: "{\"error\":{\"code\":429,\"message\":\"Resource has been exhausted (e.g. check quota).\",\"status\":\"RESOURCE_EXHAUSTED\"}}";
+RTRM_SERVER :: "{\"error\":{\"code\":500,\"message\":\"An internal error has occurred.\",\"status\":\"INTERNAL\"}}";
+RTRM_MALFORMED :: "{\"answers\":{},\"usage\":{\"total_tokens\":1,\"total_input_tokens\":1,\"total_output_tokens\":0}}";
+
+RtrmReply :: struct {
+  status: int;       // the HTTP status; 0: no response
+  body: string;      // in the caller's out, or a constant
+}
+
+// The value of key in a script ("a=1,b=2"), or "".
+rtrm_script :: (script: string, key: string) -> string {
+  at := 0;
+  while at < script.count {
+    e := at; while e < script.count && script[e] != ',' { e += 1; }
+    eq := at; while eq < e && script[eq] != '=' { eq += 1; }
+    if eq < e && cast(string) script[at..<eq] == key { return cast(string) script[eq + 1..<e]; }
+    at = e + 1;
+  }
+  return "";
+}
+
+// A script's number, or fallback when it is absent or not 1 to 4 digits.
+rtrm_number :: (text: string, fallback: int) -> int {
+  if text.count == 0 || text.count > 4 { return fallback; }
+  v := 0;
+  for c: text { if c < '0' || c > '9' { return fallback; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+
+// An option from the seed and the question's place: 0 to n - 1.
+rtrm_roll :: (seed: int, question: int, n: int) -> int {
+  s := ifx seed < 0 then 0 - seed else seed;
+  x := (s % 65521) * 31 + question * 17 + 7;
+  x = (x * 1103 + 12345) % 65521;
+  x = (x * 1103 + 12345) % 65521;
+  return x % n;
+}
+
+// 0.900: a probability out of 1,000, as JSON.
+rtrm_milli :: (o: [] Jo, milli: int) {
+  m := ifx milli < 0 then 0 else ifx milli > 1000 then 1000 else milli;
+  t: [5] u8;
+  t[0] = cast(u8) ('0' + m / 1000); t[1] = '.';
+  t[2] = cast(u8) ('0' + (m / 100) % 10); t[3] = cast(u8) ('0' + (m / 10) % 10); t[4] = cast(u8) ('0' + m % 10);
+  jo_raw(o, cast(string) t[..]);
+}
+
+// Option i's share when option chosen has p of 1,000 among n: the rest is
+// split evenly, and what the split leaves over goes to the first other option.
+rtrm_share :: (i: int, chosen: int, p: int, n: int) -> int {
+  if i == chosen { return p; }
+  rest := 1000 - p; each := rest / (n - 1);
+  first := ifx chosen == 0 then 1 else 0;
+  return ifx i == first then each + (rest - each * (n - 1)) else each;
+}
+
+// The most likely option: the lowest index among the largest shares.
+rtrm_top :: (chosen: int, p: int, n: int) -> int {
+  best := 0;
+  for i: 0..<n { if rtrm_share(i, chosen, p, n) > rtrm_share(best, chosen, p, n) { best = i; } }
+  return best;
+}
+
+// Google's answer to request, by script and seed. nodes holds the parsed
+// request; out the answer.
+rtrm_answer :: (request: string, script: string, seed: int, nodes: [] JvNode, out: [] u8) -> RtrmReply {
+  fail := rtrm_script(script, "fail");
+  if fail == "transport" { return RtrmReply.{status = 0, body = ""}; }
+  if fail == "invalid" { return RtrmReply.{status = 400, body = RTRM_INVALID}; }
+  if fail == "safety" { return RtrmReply.{status = 400, body = RTRM_SAFETY}; }
+  if fail == "not_found" { return RtrmReply.{status = 404, body = RTRM_NOT_FOUND}; }
+  if fail == "key" { return RtrmReply.{status = 400, body = RTRM_BAD_KEY}; }
+  if fail == "rate" { return RtrmReply.{status = 429, body = RTRM_QUOTA}; }
+  if fail == "server" { return RtrmReply.{status = 500, body = RTRM_SERVER}; }
+  if fail == "malformed" { return RtrmReply.{status = 200, body = RTRM_MALFORMED}; }
+  d: [1] Jv;
+  if !jv_parse(d[..], request, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return RtrmReply.{status = 400, body = RTRM_INVALID}; }
+  j := d[0];
+  if jv_raw(j, jv_get(j, 0, "model")) != GD_MODEL { return RtrmReply.{status = 404, body = RTRM_NOT_FOUND}; }
+  questions := jv_get(j, 0, "questions");
+  if jv_kind(j, questions) != JV_OBJECT || jv_len(j, questions) == 0 { return RtrmReply.{status = 400, body = RTRM_INVALID}; }
+  p := rtrm_number(rtrm_script(script, "p"), RTRM_P);
+  if p < 0 || p > 1000 { p = RTRM_P; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "answers"); jo_obj(o[..]);
+  for qi: 0..<jv_len(j, questions) {
+    qn := jv_at(j, questions, qi);
+    name := jv_key(j, qn); type := jv_raw(j, jv_get(j, qn, "type"));
+    criteria := jv_get(j, qn, "criteria"); n := jv_len(j, criteria);
+    wanted := rtrm_script(script, name);
+    jo_key(o[..], name); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], type);
+    if type == "noul" {
+      yes := ifx wanted.count > 0 then rtrm_number(wanted, p) else ifx rtrm_roll(seed, qi, 2) == 1 then p else 1000 - p;
+      if yes > 1000 { yes = 1000; }
+      jo_key(o[..], "noul"); rtrm_milli(o[..], yes);
+      jo_key(o[..], "confidence"); rtrm_milli(o[..], ifx yes >= 500 then yes else 1000 - yes);
+    } else if type == "choice" {
+      if jv_kind(j, criteria) != JV_OBJECT || n < 2 { return RtrmReply.{status = 400, body = RTRM_INVALID}; }
+      chosen := -1;
+      for i: 0..<n { if wanted.count > 0 && jv_key(j, jv_at(j, criteria, i)) == wanted { chosen = i; } }
+      if chosen < 0 { chosen = rtrm_roll(seed, qi, n); }
+      top := rtrm_top(chosen, p, n);
+      jo_key(o[..], "choice"); jo_raw(o[..], "\""); jo_put(o[..], jv_key(j, jv_at(j, criteria, top))); jo_put(o[..], "\"");
+      jo_key(o[..], "confidence"); rtrm_milli(o[..], rtrm_share(top, chosen, p, n));
+      jo_key(o[..], "probabilities"); jo_obj(o[..]);
+      for i: 0..<n {
+        jo_value(o[..]); jo_put(o[..], "\""); jo_put(o[..], jv_key(j, jv_at(j, criteria, i))); jo_put(o[..], "\":"); o[0].keyed = true;
+        rtrm_milli(o[..], rtrm_share(i, chosen, p, n));
+      }
+      jo_end(o[..]);
+    } else if type == "score" {
+      if jv_kind(j, criteria) != JV_ARRAY || n < 2 { return RtrmReply.{status = 400, body = RTRM_INVALID}; }
+      chosen := rtrm_number(wanted, -1);
+      if chosen < 0 || chosen >= n { chosen = rtrm_roll(seed, qi, n); }
+      top := rtrm_top(chosen, p, n);
+      mean := 0;
+      for i: 0..<n { mean += i * rtrm_share(i, chosen, p, n); }
+      // the mean level: thousandths of a level, written as L.ddd
+      jo_key(o[..], "score"); jo_value(o[..]);
+      whole: [1] Jo; wb: [8] u8; jo_start(whole[..], wb[..]); jo_int(whole[..], mean / 1000); jo_put(o[..], jo_text(whole[..]));
+      frac: [4] u8; frac[0] = '.'; frac[1] = cast(u8) ('0' + (mean / 100) % 10); frac[2] = cast(u8) ('0' + (mean / 10) % 10); frac[3] = cast(u8) ('0' + mean % 10);
+      jo_put(o[..], cast(string) frac[..]);
+      jo_key(o[..], "confidence"); rtrm_milli(o[..], rtrm_share(top, chosen, p, n));
+      jo_key(o[..], "probabilities"); jo_obj(o[..]);
+      for i: 0..<n { kb: [1] Jo; kbuf: [8] u8; jo_start(kb[..], kbuf[..]); jo_int(kb[..], i); jo_key(o[..], jo_text(kb[..])); rtrm_milli(o[..], rtrm_share(i, chosen, p, n)); }
+      jo_end(o[..]);
+    } else { return RtrmReply.{status = 400, body = RTRM_INVALID}; }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  tokens := (request.count + 3) / 4;
+  jo_key(o[..], "usage"); jo_obj(o[..]);
+  jo_key(o[..], "total_tokens"); jo_int(o[..], tokens);
+  jo_key(o[..], "total_input_tokens"); jo_int(o[..], tokens);
+  jo_key(o[..], "input_tokens_by_modality"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "modality"); jo_str(o[..], "text"); jo_key(o[..], "tokens"); jo_int(o[..], tokens); jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "total_output_tokens"); jo_int(o[..], 0);
+  jo_end(o[..]); jo_end(o[..]);
+  if o[0].bad { return RtrmReply.{status = 500, body = RTRM_SERVER}; }
+  return RtrmReply.{status = 200, body = jo_text(o[..])};
+}
+
+// A request with one question of each type, for the checks.
+rtrm_fx :: (b: [] GdBody, buf: [] u8) -> string {
+  gd_begin(b, buf, GD_MODEL); gd_text(b, "The blue mug arrived cracked.");
+  gd_noul(b, "damaged", "Did the item arrive damaged?", "", "");
+  keys := [3] string.["billing", "returns", "shipping"]; labels := [3] string.["Payments", "Send it back", "Where it is"];
+  gd_choice(b, "queue", "Which queue?", keys[..], labels[..]);
+  levels := [4] string.["Routine", "Soon", "Today", "Now"];
+  gd_score(b, "urgency", "How urgent?", levels[..]);
+  return gd_body(b);
+}
+
+#test "the script: values by key, numbers of one to four digits" {
+  #assert rtrm_script("station=coderos,engine=codex", "engine") == "codex" && rtrm_script("station=coderos,engine=codex", "station") == "coderos";
+  #assert rtrm_script("station=coderos", "p") == "" && rtrm_script("", "p") == "" && rtrm_script("p", "p") == "" && rtrm_script("p=", "p") == "";
+  #assert rtrm_script("ap=1,p=2", "p") == "2";
+  #assert rtrm_number("700", 9) == 700 && rtrm_number("", 9) == 9 && rtrm_number("7x", 9) == 9 && rtrm_number("12345", 9) == 9 && rtrm_number("0", 9) == 0;
+}
+
+#test "shares form a distribution, and the named choice is the most likely option" {
+  #assert rtrm_share(1, 1, 900, 3) == 900 && rtrm_share(0, 1, 900, 3) == 50 && rtrm_share(2, 1, 900, 3) == 50;
+  #assert rtrm_share(1, 0, 700, 4) == 100 && rtrm_share(0, 0, 700, 4) == 700;
+  #assert rtrm_share(0, 2, 899, 3) == 51 && rtrm_share(1, 2, 899, 3) == 50;       // the split's remainder
+  #assert rtrm_top(1, 900, 3) == 1 && rtrm_top(1, 100, 2) == 0 && rtrm_top(2, 400, 3) == 2 && rtrm_top(0, 1000, 2) == 0;
+}
+#forall "shares sum to 1,000 for every probability and option" v:0..<8008 {
+  p := v % 1001; n := 2 + (v / 1001);        // 2 to 9 options
+  for chosen: 0..<n {
+    sum := 0;
+    for i: 0..<n { s := rtrm_share(i, chosen, p, n); #assert s >= 0 && s <= 1000; sum += s; }
+    #assert sum == 1000;
+    #assert rtrm_roll(v, chosen, n) >= 0 && rtrm_roll(v, chosen, n) < n;
+  }
+}
+
+#test "an answer holds to its request as Google's does, by script or by seed" {
+  b: [1] GdBody; buf: [2048] u8; nodes: [256] JvNode; out: [4096] u8; ab: [256] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  request := rtrm_fx(b[..], buf[..]);
+  r := rtrm_answer(request, "queue=returns,urgency=3,damaged=990", 0, nodes[..], out[..]);
+  #assert r.status == 200 && gd_check(b[..], r.body) == "";
+  c := gd_choice_of(ar[..], r.body, "queue"); s := gd_score_of(r.body, "urgency"); y := gd_noul_of(r.body, "damaged");
+  #assert c.ok && c.choice == "returns" && c.probability > 0.899 && c.probability < 0.901 && s.ok && s.level == 3 && s.levels == 4 && y.ok && y.noul > 0.98;
+  #assert gd_usage(r.body).ok && gd_usage(r.body).output_tokens == 0 && gd_usage(r.body).input_tokens == (request.count + 3) / 4;
+  // an unsure answer among three options keeps its choice; among two it would name the other
+  r = rtrm_answer(request, "queue=shipping,p=400", 0, nodes[..], out[..]);
+  c = gd_choice_of(ar[..], r.body, "queue");
+  #assert gd_check(b[..], r.body) == "" && c.choice == "shipping" && c.probability > 0.399 && c.probability < 0.401;
+  // no script: one seed, one answer
+  first: [4096] u8;
+  r1 := rtrm_answer(request, "", 7, nodes[..], first[..]);
+  r2 := rtrm_answer(request, "", 7, nodes[..], out[..]);
+  #assert r1.status == 200 && r1.body == r2.body && gd_check(b[..], r1.body) == "";
+  // an answer that does not fit its buffer is a server failure, not a cut answer
+  #assert rtrm_answer(request, "", 7, nodes[..], out[0..<64]).status == 500;
+}
+#forall "every seed's answer holds to its request" seed:0..<256 {
+  b: [1] GdBody; buf: [2048] u8; nodes: [256] JvNode; out: [4096] u8;
+  request := rtrm_fx(b[..], buf[..]);
+  r := rtrm_answer(request, ifx seed % 2 == 0 then "" else "p=340", seed, nodes[..], out[..]);
+  #assert r.status == 200 && gd_check(b[..], r.body) == "";
+}
+
+#test "refusals: each kind by script, and what Google refuses about a request's shape" {
+  nodes: [256] JvNode; out: [1024] u8; ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  b: [1] GdBody; buf: [2048] u8; request := rtrm_fx(b[..], buf[..]);
+  r := rtrm_answer(request, "fail=rate", 0, nodes[..], out[..]);
+  #assert r.status == 429 && gd_error(ar[..], r.status, r.body).kind == GdErrorKind.rate;
+  r = rtrm_answer(request, "fail=safety", 0, nodes[..], out[..]); #assert gd_error(ar[..], r.status, r.body).kind == GdErrorKind.safety;
+  r = rtrm_answer(request, "fail=invalid", 0, nodes[..], out[..]); #assert gd_error(ar[..], r.status, r.body).kind == GdErrorKind.invalid_request;
+  r = rtrm_answer(request, "fail=key", 0, nodes[..], out[..]); #assert gd_error(ar[..], r.status, r.body).kind == GdErrorKind.key;
+  r = rtrm_answer(request, "fail=server", 0, nodes[..], out[..]); #assert gd_error(ar[..], r.status, r.body).kind == GdErrorKind.server;
+  r = rtrm_answer(request, "fail=not_found", 0, nodes[..], out[..]); #assert gd_error(ar[..], r.status, r.body).kind == GdErrorKind.not_found;
+  r = rtrm_answer(request, "fail=malformed", 0, nodes[..], out[..]); #assert r.status == 200 && gd_check(b[..], r.body) == "a question has no answer";
+  #assert rtrm_answer(request, "fail=transport", 0, nodes[..], out[..]).status == 0;
+  #assert rtrm_answer("{\"model\":\"gemini-2\",\"input\":[],\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":\"?\"}}}", "", 0, nodes[..], out[..]).status == 404;
+  #assert rtrm_answer("{\"model\":\"gemini-decision-1\",\"input\":[],\"questions\":{}}", "", 0, nodes[..], out[..]).status == 400;
+  #assert rtrm_answer("{\"model\":\"gemini-decision-1\",\"questions\":{\"q\":{\"type\":\"choice\",\"instructions\":\"?\",\"criteria\":{\"only\":\"\"}}}}", "", 0, nodes[..], out[..]).status == 400;
+  #assert rtrm_answer("not json", "", 0, nodes[..], out[..]).status == 400;
+}

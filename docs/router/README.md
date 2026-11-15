@@ -1,6 +1,7 @@
 # One router: no agent, model or effort pickers
 
-Written 2026-11-14. Status: specification, not built. Owner decision of the
+Written 2026-11-14. Status: specification. The first piece is built
+([What is built](#what-is-built)); no app calls it yet. Owner decision of the
 same day; the owner settled the open questions that evening
 ([Decisions](#decisions)).
 
@@ -464,6 +465,51 @@ coding and not enough for a product with no way out.
    automatic routing is no worse than the best fixed engine there.
 4. **Check calibration.** A probability of 0.9 should be right nine times in
    ten. Until measured, treat the 0.5 threshold as a guess.
+
+## What is built
+
+Since 2026-11-14 the router exists as a library and a command line, for
+shaping it before any app calls it:
+[`coax/lib/agent/router/`](../../coax/lib/agent/router/README.md).
+
+- **Schema.** [`proto/openagents/router/v1alpha1/router.proto`](../../proto/openagents/router/v1alpha1/router.proto):
+  `Station`, `RouteRequest` and `RouteDecision`. Alpha.
+- **Rules in code.** Which computers and agents are eligible and the fact
+  that rules each other one out, then the pick.
+- **Five questions.** `station`, `engine`, `difficulty`, `effort`, `weight`.
+- **Three doors.** Google's Gemini Decision 1, an in-process stand-in that
+  answers by script and seed, and a recorded answer replayed.
+- **A command line.** `coax/web/tool.sh coax/lib/agent/router/router.coax decide "TASK"`.
+
+It starts no agent. Its computers come from a file, not from live reports.
+
+### Build order from here
+
+Each step is tried from the command line and held by checks before the next.
+
+1. **The rest of the questions.** `needs`, the three `named_` questions and
+   `continue`, each with its rule in code. Ask about the computer and the
+   agent together: Google's first answers chose an agent and a computer that
+   doesn't run it.
+2. **A labelled set for delegation.** Tasks that differ by computer, weight
+   and need, each with the right answer, recorded with Google and replayed in
+   checks. `route_eval.py` scores engine choice only.
+3. **`policy.coax` becomes `#authority`**, with its mutation pass, once the
+   rules stop moving.
+4. **A stand-in over HTTP**, so the client's exact bytes, key header,
+   timeouts and rate limits are checked through `curl` as a live call goes.
+   `coax/lib/systemone/gemini_fake.py` does this for the decision client
+   today.
+5. **A real station report.** A collector for one computer (disk, memory,
+   load, running agents, logins), `openagents router stations` printing this
+   computer's own report, then `DescribeStation` in the environment runtime.
+6. **The record and the allowance.** `coder.route.v3` as a projection of
+   `RouteDecision`, and the daily count.
+7. **The first caller: the iPhone app.** It sends a task and reads a
+   decision and the one line. The decision runs on the server or on a
+   computer's resident service, never on the phone, because the key stays off
+   the phone.
+8. **The delegation agent** starts the work on the chosen computer.
 
 ## Rollout
 

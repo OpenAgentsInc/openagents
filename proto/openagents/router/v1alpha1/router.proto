@@ -1,0 +1,136 @@
+syntax = "proto3";
+package openagents.router.v1alpha1;
+import "openagents/options/v1alpha1/json.proto";
+
+// The delegation router (docs/router/README.md): one request holds a coding
+// task and what each connected computer reports about itself, and one
+// decision says which computer, coding agent, model and effort take it.
+//
+// The JSON form is this schema's JSON mapping (coax/proto.md, "JSON mapper"):
+// each json_name is the key, keys go in field-number order, and a zero, empty
+// or false field without presence is left out. One codec:
+// coax/lib/agent/router/wire.coax. Goldens: proto/coder/router-v1alpha1.json,
+// checked by coax/lib/agent/router/wire-goldens.coax.
+//
+// Alpha: a prototype for shaping the router from the command line. No
+// product surface sends or stores these yet. The environment runtime's
+// DescribeStation will carry Station, and coder.route.v3 will be a
+// projection of RouteDecision, each under its own schema id when it ships.
+//
+// No credential, token, path or file content is a field here. A probability
+// is an integer out of 1,000, because the JSON mapper takes no doubles.
+
+// One coding agent on one computer, and whether its account can take work.
+message StationAgent {
+  option (openagents.options.v1alpha1.json) = "";
+  string engine = 1 [json_name = "engine"];                   // claude, codex, micro, psionic
+  bool installed = 2 [json_name = "installed"];
+  bool logged_in = 3 [json_name = "logged_in"];
+  bool quota_used_up = 4 [json_name = "quota_used_up"];
+  bool cooldown = 5 [json_name = "cooldown"];                 // resting after a provider's refusal
+  string version = 6 [json_name = "version"];
+  string plan = 7 [json_name = "plan"];
+  string quota_resets_at = 8 [json_name = "quota_resets_at"]; // RFC 3339 UTC, when the quota is used up
+}
+
+// One piece of work a computer is running now.
+message StationWork {
+  option (openagents.options.v1alpha1.json) = "";
+  option (openagents.options.v1alpha1.json_int64_numbers) = true;
+  string engine = 1 [json_name = "engine"];
+  string model = 2 [json_name = "model"];
+  string title = 3 [json_name = "title"];                     // the task's title, at most 120 bytes
+  string state = 4 [json_name = "state"];                     // working, waiting
+  int64 started_at_ms = 5 [json_name = "started_at_ms"];
+}
+
+// What the person allows on a computer. The router obeys these in code.
+message StationRules {
+  option (openagents.options.v1alpha1.json) = "";
+  bool keep_clear = 1 [json_name = "keep_clear"];             // no new work here
+  bool nothing_heavy = 2 [json_name = "nothing_heavy"];       // no long builds, many processes or much memory
+  int32 max_agents = 3 [json_name = "max_agents"];            // running agents at once; 0 is no limit
+}
+
+// What one connected computer reports about itself.
+message Station {
+  option (openagents.options.v1alpha1.json) = "";
+  option (openagents.options.v1alpha1.json_int64_numbers) = true;
+  string station_id = 1 [json_name = "station_id"];           // [a-z0-9-], 1 to 32; what a decision names
+  string display_name = 2 [json_name = "display_name"];
+  int64 reported_at_ms = 3 [json_name = "reported_at_ms"];    // a report over two minutes old is not reachable
+  string os = 4 [json_name = "os"];                           // macos, linux
+  int32 cpu_cores = 5 [json_name = "cpu_cores"];
+  int64 memory_total_mb = 6 [json_name = "memory_total_mb"];
+  int64 memory_free_mb = 7 [json_name = "memory_free_mb"];
+  int64 disk_free_mb = 8 [json_name = "disk_free_mb"];        // on the volume that holds the work
+  int64 disk_floor_mb = 9 [json_name = "disk_floor_mb"];      // below this it takes no new work
+  int32 load_1m_milli = 10 [json_name = "load_1m_milli"];     // the load average times 1,000
+  int32 load_15m_milli = 11 [json_name = "load_15m_milli"];
+  bool apple_builds = 12 [json_name = "apple_builds"];        // it can build for Apple platforms
+  string gpu = 13 [json_name = "gpu"];                        // its name; empty for none
+  repeated StationAgent agents = 14 [json_name = "agents"];          // at most 8
+  repeated StationWork work = 15 [json_name = "work"];               // at most 16
+  repeated string repos = 16 [json_name = "repos"];           // repositories checked out here, at most 16
+  StationRules rules = 17 [json_name = "rules"];
+  bool in_use = 18 [json_name = "in_use"];                    // someone is using it now
+}
+
+// The router's whole input: the task and every connected computer.
+message RouteRequest {
+  option (openagents.options.v1alpha1.json) = "schema=openagents.router.request.v1alpha1";
+  option (openagents.options.v1alpha1.json_int64_numbers) = true;
+  string text = 1 [json_name = "text"];                       // the task, at most 16,384 bytes
+  string summary = 2 [json_name = "summary"];                 // the conversation so far, bounded
+  string repo = 3 [json_name = "repo"];                       // the repository the task is about
+  string current_station = 4 [json_name = "current_station"]; // what the conversation uses already
+  string current_engine = 5 [json_name = "current_engine"];
+  string current_model = 6 [json_name = "current_model"];
+  int64 now_ms = 7 [json_name = "now_ms"];
+  repeated Station stations = 8 [json_name = "stations"];     // at most 16
+}
+
+// One typed answer of the decision model, as the router read it.
+message RouteAnswer {
+  option (openagents.options.v1alpha1.json) = "";
+  string key = 1 [json_name = "key"];                         // station, engine, difficulty, effort, weight
+  string choice = 2 [json_name = "choice"];                   // a choice's option; a score's level name
+  optional int32 level = 3 [json_name = "level"];             // a score's most likely level, from 0
+  optional int32 probability_milli = 4 [json_name = "probability_milli"];
+}
+
+// A computer, or an agent on a computer ("coderos/codex"), that code ruled
+// out, and the one fact that ruled it out.
+message RouteBlocked {
+  option (openagents.options.v1alpha1.json) = "";
+  string id = 1 [json_name = "id"];
+  // not_reachable, disk_below_floor, keep_clear, at_agent_limit, no_agent,
+  // not_installed, logged_out, quota_used_up, cooldown
+  string fact = 2 [json_name = "fact"];
+}
+
+// What takes the task, and why.
+message RouteDecision {
+  option (openagents.options.v1alpha1.json) = "schema=openagents.router.decision.v1alpha1";
+  bool ok = 1 [json_name = "ok"];
+  string station = 2 [json_name = "station"];
+  string engine = 3 [json_name = "engine"];
+  string model = 4 [json_name = "model"];                     // the engine's profile for this difficulty; empty: its own
+  string effort = 5 [json_name = "effort"];                   // low, medium, high
+  optional int32 difficulty = 6 [json_name = "difficulty"];   // 0 trivial to 4 very hard
+  optional int32 weight = 7 [json_name = "weight"];           // 0 light, 1 medium, 2 heavy
+  string door = 8 [json_name = "door"];                       // gemini-decision-1, mock, replay, none
+  string door_problem = 9 [json_name = "door_problem"];       // why the door gave no answer
+  // Why what runs differs from what the door answered, as closed codes:
+  // door_unavailable, one_station, one_engine, unsure_engine, unsure_station,
+  // station_not_eligible, station_lacks_engine, too_heavy_for_station,
+  // engine_not_eligible
+  repeated string reasons = 10 [json_name = "reasons"];
+  repeated RouteAnswer answers = 11 [json_name = "answers"];
+  repeated string eligible_stations = 12 [json_name = "eligible_stations"];
+  repeated string eligible_engines = 13 [json_name = "eligible_engines"];
+  repeated RouteBlocked blocked = 14 [json_name = "blocked"];
+  int32 input_tokens = 15 [json_name = "input_tokens"];
+  int32 latency_ms = 16 [json_name = "latency_ms"];
+  string error = 17 [json_name = "error"];                    // when not ok: no_task, no_station, bad_request, refused_by_door
+}

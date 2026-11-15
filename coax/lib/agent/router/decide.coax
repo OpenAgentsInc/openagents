@@ -1,0 +1,194 @@
+// One routing decision, end to end (docs/router/README.md): which computer,
+// coding agent, model and effort take a coding task.
+//
+//   rtr_begin    the eligible computers and agents (policy.coax) and the
+//               request for the decision model (ask.coax)
+//   a door      answers the request: Google (gd_send, coax/lib/systemone/
+//               gemini.coax) or the in-process stand-in (rtr_mock, mock.coax)
+//   rtr_finish   holds the answer to the request, reads it, and picks what
+//               runs (policy.coax)
+//
+// rtr_decide_mock runs all three with the stand-in and touches nothing
+// outside its buffers, so the checks here run it for every seed. The command
+// line (router.coax) puts Google between rtr_begin and rtr_finish.
+//
+// When the door gives no answer (a rate limit, Google's error, no network)
+// the default runs and the decision says so. A rule of the request or a
+// safety block is final: nothing runs.
+#load "ask.coax";
+#load "mock.coax";
+
+RTR_DOOR_MOCK :: "mock";
+
+// The buffers one decision works in. The decision's strings borrow the
+// request and constants, never these.
+RtrWork :: struct {
+  buf: [32768] u8;                       // the request
+  state: [24576] u8;                     // its input
+  labels: [RTR_STATIONS * RTR_LABEL] u8;   // each computer's facts
+  out: [32768] u8;                       // the answer
+  nodes: [1024] JvNode;                  // the stand-in's parse of the request
+  arena: [4096] u8;
+  body: [1] GdBody;
+  request: string;                       // what was sent, for --show
+}
+
+// Fills d's eligible and blocked lists and writes the request. The request's
+// bytes, or "" when d is already decided (no task, no computer, or a request
+// that can't be written).
+rtr_begin :: (q: [] RtrRequest, e: [] RtrEligible, d: [] RtrDecision, w: [] RtrWork, door: string) -> string {
+  rtr_decision_clear(d);
+  d[0].door = door;
+  w[0].request = "";
+  rtr_eligible(q, e, d);
+  if q[0].text.count == 0 { d[0].error = "no_task"; return ""; }
+  if e[0].nstations == 0 { d[0].error = "no_station"; return ""; }
+  why := rtr_ask_body(q, e, w[0].body[..], w[0].buf[..], w[0].state[..], w[0].labels[..]);
+  body := ifx why.count == 0 then gd_body(w[0].body[..]) else "";
+  if body.count == 0 { d[0].error = "bad_request"; d[0].door_problem = ifx why.count > 0 then why else w[0].body[0].problem; return ""; }
+  w[0].request = body;
+  return body;
+}
+
+// The stand-in's answer to the request rtr_begin wrote, as a finished exchange.
+rtr_mock :: (w: [] RtrWork, script: string, seed: int) -> GdResult {
+  reply := rtrm_answer(w[0].request, script, seed, w[0].nodes[..], w[0].out[..]);
+  if reply.status == 0 { return GdResult.{error = GdError.{kind = GdErrorKind.transport}, problem = gd_problem_of(GdErrorKind.transport)}; }
+  ar: [1] ClArena; ar[0] = ClArena.{buf = w[0].arena[..]};
+  return gd_result(w[0].body[..], ar[..], reply.status, reply.body);
+}
+
+// What runs, from a finished exchange.
+rtr_finish :: (q: [] RtrRequest, e: [] RtrEligible, gr: GdResult, d: [] RtrDecision, w: [] RtrWork) {
+  if gr.problem.count > 0 {
+    d[0].door_problem = gr.problem;
+    if gr.error.kind == GdErrorKind.invalid_request || gr.error.kind == GdErrorKind.safety { d[0].error = "refused_by_door"; return; }
+    rtr_pick(q, e, rtr_no_answers(), d);
+    return;
+  }
+  d[0].input_tokens = gr.usage.input_tokens;
+  ar: [1] ClArena; ar[0] = ClArena.{buf = w[0].arena[..]};
+  rtr_pick(q, e, rtr_ask_read(q, gr.body, ar[..], d), d);
+}
+
+// One decision with the stand-in as the door.
+rtr_decide_mock :: (q: [] RtrRequest, script: string, seed: int, d: [] RtrDecision, w: [] RtrWork) {
+  e: [1] RtrEligible;
+  if rtr_begin(q, e[..], d, w, RTR_DOOR_MOCK).count == 0 { return; }
+  rtr_finish(q, e[..], rtr_mock(w, script, seed), d, w);
+}
+
+// ---- what a person reads
+
+rtr_engine_title :: (engine: string) -> string {
+  return ifx engine == "claude" then "Claude Code" else ifx engine == "codex" then "Codex"
+    else ifx engine == "micro" then "Microcoder" else ifx engine == "psionic" then "Microcoder on this computer" else engine;
+}
+
+// "Claude Code · Opus · high · on MacBook Pro": what ran, as a fact.
+rtr_line :: (q: [] RtrRequest, d: [] RtrDecision, out: [] u8) -> string {
+  if !d[0].ok { return ""; }
+  n := rtr_put(out, 0, rtr_engine_title(d[0].engine));
+  if d[0].model.count > 0 && n < out.count {
+    n = rtr_put(out, n, " · ");
+    first := d[0].model[0];
+    out[n] = ifx first >= 'a' && first <= 'z' then first - 32 else first; n += 1;
+    n = rtr_put(out, n, cast(string) d[0].model[1..<d[0].model.count]);
+  }
+  n = rtr_put(out, n, " · "); n = rtr_put(out, n, d[0].effort);
+  i := rtr_station_index(q, d[0].station);
+  n = rtr_put(out, n, " · on "); n = rtr_put(out, n, ifx i >= 0 then q[0].stations[i].name else d[0].station);
+  return cast(string) out[0..<n];
+}
+
+// A reason code in plain words, or "" for one a person needn't read.
+rtr_reason_text :: (code: string) -> string {
+  if code == "door_unavailable" { return "Routing was unavailable, so the default ran."; }
+  if code == "unsure_engine" { return "No agent was a clear choice, so the most capable one runs."; }
+  if code == "unsure_station" { return "No computer was a clear choice, so the one with the most room runs."; }
+  if code == "engine_not_eligible" { return "The agent that was chosen can't take work now."; }
+  if code == "station_not_eligible" { return "The computer that was chosen can't take work now."; }
+  if code == "station_lacks_engine" { return "The agent that was chosen can't run on the computer that was chosen."; }
+  if code == "too_heavy_for_station" { return "The computer that was chosen takes nothing heavy."; }
+  return "";
+}
+
+// A blocking fact in plain words.
+rtr_fact_text :: (fact: string) -> string {
+  if fact == "not_reachable" { return "hasn't reported in the last two minutes"; }
+  if fact == "keep_clear" { return "you keep it clear"; }
+  if fact == "disk_below_floor" { return "its free disk is below its floor"; }
+  if fact == "at_agent_limit" { return "it is running as many agents as you allow"; }
+  if fact == "no_agent" { return "no agent on it can take work"; }
+  if fact == "not_installed" { return "not installed"; }
+  if fact == "logged_out" { return "not logged in"; }
+  if fact == "quota_used_up" { return "its limit is used up"; }
+  if fact == "cooldown" { return "resting after a refusal"; }
+  return fact;
+}
+
+// ---- checks
+
+#test "a scripted answer decides, and the line says what runs" {
+  q: [1] RtrRequest; d: [1] RtrDecision; w: [1] RtrWork; lb: [128] u8;
+  rtr_fx_two(q[..]); q[0].stations[0].nothing_heavy = false;
+  rtr_decide_mock(q[..], "station=mac,engine=claude,difficulty=3,effort=high,weight=1", 0, d[..], w[..]);
+  #assert d[0].ok && d[0].station == "mac" && d[0].engine == "claude" && d[0].model == "opus" && d[0].effort == "high" && d[0].difficulty == 3 && d[0].weight == 1;
+  #assert d[0].door == "mock" && d[0].door_problem == "" && d[0].nreasons == 0 && d[0].nanswers == 5 && d[0].input_tokens > 0;
+  #assert rtr_line(q[..], d[..], lb[..]) == "Claude Code · Opus · high · on MacBook Pro";
+  rtr_decide_mock(q[..], "station=coderos,engine=codex,difficulty=0,effort=low,weight=0", 0, d[..], w[..]);
+  #assert d[0].ok && rtr_line(q[..], d[..], lb[..]) == "Codex · low · on coderos" && d[0].nreasons == 0;
+  #assert cl_raw(w[0].request, "questions.station.criteria.coderos").count > 0;
+}
+
+#test "no answer: the default runs and says why; a rule of the request or a safety block runs nothing" {
+  q: [1] RtrRequest; d: [1] RtrDecision; w: [1] RtrWork;
+  rtr_fx_two(q[..]); q[0].stations[0].nothing_heavy = false;
+  for fail: [5] string.["fail=rate", "fail=server", "fail=transport", "fail=key", "fail=malformed"] {
+    rtr_decide_mock(q[..], fail, 0, d[..], w[..]);
+    #assert d[0].ok && d[0].engine == "claude" && d[0].station == "mac" && d[0].reasons[0] == "door_unavailable" && d[0].door_problem.count > 0 && d[0].nanswers == 0;
+  }
+  rtr_decide_mock(q[..], "fail=rate", 0, d[..], w[..]); #assert d[0].door_problem == "Google's rate limit: rate";
+  rtr_decide_mock(q[..], "fail=transport", 0, d[..], w[..]); #assert d[0].door_problem == "no response from Google: transport";
+  rtr_decide_mock(q[..], "fail=safety", 0, d[..], w[..]);
+  #assert !d[0].ok && d[0].error == "refused_by_door" && d[0].station == "" && d[0].door_problem == "Google blocked the input: safety";
+  rtr_decide_mock(q[..], "fail=invalid", 0, d[..], w[..]); #assert !d[0].ok && d[0].error == "refused_by_door";
+}
+
+#test "nothing to ask: no task, no computer" {
+  q: [1] RtrRequest; d: [1] RtrDecision; w: [1] RtrWork;
+  rtr_fx_two(q[..]); q[0].text = "";
+  rtr_decide_mock(q[..], "", 0, d[..], w[..]); #assert !d[0].ok && d[0].error == "no_task" && d[0].neligible_stations == 2;
+  rtr_fx_two(q[..]); q[0].stations[0].keep_clear = true; q[0].stations[1].reported_at_ms = 1;
+  rtr_decide_mock(q[..], "", 0, d[..], w[..]);
+  #assert !d[0].ok && d[0].error == "no_station" && d[0].nblocked == 2 && d[0].blocked[1].fact == "not_reachable" && w[0].request == "";
+  // one computer left: the station question is not asked, and code picks it
+  rtr_fx_two(q[..]); q[0].stations[0].keep_clear = true;
+  rtr_decide_mock(q[..], "difficulty=1", 0, d[..], w[..]);
+  #assert d[0].ok && d[0].station == "coderos" && d[0].engine == "codex" && d[0].reasons[0] == "one_engine" && d[0].reasons[1] == "one_station";
+}
+
+// Decision v of the fuzz: bits 0 to 5 mix the two computers' rules and
+// logins, bit 6 makes the answer unsure, and the rest is the seed.
+rtr_fx_mix :: (q: [] RtrRequest, v: int, d: [] RtrDecision, w: [] RtrWork) {
+  rtr_fx_two(q);
+  q[0].stations[0].keep_clear = (v & 1) != 0; q[0].stations[0].nothing_heavy = (v & 2) != 0;
+  q[0].stations[0].agents[0].logged_in = (v & 4) != 0; q[0].stations[1].agents[0].logged_in = (v & 8) != 0;
+  q[0].stations[1].agents[1].cooldown = (v & 16) != 0; q[0].stations[1].nothing_heavy = (v & 32) != 0;
+  rtr_decide_mock(q, ifx (v & 64) != 0 then "p=340" else "", v >> 7, d, w);
+}
+
+// The fuzz: every seed's answer, sure or unsure, over every mix of the two
+// computers' rules and logins. What runs is always something code allows.
+// (wire-goldens.coax writes every one of these decisions as JSON.)
+#forall "for every seed and every mix of rules, what runs is eligible" v:0..<2048 {
+  q: [1] RtrRequest; d: [1] RtrDecision; w: [1] RtrWork;
+  rtr_fx_mix(q[..], v, d[..], w[..]);
+  if d[0].ok {
+    s := rtr_station_index(q[..], d[0].station); k := ca_index(d[0].engine);
+    #assert s >= 0 && k >= 0 && k < RTR_ENGINES;
+    #assert rtr_station_fact(q[..], s) == "" && rtr_agent_fact(q[0].stations[s].agents[k]) == "" && rtr_weight_ok(q[..], s, d[0].weight);
+  } else {
+    #assert d[0].error == "no_station" && d[0].station == "";
+  }
+}

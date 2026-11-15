@@ -1,0 +1,195 @@
+// The delegation router from the command line (docs/router/README.md): try a
+// routing decision against a set of computers, with the stand-in for Google's
+// Decisions API or with Google itself. Run it from the repository's root.
+//
+//   coax/web/tool.sh coax/lib/agent/router/router.coax decide "TASK" [options]
+//       which computer, agent, model and effort take TASK
+//         --stations FILE   the computers: a RouteRequest's JSON (default: fixtures/stations.json here)
+//         --door mock       the in-process stand-in answers (the default); no network, no key
+//         --door google     Gemini Decision 1 answers (GEMINI_API_KEY, or
+//                           ~/work/.secrets/openagents-gemini-provider.env); about $0.0001 a decision
+//         --mock SCRIPT     what the stand-in answers: station=ID,engine=NAME,difficulty=0..4,
+//                           effort=low|medium|high,weight=0..2,p=0..1000,fail=rate|server|safety|
+//                           invalid|key|not_found|malformed|transport
+//         --seed N          the stand-in's pick for whatever the script doesn't name (default 0)
+//         --repo NAME       the repository the task is about
+//         --now MS          the time, in place of the file's now_ms
+//         --door replay     a recorded answer to this same request answers: --answer FILE
+//         --save FILE       with --door google: keep Google's answer in FILE, to replay
+//         --url URL         with --door google: a stand-in's address in place of Google's
+//         --json            the RouteDecision as JSON (openagents.router.decision.v1alpha1)
+//         --show            also print the request sent to the door
+//   coax/web/tool.sh coax/lib/agent/router/router.coax stations [--stations FILE] [--now MS]
+//       each computer as the model reads it, or the fact that rules it out
+//   coax/web/tool.sh coax/lib/agent/router/router.coax sweep "TASK" [--seeds N] [--mock SCRIPT] [--stations FILE]
+//       N seeded stand-in answers (default 200): how often each computer and agent ran
+//
+// A developer's tool for shaping the router. It starts no agent.
+#import "Basic";
+#load "decide.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+RTRC_STATIONS :: "coax/lib/agent/router/fixtures/stations.json";
+RTRC_USAGE :: "usage: router.coax decide \"TASK\" [--stations FILE] [--door mock|google|replay] [--mock SCRIPT] [--seed N] [--answer FILE] [--save FILE] [--url URL] [--repo NAME] [--now MS] [--json] [--show]\n       router.coax stations [--stations FILE] [--now MS]\n       router.coax sweep \"TASK\" [--seeds N] [--mock SCRIPT] [--stations FILE]";
+
+// A flag's whole number, or fallback.
+rtrc_int :: (a: [] Args, name: string, fallback: int) -> int {
+  text := args_value(a, name, "");
+  if text.count == 0 || text.count > 15 { return fallback; }
+  v := 0;
+  for c: text { if c < '0' || c > '9' { return fallback; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+
+// The computers from --stations, with the task, the repository and the time from the command line.
+rtrc_load :: (a: [] Args, task: string, raw: [] u8, nodes: [] JvNode, wire: [] u8, q: [] RtrRequest) -> bool {
+  path := args_value(a, "--stations", RTRC_STATIONS);
+  n := fs_read(path, raw);
+  if n <= 0 { tool_err("router: can't read "); tool_errln(path); return false; }
+  if n >= raw.count { tool_err("router: too large: "); tool_errln(path); return false; }
+  if !rtr_request_read(cast(string) raw[0..<n], nodes, wire, q) {
+    tool_err("router: not a RouteRequest (openagents.router.request.v1alpha1): "); tool_errln(path);
+    return false;
+  }
+  if task.count > 0 { q[0].text = task; }
+  repo := args_value(a, "--repo", "");
+  if repo.count > 0 { q[0].repo = repo; }
+  q[0].now_ms = rtrc_int(a, "--now", q[0].now_ms);
+  return true;
+}
+
+rtrc_stations :: (q: [] RtrRequest) -> int {
+  e: [1] RtrEligible; d: [1] RtrDecision; lb: [RTR_LABEL] u8;
+  rtr_decision_clear(d[..]); rtr_eligible(q, e[..], d[..]);
+  for i: 0..<q[0].n {
+    if e[0].station[i] { print("can take work   %: %\n", q[0].stations[i].id, rtr_station_label(q, e[..], i, lb[..])); }
+    else {
+      for k: 0..<d[0].nblocked {
+        if d[0].blocked[k].station == q[0].stations[i].id && d[0].blocked[k].engine.count == 0 { print("ruled out       %: %\n", q[0].stations[i].id, rtr_fact_text(d[0].blocked[k].fact)); }
+      }
+    }
+  }
+  for k: 0..<d[0].nblocked {
+    if d[0].blocked[k].engine.count > 0 { print("  % on %: %\n", rtr_engine_title(d[0].blocked[k].engine), d[0].blocked[k].station, rtr_fact_text(d[0].blocked[k].fact)); }
+  }
+  return 0;
+}
+
+rtrc_print :: (q: [] RtrRequest, d: [] RtrDecision) {
+  lb: [256] u8;
+  if d[0].ok { print("%\n", rtr_line(q, d, lb[..])); }
+  else { print("nothing runs: %\n", d[0].error); }
+  for i: 0..<d[0].nreasons {
+    text := rtr_reason_text(d[0].reasons[i]);
+    if text.count > 0 { print("  %\n", text); }
+  }
+  if d[0].door_problem.count > 0 { print("  door %: %\n", d[0].door, d[0].door_problem); }
+  print("\nanswers from %", d[0].door);
+  if d[0].input_tokens > 0 { print(" (% input tokens", d[0].input_tokens); if d[0].latency_ms > 0 { print(", % ms", d[0].latency_ms); } print(")"); }
+  print(":\n");
+  if d[0].nanswers == 0 { print("  none\n"); }
+  for i: 0..<d[0].nanswers {
+    print("  %  %", d[0].answers[i].key, d[0].answers[i].choice);
+    if d[0].answers[i].milli >= 0 { print("  (% of 1000)", d[0].answers[i].milli); }
+    print("\n");
+  }
+  print("\ncould run: ");
+  for i: 0..<d[0].neligible_stations { if i > 0 { print(", "); } print("%", d[0].eligible_stations[i]); }
+  print(" with ");
+  for i: 0..<d[0].neligible_engines { if i > 0 { print(", "); } print("%", d[0].eligible_engines[i]); }
+  print("\n");
+  for i: 0..<d[0].nblocked {
+    ib: [64] u8;
+    print("ruled out: %: %\n", rtr_blocked_id(d[0].blocked[i], ib[..]), rtr_fact_text(d[0].blocked[i].fact));
+  }
+}
+
+rtrc_decide :: (a: [] Args, q: [] RtrRequest) -> int {
+  d: [1] RtrDecision; w: [1] RtrWork; e: [1] RtrEligible;
+  gout: [65536] u8; err: [4096] u8; ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  door := args_value(a, "--door", "mock");
+  if door == "mock" {
+    rtr_decide_mock(q, args_value(a, "--mock", ""), rtrc_int(a, "--seed", 0), d[..], w[..]);
+  } else if door == "google" {
+    if rtr_begin(q, e[..], d[..], w[..], GD_MODEL).count > 0 {
+      c: [1] SoClient; kb: [512] u8;
+      why := agr_gemini_keyed(c[..], kb[..]);
+      if why.count > 0 { tool_err("router: "); tool_errln(why); return 1; }
+      url := args_value(a, "--url", "");
+      if url.count > 0 { c[0].url = url; }
+      t0 := cxproc_now_ms();
+      gr := gd_send(c[0], w[0].body[..], w[0].request, gout[..], err[..], ar[..]);
+      ms := cxproc_now_ms() - t0;
+      for i: 0..<kb.count { kb[i] = 0; }
+      rtr_finish(q, e[..], gr, d[..], w[..]);
+      d[0].latency_ms = ms;
+      if gr.status == 0 { tool_err("router: no response: "); tool_errln(ifx gr.stderr.count > 0 then gr.stderr else gr.error.message); }
+      else if gr.problem.count > 0 && gr.error.message.count > 0 { tool_err("router: Google said: "); tool_errln(gr.error.message); }
+      save := args_value(a, "--save", "");
+      if save.count > 0 && gr.status == 200 && !fs_write(save, gr.body) { tool_err("router: can't write "); tool_errln(save); return 1; }
+    }
+  } else if door == "replay" {
+    path := args_value(a, "--answer", "");
+    if path.count == 0 { tool_errln("router: --door replay needs --answer FILE, a recorded answer to this same request"); return 2; }
+    if rtr_begin(q, e[..], d[..], w[..], "replay").count > 0 {
+      n := fs_read(path, gout[..]);
+      if n <= 0 || n >= gout.count { tool_err("router: can't read "); tool_errln(path); return 1; }
+      while n > 0 && (gout[n - 1] == 10 || gout[n - 1] == 13 || gout[n - 1] == ' ') { n -= 1; }
+      rtr_finish(q, e[..], gd_result(w[0].body[..], ar[..], 200, cast(string) gout[0..<n]), d[..], w[..]);
+      if d[0].door_problem.count > 0 { tool_errln("router: the recorded answer does not hold to this request (another task, or other computers)"); }
+    }
+  } else { tool_errln("router: --door is mock, google or replay"); return 2; }
+  if args_has(a, "--show") && w[0].request.count > 0 { print("%\n\n", w[0].request); }
+  if args_has(a, "--json") {
+    out: [RTR_DECISION_MAX] u8;
+    n := rtr_decision_write(d[..], out[..]);
+    if n <= 0 { tool_errln("router: the decision does not fit"); return 1; }
+    print("%\n", cast(string) out[0..<n]);
+  } else { rtrc_print(q, d[..]); }
+  return ifx d[0].ok then 0 else 1;
+}
+
+rtrc_sweep :: (a: [] Args, q: [] RtrRequest) -> int {
+  names := RTR_ENGINE_NAMES;
+  d: [1] RtrDecision; w: [1] RtrWork;
+  seeds := rtrc_int(a, "--seeds", 200);
+  if seeds < 1 || seeds > 100000 { tool_errln("router: --seeds is 1 to 100000"); return 2; }
+  script := args_value(a, "--mock", "");
+  ran: [RTR_STATIONS * RTR_ENGINES] int; none := 0; changed := 0;
+  for seed: 0..<seeds {
+    rtr_decide_mock(q, script, seed, d[..], w[..]);
+    if !d[0].ok { none += 1; continue; }
+    s := rtr_station_index(q, d[0].station); k := ca_index(d[0].engine);
+    ran[s * RTR_ENGINES + k] += 1;
+    for i: 0..<d[0].nreasons { if rtr_reason_text(d[0].reasons[i]).count > 0 { changed += 1; break; } }
+  }
+  print("% stand-in answers\n", seeds);
+  for s: 0..<q[0].n { for k: 0..<RTR_ENGINES {
+    if ran[s * RTR_ENGINES + k] > 0 { print("  %  % on %\n", ran[s * RTR_ENGINES + k], rtr_engine_title(names[k]), q[0].stations[s].id); }
+  } }
+  if none > 0 { print("  %  nothing ran\n", none); }
+  print("code changed the answer in % of them (the answer was unsure, or named what can't run)\n", changed);
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln(RTRC_USAGE); return 2; }
+  verb := args_at(a[..], 0);
+  raw: [RTR_REQUEST_MAX] u8; nodes: [16384] JvNode; wire: [RTR_REQUEST_MAX] u8; q: [1] RtrRequest;
+  if verb == "stations" {
+    if !rtrc_load(a[..], "", raw[..], nodes[..], wire[..], q[..]) { return 1; }
+    return rtrc_stations(q[..]);
+  }
+  if verb == "decide" || verb == "sweep" {
+    task := args_at(a[..], 1);
+    if task.count == 0 || (task.count > 1 && task[0] == '-' && task[1] == '-') { tool_errln(RTRC_USAGE); return 2; }
+    if !rtrc_load(a[..], task, raw[..], nodes[..], wire[..], q[..]) { return 1; }
+    if verb == "decide" { return rtrc_decide(a[..], q[..]); }
+    return rtrc_sweep(a[..], q[..]);
+  }
+  tool_errln(RTRC_USAGE);
+  return 2;
+}

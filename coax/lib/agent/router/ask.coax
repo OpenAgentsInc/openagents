@@ -1,0 +1,202 @@
+// The delegation router's question (docs/router/README.md, "One request,
+// several typed questions"): one request to Google's Decisions API with the
+// task as its input and up to five typed questions.
+//
+//   station     choice   the eligible computers, each labelled with its facts
+//   engine      choice   the coding agents that can run on one of them
+//   difficulty  score    trivial to very hard
+//   effort      choice   low, medium, high
+//   weight      score    light, medium, heavy: how much room the work needs
+//
+// A choice takes at least two options, so with one eligible computer, or one
+// eligible agent, that question is not asked and code picks the only one.
+// rtr_ask_body writes the request (google.coax is the one codec of Google's
+// bodies); rtr_ask_read reads a checked answer into RtrAnswers and into the
+// decision's answers list.
+//
+// The engine's labels, the levels and the efforts are the shared router's
+// (coax/lib/agent/engine/route.coax), so the two ask in the same words until
+// this one replaces it.
+#load "policy.coax";
+#load "../engine/route.coax";
+
+RTR_LABEL :: 512;            // one computer's facts
+RTR_WEIGHT_LABELS :: [3] string.["Light: edits, reading and questions", "Medium: running tests or one build", "Heavy: long builds, many processes or much memory"];
+
+rtr_put :: (out: [] u8, n: int, s: string) -> int {
+  m := n;
+  for c: s { if m < out.count { out[m] = c; m += 1; } }
+  return m;
+}
+rtr_put_int :: (out: [] u8, n: int, v: int) -> int {
+  m := json_write_int(out, n, v);
+  return ifx m < 0 then n else m;
+}
+// 1200 as "1.20".
+rtr_put_hundredths :: (out: [] u8, n: int, milli: int) -> int {
+  h := (ifx milli < 0 then 0 else milli) / 10;
+  m := rtr_put_int(out, n, h / 100); m = rtr_put(out, m, ".");
+  if h % 100 < 10 { m = rtr_put(out, m, "0"); }
+  return rtr_put_int(out, m, h % 100);
+}
+
+// One computer's facts as the model reads them, and as the Your computers
+// screen will say them: "MacBook Pro: macos, 12 cores, load 1.20, 21 of 64 GB
+// memory free, 175 GB disk free, 1 agent working, has this repository; can
+// build for Apple platforms; agents: claude, codex".
+rtr_station_label :: (q: [] RtrRequest, e: [] RtrEligible, i: int, out: [] u8) -> string {
+  names := RTR_ENGINE_NAMES;
+  n := rtr_put(out, 0, q[0].stations[i].name); n = rtr_put(out, n, ": ");
+  n = rtr_put(out, n, ifx q[0].stations[i].os.count > 0 then q[0].stations[i].os else "unknown OS");
+  n = rtr_put(out, n, ", "); n = rtr_put_int(out, n, q[0].stations[i].cores); n = rtr_put(out, n, " cores, load ");
+  n = rtr_put_hundredths(out, n, q[0].stations[i].load_1m_milli);
+  n = rtr_put(out, n, ", "); n = rtr_put_int(out, n, q[0].stations[i].memory_free_mb / 1024); n = rtr_put(out, n, " of ");
+  n = rtr_put_int(out, n, q[0].stations[i].memory_total_mb / 1024); n = rtr_put(out, n, " GB memory free, ");
+  n = rtr_put_int(out, n, q[0].stations[i].disk_free_mb / 1024); n = rtr_put(out, n, " GB disk free, ");
+  n = rtr_put_int(out, n, q[0].stations[i].work); n = rtr_put(out, n, ifx q[0].stations[i].work == 1 then " agent working" else " agents working");
+  if q[0].repo.count > 0 {
+    has := false;
+    for r: 0..<q[0].stations[i].nrepos { if q[0].stations[i].repos[r] == q[0].repo { has = true; } }
+    n = rtr_put(out, n, ifx has then ", has this repository" else ", does not have this repository yet");
+  }
+  if q[0].stations[i].apple_builds { n = rtr_put(out, n, "; can build for Apple platforms"); }
+  if q[0].stations[i].gpu.count > 0 { n = rtr_put(out, n, "; GPU: "); n = rtr_put(out, n, q[0].stations[i].gpu); }
+  if q[0].stations[i].nothing_heavy { n = rtr_put(out, n, "; the person allows nothing heavy here"); }
+  if q[0].stations[i].in_use { n = rtr_put(out, n, "; someone is using it now"); }
+  n = rtr_put(out, n, "; agents:");
+  comma := false;
+  for k: 0..<RTR_ENGINES {
+    if e[0].pair[i * RTR_ENGINES + k] { n = rtr_put(out, n, ifx comma then ", " else " "); n = rtr_put(out, n, names[k]); comma = true; }
+  }
+  return cast(string) out[0..<n];
+}
+
+// The input the model reads: {"task":..., and when set "conversation_so_far",
+// "repository" and "current":{"computer","agent","model"}}. "" when it does not fit.
+rtr_ask_state :: (q: [] RtrRequest, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"task\":"); n = json_write_string(out, n, q[0].text);
+  if q[0].summary.count > 0 { n = json_raw(out, n, ",\"conversation_so_far\":"); n = json_write_string(out, n, q[0].summary); }
+  if q[0].repo.count > 0 { n = json_raw(out, n, ",\"repository\":"); n = json_write_string(out, n, q[0].repo); }
+  if q[0].current_station.count > 0 || q[0].current_engine.count > 0 {
+    n = json_raw(out, n, ",\"current\":{\"computer\":"); n = json_write_string(out, n, q[0].current_station);
+    n = json_raw(out, n, ",\"agent\":"); n = json_write_string(out, n, q[0].current_engine);
+    n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, q[0].current_model);
+    n = json_raw(out, n, "}");
+  }
+  n = json_raw(out, n, "}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// Writes the request into b (over buf): "" when it is ready for gd_body,
+// else why not. labels holds the computers' facts (RTR_STATIONS * RTR_LABEL)
+// and state the input; both must outlive b.
+rtr_ask_body :: (q: [] RtrRequest, e: [] RtrEligible, b: [] GdBody, buf: [] u8, state: [] u8, labels: [] u8) -> string {
+  if q[0].text.count == 0 { return "no task"; }
+  if labels.count < RTR_STATIONS * RTR_LABEL { return "the labels buffer is too small"; }
+  input := rtr_ask_state(q, state);
+  if input.count == 0 { return "the task does not fit the request"; }
+  gd_begin(b, buf, GD_MODEL);
+  gd_text(b, input);
+  if e[0].nstations >= 2 {
+    keys: [RTR_STATIONS] string; facts: [RTR_STATIONS] string; n := 0;
+    for i: 0..<q[0].n {
+      if !e[0].station[i] { continue; }
+      keys[n] = q[0].stations[i].id;
+      facts[n] = rtr_station_label(q, e, i, labels[n * RTR_LABEL..<(n + 1) * RTR_LABEL]);
+      n += 1;
+    }
+    gd_choice(b, "station", "Which computer should run this coding task? Choose one with room for it (free memory and disk, low load, few agents working) that runs an agent suited to the task. Prefer one that already has the task's repository. Leave a computer someone is using for light work.", keys[0..<n], facts[0..<n]);
+  }
+  if e[0].nengines >= 2 {
+    names := RTR_ENGINE_NAMES; engine_labels := AGR_ENGINE_LABELS;
+    keys: [RTR_ENGINES] string; says: [RTR_ENGINES] string; n := 0;
+    for k: 0..<RTR_ENGINES { if e[0].engine[k] { keys[n] = names[k]; says[n] = engine_labels[k]; n += 1; } }
+    gd_choice(b, "engine", "Which coding agent should handle the task?", keys[0..<n], says[0..<n]);
+  }
+  levels := AGR_LEVELS; efforts := AGR_EFFORTS; effort_labels := AGR_EFFORT_LABELS; weights := RTR_WEIGHT_LABELS;
+  gd_score(b, "difficulty", "How hard is the task to do well?", levels[..]);
+  gd_choice(b, "effort", "How much reasoning should the agent spend on the task? Hard tasks need more.", efforts[..], effort_labels[..]);
+  gd_score(b, "weight", "How much of a computer does doing the task take?", weights[..]);
+  return ifx b[0].at < 0 then b[0].problem else "";
+}
+
+rtr_milli :: (p: f64) -> int { return cast(int) (p * 1000.0 + 0.5); }
+
+// A checked answer (gd_check held it to b's questions) as RtrAnswers, and
+// into d's answers list. ar holds an option key while it is matched; the
+// names kept in d are the request's and the tables', never the response's.
+rtr_ask_read :: (q: [] RtrRequest, body: string, ar: [] ClArena, d: [] RtrDecision) -> RtrAnswers {
+  a := rtr_no_answers(); a.has = true;
+  names := RTR_ENGINE_NAMES; efforts := RTR_EFFORT_NAMES; levels := RTR_LEVEL_NAMES; weights := RTR_WEIGHT_NAMES;
+  s := gd_choice_of(ar, body, "station");
+  if s.ok {
+    a.station = rtr_station_index(q, s.choice); a.station_milli = rtr_milli(s.probability);
+    if a.station >= 0 { rtr_answer(d, "station", q[0].stations[a.station].id, -1, a.station_milli); }
+  }
+  g := gd_choice_of(ar, body, "engine");
+  if g.ok {
+    k := ca_index(g.choice);
+    a.engine = ifx k >= 0 && k < RTR_ENGINES then k else -1; a.engine_milli = rtr_milli(g.probability);
+    if a.engine >= 0 { rtr_answer(d, "engine", names[a.engine], -1, a.engine_milli); }
+  }
+  h := gd_score_of(body, "difficulty");
+  if h.ok && h.level >= 0 && h.level < 5 { a.difficulty = h.level; rtr_answer(d, "difficulty", levels[h.level], h.level, rtr_milli(h.confidence)); }
+  f := gd_choice_of(ar, body, "effort");
+  if f.ok {
+    for i: 0..<3 { if efforts[i] == f.choice { a.effort = i; } }
+    if a.effort >= 0 { rtr_answer(d, "effort", efforts[a.effort], -1, rtr_milli(f.probability)); }
+  }
+  w := gd_score_of(body, "weight");
+  if w.ok && w.level >= 0 && w.level < 3 { a.weight = w.level; rtr_answer(d, "weight", weights[w.level], w.level, rtr_milli(w.confidence)); }
+  return a;
+}
+
+#test "a computer's facts read as one line" {
+  q: [1] RtrRequest; e: [1] RtrEligible; d: [1] RtrDecision; lb: [RTR_LABEL] u8;
+  rtr_fx_two(q[..]); rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
+  #assert rtr_station_label(q[..], e[..], 0, lb[..]) == "MacBook Pro: macos, 12 cores, load 1.20, 21 of 64 GB memory free, 175 GB disk free, 1 agent working; can build for Apple platforms; the person allows nothing heavy here; agents: claude, codex";
+  q[0].repo = "openagents"; q[0].stations[1].repos[0] = "openagents"; q[0].stations[1].nrepos = 1; q[0].stations[1].gpu = "RTX 4080"; q[0].stations[1].load_1m_milli = 50;
+  #assert rtr_station_label(q[..], e[..], 1, lb[..]) == "coderos: linux, 32 cores, load 0.05, 87 of 128 GB memory free, 390 GB disk free, 0 agents working, has this repository; GPU: RTX 4080; agents: codex";
+  #assert rtr_station_label(q[..], e[..], 0, lb[0..<11]) == "MacBook Pro";
+}
+
+#test "the request asks about the eligible computers and agents only, and skips a question with one option" {
+  q: [1] RtrRequest; e: [1] RtrEligible; d: [1] RtrDecision;
+  b: [1] GdBody; buf: [16384] u8; state: [20000] u8; labels: [RTR_STATIONS * RTR_LABEL] u8;
+  rtr_fx_two(q[..]); rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
+  #assert rtr_ask_body(q[..], e[..], b[..], buf[..], state[..], labels[..]) == "";
+  body := gd_body(b[..]);
+  #assert body.count > 0 && b[0].questions == 5 && cl_raw(body, "model") == "\"gemini-decision-1\"";
+  #assert cl_raw(body, "questions.station.criteria.mac").count > 0 && cl_raw(body, "questions.station.criteria.coderos").count > 0;
+  #assert cl_raw(body, "questions.engine.criteria.claude").count > 0 && cl_raw(body, "questions.engine.criteria.codex").count > 0 && cl_raw(body, "questions.engine.criteria.micro").count == 0;
+  #assert cl_raw(body, "questions.weight.type") == "\"score\"" && cl_raw(body, "questions.effort.type") == "\"choice\"";
+  // the Mac is kept clear: one computer and one agent are left, and neither is a question
+  q[0].stations[0].keep_clear = true; rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
+  #assert rtr_ask_body(q[..], e[..], b[..], buf[..], state[..], labels[..]) == "";
+  body = gd_body(b[..]);
+  #assert b[0].questions == 3 && cl_raw(body, "questions.station").count == 0 && cl_raw(body, "questions.engine").count == 0 && cl_raw(body, "questions.difficulty").count > 0;
+  q[0].text = ""; #assert rtr_ask_body(q[..], e[..], b[..], buf[..], state[..], labels[..]) == "no task";
+}
+
+#test "the input holds the task, and the conversation, repository and current choice when there are any" {
+  q: [1] RtrRequest; sb: [1024] u8;
+  rtr_fx_two(q[..]);
+  #assert rtr_ask_state(q[..], sb[..]) == "{\"task\":\"fix the typo in the README\"}";
+  q[0].summary = "We renamed the app."; q[0].repo = "openagents"; q[0].current_station = "mac"; q[0].current_engine = "claude"; q[0].current_model = "opus";
+  #assert rtr_ask_state(q[..], sb[..]) == "{\"task\":\"fix the typo in the README\",\"conversation_so_far\":\"We renamed the app.\",\"repository\":\"openagents\",\"current\":{\"computer\":\"mac\",\"agent\":\"claude\",\"model\":\"opus\"}}";
+  #assert rtr_ask_state(q[..], sb[0..<20]) == "";
+}
+
+#test "an answer reads into indexes, and names nothing the request doesn't have" {
+  q: [1] RtrRequest; d: [1] RtrDecision; ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  rtr_fx_two(q[..]); rtr_decision_clear(d[..]);
+  body := "{\"answers\":{\"station\":{\"type\":\"choice\",\"choice\":\"coderos\",\"confidence\":0.9,\"probabilities\":{\"coderos\":0.9,\"mac\":0.1}},\"engine\":{\"type\":\"choice\",\"choice\":\"codex\",\"confidence\":0.75,\"probabilities\":{\"claude\":0.25,\"codex\":0.75}},\"difficulty\":{\"type\":\"score\",\"score\":0.2,\"confidence\":0.8,\"probabilities\":{\"0\":0.8,\"1\":0.2,\"2\":0.0,\"3\":0.0,\"4\":0.0}},\"effort\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.6,\"probabilities\":{\"high\":0.1,\"low\":0.6,\"medium\":0.3}},\"weight\":{\"type\":\"score\",\"score\":1.9,\"confidence\":0.9,\"probabilities\":{\"0\":0.0,\"1\":0.1,\"2\":0.9}}}}";
+  a := rtr_ask_read(q[..], body, ar[..], d[..]);
+  #assert a.has && a.station == 1 && a.station_milli == 900 && a.engine == 1 && a.engine_milli == 750 && a.difficulty == 0 && a.effort == 0 && a.weight == 2;
+  #assert d[0].nanswers == 5 && d[0].answers[0].key == "station" && d[0].answers[0].choice == "coderos" && d[0].answers[0].milli == 900 && d[0].answers[0].level == -1;
+  #assert d[0].answers[2].key == "difficulty" && d[0].answers[2].choice == "trivial" && d[0].answers[2].level == 0 && d[0].answers[4].choice == "heavy";
+  // a computer and an agent the request doesn't have, and no other answers
+  rtr_decision_clear(d[..]);
+  a = rtr_ask_read(q[..], "{\"answers\":{\"station\":{\"type\":\"choice\",\"choice\":\"moon\",\"confidence\":1.0,\"probabilities\":{\"moon\":1.0}},\"engine\":{\"type\":\"choice\",\"choice\":\"antigravity\",\"confidence\":1.0,\"probabilities\":{\"antigravity\":1.0}}}}", ar[..], d[..]);
+  #assert a.has && a.station == -1 && a.engine == -1 && a.difficulty == -1 && a.effort == -1 && a.weight == -1 && d[0].nanswers == 0;
+}

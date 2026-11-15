@@ -1,0 +1,156 @@
+// openagents.router.v1alpha1 held to its goldens (docs/router/README.md):
+// proto/coder/router-v1alpha1.json names each body byte for byte. Every
+// record goes through the generated JSON mapper and comes back as the same
+// bytes, and every RouteRequest also reads through wire.coax's
+// rtr_request_read. Then the reader's refusals, the decision writer against
+// a decision built here, and every decision of decide.coax's fuzz written
+// and read back.
+//
+// This is a tool, not #test blocks: generated proto code asks whether its
+// buffers overlap, which can't run at compile time.
+//   coax/web/tool.sh coax/lib/agent/router/wire-goldens.coax [proto/coder/router-v1alpha1.json]
+#import "Basic";
+#load "decide.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+RTRG_FIXTURE :: "proto/coder/router-v1alpha1.json";
+RTRG_OPEN :: "{\"schema\":\"openagents.router.request.v1alpha1\",";
+
+rtrg_fail :: (what: string, name: string) -> bool { print("FAIL %: %\n", what, name); return false; }
+
+rtrg_record :: (message: string, name: string, line: string) -> bool {
+  nodes: [16384] JvNode; wire: [RTR_REQUEST_MAX] u8; out: [RTR_REQUEST_MAX] u8;
+  got := "";
+  if message == "RouteRequest" {
+    m := RTP_RouteRequest_from_json(line, nodes[..], wire[..]);
+    if m.error != 0 { return rtrg_fail("the request does not read through the mapper", name); }
+    v := RTP_RouteRequest_to_json(m, out[..]);
+    if v.error != 0 { return rtrg_fail("the request is not written", name); }
+    got = cast(string) v.wire;
+    q: [1] RtrRequest; wire2: [RTR_REQUEST_MAX] u8;
+    if !rtr_request_read(line, nodes[..], wire2[..], q[..]) { return rtrg_fail("the request does not read through wire.coax", name); }
+  } else if message == "RouteDecision" {
+    m := RTP_RouteDecision_from_json(line, nodes[..], wire[..]);
+    if m.error != 0 { return rtrg_fail("the decision does not read through the mapper", name); }
+    v := RTP_RouteDecision_to_json(m, out[..]);
+    if v.error != 0 { return rtrg_fail("the decision is not written", name); }
+    got = cast(string) v.wire;
+  } else { return rtrg_fail("unknown message", message); }
+  if got != line {
+    print("FAIL % is not written back byte for byte\n  want %\n  got  %\n", name, line, got);
+    return false;
+  }
+  return true;
+}
+
+rtrg_refused :: (rest: string) -> bool {
+  nodes: [1024] JvNode; wire: [8192] u8; q: [1] RtrRequest; tb: [1024] u8;
+  n := rtr_put(tb[..], 0, RTRG_OPEN); n = rtr_put(tb[..], n, rest);
+  return !rtr_request_read(cast(string) tb[0..<n], nodes[..], wire[..], q[..]);
+}
+
+rtrg_reader :: () -> bool {
+  good := true;
+  nodes: [1024] JvNode; wire: [8192] u8; q: [1] RtrRequest;
+  two := "{\"schema\":\"openagents.router.request.v1alpha1\",\"text\":\"fix the typo in the README\",\"repo\":\"openagents\",\"now_ms\":1000000,\"stations\":[{\"station_id\":\"mac\",\"display_name\":\"MacBook Pro\",\"reported_at_ms\":990000,\"os\":\"macos\",\"cpu_cores\":12,\"memory_total_mb\":65536,\"memory_free_mb\":22000,\"disk_free_mb\":180000,\"disk_floor_mb\":20000,\"load_1m_milli\":1200,\"apple_builds\":true,\"agents\":[{\"engine\":\"claude\",\"installed\":true,\"logged_in\":true},{\"engine\":\"codex\",\"installed\":true}],\"work\":[{\"engine\":\"claude\",\"title\":\"router spec\",\"state\":\"working\"}],\"repos\":[\"openagents\"],\"rules\":{\"nothing_heavy\":true}},{\"station_id\":\"coderos\",\"reported_at_ms\":995000,\"os\":\"linux\",\"cpu_cores\":32,\"gpu\":\"RTX 4080\",\"agents\":[{\"engine\":\"codex\",\"installed\":true,\"logged_in\":true},{\"engine\":\"cursor\",\"installed\":true}]}]}";
+  if !rtr_request_read(two, nodes[..], wire[..], q[..]) { return rtrg_fail("two computers do not read", "reader"); }
+  ok := q[0].text == "fix the typo in the README" && q[0].repo == "openagents" && q[0].now_ms == 1000000 && q[0].n == 2;
+  ok = ok && q[0].stations[0].id == "mac" && q[0].stations[0].name == "MacBook Pro" && q[0].stations[0].os == "macos" && q[0].stations[0].cores == 12;
+  ok = ok && q[0].stations[0].memory_total_mb == 65536 && q[0].stations[0].memory_free_mb == 22000 && q[0].stations[0].disk_free_mb == 180000 && q[0].stations[0].disk_floor_mb == 20000;
+  ok = ok && q[0].stations[0].load_1m_milli == 1200 && q[0].stations[0].apple_builds && q[0].stations[0].reported_at_ms == 990000 && !q[0].stations[0].in_use;
+  ok = ok && q[0].stations[0].agents[0].reported && q[0].stations[0].agents[0].installed && q[0].stations[0].agents[0].logged_in;
+  ok = ok && q[0].stations[0].agents[1].reported && q[0].stations[0].agents[1].installed && !q[0].stations[0].agents[1].logged_in && !q[0].stations[0].agents[2].reported;
+  ok = ok && q[0].stations[0].work == 1 && q[0].stations[0].nrepos == 1 && q[0].stations[0].repos[0] == "openagents";
+  ok = ok && q[0].stations[0].nothing_heavy && !q[0].stations[0].keep_clear && q[0].stations[0].max_agents == 0;
+  // a computer with no display name is called by its id; an agent the router doesn't know is skipped
+  ok = ok && q[0].stations[1].id == "coderos" && q[0].stations[1].name == "coderos" && q[0].stations[1].gpu == "RTX 4080" && q[0].stations[1].work == 0;
+  ok = ok && q[0].stations[1].agents[1].logged_in && !q[0].stations[1].agents[0].reported && rtr_station_index(q[..], "coderos") == 1 && rtr_station_index(q[..], "nope") == -1;
+  if !ok { good = rtrg_fail("two computers read with a wrong field", "reader"); }
+  if !rtr_request_read("{\"schema\":\"openagents.router.request.v1alpha1\",\"text\":\"x\"}", nodes[..], wire[..], q[..]) || q[0].n != 0 { good = rtrg_fail("a task alone does not read", "reader"); }
+  if rtr_request_read("{\"schema\":\"openagents.router.decision.v1alpha1\",\"text\":\"x\"}", nodes[..], wire[..], q[..]) { good = rtrg_fail("another schema is read", "reader"); }
+  if rtr_request_read("{\"text\":\"x\"}", nodes[..], wire[..], q[..]) || rtr_request_read("[]", nodes[..], wire[..], q[..]) { good = rtrg_fail("a body with no schema is read", "reader"); }
+  if !rtrg_refused("\"stations\":[{\"station_id\":\"My Mac\"}]}") { good = rtrg_fail("an id that can't be an option is read", "reader"); }
+  if !rtrg_refused("\"stations\":[{\"station_id\":\"\"}]}") { good = rtrg_fail("an empty id is read", "reader"); }
+  if !rtrg_refused("\"stations\":[{\"station_id\":\"a\"},{\"station_id\":\"a\"}]}") { good = rtrg_fail("one id twice is read", "reader"); }
+  if !rtrg_refused("\"stations\":[{\"station_id\":\"a\",\"agents\":[{\"engine\":\"codex\"},{\"engine\":\"codex\"}]}]}") { good = rtrg_fail("one agent twice is read", "reader"); }
+  // seventeen computers
+  tb: [2048] u8; n := rtr_put(tb[..], 0, "\"stations\":[");
+  for i: 0..<17 { if i > 0 { n = rtr_put(tb[..], n, ","); } n = rtr_put(tb[..], n, "{\"station_id\":\"s"); n = rtr_put_int(tb[..], n, i); n = rtr_put(tb[..], n, "\"}"); }
+  n = rtr_put(tb[..], n, "]}");
+  if !rtrg_refused(cast(string) tb[0..<n]) { good = rtrg_fail("seventeen computers are read", "reader"); }
+  return good;
+}
+
+rtrg_writer :: () -> bool {
+  good := true;
+  d: [1] RtrDecision; out: [4096] u8;
+  rtr_decision_clear(d[..]);
+  d[0].ok = true; d[0].station = "coderos"; d[0].engine = "codex"; d[0].effort = "low"; d[0].difficulty = 0; d[0].weight = 0; d[0].door = "mock";
+  rtr_reason(d[..], "unsure_station"); rtr_reason(d[..], "unsure_station");
+  rtr_answer(d[..], "engine", "codex", -1, 900); rtr_answer(d[..], "difficulty", "trivial", 0, 900);
+  d[0].eligible_stations[0] = "coderos"; d[0].neligible_stations = 1; d[0].eligible_engines[0] = "codex"; d[0].neligible_engines = 1;
+  rtr_block(d[..], "mac", "", "keep_clear"); rtr_block(d[..], "coderos", "claude", "logged_out");
+  d[0].input_tokens = 240; d[0].latency_ms = 3;
+  n := rtr_decision_write(d[..], out[..]);
+  want := "{\"schema\":\"openagents.router.decision.v1alpha1\",\"ok\":true,\"station\":\"coderos\",\"engine\":\"codex\",\"effort\":\"low\",\"difficulty\":0,\"weight\":0,\"door\":\"mock\",\"reasons\":[\"unsure_station\"],\"answers\":[{\"key\":\"engine\",\"choice\":\"codex\",\"probability_milli\":900},{\"key\":\"difficulty\",\"choice\":\"trivial\",\"level\":0,\"probability_milli\":900}],\"eligible_stations\":[\"coderos\"],\"eligible_engines\":[\"codex\"],\"blocked\":[{\"id\":\"mac\",\"fact\":\"keep_clear\"},{\"id\":\"coderos/claude\",\"fact\":\"logged_out\"}],\"input_tokens\":240,\"latency_ms\":3}";
+  if cast(string) out[0..<n] != want { print("FAIL the decision writer\n  want %\n  got  %\n", want, cast(string) out[0..<n]); good = false; }
+  if rtr_decision_write(d[..], out[0..<10]) != 0 { good = rtrg_fail("a decision is written into a buffer too small for it", "writer"); }
+  rtr_decision_clear(d[..]); d[0].error = "no_station"; d[0].door = "none";
+  n = rtr_decision_write(d[..], out[..]);
+  if cast(string) out[0..<n] != "{\"schema\":\"openagents.router.decision.v1alpha1\",\"door\":\"none\",\"error\":\"no_station\"}" { good = rtrg_fail("a decision of nothing is not its schema, door and error", "writer"); }
+  return good;
+}
+
+// Every decision of the fuzz writes, and reads back through the mapper as the same bytes.
+rtrg_fuzz :: () -> bool {
+  q: [1] RtrRequest; d: [1] RtrDecision; w: [1] RtrWork;
+  out: [RTR_DECISION_MAX] u8; back: [RTR_DECISION_MAX] u8; wire: [RTR_DECISION_MAX] u8; nodes: [4096] JvNode;
+  ran := 0;
+  for v: 0..<2048 {
+    rtr_fx_mix(q[..], v, d[..], w[..]);
+    n := rtr_decision_write(d[..], out[..]);
+    if n <= 0 { print("FAIL decision % of the fuzz is not written\n", v); return false; }
+    m := RTP_RouteDecision_from_json(cast(string) out[0..<n], nodes[..], wire[..]);
+    if m.error != 0 { print("FAIL decision % of the fuzz does not read back: %\n", v, cast(string) out[0..<n]); return false; }
+    r := RTP_RouteDecision_to_json(m, back[..]);
+    if r.error != 0 || cast(string) r.wire != cast(string) out[0..<n] { print("FAIL decision % of the fuzz changes when read and written again\n", v); return false; }
+    if d[0].ok { ran += 1; }
+  }
+  print("ok  2048 decisions of the fuzz written and read back (% ran something)\n", ran);
+  return true;
+}
+
+rtrg_fixture :: (path: string) -> bool {
+  raw: [262144] u8; n := fs_read(path, raw[..]);
+  if n <= 0 { return rtrg_fail("cannot read the fixture", path); }
+  nodes: [16384] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) raw[0..<n], nodes[..]) { return rtrg_fail("the fixture is not JSON", path); }
+  records := jv_get(d[0], 0, "records");
+  count := jv_len(d[0], records);
+  good := true; requests := 0; decisions := 0;
+  mb: [64] u8; nb: [512] u8; lb: [RTR_REQUEST_MAX] u8;
+  for i: 0..<count {
+    r := jv_at(d[0], records, i);
+    ml := jv_str(d[0], jv_get(d[0], r, "message"), mb[..]); nl := jv_str(d[0], jv_get(d[0], r, "name"), nb[..]); ll := jv_str(d[0], jv_get(d[0], r, "json"), lb[..]);
+    if ml <= 0 || nl <= 0 || ll <= 0 { good = rtrg_fail("a record without message, name or json", path); continue; }
+    message := cast(string) mb[0..<ml];
+    if rtrg_record(message, cast(string) nb[0..<nl], cast(string) lb[0..<ll]) { print("ok  % %\n", message, cast(string) nb[0..<nl]); } else { good = false; }
+    if message == "RouteRequest" { requests += 1; } else { decisions += 1; }
+  }
+  if requests < 1 || decisions < 1 { good = rtrg_fail("the fixture needs a body of each message", path); }
+  if rtrg_reader() { print("ok  the reader: every field, a task alone, another schema, bad ids, one id twice, one agent twice, seventeen computers\n"); } else { good = false; }
+  if rtrg_writer() { print("ok  the writer: a full decision, a short buffer, a decision of nothing\n"); } else { good = false; }
+  if !rtrg_fuzz() { good = false; }
+  return good;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  loaded := args_load(a[..]);
+  path := ifx loaded && args_count(a[..]) >= 1 then args_at(a[..], 0) else RTRG_FIXTURE;
+  if !rtrg_fixture(path) { print("router goldens fail\n"); return 1; }
+  print("router goldens hold (%)\n", path);
+  return 0;
+}

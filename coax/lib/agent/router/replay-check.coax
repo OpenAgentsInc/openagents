@@ -1,0 +1,69 @@
+// The router against answers Google gave (docs/router/README.md). On
+// 2026-11-14 three tasks went to Gemini Decision 1 with the sample computers
+// (fixtures/stations.json); fixtures/google/ holds each request as it was
+// sent and each answer as it came back. This check rebuilds each request and
+// holds it to the recorded bytes, holds the recorded answer to the request as
+// a live one is held, and compares what runs.
+//
+// A change to the questions, the labels or the sample computers changes the
+// request, and this check then fails by design: record the answers again
+// (router.coax decide TASK --door google --save FILE, and --show for the
+// request) and update what runs below.
+//   coax/web/tool.sh coax/lib/agent/router/replay-check.coax
+#import "Basic";
+#load "decide.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+RTRR_STATIONS :: "coax/lib/agent/router/fixtures/stations.json";
+RTRR_GOOGLE :: "coax/lib/agent/router/fixtures/google/";
+
+// A file's bytes without its last line end, or "" when it can't be read.
+rtrr_file :: (dir: string, name: string, suffix: string, out: [] u8) -> string {
+  pb: [512] u8; n := rtr_put(pb[..], 0, dir); n = rtr_put(pb[..], n, name); n = rtr_put(pb[..], n, suffix);
+  k := fs_read(cast(string) pb[0..<n], out);
+  if k <= 0 || k >= out.count { return ""; }
+  while k > 0 && (out[k - 1] == 10 || out[k - 1] == 13) { k -= 1; }
+  return cast(string) out[0..<k];
+}
+
+// One recorded exchange: what runs must be this agent, model and effort on this computer, for this reason ("" for none).
+rtrr_case :: (name: string, task: string, station: string, engine: string, model: string, effort: string, reason: string) -> bool {
+  raw: [RTR_REQUEST_MAX] u8; nodes: [16384] JvNode; wire: [RTR_REQUEST_MAX] u8; q: [1] RtrRequest;
+  sent: [32768] u8; got: [32768] u8; ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  d: [1] RtrDecision; w: [1] RtrWork; e: [1] RtrEligible;
+  stations := rtrr_file(RTRR_STATIONS, "", "", raw[..]);
+  if stations.count == 0 || !rtr_request_read(stations, nodes[..], wire[..], q[..]) { print("FAIL %: the sample computers do not read\n", name); return false; }
+  q[0].text = task;
+  request := rtr_begin(q[..], e[..], d[..], w[..], "replay");
+  recorded := rtrr_file(RTRR_GOOGLE, name, ".request.json", sent[..]);
+  if recorded.count == 0 { print("FAIL %: no recorded request\n", name); return false; }
+  if request != recorded { print("FAIL %: the request is not the one that was sent\n  recorded %\n  now      %\n", name, recorded, request); return false; }
+  answer := rtrr_file(RTRR_GOOGLE, name, ".answer.json", got[..]);
+  if answer.count == 0 { print("FAIL %: no recorded answer\n", name); return false; }
+  gr := gd_result(w[0].body[..], ar[..], 200, answer);
+  if gr.problem.count > 0 { print("FAIL %: the recorded answer does not hold to its request: %\n", name, gr.error.message); return false; }
+  rtr_finish(q[..], e[..], gr, d[..], w[..]);
+  lb: [256] u8;
+  why := ifx d[0].nreasons > 0 then d[0].reasons[0] else "";
+  if !d[0].ok || d[0].station != station || d[0].engine != engine || d[0].model != model || d[0].effort != effort || why != reason || d[0].nanswers != 5 {
+    print("FAIL %: what runs changed: % (reason %)\n", name, rtr_line(q[..], d[..], lb[..]), why);
+    return false;
+  }
+  print("ok  %: % (% input tokens)\n", name, rtr_line(q[..], d[..], lb[..]), d[0].input_tokens);
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  good := true;
+  // Google chose Cloud box 2 and Codex, and that is what runs.
+  good = rtrr_case("typo", "Fix the typo in the README title", "oa-build-2", "codex", "", "low", "") && good;
+  // Google chose Claude Code, and Cloud box 2, where Claude Code is not logged in: code moves the work to a computer that runs it.
+  good = rtrr_case("refactor", "Refactor the session store across the web and desktop apps so both share one module, then update every caller and test", "mac", "claude", "opus", "high", "station_lacks_engine") && good;
+  // Google chose a Linux computer for an iOS build. The router does not ask what a task needs yet (docs/router/README.md, rollout step 2); this case records that.
+  good = rtrr_case("ios", "Build the iOS app for TestFlight and run the full simulator test suite", "coderos", "codex", "", "high", "") && good;
+  if !good { print("router replay fails\n"); return 1; }
+  print("router replay holds: three recorded exchanges with Gemini Decision 1\n");
+  return 0;
+}

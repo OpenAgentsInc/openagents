@@ -1,0 +1,317 @@
+// The delegation router on the wire (docs/router/README.md): the one codec of
+// openagents.router.v1alpha1 (proto/openagents/router/v1alpha1/router.proto).
+// A RouteRequest is a coding task and what each connected computer reports;
+// a RouteDecision says which computer, coding agent, model and effort take
+// it, and why. Both go through the JSON mapper (#import_proto with the json
+// option), so the keys are the schema's json_names in field-number order and
+// a zero, empty or false field without presence is left out.
+//
+// rtr_request_read turns a request's JSON into an RtrRequest; rtr_decision_write
+// turns an RtrDecision into JSON. Every string in an RtrRequest borrows the
+// reader's wire buffer; every string in an RtrDecision borrows what its maker
+// gave it (the request, or a constant).
+//
+// Generated proto code can't run in a compile-time #test (it asks whether
+// buffers overlap), so this codec's checks are a tool that runs natively.
+// Goldens: proto/coder/router-v1alpha1.json, held by wire-goldens.coax:
+//   coax/web/tool.sh coax/lib/agent/router/wire-goldens.coax
+#import_proto "../../../../proto/descriptors/router.pb" as RTP;
+#load "../../proto/json.coax";
+#load "../engine/availability-policy.coax";   // ca_index: an engine's place in claude, codex, micro, psionic
+
+RTR_REQUEST_SCHEMA :: "openagents.router.request.v1alpha1";
+RTR_DECISION_SCHEMA :: "openagents.router.decision.v1alpha1";
+RTR_STATIONS :: 16;      // computers in one request
+RTR_ENGINES :: 4;        // claude, codex, micro, psionic
+RTR_REPOS :: 16;         // repositories one computer reports
+RTR_REASONS :: 8;
+RTR_ANSWERS :: 8;
+RTR_BLOCKED :: 80;       // every computer, and every agent on every computer
+RTR_ID_MAX :: 32;        // a station_id: 1 to 32 of [a-z0-9-]
+RTR_TEXT_MAX :: 16384;   // the task
+RTR_REQUEST_MAX :: 131072;   // a request's JSON, and its wire
+RTR_DECISION_MAX :: 32768;   // a decision's JSON, and its wire
+
+RTR_ENGINE_NAMES :: [RTR_ENGINES] string.["claude", "codex", "micro", "psionic"];
+
+RtrAgent :: struct {
+  reported: bool;        // the computer's report lists this agent
+  installed: bool;
+  logged_in: bool;
+  quota_used_up: bool;
+  cooldown: bool;
+  version: string;
+  plan: string;
+  quota_resets_at: string;
+}
+
+RtrStation :: struct {
+  id: string;
+  name: string;
+  os: string;
+  gpu: string;
+  reported_at_ms: int;
+  cores: int;
+  memory_total_mb: int;
+  memory_free_mb: int;
+  disk_free_mb: int;
+  disk_floor_mb: int;
+  load_1m_milli: int;
+  load_15m_milli: int;
+  apple_builds: bool;
+  in_use: bool;
+  agents: [RTR_ENGINES] RtrAgent;   // by ca_index
+  work: int;                      // pieces of work it runs now
+  repos: [RTR_REPOS] string;
+  nrepos: int;
+  keep_clear: bool;
+  nothing_heavy: bool;
+  max_agents: int;                // 0: no limit
+}
+
+RtrRequest :: struct {
+  text: string;
+  summary: string;
+  repo: string;
+  current_station: string;
+  current_engine: string;
+  current_model: string;
+  now_ms: int;
+  stations: [RTR_STATIONS] RtrStation;
+  n: int;
+}
+
+RtrAnswer :: struct {
+  key: string;
+  choice: string;
+  level: int;            // -1: no level (a choice)
+  milli: int;            // -1: no probability
+}
+
+RtrBlocked :: struct {
+  station: string;
+  engine: string;        // "": the computer itself is ruled out
+  fact: string;
+}
+
+RtrDecision :: struct {
+  ok: bool;
+  station: string;
+  engine: string;
+  model: string;
+  effort: string;
+  difficulty: int;       // -1: not decided
+  weight: int;           // -1: not decided
+  door: string;
+  door_problem: string;
+  reasons: [RTR_REASONS] string;
+  nreasons: int;
+  answers: [RTR_ANSWERS] RtrAnswer;
+  nanswers: int;
+  eligible_stations: [RTR_STATIONS] string;
+  neligible_stations: int;
+  eligible_engines: [RTR_ENGINES] string;
+  neligible_engines: int;
+  blocked: [RTR_BLOCKED] RtrBlocked;
+  nblocked: int;
+  input_tokens: int;
+  latency_ms: int;
+  error: string;
+}
+
+// A decision with nothing decided.
+rtr_decision_clear :: (d: [] RtrDecision) {
+  d[0] = RtrDecision.{};
+  d[0].difficulty = -1; d[0].weight = -1;
+}
+
+rtr_reason :: (d: [] RtrDecision, code: string) {
+  for i: 0..<d[0].nreasons { if d[0].reasons[i] == code { return; } }
+  if d[0].nreasons < RTR_REASONS { d[0].reasons[d[0].nreasons] = code; d[0].nreasons += 1; }
+}
+
+rtr_block :: (d: [] RtrDecision, station: string, engine: string, fact: string) {
+  if d[0].nblocked >= RTR_BLOCKED { return; }
+  d[0].blocked[d[0].nblocked] = RtrBlocked.{station = station, engine = engine, fact = fact};
+  d[0].nblocked += 1;
+}
+
+rtr_answer :: (d: [] RtrDecision, key: string, choice: string, level: int, milli: int) {
+  if d[0].nanswers >= RTR_ANSWERS { return; }
+  d[0].answers[d[0].nanswers] = RtrAnswer.{key = key, choice = choice, level = level, milli = milli};
+  d[0].nanswers += 1;
+}
+
+// Whether id can name a computer: 1 to 32 of a-z, 0-9 and "-". It becomes an
+// option key of the station question, so nothing else is taken.
+rtr_id_ok :: (id: string) -> bool {
+  if id.count == 0 || id.count > RTR_ID_MAX { return false; }
+  for c: id { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+
+// The computer called id in q: its index, or -1.
+rtr_station_index :: (q: [] RtrRequest, id: string) -> int {
+  for i: 0..<q[0].n { if q[0].stations[i].id == id { return i; } }
+  return -1;
+}
+
+// One computer of a request into q's row i. False for an id rtr_id_ok refuses,
+// an agent the router doesn't know twice, or a list over its bound.
+rtr_station_read :: (v: RTP_Station, q: [] RtrRequest, i: int) -> bool {
+  id := RTP_Station_get_station_id(v); name := RTP_Station_get_display_name(v);
+  os := RTP_Station_get_os(v); gpu := RTP_Station_get_gpu(v);
+  at := RTP_Station_get_reported_at_ms(v); cores := RTP_Station_get_cpu_cores(v);
+  mt := RTP_Station_get_memory_total_mb(v); mf := RTP_Station_get_memory_free_mb(v);
+  df := RTP_Station_get_disk_free_mb(v); dfl := RTP_Station_get_disk_floor_mb(v);
+  l1 := RTP_Station_get_load_1m_milli(v); l15 := RTP_Station_get_load_15m_milli(v);
+  apple := RTP_Station_get_apple_builds(v); in_use := RTP_Station_get_in_use(v);
+  if !rtr_id_ok(id.value) { return false; }
+  q[0].stations[i] = RtrStation.{};
+  q[0].stations[i].id = id.value;
+  q[0].stations[i].name = ifx name.value.count > 0 then name.value else id.value;
+  q[0].stations[i].os = os.value; q[0].stations[i].gpu = gpu.value;
+  q[0].stations[i].reported_at_ms = cast(int) at.value; q[0].stations[i].cores = cast(int) cores.value;
+  q[0].stations[i].memory_total_mb = cast(int) mt.value; q[0].stations[i].memory_free_mb = cast(int) mf.value;
+  q[0].stations[i].disk_free_mb = cast(int) df.value; q[0].stations[i].disk_floor_mb = cast(int) dfl.value;
+  q[0].stations[i].load_1m_milli = cast(int) l1.value; q[0].stations[i].load_15m_milli = cast(int) l15.value;
+  q[0].stations[i].apple_builds = apple.value; q[0].stations[i].in_use = in_use.value;
+  rules := RTP_Station_get_rules(v);
+  if rules.present {
+    kc := RTP_StationRules_get_keep_clear(rules.value); nh := RTP_StationRules_get_nothing_heavy(rules.value);
+    ma := RTP_StationRules_get_max_agents(rules.value);
+    q[0].stations[i].keep_clear = kc.value; q[0].stations[i].nothing_heavy = nh.value;
+    q[0].stations[i].max_agents = cast(int) ma.value;
+  }
+  ai := RTP_Station_iter_agents(v);
+  while ai.has_value {
+    engine := RTP_StationAgent_get_engine(ai.value);
+    k := ca_index(engine.value);
+    if k >= 0 && k < RTR_ENGINES {
+      if q[0].stations[i].agents[k].reported { return false; }
+      installed := RTP_StationAgent_get_installed(ai.value); logged_in := RTP_StationAgent_get_logged_in(ai.value);
+      used := RTP_StationAgent_get_quota_used_up(ai.value); cooldown := RTP_StationAgent_get_cooldown(ai.value);
+      version := RTP_StationAgent_get_version(ai.value); plan := RTP_StationAgent_get_plan(ai.value);
+      resets := RTP_StationAgent_get_quota_resets_at(ai.value);
+      q[0].stations[i].agents[k] = RtrAgent.{reported = true, installed = installed.value, logged_in = logged_in.value,
+        quota_used_up = used.value, cooldown = cooldown.value, version = version.value, plan = plan.value, quota_resets_at = resets.value};
+    }
+    ai = RTP_Station_next_agents(ai);
+  }
+  wi := RTP_Station_iter_work(v);
+  while wi.has_value { q[0].stations[i].work += 1; wi = RTP_Station_next_work(wi); }
+  ri := RTP_Station_iter_repos(v);
+  while ri.has_value {
+    if q[0].stations[i].nrepos == RTR_REPOS { return false; }
+    q[0].stations[i].repos[q[0].stations[i].nrepos] = ri.value; q[0].stations[i].nrepos += 1;
+    ri = RTP_Station_next_repos(ri);
+  }
+  return true;
+}
+
+// A request's JSON into q. False for a body that is not a RouteRequest, more
+// than RTR_STATIONS computers, two computers with one id, or a task over
+// RTR_TEXT_MAX. wire must not overlap text, and q's strings borrow it.
+rtr_request_read :: (text: string, nodes: [] JvNode, wire: [] u8, q: [] RtrRequest) -> bool {
+  m := RTP_RouteRequest_from_json(text, nodes, wire);
+  if m.error != 0 { return false; }
+  task := RTP_RouteRequest_get_text(m); summary := RTP_RouteRequest_get_summary(m); repo := RTP_RouteRequest_get_repo(m);
+  cs := RTP_RouteRequest_get_current_station(m); ce := RTP_RouteRequest_get_current_engine(m); cm := RTP_RouteRequest_get_current_model(m);
+  now := RTP_RouteRequest_get_now_ms(m);
+  if task.value.count > RTR_TEXT_MAX { return false; }
+  q[0] = RtrRequest.{};
+  q[0].text = task.value; q[0].summary = summary.value; q[0].repo = repo.value;
+  q[0].current_station = cs.value; q[0].current_engine = ce.value; q[0].current_model = cm.value;
+  q[0].now_ms = cast(int) now.value;
+  si := RTP_RouteRequest_iter_stations(m);
+  while si.has_value {
+    if q[0].n == RTR_STATIONS { return false; }
+    if !rtr_station_read(si.value, q, q[0].n) { return false; }
+    if rtr_station_index(q, q[0].stations[q[0].n].id) != -1 { return false; }   // q[0].n is not counted yet: an earlier row has the id
+    q[0].n += 1;
+    si = RTP_RouteRequest_next_stations(si);
+  }
+  return true;
+}
+
+// "coderos", or "coderos/codex" for an agent on a computer.
+rtr_blocked_id :: (b: RtrBlocked, out: [] u8) -> string {
+  n := 0;
+  for c: b.station { if n < out.count { out[n] = c; n += 1; } }
+  if b.engine.count > 0 {
+    if n < out.count { out[n] = '/'; n += 1; }
+    for c: b.engine { if n < out.count { out[n] = c; n += 1; } }
+  }
+  return cast(string) out[0..<n];
+}
+
+// A decision's JSON into out: its length, or 0 when it doesn't fit or a
+// string is not UTF-8.
+rtr_decision_write :: (d: [] RtrDecision, out: [] u8) -> int {
+  x: [RTR_DECISION_MAX] u8; y: [RTR_DECISION_MAX] u8; c1: [1024] u8; c2: [1024] u8;
+  m := RTP_RouteDecision_new();
+  m = RTP_RouteDecision_set_ok(m, d[0].ok, x[..]);
+  m = RTP_RouteDecision_set_station(m, d[0].station, y[..]);
+  m = RTP_RouteDecision_set_engine(m, d[0].engine, x[..]);
+  m = RTP_RouteDecision_set_model(m, d[0].model, y[..]);
+  m = RTP_RouteDecision_set_effort(m, d[0].effort, x[..]);
+  // m is in x: the next write goes to y, and to_x says where the one after goes
+  to_x := false;
+  if d[0].difficulty >= 0 { m = RTP_RouteDecision_set_difficulty(m, cast(s32) d[0].difficulty, y[..]); to_x = true; }
+  if d[0].weight >= 0 {
+    if to_x { m = RTP_RouteDecision_set_weight(m, cast(s32) d[0].weight, x[..]); } else { m = RTP_RouteDecision_set_weight(m, cast(s32) d[0].weight, y[..]); }
+    to_x = !to_x;
+  }
+  if to_x { m = RTP_RouteDecision_set_door(m, d[0].door, x[..]); } else { m = RTP_RouteDecision_set_door(m, d[0].door, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP_RouteDecision_set_door_problem(m, d[0].door_problem, x[..]); } else { m = RTP_RouteDecision_set_door_problem(m, d[0].door_problem, y[..]); }
+  to_x = !to_x;
+  for i: 0..<d[0].nreasons {
+    if to_x { m = RTP_RouteDecision_append_reasons(m, d[0].reasons[i], x[..]); } else { m = RTP_RouteDecision_append_reasons(m, d[0].reasons[i], y[..]); }
+    to_x = !to_x;
+  }
+  for i: 0..<d[0].nanswers {
+    a := RTP_RouteAnswer_new();
+    a = RTP_RouteAnswer_set_key(a, d[0].answers[i].key, c1[..]);
+    a = RTP_RouteAnswer_set_choice(a, d[0].answers[i].choice, c2[..]);
+    // a is in c2
+    if d[0].answers[i].level >= 0 && d[0].answers[i].milli >= 0 {
+      a = RTP_RouteAnswer_set_level(a, cast(s32) d[0].answers[i].level, c1[..]);
+      a = RTP_RouteAnswer_set_probability_milli(a, cast(s32) d[0].answers[i].milli, c2[..]);
+    } else if d[0].answers[i].level >= 0 {
+      a = RTP_RouteAnswer_set_level(a, cast(s32) d[0].answers[i].level, c1[..]);
+    } else if d[0].answers[i].milli >= 0 {
+      a = RTP_RouteAnswer_set_probability_milli(a, cast(s32) d[0].answers[i].milli, c1[..]);
+    }
+    if to_x { m = RTP_RouteDecision_append_answers(m, a, x[..]); } else { m = RTP_RouteDecision_append_answers(m, a, y[..]); }
+    to_x = !to_x;
+  }
+  for i: 0..<d[0].neligible_stations {
+    if to_x { m = RTP_RouteDecision_append_eligible_stations(m, d[0].eligible_stations[i], x[..]); } else { m = RTP_RouteDecision_append_eligible_stations(m, d[0].eligible_stations[i], y[..]); }
+    to_x = !to_x;
+  }
+  for i: 0..<d[0].neligible_engines {
+    if to_x { m = RTP_RouteDecision_append_eligible_engines(m, d[0].eligible_engines[i], x[..]); } else { m = RTP_RouteDecision_append_eligible_engines(m, d[0].eligible_engines[i], y[..]); }
+    to_x = !to_x;
+  }
+  for i: 0..<d[0].nblocked {
+    ib: [RTR_ID_MAX + 1 + 16] u8;
+    b := RTP_RouteBlocked_new();
+    b = RTP_RouteBlocked_set_id(b, rtr_blocked_id(d[0].blocked[i], ib[..]), c1[..]);
+    b = RTP_RouteBlocked_set_fact(b, d[0].blocked[i].fact, c2[..]);
+    if to_x { m = RTP_RouteDecision_append_blocked(m, b, x[..]); } else { m = RTP_RouteDecision_append_blocked(m, b, y[..]); }
+    to_x = !to_x;
+  }
+  if to_x { m = RTP_RouteDecision_set_input_tokens(m, cast(s32) d[0].input_tokens, x[..]); } else { m = RTP_RouteDecision_set_input_tokens(m, cast(s32) d[0].input_tokens, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP_RouteDecision_set_latency_ms(m, cast(s32) d[0].latency_ms, x[..]); } else { m = RTP_RouteDecision_set_latency_ms(m, cast(s32) d[0].latency_ms, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP_RouteDecision_set_error(m, d[0].error, x[..]); } else { m = RTP_RouteDecision_set_error(m, d[0].error, y[..]); }
+  v := RTP_RouteDecision_to_json(m, out);
+  return ifx v.error != 0 then 0 else v.wire.count;
+}
+
+#test "a computer's id: 1 to 32 of a-z, 0-9 and -" {
+  #assert rtr_id_ok("oa-build-1") && rtr_id_ok("a") && rtr_id_ok("01234567890123456789012345678901");
+  #assert !rtr_id_ok("") && !rtr_id_ok("A") && !rtr_id_ok("a/b") && !rtr_id_ok("my mac") && !rtr_id_ok("012345678901234567890123456789012");
+}

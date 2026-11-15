@@ -190,6 +190,9 @@
     "repo": [
       "openagents/repo/v1alpha1/repo.proto"
     ],
+    "router": [
+      "openagents/router/v1alpha1/router.proto"
+    ],
     "agent-managed": [
       "openagents/agent/managed/v1alpha1/session.proto"
     ],
@@ -384,6 +387,10 @@
     ],
     "repo": [
       "openagents.repo.v1alpha1",
+      "openagents.options.v1alpha1"
+    ],
+    "router": [
+      "openagents.router.v1alpha1",
       "openagents.options.v1alpha1"
     ],
     "agent-managed": [
