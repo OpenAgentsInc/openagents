@@ -21,6 +21,10 @@
 #                                         those suites' mutants of what changed since BASE,
 #                                         alone (the mutation report's recheck of what it
 #                                         still lists, #13610)
+#   coax/remote/check.sh mutate-range BASE TOP I/N
+#                                         the I-th of N parts of the mutants of what changed
+#                                         since BASE in the suites BASE..TOP touched, with this
+#                                         commit's tools (a part the hosts could not finish, again)
 #   coax/remote/check.sh web BASE         the web modules the change since BASE touched,
 #                                         and the report checks (a fast run)
 #   coax/remote/check.sh room-since BASE [PROD]
@@ -726,6 +730,11 @@ case "$mode" in
   mutate-only)
     [[ -n "$arg" && -n "${also[0]:-}" ]] || { echo "check.sh: mutate-only PATH,PATH BASE" >&2; exit 2; }
     suites --only "$arg" --mutate-changed "${also[0]}" --mutate-only || status=1 ;;
+  mutate-range)
+    # The mutation report's recheck of a part the hosts could not finish (#13610): the part's own
+    # suites (those BASE..TOP touched), run with this commit's compiler and tools, not TOP's.
+    [[ -n "$arg" && -n "${also[0]:-}" ]] || { echo "check.sh: mutate-range BASE TOP [I/N]" >&2; exit 2; }
+    suites --since "$arg" --until "${also[0]}" --mutate-changed "$arg" --mutate-only --part "${also[1]:-1/1}" || status=1 ;;
   web)
     changed_since
     web_since
@@ -742,7 +751,7 @@ case "$mode" in
     changed_since
     if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room "${also[0]:-}"
     else echo "== room-build: skipped, the change doesn't reach the room" >> "$log"; fi ;;
-  *) run "$mode" "$arg" || { sed -n '8,53p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
+  *) run "$mode" "$arg" || { sed -n '8,57p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
 esac
 limits; sizes
 # A failure that says nothing of the commit: the host could not run the check

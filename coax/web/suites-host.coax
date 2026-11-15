@@ -6,6 +6,8 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("suites: too many arguments"); return 2; }
   since := args_value(a[..], "--since", ""); only := args_value(a[..], "--only", "");
+  // --until REV: --since compares BASE with REV, not HEAD (a part of an earlier range, #13610).
+  until := args_value(a[..], "--until", "HEAD");
   mutate_ref := args_value(a[..], "--mutate-changed", "");
   mutate_only := args_has(a[..], "--mutate-only");
   if mutate_only && mutate_ref.count == 0 { tool_errln("suites: --mutate-only needs --mutate-changed REF"); return 2; }
@@ -142,7 +144,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
   if since.count > 0 {
     changed: [1048576] u8;
-    av3 := [5] string.["git", "diff", "--name-only", since, "HEAD"];
+    av3 := [5] string.["git", "diff", "--name-only", since, until];
     d := su_run(av3[..], root, changed[..]);
     if d.started != 0 || d.status != 0 { tool_err("suites: git diff "); tool_err(since); tool_errln(" failed"); return 2; }
     keep := 0;

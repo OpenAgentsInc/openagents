@@ -36,6 +36,7 @@
 #      report and neither open it nor hold it open
 #  20. a tool problem keeps it open while it still reproduces, and it closes once it doesn't
 #  21. survivors in a file the change didn't touch are one line a file, not an item
+#  22. a part its own head's tools can't finish runs again with the newest head's, and clears
 # And the service watch (#13379):
 #  13. a production crash alert's bucket gets one GitHub issue: none while GitHub can't be asked,
 #      none for staging, no second when the watcher's memory is gone, a new one after its alert
@@ -74,7 +75,8 @@ Agent: test-base" && g push -q origin main && g push -q origin main:refs/heads/m
 # (OA_REMOTE_FRESH_COMPILER=1); host-full fails with no output until then; host-broken is never
 # judged; full-break fails the full run's suite parts. The mutation job's parts (mutate-since):
 # mutant-survives leaves two survivors in lib/b.coax's bee, mutate-no-summary a suite the tool
-# could not finish, and mutate-host-down a part no host can run.
+# could not finish, and mutate-host-down a part no host can run; mutate-old-tools a part no host
+# finishes with that commit's tools (mutate-range, the recheck of a part, is logged in ranges).
 cat > "$w/check" <<'EOF'
 #!/usr/bin/env bash
 commit="$1" dir="$2"; shift 2
@@ -98,12 +100,14 @@ case "$1" in
   since)
     if has flaky-once && [[ ! -e "$OA_TEST_W/flaked" ]]; then : > "$OA_TEST_W/flaked"; fail "$1" "suite lib/a.coax"; fi ;;
   suites|only) has full-break && fail "$1" "suite lib/a.coax" ;;
-  mutate-since|mutate-only)
-    log="$dir/build/pipeline/$1.log"; : > "$log"; mb="$2"
+  mutate-since|mutate-only|mutate-range)
+    log="$dir/build/pipeline/$1.log"; : > "$log"; mb="$2"; pt="${3:-}"
     if [[ "$1" == mutate-only ]]; then mb="$3"
     else
-      has mutate-host-down && [[ "$3" == 2/* && ! -e "$OA_TEST_W/hosts-back" ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
-      [[ "$3" == 1/* ]] || exit 0
+      [[ "$1" != mutate-range ]] || { pt="${4:-}"; echo "$commit $2 $3 $pt" >> "$OA_TEST_W/ranges"; }
+      has mutate-host-down && [[ "$pt" == 2/* && ! -e "$OA_TEST_W/hosts-back" ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
+      has mutate-old-tools && [[ "$pt" == 2/* ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
+      [[ "$pt" == 1/* ]] || exit 0
     fi
     if has mutant-survives; then
       { echo "FAIL lib/a.coax (mutate --changed $mb): 5 mutants, 3 killed, 2 survived (2 s)"
@@ -264,9 +268,10 @@ grep -qF '`lib/a.coax`: no summary: `b.coax:2:3: error[E0400]' "$rep16" 2> /dev/
   grep -qF "check.sh mutate-since $c15 2/3\`" "$rep16" && grep -qF "check.sh only lib/a.coax $c15\`" "$rep16" &&
   [[ "$(grep -c '^issue create' "$w/gh15.log")" == 1 && "$(grep -c '^issue comment 950' "$w/gh15.log")" == 1 ]] &&
   ok "16: they are tool problems in the report, with the commands from their base, as a comment on its issue" || { bad "16: the report"; cat "$rep16" "$w/gh15.log" "$w/run.log" 2> /dev/null; }
+out_n16() { cat "$w/pl/releases/after/mutants-outstanding.tsv" 2> /dev/null | wc -l | tr -d ' '; }
 touch "$w/hosts-back"; rm -f "$w/repo/mutate-no-summary" "$w/repo/mutate-host-down"; push agent-mut "off the mutants"; c10b="$(g rev-parse HEAD)"; s="$(run)"
-! awk -F'\t' '$1 != "P"' "$w/pl/releases/after/mutants-outstanding.tsv" | grep -q . && [[ "$(grep -c "^P" "$w/pl/releases/after/mutants-outstanding.tsv")" == 1 ]] &&
-  ok "16: once its suite runs again, its survivor and tool problem are cleared; with the hosts back, the oldest three parts they could not finish are run again and cleared" || { bad "16: still outstanding"; cat "$w/pl/releases/after/mutants-outstanding.tsv" "$w/run.log"; }
+[[ "$(out_n16)" == 0 ]] &&
+  ok "16: once its suite runs again, its survivor and tool problem are cleared, and the part the hosts could not finish runs again at the newest head and clears" || { bad "16: still outstanding"; cat "$w/pl/releases/after/mutants-outstanding.tsv" "$w/run.log"; }
 
 # 12
 echo "$c10b" > "$w/pl/releases/after/full-green"
@@ -383,6 +388,14 @@ touch "$w/repo/mutant-survives"; echo 'twentyone :: 21;' >> "$w/repo/lib/a.coax"
 issue_is CLOSED && [[ "$(gh_n reopen)" == 3 && "$(out_n)" == 0 ]] && grep -qF '`lib/b.coax`: 2 mutant(s) survived' "$w/pl/releases/after/$c21/mutants/report.md" &&
   ok "21: survivors outside the change are one line a file and don't reopen the issue" || { bad "21: state $(cat "$w/gh15-state"), $(out_n) outstanding"; cat "$w/pl/releases/after/$c21/mutants/report.md"; }
 rm -f "$w/repo/mutant-survives"
+# 22: a part its own head's tools can't finish (#13614's swollen mutants at 7a2d5b2d5b) is run
+# again with the newest head's tools, and clears once those finish it
+touch "$w/repo/mutate-old-tools"; echo 'twentytwo :: 22;' >> "$w/repo/lib/a.coax"; push agent-mut "a part the old tools can't finish"; c22="$(g rev-parse HEAD)"; s="$(run15)"
+issue_is OPEN && [[ "$(gh_n reopen)" == 4 ]] && outstanding P "part 2/3" '' &&
+  ok "22: a part the hosts could not finish reopens the issue" || { bad "22: state $(cat "$w/gh15-state"), $(gh_n reopen) reopen(s)"; cat "$w/pl/releases/after/mutants-outstanding.tsv" "$w/gh15.log"; }
+rm -f "$w/repo/mutate-old-tools"; echo 'twentythree :: 23;' >> "$w/repo/lib/a.coax"; push agent-mut "the tools are fixed"; c22b="$(g rev-parse HEAD)"; s="$(run15)"
+issue_is CLOSED && [[ "$(out_n)" == 0 && "$(gh_n close)" == 5 ]] && grep -qE "^$c22b [0-9a-f]+ $c22 2/3\$" "$w/ranges" 2> /dev/null &&
+  ok "22: the part runs again at the newest head (check.sh mutate-range BASE TOP 2/3), finishes, and the issue closes" || { bad "22: state $(cat "$w/gh15-state"), $(out_n) outstanding"; cat "$w/ranges" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/run.log" 2> /dev/null; }
 
 (( fails == 0 )) && echo "test-after: every case passed" || echo "test-after: $fails case(s) failed"
 exit $(( fails > 0 ))

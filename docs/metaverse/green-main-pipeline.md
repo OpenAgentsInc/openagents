@@ -613,8 +613,12 @@ one row each: the kind, the file, the procedure, the line, the mutation, the
 suite, the base and the head. Before it posts anything, each report runs the
 earlier heads' items again at its own head (`check.sh mutate-only SUITES
 BASE`, from each item's base), at most `OA_AFTER_MUTATE_RECHECK` (6) suites,
-and up to `OA_AFTER_MUTATE_PARTS` parts that the hosts could not finish, each
-at its own head. A recheck runs in the report job, after its parts, and never
+and up to `OA_AFTER_MUTATE_PARTS` parts that the hosts could not finish. A part
+runs again at the report's head, not at its own (`check.sh mutate-range BASE
+TOP I/N`: the same part of the suites that `BASE..TOP` touched), so it gets the
+newest compiler and tools. The parts at 7a2d5b2d5b never finished on their own
+head's tools, which mutated every `#import_proto` procedure (#13614). What a
+part finds when it finishes joins the items. A recheck runs in the report job, after its parts, and never
 in a verdict job. An item that the recheck no longer finds is cleared: it is
 killed, marked equivalent, or the tool now finishes it. An item that the
 recheck can't judge stays, for example when the tool again gives no summary.
@@ -646,7 +650,9 @@ suites, and that survivors and tool problems are reported and nothing else.
 Cases 17 to 20 check the lifecycle (#13610). Survivors, then a recheck that
 finds them killed, close the issue. A new survivor reopens it, and no second
 issue is filed. Survivors only in check units neither open it nor keep it
-open. A tool problem keeps it open while it still happens.
+open. A tool problem keeps it open while it still happens. Case 22 checks
+that a part its own head's tools can't finish runs again with the newest
+head's tools, and clears when they finish it.
 
 Before this, the `since` jobs ran the mutants themselves (#13583). A slow
 mutate run then held the whole job past its time limit, so the run was

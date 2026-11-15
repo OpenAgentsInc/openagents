@@ -797,7 +797,7 @@ mutants_report() {   # head base dir status...: the report (markdown); status 1 
 # finish; P a part the hosts could not finish, FILE and SUITE "part I/N"). Each report first
 # rechecks the earlier heads' items: their suites' mutants again at this head from the item's
 # base (check.sh mutate-only SUITES BASE), at most OA_AFTER_MUTATE_RECHECK (6) suites, and up to
-# OA_AFTER_MUTATE_PARTS parts the hosts could not finish, each again at its own head. An item a recheck no longer finds is cleared; one it can't judge
+# OA_AFTER_MUTATE_PARTS parts the hosts could not finish, again at this head (check.sh mutate-range). An item a recheck no longer finds is cleared; one it can't judge
 # stays. The issue is open while OUTSTANDING has a row: the same steps as the nightly sweep's
 # issue (mutation-sweep.coax, ms_issue_step): nothing outstanding closes an open issue with a
 # summary; an item reopens a closed one, or files one when there is none; the issue is the number
@@ -829,7 +829,7 @@ mutants_list() {   # rows: the items as markdown lines, one a procedure (or suit
       if (k in r) { split(r[k], x, "\t")
         if (x[1] == "U") printf "- `%s`: not reached by any check: %s (since %s). Run alone: `%s only %s %s`\n", x[2], x[3], substr(x[7], 1, 10), alone, x[2], x[7]
         else if (x[1] == "T") printf "- `%s`: the tool did not finish its mutants: %s (since %s). Run alone: `%s only %s %s`\n", x[2], x[3], substr(x[7], 1, 10), alone, x[2], x[7]
-        else printf "- %s at %s: %s (since %s). Run alone: `%s mutate-since %s %s` at %s\n", x[2], substr(x[8], 1, 10), x[3], substr(x[7], 1, 10), alone, x[7], substr(x[2], 6), substr(x[8], 1, 10)
+        else printf "- %s at %s: %s (since %s). Run alone: `%s mutate-range %s %s %s`\n", x[2], substr(x[8], 1, 10), x[3], substr(x[7], 1, 10), alone, x[7], x[8], substr(x[2], 6)
       } else printf "- `%s` `%s`, line%s: %d mutant(s) survived (%s%s; since %s, at %s). Run alone: `%s only %s %s`\n", f[k], p[k], (lo[k] == hi[k] ? " " lo[k] : "s " lo[k] "-" hi[k]), n[k], w[k], (n[k] > 3 ? "; ..." : ""), substr(b[k], 1, 10), substr(h[k], 1, 10), alone, s[k], b[k] } }' "$@"
 }
 mutants_issue() {   # "NUMBER STATE" of the report's one issue, nothing when there is none; status 1 when GitHub can't say
@@ -850,11 +850,13 @@ mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows sti
   while IFS=$'\t' read -r b list <&3; do
     k=$((k + 1)); check "$head" "$dir/recheck-$k" mutate-only "$list" "$b" < /dev/null & pids+=($!)
   done 3< "$dir/plan.tsv"
-  # And the oldest parts the hosts could not finish, at most OA_AFTER_MUTATE_PARTS of them, again
-  # each at its own head.
+  # And the oldest parts the hosts could not finish, at most OA_AFTER_MUTATE_PARTS of them, again:
+  # the same part of the suites BASE..TOP touched, at this head, so the compiler and tools are this
+  # head's (an earlier head's tools could be why the part never finished: #13614's swollen
+  # mutants at 7a2d5b2d5b).
   awk -F'\t' -v h="$head" '$1 == "P" && $8 != h { print $2 "\t" $7 "\t" $8 }' "$mutants_out" | head -n "$mutate_parts" > "$dir/parts.tsv"
   while IFS=$'\t' read -r pp pb ph <&3; do
-    j=$((j + 1)); check "$ph" "$dir/recheck-part-$j" mutate-since "$pb" "${pp#part }" < /dev/null & pids+=($!)
+    j=$((j + 1)); check "$head" "$dir/recheck-part-$j" mutate-range "$pb" "$ph" "${pp#part }" < /dev/null & pids+=($!)
   done 3< "$dir/parts.tsv"
   for i in ${pids[@]+"${pids[@]}"}; do wait "$i"; st+=($?); done
   i=0
@@ -887,7 +889,7 @@ mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows sti
     awk -F'\t' -v p="$pp" -v h="$ph" -v OFS='\t' -v kept="$dir/kept.tsv.new" -v cleared="$dir/cleared.part" '!($1 == "P" && $2 == p && $8 == h) { print > kept; next } { print > cleared }' "$dir/kept.tsv"
     [[ -f "$dir/kept.tsv.new" ]] || : > "$dir/kept.tsv.new"
     mv "$dir/kept.tsv.new" "$dir/kept.tsv"; cat "$dir/cleared.part" >> "$dir/cleared.tsv" 2> /dev/null; rm -f "$dir/cleared.part"
-    mutants_records "$dir/recheck-part-$j/build/pipeline/mutate-since.log" > "$dir/recheck-part-$j.tsv"
+    mutants_records "$dir/recheck-part-$j/build/pipeline/mutate-range.log" > "$dir/recheck-part-$j.tsv"
     mutants_items "$ph" "$pb" "$dir/recheck-part-$j.tsv" >> "$dir/kept.tsv"
   done 3< "$dir/parts.tsv"
 }

@@ -4,6 +4,7 @@
 //   coax/web/tool.sh suites                    # every suite
 //   coax/web/tool.sh suites --since REF        # only suites whose sources changed since REF (the #load graph; coax deps when the compiler or a .pb changed)
 //   coax/web/tool.sh suites --since REF --deps # the same, asking coax deps for every suite
+//   coax/web/tool.sh suites --since REF --until REV  # the suites whose sources changed from REF to REV, not to HEAD (#13610)
 //   coax/web/tool.sh suites --since REF --affected [--faces]  # every .coax file whose #load closure holds a changed file (exit 3: can't tell; --faces: the caller places changed .c and .h files itself)
 //   coax/web/tool.sh suites --list             # the suites and their budgets (and "#authority" when one loads such a file); nothing runs
 //   coax/web/tool.sh suites --list --authority-units  # and after "#authority", the #authority files whose mutants the nightly
