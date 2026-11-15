@@ -2432,6 +2432,23 @@ do not authorize physical operating limits. No stored checkpoint, measured
 motor, biped/contact or device/timing qualification follows. See
 `docs/verification/robotics-actuator-rb02-2026-11-15.md`.
 
+## A saved servo run restores only a verified bounded recipe
+
+The SLR1 companion binds the source model, assembly, topology and exact
+numerical profile, complete initial/final queue snapshots, ordered targets,
+end reason, trace and artifact identity. Its sole codec recomputes at most
+4,096 additional steps and admits the whole result before publication.
+The Microduck consumer additionally matches the source joint's exact limit
+and stand words. Refusal preserves the admitted run and presentation.
+Scrubbing leaves the source record unchanged; explicit branching retains
+the cursor's complete queue and links the parent artifact. Camera, selection
+and explosion are separate presentation state. RXE1 and SLV1 retain their
+published identities. Actual native/Wasm consumers reproduce the same
+nonzero-state artifact byte for byte. See
+`docs/protocol/servo-run-v1.md` and
+`docs/verification/microduck-replay-13641/README.md` for the precise host,
+offline, delivery and illustrative-simulation scope.
+
 ## Running observations retain exact snapshot and transform conventions
 
 `psionic/lib/running-stats.coax` admits the whole finite bounded input and

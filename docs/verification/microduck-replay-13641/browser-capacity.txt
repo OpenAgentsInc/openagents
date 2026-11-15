@@ -1,0 +1,3 @@
+shot: WebGPU adapter: hardware apple metal-3
+{"step":4085,"saveMs":33.58000001311302,"openMs":22.625,"seekMs":22.0799999833107,"bytes":1088}
+build/replay-capacity.png

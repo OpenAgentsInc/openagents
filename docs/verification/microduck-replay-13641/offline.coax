@@ -1,0 +1,18 @@
+// Browser SDK oracle: reuse the checkout's resident muted headless page.
+#load "../../../coax/web/resident.coax";
+#load "../../../coax/web/lab-check-cdp.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ c:[1]Cdp;r:[1]Rs;if !rs_open(c[..],r[..]) {print("no resident browser\n");return 1;}
+ if !rs_kept(c[..],r[..]) {rs_release(c[..],r[..],true);print("no kept page\n");return 1;}
+ enabled:=cdp_call(c[..],"Network.enable","",30000)>=0;
+ uncached:=cdp_call(c[..],"Network.setCacheDisabled","{\"cacheDisabled\":true}",30000)>=0;
+ blocked:=cdp_call(c[..],"Network.setBlockedURLs","{\"urls\":[\"*\"]}",30000)>=0;
+ on:=cdp_call(c[..],"Network.emulateNetworkConditions","{\"offline\":true,\"latency\":0,\"downloadThroughput\":0,\"uploadThroughput\":0}",30000)>=0;
+ probe:=cdp_evaluate(c[..],"(async()=>{let rejected=false,message='';try{await fetch('https://storage.googleapis.com/openagentsgemini-native-world-assets/objects/fc21cb95595d665bb83dc5b90c373dcf197f5b45b34b376c0d110b044bb408b5?offline-probe-2',{cache:'no-store'});}catch(e){rejected=true;message=e.message;}return JSON.stringify({rejected,online:navigator.onLine,message,ready:coaxial.sceneReady});})()");if probe>=0 {print("probe %\n",jv_raw(c[0].doc[0],probe));}else {print("probe error %\n",cdp_error(c[..]));}
+ ok:=false;
+ if enabled && uncached && blocked && on {ok=lab_check_eval(c[..],"(async()=>{if(coaxial.drive.stateSize()!==80536)return false;let rejected=false;try{await fetch('https://storage.googleapis.com/openagentsgemini-native-world-assets/objects/fc21cb95595d665bb83dc5b90c373dcf197f5b45b34b376c0d110b044bb408b5?offline-probe',{cache:'no-store'});}catch{rejected=true;}if(!rejected||navigator.onLine)return false;const before=coaxial.servoRunPacket();document.querySelector('[aria-label=\"Viewer menu\"]').click();document.querySelector('[data-key=\"3201\"]').click();for(let i=0;i<120&&coaxial.drive.peek(74864,8)!=='0000000000000000';i++)await new Promise(requestAnimationFrame);if(JSON.stringify(before)!==JSON.stringify(coaxial.servoRunPacket()))return false;document.querySelector('[data-key=\"3205\"]').click();document.querySelector('[data-key=\"3204\"]').click();document.querySelector('.coax-view-menu dialog').close();await coaxial.agent.step(0,500);await coaxial.agent.step(400,60);return new DataView(Uint8Array.from(coaxial.servoLabPacket()).buffer).getUint32(224,true)>100;})()");}
+ _:=cdp_call(c[..],"Network.setBlockedURLs","{\"urls\":[]}",30000);
+ _:=cdp_call(c[..],"Network.setCacheDisabled","{\"cacheDisabled\":false}",30000);
+ restored:=cdp_call(c[..],"Network.emulateNetworkConditions","{\"offline\":false,\"latency\":0,\"downloadThroughput\":-1,\"uploadThroughput\":-1}",30000)>=0;
+ rs_release(c[..],r[..],true);print("offline admitted=%, warm IndexedDB replay=%, network restored=%\n",on,ok,restored);return ifx on && ok && restored then 0 else 1;
+}

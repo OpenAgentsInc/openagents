@@ -1,0 +1,39 @@
+// One bounded document request writer; SDKs only project the chosen effect.
+// coax/bin/coax test metaverse-engine/host/document-wire.coax
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/text/base64.coax";
+#authority;
+doc_name :: (name:string)->bool #effects(all) {
+ if name.count<1 || name.count>64 || name[0]=='.' {return false;}
+ for c,i:name {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='.' || c=='_' || c=='-') {return false;}
+  if i>0 && c=='.' && name[i-1]=='.' {return false;} // mutant: equivalent (>=0 adds only an unreachable first dot; >1 omits only a double dot beginning at the already-refused leading dot)
+ }return true;
+}
+doc_write :: (operation:int,token:int,name:string,limit:int,payload:[]u8,out:[]u8)->int #export_c #effects(all) {
+ if (operation!=1 && operation!=2) || token<1 || token>2147483647 || !doc_name(name) || limit<1 || limit>2048 || payload.count>limit || (operation==1 && payload.count!=0) || (operation==2 && payload.count==0) {return -1;}
+ encoded:[2732]u8;n:=b64_encode(cast(string)payload,encoded[..]);
+ if n<0 {return -1;} // mutant: equivalent (the prior 2048-byte bound needs at most 2732 base64 bytes; this encoder cannot fail with that capacity)
+ stage:[4096]u8;o:[1]Jo;jo_start(o[..],stage[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"metaverse.engine.document-effect.v1");jo_key(o[..],"token");jo_int(o[..],token);jo_key(o[..],"op");jo_str(o[..],ifx operation==1 then "open" else "share");jo_key(o[..],"name");jo_str(o[..],name);jo_key(o[..],"limit");jo_int(o[..],limit);jo_key(o[..],"data");jo_str(o[..],cast(string)encoded[0..<n]);jo_end(o[..]);
+ if o[0].bad || o[0].n>out.count {return -1;}for i:0..<o[0].n {out[i]=stage[i];}return o[0].n;
+}
+#test "document admission closes names operations tokens payloads and output atomically" {
+ b:[4096]u8;data:[2049]u8;
+ for name:[8]string.["",".a","a..b","a/b","a\\b","a b","a\n","ä"] {#assert !doc_name(name);}
+ #assert doc_name("Microduck-01_test.oarun") && doc_name("A09_-.z");name:[65]u8;for i:0..<65 {name[i]='a';}#assert doc_name(cast(string)name[0..<64]) && !doc_name(cast(string)name[..]);
+ for op:[4]int.[0,1,2,3] {count:=ifx op==2 then 1 else 0;#assert (doc_write(op,1,"a",2048,data[0..<count],b[..])>0)==(op==1 || op==2);}
+ for token:[4]int.[0,1,2147483647,2147483648] {#assert (doc_write(1,token,"a",1,data[0..<0],b[..])>0)==(token==1 || token==2147483647);}
+ for limit:[4]int.[0,1,2048,2049] {#assert (doc_write(1,1,"a",limit,data[0..<0],b[..])>0)==(limit==1 || limit==2048);}
+ #assert doc_write(2,1,"a",2048,data[0..<2048],b[..])>0 && doc_write(2,1,"a",2048,data[..],b[..])== -1 && doc_write(2,1,"a",2048,data[0..<0],b[..])== -1 && doc_write(1,1,"a",2048,data[0..<1],b[..])== -1;
+ b[0]=77;#assert doc_write(2,1,"../a",1,data[0..<1],b[..])== -1 && b[0]==77;#assert doc_write(1,1,"a",1,data[0..<0],b[0..<1])== -1 && b[0]==77;
+ n:=doc_write(2,8,"a",1,data[0..<1],b[..]);nodes:[128]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && jv_int(d[0],jv_get(d[0],0,"token"),0)==8;
+ s:[16]u8;k:=jv_str(d[0],jv_get(d[0],0,"data"),s[..]);#assert cast(string)s[0..<k]=="AA==";
+}
+#test "document names cover the whole ASCII alphabet and the emitted effect matches exact consent fields" {
+ #assert doc_name("abcdefghijklmnopqrstuvwxyz") && doc_name("ABCDEFGHIJKLMNOPQRSTUVWXYZ") && doc_name("0123456789_-.");
+ for name:[8]string.["a{","a[","a:","a+","a..","a?","a@","a`"] {#assert !doc_name(name);}
+ b:[4096]u8;empty:[1]u8;n:=doc_write(1,17,"zZ9-a",1472,empty[0..<0],b[..]);
+ expected:="{\"schema\":\"metaverse.engine.document-effect.v1\",\"token\":17,\"op\":\"open\",\"name\":\"zZ9-a\",\"limit\":1472,\"data\":\"\"}";
+ #assert cast(string)b[0..<n]==expected;#assert doc_write(1,17,"zZ9-a",1472,empty[0..<0],b[0..<n])==n;
+ data:=[1]u8.[0];n=doc_write(2,17,"zZ9-a",1472,data[..],b[..]);
+ #assert cast(string)b[0..<n]=="{\"schema\":\"metaverse.engine.document-effect.v1\",\"token\":17,\"op\":\"share\",\"name\":\"zZ9-a\",\"limit\":1472,\"data\":\"AA==\"}";
+}

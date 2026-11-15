@@ -1,0 +1,40 @@
+// The sole SLR1 codec. No struct layout, unknown profiles or unchecked restore.
+// coax/bin/coax test psionic/lib/robotics/servo-run-wire.coax
+#load "servo-run.coax";
+#authority;
+RSW_MAX :: 1472;
+#load "servo-run-wire-checks.coax" #test;
+rsw_size :: (commands:int)->int #effects(all) {if commands<0 || commands>32 {return 0;}return 1088+12*commands;}
+rsw_profile :: ()->[32]u8 #effects(all) {id:[32]u8;text:="servo-native-wasm-f64-v1";b:[64]u8;for c,i:text {b[i]=c;}#assert sha256_hash_checked(b[0..<text.count],id[..],false)==SHA_OK;return id;}
+rsw_identity :: (b:[]u8)->[32]u8 #effects(all) {id:[32]u8;#assert sha256_tagged_checked("psionic.robotics.servo-run.v1",b,id[..],false)==SHA_OK;return id;}
+rsw_snapshot_write :: (a:RsaSnapshot,b:[]u8) #effects(all) {for v,i:rsr_values(a) {_:=cb_store_le64(b,i*8,f64_bits(v));}_:=cb_store_le32(b,152,cast(u32)a.cursor);_:=cb_store_le32(b,156,cast(u32)a.steps);}
+rsw_snapshot_read :: (b:[]u8,p:RsaParams,out:[]RsaSnapshot)->bool #effects(all) {
+ if b.count!=160 || out.count!=1 {return false;}v:[19]f64;for i:0..<19 {word:=cb_load_le64(b,i*8).value;if !rgp_finite(word) {return false;}v[i]=f64_from_bits(word);}
+ a:RsaSnapshot;a.params=p;a.position.value=v[0];a.rate.value=v[1];a.output_position.value=v[2];for i:0..<16 {a.pending[i].value=v[3+i];}a.cursor=cast(int)cb_load_le32(b,152).value;a.steps=cast(int)cb_load_le32(b,156).value;if rsa_snapshot(a)!=RsaStatus.ok {return false;}out[0]=a;return true;
+}
+rsw_write :: (r:[]RsrRun,out:[]u8)->bool #export_c #effects(all) {
+ if r.count!=1 {return false;}size:=rsw_size(r[0].count);
+ if size==0 {return false;} // mutant: equivalent (0 to 1: invalid counts are independently refused by rsr_admit; valid sizes are at least 1088)
+ if out.count!=size || !rsr_admit(r) {return false;}b:[RSW_MAX]u8;for c,i:"SLR1" {b[i]=c;}
+ for v,i:[3]int.[size,r[0].count,r[0].reason] {_:=cb_store_le32(b[..],4+i*4,cast(u32)v);}
+ for id,k:[3][32]u8.[rsw_profile(),r[0].parent,r[0].trace] {for v,i:id {b[16+k*32+i]=v;}}
+ #assert slw_write(r[0].start,b[112..<424]);
+ rsw_snapshot_write(r[0].initial,b[424..<584]); // mutant: equivalent (584 to 585: the helper writes exactly 160 bytes, independent of the larger span)
+ #assert slw_write(r[0].finish,b[584..<896]);
+ rsw_snapshot_write(r[0].final,b[896..<1056]); // mutant: equivalent (1056 to 1057: the helper writes exactly 160 bytes)
+ for i:0..<r[0].count {c:=r[0].commands[i];_:=cb_store_le32(b[..],1056+i*12,cast(u32)c.tick);_:=cb_store_le64(b[..],1060+i*12,f64_bits(c.target));}
+ digest:=rsw_identity(b[0..<size-32]);for v,i:digest {b[size-32+i]=v;}return cb_copy_checked(b[0..<size],out,false);
+}
+rsw_read :: (b:[]u8,source:RslConfig,out:[]RsrRun)->bool #export_c #effects(all) {
+ if out.count!=1 || b.count<1088 {return false;}
+ if b.count>RSW_MAX {return false;} // mutant: equivalent (1472 to 1473: no 1088+12*n size is 1473; the following exact length check still refuses it)
+ for c,i:"SLR1" {if b[i]!=c {return false;}}
+ n:=cast(int)cb_load_le32(b,8).value;size:=rsw_size(n);if size!=b.count || cb_load_le32(b,4).value!=cast(u32)size {return false;}profile:=rsw_profile();digest:=rsw_identity(b[0..<size-32]);for i:0..<32 {if b[16+i]!=profile[i] || b[size-32+i]!=digest[i] {return false;}}
+ r:[1]RsrRun;r[0].count=n;r[0].reason=cast(int)cb_load_le32(b,12).value;for i:0..<32 {r[0].parent[i]=b[48+i];r[0].trace[i]=b[80+i];}
+ packet:[1]RslPacket;if !slw_read(b[112..<424],slw_digest(b[112..<424]),packet[..]) {return false;}r[0].start=packet[0];c:=packet[0].config;
+ if !slw_same(c.model,source.model) || !slw_same(c.assembly,source.assembly) || !slw_same(c.topology,source.topology) {return false;}
+ state:[1]RsaSnapshot;if !rsw_snapshot_read(b[424..<584],c.p,state[..]) {return false;}r[0].initial=state[0];
+ if !slw_read(b[584..<896],slw_digest(b[584..<896]),packet[..]) {return false;}r[0].finish=packet[0];if !rsw_snapshot_read(b[896..<1056],packet[0].config.p,state[..]) {return false;}r[0].final=state[0];
+ for i:0..<n {word:=cb_load_le64(b,1060+i*12).value;if !rgp_finite(word) {return false;}r[0].commands[i]=RsrCommand.{tick=cast(int)cb_load_le32(b,1056+i*12).value,target=f64_from_bits(word)};}
+ if !rsr_admit(r[..]) {return false;}out[0]=r[0];return true;
+}

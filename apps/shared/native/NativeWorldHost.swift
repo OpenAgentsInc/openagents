@@ -96,6 +96,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     private let chromeRoot=NativeOverlayView()
     private var arcade:NativeArcadeSurface?
     private var editorAvailable=false,loadFailed=false,modelViewer=false
+    private let documents=NativeDocuments()
     private var presentation:MTLCommandBuffer?
     init(directory:URL,realm:String,path:String,edit:Bool,finished:@escaping()->Void) {
         self.directory=directory;self.realm=realm;self.path=path;editRequested=edit;self.finished=finished;super.init(nibName:nil,bundle:nil)
@@ -298,6 +299,22 @@ private final class NativeWorldCancellation:@unchecked Sendable {
             else if !target.isEmpty {let next=NativeWorldHost(directory:directory,realm:target,path:text,edit:false,finished:finished);close();navigationController?.setViewControllers([next],animated:true)}
         }
         if code==34 {editor?.result(text)}
+        if code==35 {Task {await documentEffect(text)}}
+    }
+    private func documentEffect(_ text:String)async {
+        guard !closed,let owner=page,let data=text.data(using:.utf8),let request=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let token=request["token"] as? Int32,let op=request["op"] as? String,let limit=request["limit"] as? Int,let name=request["name"] as? String,let raw=request["data"] as? String else {return}
+        var bytes=Data(),status:Int32=0
+        do {
+            if op=="open" {
+                let chosen=try await documents.pick(self,limit:Int64(limit));defer {documents.release()}
+                if chosen["cancelled"] as? Bool == true {status=1}
+                else if let key=chosen["token"] as? String,let picked=documents.data(key) {bytes=picked}
+                else {status=2}
+            }else if op=="share",let offered=Data(base64Encoded:raw) {status=try await documents.share(self,name:name,data:offered) ? 0:1}
+            else {status=3}
+        }catch {status=2}
+        guard !closed,page===owner else {return}
+        Self.deep.run {owner.documentReply(token,status:status,bytes:bytes)}
     }
     @objc private func background() {canvas?.isPaused=true;last=0;turn.stop();audio?.show(false);if let page {Self.deep.run {page.shown(false)}}}
     @objc private func foreground() {last=0;if let page {Self.deep.run {page.shown(true);page.assetsChanged()}};audio?.show(true);canvas?.isPaused=false}

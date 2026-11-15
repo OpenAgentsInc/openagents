@@ -39,6 +39,17 @@ Microduck motors. The [finite protocol and clock](../../docs/protocol/servo-lab-
 and [observed native/browser evidence](../../docs/verification/microduck-servo-13640/README.md)
 state the exact numerical and delivery scope.
 
+## Saved runs
+
+**Saved runs** offers Save/Open latest, Share/Open file, Play/Pause,
+Beginning and step controls. The shared timeline scrubs the original
+record without changing it. **Branch + continue** starts a new experiment
+from that cursor, including its complete actuator queue, with a parent
+artifact identity. Live target changes are recorded; other parameter changes
+start a new run. The bounded [SLR1 recipe](../../docs/protocol/servo-run-v1.md)
+recomputes and verifies the entire run before restoring its pose and plots.
+[Native/browser verification](../../docs/verification/microduck-replay-13641/README.md).
+
 ## Source and rights
 
 Original mechanical geometry: **Pollen Robotics**,
@@ -65,7 +76,9 @@ with credit to Pollen Robotics and NVIDIA DLI. The
 and [workshop notice](https://github.com/NV-DLI/Microduck-Workshop/blob/b283d134f52db75f747581f9ed47f64f3f94df7b/web/assets/robot/NOTICE.md)
 apply independently of repository software licences. This geometry is for
 noncommercial research; the proposed saleable platform needs its own cleared
-geometry. The model and pack are kept outside the public website's asset tree.
+geometry. The model stays outside the app bundle and website's source asset
+tree; the noncommercial research viewer streams its pinned immutable object
+from the shared world-assets service, with the source credit retained.
 
 ## Import and ownership
 
@@ -135,15 +148,13 @@ coax/remote/pages.sh origin/main
 coax/remote/remote.sh run -- coax/web/tool.sh metaverse/tools/assets/microduck-pack.coax --fetch apps/openagents-web/build/microduck.pack
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/microduck.coax apps/openagents-web/microduck-face.c apps/openagents-web/build/microduck.wasm
 coax/remote/remote.sh run -- coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/microduck.coax apps/openagents-web/microduck.wgsl apps/openagents-web/gpu/microduck.module
-mkdir -p ~/.openagents/verse/private-build/web
-cp apps/openagents-web/build/microduck.pack ~/.openagents/verse/private-build/web/microduck-lab.pack
 OA_SERVE_NO_API=1 OA_SERVE_NO_CODER=1 BROWSER=/usr/bin/true coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9123 --build /usr/bin/true
 ```
 
 `--build /usr/bin/true` keeps this inspection server from starting the whole
 site build when a file changes. Rebuild the viewer remotely with the commands
-above. The `/private/` route is local development only; a static deployment
-does not serve the licensed pack. `--fetch` can reconstruct the exact pack
+above. The page streams the same verified object as the mobile app.
+`--fetch` can reconstruct the exact pack
 on a machine without the imported source cache; it checks the same source pin.
 
 Capture without opening a browser window or playing audio:

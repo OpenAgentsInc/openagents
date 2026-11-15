@@ -1,0 +1,49 @@
+// Portable deterministic runs; the actuator and SLV1 remain the numerical owners.
+// coax/bin/coax test psionic/lib/robotics/servo-run.coax
+#load "servo-lab-wire.coax";
+#authority;
+RSR_COMMANDS :: 32;
+RSR_STEPS :: 4096;
+RsrCommand :: struct {tick:int;target:f64;}
+RsrRun :: struct {start:RslPacket;initial:RsaSnapshot;finish:RslPacket;final:RsaSnapshot;commands:[RSR_COMMANDS]RsrCommand;count:int;reason:int;parent:[32]u8;trace:[32]u8;}
+#load "servo-run-checks.coax" #test;
+rsr_values :: (a:RsaSnapshot)->[19]f64 #effects(all) {v:[19]f64;v[0]=a.position.value;v[1]=a.rate.value;v[2]=a.output_position.value;for i:0..<16 {v[3+i]=a.pending[i].value;}return v;}
+rsr_params :: (c:RslConfig,a:RsaSnapshot)->bool #effects(all) {other:=c;other.p=a.params;x:=slw_numbers(c);y:=slw_numbers(other);for i:0..<13 {if f64_bits(x[i])!=f64_bits(y[i]) {return false;}}return c.p.delay==a.params.delay;}
+rsr_seed :: (c:RslConfig,revision:int,a:RsaSnapshot,out:[]RslSession)->bool #effects(all) {
+ if out.count!=1 || !rsl_config(c) || !rsr_params(c,a) || rsa_snapshot(a)!=RsaStatus.ok || revision<1 || revision>2147483647 {return false;}
+ if a.position.value<c.low || a.position.value>c.high || a.output_position.value<c.low || a.output_position.value>c.high {return false;}
+ s:RslSession;s.config=c;s.revision=revision;s.snapshot=a;s.count=1;s.cursor=1;s.last=RslRow.{tick=a.steps,commanded=c.target,position=a.position.value,rate=a.rate.value,output=a.output_position.value,available=c.p.effort.value*c.p.voltage};s.rows[0]=s.last;out[0]=s;return true;
+}
+rsr_shape :: (r:[]RsrRun)->bool #effects(all) {
+ if r.count!=1 {return false;}a:=r[0];if a.count<0 || a.count>RSR_COMMANDS || a.reason<0 || a.reason>3 || a.final.steps<a.initial.steps || a.final.steps-a.initial.steps>RSR_STEPS {return false;}
+ tick:=a.initial.steps;for i:0..<a.count {c:=a.commands[i];if c.tick<tick || c.tick>a.final.steps {return false;}p:=a.start.config;p.target=c.target;if !rsl_config(p) {return false;}tick=c.tick;}return true;
+}
+rsr_chain :: (before:[32]u8,s:[]RslSession)->[32]u8 #effects(all) {b:[32+SLW_SIZE]u8;for v,i:before {b[i]=v;}#assert slw_write(slw_packet(s[0],RslStatus.ok),b[32..<32+SLW_SIZE]);id:[32]u8;#assert sha256_hash_checked(b[..],id[..],false)==SHA_OK;return id;}
+rsr_trace_begin :: (s:[]RslSession)->[32]u8 #effects(all) {b:[SLW_SIZE]u8;#assert slw_write(slw_packet(s[0],RslStatus.ok),b[..]);id:[32]u8;#assert sha256_tagged_checked("psionic.robotics.servo-trace.v1",b[..],id[..],false)==SHA_OK;return id;}
+rsr_compute :: (r:[]RsrRun,tick:int,out:[]RslSession,trace:[]u8)->bool #effects(all) {
+ if !rsr_shape(r) || out.count!=1 || trace.count!=32 || tick<r[0].initial.steps || tick>r[0].final.steps {return false;}
+ s:[1]RslSession;if !rsr_seed(r[0].start.config,r[0].start.revision,r[0].initial,s[..]) {return false;}digest:=rsr_trace_begin(s[..]);command:=0;
+ // The actuator snapshot is the single step counter, including the final
+ // command-only boundary. No parallel loop counter can drift from it.
+ while true {step:=s[0].snapshot.steps;
+  while command<r[0].count && r[0].commands[command].tick==step {if rsl_target(s[..],r[0].commands[command].target,s[0].revision)!=RslStatus.ok {return false;}command+=1;}
+  if step==tick {break;}if rsl_tick(s[..])!=RslStatus.ok {return false;}digest=rsr_chain(digest,s[..]);
+ }
+ out[0]=s[0];for v,i:digest {trace[i]=v;}return true;
+}
+rsr_seek :: (r:[]RsrRun,tick:int,out:[]RslSession)->bool #effects(all) {trace:[32]u8;return rsr_compute(r,tick,out,trace[..]);}
+rsr_packet_same :: (a:RslPacket,b:RslPacket)->bool #effects(all) {
+ x:[SLW_SIZE]u8;y:[SLW_SIZE]u8;if !slw_write(a,x[..]) || !slw_write(b,y[..]) {return false;}
+ for i:0..<SLW_SIZE { // mutant: equivalent (starting at 1 omits only byte zero, fixed to S by both successful SLV1 writers)
+  if x[i]!=y[i] {return false;}
+ }return true;
+}
+rsr_snapshot_same :: (a:RsaSnapshot,b:RsaSnapshot,c:RslConfig)->bool #effects(all) {if a.steps!=b.steps || a.cursor!=b.cursor || !rsr_params(c,a) || !rsr_params(c,b) {return false;}x:=rsr_values(a);y:=rsr_values(b);for i:0..<19 {if f64_bits(x[i])!=f64_bits(y[i]) {return false;}}return true;}
+rsr_admit :: (r:[]RsrRun)->bool #effects(all) {
+ s:[1]RslSession;if !rsr_shape(r) || !rsr_seed(r[0].start.config,r[0].start.revision,r[0].initial,s[..]) || !rsr_packet_same(slw_packet(s[0],RslStatus.ok),r[0].start) {return false;}
+ trace:[32]u8;if !rsr_compute(r,r[0].final.steps,s[..],trace[..]) || !rsr_packet_same(slw_packet(s[0],RslStatus.ok),r[0].finish) || !rsr_snapshot_same(s[0].snapshot,r[0].final,s[0].config) {return false;}for i:0..<32 {if trace[i]!=r[0].trace[i] {return false;}}return true;
+}
+rsr_capture :: (c:RslConfig,revision:int,initial:RsaSnapshot,final:RslSession,commands:[]RsrCommand,reason:int,parent:[32]u8,out:[]RsrRun)->bool #effects(all) {
+ if out.count!=1 || commands.count>RSR_COMMANDS {return false;}r:[1]RsrRun;s:[1]RslSession;if !rsr_seed(c,revision,initial,s[..]) {return false;}r[0].start=slw_packet(s[0],RslStatus.ok);r[0].initial=initial;r[0].finish=slw_packet(final,RslStatus.ok);r[0].final=final.snapshot;r[0].reason=reason;r[0].parent=parent;r[0].count=commands.count;for v,i:commands {r[0].commands[i]=v;}
+ trace:[32]u8;if !rsr_compute(r[..],final.snapshot.steps,s[..],trace[..]) {return false;}for i:0..<32 {r[0].trace[i]=trace[i];}if !rsr_admit(r[..]) {return false;}out[0]=r[0];return true;
+}

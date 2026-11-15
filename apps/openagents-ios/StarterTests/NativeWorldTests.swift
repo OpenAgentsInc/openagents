@@ -48,14 +48,20 @@ import MetalKit
             if let image {let shot=XCTAttachment(image:image);shot.name="native-\(realm)";shot.lifetime = .keepAlways;add(shot)}
         }
     }
-    func testMicroduckRendersActualGeometryOrbitPinchAndRefusesAnAlteredPack()throws {
-        let device=try XCTUnwrap(MTLCreateSystemDefaultDevice()),queue=try XCTUnwrap(device.makeCommandQueue())
+    static func microduckConfig(_ pack:URL)->AEPageConfig {
         let repo=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let c=AEPageConfig(),size=CGSize(width:430,height:900),pack=repo.appendingPathComponent("apps/openagents-ios/build/world-assets/microduck.pack")
+        let c=AEPageConfig(),size=CGSize(width:430,height:900)
         c.producer=Bundle.main.privateFrameworksURL!.appendingPathComponent("MicroduckRuntime.framework/MicroduckRuntime").path
         c.shaders=Bundle.main.resourceURL!.appendingPathComponent("WorldShaders/microduck").path;c.pack=pack.path
         c.fonts=repo.appendingPathComponent("apps/openagents-web/realms/splice-bots/assets/fonts").path;c.reading="IBMPlexMono-Medium";c.title="Michroma-Regular"
         c.store=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path;c.path="/microduck";c.origin="https://openagents.com";c.realm="microduck";c.slot="microduck";c.offline=true;c.automated=true;c.touch=true;c.screen=size
+        return c
+    }
+    func testMicroduckRendersActualGeometryOrbitPinchAndRefusesAnAlteredPack()throws {
+        let device=try XCTUnwrap(MTLCreateSystemDefaultDevice()),queue=try XCTUnwrap(device.makeCommandQueue())
+        let repo=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let size=CGSize(width:430,height:900),pack=repo.appendingPathComponent("apps/openagents-ios/build/world-assets/microduck.pack")
+        let c=Self.microduckConfig(pack)
         var page:AEPageHost?,why:NSString?
         NativeWorldHost.deep.run {page=AEPageHost.open(c,device:device,queue:queue,why:&why)}
         let viewer=try XCTUnwrap(page,"Microduck: \(why ?? "unknown")");defer {NativeWorldHost.deep.run {viewer.close()}}
@@ -120,6 +126,12 @@ import MetalKit
         let delayed=try lab();XCTAssertEqual(word(delayed,12),16);XCTAssertEqual(number(delayed,240),0);XCTAssertEqual(number(delayed,248),0)
         for _ in 0..<30 {NativeWorldHost.deep.run {_ = viewer.frame(size,scale:1,dt:0.016,wait:true)}}
         _ = try frame("Microduck native delayed response")
+        let savedRun=try XCTUnwrap(viewer.servoRun())
+        NativeWorldHost.deep.run {_ = viewer.key(3200,mods:0,down:true)}
+        _ = try frame("Microduck native saved experiment",dt:0)
+        NativeWorldHost.deep.run {_ = viewer.key(3000,mods:0,down:true);_ = viewer.key(3201,mods:0,down:true)}
+        _ = try frame("Microduck native saved replay timeline",dt:0)
+        XCTAssertEqual(viewer.servoRun(),savedRun)
         NativeWorldHost.deep.run {_ = viewer.key(3002,mods:0,down:true)}
         _ = try frame("Microduck limited initial",dt:0);_ = try frame("Microduck native limited effort",dt:0.002)
         let limited=try lab();XCTAssertEqual(number(limited,272),0.2,accuracy:1e-14);XCTAssertEqual(number(limited,280),0.03)

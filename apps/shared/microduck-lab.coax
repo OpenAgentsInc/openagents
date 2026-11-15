@@ -1,22 +1,72 @@
 // App composition: Psionic owns numerics; the engine owns the one frame clock.
-#load "../../psionic/lib/robotics/servo-lab-wire.coax";
+#load "../../psionic/lib/robotics/servo-run-wire.coax";
 #load "../../metaverse-engine/core/loop.coax";
-MdLab :: struct {session:[1]RslSession;clock:FrameClock;active:bool;running:bool;hidden:bool;skip:bool;status:RslStatus;}
+MdLab :: struct {
+ session:[1]RslSession;clock:FrameClock;active:bool;running:bool;hidden:bool;skip:bool;status:RslStatus;
+ initial:RsaSnapshot;config:RslConfig;revision:int;commands:[RSR_COMMANDS]RsrCommand;count:int;parent:[32]u8;
+ saved:[1]RsrRun;playback:bool;next_command:int;epoch:int;
+}
+#test "saved runs preserve a nonempty queue and immutable source through seek and branch" {
+ s:[1]MdLab;c:=rsl_fixture();c.p.delay=16;#assert mdl_begin(s[..],c);s[0].skip=false;#assert mdl_frame_ns(s[..],12000000);
+ #assert mdl_target(s[..],-0.1);#assert mdl_frame_ns(s[..],8000000);bytes:[RSW_MAX]u8;n:=mdl_save(s[..],bytes[..]);#assert n==1100;
+ before:=s[0].session[0];#assert mdl_open(s[..],bytes[0..<n],c) && s[0].playback && !s[0].running && rsr_snapshot_same(before.snapshot,s[0].session[0].snapshot,c);
+ #assert !mdl_target(s[..],0.1);#assert mdl_seek(s[..],4) && s[0].session[0].snapshot.steps==4;source:=s[0].saved[0];
+ #assert mdl_branch(s[..]) && !s[0].playback && s[0].initial.steps==4 && s[0].initial.cursor==4 && s[0].initial.pending[0].value==0.1;
+ #assert s[0].parent[0]==bytes[n-32];s[0].skip=false;#assert mdl_frame_ns(s[..],12000000);
+ branch:[RSW_MAX]u8;k:=mdl_save(s[..],branch[..]);#assert k==1088 && branch[k-32]!=bytes[n-32];
+ #assert rsr_snapshot_same(s[0].saved[0].final,source.final,source.finish.config);
+ #assert mdl_open(s[..],bytes[0..<n],c);#assert mdl_seek(s[..],0);mdl_pause(s[..]);s[0].skip=false;#assert mdl_frame_ns(s[..],20000000);
+ #assert !s[0].running && rsr_snapshot_same(s[0].session[0].snapshot,before.snapshot,c) && s[0].session[0].config.target== -0.1;
+ bytes[0]=0;old:=s[0].session[0];#assert !mdl_open(s[..],bytes[0..<n],c) && rsl_same(old,s[0].session[0]);
+}
+#test "run duration and journal are bounded without dropping a target or overstepping" {
+ s:[1]MdLab;#assert mdl_begin(s[..],rsl_fixture());s[0].skip=false;
+ for i:0..<32 {#assert mdl_target(s[..],cast(f64)i*0.001);}#assert !mdl_target(s[..],0.5) && s[0].session[0].config.target==0.031;
+ for i:0..<129 {_:=mdl_frame_ns(s[..],64000000);}#assert s[0].session[0].snapshot.steps==4096 && !s[0].running;
+ #assert !mdl_seek(s[..],0) && !mdl_branch(s[..]);
+}
 mdl_clock :: ()->FrameClock {c:=loop_clock(2000000);c.max_steps=32;c.max_frame_ns=64000000;return c;}
 mdl_begin :: (s:[]MdLab,c:RslConfig)->bool {
  candidate:[1]RslSession;revision:=ifx s[0].active then s[0].session[0].revision+1 else 1;
  status:=rsl_begin(c,revision,candidate[..]);s[0].status=status;if status!=RslStatus.ok {return false;}
- s[0].session[0]=candidate[0];s[0].clock=mdl_clock();s[0].active=true;s[0].running=true;s[0].skip=true;return true;
+ s[0].session[0]=candidate[0];s[0].clock=mdl_clock();s[0].active=true;s[0].running=true;s[0].skip=true;
+ zero:[32]u8;s[0].initial=candidate[0].snapshot;s[0].config=c;s[0].revision=revision;s[0].count=0;s[0].parent=zero;s[0].playback=false;s[0].epoch+=1;return true;
 }
-mdl_pause :: (s:[]MdLab) {s[0].running= !s[0].running;s[0].clock.carry_ns=0;s[0].clock.due=0;s[0].skip=true;}
+mdl_pause :: (s:[]MdLab) {if !s[0].active {return;}if s[0].playback && !s[0].running && s[0].session[0].snapshot.steps==s[0].saved[0].final.steps {_:=mdl_seek(s,s[0].saved[0].initial.steps);}s[0].running= !s[0].running;s[0].clock.carry_ns=0;s[0].clock.due=0;s[0].skip=true;}
 mdl_life :: (s:[]MdLab,hidden:bool) {s[0].hidden=hidden;s[0].clock.carry_ns=0;s[0].clock.due=0;s[0].skip=true;}
 mdl_frame_ns :: (s:[]MdLab,ns:int)->bool {
  if !s[0].active || !s[0].running || s[0].hidden {return false;}
  if s[0].skip {s[0].skip=false;return false;}
  if ns<0 || ns>64000000 {s[0].clock.carry_ns=0;return false;}
- c:=loop_accept_ns(s[0].clock,ns);stage:=s[0].session;
- for i:0..<loop_due(c) {status:=rsl_tick(stage[..]);if status!=RslStatus.ok {s[0].status=status;s[0].running=false;return false;}}
- s[0].session=stage;s[0].clock=loop_ran(c);return c.due>0;
+ c:=loop_accept_ns(s[0].clock,ns);stage:=s[0].session;command:=s[0].next_command;end:=ifx s[0].playback then s[0].saved[0].final.steps else s[0].initial.steps+RSR_STEPS;ran:=false;
+ for i:0..<loop_due(c) {
+  if stage[0].snapshot.steps>=end {break;}
+  status:=rsl_tick(stage[..]);if status!=RslStatus.ok {s[0].status=status;s[0].running=false;return false;}ran=true;
+  if s[0].playback {while command<s[0].saved[0].count && s[0].saved[0].commands[command].tick==stage[0].snapshot.steps {target:=s[0].saved[0].commands[command].target;if rsl_target(stage[..],target,stage[0].revision)!=RslStatus.ok {s[0].running=false;return false;}command+=1;}}
+ }
+ s[0].session=stage;s[0].next_command=command;s[0].clock=loop_ran(c);if stage[0].snapshot.steps>=end {s[0].running=false;}return ran;
+}
+mdl_target :: (s:[]MdLab,target:f64)->bool {
+ if !s[0].active || s[0].playback || s[0].count>=RSR_COMMANDS {return false;}stage:=s[0].session;if rsl_target(stage[..],target,stage[0].revision)!=RslStatus.ok {return false;}
+ s[0].commands[s[0].count]=RsrCommand.{tick=stage[0].snapshot.steps,target=target};s[0].count+=1;s[0].session=stage;s[0].epoch+=1;return true;
+}
+mdl_save :: (s:[]MdLab,out:[]u8)->int {
+ if !s[0].active {return -1;}r:[1]RsrRun;
+ if s[0].playback {r=s[0].saved;}else {reason:=ifx s[0].session[0].snapshot.steps-s[0].initial.steps==RSR_STEPS then 3 else 0;if !rsr_capture(s[0].config,s[0].revision,s[0].initial,s[0].session[0],s[0].commands[0..<s[0].count],reason,s[0].parent,r[..]) {return -1;}}
+ n:=rsw_size(r[0].count);if n>out.count || !rsw_write(r[..],out[0..<n]) {return -1;}return n;
+}
+mdl_open :: (s:[]MdLab,bytes:[]u8,source:RslConfig)->bool {
+ r:[1]RsrRun;candidate:[1]RslSession;if !rsw_read(bytes,source,r[..]) || !rsr_seek(r[..],r[0].final.steps,candidate[..]) {return false;}
+ s[0].saved=r;s[0].session=candidate;s[0].playback=true;s[0].next_command=r[0].count;s[0].active=true;s[0].running=false;s[0].skip=true;s[0].clock=mdl_clock();s[0].status=RslStatus.ok;s[0].epoch+=1;return true;
+}
+mdl_seek :: (s:[]MdLab,tick:int)->bool {
+ if !s[0].active || !s[0].playback {return false;}candidate:[1]RslSession;if !rsr_seek(s[0].saved[..],tick,candidate[..]) {return false;}
+ command:=0;while command<s[0].saved[0].count && s[0].saved[0].commands[command].tick<=tick {command+=1;}
+ s[0].session=candidate;s[0].next_command=command;s[0].running=false;s[0].clock=mdl_clock();s[0].skip=true;return true;
+}
+mdl_branch :: (s:[]MdLab)->bool {
+ if !s[0].active || !s[0].playback {return false;}b:[RSW_MAX]u8;n:=mdl_save(s,b[..]);if n<0 {return false;}c:=s[0].session[0].config;a:=s[0].session[0].snapshot;revision:=s[0].session[0].revision+1;stage:[1]RslSession;if !rsr_seed(c,revision,a,stage[..]) {return false;}
+ for i:0..<32 {s[0].parent[i]=b[n-32+i];}s[0].initial=a;s[0].config=c;s[0].revision=revision;s[0].session=stage;s[0].count=0;s[0].playback=false;s[0].running=true;s[0].skip=true;s[0].clock=mdl_clock();s[0].epoch+=1;return true;
 }
 #test "render partition and pause resume do not change sampled simulation words" {
  baseline:[1]MdLab;c:=rsl_fixture();#assert mdl_begin(baseline[..],c);_:=mdl_frame_ns(baseline[..],0);

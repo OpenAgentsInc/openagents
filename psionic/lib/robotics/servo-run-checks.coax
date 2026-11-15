@@ -1,0 +1,62 @@
+#test "a mid-delay complete snapshot resumes the identical next steps" {
+ c:=rsl_fixture();c.p.delay=16;s:[1]RslSession;#assert rsl_begin(c,3,s[..])==RslStatus.ok;
+ initial:=s[0].snapshot;for i:0..<8 {#assert rsl_tick(s[..])==RslStatus.ok;}
+ run:[1]RsrRun;commands:[1]RsrCommand;root:[32]u8;#assert rsr_capture(c,3,initial,s[0],commands[0..<0],0,root,run[..]);
+ restored:[1]RslSession;#assert rsr_seek(run[..],8,restored[..]) && rsl_same(s[0],restored[0]);
+ for i:0..<24 {#assert rsl_tick(s[..])==RslStatus.ok && rsl_tick(restored[..])==RslStatus.ok;#assert rsl_same(s[0],restored[0]);}
+}
+#test "ordered reversal and seeking preserve the source and branch starts at the actual queue" {
+ c:=rsl_fixture();c.p.delay=2;s:[1]RslSession;#assert rsl_begin(c,1,s[..])==RslStatus.ok;initial:=s[0].snapshot;
+ commands:=[1]RsrCommand.[RsrCommand.{tick=6,target= -0.1}];for i:0..<20 {if i==6 {#assert rsl_target(s[..],-0.1,1)==RslStatus.ok;}#assert rsl_tick(s[..])==RslStatus.ok;}
+ run:[1]RsrRun;parent:[32]u8;#assert rsr_capture(c,1,initial,s[0],commands[..],1,parent,run[..]);
+ before:=run[0].trace;at:[1]RslSession;#assert rsr_seek(run[..],7,at[..]) && at[0].last.applied==0.1 && at[0].config.target== -0.1;
+ #assert rsr_seek(run[..],8,at[..]) && at[0].last.applied==0.1;#assert rsr_seek(run[..],9,at[..]) && at[0].last.applied== -0.1 && slw_same(before,run[0].trace);
+ #assert !rsr_seek(run[..],21,at[..]);
+ branch:[1]RslSession;#assert rsr_seed(at[0].config,1,at[0].snapshot,branch[..]) && branch[0].snapshot.steps==9 && branch[0].snapshot.pending[0].value== -0.1;
+}
+#test "snapshot words parameters and seed admission are complete and atomic" {
+ c:=rsl_fixture();c.p.delay=16;a:RsaSnapshot;a.params=c.p;a.position.value=0.125;a.rate.value= -0.75;a.output_position.value=0.123;a.cursor=7;a.steps=9;
+ for i:0..<16 {a.pending[i].value=cast(f64)(i+1)*0.01;}
+ values:=rsr_values(a);#assert values[0]==0.125 && values[1]== -0.75 && values[2]==0.123;for i:0..<16 {#assert values[i+3]==cast(f64)(i+1)*0.01;}
+ #assert rsr_params(c,a);other:=a;other.params.delay=15;#assert !rsr_params(c,other);other=a;other.params.play.value=0.03;#assert !rsr_params(c,other);other=a;other.params.inertia.value=0.02;#assert !rsr_params(c,other);
+ s:[1]RslSession;#assert rsr_seed(c,2147483647,a,s[..]);#assert s[0].rows[0].position==0.125 && s[0].rows[0].rate== -0.75 && s[0].rows[0].output==0.123 && s[0].count==1 && s[0].cursor==1;
+ for rev:[4]int.[-1,0,2147483647,2147483648] {#assert rsr_seed(c,rev,a,s[..])==(rev==2147483647);}
+ #assert !rsr_seed(c,1,a,s[0..<0]);bad:=c;bad.p.inertia.value= -1;#assert !rsr_seed(bad,1,a,s[..]);bad=c;bad.p.delay=15;#assert !rsr_seed(bad,1,a,s[..]);b:=a;b.cursor=16;#assert !rsr_seed(c,1,b,s[..]);
+ for side:0..<2 {for v:[4]f64.[-1.001,-1,1,1.001] {b=a;b.position.value=v;b.output_position.value=v;#assert rsr_seed(c,1,b,s[..])==(v>= -1 && v<=1);}}
+ // Isolate observed-output bounds from motor-side bounds.
+ b=a;b.position.value=1;b.output_position.value=1.001;#assert !rsr_seed(c,1,b,s[..]);b.position.value= -1;b.output_position.value= -1.001;#assert !rsr_seed(c,1,b,s[..]);
+ b=a;b.position.value=1.001;b.output_position.value=1;#assert !rsr_seed(c,1,b,s[..]);b.position.value= -1.001;b.output_position.value= -1;#assert !rsr_seed(c,1,b,s[..]);
+ for field:0..<19 {b=a;if field==0 {b.position.value+=0.001;}else if field==1 {b.rate.value+=0.001;}else if field==2 {b.output_position.value+=0.001;}else {b.pending[field-3].value+=0.001;}#assert !rsr_snapshot_same(a,b,c);}
+ b=a;b.cursor=8;#assert !rsr_snapshot_same(a,b,c);b=a;b.steps=10;#assert !rsr_snapshot_same(a,b,c);#assert rsr_snapshot_same(a,a,c);b=a;b.params.delay=15;#assert !rsr_snapshot_same(a,b,c);
+}
+#test "run shape closes all counts reasons step horizons and command boundaries" {
+ r:[1]RsrRun;r[0]=rsr_fixture();#assert !rsr_shape(r[0..<0]);
+ for n:[4]int.[-1,0,32,33] {a:=r;for i:0..<32 {a[0].commands[i]=RsrCommand.{tick=4,target=0.1};}a[0].count=n;#assert rsr_shape(a[..])==(n==0 || n==32);}
+ for n:[4]int.[-1,0,3,4] {a:=r;a[0].reason=n;#assert rsr_shape(a[..])==(n==0 || n==3);}
+ a:=r;a[0].count=0;a[0].initial.steps=10;for end:[5]int.[9,10,4105,4106,4107] {a[0].final.steps=end;#assert rsr_shape(a[..])==(end>=10 && end<=4106);}
+ a=r;a[0].initial.steps=3;for tick:[4]int.[2,3,12,13] {a[0].commands[0].tick=tick;#assert rsr_shape(a[..])==(tick==3 || tick==12);}
+ a=r;a[0].count=2;a[0].commands[0].tick=8;a[0].commands[1]=RsrCommand.{tick=7,target=0.1};#assert !rsr_shape(a[..]);a[0].commands[1].tick=8;#assert rsr_shape(a[..]);a[0].commands[0].target=2;#assert !rsr_shape(a[..]);
+}
+#test "compute failures publish neither output nor trace and equal tick commands retain order" {
+ r:[1]RsrRun;r[0]=rsr_fixture();out:[1]RslSession;out[0].revision=99;trace:[32]u8;trace[0]=77;
+ #assert !rsr_compute(r[..],13,out[..],trace[..]) && !rsr_compute(r[..],-1,out[..],trace[..]) && !rsr_compute(r[..],4,out[0..<0],trace[..]) && !rsr_compute(r[..],4,out[..],trace[0..<31]) && !rsr_compute(r[0..<0],4,out[..],trace[..]);
+ a:=r;a[0].initial.params.inertia.value= -1;#assert !rsr_compute(a[..],4,out[..],trace[..]);a=r;a[0].start.revision=2147483647;#assert !rsr_compute(a[..],5,out[..],trace[..]);
+ a=r;a[0].start.config.low=0;a[0].start.config.high=0;a[0].start.config.target=0;a[0].count=0;a[0].initial.rate.value=1;#assert !rsr_compute(a[..],1,out[..],trace[..]);
+ #assert out[0].revision==99 && trace[0]==77;
+ a=r;a[0].count=2;a[0].commands[0]=RsrCommand.{tick=0,target= -0.1};a[0].commands[1]=RsrCommand.{tick=0,target=0.03};#assert rsr_compute(a[..],1,out[..],trace[..]) && out[0].revision==3 && out[0].last.commanded==0.03;
+}
+#test "capture preserves lineage and reason and refuses inconsistent endings" {
+ c:=rsl_fixture();s:[1]RslSession;#assert rsl_begin(c,1,s[..])==RslStatus.ok;initial:=s[0].snapshot;cmd:[33]RsrCommand;for i:0..<33 {cmd[i].target=0.1;}for i:0..<32 {#assert rsl_target(s[..],0.1,s[0].revision)==RslStatus.ok;}
+ parent:[32]u8;for i:0..<32 {parent[i]=cast(u8)(i+1);}r:[1]RsrRun;#assert rsr_capture(c,1,initial,s[0],cmd[0..<32],3,parent,r[..]) && r[0].reason==3 && slw_same(r[0].parent,parent);
+ before:=r[0].trace;#assert !rsr_capture(c,1,initial,s[0],cmd[..],0,parent,r[..]) && !rsr_capture(c,1,initial,s[0],cmd[0..<32],0,parent,r[0..<0]);
+ bad:=initial;bad.params.inertia.value= -1;#assert !rsr_capture(c,1,bad,s[0],cmd[0..<32],0,parent,r[..]);
+ s[0].last.position=0.125;#assert !rsr_capture(c,1,initial,s[0],cmd[0..<32],0,parent,r[..]) && slw_same(before,r[0].trace);
+ cmd[0].tick=1;#assert !rsr_capture(c,1,initial,s[0],cmd[0..<1],0,parent,r[..]);
+}
+#test "every supplied initial packet ending and trace word must equal actual replay" {
+ r:[1]RsrRun;r[0]=rsr_fixture();#assert rsr_admit(r[..]);
+ for field:0..<7 {a:=r;if field==0 {a[0].start.row.requested=0.1;}if field==1 {a[0].finish.row.delivered=0.1;}if field==2 {a[0].final.pending[0].value=0.02;}if field==3 {a[0].finish.status=RslStatus.limit;}if field==4 {a[0].trace[0]^=1;}if field==5 {a[0].initial.cursor=2;}if field==6 {a[0].count=33;}#assert !rsr_admit(a[..]);}
+ packet:=r[0].finish;packet.config.p.inertia.value= -1;#assert !rsr_packet_same(packet,r[0].finish) && !rsr_packet_same(r[0].finish,packet);
+}
+
+rsr_fixture :: ()->RsrRun {c:=rsl_fixture();c.p.delay=2;s:[1]RslSession;#assert rsl_begin(c,1,s[..])==RslStatus.ok;initial:=s[0].snapshot;commands:=[1]RsrCommand.[RsrCommand.{tick=4,target= -0.1}];for i:0..<12 {if i==4 {#assert rsl_target(s[..],-0.1,1)==RslStatus.ok;}#assert rsl_tick(s[..])==RslStatus.ok;}r:[1]RsrRun;parent:[32]u8;#assert rsr_capture(c,1,initial,s[0],commands[..],0,parent,r[..]);return r[0];}

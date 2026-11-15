@@ -50,6 +50,7 @@ typedef uintptr_t A;
  F(uint32_t,particle_cap,(void)) F(A,particles,(A)) F(uint32_t,particle_bytes,(A)) F(uint32_t,particle_instances,(A)) \
  F(A,view_menu_v1,(A)) F(uint32_t,view_menu_len_v1,(A)) \
  F(A,servo_lab_v1,(A)) F(uint32_t,servo_lab_len_v1,(A)) \
+ F(A,servo_run_v1,(A)) F(uint32_t,servo_run_len_v1,(A)) F(void,document_reply_v1,(A,int32_t,int32_t,uint32_t)) \
  F(int32_t,action,(A)) F(A,outbox,(A)) F(uint32_t,outbox_len,(A)) F(uint32_t,outbox_capacity,(A)) F(void,action_done,(A)) \
  F(A,drive_out,(A)) F(uint32_t,drive_out_len,(A)) F(A,media,(A)) F(uint32_t,media_len,(A)) F(uint32_t,media_capacity,(A)) F(uint32_t,sounds_len,(A)) F(uint32_t,player_appearance_v1,(void)) \
  F(A,sounds,(A)) F(uint32_t,sounds_capacity,(A)) F(A,sound_bank,(A)) F(uint32_t,sound_bank_len,(A)) F(uint32_t,sound_bank_capacity,(A)) \
@@ -841,6 +842,18 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  if (closed || !x.servo_lab_v1 || !x.servo_lab_len_v1) return nil;
  phCurrent=self;uint32_t n=x.servo_lab_len_v1(state);if (n!=312) return nil;A p=x.servo_lab_v1(state);
  return p ? [NSData dataWithBytes:(void *)p length:n] : nil;
+}
+- (NSData *)servoRun {
+ if (closed || !x.servo_run_v1 || !x.servo_run_len_v1) return nil;
+ phCurrent=self;uint32_t n=x.servo_run_len_v1(state);if (n<1088 || n>1472) return nil;A p=x.servo_run_v1(state);
+ return p ? [NSData dataWithBytes:(void *)p length:n] : nil;
+}
+- (void)documentReply:(int32_t)token status:(int32_t)status bytes:(NSData *)bytes {
+ if (closed || !x.document_reply_v1 || !x.inbox || !x.inbox_cap) return;
+ phCurrent=self;uint32_t n=(uint32_t)bytes.length;
+ if (bytes.length>2048 || bytes.length>x.inbox_cap()) {status=4;n=0;}
+ A p=x.inbox(state);if (n && !p) {status=2;n=0;}if (n) memcpy((void *)p,bytes.bytes,n);
+ x.document_reply_v1(state,token,status,n);[self after];
 }
 - (NSData *)editorModel {
  if (closed || !x.edit_model || !x.edit_model_len) return nil;

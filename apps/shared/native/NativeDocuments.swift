@@ -22,6 +22,20 @@ import UniformTypeIdentifiers
     }
     func data(_ token:String)->Data? {held[token]}
     func release() {held.removeAll()}
+    func share(_ presenter:UIViewController,name:String,data:Data)async throws->Bool {
+        guard presenter.presentedViewController==nil else {throw NativeFailure.refused("Close the current panel.")}
+        let folder=NativeWorldStorage.directory("exports/\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+        defer {try? FileManager.default.removeItem(at:folder)}
+        let file=folder.appendingPathComponent(name)
+        try data.write(to:file,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication]);try FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:file.path)
+        return await withCheckedContinuation {done in
+            let sheet=UIActivityViewController(activityItems:[file],applicationActivities:nil)
+            sheet.completionWithItemsHandler={_,completed,_,_ in done.resume(returning:completed)}
+            if let popover=sheet.popoverPresentationController {popover.sourceView=presenter.view;popover.sourceRect=CGRect(x:presenter.view.bounds.midX,y:presenter.view.bounds.midY,width:1,height:1)}
+            presenter.present(sheet,animated:true)
+        }
+    }
     static func put(_ data:Data,url:String,session:URLSession)async throws->Int {
         guard url.withCString({nd_upload(coax_string(data:$0,count:Int64(url.utf8.count)))}),let address=URL(string:url) else {throw NativeFailure.refused("The upload address was refused.")}
         var request=URLRequest(url:address);request.httpMethod="PUT"
