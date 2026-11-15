@@ -26,6 +26,14 @@ AIW_G :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
  seal[2]='z';#assert !aiw_record("acct_example",AIW_G,cast(string)seal[..],1);
  #assert !aiw_hex("AA",2) && !aiw_hex("0-",2);
 }
+#test "hex is exactly 0-9 and a-f, a one-byte account is an account, and time zero is a creation time" {
+ // each range's ends, and the byte just outside each end: '/' 47, ':' 58, '`' 96, 'g' 103
+ #assert aiw_hex("09af",4) && aiw_hex("0123456789abcdef",16);
+ #assert !aiw_hex("/",1) && !aiw_hex(":",1) && !aiw_hex("`",1) && !aiw_hex("g",1);
+ seal:[210]u8;for i:0..<210 {seal[i]='f';}seal[0]='9';
+ #assert aiw_record("a",AIW_G,cast(string)seal[..],0);
+ #assert !aiw_record("a",AIW_G,cast(string)seal[..],-1) && !aiw_record("",AIW_G,cast(string)seal[..],0);
+}
 aiw_hex :: (s:string,n:int)->bool #effects(all) {
  if s.count!=n {return false;}for c:s {if !(c>='0' && c<='9') && !(c>='a' && c<='f') {return false;}}return true;
 }
