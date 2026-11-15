@@ -638,6 +638,37 @@ TerrainBlend :: struct { ok: bool; count: int; ids: [4] int; weights: [4] f32; }
   }
 }
 
+#test "a layer share's names are checked at the edges of the material ids, and a share on the first entry changes the table's identity" {
+  // a share of 1 takes the whole blend: both names must be ids 0..254 and different from each other
+  sh := TerrainMaterial.{id = 2, blend_weight = [2] f32.[0, 0], gain = [2] f32.[1, 0], share_of = 0, share_against = 254, share_weight = 1};
+  #assert terrain_material_values_ok(sh);
+  sh.share_of = 254; sh.share_against = 0;
+  #assert terrain_material_values_ok(sh);
+  sh.share_of = 255; sh.share_against = 0;
+  #assert !terrain_material_values_ok(sh);
+  sh.share_of = 0; sh.share_against = 255;
+  #assert !terrain_material_values_ok(sh);
+  sh.share_of = -1; sh.share_against = 0;
+  #assert !terrain_material_values_ok(sh);
+  sh.share_of = 0; sh.share_against = -1;
+  #assert !terrain_material_values_ok(sh);
+  sh.share_of = 7; sh.share_against = 7;
+  #assert !terrain_material_values_ok(sh);
+  // with no part, naming only one of the two is refused too
+  sh.share_weight = 0; sh.blend_weight = [2] f32.[1, 0];
+  sh.share_of = -1; sh.share_against = -1;
+  #assert terrain_material_values_ok(sh);
+  sh.share_of = 0; sh.share_against = -1;
+  #assert !terrain_material_values_ok(sh);
+  sh.share_of = -1; sh.share_against = 0;
+  #assert !terrain_material_values_ok(sh);
+  // a table whose only share is on its first entry is the "ATM2" table, not the plain one
+  one := [2] TerrainMaterial.[TerrainMaterial.{id = 0, blend_weight = [2] f32.[1, 0], gain = [2] f32.[1, 0]}, TerrainMaterial.{id = 1, blend_weight = [2] f32.[1, 0], gain = [2] f32.[1, 0]}];
+  plain := terrain_materials_revision(one[..]);
+  one[0].share_weight = 1; one[0].share_of = 1; one[0].share_against = 1;
+  #assert !terrain_tile_same(terrain_materials_revision(one[..]), plain);
+}
+
 #forall "sampling and blending equal the independent f64 raster oracle" k: 0..<64 #steps 100000000 {
   terrain_tile_oracle_case(k);
 }
