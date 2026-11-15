@@ -1,0 +1,586 @@
+// The checks of metaverse-engine/ai/steer.coax that work each rule out to an exact value (#13586):
+// the hash, what a tick learns, the leash, the facing and the window's place and sight.
+
+// The checks' world: a fixed step, a wall with a doorway, and one tick of a pursuer in it.
+NAV_T_DT :: 0.015625;   // 1/64 s: the realm's fixed step
+
+// The checks' wall: z 4.8 to 5.2 from x -10 to 10, with a doorway from x 2.5 to 4.5.
+nav_t_blocked :: (x: f32, z: f32, pad: f32) -> bool #effects(all) {
+  if z <= 4.8 - pad || z >= 5.2 + pad || x <= -10 - pad || x >= 10 + pad { return false; }
+  return !(x > 2.5 + pad && x < 4.5 - pad);
+}
+// One tick of a pursuer `a` after (tx, tz) in the checks' world: its plan, its step, the slide.
+nav_t_tick :: (a: [] NavAgent, t: NavTune, w: [] NavWindow, tx: f32, tz: f32, bodies: [] f32, skip: int, walls: bool) -> NavStep #effects(all) {
+  if nav_think(a, t, tx, tz, f32(NAV_T_DT)) {
+    if walls && nav_wants_window(a[0]) {
+      nav_window_place(w, t, a[0]);
+      for c: 0..<nav_window_cells(w) { p := nav_window_spot(w, c); w[0].walk[c] = !nav_t_blocked(p[0], p[1], t.body); }
+      nav_plan(a, t, w);
+    } else if walls {
+      // the zone's own look ahead: a metre toward the goal
+      gl := nav_goal(a[0]); dx := gl[0] - a[0].x; dz := gl[1] - a[0].z; d := nav_len(dx, dz);
+      if d > 0.01 && nav_t_blocked(a[0].x + dx / d, a[0].z + dz / d, t.body) { a[0].pressed = true; }
+      else { nav_direct(a, t); }
+    } else { nav_direct(a, t); }
+  }
+  s := nav_move(a, t, false, f32(NAV_T_DT), bodies, skip);
+  x := s.x; z := s.z;
+  if walls && nav_t_blocked(x, z, t.body) {
+    if !nav_t_blocked(x, a[0].z, t.body) { z = a[0].z; }
+    else if !nav_t_blocked(a[0].x, z, t.body) { x = a[0].x; }
+    else { x = a[0].x; z = a[0].z; }
+  }
+  nav_moved(a, s, x, z);
+  return s;
+}
+
+NT_EPS :: 0.0002;
+nt_near :: (a: f32, b: f32) -> bool #effects(all) { return abs(a - b) < f32(NT_EPS); }
+
+#test "the hash is the same number on every host: each seed and count enters once, by its size" {
+  #assert nt_near(nav_hash(0, 0), 17.0 / 1009.0) && nt_near(nav_hash(1, 0), 873.0 / 1009.0) && nt_near(nav_hash(0, 1), 819.0 / 1009.0);
+  #assert nt_near(nav_hash(3, 9), 722.0 / 1009.0) && nt_near(nav_hash(-3, 9), 722.0 / 1009.0) && nt_near(nav_hash(3, -9), 722.0 / 1009.0);
+  #assert nt_near(nav_hash(20000, 0), 836.0 / 1009.0) && nt_near(nav_hash(0, 20000), 947.0 / 1009.0);
+  #assert nt_near(nav_hash(9973, 5), 1000.0 / 1009.0) && nt_near(nav_hash(5, 9973), 261.0 / 1009.0);
+  #assert nt_near(nav_hash(10000, 10001), 180.0 / 1009.0) && nt_near(nav_hash(-10000, 3), 310.0 / 1009.0);
+}
+
+// A creature at (x, z) with home (hx, hz), a leash of 5, after one tick at the target (tx, tz): whether it is on its way home.
+nt_leashed :: (x: f32, z: f32, hx: f32, hz: f32, tx: f32, tz: f32) -> bool #effects(all) { return nt_leashed_reach(x, z, hx, hz, tx, tz, 1.5); }
+nt_leashed_reach :: (x: f32, z: f32, hx: f32, hz: f32, tx: f32, tz: f32, reach: f32) -> bool #effects(all) {
+  a: [1] NavAgent; a[0] = nav_agent(x, z, 0); a[0].home_x = hx; a[0].home_z = hz;
+  t := NavTune.{leash = 5, reach = reach};
+  _ := nav_think(a[..], t, tx, tz, 0.0625);
+  return a[0].returning;
+}
+
+#test "a tick learns the target's velocity, to the smoothing step, and drops a jump" {
+  t := NavTune.{leash = 1000};
+  f: [1] NavAgent; f[0] = nav_agent(0, 0, 0);
+  _ := nav_think(f[..], t, 0.5, 0.5, 0.0625);   // the first sighting learns nothing: there was nowhere it came from
+  #assert f[0].tvx == 0 && f[0].tvz == 0;
+  a: [1] NavAgent; a[0] = nav_agent(0, 0, 0); a[0].plan_s = 1; a[0].via = true; a[0].faced = true;
+  due := nav_think(a[..], t, 1, 2, 0.0625);
+  #assert !due && a[0].plan_s == 0.9375 && a[0].tvx == 0 && a[0].tvz == 0 && a[0].seen && a[0].tx == 1 && a[0].tz == 2 && !a[0].via && !a[0].faced;
+  a[0].plan_s = 0.0625;
+  #assert nav_think(a[..], t, 1.5, 2, 0.0625) && a[0].plan_s == 0;   // due at zero
+  #assert a[0].tvx == 4 && a[0].tvz == 0 && a[0].tx == 1.5;
+  _ := nav_think(a[..], t, 1.5, 2.5, 0.0625);
+  #assert a[0].tvx == 2 && a[0].tvz == 4 && a[0].tz == 2.5;
+  // the smoothing step is at most one: a quarter second is a whole one
+  _ = nav_think(a[..], t, 1.5, 3.5, 0.25);
+  #assert a[0].tvx == 0 && a[0].tvz == 4;
+  // exactly the fastest it believes (15 m/s), one past it is a respawn
+  b: [1] NavAgent; b[0] = nav_agent(0, 0, 0);
+  _ = nav_think(b[..], t, 0, 0, 0.0625); _ = nav_think(b[..], t, 0.9375, 0, 0.0625);
+  #assert b[0].tvx == 7.5 && b[0].tvz == 0;
+  _ = nav_think(b[..], t, 0.9375, 0.9375, 0.0625);
+  #assert b[0].tvx == 3.75 && b[0].tvz == 7.5;
+  _ = nav_think(b[..], t, 1.6875, 1.6875, 0.0625);
+  #assert b[0].tvx == 0 && b[0].tvz == 0;   // 12 m/s along each axis is 17 m/s: it jumped
+  // no time passed: nothing is learned and nothing divides by it
+  a[0].plan_s = 2; a[0].tvx = 3; a[0].tvz = 3; _ = nav_think(a[..], t, 9, 9, 0.0625);
+  a[0].tvx = 3; a[0].tvz = 3; _ = nav_think(a[..], t, 9, 9, 0);
+  #assert a[0].tvx == 0 && a[0].tvz == 0 && a[0].tx == 9 && a[0].plan_s == 1.9375;
+}
+
+#test "the leash: past it, it goes home unless it is in a fight with a foe within the leash and reach; at it, it stays" {
+  // home (1, 1), the leash 5, the reach 1.5: it stands 5 from home, then past it
+  #assert !nt_leashed(6, 1, 1, 1, 1, 1) && nt_leashed(6.0625, 1, 1, 1, 1, 1);
+  #assert !nt_leashed(1, 6, 1, 1, 1, 1) && nt_leashed(1, 6.0625, 1, 1, 1, 1);
+  #assert !nt_leashed(4, 5, 1, 1, 1, 1) && nt_leashed(4.0625, 5, 1, 1, 1, 1);
+  // a foe at its side keeps it in the fight: within 2 of it and within 6.5 of home
+  #assert !nt_leashed(7, 1, 1, 1, 7, 3) && nt_leashed(7, 1, 1, 1, 7, 3.0625);
+  #assert !nt_leashed(1, 7, 1, 1, 3, 7) && nt_leashed(1, 7, 1, 1, 3.0625, 7);
+  // the foe 6.5 from home exactly is within the leash and reach, a step more is not
+  #assert !nt_leashed(7, 1, 1, 1, 7.5, 1) && nt_leashed(7, 1, 1, 1, 7.5625, 1);
+  #assert !nt_leashed(1, 7, 1, 1, 1, 7.5) && nt_leashed(1, 7, 1, 1, 1, 7.5625);
+  // the foe within reach but past the leash and reach of home: it goes home; near home but far from it: home too
+  #assert nt_leashed(7, 1, 1, 1, 8.5, 1) && nt_leashed(1, 7, 1, 1, 1, 8.5);
+  #assert nt_leashed(7, 1, 1, 1, 1, 1) && nt_leashed(1, 7, 1, 1, 1, 1);
+  // the fight is within the reach and a half, squared: 1.5 away for a reach of 1, not 1.625
+  #assert !nt_leashed_reach(7, 1, 1, 1, 5.5, 1, 1) && nt_leashed_reach(7, 1, 1, 1, 5.375, 1, 1);
+  // once home from a leash, it waits until the target is back within the leash of home
+  s: [1] NavAgent; s[0] = nav_agent(1, 1, 0); s[0].spurned = true;
+  t := NavTune.{leash = 5};
+  _ := nav_think(s[..], t, 6, 1, 0.0625);
+  #assert !s[0].spurned;
+  s[0].spurned = true; _ = nav_think(s[..], t, 6.0625, 1, 0.0625);
+  #assert s[0].spurned;
+  s[0].spurned = true; _ = nav_think(s[..], t, 1, 6, 0.0625);
+  #assert !s[0].spurned;
+  s[0].spurned = true; _ = nav_think(s[..], t, 1, 6.0625, 0.0625);
+  #assert s[0].spurned;
+}
+
+#test "send home, rouse, lose the target, face, waypoint, go direct: each sets all it says" {
+  t := NavTune.{replan = 0.5};
+  a: [1] NavAgent; a[0] = nav_agent(0, 0, 0);
+  a[0].circling = true; a[0].plan_s = 3; a[0].route = NavRoute.path;
+  nav_return(a[..]);
+  #assert a[0].returning && !a[0].circling && a[0].plan_s == 0 && a[0].route == NavRoute.direct;
+  a[0].plan_s = 3; a[0].route = NavRoute.path; a[0].circling = true;
+  nav_return(a[..]);   // already on its way: nothing changes
+  #assert a[0].plan_s == 3 && a[0].route == NavRoute.path && a[0].circling;
+  nav_engage(a[..]);
+  #assert !a[0].returning && a[0].plan_s == 0 && a[0].route == NavRoute.direct && !a[0].spurned;
+  a[0].plan_s = 3; a[0].route = NavRoute.path; a[0].spurned = true;
+  nav_engage(a[..]);   // not on its way home: its plan stands, the wait ends
+  #assert a[0].plan_s == 3 && a[0].route == NavRoute.path && !a[0].spurned;
+  a[0].seen = true; a[0].tvx = 2; a[0].tvz = 3; a[0].circling = true;
+  nav_lost(a[..]);
+  #assert !a[0].seen && a[0].tvx == 0 && a[0].tvz == 0 && !a[0].circling;
+  nav_facing(a[..], 3, 4);
+  #assert a[0].faced && nt_near(a[0].tfx, 0.6) && nt_near(a[0].tfz, 0.8);
+  b: [1] NavAgent; b[0] = nav_agent(0, 0, 0);
+  nav_facing(b[..], f32(NAV_STEER_NEAR), 0);   // as short as a facing may be and still be one
+  #assert b[0].faced && b[0].tfx == 1;
+  c: [1] NavAgent; c[0] = nav_agent(0, 0, 0);
+  nav_facing(c[..], 0.00005, 0);
+  #assert !c[0].faced;
+  nav_via(a[..], 5, 7);
+  #assert a[0].via && a[0].via_x == 5 && a[0].via_z == 7;
+  a[0].plan_s = 0; a[0].route = NavRoute.stuck;
+  nav_direct(a[..], t);
+  #assert a[0].route == NavRoute.direct && a[0].plan_s == 0.5;
+  // a due plan needs the window on a path or a stuck one, or a held back step, and not otherwise
+  a[0].pressed = false; #assert !nav_wants_window(a[0]);
+  a[0].pressed = true; #assert nav_wants_window(a[0]);
+  a[0].pressed = false; a[0].route = NavRoute.path; #assert nav_wants_window(a[0]);
+  a[0].route = NavRoute.stuck; #assert nav_wants_window(a[0]);
+}
+
+#test "the window is laid round creature and goal, to the cell, the span and the goal's distance" {
+  w: [1] NavWindow;
+  a := nav_agent(1, 2, 0); a.tx = 5; a.tz = 6;
+  nav_window_place(w[..], NavTune.{span = 12}, a);   // 24 cells a side, 6 m to its middle
+  #assert w[0].grid.nx == 24 && w[0].grid.nz == 24 && w[0].grid.cell == 0.5 && nt_near(w[0].grid.x0, -3) && nt_near(w[0].grid.z0, -2);
+  // the goal beyond reach of both being inside: the creature a metre inside the edge, toward it
+  a.tx = 10; a.tz = 14;   // 9 east and 12 north: 15 away
+  nav_window_place(w[..], NavTune.{span = 12}, a);
+  #assert nt_near(w[0].grid.x0, -2) && nt_near(w[0].grid.z0, 0);
+  a.tx = 5.2; a.tz = 2;   // 4.2 away east
+  a.tx = 8.2; a.tz = 11.6;   // 7.2 east and 9.6 north: 12 away, past the 10 that holds both
+  nav_window_place(w[..], NavTune.{span = 12}, a);
+  #assert nt_near(w[0].grid.x0, -2) && nt_near(w[0].grid.z0, 0);
+  a.tx = 5.2; a.tz = 2;   // 4.2 away east
+  nav_window_place(w[..], NavTune.{span = 12}, a);
+  #assert nt_near(w[0].grid.x0, -2.9) && nt_near(w[0].grid.z0, -4);
+  // a cell too small is half a metre; a span of nothing is the whole side; a span of one cell is four
+  nav_window_place(w[..], NavTune.{cell = 0.05}, a);
+  #assert w[0].grid.cell == 0.5 && w[0].grid.nx == NAV_STEER_SIDE;
+  nav_window_place(w[..], NavTune.{cell = 0.0625, span = 1}, a);
+  #assert w[0].grid.cell == 0.0625 && w[0].grid.nx == 16;
+  nav_window_place(w[..], NavTune.{cell = 0, span = 0}, a);
+  #assert w[0].grid.cell == 0.5 && w[0].grid.nx == NAV_STEER_SIDE && w[0].grid.nz == NAV_STEER_SIDE;
+  nav_window_place(w[..], NavTune.{cell = 1, span = 30}, a);
+  #assert w[0].grid.cell == 1 && w[0].grid.nx == 30;
+  nav_window_place(w[..], NavTune.{span = 30}, a);   // 30 m is 60 cells of half a metre: more than a side
+  #assert w[0].grid.nx == NAV_STEER_SIDE;
+  nav_window_place(w[..], NavTune.{span = 1}, a);
+  #assert w[0].grid.nx == 4 && w[0].grid.nz == 4;
+  nav_window_place(w[..], NavTune.{span = 1.5}, a);
+  #assert w[0].grid.nx == 4;
+  // every cell it lays starts open, and its count is its two sides'
+  for c: 0..<16 { w[0].walk[c] = false; }
+  nav_window_place(w[..], NavTune.{span = 2}, a);
+  #assert nav_window_cells(w[..]) == 16;
+  for c: 0..<16 { #assert w[0].walk[c]; }
+  p := nav_window_spot(w[..], 5);
+  #assert nt_near(p[0], w[0].grid.x0 + 0.75) && nt_near(p[1], w[0].grid.z0 + 0.75);
+}
+
+#test "a straight walk over the window is open when every sample's cell is, and the first and last count" {
+  w: [1] NavWindow;
+  w[0].grid = NavGrid.{nx = 4, nz = 4, cell = 1, x0 = 0, z0 = 0};
+  for c: 0..<16 { w[0].walk[c] = true; }
+  #assert nav_window_line(w[..], 0.5, 0.5, 3.5, 0.5) && nav_window_line(w[..], 3.5, 3.5, 0.5, 0.5) && nav_window_line(w[..], 0.5, 0.5, 0.5, 3.5);
+  #assert !nav_window_line(w[..], 0.5, 0.5, 4.5, 0.5) && !nav_window_line(w[..], 0.5, 0.5, -0.5, 0.5);
+  #assert !nav_window_line(w[..], 0.5, 0.5, 0.5, 4.5) && !nav_window_line(w[..], 0.5, 0.5, 0.5, -0.5);
+  w[0].walk[1] = false;   // one cell across the way, passed between samples a cell apart
+  #assert !nav_window_line(w[..], 0.5, 0.5, 3.5, 0.5);
+  w[0].walk[1] = true; w[0].walk[0] = false;
+  #assert !nav_window_line(w[..], 0.5, 0.5, 3.5, 0.5) && nav_window_line(w[..], 1.5, 0.5, 3.5, 0.5);
+  w[0].walk[0] = true; w[0].walk[15] = false;
+  #assert !nav_window_line(w[..], 0.5, 0.5, 3.5, 3.5) && nav_window_line(w[..], 0.5, 0.5, 2.5, 2.5);
+  w[0].walk[15] = true; w[0].walk[3] = false;
+  #assert !nav_window_line(w[..], 3.5, 0.5, 3.5, 3.5) && !nav_window_line(w[..], 0.5, 0.5, 3.5, 0.5);
+  w[0].walk[3] = true; w[0].walk[12] = false;
+  #assert !nav_window_line(w[..], 0.5, 3.5, 0.5, 0.5) && nav_window_line(w[..], 0.5, 0.5, 3.5, 0.5);
+  // samples a quarter cell apart: a cell half a metre wide is not stepped over
+  w[0].grid = NavGrid.{nx = 8, nz = 2, cell = 0.5, x0 = 0, z0 = 0};
+  for c: 0..<16 { w[0].walk[c] = true; }
+  #assert nav_window_line(w[..], 0.25, 0.25, 3.25, 0.25);
+  w[0].walk[3] = false;
+  #assert !nav_window_line(w[..], 0.25, 0.25, 3.25, 0.25);
+  w[0].walk[3] = true;
+  // the first sample counts though the second is out of its cell, and the last is the end and no further
+  w[0].grid = NavGrid.{nx = 4, nz = 4, cell = 1, x0 = 0, z0 = 0};
+  for c: 0..<16 { w[0].walk[c] = true; }
+  w[0].walk[0] = false;
+  #assert !nav_window_line(w[..], 0.9375, 0.5, 3.9375, 0.5);
+  w[0].walk[0] = true;
+  #assert nav_window_line(w[..], 0.5, 0.5, 3.9375, 0.5);
+  // a point alone: the cell it stands in
+  #assert nav_window_line(w[..], 2.5, 2.5, 2.5, 2.5);
+  w[0].walk[10] = false; #assert !nav_window_line(w[..], 2.5, 2.5, 2.5, 2.5);
+}
+
+// A window of nx by nz cells of a metre from the origin, all open but the walls given by nt_wall.
+nt_open :: (w: [] NavWindow, nx: int, nz: int) #effects(all) {
+  w[0].grid = NavGrid.{nx = nx, nz = nz, cell = 1, x0 = 0, z0 = 0};
+  for c: 0..<nx * nz { w[0].walk[c] = true; }
+}
+nt_wall :: (w: [] NavWindow, x: int, z0: int, z1: int) #effects(all) { for z: z0..<z1 { w[0].walk[z * w[0].grid.nx + x] = false; } }
+// A creature at (x, z) after the goal (gx, gz), planned once on `w`: its route.
+nt_plan :: (a: [] NavAgent, w: [] NavWindow, x: f32, z: f32, gx: f32, gz: f32) -> NavRoute #effects(all) {
+  a[0] = nav_agent(x, z, 0); a[0].tx = gx; a[0].tz = gz; a[0].plan_s = 9; a[0].pressed = true;
+  nav_plan(a, NavTune.{replan = 0.5}, w);
+  return a[0].route;
+}
+nt_aims :: (a: NavAgent, x: f32, z: f32) -> bool #effects(all) { return nt_near(a.aim_x, x) && nt_near(a.aim_z, z); }
+
+#test "a plan is refused on a bad window, a creature off it or a window too big, and still sets its next plan" {
+  w: [1] NavWindow; a: [1] NavAgent;
+  w[0].grid = NavGrid.{nx = 0, nz = 4, cell = 1, x0 = 0, z0 = 0};
+  #assert nt_plan(a[..], w[..], 0.5, 0.5, 3.5, 0.5) == NavRoute.stuck && a[0].plan_s == 0.5 && !a[0].pressed;
+  nt_open(w[..], 10, 10);
+  #assert nt_plan(a[..], w[..], -3, -3, 3.5, 0.5) == NavRoute.stuck && a[0].plan_s == 0.5 && !a[0].pressed;
+  #assert nt_plan(a[..], w[..], 10.5, 5.5, 3.5, 0.5) == NavRoute.stuck && nt_plan(a[..], w[..], 5.5, 10.5, 3.5, 0.5) == NavRoute.stuck;
+  a[0].route = NavRoute.direct;   // stuck is said, not left as it was
+  a[0].tx = -3; a[0].tz = 0.5; a[0].x = 0.5; a[0].z = 0.5;
+  nav_plan(a[..], NavTune.{}, w[..]);
+  #assert a[0].route == NavRoute.stuck;
+  w[0].grid = NavGrid.{nx = 1601, nz = 1, cell = 1, x0 = 0, z0 = 0};
+  #assert nt_plan(a[..], w[..], 0.5, 0.5, 5.5, 0.5) == NavRoute.stuck;
+  nt_open(w[..], 1600, 1);
+  #assert nt_plan(a[..], w[..], 0.5, 0.5, 5.5, 0.5) == NavRoute.direct;   // the whole 1600 is still a window
+  #assert a[0].plan_s == 0.5 && !a[0].pressed;
+}
+
+#test "a goal in the window is walked straight to when the way is open, and round the wall when it is not" {
+  w: [1] NavWindow; a: [1] NavAgent;
+  nt_open(w[..], 10, 10);
+  #assert nt_plan(a[..], w[..], 5.5, 5.5, 0.5, 0.5) == NavRoute.direct;   // the goal in the first cell
+  #assert nt_plan(a[..], w[..], 0.5, 0.5, 9.5, 9.5) == NavRoute.direct;
+  nt_wall(w[..], 5, 0, 8);   // a wall across the window with a gap at the top
+  #assert nt_plan(a[..], w[..], 1.5, 4.5, 8.5, 4.5) == NavRoute.path && nt_aims(a[0], 5.5, 8.5);
+  // the goal's own cell when it is the one it can see: it aims at the goal, not the cell's middle
+  nt_open(w[..], 10, 10); nt_wall(w[..], 2, 1, 2);
+  #assert nt_plan(a[..], w[..], 0.5, 0.5, 2.99, 2.01) == NavRoute.path && nt_aims(a[0], 2.99, 2.01);
+  #assert nt_plan(a[..], w[..], 0.5, 0.5, 2.5, 2.5) == NavRoute.direct;
+}
+
+#test "off the window, it heads for the nearest open cell it can reach: the first and the cheaper of those as near" {
+  w: [1] NavWindow; a: [1] NavAgent;
+  nt_open(w[..], 10, 10);
+  nt_wall(w[..], 5, 5, 6);   // the cell it stands in is closed and still it stands
+  #assert nt_plan(a[..], w[..], 5.5, 5.5, -5.5, 5.5) == NavRoute.path && nt_aims(a[0], 0.5, 5.5) && w[0].walk[5 * 10 + 5];
+  nt_open(w[..], 10, 10);
+  #assert nt_plan(a[..], w[..], 5.5, 5.5, -5, -5) == NavRoute.path && nt_aims(a[0], 0.5, 0.5);   // cell 0 itself
+  // two as near: the cheaper to reach, and the first of equals
+  #assert nt_plan(a[..], w[..], 5.5, 7.5, -5.5, 5) == NavRoute.path && nt_aims(a[0], 0.5, 5.5);
+  #assert nt_plan(a[..], w[..], 5.5, 1.5, -5.5, 5) == NavRoute.path && nt_aims(a[0], 0.5, 4.5);
+  nt_wall(w[..], 0, 5, 6);
+  #assert nt_plan(a[..], w[..], 5.5, 5.5, -5.5, 5.5) == NavRoute.path && nt_aims(a[0], 0.5, 4.5);
+  // the nearest in the window is across a wall: the nearest it can reach
+  nt_open(w[..], 10, 10); nt_wall(w[..], 5, 0, 10);
+  #assert nt_plan(a[..], w[..], 1.5, 5.5, 8.5, 5.5) == NavRoute.path && nt_aims(a[0], 4.5, 5.5);
+  // the nearest is the next cell, and then the one it stands in
+  nt_open(w[..], 10, 10);
+  #assert nt_plan(a[..], w[..], 1.5, 0.5, -3, 0.5) == NavRoute.path && nt_aims(a[0], 0.5, 0.5);
+  #assert nt_plan(a[..], w[..], 0.5, 1.5, 0.5, -3) == NavRoute.path && nt_aims(a[0], 0.5, 0.5);
+  #assert nt_plan(a[..], w[..], 0.5, 0.5, -3, 0.5) == NavRoute.stuck;
+}
+
+#test "a step toward a point is the pace along the line, or the point itself when it is within the pace or within a hair" {
+  p := nav_toward(0, 0, 3, 4, 5);
+  #assert p[0] == 3 && p[1] == 4;
+  p = nav_toward(0, 0, 6, 8, 5);
+  #assert nt_near(p[0], 3) && nt_near(p[1], 4);
+  p = nav_toward(1, 2, 4, 6, 2);   // from where it stands, not from the origin
+  #assert nt_near(p[0], 2.2) && nt_near(p[1], 3.6);
+  p = nav_toward(0, 0, 0.00005, 0, 0.00001);
+  #assert p[0] == 0.00005 && p[1] == 0;
+  p = nav_toward(0, 0, f32(NAV_STEER_NEAR), 0, 0.00001);   // a hair is still a way: it takes the pace
+  #assert p[0] < 0.00005 && p[0] > 0.000005;
+}
+
+#test "a step faces where it goes, or as it faced when it goes nowhere" {
+  a := nav_agent(0, 0, 0); a.face_x = 0; a.face_z = -1;
+  out := NavStep.{face_x = 9, face_z = 9};
+  s := nav_face(out, a, 3, 4);
+  #assert nt_near(s.face_x, 0.6) && nt_near(s.face_z, 0.8);
+  s = nav_face(out, a, -4, 3);
+  #assert nt_near(s.face_x, -0.8) && nt_near(s.face_z, 0.6);
+  s = nav_face(out, a, 0, 0);
+  #assert s.face_x == 0 && s.face_z == -1;
+  s = nav_face(out, a, 0.001, 0);   // as short as a way may be and still not be one
+  #assert s.face_x == 0 && s.face_z == -1;
+  s = nav_face(out, a, 0.0015, 0);
+  #assert s.face_x == 1 && s.face_z == 0;
+  // and the position it asks of the service stays as it was given
+  out.x = 4; out.z = 5; s = nav_face(out, a, 3, 4);
+  #assert s.x == 4 && s.z == 5;
+}
+
+#test "its circling turns the other way after turn_s seconds, give or take half, by its seed and its turns" {
+  a: [1] NavAgent; a[0] = nav_agent(0, 0, 3); a[0].turns = 2;
+  nav_spin(a[..], NavTune.{turn_s = 3});
+  #assert nt_near(a[0].spin_s, 3.64668);
+  a[0].seed = 0; a[0].turns = 0;
+  nav_spin(a[..], NavTune.{turn_s = 3});
+  #assert nt_near(a[0].spin_s, 3.24232);
+  a[0].turns = 4;
+  nav_spin(a[..], NavTune.{turn_s = 6});
+  #assert nt_near(a[0].spin_s, 7.56095);
+}
+
+// One step of `a` after dt, among nobody.
+nt_step :: (a: [] NavAgent, t: NavTune, busy: bool, dt: f32) -> NavStep #effects(all) {
+  none: [3] f32;
+  return nav_move(a, t, busy, dt, none[0..<0], -1);
+}
+
+#test "walking home: the pace of its home speed toward home, there when within the pace or a fifth of a metre" {
+  t := NavTune.{home_speed = 3};
+  a: [1] NavAgent; a[0] = nav_agent(13, 3, 0); a[0].home_x = 3; a[0].home_z = 3; a[0].returning = true; a[0].face_x = 0; a[0].face_z = 1;
+  s := nt_step(a[..], t, false, 0.25);
+  #assert s.mode == NavMode.homeward && nt_near(s.x, 12.25) && s.z == 3 && s.face_x == -1 && s.face_z == 0;
+  a[0] = nav_agent(3, 13, 0); a[0].home_x = 3; a[0].home_z = 3; a[0].returning = true;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert s.mode == NavMode.homeward && s.x == 3 && nt_near(s.z, 12.25) && s.face_x == 0 && s.face_z == -1;
+  // exactly the pace from home is home; a step more is not
+  a[0] = nav_agent(3.75, 3, 0); a[0].home_x = 3; a[0].home_z = 3; a[0].returning = true;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert s.mode == NavMode.home && s.x == 3 && s.z == 3;
+  a[0] = nav_agent(3, 3.75, 0); a[0].home_x = 3; a[0].home_z = 3; a[0].returning = true;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert s.mode == NavMode.home && s.x == 3 && s.z == 3;
+  a[0] = nav_agent(3.8125, 3, 0); a[0].home_x = 3; a[0].home_z = 3; a[0].returning = true;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert s.mode == NavMode.homeward && nt_near(s.x, 3.0625) && s.z == 3;
+  // a short step still counts a fifth of a metre as home
+  a[0] = nav_agent(3.125, 3, 0); a[0].home_x = 3; a[0].home_z = 3; a[0].returning = true;
+  s = nt_step(a[..], t, false, 0.0625);
+  #assert s.mode == NavMode.home && s.x == 3;
+  a[0] = nav_agent(3.25, 3, 0); a[0].home_x = 3; a[0].home_z = 3; a[0].returning = true;
+  s = nt_step(a[..], t, false, 0.0625);
+  #assert s.mode == NavMode.homeward && nt_near(s.x, 3.0625);
+  a[0] = nav_agent(0.2, 0, 0); a[0].returning = true;
+  s = nt_step(a[..], t, false, 0.0625);
+  #assert s.mode == NavMode.home;
+  // a waypoint of the zone's is not home, though it stands at home
+  a[0] = nav_agent(3, 3, 0); a[0].home_x = 3; a[0].home_z = 3; a[0].returning = true;
+  nav_via(a[..], 3, 13);
+  s = nt_step(a[..], t, false, 0.25);
+  #assert s.mode == NavMode.homeward && s.x == 3 && nt_near(s.z, 3.75) && s.face_z == 1;
+  // by the path's corner, not straight at home
+  a[0] = nav_agent(2, 3, 0); a[0].home_x = 12; a[0].home_z = 3; a[0].returning = true; a[0].route = NavRoute.path; a[0].aim_x = 2; a[0].aim_z = 9;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert s.mode == NavMode.homeward && s.x == 2 && nt_near(s.z, 3.75) && s.face_x == 0 && s.face_z == 1;
+}
+
+#test "a creature near its path's corner plans again; a creature on the way round walks to the corner or the waypoint" {
+  t := NavTune.{speed = 4};
+  a: [1] NavAgent; a[0] = nav_agent(2, 3, 0); a[0].tx = 20; a[0].tz = 3; a[0].route = NavRoute.path; a[0].aim_x = 2; a[0].aim_z = 9; a[0].plan_s = 5; a[0].circling = true;
+  s := nt_step(a[..], t, false, 0.25);
+  #assert s.mode == NavMode.chase && s.x == 2 && s.z == 4 && s.face_x == 0 && s.face_z == 1 && !a[0].circling && a[0].plan_s == 5;
+  a[0].aim_x = 2.25; a[0].aim_z = 3;   // a quarter metre from it: near
+  s = nt_step(a[..], t, false, 0.25);
+  #assert a[0].plan_s == 0 && s.x == 2.25 && s.z == 3;
+  a[0].plan_s = 5; a[0].aim_x = 2.3125; a[0].aim_z = 3;   // a corner's distance and more: not yet
+  s = nt_step(a[..], t, false, 0.25);
+  #assert a[0].plan_s == 5;
+  a[0] = nav_agent(0, 0, 0); a[0].tx = 20; a[0].tz = 0; a[0].route = NavRoute.path; a[0].aim_x = 0; a[0].aim_z = f32(NAV_STEER_CORNER); a[0].plan_s = 5;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert a[0].plan_s == 5;
+  a[0].plan_s = 5; a[0].route = NavRoute.direct; a[0].aim_x = 2; a[0].aim_z = 3.25;   // no corner on a direct walk
+  s = nt_step(a[..], t, false, 0.25);
+  #assert a[0].plan_s == 5;
+  // the zone's waypoint takes the place of the target, and of the corner
+  a[0] = nav_agent(2, 3, 0); a[0].tx = 20; a[0].tz = 3; a[0].circling = true;
+  nav_via(a[..], 12, 3);
+  s = nt_step(a[..], t, false, 0.25);
+  #assert s.mode == NavMode.chase && s.x == 3 && s.z == 3 && s.face_x == 1 && !a[0].circling;
+  // a creature that waits for its target to come back stands, facing it
+  a[0] = nav_agent(1, 2, 0); a[0].tx = 4; a[0].tz = 6; a[0].spurned = true;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert s.mode == NavMode.stand && s.x == 1 && s.z == 2 && nt_near(s.face_x, 0.6) && nt_near(s.face_z, 0.8);
+}
+
+#test "pursuit aims where the target will be, by its speed seen and the time to reach it, at most a lead" {
+  t := NavTune.{speed = 5, lead = 1};
+  a: [1] NavAgent; a[0] = nav_agent(0, 0, 0); a[0].tx = 10; a[0].tz = 0; a[0].tvx = 2; a[0].tvz = 3;
+  s := nt_step(a[..], t, false, 0.25);   // 10 m is 2 s: the lead is 1 s: it aims at (12, 3)
+  #assert s.mode == NavMode.chase && nt_near(s.x, 1.21268) && nt_near(s.z, 0.30317) && s.face_x == 1 && s.face_z == 0 && !a[0].circling;
+  a[0] = nav_agent(0, 0, 0); a[0].tx = 3; a[0].tz = 0; a[0].tvx = 2; a[0].tvz = 3;   // 3 m is 0.6 s: it aims at (4.2, 1.8)
+  s = nt_step(a[..], t, false, 0.25);
+  #assert nt_near(s.x, 1.14893) && nt_near(s.z, 0.49240) && !a[0].circling;
+  // a creature that cannot move still aims at where the target stands
+  still := NavTune.{speed = 0, reach = 0};
+  a[0] = nav_agent(2, 3, 0); a[0].tx = 2; a[0].tz = 3; a[0].tvx = 2; a[0].tvz = 3;
+  s = nt_step(a[..], still, false, 0.25);
+  #assert s.x == 2 && s.z == 3 && s.mode == NavMode.chase;
+}
+
+// A creature at the origin in melee with the target at (tx, tz), circling the way (ox, oz) from it, its spin and spin_s given.
+nt_circler :: (tx: f32, tz: f32, ox: f32, oz: f32, spin: f32, spin_s: f32) -> NavAgent #effects(all) {
+  a := nav_agent(0, 0, 0); a.tx = tx; a.tz = tz; a.circling = true; a.ox = ox; a.oz = oz; a.spin = spin; a.spin_s = spin_s;
+  return a;
+}
+
+#test "into melee it circles from the side it came, one way or the other by its seed, and out of it past the open distance" {
+  t := NavTune.{};
+  a: [1] NavAgent; a[0] = nav_agent(0, 0, 0); a[0].tx = 0; a[0].tz = 2;
+  s := nt_step(a[..], t, false, 0.25);
+  #assert a[0].circling && a[0].spin == 1 && nt_near(a[0].spin_s, 3.24232 - 0.25) && s.mode == NavMode.circle;
+  #assert nt_near(a[0].ox, -0.30744) && nt_near(a[0].oz, -0.95157) && nt_near(s.x, -0.36893) && nt_near(s.z, 0.85812) && s.face_x == 0 && s.face_z == 1;
+  a[0] = nav_agent(0, 0, 1); a[0].tx = 0; a[0].tz = 2;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert a[0].spin == -1 && nt_near(a[0].spin_s, 2.78741 - 0.25) && nt_near(s.x, 0.36893) && nt_near(s.z, 0.85812);
+  a[0] = nav_agent(0, 0, 0); a[0].tx = 1.2; a[0].tz = 1.6;   // the side it came from: behind it, from the target
+  s = nt_step(a[..], t, false, 0.25);
+  #assert nt_near(a[0].ox, -0.81689) && nt_near(a[0].oz, -0.57679) && nt_near(s.x, 0.21973) && nt_near(s.z, 0.90785);
+  // on the target: no side to come from, so the way it was
+  a[0] = nav_agent(0, 0, 0); a[0].tx = 0; a[0].tz = 0;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert nt_near(a[0].ox, 0.30744) && nt_near(a[0].oz, 0.95157) && a[0].circling;
+  a[0] = nav_agent(0, 0, 0); a[0].tx = f32(NAV_STEER_NEAR); a[0].tz = 0;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert nt_near(a[0].ox, 0.30744) && nt_near(a[0].oz, 0.95157);
+  // out of melee past 2.2 reaches; within it, it keeps circling; and into it only within 1.6
+  a[0] = nt_circler(3.5, 0, 0, -1, 1, 100);
+  s = nt_step(a[..], t, false, 0.25);
+  #assert !a[0].circling && s.mode == NavMode.chase;
+  a[0] = nt_circler(3, 0, 0, -1, 1, 100);
+  s = nt_step(a[..], t, false, 0.25);
+  #assert a[0].circling && s.mode == NavMode.circle;
+  a[0] = nav_agent(0, 0, 0); a[0].tx = 2.8; a[0].tz = 0;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert !a[0].circling && s.mode == NavMode.chase;
+  a[0] = nav_agent(0, 0, 0); a[0].tx = 2.3; a[0].tz = 0;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert a[0].circling && s.mode == NavMode.circle;
+  wide := NavTune.{reach = 2};
+  a[0] = nt_circler(f32(NAV_STEER_OPEN) * 2, 0, 0, -1, 1, 100);   // exactly 2.2 reaches
+  s = nt_step(a[..], wide, false, 0.25);
+  #assert a[0].circling && s.mode == NavMode.circle;
+  a[0] = nav_agent(0, 0, 0); a[0].tx = f32(NAV_STEER_CLOSE) * 2; a[0].tz = 0;   // exactly 1.6 reaches
+  s = nt_step(a[..], wide, false, 0.25);
+  #assert !a[0].circling && s.mode == NavMode.chase;
+}
+
+#test "swinging, it stands to it; the circle turns by its spin and the facing target's flank draws it round" {
+  t := NavTune.{};
+  a: [1] NavAgent; a[0] = nt_circler(0, 2, 0, -1, 1, 100);
+  s := nt_step(a[..], t, true, 0.25);
+  #assert s.mode == NavMode.circle && s.x == 0 && s.z == 0 && a[0].ox == 0 && a[0].oz == -1 && a[0].spin_s == 100;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert nt_near(a[0].ox, -0.30744) && nt_near(a[0].oz, -0.95157) && nt_near(s.x, -0.36893) && nt_near(s.z, 0.85812) && a[0].spin_s == 99.75;
+  // the other way round
+  a[0] = nt_circler(0, 2, 0, -1, -1, 100);
+  s = nt_step(a[..], t, false, 0.25);
+  #assert nt_near(a[0].ox, 0.30744) && nt_near(s.x, 0.36893) && nt_near(s.z, 0.85812);
+  // a target facing it draws it toward its flank: more turn the further in front of it, none at 0.3 or less
+  a[0] = nt_circler(0, 2, 0.5, -0.8660254, 1, 100); nav_facing(a[..], 1, 0);
+  s = nt_step(a[..], t, false, 0.25);
+  #assert nt_near(a[0].ox, 0.12328) && nt_near(a[0].oz, -0.99237) && nt_near(s.x, 0.14794) && nt_near(s.z, 0.80915);
+  a[0] = nt_circler(0, 2, 0.5, -0.8660254, -1, 100); nav_facing(a[..], 1, 0);
+  s = nt_step(a[..], t, false, 0.25);
+  #assert nt_near(a[0].ox, 0.79778);
+  #assert nt_near(a[0].oz, -0.60295);
+  #assert nt_near(s.x, 0.67500);
+  #assert nt_near(s.z, 0.90000);
+  a[0] = nt_circler(0, 2, 0.3, -0.9539392, 1, 100); nav_facing(a[..], 1, 0);
+  s = nt_step(a[..], t, false, 0.25);
+  #assert nt_near(a[0].ox, -0.00781) && nt_near(a[0].oz, -0.99997) && nt_near(s.x, -0.00937) && nt_near(s.z, 0.80004);
+  // a ring of less than a tenth of a metre turns as one of a tenth: 3.75 rad a tick
+  tiny := NavTune.{reach = 0.1, ring = 0.5};
+  a[0] = nt_circler(0, 0.125, 0, -1, 1, 100);
+  s = nt_step(a[..], tiny, false, 0.25);
+  #assert nt_near(a[0].ox, 0.57156) && nt_near(a[0].oz, 0.82056);
+  // no turn at all leaves its side as it was, even one a hair long
+  flat := NavTune.{circle = 0};
+  a[0] = nt_circler(0, 2, f32(NAV_STEER_NEAR), 0, 1, 100);
+  s = nt_step(a[..], flat, false, 0.25);
+  #assert a[0].ox == f32(NAV_STEER_NEAR) && a[0].oz == 0;
+}
+
+#test "it turns the other way when its time is out, never back across the front of a target that faces it" {
+  t := NavTune.{};
+  a: [1] NavAgent; a[0] = nt_circler(0, 2, 0, -1, 1, 0.25); a[0].turns = 3;
+  s := nt_step(a[..], t, false, 0.25);   // its time runs out this tick, exactly
+  #assert a[0].turns == 4 && a[0].spin == -1 && nt_near(a[0].spin_s, 3.78048) && nt_near(s.x, 0.36893) && nt_near(s.z, 0.85812);
+  a[0] = nt_circler(0, 2, 0, -1, 1, 0.5); a[0].turns = 3;
+  s = nt_step(a[..], t, false, 0.25);
+  #assert a[0].turns == 3 && a[0].spin == 1 && a[0].spin_s == 0.25;
+  // across the front: a fifth or more of the way in front of a facing target holds it
+  a[0] = nt_circler(0, 2, 0.2, -0.9797959, 1, 0.25); a[0].turns = 3; nav_facing(a[..], 1, 0);
+  s = nt_step(a[..], t, false, 0.25);
+  #assert a[0].turns == 3 && a[0].spin == 1 && nt_near(a[0].ox, -0.11091);
+  a[0] = nt_circler(0, 2, 0.5, -0.8660254, 1, 0.25); a[0].turns = 3; nav_facing(a[..], 1, 0);
+  s = nt_step(a[..], t, false, 0.25);
+  #assert a[0].turns == 3 && a[0].spin == 1;
+  a[0] = nt_circler(0, 2, 0.1875, -0.98229, 1, 0.25); a[0].turns = 3; nav_facing(a[..], 1, 0);
+  s = nt_step(a[..], t, false, 0.25);
+  #assert a[0].turns == 4 && a[0].spin == -1 && nt_near(a[0].ox, 0.4804) && nt_near(s.x, 0.57648);
+}
+
+#test "the zone's word on a step: held back to less than half, it plans again; at home it is home" {
+  a: [1] NavAgent; a[0] = nav_agent(1, 2, 0);
+  s := NavStep.{x = 3, z = 2, face_x = 0.6, face_z = 0.8, mode = NavMode.chase};
+  a[0].plan_s = 5;
+  nav_moved(a[..], s, 2.0625, 2);   // asked 2, got a little over a half: not held back
+  #assert !a[0].pressed && a[0].plan_s == 5 && a[0].x == 2.0625 && a[0].z == 2 && a[0].face_x == 0.6 && a[0].face_z == 0.8;
+  a[0].x = 1; a[0].z = 2;
+  nav_moved(a[..], s, 2, 2);        // exactly half is not less
+  #assert !a[0].pressed && a[0].plan_s == 5;
+  a[0].x = 1; a[0].z = 2;
+  nav_moved(a[..], s, 1.9375, 2);
+  #assert a[0].pressed && a[0].plan_s == 0 && a[0].x == 1.9375;
+  a[0].x = 1; a[0].z = 2; a[0].pressed = false; a[0].plan_s = 5;
+  s.x = 1; s.z = 4;
+  nav_moved(a[..], s, 1, 3);      // north, asked 2, got exactly a half
+  #assert !a[0].pressed;
+  a[0].x = 1; a[0].z = 2;
+  nav_moved(a[..], s, 1, 2.9375);
+  #assert a[0].pressed && a[0].plan_s == 0 && a[0].z == 2.9375;
+  // a step too small to be one is not held back
+  b: [1] NavAgent; b[0] = nav_agent(0, 0, 0); b[0].plan_s = 5;
+  s = NavStep.{x = f32(NAV_STEER_SMALL), z = 0, mode = NavMode.chase};
+  nav_moved(b[..], s, 0, 0);
+  #assert !b[0].pressed && b[0].plan_s == 5;
+  s.x = 0.0125;
+  nav_moved(b[..], s, 0, 0);
+  #assert b[0].pressed && b[0].plan_s == 0;
+  // home: no pressing, and everything about a leash is over until the target comes back
+  b[0].pressed = true; b[0].plan_s = 5; b[0].returning = true; b[0].circling = true; b[0].route = NavRoute.path; b[0].spurned = false;
+  s = NavStep.{x = 5, z = 5, mode = NavMode.home};
+  nav_moved(b[..], s, 0, 0);
+  #assert !b[0].pressed && b[0].plan_s == 5 && !b[0].returning && !b[0].circling && b[0].route == NavRoute.direct && b[0].spurned;
+  b[0] = nav_agent(0, 0, 0); b[0].returning = true; b[0].circling = true; b[0].route = NavRoute.path;
+  s = NavStep.{x = 5, z = 5, mode = NavMode.homeward};
+  nav_moved(b[..], s, 5, 5);   // on its way: all as it was
+  #assert b[0].returning && b[0].circling && b[0].route == NavRoute.path && !b[0].spurned && !b[0].pressed;
+}
+
+#test "a body a hair from a middle is pushed along the line it is on, from where it was only when it is on the middle" {
+  one := [3] f32.[0, 0, 0.5];
+  p := nav_apart_at(0.5, 0, -3, f32(NAV_STEER_NEAR), 0, one[..], -1);
+  #assert p[0] == 1 && p[1] == 0;
+  p = nav_apart_at(0.5, 0, f32(NAV_STEER_NEAR), 0, 0, one[..], -1);
+  #assert p[0] == 0 && p[1] == 1;
+}
+
+#test "the corner it aims at is the furthest it can see, from the nearest on the way; a cell it cannot see ends the looking" {
+  w: [1] NavWindow; a: [1] NavAgent;
+  w[0].grid = NavGrid.{nx = 5, nz = 5, cell = 1, x0 = 0, z0 = 0};
+  for c: 0..<25 { w[0].walk[c] = true; }
+  nt_wall(w[..], 2, 0, 2); nt_wall(w[..], 3, 0, 1); nt_wall(w[..], 4, 2, 4); nt_wall(w[..], 2, 3, 4); nt_wall(w[..], 1, 4, 5);
+  #assert nt_plan(a[..], w[..], 0.5, 4.5, 8.5, 7.5) == NavRoute.path && nt_aims(a[0], 1.5, 2.5);
+  // the window's first cell closed: the way out of the window's own storage is not a corner it can see
+  v: [1] NavWindow;
+  nt_open(v[..], 10, 10); v[0].walk[0] = false;
+  #assert nt_plan(a[..], v[..], 5.5, 5.5, -5, 5.5) == NavRoute.path && nt_aims(a[0], 0.5, 5.5);
+}
