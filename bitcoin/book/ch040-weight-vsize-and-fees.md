@@ -106,15 +106,22 @@ fee_vartime :: (b: [] u8, t: Tx, outs: [] TxOut, values: [] int) -> FeeResult #e
   r: FeeResult; bad: FeeResult;
   if t.code != TX_OK || values.count != t.nin { return bad; }
   for i: 0..<values.count {
-    if values[i] < 0 || values[i] > FEE_MAX_MONEY { return bad; }
+    if values[i] < 0 { return bad; }
+    // A value just above MAX_MONEY that passed here would put the total above it
+    // on the next line, which refuses the same input.
+    if values[i] > FEE_MAX_MONEY { return bad; } // mutant: equivalent
     r.inputs += values[i];
     if r.inputs > FEE_MAX_MONEY { return bad; }
   }
   for k: 0..<t.nout {
     v := tx_le_vartime(b, outs[k].value, 8);     // signed, so a value of 2^63 or more is negative
-    if v < 0 || v > FEE_MAX_MONEY { return bad; }
+    if v < 0 { return bad; }
+    // As for the inputs: the running total below refuses the same output.
+    if v > FEE_MAX_MONEY { return bad; } // mutant: equivalent
     r.outputs += v;
-    if r.outputs > FEE_MAX_MONEY { return bad; }
+    // A total of MAX_MONEY + 1 that passed here is above the inputs, which are at
+    // most MAX_MONEY, and the check after the loop refuses it.
+    if r.outputs > FEE_MAX_MONEY { return bad; } // mutant: equivalent
   }
   if r.outputs > r.inputs { return bad; }
   r.fee = r.inputs - r.outputs; r.ok = true;
@@ -149,7 +156,8 @@ example uses mempool.space's published costs.
 fee_vsize_sigops_vartime :: (weight: int, sigop_cost: int, bytes_per_sigop: int) -> int #export_c #effects(all) {
   if weight < 0 || weight > FEE_MAX_BLOCK_WEIGHT || sigop_cost < 0 || sigop_cost > 80000 || bytes_per_sigop < 0 || bytes_per_sigop > 1000 { return -1; }
   w := weight;
-  if sigop_cost * bytes_per_sigop > w { w = sigop_cost * bytes_per_sigop; }
+  // When the two are equal, taking either gives the same w.
+  if sigop_cost * bytes_per_sigop > w { w = sigop_cost * bytes_per_sigop; } // mutant: equivalent
   return (w + TX_SCALE - 1) / TX_SCALE;
 }
 // A feerate, rounded down: satoshis per 1,000 virtual bytes (sat/kvB,
@@ -251,7 +259,8 @@ fee_estimate_weight_vartime :: (kinds: [] int, nout: int, output_bytes: int) -> 
   legacy := 0;
   for i: 0..<kinds.count {
     k := fee_input_weight_vartime(kinds[i]);
-    if k < 0 { return -1; }
+    // fee_input_weight_vartime gives -1 or at least 230, never 0 to 1, so `< 0` and `<= 1` agree.
+    if k < 0 { return -1; } // mutant: equivalent
     w += k;
     if kinds[i] == FEE_P2PKH { legacy += 1; }
   }
@@ -509,15 +518,20 @@ transaction); the sigop-adjusted vsize at the edges where sigops start to
 count and at a block's 80,000; feerates and the fee for a rate at their
 rounding edges and at the largest inputs; and the estimates, including a
 legacy spend, a mixed one and 253 inputs, whose count takes a 3-byte
-CompactSize.
+CompactSize. Every bound is checked at its limit and one past it: an
+input, an output and each running total at exactly `MAX_MONEY` and one
+satoshi above, inputs and outputs worth 0, a negative input beside one
+that covers the outputs, `bytes_per_sigop` at 1,000 and 1,001, and a
+spend with no inputs or no outputs.
 
 ```shell
 coax/bin/coax test coax/lib/bitcoin/fees.coax
 ```
 
-`coax test` runs 70 checks, including those of the files it loads, in
-about 2 seconds on 2026-11-03. Mutation testing: not run (owner speed
-order).
+`coax test` runs 73 checks, including those of the files it loads, on
+2026-11-14. `coax mutate` (run from `coinselect.coax`, which loads this
+file) leaves no survivors; the mutants it marks equivalent each have
+their reason on the line above.
 
 ### Python
 

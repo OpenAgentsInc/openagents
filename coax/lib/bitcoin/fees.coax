@@ -52,6 +52,69 @@ FEE_BYTES_PER_SIGOP :: 20;           // policy.h DEFAULT_BYTES_PER_SIGOP
   p[outs[0].value+7] = 0x00; p[outs[0].value+6] = 0x08;                    // 2^51, above MAX_MONEY
   #assert !fee_vartime(p, t, outs[..], hi[..]).ok;
 }
+#test "every MAX_MONEY bound of the fee holds at MAX_MONEY and refuses one satoshi above" {
+  b: [512] u8; ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := tx_unhex(TX_MAINNET[3].tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  // One input worth exactly MAX_MONEY is in range, and so is its total.
+  max := [1] int.[FEE_MAX_MONEY];
+  f := fee_vartime(s, t, outs[..], max[..]);
+  #assert t.nout == 1 && f.ok && f.inputs == FEE_MAX_MONEY && f.fee == FEE_MAX_MONEY - 506078;
+  // The output set to MAX_MONEY (0x775f05a074000) pays all of it, and one more refuses.
+  at := outs[0].value;
+  v := [8] u8.[0x00, 0x40, 0x07, 0x5a, 0xf0, 0x75, 0x07, 0x00];
+  for i: 0..<8 { s[at+i] = v[i]; }
+  f = fee_vartime(s, t, outs[..], max[..]);
+  #assert f.ok && f.fee == 0 && f.outputs == FEE_MAX_MONEY;
+  s[at] = 0x01;
+  #assert !fee_vartime(s, t, outs[..], max[..]).ok;
+  // Two outputs whose sum passes MAX_MONEY, each in range: the running total refuses.
+  bb: [1024] u8;
+  c := tx_unhex(TX_MAINNET[4].tx, bb[..]);
+  u := tx_read_vartime(c, true, ins[..], outs[..], items[..]);
+  #assert u.nout == 2 && u.nin == 1;
+  half := [8] u8.[0x00, 0xa0, 0x03, 0x2d, 0xf8, 0xba, 0x03, 0x00];        // MAX_MONEY / 2 = 0x3baf82d03a000
+  for k: 0..<2 { for i: 0..<8 { c[outs[k].value+i] = half[i]; } }
+  f = fee_vartime(c, u, outs[..], max[..]);
+  #assert f.ok && f.fee == 0 && f.outputs == FEE_MAX_MONEY;
+  c[outs[1].value] = 0x01;
+  #assert !fee_vartime(c, u, outs[..], max[..]).ok;
+  // Two inputs: a sum just past MAX_MONEY with each value in range refuses; at it, it holds.
+  db: [512] u8; d := tx_unhex(TX_MAINNET[5].tx, db[..]);
+  e := tx_read_vartime(d, true, ins[..], outs[..], items[..]);
+  two := [2] int.[FEE_MAX_MONEY / 2, FEE_MAX_MONEY / 2]; over := [2] int.[FEE_MAX_MONEY / 2, FEE_MAX_MONEY / 2 + 1];
+  #assert e.nin == 2 && fee_vartime(d, e, outs[..], two[..]).inputs == FEE_MAX_MONEY;
+  // A negative value refuses even when the other input covers the outputs.
+  neg := [2] int.[-1, 1000000]; pos := [2] int.[0, 1000000];
+  #assert !fee_vartime(d, e, outs[..], neg[..]).ok;
+  f = fee_vartime(d, e, outs[..], pos[..]);
+  #assert f.ok && f.inputs == 1000000 && f.fee == 1000000 - 965300;
+  // Coins and outputs worth nothing are allowed: an input of 0, an output of 0 (as OP_RETURN's).
+  zero := [1] int.[0];
+  for i: 0..<8 { s[at+i] = 0; }
+  t = tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  f = fee_vartime(s, t, outs[..], zero[..]);
+  #assert f.ok && f.fee == 0 && f.inputs == 0 && f.outputs == 0;
+  #assert !fee_vartime(d, e, outs[..], over[..]).ok;
+}
+#test "the size and rate bounds hold at their limits and refuse one past them" {
+  #assert fee_vsize_sigops_vartime(1, 1, 1000) == 250 && fee_vsize_sigops_vartime(1, 1, 1001) == -1;
+  #assert fee_vsize_sigops_vartime(FEE_MAX_BLOCK_WEIGHT, 0, 20) == 1000000 && fee_vsize_sigops_vartime(0, 80000, 0) == 0;
+  #assert fee_vsize_sigops_vartime(5, 0, 20) == 2 && fee_vsize_sigops_vartime(8, 0, 20) == 2 && fee_vsize_sigops_vartime(9, 0, 20) == 3;
+  #assert fee_per_kvb_vartime(FEE_MAX_MONEY, 1000) == FEE_MAX_MONEY && fee_per_kvb_vartime(0, 1) == 0 && fee_per_kvb_vartime(1, 3) == 333 && fee_per_kvb_vartime(2, 3) == 666;
+  #assert fee_per_kwu_vartime(FEE_MAX_MONEY + 1, 1) == -1 && fee_per_kwu_vartime(0, 1) == 0 && fee_per_kwu_vartime(2, 3) == 666;
+  #assert fee_for_rate_vartime(FEE_MAX_MONEY, 1) == FEE_MAX_MONEY / 1000 && fee_for_rate_vartime(1000, 0) == 0 && fee_for_rate_vartime(0, 0) == 0;
+  #assert fee_for_rate_vartime(1, FEE_MAX_BLOCK_WEIGHT) == 4000 && fee_for_rate_vartime(1999, 1000) == 1999 && fee_for_rate_vartime(1001, 1000) == 1001;
+  #assert fee_for_rate_vartime(2001, 3) == 7 && fee_for_rate_vartime(2000, 3) == 6 && fee_for_rate_vartime(1000, 1) == 1;
+  #assert fee_output_size_vartime(0) == 9 && fee_output_size_vartime(252) == 261 && fee_output_size_vartime(0xffff) == 3 + 8 + 0xffff && fee_output_size_vartime(0x10000) == 5 + 8 + 0x10000;
+  // No outputs, no inputs: the version, two counts and the locktime.
+  nonebuf: [1] int; none := nonebuf[0..<0];
+  #assert fee_estimate_weight_vartime(none[..], 0, 0) == 4 * 10 && fee_estimate_weight_vartime(none[..], 253, 0) == 4 * 12;
+  one := [1] int.[FEE_P2PKH]; seg := [1] int.[FEE_P2WPKH];
+  #assert fee_estimate_weight_vartime(one[..], 0, 0) == 4 * 10 + 592 && fee_estimate_weight_vartime(seg[..], 0, 0) == 4 * 10 + 272 + 2;
+  three := [3] int.[FEE_P2PKH, FEE_P2TR, FEE_P2PKH];
+  #assert fee_estimate_weight_vartime(three[..], 1, 43) == 4 * (4 + 1 + 1 + 43 + 4) + 592 + 230 + 592 + 2 + 2;
+}
 #test "sigop-adjusted vsize, as GetVirtualTransactionSize" {
   #assert fee_vsize_sigops_vartime(442, 1, FEE_BYTES_PER_SIGOP) == 111;
   #assert fee_vsize_sigops_vartime(442, 22, FEE_BYTES_PER_SIGOP) == 111;    // 440 < 442
@@ -103,15 +166,22 @@ fee_vartime :: (b: [] u8, t: Tx, outs: [] TxOut, values: [] int) -> FeeResult #e
   r: FeeResult; bad: FeeResult;
   if t.code != TX_OK || values.count != t.nin { return bad; }
   for i: 0..<values.count {
-    if values[i] < 0 || values[i] > FEE_MAX_MONEY { return bad; }
+    if values[i] < 0 { return bad; }
+    // A value just above MAX_MONEY that passed here would put the total above it
+    // on the next line, which refuses the same input.
+    if values[i] > FEE_MAX_MONEY { return bad; } // mutant: equivalent
     r.inputs += values[i];
     if r.inputs > FEE_MAX_MONEY { return bad; }
   }
   for k: 0..<t.nout {
     v := tx_le_vartime(b, outs[k].value, 8);     // signed, so a value of 2^63 or more is negative
-    if v < 0 || v > FEE_MAX_MONEY { return bad; }
+    if v < 0 { return bad; }
+    // As for the inputs: the running total below refuses the same output.
+    if v > FEE_MAX_MONEY { return bad; } // mutant: equivalent
     r.outputs += v;
-    if r.outputs > FEE_MAX_MONEY { return bad; }
+    // A total of MAX_MONEY + 1 that passed here is above the inputs, which are at
+    // most MAX_MONEY, and the check after the loop refuses it.
+    if r.outputs > FEE_MAX_MONEY { return bad; } // mutant: equivalent
   }
   if r.outputs > r.inputs { return bad; }
   r.fee = r.inputs - r.outputs; r.ok = true;
@@ -128,7 +198,8 @@ fee_vartime :: (b: [] u8, t: Tx, outs: [] TxOut, values: [] int) -> FeeResult #e
 fee_vsize_sigops_vartime :: (weight: int, sigop_cost: int, bytes_per_sigop: int) -> int #export_c #effects(all) {
   if weight < 0 || weight > FEE_MAX_BLOCK_WEIGHT || sigop_cost < 0 || sigop_cost > 80000 || bytes_per_sigop < 0 || bytes_per_sigop > 1000 { return -1; }
   w := weight;
-  if sigop_cost * bytes_per_sigop > w { w = sigop_cost * bytes_per_sigop; }
+  // When the two are equal, taking either gives the same w.
+  if sigop_cost * bytes_per_sigop > w { w = sigop_cost * bytes_per_sigop; } // mutant: equivalent
   return (w + TX_SCALE - 1) / TX_SCALE;
 }
 // A feerate, rounded down: satoshis per 1,000 virtual bytes (sat/kvB,
@@ -190,7 +261,8 @@ fee_estimate_weight_vartime :: (kinds: [] int, nout: int, output_bytes: int) -> 
   legacy := 0;
   for i: 0..<kinds.count {
     k := fee_input_weight_vartime(kinds[i]);
-    if k < 0 { return -1; }
+    // fee_input_weight_vartime gives -1 or at least 230, never 0 to 1, so `< 0` and `<= 1` agree.
+    if k < 0 { return -1; } // mutant: equivalent
     w += k;
     if kinds[i] == FEE_P2PKH { legacy += 1; }
   }
