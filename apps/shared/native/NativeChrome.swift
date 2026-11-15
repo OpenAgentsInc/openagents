@@ -67,6 +67,9 @@ enum NativeSkin {
     }
     /// The root ground: black with the skin's faint grid.
     static let ground:NativePlatformColor = {
+        #if canImport(UIKit)
+        return color(tokens.ground)
+        #else
         let step=CGFloat(tokens.grid_step),size=CGSize(width:step,height:step)
         func parts(_ c:CGContext) {
             c.setFillColor(cg(tokens.ground));c.fill(CGRect(origin:.zero,size:size))
@@ -77,9 +80,11 @@ enum NativeSkin {
         #else
         return NSColor(patternImage:NSImage(size:size,flipped:true) {_ in if let c=NSGraphicsContext.current?.cgContext {parts(c)};return true})
         #endif
+        #endif
     }()
 }
 
+#if !canImport(UIKit)
 /// One of the skin's frames at this layer's size: a filled ground, a line and a decoration.
 final class NativeFrame:CALayer {
     var role:Int64=0 {didSet {if role != oldValue {drawn = .zero;setNeedsLayout()}}}
@@ -136,37 +141,58 @@ final class NativeRing:CALayer {
     override func layoutSublayers() {super.layoutSublayers();ring.bounds=bounds;ring.position=CGPoint(x:bounds.midX,y:bounds.midY);ring.path=CGPath(ellipseIn:bounds.insetBy(dx:1,dy:1),transform:nil)}
 }
 
+#endif
+
 #if canImport(UIKit)
 /// A view with one of the skin's frames behind what it holds.
-final class NativeFrameView:UIView {
-    override class var layerClass:AnyClass {NativeFrame.self}
-    private var frameLayer:NativeFrame {layer as! NativeFrame}
+class NativeFrameView:UIView,NativeArcadeNode {
+    var arcadePaint=NativeArcadePaint()
     init(role:Int64=NativeSkin.names.panel,lit:Bool=false) {super.init(frame:.zero);isUserInteractionEnabled=false;isOpaque=false;backgroundColor = .clear;surface(role,lit:lit)}
     required init?(coder:NSCoder) {fatalError()}
-    /// A surface behind content, in the skin's own colours for that role.
-    func surface(_ role:Int64,lit:Bool=false) {let s=mono_surface(role,lit);frameLayer.role=s.role;frameLayer.paint(bg:s.bg,line:s.line,deco:s.deco)}
-    func paint(role:Int64,bg:UInt32,line:UInt32,deco:UInt32,dashed:Bool=false,march:Bool=false) {frameLayer.role=role;frameLayer.paint(bg:bg,line:line,deco:deco,dashed:dashed,march:march)}
+    func surface(_ role:Int64,lit:Bool=false) {let s=mono_surface(role,lit);paint(role:s.role,bg:s.bg,line:s.line,deco:s.deco);arcadePaint.flags=lit ? 1:0}
+    func paint(role:Int64,bg:UInt32,line:UInt32,deco:UInt32,dashed:Bool=false,march:Bool=false) {arcadePaint.role=role;arcadePaint.background=bg;arcadePaint.line=line;arcadePaint.ink=deco}
+    override func didMoveToSuperview() {super.didMoveToSuperview();NativeArcadeSurface.invalidateTree()}
 }
 
-final class NativeRingView:UIView {
-    override class var layerClass:AnyClass {NativeRing.self}
-    private var ink=NativeSkin.tokens.ink_muted
-    override init(frame:CGRect) {super.init(frame:frame);isUserInteractionEnabled=false;backgroundColor = .clear;paint(ink)}
+/// The shared two-arc activity component, drawn by the containing GPU scene.
+final class NativeRingView:UIView,NativeArcadeNode {
+    var arcadePaint=NativeArcadePaint(kind:1,ink:NativeSkin.tokens.ink_muted)
+    override init(frame:CGRect) {super.init(frame:frame);isUserInteractionEnabled=false;backgroundColor = .clear}
     required init?(coder:NSCoder) {fatalError()}
-    func paint(_ ink:UInt32) {self.ink=ink;(layer as! NativeRing).paint(ink,running:window != nil && !isHidden)}
-    override func didMoveToWindow() {super.didMoveToWindow();paint(ink)}
-    override var isHidden:Bool {didSet {paint(ink)}}
+    func paint(_ ink:UInt32) {arcadePaint.ink=ink}
+    override func didMoveToSuperview() {super.didMoveToSuperview();NativeArcadeSurface.invalidateTree()}
     override var intrinsicContentSize:CGSize {CGSize(width:20,height:20)}
 }
 
-/// A hairline, and a bar filled to a share: a download's progress.
-final class NativeBar:UIView {
-    private let fill=UIView()
-    var progress:Float=0 {didSet {setNeedsLayout()}}
-    override init(frame:CGRect) {super.init(frame:frame);backgroundColor=NativeSkin.color(NativeSkin.tokens.line_dim);fill.backgroundColor=NativeSkin.color(NativeSkin.tokens.ink);addSubview(fill);isAccessibilityElement=true;accessibilityTraits = .updatesFrequently}
+/// A download's determinate value is animated by the shared Coax spring.
+final class NativeBar:UIView,NativeArcadeNode {
+    var progress:Float=0
+    var arcadePaint:NativeArcadePaint {NativeArcadePaint(kind:2,line:NativeSkin.tokens.line_dim,ink:NativeSkin.tokens.ink,value:progress)}
+    override init(frame:CGRect) {super.init(frame:frame);isAccessibilityElement=true;accessibilityTraits = .updatesFrequently}
     required init?(coder:NSCoder) {fatalError()}
     override var intrinsicContentSize:CGSize {CGSize(width:UIView.noIntrinsicMetric,height:2)}
-    override func layoutSubviews() {super.layoutSubviews();fill.frame=CGRect(x:0,y:0,width:bounds.width*CGFloat(max(0,min(1,progress))),height:bounds.height);accessibilityValue="\(Int(max(0,min(1,progress))*100))%"}
+    override func layoutSubviews() {super.layoutSubviews();accessibilityValue="\(Int(max(0,min(1,progress))*100))%"}
+    override func didMoveToSuperview() {super.didMoveToSuperview();NativeArcadeSurface.invalidateTree()}
+}
+/// A rule or table cell is a kit primitive in the same composited scene.
+final class NativeRuleView:NativeFrameView {
+    init(_ ink:UInt32=NativeSkin.tokens.line_dim,box:Bool=false,fill:UInt32=0) {super.init(role:NativeSkin.names.box);arcadePaint.kind=box ? 4:3;arcadePaint.line=ink;arcadePaint.background=fill}
+    required init?(coder:NSCoder) {fatalError()}
+}
+
+final class NativeNotice:UILabel {
+    private let surface=NativeFrameView(role:NativeSkin.names.notice)
+    override init(frame:CGRect) {super.init(frame:frame);addSubview(surface)}
+    required init?(coder:NSCoder) {fatalError()}
+    override func layoutSubviews() {super.layoutSubviews();surface.frame=bounds}
+    override func drawText(in rect:CGRect) {super.drawText(in:rect.insetBy(dx:12,dy:10))}
+    override func sizeThatFits(_ size:CGSize)->CGSize {let text=super.sizeThatFits(CGSize(width:max(1,size.width-24),height:size.height));return CGSize(width:text.width+24,height:text.height+20)}
+    override var intrinsicContentSize:CGSize {let size=super.intrinsicContentSize;return CGSize(width:size.width+24,height:size.height+20)}
+}
+
+/// A world HUD layer passes empty space through to the scene below it.
+final class NativeOverlayView:UIView {
+    override func hitTest(_ point:CGPoint,with event:UIEvent?)->UIView? {let found=super.hitTest(point,with:event);return found === self ? nil:found}
 }
 
 /// The library's button. Its variant picks the frame and inks; its state is rest, pressed, disabled, busy or current.
@@ -187,13 +213,12 @@ final class NativeButton:UIButton {
     var floating=false {didSet {restyle()}}
     /// A list row's hairline. A row that sets its own spacing (a tool call) goes without.
     var ruled=true {didSet {restyle()}}
-    private let chrome=NativeFrameView(role:NativeSkin.names.button),caption=UILabel(),glyph=UIImageView(),ring=NativeRingView(),rule=UIView()
+    private let chrome=NativeFrameView(role:NativeSkin.names.button),caption=UILabel(),glyph=UIImageView(),ring=NativeRingView(),rule=NativeRuleView()
     private var words=""
     private(set) var symbol:String?
     init(_ variant:Variant = .plain) {
         self.variant=variant;super.init(frame:.zero)
         for v in [chrome,rule,caption,glyph,ring] as [UIView] {v.isUserInteractionEnabled=false;addSubview(v)}
-        rule.backgroundColor=NativeSkin.color(NativeSkin.tokens.line_dim)
         caption.numberOfLines=2;caption.lineBreakMode = .byTruncatingTail;glyph.contentMode = .center;ring.isHidden=true
         NotificationCenter.default.addObserver(self,selector:#selector(typeChanged),name:UIContentSizeCategory.didChangeNotification,object:nil)
         NotificationCenter.default.addObserver(self,selector:#selector(typeChanged),name:UIAccessibility.reduceMotionStatusDidChangeNotification,object:nil)
@@ -215,6 +240,8 @@ final class NativeButton:UIButton {
         var bg=s.bg,line=s.line
         if floating && state_==NativeSkin.names.rest {bg=t.ground & 0xffffff8c;line=t.line_dim}
         chrome.paint(role:s.role,bg:bg,line:line,deco:line,dashed:s.dashed,march:s.march)
+        chrome.arcadePaint.flags=isHighlighted ? 1:0
+        chrome.arcadePaint.kind=variant == .action ? 5:0
         let font:UIFont=s.upper ? NativeSkin.labelFont(CGFloat(s.type)):NativeTypography.font(CGFloat(s.type))
         caption.attributedText=NSAttributedString(string:s.upper ? words.uppercased():words,attributes:[.font:font,.kern:font.pointSize*CGFloat(s.track),.foregroundColor:NativeSkin.color(s.ink)])
         caption.textAlignment=variant == .list ? .natural:.center;caption.isHidden=variant.square
@@ -260,8 +287,9 @@ final class NativeButton:UIButton {
 /// A menu: rows in the skin's panel, over everything, beside the control that opened it. A tap outside puts it away.
 final class NativeMenu:UIControl {
     struct Item {var id:String;var title:String;var symbol:String?=nil;var current=false;var action:()->Void}
-    private let panel=NativeFrameView(role:NativeSkin.names.panel),column=UIStackView(),box=UIView()
+    private let panel=NativeFrameView(role:NativeSkin.names.panel),column=UIStackView(),box=UIView(),scroll=UIScrollView()
     private weak var anchor:UIView?
+    private var arcade:NativeArcadeSurface?
     static func show(from anchor:UIView,in host:UIView?=nil,title:String?=nil,items:[Item]) {
         guard let host=host ?? anchor.window,!items.isEmpty,!host.subviews.contains(where:{$0 is NativeMenu}) else {return}
         let menu=NativeMenu(frame:host.bounds);menu.anchor=anchor;menu.autoresizingMask=[.flexibleWidth,.flexibleHeight]
@@ -280,7 +308,7 @@ final class NativeMenu:UIControl {
     }
     override init(frame:CGRect) {
         super.init(frame:frame);accessibilityViewIsModal=true
-        column.axis = .vertical;addSubview(box);box.addSubview(panel);box.addSubview(column)
+        column.axis = .vertical;addSubview(box);box.backgroundColor=NativeSkin.color(NativeSkin.tokens.ground);box.addSubview(panel);box.addSubview(scroll);scroll.addSubview(column);arcade=NativeArcadeSurface(in:box)
         addAction(UIAction { [weak self] _ in self?.removeFromSuperview() },for:.touchUpInside)
     }
     required init?(coder:NSCoder) {fatalError()}
@@ -288,10 +316,11 @@ final class NativeMenu:UIControl {
     override func layoutSubviews() {
         super.layoutSubviews();guard let anchor else {return}
         let at=anchor.convert(anchor.bounds,to:self),safe=bounds.inset(by:safeAreaInsets).insetBy(dx:8,dy:8)
-        let width=min(260,safe.width),height=column.systemLayoutSizeFitting(CGSize(width:width-12,height:0),withHorizontalFittingPriority:.required,verticalFittingPriority:.fittingSizeLevel).height+12
+        let width=min(260,safe.width),contentHeight=column.systemLayoutSizeFitting(CGSize(width:width-12,height:0),withHorizontalFittingPriority:.required,verticalFittingPriority:.fittingSizeLevel).height+12
+        let height=min(contentHeight,safe.height)
         let x=at.midX>bounds.midX ? min(safe.maxX,at.maxX)-width:max(safe.minX,at.minX)
         let below=at.maxY+6,y=below+height<=safe.maxY ? below:max(safe.minY,at.minY-6-height)
-        box.frame=CGRect(x:x,y:y,width:width,height:height).integral;panel.frame=box.bounds;column.frame=box.bounds.insetBy(dx:6,dy:6)
+        box.frame=CGRect(x:x,y:y,width:width,height:height).integral;panel.frame=box.bounds;scroll.frame=box.bounds.insetBy(dx:6,dy:6);column.frame=CGRect(x:0,y:0,width:scroll.bounds.width,height:contentHeight-12);scroll.contentSize=column.bounds.size;arcade?.frame=box.bounds;arcade?.refresh()
     }
 }
 
@@ -339,7 +368,7 @@ final class NativeField:UITextField {
     override var placeholder:String? {didSet {restyle()}}
     private var style:coax_t_MonoField {mono_field(isFirstResponder,!isEnabled)}
     private func restyle() {
-        let s=style;chrome.paint(role:s.role,bg:s.bg,line:s.line,deco:s.line);textColor=NativeSkin.color(s.ink)
+        let s=style;chrome.paint(role:s.role,bg:s.bg,line:s.line,deco:s.line);chrome.arcadePaint.flags=2 | (isFirstResponder ? 1:0);textColor=NativeSkin.color(s.ink)
         if let placeholder {attributedPlaceholder=NSAttributedString(string:placeholder,attributes:[.foregroundColor:NativeSkin.color(s.hint),.font:NativeTypography.font(16)])}
     }
     override var intrinsicContentSize:CGSize {CGSize(width:UIView.noIntrinsicMetric,height:max(CGFloat(style.height),ceil((font?.lineHeight ?? 20)+20)))}
@@ -365,7 +394,7 @@ final class NativeTextArea:UITextView {
     required init?(coder:NSCoder) {fatalError()}
     @objc private func focusChanged() {restyle()}
     override var isEditable:Bool {didSet {restyle()}}
-    private func restyle() {let s=mono_field(isFirstResponder,!isEditable);chrome.paint(role:s.role,bg:s.bg,line:s.line,deco:s.line);textColor=NativeSkin.color(s.ink)}
+    private func restyle() {let s=mono_field(isFirstResponder,!isEditable);chrome.paint(role:s.role,bg:s.bg,line:s.line,deco:s.line);chrome.arcadePaint.flags=2 | (isFirstResponder ? 1:0);textColor=NativeSkin.color(s.ink)}
     override func layoutSubviews() {
         super.layoutSubviews();chrome.frame=bounds;sendSubviewToBack(chrome)
         let line=font?.lineHeight ?? 20,fit=sizeThatFits(CGSize(width:bounds.width,height:.greatestFiniteMagnitude)).height

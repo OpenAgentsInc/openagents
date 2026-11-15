@@ -13,6 +13,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     private let topDock=UIStackView(),options=UIStackView()
     private var composer:NativeComposer?
     private let scroll=UIScrollView()
+    private var arcade:NativeArcadeSurface?
     private lazy var emptyTop=topDock.heightAnchor.constraint(equalToConstant:0)
     private lazy var emptyOptions=options.heightAnchor.constraint(equalToConstant:0)
     private lazy var ordinaryTop=stack.topAnchor.constraint(equalTo:scroll.contentLayoutGuide.topAnchor,constant:24)
@@ -39,7 +40,8 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     private func showHeaderRule() {headerRule.isHidden=headerHeight.constant==0 && hostHeight.constant==0}
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor=NativeSkin.ground
+        view.backgroundColor=NativeSkin.ground;view.tintColor=NativeSkin.color(NativeSkin.tokens.ink)
+        arcade=NativeArcadeSurface(in:view)
         if sheet {
             let panel=NativeFrameView(role:NativeSkin.names.panel);panel.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(panel)
             NSLayoutConstraint.activate([panel.topAnchor.constraint(equalTo:view.topAnchor,constant:14),panel.bottomAnchor.constraint(equalTo:view.safeAreaLayoutGuide.bottomAnchor,constant:-2),panel.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:10),panel.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-10)])
@@ -79,6 +81,8 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             stack.trailingAnchor.constraint(equalTo:scroll.frameLayoutGuide.trailingAnchor,constant:-20),
         ])
     }
+    override func viewDidAppear(_ animated:Bool) {super.viewDidAppear(animated);arcade?.active=true;arcade?.refresh()}
+    override func viewDidDisappear(_ animated:Bool) {super.viewDidDisappear(animated);arcade?.active=false}
     func render(_ elements:[NativeElement]) {
         loadViewIfNeeded()
         let centered=elements.contains {$0.role=="welcome"};ordinaryTop.isActive = !centered;ordinaryBottom.isActive = !centered;centeredTop.isActive=centered;centeredBottom.isActive=centered;centeredY.isActive=centered;centeredHeight.isActive=centered
@@ -187,7 +191,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         // Rows of one list stand together under a hairline each; tool rows stay as close as the work log sets them.
         func row(_ e:NativeElement)->Bool {e.role=="button" && e.hasClass("row")}
         for (i,r) in rows.enumerated() {let next=i+1<rows.count ? rows[i+1].first:nil;(r.first.attrs["_nativePlacement"]=="dock" ? options:r.first.attrs["_nativePlacement"]=="top" ? topDock:stack).setCustomSpacing(r.last.role=="tool" && next?.role=="tool" ? 1:row(r.last) && next.map(row)==true ? 0:CGFloat(NativeSkin.tokens.gap),after:r.view)}
-        view.setNeedsLayout()
+        arcade?.refresh();view.setNeedsLayout()
     }
     private func make(_ e:NativeElement)->UIView {
         let control:UIView
@@ -207,7 +211,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             f.addAction(UIAction { [weak self] _ in self?.submit?(e.id) },for:e.type=="number" ? .editingDidEnd:.editingDidEndOnExit)
             control=f
         } else {
-            let l=UILabel(); l.numberOfLines=0; l.adjustsFontForContentSizeCategory=true
+            let l:UILabel=e.role=="notice" ? NativeNotice():UILabel(); l.numberOfLines=0; l.adjustsFontForContentSizeCategory=true
             if e.role == "heading" {l.accessibilityTraits.insert(.header)}
             control=l
         }
@@ -227,7 +231,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         if scrollView.isDragging || scrollView.isDecelerating {following=scroll_at_end(Float(scrollView.contentSize.height),Float(scrollView.bounds.height),Float(scrollView.contentOffset.y),18)}
     }
     override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
+        super.viewDidLayoutSubviews();arcade?.frame=view.bounds
         if conversation != nil && following && !scroll.isDragging && !scroll.isDecelerating {
             let end=CGFloat(scroll_max(Float(scroll.contentSize.height),Float(scroll.bounds.height)))
             if abs(scroll.contentOffset.y-end)>0.5 {scroll.setContentOffset(CGPoint(x:0,y:end),animated:false)}

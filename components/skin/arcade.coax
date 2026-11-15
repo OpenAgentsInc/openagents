@@ -1,0 +1,18 @@
+// Arcade's component geometry/motion with the shared monochrome palette.
+// Source inventory: docs/arcade/03-design-and-components.md and audit 06.
+#load "mono-native.coax";
+#load "zeron.coax";
+ArcadeMotionSkin :: struct {enter:f32=0.2;press:f32=0.1;focus:f32=0.2;menu:f32=0.3;}
+arcade_color :: (c:u32)->Rgba {return rgba(cast(f32)((c>>24)&255)/255,cast(f32)((c>>16)&255)/255,cast(f32)((c>>8)&255)/255,cast(f32)(c&255)/255);}
+arcade_skin :: ()->UiSkin {
+ s:=zeron_skin();s.name="Arcade";s.canvas=arcade_color(MONO_GROUND);s.surface=arcade_color(MONO_SURFACE);
+ s.raised=arcade_color(MONO_RAISED);s.sunk=s.canvas;s.hairline=arcade_color(MONO_LINE);s.hover=arcade_color(MONO_PRESSED);
+ s.ink=arcade_color(MONO_INK);s.muted=arcade_color(MONO_INK_MUTED);s.faint=arcade_color(MONO_INK_FAINT);
+ s.accent=arcade_color(MONO_INK_BRIGHT);s.on_accent=s.canvas;s.selection=arcade_color(MONO_RAISED);
+ s.animated.frame_stroke=1;s.animated.frame_wash=1;return s;
+}
+#test "Arcade component accents and surfaces are the shared grayscale roles" {
+ s:=arcade_skin();#assert s.accent.r==1 && s.accent.g==1 && s.accent.b==1;
+ #assert s.surface.r==s.surface.g && s.surface.g==s.surface.b && s.ink.r==s.ink.g;
+ #assert ArcadeMotionSkin.{}.enter==0.2 && ArcadeMotionSkin.{}.press==0.1;
+}

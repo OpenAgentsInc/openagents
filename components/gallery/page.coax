@@ -45,7 +45,7 @@ GL_ROWS :: [3] string.["Fix the tool group header", "Draft the release notes", "
 GlCard :: struct { toggles: [2] bool; slider: f32; tab: int; row: int; }
 
 GalleryState :: struct {
-  ready: bool; time: f32;
+  ready: bool; time: f32; monochrome:bool;
   motion:[1]GlMotion;section:int;touch:bool;touch_scroll:bool;touch_x:f32;touch_y:f32;touch_start:f32;touch_hit:int;
   width: f32; height: f32; d: f32;
   atlas: [1] Atlas;
@@ -297,6 +297,7 @@ gl_frame :: (g: [] GalleryState, out: [] f32, uniforms: [] f32, width: f32, heig
     ty := (h - th) * g[0].scroll / gl_max_scroll(g);
     v = paint_quad(out, v, d, w - 7, ty + 2, 4, th - 4, 2, 0, z.hover, z.hover);
   }
+  if g[0].monochrome {gpu_monochrome(out,v);}
   return v;
 }
 
@@ -639,3 +640,5 @@ gl_touch :: (g:[]GalleryState,x:f32,y:f32,phase:int)->bool {
 
 coaxial_components_section :: (g:[]GalleryState,section:int) #export_c #effects(all) {if g.count>0 && section>=0 && section<=4 {g[0].section=section;g[0].scroll=0;}}
 coaxial_components_motion :: (g:[]GalleryState,action:int) #export_c #effects(all) {if g.count>0 {gl_motion_press(g[0].motion[..],action);}}
+
+coaxial_components_monochrome :: (g:[]GalleryState,enabled:bool) #export_c #effects(all) {if g.count>0 {g[0].monochrome=enabled;}}

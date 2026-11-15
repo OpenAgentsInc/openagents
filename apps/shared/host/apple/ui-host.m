@@ -714,7 +714,7 @@ static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
 #if TARGET_OS_OSX
   rp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, h->under ? 0 : 1);
 #else
-  rp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1);
+  rp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, h->app.transparent ? 0 : 1);
 #endif
   if (depth) {
     if (!h->depth || h->depth.width != into.width || h->depth.height != into.height) {
@@ -1067,6 +1067,7 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
     h->layer.device = h->dev; h->layer.pixelFormat = MTLPixelFormatBGRA8Unorm; h->layer.framebufferOnly = YES;
     h->dpr = (float)UIScreen.mainScreen.scale;
     h->view.contentScaleFactor = h->dpr;
+    h->view.opaque = !app->transparent; h->layer.opaque = !app->transparent;
   }
 #endif
   h->last = ui_now();

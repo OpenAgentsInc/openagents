@@ -29,6 +29,19 @@ GP_VERTEX_FLOATS :: 28;
 GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0; GP_COLOR_SPRITE :: 3.0; GP_ELBOW :: 4.0; GP_GRADIENT :: 5.0; GP_INSET :: 6.0; GP_SEGMENT :: 7.0;
 GP_NO_CLIP :: 1000000.0;
 
+// Monochrome presentation profile. Preserve value/alpha and geometry; texture
+// ownership and text semantics stay with their existing adapters.
+#test "monochrome vertex projection keeps alpha and geometry and removes every hue" {
+ out:[168]f32;_:=paint_quad(out[..],0,1,10,20,30,40,0,1,rgba(0.2,0.5,0.7,0.4),rgba(0,1,1,1));
+ gpu_monochrome(out[..],6);#assert out[4]==10 && out[15]==0.4 && out[12]==0.7 && out[13]==0.7 && out[14]==0.7;
+ #assert out[16]==1 && out[17]==1 && out[18]==1 && out[19]==1;
+}
+gpu_monochrome :: (out:[]f32,vertices:int) {
+ for i:0..<vertices {at:=i*GP_VERTEX_FLOATS;if at+GP_VERTEX_FLOATS>out.count {return;}
+  for k:0..<2 {p:=at+12+k*4;v:=out[p];if out[p+1]>v {v=out[p+1];}if out[p+2]>v {v=out[p+2];}out[p]=v;out[p+1]=v;out[p+2]=v;}
+ }
+}
+
 // gpui_macos glyph_dilation_for_color: CoreGraphics thickens light text more.
 dilation :: (c: Rgba) -> int {
   l := 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;

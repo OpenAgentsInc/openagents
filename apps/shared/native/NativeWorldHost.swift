@@ -93,6 +93,8 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     private var editor:NativeWorldEditor?
     private let status=UILabel(),progress=NativeBar()
     private let menuButton=NativeButton(.icon)
+    private let chromeRoot=NativeOverlayView()
+    private var arcade:NativeArcadeSurface?
     private var editorAvailable=false,loadFailed=false
     private var presentation:MTLCommandBuffer?
     init(directory:URL,realm:String,path:String,edit:Bool,finished:@escaping()->Void) {
@@ -117,9 +119,9 @@ private final class NativeWorldCancellation:@unchecked Sendable {
         menuButton.addAction(UIAction { [weak self] _ in self?.showMenu() },for:.primaryActionTriggered)
         // Status chrome is hidden. Use the free upper corner above the realm's
         // title/HUD, retaining horizontal protection from landscape cutouts.
-        view.addSubview(menuButton);NSLayoutConstraint.activate([menuButton.widthAnchor.constraint(equalToConstant:CGFloat(chrome.side)),menuButton.heightAnchor.constraint(equalToConstant:CGFloat(chrome.side)),menuButton.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-CGFloat(chrome.inset)),menuButton.topAnchor.constraint(equalTo:view.topAnchor,constant:CGFloat(chrome.inset))]);updateMenu()
+        chromeRoot.frame=view.bounds;chromeRoot.autoresizingMask=[.flexibleWidth,.flexibleHeight];view.addSubview(chromeRoot);arcade=NativeArcadeSurface(in:chromeRoot);chromeRoot.addSubview(menuButton);NSLayoutConstraint.activate([menuButton.widthAnchor.constraint(equalToConstant:CGFloat(chrome.side)),menuButton.heightAnchor.constraint(equalToConstant:CGFloat(chrome.side)),menuButton.trailingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.trailingAnchor,constant:-CGFloat(chrome.inset)),menuButton.topAnchor.constraint(equalTo:view.topAnchor,constant:CGFloat(chrome.inset))]);updateMenu()
         status.numberOfLines=0;status.textColor=NativeSkin.color(NativeSkin.tokens.ink);status.font=NativeTypography.font(16);status.adjustsFontForContentSizeCategory=true;status.textAlignment = .center;status.text="Preparing world…";status.translatesAutoresizingMaskIntoConstraints=false
-        progress.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(status);view.addSubview(progress)
+        progress.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(status);chromeRoot.addSubview(progress)
         NSLayoutConstraint.activate([status.centerYAnchor.constraint(equalTo:view.centerYAnchor),status.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:24),status.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-24),progress.topAnchor.constraint(equalTo:status.bottomAnchor,constant:20),progress.leadingAnchor.constraint(equalTo:status.leadingAnchor),progress.trailingAnchor.constraint(equalTo:status.trailingAnchor)])
         NotificationCenter.default.addObserver(self,selector:#selector(background),name:UIApplication.willResignActiveNotification,object:nil)
         NotificationCenter.default.addObserver(self,selector:#selector(foreground),name:UIApplication.didBecomeActiveNotification,object:nil)
@@ -177,7 +179,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
             audio=AEPageAudio(page:opened,resources:root,offline:c.automated)
             canvas=NativeWorldCanvas(frame:view.bounds,device:device);canvas.world=self;turn.view=canvas;turn.moved={AppAnalytics.shared.gyro("world")};canvas.delegate=self;canvas.isMultipleTouchEnabled=true;canvas.preferredFramesPerSecond=60;canvas.colorPixelFormat = .bgra8Unorm;canvas.framebufferOnly=false;canvas.translatesAutoresizingMaskIntoConstraints=false
             canvas.accessibilityIdentifier="world.canvas";canvas.isAccessibilityElement=true;canvas.accessibilityTraits = .image;canvas.accessibilityLabel=Self.text(profile.title)
-            view.addSubview(canvas);NSLayoutConstraint.activate([canvas.topAnchor.constraint(equalTo:view.topAnchor),canvas.bottomAnchor.constraint(equalTo:view.bottomAnchor),canvas.leadingAnchor.constraint(equalTo:view.leadingAnchor),canvas.trailingAnchor.constraint(equalTo:view.trailingAnchor)]);view.bringSubviewToFront(menuButton)
+            view.addSubview(canvas);NSLayoutConstraint.activate([canvas.topAnchor.constraint(equalTo:view.topAnchor),canvas.bottomAnchor.constraint(equalTo:view.bottomAnchor),canvas.leadingAnchor.constraint(equalTo:view.leadingAnchor),canvas.trailingAnchor.constraint(equalTo:view.trailingAnchor)]);view.bringSubviewToFront(chromeRoot)
             optional=Task { [weak self] in await Self.assets.optional(inventory) {name in Task { @MainActor in
                 guard let self,let page=self.page,!self.closed else {return}
                 if name=="dragon.frames",let bytes=try? Data(contentsOf:root.appendingPathComponent(name)) {Self.deep.run {_ = page.deliverAsset(4,bytes:bytes)}}

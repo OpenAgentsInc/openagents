@@ -9,7 +9,7 @@ final class EmailLoginUITests:XCTestCase {
         app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13491","-OAUpdatesOrigin","http://127.0.0.1:13491"]
         app.launch()
         XCTAssertEqual(app.webViews.count,0)
-        let apply=app.alerts.buttons["Apply update"]
+        let apply=app.buttons["Apply update"]
         XCTAssertTrue(apply.waitForExistence(timeout:90));apply.tap()
         let email=app.textFields["Email address"]
         XCTAssertTrue(email.waitForExistence(timeout:20));email.tap();email.typeText("ada@example.com")

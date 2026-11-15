@@ -72,7 +72,7 @@ import CoreText
         let g=nc_layout(w,expanded ? max(measured,46*scale):measured,scale,!editor.text.isEmpty)
         let next=CGFloat(g.height)
         if abs(next-height)>0.1 {height=next;invalidateIntrinsicContentSize();superview?.setNeedsLayout()}
-        panel.frame=CGRect(x:0,y:0,width:w,height:next);panel.surface(NativeSkin.names.panel,lit:editor.isFirstResponder)
+        panel.frame=CGRect(x:0,y:0,width:w,height:next);panel.surface(NativeSkin.names.panel,lit:editor.isFirstResponder);panel.arcadePaint.flags=2 | (editor.isFirstResponder ? 1:0)
         editor.frame=CGRect(x:g.editor_x,y:g.editor_y,width:g.editor_w,height:g.editor_h)
         editor.isScrollEnabled=measured+12>g.editor_h+1
         placeholder.frame=CGRect(x:editor.frame.minX,y:editor.frame.minY+6,width:editor.frame.width,height:23*scale);placeholder.isHidden = !editor.text.isEmpty

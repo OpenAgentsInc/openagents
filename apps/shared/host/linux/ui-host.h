@@ -82,6 +82,8 @@ typedef struct {
   // The keyboard focus ring's colour (straight RGBA, the skin's accent): a host that moves focus by key
   // draws it around the focused row (focus-ring.h). Alpha 0: Zeron's accent.
   float ring[4];
+  // An explicitly composited native component island; ordinary hosts stay opaque.
+  int transparent;
 } UiApp;
 
 // The input method's view of the text box (UTF-16 units). which: 0 selection start, 1 its end,

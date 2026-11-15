@@ -28,7 +28,7 @@ final class StarterUITests:XCTestCase {
     func testLiveSignedCoaxUpdateChangesInstalledApp() {
         let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES"];app.launch()
         XCTAssertTrue(app.staticTexts["Start here."].waitForExistence(timeout:20))
-        let apply=app.alerts.buttons["Apply update"]
+        let apply=app.buttons["Apply update"]
         XCTAssertTrue(apply.waitForExistence(timeout:90));apply.tap()
         XCTAssertTrue(app.staticTexts["Updates are live."].waitForExistence(timeout:20))
         app.buttons["TRY THE STARTER"].tap()

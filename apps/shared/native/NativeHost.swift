@@ -227,12 +227,13 @@ import Security
     }
     func offerActivation() {
         guard presentedViewController==nil else { return }
-        let alert=UIAlertController(title:"Update ready",message:"A signed Coax Native update is downloaded. Restart this view to use it.",preferredStyle:.alert) // stock: the system's own alert; UI tests name it
-        alert.view.tintColor=NativeSkin.color(NativeSkin.tokens.ink)
-        alert.addAction(UIAlertAction(title:"Later",style:.cancel))
-        alert.addAction(UIAlertAction(title:"Apply update",style:.default) { [weak self] _ in
-            guard let self,self.services==0 else { return }
-            do { try self.updates.activate(); self.load() } catch { }
-        }); present(alert,animated:true)
+        let prompt=NativeControls();prompt.sheet=true
+        prompt.hostHeader(title:"Update ready",close:"Later") { [weak prompt] in prompt?.dismiss(animated:true) }
+        prompt.render([NativeElement(id:"updates.ready",role:"notice",label:"Update ready"),NativeElement(id:"updates.apply",role:"button",label:"Apply update")])
+        prompt.press={ [weak self,weak prompt] id in
+            guard id=="updates.apply",let self,self.services==0 else{return}
+            do {try self.updates.activate();prompt?.dismiss(animated:true) { [weak self] in self?.load() }}catch {}
+        }
+        present(prompt,animated:true)
     }
 }

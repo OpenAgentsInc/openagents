@@ -11,7 +11,7 @@ import UIKit
         #endif
         if SharedAppLaunch.on { window.rootViewController=SharedAppViewController(socket:SharedAppLaunch.socket,token:SharedAppLaunch.token); window.makeKeyAndVisible(); self.window=window; return true }
         do { window.rootViewController=NativeHost(updates:try NativeUpdates()) }
-        catch { let vc=UIViewController(); vc.view.backgroundColor = .black; let label=UILabel(frame:CGRect(x:24,y:100,width:320,height:100)); label.text="The embedded starter is unavailable."; label.textColor = .white; vc.view.addSubview(label); window.rootViewController=vc }
+        catch { let vc=NativeControls();vc.render([NativeElement(id:"startup.error",role:"notice",label:"The embedded starter is unavailable.")]);window.rootViewController=vc }
         window.makeKeyAndVisible(); self.window=window; return true
     }
 }

@@ -11,16 +11,16 @@ final class ComponentsUITests:XCTestCase {
         }
         XCTAssertTrue(app.textViews["chat.composer"].waitForExistence(timeout:20))
         app.showAppSettings();let components=app.buttons["app.components"];XCTAssertTrue(components.waitForExistence(timeout:10));components.tap()
-        XCTAssertTrue(app.navigationBars["Components"].waitForExistence(timeout:20))
+        XCTAssertTrue(app.buttons["components.close"].waitForExistence(timeout:20))
         XCTAssertTrue(app.otherElements["Coax GPU component playground"].exists)
-        app.navigationBars["Components"].buttons.firstMatch.tap()
+        app.buttons["components.close"].tap()
         XCTAssertTrue(app.buttons["nav.settings.close"].waitForExistence(timeout:10));app.buttons["nav.settings.close"].tap()
         if app.buttons["nav.close"].isHittable {app.buttons["nav.close"].tap()}
         XCTAssertTrue(app.textViews["chat.composer"].waitForExistence(timeout:10))
     }
     func testEmbeddedGallerySectionsMotionAndLifecycle() {
         let app=XCUIApplication();app.launchArguments=["-OAComponents","YES"];app.launch()
-        XCTAssertTrue(app.navigationBars["Components"].waitForExistence(timeout:30))
+        XCTAssertTrue(app.buttons["components.close"].waitForExistence(timeout:30))
         let canvas=app.otherElements["Coax GPU component playground"]
         XCTAssertTrue(canvas.waitForExistence(timeout:30))
         func picture(_ name:String) {let a=XCTAttachment(screenshot:app.screenshot());a.name=name;a.lifetime = .keepAlways;add(a)}

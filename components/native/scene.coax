@@ -1,0 +1,76 @@
+// One composited component scene. Platform views supply measured bounds and
+// input/semantics; shared kit components paint and animate those same bounds.
+// No text parser, editor, network or platform drawing is implemented here.
+#load "../skin/arcade.coax";
+#load "../kit/animated.coax";
+#load "../backend/gpu.coax";
+ARCADE_NODES :: 512; ARCADE_PRIMS :: 8192; ARCADE_VERTICES :: 32768;
+ARCADE_FRAME :: 0; ARCADE_ACTIVITY :: 1; ARCADE_PROGRESS :: 2; ARCADE_RULE :: 3; ARCADE_BOX :: 4; ARCADE_ACTION :: 5;
+ArcadeNode :: struct {
+ key:int;seen:bool;kind:int;role:int;x:f32;y:f32;w:f32;h:f32;cl:f32;ct:f32;cr:f32;cb:f32;
+ bg:u32;line:u32;ink:u32;alpha:f32;value:f32;flags:int;
+ entry:[1]ArMotion;press:[1]ArMotion;progress:[1]UiSpring;
+}
+ArcadeScene :: struct {nodes:[ARCADE_NODES]ArcadeNode;order:[ARCADE_NODES]int;prims:[ARCADE_PRIMS]Prim;atlas:[1]Atlas;clock:f32;dt:f32;reduced:bool;offered:int;refused:int;painted:int;}
+
+#test "scene retains keyed motion, reverses press, obeys reduced motion and clips measured bounds" #steps 100000000 {
+ s:[1]ArcadeScene;arcade_scene_begin(s[..],false);
+ #assert arcade_scene_add(s[..],1,ARCADE_FRAME,MF_BUTTON,10,20,100,44,0,0,80,200,MONO_SURFACE,MONO_LINE,MONO_INK,1,0,0);
+ out:[20000]f32;n:=arcade_scene_frame(s[..],out[..],400,800,1,0.05);#assert n>0 && s[0].painted==1 && s[0].nodes[0].entry[0].value>0;
+ for i:0..<n {at:=i*GP_VERTEX_FLOATS;#assert out[at+12]==out[at+13] && out[at+13]==out[at+14] && out[at+22]==80;}
+ value:=s[0].nodes[0].entry[0].value;arcade_scene_begin(s[..],false);
+ #assert arcade_scene_add(s[..],1,ARCADE_FRAME,MF_BUTTON,10,20,100,44,0,0,400,800,MONO_SURFACE,MONO_LINE_BRIGHT,MONO_INK,1,0,1);
+ _:=arcade_scene_frame(s[..],out[..],400,800,1,0.05);#assert s[0].nodes[0].entry[0].value>value && s[0].nodes[0].press[0].value>0;
+ arcade_scene_begin(s[..],true);#assert arcade_scene_add(s[..],1,ARCADE_FRAME,MF_BUTTON,10,20,100,44,0,0,400,800,MONO_SURFACE,MONO_LINE,MONO_INK,1,0,0);
+ _:=arcade_scene_frame(s[..],out[..],400,800,1,0.01);#assert s[0].nodes[0].entry[0].value==1 && s[0].nodes[0].press[0].value==0;
+ arcade_scene_begin(s[..],false);#assert arcade_scene_frame(s[..],out[..],400,800,1,0.016)==0 && s[0].nodes[0].key==0;
+}
+#test "activity, progress and rules use shared paint and refuse invisible or exhausted offers" #steps 100000000 {
+ s:[1]ArcadeScene;arcade_scene_begin(s[..],true);out:[30000]f32;
+ for i:0..<3 {#assert arcade_scene_add(s[..],i+1,i+1,MF_PANEL,10,10+cast(f32)i*30,40,20,0,0,400,800,MONO_SURFACE,MONO_LINE,MONO_INK,1,0.5,0);}
+ n:=arcade_scene_frame(s[..],out[..],400,800,1,0.016);#assert n>0 && s[0].painted==3;
+ #assert !arcade_scene_add(s[..],99,0,0,0,0,0,10,0,0,400,800,0,0,0,1,0,0);
+ for i:0..<ARCADE_NODES {s[0].nodes[i].key=i+1;s[0].nodes[i].seen=true;}
+ #assert !arcade_scene_add(s[..],9999,0,0,0,0,10,10,0,0,400,800,0,0,0,1,0,0) && s[0].refused==1;
+}
+arcade_scene_begin :: (s:[]ArcadeScene,reduced:bool) #export_c #effects(all) {
+ s[0].reduced=reduced;s[0].offered=0;s[0].refused=0;for i:0..<ARCADE_NODES {s[0].nodes[i].seen=false;}
+}
+arcade_scene_add :: (s:[]ArcadeScene,key:int,kind:int,role:int,x:f32,y:f32,w:f32,h:f32,cl:f32,ct:f32,cr:f32,cb:f32,bg:u32,line:u32,ink:u32,alpha:f32,value:f32,flags:int)->bool #export_c #effects(all) {
+ if s[0].offered>=ARCADE_NODES {s[0].refused+=1;return false;}
+ if key<=0 || !(w>0) || !(h>0) || !(alpha>0) || !(cr>cl) || !(cb>ct) || x+w<=cl || x>=cr || y+h<=ct || y>=cb {return false;}
+ at:= -1;empty:= -1;for i:0..<ARCADE_NODES {if s[0].nodes[i].key==key {at=i;break;}if empty<0 && s[0].nodes[i].key==0 {empty=i;}}
+ if at<0 {at=empty;if at<0 {s[0].refused+=1;return false;}s[0].nodes[at]=ArcadeNode.{key=key};s[0].nodes[at].progress[0]=UiSpring.{clamp=true};ar_motion_to(s[0].nodes[at].entry[..],true,ArcadeMotionSkin.{}.enter,AM_OUT_QUAD);}
+ n:=s[0].nodes[at];n.seen=true;n.kind=kind;n.role=role;n.x=x;n.y=y;n.w=w;n.h=h;n.cl=cl;n.ct=ct;n.cr=cr;n.cb=cb;n.bg=bg;n.line=line;n.ink=ink;n.alpha=am_unit(alpha);n.value=am_unit(value);n.flags=flags;
+ ar_motion_to(n.press[..],(flags&1)!=0,ArcadeMotionSkin.{}.press,AM_IN_OUT_QUAD);n.progress[0].target=n.value;s[0].nodes[at]=n;s[0].order[s[0].offered]=at;s[0].offered+=1;return true;
+}
+arcade_scene_frame :: (s:[]ArcadeScene,out:[]f32,width:f32,height:f32,dpr:f32,dt:f32)->int #export_c #effects(all) {
+ d:=ifx dpr>0 then dpr else 1.0f32;t:=ifx dt>0.064 then 0.064f32 else ifx dt>0 then dt else 0.0f32;
+ if !s[0].reduced {s[0].clock+=t;}sh:=[1]Sheet.[Sheet.{under=s[0].prims[..]}];s[0].painted=0;
+ for i:0..<ARCADE_NODES {if !s[0].nodes[i].seen {s[0].nodes[i].key=0;}}
+ for index:0..<s[0].offered {i:=s[0].order[index];n:=s[0].nodes[i];
+  ar_motion_tick(n.entry[..],t);ar_motion_tick(n.press[..],t);ui_spring_step(n.progress[..],t,s[0].reduced);
+  if s[0].reduced {n.entry[0].value=1;n.press[0].value=ifx (n.flags&1)!=0 then 1.0f32 else 0.0f32;}
+  s[0].nodes[i]=n;skin:=arcade_skin();skin.surface=opacity(arcade_color(n.bg),n.alpha);skin.accent=opacity(arcade_color(n.line),n.alpha);skin.ink=opacity(arcade_color(n.ink),n.alpha);
+  skin.accent.a*=0.75+0.25*n.press[0].value;skin.hairline=opacity(skin.accent,0.3);
+  sh[0].nu=prim_clip(sh[0].under,sh[0].nu,n.cl,n.ct,n.cr,n.cb);
+  if n.kind==ARCADE_ACTIVITY {skin.accent=skin.ink;activity(sh[..],skin,n.x,n.y,n.w,s[0].clock,s[0].reduced);}
+  else if n.kind==ARCADE_PROGRESS {p:=am_unit(n.progress[0].value);sh[0].nu=prim_fill(sh[0].under,sh[0].nu,n.x,n.y,n.w,n.h,0,skin.hairline);sh[0].nu=prim_fill(sh[0].under,sh[0].nu,n.x,n.y,n.w*p,n.h,0,skin.ink);}
+  else if n.kind==ARCADE_RULE {sh[0].nu=prim_fill(sh[0].under,sh[0].nu,n.x,n.y,n.w,n.h,0,skin.accent);}
+  else if n.kind==ARCADE_ACTION {round_action(sh[..],skin,n.x,n.y,n.w,n.entry[0].value);}
+  else if n.kind==ARCADE_BOX {sh[0].nu=prim_box(sh[0].under,sh[0].nu,n.x,n.y,n.w,n.h,0,0.5,skin.surface,skin.accent);}
+  else {p:=n.entry[0].value;if (n.flags&2)!=0 {p*=0.65+0.35*n.press[0].value;}animated_frame(sh[..],skin,n.x,n.y,n.w,n.h,p,1);}
+  sh[0].nu=prim_unclip(sh[0].under,sh[0].nu);s[0].painted+=1;
+ }
+ v:=gpu_draw(out,0,s[0].atlas[..],d,s[0].prims[0..<sh[0].nu],0,0,0,height/d);gpu_monochrome(out,v);return v;
+}
+arcade_scene_max_vertices :: ()->int #export_c #effects(all) {return ARCADE_VERTICES;}
+
+#test "scene keeps key state across reordering and paints in offered order" #steps 100000000 {
+ s:[1]ArcadeScene;out:[20000]f32;arcade_scene_begin(s[..],false);
+ for i:0..<2 {#assert arcade_scene_add(s[..],i+1,ARCADE_FRAME,MF_PANEL,0,0,100,100,0,0,400,800,MONO_SURFACE,MONO_LINE,MONO_INK,1,0,0);}
+ _:=arcade_scene_frame(s[..],out[..],400,800,1,0.05);v:=s[0].nodes[1].entry[0].value;
+ arcade_scene_begin(s[..],false);#assert arcade_scene_add(s[..],2,ARCADE_ACTION,MF_BOX,0,0,30,30,0,0,400,800,MONO_PRIMARY,MONO_LINE,MONO_INK,1,0,0);
+ #assert arcade_scene_add(s[..],3,ARCADE_FRAME,MF_PANEL,0,0,100,100,0,0,400,800,MONO_SURFACE,MONO_LINE,MONO_INK,1,0,0);
+ _:=arcade_scene_frame(s[..],out[..],400,800,1,0.05);#assert s[0].order[0]==1 && s[0].nodes[1].entry[0].value>v && s[0].nodes[0].key==0;
+}

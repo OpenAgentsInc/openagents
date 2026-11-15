@@ -4,6 +4,7 @@
 void *cg_open(const char *resources);
 void *cg_view(void *owner);
 void cg_frame(void *owner);
+void cg_monochrome(void *owner,int enabled);
 void cg_close(void *owner);
 void cg_section(void *owner,int section);
 void cg_motion(void *owner,int action);

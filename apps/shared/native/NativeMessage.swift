@@ -24,9 +24,11 @@ extension NativeElement {
 }
 
 @MainActor final class NativeRichText:UITextView,UITextViewDelegate {
+    var tableSurface:NativeRuleView? {didSet {if let tableSurface {insertSubview(tableSurface,at:0)}}}
+
     var press:((String)->Void)?
     private var quote=false
-    private let stripe=CALayer()
+    private let stripe=NativeRuleView()
     init(_ node:NativeElement,prefix:String="",indent:CGFloat=0,quote:Bool=false,code:Bool=false) {
         super.init(frame:.zero,textContainer:nil)
         let skin=nt_skin();self.quote=quote
@@ -53,10 +55,10 @@ extension NativeElement {
         append(node,level>0,false,code,false,nil);attributedText=out
         // The skin has no hue to mark a link with: it is the text's ink, underlined.
         linkTextAttributes=[.foregroundColor:NativeSkin.color(skin.link),.underlineStyle:NSUnderlineStyle.single.rawValue,.underlineColor:NativeSkin.color(NativeSkin.tokens.line)]
-        stripe.backgroundColor=NativeSkin.color(skin.border).cgColor;if quote {layer.addSublayer(stripe)}
+        if quote {addSubview(stripe)}
     }
     required init?(coder:NSCoder) {fatalError()}
-    override func layoutSubviews() {super.layoutSubviews();if quote {stripe.frame=CGRect(x:0,y:0,width:2,height:bounds.height)}}
+    override func layoutSubviews() {super.layoutSubviews();tableSurface?.frame=bounds;if quote {stripe.frame=CGRect(x:0,y:0,width:2,height:bounds.height)}}
     func height(_ width:CGFloat)->CGFloat {ceil(sizeThatFits(CGSize(width:max(1,width),height:.greatestFiniteMagnitude)).height)}
     func textView(_ textView:UITextView,shouldInteractWith URL:URL,in characterRange:NSRange,interaction:UITextItemInteraction)->Bool {
         if URL.scheme=="coax-component" {press?(String(URL.path.dropFirst()))};return false
@@ -97,7 +99,7 @@ extension NativeElement {
     init(_ node:NativeElement,press:@escaping(String)->Void) {
         super.init(frame:.zero);addSubview(scroll);scroll.addSubview(grid);clipsToBounds=true
         for row in node.children where row.role=="tr" {
-            cells.append(row.children.map {cell in let text=NativeRichText(cell);text.press=press;text.textContainerInset=UIEdgeInsets(top:7,left:10,bottom:7,right:10);text.backgroundColor=cell.role=="th" ? NativeSkin.color(nt_skin().code_bg):.clear;text.layer.borderColor=NativeSkin.color(nt_skin().border).cgColor;text.layer.borderWidth=0.5;grid.addSubview(text);return text})
+            cells.append(row.children.map {cell in let text=NativeRichText(cell);text.press=press;text.textContainerInset=UIEdgeInsets(top:7,left:10,bottom:7,right:10);text.tableSurface=NativeRuleView(nt_skin().border,box:true,fill:cell.role=="th" ? nt_skin().code_bg:0);grid.addSubview(text);return text})
         }
     }
     required init?(coder:NSCoder) {fatalError()}
@@ -141,7 +143,7 @@ extension NativeElement {
         func add(_ node:NativeElement,quote:Bool=false) {
             if node.hasClass("code") {let code=NativeCode(node) { [weak self] id in self?.press?(id) };bubble.addSubview(code);blocks.append(code);if let id=code.copy.accessibilityIdentifier {actions[id]=code.copy}}
             else if node.role=="table" {let table=NativeTable(node) { [weak self] id in self?.press?(id) };bubble.addSubview(table);blocks.append(table)}
-            else if node.role=="hr" {let rule=UIView();rule.backgroundColor=NativeSkin.color(nt_skin().border);bubble.addSubview(rule);blocks.append(rule)}
+            else if node.role=="hr" {let rule=NativeRuleView(nt_skin().border);bubble.addSubview(rule);blocks.append(rule)}
             else if ["p","h1","h2","h3","h4","h5","h6","li"].contains(node.role) {
                 let checked=node.attrs["aria-checked"],level=CGFloat(Int(node.attrs["aria-level"] ?? "1") ?? 1)
                 let prefix=node.role != "li" ? "":checked != nil ? (checked=="true" ? "☑\u{FE0E}  ":"☐\u{FE0E}  "):node.attrs["data-state"]=="ordered" ? (node.attrs["value"] ?? "1")+".  ":"•  "

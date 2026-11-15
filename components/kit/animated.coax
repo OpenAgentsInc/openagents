@@ -44,3 +44,8 @@ animated_reply :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32) {
  animated_reply(sh[..],s,0,0,200,60,0);#assert sh[0].nu==18;
  animated_reply(sh[..],s,0,0,200,60,0.5);#assert under[18].h==30;
 }
+
+// Arcade's round send/action control. Text/glyphs use the same semantic node.
+round_action :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,size:f32,progress:f32) {
+ p:=am_unit(progress);_:=sheet_box(sh,x,y,size,size,size/2,1,opacity(s.surface,p),opacity(s.accent,p));
+}
