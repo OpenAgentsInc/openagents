@@ -19,6 +19,8 @@ export const SOCKET_KIND = 256, STORAGE_KIND = 768;
 // when they don't fit), `cap()` the inbox's size. bind(exports) after instantiating; stop() closes what it opened.
 export function wireImports(memory, module, deliver, cap) {
   const sockets = [null, null, null, null], text = new TextDecoder();
+  let strictTextLimit = 0;
+  let pauseInBackground = false;
   let stopped = false;
   const event = (id, ws, kind, bytes = new Uint8Array()) => {
     if (stopped || sockets[id] !== ws) return;
@@ -28,6 +30,14 @@ export function wireImports(memory, module, deliver, cap) {
   const storage = makeByteStorage({ memory: () => memory, indexedDB: () => globalThis.indexedDB, capacity: cap,
     emit: (slot, bytes) => { if (!stopped) deliver(STORAGE_KIND + slot, bytes); } });
   const random = prepareRandomImport(memory, module, {});
+  const background = () => {
+    if (!pauseInBackground || !document.hidden) return;
+    for (let id=0;id<sockets.length;id++) {
+      const ws=sockets[id];if (!ws) continue;
+      ws.close();event(id,ws,2);
+    }
+  };
+  document.addEventListener("visibilitychange",background);
   const imports = {
     coaxial_socket_open(ptr, len) {
       const id = sockets.indexOf(null);
@@ -40,7 +50,13 @@ export function wireImports(memory, module, deliver, cap) {
       } catch { return -1; }
       sockets[id] = ws;
       ws.onopen = () => event(id, ws, 0);
-      ws.onmessage = (m) => typeof m.data === "string" && event(id, ws, 1, new TextEncoder().encode(m.data));
+      ws.onmessage = (m) => {
+        if (strictTextLimit && (typeof m.data !== "string" || m.data.length > strictTextLimit)) { event(id, ws, 3); ws.close(); return; }
+        if (typeof m.data !== "string") return;
+        const body = new TextEncoder().encode(m.data);
+        if (strictTextLimit && body.length > strictTextLimit) { event(id, ws, 3); ws.close(); return; }
+        event(id, ws, 1, body);
+      };
       ws.onerror = () => event(id, ws, 3);
       ws.onclose = () => event(id, ws, 2);
       return id;
@@ -61,7 +77,16 @@ export function wireImports(memory, module, deliver, cap) {
   };
   return {
     imports,
-    bind(exports) { random.bind(exports); },
-    stop() { stopped = true; storage.reset(); for (const ws of sockets) ws?.close(); sockets.fill(null); },
+    bind(exports) {
+      // Optional installed SDK capacities. Modules without these exports keep
+      // the original four-slot carrier. Protocol admission remains in Coax.
+      const slots = exports.coaxial_socket_slots?.();
+      if (Number.isInteger(slots) && slots >= 1 && slots <= 6) { sockets.length = slots; sockets.fill(null); }
+      const limit = exports.coaxial_socket_text_limit?.();
+      if (Number.isInteger(limit) && limit > 0 && limit <= 65536) strictTextLimit = limit;
+      pauseInBackground = exports.coaxial_socket_pause_background?.() === 1;
+      random.bind(exports);
+    },
+    stop() { stopped = true; document.removeEventListener("visibilitychange",background);storage.reset(); for (const ws of sockets) ws?.close(); sockets.fill(null); },
   };
 }

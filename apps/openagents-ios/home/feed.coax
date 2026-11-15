@@ -1,0 +1,31 @@
+// Assemble the shared feed with installed read effects and account settings.
+#test "Feed is a regular destination and preserves the account chat draft" {
+ s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].page=3;s[0].draft_n=na_copy(s[0].draft[..],"Unsent");
+ #assert na_shell_press(s[..],"nav.feed") && s[0].page==12 && s[0].draft_n==6 && !s[0].navigation[0].open;
+ s[0].ready=true;_=st_frame(s[..],0,true);#assert tr_find(s[0].tree[..],"feed.header")>=0 && tr_find(s[0].tree[..],"chat.composer")<0;
+}
+#test "relay failure callbacks cannot consume a foreground HTTP request" {
+ s:[1]Starter;s[0].purpose=90;s[0].flight=4;s[0].feed[0].busy=true;s[0].feed[0].pending=3;s[0].feed[0].nr=1;
+ na_reply(s[..],20,0,"{}",true);#assert s[0].purpose==90 && s[0].flight==4 && !s[0].feed[0].busy;
+}
+na_feed_settings :: (s:[]Starter) {
+ a:=s[0].account_settings[..];if !a[0].loaded {return;}urls:[6]string;for i:0..<a[0].saved[0].relays_n {urls[i]=asw_relay(a[0].saved[..],i);}
+ if !nfeed_configure(s[0].feed[..],urls[0..<a[0].saved[0].relays_n]) {nfeed_note(s[0].feed[..],"Saved relays unavailable");}
+}
+na_feed_tick :: (s:[]Starter,dt:f32) {
+ f:=s[0].feed[..];wanted:=s[0].page==12 && s[0].account_ready && !s[0].world_mode;
+ if !wanted {nfeed_pause(f);}else {
+  if s[0].account_settings[0].loaded {if !f[0].active || !f[0].configured {na_feed_settings(s);}}
+  else if !s[0].account_settings[0].busy {acs_request(s[0].account_settings[..],"snapshot","","");}
+ }
+ if nfeed_tick(f,dt) {s[0].dirty=true;}
+ if s[0].action==0 && f[0].action!=0 {s[0].action=f[0].action;s[0].out_n=na_copy(s[0].outbox[..],cast(string)f[0].body[0..<f[0].nb]);f[0].action=0;s[0].dirty=true;}
+}
+na_feed_event :: (s:[]Starter,kind:int,id:string,n:int)->bool {
+ if s[0].page!=12 {return false;}f:=s[0].feed[..];
+ if kind==2 && n>=0 && n<=1048576 {return nfeed_edit(f,id,cast(string)s[0].inbox[0..<n]);}
+ if kind!=1 {return false;}
+ if id=="feed.relays.settings" {acs_open(s[0].account_settings[..],false);s[0].account_settings[0].section=3;return true;}
+ for i:0..<f[0].n {a:[96]u8;b:[96]u8;if id==tr_cat(b[..],tr_join(a[..],"feed.note.",i),".copy") {na_text_effect(s,false,cast(string)f[0].notes[i].content[0..<f[0].notes[i].n],id);return true;}}
+ return nfeed_press(f,id);
+}

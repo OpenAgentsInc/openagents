@@ -94,12 +94,13 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
   x=tr_open(t,"nav.rail.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.close",IC_MENU,"Close navigation");tr_close(t);
   x=k_side_places(t,"nav.rail");x=k_icon_button(t,"nav.home",IC_CHAT,"Chat");tr_attr(t,x,AT_STATE,"rail");tr_attr(t,x,AT_CURRENT,ifx s[0].page<5 then "true" else "false");
   x=k_icon_button(t,"nav.projects",IC_FOLDER,"Projects");tr_attr(t,x,AT_STATE,"rail");tr_attr(t,x,AT_CURRENT,ifx ((s[0].page>=5 && s[0].page<=9) || s[0].page==11) then "true" else "false");
+  x=k_icon_button(t,"nav.feed",IC_NEWS_PAPER,"Feed");tr_attr(t,x,AT_STATE,"rail");tr_attr(t,x,AT_CURRENT,ifx s[0].page==12 then "true" else "false");
   if s[0].worlds_available {x=k_icon_button(t,"world.library",IC_GLOBE,"Worlds");tr_attr(t,x,AT_STATE,"rail");}
   x=k_icon_button(t,"nav.recent",IC_HISTORY,"Recent chats");tr_attr(t,x,AT_STATE,"rail");tr_close(t);
   x=tr_open(t,"nav.rail.footer",TG_FOOTER,"side-f");x=k_icon_button(t,"nav.settings",IC_SETTINGS,"Settings");tr_attr(t,x,AT_STATE,"rail");tr_close(t);tr_close(t);return;
  }
  x=k_side_head(t,"nav.header","OpenAgents","/");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.close",IC_X,"Close navigation");tr_close(t);
- x=k_side_places(t,"nav.sidebar");x=k_row(t,u,"nav.home","Chat","",s[0].page<5);x=k_row(t,u,"nav.projects","Projects","",((s[0].page>=5 && s[0].page<=9) || s[0].page==11));if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",s[0].page==10);}tr_close(t);
+ x=k_side_places(t,"nav.sidebar");x=k_row(t,u,"nav.home","Chat","",s[0].page<5);x=k_row(t,u,"nav.projects","Projects","",((s[0].page>=5 && s[0].page<=9) || s[0].page==11));if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",s[0].page==10);}x=k_row(t,u,"nav.feed","Feed","",s[0].page==12);tr_close(t);
  x=tr_open(t,"nav.history.header",TG_HEADER,"navigation-search");x=k_link(t,"nav.history","Recent chats");tr_attr(t,x,AT_EXPANDED,ifx n[0].history_open then "true" else "false");x=k_icon_button(t,"nav.compose",IC_PLUS,"New chat");tr_close(t);
  if n[0].history_open {
  x=tr_open(t,"nav.search-wrap",TG_DIV,"navigation-search");x=k_input(t,u,"nav.search","Search chats","Search chats","search","off");tr_close(t);

@@ -1,0 +1,250 @@
+// Public kind-1 feed. The same controller serves native and browser effects.
+// Signed originals are checked by the shared Nostr reader/verifier before any
+// content is retained. No key, cookie or account token goes to a relay.
+#load "../../coax/lib/nostr/relay.coax";
+#load "../../coax/lib/nostr/outbox.coax";
+#load "../../coax/lib/nostr/message.coax";
+#load "../../coax/lib/nostr/event_verify_fast.coax";
+#load "../../coax/lib/nostr/metadata.coax";
+#load "../../coax/lib/nostr/nip19-core.coax";
+#load "../../coax/native/relay-read-wire.coax";
+#load "nostr-feed-checks.coax" #test;
+
+NFEED_NOTES :: 128; NFEED_CONTENT :: 16384; NFEED_PAGE :: 12; NFEED_LIMIT :: 16;
+FeedNote :: struct {id:[32]u8;author:[32]u8;at:int;n:int;content:[NFEED_CONTENT]u8;visible:bool;}
+FeedProfile :: struct {author:[32]u8;id:[32]u8;at:int;loaded:bool;asked:u64;name:[128]u8;nn:int;picture:[512]u8;np:int;}
+FeedRelay :: struct {url:[200]u8;nu:int;selected:bool=true;draft:bool=true;relay:[1]Relay;ack:int;idle:int;sub:int= -1;history:int= -1;metadata:int= -1;reset:bool=true;failed:bool;incomplete:bool;caught:bool;received:int;oldest:int=NF_SAFE;until:int= -1;limit:int=NFEED_LIMIT;round:int;history_done:bool;profiles:[16][32]u8;profiles_n:int;}
+NostrFeed :: struct {
+ active:bool;configured:bool;filters:bool;ms:int;now:int;clock_at:int;clock_generation:int=1;query:int=1;nr:int;relays:[6]FeedRelay;
+ busy:bool;action:int;pending:int;pending_slot:int;body:[32768]u8;nb:int;next:int;drained:int;reset_all:bool;
+ author:[64]u8;na:int;tag:[64]u8;nt:int;window:int;since:int;
+ draft_author:[96]u8;nda:int;draft_tag:[65]u8;ndt:int;draft_window:int;
+ notes:[NFEED_NOTES]FeedNote;n:int;profiles:[64]FeedProfile;np:int;page:int;scroll_epoch:int;pending_notes:int;initial:bool=true;full:bool;rejected:int;
+ note:[160]u8;nn:int;batch:[1]ObSub;
+}
+nfeed_copy :: (out:[]u8,text:string)->int {if text.count>out.count {return -1;}for c,i:text {out[i]=c;}return text.count;}
+nfeed_note :: (f:[]NostrFeed,text:string) {f[0].nn=nfeed_copy(f[0].note[..],text);}
+
+#test "account reset erases every retained record and effect without a whole-feed stack temporary" {
+ f:[1]NostrFeed;f[0].active=true;f[0].configured=true;f[0].busy=true;f[0].action=20;f[0].n=128;f[0].notes[0].content[0]=3;f[0].notes[127].content[16383]=17;f[0].profiles[0].name[0]=3;f[0].profiles[63].name[0]=9;f[0].body[32767]=7;f[0].body[0]=1;
+ f[0].author[0]=1;f[0].author[63]=1;f[0].tag[0]=1;f[0].tag[63]=1;f[0].draft_author[0]=1;f[0].draft_author[95]=1;f[0].draft_tag[0]=1;f[0].draft_tag[64]=1;f[0].note[0]=1;f[0].note[159]=1;
+ nfeed_clear(f[..]);#assert !f[0].active && !f[0].configured && !f[0].busy && f[0].action==0 && f[0].n==0 && f[0].query==1 && f[0].initial && f[0].reset_all;
+ #assert f[0].notes[127].content[16383]==0 && f[0].profiles[63].name[0]==0 && f[0].body[32767]==0;
+ #assert !f[0].filters && f[0].ms==0 && f[0].now==0 && f[0].clock_at==0 && f[0].clock_generation==1 && f[0].nr==0;
+ #assert f[0].pending==0 && f[0].pending_slot==0 && f[0].nb==0 && f[0].next==0 && f[0].drained==0 && f[0].na==0 && f[0].nt==0 && f[0].window==0 && f[0].since==0;
+ #assert f[0].nda==0 && f[0].ndt==0 && f[0].draft_window==0 && f[0].np==0 && f[0].page==0 && f[0].scroll_epoch==0 && f[0].pending_notes==0 && !f[0].full && f[0].rejected==0 && f[0].nn==0;
+ #assert f[0].notes[0].content[0]==0 && f[0].profiles[0].name[0]==0 && f[0].body[0]==0 && f[0].author[0]==0 && f[0].author[63]==0 && f[0].tag[0]==0 && f[0].tag[63]==0;
+ #assert f[0].draft_author[0]==0 && f[0].draft_author[95]==0 && f[0].draft_tag[0]==0 && f[0].draft_tag[64]==0 && f[0].note[0]==0 && f[0].note[159]==0 && f[0].relays[5].selected && f[0].relays[0].history== -1;
+}
+// Clear bounded records separately: assigning a whole multi-megabyte feed in
+// the account reset's existing stack frame exceeds the portable stack budget.
+nfeed_clear :: (f:[]NostrFeed) {
+ for i:0..<NFEED_NOTES {f[0].notes[i]=FeedNote.{};}for i:0..<64 {f[0].profiles[i]=FeedProfile.{};}for i:0..<6 {f[0].relays[i]=FeedRelay.{};}
+ for i:0..<f[0].body.count {f[0].body[i]=0;}for i:0..<64 {f[0].author[i]=0;f[0].tag[i]=0;}for i:0..<96 {f[0].draft_author[i]=0;}for i:0..<65 {f[0].draft_tag[i]=0;}for i:0..<160 {f[0].note[i]=0;}
+ f[0].active=false;f[0].configured=false;f[0].filters=false;f[0].ms=0;f[0].now=0;f[0].clock_at=0;f[0].clock_generation=1;f[0].query=1;f[0].nr=0;
+ f[0].busy=false;f[0].action=0;f[0].pending=0;f[0].pending_slot=0;f[0].nb=0;f[0].next=0;f[0].drained=0;f[0].reset_all=true;
+ f[0].na=0;f[0].nt=0;f[0].window=0;f[0].since=0;f[0].nda=0;f[0].ndt=0;f[0].draft_window=0;f[0].n=0;f[0].np=0;f[0].page=0;f[0].scroll_epoch=0;f[0].pending_notes=0;f[0].initial=true;f[0].full=false;f[0].rejected=0;f[0].nn=0;f[0].batch[0]=ObSub.{};
+}
+
+#test "feed filters accept npub or complete public hex and exact NIP tag values" {
+ out:[64]u8;#assert nfeed_author("",out[..])==0;
+ #assert nfeed_author("npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg",out[..])==64;
+ #assert cast(string)out[0..<2]=="7e" && cast(string)out[62..<64]=="4e";
+ #assert nfeed_author("bad",out[..])<0 && nfeed_author("nsec1x",out[..])<0;
+ #assert nfeed_tag("#nostr",out[..])==5 && cast(string)out[0..<5]=="nostr";
+ #assert nfeed_tag("",out[..])==0 && nfeed_tag("#",out[..])<0 && nfeed_tag("two words",out[..])<0;
+}
+#test "a query change retires every old subscription without changing connection owners" {
+ f:[1]NostrFeed;f[0].nr=1;r:=f[0].relays[..];r[0].nu=nfeed_copy(r[0].url[..],"wss://relay.example");
+ r[0].relay[0].gen=7;r[0].sub=rl_subscribe(r[0].relay[..]);r[0].relay[0].state=RL_OPEN;_=rl_next(r[0].relay[..],0);r[0].reset=false;
+ f[0].nda=nfeed_copy(f[0].draft_author[..],"invalid");#assert !nfeed_apply(f[..]) && f[0].query==1;
+ f[0].nda=0;f[0].now=100000;f[0].draft_window=1;
+ #assert nfeed_apply(f[..]) && f[0].query==2 && f[0].since==13600 && r[0].relay[0].gen==7 && r[0].reset;
+ #assert r[0].relay[0].subs[0].state==RS_CLOSING;
+}
+#test "feed projection never admits unverified wrong-kind or stale-owner content" {
+ f:[1]NostrFeed;f[0].nr=1;f[0].relays[0].selected=true;e:NostrEvent;e.error=NE_OK;e.kind=1;e.created_at=10;
+ #assert !nfeed_accept(f[..],e) && f[0].n==0;e.verified=true;#assert nfeed_accept(f[..],e);
+ e.kind=0;#assert !nfeed_accept(f[..],e);e.kind=1;f[0].since=11;#assert !nfeed_accept(f[..],e);
+ f[0].since=0;f[0].now=10;e.created_at=311;#assert !nfeed_accept(f[..],e);e.created_at=310;#assert nfeed_accept(f[..],e);
+}
+#test "all-relay EOSE ends initial loading before the deadline and later notes stay pending" {
+ f:[1]NostrFeed;f[0].active=true;f[0].configured=true;f[0].nr=1;f[0].now=100;f[0].clock_at=60000;
+ ob_sub_start(f[0].batch[..],1,0,12000);_=ob_sub_eose(f[0].batch[..],0);_=nfeed_tick(f[..],0);#assert !f[0].initial;
+}
+#test "a failed clock read waits for backoff rather than spinning service requests" {
+ f:[1]NostrFeed;f[0].active=true;f[0].configured=true;f[0].nr=1;#assert nfeed_tick(f[..],0) && f[0].pending==6;f[0].action=0;
+ _=nfeed_reply(f[..],"",true);_=nfeed_tick(f[..],0);#assert f[0].pending!=6 && f[0].clock_at==5000;
+}
+#test "timestamp pagination overlaps the full boundary rather than silently skipping ties" {
+ r:[1]FeedRelay;r[0].received=16;r[0].oldest=100;r[0].until= -1;nfeed_page_end(r[..]);#assert r[0].until==100 && !r[0].history_done;
+ r[0].received=16;r[0].oldest=100;nfeed_page_end(r[..]);#assert r[0].until==100 && r[0].limit==32;
+ r[0].received=32;r[0].oldest=100;nfeed_page_end(r[..]);#assert r[0].limit==64;
+ r[0].received=64;r[0].oldest=100;nfeed_page_end(r[..]);#assert r[0].incomplete && r[0].history_done && r[0].until==100;
+ r[0]=FeedRelay.{};r[0].received=3;r[0].oldest=100;nfeed_page_end(r[..]);#assert r[0].history_done;
+}
+
+nfeed_author :: (text:string,out:[]u8)->int {
+ if text.count==0 {return 0;}if nf_hex(text) {return nfeed_copy(out,text);}
+ if text.count<5 || !((text[0]=='n' || text[0]=='N') && (text[1]=='p' || text[1]=='P') && (text[2]=='u' || text[2]=='U') && (text[3]=='b' || text[3]=='B') && text[4]=='1') {return -1;}
+ key:[32]u8;r:=nip19_decode_checked(text,key[..],false);if r.error!=NC_OK || r.type!=N19_NPUB || r.written!=32 {return -1;}
+ h:=hex_encode_checked(cast(string)key[..],out,false);return ifx h.error==NC_OK then h.written else -1;
+}
+nfeed_tag :: (text:string,out:[]u8)->int {
+ if text.count==0 {return 0;}s:=ifx text[0]=='#' then text[1..<text.count] else text;
+ if s.count==0 || s.count>64 || !nf_utf8(s) {return -1;}for c:s {if c<=32 || c=='#' {return -1;}}return nfeed_copy(out,s);
+}
+nfeed_req :: (f:[]NostrFeed,r:[]FeedRelay,slot:int,resume:bool,since:int,out:[]u8)->int {
+ metadata:=slot==r[0].metadata;history:=slot==r[0].history;filter:[1]NostrFilter;kinds:=[1]int.[ifx metadata then 0 else 1];filter[0].has_kinds=true;filter[0].kinds=kinds[..];
+ authors:[16]string;encoded:[16][64]u8;tag:[1]NostrTagFilter;values:=[1]string.[cast(string)f[0].tag[0..<f[0].nt]];
+ if metadata {for i:0..<r[0].profiles_n {h:=hex_encode_checked(cast(string)r[0].profiles[i][..],encoded[i][..],false);authors[i]=cast(string)encoded[i][0..<h.written];}filter[0].has_authors=true;filter[0].authors=authors[0..<r[0].profiles_n];}
+ else {
+  if f[0].na>0 {authors[0]=cast(string)f[0].author[0..<f[0].na];filter[0].has_authors=true;filter[0].authors=authors[0..<1];}
+  if f[0].nt>0 {tag[0].name='t';tag[0].values=values[..];filter[0].tags=tag[..];}
+  at:=f[0].since;if !history && resume && since>at {at=since;}filter[0].has_since=at>0;filter[0].since=at;
+  if history && r[0].until>=0 {filter[0].has_until=true;filter[0].until=r[0].until;}
+ }
+ filter[0].has_limit=true;filter[0].limit=ifx metadata then 16 else ifx history then r[0].limit else NFEED_LIMIT;
+ b:[24]u8;sub:=rl_sub_text(slot,r[0].relay[0].subs[slot].serial,b[..]);return nostr_message_write_req(sub,filter[..],out,false);
+}
+nfeed_accept :: (f:[]NostrFeed,e:NostrEvent)->bool {
+ if e.error!=NE_OK || !e.verified || e.kind!=1 || (f[0].now>0 && e.created_at>f[0].now+300) {return false;}
+ filter:NostrFilter;kinds:=[1]int.[1];filter.has_kinds=true;filter.kinds=kinds[..];filter.has_since=f[0].since>0;filter.since=f[0].since;
+ authors:=[1]string.[cast(string)f[0].author[0..<f[0].na]];filter.has_authors=f[0].na>0;if filter.has_authors {filter.authors=authors[..];}
+ tags:[1]NostrTagFilter;values:=[1]string.[cast(string)f[0].tag[0..<f[0].nt]];if f[0].nt>0 {tags[0].name='t';tags[0].values=values[..];filter.tags=tags[..];}
+ return nf_match(filter,e);
+}
+nfeed_apply :: (f:[]NostrFeed)->bool {
+ key:[64]u8;tag:[64]u8;na:=nfeed_author(cast(string)f[0].draft_author[0..<f[0].nda],key[..]);nt:=nfeed_tag(cast(string)f[0].draft_tag[0..<f[0].ndt],tag[..]);
+ if na<0 {nfeed_note(f,"Use an npub or 64-character public key");return false;}if nt<0 {nfeed_note(f,"Use one hashtag, up to 64 bytes");return false;}
+ selected:=0;for i:0..<f[0].nr {if f[0].relays[i].draft {selected+=1;}}if selected==0 {nfeed_note(f,"Select a saved relay");return false;}
+ if f[0].draft_window<0 || f[0].draft_window>2 || f[0].query>=NRR_SERIAL {return false;}
+ if f[0].draft_window>0 && f[0].now==0 {nfeed_note(f,"Waiting for the clock");return false;}
+ f[0].author=key;f[0].na=na;f[0].tag=tag;f[0].nt=nt;f[0].window=f[0].draft_window;
+ f[0].since=ifx f[0].window==1 then f[0].now-86400 else ifx f[0].window==2 then f[0].now-604800 else 0;if f[0].since<0 {f[0].since=0;}
+ f[0].query+=1;f[0].n=0;f[0].pending_notes=0;f[0].page=0;f[0].initial=true;f[0].full=false;f[0].filters=false;nfeed_note(f,"");mask:u64=0;
+ for i:0..<f[0].nr {r:=f[0].relays[i..<i+1];r[0].selected=r[0].draft;r[0].reset=true;r[0].caught=false;r[0].received=0;r[0].oldest=NF_SAFE;r[0].until= -1;r[0].limit=NFEED_LIMIT;r[0].history_done=false;r[0].incomplete=false;
+  for sub:0..<RL_SUBS {a:=rl_unsubscribe(r[0].relay[..],sub);}if r[0].selected {mask|=cast(u64)1<<i;}
+ }ob_sub_start(f[0].batch[..],mask,f[0].ms,12000);return true;
+}
+nfeed_page_end :: (r:[]FeedRelay) {
+ if r[0].received<r[0].limit || r[0].oldest==NF_SAFE {r[0].history_done=true;return;}
+ if r[0].oldest==r[0].until {if r[0].limit>=64 {r[0].incomplete=true;r[0].history_done=true;}else {r[0].limit*=2;}}
+ else {r[0].until=r[0].oldest;r[0].limit=NFEED_LIMIT;}
+}
+
+// Reconcile the current account's saved relay list, never an unrelated default.
+nfeed_configure :: (f:[]NostrFeed,urls:[]string)->bool {
+ if urls.count<1 || urls.count>6 {return false;}same:=f[0].configured && f[0].nr==urls.count;
+ for url,i:urls {if url.count>200 || !nrr_admit(1,i,1,0,url) {return false;}if same && cast(string)f[0].relays[i].url[0..<f[0].relays[i].nu]!=url {same=false;}}
+ if same {f[0].active=true;return true;}
+ for i:0..<6 {gen:=f[0].relays[i].relay[0].gen;f[0].relays[i]=FeedRelay.{};f[0].relays[i].relay[0].gen=gen;if i<urls.count {f[0].relays[i].nu=nfeed_copy(f[0].relays[i].url[..],urls[i]);}}
+ f[0].nr=urls.count;f[0].configured=true;f[0].active=true;f[0].reset_all=true;return nfeed_apply(f);
+}
+nfeed_pause :: (f:[]NostrFeed) {
+ if !f[0].active {return;}f[0].active=false;f[0].reset_all=true;
+ for i:0..<6 {gen:=f[0].relays[i].relay[0].gen;f[0].relays[i].relay[0]=Relay.{};f[0].relays[i].relay[0].gen=gen;f[0].relays[i].reset=true;f[0].relays[i].ack=0;}
+}
+nfeed_do :: (f:[]NostrFeed,action:int,slot:int,payload:string)->bool {
+ gen:=ifx action==5 then 0 else ifx action==6 then f[0].clock_generation else f[0].relays[slot].relay[0].gen;
+ ack:=ifx action==3 || action==4 then f[0].relays[slot].ack else 0;
+ n:=nrr_request(NRR_ACTIONS[action-1],slot,gen,ack,payload,f[0].body[..]);if n<0 {nfeed_note(f,"Relay request unavailable");return false;}
+ f[0].nb=n;f[0].action=NRR_OP;f[0].busy=true;f[0].pending=action;f[0].pending_slot=slot;return true;
+}
+nfeed_tick :: (f:[]NostrFeed,dt:f32)->bool {
+ changed:=false;if dt>0 && dt<=1 {f[0].ms+=cast(int)(dt*1000);f[0].drained=0;}
+ if f[0].busy || f[0].action!=0 {return false;}
+ if f[0].reset_all {f[0].reset_all=false;return nfeed_do(f,5,0,"");}
+ if !f[0].active || !f[0].configured || f[0].drained>=12 {return false;}
+ if f[0].ms>=f[0].clock_at {f[0].clock_at=f[0].ms+60000;return nfeed_do(f,6,0,"");}
+ if f[0].initial {expired:=ob_sub_tick(f[0].batch[..],f[0].ms);if expired>0 {for i:0..<f[0].nr {if f[0].batch[0].state[i]==OB_TIMEOUT {f[0].relays[i].incomplete=true;}}}if ob_caught_up(f[0].batch[..]) {f[0].initial=false;changed=true;}}
+ for turn:0..<f[0].nr {
+  i:=(f[0].next+turn)%f[0].nr;r:=f[0].relays[i..<i+1];state:=r[0].relay[0].state;
+  if !r[0].selected {if state==RL_OPEN || state==RL_CONNECTING || state==RL_BACKOFF {rl_shutdown(r[0].relay[..]);f[0].next=(i+1)%f[0].nr;return nfeed_do(f,4,i,"");}continue;}
+  if state==RL_SHUT {r[0].relay[0].state=RL_IDLE;state=RL_IDLE;}
+  todo:=rl_tick(r[0].relay[..],f[0].ms);
+  if todo==RL_DO_TIMEOUT {_=rl_dropped(r[0].relay[..],r[0].relay[0].gen,f[0].ms,i*117);r[0].failed=true;r[0].incomplete=true;return nfeed_do(f,4,i,"");}
+  if state==RL_IDLE || todo==RL_DO_CONNECT {
+   if r[0].relay[0].gen>=NRR_SERIAL {r[0].incomplete=true;continue;}
+   gen:=rl_start(r[0].relay[..],f[0].ms);r[0].ack=0;r[0].failed=false;r[0].idle=0;f[0].next=(i+1)%f[0].nr;return nfeed_do(f,1,i,cast(string)r[0].url[0..<r[0].nu]);
+  }
+  if state==RL_OPEN {
+   if r[0].reset {
+    closing:=false;for sub:0..<RL_SUBS {if r[0].relay[0].subs[sub].state==RS_CLOSING {closing=true;}}
+    if !closing {r[0].sub=rl_subscribe(r[0].relay[..]);r[0].history= -1;r[0].metadata= -1;r[0].reset=false;}
+   }
+   o:=rl_next(r[0].relay[..],f[0].ms);
+   if o.kind==RL_OUT_CLOSE {b:[24]u8;out:[128]u8;id:=rl_sub_text(o.slot,r[0].relay[0].subs[o.slot].serial,b[..]);n:=nostr_message_write_close(id,out[..],false);return nfeed_do(f,2,i,cast(string)out[0..<n]);}
+   if o.kind==RL_OUT_REQ {out:[8192]u8;n:=nfeed_req(f,r,o.slot,o.has_since,o.since,out[..]);if n<0 {r[0].incomplete=true;continue;}return nfeed_do(f,2,i,cast(string)out[0..<n]);}
+   if r[0].caught && r[0].metadata<0 && !r[0].reset {
+    r[0].profiles_n=0;for p:0..<f[0].np {m:=f[0].profiles[p];bit:=cast(u64)1<<i;if !m.loaded && (m.asked&bit)==0 && r[0].profiles_n<16 {r[0].profiles[r[0].profiles_n]=m.author;r[0].profiles_n+=1;f[0].profiles[p].asked|=bit;}}
+    if r[0].profiles_n>0 {r[0].metadata=rl_subscribe(r[0].relay[..]);return true;}
+   }
+  }
+  if (state==RL_OPEN || state==RL_CONNECTING) && f[0].ms>=r[0].idle {f[0].next=(i+1)%f[0].nr;f[0].drained+=1;return nfeed_do(f,3,i,"");}
+ }return changed;
+}
+nfeed_profile_slot :: (f:[]NostrFeed,key:[32]u8)->int {
+ copy:=key;for i:0..<f[0].np {if rl_id_eq(f[0].profiles[i].author[..],copy[..]) {return i;}}
+ if f[0].np>=64 {return -1;}i:=f[0].np;f[0].np+=1;f[0].profiles[i].author=key;return i;
+}
+nfeed_frame :: (f:[]NostrFeed,i:int,raw:string)->bool {
+ r:=f[0].relays[i..<i+1];m:=nostr_message_read(raw);if m.error!=NM_OK {r[0].incomplete=true;return false;}
+ sub:=nm_text(m,m.sub);slot:= -1;b:[24]u8;for k:0..<RL_SUBS {if sub==rl_sub_text(k,r[0].relay[0].subs[k].serial,b[..]) {slot=k;}}
+ if slot<0 || r[0].reset || r[0].relay[0].subs[slot].state==RS_FREE || r[0].relay[0].subs[slot].state==RS_CLOSING {return false;}
+ if m.type==NM_EVENT {
+  scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(raw[m.event.from..<m.event.to],scratch[..],false));
+  asked:=false;if slot==r[0].metadata {for p:0..<r[0].profiles_n {if rl_id_eq(r[0].profiles[p][..],e.public_key[..]) {asked=true;}}}
+  if e.error!=NE_OK || !e.verified || (slot==r[0].metadata && (e.kind!=0 || !asked)) || (slot!=r[0].metadata && !nfeed_accept(f,e)) {r[0].incomplete=true;f[0].rejected+=1;return false;}
+  incoming:=RlIn.{kind=RL_IN_EVENT,sub=sub,id=e.id,created_at=e.created_at,verified=e.error==NE_OK && e.verified};
+  verdict:=rl_input(r[0].relay[..],r[0].relay[0].gen,incoming);if verdict!=RL_DELIVER && verdict!=RL_DUPLICATE {r[0].incomplete=true;f[0].rejected+=1;return false;}
+  if slot==r[0].metadata {
+   p:=nfeed_profile_slot(f,e.public_key);if p<0 {return false;}old:=f[0].profiles[p];if old.loaded && (e.created_at<old.at || (e.created_at==old.at && !nfeed_id_before(e.id,old.id))) {return false;}
+   text:[65536]u8;meta:=nostr_metadata_read(e,text[..],false);if meta.error!=NMD_OK {return false;}
+   f[0].profiles[p].nn=nmd_decoded(meta,NMD_NAME,f[0].profiles[p].name[..]);if f[0].profiles[p].nn<0 {f[0].profiles[p].nn=0;}
+   f[0].profiles[p].np=nmd_decoded(meta,NMD_PICTURE,f[0].profiles[p].picture[..]);if f[0].profiles[p].np<0 {f[0].profiles[p].np=0;}
+   f[0].profiles[p].at=e.created_at;f[0].profiles[p].id=e.id;f[0].profiles[p].loaded=true;return true;
+  }
+  if !nfeed_accept(f,e) {return false;}
+  if slot==r[0].history || !r[0].caught {r[0].received+=1;if e.created_at<r[0].oldest {r[0].oldest=e.created_at;}}
+  if ob_sub_event(f[0].batch[..],i,e.id)!=OB_NEW {return false;}
+  for n:0..<f[0].n {if rl_id_eq(f[0].notes[n].id[..],e.id[..]) {return false;}}
+  content:[NFEED_CONTENT]u8;n:=json_unescape(e.original[e.content_from..<e.content_to],content[..]);if n<0 {r[0].incomplete=true;return false;}
+  if f[0].n>=NFEED_NOTES {f[0].full=true;r[0].incomplete=true;return true;}
+  at:=f[0].n;f[0].n+=1;f[0].notes[at]=FeedNote.{id=e.id,author=e.public_key,at=e.created_at,n=n,content=content,visible=f[0].initial || slot==r[0].history};
+  if !f[0].notes[at].visible {f[0].pending_notes+=1;}_=nfeed_profile_slot(f,e.public_key);return true;
+ }
+ if m.type==NM_EOSE {
+  _=rl_input(r[0].relay[..],r[0].relay[0].gen,RlIn.{kind=RL_IN_EOSE,sub=sub});
+  if slot==r[0].metadata {_=rl_unsubscribe(r[0].relay[..],slot);r[0].metadata= -1;}
+  else if slot==r[0].history {nfeed_page_end(r);_=rl_unsubscribe(r[0].relay[..],slot);r[0].history= -1;}
+  else if slot==r[0].sub {r[0].caught=true;_=ob_sub_eose(f[0].batch[..],i);nfeed_page_end(r);}
+  return true;
+ }
+ if m.type==NM_CLOSED {_=rl_input(r[0].relay[..],r[0].relay[0].gen,RlIn.{kind=RL_IN_CLOSED,sub=sub});r[0].incomplete=true;r[0].failed=true;_=ob_sub_closed(f[0].batch[..],i);return true;}
+ return false;
+}
+nfeed_reply :: (f:[]NostrFeed,raw:string,failed:bool)->bool {
+ if !f[0].busy {return false;}action:=f[0].pending;i:=f[0].pending_slot;f[0].busy=false;f[0].pending=0;
+ if action==5 {if failed {f[0].reset_all=true;}return true;}
+ if action==6 {q:[1]NrrObservation;if !failed && nrr_observe(raw,q[..]) && q[0].kind==8 && q[0].generation==f[0].clock_generation {f[0].now=nrr_seconds(cast(string)q[0].payload[0..<q[0].n]);}else {f[0].clock_at=f[0].ms+5000;}return true;}
+ if i<0 || i>=f[0].nr {return false;}r:=f[0].relays[i..<i+1];
+ if failed {r[0].failed=true;r[0].incomplete=true;_=rl_dropped(r[0].relay[..],r[0].relay[0].gen,f[0].ms,i*117);_=ob_sub_closed(f[0].batch[..],i);return true;}
+ if action==4 {return true;}
+ q:[1]NrrObservation;if !nrr_observe(raw,q[..]) || q[0].slot!=i || q[0].generation!=r[0].relay[0].gen || !r[0].selected {return false;}
+ kind:=q[0].kind;if kind==6 {r[0].idle=f[0].ms+500;return false;}
+ if q[0].sequence<=r[0].ack {return false;}if q[0].sequence!=r[0].ack+1 {r[0].incomplete=true;r[0].failed=true;_=rl_dropped(r[0].relay[..],r[0].relay[0].gen,f[0].ms,0);return true;}
+ r[0].ack=q[0].sequence;
+ if kind==2 {_=rl_opened(r[0].relay[..],r[0].relay[0].gen,f[0].ms);return true;}
+ if kind==3 {return nfeed_frame(f,i,cast(string)q[0].payload[0..<q[0].n]);}
+ if kind==4 || kind==5 || kind==7 {r[0].failed=true;r[0].incomplete=true;r[0].caught=false;_=rl_dropped(r[0].relay[..],r[0].relay[0].gen,f[0].ms,i*117);_=ob_sub_closed(f[0].batch[..],i);return true;}
+ return false;
+}
+nfeed_id_before :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return a[i]<b[i];}}return false;}
+nfeed_order :: (f:[]NostrFeed,out:[]int)->int {
+ n:=0;for i:0..<f[0].n {if !f[0].notes[i].visible {continue;}if n>=out.count {break;}at:=n;while at>0 {a:=f[0].notes[i];b:=f[0].notes[out[at-1]];if a.at<b.at || (a.at==b.at && !nfeed_id_before(a.id,b.id)) {break;}out[at]=out[at-1];at-=1;}out[at]=i;n+=1;}return n;
+}
+nfeed_earlier :: (f:[]NostrFeed) {
+ order:[NFEED_NOTES]int;n:=nfeed_order(f,order[..]);if (f[0].page+1)*NFEED_PAGE<n {f[0].page+=1;return;}
+ if f[0].full {return;}for i:0..<f[0].nr {r:=f[0].relays[i..<i+1];if !r[0].selected || !r[0].caught || r[0].history_done || r[0].history>=0 || r[0].relay[0].state!=RL_OPEN {continue;}r[0].received=0;r[0].oldest=NF_SAFE;r[0].history=rl_subscribe(r[0].relay[..]);}
+}

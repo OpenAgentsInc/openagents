@@ -299,6 +299,16 @@ k_user :: (t: [] Tree, u: [] Ui, id: string, text: string) -> int {
 // A line under an answer: the model, whose key, the cost.
 k_meta :: (t: [] Tree, id: string, text: string) -> int { return tr_leaf(t, id, TG_P, "meta", text); }
 
+// A page of records read from the top. Keep its visible anchor while its
+// record IDs/metadata change; change scope when explicitly opening a new page.
+// Unlike a conversation, this never follows the bottom on new arrivals.
+#test "a reading list exposes its independent scroll scope through the shared tree" {
+ t:[1]Tree;tr_begin(t[..]);_=tr_leaf(t[..],"before",TG_P,"","Before");x:=k_reading_list(t[..],"notes","query.2.page.0");tr_close(t[..]);
+ #assert x==1;
+ #assert tr_class(t[..],x)=="reading-list" && tr_attr_of(t[..],x,AT_STATE)=="query.2.page.0";
+}
+k_reading_list :: (t:[]Tree,id:string,scope:string)->int {x:=tr_open(t,id,TG_SECTION,"reading-list");tr_attr(t,x,AT_ROLE,"region");tr_attr(t,x,AT_STATE,scope);return x;}
+
 // A block's or an item's text with its runs as inline nodes under the open node.
 k_inline :: (t: [] Tree, doc: [] MdDoc, id: string, text: string, runs: [] MdRun) {
   ida: [UI_ID] u8; idb: [UI_ID] u8;

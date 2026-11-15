@@ -1,9 +1,10 @@
 # Nostr application services
 
 2026-11-15, #13626, part of [the Arcade delivery](../arcade/08-delivery.md).
-This defines the minimal installed public-feed read contract and the alpha
-custody boundary for later messaging. Neither contract is an installed service
-until its host consumer ships. Existing account identity/settings, login,
+This defines the installed public-feed read contract and the alpha custody
+boundary for later messaging. The read host ships in iOS 1092 and `/feed`;
+the custody envelope remains reserved, with no installed signer effect.
+Existing account identity/settings, login,
 backup, clipboard and chat contracts retain their identities and permissions.
 
 ## Ownership and identity
@@ -102,8 +103,12 @@ unavailable for public reads; messaging adds an explicitly authorized service.
 Limits: six slots; outgoing frame 8 KiB; incoming text frame 64 KiB; encoded
 bridge record 400,000 bytes. The latter holds worst-case JSON escaping of a
 whole 64 KiB frame inside the app's 1 MiB event inbox. Binary frames and
-invalid UTF-8 refuse the connection. The platform applies SDK message limits
-before decoding/copying into retained buffers.
+invalid UTF-8 refuse the connection. URLSession applies its message-size
+limit before app retention. Browser WebSocket delivers a whole SDK message;
+the adapter rejects oversized/binary messages before copying them into Coax,
+but cannot bound the browser's allocation before delivery. Both adapters
+enforce the shared retained-queue budget; neither promises a browser transport
+allocation ceiling the SDK does not provide.
 
 ### Observations and acknowledgement
 
@@ -133,12 +138,60 @@ replacement retire every slot and erase queued records. Background suspends
 reads; foreground resumes with a fresh generation and shared cursors. Source
 clocks, retries and page/filter generations remain Coax state.
 
-The feed owns the first implementation in #13627. It needs no private key,
+The feed's first implementation is #13627. It needs no private key,
 custody service, messaging journal or full animation catalog. Messaging #13628
 extends this session/transport through an explicitly versioned capability;
 it cannot widen the read-only v1 send gate in place. Publishing and AUTH need
 an independently authorized/versioned capability on the same socket carrier;
 the existing read-only operation keeps refusing both frames.
+
+### Installed feed consumer
+
+`apps/shared/nostr-feed.coax` owns the shared read controller and
+`nostr-feed-view.coax` projects it through the component library. Native
+`NativeRelay.swift` and the browser's existing socket SDK only move admitted
+bytes. `relay-read-queue.coax` owns the bounded retained-delivery ledger;
+`relay-read-host.coax` assembles that ledger with the one wire codec for the
+native SDK. The macOS environment window retains its existing presentation
+profile and does not opt into this mobile sidebar/service.
+
+The default query reads kind 1 from every selected saved relay. Compact draft
+filters support a complete public hex key/npub, one exact NIP `#t` value, all
+time/24 hours/7 days, and a nonempty subset of the saved relays. Invalid drafts
+never replace the active query. A query fixes its wall-clock lower bound at
+Apply. No secret-key input, arbitrary relay search, automatic default-relay
+replacement or public note publication is part of this reader.
+
+Original ID and signature verification precede retention and resume-cursor
+advancement. Results sort by descending timestamp and ascending complete event
+ID. New live notes remain pending behind an indicator; they do not reorder the
+visible reading list. Explicitly showing new notes, changing query or changing
+page changes the reading scope. Native layout preserves the first visible
+stable control within an unchanged scope. Browser DOM updates preserve stable
+elements and the browser's scroll anchor.
+
+Bounds: 128 retained notes, 16 KiB complete decoded content per note, twelve
+notes per rendered page, 64 author metadata records, sixteen authors per
+metadata REQ, initial/history limit sixteen, increasing to at most 64 for a
+repeated equal-timestamp boundary. Pagination overlaps that boundary; it never
+decrements the timestamp to skip ties. A saturated boundary or resource limit
+reports incomplete instead of asserting an empty/end-of-history result.
+This bounded in-memory reader is not the durable messaging journal.
+
+Verified kind-0 metadata is requested only for observed authors; npub remains
+the fallback. Pictures require the existing remote-images preference and safe
+HTTPS URL policy. Inline media is deferred to the shared media feature.
+Account changes/logout retire and clear the entire scope. A refused/expired
+browser account/settings response also clears it. Browser hidden-page and
+native inactive-app transitions close sockets; foreground polling consumes the
+terminal observations, reconnects with shared bounded backoff and resumes from
+verified inclusive cursors. Late SDK callbacks cannot acquire a new owner.
+
+The optional browser SDK exports `coaxial_socket_slots` (six),
+`coaxial_socket_text_limit` (65536 bytes) and
+`coaxial_socket_pause_background` (one) select these SDK limits/lifecycle for
+this module. Other pages retain the existing four-slot behavior. These scalar
+bindings do not introduce a second Nostr protocol or widen v1 send admission.
 
 ## Messaging custody: alpha envelope
 

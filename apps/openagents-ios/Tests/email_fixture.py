@@ -15,6 +15,7 @@ p.add_argument("--port", type=int, default=13491)
 p.add_argument("--environment-transcript", action="store_true")
 p.add_argument("--projects", action="store_true")
 p.add_argument("--api-only",action="store_true")
+p.add_argument("--feed",action="store_true",help="Isolated browser account oracle with two real read-only relays")
 a = p.parse_args()
 manifest = None if a.api_only else json.loads((a.directory / "manifest.json").read_text())
 objects = {} if manifest is None else {f["sha256"]: a.directory / "Starter" / f["path"] for f in manifest["files"]}
@@ -130,6 +131,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         route=urlparse(self.path);query=parse_qs(route.query)
+        if a.feed and route.path in ("/api/auth/account","/api/auth/settings/v1"):
+            if route.path=="/api/auth/account":return self.answer(200,dict(account="feed_oracle",primary="fixture@example.test"))
+            settings=copy.deepcopy(account_settings)
+            settings["relays"]=["wss://relay.primal.net","wss://nos.lol"]
+            settings["privacy"]["remote_images"]=False
+            return self.answer(200,settings)
         if route.path=="/report/durable/wait":
             with rich_lock:
                 found=[t for t in rich_turns.values() if t["prompt"]==query.get("question",[""])[0]]

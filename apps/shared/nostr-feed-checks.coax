@@ -1,0 +1,57 @@
+// Included by nostr-feed.coax only for checking. Published independent event
+// vector, not a live user's key. The vector is never sent to any relay.
+#load "../../coax/tests/nostr/event_sign_vectors.coax";
+
+#test "author time and hashtag filters constrain both the REQ and a verified independent note" #steps 40000000 {
+ f:[1]NostrFeed;f[0].nr=2;f[0].now=ES_CREATED+10;
+ event:=ES_EVENT;scratch:[1024]u8;e:=ne_signed_fast(nostr_event_read(cast(string)event[..],scratch[..],false));#assert e.verified && nfeed_accept(f[..],e);
+ h:=hex_encode_checked(cast(string)e.public_key[..],f[0].draft_author[..],false);f[0].nda=h.written;f[0].draft_window=1;
+ f[0].ndt=nfeed_copy(f[0].draft_tag[..],"#a\"b\\c");f[0].relays[1].draft=false;
+ #assert nfeed_apply(f[..]) && nfeed_accept(f[..],e) && f[0].since==ES_CREATED+10-86400 && !f[0].relays[1].selected;
+ r:=f[0].relays[0..<1];r[0].sub=rl_subscribe(r[0].relay[..]);out:[2048]u8;n:=nfeed_req(f[..],r,r[0].sub,false,0,out[..]);
+ d:[1]Jv;nodes:[64]JvNode;#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);v:=d[0];filter:=jv_at(v,0,2);
+ #assert js_number(v,jv_get(v,filter,"since"))==f[0].since && js_number(v,jv_get(v,filter,"limit"))==16;
+ #assert jv_raw(v,jv_at(v,jv_get(v,filter,"authors"),0))==cast(string)f[0].author[0..<64];
+ tag:[64]u8;tag_n:=js_string(v,jv_at(v,jv_get(v,filter,"#t"),0),tag[..]);#assert cast(string)tag[0..<tag_n]=="a\"b\\c";
+ f[0].author[0]=ifx f[0].author[0]=='0' then '1' else '0';#assert !nfeed_accept(f[..],e);f[0].na=0;
+ f[0].nt=nfeed_copy(f[0].tag[..],"other");#assert !nfeed_accept(f[..],e);f[0].nt=0;
+ f[0].since=ES_CREATED+1;#assert !nfeed_accept(f[..],e);
+ f[0].relays[0].draft=false;#assert !nfeed_apply(f[..]) && f[0].nn>0;
+}
+
+#test "a complete signed note verifies, deduplicates across relays, and keeps literal UTF8" #steps 40000000 {
+ f:[1]NostrFeed;f[0].nr=2;f[0].active=true;f[0].now=ES_CREATED+100;ob_sub_start(f[0].batch[..],3,0,12000);
+ for i:0..<2 {r:=f[0].relays[i..<i+1];r[0].sub=rl_subscribe(r[0].relay[..]);gen:=rl_start(r[0].relay[..],0);_=rl_opened(r[0].relay[..],gen,0);_=rl_next(r[0].relay[..],0);r[0].reset=false;}
+ frame:[1024]u8;n:=json_raw(frame[..],0,"[\"EVENT\",\"s0.1\",");event:=ES_EVENT;n=json_raw(frame[..],n,cast(string)event[..]);n=json_raw(frame[..],n,"]");
+ #assert nfeed_frame(f[..],0,cast(string)frame[0..<n]) && f[0].n==1 && f[0].notes[0].visible;
+ content:=ES_CONTENT;#assert cast(string)f[0].notes[0].content[0..<f[0].notes[0].n]==cast(string)content[..];
+ #assert !nfeed_frame(f[..],1,cast(string)frame[0..<n]) && f[0].n==1;
+ #assert f[0].relays[0].received==1 && f[0].relays[1].received==1;
+ old:=f[0].relays[0].relay[0].subs[0].newest;
+ // A stale subscription and a valid event of a different kind cannot move the cursor.
+ frame[13]='2';#assert !nfeed_frame(f[..],0,cast(string)frame[0..<n]) && f[0].n==1;frame[13]='1';
+ n=json_raw(frame[..],0,"[\"EVENT\",\"s0.1\",");n=json_raw(frame[..],n,RLR_REAL);n=json_raw(frame[..],n,"]");
+ #assert !nfeed_frame(f[..],0,cast(string)frame[0..<n]) && f[0].relays[0].relay[0].subs[0].newest==old;
+}
+#test "a forged ID or signature never enters the feed or poisons its resume cursor" #steps 40000000 {
+ f:[1]NostrFeed;f[0].nr=1;r:=f[0].relays[0..<1];r[0].sub=rl_subscribe(r[0].relay[..]);gen:=rl_start(r[0].relay[..],0);_=rl_opened(r[0].relay[..],gen,0);_=rl_next(r[0].relay[..],0);r[0].reset=false;
+ event:=ES_EVENT;frame:[1024]u8;
+ for field:[2]string.["id","sig"] {
+  d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],cast(string)event[..],nodes[..]);at:=d[0].nodes[jv_get(d[0],0,field)].from;event[at]=ifx event[at]=='0' then '1' else '0';
+  n:=json_raw(frame[..],0,"[\"EVENT\",\"s0.1\",");n=json_raw(frame[..],n,cast(string)event[..]);n=json_raw(frame[..],n,"]");
+  #assert !nfeed_frame(f[..],0,cast(string)frame[0..<n]) && f[0].n==0 && !r[0].relay[0].subs[0].has_newest;event=ES_EVENT;
+ }
+}
+#test "new arrivals stay pending and sorting uses timestamp then complete ID" #steps 40000000 {
+ f:[1]NostrFeed;f[0].nr=1;f[0].initial=false;ob_sub_start(f[0].batch[..],1,0,12000);r:=f[0].relays[0..<1];r[0].sub=rl_subscribe(r[0].relay[..]);gen:=rl_start(r[0].relay[..],0);_=rl_opened(r[0].relay[..],gen,0);_=rl_next(r[0].relay[..],0);r[0].reset=false;r[0].caught=true;
+ event:=ES_EVENT;b:[1024]u8;n:=json_raw(b[..],0,"[\"EVENT\",\"s0.1\",");n=json_raw(b[..],n,cast(string)event[..]);n=json_raw(b[..],n,"]");
+ #assert nfeed_frame(f[..],0,cast(string)b[0..<n]) && f[0].pending_notes==1 && !f[0].notes[0].visible;
+ out:[4]int;#assert nfeed_order(f[..],out[..])==0;
+ f[0].n=3;for i:0..<3 {f[0].notes[i].visible=true;f[0].notes[i].at=10;f[0].notes[i].id[0]=cast(u8)(3-i);}f[0].notes[0].at=11;
+ #assert nfeed_order(f[..],out[..])==3 && out[0]==0 && out[1]==2 && out[2]==1;
+}
+#test "stale connection observations and serial gaps do not enter a replacement stream" {
+ f:[1]NostrFeed;f[0].nr=1;f[0].relays[0].relay[0].gen=2;f[0].busy=true;f[0].pending=3;b:[1024]u8;
+ n:=nrr_observation(0,1,1,"open","",b[..]);#assert !nfeed_reply(f[..],cast(string)b[0..<n],false) && f[0].relays[0].ack==0;
+ f[0].busy=true;f[0].pending=3;n=nrr_observation(0,2,2,"open","",b[..]);#assert nfeed_reply(f[..],cast(string)b[0..<n],false) && f[0].relays[0].ack==0 && f[0].relays[0].incomplete;
+}

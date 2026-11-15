@@ -1,0 +1,67 @@
+// Retained observation ownership for the installed read carrier. SDKs hold the
+// actual strings; this shared ledger decides capacity, delivery and ACKs.
+#load "relay-read-policy.coax";
+#authority;
+NRQ_COUNT :: 64; NRQ_BYTES :: 1048576; NRQ_RESERVE :: 256;
+NrQueue :: struct {generation:int;live:bool;head:int;count:int;bytes:int;last:int;delivered:int;ack:int;sizes:[64]int;}
+
+#test "observation replay acknowledges only an actually delivered prefix" {
+ q:[1]NrQueue;#assert nrq_open(q[..],1) && !nrq_open(q[..],1) && !nrq_open(q[..],0);
+ #assert nrq_push(q[..],4)==1 && nrq_push(q[..],7)==2 && nrq_poll(q[..],0)==1;
+ #assert nrq_poll(q[..],2)<0 && nrq_poll(q[..],1)==2 && q[0].count==1 && q[0].bytes==7;
+ #assert nrq_poll(q[..],0)<0 && nrq_poll(q[..],1)==2 && nrq_poll(q[..],2)==0 && q[0].count==0;
+ #assert nrq_push(q[..],3)==3 && nrq_poll(q[..],2)==3;
+ #assert nrq_open(q[..],2) && q[0].last==0 && q[0].count==0 && !nrq_open(q[..],1);
+}
+#test "capacity reserves one terminal record and a terminal observation retires SDK writes" {
+ q:[1]NrQueue;#assert nrq_open(q[..],1);
+ for i:0..<63 {#assert nrq_push(q[..],0)==i+1;}
+ #assert nrq_push(q[..],0)<0 && nrq_terminal(q[..],256)==64 && q[0].count==64 && !q[0].live;
+ #assert nrq_push(q[..],0)<0 && nrq_terminal(q[..],0)<0;
+ for i:0..<64 {#assert nrq_poll(q[..],i)==i+1;}
+ #assert nrq_poll(q[..],64)==0 && q[0].bytes==0;
+}
+#test "decoded byte ceilings sequence exhaustion and invalid ACKs are independent" {
+ q:[1]NrQueue;#assert !nrq_open(q[..],NRR_SERIAL+1) && nrq_open(q[..],1);
+ #assert nrq_terminal(q[..],257)<0;
+ #assert nrq_push(q[..],-1)<0 && nrq_push(q[..],65537)<0;
+ for i:0..<15 {#assert nrq_push(q[..],65536)>0;}
+ #assert nrq_push(q[..],65280)>0 && q[0].bytes==NRQ_BYTES-NRQ_RESERVE;
+ #assert nrq_push(q[..],1)<0 && nrq_terminal(q[..],257)<0 && nrq_terminal(q[..],256)>0 && q[0].bytes==NRQ_BYTES;
+ #assert nrq_poll(q[..],-1)<0 && nrq_poll(q[..],1)<0;
+ #assert nrq_open(q[..],2);q[0].last=NRR_SERIAL-1;#assert nrq_push(q[..],0)<0 && nrq_terminal(q[..],0)==NRR_SERIAL;
+}
+#test "empty or multiple ledgers refuse and wraparound retains the exact ACK prefix" {
+ q:[2]NrQueue;
+ for n:[2]int.[0,2] {#assert !nrq_open(q[0..<n],1) && nrq_push(q[0..<n],0)<0 && nrq_terminal(q[0..<n],0)<0 && nrq_poll(q[0..<n],0)<0;}
+ #assert !nrq_open(q[0..<1],-1) && nrq_open(q[0..<1],NRR_SERIAL) && !nrq_open(q[0..<1],NRR_SERIAL+1);
+ #assert nrq_terminal(q[0..<1],-1)<0;
+ q[0]=NrQueue.{};#assert nrq_open(q[0..<1],1);
+ for i:0..<70 {#assert nrq_push(q[0..<1],i%5)==i+1 && nrq_poll(q[0..<1],i)==i+1 && nrq_poll(q[0..<1],i+1)==0 && q[0].bytes==0;}
+ #assert q[0].head==6 && q[0].ack==70;
+ #assert nrq_open(q[1..<2],1);
+ for i:0..<63 {#assert nrq_push(q[1..<2],1)==i+1 && nrq_poll(q[1..<2],i)==i+1 && nrq_poll(q[1..<2],i+1)==0;}
+ #assert q[1].head==63 && nrq_push(q[1..<2],10)==64 && nrq_push(q[1..<2],20)==65 && nrq_poll(q[1..<2],63)==64;
+ #assert nrq_poll(q[1..<2],64)==65 && q[1].bytes==20 && nrq_poll(q[1..<2],65)==0 && q[1].head==1;
+}
+nrq_open :: (q:[]NrQueue,generation:int)->bool #export_c #effects(all) {
+ if q.count!=1 || generation<=q[0].generation || generation>NRR_SERIAL {return false;}
+ q[0]=NrQueue.{};q[0].generation=generation;q[0].live=true;return true;
+}
+nrq_push :: (q:[]NrQueue,bytes:int)->int #export_c #effects(all) {
+ if q.count!=1 || !q[0].live || bytes<0 || bytes>NRR_FRAME || q[0].count>=NRQ_COUNT-1 || q[0].bytes+bytes>NRQ_BYTES-NRQ_RESERVE || q[0].last>=NRR_SERIAL-1 {return -1;}
+ return nrq_append(q,bytes);
+}
+nrq_terminal :: (q:[]NrQueue,bytes:int)->int #export_c #effects(all) {
+ if q.count!=1 || !q[0].live || bytes<0 || bytes>NRQ_RESERVE {return -1;}
+ if q[0].count>=NRQ_COUNT {return -1;} // mutant: equivalent (>= -> > and 64 -> 65: a live ledger has at most 63 records; terminal retires it)
+ if q[0].bytes+bytes>NRQ_BYTES {return -1;} // mutant: equivalent (+ -> - and limit -> limit+1: push reserves 256 bytes, and terminal's independently checked size is at most 256)
+ if q[0].last>=NRR_SERIAL {return -1;} // mutant: equivalent (>= -> > and limit -> limit+1: push stops at serial-1, terminal retires the owner)
+ q[0].live=false;return nrq_append(q,bytes);
+}
+nrq_append :: (q:[]NrQueue,bytes:int)->int #effects(all) {q[0].sizes[(q[0].head+q[0].count)%NRQ_COUNT]=bytes;q[0].count+=1;q[0].bytes+=bytes;q[0].last+=1;return q[0].last;}
+nrq_poll :: (q:[]NrQueue,ack:int)->int #export_c #effects(all) {
+ if q.count!=1 || ack<q[0].ack || ack>q[0].delivered {return -1;}
+ while q[0].ack<ack {q[0].bytes-=q[0].sizes[q[0].head];q[0].head=(q[0].head+1)%NRQ_COUNT;q[0].count-=1;q[0].ack+=1;}
+ if q[0].count==0 {return 0;}q[0].delivered=q[0].ack+1;return q[0].delivered;
+}

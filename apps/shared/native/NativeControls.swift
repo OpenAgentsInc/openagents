@@ -30,6 +30,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     private lazy var centeredY=stack.centerYAnchor.constraint(equalTo:scroll.contentLayoutGuide.centerYAnchor)
     private lazy var centeredHeight:NSLayoutConstraint={let c=scroll.contentLayoutGuide.heightAnchor.constraint(equalTo:scroll.frameLayoutGuide.heightAnchor);c.priority = .defaultLow;return c}()
     private var conversation:String?
+    private var readingScope:String?
     private var following=true
     private let header=UIView(),headerLeft=UIStackView(),headerRight=UIStackView(),headerTitle=UIView(),headerRule=NativeHeaderRule()
     private lazy var titleWidth=headerTitle.widthAnchor.constraint(lessThanOrEqualTo:header.widthAnchor,constant:-104)
@@ -97,11 +98,18 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     override func viewDidDisappear(_ animated:Bool) {super.viewDidDisappear(animated);arcade?.active=false}
     func render(_ elements:[NativeElement]) {
         loadViewIfNeeded()
+        let reading=elements.first {$0.role=="reading-list"}?.value
+        let anchor:(String,CGFloat)? = reading != nil && reading==readingScope ? controls.compactMap {id,control -> (String,CGFloat)? in
+            guard control.isDescendant(of:stack) else{return nil}
+            let rect=control.convert(control.bounds,to:scroll)
+            return rect.maxY>scroll.contentOffset.y+8 ? (id,rect.minY-scroll.contentOffset.y):nil
+        }.min(by:{$0.1<$1.1}):nil
+        let oldReading=readingScope;readingScope=reading
         let centered=elements.contains {$0.role=="welcome"};ordinaryTop.isActive = !centered;ordinaryBottom.isActive = !centered;centeredTop.isActive=centered;centeredBottom.isActive=centered;centeredY.isActive=centered;centeredHeight.isActive=centered
         var kept:[String:UIView] = [:]
         let thread=elements.first {$0.role=="transcript"}?.value
         if thread != conversation {conversation=thread;following=true}
-        let ordinary=elements.filter {$0.role != "welcome" && $0.role != "composer" && $0.role != "transcript" && $0.role != "toolbar"}
+        let ordinary=elements.filter {$0.role != "welcome" && $0.role != "composer" && $0.role != "transcript" && $0.role != "toolbar" && $0.role != "reading-list"}
         var bar:[NativeElement]=[]
         func toolbar(_ e:NativeElement) {
             if e.role=="button" {var button=e;button.label=e.textContent;button.disabled=e.attrs["disabled"] != nil;bar.append(button)}
@@ -146,7 +154,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         } else {composer?.removeFromSuperview();composer=nil}
         for e in ordinary {
             let old=controls[e.id]
-            let matches = e.role == "tool" ? old is NativeTool : e.role == "message" ? old is NativeMessage : e.role == "button" ? old is NativeButton : e.role == "field" ? (e.type=="multiline" ? old is UITextView:old is UITextField) : old is UILabel
+            let matches = e.role == "image" ? old is NativeRemoteImage : e.role == "tool" ? old is NativeTool : e.role == "message" ? old is NativeMessage : e.role == "button" ? old is NativeButton : e.role == "field" ? (e.type=="multiline" ? old is UITextView:old is UITextField) : old is UILabel
             let control = matches ? old! : make(e)
             if let image=control as? NativeRemoteImage {image.render(e)}
             else if let tool=control as? NativeTool {tool.press={ [weak self] id in self?.following=false;self?.press?(id) };tool.render(e)}
@@ -217,6 +225,14 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         func row(_ e:NativeElement)->Bool {e.role=="button" && e.hasClass("row")}
         for (i,r) in rows.enumerated() {let next=i+1<rows.count ? rows[i+1].first:nil;(r.first.attrs["_nativePlacement"]=="dock" ? options:r.first.attrs["_nativePlacement"]=="top" ? topDock:stack).setCustomSpacing(r.last.role=="tool" && next?.role=="tool" ? 1:row(r.last) && next.map(row)==true ? 0:CGFloat(NativeSkin.tokens.gap),after:r.view)}
         arcade?.refresh();view.setNeedsLayout()
+        if reading != nil {
+            view.layoutIfNeeded()
+            if let (id,y)=anchor,let control=controls[id] {
+                let target=control.convert(control.bounds,to:scroll).minY-y
+                let maximum=max(0,scroll.contentSize.height-scroll.bounds.height)
+                scroll.setContentOffset(CGPoint(x:0,y:min(maximum,max(0,target))),animated:false)
+            }else if reading != oldReading {scroll.setContentOffset(.zero,animated:false)}
+        }
     }
     private func make(_ e:NativeElement)->UIView {
         let control:UIView

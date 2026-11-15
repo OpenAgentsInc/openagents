@@ -1,4 +1,4 @@
 // Shared top-level places; the web sidebar and native drawer use these identities.
-SS_HOME :: -1; SS_CHATS :: 0; SS_PROJECTS :: 1; SS_WORLDS :: 2; SS_PLACES :: 3;
-SS_NAMES :: [3] string.["Chats", "Projects", "Worlds"];
-SS_HREFS :: [3] string.["/chat", "/projects", "/worlds"];
+SS_HOME :: -1; SS_CHATS :: 0; SS_PROJECTS :: 1; SS_WORLDS :: 2; SS_FEED :: 3; SS_PLACES :: 4;
+SS_NAMES :: [4] string.["Chats", "Projects", "Worlds", "Feed"];
+SS_HREFS :: [4] string.["/chat", "/projects", "/worlds", "/feed"];

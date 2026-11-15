@@ -1,0 +1,71 @@
+// The feed's shared component projection; no browser handoff or private UI kit.
+#load "nostr-feed.coax";
+#load "../../components/kit/settings.coax";
+#load "../../coax/lib/nostr/nip27.coax";
+#load "../../coax/web/api/account-settings-policy.coax";
+
+#test "feed filters are in the regular page and feed rows use shared selectable messages" {
+ f:[1]NostrFeed;f[0].configured=true;f[0].filters=true;t:[1]Tree;u:[1]Ui;doc:[1]MdDoc;
+ tr_begin(t[..]);ui_begin(u[..],0,true);nfeed_render(f[..],t[..],u[..],doc[..],false);
+ #assert tr_find(t[..],"feed.author")>=0 && tr_find(t[..],"feed.apply")>=0 && tr_find(t[..],"feed.header")>=0;
+ #assert tr_find(t[..],"feed.refresh")<0 && tr_find(t[..],"chat.composer")<0;
+ #assert nfeed_edit(f[..],"feed.author","npub1x") && f[0].nda==6;
+}
+nfeed_edit :: (f:[]NostrFeed,id:string,value:string)->bool {
+ if id=="feed.author" {if value.count>96 {nfeed_note(f,"Public key is too long");return true;}f[0].nda=nfeed_copy(f[0].draft_author[..],value);return true;}
+ if id=="feed.tag" {if value.count>65 {nfeed_note(f,"Hashtag is too long");return true;}f[0].ndt=nfeed_copy(f[0].draft_tag[..],value);return true;}return false;
+}
+nfeed_press :: (f:[]NostrFeed,id:string)->bool {
+ if id=="feed.filters" || id=="feed.filters.status" {f[0].filters = !f[0].filters;return true;}
+ if id=="feed.apply" {_=nfeed_apply(f);return true;}
+ if id=="feed.new" {for i:0..<f[0].n {f[0].notes[i].visible=true;}f[0].pending_notes=0;f[0].page=0;f[0].scroll_epoch+=1;return true;}
+ if id=="feed.earlier" {nfeed_earlier(f);return true;}
+ if id=="feed.latest" {f[0].page=0;f[0].scroll_epoch+=1;return true;}
+ for i:0..<3 {b:[96]u8;if id==tr_join(b[..],"feed.time.",i) {f[0].draft_window=i;return true;}}
+ for i:0..<f[0].nr {b:[96]u8;if id==tr_join(b[..],"feed.relay.",i) {f[0].relays[i].draft = !f[0].relays[i].draft;return true;}}
+ for i:0..<f[0].n {b:[96]u8;if id==tr_join(b[..],"feed.author.",i) {h:=hex_encode_checked(cast(string)f[0].notes[i].author[..],f[0].draft_author[..],false);f[0].nda=h.written;_=nfeed_apply(f);return true;}}
+ for i:0..<f[0].n {refs:[8]N27Ref;scan:=n27_scan(cast(string)f[0].notes[i].content[0..<f[0].notes[i].n],refs[..]);for ref,k:refs[0..<scan.n] {a:[96]u8;b:[96]u8;rid:=tr_join(a[..],"feed.reference.",i);if id==tr_join(b[..],rid,k) && ref.type==N27_HASHTAG {f[0].ndt=nfeed_copy(f[0].draft_tag[..],cast(string)f[0].notes[i].content[ref.from..<ref.to]);_=nfeed_apply(f);return true;}}}
+ return false;
+}
+nfeed_age :: (now:int,at:int,out:[]u8)->string {
+ ago:=now-at;if now==0 || ago<60 {return "Now";}o:[1]Jo;jo_start(o[..],out);jo_int(o[..],ifx ago<3600 then ago/60 else ifx ago<86400 then ago/3600 else ago/86400);jo_put(o[..],ifx ago<3600 then "m" else ifx ago<86400 then "h" else "d");return jo_text(o[..]);
+}
+nfeed_name :: (f:[]NostrFeed,key:[32]u8,out:[]u8)->string {
+ copy:=key;for i:0..<f[0].np {p:=f[0].profiles[i];if p.loaded && p.nn>0 && rl_id_eq(p.author[..],copy[..]) {return cast(string)f[0].profiles[i].name[0..<p.nn];}}
+ public:[128]u8;r:=nip19_encode_checked(N19_NPUB,cast(string)copy[..],public[..],false);if r.error!=NC_OK {return "Unknown author";}
+ n:=mc(out,0,cast(string)public[0..<12]);n=mc(out,n,"…");n=mc(out,n,cast(string)public[r.written-6..<r.written]);return cast(string)out[0..<n];
+}
+nfeed_render :: (f:[]NostrFeed,t:[]Tree,u:[]Ui,doc:[]MdDoc,images:bool) {
+ x:=tr_open(t,"feed.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"feed.title",TG_SPAN,"","Feed");x=k_icon_button(t,"feed.filters",IC_FILTER,"Filter feed");tr_attr(t,x,AT_EXPANDED,ifx f[0].filters then "true" else "false");tr_close(t);
+ if f[0].filters {
+  x=tr_open(t,"feed.filters.panel",TG_SECTION,"feed-filters");x=k_input(t,u,"feed.author","npub or public key","Author","text","off");tr_attr(t,x,AT_VALUE,cast(string)f[0].draft_author[0..<f[0].nda]);
+  x=k_input(t,u,"feed.tag","#hashtag","Hashtag","text","off");tr_attr(t,x,AT_VALUE,cast(string)f[0].draft_tag[0..<f[0].ndt]);
+  for name,i:[3]string.["All time","24 hours","7 days"] {b:[96]u8;x=k_button(t,u,tr_join(b[..],"feed.time.",i),name,ifx f[0].draft_window==i then BS_PRIMARY else BS_PLAIN);tr_attr(t,x,AT_PRESSED,ifx f[0].draft_window==i then "true" else "false");}
+  for i:0..<f[0].nr {b:[96]u8;r:=f[0].relays[i];x=k_switch(t,tr_join(b[..],"feed.relay.",i),cast(string)r.url[0..<r.nu],r.draft);}
+  x=k_button(t,u,"feed.apply","Apply",BS_PRIMARY);x=k_link(t,"feed.relays.settings","Manage relays");tr_close(t);
+ }
+ connected:=0;selected:=0;waiting:=false;incomplete:=f[0].full;
+ for i:0..<f[0].nr {r:=f[0].relays[i];if !r.selected {continue;}selected+=1;if r.relay[0].state==RL_OPEN {connected+=1;}if !r.caught && !r.failed {waiting=true;}incomplete=incomplete || r.incomplete || r.failed;}
+ status:[96]u8;o:[1]Jo;jo_start(o[..],status[..]);jo_int(o[..],connected);jo_put(o[..],"/");jo_int(o[..],selected);jo_put(o[..]," relays");
+ x=k_text(t,u,"feed.filters.status",TG_P,"meta",jo_text(o[..]));tr_attr(t,x,AT_LABEL,ifx incomplete then "Some relay reads are incomplete" else "Connected relays");
+ if f[0].nn>0 {x=k_text(t,u,"feed.note",TG_P,"meta",cast(string)f[0].note[0..<f[0].nn]);tr_attr(t,x,AT_LIVE,"polite");}
+ if !f[0].configured {x=k_text(t,u,"feed.loading",TG_P,"meta","Loading saved relays…");return;}
+ scope:[96]u8;o2:[1]Jo;jo_start(o2[..],scope[..]);jo_int(o2[..],f[0].query);jo_put(o2[..],".");jo_int(o2[..],f[0].page);jo_put(o2[..],".");jo_int(o2[..],f[0].scroll_epoch);x=k_reading_list(t,"feed.list",jo_text(o2[..]));
+ if f[0].pending_notes>0 {x=k_link(t,"feed.new","New notes ↑");tr_attr(t,x,AT_LIVE,"polite");}
+ order:[NFEED_NOTES]int;n:=nfeed_order(f,order[..]);start:=f[0].page*NFEED_PAGE;end:=start+NFEED_PAGE;if end>n {end=n;}
+ if n==0 {x=k_text(t,u,"feed.empty",TG_P,"",ifx connected==0 && incomplete then "Relays unavailable" else ifx waiting && f[0].initial then "Connecting…" else ifx incomplete then "Feed incomplete" else "No matching notes");}
+ for row:start..<end {
+  i:=order[row];note:=f[0].notes[i];id:[96]u8;name:[128]u8;age:[32]u8;
+  if images {for p:0..<f[0].np {profile:=f[0].profiles[p];if profile.loaded && profile.np>0 && rl_id_eq(profile.author[..],note.author[..]) {url:=cast(string)profile.picture[0..<profile.np];x=k_remote_image(t,tr_join(id[..],"feed.picture.",i),url,"Author picture",false,asp_url(url));break;}}}
+  x=k_row(t,u,tr_join(id[..],"feed.author.",i),nfeed_name(f,note.author,name[..]),nfeed_age(f[0].now,note.at,age[..]),false);
+  x=k_message_budget(t,u,tr_join(id[..],"feed.note.",i),true,doc,cast(string)note.content[0..<note.n],(end-row-1)*(NFEED_CONTENT+600)+8192,(end-row-1)*16+128);
+  if x<0 {x=k_text(t,u,"feed.view.full",TG_P,"meta","Page limit reached");break;}
+  // Use the shared NIP-27 scanner for the note's references; no second parser.
+  refs:[8]N27Ref;scan:=n27_scan(cast(string)note.content[0..<note.n],refs[..]);
+  for ref,k:refs[0..<scan.n] {if k>=3 {break;}if ref.type==N27_HASHTAG {a:[96]u8;b:[96]u8;rid:=tr_join(a[..],"feed.reference.",i);x=k_link(t,tr_join(b[..],rid,k),cast(string)note.content[ref.from..<ref.to]);}}
+ }
+ if incomplete {x=k_text(t,u,"feed.incomplete",TG_P,"meta",ifx f[0].full then "128-note limit · narrow filters" else "Some relay reads are incomplete");}
+ if f[0].page>0 {x=k_link(t,"feed.latest","Latest");}
+ if n>0 {x=k_link(t,"feed.earlier","Earlier");}
+ tr_close(t);
+}

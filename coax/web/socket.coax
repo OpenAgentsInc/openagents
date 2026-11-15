@@ -26,8 +26,12 @@ Pipe :: struct {
 // A message kind from the host as a socket event, or -1 when it isn't one.
 SocketEvent :: struct { id: int; event: int; }
 socket_event :: (kind: int) -> SocketEvent {
+  return socket_event_limit(kind,SOCKETS);
+}
+// Installed optional carrier capacity; the existing four-slot ABI stays exact.
+socket_event_limit :: (kind:int,most:int)->SocketEvent {
   k := kind - SOCKET_KIND;
-  if k < 0 || k >= 4 * SOCKETS { return SocketEvent.{id = -1, event = -1}; }
+  if most<1 || most>64 || k < 0 || k >= 4 * most { return SocketEvent.{id = -1, event = -1}; }
   return SocketEvent.{id = k / 4, event = k % 4};
 }
 
@@ -50,6 +54,8 @@ pipe_drained :: (p: [] Pipe) { p[0].n = 0; p[0].used = 0; }
 pipe_bytes :: (p: [] Pipe, k: int) -> string { return cast(string) p[0].buf[p[0].from[k]..<p[0].from[k] + p[0].len[k]]; }
 
 #test "socket events decode from message kinds; a pipe queues commands and refuses what doesn't fit" {
+  #assert socket_event_limit(279,6).id==5 && socket_event_limit(279,6).event==3;
+  #assert socket_event_limit(280,6).id<0 && socket_event_limit(256,0).id<0 && socket_event_limit(256,65).id<0;
   #assert socket_event(256).id == 0 && socket_event(256).event == SOCKET_OPENED;
   #assert socket_event(256 + 4 * 2 + 1).id == 2 && socket_event(256 + 4 * 2 + 1).event == SOCKET_FRAME;
   #assert socket_event(256 + 15).id == 3 && socket_event(256 + 15).event == SOCKET_ERROR;

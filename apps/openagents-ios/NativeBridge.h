@@ -20,3 +20,4 @@
 #include "../../components/native/apple.h"
 
 #include "Generated/NativeAccount.h"
+#include "Generated/NativeRelay.h"

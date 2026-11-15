@@ -109,6 +109,7 @@ import JavaScriptCore
                     result.append(NativeElement(id:n.id,role:"heading",label:n.children.map {text($0)}.joined(separator:" · "),type:"h3",classes:"meta"));return
                 }
                 if n.classes.split(separator:" ").contains("transcript") {result.append(NativeElement(id:n.id,role:"transcript",label:"Conversation",value:n.attrs["data-state"] ?? "new"))}
+                if n.classes.split(separator:" ").contains("reading-list") {result.append(NativeElement(id:n.id,role:"reading-list",label:"Reading list",value:n.id+"/"+(n.attrs["data-state"] ?? "")))}
                 let tool=n.classes.split(separator:" ").contains("tool")
                 if tool || n.attrs["role"]=="article" || n.attrs["role"]=="toolbar" || n.classes.split(separator:" ").contains("msg-ai") {
                     if var message=semantic(slot) {message.role=tool ? "tool":n.attrs["role"]=="toolbar" ? "toolbar":"message";result.append(message)}
