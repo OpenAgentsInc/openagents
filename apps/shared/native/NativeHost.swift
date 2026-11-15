@@ -11,16 +11,17 @@ import Security
     private var httpTask:Task<Void,Never>?
     var health: Task<Void,Never>?
     var passkey: PasskeyAsk?
+    private let auth:AppAuth
     private let wallet=SparkHost()
     private let documents=NativeDocuments()
-    let accountServices=NativeAccountServices()
+    let accountServices:NativeAccountServices
     private let surface=NativeControls()
     private lazy var workspace=NativeWorkspace(detail:surface)
     private var dialog:NativeControls?
     private var programs:[NativeProgram]=[]
     private var clock:Timer?
     private var worldLibrary:NativeWorldLibrary?
-    init(updates:NativeUpdates) { self.updates=updates; super.init(nibName:nil,bundle:nil) }
+    init(updates:NativeUpdates,auth:AppAuth = .shared) {self.updates=updates;self.auth=auth;accountServices=NativeAccountServices(auth:auth);super.init(nibName:nil,bundle:nil)}
     required init?(coder:NSCoder) { fatalError() }
     deinit {clock?.invalidate();health?.cancel()}
     override func viewDidLoad() {
@@ -188,15 +189,15 @@ import Security
             return try await documents.pick(dialog ?? self)
         case "documents.upload":return try await documents.put(token:b["token"] as? String ?? "",url:b["url"] as? String ?? "")
         case "documents.release":documents.release();return ["released":true]
-        case "auth.state": return ["loggedIn":AppAuth.shared.loggedIn,"worldsAvailable":true]
-        case "auth.emailStart": return ["pending":try await AppAuth.shared.emailStart(b["email"] as? String ?? "")]
-        case "auth.emailVerify": _ = try await AppAuth.shared.emailVerify(code:b["code"] as? String ?? "",pending:b["pending"] as? String ?? ""); return ["loggedIn":true]
-        case "auth.keyLogin": _ = try await AppAuth.shared.keyLogin(); return ["loggedIn":true]
+        case "auth.state": return ["loggedIn":auth.loggedIn,"worldsAvailable":true]
+        case "auth.emailStart": return ["pending":try await auth.emailStart(b["email"] as? String ?? "")]
+        case "auth.emailVerify": _ = try await auth.emailVerify(code:b["code"] as? String ?? "",pending:b["pending"] as? String ?? ""); return ["loggedIn":true]
+        case "auth.keyLogin": _ = try await auth.keyLogin(); return ["loggedIn":true]
         case "auth.passkeyLogin":
             guard let window=view.window, passkey==nil else { throw NativeFailure.refused("Authentication busy") }
-            let challenge=try await AppAuth.shared.passkeyChallenge(); let p=PasskeyAsk(anchor:window); passkey=p; defer { passkey=nil }
-            _ = try await AppAuth.shared.passkeyLogin(challenge,try await p.assert(challenge)); return ["loggedIn":true]
-        case "auth.logout": accountServices.clear();await AppAuth.shared.logout(); return ["loggedIn":false]
+            let challenge=try await auth.passkeyChallenge(); let p=PasskeyAsk(anchor:window); passkey=p; defer { passkey=nil }
+            _ = try await auth.passkeyLogin(challenge,try await p.assert(challenge)); return ["loggedIn":true]
+        case "auth.logout": accountServices.clear();await auth.logout(); return ["loggedIn":false]
         case "clipboard.write", "clipboard.write.v2":
             guard let text=b["text"] as? String,nt_copy_admit(op == "clipboard.write.v2" ? 2:1,Int64(text.utf8.count)) else {throw NativeFailure.refused("Text is too large")}
             if accountServices.privateClipboard {UIPasteboard.general.setItems([[UIPasteboard.typeAutomatic:text]],options:[.localOnly:true,.expirationDate:Date().addingTimeInterval(60)])}else {UIPasteboard.general.string=text};return ["copied":true]
@@ -216,11 +217,11 @@ import Security
             let path=b["path"] as? String ?? "", method=b["method"] as? String ?? "GET", body=b["body"] as? String ?? ""
             let allowed=path.withCString { cn_api(coax_string(data:$0,count:Int64(path.utf8.count))) || nwp_account(coax_string(data:$0,count:Int64(path.utf8.count))) }
             guard allowed, ["GET","POST"].contains(method), body.utf8.count<=131072 else { throw NativeFailure.refused("Native request refused") }
-            var request=URLRequest(url:URL(string:AppAuth.defaultOrigin+path)!,timeoutInterval:60); request.httpMethod=method
-            if method == "POST" { request.httpBody=Data(body.utf8); request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.setValue(AppAuth.defaultOrigin,forHTTPHeaderField:"Origin") }
-            if AppAuth.shared.loggedIn { request=try await AppAuth.shared.authorize(request) }
+            var request=URLRequest(url:URL(string:auth.origin+path)!,timeoutInterval:60); request.httpMethod=method
+            if method == "POST" { request.httpBody=Data(body.utf8); request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.setValue(auth.origin,forHTTPHeaderField:"Origin") }
+            if auth.loggedIn { request=try await auth.authorize(request) }
             let (stream,response)=try await URLSession.shared.bytes(for:request); var data=Data()
-            guard response.url?.host == URL(string:AppAuth.defaultOrigin)?.host else { throw NativeFailure.refused("Native request redirect refused") }
+            guard response.url?.host == URL(string:auth.origin)?.host else { throw NativeFailure.refused("Native request redirect refused") }
             for try await byte in stream { guard data.count<1048576 else { throw NativeFailure.refused("Response too large") }; data.append(byte) }
             return ["status":(response as? HTTPURLResponse)?.statusCode ?? 500,"body":String(decoding:data,as:UTF8.self),"contentType":response.mimeType ?? "application/json"]
         default: throw NativeFailure.refused("Unsupported native service")

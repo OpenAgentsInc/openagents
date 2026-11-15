@@ -360,6 +360,15 @@ schemes:
         - name: OpenAgentsUITests
           selectedTests: [NavigationUITests, ChatUITests, UsageUITests]
 
+  CoaxNativeDurableStaging:
+    build:
+      targets:
+        OpenAgents: all
+    test:
+      targets:
+        - name: OpenAgentsTests
+          selectedTests: [NativeDurableStagingTests]
+
   CoaxNativeProjects:
     build:
       targets:

@@ -174,3 +174,109 @@ private final class ProjectUploadOracle:URLProtocol,@unchecked Sendable {
     }
     override func stopLoading() {}
 }
+
+// Opt in with TEST_RUNNER_OA_DURABLE_STAGING=1. Uses the existing phone signer,
+// device proof and a separate in-memory token store; no production login changes.
+@MainActor final class NativeDurableStagingTests:XCTestCase {
+    func testLiveProjectContextStreamingStopAndReopen()async throws {
+        guard ProcessInfo.processInfo.environment["OA_DURABLE_STAGING"]=="1" else {throw XCTSkip("Live staging qualification is opt in")}
+        let auth=AppAuth(origin:"https://staging.openagents.com",store:AccountTokenOracle(nil))
+        var evidence:[String:Any]=["origin":auth.origin,"requests":[[String:Any]]()],requests=[[String:Any]]()
+        defer {evidence["requests"]=requests;let data=(try? JSONSerialization.data(withJSONObject:evidence,options:[.prettyPrinted,.sortedKeys])) ?? Data();let a=XCTAttachment(data:data,uniformTypeIdentifier:"public.json");a.name="Live native durable chat receipts";a.lifetime = .keepAlways;add(a)}
+        _=try await auth.keyLogin();XCTAssertTrue(auth.loggedIn);evidence["account"]=auth.tokens?.account
+        if let file=ProcessInfo.processInfo.environment["OA_DURABLE_CLI_APPROVAL_FILE"] {
+            let code=try String(contentsOfFile:file,encoding:.utf8).trimmingCharacters(in:.whitespacesAndNewlines)
+            var request=URLRequest(url:URL(string:auth.origin+"/api/auth/device/approve")!);request.httpMethod="POST";request.setValue(auth.origin,forHTTPHeaderField:"Origin");request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.httpBody=try JSONSerialization.data(withJSONObject:["code":code])
+            let authorized=try await auth.authorize(request),(_,status)=try await AppAuth.network(authorized)
+            XCTAssertEqual(status,200);evidence["staging_cli_approved"]=status==200
+        }
+        let home=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:home)}
+        let host=NativeHost(updates:try NativeUpdates(home:home),auth:auth),directory=try XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil))
+        var turn="",conversation="",state="",partial=false
+        func http(_ path:String)async throws->[String:Any] {
+            let result=try await host.call("http",["path":path]),reply=try XCTUnwrap(result as? [String:Any]);XCTAssertEqual(reply["status"] as? Int,200)
+            return try XCTUnwrap(JSONSerialization.jsonObject(with:Data((reply["body"] as? String ?? "").utf8)) as? [String:Any])
+        }
+        func drain(_ p:NativeProgram)async throws {
+            let names=[1:"auth.state",4:"http",8:"http.cancel",11:"environment.commandIDs",12:"environment.wait",18:"account.service"]
+            for _ in 0..<64 {
+                let (op,raw)=try p.action();if op==0 {return}
+                let name=try XCTUnwrap(names[op]),args=try XCTUnwrap(JSONSerialization.jsonObject(with:Data(raw.utf8)) as? [String:Any])
+                let result=try await host.call(name,args),reply=try XCTUnwrap(result as? [String:Any]);var body="",status=0
+                if op==4 {
+                    let path=args["path"] as? String ?? "";status=reply["status"] as? Int ?? 0;body=reply["body"] as? String ?? ""
+                    requests.append(["path":path,"status":status]);guard (200..<300).contains(status) else {throw NativeFailure.refused("Staging request refused: \(path), HTTP \(status)")}
+                    if let value=(try? JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] {
+                        if path=="/api/chat/submit/v2alpha1" {turn=value["turn_id"] as? String ?? "";conversation=value["conversation_id"] as? String ?? "";state=value["state"] as? String ?? "";evidence["turn"]=turn;evidence["conversation"]=conversation}
+                        if path.hasPrefix("/api/chat/events/v2alpha1") || path.hasPrefix("/api/chat/turn/v2alpha1") {state=value["state"] as? String ?? state}
+                        if path.hasPrefix("/api/chat/events/v2alpha1"),state=="running",let events=value["events"] as? [[String:Any]],events.contains(where:{($0["delta"] as? String)?.isEmpty==false}) {partial=true}
+                    }
+                }else if op==18 {body=reply["record"] as? String ?? ""}else {body=String(decoding:try JSONSerialization.data(withJSONObject:reply),as:UTF8.self)}
+                try p.event(100+op,status,body);try p.frame()
+            }
+            throw NativeFailure.refused("Native effect chain exceeded its bound")
+        }
+        func press(_ p:NativeProgram,_ id:String,_ value:String?=nil)async throws {
+            guard p.nodes.values.contains(where:{$0.id==id}) else {throw NativeFailure.refused("Missing native control \(id)")};try p.input(id,value);try p.frame();try await drain(p)
+        }
+        func boot()async throws->NativeProgram {let p=try NativeProgram(directory:directory,module:"app");try p.event(Int(cnw_enable_event()),0,"");try p.frame();try await drain(p);return p}
+        let suffix=String(UUID().uuidString.prefix(8)),code="JADE-"+suffix,title="Native staging "+suffix,p=try await boot()
+        try await press(p,"nav.toggle");try await press(p,"nav.projects");try await press(p,"projects.new")
+        try await press(p,"private.name",title);try await press(p,"private.text","Use the selected Project knowledge for code questions.");try await press(p,"private.create")
+        try await press(p,"private.knowledge");try await press(p,"private.knowledge.title","Native verification note");try await press(p,"private.text","The verification code is "+code+".");try await press(p,"private.add.text")
+        try await press(p,"private.close.edit");try await press(p,"private.chat.new")
+        let question="Native verification "+suffix+": Start with the verification code from Project knowledge, then write 200 numbered notes, each with three sentences about durable chat recovery."
+        try await press(p,"chat.composer",question);try await press(p,"chat.composer.send")
+        let deadline=Date().addingTimeInterval(90)
+        while (!partial || !p.nodes.values.contains {$0.text.contains(code)}) && Date()<deadline && !["completed","failed","unknown"].contains(state) {try await Task.sleep(for:.milliseconds(500));try p.frame(elapsed:0.5);try await drain(p)}
+        XCTAssertTrue(partial,"No live running text delta reached the native consumer");evidence["running_delta"]=partial
+        try await press(p,"chat.composer.send")
+        while !["cancelled","completed","failed","unknown"].contains(state) && Date()<deadline {try await Task.sleep(for:.milliseconds(500));try p.frame(elapsed:0.5);try await drain(p)}
+        XCTAssertEqual(state,"cancelled");evidence["terminal_state"]=state
+        let saved=try await http("/api/chat/turn/v2alpha1?id="+turn),text=(saved["content"] as? [[String:Any]])?.compactMap {$0["text"] as? String}.joined() ?? ""
+        XCTAssertTrue(text.contains(code));XCTAssertEqual(saved["stop_reason"] as? String,"cancelled");evidence["knowledge_used"]=text.contains(code)
+        let reopened=try await boot();try await press(reopened,"nav.toggle");try await press(reopened,"nav.projects")
+        let project=try XCTUnwrap(reopened.elements().first {$0.id.hasPrefix("private.item.") && $0.label.contains(title)})
+        try await press(reopened,project.id);try await press(reopened,"private.chats")
+        for _ in 0..<4 {try reopened.frame(elapsed:0.5);try await drain(reopened)}
+        let row=try XCTUnwrap(reopened.elements().first {$0.id.hasPrefix("private.rich.") && $0.label.contains(suffix)})
+        try await press(reopened,row.id)
+        let after=try await http("/api/chat/turn/v2alpha1?id="+turn),afterText=(after["content"] as? [[String:Any]])?.compactMap {$0["text"] as? String}.joined() ?? ""
+        XCTAssertEqual(afterText,text);XCTAssertTrue(reopened.nodes.values.contains {$0.text.contains(code)})
+        let surface=NativeControls();surface.render(reopened.elements());XCTAssertTrue(surface.controls.values.contains {$0 is NativeMessage});evidence["reopened_native"]=true
+        evidence["conversation"]=conversation;evidence["partial_bytes"]=text.utf8.count
+        evidence["stopped_turn"]=turn
+        try await press(reopened,"chat.composer","Reply with only the verification code from the selected Project knowledge.");try await press(reopened,"chat.composer.send")
+        let completedDeadline=Date().addingTimeInterval(60)
+        while !["completed","failed","unknown","cancelled"].contains(state) && Date()<completedDeadline {try await Task.sleep(for:.milliseconds(500));try reopened.frame(elapsed:0.5);try await drain(reopened)}
+        XCTAssertEqual(state,"completed")
+        let completed=try await http("/api/chat/turn/v2alpha1?id="+turn)
+        XCTAssertEqual(completed["stop_reason"] as? String,"end_turn")
+        XCTAssertTrue(reopened.elements().contains {$0.id==turn+".assistant" && $0.textContent.contains(code)})
+        evidence["completed_turn"]=turn;evidence["completed_usage"]=completed["usage"];evidence["actual_selection"]=completed["selection"]
+        try await press(reopened,"project.chat.back");try await press(reopened,"private.chats")
+        for _ in 0..<4 {try reopened.frame(elapsed:0.5);try await drain(reopened)}
+        let completedRow=try XCTUnwrap(reopened.elements().first {$0.id.hasPrefix("private.rich.") && $0.label.contains(suffix)})
+        try await press(reopened,completedRow.id)
+        XCTAssertTrue(reopened.elements().contains {$0.id==turn+".assistant" && $0.textContent.contains(code)})
+        evidence["completed_reopened_native"]=true
+        evidence["project_conversation"]=conversation
+        try await press(reopened,"nav.toggle");try await press(reopened,"nav.recent");try await press(reopened,"nav.compose");try await press(reopened,"nav.account.new")
+        let marker="ORDINARY-"+suffix;partial=false
+        try await press(reopened,"chat.composer","Start with "+marker+", then write 30 numbered notes about durable chat recovery, each with two full sentences.");try await press(reopened,"chat.composer.send")
+        let ordinaryDeadline=Date().addingTimeInterval(90)
+        while !["completed","failed","unknown","cancelled"].contains(state) && Date()<ordinaryDeadline {try await Task.sleep(for:.milliseconds(500));try reopened.frame(elapsed:0.5);try await drain(reopened)}
+        XCTAssertTrue(partial);XCTAssertEqual(state,"completed")
+        let ordinary=try await http("/api/chat/conversation/v2alpha1?id="+conversation+"&after=0")
+        XCTAssertTrue(ordinary["project_id"] is NSNull)
+        XCTAssertTrue(reopened.elements().contains {$0.id==turn+".assistant" && $0.textContent.contains(marker)})
+        evidence["ordinary_conversation"]=conversation;evidence["ordinary_turn"]=turn;evidence["ordinary_running_delta"]=partial
+        let cold=try await boot();try await press(cold,"nav.toggle");try await press(cold,"nav.recent")
+        for _ in 0..<4 {try cold.frame(elapsed:0.5);try await drain(cold)}
+        let ordinaryRow=try XCTUnwrap(cold.elements(navigation:true).first {$0.id.hasPrefix("nav.rich.") && $0.label.contains(marker)})
+        try await press(cold,ordinaryRow.id)
+        XCTAssertTrue(cold.elements().contains {$0.id==turn+".assistant" && $0.textContent.contains(marker)})
+        evidence["ordinary_reopened_native"]=true
+    }
+}

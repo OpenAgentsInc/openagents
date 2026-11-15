@@ -64,8 +64,9 @@ import UIKit
         return NativeAccountServices(auth:auth,send:send)
     }
 }
-private final class AccountTokenOracle:TokenStore,@unchecked Sendable {
-    private var value:AppAuth.Tokens? = .init(access:"fixture",refresh:"refresh",accessUntil:Date().addingTimeInterval(3600),account:"fixture")
+final class AccountTokenOracle:TokenStore,@unchecked Sendable {
+    private var value:AppAuth.Tokens?
+    init(_ value:AppAuth.Tokens? = .init(access:"fixture",refresh:"refresh",accessUntil:Date().addingTimeInterval(3600),account:"fixture")) {self.value=value}
     func load()->AppAuth.Tokens? {value}
     func save(_ tokens:AppAuth.Tokens) {value=tokens}
     func clear() {value=nil}

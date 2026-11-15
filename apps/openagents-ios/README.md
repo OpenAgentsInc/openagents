@@ -243,6 +243,27 @@ the rendered starter. The installed authority is Coax; generated C is not
 committed. See the starter guide for optional offline-only builds, the
 installed service inventory, OTA publication and server configuration.
 
+## Durable chat staging check
+
+`CoaxNativeDurableStaging` runs the installed generated account/Project program
+through the native phone signer, device proof and HTTP adapter against staging.
+It creates private fixture Projects, uses their selected knowledge in actual
+inference, observes running deltas, stops and reopens a turn, completes a
+follow-up and reopens an ordinary account chat. Its token store is isolated
+from the installed login. The phone's staging account must already be enrolled
+in the existing team beta. Receipts are retained as XCTest attachments.
+
+```sh
+TEST_RUNNER_OA_DURABLE_STAGING=1 coax/remote/remote.sh run --local -- xcodebuild \
+  -project apps/openagents-ios/OpenAgents.xcodeproj -scheme CoaxNativeDurableStaging \
+  -destination 'platform=iOS Simulator,name=Coax Native Starter' \
+  -derivedDataPath /tmp/coax-native-durable CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+```
+
+Without that opt-in the live case skips. The ordinary `CoaxNativeSettings`
+selection includes the local HTTP oracle's installed UIKit chat, background,
+restart, Stop, account-switch and private Project flows.
+
 ## TestFlight
 
 Keep build numbers above App Store Connect's latest build. Credentials come

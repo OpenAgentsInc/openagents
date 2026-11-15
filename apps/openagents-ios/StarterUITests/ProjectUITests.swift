@@ -20,6 +20,7 @@ final class ProjectUITests:XCTestCase {
         let composer=app.textViews["chat.composer"];XCTAssertTrue(composer.waitForExistence(timeout:10));composer.tap();composer.typeText("What is the code?");app.buttons["chat.composer.send"].tap()
         let answer=app.textViews.matching(NSPredicate(format:"value == %@","The code is violet.")).firstMatch;XCTAssertTrue(answer.waitForExistence(timeout:20));attach(app,"Private Project saved answer")
         app.buttons["project.chat.back"].tap()
+        let chats=app.buttons["private.chats"];XCTAssertTrue(chats.waitForExistence(timeout:10));chats.tap()
         let saved=app.buttons["private.rich.0"];XCTAssertTrue(saved.waitForExistence(timeout:10));saved.tap();XCTAssertTrue(answer.waitForExistence(timeout:10));XCTAssertEqual(app.webViews.count,0);attach(app,"Reopened private Project chat")
     }
     func testManageDraftPublishAndOpenProjectChatsInNativeViews() {
