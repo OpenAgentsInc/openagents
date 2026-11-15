@@ -67,6 +67,16 @@ turn was admitted. `task` reads its immutable native task association when one
 exists; it returns 404 before association. Both use the same private account
 profile as the other chat commands. Neither command starts work.
 
+With native dispatch deployed, an admitted coding turn can start work on a
+connected computer through the server's automatic router. The server pins the
+actual engine/account/model/effort and admitted Project context before Start.
+Use `chat task "$TURN_ID"` to read `binding.host_pubkey` and `binding.task_id`,
+then use the `tasks` commands below for native progress, full tool history and
+permissions. `chat stop` forwards the retained cancellation to that same task.
+A lost Start reply or a new worker rejoins the original task. Changing a
+computer enrollment does not transfer it; the immutable association remains
+readable while native reads/controls require the original current enrollment.
+
 ## Native task controls
 
 `tasks` addresses an already admitted native task on an enrolled computer.

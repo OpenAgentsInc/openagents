@@ -56,10 +56,41 @@ Input. Historical turns without such a record return 404. Both reads require
 the account that owns the turn and use private no-store responses. The CLI
 exposes them as `chat native-input TURN` and `chat task TURN`.
 
-Current implementation captures native Input at admission and validates reads
-of retained associations. The routing/model-choice helpers and association
-admission are implemented, but no producer yet inserts an association or
-dispatches a native task from an ordinary chat. The preparation, Start and
-recovery paragraphs above specify the required next integration. Installed
-mobile controls, real provider execution and end-to-end qualification remain
-part of #13620.
+The durable runner now produces this association for an ordinary chat selected
+for native work. It obtains current signed reports, uses the shared typed
+router, reads the selected engine's actual SDK offer, resolves an offered
+model/effort pair and saves the association before Prepare, input upload or
+Start. The first consumer uses the selected engine's `system` account;
+multi-account selection and SDK catalog pagination remain required work.
+Router preview fallbacks cannot authorize execution.
+
+The queue also claims associated running turns. Each claim uses a fresh worker
+fence while retaining the original native IDs, admitted bytes and command
+window. It observes the original Task before retrying Start, normalizes status
+through the primary codec and refuses regressing or conflicting revisions.
+The native phase is retained before Start, so a lost reply never licenses a
+different task. A current-enrollment refusal after possible Start records an
+unknown outcome rather than a confirmed cancellation or a new dispatch.
+
+Native work renews the queue lease while making bounded broker calls. An
+unfinished observation releases its lease and schedules another claim after
+five seconds. The per-claim work budget is five minutes, independent of the
+resident task's lifetime. Fresh Prepare/upload/Start effects recheck funding,
+account/Project admission and Stop; status, transcript and Stop remain usable
+after funding is removed. Every broker call still checks the current enrollment
+and the native owner independently enforces its grant.
+
+The runner reads verified transcript captures through the shared `XhClient`
+and inert Session reader, then appends only assistant text to the saved chat.
+Tool calls, results and pending permissions remain available through the native
+Task/transcript routes. Stop intent is retained before its native effect;
+retries use the same command. Completion, failure and confirmed cancellation
+retain their actual native outcome. Missing provider usage remains unknown.
+An assistant projection beyond the saved chat byte limit fails explicitly;
+the full native transcript remains available.
+
+Capture assembly is currently bounded and restarts on a later worker claim;
+durable paging, renewal of an expired Stop command, installed mobile task/tool
+and permission controls, shared gateway tool continuation, real provider
+execution and end-to-end qualification remain part of #13620. This source
+implementation does not establish production rollout or installed execution.

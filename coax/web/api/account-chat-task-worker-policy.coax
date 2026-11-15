@@ -1,0 +1,87 @@
+// Native effect/recovery rules. A retained Start fence never selects a new task.
+// coax/bin/coax test coax/web/api/account-chat-task-worker-policy.coax --library --traversal 1000000000
+#load "account-chat-task-policy.coax";
+#load "../../lib/agent/environment/preparation-wire.coax";
+#authority;
+#test "native effects distinguish unstarted cancellation from uncertain dispatch" {
+ #assert ctn_action(0,false,true,false,0,100,100)==1 && ctn_action(0,false,true,false,0,101,100)== -2;
+ #assert ctn_action(0,true,true,false,0,100,100)== -4;
+ #assert ctn_action(1,true,true,false,0,100,100)==0 && ctn_action(2,false,true,false,0,100,100)==0;
+ #assert ctn_action(1,false,true,false,0,101,100)==2;
+ #assert ctn_action(0,false,false,false,0,100,100)== -2 && ctn_action(1,false,false,false,0,100,100)== -3;
+ #assert ctn_action(-1,false,true,false,0,1,2)== -3 && ctn_action(3,false,true,false,0,1,2)== -3 && ctn_action(0,false,true,false,0,-1,2)== -3;
+ #assert ctn_action(0,false,true,false,0,0,0)==1;
+ for state:XT_QUEUED..<XT_UNKNOWN+1 {#assert ctn_action(1,false,true,true,state,100,100)==3 && ctn_action(2,true,true,true,state,100,100)==(ifx state<=XT_WAITING then 4 else 3);}
+}
+#test "chunk identities are stable and include task kind and byte offset" {
+ a:[32]u8;b:[32]u8;#assert ctn_command(EX_TEST_ID,"input",0,a[..]) && ctn_command(EX_TEST_ID,"input",0,b[..]) && cast(string)a[..]==cast(string)b[..];
+ // Independently computed with hashlib over the exact domain-separated bytes.
+ #assert cast(string)a[..]=="55621cbcb7a26f60970c229aa067ea85";
+ for kind:[2]string.["stop","input"] {#assert ctn_command(EX_TEST_ID,kind,1,b[..]) && cast(string)a[..]!=cast(string)b[..];}
+ #assert !ctn_command("bad","input",0,b[..]) && !ctn_command(EX_TEST_ID,"bad",0,b[..]) && !ctn_command(EX_TEST_ID,"input",-1,b[..]) && !ctn_command(EX_TEST_ID,"input",0,b[0..<31]);
+}
+#test "preparation replies pin exact identities byte progress command and original window" {
+ b:=ex_test_binding();v:=ExPrepView.{host=b.host,task=b.task,command=b.command,hash=b.input_hash,total=b.input_bytes,retained=b.input_bytes,complete=true,expires=b.expires};
+ #assert ctn_prepared(b,v,b.command,0) && ctn_prepared(b,v,b.command,b.input_bytes);
+ v.hash="other";#assert !ctn_prepared(b,v,b.command,0);v.hash=b.input_hash;v.retained=0;v.complete=false;#assert ctn_prepared(b,v,b.command,0) && !ctn_prepared(b,v,b.command,1);
+ v.host="other";#assert !ctn_prepared(b,v,b.command,0);v.host=b.host;v.task="other";#assert !ctn_prepared(b,v,b.command,0);v.task=b.task;v.command="other";#assert !ctn_prepared(b,v,b.command,0);v.command=b.command;
+ v.expires+=1;#assert !ctn_prepared(b,v,b.command,0);v.expires=b.expires;v.total+=1;#assert !ctn_prepared(b,v,b.command,0);
+}
+#test "native chunk and preparation adapters use the primary codecs unchanged" {
+ b:=ex_test_binding();b.input_bytes=4;raw:[8192]u8;read:[1]ExChunk;arena:[8192]u8;n:=ctn_chunk(b,"aéZ",0,raw[..]);
+ #assert n>0 && ex_chunk_read(cast(string)raw[0..<n],read[..],arena[..]) && read[0].text=="aéZ" && read[0].issued==b.issued && read[0].expires==b.expires && read[0].command!=b.command;
+ #assert ctn_chunk(b,"aéZ",4,raw[..])<0 && ctn_chunk(b,"aéZ",-1,raw[..])<0 && ctn_chunk(b,"aéZ",2,raw[..])<0 && ctn_chunk(b,"aéZ",0,raw[0..<1])<0;
+ b.input_bytes=1;#assert ctn_chunk(b,"x",0,raw[..])>0;b.input_bytes=4097;long:[4097]u8;for i:0..<long.count {long[i]='x';}n=ctn_chunk(b,cast(string)long[..],0,raw[..]);#assert n>0 && ex_chunk_read(cast(string)raw[0..<n],read[..],arena[..]) && read[0].text.count==4096;b.input_bytes=4;
+ v:=ExPrepView.{host=b.host,task=b.task,command=b.command,hash=b.input_hash,total=4,expires=b.expires};n=exp_view_write(v,raw[..]);p:[1]ExPrepView;
+ #assert n>0 && ctn_prep_read(cast(string)raw[0..<n],p[..],arena[..]) && p[0].total==4 && !ctn_prep_read("{}",p[..],arena[..]);
+ #assert !ctn_prepared(b,v,b.command,-1) && !ctn_prepared(b,v,b.command,5);
+}
+#test "native observations retain binding monotone revision and equal-revision bytes" {
+ b:=ex_test_binding();v:=XtStatus.{binding=b,state=XT_RUNNING,revision=1,updated=1000};raw:[8192]u8;canonical:[8192]u8;prior:[8192]u8;out:[1]XtStatus;arena:[2048]u8;
+ n:=xt_status_write(v,raw[..]);p:=ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],prior[..]);#assert p==n && cast(string)raw[0..<n]==cast(string)prior[0..<p];
+ v.command=b.command;v.replay=true;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],b.command,cast(string)prior[0..<p],out[..],arena[..],canonical[..])==p && cast(string)canonical[0..<p]==cast(string)prior[0..<p];
+ #assert ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],canonical[..])<0 && ctn_status(b,"{}","","",out[..],arena[..],canonical[..])<0;
+ v.command="";v.replay=false;v.revision=2;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)prior[0..<p],out[..],arena[..],canonical[..])>0;
+ v.revision=1;v.updated=1001;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)prior[0..<p],out[..],arena[..],canonical[..])<0;
+ v.updated=1000;v.binding.model="other";n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],canonical[..])<0;
+ v.binding=b;v.revision=1;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],canonical[0..<1])<0;
+ next:[8192]u8;old:=v;old.revision=2;on:=xt_status_write(old,next[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)next[0..<on],out[..],arena[..],canonical[..])<0;
+ v.revision=2;n=xt_status_write(v,raw[..]);old.revision=1;old.binding.model="other";on=xt_status_write(old,next[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)next[0..<on],out[..],arena[..],canonical[..])<0 && ctn_status(b,cast(string)raw[0..<n],"","{}",out[..],arena[..],canonical[..])<0;
+}
+#test "native transcript projection enforces its actual saved text limit" #steps 50000000 {
+ text:[131073]u8;out:[131073]u8;for i:0..<text.count {text[i]='x';}#assert ctn_delta("",cast(string)text[0..<131072],out[..])==131072 && ctn_delta("",cast(string)text[..],out[..])<0;
+}
+#test "execution needs the actual typed route rather than an unavailable preview fallback" {
+ #assert ctn_route_ready(true,"","codex") && ctn_route_ready(true,"","claude") && !ctn_route_ready(false,"","codex") && !ctn_route_ready(true,"unavailable","codex") && !ctn_route_ready(true,"","micro");
+ #assert ctn_provider("claude")=="anthropic" && ctn_provider("codex")=="openai" && ctn_provider("other")=="";
+ #assert ctn_effect(false,true) && ctn_effect(true,false) && !ctn_effect(true,true);
+ out:[16]u8;#assert ctn_delta("aé","aéZ",out[..])==1 && out[0]=='Z' && ctn_delta("aé","aé",out[..])==0 && ctn_delta("long","x",out[..])<0 && ctn_delta("bad","other",out[..])<0 && ctn_delta("","more",out[0..<3])<0;
+}
+ctn_effect :: (write:bool,stop:bool)->bool #export_c #effects(all) {return !write || !stop;}
+ctn_delta :: (saved:string,next:string,out:[]u8)->int #export_c #effects(all) {if saved.count>next.count || cast(string)next[0..<saved.count]!=saved || !ex_text_valid(next,131072) {return -1;}return js_copy(out,cast(string)next[saved.count..<next.count]);} // mutant: equivalent (131072 to 131073: ex_text_valid calls js_utf8, whose independent 131072-byte arena refuses every larger value)
+ctn_provider :: (engine:string)->string #export_c #effects(all) {return ifx engine=="claude" then "anthropic" else ifx engine=="codex" then "openai" else "";}
+ctn_route_ready :: (ok:bool,problem:string,engine:string)->bool #effects(all) {return ok && problem=="" && (engine=="claude" || engine=="codex");}
+ctn_action :: (phase:int,stop:bool,scope:bool,observed:bool,state:int,now:int,expires:int)->int #export_c #effects(all) {
+ if phase<0 || phase>2 || now<0 {return -3;}if !scope {return ifx phase==0 then -2 else -3;}
+ if observed {return ifx stop && state>=XT_QUEUED && state<=XT_WAITING then 4 else 3;}
+ if stop {return ifx phase==0 then -4 else 0;}if phase==0 {return ifx now<=expires then 1 else -2;}return ifx phase==1 then 2 else 0;
+}
+ctn_command :: (task:string,kind:string,offset:int,out:[]u8)->bool #export_c #effects(all) {
+ if !ea_id(task,32) || (kind!="input" && kind!="stop") || offset<0 || out.count<32 {return false;}
+ raw:[160]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_put(o[..],"openagents.chat.native-command.v1\n");jo_put(o[..],task);jo_put(o[..],"\n");jo_put(o[..],kind);jo_put(o[..],"\n");jo_int(o[..],offset);hash:[64]u8;
+ if o[0].bad || !S_hex(S_hash(jo_text(o[..])),hash[..]) {return false;}return js_copy(out,cast(string)hash[0..<32])==32; // mutant: equivalent (the failure return to true: fixed task/kind sizes and an int64 decimal fit under 100 bytes in the 160-byte buffer, and S_hex receives exactly 64 bytes, so neither internal write can fail)
+}
+ctn_prepared :: (b:ExBinding,v:ExPrepView,command:string,minimum:int)->bool #export_c #effects(all) {
+ return minimum>=0 && minimum<=b.input_bytes && exp_view_valid(v) && v.host==b.host && v.task==b.task && v.command==command && v.hash==b.input_hash && v.total==b.input_bytes && v.expires==b.expires && v.retained>=minimum;
+}
+ctn_chunk :: (b:ExBinding,raw:string,offset:int,out:[]u8)->int #export_c #effects(all) {
+ n:=ctn_slice(raw,offset,EX_CHUNK_MAX);command:[32]u8;if n<1 || !ctn_command(b.task,"input",offset,command[..]) {return -1;}
+ return ex_chunk_write(ExChunk.{task=b.task,command=cast(string)command[..],hash=b.input_hash,total=b.input_bytes,offset=offset,text=cast(string)raw[offset..<offset+n],issued=b.issued,expires=b.expires},out);
+}
+ctn_prep_read :: (raw:string,out:[]ExPrepView,arena:[]u8)->bool #export_c #effects(all) {return exp_view_read(raw,out,arena);}
+ctn_status :: (b:ExBinding,raw:string,command:string,prior:string,out:[]XtStatus,arena:[]u8,canonical:[]u8)->int #export_c #effects(all) {
+ if !xt_status_read(raw,out,arena) || !ex_binding_same(b,out[0].binding) || out[0].command!=command {return -1;}
+ v:=out[0];v.command="";v.replay=false;n:=xt_status_write(v,canonical);if n<1 {return -1;} // mutant: equivalent (< to <= and 1 to 2: a successful primary TaskStatus with its required Binding is always longer than two bytes; refusal is -1)
+ if prior!="" {old:[1]XtStatus;buf:[2048]u8;if !xt_status_read(prior,old[..],buf[..]) || !ex_binding_same(b,old[0].binding) || v.revision<old[0].revision || (v.revision==old[0].revision && cast(string)canonical[0..<n]!=prior) {return -1;}}
+ return n;
+}

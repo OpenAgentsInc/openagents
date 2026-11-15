@@ -76,7 +76,7 @@ static void stop_turn(const request *q,PGconn *db,const auth_principal *p){
  r=turn_row(db,p->account,(char *)id,true);if(!tuples(r)){goto done;}if(PQntuples(r)!=1){status=404;why="not found";goto done;}if(!view(r,0,v)){goto done;}
  int prior=operation(db,p->account,(char *)opb,q->path,hash,prior_id);if(prior<0){goto done;}if(prior==0){status=409;why="Operation ID already has different contents.";goto done;}
  if(prior==1){coax_t_CtEvent event;coax_t_CtUsage usage={0};int result=(int)cta_event((coax_v_t_CtView){v,1},STOP,ts(""),ts(""),ts(""),false,(coax_v_t_CtUsage){&usage,1},(coax_v_t_CtEvent){&event,1});if(result!=2&&(result!=1||!save_view(db,r,v,&event))){goto done;}if(!operation_save(db,p->account,(char *)opb,q->path,hash,(char *)id)){goto done;}}
- if(!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;PQclear(r);r=turn_row(db,p->account,(char *)id,false);int64_t n=control(r,v,out,CT_CAP);if(n<1){goto done;}reply(q,200,out,(size_t)n);goto finish;
+ const char *wake[]={p->account,(char *)id};if(!exec_sql(db,"UPDATE chat.turn_tasks_v1 SET poll_after_ms=0 WHERE account=$1 AND turn=$2",2,wake)||!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;PQclear(r);r=turn_row(db,p->account,(char *)id,false);int64_t n=control(r,v,out,CT_CAP);if(n<1){goto done;}(void)chat_wake();reply(q,200,out,(size_t)n);goto finish;
  done: if(tx)exec_sql(db,"ROLLBACK",0,NULL);refuse(q,status,why);
  finish: PQclear(r);free(out);free(v);
 }
@@ -126,7 +126,7 @@ static void conversation_read(const request *q,PGconn *db,const auth_principal *
  finish: exec_sql(db,"ROLLBACK",0,NULL);for(int i=0;i<count;i++)free(owned[i]);PQclear(turns);PQclear(r);free(out);free(v);
 }
 static bool recover(PGconn *db,long long now){
- char cutoff[32];num(cutoff,ctw_cutoff(now));const char *cut[]={cutoff};PGresult *rows=PQexecParams(db,"SELECT account,id FROM chat.turns_v2 WHERE state=2 AND heartbeat_ms<=$1::bigint ORDER BY heartbeat_ms,id LIMIT 32",1,NULL,cut,NULL,NULL,0);bool ok=tuples(rows);
+ char cutoff[32];num(cutoff,ctw_cutoff(now));const char *cut[]={cutoff};PGresult *rows=PQexecParams(db,"SELECT account,id FROM chat.turns_v2 t WHERE state=2 AND heartbeat_ms<=$1::bigint AND NOT EXISTS(SELECT 1 FROM chat.turn_tasks_v1 x WHERE x.account=t.account AND x.turn=t.id) ORDER BY heartbeat_ms,id LIMIT 32",1,NULL,cut,NULL,NULL,0);bool ok=tuples(rows);
  for(int i=0;ok&&i<PQntuples(rows);i++){PGresult *r=turn_row(db,PQgetvalue(rows,i,0),PQgetvalue(rows,i,1),true);coax_t_CtView *v=calloc(1,sizeof *v);ok=v&&view(r,0,v);if(ok&&ctw_lost(v->state,!PQgetisnull(r,0,27),nullable(r,0,28),now)){coax_t_CtEvent e;coax_t_CtUsage u={0};ok=cta_event((coax_v_t_CtView){v,1},LOST,ts(""),ts("unknown"),ts("Model worker lost after dispatch"),false,(coax_v_t_CtUsage){&u,1},(coax_v_t_CtEvent){&e,1})==1&&save_view(db,r,v,&e);}free(v);PQclear(r);}PQclear(rows);return ok;
 }
 static void claim(const request *q,PGconn *db,const char *key,const char *operation,const char *worker){
@@ -135,9 +135,9 @@ static void claim(const request *q,PGconn *db,const char *key,const char *operat
  const char *op[]={key,operation};r=PQexecParams(db,"SELECT x.turn,t.conversation,x.dispatch,x.worker FROM chat.turn_claims_v2 x JOIN chat.turns_v2 t ON t.account=x.account AND t.id=x.turn WHERE x.runner_key=$1 AND x.operation=$2",2,NULL,op,NULL,NULL,0);if(!tuples(r)){goto done;}
  int64_t n=-1;if(PQntuples(r)){if(strcmp(PQgetvalue(r,0,3),worker)){status=409;why="Claim operation belongs to a different worker.";goto done;}n=cwr_job(ts(PQgetvalue(r,0,0)),ts(PQgetvalue(r,0,1)),ts(PQgetvalue(r,0,2)),tb(out,sizeof out));}
  else {
-  const char *clock[]={ms};job=PQexecParams(db,"SELECT account,id FROM chat.turns_v2 WHERE state=1 AND (claim_until_ms IS NULL OR claim_until_ms<=$1::bigint) ORDER BY created_ms,id LIMIT 1 FOR UPDATE SKIP LOCKED",1,NULL,clock,NULL,NULL,0);if(!tuples(job)){goto done;}
+  const char *clock[]={ms};job=PQexecParams(db,"SELECT t.account,t.id,x.turn IS NOT NULL,coalesce(x.poll_after_ms,0) FROM chat.turns_v2 t LEFT JOIN chat.turn_tasks_v1 x ON x.account=t.account AND x.turn=t.id WHERE (t.state=1 OR (t.state=2 AND x.turn IS NOT NULL)) AND (t.claim_until_ms IS NULL OR t.claim_until_ms<=$1::bigint) AND coalesce(x.poll_after_ms,0)<=$1::bigint ORDER BY t.updated_ms,t.id LIMIT 1 FOR UPDATE OF t SKIP LOCKED",1,NULL,clock,NULL,NULL,0);if(!tuples(job)){goto done;}
   if(!PQntuples(job))n=cwr_job(ts(""),ts(""),ts(""),tb(out,sizeof out));
-  else {PGresult *t=turn_row(db,PQgetvalue(job,0,0),PQgetvalue(job,0,1),true);bool available=tuples(t)&&PQntuples(t)==1&&ctw_claim(number(t,0,3),*PQgetvalue(t,0,25)!=0,nullable(t,0,26),now)&&api_object_id(dispatch,"run_");
+  else {PGresult *t=turn_row(db,PQgetvalue(job,0,0),PQgetvalue(job,0,1),true);bool available=tuples(t)&&PQntuples(t)==1&&ctn_claim(number(t,0,3),PQgetvalue(job,0,2)[0]=='t',number(job,0,3),nullable(t,0,26),now)&&api_object_id(dispatch,"run_");
    const char *v[]={PQgetvalue(job,0,0),PQgetvalue(job,0,1),worker,key,operation,dispatch,until,ms};
    if(available){available=exec_sql(db,"UPDATE chat.turns_v2 SET worker=$3,runner_key=$4,claim_operation=$5,dispatch=$6,claim_until_ms=$7::bigint,updated_ms=$8::bigint WHERE account=$1 AND id=$2",8,v);}
    const char *receipt[]={v[0],v[1],v[2],v[3],v[4],v[5],v[7]};if(available)available=exec_sql(db,"INSERT INTO chat.turn_claims_v2(account,turn,worker,runner_key,operation,dispatch,created_ms) VALUES($1,$2,$3,$4,$5,$6,$7::bigint)",7,receipt);
@@ -154,14 +154,15 @@ static void dispatch_turn(const request *q,PGconn *db,const char *key,const char
  bool tx=exec_sql(db,"BEGIN",0,NULL);int status=503;const char *why="Model attempt unavailable.";PGresult *owner=NULL,*r=NULL,*grant=NULL;coax_t_CtView *v=calloc(1,sizeof *v);unsigned char *out=calloc(1,CT_CAP);char *input=NULL;char account[41]="";
  if(!tx||!v||!out){goto done;}owner=PQexecParams(db,"SELECT account FROM chat.turns_v2 WHERE id=$1",1,NULL,&id,NULL,NULL,0);if(!tuples(owner)){goto done;}if(PQntuples(owner)!=1){status=404;why="not found";goto done;}snprintf(account,sizeof account,"%s",PQgetvalue(owner,0,0));r=turn_row(db,account,id,true);if(!view(r,0,v)){goto done;}
  bool matching=!strcmp(PQgetvalue(r,0,22),worker)&&!strcmp(PQgetvalue(r,0,23),key)&&!strcmp(PQgetvalue(r,0,25),dispatch);if(!matching){status=409;why="Worker claim was replaced.";goto done;}
+ const char *nv[]={account,id};PGresult *native_row=PQexecParams(db,"SELECT 1 FROM chat.turn_tasks_v1 WHERE account=$1 AND turn=$2",2,NULL,nv,NULL,NULL,0);bool native_storage=tuples(native_row),native=native_storage&&PQntuples(native_row)==1;PQclear(native_row);if(!native_storage)goto done;
  long long now=(long long)api_now_ms();bool started=!PQgetisnull(r,0,27);coax_t_CtEvent e;coax_t_CtUsage u={0};
- if(lost){if(ctw_lost(v->state,started,nullable(r,0,28),now)){if(cta_event((coax_v_t_CtView){v,1},LOST,ts(""),ts("unknown"),ts("Worker lost after dispatch"),false,(coax_v_t_CtUsage){&u,1},(coax_v_t_CtEvent){&e,1})!=1||!save_view(db,r,v,&e)){goto done;}}}
+ if(lost){if(!native&&ctw_lost(v->state,started,nullable(r,0,28),now)){if(cta_event((coax_v_t_CtView){v,1},LOST,ts(""),ts("unknown"),ts("Worker lost after dispatch"),false,(coax_v_t_CtUsage){&u,1},(coax_v_t_CtEvent){&e,1})!=1||!save_view(db,r,v,&e)){goto done;}}}
  else if(!started&&!ct_terminal(v->state)){
   const char *g[]={account,PQgetvalue(r,0,30)};grant=PQexecParams(db,"SELECT kind,team,frozen_at IS NOT NULL,deleted_at IS NOT NULL,($2='' OR EXISTS(SELECT 1 FROM projects.private_v1 WHERE account=$1 AND id=$2)) FROM auth.accounts WHERE id=$1",2,NULL,g,NULL,NULL,0);
   bool allowed=tuples(grant)&&PQntuples(grant)==1&&ctw_grant(act_funded(!strcmp(PQgetvalue(grant,0,0),"person")?2:0,ts(account),PQgetvalue(grant,0,1)[0]=='t'),PQgetvalue(grant,0,2)[0]=='t',PQgetvalue(grant,0,3)[0]=='t',PQgetvalue(grant,0,4)[0]=='t');
   if(!ctw_run(v->state,v->stop_requested,matching,started,allowed,nullable(r,0,26)>now)){if(allowed){status=409;why="Claim expired before dispatch.";goto done;}if(cta_event((coax_v_t_CtView){v,1},ERROR,ts(""),ts("error"),ts("Account admission changed before dispatch"),false,(coax_v_t_CtUsage){&u,1},(coax_v_t_CtEvent){&e,1})!=1||!save_view(db,r,v,&e)){goto done;}}
   else {input=strdup(PQgetvalue(r,0,29));char ms[32];num(ms,now);const char *st[]={account,id,ms};if(!input||cta_event((coax_v_t_CtView){v,1},START,ts(""),ts(""),ts(""),false,(coax_v_t_CtUsage){&u,1},(coax_v_t_CtEvent){&e,1})!=1||!save_view(db,r,v,&e)||!exec_sql(db,"UPDATE chat.turns_v2 SET dispatched_ms=$3::bigint WHERE account=$1 AND id=$2",3,st)){goto done;}}
- }
+ }else if(native&&!ct_terminal(v->state)){input=strdup(PQgetvalue(r,0,29));if(!input)goto done;}
  if(!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;
  if(input){model_run(q,account,id,dispatch,worker,key,input);goto finish;}
  PQclear(r);r=turn_row(db,account,id,false);int64_t n=control(r,v,out,CT_CAP);if(n<1){goto done;}reply(q,200,out,(size_t)n);goto finish;
@@ -221,7 +222,7 @@ static void model_end(void *opaque,int status,bool clean,double taken){
  if(n>0&&n<=(int64_t)sizeof out)reply(&m->response,200,out,(size_t)n);else refuse(&m->response,503,"Reopen the saved turn to reconcile its outcome.");
  free(v);PQclear(r);if(m->db){PQfinish(m->db);m->db=NULL;}
 }
-static void model_run(const request *q,const char *account,const char *turn,const char *dispatch,const char *worker,const char *key,const char *input){
+static void hosted_model_run(const request *q,const char *account,const char *turn,const char *dispatch,const char *worker,const char *key,const char *input){
  turn_model m={.response=*q};snprintf(m.account,sizeof m.account,"%s",account);snprintf(m.turn,sizeof m.turn,"%s",turn);snprintf(m.dispatch,sizeof m.dispatch,"%s",dispatch);snprintf(m.worker,sizeof m.worker,"%s",worker);snprintf(m.key,sizeof m.key,"%s",key);m.stream=calloc(1,sizeof *m.stream);
  if(!m.stream){model_end(&m,503,true,0);return;}cts_init((coax_v_t_CtStream){m.stream,1});char subject[128],who[65]={0};snprintf(subject,sizeof subject,"openagents.account-chat.v1:%s",account);(void)pr_hash(ts(subject),tb(who,64));
  inference_observer observer={.bytes=model_bytes,.keep=model_keep,.end=model_end};request next=*q;next.body=input;next.body_len=strlen(input);
@@ -230,3 +231,4 @@ static void model_run(const request *q,const char *account,const char *turn,cons
  if(m.db){PQfinish(m.db);}
  free(m.stream);
 }
+#include "account-chat-tasks.c"

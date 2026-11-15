@@ -6,6 +6,7 @@
 #load "../projects-wire.coax";
 #load "../account-chat-task-wire.coax";
 #load "../../../lib/text/base64.coax";
+#load "native_chat_checks.coax";
 dc_z :: (b:[]u8)->string {n:=0;while n<b.count && b[n]!=0 {n+=1;}return cast(string)b[0..<n];}
 dc_get :: (t:[]Ap,auth:string,path:string,id:string,after:int)->int {q:[1]Sb;sb(q[..],path);sb(q[..],"?id=");sb(q[..],id);sb(q[..],"&after=");sb_int(q[..],after);return ac_call(t,"GET",sb_text(q[..]),"",auth,"","");}
 dc_post :: (t:[]Ap,auth:string,op:string,conversation:string,rev:int,project:string,pr:int,text:string)->int {b:[131072]u8;one:=[1]string.[text];n:=ct_submit_write(op,conversation,rev,project,pr,"",-1,one[..],b[..]);return ac_call(t,"POST","/api/chat/submit/v2alpha1",cast(string)b[0..<n],auth,"","");}
@@ -89,8 +90,12 @@ dc_run_again :: (t:[]Ap,turn:string)->int {
 // Actual separately owned API processes let the fixture kill the transport
 // owner, not merely the phone or the resident worker waiting on that owner.
 dc_api :: (t:[]Ap,port:int)->int {
+ return dc_api_config(t,port,"");
+}
+dc_api_config :: (t:[]Ap,port:int,decisions:string)->int {
  h:=proc_new();p:[1]Sb;sb(p[..],"127.0.0.1:");sb_int(p[..],port);e:[1]Sb;sb(e[..],"OA_API_ORIGIN=");sb(e[..],t[0].api);
  ok:=h>=0 && proc_arg(h,ap_env(t,"API_BIN")) && proc_arg(h,"--listen") && proc_arg(h,sb_text(p[..])) && proc_env(h,sb_text(e[..])) && proc_quiet(h);
+ if decisions!="" {sb_clear(e[..]);sb(e[..],"OA_ROUTER_DECISIONS_URL=");sb(e[..],decisions);ok=ok && proc_env(h,sb_text(e[..])) && proc_env(h,"OA_GEMINI_DECISIONS_KEY=fixture");sb_clear(e[..]);sb(e[..],"OA_ENV_BROKER_PROGRAM=");sb(e[..],fs_dir(ap_env(t,"API_BIN")));sb(e[..],"/environment-fixture");ok=ok && proc_env(h,sb_text(e[..])) && proc_env(h,"OA_ENV_BROKER_KEY_FILE=/unused");sb_clear(e[..]);sb(e[..],"OA_ENV_TASK_FIXTURE_AUDIT=");sb(e[..],fs_dir(ap_env(t,"API_BIN")));sb(e[..],"/native-audit");ok=ok && proc_env(h,sb_text(e[..]));}
  if !ok || proc_start(h)!=0 {if h>=0 {_=proc_release(h);}return -1;}
  deadline:=proc_now_ms()+15000;while proc_now_ms()<deadline && proc_wait(h,0)==PROC_RUNNING {if ac_call(t,"GET","/api/playtest/health","","","","")==200 {return h;}_=proc_wait(h,25);}
  _=proc_release(h);return -1;
@@ -242,9 +247,11 @@ dc_checks :: (t:[]Ap,mail:string) {
  st=dc_get(t,auth,"/api/chat/events/v2alpha1",turn,1);ap_check(t,"resuming after the cursor emits no duplicate event",st==200 && ap_has(ap_body(t),"\"events\":[]") && ap_has(ap_body(t),"\"has_more\":false"),ap_body(t));
  st=dc_post(t,auth,"next",conversation,1,"",-1,"Next question");ap_check(t,"a new operation continues the same conversation after cancellation",st==202 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].conversation==conversation && control[0].revision==2 && control[0].turn!=turn,ap_body(t));
  if st==202 {next:[36]u8;_=js_copy(next[..],control[0].turn);dc_stream_checks(t,auth,stranger,account,conversation,cast(string)next[..]);}
+ nct_checks(t,stranger);
 }
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}if args_count(a[..])==3 && args_at(a[..],0)=="mail" {return am_main(ap_whole(args_at(a[..],1)),args_at(a[..],2));}
+ if args_count(a[..])==3 && args_at(a[..],0)=="native-decisions" {reply:[16384]u8;n:=nct_answer(reply[..]);if n<1 {return 2;}return am_response(ap_whole(args_at(a[..],1)),args_at(a[..],2),cast(string)reply[0..<n]);}
  if args_count(a[..])==5 && args_at(a[..],0)=="legacy-replay" {raw:[1048577]u8;n:=fs_read(args_at(a[..],1),raw[..]);ok:=n>0 && n<=1048576 && dc_legacy_history(cast(string)raw[0..<ifx n>0 then n else 0],args_at(a[..],2),args_at(a[..],3),ap_whole(args_at(a[..],4)));print("legacy history capture: %\n",ifx ok then "accepted" else "refused");return ifx ok then 0 else 1;}
  if args_count(a[..])==3 && args_at(a[..],0)=="infer" {return am_response_parts(ap_whole(args_at(a[..],1)),args_at(a[..],2),"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n","data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":2,\"prompt_tokens_details\":{\"cached_tokens\":0}}}\n\ndata: [DONE]\n\n",2000);}
  if args_count(a[..])==3 {

@@ -1,6 +1,6 @@
 // Native adapter for primary protobuf router codecs. Authorization lives in
 // account-chat-task-policy and account-chat-task-link-policy supply admission.
-#load "account-chat-task-policy.coax";
+#load "account-chat-task-worker-policy.coax";
 #load "account-chat-task-wire.coax";
 #load "../../lib/agent/router/native-choice.coax";
 #load "../../lib/agent/router/decide.coax";
@@ -30,7 +30,15 @@ ctn_route_begin :: (h:[]CtnRouter,now:int,out:[]u8)->int #export_c #effects(all)
 }
 ctn_route_finish :: (h:[]CtnRouter,status:int,answer:string)->int #export_c #effects(all) {
  if h[0].w[0].request!="" {a:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=a[..]}];gr:=gd_result(h[0].w[0].body[..],ar[..],status,answer);rtr_finish(h[0].q[..],h[0].e[..],gr,h[0].d[..],h[0].w[..]);}
- if !h[0].d[0].ok || (h[0].d[0].engine!="claude" && h[0].d[0].engine!="codex") {return -1;}return rtr_station_index(h[0].q[..],h[0].d[0].station);
+ if !ctn_route_ready(h[0].d[0].ok,h[0].d[0].door_problem,h[0].d[0].engine) {return -1;}return rtr_station_index(h[0].q[..],h[0].d[0].station);
+}
+ctn_bind :: (h:[]CtnRouter,s:[]CtnSelect,row:int,turn:string,conversation:string,command:string,enrollment:string,raw:string,now:int,out:[]u8)->int #export_c #effects(all) {
+ if row<0 || row>=h[0].q[0].n || s[0].selected<0 || s[0].selected>=s[0].n || !ex_reference(turn,"trn_") || !ex_reference(conversation,"cnv_") {return -1;}
+ model:=s[0].offer[0].models[s[0].model[s[0].selected]];level:=s[0].level[s[0].selected];input_hash:[64]u8;report_hash:[64]u8;
+ report:=cast(string)h[0].reports[row][0..<h[0].nr[row]];_=S_hex(S_hash(raw),input_hash[..]);_=S_hex(S_hash(report),report_hash[..]);
+ b:=ExBinding.{task=cast(string)turn[4..<36],conversation=conversation,turn=turn,route=s[0].offer[0].probe,host=cast(string)h[0].hosts[row][..],workspace=s[0].offer[0].workspace,session=cast(string)turn[4..<36],command=command,engine=h[0].d[0].engine,account=s[0].offer[0].account,model=model.id,effort=ifx level<0 then "" else model.levels[level],input_hash=cast(string)input_hash[..],input_bytes=raw.count,report_hash=cast(string)report_hash[..],report_at=h[0].q[0].stations[row].reported_at_ms,issued=now,expires=xo_deadline(now,300000)};
+ decision:[RTR_DECISION_MAX]u8;dispatch:[RTR_DECISION_MAX]u8;dn:=ctn_route_write(h,decision[..]);pn:=ctn_dispatch_write(h,row,b,dispatch[..]);if dn<1 || pn<1 {return -1;}
+ return ctt_write(CttTask.{binding=b,decision=cast(string)decision[0..<dn],report=report,offer=s[0].offer[0],enrollment=enrollment,reason="The typed router selected this computer and engine; native_model resolved an exact actual SDK model/effort pair.",dispatch=cast(string)dispatch[0..<pn]},out);
 }
 ctn_route_write :: (h:[]CtnRouter,out:[]u8)->int #export_c #effects(all) {return rtr_decision_write(h[0].d[..],out);}
 ctn_dispatch_write :: (h:[]CtnRouter,row:int,b:ExBinding,out:[]u8)->int #export_c #effects(all) {

@@ -1,0 +1,48 @@
+// Projection through the sole inert Session reader and verified capture client.
+#load "../../lib/agent/environment/transcript-client.coax";
+CtnCapture :: struct {client:[1]XhClient;session:[1]Session;}
+#test "native chat text includes assistant text and preserves tool history in the shared Session" {
+ s:[1]Session;pool:[1024]u8;out:[128]u8;s_init(s[..],pool[..]);s_user(s[..],"Private instructions");s_delta(s[..],P_TEXT,"Checking. ");s_delta(s[..],P_THINK,"Not public text");s_delta(s[..],P_TEXT,"Done.");
+ n:=ctn_session_text(s[..],out[..]);#assert n==15 && cast(string)out[0..<n]=="Checking. Done." && ctn_session_text(s[..],out[0..<14])<0;
+}
+#test "native chat projection includes the first assistant part and accepts an empty transcript" {
+ s:[1]Session;pool:[128]u8;out:[32]u8;s_init(s[..],pool[..]);#assert ctn_session_text(s[..],out[..])==0;
+ s_delta(s[..],P_TEXT,"First reply");n:=ctn_session_text(s[..],out[..]);#assert s[0].parts[0].kind==P_TEXT && n==11 && cast(string)out[0..<n]=="First reply";
+}
+#test "native capture adapters retain whole binding exact continuation and complete primary Session bytes" #steps 100000000 {
+ c:[1]CtnCapture;data:[8192]u8;request:[1024]u8;pool:[8192]u8;decode:[8192]u8;out:[128]u8;b:=ex_test_binding();
+ #assert ctn_capture_request(c[..],request[..])<0 && ctn_capture_text(c[..],pool[..],decode[..],out[..])== -1;
+ bad:=b;bad.host="bad";#assert !ctn_capture_init(c[..],bad,EX_TEST_ID,EX_TEST_ID,data[..]);
+ #assert ctn_capture_init(c[..],b,EX_TEST_ID,"11111111111111111111111111111111",data[..]);
+ q:[1]XhRequest;qa:[256]u8;n:=ctn_capture_request(c[..],request[..]);#assert n>0 && xh_request_read(cast(string)request[0..<n],q[..],qa[..]) && q[0].task==b.task && q[0].reader==EX_TEST_ID && q[0].read=="11111111111111111111111111111111" && q[0].hash=="" && q[0].offset==0;
+ #assert ctn_capture_request(c[..],request[0..<1])<0;
+ s:[1]Session;source_pool:[8192]u8;lines:[8192]u8;s_init(s[..],source_pool[..]);s_delta(s[..],P_TEXT,"First. ");s_user(s[..],"Private instructions");s_delta(s[..],P_THINK,"Private thinking");sl_test_tool(s[..],"native-tool",TK_EXEC,"fixture","shell","","","{\"command\":\"fixture\"}","Tool result",false);s_delta(s[..],P_TEXT,"Done.");
+ bytes:=sl_lines_checked(s[..],0,s[0].n,false,lines[..]);#assert bytes>1;log_text:=cast(string)lines[0..<bytes];hash:[64]u8;#assert S_hex(S_hash(log_text),hash[..]);
+ p:=XhPage.{capture=XhCapture.{reader=EX_TEST_ID,read="11111111111111111111111111111111",status=XtStatus.{binding=b,state=XT_COMPLETED,revision=1,updated=1},hash=cast(string)hash[..],bytes=bytes,expires=100},next=bytes/2,text=log_text[0..<bytes/2]};raw:[XH_PAGE_MAX]u8;arena:[XH_ARENA]u8;n=xh_page_write(p,raw[..]);#assert n>0;
+ bad=b;bad.model="other";#assert !ctn_capture_page(c[..],bad,cast(string)raw[0..<n],1,arena[..]) && c[0].client[0].n==0;
+ #assert !ctn_capture_page(c[..],b,"{}",1,arena[..]) && !ctn_capture_page(c[..],b,cast(string)raw[0..<n],101,arena[..]);
+ #assert ctn_capture_page(c[..],b,cast(string)raw[0..<n],1,arena[..]) && c[0].client[0].n==bytes/2 && !c[0].client[0].done && ctn_capture_text(c[..],pool[..],decode[..],out[..])== -1;
+ n=ctn_capture_request(c[..],request[..]);#assert n>0 && xh_request_read(cast(string)request[0..<n],q[..],qa[..]) && q[0].offset==bytes/2 && q[0].hash==cast(string)hash[..];
+ p.offset=bytes/2;p.next=bytes;p.complete=true;p.text=log_text[bytes/2..<bytes];p.capture.hash=EX_TEST_HASH;n=xh_page_write(p,raw[..]);#assert n>0 && !ctn_capture_page(c[..],b,cast(string)raw[0..<n],1,arena[..]) && c[0].client[0].n==bytes/2;
+ p.capture.hash=cast(string)hash[..];n=xh_page_write(p,raw[..]);#assert n>0 && ctn_capture_page(c[..],b,cast(string)raw[0..<n],1,arena[..]) && c[0].client[0].done;
+ n=ctn_capture_text(c[..],pool[..],decode[..],out[..]);#assert n==12 && cast(string)out[0..<n]=="First. Done." && c[0].session[0].parts[3].kind==P_TOOL && c[0].session[0].parts[3].id=="native-tool" && c[0].session[0].parts[3].output=="Tool result";
+ #assert ctn_capture_text(c[..],pool[..],decode[..],out[0..<11])== -2;
+}
+#test "native capture projection distinguishes invalid complete logs from valid empty output" {
+ for text,i:[2]string.["{bad}\n",""] {
+  c:[1]CtnCapture;data:[32]u8;pool:[128]u8;decode:[128]u8;out:[32]u8;b:=ex_test_binding();#assert ctn_capture_init(c[..],b,EX_TEST_ID,EX_TEST_ID,data[..]);hash:[64]u8;#assert S_hex(S_hash(text),hash[..]);
+  p:=XhPage.{capture=XhCapture.{reader=EX_TEST_ID,read=EX_TEST_ID,status=XtStatus.{binding=b,state=XT_COMPLETED,revision=1,updated=1},hash=cast(string)hash[..],bytes=text.count,expires=100},next=text.count,complete=true,text=text};raw:[XH_PAGE_MAX]u8;arena:[XH_ARENA]u8;n:=xh_page_write(p,raw[..]);
+  #assert n>0 && ctn_capture_page(c[..],b,cast(string)raw[0..<n],1,arena[..]) && ctn_capture_text(c[..],pool[..],decode[..],out[..])==(ifx i==0 then -1 else 0);
+ }
+}
+ctn_capture_init :: (c:[]CtnCapture,b:ExBinding,reader:string,read:string,data:[]u8)->bool #export_c #effects(all) {return xh_client_init(c[0].client[..],b.host,b.task,reader,read,data);}
+ctn_capture_request :: (c:[]CtnCapture,out:[]u8)->int #export_c #effects(all) {return xh_request_write(xh_client_request(c[0].client[..]),out);}
+ctn_capture_page :: (c:[]CtnCapture,b:ExBinding,raw:string,now:int,arena:[]u8)->bool #export_c #effects(all) {
+ page:[1]XhPage;if !xh_page_read(raw,page[..],arena) || !ex_binding_same(b,page[0].capture.status.binding) {return false;}return xh_client_page(c[0].client[..],raw,now,arena);
+}
+ctn_session_text :: (s:[]Session,out:[]u8)->int #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);for i:0..<s[0].n {if s[0].parts[i].kind==P_TEXT {jo_put(o[..],s_text_of(s,i));}}return ifx o[0].bad then -1 else o[0].n;
+}
+ctn_capture_text :: (c:[]CtnCapture,pool:[]u8,decode:[]u8,out:[]u8)->int #export_c #effects(all) {
+ if !xh_client_session(c[0].client[..],c[0].session[..],pool,decode) {return -1;}n:=ctn_session_text(c[0].session[..],out);return ifx n<0 then -2 else n;
+}

@@ -84,10 +84,10 @@ xt_request_valid :: (q:XtRequest)->bool #effects(all) {
  if q.method=="StopTask" {return q.revision==0 && q.interaction.count==0 && !q.allow;}
  return q.revision>0 && q.interaction.count>0;
 }
-xt_request_write :: (q:XtRequest,out:[]u8)->int #effects(all) {
+xt_request_write :: (q:XtRequest,out:[]u8)->int #export_c #effects(all) {
  if !xt_request_valid(q) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],XT_REQUEST);jo_key(o[..],"method");jo_str(o[..],q.method);jo_key(o[..],"task_id");jo_str(o[..],q.task);jo_key(o[..],"command_id");jo_str(o[..],q.command);jo_key(o[..],"expected_revision");jo_int(o[..],q.revision);jo_key(o[..],"interaction_id");jo_str(o[..],q.interaction);jo_key(o[..],"allow");jo_bool(o[..],q.allow);jo_key(o[..],"issued_at_ms");jo_int(o[..],q.issued);jo_key(o[..],"expires_at_ms");jo_int(o[..],q.expires);jo_key(o[..],"route_decision");jo_raw(o[..],ifx q.route.count>0 then q.route else "null");jo_end(o[..]);return ex_encoded(o[..]); // mutant: equivalent (route count threshold 0 to 1: a valid Start object has at least two bytes; every other method has an empty route)
 }
-xt_request_read :: (raw:string,out:[]XtRequest,arena:[]u8)->bool #effects(all) {
+xt_request_read :: (raw:string,out:[]XtRequest,arena:[]u8)->bool #export_c #effects(all) {
  d:[1]Jv;nodes:[4096]JvNode;if raw.count>XT_REQUEST_MAX || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[10]string.["schema","method","task_id","command_id","expected_revision","interaction_id","allow","issued_at_ms","expires_at_ms","route_decision"];
  if !js_fields(v,0,keys[..]) || jv_len(v,0)!=keys.count || jv_raw(v,jv_get(v,0,"schema"))!=XT_REQUEST {return false;}
  a:=[1]ExArena.[ExArena.{buf=arena}];q:XtRequest;q.method=ex_string(v,0,"method",a[..]);q.task=ex_string(v,0,"task_id",a[..]);q.command=ex_string(v,0,"command_id",a[..]);q.interaction=ex_string(v,0,"interaction_id",a[..]);

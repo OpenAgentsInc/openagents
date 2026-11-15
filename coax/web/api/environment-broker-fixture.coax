@@ -9,6 +9,7 @@
 #load "../../lib/sys/fs.coax";
 #load "../../lib/sys/proc.coax";
 #load "../../lib/sys/clock.coax";
+#load "account-chat-native-fixture.coax";
 fixture_transcript :: (a:[]Args,q:XhRequest,status:XtStatus)->int #effects(all) {
  work:[4096]u8;audit:=proc_getenv("OA_ENV_TASK_FIXTURE_AUDIT",work[..]);base:=ifx audit!="" then fs_dir(audit) else fs_dir(args_value(a,"--request-file",""));
  parent:[FS_PATH_MAX]u8;host:[FS_PATH_MAX]u8;source_path:[FS_PATH_MAX]u8;root_path:[FS_PATH_MAX]u8;directory:=fs_join(fs_join(base,"fixture-transcripts",parent[..]),status.binding.host,host[..]);source:=fs_join(directory,"source.jsonl",source_path[..]);root:=fs_join(directory,"captures",root_path[..]);
@@ -26,6 +27,7 @@ fixture_transcript :: (a:[]Args,q:XhRequest,status:XtStatus)->int #effects(all) 
 }
 tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {return 2;}
+  if args_value(args[..],"--epoch","")=="88" {return ncf_rpc(args[..]);}
   input:[XT_REQUEST_MAX]u8;n:=fs_read(args_value(args[..],"--request-file",""),input[..]);q:[1]EaRequest;
   if args_at(args[..],0)=="execution-rpc" {
     offer_request:[1]XoRequest;offer_arena:[128]u8;

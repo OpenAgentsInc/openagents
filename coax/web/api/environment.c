@@ -71,6 +71,15 @@ static bool environment_task_route(const request *q) {
   bool owned=owner&&PQresultStatus(owner)==PGRES_TUPLES_OK&&PQntuples(owner)==1;
   bool scoped=ta_scope(owned,es(host),before.binding.host,es(task),before.binding.task);bool owner_storage=owner&&PQresultStatus(owner)==PGRES_TUPLES_OK;PQclear(owner);
   if(!scoped){status=owner_storage?404:503;why=owner_storage?"Task not found.":"Task ownership storage unavailable.";goto done;}
+  // Server-routed turns additionally pin their whole immutable binding and
+  // enrollment. Older explicitly admitted tasks retain their existing scope.
+  PGresult *association=PQexecParams(db,"SELECT record FROM chat.turn_tasks_v1 WHERE account=$1 AND turn=$2",2,NULL,owner_args,NULL,NULL,0);
+  bool associated_storage=association&&PQresultStatus(association)==PGRES_TUPLES_OK;bool associated=associated_storage&&PQntuples(association)==1;
+  if(!associated_storage){PQclear(association);status=503;why="Task association storage unavailable.";goto done;}
+  if(associated){coax_t_CttTask retained={0};unsigned char retained_arena[20480],digest[64];bool valid=ctt_read(es(PQgetvalue(association,0,0)),(coax_v_t_CttTask){&retained,1},(coax_v_u8){retained_arena,sizeof retained_arena});coax_t_XtStatus expected={.binding=retained.binding};
+    bool same=valid&&ctt_owned(retained,es(turn),es(conversation))&&ta_same_binding((coax_v_t_XtStatus){&expected,1},(coax_v_t_XtStatus){&before,1})&&ctn_enrollment(es(host),es(PQgetvalue(connection,0,0)),es(PQgetvalue(connection,0,1)),es(PQgetvalue(connection,0,2)),(coax_v_u8){digest,sizeof digest})&&ctn_scope(true,1,retained.enrollment,(coax_string){(const char *)digest,64});
+    PQclear(association);if(!same){status=valid?404:503;why=valid?"Task not found.":"Saved task association is invalid.";goto done;}
+  }else PQclear(association);
   if(transcript){
     if(!ea_payload_file(es(file),(coax_string){(const char *)transcript_body,transcript_n})){status=503;goto done;}
     n=environment_task_proxy(es(host),es(PQgetvalue(connection,0,0)),es(PQgetvalue(connection,0,1)),es(PQgetvalue(connection,0,2)),es(key),es(file),es(program&&*program?program:"/usr/local/bin/environment-host"),(coax_v_u8){second,sizeof second});
@@ -84,6 +93,7 @@ static bool environment_task_route(const request *q) {
   n=environment_task_proxy(es(host),es(PQgetvalue(connection,0,0)),es(PQgetvalue(connection,0,1)),es(PQgetvalue(connection,0,2)),es(key),es(file),es(program&&*program?program:"/usr/local/bin/environment-host"),(coax_v_u8){second,sizeof second});
   status=(int)ta_http(n);if(status!=200)goto done;
   if(!ta_status((coax_string){(const char *)second,n},es(host),es(task),control.command,(coax_v_t_XtStatus){&after,1},(coax_v_u8){after_arena,sizeof after_arena})||!ta_same_binding((coax_v_t_XtStatus){&before,1},(coax_v_t_XtStatus){&after,1})){status=502;why="Task control reply changed its binding; reconcile before retrying.";goto done;}
+  PGresult *wake=PQexecParams(db,"UPDATE chat.turn_tasks_v1 SET poll_after_ms=0 WHERE account=$1 AND turn=$2",2,NULL,owner_args,NULL,NULL,0);if(wake&&PQresultStatus(wake)==PGRES_COMMAND_OK)(void)chat_wake();PQclear(wake);
   env_reply(q->fd,second,(size_t)n);goto replied;
  done: api_error(q->fd,status,why);
  replied: if(fd>=0)unlink(file);PQclear(connection);return true;

@@ -1,0 +1,65 @@
+// API -> broker process -> production stores -> controlled SDK -> transcript.
+// The native HOST/SDK fixture is not real provider inference or mobile proof.
+#load "../account-chat-task-route.coax";
+#load "../account-chat-native-fixture.coax";
+#load "../../../lib/agent/environment/execution-fixtures.coax";
+nct_answer :: (out:[]u8)->int #effects(all) {
+ input:[1]ExInput;ex_test_input(input[..]);raw:[8192]u8;report:[RTR_REPORT_MAX]u8;h:[1]CtnRouter;body:[32768]u8;now:=cxproc_wall_us()/1000;n:=ex_input_write(input[..],raw[..]);r:=ncf_station(EX_TEST_HASH,report[..]);
+ if n<1 || r<1 || !ctn_init(h[..],cast(string)raw[0..<n],now) || !ctn_report_add(h[..],EX_TEST_HASH,"Native fixture Mac",cast(string)report[0..<r]) || ctn_route_begin(h[..],now,body[..])<1 {return -1;}
+ answer:=rtr_mock(h[0].w[..],"engine=codex,difficulty=3,effort=high,weight=0,needs=apple,named_station=none,named_engine=none,named_depth=none",0);j:[1]Jv;nodes:[1024]JvNode;if answer.status!=200 || !jv_parse(j[..],answer.body,nodes[..]) {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"answers");jo_obj(o[..]);a:=jv_get(j[0],0,"answers");for i:0..<jv_len(j[0],a) {at:=jv_at(j[0],a,i);jo_key(o[..],jv_key(j[0],at));jv_write(j[0],at,o[..]);}
+ jo_key(o[..],"native_work");jo_raw(o[..],"{\"type\":\"noul\",\"noul\":1,\"confidence\":1}");jo_key(o[..],"native_model");jo_raw(o[..],"{\"type\":\"choice\",\"choice\":\"m00e01\",\"confidence\":1,\"probabilities\":{\"m00e00\":0,\"m00e01\":1}}");jo_end(o[..]);jo_end(o[..]);return ex_encoded(o[..]);
+}
+nct_claim_run :: (t:[]Ap,turn:string,tag:string)->bool {
+ q:[1]Sb;sb(q[..],"UPDATE chat.turn_tasks_v1 SET poll_after_ms=0 WHERE turn='");sb(q[..],turn);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+ op:[1]Sb;sb(op[..],"native-claim-");sb(op[..],tag);st:=dc_signed(t,1,sb_text(op[..]),tag,"","",tag);claim:[1]CtJob;arena:[108]u8;
+ if st!=200 || !cwr_job_read(ap_body(t),claim[..],arena[..]) || !claim[0].has_work || claim[0].turn!=turn {return false;}
+ return dc_signed(t,2,"native-run",tag,turn,claim[0].dispatch,tag)==200;
+}
+nct_control_case :: (t:[]Ap,c:[]Sc,project:string,message:string,mode:string) {
+ op:[1]Sb;sb(op[..],"native-");sb(op[..],mode);start:=[10]string.["chat","new","--project",project,"--project-rev","1","--file",message,"--operation-id",sb_text(op[..])];st:=sc_cli(t,c,start[..]);control:[1]CtControl;arena:[72]u8;turn:[36]u8;
+ ok:=st==0 && ctr_control_read(sc_text(c),control[..],arena[..]);if ok {_=js_copy(turn[..],control[0].turn);}tid:=cast(string)turn[..];label:[1]Sb;sb(label[..],mode);sb(label[..],": a separate native turn is admitted");ap_check(t,sb_text(label[..]),ok,sc_text(c));if !ok {return;}
+ tag:[1]Sb;sb(tag[..],mode);sb(tag[..],"-start");ok=nct_claim_run(t,tid,sb_text(tag[..]));sb_clear(tag[..]);sb(tag[..],mode);sb(tag[..],"-observe");ok=ok && nct_claim_run(t,tid,sb_text(tag[..]));ap_check(t,"native control case rejoins its original task",ok,ap_body(t));
+ query:[1]Sb;if mode=="stop" {
+  sb(query[..],"UPDATE auth.accounts SET team=false WHERE id=(SELECT account FROM chat.turns_v2 WHERE id='");sb(query[..],tid);sb(query[..],"')");ap_do(t,sb_text(query[..]));
+  stop:=[5]string.["chat","stop",tid,"--operation-id","native-stop-request"];st=sc_cli(t,c,stop[..]);ap_check(t,"chat Stop remains available after funding is removed",st==0,sc_text(c));
+ }else {
+  path:[FS_PATH_MAX]u8;command:=fs_join(c[0].dir,"deny.json",path[..]);deny:=[10]string.["tasks","deny",EX_TEST_HASH,cast(string)tid[4..<36],"--rev","2","--interaction","native-request","--command-file",command];st=sc_cli(t,c,deny[..]);ap_check(t,"CLI denial reaches the native permission owner",st==0,sc_text(c));
+ }
+ sb_clear(tag[..]);sb(tag[..],mode);sb(tag[..],"-result");ap_check(t,"native Stop or denial is reconciled by a new worker",nct_claim_run(t,tid,sb_text(tag[..])),ap_body(t));
+ sb_clear(query[..]);sb(query[..],"SELECT state FROM chat.turns_v2 WHERE id='");sb(query[..],tid);sb(query[..],"'");out:[32]u8;ap_check(t,"saved native control outcome is authoritative",ap_sql(t,sb_text(query[..]),out[..])==(ifx mode=="stop" then "5" else "4"),cast(string)out[..]);
+ if mode=="stop" {sb_clear(query[..]);sb(query[..],"UPDATE auth.accounts SET team=true WHERE id=(SELECT account FROM chat.turns_v2 WHERE id='");sb(query[..],tid);sb(query[..],"')");ap_do(t,sb_text(query[..]));}
+}
+nct_checks :: (parent:[]Ap,stranger:string) {
+ local:[1]Ap;if !ap_open(local[..]) {return;}t:=local[..];port:=ap_whole(ap_env(t,"WAKE_PORT"))+4;url:[1]Sb;sb(url[..],"http://127.0.0.1:");sb_int(url[..],port);t[0].api=sb_text(url[..]);
+ dirbuf:[FS_PATH_MAX]u8;dir:=fs_temp("native-decisions",dirbuf[..]);dp:[32]u8;digits:[1]Jo;jo_start(digits[..],dp[..]);jo_int(digits[..],port+1);server:=ac_server_port(t,"coax/web/api/tests/durable_chat_checks.coax",dir,"native-decisions",jo_text(digits[..]));
+ decisions:[1]Sb;sb(decisions[..],"http://127.0.0.1:");sb_int(decisions[..],port+1);api:=ifx server>=0 then dc_api_config(t,port,sb_text(decisions[..])) else -1;ap_check(t,"native handoff fixture starts real API and typed decision HTTP processes",api>=0,"");
+ c:[1]Sc;c[0].cli=ap_env(t,"CLI");cb:[FS_PATH_MAX]u8;c[0].dir=fs_temp("native-cli",cb[..]);keybuf:[FS_PATH_MAX]u8;pub:[128]u8;key:=fs_join(c[0].dir,"key",keybuf[..]);pk:=ifx api>=0 then ac_newkey(t,key,pub[..]) else "";ok:=pk.count==64 && sc_key(c[..],key);
+ if ok {
+  q:[1]Sb;sb(q[..],"SELECT acct FROM auth.account_for_key('");sb(q[..],pk);sb(q[..],"','Native CLI fixture')");account:[80]u8;owner:=ap_sql(t,sb_text(q[..]),account[..]);sb_clear(q[..]);sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");sb(q[..],owner);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+  sb_clear(q[..]);sb(q[..],"INSERT INTO chat.environment_connections_v1(account,host_pubkey,display_name,grant_id,epoch,relay) VALUES('");sb(q[..],owner);sb(q[..],"','");sb(q[..],EX_TEST_HASH);sb(q[..],"','Native fixture Mac','");sb(q[..],EX_TEST_HASH);sb(q[..],"',88,'wss://fixture.invalid')");ap_do(t,sb_text(q[..]));
+  instructions_path:[FS_PATH_MAX]u8;instructions:=sc_file(c[..],"instructions","Use the original violet instructions.",instructions_path[..]);create:=[5]string.["projects","create","Native handoff fixture","--instructions",instructions];st:=sc_cli(t,c[..],create[..]);pid:[40]u8;project:=ap_member(sc_text(c[..]),"data.id",pid[..]);ap_check(t,"native CLI creates its private Project",st==0 && project.count==36,sc_text(c[..]));
+  message_path:[FS_PATH_MAX]u8;message:=sc_file(c[..],"request","Use the Mac to execute the native fixture.",message_path[..]);start:=[10]string.["chat","new","--project",project,"--project-rev","1","--file",message,"--operation-id","native-handoff"];st=sc_cli(t,c[..],start[..]);control:[1]CtControl;arena:[72]u8;ok=st==0 && ctr_control_read(sc_text(c[..]),control[..],arena[..]);turn:[36]u8;if ok {_=js_copy(turn[..],control[0].turn);}tid:=cast(string)turn[..];ap_check(t,"native CLI admits the Project turn before routing",ok,sc_text(c[..]));
+  if ok {
+   ap_check(t,"server-owned route uploads and starts once despite losing the Start reply",nct_claim_run(t,tid,"native-first"),ap_body(t));
+   inspect:=[3]string.["chat","task",tid];st=sc_cli(t,c[..],inspect[..]);task:[1]CttTask;ta:[CTT_ARENA]u8;ok=st==0 && ctt_read(sc_text(c[..]),task[..],ta[..]);ap_check(t,"CLI reads the retained actual Mac Codex model effort and pinned Project input identity",ok && task[0].binding.engine=="codex" && task[0].binding.model=="fixture-native-exact" && task[0].binding.effort=="high" && task[0].binding.host==EX_TEST_HASH,sc_text(c[..]));
+   if ok {
+    taskid:[32]u8;_=js_copy(taskid[..],task[0].binding.task);native_id:=cast(string)taskid[..];ap_check(t,"a new worker rejoins the original task and permission prompt",nct_claim_run(t,tid,"native-rejoin"),ap_body(t));
+    show:=[4]string.["tasks","show",EX_TEST_HASH,native_id];st=sc_cli(t,c[..],show[..]);v:[1]XtStatus;va:[2048]u8;ap_check(t,"public CLI sees the actual waiting task after API handoff",st==0 && xt_status_read(sc_text(c[..]),v[..],va[..]) && v[0].state==XT_WAITING && v[0].interaction=="native-request",sc_text(c[..]));
+    command_path:[FS_PATH_MAX]u8;command:=fs_join(c[0].dir,"approve.json",command_path[..]);approve:=[10]string.["tasks","approve",EX_TEST_HASH,native_id,"--rev","2","--interaction","native-request","--command-file",command];st=sc_cli(t,c[..],approve[..]);ap_check(t,"CLI approval reaches the existing native control owner",st==0 && xt_status_read(sc_text(c[..]),v[..],va[..]) && v[0].state==XT_COMPLETED,sc_text(c[..]));
+    retry:=[6]string.["tasks","retry",EX_TEST_HASH,"--file",command,"--json"];st=sc_cli(t,c[..],retry[0..<5]);ap_check(t,"lost approval responses replay the same committed native effect",st==0 && xt_status_read(sc_text(c[..]),v[..],va[..]) && v[0].replay,sc_text(c[..]));
+    ap_check(t,"a further worker saves the original native result without model redispatch",nct_claim_run(t,tid,"native-result"),ap_body(t));
+    st=dc_get(t,"","/api/chat/turn/v2alpha1",tid,0);ap_check(t,"native turn reads still require account authentication",st==401,ap_body(t));
+    sb_clear(q[..]);sb(q[..],"SELECT state||'|'||output||'|'||model||'|'||provider||'|'||effort||'|'||(input_tokens IS NULL)::text FROM chat.turns_v2 WHERE id='");sb(q[..],tid);sb(q[..],"'");result:[1024]u8;
+    ap_check(t,"saved result has complete text actual native choice and unknown usage",ap_sql(t,sb_text(q[..]),result[..])=="3|Checking native task. Native task complete.|fixture-native-exact|openai|high|true",cast(string)result[..]);
+    ap_check(t,"another account cannot inspect the server-owned task association",dc_get(t,stranger,"/api/chat/turn-task/v1alpha1",tid,0)==404,ap_body(t));
+    path:[FS_PATH_MAX]u8;root:[FS_PATH_MAX]u8;hostdir:[FS_PATH_MAX]u8;effect:[128]u8;base:=fs_join(fs_dir(ap_env(t,"API_BIN")),"native-chat-fixture",root[..]);directory:=fs_join(base,EX_TEST_HASH,hostdir[..]);n:=fs_read(fs_join(directory,"starts",path[..]),effect[..]);ap_check(t,"the native process records exactly one Start across claims and lost replies",n==6 && cast(string)effect[0..<n]=="start\n","");
+    n=fs_read(fs_join(directory,"controls",path[..]),effect[..]);ap_check(t,"the native process records exactly one approval effect across retries",n==8 && cast(string)effect[0..<n]=="control\n","");
+    nct_control_case(t,c[..],project,message,"stop");nct_control_case(t,c[..],project,message,"deny");
+    sb_clear(q[..]);sb(q[..],"UPDATE chat.environment_connections_v1 SET relay='wss://replacement.invalid' WHERE account='");sb(q[..],owner);sb(q[..],"'");ap_do(t,sb_text(q[..]));st=sc_cli(t,c[..],show[..]);ap_check(t,"a replacement enrollment cannot inspect an earlier native task",st!=0 && ap_has(sc_text(c[..]),"404"),sc_text(c[..]));
+    original_turn:[36]u8;o:[1]Jo;jo_start(o[..],original_turn[..]);jo_put(o[..],"trn_");jo_put(o[..],native_id);inspect[2]=jo_text(o[..]);st=sc_cli(t,c[..],inspect[..]);ap_check(t,"the owner retains immutable association history after enrollment replacement",st==0 && ctt_read(sc_text(c[..]),task[..],ta[..]),sc_text(c[..]));
+   }
+  }
+ }
+ if api>=0 {_=proc_release(api);}if server>=0 {ac_mail_stop(server,dir);}_=fs_remove(c[0].dir);parent[0].checks+=t[0].checks;parent[0].failed+=t[0].failed;
+}

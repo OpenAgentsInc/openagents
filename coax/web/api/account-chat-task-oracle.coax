@@ -34,6 +34,10 @@ tool_main :: ()->int #export_c #effects(all) {
  gr:=rtr_mock(h[0].w[..],"engine=codex,difficulty=3,effort=high,weight=0,needs=apple,named_station=none,named_engine=none,named_depth=none",0);
  ctno_check(check[..],ctn_route_finish(h[..],gr.status,gr.body)==0 && h[0].d[0].engine=="codex" && h[0].d[0].needs=="apple" && ctn_route_write(h[..],out[..])>0,"the actual typed mock selects an eligible Mac and its available engine");
  ctno_check(check[..],ctn_dispatch_write(h[..],0,task[0].binding,out[..])>0 && h[0].d[0].model=="" && ctn_dispatch_write(h[..],-1,task[0].binding,out[..])<0,"dispatch projects exact native choices without replacing the router's profile decision");
+ offered:[XO_MAX]u8;on:=xo_write(task[0].offer,offered[..]);selection:[1]CtnSelect;
+ ready:=ctn_select_begin(selection[..],cast(string)offered[0..<on],"Run the checks.","","high",out[..])==0;bound:[CTT_MAX]u8;bn:=ifx ready then ctn_bind(h[..],selection[..],0,task[0].binding.turn,task[0].binding.conversation,EX_TEST_ID,EX_TEST_HASH,cast(string)input_wire[0..<ni],1000,bound[..]) else -1;
+ ctno_check(check[..],bn>0 && ctt_read(cast(string)bound[0..<ifx bn>0 then bn else 0],read[..],read_arena[..]) && read[0].binding.input_bytes==ni,"server binding composes the actual offered pair and complete admitted input");
+ _=ctn_route_begin(h[..],1000,out[..]);unavailable:=rtr_mock(h[0].w[..],"fail=rate",0);ctno_check(check[..],ctn_route_finish(h[..],unavailable.status,unavailable.body)<0,"an unavailable preview fallback cannot authorize native execution");
  ctno_check(check[..],!ctn_init(h[..],"{}",1000) && !ctn_init(h[..],cast(string)input_wire[0..<ni],0),"invalid saved inputs and clocks refuse before routing");
  print("Native chat task oracle: % checks, % failed\n",check[0].checks,check[0].failed);return ifx check[0].failed==0 then 0 else 1;
 }
