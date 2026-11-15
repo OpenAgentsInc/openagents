@@ -1,5 +1,13 @@
 # Owner actions
 
+## Reference atom catalog, build 1150 (2026-11-15)
+
+- [ ] Install TestFlight **1150** (verified in **Owner**) and open **Settings →
+      Components → Gallery options → Reference**. Scroll through the atom
+      catalog and check its appearance on the phone. The simulator gallery
+      walkthrough and scroll pictures passed; the thumbnail is a placeholder
+      and text fields are static specimens.
+
 ## Navigation drawer, build 1140 (2026-11-15)
 
 - [ ] Install TestFlight **1140** (verified in **Owner**), open the navigation
