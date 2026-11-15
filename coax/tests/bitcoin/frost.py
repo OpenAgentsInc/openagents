@@ -76,6 +76,12 @@ def check_lib():
         assert any(f in source for f in [message] + forms), message
     assert reasons[V.FR_INVALID] == 'invalid' and codes[V.FR_INVALID] == 'FR_INVALID'
     assert (HERE / 'frost_vectors.coax').read_text() == V.render(), 'frost_vectors.coax differs; run make_frost_vectors.py --write'
+    pk = D.trusted_dealer_keygen(bytes(range(1, 33)), 3, 2)[0].hex()
+    m = re.search(r'FR_TEST_DEAL_PK :: "([0-9a-f]{66})";', lib)
+    assert m and m.group(1) == pk, f'FR_TEST_DEAL_PK should be {pk}'
+    for name, want in zip(['FR_TEST_DEALER_SIG', 'FR_TEST_DKG_SIG'], lib_test_sigs()):
+        m = re.search(name + r' :: "([0-9a-f]{128})";', lib)
+        assert m and m.group(1) == want.hex(), f'{name} should be {want.hex()}'
 
 
 def outcome(fn):
@@ -130,6 +136,29 @@ def session(secshares, n, t, ids, pubshares, thresh_pk, tweaks, xonly, msg, seed
     ctx = F.SessionContext(n, t, ids, pubshares, thresh_pk, agg, tweaks, xonly, msg)
     psigs = [F.sign(secs[i], secshares[id_], id_, ctx) for i, id_ in enumerate(ids)]
     return pubs, agg, psigs, F.partial_sig_agg(psigs, ctx)
+
+
+def lib_test_sigs():
+    """The signatures of frost.coax's two signing tests, by the reference:
+    the trusted dealer's 2-of-3 from the secret 1, 2, ..., 32, signed by
+    participants 2 and 0 under its Taproot output key with the message 0, 7,
+    14, ...; and the DKG's 2-of-3 from the seeds 5, 8, 11, ..., signed by
+    participants 1 and 2 with no tweak and the zero message. Each signer's
+    rand is 32 bytes of id + 40, as fr_test_session draws it."""
+    tp, sec, pub = D.trusted_dealer_keygen(bytes(range(1, 33)), 3, 2)
+    tweak = tagged_hash('TapTweak', tp[1:])
+    msg = bytes((7 * j) & 255 for j in range(32))
+    ids = [2, 0]
+    dealer = session(sec, 3, 2, ids, [pub[i] for i in ids], tp, [tweak], [True], msg, 40)[3]
+    ctxb = b'chapter 102 DKG'
+    seeds = bytes((3 * i + 5) & 255 for i in range(96))
+    rounds = [dkg_round1(seeds[32 * i:32 * i + 32], i, 3, 2, ctxb) for i in range(3)]
+    dsec = [sum((Scalar.from_bytes_checked(rounds[i][2][j]) for i in range(3)), Scalar(0)).to_bytes() for j in range(3)]
+    dtp = sum((GE.from_bytes_compressed(rounds[i][0][:33]) for i in range(3)), GE()).to_bytes_compressed()
+    dpub = [(Scalar.from_bytes_checked(x) * G).to_bytes_compressed() for x in dsec]
+    dids = [1, 2]
+    dkg = session(dsec, 3, 2, dids, [dpub[i] for i in dids], dtp, [], [], bytes(32), 40)[3]
+    return dealer, dkg
 
 
 def transcript():

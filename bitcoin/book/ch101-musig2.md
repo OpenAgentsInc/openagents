@@ -1241,7 +1241,7 @@ workspace, and a 2-of-2 session whose signature verifies under chapter
 coax/bin/coax test coax/lib/bitcoin/musig.coax --run-steps 250000000
 ```
 
-`coax test` runs 415 checks, including those of the files it loads, in about 400 CPU seconds on 2026-11-03. Each vector check runs a few cases, so that it stays inside the compile-time work limit. Mutation testing: not run (owner speed order).
+`coax test` runs 535 checks, including those of the files it loads, on 2026-11-15. Each vector check runs a few cases, so that it stays inside the compile-time work limit. Mutation testing: 869 mutants, 849 killed, 20 marked equivalent, 0 survived.
 
 ### BIP-327's own Python
 
