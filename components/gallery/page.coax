@@ -249,32 +249,60 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
     _:=sheet_text(sh[..],m,-1,inside.x,inside.y,ref.body.line,ref.body.face,ref.muted,"Add a description and instructions.");y+=120;
     _:=button(sh[..],m,ref,x,y,"Default environment",UISKIN_REST,GL_HIT_BUTTON,0);y+=60;
     _:=button(sh[..],m,ref,x,y,"Add files",UISKIN_REST,GL_HIT_BUTTON,0);y+=68;
-    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Text and links");y+=30;
-    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.ink,"Primary text");y+=24;
-    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.muted,"Secondary text");y+=24;
-    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.accent,"Learn more");y+=38;
-    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Icons and selection");y+=34;
-    sheet_icon(sh[..],ICON_MAGNIFER,x,y,24,ref.ink);sheet_icon(sh[..],ICON_FOLDER,x+44,y,24,ref.ink);
-    sheet_icon(sh[..],ICON_CHECK,x+88,y,24,ref.accent);sheet_icon(sh[..],ICON_CHEVRON_RIGHT,x+132,y,24,ref.muted);
-    sheet_icon(sh[..],ICON_CLAUDE,x+176,y,24,ref.ink);y+=42;
-    sheet_fill(sh[..],x,y,8,8,4,ref.accent);sheet_rule(sh[..],x+24,y+4,w-2*gutter-24,1,ref.hairline);y+=28;
-    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Avatar and badge");y+=32;
-    sheet_fill(sh[..],x,y,40,40,20,ref.sunk);_:=sheet_text(sh[..],m,-1,x+12,y+9,ref.body.line,ref.body.face,ref.ink,"A");
-    _:=button(sh[..],m,ref,x+56,y,"Beta",UISKIN_REST,GL_HIT_BUTTON,0);y+=60;
-    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Fields");y+=32;
-    _:=sheet_box(sh[..],x,y,w-2*gutter,44,12,1,ref.surface,ref.hairline);
-    _:=sheet_text(sh[..],m,-1,x+14,y+10,ref.body.line,ref.body.face,ref.muted,"Search");y+=54;
-    _:=sheet_box(sh[..],x,y,w-2*gutter,72,12,1,ref.surface,ref.hairline);
-    _:=sheet_text(sh[..],m,-1,x+14,y+12,ref.body.line,ref.body.face,ref.muted,"Add instructions...");y+=90;
-    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Inline code and bullet");y+=32;
-    sheet_fill(sh[..],x,y,80,26,6,ref.surface);_:=sheet_text(sh[..],m,-1,x+8,y+3,ref.body.line,ref.code.face,ref.ink,"example");
-    _:=sheet_text(sh[..],m,-1,x,y+36,ref.body.line,ref.body.face,ref.ink,"• List item");y+=72;
-    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Sheet handle and scrim");y+=32;
-    sheet_fill(sh[..],x,y,w-2*gutter,62,12,ref.surface);sheet_fill(sh[..],x+(w-2*gutter-40)/2,y+8,40,4,2,ref.muted);y+=78;
-    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Page indicator");y+=32;
-    for i:0..<4 {sheet_fill(sh[..],x+cast(f32)i*16,y,7,7,4,ifx i==0 then ref.ink else ref.faint);}y+=32;
-    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Loading");y+=30;
-    activity(sh[..],ref,x,y,24,g[0].time,false);y+=48;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Atom catalog");y+=34;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Text");y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.ink,"Primary");
+    _:=sheet_text(sh[..],m,-1,x+100,y,ref.body.line,ref.body.face,ref.muted,"Secondary");y+=42;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Icon");y+=24;
+    sheet_icon(sh[..],ICON_MAGNIFER,x,y,24,ref.ink);sheet_icon(sh[..],ICON_FOLDER,x+48,y,24,ref.ink);sheet_icon(sh[..],ICON_DOCUMENT,x+96,y,24,ref.ink);sheet_icon(sh[..],ICON_COPY,x+144,y,24,ref.ink);y+=40;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Brand mark");y+=24;
+    sheet_icon(sh[..],ICON_CLAUDE,x,y,32,ref.ink);y+=48;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Avatar");y+=24;
+    sheet_fill(sh[..],x,y,40,40,20,ref.sunk);_:=sheet_text(sh[..],m,-1,x+12,y+9,ref.body.line,ref.body.face,ref.ink,"A");y+=56;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Thumbnail");y+=24;
+    _:=sheet_box(sh[..],x,y,64,64,10,1,ref.surface,ref.hairline);sheet_icon(sh[..],ICON_GALLERY,x+16,y+16,32,ref.muted);
+    _:=sheet_text(sh[..],m,-1,x+78,y+20,ref.small.line,ref.small.face,ref.muted,"Image placeholder");y+=80;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Status dot");y+=24;
+    sheet_fill(sh[..],x,y,8,8,4,ref.accent);y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Selection check");y+=24;
+    sheet_icon(sh[..],ICON_CHECK,x,y,24,ref.accent);sheet_icon(sh[..],ICON_CHECK,x+48,y,24,ref.ink);y+=40;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Chevron");y+=24;
+    sheet_icon(sh[..],ICON_CHEVRON_RIGHT,x,y,24,ref.muted);sheet_icon(sh[..],ICON_CHEVRON,x+48,y,24,ref.muted);y+=40;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Divider");y+=24;
+    sheet_rule(sh[..],x,y,w-2*gutter,1,ref.hairline);y+=20;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Badge");y+=24;
+    sheet_fill(sh[..],x,y,54,24,12,ref.surface);_:=sheet_text(sh[..],m,-1,x+9,y+3,ref.small.line,ref.small.face,ref.ink,"Beta");y+=40;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Progress bar");y+=24;
+    _:=bar(sh[..],ref,x,y,w-2*gutter,0.6,ref.accent);y+=30;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Spinner");y+=24;
+    activity(sh[..],ref,x,y,24,g[0].time,g[0].motion[0].reduced);y+=40;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Slider");y+=24;
+    slider(sh[..],ref,x,y,w-2*gutter,g[0].cards[0].slider,GL_HIT_SLIDER,0);y+=56;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Switch");y+=24;
+    _:=toggle(sh[..],m,ref,x,y,"On",g[0].cards[0].toggles[0],GL_HIT_TOGGLE,0);y+=60;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Icon button");y+=24;
+    _:=sheet_box(sh[..],x,y,44,44,22,1,ref.surface,ref.hairline);sheet_icon(sh[..],ICON_BACK,x+10,y+10,24,ref.ink);
+    _:=sheet_box(sh[..],x+56,y,44,44,22,1,ref.surface,ref.hairline);sheet_icon(sh[..],ICON_MAGNIFER,x+66,y+10,24,ref.ink);y+=60;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Text button");y+=24;
+    _:=button(sh[..],m,primary,x,y,"New session",UISKIN_PRIMARY,GL_HIT_BUTTON,0);y+=60;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Text field");y+=24;
+    _:=sheet_box(sh[..],x,y,w-2*gutter,44,12,1,ref.surface,ref.hairline);_:=sheet_text(sh[..],m,-1,x+14,y+10,ref.body.line,ref.body.face,ref.muted,"Search");y+=60;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Text area");y+=24;
+    _:=sheet_box(sh[..],x,y,w-2*gutter,72,12,1,ref.surface,ref.hairline);_:=sheet_text(sh[..],m,-1,x+14,y+12,ref.body.line,ref.body.face,ref.muted,"Add instructions...");y+=88;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Link");y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.accent,"Learn more");y+=40;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Inline code");y+=24;
+    sheet_fill(sh[..],x,y,80,26,6,ref.surface);_:=sheet_text(sh[..],m,-1,x+8,y+3,ref.body.line,ref.code.face,ref.ink,"example");y+=42;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Bullet");y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.ink,"• List item");y+=40;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Sheet handle");y+=24;
+    sheet_fill(sh[..],x,y,90,32,10,ref.surface);sheet_fill(sh[..],x+25,y+8,40,4,2,ref.muted);y+=48;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Scrim");y+=24;
+    sheet_fill(sh[..],x,y,w-2*gutter,48,10,ref.sunk);sheet_fill(sh[..],x,y,w-2*gutter,48,10,opacity(ref.canvas,0.65));y+=64;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Page indicator");y+=24;
+    for i:0..<4 {sheet_fill(sh[..],x+cast(f32)i*16,y,7,7,4,ifx i==0 then ref.ink else ref.faint);}y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"System status bar");y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.muted,"See the iOS status bar above");y+=42;
   }
   // the cards, row by row; a row is as tall as its tallest card
   id := 0;
@@ -494,12 +522,13 @@ coaxial_components_cell_ready :: (g: [] GalleryState, cell: int) #export_c #effe
  #assert abs(g[0].cards[0].slider-0.75)<0.001;
 }
 
-#test "reference gallery includes the visual atom studies" #steps 400000000 {
+#test "reference gallery names every observed atom and fits its sheet" #steps 400000000 {
  g:[1]GalleryState;o:[1]GlOut;u:[4]f32;gl_test_atlas(g[0].atlas[..]);
  _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);g[0].section=5;
  _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);
- labels:=[8]string.["Text and links","Icons and selection","Avatar and badge","Fields","Inline code and bullet","Sheet handle and scrim","Page indicator","Loading"];
- for label:labels {found:=false;for i:0..<g[0].no {if g[0].over[i].text==label {found=true;}}#assert found;}
+ names:=[25]string.["Text","Icon","Brand mark","Avatar","Thumbnail","Status dot","Selection check","Chevron","Divider","Badge","Progress bar","Spinner","Slider","Switch","Icon button","Text button","Text field","Text area","Link","Inline code","Bullet","Sheet handle","Scrim","Page indicator","System status bar"];
+ for name:names {found:=false;for i:0..<g[0].no {if g[0].over[i].text==name {found=true;}}#assert found;}
+ #assert g[0].nu<GL_UNDER && g[0].no<GL_OVER && g[0].nh<GL_HITS;
 }
 
 // A fixed atlas: every glyph 8 wide, the monospace faces 7.

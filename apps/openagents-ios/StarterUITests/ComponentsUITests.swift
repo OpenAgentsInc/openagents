@@ -44,6 +44,8 @@ final class ComponentsUITests:XCTestCase {
         func pick(_ name:String) {app.buttons["Gallery options"].tap();app.buttons[name].firstMatch.tap()}
         pick("Motion");canvas.swipeUp();picture("native-drawer-reply")
         pick("Controls");canvas.swipeUp();picture("native-controls")
+        pick("Reference");picture("reference-start")
+        for index in 1...16 {canvas.swipeUp();picture("reference-atoms-\(index)")}
         pick("ARWES");canvas.swipeUp();picture("native-arwes")
         pick("Motion");canvas.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.4)).tap()
         XCUIDevice.shared.press(.home);app.activate()
