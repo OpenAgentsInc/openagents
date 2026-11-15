@@ -15,6 +15,15 @@
   #assert !render_interface_admit(-1,0,r) && !render_interface_admit(18,0,r) && !render_interface_admit(1,-1,r) && !render_interface_admit(1,14,r);
   #assert !render_interface_admit(1,5,r) && !render_interface_admit(1,13,r);
   #assert render_interface_admit(2,13,r) && render_interface_admit(13,13,r);
+  // indices past the media entry (shadow_clear and later pass ids) are refused in every profile
+  for rif_pr:0..<18 {
+    for rif_i:14..<18 {
+      for rif_t:0..<3 {
+        r=RenderBuildReflection.{ok=true,fragment_targets=rif_t};
+        #assert !render_interface_admit(rif_pr,rif_i,r);
+      }
+    }
+  }
 }
 #forall "HUD admission observes every attribute and its exact complete extent" rif_changed_field:0..<7 {
   r:=RenderBuildReflection.{ok=true,vertex_stride=64,attribute_count=4,fragment_targets=1};
