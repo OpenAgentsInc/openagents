@@ -77,6 +77,22 @@ RsMaterialStock :: struct { key: int = -1; count: int; }
   }
 }
 
+#test "Verbal alone needs no hand, actors past the creatures are refused, and ids outside the index have no components" {
+  c: [1] RsCreature; c[0].gesture_hand=false; c[0].material_hand=false;
+  #assert rs_components_allow(c[0],RS_C_V,0,false) && !rs_components_allow(c[0],RS_C_V|RS_C_S,0,false);
+  #assert rs_components_pay_at(c[..],0,0,-1,false) && !rs_components_pay_at(c[..],1,0,-1,false) && !rs_components_pay_at(c[..],-1,0,-1,false);
+  #assert !rs_cast_components_pay_at(c[..],SP_ENTANGLE,1) && !rs_cast_components_pay_at(c[..],SP_ENTANGLE,-1);
+  #assert rs_component_key(-1) == -1 && rs_component_key(RS_EXEC_SOURCE.count) == -1 && rs_component_key(RS_EXEC_SOURCE.count-1) == RS_EXEC_SOURCE[RS_EXEC_SOURCE.count-1];
+  #assert rs_component_mask(-1) == -1 && rs_component_mask(RS_HOUSE_END) == -1 && rs_component_mask(SP_EG_METEOR_SWARM) == 0 && rs_component_mask(SP_WATER_ORB) == 0;
+}
+#test "a focus serves only its class's spells, or a spell granted to that same class" {
+  w: RsCreature; w.klass=RS_WIZARD; w.focus_class=RS_WIZARD;
+  #assert !rs_component_focus(w,SP_ENTANGLE) && !rs_component_focus(w,-1);
+  d: RsCreature; d.klass=RS_DRUID; d.focus_class=RS_DRUID;
+  #assert rs_component_focus(d,SP_ENTANGLE) && !rs_component_focus(d,-1);
+  n: RsCreature; n.klass=-1; n.focus_class=-1; n.class_spell_grants[SP_ENTANGLE/64] = cast(u64) 1 << (SP_ENTANGLE%64);
+  #assert rs_class_spell_granted(n,SP_ENTANGLE) && !rs_component_focus(n,SP_ENTANGLE);
+}
 #test "component wrappers use canonical metadata and remain usable without battle state" {
   c: [1] RsCreature; c[0]=rs_druid("Druid",0,3);
   #assert rs_component_mask(SP_PRODUCE_FLAME)==3 && rs_component_mask(1)==0;
