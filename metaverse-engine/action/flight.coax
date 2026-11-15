@@ -69,12 +69,12 @@ WingInput :: struct { mx: f32; mz: f32; jump: bool; climb: bool; dive: bool; lan
 
 WF_PI :: 3.14159265358979;
 WF_TAU :: 6.28318530717959;
-wf_lo :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a < b then a else b; }
-wf_hi :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a > b then a else b; }
+wf_lo :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a < b then a else b; }   // mutant: equivalent (a < b or a <= b: at a == b both branches return the same number)
+wf_hi :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a > b then a else b; }   // mutant: equivalent (a > b or a >= b: at a == b both branches return the same number)
 wf_clamp :: (a: f32, l: f32, h: f32) -> f32 #effects(all) { return wf_lo(h, wf_hi(l, a)); }
 wf_wrap :: (a: f32) -> f32 #effects(all) { return a - f32(WF_TAU) * floor((a + f32(WF_PI)) / f32(WF_TAU)); }
 wf_toward :: (a: f32, b: f32, step: f32) -> f32 #effects(all) {
-  if a < b { return wf_lo(b, a + step); }
+  if a < b { return wf_lo(b, a + step); }   // mutant: equivalent (at a == b the first branch returns wf_lo(b, b + step) == b, the second wf_hi(b, b - step) == b)
   return wf_hi(b, a - step);
 }
 
@@ -113,7 +113,7 @@ wing_step :: (p: WingProfile, s: WingState, in: WingInput, ground: f32, dt: f32)
   o.bank = s.bank + (lean - s.bank) * wf_clamp(p.bank_ease * dt, 0, 1);
 
   if o.phase == WING_GROUND {
-    o.speed = p.walk * want; o.vy = 0; o.y = ground;
+    o.speed = p.walk * want; o.vy = 0;
     if in.jump { o.phase = WING_TAKEOFF; o.t = 0; o.vy = p.takeoff_vy; }
   } else if o.phase == WING_TAKEOFF {
     o.vy = p.takeoff_vy;
@@ -126,15 +126,17 @@ wing_step :: (p: WingProfile, s: WingState, in: WingInput, ground: f32, dt: f32)
     pace := p.fly * want + (ifx o.diving then p.fly * p.dive_boost else 0.0f32);
     o.speed = wf_toward(s.speed, pace, p.accel * dt);
   } else {
-    o.speed = wf_toward(s.speed, 0, p.accel * dt); o.vy = 0; o.y = ground;
+    o.speed = wf_toward(s.speed, 0, p.accel * dt); o.vy = 0;
     if o.t >= p.land_s { o.phase = WING_GROUND; o.t = 0; }
   }
   o.x = s.x + sin(o.yaw) * o.speed * dt;
   o.z = s.z + cos(o.yaw) * o.speed * dt;
-  if o.phase != WING_GROUND && o.phase != WING_LANDING { o.y = s.y + o.vy * dt; }
-  if o.phase == WING_AIR && o.y <= ground && o.vy <= 0 { o.phase = WING_LANDING; o.t = 0; o.y = ground; o.vy = 0; }
-  if o.phase == WING_GROUND || o.phase == WING_LANDING { o.y = ground; }
-  else if o.y < ground { o.y = ground; }
+  if o.phase != WING_GROUND && o.phase != WING_LANDING { o.y = s.y + o.vy * dt; }   // mutant: equivalent (a body on the ground or landing has its y set to the ground two lines below, whatever this line leaves)
+  if o.phase == WING_AIR && o.y <= ground && o.vy <= 0 { o.phase = WING_LANDING; o.t = 0; o.vy = 0; }   // the ground height is set for a landing body just below
+  if o.phase == WING_GROUND || o.phase == WING_LANDING { o.y = ground; }   // a body on the ground or landing stands on the floor
+  else if o.y < ground {   // mutant: equivalent (a body at the floor is already there, so clamping at equality changes nothing)
+    o.y = ground;
+  }
   return o;
 }
 
@@ -239,4 +241,215 @@ wf_take_off :: (p: WingProfile) -> WingState #effects(all) {
 #test "bad steps change nothing" {
   p := wing_profile_srd(40, 80, 3.0); s := wing_at(1, 2, 3, 0.5);
   #assert wing_step(p, s, WingInput.{mz = 1}, 0, 0).x == 1 && wing_step(p, s, WingInput.{mz = 1}, 0, -1).z == 3 && wing_step(p, s, WingInput.{mz = 1}, 0, 2).yaw == 0.5;
+}
+
+// ---- checks that pin each rule to the number its formula gives
+
+WF_NEAR :: 0.0001;
+wf_near :: (a: f32, b: f32) -> bool #effects(all) { return abs(a - b) < f32(WF_NEAR); }
+wf_air :: (y: f32, vy: f32, speed: f32) -> WingState #effects(all) {
+  s := wing_at(0, y, 0, 0); s.phase = WING_AIR; s.vy = vy; s.speed = speed;
+  return s;
+}
+wf_dt :: () -> f32 #effects(all) { return f32(WF_DT); }
+
+#test "the helpers clamp, wrap and ease toward a goal by at most a step" {
+  #assert wf_lo(1, 2) == 1 && wf_lo(2, 1) == 1 && wf_hi(1, 2) == 2 && wf_hi(2, 1) == 2;
+  #assert wf_clamp(5, 0, 1) == 1 && wf_clamp(-5, 0, 1) == 0 && wf_clamp(0.5, 0, 1) == 0.5;
+  // an angle lands in [-PI, PI): 4 rad is 4 - 2 PI turned the short way round
+  #assert wf_near(wf_wrap(4), 4 - f32(WF_TAU)) && wf_near(wf_wrap(-4), f32(WF_TAU) - 4);
+  #assert wf_near(wf_wrap(0.5), 0.5) && wf_near(wf_wrap(3.0), 3.0) && wf_near(wf_wrap(-3.0), -3.0);
+  #assert wf_toward(1, 2, 0.25) == 1.25 && wf_toward(2, 1, 0.25) == 1.75;
+  #assert wf_toward(1, 1.1, 0.25) == 1.1 && wf_toward(2, 1.9, 0.25) == 1.9 && wf_toward(1, 1, 0.25) == 1;
+}
+#test "an SRD profile scales both speeds against the realm's pace, and the air accelerates at three quarters of the fly pace" {
+  q := wing_profile_srd(30, 60, 2.0);
+  #assert wf_near(q.walk, 2.0) && wf_near(q.fly, 4.0) && wf_near(q.accel, 3.0);
+  #assert q.vertical.on && q.vertical.ceiling == 60 && q.vertical.flap_up == 6 && q.vertical.climb == 4;
+  #assert q.vertical.glide == -1.2 && q.vertical.dive == -12;
+  p := wing_profile_srd(40, 80, 3.0);
+  #assert wf_near(p.walk, 4.0) && wf_near(p.fly, 8.0) && wf_near(p.accel, 6.0);
+  #assert wing_flying(wing_at(0, 0, 0, 0)) == false;
+  a := wf_air(5, 0, 0);
+  #assert wing_flying(a);
+  a.phase = WING_TAKEOFF; #assert wing_flying(a);
+  a.phase = WING_LANDING; #assert !wing_flying(a);
+}
+#test "on the ground the pace is the walk pace times the stick, the floor holds, and a jump lifts at takeoff_vy" {
+  p := wing_profile_srd(40, 80, 3.0); dt := wf_dt();
+  g := wing_at(0, 3, 0, 0); g.speed = 9; g.vy = 5; g.t = 2; g.beat = true; g.diving = true;
+  s := wing_step(p, g, WingInput.{mz = 0.5}, 0.5, dt);
+  #assert s.phase == WING_GROUND && wf_near(s.speed, 2.0) && s.vy == 0 && s.y == 0.5 && wf_near(s.t, 2.015625);
+  #assert !s.beat && !s.diving;
+  s = wing_step(p, g, WingInput.{mx = 0.3, mz = 0.4}, 0.5, dt);
+  #assert wf_near(s.speed, 2.0);
+  s = wing_step(p, g, WingInput.{mx = 3, mz = 4}, 0.5, dt);
+  #assert wf_near(s.speed, 4.0);
+  j := wing_at(0, 0, 0, 0); j.t = 5;
+  s = wing_step(p, j, WingInput.{jump = true}, 0, dt);
+  #assert s.phase == WING_TAKEOFF && s.t == 0 && s.vy == 6 && s.y == 0.09375;
+}
+#test "a stick below the dead zone does not turn the body; one just above it does" {
+  p := wing_profile_srd(40, 80, 3.0); dt := wf_dt();
+  g := wing_at(0, 0, 0, 1.0);
+  s := wing_step(p, g, WingInput.{mx = 0.001}, 0, dt);
+  #assert s.yaw == 1.0 && s.turning == 0;
+  s = wing_step(p, g, WingInput.{mx = 0.0011}, 0, dt);
+  #assert s.yaw > 1.0;
+}
+#test "the heading turns toward the stick at the phase's rate, and no further than the goal" {
+  p := wing_profile_srd(40, 80, 3.0); dt := wf_dt();
+  // facing +Z, steering to -X: the goal is -PI/2, so each phase turns by its own rate
+  g := wing_at(0, 0, 0, 0);
+  s := wing_step(p, g, WingInput.{mx = -1}, 0, dt);
+  #assert wf_near(s.turning, -4.0) && wf_near(s.yaw, -0.0625);
+  g.phase = WING_LANDING;
+  s = wing_step(p, g, WingInput.{mx = -1}, 0, dt);
+  #assert wf_near(s.turning, -4.0) && wf_near(s.yaw, -0.0625);
+  g.phase = WING_TAKEOFF;
+  s = wing_step(p, g, WingInput.{mx = -1}, 0, dt);
+  #assert wf_near(s.turning, -1.8) && wf_near(s.yaw, -0.028125);
+  g.phase = WING_AIR;
+  s = wing_step(p, g, WingInput.{mx = -1}, 0, dt);
+  #assert wf_near(s.turning, -1.8) && wf_near(s.yaw, -0.028125);
+  // within a step of the goal it arrives: from 1.55 to PI/2 is 0.0208 rad, a turning of 1.33 rad/s
+  n := wing_at(0, 0, 0, 1.55);
+  s = wing_step(p, n, WingInput.{mx = 1}, 0, dt);
+  #assert wf_near(s.yaw, 1.5707964) && s.turning > 1.3 && s.turning < 1.4;
+}
+#test "the body leans in proportion to the turn in the air, levels on the ground, and never divides by a zero turn rate" {
+  p := wing_profile_srd(40, 80, 3.0); dt := wf_dt();
+  // a turn of 0.01 rad in one step is 0.64 rad/s: a lean of 0.64 / 1.8 * 0.6 = 0.2133, which the
+  // body follows by bank_ease * dt = 4/64 of the way
+  a := wf_air(10, 0, 5);
+  s := wing_step(p, a, WingInput.{mx = sin(0.01), mz = cos(0.01)}, 0, dt);
+  #assert wf_near(s.bank, 0.2133333 * 0.0625);
+  // a full turn leans max_bank: -0.6 * 4/64
+  s = wing_step(p, a, WingInput.{mx = -1}, 0, dt);
+  #assert wf_near(s.bank, -0.0375);
+  // on the ground a turn leaves the body upright, and a lean levels by the same share
+  g := wing_at(0, 0, 0, 0);
+  s = wing_step(p, g, WingInput.{mx = -1}, 0, dt);
+  #assert s.bank == 0;
+  g.bank = 0.5;
+  s = wing_step(p, g, WingInput.{}, 0, dt);
+  #assert wf_near(s.bank, 0.46875);
+  z := p; z.turn = 0;
+  s = wing_step(z, a, WingInput.{mx = -1}, 0, dt);
+  #assert abs(s.bank) < 0.000001 && s.turning == 0 && s.yaw == 0;
+}
+#test "takeoff holds takeoff_vy, eases the pace toward half the fly pace, and ends after takeoff_s" {
+  p := wing_profile_srd(40, 80, 3.0); dt := wf_dt();
+  k := wing_at(0, 0, 0, 0); k.phase = WING_TAKEOFF;
+  s := wing_step(p, k, WingInput.{mz = 1}, 0, dt);
+  #assert s.phase == WING_TAKEOFF && s.vy == 6 && wf_near(s.speed, 0.09375) && s.y == 0.09375 && s.t == 0.015625;
+  // the goal is fly * stick * 0.5 = 4
+  k.speed = 4.05;
+  s = wing_step(p, k, WingInput.{mz = 1}, 0, dt);
+  #assert wf_near(s.speed, 4.0);
+  s = wing_step(p, k, WingInput.{}, 0, dt);
+  #assert wf_near(s.speed, 3.95625);
+  // a floor above the climbing body lifts it
+  k.y = 0.4; k.speed = 0;
+  s = wing_step(p, k, WingInput.{}, 0.5, dt);
+  #assert s.y == 0.5;
+  q := p; q.takeoff_s = 0.5;
+  k.y = 0; k.t = 0.46875;
+  s = wing_step(q, k, WingInput.{}, 0, dt);
+  #assert s.phase == WING_TAKEOFF && s.t == 0.484375;
+  k.t = 0.484375;
+  s = wing_step(q, k, WingInput.{}, 0, dt);
+  #assert s.phase == WING_AIR && s.t == 0;
+}
+#test "in the air gravity pulls a rise down, the pace eases toward the stick and a dive adds its boost" {
+  p := wing_profile_srd(40, 80, 3.0); dt := wf_dt();
+  // a rise is kept, less gravity's pull of 9.8 m/s² over one step
+  s := wing_step(p, wf_air(10, 3, 0), WingInput.{}, 0, dt);
+  #assert wf_near(s.vy, 3 - 9.8 / 64) && wf_near(s.y, 10 + (3 - 9.8 / 64) / 64);
+  // the pace gains accel * dt = 6/64 a step toward fly
+  s = wing_step(p, wf_air(10, 0, 0), WingInput.{mz = 1}, 0, dt);
+  #assert wf_near(s.speed, 0.09375);
+  // a dive's goal is fly + fly * dive_boost = 12, and the fall is the dive's -12
+  s = wing_step(p, wf_air(10, 0, 11.99), WingInput.{mz = 1, dive = true}, 0, dt);
+  #assert s.diving && s.vy == -12 && wf_near(s.speed, 12.0);
+}
+#test "landing: the sink stops, the pace bleeds off, the floor holds, and after land_s the body walks" {
+  p := wing_profile_srd(40, 80, 3.0); dt := wf_dt();
+  l := wing_at(0, 2, 0, 0); l.phase = WING_LANDING; l.speed = 5; l.vy = -3;
+  s := wing_step(p, l, WingInput.{}, 0.5, dt);
+  #assert s.phase == WING_LANDING && wf_near(s.speed, 4.90625) && s.vy == 0 && s.y == 0.5 && s.t == 0.015625;
+  q := p; q.land_s = 0.5;
+  l.t = 0.46875;
+  s = wing_step(q, l, WingInput.{}, 0.5, dt);
+  #assert s.phase == WING_LANDING;
+  l.t = 0.484375;
+  s = wing_step(q, l, WingInput.{}, 0.5, dt);
+  #assert s.phase == WING_GROUND && s.t == 0 && s.y == 0.5;
+}
+#test "touching down: a fall that reaches or passes the ground, or a rest on it, lands; a rise below it does not" {
+  p := wing_profile_srd(40, 80, 3.0); dt := wf_dt();
+  // a glide of -1 m/s drops 1/64 m: from 0.5 it reaches exactly 0.484375
+  g := p; g.vertical.glide = -1;
+  a := wf_air(0.5, -1, 0); a.t = 3;
+  s := wing_step(g, a, WingInput.{}, 0.484375, dt);
+  #assert s.phase == WING_LANDING && s.t == 0 && s.vy == 0 && s.y == 0.484375;
+  // below it: the body is put on the ground
+  s = wing_step(g, a, WingInput.{}, 0.6, dt);
+  #assert s.phase == WING_LANDING && s.y == 0.6;
+  // at rest on it (a glide of 0): a body that is not falling still counts as down
+  h := p; h.vertical.glide = 0;
+  s = wing_step(h, wf_air(0.5, 0, 0), WingInput.{}, 0.5, dt);
+  #assert s.phase == WING_LANDING && s.y == 0.5 && s.vy == 0;
+  // a rise that ends below the floor stays in the air, lifted to the floor
+  s = wing_step(p, wf_air(0.2, 3, 0), WingInput.{}, 0.5, dt);
+  #assert s.phase == WING_AIR && s.y == 0.5;
+}
+#test "the clip: walk and idle at 0.05 m/s, hover below hover_speed, bank past half of max_bank, fly on a beat or a rise over 0.5" {
+  p := wing_profile_srd(40, 80, 3.0);
+  g := wing_at(0, 0, 0, 0); g.speed = 0.05;
+  #assert wing_clip(p, g) == WING_CLIP_IDLE;
+  g.speed = 0.0501;
+  #assert wing_clip(p, g) == WING_CLIP_WALK;
+  a := wf_air(10, 0, 5);
+  #assert wing_clip(p, a) == WING_CLIP_GLIDE;
+  a.speed = p.hover_speed;
+  #assert wing_clip(p, a) == WING_CLIP_GLIDE;
+  a.speed = 0.59;
+  #assert wing_clip(p, a) == WING_CLIP_HOVER;
+  a.speed = 5;
+  a.bank = 0.3;
+  #assert wing_clip(p, a) == WING_CLIP_GLIDE;
+  a.bank = 0.31;
+  #assert wing_clip(p, a) == WING_CLIP_BANK_LEFT;
+  a.bank = -0.3;
+  #assert wing_clip(p, a) == WING_CLIP_GLIDE;
+  a.bank = -0.2;
+  #assert wing_clip(p, a) == WING_CLIP_GLIDE;
+  a.bank = -0.31;
+  #assert wing_clip(p, a) == WING_CLIP_BANK_RIGHT;
+  a.bank = 0;
+  a.beat = true;
+  #assert wing_clip(p, a) == WING_CLIP_FLY;
+  a.beat = false; a.vy = 0.6;
+  #assert wing_clip(p, a) == WING_CLIP_FLY;
+  a.vy = 0.5;
+  #assert wing_clip(p, a) == WING_CLIP_GLIDE;
+  a.diving = true;
+  #assert wing_clip(p, a) == WING_CLIP_DIVE;
+}
+#test "a take-off climbs: after the lift and a held climb, the body is at the height the two phases give" {
+  p := wing_profile_srd(40, 80, 3.0);
+  // 53 lift steps of 6/64 (the jump's and 52 more, since 0.8 s is 51.2 steps) reach 4.96875 m with vy 6;
+  // 76 climbing steps then lose 9.8/64 a step from 6 m/s until the climb of 4 m/s holds
+  a := wf_take_off(p);
+  #assert a.phase == WING_AIR && a.vy == 4 && abs(a.y - 9.9072754) < 0.001;
+}
+#test "a step of no time changes nothing, a step of a whole second is taken, and the tolerance helper is strict" {
+  p := wing_profile_srd(40, 80, 3.0);
+  s := wing_at(1, 2, 3, 0.5);
+  z := wing_step(p, s, WingInput.{mx = 1, mz = 1}, 0, 0);
+  #assert z.turning == 0 && z.yaw == 0.5 && z.t == 0 && z.bank == 0;
+  w := wing_step(p, wing_at(0, 0, 0, 0), WingInput.{mz = 1}, 0, 1);
+  #assert wf_near(w.z, 4.0) && w.t == 1;
+  #assert !wf_near(0, f32(WF_NEAR)) && wf_near(0, 0.00009);
 }
