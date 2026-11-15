@@ -100,6 +100,12 @@ GroundRay :: struct {
   #assert short.status == GroundRayStatus.terrain;
   g.n = 0;
   #assert ground_ray(g, h[..], world_point(0, 1, 0), world_point(0, -1, 0), 1, 1).status == GroundRayStatus.terrain;
+  // a descriptor with no points refuses every ray, whatever the ray: from above or beside, long, short or of no range, on one cell or four
+  for far: [3] f64.[0, 0.5, 4] { for cells: [2] int.[1, 4] {
+    #assert ground_ray(g, h[..], world_point(0.5, 1, 0.5), world_point(0, -1, 0), far, cells).status == GroundRayStatus.terrain;
+    #assert ground_ray(g, h[..], world_point(-3, 5, 7), world_point(1, 0, 0), far, cells).status == GroundRayStatus.terrain;
+  } }
+  g.n = 2; g.cell = 0; #assert ground_points(g) == 0 && ground_ray(g, h[..], world_point(0.5, 1, 0.5), world_point(0, -1, 0), 0, 1).status == GroundRayStatus.terrain;
 }
 
 #forall "ground ray matches independent f64 triangle enumeration on a nonbinary mesh" seed: 0..<48 {
