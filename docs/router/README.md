@@ -62,8 +62,8 @@ From every surface:
 What stays, because it is not a choice about how the work is done:
 
 - Which accounts you have connected (Settings, Usage). The router reads them.
-- Which computer or cloud runs the work, where you already name it by opening
-  that computer's conversation.
+- Your rules for each computer ("keep this one clear", a cloud box's spending
+  limit). They are limits you set, and the router obeys them.
 - What a conversation may touch (access and approvals).
 
 ## What exists today
@@ -352,8 +352,10 @@ per-computer setting.
   in this version. The Elephant and Mammoth doors stay in
   `coax/lib/systemone` for the callers that use them; the product router does
   not depend on them.
-- The message, a bounded summary of the conversation and the environment
-  object go to Google. No credential, token or file content does. The privacy
+- The message, a bounded summary of the conversation and your computers'
+  station reports (names, load, free space, running task titles, which
+  accounts are logged in) go to Google. No credential, token or file content
+  does. The privacy
   page says so in one plain sentence.
 
 **Start with 10,000 decisions a day**, across the whole product, and raise it
@@ -528,7 +530,9 @@ Read for this spec: `docs/transcripts/289.md`,
 `coax/lib/agent/engine/route.coax`, `route-policy.coax` and
 `availability.coax` (their headers and tables), `coder/tui/router.coax`
 (header), `apps/openagents-desktop/router.coax`,
-`proto/openagents/coder/route/v2/route.proto`, and the picker code named in
+`proto/openagents/coder/route/v2/route.proto`,
+`docs/protocol/environment-runtime-v1alpha1.md` and its `runtime.proto`
+(searched for machine facts and found none), and the picker code named in
 the table above (by search, not read in full). The outside sources are linked
 where cited; their figures were not checked against the primary papers beyond
 what is quoted.
