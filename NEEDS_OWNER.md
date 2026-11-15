@@ -1,5 +1,13 @@
 # Owner actions
 
+## Reference sidebar, build 1160 (2026-11-15)
+
+- [ ] Install TestFlight **1160** (verified in **Owner**) and inspect the
+      sidebar's rounded rows, search and footer on the phone. Shared scene and
+      native projection tests passed; the simulator UI walkthrough stopped at
+      fixture login before reaching the sidebar, so physical appearance and
+      the complete signed-in flow remain unverified.
+
 ## Reference atom catalog, build 1150 (2026-11-15)
 
 - [ ] Install TestFlight **1150** (verified in **Owner**) and open **Settings →
