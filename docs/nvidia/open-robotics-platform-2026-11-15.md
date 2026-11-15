@@ -49,6 +49,30 @@ The long-term ambition is broad: an open development platform spanning
 design, manufacture, simulation, learning, deployment and maintenance. The
 first release must complete that loop for one affordable embodiment.
 
+### Engineering judgment: let the two robots earn different things
+
+The duck earns evidence that we can train, transfer and maintain a controller
+ourselves. The workcell earns evidence that someone can reproduce a useful
+task and keep the machine working. Those are different tests. The duck's
+owned-learning requirement stands even if a conventional controller performs
+well; the arm should keep its conventional controller wherever learning adds
+no measured value. Share the infrastructure without making either robot's
+completion depend on the other's purchase, enclosure or demonstration.
+
+Our strongest product may be the reproducible release around the robot:
+editable parts, known calibration, a working baseline, recorded failures and
+a repair that another builder can perform. A replacement finger should come
+with the conditions under which it still fits and works. A replacement motor
+should say which calibration and controller evidence must be renewed. That
+is a more concrete reason to buy from OpenAgents than access to a source
+repository anyone can clone.
+
+Start with the sorting tray, camera mount and calibration fixture already
+needed by the workcell. They exercise design, manufacturing and inspection
+without waiting for a custom joint. Record assembly time, rejected parts,
+calibration effort and support time alongside print cost. Only actual builds
+can tell us whether a kit is affordable to deliver and maintain.
+
 ## 2. What we already have, and the limits that matter
 
 This assessment follows the [Psionic chapter registry](../../psionic/book/chapters.json),
@@ -181,6 +205,20 @@ and replacement. CPU/Metal support exists in specific profiles; an AMD,
 Vulkan-compute, WebGPU-compute, ARM-SBC or microcontroller target requires new
 compiler/runtime and measured workload qualification. Vulkan rendering and
 Wasm compilation alone establish none of those compute/control claims.
+
+Independence should also cover the loss of OpenAgents hosting. For the first
+complete release, propose a **substitution exercise** on a second machine:
+start from retained permitted inputs with NVIDIA, model-hub and OpenAgents
+services unavailable; build, load the named policy, replay a recorded failure
+and run the selected local task. Record every hidden download, credential,
+activation or unavailable dependency encountered. Any physical task still
+uses its separately qualified hardware and operating procedure. A working
+offline viewer alone does not pass the control or learning parts of this
+exercise, and offline inference does not qualify offline training.
+
+This is a proposed release gate, not evidence that today's repository passes
+it. The useful result is a list of dependencies we have actually removed,
+plus those for which we still have no replacement.
 
 ### Selected small-biped pipeline
 
@@ -566,6 +604,13 @@ Exact replay applies to a declared deterministic computation/backend. Physical
 rollouts are repeatability experiments with tolerances and uncertainty.
 Signed receipts identify who attested to a record; they do not prove that a
 physical task happened or that a machine is safe.
+
+Make **repair and return to service** a release trial too. Have a second
+builder replace one declared serviceable part, follow the published
+recalibration procedure and rerun the task's acceptance checks. Retain the
+time, tools, rejected attempts and changed calibration identity. This tests
+the ownership promise more directly than an assembly photograph. It is a
+proposal; no independent repair trial is recorded here yet.
 
 ## 10. A sustainable open business and maker network
 

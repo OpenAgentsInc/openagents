@@ -10,42 +10,37 @@ from robotics to the whole stack that [Psionic](../../psionic/README.md) and
 Coax are already rewriting.
 
 The platform proposal assumed, as an exercise, that NVIDIA stops operating.
-This document takes a likelier and harder case: NVIDIA keeps operating and
+This document takes a different planning case: NVIDIA keeps operating and
 keeps selling hardware, but stops being the main sponsor of open models and
 open tooling.
 
 ## 1. What happened, and what is assumed
 
-Reported, as of this date:
+A narrow factual baseline, checked against primary documents on November 15:
 
-- NVIDIA announced on November 12, 2026 that Jensen Huang had resigned as
-  CEO, effective immediately. CNBC reported that the board had decided the
-  night before to remove him, after an investigation into his personal
-  conduct that the board says is continuing.
-  ([CNBC](https://www.cnbc.com/2026/11/12/nvidia-jensen-huang-ceo-live-updates.html),
-  [NBC News](https://www.nbcnews.com/tech/tech-news/nvidia-ceo-jensen-huang-resigns-reports-extramarital-relationships-rcna608402),
-  [board statement](https://nvidianews.nvidia.com/news/statement-from-nvidia-board-of-directors))
-- CFO Colette Kress is interim CEO while the board searches for a successor.
-- The Hugging Face acquisition, signed in September and reported at about
-  $13 billion, has not closed. Press coverage says its handling under the
-  interim CEO is unclear.
-  ([TechCrunch](https://techcrunch.com/2026/11/12/jensen-huangs-exit-puts-nvidias-support-for-open-source-in-question/))
-  The SEC filing records commitments to keep the platform open and to
-  support other silicon vendors
-  ([filing](https://www.sec.gov/Archives/edgar/data/1045810/000104581026000078/nvda-20260902.htm)).
-  Those commitments take effect only if the deal closes, and how they would
-  be enforced afterwards is not something this document can assess.
-- Commentators disagree about the effect on open work. Some call it a major
-  setback for an American open-model ecosystem
-  ([Interconnects](https://www.interconnects.ai/p/open-source-ai-without-jensen));
-  others argue NVIDIA's commercial reasons to support open models outlast any
-  one executive, while its investments in model labs get more scrutiny.
-  A claim that open-source support itself motivated the removal is
-  unsupported speculation and is not used here.
+- NVIDIA's [November 12 transition announcement](https://nvidianews.nvidia.com/news/nvidia-announces-ceo-transition)
+  says Jensen Huang resigned and Colette Kress became interim CEO while
+  remaining CFO. The board also says it expects operations, customer
+  commitments and the product roadmap to continue. That is evidence of a
+  leadership transition and the board's stated intentions; it is not an
+  announcement that open work is ending.
+- The [September 2 SEC filing](https://www.sec.gov/Archives/edgar/data/1045810/000104581026000078/nvda-20260902.htm)
+  describes an agreement to acquire Hugging Face, approximately $11.9 billion
+  payable to stockholders and up to $1 billion in employee retention, with
+  closing expected in the first half of 2027 subject to conditions. It records
+  commitments to an open platform and support for other silicon vendors.
+  It is a dated account of a proposed transaction and forward-looking plans,
+  not proof of what distribution will look like after closing.
+- Commentary about the consequences remains commentary. The earlier
+  [Interconnects essay](https://www.interconnects.ai/p/open-source-ai-without-jensen)
+  and [TechCrunch coverage](https://techcrunch.com/2026/11/12/jensen-huangs-exit-puts-nvidias-support-for-open-source-in-question/)
+  are leads to inspect, not the basis for predicting a shutdown. Their
+  contents were available only as search summaries in the original revision.
 
-These facts come from search summaries of the linked pages. The pages
-themselves could not be fetched from this session, so check them before
-quoting any detail.
+The engineering argument does not require a theory about why a board acted,
+who replaces the interim CEO, or whether a transaction closes. Our ability to
+maintain a robot should survive any of those outcomes. The closure scenario
+below remains an assumption to test our dependency choices against.
 
 The PDF report in this folder has the same November 15 cutoff and does not
 mention the change of CEO. Its account of products, licences and partners
@@ -85,8 +80,11 @@ support, rendering and test coverage all create practical dependence. A
 narrowing would extend terms that already exist. It would not need to invent
 new ones.
 
-Two conclusions follow. Retention is urgent and cheap, and it is a matter of
-days. Replacement is slow and expensive, so it has to be chosen carefully.
+Two conclusions follow. Retain the selected inputs before their availability
+changes, and choose replacements against actual consumers. Large checkpoints,
+video corpora and old build environments have real storage, transfer and
+maintenance costs. An indiscriminate archive can consume the same resources
+needed to make one retained route work.
 
 ## 3. Retain now
 
@@ -151,19 +149,21 @@ recorded profile, never a general replacement.
 | BioNeMo, Clara, MONAI, Parabricks | Biology, medical imaging, genomics | None | **Low for us.** Others are better placed; offer the kernel layer to them |
 | cuQuantum, CUDA-Q, cuLitho, Sionna, Aerial | Quantum simulation, lithography, radio | None | **Not ours.** No consumer here |
 
-Every row from TensorRT down depends on the first one. A rewrite that starts
-at the kernels and the compiler makes the rest cheaper. A rewrite that
-starts in the middle inherits a dependency on someone else's kernels.
+Shared kernels and compiler support can reduce duplication across these
+rows. They do not eliminate the different algorithms, data formats, device
+layouts, distributed protocols and maintenance each family requires. Extend
+the lower layer when a selected workload exposes a missing operation; the
+portfolio table is a map of possible reuse, not a prerequisite list for
+finishing either robot.
 
 ## 5. Purpose-built languages and frameworks
 
-The Python ecosystem is a scripting language holding together C++ kernels, a
-vendor's GPU libraries, YAML configuration, pickled checkpoints and an
-interchange format that each tool reads differently. It was assembled
-incrementally and nobody would design it that way. Psionic's premise is that
-one language with the right guarantees can replace the whole arrangement.
-The opportunities below extend that premise. Each is a candidate. None is a
-commitment.
+Existing workflows span Python, C++ kernels, vendor libraries, configuration,
+checkpoints and interchange formats. Each boundary is an integration job.
+Coax and Psionic let us build shared arithmetic and contracts across more of
+that path, while retained external tools supply independent comparisons.
+The opportunities below extend that premise. Each is a candidate. A common
+language still has to earn correctness, speed and usable deployment.
 
 **One kernel source, every device.** Coax already emits C11, Wasm, and bounded
 CUDA and Metal compute, plus checked WGSL and SPIR-V for graphics. The
@@ -174,8 +174,10 @@ and WebGPU compute, which reaches browsers. A Phoronix test in October 2026
 found llama.cpp's Vulkan backend still ahead of ROCm on AMD hardware for
 most throughput measures
 ([Phoronix](https://www.phoronix.com/review/lemonade-vulkan-rocm/2)), which
-suggests the portable path is not the slow path. Each target needs its own
-measured profile; emitting a shader qualifies nothing.
+is one reported workload comparison, not a performance forecast for our
+kernels or simulator. Each target needs its own measured profile; emitting a
+shader qualifies nothing. Memory layout, transfers, synchronization and solver
+structure can dominate a workload even when its arithmetic is portable.
 
 **Do not clone CUDA.** ZLUDA translates compiled CUDA binaries and has lost
 its commercial funding; SCALE recompiles CUDA source and is closed
@@ -184,12 +186,13 @@ its commercial funding; SCALE recompiles CUDA source and is closed
 keep the world writing CUDA and keep it exposed to one company's licence. A
 language that never names a vendor in the source avoids the question.
 
-**Shapes, dtypes, units and budgets in the types.** Most failures in a
-Python model appear at run time, several minutes in: a shape mismatch, a
-silent broadcast, an out-of-memory error. Coax has quantities and affine
+**Shapes, dtypes, units and budgets in the types.** Shape mismatches,
+unintended broadcasts and exhausted capacity can surface late in a run.
+Coax has quantities and affine
 point and vector types, and Psionic admits memory before it runs. Extending
 this to tensor shapes and device residency as checked facts would make a
-whole class of failures compile errors. That matters most to an agent
+whole class of statically known failures compile errors; dynamic requests
+still need runtime admission. That matters to an agent
 writing the code, which learns from a compiler message at once and from a
 crashed training run slowly.
 
@@ -198,6 +201,10 @@ compiled backward pass. Promoting them from library to language feature
 means a simulator, a renderer and a model can be differentiated by the same
 mechanism. That is Warp's central idea without Warp's Python host or its
 NVIDIA-only GPU path.
+
+Contact switches, resets and discrete choices still need explicit derivative
+or refusal conventions. Putting differentiation in a compiler does not make
+every simulated operation smooth or choose a physically meaningful gradient.
 
 **Models as data.** A checkpoint should be inert bytes plus a typed
 description, with one identity covering both. Psionic has no general pickle
@@ -233,22 +240,29 @@ target.
 **Experiments as checked values.** A training run, an evaluation and a
 simulation batch described as typed jobs with inputs, budgets, seeds and
 expected outputs, runnable on one machine or sent across Pylons, with a
-receipt that says what ran. This replaces OSMO, most of what people use
-Kubernetes for in research, and the shell scripts in between.
+receipt that says what ran. This could supply a common job contract for our
+local and remote runners.
+Scheduling, isolation, data movement, cancellation, retries and recovery still
+need concrete implementations; typed jobs alone do not replace an orchestration
+platform.
 
 **Verification as the differentiator.** Mutation testing, `#authority`
-files, replay classes, noise floors and support ledgers are what the Python
-ecosystem lacks and cannot easily add. A rewritten library that states
+files, replay classes, noise floors and support ledgers can be a consistent
+contract across our compiler, simulator and models. Other ecosystems also
+have testing and numerical verification tools; our useful distinction would
+be making these records part of every supported release. A library that states
 exactly which models, operators, devices and precisions it supports, with
 evidence, is more useful than a larger one that says "should work".
 
 ### Why a rewrite of this size is plausible now
 
-Two things changed. Agents write most of the code, so the cost of porting a
-library is dominated by knowing whether the port is right, not by typing it.
-And the references still run today, so each port can be tested against
-recorded outputs (section 3, item 3). The window in which both are true may
-be short. That is the argument for recording oracles before writing code.
+Agents reduce the cost of drafting and revising implementations in our
+workflow. That makes independent references more valuable: correctness,
+performance, integration and long-term maintenance still have to be earned.
+Where a selected reference still runs, record its outputs before replacing
+it (section 3, item 3). Treat the expected reduction in total porting cost as
+a hypothesis to measure on complete workloads, rather than a reason to widen
+the rewrite in advance.
 
 ## 6. What stays hard
 
@@ -284,28 +298,60 @@ be short. That is the argument for recording oracles before writing code.
 
 ## 7. Proposed additions to current plans
 
-Ordered by cost, cheapest first. Each is a proposal for the owner.
+Candidate additions for the owner. The numbers identify proposals; they are
+not cost estimates or a new implementation order.
 
 | # | Addition | First deliverable | Gate |
 | --- | --- | --- | --- |
 | 1 | Retention sweep | Pinned copies, hashes and day-of-download licence text for the section 3 list | A second machine rebuilds each retained reference offline |
 | 2 | Oracle recording | Inputs, intermediates and outputs from each reference we intend to port | Recorded on a named machine and driver; replayable without the reference |
 | 3 | Dependency ledger | One table of every NVIDIA-controlled input in the repository: toolkit, driver, hosted file, licence | Each row has an owner and a fallback, or says "none" |
-| 4 | Vulkan compute target for Coax kernels | One Psionic kernel family running on a non-NVIDIA, non-Apple GPU | Matches the CPU reference; measured against CUDA on the same model |
+| 4 | Vulkan compute target for Coax kernels | One Psionic kernel family needed by a selected model or solver, on a named non-NVIDIA, non-Apple GPU | Matches declared CPU error bounds; complete-workload time and memory measured on that device |
 | 5 | Model-description format | A published, versioned description for the models Psionic already runs | A second implementation can answer "supported or refused" from the file alone; registered in `proto/` |
 | 6 | Hub-independent mirror | Content-addressed artifact announcements and fetch over existing identities | A clean machine fetches a pinned model with no model hub reachable |
 | 7 | Columnar reader | Arrow layout and bounded Parquet reading, driven by the LeRobot interchange profile | Independent comparison against a reference reader on a fixed corpus |
-| 8 | Portable batched simulation | The Microduck collector running on the Vulkan target | Solo-versus-batch invariance holds on two devices |
+| 8 | Portable batched simulation | The Microduck collector running on the Vulkan target | Solo-versus-batch invariance within each qualified device profile; separate numerical bounds across devices |
 | 9 | Training across Pylons | One distributed training job type with admission, cancellation and a checker | Reproduces a single-machine result within its noise floor |
-| 10 | Real-time Coax profile | Bounded-time subset and one microcontroller target | Measured worst case on the named board; no allocation proven |
+| 10 | Real-time Coax profile | Bounded-time subset and one microcontroller target | Allocation/work bounds checked; deadline and fault measurements on the named board/load; any formal worst-case claim needs its own proof |
 
 Item 3 can start from the PDF report's licence table and its 92-entry
 source directory, which already name most of the artifacts and their terms.
 
-Items 1 to 3 need no new code and lose value every week. Item 4 changes the
-most for the least: it turns "CPU and Metal are the escape path" into "any
-GPU is". Items 5 and 6 are the public goods other projects could adopt
-without adopting Coax.
+Items 1 to 3 can begin with existing tools, but retaining, rebuilding and
+recording references still takes work. Item 4 qualifies one device and one
+workload at a time; it cannot turn a single kernel result into “any GPU”
+support. Items 5 and 6 could be public goods other projects adopt without
+adopting Coax.
+
+### Engineering judgment: make the next route deeper before making it wider
+
+The immediate missing loop is still a collector feeding a real neural update,
+then a reproducible evaluation. Chapter 257's experiment record and chapter
+258's illustrative servo are implemented CPU components. Chapter 259 now has
+shared statistics, while collection and its freeze/version lifecycle remain
+open. None of that is a learned biped or a closed robotics pipeline. The
+[implementation roadmap](../../psionic/docs/robotics/microduck-implementation-roadmap.md)
+and its receipts are the completion ledger.
+
+For any proposed rewrite above, first name the consumer, its exact missing
+operation, an independent answer, a resource budget and the result that would
+make us stop or keep the existing path. A video reader earns work when a
+selected dataset needs it; a new device target earns work when a measured
+model or solver bottleneck needs it. General dataframe, USD, fleet and model
+hub ambitions need not stand between the current small collector and its
+first neural training run. The wider table remains optional scope.
+
+The first continuity result should be a second builder running one complete
+retained route with vendor services unavailable. Start with ordinary permitted
+copies and a manifest. A distributed paid mirror can follow a demonstrated
+availability problem; it needs discovery, rights, delivery checking and payment
+recovery in addition to a content hash. Model identity detects changed bytes.
+Availability, permitted distribution and numerical usefulness are separate
+properties to establish.
+
+If NVIDIA keeps its open commitments, this work should still pay for itself
+in reproducibility, repair and a second maintained execution path. That is a
+stronger reason to do it than needing the worst-case forecast to come true.
 
 ## 8. What to watch
 
@@ -326,17 +372,21 @@ doing in either case.
 
 ## Sources and limits
 
-The [PDF report](NVIDIA_Robotics_Report_2026-11-15.pdf) was read in full
-for this revision. It is the longer edition of the Markdown report, with a
-numbered source directory, a history from 2014 and more detail on licences,
-evaluation and deployment evidence. Nothing in it contradicts this document.
+The [PDF report](NVIDIA_Robotics_Report_2026-11-15.pdf) is the retained longer
+research edition, with a numbered source directory, a history from 2014 and
+more detail on licences, evaluation and deployment evidence. This follow-up
+particularly uses sections 16–18 on artifact terms, practical limits and a
+custom engine. Its product map and our proposed implementation choices have
+different purposes; the PDF itself is unchanged.
 
-News and licence links above were found by web search on November 15, 2026.
-Direct page fetches were blocked in the session that wrote this, so
-statements about them rest on search summaries; the NVIDIA library
-descriptions in section 4 are from general knowledge of those products and
-were not rechecked against current documentation. Statements about this
-repository follow the [Psionic README](../../psionic/README.md), the
+The transition announcement and acquisition filing in section 1 were read
+directly for the November 15 follow-up. Other news/commentary and licence
+links retain the original limitation: their earlier assessment used search
+summaries when direct fetches were blocked. The NVIDIA library descriptions
+in section 4 were not comprehensively rechecked in this follow-up. The new
+engineering judgments are proposals, not additional research results or
+implemented capabilities. Statements about this repository follow the
+[Psionic README](../../psionic/README.md), the
 [breadth survey](../../psionic/docs/targets/nvidia-breadth.md),
 [chapter 250](../../psionic/book/ch250-can-someone-use-psionic-instead-of-pytorch.md),
 the [Coax roadmap](../../coax/ROADMAP.md) and the two companion documents in

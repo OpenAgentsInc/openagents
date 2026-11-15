@@ -13,6 +13,15 @@ glTF/VPK1 path and renders it with orbit and normals inspection. This establishe
 asset provenance and static visualization; the training and physical deployment
 gates below remain open.
 
+**Implementation update, 2026-11-15:** chapters
+[257](../../psionic/book/ch257-a-robot-description-becomes-an-experiment.md)
+and [258](../../psionic/book/ch258-a-servo-that-behaves-like-the-motor.md)
+now run the bounded CPU experiment-record and illustrative servo profiles.
+[Chapter 259](../../psionic/book/ch259-rollouts-from-independent-worlds.md)
+has shared F64 statistics/normalization; its collector is still unimplemented.
+These component results do not close D0's admitted-biped and frozen-task
+requirements, or establish a trained walking policy.
+
 ## 1. The demonstration and what its sources establish
 
 The event was **Jensen Huang's October 21, 2026 GTC Berlin keynote**. The
@@ -144,6 +153,21 @@ Freeze distributions, metrics, seeds, horizons and selection rules before
 training. Report every prescribed seed; do not present the best checkpoint
 or one successful performance as a reliability estimate.
 
+The first learning comparison should keep simulator error visible. Run a
+small frozen set of commands and a conventional controller against the
+owned plant and the independent reference before spending a large training
+budget. Compare the relevant response, contacts and failures; retain the
+differences. Then evaluate a learned policy across the declared model and
+parameter variations. Improvement in one simulator alone does not establish
+transfer. More parallel worlds can amplify an error just as efficiently as
+they collect useful experience.
+
+For engineering progress, favor one complete small rollout, a genuine neural
+update and an interrupted/resumed run before scaling throughput. This does
+not replace D2's articulated/contact learning requirement with an oscillator
+result. The analytic plant is the place to find collector and optimizer bugs
+before balance and contact make their consequences harder to diagnose.
+
 Model the sensor/encoder location relative to gearbox play; joint state on
 the motor side and output side can differ. Keep physics step, servo feedback,
 actor update, perception and mission rates separate. Select measured physical
@@ -197,6 +221,14 @@ reference study and obtain suitable rights or independently authored,
 commercially usable geometry for an OpenAgents kit. Retain attribution,
 provenance, manufacturing tolerances, BOM and qualification for each design.
 
+Choose the intended commercial geometry early enough to account for its
+dynamics. A changed link, gearbox or printed process can change mass,
+compliance and calibration as well as appearance. A commercial release needs
+its own identified assembly and transfer evidence; the upstream study body's
+controller results do not automatically carry over. Obtaining suitable
+rights and independently designing a body are different routes, and both
+still require that engineering check.
+
 The [NV-DLI workshop](https://github.com/NV-DLI/Microduck-Workshop) is another
 educational reference. Its [notices](https://github.com/NV-DLI/Microduck-Workshop/blob/main/THIRD_PARTY_NOTICES.md)
 distinguish code, policies and noncommercial geometry; its overview also
@@ -228,8 +260,10 @@ transfer and a saleable hardware release remain separately reported outcomes.
 
 [The coding-agent roadmap](../../psionic/docs/robotics/microduck-implementation-roadmap.md)
 now breaks implementation into RB-00…RB-13 with source owners and checks.
-Draft chapters 257–265 provide worked calculations and component contracts;
-chapter 265 owns the final complete-route acceptance.
+Chapters 257–258 are runnable CPU components; chapter 259 is partly implemented
+for statistics, and chapters 260–265 remain design drafts. They provide
+worked calculations and component contracts. Chapter 265 owns the final
+complete-route acceptance.
 
 [Psionic chapter 171](../../psionic/book/ch171-learn-a-gait-in-many-worlds.md)
 owns the reusable learner, actor/critic, collector and locomotion components.

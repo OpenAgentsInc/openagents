@@ -2,6 +2,13 @@
 
 **Research cutoff: November 15, 2026**
 
+**OpenAgents follow-up:** the [platform proposal](open-robotics-platform-2026-11-15.md)
+and [open-era assessment](after-the-open-era-2026-11-15.md) now add engineering
+judgments about priorities, service independence and repair. The
+[Microduck plan](microduck-pipeline-2026-11-15.md) records current component
+progress. Those proposals and local implementation results are separate from
+this portfolio research and its retained PDF edition.
+
 NVIDIA is building the computing platform used to develop, train, simulate, deploy, and improve robots. Its efforts span far more than humanoids: industrial arms, warehouse fleets, medical systems, drones, heavy equipment, autonomous vehicles, and the infrastructure behind them. The portfolio includes onboard computers, physics engines, simulation software, robot foundation models, synthetic data tools, perception and motion libraries, fleet systems, and safety technology. ([NVIDIA Robotics](https://www.nvidia.com/en-us/industries/robotics/), [Isaac](https://developer.nvidia.com/isaac))
 
 The report’s central assessment is that NVIDIA’s greatest advantage comes from connecting the stages of robotics development. A company can use NVIDIA to train its own models, simulate its robots, accelerate perception, and run onboard inference without adopting NVIDIA’s entire stack. That gives NVIDIA several ways to participate in the industry’s growth.
