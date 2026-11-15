@@ -1,5 +1,13 @@
 # Owner actions
 
+## Reference navigation molecules, build 1190 (2026-11-15)
+
+- [ ] Install TestFlight **1190** (verified in **Owner**) and open **Settings →
+      Components → Gallery options → Reference**. Inspect the screen and
+      sheet headers, picker, rows and menu on the phone. Shared component tests
+      and the simulator gallery walkthrough passed; device appearance remains
+      to be checked against the captured reference.
+
 ## Reference molecules, build 1180 (2026-11-15)
 
 - [ ] Install TestFlight **1180** (verified in **Owner**), open **Settings →
