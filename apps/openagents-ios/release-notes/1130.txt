@@ -1,0 +1,1 @@
+Icon buttons in app headers and the floating world menu now use Liquid Glass on iOS 26 and later. The Reference gallery includes studies of more small UI elements.

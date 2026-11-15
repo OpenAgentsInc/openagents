@@ -11,6 +11,18 @@ import UIKit
         let title=try XCTUnwrap(surface.controls["test.title"]),first=try XCTUnwrap(surface.controls["test.action"]),second=try XCTUnwrap(surface.controls["projects.new"])
         XCTAssertEqual(title.convert(title.bounds,to:surface.view).midX,201,accuracy:1)
         XCTAssertEqual(first.frame.maxX,second.frame.minX,accuracy:1)
+        XCTAssertTrue((first as? NativeButton)?.glass == true)
+        XCTAssertTrue((second as? NativeButton)?.glass == true)
+    }
+    func testToolbarUsesGlassOnlyForIconActions() throws {
+        let surface=NativeControls()
+        let toolbar=NativeElement(id:"toolbar",role:"toolbar",label:"",children:[NativeElement(id:"icon",role:"button",label:"Filter",classes:"ib"),NativeElement(id:"text",role:"button",label:"Done")])
+        surface.render([toolbar])
+        XCTAssertTrue(try XCTUnwrap(surface.controls["icon"] as? NativeButton).glass)
+        XCTAssertFalse(try XCTUnwrap(surface.controls["text"] as? NativeButton).glass)
+        let loading=NativeElement(id:"loading",role:"button",label:"",attrs:["data-state":"loading"])
+        surface.render([NativeElement(id:"toolbar",role:"toolbar",label:"",children:[loading])])
+        XCTAssertFalse(try XCTUnwrap(surface.controls["loading"] as? NativeButton).glass)
     }
     func testHistoryRevealsFixedWidthSingleLineRows()async throws {
         let detail=NativeControls(),workspace=NativeWorkspace(detail:detail);workspace.view.frame=CGRect(x:0,y:0,width:402,height:874)

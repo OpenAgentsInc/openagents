@@ -114,7 +114,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
         navigationController?.setNavigationBarHidden(true,animated:false)
         let chrome=nwh_chrome(false,false,false)
         // The one control over the world: the library's icon button, on a dim ground so it reads on any scene.
-        menuButton.translatesAutoresizingMaskIntoConstraints=false;menuButton.accessibilityIdentifier="world.menu";menuButton.floating=true
+        menuButton.translatesAutoresizingMaskIntoConstraints=false;menuButton.accessibilityIdentifier="world.menu";menuButton.floating=true;menuButton.glass=true
         menuButton.show(Self.text(chrome.menu),symbol:"line.3.horizontal")
         menuButton.addAction(UIAction { [weak self] _ in self?.showMenu() },for:.primaryActionTriggered)
         // Status chrome is hidden. Use the free upper corner above the realm's

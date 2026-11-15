@@ -46,7 +46,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     /// A host's own header above what Coax renders: a title and one icon that closes what the host opened.
     func hostHeader(title:String,close:String,action:@escaping()->Void) {
         loadViewIfNeeded();hostAction=action;hostTitle.attributedText=NativeSkin.label(title,size:12,ink:NativeSkin.tokens.ink);hostTitle.accessibilityLabel=title
-        hostClose.show(close,symbol:"xmark");hostHeight.constant=CGFloat(NativeSkin.tokens.header);hostBar.isHidden=false;showHeaderRule()
+        hostClose.show(close,symbol:"xmark");hostClose.glass=true;hostHeight.constant=CGFloat(NativeSkin.tokens.header);hostBar.isHidden=false;showHeaderRule()
     }
     private func showHeaderRule() {headerRule.isHidden=headerHeight.constant==0 && hostHeight.constant==0}
     override func viewDidLoad() {
@@ -122,13 +122,15 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             let old=controls[e.id],matching=e.role=="button" ? old is NativeButton:old is UILabel
             let control=matching ? old!:make(e)
             if let button=control as? NativeButton {
-                button.glass=["nav.toggle","nav.close","nav.new","projects.new"].contains(e.id)
                 button.isEnabled = !e.disabled
                 if let state=e.attrs["data-state"],["loading","ready","offline","idle"].contains(state) {
                     // A status: how it stands is shown by the icon and its brightness, and said by its label.
                     button.variant = .icon;button.busy=state=="loading";button.current=state=="ready"
                     button.show(e.attrs["aria-label"] ?? "Refresh conversation",symbol:state=="ready" ? "checkmark.circle":state=="offline" ? "exclamationmark.arrow.triangle.2.circlepath":"arrow.clockwise")
                 } else {button.variant=e.hasClass("ib") ? .icon:.quiet;button.busy=false;button.current=false;button.show(e.label.isEmpty ? e.attrs["aria-label"] ?? "":e.label,symbol:NativeSkin.symbol(e))}
+                // The shared activity ring is painted beneath UIKit effects;
+                // keep it unobscured until it has a native glass foreground.
+                button.glass=button.variant == .icon && !button.busy
             }
             else if let label=control as? UILabel {label.attributedText=NativeSkin.label(e.label,size:12,ink:NativeSkin.tokens.ink);label.accessibilityLabel=e.label;label.numberOfLines=1;label.lineBreakMode = .byTruncatingTail;label.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)}
             kept[e.id]=control
