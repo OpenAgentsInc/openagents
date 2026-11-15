@@ -1,5 +1,15 @@
 # Owner actions
 
+## Component gallery, build 1086
+
+Install **1086** from TestFlight (**Owner**) and open **Settings → Components**.
+Tap the motion cards, try Replay/Pause and the three skins, then browse
+Controls, HUD and ARWES. Close the gallery and return to Chat. The installed
+simulator checks cover this path, scrolling and background/resume; physical
+phone appearance, performance and accessibility remain owner observations.
+The same library is live at <https://openagents.com/components-gpu>; pictures
+and scope are in [the gallery record](docs/verification/2026-11-14-component-gallery/README.md).
+
 ## Native Projects, build 1085
 
 Install **1085** from TestFlight and open **Projects** from the drawer. With
