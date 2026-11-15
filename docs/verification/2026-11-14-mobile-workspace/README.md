@@ -59,13 +59,10 @@ The 19,807,255-byte IPA uploaded successfully with Apple delivery
 resources. All five dSYMs are retained. Frozen artifacts, exact logs and
 `release.json` are under `~/.openagents/releases/openagents-ios-1090/`.
 
-Apple's build-upload record is **PROCESSING**, with no errors or warnings.
-Owner assignment is queued as the one-off user launchd job
-`com.openagents.testflight.1090`. It runs the existing SDK adapter against
-this build and the existing Owner group, retries unsuccessful attempts at
-60-second intervals and stops after verified assignment. Its configuration
-and `testflight-assignment.log` are in the release folder. It grants no
-group-wide access and creates no groups or testers.
+**1090 is VALID / IN_BETA_TESTING, explicitly verified in Owner.** The one-off
+SDK assignment job exited successfully and was unloaded. Its configuration and
+`testflight-assignment.log` remain in the release folder. No group-wide access
+was granted and no groups or testers were created.
 
 | Composer | Projects |
 | --- | --- |

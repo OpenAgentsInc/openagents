@@ -381,3 +381,6 @@ opens in the main workspace; history reveals at a fixed width with single-line
 truncated rows. The shared project review from main is included, with an 8 MiB
 app stack inside the existing 32 MiB runtime. The grayscale gallery repair
 from 1089 is included. [Checks and installed pictures](../../docs/verification/2026-11-14-mobile-workspace/README.md).
+
+1090 is **VALID / IN_BETA_TESTING**, verified in **Owner**. Its signed generation-1
+feed matches all 20 IPA resources; fresh install and relaunch offer no redundant update.

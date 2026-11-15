@@ -2,8 +2,8 @@
 
 ## Mobile workspace, build 1090
 
-**1090 is uploaded and Apple is processing it; automatic Owner assignment is queued.**
-Install it when TestFlight lists it. Check centered titles, the minimal
+**1090 is available in TestFlight (Owner), verified IN_BETA_TESTING.**
+Install it and check centered titles, the minimal
 composer, Worlds → history → Chat, and single-line history while opening the
 drawer. Confirm new chats/projects from another computer appear automatically.
 Settings → Components includes the grayscale gallery repair. Physical-device
