@@ -1,5 +1,5 @@
 // Descriptor and exact-byte oracle for the shared durable turn codec.
-#load "account-chat-turn-wire.coax";
+#load "account-chat-turn-record.coax";
 #load "../../lib/proto/importer.coax";
 #load "../../lib/proto/golden-keys.coax";
 #load "../../lib/sys/tool.coax";
@@ -8,6 +8,10 @@ ct_profile_keys :: (g:[]PkDescriptor,name:string,raw:string)->bool {
  b:[160]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],".openagents.chat.v2alpha1.");jo_put(o[..],name);
  nodes:[256]JvNode;why:=pk_text_keys(g[0].state[..],jo_text(o[..]),raw,false,false,nodes[..]);
  if why!="" {print("FAIL %: %\n",name,why);}return why=="";
+}
+ct_profile_match :: (g:[]PkDescriptor,v:Jv,key:string,name:string,actual:string)->bool {
+ b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jv_write(v,jv_get(v,0,key),o[..]);raw:=jo_text(o[..]);ok:=actual==raw && ct_profile_keys(g,name,raw);
+ if !ok {print("FAIL exact bytes: %\n",key);}return ok;
 }
 tool_main :: ()->int #export_c #effects(all) {
  pb:[65536]u8;n:=fs_read("proto/descriptors/chat-turn.pb",pb[..]);g:[1]PkDescriptor;
@@ -25,5 +29,19 @@ tool_main :: ()->int #export_c #effects(all) {
   ok=n>0 && cast(string)b[0..<n]==raw && ct_profile_keys(g[..],"Event",raw) && ok;
  }
  bad:[8]JvNode;ok=pk_text_keys(g[0].state[..],".openagents.chat.v2alpha1.Event","{\"unknown\":true}",false,false,bad[..])!="" && ok;
+ fn=fs_read("proto/coder/chat-service-v2alpha1.json",fixture[..]);if fn<1 || !jv_parse(d[..],cast(string)fixture[0..<fn],nodes[..]) {return 2;}
+ v:[1]CtView;_=ct_view_begin(v[..],"cnv_0123456789abcdef0123456789abcdef","trn_0123456789abcdef0123456789abcdef");
+ n=ctr_control_write(v[..],1,b[..]);ok=n>0 && ct_profile_match(g[..],d[0],"control","ControlReply",cast(string)b[0..<n]) && ok;
+ info:=[1]CtInfo.[CtInfo.{operation="op-1",model="model",provider="provider",effort="low",why="Actual route",revision=1,created=10,updated=20}];
+ n=ctr_turn_write(v[..],info[..],b[..]);ok=n>0 && ct_profile_match(g[..],d[0],"turn","Turn",cast(string)b[0..<n]) && ok;
+ two:=[2]string.["one","two"];n=ct_submit_write("op","",0,"",-1,"",-1,two[..],c[..]);n=ctr_user_message(cast(string)c[0..<n],"trn_0123456789abcdef0123456789abcdef",17,b[..]);ok=n>0 && ct_profile_match(g[..],d[0],"message","Message",cast(string)b[0..<n]) && ok;
+ message:=[1]string.[cast(string)b[0..<n]];
+ conversation:=[1]CtConversation.[CtConversation.{id="cnv_0123456789abcdef0123456789abcdef",title="Chat",revision=1,active="trn_0123456789abcdef0123456789abcdef",created=10,updated=20}];
+ n=ctr_conversation_write(conversation[..],message[..],c[..]);ok=n>0 && ct_profile_match(g[..],d[0],"conversation","Conversation",cast(string)c[0..<n]) && ok;
+ n=ctr_summary(conversation[..],b[..]);ok=n>0 && ct_profile_match(g[..],d[0],"summary","ConversationSummary",cast(string)b[0..<n]) && ok;
+ summaries:=[1]string.[cast(string)b[0..<n]];n=ctr_index(summaries[..],"",c[..]);ok=n>0 && ct_profile_match(g[..],d[0],"index","ConversationList",cast(string)c[0..<n]) && ok;
+ empty:[1]string;n=ctr_events(v[..],0,empty[0..<0],b[..]);ok=n>0 && ct_profile_match(g[..],d[0],"events","EventPage",cast(string)b[0..<n]) && ok;
+ n=cwr_write(2,"run-1","worker-1","trn_0123456789abcdef0123456789abcdef","run_0123456789abcdef0123456789abcdef",b[..]);ok=n>0 && ct_profile_match(g[..],d[0],"runner","RunnerRequest",cast(string)b[0..<n]) && ok;
+ n=cwr_job("trn_0123456789abcdef0123456789abcdef","cnv_0123456789abcdef0123456789abcdef","run_0123456789abcdef0123456789abcdef",b[..]);ok=n>0 && ct_profile_match(g[..],d[0],"job","RunnerJob",cast(string)b[0..<n]) && ok;
  print("%\n",ifx ok then "Durable turn fixtures match their codec and descriptor" else "Durable turn profile failed");return ifx ok then 0 else 1;
 }

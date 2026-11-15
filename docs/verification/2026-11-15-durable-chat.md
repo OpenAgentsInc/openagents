@@ -2,10 +2,11 @@
 
 ## Current checkpoint
 
-Protocol and shared client/server primitives are implemented. **#13619 remains
-open.** Durable storage/claim/recovery, resident-worker integration, metered live
-streaming, API routes, mobile and CLI adoption and installed end-to-end evidence
-are still required. No new TestFlight build or signed app update is published.
+Protocol, shared client/server primitives, the queue schema and claim/dispatch
+policy are implemented. **#13619 remains open.** Transactional API adapters,
+actual claim/recovery, resident-worker integration, metered live streaming,
+mobile and CLI adoption and installed end-to-end evidence are still required.
+No new TestFlight build or signed app update is published.
 The final release waits for #13619–#13623 and the complete Arcade port.
 
 The [new protocol](../protocol/account-chat-turn-v2alpha1.md) defines rich
@@ -78,3 +79,60 @@ recover committed queued work after a lost wake, and classify a lost dispatched
 attempt as unknown. Then connect the same snapshots/events to CLI and native
 chat, verify actual staging inference/reconnect/Stop and legacy continuation,
 and only then complete #13619 and move to #13620.
+
+## Service and storage checkpoint
+
+The additive `service.proto` owns control replies, conversation summaries/index,
+event pages, runner requests and jobs. The resource codec also writes the
+previously defined Turn, Message and Conversation records. Exact fixtures check
+every envelope against the generated descriptor. No frozen conversation field
+was changed. Internal page composers take fragments from these owned codecs.
+
+The queue policy keeps claims queued until the current live dispatch fence is
+admitted. An expired queued claim can be replaced; its original receipt remains
+stable. A lost dispatched attempt is eligible only for unknown recovery. The
+migration adds account-qualified foreign keys, a unique active conversation
+turn, operation/ordinal/event uniqueness and lifecycle rows for all five tables.
+Routes and the resident-worker adapter are still pending.
+
+Validation retained for these scopes:
+
+- All **144 codec checks passed**. The complete-reply check was subsequently
+  strengthened and rerun alone: a 131,072-byte reply consisting entirely of
+  six-byte JSON escapes encodes, decodes completely, fits its exact encoded
+  buffer and refuses one byte less.
+- Resource codec: **811 mutants, 800 killed, zero survivors, 11 reviewed
+  equivalents**. Shared JSON helpers: **50 mutants, 49 killed, zero survivors,
+  one equivalent**. Queue policy: **37 mutants, 36 killed, zero survivors, one
+  equivalent**. Project wrapper change: **3 mutants, all killed**. These passing
+  product scopes were retained when only test/documentation text changed.
+- Updated independent native reader oracle: **2,865 cases**, no disagreement,
+  compiled from the actual final readers with non-recovering UBSan.
+- Pinned protobuf generation and compatibility/module/profile checks passed.
+  Wire, layer and tool checks passed without increasing an allowlist.
+- Selected API harness: **15 actual Postgres storage checks passed** for
+  ownership/Project foreign keys, active-turn/operation/ordinal/event uniqueness,
+  retained claim fences, account lifecycle registration and purge isolation.
+  The regenerated snapshot matches all 212 migrations. The common NIP-98
+  differential checked 33,286 cases without disagreement; the common CLI auth
+  slice passed all 72 checks. This is the selected storage run, not the full API
+  suite or a live durable-chat route test.
+
+The initial resource mutation run had 75 survivors; independent ceiling,
+malformed-peer, identity and writer expectations resolved its real gaps. Reviewed
+equivalents describe duplicated bounds, impossible decoded states or JSON lengths
+and exact identity checks after bounded decoding. They are not permission to
+ignore later survivors.
+
+Testing found that the shared UTF-8 helper's 64 KiB buffer could not validate a
+full 128 KiB chat reply. Its bounded capacity now covers that span; the published
+private-text Project profile retains its own 64 KiB limit. The first selected API
+run stopped on the Project helper's legacy boundary assertion; that wrapper was
+corrected before rerunning. No passing API-storage result is implied by that
+earlier failed run.
+
+Deployment integration must account for the runner's current minimum of zero
+instances. CPU is already allocated outside requests, but queue recovery also
+needs an available scanning instance. No deployment was changed at this
+checkpoint; setting the minimum and verifying lost-wake/restart recovery belongs
+to the actual worker integration.

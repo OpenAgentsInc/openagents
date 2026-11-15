@@ -1,0 +1,115 @@
+// Resource/service codecs beside the shared submit/event codec. All strings
+// read into output records borrow the explicit caller arena.
+// coax test coax/web/api/account-chat-turn-record.coax --library
+#load "account-chat-turn-wire.coax";
+CTR_TURN :: "openagents.chat.turn.v2alpha1";
+CTR_CONTROL :: "openagents.chat.control.v2alpha1";
+CTR_CONVERSATION :: "openagents.chat.conversation.v2alpha1";
+CTR_INDEX :: "openagents.chat.index.v2alpha1";
+CTR_EVENTS :: "openagents.chat.events.v2alpha1";
+CTR_RUNNER :: "openagents.chat.runner.v2alpha1";
+CTR_JOB :: "openagents.chat.job.v2alpha1";
+CtInfo :: struct {operation:string;model:string;provider:string;effort:string;route:string;why:string;snapshot:string;revision:int;created:int;updated:int;}
+CtConversation :: struct {id:string;title:string;revision:int;project:string;legacy:string;legacy_revision:int= -1;active:string;created:int;updated:int;cursor:string;}
+CtControl :: struct {conversation:string;turn:string;revision:int;state:int;stopped:bool;cursor:int;}
+CtWorker :: struct {operation:int;id:string;worker:string;turn:string;dispatch:string;}
+CtJob :: struct {has_work:bool;turn:string;conversation:string;dispatch:string;}
+ctr_time :: (n:int)->bool {return n>=0 && n<=9007199254740991;}
+ctr_view_valid :: (v:[]CtView)->bool {
+ if !ct_id(cast(string)v[0].conversation[..],"cnv_",32) || !ct_id(cast(string)v[0].turn[..],"trn_",32) {return false;}
+ if v[0].sequence<0 || v[0].sequence>CT_SEQUENCE_MAX {return false;} // mutant: equivalent (widening the sequence cap still fails ct_event_valid below, or the queued cursor-zero check)
+ if v[0].bytes<0 || v[0].bytes>131072 || v[0].ne<0 || v[0].ne>512 {return false;}
+ if v[0].nr<0 || v[0].nr>80 {return false;} // mutant: equivalent (no allowed stop-reason spelling is 80 bytes; rejecting exactly 80 still refuses an invalid reason)
+ if !ct_valid_text(ct_view_text(v),131072) {return false;} // mutant: equivalent (the fixed content array and the preceding decoded-byte bound already cap this text)
+ if v[0].state==CT_QUEUED {return v[0].sequence==0 && v[0].bytes==0 && !v[0].stop_requested && v[0].nr==0 && v[0].ne==0 && v[0].usage.input== -1 && v[0].usage.output== -1 && v[0].usage.cache_read== -1 && v[0].usage.cache_write== -1 && v[0].usage.reasoning== -1;}
+ e:[1]CtEvent;e[0]=CtEvent.{conversation=cast(string)v[0].conversation[..],turn=cast(string)v[0].turn[..],sequence=v[0].sequence,state=v[0].state,stop_requested=v[0].stop_requested,usage=v[0].usage,has_usage=true,reason=ct_view_reason(v),error=cast(string)v[0].error[0..<v[0].ne]};
+ e[0].kind=ifx v[0].state==CT_RUNNING then CT_USAGE else ifx v[0].state==CT_COMPLETED then CT_DONE else ifx v[0].state==CT_FAILED then CT_ERROR else ifx v[0].state==CT_CANCELLED then CT_CANCEL else CT_LOST;
+ return ct_event_valid(e[..]);
+}
+ctr_info_valid :: (i:[]CtInfo)->bool {
+ return i[0].operation.count>0 && ct_valid_text(i[0].operation,80) && i[0].revision>0 && i[0].revision<=CT_SEQUENCE_MAX && ctr_time(i[0].created) && ctr_time(i[0].updated) && i[0].updated>=i[0].created && i[0].model.count>0 && ct_valid_text(i[0].model,160) && i[0].provider.count>0 && ct_valid_text(i[0].provider,80) && ct_valid_text(i[0].effort,16) && ct_valid_text(i[0].route,80) && ct_valid_text(i[0].why,1024) && (i[0].snapshot.count==0 || ct_id(i[0].snapshot,"ctx_",32));
+}
+ctr_control_write :: (v:[]CtView,revision:int,out:[]u8)->int #export_c #effects(all) {
+ if !ctr_view_valid(v) || revision<1 || revision>CT_SEQUENCE_MAX {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CTR_CONTROL);jo_key(o[..],"conversation_id");jo_str(o[..],cast(string)v[0].conversation[..]);jo_key(o[..],"turn_id");jo_str(o[..],cast(string)v[0].turn[..]);jo_key(o[..],"conversation_revision");jo_int(o[..],revision);jo_key(o[..],"state");jo_str(o[..],ct_state_name(v[0].state));jo_key(o[..],"stop_requested");jo_bool(o[..],v[0].stop_requested);jo_key(o[..],"event_cursor");jo_int(o[..],v[0].sequence);jo_end(o[..]);return ct_len(o[..]);
+}
+ctr_control_read :: (raw:string,r:[]CtControl,arena:[]u8)->bool {
+ if arena.count<72 || raw.count>2048 {return false;}d:[1]Jv;nodes:[16]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[7]string.["schema","conversation_id","turn_id","conversation_revision","state","stop_requested","event_cursor"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=7 || jv_raw(v,jv_get(v,0,"schema"))!=CTR_CONTROL {return false;}
+ a:=js_string(v,jv_get(v,0,"conversation_id"),arena[0..<36]); // mutant: equivalent (a widened span cannot bypass the exact 36-byte identity checks below)
+ b:=js_string(v,jv_get(v,0,"turn_id"),arena[36..<72]);if a!=36 || b!=36 {return false;}
+ next:=CtControl.{conversation=cast(string)arena[0..<36],turn=cast(string)arena[36..<72],revision=js_number(v,jv_get(v,0,"conversation_revision")),state=ct_state_of(jv_raw(v,jv_get(v,0,"state"))),cursor=js_number(v,jv_get(v,0,"event_cursor"))};
+ k:=jv_kind(v,jv_get(v,0,"stop_requested"));if k!=JV_TRUE && k!=JV_FALSE {return false;}next.stopped=k==JV_TRUE;
+ if !ct_id(next.conversation,"cnv_",32) || !ct_id(next.turn,"trn_",32) || next.revision<1 || next.revision>CT_SEQUENCE_MAX || next.cursor<0 || next.cursor>CT_SEQUENCE_MAX {return false;}
+ if next.state<CT_QUEUED || next.state>CT_UNKNOWN {return false;} // mutant: equivalent (ct_state_of yields zero or one of the six defined states, never seven)
+ if next.state==CT_QUEUED {if next.cursor!=0 || next.stopped {return false;}}else if next.cursor<1 {return false;}
+ if next.state==CT_CANCELLED && !next.stopped {return false;}
+ r[0]=next;return true;
+}
+ctr_turn_write :: (v:[]CtView,i:[]CtInfo,out:[]u8)->int #export_c #effects(all) {
+ if !ctr_view_valid(v) || !ctr_info_valid(i) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CTR_TURN);jo_key(o[..],"id");jo_str(o[..],cast(string)v[0].turn[..]);jo_key(o[..],"conversation_id");jo_str(o[..],cast(string)v[0].conversation[..]);jo_key(o[..],"operation_id");jo_str(o[..],i[0].operation);jo_key(o[..],"state");jo_str(o[..],ct_state_name(v[0].state));jo_key(o[..],"stop_requested");jo_bool(o[..],v[0].stop_requested);jo_key(o[..],"stop_reason");ct_optional_text(o[..],ct_view_reason(v));jo_key(o[..],"usage");ct_usage_at(o[..],v[0].usage);
+ jo_key(o[..],"selection");jo_obj(o[..]);jo_key(o[..],"model_id");jo_str(o[..],i[0].model);jo_key(o[..],"provider_id");jo_str(o[..],i[0].provider);jo_key(o[..],"effort");jo_str(o[..],i[0].effort);jo_key(o[..],"route_decision_id");ct_optional_text(o[..],i[0].route);jo_key(o[..],"reason");jo_str(o[..],i[0].why);jo_end(o[..]);
+ jo_key(o[..],"content");jo_arr(o[..]);if v[0].bytes>0 {ctr_text(o[..],ct_view_text(v));}jo_end(o[..]);jo_key(o[..],"event_cursor");jo_int(o[..],v[0].sequence);jo_key(o[..],"conversation_revision");jo_int(o[..],i[0].revision);jo_key(o[..],"context_snapshot_id");ct_optional_text(o[..],i[0].snapshot);jo_key(o[..],"error");ct_optional_text(o[..],cast(string)v[0].error[0..<v[0].ne]);jo_key(o[..],"created_at_ms");jo_int(o[..],i[0].created);jo_key(o[..],"updated_at_ms");jo_int(o[..],i[0].updated);jo_end(o[..]);return ct_len(o[..]);
+}
+ctr_text :: (o:[]Jo,text:string) {jo_obj(o);jo_key(o,"type");jo_str(o,"text");jo_key(o,"text");jo_str(o,text);jo_end(o);}
+ctr_summary :: (c:[]CtConversation,out:[]u8)->int #export_c #effects(all) {
+ if !ctr_conversation_valid(c) || !ct_valid_text(c[0].title,160) {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],c[0].id);jo_key(o[..],"title");jo_str(o[..],c[0].title);jo_key(o[..],"revision");jo_int(o[..],c[0].revision);jo_key(o[..],"project_id");ct_optional_text(o[..],c[0].project);jo_key(o[..],"active_turn_id");ct_optional_text(o[..],c[0].active);jo_key(o[..],"updated_at_ms");jo_int(o[..],c[0].updated);jo_end(o[..]);return ct_len(o[..]);
+}
+ctr_conversation_valid :: (c:[]CtConversation)->bool {
+ return ct_id(c[0].id,"cnv_",32) && c[0].revision>0 && c[0].revision<=CT_SEQUENCE_MAX && (c[0].project.count==0 || ct_id(c[0].project,"prj_",32)) && (c[0].active.count==0 || ct_id(c[0].active,"trn_",32)) && ctr_time(c[0].created) && ctr_time(c[0].updated) && c[0].updated>=c[0].created && ((c[0].legacy.count==0 && c[0].legacy_revision== -1) || (ct_id(c[0].legacy,"m_",20) && c[0].legacy_revision>0 && c[0].legacy_revision<=CT_SEQUENCE_MAX));
+}
+ctr_conversation_write :: (c:[]CtConversation,messages:[]string,out:[]u8)->int #export_c #effects(all) {
+ if !ctr_conversation_valid(c) || !ct_valid_text(c[0].cursor,80) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CTR_CONVERSATION);jo_key(o[..],"id");jo_str(o[..],c[0].id);jo_key(o[..],"revision");jo_int(o[..],c[0].revision);jo_key(o[..],"project_id");ct_optional_text(o[..],c[0].project);jo_key(o[..],"legacy_thread_id");ct_optional_text(o[..],c[0].legacy);jo_key(o[..],"legacy_thread_revision");ct_optional_number(o[..],c[0].legacy_revision);jo_key(o[..],"messages");jo_arr(o[..]);for raw:messages {jo_raw(o[..],raw);}jo_end(o[..]);jo_key(o[..],"active_turn_id");ct_optional_text(o[..],c[0].active);jo_key(o[..],"created_at_ms");jo_int(o[..],c[0].created);jo_key(o[..],"updated_at_ms");jo_int(o[..],c[0].updated);jo_key(o[..],"next_cursor");ct_optional_text(o[..],c[0].cursor);jo_end(o[..]);return ct_len(o[..]);
+}
+ctr_index :: (items:[]string,cursor:string,out:[]u8)->int #export_c #effects(all) {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CTR_INDEX);jo_key(o[..],"items");jo_arr(o[..]);for item:items {jo_raw(o[..],item);}jo_end(o[..]);jo_key(o[..],"next_cursor");ct_optional_text(o[..],cursor);jo_end(o[..]);return ct_len(o[..]);}
+ctr_user_message :: (raw:string,turn:string,created:int,out:[]u8)->int #export_c #effects(all) {
+ r:[1]CtSubmit;arena:[174]u8;if !ct_id(turn,"trn_",32) || !ctr_time(created) || !ct_submit_read(raw,r[..],arena[..]) {return -1;}
+ o:[1]Jo;jo_start(o[..],out);ctr_message_start(o[..],turn,false);for b:0..<r[0].blocks {ctr_text(o[..],ct_submit_text(r[..],b));}ctr_message_end(o[..],created);return ct_len(o[..]);
+}
+ctr_answer_message :: (v:[]CtView,created:int,out:[]u8)->int #export_c #effects(all) {if !ctr_view_valid(v) || !ctr_time(created) {return -1;}o:[1]Jo;jo_start(o[..],out);ctr_message_start(o[..],cast(string)v[0].turn[..],true);if v[0].bytes>0 {ctr_text(o[..],ct_view_text(v));}ctr_message_end(o[..],created);return ct_len(o[..]);}
+ctr_message_start :: (o:[]Jo,turn:string,assistant:bool) {jo_obj(o);jo_key(o,"id");b:[64]u8;q:[1]Jo;jo_start(q[..],b[..]);jo_put(q[..],turn);jo_put(q[..],ifx assistant then ".assistant" else ".user");jo_str(o,jo_text(q[..]));jo_key(o,"turn_id");jo_str(o,turn);jo_key(o,"role");jo_str(o,ifx assistant then "assistant" else "user");jo_key(o,"content");jo_arr(o);}
+ctr_message_end :: (o:[]Jo,created:int) {jo_end(o);jo_key(o,"created_at_ms");jo_int(o,created);jo_end(o);}
+ctr_events :: (v:[]CtView,after:int,events:[]string,out:[]u8)->int #export_c #effects(all) {
+ if after<0 || after>v[0].sequence || !ctr_view_valid(v) {return -1;}last:=after;arena:[17048]u8;e:[1]CtEvent;
+ for raw:events {
+  if !ct_event_read(raw,e[..],arena[..]) {return -1;}
+  if e[0].conversation!=cast(string)v[0].conversation[..] || e[0].turn!=cast(string)v[0].turn[..] || !ct_sequence(last,e[0].sequence) || e[0].sequence>v[0].sequence {return -1;}
+  last=e[0].sequence;
+ }
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CTR_EVENTS);jo_key(o[..],"conversation_id");jo_str(o[..],cast(string)v[0].conversation[..]);jo_key(o[..],"turn_id");jo_str(o[..],cast(string)v[0].turn[..]);jo_key(o[..],"after");jo_int(o[..],after);jo_key(o[..],"events");jo_arr(o[..]);for raw:events {jo_raw(o[..],raw);}jo_end(o[..]);jo_key(o[..],"next_cursor");jo_int(o[..],last);jo_key(o[..],"has_more");jo_bool(o[..],last<v[0].sequence);jo_key(o[..],"state");jo_str(o[..],ct_state_name(v[0].state));jo_end(o[..]);return ct_len(o[..]);
+}
+cwr_read :: (raw:string,r:[]CtWorker,arena:[]u8)->bool #export_c #effects(all) {
+ if raw.count>4096 || arena.count<232 {return false;}d:[1]Jv;nodes:[16]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[6]string.["schema","operation","operation_id","worker_id","turn_id","dispatch_id"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=6 || jv_raw(v,jv_get(v,0,"schema"))!=CTR_RUNNER {return false;}
+ name:=jv_raw(v,jv_get(v,0,"operation"));op:=ifx name=="next" then 1 else ifx name=="run" then 2 else ifx name=="lost" then 3 else 0;if op==0 {return false;}
+ ni:=js_string(v,jv_get(v,0,"operation_id"),arena[0..<80]);nw:=js_string(v,jv_get(v,0,"worker_id"),arena[80..<160]);
+ nt:=ct_nullable_string(v,jv_get(v,0,"turn_id"),arena[160..<196]); // mutant: equivalent (a widened turn span still fails the exact identity length or claim's null check)
+ nd:=ct_nullable_string(v,jv_get(v,0,"dispatch_id"),arena[196..<232]);if ni<1 || nw<1 || nt<0 || nd<0 {return false;}
+ next:=CtWorker.{operation=op,id=cast(string)arena[0..<ni],worker=cast(string)arena[80..<80+nw],turn=cast(string)arena[160..<160+nt],dispatch=cast(string)arena[196..<196+nd]};
+ if op==1 {if jv_kind(v,jv_get(v,0,"turn_id"))!=JV_NULL || jv_kind(v,jv_get(v,0,"dispatch_id"))!=JV_NULL {return false;}}
+ else if !ct_id(next.turn,"trn_",32) || !ct_id(next.dispatch,"run_",32) {return false;}
+ r[0]=next;return true;
+}
+cwr_write :: (operation:int,id:string,worker:string,turn:string,dispatch:string,out:[]u8)->int #export_c #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CTR_RUNNER);jo_key(o[..],"operation");jo_str(o[..],ifx operation==1 then "next" else ifx operation==2 then "run" else ifx operation==3 then "lost" else "");jo_key(o[..],"operation_id");jo_str(o[..],id);jo_key(o[..],"worker_id");jo_str(o[..],worker);jo_key(o[..],"turn_id");ct_optional_text(o[..],turn);jo_key(o[..],"dispatch_id");ct_optional_text(o[..],dispatch);jo_end(o[..]);n:=ct_len(o[..]);r:[1]CtWorker;arena:[232]u8;
+ if n<0 {return -1;} // mutant: equivalent (a JSON object is never zero or one bytes; writer failure is -1)
+ if !cwr_read(cast(string)out[0..<n],r[..],arena[..]) {return -1;}return n;
+}
+cwr_job :: (turn:string,conversation:string,dispatch:string,out:[]u8)->int #export_c #effects(all) {
+ some:=turn.count>0;if some {if !ct_id(turn,"trn_",32) || !ct_id(conversation,"cnv_",32) || !ct_id(dispatch,"run_",32) {return -1;}}else if conversation.count!=0 || dispatch.count!=0 {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CTR_JOB);jo_key(o[..],"has_work");jo_bool(o[..],some);jo_key(o[..],"turn_id");ct_optional_text(o[..],turn);jo_key(o[..],"conversation_id");ct_optional_text(o[..],conversation);jo_key(o[..],"dispatch_id");ct_optional_text(o[..],dispatch);jo_end(o[..]);return ct_len(o[..]);
+}
+cwr_job_read :: (raw:string,r:[]CtJob,arena:[]u8)->bool #export_c #effects(all) {
+ if raw.count>2048 || arena.count<108 {return false;}d:[1]Jv;nodes:[12]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[5]string.["schema","has_work","turn_id","conversation_id","dispatch_id"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=5 || jv_raw(v,jv_get(v,0,"schema"))!=CTR_JOB {return false;}
+ work:=jv_kind(v,jv_get(v,0,"has_work"));if work!=JV_TRUE && work!=JV_FALSE {return false;}
+ nt:=ct_nullable_string(v,jv_get(v,0,"turn_id"),arena[0..<36]); // mutant: equivalent (a widened span still fails the exact identity length or empty-queue null check)
+ nc:=ct_nullable_string(v,jv_get(v,0,"conversation_id"),arena[36..<72]); // mutant: equivalent (a widened span still fails the exact identity length or empty-queue null check)
+ nd:=ct_nullable_string(v,jv_get(v,0,"dispatch_id"),arena[72..<108]);if nt<0 || nc<0 || nd<0 {return false;}
+ next:=CtJob.{has_work=work==JV_TRUE,turn=cast(string)arena[0..<nt],conversation=cast(string)arena[36..<36+nc],dispatch=cast(string)arena[72..<72+nd]};
+ if next.has_work {if !ct_id(next.turn,"trn_",32) || !ct_id(next.conversation,"cnv_",32) || !ct_id(next.dispatch,"run_",32) {return false;}}
+ else {for key:[3]string.["turn_id","conversation_id","dispatch_id"] {if jv_kind(v,jv_get(v,0,key))!=JV_NULL {return false;}}}
+ r[0]=next;return true;
+}
+#load "account-chat-turn-record-checks.coax" #test;

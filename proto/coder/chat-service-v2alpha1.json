@@ -1,0 +1,136 @@
+{
+  "profile": "durable-text-service",
+  "issue": 13619,
+  "control": {
+    "schema": "openagents.chat.control.v2alpha1",
+    "conversation_id": "cnv_0123456789abcdef0123456789abcdef",
+    "turn_id": "trn_0123456789abcdef0123456789abcdef",
+    "conversation_revision": 1,
+    "state": "queued",
+    "stop_requested": false,
+    "event_cursor": 0
+  },
+  "turn": {
+    "schema": "openagents.chat.turn.v2alpha1",
+    "id": "trn_0123456789abcdef0123456789abcdef",
+    "conversation_id": "cnv_0123456789abcdef0123456789abcdef",
+    "operation_id": "op-1",
+    "state": "queued",
+    "stop_requested": false,
+    "stop_reason": null,
+    "usage": {
+      "input_tokens": null,
+      "output_tokens": null,
+      "cache_read_tokens": null,
+      "cache_write_tokens": null,
+      "reasoning_tokens": null
+    },
+    "selection": {
+      "model_id": "model",
+      "provider_id": "provider",
+      "effort": "low",
+      "route_decision_id": null,
+      "reason": "Actual route"
+    },
+    "content": [],
+    "event_cursor": 0,
+    "conversation_revision": 1,
+    "context_snapshot_id": null,
+    "error": null,
+    "created_at_ms": 10,
+    "updated_at_ms": 20
+  },
+  "message": {
+    "id": "trn_0123456789abcdef0123456789abcdef.user",
+    "turn_id": "trn_0123456789abcdef0123456789abcdef",
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "one"
+      },
+      {
+        "type": "text",
+        "text": "two"
+      }
+    ],
+    "created_at_ms": 17
+  },
+  "summary": {
+    "id": "cnv_0123456789abcdef0123456789abcdef",
+    "title": "Chat",
+    "revision": 1,
+    "project_id": null,
+    "active_turn_id": "trn_0123456789abcdef0123456789abcdef",
+    "updated_at_ms": 20
+  },
+  "conversation": {
+    "schema": "openagents.chat.conversation.v2alpha1",
+    "id": "cnv_0123456789abcdef0123456789abcdef",
+    "revision": 1,
+    "project_id": null,
+    "legacy_thread_id": null,
+    "legacy_thread_revision": null,
+    "messages": [
+      {
+        "id": "trn_0123456789abcdef0123456789abcdef.user",
+        "turn_id": "trn_0123456789abcdef0123456789abcdef",
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "one"
+          },
+          {
+            "type": "text",
+            "text": "two"
+          }
+        ],
+        "created_at_ms": 17
+      }
+    ],
+    "active_turn_id": "trn_0123456789abcdef0123456789abcdef",
+    "created_at_ms": 10,
+    "updated_at_ms": 20,
+    "next_cursor": null
+  },
+  "events": {
+    "schema": "openagents.chat.events.v2alpha1",
+    "conversation_id": "cnv_0123456789abcdef0123456789abcdef",
+    "turn_id": "trn_0123456789abcdef0123456789abcdef",
+    "after": 0,
+    "events": [],
+    "next_cursor": 0,
+    "has_more": false,
+    "state": "queued"
+  },
+  "runner": {
+    "schema": "openagents.chat.runner.v2alpha1",
+    "operation": "run",
+    "operation_id": "run-1",
+    "worker_id": "worker-1",
+    "turn_id": "trn_0123456789abcdef0123456789abcdef",
+    "dispatch_id": "run_0123456789abcdef0123456789abcdef"
+  },
+  "job": {
+    "schema": "openagents.chat.job.v2alpha1",
+    "has_work": true,
+    "turn_id": "trn_0123456789abcdef0123456789abcdef",
+    "conversation_id": "cnv_0123456789abcdef0123456789abcdef",
+    "dispatch_id": "run_0123456789abcdef0123456789abcdef"
+  },
+  "index": {
+    "schema": "openagents.chat.index.v2alpha1",
+    "items": [
+      {
+        "id": "cnv_0123456789abcdef0123456789abcdef",
+        "title": "Chat",
+        "revision": 1,
+        "project_id": null,
+        "active_turn_id": "trn_0123456789abcdef0123456789abcdef",
+        "updated_at_ms": 20
+      }
+    ],
+    "next_cursor": null
+  }
+}

@@ -1,0 +1,54 @@
+syntax = "proto3";
+package openagents.chat.v2alpha1;
+import "openagents/chat/v2alpha1/conversation.proto";
+
+// Additive service envelopes; the previously published conversation messages
+// retain their fields. Public routes use the person's account; runner routes
+// additionally require the existing trusted runner's signed identity.
+message ControlReply {
+ string schema = 1 [json_name="schema"]; // openagents.chat.control.v2alpha1
+ string conversation_id = 2 [json_name="conversation_id"];
+ string turn_id = 3 [json_name="turn_id"];
+ int64 conversation_revision = 4 [json_name="conversation_revision"];
+ string state = 5 [json_name="state"];
+ bool stop_requested = 6 [json_name="stop_requested"];
+ int64 event_cursor = 7 [json_name="event_cursor"];
+}
+message ConversationSummary {
+ string id = 1 [json_name="id"];
+ string title = 2 [json_name="title"];
+ int64 revision = 3 [json_name="revision"];
+ optional string project_id = 4 [json_name="project_id"];
+ optional string active_turn_id = 5 [json_name="active_turn_id"];
+ int64 updated_at_ms = 6 [json_name="updated_at_ms"];
+}
+message ConversationList {
+ string schema = 1 [json_name="schema"]; // openagents.chat.index.v2alpha1
+ repeated ConversationSummary items = 2 [json_name="items"];
+ optional string next_cursor = 3 [json_name="next_cursor"];
+}
+message EventPage {
+ string schema = 1 [json_name="schema"]; // openagents.chat.events.v2alpha1
+ string conversation_id = 2 [json_name="conversation_id"];
+ string turn_id = 3 [json_name="turn_id"];
+ int64 after = 4 [json_name="after"];
+ repeated Event events = 5 [json_name="events"];
+ int64 next_cursor = 6 [json_name="next_cursor"];
+ bool has_more = 7 [json_name="has_more"];
+ string state = 8 [json_name="state"];
+}
+message RunnerRequest {
+ string schema = 1 [json_name="schema"]; // openagents.chat.runner.v2alpha1
+ string operation = 2 [json_name="operation"]; // next, run, lost
+ string operation_id = 3 [json_name="operation_id"];
+ string worker_id = 4 [json_name="worker_id"];
+ optional string turn_id = 5 [json_name="turn_id"];
+ optional string dispatch_id = 6 [json_name="dispatch_id"];
+}
+message RunnerJob {
+ string schema = 1 [json_name="schema"]; // openagents.chat.job.v2alpha1
+ bool has_work = 2 [json_name="has_work"];
+ optional string turn_id = 3 [json_name="turn_id"];
+ optional string conversation_id = 4 [json_name="conversation_id"];
+ optional string dispatch_id = 5 [json_name="dispatch_id"];
+}

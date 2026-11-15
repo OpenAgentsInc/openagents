@@ -1,0 +1,198 @@
+// Synthetic, independently pinned service records. No account data.
+CT_TEST_DISPATCH :: "run_0123456789abcdef0123456789abcdef";
+#test "control reply has the exact public envelope and borrowed IDs" {
+ v:[1]CtView;r:[1]CtControl;b:[2048]u8;arena:[72]u8;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
+ n:=ctr_control_write(v[..],1,b[..]);raw:=cast(string)b[0..<n];
+ #assert raw=="{\"schema\":\"openagents.chat.control.v2alpha1\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"conversation_revision\":1,\"state\":\"queued\",\"stop_requested\":false,\"event_cursor\":0}";
+ #assert ctr_control_read(raw,r[..],arena[..]) && r[0].conversation==CT_TEST_CONVERSATION && r[0].turn==CT_TEST_TURN && r[0].revision==1 && r[0].state==CT_QUEUED && !r[0].stopped && r[0].cursor==0;
+ #assert !ctr_control_read(raw,r[..],arena[0..<71]) && !ctr_control_read("{}",r[..],arena[..]) && !ctr_control_read("[",r[..],arena[..]);
+ #assert ctr_control_write(v[..],0,b[..])<0 && ctr_control_write(v[..],CT_SEQUENCE_MAX+1,b[..])<0 && ctr_control_write(v[..],1,b[0..<10])<0;
+ #assert ctr_control_write(v[..],CT_SEQUENCE_MAX,b[..])>0;
+}
+#test "control reader refuses malformed peer fields without changing its prior value" {
+ raw:="{\"schema\":\"openagents.chat.control.v2alpha1\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"conversation_revision\":1,\"state\":\"running\",\"stop_requested\":true,\"event_cursor\":2}";
+ b:[4096]u8;arena:[72]u8;r:[1]CtControl;#assert ctr_control_read(raw,r[..],arena[..]);
+ for key:[7]string.["schema","conversation_id","turn_id","conversation_revision","state","stop_requested","event_cursor"] {
+  #assert !ctr_control_read(ct_check_replace(raw,key,"null",b[..]),r[..],arena[..]) && r[0].revision==1 && r[0].state==CT_RUNNING && r[0].stopped && r[0].cursor==2;
+ }
+ for key:[2]string.["conversation_revision","event_cursor"] {for value:[6]string.["-1","1.5","2147483646","\"1\"","true","9007199254740992"] {#assert !ctr_control_read(ct_check_replace(raw,key,value,b[..]),r[..],arena[..]);}}
+ #assert !ctr_control_read(ct_check_replace(raw,"state","\"queued\"",b[..]),r[..],arena[..]);
+ #assert !ctr_control_read(ct_check_replace(raw,"event_cursor","0",b[..]),r[..],arena[..]);
+ #assert !ctr_control_read(ct_check_replace(raw,"conversation_revision","0",b[..]),r[..],arena[..]);
+ changed:=ct_check_replace(raw,"state","\"cancelled\"",b[..]);c:[4096]u8;#assert !ctr_control_read(ct_check_replace(changed,"stop_requested","false",c[..]),r[..],arena[..]);
+}
+#test "queued materializations cannot contain invented usage or output" {
+ v:[1]CtView;b:[4096]u8;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN) && ctr_view_valid(v[..]);
+ v[0].usage.input=0;#assert !ctr_view_valid(v[..]);v[0].usage.input= -1;
+ v[0].content[0]='x';v[0].bytes=1;#assert !ctr_view_valid(v[..]);v[0].bytes=0;
+ v[0].sequence=1;#assert !ctr_view_valid(v[..]);v[0].sequence=0;
+ v[0].stop_requested=true;#assert !ctr_view_valid(v[..]);v[0].stop_requested=false;
+ v[0].nr=1;#assert !ctr_view_valid(v[..]);v[0].nr=0;v[0].ne=1;#assert !ctr_view_valid(v[..]);v[0].ne=0;
+ v[0].conversation[0]='x';#assert !ctr_view_valid(v[..]) && ctr_control_write(v[..],1,b[..])<0;
+}
+ct_record_running :: (v:[]CtView) {
+ _=ct_view_begin(v,CT_TEST_CONVERSATION,CT_TEST_TURN);v[0].state=CT_RUNNING;v[0].sequence=2;v[0].bytes=js_copy(v[0].content[..],"Hello café\n");
+}
+#test "materialized reply validates decoded bounds and truthful terminal payloads" {
+ v:[1]CtView;ct_record_running(v[..]);#assert ctr_view_valid(v[..]);
+ for value:[3]int.[-1,131073,9223372036854775807] {v[0].bytes=value;#assert !ctr_view_valid(v[..]);}v[0].bytes=12;
+ v[0].content[0]=255;#assert !ctr_view_valid(v[..]);v[0].content[0]=0;#assert !ctr_view_valid(v[..]);v[0].content[0]='H';
+ for value:[2]int.[-1,81] {v[0].nr=value;#assert !ctr_view_valid(v[..]);}v[0].nr=0;
+ for value:[2]int.[-1,513] {v[0].ne=value;#assert !ctr_view_valid(v[..]);}v[0].ne=0;
+ for value:[3]int.[0,-1,CT_SEQUENCE_MAX+1] {v[0].sequence=value;#assert !ctr_view_valid(v[..]);}v[0].sequence=3;
+ for state:[2]int.[0,7] {v[0].state=state;#assert !ctr_view_valid(v[..]);}
+ v[0].state=CT_COMPLETED;#assert !ctr_view_valid(v[..]);v[0].nr=js_copy(v[0].reason[..],"end_turn");#assert ctr_view_valid(v[..]);
+ v[0].usage.output=CT_SEQUENCE_MAX+1;#assert !ctr_view_valid(v[..]);v[0].usage.output=0;#assert ctr_view_valid(v[..]);
+ v[0].state=CT_FAILED;v[0].nr=js_copy(v[0].reason[..],"error");#assert !ctr_view_valid(v[..]);v[0].ne=js_copy(v[0].error[..],"Provider refused");#assert ctr_view_valid(v[..]);
+ v[0].state=CT_UNKNOWN;v[0].nr=js_copy(v[0].reason[..],"unknown");#assert ctr_view_valid(v[..]);
+ v[0].state=CT_CANCELLED;v[0].ne=0;v[0].nr=js_copy(v[0].reason[..],"cancelled");#assert !ctr_view_valid(v[..]);v[0].stop_requested=true;#assert ctr_view_valid(v[..]);
+}
+#test "turn receipt preserves every observation selection and provenance field" {
+ v:[1]CtView;ct_record_running(v[..]);v[0].usage=CtUsage.{input=0,output=7,cache_read=2,cache_write=3,reasoning=4};
+ i:=[1]CtInfo.[CtInfo.{operation="op-1",model="model",provider="provider",effort="low",route="route-1",why="Actual route",snapshot="ctx_0123456789abcdef0123456789abcdef",revision=4,created=10,updated=20}];
+ b:[8192]u8;n:=ctr_turn_write(v[..],i[..],b[..]);#assert n>0;d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);w:=d[0];
+ #assert jv_len(w,0)==16 && jv_raw(w,jv_get(w,0,"schema"))=="openagents.chat.turn.v2alpha1" && jv_raw(w,jv_get(w,0,"id"))==CT_TEST_TURN && jv_raw(w,jv_get(w,0,"conversation_id"))==CT_TEST_CONVERSATION;
+ #assert jv_raw(w,jv_get(w,0,"operation_id"))=="op-1" && jv_raw(w,jv_get(w,0,"state"))=="running" && jv_kind(w,jv_get(w,0,"stop_requested"))==JV_FALSE && jv_kind(w,jv_get(w,0,"stop_reason"))==JV_NULL && jv_kind(w,jv_get(w,0,"error"))==JV_NULL;
+ #assert jv_raw(w,jv_path(w,0,"selection.model_id"))=="model" && jv_raw(w,jv_path(w,0,"selection.provider_id"))=="provider" && jv_raw(w,jv_path(w,0,"selection.effort"))=="low" && jv_raw(w,jv_path(w,0,"selection.route_decision_id"))=="route-1" && jv_raw(w,jv_path(w,0,"selection.reason"))=="Actual route";
+ #assert js_number(w,jv_path(w,0,"usage.input_tokens"))==0 && js_number(w,jv_path(w,0,"usage.output_tokens"))==7 && js_number(w,jv_path(w,0,"usage.cache_read_tokens"))==2 && js_number(w,jv_path(w,0,"usage.cache_write_tokens"))==3 && js_number(w,jv_path(w,0,"usage.reasoning_tokens"))==4;
+ #assert js_number(w,jv_get(w,0,"event_cursor"))==2 && js_number(w,jv_get(w,0,"conversation_revision"))==4 && js_number(w,jv_get(w,0,"created_at_ms"))==10 && js_number(w,jv_get(w,0,"updated_at_ms"))==20 && jv_raw(w,jv_get(w,0,"context_snapshot_id"))==i[0].snapshot;
+ at:=jv_at(w,jv_get(w,0,"content"),0);text:[32]u8;z:=js_string(w,jv_get(w,at,"text"),text[..]);#assert jv_len(w,jv_get(w,0,"content"))==1 && jv_raw(w,jv_get(w,at,"type"))=="text" && z==12 && cast(string)text[0..<z]=="Hello café\n";
+ #assert ctr_turn_write(v[..],i[..],b[0..<20])<0;
+}
+#test "selection identity timestamps and revisions are bounded before a receipt is written" {
+ i:=[1]CtInfo.[CtInfo.{operation="op",model="m",provider="p",revision=1,created=0,updated=9007199254740991}];#assert ctr_info_valid(i[..]);
+ for value:[3]int.[-1,0,CT_SEQUENCE_MAX+1] {i[0].revision=value;#assert !ctr_info_valid(i[..]);}i[0].revision=CT_SEQUENCE_MAX;#assert ctr_info_valid(i[..]);i[0].revision=1;
+ i[0].created= -1;#assert !ctr_info_valid(i[..]);i[0].created=1;i[0].updated=0;#assert !ctr_info_valid(i[..]);i[0].updated=9007199254740992;#assert !ctr_info_valid(i[..]);i[0].updated=1;
+ i[0].operation="";#assert !ctr_info_valid(i[..]);i[0].operation="op";i[0].model="";#assert !ctr_info_valid(i[..]);i[0].model="m";i[0].provider="";#assert !ctr_info_valid(i[..]);i[0].provider="p";
+ i[0].snapshot="bad";#assert !ctr_info_valid(i[..]);i[0].snapshot="ctx_0123456789abcdef0123456789abcdef";#assert ctr_info_valid(i[..]);
+}
+#test "messages preserve ordered submit blocks and distinguish an assistant's empty partial reply" {
+ one:=[2]string.["one","two"];raw:[2048]u8;b:[4096]u8;n:=ct_submit_write("op","",0,"",-1,"",-1,one[..],raw[..]);#assert n>0;
+ n=ctr_user_message(cast(string)raw[0..<n],CT_TEST_TURN,17,b[..]);#assert n>0 && cast(string)b[0..<n]=="{\"id\":\"trn_0123456789abcdef0123456789abcdef.user\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"one\"},{\"type\":\"text\",\"text\":\"two\"}],\"created_at_ms\":17}";
+ v:[1]CtView;#assert ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);n=ctr_answer_message(v[..],17,b[..]);#assert n>0 && cast(string)b[0..<n]=="{\"id\":\"trn_0123456789abcdef0123456789abcdef.assistant\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"role\":\"assistant\",\"content\":[],\"created_at_ms\":17}";
+ #assert ctr_user_message("{}",CT_TEST_TURN,17,b[..])<0 && ctr_user_message("{}","bad",17,b[..])<0 && ctr_answer_message(v[..],-1,b[..])<0 && ctr_answer_message(v[..],17,b[0..<1])<0;
+}
+#test "conversation summaries and pages keep optional association provenance and cursors" {
+ c:=[1]CtConversation.[CtConversation.{id=CT_TEST_CONVERSATION,title="Chat",revision=3,created=1,updated=2}];b:[4096]u8;
+ n:=ctr_summary(c[..],b[..]);#assert n>0 && cast(string)b[0..<n]=="{\"id\":\"cnv_0123456789abcdef0123456789abcdef\",\"title\":\"Chat\",\"revision\":3,\"project_id\":null,\"active_turn_id\":null,\"updated_at_ms\":2}";
+ c[0].project=CT_TEST_PROJECT;c[0].active=CT_TEST_TURN;c[0].legacy="m_00000000000000000001";c[0].legacy_revision=7;c[0].cursor="page-1";
+ empty:[1]string;n=ctr_conversation_write(c[..],empty[0..<0],b[..]);#assert n>0;d:[1]Jv;nodes:[32]JvNode;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);w:=d[0];
+ #assert jv_len(w,0)==11 && jv_raw(w,jv_get(w,0,"schema"))=="openagents.chat.conversation.v2alpha1" && jv_raw(w,jv_get(w,0,"project_id"))==CT_TEST_PROJECT && jv_raw(w,jv_get(w,0,"active_turn_id"))==CT_TEST_TURN && jv_raw(w,jv_get(w,0,"legacy_thread_id"))=="m_00000000000000000001" && js_number(w,jv_get(w,0,"legacy_thread_revision"))==7 && jv_raw(w,jv_get(w,0,"next_cursor"))=="page-1";
+ #assert js_number(w,jv_get(w,0,"revision"))==3 && js_number(w,jv_get(w,0,"created_at_ms"))==1 && js_number(w,jv_get(w,0,"updated_at_ms"))==2 && jv_kind(w,jv_get(w,0,"messages"))==JV_ARRAY && jv_len(w,jv_get(w,0,"messages"))==0;
+ #assert ctr_summary(c[..],b[0..<5])<0 && ctr_conversation_write(c[..],empty[0..<0],b[0..<5])<0;
+}
+#test "legacy provenance occurs as a pair and conversation identity never widens" {
+ c:=[1]CtConversation.[CtConversation.{id=CT_TEST_CONVERSATION,revision=1,created=0,updated=0}];#assert ctr_conversation_valid(c[..]);
+ c[0].legacy_revision=0;#assert !ctr_conversation_valid(c[..]);c[0].legacy_revision= -1;c[0].legacy="m_00000000000000000001";#assert !ctr_conversation_valid(c[..]);c[0].legacy_revision=1;#assert ctr_conversation_valid(c[..]);
+ c[0].legacy_revision=CT_SEQUENCE_MAX+1;#assert !ctr_conversation_valid(c[..]);c[0].legacy_revision=CT_SEQUENCE_MAX;c[0].legacy="bad";#assert !ctr_conversation_valid(c[..]);c[0].legacy="";c[0].legacy_revision= -1;
+ c[0].id="bad";#assert !ctr_conversation_valid(c[..]);c[0].id=CT_TEST_CONVERSATION;c[0].project="bad";#assert !ctr_conversation_valid(c[..]);c[0].project="";c[0].active="bad";#assert !ctr_conversation_valid(c[..]);c[0].active="";
+ c[0].revision=0;#assert !ctr_conversation_valid(c[..]);c[0].revision=CT_SEQUENCE_MAX+1;#assert !ctr_conversation_valid(c[..]);c[0].revision=1;c[0].created= -1;#assert !ctr_conversation_valid(c[..]);c[0].created=1;#assert !ctr_conversation_valid(c[..]);
+}
+#test "event pages publish a contiguous cut without inventing an advanced cursor" {
+ v:[1]CtView;ct_record_running(v[..]);e:[1]CtEvent;e[0]=CtEvent.{conversation=CT_TEST_CONVERSATION,turn=CT_TEST_TURN,sequence=1,kind=CT_STARTED,state=CT_RUNNING};
+ first:[4096]u8;b:[8192]u8;n:=ct_event_write(e[..],first[..]);events:=[1]string.[cast(string)first[0..<n]];
+ n=ctr_events(v[..],0,events[..],b[..]);#assert n>0;d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);w:=d[0];
+ #assert jv_len(w,0)==8 && jv_raw(w,jv_get(w,0,"schema"))=="openagents.chat.events.v2alpha1" && jv_raw(w,jv_get(w,0,"conversation_id"))==CT_TEST_CONVERSATION && jv_raw(w,jv_get(w,0,"turn_id"))==CT_TEST_TURN && js_number(w,jv_get(w,0,"after"))==0 && js_number(w,jv_get(w,0,"next_cursor"))==1 && jv_kind(w,jv_get(w,0,"has_more"))==JV_TRUE && jv_raw(w,jv_get(w,0,"state"))=="running" && jv_len(w,jv_get(w,0,"events"))==1;
+ #assert ctr_events(v[..],-1,events[..],b[..])<0 && ctr_events(v[..],3,events[..],b[..])<0 && ctr_events(v[..],1,events[..],b[..])<0;
+ events[0]="{}";#assert ctr_events(v[..],0,events[..],b[..])<0;
+ empty:[1]string;n=ctr_events(v[..],2,empty[0..<0],b[..]);#assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && js_number(d[0],jv_get(d[0],0,"next_cursor"))==2 && jv_kind(d[0],jv_get(d[0],0,"has_more"))==JV_FALSE;
+}
+#test "runner requests use a closed shape and never confuse claim with dispatch" {
+ b:[4096]u8;arena:[232]u8;r:[1]CtWorker;
+ for op:1..<4 {n:=cwr_write(op,"op-1","worker-1",ifx op==1 then "" else CT_TEST_TURN,ifx op==1 then "" else CT_TEST_DISPATCH,b[..]);#assert n>0 && cwr_read(cast(string)b[0..<n],r[..],arena[..]) && r[0].operation==op && r[0].id=="op-1" && r[0].worker=="worker-1" && r[0].turn==(ifx op==1 then "" else CT_TEST_TURN) && r[0].dispatch==(ifx op==1 then "" else CT_TEST_DISPATCH);}
+ #assert cwr_write(0,"op","w","","",b[..])<0 && cwr_write(4,"op","w","","",b[..])<0 && cwr_write(1,"","w","","",b[..])<0 && cwr_write(1,"op","","","",b[..])<0;
+ #assert cwr_write(1,"op","w",CT_TEST_TURN,CT_TEST_DISPATCH,b[..])<0 && cwr_write(2,"op","w","",CT_TEST_DISPATCH,b[..])<0 && cwr_write(3,"op","w",CT_TEST_TURN,"",b[..])<0 && cwr_write(2,"op","w","bad",CT_TEST_DISPATCH,b[..])<0 && cwr_write(2,"op","w",CT_TEST_TURN,"bad",b[..])<0;
+ #assert cwr_write(1,"op","w","","",b[0..<5])<0 && !cwr_read("{}",r[..],arena[..]) && !cwr_read("[",r[..],arena[..]);
+}
+#test "runner readers refuse nulls missing fields duplicate fields and noncanonical aliases" {
+ raw:="{\"schema\":\"openagents.chat.runner.v2alpha1\",\"operation\":\"run\",\"operation_id\":\"op\",\"worker_id\":\"w\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"dispatch_id\":\"run_0123456789abcdef0123456789abcdef\"}";
+ r:[1]CtWorker;arena:[232]u8;b:[8192]u8;#assert cwr_read(raw,r[..],arena[..]);
+ for key:[6]string.["schema","operation","operation_id","worker_id","turn_id","dispatch_id"] {#assert !cwr_read(ct_check_replace(raw,key,"null",b[..]),r[..],arena[..]);}
+ #assert !cwr_read(raw,r[..],arena[0..<231]);
+ for tail:[3]string.[",\"worker_id\":\"other\"}",",\"extra\":true}",",\"\\u0077orker_id\":\"other\"}"] {o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],raw[0..<raw.count-1]);jo_put(o[..],tail);#assert !cwr_read(jo_text(o[..]),r[..],arena[..]);}
+}
+#test "runner jobs distinguish an empty queue from an owned fenced job" {
+ b:[4096]u8;n:=cwr_job("","","",b[..]);#assert n>0 && cast(string)b[0..<n]=="{\"schema\":\"openagents.chat.job.v2alpha1\",\"has_work\":false,\"turn_id\":null,\"conversation_id\":null,\"dispatch_id\":null}";
+ r:[1]CtJob;arena:[108]u8;#assert cwr_job_read(cast(string)b[0..<n],r[..],arena[..]) && !r[0].has_work && r[0].turn=="" && r[0].conversation=="" && r[0].dispatch=="";
+ n=cwr_job(CT_TEST_TURN,CT_TEST_CONVERSATION,CT_TEST_DISPATCH,b[..]);#assert n>0 && cwr_job_read(cast(string)b[0..<n],r[..],arena[..]) && r[0].has_work && r[0].turn==CT_TEST_TURN && r[0].conversation==CT_TEST_CONVERSATION && r[0].dispatch==CT_TEST_DISPATCH;
+ #assert cwr_job("",CT_TEST_CONVERSATION,"",b[..])<0 && cwr_job("","",CT_TEST_DISPATCH,b[..])<0 && cwr_job(CT_TEST_TURN,"",CT_TEST_DISPATCH,b[..])<0 && cwr_job(CT_TEST_TURN,CT_TEST_CONVERSATION,"bad",b[..])<0 && cwr_job(CT_TEST_TURN,CT_TEST_CONVERSATION,CT_TEST_DISPATCH,b[0..<5])<0;
+ #assert !cwr_job_read("{}",r[..],arena[..]) && !cwr_job_read("[",r[..],arena[..]);
+}
+#test "service metadata preserves exact byte ceilings and rejects independent invalid facts" {
+ text:[1025]u8;for i:0..<text.count {text[i]='x';}i:=[1]CtInfo.[CtInfo.{operation="x",model="m",provider="p",revision=1}];
+ #assert ctr_info_valid(i[..]);
+ for field:0..<7 {
+  limit:=ifx field==0 || field==2 || field==4 then 80 else ifx field==1 then 160 else ifx field==3 then 16 else 1024;
+  for extra:0..<2 {s:=cast(string)text[0..<limit+extra];
+   if field==0 {i[0].operation=s;}if field==1 {i[0].model=s;}if field==2 {i[0].provider=s;}if field==3 {i[0].effort=s;}if field==4 {i[0].route=s;}if field==5 {i[0].why=s;}if field==6 {i[0].why=s;}
+   #assert ctr_info_valid(i[..])==(extra==0);
+  }
+  i[0]=CtInfo.{operation="x",model="m",provider="p",revision=1};
+ }
+ v:[1]CtView;b:[8192]u8;_=ct_view_begin(v[..],CT_TEST_CONVERSATION,CT_TEST_TURN);
+ i[0].operation="";#assert ctr_turn_write(v[..],i[..],b[..])<0;i[0].operation="x";v[0].state=0;#assert ctr_turn_write(v[..],i[..],b[..])<0;v[0].state=CT_QUEUED;
+ n:=ctr_turn_write(v[..],i[..],b[..]);d:[1]Jv;nodes:[64]JvNode;#assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && jv_len(d[0],jv_get(d[0],0,"content"))==0;
+ ct_record_running(v[..]);v[0].bytes=1;n=ctr_turn_write(v[..],i[..],b[..]);#assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && jv_len(d[0],jv_get(d[0],0,"content"))==1;
+ n=ctr_answer_message(v[..],0,b[..]);#assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]);at:=jv_at(d[0],jv_get(d[0],0,"content"),0);#assert jv_raw(d[0],jv_get(d[0],at,"text"))=="H";
+}
+#test "full replies validate every byte without a hidden 64KiB limit" #steps 100000000 {
+ v:[1]CtView;ct_record_running(v[..]);v[0].sequence=CT_SEQUENCE_MAX;v[0].bytes=131072;for j:0..<v[0].bytes {v[0].content[j]='x';}#assert ctr_view_valid(v[..]);
+ // Every byte needs a six-byte JSON escape. Test the actual writer, its
+ // decoded content and its exact encoded capacity, not only a view validator.
+ for j:0..<v[0].bytes {v[0].content[j]=1;}out:[1048576]u8;i:=[1]CtInfo.[CtInfo.{operation="x",model="m",provider="p",revision=1}];
+ n:=ctr_turn_write(v[..],i[..],out[..]);#assert n>786432 && n<1048576;d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);at:=jv_at(d[0],jv_get(d[0],0,"content"),0);decoded:[131072]u8;#assert js_string(d[0],jv_get(d[0],at,"text"),decoded[..])==131072 && decoded[0]==1 && decoded[131071]==1;
+ #assert ctr_turn_write(v[..],i[..],out[0..<n-1])<0 && ctr_turn_write(v[..],i[..],out[0..<n])==n;
+ v[0].state=CT_FAILED;v[0].nr=js_copy(v[0].reason[..],"error");v[0].ne=512;for j:0..<512 {v[0].error[j]='e';}#assert ctr_view_valid(v[..]);
+ v[0].bytes=0;v[0].error[511]=255;#assert !ctr_view_valid(v[..]);
+}
+#test "control readers enforce every exact envelope edge including unknown outcomes" {
+ v:[1]CtView;ct_record_running(v[..]);v[0].sequence=CT_SEQUENCE_MAX;b:[2049]u8;r:[1]CtControl;arena:[72]u8;n:=ctr_control_write(v[..],CT_SEQUENCE_MAX,b[..]);#assert n>0;
+ #assert ctr_control_read(cast(string)b[0..<n],r[..],arena[..]) && r[0].cursor==CT_SEQUENCE_MAX && r[0].revision==CT_SEQUENCE_MAX;
+ for j:n..<b.count {b[j]=' ';}#assert ctr_control_read(cast(string)b[0..<2048],r[..],arena[..]) && !ctr_control_read(cast(string)b[..],r[..],arena[..]);
+ raw:=cast(string)b[0..<n];c:[4096]u8;
+ for key:[7]string.["schema","conversation_id","turn_id","conversation_revision","state","stop_requested","event_cursor"] {#assert !ctr_control_read(ct_check_alias(raw,key,c[..]),r[..],arena[..]);}
+ for key:[2]string.["conversation_id","turn_id"] {#assert !ctr_control_read(ct_check_replace(raw,key,"\"xxx_0123456789abcdef0123456789abcdef\"",c[..]),r[..],arena[..]);}
+ raw="{\"schema\":\"openagents.chat.control.v2alpha1\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"conversation_revision\":1,\"state\":\"unknown\",\"stop_requested\":false,\"event_cursor\":1}";
+ #assert ctr_control_read(raw,r[..],arena[..]) && r[0].state==CT_UNKNOWN && r[0].cursor==1;
+ raw="{\"schema\":\"openagents.chat.control.v2alpha1\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"conversation_revision\":1,\"state\":\"queued\",\"stop_requested\":false,\"event_cursor\":0}";
+ #assert !ctr_control_read(ct_check_replace(raw,"stop_requested","true",c[..]),r[..],arena[..]) && !ctr_control_read(ct_check_replace(raw,"event_cursor","1",c[..]),r[..],arena[..]);
+}
+#test "summary and conversation writers reject invalid independent metadata and retain actual messages" {
+ c:=[1]CtConversation.[CtConversation.{id=CT_TEST_CONVERSATION,revision=1}];b:[8192]u8;text:[161]u8;for j:0..<text.count {text[j]='x';}
+ c[0].title=cast(string)text[0..<160];#assert ctr_summary(c[..],b[..])>0;c[0].title=cast(string)text[..];#assert ctr_summary(c[..],b[..])<0;c[0].title="Chat";
+ c[0].revision=CT_SEQUENCE_MAX;#assert ctr_conversation_valid(c[..]);c[0].legacy="m_00000000000000000001";c[0].legacy_revision=0;#assert !ctr_conversation_valid(c[..]);c[0].legacy_revision=CT_SEQUENCE_MAX;#assert ctr_conversation_valid(c[..]);c[0].legacy="";c[0].legacy_revision= -1;
+ empty:[1]string;c[0].id="bad";#assert ctr_summary(c[..],b[..])<0 && ctr_conversation_write(c[..],empty[0..<0],b[..])<0;c[0].id=CT_TEST_CONVERSATION;c[0].cursor=cast(string)text[0..<80];#assert ctr_conversation_write(c[..],empty[0..<0],b[..])>0;c[0].cursor=cast(string)text[0..<81];#assert ctr_conversation_write(c[..],empty[0..<0],b[..])<0;c[0].cursor="";
+ messages:=[1]string.["{\"id\":\"one\"}"];n:=ctr_conversation_write(c[..],messages[..],b[..]);d:[1]Jv;nodes:[32]JvNode;#assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]);at:=jv_at(d[0],jv_get(d[0],0,"messages"),0);#assert jv_raw(d[0],jv_get(d[0],at,"id"))=="one";
+ n=ctr_summary(c[..],b[..]);summaries:=[1]string.[cast(string)b[0..<n]];out:[8192]u8;n=ctr_index(summaries[..],"page-1",out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]) && jv_len(d[0],0)==3 && jv_raw(d[0],jv_get(d[0],0,"schema"))=="openagents.chat.index.v2alpha1" && jv_raw(d[0],jv_get(d[0],0,"next_cursor"))=="page-1";at=jv_at(d[0],jv_get(d[0],0,"items"),0);#assert jv_raw(d[0],jv_get(d[0],at,"id"))==CT_TEST_CONVERSATION && ctr_index(summaries[..],"",out[0..<5])<0;
+}
+#test "message and event page refusal facts are independent" {
+ b:[8192]u8;submit:[2048]u8;one:=[1]string.["Q"];n:=ct_submit_write("x","",0,"",-1,"",-1,one[..],submit[..]);raw:=cast(string)submit[0..<n];
+ #assert ctr_user_message(raw,"bad",1,b[..])<0 && ctr_user_message(raw,CT_TEST_TURN,-1,b[..])<0 && ctr_user_message(raw,CT_TEST_TURN,1,b[0..<1])<0;
+ v:[1]CtView;ct_record_running(v[..]);empty:[1]string;#assert ctr_events(v[..],-1,empty[0..<0],b[..])<0 && ctr_events(v[..],3,empty[0..<0],b[..])<0;
+ v[0].state=0;#assert ctr_events(v[..],0,empty[0..<0],b[..])<0 && ctr_answer_message(v[..],0,b[..])<0;ct_record_running(v[..]);
+ e:[1]CtEvent;part:[4096]u8;e[0]=CtEvent.{conversation=CT_TEST_CONVERSATION,turn=CT_TEST_TURN,sequence=2,kind=CT_STARTED,state=CT_RUNNING};n=ct_event_write(e[..],part[..]);events:=[1]string.[cast(string)part[0..<n]];#assert ctr_events(v[..],1,events[..],b[..])>0;
+ v[0].sequence=1;#assert ctr_events(v[..],1,events[..],b[..])<0;v[0].sequence=2;
+ e[0].sequence=1;e[0].conversation="cnv_ffffffffffffffffffffffffffffffff";n=ct_event_write(e[..],part[..]);events[0]=cast(string)part[0..<n];#assert ctr_events(v[..],0,events[..],b[..])<0;
+ e[0].conversation=CT_TEST_CONVERSATION;e[0].turn="trn_ffffffffffffffffffffffffffffffff";n=ct_event_write(e[..],part[..]);events[0]=cast(string)part[0..<n];#assert ctr_events(v[..],0,events[..],b[..])<0;
+}
+#test "runner readers validate single-byte minimums full byte ceilings and independent nullable fields" {
+ b:[4097]u8;c:[8192]u8;arena:[232]u8;r:[1]CtWorker;text:[81]u8;for j:0..<text.count {text[j]='x';}
+ #assert cwr_write(1,"x","w","","",b[..])>0 && cwr_write(1,cast(string)text[0..<80],cast(string)text[0..<80],"","",b[..])>0;
+ #assert cwr_write(1,cast(string)text[..],"w","","",b[..])<0 && cwr_write(1,"x",cast(string)text[..],"","",b[..])<0;
+ #assert cwr_write(1,"x","w",CT_TEST_TURN,"",b[..])<0 && cwr_write(1,"x","w","",CT_TEST_DISPATCH,b[..])<0;
+ n:=cwr_write(1,"x","w","","",b[..]);raw:=cast(string)b[0..<n];
+ for key:[6]string.["schema","operation","operation_id","worker_id","turn_id","dispatch_id"] {#assert !cwr_read(ct_check_alias(raw,key,c[..]),r[..],arena[..]);}
+ for j:n..<b.count {b[j]=' ';}#assert cwr_read(cast(string)b[0..<4096],r[..],arena[..]) && !cwr_read(cast(string)b[..],r[..],arena[..]);
+ #assert cwr_job("x","","",b[..])<0;
+}
+#test "runner job decoder refuses every malformed peer field and exact encoded bounds" {
+ b:[2049]u8;c:[8192]u8;r:[1]CtJob;arena:[108]u8;n:=cwr_job(CT_TEST_TURN,CT_TEST_CONVERSATION,CT_TEST_DISPATCH,b[..]);raw:=cast(string)b[0..<n];
+ #assert !cwr_job_read(raw,r[..],arena[0..<107]);
+ for key:[5]string.["schema","has_work","turn_id","conversation_id","dispatch_id"] {
+  for bad:[5]string.["null","\"bad\"","true","1","\"\\u0000\""] {#assert !cwr_job_read(ct_check_replace(raw,key,bad,c[..]),r[..],arena[..])==(key!="has_work" || bad!="true");}
+  #assert !cwr_job_read(ct_check_alias(raw,key,c[..]),r[..],arena[..]);
+ }
+ for key:[3]string.["turn_id","conversation_id","dispatch_id"] {#assert !cwr_job_read(ct_check_replace(raw,key,"\"xxx_0123456789abcdef0123456789abcdef\"",c[..]),r[..],arena[..]);}
+ for j:n..<b.count {b[j]=' ';}#assert cwr_job_read(cast(string)b[0..<2048],r[..],arena[..]) && !cwr_job_read(cast(string)b[..],r[..],arena[..]);
+ n=cwr_job("","","",b[..]);raw=cast(string)b[0..<n];for key:[3]string.["turn_id","conversation_id","dispatch_id"] {#assert !cwr_job_read(ct_check_replace(raw,key,"\"\"",c[..]),r[..],arena[..]);}
+}

@@ -2,13 +2,54 @@
 
 Implementation for #13619. This new owned contract preserves the frozen
 `openagents.chat.thread.v1` and Project chat-link identities. The schema is
-`proto/openagents/chat/v2alpha1/conversation.proto`. The shared codec is
-`coax/web/api/account-chat-turn-wire.coax`; decisions are
-`account-chat-turn-policy.coax`. The initial consumer is **durable-text**.
+`proto/openagents/chat/v2alpha1/conversation.proto`; additive service envelopes
+are in `service.proto`. Submit/events use `account-chat-turn-wire.coax` and
+resources/worker envelopes use `account-chat-turn-record.coax`. Lifecycle and
+queue decisions are `account-chat-turn-policy.coax` and
+`account-chat-work-policy.coax`. The initial consumer is **durable-text**.
 
 **Status:** protocol and checked lifecycle implementation in progress. No route,
 installed app integration, live inference or issue completion is claimed by this
 document. TestFlight waits for the complete Claude-port and Arcade goal.
+
+## Service envelopes and storage
+
+These additive envelopes do not change the earlier conversation message fields.
+All listed fields are present; absent optional references/cursors are null.
+
+| Record | Fields |
+| --- | --- |
+| ControlReply | `schema`, `conversation_id`, `turn_id`, `conversation_revision`, `state`, `stop_requested`, `event_cursor` |
+| ConversationSummary | `id`, `title`, `revision`, `project_id?`, `active_turn_id?`, `updated_at_ms` |
+| ConversationList | `schema`, `items` (summaries), `next_cursor?` |
+| EventPage | `schema`, `conversation_id`, `turn_id`, `after`, `events`, `next_cursor`, `has_more`, `state` |
+| RunnerRequest | `schema`, `operation`, `operation_id`, `worker_id`, `turn_id?`, `dispatch_id?` |
+| RunnerJob | `schema`, `has_work`, `turn_id?`, `conversation_id?`, `dispatch_id?` |
+
+Control and job readers cap encoded input at 2,048 bytes; runner requests at
+4,096. Worker and operation IDs are 1–80 UTF-8 bytes. A `next` request has null
+turn/dispatch; `run` and `lost` require both, with dispatch `run_` plus 32
+lowercase hex digits. A job has all three references or none. Resource timestamps
+are nonnegative safe JSON integers; titles are at most 160 UTF-8 bytes. Turn
+metadata records model/provider IDs, effort, route identity/reason, admitted
+context snapshot and timestamps alongside the materialized view. Usage stays
+nullable. Page composers take fragments emitted by the owned message/summary
+codecs; they are not decoders for arbitrary supplied JSON.
+
+Migration 0204 stores conversations, immutable admitted inputs/Project snapshots,
+materialized turns, immutable event records, account operation identities and
+runner claim receipts. Account-qualified foreign keys prevent associations
+with another account's Project/conversation/turn. Unique indexes serialize an
+active turn per conversation, turn ordinals, operations and event sequences.
+Every private table follows account merge/purge; internal claim receipts are
+omitted from account exports. Admission/replay/recovery still require Coax policy
+and transactional adapters; database constraints alone do not implement them.
+
+Claims last 60 seconds and leave the public state queued. Dispatch requires the
+current live fence, a current grant and a never-started turn. A replaced claim
+retains its original receipt, so replaying its operation cannot select another
+turn. A running dispatched attempt with no heartbeat for 450 seconds is eligible
+for unknown recovery. Time and grant facts come from trusted server effects.
 
 ## Identity and writes
 
@@ -68,7 +109,11 @@ immutable input, events and metering. A replayed wake can claim only the same
 undispatched job; the worker's claim is fenced before upstream I/O. A dispatched
 worker loss ends as unknown rather than reissuing the model call. Recovery must
 scan committed queued work as well as accept wakes, so a lost wake cannot strand
-a saved turn. No phone-held socket owns execution.
+a saved turn. The existing runner still deploys with `--min-instances 0`:
+CPU allocation alone is insufficient once it scales to zero. Enabling durable
+work must also keep a resident scanning worker available (minimum one instance)
+and exercise recovery after a missed wake and service restart. No phone-held
+socket owns execution.
 
 Reuse the existing runner's signed inference door: the resident worker can hold
 an authenticated inference HTTP request open while the API persists normalized
@@ -105,10 +150,11 @@ accounts clears private state and invalidates callbacks before rendering another
 account. Model/agent/effort decisions remain automatic under `docs/router/`.
 
 Integration must account for the installed transport and history bounds:
-`NativeAccountCodec` currently caps account responses at 131,072 encoded bytes,
-and v1 history IDs have 24-byte storage. A 131,072-byte decoded rich reply can
-encode much larger; use a bounded paged snapshot or a separately admitted native
-transport operation, never silent clipping or a global unbounded fetch. New
+`NativeAccountCodec` caps its settings responses at 131,072 encoded bytes;
+the generic native HTTP service already accepts up to 1 MiB, and v1 history IDs
+have 24-byte storage. A 131,072-byte decoded rich reply can encode much larger
+and its bridge envelope adds another layer of escaping. Use bounded event and
+history pages, never silent clipping or a global unbounded fetch. New
 36-byte conversation IDs need an owned history version alongside v1. The
 current private chat's **Stop waiting** only stops its client wait; switch to
 the new requested/observed cancellation flow when the backend is connected.

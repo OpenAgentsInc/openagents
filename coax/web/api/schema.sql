@@ -20612,6 +20612,24 @@ ALTER SEQUENCE chat.conversations_id_seq OWNED BY chat.conversations.id;
 
 
 --
+-- Name: conversations_v2; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.conversations_v2 (
+    id text NOT NULL,
+    account text NOT NULL,
+    project text,
+    revision bigint NOT NULL,
+    title text NOT NULL,
+    legacy_thread text,
+    legacy_revision bigint,
+    legacy_record text,
+    created_ms bigint NOT NULL,
+    updated_ms bigint NOT NULL
+);
+
+
+--
 -- Name: credentials; Type: TABLE; Schema: chat; Owner: -
 --
 
@@ -20690,6 +20708,46 @@ CREATE TABLE chat.project_threads_v1 (
 
 
 --
+-- Name: turn_claims_v2; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.turn_claims_v2 (
+    account text NOT NULL,
+    runner_key text NOT NULL,
+    operation text NOT NULL,
+    worker text NOT NULL,
+    turn text NOT NULL,
+    dispatch text NOT NULL,
+    created_ms bigint NOT NULL
+);
+
+
+--
+-- Name: turn_events_v2; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.turn_events_v2 (
+    account text NOT NULL,
+    turn text NOT NULL,
+    sequence bigint NOT NULL,
+    record text NOT NULL
+);
+
+
+--
+-- Name: turn_operations_v2; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.turn_operations_v2 (
+    account text NOT NULL,
+    operation text NOT NULL,
+    path text NOT NULL,
+    digest text NOT NULL,
+    turn text NOT NULL
+);
+
+
+--
 -- Name: turns; Type: TABLE; Schema: chat; Owner: -
 --
 
@@ -20733,6 +20791,47 @@ CREATE SEQUENCE chat.turns_id_seq
 --
 
 ALTER SEQUENCE chat.turns_id_seq OWNED BY chat.turns.id;
+
+
+--
+-- Name: turns_v2; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.turns_v2 (
+    id text NOT NULL,
+    account text NOT NULL,
+    conversation text NOT NULL,
+    ordinal bigint NOT NULL,
+    operation text NOT NULL,
+    digest text NOT NULL,
+    request_json text NOT NULL,
+    input_json text NOT NULL,
+    snapshot_id text,
+    snapshot_json text,
+    state integer NOT NULL,
+    stop_requested boolean DEFAULT false NOT NULL,
+    sequence bigint DEFAULT 0 NOT NULL,
+    output text DEFAULT ''::text NOT NULL,
+    stop_reason text DEFAULT ''::text NOT NULL,
+    error text DEFAULT ''::text NOT NULL,
+    input_tokens bigint,
+    output_tokens bigint,
+    cache_read_tokens bigint,
+    cache_write_tokens bigint,
+    reasoning_tokens bigint,
+    model text NOT NULL,
+    provider text NOT NULL,
+    effort text NOT NULL,
+    worker text,
+    runner_key text,
+    claim_operation text,
+    dispatch text,
+    claim_until_ms bigint,
+    dispatched_ms bigint,
+    heartbeat_ms bigint,
+    created_ms bigint NOT NULL,
+    updated_ms bigint NOT NULL
+);
 
 
 --
@@ -24204,6 +24303,22 @@ ALTER TABLE ONLY chat.conversations
 
 
 --
+-- Name: conversations_v2 conversations_v2_account_id_key; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.conversations_v2
+    ADD CONSTRAINT conversations_v2_account_id_key UNIQUE (account, id);
+
+
+--
+-- Name: conversations_v2 conversations_v2_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.conversations_v2
+    ADD CONSTRAINT conversations_v2_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: credentials credentials_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
 --
 
@@ -24236,11 +24351,67 @@ ALTER TABLE ONLY chat.project_threads_v1
 
 
 --
+-- Name: turn_claims_v2 turn_claims_v2_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turn_claims_v2
+    ADD CONSTRAINT turn_claims_v2_pkey PRIMARY KEY (runner_key, operation);
+
+
+--
+-- Name: turn_events_v2 turn_events_v2_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turn_events_v2
+    ADD CONSTRAINT turn_events_v2_pkey PRIMARY KEY (turn, sequence);
+
+
+--
+-- Name: turn_operations_v2 turn_operations_v2_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turn_operations_v2
+    ADD CONSTRAINT turn_operations_v2_pkey PRIMARY KEY (account, operation);
+
+
+--
 -- Name: turns turns_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
 --
 
 ALTER TABLE ONLY chat.turns
     ADD CONSTRAINT turns_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: turns_v2 turns_v2_account_id_key; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turns_v2
+    ADD CONSTRAINT turns_v2_account_id_key UNIQUE (account, id);
+
+
+--
+-- Name: turns_v2 turns_v2_account_operation_key; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turns_v2
+    ADD CONSTRAINT turns_v2_account_operation_key UNIQUE (account, operation);
+
+
+--
+-- Name: turns_v2 turns_v2_conversation_ordinal_key; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turns_v2
+    ADD CONSTRAINT turns_v2_conversation_ordinal_key UNIQUE (conversation, ordinal);
+
+
+--
+-- Name: turns_v2 turns_v2_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turns_v2
+    ADD CONSTRAINT turns_v2_pkey PRIMARY KEY (id);
 
 
 --
@@ -25884,6 +26055,20 @@ CREATE INDEX conversations_tabs ON chat.conversations USING btree (owner, tab) W
 
 
 --
+-- Name: conversations_v2_owner; Type: INDEX; Schema: chat; Owner: -
+--
+
+CREATE INDEX conversations_v2_owner ON chat.conversations_v2 USING btree (account, id);
+
+
+--
+-- Name: conversations_v2_project; Type: INDEX; Schema: chat; Owner: -
+--
+
+CREATE INDEX conversations_v2_project ON chat.conversations_v2 USING btree (account, project, id);
+
+
+--
 -- Name: events_turn; Type: INDEX; Schema: chat; Owner: -
 --
 
@@ -25909,6 +26094,27 @@ CREATE INDEX turns_conv ON chat.turns USING btree (conv, id);
 --
 
 CREATE INDEX turns_queue ON chat.turns USING btree (status, id) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text]));
+
+
+--
+-- Name: turns_v2_claim; Type: INDEX; Schema: chat; Owner: -
+--
+
+CREATE UNIQUE INDEX turns_v2_claim ON chat.turns_v2 USING btree (runner_key, claim_operation) WHERE (claim_operation IS NOT NULL);
+
+
+--
+-- Name: turns_v2_one_active; Type: INDEX; Schema: chat; Owner: -
+--
+
+CREATE UNIQUE INDEX turns_v2_one_active ON chat.turns_v2 USING btree (conversation) WHERE (state = ANY (ARRAY[1, 2]));
+
+
+--
+-- Name: turns_v2_queue; Type: INDEX; Schema: chat; Owner: -
+--
+
+CREATE INDEX turns_v2_queue ON chat.turns_v2 USING btree (state, created_ms, id);
 
 
 --
@@ -26932,6 +27138,22 @@ ALTER TABLE ONLY chat.account_threads_v1
 
 
 --
+-- Name: conversations_v2 conversations_v2_account_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.conversations_v2
+    ADD CONSTRAINT conversations_v2_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: conversations_v2 conversations_v2_account_project_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.conversations_v2
+    ADD CONSTRAINT conversations_v2_account_project_fkey FOREIGN KEY (account, project) REFERENCES projects.private_v1(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
 -- Name: environment_connections_v1 environment_connections_v1_account_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
 --
 
@@ -26956,11 +27178,43 @@ ALTER TABLE ONLY chat.project_threads_v1
 
 
 --
+-- Name: turn_claims_v2 turn_claims_v2_account_turn_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turn_claims_v2
+    ADD CONSTRAINT turn_claims_v2_account_turn_fkey FOREIGN KEY (account, turn) REFERENCES chat.turns_v2(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: turn_events_v2 turn_events_v2_account_turn_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turn_events_v2
+    ADD CONSTRAINT turn_events_v2_account_turn_fkey FOREIGN KEY (account, turn) REFERENCES chat.turns_v2(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: turn_operations_v2 turn_operations_v2_account_turn_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turn_operations_v2
+    ADD CONSTRAINT turn_operations_v2_account_turn_fkey FOREIGN KEY (account, turn) REFERENCES chat.turns_v2(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
 -- Name: turns turns_conv_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
 --
 
 ALTER TABLE ONLY chat.turns
     ADD CONSTRAINT turns_conv_fkey FOREIGN KEY (conv) REFERENCES chat.conversations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: turns_v2 turns_v2_account_conversation_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turns_v2
+    ADD CONSTRAINT turns_v2_account_conversation_fkey FOREIGN KEY (account, conversation) REFERENCES chat.conversations_v2(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --

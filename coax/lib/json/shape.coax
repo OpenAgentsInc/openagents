@@ -22,9 +22,9 @@
  // The helper also refuses a malformed caller-built numeric node.
  nodes[0]=JvNode.{kind=JV_NUMBER,from=0,to=0};d[0]=Jv.{text="",nodes=nodes[..],count=1};#assert js_number(d[0],0)== -1;
 }
-#test "shared UTF8 validation admits its full buffer and refuses overflow" {
- b:[65537]u8;for i:0..<b.count {b[i]='a';}
- #assert js_utf8(cast(string)b[0..<65536]) && !js_utf8(cast(string)b[..]);
+#test "shared UTF8 validation admits the complete 128KiB text ceiling and refuses overflow" {
+ b:[131073]u8;for i:0..<b.count {b[i]='a';}
+ #assert js_utf8(cast(string)b[0..<131072]) && !js_utf8(cast(string)b[..]);b[131071]=255;#assert !js_utf8(cast(string)b[0..<131072]);
 }
 #test "decoded strings and copies are complete bounded UTF8 without NUL" {
  d:[1]Jv;nodes:[2]JvNode;b:[8]u8;
@@ -36,7 +36,7 @@
  #assert js_copy(b[0..<1],"ab")== -1 && js_copy(b[0..<2],"ab")==2 && b[0]=='a' && b[1]=='b' && js_copy(b[0..<0],"")==0;
  #assert js_utf8("") && js_utf8("café") && !js_utf8(cast(string)raw[1..<2]);
 }
-js_utf8 :: (text:string)->bool #effects(all) {b:[65536]u8;n:=js_copy(b[..],text);return n>=0 && PB_utf8(b[0..<n]);}
+js_utf8 :: (text:string)->bool #effects(all) {b:[131072]u8;n:=js_copy(b[..],text);return n>=0 && PB_utf8(b[0..<n]);}
 js_copy :: (dst:[]u8,s:string)->int #effects(all) {if s.count>dst.count {return -1;}for c,i:s {dst[i]=c;}return s.count;}
 js_string :: (v:Jv,node:int,out:[]u8)->int #effects(all) {n:=jv_str(v,node,out);if n<0 || !PB_utf8(out[0..<n]) {return -1;}for i:0..<n {if out[i]==0 {return -1;}}return n;}
 js_fields :: (v:Jv,node:int,allowed:[]string)->bool #effects(all) {if jv_kind(v,node)!=JV_OBJECT {return false;}for i:0..<jv_len(v,node) {at:=jv_at(v,node,i);found:=false;for key:allowed {if jv_key(v,at)==key {if jv_get(v,node,key)!=at {return false;}found=true;}}if !found {return false;}}return true;}

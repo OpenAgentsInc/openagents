@@ -522,7 +522,7 @@ if [[ -x "$cli_coax" ]]; then
   coax_failed=0
   # tests/script_cli_checks.coax drives the built CLI (#13467): built here when that check runs.
   realm_cli="$repo_root/apps/openagents-cli/build/openagents"
-  for f in room_checks checkpoint2_checks verse_packs auth_checks account_settings_checks history_checks projects_checks projects_cli_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks worldbuilder_checks script_checks script_cli_checks workers_checks; do
+  for f in room_checks checkpoint2_checks verse_packs auth_checks account_settings_checks history_checks projects_checks projects_cli_checks durable_store_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks worldbuilder_checks script_checks script_cli_checks workers_checks; do
     [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
     runs "$f" || continue
     if [[ $f == script_cli_checks || $f == projects_cli_checks ]]; then

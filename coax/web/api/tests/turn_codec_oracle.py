@@ -58,6 +58,29 @@ def reference(kind, obj):
         return sum(len(b["text"].encode("utf-8")) for b in blocks) <= 16384
     if kind == 3:
         return set(obj) == {"schema", "operation_id", "turn_id"} and obj["schema"] == "openagents.chat.stop.v2alpha1" and string(obj["operation_id"], 80, 1) and identity(obj["turn_id"], "trn_")
+    if kind == 4:
+        if set(obj) != set("schema conversation_id turn_id conversation_revision state stop_requested event_cursor".split()):
+            return False
+        if obj["schema"] != "openagents.chat.control.v2alpha1" or not identity(obj["conversation_id"], "cnv_") or not identity(obj["turn_id"], "trn_") or not integer(obj["conversation_revision"], 1) or not integer(obj["event_cursor"]) or type(obj["stop_requested"]) is not bool:
+            return False
+        state = obj["state"]
+        if state == "queued":
+            return obj["event_cursor"] == 0 and obj["stop_requested"] is False
+        return state in ("running", "completed", "failed", "cancelled", "unknown") and obj["event_cursor"] >= 1 and (state != "cancelled" or obj["stop_requested"])
+    if kind == 5:
+        if set(obj) != set("schema operation operation_id worker_id turn_id dispatch_id".split()):
+            return False
+        if obj["schema"] != "openagents.chat.runner.v2alpha1" or not string(obj["operation_id"], 80, 1) or not string(obj["worker_id"], 80, 1):
+            return False
+        if obj["operation"] == "next":
+            return obj["turn_id"] is None and obj["dispatch_id"] is None
+        return obj["operation"] in ("run", "lost") and identity(obj["turn_id"], "trn_") and identity(obj["dispatch_id"], "run_")
+    if kind == 6:
+        if set(obj) != set("schema has_work turn_id conversation_id dispatch_id".split()) or obj["schema"] != "openagents.chat.job.v2alpha1" or type(obj["has_work"]) is not bool:
+            return False
+        if not obj["has_work"]:
+            return all(obj[key] is None for key in ("turn_id", "conversation_id", "dispatch_id"))
+        return identity(obj["turn_id"], "trn_") and identity(obj["conversation_id"], "cnv_") and identity(obj["dispatch_id"], "run_")
     if set(obj) != set("schema conversation_id turn_id sequence type state stop_requested block_index delta usage stop_reason error".split()):
         return False
     if obj["schema"] != "openagents.chat.event.v2alpha1" or not identity(obj["conversation_id"], "cnv_") or not identity(obj["turn_id"], "trn_") or not integer(obj["sequence"], 1) or type(obj["stop_requested"]) is not bool:
@@ -108,7 +131,7 @@ count = 0
 def check(kind, obj):
     global count
     raw = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    expected = reference(kind, obj) and len(raw) <= (1024 if kind == 3 else 131072)
+    expected = reference(kind, obj) and len(raw) <= {3: 1024, 4: 2048, 5: 4096, 6: 2048}.get(kind, 131072)
     observed = native(kind, NativeString(raw, len(raw))) == 1
     if observed != expected:
         raise AssertionError((kind, "expected", expected, "observed", observed, repr(raw[:600])))
@@ -118,8 +141,11 @@ def check(kind, obj):
 submit = dict(schema="openagents.chat.submit.v2alpha1", operation_id="op", conversation_id="", expected_revision=0, project_id=None, expected_project_revision=None, legacy_thread_id=None, legacy_thread_revision=None, content=[dict(type="text", text="Hello café")])
 stop = dict(schema="openagents.chat.stop.v2alpha1", operation_id="stop", turn_id=TURN)
 event = dict(schema="openagents.chat.event.v2alpha1", conversation_id=CONVERSATION, turn_id=TURN, sequence=1, type="text_delta", state="running", stop_requested=False, block_index=0, delta="Hello café", usage=None, stop_reason=None, error=None)
+control = dict(schema="openagents.chat.control.v2alpha1", conversation_id=CONVERSATION, turn_id=TURN, conversation_revision=1, state="queued", stop_requested=False, event_cursor=0)
+runner = dict(schema="openagents.chat.runner.v2alpha1", operation="run", operation_id="claim-1", worker_id="worker-1", turn_id=TURN, dispatch_id="run_0123456789abcdef0123456789abcdef")
+job = dict(schema="openagents.chat.job.v2alpha1", has_work=True, turn_id=TURN, conversation_id=CONVERSATION, dispatch_id="run_0123456789abcdef0123456789abcdef")
 scalars = [None, False, True, -1, 0, 1, LIMIT, LIMIT + 1, 1.5, "", "x", "x\0y", "café", {}, []]
-for kind, base in [(1, submit), (2, event), (3, stop)]:
+for kind, base in [(1, submit), (2, event), (3, stop), (4, control), (5, runner), (6, job)]:
     check(kind, base)
     for key in base:
         for value in scalars:
@@ -166,4 +192,12 @@ for name, state, reason, error in [("started", "running", None, None), ("usage",
                 candidate = copy.deepcopy(changed)
                 candidate["usage"][key] = value
                 check(2, candidate)
+for state in ("queued", "running", "completed", "failed", "cancelled", "unknown", "invalid"):
+    for stopped in (False, True):
+        for cursor in (0, 1, LIMIT, LIMIT + 1):
+            changed = dict(control, state=state, stop_requested=stopped, event_cursor=cursor)
+            check(4, changed)
+check(5, dict(runner, operation="next", turn_id=None, dispatch_id=None))
+check(5, dict(runner, operation="lost"))
+check(6, dict(job, has_work=False, turn_id=None, conversation_id=None, dispatch_id=None))
 print(f"durable-text independent native oracle: {count} cases, no disagreement")

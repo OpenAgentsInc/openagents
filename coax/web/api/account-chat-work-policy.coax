@@ -1,0 +1,42 @@
+// Queue/dispatch policy. Claims do not start inference: run fences the dispatch
+// before external I/O. A lost dispatched attempt is never returned to the queue.
+#load "account-chat-turn-policy.coax";
+#load "account-chat-policy.coax";
+#authority;
+CTW_CLAIM_MS :: 60000;
+CTW_LOST_MS :: 450000;
+#test "durable chat needs a verified exact person owner" {
+ #assert ctw_owns(2,1,"a","a") && ctw_owns(2,2,"a","a");
+ #assert !ctw_owns(2,0,"a","a") && !ctw_owns(2,1,"a","b") && !ctw_owns(2,1,"","");
+ for kind:0..<6 {if kind!=2 {#assert !ctw_owns(kind,1,"a","a");}}
+}
+#test "revision writes reserve an increment and retire at the sequence bound" {
+ #assert ctw_revision(0,0) && ctw_revision(CT_SEQUENCE_MAX-1,CT_SEQUENCE_MAX-1);
+ #assert !ctw_revision(-1,-1) && !ctw_revision(1,0) && !ctw_revision(CT_SEQUENCE_MAX,CT_SEQUENCE_MAX);
+}
+#test "only queued work can be claimed, and a live claim is not stolen" {
+ #assert ctw_claim(CT_QUEUED,false,0,0) && ctw_claim(CT_QUEUED,true,99,100) && ctw_claim(CT_QUEUED,true,100,100);
+ #assert !ctw_claim(CT_QUEUED,true,101,100) && !ctw_claim(CT_QUEUED,false,0,-1);
+ for state:CT_RUNNING..<CT_UNKNOWN+1 {#assert !ctw_claim(state,false,0,100);}
+ #assert !ctw_claim(0,false,0,100) && !ctw_claim(7,false,0,100);
+}
+#forall "dispatch requires the current claim, grant and a never-started queued turn" facts:0..<32 {
+ stopped:=(facts&1)!=0;matching:=(facts&2)!=0;started:=(facts&4)!=0;allowed:=(facts&8)!=0;live:=(facts&16)!=0;
+ #assert ctw_run(CT_QUEUED,stopped,matching,started,allowed,live)==(facts==26);
+}
+#test "a repeated run cannot start a running or terminal model attempt" {
+ for state:CT_RUNNING..<CT_UNKNOWN+1 {#assert !ctw_run(state,false,true,false,true,true);}
+ #assert !ctw_run(0,false,true,false,true,true);
+}
+#test "expired running attempts become unknown at the exact recovery deadline" {
+ #assert !ctw_lost(CT_RUNNING,true,10,10+CTW_LOST_MS-1) && ctw_lost(CT_RUNNING,true,10,10+CTW_LOST_MS);
+ #assert ctw_lost(CT_RUNNING,true,0,CTW_LOST_MS) && !ctw_lost(CT_RUNNING,true,0,0);
+ #assert !ctw_lost(CT_RUNNING,false,10,10+CTW_LOST_MS) && !ctw_lost(CT_QUEUED,true,10,10+CTW_LOST_MS);
+ #assert !ctw_lost(CT_RUNNING,true,-1,CTW_LOST_MS) && !ctw_lost(CT_RUNNING,true,10,9);
+ for state:CT_COMPLETED..<CT_UNKNOWN+1 {#assert !ctw_lost(state,true,0,CTW_LOST_MS);}
+}
+ctw_owns :: (kind:int,level:int,account:string,owner:string)->bool #export_c #effects(all) {return level>=1 && act_owns(kind,account,owner);}
+ctw_revision :: (asked:int,current:int)->bool #export_c #effects(all) {return asked>=0 && asked==current && asked<CT_SEQUENCE_MAX;}
+ctw_claim :: (state:int,claimed:bool,until:int,now:int)->bool #export_c #effects(all) {return state==CT_QUEUED && now>=0 && (!claimed || until<=now);}
+ctw_run :: (state:int,stopped:bool,matching:bool,started:bool,allowed:bool,live:bool)->bool #export_c #effects(all) {return state==CT_QUEUED && !stopped && matching && !started && allowed && live;}
+ctw_lost :: (state:int,started:bool,heartbeat:int,now:int)->bool #export_c #effects(all) {return state==CT_RUNNING && started && heartbeat>=0 && now>=heartbeat && now-heartbeat>=CTW_LOST_MS;} // mutant: equivalent (changing now >= heartbeat to > excludes only equal times, whose zero elapsed duration already fails the positive loss deadline)

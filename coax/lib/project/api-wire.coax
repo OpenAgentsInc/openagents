@@ -103,7 +103,9 @@ pr_summary :: (p:[]PrProject,out:[]u8)->int #export_c #effects(all) {o:[1]Jo;jo_
 pr_knowledge_object :: (k:[]PrKnowledge,out:[]u8)->int #export_c #effects(all) {o:[1]Jo;jo_start(o[..],out);pr_knowledge_at(k,o[..]);return pr_len(o[..]);}
 pr_instructions_write :: (p:[]PrProject,out:[]u8)->int #export_c #effects(all) {o:[1]Jo;pr_start(o[..],out);pr_instructions(p,o[..]);jo_end(o[..]);return pr_len(o[..]);}
 
-pr_utf8 :: (text:string)->bool {return js_utf8(text);}
+// The private-text Project profile keeps its published 64KiB ceiling even
+// though the shared validator also serves durable chat's larger reply span.
+pr_utf8 :: (text:string)->bool {return text.count<=65536 && js_utf8(text);}
 PrSummary :: struct {id:[36]u8;ni:int;name:[160]u8;nn:int;revision:int;}
 PrIndex :: struct {items:[32]PrSummary;n:int;next:[36]u8;nn:int;ok:bool;}
 PrKnowledgeRow :: struct {id:[36]u8;ni:int;title:[256]u8;nn:int;selected:bool;}
