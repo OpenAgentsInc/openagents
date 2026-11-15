@@ -33,7 +33,7 @@ def verdict(address, signature, message):
 
 
 def transcript():
-    hashes, cases, errors, built = V.build()
+    hashes, cases, errors, built, _, _ = V.build()
     lines = []
     p_ = lines.append
     h = hashes[1]

@@ -131,6 +131,270 @@ def constructed():
     return out
 
 
+def constructed_edges():
+    """Each rule of the tapscript evaluator, the key path and to_sign's shape
+    at its edge: one case either side where a limit has two."""
+    out = []
+    msg = 'Chapter 96'
+    k = 0x96 * 0x0101010101010101010101010101010101010101010101010101010101010101 % D.N
+    k1, k2 = 0x9601 * 0x10001 % D.N, 0x9602 * 0x10001 % D.N
+    x1 = D.mul(k1, D.G)[0].to_bytes(32, 'big')
+    def leaf(desc, script, stack):
+        """A one-leaf tree; a callable stack item is a signature, made from
+        the leaf's signature hash of the hash type it is given."""
+        addr, control = tap_tree(k, script)
+        tx = full_tx(addr, msg, [])
+        spent = [(0, R.address_script(addr))]
+        h = lambda t: R.tap_sighash(tx, 0, spent, t, R.leaf_hash(script))
+        items = [x(h) if callable(x) else x for x in stack]
+        out.append((desc, addr, msg, 'smp' + b64(witness_bytes(items + [script, control]))))
+    sig1 = lambda h: P.schnorr(k1, h(0), AUX)
+    sig2 = lambda h: P.schnorr(k2, h(0), AUX)
+    key1 = b'\x20' + x1
+    leaf('P2TR leaf CHECKSIGVERIFY then OP_1', key1 + b'\xad\x51', [sig1])
+    leaf('P2TR leaf CHECKSIGVERIFY, the wrong key\'s signature', key1 + b'\xad\x51', [sig2])
+    leaf('P2TR leaf CHECKSIGVERIFY, an empty signature', key1 + b'\xad\x51', [b''])
+    leaf('P2TR leaf CHECKSIG, an empty signature is false', key1 + b'\xac\x00\x87', [b''])
+    leaf('P2TR leaf CHECKSIG, a 65-byte signature of hash type 2', key1 + b'\xac', [lambda h: P.schnorr(k1, h(2), AUX) + b'\x02'])
+    leaf('P2TR leaf CHECKSIG, a 65-byte SIGHASH_ALL signature', key1 + b'\xac', [lambda h: P.schnorr(k1, h(1), AUX) + b'\x01'])
+    leaf('P2TR leaf CHECKSIG, a 63-byte signature', key1 + b'\xac', [lambda h: sig1(h)[:63]])
+    leaf('P2TR leaf CHECKSIG, a 66-byte signature', key1 + b'\xac', [lambda h: sig1(h) + b'\x01\x01'])
+    leaf('P2TR leaf CHECKSIGADD, a count that is not minimal', key1 + b'\xba\x75\x51', [b'', b'\x00'])
+    leaf('P2TR leaf CHECKSIGADD, a count of 5 bytes', key1 + b'\xba\x75\x51', [b'', b'\x01\x00\x00\x00\x01'])
+    leaf('P2TR leaf CHECKSIGADD, an empty signature adds nothing', key1 + b'\xba\x52\x9c', [b'', b'\x02'])
+    leaf('P2TR leaf CHECKSIGADD adds one to the count', key1 + b'\xba\x53\x9c', [sig1, b'\x02'])
+    leaf('P2TR leaf CHECKSIG on one item', b'\xac', [b'\x01'])
+    leaf('P2TR leaf CHECKSIGADD on two items', b'\xba', [b'\x01', b'\x01'])
+    leaf('P2TR leaf IF ELSE ENDIF, the ELSE branch', b'\x63\x00\x67\x51\x68', [b''])
+    leaf('P2TR leaf IF ELSE ENDIF, the IF branch', b'\x63\x00\x67\x51\x68', [b'\x01'])
+    leaf('P2TR leaf NOTIF on false', b'\x64\x51\x68', [b''])
+    leaf('P2TR leaf NOTIF on true', b'\x64\x51\x68', [b'\x01'])
+    leaf('P2TR leaf IF on a 2-byte argument', b'\x63\x51\x68', [b'\x01\x00'])
+    leaf('P2TR leaf IF on an empty stack', b'\x63\x51\x68', [])
+    leaf('P2TR leaf ENDIF without IF', b'\x51\x68', [])
+    leaf('P2TR leaf ELSE without IF', b'\x51\x67', [])
+    leaf('P2TR leaf IF left open', b'\x51\x63\x51', [])
+    leaf('P2TR leaf, OP_ROT in a branch not taken', b'\x00\x63\x7b\x68\x51', [])
+    leaf('P2TR leaf, a non-minimal push', b'\x4c\x01\x05\x75\x51', [])
+    leaf('P2TR leaf, a non-minimal push in a branch not taken', b'\x00\x63\x4c\x01\x05\x68\x51', [])
+    leaf('P2TR leaf, a 521-byte push', b'\x4d\x09\x02' + bytes(521) + b'\x75\x51', [])
+    leaf('P2TR leaf, a 520-byte push', b'\x4d\x08\x02' + bytes(520) + b'\x75\x51', [])
+    leaf('P2TR leaf, a signature check in a branch not taken', b'\x00\x63\xac\x68\x51', [])
+    leaf('P2TR leaf OP_VERIFY on false', b'\x00\x69\x51', [])
+    leaf('P2TR leaf OP_RETURN', b'\x6a\x51', [])
+    leaf('P2TR leaf OP_RETURN in a branch not taken', b'\x00\x63\x6a\x68\x51', [])
+    leaf('P2TR leaf DUP SIZE EQUALVERIFY SWAP DROP', b'\x76\x82\x51\x88\x7c\x75\x75\x51', [b'\x07'])
+    leaf('P2TR leaf leaves two elements', b'\x51\x51', [])
+    leaf('P2TR leaf leaves a false element', b'\x00', [])
+    leaf('P2TR leaf, a 521-byte witness item', b'\x75\x51', [bytes(521)])
+    leaf('P2TR leaf, a 520-byte witness item', b'\x75\x51', [bytes(520)])
+    leaf('P2TR leaf, a script that runs off its end', b'\x51\x4c', [])
+    leaf('P2TR leaf with OP_SUCCESS254', b'\xfe\x51', [])
+    # The validation weight: 50 for each signature checked, against 50 and
+    # the witness's size. Ten checks after DUP, then one more, and a pad
+    # item: 10 bytes of pad leaves exactly 0, 9 bytes leaves -1.
+    for pad, desc in ((10, 'exactly the validation weight'), (9, 'one over the validation weight')):
+        script = (b'\x76' + key1 + b'\xad') * 10 + key1 + b'\xac\x7c\x75'
+        leaf('P2TR leaf, eleven signature checks, ' + desc, script, [bytes(pad), sig1])
+    # The key path.
+    secret = 0x9604 * 0x10001 % D.N
+    q, xq = P.taproot_tweak(secret, b'')
+    addr = bech32_encode(1, xq)
+    tx = full_tx(addr, msg, [])
+    spent = [(0, R.address_script(addr))]
+    h = lambda t: R.tap_sighash(tx, 0, spent, t)
+    key_path = lambda desc, sig: out.append((desc, addr, msg, 'smp' + b64(witness_bytes([sig]))))
+    key_path('P2TR key path', P.schnorr(q, h(0), AUX))
+    key_path('P2TR key path, a 65-byte SIGHASH_ALL signature', P.schnorr(q, h(1), AUX) + b'\x01')
+    key_path('P2TR key path, a 65-byte signature of hash type 0', P.schnorr(q, h(0), AUX) + b'\x00')
+    key_path('P2TR key path, a 65-byte signature of hash type 0x81', P.schnorr(q, h(0x81), AUX) + b'\x81')
+    key_path('P2TR key path, SIGHASH_ALL on the default hash', P.schnorr(q, h(0), AUX) + b'\x01')
+    key_path('P2TR key path, a 63-byte signature', P.schnorr(q, h(0), AUX)[:63])
+    key_path('P2TR key path, the untweaked key\'s signature', P.schnorr(secret, h(0), AUX))
+    t = full_tx(addr, msg, [P.schnorr(q, h(0), AUX)]); t['ins'][0]['script'] = b'\x51'
+    out.append(('P2TR key path with a scriptSig', addr, msg, 'ful' + b64(T.serialize(t, True))))
+    out.append(('P2TR with an empty witness', addr, msg, 'ful' + b64(T.serialize(full_tx(addr, msg, []), True))))
+    script_addr, control = tap_tree(k, b'\x51')
+    out.append(('P2TR leaf, a control block of 32 bytes', script_addr, msg, 'smp' + b64(witness_bytes([b'\x51', control[:32]]))))
+    out.append(('P2TR leaf, a control block of 34 bytes', script_addr, msg, 'smp' + b64(witness_bytes([b'\x51', control + b'\x00']))))
+    # to_sign's shape, on a P2WSH OP_1 address.
+    one = b'\x51'
+    wsh_one = bech32_encode(0, hashlib.sha256(one).digest())
+    def shaped(desc, change, version=0):
+        t = full_tx(wsh_one, msg, [one], version)
+        change(t)
+        out.append((desc, wsh_one, msg, 'ful' + b64(T.serialize(t, True))))
+    shaped('to_sign in version 3', lambda t: None, 3)
+    shaped('to_sign with two outputs', lambda t: t['outs'].append(dict(value=bytes(8), script=b'\x6a')))
+    shaped('to_sign paying 1', lambda t: t['outs'][0].update(value=(1).to_bytes(8, 'little')))
+    shaped('to_sign paying to OP_1', lambda t: t['outs'][0].update(script=b'\x51'))
+    shaped('to_sign paying to OP_RETURN OP_1', lambda t: t['outs'][0].update(script=b'\x6a\x51'))
+    shaped('to_sign spending output 1', lambda t: t['ins'][0].update(prevout=t['ins'][0]['prevout'][:32] + (1).to_bytes(4, 'little')))
+    shaped('to_sign spending another transaction', lambda t: t['ins'][0].update(prevout=bytes([t['ins'][0]['prevout'][0] ^ 1]) + t['ins'][0]['prevout'][1:]))
+    shaped('a full to_sign with two inputs', lambda t: t['ins'].append(dict(t['ins'][0])))
+    shaped('a full to_sign with no outputs', lambda t: t['outs'].clear())
+    out.append(('a full signature that does not parse', wsh_one, msg, 'ful' + b64(b'\x02\x00\x00\x00\x01')))
+    out.append(('a simple signature with a byte after the witness', wsh_one, msg, 'smp' + b64(witness_bytes([one]) + b'\x00')))
+    out.append(('a simple signature of one empty item', wsh_one, msg, 'smp' + b64(witness_bytes([b'']))))
+    out += constructed_limits(msg, k, k1, key1, leaf, sig1, wsh_one, BOUNDS)
+    # P2SH-P2WSH, with and without OP_CODESEPARATOR.
+    for desc, ws in (('P2SH-P2WSH OP_1', b'\x51'), ('P2SH-P2WSH with OP_CODESEPARATOR', b'\xab\x51')):
+        redeem = b'\x00\x20' + hashlib.sha256(ws).digest()
+        address = b58check(b'\x05' + S_hash160(redeem))
+        t = full_tx(address, msg, [ws]); t['ins'][0]['script'] = P.push(redeem)
+        out.append((desc, address, msg, 'ful' + b64(T.serialize(t, True))))
+    return out
+
+
+def constructed_limits(msg, k, k1, key1, leaf, sig1, wsh_one, bounds):
+    """The evaluator's remaining limits, the decoder's sizes and the proof
+    of funds' spent outputs."""
+    out = []
+    # OP_SUCCESSx at each edge of its ranges, after an OP_VERIFY that fails:
+    # the scan before the run makes each one inconclusive, any other opcode
+    # leaves the failure.
+    for op in (79, 80, 81, 97, 98, 99, 125, 126, 127, 128, 129, 130, 131, 134, 135, 136, 137, 138, 139, 140,
+               141, 142, 143, 148, 149, 153, 154, 186, 187, 254, 255):
+        leaf(f'P2TR leaf, opcode {op} after an OP_VERIFY that fails', b'\x00\x69' + bytes([op]), [])
+    leaf('P2TR leaf OP_16', b'\x60', [])
+    leaf('P2TR leaf OP_1NEGATE then DROP', b'\x4f\x75\x51', [])
+    leaf('P2TR leaf, a 1-byte push by PUSHDATA4', b'\x4e\x01\x00\x00\x00\x05\x75\x51', [])
+    leaf('P2TR leaf CHECKSIG, a 1-byte signature', key1 + b'\xac\x00\x87', [b'\x01'])
+    leaf('P2TR leaf CHECKSIG, SIGHASH_ALL\'s signature marked hash type 2', key1 + b'\xac',
+         [lambda h: P.schnorr(k1, h(1), AUX) + b'\x02'])
+    leaf('P2TR leaf IF on true', b'\x63\x51\x68', [b'\x01'])
+    leaf('P2TR leaf NOTIF on a 2-byte argument', b'\x64\x51\x68', [b'\x01\x00'])
+    leaf('P2TR leaf with OP_CHECKMULTISIGVERIFY', b'\x00\x00\xaf\x51', [])
+    # Seven empty signatures cost nothing; charged 50 each they would be
+    # one over the validation weight.
+    leaf('P2TR leaf, seven checks of empty signatures', (b'\x00' + key1 + b'\xac\x75') * 7 + b'\x51', [])
+    # The stack's 1000 elements: from the witness, and while the script runs.
+    leaf('P2TR leaf, 1000 witness items', b'\x75' * 999, [b'\x01'] + [b''] * 999)
+    leaf('P2TR leaf, 1001 witness items', b'\x75' * 1000, [b'\x01'] + [b''] * 1000)
+    leaf('P2TR leaf, 999 witness items and a push to 1000', b'\x51' + b'\x75' * 999, [b'\x01'] + [b''] * 998)
+    leaf('P2TR leaf, 1000 witness items and a push to 1001', b'\x51' + b'\x75' * 1000, [b'\x01'] + [b''] * 999)
+    # The annex is a last item of 2 or more starting 0x50.
+    script_addr, control = tap_tree(k, b'\x51')
+    out.append(('P2TR, two items, the last 0x50 alone', script_addr, msg, 'smp' + b64(witness_bytes([b'\x51', b'\x50']))))
+    out.append(('P2TR, two items, the last empty', script_addr, msg, 'smp' + b64(witness_bytes([b'\x51', b'']))))
+    out.append(('P2TR key path, a signature starting 0x50', script_addr, msg, 'smp' + b64(witness_bytes([b'\x50' + bytes(63)]))))
+    # The decoder: the prefix alone, bytes that aren't a PSBT, a witness that
+    # doesn't parse, an empty stack and a missing item for witness version 2.
+    v2 = bech32_encode(2, bytes(range(32)))
+    out.append(('the prefix alone', wsh_one, msg, 'smp'))
+    out.append(('a proof of funds that is not a PSBT', wsh_one, msg, 'pof' + b64(b'not a psbt')))
+    out.append(('an unprefixed signature whose witness does not parse', wsh_one, msg, b64(b'\x02\x01')))
+    out.append(('witness version 2, an empty stack', v2, msg, 'smp' + b64(b'\x00')))
+    out.append(('witness version 2, a stack of one missing item', v2, msg, 'smp' + b64(b'\x01')))
+    out.append(('a full to_sign with no inputs and no outputs', wsh_one, msg, 'ful' + b64(bytes.fromhex('02000000000000000000'))))
+    # The decoder's sizes: a simple signature of 8129 bytes makes to_sign
+    # 8192 bytes, the most it holds; a full signature of 8192 bytes fits.
+    big = lambda n: (b'\x4d\x08\x02' + bytes(520) + b'\x75') * (n // 524) + b'\x4d' + (n % 524 - 4).to_bytes(2, 'little') + bytes(n % 524 - 4) + b'\x75'
+    ws = big(8125 - 1) + b'\x51'
+    assert len(witness_bytes([ws])) == 8129
+    addr = bech32_encode(0, hashlib.sha256(ws).digest())
+    out.append(('a simple signature of 8129 bytes', addr, msg, 'smp' + b64(witness_bytes([ws]))))
+    for n in range(8000, 8200):
+        ws3 = big(n - 1) + b'\x51'
+        a3 = bech32_encode(0, hashlib.sha256(ws3).digest())
+        full = T.serialize(full_tx(a3, msg, [ws3]), True)
+        if len(full) == 8192: break
+    assert len(full) == 8192
+    out.append(('a full signature of 8192 bytes', a3, msg, 'ful' + b64(full)))
+    # Past what the reference limits: to_sign of 8193 bytes and more, and a
+    # signature of more than 8192 bytes.
+    for n, reason in ((8130, R.R_SCRIPT), (8192, R.R_SCRIPT), (8193, R.R_BASE64)):
+        ws4 = big(n - 4 - 1) + b'\x51'
+        assert len(witness_bytes([ws4])) == n
+        bounds.append((f'a simple signature of {n} bytes', bech32_encode(0, hashlib.sha256(ws4).digest()), msg,
+                       'smp' + b64(witness_bytes([ws4])), R.INVALID, reason, 'smp'))
+    out += proofs_of_funds(msg, bounds)
+    out.append(('P2WPKH, a key that reads as a script with OP_CODESEPARATOR', *codesep_key(msg)))
+    return out
+
+
+def p2wpkh_spk(secret): return b'\x00\x14' + S_hash160(P.pubkey(secret))
+
+
+def codesep_key(msg):
+    """A P2WPKH address whose public key, read as a script, parses and holds
+    OP_CODESEPARATOR: only a P2WSH witnessScript is scanned for it."""
+    for d in range(0x9700, 0x9800):
+        secret = d * 0x10001 % D.N
+        key = P.pubkey(secret)
+        try: ops = [op for op, _ in R.iter_ops(key)]
+        except R.S.Fail: continue
+        if 0xab in ops: break
+    address = bech32_encode(0, S_hash160(key))
+    return address, msg, R.sign(address, [secret], msg, 'smp')
+
+
+def proofs_of_funds(msg, bounds):
+    """Proofs of funds whose inputs reach their spent outputs each way:
+    their own non-witness or witness UTXO, or an earlier input's
+    non-witness UTXO of the same transaction."""
+    out = []
+    s0 = 0x9801 * 0x10001 % D.N
+    address = bech32_encode(0, S_hash160(P.pubkey(s0)))
+    spk0 = R.address_script(address)
+    spend = R.to_spend(spk0, msg)
+    def prev_tx(outs, tag):
+        tx = dict(version=(2).to_bytes(4, 'little'), locktime=bytes(4),
+                  ins=[dict(prevout=bytes([tag]) * 32 + bytes(4), script=b'', sequence=b'\xff' * 4, witness=[b'\x01'])],
+                  outs=[dict(value=v.to_bytes(8, 'little'), script=spk) for v, spk in outs])
+        return T.serialize(tx, True)
+    def build(inputs, final=True):
+        """inputs: (prev bytes, index, secret or a final scriptSig, give its own UTXO: 'nw', 'w' or '')."""
+        tx = R.to_sign(spend, 2, 0, 0)
+        for prev, index, _, _ in inputs:
+            tx['ins'].append(dict(prevout=T.txid(T.unserialize(prev, True)) + index.to_bytes(4, 'little'), script=b'', sequence=bytes(4), witness=[]))
+        m = P.create(T.serialize(tx, False))
+        P.put(m['ins'][0], b'\x01', bytes(8) + T.compact(len(spk0)) + spk0)
+        for n, (prev, index, _, how) in enumerate(inputs, 1):
+            P.put(m['ins'][n], b'\x00', prev)
+            if how == 'w':
+                o = T.unserialize(prev, True)['outs'][index]
+                m['ins'][n] = [(b'\x01', o['value'] + T.compact(len(o['script'])) + o['script'])]
+        assert P.sign(m, 0, s0) == P.SC['OK']
+        for n, (prev, index, secret, how) in enumerate(inputs, 1):
+            if isinstance(secret, bytes): P.put(m['ins'][n], b'\x07', secret)
+            else: assert P.sign(m, n, secret) == P.SC['OK']
+        if final: assert P.finalize(m)
+        for n, (prev, index, secret, how) in enumerate(inputs, 1):
+            if how == '': m['ins'][n] = [kv for kv in m['ins'][n] if kv[0] != b'\x00']
+        return 'pof' + b64(P.write(m))
+    keys = [(0x9810 + j) * 0x10001 % D.N for j in range(20)]
+    prev = prev_tx([(50000, p2wpkh_spk(keys[0])), (60000, P.p2pkh(S_hash160(P.pubkey(keys[1])))), (70000, p2wpkh_spk(keys[2]))], 1)
+    other = prev_tx([(40000, p2wpkh_spk(keys[3]))], 2)
+    out.append(('a proof of funds: two inputs reach their outputs through an earlier input\'s UTXO', address, msg,
+                build([(other, 0, keys[3], 'nw'), (prev, 0, keys[0], 'nw'), (prev, 1, keys[1], ''), (prev, 2, keys[2], '')])))
+    out.append(('a proof of funds: an input with no UTXO and none before it', address, msg,
+                build([(prev, 1, keys[1], ''), (prev, 0, keys[0], 'nw')])))
+    for size in (64,):
+        data = bytes([0x5a]) * (size - 2)
+        spk = bytes([len(data)]) + data + b'\x87'
+        held = prev_tx([(30000, spk)], 3)
+        out.append((f'a proof of funds: a spent scriptPubKey of {size} bytes', address, msg,
+                    build([(held, 0, bytes([len(data)]) + data, 'w')])))
+    # Past what the reference checks: an output index past the earlier
+    # input's transaction, a spent scriptPubKey of 65 bytes, and a proof
+    # that isn't finalized.
+    bounds.append(('a proof of funds: an output index past the earlier input\'s transaction', address, msg,
+                   build([(prev, 0, keys[0], 'nw'), (prev, 5, b'\x51', '')]), R.INVALID, R.R_SHAPE, 'pof'))
+    data = bytes([0x5a]) * 63
+    held = prev_tx([(30000, bytes([63]) + data + b'\x87')], 3)
+    bounds.append(('a proof of funds: a spent scriptPubKey of 65 bytes', address, msg,
+                   build([(held, 0, bytes([63]) + data, 'w')]), R.INVALID, R.R_SHAPE, 'pof'))
+    bounds.append(('a proof of funds that is not finalized', address, msg,
+                   build([(prev, 0, keys[0], 'nw')], final=False), R.INVALID, R.R_FULL, 'pof'))
+    many = prev_tx([(10000 + j, p2wpkh_spk(keys[4 + j])) for j in range(15)], 4)
+    out.append(('a proof of funds of 16 inputs', address, msg, build([(many, j, keys[4 + j], 'w') for j in range(15)])))
+    return out
+
+
+BOUNDS = []
+
+
 def S_hash160(b): return R.S.ripemd160(hashlib.sha256(b).digest())
 
 
@@ -186,16 +450,21 @@ def build():
             assert state == R.INVALID and reason in allowed.get(v['error_substr'], (R.ERROR_REASONS[v['error_substr']],)), v
             errors.append(dict(source=source, description=v['description'], address=v['address'], message=v['message'],
                                signature=v['signature'], reason=reason, format=FORMAT[fmt]))
-    built = []
-    for desc, address, message, signature in constructed():
-        state, reason, lt, seq, fmt = R.verify(address, signature, message)
-        built.append(dict(source='constructed', type=desc, address=address, message=message, keys='', script='',
-                          version=0, locktime=0, sequence=0, signature=signature, ours='', state=STATE[state],
-                          reason=reason, format=FORMAT[fmt], t=lt, s=seq))
-    return hashes, cases, errors, built
+    built, edges = [], []
+    BOUNDS.clear()
+    for rows, made in ((built, constructed()), (edges, constructed_edges())):
+        for desc, address, message, signature in made:
+            state, reason, lt, seq, fmt = R.verify(address, signature, message)
+            rows.append(dict(source='constructed', type=desc, address=address, message=message, keys='', script='',
+                             version=0, locktime=0, sequence=0, signature=signature, ours='', state=STATE[state],
+                             reason=reason, format=FORMAT[fmt], t=lt, s=seq))
+    bounds = [dict(source='constructed', type=desc, address=address, message=message, keys='', script='', version=0,
+                   locktime=0, sequence=0, signature=signature, ours='', state=STATE[state], reason=reason,
+                   format=FORMAT[fmt], t=0, s=0) for desc, address, message, signature, state, reason, fmt in BOUNDS]
+    return hashes, cases, errors, built, edges, bounds
 
 
-def render(hashes, cases, errors, built):
+def render(hashes, cases, errors, built, edges, bounds):
     lines = ['// Generated by make_bip322_vectors.py from the pinned BIP-322 test vectors',
              '// (coax/tests/vectors/upstream/bip322/, listed in SOURCES.md) and from',
              '// cases it constructs. Published values, copied; each state and reason is',
@@ -216,7 +485,10 @@ def render(hashes, cases, errors, built):
               '// the state, the reason, the format and, when valid, the time and age.',
               'B322Case :: struct { source: string; type: string; address: string; message: string; keys: string; script: string;',
               '  version: int; locktime: int; sequence: int; signature: string; ours: string; state: int; reason: int; format: int; t: int; s: int; }']
-    for name, rows in (('B322_CASES', cases), ('B322_BUILT', built)):
+    for name, rows in (('B322_CASES', cases), ('B322_BUILT', built), ('B322_EDGES', edges), ('B322_BOUNDS', bounds)):
+        if name == 'B322_BOUNDS':
+            lines += ['// Past the reference\'s reach: the sizes this verifier holds, and proofs of',
+                      '// funds the reference does not check. Each verdict is set by the generator.']
         lines.append(f'{name} :: [{len(rows)}] B322Case.[')
         for c in rows:
             lines.append(f'  B322Case.{{source="{c["source"]}", type="{esc(c["type"])}", address="{c["address"]}", '
@@ -235,13 +507,14 @@ def render(hashes, cases, errors, built):
 
 
 def main():
-    hashes, cases, errors, built = build()
-    text = render(hashes, cases, errors, built)
+    hashes, cases, errors, built, edges, bounds = build()
+    text = render(hashes, cases, errors, built, edges, bounds)
     if '--write' in sys.argv: OUT.write_text(text)
     assert OUT.read_text() == text, 'bip322_vectors.coax is not current: run with --write'
     states = [sum(1 for c in built if c['state'] == k) for k in range(3)]
     print(f'bip322_vectors.coax matches: {len(hashes)} hashes, {len(cases)} signatures, {len(errors)} errors, '
-          f'{len(built)} constructed ({states[0]} valid, {states[1]} invalid, {states[2]} inconclusive)')
+          f'{len(built)} constructed ({states[0]} valid, {states[1]} invalid, {states[2]} inconclusive), '
+          f'{len(edges)} at the edges, {len(bounds)} past the reference')
 
 
 if __name__ == '__main__':
