@@ -280,6 +280,35 @@ New native guard checks pass in debug, release and ASan/UBSan: 1,409 assertions,
 
 The [continuation fixture](../fixtures/robotics/locomotion-lqr-longer/README.md) retains the frozen contract, checks, import lineage, all outcomes and combined curves; the [experiment notes](../docs/robotics/lqr-longer-experiment.md) explain the counter allocation and comparison. No setting changes, early stopping, extra training or best-seed/checkpoint selection are allowed within this experiment. Full gait, learned critic, neural actor, GPU training and physical hardware remain separate.
 
+## Selected small-biped consumer
+
+The owner selected the complete Microduck-style development pipeline on
+2026-11-15. [Chapter 256](ch256-build-and-teach-a-small-robot.md) is its
+end-to-end capstone; the [specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md)
+identifies the Berlin demonstration and the separate upstream references.
+This chapter supplies the shared collector and neural actor/critic learner
+for that first small-biped consumer as well as the planned quadruped.
+
+The biped work needs actual articulated/contact dynamics, calibrated actuator
+and sensor observations, independent per-environment resets/RNG, a general
+neural actor and learned critic, normalization, PPO/GAE updates, curriculum
+and resumable experiments. The existing scalar-LQR curves qualify none of
+those integrations. Engine chapters 19/22/31/33–36 and shared training
+operators remain prerequisites for the owned physical-environment route.
+
+Start with balance and commanded walking, then sit/stand, controlled rest
+and recovery. A forward roll has its own full-contact model, entry/exit
+conditions and qualification. Perception-guided courses add a separate
+camera/depth encoder or a student restricted to onboard observations;
+privileged simulator state must not leak into the deployed actor.
+
+Freeze task/terrain/parameter splits, seeds, horizons, baselines and quality
+thresholds before training. Record every learning curve and failure, qualify
+normalization/action semantics through export, and measure local deployment
+timing separately from simulation cadence. Chapter 256 owns the agent/asset
+workflow, physical transfer and several-robot demonstration; a biped result
+does not satisfy this chapter's separate quadruped acceptance.
+
 ## What the full chapter will teach
 
 - Locomotion as a reinforcement learning problem: observations, actions as

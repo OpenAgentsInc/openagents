@@ -316,6 +316,10 @@
 - [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md)
 - [255. Edit an original language model](ch255-edit-an-original-language-model.md)
 
+**XXVI. Build and teach a small robot**
+
+- [256. Build and teach a small robot](ch256-build-and-teach-a-small-robot.md) — design draft
+
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
 Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
@@ -323,5 +327,5 @@ ML, world generation, robot policies, production
 hosting and inference across a mesh.
 Chapters 1–53, 55–82, 83, 84, 85, 86, 87, 88–102, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–197, 198, 199, 215–250, 253–255 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Every
-chapter has runnable code, in full or in part. The physics engine and spacecraft chapters
+chapter before the new design-draft capstone 256 has runnable code, in full or in part. The physics engine and spacecraft chapters
 are in the [Metaverse Engine book](../../metaverse-engine/book/README.md).

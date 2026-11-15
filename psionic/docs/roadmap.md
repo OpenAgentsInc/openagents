@@ -342,6 +342,46 @@ for its 38 tasks. When selecting a new breadth branch, create concrete issues
 from that branch's operator/data/checkpoint gates. This proposal creates no
 new issues, model downloads, hardware purchases or deployment requirements.
 
+## Microduck capstone: selected end-to-end robotics goal
+
+Owner direction, 2026-11-15: implement the entire small-robot pipeline shown
+in the October 21 GTC Berlin Microduck segment. The
+[specification and primary sources](../../docs/nvidia/microduck-pipeline-2026-11-15.md)
+separate the onstage performance, NVIDIA's agent/training tutorial and
+Pollen's public runtime/training route. Their model, observation, actuator
+and license profiles must not be conflated.
+
+New [chapter 256](../book/ch256-build-and-teach-a-small-robot.md), **design
+draft**, composes task brief → agent-assisted editable assets → robot and
+actuator admission → articulated/contact simulation → batched neural training
+→ perception-guided tasks → evaluation/export → authorized physical transfer
+→ coordinated robots and continued improvement. The
+[book plan](../book/PLAN.md#xxvi-build-and-teach-a-small-robot) maps stages to
+existing chapter owners and gates. This is an additional selected capstone,
+not a new completion claim for the present robotics profiles.
+
+Deliver reference contracts and independently checked imported execution
+first, then fresh policies trained by our neural actor/critic/collector,
+then complete owned simulation/perception and physical deployment. Chapter
+171 owns that reusable learner; its current scalar-LQR implementation and
+the Panda evidence remain scoped as recorded. A small biped is the first
+selected legged consumer; the quadruped remains a separate embodiment goal.
+GR00T, Cosmos and completing the tabletop arm are not prerequisites.
+
+Walking, stop/hold, sit/stand, controlled rest/recovery and a separately
+qualified roll are required skills. Perception and multi-robot cue selection
+have separate observation, authority and reliability gates. Learned gait,
+teleoperation and scripted choreography are labeled individually. Runtime
+packages preserve normalization, joint maps, control modes and assembly
+identity; compatibility never follows from ONNX export alone.
+
+Ship Coax solvers, learning and device policy with optional CUDA acceleration,
+offline operation and an independently qualified non-NVIDIA execution route.
+Broader backend training, local timing, physical stop/fall behavior and
+commercially usable printable geometry require their own evidence. The
+planning instruction authorizes documentation, not a purchase or powered
+hardware experiment.
+
 ## Measured GPT-OSS device baseline
 
 [Chapters 65–67](../book/ch065-original-weights-stay-on-the-gpu.md) now run

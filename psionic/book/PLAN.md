@@ -896,6 +896,48 @@ targeted sparse changes do not establish preserved behavior by their size.
 | [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md) — runnable bounded CPU | Direct ReLU4 weights and postfix-to-gated-weight compilation: 19 recorded calls, 16 admitted artifacts, exact arithmetic on 1936 held-out rows per task and shortest walks from 25 starts given oracle distances. Native/hand/planner references match and native arithmetic is cheaper; three-seed AdamW and frozen/online Q baselines, three admission failures, planted boundary failure, costs and offline replay are recorded. No learned-navigation or original-model claim. |
 | [255. Edit an original language model](ch255-edit-an-original-language-model.md) — runnable: original-window-v1, bounded CPU and recorded original Metal trials | Immutable identity-bound BF16/F32 windows; GPT-OSS-20B readout edits, sampling/prompt/random/channel-only fitting controls, three declined LLM proposals, held-out retained tasks, exact rollback and independent offline audits. Failed finite goals and unverifiable independent quality remain explicit. Qwen3.5 generation, loop repair and shadow adoption remain open. |
 
+## XXVI. Build and teach a small robot
+
+Owner-selected end-to-end robotics goal, 2026-11-15: carry the GTC Berlin
+Microduck development sequence through our own maintained platform. The
+[specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md) identifies
+the October 21 keynote and primary training/runtime sources, and separates
+their evidence from the capabilities we must deliver.
+
+| Chapter | What it builds and verifies |
+| --- | --- |
+| [256. Build and teach a small robot](ch256-build-and-teach-a-small-robot.md) — design draft | Agent-assisted course/assets and admitted small biped → articulated/contact simulation → batched neural actor/critic learning → perception-guided movement and new skills → independent local evaluation → native/ONNX package → separately authorized physical transfer → several robots with explicit cue/authority records, plus commercially usable modular hardware. Imported policy playback alone does not complete the capstone. |
+
+This is a cumulative route through existing owners, not a new ML framework
+or robot simulator. The first selected legged consumer is a small biped;
+chapter 171's quadruped goal remains a separate later embodiment. A completed
+tabletop arm, GR00T or Cosmos is not a prerequisite for starting this branch.
+
+| Pipeline stage | Component/book owner | Required new gate |
+| --- | --- | --- |
+| Task brief, agent tools and editable assets | Coder; shared asset registry, editor and components | Pinned geometry/rights, physical dimensions and an evaluator outside the agent's writable scope |
+| Rig, actuators and simulation | Engine 17–22 and 35; Coax physical-world contracts; Psionic 109/111/167 | Strict imported embodiment, identified/sourced servo behavior, full contact/fall model and independent comparisons |
+| Collection and learning | Psionic 117–124, 129 and 171; engine 31 | Isolated batched environments, general neural actor and learned critic, PPO/GAE, normalizer, optimizer, curriculum and complete resume |
+| Perception and navigation | Psionic 142/165; engine 33–34 | Declared real-sensor-available inputs, privileged teacher/student separation, held-out obstacle courses and sensor faults |
+| Evaluation, export and local execution | Psionic 8, 220–221, 239–242, 247–248; robotics integration context | Independent action vectors, complete native/interchange graph, frozen skill/transition gates and measured embedded timing |
+| Physical transfer and several robots | Coax R12–R20; local supervisor and capstone 256 | Authorized commissioning, stop/fall behavior, per-robot command leases and state, logged cue origins/interventions |
+| Manufacture and continued operation | Platform design/production registry and product services | Commercially usable geometry, reproducible assembly, calibration, repair and offline operation |
+
+Chapter 171 continues to own the reusable learner. Its scalar Gaussian/LQR
+profiles do not become biped training evidence by changing a chapter title.
+Train actual new policies for balance/walking, sit/stand, controlled rest and
+recovery; add a qualified forward roll and guarded skill transitions. Extend
+the shared framework only with operators required by this actor/critic and
+perception path, and qualify each CPU/device implementation independently.
+
+Delivery order is reference/contract admission → compatible imported execution
+→ owned neural learning → complete owned simulation/perception → physical
+transfer → multi-robot capstone. Independent SDKs may provide comparisons;
+shipping logic, solvers, learners and tools remain Coax. Existing CUDA can
+accelerate development, while offline operation and a complete non-NVIDIA
+execution profile are explicit goals. Every additional training backend needs
+its own quality, timing and memory evidence.
+
 ## A framework, not only engines
 
 Most of this plan teaches how to run and train particular architectures. To

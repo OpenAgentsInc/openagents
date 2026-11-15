@@ -42,7 +42,7 @@ are now Parts IV and V of [the Metaverse Engine book](../../metaverse-engine/boo
   uses it to choose an engine, and
   [Everglade](../../everglade/book/README.md)'s guard uses it in a game.
 - **Where this book sits.** See [the OpenAgents books](../../docs/books/README.md) for the whole library. The
-  [contents](SUMMARY.md) name all 25 parts.
+  [contents](SUMMARY.md) name all 26 parts.
 
 ## Chapter status
 
@@ -372,6 +372,13 @@ run examples directly without the check command.
 | [253. Read and repair a model's weights](ch253-read-and-repair-a-models-weights.md) | Runnable: weight-edit-f64-v1, bounded CPU and recorded local proposer trials | Immutable named-tensor patches with SHA-256 base binding, expected old values, exact reversal and zero-survivor authority checks; 180 decoder metric rows, five-seed controls, fine-tuning and 32 actual local GPT-OSS trials, including harmful edits and failed proposals. |
 | [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md) | Runnable: construct-relu4-f64-v1 (bounded CPU) | Direct ReLU4 construction and postfix-to-gated-weight compilation: 19 saved calls, 16 admitted artifacts, exact held-out arithmetic and distance-informed shortest walks from 25 starts. Three-seed AdamW and frozen/online Q baselines, failed admissions, a development-perfect boundary failure, timing/cost ledgers and offline replay; native references match and execute more cheaply. |
 | [255. Edit an original language model](ch255-edit-an-original-language-model.md) | Runnable: original-window-v1, bounded CPU and recorded original GPT-OSS-20B Metal trials | Immutable BF16/F32 windows, original GPT-OSS-20B readout edits against sampling/prompt/random/channel-fit controls, exact restoration, retained tasks and failed/unverifiable quality results; Metaverse villain-dialogue comparisons and a grounded character-writing prototype. |
+| [256. Build and teach a small robot](ch256-build-and-teach-a-small-robot.md) | Unimplemented: design draft | The complete Microduck-inspired route: agent-assisted assets, admitted robot/actuators, owned simulation and neural learning, perception, evaluation/export, authorized physical transfer and several robots with explicit cue/authority records. |
+
+The selected robotics capstone is [chapter 256](ch256-build-and-teach-a-small-robot.md),
+following the [GTC Berlin pipeline specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md).
+It is a design draft with no qualified target or product adoption. Chapter 171
+owns its reusable locomotion learner; the existing scalar profiles retain
+their narrower evidence.
 
 The learning route starts with chapters 103–104, then the tensor/function
 transforms in 106–107, the tiny decoder in 112–118 and nanochat in 123–139.

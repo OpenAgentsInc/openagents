@@ -455,8 +455,8 @@ Chapters chapter 250 depends on (psionic/book/chapters.json): 23
 
 Limits in the capability claims ledger (coax/book/capability-claims.json):
   psionic.autodiff.current: Bounded CPU scalar/tensor autodiff and permanent-IR function transforms through order two; recorded tiny-decoder CUDA backward/optimizer/resume. No arbitrary Coax transforms, general GPU backward coverage, efficient cooperative training or mixed-precision qualification.
-  psionic.execution.current: Retained named model/device profiles and bounded CPU IR/tiny-decoder CUDA training profiles; Mammoth Metal, original120b GPU, complete V4.1 and general efficient GPU training remain unqualified. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md.
-  psionic.gpu.current: Recorded original20b CUDA/Metal and bounded resident CUDA serving profiles; broader model/device/serving work remains open. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md.
+  psionic.execution.current: Retained named model/device profiles and bounded CPU IR/tiny-decoder CUDA training profiles; Mammoth Metal, original120b GPU, complete V4.1 and general efficient GPU training remain unqualified. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md. Reviewed 2026-11-15: SUMMARY adds design-draft capstone 256 and limits its runnable-code statement to earlier chapters; existing profiles, examples and numerical evidence are unchanged.
+  psionic.gpu.current: Recorded original20b CUDA/Metal and bounded resident CUDA serving profiles; broader model/device/serving work remains open. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md. Reviewed 2026-11-15: SUMMARY adds design-draft capstone 256 with no source, qualified target or adoption; no GPU or serving qualification is broadened.
 
 PyTorch operators (psionic/lib/pytorch-audit.coax): 32; trained 5, graph 7, eager only 13, absent 7
   nn.Linear                     trained  chapter 118, mdl_linear

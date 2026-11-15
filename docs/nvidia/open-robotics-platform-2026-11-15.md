@@ -4,6 +4,15 @@
 backend, manufacturing process or deployment is qualified by this document.
 Repository baseline: `742e50a2af`.
 
+**Owner scope extension, 2026-11-15:** the complete GTC Berlin Microduck
+pipeline is now a required learning/deployment capstone. Its
+[specification](microduck-pipeline-2026-11-15.md) covers agent-assisted design,
+owned simulation and new policy training, perception, export, physical
+transfer and several robots. [Psionic chapter 256](../../psionic/book/ch256-build-and-teach-a-small-robot.md)
+and its book plan track that work as a design draft. The tabletop workcell
+below remains an independent manufacturing/product route; it does not gate
+the biped program.
+
 ## 1. The goal and the first product
 
 Assume, as a planning exercise, that NVIDIA stops operating: new hardware,
@@ -167,6 +176,17 @@ and replacement. CPU/Metal support exists in specific profiles; an AMD,
 Vulkan-compute, WebGPU-compute, ARM-SBC or microcontroller target requires new
 compiler/runtime and measured workload qualification. Vulkan rendering and
 Wasm compilation alone establish none of those compute/control claims.
+
+### Selected small-biped pipeline
+
+The [Microduck capstone specification](microduck-pipeline-2026-11-15.md)
+extends the portfolio into a small legged robot that we train ourselves,
+rather than only running an imported controller. Its gates cover the complete
+asset-to-hardware route, learned skills and guarded transitions, actuator
+identification, perception-guided courses and coordinated robots. Reuse the
+same shared simulation, training, registry, workbench and local supervision.
+Commercial printable geometry needs its own rights: the upstream Microduck
+meshes have noncommercial terms distinct from its software license.
 
 ## 5. The modular hardware family
 
