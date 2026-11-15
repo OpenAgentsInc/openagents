@@ -1,0 +1,53 @@
+// Independent HTTP/Postgres/model oracle for the private Projects consumer.
+// tool.sh: tls
+#load "auth_harness.coax";
+#load "../projects-wire.coax";
+#load "../account-chat-wire.coax";
+#load "../chat-history-wire.coax";
+
+pr_login :: (t:[]Ap,dir:string,email:string,auth:[]u8,account:[]u8)->bool {
+ b:[128]u8;code:[6]u8;link:[64]u8;token:[256]u8;q:[1]Sb;
+ st:=ac_start(t,email,"203.0.113.129",true,b[..]);pending:=ap_member(ap_body(t),"pending",b[..]);if st!=200 || !ac_mail(dir,code[..],link[..]) {return false;}
+ sb(q[..],"{\"code\":\"");sb(q[..],cast(string)code[..]);sb(q[..],"\",\"pending\":\"");sb(q[..],pending);sb(q[..],"\"}");
+ st=ac_call(t,"POST","/api/auth/email/verify",sb_text(q[..]),"","","");tok:=ap_member(ap_body(t),"access_token",token[..]);ac:=ap_member(ap_body(t),"account",account);sb_clear(q[..]);sb(q[..],"Authorization: Bearer ");sb(q[..],tok);n:=pr_copy(auth,sb_text(q[..]));return st==200 && ac.count>0 && tok.count>0 && n>0;
+}
+pr_post :: (t:[]Ap,auth:string,id:string,suffix:string,op:string,rev:int,value:string)->int {b:[131072]u8;path:[256]u8;n:=pr_mutation(op,rev,value,b[..]);return ac_call(t,"POST",pr_route(id,suffix,path[..]),cast(string)b[0..<n],auth,"","");}
+pr_get :: (t:[]Ap,auth:string,id:string,suffix:string)->int {b:[256]u8;return ac_call(t,"GET",pr_route(id,suffix,b[..]),"",auth,"","");}
+pr_api_checks :: (t:[]Ap,mail:string,infer:string) {
+ st_legacy:=ac_call(t,"GET","/api/projects/v1/files","","","","");ap_check(t,"a legacy v1 slug keeps its attachment route",ap_has(ac_head(t),"X-OA-Route: world_files_project_route"),"legacy route dispatch");
+ authb:[512]u8;acct:[80]u8;otherb:[512]u8;other:[80]u8;
+ ok:=pr_login(t,mail,"privateprojects@example.com",authb[..],acct[..]);ap_check(t,"verified email owns private Projects",ok,"");if !ok {return;}
+ auth:="";
+ // Buffers are zero initialized; keep the header using its actual JSON-derived token length.
+ an:=0;while an<authb.count && authb[an]!=0 {an+=1;}auth=cast(string)authb[0..<an];
+ ok=pr_login(t,mail,"otherprojects@example.com",otherb[..],other[..]);ap_check(t,"independent second account",ok,"");if !ok {return;}on:=0;while on<otherb.count && otherb[on]!=0 {on+=1;}stranger:=cast(string)otherb[0..<on];
+ ap_check(t,"private index requires a session",pr_get(t,"","","")==401,ap_body(t));
+ st:=pr_post(t,auth,"","","create",-1,"{\"name\":\"Private research\",\"instructions\":\"Answer in short sentences.\"}");p:[1]PrProject;ok=st==201 && pr_project_read(ap_body(t),p[..]);ap_check(t,"create is private and needs no repository or public slug",ok && ap_has(ap_body(t),"\"audience\":\"private\""),ap_body(t));if !ok {return;}id:=cast(string)p[0].id[0..<p[0].ni];
+ st=pr_post(t,auth,"","","create",-1,"{\"name\":\"Private research\",\"instructions\":\"Answer in short sentences.\"}");ap_check(t,"create retries return the same Project",st==201 && ap_has(ap_body(t),id),ap_body(t));
+ st=pr_post(t,auth,"","","create",-1,"{\"name\":\"Different\"}");ap_check(t,"an operation ID cannot change its contents",st==409,ap_body(t));
+ ap_check(t,"other accounts cannot read a private Project",pr_get(t,stranger,id,"")==404,ap_body(t));ap_check(t,"other accounts cannot edit private instructions",pr_post(t,stranger,id,"instructions","steal",1,"{\"text\":\"Bad\"}")==404,ap_body(t));
+ st=pr_get(t,stranger,"","");ap_check(t,"private index excludes other owners",st==200 && !ap_has(ap_body(t),id),ap_body(t));
+ st=pr_post(t,auth,id,"instructions","instructions",1,"{\"text\":\"Cite the Project notes.\"}");ap_check(t,"instruction revisions are saved separately",st==200 && ap_has(ap_body(t),"Cite the Project notes."),ap_body(t));
+ ap_check(t,"stale instructions cannot overwrite another save",pr_post(t,auth,id,"instructions","stale",1,"{\"text\":\"Old\"}")==409,ap_body(t));
+ st=pr_post(t,auth,id,"knowledge","notes",2,"{\"title\":\"Launch notes\",\"source\":{\"kind\":\"text\",\"text\":\"The launch code is violet.\"}}");kidb:[40]u8;d:[1]Jv;nodes:[128]JvNode;parsed:=jv_parse(d[..],ap_body(t),nodes[..]);kn:=ifx parsed then pr_string(d[0],jv_path(d[0],0,"data.id"),kidb[..]) else -1;ap_check(t,"pasted knowledge is hashed and ready",st==201 && kn==36 && ap_has(ap_body(t),"text_sha256"),ap_body(t));if st!=201 || kn<1 {return;}
+ kid:=cast(string)kidb[0..<kn];
+ st=pr_post(t,auth,id,"knowledge","unused",3,"{\"title\":\"Unselected\",\"source\":{\"kind\":\"text\",\"text\":\"NEVER_SEND_UNSELECTED\"},\"selected\":false}");ap_check(t,"knowledge selection is explicit",st==201,ap_body(t));
+ contentpath:[96]u8;co:[1]Jo;jo_start(co[..],contentpath[..]);jo_put(co[..],"knowledge/");jo_put(co[..],kid);jo_put(co[..],"/content");st=pr_get(t,auth,id,jo_text(co[..]));ap_check(t,"the complete saved knowledge text reopens",st==200 && ap_has(ap_body(t),"launch code is violet"),ap_body(t));
+ st=pr_get(t,auth,id,"knowledge");ap_check(t,"knowledge metadata reopens without copying the source into the list",st==200 && ap_has(ap_body(t),"Launch notes") && !ap_has(ap_body(t),"launch code"),ap_body(t));
+ thread:[1]AccountThread;thread[0].n=1;thread[0].messages[0].n=pr_copy(thread[0].messages[0].text[..],"What is the launch code?");wire:[70000]u8;n:=act_write(thread[..],wire[..]);st=ac_call(t,"POST","/api/chat/thread/v1",cast(string)wire[0..<n],auth,"","");ap_check(t,"existing account transcript saves the user turn",st==200 && act_read(ap_body(t),thread[..]),ap_body(t));if st!=200 {return;}
+ tid:=cast(string)thread[0].id[0..<thread[0].id_n];cv:[256]u8;value:=pr_chat_value(tid,0,cv[..]);st=pr_post(t,auth,id,"chats","link",4,value);ap_check(t,"Project chats bind the existing owned saved transcript",st==200,ap_body(t));
+ st=pr_get(t,auth,id,"chats");h:=chh_read(ap_body(t));ap_check(t,"Project chats reopen through the shared history codec",st==200 && h.ok && h.n==1,ap_body(t));
+ value=pr_chat_value(tid,thread[0].revision,cv[..]);st=pr_post(t,auth,id,"complete","answer",5,value);ap_check(t,"Projects keep the existing funded inference gate",st==403,ap_body(t));
+ q:[1]Sb;sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");acn:=0;while acn<acct.count && acct[acn]!=0 {acn+=1;}sb(q[..],cast(string)acct[0..<acn]);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+ st=pr_post(t,auth,id,"complete","answer",5,value);ap_check(t,"Project context reaches the shared metered inference adapter",st==200 && ap_has(ap_body(t),"choices"),ap_body(t));
+ ib:[1100]u8;requestb:[65536]u8;got:=fs_read(fs_join(infer,"last",ib[..]),requestb[..]);request:=cast(string)requestb[0..<ifx got>0 then got else 0];ap_check(t,"model receives instructions, selected knowledge and the user turn",ap_has(request,"Cite the Project notes.") && ap_has(request,"launch code is violet") && ap_has(request,"What is the launch code?") && !ap_has(request,"NEVER_SEND_UNSELECTED"),request);
+ path:[256]u8;pb:[1]Sb;sb(pb[..],"/api/chat/thread/v1?id=");sb(pb[..],tid);st=ac_call(t,"GET",sb_text(pb[..]),"",auth,"","");saved:[1]AccountThread;ap_check(t,"assistant is persisted before success without another mobile write",st==200 && act_read(ap_body(t),saved[..]) && saved[0].n==2 && saved[0].messages[1].assistant && saved[0].revision==2,ap_body(t));
+ st=pr_post(t,auth,id,"complete","answer",5,value);ap_check(t,"lost completion response is replayed without a second model call",st==200,ap_body(t));ap_check(t,"another operation cannot redispatch an admitted saved turn",pr_post(t,auth,id,"complete","answer-again",5,value)==409,ap_body(t));ab:[1100]u8;all:[65536]u8;al:=fs_read(fs_join(infer,"all",ab[..]),all[..]);lines:=0;for i:0..<ifx al>0 then al else 0 {if all[i]=='\n' {lines+=1;}}ap_check(t,"model was dispatched exactly once",lines==1,"");
+ st=pr_get(t,auth,id,"context?operation_id=answer");ap_check(t,"admitted context pins instructions and selected knowledge revisions",st==200 && ap_has(ap_body(t),kid) && ap_has(ap_body(t),"instructions_sha256") && !ap_has(ap_body(t),"NEVER_SEND_UNSELECTED"),ap_body(t));
+ op:[96]u8;o:[1]Jo;jo_start(o[..],op[..]);jo_put(o[..],"knowledge/");jo_put(o[..],kid);jo_put(o[..],"/remove");st=pr_post(t,auth,id,jo_text(o[..]),"remove",5,"");ap_check(t,"knowledge removal advances the Project revision",st==200 && ap_has(ap_body(t),"removed"),ap_body(t));
+ st=pr_get(t,auth,id,"context?operation_id=answer");ap_check(t,"removing knowledge preserves the admitted context audit",st==200 && ap_has(ap_body(t),kid),ap_body(t));
+}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) {return 2;}if args_count(a[..])==3 && args_at(a[..],0)=="mail" {return am_main(ap_whole(args_at(a[..],1)),args_at(a[..],2));}if args_count(a[..])==3 && args_at(a[..],0)=="infer" {return am_response(ap_whole(args_at(a[..],1)),args_at(a[..],2),"{\"choices\":[{\"message\":{\"content\":\"The code is violet.\"}}],\"usage\":{\"prompt_tokens\":40,\"completion_tokens\":6}}");}
+ t:[1]Ap;if !ap_open(t[..]) {return 2;}mb:[4096]u8;mail:=fs_temp("projects-mail",mb[..]);mh:=ac_mail_start(t[..],"coax/web/api/tests/projects_checks.coax",mail);ib:[4096]u8;infer:=fs_temp("projects-model",ib[..]);ih:=ac_server_start(t[..],"coax/web/api/tests/projects_checks.coax",infer,"infer","INFER_PORT");if mh>=0 && ih>=0 {pr_api_checks(t[..],mail,infer);}if ih>=0 {ac_mail_stop(ih,infer);}if mh>=0 {ac_mail_stop(mh,mail);}return ap_done(t[..],"private Projects");
+}

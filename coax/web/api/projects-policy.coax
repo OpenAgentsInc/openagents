@@ -1,0 +1,35 @@
+// Private Projects: identity, mutation and context admission. SQL stores facts only.
+#authority;
+#test "private projects belong to an exact verified person account" {
+ #assert prp_access(2,true,"a","a") && !prp_access(2,false,"a","a") && !prp_access(2,true,"a","b") && !prp_access(2,true,"","");
+ for k:0..<6 {if k!=2 {#assert !prp_access(k,true,"a","a");}}
+}
+#test "restricted accounts retain reads but cannot mutate private projects" {
+ #assert prp_change(true,false,false,false) && !prp_change(false,false,false,false) && !prp_change(true,true,false,false) && !prp_change(true,false,true,false) && !prp_change(true,false,false,true);
+}
+#test "canonical project identities are bounded hex and not legacy slugs" {
+ #assert prp_id("prj_0123456789abcdef0123456789abcdef") && !prp_id("prj_0123456789abcdef0123456789abcdeg") && !prp_id("prj_0123456789abcdef0123456789abcde") && !prp_id("prj_:123456789abcdef0123456789abcdef") && !prp_id("mobile-kit") && !prp_id("xxx_0123456789abcdef0123456789abcdef");
+}
+#test "shared writes fence revisions and retire before overflow" {
+ #assert prp_revision(0,0) && prp_revision(2147483645,2147483645) && !prp_revision(1,0) && !prp_revision(-1,-1) && !prp_revision(2147483646,2147483646);
+}
+#test "knowledge and project limits include their boundary and reject overflow" {
+ #assert prp_capacity(0,0) && prp_capacity(199,1048576) && !prp_capacity(200,0) && !prp_capacity(0,1048577) && !prp_capacity(-1,0) && !prp_capacity(0,-1);
+}
+#test "context is complete or refused including every selected source" {
+ #assert prp_context(0) && prp_context(32768) && !prp_context(-1) && !prp_context(32769);
+}
+prp_access :: (kind:int,session:bool,account:string,owner:string)->bool #export_c #effects(all) {return kind==2 && session && account.count>0 && account==owner;}
+prp_change :: (owns:bool,limited:bool,frozen:bool,archived:bool)->bool #export_c #effects(all) {return owns && !limited && !frozen && !archived;}
+prp_id :: (id:string)->bool #export_c #effects(all) {if id.count!=36 || id[0..<4]!="prj_" {return false;}for i:4..<36 {c:=id[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+prp_revision :: (asked:int,current:int)->bool #export_c #effects(all) {return asked>=0 && asked==current && asked<2147483646;}
+prp_capacity :: (count:int,bytes:int)->bool #export_c #effects(all) {return count>=0 && count<200 && bytes>=0 && bytes<=1048576;}
+prp_context :: (bytes:int)->bool #export_c #effects(all) {return bytes>=0 && bytes<=32768;}
+#test "knowledge file sources are owned scanned UTF8 text, bounded before fetching" {
+ #assert prp_file(true,true,"txt",1) && prp_file(true,true,"md",65536);
+ #assert !prp_file(false,true,"txt",1) && !prp_file(true,false,"txt",1) && !prp_file(true,true,"pdf",1) && !prp_file(true,true,"txt",0) && !prp_file(true,true,"txt",65537);
+}
+prp_file :: (owned:bool,scanned:bool,extension:string,bytes:int)->bool #export_c #effects(all) {return owned && scanned && (extension=="txt" || extension=="md") && bytes>0 && bytes<=65536;}
+
+#test "one admitted model attempt owns each saved Project turn" {#assert prp_attempt(false) && !prp_attempt(true);}
+prp_attempt :: (admitted:bool)->bool #export_c #effects(all) {return !admitted;}

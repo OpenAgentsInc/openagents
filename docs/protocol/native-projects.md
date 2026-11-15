@@ -1,5 +1,9 @@
 # Native project management
 
+The account-owned private Projects flow now uses the [Projects API](projects-api-v1alpha1.md)
+and its shared codec for instructions, knowledge and personal saved chats. The
+legacy member, publication and drop flows below retain their published contracts.
+
 The native client uses the web's existing project list, private-project page
 operations and project drops. Existing published contracts keep their bytes.
 `coax/lib/project/wire.coax` reads private page cells; the browser's private

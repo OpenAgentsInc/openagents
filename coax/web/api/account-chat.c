@@ -85,7 +85,7 @@ static bool ac_project(const request *q) {
   PQclear(context);
   const char *values[]={p->account,thread,project};
   PQclear(PQexec(db,"BEGIN"));
-  PGresult *r=PQexecParams(db,"SELECT a.account,coalesce(j.project,'') FROM chat.account_threads_v1 a LEFT JOIN chat.project_threads_v1 j ON j.account=a.account AND j.thread=a.id WHERE a.account=$1 AND a.id=$2 FOR UPDATE OF a",2,NULL,values,NULL,NULL,0);
+  PGresult *r=PQexecParams(db,"SELECT a.account,coalesce(j.project,canonical.project,'') FROM chat.account_threads_v1 a LEFT JOIN projects.thread_links_v1 canonical ON canonical.account=a.account AND canonical.thread=a.id LEFT JOIN chat.project_threads_v1 j ON j.account=a.account AND j.thread=a.id WHERE a.account=$1 AND a.id=$2 FOR UPDATE OF a",2,NULL,values,NULL,NULL,0);
   bool found=PQresultStatus(r)==PGRES_TUPLES_OK && PQntuples(r)==1;
   bool may=found && pc_access(p->kind,acs(p->account),acs(PQgetvalue(r,0,0)),member) && pc_relink(acs(PQgetvalue(r,0,1)),acs(project));PQclear(r);
   if (!may) {PQclear(PQexec(db,"ROLLBACK"));api_error(q->fd,409,"This saved conversation cannot be linked to that project.");return true;}

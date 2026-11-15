@@ -13,7 +13,7 @@ final class ProjectUITests:XCTestCase {
         let tool=app.buttons.matching(identifier:"project.tool.3").firstMatch
         if tool.exists {tool.tap()}
         attach(app,"Native project agent conversation")
-        app.buttons["project.back"].tap();XCTAssertTrue(app.buttons["projects.new"].waitForExistence(timeout:10));app.buttons["projects.new"].tap()
+        app.buttons["project.back"].tap();XCTAssertTrue(app.buttons["projects.new"].waitForExistence(timeout:10));app.buttons["projects.publish.new"].tap()
         let resume=app.buttons["project.resume.0"];XCTAssertTrue(resume.waitForExistence(timeout:10));resume.tap()
         let name=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@ AND label BEGINSWITH %@","project.field.","Name")).firstMatch;XCTAssertTrue(name.waitForExistence(timeout:10));name.tap()
         let field=app.textViews["project.edit"];XCTAssertTrue(field.waitForExistence(timeout:5));XCTAssertEqual(field.value as? String,"Moon Villa");field.tap();field.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:10));field.typeText("iPhone project");app.buttons["project.field.save"].tap()

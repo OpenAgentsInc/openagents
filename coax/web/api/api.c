@@ -427,6 +427,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   ROUTE(worldbuilder_route);
   ROUTE(scripts_admin_route);   // before the admin routes: /api/admin/scripts/... is its (scripts.c, #13467)
   ROUTE(worlds_route);
+  ROUTE(projects_route);
   ROUTE(world_files_project_route);
   ROUTE(inference_route);
   ROUTE(mesh_route);

@@ -1,0 +1,104 @@
+syntax = "proto3";
+package openagents.project.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+
+// Owned Projects API. The private-text-v1alpha1 consumer reuses saved chat v1;
+// it does not claim rich conversations, sharing, imports or arbitrary file extraction.
+// JSON null maps to absence of an optional field. Millisecond timestamps are JSON
+// integers; all IDs retain their owning protocol's identity. Worlds is the new
+// product term; published legacy realm contracts remain unchanged.
+message Reference { string contract = 1 [json_name = "contract"]; string id = 2 [json_name = "id"]; optional string revision = 3 [json_name = "revision"]; }
+message Origin {
+ string provider = 1 [json_name = "provider"];
+ optional string source_id = 2 [json_name = "source_id"];
+ optional string import_id = 3 [json_name = "import_id"];
+ optional int64 source_created_at_ms = 4 [json_name = "source_created_at_ms"];
+ optional int64 source_updated_at_ms = 5 [json_name = "source_updated_at_ms"];
+}
+message ModelChoice { optional string model_id = 1 [json_name = "model_id"]; optional string effort_id = 2 [json_name = "effort_id"]; }
+message Sharing { string audience = 1 [json_name = "audience"]; optional string workspace_role = 2 [json_name = "workspace_role"]; }
+message ContextSettings { string knowledge_mode = 1 [json_name = "knowledge_mode"]; optional int64 max_input_tokens = 2 [json_name = "max_input_tokens"]; }
+message Instructions {
+ int64 revision = 1 [json_name = "revision"];
+ string text = 2 [json_name = "text", (openagents.options.v1alpha1.max_bytes)=65536];
+ string sha256 = 3 [json_name = "sha256"];
+ int64 updated_at_ms = 4 [json_name = "updated_at_ms"];
+ string updated_by_account_id = 5 [json_name = "updated_by_account_id"];
+ Origin origin = 6 [json_name = "origin"];
+}
+message ProjectCounts {
+ int64 knowledge = 1 [json_name = "knowledge"]; int64 conversations = 2 [json_name = "conversations"]; int64 repositories = 3 [json_name = "repositories"];
+ int64 work = 4 [json_name = "work"]; int64 worlds = 5 [json_name = "worlds"]; int64 agents = 6 [json_name = "agents"]; int64 environments = 7 [json_name = "environments"];
+}
+message Project {
+ string id = 1 [json_name = "id"];
+ int64 revision = 2 [json_name = "revision"];
+ string owner_account_id = 3 [json_name = "owner_account_id"];
+ optional string workspace_id = 4 [json_name = "workspace_id"];
+ string name = 5 [json_name = "name", (openagents.options.v1alpha1.max_bytes)=160];
+ string description = 6 [json_name = "description", (openagents.options.v1alpha1.max_bytes)=4096];
+ string status = 7 [json_name = "status"];
+ Sharing sharing = 8 [json_name = "sharing"];
+ Instructions instructions = 9 [json_name = "instructions"];
+ ModelChoice model = 10 [json_name = "model"];
+ ContextSettings context_settings = 11 [json_name = "context_settings"];
+ int64 created_at_ms = 12 [json_name = "created_at_ms"]; int64 updated_at_ms = 13 [json_name = "updated_at_ms"];
+ optional int64 archived_at_ms = 14 [json_name = "archived_at_ms"];
+ string created_by_account_id = 15 [json_name = "created_by_account_id"];
+ Origin origin = 16 [json_name = "origin"];
+ Reference publication_ref = 17 [json_name = "publication_ref"];
+ string url = 18 [json_name = "url"];
+ ProjectCounts counts = 19 [json_name = "counts"];
+ repeated string permissions = 20 [json_name = "permissions"];
+}
+message ProjectCreate { string name = 1 [json_name = "name"]; optional string description = 2 [json_name = "description"]; optional string instructions = 3 [json_name = "instructions"]; }
+message ProjectUpdate { optional string name = 1 [json_name = "name"]; optional string description = 2 [json_name = "description"]; }
+message InstructionsWrite { string text = 1 [json_name = "text"]; }
+message SourceInput { string kind = 1 [json_name = "kind"]; optional string text = 2 [json_name = "text"]; optional string file_id = 3 [json_name = "file_id"]; }
+message KnowledgeCreate { string title = 1 [json_name = "title"]; SourceInput source = 2 [json_name = "source"]; optional bool selected = 3 [json_name = "selected"]; }
+message KnowledgeUpdate { optional string title = 1 [json_name = "title"]; optional bool selected = 2 [json_name = "selected"]; }
+message Extraction {
+ string extractor_id = 1 [json_name = "extractor_id"]; string extractor_version = 2 [json_name = "extractor_version"]; string text_sha256 = 3 [json_name = "text_sha256"];
+ int64 text_bytes = 4 [json_name = "text_bytes"]; optional string tokenizer_id = 5 [json_name = "tokenizer_id"]; optional int64 token_count = 6 [json_name = "token_count"];
+}
+message Problem { string code = 1 [json_name = "code"]; string message = 2 [json_name = "message"]; optional string field = 3 [json_name = "field"]; optional int64 current_revision = 4 [json_name = "current_revision"]; optional string operation_id = 5 [json_name = "operation_id"]; }
+message Knowledge {
+ string id = 1 [json_name = "id"]; string project_id = 2 [json_name = "project_id"]; int64 revision = 3 [json_name = "revision"]; string title = 4 [json_name = "title"];
+ string source_kind = 5 [json_name = "source_kind"]; optional string file_id = 6 [json_name = "file_id"]; string content_sha256 = 7 [json_name = "content_sha256"];
+ string media_type = 8 [json_name = "media_type"]; int64 size_bytes = 9 [json_name = "size_bytes"]; bool selected = 10 [json_name = "selected"]; string state = 11 [json_name = "state"];
+ Extraction extraction = 12 [json_name = "extraction"]; Problem error = 13 [json_name = "error"]; string created_by_account_id = 14 [json_name = "created_by_account_id"];
+ int64 created_at_ms = 15 [json_name = "created_at_ms"]; int64 updated_at_ms = 16 [json_name = "updated_at_ms"]; Origin origin = 17 [json_name = "origin"];
+}
+message KnowledgeContent { string knowledge_id = 1 [json_name = "knowledge_id"]; int64 revision = 2 [json_name = "revision"]; optional string text = 3 [json_name = "text"]; optional string file_id = 4 [json_name = "file_id"]; }
+// The first consumer binds an existing account-owned saved transcript, unchanged.
+message ChatLink { string thread_id = 1 [json_name = "thread_id"]; }
+message ChatComplete { string thread_id = 1 [json_name = "thread_id"]; int64 thread_revision = 2 [json_name = "thread_revision"]; }
+message ContextSource { string knowledge_id = 1 [json_name = "knowledge_id"]; int64 revision = 2 [json_name = "revision"]; string content_sha256 = 3 [json_name = "content_sha256"]; optional string text_sha256 = 4 [json_name = "text_sha256"]; }
+message ContextSnapshot {
+ string id = 1 [json_name = "id"]; string project_id = 2 [json_name = "project_id"]; int64 project_revision = 3 [json_name = "project_revision"];
+ string conversation_id = 4 [json_name = "conversation_id"]; string operation_id = 5 [json_name = "operation_id"]; int64 instructions_revision = 6 [json_name = "instructions_revision"];
+ string instructions_sha256 = 7 [json_name = "instructions_sha256"]; repeated ContextSource knowledge = 8 [json_name = "knowledge"];
+ string model_id = 9 [json_name = "model_id"]; optional string tokenizer_id = 10 [json_name = "tokenizer_id"]; optional int64 input_tokens = 11 [json_name = "input_tokens"];
+ int64 created_at_ms = 12 [json_name = "created_at_ms"];
+}
+// HTTP JSON envelopes are route typed; value has exactly the route's shape.
+message CreateRequest { string operation_id = 1 [json_name = "operation_id"]; ProjectCreate value = 3 [json_name = "value"]; }
+message UpdateRequest { string operation_id = 1 [json_name = "operation_id"]; int64 expected_revision = 2 [json_name = "expected_revision"]; ProjectUpdate value = 3 [json_name = "value"]; }
+message InstructionsRequest { string operation_id = 1 [json_name = "operation_id"]; int64 expected_revision = 2 [json_name = "expected_revision"]; InstructionsWrite value = 3 [json_name = "value"]; }
+message KnowledgeRequest { string operation_id = 1 [json_name = "operation_id"]; int64 expected_revision = 2 [json_name = "expected_revision"]; KnowledgeCreate value = 3 [json_name = "value"]; }
+message RemoveRequest { string operation_id = 1 [json_name = "operation_id"]; int64 expected_revision = 2 [json_name = "expected_revision"]; }
+message ChatLinkRequest { string operation_id = 1 [json_name = "operation_id"]; int64 expected_revision = 2 [json_name = "expected_revision"]; ChatLink value = 3 [json_name = "value"]; }
+message ChatCompleteRequest { string operation_id = 1 [json_name = "operation_id"]; int64 expected_revision = 2 [json_name = "expected_revision"]; ChatComplete value = 3 [json_name = "value"]; }
+message ContextReply { string schema = 1 [json_name = "schema"]; ContextSnapshot data = 2 [json_name = "data"]; }
+message ProjectReply { string schema = 1 [json_name = "schema"]; Project data = 2 [json_name = "data"]; }
+message ProjectSummary { string id = 1 [json_name = "id"]; int64 revision = 2 [json_name = "revision"]; string owner_account_id = 3 [json_name = "owner_account_id"]; string name = 4 [json_name = "name"]; string description = 5 [json_name = "description"]; string status = 6 [json_name = "status"]; int64 updated_at_ms = 7 [json_name = "updated_at_ms"]; }
+message ProjectList { string schema = 1 [json_name = "schema"]; repeated ProjectSummary data = 2 [json_name = "data"]; optional int64 revision = 3 [json_name = "revision"]; optional string next_cursor = 4 [json_name = "next_cursor"]; }
+message KnowledgeContentReply { string schema = 1 [json_name = "schema"]; KnowledgeContent data = 2 [json_name = "data"]; }
+message KnowledgeReply { string schema = 1 [json_name = "schema"]; Knowledge data = 2 [json_name = "data"]; }
+message KnowledgeList { string schema = 1 [json_name = "schema"]; repeated Knowledge data = 2 [json_name = "data"]; int64 revision = 3 [json_name = "revision"]; optional string next_cursor = 4 [json_name = "next_cursor"]; }
+message InstructionsReply { string schema = 1 [json_name = "schema"]; Instructions data = 2 [json_name = "data"]; }
+message ActionResult { string id = 1 [json_name = "id"]; int64 revision = 2 [json_name = "revision"]; string action = 3 [json_name = "action"]; int64 completed_at_ms = 4 [json_name = "completed_at_ms"]; }
+message ActionReply { string schema = 1 [json_name = "schema"]; ActionResult data = 2 [json_name = "data"]; }
+message ErrorReply { string schema = 1 [json_name = "schema"]; Problem error = 2 [json_name = "error"]; }
+// Stored context and operation receipts are account-owned, never public records.
+message OperationReceipt { string account_id = 1 [json_name = "account_id"]; string operation_id = 2 [json_name = "operation_id"]; string request_sha256 = 3 [json_name = "request_sha256"]; string state = 4 [json_name = "state"]; int32 status = 5 [json_name = "status"]; string reply_json = 6 [json_name = "reply_json"]; int64 created_at_ms = 7 [json_name = "created_at_ms"]; }

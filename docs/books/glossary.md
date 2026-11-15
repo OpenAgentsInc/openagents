@@ -16,7 +16,8 @@ that already touches the file (#13267 to #13269, #13280).
 | --- | --- | --- | --- |
 | OpenAgents Metaverse Engine | The engine | Engine | Named Aethyr until 2026-11-12 ([the rename](../naming/2026-11-12-metaverse-rename.md)); `metaverse/` holds older engine files |
 | Metaverse | The set of realms on the open web that the Metaverse Engine runs | Realms | See Metaverse Engine |
-| Realm | One world: a document and a link | Authoring | |
+| World | One authored world: a document and a link | Authoring | Current product term; published `realm` wire names keep their identity |
+| Realm | Historical name for a world | Authoring | Use World in new product prose and new contracts |
 | Zone | A named area of one realm's world, loaded as cells | Everglade | Also a Wasm page (`everglade/features.coax:66-81`, rename to pages in #13268/#13280), the AAA audit's server unit, and a GCP zone |
 | Page | A Wasm module the browser loads | Web client | Called "zone" (`EfZone`) in `everglade/features.coax:66-81`; rename to pages when #13268/#13280 touch it |
 | Room | One server-owned simulation of a zone with up to 16 seats | Room session | SQL says "instance" (`verse.room_instances`, `0115_room_directory.sql:1-2`, rename to rooms when #13267/#13280 touch it); also a shard's URL path (`/api/room/s1/`) and the `oa-room` binary |
@@ -81,7 +82,7 @@ that already touches the file (#13267 to #13269, #13280).
 
 | Word | Meaning | Owner |
 | --- | --- | --- |
-| Realm | One world in the Metaverse. A realm is a document and a link. | The Metaverse Engine 51 |
+| World | One world in the Metaverse: a document and a link. | The Metaverse Engine 51 |
 | The Grid | The bare shared world you walk into from the home page. | The Metaverse Engine 56 |
 | Zone | A named place inside a realm, such as the glade. | Everglade |
 | Room | One server-owned simulation that every seated player sees the same way. An Everglade room seats 16 players (`EG_SEATS`). | The Metaverse Engine 86 |

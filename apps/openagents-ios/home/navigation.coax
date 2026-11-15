@@ -43,6 +43,7 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
   if s[0].flight!=0 || e[0].flight || e[0].random || s[0].action!=0 {n[0].np=ea_copy(n[0].pending[..],id);return true;}
   na_request(s,ifx id=="account.logout" then 5 else ifx id=="app.updates" then 6 else 7,"");return true;
  }
+ if na_pr_press(s,id) {return true;}
  if na_project_press(s,id) {return true;}
  if na_shell_press(s,id) {return true;}
  if id=="nav.history" {n[0].history_open = !n[0].history_open;return true;}
@@ -80,7 +81,7 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
  }else if account>=0 {
   item:=s[0].chats[0].items[account];rid:=cast(string)item.id[0..<item.id_n];
   if rid.count!=22 || rid[0]!='m' || rid[1]!='_' {nav_note(n,"This older account chat opens on openagents.com/chat.");return true;}
-  e[0].active=false;s[0].selected=account;path:[96]u8;at:=mc(path[..],0,"/api/chat/thread/v1?id=");at=mc(path[..],at,rid);na_http(s,cast(string)path[0..<at],"",3);
+  e[0].active=false;s[0].selected=account;folder:=cast(string)item.folder[0..<item.folder_n];if folder.count==36 && folder[0..<4]=="prj_" {na_pr_open(s,folder);s[0].purpose=121;s[0].project[0].resume_n=pr_copy(s[0].project[0].resume_chat[..],rid);return true;}s[0].project_thread_n=0;s[0].project[0].canonical=false;path:[96]u8;at:=mc(path[..],0,"/api/chat/thread/v1?id=");at=mc(path[..],at,rid);na_http(s,cast(string)path[0..<at],"",3);
  }else {e[0].active=false;na_new(s);na_nav_restore(s);}
  n[0].open=false;n[0].creating=false;nav_note(n,"");return true;
 }
@@ -90,13 +91,13 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  if n[0].rail {
   x=tr_open(t,"nav.rail.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.close",IC_MENU,"Close navigation");tr_close(t);
   x=k_side_places(t,"nav.rail");x=k_icon_button(t,"nav.home",IC_CHAT,"Chat");tr_attr(t,x,AT_STATE,"rail");tr_attr(t,x,AT_CURRENT,ifx s[0].page<5 then "true" else "false");
-  x=k_icon_button(t,"nav.projects",IC_FOLDER,"Projects");tr_attr(t,x,AT_STATE,"rail");tr_attr(t,x,AT_CURRENT,ifx s[0].page>=5 && s[0].page<=9 then "true" else "false");
+  x=k_icon_button(t,"nav.projects",IC_FOLDER,"Projects");tr_attr(t,x,AT_STATE,"rail");tr_attr(t,x,AT_CURRENT,ifx ((s[0].page>=5 && s[0].page<=9) || s[0].page==11) then "true" else "false");
   if s[0].worlds_available {x=k_icon_button(t,"world.library",IC_GLOBE,"Worlds");tr_attr(t,x,AT_STATE,"rail");}
   x=k_icon_button(t,"nav.recent",IC_HISTORY,"Recent chats");tr_attr(t,x,AT_STATE,"rail");tr_close(t);
   x=tr_open(t,"nav.rail.footer",TG_FOOTER,"side-f");x=k_icon_button(t,"nav.settings",IC_SETTINGS,"Settings");tr_attr(t,x,AT_STATE,"rail");tr_close(t);tr_close(t);return;
  }
  x=k_side_head(t,"nav.header","OpenAgents","/");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.close",IC_X,"Close navigation");tr_close(t);
- x=k_side_places(t,"nav.sidebar");x=k_row(t,u,"nav.home","Chat","",s[0].page<5);x=k_row(t,u,"nav.projects","Projects","",s[0].page>=5 && s[0].page<=9);if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",s[0].page==10);}tr_close(t);
+ x=k_side_places(t,"nav.sidebar");x=k_row(t,u,"nav.home","Chat","",s[0].page<5);x=k_row(t,u,"nav.projects","Projects","",((s[0].page>=5 && s[0].page<=9) || s[0].page==11));if s[0].worlds_available {x=k_row(t,u,"world.library","Worlds","",s[0].page==10);}tr_close(t);
  x=tr_open(t,"nav.history.header",TG_HEADER,"navigation-search");x=k_link(t,"nav.history","Recent chats");tr_attr(t,x,AT_EXPANDED,ifx n[0].history_open then "true" else "false");x=k_icon_button(t,"nav.compose",IC_PLUS,"New chat");tr_close(t);
  if n[0].history_open {
  x=tr_open(t,"nav.search-wrap",TG_DIV,"navigation-search");x=k_input(t,u,"nav.search","Search chats","Search chats","search","off");tr_close(t);

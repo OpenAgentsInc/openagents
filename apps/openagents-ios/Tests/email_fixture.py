@@ -91,6 +91,7 @@ class Handler(BaseHTTPRequestHandler):
                 chats=[dict(id=k,title=threads[k]["messages"][0]["content"][:80],model="google/gemini-4-hydrogen",folder="moon-villa",updated_ms=1,busy=False) for k,v in project_links.items() if v=="moon-villa"]
                 return self.answer(200,dict(schema="openagents.chat.history.v1",chats=chats))
             return self.answer(404,{"error":"not found"})
+        if self.path == "/api/projects/v1":return self.answer(200,dict(schema="openagents.projects.api.v1alpha1",data=[],revision=None,next_cursor=None))
         if self.path == "/api/projects":
             if self.headers.get("Authorization") != "Bearer oa_at_fixture":return self.answer(401,{})
             return self.answer(200,b"project mobile-kit Mobile Kit\n"+(b"project moon-villa Moon Villa\n" if project_published else b""))

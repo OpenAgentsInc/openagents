@@ -25,6 +25,7 @@ import UIKit
     func testInstalledElapsedClockDrivesReadSynchronization()throws {
         let p=try loaded();try p.input("nav.projects");try p.frame();_ = try p.action()
         try p.event(104,200,"");try p.frame();_ = try p.action()
+        try answer(p,["schema":"openagents.projects.api.v1alpha1","data":[],"next_cursor":NSNull()])
         try p.frame(elapsed:9);XCTAssertEqual(try p.action().0,0)
         try p.frame(elapsed:1);let request=try p.action();XCTAssertEqual(request.0,4)
         let body=try XCTUnwrap(try JSONSerialization.jsonObject(with:Data(request.1.utf8)) as? [String:String])
@@ -64,7 +65,8 @@ import UIKit
         let shade=try XCTUnwrap(workspace.view.subviews.first {$0.accessibilityIdentifier=="workspace.backdrop"})
         XCTAssertFalse(shade.isHidden);XCTAssertEqual(shade.frame.width-workspace.sidebar.view.frame.width,64,accuracy:1)
         try p.input("nav.projects");try render();let request=try p.action();XCTAssertEqual(request.0,4);XCTAssertTrue(request.1.contains("/api/projects"))
-        try p.event(104,200,"project mobile-kit Mobile Kit\n");try render()
+        try p.event(104,200,"project mobile-kit Mobile Kit\n");try render();_ = try p.action()
+        try answer(p,["schema":"openagents.projects.api.v1alpha1","data":[],"next_cursor":NSNull()]);try render()
         XCTAssertTrue(p.elements().contains {$0.id=="projects.item.0" && $0.label.contains("Mobile Kit")})
         let project=try XCTUnwrap(detail.controls["projects.item.0"]);XCTAssertTrue(project.isDescendant(of:detail.view));XCTAssertTrue(detail.view.bounds.contains(project.convert(CGPoint(x:10,y:10),to:detail.view)))
         try p.input("projects.item.0");try render();let member=try p.action();XCTAssertEqual(member.0,4);XCTAssertTrue(member.1.contains("/projects/mobile-kit/api/state"))

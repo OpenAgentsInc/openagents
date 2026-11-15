@@ -43,13 +43,16 @@ na_projects_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->boo
  if status==401 {na_history_clear(s);s[0].account_ready=false;s[0].page=0;na_note(s,"Log in again to see your projects.");return true;}
  s[0].projects_loaded=true;s[0].projects_failed=failed || status!=200;if !s[0].projects_failed {s[0].projects_n=0;}s[0].sync_background=false;
  if !s[0].projects_failed {s[0].projects_n=ss_projects_read(raw,s[0].projects[..]);if raw.count>0 && s[0].projects_n==0 {s[0].projects_failed=true;}}
+ if s[0].page==5 {na_http(s,"/api/projects/v1","",109);}
  na_nav_pending(s);return true;
 }
 na_projects_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  x:=tr_open(t,"projects.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"projects.title",TG_SPAN,"","Projects");x=k_icon_button(t,"projects.new",IC_PLUS,"New project");tr_close(t);
+ na_pr_rows(s,t,u);
+ x=k_link(t,"projects.publish.new","Publish a public project");
  if s[0].flight!=0 && !s[0].sync_background {x=k_text(t,u,"projects.loading",TG_P,"meta","Loading…");}
  else if s[0].projects_failed {x=k_text(t,u,"projects.failed",TG_P,"","Couldn't load projects");}
- else if s[0].projects_n==0 {x=k_text(t,u,"projects.empty",TG_P,"","No projects yet");}
+ else if s[0].projects_n==0 && s[0].private_projects[0].n==0 {x=k_text(t,u,"projects.empty",TG_P,"","No projects yet");}
  for i:0..<s[0].projects_n {p:=s[0].projects[i];id:[96]u8;x=k_row(t,u,tr_join(id[..],"projects.item.",i),cast(string)p.name[0..<p.name_n],"",false);}
 
 }

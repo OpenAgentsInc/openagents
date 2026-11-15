@@ -21351,6 +21351,22 @@ CREATE TABLE projects.agreements (
 
 
 --
+-- Name: contexts_v1; Type: TABLE; Schema: projects; Owner: -
+--
+
+CREATE TABLE projects.contexts_v1 (
+    account text NOT NULL,
+    project text NOT NULL,
+    operation text NOT NULL,
+    thread text NOT NULL,
+    revision bigint NOT NULL,
+    thread_revision bigint NOT NULL,
+    snapshot text NOT NULL,
+    input_json text NOT NULL
+);
+
+
+--
 -- Name: docs; Type: TABLE; Schema: projects; Owner: -
 --
 
@@ -21425,6 +21441,23 @@ CREATE TABLE projects.invites (
 
 
 --
+-- Name: knowledge_v1; Type: TABLE; Schema: projects; Owner: -
+--
+
+CREATE TABLE projects.knowledge_v1 (
+    id text NOT NULL,
+    project text NOT NULL,
+    title text NOT NULL,
+    body text NOT NULL,
+    file_id text DEFAULT ''::text NOT NULL,
+    selected boolean NOT NULL,
+    revision bigint NOT NULL,
+    created_ms bigint NOT NULL,
+    updated_ms bigint NOT NULL
+);
+
+
+--
 -- Name: member_keys; Type: TABLE; Schema: projects; Owner: -
 --
 
@@ -21473,6 +21506,40 @@ ALTER SEQUENCE projects.messages_id_seq OWNED BY projects.messages.id;
 
 
 --
+-- Name: operations_v1; Type: TABLE; Schema: projects; Owner: -
+--
+
+CREATE TABLE projects.operations_v1 (
+    account text NOT NULL,
+    operation text NOT NULL,
+    path text NOT NULL,
+    digest text NOT NULL,
+    state text NOT NULL,
+    status integer NOT NULL,
+    reply text NOT NULL,
+    created_ms bigint NOT NULL
+);
+
+
+--
+-- Name: private_v1; Type: TABLE; Schema: projects; Owner: -
+--
+
+CREATE TABLE projects.private_v1 (
+    id text NOT NULL,
+    account text NOT NULL,
+    name text NOT NULL,
+    description text NOT NULL,
+    instructions text NOT NULL,
+    revision bigint NOT NULL,
+    instructions_revision bigint NOT NULL,
+    instructions_updated_ms bigint NOT NULL,
+    created_ms bigint NOT NULL,
+    updated_ms bigint NOT NULL
+);
+
+
+--
 -- Name: seen; Type: TABLE; Schema: projects; Owner: -
 --
 
@@ -21492,6 +21559,17 @@ CREATE TABLE projects.sessions (
     pubkey text NOT NULL,
     created_ms bigint NOT NULL,
     expires_ms bigint NOT NULL
+);
+
+
+--
+-- Name: thread_links_v1; Type: TABLE; Schema: projects; Owner: -
+--
+
+CREATE TABLE projects.thread_links_v1 (
+    account text NOT NULL,
+    thread text NOT NULL,
+    project text NOT NULL
 );
 
 
@@ -24526,6 +24604,22 @@ ALTER TABLE ONLY projects.agreements
 
 
 --
+-- Name: contexts_v1 contexts_v1_account_thread_thread_revision_key; Type: CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.contexts_v1
+    ADD CONSTRAINT contexts_v1_account_thread_thread_revision_key UNIQUE (account, thread, thread_revision);
+
+
+--
+-- Name: contexts_v1 contexts_v1_pkey; Type: CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.contexts_v1
+    ADD CONSTRAINT contexts_v1_pkey PRIMARY KEY (account, operation);
+
+
+--
 -- Name: docs docs_pkey; Type: CONSTRAINT; Schema: projects; Owner: -
 --
 
@@ -24558,6 +24652,14 @@ ALTER TABLE ONLY projects.invites
 
 
 --
+-- Name: knowledge_v1 knowledge_v1_pkey; Type: CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.knowledge_v1
+    ADD CONSTRAINT knowledge_v1_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: member_keys member_keys_pkey; Type: CONSTRAINT; Schema: projects; Owner: -
 --
 
@@ -24574,6 +24676,30 @@ ALTER TABLE ONLY projects.messages
 
 
 --
+-- Name: operations_v1 operations_v1_pkey; Type: CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.operations_v1
+    ADD CONSTRAINT operations_v1_pkey PRIMARY KEY (account, operation);
+
+
+--
+-- Name: private_v1 private_v1_account_id_key; Type: CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.private_v1
+    ADD CONSTRAINT private_v1_account_id_key UNIQUE (account, id);
+
+
+--
+-- Name: private_v1 private_v1_pkey; Type: CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.private_v1
+    ADD CONSTRAINT private_v1_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: seen seen_pkey; Type: CONSTRAINT; Schema: projects; Owner: -
 --
 
@@ -24587,6 +24713,14 @@ ALTER TABLE ONLY projects.seen
 
 ALTER TABLE ONLY projects.sessions
     ADD CONSTRAINT sessions_pkey PRIMARY KEY (token_sha256);
+
+
+--
+-- Name: thread_links_v1 thread_links_v1_pkey; Type: CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.thread_links_v1
+    ADD CONSTRAINT thread_links_v1_pkey PRIMARY KEY (account, thread);
 
 
 --
@@ -25904,6 +26038,20 @@ CREATE INDEX messages_slug ON projects.messages USING btree (slug, at_ms);
 
 
 --
+-- Name: private_project_owner_v1; Type: INDEX; Schema: projects; Owner: -
+--
+
+CREATE INDEX private_project_owner_v1 ON projects.private_v1 USING btree (account, id);
+
+
+--
+-- Name: project_knowledge_v1; Type: INDEX; Schema: projects; Owner: -
+--
+
+CREATE INDEX project_knowledge_v1 ON projects.knowledge_v1 USING btree (project, id);
+
+
+--
 -- Name: turns_slug; Type: INDEX; Schema: projects; Owner: -
 --
 
@@ -26904,6 +27052,22 @@ ALTER TABLE ONLY pay.addresses
 
 
 --
+-- Name: contexts_v1 contexts_v1_account_project_fkey; Type: FK CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.contexts_v1
+    ADD CONSTRAINT contexts_v1_account_project_fkey FOREIGN KEY (account, project) REFERENCES projects.private_v1(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: contexts_v1 contexts_v1_account_thread_fkey; Type: FK CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.contexts_v1
+    ADD CONSTRAINT contexts_v1_account_thread_fkey FOREIGN KEY (account, thread) REFERENCES chat.account_threads_v1(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
 -- Name: events events_turn_fkey; Type: FK CONSTRAINT; Schema: projects; Owner: -
 --
 
@@ -26912,11 +27076,51 @@ ALTER TABLE ONLY projects.events
 
 
 --
+-- Name: knowledge_v1 knowledge_v1_project_fkey; Type: FK CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.knowledge_v1
+    ADD CONSTRAINT knowledge_v1_project_fkey FOREIGN KEY (project) REFERENCES projects.private_v1(id) ON DELETE CASCADE;
+
+
+--
 -- Name: messages messages_reply_to_fkey; Type: FK CONSTRAINT; Schema: projects; Owner: -
 --
 
 ALTER TABLE ONLY projects.messages
     ADD CONSTRAINT messages_reply_to_fkey FOREIGN KEY (reply_to) REFERENCES projects.messages(id);
+
+
+--
+-- Name: operations_v1 operations_v1_account_fkey; Type: FK CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.operations_v1
+    ADD CONSTRAINT operations_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: private_v1 private_v1_account_fkey; Type: FK CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.private_v1
+    ADD CONSTRAINT private_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: thread_links_v1 thread_links_v1_account_project_fkey; Type: FK CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.thread_links_v1
+    ADD CONSTRAINT thread_links_v1_account_project_fkey FOREIGN KEY (account, project) REFERENCES projects.private_v1(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: thread_links_v1 thread_links_v1_account_thread_fkey; Type: FK CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.thread_links_v1
+    ADD CONSTRAINT thread_links_v1_account_thread_fkey FOREIGN KEY (account, thread) REFERENCES chat.account_threads_v1(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --

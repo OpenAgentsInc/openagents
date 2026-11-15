@@ -1,0 +1,25 @@
+// Descriptor oracle for the one owned JSON codec; deliberately outside product code.
+#load "api-wire.coax";
+#load "../proto/importer.coax";
+#load "../proto/golden-keys.coax";
+#load "../sys/tool.coax";
+#load "../sys/fs.coax";
+pr_profile :: (g:[]PkDescriptor,name:string,raw:string)->bool {b:[160]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],".openagents.project.v1alpha1.");jo_put(o[..],name);nodes:[16384]JvNode;why:=pk_text_keys(g[0].state[..],jo_text(o[..]),raw,true,false,nodes[..]);if why!="" {print("FAIL %: %\n",name,why);return false;}return true;}
+tool_main :: ()->int #export_c #effects(all) {
+ pb:[65536]u8;n:=fs_read("proto/descriptors/projects.pb",pb[..]);g:[1]PkDescriptor;if n<1 || pk_load(g[..],cast(string)pb[0..<n])!="" {return 2;}
+ p:[1]PrProject;p[0].ni=pr_copy(p[0].id[..],"prj_0123456789abcdef0123456789abcdef");p[0].no=pr_copy(p[0].owner[..],"acct_one");p[0].nn=pr_copy(p[0].name[..],"Research");p[0].nt=pr_copy(p[0].instructions[..],"Be precise.");p[0].revision=1;p[0].instructions_revision=1;
+ k:[1]PrKnowledge;k[0].ni=pr_copy(k[0].id[..],"knw_0123456789abcdef0123456789abcdef");k[0].np=pr_copy(k[0].project[..],cast(string)p[0].id[..]);k[0].no=pr_copy(k[0].owner[..],"acct_one");k[0].nn=pr_copy(k[0].title[..],"Notes");k[0].nt=pr_copy(k[0].text[..],"Known facts");k[0].revision=2;
+ out:[131072]u8;ok:=true;
+ n=pr_project_write(p[..],out[..]);ok=pr_profile(g[..],"ProjectReply",cast(string)out[0..<n]) && ok;
+ n=pr_instructions_write(p[..],out[..]);ok=pr_profile(g[..],"InstructionsReply",cast(string)out[0..<n]) && ok;
+ n=pr_knowledge_write(k[..],out[..]);ok=pr_profile(g[..],"KnowledgeReply",cast(string)out[0..<n]) && ok;
+ n=pr_knowledge_content(k[..],out[..]);ok=pr_profile(g[..],"KnowledgeContentReply",cast(string)out[0..<n]) && ok;
+ n=pr_error("not_found","not found",-1,"",out[..]);ok=pr_profile(g[..],"ErrorReply",cast(string)out[0..<n]) && ok;
+ n=pr_action("knw_0123456789abcdef0123456789abcdef",3,10,out[..]);ok=pr_profile(g[..],"ActionReply",cast(string)out[0..<n]) && ok;
+ raw:[131072]u8;rn:=pr_knowledge_object(k[..],raw[..]);records:=[1]string.[cast(string)raw[0..<rn]];n=pr_snapshot(p[..],"ctx_0123456789abcdef0123456789abcdef","m_00000000000000000001","one",records[..],10,out[..]);ok=pr_profile(g[..],"ContextReply",cast(string)out[0..<n]) && ok;
+ n=pr_records(records[..],2,"",out[..]);ok=pr_profile(g[..],"KnowledgeList",cast(string)out[0..<n]) && ok;
+ rn=pr_summary(p[..],raw[..]);records[0]=cast(string)raw[0..<rn];n=pr_records(records[..],-1,"",out[..]);ok=pr_profile(g[..],"ProjectList",cast(string)out[0..<n]) && ok;
+ // The oracle itself refuses an unregistered wire field.
+ nodes:[32]JvNode;ok=pk_text_keys(g[0].state[..],".openagents.project.v1alpha1.CreateRequest","{\"unknown\":true}",false,false,nodes[..])!="" && ok;
+ print("%\n",ifx ok then "Projects JSON keys hold to their descriptor" else "Projects descriptor check failed");return ifx ok then 0 else 1;
+}

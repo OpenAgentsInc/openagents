@@ -1,5 +1,13 @@
 # Claude migration and OpenAgents Projects API plan
 
+Implementation has begun with the owned `private-text-v1alpha1` consumer:
+[private Projects API and current bounds](../protocol/projects-api-v1alpha1.md).
+Its proto profile covers private Projects, instructions, knowledge, context and
+bindings to existing saved account chats; the native client consumes it. The
+remaining catalog below is the target plan, not a claim that every feature ships
+in that first consumer. New terminology is **Worlds**, including `counts.worlds`
+and connection kind `world`; frozen published realm contracts keep their identity.
+
 Draft, November 14, 2026. Repository baseline: `7d7d9e6f4604`.
 
 Make it easy for someone using Claude to move their work to OpenAgents: bring
@@ -38,11 +46,11 @@ organization visibility differs from internet publication.
 | Model choice | An offered model and effort, with truthful limits; no requirement to use Claude | OpenAgents choice |
 | Revisioned context | Inspect which instructions and knowledge revisions a turn used | OpenAgents addition |
 | Repositories and work | Link existing repository scope, work documents and task queues; reuse their owning services | OpenAgents addition |
-| Realms | Link a Project to its realms and existing authoring tools | OpenAgents addition |
+| Worlds | Link a Project to its worlds and existing authoring tools | OpenAgents addition |
 | Agents and environments | Attach explicitly authorized execution targets without giving every project member control of them | OpenAgents addition |
 | Import and export | Preview mappings, preserve provenance, continue imported chats, report missing files and export portable bundles | OpenAgents addition |
 
-A Project needs no repository, realm, public slug, roadmap or execution host.
+A Project needs no repository, world, public slug, roadmap or execution host.
 Create one with a name, optionally paste instructions and attach knowledge,
 then chat. One canonical Project supports both this simple workflow and our
 additional capabilities. Extensions live in our schemas and services; there
@@ -100,7 +108,7 @@ flowchart LR
   Chat --> Context
   Context --> Models[Existing gateway and Psionic]
   Chat --> Execution[Authorized runners and environments]
-  Projects --> Links[Existing repository work and realm services]
+  Projects --> Links[Existing repository work and world services]
 ```
 
 `proto/openagents/project/v1alpha1/` will define the new owned project
@@ -241,7 +249,7 @@ by Identity. Ordinary creation is private. Neither value publishes anything
 on the internet or the public relay.
 
 `ProjectCounts` has exactly `knowledge: int`, `conversations: int`,
-`repositories: int`, `work: int`, `realms: int`, `agents: int` and
+`repositories: int`, `work: int`, `worlds: int`, `agents: int` and
 `environments: int`, all nonnegative. Conversations counts only those this caller
 may read; knowledge counts attached records including processing failures;
 the remaining counts are connections of that kind, not the number of tasks,
@@ -276,7 +284,7 @@ take the documented defaults:
 ```
 
 This creates a private Project owned by the authenticated account with no
-repository, realm, execution connection or invitation side effects.
+repository, world, execution connection or invitation side effects.
 
 ### Instructions and context settings
 
@@ -493,7 +501,7 @@ snapshot IDs cannot reopen source bytes after access is removed.
 ### OpenAgents connections and preferences
 
 `Connection` has exactly `id: Id`, `project_id: Id`, `revision: Revision`,
-`kind: "repository"|"work"|"realm"|"agent"|"environment"`,
+`kind: "repository"|"work"|"world"|"agent"|"environment"`,
 `label: Text` (1–160 bytes), `target: Reference`,
 `path_prefixes: string[]` (0–16, each ≤1024 bytes),
 `state: "available"|"unavailable"`, `created_by_account_id: Id`,
@@ -505,12 +513,12 @@ snapshot IDs cannot reopen source bytes after access is removed.
 Repository paths are canonical relative prefixes, never absolute paths or
 `..`; other kinds require an empty list. Connections are references, not
 copies: repository reads reuse `coax/lib/repo/`, work reuses the current work
-item/document/queue owner, realms reuse Authoring, execution reuses Coder and
+item/document/queue owner, worlds reuse Authoring, execution reuses Coder and
 HOST/environment admission. A connection may be unavailable without deleting
 its identity. Validate a newly submitted target's visibility and its kind's
 registered contract. Only enable that kind when its owning consumer exists.
 A member can never expand a filesystem or tool grant by editing this record.
-Tasks and realm documents keep their own schemas rather than a second CRUD
+Tasks and world documents keep their own schemas rather than a second CRUD
 implementation inside Projects. Budget controls remain in the existing money
 and execution services; a future project budget needs a separate checked
 contract, not an unimplemented free-form field.
@@ -579,7 +587,7 @@ last column names another owner. No GET changes state.
 
 Polling the typed Turn is the first delivery transport; later event streaming
 reuses Chat's registered stream instead of inventing a project-only SSE log.
-Model discovery, original file upload/download, work/task edits, realm edits,
+Model discovery, original file upload/download, work/task edits, world edits,
 agent configuration and execution interactions use their owning service APIs.
 They are dependencies, not undefined objects accepted by this Projects API.
 
@@ -732,10 +740,10 @@ member-only work or private execution connections.
 | Phase | Deliverable | Completion evidence |
 | --- | --- | --- |
 | 0 | Owned schemas from the field catalog, proto registry/profiles, bounds, source fixtures and legacy mapping rules | Every request/response field has a codec owner, fixture and consumer; no frozen identity is widened |
-| 1 | Simple private Projects, instructions, knowledge, personal conversations, context snapshots and web/native screens | Create a Project with no repo/realm, paste instructions, attach two sources, start independent chats using that context, inspect the admitted sources |
+| 1 | Simple private Projects, instructions, knowledge, personal conversations, context snapshots and web/native screens | Create a Project with no repo/world, paste instructions, attach two sources, start independent chats using that context, inspect the admitted sources |
 | 2 | Claude import preview, reviewed apply, missing-file repair, personal chat continuation and portable export | A real supported export plus manual instructions/files migrates with explicit losses, no duplicate imports and no enterprise credentials; exported files/hash round-trip |
 | 3 | Sharing, roles, invitations, preferences and explicit conversation moves | Owner/editor/viewer, revocation, private transcripts and Workspace sharing pass; moving a chat changes future context without exposing it |
-| 4 | Existing repository/work/realm/agent/environment connections | A supported connection invokes its owning service within existing grants; an ordinary member cannot gain repository writes or computer control |
+| 4 | Existing repository/work/world/agent/environment connections | A supported connection invokes its owning service within existing grants; an ordinary member cannot gain repository writes or computer control |
 | 5 | Retrieval and selected integration adapters, driven by customer migrations | Retrieval quality/isolation evidence; any SDK adapter passes the named customer's actual flow with a documented supported subset |
 
 Reserve schema fields for the defined phases, but do not accept an action or

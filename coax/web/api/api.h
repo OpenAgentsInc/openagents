@@ -58,6 +58,7 @@ bool admin_is_root(const char *pubkey);   // a pubkey in OA_ADMIN_PUBKEYS (admin
 void admin_roots(char *out, size_t cap);  // the roots as a Postgres text array literal
 int admin_who(const request *q, PGconn *db, char who[65]);   // 0 an admin (cookie or NIP-98), else 401/403
 bool chat_route(const request *q);        // chat.c
+bool projects_route(const request *q);
 bool account_chat_route(const request *q); // account-owned mobile chat
 bool environment_route(const request *q); // account-owned computer connections
 bool chat_history_route(const request *q); // read-only account history
@@ -238,3 +239,6 @@ bool lnaddr_settled(const char *verify_url, const char *payment_hash, char preim
 bool chat_history_rows(const request *q, PGresult *rows);
 
 bool project_subject(const request *q,PGconn *db,char out[65]);
+
+// Buffered calls share inference admission/metering and persist before reply.
+bool inference_ask_saved(const request *q,const char *pubkey,bool free_key,bool (*save)(void *,int,const char *,size_t),void *context);

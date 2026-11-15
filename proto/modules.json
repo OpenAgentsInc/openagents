@@ -239,6 +239,9 @@
     ],
     "account-identity": [
       "openagents/account/identity/v1/identity.proto"
+    ],
+    "projects": [
+      "openagents/project/v1alpha1/project.proto"
     ]
   },
   "profile_namespaces": {
@@ -419,6 +422,10 @@
     ],
     "account-identity": [
       "openagents.account.identity.v1"
+    ],
+    "projects": [
+      "openagents.project.",
+      "openagents.options."
     ]
   }
 }

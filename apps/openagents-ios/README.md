@@ -50,6 +50,15 @@ compatible presentation changes can use Updates. The
 [runtime contract](../../docs/protocol/environment-runtime-v1alpha1.md) records
 the implemented scope and current bounds.
 
+## Private Projects
+
+The Projects drawer now creates account-owned private Projects, edits instructions,
+adds and reads text/Markdown knowledge, and starts or reopens saved personal
+Project chats using the shared account composer. **Publish a public project**
+retains the existing drop/draft flow. [The API contract](../../docs/protocol/projects-api-v1alpha1.md)
+records the first consumer, bounds and remaining phases. No new installed native
+effect is needed.
+
 ## Native Projects, build 1085
 
 The drawer’s **Projects** opens native UIKit screens composed in Coax. Create a

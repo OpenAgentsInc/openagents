@@ -1,7 +1,11 @@
 // State shared by project surfaces. HTTP/file effects remain installed services.
 #load "../../coax/lib/project/wire.coax";
+#load "../../coax/lib/project/api-wire.coax";
 #load "../../coax/lib/project/draft.coax";
 ProjectApp :: struct {
+ canonical:bool;api:[1]PrProject;knowledge:[1]PrKnowledgeIndex;api_page:int;api_loaded:bool;
+ api_name:[160]u8;api_nn:int;api_text:[20000]u8;api_nt:int;api_title:[256]u8;api_nl:int;api_content:[65536]u8;api_nc:int;resume_chat:[24]u8;resume_n:int;
+ pending_path:[256]u8;pending_np:int;pending_value:[65536]u8;pending_nv:int;pending_revision:int;pending_purpose:int;pending_operation:[80]u8;pending_no:int;
  slug:[64]u8;ns:int;title:[256]u8;nt:int;key:[64]u8;nk:int;private_project:bool;
  data:[262144]u8;nd:int;starts:[2048]int;ends:[2048]int;rows:int;
  talk:[131072]u8;nc:int;ts:[512]int;te:[512]int;turns:int;tools:[512]bool;agent:bool;busy:bool;wait:int;
