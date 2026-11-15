@@ -352,13 +352,21 @@ Pollen's public runtime/training route. Their model, observation, actuator
 and license profiles must not be conflated.
 
 New [chapter 256](../book/ch256-build-and-teach-a-small-robot.md), **design
-draft**, composes task brief → agent-assisted editable assets → robot and
+draft**, introduces task brief → agent-assisted editable assets → robot and
 actuator admission → articulated/contact simulation → batched neural training
 → perception-guided tasks → evaluation/export → authorized physical transfer
 → coordinated robots and continued improvement. The
 [book plan](../book/PLAN.md#xxvi-build-and-teach-a-small-robot) maps stages to
 existing chapter owners and gates. This is an additional selected capstone,
 not a new completion claim for the present robotics profiles.
+
+Detailed design drafts 257–265 now work through experiment admission, actuator
+response, collection/normalization, neural PPO, skills, perception, export,
+physical commissioning and the final course/flock. The
+[coding-agent roadmap](robotics/microduck-implementation-roadmap.md) specifies
+RB-00…RB-13, proposed files, shared owners, independent checks, fixed capacity
+budgets and the first runnable CPU experiment. Start RB-01 now; engine
+articulation/contact and later hardware gates do not block that work.
 
 Deliver reference contracts and independently checked imported execution
 first, then fresh policies trained by our neural actor/critic/collector,

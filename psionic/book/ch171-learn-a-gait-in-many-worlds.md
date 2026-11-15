@@ -286,6 +286,9 @@ The owner selected the complete Microduck-style development pipeline on
 2026-11-15. [Chapter 256](ch256-build-and-teach-a-small-robot.md) is its
 end-to-end capstone; the [specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md)
 identifies the Berlin demonstration and the separate upstream references.
+The [worked draft sequence, 257–265](PLAN.md#xxvi-build-and-teach-a-small-robot)
+and [implementation roadmap](../docs/robotics/microduck-implementation-roadmap.md)
+now split the selected work into concrete component gates.
 This chapter supplies the shared collector and neural actor/critic learner
 for that first small-biped consumer as well as the planned quadruped.
 

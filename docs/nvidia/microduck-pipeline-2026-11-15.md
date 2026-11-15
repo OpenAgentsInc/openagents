@@ -219,11 +219,16 @@ D1 can use independent SDK references while engine components are built;
 D3 requires the owned backend. Pretrained execution, owned learning, physical
 transfer and a saleable hardware release remain separately reported outcomes.
 
+[The coding-agent roadmap](../../psionic/docs/robotics/microduck-implementation-roadmap.md)
+now breaks implementation into RB-00…RB-13 with source owners and checks.
+Draft chapters 257–265 provide worked calculations and component contracts;
+chapter 265 owns the final complete-route acceptance.
+
 [Psionic chapter 171](../../psionic/book/ch171-learn-a-gait-in-many-worlds.md)
 owns the reusable learner, actor/critic, collector and locomotion components.
 Its scalar-LQR evidence retains its original scope; quadruped acceptance also
 remains separate. New [chapter 256](../../psionic/book/ch256-build-and-teach-a-small-robot.md)
-owns the cumulative capstone and its complete route. The
+introduces the cumulative capstone and links its detailed chapters. The
 [book plan](../../psionic/book/PLAN.md#xxvi-build-and-teach-a-small-robot) and
 [delivery roadmap](../../psionic/docs/roadmap.md#microduck-capstone-selected-end-to-end-robotics-goal)
 map stages to existing chapters, engine work and Coax requirements.

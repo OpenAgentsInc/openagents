@@ -906,7 +906,22 @@ their evidence from the capabilities we must deliver.
 
 | Chapter | What it builds and verifies |
 | --- | --- |
-| [256. Build and teach a small robot](ch256-build-and-teach-a-small-robot.md) — design draft | Agent-assisted course/assets and admitted small biped → articulated/contact simulation → batched neural actor/critic learning → perception-guided movement and new skills → independent local evaluation → native/ONNX package → separately authorized physical transfer → several robots with explicit cue/authority records, plus commercially usable modular hardware. Imported policy playback alone does not complete the capstone. |
+| [256. Build and teach a small robot](ch256-build-and-teach-a-small-robot.md) — design draft | Overview, experiment ledger and counters for the full asset-to-training-to-hardware route; later chapters own the component and final-route gates. |
+| [257. A robot description becomes an experiment](ch257-a-robot-description-becomes-an-experiment.md) — design draft | Decoded bounded embodiment/task admission, explicit observation/action meaning, identity and atomic refusal; two-joint hand mapping before a generic importer. |
+| [258. A servo that behaves like the motor](ch258-a-servo-that-behaves-like-the-motor.md) — design draft | Requested/delivered force, delay state, identified actuator terms and checkpoints; independent torque/inertia and queue traces before hardware. |
+| [259. Rollouts from independent worlds](ch259-rollouts-from-independent-worlds.md) — design draft | Final-before-reset observations, frozen normalization, detached old-policy data, bounded collection, independent counters and complete mid-rollout restore. |
+| [260. Train a neural walking policy](ch260-train-a-neural-walking-policy.md) — design draft | Vector Gaussian scores and one joint PPO ratio, shared actor/critic backward/trainer, fresh analytic-plant learning followed by actual biped/contact integration; no copied scalar optimizer. |
+| [261. Teach skills and switch between them](ch261-teach-skills-and-switch-between-them.md) — design draft | New skill learning, contact-aware entry/exit conditions, explicit cue/authority state and transition qualification distinct from within-skill success. |
+| [262. Walk by what the robot sees](ch262-walk-by-what-the-robot-sees.md) — design draft | Calibrated depth geometry, perception/planner/walking boundaries, onboard-only student inputs and held-out obstacle-course evaluation. |
+| [263. Export a policy and supervise its steps](ch263-export-a-policy-and-supervise-its-steps.md) — design draft | Model/normalizer/action package, shared native/ONNX comparisons, target admission and fake-device asynchronous supervision before motors. |
+| [264. Run the policy on a real robot](ch264-run-the-policy-on-a-real-robot.md) — design draft | Separately authorized commissioning, actual timing/fault/stop measurements, calibration and repeatability under a named physical profile. |
+| [265. A course, a flock and a repeatable result](ch265-a-course-a-flock-and-a-repeatable-result.md) — design draft | Final complete owned route, independent versus shared four-robot scenes, explicit cue origins, qualified physical showcase and reproducible manufacturing/software release. |
+
+The [coding-agent implementation roadmap](../docs/robotics/microduck-implementation-roadmap.md)
+turns these drafts into RB-00…RB-13 work packages with specific source owners,
+proposed files, independent checks, capacity budgets and completion records.
+The first task is RB-01 contract admission; a general simulator, CUDA training,
+new hardware or large model is not required to start it.
 
 This is a cumulative route through existing owners, not a new ML framework
 or robot simulator. The first selected legged consumer is a small biped;

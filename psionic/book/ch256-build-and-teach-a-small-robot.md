@@ -20,6 +20,40 @@ the controller, evaluates and exports it. A local supervisor runs the qualified
 package on the physical robot. Finally, several robots execute a recorded
 sequence of cues and perception-based tasks, with operator intervention visible.
 
+## The chapters we will build
+
+This chapter is the overview and experiment ledger. The worked draft sequence
+is [257: contract](ch257-a-robot-description-becomes-an-experiment.md),
+[258: servo](ch258-a-servo-that-behaves-like-the-motor.md),
+[259: collector](ch259-rollouts-from-independent-worlds.md),
+[260: neural learner](ch260-train-a-neural-walking-policy.md),
+[261: skills](ch261-teach-skills-and-switch-between-them.md),
+[262: perception](ch262-walk-by-what-the-robot-sees.md),
+[263: package/runtime](ch263-export-a-policy-and-supervise-its-steps.md),
+[264: physical commissioning](ch264-run-the-policy-on-a-real-robot.md), and
+[265: the final route](ch265-a-course-a-flock-and-a-repeatable-result.md).
+Each remains a design draft until its own checks and runnable evidence exist.
+
+The [coding-agent roadmap](../docs/robotics/microduck-implementation-roadmap.md)
+defines source owners, concrete work packages, dependencies and what an agent
+can implement now. Start with the decoded contract, actuator/collector math
+and new neural learning on an existing analytic plant. Connect that same
+learner to the owned biped when engine articulation/contact is qualified.
+
+## Count work before claiming progress
+
+Four environments collected for eight action steps produce 32 transition
+rows. Four PPO epochs over minibatches of eight produce 4 × (32/8) = 16
+optimizer transactions for one rollout/update cycle. A budget of 256 such
+cycles therefore means 8,192 collected rows and 4,096 optimizer transactions,
+not 256 of both. Physics substeps are another counter.
+
+Keep those counters, scene/actor/normalizer identities and consumed compute
+in the experiment ledger. The final route reports which gates were actually
+run; an imported demonstration or an optimizer counter alone cannot show
+new learned physical behavior. These numbers specify proposed work rather
+than observed execution.
+
 ## What already exists
 
 Chapter 171 supplies checked return targets, PPO/Gaussian primitives and a
@@ -102,10 +136,17 @@ merely because its software is open source.
 
 Promotion to an implemented teaching chapter still needs a worked trace,
 runnable source/example, a deliberately refused case and an independent
-check, plus the complete capstone gates. Record simulation, physical and
-manufacturing milestones separately as they land.
+check for its stated profile. The final complete-route gates belong to
+chapter 265. Record simulation, physical and manufacturing milestones
+separately as they land; an implemented overview cannot promote them.
 
 ## Dependencies and ownership
+
+The overview's minimum reading is chapter 17's qualification discipline,
+171's learning boundary, 239/241's suite/verdict rules and Coder's typed tools.
+The component chapters below introduce their own prerequisites. The full-route
+dependencies that follow are integration gates, not reasons to delay the
+decoded contract or analytic-plant learner.
 
 Psionic: graph/device/training chapters 37–40, 103–107, 117–124 and 129;
 vision/observations 142 and 165; control and locomotion 167–171; model

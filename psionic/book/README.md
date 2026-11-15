@@ -372,13 +372,24 @@ run examples directly without the check command.
 | [253. Read and repair a model's weights](ch253-read-and-repair-a-models-weights.md) | Runnable: weight-edit-f64-v1, bounded CPU and recorded local proposer trials | Immutable named-tensor patches with SHA-256 base binding, expected old values, exact reversal and zero-survivor authority checks; 180 decoder metric rows, five-seed controls, fine-tuning and 32 actual local GPT-OSS trials, including harmful edits and failed proposals. |
 | [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md) | Runnable: construct-relu4-f64-v1 (bounded CPU) | Direct ReLU4 construction and postfix-to-gated-weight compilation: 19 saved calls, 16 admitted artifacts, exact held-out arithmetic and distance-informed shortest walks from 25 starts. Three-seed AdamW and frozen/online Q baselines, failed admissions, a development-perfect boundary failure, timing/cost ledgers and offline replay; native references match and execute more cheaply. |
 | [255. Edit an original language model](ch255-edit-an-original-language-model.md) | Runnable: original-window-v1, bounded CPU and recorded original GPT-OSS-20B Metal trials | Immutable BF16/F32 windows, original GPT-OSS-20B readout edits against sampling/prompt/random/channel-fit controls, exact restoration, retained tasks and failed/unverifiable quality results; Metaverse villain-dialogue comparisons and a grounded character-writing prototype. |
-| [256. Build and teach a small robot](ch256-build-and-teach-a-small-robot.md) | Unimplemented: design draft | The complete Microduck-inspired route: agent-assisted assets, admitted robot/actuators, owned simulation and neural learning, perception, evaluation/export, authorized physical transfer and several robots with explicit cue/authority records. |
+| [256. Build and teach a small robot](ch256-build-and-teach-a-small-robot.md) | Unimplemented: design draft | Overview and experiment ledger for the complete Microduck-inspired route; chapters 257–265 supply the component calculations and final acceptance. |
+| [257. A robot description becomes an experiment](ch257-a-robot-description-becomes-an-experiment.md) | Unimplemented: design draft | Bounded experiment/embodiment admission, explicit action semantics and two-joint identity/refusal calculations. |
+| [258. A servo that behaves like the motor](ch258-a-servo-that-behaves-like-the-motor.md) | Unimplemented: design draft | Requested/limited force, delay/backlash state, actuator provenance and independent numerical response. |
+| [259. Rollouts from independent worlds](ch259-rollouts-from-independent-worlds.md) | Unimplemented: design draft | Final-before-reset data, frozen normalization, isolated collection/counters and complete checkpoints. |
+| [260. Train a neural walking policy](ch260-train-a-neural-walking-policy.md) | Unimplemented: design draft | Shared neural actor/critic training with vector Gaussian/PPO derivatives, bounded CPU learning and later biped integration. |
+| [261. Teach skills and switch between them](ch261-teach-skills-and-switch-between-them.md) | Unimplemented: design draft | Trained physical skills, qualified handoffs and explicit cue/authority decisions. |
+| [262. Walk by what the robot sees](ch262-walk-by-what-the-robot-sees.md) | Unimplemented: design draft | Calibrated observations, geometric/learned perception, onboard-only student inputs and course evaluation. |
+| [263. Export a policy and supervise its steps](ch263-export-a-policy-and-supervise-its-steps.md) | Unimplemented: design draft | Native/ONNX policy package, normalization identity and local fake-device supervision. |
+| [264. Run the policy on a real robot](ch264-run-the-policy-on-a-real-robot.md) | Unimplemented: design draft | Authorized commissioning, measured timing/fault/stop behavior and physical repeatability. |
+| [265. A course, a flock and a repeatable result](ch265-a-course-a-flock-and-a-repeatable-result.md) | Unimplemented: design draft | The final owned pipeline with explicit evaluation, four-robot coordination and reproducible release evidence. |
 
 The selected robotics capstone is [chapter 256](ch256-build-and-teach-a-small-robot.md),
 following the [GTC Berlin pipeline specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md).
-It is a design draft with no qualified target or product adoption. Chapter 171
-owns its reusable locomotion learner; the existing scalar profiles retain
-their narrower evidence.
+The overview and detailed [chapters 257–265](PLAN.md#xxvi-build-and-teach-a-small-robot)
+are design drafts with no qualified targets or product adoption. The
+[implementation roadmap](../docs/robotics/microduck-implementation-roadmap.md)
+names the next coding tasks. Chapter 171 owns the reusable locomotion learner;
+the existing scalar profiles retain their narrower evidence.
 
 The learning route starts with chapters 103–104, then the tensor/function
 transforms in 106–107, the tiny decoder in 112–118 and nanochat in 123–139.

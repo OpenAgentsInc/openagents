@@ -172,13 +172,13 @@
     {
       "id": "psionic.execution.current",
       "document": "psionic/docs/roadmap.md",
-      "scope": "Retained named model/device profiles and bounded CPU IR/tiny-decoder CUDA training profiles; Mammoth Metal, original120b GPU, complete V4.1 and general efficient GPU training remain unqualified. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md. Reviewed 2026-11-15: SUMMARY adds design-draft capstone 256 and limits its runnable-code statement to earlier chapters; existing profiles, examples and numerical evidence are unchanged.",
+      "scope": "Retained named model/device profiles and bounded CPU IR/tiny-decoder CUDA training profiles; Mammoth Metal, original120b GPU, complete V4.1 and general efficient GPU training remain unqualified. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md. Reviewed 2026-11-15: SUMMARY adds design-draft capstone 256 and limits its runnable-code statement to earlier chapters; existing profiles, examples and numerical evidence are unchanged. Follow-up review: draft chapters 257-265 and explicit draft-range wording add no runnable source, target or numerical evidence.",
       "text_sha256": "e2325a7eef60c64370d2713306864b371278916b6fd299c58823996b42b37edb",
       "features": [],
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "aec000bc98574d0f6c8f0d8b0642c4fa2e058c42aca054ffc50624b89789ea43"
+          "sha256": "d4a6d7ab65a6cea6f1e575ad58d7bb19be27d4914215e4aa9b123ca73c7ed670"
         },
         {
           "path": "psionic/book/examples.json",
@@ -257,13 +257,13 @@
     {
       "id": "psionic.gpu.current",
       "document": "psionic/book/PLAN.md",
-      "scope": "Recorded original20b CUDA/Metal and bounded resident CUDA serving profiles; broader model/device/serving work remains open. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md. Reviewed 2026-11-15: SUMMARY adds design-draft capstone 256 with no source, qualified target or adoption; no GPU or serving qualification is broadened.",
+      "scope": "Recorded original20b CUDA/Metal and bounded resident CUDA serving profiles; broader model/device/serving work remains open. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md. Reviewed 2026-11-15: SUMMARY adds design-draft capstone 256 with no source, qualified target or adoption; no GPU or serving qualification is broadened. Follow-up review: detailed chapters 257-265 remain design drafts with empty source/target/adoption inventories; existing GPU and serving profiles are unchanged.",
       "text_sha256": "d2572a5bbc768f22a40c2c28c93c7900d5fc3cb6b2fbc64043c62880f306c185",
       "features": [],
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "aec000bc98574d0f6c8f0d8b0642c4fa2e058c42aca054ffc50624b89789ea43"
+          "sha256": "d4a6d7ab65a6cea6f1e575ad58d7bb19be27d4914215e4aa9b123ca73c7ed670"
         },
         {
           "path": "psionic/book/examples.json",

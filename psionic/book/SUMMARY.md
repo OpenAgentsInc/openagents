@@ -319,6 +319,15 @@
 **XXVI. Build and teach a small robot**
 
 - [256. Build and teach a small robot](ch256-build-and-teach-a-small-robot.md) — design draft
+- [257. A robot description becomes an experiment](ch257-a-robot-description-becomes-an-experiment.md) — design draft
+- [258. A servo that behaves like the motor](ch258-a-servo-that-behaves-like-the-motor.md) — design draft
+- [259. Rollouts from independent worlds](ch259-rollouts-from-independent-worlds.md) — design draft
+- [260. Train a neural walking policy](ch260-train-a-neural-walking-policy.md) — design draft
+- [261. Teach skills and switch between them](ch261-teach-skills-and-switch-between-them.md) — design draft
+- [262. Walk by what the robot sees](ch262-walk-by-what-the-robot-sees.md) — design draft
+- [263. Export a policy and supervise its steps](ch263-export-a-policy-and-supervise-its-steps.md) — design draft
+- [264. Run the policy on a real robot](ch264-run-the-policy-on-a-real-robot.md) — design draft
+- [265. A course, a flock and a repeatable result](ch265-a-course-a-flock-and-a-repeatable-result.md) — design draft
 
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
 Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
@@ -326,6 +335,7 @@ pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
 Chapters 1–53, 55–82, 83, 84, 85, 86, 87, 88–102, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–197, 198, 199, 215–250, 253–255 have runnable code; the [introduction](README.md)
-table gives each one's exact status. Every
-chapter before the new design-draft capstone 256 has runnable code, in full or in part. The physics engine and spacecraft chapters
+table gives each one's exact status. The new small-robot chapters 256–265 are
+design drafts. Earlier chapter status rows retain their runnable scopes.
+The physics engine and spacecraft chapters
 are in the [Metaverse Engine book](../../metaverse-engine/book/README.md).
