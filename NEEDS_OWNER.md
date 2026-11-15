@@ -1,5 +1,12 @@
 # Owner actions
 
+## Reference gallery, build 1110 (2026-11-15)
+
+- [ ] Install TestFlight **1110** (verified in **Owner**), open **Settings →
+      Components → Gallery options → Reference**, and inspect the slider,
+      selectable rows, card and context buttons on the phone. Physical-device
+      appearance and accessibility have not been verified.
+
 ## Liquid Glass, build 1096 (2026-11-15)
 
 - [ ] Install OpenAgents TestFlight **1096** (verified in **Owner**) on iOS 26
