@@ -286,7 +286,7 @@ env_frame_day_halo :: (day: f32, u: [] f32, at: int) #effects(all) {
   g := env_dir_unit(EnvDir.{x = ENV_GLADE_SUN_X, y = ENV_GLADE_SUN_Y, z = ENV_GLADE_SUN_Z});
   h := EnvDir.{x = w[ENV_GPU_DIR] + ENV_FRAME_HALO[0] - g.x, y = w[ENV_GPU_DIR + 1] + ENV_FRAME_HALO[1] - g.y, z = w[ENV_GPU_DIR + 2] + ENV_FRAME_HALO[2] - g.z};
   n := sqrt(env_dot(h, h));
-  if !(n > 0.0001) { env_frame_sky_halo(u, at); return; }
+  if !(n > 0.0001) { env_frame_sky_halo(u, at); return; }  // mutant: equivalent (n stays above 0.05 for every hour of the day, checked in "a stage's day halo"; the fallback is never taken)
   u[at] = h.x / n; u[at + 1] = h.y / n; u[at + 2] = h.z / n;
 }
 #test "a stage's day: noon is the glade's words, the sun sinks toward dusk, and the halo follows it" {
@@ -299,4 +299,32 @@ env_frame_day_halo :: (day: f32, u: [] f32, at: int) #effects(all) {
   env_frame_day_halo(0.72, u[..], 6);   // no room: nothing written
   #assert u[6] == 0;
   #assert env_frame_glade_day_words(0.0 / 0.0)[ENV_GPU_DIR] == noon[ENV_GPU_DIR];
+}
+#test "a stage's day halo: the glade's at noon, the sun's offset at other hours, whole or not at all" {
+  noon := env_frame_glade_day_words(0.5);
+  inf := 1.0f32 / 0.0f32;
+  nan := 0.0f32 / 0.0f32;
+  inf_words := env_frame_glade_day_words(inf); nan_words := env_frame_glade_day_words(nan);
+  for i: 0..<ENV_GPU_FLOATS { #assert inf_words[i] == noon[i] && nan_words[i] == noon[i]; }
+  hn := sqrt(ENV_FRAME_HALO[0] * ENV_FRAME_HALO[0] + ENV_FRAME_HALO[1] * ENV_FRAME_HALO[1] + ENV_FRAME_HALO[2] * ENV_FRAME_HALO[2]);
+  u: [3] f32; env_frame_day_halo(0.5, u[..], 0);
+  #assert abs(u[0] - ENV_FRAME_HALO[0] / hn) < 0.0001 && abs(u[1] - ENV_FRAME_HALO[1] / hn) < 0.0001 && abs(u[2] - ENV_FRAME_HALO[2] / hn) < 0.0001;
+  g := env_dir_unit(EnvDir.{x = ENV_GLADE_SUN_X, y = ENV_GLADE_SUN_Y, z = ENV_GLADE_SUN_Z});
+  // every hour of the day: the halo is the unit vector of the sun's words plus the halo minus the glade's sun
+  for k: 0..<101 {
+    d := cast(f32) k / 100.0f32;
+    w := env_frame_glade_day_words(d);
+    hx := w[ENV_GPU_DIR] + ENV_FRAME_HALO[0] - g.x; hy := w[ENV_GPU_DIR + 1] + ENV_FRAME_HALO[1] - g.y; hz := w[ENV_GPU_DIR + 2] + ENV_FRAME_HALO[2] - g.z;
+    n := sqrt(hx * hx + hy * hy + hz * hz);
+    #assert n > 0.05;   // the halo's direction never collapses, so the sky-halo fallback is never taken
+    v: [3] f32; env_frame_day_halo(d, v[..], 0);
+    #assert abs(v[0] - hx / n) < 0.0001 && abs(v[1] - hy / n) < 0.0001 && abs(v[2] - hz / n) < 0.0001;
+  }
+  // room: the last three floats are written, one short of them nothing is, and neither is a negative start
+  none: [3] f32; env_frame_day_halo(0.72, none[..], 1); env_frame_day_halo(0.72, none[..], -1); env_frame_day_halo(0.72, none[..], 3);
+  #assert none[0] == 0 && none[1] == 0 && none[2] == 0;
+  short: [2] f32; env_frame_day_halo(0.72, short[..], 0);
+  #assert short[0] == 0 && short[1] == 0;
+  tail: [4] f32; env_frame_day_halo(0.72, tail[..], 1);
+  #assert tail[0] == 0 && abs(tail[1] * tail[1] + tail[2] * tail[2] + tail[3] * tail[3] - 1) < 0.0001;
 }
