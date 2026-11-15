@@ -15,7 +15,7 @@ XtRun :: struct {
  auth:[1]PaProbe;auth_account:[1]PaAccount;auth_done:bool;auth_ok:bool;deadline:int;
 }
 EsSlot :: struct {
-  occupied:bool;summary:EaSession;grant:[64]u8;device:[64]u8;engine:[1]Engine;s:[1]Session;
+  occupied:bool;probing:bool;offer_index:int;summary:EaSession;grant:[64]u8;device:[64]u8;engine:[1]Engine;s:[1]Session;
   mode:int;codex:[1]CxEngine;codex_mem:[CX_MEM]u8;execution:[1]XtRun;
   provider:[32]u8;nprovider:int;options:[1]ClOptions;pool:[524288]u8;line:[1048576]u8;arena:[1048576]u8;
   out:[2*EX_INPUT_MAX+8192]u8;scratch:[2*EX_INPUT_MAX+8192]u8;prompt:[EX_INPUT_MAX+1024]u8;last_saved:int;failed:bool;started:bool;
@@ -109,7 +109,7 @@ es_save :: (slot:[]EsSlot,host:string,label:string)->bool #effects(all) {
 }
 es_tick :: (h:[]HsHost) #effects(all) {
   e:=h[0].environment[..];
-  for i:0..<ES_SLOTS {slot:=e[0].slots[i..<i+1];if !slot[0].occupied || slot[0].failed || slot[0].execution[0].active {continue;}
+  for i:0..<ES_SLOTS {slot:=e[0].slots[i..<i+1];if !slot[0].occupied || slot[0].probing || slot[0].failed || slot[0].execution[0].active {continue;}
     s:=slot[0].s[..];before:=s[0].live;asking:=s[0].asking;
     slot[0].started=slot[0].started || slot[0].engine[0].running;ag_poll(es_agent(slot),0.016,true);
     if s[0].exhausted {slot[0].failed=true;ag_stop(es_agent(slot));}
@@ -201,7 +201,7 @@ es_rpc_exchange :: (args:[]Args,method:string,raw:string,response:[]u8)->EsRpcRe
 es_snapshot :: (h:[]HsHost,q:[]EaRequest,grant:string,v:[]EaView) #effects(all) {
   e:=h[0].environment[..];v[0]=EaView.{};v[0].nh=ea_copy(v[0].host[..],cast(string)h[0].xhex[..]);es_offer(v);
   c:=e[0].configuration[..];v[0].nl=ea_copy(v[0].label[..],cast(string)c[0].label[0..<c[0].nl]);v[0].nm=ea_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);v[0].complete=true;
-  for i:0..<ES_SLOTS {g:=e[0].slots[i].grant;if e[0].slots[i].occupied && !e[0].slots[i].execution[0].active && cast(string)g[..]==grant {v[0].sessions[v[0].ns]=e[0].slots[i].summary;v[0].ns+=1;}}
+  for i:0..<ES_SLOTS {g:=e[0].slots[i].grant;if e[0].slots[i].occupied && !e[0].slots[i].probing && !e[0].slots[i].execution[0].active && cast(string)g[..]==grant {v[0].sessions[v[0].ns]=e[0].slots[i].summary;v[0].ns+=1;}}
   id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);if k<0 || e[0].slots[k].execution[0].active {return;}
   slot:=e[0].slots[k..<k+1];es_project(slot[0].s[..],q,v);
   if slot[0].failed {for i:0..<v[0].ns {if cast(string)v[0].sessions[i].id[0..<v[0].sessions[i].ni]==id {v[0].sessions[i].nc=ea_copy(v[0].sessions[i].control[..],"unknown");}}es_refuse(v,"record_limit");}
@@ -357,7 +357,7 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
     if k>=0 || !ea_text(cast(string)q[0].text[0..<q[0].nt]) {es_refuse(v,"conflict");return;}
     for i:0..<ES_SLOTS {if !e[0].slots[i].occupied {k=i;break;}}
     if k<0 {es_refuse(v,"capacity");return;}
-    slot:=e[0].slots[k..<k+1];slot[0].occupied=true;ncopy:=ea_copy(slot[0].grant[..],grant);ncopy=ea_copy(slot[0].device[..],device);
+    slot:=e[0].slots[k..<k+1];xt_reset(slot);slot[0].occupied=true;ncopy:=ea_copy(slot[0].grant[..],grant);ncopy=ea_copy(slot[0].device[..],device);
     s:=slot[0].s[..];s_init(s,slot[0].pool[..]);engine:=slot[0].engine[..];e_attach(engine,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].scratch[..],slot[0].prompt[..]);
     c:=e[0].configuration[..];engine[0].cwd_n=ea_copy(engine[0].cwd[..],cast(string)c[0].workspace[0..<c[0].nw]);
     home:[1024]u8;exe:[1200]u8;p:=fs_join(proc_getenv("HOME",home[..]),".local/bin/claude",exe[..]);if fs_kind(p)==FS_FILE {engine[0].claude_n=ea_copy(engine[0].claude[..],p);}

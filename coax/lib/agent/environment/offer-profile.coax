@@ -1,0 +1,19 @@
+// Independent descriptor and byte fixtures for actual SDK observations.
+#load "offer-wire.coax";
+#load "../../proto/importer.coax";
+#load "../../proto/golden-keys.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ pb:[65536]u8;n:=fs_read("proto/descriptors/environment-execution.pb",pb[..]);g:[1]PkDescriptor;if n<1 || pk_load(g[..],cast(string)pb[0..<n])!="" {return 2;}
+ fixture:[32768]u8;fn:=fs_read("proto/coder/environment-offer-v1alpha1.json",fixture[..]);d:[1]Jv;nodes:[2048]JvNode;if fn<1 || !jv_parse(d[..],cast(string)fixture[0..<fn],nodes[..]) {return 2;}
+ for name,i:[6]string.["request","warming","ready","failed","codex_request","codex_ready"] {
+  raw:[XO_MAX]u8;o:[1]Jo;jo_start(o[..],raw[..]);jv_write(d[0],jv_get(d[0],0,name),o[..]);text:=jo_text(o[..]);fields:[1024]JvNode;request:=i==0 || i==4;message:=ifx request then ".openagents.environment.execution.v1alpha1.OfferRequest" else ".openagents.environment.execution.v1alpha1.EngineOffer";
+  why:=pk_text_keys(g[0].state[..],message,text,true,false,fields[..]);if why!="" {print("FAIL offer descriptor %: %\n",name,why);return 1;}
+  encoded:[XO_MAX]u8;arena:[XO_ARENA]u8;made:= -1;
+  if request {q:[1]XoRequest;if !xo_request_read(text,q[..],arena[..]) {return 1;}made=xo_request_write(q[0],encoded[..]);}
+  else {v:[1]XoOffer;if !xo_read(text,v[..],arena[..]) {return 1;}made=xo_write(v[0],encoded[..]);}
+  if made!=text.count || cast(string)encoded[0..<ifx made>0 then made else 0]!=text {print("FAIL offer exact bytes: %\n",name);return 1;}
+ }
+ print("Native offer requests, warming, ready and failed observations match owned descriptors and six exact byte fixtures\n");return 0;
+}

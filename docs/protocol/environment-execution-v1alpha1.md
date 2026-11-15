@@ -9,7 +9,9 @@ current HOST environment grant. `StartTask`, `ReadTask`, `StopTask` and
 An account API bridge and OpenAgents CLI expose observation, permission replies
 and Stop using these same records. [Task transcript pages](task-transcript-v1alpha1.md)
 also expose the existing inert session log through signed HOST, the account API
-and CLI. **API router dispatch and mobile task controls remain unimplemented.** The current environment
+and CLI. [Live SDK offers](engine-offer-v1alpha1.md) expose authenticated native
+models and efforts before a final Binding is selected. **API router dispatch
+and mobile task controls remain unimplemented.** The current environment
 runtime remains its separate Claude-only profile. These are source-level
 capabilities, not a claim of a production deployment.
 

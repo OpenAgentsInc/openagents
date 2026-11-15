@@ -6,17 +6,27 @@
 #load "../../../lib/agent/environment/task-wire.coax";
 #load "../../../lib/sys/clock.coax";
 #load "../../../lib/agent/environment/transcript-client.coax";
+#load "../../../lib/agent/environment/offer-wire.coax";
 TAPI_HOST :: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 TAPI_ID :: "0123456789abcdef0123456789abcdef";
 TAPI_PATH :: "/api/chat/task/v1alpha1?host=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 TAPI_READ :: "/api/chat/task/v1alpha1?host=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&task=0123456789abcdef0123456789abcdef";
 TAPI_TRANSCRIPT :: "/api/chat/task/transcript/v1alpha1?host=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&task=0123456789abcdef0123456789abcdef&reader=77777777777777777777777777777777&read=88888888888888888888888888888888";
+TAPI_MODELS :: "/api/chat/task/models/v1alpha1?host=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&probe=abababababababababababababababab&engine=claude&provider_account=system";
 tk_call :: (t:[]Ap,key:string,method:string,path:string,body:string,extra:string)->int {
  url:[1]Sb;sb(url[..],t[0].api);sb(url[..],path);token:[4096]u8;header:[1]Sb;sb(header[..],"Authorization: Nostr ");sb(header[..],ap_nostr(t,key,method,sb_text(url[..]),body,method=="POST",token[..]));return ac_call(t,method,path,body,sb_text(header[..]),extra,"");
 }
 tk_sql :: (t:[]Ap,account:string,prefix:string,suffix:string) {q:[1]Sb;sb(q[..],prefix);sb(q[..],account);sb(q[..],suffix);ap_do(t,sb_text(q[..]));}
 tk_epoch :: (t:[]Ap,account:string,n:int) {q:[1]Sb;sb(q[..],"UPDATE chat.environment_connections_v1 SET epoch=");sb_int(q[..],n);sb(q[..]," WHERE account='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));}
 tk_count :: (audit:string)->int {raw:[65536]u8;n:=fs_read(audit,raw[..]);count:=0;if n>0 {for c:raw[0..<n] {if c=='\n' {count+=1;}}}return count;}
+tk_offer_checks :: (t:[]Ap,c:[]Sc,key:string,account:string) {
+ st:=ac_call(t,"GET",TAPI_MODELS,"","","","");ap_check(t,"native SDK offers require an account",st==401,ap_body(t));st=tk_call(t,key,"POST",TAPI_MODELS,"{}","");ap_check(t,"native offer reads cannot submit tasks",st==405,ap_body(t));
+ st=tk_call(t,key,"GET","/api/chat/task/models/v1alpha1?host=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&probe=bad&engine=claude&provider_account=system","","");ap_check(t,"malformed native offer probes are refused",st==400,ap_body(t));
+ models:=[8]string.["tasks","models",TAPI_HOST,"--engine","claude","--provider-account","system","--json"];st=sc_cli(t,c,models[..]);v:[1]XoOffer;arena:[XO_ARENA]u8;good:=st==0 && xo_read(sc_text(c),v[..],arena[..]);ap_check(t,"the built CLI reads native model IDs and their actual supported efforts",good && v[0].state==XO_READY && v[0].models[0].id=="fixture-native-exact" && v[0].models[0].n==2 && v[0].models[0].levels[1]=="high",sc_text(c));
+ models[4]="codex";st=sc_cli(t,c,models[..]);ap_check(t,"the same public CLI contract reads Codex offers",st==0 && xo_read(sc_text(c),v[..],arena[..]) && v[0].engine=="codex",sc_text(c));
+ models[4]="claude";models[6]="cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";st=sc_cli(t,c,models[..]);ap_check(t,"an unavailable native profile returns no other profile's catalog",st==0 && xo_read(sc_text(c),v[..],arena[..]) && v[0].state==XO_FAILED && v[0].n==0 && v[0].error=="login_required",sc_text(c));
+ tk_epoch(t,account,89);models[6]="system";st=sc_cli(t,c,models[..]);ap_check(t,"an offer from a different engine cannot satisfy this observation",st==1 && ap_has(sc_text(c),"502"),sc_text(c));tk_epoch(t,account,0);
+}
 tk_transcript_checks :: (t:[]Ap,c:[]Sc,key:string,account:string) {
  base:=TAPI_TRANSCRIPT;
  st:=ac_call(t,"GET",base,"","","","");ap_check(t,"transcript pages require an account",st==401,ap_body(t));
@@ -47,6 +57,7 @@ tk_checks :: (t:[]Ap,c:[]Sc,audit:string) {
  tk_sql(t,account,"UPDATE auth.accounts SET team=true WHERE id='","'");
  tk_sql(t,account,"INSERT INTO chat.environment_connections_v1(account,host_pubkey,display_name,grant_id,epoch,relay) VALUES ('","',repeat('dd',32),'Task computer',repeat('ee',32),0,'wss://relay.openagents.com')");
  st=sc_cli(t,c,show[..]);ap_check(t,"a connection alone cannot inspect a foreign conversation binding",st==6,sc_text(c));
+ tk_offer_checks(t,c,key,account);
  tk_sql(t,account,"INSERT INTO chat.conversations_v2(id,account,revision,title,created_ms,updated_ms) VALUES ('cnv_0123456789abcdef0123456789abcdef','","',1,'Native task',1,1)");
  tk_sql(t,account,"INSERT INTO chat.turns_v2(id,account,conversation,ordinal,operation,digest,request_json,input_json,state,model,provider,effort,created_ms,updated_ms) VALUES ('trn_0123456789abcdef0123456789abcdef','","','cnv_0123456789abcdef0123456789abcdef',1,'native-task-fixture','fixture','{}','{}',3,'fixture-native-model','fixture','high',1,1)");
  st=tk_call(t,key,"GET",TAPI_READ,"","");v:[1]XtStatus;arena:[2048]u8;ap_check(t,"owned task GET returns the primary typed status and native session",st==200 && xt_status_read(ap_body(t),v[..],arena[..]) && v[0].state==XT_WAITING && v[0].interaction=="native-request" && v[0].native=="native-session",ap_body(t));
@@ -75,6 +86,7 @@ tk_checks :: (t:[]Ap,c:[]Sc,audit:string) {
  k2b:[1024]u8;key2:=fs_join(c[0].dir,"other-key",k2b[..]);p2b:[128]u8;pk2:=ac_newkey(t,key2,p2b[..]);sb_clear(q[..]);sb(q[..],"SELECT acct FROM auth.account_for_key('");sb(q[..],pk2);sb(q[..],"','Other task account')");a2b:[80]u8;other:=ap_sql(t,sb_text(q[..]),a2b[..]);tk_sql(t,other,"UPDATE auth.accounts SET team=true WHERE id='","'");
  _:=sc_key(c,key2);before=tk_count(audit);st=sc_cli(t,c,stop[..]);ap_check(t,"another account cannot control a computer it has not enrolled",st==6 && tk_count(audit)==before,sc_text(c));
  txp:[1]Sb;sb(txp[..],audit);sb(txp[..],".transcripts");tx_before:=tk_count(sb_text(txp[..]));st=tk_call(t,key2,"GET",TAPI_TRANSCRIPT,"","");ap_check(t,"another account cannot reach a cached transcript without its enrolled connection",st==404 && tk_count(sb_text(txp[..]))==tx_before,ap_body(t));
+ ofp:[1]Sb;sb(ofp[..],audit);sb(ofp[..],".offers");of_before:=tk_count(sb_text(ofp[..]));st=tk_call(t,key2,"GET",TAPI_MODELS,"","");ap_check(t,"another account cannot warm or read a computer's provider catalog",st==404 && tk_count(sb_text(ofp[..]))==of_before,ap_body(t));
  tk_sql(t,other,"INSERT INTO chat.environment_connections_v1(account,host_pubkey,display_name,grant_id,epoch,relay) VALUES ('","',repeat('dd',32),'Other task computer',repeat('ee',32),0,'wss://relay.openagents.com')");
  st=sc_cli(t,c,show[..]);ap_check(t,"a grant shared ambiguously across accounts is refused",st==5,sc_text(c));_=sc_key(c,key);st=sc_cli(t,c,show[..]);ap_check(t,"the owner also cannot use an ambiguous enrollment",st==5,sc_text(c));
  tk_sql(t,other,"UPDATE chat.environment_connections_v1 SET grant_id=repeat('ff',32) WHERE account='","'");_=sc_key(c,key2);st=sc_cli(t,c,show[..]);ap_check(t,"an independent connection cannot read another account's task binding",st==6,sc_text(c));st=sc_cli(t,c,stop[..]);ap_check(t,"foreign binding preflight blocks Stop before any native control",st==6 && tk_count(audit)==before,sc_text(c));_=sc_key(c,key);

@@ -100,7 +100,7 @@ copy :: (s: string, out: [] u8) -> int {
 // ---- arguments: flags anywhere, positionals in order ----------------------
 
 // Flags that take a value, a domain's on its own line ("" pads the array).
-VALUE_FLAGS :: [110] string.["--profile", "--interaction", "--command-file", "--reader-id", "--read-id", "--sha256",
+VALUE_FLAGS :: [111] string.["--profile", "--interaction", "--command-file", "--reader-id", "--read-id", "--sha256", "--provider-account",
   "--project-rev", "--legacy-thread", "--legacy-rev", // durable chat
   "--file", "--instructions", "--description", "--title", "--file-id", "--operation-id", "--thread-rev", "--cursor", // private Projects
   "--kind", "--content", "--tags", "--method", "--body", "--relay", "--limit", "--timeout",   // nostr

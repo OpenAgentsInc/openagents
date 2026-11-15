@@ -16,11 +16,12 @@ static void env_reply(int fd,const void *data,size_t n) {
 // Start belongs to server-owned routing/context admission, never this bridge.
 static bool environment_task_route(const request *q) {
   bool transcript=!strcmp(q->path,"/api/chat/task/transcript/v1alpha1");
-  if(!transcript&&strcmp(q->path,"/api/chat/task/v1alpha1"))return false;
+  bool models=!strcmp(q->path,"/api/chat/task/models/v1alpha1");
+  if(!transcript&&!models&&strcmp(q->path,"/api/chat/task/v1alpha1"))return false;
   const auth_principal *p=auth_principal_of(q);
   if(!p||!ea_account(p->kind,es(p->account),es(p->account))){api_error(q->fd,401,"Log in first.");return true;}
   bool post=!strcmp(q->method,"POST");if(!post&&strcmp(q->method,"GET")){api_error(q->fd,405,"GET or POST this");return true;}
-  if(transcript&&post){api_error(q->fd,405,"GET this");return true;}
+  if((transcript||models)&&post){api_error(q->fd,405,"GET this");return true;}
   if(post&&!auth_same_site(q)){api_error(q->fd,403,"Cross-site write refused.");return true;}
   // Keep one extra byte so the shared query reader cannot turn an overlong
   // reference into a valid truncated host/task prefix.
@@ -29,7 +30,12 @@ static bool environment_task_route(const request *q) {
   if(post){if(!ta_request((coax_string){q->body,(int64_t)q->body_len},(coax_v_t_XtRequest){&control,1},(coax_v_u8){request_arena,sizeof request_arena})){api_error(q->fd,400,"Invalid task control. Dispatch is server-owned.");return true;}
     memcpy(task,control.task.data,32);
   }else{api_query(q,"task",task,sizeof task);}
+  coax_t_XoRequest offer_request={0};unsigned char offer_request_arena[128];
   int64_t read_n=ta_read(es(task),(coax_v_u8){read_body,sizeof read_body});
+  if(models){char probe[34]={0},engine[10]={0},account[34]={0};api_query(q,"probe",probe,sizeof probe);api_query(q,"engine",engine,sizeof engine);api_query(q,"provider_account",account,sizeof account);
+    coax_t_XoRequest params={.probe=es(probe),.engine=es(engine),.account=es(account)};read_n=xo_request_write(params,(coax_v_u8){read_body,sizeof read_body});
+    if(read_n<1||!xo_request_read((coax_string){(const char *)read_body,read_n},(coax_v_t_XoRequest){&offer_request,1},(coax_v_u8){offer_request_arena,sizeof offer_request_arena})){api_error(q->fd,400,"Invalid native engine, provider account or probe.");return true;}
+  }
   if(!ta_host(es(host))||read_n<1){api_error(q->fd,400,"Invalid computer or task identity.");return true;}
   unsigned char transcript_body[1024],transcript_request_arena[256];int64_t transcript_n=0;coax_t_XhRequest transcript_request={0};
   if(transcript){char reader[34]={0},read[34]={0},hash[66]={0},offset[32]={0};api_query(q,"reader",reader,sizeof reader);api_query(q,"read",read,sizeof read);api_query(q,"sha256",hash,sizeof hash);api_query(q,"after",offset,sizeof offset);
@@ -50,6 +56,12 @@ static bool environment_task_route(const request *q) {
   unsigned char out[8192],second[47104],status_arena[2048],after_arena[2048];coax_t_XtStatus before={0},after={0};
   int status=503;const char *why="Task broker unavailable; reconcile an uncertain command before retrying.";int64_t n=-1;
   if(fd<0||!ea_payload_file(es(file),(coax_string){(const char *)read_body,read_n}))goto done;
+  if(models){
+    n=environment_task_proxy(es(host),es(PQgetvalue(connection,0,0)),es(PQgetvalue(connection,0,1)),es(PQgetvalue(connection,0,2)),es(key),es(file),es(program&&*program?program:"/usr/local/bin/environment-host"),(coax_v_u8){second,sizeof second});status=(int)ta_http(n);if(status!=200)goto done;
+    coax_t_XoOffer offer={0};unsigned char offer_arena[16384];
+    if(!xo_read((coax_string){(const char *)second,n},(coax_v_t_XoOffer){&offer,1},(coax_v_u8){offer_arena,sizeof offer_arena})||!xo_reply(offer_request,offer,es(host),(int64_t)api_now_ms())){status=502;why="Invalid or mismatched native model observation.";goto done;}
+    env_reply(q->fd,second,(size_t)n);goto replied;
+  }
   n=environment_task_proxy(es(host),es(PQgetvalue(connection,0,0)),es(PQgetvalue(connection,0,1)),es(PQgetvalue(connection,0,2)),es(key),es(file),es(program&&*program?program:"/usr/local/bin/environment-host"),(coax_v_u8){out,sizeof out});
   status=(int)ta_http(n);if(status!=200)goto done;
   if(!ta_status((coax_string){(const char *)out,n},es(host),es(task),es(""),(coax_v_t_XtStatus){&before,1},(coax_v_u8){status_arena,sizeof status_arena})){status=502;why="Invalid task status from the computer.";goto done;}

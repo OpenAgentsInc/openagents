@@ -15,8 +15,10 @@ web ([glossary](../docs/books/glossary.md)).
 - [Routed execution handoff](../docs/protocol/environment-execution-v1alpha1.md)
   (`environment-execution`): pinned selection, complete admitted context, bounded input chunks,
   authenticated preparation, durable resident Start/Read/Stop/Respond and truthful
-  native outcomes. API router dispatch and mobile/OpenAgents CLI task consumers
-  remain #13620 work.
+  native outcomes, [verified transcript captures](../docs/protocol/task-transcript-v1alpha1.md)
+  and [live native SDK offers](../docs/protocol/engine-offer-v1alpha1.md).
+  Account API and CLI expose task reads, controls and transcripts. API router
+  dispatch and mobile task consumers remain #13620 work.
 - [Compliance plan](../docs/protocol/2026-11-11-compliance-plan.md): which shapes move here, and in what order
 - [The OpenAgents Book](../openagents/book/README.md), which says why each record exists and which chapter sends it. Start with [chapter 65, one schema, three carriages](../openagents/book/ch065-one-schema-three-carriages.md), and [chapter 66, the compliance rule](../openagents/book/ch066-the-compliance-rule.md)
 

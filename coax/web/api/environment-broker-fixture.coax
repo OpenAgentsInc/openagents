@@ -4,6 +4,7 @@
 #load "../../lib/agent/router/wire.coax";
 #load "../../lib/agent/environment/task-wire.coax";
 #load "../../lib/agent/environment/transcript-store.coax";
+#load "../../lib/agent/environment/offer-wire.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/sys/proc.coax";
@@ -27,6 +28,14 @@ tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {return 2;}
   input:[XT_REQUEST_MAX]u8;n:=fs_read(args_value(args[..],"--request-file",""),input[..]);q:[1]EaRequest;
   if args_at(args[..],0)=="execution-rpc" {
+    offer_request:[1]XoRequest;offer_arena:[128]u8;
+    if n>0 && xo_request_read(cast(string)input[0..<n],offer_request[..],offer_arena[..]) {
+      oq:=offer_request[0];host:=args_value(args[..],"--host","");now:=cxproc_wall_us()/1000;v:=XoOffer.{host=host,workspace="default",probe=oq.probe,engine=oq.engine,account=oq.account,state=XO_READY,observed=now,expires=xo_deadline(now,XO_TTL),n=1};v.models[0]=XoModel.{id="fixture-native-exact",label="Actual SDK fixture",n=2};v.models[0].levels[0]="low";v.models[0].levels[1]="high";
+      epoch:=args_value(args[..],"--epoch","");if epoch=="98" {return 4;}if epoch=="97" {return 5;}if epoch=="96" {return 7;}if epoch=="95" {print("%\n","{}");return 0;}if epoch=="92" {return 3;}if epoch=="89" {v.engine=ifx oq.engine=="claude" then "codex" else "claude";}
+      if oq.account!="system" {v.state=XO_FAILED;v.error="login_required";v.n=0;}
+      audit:[4096]u8;path:[FS_PATH_MAX]u8;file:=proc_getenv("OA_ENV_TASK_FIXTURE_AUDIT",audit[..]);if file!="" {o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],file);jo_put(o[..],".offers");if !fs_append_durable(jo_text(o[..]),"offer\n") {return 3;}}
+      out:[XO_MAX]u8;made:=xo_write(v,out[..]);if made<1 {return 2;}print("%\n",cast(string)out[0..<made]);return 0;
+    }
     request:[1]XtRequest;arena:[2048]u8;host:=args_value(args[..],"--host","");transcript:[1]XhRequest;ta:[256]u8;is_transcript:=n>0 && xh_request_read(cast(string)input[0..<n],transcript[..],ta[..]);
     if is_transcript {request[0]=XtRequest.{method="ReadTask",task=transcript[0].task};}
     if n<1 || !ea_id(host,64) || (!is_transcript && !xt_request_read(cast(string)input[0..<n],request[..],arena[..])) {return 2;}

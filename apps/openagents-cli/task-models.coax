@@ -1,0 +1,15 @@
+// Script-facing native offers; product flows still select automatically.
+#load "../../coax/lib/agent/environment/offer-wire.coax";
+tmo_main :: (a:[]Args,r:[]Rep,profile:string,host:string)->int {
+ id:=args_value(a,"--operation-id","");generated:[32]u8;if id=="" {random:[16]u8;if cxrand_draw(random[..],16)!=0 || !cli_hex(random[..],generated[..]) {return fail(r,EXIT_FAIL,"cannot make a native offer probe ID");}id=cast(string)generated[..];}
+ q:=XoRequest.{probe=id,engine=args_value(a,"--engine","claude"),account=args_value(a,"--provider-account","system")};if !ea_id(host,64) || !xo_request_valid(q) {return fail(r,EXIT_USAGE,"expected an enrolled host, native engine, provider account and 32-character operation ID");}
+ path:[512]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],"/api/chat/task/models/v1alpha1?host=");jo_put(o[..],host);jo_put(o[..],"&probe=");jo_put(o[..],q.probe);jo_put(o[..],"&engine=");jo_put(o[..],q.engine);jo_put(o[..],"&provider_account=");jo_put(o[..],q.account);
+ out:[XO_MAX]u8;arena:[XO_ARENA]u8;offer:[1]XoOffer;deadline:=proc_now_ms()+XO_TTL;
+ while true {
+  res:=pcli_call(a,r,profile,"GET",jo_text(o[..]),"",35000,out[..]);if !api_ok(res) {return api_fail(r,res,cast(string)out[0..<res.n]);}
+  if !xo_read(cast(string)out[0..<res.n],offer[..],arena[..]) || !xo_reply(q,offer[0],host,cxproc_wall_us()/1000) {return fail(r,EXIT_FAIL,"invalid or expired native offer observation; retry with a fresh operation ID");}
+  if offer[0].state!=XO_WARM {print("%\n",cast(string)out[0..<res.n]);return EXIT_OK;}
+  if proc_now_ms()>=deadline {return fail(r,EXIT_FAIL,"native catalog warm-up did not finish; retry with a fresh operation ID");}
+ }
+ return EXIT_FAIL;
+}

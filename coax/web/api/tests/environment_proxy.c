@@ -35,5 +35,10 @@ int main(int argc,char **argv) {
   ok=ok && n>0 && xh_page_read((coax_string){(const char *)out,n},(coax_v_t_XhPage){&page,1},(coax_v_u8){page_arena,sizeof page_arena}) && xh_reply(transcript,page,s(argv[1]),now);
   sigaction(SIGCHLD,NULL,&after);ok=ok && after.sa_handler==SIG_IGN;
   printf("transcript adapter result: %lld; captured content: %lld bytes\n",(long long)n,(long long)page.capture.bytes);
+  coax_t_XoRequest probe={.probe=s("33333333333333333333333333333333"),.engine=s("claude"),.account=s("system")};coax_t_XoOffer offer={0};unsigned char offer_arena[16384];
+  made=xo_request_write(probe,(coax_v_u8){body,sizeof body});ok=ok && made>0 && ea_payload_file(s(argv[4]),(coax_string){(const char *)body,made});
+  n=environment_task_proxy(s(argv[1]),s(argv[2]),s("0"),s("wss://relay.openagents.com"),s(argv[3]),s(argv[4]),s(argv[5]),(coax_v_u8){out,1048576});gettimeofday(&tv,NULL);now=(int64_t)tv.tv_sec*1000+tv.tv_usec/1000;
+  ok=ok && n>0 && xo_read((coax_string){(const char *)out,n},(coax_v_t_XoOffer){&offer,1},(coax_v_u8){offer_arena,sizeof offer_arena}) && xo_reply(probe,offer,s(argv[1]),now) && offer.state==1 && offer.n==1;
+  sigaction(SIGCHLD,NULL,&after);ok=ok && after.sa_handler==SIG_IGN;printf("offer adapter result: %lld; native models: %lld\n",(long long)n,(long long)offer.n);
   free(view);free(out);return ok?0:1;
 }

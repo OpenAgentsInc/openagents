@@ -1,0 +1,52 @@
+// Read-only catalog warm-ups share the same SDK slots and native auth owners.
+// Cache buffers are ephemeral; no task, session log or execution receipt is made.
+#load "../../coax/lib/agent/environment/offer-wire.coax";
+XoCache :: struct {used:bool;grant:[64]u8;device:[64]u8;request:[1024]u8;nq:int;reply:[XO_MAX]u8;nr:int;expires:int;slot:int= -1;}
+XoHost :: struct {items:[XO_PROBES]XoCache;}
+
+xo_finish :: (h:[]HsHost,index:int,state:int,error:string) #effects(all) {
+ c:=h[0].offers[0].items[index..<index+1];if c[0].slot<0 {return;}slot:=h[0].environment[0].slots[c[0].slot..<c[0].slot+1];v:[1]XoOffer;arena:[XO_ARENA]u8;now:=cxproc_wall_us()/1000;
+ if now<=c[0].expires && xo_read(cast(string)c[0].reply[0..<c[0].nr],v[..],arena[..]) {
+  v[0].observed=now;v[0].state=state;v[0].error=error;
+  if state==XO_READY {cat:=ifx slot[0].mode==MODE_CODEX then slot[0].codex[0].cat[..] else slot[0].engine[0].cat[..];if !xo_catalog(cat,slot[0].execution[0].auth_ok,true,v[..]) {v[0].state=XO_FAILED;v[0].error="model_unavailable";v[0].n=0;}}
+  n:=xo_write(v[0],c[0].reply[..]);if n>0 {c[0].nr=n;}
+ }
+ xt_close(slot);slot[0].probing=false;slot[0].occupied=false;c[0].slot= -1;
+}
+xo_tick :: (h:[]HsHost) #effects(all) {
+ now:=cxproc_wall_us()/1000;
+ for i:0..<XO_PROBES {c:=h[0].offers[0].items[i..<i+1];if !c[0].used || c[0].slot<0 {continue;}slot:=h[0].environment[0].slots[c[0].slot..<c[0].slot+1];run:=slot[0].execution[..];
+  if !xt_current_scope(h,slot) {xo_finish(h,i,XO_FAILED,"revoked");continue;}
+  if now>=run[0].deadline || now>c[0].expires {xo_finish(h,i,XO_FAILED,"expired");continue;}
+  if !run[0].auth_done {xt_auth_tick(slot,now);if !run[0].auth_done {continue;}}
+  if !run[0].auth_ok {xo_finish(h,i,XO_FAILED,"login_required");continue;}
+  ag_poll(es_agent(slot),0.016,true);
+  if (slot[0].mode==MODE_CODEX && slot[0].codex[0].catalog_refused) || (slot[0].mode==MODE_CLAUDE && slot[0].engine[0].catalog_refused) {xo_finish(h,i,XO_FAILED,"model_unavailable");continue;}
+  ready:=ifx slot[0].mode==MODE_CODEX then slot[0].codex[0].ready && slot[0].codex[0].cat_gen>0 else slot[0].engine[0].ready && slot[0].engine[0].cat_gen>0;
+  if ready {xo_finish(h,i,XO_READY,"");}
+ }
+}
+xo_begin :: (h:[]HsHost,index:int,slot_index:int,q:XoRequest,grant:string,device:string)->bool #effects(all) {
+ c:=h[0].offers[0].items[index..<index+1];slot:=h[0].environment[0].slots[slot_index..<slot_index+1];xt_reset(slot);slot[0].occupied=true;slot[0].probing=true;slot[0].offer_index=index;_=js_copy(slot[0].grant[..],grant);_=js_copy(slot[0].device[..],device);slot[0].mode=ifx q.engine=="codex" then MODE_CODEX else MODE_CLAUDE;
+ config:=h[0].environment[0].configuration[..];workspace:=cast(string)config[0].workspace[0..<config[0].nw];xt_warm_buffers(slot,workspace);c[0].slot=slot_index;run:=slot[0].execution[..];run[0].deadline=xo_deadline(cxproc_wall_us()/1000,XO_DEADLINE);
+ if q.engine=="claude" {if !pa_profile_slot(h,slot,grant,q.account) {xo_finish(h,index,XO_FAILED,"login_required");return true;}xt_warm_claude(slot,q.account);}
+ else if !xt_warm_codex(slot,workspace) {xo_finish(h,index,XO_FAILED,"engine_unavailable");return true;}
+ run[0].auth[0].deadline=run[0].deadline;if run[0].auth[0].h<0 {xo_finish(h,index,XO_FAILED,"engine_unavailable");}return true;
+}
+xo_handle :: (h:[]HsHost,r:[]HbRpcRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
+ scope:=xs_scope(h,r,signer,event,mailbox,0,st,statebuf);if scope<0 {return 0;}if scope==0 {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"forbidden",""),signer,w,out);}
+ q:[1]XoRequest;arena:[128]u8;if !xo_request_read(r[0].params,q[..],arena[..]) {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"malformed",""),signer,w,out);}
+ canonical:[1024]u8;n:=xo_request_write(q[0],canonical[..]);now:=cxproc_wall_us()/1000;found:= -1;free:= -1;
+ for i:0..<XO_PROBES {c:=h[0].offers[0].items[i..<i+1];
+  if c[0].used && cast(string)c[0].grant[..]==r[0].grant && cast(string)c[0].device[..]==signer {prior:[1]XoRequest;a:[128]u8;if xo_request_read(cast(string)c[0].request[0..<c[0].nq],prior[..],a[..]) && prior[0].probe==q[0].probe {found=i;break;}}
+  if !c[0].used || (c[0].slot<0 && c[0].expires<now) {if free<0 {free=i;}}
+ }
+ error:="";if found>=0 {c:=h[0].offers[0].items[found..<found+1];if c[0].nq!=n || cast(string)c[0].request[0..<c[0].nq]!=cast(string)canonical[0..<n] {error="conflict";}else if now>c[0].expires {error="stale";}}
+ else {slot:= -1;for i:0..<ES_SLOTS {if !h[0].environment[0].slots[i].occupied {slot=i;break;}}
+  if free<0 || slot<0 {error="bounds";}else {found=free;c:=h[0].offers[0].items[found..<found+1];c[0]=XoCache.{used=true,expires=xo_deadline(now,XO_TTL)};_=js_copy(c[0].grant[..],r[0].grant);_=js_copy(c[0].device[..],signer);c[0].nq=js_copy(c[0].request[..],cast(string)canonical[0..<n]);
+   v:=XoOffer.{host=cast(string)h[0].xhex[..],workspace="default",probe=q[0].probe,engine=q[0].engine,account=q[0].account,observed=now,expires=c[0].expires};c[0].nr=xo_write(v,c[0].reply[..]);if c[0].nr<1 || !xo_begin(h,found,slot,q[0],r[0].grant,signer) {error="unavailable";}
+  }
+ }
+ if error!="" {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,error,""),signer,w,out);}
+ c:=h[0].offers[0].items[found..<found+1];return xs_reply(h,r,signer,event,w,cast(string)c[0].reply[0..<c[0].nr],out);
+}

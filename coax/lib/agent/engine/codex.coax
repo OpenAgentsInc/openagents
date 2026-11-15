@@ -75,11 +75,30 @@ codex_catalog :: () -> AgCatalog {
 // kept in pool: visible models in the server's order, the default first.
 // Whether it listed one.
 codex_discover :: (c: [] AgCatalog, ar: [] ClArena, result: string, pool: [] u8, at: [] int) -> bool {
+  return codex_discover_as(c,ar,result,pool,at,false);
+}
+#test "strict native Codex offers refuse partial pages unknown efforts and exhausted strings" {
+ c:[1]AgCatalog;arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];pool:[16384]u8;at:[1]int;
+ raw:="{\"data\":[{\"model\":\"native-model\",\"displayName\":\"Native\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"high\"}]}],\"nextCursor\":null}";
+ #assert codex_discover_as(c[..],ar[..],raw,pool[..],at[..],true) && c[0].n==1 && c[0].id[0]=="native-model" && c[0].ladder[0]==(1<<CX_LV_HIGH);
+ #assert !codex_discover_as(c[..],ar[..],raw,pool[0..<1],at[..],true);
+ #assert !codex_discover_as(c[..],ar[..],"{\"data\":[{\"model\":\"native-model\"}],\"nextCursor\":\"more\"}",pool[..],at[..],true);
+ #assert !codex_discover_as(c[..],ar[..],"{\"data\":[{\"model\":\"native-model\",\"supportedReasoningEfforts\":[\"future\"]}]}",pool[..],at[..],true);
+ #assert !codex_discover_as(c[..],ar[..],"{\"data\":[{}]}",pool[..],at[..],true);
+}
+#test "strict Codex discovery retains native order and refuses a malformed continuation cursor" {
+ c:[1]AgCatalog;arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];pool:[16384]u8;at:[1]int;
+ #assert codex_discover_as(c[..],ar[..],"{\"data\":[{\"model\":\"native-first\"},{\"model\":\"native-default\",\"isDefault\":true}],\"nextCursor\":null}",pool[..],at[..],true) && c[0].n==2 && c[0].id[0]=="native-first" && c[0].id[1]=="native-default";
+ #assert !codex_discover_as(c[..],ar[..],"{\"data\":[{\"model\":\"native-model\"}],\"nextCursor\":false}",pool[..],at[..],true);
+}
+codex_discover_as :: (c:[]AgCatalog,ar:[]ClArena,result:string,pool:[]u8,at:[]int,exact:bool)->bool {
   base := codex_catalog();
   c[0] = base; c[0].n = 0;
   at[0] = 0;
   data := cl_at(result, "data");
   if !data.ok || data.tok != JSON_ARRAY { c[0] = base; return false; }
+  cursor:=cl_at(result,"nextCursor");
+  if exact && ((cursor.ok && cursor.tok!=JSON_NULL && cl_raw(result,"nextCursor")!="\"\"") || cl_count(cl_raw(result,"data"))>AG_MODELS) {return false;}
   first := -1;
   lids := CODEX_LEVEL_IDS;
   for i: 0..<AG_MODELS * 2 {
@@ -90,27 +109,28 @@ codex_discover :: (c: [] AgCatalog, ar: [] ClArena, result: string, pool: [] u8,
     if cl_bool(item, "hidden").value { continue; }
     id := cl_str(ar, item, "model");
     if id.count == 0 { id = cl_str(ar, item, "id"); }
-    if id.count == 0 { continue; }
+    if id.count == 0 {if exact {return false;}continue;}
     k := c[0].n;
     label := cl_str(ar, item, "displayName");
     c[0].id[k] = claude_keep(pool, at, id);
     c[0].label[k] = claude_keep(pool, at, ifx label.count > 0 then label else id);
     c[0].desc[k] = claude_keep(pool, at, cl_str(ar, item, "description"));
-    if c[0].id[k].count == 0 { break; }       // the pool is full
+    if c[0].id[k].count == 0 || c[0].label[k].count==0 {if exact {return false;}break;} // the pool is full
     bits := 0;
     efforts := cl_raw(item, "supportedReasoningEfforts");
     for j: 0..<cl_count(efforts) {
       ev := cl_json(efforts, cl_item(efforts, j));
       name := cl_str(ar, ev, "reasoningEffort");
       if name.count == 0 { name = cl_text(ar, efforts, cl_item(efforts, j)); }
-      for l: 0..<7 { if name == lids[l] { bits |= 1 << l; } }
+      known:=false;for l: 0..<7 { if name == lids[l] { bits |= 1 << l;known=true; } }
+      if exact && !known {return false;}
     }
     c[0].ladder[k] = bits;
     if first < 0 && cl_bool(item, "isDefault").value { first = k; }
     c[0].n += 1;
   }
   if c[0].n == 0 { c[0] = base; return false; }
-  if first > 0 {
+  if !exact && first > 0 {
     id := c[0].id[first]; label := c[0].label[first]; desc := c[0].desc[first]; ladder := c[0].ladder[first];
     for j: 0..<first { k := first - j; c[0].id[k] = c[0].id[k - 1]; c[0].label[k] = c[0].label[k - 1]; c[0].desc[k] = c[0].desc[k - 1]; c[0].ladder[k] = c[0].ladder[k - 1]; }
     c[0].id[0] = id; c[0].label[0] = label; c[0].desc[0] = desc; c[0].ladder[0] = ladder;
@@ -205,6 +225,7 @@ CxEngine :: struct {
   cat: [1] AgCatalog;                // codex_catalog, then the server's (codex_discover)
   cat_pool: [] u8; cat_at: [1] int;
   cat_gen: int;                      // counts catalog changes (the screen copies it for the menus)
+  strict_models:bool;catalog_refused:bool;
   listed: bool;                      // model/list was asked
   want_warm: bool; warmed: bool;     // start the server ahead of a message (the Codex tab is open), once
   prompt: [] u8; prompt_n: int;      // (the screen's buffer)
@@ -234,11 +255,11 @@ CxEngine :: struct {
 // The engine's own buffers, carved from the host's (cxe_mem): the catalog's
 // strings, codex's path and the child's PATH, the folder, this turn's
 // streamed messages, its held error, the server's stderr.
-CX_MEM :: 4096 + E_FILE + E_PATH + E_FILE + 8 + E_FILE + CX_STREAMED + 2048 + 2048;
+CX_MEM :: 16384 + E_FILE + E_PATH + E_FILE + 8 + E_FILE + CX_STREAMED + 2048 + 2048;
 cxe_mem :: (x: [] CxEngine, mem: [] u8) {
   if mem.count < CX_MEM { return; }
   at := 0;
-  x[0].cat_pool = mem[at..<at + 4096]; at += 4096;
+  x[0].cat_pool = mem[at..<at + 16384]; at += 16384;
   x[0].exe = mem[at..<at + E_FILE]; at += E_FILE;
   x[0].path_env = mem[at..<at + E_PATH + E_FILE + 8]; at += E_PATH + E_FILE + 8;
   x[0].cwd = mem[at..<at + E_FILE]; at += E_FILE;
@@ -734,7 +755,8 @@ cxe_take_models :: (x: [] CxEngine, result: string) {
   was := x[0].cat[0].id[x[0].model];
   wid: [96] u8; wn := e_set(wid[..], 0, was);
   c: [1] AgCatalog;
-  if !codex_discover(c[..], x[0].c[0].ar[..], result, x[0].cat_pool, x[0].cat_at[..]) { return; }
+  if !codex_discover_as(c[..], x[0].c[0].ar[..], result, x[0].cat_pool, x[0].cat_at[..],x[0].strict_models) {x[0].catalog_refused=x[0].strict_models;return;}
+  x[0].catalog_refused=false;
   first := x[0].cat_gen == 0;
   x[0].cat[0] = c[0];
   k := claude_find(x[0].cat[..], e_str(wid[..], wn));

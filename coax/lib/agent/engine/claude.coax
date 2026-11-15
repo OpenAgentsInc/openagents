@@ -300,12 +300,25 @@ claude_discover :: (c: [] AgCatalog, ar: [] ClArena, response: string, pool: [] 
 }
 // Screens may retain curated choices. An execution owner asks for only the
 // account's exact native offers, with no snapshot/family/effort substitution.
+#test "strict native Claude offers retain opaque IDs and refuse missing data without adding virtual efforts" {
+ c:[1]AgCatalog;arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];pool:[16384]u8;at:[1]int;
+ #assert claude_discover_as(c[..],ar[..],"{\"models\":[{\"value\":\"opus\",\"resolvedModel\":\"claude-opus-native[1m]\",\"displayName\":\"Native\",\"supportedEffortLevels\":[\"low\",\"xhigh\"]}]}",pool[..],at[..],false) && c[0].n==1 && c[0].id[0]=="claude-opus-native[1m]" && c[0].ladder[0]==(1|(1<<LV_XHIGH));
+ #assert !claude_discover_as(c[..],ar[..],"{\"models\":[{\"value\":\"native\",\"supportedEffortLevels\":[\"future-effort\"]}]}",pool[..],at[..],false);
+ #assert !claude_discover_as(c[..],ar[..],"{\"models\":[{}]}",pool[..],at[..],false);
+ #assert !claude_discover_as(c[..],ar[..],"{\"models\":[{\"value\":\"native-model\",\"displayName\":\"A native model\"}]}",pool[0..<1],at[..],false);
+}
+#test "strict Claude discovery preserves native order and refuses an overlong effort list" {
+ c:[1]AgCatalog;arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];pool:[16384]u8;at:[1]int;
+ #assert claude_discover_as(c[..],ar[..],"{\"models\":[{\"value\":\"native-first\"},{\"value\":\"default\",\"resolvedModel\":\"native-default\"}]}",pool[..],at[..],false) && c[0].n==2 && c[0].id[0]=="native-first" && c[0].id[1]=="native-default";
+ #assert !claude_discover_as(c[..],ar[..],"{\"models\":[{\"value\":\"native-model\",\"supportedEffortLevels\":[\"low\",\"low\",\"low\",\"low\",\"low\",\"low\",\"low\",\"low\",\"future\"]}]}",pool[..],at[..],false);
+}
 claude_discover_as :: (c:[]AgCatalog,ar:[]ClArena,response:string,pool:[]u8,at:[]int,curated:bool)->bool {
   c[0] = claude_curated();
   if !curated {c[0].n=0;}
   at[0] = 0;
   models := cl_at(response, "models");
   if !models.ok || models.tok != JSON_ARRAY { return false; }
+  if !curated && cl_count(cl_raw(response,"models"))>AG_MODELS*2 {return false;}
   valid := false; first := -1;
   lids := CLAUDE_LEVEL_IDS;
   for i: 0..<AG_MODELS * 2 {
@@ -314,15 +327,16 @@ claude_discover_as :: (c:[]AgCatalog,ar:[]ClArena,response:string,pool:[]u8,at:[
     entry := cl_json(response, v);
     id := cl_str(ar, entry, "resolvedModel");
     if id.count == 0 { id = cl_str(ar, entry, "value"); }
-    if id.count == 0 { continue; }
+    if id.count == 0 {if !curated {return false;}continue;}
     bare := ifx id.count > 4 && cast(string) id[id.count - 4..<id.count] == "[1m]" then cast(string) id[0..<id.count - 4] else id;
-    if bare == "default" || bare == "opus" || bare == "sonnet" || bare == "haiku" || bare == "fable" { continue; }
+    if bare == "default" || bare == "opus" || bare == "sonnet" || bare == "haiku" || bare == "fable" {if !curated {return false;}continue;}
     valid = true;
     base := claude_snapshot_base(id);
     if curated && base.count > 0 && claude_find(c, base) >= 0 { id = base; }
     // a long-context variant of a listed model is that model (the picker's fold)
     if curated && bare != id && claude_find(c, bare) >= 0 { id = bare; }
     k := claude_find(c, id);
+    if !curated && k<0 && c[0].n>=AG_MODELS {return false;}
     if k < 0 && c[0].n < AG_MODELS {
       k = c[0].n;
       label := ifx cl_str(ar, entry, "value") == "default" then claude_default_name(ar, response, models, cl_str(ar, entry, "resolvedModel"), entry) else cl_str(ar, entry, "displayName");
@@ -330,16 +344,18 @@ claude_discover_as :: (c:[]AgCatalog,ar:[]ClArena,response:string,pool:[]u8,at:[
       c[0].label[k] = claude_keep(pool, at, ifx label.count > 0 then label else id);
       desc := cl_str(ar, entry, "description");
       c[0].desc[k] = claude_keep(pool, at, ifx desc == c[0].label[k] then "" else desc);
-      if c[0].id[k].count == 0 { continue; }        // the pool is full
+      if c[0].id[k].count == 0 || c[0].label[k].count==0 {if !curated {return false;}continue;} // the pool is full
       bits := 0;
       levels := cl_at(entry, "supportedEffortLevels");
+      if !curated && cl_count(cl_raw(entry,"supportedEffortLevels"))>AG_LEVELS {return false;}
       for j: 0..<8 {
         lv := cl_element(entry, levels, j);
         if !lv.ok { break; }
         name := cl_text(ar, entry, lv);
-        for l: 0..<5 { if name == lids[l] { bits |= 1 << l; } }
+        known:=false;for l: 0..<5 { if name == lids[l] { bits |= 1 << l;known=true; } }
+        if !curated && !known {return false;}
       }
-      if (bits & (1 << LV_XHIGH)) != 0 { bits |= (1 << LV_ULTRACODE) | (1 << LV_ULTRATHINK); }
+      if curated && (bits & (1 << LV_XHIGH)) != 0 { bits |= (1 << LV_ULTRACODE) | (1 << LV_ULTRATHINK); }
       c[0].ladder[k] = bits;
       c[0].n += 1;
     }
@@ -347,7 +363,7 @@ claude_discover_as :: (c:[]AgCatalog,ar:[]ClArena,response:string,pool:[]u8,at:[
   }
   if !valid { c[0] = claude_catalog();if !curated {c[0].n=0;}return false; }
   // the CLI's default first
-  if first > 0 {
+  if curated && first > 0 {
     id := c[0].id[first]; label := c[0].label[first]; desc := c[0].desc[first]; ladder := c[0].ladder[first];
     for j: 0..<first { k := first - j; c[0].id[k] = c[0].id[k - 1]; c[0].label[k] = c[0].label[k - 1]; c[0].desc[k] = c[0].desc[k - 1]; c[0].ladder[k] = c[0].ladder[k - 1]; }
     c[0].id[0] = id; c[0].label[0] = label; c[0].desc[0] = desc; c[0].ladder[0] = ladder;
@@ -396,10 +412,11 @@ Engine :: struct {
   model: int; effort: int; access: int;            // chosen (the catalog's model and level, ACC_*)
   plan: bool;                        // plan mode
   cat: [1] AgCatalog;                // claude_catalog, then the CLI's (claude_discover)
-  cat_pool: [2048] u8; cat_at: [1] int;            // the discovered rows' strings
+  cat_pool: [16384] u8; cat_at: [1] int;           // the discovered rows' strings
   cat_gen: int;                      // counts catalog changes (the screen copies it for the menus)
   warmed: bool;                      // the CLI was started once ahead of the first message, for its models
   strict_models:bool;                // execution: only exact offers from this account's initialize answer
+  catalog_refused:bool;              // strict discovery could not retain the complete native offer
   run_effort: [24] u8; run_n: int;   // what the running CLI was started with (its --effort, "+" for ultracode)
   // the model and permission mode chosen when the CLI started: a choice made while it starts
   // (before it answers initialize, when no control request can go yet) is sent once it is ready (#13183)
@@ -754,7 +771,8 @@ e_take_models :: (e: [] Engine, response: string) {
   unnamed := was.count == 0;
   wid: [96] u8; wn := e_set(wid[..], 0, was);
   c: [1] AgCatalog;
-  if !claude_discover_as(c[..], e[0].q[0].ar[..], response, e[0].cat_pool[..], e[0].cat_at[..],!e[0].strict_models) { return; }
+  if !claude_discover_as(c[..], e[0].q[0].ar[..], response, e[0].cat_pool[..], e[0].cat_at[..],!e[0].strict_models) {e[0].catalog_refused=e[0].strict_models;return;}
+  e[0].catalog_refused=false;
   e[0].cat[0] = c[0];
   k := ifx unnamed then 0 else claude_find(e[0].cat[..], e_str(wid[..], wn));
   e[0].model = ifx k < 0 then 0 else k;

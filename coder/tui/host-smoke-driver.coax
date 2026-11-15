@@ -9,7 +9,7 @@
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
-SM_ENVS :: 12;
+SM_ENVS :: 13;
 Sm :: struct {
   repo: [1024] u8; nrepo: int;
   coder: [1100] u8; ncoder: int;
@@ -21,7 +21,7 @@ Sm :: struct {
   fails: int; checks: int;
 }
 // One child's run: its stdout, its exit status, and the stdout as JSON when it parses.
-Rp :: struct { text: [65536] u8; n: int; status: int; nodes: [4096] JvNode; d: [1] Jv; ok: bool; }
+Rp :: struct { text: [65536] u8; n: int; error:[8192]u8; ne:int; status: int; nodes: [4096] JvNode; d: [1] Jv; ok: bool; }
 
 sm_out :: (s: string) {
   ob: [4096] u8; n := 0;
@@ -81,7 +81,7 @@ sm_spawn :: (s: [] Sm, argv: [] string, quiet: bool) -> int {
 }
 // Runs argv to its end: stdout in rp (and as JSON when it parses), the exit status.
 sm_exec :: (s: [] Sm, rp: [] Rp, argv: [] string, timeout_ms: int) {
-  rp[0].n = 0; rp[0].status = -1; rp[0].ok = false;
+  rp[0].n = 0; rp[0].ne=0; rp[0].status = -1; rp[0].ok = false;
   h := sm_spawn(s, argv, false);
   if h < 0 { return; }
   deadline := proc_now_ms() + timeout_ms;
@@ -96,7 +96,7 @@ sm_exec :: (s: [] Sm, rp: [] Rp, argv: [] string, timeout_ms: int) {
   }
   rp[0].status = proc_wait(h, 5000);
   if rp[0].status == PROC_RUNNING { k := proc_kill(h, PROC_SIGKILL); rp[0].status = proc_wait(h, 2000); }
-  done := proc_release(h);
+  rp[0].ne=proc_stderr(h,rp[0].error[..]).count;done := proc_release(h);
   if rp[0].status == 0 && rp[0].n > 0 { rp[0].ok = jv_parse(rp[0].d[..], cast(string) rp[0].text[0..<rp[0].n], rp[0].nodes[..]); }
 }
 sm_text :: (rp: [] Rp) -> string { return cast(string) rp[0].text[0..<rp[0].n]; }

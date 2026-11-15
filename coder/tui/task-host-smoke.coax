@@ -5,6 +5,21 @@
 #load "../../coax/lib/agent/environment/task-wire.coax";
 #load "../../coax/lib/agent/router/wire.coax";
 #load "../../coax/lib/agent/environment/transcript-client.coax";
+#load "../../coax/lib/agent/environment/offer-wire.coax";
+
+sm_offer_call :: (s:[]Sm,rp:[]Rp,key:string,grant:string,epoch:string,q:XoRequest) #effects(all) {
+ packet:[1024]u8;n:=xo_request_write(q,packet[..]);p:[1200]u8;file:=sm_in_tmp(s,"offer-request.json",p[..]);
+ if n<1 || !fs_write(file,cast(string)packet[0..<n]) {rp[0].status= -1;return;}sm_execution(s,rp,key,grant,epoch,file);
+}
+sm_task_offer :: (s:[]Sm,key:string,grant:string,epoch:string,engine:string,probe:string,out:[]u8)->int #effects(all) {
+ rp:[1]Rp;q:=XoRequest.{probe=probe,engine=engine,account="system"};offer:[1]XoOffer;arena:[XO_ARENA]u8;deadline:=proc_now_ms()+25000;good:=false;
+ while proc_now_ms()<deadline {
+  sm_offer_call(s,rp[..],key,grant,epoch,q);good=rp[0].status==0 && xo_read(sm_text(rp[..]),offer[..],arena[..]);if !good || offer[0].state!=XO_WARM {break;}
+ }
+ sm_check(s,good && offer[0].state==XO_READY && offer[0].n==(ifx engine=="claude" then 1 else 2) && offer[0].models[0].n>0 && (engine=="claude" || (offer[0].models[1].id=="gpt-standin-mini" && offer[0].models[1].n==1 && offer[0].models[1].levels[0]=="low")),"a signed SDK offer exposes the exact authenticated native models and efforts without a task");if !good || offer[0].state!=XO_READY {sm_out(sm_text(rp[..]));return -1;}
+ n:=js_copy(out,offer[0].models[0].id);again:[XO_MAX]u8;size:=js_copy(again[..],sm_text(rp[..]));sm_offer_call(s,rp[..],key,grant,epoch,q);sm_check(s,rp[0].status==0 && sm_text(rp[..])==cast(string)again[0..<size],"polling a ready offer preserves its exact original observation");
+ changed:=q;changed.engine=ifx engine=="claude" then "codex" else "claude";sm_offer_call(s,rp[..],key,grant,epoch,changed);sm_check(s,rp[0].status==6,"changed engine reuse of a probe is refused without starting another SDK");return n;
+}
 
 sm_transcript_call :: (s:[]Sm,rp:[]Rp,key:string,grant:string,epoch:string,q:XhRequest) #effects(all) {
  packet:[1024]u8;n:=xh_request_write(q,packet[..]);p:[1200]u8;file:=sm_in_tmp(s,"transcript-request.json",p[..]);
@@ -78,13 +93,16 @@ tool_main :: ()->int #export_c #effects(all) {
  pb:[24]u8;port:=sm_itoa(20000+proc_now_ms()%30000,pb[..]);s[0].nurl=sm_cat(s[0].url[..],sm_cat(s[0].url[..],0,"ws://localhost:"),port);url:=sm_str(s[0].url[..],s[0].nurl);sm_env(s,3,"OPENAGENTS_NIP_HOST_RELAY",url);
  relay_args:=[9]string.[relay_bin,"--listen","127.0.0.1","--port",port,"--url",url,"--rate","1024,1024,1024"];relay:=sm_spawn(s,relay_args[..],true);serve:= -1;defer {sm_stop(serve);sm_stop(relay);}
  if relay<0 {return 2;}
- key_args:=[1]string.["key"];sm_host(s,rp[..],key_args[..]);if rp[0].status!=0 || rp[0].n<64 {return 2;}_ = js_copy(s[0].key[..],cast(string)rp[0].text[0..<64]);
+ key_args:=[1]string.["key"];sm_host(s,rp[..],key_args[..]);if rp[0].status!=0 || rp[0].n<64 {sm_out("resident key/bootstrap failed: ");sm_out(cast(string)rp[0].error[0..<rp[0].ne]);return 2;}_ = js_copy(s[0].key[..],cast(string)rp[0].text[0..<64]);
  serve_args:=[6]string.["--engine","echo","--for","600","--relay",url];serve=sm_serve(s,serve_args[..]);if serve<0 {return 2;}
  browser_path:[1200]u8;key:=sm_in_tmp(s,"browser.key",browser_path[..]);label:=[2]string.["--label","Task fixture browser"];sm_call(s,rp[..],"browser.request",key,label[..]);
  request:[64]u8;pairing:=rp_s(rp[..],"result.outcome.request",request[..]);allow:=[2]string.["allow",pairing];sm_host(s,rp[..],allow[..]);
  lookup:=[2]string.["--request",pairing];sm_call(s,rp[..],"browser.status",key,lookup[..]);grant_buf:[64]u8;grant:=rp_s(rp[..],"result.outcome.grant.grant",grant_buf[..]);epoch_buf:[32]u8;epoch:=sm_itoa(rp_i(rp[..],"result.outcome.grant.epoch"),epoch_buf[..]);
  list:=[2]string.["list","--json"];sm_host(s,rp[..],list[..]);device_buf:[64]u8;device:=rp_s(rp[..],"browsers.0.key",device_buf[..]);enable:=[9]string.["environment-enable","--device",device,"--grant",grant,"--workspace",workspace,"--label","Task fixture"];
  sm_host(s,rp[..],enable[..]);sm_check(s,rp[0].status==0,"the isolated browser is explicitly enrolled for its workspace");if rp[0].status!=0 {return 2;}
+ claude_model:[128]u8;codex_model:[128]u8;claude_n:=sm_task_offer(s,key,grant,epoch,"claude","88888888888888888888888888888888",claude_model[..]);codex_n:=sm_task_offer(s,key,grant,epoch,"codex","99999999999999999999999999999999",codex_model[..]);if claude_n<1 || codex_n<1 {return 1;}
+ sm_check(s,cast(string)claude_model[0..<claude_n]=="claude-task-fixture" && cast(string)codex_model[0..<codex_n]=="gpt-standin","the selected IDs come from both actual SDK catalogs rather than the router's display defaults");
+ absent:=XoRequest.{probe="abababababababababababababababab",engine="claude",account="cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"};sm_offer_call(s,rp[..],key,grant,epoch,absent);missing:[1]XoOffer;missing_arena:[XO_ARENA]u8;sm_check(s,rp[0].status==0 && xo_read(sm_text(rp[..]),missing[..],missing_arena[..]) && missing[0].state==XO_FAILED && missing[0].error=="login_required" && missing[0].n==0,"an unavailable profile publishes no static or other-account model list");
  n:=0;ids:=[6]string.["22222222222222222222222222222222","33333333333333333333333333333333","44444444444444444444444444444444","55555555555555555555555555555555","66666666666666666666666666666666","77777777777777777777777777777777"];
  for id,scenario:ids {
   station_args:=[13]string.["station-rpc","--host",sm_key(s),"--browser-key",key,"--grant",grant,"--epoch",epoch,"--relay",url,"--wait-ms","30000"];sm_host(s,rp[..],station_args[..]);
@@ -92,8 +110,8 @@ tool_main :: ()->int #export_c #effects(all) {
   if rp[0].status!=0 || !rtr_report_read(cast(string)report[0..<nr],nodes[..],wire[..],stations[..],0,host[..]) {sm_out(sm_text(rp[..]));return 2;}
   rh:[64]u8;if !S_hex(S_hash(cast(string)report[0..<nr]),rh[..]) {return 2;}
   input:[1]ExInput;sm_task_input(input[..],ifx scenario==2 then "work slowly" else ifx scenario>=4 then "routed-task-smoke edit" else "routed-task-smoke");raw:[8192]u8;size:=ex_input_write(input[..],raw[..]);ih:[64]u8;if size<1 || !S_hex(S_hash(cast(string)raw[0..<size]),ih[..]) {return 2;}
-  now:=cxproc_wall_us()/1000;b:=ExBinding.{task=id,conversation="cnv_0123456789abcdef0123456789abcdef",turn="trn_0123456789abcdef0123456789abcdef",route=id,host=sm_key(s),workspace="default",session=id,command=id,engine="claude",account="system",model="claude-task-fixture",effort="high",input_hash=cast(string)ih[..],input_bytes=size,report_hash=cast(string)rh[..],report_at=stations[0].stations[0].reported_at_ms,issued=now,expires=ea_deadline(now)};
-  if scenario>=4 {b.engine="codex";b.model="gpt-standin";}
+  now:=cxproc_wall_us()/1000;b:=ExBinding.{task=id,conversation="cnv_0123456789abcdef0123456789abcdef",turn="trn_0123456789abcdef0123456789abcdef",route=id,host=sm_key(s),workspace="default",session=id,command=id,engine="claude",account="system",model=cast(string)claude_model[0..<claude_n],effort="high",input_hash=cast(string)ih[..],input_bytes=size,report_hash=cast(string)rh[..],report_at=stations[0].stations[0].reported_at_ms,issued=now,expires=ea_deadline(now)};
+  if scenario>=4 {b.engine="codex";b.model=cast(string)codex_model[0..<codex_n];}
   file_path:[1200]u8;file:=sm_in_tmp(s,"prepare.json",file_path[..]);packet:[XT_REQUEST_MAX]u8;n=ex_binding_write(b,packet[..]);if n<1 || !fs_write(file,cast(string)packet[0..<n]) {return 2;}sm_execution(s,rp[..],key,grant,epoch,file);
   sm_check(s,rp[0].status==0,"preparation pins the resident's actual report and exact selected account");if rp[0].status!=0 {sm_out(sm_text(rp[..]));return 2;}
   chunk:=ExChunk.{task=id,command=id,hash=b.input_hash,total=size,text=cast(string)raw[0..<size],issued=now,expires=b.expires};n=ex_chunk_write(chunk,packet[..]);if n<1 || !fs_write(file,cast(string)packet[0..<n]) {return 2;}sm_execution(s,rp[..],key,grant,epoch,file);
@@ -136,9 +154,17 @@ tool_main :: ()->int #export_c #effects(all) {
  }
  provider_log:[65536]u8;counted:=fs_read(notes,provider_log[..]);sm_check(s,counted>0 && sm_task_count(cast(string)provider_log[0..<ifx counted>0 then counted else 0],"\"task_started\":true")==4,"actual Claude prompt count stays four across Start retries and restart replay");
  codex_log:[65536]u8;counted=fs_read(sm_in_tmp(s,"codex-provider.jsonl",codex_notes_path[..]),codex_log[..]);sm_check(s,counted>0 && sm_task_count(cast(string)codex_log[0..<ifx counted>0 then counted else 0],"\"method\":\"turn/start\"")==2,"actual Codex turn/start count stays two across retries");
+ // Restart an idle resident with a genuinely partial SDK list. No task starts
+ // while the observation refuses its incomplete catalog.
+ sm_stop(serve);sm_env(s,12,"CODEX_STANDIN_CATALOG_MODE","partial");serve=sm_serve(s,serve_args[..]);
+ partial_q:=XoRequest.{probe="aaaaaaaa11111111aaaaaaaa11111111",engine="codex",account="system"};partial_offer:[1]XoOffer;partial_arena:[XO_ARENA]u8;partial_good:=false;until:=proc_now_ms()+25000;
+ while proc_now_ms()<until {sm_offer_call(s,rp[..],key,grant,epoch,partial_q);partial_good=rp[0].status==0 && xo_read(sm_text(rp[..]),partial_offer[..],partial_arena[..]);if !partial_good || partial_offer[0].state!=XO_WARM {break;}}
+ sm_check(s,partial_good && partial_offer[0].state==XO_FAILED && partial_offer[0].error=="model_unavailable" && partial_offer[0].n==0,"an actual partial SDK response cannot publish a static or silently truncated ready offer");
+ counted=fs_read(sm_in_tmp(s,"codex-provider.jsonl",codex_notes_path[..]),codex_log[..]);sm_check(s,counted>0 && sm_task_count(cast(string)codex_log[0..<ifx counted>0 then counted else 0],"\"method\":\"turn/start\"")==2,"a refused native catalog probe sends no turn or tool effect");
  forget:=[2]string.["forget",device];sm_host(s,rp[..],forget[..]);sm_check(s,rp[0].status==0,"the operator revokes the task's actual enrollment");
  read:=XtRequest.{method="ReadTask",task=ids[5]};sm_task_call(s,rp[..],key,grant,epoch,read);sm_check(s,rp[0].status==4,"a revoked enrollment cannot read retained task status");
  tq:=XhRequest.{task=ids[5],reader="88888888888888888888888888888888",read=ids[5]};sm_transcript_call(s,rp[..],key,grant,epoch,tq);sm_check(s,rp[0].status==4,"a revoked enrollment cannot read retained transcript bytes");
+ oq:=XoRequest.{probe="99999999999999999999999999999999",engine="codex",account="system"};sm_offer_call(s,rp[..],key,grant,epoch,oq);sm_check(s,rp[0].status==4,"a revoked enrollment cannot read or restart a native catalog probe");
  sm_out("Task HOST checks: ");out:[32]u8;sm_out(sm_itoa(s[0].checks,out[..]));sm_out("; failed: ");sm_out(sm_itoa(s[0].fails,out[..]));sm_out("\n");
  sm_out("Evidence: ");sm_out(sm_tmp(s));sm_out("\n");return ifx s[0].fails==0 then 0 else 1;
 }

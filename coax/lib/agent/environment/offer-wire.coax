@@ -1,0 +1,54 @@
+// Sole closed codec for native offers; SDK catalogs are projected, never cloned.
+// coax/bin/coax test coax/lib/agent/environment/offer-wire.coax --library
+#load "offer-policy.coax";
+XO_REQUEST :: "openagents.environment.execution.offer-request.v1alpha1";
+XO_OFFER :: "openagents.environment.execution.offer.v1alpha1";
+XO_MAX :: 32768; XO_ARENA :: 16384;
+#test "native offer requests are closed required and round trip unchanged" {
+ q:=XoRequest.{probe=EX_TEST_ID,engine="claude",account="system"};out:[1024]u8;again:[2048]u8;r:[1]XoRequest;arena:[128]u8;n:=xo_request_write(q,out[..]);raw:=cast(string)out[0..<n];#assert n>0 && xo_request_read(raw,r[..],arena[..]) && r[0].probe==q.probe && r[0].engine==q.engine && r[0].account==q.account && xo_request_write(r[0],again[..])==n && cast(string)again[0..<n]==raw;
+ for key:[5]string.["schema","method","probe_id","engine_id","account_id"] {#assert !xo_request_read(ex_test_field(raw,key,"",again[..]),r[..],arena[..]) && !xo_request_read(ex_test_field(raw,key,"null",again[..]),r[..],arena[..]) && !xo_request_read(ex_test_alias(raw,key,again[..]),r[..],arena[..]);}
+ #assert !xo_request_read(raw,r[0..<0],arena[..]) && !xo_request_read(raw,r[..],arena[0..<1]) && !xo_request_read("{}",r[..],arena[..]);q.engine="other";#assert xo_request_write(q,out[..])<0;q.engine="claude";#assert xo_request_write(q,out[0..<1])<0;
+}
+#test "native offers preserve exact models and every required closed field" {
+ v:=xo_test_offer();v.state=XO_READY;v.n=2;v.models[0]=XoModel.{id="model-exact",label="Actual café",n=2};v.models[0].levels[0]="low";v.models[0].levels[1]="high";v.models[1]=XoModel.{id="no-effort",label="Native"};out:[XO_MAX]u8;again:[XO_MAX]u8;arena:[XO_ARENA]u8;r:[1]XoOffer;n:=xo_write(v,out[..]);raw:=cast(string)out[0..<n];
+ #assert n>0 && xo_read(raw,r[..],arena[..]) && r[0].n==2 && r[0].models[0].label=="Actual café" && r[0].models[0].levels[1]=="high" && r[0].models[1].n==0 && xo_write(r[0],again[..])==n && cast(string)again[0..<n]==raw;
+ for key:[11]string.["schema","host_pubkey","workspace_id","probe_id","engine_id","account_id","state","error_code","observed_at_ms","expires_at_ms","models"] {#assert !xo_read(ex_test_field(raw,key,"",again[..]),r[..],arena[..]) && !xo_read(ex_test_field(raw,key,"null",again[..]),r[..],arena[..]) && !xo_read(ex_test_alias(raw,key,again[..]),r[..],arena[..]);}
+ for bad:[5]string.["[{}]","[{\"model_id\":\"m\",\"display_name\":\"M\"}]","[{\"model_id\":\"m\",\"display_name\":\"M\",\"effort_ids\":[null]}]","[{\"model_id\":\"m\",\"display_name\":\"M\",\"effort_ids\":false}]","[{\"model_id\":\"m\",\"display_name\":\"M\",\"effort_ids\":[],\"extra\":0}]"] {#assert !xo_read(ex_test_field(raw,"models",bad,again[..]),r[..],arena[..]);}
+ #assert !xo_read(raw,r[0..<0],arena[..]) && !xo_read(raw,r[..],arena[0..<1]) && !xo_read("{}",r[..],arena[..]) && xo_write(v,again[0..<1])<0;v.host="bad";#assert xo_write(v,again[..])<0;
+ v.host=EX_TEST_HASH;v.models[0].id="claude-opus-native[1m]";n=xo_write(v,out[..]);#assert n>0 && xo_read(cast(string)out[0..<n],r[..],arena[..]) && r[0].models[0].id=="claude-opus-native[1m]";
+}
+xo_request_write :: (q:XoRequest,out:[]u8)->int #export_c #effects(all) {
+ if !xo_request_valid(q) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],XO_REQUEST);jo_key(o[..],"method");jo_str(o[..],"DescribeTaskOffer");jo_key(o[..],"probe_id");jo_str(o[..],q.probe);jo_key(o[..],"engine_id");jo_str(o[..],q.engine);jo_key(o[..],"account_id");jo_str(o[..],q.account);jo_end(o[..]);return ex_encoded(o[..]);
+}
+#test "request and offer byte caps keep exact endpoints and closed semantic fields" {
+ q:=XoRequest.{probe=EX_TEST_ID,engine="claude",account="system"};raw:[XO_MAX+1]u8;altered:[XO_MAX+1]u8;arena:[XO_ARENA]u8;r:[1]XoRequest;v:[1]XoOffer;
+ n:=xo_request_write(q,raw[..]);#assert !xo_request_read(ex_test_field(cast(string)raw[0..<n],"account_id","\"bad\"",altered[..]),r[..],arena[..]);for i:n..<1025 {raw[i]=' ';}#assert xo_request_read(cast(string)raw[0..<1024],r[..],arena[..]) && !xo_request_read(cast(string)raw[0..<1025],r[..],arena[..]);
+ offer:=xo_test_offer();n=xo_write(offer,raw[..]);s:=cast(string)raw[0..<n];#assert !xo_read(ex_test_field(s,"models","{}",altered[..]),v[..],arena[..]) && !xo_read(ex_test_field(s,"error_code","\"\\u0000\"",altered[..]),v[..],arena[..]);
+ for state:0..<3 {offer.state=state;offer.error=ifx state==XO_FAILED then "revoked" else "";offer.n=ifx state==XO_READY then 1 else 0;offer.models[0]=XoModel.{id="m",label="M"};n=xo_write(offer,raw[..]);#assert n>0 && xo_read(cast(string)raw[0..<n],v[..],arena[..]) && v[0].state==state && v[0].error==offer.error;}
+ for i:n..<XO_MAX+1 {raw[i]=' ';}#assert xo_read(cast(string)raw[0..<XO_MAX],v[..],arena[..]) && !xo_read(cast(string)raw[0..<XO_MAX+1],v[..],arena[..]);
+ offer.state=XO_READY;offer.error="";offer.n=1;offer.models[0]=XoModel.{id="m",label="M",n=8};levels:=[8]string.["low","medium","high","xhigh","max","ultra","fast","none"];for id,i:levels {offer.models[0].levels[i]=id;}n=xo_write(offer,raw[..]);#assert n>0 && xo_read(cast(string)raw[0..<n],v[..],arena[..]) && v[0].models[0].n==8;
+ a:[1]Jo;models:[8192]u8;jo_start(a[..],models[..]);jo_arr(a[..]);for i:0..<AG_MODELS+1 {jo_raw(a[..],"{\"model_id\":\"m\",\"display_name\":\"M\",\"effort_ids\":[]}");}jo_end(a[..]);#assert !xo_read(ex_test_field(cast(string)raw[0..<n],"models",jo_text(a[..]),altered[..]),v[..],arena[..]);
+ model:="{\"model_id\":\"m\",\"display_name\":\"M\",\"effort_ids\":[]}";changed:[1024]u8;for key:[3]string.["model_id","display_name","effort_ids"] {jo_start(a[..],models[..]);jo_arr(a[..]);jo_raw(a[..],ex_test_alias(model,key,changed[..]));jo_end(a[..]);#assert !xo_read(ex_test_field(cast(string)raw[0..<n],"models",jo_text(a[..]),altered[..]),v[..],arena[..]);}
+ for bad:[2]string.["[{\"model_id\":\"m\",\"display_name\":\"M\",\"effort_ids\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\"]}]","[{\"model_id\":\"m\",\"display_name\":\"M\",\"effort_ids\":[\"\"]}]"] {#assert !xo_read(ex_test_field(cast(string)raw[0..<n],"models",bad,altered[..]),v[..],arena[..]);}
+ ids:[AG_MODELS][3]u8;offer.n=AG_MODELS;for i:0..<AG_MODELS {ids[i][0]='m';ids[i][1]=cast(u8)('a'+i/26);ids[i][2]=cast(u8)('a'+i%26);offer.models[i]=XoModel.{id=cast(string)ids[i][..],label="M"};}n=xo_write(offer,raw[..]);#assert n>0 && xo_read(cast(string)raw[0..<n],v[..],arena[..]) && v[0].n==AG_MODELS && v[0].models[AG_MODELS-1].id==cast(string)ids[AG_MODELS-1][..];
+}
+xo_request_read :: (raw:string,out:[]XoRequest,arena:[]u8)->bool #export_c #effects(all) {
+ d:[1]Jv;nodes:[16]JvNode;keys:=[5]string.["schema","method","probe_id","engine_id","account_id"];
+ if out.count<1 || raw.count>1024 || !jv_parse(d[..],raw,nodes[..]) || !js_fields(d[0],0,keys[..]) || jv_len(d[0],0)!=keys.count || jv_raw(d[0],jv_get(d[0],0,"schema"))!=XO_REQUEST || jv_raw(d[0],jv_get(d[0],0,"method"))!="DescribeTaskOffer" {return false;}
+ a:=[1]ExArena.[ExArena.{buf=arena}];q:=XoRequest.{probe=ex_string(d[0],0,"probe_id",a[..]),engine=ex_string(d[0],0,"engine_id",a[..]),account=ex_string(d[0],0,"account_id",a[..])};if a[0].bad || !xo_request_valid(q) {return false;}out[0]=q;return true;
+}
+xo_write :: (v:XoOffer,out:[]u8)->int #export_c #effects(all) {
+ if !xo_valid(v) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],XO_OFFER);jo_key(o[..],"host_pubkey");jo_str(o[..],v.host);jo_key(o[..],"workspace_id");jo_str(o[..],v.workspace);jo_key(o[..],"probe_id");jo_str(o[..],v.probe);jo_key(o[..],"engine_id");jo_str(o[..],v.engine);jo_key(o[..],"account_id");jo_str(o[..],v.account);jo_key(o[..],"state");jo_str(o[..],xo_name(v.state));jo_key(o[..],"error_code");jo_str(o[..],v.error);jo_key(o[..],"observed_at_ms");jo_int(o[..],v.observed);jo_key(o[..],"expires_at_ms");jo_int(o[..],v.expires);jo_key(o[..],"models");jo_arr(o[..]);
+ for i:0..<v.n {m:=v.models[i];jo_obj(o[..]);jo_key(o[..],"model_id");jo_str(o[..],m.id);jo_key(o[..],"display_name");jo_str(o[..],m.label);jo_key(o[..],"effort_ids");jo_arr(o[..]);for k:0..<m.n {jo_str(o[..],m.levels[k]);}jo_end(o[..]);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);return ex_encoded(o[..]);
+}
+xo_read :: (raw:string,out:[]XoOffer,arena:[]u8)->bool #export_c #effects(all) {
+ d:[1]Jv;nodes:[2048]JvNode;keys:=[11]string.["schema","host_pubkey","workspace_id","probe_id","engine_id","account_id","state","error_code","observed_at_ms","expires_at_ms","models"];
+ if out.count<1 || raw.count>XO_MAX || !jv_parse(d[..],raw,nodes[..]) || !js_fields(d[0],0,keys[..]) || jv_len(d[0],0)!=keys.count || jv_raw(d[0],jv_get(d[0],0,"schema"))!=XO_OFFER {return false;}
+ a:=[1]ExArena.[ExArena.{buf=arena}];v:=XoOffer.{host=ex_string(d[0],0,"host_pubkey",a[..]),workspace=ex_string(d[0],0,"workspace_id",a[..]),probe=ex_string(d[0],0,"probe_id",a[..]),engine=ex_string(d[0],0,"engine_id",a[..]),account=ex_string(d[0],0,"account_id",a[..]),state=xo_state(ex_string(d[0],0,"state",a[..])),error=ex_string(d[0],0,"error_code",a[..]),observed=js_number(d[0],jv_get(d[0],0,"observed_at_ms")),expires=js_number(d[0],jv_get(d[0],0,"expires_at_ms"))};models:=jv_get(d[0],0,"models");v.n=jv_len(d[0],models);
+ if a[0].bad || jv_kind(d[0],models)!=JV_ARRAY || v.n>AG_MODELS {return false;}fields:=[3]string.["model_id","display_name","effort_ids"];
+ for i:0..<v.n {at:=jv_at(d[0],models,i);if !js_fields(d[0],at,fields[..]) || jv_len(d[0],at)!=3 {return false;}m:=XoModel.{id=ex_string(d[0],at,"model_id",a[..]),label=ex_string(d[0],at,"display_name",a[..])};levels:=jv_get(d[0],at,"effort_ids");m.n=jv_len(d[0],levels);if a[0].bad || jv_kind(d[0],levels)!=JV_ARRAY || m.n>AG_LEVELS {return false;}
+  for k:0..<m.n {start:=a[0].n;n:=js_string(d[0],jv_at(d[0],levels,k),arena[start..<arena.count]);
+   if n<0 {return false;} // mutant: equivalent (rejecting zero as well only rejects an empty effort ID, already refused by the final required identifier validation)
+   a[0].n+=n;m.levels[k]=cast(string)arena[start..<a[0].n];}v.models[i]=m;
+ }if !xo_valid(v) {return false;}out[0]=v;return true;
+}

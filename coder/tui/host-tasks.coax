@@ -115,22 +115,32 @@ xt_codex_auth_start :: ()->int #effects(all) {
 // the checker enumerate every borrowed leaf of both SDKs in one expression.
 // Buffer extents are reset by their owners before they can be observed.
 xt_reset :: (slot:[]EsSlot) #effects(all) {
- slot[0].occupied=false;slot[0].summary=EaSession.{};slot[0].engine[0]=Engine.{};
+ slot[0].occupied=false;slot[0].probing=false;slot[0].offer_index= -1;slot[0].summary=EaSession.{};slot[0].engine[0]=Engine.{};
  slot[0].codex[0]=CxEngine.{};slot[0].execution[0]=XtRun.{};slot[0].options[0]=ClOptions.{};
  slot[0].mode=MODE_CLAUDE;slot[0].nprovider=0;slot[0].last_saved=0;slot[0].failed=false;slot[0].started=false;
 }
 xt_attach_claude :: (h:[]HsHost,slot:[]EsSlot) #effects(all) {
  run:=slot[0].execution[..];b:=run[0].status[0].binding;grant:=cast(string)slot[0].grant[..];e:=slot[0].engine[..];
  if !pa_bind_profile(h,slot,b.session,grant,b.account) {xt_fail(slot,"login_required");return;}
- exe:[1400]u8;e[0].claude_n=js_copy(e[0].claude[..],pa_program(exe[..]));e[0].strict_models=true;e[0].warmed=false;
- root:[1400]u8;directory:[1400]u8;profile:=pa_directory(pa_root(root[..]),b.account,directory[..]);run[0].auth[0].h=pa_cli_start(profile,b.account=="system",false);
+ xt_warm_claude(slot,b.account);
 }
-xt_attach_codex :: (slot:[]EsSlot,workspace:string) #effects(all) {
+// Shared SDK/auth initialization for tasks and read-only native offer probes.
+// No prompt is sent here; each owner decides what follows a real ready state.
+xt_warm_claude :: (slot:[]EsSlot,account:string) #effects(all) {
+ run:=slot[0].execution[..];e:=slot[0].engine[..];
+ exe:[1400]u8;e[0].claude_n=js_copy(e[0].claude[..],pa_program(exe[..]));e[0].strict_models=true;e[0].warmed=false;
+ root:[1400]u8;directory:[1400]u8;profile:=pa_directory(pa_root(root[..]),account,directory[..]);run[0].auth[0].h=pa_cli_start(profile,account=="system",false);
+}
+xt_warm_codex :: (slot:[]EsSlot,workspace:string)->bool #effects(all) {
  slot[0].nprovider=js_copy(slot[0].provider[..],"system");e:=slot[0].engine[..];e[0].on=false;e[0].codex_exe="codex";
- path:[E_PATH]u8;current:=proc_getenv("PATH",path[..]);if current.count+5>e[0].path_env.count {xt_fail(slot,"engine_unavailable");return;}
+ path:[E_PATH]u8;current:=proc_getenv("PATH",path[..]);if current.count+5>e[0].path_env.count {return false;}
  e[0].path_n=js_copy(e[0].path_env[..],"PATH=");for byte:current {e[0].path_env[e[0].path_n]=byte;e[0].path_n+=1;}
- x:=slot[0].codex[..];cxe_attach(x,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].codex_mem[..],workspace);x[0].prompt=slot[0].prompt[..];x[0].want_warm=true;
- slot[0].execution[0].auth[0].h=xt_codex_auth_start();
+ x:=slot[0].codex[..];cxe_attach(x,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].codex_mem[..],workspace);x[0].prompt=slot[0].prompt[..];x[0].want_warm=true;x[0].strict_models=true;
+ slot[0].execution[0].auth[0].h=xt_codex_auth_start();return true;
+}
+xt_warm_buffers :: (slot:[]EsSlot,workspace:string) #effects(all) {
+ s_init(slot[0].s[..],slot[0].pool[..]);e:=slot[0].engine[..];e_attach(e,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].scratch[..],slot[0].prompt[..]);
+ e[0].cwd_n=js_copy(e[0].cwd[..],workspace);e[0].access=ACC_SUPERVISED;
 }
 // All effects here follow the durable Start marker. The shared engines warm
 // their real catalogs first; no task prompt is sent before exact choice/auth.
@@ -139,12 +149,11 @@ xt_attach :: (h:[]HsHost,index:int,grant:string,device:string,task:string,route:
  if xt_status_load(xt_root(root[..]),grant,task,run[0].status[..],run[0].strings[..]).count>0 {return false;}
  slot[0].occupied=true;run[0].active=true;_ = js_copy(slot[0].grant[..],grant);_ = js_copy(slot[0].device[..],device);b:=run[0].status[0].binding;
  run[0].nroute=js_copy(run[0].route[..],route);run[0].deadline=cxproc_wall_us()/1000+20000;slot[0].mode=ifx b.engine=="codex" then MODE_CODEX else MODE_CLAUDE;
- s_init(slot[0].s[..],slot[0].pool[..]);e:=slot[0].engine[..];e_attach(e,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].scratch[..],slot[0].prompt[..]);
- c:=h[0].environment[0].configuration[..];e[0].cwd_n=js_copy(e[0].cwd[..],cast(string)c[0].workspace[0..<c[0].nw]);e[0].access=ACC_SUPERVISED;
+ c:=h[0].environment[0].configuration[..];xt_warm_buffers(slot,cast(string)c[0].workspace[0..<c[0].nw]);e:=slot[0].engine[..];
  slot[0].summary.ni=ea_copy(slot[0].summary.id[..],b.session);slot[0].summary.nw=ea_copy(slot[0].summary.workspace[..],"default");
  if !xt_save(slot) {xt_fail(slot,"storage_unavailable");return true;}
  if run[0].nroute<1 || e[0].cwd_n<1 || !xt_provider_present(h,b,grant) {xt_fail(slot,"login_required");return true;}
- if b.engine=="claude" {xt_attach_claude(h,slot);}else {xt_attach_codex(slot,cast(string)c[0].workspace[0..<c[0].nw]);}
+ if b.engine=="claude" {xt_attach_claude(h,slot);}else if !xt_warm_codex(slot,cast(string)c[0].workspace[0..<c[0].nw]) {xt_fail(slot,"engine_unavailable");}
  if !run[0].active {return true;}
  run[0].auth[0].deadline=cxproc_wall_us()/1000+15000;if run[0].auth[0].h<0 {xt_fail(slot,"engine_unavailable");}return true;
 }
@@ -183,6 +192,7 @@ xt_tick :: (h:[]HsHost) #effects(all) {
   old_native:[128]u8;old_interaction:[256]u8;nn:=js_copy(old_native[..],v[0].native);ni:=js_copy(old_interaction[..],v[0].interaction);before:=v[0].state;
   ag_poll(es_agent(slot),0.016,true);
   if !run[0].dispatched {
+   if (slot[0].mode==MODE_CODEX && slot[0].codex[0].catalog_refused) || (slot[0].mode==MODE_CLAUDE && slot[0].engine[0].catalog_refused) {xt_fail(slot,"model_unavailable");continue;}
    ready:=ifx slot[0].mode==MODE_CODEX then slot[0].codex[0].ready && slot[0].codex[0].cat_gen>0 else slot[0].engine[0].ready && slot[0].engine[0].cat_gen>0;
    if !ready {if now>=run[0].deadline {xt_fail(slot,"engine_unavailable");}continue;}
    cat:=ifx slot[0].mode==MODE_CODEX then slot[0].codex[0].cat[..] else slot[0].engine[0].cat[..];choice:=ex_choice(cat,v[0].binding.model,v[0].binding.effort);

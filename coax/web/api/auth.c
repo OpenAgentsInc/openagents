@@ -209,6 +209,7 @@ static const auth_rule RULES[] = {
   R("GET",  "/api/chat/environment/station/v1", false, AP_ACCOUNT, "an enrolled computer's own report for the delegation router: read-only, under its HOST grant"),
   R("*",    "/api/chat/task/v1alpha1", false, AP_ACCOUNT, "owned native task observation and controls; task-access-policy checks the account, connection and action"),
   R("*",    "/api/chat/task/transcript/v1alpha1", false, AP_ACCOUNT, "read-only owned native transcript captures under the current HOST grant"),
+  R("*",    "/api/chat/task/models/v1alpha1", false, AP_ACCOUNT, "read-only native SDK offers under an exclusive account connection and current HOST grant"),
   R("*",    "/api/chat/state", false, AP_ADMIN, "/chat"), R("*", "/api/chat/new", false, AP_ADMIN, "/chat"),
   R("*",    "/api/chat/send", false, AP_ADMIN, "/chat"), R("*", "/api/chat/model", false, AP_ADMIN, "/chat"),
   R("*",    "/api/chat/stop", false, AP_ADMIN, "/chat"), R("*", "/api/chat/tab", false, AP_ADMIN, "/chat"),

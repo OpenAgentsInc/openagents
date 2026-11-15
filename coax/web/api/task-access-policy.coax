@@ -2,6 +2,7 @@
 // coax/bin/coax test coax/web/api/task-access-policy.coax --library
 #load "../../lib/agent/environment/task-wire.coax";
 #load "../../lib/agent/environment/transcript-wire.coax";
+#load "../../lib/agent/environment/offer-wire.coax";
 #authority;
 
 #test "task API admission requires a verified account and exclusive connection; Stop survives loss of funding" {

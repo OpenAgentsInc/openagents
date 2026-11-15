@@ -241,7 +241,8 @@
       "openagents/environment/execution/v1alpha1/execution.proto",
       "openagents/environment/execution/v1alpha1/preparation.proto",
       "openagents/environment/execution/v1alpha1/task.proto",
-      "openagents/environment/execution/v1alpha1/transcript.proto"
+      "openagents/environment/execution/v1alpha1/transcript.proto",
+      "openagents/environment/execution/v1alpha1/offer.proto"
     ],
     "account-identity": [
       "openagents/account/identity/v1/identity.proto"

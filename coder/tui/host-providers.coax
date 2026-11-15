@@ -25,7 +25,7 @@ pa_fail :: (v:[]PaView,code:string) {v[0].ne=pa_copy(v[0].error[..],code);}
 pa_find_profile :: (m:[]PaManager,id:string)->int {s:=m[0].native[0].store[..];for i:0..<s[0].n {if cast(string)s[0].profiles[i].id[0..<s[0].profiles[i].ni]==id {return i;}}return -1;}
 pa_find_flow :: (m:[]PaManager,id:string)->int {for i:0..<4 {f:=m[0].native[0].flows[i].view;if cast(string)f.id[0..<f.ni]==id && f.ni>0 {return i;}}return -1;}
 pa_profile_busy :: (h:[]HsHost,id:string)->bool {
- for i:0..<ES_SLOTS {s:=h[0].environment[0].slots[i..<i+1];if s[0].occupied && s[0].engine[0].running && cast(string)s[0].provider[0..<s[0].nprovider]==id {return true;}}
+ for i:0..<ES_SLOTS {s:=h[0].environment[0].slots[i..<i+1];if s[0].occupied && (s[0].engine[0].running || s[0].probing || s[0].execution[0].active) && cast(string)s[0].provider[0..<s[0].nprovider]==id {return true;}}
  return pa_login_busy(h[0].providers[..],id);
 }
 pa_login_busy :: (m:[]PaManager,id:string)->bool {for i:0..<4 {f:=m[0].native[0].flows[i..<i+1];if pa_running(f) && cast(string)f[0].view.account[0..<f[0].view.na]==id {return true;}}return false;
@@ -109,15 +109,20 @@ pa_binding_file :: (grant:string,id:string,out:[]u8)->string {
 }
 // Exact per-task profile selection never changes the computer's selected
 // profile for another conversation. An absent store has only its system login.
-pa_bind_profile :: (h:[]HsHost,slot:[]EsSlot,id:string,grant:string,selected:string)->bool {
+pa_profile_slot :: (h:[]HsHost,slot:[]EsSlot,grant:string,selected:string)->bool {
  m:=h[0].providers[..];if !pa_load(m) {path:[1400]u8;if selected!="system" || m[0].loaded || fs_exists(pa_store_file(path[..])) {return false;}slot[0].nprovider=pa_copy(slot[0].provider[..],selected);return true;}
  s:=m[0].native[0].store[..];if cast(string)s[0].grant[..]!=grant || pa_find_profile(m,selected)<0 || pa_login_busy(m,selected) {return false;}
  slot[0].nprovider=pa_copy(slot[0].provider[..],selected);
  if selected!="system" {root:[1400]u8;engine:=slot[0].engine[..];dir:=pa_directory(pa_root(root[..]),selected,engine[0].config_dir[..]);engine[0].config_n=dir.count;if dir.count==0 {return false;}}
+ return true;
+}
+pa_bind_profile :: (h:[]HsHost,slot:[]EsSlot,id:string,grant:string,selected:string)->bool {
+ if !pa_profile_slot(h,slot,grant,selected) {return false;}if !h[0].providers[0].loaded {return true;}
  b:[512]u8;n:=pa_binding_write(grant,id,selected,b[..]);path:[1400]u8;return n>0 && fs_replace_durable(pa_binding_file(grant,id,path[..]),cast(string)b[0..<n]);
 }
 
 #test "account snapshots preserve command correlation and independent profile selection" {
  h:[1]HsHost;q:[1]PaRequest;v:[1]PaView;h[0].providers[0].native[0].store[0].n=2;s:=h[0].providers[0].native[0].store[..];s[0].ns=pa_copy(s[0].selected[..],"22222222222222222222222222222222");
  s[0].profiles[0].ni=pa_copy(s[0].profiles[0].id[..],"system");s[0].profiles[1].ni=pa_copy(s[0].profiles[1].id[..],"22222222222222222222222222222222");q[0].nc=pa_copy(q[0].command[..],"11111111111111111111111111111111");pa_snapshot(h[..],q[..],v[..]);#assert v[0].n==2 && !v[0].accounts[0].selected && v[0].accounts[1].selected && v[0].nc==32;
+ slot:=h[0].environment[0].slots[0..<1];slot[0].occupied=true;slot[0].nprovider=pa_copy(slot[0].provider[..],"system");slot[0].probing=true;#assert pa_profile_busy(h[..],"system") && !pa_profile_busy(h[..],"other");slot[0].probing=false;slot[0].execution[0].active=true;#assert pa_profile_busy(h[..],"system");slot[0].occupied=false;#assert !pa_profile_busy(h[..],"system");
 }

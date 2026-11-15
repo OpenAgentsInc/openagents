@@ -70,6 +70,8 @@ connection to its current HOST grant.
 
 ```sh
 openagents tasks show "$HOST_PUBKEY" "$TASK_ID"
+openagents tasks models "$HOST_PUBKEY" --engine claude --provider-account system
+openagents tasks models "$HOST_PUBKEY" --engine codex
 openagents tasks transcript "$HOST_PUBKEY" "$TASK_ID" --out session.jsonl
 openagents tasks approve "$HOST_PUBKEY" "$TASK_ID" --rev 3 --interaction "$REQUEST_ID" --command-file approve.json
 openagents tasks deny "$HOST_PUBKEY" "$TASK_ID" --rev 3 --interaction "$REQUEST_ID" --command-file deny.json
@@ -78,6 +80,15 @@ openagents tasks retry "$HOST_PUBKEY" --file stop.json
 ```
 
 Use the task status's exact `revision` and `interaction_id` to approve or deny.
+`tasks models` warms the selected native SDK without sending a task prompt and
+waits for a typed offer or failure. It prints actual model IDs and supported
+efforts under the account's exclusive enrolled connection. These engine/account
+flags are for scripts and diagnostics; product flows select automatically.
+An explicit `--operation-id` reuses one probe; changed engine/account reuse is
+refused. Probes expire after 30 seconds. A failed offer contains no model list
+and does not create a task. The [offer contract](../../docs/protocol/engine-offer-v1alpha1.md)
+documents bounds and current discovery refusals.
+
 The transcript command exports the complete, hash-verified inert session log
 to a private file and prints its captured TaskStatus and digest. It preserves
 full tool inputs/results and their call IDs. Refresh it to observe later work;

@@ -1,0 +1,72 @@
+// Actual SDK observations only; no curated catalog or Project grants execution.
+// coax/bin/coax test coax/lib/agent/environment/offer-policy.coax --library
+#load "execution-wire.coax";
+#authority;
+XO_WARM :: 0; XO_READY :: 1; XO_FAILED :: 2;
+XO_TTL :: 30000; XO_DEADLINE :: 20000; XO_PROBES :: 16;
+XoRequest :: struct {probe:string;engine:string;account:string;}
+XoModel :: struct {id:string;label:string;levels:[AG_LEVELS]string;n:int;}
+XoOffer :: struct {host:string;workspace:string;probe:string;engine:string;account:string;state:int;error:string;observed:int;expires:int;models:[AG_MODELS]XoModel;n:int;}
+
+#test "offer requests bind one exact engine and account to a probe" {
+ q:=XoRequest.{probe=EX_TEST_ID,engine="claude",account="system"};#assert xo_request_valid(q);q.account=EX_TEST_ID;#assert xo_request_valid(q);q.engine="codex";#assert !xo_request_valid(q);q.account="system";#assert xo_request_valid(q);q.engine="other";#assert !xo_request_valid(q);q.engine="claude";q.account="bad";#assert !xo_request_valid(q);q.account="system";q.probe="bad";#assert !xo_request_valid(q);
+ #assert xo_deadline(1,XO_TTL)==30001 && xo_deadline(9007199254710991,XO_TTL)==9007199254740991 && xo_deadline(0,XO_TTL)==0 && xo_deadline(9007199254710992,XO_TTL)==0;
+}
+#test "warming and failure contain no invented models and ready observations need a real catalog" {
+ v:=xo_test_offer();#assert xo_valid(v);v.state=XO_READY;#assert !xo_valid(v);v.state=XO_FAILED;#assert !xo_valid(v);v.error="login_required";#assert xo_valid(v);v.error="other";#assert !xo_valid(v);v.error="";v.state= -1;#assert !xo_valid(v);v.state=3;#assert !xo_valid(v);
+ v=xo_test_offer();v.host="bad";#assert !xo_valid(v);v=xo_test_offer();v.workspace="other";#assert !xo_valid(v);v=xo_test_offer();v.observed=0;#assert !xo_valid(v);v=xo_test_offer();v.observed=101;#assert !xo_valid(v);v=xo_test_offer();v.expires=9007199254740992;#assert !xo_valid(v);
+ c:[1]AgCatalog;c[0].n=1;c[0].id[0]="native-model";c[0].label[0]="Actual model";c[0].levels=1;c[0].level_id[0]="high";c[0].ladder[0]=1;out:[1]XoOffer;out[0]=xo_test_offer();
+ #assert !xo_catalog(c[..],false,true,out[..]) && !xo_catalog(c[..],true,false,out[..]);#assert xo_catalog(c[..],true,true,out[..]) && xo_valid(out[0]) && out[0].models[0].id=="native-model" && out[0].models[0].n==1 && out[0].models[0].levels[0]=="high";
+ out[0].models[0].n=0;#assert xo_valid(out[0]);out[0].models[0].label="bad\n";#assert !xo_valid(out[0]);
+}
+#test "offers refuse duplicate and invalid model or effort IDs rather than truncate" {
+ v:=xo_test_offer();v.state=XO_READY;v.n=1;v.models[0]=XoModel.{id="m",label="M"};#assert xo_valid(v);v.n= -1;#assert !xo_valid(v);v.n=AG_MODELS+1;#assert !xo_valid(v);v.n=1;v.models[0].n=AG_LEVELS+1;#assert !xo_valid(v);v.models[0].n= -1;#assert !xo_valid(v);v.models[0].n=1;v.models[0].levels[0]="";#assert !xo_valid(v);v.models[0].levels[0]="high";#assert xo_valid(v);v.models[0].n=2;v.models[0].levels[1]="high";#assert !xo_valid(v);v.models[0].n=0;v.n=2;v.models[1]=v.models[0];#assert !xo_valid(v);v.n=1;v.models[0].id="";#assert !xo_valid(v);
+}
+#test "a reply must match every request identity and a live current host observation" {
+ q:=XoRequest.{probe=EX_TEST_ID,engine="claude",account="system"};v:=xo_test_offer();#assert xo_reply(q,v,EX_TEST_HASH,1) && xo_reply(q,v,EX_TEST_HASH,100) && !xo_reply(q,v,EX_TEST_HASH,101) && !xo_reply(q,v,EX_TEST_HASH,0) && !xo_reply(q,v,"other",1);
+ q.probe="11111111111111111111111111111111";#assert !xo_reply(q,v,EX_TEST_HASH,1);q.probe=EX_TEST_ID;q.engine="codex";#assert !xo_reply(q,v,EX_TEST_HASH,1);q.engine="claude";q.account=EX_TEST_ID;#assert !xo_reply(q,v,EX_TEST_HASH,1);
+}
+xo_test_offer :: ()->XoOffer #effects(all) {return XoOffer.{host=EX_TEST_HASH,workspace="default",probe=EX_TEST_ID,engine="claude",account="system",observed=1,expires=100};}
+#test "offer scalar boundaries states and full catalog bounds are explicit" {
+ v:=xo_test_offer();#assert v.observed==1 && v.expires==100;
+ for name,i:[3]string.["warming","ready","failed"] {#assert xo_name(i)==name && xo_state(name)==i;}#assert xo_name(-1)=="" && xo_name(3)=="" && xo_state("other")== -1;
+ #assert xo_deadline(1,1)==2 && xo_deadline(1,0)==0 && xo_deadline(1,-1)==0;
+ text:[129]u8;for i:0..<text.count {text[i]='x';}bad:=[1]u8.[255];#assert !xo_label("") && !xo_label(cast(string)bad[..]) && xo_label(" ") && xo_label(cast(string)text[0..<128]) && !xo_label(cast(string)text[..]);
+ v.observed=100;#assert xo_valid(v);v=xo_test_offer();v.expires=9007199254740991;#assert xo_valid(v);
+ v=xo_test_offer();v.n=1;v.models[0]=XoModel.{id="m",label="M"};#assert !xo_valid(v);v.n=0;v.error="login_required";#assert !xo_valid(v);v.state=XO_FAILED;#assert xo_valid(v);v.n=1;#assert !xo_valid(v);v.state=XO_READY;#assert !xo_valid(v);v.error="";#assert xo_valid(v);
+ v.models[0].id=cast(string)text[0..<128];v.models[0].label=cast(string)text[0..<128];#assert xo_valid(v);v.models[0].id=cast(string)text[..];#assert !xo_valid(v);v.models[0].id="m";v.models[0].n=1;v.models[0].levels[0]=cast(string)text[0..<16];#assert xo_valid(v);v.models[0].levels[0]=cast(string)text[0..<17];#assert !xo_valid(v);
+ ids:[AG_MODELS][3]u8;c:[1]AgCatalog;c[0].n=AG_MODELS;c[0].levels=AG_LEVELS;levels:=[8]string.["low","medium","high","xhigh","max","ultra","fast","none"];for id,i:levels {c[0].level_id[i]=id;}
+ for i:0..<AG_MODELS {ids[i][0]='m';ids[i][1]=cast(u8)('a'+i/26);ids[i][2]=cast(u8)('a'+i%26);c[0].id[i]=cast(string)ids[i][..];c[0].label[i]="M";c[0].ladder[i]=(1<<AG_LEVELS)-1;}
+ out:[1]XoOffer;out[0]=xo_test_offer();#assert xo_catalog(c[..],true,true,out[..]) && out[0].n==AG_MODELS && out[0].models[AG_MODELS-1].n==AG_LEVELS && out[0].models[AG_MODELS-1].levels[AG_LEVELS-1]=="none";
+ full:=out[0];full.n=AG_MODELS+1;#assert !xo_valid(full);full=out[0];full.models[0].n=AG_LEVELS+1;#assert !xo_valid(full);
+ c[0].n=1;c[0].levels=3;c[0].ladder[0]=5;out[0].state=XO_FAILED;out[0].error="login_required";#assert xo_catalog(c[..],true,true,out[..]) && out[0].error=="" && out[0].models[0].n==2 && out[0].models[0].levels[0]=="low" && out[0].models[0].levels[1]=="high";
+ #assert !xo_catalog(c[0..<0],true,true,out[..]) && !xo_catalog(c[..],true,true,out[0..<0]);c[0].n=0;#assert !xo_catalog(c[..],true,true,out[..]);c[0].n=AG_MODELS+1;#assert !xo_catalog(c[..],true,true,out[..]);c[0].n=1;c[0].levels= -1;#assert !xo_catalog(c[..],true,true,out[..]);c[0].levels=AG_LEVELS+1;#assert !xo_catalog(c[..],true,true,out[..]);c[0].levels=1;c[0].ladder[0]= -1;#assert !xo_catalog(c[..],true,true,out[..]);c[0].ladder[0]=2;#assert !xo_catalog(c[..],true,true,out[..]);c[0].ladder[0]=0;c[0].levels=0;#assert xo_catalog(c[..],true,true,out[..]) && out[0].models[0].n==0;c[0].id[0]="";#assert !xo_catalog(c[..],true,true,out[..]);
+}
+xo_request_valid :: (q:XoRequest)->bool #effects(all) {return ea_id(q.probe,32) && (q.engine=="claude" || q.engine=="codex") && (q.account=="system" || (q.engine=="claude" && ea_id(q.account,32)));}
+#forall "native catalog model counts are checked against a fresh complete boundary fixture" count:0..<34 {
+ c:[1]AgCatalog;c[0].n=count;ids:[AG_MODELS][3]u8;for i:0..<AG_MODELS {ids[i][0]='m';ids[i][1]=cast(u8)('a'+i/26);ids[i][2]=cast(u8)('a'+i%26);c[0].id[i]=cast(string)ids[i][..];c[0].label[i]="M";}
+ out:[1]XoOffer;out[0]=xo_test_offer();#assert xo_catalog(c[..],true,true,out[..])==(count>=1 && count<=AG_MODELS);
+}
+xo_deadline :: (now:int,duration:int)->int #effects(all) {return ifx now>0 && duration>0 && now<=9007199254740991-duration then now+duration else 0;}
+xo_name :: (state:int)->string #effects(all) {return ifx state==XO_WARM then "warming" else ifx state==XO_READY then "ready" else ifx state==XO_FAILED then "failed" else "";}
+xo_state :: (state:string)->int #effects(all) {return ifx state=="warming" then XO_WARM else ifx state=="ready" then XO_READY else ifx state=="failed" then XO_FAILED else -1;}
+xo_error :: (error:string)->bool #effects(all) {for code:[6]string.["login_required","engine_unavailable","model_unavailable","revoked","expired","record_limit"] {if error==code {return true;}}return false;}
+xo_label :: (label:string)->bool #effects(all) {if label.count<1 || label.count>128 || !js_utf8(label) {return false;}for c:label {if c<32 {return false;}}return true;}
+xo_valid :: (v:XoOffer)->bool #effects(all) {
+ if !ea_id(v.host,64) || v.workspace!="default" || !xo_request_valid(XoRequest.{probe=v.probe,engine=v.engine,account=v.account}) || v.observed<1 || v.expires<v.observed || v.expires>9007199254740991 || v.n<0 || v.n>AG_MODELS {return false;}
+ if v.state==XO_WARM {return v.error=="" && v.n==0;}if v.state==XO_FAILED {return xo_error(v.error) && v.n==0;}if v.state!=XO_READY || v.error!="" || v.n<1 {return false;}
+ for i:0..<v.n {m:=v.models[i];if !xo_label(m.id) || !xo_label(m.label) || m.n<0 || m.n>AG_LEVELS {return false;}for j:0..<i {if m.id==v.models[j].id {return false;}}
+  for k:0..<m.n {if m.levels[k].count>16 || !ea_choice(m.levels[k]) {return false;}for j:0..<k {if m.levels[k]==m.levels[j] {return false;}}}
+ }return true;
+}
+xo_reply :: (q:XoRequest,v:XoOffer,host:string,now:int)->bool #export_c #effects(all) {return xo_request_valid(q) && xo_valid(v) && v.host==host && v.probe==q.probe && v.engine==q.engine && v.account==q.account && now>0 && now<=v.expires;}
+#test "a broker cannot publish an invalid offer even when all request identities match" {
+ q:=XoRequest.{probe=EX_TEST_ID,engine="claude",account="system"};v:=xo_test_offer();v.state= -1;#assert !xo_reply(q,v,EX_TEST_HASH,1);
+}
+xo_catalog :: (cat:[]AgCatalog,authenticated:bool,discovered:bool,out:[]XoOffer)->bool #effects(all) {
+ if !authenticated || !discovered || cat.count<1 || out.count<1 || cat[0].n<1 || cat[0].n>AG_MODELS || cat[0].levels<0 || cat[0].levels>AG_LEVELS {return false;}
+ v:=out[0];v.state=XO_READY;v.error="";v.n=cat[0].n;
+ for i:0..<v.n {m:=XoModel.{id=cat[0].id[i],label=cat[0].label[i]};bits:=cat[0].ladder[i];if bits<0 || bits>=(1<<cat[0].levels) {return false;}
+  for k:0..<cat[0].levels {if (bits&(1<<k))!=0 {m.levels[m.n]=cat[0].level_id[k];m.n+=1;}}v.models[i]=m;
+ }if !xo_valid(v) {return false;}out[0]=v;return true;
+}

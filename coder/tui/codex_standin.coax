@@ -251,6 +251,7 @@ xs_answer :: (s: [] Xs, d: Jv, line: string) {
   id := jv_raw(d, ii);
   if method == "initialize" { xs_result(id, "{\"userAgent\":\"codex-standin/0.0.1\",\"codexHome\":\"/tmp/codex-standin\"}"); return; }
   if method == "model/list" {
+    catalog_mode:[64]u8;if proc_getenv("CODEX_STANDIN_CATALOG_MODE",catalog_mode[..])=="partial" {xs_result(id,"{\"data\":[{\"id\":\"gpt-standin\",\"model\":\"gpt-standin\",\"displayName\":\"Native first page\",\"supportedReasoningEfforts\":[\"high\"]}],\"nextCursor\":\"remaining-models\"}");return;}
     xs_result(id, "{\"data\":[{\"id\":\"gpt-standin\",\"model\":\"gpt-standin\",\"displayName\":\"GPT Stand-in\",\"description\":\"The stand-in's model.\",\"hidden\":false,\"isDefault\":true,\"defaultReasoningEffort\":\"high\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"low\"},{\"reasoningEffort\":\"medium\"},{\"reasoningEffort\":\"high\"}]},{\"id\":\"gpt-standin-mini\",\"model\":\"gpt-standin-mini\",\"displayName\":\"GPT Stand-in Mini\",\"description\":\"Small.\",\"hidden\":false,\"isDefault\":false,\"defaultReasoningEffort\":\"low\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"low\"}]}],\"nextCursor\":null}");
     return;
   }

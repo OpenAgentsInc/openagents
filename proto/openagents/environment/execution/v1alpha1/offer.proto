@@ -1,0 +1,29 @@
+syntax = "proto3";
+package openagents.environment.execution.v1alpha1;
+
+// A bounded observational SDK warm-up; it never sends a task prompt.
+message OfferRequest {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.offer-request.v1alpha1
+  string method = 2 [json_name="method"]; // DescribeTaskOffer
+  string probe_id = 3 [json_name="probe_id"];
+  string engine_id = 4 [json_name="engine_id"];
+  string account_id = 5 [json_name="account_id"];
+}
+message OfferedModel {
+  string model_id = 1 [json_name="model_id"];
+  string display_name = 2 [json_name="display_name"];
+  repeated string effort_ids = 3 [json_name="effort_ids"];
+}
+message EngineOffer {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.offer.v1alpha1
+  string host_pubkey = 2 [json_name="host_pubkey"];
+  string workspace_id = 3 [json_name="workspace_id"];
+  string probe_id = 4 [json_name="probe_id"];
+  string engine_id = 5 [json_name="engine_id"];
+  string account_id = 6 [json_name="account_id"];
+  string state = 7 [json_name="state"]; // warming, ready, failed
+  string error_code = 8 [json_name="error_code"];
+  int64 observed_at_ms = 9 [json_name="observed_at_ms"];
+  int64 expires_at_ms = 10 [json_name="expires_at_ms"];
+  repeated OfferedModel models = 11 [json_name="models"];
+}
