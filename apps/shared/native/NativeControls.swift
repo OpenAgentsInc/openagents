@@ -122,6 +122,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             let old=controls[e.id],matching=e.role=="button" ? old is NativeButton:old is UILabel
             let control=matching ? old!:make(e)
             if let button=control as? NativeButton {
+                button.glass=["nav.toggle","nav.close","nav.new","projects.new"].contains(e.id)
                 button.isEnabled = !e.disabled
                 if let state=e.attrs["data-state"],["loading","ready","offline","idle"].contains(state) {
                     // A status: how it stands is shown by the icon and its brightness, and said by its label.

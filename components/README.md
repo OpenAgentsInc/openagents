@@ -79,7 +79,11 @@ are requirements and source findings, not claims of implemented components.
 
 The **Reference** gallery section is an early visual study of four atoms from
 the Claude iOS captures: buttons, a switch, a progress bar, a slider,
-selectable rows and a project information card. It
+selectable rows and a project information card. Further visual studies show
+text, links, symbols, status dots, an avatar, badge, fields, inline code,
+bullets, a sheet handle, page indicators and activity. The fields are static
+samples, not editors; image thumbnails, a real modal scrim and the iOS status
+bar require their platform or image host and are not demonstrated here. It
 uses the shared control kit and a separate reference skin; it is not a product
 skin or a pixel-parity qualification. Its colors are approximate and its text
 still uses the gallery atlas. Select it from Gallery options on iPhone or from

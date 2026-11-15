@@ -249,6 +249,32 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
     _:=sheet_text(sh[..],m,-1,inside.x,inside.y,ref.body.line,ref.body.face,ref.muted,"Add a description and instructions.");y+=120;
     _:=button(sh[..],m,ref,x,y,"Default environment",UISKIN_REST,GL_HIT_BUTTON,0);y+=60;
     _:=button(sh[..],m,ref,x,y,"Add files",UISKIN_REST,GL_HIT_BUTTON,0);y+=68;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Text and links");y+=30;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.ink,"Primary text");y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.muted,"Secondary text");y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.accent,"Learn more");y+=38;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Icons and selection");y+=34;
+    sheet_icon(sh[..],ICON_MAGNIFER,x,y,24,ref.ink);sheet_icon(sh[..],ICON_FOLDER,x+44,y,24,ref.ink);
+    sheet_icon(sh[..],ICON_CHECK,x+88,y,24,ref.accent);sheet_icon(sh[..],ICON_CHEVRON_RIGHT,x+132,y,24,ref.muted);
+    sheet_icon(sh[..],ICON_CLAUDE,x+176,y,24,ref.ink);y+=42;
+    sheet_fill(sh[..],x,y,8,8,4,ref.accent);sheet_rule(sh[..],x+24,y+4,w-2*gutter-24,1,ref.hairline);y+=28;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Avatar and badge");y+=32;
+    sheet_fill(sh[..],x,y,40,40,20,ref.sunk);_:=sheet_text(sh[..],m,-1,x+12,y+9,ref.body.line,ref.body.face,ref.ink,"A");
+    _:=button(sh[..],m,ref,x+56,y,"Beta",UISKIN_REST,GL_HIT_BUTTON,0);y+=60;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Fields");y+=32;
+    _:=sheet_box(sh[..],x,y,w-2*gutter,44,12,1,ref.surface,ref.hairline);
+    _:=sheet_text(sh[..],m,-1,x+14,y+10,ref.body.line,ref.body.face,ref.muted,"Search");y+=54;
+    _:=sheet_box(sh[..],x,y,w-2*gutter,72,12,1,ref.surface,ref.hairline);
+    _:=sheet_text(sh[..],m,-1,x+14,y+12,ref.body.line,ref.body.face,ref.muted,"Add instructions...");y+=90;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Inline code and bullet");y+=32;
+    sheet_fill(sh[..],x,y,80,26,6,ref.surface);_:=sheet_text(sh[..],m,-1,x+8,y+3,ref.body.line,ref.code.face,ref.ink,"example");
+    _:=sheet_text(sh[..],m,-1,x,y+36,ref.body.line,ref.body.face,ref.ink,"• List item");y+=72;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Sheet handle and scrim");y+=32;
+    sheet_fill(sh[..],x,y,w-2*gutter,62,12,ref.surface);sheet_fill(sh[..],x+(w-2*gutter-40)/2,y+8,40,4,2,ref.muted);y+=78;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Page indicator");y+=32;
+    for i:0..<4 {sheet_fill(sh[..],x+cast(f32)i*16,y,7,7,4,ifx i==0 then ref.ink else ref.faint);}y+=32;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Loading");y+=30;
+    activity(sh[..],ref,x,y,24,g[0].time,false);y+=48;
   }
   // the cards, row by row; a row is as tall as its tallest card
   id := 0;
@@ -466,6 +492,14 @@ coaxial_components_cell_ready :: (g: [] GalleryState, cell: int) #export_c #effe
  g[0].scroll=row.y-100;#assert gl_pointer(g[..],row.x+2,102,0) && g[0].cards[0].row==1;
  g[0].scroll=slider_hit.y-100;#assert gl_pointer(g[..],slider_hit.x+slider_hit.w*0.75,102,0);
  #assert abs(g[0].cards[0].slider-0.75)<0.001;
+}
+
+#test "reference gallery includes the visual atom studies" #steps 400000000 {
+ g:[1]GalleryState;o:[1]GlOut;u:[4]f32;gl_test_atlas(g[0].atlas[..]);
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);g[0].section=5;
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);
+ labels:=[8]string.["Text and links","Icons and selection","Avatar and badge","Fields","Inline code and bullet","Sheet handle and scrim","Page indicator","Loading"];
+ for label:labels {found:=false;for i:0..<g[0].no {if g[0].over[i].text==label {found=true;}}#assert found;}
 }
 
 // A fixed atlas: every glyph 8 wide, the monospace faces 7.

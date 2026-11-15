@@ -219,7 +219,14 @@ final class NativeButton:UIButton {
     var drawerProgress:Float? {didSet {if (oldValue==nil) != (drawerProgress==nil) {restyle()};drawerPaint()}}
     var drawerInteractive=false {didSet {drawerPaint()}}
     var drawerRTL=false {didSet {drawerPaint()}}
-    private func drawerPaint() {if let drawerProgress {chrome.arcadePaint.kind=7;chrome.arcadePaint.ink=style.ink;chrome.arcadePaint.value=drawerProgress;chrome.arcadePaint.flags=(drawerInteractive ? 4:0)|(drawerRTL ? 8:0)}}
+    private func drawerPaint() {
+        guard let drawerProgress else {return}
+        chrome.arcadePaint.kind=7;chrome.arcadePaint.ink=style.ink;chrome.arcadePaint.value=drawerProgress;chrome.arcadePaint.flags=(drawerInteractive ? 4:0)|(drawerRTL ? 8:0)
+        if glassView != nil {
+            let name=drawerProgress < 0.5 ? "line.3.horizontal":drawerRTL ? "arrow.right":"arrow.left"
+            glyph.image=UIImage(systemName:name,withConfiguration:UIImage.SymbolConfiguration(pointSize:CGFloat(style.icon),weight:.medium));glyph.isHidden=false
+        }
+    }
     private let chrome=NativeFrameView(role:NativeSkin.names.button),caption=UILabel(),glyph=UIImageView(),ring=NativeRingView(),rule=NativeRuleView()
     private var glassView:UIVisualEffectView?
     private var words=""

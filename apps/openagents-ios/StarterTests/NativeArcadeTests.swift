@@ -4,6 +4,19 @@ import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeArcadeTests:XCTestCase {
+    func testGlassDrawerKeepsAVisibleNavigationGlyph() {
+        let button=NativeButton(.icon);button.show("Navigation",symbol:"line.3.horizontal")
+        button.glass=true;button.drawerProgress=0
+        if #available(iOS 26.0, *) {
+            let glyph=button.subviews.compactMap {$0 as? UIImageView}.first
+            XCTAssertFalse(glyph?.isHidden ?? true);XCTAssertNotNil(glyph?.image)
+            button.drawerProgress=1
+            XCTAssertFalse(glyph?.isHidden ?? true);XCTAssertNotNil(glyph?.image)
+        }
+        button.glass=false
+        let paint=button.subviews.compactMap {($0 as? NativeArcadeNode)?.arcadePaint}.first {$0.kind==7}
+        XCTAssertNotNil(paint)
+    }
     func testGlassButtonUsesNativeEffectAndRestoresSharedFrame() {
         let button=NativeButton(.icon);button.frame=CGRect(x:0,y:0,width:44,height:44)
         button.glass=true;button.layoutIfNeeded()
