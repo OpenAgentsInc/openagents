@@ -1,5 +1,12 @@
 # Owner actions
 
+## Navigation drawer, build 1140 (2026-11-15)
+
+- [ ] Install TestFlight **1140** (verified in **Owner**), open the navigation
+      drawer, and check its appearance, drag, search, recent chats, settings
+      and New chat footer on the phone. Focused simulator checks passed;
+      physical-device appearance and Liquid Glass remain to be verified.
+
 ## Shared glass controls, build 1130 (2026-11-15)
 
 - [ ] Install TestFlight **1130** (verified in **Owner**) on iOS 26 or later.
