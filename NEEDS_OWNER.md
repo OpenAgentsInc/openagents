@@ -1,5 +1,12 @@
 # Owner actions
 
+## Reference molecules, build 1180 (2026-11-15)
+
+- [ ] Install TestFlight **1180** (verified in **Owner**), open **Settings →
+      Components → Gallery options → Reference**, and try the model choices
+      and notification switches. Shared component tests and the simulator
+      gallery walkthrough passed; compare appearance and touch on the phone.
+
 ## Reference sidebar, build 1160 (2026-11-15)
 
 - [ ] Install TestFlight **1160** (verified in **Owner**) and inspect the
