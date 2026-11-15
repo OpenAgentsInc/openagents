@@ -76,6 +76,9 @@ EOF
     systemctl --user daemon-reload
     exit 0 ;;
 esac
+# The sweep yields to the pipeline: its jobs take only slots 4 to 6 of a host, never the
+# after-landing jobs' slots 1 to 3, so an after-landing job never waits for a slot the sweep holds.
+export OA_REMOTE_SLOT_FIRST="${OA_REMOTE_SLOT_FIRST:-4}" OA_REMOTE_SLOTS="${OA_REMOTE_SLOTS:-6}"
 lock="${dir%/*}/sweep.lock"
 running() { local pid; pid="$(cat "$lock/pid" 2> /dev/null || true)"; [[ -n "$pid" ]] && kill -0 "$pid" 2> /dev/null; }
 if [[ "${1:-}" == timer ]]; then

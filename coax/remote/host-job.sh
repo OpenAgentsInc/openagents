@@ -12,6 +12,7 @@
 set -uo pipefail
 cmd="${1:-}"
 slots="${OA_REMOTE_SLOTS:-3}"
+first_slot="${OA_REMOTE_SLOT_FIRST:-1}"
 [[ "$cmd" == run ]] || { echo "host-job.sh: run JOB" >&2; exit 97; }
 job="$2"; in=~/inbox/$job
 infra() { echo "remote: $*" >&2; rm -rf "$in"; exit 97; }
@@ -89,10 +90,11 @@ if [[ -f "$res/status" && "$(< "$res/status")" == 0 ]]; then
   rm -rf "$in"; exit 0
 fi
 find ~/results -mindepth 1 -maxdepth 1 -mtime +3 -exec rm -rf {} + 2> /dev/null
-# A slot: one of OA_REMOTE_SLOTS worktrees, held with flock for the whole job.
+# A slot: one of the worktrees OA_REMOTE_SLOT_FIRST to OA_REMOTE_SLOTS, held with flock for
+# the whole job. The mutation sweep's jobs start at 4: the pipeline's slots 1 to 3 are never theirs.
 slot=""; waited=0
 while [[ -z "$slot" ]]; do
-  for s in $(seq 1 "$slots"); do
+  for s in $(seq "$first_slot" "$slots"); do
     mkdir -p ~/slots/$s
     exec 9> ~/slots/$s/lock
     if flock -n 9; then slot=$s; break; fi
@@ -101,7 +103,7 @@ while [[ -z "$slot" ]]; do
   if [[ -z "$slot" ]]; then
     # OA_REMOTE_NO_WAIT=1: the caller tries another host first (exit 96).
     if [[ "${OA_REMOTE_NO_WAIT:-0}" == 1 ]]; then rm -rf "$in"; exit 96; fi
-    [[ $waited == 1 ]] || echo "remote: $(hostname): all $slots slots busy, waiting" >&2
+    [[ $waited == 1 ]] || echo "remote: $(hostname): slots $first_slot to $slots busy, waiting" >&2
     waited=1; sleep 5
   fi
 done

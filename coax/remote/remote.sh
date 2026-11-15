@@ -29,7 +29,10 @@
 #   OA_REMOTE_MAX_HOSTS          hosts at once (default 6)
 #   OA_REMOTE_MACHINE            machine type (default c3d-highcpu-30, spot)
 #   OA_REMOTE_IDLE_MINUTES       a host stops itself after this long idle (default 15)
-#   OA_REMOTE_SLOTS              jobs at once on one host (default 3)
+#   OA_REMOTE_SLOTS              jobs at once on one host (default 3): slots OA_REMOTE_SLOT_FIRST
+#                                to OA_REMOTE_SLOTS
+#   OA_REMOTE_SLOT_FIRST         the first slot this caller may take (default 1): the mutation
+#                                sweep takes 4 and up, so it never holds the pipeline's 1 to 3
 #   OA_REMOTE_ZONES              zones to create in, in turn (default us-central1-a,b,c,f)
 #   OA_REMOTE_TIMEOUT            seconds the command may run on the host (default no limit)
 #   OA_REMOTE_WAIT               seconds to look for a free slot on any host before
@@ -50,6 +53,7 @@ max_hosts="${OA_REMOTE_MAX_HOSTS:-6}"
 machine="${OA_REMOTE_MACHINE:-c3d-highcpu-30}"
 idle="${OA_REMOTE_IDLE_MINUTES:-15}"
 slots="${OA_REMOTE_SLOTS:-3}"
+first_slot="${OA_REMOTE_SLOT_FIRST:-1}"
 zones="${OA_REMOTE_ZONES:-us-central1-a,us-central1-b,us-central1-c,us-central1-f}"
 sa_config="$HOME/work/.secrets/gcloud-sa-config"
 [[ -n "${CLOUDSDK_CONFIG:-}" || ! -d "$sa_config" ]] || export CLOUDSDK_CONFIG="$sa_config"
@@ -160,7 +164,7 @@ wait_ready() {   # name zone: the host's address once its setup is done (first b
   return 1
 }
 free_slots() {   # name ip: how many of the host's job slots no job holds
-  ssh_to "$1" "$2" "n=0; for s in \$(seq 1 $slots); do mkdir -p ~/slots/\$s; flock -n ~/slots/\$s/lock true && n=\$((n + 1)); done; echo \$n" < /dev/null 2> /dev/null || echo 0
+  ssh_to "$1" "$2" "n=0; for s in \$(seq $first_slot $slots); do mkdir -p ~/slots/\$s; flock -n ~/slots/\$s/lock true && n=\$((n + 1)); done; echo \$n" < /dev/null 2> /dev/null || echo 0
 }
 create() {   # name: a new spot host, in each zone in turn
   local name="$1" zone
@@ -384,7 +388,7 @@ run() {
         done ) > /dev/null 2>&1 &
       refresher=$!
     fi
-    ssh_to "$name" "$ip" "OA_REMOTE_SLOTS=$slots OA_REMOTE_NO_WAIT=$nowait OA_REMOTE_TIMEOUT=${OA_REMOTE_TIMEOUT:-0} OA_REMOTE_FRESH_COMPILER=${OA_REMOTE_FRESH_COMPILER:-0} bash ~/inbox/$inbox/host-job.sh run $inbox" < /dev/null
+    ssh_to "$name" "$ip" "OA_REMOTE_SLOTS=$slots OA_REMOTE_SLOT_FIRST=$first_slot OA_REMOTE_NO_WAIT=$nowait OA_REMOTE_TIMEOUT=${OA_REMOTE_TIMEOUT:-0} OA_REMOTE_FRESH_COMPILER=${OA_REMOTE_FRESH_COMPILER:-0} bash ~/inbox/$inbox/host-job.sh run $inbox" < /dev/null
     status=$?
     # Its sleep too: an orphaned sleep keeps the caller's descriptors, and with
     # them a lock such as after.sh's (#13102).

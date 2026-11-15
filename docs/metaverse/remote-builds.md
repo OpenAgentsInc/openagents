@@ -1039,7 +1039,10 @@ at a time; a second one says which is running and stops.
    report and `sweep.log` beside the checkout keeps every night's output.
 
 The parts spend the pool's own budget (`OA_REMOTE_DAILY_USD`) and use its
-hosts; nothing raises either. `OA_REMOTE_HOST=NAME` keeps every part on one
+hosts; nothing raises either. The sweep yields to the pipeline: its parts take
+only slots 4 to 6 of a host (`OA_REMOTE_SLOT_FIRST=4`, `OA_REMOTE_SLOTS=6`),
+and an after-landing job takes slots 1 to 3, so an after-landing job never
+waits for a slot the sweep holds. `OA_REMOTE_HOST=NAME` keeps every part on one
 running host. `--dry-run` prints the report instead of touching the issue,
 `--only SUITE,...` sweeps some suites, and `--local` runs the parts on this
 computer.
