@@ -1,0 +1,42 @@
+// psionic.robotics.servo-lab.v1, inert finite SLV1 status/telemetry packets.
+// coax/bin/coax test psionic/lib/robotics/servo-lab-wire.coax
+#load "servo-lab.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+#authority;
+SLW_SIZE :: 312;
+RslPacket :: struct {config:RslConfig;status:RslStatus;revision:int;count:int;row:RslRow;}
+#load "servo-lab-wire-checks.coax" #test;
+slw_digest :: (b:[]u8)->[32]u8 #effects(all) {id:[32]u8;#assert sha256_tagged_checked("psionic.robotics.servo-lab.v1",b,id[..],false)==SHA_OK;return id;}
+slw_same :: (a:[32]u8,b:[32]u8)->bool #effects(all) {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+slw_numbers :: (c:RslConfig)->[13]f64 #effects(all) {return [13]f64.[c.p.inertia.value,c.p.kp.value,c.p.kd.value,c.p.viscous.value,c.p.coulomb.value,c.p.effort.value,c.p.voltage,c.p.step.value,c.p.play.value,c.target,c.low,c.high,c.stand];}
+slw_row_numbers :: (r:RslRow)->[10]f64 #effects(all) {return [10]f64.[r.commanded,r.applied,r.position,r.rate,r.output,r.requested,r.delivered,r.passive,r.net,r.available];}
+slw_packet :: (s:RslSession,status:RslStatus)->RslPacket #effects(all) {return RslPacket.{config=s.config,status=status,revision=s.revision,count=s.count,row=s.last};}
+slw_admit :: (p:RslPacket)->bool #effects(all) {
+ // RslStatus is a closed Coax enum; arbitrary integer input is checked before conversion in slw_read.
+ if cast(int)p.status>6 {return false;} // mutant: equivalent (the closed typed enum only contains 0 through 6; this branch cannot run)
+ if !rsl_config(p.config) || p.revision<1 || p.revision>2147483647 || p.count<1 || p.count>RSL_ROWS || p.row.tick<0 || p.row.tick>2147483647 {return false;}
+ for v:slw_row_numbers(p.row) {if !rgp_finite(f64_bits(v)) {return false;}}
+ r:=p.row;c:=p.config;return r.position>=c.low && r.position<=c.high && r.output>=c.low && r.output<=c.high && r.available==c.p.effort.value*c.p.voltage && abs(r.delivered)<=r.available;
+}
+slw_write :: (p:RslPacket,out:[]u8)->bool #export_c #effects(all) {
+ if out.count!=SLW_SIZE || !slw_admit(p) {return false;}stage:[SLW_SIZE]u8;
+ for c,i:"SLV1" {stage[i]=c;}_:=cb_store_le32(stage[..],4,SLW_SIZE);_:=cb_store_le32(stage[..],8,cast(u32)p.config.joint);_:=cb_store_le32(stage[..],12,cast(u32)p.config.p.delay);
+ for id,k:[3][32]u8.[p.config.model,p.config.assembly,p.config.topology] {for v,i:id {stage[16+k*32+i]=v;}}
+ for v,i:slw_numbers(p.config) {_:=cb_store_le64(stage[..],112+i*8,f64_bits(v));}
+ for v,i:[4]int.[cast(int)p.status,p.revision,p.row.tick,p.count] {_:=cb_store_le32(stage[..],216+i*4,cast(u32)v);}
+ for v,i:slw_row_numbers(p.row) {_:=cb_store_le64(stage[..],232+i*8,f64_bits(v));}
+ return cb_copy_checked(stage[..],out,false);
+}
+slw_read :: (b:[]u8,expected:[32]u8,out:[]RslPacket)->bool #export_c #effects(all) {
+ if b.count!=SLW_SIZE || out.count!=1 {return false;}
+ for c,i:"SLV1" {if b[i]!=c {return false;}}
+ if cb_load_le32(b,4).value!=SLW_SIZE || !slw_same(slw_digest(b),expected) {return false;}
+ p:RslPacket;p.config.joint=cast(int)cb_load_le32(b,8).value;p.config.p.delay=cast(int)cb_load_le32(b,12).value;
+ for i:0..<32 {p.config.model[i]=b[16+i];p.config.assembly[i]=b[48+i];p.config.topology[i]=b[80+i];}
+ v:[13]f64;for i:0..<13 {word:=cb_load_le64(b,112+i*8).value;if !rgp_finite(word) {return false;}v[i]=f64_from_bits(word);}
+ p.config.p.inertia.value=v[0];p.config.p.kp.value=v[1];p.config.p.kd.value=v[2];p.config.p.viscous.value=v[3];p.config.p.coulomb.value=v[4];p.config.p.effort.value=v[5];p.config.p.voltage=v[6];p.config.p.step.value=v[7];p.config.p.play.value=v[8];p.config.target=v[9];p.config.low=v[10];p.config.high=v[11];p.config.stand=v[12];
+ status:=cb_load_le32(b,216).value;if status>6 {return false;}p.status=cast(RslStatus)status;p.revision=cast(int)cb_load_le32(b,220).value;p.row.tick=cast(int)cb_load_le32(b,224).value;p.count=cast(int)cb_load_le32(b,228).value;
+ r:[10]f64;for i:0..<10 {word:=cb_load_le64(b,232+i*8).value;if !rgp_finite(word) {return false;}r[i]=f64_from_bits(word);}
+ p.row.commanded=r[0];p.row.applied=r[1];p.row.position=r[2];p.row.rate=r[3];p.row.output=r[4];p.row.requested=r[5];p.row.delivered=r[6];p.row.passive=r[7];p.row.net=r[8];p.row.available=r[9];
+ if !slw_admit(p) {return false;}out[0]=p;return true;
+}

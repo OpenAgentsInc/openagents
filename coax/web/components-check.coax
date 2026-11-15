@@ -113,6 +113,8 @@ cc_may_load :: (from: int, to: string) -> bool {
   if from == CC_OTHER || from == CC_OUTSIDE { return true; }
   t := cc_layer(to);
   if t == CC_OUTSIDE {
+    // A numeric primitive, not another component backend or an app dependency.
+    if from == CC_CORE && to == "coax/lib/ieee.coax" { return true; }
     allowed := CC_ALLOWED_OUTSIDE;
     for a: allowed { if a == to { return true; } }
     return false;
@@ -120,6 +122,11 @@ cc_may_load :: (from: int, to: string) -> bool {
   if t == CC_OTHER { return false; }
   if from == CC_KIT { return t != CC_BACKEND; }
   return t <= from;
+}
+
+#test "only the core layer imports the shared raw IEEE primitive" {
+ #assert cc_may_load(CC_CORE,"coax/lib/ieee.coax");
+ #assert !cc_may_load(CC_KIT,"coax/lib/ieee.coax") && !cc_may_load(CC_CORE,"coax/lib/net/websocket.coax");
 }
 
 // A line with its comment taken off (a // outside a string).

@@ -59,10 +59,10 @@ import MetalKit
         var page:AEPageHost?,why:NSString?
         NativeWorldHost.deep.run {page=AEPageHost.open(c,device:device,queue:queue,why:&why)}
         let viewer=try XCTUnwrap(page,"Microduck: \(why ?? "unknown")");defer {NativeWorldHost.deep.run {viewer.close()}}
-        func frame(_ name:String)throws->Data {
+        func frame(_ name:String,dt:Float=0.016)throws->Data {
             var pixels=Data(),image:UIImage?
             NativeWorldHost.deep.run {
-                guard let texture=viewer.frame(size,scale:1,dt:0.016,wait:true) else {return}
+                guard let texture=viewer.frame(size,scale:1,dt:dt,wait:true) else {return}
                 let row=((texture.width*4+255)/256)*256,total=row*texture.height
                 guard let read=device.makeBuffer(length:total,options:.storageModeShared),let cmd=queue.makeCommandBuffer(),let copy=cmd.makeBlitCommandEncoder() else {return}
                 copy.copy(from:texture,sourceSlice:0,sourceLevel:0,sourceOrigin:MTLOrigin(x:0,y:0,z:0),sourceSize:MTLSize(width:texture.width,height:texture.height,depth:1),to:read,destinationOffset:0,destinationBytesPerRow:row,destinationBytesPerImage:total);copy.endEncoding();cmd.commit();cmd.waitUntilCompleted()
@@ -106,6 +106,28 @@ import MetalKit
         let orbit=try frame("Microduck native orbit");XCTAssertGreaterThan(changed(material,orbit),1000)
         NativeWorldHost.deep.run {viewer.pinch(1.4)}
         let zoom=try frame("Microduck native pinch");XCTAssertGreaterThan(changed(orbit,zoom),1000)
+        // Independent byte observations of the actual compiled producer. The SDK
+        // only copies the registered SLV1 packet; numerics stay in Coax/Psionic.
+        func lab()throws->Data {var data:Data?;NativeWorldHost.deep.run {data=viewer.servoLab()};return try XCTUnwrap(data)}
+        func word(_ data:Data,_ offset:Int)->UInt32 {data.withUnsafeBytes {$0.loadUnaligned(fromByteOffset:offset,as:UInt32.self).littleEndian}}
+        func number(_ data:Data,_ offset:Int)->Double {Double(bitPattern:data.withUnsafeBytes {$0.loadUnaligned(fromByteOffset:offset,as:UInt64.self).littleEndian})}
+        NativeWorldHost.deep.run {_ = viewer.key(114,mods:0,down:true);_ = viewer.key(1007,mods:0,down:true);_ = viewer.key(3000,mods:0,down:true)}
+        _ = try frame("Microduck servo initial",dt:0);_ = try frame("Microduck servo independent first step",dt:0.002)
+        let first=try lab();XCTAssertEqual(first.count,312);XCTAssertEqual(word(first,224),1)
+        XCTAssertEqual(number(first,272),0.2,accuracy:1e-14);XCTAssertEqual(number(first,280),0.15)
+        NativeWorldHost.deep.run {_ = viewer.key(3001,mods:0,down:true)}
+        _ = try frame("Microduck delayed initial",dt:0);_ = try frame("Microduck delayed first step",dt:0.002)
+        let delayed=try lab();XCTAssertEqual(word(delayed,12),16);XCTAssertEqual(number(delayed,240),0);XCTAssertEqual(number(delayed,248),0)
+        for _ in 0..<30 {NativeWorldHost.deep.run {_ = viewer.frame(size,scale:1,dt:0.016,wait:true)}}
+        _ = try frame("Microduck native delayed response")
+        NativeWorldHost.deep.run {_ = viewer.key(3002,mods:0,down:true)}
+        _ = try frame("Microduck limited initial",dt:0);_ = try frame("Microduck native limited effort",dt:0.002)
+        let limited=try lab();XCTAssertEqual(number(limited,272),0.2,accuracy:1e-14);XCTAssertEqual(number(limited,280),0.03)
+        NativeWorldHost.deep.run {_ = viewer.key(3003,mods:0,down:true)}
+        let held=try lab();NativeWorldHost.deep.run {_ = viewer.key(3011,mods:0,down:true)}
+        let refusedPacket=try lab();XCTAssertEqual(word(refusedPacket,216),3)
+        for i in 0..<312 where !(216..<220).contains(i) {XCTAssertEqual(held[i],refusedPacket[i],"Refusal changed accepted byte \(i)")}
+        _ = try frame("Microduck native refused inertia")
         let bad=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+".pack");try FileManager.default.copyItem(at:pack,to:bad);defer {try? FileManager.default.removeItem(at:bad)}
         let file=try FileHandle(forUpdating:bad);try file.seek(toOffset:10000);let old=try XCTUnwrap(file.read(upToCount:1));try file.seek(toOffset:10000);try file.write(contentsOf:Data([old[0]^1]));try file.close()
         c.pack=bad.path;var refused:AEPageHost?;why=nil;NativeWorldHost.deep.run {refused=AEPageHost.open(c,device:device,queue:queue,why:&why)}

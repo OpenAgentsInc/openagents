@@ -65,6 +65,18 @@ md_test_asset :: (s:[]Microduck) {a:[1]RigidAssembly;a[0]=assembly_fixture();a[0
  #assert md_key(s[..],120) && s[0].explosion==0 && s[0].zoom==0.74;#assert md_key(s[..],120);s[0].zoom=1.2;
  #assert !md_angle(s[..],0,3) && s[0].angles[0]==old[0];#assert md_key(s[..],2002) && s[0].selected==2 && s[0].joint== -1;#assert !md_key(s[..],43);
  #assert md_key(s[..],114) && s[0].explosion==0 && s[0].angles[0]==0 && s[0].angles[1]==0 && s[0].joint== -1 && s[0].selected== -1;
- b:[32768]u8;n:=md_menu(s[..],b[..]);#assert n>0;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);#assert jv_len(d[0],jv_get(d[0],0,"items"))==12;
+ b:[32768]u8;n:=md_menu(s[..],b[..]);#assert n>0;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);#assert jv_len(d[0],jv_get(d[0],0,"items"))==25;
  s[0].assembly[0].joints=32;s[0].assembly[0].parts=96;b[0]=77;#assert md_menu(s[..],b[..])== -1 && b[0]==77;
+}
+#test "actual workbench controls compose servo pose plots refusal and background admission" {
+ s:[1]Microduck;md_test_asset(s[..]);#assert md_key(s[..],3000) && s[0].lab[0].active;md_advance(s[..],0);
+ md_advance(s[..],0.02);#assert s[0].lab[0].session[0].snapshot.steps==9 || s[0].lab[0].session[0].snapshot.steps==10;
+ for i:0..<20 {md_advance(s[..],0.02);}#assert s[0].angles[0]>0;
+ packet:[SLW_SIZE]u8;#assert md_lab_packet(s[..],packet[..]);decoded:[1]RslPacket;#assert slw_read(packet[..],slw_digest(packet[..]),decoded[..]) && decoded[0].config.joint==0;
+ before:=s[0].lab[0].session[0];angle:=s[0].angles[0];#assert !md_key(s[..],3011) && s[0].lab[0].status==RslStatus.config && rsl_same(before,s[0].lab[0].session[0]) && s[0].angles[0]==angle;
+ out:[MD_HUD_VERTICES*12]f32;u:[MD_UNIFORMS]f32;#assert md_frame(s[..],out[..],u[..],430,900,1)>0;
+ md_message(s[..],601);md_advance(s[..],0.05);md_message(s[..],602);md_advance(s[..],5);#assert rsl_same(before,s[0].lab[0].session[0]);
+ #assert md_key(s[..],3001) && s[0].lab[0].session[0].config.p.delay==16;md_advance(s[..],0);md_advance(s[..],0.016);#assert s[0].lab[0].session[0].last.position==0;
+ #assert md_key(s[..],3002) && s[0].lab[0].session[0].config.p.effort.value==0.03;
+ #assert md_key(s[..],114) && !s[0].lab[0].active && s[0].angles[0]==0;
 }

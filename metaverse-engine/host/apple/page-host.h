@@ -92,6 +92,8 @@
 - (BOOL)wantsText;
 // Optional local inspection recipe (docs/protocol/view-menu-v1.md), copied.
 - (NSData *)viewMenu;
+// Optional inert SLV1 packet; the host copies bytes, Coax owns its meaning.
+- (NSData *)servoLab;
 // The existing editor-model wire and message boundary, shared with host.js.
 - (NSData *)editorModel;
 - (int32_t)editorRevision;

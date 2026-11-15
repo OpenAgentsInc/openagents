@@ -1,0 +1,12 @@
+{
+  "build": 1097,
+  "runtime": "3c137bf9b6001ec9fc8f0b78cee194bbb4d2ec1db783276547a1ea6b12aca124",
+  "producer": "796efeef7b760749979f8e53bb3546d53897b6671042d1d389da2fe8f0378c8f",
+  "ipa_bytes": 21200894,
+  "ipa_sha256": "3d538a3d7e17106a436b2d74fbc348d6ae840e2b3902f88584b6f193e83f8713",
+  "portable_files": 21,
+  "model_assets": 3,
+  "bundled_geometry": [],
+  "generation_source": "ac09de2645",
+  "qualified_source": "4ef7d5103306ac6e02a1e51481637bd98a2d4a5c"
+}

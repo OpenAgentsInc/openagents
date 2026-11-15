@@ -1,0 +1,6 @@
+// Display-list line adapter for the existing twelve-float world HUD backend.
+#load "draw.coax";
+#load "../../components/kit/plot.coax";
+hd_plot_lines :: (out:[]f32,n:int,list:[]Prim,p:HdPen)->int {
+ count:=n;for q:list {if q.kind!=PRIM_LINE {continue;}if lit(out,count,q.x*p.d,q.y*p.d,q.a*p.d,q.b*p.d,q.border*0.5*p.d,q.fill.a,0.5*p.d,q.fill.r,q.fill.g,q.fill.b,0) {count+=6;}}return count;
+}

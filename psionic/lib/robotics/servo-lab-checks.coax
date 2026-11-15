@@ -1,0 +1,70 @@
+// Independent arithmetic and state-machine observations, before implementation.
+#test "the authored profile is frozen and admission is bounded" {
+ c:=rsl_fixture();#assert c.p.inertia.value==0.01 && c.p.kp.value==2 && c.p.kd.value==0.08 && c.p.viscous.value==0.02 && c.p.coulomb.value==0.001 && c.p.effort.value==0.15 && c.p.voltage==1 && c.p.step.value==0.002 && c.p.play.value==0.002 && c.target==0.1;
+ #assert rsl_config(c);for j:[4]int.[-1,0,31,32] {b:=c;b.joint=j;#assert rsl_config(b)==(j==0 || j==31);}
+ for v:[7]f64.[-101,-100,-0.1,0,0.1,100,101] {b:=c;b.low=v;#assert rsl_config(b)==(v>= -100 && v<=0);b=c;b.high=v;#assert rsl_config(b)==(v>=0.1 && v<=100);b=c;b.stand=v;#assert rsl_config(b)==(v>= -100 && v<=100);b=c;b.target=v;#assert rsl_config(b)==(v>= -1 && v<=1);}
+ empty:[32]u8;for field:0..<3 {b:=c;if field==0 {b.model=empty;}else if field==1 {b.assembly=empty;}else {b.topology=empty;}#assert !rsl_config(b);}
+ for i:0..<32 {id:[32]u8;id[i]=1;#assert rsl_id(id);}id:[32]u8;#assert !rsl_id(id);
+ b:=c;b.p.step.value=0.001;#assert !rsl_config(b);
+ b=c;b.target= -1;#assert rsl_config(b);b=c;b.high=0;b.target=0;#assert rsl_config(b);
+ s:[1]RslSession;#assert rsl_begin(c,2147483647,s[..])==RslStatus.ok && rsl_replace(s[..],c,2147483647)==RslStatus.exhausted && rsl_target(s[..],0,2147483647)==RslStatus.exhausted;
+ #assert rsl_begin(c,2147483648,s[..])==RslStatus.revision && rsl_begin(c,1,s[0..<0])==RslStatus.shape && rsl_replace(s[0..<0],c,0)==RslStatus.shape && rsl_target(s[0..<0],0,0)==RslStatus.shape && rsl_tick(s[0..<0])==RslStatus.shape;
+ #assert rsl_row(s[..],-1).tick==0 && rsl_row(s[..],1).tick==0;
+ c.high=0.00001;c.target=c.high;#assert rsl_begin(c,1,s[..])==RslStatus.ok;s[0].snapshot.rate.value=1;before:=s[0];#assert rsl_tick(s[..])==RslStatus.limit && rsl_same(s[0],before);
+ s[0].snapshot.params.inertia.value= -1;#assert rsl_tick(s[..])==RslStatus.step;
+}
+#test "initial observations and revision updates are exact and closed limits include endpoints" {
+ s:[1]RslSession;c:=rsl_fixture();c.p.voltage=0.5;#assert rsl_begin(c,8,s[..])==RslStatus.ok;
+ #assert s[0].count==1 && s[0].cursor==1 && s[0].last.commanded==0.1 && s[0].last.available==0.075 && s[0].rows[0].commanded==0.1 && s[0].rows[0].available==0.075;
+ #assert rsl_replace(s[..],c,8)==RslStatus.ok && s[0].revision==9;
+ c.low=0;c.high=0;c.target=0;#assert rsl_begin(c,1,s[..])==RslStatus.ok && rsl_tick(s[..])==RslStatus.ok && s[0].last.position==0 && s[0].last.output==0;
+}
+#test "row lookup reveals chronological ring slots and refuses every invalid view/index" {
+ s:[1]RslSession;for i:0..<256 {s[0].rows[i].tick=i+1;}
+ for cursor:[3]int.[0,7,255] {s[0].cursor=cursor;s[0].count=19;for i:0..<19 {#assert rsl_row(s[..],i).tick==(cursor-19+256+i)%256+1;}}
+ #assert rsl_row(s[..],-1).tick==0 && rsl_row(s[..],19).tick==0 && rsl_row(s[0..<0],0).tick==0;
+}
+#test "workbench calls the qualified servo and preserves requested versus delivered" {
+ c:=rsl_fixture();s:[1]RslSession;#assert rsl_begin(c,1,s[..])==RslStatus.ok;
+ #assert rsl_tick(s[..])==RslStatus.ok;
+ #assert abs(s[0].last.requested-0.2)<1e-14 && s[0].last.delivered==0.15;
+ #assert s[0].last.position==0.00006 && s[0].last.rate==0.03;
+ #assert s[0].last.applied==0.1 && s[0].last.commanded==0.1;
+ #assert s[0].last.output==0 && s[0].last.available==0.15;
+ #assert s[0].snapshot.steps==1 && s[0].revision==1;
+}
+#test "workbench delay boundaries and reversal use the actual queue" {
+ for delay:[3]int.[0,2,16] {c:=rsl_fixture();c.p.delay=delay;s:[1]RslSession;#assert rsl_begin(c,1,s[..])==RslStatus.ok;
+  for i:0..<delay {#assert rsl_tick(s[..])==RslStatus.ok && s[0].last.applied==0 && s[0].last.position==0;}
+  #assert rsl_tick(s[..])==RslStatus.ok && s[0].last.applied==0.1;
+  #assert rsl_target(s[..],-0.1,1)==RslStatus.ok && s[0].revision==2;
+  for i:0..<delay {#assert rsl_tick(s[..])==RslStatus.ok && s[0].last.applied==0.1;}
+  #assert rsl_tick(s[..])==RslStatus.ok && s[0].last.applied== -0.1;
+ }
+}
+#test "configuration refusals retain snapshot queue ring revision and latest observation" {
+ c:=rsl_fixture();s:[1]RslSession;#assert rsl_begin(c,1,s[..])==RslStatus.ok;
+ for i:0..<25 {#assert rsl_tick(s[..])==RslStatus.ok;}before:=s[0];
+ for bad:[5]f64.[-0.01,0,1.0/0.0,0.0/0.0,101] {b:=c;b.p.inertia.value=bad;#assert rsl_replace(s[..],b,1)==RslStatus.config;#assert rsl_same(s[0],before);}
+ #assert rsl_replace(s[..],c,0)==RslStatus.revision && rsl_same(s[0],before);
+ #assert rsl_target(s[..],2,1)==RslStatus.config && rsl_same(s[0],before);
+ #assert rsl_begin(c,0,s[..])==RslStatus.revision && rsl_same(s[0],before);
+}
+#test "ring eviction and complete actuator restore preserve the independent trace" {
+ c:=rsl_fixture();s:[1]RslSession;#assert rsl_begin(c,1,s[..])==RslStatus.ok;
+ oracle:[1]RsaSnapshot;zero:rpu.Quantity(rpu.Radian,f64);rate:rpu.Quantity(RpdRate,f64);
+ #assert rsa_begin(c.p,zero,rate,zero,zero,oracle[..])==RsaStatus.ok;
+ for i:0..<3000 {step:[1]RsaStep;t:rpu.Quantity(rpu.Radian,f64);t.value=c.target;#assert rsa_step(oracle[0],t,step[..])==RsaStatus.ok;oracle[0]=step[0].snapshot;
+  #assert rsl_tick(s[..])==RslStatus.ok && s[0].snapshot.position.value==oracle[0].position.value;
+ }
+ #assert s[0].count==256 && s[0].cursor==45 && rsl_row(s[..],0).tick==450 && rsl_row(s[..],255).tick==3000;
+ restored:[1]RsaSnapshot;#assert rsa_restore(s[0].snapshot,restored[..])==RsaStatus.ok;
+ #assert restored[0].position.value==oracle[0].position.value && restored[0].cursor==oracle[0].cursor;
+}
+rsl_fixture :: ()->RslConfig {c:=rsl_defaults();c.model[0]=1;c.assembly[0]=2;c.topology[0]=3;c.joint=7;c.low= -1;c.high=1;return c;}
+rsl_same :: (a:RslSession,b:RslSession)->bool {
+ if a.revision!=b.revision || a.count!=b.count || a.cursor!=b.cursor || a.snapshot.steps!=b.snapshot.steps || a.snapshot.cursor!=b.snapshot.cursor || a.snapshot.position.value!=b.snapshot.position.value || a.snapshot.rate.value!=b.snapshot.rate.value || a.snapshot.output_position.value!=b.snapshot.output_position.value {return false;}
+ for i:0..<16 {if a.snapshot.pending[i].value!=b.snapshot.pending[i].value {return false;}}
+ for i:0..<256 {if a.rows[i].position!=b.rows[i].position || a.rows[i].tick!=b.rows[i].tick || a.rows[i].delivered!=b.rows[i].delivered {return false;}}
+ return a.config.target==b.config.target && a.config.p.inertia.value==b.config.p.inertia.value && a.last.requested==b.last.requested;
+}

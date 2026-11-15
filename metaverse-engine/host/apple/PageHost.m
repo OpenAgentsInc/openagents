@@ -49,6 +49,7 @@ typedef uintptr_t A;
  F(uint32_t,frame_store_cap,(void)) F(A,frame_store,(A)) F(uint32_t,frame_store_bytes,(A)) \
  F(uint32_t,particle_cap,(void)) F(A,particles,(A)) F(uint32_t,particle_bytes,(A)) F(uint32_t,particle_instances,(A)) \
  F(A,view_menu_v1,(A)) F(uint32_t,view_menu_len_v1,(A)) \
+ F(A,servo_lab_v1,(A)) F(uint32_t,servo_lab_len_v1,(A)) \
  F(int32_t,action,(A)) F(A,outbox,(A)) F(uint32_t,outbox_len,(A)) F(uint32_t,outbox_capacity,(A)) F(void,action_done,(A)) \
  F(A,drive_out,(A)) F(uint32_t,drive_out_len,(A)) F(A,media,(A)) F(uint32_t,media_len,(A)) F(uint32_t,media_capacity,(A)) F(uint32_t,sounds_len,(A)) F(uint32_t,player_appearance_v1,(void)) \
  F(A,sounds,(A)) F(uint32_t,sounds_capacity,(A)) F(A,sound_bank,(A)) F(uint32_t,sound_bank_len,(A)) F(uint32_t,sound_bank_capacity,(A)) \
@@ -834,6 +835,11 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
 - (NSData *)viewMenu {
  if (closed || !x.view_menu_v1 || !x.view_menu_len_v1) return nil;
  phCurrent=self;uint32_t n=x.view_menu_len_v1(state);if (!n || n>32768) return nil;A p=x.view_menu_v1(state);
+ return p ? [NSData dataWithBytes:(void *)p length:n] : nil;
+}
+- (NSData *)servoLab {
+ if (closed || !x.servo_lab_v1 || !x.servo_lab_len_v1) return nil;
+ phCurrent=self;uint32_t n=x.servo_lab_len_v1(state);if (n!=312) return nil;A p=x.servo_lab_v1(state);
  return p ? [NSData dataWithBytes:(void *)p length:n] : nil;
 }
 - (NSData *)editorModel {

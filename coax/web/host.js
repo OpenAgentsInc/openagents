@@ -3987,6 +3987,7 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => l
   quality: (field = 0) => engine?.exports.coaxial_quality_probe?.(arena.state, field) ?? -1,
   captureFrame: () => { if (captureRequested) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
   guardProbe: (field = 0) => engine?.exports.coaxial_guard_probe?.(arena.state, field) ?? 0,
+  servoLabPacket: () => {const x=engine?.exports,n=x?.coaxial_servo_lab_len_v1?.(arena.state)??0,at=x?.coaxial_servo_lab_v1?.(arena.state)??0;return n===312&&at&&at+n<=memory.buffer.byteLength?Array.from(new Uint8Array(memory.buffer,at,n)):null;},
   // a page's read-only facts for headless checks, where its face exports them (project-face.c)
   fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1,
   // The room's state for a page opening this one in place (zone-host.js): -1 none, 0 off, 1 opening, 2 open, 3 down.

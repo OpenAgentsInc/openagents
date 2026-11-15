@@ -1,0 +1,40 @@
+#test "SLV1 refuses foreign framing identity and every nonfinite word atomically" {
+ s:[1]RslSession;#assert rsl_begin(rsl_fixture(),1,s[..])==RslStatus.ok;#assert rsl_tick(s[..])==RslStatus.ok;
+ b:[SLW_SIZE]u8;#assert slw_write(slw_packet(s[0],RslStatus.ok),b[..]);o:[1]RslPacket;
+ #assert slw_read(b[..],slw_digest(b[..]),o[..]) && o[0].row.requested==0.2 && o[0].row.delivered==0.15;
+ before:=o[0];bad:=b;bad[0]='X';#assert !slw_read(bad[..],slw_digest(bad[..]),o[..]) && o[0].row.tick==before.row.tick;
+ wrong:=slw_digest(b[..]);wrong[0]^=1;#assert !slw_read(b[..],wrong,o[..]);
+ #assert !slw_read(b[0..<311],slw_digest(b[..]),o[..]) && !slw_write(before,b[0..<311]);
+ for offset:0..<23 {at:=ifx offset<13 then 112+offset*8 else 232+(offset-13)*8;for word:[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001] {bad=b;_:=cb_store_le64(bad[..],at,word);#assert !slw_read(bad[..],slw_digest(bad[..]),o[..]) && o[0].row.requested==before.row.requested;}}
+ for at:[6]int.[4,8,12,216,220,228] {bad=b;_:=cb_store_le32(bad[..],at,0xffffffff);#assert !slw_read(bad[..],slw_digest(bad[..]),o[..]);}
+}
+#test "SLV1 dense packet reads every field exactly including all source bytes" {
+ p:=slw_dense();b:[SLW_SIZE]u8;#assert slw_write(p,b[..]);o:[1]RslPacket;#assert slw_read(b[..],slw_digest(b[..]),o[..]);round:[SLW_SIZE]u8;#assert slw_write(o[0],round[..]);for i:0..<SLW_SIZE {#assert b[i]==round[i];}
+ for i:0..<32 {wrong:=slw_digest(b[..]);wrong[i]^=1;#assert !slw_read(b[..],wrong,o[..]);}
+ for i:0..<4 {bad:=b;bad[i]='?';#assert !slw_read(bad[..],slw_digest(bad[..]),o[..]);}
+ #assert !slw_read(b[..],slw_digest(b[..]),o[0..<0]);
+ p.status=RslStatus.exhausted;#assert slw_write(p,b[..]) && slw_read(b[..],slw_digest(b[..]),o[..]) && o[0].status==RslStatus.exhausted;
+ _:=cb_store_le32(b[..],216,7);#assert !slw_read(b[..],slw_digest(b[..]),o[..]);
+ s:[1]RslSession;#assert rsl_begin(p.config,9,s[..])==RslStatus.ok;#assert slw_packet(s[0],RslStatus.limit).status==RslStatus.limit && slw_packet(s[0],RslStatus.ok).revision==9;
+}
+#test "SLV1 packet policy covers exact integer endpoints and row limits" {
+ p:=slw_dense();for value:[5]int.[-1,0,1,2147483647,2147483648] {q:=p;q.revision=value;#assert slw_admit(q)==(value>=1 && value<=2147483647);q=p;q.row.tick=value;#assert slw_admit(q)==(value>=0 && value<=2147483647);}
+ for count:[6]int.[-1,0,1,255,256,257] {q:=p;q.count=count;#assert slw_admit(q)==(count>=1 && count<=256);}
+ q:=p;q.status=RslStatus.exhausted;#assert slw_admit(q);q=p;q.config.p.inertia.value= -1;#assert !slw_admit(q);
+ for field:0..<10 {q=p;bad:=f64_from_bits(0x7ff8000000000001);if field==0 {q.row.commanded=bad;}if field==1 {q.row.applied=bad;}if field==2 {q.row.position=bad;}if field==3 {q.row.rate=bad;}if field==4 {q.row.output=bad;}if field==5 {q.row.requested=bad;}if field==6 {q.row.delivered=bad;}if field==7 {q.row.passive=bad;}if field==8 {q.row.net=bad;}if field==9 {q.row.available=bad;}#assert !slw_admit(q);}
+ for field:0..<2 {for value:[5]f64.[-0.401,-0.4,0,0.6,0.601] {q=p;if field==0 {q.row.position=value;}else {q.row.output=value;}#assert slw_admit(q)==(value>= -0.4 && value<=0.6);}}
+ for value:[5]f64.[-0.091,-0.09,0,0.09,0.091] {q=p;q.row.delivered=value;#assert slw_admit(q)==(abs(value)<=0.09);}
+ q=p;q.row.available=0.091;#assert !slw_admit(q);b:[SLW_SIZE]u8;b[0]=99;#assert !slw_write(q,b[..]) && b[0]==99;
+}
+slw_dense :: ()->RslPacket {
+ p:RslPacket;c:=rsl_fixture();for i:0..<32 {c.model[i]=cast(u8)(i+1);c.assembly[i]=cast(u8)(i+33);c.topology[i]=cast(u8)(i+65);}c.joint=31;c.p.delay=16;
+ c.p.inertia.value=0.02;c.p.kp.value=3;c.p.kd.value=0.1;c.p.viscous.value=0.04;c.p.coulomb.value=0.002;c.p.effort.value=0.18;c.p.voltage=0.5;c.p.play.value=0.003;c.target= -0.1;c.low= -0.4;c.high=0.6;c.stand=0.03;
+ p.config=c;p.status=RslStatus.limit;p.revision=32;p.count=27;p.row=RslRow.{tick=123,commanded= -0.1,applied=0.08,position=0.04,rate= -0.5,output=0.039,requested=0.123,delivered=0.09,passive= -0.03,net=0.06,available=0.09};return p;
+}
+
+#test "SLV1 matches every independent struct fixture byte and tagged digest" {
+ s:[1]RslSession;#assert rsl_begin(rsl_fixture(),1,s[..])==RslStatus.ok && rsl_tick(s[..])==RslStatus.ok;b:[SLW_SIZE]u8;#assert slw_write(slw_packet(s[0],RslStatus.ok),b[..]);
+ expected:=[312]u8.[83,76,86,49,56,1,0,0,7,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,123,20,174,71,225,122,132,63,0,0,0,0,0,0,0,64,123,20,174,71,225,122,180,63,123,20,174,71,225,122,148,63,252,169,241,210,77,98,80,63,51,51,51,51,51,51,195,63,0,0,0,0,0,0,240,63,252,169,241,210,77,98,96,63,252,169,241,210,77,98,96,63,154,153,153,153,153,153,185,63,0,0,0,0,0,0,240,191,0,0,0,0,0,0,240,63,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,154,153,153,153,153,153,185,63,154,153,153,153,153,153,185,63,105,29,85,77,16,117,15,63,184,30,133,235,81,184,158,63,0,0,0,0,0,0,0,0,154,153,153,153,153,153,201,63,51,51,51,51,51,51,195,63,0,0,0,0,0,0,0,0,51,51,51,51,51,51,195,63,51,51,51,51,51,51,195,63];
+ for i:0..<312 {#assert b[i]==expected[i];}
+ digest:=[32]u8.[197,75,93,52,221,63,164,51,88,154,191,14,143,225,99,220,11,211,115,225,222,231,191,96,14,126,162,43,154,30,230,74];#assert slw_same(slw_digest(b[..]),digest);
+}

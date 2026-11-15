@@ -1,0 +1,3 @@
+// The shared standard-library IEEE admission, re-exported at the core layer.
+// Components do not duplicate finite-number tests or acquire host effects.
+#load "../../coax/lib/ieee.coax";

@@ -1,0 +1,8 @@
+#test "plots project real samples in the supplied range and refuse nonfinite data" {
+ p:[12]Prim;points:=[3]PlotPoint.[PlotPoint.{x=0,y= -2},PlotPoint.{x=1,y=0},PlotPoint.{x=2,y=2}];
+ box:=PlotBox.{x=10,y=20,w=100,h=40,x0=0,x1=2,y0= -1,y1=1};
+ #assert plot_series(p[..],0,points[..],box,rgba(1,1,1,1),2,false)==2;
+ #assert p[0].x==10 && p[0].y==60 && p[0].a==60 && p[0].b==40 && p[1].a==110 && p[1].b==20;
+ points[1].y=0.0/0.0;#assert plot_series(p[..],0,points[..],box,rgba(1,1,1,1),2,false)==0;
+ points[1].y=0;box.x1=0;#assert plot_series(p[..],0,points[..],box,rgba(1,1,1,1),2,false)==0;
+}

@@ -1,0 +1,18 @@
+// Shared bounded line-series component. Callers own samples, units and skins.
+// coax/bin/coax test components/kit/plot.coax
+#load "../paint/list.coax";
+#load "../core/arwes/fx.coax";
+#load "../core/number.coax";
+PlotPoint :: struct {x:f32;y:f32;}
+PlotBox :: struct {x:f32;y:f32;w:f32;h:f32;x0:f32;x1:f32;y0:f32;y1:f32;}
+#load "plot-checks.coax" #test;
+plot_series :: (out:[]Prim,n:int,points:[]PlotPoint,b:PlotBox,color:Rgba,stroke:f32,dashed:bool)->int {
+ for v:[8]f32.[b.x,b.y,b.w,b.h,b.x0,b.x1,b.y0,b.y1] {if !ieee_f32_finite(f32_bits(v)) {return n;}}
+ if b.w<=0 || b.h<=0 || b.x1<=b.x0 || b.y1<=b.y0 || points.count>1024 {return n;} // not a size (bounded sample count)
+ for p:points {if !ieee_f32_finite(f32_bits(p.x)) || !ieee_f32_finite(f32_bits(p.y)) {return n;}}
+ count:=n;for i:1..<points.count {if dashed && i%4>=2 {continue;}a:=points[i-1];z:=points[i]; // not a size (dash mask over sample segments)
+  ax:=ax_clamp((a.x-b.x0)/(b.x1-b.x0),0,1);ay:=ax_clamp((a.y-b.y0)/(b.y1-b.y0),0,1);
+  zx:=ax_clamp((z.x-b.x0)/(b.x1-b.x0),0,1);zy:=ax_clamp((z.y-b.y0)/(b.y1-b.y0),0,1);
+  count=prim_line(out,count,b.x+ax*b.w,b.y+(1-ay)*b.h,b.x+zx*b.w,b.y+(1-zy)*b.h,stroke,color);
+ }return count;
+}

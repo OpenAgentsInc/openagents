@@ -1,0 +1,30 @@
+// App composition: Psionic owns numerics; the engine owns the one frame clock.
+#load "../../psionic/lib/robotics/servo-lab-wire.coax";
+#load "../../metaverse-engine/core/loop.coax";
+MdLab :: struct {session:[1]RslSession;clock:FrameClock;active:bool;running:bool;hidden:bool;skip:bool;status:RslStatus;}
+mdl_clock :: ()->FrameClock {c:=loop_clock(2000000);c.max_steps=32;c.max_frame_ns=64000000;return c;}
+mdl_begin :: (s:[]MdLab,c:RslConfig)->bool {
+ candidate:[1]RslSession;revision:=ifx s[0].active then s[0].session[0].revision+1 else 1;
+ status:=rsl_begin(c,revision,candidate[..]);s[0].status=status;if status!=RslStatus.ok {return false;}
+ s[0].session[0]=candidate[0];s[0].clock=mdl_clock();s[0].active=true;s[0].running=true;s[0].skip=true;return true;
+}
+mdl_pause :: (s:[]MdLab) {s[0].running= !s[0].running;s[0].clock.carry_ns=0;s[0].clock.due=0;s[0].skip=true;}
+mdl_life :: (s:[]MdLab,hidden:bool) {s[0].hidden=hidden;s[0].clock.carry_ns=0;s[0].clock.due=0;s[0].skip=true;}
+mdl_frame_ns :: (s:[]MdLab,ns:int)->bool {
+ if !s[0].active || !s[0].running || s[0].hidden {return false;}
+ if s[0].skip {s[0].skip=false;return false;}
+ if ns<0 || ns>64000000 {s[0].clock.carry_ns=0;return false;}
+ c:=loop_accept_ns(s[0].clock,ns);stage:=s[0].session;
+ for i:0..<loop_due(c) {status:=rsl_tick(stage[..]);if status!=RslStatus.ok {s[0].status=status;s[0].running=false;return false;}}
+ s[0].session=stage;s[0].clock=loop_ran(c);return c.due>0;
+}
+#test "render partition and pause resume do not change sampled simulation words" {
+ baseline:[1]MdLab;c:=rsl_fixture();#assert mdl_begin(baseline[..],c);_:=mdl_frame_ns(baseline[..],0);
+ for i:0..<50 {#assert mdl_frame_ns(baseline[..],20000000);}
+ for fps:[4]int.[30,60,120,144] {a:[1]MdLab;#assert mdl_begin(a[..],c);_:=mdl_frame_ns(a[..],0);
+  for i:0..<fps {ns:=(i+1)*1000000000/fps-i*1000000000/fps;_:=mdl_frame_ns(a[..],ns);if i==fps/2-1 {mdl_pause(a[..]);_:=mdl_frame_ns(a[..],600000000);mdl_pause(a[..]);_:=mdl_frame_ns(a[..],900000000);}}
+  #assert rsl_same(a[0].session[0],baseline[0].session[0]);
+  mdl_life(a[..],true);_:=mdl_frame_ns(a[..],50000000);mdl_life(a[..],false);_:=mdl_frame_ns(a[..],5000000000);#assert rsl_same(a[0].session[0],baseline[0].session[0]);
+ }
+}
+#test "a long stall and negative delta are not simulation time" {a:[1]MdLab;#assert mdl_begin(a[..],rsl_fixture());_:=mdl_frame_ns(a[..],0);#assert !mdl_frame_ns(a[..],64000001) && !mdl_frame_ns(a[..],-1) && a[0].session[0].snapshot.steps==0;#assert mdl_frame_ns(a[..],64000000) && a[0].session[0].snapshot.steps==32;}

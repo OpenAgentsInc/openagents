@@ -1,5 +1,9 @@
 // Shared raw IEEE-754 admission. Inspect words before floating arithmetic.
 #authority;
+#forall "F32 finite admission depends only on all eight exponent bits" exponent:0..<256,negative:bool {
+ for fraction:[3]u32.[0,1,0x007fffff] {word:=(cast(u32)exponent<<23)|fraction;if negative {word|=0x80000000;}#assert ieee_f32_finite(word)==(exponent!=255);}
+}
+ieee_f32_finite :: (word:u32)->bool #effects(all) {return (word&0x7f800000)!=0x7f800000;}
 #forall "F64 finite admission depends only on the complete eleven-bit exponent" exponent:0..<2048,negative:bool {
   for fraction:[3]u64.[0,1,0x000fffffffffffff] {
     word:=(cast(u64)exponent<<52)|fraction;if negative {word|=0x8000000000000000;}

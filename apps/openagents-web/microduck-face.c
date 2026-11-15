@@ -5,7 +5,7 @@
 #include <string.h>
 #include "face-address.h"
 #define EXPORT(name) __attribute__((export_name(name)))
-static uint8_t catalog[65536], inbox[4096], menu[32768];
+static uint8_t catalog[65536], inbox[4096], menu[32768], lab[312];
 static uint32_t menu_len;
 static coax_t_Microduck *state(cx_face_addr p) { return (coax_t_Microduck *)(uintptr_t)p; }
 static coax_v_t_Microduck view(cx_face_addr p) { return (coax_v_t_Microduck){state(p),1}; }
@@ -20,7 +20,7 @@ EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return 3276
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return 12; }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return 1600; }
 EXPORT("coaxial_frame") uint32_t coaxial_frame(cx_face_addr p,cx_face_addr v,cx_face_addr u,float w,float h,float d,float dt,uint32_t still) {
-  (void)dt; (void)still;
+  (void)still; md_advance(view(p),dt);
   return md_frame(view(p),(coax_v_f32){(float *)(uintptr_t)v,32768*12},(coax_v_f32){(float *)(uintptr_t)u,1600},w,h,d);
 }
 EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr p,int32_t k,int32_t mods) { (void)mods; return md_key(view(p),k); }
@@ -47,3 +47,6 @@ EXPORT("coaxial_view_menu_v1") cx_face_addr coaxial_view_menu_v1(cx_face_addr p)
 EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr p) { (void)p; return (cx_face_addr)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
 EXPORT("coaxial_message") void coaxial_message(cx_face_addr p,int32_t kind,uint32_t n) { if(n<=sizeof inbox) md_message(view(p),kind); memset(inbox,0,sizeof inbox); }
+
+EXPORT("coaxial_servo_lab_len_v1") uint32_t coaxial_servo_lab_len_v1(cx_face_addr p) { return md_lab_packet(view(p),(coax_v_u8){lab,sizeof lab}) ? sizeof lab : 0; }
+EXPORT("coaxial_servo_lab_v1") cx_face_addr coaxial_servo_lab_v1(cx_face_addr p) { (void)p;return (cx_face_addr)(uintptr_t)lab; }

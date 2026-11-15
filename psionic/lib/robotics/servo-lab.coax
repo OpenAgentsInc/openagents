@@ -1,0 +1,40 @@
+// Bounded illustrative servo experiments; numerical owner only, no engine/host.
+// coax/bin/coax test psionic/lib/robotics/servo-lab.coax
+#load "actuator.coax";
+#authority;
+RSL_ROWS :: 256;
+RSL_SAMPLE :: 10;
+RslStatus :: enum u8 {ok;shape;revision;config;step;limit;exhausted;}
+RslConfig :: struct {model:[32]u8;assembly:[32]u8;topology:[32]u8;joint:int;low:f64;high:f64;stand:f64;p:RsaParams;target:f64;}
+RslRow :: struct {tick:int;commanded:f64;applied:f64;position:f64;rate:f64;output:f64;requested:f64;delivered:f64;passive:f64;net:f64;available:f64;}
+RslSession :: struct {config:RslConfig;snapshot:RsaSnapshot;last:RslRow;rows:[RSL_ROWS]RslRow;count:int;cursor:int;revision:int;}
+#load "servo-lab-checks.coax" #test;
+
+rsl_defaults :: ()->RslConfig #effects(all) {c:RslConfig;c.p.inertia.value=0.01;c.p.kp.value=2;c.p.kd.value=0.08;c.p.viscous.value=0.02;c.p.coulomb.value=0.001;c.p.effort.value=0.15;c.p.voltage=1;c.p.step.value=0.002;c.p.play.value=0.002;c.target=0.1;return c;}
+rsl_id :: (id:[32]u8)->bool #effects(all) {for v:id {if v!=0 {return true;}}return false;}
+rsl_config :: (c:RslConfig)->bool #effects(all) {
+ if !rsl_id(c.model) || !rsl_id(c.assembly) || !rsl_id(c.topology) || c.joint<0 || c.joint>31 || rsa_params(c.p)!=RsaStatus.ok || c.p.step.value!=0.002 {return false;}
+ for v:[4]f64.[c.low,c.high,c.stand,c.target] {if rsa_word(f64_bits(v),-100,100)!=RsaStatus.ok {return false;}}
+ return c.low<=0 && c.high>=0 && c.target>=c.low && c.target<=c.high;
+}
+rsl_begin :: (c:RslConfig,revision:int,out:[]RslSession)->RslStatus #effects(all) {
+ if out.count!=1 {return RslStatus.shape;}if revision<1 || revision>2147483647 {return RslStatus.revision;}if !rsl_config(c) {return RslStatus.config;}
+ s:RslSession;s.config=c;s.revision=revision;zero:rpu.Quantity(rpu.Radian,f64);rate:rpu.Quantity(RpdRate,f64);a:[1]RsaSnapshot;
+ if rsa_begin(c.p,zero,rate,zero,zero,a[..])!=RsaStatus.ok {return RslStatus.config;}
+ s.snapshot=a[0];s.last.commanded=c.target;s.last.available=c.p.effort.value*c.p.voltage;s.rows[0]=s.last;s.count=1;s.cursor=1;out[0]=s;return RslStatus.ok;
+}
+rsl_replace :: (s:[]RslSession,c:RslConfig,expected:int)->RslStatus #effects(all) {
+ if s.count!=1 {return RslStatus.shape;}if expected!=s[0].revision {return RslStatus.revision;}if expected==2147483647 {return RslStatus.exhausted;}return rsl_begin(c,expected+1,s);
+}
+rsl_target :: (s:[]RslSession,target:f64,expected:int)->RslStatus #effects(all) {
+ if s.count!=1 {return RslStatus.shape;}if expected!=s[0].revision {return RslStatus.revision;}if expected==2147483647 {return RslStatus.exhausted;}
+ c:=s[0].config;c.target=target;if !rsl_config(c) {return RslStatus.config;}s[0].config=c;s[0].revision+=1;return RslStatus.ok;
+}
+rsl_tick :: (s:[]RslSession)->RslStatus #effects(all) {
+ if s.count!=1 {return RslStatus.shape;}a:[1]RsaStep;t:rpu.Quantity(rpu.Radian,f64);t.value=s[0].config.target;
+ if rsa_step(s[0].snapshot,t,a[..])!=RsaStatus.ok {return RslStatus.step;}
+ v:=a[0];c:=s[0].config;if v.snapshot.position.value<c.low || v.snapshot.position.value>c.high || v.snapshot.output_position.value<c.low || v.snapshot.output_position.value>c.high {return RslStatus.limit;}
+ r:=RslRow.{tick=v.snapshot.steps,commanded=c.target,applied=v.applied_target.value,position=v.snapshot.position.value,rate=v.snapshot.rate.value,output=v.snapshot.output_position.value,requested=v.force.requested.value,delivered=v.force.delivered.value,passive=v.force.passive.value,net=v.force.net.value,available=v.force.limit.value};
+ s[0].snapshot=v.snapshot;s[0].last=r;if r.tick%RSL_SAMPLE==0 {s[0].rows[s[0].cursor]=r;s[0].cursor=(s[0].cursor+1)%RSL_ROWS;if s[0].count<RSL_ROWS {s[0].count+=1;}}return RslStatus.ok;
+}
+rsl_row :: (s:[]RslSession,index:int)->RslRow #effects(all) {if s.count!=1 || index<0 || index>=s[0].count {return RslRow.{};}return s[0].rows[(s[0].cursor-s[0].count+RSL_ROWS+index)%RSL_ROWS];}

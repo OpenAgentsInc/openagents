@@ -18,6 +18,7 @@ a second set of native-only components.
 | Animated frames, activity/progress rings, switches, drawer/reply surfaces | `kit/animated.coax` |
 | Measured native controls painted in one shared GPU scene | `native/scene.coax`, `native/apple.{c,h}`, `skin/arcade.coax`; SDK projection: `apps/shared/native/NativeArcade.swift` |
 | Shared easing, timelines and effects | `core/arwes/motion.coax`, `core/arwes/fx.coax` |
+| Real bounded line series/response plots | `kit/plot.coax`; twelve-float world HUD adapter: `metaverse-engine/ui/plot.coax` |
 | Display-list controls, Markdown and game HUD | `kit/controls.coax`, `kit/markdown.coax`, `kit/hud.coax` |
 | Tree-based forms, chat and settings | `kit/frames.coax`, `kit/settings.coax`, `kit/dock.coax`, `kit/work.coax` |
 | GPU drawing and shader math | `backend/gpu.coax`, `backend/gpu-shader.coax` |

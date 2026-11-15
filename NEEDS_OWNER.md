@@ -1577,3 +1577,13 @@ not a pending request for a key.
       offline. Native simulator/Metal and public-cache checks pass; physical
       device accessibility, power and frame time remain unclaimed. See
       [the source, pictures and release record](docs/verification/microduck-workbench-13639/README.md).
+
+## iOS 1097 illustrative Microduck servo (2026-11-15)
+
+- [ ] In Home → Microduck → menu → Illustrative servo, compare Baseline,
+      Delayed and Limited; pause, change target/effort, try Reject negative
+      inertia, then Reset. Check readable real plots, source-joint selection,
+      VoiceOver and background/resume on the physical iPhone. This is an
+      authored illustrative fixed-base scalar servo, without hardware control.
+      Native Metal and WebGPU observations are recorded in
+      [the qualification](docs/verification/microduck-servo-13640/README.md).

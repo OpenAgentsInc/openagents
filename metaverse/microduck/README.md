@@ -13,9 +13,21 @@ within its source limits; **Stand** restores the recorded angles. **View →
 Explode** separates parts without changing the pose, and **Reset** restores
 the original camera, pose and selection. Brackets choose joints, `+` / `-`
 change the pose, and `X` toggles explosion. The highlighted line shows the
-selected joint's rotation axis. These are visual poses; dynamics, learning
+selected joint's rotation axis. These are visual poses; whole-body dynamics, learning
 and hardware control remain separate work in the
 [pipeline specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md).
+
+## Illustrative servo
+
+The floating menu now includes **Illustrative servo**: Baseline, Delayed
+(32 ms), Limited (30 mNm), target/delay/effort controls, Pause, Reset and an
+intentional negative-inertia refusal. Selecting another part/joint or a manual
+pose leaves the experiment. Live GPU plots show actual shared Psionic target
+and observed output (mrad), and requested/delivered effort (mNm). Other joints
+and the base stay fixed. These are authored teaching coefficients, not measured
+Microduck motors. The [finite protocol and clock](../../docs/protocol/servo-lab-v1.md)
+and [observed native/browser evidence](../../docs/verification/microduck-servo-13640/README.md)
+state the exact numerical and delivery scope.
 
 ## Source and rights
 
