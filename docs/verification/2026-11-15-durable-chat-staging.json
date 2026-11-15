@@ -1,0 +1,68 @@
+{
+  "issue": 13619,
+  "status": "in_progress",
+  "date": "2026-11-15",
+  "source_commits": {
+    "api": "616fce485bfca85c0bc14d0c92c67b3e29f236ac",
+    "mobile_failure_feedback": "b59c037d26773e5319e7d574d1ee598d4ffe89c3",
+    "legacy_assertion": "999c3017e608ef70ea6e180c619351dd32577366",
+    "worker": "1de33a3df83f56d2c23b4896f6e09c494826c248"
+  },
+  "staging": {
+    "api_revision": "oa-api-staging-00231-sb5",
+    "api_image_sha256": "6c2b06106b5e1a0eda9bc5b85fd6669c3b5ad874d163dc712955b1b6eee9763d",
+    "worker_revision": "oa-agent-staging-00022-xr2",
+    "worker_image_sha256": "29f96e02773910be7f5930d1727801129c3c080f8642743f06d3196055654855",
+    "worker_min_instances": 1,
+    "worker_cpu_always_allocated": true,
+    "production_changed": false,
+    "TestFlight_changed": false
+  },
+  "checks": {
+    "mobile_native": {
+      "full_checks_passed": 786,
+      "subsequent_changed_failure_check_passed": true
+    },
+    "native_sdk_cases_passed": [
+      "stream/replay/Stop/complete 128 KiB copy",
+      "private Project instructions, knowledge and two saved turns",
+      "reopened Project metadata refresh, failed-refresh retry and preservation of submitted text versus a newer draft"
+    ],
+    "projects_http_checks_passed": 29,
+    "durable_storage_checks_passed": 15,
+    "durable_http": {
+      "cases_run": 81,
+      "cases_passed": 80,
+      "failed_case": "The fixture expected three history messages; the actual resource correctly includes four, with an empty assistant slot for its cancelled turn.",
+      "corrected_assertion": "Exact captured HTTP body accepted by the shared decoder and role/text/provenance assertion; a changed-role capture refused.",
+      "full_run_repeated_after_fixture_correction": false
+    },
+    "worker_image_context": "Both affected engines linked from an isolated copy of the exact staged platform context; the full worker image then built and deployed.",
+    "prepush": "Normal hooks passed on all source pushes."
+  },
+  "live_cli_verified": [
+    "Private Project creation, instructions, selected knowledge, immutable admitted input/context reads",
+    "Queued turn completed through actual inference after its knowledge was removed and replaced; it used the original admitted source",
+    "Exact operation replay after Project changes returned the same completed conversation and turn",
+    "A new Project turn used the replacement source and exposed actual text deltas while running",
+    "Follow client terminated after an actual running delta; Stop was then confirmed as cancelled",
+    "Resume returned only events after the saved cursor; reopening history returned the exact retained partial answer",
+    "Live v1 chat remained readable and copied its exact roles/text and source revision into a separate rich conversation",
+    "An ordinary account conversation completed with observed usage",
+    "Existing staging and production-owner CLI profiles remained authenticated"
+  ],
+  "actual_api_recovery_verified": [
+    "Expired and replaced claim fences refuse dispatch",
+    "Original claim operation replays its original receipt",
+    "Actual API and inference process group killed during a persisted partial response",
+    "API and resident runner restarted; saved partial text and cursor retained",
+    "Startup reconciled an aged dispatched attempt as unknown without retrying the model",
+    "Exactly five upstream requests across the fixture, including all retries and recovery"
+  ],
+  "remaining": [
+    "Installed native HTTP/background/foreground/process-restart and account-switch flows on the v2 consumer",
+    "Live staging iOS inference using native account authentication",
+    "Actual HTTP provider-error, mid-stream-error and output-limit cases beyond existing shared stream unit/mutation coverage",
+    "Complete every acceptance criterion before closing issue 13619"
+  ]
+}

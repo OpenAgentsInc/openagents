@@ -8,10 +8,15 @@ resources/worker envelopes use `account-chat-turn-record.coax`. Lifecycle and
 queue decisions are `account-chat-turn-policy.coax` and
 `account-chat-work-policy.coax`. The initial consumer is **durable-text**.
 
-**Status:** transactional routes, the resident-worker adapter and CLI integration
-and native adoption are implemented and undergoing runtime verification. Live
-staging evidence remains pending; #13619 is open. No deployment or release is
-claimed here. TestFlight waits for the complete Claude-port and Arcade goal.
+**Status:** the API and resident worker are live on staging. The installed Mac
+CLI has exercised real inference, pinned knowledge replacement, partial output,
+client disconnect, Stop, cursor resume, exact history, operation replay and
+legacy continuation. The mobile source and compiled SDK cases pass; installed
+mobile HTTP/background/process-restart and live iOS qualification remain.
+See the [staging record](../verification/2026-11-15-durable-chat-staging.json)
+for exact scope and remaining failure-path checks. #13619 stays open.
+Production and TestFlight are unchanged by this milestone. TestFlight waits
+for the complete Claude-port and Arcade goal.
 
 ## HTTP consumer
 
