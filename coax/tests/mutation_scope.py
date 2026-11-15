@@ -240,6 +240,49 @@ main :: () {}
         bad = self.run_mutate('--changed', 'no-such-ref')
         self.assertNotEqual(bad.returncode, 0); self.assertIn('no such commit', bad.stderr)
 
+    def test_changed_counts_generated_procedures_by_their_directive_and_descriptor(self):
+        # #13614: procedures #import_proto generates have no text of their own. They are
+        # changed only when the directive or the descriptor it reads changed since REF.
+        pb = self.d / 'wire.pb'
+        pb.write_bytes((ROOT / 'tests/proto/types.pb').read_bytes())
+        source = self.d / 'wire.coax'
+        source.write_text('''#import_proto "wire.pb" as X;
+own :: (x:int)->int #effects(all) { return x+1; }
+#test "decodes" { w:[1]u8; #assert X_Scalars_decode(w[0..<0]).error==0 && own(1)==2; }
+main :: () {}
+''')
+        self.git('init', '-q'); self.git('add', '-A'); self.git('commit', '-q', '-m', 'base')
+        scope = re.compile(r'mutation scope: changed since HEAD \((\d+) of (\d+) procedures?;')
+        def changed():
+            r = self.run_mutate('--changed', 'HEAD', source=source)
+            self.assertNotEqual(r.returncode, 2, r.stdout + r.stderr)
+            m = scope.search(r.stdout)
+            self.assertIsNotNone(m, r.stdout + r.stderr)
+            return int(m.group(1)), int(m.group(2))
+        # Nothing changed: none of the generated procedures is in scope.
+        none, total = changed()
+        self.assertEqual(none, 0)
+        self.assertGreater(total, 1)
+        # A comment or layout edit of the directive is no change.
+        source.write_text(source.read_text().replace('#import_proto "wire.pb" as X;', '// the wire\n#import_proto  "wire.pb"\n  as X;'))
+        self.assertEqual(changed(), (0, total))
+        # The descriptor's bytes change (its file name inside, the same messages): every
+        # generated procedure is in scope, and own is not.
+        pb.write_bytes(pb.read_bytes().replace(b'types.proto', b'typez.proto'))
+        self.assertEqual(changed(), (total - 1, total))
+        pb.write_bytes((ROOT / 'tests/proto/types.pb').read_bytes())
+        self.assertEqual(changed(), (0, total))
+        # The directive's text changes (the same descriptor by another path): in scope.
+        source.write_text(source.read_text().replace('"wire.pb"', '"./wire.pb"'))
+        self.assertEqual(changed(), (total - 1, total))
+        # A descriptor REF doesn't have is changed.
+        (self.d / 'other.pb').write_bytes(pb.read_bytes())
+        source.write_text(source.read_text().replace('"./wire.pb"', '"other.pb"'))
+        self.assertEqual(changed(), (total - 1, total))
+        # Only own's body changes: only own.
+        source.write_text(source.read_text().replace('"other.pb"', '"wire.pb"').replace('x+1', 'x+1+0'))
+        self.assertEqual(changed(), (1, total))
+
     def test_flag_is_not_accepted_by_other_commands(self):
         r = subprocess.run([str(COMPILER), 'test', str(self.entry), '--root-only'], capture_output=True, text=True, timeout=90)
         self.assertNotEqual(r.returncode, 0)

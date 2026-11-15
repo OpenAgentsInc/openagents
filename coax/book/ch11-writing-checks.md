@@ -916,7 +916,10 @@ coax mutate rules/srd/battle.coax --library --changed origin/main
 A procedure's text is its whole declaration, compared with comments removed
 and runs of blanks folded to one, so a comment or a layout change is no
 change. A declaration is matched by its unit, its name and its place among
-that name's declarations; a unit that `REF` doesn't have is all changed. The
+that name's declarations; a unit that `REF` doesn't have is all changed. A
+procedure `#import_proto` generates has no text of its own: it is changed when
+its directive (comments and layout aside) is not in `REF`'s unit, or when the
+descriptor it reads differs from `REF`'s or is not in `REF`. The
 report says how many procedures the change left in scope:
 
 ```text

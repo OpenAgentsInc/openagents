@@ -19,6 +19,8 @@
 #include <functional>
 #include <new>
 #include <sstream>
+#include <fstream>
+#include <iterator>
 #include <sched.h>
 #include <csignal>
 #include <sys/mman.h>
@@ -2312,40 +2314,129 @@ static bool git_output(const std::string &dir, const std::vector<std::string> &a
   return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
+// The `#import_proto ...;` directive that starts at `at` in t, comments gone
+// and blanks folded to one space as top_level_declarations folds them, or ""
+// when no such directive starts there.
+static std::string import_directive_text(const std::string &t, size_t at) {
+  static const std::string head = "#import_proto";
+  if (at >= t.size() || t.compare(at, head.size(), head) != 0) return "";
+  std::string out;
+  bool blank = false;
+  for (size_t i = at; i < t.size();) {
+    const char c = t[i];
+    if (c == '/' && i + 1 < t.size() && t[i + 1] == '/') { while (i < t.size() && t[i] != '\n') i++; blank = true; continue; }
+    if (isspace((unsigned char)c)) { blank = true; i++; continue; }
+    if (c == '"') {
+      size_t j = i + 1;
+      while (j < t.size() && t[j] != '"' && t[j] != '\n') j += t[j] == '\\' ? 2 : 1;
+      j = std::min(t.size(), j + 1);
+      if (blank && !out.empty()) out += ' ';
+      blank = false;
+      out.append(t, i, j - i);
+      i = j;
+      continue;
+    }
+    if (blank && !out.empty()) out += ' ';
+    blank = false;
+    out += c;
+    i++;
+    if (c == ';') return out;
+  }
+  return "";
+}
+// Every `#import_proto` directive of t, as import_directive_text gives it.
+static std::multiset<std::string> import_directives(const std::string &t) {
+  std::multiset<std::string> out;
+  for (size_t at = t.find("#import_proto"); at != std::string::npos; at = t.find("#import_proto", at + 1)) {
+    const std::string d = import_directive_text(t, at);
+    if (!d.empty()) out.insert(d);
+  }
+  return out;
+}
+
 // The procedures --changed REF keeps, or false (with a message) when REF
 // isn't a commit of a unit's repository.
+//
+// A procedure #import_proto generates has no text of its own (#13614): it is
+// changed when its directive is not in REF's copy of the unit, as written
+// (comments and layout aside), or when the descriptor the directive reads
+// differs from REF's or is not in REF.
 static bool changed_procedures(const File *file, const std::string &ref, std::set<const ProcDecl *> *changed) {
-  struct UnitDiff { bool read = false, absent = false; std::vector<DeclText> now; std::map<std::pair<std::string, uint32_t>, std::string> then; };
+  struct UnitDiff {
+    bool read = false, absent = false;
+    std::vector<DeclText> now;
+    std::map<std::pair<std::string, uint32_t>, std::string> then;
+    std::multiset<std::string> directives_then;  // REF's #import_proto directives
+  };
   std::map<const SourceUnit *, UnitDiff> units;
   std::map<std::string, bool> repos;  // repository root -> REF resolves there
+  // REF's text of the file at canonical path, or false when it isn't in REF
+  // (or not in a repository). Sets *bad when REF isn't a commit there.
+  auto ref_text = [&](const std::string &canonical, std::string *text, bool *bad) -> bool {
+    std::string dir = std::filesystem::path(canonical).parent_path().string(), top;
+    if (!git_output(dir, {"rev-parse", "--show-toplevel"}, &top)) return false;
+    while (!top.empty() && (top.back() == '\n' || top.back() == '\r')) top.pop_back();
+    auto known = repos.find(top);
+    if (known == repos.end()) {
+      std::string ignored;
+      known = repos.emplace(top, git_output(top, {"rev-parse", "--verify", "--quiet", ref + "^{commit}"}, &ignored)).first;
+    }
+    if (!known->second) {
+      fprintf(stderr, "coax: --changed %s: no such commit in %s\n", ref.c_str(), top.c_str());
+      *bad = true;
+      return false;
+    }
+    std::string relative = canonical.size() > top.size() + 1 && canonical.compare(0, top.size(), top) == 0
+                               ? canonical.substr(top.size() + 1) : tree_path(canonical);
+    return git_output(top, {"show", ref + ":" + relative}, text);
+  };
+  // Per generated region: whether its descriptor is REF's, byte for byte.
+  std::map<size_t, bool> descriptor_same;
   for (const ProcDecl *p : file->procs) {
-    const SourceUnit *u = source_unit_at(file->src, p->loc);
+    // A generated procedure: the region holding it, its directive and descriptor.
+    size_t region = file->src->generated.size();
+    for (size_t g = 0; g < file->src->generated.size(); g++)
+      if (p->loc.offset >= file->src->generated[g].start && p->loc.offset < file->src->generated[g].end) { region = g; break; }
+    const bool generated = region < file->src->generated.size();
+    const SourceUnit *u = source_unit_at(file->src, generated ? file->src->generated[region].directive : p->loc);
     if (!u) { changed->insert(p); continue; }
     UnitDiff &d = units[u];
     if (!d.read) {
       d.read = true;
       d.now = top_level_declarations(u->text);
-      std::string dir = std::filesystem::path(u->canonical).parent_path().string(), top;
-      if (!git_output(dir, {"rev-parse", "--show-toplevel"}, &top)) { d.absent = true; }
-      else {
-        while (!top.empty() && (top.back() == '\n' || top.back() == '\r')) top.pop_back();
-        auto known = repos.find(top);
-        if (known == repos.end()) {
-          std::string ignored;
-          known = repos.emplace(top, git_output(top, {"rev-parse", "--verify", "--quiet", ref + "^{commit}"}, &ignored)).first;
-        }
-        if (!known->second) {
-          fprintf(stderr, "coax: --changed %s: no such commit in %s\n", ref.c_str(), top.c_str());
-          return false;
-        }
-        std::string relative = u->canonical.size() > top.size() + 1 && u->canonical.compare(0, top.size(), top) == 0
-                                   ? u->canonical.substr(top.size() + 1) : tree_path(u->canonical);
-        std::string text;
-        if (!git_output(top, {"show", ref + ":" + relative}, &text)) d.absent = true;  // a new file: all of it changed
-        else for (const DeclText &decl : top_level_declarations(text)) d.then[{decl.name, decl.ordinal}] = decl.text;
+      std::string text;
+      bool bad = false;
+      if (!ref_text(u->canonical, &text, &bad)) {
+        if (bad) return false;
+        d.absent = true;  // a new file, or none in a repository: all of it changed
+      } else {
+        for (const DeclText &decl : top_level_declarations(text)) d.then[{decl.name, decl.ordinal}] = decl.text;
+        d.directives_then = import_directives(text);
       }
     }
     if (d.absent) { changed->insert(p); continue; }
+    if (generated) {
+      const std::string directive =
+          import_directive_text(u->text, (size_t)source_point(file->src, file->src->generated[region].directive).loc.offset);
+      if (directive.empty() || !d.directives_then.count(directive) || region >= file->src->descriptor_inputs.size()) {
+        changed->insert(p);
+        continue;
+      }
+      auto same = descriptor_same.find(region);
+      if (same == descriptor_same.end()) {
+        const std::string &path = file->src->descriptor_inputs[region];
+        std::string then, now;
+        bool bad = false;
+        const bool in_ref = ref_text(std::filesystem::weakly_canonical(path).string(), &then, &bad);
+        if (bad) return false;
+        std::ifstream in(path, std::ios::binary);
+        const bool read = (bool)in;
+        if (read) now.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        same = descriptor_same.emplace(region, in_ref && read && then == now).first;
+      }
+      if (!same->second) changed->insert(p);
+      continue;
+    }
     const int32_t at = source_point(file->src, p->loc).loc.offset;
     const DeclText *decl = nullptr;
     for (const DeclText &x : d.now) if (at >= x.begin && at < x.end) { decl = &x; break; }

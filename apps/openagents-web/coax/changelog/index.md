@@ -106,6 +106,10 @@ Commit: [`09101c58f972b76c8fcdd6f9315d1026b6a95837`](https://github.com/OpenAgen
   records run faster: the rules' battle baseline under `coax mutate` went
   from 148 s to 87 s on the same 1,291,611,592 steps. See
   [evaluator arguments](docs/evaluator-arguments.md).
+- Follow-up 2026-11-14 (#13614): `coax mutate --changed REF` no longer counts
+  every procedure `#import_proto` generates as changed. One is changed when its
+  directive, comments and layout aside, is not in `REF`'s copy of the unit, or
+  when the descriptor it reads differs from `REF`'s or is not in `REF`.
 
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 
