@@ -49,7 +49,7 @@ GlCard :: struct { toggles: [2] bool; slider: f32; tab: int; row: int; }
 GalleryState :: struct {
   ready: bool; time: f32; monochrome:bool;
   motion:[1]GlMotion;section:int;touch:bool;touch_scroll:bool;touch_x:f32;touch_y:f32;touch_start:f32;touch_hit:int;
-  reference_file_removed:bool;reference_account:int;
+  reference_file_removed:bool;reference_account:int;reference_repo:int;
   width: f32; height: f32; d: f32;
   atlas: [1] Atlas;
   scratch: [9800] f32; sbytes: [64] u8;     // the host's side of the atlas (coax/web/gpui.js)
@@ -313,6 +313,22 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
     sheet_fill(sh[..],x,y,cw,ref.control_h,ref.radius_control,ref.surface);
     _:=sheet_text(sh[..],m,-1,x+ref.control_pad,y+(ref.control_h-ref.code.line)/2,ref.code.line,ref.code.face,ref.ink,command);
     sheet_icon(sh[..],ICON_COPY,x+cw-ref.control_pad-ref.body.line,y+(ref.control_h-ref.body.line)/2,ref.body.line,ref.muted);y+=68;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Segmented actions");y+=26;
+    _:=segmented_icon_actions(sh[..],ref,x,y,ICON_COPY,ICON_MAGNIFER,GL_HIT_BUTTON,0);y+=68;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Repository choices");y+=26;
+    card=sheet_box(sh[..],x,y,w-2*gutter,0,ref.radius,0,ref.surface,ref.surface);top=y;
+    y+=repository_choice(sh[..],m,ref,x,y,w-2*gutter,"example","open-source",g[0].reference_repo==0,ICON_CHECK,GL_HIT_REFERENCE,0,3);
+    sheet_rule(sh[..],x+ref.control_pad,y,w-2*gutter-2*ref.control_pad,1,ref.hairline);
+    y+=repository_choice(sh[..],m,ref,x,y,w-2*gutter,"example","documentation",g[0].reference_repo==1,ICON_CHECK,GL_HIT_REFERENCE,0,4);
+    if card>=0 {g[0].under[card].h=y-top;}y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Empty state");y+=26;
+    y+=empty_state(sh[..],m,ref,x,y,w-2*gutter,ICON_FOLDER,"No archived projects")+32;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Usage card");y+=26;
+    card=sheet_box(sh[..],x,y,w-2*gutter,0,ref.radius,0,ref.surface,ref.surface);top=y;y+=ref.control_pad;
+    _:=sheet_text(sh[..],m,-1,x+ref.control_pad,y,ref.body.line,ref.body.face,ref.ink,"Context window");y+=ref.body.line+ref.space;
+    _:=bar(sh[..],ref,x+ref.control_pad,y,w-2*gutter-2*ref.control_pad,0.36,ref.accent);y+=ref.bar_h+ref.space;
+    _:=sheet_text(sh[..],m,-1,x+ref.control_pad,y,ref.small.line,ref.small.face,ref.muted,"36% used");y+=ref.small.line+ref.control_pad;
+    if card>=0 {g[0].under[card].h=y-top;}y+=32;
     _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Atom catalog");y+=34;
     _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Text");y+=24;
     _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.ink,"Primary");
@@ -455,7 +471,7 @@ gl_pointer :: (g: [] GalleryState, x: f32, y: f32, phase: int) -> bool {
   g[0].hot_kind = -1; g[0].cursor = 0;
   if k < 0 { return false; }
   hit := g[0].hits[k];
-  if hit.kind==GL_HIT_REFERENCE {g[0].cursor=1;if phase==0 {if hit.b==0 {g[0].reference_file_removed = !g[0].reference_file_removed;}else {g[0].reference_account=hit.b-1;}}return true;}
+  if hit.kind==GL_HIT_REFERENCE {g[0].cursor=1;if phase==0 {if hit.b==0 {g[0].reference_file_removed = !g[0].reference_file_removed;}else if hit.b<=2 {g[0].reference_account=hit.b-1;}else {g[0].reference_repo=hit.b-3;}}return true;}
   if hit.kind==GL_HIT_MOTION || hit.kind==GL_HIT_SECTION {
     g[0].cursor=1;if phase==0 {if hit.kind==GL_HIT_MOTION {gl_motion_press(g[0].motion[..],hit.b);}else {g[0].section=hit.b;g[0].scroll=0;}}return true;
   }
@@ -624,6 +640,8 @@ coaxial_components_cell_ready :: (g: [] GalleryState, cell: int) #export_c #effe
  g[0].scroll=h.y-100;#assert gl_pointer(g[..],h.x+2,102,0) && !g[0].reference_file_removed;
  _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);h=gl_test_hit(g[..],GL_HIT_REFERENCE,0,2);
  g[0].scroll=h.y-100;#assert gl_pointer(g[..],h.x+2,102,0) && g[0].reference_account==1;
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);h=gl_test_hit(g[..],GL_HIT_REFERENCE,0,4);
+ g[0].scroll=h.y-100;#assert gl_pointer(g[..],h.x+2,102,0) && g[0].reference_repo==1;
 }
 
 // A fixed atlas: every glyph 8 wide, the monospace faces 7.

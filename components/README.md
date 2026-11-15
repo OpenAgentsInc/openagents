@@ -85,8 +85,9 @@ host's actual bar rather than a simulated one. The section also includes
 interactive model-choice and notification rows, a project context pill and a
 usage meter, plus centered screen and sheet headers, a settings picker, and
 icon-led settings, project, session and action-menu rows, account choices, a
-removable file tile and a command snippet. The shared kit wraps explanatory
-text and makes the whole row a touch target. The file removal is local to the
+removable file tile and a command snippet. Segmented actions, selectable
+repository rows, an empty state and a usage card are included as well. The
+shared kit wraps explanatory copy and makes the whole row a touch target. The file removal is local to the
 gallery; the command snippet is a visual specimen. It
 uses the shared control kit and a separate reference skin; it is not a product
 skin or a pixel-parity qualification. Its colors are approximate and its text

@@ -55,6 +55,24 @@ ctl_measure :: (id: int, a: [] Atlas) -> TextMeasure { return ifx id == UISKIN_T
  #assert h>0 && sh[0].nh==1 && sh[0].hits[0].a==3 && sh[0].hits[0].w>=s.control_h;
  #assert sh[0].hits[0].x+sh[0].hits[0].w<=132 && sh[0].hits[0].y>=0;
 }
+#test "segmented icon actions have adjacent independent targets" {
+ st:[1]CtlStore;sh:=[1]Sheet.[ctl_sheet(st[..])];s:=zeron_skin();
+ w:=segmented_icon_actions(sh[..],s,10,20,7,10,22,1);
+ #assert w==s.control_h*2 && sh[0].nh==2;
+ #assert sh[0].hits[0].b==0 && sh[0].hits[1].b==1 && sh[0].hits[0].x+sh[0].hits[0].w==sh[0].hits[1].x;
+}
+#test "repository choice shows owner above name and selected check" {
+ st:[1]CtlStore;a:[1]Atlas;text_test_atlas(a[..]);s:=zeron_skin();m:=measure_font(a[..]);sh:=[1]Sheet.[ctl_sheet(st[..])];
+ h:=repository_choice(sh[..],m,s,0,0,240,"example","project",true,25,9,0,1);
+ #assert h>=s.control_h && sh[0].over[0].text=="example" && sh[0].over[1].text=="project";
+ #assert sh[0].over[0].y<sh[0].over[1].y && sh[0].under[0].id==25 && sh[0].hits[0].w==240;
+}
+#test "empty state centers its icon and text in the available width" {
+ st:[1]CtlStore;a:[1]Atlas;text_test_atlas(a[..]);s:=zeron_skin();m:=measure_font(a[..]);sh:=[1]Sheet.[ctl_sheet(st[..])];
+ h:=empty_state(sh[..],m,s,10,20,240,15,"No projects");
+ #assert h>s.control_h && sh[0].nu==2 && sh[0].under[1].kind==PRIM_ICON;
+ #assert sh[0].over[0].x+sh[0].over[0].w/2==130 && sh[0].nh==0;
+}
 
 #test "a button is its label and the padding either side; its hit covers it; primary reads on the accent" {
   st: [1] CtlStore; a: [1] Atlas; text_test_atlas(a[..]);
