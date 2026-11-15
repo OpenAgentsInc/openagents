@@ -1,6 +1,7 @@
 // Pure preparation before a resident publishes input bytes. The effect owner
 // supplies the retained file, writes only an ok result durably, then starts an
 // engine only on complete. Upload retries never themselves execute anything.
+// coax/bin/coax test coax/lib/agent/environment/execution-input.coax --library
 #load "execution-wire.coax";
 #load "../../crypto/sha256-kernel.coax";
 #authority;

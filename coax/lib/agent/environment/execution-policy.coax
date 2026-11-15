@@ -1,5 +1,6 @@
 // Authority for the routed profile. This never infers execution from Project
 // membership, a model decision, a cached name or an implicit provider selection.
+// coax/bin/coax test coax/lib/agent/environment/execution-policy.coax --library
 #load "execution-types.coax";
 #load "policy.coax";
 #load "../accounts/policy.coax";

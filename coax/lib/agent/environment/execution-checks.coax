@@ -16,6 +16,21 @@ ex_test_field :: (raw:string,key:string,replacement:string,out:[]u8)->string #ef
  for i:0..<jv_len(d[0],0) {at:=jv_at(d[0],0,i);name:=jv_key(d[0],at);if name==key {if replacement.count>0 {jo_key(o[..],name);jo_raw(o[..],replacement);}}else {jo_key(o[..],name);jv_write(d[0],at,o[..]);}}
  jo_end(o[..]);return jo_text(o[..]);
 }
+// jv_get compares decoded keys, while the closed-shape check requires literal
+// canonical keys. An escaped spelling must not bypass that shape check.
+ex_test_alias :: (raw:string,key:string,out:[]u8)->string #effects(all) {
+ d:[1]Jv;nodes:[512]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return "";}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);hex:="0123456789abcdef";
+ for i:0..<jv_len(d[0],0) {at:=jv_at(d[0],0,i);name:=jv_key(d[0],at);
+  if name==key {jo_put(o[..],"\"\\u00");c:=cast(int)key[0];jo_put(o[..],cast(string)hex[c/16..<c/16+1]);jo_put(o[..],cast(string)hex[c%16..<c%16+1]);jo_put(o[..],cast(string)key[1..<key.count]);jo_put(o[..],"\":");}
+  else {jo_key(o[..],name);}jv_write(d[0],at,o[..]);
+ }jo_end(o[..]);return jo_text(o[..]);
+}
+#test "escaped-key fixtures have exact independent bytes and retain every other field" {
+ out:[1024]u8;raw:="{\"task_id\":\"x\",\"count\":1}";
+ #assert ex_test_alias(raw,"task_id",out[..])=="{\"\\u0074ask_id\":\"x\",\"count\":1}";
+ #assert ex_test_alias(raw,"absent",out[..])==raw;
+ #assert ex_test_alias("{","task_id",out[..])=="";
+}
 #test "execution binding round trips all pinned identities and refuses a short output or arena" {
  b:=ex_test_binding();out:[8192]u8;again:[8192]u8;arena:[1024]u8;read:[1]ExBinding;
  n:=ex_binding_write(b,out[..]);#assert n>0 && ex_binding_read(cast(string)out[0..<n],read[..],arena[..]);
@@ -91,4 +106,61 @@ ex_test_field :: (raw:string,key:string,replacement:string,out:[]u8)->string #ef
  v[0]=ExInput.{};v[0].n=1;v[0].counts[0]=16384;v[0].bytes=16384;for i:0..<16385 {v[0].text[i]='x';}
  n=ex_input_write(v[..],out[..]);#assert n>0 && ex_input_read(cast(string)out[0..<n],read[..]) && read[0].bytes==16384;
  v[0].counts[0]+=1;v[0].bytes+=1;#assert ex_input_write(v[..],out[..])<0;
+}
+#test "binding choices include their exact field ceilings and empty effort survives decoding" {
+ b:=ex_test_binding();text:[129]u8;for i:0..<text.count {text[i]='a';}out:[8192]u8;read:[1]ExBinding;arena:[1024]u8;
+ b.workspace=cast(string)text[0..<64];#assert ex_binding_valid(b);b.workspace=cast(string)text[0..<65];#assert !ex_binding_valid(b);b.workspace="default";
+ b.model=cast(string)text[0..<128];#assert ex_binding_valid(b);b.model=cast(string)text[..];#assert !ex_binding_valid(b);b.model="model";
+ b.effort=cast(string)text[0..<16];#assert ex_binding_valid(b);b.effort=cast(string)text[0..<17];#assert !ex_binding_valid(b);b.effort="";
+ n:=ex_binding_write(b,out[..]);#assert n>0 && ex_binding_read(cast(string)out[0..<n],read[..],arena[..]) && read[0].effort=="";
+ b.task="bad";#assert ex_binding_write(b,out[..])<0;
+}
+#test "syntax errors do not publish output and chunk identities are validated before writing" {
+ b:[1]ExBinding;c:[1]ExChunk;v:[1]ExInput;arena:[8192]u8;
+ #assert !ex_binding_read("{",b[..],arena[..]) && !ex_chunk_read("{",c[..],arena[..]) && !ex_input_read("{",v[..]);
+ c[0]=ExChunk.{task=EX_TEST_ID,command=EX_TEST_ID,hash=EX_TEST_HASH,total=1,text="x",issued=1,expires=300001};
+ out:[32768]u8;#assert ex_chunk_valid(c[0]);
+ c[0].task="bad";#assert !ex_chunk_valid(c[0]) && ex_chunk_write(c[0],out[..])<0;c[0].task=EX_TEST_ID;
+ c[0].command="bad";#assert !ex_chunk_valid(c[0]);c[0].command=EX_TEST_ID;c[0].hash="bad";#assert !ex_chunk_valid(c[0]);
+}
+#test "input typed admission covers a one-byte request full reference and poisoned unused entries" {
+ v:[1]ExInput;v[0].n=1;v[0].bytes=1;v[0].counts[0]=1;v[0].text[0]='x';#assert ex_input_valid(v[..]);
+ v[0].starts[1]=0;v[0].counts[1]=1;#assert ex_input_text(v[..],1)=="";
+ v[0].nr=32768;for i:0..<32768 {v[0].reference[i]='r';}#assert ex_input_valid(v[..]);
+ v[0].nr=0;v[0].ni=1;v[0].instructions[0]=255;#assert !ex_input_valid(v[..]);v[0].ni=0;v[0].nr=1;v[0].reference[0]=255;#assert !ex_input_valid(v[..]);v[0].nr=0;
+ v[0].text[1]='y';v[0].starts[0]=1;#assert !ex_input_valid(v[..]);v[0].starts[0]=0;v[0].counts[0]=0;#assert !ex_input_valid(v[..]);
+ v[0].counts[0]=2;#assert !ex_input_valid(v[..]);
+}
+#test "typed input rejects an empty interior message and refuses a span before it crosses storage" {
+ v:[1]ExInput;v[0].n=2;v[0].bytes=1;v[0].assistant[0]=true;v[0].starts[1]=0;v[0].counts[1]=1;v[0].text[0]='x';
+ #assert !ex_input_valid(v[..]);
+ v[0].bytes=EX_HISTORY_MAX;v[0].counts[0]=EX_HISTORY_MAX-1;v[0].starts[1]=EX_HISTORY_MAX-1;v[0].counts[1]=2;
+ for i:0..<EX_HISTORY_MAX {v[0].text[i]='x';}#assert !ex_input_valid(v[..]);
+}
+#test "input message collections are arrays with at most 128 complete objects" {
+ v:[1]ExInput;read:[1]ExInput;ex_test_input(v[..]);raw:[8192]u8;changed:[131072]u8;n:=ex_input_write(v[..],raw[..]);text:=cast(string)raw[0..<n];
+ #assert !ex_input_read(ex_test_field(text,"messages","{\"a\":{\"role\":\"user\",\"text\":\"x\"}}",changed[..]),read[..]);
+ array:[16384]u8;o:[1]Jo;jo_start(o[..],array[..]);jo_arr(o[..]);for i:0..<129 {jo_obj(o[..]);jo_key(o[..],"role");jo_str(o[..],"user");jo_key(o[..],"text");jo_str(o[..],"x");jo_end(o[..]);}jo_end(o[..]);
+ #assert !ex_input_read(ex_test_field(text,"messages",jo_text(o[..]),changed[..]),read[..]);
+ #assert ex_input_read(ex_test_field(text,"messages","[{\"role\":\"user\",\"text\":\"x\"}]",changed[..]),read[..]) && read[0].n==1;
+}
+#test "binding chunk and input readers enforce exact encoded-size boundaries" #steps 50000000 {
+ raw:[EX_INPUT_MAX+1]u8;small:[8192]u8;arena:[8192]u8;b:[1]ExBinding;c:[1]ExChunk;v:[1]ExInput;
+ n:=ex_binding_write(ex_test_binding(),small[..]);for i:0..<n {raw[i]=small[i];}for i:n..<8194 {raw[i]=' ';}
+ #assert ex_binding_read(cast(string)raw[0..<8192],b[..],arena[..]) && !ex_binding_read(cast(string)raw[0..<8193],b[..],arena[..]);
+ chunk:=ExChunk.{task=EX_TEST_ID,command=EX_TEST_ID,hash=EX_TEST_HASH,total=1,text="x",issued=1,expires=300001};n=ex_chunk_write(chunk,small[..]);
+ for i:0..<n {raw[i]=small[i];}for i:n..<32770 {raw[i]=' ';}
+ #assert ex_chunk_read(cast(string)raw[0..<32768],c[..],arena[..]) && !ex_chunk_read(cast(string)raw[0..<32769],c[..],arena[..]);
+ ex_test_input(v[..]);n=ex_input_write(v[..],small[..]);for i:0..<n {raw[i]=small[i];}for i:n..<raw.count {raw[i]=' ';}
+ #assert ex_input_read(cast(string)raw[0..<EX_INPUT_MAX],v[..]) && !ex_input_read(cast(string)raw[..],v[..]);
+}
+#test "every closed execution object refuses decoded-key aliases including nested message fields" {
+ raw:[16384]u8;changed:[16384]u8;arena:[8192]u8;b:[1]ExBinding;c:[1]ExChunk;v:[1]ExInput;
+ n:=ex_binding_write(ex_test_binding(),raw[..]);text:=cast(string)raw[0..<n];
+ for key:[19]string.["schema","task_id","conversation_id","turn_id","route_id","host_pubkey","workspace_id","session_id","command_id","engine_id","account_id","model_id","effort_id","input_sha256","input_bytes","report_sha256","report_observed_at_ms","issued_at_ms","expires_at_ms"] {#assert !ex_binding_read(ex_test_alias(text,key,changed[..]),b[..],arena[..]);}
+ chunk:=ExChunk.{task=EX_TEST_ID,command=EX_TEST_ID,hash=EX_TEST_HASH,total=1,text="x",issued=1,expires=300001};n=ex_chunk_write(chunk,raw[..]);text=cast(string)raw[0..<n];
+ for key:[9]string.["schema","task_id","command_id","input_sha256","input_bytes","offset","text","issued_at_ms","expires_at_ms"] {#assert !ex_chunk_read(ex_test_alias(text,key,changed[..]),c[..],arena[..]);}
+ ex_test_input(v[..]);n=ex_input_write(v[..],raw[..]);text=cast(string)raw[0..<n];
+ for key:[4]string.["schema","instructions","reference","messages"] {#assert !ex_input_read(ex_test_alias(text,key,changed[..]),v[..]);}
+ for rows:[2]string.["[{\"\\u0072ole\":\"user\",\"text\":\"x\"}]","[{\"role\":\"user\",\"\\u0074ext\":\"x\"}]"] {#assert !ex_input_read(ex_test_field(text,"messages",rows,changed[..]),v[..]);}
 }

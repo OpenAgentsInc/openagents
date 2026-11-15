@@ -1,5 +1,6 @@
 // One codec for routed execution bindings, complete inputs and input chunks.
 // The caller retains the arena behind Binding/Chunk strings. Input owns its text.
+// coax/bin/coax test coax/lib/agent/environment/execution-wire.coax --library
 #load "execution-policy.coax";
 #load "wire.coax"; // shared model/effort identifier classification
 #load "../../json/shape.coax";
@@ -44,8 +45,8 @@ ex_binding_write :: (b:ExBinding,out:[]u8)->int #export_c #effects(all) {
  jo_key(o[..],"report_observed_at_ms");jo_int(o[..],b.report_at);jo_key(o[..],"issued_at_ms");jo_int(o[..],b.issued);jo_key(o[..],"expires_at_ms");jo_int(o[..],b.expires);jo_end(o[..]);return ex_encoded(o[..]);
 }
 ex_chunk_valid :: (c:ExChunk)->bool #effects(all) {
- return ea_id(c.task,32) && ea_id(c.command,32) && ea_id(c.hash,64) && ex_text_valid(c.text,EX_CHUNK_MAX) &&
-  ex_chunk_action(c.offset,c.text.count,c.total,c.offset,false)==1 && ea_fresh(c.issued,c.expires,c.issued);
+ return ea_id(c.task,32) && ea_id(c.command,32) && ea_id(c.hash,64) && ex_text_valid(c.text,EX_CHUNK_MAX) && // mutant: equivalent (4096 to 4097: ex_chunk_action independently refuses a size above EX_CHUNK_MAX)
+  ex_chunk_action(c.offset,c.text.count,c.total,c.offset,false)==1 && ea_fresh(c.issued,c.expires,c.issued); // mutant: equivalent (false to true: retained equals offset, so an admitted range always appends and its matches argument is unused)
 }
 ex_chunk_read :: (raw:string,out:[]ExChunk,arena:[]u8)->bool #export_c #effects(all) {
  d:[1]Jv;nodes:[32]JvNode;if raw.count>32768 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];
@@ -62,10 +63,10 @@ ex_chunk_write :: (c:ExChunk,out:[]u8)->int #export_c #effects(all) {
 }
 ex_input_text :: (v:[]ExInput,i:int)->string #effects(all) {if i<0 || i>=v[0].n {return "";}return cast(string)v[0].text[v[0].starts[i]..<v[0].starts[i]+v[0].counts[i]];}
 ex_input_valid :: (v:[]ExInput)->bool #effects(all) {
- if v[0].ni<0 || v[0].nr<0 || v[0].ni>32768 || v[0].nr>32768 || !pcb_context(v[0].ni+v[0].nr) || v[0].n<1 || v[0].n>EX_MESSAGES || v[0].bytes<1 || v[0].bytes>EX_HISTORY_MAX {return false;}
- if !ex_text_valid(cast(string)v[0].instructions[0..<v[0].ni],32768) || !ex_text_valid(cast(string)v[0].reference[0..<v[0].nr],32768) || v[0].assistant[v[0].n-1] {return false;}
+ if v[0].ni<0 || v[0].nr<0 || v[0].ni>32768 || v[0].nr>32768 || !pcb_context(v[0].ni+v[0].nr) || v[0].n<1 || v[0].n>EX_MESSAGES || v[0].bytes<1 || v[0].bytes>EX_HISTORY_MAX {return false;} // mutant: equivalent (either per-field ceiling to 32769 still fails the combined 32768-byte context budget; both lengths are nonnegative)
+ if !ex_text_valid(cast(string)v[0].instructions[0..<v[0].ni],32768) || !ex_text_valid(cast(string)v[0].reference[0..<v[0].nr],32768) || v[0].assistant[v[0].n-1] {return false;} // mutant: equivalent (either text ceiling to 32769 cannot enlarge the already admitted spans, each at most 32768)
  at:=0;for i:0..<v[0].n {size:=v[0].counts[i];if v[0].starts[i]!=at || size<1 || size>v[0].bytes-at {return false;}
-  if !ex_text_valid(ex_input_text(v,i),ifx v[0].assistant[i] then EX_HISTORY_MAX else 16384) {return false;}at+=size;
+  if !ex_text_valid(ex_input_text(v,i),ifx v[0].assistant[i] then EX_HISTORY_MAX else 16384) {return false;}at+=size; // mutant: equivalent (131072 to 131073 cannot enlarge a positive message span already bounded by the complete 131072-byte text arena)
  }return at==v[0].bytes;
 }
 ex_input_read :: (raw:string,out:[]ExInput)->bool #export_c #effects(all) {
@@ -75,14 +76,14 @@ ex_input_read :: (raw:string,out:[]ExInput)->bool #export_c #effects(all) {
  list:=jv_get(v,0,"messages");count:=jv_len(v,list);if jv_kind(v,list)!=JV_ARRAY || count<1 || count>EX_MESSAGES {return false;}
  fields:=[2]string.["role","text"];
  for i:0..<count {row:=jv_at(v,list,i);if !js_fields(v,row,fields[..]) || jv_len(v,row)!=fields.count {return false;}role:=jv_raw(v,jv_get(v,row,"role"));if role!="user" && role!="assistant" {return false;}
-  size:=js_string(v,jv_get(v,row,"text"),next[0].text[next[0].bytes..<next[0].text.count]);if size<1 {return false;}
+  size:=js_string(v,jv_get(v,row,"text"),next[0].text[next[0].bytes..<next[0].text.count]);if size<1 {return false;} // mutant: equivalent (the final next[0] to next[1] names a fixed array's compile-time count; it does not dereference that receiver or change capacity)
   next[0].assistant[i]=role=="assistant";next[0].starts[i]=next[0].bytes;next[0].counts[i]=size;next[0].bytes+=size;
  }next[0].n=count;if !ex_input_valid(next[..]) {return false;}out[0]=next[0];return true;
 }
 ex_input_write :: (v:[]ExInput,out:[]u8)->int #export_c #effects(all) {
  if !ex_input_valid(v) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],EX_INPUT_SCHEMA);
  jo_key(o[..],"instructions");jo_str(o[..],cast(string)v[0].instructions[0..<v[0].ni]);jo_key(o[..],"reference");jo_str(o[..],cast(string)v[0].reference[0..<v[0].nr]);jo_key(o[..],"messages");jo_arr(o[..]);
- for i:0..<v[0].n {jo_obj(o[..]);jo_key(o[..],"role");jo_str(o[..],ifx v[0].assistant[i] then "assistant" else "user");jo_key(o[..],"text");jo_str(o[..],ex_input_text(v,i));jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);n:=ex_encoded(o[..]);return ifx n>EX_INPUT_MAX then -1 else n;
+ for i:0..<v[0].n {jo_obj(o[..]);jo_key(o[..],"role");jo_str(o[..],ifx v[0].assistant[i] then "assistant" else "user");jo_key(o[..],"text");jo_str(o[..],ex_input_text(v,i));jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);n:=ex_encoded(o[..]);return ifx n>EX_INPUT_MAX then -1 else n; // mutant: equivalent (the final size branch is unreachable: 163840 decoded text bytes expand at most sixfold, plus fewer than 8192 bytes of 128-row metadata, below 1048576; writer failure is -1)
 }
 
 #load "execution-checks.coax" #test;

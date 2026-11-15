@@ -136,3 +136,16 @@ profile and owns their durable receipts, provider selection and process effects.
 The task event/control contract must carry structured tool correlation, held
 permissions and truthful Stop/unknown outcomes. API dispatch, mobile/CLI joins
 and a real staging patch/test task remain the acceptance gates in #13620.
+
+Initial qualification: the policy's 93 root-site mutants and input preparation's
+47 were all killed. The codec's 432 root-site mutants finished with 421 killed,
+11 reviewed equivalents and zero unresolved survivors. The annotations explain
+fixed capacities, repeated budget checks, an unused append-match argument and
+the unreachable encoded-size branch. Escaped-key guards have negative checks.
+The native fixture tool verifies actual complete preparation as well as exact
+bytes, descriptor keys and SHA256, and the production library compiles to C and
+a native object. All three modules name their own `coax test` command so the
+fixture tool's imports cannot hide them from suite discovery. These checks prove
+the handoff primitives, not resident execution or the issue's end-to-end gates.
+The escaped-key fixture generator is itself pinned to independent exact bytes;
+all 33 of its changed-procedure mutants were killed in both consuming suites.
