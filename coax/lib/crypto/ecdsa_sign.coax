@@ -134,7 +134,7 @@ ec_signs_id :: (key:string,hash:string,sig:string,id:u8)->bool #effects(all) {
 ec_signs_low_r :: (key:string,hash:string,sig:string)->bool #effects(all) {
   w:[1]EcdsaWork;k:[32]u8;h:[32]u8;out:[64]u8;
   if !ecdsa_sign_low_r(bt_unhex(key,k[..]),bt_unhex(hash,h[..]),w[..],out[..],false) {return false;}
-  return bt_hex_is(out[..],sig) && w[0].hk[0]==0;
+  return bt_hex_is(out[..],sig) && bt_hex_is(w[0].hk[..],"0000000000000000000000000000000000000000000000000000000000000000");   // K cleared
 }
 // ec_sign with 32 bytes of extra data: is the result sig?
 ec_signs_data :: (key:string,hash:string,data:string,sig:string)->bool #effects(all) {
@@ -155,15 +155,35 @@ ec_signs_data :: (key:string,hash:string,data:string,sig:string)->bool #effects(
     "0000000000000000000000000000000000000000000000000000000000000001",
     "82a51c191a86afbbeecd0893ed65ea7c6676c8b4cb6172d5657f978cb81552a91e7c8482a1e77fd647f5ff7157dcb956823d8d00777048fd76881b3909af9aa9");
 }
-#test "low R: no retry, one retry and five, as Python grinds" #steps 4000000000 {
-  // Key 1 and SHA-256 of the bytes 01, 07 and 05 (psbt_reference.py's ecdsa).
+// Each low-R test signs a few times, so that the evaluator can run it
+// within its steps when coax mutate checks the checks.
+#test "low R: no retry, and one retry, as Python grinds" #steps 4000000000 {
+  // Key 1 and SHA-256 of the bytes 01 and 07 (psbt_reference.py's ecdsa).
   #assert ec_signs_low_r("0000000000000000000000000000000000000000000000000000000000000001","4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
     "5fee345e860d1b65e1ccab8cc74a8fc75f7147218006568c914d3d81e71a19943f329259992ae9139eeeffe3ca073bfa715a259ae22714cb391beb367bbf53dc");
   #assert ec_signs_low_r("0000000000000000000000000000000000000000000000000000000000000001","ca358758f6d27e6cf45272937977a748fd88391db679ceda7dc7bf1f005ee879",
     "4a2a7b6af350525ca2cbdc6835457c7e777802bc4aab74a691105fe929966e117a1955ea0b0c60ea1b2a2a8dbac5740f01fcdec6fc92c1bf95ed61488ccd69a2");
+  // The helper itself: a wrong signature and a refused key are not results.
+  #assert !ec_signs_low_r("0000000000000000000000000000000000000000000000000000000000000001","4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+    "5fee345e860d1b65e1ccab8cc74a8fc75f7147218006568c914d3d81e71a19943f329259992ae9139eeeffe3ca073bfa715a259ae22714cb391beb367bbf53dd");
+  #assert !ec_signs_low_r("0000000000000000000000000000000000000000000000000000000000000000","4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+    "5fee345e860d1b65e1ccab8cc74a8fc75f7147218006568c914d3d81e71a19943f329259992ae9139eeeffe3ca073bfa715a259ae22714cb391beb367bbf53dc");
+}
+#test "low R: five retries, as Python grinds" #steps 4000000000 {
+  // Key 1 and SHA-256 of the byte 05 (psbt_reference.py's ecdsa).
   #assert ec_signs_low_r("0000000000000000000000000000000000000000000000000000000000000001","e77b9a9ae9e30b0dbdb6f510a264ef9de781501d7b6b92ae89eb059c5ab743db",
     "327d6f50438797c536d8e527a48847e88bf4014b73f6fe259a1c32e90e5dcfc1248b416da257321362a753d6a5ab6997906737c05880fa9e3fe10322a9a6fa31");
-  // A zero key and a short or overlapping view refuse without output.
+}
+#test "low R: an r whose top byte is exactly 0x80 is high and signs again" #steps 4000000000 {
+  // Key 1 and SHA-256 of the bytes 00 00 00 0d: the first signature's r is
+  // 80df17e4..., one bit past the low half, and four retries follow
+  // (Python integers with RFC 6979's k and Core's counter).
+  #assert ec_signs("0000000000000000000000000000000000000000000000000000000000000001","8092fe01b9ce31a49ce380fc2fe1ee6b6b7d5c15c5f1ecb6ad98c60c4273a435",
+    "80df17e44cea7ec3f61147f560c49dc328e1209415aacdedeb54a2c6d63757957a0593121c0b10e5853d2c7546af14567e245ae3a3bd500051eeec5bfa335859");
+  #assert ec_signs_low_r("0000000000000000000000000000000000000000000000000000000000000001","8092fe01b9ce31a49ce380fc2fe1ee6b6b7d5c15c5f1ecb6ad98c60c4273a435",
+    "42ddc9486c385471ac3a83059299a3f2e0836e2086dbf0aa120431e134a267c409343c09a3f435e6996574c90977d0c6d65df7ad2334c1c8713b323dc8593192");
+}
+#test "low R: a zero key and a short or overlapping view refuse without output" #steps 1000000000 {
   w:[1]EcdsaWork;key:[32]u8;h:[32]u8;out:[64]u8;out[0]=7;
   #assert !ecdsa_sign_low_r(key[..],h[..],w[..],out[..],false) && out[0]==7;
   key[31]=1;#assert !ecdsa_sign_low_r(key[..],h[..],w[..],out[0..<63],false) && !ecdsa_sign_low_r(key[..],h[..],w[..],out[..],true) && out[0]==7;
@@ -235,7 +255,9 @@ ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) #effects(all) { ec_s
 ec_seed :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork) #effects(all) {
   z := sc_reduce_bytes(hash);                      // the message hash is public
   for i: 0..<32 { w[0].hv[i] = 1; w[0].hk[i] = 0; w[0].buf[33+i] = key[i]; }   // b, c: V = 01..01, K = 00..00
-  #assert ss_write(z.value, w[0].buf[65..<97]);
+  // ss_write stores exactly 32 bytes at the start of any view of 32 or more
+  // (cb_span), so a longer end here writes the same buf[65..<97].
+  #assert ss_write(z.value, w[0].buf[65..<97]); // mutant: equivalent
   for i: 0..<data.count { w[0].buf[97+i] = data[i]; }   // public: a counter
   n := 97 + data.count;
   ec_step(w, 0, n);                                // d, e: K = HMAC_K(V || 00 || key || h || data), V = HMAC_K(V)
@@ -344,7 +366,10 @@ ecdsa_sign_recoverable :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8,
 ecdsa_sign_low_r :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c #effects(all) {
   if !ec_views(key, hash, w, out, overlap, 64) { return false; }
   data: [32] u8; sig: [64] u8;
-  for counter: 0..<256 {
+  // A 257th try, or true after the 256th, needs 256 signatures in a row with
+  // r's top bit set: probability 2^-256, so no input that reaches it can be
+  // found or written as a check.
+  for counter: 0..<256 { // mutant: equivalent
     data[0] = cast(u8) counter;
     if !ec_sign(key, hash, data[0..<ifx counter == 0 then 0 else 32], w, sig[..]) { return false; }
     if sig[0] < 0x80 {                                  // r is public: published in the signature
@@ -352,7 +377,8 @@ ecdsa_sign_low_r :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overl
       return true;
     }
   }
-  return false;
+  // Reached only after those 256 high r values (see the loop above).
+  return false; // mutant: equivalent
 }
 // book:end grind
 

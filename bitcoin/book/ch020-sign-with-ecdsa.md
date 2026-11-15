@@ -141,7 +141,9 @@ ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) #effects(all) { ec_s
 ec_seed :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork) #effects(all) {
   z := sc_reduce_bytes(hash);                      // the message hash is public
   for i: 0..<32 { w[0].hv[i] = 1; w[0].hk[i] = 0; w[0].buf[33+i] = key[i]; }   // b, c: V = 01..01, K = 00..00
-  #assert ss_write(z.value, w[0].buf[65..<97]);
+  // ss_write stores exactly 32 bytes at the start of any view of 32 or more
+  // (cb_span), so a longer end here writes the same buf[65..<97].
+  #assert ss_write(z.value, w[0].buf[65..<97]); // mutant: equivalent
   for i: 0..<data.count { w[0].buf[97+i] = data[i]; }   // public: a counter
   n := 97 + data.count;
   ec_step(w, 0, n);                                // d, e: K = HMAC_K(V || 00 || key || h || data), V = HMAC_K(V)
