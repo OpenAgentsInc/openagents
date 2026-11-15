@@ -41,3 +41,5 @@ rs_battle_death_save :: (b: [] RsBattle, j: int) -> int #effects(all) {
   }
   return r;
 }
+
+#load "death-save-roll-tests.coax" #test;   // its checks, run with the battle (#13586)
