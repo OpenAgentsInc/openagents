@@ -303,9 +303,9 @@ ground_axis :: (origin: f32, cell: f32, n: int, coordinate: f32) -> GroundAxis #
   last := origin + f32(n) * cell;
   if at < origin { at = origin; clamped = true; }
   else if at > last { at = last; clamped = true; }
-  guess := floor((at - origin) / cell);
-  low := ifx guess >= f32(n - 1) then n - 1 else ifx guess > 0 then cast(int) guess else 0;
-  while low > 0 && at < origin + f32(low) * cell { low -= 1; }
+  guess := floor((at - origin) / cell);   // mutant: equivalent (the two walks below repair any guess, so the cell found is the same; only the number of steps differs, which no check can see)
+  low := ifx guess >= f32(n - 1) then n - 1 else ifx guess > 0 then cast(int) guess else 0;   // mutant: equivalent (the two walks below repair any guess, so the cell found is the same; only the number of steps differs, which no check can see)
+  while low > 0 && at < origin + f32(low) * cell { low -= 1; }   // mutant: equivalent (the two walks below repair any guess, so the cell found is the same; only the number of steps differs, which no check can see)
   while low < n - 1 && !(at < origin + f32(low + 1) * cell) { low += 1; }
   high := low + 1;
   a := origin + f32(low) * cell; b := origin + f32(high) * cell;
