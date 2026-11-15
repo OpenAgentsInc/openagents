@@ -98,7 +98,7 @@ ln_unknown_vartime :: (type: u64) -> int #effects(all) { return ifx type % 2 == 
 // A whole stream whose known types are listed, in any order. It checks the
 // framing and the odd rule only; the caller reads each known value.
 tlv_check_vartime :: (b: [] u8, known: [] u64) -> int #effects(all) {
-  at := 0; previous: u64 = 0; first := true;
+  at := 0; previous: u64 = 0; first := true; // mutant: equivalent (the first record never reads previous, and every later one reads the type set before it)
   while at < b.count {
     r := tlv_next_vartime(b, at, previous, first);
     if r.code != LN_OK { return r.code; }
@@ -111,9 +111,9 @@ tlv_check_vartime :: (b: [] u8, known: [] u64) -> int #effects(all) {
 // Writes one record and returns where writing goes on, or -1.
 tlv_write_vartime :: (out: [] u8, at: int, type: u64, value: [] u8) -> int #effects(all) {
   w := bigsize_write_vartime(out, at, type);
-  if w < 0 { return -1; }
+  if w < 0 { return -1; } // mutant: equivalent (bigsize_write returns -1 or a position of at least 1, so w < 0, w <= 0 and w < 1 agree)
   w = bigsize_write_vartime(out, w, cast(u64) value.count);
-  if w < 0 || value.count > out.count - w { return -1; }
+  if w < 0 || value.count > out.count - w { return -1; } // mutant: equivalent (w is -1 or at least 2 here, so w < 0, w <= 0 and w < 1 agree)
   for i: 0..<value.count { out[w + i] = value[i]; }
   return w + value.count;
 }
@@ -199,7 +199,7 @@ ln_feature_bytes :: (f: [] u8) -> int #effects(all) {
 // The first set bit, from bit 0, that the reader cannot accept: an even
 // bit of a feature it does not know. -1 when every bit is acceptable.
 ln_feature_refuse_vartime :: (f: [] u8, known: [] int) -> int #effects(all) {
-  for bit: 0..<f.count * 8 {
+  for bit: 0..<f.count * 8 { // mutant: equivalent (ln_feature_set is false for every bit past f.count * 8)
     if ln_feature_set(f, bit) && bit % 2 == 0 {
       found := false; for k: known { if k / 2 == bit / 2 { found = true; } }
       if !found { return bit; }
@@ -228,12 +228,12 @@ ln_init_read_vartime :: (m: [] u8) -> LnInit #effects(all) {
   if h.code != LN_OK { r.code = h.code; return r; }
   if h.type != LN_INIT { r.code = LN_BAD_VALUE; return r; }
   at := LN_TYPE;
-  if m.count - at < 2 { r.code = LN_TRUNCATED; return r; }
+  if m.count - at < 2 { r.code = LN_TRUNCATED; return r; } // mutant: equivalent (for < and <=, or 2 and 3: a 4-byte init has no features length, so the next check refuses it with the same code)
   r.global_n = ln_u16(m, at); r.global = at + 2; at = r.global + r.global_n;
   if at + 2 > m.count { r.code = LN_TRUNCATED; return r; }
   r.features_n = ln_u16(m, at); r.features = at + 2; at = r.features + r.features_n;
   if at > m.count { r.code = LN_TRUNCATED; return r; }
-  tlvs := m[at..<m.count]; p := 0; previous: u64 = 0; first := true;
+  tlvs := m[at..<m.count]; p := 0; previous: u64 = 0; first := true; // mutant: equivalent (for previous: the first record never reads it)
   while p < tlvs.count {
     rec := tlv_next_vartime(tlvs, p, previous, first);
     if rec.code != LN_OK { r.code = rec.code; return r; }
@@ -253,7 +253,7 @@ ln_init_read_vartime :: (m: [] u8) -> LnInit #effects(all) {
 // The combined bitmap: globalfeatures ORed into features, right-aligned,
 // written to out[0..<n]; returns n, or -1 when out is too small.
 ln_init_features_vartime :: (m: [] u8, r: LnInit, out: [] u8) -> int #effects(all) {
-  n := ifx r.global_n > r.features_n then r.global_n else r.features_n;
+  n := ifx r.global_n > r.features_n then r.global_n else r.features_n; // mutant: equivalent (> or >=: at equal lengths both pick the same n)
   if n > out.count { return -1; }
   for i: 0..<n { out[i] = 0; }
   for i: 0..<r.global_n { out[n - r.global_n + i] |= m[r.global + i]; }
@@ -267,7 +267,7 @@ ln_init_write_vartime :: (features: [] u8, chains: [] u8, out: [] u8) -> int #ef
   ln_put16(out, 0, LN_INIT); ln_put16(out, 2, 0); ln_put16(out, 4, features.count);
   for i: 0..<features.count { out[6 + i] = features[i]; }
   w := 6 + features.count;
-  if chains.count > 0 { w = tlv_write_vartime(out, w, LN_INIT_NETWORKS, chains); }
+  if chains.count > 0 { w = tlv_write_vartime(out, w, LN_INIT_NETWORKS, chains); } // mutant: equivalent (for > 1: chains.count is a multiple of 32 here)
   if w > LN_MAX_MESSAGE { return -1; }
   return w;
 }
@@ -310,7 +310,7 @@ ln_ping_read_vartime :: (m: [] u8) -> LnPing #effects(all) {
   if h.type != LN_PING && h.type != LN_PONG { return LnPing.{code = LN_BAD_VALUE, type = h.type}; }
   at := LN_TYPE; r := LnPing.{type = h.type, pong_bytes = -1};
   if h.type == LN_PING {
-    if m.count < at + 2 { return LnPing.{code = LN_TRUNCATED, type = h.type}; }
+    if m.count < at + 2 { return LnPing.{code = LN_TRUNCATED, type = h.type}; } // mutant: equivalent (for < and <=, or 2 and 3: a 4-byte ping has no byteslen, so the next check refuses it with the same code and type)
     r.pong_bytes = ln_u16(m, at); at += 2;
   }
   if m.count < at + 2 { return LnPing.{code = LN_TRUNCATED, type = h.type}; }
@@ -363,12 +363,12 @@ LnTestStream :: struct {
   amount: u64; scid: u64; node_id: int; amount_1: u64; amount_2: u64; cltv: u64;
 }
 ln_test_decode_vartime :: (b: [] u8, space: int) -> LnTestStream #effects(all) {
-  s: LnTestStream; at := 0; previous: u64 = 0; first := true;
+  s: LnTestStream; at := 0; previous: u64 = 0; first := true; // mutant: equivalent (for previous: the first record never reads it)
   while at < b.count {
     r := tlv_next_vartime(b, at, previous, first);
     if r.code != LN_OK { s.code = r.code; return s; }
     v := b[r.start..<r.next];
-    slot := -1;
+    slot := -1; // mutant: equivalent (both namespace branches below assign slot)
     if space == 1 {
       slot = ifx r.type == 1 then 0 else ifx r.type == 2 then 1 else ifx r.type == 3 then 2 else ifx r.type == 254 then 3 else -1;
     } else {
@@ -543,4 +543,148 @@ ln_test_decode_vartime :: (b: [] u8, space: int) -> LnTestStream #effects(all) {
   #assert ln_pong_reply_vartime(ln_ping_read_vartime(out[0..<n]), reply[..]) == 0;
   #assert ln_ping_read_vartime(out[0..<5]).code == LN_TRUNCATED;
   #assert ln_ping_write_vartime(0, 65530, out[..]) == -1;
+}
+#test "BigSize, TLV and truncated integers: exact fits, the odd rule and the n2 namespace" {
+  b: [64] u8; out: [16] u8; v := [3] u8.[1, 2, 3];
+  #assert bigsize_write_vartime(out[0..<3], 0, 0xfd) == 3 && out[0] == 0xfd && out[1] == 0 && out[2] == 0xfd;
+  #assert tlv_write_vartime(out[0..<5], 0, 1, v[..]) == 5 && ln_hex_is(out[0..<5], "0103010203");
+  #assert tlv_write_vartime(out[0..<4], 0, 1, v[..]) == -1 && tlv_write_vartime(out[0..<0], 0, 1, v[0..<0]) == -1;
+  #assert tlv_write_vartime(out[0..<2], 0, 1, v[0..<0]) == 2;
+  #assert tu_write_vartime(out[0..<2], 0, 0x100) == 2 && out[0] == 1 && out[1] == 0;
+  #assert tu_write_vartime(out[0..<4], 3, 0x100) == -1 && tu_write_vartime(out[..], -1, 1) == -1;
+  // A length of 2 with one byte left is truncated.
+  r := tlv_next_vartime(ln_unhex("010200", b[..]), 0, 0, true);
+  #assert r.code == LN_TRUNCATED && r.type == 1 && r.next == 0;
+  #assert ln_unknown_vartime(0) == LN_UNKNOWN_EVEN && ln_unknown_vartime(2) == LN_UNKNOWN_EVEN && ln_unknown_vartime(3) == LN_OK;
+  // Type 0 may come first, and each type must be above the one before.
+  known := [3] u64.[0, 1, 2];
+  #assert tlv_check_vartime(ln_unhex("0000", b[..]), known[..]) == LN_OK;
+  #assert tlv_check_vartime(ln_unhex("00000100", b[..]), known[..]) == LN_OK;
+  #assert tlv_check_vartime(ln_unhex("02000100", b[..]), known[..]) == LN_ORDER;
+  #assert tlv_check_vartime(ln_unhex("01000100", b[..]), known[..]) == LN_ORDER;
+  // BOLT 1's n2: type 0 is a tu64 amount_msat, type 11 a tu32 cltv_expiry.
+  s := ln_test_decode_vartime(ln_unhex("0000", b[..]), 2);
+  #assert s.code == LN_OK && s.seen[0] && !s.seen[1] && s.amount == 0;
+  s = ln_test_decode_vartime(ln_unhex("000101", b[..]), 2);
+  #assert s.code == LN_OK && s.seen[0] && !s.seen[1] && s.amount == 1 && s.cltv == 0;
+  s = ln_test_decode_vartime(ln_unhex("00050100000000", b[..]), 2);
+  #assert s.code == LN_OK && s.amount == 4294967296;
+  s = ln_test_decode_vartime(ln_unhex("0b0401000000", b[..]), 2);
+  #assert s.code == LN_OK && s.seen[1] && !s.seen[0] && !s.seen[2] && s.cltv == 16777216 && s.amount == 0;
+  s = ln_test_decode_vartime(ln_unhex("0001010b0102", b[..]), 2);
+  #assert s.code == LN_OK && s.amount == 1 && s.cltv == 2;
+  #assert ln_test_decode_vartime(ln_unhex("0b050100000000", b[..]), 2).code == LN_BAD_LENGTH;
+  #assert ln_test_decode_vartime(ln_unhex("0b020001", b[..]), 2).code == LN_NOT_MINIMAL;
+  // n1's exact refusals: tlv3 short, tlv3's node_id off the curve, tlv4 short.
+  #assert ln_test_decode_vartime(ln_unhex("0321023da092f6980e58d2c037173180e9a465476026ee50f96695963e8efe436f54eb", b[..]), 1).code == LN_BAD_LENGTH;
+  #assert ln_test_decode_vartime(ln_unhex("0331043da092f6980e58d2c037173180e9a465476026ee50f96695963e8efe436f54eb00000000000000010000000000000002", b[..]), 1).code == LN_BAD_VALUE;
+  #assert ln_test_decode_vartime(ln_unhex("fd00fe00", b[..]), 1).code == LN_BAD_LENGTH;
+  #assert ln_test_decode_vartime(ln_unhex("0109ffffffffffffffffff", b[..]), 1).code == LN_BAD_LENGTH;
+}
+#test "messages and init: the known types, exact refusals, and where each field sits" {
+  b: [64] u8; out: [128] u8; m: [8] u8;
+  h := ln_message_read_vartime(ln_unhex("00120000", b[..]));
+  #assert h.code == LN_OK && h.type == LN_PING && h.payload == 2;
+  for t: [5] int.[1, 16, 17, 18, 19] { d := ln_dispatch_vartime(t); #assert d.code == LN_OK && !d.ignore; }
+  #assert ln_dispatch_vartime(3).ignore && ln_dispatch_vartime(20).code == LN_UNKNOWN_EVEN;
+  #assert ln_init_read_vartime(ln_unhex("001000", b[..])).code == LN_TRUNCATED;
+  #assert ln_init_read_vartime(ln_unhex("0010", b[..])).code == LN_TRUNCATED;
+  r := ln_init_read_vartime(ln_unhex("001000000000", b[..]));
+  #assert r.code == LN_OK && r.networks == -1 && r.remote_addr == -1 && r.networks_n == 0 && r.ignored == 0;
+  // A first record of type 0 is an unknown even type, not out of order.
+  #assert ln_init_read_vartime(ln_unhex("0010000000000000", b[..])).code == LN_UNKNOWN_EVEN;
+  // remote_addr (type 3) starts after the type, both lengths and its own type and length.
+  r = ln_init_read_vartime(ln_unhex("001000000000030401020304", b[..]));
+  #assert r.code == LN_OK && r.remote_addr == 8 && r.remote_addr_n == 4 && r.ignored == 0 && r.networks == -1;
+  chains: [32] u8; chains[0] = 0x6f; f := [1] u8.[2];
+  n := ln_init_write_vartime(f[..], chains[..], out[..]);
+  r = ln_init_read_vartime(out[0..<n]);
+  #assert n == 6 + 1 + 2 + 32 && r.code == LN_OK && r.networks == 9 && r.networks_n == 1 && out[r.networks] == 0x6f;
+  // Two-byte globalfeatures 0103 ORed into features 04, then globalfeatures 01 into features 0408.
+  r = ln_init_read_vartime(ln_unhex("001000020103000104", b[..]));
+  #assert r.code == LN_OK && r.global_n == 2 && r.features_n == 1;
+  c := ln_init_features_vartime(ln_unhex("001000020103000104", b[..]), r, m[0..<2]);
+  #assert c == 2 && m[0] == 1 && m[1] == 7;
+  #assert ln_init_features_vartime(ln_unhex("001000020103000104", b[..]), r, m[0..<1]) == -1;
+  r = ln_init_read_vartime(ln_unhex("001000010100020408", b[..]));
+  c = ln_init_features_vartime(ln_unhex("001000010100020408", b[..]), r, m[0..<2]);
+  #assert r.code == LN_OK && c == 2 && m[0] == 4 && m[1] == 9;
+  // The writer: globalfeatures length zero, an exact fit, and no networks record without chains.
+  for i: 0..<128 { out[i] = 0xff; }
+  #assert ln_init_write_vartime(f[..], chains[0..<0], out[0..<7]) == 7;
+  #assert out[0] == 0 && out[1] == 16 && out[2] == 0 && out[3] == 0 && out[4] == 0 && out[5] == 1 && out[6] == 2;
+  #assert ln_init_write_vartime(f[..], chains[0..<0], out[0..<6]) == -1;
+  #assert ln_init_write_vartime(f[..], chains[0..<31], out[..]) == -1;
+  // 65,535 bytes is the largest message: 6 + 1013 + a networks record of 4 + 64,512.
+  big: [70000] u8; many: [64512] u8; feats: [1014] u8;
+  #assert ln_init_write_vartime(feats[0..<1013], many[..], big[..]) == 65535;
+  #assert ln_init_write_vartime(feats[..], many[..], big[..]) == -1;
+}
+#test "error, warning, ping and pong: exact sizes, refusals and zeroed pads" {
+  out: [70000] u8; ch: [32] u8; text: [65500] u8; m: [8] u8;
+  n := ln_error_write_vartime(LN_ERROR, ch, "", out[0..<36]);
+  e := ln_error_read_vartime(out[0..<n]);
+  #assert n == 36 && e.code == LN_OK && e.channel == 2 && e.data == 36 && e.data_n == 0 && e.all && e.printable;
+  #assert ln_error_write_vartime(LN_ERROR, ch, "", out[0..<35]) == -1;
+  #assert ln_error_read_vartime(out[0..<35]).code == LN_TRUNCATED;
+  #assert ln_error_write_vartime(LN_ERROR, ch, "a", out[0..<37]) == 37;
+  // A channel_id whose first byte is set is one channel, not all of them.
+  ch[0] = 5;
+  n = ln_error_write_vartime(LN_ERROR, ch, "a", out[..]);
+  e = ln_error_read_vartime(out[0..<n]);
+  #assert out[2] == 5 && e.code == LN_OK && !e.all;
+  // 300 bytes of data: the length's high byte is not part of the channel_id.
+  ch[0] = 0;
+  n = ln_error_write_vartime(LN_ERROR, ch, cast(string) text[0..<300], out[..]);
+  e = ln_error_read_vartime(out[0..<n]);
+  #assert e.code == LN_OK && e.all && e.data_n == 300 && out[34] == 1;
+  // Printable ASCII is 32 to 126.
+  edge := [2] u8.[' ', '~']; del := [1] u8.[127];
+  n = ln_error_write_vartime(LN_WARNING, ch, cast(string) edge[..], out[..]);
+  #assert ln_error_read_vartime(out[0..<n]).printable;
+  n = ln_error_write_vartime(LN_WARNING, ch, cast(string) del[..], out[..]);
+  #assert !ln_error_read_vartime(out[0..<n]).printable;
+  // A ping is not an error, and an error is not a ping.
+  n = ln_ping_write_vartime(0, 0, out[..]);
+  #assert n == 6 && ln_error_read_vartime(out[0..<n]).code == LN_BAD_VALUE;
+  n = ln_error_write_vartime(LN_ERROR, ch, "", out[..]);
+  #assert ln_ping_read_vartime(out[0..<n]).code == LN_BAD_VALUE;
+  for i: 0..<65500 { text[i] = 'a'; }
+  #assert ln_error_write_vartime(LN_ERROR, ch, cast(string) text[0..<65499], out[..]) == 65535;
+  #assert ln_error_write_vartime(LN_ERROR, ch, cast(string) text[..], out[..]) == -1;
+  // ping: the pad is zeros, written into exactly 6 + byteslen bytes.
+  for i: 0..<16 { out[i] = 0xff; }
+  #assert ln_ping_write_vartime(0, 2, out[0..<8]) == 8 && out[6] == 0 && out[7] == 0 && out[8] == 0xff;
+  #assert out[0] == 0 && out[1] == 18 && out[2] == 0 && out[3] == 0 && out[4] == 0 && out[5] == 2;
+  #assert ln_ping_write_vartime(0, 2, out[0..<7]) == -1;
+  #assert ln_ping_write_vartime(-1, 0, out[..]) == -1 && ln_ping_write_vartime(65536, 0, out[..]) == -1 && ln_ping_write_vartime(0, -1, out[..]) == -1;
+  #assert ln_ping_write_vartime(65535, 0, out[..]) == 6 && ln_ping_write_vartime(0, 65529, out[..]) == 65535 && ln_ping_write_vartime(0, 65530, out[..]) == -1;
+  #assert ln_ping_read_vartime(ln_unhex("0012", m[..])).code == LN_TRUNCATED;
+  #assert ln_ping_read_vartime(ln_unhex("001200000001", m[..])).code == LN_TRUNCATED;
+  p := ln_ping_read_vartime(ln_unhex("00120000000100", m[..]));
+  #assert p.code == LN_OK && p.pong_bytes == 0 && p.ignored_n == 1;
+  q := ln_ping_read_vartime(ln_unhex("00130000", m[..]));
+  #assert q.code == LN_OK && q.type == LN_PONG && q.pong_bytes == -1 && q.ignored_n == 0;
+  // pong: num_pong_bytes zeros, into exactly 4 + that many bytes; no reply to a pong or a bad ping.
+  reply: [16] u8; for i: 0..<16 { reply[i] = 0xff; }
+  p = ln_ping_read_vartime(ln_unhex("001200030000", m[..]));
+  #assert ln_pong_reply_vartime(p, reply[0..<7]) == 7;
+  #assert reply[0] == 0 && reply[1] == 19 && reply[2] == 0 && reply[3] == 3 && reply[4] == 0 && reply[5] == 0 && reply[6] == 0 && reply[7] == 0xff;
+  #assert ln_pong_reply_vartime(p, reply[0..<6]) == -1;
+  #assert ln_pong_reply_vartime(q, reply[..]) == -1 && ln_pong_reply_vartime(ln_ping_read_vartime(ln_unhex("0012", m[..])), reply[..]) == -1;
+}
+#test "feature bits at the byte edges, their names, and the hex helpers" {
+  f: [8] u8; t: [8] u8; none: [1] int; low := [1] int.[0];
+  #assert ln_feature_put(f[..], 0) && f[7] == 1 && ln_feature_set(f[..], 0);
+  #assert ln_feature_put(f[..], 16) && f[5] == 1 && ln_feature_set(f[..], 16) && !ln_feature_set(f[..], 8);
+  #assert !ln_feature_set(f[..], 64) && !ln_feature_set(f[..], -1);
+  one := [2] u8.[1, 0];
+  #assert ln_feature_bytes(one[..]) == 2 && ln_feature_bytes(t[..]) == 0 && ln_feature_bytes(f[..]) == 3;
+  #assert ln_feature_refuse_vartime(f[..], none[0..<0]) == 0 && ln_feature_refuse_vartime(f[..], low[..]) == 16;
+  #assert ln_feature_name(0) == "option_data_loss_protect" && ln_feature_name(51) == "option_zeroconf";
+  #assert ln_feature_name(52) == "" && ln_feature_name(56) == "" && ln_feature_name(60) == "option_simple_close";
+  #assert ln_feature_name(67) == "option_onion_messages_only_channels" && ln_feature_name(68) == "";
+  #assert ln_unhex("ABCDEF", t[..]).count == 3 && t[0] == 0xab && t[1] == 0xcd && t[2] == 0xef;
+  #assert ln_hex_is(t[0..<1], "ab") && ln_hex_is(t[0..<1], "AB") && !ln_hex_is(t[0..<1], "ab00") && !ln_hex_is(t[0..<1], "ac");
+  #assert !ln_hex_is(one[..], "0000") && !ln_hex_is(one[..], "00");
 }
