@@ -147,3 +147,5 @@ rs_resisted :: (b: [] RsBattle, j: int, amount: int, kind: int) -> int #effects(
     #assert rs_saving_throw_magic_plus(b[..], 1, RS_DEX, plain + plus, 0, plus).passed && !rs_saving_throw_magic_plus(b[..], 1, RS_DEX, plain + plus + 1, 0, plus).passed;
   }
 }
+
+#load "condition-roll-tests.coax" #test;   // its checks, run with the battle (#13586)
