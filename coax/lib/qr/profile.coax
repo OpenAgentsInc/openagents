@@ -33,6 +33,18 @@ QrResult :: struct {status:int;version:int;size:int;count:int;mask:int;penalty:i
  #assert qr_alnum_value(48)==0 && qr_alnum_value(90)==35 && qr_alnum_value(32)==36 && qr_alnum_value(58)==44;
  #assert qr_alnum_value(97)== -1 && qr_alnum_value(35)== -1 && qr_alnum_value(255)== -1;
 }
+#test "alphanumeric values match the QR table at every edge and symbol" {
+ #assert qr_alnum_value(57)==9 && qr_alnum_value(65)==10 && qr_alnum_value(66)==11;
+ #assert qr_alnum_value(47)==43 && qr_alnum_value(64)== -1 && qr_alnum_value(91)== -1;
+ #assert qr_alnum_value(36)==37 && qr_alnum_value(37)==38 && qr_alnum_value(42)==39;
+ #assert qr_alnum_value(43)==40 && qr_alnum_value(45)==41 && qr_alnum_value(46)==42;
+}
+#test "alphanumeric admission takes mask 7 and refuses one module short" {
+ #assert qr_admit_alnum(0,5929,7,false).status==0;
+ #assert qr_admit_alnum(0,441,-1,false).status==0;
+ p:=qr_admit_alnum(0,440,-1,false);#assert p.status==2 && p.count==0;
+ #assert qr_admit_alnum(600,5928,-1,false).status==2;
+}
 #forall "output capacity has an exact readable boundary" version:1..<16 {
   length:=qr_capacity(version);size:=17+version*4;
   #assert qr_admit(length,size*size,-1,false).status==0;
@@ -79,7 +91,7 @@ qr_admit :: (length:int,capacity:int,mask:int,overlap:bool)->QrAdmission #export
 }
 // Alphanumeric: 11 bits a pair, 6 for an odd last one, after the 4-bit mode and a 9/11-bit count.
 qr_alnum_capacity :: (version:int)->int #effects(all) {
- bits:=qr_data_words(version)*8-4-(ifx version<10 then 9 else 11);
+ bits:=qr_data_words(version)*8-4-(ifx version<10 then 9 else 11); // mutant: equivalent (only version 10 moves, and 1713 or 1715 bits both hold 311 characters)
  return bits/11*2+(ifx bits%11>=6 then 1 else 0);
 }
 qr_alnum_value :: (byte:int)->int #effects(all) {
