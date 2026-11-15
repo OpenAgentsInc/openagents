@@ -11,6 +11,11 @@ am_response :: (port: int, dir: string, response: string) -> int {return am_resp
 // A delayed second part exercises actual incremental HTTP delivery. The one
 // deliberate delay models a provider's latency; it is not a readiness poll.
 am_response_parts :: (port:int,dir:string,response:string,tail:string,pause_ms:int)->int {
+  return am_response_transport(port,dir,response,tail,pause_ms,false,0);
+}
+// A controlled refusal or short body exercises the real HTTP adapter. All
+// existing mail/push/model callers retain their original status and framing.
+am_response_transport :: (port:int,dir:string,response:string,tail:string,pause_ms:int,refused:bool,missing_bytes:int)->int {
   listener := cxsock_listen(port);
   if listener < 0 { tool_errln("auth_checks mail: can't listen"); return 1; }
   pb: [1100] u8; ready := fs_write(fs_join(dir, "ready", pb[..]), "1");
@@ -46,9 +51,9 @@ am_response_parts :: (port:int,dir:string,response:string,tail:string,pause_ms:i
     reply: [1] Sb; sb(reply[..], "{\"id\":\"re_test_"); sb_int(reply[..], sent); sb(reply[..], "\"}");
     if response.count>0 {sb_clear(reply[..]);sb(reply[..],response);}
     s: [1] Sb;
-    sb(s[..], ifx gone then "HTTP/1.1 410 Gone" else "HTTP/1.1 200 OK");
+    sb(s[..], ifx gone then "HTTP/1.1 410 Gone" else ifx refused then "HTTP/1.1 503 Service Unavailable" else "HTTP/1.1 200 OK");
     sb(s[..], ifx pause_ms>0 then "\r\nContent-Type: text/event-stream" else "\r\nContent-Type: application/json");
-    sb(s[..], "\r\nConnection: close\r\nContent-Length: "); sb_int(s[..], reply[0].n+tail.count); sb(s[..], "\r\n\r\n");
+    sb(s[..], "\r\nConnection: close\r\nContent-Length: "); sb_int(s[..], reply[0].n+tail.count+missing_bytes); sb(s[..], "\r\n\r\n");
     sb(s[..], sb_text(reply[..]));
     good := true;
     for c: sb_text(s[..]) { if good && cxsock_write(h, cast(int) c) != 0 { good = false; } }

@@ -134,6 +134,37 @@ dc_legacy_checks :: (t:[]Ap,auth:string,stranger:string) {
  st=ac_call(t,"GET",pr_route(project,"",path[..]),"",auth,"","");ap_check(t,"Project count includes its original legacy link and deliberate rich copy",st==200 && ap_member_int(ap_body(t),"data.counts.conversations",-1)==2 && ap_member_int(ap_body(t),"data.revision",-1)==2,ap_body(t));
  q:[1]Sb;sb(q[..],"/api/chat/thread/v1?id=");sb(q[..],legacy);st=ac_call(t,"GET",sb_text(q[..]),"",auth,"","");ap_check(t,"the frozen v1 source remains readable with its latest edits",st==200 && ap_has(ap_body(t),"LATER_LEGACY_EDIT"),ap_body(t));
 }
+dc_provider_calls :: (dir:string)->int {
+ path:[4200]u8;b:[65536]u8;n:=fs_read(fs_join(dir,"all",path[..]),b[..]);count:=0;if n<0 {return 0;}for c:b[0..<n] {if c=='\n' {count+=1;}}return count;
+}
+dc_failure_case :: (t:[]Ap,auth:string,mode:string,expected:int,reason:string) {
+ dirb:[4096]u8;dir:=fs_temp("durable-provider",dirb[..]);provider:=ac_server_start(t,"coax/web/api/tests/durable_chat_checks.coax",dir,mode,"INFER_PORT");name:[1]Sb;sb(name[..],mode);sb(name[..],": provider fixture starts");ap_check(t,sb_text(name[..]),provider>=0,"");if provider<0 {return;}
+ st:=dc_post(t,auth,mode,"",0,"",-1,"Controlled durable provider response");c:[1]CtControl;arena:[72]u8;ok:=st==202 && ctr_control_read(ap_body(t),c[..],arena[..]);turn:[36]u8;if ok {_=js_copy(turn[..],c[0].turn);}sb_clear(name[..]);sb(name[..],mode);sb(name[..],": turn is saved before dispatch");ap_check(t,sb_text(name[..]),ok,ap_body(t));
+ worker:= -1;if ok {
+  tid:=cast(string)turn[..];worker=dc_worker(t);sb_clear(name[..]);sb(name[..],mode);sb(name[..],": actual resident runner starts");ap_check(t,sb_text(name[..]),worker>=0,"");
+  if worker>=0 {
+   if mode!="provider-refuse" {ok=dc_await(t,auth,tid,worker,true);sb_clear(name[..]);sb(name[..],mode);sb(name[..],": text persists before the provider terminates");ap_check(t,sb_text(name[..]),ok,ap_body(t));}
+   v:[1]CtView;i:[1]CtInfo;a:[1476]u8;terminal:=false;deadline:=proc_now_ms()+12000;
+   while !terminal && proc_now_ms()<deadline && proc_wait(worker,0)==PROC_RUNNING {st=dc_get(t,auth,"/api/chat/turn/v2alpha1",tid,0);terminal=st==200 && ctr_turn_read(ap_body(t),v[..],i[..],a[..]) && ct_terminal(v[0].state);if !terminal {_=proc_wait(worker,50);}}
+   sb_clear(name[..]);sb(name[..],mode);sb(name[..],": terminal state and stop reason are truthful");ap_check(t,sb_text(name[..]),terminal && v[0].state==expected && ct_view_reason(v[..])==reason,ap_body(t));
+   sb_clear(name[..]);sb(name[..],mode);sb(name[..],": exact partial content and error presence survive");ap_check(t,sb_text(name[..]),terminal && ct_view_text(v[..])==(ifx mode=="provider-refuse" then "" else "Hello") && (ifx expected==CT_COMPLETED then v[0].ne==0 else v[0].ne>0),ap_body(t));
+   u:=v[0].usage;known:=mode=="provider-limit";sb_clear(name[..]);sb(name[..],mode);sb(name[..],": observed usage preserves zero versus unknown");ap_check(t,sb_text(name[..]),terminal && u.input==(ifx known then 12 else -1) && u.output==(ifx known then 2048 else -1) && u.cache_read==(ifx known then 0 else -1) && u.cache_write== -1 && u.reasoning==(ifx known then 21 else -1),ap_body(t));
+   before:=dc_provider_calls(dir);st=dc_post(t,auth,mode,"",0,"",-1,"Controlled durable provider response");sb_clear(name[..]);sb(name[..],mode);sb(name[..],": submit replay returns the same terminal turn");ap_check(t,sb_text(name[..]),st==202 && ctr_control_read(ap_body(t),c[..],arena[..]) && c[0].turn==tid && c[0].state==expected,ap_body(t));
+   st=dc_run_again(t,tid);sb_clear(name[..]);sb(name[..],mode);sb(name[..],": dispatched replay retains its terminal result");ap_check(t,sb_text(name[..]),st==200 && ctr_control_read(ap_body(t),c[..],arena[..]) && c[0].state==expected,ap_body(t));
+   sb_clear(name[..]);sb(name[..],mode);sb(name[..],": replays make no additional upstream request");ap_check(t,sb_text(name[..]),before>0 && dc_provider_calls(dir)==before,"");
+   if !terminal {_=dc_stop(t,auth,"failure-cleanup",tid);}
+  }
+ }
+ if worker>=0 {_=proc_kill(worker,PROC_SIGTERM);_=proc_wait(worker,5000);_=proc_release(worker);}ac_mail_stop(provider,dir);
+}
+dc_failure_checks :: (t:[]Ap)->int {
+ mb:[4096]u8;mail:=fs_temp("durable-failure-mail",mb[..]);h:=ac_mail_start(t,"coax/web/api/tests/durable_chat_checks.coax",mail);if h<0 {return 1;}
+ ab:[512]u8;owner:[80]u8;ok:=ac_person_login(t,mail,"durablechat@example.com","203.0.113.133",ab[..],owner[..]);ap_check(t,"provider failure checks use a verified owned account",ok,"");
+ if ok {q:[1]Sb;sb(q[..],"UPDATE auth.accounts SET team=true WHERE id='");sb(q[..],dc_z(owner[..]));sb(q[..],"'");ap_do(t,sb_text(q[..]));auth:=dc_z(ab[..]);
+  dc_failure_case(t,auth,"provider-refuse",CT_FAILED,"error");dc_failure_case(t,auth,"provider-error",CT_FAILED,"error");dc_failure_case(t,auth,"provider-cut",CT_UNKNOWN,"unknown");dc_failure_case(t,auth,"provider-limit",CT_COMPLETED,"max_tokens");
+ }
+ ac_mail_stop(h,mail);return ap_done(t,"durable provider failures");
+}
 dc_stream_checks :: (t:[]Ap,auth:string,stranger:string,account:string,conversation:string,turn:string) {
  worker:=dc_worker(t);ap_check(t,"the actual resident runner starts",worker>=0,"");if worker<0 {return;}
  // This turn was queued before the worker existed: startup reconciliation must
@@ -191,5 +222,13 @@ tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}if args_count(a[..])==3 && args_at(a[..],0)=="mail" {return am_main(ap_whole(args_at(a[..],1)),args_at(a[..],2));}
  if args_count(a[..])==5 && args_at(a[..],0)=="legacy-replay" {raw:[1048577]u8;n:=fs_read(args_at(a[..],1),raw[..]);ok:=n>0 && n<=1048576 && dc_legacy_history(cast(string)raw[0..<ifx n>0 then n else 0],args_at(a[..],2),args_at(a[..],3),ap_whole(args_at(a[..],4)));print("legacy history capture: %\n",ifx ok then "accepted" else "refused");return ifx ok then 0 else 1;}
  if args_count(a[..])==3 && args_at(a[..],0)=="infer" {return am_response_parts(ap_whole(args_at(a[..],1)),args_at(a[..],2),"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n","data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":2,\"prompt_tokens_details\":{\"cached_tokens\":0}}}\n\ndata: [DONE]\n\n",2000);}
- t:[1]Ap;if !ap_open(t[..]) {return 2;}b:[4096]u8;ib:[4096]u8;mail:=fs_temp("durable-chat-mail",b[..]);infer:=fs_temp("durable-chat-infer",ib[..]);h:=ac_mail_start(t[..],"coax/web/api/tests/durable_chat_checks.coax",mail);provider:=ac_server_start(t[..],"coax/web/api/tests/durable_chat_checks.coax",infer,"infer","INFER_PORT");if h>=0 && provider>=0 {dc_checks(t[..],mail);path:[4200]u8;data:[65536]u8;n:=fs_read(fs_join(infer,"all",path[..]),data[..]);calls:=0;if n>0 {for c:data[0..<n] {if c=='\n' {calls+=1;}}}ap_check(t[..],"HTTP CLI and process-recovery turns make exactly five upstream requests across retries",calls==5,"");}if h>=0 {ac_mail_stop(h,mail);}if provider>=0 {ac_mail_stop(provider,infer);}return ap_done(t[..],"durable chat API");
+ if args_count(a[..])==3 {
+  mode:=args_at(a[..],0);port:=ap_whole(args_at(a[..],1));dir:=args_at(a[..],2);prefix:="data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n";
+  if mode=="provider-refuse" {return am_response_transport(port,dir,"{\"error\":{\"message\":\"Controlled provider refusal\"}}","",0,true,0);}
+  if mode=="provider-error" {return am_response_transport(port,dir,prefix,"data: {\"error\":{\"message\":\"Controlled mid-stream error\"}}\n\n",2000,false,0);}
+  if mode=="provider-cut" {return am_response_transport(port,dir,prefix,"",2000,false,1);}
+  if mode=="provider-limit" {return am_response_transport(port,dir,prefix,"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":2048,\"prompt_tokens_details\":{\"cached_tokens\":0},\"completion_tokens_details\":{\"reasoning_tokens\":21}}}\n\ndata: [DONE]\n\n",2000,false,0);}
+ }
+ t:[1]Ap;if !ap_open(t[..]) {return 2;}if ap_env(t[..],"API_DURABLE_ONLY")=="failures" {return dc_failure_checks(t[..]);}
+ b:[4096]u8;ib:[4096]u8;mail:=fs_temp("durable-chat-mail",b[..]);infer:=fs_temp("durable-chat-infer",ib[..]);h:=ac_mail_start(t[..],"coax/web/api/tests/durable_chat_checks.coax",mail);provider:=ac_server_start(t[..],"coax/web/api/tests/durable_chat_checks.coax",infer,"infer","INFER_PORT");if h>=0 && provider>=0 {dc_checks(t[..],mail);path:[4200]u8;data:[65536]u8;n:=fs_read(fs_join(infer,"all",path[..]),data[..]);calls:=0;if n>0 {for c:data[0..<n] {if c=='\n' {calls+=1;}}}ap_check(t[..],"HTTP CLI and process-recovery turns make exactly five upstream requests across retries",calls==5,"");}if h>=0 {ac_mail_stop(h,mail);}if provider>=0 {ac_mail_stop(provider,infer);}return ap_done(t[..],"durable chat API");
 }
