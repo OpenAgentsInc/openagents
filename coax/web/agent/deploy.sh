@@ -45,12 +45,14 @@ mkdir -p "$stage/src"
 "$repo/coax/bin/coax" c "$here/seat-runner-wire.coax" --library --header "$stage/src/seat-runner-wire.h" > "$stage/src/seat-runner-wire.c"
 # Durable account turns use the owned codec; the runner carries no provider key for them.
 "$repo/coax/bin/coax" c "$repo/coax/web/api/account-chat-turn-record.coax" --library --header "$stage/src/durable-runner-wire.h" > "$stage/src/durable-runner-wire.c"
-cp "$here/runner.c" "$here/chat-runner.c" "$here/seat-runner.c" "$here/engine-io.c" "$here/confine-native.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/process-native.h" "$repo/coax/platform/store-file-native.c" "$repo/coax/platform/store-file-native.h" "$stage/src/"
+cp "$here/runner.c" "$here/chat-runner.c" "$here/seat-runner.c" "$here/engine-io.c" "$here/confine-native.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/process-native.h" "$stage/src/"
 # oa-seat, the hosted seats' engine (seat.coax, docs/metaverse/realm-seat.md slice 5): its C, the platform's C and the entropy policy
 mkdir -p "$stage/src/seat"
 "$repo/coax/bin/coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$stage/src/seat/entropy-policy.h" > "$stage/src/seat/entropy.c"
 "$repo/coax/bin/coax" c "$here/seat.coax" --library --run-steps 250000000 > "$stage/src/seat/seat.c"
 cp "$repo"/coax/platform/*.c "$repo"/coax/platform/*.h "$stage/src/seat/"
+# Chat engines use this same complete platform directory. A separate partial
+# copy missed the filesystem runtime's entropy and private-read headers.
 cp "$here/Dockerfile" "$here/known_hosts" "$stage/"
 image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-agent:$(git -C "$here" rev-parse --short HEAD)-$(date +%Y%m%d-%H%M%S)"
 # a build config only to hand the Dockerfile CHAT_AT (--tag alone takes no build arguments)
