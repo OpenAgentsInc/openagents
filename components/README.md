@@ -83,7 +83,9 @@ an icon placeholder because the GPU gallery does not render image textures;
 fields are static, the scrim is a swatch, and the system status bar is the
 host's actual bar rather than a simulated one. The section also includes
 interactive model-choice and notification rows, a project context pill and a
-usage meter; the shared kit wraps the rows' explanatory text and makes the
+usage meter, plus centered screen and sheet headers, a settings picker, and
+icon-led settings, project, session and action-menu rows; the shared kit wraps
+the rows' explanatory text and makes the
 whole row a touch target. It
 uses the shared control kit and a separate reference skin; it is not a product
 skin or a pixel-parity qualification. Its colors are approximate and its text

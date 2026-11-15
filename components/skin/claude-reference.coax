@@ -8,6 +8,7 @@
  #assert s.control_h==44 && s.radius_control==22;
  #assert s.knob==20 && s.slider_track==3 && s.bar_h==6;
  #assert s.ink.r>0.9 && s.accent.b>s.accent.r;
+ #assert s.danger.r>s.danger.g && s.danger.r>s.danger.b;
 }
 
 claude_reference_skin :: ()->UiSkin {
@@ -17,6 +18,7 @@ claude_reference_skin :: ()->UiSkin {
  s.hairline=hex(0x303033,1);s.hover=hex(0x343436,1);
  s.ink=hex(0xf5f5f5,1);s.muted=hex(0xa3a3a5,1);s.faint=hex(0x808083,1);
  s.accent=hex(0x4598ee,1);s.on_accent=hex(0xffffff,1);
+ s.danger=hex(0xef5960,1);
  s.control_h=44;s.control_pad=18;s.radius_control=22;s.radius=20;s.border=1;
  s.knob=20;s.slider_track=3;s.bar_h=6;
  return s;

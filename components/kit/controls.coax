@@ -110,6 +110,38 @@ setting_toggle_row :: (sh:[]Sheet,m:TextMeasure,s:UiSkin,x:f32,y:f32,w:f32,title
  sheet_hit(sh,hit_kind,hit_a,hit_b,x,y,w,h);return h;
 }
 
+// A row with an icon, wrapped copy and a trailing disclosure icon.
+icon_detail_row :: (sh:[]Sheet,m:TextMeasure,s:UiSkin,x:f32,y:f32,w:f32,icon:int,title:string,detail:string,disclosure:int,hit_kind:int,hit_a:int,hit_b:int)->f32 {
+ pad:=s.control_pad;mark:=s.body.line;tx:=x+pad+mark+s.space;copy_w:=w-2*pad-2*mark-2*s.space;
+ h:=control_copy(sh,m,s.body,s.ink,tx,y+pad,copy_w,title);
+ h+=control_copy(sh,m,s.small,s.muted,tx,y+pad+h,copy_w,detail);
+ h+=2*pad;if h<s.control_h {h=s.control_h;}
+ sheet_icon(sh,icon,x+pad,y+(h-mark)/2,mark,s.muted);
+ if disclosure>=0 {sheet_icon(sh,disclosure,x+w-pad-mark,y+(h-mark)/2,mark,s.faint);}
+ sheet_hit(sh,hit_kind,hit_a,hit_b,x,y,w,h);return h;
+}
+// A centered header with independently reachable leading and trailing actions.
+header_actions :: (sh:[]Sheet,m:TextMeasure,s:UiSkin,x:f32,y:f32,w:f32,title:string,leading:int,trailing:int,hit_kind:int,hit_a:int) {
+ side:=s.control_h;sz:=s.body.line;inset:=(side-sz)/2;
+ if leading>=0 {sh[0].nu=uiskin_control(sh[0].under,sh[0].nu,s,x,y,side,side,UISKIN_REST);sheet_icon(sh,leading,x+inset,y+inset,sz,s.ink);sheet_hit(sh,hit_kind,hit_a,0,x,y,side,side);}
+ if trailing>=0 {sh[0].nu=uiskin_control(sh[0].under,sh[0].nu,s,x+w-side,y,side,side,UISKIN_REST);sheet_icon(sh,trailing,x+w-side+inset,y+inset,sz,s.ink);sheet_hit(sh,hit_kind,hit_a,1,x+w-side,y,side,side);}
+ lines:[1]TextLine;runs:[1]MdRun;faces:=TextFaces.{plain=s.title.face,bold=s.title.face,code=s.title.face};
+ n:=text_wrap(m,faces,title,runs[0..<0],ifx w>2*side then w-2*side else 1.0f32,lines[..]);
+ if n>0 {part:=cast(string)title[lines[0].from..<lines[0].to];tw:=measure_width(m,s.title.face,part);_:=sheet_text(sh,m,-1,x+(w-tw)/2,y+(side-s.title.line)/2,s.title.line,s.title.face,s.ink,part);}
+}
+// A single-line picker with its value and disclosure at the trailing edge.
+picker_row :: (sh:[]Sheet,m:TextMeasure,s:UiSkin,x:f32,y:f32,w:f32,title:string,value:string,disclosure:int,hit_kind:int,hit_a:int,hit_b:int)->f32 {
+ pad:=s.control_pad;mark:=s.body.line;lines:[1]TextLine;value_lines:[1]TextLine;runs:[1]MdRun;faces:=TextFaces.{plain=s.body.face,bold=s.body.face,code=s.body.face};
+ max_value:=(w-2*pad-mark-2*s.space)/2;vn:=text_wrap(m,faces,value,runs[0..<0],ifx max_value>1 then max_value else 1.0f32,value_lines[..]);
+ shown:=ifx vn>0 then cast(string)value[value_lines[0].from..<value_lines[0].to] else "";
+ vw:=measure_width(m,s.body.face,shown);vx:=x+w-pad-mark-s.space-vw;title_w:=vx-(x+pad)-s.space;
+ n:=text_wrap(m,faces,title,runs[0..<0],ifx title_w>1 then title_w else 1.0f32,lines[..]);
+ ty:=y+(s.control_h-s.body.line)/2;
+ if n>0 {_:=sheet_text(sh,m,-1,x+pad,ty,s.body.line,s.body.face,s.ink,cast(string)title[lines[0].from..<lines[0].to]);}
+ _:=sheet_text(sh,m,-1,vx,ty,s.body.line,s.body.face,s.muted,shown);
+ sheet_icon(sh,disclosure,x+w-pad-mark,ty,mark,s.faint);sheet_hit(sh,hit_kind,hit_a,hit_b,x,y,w,s.control_h);return s.control_h;
+}
+
 // ---------------------------------------------------------------- tabs
 
 // A row of tabs, one active (hit b = its index). Returns the row's width.

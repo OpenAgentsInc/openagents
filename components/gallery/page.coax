@@ -268,6 +268,35 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
     _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.ink,"Project capacity");y+=28;
     _:=bar(sh[..],ref,x,y,w-2*gutter,0.36,ref.accent);y+=16;
     _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"36% used");y+=48;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Screen header");y+=26;
+    header_actions(sh[..],m,ref,x,y,w-2*gutter,"Projects",ICON_BACK,ICON_MAGNIFER,GL_HIT_BUTTON,0);y+=68;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Sheet header");y+=26;
+    sheet_fill(sh[..],x,y,w-2*gutter,ref.control_h+ref.space*2,ref.radius,ref.surface);
+    sheet_fill(sh[..],x+(w-2*gutter-40)/2,y+4,40,4,2,ref.muted);
+    header_actions(sh[..],m,ref,x,y+ref.space,w-2*gutter,"Select model",ICON_BACK,ICON_CHECK,GL_HIT_BUTTON,0);y+=ref.control_h+ref.space*2+24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Settings picker");y+=26;
+    sheet_fill(sh[..],x,y,w-2*gutter,ref.control_h,ref.radius_control,ref.surface);
+    y+=picker_row(sh[..],m,ref,x,y,w-2*gutter,"Effort","Medium",ICON_CHEVRON_RIGHT,GL_HIT_BUTTON,0,0)+24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Settings rows");y+=26;
+    card=sheet_box(sh[..],x,y,w-2*gutter,0,ref.radius,0,ref.surface,ref.surface);top=y;
+    y+=icon_detail_row(sh[..],m,ref,x,y,w-2*gutter,ICON_BOT,"Profile","",ICON_CHEVRON_RIGHT,GL_HIT_BUTTON,0,0);
+    sheet_rule(sh[..],x+ref.control_pad+ref.body.line+ref.space,y,w-2*gutter-2*ref.control_pad-ref.body.line-ref.space,1,ref.hairline);
+    y+=icon_detail_row(sh[..],m,ref,x,y,w-2*gutter,ICON_GLOBAL,"Privacy","",ICON_CHEVRON_RIGHT,GL_HIT_BUTTON,0,1);
+    if card>=0 {g[0].under[card].h=y-top;}y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Project and session rows");y+=26;
+    card=sheet_box(sh[..],x,y,w-2*gutter,0,ref.radius,0,ref.surface,ref.surface);top=y;
+    y+=icon_detail_row(sh[..],m,ref,x,y,w-2*gutter,ICON_FOLDER,"Design project","Updated recently",ICON_CHEVRON_RIGHT,GL_HIT_BUTTON,0,0);
+    sheet_rule(sh[..],x+ref.control_pad+ref.body.line+ref.space,y,w-2*gutter-2*ref.control_pad-ref.body.line-ref.space,1,ref.hairline);
+    y+=icon_detail_row(sh[..],m,ref,x,y,w-2*gutter,ICON_TERMINAL,"Code session","Ready for review",ICON_CHEVRON_RIGHT,GL_HIT_BUTTON,0,1);
+    if card>=0 {g[0].under[card].h=y-top;}y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Action menu");y+=26;
+    card=sheet_box(sh[..],x,y,w-2*gutter,0,ref.radius,1,ref.surface,ref.hairline);top=y;
+    y+=icon_detail_row(sh[..],m,ref,x,y,w-2*gutter,ICON_PEN,"Edit details","",-1,GL_HIT_BUTTON,0,0);
+    sheet_rule(sh[..],x+ref.control_pad,y,w-2*gutter-2*ref.control_pad,1,ref.hairline);
+    y+=icon_detail_row(sh[..],m,ref,x,y,w-2*gutter,ICON_DOCUMENT,"Archive","",-1,GL_HIT_BUTTON,0,1);
+    destructive:=ref;destructive.ink=ref.danger;destructive.muted=ref.danger;
+    y+=icon_detail_row(sh[..],m,destructive,x,y,w-2*gutter,ICON_DANGER,"Delete","",-1,GL_HIT_BUTTON,0,2);
+    if card>=0 {g[0].under[card].h=y-top;}y+=32;
     _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Atom catalog");y+=34;
     _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Text");y+=24;
     _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.ink,"Primary");
@@ -558,6 +587,15 @@ coaxial_components_cell_ready :: (g: [] GalleryState, cell: int) #export_c #effe
  for name:names {found:=false;for i:0..<g[0].no {if g[0].over[i].text==name {found=true;}}#assert found;}
  h:=gl_test_hit(g[..],GL_HIT_TOGGLE,0,1);#assert h.w>200;
  g[0].scroll=h.y-100;before:=g[0].cards[0].toggles[1];#assert gl_pointer(g[..],h.x+2,102,0) && g[0].cards[0].toggles[1]!=before;
+}
+
+#test "reference gallery presents header and icon-led navigation molecules" #steps 400000000 {
+ g:[1]GalleryState;o:[1]GlOut;u:[4]f32;gl_test_atlas(g[0].atlas[..]);
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);g[0].section=5;
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);
+ names:=[6]string.["Screen header","Sheet header","Settings picker","Settings rows","Project and session rows","Action menu"];
+ for name:names {found:=false;for i:0..<g[0].no {if g[0].over[i].text==name {found=true;}}#assert found;}
+ #assert g[0].nu<GL_UNDER && g[0].no<GL_OVER && g[0].nh<GL_HITS;
 }
 
 // A fixed atlas: every glyph 8 wide, the monospace faces 7.

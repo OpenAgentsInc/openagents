@@ -26,6 +26,26 @@ ctl_measure :: (id: int, a: [] Atlas) -> TextMeasure { return ifx id == UISKIN_T
  slider(sh[..],s,0,0,200,0.5,4,0);
  #assert sh[0].under[2].w==20 && sh[0].under[2].radius==10;
 }
+#test "icon rows reserve their trailing disclosure and expose the entire row" {
+ st:[1]CtlStore;a:[1]Atlas;text_test_atlas(a[..]);s:=zeron_skin();m:=measure_font(a[..]);sh:=[1]Sheet.[ctl_sheet(st[..])];
+ h:=icon_detail_row(sh[..],m,s,10,20,200,15,"Projects","Recently updated",13,9,3,4);
+ #assert h>=s.control_h && sh[0].nh==1 && sh[0].hits[0].x==10 && sh[0].hits[0].w==200 && sh[0].hits[0].b==4;
+ #assert sh[0].nu==2 && sh[0].under[0].id==15 && sh[0].under[1].id==13;
+ #assert sh[0].under[0].x < sh[0].over[0].x && sh[0].under[1].x>sh[0].over[0].x;
+}
+#test "centered header keeps actions apart and each has its own target" {
+ st:[1]CtlStore;a:[1]Atlas;text_test_atlas(a[..]);s:=zeron_skin();m:=measure_font(a[..]);sh:=[1]Sheet.[ctl_sheet(st[..])];
+ header_actions(sh[..],m,s,0,0,320,"Projects",26,10,20,7);
+ #assert sh[0].nh==2 && sh[0].hits[0].b==0 && sh[0].hits[1].b==1;
+ #assert sh[0].hits[0].x+sh[0].hits[0].w<=sh[0].hits[1].x;
+ #assert sh[0].over[0].x+sh[0].over[0].w/2==160;
+}
+#test "picker row aligns its value and disclosure without overlapping its title" {
+ st:[1]CtlStore;a:[1]Atlas;text_test_atlas(a[..]);s:=zeron_skin();m:=measure_font(a[..]);sh:=[1]Sheet.[ctl_sheet(st[..])];
+ h:=picker_row(sh[..],m,s,0,0,320,"Effort","Medium",13,5,0,0);
+ #assert h==s.control_h && sh[0].nh==1 && sh[0].hits[0].w==320;
+ #assert sh[0].over[0].x+sh[0].over[0].w<sh[0].over[1].x && sh[0].under[0].id==13;
+}
 
 #test "a button is its label and the padding either side; its hit covers it; primary reads on the accent" {
   st: [1] CtlStore; a: [1] Atlas; text_test_atlas(a[..]);
