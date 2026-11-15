@@ -27,6 +27,8 @@ final class ComponentsUITests:XCTestCase {
         app.showAppSettings();let components=app.buttons["app.components"];XCTAssertTrue(components.waitForExistence(timeout:10));components.tap()
         XCTAssertTrue(app.buttons["components.close"].waitForExistence(timeout:20))
         XCTAssertTrue(app.otherElements["Coax GPU component playground"].exists)
+        XCTAssertFalse(app.buttons["Open in Safari"].exists)
+        XCTAssertFalse(app.staticTexts["openagents.com"].exists)
         app.buttons["components.close"].tap()
         XCTAssertTrue(app.buttons["nav.settings.close"].waitForExistence(timeout:10));app.buttons["nav.settings.close"].tap()
         if app.buttons["nav.close"].isHittable {app.buttons["nav.close"].tap()}
@@ -40,6 +42,7 @@ final class ComponentsUITests:XCTestCase {
         func picture(_ name:String) {let a=XCTAttachment(screenshot:app.screenshot());a.name=name;a.lifetime = .keepAlways;add(a)}
         picture("native-motion")
         func pick(_ name:String) {app.buttons["Gallery options"].tap();app.buttons[name].firstMatch.tap()}
+        pick("Motion");canvas.swipeUp();picture("native-drawer-reply")
         pick("Controls");canvas.swipeUp();picture("native-controls")
         pick("ARWES");canvas.swipeUp();picture("native-arwes")
         pick("Motion");canvas.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.4)).tap()

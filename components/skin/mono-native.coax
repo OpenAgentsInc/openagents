@@ -10,17 +10,6 @@
 
 #load "mono.coax";
 
-// Colours, as 0xRRGGBBAA. Every one is a grey.
-MONO_GROUND :: 0x000000ff; MONO_SURFACE :: 0x0a0a0aff; MONO_RAISED :: 0x161616ff; MONO_PRESSED :: 0x262626ff;
-MONO_LINE_DIM :: 0x2a2a2aff; MONO_LINE :: 0x6b6b6bff; MONO_LINE_BRIGHT :: 0xffffffff;
-MONO_INK :: 0xf2f2f2ff; MONO_INK_MUTED :: 0x9a9a9aff; MONO_INK_FAINT :: 0x5c5c5cff; MONO_INK_BRIGHT :: 0xffffffff;
-MONO_PRIMARY :: 0xc8c8c8ff; MONO_PRIMARY_LIT :: 0xe0e0e0ff; MONO_ON_PRIMARY :: 0x000000ff;
-MONO_GRID_LINE :: 0x070707ff; MONO_GRID_DOT :: 0x181818ff;
-MONO_CLEAR :: 0x00000000;
-// The background grid: a line each way through the middle of a tile and a dot where they cross.
-MONO_GRID_STEP :: 40.0;
-MONO_GRID_PARTS :: 3;
-
 MonoNative :: struct {
   ground: u32; surface: u32; raised: u32; pressed: u32;
   line_dim: u32; line: u32; line_bright: u32;

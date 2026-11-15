@@ -1,6 +1,6 @@
 // Arcade's component geometry/motion with the shared monochrome palette.
 // Source inventory: docs/arcade/03-design-and-components.md and audit 06.
-#load "mono-native.coax";
+#load "mono.coax";
 #load "zeron.coax";
 ArcadeMotionSkin :: struct {enter:f32=0.2;press:f32=0.1;focus:f32=0.2;menu:f32=0.3;}
 arcade_color :: (c:u32)->Rgba {return rgba(cast(f32)((c>>24)&255)/255,cast(f32)((c>>16)&255)/255,cast(f32)((c>>8)&255)/255,cast(f32)(c&255)/255);}

@@ -72,6 +72,7 @@ GalleryState :: struct {
 
 gl_init :: (g: [] GalleryState) {
   g[0].ready = true;
+  g[0].monochrome = true;
   g[0].blocks = md_parse(g[0].doc[..], GL_MD, 0);
   for k: 0..<UISKINS { g[0].cards[k] = GlCard.{slider = 0.25 + cast(f32) k * 0.2, tab = k % 3, row = (k + 1) % 3}; g[0].cards[k].toggles[0] = true; }
   gl_motion_press(g[0].motion[..],0);
@@ -115,7 +116,10 @@ gl_content :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, blocks: i
   h += gl_caption(sh, m, s, x, y + h, "Toggles");
   tw := toggle(sh, m, s, x, y + h, "Wrap lines", card.toggles[0], GL_HIT_TOGGLE, id);
   sh[0].hits[sh[0].nh - 1].b = 0;
-  tw2 := toggle(sh, m, s, x + tw + s.space * 3, y + h, "Full access", card.toggles[1], GL_HIT_TOGGLE, id);
+  next_w:=uiskin_toggle_width(s)+s.space+measure_width(m,s.body.face,"Full access");
+  toggle_x:=x+tw+s.space*3;
+  if toggle_x+next_w>x+w {toggle_x=x;h+=s.control_h+s.space;}
+  tw2 := toggle(sh, m, s, toggle_x, y + h, "Full access", card.toggles[1], GL_HIT_TOGGLE, id);
   sh[0].hits[sh[0].nh - 1].b = 1;
   h += s.control_h + s.space * 2;
   // a slider and a bar that follows it
@@ -209,7 +213,7 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
   a := g[0].atlas[..];
   g[0].nu = 0; g[0].no = 0; g[0].nh = 0;
   sh: [1] Sheet; sh[0] = gl_sheet(g);
-  z := zeron_skin(); m := measure_font(a);
+  z := arcade_skin(); m := measure_font(a);
   cols := gl_columns(w);
   gutter: f32 = ifx w < 480 then 12.0f32 else GL_GAP;
   card_w := floor((w - gutter * cast(f32) (cols + 1)) / cast(f32) cols);
@@ -222,8 +226,7 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
   for k: 0..<nl { lw := sheet_text(sh[..], m, -1, gutter, y, z.body.line, z.body.face, z.muted, cast(string) lead[lines[k].from..<lines[k].to]); y += z.body.line; }
   y += GL_GAP;
   sections:=[5]string.["All","Motion","Controls","HUD","ARWES"];
-  for i:0..<5 {bx:=gutter+cast(f32)i*(w-2*gutter)/5;_:=button(sh[..],m,z,bx,y,sections[i],ifx g[0].section==i then 1 else 0,GL_HIT_SECTION,i);sheet_hit(sh[..],GL_HIT_SECTION,0,i,bx,y,(w-2*gutter)/5,44);}
-  y+=56;
+  y+=gl_buttons(sh[..],m,z,gutter,y,w-2*gutter,sections[..],g[0].section,GL_HIT_SECTION,0)+8;
   if g[0].section==0 || g[0].section==1 {y+=gl_motion_layout(g[0].motion[..],sh[..],m,gutter,y,w-2*gutter);}
   // the cards, row by row; a row is as tall as its tallest card
   id := 0;
@@ -402,6 +405,25 @@ coaxial_components_cell_ready :: (g: [] GalleryState, cell: int) #export_c #effe
 
 // ---------------------------------------------------------------- checks
 
+#test "gallery phone: wrapped navigation has distinct 44 point targets and defaults to grayscale" #steps 400000000 {
+  widths:=[4]f32.[320,390,430,1024];
+  for width:widths {
+    g:[1]GalleryState;o:[1]GlOut;u:[4]f32;gl_test_atlas(g[0].atlas[..]);g[0].section=1;
+    n:=gl_frame(g[..],o[0].v[..],u[..],width,844,1,0.016);
+    #assert g[0].monochrome;
+    // Every selectable section and motion action remains inside the viewport;
+    // a tap belongs to one control, including the wrapped second row.
+    for i:0..<g[0].nh {a:=g[0].hits[i];
+      #assert a.x>=0 && a.x+a.w<=width && a.w>=44 && a.h>=44;
+      for j:i+1..<g[0].nh {b:=g[0].hits[j];#assert a.x+a.w<=b.x || b.x+b.w<=a.x || a.y+a.h<=b.y || b.y+b.h<=a.y;}
+    }
+    for i:0..<n {at:=i*GP_VERTEX_FLOATS;#assert o[0].v[at+12]==o[0].v[at+13] && o[0].v[at+13]==o[0].v[at+14];}
+    drawer_y:f32=0;reply_y:f32=0;
+    for i:0..<g[0].no {p:=g[0].over[i];if p.text=="04 / Drawer" {drawer_y=p.y;}if p.text=="05 / Reply" {reply_y=p.y;}}
+    #assert drawer_y>0 && (reply_y>=drawer_y+172 || width>=700);
+  }
+}
+
 // A fixed atlas: every glyph 8 wide, the monospace faces 7.
 gl_test_atlas :: (a: [] Atlas) {
   text_test_atlas(a);
@@ -428,7 +450,7 @@ GlOut :: struct { v: [1400000] f32; }       // 50000 vertices
   // every control left its hit: per skin 2 buttons, 2 toggles, a slider, 3 tabs, 3 rows; the pixel skins' code block 2 more;
   // per HUD card 6 slots, 3 answers, 2 unit frames and 2 plates
   // and the ARWES section's controls and its licence link
-  #assert g[0].nh == 4 * 11 + 3 * 2 + HC_CARDS * 13 + GL_AW_CONTROLS + 1 + 10 + 12 + 4;
+  #assert g[0].nh == 4 * 11 + 3 * 2 + HC_CARDS * 13 + GL_AW_CONTROLS + 1 + 5 + 6 + 5;
 }
 #test "gallery: the terminal card is the terminal backend's grid: box glyphs, a bullet, the table's rule" #steps 200000000 {
   g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
@@ -635,7 +657,7 @@ gl_touch :: (g:[]GalleryState,x:f32,y:f32,phase:int)->bool {
  #assert g[0].content_h>844;_:=gl_touch(g[..],200,600,0);_:=gl_touch(g[..],200,300,1);_:=gl_touch(g[..],200,300,2);#assert g[0].scroll==300 && g[0].section==0;
  g[0].scroll=0;h:=gl_test_hit(g[..],GL_HIT_SECTION,0,1);_:=gl_touch(g[..],h.x+2,h.y+2,0);_:=gl_touch(g[..],h.x+2,h.y+2,3);#assert g[0].section==0;
  _:=gl_touch(g[..],h.x+2,h.y+2,0);_:=gl_touch(g[..],h.x+2,h.y+2,2);#assert g[0].section==1;
- _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);#assert g[0].nh==26 && g[0].content_h<1400;
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);#assert g[0].nh==16 && g[0].content_h<1400;
 }
 
 coaxial_components_section :: (g:[]GalleryState,section:int) #export_c #effects(all) {if g.count>0 && section>=0 && section<=4 {g[0].section=section;g[0].scroll=0;}}

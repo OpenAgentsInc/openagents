@@ -1,5 +1,6 @@
 // Interactive specimens use the public kit, not gallery-only drawing engines.
 #load "../kit/animated.coax";
+#load "../skin/arcade.coax";
 GL_HIT_MOTION :: 40; GL_HIT_SECTION :: 41;
 GlMotion :: struct {clock:f32;paused:bool;reduced:bool;skin:int;on:bool;spring:[1]UiSpring;frame:[1]ArMotion;}
 gl_motion_tick :: (s:[]GlMotion,dt:f32) {
@@ -17,26 +18,43 @@ gl_motion_press :: (s:[]GlMotion,id:int) {
  else if id==3 {s[0].on = !s[0].on;s[0].spring[0].target=ifx s[0].on then 1.0f32 else 0.0f32;ar_motion_to(s[0].frame[..],s[0].on,0.2,AM_IN_OUT_QUAD);}
  else if id>=4 && id<7 {s[0].skin=id-4;}
 }
+// A wrapping layout of the shared buttons. One 44-point target per button;
+// never layer a second hit over its neighbour to enlarge a compact control.
+gl_buttons :: (sh:[]Sheet,m:TextMeasure,s:UiSkin,x:f32,y:f32,w:f32,labels:[]string,active:int,kind:int,first:int)->f32 {
+ pen:=x;row:=y;
+ for i:0..<labels.count {bw:=button_width(m,s,labels[i]);
+  if pen>x && pen+bw>x+w {pen=x;row+=52;}
+  _:=button(sh,m,s,pen,row+(44-s.control_h)/2,labels[i],ifx i==active then UISKIN_PRIMARY else UISKIN_REST,kind,0);
+  hit:=sh[0].nh-1;sh[0].hits[hit].b=first+i;sh[0].hits[hit].y=row;sh[0].hits[hit].h=44;
+  pen+=bw+8;
+ }
+ return row-y+52;
+}
 gl_motion_layout :: (s:[]GlMotion,sh:[]Sheet,m:TextMeasure,x:f32,top:f32,w:f32)->f32 {
- skin:=uiskin(s[0].skin);z:=zeron_skin();y:=top;
- _:=sheet_text(sh,m,-1,x,y,z.title.line,z.title.face,z.ink,"Motion lab");y+=42;
- labels:=[3]string.["Replay",ifx s[0].paused then "Play" else "Pause",ifx s[0].reduced then "Motion: off" else "Motion: on"];
- for i:0..<3 {bx:=x+cast(f32)i*w/3;_:=button(sh,m,z,bx,y,labels[i],0,GL_HIT_MOTION,i);sheet_hit(sh,GL_HIT_MOTION,0,i,bx,y,w/3-6,44);}
- y+=52;
- for i:0..<3 {bx:=x+cast(f32)i*w/3;_:=button(sh,m,z,bx,y,uiskin(i).name,ifx s[0].skin==i then 1 else 0,GL_HIT_MOTION,i+4);sheet_hit(sh,GL_HIT_MOTION,0,i+4,bx,y,w/3-6,44);}
- y+=56;cols:=ifx w>=700 then 2 else 1;cw:=(w-cast(f32)(cols-1)*16)/cast(f32)cols;
- names:=[4]string.["01 / Frame + press","02 / Activity + progress","03 / Spring switch","04 / Drawer + reply"];
- for i:0..<4 {cx:=x+cast(f32)(i%cols)*(cw+16);cy:=y+cast(f32)(i/cols)*188;
- _:=sheet_box(sh,cx,cy,cw,172,12,1,skin.canvas,skin.hairline);
+ skin:=ifx s[0].skin==0 then arcade_skin() else uiskin(s[0].skin);z:=arcade_skin();y:=top;
+ _:=sheet_text(sh,m,-1,x,y,z.title.line,z.title.face,z.ink,"Motion");y+=36;
+ labels:=[3]string.["Replay",ifx s[0].paused then "Play" else "Pause",ifx s[0].reduced then "Motion off" else "Motion on"];
+ y+=gl_buttons(sh,m,z,x,y,w,labels[..],-1,GL_HIT_MOTION,0);
+ skins:=[3]string.["Arcade","Everglade","Verse"];
+ y+=gl_buttons(sh,m,z,x,y,w,skins[..],s[0].skin,GL_HIT_MOTION,4)+8;
+ cols:=ifx w>=700 then 2 else 1;cw:=(w-cast(f32)(cols-1)*16)/cast(f32)cols;
+ names:=[5]string.["01 / Frame","02 / Activity","03 / Switch","04 / Drawer","05 / Reply"];
+ for i:0..<5 {cx:=x+cast(f32)(i%cols)*(cw+16);cy:=y+cast(f32)(i/cols)*172;
+ _:=sheet_box(sh,cx,cy,cw,156,12,1,skin.canvas,skin.hairline);
  _:=sheet_text(sh,m,-1,cx+16,cy+12,skin.body.line,skin.body.face,skin.muted,names[i]);
  p:=am_unit(s[0].spring[0].value);f:=am_unit(s[0].frame[0].value);
- if i==0 {animated_frame(sh,skin,cx+24,cy+57,cw-48,78,f,0.2+0.5*f);_:=sheet_text(sh,m,-1,cx+42,cy+81,skin.body.line,skin.body.face,skin.ink,"Tap to animate");}
- if i==1 {activity(sh,skin,cx+32,cy+70,42,s[0].clock,s[0].reduced);progress_ring(sh,skin,cx+102,cy+70,42,f);_:=sheet_text(sh,m,-1,cx+164,cy+80,skin.body.line,skin.body.face,skin.ink,"GPU arcs");}
- if i==2 {animated_switch(sh,skin,cx+30,cy+76,56,30,p);_:=sheet_text(sh,m,-1,cx+108,cy+80,skin.body.line,skin.body.face,skin.ink,ifx s[0].on then "On" else "Off");}
- if i==3 {animated_drawer(sh,skin,cx+16,cy+54,(cw-32)*0.7,96,p);if p>0.5 {_:=sheet_text(sh,m,-1,cx+30,cy+69,skin.body.line,skin.body.face,opacity(skin.ink,p),"Chat / Projects / Worlds");}animated_reply(sh,skin,cx+24,cy+120,cw-48,26,f);}
- sheet_hit(sh,GL_HIT_MOTION,0,3,cx,cy+40,cw,132);
+ if i==0 {animated_frame(sh,skin,cx+24,cy+52,cw-48,80,f,0.2+0.5*f);_:=sheet_text(sh,m,-1,cx+42,cy+79,skin.body.line,skin.body.face,skin.ink,"Tap to animate");}
+ if i==1 {activity(sh,skin,cx+28,cy+67,42,s[0].clock,s[0].reduced);progress_ring(sh,skin,cx+102,cy+67,42,f);}
+ if i==2 {animated_switch(sh,skin,cx+28,cy+73,56,30,p);_:=sheet_text(sh,m,-1,cx+106,cy+77,skin.body.line,skin.body.face,skin.ink,ifx s[0].on then "On" else "Off");}
+ if i==3 {dw:=cw-32;animated_drawer(sh,skin,cx+16,cy+46,dw,94,p);
+  sheet_clip_right(sh,cx+16+dw*p);
+  items:=[3]string.["Chat","Projects","Worlds"];for j:0..<3 {_:=sheet_text(sh,m,-1,cx+30,cy+54+cast(f32)j*26,skin.body.line,skin.body.face,opacity(skin.ink,p),items[j]);}
+  sheet_unclip(sh);
  }
- return y-top+cast(f32)((4+cols-1)/cols)*188+8;
+ if i==4 {animated_reply(sh,skin,cx+20,cy+62,cw-40,64,f);if f>0.5 {_:=sheet_text(sh,m,-1,cx+34,cy+79,skin.body.line,skin.body.face,opacity(skin.ink,f),"Reply to message");}}
+ sheet_hit(sh,GL_HIT_MOTION,0,3,cx,cy+40,cw,116);
+ }
+ return y-top+cast(f32)((5+cols-1)/cols)*172+8;
 }
 
 #test "motion replay, pause, reduced motion and reversal preserve owned state" {

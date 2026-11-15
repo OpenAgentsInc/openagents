@@ -1,0 +1,1 @@
+Fix the component gallery on phones: white and grayscale styling, separate drawer and reply previews, wrapping navigation, and distinct touch targets. Settings > Components opens the embedded Metal gallery. Includes the Account settings and sliding drawer from 1088.
