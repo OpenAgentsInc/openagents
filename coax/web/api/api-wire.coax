@@ -7,6 +7,11 @@
 #load "../../lib/json/json.coax";
 // Public fixed-length lowercase hex, shared by the identity/settings codecs.
 aw_hex :: (s:string,n:int)->bool {if s.count!=n {return false;}for c:s {if !(c>='0' && c<='9') && !(c>='a' && c<='f') {return false;}}return true;}
+#test "aw_hex is exactly n bytes of 0-9 and a-f: each range's ends are in and the byte past each end is out" {
+ // '/' 47 and ':' 58 bound the digits, '`' 96 and 'g' 103 the letters
+ #assert aw_hex("09af",4) && aw_hex("0123456789abcdef",16) && !aw_hex("09af",3) && !aw_hex("09af",5);
+ #assert !aw_hex("/",1) && !aw_hex(":",1) && !aw_hex("`",1) && !aw_hex("g",1) && !aw_hex("A",1);
+}
 
 // A writer over out that goes on at byte `at` (0: from the start).
 aw_at :: (o: [] Jo, out: [] u8, at: int) #effects(all) {

@@ -19,23 +19,89 @@ asw_initial :: (out:[]u8)->int #export_c #effects(all) {s:=[1]AccountSettings.[a
  s[0].relays_n=0;b:[8192]u8;#assert asw_write(s[..],b[..])<0;
  s[0]=asw_default();s[0].relays_n=2;s[0].relays[1]=s[0].relays[0];s[0].relay_n[1]=s[0].relay_n[0];#assert !asw_valid(s[..]);
 }
+#test "the revision, the relay count and every relay are checked at their exact ends" {
+ s:=[1]AccountSettings.[asw_default()];#assert asw_valid(s[..]);
+ s[0].revision=2147483646;#assert asw_valid(s[..]);s[0].revision=2147483647;#assert !asw_valid(s[..]);
+ s[0].revision=-1;#assert !asw_valid(s[..]);s[0].revision=0;
+ // six distinct relays ("...openagents.cob" to ".cof") are kept; a seventh slot and no relay are not
+ for i:1..<6 {s[0].relays[i]=s[0].relays[0];s[0].relays[i][25]=cast(u8)('a'+i);s[0].relay_n[i]=26;}
+ s[0].relays_n=6;#assert asw_valid(s[..]);s[0].relays_n=7;#assert !asw_valid(s[..]);s[0].relays_n=0;#assert !asw_valid(s[..]);
+ // the first relay is checked like the rest
+ s[0]=asw_default();r:="wss://localhost";for i:0..<r.count {s[0].relays[0][i]=r[i];}s[0].relay_n[0]=r.count;#assert !asw_valid(s[..]);
+ s[0]=asw_default();s[0].relay_n[0]=0;#assert !asw_valid(s[..]);
+ // a relay is at most 200 bytes
+ s[0]=asw_default();r="wss://relay.example/";for i:0..<200 {s[0].relays[0][i]=ifx i<r.count then r[i] else 'a';}
+ s[0].relay_n[0]=200;#assert asw_valid(s[..]);s[0].relay_n[0]=201;#assert !asw_valid(s[..]);
+}
+#test "each profile field has its cap, and only the three URL fields must be https URLs" {
+ s:=[1]AccountSettings.[asw_default()];
+ // name (1) 128, about (3) 1024, picture (4) 512 with an https head; one byte more is refused
+ for i:0..<1025 {s[0].fields[1][i%1024]='a';s[0].fields[3][i%1024]='a';}
+ s[0].lengths[1]=128;#assert asw_valid(s[..]);s[0].lengths[1]=129;#assert !asw_valid(s[..]);s[0].lengths[1]=0;
+ s[0].lengths[3]=1024;#assert asw_valid(s[..]);s[0].lengths[3]=1025;#assert !asw_valid(s[..]);s[0].lengths[3]=-1;#assert !asw_valid(s[..]);s[0].lengths[3]=0;
+ h:="https://example.com/";for i:0..<513 {s[0].fields[4][i]=ifx i<h.count then h[i] else 'a';}
+ s[0].lengths[4]=512;#assert asw_valid(s[..]);s[0].lengths[4]=513;#assert !asw_valid(s[..]);
+ // text that is no URL: fine in about (3), refused in picture (4), banner (5) and website (6)
+ t:="plain";for i:0..<t.count {s[0].fields[3][i]=t[i];s[0].fields[4][i]=t[i];s[0].fields[5][i]=t[i];s[0].fields[6][i]=t[i];}
+ s[0].lengths[3]=t.count;s[0].lengths[4]=0;#assert asw_valid(s[..]);
+ s[0].lengths[4]=t.count;#assert !asw_valid(s[..]);s[0].lengths[4]=0;
+ s[0].lengths[5]=t.count;#assert !asw_valid(s[..]);s[0].lengths[5]=0;
+ s[0].lengths[6]=t.count;#assert !asw_valid(s[..]);
+}
+#test "reading refuses a near-miss schema, a revision that is no whole number, and keeps the revision it read" {
+ s:=[1]AccountSettings.[asw_default()];s[0].revision=7;b:[8192]u8;n:=asw_write(s[..],b[..]);next:[1]AccountSettings;
+ #assert n>0 && cast(string)b[0..<n]=="{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{\"security\":true}}";
+ #assert asw_read(cast(string)b[0..<n],next[..]) && next[0].revision==7 && !asw_read("bad",next[..]);
+ // the same document with a schema one letter off, the revision as text, or as 7.5
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v2\",\"revision\":7,\"profile\":{\"display_name\":\"\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{\"security\":true}}",next[..]);
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":\"7\",\"profile\":{\"display_name\":\"\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{\"security\":true}}",next[..]) && !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7.5,\"profile\":{\"display_name\":\"\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{\"security\":true}}",next[..]);
+}
+#test "reading keeps every field it read and refuses each missing or mistyped part" {
+ next:[1]AccountSettings;
+ #assert asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{\"security\":true}}",next[..]) && asw_field(next[..],0)=="Ann" && next[0].lengths[0]==3 && next[0].revision==7;
+ // false flags are read as false, not left at their true defaults
+ #assert asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":false,\"private_clipboard\":false},\"notifications\":{\"security\":false}}",next[..]) && !next[0].remote_images && !next[0].private_clipboard && !next[0].security;
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{\"security\":true}}",next[..]);   // no revision
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":\"wss://relay.openagents.com\",\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{\"security\":true}}",next[..]);   // relays as text
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{\"security\":true}}",next[..]);   // no relays
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.coa\",\"wss://relay.openagents.cob\",\"wss://relay.openagents.coc\",\"wss://relay.openagents.cod\",\"wss://relay.openagents.coe\",\"wss://relay.openagents.cof\",\"wss://relay.openagents.cog\"],\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{\"security\":true}}",next[..]);   // seven relays
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[5],\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{\"security\":true}}",next[..]);   // a relay that is a number
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"private_clipboard\":true},\"notifications\":{\"security\":true}}",next[..]);   // no remote_images
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":\"yes\",\"private_clipboard\":true},\"notifications\":{\"security\":true}}",next[..]);   // remote_images as text
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":true},\"notifications\":{\"security\":true}}",next[..]);   // no private_clipboard
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":true,\"private_clipboard\":1},\"notifications\":{\"security\":true}}",next[..]);   // private_clipboard as a number
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{}}",next[..]);   // no security
+ #assert !asw_read("{\"schema\":\"openagents.account.settings.v1\",\"revision\":7,\"profile\":{\"display_name\":\"Ann\",\"name\":\"\",\"nip05\":\"\",\"about\":\"\",\"picture\":\"\",\"banner\":\"\",\"website\":\"\"},\"relays\":[\"wss://relay.openagents.com\"],\"privacy\":{\"remote_images\":true,\"private_clipboard\":true},\"notifications\":{\"security\":null}}",next[..]);   // security as null
+ // the first field is held to its cap like the rest: 129 bytes of display name are refused
+ s:=[1]AccountSettings.[asw_default()];for i:0..<129 {s[0].fields[0][i]='a';}s[0].lengths[0]=128;#assert asw_valid(s[..]);s[0].lengths[0]=129;#assert !asw_valid(s[..]);
+ // an invalid profile is -1, never an empty write
+ pb:[64]u8;#assert asw_profile(s[..],pb[..])==-1;
+}
 asw_field :: (s:[]AccountSettings,i:int)->string {return cast(string)s[0].fields[i][0..<s[0].lengths[i]];}
 asw_relay :: (s:[]AccountSettings,i:int)->string {return cast(string)s[0].relays[i][0..<s[0].relay_n[i]];}
 asw_valid :: (s:[]AccountSettings)->bool {
  if s[0].revision<0 || s[0].revision>2147483646 || s[0].relays_n<1 || s[0].relays_n>6 {return false;}
- for i:0..<7 {n:=s[0].lengths[i];if n<0 || n>1024 || !asp_text(asw_field(s,i),ifx i==3 then 1024 else ifx i>=4 then 512 else 128) {return false;}if i>=4 && !asp_url(asw_field(s,i)) {return false;}}
- for i:0..<s[0].relays_n {if s[0].relay_n[i]<1 || s[0].relay_n[i]>200 || !asp_relay(asw_relay(s,i)) {return false;}for j:0..<i {if asw_relay(s,i)==asw_relay(s,j) {return false;}}}return true;
+ // a length over 1024 is refused before asp_text runs, so about's cap of 1024 and 1025 agree; asp_url
+ // refuses a picture, banner or website over 512 itself, so their cap of 512 and 513 agree
+ for i:0..<7 {n:=s[0].lengths[i];if n<0 || n>1024 || !asp_text(asw_field(s,i),ifx i==3 then 1024 else ifx i>=4 then 512 else 128) {return false;}if i>=4 && !asp_url(asw_field(s,i)) {return false;}} // mutant: equivalent
+ // a relay of 1 byte never passes asp_relay ("wss://" alone is 6), so relay_n<1 and relay_n<=1 (or <2) agree
+ for i:0..<s[0].relays_n {if s[0].relay_n[i]<1 || s[0].relay_n[i]>200 || !asp_relay(asw_relay(s,i)) {return false;}for j:0..<i {if asw_relay(s,i)==asw_relay(s,j) {return false;}}}return true; // mutant: equivalent
 }
 asw_read :: (raw:string,s:[]AccountSettings)->bool #export_c #effects(all) {
  nodes:[96]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];b:[128]u8;
  if jv_str(v,jv_get(v,0,"schema"),b[..])!=ASW_SCHEMA.count || cast(string)b[0..<ASW_SCHEMA.count]!=ASW_SCHEMA {return false;}
- next:[1]AccountSettings;rev:=jv_get(v,0,"revision");if rev<0 || v.nodes[rev].kind!=JV_NUMBER {return false;}next[0].revision=jv_int(v,rev,-1);
+ // jv_get gives -1 or a value's node index, and node 0 is the document itself, so rev<0, rev<=0 and rev<1 agree
+ next:[1]AccountSettings;rev:=jv_get(v,0,"revision");if rev<0 || v.nodes[rev].kind!=JV_NUMBER {return false;}next[0].revision=jv_int(v,rev,-1); // mutant: equivalent
  p:=jv_get(v,0,"profile");names:=ASW_FIELDS;
  for i:0..<7 {n:=jv_str(v,jv_get(v,p,names[i]),next[0].fields[i][..]);if n<0 {return false;}next[0].lengths[i]=n;}
- r:=jv_get(v,0,"relays");if r<0 || v.nodes[r].kind!=JV_ARRAY {return false;}k:=v.nodes[r].first;
- while k>=0 {i:=next[0].relays_n;if i>=6 {return false;}n:=jv_str(v,k,next[0].relays[i][..]);if n<0 {return false;}next[0].relay_n[i]=n;next[0].relays_n+=1;k=v.nodes[k].next;}
+ // as for the revision: r is -1 or a value's node index above 0
+ r:=jv_get(v,0,"relays");if r<0 || v.nodes[r].kind!=JV_ARRAY {return false;}k:=v.nodes[r].first; // mutant: equivalent
+ // k is -1 or an element's node index above 0; an empty relay read here (n==0) is refused by asw_valid
+ // (relay_n<1) anyway, so n<0 and n<=0 agree
+ while k>=0 {i:=next[0].relays_n;if i>=6 {return false;}n:=jv_str(v,k,next[0].relays[i][..]);if n<0 {return false;}next[0].relay_n[i]=n;next[0].relays_n+=1;k=v.nodes[k].next;} // mutant: equivalent
  privacy:=jv_get(v,0,"privacy");remote:=jv_get(v,privacy,"remote_images");clip:=jv_get(v,privacy,"private_clipboard");notify:=jv_get(v,jv_get(v,0,"notifications"),"security");
- if remote<0 || clip<0 || notify<0 || (v.nodes[remote].kind!=JV_TRUE && v.nodes[remote].kind!=JV_FALSE) || (v.nodes[clip].kind!=JV_TRUE && v.nodes[clip].kind!=JV_FALSE) || (v.nodes[notify].kind!=JV_TRUE && v.nodes[notify].kind!=JV_FALSE) {return false;}
+ // as above: each of remote, clip and notify is -1 or a node index above 0
+ if remote<0 || clip<0 || notify<0 || (v.nodes[remote].kind!=JV_TRUE && v.nodes[remote].kind!=JV_FALSE) || (v.nodes[clip].kind!=JV_TRUE && v.nodes[clip].kind!=JV_FALSE) || (v.nodes[notify].kind!=JV_TRUE && v.nodes[notify].kind!=JV_FALSE) {return false;} // mutant: equivalent
  next[0].remote_images=jv_bool(v,remote);next[0].private_clipboard=jv_bool(v,clip);next[0].security=jv_bool(v,notify);
  if !asw_valid(next[..]) {return false;}s[0]=next[0];return true;
 }

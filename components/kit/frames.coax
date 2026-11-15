@@ -732,6 +732,12 @@ k_remote_image :: (t:[]Tree,id:string,src:string,alt:string,big:bool,admitted:bo
  #assert k_remote_image(t[..],"no","http://example.com/a","",false,false)<0 && k_remote_image(t[..],"no","","",false,true)<0;
  #assert tr_attr_of(t[..],tr_find(t[..],"remote"),AT_SRC)=="https://example.com/p.png";
 }
+#test "a remote image is a closed img node with its label, so the next node is its sibling" {
+ t:[1]Tree;tr_begin(t[..]);i:=k_remote_image(t[..],"remote","https://example.com/p.png","Profile",true,true);
+ #assert i>=0 && t[0].nodes[i].tag==TG_IMG && tr_class(t[..],i)=="img img-big" && tr_attr_of(t[..],i,AT_LABEL)=="Profile" && t[0].depth==0;
+ j:=k_remote_image(t[..],"next","https://example.com/q.png","",false,true);
+ #assert j>i && t[0].nodes[j].parent==-1 && tr_class(t[..],j)=="img";
+}
 // Document: a document from this site the browser shows paged (a PDF), in a frame as wide as its
 // place. `title` names it for a reader. Nothing for an address that is not a path here.
 k_document :: (t: [] Tree, id: string, src: string, title: string) -> int {

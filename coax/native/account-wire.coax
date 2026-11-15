@@ -31,6 +31,23 @@ nac_target :: (action:int,target:string)->bool #export_c #effects(all) {
  #assert nac_target(22,"123") && !nac_target(22,"1a") && !nac_target(21,"x") && !nac_target(9,"abc");
  #assert nac_target(21,"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
 }
+#test "a target is 1 to 64 characters, each range's ends are in and the byte past each end is out" {
+ // '/' 47 and ':' 58 bound the digits, '@' 64 and '[' 91 the capitals, '`' 96 and '{' 123 the small letters
+ #assert nac_target(17,"a") && nac_target(17,"09AZaz_-") && nac_target(22,"0") && nac_target(22,"9");
+ #assert !nac_target(22,"/") && !nac_target(22,":") && !nac_target(17,"/") && !nac_target(17,":");
+ #assert !nac_target(17,"@") && !nac_target(17,"[") && !nac_target(17,"`") && !nac_target(17,"{");
+ long:[65]u8;for i:0..<65 {long[i]='a';}
+ #assert nac_target(17,cast(string)long[0..<64]) && !nac_target(17,cast(string)long[..]);
+}
+#test "a request takes a target up to 256 bytes and a payload up to 8192, and an observation writes every field it was given" {
+ big:[8193]u8;for i:0..<8193 {big[i]='a';}b:[8400]u8;
+ #assert nac_request("save",cast(string)big[0..<256],"",b[..])>0 && nac_request("save",cast(string)big[0..<257],"",b[..])<0;
+ #assert nac_request("save","",cast(string)big[0..<8192],b[..])>0 && nac_request("save","",cast(string)big[..],b[..])<0;
+ n:=nac_observation("{\"s\":1}","{\"i\":2}","{\"a\":3}","{\"w\":4}","{\"x\":5}","authorized",true,"ab","hi",b[..]);
+ #assert n>0 && cast(string)b[0..<n]=="{\"schema\":\"openagents.native.account.v1\",\"settings\":{\"s\":1},\"identity\":{\"i\":2},\"account\":{\"a\":3},\"ways\":{\"w\":4},\"sessions\":{\"x\":5},\"permission\":\"authorized\",\"backup\":true,\"backup_pubkey\":\"ab\",\"message\":\"hi\"}";
+ // a value that parses but is not an object is refused too
+ #assert nac_observation("{}","{}","{}","{}","[]","",false,"","",b[..])<0;
+}
 
 nac_current :: (raw:string,target:string)->bool #export_c #effects(all) {
  nodes:[1024]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];rows:=jv_get(v,0,"sessions");b:[64]u8;
@@ -39,4 +56,6 @@ nac_current :: (raw:string,target:string)->bool #export_c #effects(all) {
 #test "ending another session cannot log the current phone out" {
  raw:="{\"sessions\":[{\"id\":\"one\",\"this\":true},{\"id\":\"two\",\"this\":false}]}";
  #assert nac_current(raw,"one") && !nac_current(raw,"two") && !nac_current(raw,"three") && !nac_current("bad","one");
+ // an empty id is still an id: it matches only the empty target (nac_target refuses that target first)
+ #assert nac_current("{\"sessions\":[{\"id\":\"\",\"this\":true}]}","") && !nac_current("{\"sessions\":[{\"id\":\"\",\"this\":true}]}","one");
 }
