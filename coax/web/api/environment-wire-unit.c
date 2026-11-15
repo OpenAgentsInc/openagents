@@ -4,6 +4,7 @@
 #include "environment-wire.generated.c"
 #pragma GCC diagnostic pop
 #include <signal.h>
+#include <stdbool.h>
 static int64_t environment_proxy_kind(int accounts,coax_string host,coax_string grant,coax_string epoch,
   coax_string relay,coax_string keyfile,coax_string input,coax_string program,coax_v_u8 out) {
   struct sigaction before,waiting = {0};
