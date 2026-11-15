@@ -44,3 +44,20 @@ rs_dodge :: (b: [] RsBattle, i: int) -> bool #effects(all) {
   rs_say(b,RS_EV_CONDITION,i,i,0," takes the Dodge action");
   return true;
 }
+
+#test "Dodge's line, and Speed 1, Speed 0 and Dazed at their edges" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
+  _ := rs_add(b[..],rs_rogue("Ada",0,3),1,1); rs_start_turn(b[..],0);
+  #assert rs_dodge(b[..],0) && act_last(b[..]).kind == RS_EV_CONDITION && act_last(b[..]).by.value == 0 && act_last(b[..]).to.value == 0;
+  #assert act_last(b[..]).amount == 0 && act_said(b[..],"Ada takes the Dodge action");
+  b[0].c[0].speed = 1; #assert rs_dodge_live(b[..],0) && rs_effect(b[0].c[0], EF_DODGE);
+  // one creature in the battle's room: an end past it reads no other creature
+  s: [1] RsBattle; s_room: [1] RsRoom; rs_have(s[..], s_room[..]); c: [1] RsCreature; s[0].c = c[..]; s[0].n = 1;
+  c[0].hp = 1; c[0].hp_max = 1; c[0].speed = 30;
+  #assert rs_dodge(s[..],0) && rs_dodge_live(s[..],0);
+  c[0].speed = 0; #assert !rs_dodge_live(s[..],0) && !rs_effect(c[0], EF_DODGE);
+  c[0].speed = 30; s[0].turn.action = false;
+  #assert rs_dodge(s[..],0) && rs_dodge_live(s[..],0);
+  for k: 0..<c[0].eff.count { if c[0].eff[k].kind == EF_NONE { c[0].eff[k].kind = EF_DAZED; break; } }
+  #assert !rs_dodge_live(s[..],0) && !rs_effect(c[0], EF_DODGE);
+}
