@@ -262,7 +262,8 @@ cmpct_write_vartime :: (header: [] u8, nonce: u64, wtxids: [] u8, src: [] u8, tx
   for i: 0..<count {
     if p < prefill.count && prefill[p] == i { p += 1; continue; }
     id := cmpct_short_id(k, wtxids[32*i..<32*i+32]);
-    for j: 0..<6 { out[at+j] = cast(u8) ((id >> cast(u64) (8 * j)) & 255); }
+    // A seventh byte would be id >> 48, always 0, and the next short ID or the prefilled count overwrites it.
+    for j: 0..<6 { out[at+j] = cast(u8) ((id >> cast(u64) (8 * j)) & 255); } // mutant: equivalent
     at += 6;
   }
   at = tx_compact_write_vartime(out, at, prefill.count);
@@ -302,7 +303,8 @@ cmpct_read_vartime :: (b: [] u8, pre: [] CmpctPrefilled, ins: [] TxIn, outs: [] 
   c := tx_compact_read_vartime(b, 88);
   if c.code != TX_OK { k.code = CMPCT_BAD; k.at = 88; k.tx_code = c.code; return k; }
   k.nshort = c.value; k.ids_at = c.next;
-  if b.count - c.next < 6 * c.value { k.code = CMPCT_BAD; k.at = b.count; k.tx_code = TX_TRUNCATED; return k; }
+  // With exactly 6 * count bytes left, the next read refuses at b.count as TX_TRUNCATED too: the same result.
+  if b.count - c.next < 6 * c.value { k.code = CMPCT_BAD; k.at = b.count; k.tx_code = TX_TRUNCATED; return k; } // mutant: equivalent
   at := c.next + 6 * c.value;
   p := tx_compact_read_vartime(b, at);
   if p.code != TX_OK { k.code = CMPCT_BAD; k.at = at; k.tx_code = p.code; return k; }
@@ -416,7 +418,8 @@ cmpct_init_vartime :: (b: [] u8, k: CmpctBlock, pre: [] CmpctPrefilled, pool_ids
     if e >= 0 {
       s := map[e].slot;
       if slots[s].source == CMPCT_MISSING { slots[s] = CmpctSlot.{source=CMPCT_MEMPOOL, from=m}; available += 1; }
-      else if slots[s].source != CMPCT_COLLIDED { slots[s] = CmpctSlot.{source=CMPCT_COLLIDED}; available -= 1; }
+      // available is the count of found slots; after a collision it is below k.nshort for good, so lowering it more (or colliding a collided slot again) changes nothing.
+      else if slots[s].source != CMPCT_COLLIDED { slots[s] = CmpctSlot.{source=CMPCT_COLLIDED}; available -= 1; } // mutant: equivalent
     }
     if available == k.nshort { break; }
   }
@@ -427,8 +430,9 @@ cmpct_init_vartime :: (b: [] u8, k: CmpctBlock, pre: [] CmpctPrefilled, pool_ids
     if e >= 0 {
       s := map[e].slot;
       if slots[s].source == CMPCT_MISSING { slots[s] = CmpctSlot.{source=CMPCT_EXTRA, from=x}; available += 1; }
-      else if slots[s].source != CMPCT_COLLIDED && !cmpct_same_tx(slots[s], pool_ids, extra_ids, extra_ids[32*x..<32*x+32]) {
-        slots[s] = CmpctSlot.{source=CMPCT_COLLIDED}; available -= 1;
+      // As in the mempool scan: lowering available after a collision, or colliding a collided slot again, changes nothing.
+      else if slots[s].source != CMPCT_COLLIDED && !cmpct_same_tx(slots[s], pool_ids, extra_ids, extra_ids[32*x..<32*x+32]) { // mutant: equivalent
+        slots[s] = CmpctSlot.{source=CMPCT_COLLIDED}; available -= 1; // mutant: equivalent
       }
     }
     if available == k.nshort { break; }
@@ -442,14 +446,17 @@ cmpct_init_vartime :: (b: [] u8, k: CmpctBlock, pre: [] CmpctPrefilled, pool_ids
 }
 // Is the transaction already in slot the one whose wtxid is id?
 cmpct_same_tx :: (slot: CmpctSlot, pool_ids: [] u8, extra_ids: [] u8, id: [] u8) -> bool #effects(all) {
-  have := ifx slot.source == CMPCT_MEMPOOL then pool_ids[32*slot.from..<32*slot.from+32] else extra_ids[32*slot.from..<32*slot.from+32];
+  // The loop reads the first 32 bytes of have; an extra slot's from is an earlier entry than the one compared, so an end of 32 * from + 33 stays inside extra_ids.
+  have := ifx slot.source == CMPCT_MEMPOOL then pool_ids[32*slot.from..<32*slot.from+32] else extra_ids[32*slot.from..<32*slot.from+32]; // mutant: equivalent
   for i: 0..<32 { if have[i] != id[i] { return false; } }
   return true;
 }
 // Sort entries by short ID: Shell's sort with Ciura's gaps.
 cmpct_sort_vartime :: (map: [] CmpctEntry) #effects(all) {
-  gaps := [8] int.[701, 301, 132, 57, 23, 10, 4, 1];
-  for g: 0..<8 {
+  // Any gaps ending in 1 sort (the last pass is an insertion sort), and equal short IDs fail InitData whatever their order: the gaps before 1 change only the cost.
+  gaps := [8] int.[701, 301, 132, 57, 23, 10, 4, 1]; // mutant: equivalent
+  // Skipping the first gap, 701, still sorts, for the same reason.
+  for g: 0..<8 { // mutant: equivalent
     gap := gaps[g];
     for i: gap..<map.count {
       e := map[i];
@@ -516,7 +523,8 @@ cmpct_request_write_vartime :: (hash: [] u8, indexes: [] int, out: [] u8) -> int
 // Reads a getblocktxn into absolute indexes. DifferenceFormatter refuses
 // the first index that passes 0xffff, as "differential value overflow".
 cmpct_request_read_vartime :: (b: [] u8, indexes: [] int) -> CmpctList #effects(all) {
-  if b.count < 32 { return CmpctList.{code=CMPCT_BAD, at=b.count, tx_code=TX_TRUNCATED}; }
+  // At exactly 32 bytes the count's read refuses at 32 as TX_TRUNCATED: the same result.
+  if b.count < 32 { return CmpctList.{code=CMPCT_BAD, at=b.count, tx_code=TX_TRUNCATED}; } // mutant: equivalent
   c := tx_compact_read_vartime(b, 32);
   if c.code != TX_OK { return CmpctList.{code=CMPCT_BAD, at=32, tx_code=c.code}; }
   r := CmpctList.{};
@@ -565,7 +573,8 @@ cmpct_blocktxn_write_vartime :: (hash: [] u8, b: [] u8, txs: [] CmpctTx, indexes
 // Reads a blocktxn: the hash, a count, then each transaction with its
 // witness; txs gets where each one is.
 cmpct_blocktxn_read_vartime :: (b: [] u8, txs: [] CmpctTx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> CmpctList #effects(all) {
-  if b.count < 32 { return CmpctList.{code=CMPCT_BAD, at=b.count, tx_code=TX_TRUNCATED}; }
+  // At exactly 32 bytes the count's read refuses at 32 as TX_TRUNCATED: the same result.
+  if b.count < 32 { return CmpctList.{code=CMPCT_BAD, at=b.count, tx_code=TX_TRUNCATED}; } // mutant: equivalent
   c := tx_compact_read_vartime(b, 32);
   if c.code != TX_OK { return CmpctList.{code=CMPCT_BAD, at=32, tx_code=c.code}; }
   if c.value > txs.count { return CmpctList.{code=CMPCT_CAPACITY, at=32}; }
@@ -633,7 +642,8 @@ cmpct_fill_vartime :: (b: [] u8, pre: [] CmpctPrefilled, slots: [] CmpctSlot, st
   }
   if m != missing.count { return CmpctFill.{status=CMPCT_INVALID}; }
   w := witness_mutated_vartime(out[0..<at], segwit, ins, outs, items,
-    hashes[0..<32*count], hashes[32*count..<64*count], hashes[64*count..<96*count]);
+    // IsBlockMutated writes and reads only the first 32 * count bytes of each view, so a longer txids or wtxids view, inside hashes, changes nothing.
+    hashes[0..<32*count], hashes[32*count..<64*count], hashes[64*count..<96*count]); // mutant: equivalent
   if w.code == WITNESS_CAPACITY { return CmpctFill.{status=CMPCT_CAPACITY, n=at}; }
   if w.code != WITNESS_OK { return CmpctFill.{status=CMPCT_FAILED, n=at, reason=w.code}; }
   return CmpctFill.{n=at};
@@ -1121,13 +1131,14 @@ change with the nonce:
 coax/bin/coax test bitcoin/examples/checks/compact-blocks.coax
 ```
 
-`coax test` runs 112 checks, including the loaded files' own checks, in
-about 16 seconds on 2026-11-03.
+`coax test` runs 137 checks, including the loaded files' own checks, on
+2026-11-14.
 
 ### The library's own checks
 
-`cmpctblock.coax` is an `#authority` file. Its checks port the cases of
-Bitcoin Core's `src/test/blockencodings_tests.cpp`:
+`cmpctblock.coax` is an `#authority` file. Its checks, in
+[cmpct_checks.coax](../../coax/tests/bitcoin/cmpct_checks.coax), port the
+cases of Bitcoin Core's `src/test/blockencodings_tests.cpp`:
 `SimpleRoundTripTest`, `NonCoinbasePreforwardRTTest`,
 `SufficientPreforwardRTTest`, `EmptyBlockRoundTripTest`,
 `ReceiveWithExtraTransactions`, and the three `TransactionsRequest`
@@ -1140,13 +1151,29 @@ compare block 413,567's keys, first short IDs and whole message with
 the readers' refusals, the high-bandwidth choice and the replies by
 depth.
 
+Block 514,999 adds checks at every boundary: its keys and all 19 short
+IDs, its `cmpctblock` with 0, 4 and 19 transactions prefilled and a
+`blocktxn` of three segwit-era transactions, each against `messages.py`'s
+SHA-256; block 413,567 with prefilled differences of 252 and 253, where
+the CompactSize grows from one byte to three; a `getblocktxn` whose
+deltas cover every width; each reader refusing every field one byte
+short and at the byte where it stops; each writer given exactly its room
+and one byte less; mempool and extra-pool collisions and the scan that
+stops once every short ID is found; prefilled indexes of 0xffff and
+0x10000; and 100,000 and 0xffff transactions.
+
 ```shell
 coax/bin/coax test coax/lib/bitcoin/cmpctblock.coax
+coax/bin/coax mutate coax/lib/bitcoin/cmpctblock.coax --library --unit coax/lib/bitcoin/cmpctblock.coax --native
 ```
 
-`coax test` runs 106 checks, including those of the files it loads, in
-about 5 seconds on 2026-11-03. Mutation testing: not run (owner
-speed order).
+`coax test` runs 131 checks, including those of the files it loads, on
+2026-11-14. `coax mutate` makes 722 mutants of
+`cmpctblock.coax`: the checks kill 701, and 21 are marked equivalent, each
+with its reason on the line above (a seventh short-ID byte that is always
+0 and overwritten, the Shell's-sort gaps before 1, views longer than
+their readers read, and lowering a count that can no longer stop the
+scan).
 
 ### Bitcoin Core's code and functional-test framework
 
