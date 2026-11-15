@@ -50,6 +50,28 @@ rtrg_record :: (message: string, name: string, line: string) -> bool {
       print("FAIL % is not written back by wire.coax byte for byte\n  want %\n  got  %\n", name, line, ifx an > 0 then cast(string) again[0..<an] else "(nothing)");
       return false;
     }
+  } else if message == "StationReport" {
+    m := RTP_StationReport_from_json(line, nodes[..], wire[..]);
+    if m.error != 0 { return rtrg_fail("the report does not read through the mapper", name); }
+    v := RTP_StationReport_to_json(m, out[..]);
+    if v.error != 0 { return rtrg_fail("the report is not written", name); }
+    got = cast(string) v.wire;
+    q: [1] RtrRequest; wire2: [RTR_REPORT_MAX] u8; host: [64] u8; again: [RTR_REPORT_MAX] u8;
+    if !rtr_report_read(line, nodes[..], wire2[..], q[..], 0, host[..]) { return rtrg_fail("the report does not read through wire.coax", name); }
+    an := rtr_report_write(q[..], 0, cast(string) host[..], again[..]);
+    if an <= 0 || cast(string) again[0..<an] != line {
+      print("FAIL % is not written back by wire.coax byte for byte\n  want %\n  got  %\n", name, line, ifx an > 0 then cast(string) again[0..<an] else "(nothing)");
+      return false;
+    }
+  } else if message == "DescribeStation" {
+    m := RTP_DescribeStation_from_json(line, nodes[..], wire[..]);
+    if m.error != 0 { return rtrg_fail("the params do not read through the mapper", name); }
+    v := RTP_DescribeStation_to_json(m, out[..]);
+    if v.error != 0 { return rtrg_fail("the params are not written", name); }
+    got = cast(string) v.wire;
+    refresh := rtr_describe_read(line); again: [256] u8;
+    an := ifx refresh >= 0 then rtr_describe_write(refresh == 1, again[..]) else 0;
+    if an <= 0 || cast(string) again[0..<an] != line { return rtrg_fail("the params are not read and written back by wire.coax", name); }
   } else { return rtrg_fail("unknown message", message); }
   if got != line {
     print("FAIL % is not written back byte for byte\n  want %\n  got  %\n", name, line, got);
@@ -135,6 +157,28 @@ rtrg_fuzz :: () -> bool {
   return true;
 }
 
+// What the report reader and DescribeStation's params refuse.
+rtrg_report_refusals :: () -> bool {
+  nodes: [2048] JvNode; wire: [RTR_REPORT_MAX] u8; q: [1] RtrRequest; host: [64] u8;
+  A := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  good := "{\"schema\":\"openagents.router.station.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"station\":{\"station_id\":\"mac\"}}";
+  ok := rtr_report_read(good, nodes[..], wire[..], q[..], 0, host[..]) && cast(string) host[..] == A && q[0].stations[0].id == "mac" && q[0].stations[0].name == "mac";
+  bad := [6] string.[
+    "{\"schema\":\"openagents.router.request.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"station\":{\"station_id\":\"mac\"}}",
+    "{\"schema\":\"openagents.router.station.v1alpha1\",\"host_pubkey\":\"aaaa\",\"station\":{\"station_id\":\"mac\"}}",
+    "{\"schema\":\"openagents.router.station.v1alpha1\",\"host_pubkey\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"station\":{\"station_id\":\"mac\"}}",
+    "{\"schema\":\"openagents.router.station.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+    "{\"schema\":\"openagents.router.station.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"station\":{\"station_id\":\"none\"}}",
+    "{\"schema\":\"openagents.router.station.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"station\":{\"station_id\":\"Mac Book\"}}"];
+  for b: bad { if rtr_report_read(b, nodes[..], wire[..], q[..], 0, host[..]) { ok = rtrg_fail("the report reader took", b); } }
+  if rtr_report_read(good, nodes[..], wire[..], q[..], RTR_STATIONS, host[..]) || rtr_report_read(good, nodes[..], wire[..], q[..], -1, host[..]) || rtr_report_read(good, nodes[..], wire[..], q[..], 0, host[0..<63]) { ok = rtrg_fail("the report reader took a row or host buffer out of bounds", ""); }
+  out: [RTR_REPORT_MAX] u8;
+  if rtr_report_write(q[..], RTR_STATIONS, A, out[..]) != 0 || rtr_report_write(q[..], -1, A, out[..]) != 0 || rtr_report_write(q[..], 0, A, out[0..<16]) != 0 { ok = rtrg_fail("the report writer wrote a row out of bounds or into a short buffer", ""); }
+  if rtr_describe_read("{\"schema\":\"openagents.router.decision.v1alpha1\"}") != -1 || rtr_describe_read("{\"schema\":\"openagents.router.describe.v1alpha1\",\"method\":\"RunCommand\"}") != -1 || rtr_describe_read("") != -1 { ok = rtrg_fail("DescribeStation's params took another body", ""); }
+  if rtr_describe_read("{\"schema\":\"openagents.router.describe.v1alpha1\",\"refresh\":false}") != -1 || rtr_describe_read("{\"refresh\":true,\"schema\":\"openagents.router.describe.v1alpha1\"}") != -1 { ok = rtrg_fail("DescribeStation's params took a form wire.coax does not write", ""); }
+  return ok;
+}
+
 rtrg_fixture :: (path: string) -> bool {
   raw: [262144] u8; n := fs_read(path, raw[..]);
   if n <= 0 { return rtrg_fail("cannot read the fixture", path); }
@@ -154,6 +198,7 @@ rtrg_fixture :: (path: string) -> bool {
   }
   if requests < 1 || decisions < 1 { good = rtrg_fail("the fixture needs a body of each message", path); }
   if rtrg_reader() { print("ok  the reader: every field, a task alone, another schema, bad ids, one id twice, one agent twice, seventeen computers\n"); } else { good = false; }
+  if rtrg_report_refusals() { print("ok  the report reader: another schema, a short or uppercase host key, no station, a bad id; DescribeStation's params: another schema, another field, a form it does not write\n"); } else { good = false; }
   if rtrg_writer() { print("ok  the writer: a full decision, a short buffer, a decision of nothing\n"); } else { good = false; }
   if !rtrg_fuzz() { good = false; }
   return good;

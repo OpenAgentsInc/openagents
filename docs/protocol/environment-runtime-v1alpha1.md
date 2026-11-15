@@ -35,6 +35,17 @@ carriage and correlated replies. The optional projection lives above HOST
 in Coder's `environment/host-wire.coax`; the old browser decoder stays closed.
 There is no generic process or shell RPC.
 
+`DescribeStation` is a separate read-only method for the delegation router
+(docs/router/README.md). Its params are `openagents.router.describe.v1alpha1`
+and its reply `openagents.router.station.v1alpha1`
+(`proto/openagents/router/v1alpha1/router.proto`): the computer's OS, cores,
+disk in the enrolled workspace, memory, load, the coding agents installed and
+logged in, the agents running, and the repository it holds. It needs an
+observe right on the live grant and the same enrolled device and grant as the
+methods above, and reads no token, process argument or file content
+(`coder/tui/host-station.coax`). The gateway carries it at
+`GET /api/chat/environment/station/v1?host=KEY`, with a wait of eight seconds.
+
 Local access uses the same request/view codecs, one JSON record followed by
 LF per Unix connection. `service.sock` is0600 inside the host's0700 folder.
 Both ends verify the actual kernel peer UID. The service singleton uses the

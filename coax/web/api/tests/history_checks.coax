@@ -43,6 +43,16 @@ chh_api_checks :: (t:[]Ap,dir:string) {
   ap_check(t,"a read route cannot dispatch a mutation",st==400,ap_body(t));
   st=ac_call(t,"GET","/api/chat/environment/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&method=ListSessions","",sb_text(c[..]),"","");
   ap_check(t,"email login reaches the broker after production startup ignored SIGCHLD",st==200 && ap_has(ap_body(t),"Fixture computer") && ap_has(ap_body(t),"ListSessions"),ap_body(t));
+  // a computer's own report for the delegation router (coder/tui/host-station.coax)
+  path_station:="/api/chat/environment/station/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  st=ac_call(t,"GET",path_station,"","","","");ap_check(t,"a computer's report requires a login",st==401,ap_body(t));
+  st=ac_call(t,"GET","/api/chat/environment/station/v1?host=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","",sb_text(c[..]),"","");ap_check(t,"a computer's report is only for the caller's own computer",st==404,ap_body(t));
+  st=ac_call(t,"POST",path_station,"{}",sb_text(c[..]),"","");ap_check(t,"a computer's report is read, never posted",st==405 || st==403,ap_body(t));
+  st=ac_call(t,"GET",path_station,"",sb_text(c[..]),"","");
+  ap_check(t,"the broker returns the computer's own report",st==200 && ap_has(ap_body(t),"\"schema\":\"openagents.router.station.v1alpha1\"") && ap_has(ap_body(t),"\"display_name\":\"Fixture computer\"") && ap_has(ap_body(t),"\"os\":\"macos\""),ap_body(t));
+  ap_check(t,"a computer's report is never cached",ap_has(ac_head(t),"Cache-Control: no-store"),ac_head(t));
+  st=ac_call(t,"GET","/api/chat/environment/station/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&refresh=1","",sb_text(c[..]),"","");
+  ap_check(t,"refresh=1 asks the computer to read itself again",st==200 && ap_has(ap_body(t),"Fixture computer, read again"),ap_body(t));
   path_accounts:="/api/chat/environment/accounts/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   st=ac_call(t,"GET",path_accounts,"","","","");ap_check(t,"provider accounts require an account session",st==401,ap_body(t));
   st=ac_call(t,"GET","/api/chat/environment/accounts/v1?host=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","",sb_text(c[..]),"","");ap_check(t,"provider accounts use the caller's exact computer grant",st==404,ap_body(t));

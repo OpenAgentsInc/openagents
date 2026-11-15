@@ -9,6 +9,7 @@
 //   coder host deny ID             refuse it
 //   coder host forget ID           revoke an allowed browser
 //   coder host key                 this computer's host key
+//   coder host station [--in DIR]  this computer's report for the delegation router (host-station.coax)
 //   coder host call OP --host KEY [...]   a stand-in browser: one request, its reply's body on stdout
 //
 // The wire is coax/lib/nostr/host/browser.coax: NIP-HOST's direct artifact
@@ -43,6 +44,7 @@
 #load "../../coax/lib/agent/cli/json-output.coax";   // what --json prints (cj_*)
 #load "host-environment.coax";
 #load "host-providers.coax";
+#load "host-station.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 #load "../../coax/lib/sys/clock.coax";
@@ -462,7 +464,7 @@ HsHost :: struct {
   // retained replies (NIP-HOST "Admission order and retention"): request ID, event ID, expiry, the signed reply
   rq: [HS_RETAINED] [64] u8; rev: [HS_RETAINED] [64] u8; rexp: [HS_RETAINED] int; rn: [HS_RETAINED] int; rbody: [HS_RETAINED] [HS_REPLY_MAX] u8; rnext: int;
   seen: [256] [64] u8; nseen: int;   // event IDs already answered (two subscriptions overlap)
-  environment:[1]EsHost;providers:[1]PaManager;
+  environment:[1]EsHost;providers:[1]PaManager;station:[1]StCache;
 }
 hs_relay_of :: (h: [] HsHost) -> string { return cast(string) h[0].relay[0..<h[0].nrelay]; }
 hs_seen :: (h: [] HsHost, id: string) -> bool {
@@ -508,7 +510,11 @@ hs_handle :: (h: [] HsHost, text: string, w: [] HbWork, st: [] HsState, statebuf
   if o.error==HB_UNSUPPORTED || o.error==HB_SHAPE {
     app:[1]HbAppRequest;space:[49152]u8;arena:=[1]HbText.[HbText.{buf=space[..]}];
     if hb_app_read(cast(string)body[0..<o.body_n],app[..],arena[..]) {return es_handle(h,app[0],sig,ev,mb,w,st,statebuf,out);}
-    rpc:[1]HbRpcRequest;provider:[1]PaRequest;arena[0].at=0;if hb_rpc_read(cast(string)body[0..<o.body_n],rpc[..],arena[..]) && pa_request_read(rpc[0].params,provider[..]) {defer {for i:0..<provider[0].code.count {provider[0].code[i]=0;}}return pa_handle(h,rpc[..],provider[..],sig,ev,mb,w,st,statebuf,out);}
+    rpc:[1]HbRpcRequest;provider:[1]PaRequest;arena[0].at=0;
+    if hb_rpc_read(cast(string)body[0..<o.body_n],rpc[..],arena[..]) {
+      if pa_request_read(rpc[0].params,provider[..]) {defer {for i:0..<provider[0].code.count {provider[0].code[i]=0;}}return pa_handle(h,rpc[..],provider[..],sig,ev,mb,w,st,statebuf,out);}
+      refresh:=rtr_describe_read(rpc[0].params);if refresh>=0 {return st_handle(h,rpc[..],refresh==1,sig,ev,mb,w,st,statebuf,out);}
+    }
   }
   if o.error != HB_OK {
     // a body that does not read: refused, in its mailbox, for its signer
@@ -889,7 +895,7 @@ hs_cmd_call :: (args: [] Args, op_name: string) -> int {
   return 3;
 }
 
-HS_USAGE :: "usage: coder host [serve] [--relay URL] [--engine claude|codex|cursor|micro|psionic|echo] [--for SECONDS]\n       coder host list [--json] | allow ID | deny ID | forget ID | key\n       coder host call OP --host KEY --browser-key FILE [--label L] [--request ID] [--text T --realm R] [--thread T] [--after N] [--grant G --epoch E]\nA browser on openagents.com pairs with this computer over the relay (wss://relay.openagents.com, or $OPENAGENTS_NIP_HOST_RELAY);\nonly you allow it, here. An allowed browser runs realm jobs on your engine: read access and the realm tools, no shell, no writes.";
+HS_USAGE :: "usage: coder host [serve] [--relay URL] [--engine claude|codex|cursor|micro|psionic|echo] [--for SECONDS]\n       coder host list [--json] | allow ID | deny ID | forget ID | key | station [--in DIR]\n       coder host call OP --host KEY --browser-key FILE [--label L] [--request ID] [--text T --realm R] [--thread T] [--after N] [--grant G --epoch E]\nA browser on openagents.com pairs with this computer over the relay (wss://relay.openagents.com, or $OPENAGENTS_NIP_HOST_RELAY);\nonly you allow it, here. An allowed browser runs realm jobs on your engine: read access and the realm tools, no shell, no writes.";
 
 tool_main :: () -> int #export_c #effects(all) {
   args_b: [1] Args; args := args_b[..];
@@ -916,6 +922,8 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "rpc" {return es_rpc_call(args);}
   if verb == "accounts-enable" {return pa_enable(args);}
   if verb == "accounts-rpc" {return pa_rpc_call(args);}
+  if verb == "station-rpc" {return st_rpc_call(args);}
+  if verb == "station" {return st_local(args);}
   if verb == "accounts-probe" {out:[8192]u8;n:=pa_probe_command(args_value(args,"--directory",""),args_has(args,"--system"),out[..]);if n>0 {hs_outln(cast(string)out[0..<n]);return 0;}return 1;}
   tool_err("coder host: unknown verb "); tool_errln(verb); tool_errln(HS_USAGE);
   return 2;

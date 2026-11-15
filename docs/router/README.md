@@ -495,11 +495,23 @@ shaping it before any app calls it:
   and passes it to the model through `POST /api/chat/delegated/complete/v1`,
   so the answer begins with what it is about to hand off. Nothing is started.
 
-It starts no agent, and one computer's report does not reach another yet.
-The phone knows each connected computer's name, whether its last read worked
-and its busy Claude conversations. It does not know a computer's disk,
-memory, load or OS, so a decision in the app is made on names and running
-work, and a computer that reports no facts is not ruled out by a need.
+- **Each computer's own report.** A connected computer's resident service
+  answers `DescribeStation`, an environment RPC under an observe right on its
+  live HOST grant and its enrolled device and grant, with a `StationReport`:
+  its OS, cores, disk (in the enrolled workspace), memory, load, Xcode or GPU,
+  Claude Code and Codex installed and logged in, the agents running there, and
+  the repository it holds ([`coder/tui/host-station.coax`](../../coder/tui/host-station.coax)).
+  It reads the computer at most every 30 seconds unless asked to refresh.
+  `GET /api/chat/environment/station/v1?host=KEY` carries it to the phone,
+  which asks each connected computer before a chat's first message and every
+  four messages after, and routes on those facts. `coder host station` prints
+  this computer's report.
+
+It starts no agent. A computer whose resident service is older than
+`DescribeStation`, or that is off, does not answer; the phone then routes it
+on its name, whether its last read worked and its busy Claude conversations,
+and a computer that reports no facts is not ruled out by a need. A computer
+reports its facts once its resident service is updated.
 
 ### Build order from here
 
@@ -515,10 +527,11 @@ Each step is tried from the command line and held by checks before the next.
    timeouts and rate limits are checked through `curl` as a live call goes.
    `coax/lib/systemone/gemini_fake.py` does this for the decision client
    today.
-5. **A real station report.** Done for one computer: a collector for disk,
-   memory, load, running agents and logins. Left: account quota, whether
-   someone is using the computer, then `DescribeStation` in the environment
-   runtime so reports reach the router from every computer.
+5. **A real station report.** Done: a collector for disk, memory, load,
+   running agents and logins, and `DescribeStation` in the environment
+   runtime, so each connected computer's report reaches the phone's router.
+   Left: account quota, whether someone is using the computer, and the
+   lines on Your computers.
 6. **The record and the allowance.** `coder.route.v3` as a projection of
    `RouteDecision`, and the daily count.
 7. **The first caller: the iPhone app.** Done for the account chat: the app

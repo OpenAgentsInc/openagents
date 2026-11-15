@@ -137,6 +137,15 @@ es_rpc_call :: (args:[]Args)->int #effects(all) {
  if size== -5 {v[0].nh=ea_copy(v[0].host[..],args_value(args,"--host",""));v[0].nm=ea_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);es_refuse(v[..],cast(string)result.code[0..<result.nc]);made:=ea_view_write(v[..],out[..]);if made>0 {hs_outln(cast(string)out[0..<made]);return 0;}return 3;}
  if size<1 || !ea_view_read(cast(string)out[0..<size],v[..]) {tool_errln("Environment did not return an admitted reply. No command is automatically replayed.");return 3;}hs_outln(cast(string)out[0..<size]);return 0;
 }
+// How long a call waits for the computer's reply: --wait-ms, from 1 to 20 seconds; 20 when unset or unreadable.
+es_wait_ms :: (text:string)->int {
+  if text.count==0 || text.count>5 {return 20000;}v:=0;for c:text {if c<'0' || c>'9' {return 20000;}v=v*10+cast(int)(c-'0');}
+  return ifx v<1000 then 1000 else ifx v>20000 then 20000 else v;
+}
+#test "a call's wait is bounded" {
+  #assert es_wait_ms("")==20000 && es_wait_ms("8000")==8000 && es_wait_ms("1000")==1000 && es_wait_ms("999")==1000 && es_wait_ms("20000")==20000 && es_wait_ms("20001")==20000;
+  #assert es_wait_ms("99999")==20000 && es_wait_ms("123456")==20000 && es_wait_ms("8s")==20000 && es_wait_ms("-1")==20000 && es_wait_ms("0")==1000;
+}
 EsRpcResult :: struct {n:int;code:[40]u8;nc:int;}
 es_rpc_exchange :: (args:[]Args,method:string,raw:string,response:[]u8)->EsRpcResult #effects(all) {
   host:=args_value(args,"--host","");grant:=args_value(args,"--grant","");epoch:=hs_atoi(args_value(args,"--epoch","0"));
@@ -157,7 +166,7 @@ es_rpc_exchange :: (args:[]Args,method:string,raw:string,response:[]u8)->EsRpcRe
   defer {cr_close(sub[..]);if pub[0].open {cr_close(pub[..]);}}
   filter:[512]u8;nf:=hb_reply_filter(cast(string)bhex[..],request,filter[..]);
   if nf<1 || !cr_req(sub[..],cast(string)filter[0..<nf]) || !cr_open(pub[..],relay,sk[..]) || !cr_publish(pub[..],cast(string)out[0..<sealed],cxsock_now_ms()+5000) {return EsRpcResult.{n=-3};}
-  cr_close(pub[..]);deadline:=cxsock_now_ms()+20000;
+  cr_close(pub[..]);deadline:=cxsock_now_ms()+es_wait_ms(args_value(args,"--wait-ms",""));
   while cxsock_now_ms()<deadline {
     result:=cr_next(sub[..],deadline);if result==CR_FAIL || result==CR_CLOSED {break;}if result!=CR_EVENT {continue;}
     opened:=hb_open(cr_event(sub[..]),sk[..],bx[..],HB_REPLY_SCHEMA,w[..],body[..]);

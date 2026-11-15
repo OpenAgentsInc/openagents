@@ -12,7 +12,7 @@
 //                   and speculative pages count as free), /proc/meminfo
 //                   (Linux: MemAvailable)
 //   load            sysctl -n vm.loadavg (macOS), /proc/loadavg (Linux)
-//   disk            df -Pk on the folder the tool runs in
+//   disk            df -Pk on the folder the tool runs in (or the one it is given)
 //   Apple builds    macOS with /Applications/Xcode.app
 //   GPU             nvidia-smi's first GPU name, when it is installed
 //   agents          claude and codex on PATH; logged in when the agent's own
@@ -183,7 +183,12 @@ rtrs_claude_logged_in :: () -> bool {
 // This computer into row of q, with the time. Strings borrow store
 // (RTRS_STORE) and constants. False when the facts a decision needs most
 // could not be read: the name, the memory or the disk.
-rtrs_collect :: (q: [] RtrRequest, row: int, store: [] u8) -> bool {
+rtrs_collect :: (q: [] RtrRequest, row: int, store: [] u8) -> bool { return rtrs_collect_in(q, row, store, "."); }
+
+// The same, with the disk and the repository read in dir (a computer's
+// resident service reads its enrolled workspace, not the folder it runs in).
+rtrs_collect_in :: (q: [] RtrRequest, row: int, store: [] u8, dir: string) -> bool {
+  if dir.count == 0 || dir[0] == '-' { return false; }
   if row < 0 || row >= RTR_STATIONS || store.count < RTRS_STORE { return false; }
   out: [16384] u8; pb: [1200] u8;
   mac := tool_os() == TOOL_MAC;
@@ -194,8 +199,8 @@ rtrs_collect :: (q: [] RtrRequest, row: int, store: [] u8) -> bool {
   c_load := [3] string.["sysctl", "-n", "vm.loadavg"];
   c_nproc := [1] string.["nproc"];
   c_gpu := [3] string.["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"];
-  c_df := [3] string.["df", "-Pk", "."];
-  c_git := [4] string.["git", "remote", "get-url", "origin"];
+  c_df := [3] string.["df", "-Pk", dir];
+  c_git := [6] string.["git", "-C", dir, "remote", "get-url", "origin"];
   q[0].stations[row] = RtrStation.{};
   q[0].stations[row].os = ifx mac then "macos" else "linux";
   q[0].stations[row].reported_at_ms = cxproc_wall_us() / 1000;

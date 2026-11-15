@@ -21,6 +21,7 @@ project_draft={"status":"ready","draft":{"card":{"name":"Moon Villa","slug":"moo
 project_calls=[]
 threads = {}
 routes = []
+stations = []
 if a.environment_transcript:
     threads["m_00000000000000000001"] = dict(schema="openagents.chat.thread.v1", id="m_00000000000000000001", revision=1, model="google/gemini-4-hydrogen", messages=[dict(role="user", content="Account fixture"), dict(role="assistant", content="Saved account answer.")])
 provider_accounts = {}
@@ -106,6 +107,14 @@ class Handler(BaseHTTPRequestHandler):
             name = "CoderOS" if host == "b" * 64 else "Mac"
             if urlparse(self.path).path=="/api/chat/environment/accounts/v1":
                 return self.answer(200,provider_view(host,dict(method="ListAccounts")))
+            # a computer's own report (coder/tui/host-station.coax): the Mac answers; CoderOS runs an
+            # older service and does not, so the route falls back to what the app knows of it
+            if urlparse(self.path).path=="/api/chat/environment/station/v1":
+                stations.append(name)
+                if name=="CoderOS":return self.answer(503,{"error":"That computer did not report."})
+                return self.answer(200,dict(schema="openagents.router.station.v1alpha1",host_pubkey=host,station=dict(station_id="adas-macbook",display_name="Adas-MacBook",
+                    reported_at_ms=1700000000000,os="macos",cpu_cores=12,memory_total_mb=36864,memory_free_mb=12000,disk_free_mb=200000,disk_floor_mb=20480,
+                    load_1m_milli=2100,load_15m_milli=1800,apple_builds=True,agents=[dict(engine="claude",installed=True,logged_in=True),dict(engine="codex",installed=True)],repos=["openagents"])))
             method = query["method"][0]
             summary = dict(session_id="fixture-session", workspace_id="default", title="CoderOS task" if name == "CoderOS" else "Transcript fixture", origin="managed", control="available", generation=1, revision=1, busy=False, interaction_id="", updated_at_ms=1)
             items = [] if method == "ListSessions" else [
@@ -173,7 +182,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.answer(401, {})
             assert body["schema"] == "openagents.router.request.v1alpha1" and body["text"]
             assert [s["station_id"] for s in body["stations"]] == ["mac", "coderos"]
-            assert all(s["agents"] == [dict(engine="claude", installed=True, logged_in=True)] for s in body["stations"])
+            mac, coderos = body["stations"]
+            # the Mac's facts are its own report, named as you connected it; CoderOS did not report
+            assert mac["display_name"] == "Mac" and mac["os"] == "macos" and mac["disk_free_mb"] == 200000 and mac["apple_builds"] and mac["reported_at_ms"] == 1000, mac
+            assert mac["agents"] == [dict(engine="claude", installed=True, logged_in=True), dict(engine="codex", installed=True)] and mac["repos"] == ["openagents"], mac
+            assert coderos["agents"] == [dict(engine="claude", installed=True, logged_in=True)] and "os" not in coderos, coderos
+            assert stations[-2:] == ["Mac", "CoderOS"], stations
             routes.append(body["text"])
             return self.answer(200, dict(schema="openagents.router.decision.v1alpha1", ok=True, station="mac", engine="claude", model="opus", effort="high",
                 difficulty=3, weight=1, door="gemini-decision-1", reasons=["named_station"], eligible_stations=["mac", "coderos"], eligible_engines=["claude"], input_tokens=900, latency_ms=300))

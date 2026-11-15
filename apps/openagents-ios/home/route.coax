@@ -5,9 +5,15 @@
 // about to hand off. Nothing is started yet: starting the agent on that computer comes next.
 //
 // The request is a RouteRequest and the answer a RouteDecision (openagents.router.v1alpha1; the
-// one codec is coax/lib/agent/router/wire.coax). What the app knows of each computer today is
-// its name, whether its last read worked, and its busy Claude conversations: a computer's
-// resident service does not report its disk, memory, load or OS yet, so those go unsaid.
+// one codec is coax/lib/agent/router/wire.coax). Each computer is named as you connected it.
+// Its facts are its own report: before the first message of a chat, and every
+// NA_ROUTE_REPORT_EVERY messages after, the app asks each connected computer's resident service
+// for its StationReport (GET /api/chat/environment/station/v1, DescribeStation in
+// coder/tui/host-station.coax): its OS, disk, memory, load, the coding agents installed and
+// logged in, and what runs there now. A computer that does not answer (an older service, or one
+// that is off) is routed on what the app knows: its name, whether its last read worked, and its
+// busy Claude conversations. The phone has no clock of its own here, so a report read in this
+// pass counts as current (reported_at_ms 1000 against now_ms 1000).
 //
 // When there is no computer, the route fails, or the server is older than the route, the chat
 // completes as it did before.
@@ -15,7 +21,11 @@
 
 NA_ROUTE_LINE :: 320;
 NA_ROUTE_IDS :: RTR_STATIONS * 40;
+NA_ROUTE_REPORTS :: 8;            // the computers whose reports are kept
+NA_ROUTE_REPORT :: 8192;          // one report's JSON
+NA_ROUTE_REPORT_EVERY :: 4;       // messages routed on one round of reports
 RouteLine :: struct {text:[NA_ROUTE_LINE]u8;n:int;}
+RouteReport :: struct {json:[NA_ROUTE_REPORT]u8;n:int;}
 
 // text cut to at most limit bytes on a UTF-8 boundary, appended to out at n.
 na_route_clip :: (out:[]u8,n:int,text:string,limit:int)->int {
@@ -27,14 +37,15 @@ na_route_clip :: (out:[]u8,n:int,text:string,limit:int)->int {
   b:[16]u8;#assert na_route_clip(b[..],0,"abcdef",4)==4 && na_route_clip(b[..],0,"ab",4)==2 && na_route_clip(b[..],0,"aé",2)==1 && na_route_clip(b[..],0,"aé",3)==3;
 }
 
-na_route_clear :: (s:[]Starter) {for i:0..<32 {s[0].route_lines[i].n=0;}s[0].route_note_n=0;s[0].route_catalog_asked=false;}
+na_route_clear :: (s:[]Starter) {for i:0..<32 {s[0].route_lines[i].n=0;}s[0].route_note_n=0;s[0].route_catalog_asked=false;for i:0..<NA_ROUTE_REPORTS {s[0].route_reports[i].n=0;}s[0].route_reports_left=0;s[0].route_report_next=0;}
 
 // The request for the chat's latest message: the task, the turn before it, and your connected
-// computers. ids (NA_ROUTE_IDS) and summary hold what the request's strings borrow. False when
-// this chat is not one to route, or no computer is connected.
-na_route_request :: (s:[]Starter,q:[]RtrRequest,ids:[]u8,summary:[]u8)->bool {
+// computers. ids (NA_ROUTE_IDS), summary and reports (NA_ROUTE_REPORTS * NA_ROUTE_REPORT) hold
+// what the request's strings borrow. False when this chat is not one to route, or no computer
+// is connected.
+na_route_request :: (s:[]Starter,q:[]RtrRequest,ids:[]u8,summary:[]u8,reports:[]u8)->bool {
   c:=s[0].navigation[0].browser[0].catalog[..];t:=s[0].thread[..];
-  if !s[0].workspace || s[0].world_mode || s[0].project_thread_n>0 || c[0].n<1 || t[0].n<1 || ids.count<NA_ROUTE_IDS {return false;}
+  if !s[0].workspace || s[0].world_mode || s[0].project_thread_n>0 || c[0].n<1 || t[0].n<1 || ids.count<NA_ROUTE_IDS || reports.count<NA_ROUTE_REPORTS*NA_ROUTE_REPORT {return false;}
   // the task is the last message the person typed
   last:=t[0].n-1;while last>=0 && t[0].messages[last].assistant {last-=1;}
   if last<0 {return false;}
@@ -53,9 +64,15 @@ na_route_request :: (s:[]Starter,q:[]RtrRequest,ids:[]u8,summary:[]u8)->bool {
     name:=cast(string)c[0].entries[i].label[0..<c[0].entries[i].nl];
     id:=rtr_id_from_name(name,ids[k*40..<k*40+40]);
     if rtr_station_index(q,id)>=0 {continue;}
+    reachable:=!(i<64 && s[0].navigation[0].groups[i].failed);
+    // the computer's own report, named as you connected it
+    if na_route_report(s,i,q,k,reports[i*NA_ROUTE_REPORT..<(i+1)*NA_ROUTE_REPORT]) {
+      q[0].stations[k].id=id;q[0].stations[k].name=ifx name.count>0 then name else id;
+      q[0].stations[k].reported_at_ms=ifx reachable then 1000 else 0;q[0].n+=1;continue;
+    }
     q[0].stations[k]=RtrStation.{};q[0].stations[k].id=id;q[0].stations[k].name=ifx name.count>0 then name else id;
-    q[0].stations[k].reported_at_ms=ifx i<64 && s[0].navigation[0].groups[i].failed then 0 else 1000;
-    // a connected computer runs Claude Code on its own login; other agents are not reported yet
+    q[0].stations[k].reported_at_ms=ifx reachable then 1000 else 0;
+    // without a report: a connected computer runs Claude Code on its own login
     q[0].stations[k].agents[0]=RtrAgent.{reported=true,installed=true,logged_in=true};
     for r:0..<s[0].navigation[0].n {
       w:=q[0].stations[k].work;
@@ -68,11 +85,44 @@ na_route_request :: (s:[]Starter,q:[]RtrRequest,ids:[]u8,summary:[]u8)->bool {
   return q[0].n>0;
 }
 
+// Catalog entry i's kept report into row k of q, its strings in wire (NA_ROUTE_REPORT). False
+// when there is none, or it is not a report from that computer.
+na_route_report :: (s:[]Starter,i:int,q:[]RtrRequest,k:int,wire:[]u8)->bool {
+  if i<0 || i>=NA_ROUTE_REPORTS || s[0].route_reports[i].n<1 {return false;}
+  c:=s[0].navigation[0].browser[0].catalog[..];nodes:[1024]JvNode;host:[64]u8;
+  return rtr_report_read(cast(string)s[0].route_reports[i].json[0..<s[0].route_reports[i].n],nodes[..],wire,q,k,host[..]) && cast(string)host[..]==cast(string)c[0].entries[i].host[..];
+}
+
+// Asks the next connected computer for its report (purpose 73), or, when every one has been
+// asked, routes the message. False when nothing was sent.
+na_route_report_next :: (s:[]Starter)->bool {
+  c:=s[0].navigation[0].browser[0].catalog[..];
+  while s[0].route_report_next<c[0].n && s[0].route_report_next<NA_ROUTE_REPORTS {
+    i:=s[0].route_report_next;s[0].route_report_next=i+1;s[0].route_reports[i].n=0;
+    if i<64 && s[0].navigation[0].groups[i].failed {continue;}
+    b:[160]u8;na_http(s,tr_cat(b[..],"/api/chat/environment/station/v1?host=",cast(string)c[0].entries[i].host[..]),"",73);
+    return s[0].flight!=0;
+  }
+  s[0].route_reports_left=NA_ROUTE_REPORT_EVERY;
+  return na_route(s);
+}
+// A computer's report: kept when it is that computer's StationReport. Then the next computer, or the route, or the plain chat.
+na_route_report_reply :: (s:[]Starter,status:int,raw:string,failed:bool) {
+  i:=s[0].route_report_next-1;
+  if i>=0 && i<NA_ROUTE_REPORTS && !failed && status==200 && raw.count<=NA_ROUTE_REPORT {
+    q:[1]RtrRequest;wire:[NA_ROUTE_REPORT]u8;
+    s[0].route_reports[i].n=na_copy(s[0].route_reports[i].json[..],raw);
+    if !na_route_report(s,i,q[..],0,wire[..]) {s[0].route_reports[i].n=0;}
+  }
+  if !na_route_report_next(s) {na_complete(s);}
+}
+
 // Asks where the latest message would run. False when nothing was sent: the chat then completes plainly.
 na_route :: (s:[]Starter)->bool {
-  q:[1]RtrRequest;ids:[NA_ROUTE_IDS]u8;summary:[1100]u8;
+  q:[1]RtrRequest;ids:[NA_ROUTE_IDS]u8;summary:[1100]u8;reports:[NA_ROUTE_REPORTS*NA_ROUTE_REPORT]u8;
   s[0].route_note_n=0;
-  if s[0].flight!=0 || !na_route_request(s,q[..],ids[..],summary[..]) {return false;}
+  if s[0].flight!=0 || !na_route_request(s,q[..],ids[..],summary[..],reports[..]) {return false;}
+  if s[0].route_reports_left>0 {s[0].route_reports_left-=1;}
   n:=rtr_request_write(q[..],s[0].wire[..]);if n<1 {return false;}
   na_http(s,"/api/chat/route/v1",cast(string)s[0].wire[0..<n],7);
   return s[0].flight!=0;
@@ -87,21 +137,23 @@ na_route_start :: (s:[]Starter)->bool {
     na_http(s,"/api/chat/environments/v1","",72);
     return s[0].flight!=0;
   }
+  // each computer's own report, before the chat's first message and every few messages after
+  if s[0].route_reports_left==0 {s[0].route_report_next=0;return na_route_report_next(s);}
   return na_route(s);
 }
 // The connected computers, read for the route: kept where the menu keeps them. Then the route, or the plain chat.
 na_route_catalog_reply :: (s:[]Starter,status:int,raw:string,failed:bool) {
   c:[1]EaCatalog;
   if !failed && status==200 && ea_catalog_read(raw,c[..]) && c[0].ok {s[0].navigation[0].browser[0].catalog[0]=c[0];}
-  if !na_route(s) {na_complete(s);}
+  if !na_route_start(s) {na_complete(s);}
 }
 
 // The route's answer: the line for the answer to come and the note for the model. Whatever it
 // was, the chat completes next.
 na_route_reply :: (s:[]Starter,status:int,raw:string,failed:bool) {
   s[0].route_note_n=0;
-  q:[1]RtrRequest;ids:[NA_ROUTE_IDS]u8;summary:[1100]u8;d:[1]RtrDecision;nodes:[2048]JvNode;wire:[RTR_DECISION_MAX]u8;
-  if !failed && status==200 && na_route_request(s,q[..],ids[..],summary[..]) && rtr_decision_read(raw,nodes[..],wire[..],d[..]) && d[0].door.count>0 {
+  q:[1]RtrRequest;ids:[NA_ROUTE_IDS]u8;summary:[1100]u8;reports:[NA_ROUTE_REPORTS*NA_ROUTE_REPORT]u8;d:[1]RtrDecision;nodes:[2048]JvNode;wire:[RTR_DECISION_MAX]u8;
+  if !failed && status==200 && na_route_request(s,q[..],ids[..],summary[..],reports[..]) && rtr_decision_read(raw,nodes[..],wire[..],d[..]) && d[0].door.count>0 {
     k:=s[0].thread[0].n;lb:[256]u8;
     if k<32 {
       n:=0;

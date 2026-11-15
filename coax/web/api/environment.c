@@ -12,13 +12,13 @@ static void env_reply(int fd,const void *data,size_t n) {
   api_respond(fd,200,"application/json","Cache-Control: no-store\r\nVary: Cookie, Authorization\r\n",data,n);
 }
 bool environment_route(const request *q) {
-  bool accounts=!strcmp(q->path,"/api/chat/environment/accounts/v1");
+  bool accounts=!strcmp(q->path,"/api/chat/environment/accounts/v1"),station=!strcmp(q->path,"/api/chat/environment/station/v1");
   bool list=!strcmp(q->path,"/api/chat/environments/v1"),call=!strcmp(q->path,"/api/chat/environment/v1");
-  call=call || accounts;
+  call=call || accounts || station;
   if (!list && !call) return false;
   const auth_principal *p=auth_principal_of(q);
   if (!p || !ea_account(p->kind,es(p->account),es(p->account))) {api_error(q->fd,401,"Log in first.");return true;}
-  if ((list && strcmp(q->method,"GET")) || (call && strcmp(q->method,"GET") && strcmp(q->method,"POST"))) {api_error(q->fd,405,list ? "GET this":"POST this");return true;}
+  if (((list || station) && strcmp(q->method,"GET")) || (call && strcmp(q->method,"GET") && strcmp(q->method,"POST"))) {api_error(q->fd,405,(list || station) ? "GET this":"POST this");return true;}
   PGconn *db=api_db();if (!db) {api_error(q->fd,503,"Connection storage unavailable.");return true;}
   if (!api_limit(db,"environment-call",p->account,(int)ea_rate(),NULL)) {api_error(q->fd,429,"Try again shortly.");return true;}
   char host[65]={0};if (call) api_query(q,"host",host,sizeof host);
@@ -36,6 +36,16 @@ bool environment_route(const request *q) {
   }
   if (PQntuples(r)!=1) {PQclear(r);api_error(q->fd,404,"Environment not found.");return true;}
   const char *key=getenv("OA_ENV_BROKER_KEY_FILE"),*program=getenv("OA_ENV_BROKER_PROGRAM");
+  if (station) {
+    // the computer's own report (coder/tui/host-station.coax); the broker builds the params
+    if (!key || !*key) {PQclear(r);api_error(q->fd,503,"Environment broker unavailable.");return true;}
+    char refresh[8];api_query(q,"refresh",refresh,sizeof refresh);
+    unsigned char *out=malloc(65536);int64_t n= -1;
+    if (out) n=environment_station_proxy(es(PQgetvalue(r,0,0)),es(PQgetvalue(r,0,2)),es(PQgetvalue(r,0,3)),es(PQgetvalue(r,0,4)),es(key),!strcmp(refresh,"1"),es(program && *program ? program:"/usr/local/bin/environment-host"),(coax_v_u8){out,65536});
+    PQclear(r);
+    if (n<1) {api_log("environment station unavailable: result=%lld",(long long)n);api_error(q->fd,503,"That computer did not report.");}else env_reply(q->fd,out,(size_t)n);
+    free(out);return true;
+  }
   unsigned char read_body[24576];const char *payload=q->body;size_t payload_len=q->body_len;
   if (!strcmp(q->method,"GET")) {
     char method[33],id[129],before[32];api_query(q,"method",method,sizeof method);api_query(q,"session",id,sizeof id);api_query(q,"before",before,sizeof before);

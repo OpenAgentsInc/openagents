@@ -1,0 +1,74 @@
+// DescribeStation: this computer's own report for the delegation router
+// (docs/router/README.md, "What each computer reports"). A third profile
+// beside the environment runtime and provider accounts, under the same HOST
+// admission (an observe right on a live grant) and the same enrolled device
+// and grant as the environment. It reads only what
+// coax/lib/agent/router/station.coax reads (never a token, a process's
+// arguments or a file's content), with the disk and repository read in the
+// enrolled workspace.
+//
+// The params are openagents.router.describe.v1alpha1 and the reply's payload
+// openagents.router.station.v1alpha1 (proto/openagents/router/v1alpha1/router.proto).
+// Reading the computer runs a few short commands, so a report under
+// ST_FRESH_MS old is answered again unless the params ask to refresh.
+#load "../../coax/lib/agent/router/station.coax";
+
+ST_FRESH_MS :: 30000;
+StCache :: struct {json:[RTR_REPORT_MAX]u8;n:int;at:int;}
+
+// The report as JSON in out: its length, or 0 when the computer could not be read.
+st_report :: (h:[]HsHost,refresh:bool,out:[]u8)->int #effects(all) {
+  now:=cxproc_wall_us()/1000;cache:=h[0].station[..];
+  if st_cached(refresh,cache[0].n,cache[0].at,now) {return pa_copy(out,cast(string)cache[0].json[0..<cache[0].n]);}
+  q:[1]RtrRequest;store:[RTRS_STORE]u8;c:=h[0].environment[0].configuration[..];
+  dir:=ifx c[0].nw>0 then cast(string)c[0].workspace[0..<c[0].nw] else ".";
+  if !rtrs_collect_in(q[..],0,store[..],dir) {return 0;}
+  q[0].n=1;n:=rtr_report_write(q[..],0,cast(string)h[0].xhex[..],cache[0].json[..]);
+  if n<1 {cache[0].n=0;return 0;}
+  cache[0].n=n;cache[0].at=now;return pa_copy(out,cast(string)cache[0].json[0..<n]);
+}
+// Whether the last report answers: there is one, it is under ST_FRESH_MS old, and no refresh was asked.
+st_cached :: (refresh:bool,n:int,at:int,now:int)->bool {return !refresh && n>0 && now>=at && now-at<ST_FRESH_MS;}
+#test "a recent report answers again; an old one, a refresh, none or a clock gone back reads the computer" {
+  #assert st_cached(false,10,1000,1000) && st_cached(false,1,1000,1000+ST_FRESH_MS-1);
+  #assert !st_cached(false,10,1000,1000+ST_FRESH_MS) && !st_cached(true,10,1000,1000) && !st_cached(false,0,1000,1000) && !st_cached(false,10,1000,999);
+}
+
+st_handle :: (h:[]HsHost,r:[]HbRpcRequest,refresh:bool,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
+  if r[0].request!=mailbox || r[0].host!=cast(string)h[0].xhex[..] || r[0].relay!=hs_relay_of(h) || r[0].method!="DescribeStation" {return 0;}
+  configured:=es_load_configuration(h[0].environment[..]);c:=h[0].environment[0].configuration[..];
+  hs_load(st,statebuf);ga:[HS_GRANTS]HostGrantRecord;epochs:[HS_EPOCHS]HostEpoch;hs_records(st,ga[..],epochs[..]);
+  req:=HostRequest.{request=r[0].request,event=event,signer=signer,grant=r[0].grant,epoch=r[0].epoch,issued_at=r[0].issued_at,expires_at=r[0].expires_at,right=HA_OBSERVE};
+  none:[1]HostRetained;verdict:=host_admit(ga[0..<st[0].ng],epochs[0..<st[0].ne],none[0..<0],req,hs_now());
+  if verdict==HA_SILENT {return 0;}
+  scoped:=ea_scope(configured,c[0].enabled,cast(string)c[0].device[..]==signer,cast(string)c[0].grant[..]==r[0].grant);
+  if verdict!=HA_OK || !scoped {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"forbidden",""),signer,w,out);}
+  payload:[RTR_REPORT_MAX]u8;n:=st_report(h,refresh,payload[..]);
+  if n<1 {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"unavailable",""),signer,w,out);}
+  body:[HB_BODY_MAX]u8;made:=hb_app_reply_write(r[0].request,event,cast(string)h[0].xhex[..],hs_now(),r[0].expires_at,r[0].method,cast(string)payload[0..<n],body[..]);
+  peer:[32]u8;nonce:[32]u8;aux:[32]u8;if made<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return 0;}
+  return hb_seal(cast(string)body[0..<made],HB_REPLY_SCHEMA,h[0].secret[..],peer[..],r[0].request,nonce[..],aux[..],hs_now(),w,out);
+}
+
+// coder host station-rpc --host KEY --grant G --epoch E --browser-key FILE [--refresh] [--wait-ms N]:
+// the browser side, as the API runs it. The report on stdout, checked against
+// the host it was asked of; exit 3 for a refusal or no reply.
+st_rpc_call :: (args:[]Args)->int #effects(all) {
+  params:[256]u8;n:=rtr_describe_write(args_has(args,"--refresh"),params[..]);if n<1 {return 2;}
+  out:[HB_BODY_MAX]u8;r:=es_rpc_exchange(args,"DescribeStation",cast(string)params[0..<n],out[..]);
+  if r.n== -5 {tool_err("The computer refused: ");tool_errln(cast(string)r.code[0..<r.nc]);return 3;}
+  q:[1]RtrRequest;nodes:[2048]JvNode;wire:[RTR_REPORT_MAX]u8;host:[64]u8;
+  if r.n<1 || !rtr_report_read(cast(string)out[0..<r.n],nodes[..],wire[..],q[..],0,host[..]) || cast(string)host[..]!=args_value(args,"--host","") {tool_errln("The computer did not return its report.");return 3;}
+  hs_outln(cast(string)out[0..<r.n]);return 0;
+}
+
+// coder host station [--in DIR]: this computer's report, read here, as DescribeStation answers it.
+st_local :: (args:[]Args)->int #effects(all) {
+  s:[32]u8;x:[32]u8;xh:[64]u8;
+  if !hs_key(s[..],x[..],xh[..]) {tool_errln("coder host: could not read or make the host key");return 1;}
+  wipe(s[..]);
+  q:[1]RtrRequest;store:[RTRS_STORE]u8;
+  if !rtrs_collect_in(q[..],0,store[..],args_value(args,"--in","."))  {tool_errln("coder host: this computer's name, memory or disk could not be read");return 1;}
+  q[0].n=1;out:[RTR_REPORT_MAX]u8;n:=rtr_report_write(q[..],0,cast(string)xh[..],out[..]);
+  if n<1 {return 1;}hs_outln(cast(string)out[0..<n]);return 0;
+}

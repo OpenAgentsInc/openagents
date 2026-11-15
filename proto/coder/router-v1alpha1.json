@@ -5,8 +5,8 @@
  "proto": "proto/openagents/router/v1alpha1/router.proto",
  "codec": "coax/lib/agent/router/wire.coax",
  "check": "coax/web/tool.sh coax/lib/agent/router/wire-goldens.coax proto/coder/router-v1alpha1.json",
- "transport": "JSON, one compact object: keys in field-number order after the schema, a zero, empty or false field without presence left out. No product surface carries these yet; the router's command line reads a RouteRequest and prints a RouteDecision.",
- "about": "Each body goes through the generated JSON mapper and comes back byte for byte; each RouteRequest also reads through wire.coax's rtr_request_read and is written back by rtr_request_write to the same bytes (docs/router/README.md).",
+ "transport": "JSON, one compact object: keys in field-number order after the schema, a zero, empty or false field without presence left out. The iPhone app sends a RouteRequest to POST /api/chat/route/v1 and reads the RouteDecision back; a connected computer's resident service answers DescribeStation (an environment RPC) with a StationReport, which the app reads through GET /api/chat/environment/station/v1.",
+ "about": "Each body goes through the generated JSON mapper and comes back byte for byte; each RouteRequest also reads through wire.coax's rtr_request_read and is written back by rtr_request_write to the same bytes (docs/router/README.md). Each StationReport also reads through rtr_report_read and is written back by rtr_report_write, and each DescribeStation through rtr_describe_read and rtr_describe_write, to the same bytes.",
  "records": [
   {
    "id": "openagents.router.request.v1alpha1",
@@ -49,6 +49,30 @@
    "message": "RouteDecision",
    "name": "nothing runs: heavy work that needs a Mac",
    "json": "{\"schema\":\"openagents.router.decision.v1alpha1\",\"door\":\"gemini-decision-1\",\"reasons\":[\"too_heavy_for_station\"],\"answers\":[{\"key\":\"needs\",\"choice\":\"apple\",\"probability_milli\":996},{\"key\":\"named_station\",\"choice\":\"none\",\"probability_milli\":917}],\"eligible_stations\":[\"mac\",\"coderos\"],\"eligible_engines\":[\"claude\",\"codex\"],\"input_tokens\":1530,\"error\":\"no_station\",\"needs\":\"apple\"}"
+  },
+  {
+   "id": "openagents.router.station.v1alpha1",
+   "message": "StationReport",
+   "name": "a Mac's own report",
+   "json": "{\"schema\":\"openagents.router.station.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"station\":{\"station_id\":\"adas-macbook\",\"display_name\":\"Adas-MacBook\",\"reported_at_ms\":1763100000000,\"os\":\"macos\",\"cpu_cores\":12,\"memory_total_mb\":36864,\"memory_free_mb\":12000,\"disk_free_mb\":200000,\"disk_floor_mb\":20480,\"load_1m_milli\":2100,\"load_15m_milli\":1800,\"apple_builds\":true,\"agents\":[{\"engine\":\"claude\",\"installed\":true,\"logged_in\":true},{\"engine\":\"codex\",\"installed\":true}],\"work\":[{\"engine\":\"claude\",\"state\":\"working\"}],\"repos\":[\"openagents\"]}}"
+  },
+  {
+   "id": "openagents.router.station.v1alpha1",
+   "message": "StationReport",
+   "name": "a Linux host with a GPU and no agents",
+   "json": "{\"schema\":\"openagents.router.station.v1alpha1\",\"host_pubkey\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"station\":{\"station_id\":\"coderos-4080\",\"reported_at_ms\":1763100000000,\"os\":\"linux\",\"cpu_cores\":16,\"memory_total_mb\":64000,\"memory_free_mb\":50000,\"disk_free_mb\":400000,\"disk_floor_mb\":20480,\"load_1m_milli\":300,\"load_15m_milli\":200,\"gpu\":\"NVIDIA GeForce RTX 4080\"}}"
+  },
+  {
+   "id": "openagents.router.describe.v1alpha1",
+   "message": "DescribeStation",
+   "name": "the last report",
+   "json": "{\"schema\":\"openagents.router.describe.v1alpha1\"}"
+  },
+  {
+   "id": "openagents.router.describe.v1alpha1",
+   "message": "DescribeStation",
+   "name": "read again",
+   "json": "{\"schema\":\"openagents.router.describe.v1alpha1\",\"refresh\":true}"
   }
  ]
 }

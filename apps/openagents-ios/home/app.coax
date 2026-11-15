@@ -31,7 +31,7 @@ Starter :: struct {
   local_available:bool;account_ready:bool;worlds_available:bool;
   account_settings:[1]AccountSettingsApp;
   sync_elapsed:f32;sync_background:bool;
-  route_lines:[32]RouteLine;route_note:[RTR_NOTE_MAX+1]u8;route_note_n:int;route_catalog_asked:bool;
+  route_lines:[32]RouteLine;route_note:[RTR_NOTE_MAX+1]u8;route_note_n:int;route_catalog_asked:bool;route_reports:[NA_ROUTE_REPORTS]RouteReport;route_reports_left:int;route_report_next:int;
   world_mode:bool;world:[1]WorldTurn;world_flight:[1]WorldTurn;world_wire:[WT_BYTES]u8;world_n:int;world_plan:[WP_BYTES]u8;world_plan_n:int;
   tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;css:[24576]u8;
 }
@@ -194,6 +194,7 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
     purpose:=s[0].purpose;s[0].purpose=0;
     if purpose==7 && status!=401 {na_route_reply(s,status,raw,failed);return;}
     if purpose==72 && status!=401 {na_route_catalog_reply(s,status,raw,failed);return;}
+    if purpose==73 && status!=401 {na_route_report_reply(s,status,raw,failed);return;}
     if status==401 {if s[0].world_mode {s[0].retry=false;na_note(s,"Close the world and log in again to continue.");return;}na_history_clear(s);na_new(s);s[0].page=0;na_secrets_clear(s);na_note(s,"Log in again to continue.");return;}
     if failed || status!=200 {
       if background {return;}
@@ -329,7 +330,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
       // where this answer's task would run (route.coax): a fact under the answer, not a control
       if m.assistant && s[0].route_lines[k].n>0 {rid:[96]u8;x=k_meta(t,tr_join(rid[..],"route.",k),cast(string)s[0].route_lines[k].text[0..<s[0].route_lines[k].n]);}
     }
-    if (s[0].purpose==5 || s[0].purpose==7 || s[0].purpose==72) && busy {
+    if (s[0].purpose==5 || s[0].purpose==7 || s[0].purpose==72 || s[0].purpose==73) && busy {
       x=k_reply_open(t,"chat.thinking",true,true);x=k_text(t,u,"chat.thinking.text",TG_P,"",ifx s[0].purpose==5 then "Thinking…" else "Choosing where this would run…");tr_close(t);
       pending:=s[0].thread[0].n;if s[0].purpose==5 && pending<32 && s[0].route_lines[pending].n>0 {x=k_meta(t,"route.pending",cast(string)s[0].route_lines[pending].text[0..<s[0].route_lines[pending].n]);}
     }

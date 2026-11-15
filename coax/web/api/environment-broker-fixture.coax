@@ -1,11 +1,20 @@
 // An independent process-boundary fixture. No relay, credentials or model call.
 #load "../../lib/agent/environment/wire.coax";
 #load "../../lib/agent/accounts/wire.coax";
+#load "../../lib/agent/router/wire.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {return 2;}
   input:[24576]u8;n:=fs_read(args_value(args[..],"--request-file",""),input[..]);q:[1]EaRequest;
+  // a computer's own report: the broker builds DescribeStation itself and waits 8 seconds at most
+  if args_at(args[..],0)=="station-rpc" {
+    host:=args_value(args[..],"--host","");if !ea_id(host,64) || args_value(args[..],"--wait-ms","")!="8000" || args_has(args[..],"--request-file") {return 2;}
+    r:[1]RtrRequest;r[0].n=1;st:=r[0].stations[0..<1];st[0].id="fixture-mac";st[0].name=ifx args_has(args[..],"--refresh") then "Fixture computer, read again" else "Fixture computer";
+    st[0].os="macos";st[0].cores=8;st[0].memory_total_mb=16384;st[0].memory_free_mb=4096;st[0].disk_free_mb=90000;st[0].disk_floor_mb=20480;st[0].apple_builds=true;
+    st[0].agents[0]=RtrAgent.{reported=true,installed=true,logged_in=true};
+    out:[RTR_REPORT_MAX]u8;made:=rtr_report_write(r[..],0,host,out[..]);if made<1 {return 2;}print("%\n",cast(string)out[0..<made]);return 0;
+  }
   if args_at(args[..],0)=="accounts-rpc" {p:[1]PaRequest;if n<1 || !pa_request_read(cast(string)input[0..<n],p[..]) {return 2;}v:[1]PaView;_:=pa_copy(v[0].host[..],args_value(args[..],"--host",""));v[0].method=p[0].method;v[0].nm=p[0].nm;v[0].command=p[0].command;v[0].nc=p[0].nc;v[0].n=1;a:=v[0].accounts[0..<1];a[0].ni=pa_copy(a[0].id[..],"system");a[0].ne=pa_copy(a[0].email[..],"fixture@example.com");a[0].ns=pa_copy(a[0].state[..],"connected");a[0].selected=true;_:=pa_usage("{\"seven_day\":{\"utilization\":35}}",a);out:[8192]u8;n=pa_view_write(v[..],out[..]);if n<1 {return 2;}print("%\n",cast(string)out[0..<n]);return 0;}
   if n<1 || !ea_read(cast(string)input[0..<n],q[..]) || ea_right(cast(string)q[0].method[0..<q[0].nm])!=0 {return 2;}
   host:=args_value(args[..],"--host","");if !ea_id(host,64) {return 2;}

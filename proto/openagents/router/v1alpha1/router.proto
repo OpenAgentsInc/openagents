@@ -12,10 +12,11 @@ import "openagents/options/v1alpha1/json.proto";
 // coax/lib/agent/router/wire.coax. Goldens: proto/coder/router-v1alpha1.json,
 // checked by coax/lib/agent/router/wire-goldens.coax.
 //
-// Alpha: a prototype for shaping the router from the command line. No
-// product surface sends or stores these yet. The environment runtime's
-// DescribeStation will carry Station, and coder.route.v3 will be a
-// projection of RouteDecision, each under its own schema id when it ships.
+// Alpha: the iPhone app's chat sends a RouteRequest to POST
+// /api/chat/route/v1 and shows the RouteDecision it gets back. A connected
+// computer's resident service answers DescribeStation with a StationReport
+// (GET /api/chat/environment/station/v1). coder.route.v3 will be a
+// projection of RouteDecision under its own schema id when it ships.
 //
 // No credential, token, path or file content is a field here. A probability
 // is an integer out of 1,000, because the JSON mapper takes no doubles.
@@ -139,4 +140,22 @@ message RouteDecision {
   int32 latency_ms = 16 [json_name = "latency_ms"];
   string error = 17 [json_name = "error"];                    // when not ok: no_task, no_station, bad_request, refused_by_door
   string needs = 18 [json_name = "needs"];                    // what the task needs of a computer: apple, gpu, this_computer; empty: nothing
+}
+
+// Asks a connected computer's resident service for its own report: the
+// params of the environment runtime's DescribeStation call. It reads
+// nothing but this computer, and only what Station holds.
+message DescribeStation {
+  option (openagents.options.v1alpha1.json) = "schema=openagents.router.describe.v1alpha1";
+  bool refresh = 1 [json_name = "refresh"];                   // read the computer again, not its last report
+}
+
+// A connected computer's answer to DescribeStation: its host key and what
+// it reports about itself. station_id is from its host name; the app names
+// the computer as you connected it.
+message StationReport {
+  option (openagents.options.v1alpha1.json) = "schema=openagents.router.station.v1alpha1";
+  option (openagents.options.v1alpha1.json_int64_numbers) = true;
+  string host_pubkey = 1 [json_name = "host_pubkey"];         // 64 hex
+  Station station = 2 [json_name = "station"];
 }

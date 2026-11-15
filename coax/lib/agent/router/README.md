@@ -140,7 +140,7 @@ what runs differs from the answer.
 | --- | --- |
 | `wire.coax` | The one codec of `openagents.router.v1alpha1` ([schema](../../../../proto/openagents/router/v1alpha1/router.proto)): reads and writes a `RouteRequest`, writes a `RouteDecision`, through the generated JSON mapper. |
 | `policy.coax` | Eligibility and the pick. Pure. |
-| `station.coax` | This computer's report: what each fact is read from, pure parsers, and the collector. It reads no token, no Keychain item and no process arguments. |
+| `station.coax` | This computer's report: what each fact is read from, pure parsers, and the collector. It reads no token, no Keychain item and no process arguments. A computer's resident service answers `DescribeStation` with it (`coder/tui/host-station.coax`); `wire.coax` writes and reads the `StationReport`. |
 | `ask.coax` | The request for the decision model, and reading its answer. |
 | `mock.coax` | The stand-in for Google's Decisions API, in process. It answers by script and seed, and refuses what Google refuses about a request's shape. |
 | `decide.coax` | One decision end to end: `rtr_begin`, a door, `rtr_finish`. |
@@ -206,6 +206,5 @@ establish calibration.
 In the specification's order: another account when one runs out; Fable for
 very hard tasks where an account offers it; `#authority` and its mutation
 pass on `policy.coax`; in a station report, how much of each account's quota
-is used, whether someone is using the computer, and agent versions; sending
-reports between computers (`DescribeStation`); the daily allowance;
+is used, whether someone is using the computer, and agent versions; the daily allowance;
 `coder.route.v3`; starting the agent.

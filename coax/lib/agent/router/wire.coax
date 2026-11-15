@@ -375,6 +375,63 @@ rtr_request_write :: (q: [] RtrRequest, out: [] u8) -> int {
   return ifx v.error != 0 then 0 else v.wire.count;
 }
 
+// ---- a computer's own report (DescribeStation)
+
+RTR_REPORT_MAX :: 16384;   // a station report's JSON, and its wire
+
+// Row i of q as a StationReport from host (64 hex): its length in out, or 0
+// when it doesn't fit or a string is not UTF-8.
+rtr_report_write :: (q: [] RtrRequest, i: int, host: string, out: [] u8) -> int {
+  if i < 0 || i >= RTR_STATIONS { return 0; }
+  x: [RTR_REPORT_MAX] u8; y: [RTR_REPORT_MAX] u8;
+  sa: [RTR_STATION_MAX] u8; sb: [RTR_STATION_MAX] u8; ca: [1024] u8; cb: [1024] u8;
+  s := rtr_station_message(q, i, sa[..], sb[..], ca[..], cb[..]);
+  if s.error != 0 { return 0; }
+  m := RTP_StationReport_new();
+  m = RTP_StationReport_set_host_pubkey(m, host, x[..]);
+  m = RTP_StationReport_set_station(m, s, y[..]);
+  v := RTP_StationReport_to_json(m, out);
+  return ifx v.error != 0 then 0 else v.wire.count;
+}
+
+// A report's JSON into row i of q, and its host key into host (64 bytes).
+// False for a body that is not a StationReport, a host key that is not 64
+// lowercase hex, no station, or one rtr_station_read refuses. wire must not
+// overlap text, and the row's strings borrow it.
+rtr_report_read :: (text: string, nodes: [] JvNode, wire: [] u8, q: [] RtrRequest, i: int, host: [] u8) -> bool {
+  if i < 0 || i >= RTR_STATIONS || host.count < 64 { return false; }
+  m := RTP_StationReport_from_json(text, nodes, wire);
+  if m.error != 0 { return false; }
+  h := RTP_StationReport_get_host_pubkey(m); s := RTP_StationReport_get_station(m);
+  if h.value.count != 64 || !s.present { return false; }
+  for c: h.value { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  for c, k: h.value { host[k] = c; }
+  return rtr_station_read(s.value, q, i);
+}
+
+// DescribeStation's params: refresh reads the computer again.
+rtr_describe_write :: (refresh: bool, out: [] u8) -> int {
+  x: [64] u8;
+  m := RTP_DescribeStation_new();
+  m = RTP_DescribeStation_set_refresh(m, refresh, x[..]);
+  v := RTP_DescribeStation_to_json(m, out);
+  return ifx v.error != 0 then 0 else v.wire.count;
+}
+
+// -1 for a body that is not DescribeStation's params exactly as
+// rtr_describe_write writes them (no other field, no other order); 1 to read
+// the computer again, 0 for its last report.
+rtr_describe_read :: (text: string) -> int {
+  if text.count > 256 { return -1; }
+  nodes: [16] JvNode; wire: [256] u8; again: [256] u8;
+  m := RTP_DescribeStation_from_json(text, nodes[..], wire[..]);
+  if m.error != 0 { return -1; }
+  r := RTP_DescribeStation_get_refresh(m);
+  n := rtr_describe_write(r.value, again[..]);
+  if n < 1 || cast(string) again[0..<n] != text { return -1; }
+  return ifx r.value then 1 else 0;
+}
+
 // "coderos", or "coderos/codex" for an agent on a computer.
 rtr_blocked_id :: (b: RtrBlocked, out: [] u8) -> string {
   n := 0;

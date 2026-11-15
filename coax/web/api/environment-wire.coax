@@ -16,4 +16,13 @@ ea_proxy_named :: (host:string,grant:string,epoch:string,relay:string,keyfile:st
   if r.started!=0 {return -1000-r.started;}if r.timed_out {return -3000;}if r.status!=0 {return -2000-r.status;}if r.out_n<1 {return -4000;}return r.out_n;
 }
 
+// A computer's own report for the delegation router (coder/tui/host-station.coax): the broker
+// builds DescribeStation itself and waits at most 8 seconds for the reply, so an offline
+// computer costs a route little.
+st_proxy :: (host:string,grant:string,epoch:string,relay:string,keyfile:string,refresh:bool,program:string,out:[]u8)->int #export_c #effects(all) {
+  if !ea_id(host,64) || !ea_id(grant,64) {return -1;}
+  args:=[15]string.[program,"station-rpc","--host",host,"--grant",grant,"--epoch",epoch,"--relay",relay,"--browser-key",keyfile,"--wait-ms","8000","--refresh"];
+  error:[1024]u8;r:=proc_run(args[0..<ifx refresh then 15 else 14],15000,out,error[..]);
+  if r.started!=0 {return -1000-r.started;}if r.timed_out {return -3000;}if r.status!=0 {return -2000-r.status;}if r.out_n<1 {return -4000;}return r.out_n;
+}
 pa_list_body :: (refresh:bool,out:[]u8)->int #export_c #effects(all) {q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ListAccounts");q[0].refresh=refresh;return pa_request_write(q[..],out);}
