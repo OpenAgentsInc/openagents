@@ -79,6 +79,12 @@
   for rhbt_bad:[4]int.[-9223372036854775807-1,-1,14,9223372036854775807] {
     #assert render_host_use_count(2,rhbt_bad)==-1 && !render_host_use(2,rhbt_bad,0).valid && !render_host_pipeline(2,rhbt_bad).valid;
   }
+  // entries past the media entry name pass ids that exist in the enum (shadow_clear and later): refused in every profile
+  for rhbt_pr:0..<18 {
+    for rhbt_e:14..<18 {
+      #assert render_catalog_use_count(rhbt_pr,cast(RenderPassId) rhbt_e)==-1 && render_host_use_count(rhbt_pr,rhbt_e)==-1 && !render_host_use(rhbt_pr,rhbt_e,0).valid && !render_host_pipeline(rhbt_pr,rhbt_e).valid;
+    }
+  }
   #assert render_host_binding_count(2,-1)==-1 && render_host_binding_count(2,3)==-1;
 }
 #test "host media projection retains an attached nonpost depth and refuses absent operations" {

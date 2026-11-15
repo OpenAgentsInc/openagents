@@ -26,7 +26,7 @@ render_host_binding :: (rhbd_profile:int,rhbd_set:int,rhbd_resource:int)->Render
   return RenderHostBinding.{valid=true,binding=rhbd_binding,source=render_binding_source(rhbd_profile,rhbd_set,rhbd_resource)};
 }
 render_host_use_count :: (rhbd_profile:int,rhbd_entry:int)->int #effects(all) {
-  if rhbd_entry<0 || rhbd_entry>13 {return -1;}
+  if rhbd_entry<0 || rhbd_entry>13 {return -1;}   // mutant: equivalent (the catalog holds no pass id past 13, so entry 14 and later give a count of -1 anyway; checked for every profile in host-bindings-checks.coax)
   if rhbd_entry==13 {return ifx render_catalog(rhbd_profile).features.media then render_media_use_count() else -1;}
   return render_catalog_use_count(rhbd_profile,cast(RenderPassId)rhbd_entry);
 }
