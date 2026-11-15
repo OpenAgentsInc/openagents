@@ -18,7 +18,7 @@ rs_flag :: (nodes:[]RsNode,index:int,value:bool)->bool #effects(all) {return ind
 rs_name :: (s:string)->bool #effects(all) {if s.count<1 || s.count>48 {return false;}for i:0..<s.count {c:=s[i];if !((c>='a'&&c<='z')||(c>='A'&&c<='Z')||c=='_'||(i>0&&c>='0'&&c<='9')) {return false;}}return true;}
 // A call name: a function name, or a dotted built-in recipient such as
 // browser.search. functions.NAME replays as itself; a dotted name verbatim.
-rs_recipient :: (s:string)->bool #effects(all) {if s.count<1 || s.count>64 {return false;}begin:=0;for i:0..<s.count+1 {if i==s.count || s[i]=='.' {if !rs_name(s[begin..<i]) {return false;}begin=i+1;}}return true;}
+rs_recipient :: (s:string)->bool #effects(all) {if s.count<1 || s.count>64 {return false;}begin:=0;for i:0..<s.count+1 {if i==s.count || s[i]=='.' {if !rs_name(s[begin..<i]) {return false;}begin=i+1;}}return true;}  // mutant: equivalent (for a loop from 1: index 0 matters only when s[0] is '.', and then the next segment starts with '.', which rs_name refuses too)
 rs_call_name :: (recipient:string)->string #effects(all) {if recipient.count>10 && recipient[0..<10]=="functions." {return recipient[10..<recipient.count];}return recipient;}
 rs_dotted :: (s:string)->bool #effects(all) {for c:s {if c=='.' {return true;}}return false;}
 rs_zero :: (s:string)->bool #effects(all) {for c:s {if c=='e' || c=='E' {break;}if c>='1' && c<='9' {return false;}}return s.count>0;}
@@ -39,8 +39,26 @@ rs_null :: (nodes:[]RsNode,index:int)->bool #effects(all) {return index<0 || nod
 }
 // Exact decimal equality; input has already passed the JSON number grammar.
 rs_one :: (s:string)->bool #effects(all) {
-    if s.count<1 || s[0]=='-' {return false;}whole:=0;digits:=0;one:= -1;fraction:=false;at:=0;
+    if s.count<1 || s[0]=='-' {return false;}whole:=0;digits:=0;one:= -1;fraction:=false;at:=0;  // mutant: equivalent (for '-' as '.': a leading '.' is neither 0 nor 1, so the digit loop refuses it anyway)
     while at<s.count && s[at]!='e' && s[at]!='E' {c:=s[at];if c=='.' {fraction=true;}else {if !fraction {whole+=1;}if c!='0' {if c!='1' || one>=0 {return false;}one=digits;}digits+=1;}at+=1;}
-    exponent:=0;sign:=1;if at<s.count {at+=1;if s[at]=='+' || s[at]=='-' {if s[at]=='-' {sign= -1;}at+=1;}while at<s.count {exponent=exponent*10+cast(int)s[at]-48;if exponent>100000 {return false;}at+=1;}}
+    exponent:=0;sign:=1;if at<s.count {at+=1;if s[at]=='+' || s[at]=='-' {if s[at]=='-' {sign= -1;}at+=1;}while at<s.count {exponent=exponent*10+cast(int)s[at]-48;if exponent>100000 {return false;}at+=1;}}  // mutant: equivalent (the number sits in a body of at most 65536 bytes, so its digits cannot balance an exponent near 100000: both bounds give false)
     return one>=0 && whole-1-one+sign*exponent==0;
+}
+#test "integers, names and recipients at their bounds" {
+    out:[64]u8;w:=[1]RsWriter.[RsWriter.{data=out[..]}];
+    rs_int(w[..],0);#assert w[0].at==1 && out[0]=='0';
+    w[0].at=0;rs_int(w[..],9007199254740991);#assert cast(string)out[0..<w[0].at]=="9007199254740991";
+    w[0].at=0;rs_int(w[..],9007199254740992);#assert w[0].at== -1;
+    w[0].at=0;rs_int(w[..],-1);#assert w[0].at== -1;
+    name:[49]u8;for i:0..<49 {name[i]='a';}
+    #assert rs_name(cast(string)name[0..<48]) && !rs_name(cast(string)name[..]) && rs_name("a") && rs_name("z") && rs_name("A") && rs_name("Z") && rs_name("a0") && rs_name("a1") && rs_name("a9");
+    #assert !rs_name("{") && !rs_name("[") && !rs_name("@") && !rs_name("`") && !rs_name("a/") && !rs_name("a:") && !rs_name("0");
+    long:[65]u8;for i:0..<65 {long[i]='a';}long[32]='.';
+    #assert rs_recipient(cast(string)long[0..<64]) && !rs_recipient(cast(string)long[..]) && !rs_recipient("9a") && rs_recipient("a");
+    #assert rs_call_name("functions.x")=="x";
+}
+#test "zero and one: exponents, signs and repeated digits" {
+    #assert rs_zero("0E5") && !rs_zero("9") && rs_zero("0") && !rs_zero("") && rs_zero("0:");
+    #assert !rs_one("-1") && !rs_one("") && rs_one("1E0") && !rs_one("11") && !rs_one("101") && rs_one("1e+0");
+    #assert rs_one("0.0000000001e10") && !rs_one("1e200000");
 }
