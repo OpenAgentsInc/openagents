@@ -22,7 +22,11 @@
 }
 // Existing asset identity, projected as the pack-gate ABI's big-endian bytes.
 engine_core_digest :: (content:string,out:[]u8)->bool #export_c #effects(all) {
- if out.count!=32 {return false;}id:=asset_id(content);for i:0..<8 {if !cb_store_be32(out,i*4,id.words[i]) {return false;}}return true;
+ if out.count!=32 {return false;}id:=asset_id(content);
+ for i:0..<8 {
+  if !cb_store_be32(out,i*4,id.words[i]) {return false;} // mutant: equivalent (false -> true: capacity is exactly 32 and each four-byte write starts at 0,4,...,28; the failure branch cannot run)
+ }
+ return true;
 }
 // The whole size of the pack image a VPK3 file holds, from the file's bytes: 0 when the file is
 // not a VPK3 file (a host then reads it as the pack itself), -1 when it is one that can't be used.

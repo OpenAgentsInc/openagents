@@ -1,5 +1,6 @@
 // Installed producer catalogue. The tool and SDK consume these same records.
-NWR_REALMS :: [5]string.["splice-bots","everglade","everglade2","myrealm","microduck"];
+NWR_COUNT :: 5;
+NWR_REALMS :: [NWR_COUNT]string.["splice-bots","everglade","everglade2","myrealm","microduck"];
 NwProfile :: struct {realm:string;framework:string;title:string;page:string;pack:string;font_dir:string;reading:string;heading:string;title_scale:f32=1;style:string;clock:string;variant:string;model:bool;}
 #test "Microduck is a streamed model viewer with its own installed producer" {
  p:=nwr_profile("microduck");#assert p.realm=="microduck" && p.title=="Microduck" && p.framework=="MicroduckRuntime" && p.pack!="" && p.model && p.page=="/microduck" && !nwr_profile("splice-bots").model;

@@ -1,0 +1,13 @@
+// Apple SDK effects for link-check.coax, like the shared suites-host driver.
+// The pure audit and producer catalogue stay in its checked parent module.
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("link-check /path/to/OpenAgents.app");return 2;}
+  root:=args_at(a[..],0);p:[4][4096]u8;out:[1048576]u8;err:[65536]u8;
+  binary:=fs_join(root,"OpenAgents",p[0][..]);args:=[4]string.["xcrun","dyld_info","-exports",binary];r:=proc_run(args[..],30000,out[..],err[..]);
+  if r.started!=0 || r.status!=0 || r.timed_out || r.out_n>=out.count {tool_errln("Could not read the executable's exports");return 1;}exports:=cast(string)out[0..<r.out_n];bad:=0;
+  for name:nwl_names() {
+    folder:[256]u8;n:=0;for c:name {folder[n]=c;n+=1;}for c:".framework" {folder[n]=c;n+=1;}
+    frameworks:=fs_join(root,"Frameworks",p[1][..]);dir:=fs_join(frameworks,cast(string)folder[0..<n],p[2][..]);file:=fs_join(dir,name,p[3][..]);imports:[65536]u8;call:=[4]string.["xcrun","dyld_info","-imports",file];q:=proc_run(call[..],30000,imports[..],err[..]);
+    if q.started!=0 || q.status!=0 || q.timed_out || q.out_n>=imports.count {tool_errln(name);return 1;}missing:=nwl_missing(cast(string)imports[0..<q.out_n],exports);bad+=missing;print("native links: %, % missing\n",name,missing);
+  }return ifx bad==0 then 0 else 1;
+}

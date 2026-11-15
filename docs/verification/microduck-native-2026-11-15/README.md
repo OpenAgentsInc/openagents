@@ -63,6 +63,24 @@ and robot control are outside its implemented scope.
   the same model using the hardware Apple Metal 3 WebGPU adapter. Existing
   web golden checks passed without changing their expected receipts.
 
+The full Coax suites also passed: viewer **98 checks**, native world host
+**109**, engine host core **240**, archive audit **12**. Their changed
+mutation checks ended with **zero survivors**: viewer **134 mutants / 130
+killed / four equivalents**; native world host **75/75**; engine host core
+**11 / 10 / one equivalent**; archive audit **7/7**. The installed-world
+admission's separate **39/39** result above remains unchanged.
+
+The initial push's suite job exceeded the hook's 120-second wait. Its report
+exposed a missing assertion for pinch cancelling an active drag, an impossible
+failure branch after the digest's exact 32-byte capacity check, and the SDK
+entry point being treated as compile-time code. The follow-up supplies the
+active-drag fixture, documents the unreachable branch with its bounds proof,
+and separates the archive tool's SDK driver using the existing `suites-host`
+pattern. Its checked catalogue projection now shares the installed profiles.
+Only the failed checks were repeated; the actual accepted archive again
+passed all five producer link audits. These qualification changes leave
+1094's installed runtime and released portable resources unchanged.
+
 Home is a UIKit test-window capture. The model images are actual native Metal
 readbacks at 430 × 900; the UIKit floating menu is outside those readbacks.
 They do not claim physical-iPhone acceptance or accessibility/power measurements.

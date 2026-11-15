@@ -37,7 +37,7 @@ Microduck :: struct {
 }
 
 #test "pinch zoom uses the shared orbit radius and rejects invalid gesture scales" {
- s:[1]Microduck;#assert md_pinch(s[..],2) && s[0].zoom==0.37f32 && !s[0].drag;
+ s:[1]Microduck;s[0].drag=true;#assert md_pinch(s[..],2) && s[0].zoom==0.37f32 && !s[0].drag;
  #assert md_pinch(s[..],1000) && s[0].zoom==0.28f32 && md_pinch(s[..],0.001) && s[0].zoom==1.6f32;
  #assert !md_pinch(s[..],0) && !md_pinch(s[..],-1) && s[0].zoom==1.6f32;
 }

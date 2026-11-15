@@ -4,6 +4,14 @@
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/sys/proc.coax";
+#load "profiles.coax";
+#test "the archive audit uses every installed producer's shared framework name" {
+ names:=nwl_names();#assert names.count==5;
+ #assert names[0]=="SpliceBotsRuntime" && names[1]=="EvergladeRuntime" && names[2]=="EvergladeForestRuntime" && names[3]=="MadeRealmRuntime" && names[4]=="MicroduckRuntime";
+}
+nwl_names :: ()->[NWR_COUNT]string {
+ names:[NWR_COUNT]string;for realm,i:NWR_REALMS {names[i]=nwr_profile(realm).framework;}return names;
+}
 #test "Mach-O names match whole tokens, and a missing archive export fails" {
   #assert nwl_token("  0x123 _coaxial_http\n", "_coaxial_http");
   #assert !nwl_token("  0x123 _coaxial_http_bounded\n", "_coaxial_http");
@@ -20,14 +28,4 @@ nwl_missing :: (imports:string,exports:string)->int {
     i=e+1;
   }return bad;
 }
-tool_main :: ()->int #export_c #effects(all) {
-  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("link-check /path/to/OpenAgents.app");return 2;}
-  root:=args_at(a[..],0);p:[4][4096]u8;out:[1048576]u8;err:[65536]u8;
-  binary:=fs_join(root,"OpenAgents",p[0][..]);args:=[4]string.["xcrun","dyld_info","-exports",binary];r:=proc_run(args[..],30000,out[..],err[..]);
-  if r.started!=0 || r.status!=0 || r.timed_out || r.out_n>=out.count {tool_errln("Could not read the executable's exports");return 1;}exports:=cast(string)out[0..<r.out_n];bad:=0;
-  for name:[5]string.["SpliceBotsRuntime","EvergladeRuntime","EvergladeForestRuntime","MadeRealmRuntime","MicroduckRuntime"] {
-    folder:[256]u8;n:=0;for c:name {folder[n]=c;n+=1;}for c:".framework" {folder[n]=c;n+=1;}
-    frameworks:=fs_join(root,"Frameworks",p[1][..]);dir:=fs_join(frameworks,cast(string)folder[0..<n],p[2][..]);file:=fs_join(dir,name,p[3][..]);imports:[65536]u8;call:=[4]string.["xcrun","dyld_info","-imports",file];q:=proc_run(call[..],30000,imports[..],err[..]);
-    if q.started!=0 || q.status!=0 || q.timed_out || q.out_n>=imports.count {tool_errln(name);return 1;}missing:=nwl_missing(cast(string)imports[0..<q.out_n],exports);bad+=missing;print("native links: %, % missing\n",name,missing);
-  }return ifx bad==0 then 0 else 1;
-}
+#load "link-check-host.coax";
