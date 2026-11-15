@@ -46,6 +46,15 @@ ctl_measure :: (id: int, a: [] Atlas) -> TextMeasure { return ifx id == UISKIN_T
  #assert h==s.control_h && sh[0].nh==1 && sh[0].hits[0].w==320;
  #assert sh[0].over[0].x+sh[0].over[0].w<sh[0].over[1].x && sh[0].under[0].id==13;
 }
+#test "account row and removable file tile keep their labels and distinct targets" {
+ st:[1]CtlStore;a:[1]Atlas;text_test_atlas(a[..]);s:=zeron_skin();m:=measure_font(a[..]);sh:=[1]Sheet.[ctl_sheet(st[..])];
+ h:=account_row(sh[..],m,s,0,0,240,"A","Personal","Example account",true,25,10,0,0);
+ #assert h>=s.control_h && sh[0].nh==1 && sh[0].hits[0].w==240;
+ #assert sh[0].over[0].text=="Personal" && sh[0].over[2].text=="A";
+ sh[0]=ctl_sheet(st[..]);h=file_tile(sh[..],m,s,0,0,132,"MD","Project guide",11,3);
+ #assert h>0 && sh[0].nh==1 && sh[0].hits[0].a==3 && sh[0].hits[0].w>=s.control_h;
+ #assert sh[0].hits[0].x+sh[0].hits[0].w<=132 && sh[0].hits[0].y>=0;
+}
 
 #test "a button is its label and the padding either side; its hit covers it; primary reads on the accent" {
   st: [1] CtlStore; a: [1] Atlas; text_test_atlas(a[..]);

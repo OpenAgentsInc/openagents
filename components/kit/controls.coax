@@ -142,6 +142,38 @@ picker_row :: (sh:[]Sheet,m:TextMeasure,s:UiSkin,x:f32,y:f32,w:f32,title:string,
  sheet_icon(sh,disclosure,x+w-pad-mark,ty,mark,s.faint);sheet_hit(sh,hit_kind,hit_a,hit_b,x,y,w,s.control_h);return s.control_h;
 }
 
+// Account selection: a circular initial, two lines of identity and a check.
+account_row :: (sh:[]Sheet,m:TextMeasure,s:UiSkin,x:f32,y:f32,w:f32,initial:string,title:string,detail:string,selected:bool,check:int,hit_kind:int,hit_a:int,hit_b:int)->f32 {
+ pad:=s.control_pad;avatar:=s.control_h-s.border*2;mark:=s.body.line;tx:=x+pad+avatar+s.space;
+ copy_w:=w-2*pad-avatar-2*s.space-mark;
+ h:=control_copy(sh,m,s.body,s.ink,tx,y+pad,copy_w,title);
+ h+=control_copy(sh,m,s.small,s.muted,tx,y+pad+h,copy_w,detail);
+ h+=2*pad;if h<avatar+2*pad {h=avatar+2*pad;}
+ ax:=x+pad;ay:=y+(h-avatar)/2;sheet_fill(sh,ax,ay,avatar,avatar,avatar/2,s.canvas);
+ iw:=measure_width(m,s.small.face,initial);_:=sheet_text(sh,m,-1,ax+(avatar-iw)/2,ay+(avatar-s.small.line)/2,s.small.line,s.small.face,s.ink,initial);
+ if selected {sheet_icon(sh,check,x+w-pad-mark,y+(h-mark)/2,mark,s.accent);}
+ sheet_hit(sh,hit_kind,hit_a,hit_b,x,y,w,h);return h;
+}
+// A square file tile with a separately reachable remove action. A caller owns
+// the file and handles the hit; the control does not delete anything itself.
+file_tile :: (sh:[]Sheet,m:TextMeasure,s:UiSkin,x:f32,y:f32,w:f32,kind:string,title:string,hit_kind:int,hit_a:int)->f32 {
+ h:=w;pad:=s.space;hit:=s.control_h;mark:=s.small.line;radius:=s.radius_control/2;
+ _:=sheet_box(sh,x,y,w,h,radius,s.border,s.surface,s.hairline);
+ bw:=measure_width(m,s.small.face,kind)+2*pad;
+ sheet_fill(sh,x+pad,y+pad,bw,s.small.line+pad,s.radius_control/2,s.sunk);
+ _:=sheet_text(sh,m,-1,x+2*pad,y+pad+pad/2,s.small.line,s.small.face,s.ink,kind);
+ cx:=x+w-hit;cy:=y;icon_size:=mark;ix:=cx+(hit-icon_size)/2;iy:=cy+(hit-icon_size)/2;
+ sheet_fill(sh,ix,iy,icon_size,icon_size,icon_size/2,s.ink);
+ cross:=icon_size/2;dx:=ix+(icon_size-cross)/2;dy:=iy+(icon_size-cross)/2;
+ sh[0].nu=prim_line(sh[0].under,sh[0].nu,dx,dy,dx+cross,dy+cross,s.border,s.canvas);
+ sh[0].nu=prim_line(sh[0].under,sh[0].nu,dx+cross,dy,dx,dy+cross,s.border,s.canvas);
+ sheet_hit(sh,hit_kind,hit_a,0,cx,cy,hit,hit);
+ lines:[2]TextLine;runs:[1]MdRun;faces:=TextFaces.{plain=s.body.face,bold=s.body.face,code=s.body.face};
+ n:=text_wrap(m,faces,title,runs[0..<0],ifx w>2*pad then w-2*pad else 1.0f32,lines[..]);
+ for i:0..<n {_:=sheet_text(sh,m,-1,x+pad,y+h-pad-cast(f32)(n-i)*s.body.line,s.body.line,s.body.face,s.ink,cast(string)title[lines[i].from..<lines[i].to]);}
+ return h;
+}
+
 // ---------------------------------------------------------------- tabs
 
 // A row of tabs, one active (hit b = its index). Returns the row's width.

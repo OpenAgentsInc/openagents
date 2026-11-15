@@ -36,6 +36,7 @@ GL_TERM_ROW :: 18.0;        // a terminal row on the page
 
 // The hits the page's controls leave: a = the skin, b = which one.
 GL_HIT_BUTTON :: 10; GL_HIT_TOGGLE :: 11; GL_HIT_SLIDER :: 12; GL_HIT_TAB :: 13; GL_HIT_ROW :: 14;
+GL_HIT_REFERENCE :: 42;
 
 GL_MD :: "Markdown is **one component**: `kit/markdown.coax` paints a [parsed document](components/core/markdown.coax) in *any* skin.\n\n- [x] parsed once, in `core/`\n- [ ] wrapped once, in `layout/`\n  - measured in pixels or in cells\n\n> The component asks its skin for a panel. It doesn't draw one.\n\n```rust\nfn paint(sheet: &mut Sheet, skin: &Skin) {\n    sheet.fill(skin.surface); // a role\n}\n```\n\n| Target | Measure | Backend |\n|:--|:-:|--:|\n| the web | pixels | `gpu.coax` |\n| a terminal | cells | `terminal.coax` |";
 GL_ABOUT :: [4] string.["Zeron Dark: the chat's look.", "Iron and gold: Everglade and the Workshop.", "The Metaverse's instruments: grey lines, cyan.", "Cells: the same components in a terminal."];
@@ -48,6 +49,7 @@ GlCard :: struct { toggles: [2] bool; slider: f32; tab: int; row: int; }
 GalleryState :: struct {
   ready: bool; time: f32; monochrome:bool;
   motion:[1]GlMotion;section:int;touch:bool;touch_scroll:bool;touch_x:f32;touch_y:f32;touch_start:f32;touch_hit:int;
+  reference_file_removed:bool;reference_account:int;
   width: f32; height: f32; d: f32;
   atlas: [1] Atlas;
   scratch: [9800] f32; sbytes: [64] u8;     // the host's side of the atlas (coax/web/gpui.js)
@@ -297,6 +299,20 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
     destructive:=ref;destructive.ink=ref.danger;destructive.muted=ref.danger;
     y+=icon_detail_row(sh[..],m,destructive,x,y,w-2*gutter,ICON_DANGER,"Delete","",-1,GL_HIT_BUTTON,0,2);
     if card>=0 {g[0].under[card].h=y-top;}y+=32;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Account rows");y+=26;
+    card=sheet_box(sh[..],x,y,w-2*gutter,0,ref.radius,0,ref.surface,ref.surface);top=y;
+    y+=account_row(sh[..],m,ref,x,y,w-2*gutter,"A","Personal","Example account",g[0].reference_account==0,ICON_CHECK,GL_HIT_REFERENCE,0,1);
+    sheet_rule(sh[..],x+ref.control_pad,y,w-2*gutter-2*ref.control_pad,1,ref.hairline);
+    y+=account_row(sh[..],m,ref,x,y,w-2*gutter,"B","Work","Second account",g[0].reference_account==1,ICON_CHECK,GL_HIT_REFERENCE,0,2);
+    if card>=0 {g[0].under[card].h=y-top;}y+=24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"File tile");y+=26;
+    if g[0].reference_file_removed {_:=button(sh[..],m,ref,x,y,"Restore file",UISKIN_REST,GL_HIT_REFERENCE,0);y+=60;}
+    else {y+=file_tile(sh[..],m,ref,x,y,132,"MD","Project guide",GL_HIT_REFERENCE,0)+24;}
+    _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Command snippet");y+=26;
+    command:="claude rc";cw:=measure_width(m,ref.code.face,command)+2*ref.control_pad+ref.body.line+ref.space;
+    sheet_fill(sh[..],x,y,cw,ref.control_h,ref.radius_control,ref.surface);
+    _:=sheet_text(sh[..],m,-1,x+ref.control_pad,y+(ref.control_h-ref.code.line)/2,ref.code.line,ref.code.face,ref.ink,command);
+    sheet_icon(sh[..],ICON_COPY,x+cw-ref.control_pad-ref.body.line,y+(ref.control_h-ref.body.line)/2,ref.body.line,ref.muted);y+=68;
     _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Atom catalog");y+=34;
     _:=sheet_text(sh[..],m,-1,x,y,ref.small.line,ref.small.face,ref.muted,"Text");y+=24;
     _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.ink,"Primary");
@@ -439,6 +455,7 @@ gl_pointer :: (g: [] GalleryState, x: f32, y: f32, phase: int) -> bool {
   g[0].hot_kind = -1; g[0].cursor = 0;
   if k < 0 { return false; }
   hit := g[0].hits[k];
+  if hit.kind==GL_HIT_REFERENCE {g[0].cursor=1;if phase==0 {if hit.b==0 {g[0].reference_file_removed = !g[0].reference_file_removed;}else {g[0].reference_account=hit.b-1;}}return true;}
   if hit.kind==GL_HIT_MOTION || hit.kind==GL_HIT_SECTION {
     g[0].cursor=1;if phase==0 {if hit.kind==GL_HIT_MOTION {gl_motion_press(g[0].motion[..],hit.b);}else {g[0].section=hit.b;g[0].scroll=0;}}return true;
   }
@@ -596,6 +613,17 @@ coaxial_components_cell_ready :: (g: [] GalleryState, cell: int) #export_c #effe
  names:=[6]string.["Screen header","Sheet header","Settings picker","Settings rows","Project and session rows","Action menu"];
  for name:names {found:=false;for i:0..<g[0].no {if g[0].over[i].text==name {found=true;}}#assert found;}
  #assert g[0].nu<GL_UNDER && g[0].no<GL_OVER && g[0].nh<GL_HITS;
+}
+#test "reference file tile can be removed and restored" #steps 400000000 {
+ g:[1]GalleryState;o:[1]GlOut;u:[4]f32;gl_test_atlas(g[0].atlas[..]);
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);g[0].section=5;
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);
+ h:=gl_test_hit(g[..],GL_HIT_REFERENCE,0,0);#assert h.w>=44 && !g[0].reference_file_removed;
+ g[0].scroll=h.y-100;#assert gl_pointer(g[..],h.x+2,102,0) && g[0].reference_file_removed;
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);h=gl_test_hit(g[..],GL_HIT_REFERENCE,0,0);
+ g[0].scroll=h.y-100;#assert gl_pointer(g[..],h.x+2,102,0) && !g[0].reference_file_removed;
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);h=gl_test_hit(g[..],GL_HIT_REFERENCE,0,2);
+ g[0].scroll=h.y-100;#assert gl_pointer(g[..],h.x+2,102,0) && g[0].reference_account==1;
 }
 
 // A fixed atlas: every glyph 8 wide, the monospace faces 7.
