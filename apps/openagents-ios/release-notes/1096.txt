@@ -1,0 +1,1 @@
+The Components gallery now has native Liquid Glass on its top buttons on iOS 26 and later. Open Settings, then Components to see it.
