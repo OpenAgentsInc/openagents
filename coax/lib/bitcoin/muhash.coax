@@ -84,6 +84,8 @@ mh_from_int :: (i: u8) -> MuHash3072 #effects(all) {
   b: [4] u8;
   #assert mh_shown_is(mh_unhex("09af", b[..]), "af09") && !mh_shown_is(b[0..<2], "09af") && !mh_shown_is(b[0..<2], "af0");
   #assert mh_hex_is(b[0..<2], "09af") && !mh_hex_is(b[0..<2], "af09") && !mh_hex_is(b[0..<2], "09a");
+  // Only the first digit pair differs: the first comparison counts too.
+  #assert !mh_shown_is(b[0..<2], "ae09") && !mh_hex_is(b[0..<2], "08af");
   #assert mh_same(mh_small(3), mh_small(3)) && !mh_same(mh_small(3), mh_small(4));
   x := mh_small(3); x.limb[47] = 1;
   #assert !mh_same(x, mh_small(3));
@@ -103,6 +105,12 @@ mh_from_int :: (i: u8) -> MuHash3072 #effects(all) {
   e := [3] u64.[m, 2, 1];
   mh_mulnadd3(d[..], e[..], 3);
   #assert d[0] == 2 && d[1] == 9 && d[2] == 3;
+  // 2 * (2^128 - 1) + 2 = 2^129: the low half of d[1] * n plus the carry
+  // wraps, and that carry reaches c[2].
+  d = [3] u64.[2, 0, 0];
+  e = [3] u64.[m, m, 0];
+  mh_mulnadd3(d[..], e[..], 2);
+  #assert d[0] == 0 && d[1] == 0 && d[2] == 2;
   f := [3] u64.[0x8000000000000000, 1, 0];
   mh_muln2(f[..], 4);
   #assert f[0] == 0 && f[1] == 6;
@@ -120,6 +128,8 @@ mh_from_int :: (i: u8) -> MuHash3072 #effects(all) {
   #assert !mh_is_overflow(below);
   low := mh_top(); low.limb[20] = 0;
   #assert !mh_is_overflow(low);
+  second := mh_top(); second.limb[1] = 0;
+  #assert !mh_is_overflow(second);
   #assert mh_same(mh_full_reduce(p), mh_small(0));
   #assert mh_same(mh_full_reduce(mh_top()), mh_small(MH_DIFF - 1));
 }
@@ -138,6 +148,9 @@ mh_from_int :: (i: u8) -> MuHash3072 #effects(all) {
   // An input above the modulus still multiplies as its residue.
   #assert mh_same(mh_multiply(mh_top(), mh_small(1)), mh_small(MH_DIFF - 1));
   #assert mh_same(mh_multiply(mh_modulus(), mh_top()), mh_small(0));
+  // (2^3072 - 1)^2 = (1103717 - 1)^2 mod p. Its second reduction carries
+  // past 2^3072, so the last reduction runs.
+  #assert mh_same(mh_multiply(mh_top(), mh_top()), mh_small((MH_DIFF - 1) * (MH_DIFF - 1)));
 }
 #test "bytes round-trip little-endian" {
   b: [384] u8;
@@ -205,6 +218,12 @@ mh_from_int :: (i: u8) -> MuHash3072 #effects(all) {
   #assert muhash_finalize_vartime(a, out[..]) == MUHASH_OK && muhash_finalize_vartime(b, again[..]) == MUHASH_OK;
   for i: 0..<32 { #assert out[i] == again[i]; }
   #assert muhash_finalize_vartime(a, out[0..<31]) == MUHASH_CAPACITY;
+  // 2 / 2 is the empty set: a denominator that differs from 1 in limb 0
+  // only is still divided out.
+  two := MuHash3072.{numerator = mh_small(2), denominator = mh_small(2)};
+  #assert muhash_finalize_vartime(two, again[..]) == MUHASH_OK;
+  #assert muhash_finalize_vartime(muhash_new(), out[..]) == MUHASH_OK;
+  for i: 0..<32 { #assert out[i] == again[i]; }
 }
 #test "an element is SHA-256 then ChaCha20's keystream" {
   empty: [1] u8;
@@ -219,6 +238,10 @@ mh_from_int :: (i: u8) -> MuHash3072 #effects(all) {
 #test "the byte interface: insert, remove, finalize, and refusals" #steps 2000000000 {
   s: [768] u8; out: [32] u8; one: [32] u8; one[0] = 1;
   #assert muhash_new_bytes(s[..]) == MUHASH_OK && muhash_update_bytes_vartime(s[..], one[..], false) == MUHASH_OK;
+  // After one insert the state is FromInt(1).
+  want: [32] u8;
+  #assert muhash_finalize_bytes_vartime(s[..], out[..]) == MUHASH_OK && muhash_finalize_vartime(mh_from_int(1), want[..]) == MUHASH_OK;
+  for i: 0..<32 { #assert out[i] == want[i]; }
   #assert muhash_update_bytes_vartime(s[..], one[..], true) == MUHASH_OK;
   #assert muhash_finalize_bytes_vartime(s[..], out[..]) == MUHASH_OK;
   empty: [32] u8;
@@ -292,7 +315,7 @@ mh_overflows :: (a: [] u64) -> bool #effects(all) {
 // a - p in place, for an a at least p: add 1103717 and drop the carry out
 // of the top limb, which is 2^3072.
 mh_reduce :: (a: [] u64) #effects(all) {
-  c := [3] u64.[MH_DIFF, 0, 0];
+  c := [3] u64.[MH_DIFF, 0, 0];  // mutant: equivalent (c[2] is never read: mh_addnextract2 uses c[0] and c[1])
   for i: 0..<MH_LIMBS { a[i] = mh_addnextract2(c[..], a[i]); }
 }
 // book:end reduce
@@ -320,7 +343,7 @@ mh_mul_into :: (a: [] u64, b: [] u64, out: [] u64) #effects(all) {
   // The second reduction: what carried past limb 47, times 1103717, back in.
   mh_muln2(c[..], MH_DIFF);
   for j: 0..<MH_LIMBS { out[j] = mh_addnextract2(c[..], tmp[j]); }
-  #assert c[1] == 0 && (c[0] == 0 || c[0] == 1);
+  #assert c[1] == 0 && (c[0] == 0 || c[0] == 1);  // mutant: equivalent (c[1] and c[2] are always 0 here, so a mutant that only weakens this assert cannot fail)
   if mh_overflows(out) { mh_reduce(out); }
   if c[0] != 0 { mh_reduce(out); }
 }
@@ -352,26 +375,30 @@ mh_inverse :: (a: Num3072) -> Num3072 #effects(all) {
   for i: 0..<MH_LIMBS { p[i] = a.limb[i]; }
   for i: 0..<11 {
     for k: 0..<MH_LIMBS { p[48*(i+1) + k] = p[48*i + k]; }
-    mh_square_n_mul(p[48*(i+1)..<48*(i+2)], 1 << i, p[48*i..<48*(i+1)]);
+    mh_square_n_mul(mh_entry(p[..], i + 1), 1 << i, mh_entry(p[..], i));
   }
   r: Num3072;
   for k: 0..<MH_LIMBS { r.limb[k] = p[48*11 + k]; }
   x := r.limb[..];
-  mh_square_n_mul(x, 512, p[48*9..<48*10]);
-  mh_square_n_mul(x, 256, p[48*8..<48*9]);
-  mh_square_n_mul(x, 128, p[48*7..<48*8]);
-  mh_square_n_mul(x, 64, p[48*6..<48*7]);
-  mh_square_n_mul(x, 32, p[48*5..<48*6]);
-  mh_square_n_mul(x, 8, p[48*3..<48*4]);
-  mh_square_n_mul(x, 2, p[48*1..<48*2]);
-  mh_square_n_mul(x, 1, p[0..<48]);       // r(3051)
-  mh_square_n_mul(x, 5, p[48*2..<48*3]);  // 0 1111
-  mh_square_n_mul(x, 3, p[0..<48]);       // 00 1
-  mh_square_n_mul(x, 2, p[0..<48]);       // 0 1
-  mh_square_n_mul(x, 4, p[0..<48]);       // 000 1
-  mh_square_n_mul(x, 4, p[48..<96]);      // 00 11
-  mh_square_n_mul(x, 3, p[0..<48]);       // 00 1
+  mh_square_n_mul(x, 512, mh_entry(p[..], 9));
+  mh_square_n_mul(x, 256, mh_entry(p[..], 8));
+  mh_square_n_mul(x, 128, mh_entry(p[..], 7));
+  mh_square_n_mul(x, 64, mh_entry(p[..], 6));
+  mh_square_n_mul(x, 32, mh_entry(p[..], 5));
+  mh_square_n_mul(x, 8, mh_entry(p[..], 3));
+  mh_square_n_mul(x, 2, mh_entry(p[..], 1));
+  mh_square_n_mul(x, 1, mh_entry(p[..], 0));  // r(3051)
+  mh_square_n_mul(x, 5, mh_entry(p[..], 2));  // 0 1111
+  mh_square_n_mul(x, 3, mh_entry(p[..], 0));  // 00 1
+  mh_square_n_mul(x, 2, mh_entry(p[..], 0));  // 0 1
+  mh_square_n_mul(x, 4, mh_entry(p[..], 0));  // 000 1
+  mh_square_n_mul(x, 4, mh_entry(p[..], 1));  // 00 11
+  mh_square_n_mul(x, 3, mh_entry(p[..], 0));  // 00 1
   return r;
+}
+// Table entry k, r(2^k), as a view of its 48 limbs.
+mh_entry :: (p: [] u64, k: int) -> [] u64 #effects(all) {
+  return p[48*k..<48*k + 48];  // mutant: equivalent (a longer view reads the same: mh_mul_into reads limbs 0 to 47 of it only)
 }
 // book:end inverse
 
@@ -444,13 +471,13 @@ muhash_divide :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 #effects(all) 
 muhash_finalize_vartime :: (m: MuHash3072, out: [] u8) -> int #effects(all) {
   if out.count != 32 { return MUHASH_CAPACITY; }
   n := m.numerator; d := m.denominator;
-  if mh_is_overflow(n) { n = mh_full_reduce(n); }
-  if mh_is_overflow(d) { d = mh_full_reduce(d); }
+  if mh_is_overflow(n) { n = mh_full_reduce(n); }  // mutant: equivalent (mh_multiply takes unreduced input, and with d = 1 the reduction below runs)
+  if mh_is_overflow(d) { d = mh_full_reduce(d); }  // mutant: equivalent (an unreduced d is not 1 and inverts to the same residue; p + 1 inverts to 1)
   one: Num3072; one.limb[0] = 1;
   same := true;
   for i: 0..<MH_LIMBS { if d.limb[i] != one.limb[i] { same = false; } }
   if !same { n = mh_multiply(n, mh_inverse(d)); }
-  if mh_is_overflow(n) { n = mh_full_reduce(n); }
+  if mh_is_overflow(n) { n = mh_full_reduce(n); }  // mutant: equivalent (n is below p already: mh_multiply's result is, and with d = 1 the reduction above ran)
   b: [384] u8;
   #assert mh_to_bytes(n, b[..]) == MUHASH_OK;
   #assert sha256_hash_checked(b[..], out, false) == SHA_OK;
