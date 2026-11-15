@@ -8,8 +8,13 @@
 //   2. each suite's files split into one part per eight files, at most --parts; each part is one
 //      `coax mutate SUITE --unit A --unit B ... --killers K` (one baseline for all its files,
 //      #13581) on the build pool (coax/remote/remote.sh run: its hosts, slots and spend cap),
-//      at most --jobs at once, the longest of the last night first (ms_order); K is that part's killers file from the last night, which the
+//      at most --jobs at once; K is that part's killers file from the last night, which the
 //      run then rewrites, so a night only repeats the checks that killed last time first.
+//      The sweep rolls (ms_rank): a night starts the parts never swept first, then those whose
+//      files changed since their last sweep or that did not run then, then the oldest sweep, the
+//      longest last time first in each, and starts none after --hours (default 6; 0, no budget).
+//      Each part's record (STATE/parts/SLUG.partK.meta, ms_meta) holds its last sweep's commit,
+//      night and whether it ran; the report shows each file's last sweep from it.
 //      A part stops after --part-minutes (default 180; remote.sh's OA_REMOTE_TIMEOUT) and is
 //      reported as stopped; the native kills it found are in K already, so the next night resumes
 //      from them. A part ran when it reported every file it was given.
@@ -19,16 +24,16 @@
 //   3. the parts' reports joined: one row a file, its survivors under it, and the native
 //      counts summed: limits (native ticks against evaluator steps) and disagreements (a coax
 //      bug in the native path; never a verdict), each listed, so a drift shows
-//   4. one tracking issue (ms_issue_step): a clean sweep (every part ran, no survivor and no
-//      undecided mutant) rewrites its body and closes it with the summary as the closing comment;
+//   4. one tracking issue (ms_issue_step): a clean sweep (every part's last sweep ran, none is
+//      unswept, no survivor and no undecided mutant) rewrites its body and closes it with the summary as the closing comment;
 //      a sweep that isn't clean reopens it, or files it when there is none, and rewrites its body.
 //      A clean sweep with no issue files nothing. The issue is the number kept in STATE/issue, else
 //      the newest one with this title in any state, so a lost state folder never files a second.
 //      --dry-run prints the report and touches no issue
 // State lives in --state DIR (default mutation-sweep/ at the checkout's root, untracked, so
 // remote.sh sends the killers files with the snapshot and brings the rewritten ones back):
-// killers/, parts/ (each part's output), report.md and issue (the tracking issue's number).
-//   coax/web/tool.sh mutation-sweep [--parts N] [--jobs J] [--part-minutes M] [--only SUITE,SUITE]
+// killers/, parts/ (each part's output and record), report.md and issue (the tracking issue's number).
+//   coax/web/tool.sh mutation-sweep [--parts N] [--jobs J] [--part-minutes M] [--hours H] [--only SUITE,SUITE]
 //                                   [--state DIR] [--local] [--dry-run] [--issue N]
 //   coax/bin/coax test coax/web/mutation-sweep.coax --library     its own checks
 // Run it from a clean checkout of origin/main (coax/remote/mutation-sweep.sh makes one).
@@ -53,12 +58,13 @@ MS_TITLE :: "Nightly mutation sweep: survivors in #authority files";
 // gh issue list's rows cut to the newest with exactly that title, as "NUMBER STATE" (ms_found)
 MS_JQ :: "[.[] | select(.title == \"Nightly mutation sweep: survivors in #authority files\")] | first // empty | \"\\(.number) \\(.state)\"";
 #test "the issue search keeps the newest issue with exactly the sweep's title" { #assert ms_has(MS_JQ, MS_TITLE) && ms_has(MS_JQ, "\"\\(.number) \\(.state)\"") && ms_has(MS_JQ, "| first //"); }
+MS_HOURS :: 6;                 // a night's budget: no part starts after it (--hours; 0, no budget)
 MS_PART_MINUTES :: 180;       // a part's time limit: a hang guard; the native kills it found are kept
 MS_LANE :: 2097152;            // a part's output kept: 30 battle units with their survivors' source lines
 
 MsSuite :: struct { path: string; library: bool; root_only: bool; run_steps: string; traversal: string; units: string; nunits: int; }
 // want: the files it was given; got: the files its output reported; status: remote.sh's exit
-MsPart :: struct { suite: int; part: int; parts: int; h: int; ok: bool; started_ms: int; want: int; got: int; status: int; cut: bool; }
+MsPart :: struct { suite: int; part: int; parts: int; h: int; ok: bool; started_ms: int; want: int; got: int; status: int; cut: bool; tonight: bool; }
 // Kept text: bytes is a view of the caller's buffer.
 MsText :: struct { bytes: [] u8; used: int; full: bool; }
 
@@ -407,35 +413,113 @@ ms_command_secs :: (out: string) -> int {
   }
   return secs;
 }
-// The order the parts start in: the longest last time first, so the long ones don't start last and
-// hold the night open; a part with no time yet (-1) before them, to learn it. Ties keep list order.
-ms_order :: (secs: [] int, order: [] int) {
-  for k: 0..<order.count { order[k] = k; }
-  for k: 1..<order.count {
-    x := order[k]; j := k;
-    while j > 0 && ms_before_in(secs[x], secs[order[j - 1]]) { order[j] = order[j - 1]; j -= 1; }
-    order[j] = x;
-  }
-}
-// Whether a part that took a seconds starts before one that took b: unknown first, then longer.
+// Whether a part that took a seconds starts before one that took b (ms_first, within a tier):
+// unknown first, to learn it, then the longest, so the long ones don't start last and hold the night open.
 ms_before_in :: (a: int, b: int) -> bool {
   if a < 0 { return b >= 0; }
   return b >= 0 && a > b;
 }
-#test "the parts that took longest start first, and one with no time yet before them" {
+#test "a part's time last night, and the longer one first with one with no time yet before them" {
   #assert ms_command_secs("remote: h slot 1: checkout and compiler 5 s, command 1090 s, status 1\nremote: h: 1100 s in all\n") == 1090;
   #assert ms_command_secs("mutation scope: unit a.coax (x)\n") == -1 && ms_command_secs("remote: h: 9 s in all\n") == -1;
   #assert ms_command_secs("remote: a slot 1: checkout and compiler 1 s, command 7 s, status 0\nremote: b slot 2: checkout and compiler 1 s, command 8 s, status 0") == 8;
   #assert ms_command_secs("x\nremote: h slot 1: checkout and compiler 5 s, command 3 s, status 0\n") == 3;
-  secs := [6] int.[10, -1, 300, 10, 0, 299];
-  o := [6] int.[9, 9, 9, 9, 9, 9];
-  ms_order(secs[..], o[..]);
-  #assert o[0] == 1 && o[1] == 2 && o[2] == 5 && o[3] == 0 && o[4] == 3 && o[5] == 4;
   #assert ms_before_in(-1, 5) && !ms_before_in(-1, -1) && !ms_before_in(5, -1) && ms_before_in(6, 5) && !ms_before_in(5, 5) && !ms_before_in(4, 5);
   #assert ms_before_in(0, -1) == false && ms_before_in(1, 0) && ms_before_in(-1, 0);
-  one: [1] int; one_s := [1] int.[3];
-  ms_order(one_s[..], one[..]);
+}
+// A part's record of its last sweep, STATE/parts/SLUG.partK.meta: "COMMIT\tDATE\tok", or
+// "COMMIT\tDATE\tWHY" when it did not run. The rolling sweep (--hours) reads it to choose the
+// night's parts and reports each file's last sweep from it.
+MsMeta :: struct { has: bool; commit: string; date: string; ok: bool; why: string; }
+ms_meta :: (text: string) -> MsMeta {
+  m: MsMeta;
+  t1 := 0;
+  while t1 < text.count && text[t1] != '\t' { t1 += 1; }
+  if t1 == 0 { return m; }
+  t2 := t1 + 1;
+  while t2 < text.count && text[t2] != '\t' { t2 += 1; }
+  if t2 >= text.count { return m; }
+  // text[t2] is the tab, so the trailing newlines end there
+  e := text.count;
+  while text[e - 1] == '\n' { e -= 1; }
+  m.commit = cast(string) text[0..<t1]; m.date = cast(string) text[t1 + 1..<t2];
+  m.why = cast(string) text[t2 + 1..<e];
+  m.has = m.why.count > 0; m.ok = m.why == "ok";
+  return m;
+}
+ms_meta_line :: (commit: string, date: string, why: string, out: [] u8) -> string {
+  t: [1] MsText; t[0].bytes = out;
+  ms_put(t[..], commit); ms_put(t[..], "\t"); ms_put(t[..], date); ms_put(t[..], "\t"); ms_put(t[..], why); ms_put(t[..], "\n");
+  return ms_text(t[..]);
+}
+#test "a part's record says its commit, its night and whether it ran" {
+  b: [256] u8;
+  line := ms_meta_line("abc", "2026-11-15 02:00 CST", "ok", b[..]);
+  #assert line == "abc\t2026-11-15 02:00 CST\tok\n";
+  m := ms_meta(line);
+  #assert m.has && m.ok && m.commit == "abc" && m.date == "2026-11-15 02:00 CST" && m.why == "ok";
+  w := ms_meta("abc\td\tstopped at the 180-minute limit");
+  #assert w.has && !w.ok && w.why == "stopped at the 180-minute limit" && w.date == "d";
+  #assert !ms_meta("").has && !ms_meta("abc").has && !ms_meta("abc\td").has && !ms_meta("\td\tok").has && !ms_meta("abc\td\t\n").has;
+  #assert !ms_meta("\tdd\tx\tok").has && ms_meta("a\tb\tx").has && ms_meta("a\tb\tx").why == "x" && ms_meta("abc\t\t\n").why.count == 0;
+  #assert ms_meta("a\t\tok\n\n").ok && ms_meta("a\t\tok\n").date == "" && ms_meta("a\tb\tokay").has && !ms_meta("a\tb\tokay").ok;
+}
+// Which part a rolling night starts first (ms_rank): one never swept (tier 0), then one whose
+// files changed since its last sweep or that did not run then (1), then the rest (2), the oldest
+// sweep first; within a tier the longest last time first (ms_before_in).
+MsRank :: struct { tier: int; date: string; secs: int; }
+ms_class :: (has: bool, ok: bool, changed: bool) -> int {
+  if !has { return 0; }
+  if changed || !ok { return 1; }
+  return 2;
+}
+ms_first :: (a: MsRank, b: MsRank) -> bool {
+  if a.tier < b.tier { return true; }
+  if a.tier > b.tier { return false; }
+  if a.tier == 2 && a.date != b.date { return ms_older(a.date, b.date); }
+  return ms_before_in(a.secs, b.secs);
+}
+// "2026-11-14 18:12 CST" before "2026-11-15 02:00 CST": the dates compare as text
+ms_older :: (a: string, b: string) -> bool {
+  i := 0;
+  while i < a.count && i < b.count {
+    if a[i] < b[i] { return true; }
+    if a[i] > b[i] { return false; }
+    i += 1;
+  }
+  return a.count < b.count;
+}
+ms_rank :: (r: [] MsRank, order: [] int) {
+  for k: 0..<order.count { order[k] = k; }
+  for k: 1..<order.count {
+    x := order[k]; j := k;
+    while j > 0 && ms_first(r[x], r[order[j - 1]]) { order[j] = order[j - 1]; j -= 1; }
+    order[j] = x;
+  }
+}
+// Whether the night's budget lets another part start: hours 0 is no budget.
+ms_may_start :: (hours: int, elapsed_ms: int) -> bool { return hours == 0 || elapsed_ms < hours * 3600000; }
+#test "a rolling night starts the never-swept parts, then the changed or failed ones, then the oldest" {
+  #assert ms_class(false, false, false) == 0 && ms_class(false, true, true) == 0;
+  #assert ms_class(true, true, true) == 1 && ms_class(true, false, false) == 1 && ms_class(true, true, false) == 2;
+  #assert ms_older("2026-11-14 18:12", "2026-11-15 02:00") && !ms_older("2026-11-15 02:00", "2026-11-14 18:12") && !ms_older("a", "a");
+  #assert ms_older("1b", "2a") && !ms_older("2a", "1b") && ms_older("ab", "b");
+  #assert ms_older("2026-11-14", "2026-11-14 02:00") && !ms_older("2026-11-14 02:00", "2026-11-14") && ms_older("", "x");
+  r := [6] MsRank.[
+    MsRank.{tier = 2, date = "2026-11-15", secs = 900},
+    MsRank.{tier = 2, date = "2026-11-14", secs = 5},
+    MsRank.{tier = 0, date = "", secs = -1},
+    MsRank.{tier = 1, date = "2026-11-15", secs = 10},
+    MsRank.{tier = 1, date = "2026-11-13", secs = 400},
+    MsRank.{tier = 2, date = "2026-11-14", secs = 50}];
+  o := [6] int.[9, 9, 9, 9, 9, 9];
+  ms_rank(r[..], o[..]);
+  #assert o[0] == 2 && o[1] == 4 && o[2] == 3 && o[3] == 5 && o[4] == 1 && o[5] == 0;
+  #assert ms_first(r[3], r[4]) == false && ms_first(r[4], r[3]) && !ms_first(r[0], r[0]);
+  one: [1] int; one_r := [1] MsRank.[MsRank.{tier = 2, date = "d", secs = 3}];
+  ms_rank(one_r[..], one[..]);
   #assert one[0] == 0;
+  #assert ms_may_start(0, 99999999999) && ms_may_start(6, 0) && ms_may_start(6, 6 * 3600000 - 1) && !ms_may_start(6, 6 * 3600000) && !ms_may_start(1, 3600001);
 }
 // path from root when it is under root (a part runs from the checkout's root on its host), else path.
 ms_rel :: (root: string, path: string) -> string {

@@ -1012,25 +1012,41 @@ at a time; a second one says which is running and stops.
    one baseline; every part repeats it, which is why a suite splits only
    when it has many files. Native code finds each mutant's killer and the
    evaluator confirms it (`coax/docs/native-mutants.md`). At
-   most six parts run at once (`--jobs`), the ones that took longest the
-   night before first (a part with no time yet before them), so a long part
-   never starts last and holds the night open. A part stops after
+   most six parts run at once (`--jobs`). A part stops after
    `--part-minutes` (180 by default, through `OA_REMOTE_TIMEOUT`) and the
    report says so; a part ran only when it reported every file it was given.
+   The sweep rolls: a night starts no part after `--hours` (6 by default; 0
+   sweeps everything), and it starts first the parts never swept, then those
+   whose files changed since their last sweep or that did not run then, then
+   the ones swept longest ago; within each, the longest the night before
+   first, so a long part never starts last and holds the night open. Each
+   part's record, `mutation-sweep/parts/SLUG.partK.meta`, holds the commit
+   and night of its last sweep and whether it ran.
+
+   Almost all of a part's time is the evaluator confirming each mutant that
+   native code left alive, by running the full set of checks under it. The
+   native pass over every mutant takes seconds, and a file with no survivors
+   costs its baseline plus that. On 2026-11-14, `coinselect.coax` (287
+   survivors) took 1,400 s of confirmations after a 67 s native pass, and
+   `fees.coax` (31 survivors under heavy checks) took 1,899 s. A night's
+   length follows the survivor count, so the first sweep after many
+   survivors spans several nights, and a clean tree fits in one.
 3. Each part reads and rewrites its killers file in the checkout's
    untracked `mutation-sweep/killers/`, which `remote.sh` sends with the
    snapshot and brings back, so the next night tries last night's killers
    first. `coax mutate --native` writes the native kills into it as soon as
    its native pass ends, so a part stopped at its limit starts the next night
    from them.
-4. The parts' reports become one table, a row a file and a row for each
-   part that did not run (why, and which files), with each file's survivors
+4. The parts' last reports become one table, a row a file with the commit
+   and night of its last sweep, and a row for each part whose last sweep did
+   not run (why, and which files) or that was never swept, with each file's survivors
    under it, and one line of native counts summed over the files: `limits=`
    (mutants where only native ticks and evaluator steps differ) and
    `disagree=` (a coax bug in the native path), with each such mutant
    listed, so a drift between the two shows. Neither changes a verdict.
 5. One issue, "Nightly mutation sweep: survivors in #authority files": a
-   clean night (every part ran, no survivor, no undecided mutant) replaces
+   clean night (every part's last sweep ran, none is unswept, no survivor,
+   no undecided mutant) replaces
    its body and closes it with the night's summary as the closing comment; a
    night that isn't clean reopens it, or files it when there is none, and
    replaces its body. The issue is the number in `mutation-sweep/issue`, else
