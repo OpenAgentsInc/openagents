@@ -1,0 +1,18 @@
+[
+  {
+    "endpoint": "https://updates.openagents.com/runtimes/03426774bedeee8432860a711069b1905abae2bc5a257f3695c00b148387f967",
+    "files": 21,
+    "bytes": 15515719,
+    "generation": 1,
+    "envelope_sha256": "54bb85df1c64efcd5b5cfc8ad80da5006fcd100741527d08a86def8e111abc19",
+    "exact_archive_match": true
+  },
+  {
+    "endpoint": "https://oa-updates-157437760789.us-central1.run.app/runtimes/03426774bedeee8432860a711069b1905abae2bc5a257f3695c00b148387f967",
+    "files": 21,
+    "bytes": 15515719,
+    "generation": 1,
+    "envelope_sha256": "54bb85df1c64efcd5b5cfc8ad80da5006fcd100741527d08a86def8e111abc19",
+    "exact_archive_match": true
+  }
+]

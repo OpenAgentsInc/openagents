@@ -1,0 +1,31 @@
+// Stage one qualified page through the existing browser SDK packager, then
+// publish an isolated runtime before replacing its /demo/NAME/ front door.
+// No main pages, shared fixed runtime paths or room versions are replaced.
+#load "page-preview-policy.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/json/json.coax";
+ppv_run :: (a:[]string,timeout:int)->bool {
+ out:[1048576]u8;err:[1048576]u8;r:=proc_run(a,timeout,out[..],err[..]);
+ if r.out_n>0 {tool_errln(cast(string)out[0..<r.out_n]);}if r.err_n>0 {tool_errln(cast(string)err[0..<r.err_n]);}
+ return r.started==0 && r.status==0 && !r.timed_out && !r.cut;
+}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("publish-page APP PAGE MODULE NAME");return 2;}
+ app:=args_at(a[..],0);page:=args_at(a[..],1);module:=args_at(a[..],2);name:=args_at(a[..],3);
+ if !ppv_name(name) || !ppv_name(module) {return 2;}
+ out:[256]u8;err:[4096]u8;date:=[3]string.["date","-u","+%Y%m%dT%H%M%SZ"];r:=proc_run(date[..],10000,out[..],err[..]);if r.status!=0 || r.out_n!=16 {tool_errln("Could not read the UTC release stamp");return 1;}
+ prefix:[256]u8;p:[1]Jo;jo_start(p[..],prefix[..]);jo_put(p[..],"demo/");jo_put(p[..],name);jo_put(p[..],"/builds/");jo_put(p[..],cast(string)out[0..<16]);base:=jo_text(p[..]);
+ stagepath:[4096]u8;stage:=fs_join("build/page-previews",base,stagepath[..]);if !fs_mkdir(stage) {tool_errln("Could not create the release stage");return 1;}
+ envs:[4][4096]u8;env_n:[4]int;w:[1]Jo;
+ for v,i:[4]string.[stage,page,module,base] {jo_start(w[..],envs[i][..]);jo_put(w[..],[4]string.["COAXIAL_STAGE_TO=","COAXIAL_ONLY_PAGE=","COAXIAL_ONLY_MODULE=","COAXIAL_ASSET_PREFIX="][i]);jo_put(w[..],v);if w[0].bad {return 1;}env_n[i]=w[0].n;}
+ command:=[9]string.["env",cast(string)envs[0][0..<env_n[0]],cast(string)envs[1][0..<env_n[1]],cast(string)envs[2][0..<env_n[2]],cast(string)envs[3][0..<env_n[3]],"COAX_VISUALS=report","coax/web/deploy.sh",app,"openagents-web"];
+ if !ppv_run(command[..],810000) {return 1;}
+ paths:[4][4096]u8;site:=fs_join(stage,"site",paths[0][..]);root:=fs_join(site,base,paths[1][..]);html:=fs_join(root,page,paths[2][..]);
+ bucket:[512]u8;b:[1]Jo;jo_start(b[..],bucket[..]);jo_put(b[..],"gs://openagentsgemini-openagents-web/");jo_put(b[..],base);dest:=jo_text(b[..]);
+ upload:=[7]string.["gcloud","storage","rsync","-r",root,dest,"--quiet"];if !ppv_run(upload[..],180000) {return 1;}
+ jo_start(b[..],bucket[..]);jo_put(b[..],"gs://openagentsgemini-openagents-web/demo/");jo_put(b[..],name);jo_put(b[..],"/index.html");
+ publish:=[8]string.["gcloud","storage","cp",html,jo_text(b[..]),"--content-type=text/html","--cache-control=no-cache","--quiet"];if !ppv_run(publish[..],30000) {return 1;}
+ print("Published https://openagents.com/demo/%/ with isolated runtime /%/\n",name,base);return 0;
+}

@@ -8,6 +8,9 @@
 #load "../../metaverse-engine/ui/menu-wire.coax";
 #load "../../metaverse-engine/ui/plot.coax";
 #load "../shared/microduck-lab.coax";
+#load "../shared/microduck-files.coax";
+#load "../../components/kit/controls.coax";
+#load "../../components/skin/arcade.coax";
 #load "../../metaverse/microduck/presentation.coax";
 
 MD_HUD_VERTICES :: 32768;
@@ -20,6 +23,7 @@ Microduck :: struct {
   assembly:[1]RigidAssembly;pose:[1]AssemblyPose;angles:[32]f32;
   selected:int= -1;joint:int= -1;explosion:f32;unexploded_zoom:f32=0.74;
   lens:Lens;down_x:f32;down_y:f32;travel:f32;lab:[1]MdLab;film:bool;film_clock:FrameClock;film_skip:bool;film_origin:Point;film_time:f32;
+  files:[1]MdRunFiles;timeline:SheetHit;scrub:bool;
 }
 
 #test "research viewer resets a changed view and bounds orbit and zoom input" {
@@ -56,21 +60,22 @@ md_pinch :: (s:[]Microduck,ratio:f32)->bool #export_c #effects(all) {
 }
 md_reset :: (s: [] Microduck) { s[0].yaw = 3.85; s[0].pitch = 0.24; s[0].zoom = 0.74; s[0].mode = 0; s[0].drag = false; }
 md_key :: (s: [] Microduck, key: int) -> bool #export_c #effects(all) {
-  if key == 114 || key == 82 {s[0].film=false;s[0].film_origin=Point.{};s[0].film_time=0; s[0].lab[0].active=false;md_stand(s);md_reset(s);s[0].selected= -1;s[0].joint= -1; return true; }
+  if key == 114 || key == 82 {s[0].film=false;s[0].film_origin=Point.{};s[0].film_time=0; s[0].lab[0].active=false;s[0].lab[0].epoch+=1;md_stand(s);md_reset(s);s[0].selected= -1;s[0].joint= -1; return true; }
   if key == 110 || key == 78 { s[0].mode = 1 - s[0].mode; return true; }
   if key == -4 || key == -5 { s[0].yaw += ifx key == -4 then -0.12f32 else 0.12f32; return true; }
   if key == 49 { s[0].yaw = 3.85; s[0].pitch = 0.24; return true; }
   if key == 50 { s[0].yaw = 4.712389; s[0].pitch = 0.05; return true; }
   if key == 51 { s[0].pitch = 1.3; return true; }
   if !s[0].ready {return false;}
-  if key==4000 {if s[0].assembly[0].joints!=14 {return false;}md_stand(s);s[0].lab[0].active=false;s[0].film=true;s[0].film_clock=loop_clock(15625000);s[0].selected= -1;s[0].joint= -1;s[0].film_time=0;s[0].film_origin=Point.{};return true;}
+  if key>=3200 && key<=3208 {return md_run_key(s,key);}
+  if key==4000 {if s[0].assembly[0].joints!=14 {return false;}md_stand(s);s[0].lab[0].active=false;s[0].lab[0].epoch+=1;s[0].film=true;s[0].film_clock=loop_clock(15625000);s[0].selected= -1;s[0].joint= -1;s[0].film_time=0;s[0].film_origin=Point.{};return true;}
   if key==4001 {s[0].film=false;return true;}
   if key>=3000 && key<=3012 {s[0].film=false;s[0].film_origin=Point.{};return md_lab_key(s,key);}
   if key>=1000 && key<1000+s[0].assembly[0].joints {md_joint(s,key-1000);return true;}
   if key>=2000 && key<2000+s[0].assembly[0].parts {md_part(s,key-2000);return true;}
   if key==91 || key==93 {j:=s[0].joint+(ifx key==91 then -1 else 1);count:=s[0].assembly[0].joints;md_joint(s,(j+count)%count);return true;}
-  if key==43 || key==61 || key==45 {s[0].lab[0].active=false;if s[0].joint<0 {return false;}j:=s[0].joint;r:=s[0].assembly[0].joint[j];return md_angle(s,j,shot_clamp(s[0].angles[j]+(ifx key==45 then -0.0872664626f32 else 0.0872664626f32),r.low,r.high));}
-  if key==48 {s[0].lab[0].active=false;md_stand(s);return true;}
+  if key==43 || key==61 || key==45 {s[0].lab[0].active=false;s[0].lab[0].epoch+=1;if s[0].joint<0 {return false;}j:=s[0].joint;r:=s[0].assembly[0].joint[j];return md_angle(s,j,shot_clamp(s[0].angles[j]+(ifx key==45 then -0.0872664626f32 else 0.0872664626f32),r.low,r.high));}
+  if key==48 {s[0].lab[0].active=false;s[0].lab[0].epoch+=1;md_stand(s);return true;}
   if key==120 {md_explode(s,s[0].explosion==0);return true;}
   if key==104 || key==108 {j:=ifx key==104 then 7 else 3;if j>=s[0].assembly[0].joints {return false;}md_joint(s,j);return md_angle(s,j,s[0].assembly[0].joint[j].stand+0.3);}
   return false;
@@ -82,9 +87,13 @@ md_stand :: (s:[]Microduck) {for j:0..<s[0].assembly[0].joints {s[0].angles[j]=s
 md_angle :: (s:[]Microduck,joint:int,angle:f32)->bool {
  if !s[0].ready || joint<0 || joint>=s[0].assembly[0].joints {return false;}candidate:=s[0].angles;candidate[joint]=angle;pose:[1]AssemblyPose;if !assembly_pose(s[0].assembly[..],candidate[..],pose[..]) {return false;}s[0].angles=candidate;s[0].pose[0]=pose[0];return true;
 }
-md_part :: (s:[]Microduck,part:int) {s[0].lab[0].active=false;s[0].selected=part;s[0].joint=ifx part>=0 then s[0].assembly[0].part[part].joint else -1;}
-md_joint :: (s:[]Microduck,joint:int) {s[0].lab[0].active=false;s[0].joint=joint;s[0].selected= -1;for i:0..<s[0].assembly[0].parts {if s[0].assembly[0].part[i].joint==joint {s[0].selected=i;break;}}}
+md_part :: (s:[]Microduck,part:int) {s[0].lab[0].active=false;s[0].lab[0].epoch+=1;s[0].selected=part;s[0].joint=ifx part>=0 then s[0].assembly[0].part[part].joint else -1;}
+md_joint :: (s:[]Microduck,joint:int) {s[0].lab[0].active=false;s[0].lab[0].epoch+=1;s[0].joint=joint;s[0].selected= -1;for i:0..<s[0].assembly[0].parts {if s[0].assembly[0].part[i].joint==joint {s[0].selected=i;break;}}}
 md_pointer :: (s: [] Microduck, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+  if s[0].lab[0].active && s[0].lab[0].playback {hit:=s[0].timeline;px:=x/s[0].dpr;py:=y/s[0].dpr;
+   if phase==0 && px>=hit.x && px<=hit.x+hit.w && py>=hit.y && py<=hit.y+hit.h {s[0].scrub=true;s[0].pointer_id=id;s[0].drag=false;}
+   if s[0].scrub && s[0].pointer_id==id {r:=s[0].lab[0].saved[0];v:=slider_value(hit.x,hit.w,px);tick:=r.initial.steps+cast(int)floor(v*cast(f32)(r.final.steps-r.initial.steps)+0.5);if phase<3 {_:=mdl_seek(s[0].lab[..],tick);md_lab_pose(s);}if phase>=2 {s[0].scrub=false;}return true;}
+  }
   if phase == 0 { s[0].drag = true; s[0].pointer_id = id; s[0].px = x; s[0].py = y;s[0].down_x=x;s[0].down_y=y;s[0].travel=0; return true; }
   if !s[0].drag || s[0].pointer_id != id { return false; }
   if phase == 1 {
@@ -97,7 +106,7 @@ md_pointer :: (s: [] Microduck, x: f32, y: f32, phase: int, kind: int, id: int) 
 }
 md_wheel :: (s: [] Microduck, delta: f32) #export_c #effects(all) { s[0].zoom = shot_clamp(s[0].zoom + delta * 0.0005, 0.28, 1.6); }
 md_gate :: (s: [] Microduck, bytes: int) -> bool #export_c #effects(all) {
-  s[0].lab[0].active=false;s[0].admitted = md_pack_accept(s[0].digest[..], bytes); s[0].ready = false; return s[0].admitted;
+  s[0].lab[0].active=false;s[0].lab[0].epoch+=1;s[0].admitted = md_pack_accept(s[0].digest[..], bytes); s[0].ready = false; return s[0].admitted;
 }
 md_source :: ()->AssetId {id:[1]AssetId;_:=asset_parse("eea0931fefde8b2d352eaaa73b5e380f2790f63fb716a8c1a2ce219ffe58c1ac",id[..]);return id[0];}
 md_asset :: (s: [] Microduck, catalog: string) #export_c #effects(all) {
@@ -138,6 +147,7 @@ md_frame :: (s: [] Microduck, out: [] f32, u: [] f32, w: f32, h: f32, d: f32) ->
   }
   if s[0].film {n=hd_text(out,n,ifx s[0].film_time<1.2 then "ASSEMBLY" else ifx s[0].film_time<4.2 then "EXPLODE" else ifx s[0].film_time<=5.6 then "70 PARTS / 14 JOINTS" else ifx s[0].film_time<8.8 then "REASSEMBLE" else ifx s[0].film_time<=10 then "ASSEMBLY RESTORED" else "WALK / ILLUSTRATIVE ANIMATION",32,height-82,13,pen,0);return hd_text(out,n,"POLLEN ROBOTICS + NVIDIA DLI / CC BY-NC-SA 4.0",32,height-36,10,pen,1);}
   if s[0].lab[0].active {return md_lab_hud(s,out,n,pen,width,height);}
+  if s[0].files[0].status>0 {n=hd_text(out,n,mdf_label(s[0].files[0].status),32,height-184,11,pen,1);}
   if s[0].ready && s[0].selected>=0 {part:=s[0].assembly[0].part[s[0].selected];n=hd_text_fit(out,n,cast(string)part.label.bytes[0..<part.label.n],32,height-152,12,width-64,pen,0);}
   if s[0].ready && s[0].joint>=0 {j:=s[0].assembly[0].joint[s[0].joint];text:[256]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],cast(string)j.name.bytes[0..<j.name.n]);jo_put(o[..]," / ");o[0].keyed=true;jo_int(o[..],cast(int)floor(s[0].angles[s[0].joint]*57.2957795+0.5));jo_put(o[..]," DEG");n=hd_text_fit(out,n,jo_text(o[..]),32,height-128,11,width-64,pen,1);}
   n = hd_text(out, n, ifx s[0].ready then (ifx s[0].explosion>0 then "EXPLODED / POSE UNCHANGED" else ifx s[0].mode == 0 then "ASSEMBLY / VISUAL POSE" else "VIEW / NORMALS") else "LOADING ASSEMBLY", 32, height - 100, 11, pen, 1);
@@ -155,12 +165,12 @@ md_lab_config :: (s:[]Microduck)->RslConfig {
  if c.target>c.high {c.target=c.high;}return c;
 }
 md_lab_key :: (s:[]Microduck,key:int)->bool {
- if key==3012 {s[0].lab[0].active=false;return true;}
+ if key==3012 {s[0].lab[0].active=false;s[0].lab[0].epoch+=1;return true;}
  if key==3003 {mdl_pause(s[0].lab[..]);return true;}
  c:=ifx s[0].lab[0].active then s[0].lab[0].session[0].config else md_lab_config(s);
  if key==3011 {c.p.inertia.value= -0.01;return mdl_begin(s[0].lab[..],c);}
  if key>=3000 && key<=3002 {c=md_lab_config(s);c.p.delay=ifx key==3001 then 16 else 0;c.p.effort.value=ifx key==3002 then 0.03 else 0.15;}
- if key==3004 || key==3005 {c.target=ifx key==3004 then -0.1 else 0.1;}
+ if key==3004 || key==3005 {return mdl_target(s[0].lab[..],ifx key==3004 then -0.1 else 0.1);}
  if key==3006 {c.p.delay-=1;}if key==3007 {c.p.delay+=1;}
  if key==3008 {c.p.effort.value-=0.01;}if key==3009 {c.p.effort.value+=0.01;}
  if !mdl_begin(s[0].lab[..],c) {return false;}
@@ -171,6 +181,44 @@ md_advance :: (s:[]Microduck,dt:f32) #export_c #effects(all) {
  if !s[0].ready || !s[0].lab[0].active {return;}
  if mdl_frame_ns(s[0].lab[..],loop_ns(cast(f64)dt)) {c:=s[0].lab[0].session[0].config;_:=md_angle(s,c.joint,cast(f32)(c.stand+s[0].lab[0].session[0].last.output));}
 }
+md_lab_pose :: (s:[]Microduck) {if s[0].lab[0].active {c:=s[0].lab[0].session[0].config;_:=md_angle(s,c.joint,cast(f32)(c.stand+s[0].lab[0].session[0].last.output));}}
+md_run_key :: (s:[]Microduck,key:int)->bool {
+ if key<=3203 {op:=key-3199;b:[RSW_MAX]u8;n:=0;
+  if op==1 || op==3 {n=mdl_save(s[0].lab[..],b[..]);if n<0 {s[0].files[0].status=5;return false;}}
+  return mdf_request(s[0].files[..],op,s[0].lab[0].epoch,b[0..<n]);
+ }
+ if !s[0].lab[0].active {return false;}
+ if key==3204 {mdl_pause(s[0].lab[..]);return true;}
+ if key==3208 {return mdl_branch(s[0].lab[..]);}
+ if !s[0].lab[0].playback {return false;}r:=s[0].lab[0].saved[0];tick:=s[0].lab[0].session[0].snapshot.steps;
+ if key==3205 {tick=r.initial.steps;}if key==3206 {tick-=100;}if key==3207 {tick+=100;}
+ if tick<r.initial.steps {tick=r.initial.steps;}if tick>r.final.steps {tick=r.final.steps;}
+ ok:=mdl_seek(s[0].lab[..],tick);if ok {md_lab_pose(s);}return ok;
+}
+md_run_load :: (s:[]Microduck,bytes:[]u8)->bool {
+ candidate:=s[0].lab;if !s[0].ready || !mdl_open(candidate[..],bytes,md_lab_config(s)) {return false;}
+ c:=candidate[0].session[0].config;if c.joint<0 || c.joint>=s[0].assembly[0].joints {return false;}j:=s[0].assembly[0].joint[c.joint];
+ if f64_bits(c.stand)!=f64_bits(cast(f64)j.stand) || f64_bits(c.low)!=f64_bits(cast(f64)j.low-cast(f64)j.stand) || f64_bits(c.high)!=f64_bits(cast(f64)j.high-cast(f64)j.stand) {return false;}
+ angles:[32]f32;for i:0..<s[0].assembly[0].joints {angles[i]=s[0].assembly[0].joint[i].stand;}angles[c.joint]=cast(f32)(c.stand+candidate[0].session[0].last.output);pose:[1]AssemblyPose;if !assembly_pose(s[0].assembly[..],angles[..],pose[..]) {return false;}
+ s[0].lab=candidate;s[0].angles=angles;s[0].pose=pose;s[0].joint=c.joint;s[0].selected= -1;s[0].film=false;s[0].film_origin=Point.{};s[0].explosion=0;s[0].zoom=0.9;return true;
+}
+md_run_storage :: (s:[]Microduck)->MdRunStorage #export_c #effects(all) {return mdf_storage(s[0].files[..]);}
+md_run_storage_refused :: (s:[]Microduck,status:int) #export_c #effects(all) {if status!=0 {mdf_done(s[0].files[..],4);}}
+md_run_document_reply :: (s:[]Microduck,token:int,status:int,bytes:[]u8) #export_c #effects(all) {
+ if !mdf_match(s[0].files[..],token,s[0].lab[0].epoch) {if token==s[0].files[0].token {mdf_done(s[0].files[..],3);}return;}
+ op:=s[0].files[0].pending;if op!=3 && op!=4 {return;}
+ code:=ifx status==1 then 3 else ifx status==2 then 4 else 5;
+ if status==0 {if op==3 && bytes.count==0 {code=7;}else if op==4 && md_run_load(s,bytes) {code=2;}}
+ mdf_done(s[0].files[..],code);
+}
+md_run_inbox :: (s:[]Microduck,kind:int,bytes:[]u8) #export_c #effects(all) {
+ md_message(s,kind);reply:[1]BswReply;if kind!=768 || !bsw_read(bytes,reply[..]) {return;}
+ token:=cast(int)reply[0].token;if !mdf_match(s[0].files[..],token,s[0].lab[0].epoch) {if token==s[0].files[0].token {mdf_done(s[0].files[..],3);}return;}
+ op:=s[0].files[0].pending;if op!=1 && op!=2 {return;}status:=reply[0].status;n:=reply[0].payload.count;needed:=reply[0].needed;code:=5;
+ if status==1 && n==0 {code=6;}else if status==0 {if op==1 && n==0 && needed==0 {code=1;}else if op==2 && n==needed && md_run_load(s,reply[0].payload) {code=2;}}else if status!=0 {code=4;}
+ mdf_done(s[0].files[..],code);
+}
+md_run_packet :: (s:[]Microduck,out:[]u8)->int #export_c #effects(all) {return mdl_save(s[0].lab[..],out);}
 md_film_tick :: (s:[]Microduck,dt:f32) {
  if !s[0].ready || s[0].lab[0].hidden {return;}if s[0].film_skip {s[0].film_skip=false;return;}
  clock:=loop_frame(s[0].film_clock,cast(f64)dt);s[0].film_clock=clock.clock;
@@ -191,9 +239,9 @@ md_lab_number :: (out:[]f32,n:int,label:string,value:int,unit:string,x:f32,y:f32
  text:[192]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],label);o[0].keyed=true;jo_int(o[..],value);jo_put(o[..],unit);return hd_text_fit(out,n,jo_text(o[..]),x,y,11,w,p,0);
 }
 md_lab_hud :: (s:[]Microduck,out:[]f32,n:int,p:HdPen,w:f32,h:f32)->int {
- a:=s[0].lab[0];e:=a.session;r:=e[0].last;wide:=w>=900;x:=ifx wide then w-354 else 24.0f32;y:=ifx wide then 178.0f32 else h-286;width:=ifx wide then 322.0f32 else w-48;v:=n;
+ a:=s[0].lab[0];e:=a.session;r:=e[0].last;wide:=w>=900;x:=ifx wide then w-354 else 24.0f32;y:=ifx wide then 178.0f32 else h-354;width:=ifx wide then 322.0f32 else w-48;v:=n;
  v=hd_text(out,v,"ILLUSTRATIVE SERVO",x,y,12,p,0);
- v=hd_text(out,v,ifx a.status!=RslStatus.ok then "REFUSED / EXPERIMENT UNCHANGED" else ifx a.running then "RUNNING / FIXED BASE" else "PAUSED / FIXED BASE",x,y+20,10,p,1);
+ v=hd_text(out,v,ifx a.status!=RslStatus.ok then "REFUSED" else ifx a.playback then (ifx a.running then "REPLAYING" else "REPLAY / PAUSED") else ifx a.running then "RUNNING / FIXED BASE" else "PAUSED / FIXED BASE",x,y+20,10,p,1);
  v=md_lab_number(out,v,"DELAY / ",e[0].config.p.delay*2," MS",x,y+42,width,p);
  v=md_lab_number(out,v,"EFFORT / ",cast(int)floor(r.available*1000+0.5)," MNM",x+width*0.5,y+42,width*0.5,p);
  v=md_lab_number(out,v,"TARGET ",cast(int)floor(r.commanded*1000+0.5)," / POSITION MRAD",x,y+64,width,p);
@@ -206,16 +254,20 @@ md_lab_hud :: (s:[]Microduck,out:[]f32,n:int,p:HdPen,w:f32,h:f32)->int {
   if chart==0 {v=md_lab_number(out,v,"REQ ",cast(int)floor(r.requested*1000+0.5)," / DEL MNM",x,yy+80,width,p);v=md_lab_number(out,v,"",cast(int)floor(r.delivered*1000+0.5),"",x+width-45,yy+80,45,p);}
  }
  v=hd_text(out,v,"DASH TARGET / SOLID OBSERVED",x,y+254,9,p,1);
+ if a.playback {lo:=a.saved[0].initial.steps;hi:=a.saved[0].final.steps;fraction:=ifx hi>lo then cast(f32)(a.session[0].snapshot.steps-lo)/cast(f32)(hi-lo) else 0.0f32;
+  list:[16]Prim;hits:[1]SheetHit;sh:[1]Sheet;sh[0].under=list[..];sh[0].hits=hits[..];skin:=arcade_skin();skin.control_h=44;slider(sh[..],skin,x,y+264,width,fraction,1,0);s[0].timeline=hits[0];v=hd_control_boxes(out,v,list[0..<sh[0].nu],p);
+ }else {s[0].timeline=SheetHit.{};}
+ v=hd_text(out,v,mdf_label(s[0].files[0].status),x,y+324,10,p,1);
  v=hd_text(out,v,"POLLEN + NVIDIA / CC BY-NC-SA 4.0",24,h-16,9,p,2);return v;
 }
 
 #test "hiding the model viewer retires a held orbit gesture" {
  s:[1]Microduck;#assert md_pointer(s[..],1,1,0,1,3);md_message(s[..],602);#assert s[0].drag;md_message(s[..],601);#assert !s[0].drag;
 }
-md_message :: (s:[]Microduck,kind:int) #export_c #effects(all) {if kind==601 {s[0].film_skip=true;s[0].drag=false;mdl_life(s[0].lab[..],true);}if kind==602 {s[0].film_skip=true;mdl_life(s[0].lab[..],false);}}
+md_message :: (s:[]Microduck,kind:int) #export_c #effects(all) {if kind==601 {s[0].scrub=false;s[0].film_skip=true;s[0].drag=false;mdl_life(s[0].lab[..],true);}if kind==602 {s[0].film_skip=true;mdl_life(s[0].lab[..],false);}}
 
 md_menu :: (s:[]Microduck,out:[]u8)->int #export_c #effects(all) {
- if s[0].ready && 22+s[0].assembly[0].joints+s[0].assembly[0].parts+(ifx s[0].joint>=0 then 2 else 0)>128 {return -1;}
+ if s[0].ready && 31+s[0].assembly[0].joints+s[0].assembly[0].parts+(ifx s[0].joint>=0 then 2 else 0)>128 {return -1;}
  rows:[128]ViewMenuItem;
  for label,i:[5]string.["Front","Side","Top","Normals","Reset"] {rows[i]=ViewMenuItem.{label=label,group="View",key=[5]int.[49,50,51,110,114][i]};}n:=5;
  if s[0].ready {
@@ -223,6 +275,7 @@ md_menu :: (s:[]Microduck,out:[]u8)->int #export_c #effects(all) {
   rows[n]=ViewMenuItem.{label="Stand",group="Pose",key=48};n+=1;
   if s[0].joint>=0 {rows[n]=ViewMenuItem.{label="- 5 degrees",group="Pose",key=45,keep_open=true};n+=1;rows[n]=ViewMenuItem.{label="+ 5 degrees",group="Pose",key=43,keep_open=true};n+=1;}
   rows[n]=ViewMenuItem.{label="Play assembly + walk film",group="Animation",key=4000};n+=1;rows[n]=ViewMenuItem.{label="Pause animation",group="Animation",key=4001};n+=1;
+  for label,i:[9]string.["Save","Open latest","Share file","Open file","Play / Pause","Beginning","Back 0.2 s","Forward 0.2 s","Branch + continue"] {rows[n]=ViewMenuItem.{label=label,group="Saved runs",key=3200+i,keep_open=i>=4 && i<=7};n+=1;}
   for label,i:[13]string.["Baseline","Delayed / 32 ms","Limited / 30 mNm","Pause / Resume","Target -0.1 rad","Target +0.1 rad","Delay -1 step","Delay +1 step","Effort -10 mNm","Effort +10 mNm","Reset experiment","Reject negative inertia","End experiment"] {rows[n]=ViewMenuItem.{label=label,group="Illustrative servo",key=3000+i,keep_open=i>=4 && i<=9};n+=1;}
   for i:0..<s[0].assembly[0].joints {rows[n]=ViewMenuItem.{label=cast(string)s[0].assembly[0].joint[i].name.bytes[0..<s[0].assembly[0].joint[i].name.n],group="Joints",key=1000+i,current=i==s[0].joint};n+=1;}
   for i:0..<s[0].assembly[0].parts {rows[n]=ViewMenuItem.{label=cast(string)s[0].assembly[0].part[i].label.bytes[0..<s[0].assembly[0].part[i].label.n],group="Parts",key=2000+i,current=i==s[0].selected};n+=1;}

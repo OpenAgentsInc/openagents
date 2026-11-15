@@ -20,6 +20,12 @@ if [[ "${1:-}" == --server ]]; then server=true; shift; fi
 app="$(cd "$1" && pwd)"; service="$2"
 project=openagentsgemini region=us-central1
 bucket="$project-$service"
+if [[ -n "${COAXIAL_ONLY_PAGE:-}${COAXIAL_ONLY_MODULE:-}${COAXIAL_ASSET_PREFIX:-}" ]]; then
+  [[ -n "${COAXIAL_STAGE_TO:-}" && -n "${COAXIAL_ONLY_PAGE:-}" && -n "${COAXIAL_ONLY_MODULE:-}" && -n "${COAXIAL_ASSET_PREFIX:-}" ]] ||
+    { echo "deploy: isolated pages require a stage destination, page, module and asset prefix" >&2; exit 2; }
+  [[ "$COAXIAL_ONLY_PAGE" == demos/*/index.html ]] ||
+    { echo "deploy: isolated staging supports demo pages only" >&2; exit 2; }
+fi
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
 now() { [[ -n "${EPOCHREALTIME:-}" ]] && echo "${EPOCHREALTIME//[.,]/}" || echo $(( $(date +%s) * 1000000 )); }   # microseconds
 lap() { local d=$(( $(now) - $2 )); printf '  %-8s %4s s\n' "$1" "$(( d / 1000000 )).$(( d % 1000000 / 100000 ))"; }
@@ -31,7 +37,15 @@ if [[ "${COAX_VISUALS:-}" == report ]]; then "$here/check-visuals.sh" "$app" || 
 else "$here/check-visuals.sh" "$app"; fi
 lap visuals "$t"
 # COAXIAL_PAGES=all: a release ships every page, the old set too (apps/openagents-web/build.sh, #13269).
-t=$(now); COAXIAL_MODE=release COAXIAL_PAGES=all "$app/build.sh"; lap build "$t"
+t=$(now)
+# Keep browser checks on the Mac's GPU while page compilation uses the shared
+# build hosts. remote.sh maps this checkout's absolute app path on the host.
+if [[ -n "${COAXIAL_ONLY_MODULE:-}" ]]; then
+  (cd "$here/../.." && "$here/../remote/remote.sh" run -- "$here/../remote/check.sh" module "$COAXIAL_ONLY_MODULE")
+else
+  (cd "$here/../.." && "$here/../remote/remote.sh" run -- env COAXIAL_MODE=release COAXIAL_PAGES=all "$app/build.sh")
+fi
+lap build "$t"
 
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
 # Bundle host modules before content naming; deployed pages need one immutable
@@ -53,7 +67,8 @@ sys.path.insert(0, tools)
 @functools.lru_cache(maxsize=None)
 def stage_package(app, url, stage):
     return subprocess.check_output([os.path.join(tools, "tool.sh"), "render-stage", str(app), url, str(stage)], text=True).strip()
-assets, site = os.path.join(stage, "assets"), os.path.join(stage, "site")
+asset_prefix = os.environ.get("COAXIAL_ASSET_PREFIX", "").strip("/")
+assets, site = os.path.join(stage, "assets", asset_prefix), os.path.join(stage, "site", asset_prefix)
 @functools.lru_cache(maxsize=None)
 def shader_path(name, declared):
     return subprocess.check_output([os.path.join(tools, "tool.sh"), "shader-path", name, declared], text=True).strip().lstrip("/")
@@ -70,7 +85,7 @@ def put(src, rel):
         # a module's function names ship beside it under its content's name (wasm.sh, #13298): host.js
         # asks for the module's URL + ".syms" only after a trap (docs/deployment/crash-reports.md)
         if rel.endswith(".wasm") and os.path.exists(src + ".syms"): shutil.copy(src + ".syms", os.path.join(root, named + ".syms"))
-    return "/" + named
+    return "/" + (asset_prefix + "/" if asset_prefix else "") + named
 host_url = put(host, "coaxial/host.js")
 os.makedirs(site, exist_ok=True)
 # Pages at any depth (projects/coax/index.html is /projects/coax): pages, their
@@ -86,6 +101,13 @@ for root, dirs, files in os.walk(app):
         agent = (rel.startswith("realms" + os.sep) and f == "llms.txt") or rel in ("llms.txt", "robots.txt", "pylon" + os.sep + "join.sh") or (rel.startswith("cli" + os.sep) and f.endswith((".sh", ".ps1"))) or rel == "docs/connect-a-pylon/confidential-round.json"
         if f == "README.md" or not (agent or f.endswith((".html", ".md", ".svg", ".jpg"))): continue
         pages.append(rel)
+only_page = os.environ.get("COAXIAL_ONLY_PAGE", "")
+if only_page:
+    if only_page not in pages: raise SystemExit("The selected page is not a public source page")
+    pages = [only_page]
+    # The shared preview fallback is a dependency even for one noindex page.
+    os.makedirs(os.path.join(site, "og"), exist_ok=True)
+    shutil.copy(os.path.join(app, "og", "default.jpg"), os.path.join(site, "og", "default.jpg"))
 for f in pages:
     path = os.path.join(app, f)
     os.makedirs(os.path.dirname(os.path.join(site, f)) or site, exist_ok=True)
@@ -109,6 +131,9 @@ for f in pages:
         # is: only a local address loads it, from a cache outside the repo (host.js), so it never ships.
         def asset(u):
             if u.group(1): return u.group(0)
+            # An absolute HTTPS URL is fetched by the browser, not a source
+            # file of this checkout (the regex sees its :// separator).
+            if u.group(3).startswith("//"): return u.group(0)
             # An asset under /private/ never ships (private-guard below): the page keeps its address,
             # which only a local address with the owner's private build serves (Valley World's detail pages).
             if u.group(3).startswith("/private/"): return u.group(0)
@@ -138,6 +163,7 @@ for f in pages:
     # content too. Without this the page asked for a file the site never had, and its passkey and
     # key buttons did nothing. A script the page names and the app lacks stops the build.
     def page_script(m):
+        if asset_prefix and m.group(2).startswith("/" + asset_prefix + "/"): return m.group(0)
         src = os.path.join(app, m.group(2)[1:])
         if not os.path.isfile(src): sys.exit(f"deploy: {f} names the script {m.group(2)}, which is not in the app")
         return m.group(1) + put(src, "build/" + m.group(2)[1:]) + m.group(3)
@@ -232,13 +258,13 @@ PY
 # og/pages.txt lists them for /og. A page without a title or description, a broken or wrong-size
 # image, or a realm or project without its own card refuses the release (COAXIAL_OG_DRAFT=1 stages anyway).
 lap stage "$t"
-t=$(now); bun "$here/og.ts" "$stage/site" "$app"; lap og "$t"
+t=$(now); bun "$here/og.ts" "$stage/site${COAXIAL_ASSET_PREFIX:+/$COAXIAL_ASSET_PREFIX}" "$app"; lap og "$t"
 
 # Hidden presentations (unlock/), when COAXIAL_UNLOCKS names any: from the
 # environment, or this machine's secrets file. The phrases stay here.
 secrets="${COAXIAL_UNLOCKS_FILE:-$HOME/work/.secrets/coaxial-unlocks.env}"
-if [[ -z "${COAXIAL_UNLOCKS:-}" && -f "$secrets" ]]; then set -a; source "$secrets"; set +a; fi
-if [[ -n "${COAXIAL_UNLOCKS:-}" ]]; then
+if [[ -z "${COAXIAL_ONLY_PAGE:-}" && -z "${COAXIAL_UNLOCKS:-}" && -f "$secrets" ]]; then set -a; source "$secrets"; set +a; fi
+if [[ -z "${COAXIAL_ONLY_PAGE:-}" && -n "${COAXIAL_UNLOCKS:-}" ]]; then
   [[ -d "$here/unlock/node_modules" ]] || (cd "$here/unlock" && bun install --silent)
   # COAXIAL_UNLOCK_SIGNER=coax: the opener signs, verifies and opens NIP-44 with unlock-nostr.coax (#12630);
   # unset, nostr-effect as before (the rollback).
@@ -257,7 +283,9 @@ t=$(now); bun "$here/strip.ts" "$stage"; lap strip "$t"
 t=$(now); "$here/tool.sh" private-guard "$stage"; lap guard "$t"
 # The made-realm engine's script gains its served files' own hashes, after the strip changed their
 # bytes (engine-served.coax, #12629): a publish pins them with the script (migration 0107).
-t=$(now); "$here/tool.sh" engine-served write "$stage/site"; lap served "$t"
+if [[ -z "${COAXIAL_ONLY_PAGE:-}" ]]; then
+  t=$(now); "$here/tool.sh" engine-served write "$stage/site"; lap served "$t"
+fi
 if [[ -n "${COAXIAL_STAGE_TO:-}" ]]; then mkdir -p "$COAXIAL_STAGE_TO" && cp -R "$stage/assets" "$stage/site" "$COAXIAL_STAGE_TO/"; exit 0; fi
 
 if $server; then

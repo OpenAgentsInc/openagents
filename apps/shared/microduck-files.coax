@@ -1,0 +1,30 @@
+// Opaque shared byte-storage and consented document effects for saved runs.
+// The app chooses content and lifetime; SDKs only copy bytes or present consent.
+#load "../../metaverse-engine/host/document-wire.coax";
+#load "../../metaverse-engine/host/byte-storage.coax";
+MdRunFiles :: struct {token:int;pending:int;epoch:int;effect:int;status:int;bytes:[1472]u8;n:int;out:[4096]u8;out_n:int;action:int;}
+MdRunStorage :: struct {operation:int;token:int;space:string;version:int;key:string;data:[]u8;}
+#test "file operations retain one owner and reject late or malformed replies" {
+ f:[1]MdRunFiles;b:[1088]u8;#assert mdf_request(f[..],1,7,b[..]) && f[0].pending==1;
+ #assert !mdf_request(f[..],2,7,b[0..<0]);r:=mdf_storage(f[..]);#assert r.operation==1 && r.space=="microduck.runs" && r.key=="latest" && r.version==1 && r.data.count==1088;
+ #assert mdf_storage(f[..]).operation==0 && !mdf_match(f[..],f[0].token,8) && mdf_match(f[..],f[0].token,7);
+ mdf_done(f[..],1);#assert mdf_request(f[..],4,8,b[0..<0]) && f[0].action==35 && f[0].out_n>0;
+ #assert !mdf_match(f[..],1,8);mdf_done(f[..],2);#assert mdf_request(f[..],3,9,b[..]) && f[0].action==35;
+ f[0].token=2147483647;mdf_done(f[..],0);#assert !mdf_request(f[..],4,9,b[0..<0]);
+}
+mdf_request :: (f:[]MdRunFiles,operation:int,epoch:int,bytes:[]u8)->bool {
+ if operation<1 || operation>4 || f[0].pending!=0 || f[0].token>=2147483647 || bytes.count>1472 || ((operation==1 || operation==3) && bytes.count<1088) || ((operation==2 || operation==4) && bytes.count!=0) {return false;}
+ stage:=f[0];stage.token+=1;stage.pending=operation;stage.epoch=epoch;stage.status=0;stage.n=bytes.count;stage.effect=operation;
+ for v,i:bytes {stage.bytes[i]=v;}
+ if operation>=3 {stage.out_n=doc_write(ifx operation==4 then 1 else 2,stage.token,"Microduck.oarun",1472,bytes,stage.out[..]);if stage.out_n<0 {return false;}stage.action=35;stage.effect=0;}
+ f[0]=stage;return true;
+}
+mdf_storage :: (f:[]MdRunFiles)->MdRunStorage #export_c #effects(all) {
+ op:=f[0].effect;f[0].effect=0;if op!=1 && op!=2 {return MdRunStorage.{};}
+ return MdRunStorage.{operation=op,token=f[0].token,space="microduck.runs",version=1,key="latest",data=f[0].bytes[0..<f[0].n]};
+}
+mdf_match :: (f:[]MdRunFiles,token:int,epoch:int)->bool {return f[0].pending!=0 && token==f[0].token && epoch==f[0].epoch;}
+// status: 0 busy/idle, 1 saved, 2 opened, 3 cancelled, 4 unavailable,
+// 5 refused/corrupt, 6 no saved run, 7 file offered. Errors preserve the run.
+mdf_done :: (f:[]MdRunFiles,status:int) {f[0].pending=0;f[0].effect=0;f[0].status=status;f[0].action=0;f[0].out_n=0;}
+mdf_label :: (status:int)->string {if status<1 || status>7 {return "";}return [7]string.["SAVED","OPENED","CANCELLED","STORAGE UNAVAILABLE","RUN REFUSED","NO SAVED RUN","FILE OFFERED"][status-1];}

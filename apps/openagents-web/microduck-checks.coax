@@ -65,7 +65,7 @@ md_test_asset :: (s:[]Microduck) {a:[1]RigidAssembly;a[0]=assembly_fixture();a[0
  #assert md_key(s[..],120) && s[0].explosion==0 && s[0].zoom==0.74;#assert md_key(s[..],120);s[0].zoom=1.2;
  #assert !md_angle(s[..],0,3) && s[0].angles[0]==old[0];#assert md_key(s[..],2002) && s[0].selected==2 && s[0].joint== -1;#assert !md_key(s[..],43);
  #assert md_key(s[..],114) && s[0].explosion==0 && s[0].angles[0]==0 && s[0].angles[1]==0 && s[0].joint== -1 && s[0].selected== -1;
- b:[32768]u8;n:=md_menu(s[..],b[..]);#assert n>0;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);#assert jv_len(d[0],jv_get(d[0],0,"items"))==27;
+ b:[32768]u8;n:=md_menu(s[..],b[..]);#assert n>0;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);#assert jv_len(d[0],jv_get(d[0],0,"items"))==36;
  s[0].assembly[0].joints=32;s[0].assembly[0].parts=96;b[0]=77;#assert md_menu(s[..],b[..])== -1 && b[0]==77;
 }
 #test "actual workbench controls compose servo pose plots refusal and background admission" {
@@ -79,4 +79,31 @@ md_test_asset :: (s:[]Microduck) {a:[1]RigidAssembly;a[0]=assembly_fixture();a[0
  #assert md_key(s[..],3001) && s[0].lab[0].session[0].config.p.delay==16;md_advance(s[..],0);md_advance(s[..],0.016);#assert s[0].lab[0].session[0].last.position==0;
  #assert md_key(s[..],3002) && s[0].lab[0].session[0].config.p.effort.value==0.03;
  #assert md_key(s[..],114) && !s[0].lab[0].active && s[0].angles[0]==0;
+}
+#test "saved app records retain the actual servo state through replay and branching" {
+ s:[1]Microduck;md_test_asset(s[..]);#assert md_key(s[..],3001);md_advance(s[..],0);md_advance(s[..],0.004);#assert md_key(s[..],3004);md_advance(s[..],0.004);
+ b:[RSW_MAX]u8;n:=md_run_packet(s[..],b[..]);#assert n==1100;old:=s[0].lab[0].session[0];#assert md_run_load(s[..],b[0..<n]) && s[0].lab[0].playback;
+ #assert rsr_snapshot_same(s[0].lab[0].session[0].snapshot,old.snapshot,old.config);#assert md_key(s[..],3205) && s[0].lab[0].session[0].snapshot.steps==0;
+ #assert md_key(s[..],3207) && s[0].lab[0].session[0].snapshot.steps==old.snapshot.steps;
+ #assert md_key(s[..],3208) && !s[0].lab[0].playback && s[0].lab[0].initial.steps==old.snapshot.steps;
+}
+#test "valid records with altered source limits refuse atomically at the viewer" {
+ s:[1]Microduck;md_test_asset(s[..]);#assert md_key(s[..],3000);other:[1]MdLab;c:=s[0].lab[0].session[0].config;c.low-=0.25;#assert mdl_begin(other[..],c);
+ wrong:[RSW_MAX]u8;n:=mdl_save(other[..],wrong[..]);#assert n==1088;before:=s[0].angles;#assert !md_run_load(s[..],wrong[0..<n]) && s[0].angles[0]==before[0] && !s[0].lab[0].playback;
+}
+#test "the source stand coordinate keeps its exact signed zero word" {
+ s:[1]Microduck;md_test_asset(s[..]);#assert md_key(s[..],3000);other:[1]MdLab;c:=s[0].lab[0].session[0].config;c.stand=f64_from_bits(0x8000000000000000);#assert mdl_begin(other[..],c);
+ wrong:[RSW_MAX]u8;n:=mdl_save(other[..],wrong[..]);#assert n==1088 && !md_run_load(s[..],wrong[0..<n]) && !s[0].lab[0].playback;
+}
+#test "stale storage replies preserve the active app while a matching full record opens" {
+ s:[1]Microduck;md_test_asset(s[..]);#assert md_key(s[..],3000);b:[RSW_MAX]u8;n:=md_run_packet(s[..],b[..]);#assert n==1088;
+ #assert md_key(s[..],3201);req:=md_run_storage(s[..]);#assert req.operation==2;#assert md_key(s[..],3000);
+ reply:[16+RSW_MAX]u8;_:=cb_store_le32(reply[..],0,cast(u32)req.token);_:=cb_store_le32(reply[..],8,cast(u32)n);_:=cb_store_le32(reply[..],12,cast(u32)n);for i:0..<n {reply[16+i]=b[i];}
+ md_run_inbox(s[..],768,reply[0..<16+n]);#assert !s[0].lab[0].playback && s[0].files[0].status==3;
+ #assert md_key(s[..],3201);req=md_run_storage(s[..]);_:=cb_store_le32(reply[..],0,cast(u32)req.token);md_run_inbox(s[..],768,reply[0..<16+n]);#assert s[0].lab[0].playback && s[0].files[0].status==2;
+}
+#test "a share acknowledgement means file offered and an invalid import preserves the active run" {
+ s:[1]Microduck;md_test_asset(s[..]);#assert md_key(s[..],3000) && md_key(s[..],3202);token:=s[0].files[0].token;b:[1]u8;
+ md_run_document_reply(s[..],token,0,b[0..<0]);#assert s[0].files[0].status==7 && s[0].lab[0].active && !s[0].lab[0].playback;
+ #assert md_key(s[..],3203);token=s[0].files[0].token;md_run_document_reply(s[..],token,0,b[..]);#assert s[0].files[0].status==5 && s[0].lab[0].active && !s[0].lab[0].playback;
 }

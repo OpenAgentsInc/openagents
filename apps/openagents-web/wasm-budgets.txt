@@ -13,8 +13,8 @@
 #   NAME BYTES
 admin 60000
 # RBA1 visual workbench plus actual Psionic servo, finite SLV1 packets and shared response plots: 68,006 bytes measured, 5% headroom.
-# Shared eased assembly film and illustrative gait adapter: 72,358 bytes measured, with room for the presentation.
-microduck 76000
+# Complete SLR1 replay, shared timeline and consented file/storage effects: 107,696 bytes measured, 4% headroom.
+microduck 112000
 feed 262144
 audiolab 140000
 animelab 190000

@@ -1,6 +1,42 @@
 // The native-width profile of coax/web/STORAGE.md. Bytes and reply fields are
 // identical to the browser contract; SDK effects keep the opaque record.
 #load "../../coax/lib/crypto/bytes.coax";
+#authority;
+BswReply :: struct {token:u32;status:int;needed:int;payload:[]u8;}
+#test "an empty successful record and a missing record both have exactly sixteen header bytes" {
+ b:=[16]u8.[9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];r:[1]BswReply;#assert bsw_read(b[..],r[..]) && r[0].payload.count==0 && r[0].status==0;
+ b[4]=1;#assert bsw_read(b[..],r[..]) && r[0].status==1 && r[0].token==9;
+ #assert bsw_reply(9,1,"",0,b[..])==16 && b[4]==1;#assert bsw_reply(9,0,"",0,b[..])==16 && b[4]==0;
+}
+#test "storage replies admit exact envelopes and preserve output on every malformed field" {
+ b:=[19]u8.[17,0,0,0,0,0,0,0,3,0,0,0,3,0,0,0,97,98,99];r:[1]BswReply;
+ #assert bsw_read(b[..],r[..]) && r[0].token==17 && r[0].status==0 && r[0].needed==3 && cast(string)r[0].payload=="abc";
+ for field:[4]int.[0,4,8,12] {bad:=b;_:=cb_store_le32(bad[..],field,4294967295);if field!=0 {#assert !bsw_read(bad[..],r[..]) && r[0].token==17;}else {#assert bsw_read(bad[..],r[..]) && r[0].token==4294967295;#assert bsw_read(b[..],r[..]);}}
+ #assert !bsw_read(b[0..<15],r[..]) && !bsw_read(b[0..<18],r[..]) && !bsw_read(b[..],r[0..<0]);
+ for token:[2]u32.[0,1] {bad:=b;_:=cb_store_le32(bad[..],0,token);#assert bsw_read(bad[..],r[..])==(token==1);}
+ for status:[3]u32.[0,10,11] {bad:=b;_:=cb_store_le32(bad[..],4,status);#assert bsw_read(bad[..],r[..])==(status<=10);}
+ for needed:[2]u32.[2147483647,2147483648] {bad:=b;#assert cb_store_le32(bad[..],12,needed);#assert bsw_read(bad[..],r[..])==(needed==2147483647);}
+}
+#test "storage envelope maximum lengths and writer boundary failures stay explicit" {
+ // Independent little-endian maximum envelope, without a bounded byte helper
+ // silently refusing the deliberately larger-than-1-MiB test allocation.
+ b:[1048593]u8;r:[1]BswReply;b[0]=1;b[10]=16;b[14]=16;b[1048591]=77;
+ #assert bsw_read(b[0..<1048592],r[..]) && r[0].payload.count==1048576 && r[0].payload[1048575]==77;
+ b[8]=1;#assert !bsw_read(b[..],r[..]);
+ out:[19]u8;#assert bsw_reply(17,0,"abc",3,out[..])==19;
+ expected:=[19]u8.[17,0,0,0,0,0,0,0,3,0,0,0,3,0,0,0,97,98,99];for i:0..<19 {#assert out[i]==expected[i];}
+ for status:[4]int.[-1,0,10,11] {#assert (bsw_reply(1,status,"",0,out[..])==16)==(status==0 || status==10);}
+ #assert bsw_reply(1,0,"",-1,out[..])== -1 && bsw_reply(1,0,"",2147483648,out[..])== -1;
+ #assert bsw_reply(1,0,cast(string)b[0..<1048577],1048577,out[..])==16 && cb_load_le32(out[..],4).value==4;
+ #assert bsw_reply(1,0,cast(string)b[0..<1048576],1048576,out[..])==16 && cb_load_le32(out[..],4).value==9;
+ #assert bsw_reply(1,0,"",2147483647,out[..])==16 && cb_load_le32(out[..],12).value==2147483647;
+}
+bsw_read :: (b:[]u8,out:[]BswReply)->bool #export_c #effects(all) {
+ if out.count!=1 || b.count<16 || b.count>1048592 {return false;} // mutant: equivalent (upper byte limit +1 cannot pass both the exact 16+n length and the independent payload cap)
+ h:=b[0..<16];token:=cb_load_le32(h,0).value;status:=cast(int)cb_load_le32(h,4).value;n:=cast(int)cb_load_le32(h,8).value;needed:=cast(int)cb_load_le32(h,12).value;
+ if token==0 || status>10 || n>1048576 || needed>2147483647 || b.count!=16+n {return false;} // mutant: equivalent (payload cap +1 cannot pass the exact length with the independent whole-envelope cap)
+ out[0]=BswReply.{token=token,status=status,needed=needed,payload=b[16..<16+n]};return true;
+}
 #test "byte storage envelopes preserve token bits, exact data, missing and capacity" {
  out:[20]u8;n:=bsw_reply(4294967295,0,"abc",3,out[..]);#assert n==19 && cb_load_le32(out[..],0).value==4294967295 && cb_load_le32(out[..],8).value==3 && out[18]=='c';
  #assert bsw_reply(1,1,"",0,out[..])==16 && cb_load_le32(out[..],4).value==1;
@@ -10,6 +46,6 @@
 bsw_reply :: (token:u32,status:int,payload:string,needed:int,out:[]u8)->int #export_c #effects(all) {
  if out.count<16 || status<0 || status>10 || needed<0 || needed>2147483647 {return -1;}
  code:=status;n:=payload.count;if n>1048576 {code=4;n=0;}else if n>out.count-16 {code=9;n=0;}
- if !cb_store_le32(out[0..<16],0,token) || !cb_store_le32(out[0..<16],4,cast(u32)code) || !cb_store_le32(out[0..<16],8,cast(u32)n) || !cb_store_le32(out[0..<16],12,cast(u32)needed) {return -1;}
+ if !cb_store_le32(out[0..<16],0,token) || !cb_store_le32(out[0..<16],4,cast(u32)code) || !cb_store_le32(out[0..<16],8,cast(u32)n) || !cb_store_le32(out[0..<16],12,cast(u32)needed) {return -1;} // mutant: equivalent (failure return is unreachable: admitted 16-byte output and four fixed in-range u32 stores cannot fail)
  for i:0..<n {out[16+i]=payload[i];}return 16+n;
 }

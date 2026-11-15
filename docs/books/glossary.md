@@ -101,6 +101,7 @@ that already touches the file (#13267 to #13269, #13280).
 | Word | Meaning | Owner |
 | --- | --- | --- |
 | Servo experiment | A bounded illustrative single-joint run using the shared scalar servo; held targets, exact step, source binding, delay queue and observed response. No hardware authority. | [Psionic servo workbench](../protocol/servo-lab-v1.md) |
+| Saved servo run | An inert versioned recipe with complete queue snapshots, target commands and trace identity; replay preserves the original and an explicit branch links its parent artifact. | [Servo run v1](../protocol/servo-run-v1.md) |
 | Decision model | A model that returns one choice from a typed set, with a probability, instead of text. | Psionic 12–17 |
 | Elephant, Mammoth | The two decision models the Psionic book executes from their original weights. | Psionic 14 and 15 |
 | System One | The typed decision interface that Psionic serves at `/v1/systemone`. | Psionic 20 |

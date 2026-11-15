@@ -115,6 +115,9 @@ if "realms/made-slugs.txt" in have:
 # And the pages and cards of the replies once made in Everglade (the feature is gone; its stored
 # pages stay until the owner says to delete them, so a release never removes them).
 published += ["realms/everglade/reply/"]
+# Independent pins and isolated page runtimes outlive a main-site release.
+# A scoped pin upload still retires its own unmatched pages normally.
+published += [] if prefix else ["demo/", "demo-releases/"]
 stale = [n for n in have if n not in keep and n.startswith(prefix) and not any(n == p.rstrip("/") or (p.endswith("/") and n.startswith(p)) for p in published)]
 list(pool.map(lambda n: call(api + "/o/" + urllib.parse.quote(n, safe=""), "DELETE"), stale))
 print(f"  sent {len(sent)}, removed {len(stale)}, unchanged {len(keep) - len(sent)}")

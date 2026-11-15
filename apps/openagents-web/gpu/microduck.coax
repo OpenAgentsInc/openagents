@@ -1,5 +1,6 @@
 // Research assembly viewer. Shared engine shader math and Filament strokes.
 #load "splash.coax";
+#load "../../../metaverse-engine/ui/primitive-shader.coax";
 
 #test "Microduck unpacking preserves the engine's packed material colour" {
   c := md_colour(0x00332211);
@@ -58,4 +59,4 @@ MdStroke :: struct { a: V4; b: V4; c: V4; }
 md_fx_vs :: (i: u32, j: u32, a: MdStroke, u: [] f32) -> SplashV {
   return splash_fx_vs(i, j, splash_fx_vs_in.{a = a.a, b = a.b, c = a.c, d = v4(0.0f32, 0.0f32, 0.0f32, 0.0f32)}, u);
 }
-md_fx_fs :: (v: SplashV, u: [] f32) -> V4 { return splash_fx_fs(v, u); }
+md_fx_fs :: (v: SplashV, u: [] f32) -> V4 {if v.tint.w>4.5f32 {return hud_primitive_fs(v.place,v.shape,v.tint,u[3]);}return splash_fx_fs(v, u);}

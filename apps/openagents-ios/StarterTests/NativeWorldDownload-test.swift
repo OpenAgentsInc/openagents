@@ -1,6 +1,7 @@
 // Firm reason: 6 (independent URLSession/filesystem oracle of signed inventory delivery).
 import XCTest
 import CryptoKit
+import MetalKit
 @testable import OpenAgents
 
 private final class WorldDownloadOracle:URLProtocol {
@@ -60,6 +61,43 @@ private final class WorldDownloadOracle:URLProtocol {
         XCTAssertEqual(result.0,50965060);XCTAssertEqual(result.1,"fc21cb95595d665bb83dc5b90c373dcf197f5b45b34b376c0d110b044bb408b5")
         WorldDownloadOracle.reset(Data(),status:503);let offline=cache(root)
         let reopened=try await offline.prepare(inventory,progress:{_,_ in});XCTAssertEqual(reopened,installed);XCTAssertEqual(WorldDownloadOracle.count,0)
+        // Reopen the actually downloaded cache in the actual Metal producer,
+        // with all page network effects disabled, then save/reopen its run.
+        let device=try XCTUnwrap(MTLCreateSystemDefaultDevice()),queue=try XCTUnwrap(device.makeCommandQueue())
+        let c=NativeWorldTests.microduckConfig(reopened.appendingPathComponent("base.pack")),size=CGSize(width:430,height:900)
+        var page:AEPageHost?,why:NSString?,saved:Data?,opened:Data?,branch:Data?,numerical:Data?
+        NativeWorldHost.deep.run {
+            page=AEPageHost.open(c,device:device,queue:queue,why:&why)
+            guard let page else {return}
+            _ = page.key(1007,mods:0,down:true);_ = page.key(3001,mods:0,down:true)
+            _ = page.frame(size,scale:1,dt:0,wait:true)
+            for _ in 0..<10 {_ = page.frame(size,scale:1,dt:0.002,wait:true)}
+            saved=page.servoRun()
+            _ = page.key(3200,mods:0,down:true)
+            _ = page.frame(size,scale:1,dt:0,wait:true)
+            _ = page.key(3000,mods:0,down:true);_ = page.key(3201,mods:0,down:true)
+            _ = page.frame(size,scale:1,dt:0,wait:true);opened=page.servoRun()
+            _ = page.key(3205,mods:0,down:true);_ = page.key(3204,mods:0,down:true)
+            _ = page.frame(size,scale:1,dt:0,wait:true)
+            _ = page.frame(size,scale:1,dt:0.004,wait:true)
+            _ = page.key(3208,mods:0,down:true);branch=page.servoRun()
+            _ = page.frame(size,scale:1,dt:0,wait:true)
+            for _ in 0..<100 {_ = page.frame(size,scale:1,dt:0.002,wait:true)}
+            _ = page.key(3004,mods:0,down:true)
+            for _ in 0..<50 {_ = page.frame(size,scale:1,dt:0.002,wait:true)}
+            numerical=page.servoRun()
+            page.close()
+        }
+        XCTAssertNotNil(page,"\(why ?? "Open failed")")
+        let artifact=try XCTUnwrap(saved),replay=try XCTUnwrap(opened),fork=try XCTUnwrap(branch)
+        XCTAssertEqual(artifact.count,1088);XCTAssertEqual(replay,artifact)
+        XCTAssertEqual(fork.subdata(in:48..<80),artifact.suffix(32));XCTAssertNotEqual(fork,artifact)
+        XCTAssertEqual(WorldDownloadOracle.count,0,"Cached producer and local replay made no download request")
+        let shot=XCTAttachment(data:artifact,uniformTypeIdentifier:"public.data");shot.name="Microduck native saved run SLR1";shot.lifetime = .keepAlways;add(shot)
+        let values=try XCTUnwrap(numerical);XCTAssertEqual(values.count,1100)
+        let position=Double(bitPattern:values.withUnsafeBytes {$0.loadUnaligned(fromByteOffset:896,as:UInt64.self).littleEndian})
+        XCTAssertNotEqual(position,0)
+        let sample=XCTAttachment(data:values,uniformTypeIdentifier:"public.data");sample.name="Microduck native numerical replay SLR1";sample.lifetime = .keepAlways;add(sample)
     }
     private func inventory(_ data:Data)throws->NativeWorldInventory {
         let hash=NativePackage.hex(Data(SHA256.hash(data:data)))

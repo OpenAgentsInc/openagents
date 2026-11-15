@@ -1,0 +1,3 @@
+shot: WebGPU adapter: hardware apple metal-3
+{"publicViewer":true,"nativeFileExact":true,"saveAndReopen":true,"corruptFilePreserved":true,"replayFrom":2,"replayTo":152,"source":"/demo/microduck/builds/20261116T000327Z/build/microduck.f9b154d81bb0.wasm"}
+docs/verification/microduck-replay-13641/public-replay.png

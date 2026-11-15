@@ -3988,6 +3988,7 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => l
   captureFrame: () => { if (captureRequested) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
   guardProbe: (field = 0) => engine?.exports.coaxial_guard_probe?.(arena.state, field) ?? 0,
   servoLabPacket: () => {const x=engine?.exports,n=x?.coaxial_servo_lab_len_v1?.(arena.state)??0,at=x?.coaxial_servo_lab_v1?.(arena.state)??0;return n===312&&at&&at+n<=memory.buffer.byteLength?Array.from(new Uint8Array(memory.buffer,at,n)):null;},
+  servoRunPacket: () => {const x=engine?.exports,n=x?.coaxial_servo_run_len_v1?.(arena.state)??0,at=x?.coaxial_servo_run_v1?.(arena.state)??0;return n>=1088&&n<=1472&&at&&at+n<=memory.buffer.byteLength?Array.from(new Uint8Array(memory.buffer,at,n)):null;},
   // a page's read-only facts for headless checks, where its face exports them (project-face.c)
   fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1,
   // The room's state for a page opening this one in place (zone-host.js): -1 none, 0 off, 1 opening, 2 open, 3 down.
@@ -4280,6 +4281,35 @@ addEventListener("hashchange", sendHash);
 // action, set the cursor. gesture: inside an input event, where a phone
 // lets a field bring up its keyboard; tap: a touch just ended, which focuses
 // the field again so a keyboard that was dismissed comes back.
+// Consented opaque document projection. Coax owns recipe and record admission.
+async function documentEffect(text) {
+  const owner=engine,x=owner?.exports,state=arena.state;
+  if(!x?.coaxial_document_reply_v1)return;
+  let q;try{q=JSON.parse(text);}catch{return;}
+  const reply=(status,bytes=new Uint8Array())=>{
+    if(engine!==owner)return;
+    const cap=x.coaxial_inbox_cap(),at=x.coaxial_inbox(state);
+    if(bytes.length>cap||bytes.length>2048){status=4;bytes=new Uint8Array();}
+    new Uint8Array(memory.buffer,at,bytes.length).set(bytes);
+    x.coaxial_document_reply_v1(state,q.token,status,bytes.length);
+  };
+  try{
+    if(q.op==="share"){
+      const raw=atob(q.data),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+      const url=URL.createObjectURL(new Blob([bytes],{type:"application/octet-stream"}));
+      const link=document.createElement("a");link.href=url;link.download=q.name;link.click();
+      setTimeout(()=>URL.revokeObjectURL(url),30000);reply(0);
+    }else if(q.op==="open"){
+      const input=document.createElement("input");input.type="file";input.accept=".oarun,application/octet-stream";
+      input.addEventListener("cancel",()=>{input.remove();reply(1);},{once:true});
+      input.addEventListener("change",async()=>{
+        const file=input.files?.[0];input.remove();
+        if(!file){reply(1);return;}if(file.size<1||file.size>q.limit){reply(4);return;}
+        try{reply(0,new Uint8Array(await file.arrayBuffer()));}catch{reply(2);}
+      },{once:true});input.hidden=true;document.body.append(input);input.click();
+    }else reply(3);
+  }catch{reply(2);}
+}
 function after(gesture, tap = false) {
   if (!engine) return;
   const x = engine.exports;
@@ -4341,6 +4371,7 @@ function after(gesture, tap = false) {
     else if (code === ACT_VOICE_SAY && voice) voice.say(text);
     // what came of the agent strip's realm steps (an ask added, a revision, a delete, a look; #13528): the strip's words
     else if (code === 34) agentEvent(18, text);
+    else if (code === 35) void documentEffect(text);
     else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }

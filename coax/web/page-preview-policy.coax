@@ -1,0 +1,13 @@
+// Isolated preview names can never select the site's root or escape /demo/.
+#authority;
+#test "preview names admit the documented alphabet and reject traversal and empty scope" {
+ for s:[5]string.["a","0","microduck","a-09-z","abcdefghijklmnopqrstuvwxyz0123456789-"] {#assert ppv_name(s);}
+ for s:[9]string.["","-a","A","a/b","..","a.b","a b","a_","é"] {#assert !ppv_name(s);}
+ b:[41]u8;for i:0..<41 {b[i]='a';}#assert ppv_name(cast(string)b[0..<40]) && !ppv_name(cast(string)b[..]);
+ #assert !ppv_name("a{") && !ppv_name("a:") && !ppv_name("a+");
+}
+ppv_name :: (s:string)->bool #effects(all) {
+ if s.count<1 || s.count>40 {return false;}
+ for c,i:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || (i>0 && c=='-')) {return false;}}
+ return true;
+}

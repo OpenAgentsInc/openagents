@@ -10,10 +10,14 @@ episode is the first concrete answer: what we are doing about it in
 robotics. Nothing here is a robot you can buy or a policy we trained. The
 honest title is in the first word: *toward*.
 
-There is no walkable lab for this one. The thing to show is the
-[Microduck assembly viewer](../../metaverse/microduck/README.md), which
-runs locally and is not deployed. [Section 6](#6-the-tour) is the tour.
-[Check before recording](#check-before-recording) lists what to decide.
+The demo is the [Microduck workbench](../../metaverse/microduck/README.md):
+source-bound articulation, an illustrative servo and portable experiment
+replay. The native viewer and live servo are already in TestFlight; the
+saved-run delivery is tracked in the [1301 verification record](../verification/microduck-replay-13641/README.md).
+The [18-second assembly film](../verification/microduck-film-13643/README.md)
+is published; its walking is labeled illustrative animation.
+[Section 6](#6-the-tour) is the tour. Check the delivery record and
+[recording checklist](#check-before-recording) before filming.
 
 ## The short version
 
@@ -173,21 +177,28 @@ robot has to wait for the other to exist.
 
 ## 6. The tour
 
-Record full screen. The viewer runs from a local build; the
-[viewer's README](../../metaverse/microduck/README.md) has the commands.
-It opens at `http://127.0.0.1:9123/demos/microduck/`.
+Record full screen. Use **Home → Microduck** in the OpenAgents app or
+build the browser viewer from its [README](../../metaverse/microduck/README.md).
+Verify the saved-run build's delivery status before recording steps 6–7.
 
 | Step | What you show | What to say |
 | --- | --- | --- |
-| 1. The keynote | Ten seconds of the Berlin clip: the ducks on stage | "This is what we're reproducing. All of it, not the stage show." |
-| 2. Our viewer | The duck in our engine. Drag to orbit, scroll to zoom | "Same duck, in our engine, in a browser. This is the real assembly, about 800,000 triangles." |
-| 3. The views | Keys 1, 2, 3 for front, side and overhead. N for the normals view | "It doesn't move yet. I'm not going to pretend it does." |
-| 4. Where it came from | The README's source section: the pinned revision and the hash | "We know exactly which file this is, who made it, and what we're allowed to do with it." |
-| 5. The licence | The CC BY-NC-SA line | "Non-commercial. This assembly is for study. A duck we sell needs a design we can ship and a controller checked on that build." |
-| 6. What landed today | Chapters 257–259; distinguish 259's implemented statistics from its planned collector | "An experiment record, a motor model with delay, and the statistics for practice runs. Collecting those runs is next." |
-| 7. A refusal | The `robot-actuator.coax` example and its final transcript line | "Negative inertia. It refuses the update and leaves the output alone. That's one checked boundary, not a robot safety certificate." |
-| 8. The arm in maths | A chapter 167 example running in a terminal | "And this is the arm. Kinematics, in Coax, checked." |
-| 9. The roadmap | The fourteen work packages, RB-00 to RB-13 | "That's the whole road, in the repo, with what's done marked done." |
+| 1. The keynote | A short credited excerpt of the Berlin ducks | "This is what we're working toward." |
+| 2. Our viewer | Native Metal on the phone, or Coax/WebGPU in the browser | "Same source assembly, in our engine. About 800,000 triangles, streamed rather than bundled." |
+| 3. Articulation | Tap a part, choose a joint and pose it inside its source limits | "Those are the source joints and limits. This is visual articulation." |
+| 4. The film | Smooth explosion, reassembly, then the labeled walk | "An authored animation. It shows the assembly; it isn't a walking policy we trained." |
+| 5. The servo | Baseline, Delayed and Limited; show actual response curves | "One joint, a fixed base, teaching coefficients. The plots come from the servo calculation." |
+| 6. A saved experiment | Save, Open latest, scrub and replay | "A recipe, complete queue and trace. The same file is verified on the phone and in the browser." |
+| 7. A branch | Pause, move the cursor, Branch + continue | "It keeps the original run and carries the delayed targets into a new one." |
+| 8. A refusal | Negative inertia or a corrupted saved file | "It refuses the change and keeps the admitted experiment. That's a checked boundary." |
+| 9. Source and rights | Pinned revision, source hash and CC BY-NC-SA credit | "Noncommercial research geometry, credited to Pollen Robotics and NVIDIA DLI." |
+| 10. What landed | Chapters 257–259 and the implementation roadmap | "The experiment, illustrative actuator and statistics are here. Training and the broader collector still have their own work." |
+| 11. The arm | Chapter 167's checked kinematics | "And this is the arm, in Coax, checked." |
+
+The native cached-download/replay path and a warm browser with blocked
+network are automated checks. Record a physical phone airplane-mode visit
+only after completing the owner check. The scoped agent comparison journey
+is #13642; don't present it as delivered before its verification record exists.
 
 If you cut it down, keep 2, 5 and 6.
 
@@ -307,12 +318,13 @@ SO-101 from its own repository (4), the roadmap (5).
   the "one".
 - **"Three of six."** Six frozen LIBERO cases, three successes, with
   MuJoCo supplying the physics. It is not a success rate for anything else.
-- **The duck doesn't move.** The viewer is static geometry. Don't cut it
-  against the keynote in a way that suggests ours walks.
+- **The walking is authored animation.** Keep its illustrative label visible.
+  The servo is a separate fixed-base single-joint calculation. Neither is
+  evidence of trained locomotion, contact balance or physical actuation.
 - **The duck's licence.** Geometry is CC BY-NC-SA 4.0, credit Pollen
   Robotics and NVIDIA DLI. Put the credit on screen at step 2 and in the
-  description. The viewer currently stays local; review the exact source
-  terms before proposing a wider release.
+  description. The streamed research model retains those terms independently
+  of the application's software license.
 - **The keynote clip.** It is NVIDIA's footage. Keep it short and credit
   it, or describe it and show the viewer.
 - **"Landed today."** Chapters 257 and 258 were implemented on 2026-11-15;

@@ -1653,3 +1653,13 @@ not a pending request for a key.
       authored illustrative fixed-base scalar servo, without hardware control.
       Native Metal and WebGPU observations are recorded in
       [the qualification](docs/verification/microduck-servo-13640/README.md).
+
+## iOS 1301 Microduck saved runs (2026-11-15)
+
+- [ ] Install **1301** from the Owner TestFlight group. Home → Microduck:
+      run an illustrative servo, Save, Open latest, scrub, then Branch + continue.
+      After the first model download, repeat in airplane mode. Check Open file,
+      Share file, cancellation and VoiceOver on the physical iPhone. Native
+      Metal, browser cross-host numerical replay and cache tests pass; these
+      phone ceremonies and accessibility checks remain unclaimed. See
+      [the delivery and evidence](docs/verification/microduck-replay-13641/README.md).

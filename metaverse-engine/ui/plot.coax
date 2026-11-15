@@ -1,6 +1,11 @@
 // Display-list line adapter for the existing twelve-float world HUD backend.
 #load "draw.coax";
 #load "../../components/kit/plot.coax";
+#load "arwes-draw.coax";
+// The same solid HUD primitive also projects shared slider/control boxes.
+hd_control_boxes :: (out:[]f32,n:int,list:[]Prim,p:HdPen)->int {
+ count:=n;for q:list {if q.kind==PRIM_BOX {count=aw_quad(out,count,HudBox.{x=q.x,y=q.y,width=q.w,height=q.h},0,0,0,AxColor.{r=q.fill.r,g=q.fill.g,b=q.fill.b,a=q.fill.a},p,6);}}return count;
+}
 hd_plot_lines :: (out:[]f32,n:int,list:[]Prim,p:HdPen)->int {
  count:=n;for q:list {if q.kind!=PRIM_LINE {continue;}if lit(out,count,q.x*p.d,q.y*p.d,q.a*p.d,q.b*p.d,q.border*0.5*p.d,q.fill.a,0.5*p.d,q.fill.r,q.fill.g,q.fill.b,0) {count+=6;}}return count;
 }

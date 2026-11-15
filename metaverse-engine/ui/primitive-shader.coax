@@ -1,0 +1,18 @@
+// Shared twelve-float HUD modes 5 (radial), 6 (solid) and 7 (disc).
+// Moved from the HUD gallery so scene components use the same GPU arithmetic.
+#load "../gpu/wgsl.coax";
+#test "HUD radial endpoints midpoint and zero radius preserve the gallery contract" {
+ #assert hud_radial(0,20)==1 && hud_radial(20,20)==0;
+ #assert hud_radial(10,20)==0.5 && hud_radial(50,20)==0 && hud_radial(1,0)==0;
+}
+#test "solid HUD boxes retain their declared opacity instead of the legacy bar mode" {
+ c:=hud_primitive_fs(v2(0,0),v4(0,0,0.5,0),v4(1,0.5,0.25,6),1);
+ #assert c.x==0.5 && c.y==0.25 && c.z==0.125 && c.w==1;
+}
+hud_radial :: (distance:f32,radius:f32)->f32 {if radius<=0 {return 0;}return clampf(1-distance/radius,0,1);}
+hud_primitive_fs :: (place:V2,shape:V4,tint:V4,light:f32)->V4 {
+ alpha:f32=shape.z*light;
+ if tint.w<5.5f32 {alpha*=hud_radial(wg_length2(place),shape.x);}
+ else if tint.w>6.5f32 {alpha*=1-smoothstep(shape.x-0.5f32,shape.x+0.5f32,wg_length2(place));}
+ return v4(tint.x*alpha,tint.y*alpha,tint.z*alpha,1.0f32);
+}

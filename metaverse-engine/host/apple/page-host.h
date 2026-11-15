@@ -94,6 +94,8 @@
 - (NSData *)viewMenu;
 // Optional inert SLV1 packet; the host copies bytes, Coax owns its meaning.
 - (NSData *)servoLab;
+- (NSData *)servoRun;
+- (void)documentReply:(int32_t)token status:(int32_t)status bytes:(NSData *)bytes;
 // The existing editor-model wire and message boundary, shared with host.js.
 - (NSData *)editorModel;
 - (int32_t)editorRevision;

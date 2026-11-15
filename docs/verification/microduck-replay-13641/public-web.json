@@ -1,0 +1,22 @@
+{
+  "url": "https://openagents.com/demo/microduck/",
+  "runtime": "/demo/microduck/builds/20261116T000327Z/",
+  "html_sha256": "171d83479ccdc309d074778090fda9e06736d44451229e441d7f474f52085ba7",
+  "files": [
+    {
+      "path": "/demo/microduck/builds/20261116T000327Z/coaxial/host.ab95ede6dac0.js",
+      "bytes": 459015,
+      "sha256": "cfd9353fbf80b4a713ae16648629ab4505ae18d354661662dbf8124e6adebf7e"
+    },
+    {
+      "path": "/demo/microduck/builds/20261116T000327Z/build/microduck.f9b154d81bb0.wasm",
+      "bytes": 107723,
+      "sha256": "f9b154d81bb0c96e476981073505e85927a6d7dca9d488e028b2e73b35c8bcd2"
+    },
+    {
+      "path": "/demo/microduck/builds/20261116T000327Z/build/microduck.e08eb262eccf.wgsl",
+      "bytes": 20062,
+      "sha256": "d145cd6312e3c04a6919ce8f1235d2ae456e486bce2114509417d2e5fe76b7ff"
+    }
+  ]
+}
