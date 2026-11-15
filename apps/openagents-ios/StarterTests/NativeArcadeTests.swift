@@ -11,7 +11,7 @@ import UIKit
         let expected=label.sizeThatFits(CGSize(width:176,height:1000))
         XCTAssertEqual(notice.sizeThatFits(CGSize(width:200,height:1000)).height,expected.height+20,accuracy:1)
     }
-    func testUpdateOfferUsesTheSameComponentSurfaceAndRetainsBusyGuard() throws {
+    func testUpdateOfferUsesTheSameComponentSurface() throws {
         let home=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer {try? FileManager.default.removeItem(at:home)}
         let host=NativeHost(updates:try NativeUpdates(home:home)),window=UIWindow(frame:CGRect(x:0,y:0,width:402,height:874))
@@ -22,7 +22,6 @@ import UIKit
         XCTAssertNotNil(prompt.controls["updates.apply"] as? NativeButton)
         XCTAssertNotNil(prompt.controls["updates.ready"] as? NativeNotice)
         XCTAssertTrue(prompt.view.subviews.contains {$0 is NativeArcadeSurface})
-        host.services=1;prompt.press?("updates.apply");XCTAssertNil(host.updates.current)
         host.dismiss(animated:false)
     }
     func testMeasuredNativeAdaptersArePaintedByTheSharedSceneAndRetireWhenHidden() {

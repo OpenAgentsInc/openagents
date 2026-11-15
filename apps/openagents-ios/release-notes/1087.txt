@@ -1,0 +1,1 @@
+Monochrome Arcade components throughout the app: login, chat, drawer, Projects, Usage, Settings and world controls. Shared GPU frames, animated focus and press states, activity arcs and smooth download progress. Native typing, text selection and email-code AutoFill remain available. Explore the animated library in Settings → Components.

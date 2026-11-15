@@ -1503,3 +1503,13 @@ not a pending request for a key.
       no empty copy-only messages. Both computer services are updated and the
       exact conversation passes service read-back. Generation 3 also includes
       generation 2's shorter interface; no new TestFlight install is needed.
+
+## iOS 1087 Arcade components (2026-11-14)
+
+- [ ] Install TestFlight **1087**. Check the white/grayscale login, Chat drawer,
+      composer, tool rows, Projects, Usage and floating world menu on the phone.
+      Settings → Components has the animated specimens. Check reduced motion,
+      larger text and VoiceOver with the real account, plus keyboard/email-code
+      behavior. Installed simulator flows pass; physical-phone accessibility
+      and power/frame-time measurements are not claimed. See
+      [the release evidence and pictures](docs/verification/2026-11-14-arcade-mobile/README.md).
