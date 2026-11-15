@@ -13,7 +13,7 @@
  }}
  #assert !ndl_request_read("{}",q[..]) && !ndl_page_read("{}",p[..]) && !ndl_begin(p[0..<0],q[0..<1]) && !ndl_begin(p[0..<1],q[..]);
  n:=ndl_request_write(id,"",id,b[..]);for i:n..<513 {b[i]=' ';}#assert ndl_request_read(cast(string)b[0..<512],q[0..<1]) && !ndl_request_read(cast(string)b[0..<513],q[0..<1]);
- #assert ndl_begin(p[0..<1],q[0..<1]);n=ndl_page_write(p[0..<1],b[..]);for i:n..<32769 {b[i]=' ';}#assert ndl_page_read(cast(string)b[0..<32768],p[1..<2]) && !ndl_page_read(cast(string)b[0..<32769],p[1..<2]);
+ n=ndl_request_write(id,"",id,b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[0..<1]) && ndl_begin(p[0..<1],q[0..<1]);n=ndl_page_write(p[0..<1],b[..]);for i:n..<32769 {b[i]=' ';}#assert ndl_page_read(cast(string)b[0..<32768],p[1..<2]) && !ndl_page_read(cast(string)b[0..<32769],p[1..<2]);
 }
 #test "delivery pages round trip all sixteen rows and eleven immutable copy ids" {
  q:[1]NdlRequest;p:[1]NdlPage;r:[1]NdlPage;b:[40000]u8;receipt:[2048]u8;keys:[18][64]u8;text:[11]string;

@@ -124,8 +124,12 @@ nip17_subject :: (m:[]N17Message,order:[]int)->int #effects(all) {
 // Structural projection only: callers must first admit the exact custody
 // operation/account/identity response. No plaintext label is a proof of a seal.
 nip17_read_opened :: (rumor:string,me:[]u8)->N17Message #effects(all) {
- m:N17Message;if rumor.count<1 || rumor.count>NIP59_MAX_RUMOR || me.count!=32 {return m;}
- copy:[65536]u8;pre:[65536]u8;defer {secure_zero(copy[..]);secure_zero(pre[..]);}n:=n59_signed_copy(rumor,copy[..]);if n<0 {return m;}
+ m:N17Message;
+ if rumor.count<1 || rumor.count>NIP59_MAX_RUMOR || me.count!=32 {return m;} // mutant: equivalent (lower-bound 1 -> 2 or < -> <=: a zero/one-byte string cannot be a complete NIP-01 rumor and the shared parser refuses it)
+ copy:[65536]u8;pre:[65536]u8;
+ defer {secure_zero(copy[..]);secure_zero(pre[..]);} // mutant: equivalent (removing a dead local's deferred erasure is unobservable to safe Coax callers; retain both erasures for native stack hygiene)
+ n:=n59_signed_copy(rumor,copy[..]);
+ if n<0 {return m;} // mutant: equivalent (< -> <= or 0 -> 1: the adapter returns -1 or the source length plus the nonempty signature field, never zero or one)
  e:=nostr_event_read(cast(string)copy[0..<n],pre[..],false);if e.error!=NE_OK {return m;}
  o:=Nip59Opened.{error=NIP59_OK,written=rumor.count,author=e.public_key,rumor_id=e.id,kind=e.kind,created_at=e.created_at,tags_from=e.tags_from,tags_to=e.tags_to,tags=e.tags,content_from=e.content_from,content_to=e.content_to};
  return n17_read(o,rumor,me);

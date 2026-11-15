@@ -10,6 +10,7 @@ NostrInboxJournal :: struct {
  body:[400000]u8;nb:int;index:[1]MsIndex;at:int;cursor:int;revision:int;
  ready:bool;failed:bool;retry:bool;rejected:int;
 }
+#load "nostr-inbox-journal-checks.coax" #test;
 #test "journal replay keeps the exact request across an uncertain transport failure" {
  s:[1]NostrInbox;j:[1]NostrInboxJournal;q:[1]MsRequest;
  id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";

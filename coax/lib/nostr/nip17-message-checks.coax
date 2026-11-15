@@ -15,6 +15,14 @@ DM_OPENED_GOLDEN :: "{\"id\":\"6cb5d5d7777d282781248a294413a0ff0f730bf3822b08050
  #assert nip17_read_opened("{}",me[..]).error!=N17_OK && nip17_read_opened("",me[..]).error!=N17_OK;
  #assert nip17_read_opened(cast(string)bad[..],me[..]).error!=N17_OK;
 }
+#test "opened projection admits the exact rumor byte ceiling and refuses the next byte" {
+ me:[32]u8;#assert ne_lower_hex("dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",me[..]);padded:[NIP59_MAX_RUMOR+1]u8;
+ for c,i:DM_OPENED_GOLDEN {padded[i]=c;}for i:DM_OPENED_GOLDEN.count..<padded.count {padded[i]=' ';}
+ #assert nip17_read_opened(cast(string)padded[0..<NIP59_MAX_RUMOR-1],me[..]).error==N17_OK;
+ #assert nip17_read_opened(cast(string)padded[0..<NIP59_MAX_RUMOR],me[..]).error==N17_OK;
+ #assert nip17_read_opened(cast(string)padded[..],me[..]).error!=N17_OK;
+ #assert nip17_read_opened(DM_OPENED_GOLDEN,me[0..<0]).error!=N17_OK && nip17_read_opened("}",me[..]).error!=N17_OK;
+}
 #test "the shared unsigned writer agrees with the independent opened golden" {
  pub:[32]u8;#assert ne_lower_hex("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",pub[..]);
  pre:[4096]u8;out:[4096]u8;id:[32]u8;

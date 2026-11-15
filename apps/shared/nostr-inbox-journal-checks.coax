@@ -1,0 +1,79 @@
+// Protocol state matrices for ciphertext replay; no substitute custody implementation.
+#test "operation allocation matches independent SHA256 vectors and stops before exhaustion" {
+ s:[1]NostrInbox;j:[1]NostrInboxJournal;out:[65]u8;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(s[..],"a",id);j[0].serial=9;j[0].cursor=8;j[0].nb=7;j[0].body[0]=165;j[0].failed=true;j[0].ready=true;j[0].retry=true;
+ #assert ndj_start(j[..],s[..],id) && j[0].serial==0 && j[0].cursor==0 && j[0].nb==0 && j[0].body[0]==0 && !j[0].failed && !j[0].retry && !j[0].ready;
+ #assert !ndj_allocate(j[..],out[..]) && !ndj_allocate(j[..],out[0..<63]) && j[0].serial==0;
+ // Independently computed hashlib(JSON compact [label, seed, counter]).
+ #assert ndj_allocate(j[..],out[0..<64]) && j[0].serial==1 && cast(string)out[0..<64]=="351636ce61990186d6f0989ef16a9917fbb29b14941d92ee13439720d03afa2e";
+ #assert ndj_allocate(j[..],out[0..<64]) && j[0].serial==2 && cast(string)out[0..<64]=="ffb0df2991457b34b366d4b54750075073df54a1a955a0bdb5e3d1391cb4e9e7";
+ j[0].serial=2147483647;#assert !ndj_allocate(j[..],out[0..<64]) && j[0].serial==2147483647 && !ndj_next(j[..],s[..]) && j[0].failed && !j[0].busy;
+ j[0].failed=false;j[0].phase=2;j[0].index[0].n=1;j[0].busy=true;j[0].action=22;b:[4096]u8;
+ // Give this exhausted state a valid outstanding reference before its event reply.
+ _=ndi_copy(j[0].operation[..],id);n:=nsr_write("store","event",id,id,"ok",0,0,"{}",b[..]);#assert n>0 && !ndj_reply(j[..],s[..],1,cast(string)b[0..<n],false) && j[0].failed;
+}
+#test "every journal owner service action and lifecycle fence preserves the outstanding read" {
+ s:[1]NostrInbox;j:[1]NostrInboxJournal;b:[4096]u8;
+ id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";other:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s[..],"a",id) && ndj_start(j[..],s[..],id) && ndj_next(j[..],s[..]);
+ for phase:1..<4 {for mismatch:0..<8 {
+  j[0].phase=phase;j[0].busy=mismatch!=0;j[0].generation=ifx mismatch==1 then 2 else 1;s[0].generation=ifx mismatch==2 then 2 else 1;
+  service:=ifx phase==3 then "custody" else "store";action:=ifx phase==3 then "open" else ifx phase==2 then "event" else "index";
+  if mismatch==3 {service=ifx phase==3 then "store" else "custody";action=ifx phase==3 then "ack" else "seal";}if mismatch==4 {action=ifx phase==3 then "seal" else "snapshot";}
+  n:=nsr_write(service,action,ifx mismatch==5 then other else cast(string)j[0].operation[..],ifx mismatch==6 then other else id,"ok",0,0,"{}",b[..]);
+  #assert n>0;raw:=ifx mismatch==7 then "{}" else cast(string)b[0..<n];#assert !ndj_reply(j[..],s[..],1,raw,false) && j[0].busy==(mismatch!=0) && j[0].phase==phase;
+ }}
+ j[0].generation=1;s[0].generation=1;j[0].busy=true;
+ #assert !ndj_reply(j[..],s[..],1,"",true) && j[0].failed && j[0].retry && !j[0].busy;
+}
+#test "journal next guards and complete-history flags are independent" {
+ s:[1]NostrInbox;j:[1]NostrInboxJournal;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(s[..],"a",id) && ndj_start(j[..],s[..],id);
+ for blocked:0..<5 {j[0].generation=ifx blocked==0 then 2 else 1;s[0].na=ifx blocked==1 then 0 else 1;j[0].phase=ifx blocked==2 then 0 else 1;j[0].busy=blocked==3;j[0].failed=blocked==4;#assert !ndj_next(j[..],s[..]);}
+ j[0].generation=1;s[0].na=1;j[0].busy=false;j[0].failed=false;
+ for complete:0..<2 {for full:0..<2 {j[0].phase=2;j[0].index[0].n=0;j[0].index[0].cursor=0;j[0].index[0].complete=complete==1;s[0].full=full==1;#assert ndj_next(j[..],s[..]) && j[0].phase==0 && j[0].ready==(complete==1 && full==0);}}
+ j[0].phase=4;#assert !ndj_next(j[..],s[..]) && j[0].failed;
+ // A retained one-byte request is still retryable; its receiver owns validity.
+ j[0].retry=true;j[0].nb=1;j[0].failed=true;j[0].phase=2;#assert ndj_retry(j[..],s[..]) && j[0].busy && !j[0].failed && !j[0].retry;
+}
+#test "journal skip count never skips an unknown original between known ones" {
+ s:[1]NostrInbox;j:[1]NostrInboxJournal;q:[1]MsRequest;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(s[..],"a",id) && ndj_start(j[..],s[..],id);s[0].n=2;j[0].index[0].n=3;
+ for i:0..<3 {for k:0..<64 {j[0].index[0].rows[i].id[k]=cast(u8)('1'+i);}}
+ s[0].messages[0].outer=j[0].index[0].rows[0].id;s[0].messages[1].outer=j[0].index[0].rows[2].id;j[0].phase=2;
+ #assert ndj_next(j[..],s[..]) && j[0].at==1 && nms_request_read(cast(string)j[0].body[0..<j[0].nb],q[..]) && cast(string)q[0].payload[0..<q[0].n]==cast(string)j[0].index[0].rows[1].id[..];
+}
+#test "matching journal refusals and invalid index metadata never advance a replay window" {
+ s:[1]NostrInbox;j:[1]NostrInboxJournal;b:[20000]u8;p:[4096]u8;rows:[1]MsIndexRow;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(s[..],"a",id) && ndj_start(j[..],s[..],id) && ndj_next(j[..],s[..]);
+ for status:1..<12 {j[0].busy=true;j[0].action=22;j[0].phase=2;j[0].failed=false;n:=nsr_write("store","event",cast(string)j[0].operation[..],id,NS_STATUSES[status],0,0,"",b[..]);
+  if status==9 {#assert ndj_reply(j[..],s[..],1,cast(string)b[0..<n],false) && j[0].phase==1;}else {#assert !ndj_reply(j[..],s[..],1,cast(string)b[0..<n],false) && j[0].failed;}
+  #assert !j[0].busy && j[0].action==0;
+ }
+ for mode:0..<5 {
+  j[0].busy=true;j[0].action=22;j[0].phase=1;j[0].failed=false;j[0].cursor=3;
+  for k:0..<64 {rows[0].id[k]='1';rows[0].author[k]='2';}rows[0].kind=ifx mode==3 then 1 else 1059;rows[0].created=1;
+  n:=ms_index_write(7,ifx mode==2 then 3 else 4,false,rows[..],p[..]);payload:=ifx mode==0 then "{}" else cast(string)p[0..<n];
+  n=nsr_write("store","index",cast(string)j[0].operation[..],id,"ok",ifx mode==1 then 8 else 7,ifx mode==4 then 5 else ifx mode==2 then 3 else 4,payload,b[..]);
+  #assert !ndj_reply(j[..],s[..],1,cast(string)b[0..<n],false) && j[0].failed && !j[0].busy && j[0].phase==1;
+ }
+}
+#test "refused opens consume exactly one owned outer and never publish plaintext" {
+ s:[1]NostrInbox;j:[1]NostrInboxJournal;b:[4096]u8;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(s[..],"a",id) && ndj_start(j[..],s[..],id) && ndj_next(j[..],s[..]);
+ for status:0..<12 {
+  j[0].phase=3;j[0].busy=true;j[0].action=21;j[0].at=4;j[0].rejected=2;#assert ndi_begin(s[..],cast(string)j[0].operation[..],id);
+  n:=nsr_write("custody","open",cast(string)j[0].operation[..],id,NS_STATUSES[status],0,0,"{}",b[..]);
+  #assert n>0 && ndj_reply(j[..],s[..],1,cast(string)b[0..<n],false) && j[0].phase==2 && j[0].at==5 && j[0].rejected==3 && !j[0].busy && j[0].action==0 && !s[0].pending && s[0].n==0;
+ }
+}
+#test "event replay refuses malformed originals mismatched outer ids and a busy open provider" {
+ s:[1]NostrInbox;j:[1]NostrInboxJournal;b:[20000]u8;scratch:[65536]u8;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";wrap:=N59_TS_WRAP;
+ #assert ndi_bind(s[..],"a",id) && ndj_start(j[..],s[..],id) && ndj_next(j[..],s[..]);e:=nostr_event_read(cast(string)wrap[..],scratch[..],false);#assert e.error==NE_OK;
+ for mode:0..<3 {
+  j[0].phase=2;j[0].busy=true;j[0].action=22;j[0].failed=false;j[0].index[0].n=1;j[0].at=0;
+  _=hex_encode_checked(cast(string)e.id[..],j[0].index[0].rows[0].id[..],false);if mode==1 {j[0].index[0].rows[0].id[0]='g';}s[0].pending=mode==2;
+  payload:=ifx mode==0 then "{}" else cast(string)wrap[..];n:=nsr_write("store","event",cast(string)j[0].operation[..],id,"ok",0,0,payload,b[..]);
+  #assert n>0 && !ndj_reply(j[..],s[..],1,cast(string)b[0..<n],false) && j[0].failed && !j[0].busy && j[0].phase==2 && s[0].n==0;
+ }
+}
