@@ -46,7 +46,7 @@ import UIKit
         XCTAssertTrue(editor === surface.controls["chat.composer"]);XCTAssertTrue(composer.send.isEnabled)
         editor.selectedRange=NSRange(location:2,length:1);surface.render(p.elements());XCTAssertEqual(editor.selectedRange,NSRange(location:2,length:1))
         try p.input("chat.composer","First line\nSecond line\nThird line\nFourth line\nFifth line");try p.frame();surface.render(p.elements());surface.view.layoutIfNeeded();composer.layoutIfNeeded()
-        XCTAssertEqual(composer.intrinsicContentSize.height,160,accuracy:1);XCTAssertTrue(editor.isScrollEnabled)
+        XCTAssertEqual(composer.intrinsicContentSize.height,116,accuracy:1);XCTAssertTrue(editor.isScrollEnabled)
     }
 
     func testEnvironmentTargetsAndUncertainCommandsUseTheGeneratedNativeProgram()throws {

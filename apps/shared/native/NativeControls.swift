@@ -31,7 +31,8 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
     private lazy var centeredHeight:NSLayoutConstraint={let c=scroll.contentLayoutGuide.heightAnchor.constraint(equalTo:scroll.frameLayoutGuide.heightAnchor);c.priority = .defaultLow;return c}()
     private var conversation:String?
     private var following=true
-    private let header=UIStackView(),headerSpacer=UIView(),headerRule=NativeHeaderRule()
+    private let header=UIView(),headerLeft=UIStackView(),headerRight=UIStackView(),headerTitle=UIView(),headerRule=NativeHeaderRule()
+    private lazy var titleWidth=headerTitle.widthAnchor.constraint(lessThanOrEqualTo:header.widthAnchor,constant:-104)
     private lazy var headerHeight=header.heightAnchor.constraint(equalToConstant:0)
     private let hostBar=UIStackView(),hostTitle=UILabel(),hostClose=NativeButton(.icon)
     private lazy var hostHeight=hostBar.heightAnchor.constraint(equalToConstant:0)
@@ -61,7 +62,10 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         // reach different buttons even though the scroll view has no zoom view.
         scroll.addGestureRecognizer(UIPinchGestureRecognizer(target:nil,action:nil))
         view.addSubview(scroll)
-        header.axis = .horizontal;header.alignment = .center;header.distribution = .equalSpacing;header.spacing=8;header.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(header);headerHeight.isActive=true
+        header.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(header);headerHeight.isActive=true
+        for group in [headerLeft,headerRight] {group.axis = .horizontal;group.alignment = .center;group.spacing=0;group.translatesAutoresizingMaskIntoConstraints=false;header.addSubview(group)}
+        headerTitle.translatesAutoresizingMaskIntoConstraints=false;header.addSubview(headerTitle)
+        NSLayoutConstraint.activate([headerLeft.leadingAnchor.constraint(equalTo:header.leadingAnchor),headerLeft.centerYAnchor.constraint(equalTo:header.centerYAnchor),headerRight.trailingAnchor.constraint(equalTo:header.trailingAnchor),headerRight.centerYAnchor.constraint(equalTo:header.centerYAnchor),headerTitle.centerXAnchor.constraint(equalTo:header.centerXAnchor),headerTitle.centerYAnchor.constraint(equalTo:header.centerYAnchor),titleWidth])
         hostBar.axis = .horizontal;hostBar.alignment = .center;hostBar.spacing=8;hostBar.translatesAutoresizingMaskIntoConstraints=false;hostBar.isHidden=true;view.addSubview(hostBar);hostHeight.isActive=true
         hostTitle.accessibilityTraits.insert(.header);hostTitle.setContentHuggingPriority(.defaultLow,for:.horizontal)
         hostClose.addAction(UIAction { [weak self] _ in self?.hostAction?() },for:.primaryActionTriggered)
@@ -106,7 +110,6 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
         }
         for e in elements where e.role=="toolbar" {toolbar(e)}
         headerHeight.constant=bar.isEmpty ? 0:CGFloat(NativeSkin.tokens.header);showHeaderRule()
-        if bar.count==1 && !railMode {if headerSpacer.superview==nil {header.insertArrangedSubview(headerSpacer,at:0)}}else {headerSpacer.removeFromSuperview()}
         for e in bar {
             let old=controls[e.id],matching=e.role=="button" ? old is NativeButton:old is UILabel
             let control=matching ? old!:make(e)
@@ -119,13 +122,23 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
                 } else {button.variant=e.hasClass("ib") ? .icon:.quiet;button.busy=false;button.current=false;button.show(e.label.isEmpty ? e.attrs["aria-label"] ?? "":e.label,symbol:NativeSkin.symbol(e))}
             }
             else if let label=control as? UILabel {label.attributedText=NativeSkin.label(e.label,size:12,ink:NativeSkin.tokens.ink);label.accessibilityLabel=e.label;label.numberOfLines=1;label.lineBreakMode = .byTruncatingTail;label.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)}
-            kept[e.id]=control;if control.superview !== header {header.addArrangedSubview(control)}
+            kept[e.id]=control
         }
-        let ordered=(bar.count==1 && !railMode ? [headerSpacer]:[])+bar.compactMap {kept[$0.id]}
-        for (i,control) in ordered.enumerated() {
-            if i<header.arrangedSubviews.count && header.arrangedSubviews[i] === control {continue}
-            header.insertArrangedSubview(control,at:i)
+        let titleIndex=bar.firstIndex {$0.role != "button"}
+        var leading:[UIView]=[],trailing:[UIView]=[]
+        for (index,e) in bar.enumerated() {
+            guard let control=kept[e.id] else {continue}
+            if index==titleIndex {
+                if control.superview !== headerTitle {headerTitle.subviews.forEach {$0.removeFromSuperview()};control.translatesAutoresizingMaskIntoConstraints=false;headerTitle.addSubview(control);NSLayoutConstraint.activate([control.leadingAnchor.constraint(equalTo:headerTitle.leadingAnchor),control.trailingAnchor.constraint(equalTo:headerTitle.trailingAnchor),control.topAnchor.constraint(equalTo:headerTitle.topAnchor),control.bottomAnchor.constraint(equalTo:headerTitle.bottomAnchor)])}
+                (control as? UILabel)?.textAlignment = .center
+            } else if (titleIndex.map {index<$0} ?? railMode) {leading.append(control)}else {trailing.append(control)}
         }
+        for (group,items) in [(headerLeft,leading),(headerRight,trailing)] {
+            for old in group.arrangedSubviews where !items.contains(where:{$0 === old}) {group.removeArrangedSubview(old);old.removeFromSuperview()}
+            for (i,item) in items.enumerated() {if i>=group.arrangedSubviews.count || group.arrangedSubviews[i] !== item {group.insertArrangedSubview(item,at:i)}}
+        }
+        if titleIndex==nil {headerTitle.subviews.forEach {$0.removeFromSuperview()}}
+        titleWidth.constant = -2*max(leading.reduce(0){$0+$1.intrinsicContentSize.width},trailing.reduce(0){$0+$1.intrinsicContentSize.width})-16
         if let e=elements.first(where:{$0.role=="composer"}) {
             if composer==nil {let c=NativeComposer();c.changed={ [weak self,weak c] text in self?.edit?(c?.fieldID ?? "",text) };c.press={ [weak self,weak c] id in if id==c?.sendID {self?.following=true};self?.press?(id) };composer=c;dock.addArrangedSubview(c)}
             composer?.render(e)

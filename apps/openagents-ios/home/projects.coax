@@ -85,7 +85,7 @@ na_project_tick :: (s:[]Starter) {p:=s[0].project[..];if s[0].navigation[0].open
  if (s[0].page==9 || s[0].page==6 && p[0].private_project) && p[0].agent {if p[0].wait==0 {na_project_http(s,ifx s[0].page==6 then "state" else "talk","",ifx s[0].page==6 then 91 else 105);}else {s[0].purpose=108;na_request(s,12,"");}}
  if (s[0].page==7 || s[0].page==8) && p[0].wait>0 {s[0].purpose=108;na_request(s,12,"");}else if s[0].page==7 && p[0].ndraft>0 {dv:=pja_jv(p);if dv.ok && jv_raw(dv,jv_get(dv,0,"status"))=="reading" {na_drop_http(s,"draft","",98);}}
 }
-na_project_header :: (t:[]Tree,u:[]Ui,label:string) {x:=tr_open(t,"project.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"project.title",TG_SPAN,"",label);x=k_icon_button(t,"project.refresh",IC_ARROW_ROTATE_CW,"Refresh project");tr_close(t);}
+na_project_header :: (t:[]Tree,u:[]Ui,label:string) {x:=tr_open(t,"project.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"project.title",TG_SPAN,"",label);tr_close(t);}
 na_project_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  p:=s[0].project[..];na_project_header(t,u,ifx s[0].page==7 then (ifx p[0].grow then "Add files" else "New project") else ifx s[0].page==8 then "Review" else cast(string)p[0].title[0..<p[0].nt]);x:=k_link(t,"project.back","Projects");
  if p[0].nn>0 {x=k_text(t,u,"project.note",TG_P,"note",cast(string)p[0].note[0..<p[0].nn]);}

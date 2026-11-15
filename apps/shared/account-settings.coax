@@ -87,7 +87,7 @@ acs_render :: (s:[]AccountSettingsApp,t:[]Tree,u:[]Ui) {
  x:=tr_open(t,"nav.settings.panel",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Settings");
  x=tr_open(t,"settings.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"settings.back",IC_ARROW_LEFT,"Back");
  titles:=[11]string.["Account","Your profile","Edit profile","Relays","Privacy","Notifications","Keys","Backup","Import key","Devices","Changelog"];
- x=k_text(t,u,"settings.title",TG_SPAN,"",titles[s[0].section]);if !s[0].signing_in {x=k_icon_button(t,"settings.reload",IC_ARROW_ROTATE_CW,"Reload settings");}x=k_icon_button(t,"nav.settings.close",IC_X,"Close settings");tr_close(t);
+ x=k_text(t,u,"settings.title",TG_SPAN,"",titles[s[0].section]);x=k_icon_button(t,"nav.settings.close",IC_X,"Close settings");tr_close(t);
  if s[0].busy {x=k_text(t,u,"settings.busy",TG_P,"meta","Loading…");}
  if s[0].confirm>0 {
   words:=[6]string.["Remove relay?","Remove login key?","End this session?","Log out?","Log out everywhere?","Remove passkey?"];

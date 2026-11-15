@@ -2,6 +2,21 @@
 import XCTest
 
 final class NavigationUITests:XCTestCase {
+    func testSimpleComposerCenteredProjectsAndWorldsStayInTheWorkspace() {
+        let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13567","-OAUpdatesOrigin","http://127.0.0.1:9"];app.launch()
+        let email=app.textFields["Email address"]
+        if email.waitForExistence(timeout:5) {email.tap();email.typeText("ada@example.com");app.buttons["Send code"].tap();let code=app.textFields["Email code"];XCTAssertTrue(code.waitForExistence(timeout:10));code.tap();code.typeText("415926");app.buttons["Log in"].tap()}
+        XCTAssertTrue(app.textViews["chat.composer"].waitForExistence(timeout:20))
+        XCTAssertFalse(app.buttons["chat.options"].exists);XCTAssertFalse(app.buttons["Clear draft"].exists);XCTAssertFalse(app.buttons["Dictation: use the microphone on the keyboard"].exists)
+        attach(app,"Minimal composer")
+        app.buttons["nav.toggle"].tap();app.buttons["nav.projects"].tap()
+        let title=app.staticTexts["projects.title"];XCTAssertTrue(title.waitForExistence(timeout:10));XCTAssertEqual(title.frame.midX,app.frame.midX,accuracy:2)
+        XCTAssertFalse(app.buttons["projects.refresh"].exists);XCTAssertTrue(app.buttons["projects.new"].exists);attach(app,"Centered Projects")
+        app.buttons["nav.toggle"].tap();app.buttons["world.library"].tap()
+        XCTAssertTrue(app.buttons["worlds.splice"].waitForExistence(timeout:15));XCTAssertTrue(app.buttons["nav.toggle"].exists);XCTAssertFalse(app.buttons["worlds.refresh"].exists);XCTAssertEqual(app.sheets.count,0);attach(app,"Worlds in the workspace")
+        app.showChatHistory();XCTAssertTrue(app.textFields["Search chats"].waitForExistence(timeout:10));XCTAssertFalse(app.buttons["nav.refresh"].exists);attach(app,"Single line history")
+        app.buttons["nav.home"].tap();XCTAssertTrue(app.textViews["chat.composer"].waitForExistence(timeout:10))
+    }
     func testSearchSwitchChatsAndUseComposerFromHistory() {
         let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13493","-OAUpdatesOrigin","http://127.0.0.1:13492"];app.launch()
         let email=app.textFields["Email address"]
@@ -33,7 +48,7 @@ final class NavigationUITests:XCTestCase {
         app.showChatHistory();mac.tap();XCTAssertTrue(field.waitForExistence(timeout:10));XCTAssertEqual(field.value as? String,"Keep my draft")
         XCTAssertFalse(app.buttons["Your computers"].exists);XCTAssertFalse(app.buttons["Refresh conversation"].exists)
         let read=app.buttons["Read"];XCTAssertTrue(read.waitForExistence(timeout:10));XCTAssertLessThanOrEqual(read.frame.height,32)
-        app.buttons["env.effort"].tap();let low=app.buttons["env.effort.0"];XCTAssertTrue(low.waitForExistence(timeout:5));low.tap()
+        XCTAssertFalse(app.buttons["env.effort"].exists);XCTAssertFalse(app.buttons["env.model"].exists);XCTAssertFalse(app.buttons["env.refresh"].exists)
         attach(app,"Compact conversation and docked model controls")
         app.buttons["nav.toggle"].tap();app.buttons["nav.settings"].tap()
         XCTAssertTrue(app.buttons["app.updates"].waitForExistence(timeout:5));app.buttons["nav.settings.close"].tap()

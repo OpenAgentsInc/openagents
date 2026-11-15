@@ -1,0 +1,1 @@
+Simpler mobile workspace. Centered titles and a plus to create projects. Worlds opens as a regular page. Chat input contains only text and Send/Stop. History reveals at a fixed width with single-line, truncated titles. Foreground synchronization replaces refresh buttons across chats, projects, worlds, Usage and account settings. Includes the gallery fixes from 1089.

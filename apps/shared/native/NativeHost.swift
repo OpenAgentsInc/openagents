@@ -18,8 +18,11 @@ import Security
     private lazy var workspace=NativeWorkspace(detail:surface)
     private var dialog:NativeControls?
     private var programs:[NativeProgram]=[]
+    private var clock:Timer?
+    private var worldLibrary:NativeWorldLibrary?
     init(updates:NativeUpdates) { self.updates=updates; super.init(nibName:nil,bundle:nil) }
     required init?(coder:NSCoder) { fatalError() }
+    deinit {clock?.invalidate();health?.cancel()}
     override func viewDidLoad() {
         super.viewDidLoad()
         addChild(workspace);workspace.view.frame=view.bounds;workspace.view.autoresizingMask=[.flexibleWidth,.flexibleHeight]
@@ -28,6 +31,12 @@ import Security
         surface.edit = { [weak self] id,text in self?.input(id,text) }
         configureSecrets(surface);configureSecrets(workspace.sidebar)
         workspace.press=surface.press;workspace.sidebar.press=surface.press;workspace.sidebar.edit=surface.edit
+        clock=Timer.scheduledTimer(withTimeInterval:0.5,repeats:true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self,UIApplication.shared.applicationState == .active,self.view.window != nil else {return}
+                do {try self.pump(elapsed:0.5)}catch {self.refuse()}
+            }
+        }
         load()
     }
     func load() {
@@ -54,11 +63,18 @@ import Security
         updates.failed()
         surface.render([NativeElement(id:"native.error",role:"notice",label:"The app could not continue. Restart to recover the previous update.")])
     }
-    private func pump()throws {
-        for p in programs {try p.frame()}
+    private func pump(elapsed:Double=0)throws {
+        guard !programs.isEmpty else {return}
+        for p in programs {try p.frame(elapsed:elapsed)}
         let primary=programs[0].elements(),hasNavigation=primary.contains {$0.role=="navigation"}
         let extras=programs.dropFirst().flatMap {$0.elements()}.filter {!hasNavigation || $0.role != "toolbar"}
         workspace.render(primary+extras,history:programs[0].elements(navigation:true))
+        if programs[0].nodes.values.contains(where:{$0.id=="worlds.main"}) {
+            if worldLibrary==nil {
+                let library=try NativeWorldLibrary(directory:updates.current.map(updates.directory) ?? updates.embedded,service:{ [weak self] op,args in guard let self else {throw CancellationError()};return try await self.call(op,args) },navigation:{ [weak self] in self?.input("nav.toggle") }) {}
+                worldLibrary=library;workspace.content(library,chrome:library.controls)
+            }
+        }else if worldLibrary != nil {workspace.content(nil);worldLibrary?.stop();worldLibrary=nil}
         let modal=programs.flatMap {$0.elements(dialog:true)}
         if modal.isEmpty {
             if dialog != nil {accountServices.clear();dialog?.dismiss(animated:true);dialog=nil}

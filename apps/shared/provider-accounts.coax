@@ -48,7 +48,7 @@ pu_start_intent :: (u:[]ProviderUsage,host:int,method:string,account:string)->bo
 }
 pu_account_id :: (host:int,account:int,out:[]u8)->string {a:[96]u8;b:[96]u8;return tr_join(out,tr_cat(b[..],tr_join(a[..],"usage.account.",host),"."),account);}
 pu_render :: (u:[]ProviderUsage,t:[]Tree,ui:[]Ui,busy:bool) {
- x:=tr_open(t,"usage.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"usage.close",IC_X,"Back to settings");x=k_text(t,ui,"usage.title",TG_SPAN,"","Usage");x=k_icon_button(t,"usage.refresh",IC_ARROW_ROTATE_CW,"Refresh usage");tr_attr(t,x,AT_STATE,ifx busy then "loading" else "ready");tr_close(t);
+ x:=tr_open(t,"usage.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"usage.close",IC_X,"Back to settings");x=k_text(t,ui,"usage.title",TG_SPAN,"","Usage");tr_close(t);
  if u[0].nn>0 {x=k_text(t,ui,"usage.note",TG_P,"note",cast(string)u[0].note[0..<u[0].nn]);}
  if u[0].uncertain {x=k_icon_button(t,"usage.retry",IC_ARROW_ROTATE_CW,"Check pending account request");}
  if !u[0].catalog_ready {x=k_text(t,ui,"usage.loading",TG_P,"meta","Loading…");}

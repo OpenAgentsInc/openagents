@@ -6,7 +6,7 @@
 #load "../../../components/backend/dom.coax";
 #load "../../../coax/native/worlds/open-wire.coax";
 
-Starter :: struct {ready:bool;dirty:bool=true;page:int;flight:int;action:int;outbox:[8192]u8;out_n:int;inbox:[8192]u8;builder:[1]Builder;track:[1]Track;worlds:[SS_WORLDS_MAX]SsWorld;nworlds:int;tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;prompt:[400]u8;np:int;note:[256]u8;nn:int;}
+Starter :: struct {ready:bool;dirty:bool=true;sync_elapsed:f32;page:int;flight:int;action:int;outbox:[8192]u8;out_n:int;inbox:[8192]u8;builder:[1]Builder;track:[1]Track;worlds:[SS_WORLDS_MAX]SsWorld;nworlds:int;tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;prompt:[400]u8;np:int;note:[256]u8;nn:int;}
 wl_request :: (s:[]Starter,path:string,body:string) {
  o:[1]Jo;jo_start(o[..],s[0].outbox[..]);jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],path);jo_key(o[..],"method");jo_str(o[..],ifx body.count>0 then "POST" else "GET");jo_key(o[..],"body");jo_str(o[..],body);jo_end(o[..]);if !o[0].bad {s[0].out_n=o[0].n;s[0].action=4;}
 }
@@ -49,13 +49,14 @@ wl_pump :: (s:[]Starter) {
 st_done :: (s:[]Starter) #export_c #effects(all) {s[0].action=0;s[0].out_n=0;}
 st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
  if !s[0].ready {s[0].ready=true;builder_reset(s[0].builder[..]);_:=mono_frames(s[0].sets[..]);wl_list(s);}
+ if dt>0 && dt<=30 {s[0].sync_elapsed+=dt;}if s[0].sync_elapsed>=10 && s[0].page==0 && s[0].flight==0 && s[0].action==0 {s[0].sync_elapsed=0;wl_list(s);}
  wl_pump(s);if !s[0].dirty {return 0;}s[0].dirty=false;t:=s[0].tree[..];u:=s[0].ui[..];b:=s[0].builder[..];ui_begin(u,0,true);tr_begin(t);root:=tr_open(t,"worlds.library",TG_MAIN,"");x:= -1;held:=s[0].flight!=0;
+ x=tr_open(t,"worlds.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"worlds.title",TG_SPAN,"","Worlds");if s[0].page==0 {x=k_icon_button(t,"worlds.create",IC_PLUS,"Create world");}tr_close(t);
  if s[0].page==0 {
   x=k_button(t,u,"worlds.splice","Splice Bots",ifx held then BS_DISABLED else BS_PLAIN);x=k_button(t,u,"worlds.everglade","Everglade",ifx held then BS_DISABLED else BS_PLAIN);
-  x=k_icon_button(t,"worlds.create",IC_PLUS,"Create world");if held {tr_attr(t,x,AT_DISABLED,"");}x=k_icon_button(t,"worlds.refresh",IC_ARROW_ROTATE_CW,"Refresh worlds");if held {tr_attr(t,x,AT_DISABLED,"");}
   x=k_text(t,u,"worlds.mine",TG_H2,"","Yours");
   for i:0..<s[0].nworlds {row:=s[0].worlds[i];name:=cast(string)row.name[0..<row.name_n];id:[96]u8;x=k_button(t,u,tr_join(id[..],"worlds.edit.",i),name,ifx held then BS_DISABLED else BS_PLAIN);id2:[96]u8;x=k_button(t,u,tr_join(id2[..],"worlds.play.",i),"Play",ifx held then BS_DISABLED else BS_PLAIN);}
-  if s[0].nworlds==0 && !held {x=k_text(t,u,"worlds.empty",TG_P,"","No worlds yet");}
+  if s[0].nworlds==0 && !held && s[0].nn==0 {x=k_text(t,u,"worlds.empty",TG_P,"","No worlds yet");}
  } else {
   if b[0].phase==PH_SETUP {
    q:=b[0].q;x=k_text(t,u,"worlds.question",TG_H2,"",Q_ASK[q]);
@@ -91,13 +92,13 @@ st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
  if kind==54 {if status_of(text)!=1 {s[0].flight=0;}builder_message(b,s[0].track[..],MSG_DOC,text);wl_pump(s);return;}
  if kind==104 || kind==204 {
   f:=s[0].flight;s[0].flight=0;
-  if f==1 {s[0].nworlds=ifx slot==200 then ss_worlds_read(text,s[0].worlds[..]) else 0;s[0].nn=ifx slot==200 then 0 else put(s[0].note[..],0,"Your worlds could not be loaded. Refresh to retry.");}
+  if f==1 {if slot==200 {s[0].nworlds=ss_worlds_read(text,s[0].worlds[..]);}s[0].nn=ifx slot==200 then 0 else put(s[0].note[..],0,"Offline");}
   if f==2 {making:=b[0].req_what==REQ_MAKE;raw:[8192]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_int(o[..],slot);jo_put(o[..],"\n");jo_put(o[..],text);builder_message(b,s[0].track[..],HTTP_ANSWER_KIND,jo_text(o[..]));
    if making && slot==200 {made:[1]EditorMade;made[0]=editor_read_made(text);if made[0].ok {p:[128]u8;pn:=put(p[..],0,"/worlds/");pn=put(p[..],pn,editor_made_slug(made[..]));builder_action_done(b);b[0].action=0;wl_open(s,"myrealm",cast(string)p[0..<pn],true);}}
   }
   wl_pump(s);return;
  }
- if kind==113 || kind==213 {s[0].flight=0;if b[0].phase==PH_GOING {b[0]=Builder.{};builder_reset(b);s[0].page=0;wl_list(s);}if kind==213 {s[0].nn=put(s[0].note[..],0,"The world could not open. Refresh your worlds and try again.");}return;}
+ if kind==113 || kind==213 {s[0].flight=0;if b[0].phase==PH_GOING {b[0]=Builder.{};builder_reset(b);s[0].page=0;wl_list(s);}if kind==213 {s[0].nn=put(s[0].note[..],0,"The world could not open. Try again.");}return;}
  if kind==2 {if id=="worlds.prompt" {s[0].np=copy_into(s[0].prompt[..],text);}if id=="worlds.description" {b[0].desc_n=copy_into(b[0].desc[..],text);}if id=="worlds.invite.code" {b[0].code_n=copy_into(b[0].code[..],text);}if id=="worlds.invite.note" {b[0].inote_n=copy_into(b[0].inote[..],text);}return;}
  if kind!=1 || s[0].flight!=0 {return;}
  if id=="worlds.splice" {wl_open(s,"splice-bots","/worlds/splice-bots",false);}

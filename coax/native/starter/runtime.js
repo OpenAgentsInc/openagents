@@ -14,8 +14,8 @@ const cnExports = instantiate({env: {memory: cnMemory,
 const cnState = Math.ceil(cnExports.__heap_base.value / 65536) * 65536;
 if (cnExports.coaxial_state_size() > cnMemory.buffer.byteLength - cnState) throw new Error("App exceeds installed memory");
 cnExports.coaxial_state_init(cnState);
-function cnFrame() {
-  let n = cnExports.dom_frame(cnState, 0, 1);
+function cnFrame(elapsed=0) {
+  let n = cnExports.dom_frame(cnState, elapsed, 1);
   const reset=n<0;
   if (reset) n=cnExports.dom_frame(cnState,0,1);
   if (n<0) throw new Error("Component reset did not settle");

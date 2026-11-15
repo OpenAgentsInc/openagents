@@ -11,7 +11,7 @@ import UIKit
         try answer(4,["may":true]);_ = try p.action();try answer(4,["drops":[["id":"d_fixture","status":"open","files":1,"project":NSNull()]]]);try p.input("project.resume.0");try p.frame();_ = try p.action();try answer(4,["files":[]]);_ = try p.action()
         let long=String(repeating:"A long design. ",count:200)
         try answer(4,["status":"ready","draft":["design":["markdown":long],"card":["name":"Native"]]])
-        let row=try XCTUnwrap(p.elements().first {$0.id.hasPrefix("project.field.") && $0.label.contains("design markdown")})
+        let row=try XCTUnwrap(p.elements().first {$0.id.hasPrefix("project.field.") && $0.label.contains("Design document")})
         try p.input(row.id);try p.frame();let field=try XCTUnwrap(p.elements().first {$0.id=="project.edit"});XCTAssertEqual(field.value,long)
         let surface=NativeControls();surface.render(p.elements());XCTAssertEqual((surface.controls["project.edit"] as? UITextView)?.text,long)
         try p.input("project.edit","Edited on iPhone");try p.frame();try p.input("project.field.save");try p.frame();let save=try p.action();XCTAssertEqual(save.0,4);XCTAssertTrue(save.1.contains("draft/edit"));XCTAssertTrue(save.1.contains("Edited on iPhone"));let request=try XCTUnwrap(JSONSerialization.jsonObject(with:Data(save.1.utf8)) as? [String:Any]);let body=try XCTUnwrap(request["body"] as? String);XCTAssertNoThrow(try JSONSerialization.jsonObject(with:Data(body.utf8)))

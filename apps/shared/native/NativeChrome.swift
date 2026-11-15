@@ -25,7 +25,7 @@ enum NativeSkin {
         func href(_ e:NativeElement)->String? {if let h=e.attrs["href"],h.contains("/icons/") {return h};return e.children.compactMap(href).first}
         guard let h=href(element),let raw=h.split(separator:"/").last else{return nil}
         let name=String(raw).components(separatedBy:".svg")[0]
-        return ["sidebar":"line.3.horizontal","menu":"line.3.horizontal","plus":"square.and.pencil","x":"xmark","settings":"gearshape","arrow-rotate-cw":"arrow.clockwise","chat":"bubble.left.and.bubble.right","folder":"folder","globe":"globe","history":"clock.arrow.circlepath","arrow-left":"arrow.left","avatar-profile":"person.crop.circle","bell":"bell","key":"key","shield-lock":"lock.shield"][name]
+        return ["sidebar":"line.3.horizontal","menu":"line.3.horizontal","plus":"plus","x":"xmark","settings":"gearshape","arrow-rotate-cw":"arrow.clockwise","chat":"bubble.left.and.bubble.right","folder":"folder","globe":"globe","history":"clock.arrow.circlepath","arrow-left":"arrow.left","avatar-profile":"person.crop.circle","bell":"bell","key":"key","shield-lock":"lock.shield"][name]
     }
     static var drawerShade:NativePlatformColor {color(mono_drawer_shade())}
     static let tokens=mono_native()
@@ -251,7 +251,7 @@ final class NativeButton:UIButton {
         if variant == .toggle {chrome.arcadePaint.ink=s.ink}
         let font:UIFont=s.upper ? NativeSkin.labelFont(CGFloat(s.type)):NativeTypography.font(CGFloat(s.type))
         caption.attributedText=NSAttributedString(string:s.upper ? words.uppercased():words,attributes:[.font:font,.kern:font.pointSize*CGFloat(s.track),.foregroundColor:NativeSkin.color(s.ink)])
-        caption.textAlignment=variant == .list ? .natural:.center;caption.isHidden=variant.square
+        caption.numberOfLines=variant == .list ? 1:2;caption.textAlignment=variant == .list ? .natural:.center;caption.isHidden=variant.square
         // A row of a list stands over a hairline, unless it is boxed as the current one.
         rule.isHidden=variant != .list || !ruled || current || isHighlighted
         let spinning=variant.square && busy

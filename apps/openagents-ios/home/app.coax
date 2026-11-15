@@ -30,6 +30,7 @@ Starter :: struct {
   workspace:bool;navigation:[1]AppNavigation;usage:[1]ProviderUsage;projects:[SS_WORLDS_MAX]SsWorld;projects_n:int;projects_loaded:bool;projects_failed:bool;
   local_available:bool;account_ready:bool;worlds_available:bool;
   account_settings:[1]AccountSettingsApp;
+  sync_elapsed:f32;sync_background:bool;
   world_mode:bool;world:[1]WorldTurn;world_flight:[1]WorldTurn;world_wire:[WT_BYTES]u8;world_n:int;world_plan:[WP_BYTES]u8;world_plan_n:int;
   tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;css:[24576]u8;
 }
@@ -37,6 +38,7 @@ Starter :: struct {
 #load "usage.coax";
 #load "shell.coax";
 #load "projects.coax";
+#load "sync.coax";
 na_copy :: (out:[]u8,text:string)->int {n:=ifx text.count<out.count then text.count else out.count;for i:0..<n {out[i]=text[i];}return n;}
 na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[0].dirty=true;}
 #test "native worlds launch through the registered service and preserve the current account surface" {
@@ -148,6 +150,8 @@ na_text_effect :: (s:[]Starter,link:bool,value:string,id:string) {
   na_reply(s[..],9,0,"{}",false);#assert !s[0].text_busy && s[0].flight==4 && s[0].purpose==5;
 }
 na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
+  background_read:=op==4 && s[0].sync_background;
+  if background_read {na_nav_keep(s);s[0].sync_background=false;}
   if op==NAC_OP {
     last:=cast(string)s[0].account_settings[0].last[0..<s[0].account_settings[0].last_n];key_login:=last=="key-login";logout_all:=last=="logout-all" || last=="session-remove";
     if acs_reply(s[0].account_settings[..],raw,failed) && key_login {na_history_clear(s);na_secrets_clear(s);s[0].account_settings[0].active=false;s[0].account_ready=true;na_list(s);}
@@ -175,9 +179,11 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
   nodes:[48]JvNode;d:[1]Jv;ok:=jv_parse(d[..],raw,nodes[..]);v:=d[0];
   if op==8 {s[0].purpose=0;s[0].retry=true;na_note(s,"Stopped. You can retry this turn.");return;}
   if op==4 && s[0].purpose>=3 {
+    background:=background_read;
     purpose:=s[0].purpose;s[0].purpose=0;
     if status==401 {if s[0].world_mode {s[0].retry=false;na_note(s,"Close the world and log in again to continue.");return;}na_history_clear(s);na_new(s);s[0].page=0;na_secrets_clear(s);na_note(s,"Log in again to continue.");return;}
     if failed || status!=200 {
+      if background {return;}
       if purpose==4 && s[0].thread[0].n>0 {s[0].thread[0].n-=1;}
       if purpose==5 {s[0].retry=true;}
       na_note(s,ifx status==409 then "Chat changed on another device. Go back and reopen it." else ifx status==403 then "Agent chat is currently available to the team beta." else ifx purpose==6 then "Reply received but not saved. Tap Save reply to retry." else "Chat request failed. Check your connection and try again.");
@@ -263,7 +269,8 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
 st_done :: (s:[]Starter) #export_c #effects(all) {s[0].action=0;for i:0..<s[0].out_n {s[0].outbox[i]=0;}s[0].out_n=0;}
 st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   if !s[0].ready {s[0].ready=true;n:=mono_frames(s[0].sets[..]);na_request(s,1,"");}
-  if s[0].workspace {eu_pause(s[0].environments[..],s[0].navigation[0].open || s[0].flight!=0 || s[0].usage[0].active);na_nav_tick(s);}
+  na_sync_tick(s,dt);
+  if s[0].workspace {eu_pause(s[0].environments[..],s[0].navigation[0].open || s[0].flight!=0 || s[0].usage[0].active || s[0].account_settings[0].active || s[0].page!=4);na_nav_tick(s);}
   if dt>0 && dt<1 {s[0].time+=dt;}na_usage_tick(s);na_project_tick(s);if !s[0].dirty && !s[0].ui[0].busy && s[0].environments[0].action==0 {return 0;}
   t:=s[0].tree[..];u:=s[0].ui[..];d:=s[0].dom[..];
   if !d[0].styled {
@@ -290,6 +297,9 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     x=k_button(t,u,"login.verify",ifx busy then "Checking code…" else "Log in",ifx busy then BS_BUSY else BS_PRIMARY);
     x=k_icon_button(t,"login.resend",IC_ARROW_ROTATE_CW,"Resend email code");if busy {tr_attr(t,x,AT_DISABLED,"");}
     x=k_icon_button(t,"login.change",IC_X,"Change email");if busy {tr_attr(t,x,AT_DISABLED,"");}
+  } else if s[0].page==10 {
+    x=tr_open(t,"worlds.workspace.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"worlds.workspace.title",TG_SPAN,"","Worlds");tr_close(t);
+    x=tr_open(t,"worlds.main",TG_SECTION,"world-library");tr_close(t);
   } else if s[0].page==4 {
     eu_render(s[0].environments[..],t,u,s[0].markdown[..]);
   } else if s[0].page==3 {
@@ -304,7 +314,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     tr_close(t);
     if s[0].retry {x=k_icon_button(t,"chat.retry",IC_ARROW_ROTATE_CW,"Retry turn");if busy {tr_attr(t,x,AT_DISABLED,"");}}
     if s[0].purpose==6 && !busy {x=k_button(t,u,"chat.save","Save reply",BS_PRIMARY);}
-    f:=k_composer_begin(t,u,"chat.composer","Message");if busy {tr_attr(t,f,AT_DISABLED,"disabled");}
+    f:=k_composer_begin(t,u,"chat.composer","Message");if busy && !s[0].sync_background {tr_attr(t,f,AT_DISABLED,"disabled");}
     k_composer_end(t,u,"chat.composer",ifx s[0].purpose==5 && busy then "Stop" else "Send",(s[0].purpose==5 && busy) || (!busy && s[0].draft_n>0 && s[0].purpose!=6));frame:=tr_find(t,"chat.composer.frame");if frame>=0 {tr_attr(t,frame,AT_TITLE,"Gemini 4 Hydrogen");}
   } else if s[0].workspace {
     na_home_render(s,t,u);
@@ -315,7 +325,6 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     if s[0].worlds_available {x=k_button(t,u,"world.library","Worlds",ifx busy then BS_DISABLED else BS_PLAIN);}
     x=k_button(t,u,"environments.open","Your computers",ifx busy then BS_DISABLED else BS_PLAIN);
     if s[0].local_available {x=k_button(t,u,"environments.local","This computer · offline access",ifx busy then BS_DISABLED else BS_PLAIN);}
-    x=k_icon_button(t,"chats.refresh",IC_ARROW_ROTATE_CW,"Refresh chats");if busy {tr_attr(t,x,AT_DISABLED,"");}
     count:=s[0].chats[0].n;
     if count==0 && !busy && s[0].note_n==0 {x=k_text(t,u,"chats.empty",TG_P,"","No chats yet");}
     for k:0..<count {

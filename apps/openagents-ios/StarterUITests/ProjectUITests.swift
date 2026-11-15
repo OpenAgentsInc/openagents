@@ -15,7 +15,7 @@ final class ProjectUITests:XCTestCase {
         attach(app,"Native project agent conversation")
         app.buttons["project.back"].tap();XCTAssertTrue(app.buttons["projects.new"].waitForExistence(timeout:10));app.buttons["projects.new"].tap()
         let resume=app.buttons["project.resume.0"];XCTAssertTrue(resume.waitForExistence(timeout:10));resume.tap()
-        let name=app.buttons["project.field.0"];XCTAssertTrue(name.waitForExistence(timeout:10));name.tap()
+        let name=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@ AND label BEGINSWITH %@","project.field.","Name")).firstMatch;XCTAssertTrue(name.waitForExistence(timeout:10));name.tap()
         let field=app.textViews["project.edit"];XCTAssertTrue(field.waitForExistence(timeout:5));XCTAssertEqual(field.value as? String,"Moon Villa");field.tap();field.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:10));field.typeText("iPhone project");app.buttons["project.field.save"].tap()
         let publish=app.buttons["project.publish"];XCTAssertTrue(publish.waitForExistence(timeout:10));attach(app,"Native complete draft review");publish.tap();app.buttons["project.confirm"].tap()
         let chats=app.buttons["project.chats"];XCTAssertTrue(chats.waitForExistence(timeout:15));chats.tap();app.buttons["project.chat.new"].tap()

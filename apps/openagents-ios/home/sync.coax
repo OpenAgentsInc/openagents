@@ -1,0 +1,35 @@
+// Foreground read synchronization. The platform supplies elapsed time only;
+// Coax owns cadence and which read may run. Never replay a mutation here.
+#test "mobile sync reads projects without replacing cached rows on a network failure" {
+ s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].page=5;s[0].projects_n=1;
+ na_sync_tick(s[..],9);#assert s[0].action==0;
+ na_sync_tick(s[..],1);#assert s[0].purpose==90 && s[0].action==4 && s[0].sync_background;
+ na_reply(s[..],4,0,"",true);#assert s[0].projects_n==1 && s[0].page==5;
+}
+#test "mobile sync yields to writes and navigation, and keeps an edited account draft" {
+ s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].page=3;s[0].thread[0].id_n=na_copy(s[0].thread[0].id[..],"m_00000000000000000001");s[0].draft_n=na_copy(s[0].draft[..],"Unsent draft");
+ s[0].flight=4;s[0].purpose=5;na_sync_tick(s[..],20);#assert s[0].purpose==5 && s[0].action==0;
+ s[0].flight=0;s[0].purpose=0;na_sync_tick(s[..],1);#assert s[0].purpose==3 && s[0].draft_n==12 && s[0].navigation[0].drafts[0].nb==12;
+}
+#test "mobile sync leaves settings edits and private-key screens untouched" {
+ s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].page=2;a:=s[0].account_settings[..];a[0].active=true;a[0].loaded=true;
+ for section:[6]int.[2,3,4,5,7,8] {a[0].section=section;na_sync_tick(s[..],10);#assert a[0].action==0;}
+ a[0].section=9;na_sync_tick(s[..],1);#assert a[0].action==NAC_OP && a[0].busy;
+}
+na_sync_tick :: (s:[]Starter,dt:f32) {
+ if dt>0 && dt<=30 {s[0].sync_elapsed+=dt;}
+ if s[0].sync_elapsed<10 || !s[0].workspace || !s[0].account_ready || s[0].page<2 || s[0].flight!=0 || s[0].action!=0 || s[0].usage[0].active {return;}
+ a:=s[0].account_settings[..];if a[0].active {
+  readonly:=a[0].section==0 || a[0].section==1 || a[0].section==6 || a[0].section==9 || a[0].section==10;
+  if readonly && a[0].loaded && !a[0].busy && !a[0].signing_in && a[0].confirm==0 && !a[0].backup {s[0].sync_elapsed=0;acs_request(a,"snapshot","","");}
+  return;
+ }
+ e:=s[0].environments[..];n:=s[0].navigation[..];
+ if e[0].flight || e[0].random || e[0].uncertain || s[0].project[0].uncertain || n[0].np>0 {return;}
+ s[0].sync_elapsed=0;
+ if n[0].open && !n[0].rail {n[0].account_refresh=true;n[0].refresh=true;return;}
+ if n[0].open {return;}
+ if s[0].page==5 {s[0].sync_background=true;na_http(s,"/api/projects","",90);}
+ else if s[0].page==3 && s[0].thread[0].id_n>0 {na_nav_keep(s);s[0].sync_background=true;path:[96]u8;na_http(s,tr_cat(path[..],"/api/chat/thread/v1?id=",cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]),"",3);}
+ else if s[0].page==6 && !s[0].project[0].private_project {s[0].sync_background=true;path:[160]u8;na_http(s,tr_cat(path[..],"/api/chat/project/v1?project=",pja_slug(s[0].project[..])),"",93);}
+}

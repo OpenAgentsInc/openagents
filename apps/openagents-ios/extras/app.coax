@@ -2,7 +2,34 @@
 #load "../../../components/kit/frames.coax";
 #load "../../../components/backend/dom.coax";
 #load "../../../pay/wallet-balance-wire.coax";
-Starter :: struct {ready:bool;dirty:bool=true;time:f32;menu:int;loading:bool;balance:[1]WalletBalance;action:int;tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;css:[24576]u8;inbox:[8192]u8;}
+Starter :: struct {ready:bool;dirty:bool=true;time:f32;sync_elapsed:f32;menu:int;loading:bool;balance:[1]WalletBalance;action:int;tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;css:[24576]u8;inbox:[8192]u8;}
+#test "wallet automatic reads are visible-only, paced and never overlap" {
+ s:[1]Starter;ex_tick(s[..],60);#assert s[0].action==0;
+ ex_action(s[..],2);st_done(s[..]);ex_tick(s[..],60);#assert s[0].action==0;
+ s[0].loading=false;ex_tick(s[..],59);#assert s[0].action==0;ex_tick(s[..],1);#assert s[0].action==1 && s[0].loading;
+ st_done(s[..]);ex_action(s[..],4);ex_tick(s[..],60);#assert s[0].action==0;
+}
+#test "wallet read clock preserves partial time, rejects backwards time and resets after a read" {
+ s:[1]Starter;s[0].menu=2;s[0].sync_elapsed=59;
+ ex_tick(s[..],0);ex_tick(s[..],-1);#assert s[0].sync_elapsed==59 && s[0].action==0;
+ ex_tick(s[..],0.5);#assert s[0].sync_elapsed==59.5 && s[0].action==0;
+ ex_tick(s[..],0.5);#assert s[0].sync_elapsed==0 && s[0].action==1 && s[0].loading;
+ st_done(s[..]);s[0].loading=false;ex_tick(s[..],0.5);#assert s[0].sync_elapsed==0.5 && s[0].action==0;
+ s[0].action=2;ex_tick(s[..],60);#assert s[0].sync_elapsed==0.5 && s[0].action==2;
+ s[0].menu=1;ex_tick(s[..],1);#assert s[0].sync_elapsed==0;
+ s[0].menu=2;s[0].action=0;s[0].sync_elapsed=60;ex_tick(s[..],0);#assert s[0].action==1 && s[0].sync_elapsed==0;
+}
+#test "wallet screen keeps read-only balance and starts its next read without a refresh control" {
+ s:[1]Starter;s[0].menu=2;s[0].balance[0].status=1;s[0].balance[0].sats=123;
+ _:=st_frame(s[..],0,true);#assert dm_find(s[0].dom[..],"wallet.amount")>=0 && dm_find(s[0].dom[..],"wallet.refresh")<0;
+ _:=st_frame(s[..],60,true);#assert s[0].loading && s[0].action==1 && dm_find(s[0].dom[..],"wallet.loading")>=0;
+}
+ex_tick :: (s:[]Starter,dt:f32) {
+ if s[0].menu!=2 {s[0].sync_elapsed=0;return;}
+ if s[0].loading || s[0].action!=0 {return;}
+ if dt<0 {return;}s[0].sync_elapsed+=dt;
+ if s[0].sync_elapsed>=60 {s[0].sync_elapsed=0;ex_action(s,3);}
+}
 #test "the wallet is opt in, only reads a balance and closes independently" {
   s:[1]Starter;#assert s[0].action==0 && s[0].menu==0;
   ex_action(s[..],1);#assert s[0].menu==1 && s[0].action==0;
@@ -20,7 +47,8 @@ ex_action :: (s:[]Starter,action:int) {
 st_done :: (s:[]Starter) #export_c #effects(all) {s[0].action=0;}
 st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   if !s[0].ready {s[0].ready=true;n:=mono_frames(s[0].sets[..]);}
-  if dt>0 && dt<1 {s[0].time+=dt;}
+  s[0].time+=am_unit(dt);
+  ex_tick(s,dt);
   if !s[0].dirty && !s[0].ui[0].busy {return 0;}
   t:=s[0].tree[..];u:=s[0].ui[..];d:=s[0].dom[..];
   if !d[0].styled {
@@ -43,10 +71,9 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
         x=k_text(t,u,"wallet.amount",TG_P,"amount",jo_text(o[..]));
       } else {
         code:=s[0].balance[0].status;
-        text:=ifx code==2 then "No wallet on this phone" else ifx code==3 then "Unlock phone, then refresh." else ifx code==4 then "Wallet unreadable · unchanged" else "Offline. Refresh to retry.";
+        text:=ifx code==2 then "No wallet on this phone" else ifx code==3 then "Unlock phone" else ifx code==4 then "Wallet unreadable · unchanged" else "Offline";
         x=k_text(t,u,"wallet.unavailable",TG_P,"",text);
       }
-      if !s[0].loading {x=k_icon_button(t,"wallet.refresh",IC_ARROW_ROTATE_CW,"Refresh balance");}
     }
     tr_close(t);
   }
@@ -61,3 +88,4 @@ st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
   if kind==21 && n>=0 && n<=8192 {s[0].balance[0]=wb_decode(cast(string)s[0].inbox[0..<n]);s[0].loading=false;s[0].dirty=true;}
 }
 st_size :: (s:[]Starter,slot:int,w:f32,h:f32) #export_c #effects(all) {if dm_size(s[0].dom[..],slot,w,h) {s[0].dirty=true;}}
+#load "app-checks.coax" #test;

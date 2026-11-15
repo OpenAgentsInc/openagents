@@ -4,7 +4,32 @@ import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeNavigationTests:XCTestCase {
+    func testHeaderCentersTheTitleAndGroupsTrailingActions()throws {
+        let surface=NativeControls();surface.view.frame=CGRect(x:0,y:0,width:402,height:874)
+        let bar=NativeElement(id:"test.header",role:"toolbar",label:"",children:[NativeElement(id:"nav.toggle",role:"button",label:"Navigation",classes:"ib"),NativeElement(id:"test.title",role:"text",label:"Projects"),NativeElement(id:"test.action",role:"button",label:"Action",classes:"ib"),NativeElement(id:"projects.new",role:"button",label:"New project",classes:"ib")])
+        surface.render([bar]);surface.view.layoutIfNeeded()
+        let title=try XCTUnwrap(surface.controls["test.title"]),first=try XCTUnwrap(surface.controls["test.action"]),second=try XCTUnwrap(surface.controls["projects.new"])
+        XCTAssertEqual(title.convert(title.bounds,to:surface.view).midX,201,accuracy:1)
+        XCTAssertEqual(first.frame.maxX,second.frame.minX,accuracy:1)
+    }
+    func testHistoryRevealsFixedWidthSingleLineRows()async throws {
+        let detail=NativeControls(),workspace=NativeWorkspace(detail:detail);workspace.view.frame=CGRect(x:0,y:0,width:402,height:874)
+        let row=NativeElement(id:"history.long",role:"button",label:String(repeating:"A long conversation title ",count:8),classes:"row")
+        workspace.render([NativeElement(id:"nav.sidebar",role:"navigation",label:"",attrs:["data-state":"open","type":"rail"])],history:[]);workspace.view.layoutIfNeeded()
+        workspace.render([NativeElement(id:"nav.sidebar",role:"navigation",label:"",attrs:["data-state":"open","type":"history"])],history:[row]);workspace.view.layoutIfNeeded()
+        let button=try XCTUnwrap(workspace.sidebar.controls[row.id] as? NativeButton)
+        for _ in 0..<4 {try await Task.sleep(for:.milliseconds(40));XCTAssertEqual(workspace.sidebar.view.bounds.width,338,accuracy:0.1);XCTAssertLessThanOrEqual(button.intrinsicContentSize.height,44)}
+        XCTAssertEqual(button.accessibilityLabel,row.label)
+    }
     private let mac=String(repeating:"a",count:64),coder=String(repeating:"b",count:64)
+    func testInstalledElapsedClockDrivesReadSynchronization()throws {
+        let p=try loaded();try p.input("nav.projects");try p.frame();_ = try p.action()
+        try p.event(104,200,"");try p.frame();_ = try p.action()
+        try p.frame(elapsed:9);XCTAssertEqual(try p.action().0,0)
+        try p.frame(elapsed:1);let request=try p.action();XCTAssertEqual(request.0,4)
+        let body=try XCTUnwrap(try JSONSerialization.jsonObject(with:Data(request.1.utf8)) as? [String:String])
+        XCTAssertEqual(body["path"],"/api/projects");XCTAssertEqual(body["method"],"GET")
+    }
     private func answer(_ p:NativeProgram,_ body:[String:Any])throws {
         try p.event(104,200,String(decoding:JSONSerialization.data(withJSONObject:body),as:UTF8.self));try p.frame();_ = try p.action()
     }
@@ -83,12 +108,12 @@ import UIKit
         try p.input(macID);try render();let read=try p.action();XCTAssertEqual(read.0,4);XCTAssertTrue(read.1.contains("ReadSession"))
         try answer(p,view(mac,"ReadSession"));try render()
         XCTAssertFalse(p.elements().contains {$0.id=="env.sessions"})
-        XCTAssertEqual(p.elements().first {$0.id=="env.model"}?.attrs["_nativePlacement"],"dock")
+        XCTAssertFalse(p.elements().contains {$0.id=="env.model" || $0.id=="env.effort" || $0.id=="env.refresh"})
         try p.input("env.composer","Unsent draft");try render()
         let editor=try XCTUnwrap(detail.controls["env.composer"] as? UITextView)
         try p.input("nav.toggle");try render();try p.input("nav.close");try render()
         XCTAssertTrue(editor === detail.controls["env.composer"]);XCTAssertEqual(editor.text,"Unsent draft")
-        try p.input("env.effort");try render();XCTAssertTrue(p.elements(dialog:true).contains {$0.id=="env.effort.0"})
+        try p.input("env.effort");try render();XCTAssertTrue(p.elements(dialog:true).isEmpty)
         try p.input("env.effort.0");try render();XCTAssertTrue(p.elements(dialog:true).isEmpty)
         try p.input("nav.toggle");try render();try p.input("nav.recent");try render()
         let coderID=try XCTUnwrap(p.elements(navigation:true).first {$0.label=="CoderOS task"}?.id)

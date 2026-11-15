@@ -28,8 +28,8 @@ import JavaScriptCore
         guard let f=context.objectForKeyedSubscript(name),let result=f.call(withArguments:args),failure==nil else {throw NativeFailure.refused("The Coax module failed.")}
         return result
     }
-    func frame()throws {
-        guard let commands=try call("cnFrame").toArray() as? [[Any]],commands.count<=65536 else {throw NativeFailure.refused("Invalid component frame")}
+    func frame(elapsed:Double=0)throws {
+        guard let commands=try call("cnFrame",[elapsed]).toArray() as? [[Any]],commands.count<=65536 else {throw NativeFailure.refused("Invalid component frame")}
         // Even a signed, incompatible program fails as an update, not a Swift cast.
         for c in commands {
             guard let op=(c.first as? NSNumber)?.intValue else {throw NativeFailure.refused("Invalid component command")}

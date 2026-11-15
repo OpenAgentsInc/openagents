@@ -17,7 +17,7 @@ na_usage_tick :: (s:[]Starter) {
  if pu_flow_running(u) && !u[0].uncertain {q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ReadAccountLogin");q[0].nl=pa_copy(q[0].login[..],cast(string)u[0].flow[0].id[0..<u[0].flow[0].ni]);u[0].wait=3;na_usage_send(s,u[0].flow_host,q[..]);return;}
  // Re-read pending observations after the computer's owned probes finish.
  for host:0..<u[0].catalog[0].n {if u[0].states[host]!=2 {continue;}for i:0..<u[0].views[host].n {a:=u[0].views[host].accounts[i];if cast(string)a.state[0..<a.ns]=="checking" {u[0].next=host;u[0].force=false;u[0].wait=3;s[0].purpose=83;na_request(s,12,"");return;}}}
- u[0].next=0;u[0].force=false;u[0].wait=30;if u[0].catalog[0].n>0 {s[0].purpose=83;na_request(s,12,"");}
+ u[0].next=0;u[0].force=true;u[0].wait=30;if u[0].catalog[0].n>0 {s[0].purpose=83;na_request(s,12,"");}
 }
 na_usage_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->bool {
  purpose:=s[0].purpose;if purpose<80 || purpose>83 || op!=s[0].flight {return false;}u:=s[0].usage[..];s[0].flight=0;s[0].purpose=0;s[0].dirty=true;
