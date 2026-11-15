@@ -1,5 +1,12 @@
 # Owner actions
 
+## Reference account and file molecules, build 1320 (2026-11-15)
+
+- [ ] Install TestFlight **1320** (verified in **Owner**), open **Settings →
+      Components → Gallery options → Reference**, and inspect the account
+      selector, file tile and command snippet. Component and simulator gallery
+      checks passed; compare appearance and touch on the phone.
+
 ## Reference navigation molecules, build 1190 (2026-11-15)
 
 - [ ] Install TestFlight **1190** (verified in **Owner**) and open **Settings →
