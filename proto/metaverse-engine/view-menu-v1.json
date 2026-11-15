@@ -1,0 +1,1 @@
+{"id":"metaverse.engine.view-menu.v1","spec":"docs/protocol/view-menu-v1.md","abi":{"address":"coaxial_view_menu_v1","length":"coaxial_view_menu_len_v1"},"limits":{"bytes":32768,"items":128,"label_bytes":127},"required":["schema","title","items"],"item":["label","group","key","current","keep_open"]}

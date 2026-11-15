@@ -1,0 +1,4 @@
+// Owned source-node receipts, usable without loading the complete file importer.
+#load "../core/points.coax";
+PiMat :: struct { m: [12] f32; }   // three rows of four: a turn, a size and a move
+PiPart :: struct {name:[128]u8;name_n:int;node:int;parent:int;mesh:int;first_vertex:int;vertices:int;first_index:int;indices:int;world:PiMat;low:Point;high:Point;}

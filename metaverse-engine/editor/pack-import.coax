@@ -25,6 +25,7 @@
 // importing a file whose name the pack has replaces that asset and nothing else.
 //   coax/bin/coax test metaverse-engine/editor/pack-import.coax
 #load "pack-import-read.coax";
+#load "pack-import-parts.coax";
 #load "../anim/gltf-access.coax";
 #load "../anim/import-container.coax";
 #load "../../coax/lib/image/png.coax";
@@ -39,7 +40,7 @@ PI_ROOM :: 22;       // the importer's room is too small
 PiFile :: struct { name: string; data: [] u8; licence: int; }
 // The room an import works in. vertices and indices hold the pack's meshes as they are rebuilt;
 // catalog its text; nodes the glTF's JSON; hash a new file's content hash (64 bytes).
-PiRoom :: struct { vertices: [] u8; indices: [] u8; catalog: [] u8; nodes: [] JvNode; hash: [] u8; }
+PiRoom :: struct { vertices: [] u8; indices: [] u8; catalog: [] u8; nodes: [] JvNode; hash: [] u8; parts:[]PiPart; }
 // What an import did, or why it did nothing.
 PiDid :: struct {
   ok: bool; verdict: int;
@@ -66,7 +67,6 @@ pi_no :: (d: [] PiDid, verdict: int, name: string, a: string, n: int, b: string,
 
 // ---- a glTF binary's meshes into the pack's vertices
 
-PiMat :: struct { m: [12] f32; }   // three rows of four: a turn, a size and a move
 pi_mat_one :: () -> PiMat { r: PiMat; r.m[0] = 1; r.m[5] = 1; r.m[10] = 1; return r; }
 pi_mat_mul :: (a: PiMat, b: PiMat) -> PiMat {
   r: PiMat;
@@ -118,7 +118,9 @@ pi_srgb :: (linear: f32) -> int {
   s := ifx c <= 0.0031308 then c * 12.92 else 1.055 * pow(c, 1.0 / 2.4) - 0.055;
   return cast(int) floor(clamp01(s) * 255 + 0.5);
 }
-PiMade :: struct { vertices: int; indices: int; }
+// Optional source-node receipts preserve rigid-part identity without changing
+// the published static vertex layout or rebuilding geometry in a second reader.
+PiMade :: struct { vertices: int; indices: int; parts:int; }
 // Every triangle of a glTF binary's scene into the room, from vertex nv and index ni: "" and
 // what it wrote in made, or why not in words that follow the file's name.
 pi_glb :: (data: [] u8, lim: PipLimits, room: PiRoom, nv: int, ni: int, made: [] PiMade) -> string {
@@ -143,10 +145,11 @@ pi_glb :: (data: [] u8, lim: PipLimits, room: PiRoom, nv: int, ni: int, made: []
       parents[child] = k;
     }
   }
-  v := nv; x := ni;
+  v := nv; x := ni;part_n:=0;
   for k: 0..<count {
     node := ag_top(g[..], "nodes", k);
     if ag_get(g[..], node, "mesh") == -1 { continue; }
+    first_vertex:=v;first_index:=x;
     world := pi_local(g[..], node); up := parents[k]; depth := 0;
     while up >= 0 { world = pi_mat_mul(pi_local(g[..], ag_top(g[..], "nodes", up)), world); up = parents[up]; depth += 1; if depth > count { return " has a scene whose nodes do not form a tree."; } }
     prims := ag_get(g[..], ag_top(g[..], "meshes", ag_required(g[..], node, "mesh")), "primitives");
@@ -206,10 +209,18 @@ pi_glb :: (data: [] u8, lim: PipLimits, room: PiRoom, nv: int, ni: int, made: []
       }
       v += pa.count; x += n;
     }
+    if room.parts.count>0 {
+      if part_n>=room.parts.count {return " has more source parts than the importer has room for.";}
+      part:=PiPart.{node=k,parent=parents[k],mesh=ag_required(g[..],node,"mesh"),first_vertex=first_vertex,vertices=v-first_vertex,first_index=first_index,indices=x-first_index,world=world,low=v3(1000000,1000000,1000000),high=v3(-1000000,-1000000,-1000000)};
+      source_name:=ag_get(g[..],node,"name");if jv_kind(d[0],source_name)==JV_STRING {part.name_n=jv_str(d[0],source_name,part.name[..]);if part.name_n<0 {return " has a source part name larger than the importer has room for.";}}
+      for index:first_vertex..<v {p:=v3(pi_get(room.vertices,index*PI_VERTEX),pi_get(room.vertices,index*PI_VERTEX+4),pi_get(room.vertices,index*PI_VERTEX+8));part.low=v3(lo(part.low.x,p.x),lo(part.low.y,p.y),lo(part.low.z,p.z));part.high=v3(hi(part.high.x,p.x),hi(part.high.y,p.y),hi(part.high.z,p.z));}
+      room.parts[part_n]=part;
+    }
+    part_n+=1;
   }
   if g[0].bad { return " has numbers the importer cannot read."; }
   if x == ni { return " has no mesh in its scene."; }
-  made[0].vertices = v - nv; made[0].indices = x - ni;
+  made[0].vertices = v - nv; made[0].indices = x - ni;made[0].parts=part_n;
   return "";
 }
 // A mesh in the room stood on the ground with its middle over the origin; its bounds, in

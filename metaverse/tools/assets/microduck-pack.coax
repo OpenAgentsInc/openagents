@@ -7,6 +7,9 @@
 #load "../../../coax/lib/sys/proc.coax";
 #load "../../../coax/lib/sys/args.coax";
 #load "../../../coax/lib/image/pillow.coax";
+#load "../../microduck/source.coax";
+#load "../../../metaverse-engine/anim/assembly-wire.coax";
+#load "microduck-source-host.coax";
 ceil :: (x: f64) -> f64 #foreign #effects(all);
 
 MD_SOURCE :: "https://raw.githubusercontent.com/NV-DLI/Microduck-Workshop/b283d134f52db75f747581f9ed47f64f3f94df7b/web/assets/robot/microduck.glb";
@@ -17,31 +20,31 @@ tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) || args_count(args[..]) != 2 { tool_errln("usage: microduck-pack SOURCE.glb|--fetch OUT.pack"); return 2; }
   source := args_at(args[..], 0);
-  if source == "--fetch" {
-    source = "/tmp/openagents-microduck.glb";
-    command := [7] string.["curl", "--fail", "--location", "--silent", MD_SOURCE, "--output", source];
-    stdout: [4096] u8; stderr: [4096] u8;
-    got := proc_run(command[..], 120000, stdout[..], stderr[..]);
-    if got.started != 0 || got.status != 0 || got.timed_out { tool_errln("Microduck source download failed"); return 1; }
-  }
-  data: [16000000] u8; n := fs_read(source, data[..]); hash: [64] u8;
+  data: [16000000] u8;n:= -1;if source=="--fetch" {n=microduck_reference(MD_SOURCE,MD_SHA,data[..]);}else {n=fs_read(source,data[..]);}hash: [64] u8;
   if n != 11893404 || !asset_hex_of(cast(string) data[0..<n], hash[..]) || cast(string) hash[..] != MD_SHA { tool_errln("Microduck source digest differs from its pin"); return 1; }
   vertices: [48000000] u8; indices: [24000000] u8; nodes: [65536] JvNode;
-  room := PiRoom.{vertices = vertices[..], indices = indices[..], nodes = nodes[..]}; made: [1] PiMade;
+  parts:[ASSEMBLY_PARTS]PiPart;
+  room := PiRoom.{vertices = vertices[..], indices = indices[..], nodes = nodes[..],parts=parts[..]}; made: [1] PiMade;
   why := pi_glb(data[0..<n], PipLimits.{triangles = 2000000}, room, 0, 0, made[..]);
   if why != "" || made[0].vertices == 0 { tool_errln(why); return 1; }
+  refs:[3][4096]u8;components_url:=fs_join(MD_WORKSHOP_ROOT,"web/assets/robot/components.json",refs[0][..]);topology_url:=fs_join(MD_WORKSHOP_ROOT,"lab/runtime/simulation/core/sensors/sources/robot_allcollisions.xml",refs[1][..]);
+  components:[131072]u8;topology:[131072]u8;nc:=microduck_reference(components_url,MD_COMPONENTS_SHA,components[..]);nt:=microduck_reference(topology_url,MD_TOPOLOGY_SHA,topology[..]);if nc<0 || nt<0 {return 1;}
+  assembly:[1]RigidAssembly;if !components_assembly(cast(string)components[0..<nc],microduck_recipe(),parts[0..<made[0].parts],70,assembly[..]) {tool_errln("Microduck source-part binding refused");return 1;}
+  record:[ASSEMBLY_WIRE_MAX]u8;record_n:=ASSEMBLY_HEADER+assembly[0].joints*ASSEMBLY_JOINT_ROW+assembly[0].parts*ASSEMBLY_PART_ROW;
+  if assembly_write(assembly[..],record[0..<record_n])!=record_n {return 1;}
   // Preserve the source assembly coordinates, including its floor and metre scale.
   // The shared browser scene layout always binds a layer array, even for vertex-colour art.
   pixel := [4] u8.[255, 255, 255, 255]; z: [1] PiZ; filtered: [5] u8; png: [256] u8;
   png_n := pi_png(pi_img(pixel[..], 1, 1, 4), z[..], filtered[..], png[..]);
   if png_n < 1 { return 1; }
-  catalog: [4096] u8; sources: [4] PackSource; total := 0;
+  catalog: [65536] u8; sources: [4] PackSource; total := 0;
   for pass: 0..<5 {
     at := pi_put(catalog[..], 0, "pack microduck\nbudget 64000000\nbytes ");
     at = pi_put_int(catalog[..], at, total);
     at = pi_put(catalog[..], at, "\nL 0 Pollen Robotics / NVIDIA DLI|CC BY-NC-SA 4.0|https://creativecommons.org/licenses/by-nc-sa/4.0/\nM microduck 0 ");
     at = pi_put_int(catalog[..], at, made[0].indices);
     at = pi_put(catalog[..], at, " 0\nT 0 neutral 0\n");
+    extra:=assembly_catalogue_write(assembly[..],catalog[at..<catalog.count]);if extra<0 {return 1;}at+=extra;
     sources[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cast(string) catalog[0..<at]};
     sources[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = cast(string) vertices[0..<made[0].vertices * PI_VERTEX]};
     sources[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = cast(string) indices[0..<made[0].indices * 4]};
@@ -51,7 +54,8 @@ tool_main :: () -> int #export_c #effects(all) {
   out: [MD_BUDGET] u8; size := pack_write(sources[..], MD_BUDGET, out[..]); read: [1] PackRead;
   if size < 1 || !pack_read(cast(string) out[0..<size], read[..]) { tool_errln(read[0].why); return 1; }
   if !fs_mkdir(fs_dir(args_at(args[..], 1))) || !fs_write(args_at(args[..], 1), cast(string) out[0..<size]) { tool_errln("cannot write Microduck pack"); return 1; }
+  if !fs_write(fs_join(fs_dir(args_at(args[..],1)),"microduck.rba",refs[2][..]),cast(string)record[0..<record_n]) {return 1;}
   if !asset_hex_of(cast(string) out[0..<size], hash[..]) { return 1; }
-  print("Microduck: % vertices, % triangles, % bytes, SHA256 %\n", made[0].vertices, made[0].indices / 3, size, cast(string) hash[..]);
+  print("Microduck: % joints, % parts, % vertices, % triangles, % bytes, SHA256 %\n",assembly[0].joints,assembly[0].parts,made[0].vertices,made[0].indices / 3,size,cast(string)hash[..]);
   return 0;
 }

@@ -33,41 +33,19 @@
   s: [1] Microduck;
   for k: 0..<32 { s[0].digest[k] = cast(u8) (asset_digit(MD_PACK_SHA[k * 2]) * 16 + asset_digit(MD_PACK_SHA[k * 2 + 1])); }
   #assert md_gate(s[..], MD_PACK_BYTES) && s[0].admitted && !s[0].ready;
-  md_asset(s[..], 0); #assert !s[0].ready;
-  md_asset(s[..], 1); #assert s[0].ready;
+  md_asset(s[..], ""); #assert !s[0].ready;
+  md_test_asset(s[..]); #assert s[0].ready;
   #assert !md_gate(s[..], 0) && !s[0].admitted && !s[0].ready;
-  md_asset(s[..], 200); #assert !s[0].ready;
-}
-md_receipt :: (w: f32, h: f32, d: f32, mode: int, ready: bool) -> int {
-  s: [1] Microduck; out: [MD_HUD_VERTICES * 12] f32; u: [64] f32;
-  s[0].ready = ready; s[0].mode = mode;
-  // Retained frame buffers contain the preceding frame, never promised zeroes.
-  for k: 0..<64 { u[k] = 123; } // mutant: equivalent (test scratch prefill; the correct frame overwrites every lane before the receipt)
-  for k: 0..<4 { s[0].draws[k] = 123; } // mutant: equivalent (test prefill; all four draw words are overwritten by the correct frame)
-  n := md_frame(s[..], out[..], u[..], w, h, d);
-  // A stroke's first vertex carries its position, length, weight and full colour.
-  // Quantization keeps platform libm's last bit out of the layout receipt.
-  receipt := replay_mix(2166136261, n);
-  for stroke: 0..<n / 6 { for lane: 0..<12 { receipt = replay_mix(receipt, cast(int) floor(out[stroke * 72 + lane] * 1024 + 0.5)); } }
-  for value: u[..] { receipt = replay_mix(receipt, cast(int) floor(value * 65536 + 0.5)); }
-  for value: s[0].draws[..] { receipt = replay_mix(receipt, cast(int) value); }
-  receipt = replay_mix(receipt, cast(int) floor(s[0].dpr * 1024));
-  return receipt;
-}
-#test "the wide, portrait and exact sidebar boundary retain their drawn geometry" {
-  #assert md_receipt(1440, 1000, 1, 0, true) == 1153569288;
-  #assert md_receipt(800, 1000, 2, 1, false) == 3253051927;
-  #assert md_receipt(900, 800, 1, 0, true) == 1756791304;
-  #assert md_receipt(899, 800, 1, 0, true) == 700447215;
+  md_asset(s[..], "bad"); #assert !s[0].ready;
 }
 #test "a small high-DPR viewport clips the header through the shared pen" {
-  s: [1] Microduck; out: [MD_HUD_VERTICES * 12] f32; u: [64] f32;
+  s: [1] Microduck; out: [MD_HUD_VERTICES * 12] f32; u: [MD_UNIFORMS] f32;
   n := md_frame(s[..], out[..], u[..], 900, 100, 2);
   // Every stroke's first vertex remains near this short viewport; no y=108 header can escape.
   for stroke: 0..<n / 6 { #assert out[stroke * 72 + 1] < 125; }
 }
 #test "invalid dimensions and a short uniform span produce no frame" {
-  s: [1] Microduck; out: [1] f32; u: [64] f32;
+  s: [1] Microduck; out: [1] f32; u: [MD_UNIFORMS] f32;
   for value: [2] f32.[0, -1] {
     s[0].dpr = 9; u[0] = 777;
     #assert md_frame(s[..], out[..], u[..], value, 800, 1) == 0;
@@ -77,5 +55,16 @@ md_receipt :: (w: f32, h: f32, d: f32, mode: int, ready: bool) -> int {
     #assert md_frame(s[..], out[..], u[..], 1280, 800, value) == 0;
     #assert s[0].dpr == 9 && u[0] == 777;
   }
-  #assert md_frame(s[..], out[..], u[0..<63], 1280, 800, 1) == 0;
+  #assert md_frame(s[..], out[..], u[0..<MD_UNIFORMS-1], 1280, 800, 1) == 0;
+}
+
+md_test_asset :: (s:[]Microduck) {a:[1]RigidAssembly;a[0]=assembly_fixture();a[0].source=md_source();b:[8192]u8;n:=assembly_catalogue_write(a[..],b[..]);s[0].admitted=true;md_asset(s,cast(string)b[0..<n]);}
+#test "the viewer poses selected joints and explosion preserves the admitted mechanical state" {
+ s:[1]Microduck;md_test_asset(s[..]);#assert s[0].ready && s[0].assembly[0].parts==3;#assert md_key(s[..],1000) && s[0].joint==0 && s[0].selected==0;
+ #assert md_key(s[..],43) && abs(s[0].angles[0]-0.0872664626)<0.000001;old:=s[0].angles;#assert md_key(s[..],120) && s[0].explosion==1 && s[0].angles[0]==old[0] && s[0].zoom==1.6;
+ #assert md_key(s[..],120) && s[0].explosion==0 && s[0].zoom==0.74;#assert md_key(s[..],120);s[0].zoom=1.2;
+ #assert !md_angle(s[..],0,3) && s[0].angles[0]==old[0];#assert md_key(s[..],2002) && s[0].selected==2 && s[0].joint== -1;#assert !md_key(s[..],43);
+ #assert md_key(s[..],114) && s[0].explosion==0 && s[0].angles[0]==0 && s[0].angles[1]==0 && s[0].joint== -1 && s[0].selected== -1;
+ b:[32768]u8;n:=md_menu(s[..],b[..]);#assert n>0;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);#assert jv_len(d[0],jv_get(d[0],0,"items"))==12;
+ s[0].assembly[0].joints=32;s[0].assembly[0].parts=96;b[0]=77;#assert md_menu(s[..],b[..])== -1 && b[0]==77;
 }

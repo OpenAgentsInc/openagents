@@ -657,7 +657,7 @@ async function loadEngine(bytes, generation) {
   // The page's scripts may talk to the app from now (action 0: ready).
   if (kept) send(4, kept);
   if (x.coaxial_player_appearance_v1?.() === 1) {const appearance=local("aethyr.player.appearance.v1");if (appearance) send(16,appearance);}
-  globalThis.coaxial.ready = true;loadMark("engine-ready");
+  globalThis.coaxial.ready = true;loadMark("engine-ready");viewMenuOpen();
   if (x.coaxial_message) send(PAGE_KIND, pageFacts());
   editorOpen();
   playBarOpen();
@@ -3937,6 +3937,35 @@ function send(kind, text = "") {
     else mediaNoticeDropped++;
   }
   after(false);
+}
+// Optional Coax inspection recipe. Browser controls only project the producer's
+// labels/keys; this host owns no model selection or experiment behavior.
+let viewMenuRoot;
+function viewMenuOpen() {
+  viewMenuRoot?.remove();viewMenuRoot=null;
+  if (!engine?.exports.coaxial_view_menu_len_v1 || !engine?.exports.coaxial_view_menu_v1) return;
+  const root=document.createElement("div"),trigger=document.createElement("button"),dialog=document.createElement("dialog");viewMenuRoot=root;
+  root.style.cssText="position:fixed;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:40;color:#eee;font:14px ui-monospace,monospace";
+  const style=document.createElement("style");style.textContent=".coax-view-menu button{min-height:44px;padding:8px 14px;border:1px solid #555;background:#171717;color:#eee;font:inherit;border-radius:8px;cursor:pointer}.coax-view-menu dialog{background:#111;color:#eee;border:1px solid #555;border-radius:12px;max-width:min(340px,85vw);max-height:75dvh;overflow:auto;font:inherit}.coax-view-menu dialog button{display:block;width:100%;text-align:left;margin:6px 0}.coax-view-menu summary{padding:14px 4px;cursor:pointer}.coax-view-menu dialog::backdrop{background:#0008}";
+  root.className="coax-view-menu";root.append(style,trigger,dialog);document.body.append(root);trigger.textContent="☰";trigger.ariaLabel="Viewer menu";
+  function render() {
+    const x=engine?.exports,n=x?.coaxial_view_menu_len_v1?.(arena.state)??0;
+    if (!n || n>32768) return;
+    const at=x.coaxial_view_menu_v1(arena.state);if (!at || at+n>memory.buffer.byteLength) return;
+    let recipe;try {recipe=JSON.parse(new TextDecoder().decode(new Uint8Array(memory.buffer,at,n).slice()));}catch{return;}
+    if (typeof recipe.schema!=="string" || !Array.isArray(recipe.items) || recipe.items.length>128) return;
+    const opened=new Set([...dialog.querySelectorAll("details[open]")].map(d=>d.dataset.group));dialog.replaceChildren();
+    const close=document.createElement("button");close.textContent="Close";close.onclick=()=>dialog.close();dialog.append(close);
+    const groups=new Map();
+    for (const row of recipe.items) {
+      if (typeof row.label!=="string" || typeof row.group!=="string" || !Number.isInteger(row.key) || row.key<1 || row.key>2147483647) continue;
+      let group=groups.get(row.group);
+      if (!group) {group=document.createElement("details");group.dataset.group=row.group;group.open=opened.has(row.group);const summary=document.createElement("summary");summary.textContent=row.group;group.append(summary);dialog.append(group);groups.set(row.group,group);}
+      const button=document.createElement("button");button.textContent=row.label;button.setAttribute("aria-pressed",String(row.current));button.dataset.key=String(row.key);
+      button.onclick=()=>{call("coaxial_key",row.key,0);call("coaxial_key_up",row.key,0);after(true);if(row.keep_open)render();else dialog.close();};group.append(button);
+    }
+  }
+  trigger.onclick=()=>{render();dialog.showModal();};
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => loadMarks.map((row) => row.slice()), cellLog: () => cellLog.map((row) => row.slice()), facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
   roomTrace:()=>({active:sockets.flatMap(ws=>ws?.__roomTrace?[ws.__roomTrace.snapshot()]:[]),retired:roomTraceRetired.map(x=>x.snapshot()),error:globalThis.coaxial.roomTraceError||null}),

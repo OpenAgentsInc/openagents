@@ -1,0 +1,16 @@
+// Optional page menu: the same Coax recipe projected by native/browser hosts.
+// coax/bin/coax test metaverse-engine/ui/menu-wire.coax --library
+#load "../../coax/lib/json/json.coax";
+ViewMenuItem :: struct {label:string;group:string;key:int;current:bool;keep_open:bool;}
+#test "view menus escape text, retain groups and refuse invalid recipes before writing" {
+ items:=[2]ViewMenuItem.[ViewMenuItem.{label="A \"joint\"",group="Joints",key=1000,current=true},ViewMenuItem.{label="Increase",group="Pose",key=43,keep_open=true}];b:[2048]u8;
+ n:=view_menu_write("Assembly",items[..],b[..]);#assert n>0;nodes:[256]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);rows:=jv_get(d[0],0,"items");#assert jv_len(d[0],rows)==2 && jv_int(d[0],jv_get(d[0],jv_at(d[0],rows,0),"key"),-1)==1000;
+ old:=items[1];items[1].key=1000;b[0]=77;#assert view_menu_write("Assembly",items[..],b[..])== -1 && b[0]==77;items[1]=old;items[1].label="bad\nlabel";#assert view_menu_write("Assembly",items[..],b[..])== -1;items[1]=old;#assert view_menu_write("Assembly",items[..],b[0..<1])== -1;
+}
+view_menu_text :: (text:string,empty:bool)->bool {if text.count>127 || (!empty && text.count==0) {return false;}for c:text {if c<32 || c>126 {return false;}}return true;}
+view_menu_write :: (title:string,items:[]ViewMenuItem,out:[]u8)->int {
+ if !view_menu_text(title,false) || items.count>128 {return -1;}
+ for x,i:items {if !view_menu_text(x.label,false) || !view_menu_text(x.group,true) || x.key<1 || x.key>2147483647 {return -1;}for j:0..<i {if x.key==items[j].key {return -1;}}}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"metaverse.engine.view-menu.v1");jo_key(o[..],"title");jo_str(o[..],title);jo_key(o[..],"items");jo_arr(o[..]);
+ for x:items {jo_obj(o[..]);jo_key(o[..],"label");jo_str(o[..],x.label);jo_key(o[..],"group");jo_str(o[..],x.group);jo_key(o[..],"key");jo_int(o[..],x.key);jo_key(o[..],"current");jo_bool(o[..],x.current);jo_key(o[..],"keep_open");jo_bool(o[..],x.keep_open);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}

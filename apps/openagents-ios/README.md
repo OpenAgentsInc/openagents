@@ -1,5 +1,11 @@
 # OpenAgents iOS
 
+Build **1095** adds articulated inspection to **Home → Microduck**: named
+parts/joints, bounded poses, an axis indicator and reversible explosion,
+through the same native Metal viewer and streamed asset cache. The upload is
+accepted; Apple processing/group assignment is recorded separately in the
+[workbench verification record](../../docs/verification/microduck-workbench-13639/README.md).
+
 Build **1094** adds **Home → Microduck**, the existing Coax model viewer on
 native Metal. Drag orbits; pinch zooms. The model streams on first use and
 reopens from its verified cache. Its floating menu has camera views, Normals,

@@ -17,8 +17,10 @@ nwg_pair :: (coax:string,dir:string,role:string,source:string,vs:string,ps:strin
 nwgen_cat :: (out:[]u8,a:string,b:string)->int {if a.count+b.count>out.count {return -1;}for c,i:a {out[i]=c;}for c,i:b {out[a.count+i]=c;}return a.count+b.count;}
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}coax:="coax/bin/coax";root:="apps/openagents-ios/Generated/Worlds";p:[4096]u8;
+ only:=args_value(a[..],"--realm","");if args_count(a[..])!=0 {valid:=false;for realm:NWR_REALMS {if realm==only {valid=true;}}if !valid || args_count(a[..])!=2 || args_at(a[..],0)!="--realm" {tool_errln("generate [--realm INSTALLED_REALM]");return 2;}}
  if !fs_mkdir(root) {return 1;}
  for realm:NWR_REALMS {
+  if only!="" && only!=realm {continue;}
   dir:=fs_join(root,realm,p[..]);if !fs_remove(dir) || !fs_mkdir(dir) {return 1;}
   out:[65536]u8;err:[65536]u8;args:=[6]string.["env","COAXIAL_REALM_EMIT_ONLY=1","bash","metaverse/native/build.sh",ifx realm=="everglade" then "everglade5e" else realm,dir];
   if !nwg_run(args[..],out[..],err[..]) {return 1;}

@@ -1,15 +1,15 @@
 // The complete research pack is admitted by content before any GPU upload.
 #authority;
 #load "../../metaverse-engine/core/assets.coax";
-MD_PACK_BYTES :: 50927404;
-MD_PACK_SHA :: "44a2b852208c8a29d17851e2a99401d257c2f711bc59cf92fe8b4a4c20bd681e";
+MD_PACK_BYTES :: 50965060;
+MD_PACK_SHA :: "fc21cb95595d665bb83dc5b90c373dcf197f5b45b34b376c0d110b044bb408b5";
 #test "Microduck pack admission pins every digest byte, the length and the digest span" {
   digest: [33] u8;
   for k: 0..<32 { digest[k] = cast(u8) (asset_digit(MD_PACK_SHA[k * 2]) * 16 + asset_digit(MD_PACK_SHA[k * 2 + 1])); }
-  #assert md_pack_accept(digest[0..<32], 50927404);
-  #assert !md_pack_accept(digest[0..<31], 50927404) && !md_pack_accept(digest[..], 50927404);
-  #assert !md_pack_accept(digest[0..<32], 50927403) && !md_pack_accept(digest[0..<32], 50927405);
-  for k: 0..<32 { digest[k] ^= 1; #assert !md_pack_accept(digest[0..<32], 50927404); digest[k] ^= 1; }
+  #assert md_pack_accept(digest[0..<32], 50965060);
+  #assert !md_pack_accept(digest[0..<31], 50965060) && !md_pack_accept(digest[..], 50965060);
+  #assert !md_pack_accept(digest[0..<32], 50965059) && !md_pack_accept(digest[0..<32], 50965061);
+  for k: 0..<32 { digest[k] ^= 1; #assert !md_pack_accept(digest[0..<32], 50965060); digest[k] ^= 1; }
 }
 md_pack_accept :: (digest: [] u8, bytes: int) -> bool #effects(all) {
   if digest.count != 32 || bytes != MD_PACK_BYTES { return false; }

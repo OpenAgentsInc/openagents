@@ -90,6 +90,8 @@
 - (void)tilt:(float)yaw pitch:(float)pitch;
 - (void)motionStatus:(int32_t)status;
 - (BOOL)wantsText;
+// Optional local inspection recipe (docs/protocol/view-menu-v1.md), copied.
+- (NSData *)viewMenu;
 // The existing editor-model wire and message boundary, shared with host.js.
 - (NSData *)editorModel;
 - (int32_t)editorRevision;

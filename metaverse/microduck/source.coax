@@ -1,0 +1,21 @@
+// Pinned source identities and reviewed body/joint correspondence from the
+// workshop's exact MJCF. The independent XML oracle checks this recipe, while
+// the converter refuses any source/metadata bytes different from their pins.
+#load "../../metaverse-engine/editor/components-assembly.coax";
+MD_COMPONENTS_SHA :: "06bb65fa1db2959215f686919940b8eeb8836254bb13fda0b70a939e3b3d25ef";
+MD_TOPOLOGY_SHA :: "ec9d2f731596cfc847a7fc3898ef8b5e67a548928abc23216537f1da8af2729c";
+MD_GLTF_SHA :: "eea0931fefde8b2d352eaaa73b5e380f2790f63fb716a8c1a2ce219ffe58c1ac";
+MD_WORKSHOP_ROOT :: "https://raw.githubusercontent.com/NV-DLI/Microduck-Workshop/b283d134f52db75f747581f9ed47f64f3f94df7b/";
+
+#test "Microduck binds its fourteen source joints and leaves the root and physical beak distinct" {
+ r:=microduck_recipe();#assert r.joints==14 && r.bodies==15 && r.owner[0]== -1 && r.owner[14]==13;
+ #assert r.parent[0]== -1 && r.parent[5]== -1 && r.parent[9]== -1 && r.parent[8]==7 && r.parent[13]==12;
+ #assert r.joint[7].n==8 && r.body[0].n==10 && assembly_identity(r.source) && assembly_identity(r.description) && assembly_identity(r.topology);
+}
+microduck_recipe :: ()->AssemblyRecipe #effects(all) {
+ r:AssemblyRecipe;id:[1]AssetId;_:=asset_parse(MD_GLTF_SHA,id[..]);r.source=id[0];_:=asset_parse(MD_COMPONENTS_SHA,id[..]);r.description=id[0];_:=asset_parse(MD_TOPOLOGY_SHA,id[..]);r.topology=id[0];r.joints=14;r.bodies=15;
+ for name,i:[14]string.["left_hip_yaw","left_hip_roll","left_hip_pitch","left_knee","left_ankle","neck_pitch","head_pitch","head_yaw","head_roll","right_hip_yaw","right_hip_roll","right_hip_pitch","right_knee","right_ankle"] {r.joint[i]=assembly_name(name);}
+ for p,i:[14]int.[-1,0,1,2,3,-1,5,6,7,-1,9,10,11,12] {r.parent[i]=p;}
+ for name,i:[15]string.["trunk_base","yaw2roll","hip_l","upper_leg_left","leg","ankle_left","neck","neck_pitch","yaw_roll_motion","jaw_soft","bearing_roll","hip_l_2","upper_leg_right","leg_2","ankle_right"] {r.body[i]=assembly_name(name);r.owner[i]=i-1;}
+ return r;
+}

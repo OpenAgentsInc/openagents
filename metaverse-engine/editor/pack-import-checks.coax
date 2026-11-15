@@ -8,6 +8,26 @@
 
 PIT :: PipLimits.{file = 4000, budget = 9000, triangles = 24, side = 6, meshes = 2, textures = 2, sounds = 1};
 PitRoom :: struct { v: [8192] u8; i: [2048] u8; c: [4096] u8; n: [600] JvNode; h: [64] u8; }
+#test "import: optional source parts preserve node identity exact ranges and world bounds" #steps 2000000000 {
+ w:[1]PitRoom;source:[4000]u8;glb:=pit_box(2,1,0.5,1,0.25,source[..]);parts:[1]PiPart;room:=pit_room(w[..]);room.parts=parts[..];made:[1]PiMade;
+ #assert pi_glb(glb,PIT,room,0,0,made[..])=="" && made[0].parts==1;
+ p:=parts[0];#assert p.name_n==3 && cast(string)p.name[0..<p.name_n]=="box" && p.node==0 && p.parent== -1 && p.mesh==0 && p.first_vertex==0 && p.vertices==36 && p.first_index==0 && p.indices==36;
+ #assert p.low.x==1.5 && p.high.x==2.5 && p.low.y==0 && p.high.y==2 && p.low.z== -0.25 && p.high.z==0.25;
+ #assert p.world.m[0]==1 && p.world.m[5]==1 && p.world.m[10]==1;
+}
+#test "import: source receipts retain a nonmesh parent, sibling and reused mesh and refuse insufficient capacity" #steps 2000000000 {
+ w:[1]PitRoom;source:[4000]u8;base:=pit_box(0,1,0.5,1,0.25,source[..]);jn:=ag_uint(base,12,4);json:=cast(string)base[20..<20+jn];changed:[4096]u8;
+ n:=anim_test_replace(json,"\"nodes\":[0]","\"nodes\":[0,2]",changed[..]);next:[4096]u8;
+ n=anim_test_replace(cast(string)changed[0..<n],"{\"name\":\"box\",\"mesh\":0}","{\"name\":\"root\",\"translation\":[3,0,0],\"children\":[1]},{\"name\":\"child\",\"mesh\":0,\"translation\":[1,0,0]},{\"name\":\"sibling\",\"mesh\":0,\"translation\":[-2,0,0]}",next[..]);#assert n>0;
+ bytes:[8192]u8;padded:=(n+3)/4*4;binary:=base[28+jn..<base.count];total:=28+padded+binary.count;
+ for c,i:"glTF" {bytes[i]=c;}glb_u32(bytes[..],4,2);glb_u32(bytes[..],8,cast(u32)total);glb_u32(bytes[..],12,cast(u32)padded);glb_u32(bytes[..],16,0x4e4f534a);
+ for i:0..<padded {bytes[20+i]=ifx i<n then next[i] else ' ';}glb_u32(bytes[..],20+padded,cast(u32)binary.count);glb_u32(bytes[..],24+padded,0x004e4942);for c,i:binary {bytes[28+padded+i]=c;}
+ parts:[2]PiPart;room:=pit_room(w[..]);room.parts=parts[..];made:[1]PiMade;#assert pi_glb(bytes[0..<total],PIT,room,0,0,made[..])=="" && made[0].parts==2;
+ #assert parts[0].node==1 && parts[0].parent==0 && parts[1].node==2 && parts[1].parent== -1 && parts[0].mesh==0 && parts[1].mesh==0;
+ #assert parts[0].world.m[3]==4 && parts[0].low.x==3.5 && parts[0].high.x==4.5 && parts[1].world.m[3]== -2 && parts[1].low.x== -2.5;
+ #assert parts[0].first_vertex==0 && parts[0].vertices==36 && parts[1].first_vertex==36 && parts[1].first_index==36;
+ room.parts=parts[0..<1];made[0]=PiMade.{};#assert pi_glb(bytes[0..<total],PIT,room,0,0,made[..])!="" && made[0].parts==0 && made[0].vertices==0;
+}
 pit_room :: (w: [] PitRoom) -> PiRoom { return PiRoom.{vertices = w[0].v[..], indices = w[0].i[..], catalog = w[0].c[..], nodes = w[0].n[..], hash = w[0].h[..]}; }
 // A box as a glTF binary: its middle at (x, y, 0), half sizes hx, hy, hz. 36 vertices, 12 triangles, no index.
 pit_box :: (x: f32, y: f32, hx: f32, hy: f32, hz: f32, out: [] u8) -> [] u8 {

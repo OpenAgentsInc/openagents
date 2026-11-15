@@ -79,6 +79,27 @@ import MetalKit
             }}
         }
         let material=try frame("Microduck native materials")
+        func items()throws->[[String:Any]] {
+            var raw:Data?;NativeWorldHost.deep.run {raw=viewer.viewMenu()}
+            let recipe=try JSONSerialization.jsonObject(with:XCTUnwrap(raw)) as! [String:Any]
+            XCTAssertEqual(recipe["schema"] as? String,"metaverse.engine.view-menu.v1")
+            return try XCTUnwrap(recipe["items"] as? [[String:Any]])
+        }
+        XCTAssertEqual(try items().filter {$0["group"] as? String=="Joints"}.count,14)
+        XCTAssertEqual(try items().filter {$0["group"] as? String=="Parts"}.count,70)
+        NativeWorldHost.deep.run {_ = viewer.key(1007,mods:0,down:true);for _ in 0..<4 {_ = viewer.key(43,mods:0,down:true)}}
+        let head=try frame("Microduck native articulated head");XCTAssertGreaterThan(changed(material,head),200)
+        NativeWorldHost.deep.run {_ = viewer.key(120,mods:0,down:true)}
+        let exploded=try frame("Microduck native exploded assembly");XCTAssertGreaterThan(changed(head,exploded),1000)
+        NativeWorldHost.deep.run {_ = viewer.key(114,mods:0,down:true)}
+        let reset=try frame("Microduck native restored stand");XCTAssertEqual(changed(material,reset),0)
+        NativeWorldHost.deep.run {viewer.touch(CGPoint(x:220,y:350),phase:0,finger:9);viewer.touch(CGPoint(x:220,y:350),phase:2,finger:9)}
+        let tapped=try items().filter {$0["group"] as? String=="Parts" && $0["current"] as? Bool==true}
+        XCTAssertEqual(tapped.count,1,"A geometry tap must select one named source part")
+        let selected=try frame("Microduck native tapped part"),pickedKey=try XCTUnwrap(tapped.first?["key"] as? Int32)
+        NativeWorldHost.deep.run {_ = viewer.key(pickedKey,mods:0,down:true)}
+        XCTAssertEqual(changed(selected,try frame("Microduck native named part")),0)
+        NativeWorldHost.deep.run {_ = viewer.key(114,mods:0,down:true)}
         NativeWorldHost.deep.run {_ = viewer.key(110,mods:0,down:true)}
         let normals=try frame("Microduck native normals");XCTAssertGreaterThan(changed(material,normals),1000,"The surface pass did not draw the model")
         NativeWorldHost.deep.run {_ = viewer.key(110,mods:0,down:true);viewer.touch(CGPoint(x:230,y:450),phase:0,finger:8);viewer.touch(CGPoint(x:310,y:460),phase:1,finger:8);viewer.touch(CGPoint(x:310,y:460),phase:2,finger:8)}

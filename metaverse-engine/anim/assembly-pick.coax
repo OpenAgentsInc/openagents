@@ -1,0 +1,14 @@
+// Picking is a consumer of an admitted assembly, separate from its codec.
+// coax/bin/coax test metaverse-engine/anim/assembly-pick.coax --library
+#load "assembly.coax";
+#load "../physics/query.coax";
+assembly_pick :: (a:[]RigidAssembly,p:[]AssemblyPose,origin:WorldPoint,direction:WorldPoint,explode:f32)->int #effects(all) {
+ best:= -1;far:=1000000.0f32;
+ for i:0..<a[0].parts {part:=a[0].part[i];o:=sub(v3(origin.x,origin.y,origin.z),times(part.explode,explode));d:=v3(direction.x,direction.y,direction.z);
+  if part.joint>=0 {q:=p[0].rotation[part.joint];inv:=Quat.{x= -q.x,y= -q.y,z= -q.z,w=q.w};o=quat_rotate(inv,sub(o,p[0].position[part.joint]));d=quat_rotate(inv,d);}
+  hit:=query_enter_box(world_point(part.low.x,part.low.y,part.low.z),world_point(part.high.x,part.high.y,part.high.z),world_point(o.x,o.y,o.z),world_point(d.x,d.y,d.z),far);
+  if hit.hit && hit.t<far {far=hit.t;best=i;}
+ }return best;
+}
+
+#load "assembly-pick-checks.coax" #test;

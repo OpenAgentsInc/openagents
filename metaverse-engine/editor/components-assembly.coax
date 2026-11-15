@@ -1,0 +1,50 @@
+// Anticorruption adapter for the pinned workshop's inert components metadata.
+// The caller supplies a reviewed mechanical topology; the model description
+// supplies world-rest joint coordinates and exact source-part identities.
+// coax/bin/coax test metaverse-engine/editor/components-assembly.coax --library
+#load "pack-import-parts.coax";
+#load "../anim/json.coax";
+#load "../anim/assembly.coax";
+#authority;
+AssemblyRecipe :: struct {source:AssetId;description:AssetId;topology:AssetId;joints:int;bodies:int;joint:[32]AssemblyName;parent:[32]int;body:[64]AssemblyName;owner:[64]int;}
+
+components_name :: (d:Jv,node:int,key:string)->AssemblyName #effects(all) {
+ bytes:[128]u8;n:=jv_str(d,jv_get(d,node,key),bytes[..]);
+ if n<1 || n>127 {return AssemblyName.{};} // mutant: equivalent (128 is independently rejected by assembly_name, so raising this preflight ceiling cannot admit a name)
+ return assembly_name(cast(string)bytes[0..<n]);
+}
+// Display-only transliteration for the source's single U+00B7 separator.
+// Stable part/joint/body identities are never normalized.
+components_label :: (d:Jv,node:int)->AssemblyName #effects(all) {
+ bytes:[128]u8;n:=jv_str(d,jv_get(d,node,"label_en"),bytes[..]);if n<1 || n>127 {return AssemblyName.{};}text:[128]u8;i:=0;at:=0;
+ while i<n {
+  has_next:=i+1<n; // mutant: equivalent (at the only newly included end position bytes[n] is zero-filled, never the required 183; n <= 127 leaves that slot inside the 128-byte array)
+  if bytes[i]==194 && has_next && bytes[i+1]==183 {text[at]='/';i+=2;}else {text[at]=bytes[i];i+=1;}at+=1;}return assembly_name(cast(string)text[0..<at]);
+}
+ComponentsParse :: struct {d:Jv;bad:bool;}
+components_number :: (p:[]ComponentsParse,node:int)->f32 #effects(all) {
+ value:=anim_number(p[0].d,node,-999999,999999);if !value.ok {p[0].bad=true;return 0;}return cast(f32)value.value;
+}
+components_three :: (d:Jv,node:int)->bool #effects(all) {return jv_kind(d,node)==JV_ARRAY && jv_len(d,node)==3;}
+components_point :: (p:[]ComponentsParse,node:int)->Point #effects(all) {
+ d:=p[0].d;if !components_three(d,node) {p[0].bad=true;return v3(0,0,0);}return v3(components_number(p,jv_at(d,node,0)),components_number(p,jv_at(d,node,1)),components_number(p,jv_at(d,node,2)));
+}
+components_counts :: (bytes:int,outputs:int,parts:int,joints:int,bodies:int)->bool #effects(all) {
+ return bytes>=1 && bytes<=131072 && outputs==1 && parts>=1 && parts<=ASSEMBLY_PARTS && joints>=1 && joints<=ASSEMBLY_JOINTS && bodies>=1 && bodies<=64;
+}
+components_assembly :: (raw:string,recipe:AssemblyRecipe,parts:[]PiPart,nodes_count:int,out:[]RigidAssembly)->bool #effects(all) {
+ if !components_counts(raw.count,out.count,parts.count,recipe.joints,recipe.bodies) || !asset_same(asset_id(raw),recipe.description) {return false;}
+ nodes:[16384]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) {return false;}schema:[64]u8;n:=jv_str(d[0],jv_get(d[0],0,"schema"),schema[..]);if n!=23 || cast(string)schema[0..<n]!="microduck.components.v1" {return false;}
+ joints:=jv_get(d[0],0,"joints");rows:=jv_get(d[0],0,"parts");if jv_len(d[0],joints)!=recipe.joints || jv_len(d[0],rows)!=parts.count {return false;}
+ parsed:[1]ComponentsParse;parsed[0].d=d[0];a:[1]RigidAssembly;a[0].source=recipe.source;a[0].description=recipe.description;a[0].topology=recipe.topology;a[0].joints=recipe.joints;a[0].parts=parts.count;a[0].nodes=nodes_count;
+ for i:0..<recipe.joints {row:=jv_at(d[0],joints,i);name:=components_name(d[0],row,"id");if !assembly_name_same(name,recipe.joint[i]) {return false;}range:=jv_get(d[0],row,"range_radians");if jv_len(d[0],range)!=2 {return false;}
+  a[0].joint[i]=AssemblyJoint.{name=name,parent=recipe.parent[i],axis=components_point(parsed[..],jv_get(d[0],row,"axis")),pivot=components_point(parsed[..],jv_get(d[0],row,"pivot")),low=components_number(parsed[..],jv_at(d[0],range,0)),high=components_number(parsed[..],jv_at(d[0],range,1)),stand=components_number(parsed[..],jv_get(d[0],row,"stand_radians"))};
+ }
+ for i:0..<parts.count {src:=parts[i];row:=jv_at(d[0],rows,i);name:=components_name(d[0],row,"id");if src.name_n!=name.n {return false;}for k:0..<name.n {if src.name[k]!=name.bytes[k] {return false;}}
+  body:=components_name(d[0],row,"source_body");owner:= -2;for k:0..<recipe.bodies {if assembly_name_same(body,recipe.body[k]) {if owner!= -2 {return false;}owner=recipe.owner[k];}}if owner== -2 {return false;}
+  a[0].part[i]=AssemblyPart.{name=name,label=components_label(d[0],row),joint=owner,node=src.node,parent=src.parent,first_vertex=src.first_vertex,vertices=src.vertices,first_index=src.first_index,indices=src.indices,low=src.low,high=src.high,explode=components_point(parsed[..],jv_get(d[0],row,"explode")),rest=src.world.m};a[0].vertices+=src.vertices;a[0].indices+=src.indices;
+ }
+ if parsed[0].bad || !assembly_admit(a[..]) {return false;}out[0]=a[0];return true;
+}
+
+#load "components-assembly-checks.coax" #test;

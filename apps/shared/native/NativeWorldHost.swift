@@ -208,7 +208,36 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     }
     private func showMenu() {
         if let page {Self.deep.run {page.focus(false)}}
+        if showViewMenu() {return}
         NativeMenu.show(from:menuButton,in:view,title:title,items:menuItems)
+    }
+    private struct ViewMenuRecipe:Decodable {
+        struct Item:Decodable {let label:String;let group:String;let key:Int32;let current:Bool;let keep_open:Bool}
+        let schema:String;let title:String;let items:[Item]
+    }
+    /// Projection only: names, grouping, actions and selection belong to Coax.
+    @discardableResult private func showViewMenu(group:String?=nil)->Bool {
+        guard !closed,let page else {return false}
+        var raw:Data?;Self.deep.run {raw=page.viewMenu()}
+        guard let raw,let recipe=try? JSONDecoder().decode(ViewMenuRecipe.self,from:raw),recipe.items.count<=128 else {return false}
+        var items:[NativeMenu.Item]=[]
+        if let group {
+            for row in recipe.items where row.group==group {
+                items.append(.init(id:"model.key.\(row.key)",title:row.label,current:row.current) { [weak self] in
+                    guard let self,!self.closed,let page=self.page else {return}
+                    Self.deep.run {_ = page.key(row.key,mods:0,down:true);_ = page.key(row.key,mods:0,down:false)}
+                    if row.keep_open {_ = self.showViewMenu(group:group)}
+                })
+            }
+        }else {
+            var seen=Set<String>()
+            for row in recipe.items where seen.insert(row.group).inserted {
+                let name=row.group
+                items.append(.init(id:"model.group.\(name)",title:name,symbol:"chevron.right") { [weak self] in _ = self?.showViewMenu(group:name) })
+            }
+            items.append(contentsOf:menuItems.filter {$0.id=="model.action.5" || $0.id=="world.close"})
+        }
+        NativeMenu.show(from:menuButton,in:view,title:group ?? recipe.title,items:items);return true
     }
     func draw(in view:MTKView) {
         guard !closed,let page,let drawable=view.currentDrawable,let pass=view.currentRenderPassDescriptor else {return}

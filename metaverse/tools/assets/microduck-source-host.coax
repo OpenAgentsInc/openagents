@@ -1,0 +1,13 @@
+// SDK/process/file effects only. Retained source data is content addressed in
+// the shared asset store. Vendor scripts are never executed.
+microduck_reference :: (url:string,sha:string,out:[]u8)->int #effects(all) {
+ env:[4096]u8;asset_home:=proc_getenv("HOME",env[..]);if asset_home.count==0 {return -1;}paths:[4][4096]u8;
+ root:=fs_join(asset_home,".openagents/assets",paths[0][..]);objects:=fs_join(root,"objects",paths[1][..]);file:=fs_join(objects,sha,paths[2][..]);n:= -1;
+ if !fs_mkdir(objects) {return -1;}
+ if fs_exists(file) {n=fs_read(file,out);}else {
+  cache:=fs_join(root,"cache/microduck-import",paths[1][..]);if !fs_mkdir(cache) {return -1;}label:[256]u8;o:[1]Jo;jo_start(o[..],label[..]);jo_put(o[..],sha);jo_put(o[..],"-");o[0].keyed=true;jo_int(o[..],proc_now_ms());jo_put(o[..],".download");tmp:=fs_join(cache,jo_text(o[..]),paths[3][..]);
+  args:=[9]string.["curl","--fail","--location","--silent","--max-time","90",url,"--output",tmp];stdout:[4096]u8;stderr:[4096]u8;r:=proc_run(args[..],100000,stdout[..],stderr[..]);if r.started!=0 || r.status!=0 || r.timed_out {_:=fs_remove(tmp);tool_errln("Pinned Microduck source download failed");return -1;}n=fs_read(tmp,out);_:=fs_remove(tmp);
+ }
+ hex:[64]u8;if n<1 || !asset_hex_of(cast(string)out[0..<n],hex[..]) || cast(string)hex[..]!=sha {tool_errln("Pinned Microduck source hash differs");return -1;}
+ if !fs_exists(file) && !fs_replace_durable(file,cast(string)out[0..<n]) {return -1;}return n;
+}

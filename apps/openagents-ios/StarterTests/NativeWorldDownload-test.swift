@@ -57,7 +57,7 @@ private final class WorldDownloadOracle:URLProtocol {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString);defer {try? FileManager.default.removeItem(at:root)}
         let assets=NativeWorldAssets(home:root),installed=try await assets.prepare(inventory,progress:{_,_ in})
         let result=try NativeWorldAssets.hash(installed.appendingPathComponent("base.pack"))
-        XCTAssertEqual(result.0,50927404);XCTAssertEqual(result.1,"44a2b852208c8a29d17851e2a99401d257c2f711bc59cf92fe8b4a4c20bd681e")
+        XCTAssertEqual(result.0,50965060);XCTAssertEqual(result.1,"fc21cb95595d665bb83dc5b90c373dcf197f5b45b34b376c0d110b044bb408b5")
         WorldDownloadOracle.reset(Data(),status:503);let offline=cache(root)
         let reopened=try await offline.prepare(inventory,progress:{_,_ in});XCTAssertEqual(reopened,installed);XCTAssertEqual(WorldDownloadOracle.count,0)
     }

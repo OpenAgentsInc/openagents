@@ -1,0 +1,12 @@
+// Independent protocol fixture: compare every encoded byte with the frozen
+// stdlib-struct oracle, then decode that oracle through the product reader.
+#load "../anim/assembly-wire.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ text:[16384]u8;n:=fs_read("proto/metaverse-engine/rigid-assembly-v1.json",text[..]);if n<0 {return 1;}nodes:[256]JvNode;d:[1]Jv;if !jv_parse(d[..],cast(string)text[0..<n],nodes[..]) {return 1;}
+ fixture:=jv_get(d[0],0,"fixture");encoded:[8192]u8;k:=jv_str(d[0],jv_get(d[0],fixture,"base64"),encoded[..]);if k<0 {return 1;}expected:[ASSEMBLY_WIRE_MAX]u8;decoded:=b64_decode(cast(string)encoded[0..<k],expected[..]);if decoded<0 {return 1;}
+ a:[1]RigidAssembly;source:AssetId;source.words[0]=1;if !assembly_read(expected[0..<decoded],source,a[..]) {return 1;}actual:[ASSEMBLY_WIRE_MAX]u8;size:=assembly_write(a[..],actual[0..<decoded]);if size!=decoded {return 1;}for i:0..<size {if actual[i]!=expected[i] {print("RBA1 fixture differs at byte %\n",i);return 1;}}
+ out:[1]RigidAssembly;if !assembly_read(expected[0..<size],a[0].source,out[..]) || out[0].part[1].explode.y!=2 {return 1;}print("RBA1: % independent oracle bytes match; decoded and admitted\n",size);return 0;
+}

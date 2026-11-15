@@ -1,0 +1,59 @@
+// Test-only source recipe fixtures.
+#test "components assembly binds pinned source parts to reviewed mechanical parents" {
+ raw:="{\"schema\":\"microduck.components.v1\",\"joints\":[{\"id\":\"hinge\",\"axis\":[0,0,1],\"pivot\":[1,0,0],\"range_radians\":[-1,1],\"stand_radians\":0}],\"parts\":[{\"id\":\"part\",\"label_en\":\"Test part\",\"source_body\":\"arm\",\"explode\":[0,1,0]}]}";
+ recipe:=assembly_recipe_fixture(raw);parts:[1]PiPart;parts[0]=PiPart.{node=0,parent= -1,vertices=3,indices=3,low=v3(-1,-1,-1),high=v3(1,1,1)};parts[0].name_n=4;for c,i:"part" {parts[0].name[i]=c;}for i:0..<3 {parts[0].world.m[i*4+i]=1;}
+ out:[1]RigidAssembly;#assert components_assembly(raw,recipe,parts[..],1,out[..]);#assert out[0].joints==1 && out[0].parts==1 && out[0].part[0].joint==0 && out[0].part[0].explode.y==1 && out[0].joint[0].pivot.x==1;
+ wrong:=recipe;wrong.source=AssetId.{};#assert !components_assembly(raw,wrong,parts[..],1,out[..]);wrong=recipe;wrong.description.words[0]+=1;out[0].nodes=77;#assert !components_assembly(raw,wrong,parts[..],1,out[..]) && out[0].nodes==77;
+ wrong=recipe;wrong.joint[0]=assembly_name("other");#assert !components_assembly(raw,wrong,parts[..],1,out[..]);wrong=recipe;wrong.body[0]=assembly_name("other");#assert !components_assembly(raw,wrong,parts[..],1,out[..]);
+ parts[0].name[0]='x';#assert !components_assembly(raw,recipe,parts[..],1,out[..]);#assert !components_assembly("{}",recipe,parts[..],1,out[..]);
+}
+assembly_recipe_fixture :: (raw:string)->AssemblyRecipe #effects(all) {
+ r:AssemblyRecipe;r.source.words[0]=1;r.description=asset_id(raw);r.topology.words[0]=3;r.joints=1;r.bodies=1;r.joint[0]=assembly_name("hinge");r.parent[0]= -1;r.body[0]=assembly_name("arm");r.owner[0]=0;return r;
+}
+
+#test "source display separators are projected without changing stable identity decoding" {
+ for text,i:[3]string.["{\"label_en\":\"Board · Pi\"}","{\"label_en\":\"Plain\"}","{\"label_en\":\"é\"}"] {
+  nodes:[64]JvNode;d:[1]Jv;#assert jv_parse(d[..],text,nodes[..]);n:=components_label(d[0],0);#assert n.n==[3]int.[10,5,0][i];if i==0 {#assert cast(string)n.bytes[0..<n.n]=="Board / Pi";}
+ }
+}
+#test "source number and point shapes refuse missing and out of range coordinates" {
+ nodes:[64]JvNode;d:[1]Jv;#assert jv_parse(d[..],"[-999999,999999,1000000,null,[1,2],[1,2,3],{},[1,2,3,4]]",nodes[..]);p:[1]ComponentsParse;p[0].d=d[0];
+ #assert components_number(p[..],jv_at(d[0],0,0))== -999999 && components_number(p[..],jv_at(d[0],0,1))==999999 && !p[0].bad;
+ _:=components_number(p[..],jv_at(d[0],0,2));#assert p[0].bad;p[0].bad=false;_:=components_number(p[..],jv_at(d[0],0,3));#assert p[0].bad;
+ for i:[3]int.[4,6,7] {p[0].bad=false;#assert !components_three(d[0],jv_at(d[0],0,i));_:=components_point(p[..],jv_at(d[0],0,i));#assert p[0].bad;}
+ p[0].bad=false;point:=components_point(p[..],jv_at(d[0],0,5));#assert point.x==1 && point.y==2 && point.z==3 && !p[0].bad;
+}
+#test "source allocation bounds admit their endpoints and independently refuse excess" {
+ for n:[4]int.[0,1,131072,131073] {#assert components_counts(n,1,1,1,1)==(n==1 || n==131072);}
+ for n:[4]int.[0,1,96,97] {#assert components_counts(1,1,n,1,1)==(n==1 || n==96);}
+ for n:[4]int.[0,1,32,33] {#assert components_counts(1,1,1,n,1)==(n==1 || n==32);}
+ for n:[4]int.[0,1,64,65] {#assert components_counts(1,1,1,1,n)==(n==1 || n==64);}
+ #assert !components_counts(1,0,1,1,1) && !components_counts(1,2,1,1,1);
+}
+
+CS_JOINT :: "{\"id\":\"hinge\",\"axis\":[0,0,1],\"pivot\":[1,0,0],\"range_radians\":[-1,1],\"stand_radians\":0}";
+CS_PART :: "{\"id\":\"part\",\"label_en\":\"Test part\",\"source_body\":\"arm\",\"explode\":[0,1,0]}";
+components_fixture_text :: (schema:string,joint:string,nj:int,np:int,out:[]u8)->int {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],schema);jo_key(o[..],"joints");jo_arr(o[..]);for i:0..<nj {jo_raw(o[..],joint);}jo_end(o[..]);jo_key(o[..],"parts");jo_arr(o[..]);for i:0..<np {jo_raw(o[..],CS_PART);}jo_end(o[..]);jo_end(o[..]);return o[0].n;
+}
+components_fixture_part :: ()->PiPart {
+ p:=PiPart.{node=0,parent= -1,vertices=3,indices=3,low=v3(-1,-1,-1),high=v3(1,1,1)};p.name_n=4;for c,i:"part" {p.name[i]=c;}for i:0..<3 {p.world.m[i*4+i]=1;}return p;
+}
+#test "pinned but malformed descriptions refuse atomically instead of passing only the hash check" {
+ parts:[1]PiPart;parts[0]=components_fixture_part();out:[1]RigidAssembly;b:[4096]u8;
+ for text:[2]string.["{","{}"] {r:=assembly_recipe_fixture(text);out[0].nodes=77;#assert !components_assembly(text,r,parts[..],1,out[..]) && out[0].nodes==77;}
+ for schema:[2]string.["other.components.v1abcd","microduck.components.v2"] {n:=components_fixture_text(schema,CS_JOINT,1,1,b[..]);raw:=cast(string)b[0..<n];r:=assembly_recipe_fixture(raw);#assert !components_assembly(raw,r,parts[..],1,out[..]);}
+ for count:[2]int.[0,2] {n:=components_fixture_text("microduck.components.v1",CS_JOINT,count,1,b[..]);raw:=cast(string)b[0..<n];r:=assembly_recipe_fixture(raw);#assert !components_assembly(raw,r,parts[..],1,out[..]);n=components_fixture_text("microduck.components.v1",CS_JOINT,1,count,b[..]);raw=cast(string)b[0..<n];r=assembly_recipe_fixture(raw);#assert !components_assembly(raw,r,parts[..],1,out[..]);}
+ for joint:[2]string.["{\"id\":\"hinge\",\"axis\":[0,0,1],\"pivot\":[0,0,0],\"range_radians\":[-1],\"stand_radians\":0}","{\"id\":\"hinge\",\"axis\":[0,0],\"pivot\":[0,0,0],\"range_radians\":[-1,1],\"stand_radians\":0}"] {n:=components_fixture_text("microduck.components.v1",joint,1,1,b[..]);raw:=cast(string)b[0..<n];r:=assembly_recipe_fixture(raw);#assert !components_assembly(raw,r,parts[..],1,out[..]);}
+ n:=components_fixture_text("microduck.components.v1",CS_JOINT,1,1,b[..]);raw:=cast(string)b[0..<n];r:=assembly_recipe_fixture(raw);
+ parts[0].name_n=3;#assert !components_assembly(raw,r,parts[..],1,out[..]);parts[0]=components_fixture_part();r.bodies=2;r.body[1]=r.body[0];r.owner[1]=0;#assert !components_assembly(raw,r,parts[..],1,out[..]);
+ r=assembly_recipe_fixture(raw);r.owner[0]= -1;#assert components_assembly(raw,r,parts[..],1,out[..]) && out[0].part[0].joint== -1;
+ #assert !components_assembly(raw,r,parts[0..<0],1,out[..]) && !components_assembly(raw,r,parts[..],1,out[0..<0]);
+}
+#test "source names and labels retain one and 127 byte boundaries and do not normalize arbitrary bytes" {
+ b:[1024]u8;chars:[128]u8;nodes:[64]JvNode;d:[1]Jv;
+ for n:[4]int.[0,1,127,128] {for i:0..<n {chars[i]='x';}o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],cast(string)chars[0..<n]);jo_key(o[..],"label_en");jo_str(o[..],cast(string)chars[0..<n]);jo_end(o[..]);#assert jv_parse(d[..],jo_text(o[..]),nodes[..]);name:=components_name(d[0],0,"id");label:=components_label(d[0],0);want:=ifx n==1 || n==127 then n else 0;#assert name.n==want && label.n==want;}
+ for text,i:[3]string.["{\"label_en\":\"·\"}","{\"label_en\":\"Board ·\"}","{\"label_en\":\"CÂ\"}"] {#assert jv_parse(d[..],text,nodes[..]);label:=components_label(d[0],0);#assert label.n==[3]int.[1,7,0][i];}
+ for text:[2]string.["{\"label_en\":\"¢\"}","{\"label_en\":\"÷\"}"] {#assert jv_parse(d[..],text,nodes[..]);#assert components_label(d[0],0).n==0;}
+ for i:0..<126 {chars[i]='x';}chars[126]=194;chars[127]=183;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"label_en");jo_str(o[..],cast(string)chars[..]);jo_end(o[..]);#assert jv_parse(d[..],jo_text(o[..]),nodes[..]);#assert components_label(d[0],0).n==0 && components_name(d[0],0,"missing").n==0;
+}

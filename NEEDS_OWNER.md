@@ -1560,3 +1560,13 @@ not a pending request for a key.
       permission/receipt and VoiceOver/large text. Simulator fixtures cover
       account screens and server admission; real Apple ceremonies and push
       delivery remain physical-device checks. Wallet keys remain separate.
+
+## iOS 1095 Microduck workbench (2026-11-15)
+
+- [ ] After TestFlight 1095 is available in Owner, open Home → Microduck on
+      the actual iPhone. Tap a part, select head_yaw or a leg joint from the
+      floating menu, adjust Pose, toggle Explode and Reset. Check pinch/orbit,
+      VoiceOver's named pickers and reopening after the first download while
+      offline. Native simulator/Metal and public-cache checks pass; physical
+      device accessibility, power and frame time remain unclaimed. See
+      [the source, pictures and release record](docs/verification/microduck-workbench-13639/README.md).

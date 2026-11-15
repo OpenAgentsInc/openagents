@@ -31,13 +31,17 @@ md_bg_fs :: (pos: V4, u: [] f32) -> V4 {
 MdSurface :: struct { pos: V4; world: V3; normal: V3; colour: V3; }
 md_scene_vs :: (i: u32, j: u32, u: [] f32, vertices: [] u32) -> MdSurface {
   at := cast(int) i * 12;
-  p := v3(f32_from_bits(vertices[at]), f32_from_bits(vertices[at + 1]), f32_from_bits(vertices[at + 2]));
-  normal := v3(f32_from_bits(vertices[at + 3]), f32_from_bits(vertices[at + 4]), f32_from_bits(vertices[at + 5]));
+  rest := v3(f32_from_bits(vertices[at]), f32_from_bits(vertices[at + 1]), f32_from_bits(vertices[at + 2]));
+  rest_normal := v3(f32_from_bits(vertices[at + 3]), f32_from_bits(vertices[at + 4]), f32_from_bits(vertices[at + 5]));
+  b:=64+cast(int)j*16;
+  p:=v3(wg_dot3(md_vec(u,b),rest)+u[b+3],wg_dot3(md_vec(u,b+4),rest)+u[b+7],wg_dot3(md_vec(u,b+8),rest)+u[b+11]);
+  normal:=v3(wg_dot3(md_vec(u,b),rest_normal),wg_dot3(md_vec(u,b+4),rest_normal),wg_dot3(md_vec(u,b+8),rest_normal));
+  material:=md_colour(vertices[at+8]);if u[b+12]>0.5f32 {material=wg_add_f3f3(wg_mul_f3f(material,0.5f32),v3(0.5f32,0.5f32,0.5f32));}
   r := sub3(p, md_vec(u, 8)); z := wg_dot3(r, md_vec(u, 20));
   clip := v4(2.0f32 * (wg_dot3(r, md_vec(u, 12)) * u[24] + (u[26] - u[0] * 0.5f32) * z) / u[0],
     2.0f32 * (wg_dot3(r, md_vec(u, 16)) * u[24] + (u[1] * 0.5f32 - u[27]) * z) / u[1],
     10.0f32 / 9.99f32 * (z - 0.01f32), z);
-  return MdSurface.{pos = clip, world = p, normal = normal, colour = md_colour(vertices[at + 8])};
+  return MdSurface.{pos = clip, world = p, normal = normal, colour = material};
 }
 md_scene_fs :: (v: MdSurface, u: [] f32) -> V4 {
   n := wg_normalize3(v.normal);

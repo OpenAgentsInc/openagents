@@ -1,0 +1,25 @@
+// Independent stdlib-struct record, frozen in proto/metaverse-engine/rigid-assembly-v1.json.
+#test "RBA1 transport preflight has explicit candidate extents and finite IEEE words" {
+ #assert assembly_wire_header(124,1) && assembly_wire_header(40828,1) && !assembly_wire_header(123,1) && !assembly_wire_header(40829,1) && !assembly_wire_header(124,0) && !assembly_wire_header(124,2);
+ raw:[4]u8;for word:[4]u32.[0x7fc00000,0x7f800000,0xff800000,0xffc00001] {_:=cb_store_le32(raw[..],0,word);#assert !assembly_wire_finite(raw[..],0,1);}
+ for word:[4]u32.[0,0x80000000,0x3f800000,0x3fffffff] {_:=cb_store_le32(raw[..],0,word);#assert assembly_wire_finite(raw[..],0,1);}
+ a:[1]RigidAssembly;a[0]=assembly_fixture();b:[8192]u8;a[0].source=AssetId.{};#assert assembly_write(a[..],b[..])== -1 && assembly_catalogue_write(a[..],b[..])== -1;
+}
+#test "RBA1 catalogue framing accepts surrounding metadata and exact capacity, rejecting noncanonical text" {
+ a:[1]RigidAssembly;a[0]=assembly_fixture();out:[1]RigidAssembly;b:[8192]u8;capacity:=6+b64_encoded_size(1564);n:=assembly_catalogue_write(a[..],b[0..<capacity]);#assert n==capacity;
+ text:[8192]u8;prefix:="pack demo\n\nL 0 origin\n";at:=0;for c:prefix {text[at]=c;at+=1;}for i:0..<n {text[at]=b[i];at+=1;}for c:"Z\n" {text[at]=c;at+=1;}
+ #assert assembly_catalogue_read(cast(string)text[0..<at],a[0].source,out[..]);
+ #assert !assembly_catalogue_read(cast(string)b[0..<n-1],a[0].source,out[..]);
+ // The last quartet encodes one zero byte; setting its pad bits is forbidden.
+ b[n-4]='B';#assert !assembly_catalogue_read(cast(string)b[0..<n],a[0].source,out[..]);
+ n=assembly_catalogue_write(a[..],b[..]);b[n-1]=' ';b[n]='\n';#assert !assembly_catalogue_read(cast(string)b[0..<n+1],a[0].source,out[..]);
+ #assert !assembly_catalogue_read("RBA1 \n",a[0].source,out[..]) && !assembly_catalogue_read("",a[0].source,out[..]);
+ n=assembly_catalogue_write(a[..],b[..]);for c:"RBA1 \n" {b[n]=c;n+=1;}#assert !assembly_catalogue_read(cast(string)b[0..<n],a[0].source,out[..]);
+}
+#test "RBA1 independently encoded dense fields and signed zero survive a complete read and write" {
+ raw:[4096]u8;n:=b64_decode("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",raw[..]);#assert n==1564;source:[1]AssetId;#assert asset_parse("6df32bf7d79937fbf4e826bf93ceed775c84921746b1718754587ac10051ebef",source[..]);a:[1]RigidAssembly;
+ #assert assembly_read(raw[0..<n],source[0],a[..]);out:[1564]u8;#assert assembly_write(a[..],out[..])==1564;for i:0..<1564 {#assert out[i]==raw[i];}
+ // Every wire float is preflighted before conversion, including unbound parts.
+ for j:0..<2 {for k:0..<9 {at:=124+j*168+132+k*4;old:=cb_load_le32(raw[..],at).value;_:=cb_store_le32(raw[..],at,0x7fc00000);a[0].nodes=77;#assert !assembly_read(raw[0..<n],source[0],a[..]) && a[0].nodes==77;_:=cb_store_le32(raw[..],at,old);}}
+ for p:0..<3 {for k:0..<21 {at:=124+2*168+p*368+284+k*4;old:=cb_load_le32(raw[..],at).value;_:=cb_store_le32(raw[..],at,0x7f800000);a[0].nodes=77;#assert !assembly_read(raw[0..<n],source[0],a[..]) && a[0].nodes==77;_:=cb_store_le32(raw[..],at,old);}}
+}

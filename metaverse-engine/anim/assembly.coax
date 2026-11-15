@@ -1,0 +1,68 @@
+// Visual rigid-link assemblies over the shared pose and ray-query primitives.
+// coax/bin/coax test metaverse-engine/anim/assembly.coax
+#load "pose.coax";
+#load "../core/assets.coax";
+#load "../core/space.coax";
+#authority;
+
+ASSEMBLY_JOINTS :: 32;
+ASSEMBLY_PARTS :: 96;
+AssemblyName :: struct {bytes:[128]u8;n:int;}
+AssemblyJoint :: struct {name:AssemblyName;parent:int= -1;axis:Point;pivot:Point;low:f32;high:f32;stand:f32;}
+AssemblyPart :: struct {name:AssemblyName;label:AssemblyName;joint:int= -1;node:int;parent:int= -1;first_vertex:int;vertices:int;first_index:int;indices:int;low:Point;high:Point;explode:Point;rest:[12]f32;}
+RigidAssembly :: struct {source:AssetId;description:AssetId;topology:AssetId;joints:int;parts:int;nodes:int;vertices:int;indices:int;joint:[ASSEMBLY_JOINTS]AssemblyJoint;part:[ASSEMBLY_PARTS]AssemblyPart;}
+AssemblyPose :: struct {rotation:[ASSEMBLY_JOINTS]Quat;position:[ASSEMBLY_JOINTS]Point;}
+
+assembly_name :: (s:string)->AssemblyName #effects(all) {
+ n:AssemblyName;if s.count<1 || s.count>127 {return n;}for c:s {if c<32 || c>126 {return n;}}n.n=s.count;for c,i:s {n.bytes[i]=c;}return n;
+}
+assembly_name_same :: (a:AssemblyName,b:AssemblyName)->bool #effects(all) {if a.n!=b.n {return false;}for i:0..<a.n {if a.bytes[i]!=b.bytes[i] {return false;}}return true;}
+assembly_name_ok :: (n:AssemblyName)->bool #effects(all) {
+ if n.n<1 || n.n>127 {return false;}for i:0..<128 {if i<n.n {if n.bytes[i]<32 || n.bytes[i]>126 {return false;}}else if n.bytes[i]!=0 {return false;}}return true;
+}
+assembly_identity :: (a:AssetId)->bool #effects(all) {for w:a.words {if w!=0 {return true;}}return false;}
+// Used by both the in-memory and wire admission before indexing fixed arrays.
+assembly_counts :: (joints:int,parts:int,nodes:int,vertices:int,indices:int)->bool #effects(all) {
+ if joints<1 || joints>ASSEMBLY_JOINTS || parts<1 || parts>ASSEMBLY_PARTS || nodes<1 || nodes>256 || vertices<1 || vertices>2000000 {return false;}
+ if indices<3 || indices>6000000 // mutant: equivalent (6000001 still admits no extra multiple of three)
+  || indices%3!=0 {return false;}return true;
+}
+assembly_span :: (first:int,count:int,at:int,total:int)->bool #effects(all) {return first==at && count>0 && count<=total-at;}
+assembly_admit :: (a:[]RigidAssembly)->bool #effects(all) {
+ if a.count!=1 {return false;}s:=a[0];if !assembly_identity(s.source) || !assembly_identity(s.description) || !assembly_identity(s.topology) {return false;}
+ if !assembly_counts(s.joints,s.parts,s.nodes,s.vertices,s.indices) {return false;}
+ for j:0..<s.joints {x:=s.joint[j];
+  axis_error:=abs(dot(x.axis,x.axis)-1);
+  // Subtraction near one has binary32 ULP 2^-24 or larger; 0.001 is not on that lattice, so equality is impossible.
+  axis_bad:=axis_error>0.001; // mutant: equivalent (>= has the same binary32 admitted set; lattice proof above)
+  if !assembly_name_ok(x.name) || x.parent< -1 || x.parent>=j || !finite3(x.axis) || !finite3(x.pivot) || axis_bad || !finite(x.low) || !finite(x.high) || !finite(x.stand) || x.low>x.high || x.stand<x.low || x.stand>x.high {return false;}for k:0..<j {if assembly_name_same(x.name,s.joint[k].name) {return false;}}}
+ nv:=0;ni:=0;
+ for i:0..<s.parts {p:=s.part[i];if !assembly_name_ok(p.name) || !assembly_name_ok(p.label) || p.joint< -1 || p.joint>=s.joints || p.node<0 || p.node>=s.nodes || p.parent< -1 || p.parent>=s.nodes || p.parent==p.node || !assembly_span(p.first_vertex,p.vertices,nv,s.vertices) || !assembly_span(p.first_index,p.indices,ni,s.indices) || p.indices<3 || p.indices%3!=0 {return false;}
+  if !finite3(p.low) || !finite3(p.high) || !finite3(p.explode) || p.low.x>p.high.x || p.low.y>p.high.y || p.low.z>p.high.z {return false;}for v:p.rest {if !finite(v) {return false;}}
+  for k:0..<i {if assembly_name_same(p.name,s.part[k].name) || p.node==s.part[k].node {return false;}}
+  parent:=p.parent;for depth:0..<s.parts {next:= -1;
+   for k:0..<s.parts { // mutant: equivalent (skipping part zero only hides cycles containing it, also found from that cycle's preceding part)
+    if s.part[k].node==parent {next=s.part[k].parent;break;}}
+   if parent==p.node {return false;}
+   if next<0 {break;} // mutant: equivalent (stopping at node zero still finds its cycle from its preceding part; self-parent is already refused)
+   parent=next;}
+  nv+=p.vertices;ni+=p.indices;
+ }return nv==s.vertices && ni==s.indices;
+}
+assembly_pose :: (a:[]RigidAssembly,angles:[]f32,out:[]AssemblyPose)->bool #effects(all) {
+ if !assembly_admit(a) || angles.count<a[0].joints || out.count!=1 {return false;}
+ for j:0..<a[0].joints {q:=angles[j];r:=a[0].joint[j];if !finite(q) || q<r.low || q>r.high {return false;}}
+ p:AssemblyPose;for j:0..<a[0].joints {r:=a[0].joint[j];half:=(angles[j]-r.stand)*0.5;axis:=unit_or(r.axis,v3(0,1,0));q:=Quat.{x=axis.x*sin(half),y=axis.y*sin(half),z=axis.z*sin(half),w=cos(half)};local:=SkinLocal.{q=q,t=sub(r.pivot,quat_rotate(q,r.pivot))};pose_chain(p.rotation[..],p.position[..],r.parent,j,local);}out[0]=p;return true;
+}
+assembly_point :: (a:[]RigidAssembly,p:[]AssemblyPose,part:int,point:Point,explode:f32)->Point #effects(all) {
+ v:=a[0].part[part];q:=point;if v.joint>=0 {q=add(quat_rotate(p[0].rotation[v.joint],point),p[0].position[v.joint]);}return add(q,times(v.explode,explode));
+}
+assembly_palette :: (a:[]RigidAssembly,p:[]AssemblyPose,explode:f32,selected:int,out:[]f32)->bool #effects(all) {
+ if a.count!=1 || p.count!=1 || !finite(explode) || explode<0 || explode>1 || out.count<a[0].parts*16 {return false;}
+ identity:[12]f32;for row:0..<3 {identity[row*4+row]=1;}
+ for i:0..<a[0].parts {part:=a[0].part[i];q:Quat;t:Point;if part.joint>=0 {q=p[0].rotation[part.joint];t=p[0].position[part.joint];}at:=i*16;
+  end:=at+12; // mutant: equivalent (pose_palette writes exactly twelve values; a larger declared view writes no extra lane)
+  pose_palette(q,t,identity[..],0,out[at..<end]);out[at+3]+=part.explode.x*explode;out[at+7]+=part.explode.y*explode;out[at+11]+=part.explode.z*explode;out[at+12]=ifx selected==i then 1 else 0;for k:13..<16 {out[at+k]=0;}}
+ return true;
+}
+#load "assembly-checks.coax" #test;

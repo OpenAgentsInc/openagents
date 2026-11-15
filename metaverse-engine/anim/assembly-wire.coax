@@ -1,0 +1,87 @@
+// RBA1, the one versioned assembly codec and its catalogue carrier.
+// coax/bin/coax test metaverse-engine/anim/assembly-wire.coax --library
+#load "assembly.coax";
+#load "../../coax/lib/crypto/bytes.coax";
+#load "../../coax/lib/text/base64.coax";
+#authority;
+ASSEMBLY_HEADER :: 124;
+ASSEMBLY_JOINT_ROW :: 168;
+ASSEMBLY_PART_ROW :: 368;
+ASSEMBLY_WIRE_MAX :: 40828;
+assembly_wire_header :: (bytes:int,outputs:int)->bool #effects(all) {return bytes>=ASSEMBLY_HEADER && bytes<=ASSEMBLY_WIRE_MAX && outputs==1;}
+
+#test "RBA1 writes complete owned names geometry and parent fields and reads atomically" {
+ a:[1]RigidAssembly;a[0]=assembly_fixture();b:[2048]u8;n:=assembly_write(a[..],b[0..<1564]);#assert n==1564 && cast(string)b[0..<4]=="RBA1";
+ hash:[64]u8;#assert asset_hex(asset_id(cast(string)b[0..<n]),hash[..]) && cast(string)hash[..]=="ede08fd0c58bb0fa3076631fb85cb58615e83e73689b667ca63b362792fb73a2";
+ #assert cb_load_le32(b[..],4).value==1564 && cb_load_le32(b[..],8).value==2 && b[31]==1 && b[63]==2 && b[95]==3;
+ out:[1]RigidAssembly;#assert assembly_read(b[0..<n],a[0].source,out[..]) && out[0].joints==2 && out[0].part[2].joint== -1 && out[0].joint[1].parent==0 && out[0].part[1].explode.y==2;
+ for at:[8]int.[0,4,8,12,16,20,28,124] {old:=b[at];b[at]=255;out[0].nodes=77;#assert !assembly_read(b[0..<n],a[0].source,out[..]) && out[0].nodes==77;b[at]=old;}
+ #assert !assembly_read(b[0..<n-1],a[0].source,out[..]) && !assembly_read(b[0..<n+1],a[0].source,out[..]);wrong:=a[0].source;wrong.words[0]=8;#assert !assembly_read(b[0..<n],wrong,out[..]);
+ b[129]=1;#assert !assembly_read(b[0..<n],a[0].source,out[..]);b[129]=0;
+ _:=cb_store_le32(b[..],256,0x7fc00000);#assert !assembly_read(b[0..<n],a[0].source,out[..]);
+ guard:[4]u8;for i:0..<4 {guard[i]=77;}#assert assembly_write(a[..],guard[..])== -1 && guard[0]==77 && guard[3]==77;
+ #assert !assembly_read(guard[..],a[0].source,out[..]) && !assembly_read(b[0..<n],a[0].source,out[0..<0]);
+}
+#test "RBA1 catalogue base64 is canonical unique and cannot replace a record on failure" {
+ a:[1]RigidAssembly;a[0]=assembly_fixture();text:[8192]u8;n:=assembly_catalogue_write(a[..],text[..]);out:[1]RigidAssembly;
+ #assert n>0 && assembly_catalogue_read(cast(string)text[0..<n],a[0].source,out[..]) && out[0].parts==3;
+ for i:0..<n {text[n+i]=text[i];}#assert !assembly_catalogue_read(cast(string)text[0..<n*2],a[0].source,out[..]);
+ text[7]='!';#assert !assembly_catalogue_read(cast(string)text[0..<n],a[0].source,out[..]);
+ #assert !assembly_catalogue_read("pack x\n",a[0].source,out[..]) && assembly_catalogue_write(a[..],text[0..<3])== -1;
+}
+assembly_write_name :: (n:AssemblyName,b:[]u8,at:int) #effects(all) {for i:0..<128 {b[at+i]=n.bytes[i];}}
+assembly_read_name :: (b:[]u8,at:int)->AssemblyName #effects(all) {
+ n:AssemblyName;n.n=128;for i:0..<128 {n.bytes[i]=b[at+i];if n.bytes[i]==0 && n.n==128 {n.n=i;}}return n;
+}
+assembly_write_point :: (p:Point,b:[]u8,at:int) #effects(all) {for v,i:[3]f32.[p.x,p.y,p.z] {_:=cb_store_le32(b,at+i*4,f32_bits(v));}}
+assembly_read_point :: (b:[]u8,at:int)->Point #effects(all) {return v3(f32_from_bits(cb_load_le32(b,at).value),f32_from_bits(cb_load_le32(b,at+4).value),f32_from_bits(cb_load_le32(b,at+8).value));}
+assembly_wire_finite :: (b:[]u8,at:int,n:int)->bool #effects(all) {for i:0..<n {if (cb_load_le32(b,at+i*4).value&0x7f800000)==0x7f800000 {return false;}}return true;}
+assembly_write :: (a:[]RigidAssembly,b:[]u8)->int #effects(all) {
+ if !assembly_admit(a) {return -1;}s:=a[0];size:=ASSEMBLY_HEADER+s.joints*ASSEMBLY_JOINT_ROW+s.parts*ASSEMBLY_PART_ROW;if b.count!=size {return -1;}
+ for c,i:"RBA1" {b[i]=c;}for value,i:[6]int.[size,s.joints,s.parts,s.vertices,s.indices,s.nodes] {_:=cb_store_le32(b,4+i*4,cast(u32)value);}
+ for id,k:[3]AssetId.[s.source,s.description,s.topology] {for w,i:id.words {_:=cb_store_be32(b,28+k*32+i*4,w);}}
+ at:=ASSEMBLY_HEADER;
+ for i:0..<s.joints {j:=s.joint[i];assembly_write_name(j.name,b,at);_:=cb_store_le32(b,at+128,cast,trunc(u32)j.parent);assembly_write_point(j.axis,b,at+132);assembly_write_point(j.pivot,b,at+144);for v,k:[3]f32.[j.low,j.high,j.stand] {_:=cb_store_le32(b,at+156+k*4,f32_bits(v));}at+=ASSEMBLY_JOINT_ROW;}
+ for i:0..<s.parts {p:=s.part[i];assembly_write_name(p.name,b,at);assembly_write_name(p.label,b,at+128);for v,k:[7]int.[p.joint,p.node,p.parent,p.first_vertex,p.vertices,p.first_index,p.indices] {_:=cb_store_le32(b,at+256+k*4,cast,trunc(u32)v);}assembly_write_point(p.low,b,at+284);assembly_write_point(p.high,b,at+296);assembly_write_point(p.explode,b,at+308);for v,k:p.rest {_:=cb_store_le32(b,at+320+k*4,f32_bits(v));}at+=ASSEMBLY_PART_ROW;}
+ return size;
+}
+assembly_read :: (b:[]u8,expected:AssetId,out:[]RigidAssembly)->bool #effects(all) {
+ if !assembly_wire_header(b.count,out.count) || cast(string)b[0..<4]!="RBA1" {return false;}
+ a:[1]RigidAssembly;a[0].joints=cast(int)cb_load_le32(b,8).value;a[0].parts=cast(int)cb_load_le32(b,12).value;
+ a[0].vertices=cast(int)cb_load_le32(b,16).value;a[0].indices=cast(int)cb_load_le32(b,20).value;a[0].nodes=cast(int)cb_load_le32(b,24).value;
+ if !assembly_counts(a[0].joints,a[0].parts,a[0].nodes,a[0].vertices,a[0].indices) || cb_load_le32(b,4).value!=cast(u32)b.count || b.count!=ASSEMBLY_HEADER+a[0].joints*ASSEMBLY_JOINT_ROW+a[0].parts*ASSEMBLY_PART_ROW {return false;}
+ for k:0..<3 {id:AssetId;for i:0..<8 {id.words[i]=cb_load_be32(b,28+k*32+i*4).value;}if k==0 {a[0].source=id;}else if k==1 {a[0].description=id;}else {a[0].topology=id;}}
+ if !asset_same(a[0].source,expected) {return false;}at:=ASSEMBLY_HEADER;
+ joint_floats:=9; // mutant: equivalent (ten also checks the next ASCII name word, which cannot be IEEE nonfinite in any admitted record)
+ for i:0..<a[0].joints {if !assembly_wire_finite(b,at+132,joint_floats) {return false;}j:AssemblyJoint;j.name=assembly_read_name(b,at);j.parent=cast(int)cast,trunc(s32)cb_load_le32(b,at+128).value;j.axis=assembly_read_point(b,at+132);j.pivot=assembly_read_point(b,at+144);j.low=f32_from_bits(cb_load_le32(b,at+156).value);j.high=f32_from_bits(cb_load_le32(b,at+160).value);j.stand=f32_from_bits(cb_load_le32(b,at+164).value);a[0].joint[i]=j;at+=ASSEMBLY_JOINT_ROW;}
+ part_floats:=21; // mutant: equivalent (22 adds only the next ASCII name word, or the bounded byte readers zero for an absent final word)
+ for i:0..<a[0].parts {if !assembly_wire_finite(b,at+284,part_floats) {return false;}p:AssemblyPart;p.name=assembly_read_name(b,at);p.label=assembly_read_name(b,at+128);p.joint=cast(int)cast,trunc(s32)cb_load_le32(b,at+256).value;p.node=cast(int)cb_load_le32(b,at+260).value;p.parent=cast(int)cast,trunc(s32)cb_load_le32(b,at+264).value;p.first_vertex=cast(int)cb_load_le32(b,at+268).value;p.vertices=cast(int)cb_load_le32(b,at+272).value;p.first_index=cast(int)cb_load_le32(b,at+276).value;p.indices=cast(int)cb_load_le32(b,at+280).value;p.low=assembly_read_point(b,at+284);p.high=assembly_read_point(b,at+296);p.explode=assembly_read_point(b,at+308);for k:0..<12 {p.rest[k]=f32_from_bits(cb_load_le32(b,at+320+k*4).value);}a[0].part[i]=p;at+=ASSEMBLY_PART_ROW;}
+ if !assembly_admit(a[..]) {return false;}out[0]=a[0];return true;
+}
+assembly_catalogue_write :: (a:[]RigidAssembly,out:[]u8)->int #effects(all) {
+ raw:[ASSEMBLY_WIRE_MAX]u8;if !assembly_admit(a) {return -1;}n:=ASSEMBLY_HEADER+a[0].joints*ASSEMBLY_JOINT_ROW+a[0].parts*ASSEMBLY_PART_ROW;
+ if out.count<6+b64_encoded_size(n) || assembly_write(a,raw[0..<n])!=n {return -1;}for c,i:"RBA1 " {out[i]=c;}
+ written:=b64_encode(cast(string)raw[0..<n],out[5..<out.count-1]);
+ // Admitted records are at least 660 bytes; preflight reserves the full padded encoding and the buffers cannot alias.
+ if written<0 {return -1;} // mutant: equivalent (encoding failure and a zero/one-byte encoding are unreachable after the preceding size/admission checks)
+ out[5+written]='\n';return 6+written;
+}
+assembly_catalogue_read :: (catalogue:string,expected:AssetId,out:[]RigidAssembly)->bool #effects(all) {
+ if catalogue.count==0 || catalogue[catalogue.count-1]!='\n' {return false;}
+ found:=false;record:[ASSEMBLY_WIRE_MAX]u8;
+ n:=0; // mutant: equivalent (overwritten whenever found; otherwise short-circuit returns false without reading n)
+ at:=0;
+ while at<catalogue.count { // mutant: equivalent (<= adds one empty row at end, which has no prefix and changes no state)
+  end:=at;
+  while end<catalogue.count && catalogue[end]!='\n' { // mutant: equivalent (<= cannot reach the end: the entry preflight requires a final newline)
+   end+=1;}
+  if end-at>=5 && catalogue[at..<at+5]=="RBA1 " {if found {return false;}found=true;text:=catalogue[at+5..<end];n=b64_decode(text,record[..]);
+   if n<0 {return false;} // mutant: equivalent (<= refuses an empty record earlier; it is always refused by assembly_read, including before or after a duplicate)
+   // The shared general decoder accepts whitespace/missing padding. Re-encoding
+   // with its one encoder makes this carrier exact and canonical, including pad bits.
+   canonical:[54440]u8;written:=b64_encode(cast(string)record[0..<n],canonical[..]);if written!=text.count || cast(string)canonical[0..<written]!=text {return false;}
+  }at=end+1;
+ }return found && assembly_read(record[0..<n],expected,out);
+}
+
+#load "assembly-wire-checks.coax" #test;

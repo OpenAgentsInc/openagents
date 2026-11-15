@@ -3,13 +3,20 @@
 #load "../../metaverse-engine/cam/shot.coax";
 #load "../../metaverse-engine/ui/draw.coax";
 #load "../../metaverse/microduck/pack-policy.coax";
+#load "../../metaverse-engine/anim/assembly-wire.coax";
+#load "../../metaverse-engine/anim/assembly-pick.coax";
+#load "../../metaverse-engine/ui/menu-wire.coax";
 
 MD_HUD_VERTICES :: 32768;
+MD_UNIFORMS :: 1600;
 Microduck :: struct {
   native:bool; ready: bool; admitted: bool; digest: [32] u8;
   yaw: f32 = 3.85; pitch: f32 = 0.24; zoom: f32 = 0.74;
   mode: int; drag: bool; pointer_id: int; px: f32; py: f32; dpr: f32 = 1;
-  draws: [4] u32;
+  draws: [384] u32;
+  assembly:[1]RigidAssembly;pose:[1]AssemblyPose;angles:[32]f32;
+  selected:int= -1;joint:int= -1;explosion:f32;unexploded_zoom:f32=0.74;
+  lens:Lens;down_x:f32;down_y:f32;travel:f32;
 }
 
 #test "research viewer resets a changed view and bounds orbit and zoom input" {
@@ -24,15 +31,15 @@ Microduck :: struct {
   #assert md_key(s[..], 114) && s[0].mode == 0 && s[0].zoom == 0.74 && !s[0].drag;
 }
 #test "a frame uses a finite shared lens and never draws the assembly before its catalog arrives" {
-  s: [1] Microduck; out: [MD_HUD_VERTICES * 12] f32; u: [64] f32;
+  s: [1] Microduck; out: [MD_HUD_VERTICES * 12] f32; u: [MD_UNIFORMS] f32;
   #assert md_frame(s[..], out[..], u[..], 1280, 800, 1) > 0;
   #assert s[0].draws[1] == 0;
   for v: u[..] { #assert v == v && abs(v) < 10000; }
-  md_asset(s[..], 200); #assert !s[0].ready;
+  md_asset(s[..], "bad"); #assert !s[0].ready;
   for k: 0..<32 { s[0].digest[k] = cast(u8) (asset_digit(MD_PACK_SHA[k * 2]) * 16 + asset_digit(MD_PACK_SHA[k * 2 + 1])); }
   #assert md_gate(s[..], MD_PACK_BYTES);
-  md_asset(s[..], 200);
-  #assert md_frame(s[..], out[..], u[..], 800, 1000, 2) > 0 && s[0].draws[1] > 0;
+  md_test_asset(s[..]);
+  #assert md_frame(s[..], out[..], u[..], 800, 1000, 2) > 0 && s[0].draws[1] == 3;
   #assert md_frame(s[..], out[..], u[..], 0, 800, 1) == 0;
 }
 
@@ -46,34 +53,55 @@ md_pinch :: (s:[]Microduck,ratio:f32)->bool #export_c #effects(all) {
 }
 md_reset :: (s: [] Microduck) { s[0].yaw = 3.85; s[0].pitch = 0.24; s[0].zoom = 0.74; s[0].mode = 0; s[0].drag = false; }
 md_key :: (s: [] Microduck, key: int) -> bool #export_c #effects(all) {
-  if key == 114 || key == 82 { md_reset(s); return true; }
+  if key == 114 || key == 82 { md_stand(s);md_reset(s);s[0].selected= -1;s[0].joint= -1; return true; }
   if key == 110 || key == 78 { s[0].mode = 1 - s[0].mode; return true; }
   if key == -4 || key == -5 { s[0].yaw += ifx key == -4 then -0.12f32 else 0.12f32; return true; }
   if key == 49 { s[0].yaw = 3.85; s[0].pitch = 0.24; return true; }
   if key == 50 { s[0].yaw = 4.712389; s[0].pitch = 0.05; return true; }
   if key == 51 { s[0].pitch = 1.3; return true; }
+  if !s[0].ready {return false;}
+  if key>=1000 && key<1000+s[0].assembly[0].joints {md_joint(s,key-1000);return true;}
+  if key>=2000 && key<2000+s[0].assembly[0].parts {md_part(s,key-2000);return true;}
+  if key==91 || key==93 {j:=s[0].joint+(ifx key==91 then -1 else 1);count:=s[0].assembly[0].joints;md_joint(s,(j+count)%count);return true;}
+  if key==43 || key==61 || key==45 {if s[0].joint<0 {return false;}j:=s[0].joint;r:=s[0].assembly[0].joint[j];return md_angle(s,j,shot_clamp(s[0].angles[j]+(ifx key==45 then -0.0872664626f32 else 0.0872664626f32),r.low,r.high));}
+  if key==48 {md_stand(s);return true;}
+  if key==120 {md_explode(s,s[0].explosion==0);return true;}
+  if key==104 || key==108 {j:=ifx key==104 then 7 else 3;if j>=s[0].assembly[0].joints {return false;}md_joint(s,j);return md_angle(s,j,s[0].assembly[0].joint[j].stand+0.3);}
   return false;
 }
+// The pinned source's exploded envelope needs the wide orbit preset. Preserve
+// the user's assembled zoom and allow normal pinch/orbit while inspecting it.
+md_explode :: (s:[]Microduck,on:bool) {if on && s[0].explosion==0 {s[0].unexploded_zoom=s[0].zoom;s[0].zoom=1.6;s[0].explosion=1;}else if !on && s[0].explosion!=0 {s[0].zoom=s[0].unexploded_zoom;s[0].explosion=0;}}
+md_stand :: (s:[]Microduck) {for j:0..<s[0].assembly[0].joints {s[0].angles[j]=s[0].assembly[0].joint[j].stand;}md_explode(s,false);if s[0].ready {_:=assembly_pose(s[0].assembly[..],s[0].angles[..],s[0].pose[..]);}}
+md_angle :: (s:[]Microduck,joint:int,angle:f32)->bool {
+ if !s[0].ready || joint<0 || joint>=s[0].assembly[0].joints {return false;}candidate:=s[0].angles;candidate[joint]=angle;pose:[1]AssemblyPose;if !assembly_pose(s[0].assembly[..],candidate[..],pose[..]) {return false;}s[0].angles=candidate;s[0].pose[0]=pose[0];return true;
+}
+md_part :: (s:[]Microduck,part:int) {s[0].selected=part;s[0].joint=ifx part>=0 then s[0].assembly[0].part[part].joint else -1;}
+md_joint :: (s:[]Microduck,joint:int) {s[0].joint=joint;s[0].selected= -1;for i:0..<s[0].assembly[0].parts {if s[0].assembly[0].part[i].joint==joint {s[0].selected=i;break;}}}
 md_pointer :: (s: [] Microduck, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
-  if phase == 0 { s[0].drag = true; s[0].pointer_id = id; s[0].px = x; s[0].py = y; return true; }
+  if phase == 0 { s[0].drag = true; s[0].pointer_id = id; s[0].px = x; s[0].py = y;s[0].down_x=x;s[0].down_y=y;s[0].travel=0; return true; }
   if !s[0].drag || s[0].pointer_id != id { return false; }
   if phase == 1 {
+    s[0].travel+=abs(x-s[0].px)+abs(y-s[0].py);
     s[0].yaw -= (x - s[0].px) / s[0].dpr * 0.006;
     s[0].pitch = shot_clamp(s[0].pitch + (y - s[0].py) / s[0].dpr * 0.006, -0.15, 1.3);
     s[0].px = x; s[0].py = y;
-  } else { s[0].drag = false; }
+  } else { s[0].drag = false;if phase==2 && s[0].travel/s[0].dpr<6 && s[0].ready && s[0].lens.focal>0 {l:=s[0].lens;at:=view_to_world(l,ViewPoint.{x=(x-l.cx)/l.focal,y=(l.cy-y)/l.focal,z=1});dir:=world_unit(world_sub(at,l.eye));md_part(s,assembly_pick(s[0].assembly[..],s[0].pose[..],l.eye,dir,s[0].explosion));} }
   return true;
 }
 md_wheel :: (s: [] Microduck, delta: f32) #export_c #effects(all) { s[0].zoom = shot_clamp(s[0].zoom + delta * 0.0005, 0.28, 1.6); }
 md_gate :: (s: [] Microduck, bytes: int) -> bool #export_c #effects(all) {
   s[0].admitted = md_pack_accept(s[0].digest[..], bytes); s[0].ready = false; return s[0].admitted;
 }
-md_asset :: (s: [] Microduck, bytes: int) #export_c #effects(all) { s[0].ready = s[0].admitted && bytes > 0; }
+md_source :: ()->AssetId {id:[1]AssetId;_:=asset_parse("eea0931fefde8b2d352eaaa73b5e380f2790f63fb716a8c1a2ce219ffe58c1ac",id[..]);return id[0];}
+md_asset :: (s: [] Microduck, catalog: string) #export_c #effects(all) {
+ s[0].ready=false;if !s[0].admitted {return;}a:[1]RigidAssembly;if !assembly_catalogue_read(catalog,md_source(),a[..]) {return;}s[0].assembly[0]=a[0];s[0].ready=true;s[0].selected= -1;s[0].joint= -1;md_stand(s);
+}
 md_vec :: (u: [] f32, at: int, p: WorldPoint) { u[at] = p.x; u[at + 1] = p.y; u[at + 2] = p.z; }
 md_frame :: (s: [] Microduck, out: [] f32, u: [] f32, w: f32, h: f32, d: f32) -> int #export_c #effects(all) {
-  if !(w > 0) || !(h > 0) || !(d > 0) || u.count < 64 { return 0; }
+  if !(w > 0) || !(h > 0) || !(d > 0) || u.count < MD_UNIFORMS { return 0; }
   s[0].dpr = d;
-  for k: 0..<64 { // mutant: equivalent (starting at 1 omits only u[0], overwritten by w below)
+  for k: 0..<MD_UNIFORMS { // mutant: equivalent (starting at 1 omits only u[0], overwritten by w below)
     u[k] = 0;
   }
   u[0] = w; u[1] = h; u[3] = 1;
@@ -84,11 +112,13 @@ md_frame :: (s: [] Microduck, out: [] f32, u: [] f32, w: f32, h: f32, d: f32) ->
     (ifx w < h then w else h) * 1.8, 0.01); // mutant: equivalent (< and <= choose equal values when w == h)
   md_vec(u, 8, lens.eye); md_vec(u, 12, lens.right); md_vec(u, 16, lens.up); md_vec(u, 20, lens.ahead);
   u[24] = lens.focal; u[25] = cast(f32) s[0].mode; u[26] = lens.cx; u[27] = lens.cy;
-  s[0].draws[0] = 0; s[0].draws[1] = ifx s[0].ready then 2390406 else 0;
-  s[0].draws[2] = 0; s[0].draws[3] = 1;
-  pen := HdPen.{d = d, top = 0, bottom = h / d, cyan = !s[0].native};
+  s[0].lens=lens;
+  if s[0].ready {_:=assembly_palette(s[0].assembly[..],s[0].pose[..],s[0].explosion,s[0].selected,u[64..<MD_UNIFORMS]);}
+  for i:0..<ASSEMBLY_PARTS {at:=i*4;s[0].draws[at]=0;s[0].draws[at+1]=0;s[0].draws[at+2]=cast(u32)i;s[0].draws[at+3]=1;if s[0].ready && i<s[0].assembly[0].parts {part:=s[0].assembly[0].part[i];s[0].draws[at]=cast(u32)part.first_index;s[0].draws[at+1]=cast(u32)part.indices;}}
+  pen := HdPen.{d = d, top = 0, bottom = h / d, cyan = false};
   pen.sans = false; // mutant: equivalent (all captions are >=9 CSS px; uses_sans selects sans only below 9, so either flag draws Filament)
   n := 0; width := w / d; height := h / d;
+  if s[0].ready && s[0].joint>=0 {j:=s[0].joint;r:=s[0].assembly[0].joint[j];q:=s[0].pose[0].rotation[j];t:=s[0].pose[0].position[j];a:=add(quat_rotate(q,r.pivot),t);b:=add(a,times(quat_rotate(q,r.axis),0.045));sa:=world_to_screen(lens,world_point(a.x,a.y,a.z));sb:=world_to_screen(lens,world_point(b.x,b.y,b.z));if sa.ok && sb.ok {n=hd_line(out,n,sa.at.x/d,sa.at.y/d,sb.at.x/d,sb.at.y/d,pen,0,1);n=hd_text(out,n,"AXIS",sb.at.x/d+6,sb.at.y/d,9,pen,0);}}
   n = hd_text(out, n, "OPENAGENTS / ROBOTICS LAB", 32, 38, 11, pen, 1);
   n = hd_text(out, n, "MICRODUCK", 30, 84, 32, pen, 0);
   n = hd_text(out, n, "POLLEN ROBOTICS", 32, 108, 11, pen, 2);
@@ -96,12 +126,14 @@ md_frame :: (s: [] Microduck, out: [] f32, u: [] f32, w: f32, h: f32, d: f32) ->
   if width >= 900 {
     n = hd_text(out, n, "ASSEMBLY STUDY / 001", width - 282, 44, 11, pen, 1);
     n = hd_text(out, n, "METAVERSE ENGINE", width - 282, 68, 11, pen, 2);
-    n = hd_text(out, n, "SOURCE STAND POSE", 32, 178, 11, pen, 0);
+    n = hd_text(out, n, "14 JOINTS / SOURCE LIMITS", 32, 178, 11, pen, 0);
     n = hd_text(out, n, "70 NODES / 38 MESHES", 32, 202, 10, pen, 2);
     n = hd_text(out, n, "796802 TRIANGLES", 32, 224, 10, pen, 2);
     n = hd_text(out, n, "METRES / Y UP", 32, 246, 10, pen, 2);
   }
-  n = hd_text(out, n, ifx s[0].ready then (ifx s[0].mode == 0 then "VIEW / MATERIALS" else "VIEW / NORMALS") else "LOADING ASSEMBLY", 32, height - 100, 11, pen, 1);
+  if s[0].ready && s[0].selected>=0 {part:=s[0].assembly[0].part[s[0].selected];n=hd_text_fit(out,n,cast(string)part.label.bytes[0..<part.label.n],32,height-152,12,width-64,pen,0);}
+  if s[0].ready && s[0].joint>=0 {j:=s[0].assembly[0].joint[s[0].joint];text:[256]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],cast(string)j.name.bytes[0..<j.name.n]);jo_put(o[..]," / ");o[0].keyed=true;jo_int(o[..],cast(int)floor(s[0].angles[s[0].joint]*57.2957795+0.5));jo_put(o[..]," DEG");n=hd_text_fit(out,n,jo_text(o[..]),32,height-128,11,width-64,pen,1);}
+  n = hd_text(out, n, ifx s[0].ready then (ifx s[0].explosion>0 then "EXPLODED / POSE UNCHANGED" else ifx s[0].mode == 0 then "ASSEMBLY / VISUAL POSE" else "VIEW / NORMALS") else "LOADING ASSEMBLY", 32, height - 100, 11, pen, 1);
   n = hd_line(out, n, 32, height - 80, width - 32, height - 80, pen, 2, 0.4);
   n = hd_text(out, n, (ifx s[0].native then "DRAG ORBIT / PINCH ZOOM" else "DRAG ORBIT / SCROLL ZOOM / R RESET / N NORMALS"), 32, height - 54, 10, pen, 0);
   n = hd_text(out, n, (ifx s[0].native then "POLLEN + NVIDIA / CC BY-NC-SA 4.0" else "POLLEN ROBOTICS + NVIDIA DLI / CC BY-NC-SA 4.0 / RESEARCH VIEWER"), 32, height - 29, 9, pen, 2);
@@ -114,3 +146,17 @@ md_frame :: (s: [] Microduck, out: [] f32, u: [] f32, w: f32, h: f32, d: f32) ->
  s:[1]Microduck;#assert md_pointer(s[..],1,1,0,1,3);md_message(s[..],602);#assert s[0].drag;md_message(s[..],601);#assert !s[0].drag;
 }
 md_message :: (s:[]Microduck,kind:int) #export_c #effects(all) {if kind==601 {s[0].drag=false;}}
+
+md_menu :: (s:[]Microduck,out:[]u8)->int #export_c #effects(all) {
+ if s[0].ready && 7+s[0].assembly[0].joints+s[0].assembly[0].parts+(ifx s[0].joint>=0 then 2 else 0)>128 {return -1;}
+ rows:[128]ViewMenuItem;
+ for label,i:[5]string.["Front","Side","Top","Normals","Reset"] {rows[i]=ViewMenuItem.{label=label,group="View",key=[5]int.[49,50,51,110,114][i]};}n:=5;
+ if s[0].ready {
+  rows[n]=ViewMenuItem.{label="Explode",group="View",key=120,current=s[0].explosion>0};n+=1;
+  rows[n]=ViewMenuItem.{label="Stand",group="Pose",key=48};n+=1;
+  if s[0].joint>=0 {rows[n]=ViewMenuItem.{label="- 5 degrees",group="Pose",key=45,keep_open=true};n+=1;rows[n]=ViewMenuItem.{label="+ 5 degrees",group="Pose",key=43,keep_open=true};n+=1;}
+  for i:0..<s[0].assembly[0].joints {rows[n]=ViewMenuItem.{label=cast(string)s[0].assembly[0].joint[i].name.bytes[0..<s[0].assembly[0].joint[i].name.n],group="Joints",key=1000+i,current=i==s[0].joint};n+=1;}
+  for i:0..<s[0].assembly[0].parts {rows[n]=ViewMenuItem.{label=cast(string)s[0].assembly[0].part[i].label.bytes[0..<s[0].assembly[0].part[i].label.n],group="Parts",key=2000+i,current=i==s[0].selected};n+=1;}
+ }
+ return view_menu_write("Microduck",rows[0..<n],out);
+}

@@ -7,8 +7,15 @@ three camera presets and a normal diagnostic. Drag to orbit, scroll to zoom,
 use the arrow keys to turn, **R** to reset, **N** to toggle normals, and
 **1 / 2 / 3** for the default, side and overhead views.
 
-This is static geometry inspection. Joint animation, dynamics, learning and
-hardware control remain the work in the [pipeline specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md).
+This workbench adds visual articulation: tap a part or use the floating menu's
+**Parts / Joints** pickers. **Pose** changes a selected joint by five degrees
+within its source limits; **Stand** restores the recorded angles. **View →
+Explode** separates parts without changing the pose, and **Reset** restores
+the original camera, pose and selection. Brackets choose joints, `+` / `-`
+change the pose, and `X` toggles explosion. The highlighted line shows the
+selected joint's rotation axis. These are visual poses; dynamics, learning
+and hardware control remain separate work in the
+[pipeline specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md).
 
 ## Source and rights
 
@@ -53,19 +60,47 @@ source model is committed. The registry's general runtime profile remains
 
 [`microduck-pack.coax`](../tools/assets/microduck-pack.coax) checks the source
 digest before calling the existing engine `pi_glb` importer and `pack_write`.
-It flattens the source node transforms into the engine's 48-byte static vertices,
-retains metre coordinates, normals and material base colours, and adds a neutral
+It retains the source node transforms, stable names, exact mesh ranges and
+world bounds alongside the engine's unchanged 48-byte vertices. It retains
+metre coordinates, normals and material base colours, and adds a neutral
 one-pixel layer for the browser's shared scene layout. It does not simplify the
 mesh. The resulting assembly has **861,777 vertices and 796,802 triangles**,
 including repeated instances of the source's 38 meshes across 70 nodes.
 The viewer supplies its own studio lighting; source metallic/roughness and
 clearcoat parameters are not reproduced.
 
-The VPK1 pack is 50,927,404 bytes, SHA-256
-`44a2b852208c8a29d17851e2a99401d257c2f711bc59cf92fe8b4a4c20bd681e`.
+The articulated VPK1 pack is **50,965,060 bytes**, SHA-256
+`fc21cb95595d665bb83dc5b90c373dcf197f5b45b34b376c0d110b044bb408b5`.
 [`pack-policy.coax`](pack-policy.coax) admits that exact size and digest before
 the shared browser host unpacks or uploads any geometry. This uses the existing
 [pack gate ABI](../../coax/web/PACK-GATE.md), not a new wire format.
+
+Its catalogue includes one canonical **RBA1** rigid-assembly record, with the
+[versioned contract](../../docs/protocol/rigid-assembly-v1.md) and independent
+byte fixture in `proto/metaverse-engine/`. The old 1094 pack and feed retain
+their identities. The same pinned workshop revision supplies:
+
+- `web/assets/robot/components.json`, 52,622 bytes, SHA-256
+  `06bb65fa1db2959215f686919940b8eeb8836254bb13fda0b70a939e3b3d25ef`.
+- `lab/runtime/simulation/core/sensors/sources/robot_allcollisions.xml`,
+  43,020 bytes, SHA-256
+  `ec9d2f731596cfc847a7fc3898ef8b5e67a548928abc23216537f1da8af2729c`.
+
+Verified originals are retained in the shared asset object's store. The
+reviewed [source recipe](source.coax) binds all 70 source parts to the MJCF's
+14 simulated joints and their parents. The beak is not a simulated joint in
+this description. Display labels transliterate the source's middle-dot
+separator to `/`; stable identities remain exact. The independent
+[`microduck_oracle.py`](../tools/assets/microduck_oracle.py) reads the XML,
+glTF and RBA1 separately, verifies every mechanical parent and limit, every
+part/range/rest transform, and bounds over all 861,777 converted vertices.
+
+Forward propagation uses the shared pose chain and palette. Source geometry
+is already in the world-rest frame, so each rigid delta rotates about its
+recorded world-rest pivot, then follows its parent's delta. Explosion offsets
+are presentation only. Picking uses the same transformed part bounds; it is
+an approximate box hit, rather than a triangle-level surface test. The named
+picker also reaches small or hidden parts.
 
 ## Build and view
 
@@ -79,7 +114,7 @@ coax/remote/remote.sh run -- coax/web/tool.sh metaverse/tools/assets/microduck-p
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/microduck.coax apps/openagents-web/microduck-face.c apps/openagents-web/build/microduck.wasm
 coax/remote/remote.sh run -- coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/microduck.coax apps/openagents-web/microduck.wgsl apps/openagents-web/gpu/microduck.module
 mkdir -p ~/.openagents/verse/private-build/web
-cp apps/openagents-web/build/microduck.pack ~/.openagents/verse/private-build/web/microduck.pack
+cp apps/openagents-web/build/microduck.pack ~/.openagents/verse/private-build/web/microduck-lab.pack
 OA_SERVE_NO_API=1 OA_SERVE_NO_CODER=1 BROWSER=/usr/bin/true coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9123 --build /usr/bin/true
 ```
 
@@ -103,13 +138,15 @@ are recorded in [the viewer receipt](../../docs/verification/microduck-viewer-20
 
 Home's **Microduck** button opens this same viewer through the app's native
 Metal engine host. One finger orbits; pinch zooms. The floating menu offers
-Front, Side, Top, Normals, Reset, the model license and Close. Its interface uses
-the app's grayscale components. The mobile captions retain source attribution.
+View, Pose, Joints and Parts, plus the model license and Close. The menu is
+projected into the app's existing accessible grayscale components; the browser
+projects the same [Coax recipe](../../docs/protocol/view-menu-v1.md) into
+keyboard-accessible controls. The mobile captions retain source attribution.
 
-The app installs the small Coax producer and Metal shaders. The 50,927,404-byte
+The app installs the small Coax producer and Metal shaders. The 50,965,060-byte
 pinned assembly downloads on first opening and stays in the shared verified
 world cache. The signed inventory and installed producer fingerprint prevent
 an update from substituting a different native program. The optional full-pack
 digest gate rejects altered geometry before parsing/upload, on both hosts.
-No GLB source copy or model geometry is bundled into the app. This remains a
-static research viewer, with the model's CC BY-NC-SA terms above.
+No GLB source copy or model geometry is bundled into the app. This is an
+articulated research viewer, with the model's CC BY-NC-SA terms above.

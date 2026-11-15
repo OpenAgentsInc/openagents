@@ -1,0 +1,14 @@
+[
+  {
+    "endpoint": "https://updates.openagents.com/runtimes/d45c310a7c3bccb439fcff0366b0319a08ac0c52a8271bda454d096982475d36",
+    "generation": 1,
+    "files_verified": 21,
+    "envelope_sha256": "030ea4a7488b8ca368c46f4d7f10cd3a1b788e072d9b08ed862a6a31ff5f0b23"
+  },
+  {
+    "endpoint": "https://oa-updates-157437760789.us-central1.run.app/runtimes/d45c310a7c3bccb439fcff0366b0319a08ac0c52a8271bda454d096982475d36",
+    "generation": 1,
+    "files_verified": 21,
+    "envelope_sha256": "030ea4a7488b8ca368c46f4d7f10cd3a1b788e072d9b08ed862a6a31ff5f0b23"
+  }
+]

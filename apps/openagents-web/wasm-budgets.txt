@@ -12,7 +12,7 @@
 # One module a line:
 #   NAME BYTES
 admin 60000
-microduck 40000
+microduck 60000
 feed 262144
 audiolab 140000
 animelab 190000
