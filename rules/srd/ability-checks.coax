@@ -1,6 +1,7 @@
 // One admitted ability check. This is not an Action admission boundary: saves,
 // forced checks and out-of-turn checks have different activity requirements.
 #authority;
+#load "ability-checks-tests.coax" #test;   // its checks and ability-check-math.coax's, run with the battle (#13586)
 
 RsAbilityResult :: struct {
   accepted: bool; automatic: bool; ability: int; total: int; passed: bool; edge: int;
