@@ -2,7 +2,7 @@
 // HOST owns carriage/admission. The shared engine and reader own Claude wire
 // and native history. No transcript text is ever interpreted as an operation.
 #load "../../coax/lib/agent/environment/host-wire.coax";
-#load "../../coax/lib/agent/engine/claude.coax";
+#load "../../coax/lib/agent/engine/engine.coax";
 #load "../../coax/lib/agent/observe/claude-files.coax";
 #load "../../coax/lib/agent/environment/history.coax";
 #load "../../coax/lib/agent/session/log.coax";
@@ -14,6 +14,13 @@ EsSlot :: struct {
   out:[262144]u8;scratch:[262144]u8;prompt:[16384]u8;last_saved:int;failed:bool;started:bool;
 }
 EsHost :: struct {slots:[ES_SLOTS]EsSlot;configuration:[1]EaConfiguration;configured:bool;}
+
+// The resident service owns buffers and admission; the shared agent interface
+// owns Send, pumping, approvals and Stop. The frozen runtime profile is Claude
+// only. A routed multi-engine profile must pin its engine before using this view.
+es_agent :: (slot:[]EsSlot)->Agent #effects(all) {
+  return Agent.{mode=MODE_CLAUDE,claude=slot[0].engine[..],session=slot[0].s[..]};
+}
 
 // The same registered RuntimeRequest/View, newline framed over an owner-only
 // Unix socket. Both ends authenticate the actual kernel peer, never a supplied
@@ -94,17 +101,17 @@ es_tick :: (h:[]HsHost) #effects(all) {
   e:=h[0].environment[..];
   for i:0..<ES_SLOTS {slot:=e[0].slots[i..<i+1];if !slot[0].occupied || slot[0].failed {continue;}
     s:=slot[0].s[..];before:=s[0].live;asking:=s[0].asking;
-    slot[0].started=slot[0].started || slot[0].engine[0].running;e_pump(slot[0].engine[..],s);
-    if s[0].exhausted {slot[0].failed=true;e_stop(slot[0].engine[..],s);}
+    slot[0].started=slot[0].started || slot[0].engine[0].running;ag_poll(es_agent(slot),0.016,true);
+    if s[0].exhausted {slot[0].failed=true;ag_stop(es_agent(slot));}
     if slot[0].started && !slot[0].engine[0].running {slot[0].summary.nc=ea_copy(slot[0].summary.control[..],"observe-only");}
     if s[0].changed || before!=s[0].live || asking!=s[0].asking {
       slot[0].summary.busy=s[0].live;slot[0].summary.updated=cxproc_wall_us()/1000;
       if asking!=s[0].asking {slot[0].summary.revision+=1;}
       pending:=ifx s[0].asking>=0 then cl_pending_id(slot[0].engine[0].q[..]) else "";
       slot[0].summary.nr=ea_copy(slot[0].summary.interaction[..],pending);
-      if slot[0].summary.nr<0 {slot[0].summary.nr=0;slot[0].failed=true;e_stop(slot[0].engine[..],s);}
+      if slot[0].summary.nr<0 {slot[0].summary.nr=0;slot[0].failed=true;ag_stop(es_agent(slot));}
       // Snapshots are bounded; no live process continues after a failed save.
-      if !es_save(slot,cast(string)h[0].xhex[..],cast(string)e[0].configuration[0].label[0..<e[0].configuration[0].nl]) {e_stop(slot[0].engine[..],s);}
+      if !es_save(slot,cast(string)h[0].xhex[..],cast(string)e[0].configuration[0].label[0..<e[0].configuration[0].nl]) {ag_stop(es_agent(slot));}
       s[0].changed=false;
     }
   }
@@ -365,10 +372,10 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
     // The chosen model reaches a running CLI now; a new effort restarts it with this message.
     engine:=slot[0].engine[..];m:=[1]int.[engine[0].model];l:=[1]int.[engine[0].effort];
     if es_choice(engine[0].cat[..],q,m[..],l[..]) {if m[0]!=engine[0].model {e_set_model(engine,m[0]);}engine[0].effort=l[0];}
-    es_mark(slot);e_send(engine,slot[0].s[..],cast(string)q[0].text[0..<q[0].nt]);
+    es_mark(slot);text:=cast(string)q[0].text[0..<q[0].nt];ag_send(es_agent(slot),text,text);
   }
-  else if method=="StopTurn" {e_stop(slot[0].engine[..],slot[0].s[..]);}
-  else if method=="RespondInteraction" {e_answer(slot[0].engine[..],slot[0].s[..],q[0].allow);}
+  else if method=="StopTurn" {ag_stop(es_agent(slot));}
+  else if method=="RespondInteraction" {ag_answer(es_agent(slot),q[0].allow);}
   slot[0].summary.busy=slot[0].s[0].live;slot[0].summary.nr=0;es_tick(h);es_snapshot(h,q,grant,v);
   v[0].nq=ea_copy(v[0].command[..],cast(string)q[0].command[..]);v[0].nt=ea_copy(v[0].status[..],"accepted");
 }

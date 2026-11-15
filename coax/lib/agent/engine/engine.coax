@@ -62,16 +62,16 @@ Agent :: struct {
 }
 
 // The message is running on Codex (the Codex mode, or the Lab's Codex route): its Stop and approvals go there.
-ag_codex :: (a: Agent) -> bool { return a.mode == MODE_CODEX || (a.mode == MODE_LAB && a.lab[0].via == 2); }
+ag_codex :: (a: Agent) -> bool { return a.mode == MODE_CODEX || (a.mode == MODE_LAB && a.lab.count > 0 && a.lab[0].via == 2); }
 // The Lab's message is running on Psionic (its Stop and approvals go there).
-ag_lab_psionic :: (a: Agent) -> bool { return a.mode == MODE_LAB && a.lab[0].via == 1 && !a.lab[0].fallback; }
+ag_lab_psionic :: (a: Agent) -> bool { return a.mode == MODE_LAB && a.lab.count > 0 && a.lab[0].via == 1 && !a.lab[0].fallback; }
 
 // The engines before the owner's buffers and flags: Claude's catalog at High, Codex's, Psionic's and the switch's defaults.
 ag_start :: (a: Agent) {
   e_init(a.claude);
   cxe_init(a.codex);
-  if !a.psionic[0].on { ps_init(a.psionic); }
-  if !a.gpu[0].on { gs_init(a.gpu); }
+  if a.psionic.count > 0 && !a.psionic[0].on { ps_init(a.psionic); }
+  if a.gpu.count > 0 && !a.gpu[0].on { gs_init(a.gpu); }
 }
 
 // A Psionic message: gpt-oss-20b must be on the GPU first (the switch may be holding Elephant there).
@@ -94,7 +94,7 @@ ag_send :: (a: Agent, shown: string, text: string) {
 
 // STOP.
 ag_stop :: (a: Agent) {
-  if gs_stop(a.gpu, a.session) { a.psionic[0].hold = false; }
+  if a.gpu.count > 0 && gs_stop(a.gpu, a.session) && a.psionic.count > 0 { a.psionic[0].hold = false; }
   if a.mode == MODE_PSIONIC || ag_lab_psionic(a) { ps_stop(a.psionic, a.session); return; }
   if a.mode == MODE_LAB && lab_stop(a.lab, a.session) { return; }
   if ag_codex(a) { cxe_stop(a.codex, a.session); return; }
@@ -117,8 +117,10 @@ ag_poll :: (a: Agent, dt: f32, quiet: bool) {
   // Claude Code isn't installed: an empty Claude conversation says so at once, with the install line
   if a.mode == MODE_CLAUDE && !quiet && e[0].on && e[0].probed && e[0].claude_n == 0 { s_hint_install(ss); }
   else if ss[0].hint { s_drop_hint(ss); }
-  a.psionic[0].access = e[0].access;
-  ps_pump(a.psionic, ss, dt);
+  if a.psionic.count > 0 {
+    a.psionic[0].access = e[0].access;
+    ps_pump(a.psionic, ss, dt);
+  }
   // Codex: started ahead of a message once it is wanted (its model/list fills the catalog)
   cx := a.codex;
   if cx.count > 0 {
@@ -126,15 +128,15 @@ ag_poll :: (a: Agent, dt: f32, quiet: bool) {
     cx[0].want_warm = cx[0].want_warm || a.mode == MODE_CODEX;
     cxe_pump(cx, e, ss);
   }
-  lab_pump(a.lab, e, a.psionic, a.gpu, ss, dt);
+  if a.lab.count > 0 { lab_pump(a.lab, e, a.psionic, a.gpu, ss, dt); }
   // the Lab routed a message to Codex: the Codex engine runs it at the decided effort, on its default model
-  if a.lab[0].codex_due && cx.count > 0 {
+  if a.lab.count > 0 && a.lab[0].codex_due && cx.count > 0 {
     a.lab[0].codex_due = false;
     lv := a.lab[0].codex_effort + 1;      // EFFORT_IDS low..max are Codex's levels 1..5
     cx[0].effort = ifx lv >= 1 && lv <= 5 then lv else CX_LV_HIGH; cx[0].model = 0;
     cxe_forward(cx, ss, a.lab[0].part);
   }
-  lab_gpu_pump(a.lab, e, a.psionic, a.gpu, ss, dt);
+  if a.lab.count > 0 { lab_gpu_pump(a.lab, e, a.psionic, a.gpu, ss, dt); }
 }
 
 // One event of the conversation's engine into ev, for an owner that answers its own hooks,
@@ -225,4 +227,36 @@ ag_test :: (b: [] AgTest, mode: int) -> Agent {
   a.mode = MODE_PSIONIC;
   ag_next(a, ev[..], 0.016);
   #assert ev[0].kind == ClEventKind.idle;
+}
+
+#test "a resident Claude owner needs no Psionic, Codex, Lab or GPU buffers" {
+  b: [1] AgTest; s_init(b[0].s[..], b[0].pool[..]);
+  a := Agent.{mode = MODE_CLAUDE, claude = b[0].e[..], session = b[0].s[..]};
+  ag_start(a);
+  #assert a.claude[0].cat[0].n == 8 && !ag_codex(a) && !ag_lab_psionic(a);
+  ag_send(a, "edit it", "edit it\n\nPinned project instructions");
+  ag_poll(a, 0.016, true);
+  #assert a.session[0].live && s_text_of(a.session, 0) == "edit it";
+  s_notice(a.session, N_ASK, "Edit: notes.txt"); a.session[0].asking = a.session[0].n - 1;
+  ag_answer(a, false);
+  #assert a.session[0].asking == -1 && a.session[0].n == 1;
+  ag_stop(a); ag_stop(a);
+  #assert !a.session[0].live && a.session[0].n == 2 && a.session[0].parts[1].notice == N_STOPPED;
+}
+
+#test "a resident Codex owner pumps, answers and stops without Lab or GPU buffers" {
+  b: [1] AgTest; cx: [1] CxEngine; s_init(b[0].s[..], b[0].pool[..]);
+  a := Agent.{mode = MODE_CODEX, claude = b[0].e[..], codex = cx[..], session = b[0].s[..]};
+  ag_start(a);
+  #assert ag_codex(a) && !ag_lab_psionic(a) && cx[0].cat[0].n == 9;
+  ag_send(a, "run the checks", "run the checks");
+  ag_poll(a, 0.016, true);
+  #assert a.session[0].live && cx[0].delivered == 1;
+  s_notice(a.session, N_ASK, "Run: test"); a.session[0].asking = a.session[0].n - 1;
+  ag_answer(a, false);
+  #assert a.session[0].asking == -1 && a.session[0].n == 1;
+  ev: [1] ClEvent; ag_next(a, ev[..], 0.016);
+  #assert ev[0].kind == ClEventKind.idle;
+  ag_stop(a); ag_stop(a);
+  #assert !a.session[0].live && a.session[0].n == 2 && a.session[0].parts[1].notice == N_STOPPED;
 }
