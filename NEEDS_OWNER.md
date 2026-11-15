@@ -1,5 +1,12 @@
 # Owner actions
 
+## Shared glass controls, build 1130 (2026-11-15)
+
+- [ ] Install TestFlight **1130** (verified in **Owner**) on iOS 26 or later.
+      Check icon buttons in app headers, drawer navigation and the floating
+      world menu, including their appearance and touch behavior. The focused
+      simulator toolbar tests passed; physical-device appearance is unverified.
+
 ## Reference gallery, build 1110 (2026-11-15)
 
 - [ ] Install TestFlight **1110** (verified in **Owner**), open **Settings →
