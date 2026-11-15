@@ -18,7 +18,41 @@ through our Decisions API.
 The owner's words: "I don't want any options like that. I don't want to think
 about that."
 
-What this removes from every surface:
+## First: delegate between coding agents, across your computers
+
+Owner direction, 2026-11-14 (evening). This comes before any other route
+from 289.
+
+> Before porting over all of the other routes, I need to be able to first
+> smartly delegate between coding agents, factoring in the environments,
+> including things like the workload per station. I don't want to have to
+> continually manually check the disk space and the memory and the load and
+> what machines are logged in and what computers I'm in. All that information
+> needs to be just available in the decision process.
+
+So the first thing the router does is one job: take a coding task and decide
+**which computer, which coding agent, which account, which model and how much
+effort**, from facts it already has. You connect your computers once. From
+then on the product knows each one's disk, memory, load, running agents and
+logged-in accounts, and you never look them up.
+
+- A hard task gets Opus or Fable, through an account that has capacity, on a
+  computer that has room.
+- A one-line fix gets a fast agent on whatever is free.
+- A task that needs a Mac (an iOS build) goes to a Mac. A heavy build never
+  lands on a computer you have said to keep clear.
+
+The thing that does this is the **delegation agent**: the one agent you talk
+to. It asks the router, starts the coding agent on the chosen computer, and
+tells you what it did. [The delegation agent](#the-delegation-agent) and
+[What each computer reports](#what-each-computer-reports) specify it.
+
+The other 289 routes (knowledge, wallet, decks, plugins) wait until this
+works. They are in [Later](#later-the-other-routes).
+
+## What this removes
+
+From every surface:
 
 - The agent or harness choice (Claude Code, Codex, Cursor, Antigravity,
   Microcoder, Psionic).
@@ -46,6 +80,14 @@ decision, and every surface still shows pickers.
 | `coax/lib/agent/engine/availability.coax` and its policy | Which engines routing may pick: installed, allowed, not in a provider cooldown | A typed local observation, no probe. |
 | `apps/openagents-desktop/router.coax` | Harness (`claude_code`, `codex`, `other`), difficulty, effort (5 levels), Claude model | The Lab's copy. Same labels, different names and a different effort scale. It shows the decision and runs nothing. |
 | `coder/tui/router.coax` | Whether an incoming event asks for work, and which Worker gets it | A different job (triggers and threads, Coder book chapters 17 and 20). Not replaced by this spec. |
+
+What the router cannot see today: anything about a computer beyond which
+agent CLIs are installed and whether a local model server runs. The
+environment runtime ([protocol](../protocol/environment-runtime-v1alpha1.md),
+`proto/openagents/environment/access/v1alpha1/runtime.proto`) carries
+sessions, messages and the models a computer's Claude offers. It carries no
+disk, memory, load, running-work or account-quota facts. That is the first
+thing to build.
 
 Measured so far: the labelled set is 44 messages (22 to tune, 22 held out,
 `coder/tui/route-labels.tsv`). Mammoth routes 22 of 22 on each half and
@@ -143,43 +185,75 @@ a search for the word "codex".
 
 ### One request, several typed questions
 
-Each message sends one Decisions request. The questions:
+Each coding task sends one Decisions request. The questions:
 
 | Key | Type | Answers | Used for |
 | --- | --- | --- | --- |
-| `route` | choice | The 289 routes: answer directly; answer from the knowledge base; work on a repository or computer; a money action (wallet); show something we have (a deck, a page, a world); something we can't do yet | What kind of thing this is |
-| `engine` | choice | The eligible engines only, each with its label | Which agent does the work |
+| `station` | choice | The eligible computers only, each labelled with its facts | Where the work runs |
+| `engine` | choice | The coding agents eligible on at least one eligible computer, each with its label | Which agent does the work |
 | `difficulty` | score | trivial, easy, moderate, hard, very hard | The model profile |
 | `effort` | choice | The effort levels the picked engine takes | Reasoning level |
+| `weight` | score | light (edits and questions), medium (tests, a build), heavy (long builds, many processes) | How much room the work needs |
+| `needs` | choice | nothing special; a Mac with Xcode; a GPU; this computer's files or screen | What the work requires of a computer |
+| `named_station` | choice | none, or one of the computers | The person asked for a specific computer |
 | `named_engine` | choice | none, or one of the engines | The person asked for a specific agent |
 | `named_depth` | choice | none, faster, more careful | The person asked for speed or care |
 | `continue` | yes/no | | This message continues the same piece of work as the conversation so far |
 
-`route` is new. The rest exist or are small additions. Asking them together
-costs one request, since Gemini Decision 1 takes many questions at once.
+`station`, `weight` and `needs` are new. Asking them all together costs one
+request. With five computers described, the request is roughly 1,000 tokens,
+about $0.0001.
 
-The `route` options come from a registry, not a list in the router's source.
-A capability adds its route with a label that says what it is for, the way a
-289 plugin joins the agent. The first registry holds what the product has
-today. "Something we can't do yet" is the door to 289's "do you want to build
-it as a plugin?" and that flow is its own spec.
+A `route` question (what kind of thing this is, beyond coding) joins this list
+later, with the other 289 routes.
+
+### What each computer reports
+
+Every connected computer (a "station": your Mac, a Linux box, a cloud box)
+reports its facts to the delegation agent continually, so nobody checks them
+by hand. The computer's resident service (`coder host serve`) collects them
+and sends a **station report** over the environment runtime's existing signed,
+encrypted carriage. It is a new typed method, `DescribeStation`, not a shell
+or process RPC.
+
+| Fact | Detail |
+| --- | --- |
+| Reachable | Online or not, and when it last reported |
+| What it is | OS, CPU cores, total memory, GPU, and whether it can build for Apple platforms |
+| Disk | Free space on the volume that holds the work, and the floor below which it takes no new work |
+| Memory | Free memory, and memory pressure where the OS reports it |
+| Load | Load average against core count, over 1 and 15 minutes |
+| Running work | Each agent session it is running: which agent and model, the task's title, how long, working or waiting. Heavy jobs it started (builds, test runs) |
+| Agents | Which coding agents are installed, and their versions |
+| Accounts | For each agent: logged in or not, the plan, whether the quota is used up, and when it resets (the usage reader, `coax/lib/agent/accounts/`). Never a token |
+| Work it holds | Which repositories it has checked out, so a task goes where its code already is |
+| Your rules for it | What you allow there: "keep this computer clear", "nothing heavy", "coding agents only", a cloud box's hourly cost and spending limit |
+| In use | Whether someone is using it now (a foreground game or call, recent input), where the OS lets the service know |
+
+Reports are small (a few hundred bytes), sent when a fact changes materially
+and at least every minute while connected. A report older than two minutes
+makes the computer "not reachable" for routing.
+
+The same facts appear on the Your computers screen, one plain line each
+("coderos: 2 agents working, 180 GB free, Claude at 40% of the week"). What
+the router knows, you can see.
+
+The first report needs no new permissions: load, memory, disk and the process
+list of the service's own children are readable by the service's user.
 
 ### What the router is told
 
-The state is one JSON object, as today, with more in it:
+The state is one JSON object:
 
-- The message, in full up to a bound, and its attachments as image or PDF
+- The task, in full up to a bound, and its attachments as image or PDF
   blocks.
-- A bounded summary of the conversation so far (today: 256 bytes of recent
-  context for Elephant; Gemini has room for more).
-- The surface (web, phone, desktop, terminal) and where the work would run
-  (hosted, this computer, a named computer, a cloud box).
-- Each engine's state: installed, logged in, in a cooldown, and whether its
-  quota is used up when the usage reader knows
-  (`coax/lib/agent/accounts/`).
-- Whether a local model server is running, and whether the person asked to
-  keep work on this machine.
-- The engine and model the conversation is already using, if any.
+- A bounded summary of the conversation so far.
+- Every eligible computer's station report, as the labels of the `station`
+  options and as structured fields.
+- Each agent's state per computer: installed, logged in, in a cooldown, quota
+  used up or not.
+- The repository the task is about, when the conversation has one.
+- The computer, agent and model the conversation is already using, if any.
 
 No credential, token or file content goes to the router.
 
@@ -187,11 +261,20 @@ No credential, token or file content goes to the router.
 
 This split exists today and stays:
 
-1. **Eligibility is code** (`availability-policy.coax`, `#authority`). An
-   engine is eligible when it is installed or hosted, the account is logged
-   in, it is allowed, and it is not in a provider cooldown.
-2. **The decision model chooses among eligible engines.** An answer naming an
-   ineligible engine cannot dispatch.
+1. **Eligibility is code** (`availability-policy.coax`, `#authority`).
+   - An engine is eligible on a computer when it is installed there, its
+     account is logged in with quota left, it is allowed, and it is not in a
+     provider cooldown.
+   - A computer is eligible when it is reachable, its disk is above its
+     floor, your rules for it allow this weight of work, it meets the task's
+     `needs`, and it has (or can fetch) the repository.
+   - Numbers are compared in code, never by the model: free disk against the
+     floor, load against cores, the count of running agents against the
+     computer's limit.
+2. **The decision model chooses among eligible computers and engines**, with
+   every fact in front of it. An answer naming an ineligible computer or
+   engine cannot dispatch. When two computers are equally suitable, code
+   breaks the tie toward the one with more room.
 3. **Below a probability of 0.5, or with no decision, the default runs.** The
    default is the most capable eligible engine, so an unsure router errs
    toward quality. (Today it is a fixed order starting with Claude Code.)
@@ -199,9 +282,10 @@ This split exists today and stays:
    picks otherwise and the result line says why ("Codex isn't logged in on
    this computer").
 5. **An account out of quota refuses.** It is not eligible, and nothing is
-   quietly downgraded to keep going. When another eligible engine exists, it
-   takes the message and the line says why. When none does, the message is
-   refused with what ran out and when it resets ("Claude's weekly limit is
+   quietly downgraded to keep going. The router looks for the same model
+   through another account with capacity first (your other computer's login,
+   or your OpenAgents credits), then for another eligible engine, and the
+   line says why. When none exists, the message is refused with what ran out and when it resets ("Claude's weekly limit is
    used up; it resets Thursday at 9:00 AM"), and the text stays in the
    composer.
 
@@ -212,12 +296,12 @@ difficulty, through one policy table in `route-policy.coax`:
 
 | Engine | Trivial | Easy, moderate | Hard, very hard |
 | --- | --- | --- | --- |
-| Claude Code | Haiku | Sonnet | Opus |
+| Claude Code | Haiku | Sonnet | Opus for hard; Fable for very hard, where the account offers it |
 | Codex | its small model | its default model | its strongest model |
 | Hosted chat | Gemini's fast model | Gemini's default model | Opus or Gemini's strongest model |
 | Microcoder, Psionic | the one model each has | | |
 
-The Claude row is today's policy. The Codex and hosted rows are new and need
+The Claude row is today's policy plus Fable. The Codex and hosted rows are new and need
 model names filled in from each provider's live list when built, not from this
 document.
 
@@ -235,8 +319,8 @@ with its copy of the router.
 ### When the router runs
 
 - **Every message** gets a decision. It costs about $0.00005.
-- **The engine is chosen at a conversation's first message and kept** while
-  `continue` is yes. An engine's session holds the conversation's context, and
+- **The computer and the engine are chosen at a conversation's first message
+  and kept** while `continue` is yes. An engine's session holds the conversation's context, and
   switching engines mid-task throws it away (OpenRouter keeps sessions sticky
   for the same reason).
 - **Model and effort follow each message** within the engine, when the engine
@@ -292,31 +376,69 @@ No picker, anywhere. In its place, one quiet line on each answer saying what
 ran:
 
 ```
-Claude Code · Opus · high
+Claude Code · Opus · high · on coderos
 ```
 
 - It is a fact after the decision, not a control. It does not open a menu.
 - When the router fell back, the line says why in plain words: "Codex is
-  resting until 3:10 PM, so Claude Code took this."
+  resting until 3:10 PM, so Claude Code took this." "Your Mac is busy, so
+  this ran on coderos."
 - Nothing a person reads says "route", "door", "engine" or "probability".
   Those words stay in records.
 - The line replaces the per-answer model label the web chat already shows
   ("Opus 5.5 · OpenAgents key · $0.0123"); cost and credential stay.
 
-The way to steer is to say so: "do it with Codex", "use the big model",
-"quick answer". That is the 289 demo ("Do it with Codex").
+The way to steer is to say so: "do it with Codex", "run it on the Mac", "use
+the big model", "quick answer". That is the 289 demo ("Do it with Codex").
 
 The terminal keeps `--engine`, `--model` and `--effort` as flags for scripts
 and tests, because a script needs a fixed run. They are not shown in the
 interactive screen. `/engine`, `/model`, `/effort` and Shift-Tab are removed
 from the interactive UI, and automatic routing becomes its only behaviour.
 
+### The delegation agent
+
+The delegation agent is the one agent you talk to, on every surface. For a
+coding task it does five things:
+
+1. **Reads the station reports** it already holds. It does not probe on
+   demand.
+2. **Asks the router** (one Decisions request, above).
+3. **Starts the work** on the chosen computer through the environment
+   runtime's existing commands (`OpenSession`, `SendMessage`), with the
+   chosen agent, model and effort. The command IDs and the retry rules are
+   the protocol's: a retry never runs a task twice.
+4. **Watches it**: working, waiting on a permission, finished, failed. It
+   relays permission questions to you and reports the result.
+5. **Tells you what it did** in the one line, and keeps the route record.
+
+Rules:
+
+- It splits a request into several tasks only when you ask for several
+  things. Each task is routed on its own, so three tasks can land on three
+  computers.
+- Work that has not started may move: if the chosen computer drops offline
+  before the agent starts, the delegation agent routes again. Work that has
+  started never moves or restarts on its own.
+- It never frees space, kills a process or logs in to an account on a
+  computer to make it eligible. It tells you what is in the way ("coderos has
+  3 GB free; it takes new work at 20 GB").
+- It starts no heavy job on a computer you have marked to keep clear, whatever
+  the model answers.
+- It imposes no limits of its own on how long a task runs or how many steps
+  it takes. Limits are the ones you set per computer.
+
+It is built on what exists: the shared engines (`coax/lib/agent/engine/`),
+the environment runtime, the resident service, and the trigger router's
+Workers (`coder/tui/router.coax`) for background runs. It is not a new agent
+runtime.
+
 ### The record
 
 Extend the route record to `coder.route.v3`
 (`proto/openagents/coder/route/`), one line per decision, on every surface:
-the route, engine, model, effort, the probabilities, the eligible and blocked
-sets, the door that answered, whether the person named an engine, what ran,
+the computer, engine, account, model, effort, the probabilities, the eligible
+and blocked sets with the fact that blocked each, the door that answered, whether the person named an engine, what ran,
 and why when that differs from the decision. No message text.
 
 The record is what makes the router improvable. Without it, removing the
@@ -343,28 +465,31 @@ coding and not enough for a product with no way out.
 
 ## Rollout
 
-Each step removes one picker and ends in something a person can use.
+Delegation between coding agents comes first. Each step ends in something a
+person can use.
 
-1. **One router.** Fold the Lab's copy into `route.coax`. Add `route`,
-   `named_engine`, `named_depth` and `continue`. Add the route registry with
-   today's capabilities. Write `coder.route.v3`. Grow the labelled set.
-2. **Terminal.** Automatic routing is the default and only interactive
-   behaviour. Remove Shift-Tab cycling and the three slash commands. Flags
-   stay.
-3. **Desktop.** Remove the harness, model and effort chips and the mode per
-   conversation. Every conversation is what the Lab mode is now, with work
-   actually running.
-4. **Phone.** Remove `env.model` and `env.effort`. The computer's resident
-   service routes each turn. The wire fields for model and effort stay in the
-   protocol as what the service reports, not what the phone requests.
-5. **Web chat.** Remove both model menus. The server routes hosted turns; a
-   connected computer routes its own.
-6. **Everything behind it.** Add routes for the wallet, decks, worlds and
-   Projects, so "send a thousand sats" and "show the deck" work from any
-   conversation, as in 289. Then the "can't do yet" route and plugins.
+1. **Station reports.** `DescribeStation` in the environment runtime; the
+   resident service collects and sends; Your computers shows each computer's
+   line. After this step you stop checking disk, memory, load and logins by
+   hand, even before any routing changes.
+2. **The delegation router.** Fold the Lab's copy into `route.coax`. Add
+   `station`, `weight`, `needs` and the `named_` questions. Station and
+   account eligibility in the policy (`#authority`). `coder.route.v3`. Grow
+   the labelled set with tasks that differ by computer, weight and need.
+3. **The delegation agent.** A coding task typed on any surface is routed and
+   started on the chosen computer, with the one line saying what ran where.
+   Your rules per computer are settable in plain controls on Your computers.
+4. **Remove the pickers**, one surface at a time: terminal, desktop, phone,
+   web chat. Each needs its measured delay and its outcome comparison first.
+5. **Accounts with capacity.** The same model through another of your
+   accounts when one runs out; OpenAgents credits as an account.
 
-Steps 2 to 5 are independent after step 1. Each needs its measured delay and
-its outcome comparison before the picker goes.
+### Later: the other routes
+
+After delegation works: the `route` question and its registry, so "send a
+thousand sats" and "show the deck" work from any conversation as in 289; then
+the "can't do yet" route and plugins. These reuse the same request, record and
+line.
 
 ## Decisions
 
@@ -380,6 +505,7 @@ Settled by the owner on 2026-11-14.
 | 6 | Which Codex and hosted models fill the profile table? | Taken from each provider's live model list at build time; reviewed when a provider ships a model. |
 | 7 | Where does the server-side router run for hosted chat? | In the chat API, through the Decisions API. |
 | 8 | How many decisions to start? | 10,000 a day across the product, shown in Settings, raised as use grows. |
+| 9 | What comes first? | Delegation between coding agents across connected computers, with each computer's disk, memory, load, running work and accounts in the decision. The other 289 routes come after. |
 
 Still open: whether the 10,000 is one total for everyone or becomes a share
 per account once many people use it. This spec starts with one total.
@@ -389,8 +515,8 @@ per account once many people use it. This spec starts with one total.
 - The trigger router (`coder/tui/router.coax`), which decides whether an
   outside event asks for work.
 - Plugins, the registry and paying authors (289 at 1:30 to 2:30).
-- Which computer or cloud runs a task. Placement is a second routing question
-  and needs its own spec; this one takes the place as given.
+- Starting or stopping cloud boxes to make room. The router chooses among
+  computers that are connected; it does not rent one.
 - Routing between Pylon providers.
 
 ## Sources
