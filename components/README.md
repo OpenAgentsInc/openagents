@@ -77,7 +77,8 @@ are requirements and source findings, not claims of implemented components.
   app compiles its embedded profile rather than copying it.
 
 The **Reference** gallery section is an early visual study of four atoms from
-the Claude iOS captures: two button styles, a switch and a progress bar. It
+the Claude iOS captures: buttons, a switch, a progress bar, a slider,
+selectable rows and a project information card. It
 uses the shared control kit and a separate reference skin; it is not a product
 skin or a pixel-parity qualification. Its colors are approximate and its text
 still uses the gallery atlas. Select it from Gallery options on iPhone or from

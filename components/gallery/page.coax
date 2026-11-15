@@ -239,6 +239,16 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
     switch_skin:=ref;switch_skin.control_h=52;switch_skin.muted=ref.ink;
     _:=toggle(sh[..],m,switch_skin,x,y,"Notifications",g[0].cards[0].toggles[0],GL_HIT_TOGGLE,0);y+=64;
     _:=bar(sh[..],ref,x,y,w-2*gutter,0.36,ref.accent);y+=48;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Settings and choices");y+=34;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.body.line,ref.body.face,ref.muted,"Text size");y+=24;
+    slider(sh[..],ref,x,y,w-2*gutter,g[0].cards[0].slider,GL_HIT_SLIDER,0);y+=60;
+    rows:=[3]string.["Automatic","Limited access","Full access"];
+    y+=list_rows(sh[..],m,ref,x,y,w-2*gutter,"Network access",rows[..],g[0].cards[0].row,-1,GL_HIT_ROW,0)+24;
+    _:=sheet_text(sh[..],m,-1,x,y,ref.title.line,ref.title.face,ref.ink,"Cards and context");y+=34;
+    inside:=panel(sh[..],m,ref,x,y,w-2*gutter,104,"Project details");
+    _:=sheet_text(sh[..],m,-1,inside.x,inside.y,ref.body.line,ref.body.face,ref.muted,"Add a description and instructions.");y+=120;
+    _:=button(sh[..],m,ref,x,y,"Default environment",UISKIN_REST,GL_HIT_BUTTON,0);y+=60;
+    _:=button(sh[..],m,ref,x,y,"Add files",UISKIN_REST,GL_HIT_BUTTON,0);y+=68;
   }
   // the cards, row by row; a row is as tall as its tallest card
   id := 0;
@@ -445,6 +455,17 @@ coaxial_components_cell_ready :: (g: [] GalleryState, cell: int) #export_c #effe
  h:=gl_test_hit(g[..],GL_HIT_TOGGLE,0,0);#assert h.w>0;
  before:=g[0].cards[0].toggles[0];_:=gl_pointer(g[..],h.x+2,h.y+2,0);
  #assert g[0].cards[0].toggles[0]!=before;
+}
+
+#test "reference gallery exposes selectable rows and slider" #steps 400000000 {
+ g:[1]GalleryState;o:[1]GlOut;u:[4]f32;gl_test_atlas(g[0].atlas[..]);
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);g[0].section=5;
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);
+ row:=gl_test_hit(g[..],GL_HIT_ROW,0,1);slider_hit:=gl_test_hit(g[..],GL_HIT_SLIDER,0,0);
+ #assert row.w>0 && slider_hit.w>0;
+ g[0].scroll=row.y-100;#assert gl_pointer(g[..],row.x+2,102,0) && g[0].cards[0].row==1;
+ g[0].scroll=slider_hit.y-100;#assert gl_pointer(g[..],slider_hit.x+slider_hit.w*0.75,102,0);
+ #assert abs(g[0].cards[0].slider-0.75)<0.001;
 }
 
 // A fixed atlas: every glyph 8 wide, the monospace faces 7.
