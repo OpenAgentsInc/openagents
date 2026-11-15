@@ -1,0 +1,5 @@
+#load "../../lib/robotics/actuator.coax";
+main :: () {
+  p:RsaParams;q:rpu.Quantity(rpu.Radian,f64);v:rpu.Quantity(RpdRate,f64);target:rpu.Quantity(rpu.Metre,f64);out:[1]RsaForce;
+  status:=rsa_force(p,q,v,target,out[..]);print("%\n",int(status));
+}

@@ -1,0 +1,4 @@
+#load "../../lib/robotics/actuator.coax";
+main :: () {
+  p:RsaParams;force:rpu.Quantity(RpdForce,f64);p.inertia=force;print("%\n",p.inertia.value);
+}

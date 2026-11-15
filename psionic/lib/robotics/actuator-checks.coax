@@ -1,0 +1,86 @@
+#load "actuator-fixtures.coax";
+#load "actuator-golden.coax";
+#test "servo IEEE and exact numerical endpoints admit before any arithmetic" {
+  #assert rsa_word(f64_bits(-2.0),-2,3)==RsaStatus.ok && rsa_word(f64_bits(3.0),-2,3)==RsaStatus.ok;
+  #assert rsa_word(f64_bits(-2.0)+1,-2,3)==RsaStatus.range && rsa_word(f64_bits(3.0)+1,-2,3)==RsaStatus.range;
+  for bits:[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001,0x7ff0000000000001,0xfff8000000000001] {#assert rsa_word(bits,-2,3)==RsaStatus.number;}
+}
+#forall "servo each parameter admits both endpoints and refuses the immediately adjacent outside word" role:0..<9 {
+  low:=[9]f64.[1e-6,0,0,0,0,1e-6,0,1e-6,0];high:=[9]f64.[100,10000,1000,1000,1000,1000,1,0.1,1];v:=[9]f64.[0.01,2,0,0,0,0.15,1,0.002,0];
+  v[role]=low[role];#assert rsa_params(rsa_fixture_values(v))==RsaStatus.ok;
+  v[role]=high[role];#assert rsa_params(rsa_fixture_values(v))==RsaStatus.ok;
+  v[role]=ifx low[role]==0 then -1e-300 else f64_from_bits(f64_bits(low[role])-1);#assert rsa_params(rsa_fixture_values(v))==RsaStatus.range;
+  v[role]=f64_from_bits(f64_bits(high[role])+1);#assert rsa_params(rsa_fixture_values(v))==RsaStatus.range;
+}
+#test "servo delay capacity and initial queue are explicit, including zero and full delay" {
+  p:=rsa_fixture();zero:rpu.Quantity(rpu.Radian,f64);rate:rpu.Quantity(RpdRate,f64);initial:=zero;initial.value=0.125;out:[1]RsaSnapshot;
+  for delay:[3]int.[0,2,16] {p.delay=delay;#assert rsa_begin(p,zero,rate,zero,initial,out[..])==RsaStatus.ok;#assert out[0].cursor==0 && out[0].steps==0 && out[0].params.delay==delay;
+    for i:0..<RSA_DELAY {#assert out[0].pending[i].value==(ifx i<delay then 0.125 else 0.0);}
+  }
+  p.delay=-1;#assert rsa_params(p)==RsaStatus.range;p.delay=17;#assert rsa_params(p)==RsaStatus.range;
+  p=rsa_fixture();p.play.value=0.01;position:=zero;position.value=0.25;observed:=zero;observed.value=0.245;rate.value=-0.375;
+  #assert rsa_begin(p,position,rate,observed,initial,out[..])==RsaStatus.ok;
+  #assert out[0].position.value==0.25 && out[0].output_position.value==0.245 && out[0].rate.value== -0.375;
+}
+#test "servo torque components keep active derivative and passive loss separate with zero-speed Coulomb zero" {
+  p:=rsa_fixture();p.kd.value=0.03;p.viscous.value=0.02;p.coulomb.value=0.001;p.voltage=0.5;
+  q:rpu.Quantity(rpu.Radian,f64);v:rpu.Quantity(RpdRate,f64);target:=q;target.value=0.1;out:[1]RsaForce;
+  for velocity:[3]f64.[-0.2,0,0.2] {v.value=velocity;#assert rsa_force(p,q,v,target,out[..])==RsaStatus.ok;
+    f:=out[0];#assert f.proportional.value==0.2 && f.derivative.value== -0.03*velocity && f.requested.value==f.proportional.value+f.derivative.value;
+    #assert f.limit.value==0.075 && f.delivered.value==0.075 && f.clipped;
+    #assert abs(f.passive.value-(ifx velocity<0 then 0.005 else ifx velocity>0 then -0.005 else 0.0))<1e-16;
+    #assert f.passive.value*velocity<=0 && f.net.value==f.delivered.value+f.passive.value;
+  }
+  p.voltage=0;#assert rsa_force(p,q,v,target,out[..])==RsaStatus.ok && out[0].delivered.value==0 && out[0].limit.value==0;
+  p=rsa_fixture();target.value=-0.1;v.value=0;#assert rsa_force(p,q,v,target,out[..])==RsaStatus.ok && out[0].delivered.value== -0.15 && out[0].requested.value== -0.2;
+  target.value=0.075;#assert rsa_force(p,q,v,target,out[..])==RsaStatus.ok && !out[0].clipped && out[0].delivered.value==0.15;
+}
+#test "servo snapshot validates every coordinate queue cursor and step counter" {
+  p:=rsa_fixture();p.delay=2;p.play.value=0.001;s:RsaSnapshot;s.params=p;#assert rsa_snapshot(s)==RsaStatus.ok;
+  s.cursor=1;#assert rsa_snapshot(s)==RsaStatus.ok;s.cursor=2;#assert rsa_snapshot(s)==RsaStatus.state;s.cursor=-1;#assert rsa_snapshot(s)==RsaStatus.state;s.cursor=0;
+  s.steps=-1;#assert rsa_snapshot(s)==RsaStatus.state;s.steps=2147483648;#assert rsa_snapshot(s)==RsaStatus.state;s.steps=2147483647;#assert rsa_snapshot(s)==RsaStatus.ok;s.steps=0;
+  s.position.value=100; s.output_position.value=100;#assert rsa_snapshot(s)==RsaStatus.ok;s.position.value=f64_from_bits(f64_bits(100.0)+1);#assert rsa_snapshot(s)==RsaStatus.range;
+  s.position.value=0;s.output_position.value=0.001;#assert rsa_snapshot(s)==RsaStatus.ok;s.output_position.value=0.00101;#assert rsa_snapshot(s)==RsaStatus.state;s.output_position.value=0;
+  s.rate.value=10000;#assert rsa_snapshot(s)==RsaStatus.ok;s.rate.value=10001;#assert rsa_snapshot(s)==RsaStatus.range;s.rate.value=0;
+  s.output_position.value=101;#assert rsa_snapshot(s)==RsaStatus.range;s.output_position.value=0;
+  s.pending[0].value=-100;s.pending[1].value=100;#assert rsa_snapshot(s)==RsaStatus.ok;s.pending[1].value=101;#assert rsa_snapshot(s)==RsaStatus.range;s.pending[1].value=0;
+  s.pending[0].value=-101;#assert rsa_snapshot(s)==RsaStatus.range;s.pending[0].value=0;
+  s.pending[2].value=0.01;#assert rsa_snapshot(s)==RsaStatus.state;s.pending[2].value=0;
+  s.pending[15].value=0.001;#assert rsa_snapshot(s)==RsaStatus.state;s.pending[15].value=0;s.pending[0].value=0;p.delay=0;s.params=p;s.cursor=1;#assert rsa_snapshot(s)==RsaStatus.state;s.cursor=0;#assert rsa_snapshot(s)==RsaStatus.ok;
+}
+#test "servo first delayed updates are zero then the first accepted command, and restore keeps a pending queue" {
+  p:=rsa_fixture();p.delay=2;zero:rpu.Quantity(rpu.Radian,f64);v:rpu.Quantity(RpdRate,f64);snap:[1]RsaSnapshot;out:[1]RsaStep;target:=zero;target.value=0.1;
+  #assert rsa_begin(p,zero,v,zero,zero,snap[..])==RsaStatus.ok;
+  for i:0..<2 {#assert rsa_step(snap[0],target,out[..])==RsaStatus.ok && out[0].applied_target.value==0 && out[0].snapshot.position.value==0;snap[0]=out[0].snapshot;}
+  saved:=snap[0];restored:[1]RsaSnapshot;#assert rsa_restore(saved,restored[..])==RsaStatus.ok;rsa_same_snapshot(saved,restored[0]);
+  a:[1]RsaStep;b:[1]RsaStep;
+  for i:0..<5 {target.value=f64(i)*-0.05;#assert rsa_step(snap[0],target,a[..])==RsaStatus.ok && rsa_step(restored[0],target,b[..])==RsaStatus.ok;rsa_same_step(a[0],b[0]);snap[0]=a[0].snapshot;restored[0]=b[0].snapshot;}
+  #assert saved.cursor==0 && saved.steps==2 && saved.pending[0].value==0.1 && saved.pending[1].value==0.1;
+}
+#forall "servo maximum delay wraps at its own capacity without losing the oldest accepted target" delay:0..<17 {
+  p:=rsa_fixture();p.delay=delay;p.kp.value=0;zero:rpu.Quantity(rpu.Radian,f64);v:rpu.Quantity(RpdRate,f64);s:[1]RsaSnapshot;o:[1]RsaStep;
+  #assert rsa_begin(p,zero,v,zero,zero,s[..])==RsaStatus.ok;
+  for i:0..<35 {target:=zero;target.value=f64(i+1)*0.01;#assert rsa_step(s[0],target,o[..])==RsaStatus.ok;
+    #assert abs(o[0].applied_target.value-(ifx i<delay then 0.0 else f64(i-delay+1)*0.01))<1e-15;
+    #assert o[0].snapshot.cursor==(ifx delay==0 then 0 else (i+1)%delay) && o[0].snapshot.steps==i+1;s[0]=o[0].snapshot;
+  }
+}
+#test "servo all exact-rational motion columns agree, including reversals, delay, losses and play output" {
+  rsa_check_reference_traces();
+}
+#test "servo every public shape and late refusal preserves complete caller output and pending work" {
+  poison:=rsa_poison_step();out:=[2]RsaStep.[poison,poison];snaps:=[2]RsaSnapshot.[poison.snapshot,poison.snapshot];forces:=[2]RsaForce.[poison.force,poison.force];p:=rsa_fixture();zero:rpu.Quantity(rpu.Radian,f64);v:rpu.Quantity(RpdRate,f64);
+  good:RsaSnapshot;good.params=p;
+  for count:[2]int.[0,2] {
+    #assert rsa_step(good,zero,out[0..<count])==RsaStatus.shape;
+    #assert rsa_force(p,zero,v,zero,forces[0..<count])==RsaStatus.shape;
+    #assert rsa_begin(p,zero,v,zero,zero,snaps[0..<count])==RsaStatus.shape;
+    #assert rsa_restore(good,snaps[0..<count])==RsaStatus.shape;
+  }
+  bad:=p;bad.inertia.value=0;#assert rsa_begin(bad,zero,v,zero,zero,snaps[0..<1])==RsaStatus.range && rsa_force(bad,zero,v,zero,forces[0..<1])==RsaStatus.range;
+  invalid:=zero;invalid.value=101;#assert rsa_begin(p,zero,v,zero,invalid,snaps[0..<1])==RsaStatus.range && rsa_force(p,zero,v,invalid,forces[0..<1])==RsaStatus.range && rsa_step(good,invalid,out[0..<1])==RsaStatus.range;
+  good.params.delay=1;good.pending[0].value=0.1;good.steps=2147483647;#assert rsa_step(good,zero,out[0..<1])==RsaStatus.exhausted;
+  good.steps=0;good.position.value=100;good.output_position.value=100;good.rate.value=10000;#assert rsa_step(good,zero,out[0..<1])==RsaStatus.range;
+  good.cursor=1;#assert rsa_restore(good,snaps[0..<1])==RsaStatus.state && rsa_step(good,zero,out[0..<1])==RsaStatus.state;
+  for i:0..<2 {rsa_same_step(out[i],poison);rsa_same_snapshot(snaps[i],poison.snapshot);rsa_same_force(forces[i],poison.force);}
+}

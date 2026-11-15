@@ -172,17 +172,17 @@
     {
       "id": "psionic.execution.current",
       "document": "psionic/docs/roadmap.md",
-      "scope": "Retained named model/device profiles and bounded CPU IR/tiny-decoder CUDA training profiles; Mammoth Metal, original120b GPU, complete V4.1 and general efficient GPU training remain unqualified. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md. Reviewed 2026-11-15: SUMMARY adds design-draft capstone 256 and limits its runnable-code statement to earlier chapters; existing profiles, examples and numerical evidence are unchanged. Follow-up review: draft chapters 257-265 and explicit draft-range wording add no runnable source, target or numerical evidence. Reviewed RB-01a: chapter 257 now qualifies a bounded CPU decoded experiment/action query and its owned example. Robotics learning, vendor compatibility and hardware remain unqualified; existing model, GPU and serving profiles are unchanged. Reviewed RB-01b: chapter 257 completes its bounded CPU decoded query and canonical RXE1 record profile. This does not change model execution, GPU/serving profiles, robotics learning or hardware qualification.",
+      "scope": "Retained named model/device profiles and bounded CPU IR/tiny-decoder CUDA training profiles; Mammoth Metal, original120b GPU, complete V4.1 and general efficient GPU training remain unqualified. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md. Reviewed 2026-11-15: SUMMARY adds design-draft capstone 256 and limits its runnable-code statement to earlier chapters; existing profiles, examples and numerical evidence are unchanged. Follow-up review: draft chapters 257-265 and explicit draft-range wording add no runnable source, target or numerical evidence. Reviewed RB-01a: chapter 257 now qualifies a bounded CPU decoded experiment/action query and its owned example. Robotics learning, vendor compatibility and hardware remain unqualified; existing model, GPU and serving profiles are unchanged. Reviewed RB-01b: chapter 257 completes its bounded CPU decoded query and canonical RXE1 record profile. This does not change model execution, GPU/serving profiles, robotics learning or hardware qualification. Reviewed RB-02: chapter 258 qualifies an illustrative CPU scalar servo/delay/output-play component and its action-map example; SUMMARY and example inventory add that bounded profile. No measured motor, biped learning, hardware, model execution or GPU qualification is added.",
       "text_sha256": "e2325a7eef60c64370d2713306864b371278916b6fd299c58823996b42b37edb",
       "features": [],
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "4f30ad5d972a8493e83fcedd81bd861dc2a257f8140576a6dfa3cdd6b75de1c9"
+          "sha256": "43cada9c6f573a46cf7d3f9f6110646570b049a4114669d8d5f8f8c99ffd364b"
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "a7caf9ceba6ed2e1c6f02d3202acc383cfaebf22bb313250cff7766b4d1b892f"
+          "sha256": "437eb0f127611e5e058b172e1a51aa9f71809cd1b31ab1291639d532fb44fca2"
         },
         {
           "path": "docs/verification/psionic-ch10-2026-10-29.md",
@@ -257,17 +257,17 @@
     {
       "id": "psionic.gpu.current",
       "document": "psionic/book/PLAN.md",
-      "scope": "Recorded original20b CUDA/Metal and bounded resident CUDA serving profiles; broader model/device/serving work remains open. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md. Reviewed 2026-11-15: SUMMARY adds design-draft capstone 256 with no source, qualified target or adoption; no GPU or serving qualification is broadened. Follow-up review: detailed chapters 257-265 remain design drafts with empty source/target/adoption inventories; existing GPU and serving profiles are unchanged. Reviewed RB-01a: chapter 257 now qualifies a bounded CPU decoded experiment/action query and its owned example. Robotics learning, vendor compatibility and hardware remain unqualified; existing model, GPU and serving profiles are unchanged. Reviewed RB-01b: chapter 257 completes its bounded CPU decoded query and canonical RXE1 record profile. This does not change model execution, GPU/serving profiles, robotics learning or hardware qualification.",
+      "scope": "Recorded original20b CUDA/Metal and bounded resident CUDA serving profiles; broader model/device/serving work remains open. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md. Reviewed 2026-11-15: SUMMARY adds design-draft capstone 256 with no source, qualified target or adoption; no GPU or serving qualification is broadened. Follow-up review: detailed chapters 257-265 remain design drafts with empty source/target/adoption inventories; existing GPU and serving profiles are unchanged. Reviewed RB-01a: chapter 257 now qualifies a bounded CPU decoded experiment/action query and its owned example. Robotics learning, vendor compatibility and hardware remain unqualified; existing model, GPU and serving profiles are unchanged. Reviewed RB-01b: chapter 257 completes its bounded CPU decoded query and canonical RXE1 record profile. This does not change model execution, GPU/serving profiles, robotics learning or hardware qualification. Reviewed RB-02: chapter 258 qualifies an illustrative CPU scalar servo/delay/output-play component and its action-map example; SUMMARY and example inventory add that bounded profile. No measured motor, biped learning, hardware, model execution or GPU qualification is added.",
       "text_sha256": "d2572a5bbc768f22a40c2c28c93c7900d5fc3cb6b2fbc64043c62880f306c185",
       "features": [],
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "4f30ad5d972a8493e83fcedd81bd861dc2a257f8140576a6dfa3cdd6b75de1c9"
+          "sha256": "43cada9c6f573a46cf7d3f9f6110646570b049a4114669d8d5f8f8c99ffd364b"
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "a7caf9ceba6ed2e1c6f02d3202acc383cfaebf22bb313250cff7766b4d1b892f"
+          "sha256": "437eb0f127611e5e058b172e1a51aa9f71809cd1b31ab1291639d532fb44fca2"
         },
         {
           "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",

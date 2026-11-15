@@ -1,0 +1,21 @@
+// All decisions in Coax, reuse the common native compiler/sanitizer qualifier.
+#load "../../../coax/lib/sys/native-check.coax";
+#load "../../../coax/lib/text/regex.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])>1 {return 2;}
+  phase:=ifx args_count(args[..])==0 then "all" else args_at(args[..],0);
+  if phase!="all" && phase!="native" && phase!="example" {return 2;}
+  if phase=="example" {return nc_transcript("psionic/examples/robot-actuator.coax","psionic/fixtures/robotics/actuator/example.out");}
+  out:[65536]u8;command:=[3]string.["python3","-I","psionic/tests/robotics/actuator_oracle.py"];
+  n:=nc_run(command[..],30,out[..]);if n<0 {return 1;}print("%\n",cast(string)out[0..<n]);
+  sources:=[2]string.["psionic/tests/robotics/actuator-bad-target.coax","psionic/tests/robotics/actuator-bad-inertia.coax"];
+  diagnostics:=[2]string.["error\\[E0317\\]","error\\[E0327\\]"];
+  for i:0..<2 {
+    source:=sources[i];
+    check_args:=[3]string.["coax/bin/coax","check",source];err:[65536]u8;r:=proc_run(check_args[..],120000,out[..],err[..]);
+    if r.started!=0 || r.status==0 || r.timed_out || r.cut || rx_test(diagnostics[i],cast(string)err[0..<r.err_n])!=RX_YES {tool_errln(cast(string)err[0..<r.err_n]);tool_errln("actuator unit refusal differs");return 1;}
+    print("actuator unit refusal: %: passed\n",source);
+  }
+  status:=nc_qualify("psionic/tests/robotics/actuator-native.coax","actuator_native_checks");if status!=0 || phase=="native" {return status;}
+  return nc_transcript("psionic/examples/robot-actuator.coax","psionic/fixtures/robotics/actuator/example.out");
+}

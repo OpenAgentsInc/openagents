@@ -3669,6 +3669,17 @@
         "release"
       ],
       "timeout": 120
+    },
+    {
+      "source": "psionic/examples/robot-actuator.coax",
+      "chapter": "psionic/book/ch258-a-servo-that-behaves-like-the-motor.md",
+      "stdout": "psionic/fixtures/robotics/actuator/example.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ],
   "libraries": [

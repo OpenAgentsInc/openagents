@@ -1,0 +1,21 @@
+// Shared raw finite clamp. Caller admits finite value/bounds and low<=high.
+// Preserve the original value (including signed zero) at either endpoint.
+#authority;
+ScalarClipF64 :: struct {value:f64;clipped:bool;}
+#forall "finite clamp preserves all regions and strict endpoint flags" i:0..<5 {
+  values:=[5]f64.[-3,-2,0,4,5];r:=scalar_clip_f64(values[i],-2,4);
+  #assert r.value==(ifx i==0 then -2.0 else ifx i==4 then 4.0 else values[i]);
+  #assert r.clipped==(i==0 || i==4);
+}
+#test "finite clamp preserves signed zero at equal and degenerate bounds" {
+  zero:=f64_from_bits(0x8000000000000000);
+  for bounds:[3][2]f64.[[2]f64.[0,1],[2]f64.[-1,0],[2]f64.[0,0]] {
+    r:=scalar_clip_f64(zero,bounds[0],bounds[1]);#assert f64_bits(r.value)==0x8000000000000000 && !r.clipped;
+  }
+  #assert scalar_clip_f64(-1,0,0).clipped && scalar_clip_f64(1,0,0).clipped;
+}
+scalar_clip_f64 :: (value:f64,low:f64,high:f64)->ScalarClipF64 #effects(all) {
+  if value<low {return ScalarClipF64.{value=low,clipped=true};}
+  if value>high {return ScalarClipF64.{value=high,clipped=true};}
+  return ScalarClipF64.{value=value};
+}

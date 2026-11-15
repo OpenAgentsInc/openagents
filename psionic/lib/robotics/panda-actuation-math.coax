@@ -1,6 +1,7 @@
 // Fixed numerical source: gear1, no activation, gains1/1000, zero joint springs.
 // The private raw clamp trusts finite admitted values and ordered finite bounds.
 #load "panda-actuation-types.coax";
+#load "../../../coax/lib/clip.coax";
 #authority;
 #forall "actuation clamp exact endpoints and outside values preserve value and strict clip flag" side:0..<5 {
  values:=[5]f64.[-3,-2,0,4,5];r:=pa_clip(values[side],-2,4);#assert r.value==(ifx side==0 then -2.0 else ifx side==4 then 4.0 else values[side]);#assert r.clipped==(side==0 || side==4);
@@ -19,7 +20,7 @@
 }
 
 pa_clip :: (value:f64,lo:f64,hi:f64)->PaClip #effects(all) {
- if value<lo {return PaClip.{value=lo,clipped=true};}if value>hi {return PaClip.{value=hi,clipped=true};}return PaClip.{value=value};
+ clipped:=scalar_clip_f64(value,lo,hi);return PaClip.{value=clipped.value,clipped=clipped.clipped};
 }
 pa_torque_limit :: (axis:int)->f64 #effects(all) {return ifx axis<5 then 80.0 else 12.0;}
 pa_hinge_damping :: (axis:int)->pfku.Quantity(PaHingeDamping,f64) #effects(all) {r:pfku.Quantity(PaHingeDamping,f64);r.value=ifx axis<5 then 0.1 else 0.01;return r;}

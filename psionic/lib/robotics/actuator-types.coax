@@ -1,0 +1,33 @@
+// scalar-servo-play-f64-v1. In-memory values, not a stored or device format.
+// Reuse the isolated rotor's explicit one-radian generalized-force basis.
+#load "rotor-pd-types.coax";
+RSA_DELAY :: 16;
+RsaStatus :: enum u8 {ok;shape;number;range;state;exhausted;}
+RsaParams :: struct {
+  inertia:rpu.Quantity(RpdInertia,f64);
+  kp:rpu.Quantity(RpdStiffness,f64);kd:rpu.Quantity(RpdDamping,f64);
+  viscous:rpu.Quantity(RpdDamping,f64);coulomb:rpu.Quantity(RpdForce,f64);
+  effort:rpu.Quantity(RpdForce,f64);voltage:f64;
+  step:rpu.Quantity(rpu.Second,f64);play:rpu.Quantity(rpu.Radian,f64);
+  delay:int;
+}
+// book:begin actuator-state
+RsaSnapshot :: struct {
+  params:RsaParams;
+  position:rpu.Quantity(rpu.Radian,f64);rate:rpu.Quantity(RpdRate,f64);
+  output_position:rpu.Quantity(rpu.Radian,f64);
+  pending:[RSA_DELAY]rpu.Quantity(rpu.Radian,f64);
+  cursor:int;steps:int;
+}
+// book:end actuator-state
+RsaForce :: struct {
+  proportional:rpu.Quantity(RpdForce,f64);derivative:rpu.Quantity(RpdForce,f64);
+  requested:rpu.Quantity(RpdForce,f64);limit:rpu.Quantity(RpdForce,f64);
+  delivered:rpu.Quantity(RpdForce,f64);passive:rpu.Quantity(RpdForce,f64);
+  net:rpu.Quantity(RpdForce,f64);clipped:bool;
+}
+RsaStep :: struct {
+  snapshot:RsaSnapshot;force:RsaForce;
+  applied_target:rpu.Quantity(rpu.Radian,f64);
+  acceleration:rpu.Quantity(RpdAcceleration,f64);output_rate:rpu.Quantity(RpdRate,f64);
+}

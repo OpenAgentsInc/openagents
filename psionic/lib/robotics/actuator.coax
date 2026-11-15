@@ -1,0 +1,92 @@
+// Illustrative scalar servo, no imported firmware or measured coefficients.
+// Semi-implicit motor inertia; memoryless passive friction; output play is
+// an observation surrogate, not a load-bearing gearbox/contact simulation.
+#load "actuator-types.coax";
+#load "locomotion/gaussian-density.coax";
+#load "../../../coax/lib/clip.coax";
+#authority;
+#load "actuator-checks.coax" #test;
+
+rsa_word :: (word:u64,low:f64,high:f64)->RsaStatus #effects(all) {
+  if !rgp_finite(word) {return RsaStatus.number;}
+  value:=f64_from_bits(word);if value<low || value>high {return RsaStatus.range;}return RsaStatus.ok;
+}
+rsa_params :: (p:RsaParams)->RsaStatus #effects(all) {
+  words:=[9]u64.[f64_bits(p.inertia.value),f64_bits(p.kp.value),f64_bits(p.kd.value),f64_bits(p.viscous.value),f64_bits(p.coulomb.value),f64_bits(p.effort.value),f64_bits(p.voltage),f64_bits(p.step.value),f64_bits(p.play.value)];
+  low:=[9]f64.[1e-6,0,0,0,0,1e-6,0,1e-6,0];high:=[9]f64.[100,10000,1000,1000,1000,1000,1,0.1,1];
+  for i:0..<9 {status:=rsa_word(words[i],low[i],high[i]);if status!=RsaStatus.ok {return status;}}
+  if p.delay<0 || p.delay>RSA_DELAY {return RsaStatus.range;}return RsaStatus.ok;
+}
+rsa_feedback :: (position:rpu.Quantity(rpu.Radian,f64),rate:rpu.Quantity(RpdRate,f64),target:rpu.Quantity(rpu.Radian,f64))->RsaStatus #effects(all) {
+  words:=[3]u64.[f64_bits(position.value),f64_bits(rate.value),f64_bits(target.value)];caps:=[3]f64.[100,10000,100];
+  for i:0..<3 {status:=rsa_word(words[i],-caps[i],caps[i]);if status!=RsaStatus.ok {return status;}}return RsaStatus.ok;
+}
+rsa_snapshot :: (s:RsaSnapshot)->RsaStatus #effects(all) {
+  status:=rsa_params(s.params);if status!=RsaStatus.ok {return status;}
+  status=rsa_feedback(s.position,s.rate,s.output_position);if status!=RsaStatus.ok {return status;}
+  if s.output_position.value<s.position.value-s.params.play.value || s.output_position.value>s.position.value+s.params.play.value {return RsaStatus.state;}
+  if s.steps<0 || s.steps>2147483647 || s.cursor<0 {return RsaStatus.state;}
+  if s.params.delay==0 {if s.cursor!=0 {return RsaStatus.state;}}else {if s.cursor>=s.params.delay {return RsaStatus.state;}}
+  for i:0..<RSA_DELAY {
+    status=rsa_word(f64_bits(s.pending[i].value),-100,100);if status!=RsaStatus.ok {return status;}
+    if i>=s.params.delay && s.pending[i].value!=0 {return RsaStatus.state;}
+  }
+  return RsaStatus.ok;
+}
+// Private arithmetic requires the finite boxes admitted by rsa_params/feedback.
+// book:begin actuator-force
+rsa_force_owned :: (p:RsaParams,position:rpu.Quantity(rpu.Radian,f64),rate:rpu.Quantity(RpdRate,f64),target:rpu.Quantity(rpu.Radian,f64))->RsaForce #effects(all) {
+  f:RsaForce;zero:rpu.Quantity(RpdForce,f64);
+  f.proportional=convert_unit(RpdForce,p.kp*(target-position));
+  f.derivative=zero-convert_unit(RpdForce,p.kd*rate);
+  f.requested=f.proportional+f.derivative;f.limit=p.effort*p.voltage;
+  clipped:=scalar_clip_f64(f.requested.value,-f.limit.value,f.limit.value);
+  f.delivered.value=clipped.value;f.clipped=clipped.clipped;
+  direction:=ifx rate.value>0 then 1.0 else ifx rate.value<0 then -1.0 else 0.0;
+  f.passive=(zero-convert_unit(RpdForce,p.viscous*rate))-p.coulomb*direction;
+  f.net=f.delivered+f.passive;return f;
+}
+// book:end actuator-force
+rsa_force :: (p:RsaParams,position:rpu.Quantity(rpu.Radian,f64),rate:rpu.Quantity(RpdRate,f64),target:rpu.Quantity(rpu.Radian,f64),output:[]RsaForce)->RsaStatus #export_c #effects(all) {
+  if output.count!=1 {return RsaStatus.shape;}
+  status:=rsa_params(p);if status!=RsaStatus.ok {return status;}
+  status=rsa_feedback(position,rate,target);if status!=RsaStatus.ok {return status;}
+  output[0]=rsa_force_owned(p,position,rate,target);return RsaStatus.ok;
+}
+rsa_restore :: (candidate:RsaSnapshot,output:[]RsaSnapshot)->RsaStatus #export_c #effects(all) {
+  if output.count!=1 {return RsaStatus.shape;}
+  status:=rsa_snapshot(candidate);if status!=RsaStatus.ok {return status;}output[0]=candidate;return RsaStatus.ok;
+}
+rsa_begin :: (p:RsaParams,position:rpu.Quantity(rpu.Radian,f64),rate:rpu.Quantity(RpdRate,f64),output_position:rpu.Quantity(rpu.Radian,f64),initial_target:rpu.Quantity(rpu.Radian,f64),output:[]RsaSnapshot)->RsaStatus #export_c #effects(all) {
+  if output.count!=1 {return RsaStatus.shape;}
+  status:=rsa_word(f64_bits(initial_target.value),-100,100);if status!=RsaStatus.ok {return status;}
+  s:RsaSnapshot;s.params=p;s.position=position;s.rate=rate;s.output_position=output_position;
+  // Admission precedes indexing a caller-supplied delay.
+  status=rsa_snapshot(s);if status!=RsaStatus.ok {return status;}
+  for i:0..<p.delay {s.pending[i]=initial_target;}
+  output[0]=s;return RsaStatus.ok;
+}
+rsa_step :: (previous:RsaSnapshot,target:rpu.Quantity(rpu.Radian,f64),output:[]RsaStep)->RsaStatus #export_c #effects(all) {
+  if output.count!=1 {return RsaStatus.shape;}
+  status:=rsa_snapshot(previous);if status!=RsaStatus.ok {return status;}
+  status=rsa_word(f64_bits(target.value),-100,100);if status!=RsaStatus.ok {return status;}
+  if previous.steps==2147483647 {return RsaStatus.exhausted;}
+  // book:begin actuator-step
+  a:RsaStep;a.snapshot=previous;a.applied_target=target;p:=previous.params;
+  if p.delay>0 {
+    a.applied_target=previous.pending[previous.cursor];
+    a.snapshot.pending[previous.cursor]=target;
+    a.snapshot.cursor=(previous.cursor+1)%p.delay;
+  }
+  a.force=rsa_force_owned(p,previous.position,previous.rate,a.applied_target);
+  a.acceleration=convert_unit(RpdAcceleration,a.force.net/p.inertia);
+  a.snapshot.rate=previous.rate+convert_unit(RpdRate,p.step*a.acceleration);
+  a.snapshot.position=previous.position+convert_unit(rpu.Radian,p.step*a.snapshot.rate);
+  play:=scalar_clip_f64(previous.output_position.value,a.snapshot.position.value-p.play.value,a.snapshot.position.value+p.play.value);
+  a.snapshot.output_position.value=play.value;
+  a.output_rate=convert_unit(RpdRate,(a.snapshot.output_position-previous.output_position)/p.step);
+  a.snapshot.steps=previous.steps+1;
+  status=rsa_snapshot(a.snapshot);if status!=RsaStatus.ok {return status;}
+  output[0]=a;return RsaStatus.ok;
+// book:end actuator-step
+}

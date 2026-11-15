@@ -2417,6 +2417,21 @@ retain their identities. Trusted coefficient helpers stay source-visible,
 with no orientation/collision/physical command/dynamics or compiler-bounded
 control claim. Existing FK/Jacobian proofs are carried, not broadened.
 
+## Scalar servo steps preserve complete delay and observation-play state
+
+`psionic/lib/robotics/actuator.coax` owns the illustrative
+`scalar-servo-play-f64-v1` CPU map. Requested/limited torque, derivative
+feedback and passive loss remain distinct. Its semi-implicit step stages
+the complete parameter/state/queue/cursor/counter snapshot before final
+admission. Refusal publishes no partial force or consumed target. Output
+play is a separately observable, stateful numerical precursor: it applies
+no load reaction or feedback and is not a mechanical gearbox model.
+The shared finite clamp preserves strict flags and incoming endpoint zero
+bits for Panda, the experiment action map and this servo. Numerical boxes
+do not authorize physical operating limits. No stored checkpoint, measured
+motor, biped/contact or device/timing qualification follows. See
+`docs/verification/robotics-actuator-rb02-2026-11-15.md`.
+
 ## Joint PD keeps active feedback, gravity and actuator saturation explicit
 
 The seven-arm query uses source-range radian current/target coordinates,

@@ -12,12 +12,5 @@ tool_main :: ()->int #export_c #effects(all) {
   if phase!="all" && phase!="native" && phase!="example" {tool_errln("usage: check-experiment-native [all|native|example|wire]");return 2;}
   if phase!="example" {status:=nc_qualify("psionic/tests/robotics/experiment-native.coax","experiment_native_checks");if status!=0 {return status;}}
   if phase=="native" {return 0;}
-  expected:[4096]u8;out:[65536]u8;k:=fs_read("psionic/fixtures/robotics/experiment/example.out",expected[..]);#assert k>0;
-  for mode:0..<2 {
-    command:=[4]string.["coax/bin/coax","run","psionic/examples/robot-experiment.coax","--release"];
-    n:=nc_run(command[0..<3+mode],120,out[..]);
-    if n<0 || k!=n+1 || expected[k-1]!='\n' || cast(string)out[0..<n]!=cast(string)expected[0..<k-1] {tool_errln("robot experiment transcript differs");return 1;}
-    print("robot experiment transcript: release %: passed\n",mode);
-  }
-  return 0;
+  return nc_transcript("psionic/examples/robot-experiment.coax","psionic/fixtures/robotics/experiment/example.out");
 }

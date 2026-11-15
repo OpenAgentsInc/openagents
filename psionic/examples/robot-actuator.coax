@@ -1,0 +1,23 @@
+#import "Basic";
+#load "../lib/robotics/actuator.coax";
+#load "../lib/robotics/actuator-fixtures.coax";
+#load "../lib/robotics/experiment-policy.coax";
+#load "../lib/robotics/experiment-fixtures.coax";
+main :: () {
+  c:=rex_fixture();actions:=[2]f64.[-0.25,-1];targets:[2]RexTarget;
+  #assert rex_map(c,c.embodiment,actions[..],targets[..])==RexStatus.ok;
+  target:rpu.Quantity(rpu.Radian,f64)=targets[0].limited;
+  zero:rpu.Quantity(rpu.Radian,f64);rate:rpu.Quantity(RpdRate,f64);p:=rsa_fixture();snapshot:[1]RsaSnapshot;out:[1]RsaStep;
+  #assert rsa_begin(p,zero,rate,zero,zero,snapshot[..])==RsaStatus.ok && rsa_step(snapshot[0],target,out[..])==RsaStatus.ok;
+  a:=out[0];#assert abs(a.snapshot.position.value-0.00006)<1e-15;
+  print("servo: requested % mNm, delivered % mNm, clipped %\n",cast(int)(a.force.requested.value*1000+0.5),cast(int)(a.force.delivered.value*1000+0.5),ifx a.force.clipped then 1 else 0);
+  print("step: rate % mrad/s, position % urad\n",cast(int)(a.snapshot.rate.value*1000+0.5),cast(int)(a.snapshot.position.value*1000000+0.5));
+  p.delay=2;#assert rsa_begin(p,zero,rate,zero,zero,snapshot[..])==RsaStatus.ok;
+  for i:0..<2 {#assert rsa_step(snapshot[0],target,out[..])==RsaStatus.ok && out[0].applied_target.value==0;snapshot[0]=out[0].snapshot;}
+  saved:=snapshot[0];#assert rsa_restore(saved,snapshot[..])==RsaStatus.ok;
+  #assert rsa_step(snapshot[0],target,out[..])==RsaStatus.ok;
+  print("delay 2: first two targets 0, restored third target % mrad\n",cast(int)(out[0].applied_target.value*1000+0.5));
+  previous:=out[0];bad:=out[0].snapshot;bad.params.inertia.value=-1;
+  refused:=rsa_step(bad,target,out[..]);#assert refused==RsaStatus.range;rsa_same_step(out[0],previous);
+  print("negative inertia: status % (range), output unchanged\n",cast(int)refused);
+}

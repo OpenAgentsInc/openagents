@@ -1,0 +1,35 @@
+// Real IEEE inputs and rational trace observations through the public API.
+#load "../../lib/robotics/actuator.coax";
+#load "../../lib/robotics/actuator-fixtures.coax";
+actuator_native_checks :: ()->int #export_c #effects(all) {
+  rsa_check_reference_traces();
+  poison:=rsa_poison_step();zero:rpu.Quantity(rpu.Radian,f64);v:rpu.Quantity(RpdRate,f64);
+  for bits:[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001,0x7ff0000000000001,0xfff8000000000001] {
+    value:=f64_from_bits(bits);
+    for role:0..<9 {
+      values:=[9]f64.[0.01,2,0,0,0,0.15,1,0.002,0];values[role]=value;p:=rsa_fixture_values(values);
+      out:=[1]RsaStep.[poison];forces:=[1]RsaForce.[poison.force];snap:=[1]RsaSnapshot.[poison.snapshot];bad:RsaSnapshot;bad.params=p;
+      #assert rsa_force(p,zero,v,zero,forces[..])==RsaStatus.number && rsa_begin(p,zero,v,zero,zero,snap[..])==RsaStatus.number;
+      #assert rsa_restore(bad,snap[..])==RsaStatus.number && rsa_step(bad,zero,out[..])==RsaStatus.number;
+      rsa_same_force(forces[0],poison.force);rsa_same_snapshot(snap[0],poison.snapshot);rsa_same_step(out[0],poison);
+    }
+    for role:0..<20 {
+      bad:RsaSnapshot;bad.params=rsa_fixture();bad.params.delay=2;target:=zero;
+      if role==0 {bad.position.value=value;}if role==1 {bad.rate.value=value;}if role==2 {bad.output_position.value=value;}
+      if role>=3 && role<19 {bad.pending[role-3].value=value;}if role==19 {target.value=value;}
+      out:=[1]RsaStep.[poison];snap:=[1]RsaSnapshot.[poison.snapshot];
+      #assert rsa_step(bad,target,out[..])==RsaStatus.number;rsa_same_step(out[0],poison);
+      if role<19 {#assert rsa_restore(bad,snap[..])==RsaStatus.number;rsa_same_snapshot(snap[0],poison.snapshot);}
+    }
+    for role:0..<3 {
+      position:=zero;rate:=v;target:=zero;if role==0 {position.value=value;}if role==1 {rate.value=value;}if role==2 {target.value=value;}
+      forces:=[1]RsaForce.[poison.force];#assert rsa_force(rsa_fixture(),position,rate,target,forces[..])==RsaStatus.number;rsa_same_force(forces[0],poison.force);
+    }
+  }
+  // In/out aliasing uses values, including an already nonempty queue.
+  p:=rsa_fixture();p.delay=2;target:=zero;target.value=0.1;s:[1]RsaSnapshot;o:[1]RsaStep;
+  #assert rsa_begin(p,zero,v,zero,target,s[..])==RsaStatus.ok;
+  #assert rsa_restore(s[0],s[..])==RsaStatus.ok;
+  o[0].snapshot=s[0];#assert rsa_step(o[0].snapshot,target,o[..])==RsaStatus.ok && o[0].applied_target.value==0.1 && o[0].snapshot.steps==1;
+  return 0;
+}

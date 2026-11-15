@@ -136,8 +136,8 @@ as the limited value. Equality at a limit preserves requested signed-zero bits:
   stage:[REX_JOINTS]RexTarget;
   for i:0..<n {
     j:=c.embodiment.joints[i];requested:=j.home+j.scale*(cast(f64)j.sign*actions[i]);
-    limited:=ifx requested<j.low then j.low else ifx requested>j.high then j.high else requested;
-    stage[i]=RexTarget.{joint=j.joint,motor=j.motor,requested=requested,limited=limited,saturated=requested!=limited};
+    clipped:=scalar_clip_f64(requested.value,j.low.value,j.high.value);limited:=requested;limited.value=clipped.value;
+    stage[i]=RexTarget.{joint=j.joint,motor=j.motor,requested=requested,limited=limited,saturated=clipped.clipped};
   }
   for i:0..<n {output[i]=stage[i];}return RexStatus.ok;
 ```

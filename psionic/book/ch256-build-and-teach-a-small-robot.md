@@ -33,8 +33,10 @@ is [257: contract](ch257-a-robot-description-becomes-an-experiment.md),
 [264: physical commissioning](ch264-run-the-policy-on-a-real-robot.md), and
 [265: the final route](ch265-a-course-a-flock-and-a-repeatable-result.md).
 Chapter 257 now implements decoded CPU admission, action mapping and
-identity-bound canonical records. The other chapters remain design drafts until their own checks and
-runnable evidence exist.
+identity-bound canonical records. Chapter 258 implements the illustrative CPU
+scalar servo, including delayed commands, restore and separate output play.
+The other chapters remain design drafts until their own checks and runnable
+evidence exist.
 
 The [coding-agent roadmap](../docs/robotics/microduck-implementation-roadmap.md)
 defines source owners, concrete work packages, dependencies and what an agent

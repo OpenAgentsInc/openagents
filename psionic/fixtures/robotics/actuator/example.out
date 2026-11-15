@@ -1,0 +1,4 @@
+servo: requested 200 mNm, delivered 150 mNm, clipped 1
+step: rate 30 mrad/s, position 60 urad
+delay 2: first two targets 0, restored third target 100 mrad
+negative inertia: status 3 (range), output unchanged

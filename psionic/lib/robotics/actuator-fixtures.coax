@@ -1,0 +1,42 @@
+// Independent fixture inputs and complete field observers, no product equations.
+#load "actuator-types.coax";
+#load "actuator-golden.coax";
+rsa_fixture :: ()->RsaParams #effects(all) {
+  p:RsaParams;p.inertia.value=0.01;p.kp.value=2;p.effort.value=0.15;p.voltage=1;p.step.value=0.002;return p;
+}
+rsa_fixture_values :: (v:[9]f64)->RsaParams #effects(all) {
+  p:RsaParams;p.inertia.value=v[0];p.kp.value=v[1];p.kd.value=v[2];p.viscous.value=v[3];p.coulomb.value=v[4];p.effort.value=v[5];p.voltage=v[6];p.step.value=v[7];p.play.value=v[8];return p;
+}
+rsa_same_snapshot :: (a:RsaSnapshot,b:RsaSnapshot) #effects(all) {
+  av:=[9]f64.[a.params.inertia.value,a.params.kp.value,a.params.kd.value,a.params.viscous.value,a.params.coulomb.value,a.params.effort.value,a.params.voltage,a.params.step.value,a.params.play.value];
+  bv:=[9]f64.[b.params.inertia.value,b.params.kp.value,b.params.kd.value,b.params.viscous.value,b.params.coulomb.value,b.params.effort.value,b.params.voltage,b.params.step.value,b.params.play.value];
+  for i:0..<9 {#assert f64_bits(av[i])==f64_bits(bv[i]);}
+  #assert a.params.delay==b.params.delay && a.cursor==b.cursor && a.steps==b.steps;
+  #assert f64_bits(a.position.value)==f64_bits(b.position.value) && f64_bits(a.rate.value)==f64_bits(b.rate.value) && f64_bits(a.output_position.value)==f64_bits(b.output_position.value);
+  for i:0..<RSA_DELAY {#assert f64_bits(a.pending[i].value)==f64_bits(b.pending[i].value);}
+}
+rsa_force_values :: (f:RsaForce)->[7]f64 #effects(all) {return [7]f64.[f.proportional.value,f.derivative.value,f.requested.value,f.limit.value,f.delivered.value,f.passive.value,f.net.value];}
+rsa_same_force :: (a:RsaForce,b:RsaForce) #effects(all) {
+  av:=rsa_force_values(a);bv:=rsa_force_values(b);for i:0..<7 {#assert f64_bits(av[i])==f64_bits(bv[i]);}#assert a.clipped==b.clipped;
+}
+rsa_poison_step :: ()->RsaStep #effects(all) {
+  s:RsaStep;s.snapshot.params=rsa_fixture();s.snapshot.params.delay=3;s.snapshot.cursor=2;s.snapshot.steps=71;s.snapshot.position.value=0.031;s.snapshot.rate.value= -0.4;s.snapshot.output_position.value=0.03;
+  for i:0..<RSA_DELAY {s.snapshot.pending[i].value=f64(i+1)*0.001;}
+  s.force.proportional.value=1;s.force.derivative.value=2;s.force.requested.value=3;s.force.limit.value=4;s.force.delivered.value=5;s.force.passive.value=6;s.force.net.value=7;s.force.clipped=true;s.applied_target.value=0.125;s.acceleration.value=8;s.output_rate.value=9;return s;
+}
+rsa_same_step :: (a:RsaStep,b:RsaStep) #effects(all) {
+  rsa_same_snapshot(a.snapshot,b.snapshot);rsa_same_force(a.force,b.force);#assert f64_bits(a.applied_target.value)==f64_bits(b.applied_target.value) && f64_bits(a.acceleration.value)==f64_bits(b.acceleration.value) && f64_bits(a.output_rate.value)==f64_bits(b.output_rate.value);
+}
+rsa_check_reference_traces :: () #effects(all) {
+  for scenario:0..<3 {
+    p:=rsa_fixture();if scenario==1 {p.delay=2;p.play.value=0.00005;}if scenario==2 {p.delay=2;p.play.value=0.0001;p.kd.value=0.03;p.viscous.value=0.02;p.coulomb.value=0.001;p.voltage=0.5;}
+    zero:rpu.Quantity(rpu.Radian,f64);v:rpu.Quantity(RpdRate,f64);if scenario==2 {v.value=-0.2;}s:[1]RsaSnapshot;o:[1]RsaStep;#assert rsa_begin(p,zero,v,zero,zero,s[..])==RsaStatus.ok;
+    for row:0..<(ifx scenario==2 then 24 else 16) {
+      reference:[17]f64;if scenario==0 {reference=RSA_REFERENCE_0[row];}if scenario==1 {reference=RSA_REFERENCE_1[row];}if scenario==2 {reference=RSA_REFERENCE_2[row];}
+      target:=zero;target.value=reference[0];#assert rsa_step(s[0],target,o[..])==RsaStatus.ok;
+      a:=o[0];values:=[13]f64.[a.applied_target.value,a.snapshot.position.value,a.snapshot.rate.value,a.snapshot.output_position.value,a.output_rate.value,a.force.proportional.value,a.force.derivative.value,a.force.requested.value,a.force.limit.value,a.force.delivered.value,a.force.passive.value,a.force.net.value,a.acceleration.value];
+      for i:0..<13 {#assert abs(values[i]-reference[i+1])<=2e-12+2e-12*abs(reference[i+1]);}
+      #assert a.force.clipped==(reference[14]==1) && a.snapshot.cursor==cast(int)reference[15] && a.snapshot.steps==cast(int)reference[16];s[0]=a.snapshot;
+    }
+  }
+}

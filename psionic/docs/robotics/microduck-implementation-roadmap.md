@@ -1,20 +1,27 @@
 # Implementing the small-robot pipeline in Psionic
 
 **Date:** November 15, 2026. **Status:** coding-agent implementation brief.
-Design baseline: `5ed34eedcb`. RB-00 and the complete RB-01 CPU query/record profile now have
-source and CPU component evidence. The remaining packages are plans; no
+Design baseline: `5ed34eedcb`. RB-00, the complete RB-01 CPU query/record
+profile and RB-02 scalar actuator now have source and CPU component evidence.
+The remaining packages are plans; no
 hardware authorization or purchase is recorded here.
 
 Start with [chapter 256](../../book/ch256-build-and-teach-a-small-robot.md) and
 the [pipeline specification](../../../docs/nvidia/microduck-pipeline-2026-11-15.md).
-Chapter 257 now runs the decoded query. Chapters 258–265 draft the calculations,
+Chapters 257–258 now run the contract and scalar servo. Chapters 259–265 draft
+the calculations,
 boundaries, refusals and outcomes still to implement. RB numbers below are work-package
 labels, not published protocol IDs or newly created GitHub issues.
 
 ## What an agent should implement first
 
-Continue **RB-02** next: the requested/limited actuator force, explicit delay
-state and independently checked scalar motion profile. RB-01a and RB-01b now
+Continue **RB-03** next: the bounded analytic-plant collector and frozen/staged
+normalizer lifecycle. RB-02 implements requested/limited actuator force,
+explicit delay/restore and independently checked scalar motion, with
+illustrative passive loss, voltage scaling and a separate observation-play
+precursor; its [contract](actuator-contract-rb02.md) and
+[receipt](../../../docs/verification/robotics-actuator-rb02-2026-11-15.md) state
+that CPU boundary. RB-01a and RB-01b now
 implement decoded admission, action mapping and a registered identity-bound
 RXE1 record with one codec. Preserve its expected-embodiment comparison,
 quantity semantics and canonical active-record encoding. The
@@ -24,7 +31,7 @@ and [record receipt](../../../docs/verification/robotics-experiment-wire-2026-11
 state that CPU component boundary. Do not begin with a new simulator, a large
 model, an online asset fetcher or an experiment on motors.
 
-Then deliver RB-02 and RB-03 against independent scalar/analytic fixtures.
+Deliver RB-03 against independent analytic fixtures.
 Build vector policy scores and the shared neural update in RB-04/05, and
 train on the existing owned oscillator in RB-06. This produces a complete
 new neural actor/critic training route while the general biped articulation
@@ -164,9 +171,11 @@ sharp `#authority` checks and a registered suite. No XML importer or hardware.
 
 ## RB-02: actuator response and delay
 
-**Chapter 258. Dependencies:** RB-01. Proposed units under
-`psionic/lib/robotics/actuator-*.coax`, sharing or extracting appropriate
-existing pure force/query helpers.
+**Chapter 258. Dependencies:** RB-01. Implemented CPU component:
+`psionic/lib/robotics/actuator.coax` and its type/check/fixture companions,
+using the extracted shared `coax/lib/clip.coax` primitive. Its illustrative
+`scalar-servo-play-f64-v1` profile is qualified; physical identification and
+mechanical gearbox fidelity remain later work.
 
 Split into requested/limited force, explicit delay state and later identified
 friction/voltage/backlash profiles. The initial torque/inertia/delay fixture
@@ -394,8 +403,11 @@ Register the actual suite before using a future path in a command. For
 example, after RB-01 exists and is registered, the targeted remote pattern is:
 
 ```shell
-coax/remote/remote.sh run -- coax/remote/check.sh only psionic/lib/robotics/experiment-policy.coax origin/main
+coax/remote/remote.sh run -- bash psionic/check.sh --only robotics/experiment-policy
 ```
+
+Psionic uses its dedicated dispatcher: generic `check.sh only` currently
+selects no Psionic suite and its empty pass is not evidence.
 
 Use targeted native/debug/release/sanitizer and independent fixture checks
 through their existing dispatchers on the build hosts. Mutation covers the
@@ -416,5 +428,5 @@ regenerate chapter 250's matrix if needed, then run the structural book check.
 Rebase onto current main before final verification, commit only the slice's
 files with model/Agent trailers and push through the tracked hooks.
 
-The next agent can start RB-01 immediately. Later physical owner actions do
+The next agent can start RB-03 immediately. Later physical owner actions do
 not block the pure contract, numerical, collector or neural-training work.

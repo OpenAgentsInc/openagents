@@ -25,3 +25,14 @@ nc_qualify :: (source:string,entry:string)->int {
   }
   #assert fs_remove(dir);return 0;
 }
+// Exact evaluator transcript in both modes; the runner strips one trailing LF.
+nc_transcript :: (source:string,fixture:string)->int {
+  expected:[65536]u8;out:[65536]u8;k:=fs_read(fixture,expected[..]);#assert k>0;
+  for mode:0..<2 {
+    command:=[4]string.["coax/bin/coax","run",source,"--release"];
+    n:=nc_run(command[0..<3+mode],120,out[..]);
+    if n<0 || k!=n+1 || expected[k-1]!='\n' || cast(string)out[0..<n]!=cast(string)expected[0..<k-1] {tool_errln("example transcript differs");return 1;}
+    print("example transcript: %, release %: passed\n",source,mode);
+  }
+  return 0;
+}
