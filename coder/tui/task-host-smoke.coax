@@ -4,6 +4,35 @@
 #load "../../coax/lib/agent/environment/task-input.coax";
 #load "../../coax/lib/agent/environment/task-wire.coax";
 #load "../../coax/lib/agent/router/wire.coax";
+#load "../../coax/lib/agent/environment/transcript-client.coax";
+
+sm_transcript_call :: (s:[]Sm,rp:[]Rp,key:string,grant:string,epoch:string,q:XhRequest) #effects(all) {
+ packet:[1024]u8;n:=xh_request_write(q,packet[..]);p:[1200]u8;file:=sm_in_tmp(s,"transcript-request.json",p[..]);
+ if n<1 || !fs_write(file,cast(string)packet[0..<n]) {rp[0].status= -1;rp[0].ok=false;return;}
+ sm_execution(s,rp,key,grant,epoch,file);
+}
+// A separate client reconnects through the real signed broker, never the
+// resident's private filesystem or the status reply used by the control test.
+sm_task_transcript :: (s:[]Sm,key:string,grant:string,epoch:string,task:string,read:string,state:int,tool:string) #effects(all) {
+ client:[1]XhClient;bytes:[65536]u8;rp:[1]Rp;arena:[XH_ARENA]u8;
+ if !xh_client_init(client[..],sm_key(s),task,"88888888888888888888888888888888",read,bytes[..]) {sm_check(s,false,"the transcript client has a valid task identity");return;}
+ count:=0;good:=true;
+ while !client[0].done && count<16 {
+  q:=xh_client_request(client[..]);sm_transcript_call(s,rp[..],key,grant,epoch,q);
+  good=rp[0].status==0 && xh_client_page(client[..],sm_text(rp[..]),cxproc_wall_us()/1000,arena[..]);if !good {break;}
+  if count==0 {saved:=client[0].n;sm_transcript_call(s,rp[..],key,grant,epoch,q);good=rp[0].status==0 && xh_client_page(client[..],sm_text(rp[..]),cxproc_wall_us()/1000,arena[..]) && client[0].n==saved;if !good {break;}}
+  count+=1;
+ }
+ sm_check(s,good && client[0].done,"signed HOST transcript pages reconstruct one hash-verified capture across retries");if !good || !client[0].done {sm_out(sm_text(rp[..]));return;}
+ session:[1]Session;pool:[65536]u8;decode:[65536]u8;good=xh_client_session(client[..],session[..],pool[..],decode[..]);
+ sm_check(s,good && client[0].capture[0].status.state==state && session[0].live== !xt_terminal(state) && (session[0].asking>=0)==(state==XT_WAITING),"the recovered transcript uses captured lifecycle and held permission state");if !good {return;}
+ if tool!="" {found:=false;for i:0..<session[0].n {p:=session[0].parts[i];if p.kind==P_TOOL && p.id==tool && p.resolved==(state==XT_COMPLETED) && p.input.count>0 {found=true;}}
+  sm_check(s,found,"the recovered tool retains its exact call ID, full input and actual resolution");
+ }
+ if state==XT_COMPLETED && tool=="toolu_standin91" {found:=false;for i:0..<session[0].n {p:=session[0].parts[i];if p.kind==P_TOOL && p.id==tool && p.input=="{\"file_path\":\"note.txt\",\"content\":\"hi\"}" && p.output=="written" {found=true;}}
+  sm_check(s,found && sm_has(cast(string)bytes[0..<client[0].n],"consumed its correlated tool result"),"the completed Claude transcript retains full call/result bytes and its continuation");
+ }
+}
 
 sm_task_call :: (s:[]Sm,rp:[]Rp,key:string,grant:string,epoch:string,q:XtRequest) #effects(all) {
  packet:[XT_REQUEST_MAX]u8;n:=xt_request_write(q,packet[..]);p:[1200]u8;file:=sm_in_tmp(s,"task-request.json",p[..]);
@@ -74,6 +103,7 @@ tool_main :: ()->int #export_c #effects(all) {
   sm_check(s,rp[0].status==0,"StartTask commits one owned task through the real resident");if rp[0].status!=0 {sm_out(sm_text(rp[..]));return 2;}
   sm_task_call(s,rp[..],key,grant,epoch,start);sm_check(s,rp[0].status==0 && rp_kind(rp[..],"replay")==JV_TRUE,"retrying Start reconciles without a second native prompt");
   wanted:=ifx scenario==2 then "running" else "waiting";reached:=sm_task_wait(s,rp[..],key,grant,epoch,id,wanted);sm_check(s,reached,"the shared native engine reaches its actual running/permission state");if !reached {return 1;}
+  if scenario==0 || scenario==4 {sm_task_transcript(s,key,grant,epoch,id,id,XT_WAITING,ifx scenario==0 then "toolu_standin91" else "patch-1");}
   note_file_path:[1200]u8;note_file:=fs_join(workspace,"note.txt",note_file_path[..]);
   if scenario<2 || scenario>=4 {
    sm_check(s,!fs_exists(note_file),"no file effect occurs before an actual permission answer");
@@ -85,6 +115,7 @@ tool_main :: ()->int #export_c #effects(all) {
    answer.interaction=interaction;sm_task_call(s,rp[..],key,grant,epoch,answer);sm_check(s,rp[0].status==0,"the exact native permission is answered through signed HOST");
    sm_task_call(s,rp[..],key,grant,epoch,answer);sm_check(s,rp[0].status==0 && rp_kind(rp[..],"replay")==JV_TRUE,"replayed permission commands observe their durable receipt");
    sm_check(s,sm_task_wait(s,rp[..],key,grant,epoch,id,"completed"),"the native tool result is followed by a completed continuation");
+   if scenario==0 || scenario==4 {sm_task_transcript(s,key,grant,epoch,id,commands[scenario],XT_COMPLETED,ifx scenario==0 then "toolu_standin91" else "patch-1");}
    sm_check(s,fs_exists(note_file)==accepted,"Allow writes the actual file and Deny leaves it absent");
    if scenario==0 {captured_path:[1200]u8;captured:=sm_in_tmp(s,"provider-notes.jsonl.prompt",captured_path[..]);seen:[16384]u8;seen_n:=fs_read(captured,seen[..]);
     sm_check(s,seen_n==XT_CONTEXT_HEADER.count+size && cast(string)seen[XT_CONTEXT_HEADER.count..<ifx seen_n>XT_CONTEXT_HEADER.count then seen_n else XT_CONTEXT_HEADER.count]==cast(string)raw[0..<size],"the actual native prompt retains instructions, knowledge and all history bytes");
@@ -95,16 +126,19 @@ tool_main :: ()->int #export_c #effects(all) {
    stop:=XtRequest.{method="StopTask",task=id,command="cccccccccccccccccccccccccccccccc",issued=now,expires=b.expires};sm_task_call(s,rp[..],key,grant,epoch,stop);
    sm_check(s,rp[0].status==0 && rp_kind(rp[..],"stop_requested")==JV_TRUE,"Stop retains its request separately from the native outcome");
    sm_check(s,sm_task_wait(s,rp[..],key,grant,epoch,id,"canceled"),"an explicit native aborted-streaming result confirms interruption");
+   sm_task_transcript(s,key,grant,epoch,id,stop.command,XT_CANCELED,"");
   }else {
    sm_stop(serve);serve=sm_serve(s,serve_args[..]);sm_task_call(s,rp[..],key,grant,epoch,start);
    sm_check(s,rp[0].status==0 && rp_kind(rp[..],"replay")==JV_TRUE && rp_is(rp[..],"state","unknown") && rp_is(rp[..],"error_code","resident_restarted"),"after owner loss Start observes uncertainty and never automatically repeats work");
    sm_check(s,!fs_exists(note_file),"a pending permission cannot write after resident restart");
+   sm_task_transcript(s,key,grant,epoch,id,id,XT_UNKNOWN,"toolu_standin91");
   }
  }
  provider_log:[65536]u8;counted:=fs_read(notes,provider_log[..]);sm_check(s,counted>0 && sm_task_count(cast(string)provider_log[0..<ifx counted>0 then counted else 0],"\"task_started\":true")==4,"actual Claude prompt count stays four across Start retries and restart replay");
  codex_log:[65536]u8;counted=fs_read(sm_in_tmp(s,"codex-provider.jsonl",codex_notes_path[..]),codex_log[..]);sm_check(s,counted>0 && sm_task_count(cast(string)codex_log[0..<ifx counted>0 then counted else 0],"\"method\":\"turn/start\"")==2,"actual Codex turn/start count stays two across retries");
  forget:=[2]string.["forget",device];sm_host(s,rp[..],forget[..]);sm_check(s,rp[0].status==0,"the operator revokes the task's actual enrollment");
  read:=XtRequest.{method="ReadTask",task=ids[5]};sm_task_call(s,rp[..],key,grant,epoch,read);sm_check(s,rp[0].status==4,"a revoked enrollment cannot read retained task status");
+ tq:=XhRequest.{task=ids[5],reader="88888888888888888888888888888888",read=ids[5]};sm_transcript_call(s,rp[..],key,grant,epoch,tq);sm_check(s,rp[0].status==4,"a revoked enrollment cannot read retained transcript bytes");
  sm_out("Task HOST checks: ");out:[32]u8;sm_out(sm_itoa(s[0].checks,out[..]));sm_out("; failed: ");sm_out(sm_itoa(s[0].fails,out[..]));sm_out("\n");
  sm_out("Evidence: ");sm_out(sm_tmp(s));sm_out("\n");return ifx s[0].fails==0 then 0 else 1;
 }

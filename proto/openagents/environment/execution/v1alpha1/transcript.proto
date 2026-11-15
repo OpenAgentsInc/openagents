@@ -1,0 +1,34 @@
+syntax = "proto3";
+package openagents.environment.execution.v1alpha1;
+import "openagents/environment/execution/v1alpha1/task.proto";
+
+// A read stream owns one leased immutable capture. A fresh read_id at offset
+// zero supersedes that reader's previous capture, without affecting the task.
+message TranscriptRequest {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.transcript-request.v1alpha1
+  string method = 2 [json_name="method"]; // ReadTaskTranscript
+  string task_id = 3 [json_name="task_id"];
+  string reader_id = 4 [json_name="reader_id"];
+  string read_id = 5 [json_name="read_id"];
+  string sha256 = 6 [json_name="sha256"]; // empty only on the initial offset-zero request
+  int64 offset = 7 [json_name="offset"];
+}
+// Also the private cache metadata. status is a primary TaskStatus observation,
+// with empty command_id and replay=false, captured with retained content.
+message TranscriptCapture {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.transcript-capture.v1alpha1
+  string reader_id = 2 [json_name="reader_id"];
+  string read_id = 3 [json_name="read_id"];
+  TaskStatus status = 4 [json_name="status"];
+  string sha256 = 5 [json_name="sha256"];
+  int64 bytes = 6 [json_name="bytes"];
+  int64 expires_at_ms = 7 [json_name="expires_at_ms"];
+}
+message TranscriptPage {
+  string schema = 1 [json_name="schema"]; // openagents.environment.execution.transcript-page.v1alpha1
+  TranscriptCapture capture = 2 [json_name="capture"];
+  int64 offset = 3 [json_name="offset"];
+  int64 next_offset = 4 [json_name="next_offset"];
+  bool complete = 5 [json_name="complete"]; // all capture bytes, not task completion
+  string text = 6 [json_name="text"]; // exact UTF-8 bytes from the primary session-log codec
+}

@@ -1,0 +1,24 @@
+// Exact owned descriptor/JSON bytes; content itself retains session-log's codec.
+#load "transcript-wire.coax";
+#load "../../crypto/sha256-kernel.coax";
+#load "../../proto/importer.coax";
+#load "../../proto/golden-keys.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ pb:[65536]u8;n:=fs_read("proto/descriptors/environment-execution.pb",pb[..]);g:[1]PkDescriptor;if n<1 || pk_load(g[..],cast(string)pb[0..<n])!="" {return 2;}
+ file:[32768]u8;fn:=fs_read("proto/coder/environment-transcript-v1alpha1.json",file[..]);d:[1]Jv;nodes:[2048]JvNode;if fn<1 || !jv_parse(d[..],cast(string)file[0..<fn],nodes[..]) {return 2;}
+ for name,i:[5]string.["read","continue","capture","first","last"] {
+  raw:[XH_PAGE_MAX]u8;o:[1]Jo;jo_start(o[..],raw[..]);jv_write(d[0],jv_get(d[0],0,name),o[..]);text:=jo_text(o[..]);fields:[512]JvNode;
+  message:=ifx i<2 then ".openagents.environment.execution.v1alpha1.TranscriptRequest" else ifx i==2 then ".openagents.environment.execution.v1alpha1.TranscriptCapture" else ".openagents.environment.execution.v1alpha1.TranscriptPage";
+  why:=pk_text_keys(g[0].state[..],message,text,true,false,fields[..]);if why!="" {print("FAIL transcript descriptor %: %\n",name,why);return 1;}
+  encoded:[XH_PAGE_MAX]u8;arena:[XH_ARENA]u8;made:= -1;
+  if i<2 {q:[1]XhRequest;if !xh_request_read(text,q[..],arena[..]) {return 1;}made=xh_request_write(q[0],encoded[..]);}
+  else if i==2 {q:[1]XhCapture;if !xh_capture_read(text,q[..],arena[..]) {return 1;}made=xh_capture_write(q[0],encoded[..]);}
+  else {q:[1]XhPage;if !xh_page_read(text,q[..],arena[..]) {return 1;}made=xh_page_write(q[0],encoded[..]);}
+  if made!=text.count || cast(string)encoded[0..<ifx made>0 then made else 0]!=text {print("FAIL transcript canonical bytes: %\n",name);return 1;}
+ }
+ // An independent fixture digest binds Unicode bytes and actual newlines.
+ bytes:="{\"kind\":\"user\",\"text\":\"café\"}\n";hash:[64]u8;if !S_hex(S_hash(bytes),hash[..]) || jv_raw(d[0],jv_path(d[0],0,"capture.sha256"))!=cast(string)hash[..] {return 1;}
+ print("Transcript requests, captures and pages match descriptors and exact bytes; complete UTF8 log SHA256 agrees\n");return 0;
+}

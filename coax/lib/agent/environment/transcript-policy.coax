@@ -1,0 +1,72 @@
+// Leased inert capture/page admission. The task owner supplies current grants.
+// coax/bin/coax test coax/lib/agent/environment/transcript-policy.coax --library
+#load "task-wire.coax";
+#authority;
+XH_LOG_MAX :: 4194304; XH_CHUNK_MAX :: 16384;
+XH_READERS :: 16; XH_GRANT_READERS :: 4; XH_BYTES :: 67108864; XH_LEASE :: 30000;
+XhRequest :: struct {task:string;reader:string;read:string;hash:string;offset:int;}
+XhCapture :: struct {reader:string;read:string;status:XtStatus;hash:string;bytes:int;expires:int;}
+XhPage :: struct {capture:XhCapture;offset:int;next:int;complete:bool;text:string;}
+
+#test "transcript identities and continuation hashes cannot silently choose another stream" {
+ q:=XhRequest.{task=EX_TEST_ID,reader=EX_TEST_ID,read=EX_TEST_ID};#assert xh_request_valid(q);
+ q.offset=1;#assert !xh_request_valid(q);q.hash=EX_TEST_HASH;#assert xh_request_valid(q);
+ q.offset=XH_LOG_MAX;#assert xh_request_valid(q);q.offset+=1;#assert !xh_request_valid(q);q.offset= -1;#assert !xh_request_valid(q);
+ q.offset=0;q.task="bad";#assert !xh_request_valid(q);q.task=EX_TEST_ID;q.reader="bad";#assert !xh_request_valid(q);q.reader=EX_TEST_ID;q.read="bad";#assert !xh_request_valid(q);q.read=EX_TEST_ID;q.hash="bad";#assert !xh_request_valid(q);
+}
+#test "capture lifecycle metadata is an actual read observation and has bounded retention" {
+ c:=XhCapture.{reader=EX_TEST_ID,read=EX_TEST_ID,status=XtStatus.{binding=ex_test_binding(),state=XT_RUNNING,revision=1,updated=1},hash=EX_TEST_HASH,expires=1};
+ #assert xh_capture_valid(c);c.bytes=XH_LOG_MAX;#assert xh_capture_valid(c);c.bytes+=1;#assert !xh_capture_valid(c);c.bytes= -1;#assert !xh_capture_valid(c);c.bytes=0;
+ c.expires=9007199254740991;#assert xh_capture_valid(c);c.expires+=1;#assert !xh_capture_valid(c);c.expires=0;#assert !xh_capture_valid(c);c.expires=1;
+ c.status.command=EX_TEST_ID;#assert !xh_capture_valid(c);c.status.command="";c.status.replay=true;#assert !xh_capture_valid(c);c.status.replay=false;c.status.revision=0;#assert !xh_capture_valid(c);
+ c.status.revision=1;c.reader="bad";#assert !xh_capture_valid(c);c.reader=EX_TEST_ID;c.read="bad";#assert !xh_capture_valid(c);c.read=EX_TEST_ID;c.hash="bad";#assert !xh_capture_valid(c);
+}
+#test "capture continuations pin every identity and refuse expiry and changed hashes" {
+ q:=XhRequest.{task=EX_TEST_ID,reader=EX_TEST_ID,read=EX_TEST_ID};c:=XhCapture.{reader=q.reader,read=q.read,status=XtStatus.{binding=ex_test_binding(),state=XT_RUNNING,revision=1,updated=1},hash=EX_TEST_HASH,bytes=10,expires=100};
+ #assert xh_match(q,c,1) && xh_match(q,c,100) && !xh_match(q,c,101) && !xh_match(q,c,0);
+ q.hash=EX_TEST_HASH;q.offset=10;#assert xh_match(q,c,1);q.offset=11;#assert !xh_match(q,c,1);q.offset=0;
+ q.task="11111111111111111111111111111111";#assert !xh_match(q,c,1);q.task=EX_TEST_ID;q.reader=q.task[0..<31];#assert !xh_match(q,c,1);q.reader=EX_TEST_ID;q.read="11111111111111111111111111111111";#assert !xh_match(q,c,1);q.read=EX_TEST_ID;q.hash="1111111111111111111111111111111111111111111111111111111111111111";#assert !xh_match(q,c,1);
+ q.hash=EX_TEST_HASH;q.offset= -1;#assert !xh_match(q,c,1);q.offset=0;c.status.replay=true;#assert !xh_match(q,c,1);
+}
+#test "capture identity includes the complete immutable task binding" {
+ a:=ex_test_binding();b:=a;#assert ex_binding_same(a,b);b.model="other";#assert !ex_binding_same(a,b);b=a;b.effort="xxxx";#assert !ex_binding_same(a,b);b=a;b.task="bad";#assert !ex_binding_same(a,b);b=a;a.task="bad";#assert !ex_binding_same(a,b);b=a;#assert !ex_binding_same(a,b);
+}
+#test "ephemeral reader admission accounts for every reader and retained byte" {
+ #assert xh_room(0,0,0,0,false) && xh_room(XH_READERS-1,XH_GRANT_READERS-1,XH_BYTES-XH_LOG_MAX,XH_LOG_MAX,false);
+ #assert !xh_room(XH_READERS,0,0,0,false) && !xh_room(0,XH_GRANT_READERS,0,0,false);
+ #assert !xh_room(-1,0,0,0,false) && !xh_room(0,-1,0,0,false) && !xh_room(0,0,-1,0,false) && !xh_room(0,0,0,-1,false);
+ #assert !xh_room(0,0,XH_BYTES,1,false) && !xh_room(0,0,0,XH_LOG_MAX+1,false) && !xh_room(0,0,0,0,true);
+ #assert xh_deadline(1)==30001 && xh_deadline(9007199254710991)==9007199254740991 && xh_deadline(0)==0 && xh_deadline(9007199254710992)==0;
+ #assert xh_reclaim(false,0,1) && xh_reclaim(true,10,11) && !xh_reclaim(true,10,10) && !xh_reclaim(true,10,9) && !xh_reclaim(false,0,0);
+ #assert xh_fresh(XhRequest.{task=EX_TEST_ID,reader=EX_TEST_ID,read=EX_TEST_ID});#assert !xh_fresh(XhRequest.{task=EX_TEST_ID,reader=EX_TEST_ID,read=EX_TEST_ID,hash=EX_TEST_HASH});
+ #assert !xh_fresh(XhRequest.{task="bad",reader=EX_TEST_ID,read=EX_TEST_ID});
+}
+#test "pages are exact contiguous UTF8 bytes and final never means task completed" {
+ c:=XhCapture.{reader=EX_TEST_ID,read=EX_TEST_ID,status=XtStatus.{binding=ex_test_binding(),state=XT_RUNNING,revision=1,updated=1},hash=EX_TEST_HASH,bytes=3,expires=1};
+ p:=XhPage.{capture=c,offset=0,next=3,complete=true,text="x\nq"};#assert xh_page_valid(p);
+ p.next=2;#assert !xh_page_valid(p);p.next=3;p.complete=false;#assert !xh_page_valid(p);p.complete=true;p.offset= -1;#assert !xh_page_valid(p);p.offset=0;
+ p.capture.status.replay=true;#assert !xh_page_valid(p);p.capture.status.replay=false;
+ p.offset= -1;p.next=2;p.complete=false;#assert !xh_page_valid(p);p.offset=0;p.text="xy";p.next=1;#assert !xh_page_valid(p);p.next=2;p.capture.bytes=1;#assert !xh_page_valid(p);p.capture.bytes=3;
+ p.text="";p.next=0;p.complete=false;#assert !xh_page_valid(p);p.capture.bytes=0;p.complete=true;#assert xh_page_valid(p);
+ p.capture.bytes=2;p.text="xy";p.next=2;#assert xh_page_valid(p);p.text="x ";#assert xh_page_valid(p);p.text="x\t";#assert !xh_page_valid(p);nul:=[2]u8.['x',0];p.text=cast(string)nul[..];#assert !xh_page_valid(p);nul[1]=255;p.text=cast(string)nul[..];#assert !xh_page_valid(p);
+ long:[XH_CHUNK_MAX+1]u8;for i:0..<long.count {long[i]='x';}p.capture.bytes=long.count;p.text=cast(string)long[..];p.next=long.count;#assert !xh_page_valid(p);p.text=cast(string)long[0..<XH_CHUNK_MAX];p.next=XH_CHUNK_MAX;p.complete=false;#assert xh_page_valid(p);
+}
+#test "broker replies correlate the requested host, offset and pinned capture" {
+ q:=XhRequest.{task=EX_TEST_ID,reader=EX_TEST_ID,read=EX_TEST_ID};c:=XhCapture.{reader=q.reader,read=q.read,status=XtStatus.{binding=ex_test_binding(),state=XT_RUNNING,revision=1,updated=1},hash=EX_TEST_HASH,bytes=2,expires=100};p:=XhPage.{capture=c,offset=0,next=1,text="x"};
+ #assert xh_reply(q,p,EX_TEST_HASH,1) && !xh_reply(q,p,"other",1) && !xh_reply(q,p,EX_TEST_HASH,101);
+ p.offset=1;p.next=2;p.complete=true;#assert !xh_reply(q,p,EX_TEST_HASH,1);p.offset=0;p.next=1;p.complete=false;p.capture.status.replay=true;#assert !xh_reply(q,p,EX_TEST_HASH,1);
+}
+
+xh_request_valid :: (q:XhRequest)->bool #effects(all) {return ea_id(q.task,32) && ea_id(q.reader,32) && ea_id(q.read,32) && q.offset>=0 && q.offset<=XH_LOG_MAX && (ea_id(q.hash,64) || (q.hash=="" && q.offset==0));}
+xh_capture_valid :: (c:XhCapture)->bool #effects(all) {return ea_id(c.reader,32) && ea_id(c.read,32) && xt_status_valid(c.status) && c.status.command=="" && !c.status.replay && ea_id(c.hash,64) && c.bytes>=0 && c.bytes<=XH_LOG_MAX && c.expires>0 && c.expires<=9007199254740991;}
+xh_match :: (q:XhRequest,c:XhCapture,now:int)->bool #effects(all) {return xh_request_valid(q) && xh_capture_valid(c) && now>0 && now<=c.expires && q.task==c.status.binding.task && q.reader==c.reader && q.read==c.read && q.offset<=c.bytes && (q.hash==c.hash || (q.hash=="" && q.offset==0));}
+xh_room :: (readers:int,grant_readers:int,bytes:int,added:int,incomplete:bool)->bool #effects(all) {return readers>=0 && readers<XH_READERS && grant_readers>=0 && grant_readers<XH_GRANT_READERS && bytes>=0 && added>=0 && added<=XH_LOG_MAX && bytes<=XH_BYTES-added && !incomplete;}
+xh_deadline :: (now:int)->int #effects(all) {return ifx now>0 && now<=9007199254710991 then now+XH_LEASE else 0;}
+xh_reclaim :: (valid:bool,expires:int,now:int)->bool #effects(all) {return now>0 && (!valid || expires<now);}
+xh_fresh :: (q:XhRequest)->bool #effects(all) {return xh_request_valid(q) && q.offset==0 && q.hash=="";}
+xh_page_valid :: (p:XhPage)->bool #effects(all) {
+ if !xh_capture_valid(p.capture) || p.offset<0 || p.offset>p.capture.bytes || p.text.count>XH_CHUNK_MAX || !js_utf8(p.text) {return false;}
+ for c:p.text {if c<32 && c!='\n' {return false;}}
+ return p.next==p.offset+p.text.count && p.next<=p.capture.bytes && p.complete==(p.next==p.capture.bytes) && (p.complete || p.next>p.offset);
+}
+xh_reply :: (q:XhRequest,p:XhPage,host:string,now:int)->bool #export_c #effects(all) {return xh_page_valid(p) && xh_match(q,p.capture,now) && p.offset==q.offset && p.capture.status.binding.host==host;}

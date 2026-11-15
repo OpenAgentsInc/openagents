@@ -2,6 +2,7 @@
 // transport. Persist the primary TaskRequest before sending any control.
 #load "../../coax/lib/agent/environment/task-client-policy.coax";
 #load "../../coax/lib/sys/clock.coax";
+#load "task-transcript.coax";
 
 tasks_usage :: () {
  print("%\n","Native tasks (login first):");
@@ -9,6 +10,8 @@ tasks_usage :: () {
  print("%\n","  tasks stop HOST_PUBKEY TASK_ID --command-file FILE");
  print("%\n","  tasks approve|deny HOST_PUBKEY TASK_ID --rev N --interaction ID --command-file FILE");
  print("%\n","  tasks retry HOST_PUBKEY --file FILE   resend the original retained control");
+ print("%\n","  tasks transcript HOST_PUBKEY TASK_ID --out FILE   verified complete native session log");
+ print("%\n","  tasks transcript-page HOST_PUBKEY TASK_ID --reader-id ID --read-id ID [--sha256 HASH --after N]");
  print("%\n","  Controls save a private command file before HTTP. Repeat with the same file/inputs after a lost reply.");
 }
 // Lock the receipt across read/create. Reusing it preserves command identity,
@@ -28,6 +31,7 @@ tcli_intent :: (a:[]Args,verb:string,task:string,out:[]u8)->int {
  _:=fs_unlock();return n;
 }
 tasks_main :: (a:[]Args,r:[]Rep,profile:string,verb:string)->int {
+ if verb=="transcript" || verb=="transcript-page" {return ttcli_main(a,r,profile,verb,positional(a,2),positional(a,3));}
  host:=positional(a,2);task:=positional(a,3);if !ea_id(host,64) {return fail(r,EXIT_USAGE,"expected the enrolled computer's 64-character host public key");}
  path:[256]u8;body:[4096]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],"/api/chat/task/v1alpha1?host=");jo_put(o[..],host);n:=0;post:=verb!="show";
  if !post {if !ea_id(task,32) {return fail(r,EXIT_USAGE,"expected a 32-character task ID");}jo_put(o[..],"&task=");jo_put(o[..],task);}

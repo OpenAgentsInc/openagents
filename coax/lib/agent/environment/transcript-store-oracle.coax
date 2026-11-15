@@ -1,0 +1,46 @@
+// Real filesystem/capture observations; no relay, credentials or model effects.
+#load "transcript-store.coax";
+#load "store-oracle.coax";
+xh_o_id :: (n:int,out:[]u8)->string #effects(all) {for i:0..<out.count {out[i]='0';}digits:="0123456789abcdef";out[out.count-1]=digits[n];return cast(string)out;}
+tool_main :: ()->int #export_c #effects(all) {
+ o:[1]ExpOracle;fixture:[32768]u8;fn:=fs_read("proto/coder/environment-transcript-v1alpha1.json",fixture[..]);doc:[1]Jv;nodes:[2048]JvNode;if fn<1 || !jv_parse(doc[..],cast(string)fixture[0..<fn],nodes[..]) {return 2;}
+ raw:[XH_META_MAX]u8;jo:[1]Jo;jo_start(jo[..],raw[..]);jv_write(doc[0],jv_path(doc[0],0,"capture.status"),jo[..]);status:[1]XtStatus;sa:[2048]u8;if !xt_status_read(jo_text(jo[..]),status[..],sa[..]) {return 2;}
+ tmp:[FS_PATH_MAX]u8;temp:=fs_temp("oa-task-transcripts-",tmp[..]);rp:[FS_PATH_MAX]u8;root:=fs_join(temp,"captures",rp[..]);sp:[FS_PATH_MAX]u8;source:=fs_join(temp,"session.jsonl",sp[..]);
+ session:[1]Session;pool:[600000]u8;s_init(session[..],pool[..]);body:[20000]u8;header:="{\"kind\":\"user\",\"text\":\"";before:=XH_CHUNK_MAX-1-header.count;for i:0..<before {body[i]='x';}body[before]=195;body[before+1]=169;s_user(session[..],cast(string)body[0..<before+2]);
+ content:[600000]u8;n:=sl_lines_checked(session[..],0,session[0].n,false,content[..]);if n<1 || !fs_replace_durable(source,cast(string)content[0..<n]) {return 2;}old_hash:[64]u8;_=S_hex(S_hash(cast(string)content[0..<n]),old_hash[..]);old_n:=n;
+ q:=XhRequest.{task=status[0].binding.task,reader="11111111111111111111111111111111",read="22222222222222222222222222222222"};grant:=status[0].binding.host;page:[1]XhPage;arena:[XH_ARENA]u8;chunk:[XH_CHUNK_MAX+4]u8;
+ error:=xh_store_page(root,grant,q,status[0],source,1000,page[..],arena[..],chunk[..]);exp_o_check(o[..],error=="" && page[0].next==XH_CHUNK_MAX-1 && !page[0].complete && page[0].capture.hash==cast(string)old_hash[..],"a real capture cuts before the split UTF8 character");if error!="" {return 2;}
+ dp:[FS_PATH_MAX]u8;cp:[FS_PATH_MAX]u8;mode:[32]u8;directory:=xh_reader_dir(root,grant,q.reader,dp[..]);private_dir:=exp_o_mode(directory,mode[..])=="700";private_meta:=exp_o_mode(fs_join(directory,"capture.json",cp[..]),mode[..])=="600";private_data:=exp_o_mode(fs_join(directory,"content.jsonl",cp[..]),mode[..])=="600";exp_o_check(o[..],private_dir && private_meta && private_data,"capture directories and both files have owner-only permissions");
+ prefix:[600000]u8;copied:=js_copy(prefix[..],page[0].text);q.hash=cast(string)old_hash[..];q.offset=page[0].next;
+ s_delta(session[..],P_TEXT,"Later progress");n=sl_lines_checked(session[..],0,session[0].n,false,content[..]);_=fs_replace_durable(source,cast(string)content[0..<n]);status[0].revision+=1;status[0].state=XT_RUNNING;status[0].interaction="";
+ error=xh_store_page(root,grant,q,status[0],source,1001,page[..],arena[..],chunk[..]);if error=="" {copied+=js_copy(prefix[copied..<prefix.count],page[0].text);}
+ hash:[64]u8;_=S_hex(S_hash(cast(string)prefix[0..<copied]),hash[..]);exp_o_check(o[..],error=="" && page[0].complete && page[0].capture.status.revision==3 && copied==old_n && cast(string)hash[..]==cast(string)old_hash[..],"continuation retains the captured status and whole original bytes while native content changes");
+ error=xh_store_page(root,grant,q,status[0],source,1002,page[..],arena[..],chunk[..]);exp_o_check(o[..],error=="" && page[0].complete && page[0].text[0..<2]=="é","the same interrupted page resumes with exact Unicode and no work effect");
+ other:[64]u8;different:=xh_o_id(9,other[..]);error=xh_store_page(root,different,q,status[0],source,1003,page[..],arena[..],chunk[..]);exp_o_check(o[..],error=="stale","knowing all continuation identities cannot read a different grant");
+ fresh:=q;fresh.read="33333333333333333333333333333333";fresh.offset=0;fresh.hash="";error=xh_store_page(root,grant,fresh,status[0],source,1004,page[..],arena[..],chunk[..]);exp_o_check(o[..],error=="" && page[0].capture.status.revision==4 && page[0].capture.bytes==n && page[0].capture.hash!=cast(string)old_hash[..],"a fresh read captures the latest state for the same viewer");
+ exp_o_check(o[..],xh_store_page(root,grant,q,status[0],source,1005,page[..],arena[..],chunk[..])=="stale","superseded captures never mix into an old continuation");
+ fresh.hash="";fresh.offset=0;error=xh_store_page(root,grant,fresh,status[0],source,40005,page[..],arena[..],chunk[..]);exp_o_check(o[..],error=="stale","an expired retained capture requires a new read identity");
+ // Native file results can exceed the legacy reader's 256 KiB scratch arena.
+ s_init(session[..],pool[..]);output:[270000]u8;for i:0..<output.count {output[i]=ifx i%2==0 then cast(u8)'z' else cast(u8)'\n';}sl_test_tool(session[..],"tool-call",TK_EXEC,"run","detail","","","{}",cast(string)output[..],false);
+ n=sl_lines_checked(session[..],0,session[0].n,false,content[..]);loaded:[1]Session;storage:[600000]u8;decode:[600000]u8;s_init(loaded[..],storage[..]);
+ exp_o_check(o[..],n>270000 && sl_load_complete(loaded[..],cast(string)content[0..<n],decode[..]) && loaded[0].parts[0].output.count==output.count && loaded[0].parts[0].id=="tool-call","the shared inert reader retains the entire large tool result and its call identity");
+ s_init(loaded[..],storage[..]);exp_o_check(o[..],!sl_load_complete(loaded[..],cast(string)content[0..<n],decode[0..<SL_ARENA]),"an undersized scratch arena refuses rather than publishing a clipped tool result");
+ _=fs_replace_durable(source,cast(string)content[0..<n]);initial_large:=XhRequest.{task=status[0].binding.task,reader="11111111111111111111111111111111",read="66666666666666666666666666666666"};assembled:=0;digest:[64]u8;okay:=true;
+ while okay {
+  error=xh_store_page(root,grant,initial_large,status[0],source,45000,page[..],arena[..],chunk[..]);if error!="" {okay=false;break;}
+  assembled+=js_copy(prefix[assembled..<prefix.count],page[0].text);if initial_large.hash=="" {_=js_copy(digest[..],page[0].capture.hash);initial_large.hash=cast(string)digest[..];}
+  if page[0].complete {break;}initial_large.offset=page[0].next;
+ }
+ _=S_hex(S_hash(cast(string)prefix[0..<assembled]),hash[..]);s_init(loaded[..],storage[..]);
+ exp_o_check(o[..],okay && assembled==n && cast(string)hash[..]==cast(string)digest[..] && sl_load_complete(loaded[..],cast(string)prefix[0..<assembled],decode[..]) && loaded[0].parts[0].output.count==output.count,"paged filesystem delivery reconstructs and verifies the entire large tool result");
+ // Quotas are global and per grant, and replacement excludes only its owner.
+ _=fs_remove(root);reader:[32]u8;gb:[64]u8;initial:=fresh;initial.hash="";initial.offset=0;initial.read="44444444444444444444444444444444";
+ for g:0..<4 {for r:0..<4 {initial.reader=xh_o_id(r,reader[..]);group:=xh_o_id(g,gb[..]);error=xh_store_page(root,group,initial,status[0],source,50000,page[..],arena[..],chunk[..]);exp_o_check(o[..],error=="","bounded readers publish complete private captures");}}
+ initial.reader=xh_o_id(4,reader[..]);group:=xh_o_id(0,gb[..]);exp_o_check(o[..],xh_store_page(root,group,initial,status[0],source,50001,page[..],arena[..],chunk[..])=="bounds","a fifth reader for a grant is refused");
+ group=xh_o_id(4,gb[..]);exp_o_check(o[..],xh_store_page(root,group,initial,status[0],source,50001,page[..],arena[..],chunk[..])=="bounds","a seventeenth global reader is refused");
+ group=xh_o_id(0,gb[..]);initial.reader=xh_o_id(0,reader[..]);initial.read="55555555555555555555555555555555";exp_o_check(o[..],xh_store_page(root,group,initial,status[0],source,50002,page[..],arena[..],chunk[..])=="","a viewer can refresh its own capture at full capacity");
+ group=xh_o_id(4,gb[..]);exp_o_check(o[..],xh_store_page(root,group,initial,status[0],source,80003,page[..],arena[..],chunk[..])=="","expired ephemeral captures reclaim capacity without touching native work");
+ groups:[1]FsList;count:=fs_list(root,groups[..]);exp_o_check(o[..],count==1 && fs_entry(groups[..],0)==group,"expired reader cleanup also removes empty grant directories");
+ exp_o_check(o[..],fs_size(source)==n,"capture cleanup leaves the native source transcript intact");_=fs_remove(temp);
+ print("Task transcript filesystem: % checks, % failed\n",o[0].checks,o[0].failed);return ifx o[0].failed==0 then 0 else 1;
+}

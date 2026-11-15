@@ -5,16 +5,39 @@
 #load "auth_harness.coax";
 #load "../../../lib/agent/environment/task-wire.coax";
 #load "../../../lib/sys/clock.coax";
+#load "../../../lib/agent/environment/transcript-client.coax";
 TAPI_HOST :: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 TAPI_ID :: "0123456789abcdef0123456789abcdef";
 TAPI_PATH :: "/api/chat/task/v1alpha1?host=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 TAPI_READ :: "/api/chat/task/v1alpha1?host=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&task=0123456789abcdef0123456789abcdef";
+TAPI_TRANSCRIPT :: "/api/chat/task/transcript/v1alpha1?host=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&task=0123456789abcdef0123456789abcdef&reader=77777777777777777777777777777777&read=88888888888888888888888888888888";
 tk_call :: (t:[]Ap,key:string,method:string,path:string,body:string,extra:string)->int {
  url:[1]Sb;sb(url[..],t[0].api);sb(url[..],path);token:[4096]u8;header:[1]Sb;sb(header[..],"Authorization: Nostr ");sb(header[..],ap_nostr(t,key,method,sb_text(url[..]),body,method=="POST",token[..]));return ac_call(t,method,path,body,sb_text(header[..]),extra,"");
 }
 tk_sql :: (t:[]Ap,account:string,prefix:string,suffix:string) {q:[1]Sb;sb(q[..],prefix);sb(q[..],account);sb(q[..],suffix);ap_do(t,sb_text(q[..]));}
 tk_epoch :: (t:[]Ap,account:string,n:int) {q:[1]Sb;sb(q[..],"UPDATE chat.environment_connections_v1 SET epoch=");sb_int(q[..],n);sb(q[..]," WHERE account='");sb(q[..],account);sb(q[..],"'");ap_do(t,sb_text(q[..]));}
 tk_count :: (audit:string)->int {raw:[65536]u8;n:=fs_read(audit,raw[..]);count:=0;if n>0 {for c:raw[0..<n] {if c=='\n' {count+=1;}}}return count;}
+tk_transcript_checks :: (t:[]Ap,c:[]Sc,key:string,account:string) {
+ base:=TAPI_TRANSCRIPT;
+ st:=ac_call(t,"GET",base,"","","","");ap_check(t,"transcript pages require an account",st==401,ap_body(t));
+ st=tk_call(t,key,"POST",base,"{}","");ap_check(t,"the transcript endpoint cannot mutate a task",st==405,ap_body(t));
+ st=tk_call(t,key,"GET","/api/chat/task/transcript/v1alpha1?host=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&task=0123456789abcdef0123456789abcdef&reader=bad&read=88888888888888888888888888888888","","");ap_check(t,"bad transcript identities fail before the native broker",st==400,ap_body(t));
+ first:=[8]string.["tasks","transcript-page",TAPI_HOST,TAPI_ID,"--reader-id","77777777777777777777777777777777","--read-id","88888888888888888888888888888888"];st=sc_cli(t,c,first[..]);page:[1]XhPage;arena:[XH_ARENA]u8;
+ good:=st==0 && xh_page_read(sc_text(c),page[..],arena[..]);ap_check(t,"the built CLI reads a typed native transcript page",good && page[0].capture.status.state==XT_WAITING && page[0].next==XH_CHUNK_MAX && !page[0].complete,sc_text(c));if !good {return;}
+ partial:[65536]u8;copied:=js_copy(partial[..],page[0].text);digest:[64]u8;_=js_copy(digest[..],page[0].capture.hash);cursor:[32]u8;after:=ap_num(page[0].next,cursor[..]);
+ tail:=[12]string.["tasks","transcript-page",TAPI_HOST,TAPI_ID,"--reader-id","77777777777777777777777777777777","--read-id","88888888888888888888888888888888","--sha256",cast(string)digest[..],"--after",after];
+ st=sc_cli(t,c,tail[..]);good=st==0 && xh_page_read(sc_text(c),page[..],arena[..]);if good {copied+=js_copy(partial[copied..<partial.count],page[0].text);}hash:[64]u8;_=S_hex(S_hash(cast(string)partial[0..<copied]),hash[..]);
+ ap_check(t,"an interrupted CLI read resumes the same full native tool transcript",good && page[0].complete && cast(string)hash[..]==cast(string)digest[..] && ap_has(cast(string)partial[0..<copied],"tool-42") && ap_has(cast(string)partial[0..<copied],"Allow Bash"),sc_text(c));
+ st=sc_cli(t,c,tail[..]);ap_check(t,"retrying the same transcript page does not start native work",st==0 && xh_page_read(sc_text(c),page[..],arena[..]) && page[0].capture.hash==cast(string)digest[..],sc_text(c));
+ out_path:[1024]u8;file:=fs_join(c[0].dir,"native-session.jsonl",out_path[..]);collect:=[6]string.["tasks","transcript",TAPI_HOST,TAPI_ID,"--out",file];st=sc_cli(t,c,collect[..]);meta:[1]XhCapture;ma:[2048]u8;good=st==0 && xh_capture_read(sc_text(c),meta[..],ma[..]);content:[65536]u8;n:=fs_read(file,content[..]);s:[1]Session;pool:[65536]u8;decode:[65536]u8;s_init(s[..],pool[..]);
+ ap_check(t,"the CLI exports only a whole hash-verified inert session log",good && n>24000 && n==meta[0].bytes && sl_load_complete(s[..],cast(string)content[0..<n],decode[..]),sc_text(c));
+ if !good || n<1 {return;}
+ found:=false;for i:0..<s[0].n {part:=s[0].parts[i];if part.kind==P_TOOL && part.id=="tool-42" && part.output.count==24000 && part.input=="{\"command\":\"printf literal\"}" {found=true;}}
+ ap_check(t,"exported tool calls retain their full arguments and matching full output",found && meta[0].status.interaction=="native-request","");
+ st=sc_cli(t,c,collect[..]);ap_check(t,"refreshing the CLI viewer reuses its bounded reader slot",st==0,sc_text(c));
+ saved_hash:[64]u8;_=S_hex(S_hash(cast(string)content[0..<n]),saved_hash[..]);tk_epoch(t,account,89);st=sc_cli(t,c,collect[..]);ap_check(t,"a transcript with a changed immutable task binding is refused",st==1 && ap_has(sc_text(c),"502"),sc_text(c));
+ n=fs_read(file,content[..]);if n>0 {_=S_hex(S_hash(cast(string)content[0..<n]),hash[..]);}ap_check(t,"a refused refresh cannot replace the previous verified export",n>0 && cast(string)hash[..]==cast(string)saved_hash[..],"");tk_epoch(t,account,0);
+}
 tk_checks :: (t:[]Ap,c:[]Sc,audit:string) {
  kb:[1024]u8;key:=fs_join(c[0].dir,"key",kb[..]);pkb:[128]u8;pk:=ac_newkey(t,key,pkb[..]);if !sc_key(c,key) {ap_check(t,"private CLI key available",false,"");return;}
  st:=ac_call(t,"GET",TAPI_READ,"","","","");ap_check(t,"native task reads require login",st==401,ap_body(t));
@@ -29,6 +52,7 @@ tk_checks :: (t:[]Ap,c:[]Sc,audit:string) {
  st=tk_call(t,key,"GET",TAPI_READ,"","");v:[1]XtStatus;arena:[2048]u8;ap_check(t,"owned task GET returns the primary typed status and native session",st==200 && xt_status_read(ap_body(t),v[..],arena[..]) && v[0].state==XT_WAITING && v[0].interaction=="native-request" && v[0].native=="native-session",ap_body(t));
  ap_check(t,"task observations are private and uncached",ap_has(ap_header(t,"Cache-Control"),"no-store") && ap_has(ap_header(t,"Cache-Control"),"private") && ap_has(ap_header(t,"Vary"),"Authorization") && !ap_has(ap_body(t),"grant_id") && !ap_has(ap_body(t),"/unused"),ac_head(t));
  st=sc_cli(t,c,show[..]);ap_check(t,"the built CLI reads the same owned native task",st==0 && xt_status_read(sc_text(c),v[..],arena[..]) && v[0].revision==3,sc_text(c));
+ tk_transcript_checks(t,c,key,account);
  // Public dispatch cannot take an arbitrary caller route or Binding.
  body:[4096]u8;n:=xt_request_write(XtRequest.{method="StartTask",task=TAPI_ID,command=TAPI_ID,issued=1,expires=300001,route="{}"},body[..]);st=tk_call(t,key,"POST",TAPI_PATH,cast(string)body[0..<n],"");ap_check(t,"public task controls cannot start caller-directed work",st==400,ap_body(t));
  n=xt_request_write(XtRequest.{method="ReadTask",task=TAPI_ID},body[..]);st=tk_call(t,key,"POST",TAPI_PATH,cast(string)body[0..<n],"");ap_check(t,"POST observation stays read-only",st==200,ap_body(t));
@@ -50,9 +74,11 @@ tk_checks :: (t:[]Ap,c:[]Sc,audit:string) {
  // Same host/grant on two accounts is ambiguous even if one owns the turn.
  k2b:[1024]u8;key2:=fs_join(c[0].dir,"other-key",k2b[..]);p2b:[128]u8;pk2:=ac_newkey(t,key2,p2b[..]);sb_clear(q[..]);sb(q[..],"SELECT acct FROM auth.account_for_key('");sb(q[..],pk2);sb(q[..],"','Other task account')");a2b:[80]u8;other:=ap_sql(t,sb_text(q[..]),a2b[..]);tk_sql(t,other,"UPDATE auth.accounts SET team=true WHERE id='","'");
  _:=sc_key(c,key2);before=tk_count(audit);st=sc_cli(t,c,stop[..]);ap_check(t,"another account cannot control a computer it has not enrolled",st==6 && tk_count(audit)==before,sc_text(c));
+ txp:[1]Sb;sb(txp[..],audit);sb(txp[..],".transcripts");tx_before:=tk_count(sb_text(txp[..]));st=tk_call(t,key2,"GET",TAPI_TRANSCRIPT,"","");ap_check(t,"another account cannot reach a cached transcript without its enrolled connection",st==404 && tk_count(sb_text(txp[..]))==tx_before,ap_body(t));
  tk_sql(t,other,"INSERT INTO chat.environment_connections_v1(account,host_pubkey,display_name,grant_id,epoch,relay) VALUES ('","',repeat('dd',32),'Other task computer',repeat('ee',32),0,'wss://relay.openagents.com')");
  st=sc_cli(t,c,show[..]);ap_check(t,"a grant shared ambiguously across accounts is refused",st==5,sc_text(c));_=sc_key(c,key);st=sc_cli(t,c,show[..]);ap_check(t,"the owner also cannot use an ambiguous enrollment",st==5,sc_text(c));
  tk_sql(t,other,"UPDATE chat.environment_connections_v1 SET grant_id=repeat('ff',32) WHERE account='","'");_=sc_key(c,key2);st=sc_cli(t,c,show[..]);ap_check(t,"an independent connection cannot read another account's task binding",st==6,sc_text(c));st=sc_cli(t,c,stop[..]);ap_check(t,"foreign binding preflight blocks Stop before any native control",st==6 && tk_count(audit)==before,sc_text(c));_=sc_key(c,key);
+ st=tk_call(t,key2,"GET",TAPI_TRANSCRIPT,"","");ap_check(t,"a foreign turn binding blocks transcript delivery before any capture is read",st==404 && tk_count(sb_text(txp[..]))==tx_before,ap_body(t));
  // Native transport exits and typed negative replies are kept distinct.
  tk_epoch(t,account,99);before=tk_count(audit);st=sc_cli(t,c,stop[..]);ap_check(t,"a changed immutable binding in a control reply is rejected",st!=0 && ap_has(sc_text(c),"502") && tk_count(audit)==before+1,sc_text(c));
  tk_epoch(t,account,94);st=sc_cli(t,c,stop[..]);ap_check(t,"a different native command reply cannot acknowledge this control",st!=0 && ap_has(sc_text(c),"502"),sc_text(c));

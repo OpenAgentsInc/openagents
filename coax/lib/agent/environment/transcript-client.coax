@@ -1,0 +1,94 @@
+// Shared inert assembly for CLI/mobile. A view is published only after the
+// whole primary log digest and its complete Session decode succeed.
+// coax/bin/coax test coax/lib/agent/environment/transcript-client.coax --library
+#load "transcript-wire.coax";
+#load "../session/log.coax";
+#authority;
+XhClient :: struct {on:bool;has:bool;done:bool;host:[64]u8;task:[32]u8;reader:[32]u8;read:[32]u8;capture:[1]XhCapture;arena:[2048]u8;data:[]u8;n:int;}
+
+#test "a shared client assembles exact bytes, tolerates duplicates and never publishes a bad final digest" {
+ text:="{\"kind\":\"user\",\"text\":\"hello\"}\n";hash:[64]u8;#assert S_hex(S_hash(text),hash[..]);
+ c:[1]XhClient;data:[1024]u8;#assert xh_client_init(c[..],EX_TEST_HASH,EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,data[..]);
+ cap:=XhCapture.{reader=EX_TEST_ID,read=EX_TEST_ID,status=XtStatus.{binding=ex_test_binding(),state=XT_RUNNING,revision=1,updated=1},hash=cast(string)hash[..],bytes=text.count,expires=100};
+ p:=XhPage.{capture=cap,offset=0,next=10,text=text[0..<10]};raw:[XH_PAGE_MAX]u8;arena:[XH_ARENA]u8;n:=xh_page_write(p,raw[..]);#assert n>0 && xh_client_page(c[..],cast(string)raw[0..<n],1,arena[..]) && c[0].n==10 && !c[0].done;
+ #assert xh_client_page(c[..],cast(string)raw[0..<n],2,arena[..]) && c[0].n==10;
+ p.capture.expires=102;n=xh_page_write(p,raw[..]);#assert xh_client_page(c[..],cast(string)raw[0..<n],2,arena[..]) && c[0].capture[0].expires==102;
+ p.capture.expires=101;n=xh_page_write(p,raw[..]);#assert xh_client_page(c[..],cast(string)raw[0..<n],2,arena[..]) && c[0].capture[0].expires==102;
+ kept:=p.text;p.text="0123456789";n=xh_page_write(p,raw[..]);#assert !xh_client_page(c[..],cast(string)raw[0..<n],2,arena[..]) && c[0].n==10;p.text=kept;
+ p.offset=11;p.next=12;p.text="x";n=xh_page_write(p,raw[..]);#assert n>0 && !xh_client_page(c[..],cast(string)raw[0..<n],2,arena[..]) && c[0].n==10;
+ p.offset=10;p.next=text.count;p.text=text[10..<text.count];p.complete=true;p.capture.status.revision=2;n=xh_page_write(p,raw[..]);#assert n>0 && !xh_client_page(c[..],cast(string)raw[0..<n],2,arena[..]) && c[0].n==10;
+ p.capture.status.revision=1;bad:[1024]u8;_=js_copy(bad[..],p.text);bad[0]='z';original:=p.text;p.text=cast(string)bad[0..<original.count];n=xh_page_write(p,raw[..]);#assert n>0 && !xh_client_page(c[..],cast(string)raw[0..<n],2,arena[..]) && !c[0].done && c[0].n==10;
+ p.text=original;p.capture.expires=103;n=xh_page_write(p,raw[..]);#assert n>0 && xh_client_page(c[..],cast(string)raw[0..<n],3,arena[..]) && c[0].done && c[0].n==text.count && c[0].capture[0].expires==103 && cast(string)c[0].data[0..<c[0].n]==text;
+ #assert xh_client_page(c[..],cast(string)raw[0..<n],4,arena[..]) && c[0].n==text.count;
+ s:[1]Session;pool:[1024]u8;decode:[1024]u8;#assert xh_client_session(c[..],s[..],pool[..],decode[..]) && s[0].live && s_text_of(s[..],0)=="hello";
+}
+#test "client initialization and whole-prefix admission have explicit capacity and task identity" {
+ c:[1]XhClient;data:[16]u8;#assert !xh_client_init(c[..],"bad",EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,data[..]);
+ #assert !xh_client_init(c[..],EX_TEST_HASH,"bad",EX_TEST_ID,EX_TEST_ID,data[..]) && !xh_client_init(c[..],EX_TEST_HASH,EX_TEST_ID,"bad",EX_TEST_ID,data[..]) && !xh_client_init(c[..],EX_TEST_HASH,EX_TEST_ID,EX_TEST_ID,"bad",data[..]);
+ #assert xh_client_init(c[..],EX_TEST_HASH,EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,data[..]);q:=xh_client_request(c[..]);#assert q.task==EX_TEST_ID && q.reader==EX_TEST_ID && q.read==EX_TEST_ID && q.hash=="" && q.offset==0;
+ p:=XhPage.{capture=XhCapture.{reader=EX_TEST_ID,read=EX_TEST_ID,status=XtStatus.{binding=ex_test_binding(),state=XT_RUNNING,revision=1,updated=1},hash=EX_TEST_HASH,bytes=17,expires=100},offset=0,next=1,text="x"};raw:[XH_PAGE_MAX]u8;arena:[XH_ARENA]u8;n:=xh_page_write(p,raw[..]);#assert n>0 && !xh_client_page(c[..],cast(string)raw[0..<n],1,arena[..]) && !c[0].has && c[0].n==0;
+ p.capture.bytes=1;p.capture.status.binding.task="11111111111111111111111111111111";p.complete=true;n=xh_page_write(p,raw[..]);#assert n>0 && !xh_client_page(c[..],cast(string)raw[0..<n],1,arena[..]);
+ #assert !xh_client_page(c[..],"{}",1,arena[..]);c[0].on=false;#assert !xh_client_page(c[..],"{}",1,arena[..]);
+ s:[1]Session;pool:[32]u8;#assert !xh_client_session(c[..],s[..],pool[..],arena[..]);
+}
+#test "active permissions and terminal outcomes come from captured task state, not inert log notices" {
+ for state:XT_QUEUED..<XT_UNKNOWN+1 {
+  text:=ifx state==XT_WAITING then "{\"kind\":\"ask\",\"text\":\"Review this exact call\"}\n" else "";hash:[64]u8;#assert S_hex(S_hash(text),hash[..]);
+  c:[1]XhClient;data:[1024]u8;#assert xh_client_init(c[..],EX_TEST_HASH,EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,data[..]);
+  status:=XtStatus.{binding=ex_test_binding(),state=state,revision=1,updated=1,interaction=ifx state==XT_WAITING then "held" else "",error=ifx state==XT_FAILED then "native_failed" else ifx state==XT_UNKNOWN then "native_unknown" else ""};
+  p:=XhPage.{capture=XhCapture.{reader=EX_TEST_ID,read=EX_TEST_ID,status=status,hash=cast(string)hash[..],bytes=text.count,expires=100},offset=0,next=text.count,complete=true,text=text};raw:[XH_PAGE_MAX]u8;n:=xh_page_write(p,raw[..]);arena:[XH_ARENA]u8;
+  #assert n>0 && xh_client_page(c[..],cast(string)raw[0..<n],1,arena[..]);s:[1]Session;pool:[1024]u8;#assert xh_client_session(c[..],s[..],pool[..],arena[..]) && s[0].live== !xt_terminal(state) && (s[0].asking>=0)==(state==XT_WAITING) && s[0].cost<0;
+  expected:=ifx state==XT_COMPLETED then S_END_SUCCESS else ifx state==XT_FAILED then S_END_FAILED else ifx state==XT_CANCELED then S_END_CANCELED else ifx state==XT_UNKNOWN then S_END_UNKNOWN else S_END_NONE;#assert s[0].outcome==expected;
+  if state==XT_WAITING {c[0].capture[0].status.stop=true;#assert xh_client_session(c[..],s[..],pool[..],arena[..]) && s[0].stopping && s[0].asking<0;}
+ }
+}
+#test "client capacity includes the exact four MiB boundary" {
+ c:[1]XhClient;data:[XH_LOG_MAX+1]u8;
+ #assert xh_client_init(c[..],EX_TEST_HASH,EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,data[0..<XH_LOG_MAX]);
+ #assert !xh_client_init(c[..],EX_TEST_HASH,EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,data[..]);
+}
+#test "publication needs complete valid content and resets a reused session" {
+ for text,i:[4]string.["{bad}\n","{\"kind\":\"user\",\"text\":\"no prompt\"}\n","{\"kind\":\"notice\",\"notice\":\"error\",\"text\":\"not an approval\"}\n","{\"kind\":\"ask\",\"text\":\"actual prompt\"}\n{\"kind\":\"notice\",\"notice\":\"error\",\"text\":\"not a prompt\"}\n"] {
+  c:[1]XhClient;data:[1024]u8;#assert xh_client_init(c[..],EX_TEST_HASH,EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,data[0..<text.count]);s:[1]Session;pool:[1024]u8;arena:[XH_ARENA]u8;
+  #assert !xh_client_session(c[..],s[..],pool[..],arena[..]);
+  hash:[64]u8;#assert S_hex(S_hash(text),hash[..]);p:=XhPage.{capture=XhCapture.{reader=EX_TEST_ID,read=EX_TEST_ID,status=XtStatus.{binding=ex_test_binding(),state=XT_WAITING,revision=1,interaction="held",updated=1},hash=cast(string)hash[..],bytes=text.count,expires=100},offset=0,next=text.count,complete=true,text=text};raw:[XH_PAGE_MAX]u8;n:=xh_page_write(p,raw[..]);
+  #assert n>0 && xh_client_page(c[..],cast(string)raw[0..<n],1,arena[..]) && c[0].done;
+  c[0].on=false;#assert !xh_client_session(c[..],s[..],pool[..],arena[..]);c[0].on=true;
+  s[0]=Session.{frames=true,hint=true,turns=9};good:=xh_client_session(c[..],s[..],pool[..],arena[..]);#assert good==(i==3);
+  if good {#assert s[0].asking==0 && !s[0].frames && !s[0].hint && s[0].turns==0 && s[0].changed;}
+ }
+}
+
+xh_client_init :: (c:[]XhClient,host:string,task:string,reader:string,read:string,data:[]u8)->bool #effects(all) {
+ if !ea_id(host,64) || !ea_id(task,32) || !ea_id(reader,32) || !ea_id(read,32) || data.count>XH_LOG_MAX {return false;}
+ c[0]=XhClient.{on=true,data=data};_=js_copy(c[0].host[..],host);_=js_copy(c[0].task[..],task);_=js_copy(c[0].reader[..],reader);_=js_copy(c[0].read[..],read);return true;
+}
+xh_client_request :: (c:[]XhClient)->XhRequest #effects(all) {return XhRequest.{task=cast(string)c[0].task[..],reader=cast(string)c[0].reader[..],read=cast(string)c[0].read[..],hash=ifx c[0].has then c[0].capture[0].hash else "",offset=c[0].n};}
+xh_client_page :: (c:[]XhClient,raw:string,now:int,arena:[]u8)->bool #effects(all) {
+ if !c[0].on {return false;}page:[1]XhPage;if !xh_page_read(raw,page[..],arena) {return false;}p:=page[0];q:=xh_client_request(c);duplicate:=c[0].has && p.next<=c[0].n;if duplicate {q.offset=p.offset;}
+ if !xh_reply(q,p,cast(string)c[0].host[..],now) || p.capture.bytes>c[0].data.count || (c[0].has && !xh_snapshot_same(c[0].capture[0],p.capture)) {return false;}
+ if duplicate {
+  if cast(string)c[0].data[p.offset..<p.next]!=p.text {return false;}
+  if p.capture.expires>c[0].capture[0].expires { // mutant: equivalent (>= writes the same lease value on equality; older leases are still refused by this renewal guard)
+   c[0].capture[0].expires=p.capture.expires;
+  }return true;
+ }
+ if c[0].done || p.offset!=c[0].n {return false;} // mutant: equivalent (after reply correlation a nonduplicate starts at n, and a pinned complete capture cannot advance past n; this defensive refusal is unreachable)
+ for byte,i:p.text {c[0].data[c[0].n+i]=byte;}
+ if p.complete {hash:[64]u8;if !S_hex(S_hash(cast(string)c[0].data[0..<p.next]),hash[..]) || cast(string)hash[..]!=p.capture.hash {return false;}}
+ if !c[0].has {meta:[XH_META_MAX]u8;n:=xh_capture_write(p.capture,meta[..]);
+  if n<1 || !xh_capture_read(cast(string)meta[0..<n],c[0].capture[..],c[0].arena[..]) {return false;} // mutant: equivalent (the already validated bounded capture fits 10 KiB encoding and 2 KiB decoded string arenas; neither secondary codec operation can refuse)
+ }
+ c[0].capture[0].expires=p.capture.expires;c[0].has=true;c[0].n=p.next;c[0].done=p.complete;return true;
+}
+xh_client_session :: (c:[]XhClient,s:[]Session,pool:[]u8,arena:[]u8)->bool #effects(all) {
+ if !c[0].on || !c[0].done {return false;}s[0]=Session.{};s_init(s,pool);
+ if !sl_load_complete(s,cast(string)c[0].data[0..<c[0].n],arena) {return false;}state:=c[0].capture[0].status.state;
+ s[0].asking= -1; // mutant: equivalent (s_init sets -1 and the shared inert log reader never sets asking; only the captured waiting branch below grants a prompt)
+ if state==XT_WAITING && !c[0].capture[0].status.stop {
+  for i:0..<s[0].n {if s[0].parts[i].kind==P_NOTICE && s[0].parts[i].notice==N_ASK {s[0].asking=i;}}
+  if s[0].asking<0 {return false;}
+ }
+ s[0].live= !xt_terminal(state);s[0].stopping=c[0].capture[0].status.stop;s[0].cost= -1;
+ s[0].outcome=ifx state==XT_COMPLETED then S_END_SUCCESS else ifx state==XT_FAILED then S_END_FAILED else ifx state==XT_CANCELED then S_END_CANCELED else ifx state==XT_UNKNOWN then S_END_UNKNOWN else S_END_NONE;return true;
+}

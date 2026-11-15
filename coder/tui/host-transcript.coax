@@ -1,0 +1,16 @@
+// Authenticated observation of leased snapshots of the existing session log.
+#load "../../coax/lib/agent/environment/transcript-store.coax";
+xh_root :: (out:[]u8)->string #effects(all) {return hs_path("task-transcripts",out);}
+xh_handle :: (h:[]HsHost,r:[]HbRpcRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
+ scope:=xs_scope(h,r,signer,event,mailbox,0,st,statebuf);if scope<0 {return 0;}
+ if scope==0 {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"forbidden",""),signer,w,out);}
+ q:[1]XhRequest;qa:[256]u8;page:[1]XhPage;arena:[XH_ARENA]u8;chunk:[XH_CHUNK_MAX+4]u8;error:="malformed";
+ if xh_request_read(r[0].params,q[..],qa[..]) {
+  current:[1]XtStatus;status_arena:[2048]u8;error=xt_read(h,r[0].grant,q[0].task,current[..],status_arena[..]);
+  if error=="" {root:[1400]u8;tasks:[1400]u8;directory:[FS_PATH_MAX]u8;file:[FS_PATH_MAX]u8;source:=fs_join(xt_task_dir(xt_root(tasks[..]),r[0].grant,q[0].task,directory[..]),"session.jsonl",file[..]);
+   error=xh_store_page(xh_root(root[..]),r[0].grant,q[0],current[0],source,cxproc_wall_us()/1000,page[..],arena[..],chunk[..]);
+  }
+ }
+ if error!="" {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,error,""),signer,w,out);}
+ payload:[XH_PAGE_MAX]u8;n:=xh_page_write(page[0],payload[..]);return ifx n>0 then xs_reply(h,r,signer,event,w,cast(string)payload[0..<n],out) else 0;
+}

@@ -70,6 +70,7 @@ connection to its current HOST grant.
 
 ```sh
 openagents tasks show "$HOST_PUBKEY" "$TASK_ID"
+openagents tasks transcript "$HOST_PUBKEY" "$TASK_ID" --out session.jsonl
 openagents tasks approve "$HOST_PUBKEY" "$TASK_ID" --rev 3 --interaction "$REQUEST_ID" --command-file approve.json
 openagents tasks deny "$HOST_PUBKEY" "$TASK_ID" --rev 3 --interaction "$REQUEST_ID" --command-file deny.json
 openagents tasks stop "$HOST_PUBKEY" "$TASK_ID" --command-file stop.json
@@ -77,6 +78,24 @@ openagents tasks retry "$HOST_PUBKEY" --file stop.json
 ```
 
 Use the task status's exact `revision` and `interaction_id` to approve or deny.
+The transcript command exports the complete, hash-verified inert session log
+to a private file and prints its captured TaskStatus and digest. It preserves
+full tool inputs/results and their call IDs. Refresh it to observe later work;
+an export's `complete` page means the capture was read, not that the task ended.
+Its default reader is stable per machine/profile/API/task; concurrent viewers
+can choose distinct `--reader-id` values. A failed read preserves the old file.
+
+For manual reconnect, use the same reader/read IDs, digest and byte cursor:
+
+```sh
+openagents tasks transcript-page "$HOST_PUBKEY" "$TASK_ID" --reader-id "$READER_ID" --read-id "$READ_ID"
+openagents tasks transcript-page "$HOST_PUBKEY" "$TASK_ID" --reader-id "$READER_ID" --read-id "$READ_ID" --sha256 "$SHA256" --after "$NEXT_OFFSET"
+```
+
+Captures have a 30-second renewable lease. A fresh `--read-id` starts a new
+capture for that reader; a stale continuation requires a fresh capture.
+See the [complete transcript contract](../../docs/protocol/task-transcript-v1alpha1.md).
+
 Each control requires a command file: its complete original TaskRequest is
 saved privately and synced before HTTP. Repeating the same command and file
 reuses its ID, timestamps and decision; changing any input is refused locally.

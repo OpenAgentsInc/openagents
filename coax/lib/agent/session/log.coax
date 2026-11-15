@@ -495,6 +495,22 @@ sl_ending :: (s: [] Session, from: int, to: int) -> string {
 }
 
 // Parts from..<to as lines, then the turn's end when it is over. Its length (0 when it did not fit).
+#test "checked log writes distinguish an empty prefix from overflow and invalid ranges" {
+ s:[1]Session;pool:[1024]u8;s_init(s[..],pool[..]);out:[1024]u8;
+ #assert sl_lines_checked(s[..],0,0,false,out[..])==0;
+ #assert sl_lines_checked(s[..],-1,0,false,out[..])<0 && sl_lines_checked(s[..],0,1,false,out[..])<0 && sl_lines_checked(s[..],1,0,false,out[..])<0;
+ s_user(s[..],"complete bytes");n:=sl_lines_checked(s[..],0,s[0].n,false,out[..]);#assert n>0;
+ #assert sl_lines_checked(s[..],0,s[0].n,false,out[0..<n])==n && sl_lines_checked(s[..],0,s[0].n,false,out[0..<n-1])<0;
+ #assert sl_lines(s[..],0,s[0].n,false,out[0..<n-1])==0;
+ #assert sl_lines_checked(s[..],0,0,true,out[0..<1])<0;
+}
+// The historical writer returns zero on overflow. A real prefix has at least
+// one line for every admitted part (or its end), so owners that must retain
+// complete content can distinguish that refusal without a second serializer.
+sl_lines_checked :: (s:[]Session,from:int,to:int,ended:bool,out:[]u8)->int {
+ if from<0 || to<from || to>s[0].n {return -1;}
+ n:=sl_lines(s,from,to,ended,out);return ifx n==0 && (to>from || ended) then -1 else n;
+}
 sl_lines :: (s: [] Session, from: int, to: int, ended: bool, out: [] u8) -> int {
   tools := SL_TOOLS; notices := SL_NOTICES;
   steps := 0; n := 0;
@@ -671,6 +687,26 @@ sl_load :: (s: [] Session, text: string) {
     if !sl_load_line(s, l[0]) { break; }
   }
   s[0].changed = true;
+}
+
+#test "complete inert reads refuse a cut record, malformed data and insufficient storage" {
+ s:[1]Session;pool:[1024]u8;arena:[1024]u8;s_init(s[..],pool[..]);
+ #assert sl_load_complete(s[..],"",arena[..]) && s[0].changed;s[0].changed=false;
+ #assert !sl_load_complete(s[..],"{\"kind\":\"user\",\"text\":\"cut\"}",arena[..]);
+ #assert !sl_load_complete(s[..],"{bad}\n",arena[..]) && !sl_load_complete(s[..],"{\"kind\":\"future\"}\n",arena[..]);
+ raw:="{\"kind\":\"user\",\"text\":\"literal\"}\n";s_init(s[..],pool[..]);#assert sl_load_complete(s[..],raw,arena[..]) && s_text_of(s[..],0)=="literal" && s[0].changed;
+ s_init(s[..],pool[0..<1]);#assert !sl_load_complete(s[..],raw,arena[..]);s_init(s[..],pool[..]);escaped:="{\"kind\":\"user\",\"text\":\"lit\\u0065ral\"}\n";#assert !sl_load_complete(s[..],escaped,arena[0..<1]);
+}
+// New complete-prefix consumers provide their own scratch arena and publish
+// the candidate only on success. The existing historical reader stays lenient.
+// This calls the same line decoder and reducer; no content can execute a tool.
+sl_load_complete :: (s:[]Session,text:string,arena:[]u8)->bool {
+ ar:=[1]ClArena.[ClArena.{buf=arena}];r:=[1]SlReader.[SlReader.{text=text}];line:[1]SlLine;
+ while sl_next(r[..],line[..]) {
+  if !line[0].whole {return false;}sl_read(ar[..],line[..]);
+  if ar[0].full || line[0].kind==SK_OTHER || !sl_load_line(s,line[0]) || s[0].exhausted {return false;}
+ }
+ s[0].changed=true;return true;
 }
 
 // ---------------------------------------------------------------- checks

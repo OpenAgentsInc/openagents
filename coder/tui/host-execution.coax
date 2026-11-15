@@ -36,13 +36,15 @@ xp_handle :: (h:[]HsHost,r:[]HbRpcRequest,signer:string,event:string,mailbox:str
 xp_rpc_call :: (args:[]Args)->int #effects(all) {
  input:[XT_REQUEST_MAX]u8;n:=fs_read(args_value(args,"--request-file",""),input[..]);if n<1 {return 2;}raw:=cast(string)input[0..<n];
  binding:[1]ExBinding;chunk:[1]ExChunk;task:[32]u8;arena:[8192]u8;method:="";expected_task:="";expected_command:="";expected_hash:="";expected_bytes:=0;
- control:[1]XtRequest;control_arena:[1024]u8;normalized:[XT_REQUEST_MAX]u8;task_control:=false;
+ control:[1]XtRequest;control_arena:[1024]u8;normalized:[XT_REQUEST_MAX]u8;task_control:=false;transcript:[1]XhRequest;transcript_arena:[256]u8;task_transcript:=false;
  if ex_binding_read(raw,binding[..],arena[..]) {method="PrepareTask";expected_task=binding[0].task;expected_command=binding[0].command;expected_hash=binding[0].input_hash;expected_bytes=binding[0].input_bytes;}
  else if ex_chunk_read(raw,chunk[..],arena[..]) {method="PutTaskInput";expected_task=chunk[0].task;expected_command=chunk[0].command;expected_hash=chunk[0].hash;expected_bytes=chunk[0].total;}
  else if exp_read_request(raw,task[..]) {method="ReadTaskInput";expected_task=cast(string)task[..];}
  else if xt_request_read(raw,control[..],control_arena[..]) {task_control=true;method=control[0].method;expected_task=control[0].task;expected_command=control[0].command;made:=xt_normalize(control[0],normalized[..]);if made<1 {return 2;}raw=cast(string)normalized[0..<made];}
+ else if xh_request_read(raw,transcript[..],transcript_arena[..]) {task_transcript=true;method="ReadTaskTranscript";made:=xh_request_write(transcript[0],normalized[..]);if made<1 {return 2;}raw=cast(string)normalized[0..<made];}
  else {return 2;}
  output:[HB_BODY_MAX]u8;r:=es_rpc_exchange(args,method,raw,output[..]);if r.n== -5 {code:=cast(string)r.code[0..<r.nc];tool_err("Execution refused: ");tool_errln(code);return exp_refusal_status(code);}
+ if task_transcript {page:[1]XhPage;strings:[XH_ARENA]u8;if r.n<1 || !xh_page_read(cast(string)output[0..<r.n],page[..],strings[..]) || !xh_reply(transcript[0],page[0],args_value(args,"--host",""),cxproc_wall_us()/1000) {return 3;}hs_outln(cast(string)output[0..<r.n]);return 0;}
  if task_control {status:[1]XtStatus;strings:[2048]u8;if r.n<1 || !xt_status_read(cast(string)output[0..<r.n],status[..],strings[..]) || status[0].binding.host!=args_value(args,"--host","") || status[0].binding.task!=expected_task || status[0].command!=expected_command {return 3;}hs_outln(cast(string)output[0..<r.n]);return 0;}
  view:[1]ExPrepView;view_arena:[256]u8;
  if r.n<1 || !exp_view_read(cast(string)output[0..<r.n],view[..],view_arena[..]) || view[0].host!=args_value(args,"--host","") || view[0].task!=expected_task || view[0].command!=expected_command {return 3;}

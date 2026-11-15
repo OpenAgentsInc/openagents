@@ -15,10 +15,12 @@ static void env_reply(int fd,const void *data,size_t n) {
 // Connection exclusivity and the owned conversation/turn precede every write.
 // Start belongs to server-owned routing/context admission, never this bridge.
 static bool environment_task_route(const request *q) {
-  if(strcmp(q->path,"/api/chat/task/v1alpha1"))return false;
+  bool transcript=!strcmp(q->path,"/api/chat/task/transcript/v1alpha1");
+  if(!transcript&&strcmp(q->path,"/api/chat/task/v1alpha1"))return false;
   const auth_principal *p=auth_principal_of(q);
   if(!p||!ea_account(p->kind,es(p->account),es(p->account))){api_error(q->fd,401,"Log in first.");return true;}
   bool post=!strcmp(q->method,"POST");if(!post&&strcmp(q->method,"GET")){api_error(q->fd,405,"GET or POST this");return true;}
+  if(transcript&&post){api_error(q->fd,405,"GET this");return true;}
   if(post&&!auth_same_site(q)){api_error(q->fd,403,"Cross-site write refused.");return true;}
   // Keep one extra byte so the shared query reader cannot turn an overlong
   // reference into a valid truncated host/task prefix.
@@ -29,6 +31,11 @@ static bool environment_task_route(const request *q) {
   }else{api_query(q,"task",task,sizeof task);}
   int64_t read_n=ta_read(es(task),(coax_v_u8){read_body,sizeof read_body});
   if(!ta_host(es(host))||read_n<1){api_error(q->fd,400,"Invalid computer or task identity.");return true;}
+  unsigned char transcript_body[1024],transcript_request_arena[256];int64_t transcript_n=0;coax_t_XhRequest transcript_request={0};
+  if(transcript){char reader[34]={0},read[34]={0},hash[66]={0},offset[32]={0};api_query(q,"reader",reader,sizeof reader);api_query(q,"read",read,sizeof read);api_query(q,"sha256",hash,sizeof hash);api_query(q,"after",offset,sizeof offset);
+    transcript_n=xh_read_body(es(task),es(reader),es(read),es(hash),es(offset),(coax_v_u8){transcript_body,sizeof transcript_body});
+    if(transcript_n<1||!xh_request_read((coax_string){(const char *)transcript_body,transcript_n},(coax_v_t_XhRequest){&transcript_request,1},(coax_v_u8){transcript_request_arena,sizeof transcript_request_arena})){api_error(q->fd,400,"Invalid transcript reader, capture, digest or offset.");return true;}
+  }
   PGconn *db=api_db();if(!db){api_error(q->fd,503,"Task storage unavailable.");return true;}
   if(!api_limit(db,"environment-task",p->account,(int)ea_rate(),NULL)){api_error(q->fd,429,"Try again shortly.");return true;}
   const char *args[]={p->account,host};PGresult *connection=PQexecParams(db,
@@ -40,7 +47,7 @@ static bool environment_task_route(const request *q) {
   const char *key=getenv("OA_ENV_BROKER_KEY_FILE"),*program=getenv("OA_ENV_BROKER_PROGRAM");
   if(!key||!*key){PQclear(connection);api_error(q->fd,503,"Environment broker unavailable.");return true;}
   char file[]="/tmp/oa-task-control-XXXXXX";int fd=mkstemp(file);if(fd>=0)close(fd);
-  unsigned char out[8192],second[8192],status_arena[2048],after_arena[2048];coax_t_XtStatus before={0},after={0};
+  unsigned char out[8192],second[47104],status_arena[2048],after_arena[2048];coax_t_XtStatus before={0},after={0};
   int status=503;const char *why="Task broker unavailable; reconcile an uncertain command before retrying.";int64_t n=-1;
   if(fd<0||!ea_payload_file(es(file),(coax_string){(const char *)read_body,read_n}))goto done;
   n=environment_task_proxy(es(host),es(PQgetvalue(connection,0,0)),es(PQgetvalue(connection,0,1)),es(PQgetvalue(connection,0,2)),es(key),es(file),es(program&&*program?program:"/usr/local/bin/environment-host"),(coax_v_u8){out,sizeof out});
@@ -52,6 +59,14 @@ static bool environment_task_route(const request *q) {
   bool owned=owner&&PQresultStatus(owner)==PGRES_TUPLES_OK&&PQntuples(owner)==1;
   bool scoped=ta_scope(owned,es(host),before.binding.host,es(task),before.binding.task);bool owner_storage=owner&&PQresultStatus(owner)==PGRES_TUPLES_OK;PQclear(owner);
   if(!scoped){status=owner_storage?404:503;why=owner_storage?"Task not found.":"Task ownership storage unavailable.";goto done;}
+  if(transcript){
+    if(!ea_payload_file(es(file),(coax_string){(const char *)transcript_body,transcript_n})){status=503;goto done;}
+    n=environment_task_proxy(es(host),es(PQgetvalue(connection,0,0)),es(PQgetvalue(connection,0,1)),es(PQgetvalue(connection,0,2)),es(key),es(file),es(program&&*program?program:"/usr/local/bin/environment-host"),(coax_v_u8){second,sizeof second});
+    status=(int)ta_http(n);if(status!=200)goto done;
+    coax_t_XhPage page={0};unsigned char page_arena[20480];
+    if(!xh_page_read((coax_string){(const char *)second,n},(coax_v_t_XhPage){&page,1},(coax_v_u8){page_arena,sizeof page_arena})||!xh_reply(transcript_request,page,es(host),(int64_t)api_now_ms())||!ta_same_binding((coax_v_t_XtStatus){&before,1},(coax_v_t_XtStatus){&page.capture.status,1})){status=502;why="Invalid or mismatched transcript capture from the computer.";goto done;}
+    env_reply(q->fd,second,(size_t)n);goto replied;
+  }
   if(!write){env_reply(q->fd,out,(size_t)n);goto replied;}
   if(!ea_payload_file(es(file),(coax_string){q->body,(int64_t)q->body_len})){status=503;goto done;}
   n=environment_task_proxy(es(host),es(PQgetvalue(connection,0,0)),es(PQgetvalue(connection,0,1)),es(PQgetvalue(connection,0,2)),es(key),es(file),es(program&&*program?program:"/usr/local/bin/environment-host"),(coax_v_u8){second,sizeof second});

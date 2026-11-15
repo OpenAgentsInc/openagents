@@ -44,6 +44,13 @@ ex_binding_write :: (b:ExBinding,out:[]u8)->int #export_c #effects(all) {
  jo_key(o[..],"input_sha256");jo_str(o[..],b.input_hash);jo_key(o[..],"input_bytes");jo_int(o[..],b.input_bytes);jo_key(o[..],"report_sha256");jo_str(o[..],b.report_hash);
  jo_key(o[..],"report_observed_at_ms");jo_int(o[..],b.report_at);jo_key(o[..],"issued_at_ms");jo_int(o[..],b.issued);jo_key(o[..],"expires_at_ms");jo_int(o[..],b.expires);jo_end(o[..]);return ex_encoded(o[..]);
 }
+// One immutable-binding comparison for resident captures and API controls.
+// Compare the primary canonical encoding, including every current field.
+ex_binding_same :: (a:ExBinding,b:ExBinding)->bool #effects(all) {
+ left:[8192]u8;right:[8192]u8;n:=ex_binding_write(a,left[..]);m:=ex_binding_write(b,right[..]);
+ if n<0 || m<0 {return false;} // mutant: equivalent (the encoder returns -1 or a complete Binding longer than one byte, never zero; <=0 and <1 retain the same refusal)
+ return cast(string)left[0..<n]==cast(string)right[0..<m];
+}
 ex_chunk_valid :: (c:ExChunk)->bool #effects(all) {
  return ea_id(c.task,32) && ea_id(c.command,32) && ea_id(c.hash,64) && ex_text_valid(c.text,EX_CHUNK_MAX) && // mutant: equivalent (4096 to 4097: ex_chunk_action independently refuses a size above EX_CHUNK_MAX)
   ex_chunk_action(c.offset,c.text.count,c.total,c.offset,false)==1 && ea_fresh(c.issued,c.expires,c.issued); // mutant: equivalent (false to true: retained equals offset, so an admitted range always appends and its matches argument is unused)

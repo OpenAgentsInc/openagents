@@ -164,6 +164,7 @@ if [[ $serve == 0 ]] && runs checks; then
 fi
 if [[ "${API_TESTS_ONLY:-}" == environment_proxy.c ]]; then
   [[ $serve == 0 ]] && runs checks || { echo 'test.sh: environment_proxy.c runs without --part or --serve' >&2; exit 2; }
+  "$cc" -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -fsyntax-only -I"$work" -I"$here" -I"$repo_root/coax/platform" ${pq_inc[@]+"${pq_inc[@]}"} "$here/environment.c"
   lap "environment/Projects C ABI and waited broker process oracle"; exit 0
 fi
 if [[ $serve == 0 ]] && runs checks; then

@@ -1,0 +1,105 @@
+// One codec of transcript read requests, private capture metadata and pages.
+// Native tool contents retain the shared session-log codec inside page.text.
+// coax/bin/coax test coax/lib/agent/environment/transcript-wire.coax --library
+#load "transcript-policy.coax";
+XH_REQUEST :: "openagents.environment.execution.transcript-request.v1alpha1";
+XH_CAPTURE :: "openagents.environment.execution.transcript-capture.v1alpha1";
+XH_PAGE :: "openagents.environment.execution.transcript-page.v1alpha1";
+XH_META_MAX :: 10240; XH_PAGE_MAX :: 47104; XH_ARENA :: 20480;
+
+#test "transcript request fields are mandatory, closed and exact across retries" {
+ q:=XhRequest.{task=EX_TEST_ID,reader=EX_TEST_ID,read=EX_TEST_ID};out:[1024]u8;again:[2048]u8;got:[1]XhRequest;arena:[256]u8;n:=xh_request_write(q,out[..]);raw:=cast(string)out[0..<n];
+ #assert n>0 && xh_request_read(raw,got[..],arena[..]) && got[0].offset==0 && got[0].hash=="";
+ #assert xh_request_write(got[0],again[..])==n && cast(string)again[0..<n]==raw;
+ for key:[7]string.["schema","method","task_id","reader_id","read_id","sha256","offset"] {#assert !xh_request_read(ex_test_field(raw,key,"",again[..]),got[..],arena[..]);#assert !xh_request_read(ex_test_field(raw,key,"null",again[..]),got[..],arena[..]);#assert !xh_request_read(ex_test_alias(raw,key,again[..]),got[..],arena[..]);}
+ #assert !xh_request_read("{}",got[..],arena[..]) && !xh_request_read(raw,got[..],arena[0..<1]);
+ q.hash=EX_TEST_HASH;q.offset=1;n=xh_request_write(q,out[..]);#assert n>0 && xh_request_read(cast(string)out[0..<n],got[..],arena[..]) && got[0].offset==1 && got[0].hash==q.hash;
+ q.offset= -1;#assert xh_request_write(q,out[..])<0;
+ #assert !xh_request_read(cast(string)out[0..<n],got[0..<0],arena[..]);
+}
+#test "capture metadata preserves its sole nested task codec and refuses partial observations" {
+ c:=XhCapture.{reader=EX_TEST_ID,read=EX_TEST_ID,status=XtStatus.{binding=ex_test_binding(),state=XT_WAITING,revision=3,interaction="native-request",updated=1},hash=EX_TEST_HASH,bytes=4,expires=30001};
+ out:[XH_META_MAX]u8;again:[XH_META_MAX]u8;n:=xh_capture_write(c,out[..]);got:[1]XhCapture;arena:[2048]u8;raw:=cast(string)out[0..<n];#assert n>0 && xh_capture_read(raw,got[..],arena[..]) && got[0].status.interaction=="native-request";
+ #assert xh_capture_write(got[0],again[..])==n && cast(string)again[0..<n]==raw;
+ for key:[7]string.["schema","reader_id","read_id","status","sha256","bytes","expires_at_ms"] {#assert !xh_capture_read(ex_test_field(raw,key,"",again[..]),got[..],arena[..]);#assert !xh_capture_read(ex_test_field(raw,key,"null",again[..]),got[..],arena[..]);#assert !xh_capture_read(ex_test_alias(raw,key,again[..]),got[..],arena[..]);}
+ #assert !xh_capture_read("{}",got[..],arena[..]) && !xh_capture_read(raw,got[..],arena[0..<1]) && xh_capture_write(c,again[0..<1])<0;
+ #assert !xh_capture_read(raw,got[0..<0],arena[..]);c.expires=0;#assert xh_capture_write(c,again[..])<0;
+}
+#test "transcript pages retain literal native JSONL bytes and explicit offsets" {
+ c:=XhCapture.{reader=EX_TEST_ID,read=EX_TEST_ID,status=XtStatus.{binding=ex_test_binding(),state=XT_RUNNING,revision=2,updated=1},hash=EX_TEST_HASH,bytes=4,expires=30001};
+ p:=XhPage.{capture=c,offset=0,next=3,text="é\n"};out:[XH_PAGE_MAX]u8;again:[XH_PAGE_MAX]u8;got:[1]XhPage;arena:[XH_ARENA]u8;n:=xh_page_write(p,out[..]);raw:=cast(string)out[0..<n];
+ #assert n>0 && xh_page_read(raw,got[..],arena[..]) && got[0].text==p.text && got[0].next==3 && !got[0].complete;
+ #assert xh_page_write(got[0],again[..])==n && cast(string)again[0..<n]==raw;
+ for key:[6]string.["schema","capture","offset","next_offset","complete","text"] {#assert !xh_page_read(ex_test_field(raw,key,"",again[..]),got[..],arena[..]);#assert !xh_page_read(ex_test_field(raw,key,"null",again[..]),got[..],arena[..]);#assert !xh_page_read(ex_test_alias(raw,key,again[..]),got[..],arena[..]);}
+ #assert !xh_page_read("{}",got[..],arena[..]) && !xh_page_read(raw,got[..],arena[0..<1]) && xh_page_write(p,again[0..<1])<0;
+ p.offset=3;p.next=4;p.text="x";p.complete=true;n=xh_page_write(p,out[..]);#assert n>0 && xh_page_read(cast(string)out[0..<n],got[..],arena[..]) && got[0].complete && got[0].offset==3;
+ #assert !xh_page_read(cast(string)out[0..<n],got[0..<0],arena[..]);p.next=3;#assert xh_page_write(p,again[..])<0;
+}
+#test "decode caps include exact-sized valid JSON and refuse one byte beyond each cap" {
+ q:=XhRequest.{task=EX_TEST_ID,reader=EX_TEST_ID,read=EX_TEST_ID};c:=XhCapture.{reader=EX_TEST_ID,read=EX_TEST_ID,status=XtStatus.{binding=ex_test_binding(),state=XT_RUNNING,revision=1,updated=1},hash=EX_TEST_HASH,bytes=1,expires=1};p:=XhPage.{capture=c,offset=0,next=1,complete=true,text="x"};
+ raw:[XH_PAGE_MAX+1]u8;arena:[XH_ARENA]u8;
+ for kind:0..<3 {
+  n:=ifx kind==0 then xh_request_write(q,raw[..]) else ifx kind==1 then xh_capture_write(c,raw[..]) else xh_page_write(p,raw[..]);most:=ifx kind==0 then 1024 else ifx kind==1 then XH_META_MAX else XH_PAGE_MAX;#assert n>0 && n<most;
+  for i:n..<most+1 {raw[i]=' ';}
+  if kind==0 {out:[1]XhRequest;#assert xh_request_read(cast(string)raw[0..<most],out[..],arena[..]) && !xh_request_read(cast(string)raw[0..<most+1],out[..],arena[..]);}
+  else if kind==1 {out:[1]XhCapture;#assert xh_capture_read(cast(string)raw[0..<most],out[..],arena[..]) && !xh_capture_read(cast(string)raw[0..<most+1],out[..],arena[..]);}
+  else {out:[1]XhPage;#assert xh_page_read(cast(string)raw[0..<most],out[..],arena[..]) && !xh_page_read(cast(string)raw[0..<most+1],out[..],arena[..]);}
+ }
+}
+#test "HTTP query offsets use the same exact integer and request rules" {
+ out:[1024]u8;#assert xh_read_body(EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,"","",out[..])>0;
+ #assert xh_read_body(EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,EX_TEST_HASH,"0",out[..])>0 && xh_read_body(EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,EX_TEST_HASH,"4194304",out[..])>0;
+ for bad:[7]string.["-1","1.0","1e1","01","true","4194305","999999999999999999999"] {#assert xh_read_body(EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,EX_TEST_HASH,bad,out[..])<0;}
+ #assert xh_read_body(EX_TEST_ID,EX_TEST_ID,EX_TEST_ID,"","1",out[..])<0;
+}
+#test "capture comparison retains the entire status while excluding only lease renewal" {
+ a:=XhCapture.{reader=EX_TEST_ID,read=EX_TEST_ID,status=XtStatus.{binding=ex_test_binding(),state=XT_RUNNING,revision=1,updated=1},hash=EX_TEST_HASH,bytes=1,expires=17};b:=a;b.expires=18;#assert xh_snapshot_same(a,b);
+ b.status.stop=true;#assert !xh_snapshot_same(a,b);b=a;b.bytes=2;#assert !xh_snapshot_same(a,b);b=a;b.status.updated=2;#assert !xh_snapshot_same(a,b);b=a;b.status.binding.model="other";#assert !xh_snapshot_same(a,b);
+ b=a;b.expires=0;#assert !xh_snapshot_same(a,b);b=a;a.expires=0;#assert !xh_snapshot_same(a,b);a.expires=17;
+ b=a;b.reader="bad";#assert !xh_snapshot_same(a,b);b=a;a.read="bad";#assert !xh_snapshot_same(a,b);b=a;#assert !xh_snapshot_same(a,b);
+}
+xh_read_body :: (task:string,reader:string,read:string,hash:string,offset:string,out:[]u8)->int #export_c #effects(all) {
+ n:=0;if offset!="" {d:[1]Jv;nodes:[2]JvNode;if !jv_parse(d[..],offset,nodes[..]) {return -1;}n=js_number(d[0],0);}
+ return xh_request_write(XhRequest.{task=task,reader=reader,read=read,hash=hash,offset=n},out);
+}
+
+xh_request_write :: (q:XhRequest,out:[]u8)->int #export_c #effects(all) {
+ if !xh_request_valid(q) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],XH_REQUEST);jo_key(o[..],"method");jo_str(o[..],"ReadTaskTranscript");jo_key(o[..],"task_id");jo_str(o[..],q.task);jo_key(o[..],"reader_id");jo_str(o[..],q.reader);jo_key(o[..],"read_id");jo_str(o[..],q.read);jo_key(o[..],"sha256");jo_str(o[..],q.hash);jo_key(o[..],"offset");jo_int(o[..],q.offset);jo_end(o[..]);return ex_encoded(o[..]);
+}
+xh_request_read :: (raw:string,out:[]XhRequest,arena:[]u8)->bool #export_c #effects(all) {
+ nodes:[32]JvNode;d:[1]Jv;keys:=[7]string.["schema","method","task_id","reader_id","read_id","sha256","offset"];
+ if out.count<1 || raw.count>1024 || !jv_parse(d[..],raw,nodes[..]) || !js_fields(d[0],0,keys[..]) || jv_len(d[0],0)!=keys.count || jv_raw(d[0],jv_get(d[0],0,"schema"))!=XH_REQUEST || jv_raw(d[0],jv_get(d[0],0,"method"))!="ReadTaskTranscript" {return false;}
+ a:=[1]ExArena.[ExArena.{buf=arena}];q:=XhRequest.{task=ex_string(d[0],0,"task_id",a[..]),reader=ex_string(d[0],0,"reader_id",a[..]),read=ex_string(d[0],0,"read_id",a[..]),hash=ex_string(d[0],0,"sha256",a[..]),offset=js_number(d[0],jv_get(d[0],0,"offset"))};
+ if a[0].bad || !xh_request_valid(q) {return false;}out[0]=q;return true;
+}
+xh_capture_write :: (c:XhCapture,out:[]u8)->int #effects(all) {
+ if !xh_capture_valid(c) {return -1;}
+ status:[8192]u8;n:=xt_status_write(c.status,status[..]);if n<1 {return -1;} // mutant: equivalent (a validated TaskStatus encodes to more than two bytes and below the fixed 8 KiB buffer, so this secondary refusal is unreachable)
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],XH_CAPTURE);jo_key(o[..],"reader_id");jo_str(o[..],c.reader);jo_key(o[..],"read_id");jo_str(o[..],c.read);jo_key(o[..],"status");jo_raw(o[..],cast(string)status[0..<n]);jo_key(o[..],"sha256");jo_str(o[..],c.hash);jo_key(o[..],"bytes");jo_int(o[..],c.bytes);jo_key(o[..],"expires_at_ms");jo_int(o[..],c.expires);jo_end(o[..]);return ex_encoded(o[..]);
+}
+xh_capture_read :: (raw:string,out:[]XhCapture,arena:[]u8)->bool #effects(all) {
+ nodes:[1024]JvNode;d:[1]Jv;keys:=[7]string.["schema","reader_id","read_id","status","sha256","bytes","expires_at_ms"];
+ if out.count<1 || raw.count>XH_META_MAX || !jv_parse(d[..],raw,nodes[..]) || !js_fields(d[0],0,keys[..]) || jv_len(d[0],0)!=keys.count || jv_raw(d[0],jv_get(d[0],0,"schema"))!=XH_CAPTURE {return false;}
+ a:=[1]ExArena.[ExArena.{buf=arena}];c:=XhCapture.{reader=ex_string(d[0],0,"reader_id",a[..]),read=ex_string(d[0],0,"read_id",a[..]),hash=ex_string(d[0],0,"sha256",a[..]),bytes=js_number(d[0],jv_get(d[0],0,"bytes")),expires=js_number(d[0],jv_get(d[0],0,"expires_at_ms"))};status:[1]XtStatus;
+ if a[0].bad || !xt_status_read(jv_raw(d[0],jv_get(d[0],0,"status")),status[..],arena[a[0].n..<arena.count]) {return false;}c.status=status[0];if !xh_capture_valid(c) {return false;}out[0]=c;return true;
+}
+// Lease renewal may change expires; every captured content/status fact stays
+// pinned. Compare through the primary codec rather than copying its fields.
+xh_snapshot_same :: (a:XhCapture,b:XhCapture)->bool #effects(all) {
+ if !xh_capture_valid(a) || !xh_capture_valid(b) {return false;}
+ left:=a;right:=b;left.expires=1;right.expires=1;l:[XH_META_MAX]u8;r:[XH_META_MAX]u8;n:=xh_capture_write(left,l[..]);m:=xh_capture_write(right,r[..]);
+ if n<0 || m<0 {return false;} // mutant: equivalent (primary encodings are -1 or complete metadata longer than one byte, never zero)
+ return cast(string)l[0..<n]==cast(string)r[0..<m];
+}
+xh_page_write :: (p:XhPage,out:[]u8)->int #export_c #effects(all) {
+ if !xh_page_valid(p) {return -1;}
+ meta:[XH_META_MAX]u8;n:=xh_capture_write(p.capture,meta[..]);if n<1 {return -1;} // mutant: equivalent (validated bounded capture metadata encodes to more than two bytes and below its fixed 10 KiB scratch capacity)
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],XH_PAGE);jo_key(o[..],"capture");jo_raw(o[..],cast(string)meta[0..<n]);jo_key(o[..],"offset");jo_int(o[..],p.offset);jo_key(o[..],"next_offset");jo_int(o[..],p.next);jo_key(o[..],"complete");jo_bool(o[..],p.complete);jo_key(o[..],"text");jo_str(o[..],p.text);jo_end(o[..]);n=ex_encoded(o[..]);
+ return ifx n>0 && n<=XH_PAGE_MAX then n else -1; // mutant: equivalent (validated metadata is <10 KiB and this prefix text has no C0 except LF, so its 16 KiB encodes to at most 32 KiB: successful pages are >1 and <43 KiB; Jo failure is -1, preserved even by ||)
+}
+xh_page_read :: (raw:string,out:[]XhPage,arena:[]u8)->bool #export_c #effects(all) {
+ nodes:[2048]JvNode;d:[1]Jv;keys:=[6]string.["schema","capture","offset","next_offset","complete","text"];
+ if out.count<1 || raw.count>XH_PAGE_MAX || !jv_parse(d[..],raw,nodes[..]) || !js_fields(d[0],0,keys[..]) || jv_len(d[0],0)!=keys.count || jv_raw(d[0],jv_get(d[0],0,"schema"))!=XH_PAGE {return false;}
+ a:=[1]ExArena.[ExArena.{buf=arena}];p:=XhPage.{offset=js_number(d[0],jv_get(d[0],0,"offset")),next=js_number(d[0],jv_get(d[0],0,"next_offset")),text=ex_string(d[0],0,"text",a[..])};b:=jv_kind(d[0],jv_get(d[0],0,"complete"));c:[1]XhCapture;
+ if a[0].bad || (b!=JV_TRUE && b!=JV_FALSE) || !xh_capture_read(jv_raw(d[0],jv_get(d[0],0,"capture")),c[..],arena[a[0].n..<arena.count]) {return false;}p.capture=c[0];p.complete=b==JV_TRUE;if !xh_page_valid(p) {return false;}out[0]=p;return true;
+}

@@ -1,0 +1,57 @@
+// Ephemeral reader captures only. Task ownership/lifecycle stays in task-store;
+// the resident holds its existing service lock across all effects here.
+#load "transcript-wire.coax";
+#load "../session/log.coax";
+#load "../../sys/fs.coax";
+XhUsage :: struct {readers:int;grant_readers:int;bytes:int;incomplete:bool;}
+xh_reader_dir :: (root:string,grant:string,reader:string,out:[]u8)->string #effects(all) {
+ if !ea_id(grant,64) || !ea_id(reader,32) {return "";}g:[FS_PATH_MAX]u8;return fs_join(fs_join(root,grant,g[..]),reader,out);
+}
+xh_meta_load :: (directory:string,out:[]XhCapture,arena:[]u8)->bool #effects(all) {
+ p:[FS_PATH_MAX]u8;file:=fs_join(directory,"capture.json",p[..]);size:=fs_size(file);raw:[XH_META_MAX]u8;if size<1 || size>XH_META_MAX {return false;}n:=fs_read(file,raw[..]);return n==size && xh_capture_read(cast(string)raw[0..<ifx n>0 then n else 0],out,arena);
+}
+xh_meta_save :: (directory:string,c:XhCapture)->bool #effects(all) {
+ raw:[XH_META_MAX]u8;n:=xh_capture_write(c,raw[..]);p:[FS_PATH_MAX]u8;return n>0 && fs_replace_durable(fs_join(directory,"capture.json",p[..]),cast(string)raw[0..<n]);
+}
+// Only dedicated ephemeral reader directories are reclaimed. Invalid metadata
+// means an unpublished/corrupt capture, never a task or an execution receipt.
+xh_usage :: (root:string,grant:string,own:string,now:int)->XhUsage #effects(all) {
+ u:XhUsage;if !fs_exists(root) {return u;}grants:[1]FsList;n:=fs_list(root,grants[..]);if n<0 || grants[0].full || now<1 {u.incomplete=true;return u;}
+ for i:0..<n {
+  g:=fs_entry(grants[..],i);gp:[FS_PATH_MAX]u8;group:=fs_join(root,g,gp[..]);if !ea_id(g,64) || fs_kind(group)!=FS_DIR {u.incomplete=true;continue;}
+  readers:[1]FsList;m:=fs_list(group,readers[..]);if m<0 || readers[0].full {u.incomplete=true;continue;}remaining:=m;
+  for k:0..<m {
+   reader:=fs_entry(readers[..],k);if g==grant && reader==own {continue;}p:[FS_PATH_MAX]u8;directory:=fs_join(group,reader,p[..]);if !ea_id(reader,32) || fs_kind(directory)!=FS_DIR {u.incomplete=true;continue;}
+   c:[1]XhCapture;arena:[2048]u8;cp:[FS_PATH_MAX]u8;valid:=xh_meta_load(directory,c[..],arena[..]) && c[0].reader==reader && fs_size(fs_join(directory,"content.jsonl",cp[..]))==c[0].bytes;
+   if xh_reclaim(valid,c[0].expires,now) {if !fs_remove(directory) {u.incomplete=true;}else {remaining-=1;}continue;}
+   u.readers+=1;if g==grant {u.grant_readers+=1;}u.bytes+=c[0].bytes;
+  }if remaining==0 && !fs_remove(group) {u.incomplete=true;}
+ }return u;
+}
+// Caller keeps status/arena alive. A fresh read replaces only its own reader's
+// previous capture; a continuation cannot create or repair one implicitly.
+xh_open :: (root:string,grant:string,q:XhRequest,current:XtStatus,source:string,now:int,out:[]XhCapture,arena:[]u8)->string #effects(all) {
+ if !xh_request_valid(q) || !xt_status_valid(current) || current.binding.task!=q.task || current.command!="" || current.replay || xh_deadline(now)==0 {return "malformed";}
+ d:[FS_PATH_MAX]u8;directory:=xh_reader_dir(root,grant,q.reader,d[..]);if directory=="" {return "malformed";}
+ if xh_meta_load(directory,out,arena) && out[0].reader==q.reader && out[0].read==q.read {
+  if !xh_match(q,out[0],now) || !ex_binding_same(current.binding,out[0].status.binding) {return "stale";}
+  p:[FS_PATH_MAX]u8;if fs_size(fs_join(directory,"content.jsonl",p[..]))!=out[0].bytes {return "unavailable";}
+  out[0].expires=xh_deadline(now);return ifx xh_meta_save(directory,out[0]) then "" else "unavailable";
+ }
+ if !xh_fresh(q) {return "stale";}
+ size:=fs_size(source);if size<0 {return "unavailable";}if size>XH_LOG_MAX {return "bounds";}
+ content:[XH_LOG_MAX]u8;n:=fs_read(source,content[..]);if n!=size || !PB_utf8(content[0..<ifx n>=0 then n else 0]) {return "unavailable";}
+ for byte:content[0..<n] {if byte<32 && byte!='\n' {return "unavailable";}}
+ budget:=xh_usage(root,grant,q.reader,now);if !xh_room(budget.readers,budget.grant_readers,budget.bytes,n,budget.incomplete) {return ifx budget.incomplete then "unavailable" else "bounds";}
+ hash:[64]u8;if !S_hex(S_hash(cast(string)content[0..<n]),hash[..]) {return "unavailable";}
+ c:=XhCapture.{reader=q.reader,read=q.read,status=current,hash=cast(string)hash[..],bytes=n,expires=xh_deadline(now)};
+ gp:[FS_PATH_MAX]u8;group:=fs_join(root,grant,gp[..]);p:[FS_PATH_MAX]u8;
+ if !fs_mkdir_private(root) || !fs_mkdir_private(group) || !fs_remove(directory) || !fs_mkdir_private(directory) || !fs_replace_durable(fs_join(directory,"content.jsonl",p[..]),cast(string)content[0..<n]) || !xh_meta_save(directory,c) || !xh_meta_load(directory,out,arena) {return "unavailable";}return "";
+}
+xh_store_page :: (root:string,grant:string,q:XhRequest,current:XtStatus,source:string,now:int,out:[]XhPage,arena:[]u8,text:[]u8)->string #effects(all) {
+ if out.count<1 || text.count<XH_CHUNK_MAX+4 {return "malformed";}c:[1]XhCapture;error:=xh_open(root,grant,q,current,source,now,c[..],arena);if error!="" {return error;}
+ d:[FS_PATH_MAX]u8;p:[FS_PATH_MAX]u8;directory:=xh_reader_dir(root,grant,q.reader,d[..]);file:=fs_join(directory,"content.jsonl",p[..]);
+ left:=c[0].bytes-q.offset;want:=ifx left<XH_CHUNK_MAX+4 then left else XH_CHUNK_MAX+4;n:=fs_read_at(file,q.offset,text[0..<want]);if n!=want {return "unavailable";}
+ count:=sl_cut(cast(string)text[0..<n],XH_CHUNK_MAX);page:=XhPage.{capture=c[0],offset=q.offset,next=q.offset+count,complete=q.offset+count==c[0].bytes,text=cast(string)text[0..<count]};
+ if !xh_page_valid(page) {return "malformed";}out[0]=page;return "";
+}

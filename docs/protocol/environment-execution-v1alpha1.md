@@ -7,8 +7,9 @@ resident task owner for
 current HOST environment grant. `StartTask`, `ReadTask`, `StopTask` and
 `RespondTask` use the existing native Agent engines and their permissions.
 An account API bridge and OpenAgents CLI expose observation, permission replies
-and Stop using these same records. **API router dispatch, task transcript pages
-and mobile task controls remain unimplemented.** The current environment
+and Stop using these same records. [Task transcript pages](task-transcript-v1alpha1.md)
+also expose the existing inert session log through signed HOST, the account API
+and CLI. **API router dispatch and mobile task controls remain unimplemented.** The current environment
 runtime remains its separate Claude-only profile. These are source-level
 capabilities, not a claim of a production deployment.
 
@@ -307,9 +308,10 @@ commit a successful preparation durably. These pure helpers perform no file
 write, HOST authorization or process start.
 
 The resident consumes these records through authenticated HOST methods and
-owns their durable upload and execution receipts. The task transcript contract
-still needs structured tool pages suitable for reconnecting clients.
-API dispatch, mobile/CLI transcript joins
+owns their durable upload and execution receipts. The separate
+[task transcript contract](task-transcript-v1alpha1.md) provides immutable
+captures of full tool calls/results suitable for reconnecting clients.
+API dispatch, installed mobile task controls/transcript joins
 and a real staging patch/test task remain the acceptance gates in #13620.
 
 Initial qualification: the policy's 93 root-site mutants and input preparation's
@@ -370,7 +372,10 @@ the current native grant and verifies that the returned Binding's turn and
 conversation belong to this account. A connection alone grants no access to a
 foreign conversation. Missing connections and foreign bindings return 404.
 RespondTask additionally requires current funding and unrestricted write
-eligibility; lack of funding does not prohibit observation or Stop. Existing
+eligibility; lack of funding does not prohibit observation or Stop.
+Stop intent blocks a fresh permission response while cancellation is pending;
+an exact prior control receipt remains reconcilable.
+Existing
 global account freeze/limited-session policy remains in force. POST requires
 the normal same-site check; verified CLI NIP-98 uses its existing transport.
 

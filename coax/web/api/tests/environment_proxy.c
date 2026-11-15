@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 static coax_string s(const char *p) {return (coax_string){p,(int64_t)strlen(p)};}
 int main(int argc,char **argv) {
   if(argc!=6)return 2;
@@ -26,5 +27,13 @@ int main(int argc,char **argv) {
   ok=ok && n>0 && ta_status((coax_string){(const char *)out,n},s(argv[1]),s("0123456789abcdef0123456789abcdef"),s(""),(coax_v_t_XtStatus){&task,1},(coax_v_u8){arena,sizeof arena});
   sigaction(SIGCHLD,NULL,&after);ok=ok && after.sa_handler==SIG_IGN;
   printf("task adapter result: %lld; typed waiting state: %lld\n",(long long)n,(long long)task.state);
+  made=xh_read_body(s("0123456789abcdef0123456789abcdef"),s("11111111111111111111111111111111"),s("22222222222222222222222222222222"),s(""),s("0"),(coax_v_u8){body,sizeof body});
+  coax_t_XhRequest transcript={0};unsigned char request_arena[256],page_arena[20480];coax_t_XhPage page={0};
+  ok=ok && made>0 && xh_request_read((coax_string){(const char *)body,made},(coax_v_t_XhRequest){&transcript,1},(coax_v_u8){request_arena,sizeof request_arena}) && ea_payload_file(s(argv[4]),(coax_string){(const char *)body,made});
+  n=environment_task_proxy(s(argv[1]),s(argv[2]),s("0"),s("wss://relay.openagents.com"),s(argv[3]),s(argv[4]),s(argv[5]),(coax_v_u8){out,1048576});
+  struct timeval tv;gettimeofday(&tv,NULL);int64_t now=(int64_t)tv.tv_sec*1000+tv.tv_usec/1000;
+  ok=ok && n>0 && xh_page_read((coax_string){(const char *)out,n},(coax_v_t_XhPage){&page,1},(coax_v_u8){page_arena,sizeof page_arena}) && xh_reply(transcript,page,s(argv[1]),now);
+  sigaction(SIGCHLD,NULL,&after);ok=ok && after.sa_handler==SIG_IGN;
+  printf("transcript adapter result: %lld; captured content: %lld bytes\n",(long long)n,(long long)page.capture.bytes);
   free(view);free(out);return ok?0:1;
 }

@@ -3,6 +3,7 @@
 #load "../../coax/lib/agent/router/policy.coax";
 #load "../../coax/lib/agent/environment/task-store.coax";
 #load "../../coax/lib/agent/environment/task-input.coax";
+#load "../../coax/lib/agent/environment/transcript-policy.coax";
 
 xt_root :: (out:[]u8)->string #effects(all) {return hs_path("execution-tasks",out);}
 // Preparation is consumed by an accepted Start. Relay history must never
@@ -82,8 +83,9 @@ xt_save :: (slot:[]EsSlot)->bool #effects(all) {
  run:=slot[0].execution[..];b:=run[0].status[0].binding;root:[1400]u8;d:[FS_PATH_MAX]u8;path:[FS_PATH_MAX]u8;directory:=xt_task_dir(xt_root(root[..]),cast(string)slot[0].grant[..],b.task,d[..]);
  // The frozen v1 content log is a prefix only. TaskStatus owns lifecycle;
  // emitting v1's terminal record here would invent completion on uncertainty.
- content_log:[2097152]u8;n:=sl_lines(slot[0].s[..],0,slot[0].s[0].n,false,content_log[..]);
- return n>=0 && fs_replace_durable(fs_join(directory,"session.jsonl",path[..]),cast(string)content_log[0..<ifx n>=0 then n else 0]) && xt_status_save(directory,run[0].status[0]);
+ content_log:[XH_LOG_MAX]u8;n:=sl_lines_checked(slot[0].s[..],0,slot[0].s[0].n,false,content_log[..]);
+ if n<0 {slot[0].s[0].exhausted=true;return false;}
+ return fs_replace_durable(fs_join(directory,"session.jsonl",path[..]),cast(string)content_log[0..<n]) && xt_status_save(directory,run[0].status[0]);
 }
 xt_close :: (slot:[]EsSlot) #effects(all) {
  probe:=slot[0].execution[0].auth[..];if probe[0].h>=0 {_ = proc_release(probe[0].h);probe[0].h= -1;}
@@ -92,7 +94,14 @@ xt_close :: (slot:[]EsSlot) #effects(all) {
 xt_finish :: (slot:[]EsSlot,state:int,error:string) #effects(all) {
  run:=slot[0].execution[..];v:=run[0].status[..];v[0].state=state;v[0].error=error;v[0].interaction="";v[0].revision+=1;v[0].updated=cxproc_wall_us()/1000;
  // Preserve native IDs and the final session before closing their owners.
- saved:=xt_save(slot);xt_close(slot);slot[0].occupied=false;run[0].active=false;
+ saved:=xt_save(slot);
+ if !saved {
+  v[0].state=ifx run[0].dispatched then XT_UNKNOWN else XT_FAILED;v[0].error=ifx slot[0].s[0].exhausted then "record_limit" else "storage_unavailable";
+  // A failed content checkpoint must not erase the previous retained prefix
+  // or leave a waiting/running status after its native owner has closed.
+  root:[1400]u8;d:[FS_PATH_MAX]u8;_ = xt_status_save(xt_task_dir(xt_root(root[..]),cast(string)slot[0].grant[..],v[0].binding.task,d[..]),v[0]);
+ }
+ xt_close(slot);slot[0].occupied=false;run[0].active=false;
 }
 xt_fail :: (slot:[]EsSlot,error:string) #effects(all) {
  xt_finish(slot,ifx slot[0].execution[0].dispatched then XT_UNKNOWN else XT_FAILED,error);
@@ -133,6 +142,7 @@ xt_attach :: (h:[]HsHost,index:int,grant:string,device:string,task:string,route:
  s_init(slot[0].s[..],slot[0].pool[..]);e:=slot[0].engine[..];e_attach(e,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].scratch[..],slot[0].prompt[..]);
  c:=h[0].environment[0].configuration[..];e[0].cwd_n=js_copy(e[0].cwd[..],cast(string)c[0].workspace[0..<c[0].nw]);e[0].access=ACC_SUPERVISED;
  slot[0].summary.ni=ea_copy(slot[0].summary.id[..],b.session);slot[0].summary.nw=ea_copy(slot[0].summary.workspace[..],"default");
+ if !xt_save(slot) {xt_fail(slot,"storage_unavailable");return true;}
  if run[0].nroute<1 || e[0].cwd_n<1 || !xt_provider_present(h,b,grant) {xt_fail(slot,"login_required");return true;}
  if b.engine=="claude" {xt_attach_claude(h,slot);}else {xt_attach_codex(slot,cast(string)c[0].workspace[0..<c[0].nw]);}
  if !run[0].active {return true;}
@@ -185,7 +195,7 @@ xt_tick :: (h:[]HsHost) #effects(all) {
   v[0].native=xt_native(slot);v[0].interaction=xt_pending(slot);v[0].state=xt_observe(before,true,slot[0].s[0].live,slot[0].s[0].asking>=0,slot[0].s[0].outcome);
   if xt_terminal(v[0].state) {v[0].interaction="";xt_finish(slot,v[0].state,ifx v[0].state==XT_FAILED then "native_failed" else ifx v[0].state==XT_UNKNOWN then "native_unknown" else "");continue;}
   if slot[0].s[0].changed || before!=v[0].state || nn<0 || ni<0 || cast(string)old_native[0..<ifx nn>0 then nn else 0]!=v[0].native || cast(string)old_interaction[0..<ifx ni>0 then ni else 0]!=v[0].interaction {
-   v[0].revision+=1;v[0].updated=now;if !xt_save(slot) {ag_stop(es_agent(slot));xt_fail(slot,"storage_unavailable");continue;}slot[0].s[0].changed=false;
+   v[0].revision+=1;v[0].updated=now;if !xt_save(slot) {ag_stop(es_agent(slot));xt_fail(slot,ifx slot[0].s[0].exhausted then "record_limit" else "storage_unavailable");continue;}slot[0].s[0].changed=false;
   }
  }
 }
@@ -213,7 +223,7 @@ xt_command :: (h:[]HsHost,grant:string,device:string,q:XtRequest,raw:string,out:
   error=xt_read(h,grant,q.task,out,arena);if error.count==0 {out[0].command=q.command;}return error;
  }
  error:=xt_read(h,grant,q.task,out,arena);if error.count>0 {return error;}if out[0].revision>=9007199254740991 {return "bounds";}
- verdict:=xt_control(0,q.method,out[0].state,q.revision,out[0].revision,q.interaction==out[0].interaction,q.issued,q.expires,now);if verdict<0 {return ifx verdict== -2 then "expired" else "conflict";}
+ verdict:=xt_control(0,q.method,out[0].state,q.revision,out[0].revision,q.interaction==out[0].interaction,out[0].stop,q.issued,q.expires,now);if verdict<0 {return ifx verdict== -2 then "expired" else "conflict";}
  error=xt_store_control(directory,grant,q,raw);if error.count>0 {return error;}
  k:=xt_find(h,grant,q.task);
  if k>=0 && !xt_terminal(out[0].state) {

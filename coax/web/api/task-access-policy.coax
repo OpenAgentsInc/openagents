@@ -1,6 +1,7 @@
 // Account API admission above the resident's independent HOST authority.
 // coax/bin/coax test coax/web/api/task-access-policy.coax --library
 #load "../../lib/agent/environment/task-wire.coax";
+#load "../../lib/agent/environment/transcript-wire.coax";
 #authority;
 
 #test "task API admission requires a verified account and exclusive connection; Stop survives loss of funding" {
@@ -64,7 +65,5 @@ ta_http :: (result:int)->int #export_c #effects(all) {
  if result>0 {return 200;}if result== -2004 {return 403;}if result== -2005 || result== -2006 {return 409;}if result== -2007 {return 429;}return 503;
 }
 ta_same_binding :: (a:[]XtStatus,b:[]XtStatus)->bool #export_c #effects(all) {
- left:[8192]u8;right:[8192]u8;n:=ex_binding_write(a[0].binding,left[..]);m:=ex_binding_write(b[0].binding,right[..]);
- if n<0 || m<0 {return false;} // mutant: equivalent (both encoders return -1 or a complete Binding longer than one byte, never zero; changing <0 to <=0 or <1 preserves the refusal)
- return cast(string)left[0..<n]==cast(string)right[0..<m];
+ return ex_binding_same(a[0].binding,b[0].binding);
 }

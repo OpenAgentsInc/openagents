@@ -47,6 +47,7 @@
 #load "host-station.coax";
 #load "host-execution.coax";
 #load "host-tasks.coax";
+#load "host-transcript.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 #load "../../coax/lib/sys/clock.coax";
@@ -515,6 +516,7 @@ hs_handle :: (h: [] HsHost, text: string, w: [] HbWork, st: [] HsState, statebuf
     rpc:[1]HbRpcRequest;provider:[1]PaRequest;arena[0].at=0;
     if hb_rpc_read(cast(string)body[0..<o.body_n],rpc[..],arena[..]) {
       if exp_right(rpc[0].method)>=0 {return xp_handle(h,rpc[..],sig,ev,mb,w,st,statebuf,out);}
+      if rpc[0].method=="ReadTaskTranscript" {return xh_handle(h,rpc[..],sig,ev,mb,w,st,statebuf,out);}
       if xt_right(rpc[0].method)>=0 {return xt_handle(h,rpc[..],sig,ev,mb,w,st,statebuf,out);}
       if pa_request_read(rpc[0].params,provider[..]) {defer {for i:0..<provider[0].code.count {provider[0].code[i]=0;}}return pa_handle(h,rpc[..],provider[..],sig,ev,mb,w,st,statebuf,out);}
       refresh:=rtr_describe_read(rpc[0].params);if refresh>=0 {return st_handle(h,rpc[..],refresh==1,sig,ev,mb,w,st,statebuf,out);}

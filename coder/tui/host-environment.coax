@@ -100,7 +100,7 @@ es_named_file :: (grant:string,id:string,extension:string,out:[]u8)->string #eff
 }
 es_save :: (slot:[]EsSlot,host:string,label:string)->bool #effects(all) {
   // Reuse the session log's one writer, including tools and native notices.
-  saved_log:[2097152]u8;n:=sl_lines(slot[0].s[..],0,slot[0].s[0].n,!slot[0].s[0].live,saved_log[..]);
+  saved_log:[2097152]u8;n:=sl_lines_checked(slot[0].s[..],0,slot[0].s[0].n,!slot[0].s[0].live,saved_log[..]);
   p:[1400]u8;if n<0 || !fs_replace_durable(es_file(slot,".jsonl",p[..]),cast(string)saved_log[0..<n]) {slot[0].failed=true;return false;}
   v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],host);v[0].nl=ea_copy(v[0].label[..],label);v[0].nm=ea_copy(v[0].method[..],"ReadSession");v[0].ns=1;v[0].sessions[0]=slot[0].summary;v[0].complete=true;
   b:[8192]u8;n=ea_view_write(v[..],b[..]);

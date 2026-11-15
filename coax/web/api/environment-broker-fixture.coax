@@ -3,20 +3,38 @@
 #load "../../lib/agent/accounts/wire.coax";
 #load "../../lib/agent/router/wire.coax";
 #load "../../lib/agent/environment/task-wire.coax";
+#load "../../lib/agent/environment/transcript-store.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/sys/proc.coax";
 #load "../../lib/sys/clock.coax";
+fixture_transcript :: (a:[]Args,q:XhRequest,status:XtStatus)->int #effects(all) {
+ work:[4096]u8;audit:=proc_getenv("OA_ENV_TASK_FIXTURE_AUDIT",work[..]);base:=ifx audit!="" then fs_dir(audit) else fs_dir(args_value(a,"--request-file",""));
+ parent:[FS_PATH_MAX]u8;host:[FS_PATH_MAX]u8;source_path:[FS_PATH_MAX]u8;root_path:[FS_PATH_MAX]u8;directory:=fs_join(fs_join(base,"fixture-transcripts",parent[..]),status.binding.host,host[..]);source:=fs_join(directory,"source.jsonl",source_path[..]);root:=fs_join(directory,"captures",root_path[..]);
+ if !fs_mkdir_private(directory) {return 3;}
+ if !fs_exists(source) {
+  s:[1]Session;pool:[65536]u8;s_init(s[..],pool[..]);s_user(s[..],"Fix the demo");long:[24000]u8;for i:0..<long.count {long[i]='x';}
+  sl_test_tool(s[..],"tool-42",TK_EXEC,"printf literal","shell","","","{\"command\":\"printf literal\"}",cast(string)long[..],false);
+  k:=s_part(s[..],P_TOOL);s[0].parts[k]=SPart.{kind=P_TOOL,tk=TK_EXEC,id=s_put(s[..],"tool-43"),name=s_put(s[..],"Bash"),arg=s_put(s[..],"update demo.txt"),input=s_put(s[..],"{\"command\":\"write pending\"}")};
+  s_notice(s[..],N_ASK,"Allow Bash to update demo.txt?");data:[65536]u8;n:=sl_lines_checked(s[..],0,s[0].n,false,data[..]);if n<1 || !fs_replace_durable(source,cast(string)data[0..<n]) {return 3;}
+ }
+ if audit!="" {path:[FS_PATH_MAX]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],audit);jo_put(o[..],".transcripts");if !fs_append_durable(jo_text(o[..]),"read\n") {return 3;}}
+ page:[1]XhPage;arena:[XH_ARENA]u8;text:[XH_CHUNK_MAX+4]u8;error:=xh_store_page(root,args_value(a,"--grant",""),q,status,source,cxproc_wall_us()/1000,page[..],arena[..],text[..]);if error!="" {return ifx error=="stale" then 5 else ifx error=="bounds" then 7 else 3;}
+ if args_value(a,"--epoch","")=="89" {page[0].capture.status.binding.model="changed-capture-model";}
+ out:[XH_PAGE_MAX]u8;n:=xh_page_write(page[0],out[..]);if n<1 {return 2;}print("%\n",cast(string)out[0..<n]);return 0;
+}
 tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {return 2;}
   input:[XT_REQUEST_MAX]u8;n:=fs_read(args_value(args[..],"--request-file",""),input[..]);q:[1]EaRequest;
   if args_at(args[..],0)=="execution-rpc" {
-    request:[1]XtRequest;arena:[2048]u8;host:=args_value(args[..],"--host","");
-    if n<1 || !ea_id(host,64) || !xt_request_read(cast(string)input[0..<n],request[..],arena[..]) {return 2;}
+    request:[1]XtRequest;arena:[2048]u8;host:=args_value(args[..],"--host","");transcript:[1]XhRequest;ta:[256]u8;is_transcript:=n>0 && xh_request_read(cast(string)input[0..<n],transcript[..],ta[..]);
+    if is_transcript {request[0]=XtRequest.{method="ReadTask",task=transcript[0].task};}
+    if n<1 || !ea_id(host,64) || (!is_transcript && !xt_request_read(cast(string)input[0..<n],request[..],arena[..])) {return 2;}
     if request[0].method!="ReadTask" && !ea_fresh(request[0].issued,request[0].expires,cxproc_wall_us()/1000) {return 5;}
     epoch:=args_value(args[..],"--epoch","");if epoch=="98" {return 4;}if epoch=="97" {return 5;}if epoch=="96" {return 7;}if epoch=="95" {print("%\n","{}");return 0;}if epoch=="92" {return 3;}
     if request[0].method!="ReadTask" && epoch=="91" {return 4;}
     v:=XtStatus.{binding=ExBinding.{task=request[0].task,conversation="cnv_0123456789abcdef0123456789abcdef",turn="trn_0123456789abcdef0123456789abcdef",route="0123456789abcdef0123456789abcdef",host=host,workspace="default",session="0123456789abcdef0123456789abcdef",command="0123456789abcdef0123456789abcdef",engine="codex",account="system",model="fixture-native-model",effort="high",input_hash="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",input_bytes=251,report_hash="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",report_at=999,issued=1000,expires=301000},state=XT_WAITING,revision=3,interaction="native-request",native="native-session",updated=1000};
+    if is_transcript {return fixture_transcript(args[..],transcript[0],v);}
     if request[0].method=="StopTask" {v.state=XT_CANCELED;v.stop=true;v.interaction="";v.revision=4;v.command=request[0].command;}
     else if request[0].method=="RespondTask" {if request[0].revision!=3 || request[0].interaction!="native-request" {return 6;}v.state=XT_COMPLETED;v.interaction="";v.revision=4;v.command=request[0].command;}
     else if request[0].method!="ReadTask" {return 2;}

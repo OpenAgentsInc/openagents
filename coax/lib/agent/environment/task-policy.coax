@@ -34,16 +34,19 @@ XT_TASKS :: 512; XT_BYTES :: 67108864; XT_CONTROLS :: 512;
  #assert xt_observe(7,true,true,false,S_END_NONE)==XT_UNKNOWN;
 }
 #test "command receipts reconcile exact retries after expiry and reject changed reuse" {
- #assert xt_control(1,"RespondTask",XT_COMPLETED,1,2,false,1,300001,500000)==2;
- #assert xt_control(2,"StopTask",XT_RUNNING,0,1,false,1,300001,1)== -1;
- #assert xt_control(0,"StopTask",XT_RUNNING,0,1,false,1,300001,300002)== -2;
- #assert xt_control(0,"RespondTask",XT_WAITING,3,3,true,1,300001,1)==1;
- #assert xt_control(0,"RespondTask",XT_WAITING,2,3,true,1,300001,1)== -1;
- #assert xt_control(0,"RespondTask",XT_WAITING,3,3,false,1,300001,1)== -1;
- #assert xt_control(0,"RespondTask",XT_RUNNING,3,3,true,1,300001,1)== -1;
- #assert xt_control(0,"StopTask",XT_COMPLETED,0,3,false,1,300001,1)==1;
- #assert xt_control(0,"ReadTask",XT_RUNNING,0,1,false,1,300001,1)== -1;
- #assert xt_control(-1,"StopTask",XT_RUNNING,0,1,false,1,300001,1)== -1;
+ #assert xt_control(0,"RespondTask",XT_WAITING,3,3,true,true,1,300001,1)== -1;
+ #assert xt_control(0,"StopTask",XT_WAITING,0,3,true,true,1,300001,1)==1;
+ #assert xt_control(1,"RespondTask",XT_WAITING,3,3,true,true,1,300001,1)==2;
+ #assert xt_control(1,"RespondTask",XT_COMPLETED,1,2,false,false,1,300001,500000)==2;
+ #assert xt_control(2,"StopTask",XT_RUNNING,0,1,false,false,1,300001,1)== -1;
+ #assert xt_control(0,"StopTask",XT_RUNNING,0,1,false,false,1,300001,300002)== -2;
+ #assert xt_control(0,"RespondTask",XT_WAITING,3,3,true,false,1,300001,1)==1;
+ #assert xt_control(0,"RespondTask",XT_WAITING,2,3,true,false,1,300001,1)== -1;
+ #assert xt_control(0,"RespondTask",XT_WAITING,3,3,false,false,1,300001,1)== -1;
+ #assert xt_control(0,"RespondTask",XT_RUNNING,3,3,true,false,1,300001,1)== -1;
+ #assert xt_control(0,"StopTask",XT_COMPLETED,0,3,false,false,1,300001,1)==1;
+ #assert xt_control(0,"ReadTask",XT_RUNNING,0,1,false,false,1,300001,1)== -1;
+ #assert xt_control(-1,"StopTask",XT_RUNNING,0,1,false,false,1,300001,1)== -1;
 }
 #test "task retention accounts for complete enumeration and actual retained bytes" {
  #assert xt_room(0,0,1,false) && xt_room(XT_TASKS-1,XT_BYTES-1,1,false) && xt_room(0,0,EX_INPUT_MAX,false);
@@ -76,10 +79,10 @@ xt_observe :: (state:int,dispatched:bool,live:bool,asking:bool,outcome:int)->int
  if outcome==S_END_SUCCESS {return XT_COMPLETED;}if outcome==S_END_FAILED {return XT_FAILED;}if outcome==S_END_CANCELED {return XT_CANCELED;}return XT_UNKNOWN;
 }
 // 1 record then effect/no-op, 2 exact replay; negative conflict or expiry.
-xt_control :: (receipt:int,method:string,state:int,expected:int,revision:int,interaction:bool,issued:int,expires:int,now:int)->int #effects(all) {
+xt_control :: (receipt:int,method:string,state:int,expected:int,revision:int,interaction:bool,stopping:bool,issued:int,expires:int,now:int)->int #effects(all) {
  if receipt==1 {return 2;}if receipt!=0 {return -1;}if !ea_fresh(issued,expires,now) {return -2;}
  if method=="StopTask" {return 1;}
- if method=="RespondTask" && state==XT_WAITING && expected==revision && interaction {return 1;}return -1;
+ if method=="RespondTask" && !stopping && state==XT_WAITING && expected==revision && interaction {return 1;}return -1;
 }
 xt_room :: (tasks:int,bytes:int,input:int,incomplete:bool)->bool #effects(all) {return tasks>=0 && tasks<XT_TASKS && bytes>=0 && input>0 && input<=EX_INPUT_MAX && bytes<=XT_BYTES-input && !incomplete;}
 xt_start_match :: (b:ExBinding,task:string,command:string,issued:int,expires:int)->bool #effects(all) {return b.task==task && b.command==command && b.issued==issued && b.expires==expires;}
