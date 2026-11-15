@@ -40,6 +40,11 @@ rules 13 and URI rules 10 checks. Changed-procedure mutation gates killed all
 was accepted. The descriptor oracle, pinned protobuf module/compatibility
 checks, tools-check, wire-check and layer-check pass.
 
+The shared CLI metadata/knowledge writers additionally pass all 133 codec
+checks and kill all 29 changed-procedure mutants. Their checks enumerate
+optional metadata fields, text/file sources and explicit selection, including
+Unicode round trips and refusal of incomplete output.
+
 Portable CLI C was compiled on a build host and linked on the Mac against its
 SDK. Both fresh profiles authenticate through that binary. Staging device
 approval linked `projects-staging` to its person account. The owner approved
@@ -56,6 +61,8 @@ replay with two model calls for two turns, scoped reopening, context inspection,
 revision conflicts, removal and another account's read/write denials. Command:
 `API_TESTS_ONLY=projects_checks.coax,projects_cli_checks.coax,history_checks.coax coax/web/api/test.sh`
 through `coax/remote/remote.sh`; the target checks finished in 431 seconds.
+The invocation's existing CLI authentication, director, World and append-only
+log checks also passed; the complete run finished in 506 seconds.
 
 The first attempt exposed main's missing stdbool.h include in the new station
 adapter; main's fix `9aa8f8f906` was incorporated before the passing run. The
@@ -64,8 +71,41 @@ sources afresh. Concurrent router/station-report changes are retained.
 
 The installed command now points to a new versioned CLI bundle, with its
 existing adjacent helper executables preserved by pinned symlinks. The former
-2026-11-04 bundle remains available for rollback. Deployment and the live
-staging/owner Project test drive follow these checks.
+2026-11-04 bundle remains available for rollback.
+
+## Deployment and live account test
+
+Implementation commit `c8a1041545` was pushed to main. The ordinary API deploy
+applied migrations and verified exclusive traffic, the routed health build and
+the same immutable image on staging and production:
+
+- Staging: `oa-api-staging-00230-wfc`.
+- Production: `oa-api-00168-qk2`.
+- Image digest: `sha256:71afdd1d54870049a5cb89788de1139bd5362654f18eecbc76ba489d4fddcc10`.
+
+An independent stdlib JSON/SHA-256 oracle drove the installed CLI against the
+real services. Staging passed 41 checks; the approved browser account passed
+45. Each run created a private Project, changed metadata and instructions,
+added selected and unselected knowledge, read the complete source text, started
+a real model chat, reopened it, continued it, inspected its pinned context,
+removed a source, saved a second chat without dispatching, completed it
+explicitly, linked/replayed existing operations and verified final counts.
+
+Real answers followed the saved instructions and used facts from the selected
+source. The admitted context's instruction hash matched the independent SHA-256;
+unselected knowledge was absent, and removing it preserved the earlier snapshot.
+The final owned Project has one selected source and two saved conversations,
+including a continued conversation. Whole-command replay after later changes
+kept the original conversation and revision. A separate valid production
+account received 404 for the owner's Project and conversation, and its index
+excluded the owner's Project.
+
+Account IDs, Project IDs, source bytes, messages and full live responses remain
+in the private local receipt directory. They are deliberately absent from this
+public verification record. No real existing Project was modified. The mobile
+client continues to consume the same Project, history and saved-thread codecs;
+this turn's live test used the CLI, with native UI checks retained from the
+earlier Projects implementation.
 
 The current consumer covers the operations actually implemented by the private
 Projects API. Sharing, workspace tenancy, arbitrary document extraction,

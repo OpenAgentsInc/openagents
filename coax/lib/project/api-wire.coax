@@ -68,8 +68,21 @@ pr_mutation :: (operation:string,revision:int,value:string,out:[]u8)->int {o:[1]
 pr_metadata_value :: (fresh:bool,name:string,has_name:bool,description:string,has_description:bool,instructions:string,out:[]u8)->string {
  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);if fresh || has_name {jo_key(o[..],"name");jo_str(o[..],name);}if has_description {jo_key(o[..],"description");jo_str(o[..],description);}if fresh {jo_key(o[..],"instructions");jo_str(o[..],instructions);}jo_end(o[..]);return ifx o[0].bad then "" else jo_text(o[..]);
 }
+#forall "Project metadata writes preserve exactly the caller's supplied fields" bits:0..<8 {
+ fresh:=(bits&1)!=0;name:=(bits&2)!=0;description:=(bits&4)!=0;b:[1024]u8;body:[2048]u8;v:=pr_metadata_value(fresh,"Café",name,"Description",description,"A\nB",b[..]);d:[1]Jv;nodes:[32]JvNode;#assert jv_parse(d[..],v,nodes[..]);
+ #assert (jv_get(d[0],0,"name")>=0)==(fresh || name) && (jv_get(d[0],0,"description")>=0)==description && (jv_get(d[0],0,"instructions")>=0)==fresh;
+ expected:=(ifx fresh || name then 1 else 0)+(ifx description then 1 else 0)+(ifx fresh then 1 else 0);#assert jv_len(d[0],0)==expected;
+ n:=pr_mutation("x",ifx fresh then -1 else 1,v,body[..]);r:[1]PrRequest;ok:=pr_request(cast(string)body[0..<n],ifx fresh then 1 else 2,r[..]);#assert ok==(fresh || name || description);
+ if ok {if fresh || name {#assert r[0].nn==5 && cast(string)r[0].name[0..<5]=="Café";}if description {#assert r[0].nd==11 && cast(string)r[0].description[0..<11]=="Description";}if fresh {#assert r[0].nt==3 && cast(string)r[0].text[0..<3]=="A\nB";}}
+ #assert pr_metadata_value(fresh,"A",name,"D",description,"I",b[0..<1])=="";
+}
 pr_knowledge_value :: (title:string,text:string,file:bool,selected:bool,out:[]u8)->string {
  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"title");jo_str(o[..],title);jo_key(o[..],"selected");jo_bool(o[..],selected);jo_key(o[..],"source");jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],ifx file then "file" else "text");jo_key(o[..],ifx file then "file_id" else "text");jo_str(o[..],text);jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+#forall "Project knowledge writes preserve source kind and explicit selection" bits:0..<4 {
+ file:=(bits&1)!=0;selected:=(bits&2)!=0;b:[1024]u8;body:[2048]u8;v:=pr_knowledge_value("T","X",file,selected,b[..]);n:=pr_mutation("x",1,v,body[..]);r:[1]PrRequest;#assert pr_request(cast(string)body[0..<n],4,r[..]) && r[0].nl==1 && r[0].title[0]=='T' && r[0].selected==selected;
+ if file {#assert r[0].nf==1 && r[0].file[0]=='X' && r[0].nt== -1;}else {#assert r[0].nt==1 && r[0].text[0]=='X' && r[0].nf==0;}
+ #assert pr_knowledge_value("T","X",file,selected,b[0..<1])=="";
 }
 #test "private Project output round trips its instructions and worlds count without leaking a key" {p:[1]PrProject;p[0].ni=pr_copy(p[0].id[..],"prj_0123456789abcdef0123456789abcdef");p[0].no=pr_copy(p[0].owner[..],"acct_one");p[0].nn=pr_copy(p[0].name[..],"Research");p[0].nt=pr_copy(p[0].instructions[..],"Use the knowledge.");p[0].revision=1;p[0].instructions_revision=1;b:[131072]u8;n:=pr_project_write(p[..],b[..]);q:[1]PrProject;#assert n>0 && pr_project_read(cast(string)b[0..<n],q[..]) && q[0].nt==18 && q[0].revision==1;d:[1]Jv;nodes:[256]JvNode;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && jv_raw(d[0],jv_path(d[0],0,"data.url"))=="/api/projects/v1/prj_0123456789abcdef0123456789abcdef";#assert pr_project_write(p[..],b[0..<20])<0;}
 
