@@ -138,6 +138,12 @@ and `text-link-policy.coax` in both application and installed host. Only
 HTTP(S) documents open; no account headers are passed to them. Copy actions
 can complete alongside a chat request without changing its turn state.
 
+The durable-chat native source also uses `coax.native.clipboard.v2` (service
+19, `clipboard.write.v2`) for messages above 64 KiB, up to 128 KiB. Its body
+remains in `text-services-wire.coax`; installed size admission is the shared
+checked `text-copy-policy.coax`. It requires a new native runtime. The existing
+v1 service and released applications retain their original bound.
+
 Tapping the conversation or blank area outside the composer dismisses the
 keyboard. The recognizer preserves button/link actions and long-press text
 selection; composer controls keep their normal keyboard behavior. Header

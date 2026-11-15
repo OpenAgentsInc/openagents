@@ -17,6 +17,13 @@ chat_usage :: () {
  #assert ccli_number("0")==0 && ccli_number("2147483645")==CT_SEQUENCE_MAX;
  for bad:[6]string.["","-1","1.5","2147483646","true","1e1"] {#assert ccli_number(bad)== -1;}
 }
+#test "chat writes require complete reference pairs and reserve legacy provenance for new conversations" {
+ a:[1]Args;#assert ccli_references(a[..],true);_=args_add(a[..],"--project-rev");_=args_add(a[..],"1");#assert !ccli_references(a[..],true);_=args_add(a[..],"--project");_=args_add(a[..],"prj_0123456789abcdef0123456789abcdef");#assert ccli_references(a[..],true);
+ b:[1]Args;_=args_add(b[..],"--legacy-thread");_=args_add(b[..],"m_0123456789abcdef0123");#assert !ccli_references(b[..],true);_=args_add(b[..],"--legacy-rev");_=args_add(b[..],"1");#assert ccli_references(b[..],true) && !ccli_references(b[..],false);
+}
+ccli_references :: (a:[]Args,fresh:bool)->bool {
+ return args_has(a,"--project")==args_has(a,"--project-rev") && args_has(a,"--legacy-thread")==args_has(a,"--legacy-rev") && (fresh || !args_has(a,"--legacy-thread"));
+}
 ccli_number :: (text:string)->int {if text=="0" {return 0;}return pcli_revision(text);}
 ccli_path :: (name:string,id:string,after:string,out:[]u8)->string {
  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/api/chat/");jo_put(o[..],name);jo_put(o[..],"/v2alpha1");if id.count>0 {jo_put(o[..],"?id=");jo_put(o[..],id);}if after.count>0 {jo_put(o[..],"&after=");jo_put(o[..],after);}return jo_text(o[..]);
@@ -51,7 +58,7 @@ chat_main :: (a:[]Args,r:[]Rep,profile:string,verb:string)->int {
  }
  if verb=="show" {name="conversation";if !ct_id(id,"cnv_",32) {return fail(r,EXIT_USAGE,"expected a conversation ID");}}
  else if verb=="turn" || verb=="events" || verb=="follow" || verb=="stop" {if !ct_id(id,"trn_",32) {return fail(r,EXIT_USAGE,"expected a turn ID");}if verb=="follow" {return ccli_follow(a,r,profile,id);}name=verb;post=verb=="stop";}
- else if verb=="new" || verb=="send" {post=true;name="submit";if verb=="new" {id="";}else if !ct_id(id,"cnv_",32) {return fail(r,EXIT_USAGE,"expected a conversation ID");}}
+ else if verb=="new" || verb=="send" {if !ccli_references(a,verb=="new") {return fail(r,EXIT_USAGE,"Project and legacy IDs require their revision flags; legacy provenance belongs to chat new");}post=true;name="submit";if verb=="new" {id="";}else if !ct_id(id,"cnv_",32) {return fail(r,EXIT_USAGE,"expected a conversation ID");}}
  else {return fail(r,EXIT_USAGE,"chat list|show|turn|events|new|send|stop|follow");}
  route:=ccli_path(name,ifx post then "" else id,ifx post then "" else after,path[..]);if !post {res:=pcli_call(a,r,profile,"GET",route,"",CLI_HTTP_MS,out[..]);return pcli_reply(r,res,out[..]);}
  operation:[32]u8;op:=args_value(a,"--operation-id","");if op=="" {random:[16]u8;if cxrand_draw(random[..],16)!=0 || !cli_hex(random[..],operation[..]) {return fail(r,EXIT_FAIL,"cannot make an operation ID");}op=cast(string)operation[..];}

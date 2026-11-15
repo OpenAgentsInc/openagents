@@ -12,7 +12,7 @@
 //   coax/bin/coax test components/core/tree.coax
 
 TR_NODES :: 4096;     // nodes in one tree
-TR_POOL :: 131072;    // bytes of ids, classes, text and attribute values
+TR_POOL :: 262144;    // complete 128 KiB replies plus bounded transcript/chrome
 TR_DEPTH :: 32;       // open nodes at once
 
 // Tags, and their names in the browser.

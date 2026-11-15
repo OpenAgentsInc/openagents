@@ -29,6 +29,7 @@ na_sync_tick :: (s:[]Starter,dt:f32) {
  s[0].sync_elapsed=0;
  if n[0].open && !n[0].rail {n[0].account_refresh=true;n[0].refresh=true;return;}
  if n[0].open {return;}
+ if s[0].page==3 && s[0].durable[0].enabled && !s[0].world_mode {if !dca_working(s[0].durable[..]) && !dca_blocked(s[0].durable[..]) {na_durable_history(s,s[0].durable[0].history_after,false);}return;}
  if s[0].page==5 {s[0].sync_background=true;na_http(s,"/api/projects","",90);}
  else if s[0].page==3 && s[0].thread[0].id_n>0 {na_nav_keep(s);s[0].sync_background=true;path:[96]u8;na_http(s,tr_cat(path[..],"/api/chat/thread/v1?id=",cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]),"",3);}
  else if s[0].page==6 && !s[0].project[0].private_project {s[0].sync_background=true;path:[160]u8;na_http(s,tr_cat(path[..],"/api/chat/project/v1?project=",pja_slug(s[0].project[..])),"",93);}

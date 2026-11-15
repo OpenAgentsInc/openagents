@@ -1,4 +1,96 @@
 // Synthetic, independently pinned service records. No account data.
+#test "conversation readers own complete ordered text and reject a malformed later message atomically" #steps 100000000 {
+ raw:="{\"schema\":\"openagents.chat.conversation.v2alpha1\",\"id\":\"cnv_0123456789abcdef0123456789abcdef\",\"revision\":2,\"project_id\":null,\"legacy_thread_id\":null,\"legacy_thread_revision\":null,\"messages\":[{\"id\":\"trn_0123456789abcdef0123456789abcdef.user\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Hello\"},{\"type\":\"text\",\"text\":\"world\\n\"}],\"created_at_ms\":10}],\"active_turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"created_at_ms\":1,\"updated_at_ms\":20,\"next_cursor\":\"1\"}";
+ h:[1]CtHistory;m:[1]CtMessage;text:[131087]u8;#assert ctr_history_read(raw,h[..]);
+ #assert h[0].revision==2 && h[0].n==1 && h[0].next==1 && h[0].created==1 && h[0].updated==20 && h[0].project_n==0 && h[0].legacy_n==0 && h[0].legacy_revision== -1;
+ #assert cast(string)h[0].active[0..<h[0].active_n]==CT_TEST_TURN;
+ #assert ctr_history_message(h[..],0,m[..],text[..]) && !m[0].assistant && m[0].bytes==12 && cast(string)text[0..<m[0].bytes]=="Hello\nworld\n";
+ #assert cast(string)m[0].turn[0..<m[0].turn_n]==CT_TEST_TURN && m[0].created==10;
+ b:[4096]u8;#assert !ctr_history_read(ct_check_replace(raw,"messages","[{}]",b[..]),h[..]) && h[0].revision==2 && h[0].n==1;
+ #assert !ctr_history_message(h[..],-1,m[..],text[..]) && !ctr_history_message(h[..],1,m[..],text[..]);
+ for key:[4]string.["project_id","legacy_thread_id","active_turn_id","next_cursor"] {#assert !ctr_history_read(ct_check_replace(raw,key,"\"\"",b[..]),h[..]);}
+ #assert !ctr_history_read(ct_check_replace(raw,"revision","0",b[..]),h[..]);
+ #assert !ctr_history_read(ct_check_replace(raw,"legacy_thread_revision","0",b[..]),h[..]);
+ #assert !ctr_history_read(ct_check_replace(raw,"next_cursor","\"-1\"",b[..]),h[..]);
+}
+#test "index reader retains private associations and real active turn identities" {
+ raw:="{\"schema\":\"openagents.chat.index.v2alpha1\",\"items\":[{\"id\":\"cnv_0123456789abcdef0123456789abcdef\",\"title\":\"Title\\n\\u00e9\",\"revision\":3,\"project_id\":\"prj_0123456789abcdef0123456789abcdef\",\"active_turn_id\":null,\"updated_at_ms\":20}],\"next_cursor\":\"cnv_0123456789abcdef0123456789abcdef\"}";
+ rows:[1]CtIndex;#assert ctr_index_read(raw,rows[..]) && rows[0].n==1 && rows[0].next_n==36 && rows[0].items[0].revision==3 && rows[0].items[0].project_n==36 && rows[0].items[0].active_n==0;
+ #assert cast(string)rows[0].items[0].title[0..<rows[0].items[0].title_n]=="Title\né";
+ b:[2048]u8;for key:[3]string.["schema","items","next_cursor"] {#assert !ctr_index_read(ct_check_replace(raw,key,"false",b[..]),rows[..]) && rows[0].n==1;}
+ #assert ctr_index_read("{\"schema\":\"openagents.chat.index.v2alpha1\",\"items\":[],\"next_cursor\":null}",rows[..]) && rows[0].n==0 && rows[0].next_n==0;
+}
+#test "message readers validate independent peer identities roles references and complete text" #steps 100000000 {
+ raw:="{\"id\":\"trn_0123456789abcdef0123456789abcdef.assistant\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"role\":\"assistant\",\"content\":[],\"created_at_ms\":0}";
+ m:[1]CtMessage;text:[131087]u8;b:[4096]u8;#assert ctr_message_read(raw,CT_TEST_CONVERSATION,m[..],text[..]) && m[0].assistant && m[0].bytes==0 && m[0].created==0;
+ keys:=[5]string.["id","turn_id","role","content","created_at_ms"];values:=[5]string.["\"bad\"","null","\"tool\"","null","-1"];
+ for key,index:keys {#assert !ctr_message_read(ct_check_replace(raw,key,values[index],b[..]),CT_TEST_CONVERSATION,m[..],text[..]);#assert !ctr_message_read(ct_check_alias(raw,key,b[..]),CT_TEST_CONVERSATION,m[..],text[..]);}
+ #assert !ctr_message_read(raw,"bad",m[..],text[..]) && !ctr_message_read("[",CT_TEST_CONVERSATION,m[..],text[..]);
+ for content:[5]string.["[{\"type\":\"text\",\"text\":\"\"}]","[{\"type\":\"image\",\"text\":\"x\"}]","[{\"type\":\"text\",\"text\":\"x\",\"extra\":true}]","[{\"type\":\"text\",\"text\":\"\\u0000\"}]","[{\"type\":\"text\",\"text\":\"x\"},{\"type\":\"text\",\"text\":\"y\"}]"] {#assert !ctr_message_read(ct_check_replace(raw,"content",content,b[..]),CT_TEST_CONVERSATION,m[..],text[..]);}
+ historical:[4096]u8;n:=ctr_historical_message(CT_TEST_CONVERSATION,31,true,"Original",1,historical[..]);#assert n>0 && ctr_message_read(cast(string)historical[0..<n],CT_TEST_CONVERSATION,m[..],text[..]) && m[0].turn_n==0 && m[0].bytes==8;
+ for id:[4]string.["\"cnv_0123456789abcdef0123456789abcdef.legacy.32\"","\"cnv_0123456789abcdef0123456789abcdef.legacy.01\"","\"cnv_1123456789abcdef0123456789abcdef.legacy.1\"","\"cnv_0123456789abcdef0123456789abcdef.legacy.\""] {#assert !ctr_message_read(ct_check_replace(cast(string)historical[0..<n],"id",id,b[..]),CT_TEST_CONVERSATION,m[..],text[..]);}
+ #assert ctr_cursor("0")==0 && ctr_cursor("2147483645")==CT_SEQUENCE_MAX;
+ for cursor:[8]string.["","01","-1","1.0","1e1","2147483646","99999999999","a"] {#assert ctr_cursor(cursor)== -1;}
+}
+#test "index readers reject independently invalid summary fields and preserve previous rows" #steps 100000000 {
+ item:="{\"id\":\"cnv_0123456789abcdef0123456789abcdef\",\"title\":\"Title\",\"revision\":1,\"project_id\":null,\"active_turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"updated_at_ms\":0}";
+ raw:[131073]u8;b:[2048]u8;rows:[1]CtIndex;items:=[1]string.[item];n:=ctr_index(items[..],"",raw[..]);#assert ctr_index_read(cast(string)raw[0..<n],rows[..]) && rows[0].items[0].active_n==36;
+ keys:=[6]string.["id","title","revision","project_id","active_turn_id","updated_at_ms"];values:=[6]string.["\"bad\"","null","2147483646","\"\"","\"bad\"","9007199254740992"];
+ for key,index:keys {items[0]=ct_check_replace(item,key,values[index],b[..]);n=ctr_index(items[..],"",raw[..]);#assert !ctr_index_read(cast(string)raw[0..<n],rows[..]) && rows[0].n==1;items[0]=ct_check_alias(item,key,b[..]);n=ctr_index(items[..],"",raw[..]);#assert !ctr_index_read(cast(string)raw[0..<n],rows[..]);}
+ many:[61]string;for index:0..<61 {many[index]=item;}n=ctr_index(many[0..<2],"",raw[..]);#assert !ctr_index_read(cast(string)raw[0..<n],rows[..]);n=ctr_index(many[..],"",raw[..]);#assert !ctr_index_read(cast(string)raw[0..<n],rows[..]);
+ n=ctr_index(items[0..<0],CT_TEST_CONVERSATION,raw[..]);#assert !ctr_index_read(cast(string)raw[0..<n],rows[..]);n=ctr_index(items[0..<0],"",raw[..]);for at:n..<raw.count {raw[at]=' ';}#assert ctr_index_read(cast(string)raw[0..<131072],rows[..]) && !ctr_index_read(cast(string)raw[..],rows[..]);
+}
+#test "history readers validate every envelope field before replacing their owned page" #steps 100000000 {
+ raw:="{\"schema\":\"openagents.chat.conversation.v2alpha1\",\"id\":\"cnv_0123456789abcdef0123456789abcdef\",\"revision\":1,\"project_id\":\"prj_0123456789abcdef0123456789abcdef\",\"legacy_thread_id\":\"m_0123456789abcdef0123\",\"legacy_thread_revision\":2,\"messages\":[],\"active_turn_id\":null,\"created_at_ms\":3,\"updated_at_ms\":4,\"next_cursor\":null}";
+ h:[1]CtHistory;b:[4096]u8;#assert ctr_history_read(raw,h[..]) && h[0].legacy_n==22 && h[0].legacy_revision==2 && h[0].project_n==36 && h[0].next== -1;
+ keys:=[11]string.["schema","id","revision","project_id","legacy_thread_id","legacy_thread_revision","messages","active_turn_id","created_at_ms","updated_at_ms","next_cursor"];
+ values:=[11]string.["\"bad\"","null","2147483646","\"bad\"","\"bad\"","null","false","false","9007199254740992","2","\"0\""];
+ for key,index:keys {#assert !ctr_history_read(ct_check_replace(raw,key,values[index],b[..]),h[..]) && h[0].revision==1 && h[0].legacy_n==22;#assert !ctr_history_read(ct_check_alias(raw,key,b[..]),h[..]);}
+}
+#test "client index exact capacity and decoded peer edges are independent" #steps 200000000 {
+ storage:[61][768]u8;items:[61]string;id:[36]u8;hex:="0123456789abcdef";for index:0..<61 {
+  _=js_copy(id[..],"cnv_00000000000000000000000000000000");id[34]=hex[index/16];id[35]=hex[index%16];c:=[1]CtConversation.[CtConversation.{id=cast(string)id[..],title="",revision=CT_SEQUENCE_MAX,legacy_revision= -1}];n:=ctr_summary(c[..],storage[index][..]);#assert n>0;items[index]=cast(string)storage[index][0..<n];
+ }
+ raw:[131072]u8;rows:[1]CtIndex;n:=ctr_index(items[0..<60],cast(string)id[..],raw[..]);#assert !ctr_index_read(cast(string)raw[0..<n],rows[..]);
+ n=ctr_index(items[0..<60],"cnv_0000000000000000000000000000003b",raw[..]);#assert ctr_index_read(cast(string)raw[0..<n],rows[..]) && rows[0].n==60 && rows[0].items[59].title_n==0 && rows[0].items[59].revision==CT_SEQUENCE_MAX;
+ n=ctr_index(items[..],"",raw[..]);#assert !ctr_index_read(cast(string)raw[0..<n],rows[..]);
+ #assert !ctr_index_read("[",rows[..]) && !ctr_index_read("{\"schema\":\"openagents.chat.index.v2alpha1\",\"items\":{},\"next_cursor\":null}",rows[..]);
+ n=ctr_index(items[0..<1],"",raw[..]);b:[4096]u8;for key:[3]string.["schema","items","next_cursor"] {#assert !ctr_index_read(ct_check_alias(cast(string)raw[0..<n],key,b[..]),rows[..]);}
+ item:=items[0];changed:[1024]u8;for key:[3]string.["id","project_id","active_turn_id"] {values:=[5]string.["false","0","\"bad\"","\"\"","\"cnv_000000000000000000000000000000000\""];for value:values {items[0]=ct_check_replace(item,key,value,changed[..]);n=ctr_index(items[0..<1],"",raw[..]);#assert !ctr_index_read(cast(string)raw[0..<n],rows[..]);}}
+ items[0]=ct_check_replace(item,"id","\"cnv_00000000000000000000000000000000x\"",changed[..]);n=ctr_index(items[0..<1],"",raw[..]);#assert !ctr_index_read(cast(string)raw[0..<n],rows[..]);
+ #assert ctr_cursor("9")==9 && ctr_cursor(":")== -1;
+}
+#test "client message decoding retains exact byte block and scratch boundaries" #steps 200000000 {
+ raw:="{\"id\":\"trn_0123456789abcdef0123456789abcdef.user\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"x\"}],\"created_at_ms\":0}";
+ m:[1]CtMessage;text:[131087]u8;b:[1048576]u8;small:[3]u8;#assert ctr_message_read(raw,CT_TEST_CONVERSATION,m[..],small[0..<1]) && m[0].bytes==1;
+ for value:[3]string.["\"bad\"","\"trn_0123456789abcdef0123456789abcdefx\"","\"\""] {#assert !ctr_message_read(ct_check_replace(raw,"turn_id",value,b[..]),CT_TEST_CONVERSATION,m[..],text[..]);}
+ #assert !ctr_message_read(ct_check_replace(raw,"content","[]",b[..]),CT_TEST_CONVERSATION,m[..],text[..]);
+ array:[4096]u8;o:[1]Jo;jo_start(o[..],array[..]);jo_arr(o[..]);for index:0..<16 {ctr_text(o[..],"x");}jo_end(o[..]);#assert ctr_message_read(ct_check_replace(raw,"content",jo_text(o[..]),b[..]),CT_TEST_CONVERSATION,m[..],text[..]) && m[0].bytes==31;
+ jo_start(o[..],array[..]);jo_arr(o[..]);for index:0..<17 {ctr_text(o[..],"x");}jo_end(o[..]);#assert !ctr_message_read(ct_check_replace(raw,"content",jo_text(o[..]),b[..]),CT_TEST_CONVERSATION,m[..],text[..]);
+ content:="[{\"type\":\"text\",\"text\":\"x\"},{\"type\":\"text\",\"text\":\"y\"}]";two:=ct_check_replace(raw,"content",content,b[..]);for size:0..<3 {#assert !ctr_message_read(two,CT_TEST_CONVERSATION,m[..],small[0..<size]);}#assert ctr_message_read(two,CT_TEST_CONVERSATION,m[..],small[..]) && cast(string)small[..]=="x\ny";
+ for content_alias:[2]string.["[{\"\\u0074ype\":\"text\",\"text\":\"x\"}]","[{\"type\":\"text\",\"\\u0074ext\":\"x\"}]"] {#assert !ctr_message_read(ct_check_replace(raw,"content",content_alias,b[..]),CT_TEST_CONVERSATION,m[..],text[..]);}
+ big:[131073]u8;for at:0..<big.count {big[at]='x';}array_big:[800000]u8;jo_start(o[..],array_big[..]);jo_arr(o[..]);ctr_text(o[..],cast(string)big[0..<16384]);jo_end(o[..]);#assert ctr_message_read(ct_check_replace(raw,"content",jo_text(o[..]),b[..]),CT_TEST_CONVERSATION,m[..],text[..]) && m[0].bytes==16384;
+ jo_start(o[..],array_big[..]);jo_arr(o[..]);ctr_text(o[..],cast(string)big[0..<16385]);jo_end(o[..]);#assert !ctr_message_read(ct_check_replace(raw,"content",jo_text(o[..]),b[..]),CT_TEST_CONVERSATION,m[..],text[..]);
+ jo_start(o[..],array_big[..]);jo_arr(o[..]);ctr_text(o[..],cast(string)big[0..<16384]);ctr_text(o[..],"x");jo_end(o[..]);#assert !ctr_message_read(ct_check_replace(raw,"content",jo_text(o[..]),b[..]),CT_TEST_CONVERSATION,m[..],text[..]);
+ historical:[200000]u8;n:=ctr_historical_message(CT_TEST_CONVERSATION,0,true,"x",0,historical[..]);#assert ctr_message_read(cast(string)historical[0..<n],CT_TEST_CONVERSATION,m[..],text[..]) && m[0].bytes==1;
+ jo_start(o[..],array_big[..]);jo_arr(o[..]);ctr_text(o[..],cast(string)big[0..<16385]);jo_end(o[..]);#assert !ctr_message_read(ct_check_replace(cast(string)historical[0..<n],"content",jo_text(o[..]),b[..]),CT_TEST_CONVERSATION,m[..],text[..]);
+ assistant:="{\"id\":\"trn_0123456789abcdef0123456789abcdef.assistant\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"role\":\"assistant\",\"content\":[],\"created_at_ms\":0}";
+ jo_start(o[..],array_big[..]);jo_arr(o[..]);ctr_text(o[..],cast(string)big[0..<131072]);jo_end(o[..]);#assert ctr_message_read(ct_check_replace(assistant,"content",jo_text(o[..]),b[..]),CT_TEST_CONVERSATION,m[..],text[..]) && m[0].bytes==131072;
+ jo_start(o[..],array_big[..]);jo_arr(o[..]);ctr_text(o[..],cast(string)big[..]);jo_end(o[..]);#assert !ctr_message_read(ct_check_replace(assistant,"content",jo_text(o[..]),b[..]),CT_TEST_CONVERSATION,m[..],text[..]);
+}
+#test "client history full page duplicates cursor edges and encoded ceilings are independent" #steps 200000000 {
+ c:=[1]CtConversation.[CtConversation.{id=CT_TEST_CONVERSATION,revision=CT_SEQUENCE_MAX,legacy="m_0123456789abcdef0123",legacy_revision=1,created=0,updated=0,cursor="32"}];store:[33][512]u8;messages:[33]string;raw:[1048577]u8;h:[1]CtHistory;for index:0..<32 {n:=ctr_historical_message(CT_TEST_CONVERSATION,index,index%2==1,"x",0,store[index][..]);messages[index]=cast(string)store[index][0..<n];}
+ n:=ctr_conversation_write(c[..],messages[0..<32],raw[..]);#assert ctr_history_read(cast(string)raw[0..<n],h[..]) && h[0].n==32 && h[0].next==32 && h[0].legacy_revision==1 && h[0].revision==CT_SEQUENCE_MAX;
+ m:[1]CtMessage;text:[131087]u8;#assert ctr_history_message(h[..],31,m[..],text[..]) && m[0].assistant && m[0].bytes==1;
+ messages[32]=messages[0];n=ctr_conversation_write(c[..],messages[..],raw[..]);#assert !ctr_history_read(cast(string)raw[0..<n],h[..]);messages[1]=messages[0];n=ctr_conversation_write(c[..],messages[0..<2],raw[..]);#assert !ctr_history_read(cast(string)raw[0..<n],h[..]);
+ messages[1]=cast(string)store[1][0..<ctr_historical_message(CT_TEST_CONVERSATION,1,true,"x",0,store[1][..])];c[0].cursor="0";n=ctr_conversation_write(c[..],messages[0..<1],raw[..]);#assert ctr_history_read(cast(string)raw[0..<n],h[..]) && h[0].next==0;
+ c[0].cursor="";n=ctr_conversation_write(c[..],messages[0..<1],raw[..]);for at:n..<raw.count {raw[at]=' ';}#assert ctr_history_read(cast(string)raw[0..<1048576],h[..]) && !ctr_history_read(cast(string)raw[..],h[..]);#assert !ctr_message_read(cast(string)raw[..],CT_TEST_CONVERSATION,m[..],text[..]);
+ b:[4096]u8;n=ctr_conversation_write(c[..],messages[0..<1],b[..]);other:[4096]u8;#assert !ctr_history_read(ct_check_replace(cast(string)b[0..<n],"id","\"cnv_0123456789abcdef0123456789abcdefx\"",other[..]),h[..]);#assert !ctr_history_read(ct_check_replace(cast(string)b[0..<n],"legacy_thread_id","false",other[..]),h[..]);#assert !ctr_history_read("[",h[..]);
+ n=ctr_historical_message(CT_TEST_CONVERSATION,0,false,"x",0,raw[..]);for at:n..<raw.count {raw[at]=' ';}#assert ctr_message_read(cast(string)raw[0..<1048576],CT_TEST_CONVERSATION,m[..],text[..]) && !ctr_message_read(cast(string)raw[..],CT_TEST_CONVERSATION,m[..],text[..]);
+ // An out-of-range view may retain a stale encoded span. The range check,
+ // rather than a coincidentally empty slice, must refuse it.
+ h[0].n=0;h[0].starts[0]=0;h[0].ends[0]=n;_=js_copy(h[0].raw[..],cast(string)raw[0..<n]);_=js_copy(h[0].id[..],CT_TEST_CONVERSATION);#assert !ctr_history_message(h[..],0,m[..],text[..]);
+}
 CT_TEST_DISPATCH :: "run_0123456789abcdef0123456789abcdef";
 #test "readers refuse partial decoded identities bad nullable kinds and escaped nested keys" #steps 100000000 {
  v:[1]CtView;ct_record_running(v[..]);i:=[1]CtInfo.[CtInfo.{operation="op",model="m",provider="p",effort="low",route="r",why="why",snapshot="ctx_0123456789abcdef0123456789abcdef",revision=1,created=0,updated=1}];raw:[8192]u8;b:[8192]u8;inner:[2048]u8;arena:[1476]u8;next:[1]CtView;info:[1]CtInfo;n:=ctr_turn_write(v[..],i[..],raw[..]);source:=cast(string)raw[0..<n];

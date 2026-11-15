@@ -7,6 +7,26 @@ module in JavaScriptCore, with signed Updates. Build 1069 used WebKit/Wasm;
 in both profiles.
 The reusable starter itself remains in `coax/native/starter/`.
 
+The current source adopts durable account and private Project chat v2alpha1
+through `apps/shared/durable-chat.coax` and `home/durable.coax`. A new native
+runtime is required for the larger complete-copy service. No TestFlight or
+signed update for this work is published; release remains held for the complete
+Claude-port and Arcade goal.
+
+The drawer and private Project chat page read the new conversation index beside
+existing historical v1 chats. New turns use a server-owned operation, saved
+snapshot and contiguous event cursor. An uncertain write offers **Check saved
+result**, replaying its exact operation and body. **Stop** requests server
+cancellation; foreground read polling and reconnect never submit model work.
+After a process restart, reopen the saved conversation through history. Continuing
+a legacy v1 chat explicitly copies its authorized revision into the new format.
+
+History pages and a bounded visible window retain every complete message and
+offer Earlier/Latest navigation. The shared message component renders oversized
+Markdown as its complete selectable source; it does not show a parsed prefix.
+Drafts are scoped to conversation or new Project chat. Account reset clears the
+new history, indexes, reply, cursor and pending operation buffers.
+
 Email login calls the same `/api/auth/email/start` and `/verify` services as
 openagents.com/login through the installed `AppAuth` adapter. The server
 sends the email; the person enters its six digits. Native storage retains

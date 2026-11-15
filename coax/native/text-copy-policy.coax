@@ -1,0 +1,10 @@
+// Installed clipboard versions retain their exact independent byte ceilings.
+#authority;
+#test "native clipboard versions admit complete bounded text without widening v1" {
+ for version:0..<4 {for bytes:[7]int.[-1,0,1,65536,65537,131072,131073] {
+  expected:=bytes>=0 && ((version==1 && bytes<=65536) || (version==2 && bytes<=131072));#assert nt_copy_admit(version,bytes)==expected;
+ }}
+}
+nt_copy_admit :: (version:int,bytes:int)->bool #export_c #effects(all) {
+ return bytes>=0 && ((version==1 && bytes<=65536) || (version==2 && bytes<=131072));
+}

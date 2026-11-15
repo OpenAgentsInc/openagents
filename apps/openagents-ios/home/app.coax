@@ -17,13 +17,15 @@
 #load "../../../coax/native/documents-wire.coax";
 #load "../../shared/projects-app.coax";
 #load "../../shared/account-settings.coax";
+#load "../../shared/durable-chat.coax";
 
 Starter :: struct {
   ready:bool;dirty:bool=true;time:f32;action:int;flight:int;purpose:int;page:int= -1;
   email:[254]u8;email_n:int;code:[32]u8;code_n:int;pending:[256]u8;pending_n:int;
-  note:[512]u8;note_n:int;outbox:[131072]u8;out_n:int;inbox:[1048576]u8;
+  note:[512]u8;note_n:int;outbox:[1048576]u8;out_n:int;inbox:[1048576]u8;
   chats:[1]ChatHistory;selected:int= -1;
-  thread:[1]AccountThread;draft:[4096]u8;draft_n:int;wire:[65536]u8;retry:bool;
+  thread:[1]AccountThread;draft:[16384]u8;draft_n:int;wire:[65536]u8;retry:bool;
+  durable:[1]DurableChat;durable_index:[1]CtIndex;durable_project_index:[1]CtIndex;durable_refresh:bool;durable_project_refresh:bool;
   markdown:[1]MdDoc;copied:[96]u8;copied_n:int;text_busy:bool;
   environments:[1]EnvironmentApp;
   private_projects:[1]PrIndex;private_projects_failed:bool;project:[1]ProjectApp;project_thread:[64]u8;project_thread_n:int;project_link_pending:bool;
@@ -42,6 +44,7 @@ Starter :: struct {
 #load "projects-api.coax";
 #load "sync.coax";
 #load "route.coax";
+#load "durable.coax";
 na_copy :: (out:[]u8,text:string)->int {n:=ifx text.count<out.count then text.count else out.count;for i:0..<n {out[i]=text[i];}return n;}
 na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[0].dirty=true;}
 #test "native worlds launch through the registered service and preserve the current account surface" {
@@ -52,7 +55,7 @@ na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[
 na_world :: (s:[]Starter,realm:string,path:string,edit:bool) {
  if s[0].flight!=0 {return;}n:=nwo_write(realm,path,edit,s[0].outbox[..]);if n<0 {na_note(s,"This world is unavailable.");return;}s[0].out_n=n;s[0].action=13;s[0].flight=13;s[0].dirty=true;
 }
-na_history_clear :: (s:[]Starter) {s[0].account_settings[0]=AccountSettingsApp.{};s[0].project[0]=ProjectApp.{};s[0].private_projects[0]=PrIndex.{};s[0].private_projects_failed=false;s[0].project_thread_n=0;s[0].project_link_pending=false;s[0].projects_n=0;s[0].projects_loaded=false;s[0].projects_failed=false;s[0].usage[0]=ProviderUsage.{};dm_value(s[0].dom[..],"usage.code","");dm_value(s[0].dom[..],"usage.label","");s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;na_route_clear(s);for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
+na_history_clear :: (s:[]Starter) {s[0].durable[0]=DurableChat.{};s[0].durable_index[0]=CtIndex.{};s[0].durable_project_index[0]=CtIndex.{};s[0].durable_refresh=false;s[0].durable_project_refresh=false;s[0].account_settings[0]=AccountSettingsApp.{};s[0].project[0]=ProjectApp.{};s[0].private_projects[0]=PrIndex.{};s[0].private_projects_failed=false;s[0].project_thread_n=0;s[0].project_link_pending=false;s[0].projects_n=0;s[0].projects_loaded=false;s[0].projects_failed=false;s[0].usage[0]=ProviderUsage.{};dm_value(s[0].dom[..],"usage.code","");dm_value(s[0].dom[..],"usage.label","");s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;na_route_clear(s);for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
 na_secrets_clear :: (s:[]Starter) {
   for i:0..<s[0].email.count {s[0].email[i]=0;}s[0].email_n=0;
   dm_value(s[0].dom[..],"login.email","");
@@ -94,7 +97,7 @@ na_http :: (s:[]Starter,path:string,body:string,purpose:int) {
   s[0].out_n=o[0].n;s[0].purpose=purpose;s[0].action=4;s[0].flight=4;s[0].dirty=true;
 }
 na_new :: (s:[]Starter) {
-  s[0].project_thread_n=0;s[0].project_link_pending=false;  if s[0].flight!=0 {return;}empty:AccountThread;s[0].thread[0]=empty;na_route_clear(s);s[0].draft_n=0;s[0].retry=false;s[0].page=3;
+  if s[0].flight!=0 || dca_blocked(s[0].durable[..]) {return;}s[0].project_thread_n=0;s[0].project_link_pending=false;empty:AccountThread;s[0].thread[0]=empty;na_route_clear(s);s[0].draft_n=0;s[0].retry=false;s[0].page=3;if s[0].workspace {na_durable_new(s);}
   dm_value(s[0].dom[..],"chat.composer","");na_note(s,"");
 }
 na_save :: (s:[]Starter,purpose:int) {
@@ -118,6 +121,7 @@ na_complete :: (s:[]Starter) {
   na_http(s,"/api/chat/complete/v1",cast(string)s[0].wire[0..<n],5);na_note(s,"");s[0].retry=false;
 }
 na_send :: (s:[]Starter) {
+  if s[0].workspace && !s[0].world_mode && (s[0].project_thread_n==0 || s[0].project[0].canonical) {s[0].durable[0].enabled=true;na_durable_send(s);return;}
   if s[0].flight!=0 || s[0].draft_n==0 {return;}
   // A bounded transcript reserves room for the next answer. No hidden clipping.
   t:=s[0].thread[..];total:=s[0].draft_n;for i:0..<t[0].n {total+=t[0].messages[i].n;}
@@ -150,8 +154,8 @@ na_send :: (s:[]Starter) {
 na_text_effect :: (s:[]Starter,link:bool,value:string,id:string) {
   if s[0].text_busy || s[0].action!=0 {return;}
   if link && !nt_link(value) {na_note(s,"This link cannot be opened.");return;}
-  n:=nt_service_body(link,value,s[0].outbox[..]);if n<0 {na_note(s,"Text action is too large.");return;}
-  s[0].out_n=n;s[0].action=ifx link then 10 else 9;s[0].text_busy=true;
+  version2:= !link && value.count>65536;n:=ifx version2 then nt_clipboard_v2_body(value,s[0].outbox[..]) else nt_service_body(link,value,s[0].outbox[..]);if n<0 {na_note(s,"Text action is too large.");return;}
+  s[0].out_n=n;s[0].action=ifx link then 10 else ifx version2 then 19 else 9;s[0].text_busy=true;
   if !link {s[0].copied_n=na_copy(s[0].copied[..],id);}s[0].dirty=true;
 }
 #test "copy while an answer is pending cannot replace the model request" {
@@ -160,6 +164,7 @@ na_text_effect :: (s:[]Starter,link:bool,value:string,id:string) {
   na_reply(s[..],9,0,"{}",false);#assert !s[0].text_busy && s[0].flight==4 && s[0].purpose==5;
 }
 na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
+  if na_durable_reply(s,op,status,raw,failed) {na_nav_pending(s);return;}
   background_read:=op==4 && s[0].sync_background;
   if background_read {na_nav_keep(s);s[0].sync_background=false;}
   if op==NAC_OP {
@@ -176,7 +181,7 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
     purpose:=s[0].purpose;s[0].flight=0;s[0].purpose=0;s[0].dirty=true;
     if status==401 {na_history_clear(s);s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};s[0].account_ready=false;s[0].page=0;na_note(s,"Log in again to see your chats.");return;}
     if purpose==70 {nav_reply(s[0].navigation[..],status,raw,failed);}
-    else {next:=chh_read(raw);if !failed && status==200 && next.ok {s[0].chats[0]=next;}else {nav_note(s[0].navigation[..],"Saved account chats could not be refreshed.");}}
+    else {next:=chh_read(raw);if !failed && status==200 && next.ok {s[0].chats[0]=next;s[0].durable_refresh=true;}else {nav_note(s[0].navigation[..],"Saved account chats could not be refreshed.");}}
     na_nav_pending(s);return;
   }
   if op==13 && s[0].flight==13 {s[0].flight=0;na_note(s,ifx failed then "The world could not open. Check your connection and try again." else "");return;}
@@ -185,7 +190,7 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
     dm_value(s[0].dom[..],"env.composer",cast(string)s[0].environments[0].draft[0..<s[0].environments[0].nd]);if s[0].workspace {if op==4 {nav_observe(s[0].navigation[..],s[0].environments[..]);}na_nav_pending(s);}return;
   }
   if op==8 && s[0].purpose==40 {s[0].flight=0;s[0].environments[0]=EnvironmentApp.{};if s[0].account_ready {na_list(s);}else {s[0].page=0;}return;}
-  if op==9 || op==10 {s[0].text_busy=false;if failed {s[0].copied_n=0;na_note(s,"The text action could not finish.");}s[0].dirty=true;return;}
+  if op==9 || op==10 || op==19 {s[0].text_busy=false;if failed {s[0].copied_n=0;na_note(s,"The text action could not finish.");}s[0].dirty=true;return;}
   if op!=s[0].flight {return;}s[0].flight=0;s[0].dirty=true;
   nodes:[48]JvNode;d:[1]Jv;ok:=jv_parse(d[..],raw,nodes[..]);v:=d[0];
   if op==8 {s[0].purpose=0;s[0].retry=true;na_note(s,ifx s[0].project[0].canonical && s[0].project_thread_n==36 then "Stopped waiting. The server can still save the reply. Reopen this chat to check it." else "Stopped. You can retry this turn.");return;}
@@ -216,7 +221,7 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
       t[0].messages[i].n=n;t[0].messages[i].assistant=true;t[0].n+=1;s[0].route_note_n=0;na_save(s,6);return;
     }
     if !act_read(raw,s[0].thread[..]) {na_note(s,"The chat service returned an unreadable conversation.");return;}
-    if purpose==3 {na_route_clear(s);}
+    if purpose==3 {na_route_clear(s);s[0].durable[0]=DurableChat.{};}
     if purpose==6 && s[0].world_mode && s[0].world_plan_n>0 {
       s[0].out_n=na_copy(s[0].outbox[..],cast(string)s[0].world_plan[0..<s[0].world_plan_n]);s[0].world_plan_n=0;s[0].action=520;s[0].dirty=true;return;
     }
@@ -252,7 +257,7 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
     if status!=200 {na_note(s,ifx status==403 then "This account cannot access these saved chats." else "Your chats could not be loaded. Refresh to try again.");return;}
     s[0].chats[0]=chh_read(raw);
     if !s[0].chats[0].ok {na_note(s,"The chat service returned an unreadable list. Refresh to try again.");return;}
-    na_note(s,"");if s[0].workspace {na_nav_pending(s);}
+    na_note(s,"");if s[0].workspace {s[0].durable_refresh=true;na_nav_pending(s);}
   }
 }
 #test "email code cannot verify before request, wrong code retries, and login then loads saved chats" {
@@ -274,7 +279,7 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
   na_list(s[..]);na_reply(s[..],4,0,"{}",true);
   na_reply(s[..],1,0,"{\"loggedIn\":false}",false);#assert s[0].page==0 && s[0].flight==0;
 }
-#test "expired sessions and a new login erase all prior account history" {
+#test "expired sessions and a new login erase all prior account history" #steps 50000000 {
   s:[1]Starter;s[0].page=2;s[0].chats[0].n=1;s[0].chats[0].items[0].title[0]='X';s[0].email[0]='a';s[0].email_n=1;
   na_list(s[..]);na_reply(s[..],4,401,"{}",false);
   #assert s[0].page==0 && s[0].chats[0].n==0 && s[0].chats[0].items[0].title[0]==0 && s[0].email_n==0 && s[0].email[0]==0;
@@ -285,7 +290,7 @@ na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
 st_done :: (s:[]Starter) #export_c #effects(all) {s[0].action=0;for i:0..<s[0].out_n {s[0].outbox[i]=0;}s[0].out_n=0;}
 st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   if !s[0].ready {s[0].ready=true;n:=mono_frames(s[0].sets[..]);na_request(s,1,"");}
-  na_sync_tick(s,dt);
+  na_durable_tick(s,dt);na_sync_tick(s,dt);
   if s[0].workspace {eu_pause(s[0].environments[..],s[0].navigation[0].open || s[0].flight!=0 || s[0].usage[0].active || s[0].account_settings[0].active || s[0].page!=4);na_nav_tick(s);}
   if dt>0 && dt<1 {s[0].time+=dt;}na_usage_tick(s);na_project_tick(s);if !s[0].dirty && !s[0].ui[0].busy && s[0].environments[0].action==0 {return 0;}
   t:=s[0].tree[..];u:=s[0].ui[..];d:=s[0].dom[..];
@@ -320,6 +325,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     x=tr_open(t,"worlds.main",TG_SECTION,"world-library");tr_close(t);
   } else if s[0].page==4 {
     eu_render(s[0].environments[..],t,u,s[0].markdown[..]);
+  } else if s[0].page==3 && s[0].durable[0].enabled && !s[0].world_mode {na_durable_render(s,t,u);
   } else if s[0].page==3 {
     x=tr_open(t,"chat.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");
     if s[0].workspace && !s[0].world_mode {x=k_side_open(t,"nav.toggle","Show chats");x=k_text(t,u,"chat.name",TG_SPAN,"","OpenAgents");x=k_icon_button(t,"nav.new",IC_PLUS,"New chat");if s[0].project_thread_n>0 {x=k_link(t,"project.chat.back","Project");}}
@@ -376,8 +382,9 @@ st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
     s[0].world[0]=context[0];s[0].world_n=na_copy(s[0].world_wire[..],cast(string)s[0].inbox[0..<n]);s[0].dirty=true;return;
   }
   if kind==1 && s[0].world_mode && dm_slot_id(s[0].dom[..],slot)=="chat.back" {s[0].action=529;return;}
-  if kind>=100 && kind<219 {op:=ifx kind>=200 then kind-200 else kind-100;if n>=0 && n<=1048576 {na_reply(s,op,slot,cast(string)s[0].inbox[0..<n],kind>=200);}return;}
+  if kind>=100 && kind<220 {op:=ifx kind>=200 then kind-200 else kind-100;if n>=0 && n<=1048576 {na_reply(s,op,slot,cast(string)s[0].inbox[0..<n],kind>=200);}return;}
   i:= -1;for k:0..<s[0].tree[0].n {if s[0].dom[0].of[k]==slot {i=k;break;}}id:=tr_id(s[0].tree[..],i);
+  if kind==1 && na_durable_press(s,id) {s[0].dirty=true;return;}
   if kind==1 && id=="login.key" {acs_open(s[0].account_settings[..],true);s[0].dirty=true;return;}
   if s[0].account_settings[0].active && (id=="usage.open" || id=="extras.more") {s[0].account_settings[0].active=false;}
   if s[0].account_settings[0].active {
@@ -404,9 +411,10 @@ st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
     if id=="login.email" && n<=254 {s[0].email_n=na_copy(s[0].email[..],cast(string)s[0].inbox[0..<n]);}
     if id=="login.code" && n<=32 {s[0].code_n=na_copy(s[0].code[..],cast(string)s[0].inbox[0..<n]);}
   }
-  if kind==2 && id=="chat.composer" && (s[0].flight==0 || s[0].page==2 && (s[0].purpose==1 || s[0].purpose==70 || s[0].purpose==71)) && n>=0 {
-    if n<=4096 {s[0].draft_n=na_copy(s[0].draft[..],cast(string)s[0].inbox[0..<n]);}
-    else {dm_value(s[0].dom[..],"chat.composer",cast(string)s[0].draft[0..<s[0].draft_n]);na_note(s,"Messages can be up to 4,096 bytes.");}
+  if kind==2 && id=="chat.composer" && !dca_blocked(s[0].durable[..]) && (s[0].flight==0 || (s[0].durable[0].enabled && s[0].purpose>=132 && s[0].purpose<=137) || s[0].page==2 && (s[0].purpose==1 || s[0].purpose==70 || s[0].purpose==71)) && n>=0 {
+    maximum:=ifx s[0].world_mode || s[0].project_thread_n>0 && !s[0].project[0].canonical then 4096 else 16384;
+    if n<=maximum {s[0].draft_n=na_copy(s[0].draft[..],cast(string)s[0].inbox[0..<n]);}
+    else {dm_value(s[0].dom[..],"chat.composer",cast(string)s[0].draft[0..<s[0].draft_n]);na_note(s,"This message exceeds the conversation's byte limit.");}
   }
   if kind==1 {
     if na_pr_press(s,id) {s[0].dirty=true;return;}

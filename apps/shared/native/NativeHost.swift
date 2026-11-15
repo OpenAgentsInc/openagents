@@ -93,7 +93,7 @@ import Security
             let (op,body)=try p.action()
             if op==0 {continue}
             let owner=epoch,extra=(p === programs.last)
-            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open","environment.commandIDs","environment.wait","world.open","documents.pick","documents.upload","documents.release","","account.service"]
+            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open","environment.commandIDs","environment.wait","world.open","documents.pick","documents.upload","documents.release","","account.service","clipboard.write.v2"]
             guard extra || op>0 && op<ops.count else {throw NativeFailure.refused("Unsupported service")}
             var args=(try? JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] ?? [:]
             if !extra && op==13 {args["nativeWire"]=body}
@@ -197,8 +197,8 @@ import Security
             let challenge=try await AppAuth.shared.passkeyChallenge(); let p=PasskeyAsk(anchor:window); passkey=p; defer { passkey=nil }
             _ = try await AppAuth.shared.passkeyLogin(challenge,try await p.assert(challenge)); return ["loggedIn":true]
         case "auth.logout": accountServices.clear();await AppAuth.shared.logout(); return ["loggedIn":false]
-        case "clipboard.write":
-            guard let text=b["text"] as? String,text.utf8.count<=65536 else {throw NativeFailure.refused("Text is too large")}
+        case "clipboard.write", "clipboard.write.v2":
+            guard let text=b["text"] as? String,nt_copy_admit(op == "clipboard.write.v2" ? 2:1,Int64(text.utf8.count)) else {throw NativeFailure.refused("Text is too large")}
             if accountServices.privateClipboard {UIPasteboard.general.setItems([[UIPasteboard.typeAutomatic:text]],options:[.localOnly:true,.expirationDate:Date().addingTimeInterval(60)])}else {UIPasteboard.general.string=text};return ["copied":true]
         case "link.open":
             let raw=b["url"] as? String ?? ""
@@ -215,7 +215,7 @@ import Security
         case "http":
             let path=b["path"] as? String ?? "", method=b["method"] as? String ?? "GET", body=b["body"] as? String ?? ""
             let allowed=path.withCString { cn_api(coax_string(data:$0,count:Int64(path.utf8.count))) || nwp_account(coax_string(data:$0,count:Int64(path.utf8.count))) }
-            guard allowed, ["GET","POST"].contains(method), body.utf8.count<=65536 else { throw NativeFailure.refused("Native request refused") }
+            guard allowed, ["GET","POST"].contains(method), body.utf8.count<=131072 else { throw NativeFailure.refused("Native request refused") }
             var request=URLRequest(url:URL(string:AppAuth.defaultOrigin+path)!,timeoutInterval:60); request.httpMethod=method
             if method == "POST" { request.httpBody=Data(body.utf8); request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.setValue(AppAuth.defaultOrigin,forHTTPHeaderField:"Origin") }
             if AppAuth.shared.loggedIn { request=try await AppAuth.shared.authorize(request) }

@@ -20,7 +20,7 @@
 na_nav_key :: (s:[]Starter,out:[]u8)->string {
  e:=s[0].environments[..];n:=0;
  if s[0].page==4 && e[0].page==2 && e[0].selected>=0 {n=mc(out,0,cast(string)e[0].catalog[0].entries[e[0].selected].host[..]);n=mc(out,n,"/");n=mc(out,n,cast(string)e[0].session[0..<e[0].ns]);}
- else if s[0].page==2 || s[0].page==3 {n=mc(out,0,"account/");n=mc(out,n,cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]);}
+ else if s[0].page==2 || s[0].page==3 {n=mc(out,0,"account/");if s[0].durable[0].enabled && s[0].durable[0].id_n>0 {n=mc(out,n,dca_id(s[0].durable[..]));}else if s[0].thread[0].id_n>0 {n=mc(out,n,cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]);}else if s[0].project_thread_n==36 {n=mc(out,n,cast(string)s[0].project_thread[0..<36]);}}
  return cast(string)out[0..<n];
 }
 na_nav_keep :: (s:[]Starter) {key:[224]u8;k:=na_nav_key(s,key[..]);e:=s[0].environments[..];nav_keep_draft(s[0].navigation[..],k,ifx s[0].page==4 then cast(string)e[0].draft[0..<e[0].nd] else cast(string)s[0].draft[0..<s[0].draft_n]);}
@@ -39,6 +39,8 @@ na_nav_tick :: (s:[]Starter) {
 na_nav_pending :: (s:[]Starter) {n:=s[0].navigation[..];if n[0].np==0 || s[0].flight!=0 {return;}b:[96]u8;size:=na_copy(b[..],cast(string)n[0].pending[0..<n[0].np]);n[0].np=0;_:=na_nav_press(s,cast(string)b[0..<size]);}
 na_nav_press :: (s:[]Starter,id:string)->bool {
  n:=s[0].navigation[..];e:=s[0].environments[..];
+ if na_durable_press(s,id) {return true;}
+ if dca_blocked(s[0].durable[..]) && (id.count>=4 && id[0..<4]=="nav." || id.count>=8 && id[0..<8]=="private." || id.count>=9 && id[0..<9]=="projects.") && id!="nav.toggle" && id!="nav.close" && id!="nav.settings" {nav_note(n,"Check the saved chat request before changing conversations.");return true;}
  if id=="account.logout" || id=="app.updates" || id=="app.details" {
   if s[0].flight!=0 || e[0].flight || e[0].random || s[0].action!=0 {n[0].np=ea_copy(n[0].pending[..],id);return true;}
   na_request(s,ifx id=="account.logout" then 5 else ifx id=="app.updates" then 6 else 7,"");return true;
@@ -72,7 +74,7 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
  if !recognized {return false;}
  if e[0].flight && cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="ReadSession" && !e[0].uncertain {n[0].np=ea_copy(n[0].pending[..],id);return true;}
  if e[0].uncertain || e[0].random || e[0].flight || e[0].action!=0 && e[0].action!=12 {nav_note(n,"Wait for the current request, or reconnect before changing chats.");return true;}
- if s[0].flight!=0 {if s[0].purpose==70 || s[0].purpose==71 {n[0].np=ea_copy(n[0].pending[..],id);}else {nav_note(n,"Wait for the current turn before changing chats.");}return true;}
+ if s[0].flight!=0 {if s[0].purpose==70 || s[0].purpose==71 || s[0].purpose>=132 && s[0].purpose<=137 {n[0].np=ea_copy(n[0].pending[..],id);}else {nav_note(n,"Wait for the current turn before changing chats.");}return true;}
  s[0].usage[0].active=false;na_nav_keep(s);s[0].project_thread_n=0;s[0].project_link_pending=false;
  if host>=0 {
   e[0]=EnvironmentApp.{};e[0].active=true;e[0].workspace=true;e[0].page=2;e[0].selected=host;e[0].catalog[0]=n[0].browser[0].catalog[0];e[0].offer[0]=n[0].groups[host].offer;s[0].page=4;
@@ -123,7 +125,8 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  }
  if n[0].creating {x=k_row(t,u,"nav.account.new","OpenAgents","Account chat",false);}
  else {
-  x=k_side_mark(t,"nav.account.heading","Account",s[0].chats[0].n);
+  x=k_side_mark(t,"nav.rich.heading","OpenAgents",s[0].durable_index[0].n);na_durable_rows(s,t,u,false);
+  x=k_side_mark(t,"nav.account.heading","Earlier account chats",s[0].chats[0].n);
   matched:=0;shown:=0;for i:0..<s[0].chats[0].n {r:=s[0].chats[0].items[i];if visible>=NAV_VISIBLE || !nav_match(n,cast(string)r.title[0..<r.title_n],"Account") {continue;}matched+=1;if matched<=n[0].account_at || shown>=budget {continue;}shown+=1;id:[96]u8;x=k_row(t,u,tr_join(id[..],"nav.account.",i),cast(string)r.title[0..<r.title_n],"",s[0].page==3 && cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]==cast(string)r.id[0..<r.id_n]);visible+=1;}
   if n[0].account_at>0 {x=k_link(t,"nav.account.latest","Latest");}
   if account_matches>n[0].account_at+shown {x=k_link(t,"nav.account.older","Earlier");}

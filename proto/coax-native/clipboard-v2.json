@@ -1,0 +1,7 @@
+{
+  "schema": "coax.native.clipboard.v2",
+  "transport": "Installed native account service 19 clipboard.write.v2",
+  "fields": {"text": "UTF-8 string, at most 131072 bytes"},
+  "effect": "Explicit user copy/tap only. Clipboard is never read. Uses the same account clipboard privacy setting as v1.",
+  "golden": {"text": "Hello"}
+}

@@ -187,6 +187,14 @@ conversation pins the source thread ID/revision. Its copy timestamps record
 the copy, because v1 messages have no per-message timestamp to recover.
 
 Mobile and CLI consume the same protocol, persisted turn and event stream.
+The native source reads indexes, conversation pages, materialized turns and event
+pages through the one `account-chat-turn-record.coax` codec. Its per-conversation
+state owns HTTP bytes and copies selection metadata out of scratch arenas.
+History continuation is checked against the requested message offset. A bounded
+visible transcript window changes presentation only; it never changes the model's
+admitted history. New turns and Stop retain exact pending writes until their
+receipts resolve. Native `clipboard.write.v2` is a separate installed profile
+for complete 128 KiB message copies; v1 remains unchanged.
 Reuse shared transcripts, Markdown, composer, auth and context assembly. Switching
 accounts clears private state and invalidates callbacks before rendering another
 account. Model/agent/effort decisions remain automatic under `docs/router/`.

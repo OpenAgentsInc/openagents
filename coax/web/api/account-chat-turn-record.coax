@@ -15,6 +15,72 @@ CtControl :: struct {conversation:string;turn:string;revision:int;state:int;stop
 CtWorker :: struct {operation:int;id:string;worker:string;turn:string;dispatch:string;}
 CtJob :: struct {has_work:bool;turn:string;conversation:string;dispatch:string;}
 CtPage :: struct {next:int;more:bool;state:int;}
+// Client-owned index and one bounded history page. Retain the exact encoded
+// page once, not 32 maximum-sized text buffers. Message reads decode on demand
+// into the caller's scratch; no string here borrows an HTTP callback's memory.
+CtSummary :: struct {id:[36]u8;title:[160]u8;title_n:int;revision:int;project:[36]u8;project_n:int;active:[36]u8;active_n:int;updated:int;}
+CtIndex :: struct {items:[60]CtSummary;n:int;next:[36]u8;next_n:int;}
+CtMessage :: struct {id:[64]u8;id_n:int;turn:[36]u8;turn_n:int;assistant:bool;bytes:int;created:int;}
+CtHistory :: struct {id:[36]u8;revision:int;project:[36]u8;project_n:int;legacy:[22]u8;legacy_n:int;legacy_revision:int= -1;active:[36]u8;active_n:int;created:int;updated:int;next:int= -1;raw:[1048576]u8;raw_n:int;starts:[32]int;ends:[32]int;n:int;}
+ctr_cursor :: (text:string)->int {
+ if text.count==0 || text.count>10 || (text.count>1 && text[0]=='0') {return -1;}n:=0;for c:text {if c<'0' || c>'9' {return -1;}n=n*10+cast(int)c-48;}return ifx n<=CT_SEQUENCE_MAX then n else -1; // mutant: equivalent (allowing 11 digits still rejects every canonical 11-digit number at the independent CT_SEQUENCE_MAX bound)
+}
+ctr_reference :: (v:Jv,key:string,prefix:string,out:[]u8)->int {
+ at:=jv_get(v,0,key);n:=ct_nullable_string(v,at,out);if n==0 {return ifx jv_kind(v,at)==JV_NULL then 0 else -1;}
+ return ifx n>0 && ct_id(cast(string)out[0..<n],prefix,32) then n else -1; // mutant: equivalent (zero already returned above; only a complete 36-byte identity can pass ct_id, so either neighboring lower bound is identical)
+}
+ctr_index_read :: (raw:string,out:[]CtIndex)->bool {
+ if raw.count>131072 {return false;}d:[1]Jv;nodes:[512]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[3]string.["schema","items","next_cursor"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=3 || jv_raw(v,jv_get(v,0,"schema"))!=CTR_INDEX {return false;}
+ next:[1]CtIndex;next[0].next_n=ctr_reference(v,"next_cursor","cnv_",next[0].next[..]);if next[0].next_n<0 {return false;}
+ items:=jv_get(v,0,"items");count:=jv_len(v,items);if jv_kind(v,items)!=JV_ARRAY || count>60 {return false;}
+ for index:0..<count {
+  at:=jv_at(v,items,index);fields:=[6]string.["id","title","revision","project_id","active_turn_id","updated_at_ms"];
+  if !js_fields(v,at,fields[..]) || jv_len(v,at)!=6 {return false;}row:=next[0].items[index..<index+1];
+  n:=js_string(v,jv_get(v,at,"id"),row[0].id[..]);row[0].title_n=js_string(v,jv_get(v,at,"title"),row[0].title[..]);row[0].revision=js_number(v,jv_get(v,at,"revision"));row[0].updated=js_number(v,jv_get(v,at,"updated_at_ms"));
+  pn:=jv_get(v,at,"project_id");an:=jv_get(v,at,"active_turn_id");row[0].project_n=ct_nullable_string(v,pn,row[0].project[..]);row[0].active_n=ct_nullable_string(v,an,row[0].active[..]);
+  if n!=36 || !ct_id(cast(string)row[0].id[..],"cnv_",32) || row[0].title_n<0 || row[0].revision<1 || row[0].revision>CT_SEQUENCE_MAX || !ctr_time(row[0].updated) {return false;}
+  if row[0].project_n<0 || row[0].active_n<0 {return false;}
+  if row[0].project_n==0 {if jv_kind(v,pn)!=JV_NULL {return false;}}else if !ct_id(cast(string)row[0].project[0..<row[0].project_n],"prj_",32) {return false;}
+  if row[0].active_n==0 {if jv_kind(v,an)!=JV_NULL {return false;}}else if !ct_id(cast(string)row[0].active[0..<row[0].active_n],"trn_",32) {return false;}
+  for before:0..<index {if cast(string)next[0].items[before].id[..]==cast(string)row[0].id[..] {return false;}}
+ }
+ if next[0].next_n>0 && (count==0 || cast(string)next[0].next[..]!=cast(string)next[0].items[count-1].id[..]) {return false;}next[0].n=count;out[0]=next[0];return true; // mutant: equivalent (ctr_reference returns zero or 36 here; changing this lower bound from zero to one selects the same branch)
+}
+ctr_message_read :: (raw:string,conversation:string,out:[]CtMessage,text:[]u8)->bool {
+ if raw.count>1048576 || !ct_id(conversation,"cnv_",32) {return false;}d:[1]Jv;nodes:[96]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[5]string.["id","turn_id","role","content","created_at_ms"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=5 {return false;}next:[1]CtMessage;next[0].id_n=js_string(v,jv_get(v,0,"id"),next[0].id[..]);next[0].turn_n=js_string(v,jv_get(v,0,"turn_id"),next[0].turn[..]);next[0].created=js_number(v,jv_get(v,0,"created_at_ms"));role:=jv_raw(v,jv_get(v,0,"role"));
+ if next[0].id_n<1 || next[0].turn_n<0 || !ctr_time(next[0].created) || (role!="user" && role!="assistant") {return false;}next[0].assistant=role=="assistant"; // mutant: equivalent (a neighboring minimum id_n still cannot admit a one-byte ID: both canonical identity checks below require at least 41 bytes)
+ id:=cast(string)next[0].id[0..<next[0].id_n];b:[64]u8;o:[1]Jo;jo_start(o[..],b[..]);historical:=next[0].turn_n==0;
+ if historical {
+  jo_put(o[..],conversation);jo_put(o[..],".legacy.");if id.count<45 || id[0..<44]!=jo_text(o[..]) {return false;}position:=ctr_cursor(id[44..<id.count]);if position<0 || position>=32 {return false;}
+ }else {if !ct_id(cast(string)next[0].turn[..],"trn_",32) {return false;}jo_put(o[..],cast(string)next[0].turn[..]);jo_put(o[..],ifx next[0].assistant then ".assistant" else ".user");if id!=jo_text(o[..]) {return false;}}
+ content:=jv_get(v,0,"content");count:=jv_len(v,content);maxblocks:=ifx historical || next[0].assistant then 1 else 16;
+ if jv_kind(v,content)!=JV_ARRAY || count>maxblocks || (!next[0].assistant && count==0) {return false;}maximum:=ifx historical || !next[0].assistant then 16384 else 131072;decoded:=0;
+ for index:0..<count {
+  at:=jv_at(v,content,index);fields:=[2]string.["type","text"];if !js_fields(v,at,fields[..]) || jv_len(v,at)!=2 || jv_raw(v,jv_get(v,at,"type"))!="text" {return false;}
+  if index>0 {if next[0].bytes>=text.count {return false;}text[next[0].bytes]='\n';next[0].bytes+=1;}
+  available:=maximum-decoded;if available>text.count-next[0].bytes {available=text.count-next[0].bytes;}n:=js_string(v,jv_get(v,at,"text"),text[next[0].bytes..<next[0].bytes+available]);if n<1 {return false;}decoded+=n;next[0].bytes+=n; // mutant: equivalent (using >= only assigns the value already in available when both capacities are equal)
+ }
+ out[0]=next[0];return true;
+}
+ctr_history_read :: (raw:string,out:[]CtHistory)->bool {
+ if raw.count>1048576 {return false;}d:[1]Jv;nodes:[2304]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[11]string.["schema","id","revision","project_id","legacy_thread_id","legacy_thread_revision","messages","active_turn_id","created_at_ms","updated_at_ms","next_cursor"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=11 || jv_raw(v,jv_get(v,0,"schema"))!=CTR_CONVERSATION {return false;}
+ next:[1]CtHistory;n:=js_string(v,jv_get(v,0,"id"),next[0].id[..]);next[0].revision=js_number(v,jv_get(v,0,"revision"));next[0].project_n=ctr_reference(v,"project_id","prj_",next[0].project[..]);next[0].active_n=ctr_reference(v,"active_turn_id","trn_",next[0].active[..]);next[0].created=js_number(v,jv_get(v,0,"created_at_ms"));next[0].updated=js_number(v,jv_get(v,0,"updated_at_ms"));
+ if n!=36 || !ct_id(cast(string)next[0].id[..],"cnv_",32) || next[0].revision<1 || next[0].revision>CT_SEQUENCE_MAX || next[0].project_n<0 || next[0].active_n<0 || !ctr_time(next[0].created) || !ctr_time(next[0].updated) || next[0].updated<next[0].created {return false;}
+ legacy:=jv_get(v,0,"legacy_thread_id");next[0].legacy_n=ct_nullable_string(v,legacy,next[0].legacy[..]);next[0].legacy_revision=ct_nullable_number(v,jv_get(v,0,"legacy_thread_revision"));if next[0].legacy_n<0 {return false;}
+ if next[0].legacy_n==0 {if jv_kind(v,legacy)!=JV_NULL || next[0].legacy_revision!= -1 {return false;}}else if !ct_id(cast(string)next[0].legacy[..],"m_",20) || next[0].legacy_revision<1 {return false;}
+ cursor:=jv_get(v,0,"next_cursor");if jv_kind(v,cursor)!=JV_NULL {b:[10]u8;n=js_string(v,cursor,b[..]);if n<1 {return false;}next[0].next=ctr_cursor(cast(string)b[0..<n]);if next[0].next<0 {return false;}}
+ list:=jv_get(v,0,"messages");count:=jv_len(v,list);if jv_kind(v,list)!=JV_ARRAY || count>32 || (next[0].next>=0 && count==0) {return false;}m:[1]CtMessage;text:[131087]u8;
+ for index:0..<count {at:=jv_at(v,list,index);if !ctr_message_read(jv_raw(v,at),cast(string)next[0].id[..],m[..],text[..]) {return false;}next[0].starts[index]=v.nodes[at].from;next[0].ends[index]=v.nodes[at].to;
+  for before:0..<index {previous:=jv_at(v,list,before);if jv_raw(v,jv_get(v,previous,"id"))==cast(string)m[0].id[0..<m[0].id_n] {return false;}}
+ }
+ next[0].n=count;next[0].raw_n=js_copy(next[0].raw[..],raw);out[0]=next[0];return true;
+}
+ctr_history_message :: (h:[]CtHistory,index:int,out:[]CtMessage,text:[]u8)->bool {
+ if index<0 || index>=h[0].n {return false;}return ctr_message_read(cast(string)h[0].raw[h[0].starts[index]..<h[0].ends[index]],cast(string)h[0].id[..],out,text);
+}
 ctr_time :: (n:int)->bool {return n>=0 && n<=9007199254740991;}
 ctr_view_valid :: (v:[]CtView)->bool {
  if !ct_id(cast(string)v[0].conversation[..],"cnv_",32) || !ct_id(cast(string)v[0].turn[..],"trn_",32) {return false;}

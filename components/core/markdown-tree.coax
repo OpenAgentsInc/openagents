@@ -3,13 +3,25 @@
 // for the remaining bounded transcript as plain source when rich nodes won't fit.
 #load "markdown.coax";
 #load "tree.coax";
+MD_TREE_REMAINDER_BYTES :: 60000;
+MD_TREE_REMAINDER_NODES :: 128;
+md_tree_plain_fits :: (bytes:int,nodes:int,id_bytes:int,source_bytes:int)->bool {
+  return source_bytes+id_bytes*6+256<=bytes && nodes>=16;
+}
 md_tree_rich_fits :: (doc:[]MdDoc,bytes:int,nodes:int)->bool {
+  return md_tree_budget_fits(doc,bytes,nodes,MD_TREE_REMAINDER_BYTES,MD_TREE_REMAINDER_NODES);
+}
+md_tree_budget_fits :: (doc:[]MdDoc,bytes:int,nodes:int,reserve_bytes:int,reserve_nodes:int)->bool {
   cost:=doc[0].n+doc[0].nlink+doc[0].nr*350+doc[0].ni*200+doc[0].nb*200;
   count:=doc[0].nr*6+doc[0].ni*3+doc[0].nb*5;
-  return cost+60000<=bytes && count+128<=nodes && doc[0].nb<MD_BLOCKS && doc[0].nr<MD_RUNS && doc[0].ni<MD_ITEMS;
+  return reserve_bytes>=0 && reserve_nodes>=0 && cost+reserve_bytes<=bytes && count+reserve_nodes<=nodes && doc[0].nb<MD_BLOCKS && doc[0].nr<MD_RUNS && doc[0].ni<MD_ITEMS;
 }
 #test "rich projection budget reserves the plain remainder and declines exhausted node tables" {
   d:[1]MdDoc;d[0].n=1;#assert md_tree_rich_fits(d[..],60001,128);
   #assert !md_tree_rich_fits(d[..],60000,128) && !md_tree_rich_fits(d[..],60001,127);
   d[0].nr=MD_RUNS;#assert !md_tree_rich_fits(d[..],10000000,10000000);
+}
+#test "plain projection storage reserves message identity and complete source before building" {
+ #assert md_tree_plain_fits(262,16,1,0) && !md_tree_plain_fits(261,16,1,0) && !md_tree_plain_fits(262,15,1,0);
+ #assert md_tree_plain_fits(131334,16,1,131072) && !md_tree_plain_fits(131333,16,1,131072);
 }

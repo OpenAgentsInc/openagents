@@ -14,8 +14,8 @@
  s:[1]Starter;s[0].workspace=true;s[0].page=4;e:=s[0].environments[..];e[0].active=true;e[0].page=2;e[0].uncertain=true;e[0].nd=ea_copy(e[0].draft[..],"keep");#assert na_shell_press(s[..],"nav.home") && s[0].page==4 && e[0].nd==4;
  e[0].uncertain=false;#assert na_shell_press(s[..],"nav.home") && s[0].page==2 && !e[0].active && !s[0].navigation[0].open;
 }
-#test "the home composer enters the existing saved account turn before asking its model" {
- s:[1]Starter;s[0].workspace=true;s[0].page=2;s[0].draft_n=na_copy(s[0].draft[..],"Hello");na_send(s[..]);#assert s[0].page==3 && s[0].flight==4 && s[0].purpose==4 && s[0].thread[0].n==1;
+#test "the home composer prepares a durable operation before submitting any model work" {
+ s:[1]Starter;s[0].workspace=true;s[0].page=2;s[0].draft_n=na_copy(s[0].draft[..],"Hello");na_send(s[..]);#assert s[0].page==3 && s[0].flight==11 && s[0].purpose==130 && s[0].thread[0].n==0 && s[0].durable[0].submitted_n==5;
 }
 na_shell_press :: (s:[]Starter,id:string)->bool {
  home:=id=="nav.home";projects:=id=="nav.projects" || id=="projects.refresh";world:=id=="world.library" || id=="home.worlds" || id=="home.splice" || id=="home.everglade";send:=id=="chat.composer.send" && s[0].workspace && s[0].page==2;
@@ -29,7 +29,7 @@ na_shell_press :: (s:[]Starter,id:string)->bool {
  if world {if id=="home.splice" {na_world(s,"splice-bots","/worlds/splice-bots",false);}else if id=="home.everglade" {na_world(s,"everglade2","/worlds/everglade2",false);}else {na_nav_keep(s);e[0].active=false;s[0].page=10;}return true;}
  na_nav_keep(s);e[0].active=false;
  if projects {s[0].page=5;na_http(s,"/api/projects","",90);return true;}
- s[0].page=2;s[0].project_thread_n=0;s[0].thread[0]=AccountThread.{};na_nav_restore(s);return true;
+ s[0].page=2;s[0].project_thread_n=0;s[0].thread[0]=AccountThread.{};na_durable_new(s);na_nav_restore(s);return true;
 }
 na_home_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  x:=tr_open(t,"home.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"home.name",TG_SPAN,"","OpenAgents");tr_close(t);

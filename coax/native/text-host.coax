@@ -2,6 +2,7 @@
 #load "../../components/core/scroll.coax";
 #load "../../components/skin/native-chat.coax";
 #load "text-link-policy.coax";
+#load "text-copy-policy.coax";
 #load "workspace.coax";
 
 #load "documents.coax";

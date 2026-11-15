@@ -1,5 +1,9 @@
 // The installed clipboard/open-link service bodies; one codec for each profile.
 #load "../lib/json/json.coax";
+#load "text-copy-policy.coax";
+nt_clipboard_v2_body :: (value:string,out:[]u8)->int {
+ if !nt_copy_admit(2,value.count) {return -1;}return nt_service_body(false,value,out);
+}
 nt_service_body :: (link:bool,value:string,out:[]u8)->int {
   o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],ifx link then "url" else "text");jo_str(o[..],value);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
 }
@@ -7,4 +11,12 @@ nt_service_body :: (link:bool,value:string,out:[]u8)->int {
   b:[256]u8;n:=nt_service_body(false,"a\n\"b\"",b[..]);#assert cast(string)b[0..<n]=="{\"text\":\"a\\n\\\"b\\\"\"}";
   n=nt_service_body(true,"https://openagents.com/#chat",b[..]);#assert cast(string)b[0..<n]=="{\"url\":\"https://openagents.com/#chat\"}";
   small:[1]u8;#assert nt_service_body(false,"x",small[..])== -1;
+}
+#test "clipboard v2 writes its complete decoded ceiling and refuses overflow before encoding" #steps 200000000 {
+ raw:[131073]u8;for at:0..<raw.count {raw[at]=1;}b:[800000]u8;
+ n:=nt_clipboard_v2_body(cast(string)raw[0..<131072],b[..]);#assert n==786443;
+ d:[1]Jv;nodes:[4]JvNode;decoded:[131072]u8;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && jv_str(d[0],jv_get(d[0],0,"text"),decoded[..])==131072 && cast(string)decoded[..]==cast(string)raw[0..<131072];
+ #assert nt_clipboard_v2_body(cast(string)raw[..],b[..])== -1;
+ #assert nt_clipboard_v2_body("",b[..])==11 && cast(string)b[0..<11]=="{\"text\":\"\"}";
+ #assert nt_clipboard_v2_body("x",b[0..<12])==12 && nt_clipboard_v2_body("x",b[0..<11])== -1;
 }

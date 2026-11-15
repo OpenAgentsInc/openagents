@@ -77,6 +77,7 @@ function decodes UTF-8 bytes through Foundation.
 | `auth.emailVerify` | `pending`, `code`; returns `loggedIn` |
 | `auth.logout` | Clears the existing native account session |
 | `clipboard.write` | Explicit copy, `text`; writes at most 64 KiB and never reads clipboard |
+| `clipboard.write.v2` (19) | New installed service for complete message copies up to 128 KiB; the v1 limit stays 64 KiB |
 | `link.open` | Explicit tap, `url`; installed Coax policy admits HTTP(S) documents only, no account headers |
 | `environment.commandIDs` (11) | OS-random128-bit command/session IDs and wall-clock milliseconds; no provider credential |
 | `environment.wait` (12) | Cancelable one-second wake for the shared app's poll owner |

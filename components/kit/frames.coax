@@ -59,6 +59,11 @@ BS_PLAIN :: 0; BS_PRIMARY :: 1; BS_DISABLED :: 2; BS_BUSY :: 3; BS_DESTRUCTIVE :
  #assert k_message(t[..],u[..],"answer",true,d[..],"Readable")>=0;
  #assert tr_find(t[..],"answer.copy")>=0 && tr_find(t[..],"empty.copy")== -1;
 }
+#test "messages beyond the Markdown workspace retain every source byte" #steps 100000000 {
+ t:[1]Tree;u:[1]Ui;d:[1]MdDoc;raw:[131072]u8;for at:0..<raw.count {raw[at]='x';}raw[raw.count-1]='!';
+ tr_begin(t[..]);ui_begin(u[..],0,true);#assert k_message_budget(t[..],u[..],"long",true,d[..],cast(string)raw[..],16000,128)>=0;
+ plain:=tr_find(t[..],"long.plain");#assert plain>=0 && tr_text_of(t[..],plain)==cast(string)raw[..] && t[0].lost==0;
+}
 
 // When a node first appeared: its id's hash and the second it starts to enter.
 UiBirth :: struct { h: int; born: f32; seen: bool; }
@@ -393,11 +398,19 @@ k_agent :: (t: [] Tree, u: [] Ui, id: string, doc: [] MdDoc) -> int {
 // selection while the rest of the app changes. Rich-node exhaustion falls back
 // to the complete source, reserving space for the remainder of a transcript.
 k_message :: (t:[]Tree,u:[]Ui,id:string,assistant:bool,doc:[]MdDoc,source:string)->int {
-  doc[0].n=0;doc[0].nb=0;doc[0].nr=0;doc[0].ni=0;doc[0].nlink=0;doc[0].keep_rules=true;n:=md_parse(doc,source,0);
-  if doc[0].nb==0 {return -1;}
+  return k_message_budget(t,u,id,assistant,doc,source,MD_TREE_REMAINDER_BYTES,MD_TREE_REMAINDER_NODES);
+}
+// Virtualized transcripts supply the cost of the remaining visible messages
+// and chrome. Oversized Markdown is complete selectable source, never a parsed
+// prefix. A caller can page/window before asking for a message that cannot fit.
+k_message_budget :: (t:[]Tree,u:[]Ui,id:string,assistant:bool,doc:[]MdDoc,source:string,reserve_bytes:int,reserve_nodes:int)->int {
+  if !md_tree_plain_fits(TR_POOL-t[0].pool_n,TR_NODES-t[0].n,id.count,source.count) {return -1;}
+  large:=source.count>MD_TEXT;
+  doc[0].n=0;doc[0].nb=0;doc[0].nr=0;doc[0].ni=0;doc[0].nlink=0;doc[0].keep_rules=true;
+  if !large {n:=md_parse(doc,source,0);if doc[0].nb==0 {return -1;}}
   i:=tr_open(t,id,TG_DIV,ifx assistant then "msg-ai" else "msg-user");tr_attr(t,i,AT_ROLE,"article");
   a:[UI_ID]u8;b:[UI_ID]u8;
-  if !md_tree_rich_fits(doc,TR_POOL-t[0].pool_n,TR_NODES-t[0].n) {
+  if large || !md_tree_budget_fits(doc,TR_POOL-t[0].pool_n,TR_NODES-t[0].n,reserve_bytes,reserve_nodes) {
     p:=tr_leaf(t,tr_cat(a[..],id,".plain"),TG_P,"",source);
   }else {p:=k_agent(t,u,tr_cat(a[..],id,".body"),doc);}
   c:=k_button(t,u,tr_cat(b[..],id,".copy"),"Copy message",BS_PLAIN);tr_close(t);return i;

@@ -4,6 +4,53 @@ import UIKit
 @testable import OpenAgents
 
 @MainActor final class NativeProgramTests:XCTestCase {
+    func testDurableTurnStreamsResumesStopsAndCopiesCompleteReply()throws {
+        let p=try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app")
+        let conversation="cnv_0123456789abcdef0123456789abcdef",turn="trn_0123456789abcdef0123456789abcdef",nilValue=NSNull()
+        func answer(_ op:Int,_ status:Int,_ value:[String:Any])throws {
+            try p.event(100+op,status,String(decoding:JSONSerialization.data(withJSONObject:value),as:UTF8.self));try p.frame()
+        }
+        func request(_ expected:String)throws->[String:Any] {
+            let note=p.nodes.values.filter {$0.id.hasPrefix("account.note") || $0.id.hasPrefix("rich.")}.map {$0.text}.joined(separator:" | ")
+            let action=try p.action();XCTAssertEqual(action.0,4,"Expected \(expected); note: \(note)")
+            let body=try XCTUnwrap(JSONSerialization.jsonObject(with:Data(action.1.utf8)) as? [String:Any]);XCTAssertEqual(body["path"] as? String,expected);return body
+        }
+        let unknown:[String:Any]=["input_tokens":nilValue,"output_tokens":nilValue,"cache_read_tokens":nilValue,"cache_write_tokens":nilValue,"reasoning_tokens":nilValue]
+        var snapshot:[String:Any]=["schema":"openagents.chat.turn.v2alpha1","id":turn,"conversation_id":conversation,"operation_id":"0123456789abcdef0123456789abcdef","state":"queued","stop_requested":false,"stop_reason":nilValue,"usage":unknown,"selection":["model_id":"actual-model","provider_id":"actual-provider","effort":"low","route_decision_id":nilValue,"reason":"Actual selection"],"content":[],"event_cursor":0,"conversation_revision":1,"context_snapshot_id":nilValue,"error":nilValue,"created_at_ms":1,"updated_at_ms":1]
+        try p.event(Int(cnw_enable_event()),0,"");try p.frame();_=try p.action();try answer(1,0,["loggedIn":true]);_=try p.action();try answer(4,200,["schema":"openagents.chat.history.v1","chats":[]])
+        try p.input("chat.composer","Hello");try p.frame();try p.input("chat.composer.send");try p.frame();XCTAssertEqual(try p.action().0,11)
+        try answer(11,0,["command_id":"0123456789abcdef0123456789abcdef"])
+        let submit=try request("/api/chat/submit/v2alpha1"),write=try XCTUnwrap(submit["body"] as? String)
+        XCTAssertTrue(write.contains("openagents.chat.submit.v2alpha1"))
+        try p.event(204,0,"{}");try p.frame();XCTAssertTrue(p.elements().contains {$0.id=="rich.reconcile"})
+        try p.input("rich.reconcile");try p.frame();let retry=try request("/api/chat/submit/v2alpha1");XCTAssertEqual(retry["body"] as? String,write)
+        let control:[String:Any]=["schema":"openagents.chat.control.v2alpha1","conversation_id":conversation,"turn_id":turn,"conversation_revision":1,"state":"queued","stop_requested":false,"event_cursor":0]
+        try answer(4,202,control);_=try request("/api/chat/turn/v2alpha1?id="+turn);try answer(4,200,snapshot);_=try request("/api/chat/conversation/v2alpha1?id="+conversation+"&after=0")
+        let user:[String:Any]=["id":turn+".user","turn_id":turn,"role":"user","content":[["type":"text","text":"Hello"]],"created_at_ms":1]
+        let assistant:[String:Any]=["id":turn+".assistant","turn_id":turn,"role":"assistant","content":[],"created_at_ms":1]
+        let history:[String:Any]=["schema":"openagents.chat.conversation.v2alpha1","id":conversation,"revision":1,"project_id":nilValue,"legacy_thread_id":nilValue,"legacy_thread_revision":nilValue,"messages":[user,assistant],"active_turn_id":turn,"created_at_ms":1,"updated_at_ms":1,"next_cursor":nilValue]
+        try answer(4,200,history);XCTAssertEqual(p.nodes.values.first {$0.id=="chat.composer"}?.value,"")
+        func event(_ sequence:Int,_ type:String,_ text:Any,_ index:Any)->[String:Any] {
+            ["schema":"openagents.chat.event.v2alpha1","conversation_id":conversation,"turn_id":turn,"sequence":sequence,"type":type,"state":"running","stop_requested":false,"block_index":index,"delta":text,"usage":nilValue,"stop_reason":nilValue,"error":nilValue]
+        }
+        let page:[String:Any]=["schema":"openagents.chat.events.v2alpha1","conversation_id":conversation,"turn_id":turn,"after":0,"events":[event(1,"started",nilValue,nilValue),event(2,"text_delta","A partial answer",0)],"next_cursor":2,"has_more":false,"state":"running"]
+        try p.frame(elapsed:0.5);_=try request("/api/chat/events/v2alpha1?id="+turn+"&after=0");try answer(4,200,page)
+        XCTAssertTrue(p.nodes.values.contains {$0.text=="A partial answer"})
+        try p.input("chat.composer.send");try p.frame();XCTAssertEqual(try p.action().0,11)
+        try answer(11,0,["command_id":"1123456789abcdef0123456789abcdef"]);let stop=try request("/api/chat/stop/v2alpha1");XCTAssertTrue((stop["body"] as? String ?? "").contains(turn))
+        var stopped=control;stopped["state"]="running";stopped["stop_requested"]=true;stopped["event_cursor"]=3
+        try answer(4,200,stopped);_=try request("/api/chat/turn/v2alpha1?id="+turn)
+        let full=String(repeating:"x",count:131071)+"!"
+        snapshot["state"]="cancelled";snapshot["stop_requested"]=true;snapshot["stop_reason"]="cancelled";snapshot["content"]=[["type":"text","text":full]];snapshot["event_cursor"]=4;snapshot["updated_at_ms"]=2
+        try answer(4,200,snapshot);_=try request("/api/chat/conversation/v2alpha1?id="+conversation+"&after=0")
+        var saved=history;var savedAssistant=assistant;savedAssistant["content"]=[["type":"text","text":full]];saved["messages"]=[user,savedAssistant];saved["active_turn_id"]=nilValue;saved["updated_at_ms"]=2;try answer(4,200,saved)
+        XCTAssertEqual(p.nodes.values.first {$0.id==turn+".assistant.plain"}?.text,full)
+        let surface=NativeControls();surface.render(p.elements());surface.view.frame=CGRect(x:0,y:0,width:402,height:874);surface.view.layoutIfNeeded()
+        XCTAssertNotNil(surface.controls[turn+".assistant"] as? NativeMessage)
+        try p.input(turn+".assistant.copy");try p.frame();let copy=try p.action();XCTAssertEqual(copy.0,19)
+        XCTAssertEqual((try JSONSerialization.jsonObject(with:Data(copy.1.utf8)) as? [String:String])?["text"],full)
+        XCTAssertFalse(nt_copy_admit(1,131072));XCTAssertTrue(nt_copy_admit(2,131072));XCTAssertFalse(nt_copy_admit(2,131073))
+    }
     func testCompiledCoaxOwnsNativeEmailAndCodeFields()throws {
         let directory=try XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil))
         let p=try NativeProgram(directory:directory,module:"app")

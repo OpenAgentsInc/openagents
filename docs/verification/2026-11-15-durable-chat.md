@@ -2,12 +2,57 @@
 
 ## Current checkpoint
 
-Protocol, transactional API adapters, resident-worker dispatch/streaming and CLI
-adoption are implemented. **#13619 remains open.** Native adoption, installed
-mobile integration, live staging inference and the remaining restart/lost-worker
+Protocol, transactional API adapters, resident-worker dispatch/streaming, CLI
+and native client adoption are implemented. **#13619 remains open.** Installed
+mobile qualification, live staging inference and the remaining restart/lost-worker
 and legacy-continuation integration cases are still required.
 No new TestFlight build or signed app update is published.
 The final release waits for #13619–#13623 and the complete Arcade port.
+
+### Native client checkpoint
+
+The mobile source submits durable operations, streams saved event pages, requests
+authoritative Stop, reconciles lost responses and reopens indexed account/Project
+conversations. The shared state retains exact pending writes, owns response bytes,
+pins Project/legacy revisions and clears private state on account reset. The
+existing drawer, composer, drafts and transcript components are reused. Complete
+history pages are accessible through a bounded visible window. The one Markdown
+component now falls back to complete source above its 64 KiB parser workspace.
+
+The new shared index/history/message readers pass their independent malformed-peer,
+exact byte/block/page capacity, nullable/reference and duplicate checks. Their
+changed scope has **488 mutants: 480 killed, eight reviewed equivalents, zero
+unclassified survivors**. The new installed clipboard v2 policy kills **14/14**
+mutants and retains v1's original 64 KiB limit. No published contract was widened.
+
+The final full native Coax run passes **783/783 checks**, including the
+completion-versus-Stop race, expiry clearing and recovery cadence. The installed
+simulator SDK flow passes submit, a lost response, exact replay, partial streaming,
+Stop, terminal history and a complete 128 KiB native message/copy. Its recovery
+check exposed a lingering read backoff after a successful write receipt; success
+now resets that delay. The actual macOS CLI is built and installed under the
+shared executable path, with paired Project/legacy flags checked before writes.
+
+The 22 selected SDK tests are qualified across the regression run and a focused
+rerun: native navigation, shared Markdown, transcript/selection, the generated
+program, private Project instructions/knowledge and two durable Project turns.
+The old Project test was updated to the new versioned requests and authoritative
+Stop, retaining its Project CRUD assertions and server-owned context boundary.
+These SDK cases inject synthetic HTTP replies into the actual compiled portable
+program and UIKit host; they do not qualify real network/background/restart flows.
+The component, layer and wire gates pass (22 existing component migrations,
+30 existing context crossings, 346 registered shapes; no allowlist increase).
+
+The original evaluator runs are retained as inconclusive: two existing large
+Project-form fixtures exhaust 20/40-million-step budgets, and the expanded account
+reset needed a separately measured larger budget. These are not counted as passes.
+The native run compiles and executes all checks and reports zero traps, refusals,
+timeouts or crashes. The expanded account reset also passes in the evaluator
+under its measured 50-million-step budget. Live staging qualification, installed
+network/lifecycle cases, actual lost-worker/legacy continuation, new-turn context
+inspection and including durable conversations in derived Project chat counts
+remain before this issue is complete. No server, OTA or TestFlight deployment is
+claimed by this checkpoint.
 
 The actual HTTP/CLI milestone now passes **41 checks**: save a queued turn,
 recover a missed wake with the real runner, observe an actual provider delta

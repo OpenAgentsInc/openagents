@@ -1,0 +1,54 @@
+// Client integration words use the real request/receipt codecs and no tokens.
+#test "durable mobile lost-write reconciliation preserves the operation and clears only an accepted draft" #steps 100000000 {
+ s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].page=2;s[0].draft_n=na_copy(s[0].draft[..],"Hello");na_send(s[..]);#assert s[0].flight==11 && s[0].purpose==130 && s[0].draft_n==5;st_done(s[..]);
+ na_reply(s[..],11,0,"{\"command_id\":\"0123456789abcdef0123456789abcdef\"}",false);#assert s[0].purpose==131 && s[0].flight==4;
+ body:[131072]u8;n:=js_copy(body[..],cast(string)s[0].durable[0].body[0..<s[0].durable[0].body_n]);st_done(s[..]);na_reply(s[..],4,0,"",true);
+ #assert s[0].draft_n==5 && s[0].durable[0].pending==1 && s[0].durable[0].uncertain;
+ #assert na_nav_press(s[..],"nav.account.new") && s[0].durable[0].pending==1 && s[0].draft_n==5;
+ #assert na_durable_press(s[..],"rich.reconcile") && s[0].purpose==131 && cast(string)body[0..<n]==cast(string)s[0].durable[0].body[0..<s[0].durable[0].body_n];st_done(s[..]);
+ na_reply(s[..],4,202,"{\"schema\":\"openagents.chat.control.v2alpha1\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"conversation_revision\":1,\"state\":\"queued\",\"stop_requested\":false,\"event_cursor\":0}",false);
+ #assert s[0].draft_n==0 && s[0].durable[0].pending==0 && !s[0].durable[0].uncertain && s[0].purpose==133 && s[0].durable[0].has_view && s[0].durable[0].elapsed==0;
+ #assert dca_id(s[0].durable[..])==CT_TEST_CONVERSATION;
+}
+#test "durable mobile streams before completion and Stop uses the server request instead of canceling HTTP" #steps 100000000 {
+ s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].page=3;d:=s[0].durable[..];d[0].enabled=true;d[0].id_n=js_copy(d[0].id[..],CT_TEST_CONVERSATION);d[0].revision=1;#assert ct_view_begin(d[0].view[..],CT_TEST_CONVERSATION,CT_TEST_TURN);d[0].has_view=true;d[0].loaded=true;
+ server:[1]CtView;#assert ct_view_begin(server[..],CT_TEST_CONVERSATION,CT_TEST_TURN);e:=[1]CtEvent.[CtEvent.{conversation=CT_TEST_CONVERSATION,turn=CT_TEST_TURN,sequence=1,kind=CT_STARTED,state=CT_RUNNING}];a:[2048]u8;b:[2048]u8;page:[8192]u8;n:=ct_event_write(e[..],a[..]);#assert ct_view_apply(server[..],e[..])==1;e[0].sequence=2;e[0].kind=CT_TEXT_DELTA;e[0].index=0;e[0].delta="Hello";m:=ct_event_write(e[..],b[..]);#assert ct_view_apply(server[..],e[..])==1;
+ records:=[2]string.[cast(string)a[0..<n],cast(string)b[0..<m]];n=ctr_events(server[..],0,records[..],page[..]);
+ na_durable_tick(s[..],1);#assert s[0].purpose==134;st_done(s[..]);na_reply(s[..],4,200,cast(string)page[0..<n],false);#assert ct_view_text(d[0].view[..])=="Hello" && d[0].view[0].state==CT_RUNNING;
+ // A repeated saved page appends no duplicate text.
+ s[0].flight=4;s[0].purpose=134;na_reply(s[..],4,200,cast(string)page[0..<n],false);#assert ct_view_text(d[0].view[..])=="Hello";
+ #assert na_durable_press(s[..],"chat.composer.send") && d[0].want_stop;na_durable_tick(s[..],0);#assert s[0].action==11 && s[0].purpose==130 && d[0].pending==2;st_done(s[..]);na_reply(s[..],11,0,"{\"command_id\":\"0123456789abcdef0123456789abcdef\"}",false);
+ #assert s[0].action==4 && s[0].purpose==131 && na_project_request_path(s[..])=="/api/chat/stop/v2alpha1";
+}
+#test "durable mobile account reset erases text cursors pending bodies drafts and both indexes" {
+ s:[1]Starter;d:=s[0].durable[..];d[0].pending=1;d[0].body[0]='X';d[0].body_n=1;d[0].history[0].raw[0]='Y';d[0].history[0].raw_n=1;d[0].view[0].content[0]='Z';d[0].view[0].bytes=1;d[0].view[0].sequence=20;s[0].durable_index[0].n=1;s[0].durable_project_index[0].n=1;s[0].draft[0]='D';s[0].draft_n=1;
+ na_history_clear(s[..]);#assert d[0].body[0]==0 && d[0].history[0].raw[0]==0 && d[0].view[0].content[0]==0 && d[0].view[0].sequence==0 && d[0].pending==0 && s[0].durable_index[0].n==0 && s[0].durable_project_index[0].n==0 && s[0].draft[0]==0 && s[0].draft_n==0;
+}
+#test "durable mobile expiry clears retained inbox bytes as well as owned conversation state" #steps 50000000 {
+ s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].durable[0].enabled=true;s[0].inbox[900000]='X';s[0].durable[0].history[0].raw[0]='Y';s[0].flight=4;s[0].purpose=134;
+ na_reply(s[..],4,401,"{}",false);#assert s[0].page==0 && !s[0].account_ready && s[0].inbox[900000]==0 && s[0].durable[0].history[0].raw[0]==0 && !s[0].durable[0].enabled;
+}
+#test "durable mobile private Project submission pins its revision and legacy continuation has explicit provenance" #steps 100000000 {
+ s:[1]Starter;s[0].workspace=true;s[0].page=3;p:=s[0].project[..];p[0].canonical=true;p[0].api_loaded=true;p[0].api[0].ni=pr_copy(p[0].api[0].id[..],"prj_0123456789abcdef0123456789abcdef");p[0].api[0].revision=7;s[0].project_thread_n=na_copy(s[0].project_thread[..],na_pr_id(s[..]));s[0].thread[0].id_n=na_copy(s[0].thread[0].id[..],"m_0123456789abcdef0123");s[0].thread[0].revision=3;s[0].draft_n=na_copy(s[0].draft[..],"Continue");na_send(s[..]);st_done(s[..]);
+ p[0].api[0].revision=8;na_reply(s[..],11,0,"{\"command_id\":\"0123456789abcdef0123456789abcdef\"}",false);
+ r:[1]CtSubmit;arena:[174]u8;#assert ct_submit_read(cast(string)s[0].durable[0].body[0..<s[0].durable[0].body_n],r[..],arena[..]) && r[0].project_revision==7 && r[0].legacy_revision==3 && r[0].legacy=="m_0123456789abcdef0123";
+}
+#test "durable mobile active reads yield to settings navigation and backgrounded surfaces" {
+ s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].page=3;d:=s[0].durable[..];d[0].enabled=true;d[0].id_n=js_copy(d[0].id[..],CT_TEST_CONVERSATION);#assert ct_view_begin(d[0].view[..],CT_TEST_CONVERSATION,CT_TEST_TURN);d[0].has_view=true;
+ s[0].navigation[0].open=true;na_durable_tick(s[..],1);#assert s[0].flight==0;
+ s[0].navigation[0].open=false;s[0].account_settings[0].active=true;na_durable_tick(s[..],1);#assert s[0].flight==0;
+ s[0].account_settings[0].active=false;s[0].page=5;na_durable_tick(s[..],1);#assert s[0].flight==0;
+ s[0].page=3;na_durable_tick(s[..],1);#assert s[0].flight==4 && s[0].purpose==134;
+}
+#test "durable mobile completion winning a queued Stop releases the composer without another write" #steps 100000000 {
+ s:[1]Starter;s[0].workspace=true;s[0].account_ready=true;s[0].page=3;d:=s[0].durable[..];d[0].enabled=true;d[0].id_n=js_copy(d[0].id[..],CT_TEST_CONVERSATION);#assert ct_view_begin(d[0].view[..],CT_TEST_CONVERSATION,CT_TEST_TURN);d[0].has_view=true;d[0].loaded=true;d[0].terminal_refreshed=true;d[0].want_stop=true;
+ server:[1]CtView;ct_record_running(server[..]);server[0].state=CT_COMPLETED;server[0].nr=js_copy(server[0].reason[..],"end_turn");i:=[1]CtInfo.[CtInfo.{operation="op",model="actual",provider="provider",revision=1}];raw:[4096]u8;n:=ctr_turn_write(server[..],i[..],raw[..]);#assert n>0;s[0].flight=4;s[0].purpose=133;na_reply(s[..],4,200,cast(string)raw[0..<n],false);
+ #assert !d[0].want_stop && !dca_blocked(d) && ct_terminal(d[0].view[0].state);na_durable_tick(s[..],1);#assert s[0].flight==0 && s[0].action==0;
+}
+#test "durable mobile full replies remain in the shared selectable transcript" #steps 100000000 {
+ s:[1]Starter;s[0].workspace=true;s[0].page=3;d:=s[0].durable[..];d[0].enabled=true;d[0].id_n=js_copy(d[0].id[..],CT_TEST_CONVERSATION);#assert ct_view_begin(d[0].view[..],CT_TEST_CONVERSATION,CT_TEST_TURN);d[0].has_view=true;d[0].view[0].bytes=131072;for at:0..<131072 {d[0].view[0].content[at]='x';}d[0].view[0].content[131071]='!';
+ t:[1]Tree;u:[1]Ui;tr_begin(t[..]);ui_begin(u[..],0,true);na_durable_render(s[..],t[..],u[..]);id:[96]u8;at:=tr_find(t[..],tr_cat(id[..],CT_TEST_TURN,".assistant.plain"));
+ #assert at>=0 && tr_text_of(t[..],at)==ct_view_text(d[0].view[..]) && t[0].lost==0;
+ copy:[96]u8;#assert na_durable_press(s[..],tr_cat(copy[..],CT_TEST_TURN,".assistant.copy")) && s[0].action==19;
+ v:[1]Jv;nodes:[8]JvNode;decoded:[131072]u8;#assert jv_parse(v[..],cast(string)s[0].outbox[0..<s[0].out_n],nodes[..]) && js_string(v[0],jv_get(v[0],0,"text"),decoded[..])==131072 && cast(string)decoded[..]==ct_view_text(d[0].view[..]);
+}

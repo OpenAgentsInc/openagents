@@ -1,0 +1,35 @@
+// Shared client state for owned durable chat. Execution stays on the resident
+// worker; an uncertain write retains its exact operation/body for reconciliation.
+#load "../../coax/web/api/account-chat-turn-record.coax";
+DurableChat :: struct {
+ enabled:bool;id:[36]u8;id_n:int;revision:int;project:[36]u8;project_n:int;project_revision:int= -1;legacy:[22]u8;legacy_n:int;legacy_revision:int= -1;
+ history:[1]CtHistory;loaded:bool;view:[1]CtView;has_view:bool;
+ model:[160]u8;model_n:int;provider:[80]u8;provider_n:int;effort:[16]u8;effort_n:int;why:[1024]u8;why_n:int;
+ submitted:[16384]u8;submitted_n:int;pending:int;body:[131072]u8;body_n:int;uncertain:bool;want_stop:bool;
+ elapsed:f32;history_after:int;pages:[128]int;page:int;latest:bool;window_end:int=32;window_start:int;terminal_refreshed:bool;
+}
+dca_id :: (d:[]DurableChat)->string {return cast(string)d[0].id[0..<d[0].id_n];}
+dca_project :: (d:[]DurableChat)->string {return cast(string)d[0].project[0..<d[0].project_n];}
+dca_working :: (d:[]DurableChat)->bool {return d[0].has_view && !ct_terminal(d[0].view[0].state);}
+dca_blocked :: (d:[]DurableChat)->bool {return d[0].pending!=0 || d[0].want_stop;}
+dca_path :: (name:string,id:string,cursor:int,out:[]u8)->string {
+ o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/api/chat/");jo_put(o[..],name);jo_put(o[..],"/v2alpha1");if id.count>0 {jo_put(o[..],"?id=");jo_put(o[..],id);}if cursor>=0 {jo_put(o[..],"&after=");jo_int(o[..],cursor);}return jo_text(o[..]);
+}
+// Called only after the native entropy service returned a fresh command ID.
+// Fields used to construct a submitted request remain pinned until it resolves.
+dca_write :: (d:[]DurableChat,operation:string)->bool {
+ if d[0].pending==1 {texts:=[1]string.[cast(string)d[0].submitted[0..<d[0].submitted_n]];d[0].body_n=ct_submit_write(operation,dca_id(d),d[0].revision,dca_project(d),d[0].project_revision,cast(string)d[0].legacy[0..<d[0].legacy_n],d[0].legacy_revision,texts[..],d[0].body[..]);}
+ else if d[0].pending==2 && d[0].has_view {d[0].body_n=ct_stop_write(operation,cast(string)d[0].view[0].turn[..],d[0].body[..]);}
+ else {return false;}return d[0].body_n>0;
+}
+dca_snapshot :: (d:[]DurableChat,raw:string)->bool {
+ next:[1]CtView;i:[1]CtInfo;arena:[1476]u8;
+ if !ctr_turn_read(raw,next[..],i[..],arena[..]) || cast(string)next[0].conversation[..]!=dca_id(d) || (d[0].has_view && cast(string)next[0].turn[..]!=cast(string)d[0].view[0].turn[..]) {return false;}
+ if d[0].has_view && next[0].sequence<d[0].view[0].sequence {return false;}
+ d[0].view[0]=next[0];d[0].has_view=true;d[0].model_n=js_copy(d[0].model[..],i[0].model);d[0].provider_n=js_copy(d[0].provider[..],i[0].provider);d[0].effort_n=js_copy(d[0].effort[..],i[0].effort);d[0].why_n=js_copy(d[0].why[..],i[0].why);return true;
+}
+#test "uncertain native submissions retain exact bodies and Project revisions" {
+ d:[1]DurableChat;d[0].pending=1;d[0].project_n=js_copy(d[0].project[..],"prj_0123456789abcdef0123456789abcdef");d[0].project_revision=7;d[0].submitted_n=js_copy(d[0].submitted[..],"Hello");
+ #assert dca_write(d[..],"fixed-operation") && dca_blocked(d[..]);raw:[131072]u8;n:=js_copy(raw[..],cast(string)d[0].body[0..<d[0].body_n]);d[0].uncertain=true;
+ #assert cast(string)raw[0..<n]==cast(string)d[0].body[0..<d[0].body_n];r:[1]CtSubmit;arena:[174]u8;#assert ct_submit_read(cast(string)raw[0..<n],r[..],arena[..]) && r[0].project_revision==7 && r[0].operation=="fixed-operation";
+}
