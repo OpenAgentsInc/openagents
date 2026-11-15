@@ -318,7 +318,9 @@ coinbase. The Merkle root of a single transaction is its txid (chapter 46).
 // length, or -1 when out is too small or a field does not decode.
 CHAIN_GENESIS_MAX :: 512;
 chain_genesis_block_vartime :: (g: ChainGenesis, out: [] u8) -> int #export_c #effects(all) {
-  if out.count < CHAIN_GENESIS_MAX || g.message.count > 255 || g.script.count > 2 * 100 { return -1; }
+  // A script of 201 digits is odd, which cp_unhex refuses below, so a
+  // bound of 201 refuses the same scripts.
+  if out.count < CHAIN_GENESIS_MAX || g.message.count > 255 || g.script.count > 2 * 100 { return -1; } // mutant: equivalent
   sig: [300] u8; spk: [100] u8; prefix: [7] u8; message: [255] u8;
   #assert cp_unhex(CHAIN_GENESIS_PREFIX, prefix[..]) == 7;
   for i: 0..<7 { sig[i] = prefix[i]; }
@@ -330,7 +332,8 @@ chain_genesis_block_vartime :: (g: ChainGenesis, out: [] u8) -> int #export_c #e
   at := 81;
   at = cp_le(out, at, 1, 4);
   out[at] = 1; at += 1;
-  for i: 0..<32 { out[at+i] = 0; }
+  // One more zero would land on the index, written next.
+  for i: 0..<32 { out[at+i] = 0; } // mutant: equivalent
   at = cp_le(out, at + 32, 0xffffffff, 4);
   at = tx_compact_write_vartime(out, at, sig_n);
   at = cp_put(out, at, sig[0..<sig_n]);
@@ -344,11 +347,13 @@ chain_genesis_block_vartime :: (g: ChainGenesis, out: [] u8) -> int #export_c #e
   root: [32] u8;
   #assert sha256d_checked(out[81..<at], root[..], false) == SHA_OK;
   h := cp_le(out, 0, cast(int) g.version, 4);
-  for i: 0..<32 { out[h+i] = 0; }
+  // One more zero would land on the root, written next.
+  for i: 0..<32 { out[h+i] = 0; } // mutant: equivalent
   h = cp_put(out, h + 32, root[..]);
   h = cp_le(out, h, cast(int) g.time, 4);
   h = cp_le(out, h, cast(int) g.bits, 4);
-  h = cp_le(out, h, cast(int) g.nonce, 4);
+  // A fifth byte of the nonce would be out[80], which the count overwrites.
+  h = cp_le(out, h, cast(int) g.nonce, 4); // mutant: equivalent
   out[80] = 1;
   return at;
 }
@@ -358,7 +363,8 @@ chain_genesis_block_vartime :: (g: ChainGenesis, out: [] u8) -> int #export_c #e
 chain_genesis_check_vartime :: (p: ChainParams) -> int #export_c #effects(all) {
   b: [CHAIN_GENESIS_MAX] u8; hash: [32] u8;
   n := chain_genesis_block_vartime(p.genesis, b[..]);
-  if n < 0 { return CHAIN_CAPACITY; }
+  // A built block is -1 or more than 200 bytes, never 0.
+  if n < 0 { return CHAIN_CAPACITY; } // mutant: equivalent
   if !chain_hash_is_vartime(b[36..<68], p.genesis.merkle_root) { return CHAIN_BAD_MERKLE; }
   #assert pow_block_hash_vartime(b[0..<80], hash[..]) == POW_OK;
   if !chain_hash_is_vartime(hash[..], p.genesis.hash) { return CHAIN_BAD_GENESIS; }
@@ -432,7 +438,8 @@ chain_signet_magic_vartime :: (challenge: [] u8, out: [] u8) -> bool #export_c #
 // name, or 0. Signet means the default signet.
 chain_from_magic_vartime :: (magic: [] u8) -> int #export_c #effects(all) {
   if magic.count != 4 { return 0; }
-  for chain: CHAIN_MAIN..<CHAIN_REGTEST + 1 {
+  // Chain 6 would be mainnet's magic again, which chain 1 has already matched.
+  for chain: CHAIN_MAIN..<CHAIN_REGTEST + 1 { // mutant: equivalent
     p := chain_params(chain);
     same := true;
     for i: 0..<4 { if magic[i] != p.magic[i] { same = false; } }
@@ -611,12 +618,14 @@ SignetFetch :: struct { length: int; at: int; n: int; }
 chain_signet_fetch_vartime :: (s: [] u8, out: [] u8) -> SignetFetch #export_c #effects(all) {
   r := SignetFetch.{n=-1};
   w := 0; pc := 0;
-  while pc < s.count {
+  // At pc = s.count there is no op to read, so `<=` breaks out at once.
+  while pc < s.count { // mutant: equivalent
     op := script_op_vartime(s, pc);
     if !op.ok { break; }
     if op.n > 0 {
       data := s[op.at..<op.at+op.n];
-      if r.n < 0 && op.n > 4 && data[0] == SIGNET_HEADER[0] && data[1] == SIGNET_HEADER[1] && data[2] == SIGNET_HEADER[2] && data[3] == SIGNET_HEADER[3] {
+      // r.n is -1 or op.n - 4, at least 1, so `<= 0` and `< 1` are `< 0`.
+      if r.n < 0 && op.n > 4 && data[0] == SIGNET_HEADER[0] && data[1] == SIGNET_HEADER[1] && data[2] == SIGNET_HEADER[2] && data[3] == SIGNET_HEADER[3] { // mutant: equivalent
         r.at = op.at + 4; r.n = op.n - 4;
         data = data[0..<4];
       }
@@ -625,10 +634,12 @@ chain_signet_fetch_vartime :: (s: [] u8, out: [] u8) -> SignetFetch #export_c #e
       if w >= out.count { w = -1; }
       else { out[w] = cast(u8) op.op; w += 1; }
     }
-    if w < 0 { return SignetFetch.{length=-1, n=-1}; }
+    // Each op writes at least one byte, so w is -1 or at least 1 here.
+    if w < 0 { return SignetFetch.{length=-1, n=-1}; } // mutant: equivalent
     pc = op.next;
   }
-  if r.n < 0 {
+  // As above, r.n is -1 or at least 1.
+  if r.n < 0 { // mutant: equivalent
     if s.count > out.count { return SignetFetch.{length=-1, n=-1}; }
     for i: 0..<s.count { out[i] = s[i]; }
     w = s.count;
@@ -692,7 +703,9 @@ chain_signet_check_vartime :: (p: ChainParams, b: [] u8, ins: [] TxIn, outs: [] 
   if count.code != TX_OK || count.value == 0 { return SignetCheck.{code=SIGNET_BAD_BLOCK}; }
   if ids.count < 96 * count.value { return SignetCheck.{code=SIGNET_CAPACITY}; }
   n := count.value;
-  k := merkle_block_ids_vartime(b, false, ins, outs, items, ids[0..<32*n], ids[32*n..<64*n]);
+  // Each id is written 32 bytes in from its slice's start, so a slice that
+  // runs on into the next part holds the same ids.
+  k := merkle_block_ids_vartime(b, false, ins, outs, items, ids[0..<32*n], ids[32*n..<64*n]); // mutant: equivalent
   if k.code == MERKLE_CAPACITY { return SignetCheck.{code=SIGNET_CAPACITY}; }
   if k.code != MERKLE_OK { return SignetCheck.{code=SIGNET_BAD_BLOCK}; }
   // The coinbase and its commitment.
@@ -705,10 +718,13 @@ chain_signet_check_vartime :: (p: ChainParams, b: [] u8, ins: [] TxIn, outs: [] 
   cleared: [SCRIPT_MAX_SIZE] u8;
   if spk.count > SCRIPT_MAX_SIZE { return SignetCheck.{code=SIGNET_CAPACITY}; }
   f := chain_signet_fetch_vartime(spk, cleared[..]);
-  #assert f.length >= 0;
+  // spk has at least 38 bytes, so the length is never 0.
+  #assert f.length >= 0; // mutant: equivalent
   // The solution: a scriptSig, then a witness stack, then nothing.
-  sig_at := 0; sig_n := 0; wit_at := 0; wit_n := 0;
-  if f.n >= 0 {
+  // sig_at and wit_at are read only with their counts, as empty slices when those are 0.
+  sig_at := 0; sig_n := 0; wit_at := 0; wit_n := 0; // mutant: equivalent
+  // f.n is -1 or at least 1: the push is longer than its 4-byte header.
+  if f.n >= 0 { // mutant: equivalent
     base := outs[cidx].script + f.at;   // the solution's place in the coinbase
     sol := cb[base..<base+f.n];
     s := tx_span_vartime(sol, 0);
@@ -727,12 +743,14 @@ chain_signet_check_vartime :: (p: ChainParams, b: [] u8, ins: [] TxIn, outs: [] 
   }
   // The modified coinbase's txid replaces the first leaf.
   m := cp_stripped_with(cb, t, ins, outs, cidx, cleared[0..<f.length], scratch);
-  #assert sha256d_checked(scratch[0..<m], ids[0..<32], false) == SHA_OK;
+  // The digest is 32 bytes, whatever the slice's length.
+  #assert sha256d_checked(scratch[0..<m], ids[0..<32], false) == SHA_OK; // mutant: equivalent
   #assert merkle_root_vartime(ids[0..<32*n], ids[64*n..<96*n], root[..]).code == MERKLE_OK;
   // to_spend, and its txid.
   at := cp_le(scratch, 0, 0, 4);
   scratch[at] = 1; at += 1;
-  for i: 0..<32 { scratch[at+i] = 0; }
+  // Equivalent: a 33rd zero lands on scratch[at+32], which cp_le overwrites on the next line.
+  for i: 0..<32 { scratch[at+i] = 0; } // mutant: equivalent
   at = cp_le(scratch, at + 32, 0xffffffff, 4);
   scratch[at] = 74; scratch[at+1] = OP_0; scratch[at+2] = 72; at += 3;
   at = cp_put(scratch, at, b[0..<36]);
@@ -746,10 +764,13 @@ chain_signet_check_vartime :: (p: ChainParams, b: [] u8, ins: [] TxIn, outs: [] 
   at = cp_le(scratch, at, 0, 4);
   #assert sha256d_checked(scratch[0..<at], spend_id[..], false) == SHA_OK;
   // to_sign, with the witness form only when the stack has items.
-  room := 60 + sig_n + wit_n + 9;
-  if scratch.count < room { return SignetCheck.{code=SIGNET_CAPACITY}; }
+  // The solution is inside the coinbase, so the room asked for above,
+  // cp_room(t.total) + 200, is already more than this: the check can't fail.
+  room := 60 + sig_n + wit_n + 9; // mutant: equivalent
+  if scratch.count < room { return SignetCheck.{code=SIGNET_CAPACITY}; } // mutant: equivalent
   at = cp_le(scratch, 0, 0, 4);
-  if wit_n > 0 { scratch[at] = 0; scratch[at+1] = 1; at += 2; }
+  // Equivalent: wit_n is 0, or a count of at least 1 then each item's length, so never 1: > 0 and > 1 agree.
+  if wit_n > 0 { scratch[at] = 0; scratch[at+1] = 1; at += 2; } // mutant: equivalent
   scratch[at] = 1; at += 1;
   at = cp_put(scratch, at, spend_id[..]);
   at = cp_le(scratch, at, 0, 4);
@@ -763,7 +784,8 @@ chain_signet_check_vartime :: (p: ChainParams, b: [] u8, ins: [] TxIn, outs: [] 
   at = cp_le(scratch, at, 0, 4);
   u := tx_read_vartime(scratch[0..<at], true, ins, outs, items);
   if u.code == TX_CAPACITY { return SignetCheck.{code=SIGNET_CAPACITY}; }
-  if u.code != TX_OK { return SignetCheck.{code=SIGNET_BAD_SOLUTION}; }
+  // Equivalent: to_sign is written from a scriptSig and witness read above with the same compact sizes, so it always reads; the line before handles room.
+  if u.code != TX_OK { return SignetCheck.{code=SIGNET_BAD_SOLUTION}; } // mutant: equivalent
   sp := ScriptSpend.{b=scratch[0..<at], t=u, ins=ins[0..<u.nin], outs=outs[0..<u.nout], items=items[0..<u.nitems],
     index=0, amount=0, spk=challenge[0..<cn]};
   error := script_verify_vartime(sp, SIGNET_FLAGS, w);

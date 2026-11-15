@@ -571,6 +571,12 @@ that a maliciously replaced manifest is authentic.
   mempool.space's raw bytes of default-signet blocks 1 (`…533b53`, the
   coinbase alone) and 19,990 (`…539466`, four transactions), retrieved
   2026-11-03; each header hashes to its block hash.
+  `make_signet_vectors.py` builds signet blocks the two published ones
+  don't reach (a witness solution under a segwit v0 signature, a commitment
+  in output 0, a 64-byte transaction, solutions that do not read) and
+  writes each with the verdict of `chainparams.py`, a transliteration of
+  `signet.cpp` on `script_reference.py`'s interpreter. Those are generated
+  blocks, not published ones.
 - **The UTXO set and MuHash3072 (Bitcoin chapter 56):** Bitcoin Core's
   `crypto/muhash.cpp` and `muhash.h`, `test/crypto_tests.cpp` (the
   `muhash_tests` vectors), `compressor.cpp`, `compressor.h` and
