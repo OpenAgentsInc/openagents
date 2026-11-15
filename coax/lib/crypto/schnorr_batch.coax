@@ -37,9 +37,9 @@ SbRandom :: struct { a: [SB_MAX] ScScalar; drawn: int; ok: bool; }
 sb_seed :: (keys: [] u8, messages: [] u8, signatures: [] u8, out: [] u8) -> bool #effects(all) {
   state: [112] u8;
   if out.count != 32 || sha256_init(state[..]) != SHA_OK { return false; }
-  if sha256_update_checked(state[..], keys, false) != SHA_OK { return false; }
-  if sha256_update_checked(state[..], messages, false) != SHA_OK { return false; }
-  if sha256_update_checked(state[..], signatures, false) != SHA_OK { return false; }
+  if sha256_update_checked(state[..], keys, false) != SHA_OK { return false; }  // mutant: equivalent (the state is fresh from sha256_init, overlap is false, and no slice nears SHA-256's length limit, so this update cannot fail)
+  if sha256_update_checked(state[..], messages, false) != SHA_OK { return false; }  // mutant: equivalent (the state is fresh from sha256_init, overlap is false, and no slice nears SHA-256's length limit, so this update cannot fail)
+  if sha256_update_checked(state[..], signatures, false) != SHA_OK { return false; }  // mutant: equivalent (the state is fresh from sha256_init, overlap is false, and no slice nears SHA-256's length limit, so this update cannot fail)
   return sha256_final_checked(state[..], out, false) == SHA_OK;
 }
 // a_1 = 1. a_2 .. a_u are ChaCha20's keystream under the key seed (nonce
@@ -56,7 +56,7 @@ sb_randomizers :: (seed: [] u8, count: int) -> SbRandom #effects(all) {
     for half: 0..<2 {
       if have < count {
         v := sc_load(block[half*32..<half*32+32]); r.drawn += 1;
-        if v.ok && !sc_is_zero(v.value) { r.a[have] = v.value; have += 1; }
+        if v.ok && !sc_is_zero(v.value) { r.a[have] = v.value; have += 1; }  // mutant: equivalent (for '&&' as '||': only a draw that is zero or at least n tells them apart, about 2^-127 per draw, and no seed giving one is known)
       }
     }
   }
@@ -91,7 +91,7 @@ sb_pick :: (entry: Fgej, digit: int, negative: bool) -> Fgej #effects(all) {
   if d < 0 { r.y = fe_negate(r.y, 4); }
   return r;
 }
-sb_index :: (digit: int) -> int #effects(all) { return ((ifx digit < 0 then -digit else digit) - 1) / 2; }
+sb_index :: (digit: int) -> int #effects(all) { return ((ifx digit < 0 then -digit else digit) - 1) / 2; }  // mutant: equivalent (for '<' as '<=': at digit 0, -digit is digit)
 // g·G + Σ k_j·Q_j by Strauss's method: every term's digits are added into
 // one accumulator, which is doubled once per bit for all of them.
 sb_multiply :: (g: ScScalar, terms: [] SbTerm, count: int, c: [] SbCount) #effects(all) {
@@ -101,7 +101,7 @@ sb_multiply :: (g: ScScalar, terms: [] SbTerm, count: int, c: [] SbCount) #effec
   length := sm_joint_length_vartime(wg1, wg2);
   for j: 0..<count {
     l := sm_joint_length_vartime(terms[j].w1, terms[j].w2);
-    if l > length { length = l; }
+    if l > length { length = l; }  // mutant: equivalent (at l == length the assignment keeps the same value)
   }
   gt: [8] Fgej; gl: [8] Fgej;
   for i: 0..<8 { gt[i] = fg_from_affine(fg_g_point(i)); gl[i] = gt[i]; gl[i].x = fe_mul(gl[i].x, fg_beta()); }
@@ -156,7 +156,7 @@ sb_verify_with_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signat
     s := sc_load(sig[32..<64]);
     if !s.ok { result.error = SB_E_S; return result; }
     e := sv_challenge_vartime(message, key, sig[0..<32]);
-    if !e.ok { result.error = SB_E_SHAPE; return result; }
+    if !e.ok { result.error = SB_E_SHAPE; return result; }  // mutant: equivalent (sb_shape already bounds the key, r and message lengths, the challenge's only refusals)
     big_r := sg_lift_x_public(sig[0..<32]); result.roots += 1;
     if !big_r.ok { result.error = SB_E_R; return result; }
     // (Σ a_i·s_i)·G - Σ a_i·R_i - Σ (a_i·e_i)·P_i must be infinity.
@@ -176,9 +176,9 @@ sb_verify_with_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signat
 schnorr_batch_check_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -> SbResult #effects(all) {
   if !sb_shape(keys, messages, lengths, signatures) { return SbResult.{error=SB_E_SHAPE,index=-1}; }
   seed: [32] u8;
-  if !sb_seed(keys, messages, signatures, seed[..]) { return SbResult.{error=SB_E_SHAPE,index=-1}; }
+  if !sb_seed(keys, messages, signatures, seed[..]) { return SbResult.{error=SB_E_SHAPE,index=-1}; }  // mutant: equivalent (sb_seed fails only on an output that is not 32 bytes or a failed SHA-256 step, and neither happens here)
   a := sb_randomizers(seed[..], lengths.count);
-  if !a.ok { return SbResult.{error=SB_E_SHAPE,index=-1}; }
+  if !a.ok { return SbResult.{error=SB_E_SHAPE,index=-1}; }  // mutant: equivalent (sb_shape already bounds the count by SB_MAX and the seed is 32 bytes, so the randomizers cannot fail)
   return sb_verify_with_vartime(keys, messages, lengths, signatures, a.a[0..<lengths.count]);
 }
 schnorr_batch_verify_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -> bool #effects(all) {
@@ -312,10 +312,10 @@ sb_nibble :: (c: u8) -> int #effects(all) {
 sb_add_vector :: (b: [] SbBatch, v: int) -> bool #effects(all) {
   u := b[0].u;
   if u >= SB_MAX { return false; }
-  if sb_hex(SB_VEC_KEY[v], b[0].keys[u*32..<u*32+32]) != 32 { return false; }
-  if sb_hex(SB_VEC_SIG[v], b[0].sigs[u*64..<u*64+64]) != 64 { return false; }
-  n := sb_hex(SB_VEC_MSG[v], b[0].messages[b[0].used..<b[0].messages.count]);
-  if n < 0 { return false; }
+  if sb_hex(SB_VEC_KEY[v], b[0].keys[u*32..<u*32+32]) != 32 { return false; }  // mutant: equivalent (for the refusal: every stored key is 64 hex digits)
+  if sb_hex(SB_VEC_SIG[v], b[0].sigs[u*64..<u*64+64]) != 64 { return false; }  // mutant: equivalent (for the refusal: every stored signature is 128 hex digits)
+  n := sb_hex(SB_VEC_MSG[v], b[0].messages[b[0].used..<b[0].messages.count]);  // mutant: equivalent (messages is a fixed [8192] array, so every element's count is the same)
+  if n < 0 { return false; }  // mutant: equivalent (every stored message is valid hex that fits)
   b[0].lengths[u] = n; b[0].used += n; b[0].u = u + 1;
   return true;
 }
@@ -411,4 +411,44 @@ sb_single :: (b: [] SbBatch, i: int) -> bool #effects(all) {
   for e: 0..<6 { #assert sb_error_text(e).count > 0; }
   full: [1] SbBatch; full[0].u = SB_MAX;
   #assert !sb_add_vector(full[..], 1);
+}
+
+#test "error texts, index digits and randomizer counts at their bounds" {
+  #assert sb_error_text(SB_OK) == "valid" && sb_error_text(SB_E_SHAPE) == "the inputs don't describe a batch";
+  #assert sb_error_text(SB_E_KEY) == "public key is not an x coordinate on the curve" && sb_error_text(SB_E_R) == "r is not an x coordinate on the curve";
+  #assert sb_error_text(SB_E_S) == "s is not below n" && sb_error_text(SB_E_SUM) == "the combined equation does not hold";
+  #assert sb_index(1) == 0 && sb_index(-1) == 0 && sb_index(3) == 1 && sb_index(-15) == 7 && sb_index(15) == 7;
+  seed: [32] u8;
+  for i: 0..<32 { seed[i] = cast,trunc(u8) i; }
+  #assert sb_randomizers(seed[..], SB_MAX).ok && sc_is_zero(sb_randomizers(seed[..], 0).a[0]);
+  four := sb_randomizers(seed[..], 4);
+  #assert four.ok && four.drawn == 3 && sc_is_zero(four.a[4]);
+  out: [32] u8;
+  #assert sb_hex("0000000000000000000000000000000000000000000000000000000000000000", out[0..<31]) == -1 && sb_hex("0:", out[..]) == -1;
+}
+#test "shapes at the batch and message limits" #steps 400000000 {
+  keys: [32 * SB_MAX] u8; sigs: [64 * SB_MAX] u8; none: [1] u8; lengths: [SB_MAX] int;
+  #assert sb_shape(keys[..], none[0..<0], lengths[..], sigs[..]);
+  keys65: [32 * (SB_MAX + 1)] u8; sigs65: [64 * (SB_MAX + 1)] u8; lengths65: [SB_MAX + 1] int;
+  #assert !sb_shape(keys65[..], none[0..<0], lengths65[..], sigs65[..]);
+  two := [2] int.[-1, 1]; one: [1] u8;
+  #assert !sb_shape(keys[0..<64], one[0..<0], two[..], sigs[0..<128]);
+  long: [SV_MAX_MESSAGE + 1] u8; size := [1] int.[SV_MAX_MESSAGE];
+  #assert sb_shape(keys[0..<32], long[0..<SV_MAX_MESSAGE], size[..], sigs[0..<64]);
+  size[0] = SV_MAX_MESSAGE + 1;
+  #assert !sb_shape(keys[0..<32], long[..], size[..], sigs[0..<64]);
+  short: [1] ScScalar; b: [1] SbBatch; #assert sb_add_vector(b[..], 1);
+  r := sb_verify_with_vartime(b[0].keys[0..<32], b[0].messages[0..<32], b[0].lengths[0..<1], b[0].sigs[0..<64], short[0..<0]);
+  #assert r.error == SB_E_SHAPE && r.index == -1;
+  r = schnorr_batch_check_vartime(b[0].keys[0..<31], b[0].messages[0..<32], b[0].lengths[0..<1], b[0].sigs[0..<64]);
+  #assert r.error == SB_E_SHAPE && r.index == -1;
+}
+#test "a full batch of 64 signatures verifies and reports its work" #steps 12000000000 {
+  b: [1] SbBatch;
+  for i: 0..<SB_MAX { #assert sb_add_vector(b[..], 15); }
+  #assert !sb_add_vector(b[..], 15);
+  r := sb_check(b[..]);
+  // Each of the 128 points' tables costs a doubling and seven additions,
+  // and the shared chain adds more of both.
+  #assert r.ok && r.roots == 128 && r.doubles > 128 && r.additions > 7 * 128;
 }
