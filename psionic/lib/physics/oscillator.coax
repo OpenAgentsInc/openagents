@@ -52,7 +52,8 @@
 }
 
 os_profile :: ()->string #export_c #effects(all) {return "oscillator-rk4-f64-v1";}
-os_bits_finite :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+#load "../../../coax/lib/ieee.coax";
+os_bits_finite :: (bits:u64)->bool #effects(all) {return ieee_f64_finite(bits);}
 os_finite :: (v:f64)->bool #effects(all) {return os_bits_finite(f64_bits(v));}
 os_state_ok :: (s:OsState)->bool #effects(all) {return abs(s.position)<=2 && abs(s.velocity)<=4;}
 os_admit :: (p:OsParams,s:OsState,force:f64,dt:f64)->OsStatus #effects(all) {

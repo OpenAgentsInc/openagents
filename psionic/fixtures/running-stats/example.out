@@ -1,0 +1,3 @@
+staged: 3 samples, means 2 4 4, M2 2 8 2
+active: 0 samples, unchanged; staged transform matches independent reference
+late observation: status 3 (range), staged snapshot unchanged

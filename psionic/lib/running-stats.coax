@@ -1,0 +1,51 @@
+// running-statistics-f64-v1: bounded streaming observation moments and a
+// population-variance transform. Actor/staged/frozen lifecycle is the caller's.
+#load "running-stats-types.coax";
+#load "../../coax/lib/ieee.coax";
+#authority;
+#load "running-stats-checks.coax" #test;
+
+rn_numbers :: (mean:u64,m2:u64)->bool #effects(all) {return ieee_f64_finite(mean) && ieee_f64_finite(m2);}
+rn_check :: (s:RnSnapshot)->RnStatus #export_c #effects(all) {
+  if s.channels<1 || s.channels>RN_CHANNELS {return RnStatus.shape;}
+  for i:0..<RN_CHANNELS {
+    m:=s.moments[i];if !rn_numbers(f64_bits(m.mean),f64_bits(m.m2)) {return RnStatus.number;}
+    if m.count<0 || m.count>RN_SAMPLES || abs(m.mean)>1000000 || m.m2<0 || m.m2>4000000000000.0*f64(m.count) {return RnStatus.range;}
+    if i<s.channels {
+      if m.count!=s.moments[0].count || (m.count==0 && m.mean!=0) || (m.count<=1 && m.m2!=0) {return RnStatus.state;}
+    }else {if m.count!=0 || m.mean!=0 {return RnStatus.state;}}
+  }
+  return RnStatus.ok;
+}
+rn_begin :: (channels:int,output:[]RnSnapshot)->RnStatus #export_c #effects(all) {
+  if output.count!=1 || channels<1 || channels>RN_CHANNELS {return RnStatus.shape;}
+  s:RnSnapshot;s.channels=channels;output[0]=s;return RnStatus.ok;
+}
+rn_push :: (previous:RnSnapshot,rows:int,values:[]f64,output:[]RnSnapshot)->RnStatus #export_c #effects(all) {
+  if output.count!=1 || rows<0 || rows>RN_ROWS {return RnStatus.shape;}
+  status:=rn_check(previous);if status!=RnStatus.ok {return status;}
+  if values.count!=rows*previous.channels {return RnStatus.shape;}
+  if previous.moments[0].count>RN_SAMPLES-rows {return RnStatus.exhausted;}
+  for value:values {if !ieee_f64_finite(f64_bits(value)) {return RnStatus.number;}if abs(value)>1000000 {return RnStatus.range;}}
+  // book:begin running-stats-push
+  stage:=previous;
+  for row:0..<rows {for channel:0..<previous.channels {
+    stage.moments[channel]=sm_push_owned(stage.moments[channel],values[row*previous.channels+channel]);
+  }}
+  status=rn_check(stage);if status!=RnStatus.ok {return status;}
+  output[0]=stage;return RnStatus.ok;
+// book:end running-stats-push
+}
+rn_apply :: (s:RnSnapshot,values:[]f64,output:[]f64)->RnStatus #export_c #effects(all) {
+  status:=rn_check(s);if status!=RnStatus.ok {return status;}
+  if values.count!=s.channels || output.count!=s.channels {return RnStatus.shape;}
+  for value:values {if !ieee_f64_finite(f64_bits(value)) {return RnStatus.number;}if abs(value)>1000000 {return RnStatus.range;}}
+  // book:begin running-stats-apply
+  stage:[RN_CHANNELS]f64;
+  for channel:0..<s.channels {
+    m:=s.moments[channel];stage[channel]=values[channel];
+    if m.count>0 {stage[channel]=(values[channel]-m.mean)/sqrt(m.m2/f64(m.count)+1e-8);}
+  }
+  for channel:0..<s.channels {output[channel]=stage[channel];}return RnStatus.ok;
+// book:end running-stats-apply
+}

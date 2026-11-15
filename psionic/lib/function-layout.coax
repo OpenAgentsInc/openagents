@@ -52,7 +52,8 @@
   #assert fx_finite(0) && fx_finite(1e300) && fx_finite(-1e300);
   #assert !fx_finite_bits(0x7ff8000000000001) && !fx_finite_bits(0x7ff0000000000000) && !fx_finite_bits(0xfff0000000000000);
 }
-fx_finite_bits :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+#load "../../coax/lib/ieee.coax";
+fx_finite_bits :: (bits:u64)->bool #effects(all) {return ieee_f64_finite(bits);}
 fx_finite :: (value:f64)->bool #effects(all) {return fx_finite_bits(f64_bits(value));}
 fx_program :: (p:TiProgram)->FxLayout #effects(all) {
   r:FxLayout;r.tape.program=p;r.tape.plan=ti_compile(p,TiTarget.{},false);

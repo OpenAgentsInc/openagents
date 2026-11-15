@@ -1,0 +1,8 @@
+// Bounded, reusable observations statistics; no actor or rollout lifecycle.
+#load "stats-moments.coax";
+RN_CHANNELS :: 64;
+RN_ROWS :: 2048;
+RN_SAMPLES :: 1000000000;
+RnStatus :: enum u8 {ok;shape;number;range;state;exhausted;}
+// In-memory snapshot only. All active counts match; inactive slots are zero.
+RnSnapshot :: struct {channels:int;moments:[RN_CHANNELS]SmMoments;}

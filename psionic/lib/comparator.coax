@@ -8,6 +8,7 @@
 // Profile cm-warm-v1: run times as positive integer nanoseconds, 5 to 1,024
 // warm runs per side, binary64 statistics, sample (n - 1) variance.
 #authority;
+#load "stats-moments.coax";
 #load "../tests/comparator-checks.coax";  // the checks' helpers and exact variance oracle
 
 CmStatus :: enum u8 {ok;few;capacity;sample;}
@@ -184,15 +185,12 @@ cm_two_pass :: (x:[]int)->CmStats #export_c #effects(all) {
 cm_welford :: (x:[]int)->CmStats #export_c #effects(all) {
     st:=cm_admit(x);
     if st.status!=CmStatus.ok {return st;}
-    mean:=0.0;m2:=0.0;k:=0;
+    moments:SmMoments;
     for v:x {
-        k+=1;f:=cast(f64)v;
-        d:=f-mean;
-        mean+=d/cast(f64)k;
-        m2+=d*(f-mean);
+        moments=sm_push_owned(moments,cast(f64)v);
     }
-    st.mean=mean;
-    st.sd=sqrt(m2/cast(f64)(k-1));
+    st.mean=moments.mean;
+    st.sd=sqrt(moments.m2/cast(f64)(moments.count-1));
     return st;
 }
 // book:end welford

@@ -1,8 +1,9 @@
 # 259. Rollouts from independent worlds
 
-> **Status: unimplemented — design draft.** This chapter designs a bounded
-> collector and normalization lifecycle. Existing scalar GAE/PPO profiles are
-> reused; no new batched robot physics or training result is claimed.
+> **Status: partly implemented.** The CPU `running-statistics-f64-v1`
+> component below is runnable and independently checked. Transition collection,
+> actor/normalizer version fencing, counter allocation and complete rollout
+> resume remain to implement. No robot or new learning result is qualified.
 
 Training needs more than arrays containing observations and rewards. It needs
 the observation that produced an action, the exact old policy distribution,
@@ -53,6 +54,79 @@ The current GAE helper admits at most 16 worlds, horizon 128 and 2,048 rows.
 Larger batches must use checked independent slices or a newly qualified
 extension. Preserve each episode's horizon semantics and stage a complete
 result; a partial slice is not a completed rollout.
+
+## The shared statistics component now runs
+
+[`running-stats.coax`](../lib/running-stats.coax) implements bounded F64
+statistics for 1–64 observation channels and 0–2,048 incoming rows per call,
+with at most one billion samples. Its [contract](../docs/robotics/running-statistics-rb03.md)
+fixes row-major input order and all numerical boxes. Each snapshot holds the
+active channel count and every channel's count, mean and summed squared
+residual `M2`; inactive slots are zero and receive admission too.
+
+For the three rows `[1,2,3]`, `[2,4,4]`, `[3,6,5]`, the means are `[2,4,4]`
+and the summed squared residuals are `[2,8,2]`. Population variance is therefore
+`[2/3,8/3,2/3]`. With epsilon `1e-8`, the first channel of observation `[4,0,-1]`
+becomes `(4-2)/sqrt(2/3+1e-8)`, approximately 2.4494897. These are independent
+two-pass calculations, rather than another copy of the incremental recurrence.
+
+The Welford arithmetic is shared with chapter 34's comparator; its sample
+variance convention stays unchanged there. The observation transform here uses
+population variance with a fixed epsilon. An empty snapshot explicitly applies
+the identity transform. It never divides by zero or silently treats one sample
+as an uninitialized state.
+
+<!-- source: psionic/lib/running-stats.coax running-stats-push -->
+```jai
+  stage:=previous;
+  for row:0..<rows {for channel:0..<previous.channels {
+    stage.moments[channel]=sm_push_owned(stage.moments[channel],values[row*previous.channels+channel]);
+  }}
+  status=rn_check(stage);if status!=RnStatus.ok {return status;}
+  output[0]=stage;return RnStatus.ok;
+```
+
+Every incoming value is admitted before this stage begins. A numerical state
+can lie exactly at its M2 ceiling; F64 rounding on the next update can put the
+candidate just outside that box. Final admission is necessary even after finite
+input checks. Such a failure preserves the whole caller snapshot.
+
+<!-- source: psionic/lib/running-stats.coax running-stats-apply -->
+```jai
+  stage:[RN_CHANNELS]f64;
+  for channel:0..<s.channels {
+    m:=s.moments[channel];stage[channel]=values[channel];
+    if m.count>0 {stage[channel]=(values[channel]-m.mean)/sqrt(m.m2/f64(m.count)+1e-8);}
+  }
+  for channel:0..<s.channels {output[channel]=stage[channel];}return RnStatus.ok;
+```
+
+The [example](../examples/running-statistics.coax) keeps separate active and
+staged snapshots, checks the independent normalization vector, and refuses a
+late invalid observation:
+
+```shell
+coax/bin/coax run psionic/examples/running-statistics.coax
+```
+
+```text
+staged: 3 samples, means 2 4 4, M2 2 8 2
+active: 0 samples, unchanged; staged transform matches independent reference
+late observation: status 3 (range), staged snapshot unchanged
+```
+
+The example exits zero after requiring the query's exact `RnStatus.range`
+refusal. Its two snapshots illustrate caller ownership; they do not implement
+the actor/epoch lifecycle described below. The future collector must enforce
+which snapshot remains frozen while old log probabilities are reused.
+
+A separate Fraction/70-digit Decimal oracle checks the reference moments and
+normalization. Debug/release and native sanitizer checks cover all public
+outputs, batch-versus-stream bit equality, empty/one-sample transforms, maximum
+shape, exhausted counters, real nonfinite active/inactive values and aliasing.
+The [receipt](../../docs/verification/robotics-running-stats-rb03-2026-11-15.md)
+records the observed checks and remaining collector boundary. No persistent
+snapshot codec or F32 neural normalization claim follows from this F64 component.
 
 ## Frozen normalization and independent randomness
 

@@ -1,0 +1,20 @@
+// Native/oracle/example effects use the shared qualifier and transcript runner.
+#load "../../coax/lib/sys/native-check.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])>1 {return 2;}
+  phase:=ifx args_count(args[..])==0 then "all" else args_at(args[..],0);
+  if phase!="all" && phase!="native" {return 2;}
+  if phase=="all" {
+    transcript:[65536]u8;
+    for source:[2]string.["psionic/lib/stats-moments.coax","psionic/lib/running-stats.coax"] {
+      for release:0..<2 {
+        check:=[5]string.["coax/bin/coax","test",source,"--library","--release"];n:=nc_run(check[0..<4+release],120,transcript[..]);if n<0 {return 1;}print("%\n",cast(string)transcript[0..<n]);
+      }
+      mutate:=[7]string.["coax/bin/coax","mutate",source,"--library","--root-only","--jobs","4"];n:=nc_run(mutate[..],120,transcript[..]);if n<0 {return 1;}print("%\n",cast(string)transcript[0..<n]);
+    }
+  }
+  command:=[3]string.["python3","-I","psionic/tests/running_stats_oracle.py"];out:[4096]u8;
+  n:=nc_run(command[..],30,out[..]);if n<0 {return 1;}print("%\n",cast(string)out[0..<n]);
+  status:=nc_qualify("psionic/tests/running-stats-native.coax","running_stats_native_checks");if status!=0 {return status;}
+  return nc_transcript("psionic/examples/running-statistics.coax","psionic/fixtures/running-stats/example.out");
+}

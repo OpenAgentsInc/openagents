@@ -23,7 +23,8 @@
 }
 
 // Shared predicates only interpret raw numeric observations; no provenance seal.
-rgp_finite :: (bits:u64)->bool #effects(all) {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+#load "../../../../coax/lib/ieee.coax";
+rgp_finite :: (bits:u64)->bool #effects(all) {return ieee_f64_finite(bits);}
 rgp_finite2 :: (a:u64,b:u64)->bool #effects(all) {return rgp_finite(a) && rgp_finite(b);}
 rgp_finite3 :: (a:u64,b:u64,c:u64)->bool #effects(all) {return rgp_finite(a) && rgp_finite(b) && rgp_finite(c);}
 rgp_parameters :: (mean:f64,logstd:f64)->bool #effects(all) {return mean>= -16 && mean<=16 && logstd>= -4 && logstd<=2;}

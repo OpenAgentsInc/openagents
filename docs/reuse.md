@@ -19,6 +19,8 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 
 | You need | Use | Where |
 | --- | --- | --- |
+| Streaming observation moments and population normalization | Bounded F64 snapshots, staged publication and the Welford arithmetic shared with benchmark statistics; the caller owns freeze/version lifecycle | `psionic/lib/running-stats.coax`, `stats-moments.coax` |
+| IEEE F64 finite admission before arithmetic | Inspect the raw eleven-bit exponent; existing function-layout/Gaussian/oscillator helpers delegate here | `coax/lib/ieee.coax` (`ieee_f64_finite`) |
 | Bounded decoded robot experiments and a joint-angle action map | Psionic experiment admission; compares the complete active map with the expected embodiment, then stages requested/limited targets | `psionic/lib/robotics/experiment-policy.coax`, `experiment-types.coax` |
 | A finite scalar clamp with strict clipping flags and endpoint signed-zero preservation | Admit finite ordered bounds first; shared by experiment, scalar actuator and Panda | `coax/lib/clip.coax` (`scalar_clip_f64`) |
 | An illustrative scalar servo with delayed position targets and complete in-memory restore | Explicit force/passive terms, semi-implicit rotor and observation play; no measured motor or device effects | `psionic/lib/robotics/actuator.coax`, `actuator-types.coax` |

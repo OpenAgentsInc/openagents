@@ -3,20 +3,26 @@
 **Date:** November 15, 2026. **Status:** coding-agent implementation brief.
 Design baseline: `5ed34eedcb`. RB-00, the complete RB-01 CPU query/record
 profile and RB-02 scalar actuator now have source and CPU component evidence.
-The remaining packages are plans; no
+RB-03a adds the shared statistics component; the collector and remaining
+packages are plans. No
 hardware authorization or purchase is recorded here.
 
 Start with [chapter 256](../../book/ch256-build-and-teach-a-small-robot.md) and
 the [pipeline specification](../../../docs/nvidia/microduck-pipeline-2026-11-15.md).
-Chapters 257–258 now run the contract and scalar servo. Chapters 259–265 draft
-the calculations,
+Chapters 257–258 now run the contract and scalar servo. Chapter 259 is partly
+implemented for statistics; its collector and chapters 260–265 still draft
+the remaining calculations,
 boundaries, refusals and outcomes still to implement. RB numbers below are work-package
 labels, not published protocol IDs or newly created GitHub issues.
 
 ## What an agent should implement first
 
 Continue **RB-03** next: the bounded analytic-plant collector and frozen/staged
-normalizer lifecycle. RB-02 implements requested/limited actuator force,
+normalizer lifecycle. RB-03a now implements the reusable F64 statistics/transform
+component in `psionic/lib/running-stats.coax`, sharing the comparator
+Welford arithmetic. Its [contract](running-statistics-rb03.md) and
+[receipt](../../../docs/verification/robotics-running-stats-rb03-2026-11-15.md)
+leave collector identity/lifetime decisions explicit and still unimplemented. RB-02 implements requested/limited actuator force,
 explicit delay/restore and independently checked scalar motion, with
 illustrative passive loss, voltage scaling and a separate observation-play
 precursor; its [contract](actuator-contract-rb02.md) and
@@ -197,7 +203,8 @@ motor identification and physical conclusions remain RB-11 work.
 `psionic/lib/robotics/locomotion/collector-*.coax`; running-statistics support
 goes in a shared Psionic owner after the inventory rules out an equivalent.
 
-Implement a bounded transition adapter and collector on the existing oscillator.
+The reusable F64 statistics/normalization component is qualified as RB-03a.
+Continue with a bounded transition adapter and collector on the existing oscillator.
 Capture final-before-reset observations, latent/applied actions, old joint
 log probability, values, flags, logical episode/step identity and frozen stats.
 Reuse `rga_returns`; do not fork GAE. Define active versus staged normalizer

@@ -2432,6 +2432,20 @@ do not authorize physical operating limits. No stored checkpoint, measured
 motor, biped/contact or device/timing qualification follows. See
 `docs/verification/robotics-actuator-rb02-2026-11-15.md`.
 
+## Running observations retain exact snapshot and transform conventions
+
+`psionic/lib/running-stats.coax` admits the whole finite bounded input and
+all active/inactive state fields before publishing an incremental candidate.
+Every active count matches; inactive slots and empty moments are zero.
+The shared Welford arithmetic retains the benchmark comparator's order,
+while observation normalization explicitly uses population variance with
+epsilon 1e-8 and identity at zero samples. Candidate admission cannot be
+removed: a rounded M2 update can cross its numerical ceiling. Refusals
+preserve all state and value outputs. This is an in-memory F64 component;
+collector freeze/version fencing, stored checkpoints, neural precision and
+learning remain separate work. See
+`docs/verification/robotics-running-stats-rb03-2026-11-15.md`.
+
 ## Joint PD keeps active feedback, gravity and actuator saturation explicit
 
 The seven-arm query uses source-range radian current/target coordinates,

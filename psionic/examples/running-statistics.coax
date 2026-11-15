@@ -1,0 +1,15 @@
+#import "Basic";
+#load "../lib/running-stats.coax";
+#load "../lib/running-stats-fixtures.coax";
+main :: () {
+  active:[1]RnSnapshot;staged:[1]RnSnapshot;#assert rn_begin(3,active[..])==RnStatus.ok;staged[0]=active[0];
+  rows:=[9]f64.[1,2,3,2,4,4,3,6,5];#assert rn_push(staged[0],3,rows[..],staged[..])==RnStatus.ok;
+  #assert active[0].moments[0].count==0;
+  print("staged: % samples, means % % %, M2 % % %\n",staged[0].moments[0].count,int(staged[0].moments[0].mean),int(staged[0].moments[1].mean),int(staged[0].moments[2].mean),int(staged[0].moments[0].m2),int(staged[0].moments[1].m2),int(staged[0].moments[2].m2));
+  x:=[3]f64.[4,0,-1];out:[3]f64;#assert rn_apply(active[0],x[..],out[..])==RnStatus.ok && out[0]==4;
+  #assert rn_apply(staged[0],x[..],out[..])==RnStatus.ok;
+  for i:0..<3 {#assert abs(out[i]-RN_GOLDEN_NORMALIZED[i])<2e-12;}
+  print("active: % samples, unchanged; staged transform matches independent reference\n",active[0].moments[0].count);
+  previous:=staged[0];rows[8]=1000001;refused:=rn_push(staged[0],3,rows[..],staged[..]);#assert refused==RnStatus.range;rn_same(previous,staged[0]);
+  print("late observation: status % (range), staged snapshot unchanged\n",int(refused));
+}

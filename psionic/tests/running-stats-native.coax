@@ -1,0 +1,28 @@
+#load "../lib/running-stats.coax";
+#load "../lib/running-stats-fixtures.coax";
+running_stats_native_checks :: ()->int #export_c #effects(all) {
+  rows:=[9]f64.[1,2,3,2,4,4,3,6,5];s:[1]RnSnapshot;#assert rn_begin(3,s[..])==RnStatus.ok && rn_push(s[0],3,rows[..],s[..])==RnStatus.ok;
+  x:=[3]f64.[4,0,-1];normalized:[3]f64;#assert rn_apply(s[0],x[..],normalized[..])==RnStatus.ok;
+  for i:0..<3 {#assert s[0].moments[i].mean==RN_GOLDEN_MEAN[i] && s[0].moments[i].m2==RN_GOLDEN_M2[i] && abs(normalized[i]-RN_GOLDEN_NORMALIZED[i])<=2e-13+2e-13*abs(RN_GOLDEN_NORMALIZED[i]);}
+  poison:=rn_poison();
+  for bits:[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001,0x7ff0000000000001,0xfff8000000000001] {
+    value:=f64_from_bits(bits);
+    // Includes all inactive fields: masking never skips finite admission.
+    for role:0..<128 {
+      bad:=s[0];if role%2==0 {bad.moments[role/2].mean=value;}else {bad.moments[role/2].m2=value;}
+      out:=[1]RnSnapshot.[poison];dest:=[3]f64.[17,19,23];
+      #assert rn_push(bad,1,x[..],out[..])==RnStatus.number && rn_apply(bad,x[..],dest[..])==RnStatus.number;rn_same(out[0],poison);
+      #assert dest[0]==17 && dest[1]==19 && dest[2]==23;
+    }
+    for role:0..<9 {
+      bad:=rows;bad[role]=value;out:=[1]RnSnapshot.[poison];#assert rn_push(s[0],3,bad[..],out[..])==RnStatus.number;rn_same(out[0],poison);
+    }
+    for role:0..<3 {
+      bad:=x;bad[role]=value;dest:=[3]f64.[17,19,23];#assert rn_apply(s[0],bad[..],dest[..])==RnStatus.number;#assert dest[0]==17 && dest[1]==19 && dest[2]==23;
+    }
+  }
+  // Row inputs and outputs can alias because publication follows full staging.
+  #assert rn_apply(s[0],x[..],x[..])==RnStatus.ok;for i:0..<3 {#assert f64_bits(x[i])==f64_bits(normalized[i]);}
+  old:=s[0];#assert rn_push(s[0],0,rows[0..<0],s[..])==RnStatus.ok;rn_same(old,s[0]);
+  return 0;
+}

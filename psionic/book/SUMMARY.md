@@ -321,7 +321,7 @@
 - [256. Build and teach a small robot](ch256-build-and-teach-a-small-robot.md) — design draft
 - [257. A robot description becomes an experiment](ch257-a-robot-description-becomes-an-experiment.md)
 - [258. A servo that behaves like the motor](ch258-a-servo-that-behaves-like-the-motor.md)
-- [259. Rollouts from independent worlds](ch259-rollouts-from-independent-worlds.md) — design draft
+- [259. Rollouts from independent worlds](ch259-rollouts-from-independent-worlds.md) — partly implemented
 - [260. Train a neural walking policy](ch260-train-a-neural-walking-policy.md) — design draft
 - [261. Teach skills and switch between them](ch261-teach-skills-and-switch-between-them.md) — design draft
 - [262. Walk by what the robot sees](ch262-walk-by-what-the-robot-sees.md) — design draft

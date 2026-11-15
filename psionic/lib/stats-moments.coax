@@ -1,0 +1,13 @@
+// The Welford arithmetic extracted from comparator.coax. Raw finite primitive:
+// caller admits count>=0 with room for +1, and finite inputs/intermediates.
+#authority;
+SmMoments :: struct {count:int;mean:f64;m2:f64;}
+#test "shared moment update has independent exact signed-prefix moments" {
+  s:SmMoments;values:=[4]f64.[-2,0,2,4];means:=[4]f64.[-2,-1,0,1];squares:=[4]f64.[0,2,8,20];
+  for i:0..<4 {s=sm_push_owned(s,values[i]);#assert s.count==i+1 && s.mean==means[i] && s.m2==squares[i];}
+  other:=SmMoments.{count=5,mean=10,m2=4};next:=sm_push_owned(other,16);#assert next.count==6 && next.mean==11 && next.m2==34;
+}
+sm_push_owned :: (previous:SmMoments,value:f64)->SmMoments #effects(all) {
+  next:=previous;next.count+=1;delta:=value-previous.mean;
+  next.mean+=delta/cast(f64)next.count;next.m2+=delta*(value-next.mean);return next;
+}

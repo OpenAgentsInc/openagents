@@ -375,7 +375,7 @@ run examples directly without the check command.
 | [256. Build and teach a small robot](ch256-build-and-teach-a-small-robot.md) | Unimplemented: design draft | Overview and experiment ledger for the complete Microduck-inspired route; chapters 257–265 supply the component calculations and final acceptance. |
 | [257. A robot description becomes an experiment](ch257-a-robot-description-becomes-an-experiment.md) | Runnable: decoded-joint-experiment-f64-v1 (CPU) | Decoded admission, staged radian targets and canonical identity-bound RXE1 records; general robot import remains open. |
 | [258. A servo that behaves like the motor](ch258-a-servo-that-behaves-like-the-motor.md) | Runnable: scalar-servo-play-f64-v1 (CPU) | Requested/limited force, explicit delay/restore and independently checked illustrative friction, voltage scaling and output play. |
-| [259. Rollouts from independent worlds](ch259-rollouts-from-independent-worlds.md) | Unimplemented: design draft | Final-before-reset data, frozen normalization, isolated collection/counters and complete checkpoints. |
+| [259. Rollouts from independent worlds](ch259-rollouts-from-independent-worlds.md) | Partly implemented: running-statistics-f64-v1 (CPU) | Shared bounded observation statistics/normalization; final-before-reset collection, lifecycle/counters and complete rollout checkpoints remain planned. |
 | [260. Train a neural walking policy](ch260-train-a-neural-walking-policy.md) | Unimplemented: design draft | Shared neural actor/critic training with vector Gaussian/PPO derivatives, bounded CPU learning and later biped integration. |
 | [261. Teach skills and switch between them](ch261-teach-skills-and-switch-between-them.md) | Unimplemented: design draft | Trained physical skills, qualified handoffs and explicit cue/authority decisions. |
 | [262. Walk by what the robot sees](ch262-walk-by-what-the-robot-sees.md) | Unimplemented: design draft | Calibrated observations, geometric/learned perception, onboard-only student inputs and course evaluation. |
@@ -388,8 +388,9 @@ following the [GTC Berlin pipeline specification](../../docs/nvidia/microduck-pi
 [Chapter 257](ch257-a-robot-description-becomes-an-experiment.md) now has a
 qualified CPU decoded-admission/action-query and canonical-record component.
 [Chapter 258](ch258-a-servo-that-behaves-like-the-motor.md) adds the checked
-illustrative scalar servo with delay/restore. The overview and chapters
-259–265 remain design drafts. No complete robot-learning pipeline
+illustrative scalar servo with delay/restore. Chapter 259 now has a checked
+shared statistics component; its collector remains planned. The overview and
+chapters 260–265 remain design drafts. No complete robot-learning pipeline
 or product adoption is qualified. The
 [implementation roadmap](../docs/robotics/microduck-implementation-roadmap.md)
 names the next coding tasks. Chapter 171 owns the reusable locomotion learner;

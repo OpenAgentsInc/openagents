@@ -133,15 +133,12 @@ holds their mean and `m2`, their summed squared distances from that mean.
 cm_welford :: (x:[]int)->CmStats #export_c #effects(all) {
     st:=cm_admit(x);
     if st.status!=CmStatus.ok {return st;}
-    mean:=0.0;m2:=0.0;k:=0;
+    moments:SmMoments;
     for v:x {
-        k+=1;f:=cast(f64)v;
-        d:=f-mean;
-        mean+=d/cast(f64)k;
-        m2+=d*(f-mean);
+        moments=sm_push_owned(moments,cast(f64)v);
     }
-    st.mean=mean;
-    st.sd=sqrt(m2/cast(f64)(k-1));
+    st.mean=moments.mean;
+    st.sd=sqrt(moments.m2/cast(f64)(moments.count-1));
     return st;
 }
 ```

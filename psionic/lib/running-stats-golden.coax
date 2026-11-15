@@ -1,0 +1,4 @@
+// Independent two-pass Fraction/Decimal reference, frozen before implementation.
+RN_GOLDEN_MEAN :: [3]f64.[2.0,4.0,4.0];
+RN_GOLDEN_M2 :: [3]f64.[2.0,8.0,2.0];
+RN_GOLDEN_NORMALIZED :: [3]f64.[2.4494897244120053,-2.4494897381903846,-6.1237243110300135];

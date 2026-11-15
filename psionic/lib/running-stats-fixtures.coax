@@ -1,0 +1,9 @@
+#load "running-stats-types.coax";
+#load "running-stats-golden.coax";
+rn_same :: (a:RnSnapshot,b:RnSnapshot) #effects(all) {
+  #assert a.channels==b.channels;
+  for i:0..<RN_CHANNELS {#assert a.moments[i].count==b.moments[i].count && f64_bits(a.moments[i].mean)==f64_bits(b.moments[i].mean) && f64_bits(a.moments[i].m2)==f64_bits(b.moments[i].m2);}
+}
+rn_poison :: ()->RnSnapshot #effects(all) {
+  s:RnSnapshot;s.channels=7;for i:0..<RN_CHANNELS {s.moments[i]=SmMoments.{count=i+1,mean=f64(i)+0.125,m2=f64(i)+0.25};}return s;
+}

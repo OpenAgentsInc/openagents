@@ -3680,6 +3680,17 @@
         "release"
       ],
       "timeout": 120
+    },
+    {
+      "source": "psionic/examples/running-statistics.coax",
+      "chapter": "psionic/book/ch259-rollouts-from-independent-worlds.md",
+      "stdout": "psionic/fixtures/running-stats/example.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ],
   "libraries": [
