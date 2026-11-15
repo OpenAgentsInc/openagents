@@ -16,6 +16,14 @@ ResumeEnvelope :: struct {ok:bool;legacy:[256]u8;legacy_n:int;capture:CharacterC
   #assert resume_ticket_wrap(key,core,"{}",out[..])==""&&resume_ticket_wrap(key,"v4.nested","-",out[..])=="";
   #assert !rt_read(key,"").ok&&!rt_read(key,"v4.a.b.c.d").ok;
 }
+#test "resume envelope: the stored rest and combat state ride in the envelope and come back whole" {
+  key:="profile-check-key-not-a-secret-0123456789";core:="v3.p-a.0.-.pair-a.1.1762190600000.-x350g7.signature";
+  c:=cc_fixture();c.n[0]=3;r:=cc_rest_fixture();saved:[CC_BODY]u8;out:[RT_TEXT]u8;
+  s:=resume_ticket_wrap(key,core,cc_stored_rest(c,r,saved[..]),out[..]);e:=rt_read(key,s);
+  #assert e.ok&&e.capture.ok&&e.rest.on&&e.legacy_n==core.count;
+  for i:0..<CC_REST{#assert e.rest.n[i]==CC_REST_HIGH[i];}
+  c=cc_fixture();s=resume_ticket_wrap(key,core,cc_stored(c,saved[..]),out[..]);e=rt_read(key,s);#assert e.ok&&e.capture.ok;
+}
 #test "resume envelope: full byte and signing limits are inclusive" {
   #assert rt_size(4096)&&!rt_size(4097);
   b:[4097]u8;k:[129]u8;mac:[64]u8;
