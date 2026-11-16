@@ -40,7 +40,7 @@ import QuartzCore
         oc_attach(owner, runtime.core.raw, held.email)
         oc_env_restore(owner, held.environment)
         oc_native_scroll(owner, 1)
-        runtime.core.after = { [weak self] in guard let self else { return }; oc_step(self.owner); self.wake() }
+        runtime.core.after = { [weak self] in guard let self else { return }; oc_step(self.owner); self.keep(); self.wake() }
         runtime.bridge.changed = { [weak self] in self?.wake() }
         oc_on_change(owner, { raw in guard let raw else { return }; MainActor.assumeIsolated { Unmanaged<GPUWindow>.fromOpaque(raw).takeUnretainedValue().wake() } }, Unmanaged.passUnretained(self).toOpaque())
         if !hidden { display = canvas.displayLink(target: self, selector: #selector(tick)); display?.isPaused = true; display?.add(to: .main, forMode: .common) }

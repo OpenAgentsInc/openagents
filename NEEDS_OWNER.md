@@ -1703,7 +1703,7 @@ not a pending request for a key.
 
 ## GPU identity settings on iPhone (#13645, 2026-11-16)
 
-After the next TestFlight build: log in by email, open sidebar → Settings,
+Install **1397**: log in by email, open sidebar → Settings,
 copy the public key, and verify system passkey registration/step-up and
 local device authentication when showing Backup. Test Rotate, then Restore
 with a disposable identity only if you intend to replace the current key.
@@ -1712,8 +1712,8 @@ text and native momentum scrolling on the phone. Simulator/native checks
 cover the state/crypto/transport paths; these system ceremonies and physical
 appearance cannot be certified by those checks.
 
-Build 1395 is in the Owner TestFlight group; the identity API is deployed as
-`oa-api-00171-b4j` after staging and production migration/smoke checks. Build
-1396 adds the auto-synced Account chats drawer and is also in the Owner group. Check opening a saved
+Build 1397 is verified in the Owner TestFlight group; the identity API is
+`oa-api-00171-b4j` after staging and production migration/smoke checks. It
+includes the auto-synced Account chats drawer and main's reconnect/rejoin fix. Check opening a saved
 chat, paging, returning to Latest, and scrolling at large text sizes. The
 compiled fixtures exercise 60 chats and assert fixed widths during opening.

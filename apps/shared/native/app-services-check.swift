@@ -100,11 +100,42 @@ final class MemoryTokens: TokenStore, @unchecked Sendable {
 }
 @MainActor func quiet(_ ms: UInt64 = 60) async { try? await Task.sleep(nanoseconds: ms * 1_000_000) }
 
+@MainActor final class DeferredDevices: AppDeviceService {
+    var reads = 0
+    var answer: ((String) -> Void)?
+    func list() -> String { "legacy synchronous list" }
+    func list(done: @escaping (String) -> Void) { reads += 1; answer = done }
+    func pair(_ link: String, done: @escaping (Bool, String) -> Void) { done(false, "fixture") }
+    func call(host: String, body: Data, done: @escaping (AppCompletion.State, Data) -> Void) { done(.unsupported, Data()) }
+}
+
 @main enum AppServicesCheck {
     static let origin = "https://openagents.test"
     @MainActor static func main() async {
-        await http(); await account(); await wake(); await effects(); await bridge()
+        await deviceLists(); await http(); await account(); await wake(); await effects(); await bridge()
         print("app-services-check: ok")
+    }
+
+    @MainActor static func deviceLists() async {
+        let auth = AppAuth(origin: origin, send: { _ in (Data(), 500) }, store: MemoryTokens(), device: nil)
+        let http = AppHTTP(policy: .init(origin: origin, admit: { _, _, _ in false }), authorize: AppAccount.authorizer(auth), protocols: [Network.self])
+        let box = Outbox(), devices = DeferredDevices()
+        let effects = AppEffects(outbox: box, http: http, account: AppAccount(auth: auth), wake: AppWake(), platform: nil, devices: devices)
+        box.waiting = [.init(op: 1, generation: 8, call: .deviceList)]; effects.pump()
+        expect(devices.reads == 1 && box.got.isEmpty, "device discovery must be asynchronous and requested exactly once")
+        let late = devices.answer
+        box.waiting = [.init(op: 9, generation: 8, call: .cancel(op: 1))]; effects.pump()
+        await settle("cancelled discovery") { box.got.count == 1 }
+        late?("late fixture"); await quiet()
+        expect(box.got.count == 1 && box.got[0].state == .cancelled, "a cancelled discovery completed twice")
+        box.waiting = [.init(op: 2, generation: 9, call: .deviceList)]; effects.pump()
+        devices.answer?("fixture list"); devices.answer?("duplicate")
+        await settle("discovery result") { box.got.count == 2 }
+        expect(box.got[1].op == 2 && box.got[1].body == Data("fixture list".utf8), "discovery response changed or repeated")
+        box.waiting = [.init(op: 3, generation: 10, call: .deviceList)]; effects.pump(); effects.retire()
+        devices.answer?("retired"); await quiet()
+        expect(box.got.count == 2, "discovery survived retirement")
+        print("ok asynchronous device discovery, cancellation, duplicate and retirement fences")
     }
 
     /// The shared core's requests reach the services, and their results come back as its fields.

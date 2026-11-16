@@ -41,6 +41,7 @@ void *oa_device_work_open(void);
 void oa_device_work_close(void *work);
 // The key's public half as 64 hex: 64, or -1.
 int64_t oa_device_public(const uint8_t secret[32], uint8_t out[64]);
+int oa_device_host(const char *key);
 // op 1 pairing (arg: the label), 2 its status (arg: the pairing id), 3 an environment call (arg: the
 // grant, params: the request JSON). random: 96 fresh bytes. The event's bytes in out, or -1.
 int64_t oa_device_seal(void *work, int64_t op, const uint8_t secret[32], const char *host, const char *relay, const char *arg, int64_t epoch,

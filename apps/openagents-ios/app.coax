@@ -16,6 +16,14 @@
 // key for one call. Their secp256k1 tables are built at compile time.
 #load "../shared/app/device/seal.coax";
 
+// The installed CLI supplies this public key; use the shared canonical hex
+// check before a native adapter advertises it as this computer.
+#test "native host metadata uses the shared canonical public-key format" {
+ #assert oa_root_host_key("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+ #assert !oa_root_host_key("") && !oa_root_host_key("abc") && !oa_root_host_key("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798");
+}
+oa_root_host_key :: (key:string)->bool #export_c #effects(all) {return key.count==64 && es_hex(key);}
+
 
 // A dispatch answered APP_GUEST with no page to take it (core-host.c oa_core_on_guest: the chat page
 // routes the environment picker's reads itself): the root releases it.

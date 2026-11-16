@@ -61,6 +61,7 @@ static coax_v_t_DvWork oa_work(void *w) { return (coax_v_t_DvWork){w, w ? 1 : 0}
 static coax_v_u8 oa_out(uint8_t *p, int64_t n) { return (coax_v_u8){p, p ? n : 0}; }
 static coax_v_u8 oa_in(const uint8_t *p, int64_t n) { return (coax_v_u8){(uint8_t *)p, p ? n : 0}; }
 int64_t oa_device_public(const uint8_t secret[32], uint8_t out[64]) { return dv_public(oa_in(secret, 32), oa_out(out, 64)); }
+int oa_device_host(const char *key) {return oa_root_host_key(oa_cstr(key));}
 int64_t oa_device_seal(void *work, int64_t op, const uint8_t secret[32], const char *host, const char *relay, const char *arg, int64_t epoch,
                        const uint8_t *params, int64_t params_n, int64_t now, const uint8_t random[96], uint8_t *out, int64_t cap) {
   return dv_seal(oa_work(work), op, oa_in(secret, 32), oa_cstr(host), oa_cstr(relay), oa_cstr(arg), epoch, oa_bytes((const char *)params, params_n), now, oa_in(random, 96), oa_out(out, cap));

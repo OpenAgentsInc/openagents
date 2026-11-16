@@ -713,3 +713,14 @@ retry and cancellation before transport. Seven standalone XCTest cases
 cover the original identity cases, file-backed unknown/restart/exact replay,
 atomic view state, existing-folder permissions, exclusive writes and symlink
 refusal. These checks do not replace a real passkey or screen-reader ceremony.
+
+The desktop SDK now has `AppMacDevice`: asynchronous discovery and bounded
+process carriage through the installed `openagents-environment key` and
+`local-rpc --request-file` commands. The existing Coax CLI retains request and
+reply codecs and kernel-peer authentication. Remote calls still use
+`AppDeviceLink`; a failed local call never switches to a different computer.
+The SDK retains failed/unknown outcomes, keeps request files owner-only and
+removes them after the bounded call. Ten Mac XCTest cases now include this
+adapter and the real process deadline/output limits. A separate effect-bridge
+check proves discovery cancellation, duplicate and retirement fencing. This
+is SDK qualification, not proof of a real resident-service chat or full G6.

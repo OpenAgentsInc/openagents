@@ -52,8 +52,13 @@ enum AppCall {
 @MainActor protocol AppDeviceService: AnyObject {
     /// One computer a line: its key, TAB, its name.
     func list() -> String
+    /// Discovery may involve a bounded SDK process/socket operation on desktop.
+    func list(done: @escaping (String) -> Void)
     func pair(_ link: String, done: @escaping (_ paired: Bool, _ words: String) -> Void)
     func call(host: String, body: Data, done: @escaping (AppCompletion.State, Data) -> Void)
+}
+extension AppDeviceService {
+    func list(done: @escaping (String) -> Void) { done(list()) }
 }
 struct AppRequest { var op: UInt64; var generation: UInt64; var call: AppCall }
 
@@ -160,7 +165,7 @@ struct AppCompletion: Equatable {
             platform.open(link) { [weak self] opened in self?.finish(op, generation, opened ? .done : .failed, 0, Data("{}".utf8)) }
         case .deviceList:
             guard let devices else { finish(op, generation, .unsupported, 0, Data()); return }
-            finish(op, generation, .done, 200, Data(devices.list().utf8), "text/plain")
+            devices.list { [weak self] rows in self?.finish(op, generation, .done, 200, Data(rows.utf8), "text/plain") }
         case .devicePair(let link):
             guard let devices else { finish(op, generation, .unsupported, 0, Data()); return }
             devices.pair(link) { [weak self] ok, words in
