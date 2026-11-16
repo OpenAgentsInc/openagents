@@ -1,5 +1,12 @@
 # Owner actions
 
+## Sidebar recents, build 1350 (2026-11-15)
+
+- [ ] Install TestFlight **1350** (verified in **Owner**) and compare the
+      sidebar and recent chats with the Claude capture on the phone. The Coax
+      projection and focused native navigation test passed; pixel parity and
+      physical-device touch remain to be checked.
+
 ## Reference picker and empty-state molecules, build 1340 (2026-11-15)
 
 - [ ] Install TestFlight **1340** (verified in **Owner**), open **Settings →
