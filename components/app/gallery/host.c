@@ -61,6 +61,7 @@ void og_env(void *gallery, float safe_top, float safe_bottom, int reduced) {
   g->safe_top = safe_top; g->safe_bottom = safe_bottom; g->reduced = reduced != 0;
 }
 int og_action(void *gallery) { AppGalleryHost *g = gallery; return g ? (int)appgallery_action(og_state(g)) : 0; }
+int og_reveal(void *gallery, const char *id) { AppGalleryHost *g = gallery; return g && id && appgallery_reveal(og_state(g), (coax_string){id, (int64_t)strlen(id)}); }
 int og_refused(void *gallery) { AppGalleryHost *g = gallery; return g ? (int)appgallery_refused(og_state(g)) : 0; }
 void og_close(void *gallery) {
   AppGalleryHost *g = gallery;

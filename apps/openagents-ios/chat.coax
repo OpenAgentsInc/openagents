@@ -1,7 +1,8 @@
 // The OpenAgents iOS chat page (components/gpu-components.md; GitHub #13645):
 // the whole screen, compiled Coax drawn by the shared GPU kit in one Metal
-// view: a title over the composer, the navigation button at the top left
-// that opens the drawer, and the login card. Nothing here runs in JavaScript
+// view: the shared chat page (apps/shared/app/view/page.coax, the transcript
+// over the composer), the navigation button at the top left that opens the
+// drawer, and the login card. Nothing here runs in JavaScript
 // and nothing is a platform control except the platform editor over the field
 // that holds the keyboard.
 //
@@ -9,8 +10,9 @@
 // swipe to the left closes it, a swipe right from the left edge opens it. It
 // holds the account and Log out once logged in; Log in is hidden for now.
 // The login flow's card (apps/shared/app/login/) stays, and works through
-// the shared app core the host attaches (chat_attach). Send does nothing yet: the chat view
-// replaces this page when it lands.
+// the shared app core the host attaches (chat_attach). The chat page reads
+// the same core; its presses go to the core as actions (view_press,
+// view_dispatch), and the composer's text is the core's draft.
 //
 // The keyboard rule is the kit's (kit/frame.coax): the page keeps
 // uiframe_focus as its focused id, a press on a field gives it the keyboard
@@ -18,35 +20,42 @@
 // the focused field (chat_focus) and hides the keyboard when there is none.
 //   coax/bin/coax test apps/openagents-ios/chat.coax
 
-#load "../../components/kit/composer.coax";
+#load "../shared/app/view/page.coax";
 #load "../../components/app/nav.coax";
-#load "../../components/app/ioshost-drawer.coax";
+#load "../../components/app/ioshost-sidebar.coax";
 #load "../shared/app/login/card.coax";
 #load "../shared/app/login/bridge.coax";
 #load "../../components/core/edit.coax";
 #load "../../components/skin/arcade.coax";
 #load "../../components/backend/gpu.coax";
 
-CH_MAX_VERTICES :: 40000;
-// The surface's declared capacity, a generation: primitives, runs of text, selectable lines, hits,
+CH_MAX_VERTICES :: 160000;
+// The cover's declared capacity, a generation: primitives, runs of text, selectable lines, hits,
 // pooled bytes and semantic rows. Then keyed ids.
 CH_UNDER :: 512; CH_OVER :: 2048; CH_LINES :: 256; CH_HITS :: 32; CH_POOL :: 8192; CH_ROWS :: 48; CH_KEYED :: 32;
+// The page's: the whole transcript in view, with its overscan.
+CH_P_UNDER :: 2048; CH_P_OVER :: 8192; CH_P_LINES :: 4096; CH_P_HITS :: 256; CH_P_POOL :: 262144; CH_P_ROWS :: 512; CH_P_KEYED :: 256;
+CH_MOVE :: 8.0;     // layout units a touch travels before it scrolls instead of pressing
 CH_ACT_NONE :: 0; CH_ACT_FOCUS :: 1;
 // The page's own actions start at 100: the login card's rows carry the flow's LF_ACT_ values (1 to 7).
-CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106;
+CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ACCOUNT :: 108;
 CH_SWIPE :: 30.0;   // layout units a swipe travels to close or open the drawer
 CH_EDGE :: 18.0;    // the left edge a swipe that opens the drawer starts in
 
 ChGeneration :: struct { under: [CH_UNDER] Prim; over: [CH_OVER] Prim; lines: [CH_LINES] SheetLine; hits: [CH_HITS] SheetHit; pool: [CH_POOL] u8; rows: [CH_ROWS] El; }
+ChPageGeneration :: struct { under: [CH_P_UNDER] Prim; over: [CH_P_OVER] Prim; lines: [CH_P_LINES] SheetLine; hits: [CH_P_HITS] SheetHit; pool: [CH_P_POOL] u8; rows: [CH_P_ROWS] El; }
 ChatPage :: struct {
   ready: bool; time: f32; d: f32;
   atlas: [1] Atlas;
   // two layers, each a surface with its keyed store: 0 the page, 1 what covers it (the login card,
   // the drawer). A layer paints all of its sheet over the one below, so the page's words never
   // show through the card or the drawer.
-  gen: [4] ChGeneration; surface: [2] UiSurface;
-  keys: [2 * CH_KEYED] Keyed; keyed: [2] KeyedStore;
-  draft: [1] EditBuf;
+  page: [2] ChPageGeneration; gen: [2] ChGeneration; surface: [2] UiSurface;
+  page_keys: [CH_P_KEYED] Keyed; keys: [CH_KEYED] Keyed; keyed: [2] KeyedStore;
+  // the chat page's own state (about 2 MiB; the host allocates the page on the heap)
+  view: [1] ChatView; again: bool;
+  // a touch on the page that travelled scrolls the transcript
+  down_y: f32; last_y: f32; scrolling: bool;
   // the window's facts, in points; the platform editor
   safe_top: f32; safe_bottom: f32; keyboard: f32; focused: bool; editor_h: f32; reduced: bool;
   px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
@@ -55,6 +64,8 @@ ChatPage :: struct {
   focus: [EL_ID] u8; focus_n: int;
   // the drawer: whether it is open, and how far it is out
   drawer: bool; share: f32;
+  account: bool;   // the account's Log out shows over the avatar
+  initials: [4] u8; initials_n: int;
   // the shared app core the host attaches, and the login flow over it
   core: [] AppCore; lb: [1] LoginBridge; lf: [1] LoginFlow;
   action: int;
@@ -63,14 +74,15 @@ ChatPage :: struct {
 
 ch_init :: (s: [] ChatPage) {
   s[0].ready = true;
-  g := s[0].gen[..];
-  for i: 0..<2 {
-    a := 2 * i; b := a + 1;
-    s[0].surface[i] = surface_over(
-      Sheet.{under = g[a].under[..], over = g[a].over[..], lines = g[a].lines[..], hits = g[a].hits[..], pool = g[a].pool[..]}, g[a].rows[..],
-      Sheet.{under = g[b].under[..], over = g[b].over[..], lines = g[b].lines[..], hits = g[b].hits[..], pool = g[b].pool[..]}, g[b].rows[..]);
-    s[0].keyed[i] = KeyedStore.{rows = s[0].keys[i * CH_KEYED..<(i + 1) * CH_KEYED]};
-  }
+  p := s[0].page[..]; g := s[0].gen[..];
+  s[0].surface[0] = surface_over(
+    Sheet.{under = p[0].under[..], over = p[0].over[..], lines = p[0].lines[..], hits = p[0].hits[..], pool = p[0].pool[..]}, p[0].rows[..],
+    Sheet.{under = p[1].under[..], over = p[1].over[..], lines = p[1].lines[..], hits = p[1].hits[..], pool = p[1].pool[..]}, p[1].rows[..]);
+  s[0].surface[1] = surface_over(
+    Sheet.{under = g[0].under[..], over = g[0].over[..], lines = g[0].lines[..], hits = g[0].hits[..], pool = g[0].pool[..]}, g[0].rows[..],
+    Sheet.{under = g[1].under[..], over = g[1].over[..], lines = g[1].lines[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
+  s[0].keyed[0] = KeyedStore.{rows = s[0].page_keys[..]};
+  s[0].keyed[1] = KeyedStore.{rows = s[0].keys[..]};
   lf_begin(s[0].lf[..]);
 }
 ch_focus :: (s: [] ChatPage) -> string { return cast(string) s[0].focus[0..<s[0].focus_n]; }
@@ -96,7 +108,14 @@ ch_out :: (out: [] u8, text: string) -> int {
   for c: text { if n >= out.count { break; } out[n] = c; n += 1; }
   return n;
 }
-ch_draft :: (s: [] ChatPage) -> string { return eb_text(s[0].draft[..]); }
+// The composer's text: the core's draft of the current conversation.
+ch_draft :: (s: [] ChatPage) -> string { return ifx s[0].core.count > 0 then view_draft_of(s[0].core) else ""; }
+// An action for the core, with the core's own clock facts, then the flow follows it.
+ch_dispatch :: (s: [] ChatPage, what: int, text: string) -> bool {
+  c := s[0].core; if c.count < 1 { return false; }
+  _ := view_dispatch(c, what, text, c[0].mono_ms, c[0].wall_ms); ch_step(s);
+  return true;
+}
 // The layer that takes presses and is read out: the cover while the drawer or the card shows, else the page.
 ch_layer :: (s: [] ChatPage) -> int { return ifx s[0].share > 0 || s[0].drawer || s[0].lf[0].open then 1 else 0; }
 ch_sf :: (s: [] ChatPage, layer: int) -> [] UiSurface { return s[0].surface[layer..<layer + 1]; }
@@ -104,47 +123,50 @@ ch_live :: (s: [] ChatPage) -> [] UiSurface { return ch_sf(s, ch_layer(s)); }
 ch_rows :: (s: [] ChatPage) -> ElTable { return surface_rows(ch_live(s)); }
 
 ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
-  k := f[0].skin; m := f[0].m;
+  a := f[0].skin.app;
   u: f32 = ARCADE_PHONE_SCALE;
-  // the composer docks over the keyboard (or the safe area)
+  top := s[0].safe_top / u;
+  // the composer docks over the keyboard (or the safe area); the transcript starts under the navigation button
   under := ifx s[0].keyboard > s[0].safe_bottom then s[0].keyboard else s[0].safe_bottom;
-  look := ComposerLook.{placeholder = "Message", text = ch_draft(s), editing = s[0].focused && ch_focus(s) == "chat.composer", editor_h = s[0].editor_h / u, enabled = ch_draft(s).count > 0, unit = u};
   bottom := h - under / u - 6 / u;
-  s[0].box = ctx_composer(f, "chat.composer", "chat.composer.send", 10 / u, bottom, w - 20 / u, look, CH_HIT_TEXT, CH_HIT_SEND);
-  // a plain title in the middle of the canvas above it
-  top := s[0].safe_top / u; view_h := bottom - s[0].box.height - k.space - top;
-  title := "OpenAgents"; tw := measure_width(m, k.title.face, title);
-  ty := top + (view_h - k.title.line) / 2;
-  if ty >= top {
-    _ := sheet_text(f[0].sheet, m, -1, (w - tw) / 2, ty, k.title.line, k.title.face, k.ink, title);
-    _ := uiframe_semantic(f, "chat.title", EL_HEADING, title, (w - tw) / 2, ty, tw, k.title.line, 0, 0);
+  nav_y := top + 4 / u;
+  s[0].again = false;
+  if s[0].core.count > 0 {
+    lay := ViewLayout.{x = 0, top = nav_y + a.icon_button + a.gap, w = w, bottom = bottom, chips_h = 0,
+      editing = s[0].focused && ch_focus(s) == VIEW_COMPOSER_ID, editor_h = s[0].editor_h / u, unit = u};
+    out := view_page(f, s[0].view[..], s[0].core, lay);
+    s[0].box = out.composer; s[0].again = out.again;
   }
   // the navigation button at the top left opens the drawer
-  _ := app_nav_button(f, "nav.menu", 12 / u, top + 4 / u, s[0].drawer, 0, CH_HIT_MENU);
+  _ := app_nav_button(f, "nav.menu", 12 / u, nav_y, s[0].drawer, 0, CH_HIT_MENU);
 }
 // The cover: the login card over a dimmed page, and the drawer.
 ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   k := f[0].skin; u: f32 = ARCADE_PHONE_SCALE; top := s[0].safe_top / u;
   l := s[0].lf[..];
   if l[0].open {
-    sheet_fill(f[0].sheet, 0, 0, w, h, 0, opacity(Rgba.{r = 0, g = 0, b = 0, a = 1}, APP_DRAWER_DIM));
+    sheet_fill(f[0].sheet, 0, 0, w, h, 0, opacity(Rgba.{r = 0, g = 0, b = 0, a = 1}, APP_SIDEBAR_DIM));
     cw := ifx w - 32 / u > 360 then 360.0f32 else w - 32 / u;
     // the card holds every press while it shows: a press beside it lands on the cover, which does nothing
     _ := uiframe_semantic(f, "login.cover", EL_REGION, "", 0, 0, w, h, 0, 0);
     _ := lf_card(f, l, (w - cw) / 2, top + 56 / u, cw, s[0].focused && ch_login_field(ch_focus(s)) != LF_FIELD_NONE);
   }
-  // the drawer: the account and Log out once logged in. Log in is hidden for now (owner, 2026-11-16):
-  // the login flow stays, with no entry point in the drawer.
-  in := app_drawer(f, "drawer", "drawer.scrim", w, h, top, s[0].share, "Menu", CH_HIT_SCRIM);
+  // the sidebar: it pushes the page right. Only what works shows: New chat, and the account's
+  // avatar (with Log out over it) once logged in. Search keeps its slot until it works. Log in is
+  // hidden for now (owner, 2026-11-16): the login flow stays, with no entry point here. The core
+  // keeps only the current conversation, so there are no history rows yet.
+  in := app_sidebar(f, "drawer", "drawer.scrim", 0, 0, w, h, top, s[0].share, "Menu", CH_HIT_SCRIM);
   if in.w > 0 {
-    a := k.app; y := in.y + k.app.nav;
-    y += app_text(f, "drawer.title", in.x, y, in.w, APP_TEXT_TITLE, "OpenAgents") + a.gap;
+    a := k.app;
+    _ := app_sidebar_head(f, "drawer.title", in.x, in.y + 4 / u, in.w, "OpenAgents", "drawer.search", ICON_MAGNIFER, 0);
+    by := h - s[0].safe_bottom / u - a.gap * 2 - k.control_h;
     if lf_logged_in(l) {
-      who := lf_who(l);
-      y += app_text(f, "drawer.account", in.x, y, in.w, APP_TEXT_CAPTION, ifx who.count > 0 then who else "Logged in") + a.gap;
-      _ := app_button(f, "drawer.logout", in.x, y, in.w, -1, "Log out", APP_BUTTON_DEFAULT, 0, CH_HIT_LOGOUT);
+      who := lf_who(l); s[0].initials_n = app_initials(who, s[0].initials[..]);
+      if s[0].account { _ := app_button(f, "drawer.logout", in.x, by - k.control_h - a.gap, in.w, -1, "Log out", APP_BUTTON_DEFAULT, 0, CH_HIT_LOGOUT); }
+      _ := app_sidebar_avatar(f, "drawer.account", in.x + in.w - k.control_h, by, cast(string) s[0].initials[0..<s[0].initials_n], ifx who.count > 0 then who else "Account", CH_HIT_ACCOUNT);
     }
-    app_drawer_end(f, in);
+    _ := app_sidebar_new(f, "drawer.new", in.x, by, ICON_COMPOSE, "New chat", CH_HIT_NEW);
+    app_sidebar_end(f, in);
   }
 }
 ch_stamp :: (s: [] ChatPage) -> int {
@@ -166,11 +188,25 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
   // a field pressed through VoiceOver or the driver gets the keyboard as a tap's would
   t := [1] ElTable.[ch_rows(s)];
   if elt_ok(t[..], row) && t[0].rows[row].role == EL_FIELD && act != 0 { ch_set_focus(s, surface_id(sf, row)); }
-  if act == CH_HIT_TEXT { s[0].action = CH_ACT_FOCUS; return true; }
+  // the chat page's own rows (VIEW_A_*), on the page layer
+  if ch_layer(s) == 0 && act > 0 && act < CH_HIT_TEXT {
+    if s[0].core.count < 1 { return false; }
+    p := view_press(s[0].view[..], s[0].core, s[0].keyed[0..<1], surface_id(sf, row), act);
+    if p.kind == VIEW_P_FOCUS { ch_set_focus(s, VIEW_COMPOSER_ID); s[0].action = CH_ACT_FOCUS; return true; }
+    if p.kind == VIEW_P_DISPATCH { return ch_dispatch(s, p.what, p.text); }
+    return p.kind == VIEW_P_LOCAL;
+  }
   if act == CH_HIT_MENU { s[0].drawer = !s[0].drawer; return true; }
   if act == CH_HIT_SCRIM { s[0].drawer = false; return true; }
   if act == CH_HIT_LOGIN { s[0].drawer = false; lf_open(l); ch_step(s); return true; }
   if act == CH_HIT_LOGOUT { s[0].drawer = false; _ := lf_logout(l); ch_step(s); return true; }
+  if act == CH_HIT_ACCOUNT { s[0].account = !s[0].account; return true; }
+  // New chat: a new, empty conversation in the core, and the sidebar closes onto it
+  if act == CH_HIT_NEW {
+    c := s[0].core; if c.count < 1 { return false; }
+    _ := app_dispatch(c, AppEvent.{kind = EV_ACTION, code = ACT_NEW, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms});
+    s[0].drawer = false; ch_step(s); return true;
+  }
   if act >= LF_ACT_EMAIL && act <= LF_ACT_CANCEL {
     done := lf_press(l, act); ch_step(s);
     if !l[0].open && ch_login_field(ch_focus(s)) != LF_FIELD_NONE { s[0].focus_n = 0; }
@@ -204,7 +240,9 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
   if !a[0].ready { return v; }
   live := ch_layer(s);
-  s[0].share = app_drawer_ease(s[0].share, s[0].drawer, t, s[0].reduced);
+  s[0].share = app_sidebar_ease(s[0].share, s[0].drawer, t, s[0].reduced);
+  if !s[0].drawer { s[0].account = false; }
+  shift := app_sidebar_shift(w, s[0].share);
   ch_take_flow_focus(s);
   moving := s[0].share != (ifx s[0].drawer then 1.0f32 else 0.0f32);
   for layer: 0..<2 {
@@ -218,10 +256,12 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
     moving = moving || uiframe_moving(f[..]);
     if !uiframe_end(f[..], ch_sf(s, layer)) { s[0].refused += 1; }
     sh := surface_sheet(ch_sf(s, layer));
-    v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
-    v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+    // the page moves right with the sidebar
+    ox := ifx layer == 0 then shift else 0.0f32;
+    v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], ox, 0, -8, h + 8);
+    v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], ox, 0, -8, h + 8);
   }
-  s[0].moving = moving;
+  s[0].moving = moving || s[0].again;
   s[0].stamp = ch_stamp(s) + ch_layer(s);
   gpu_monochrome(out, v);
   return v;
@@ -237,6 +277,7 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
   s[0].px = ux; s[0].py = uy;
   if phase == 0 {
     s[0].touching = true; s[0].down_x = ux; s[0].swiped = false;
+    s[0].down_y = uy; s[0].last_y = uy; s[0].scrolling = false;
     s[0].pressed_n = ifx surface_action(sf, row) != 0 then el_copy(s[0].pressed[..], id) else 0;
     // the focus rule at once, so a tap that begins and ends between two frames still moves the keyboard
     ins := [1] UiInput.[uiinput(ux, uy, true, true, cast(string) s[0].pressed[0..<s[0].pressed_n], ch_focus(s))];
@@ -248,6 +289,12 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
     // a swipe left closes the open drawer; a swipe right from the left edge opens it
     if !s[0].swiped && s[0].drawer && ux - s[0].down_x < -CH_SWIPE { s[0].drawer = false; s[0].swiped = true; s[0].pressed_n = 0; }
     if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { s[0].drawer = true; s[0].swiped = true; s[0].pressed_n = 0; }
+    // on the page, a touch that travels up or down scrolls the transcript (up: toward the latest message)
+    if !s[0].swiped && ch_layer(s) == 0 && (s[0].scrolling || abs(uy - s[0].down_y) > CH_MOVE) {
+      s[0].scrolling = true; s[0].pressed_n = 0;
+      view_scroll(s[0].view[..], s[0].last_y - uy);
+    }
+    s[0].last_y = uy;
     return true;
   }
   held := s[0].pressed_n > 0 && was == id;
@@ -295,9 +342,10 @@ chat_blur :: (s: [] ChatPage) #export_c #effects(all) { if s.count > 0 { ch_set_
 chat_action :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } act := s[0].action; s[0].action = CH_ACT_NONE; return act; }
 // The draft: the whole text after an edit in the platform editor, and the page's own (a sent draft is cleared).
 chat_set_text :: (s: [] ChatPage, text: string) -> bool #export_c #effects(all) {
-  if s.count < 1 || text.count > EB_TEXT { return false; }
-  if text != ch_draft(s) { eb_set(s[0].draft[..], text); }
-  return true;
+  if s.count < 1 || s[0].core.count < 1 { return false; }
+  c := s[0].core;
+  if text != ch_draft(s) { _ := app_dispatch(c, AppEvent.{kind = EV_ACTION, code = ACT_DRAFT, text = text, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms}); }
+  return ch_draft(s) == text;
 }
 chat_text :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ch_out(out, ch_draft(s)); }
 // The text's committed box for the platform editor, in points: x, y, w, h, the first line's inset and a line's height.
@@ -379,6 +427,8 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   #assert ch_test_has(s[..], "nav.menu") && !ch_test_has(s[..], "drawer") && !ch_test_has(s[..], "drawer.login");
   #assert ch_test_tap(s[..], "nav.menu") && s[0].drawer; _ := ch_test_frame(s[..], o[..]);
   #assert ch_test_has(s[..], "drawer") && ch_test_has(s[..], "drawer.scrim") && !ch_test_has(s[..], "drawer.login") && !ch_test_has(s[..], "drawer.logout") && chat_refused(s[..]) == 0;
+  // only what works: New chat; no search button, no avatar while logged out
+  #assert ch_test_has(s[..], "drawer.new") && ch_test_has(s[..], "drawer.title") && !ch_test_has(s[..], "drawer.search") && !ch_test_has(s[..], "drawer.account");
   #assert ch_test_tap(s[..], "drawer.scrim") && !s[0].drawer; _ := ch_test_frame(s[..], o[..]);
   #assert !ch_test_has(s[..], "drawer");
   // a swipe right from the left edge opens it, a swipe left closes it
@@ -405,17 +455,21 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   #assert !ch_test_has(s[..], "login");
 }
 
-#test "chat page: it shows its title and the composer, the text asks for the keyboard, the draft is kept, and Send does nothing" #steps 2000000000 {
+#test "chat page: the shared chat page over the core: the empty title and the composer, the text asks for the keyboard, the draft is the core's" #steps 2000000000 {
   s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
+  core: [1] AppCore; app_init(core[..]);
+  chat_attach(s[..], core[..], "");
   n := ch_test_frame(s[..], o[..]);
   #assert n > 0 && ch_test_text(s[..], "OpenAgents") == 1 && ch_test_text(s[..], "Message") == 1 && chat_refused(s[..]) == 0;
-  #assert surface_find(ch_sf(s[..], 0), "chat.composer") >= 0 && surface_find(ch_sf(s[..], 0), "chat.composer.send") >= 0 && surface_find(ch_sf(s[..], 0), "chat.title") >= 0;
+  #assert ch_test_has(s[..], "chat.composer") && ch_test_has(s[..], "chat.composer.send") && ch_test_has(s[..], "chat.empty") && ch_test_has(s[..], "nav.menu");
   #assert ch_test_tap(s[..], "chat.composer") && chat_action(s[..]) == CH_ACT_FOCUS && chat_action(s[..]) == CH_ACT_NONE;
-  #assert chat_set_text(s[..], "Hello\nthere"); _ := ch_test_frame(s[..], o[..]);
-  #assert !ch_test_tap(s[..], "chat.composer.send") && !chat_activate(s[..], "chat.composer.send") && ch_draft(s[..]) == "Hello\nthere";
+  id: [EL_ID] u8; k := chat_focus(s[..], id[..]); #assert cast(string) id[0..<k] == "chat.composer";
+  #assert chat_set_text(s[..], "Hello\nthere") && app_draft(core[..]) == "Hello\nthere"; _ := ch_test_frame(s[..], o[..]);
   text: [64] u8; #assert chat_text(s[..], text[..]) == 11;
-  box: [6] f32; #assert chat_editor(s[..], box[..]) && box[2] > 300 && abs(box[5] - 23) < 0.01;
-  // every vertex is grey, and a still page draws the same frame again
+  box: [6] f32; #assert chat_editor(s[..], box[..]) && box[2] > 300;
+  // a drag on the page scrolls instead of pressing
+  _ := chat_pointer(s[..], 600, 1200, 0); _ := chat_pointer(s[..], 600, 1000, 1); #assert s[0].scrolling && s[0].pressed_n == 0; _ := chat_pointer(s[..], 600, 1000, 2);
+  // a still page draws the same frame again, every vertex grey
   a: [1] ChOut; n = ch_test_frame(s[..], a[..]); m := ch_test_frame(s[..], o[..]);
   #assert n == m && !chat_moving(s[..]);
   for i: 0..<n { at := i * GP_VERTEX_FLOATS; #assert a[0].v[at + 12] == a[0].v[at + 13] && a[0].v[at + 13] == a[0].v[at + 14] && a[0].v[at] == o[0].v[at]; }

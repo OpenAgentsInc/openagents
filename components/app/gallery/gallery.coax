@@ -20,6 +20,7 @@
 #load "../account.coax";
 #load "../../../apps/shared/app/login/card.coax";   // the one login card (lf_card), shown with example state
 #load "../nav.coax";
+#load "../ioshost-sidebar.coax";
 #load "../../skin/arcade.coax";
 #load "../../backend/gpu.coax";
 
@@ -36,7 +37,7 @@ AG_ASK_NONE :: 0; AG_ASK_CLOSE :: 1;
 // The gallery's own actions: what a press on each example does.
 AG_CLOSE :: 1; AG_FIELD :: 2; AG_BUTTON :: 3; AG_SWITCH :: 4; AG_CHIP :: 5; AG_MENU :: 6; AG_COPY :: 7; AG_TOOL :: 8;
 AG_ALLOW :: 9; AG_DENY :: 10; AG_NAV :: 13; AG_SIDE :: 14; AG_SEND :: 15;
-AG_RETRY :: 16; AG_PICK :: 17; AG_LOGIN :: 18;
+AG_RETRY :: 16; AG_PICK :: 17; AG_LOGIN :: 18; AG_SIDEBAR :: 19;
 
 AG_MARKDOWN :: "## Plan\n\nThe composer test fails because **Send** stays enabled with an empty draft. I will:\n\n1. Read `composer.coax`\n2. Fix the check\n- [x] Found the cause\n- [ ] Run the checks\n\n> The shared composer keeps its own height.\n\n```rust\nfn enabled(text: &str) -> bool {\n    !text.trim().is_empty()\n}\n```\n\n| Check | Result |\n| --- | --- |\n| composer | failed |\n| send | passed |";
 AG_LONG_OUTPUT :: "running 18 checks\nok composer: grows to four lines\nok composer: Stop while a reply runs\nok composer: locked while sending\nFAIL composer: Send rests with no text\nok chips: share the row\nok chips: cut a long value\nok message: bubble at the right edge\nok message: Markdown\nok code: Copy is a row\nok typing: three dots\nok empty: centred\nok retry: busy\nok jump: rises in\nok meta: centred\n17 passed, 1 failed";
@@ -56,7 +57,7 @@ AppGallery :: struct {
   scroll: f32; content: f32; view: f32;
   ask: int; refused: int; stamp: int;
   // the example state a press changes
-  switch_on: bool; chip: int; pick: int; copied: int; answered: int; nav_open: bool; side: int;
+  switch_on: bool; chip: int; pick: int; copied: int; answered: int; nav_open: bool; side: int; sidebar: int;
   running: bool; login_code: bool; offline: bool; presses: int;
   login: [1] LoginFlow;                        // example state for the login card, made new each frame
 }
@@ -261,12 +262,46 @@ ag_navigation :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> 
   for i: 0..<4 { if i == s[0].side { rows[i].state |= EL_S_CURRENT; } }
   y += app_side_list(f, "g.side.today", x, y, w, "Today", rows[0..<2], AG_SIDE);
   y += app_side_list(f, "g.side.earlier", x, y, w, "Earlier", rows[2..<4], AG_SIDE) + a.gap;
+  y += ag_sidebar(s, f, x, y, w);
   y += ag_section(f, "g.env", x, y, w, "Environment and repository");
   y += ag_caption(f, "g.c.env", x, y, w, "The chips over the composer; a long repository is cut");
   y += app_composer_chips(f, "g.env.chip", "g.repo.chip", x, y, w, ICON_GLOBAL, "Studio Mac", ICON_FOLDER, "OpenAgentsInc/a-repository-with-a-long-name", 0, AG_CHIP, AG_CHIP) + a.gap;
   y += app_composer_chips(f, "g.env.only", "", x, y, w, ICON_GLOBAL, "Cloud", -1, "", 0, AG_CHIP, 0) + a.gap;
   y += app_composer_chips(f, "g.env.off", "g.repo.off", x, y, w, ICON_GLOBAL, "Cloud", ICON_FOLDER, "OpenAgentsInc/openagents", EL_S_DISABLED, AG_CHIP, AG_CHIP) + a.gap;
   return y - top;
+}
+
+// The phone sidebar (ioshost-sidebar.coax) open over a page, every part filled with example data:
+// the design the iOS app grows into. The app shows only the parts that work today.
+AG_SIDEBAR_H :: 600.0;
+ag_sidebar :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32 {
+  k := f[0].skin; a := k.app; y := top;
+  y += ag_section(f, "g.sidebar", x, y, w, "Sidebar");
+  y += ag_caption(f, "g.c.sidebar", x, y, w, "The phone sidebar pushes the page right; example rows");
+  // the page it pushed: a stand-in ground with the page's title
+  sheet_fill(f[0].sheet, x, y, w, AG_SIDEBAR_H, 0, k.canvas);
+  in := app_sidebar(f, "g.sb", "g.sb.scrim", x, y, w, AG_SIDEBAR_H, a.gap, 1, "Menu", AG_BUTTON);
+  if in.w > 0 {
+    cy := in.y;
+    cy += app_sidebar_head(f, "g.sb.title", in.x, cy, in.w, "OpenAgents", "g.sb.search", ICON_MAGNIFER, AG_BUTTON) + a.gap;
+    items := [3] string.["Chats", "Images", "Projects"]; icons := [3] int.[ICON_CHATS, ICON_IMAGES, ICON_FOLDER];
+    ids := [3] string.["g.sb.0", "g.sb.1", "g.sb.2"];
+    for i: 0..<3 { cy += app_sidebar_item(f, ids[i], in.x, cy, in.w, icons[i], items[i], ifx s[0].sidebar == i then EL_S_CURRENT else 0, AG_SIDEBAR); }
+    cy += app_sidebar_rule(f, in.x, cy, in.w);
+    cy += app_side_head(f, "g.sb.pinned", in.x, cy, in.w, "Pinned");
+    cy += app_side_row(f, "g.sb.3", in.x, cy, in.w, "Release plan for the week of November 16", "", ifx s[0].sidebar == 3 then EL_S_CURRENT else 0, AG_SIDEBAR);
+    cy += app_side_row(f, "g.sb.4", in.x, cy, in.w, "Why the composer check fails on a narrow screen", "", ifx s[0].sidebar == 4 then EL_S_CURRENT else 0, AG_SIDEBAR);
+    cy += app_sidebar_rule(f, in.x, cy, in.w);
+    cy += app_side_head(f, "g.sb.recent", in.x, cy, in.w, "Recent");
+    cy += app_side_row(f, "g.sb.5", in.x, cy, in.w, "Review the login card", "", ifx s[0].sidebar == 5 then EL_S_CURRENT else 0, AG_SIDEBAR);
+    cy += app_side_row(f, "g.sb.6", in.x, cy, in.w, "Draft the notes for the next release of the app", "", ifx s[0].sidebar == 6 then EL_S_CURRENT else 0, AG_SIDEBAR);
+    cy += app_side_row(f, "g.sb.more", in.x, cy, in.w, "Show more…", "", 0, AG_BUTTON);
+    by := y + AG_SIDEBAR_H - a.gap * 2 - k.control_h;
+    _ := app_sidebar_new(f, "g.sb.new", in.x, by, ICON_COMPOSE, "New chat", AG_BUTTON);
+    _ := app_sidebar_avatar(f, "g.sb.me", in.x + in.w - k.control_h, by, "AL", "Ada Lovelace", AG_BUTTON);
+    app_sidebar_end(f, in);
+  }
+  return y + AG_SIDEBAR_H + a.gap - top;
 }
 
 ag_layout :: (s: [] AppGallery, f: [] UiFrame, w: f32, h: f32) {
@@ -331,6 +366,7 @@ ag_press :: (s: [] AppGallery, row: int) -> bool {
     if id.count == 8 && cast(string) id[0..<7] == "g.chip." { s[0].chip = cast(int) (id[7] - '0'); }
     return true;
   }
+  if act == AG_SIDEBAR { if id.count == 6 && cast(string) id[0..<5] == "g.sb." { s[0].sidebar = cast(int) (id[5] - '0'); } return true; }
   if act == AG_PICK { if id.count == 8 { s[0].pick = cast(int) (id[7] - '0'); } return true; }
   if act == AG_COPY { b := ag_code_block(id); s[0].copied = ifx s[0].copied == b then -1 else b; return true; }
   if act == AG_TOOL {
@@ -420,6 +456,14 @@ appgallery_action :: (s: [] AppGallery) -> int #export_c #effects(all) { if s.co
 appgallery_keyboard :: (s: [] AppGallery) -> bool #export_c #effects(all) { return s.count > 0 && s[0].focused_n > 0; }
 // The gallery always has something turning (busy marks, a caret), so it asks for frames unless motion is reduced.
 appgallery_moving :: (s: [] AppGallery) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || !s[0].reduced); }
+// Scrolls so the committed row `id` (a section, "g.sidebar") is at the top, under the header. False when no row has it.
+appgallery_reveal :: (s: [] AppGallery, id: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  t := [1] ElTable.[ag_rows(s)]; i := elt_find(t[..], id);
+  if i < 0 { return false; }
+  s[0].scroll += t[0].rows[i].y - (s[0].safe_top / ARCADE_PHONE_SCALE + AG_HEAD);
+  ag_clamp(s); return true;
+}
 appgallery_refused :: (s: [] AppGallery) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
 appgallery_max_vertices :: () -> int #export_c #effects(all) { return AG_MAX_VERTICES; }
 appgallery_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCALE; }

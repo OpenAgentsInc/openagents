@@ -44,7 +44,8 @@ import UIKit
         if let services {
             services.bridge.changed={ [weak self] in self?.wake() }
             oc_attach(owner,services.core.raw,AppServices.keptDraft)
-            services.core.after={ oc_step(owner) }
+            // after every call into the core: the login flow follows it, and the page draws what changed
+            services.core.after={[weak self] in oc_step(owner);self?.wake()}
             services.launch()
         }
         // A touch lands on the Metal view, not here: the surface says when one changed something.

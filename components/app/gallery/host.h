@@ -19,5 +19,7 @@ void og_env(void *gallery, float safe_top, float safe_bottom, int reduced);
 int og_action(void *gallery);
 // Frames the surface refused to commit: 0 in a healthy page.
 int og_refused(void *gallery);
+// Scrolls the gallery so the section with this row id is at the top (the dev menu's -OADevGallerySection).
+int og_reveal(void *gallery, const char *id);
 void og_close(void *gallery);
 #endif

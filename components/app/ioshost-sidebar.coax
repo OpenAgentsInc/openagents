@@ -1,0 +1,147 @@
+// The phone sidebar (components/app/README.md; GitHub #13645). Added by
+// claude-ios-host for the iOS app's navigation button; it replaced the
+// floating drawer (ioshost-drawer.coax).
+//
+// It pushes the page: the panel, pure black and square, slides in flush with
+// the left edge and takes about three quarters of the width, and the page
+// moves right by as much (app_sidebar_shift; the caller draws the page at
+// that offset). What shows of the page is dimmed by the share, and a press
+// on it closes the sidebar.
+//
+// In the panel: a head (a large title at the left, the search button's slot
+// at the right), rows with an icon and a label (the current one on a filled
+// pill), section heads and history rows (nav.coax's app_side_head and
+// app_side_row), hairline dividers, and at the bottom a floating New chat
+// pill and the account's round avatar.
+//
+// `share` is how far the sidebar is open, 0 to 1: the caller animates it
+// (app_sidebar_ease) and owns whether it is open.
+//   coax/bin/coax test components/app/ioshost-sidebar.coax
+
+#load "nav.coax";
+
+APP_SIDEBAR_MOST :: 360.0;     // the panel's widest, in layout units
+APP_SIDEBAR_SHARE :: 0.78;     // the panel's share of a narrow screen
+APP_SIDEBAR_DIM :: 0.55;       // how dark the page under it goes when fully open
+APP_SIDEBAR_RATE :: 16.0;      // how fast the share follows its target, per second
+APP_SIDEBAR_ROW :: 48.0;       // an icon row's height
+APP_SIDEBAR_ICON :: 20.0;      // an icon row's icon
+
+// The panel's width on a screen w wide.
+app_sidebar_width :: (w: f32) -> f32 { d := w * APP_SIDEBAR_SHARE; return ifx d > APP_SIDEBAR_MOST then APP_SIDEBAR_MOST else d; }
+// How far the page moves right at `share`.
+app_sidebar_shift :: (w: f32, share: f32) -> f32 { return share * app_sidebar_width(w); }
+
+// The share one frame later, following `open`. Reduced motion jumps.
+app_sidebar_ease :: (share: f32, open: bool, dt: f32, reduced: bool) -> f32 {
+  goal: f32 = ifx open then 1 else 0;
+  if reduced { return goal; }
+  k := dt * APP_SIDEBAR_RATE; if k > 1 { k = 1; }
+  next := share + (goal - share) * k;
+  if abs(next - goal) < 0.004 { return goal; }
+  return next;
+}
+
+// The sidebar in the box (ox, oy, w, h) at `share`: the dimmed page right of
+// the panel, a button `scrim_id` ("Close menu") that dispatches `close`, and
+// the panel. Returns where the panel's content goes: inside its side padding,
+// `top` under its top edge (the safe area). Draws nothing and returns w 0 at
+// share 0.
+app_sidebar :: (f: [] UiFrame, id: string, scrim_id: string, ox: f32, oy: f32, w: f32, h: f32, top: f32, share: f32, label: string, close: int) -> PanelInside {
+  if !(share > 0) { return PanelInside.{}; }
+  s := f[0].skin; a := s.app; sh := f[0].sheet;
+  pw := app_sidebar_width(w); x := ox - (1 - share) * pw; edge := x + pw; rest := ox + w - edge;
+  black := Rgba.{r = 0, g = 0, b = 0, a = 1};
+  // the page, pushed right and dimmed
+  if rest > 0 {
+    sheet_fill(sh, edge, oy, rest, h, 0, opacity(black, APP_SIDEBAR_DIM * share));
+    scrim := uiframe_semantic(f, scrim_id, EL_BUTTON, "Close menu", edge, oy, rest, h, 0, close);
+    sheet_hit(sh, UIFRAME_HIT, scrim, 0, edge, oy, rest, h);
+  }
+  // the panel: pure black, square, flush with the left edge
+  sheet_fill(sh, x, oy, pw, h, 0, black);
+  panel := uiframe_semantic(f, id, EL_REGION, label, x, oy, pw, h, 0, 0);
+  sheet_hit(sh, UIFRAME_HIT, panel, 0, x, oy, pw, h);
+  uiframe_open(f, panel);
+  return PanelInside.{x = x + a.gap * 2, y = oy + top, w = pw - a.gap * 4};
+}
+app_sidebar_end :: (f: [] UiFrame, inside: PanelInside) { if inside.w > 0 { uiframe_close(f); } }
+
+// The head at (x, y), w wide: the title, large and bold, at the left, and the
+// search button's slot at the right. The button shows only when search works
+// (search_action != 0); its slot is kept either way. Returns its height.
+app_sidebar_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, search_id: string, search_icon: int, search_action: int) -> f32 {
+  s := f[0].skin; a := s.app; h := a.icon_button;
+  room := w - h - a.gap;
+  _ := sheet_text(f[0].sheet, f[0].m, -1, x, y + (h - s.title.line) / 2, s.title.line, s.title.face, s.ink, app_fit(f, s.title.face, title, room));
+  _ := uiframe_semantic(f, id, EL_HEADING, title, x, y, room, h, 0, 0);
+  if search_action != 0 { _ := app_icon_button(f, search_id, x + w - h, y, search_icon, "Search", APP_BUTTON_DEFAULT, 0, search_action); }
+  return h;
+}
+
+// A row at (x, y), w wide: an icon and a label in large type. EL_S_CURRENT
+// puts it on a filled pill; it is washed while held. Returns its height.
+app_sidebar_item :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; h: f32 = APP_SIDEBAR_ROW;
+  current := (state & EL_S_CURRENT) != 0; off := (state & EL_S_DISABLED) != 0;
+  k := uiframe_key(f, id);
+  p := ifx off then 0.0f32 else uiframe_press(f, k, id);
+  if current { sheet_fill(sh, x, y, w, h, h / 2, s.raised); }
+  if p > 0 { sheet_fill(sh, x, y, w, h, h / 2, opacity(s.hover, p)); }
+  row := uiframe_semantic(f, id, EL_ROW, label, x, y, w, h, state, ifx off then 0 else action);
+  ink := ifx off then s.faint else s.ink;
+  ix := x + a.side_pad;
+  if icon >= 0 { sheet_icon(sh, icon, ix, y + (h - APP_SIDEBAR_ICON) / 2, APP_SIDEBAR_ICON, ink); }
+  tx := ifx icon >= 0 then ix + APP_SIDEBAR_ICON + a.side_pad else ix;
+  _ := sheet_text(sh, m, -1, tx, y + (h - s.body.line) / 2, s.body.line, s.body.face, ink, app_fit(f, s.body.face, label, x + w - a.side_pad - tx));
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  return h;
+}
+
+// A hairline across the panel between groups, with room above and below. Returns its height.
+app_sidebar_rule :: (f: [] UiFrame, x: f32, y: f32, w: f32) -> f32 {
+  s := f[0].skin; g := s.app.gap;
+  sheet_rule(f[0].sheet, x, y + g, w, s.border, s.hairline);
+  return 2 * g + s.border;
+}
+
+// The floating New chat pill at (x, y): a light pill with its icon, over the
+// skin's lift. Returns its width.
+app_sidebar_new :: (f: [] UiFrame, id: string, x: f32, y: f32, icon: int, label: string, action: int) -> f32 {
+  s := f[0].skin; sh := f[0].sheet;
+  bw := app_button_width(f, icon, label);
+  sheet_under(sh, uiskin_float(sh[0].under, sh[0].nu, s, x, y, bw, s.control_h, s.control_h / 2));
+  _ := app_button(f, id, x, y, bw, icon, label, APP_BUTTON_PRIMARY, 0, action);
+  return bw;
+}
+
+// The account's round avatar at (x, y) with its initials (app_initials);
+// `label` says whose it is. Pressable when `action` is not 0. Returns its side.
+app_sidebar_avatar :: (f: [] UiFrame, id: string, x: f32, y: f32, initials: string, label: string, action: int) -> f32 {
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m; d := s.control_h;
+  k := uiframe_key(f, id);
+  p := ifx action == 0 then 0.0f32 else uiframe_press(f, k, id);
+  sheet_fill(sh, x, y, d, d, d / 2, s.raised);
+  if p > 0 { sheet_fill(sh, x, y, d, d, d / 2, opacity(s.hover, p)); }
+  tw := measure_width(m, s.strong.face, initials);
+  _ := sheet_text(sh, m, -1, x + (d - tw) / 2, y + (d - s.strong.line) / 2, s.strong.line, s.strong.face, s.ink, initials);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, d, d, 0, action);
+  if action != 0 { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, d, d); }
+  return d;
+}
+
+// Up to two initials of a name or an email, upper case: the first letter, and
+// the letter after the first space, dot, dash or underscore before any "@".
+app_initials :: (who: string, out: [] u8) -> int {
+  n := 0; next := true;
+  for c: who {
+    if c == '@' || n >= 2 || n >= out.count { break; }
+    if c == ' ' || c == '.' || c == '-' || c == '_' { next = true; continue; }
+    if next {
+      out[n] = ifx c >= 'a' && c <= 'z' then c - 32 else c; n += 1; next = false;
+    }
+  }
+  return n;
+}
+
+#load "ioshost-sidebar-checks.coax" #test;

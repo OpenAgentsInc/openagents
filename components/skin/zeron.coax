@@ -42,14 +42,18 @@ ICON_CHEVRON_10 :: 27; ICON_CLAUDE_14 :: 28; ICON_MAGNIFER_14 :: 29;
 ICON_OPENAI :: 30; ICON_OPENAI_14 :: 31;
 // the app set's navigation button (components/app/nav.coax): Apps SDK UI's sidebar-left (components/icons/NOTICE)
 ICON_SIDEBAR :: 32;
-ICON_COUNT :: 33;
-ICON_NAMES :: [33] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+// the iOS sidebar's (components/app/ioshost-sidebar.coax): New chat's compose mark, and the rows'
+// chats, images and pinned marks, all Apps SDK UI's (components/icons/NOTICE)
+ICON_COMPOSE :: 33; ICON_CHATS :: 34; ICON_IMAGES :: 35; ICON_PIN :: 36;
+ICON_COUNT :: 37;
+ICON_NAMES :: [37] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
                            "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
                            "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop", "psionic-mark",
                            "gallery", "file-text", "file-document", "check", "alt-arrow-left",
-                           "alt-arrow-right", "claude-mark", "magnifer", "openai-mark", "openai-mark", "sidebar-left"];
-ICON_SIZES :: [33] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
-                        14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20];
+                           "alt-arrow-right", "claude-mark", "magnifer", "openai-mark", "openai-mark", "sidebar-left",
+                           "compose-edit-square", "chats", "image-square", "pin"];
+ICON_SIZES :: [37] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
+                        14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20, 20, 20, 20, 20];
 
 // Zeron Dark, opaque (builtins.rs zeron_dark and theme.rs's derived roles).
 Theme :: struct {

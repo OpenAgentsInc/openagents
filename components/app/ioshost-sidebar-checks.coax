@@ -1,0 +1,43 @@
+// Checks for the phone sidebar (ioshost-sidebar.coax).
+#load "checks-kit.coax";
+
+#test "app sidebar: closed draws nothing; open it pushes the page, dims what shows of it, and a press there closes it; the panel takes its own presses" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", false);
+  in := app_sidebar(f, "side", "side.scrim", 0, 0, 100, 200, 10, 0, "Menu", 7);
+  app_sidebar_end(f, in);
+  #assert app_test_end(t[..]) && in.w == 0 && app_test_find(t[..], "side") < 0 && app_test_find(t[..], "side.scrim") < 0;
+  app_test_begin(t[..], "", "", false);
+  in = app_sidebar(f, "side", "side.scrim", 0, 0, 400, 200, 10, 1, "Menu", 7);
+  _ := app_sidebar_head(f, "side.title", in.x, in.y, in.w, "OpenAgents", "side.search", 0, 0);
+  _ := app_sidebar_item(f, "side.chats", in.x, in.y + 50, in.w, 0, "Chats", EL_S_CURRENT, 8);
+  _ := app_sidebar_new(f, "side.new", in.x, 150, 0, "New chat", 9);
+  _ := app_sidebar_avatar(f, "side.me", in.x + in.w - 30, 150, "AB", "Ada B", 0);
+  app_sidebar_end(f, in);
+  #assert app_test_end(t[..]) && in.w > 0;
+  p := app_test_row(t[..], "side"); sc := app_test_row(t[..], "side.scrim");
+  #assert p.x == 0 && p.w == app_sidebar_width(400) && sc.x == p.w && sc.x + sc.w == 400 && sc.action == 7 && app_sidebar_shift(400, 1) == p.w;
+  #assert app_test_pressable(t[..], "side.scrim");
+  #assert app_test_pressable(t[..], "side.chats");
+  #assert app_test_pressable(t[..], "side.new");
+  // search keeps its slot but shows no button until it works; an avatar with no action is not a control
+  #assert app_test_find(t[..], "side.search") < 0 && !app_test_pressable(t[..], "side.me");
+  #assert surface_id(t[0].sf[..], surface_hit(t[0].sf[..], 2, 190)) == "side";
+  // half open: the panel is half out of the screen
+  app_test_begin(t[..], "", "", false);
+  in = app_sidebar(f, "side", "side.scrim", 0, 0, 100, 200, 10, 0.5, "Menu", 7);
+  app_sidebar_end(f, in);
+  #assert app_test_end(t[..]) && app_test_row(t[..], "side").x < 0;
+  s: f32 = 0;
+  for i: 0..<120 { s = app_sidebar_ease(s, true, 0.016, false); }
+  #assert s == 1 && app_sidebar_ease(0.5, false, 0.016, false) < 0.5 && app_sidebar_ease(0.5, false, 0.016, true) == 0 && app_sidebar_ease(0, true, 0.016, true) == 1;
+  #assert app_sidebar_width(1000) == APP_SIDEBAR_MOST && app_sidebar_width(100) < 100;
+}
+
+#test "app sidebar: initials from a name or an email" {
+  o: [4] u8;
+  #assert cast(string) o[0..<app_initials("ada.lovelace@example.com", o[..])] == "AL";
+  #assert cast(string) o[0..<app_initials("grace", o[..])] == "G";
+  #assert cast(string) o[0..<app_initials("Alan Mathison Turing", o[..])] == "AM";
+  #assert app_initials("", o[..]) == 0;
+}

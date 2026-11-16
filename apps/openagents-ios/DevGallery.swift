@@ -3,6 +3,7 @@
 // GPU component on example data, over the app. Debug builds only. It opens when:
 //   - the app is launched with the argument `-OADevGallery YES` (or the environment variable
 //     OA_DEV_GALLERY=1), for example `xcrun simctl launch booted com.openagents.app -OADevGallery YES`;
+//     add `-OADevGallerySection g.sidebar` to open it at a section;
 //   - three fingers double-tap anywhere on the screen.
 // Close at the top right of the gallery dismisses it.
 //
@@ -59,7 +60,13 @@ import UIKit
         let canvas=Unmanaged<UIView>.fromOpaque(raw).takeUnretainedValue()
         canvas.frame=view.bounds;canvas.autoresizingMask=[.flexibleWidth,.flexibleHeight];view.addSubview(canvas)
     }
-    override func viewDidAppear(_ animated:Bool) {super.viewDidAppear(animated);wake()}
+    override func viewDidAppear(_ animated:Bool) {
+        super.viewDidAppear(animated);wake()
+        // `-OADevGallerySection g.sidebar` opens the gallery at that section, once it has drawn
+        if let section=UserDefaults.standard.string(forKey:"OADevGallerySection"),let owner {
+            DispatchQueue.main.asyncAfter(deadline:.now()+0.5) { [weak self] in _ = og_reveal(owner,section);self?.wake() }
+        }
+    }
     override func viewDidLayoutSubviews() {super.viewDidLayoutSubviews();wake()}
     override func viewWillDisappear(_ animated:Bool) {super.viewWillDisappear(animated);display?.invalidate();display=nil}
     override var preferredStatusBarStyle:UIStatusBarStyle {.lightContent}
