@@ -1763,3 +1763,18 @@ availability is not yet verified. The handoff records the assignment command.
       Copy and passkey/biometric Backup. Rotate/Restore only a disposable
       identity when you intend to replace it; never share its private key.
       [Delivery and evidence](docs/audits/2026-11-16-gpu-composition-1403.md).
+
+## Claude-reference GPU chat on iPhone (build 1404)
+
+Build 1404 is archived and uploading. Install availability is not yet verified.
+
+- [ ] Once available in Owner TestFlight, open a computer chat and check the
+      centered title, collapsed activity groups, individual tool details,
+      reply/code Copy and Send/Stop. Conversation options → Recent chats:
+      search loaded history, then return to the draft. Verify that tapping
+      outside the input dismisses the keyboard and choosing a computer works.
+- [ ] Check large text, VoiceOver, small-screen menu scrolling and background/
+      resume. Model/effort, attachments and microphone remain hidden by choice.
+      Existing Nostr key custody and account services remain; test system
+      Backup/Rotate/Restore only with an identity you intend to use or replace.
+      Never share a private key. [Screenshots and qualification](docs/audits/2026-11-16-claude-gpu-chat-1404.md).
