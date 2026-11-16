@@ -22,3 +22,24 @@ ws_write_allowed :: (method:string,dirty:bool,busy:bool,locked:bool,owned:bool,a
 }
 #test "workspace controls require the local operator's exact profile opt-in and unchanged enrollment" {#assert ws_scope(true,true,true,true,true,true);for i:0..<6 {#assert !ws_scope(i!=0,i!=1,i!=2,i!=3,i!=4,i!=5);}}
 ws_scope :: (admitted:bool,configured:bool,enabled:bool,device:bool,grant:bool,root:bool)->bool #effects(all) {return admitted && configured && enabled && device && grant && root;}
+
+ws_origin :: (raw:string)->bool #effects(all) {
+ prefix:=ifx
+  raw.count>19 // mutant: equivalent — >= and adjacent length guards still cannot admit an owner/repo shorter than three bytes
+  && raw[0..<19]=="https://github.com/" then 19 else ifx
+  raw.count>15 // mutant: equivalent — >= and adjacent length guards still cannot admit an owner/repo shorter than three bytes
+  && raw[0..<15]=="git@github.com:" then 15 else 0;
+ if prefix==0 {return false;}path:=raw[prefix..<raw.count];
+ if path.count>200 || !rp_path_ok(path,
+  false // mutant: equivalent — allow_top changes only the empty path, already excluded by the prefix guard
+ ) {return false;}
+ slashes:=0;for c:path {if c=='/' {slashes+=1;}else if !(c>='a' && c<='z' || c>='A' && c<='Z' || c>='0' && c<='9' || c=='.' || c=='_' || c=='-') {return false;}}
+ return slashes==1 && path[0]!='/' && path[path.count-1]!='/';
+}
+
+#test "GitHub origins are exact bounded owner and repository paths" {#assert ws_origin("https://github.com/openagentsinc/openagents.git") && ws_origin("git@github.com:openagentsinc/openagents.git");for s:[8]string.["https://github.com/../x","https://github.com/x/.","https://github.com/x/..","https://evil.test/x/y","https://github.com/a/b/c","https://github.com/a/b;rm","git@github.com:a/","https://github.com//b"] {#assert !ws_origin(s);}b:[240]u8;n:=js_copy(b[..],"https://github.com/a/");for i:n..<b.count {b[i]='b';}#assert ws_origin(cast(string)b[0..<219]) && !ws_origin(cast(string)b[0..<220]);}
+
+#forall "GitHub origin characters are literal ASCII identifiers" c:0..<128 {b:[30]u8;n:=js_copy(b[..],"https://github.com/axz/repo");b[20]=cast(u8)c;allowed:=false;for x:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-" {if x==cast(u8)c {allowed=true;}}#assert ws_origin(cast(string)b[0..<n])==allowed;}
+#test "GitHub origins require both nonempty components" {for x:[6]string.["","https://github.com/","git@github.com:","https://github.com/ab","https://github.com/a/b/","https://github.com/a//b"] {#assert !ws_origin(x);}}
+
+#test "GitHub origin grammar has the same minimal components for SSH and HTTPS" {for x:[5]string.["git@github.com:a/b","https://github.com/a/b","https://github.com/0/b","https://github.com/a/b0","git@github.com:a/b0"] {#assert ws_origin(x);}for x:[5]string.["xowner/repo","owner/repo","/owner/repo","ssh://github.com/a/b","http://github.com/a/b"] {#assert !ws_origin(x);}}

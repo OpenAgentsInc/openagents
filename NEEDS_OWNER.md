@@ -1,5 +1,11 @@
 # Owner actions
 
+## Native workspaces and chat library, build 1407 (2026-11-16)
+
+- [ ] Install **1407** (verified in TestFlight’s **Owner** group) and open chat options → **Workspace**. Check changes, branch selection, new worktree and PR forms on the Mac. Writes require Review/Confirm and use the computer’s Git/GitHub login.
+- [ ] On two signed-in native clients, pin, rename and archive the same chat; confirm both converge. The real two-client API test passed, but owner-account phone acceptance remains pending.
+- [ ] Bring **CoderOS** online on Tailscale so its resident service can be upgraded and this exact workspace profile enabled. On 2026-11-16 Tailscale reported `coderos-4080` offline; SSH to its recorded address timed out. The Mac service is upgraded and signed relay reads passed.
+
 ## Login and world viewer, build 1390 (2026-11-15)
 
 - [ ] Install TestFlight **1390** (verified in **Owner**) and inspect the

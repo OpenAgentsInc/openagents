@@ -288,3 +288,96 @@ contains the assignment commands, source map, validation and remaining work.
 The main-green watcher remains down under existing pipeline issue #13637;
 the state check reports zero open red entries. This release cites the explicit
 local gates above, not an unobserved after-landing pass.
+
+
+## Direct workspaces and synchronized chat library (1407)
+
+Source `5651b2c4c5` replaces the Claude-prompt shortcuts with a regular shared
+GPU Workspace page: inspect changes/diffs, page branches/worktrees/open PRs,
+create/switch a branch, create/remove a worktree, push and create/edit a PR.
+Review and confirmation show the selected computer/repository/path and target.
+The additive [workspace contract](../../protocol/native-workspaces-and-chat-library-v1.md)
+keeps the published runtime unchanged. Every remote write is a typed command,
+with a Git state digest, validity window and durable exact-once claim. An
+interrupted claim remains unknown and cannot execute twice. Dirty/busy/locked
+worktrees are protected; removal is restricted to service-created worktrees
+and never removes the adopted root or a branch. GitHub calls explicitly name
+the validated origin repository. Credentials stay on the computer.
+
+Pin, rename and archive now synchronize through the account API. The shared
+Coax client performs field-wise three-way merge and CAS retries. One durable
+record keeps base, current local state and exact pending bytes coherent.
+A lost acknowledgement advances the base without erasing later local edits.
+Guests retain local preferences; account boundaries fence late responses.
+Both native Apple clients use the same coordinator; this does not claim the
+older browser client or Linux shell has adopted that Apple coordinator.
+
+Qualification on 2026-11-16:
+
+- Real API/Postgres suite: **23 checks passed**, including two independent
+  clients converging on pin + rename + archive, lost old acknowledgements,
+  replay, conflict and separate-account isolation. CLI authentication's
+  **72 checks** also passed. This ran on a build host, never on the Mac.
+- New workspace wire: **792 mutants, 786 killed, six proved equivalents,
+  zero survivors**. Library sync: **451 mutants, 428 killed, 23 proved
+  equivalents, zero survivors**. Workspace policy: **21/21 killed**; SDK:
+  **51/51 killed**; changed local transport: **72 mutants, 63 killed, nine
+  proved equivalents, zero survivors**. Markers document unreachable
+  typed-state boundaries or opaque stack erasure, not unchecked behavior.
+- Shared Workspace flow: **520 checks**; native Git snapshot: **144 checks**;
+  signed device seal: **714 checks**, including new-profile carriage and
+  correlated refusals. Frozen wire bodies/identities remain unchanged.
+- Disposable real Git repositories passed branch creation/switch, worktree
+  creation/removal, dirty/busy/root/stale refusals, exact replay/conflict,
+  interrupted-command recovery and a real push to a local bare origin.
+  An independent gh fixture checked create/edit argv; no owner PR was created
+  merely to test a write.
+- **17 native SDK tests passed**: Nostr/private-storage/provider regressions
+  plus Workspace persistence, malformed replies and exact retry after reopen.
+  **Five UIKit navigation tests passed**, including Workspace opening/Back.
+  The macOS GPU build/headless editor qualification passed.
+- Actual Mac resident service upgraded, with prior executable preserved.
+  Full-size live repository reads, branch paging (16 rows + next cursor),
+  GitHub PR reads and a **signed relay workspace read** passed. Both exact
+  existing local environment enrollments enabled the new profile.
+- Tools, wire, components and layer gates passed with no allowlist increase.
+  Main pre-push passed; its remote suite job reached the 120-second hook
+  budget, so the explicit unit results above are the cited suite evidence.
+
+Remaining rollout/acceptance boundary: CoderOS was offline on Tailscale and
+its recorded SSH endpoint timed out; it has not been upgraded. Its exact
+service/profile rollout must happen after it reconnects. No owner phone or
+second physical device has accepted these screens yet. Workspace selection
+manages Git worktrees; it does not silently change an existing Claude chat’s
+working directory or provision hosted runners. Model/effort, attachments and
+microphone controls remain hidden.
+
+
+The GPU captures below use the actual page and a public disposable fixture,
+not owner repository or conversation content:
+
+![Workspace branch controls](workspace-1407/branches.png)
+![Native PR form](workspace-1407/pr-form.png)
+![Explicit write confirmation](workspace-1407/confirm.png)
+
+### TestFlight 1407 upload
+
+Frozen source: `5651b2c4c58074a880ab1b2f6ac7089b976bce28`.
+Archive/export/package inspection passed for `com.openagents.app`, 1.0.0
+(**1407**), with no WebKit/JavaScript runtime. Apple accepted delivery
+`b5591e36-5eba-4efd-bd18-c8428ea015b5`. IPA SHA-256:
+`03452711c3571fe65e599f93a05d9159b97c82de2a3dd1eaf0b70bb55ce8d5f7`.
+The symbol keeper retained dSYM UUID `53B782FB-8A7E-3FDB-BB8D-0FC43666DC49`.
+Archive, IPA and matching generated Coax C/header are retained together at
+`/tmp/oa-openagents-1407-release/`; log: `/tmp/oa-openagents-1407-release.log`.
+App Store Connect reports VALID and IN_BETA_TESTING; the assignment tool
+verified **1407 in Owner**.
+
+
+Follow-up qualification places the unchanged GitHub-origin predicate in the
+`#authority` policy unit: **90 mutants, 85 killed, five proved equivalents,
+zero survivors**. The original and relocated predicate bodies compare equal
+with whitespace/comments removed (preserving string literals); this changes
+verification ownership and adds grammar/property checks, not released behavior.
+The initial 21-mutant policy result above refers to the write/scope rules before
+this relocation.
