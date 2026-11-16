@@ -1,0 +1,140 @@
+// Splice Bots rules: getting in and out, one rule for the hoverboard and for Sniper's desk, as a pure
+// state machine: on foot, entering, riding, leaving (SpliceRide.h, package P-04; GDD 04 UE-INT-07 one
+// rule, right click in, Shift out; 3.2 UE-BOARD-02 she steps onto the deck over 0.15 s, UE-BOARD-04
+// Shift steps off beside the board, UE-BOARD-06, UE-BOARD-07 NO ROOM; 4.2 Shift while driving: Sniper
+// stops where it stands and she stands up at the desk; 2.3 the input context and camera per state;
+// UE-INT-02 use reach 4.5 m; 13.6 tested once for both). The ride component fills the facts, asks, and
+// applies the answer. Flow states are flow.coax's SR_FLOW_*. Units: metres, seconds; offsets are in
+// the vehicle's frame: x forward, y right, z up.
+#load "../../../metaverse-engine/core/math-d.coax";
+#load "item-types.coax";
+#load "flow.coax";
+
+// ESpliceRideKind: what she gets into. Doors move her and she stays on foot; they are not rides.
+SR_RIDE_NONE :: 0; SR_RIDE_BOARD :: 1; SR_RIDE_SNIPER :: 2;
+// ESpliceRidePhase.
+SR_RIDE_ON_FOOT :: 0; SR_RIDE_ENTERING :: 1; SR_RIDE_RIDING :: 2; SR_RIDE_LEAVING :: 3;
+// ESpliceRideInput (2.3): IMC_OnFoot, IMC_Board, IMC_Drive.
+SR_RIDE_INPUT_ON_FOOT :: 0; SR_RIDE_INPUT_BOARD :: 1; SR_RIDE_INPUT_DRIVE :: 2;
+// ESpliceRideCamera (2.3): on foot, follow with the board offsets (UE-BOARD-06), the drive view (4.2).
+SR_RIDE_CAMERA_FOLLOW :: 0; SR_RIDE_CAMERA_FOLLOW_BOARD :: 1; SR_RIDE_CAMERA_DRIVE :: 2;
+
+SrRideTuning :: struct {
+  use_reach: f64 = 4.5;        // UE-INT-02 T_USE_RANGE
+  board_step_on: f64 = 0.15;   // UE-BOARD-02
+  board_step_off: f64 = 0.15;  // INFERRED: the same as on
+  sniper_sit_down: f64 = 0.0;  // the camera cuts (4.2), so no wait (INFERRED)
+  sniper_stand_up: f64 = 0.0;  // INFERRED
+  board_exit_offset: D3 = D3.{x = 0.0, y = 1.0, z = 0.0};   // 1 m to the board's right (INFERRED, "beside the board")
+  sniper_exit_offset: D3;      // she stands up at the desk, where she sat (4.2)
+}
+// What the game knows at the moment of the click (FSpliceRideFacts).
+SrRideFacts :: struct {
+  kind: int = SR_RIDE_NONE;
+  seat_taken: bool;            // another controller already drives it
+  distance: f64;               // m from her to it
+  her_airborne: bool;
+  vehicle_airborne: bool;      // the board in a hop or falling; Sniper never is
+  vehicle_speed: f64;
+  allowed_here: bool = true;   // UE-BOARD-07: not inside Sniper, not in a menu
+  exit_has_room: bool = true;  // the spot she would stand on is free
+}
+// Yes, or no with the pale line to show (UE-INT-06). No with SR_REFUSE_NONE: no prompt.
+SrRideAnswer :: struct { yes: bool; refusal: int = SR_REFUSE_NONE; }
+// Everything that changes hands when she gets in or out.
+SrRideHandBack :: struct {
+  input: int = SR_RIDE_INPUT_ON_FOOT;
+  camera: int = SR_RIDE_CAMERA_FOLLOW;
+  flow_state: int = SR_FLOW_PLAY_ON_FOOT;
+  her_offset: D3;                // exit only: where she stands, in the vehicle's frame
+  offset_from_vehicle: bool;     // true: from the vehicle; false: from where she is now
+  stop_vehicle: bool;            // exit only: Sniper stops and parks (4.2)
+  possess_her: bool;
+  possess_vehicle: bool;
+}
+SrRideState :: struct { phase: int = SR_RIDE_ON_FOOT; kind: int = SR_RIDE_NONE; left: f64; }   // left: s in Entering or Leaving
+
+sr_ride_no :: (why: int) -> SrRideAnswer { return SrRideAnswer.{refusal = why}; }
+sr_ride_yes :: () -> SrRideAnswer { return SrRideAnswer.{yes = true}; }
+
+// The ride a flow state stands for (an enterable's flow state on enter). None for anything else.
+sr_ride_kind_for_flow :: (flow_state: int) -> int {
+  if flow_state == SR_FLOW_PLAY_BOARD { return SR_RIDE_BOARD; }
+  if flow_state == SR_FLOW_PLAY_DRIVE { return SR_RIDE_SNIPER; }
+  return SR_RIDE_NONE;
+}
+// The same by the flow tag (the C++ FName): "" or an unknown tag is no ride.
+sr_ride_kind_for_flow_tag :: (tag: string) -> int {
+  for k: 0..<SR_FLOW_COUNT { if SR_FLOW_TAGS[k] == tag { return sr_ride_kind_for_flow(k); } }
+  return SR_RIDE_NONE;
+}
+// May she get in? Only on foot, into a free seat, within use reach, both feet down, where it is allowed.
+// Refusals: NO_ROOM (not here, or seat taken), NOT_ALLOWED_HERE (airborne), none (out of reach: no prompt).
+sr_ride_can_enter :: (t: SrRideTuning, s: SrRideState, f: SrRideFacts) -> SrRideAnswer {
+  if f.kind == SR_RIDE_NONE { return sr_ride_no(SR_REFUSE_NONE); }
+  if s.phase != SR_RIDE_ON_FOOT { return sr_ride_no(SR_REFUSE_NONE); }   // right click is only a step-off prompt
+  if f.distance > t.use_reach { return sr_ride_no(SR_REFUSE_NONE); }
+  if !f.allowed_here { return sr_ride_no(SR_REFUSE_NO_ROOM); }
+  if f.seat_taken { return sr_ride_no(SR_REFUSE_NO_ROOM); }              // INFERRED: one driver per seat
+  if f.her_airborne { return sr_ride_no(SR_REFUSE_NOT_ALLOWED_HERE); }   // INFERRED: both feet down
+  return sr_ride_yes();
+}
+// May she get out? Only while riding the kind she is in. The board in the air: NOT_ALLOWED_HERE
+// (INFERRED); no room to stand: NO_ROOM. Sniper at any speed: yes, and the hand back stops it (4.2).
+sr_ride_can_exit :: (t: SrRideTuning, s: SrRideState, f: SrRideFacts) -> SrRideAnswer {
+  if s.phase != SR_RIDE_RIDING { return sr_ride_no(SR_REFUSE_NONE); }
+  if f.kind != SR_RIDE_NONE && f.kind != s.kind { return sr_ride_no(SR_REFUSE_NONE); }
+  if s.kind == SR_RIDE_BOARD && f.vehicle_airborne { return sr_ride_no(SR_REFUSE_NOT_ALLOWED_HERE); }
+  if !f.exit_has_room { return sr_ride_no(SR_REFUSE_NO_ROOM); }
+  return sr_ride_yes();
+}
+sr_ride_hand_back_on_enter :: (t: SrRideTuning, kind: int) -> SrRideHandBack {
+  h: SrRideHandBack;
+  if kind == SR_RIDE_BOARD { h.input = SR_RIDE_INPUT_BOARD; h.camera = SR_RIDE_CAMERA_FOLLOW_BOARD; h.flow_state = SR_FLOW_PLAY_BOARD; h.possess_vehicle = true; }
+  else if kind == SR_RIDE_SNIPER { h.input = SR_RIDE_INPUT_DRIVE; h.camera = SR_RIDE_CAMERA_DRIVE; h.flow_state = SR_FLOW_PLAY_DRIVE; h.possess_vehicle = true; }
+  return h;
+}
+// Getting out always hands back the on-foot input, the follow camera and Flow.Play.OnFoot.
+sr_ride_hand_back_on_exit :: (t: SrRideTuning, kind: int) -> SrRideHandBack {
+  h: SrRideHandBack;
+  h.possess_her = kind != SR_RIDE_NONE;
+  if kind == SR_RIDE_BOARD { h.her_offset = t.board_exit_offset; h.offset_from_vehicle = true; }
+  else if kind == SR_RIDE_SNIPER { h.her_offset = t.sniper_exit_offset; h.offset_from_vehicle = false; h.stop_vehicle = true; }   // she stays at the desk
+  return h;
+}
+sr_ride_in_vehicle :: (s: SrRideState) -> bool { return s.phase == SR_RIDE_ENTERING || s.phase == SR_RIDE_RIDING; }
+// The input and camera for a state (2.3): on foot and leaving are on foot; entering and riding the vehicle's.
+sr_ride_input_for :: (s: SrRideState) -> int {
+  if !sr_ride_in_vehicle(s) { return SR_RIDE_INPUT_ON_FOOT; }
+  return ifx s.kind == SR_RIDE_BOARD then SR_RIDE_INPUT_BOARD else ifx s.kind == SR_RIDE_SNIPER then SR_RIDE_INPUT_DRIVE else SR_RIDE_INPUT_ON_FOOT;
+}
+sr_ride_camera_for :: (s: SrRideState) -> int {
+  if !sr_ride_in_vehicle(s) { return SR_RIDE_CAMERA_FOLLOW; }
+  return ifx s.kind == SR_RIDE_BOARD then SR_RIDE_CAMERA_FOLLOW_BOARD else ifx s.kind == SR_RIDE_SNIPER then SR_RIDE_CAMERA_DRIVE else SR_RIDE_CAMERA_FOLLOW;
+}
+// Forced back on foot (death, a load, the vehicle destroyed).
+sr_ride_reset :: () -> SrRideState { return SrRideState.{}; }
+// Transitions; each returns the state unchanged if the move is not allowed from s.
+sr_ride_begin_enter :: (t: SrRideTuning, s: SrRideState, kind: int) -> SrRideState {
+  if s.phase != SR_RIDE_ON_FOOT || kind == SR_RIDE_NONE { return s; }
+  n: SrRideState; n.kind = kind;
+  n.left = ifx kind == SR_RIDE_BOARD then t.board_step_on else t.sniper_sit_down;
+  n.phase = ifx n.left > 0.0 then SR_RIDE_ENTERING else SR_RIDE_RIDING;
+  n.left = fmax(n.left, 0.0);
+  return n;
+}
+sr_ride_begin_exit :: (t: SrRideTuning, s: SrRideState) -> SrRideState {
+  if s.phase != SR_RIDE_RIDING { return s; }
+  n: SrRideState;
+  n.left = ifx s.kind == SR_RIDE_BOARD then t.board_step_off else t.sniper_stand_up;
+  if n.left > 0.0 { n.phase = SR_RIDE_LEAVING; n.kind = s.kind; } else { n = sr_ride_reset(); }
+  return n;
+}
+// Time: entering becomes riding, leaving becomes on foot, once their time has run out.
+sr_ride_tick :: (s: SrRideState, dt: f64) -> SrRideState {
+  if s.phase != SR_RIDE_ENTERING && s.phase != SR_RIDE_LEAVING { return s; }
+  n := s; n.left = s.left - fmax(dt, 0.0);
+  if n.left > 0.0 { return n; }
+  if s.phase == SR_RIDE_ENTERING { n.phase = SR_RIDE_RIDING; n.left = 0.0; return n; }
+  return sr_ride_reset();
+}

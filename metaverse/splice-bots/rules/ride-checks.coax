@@ -1,0 +1,114 @@
+// Parity checks for ride.coax: SpliceTests/Rules/SpliceRideTests.cpp. Every test runs the same steps for
+// both rides (GDD 04 13.6). Not ported: the last two asserts of KindFromFlowState, which call
+// USpliceRideComponent::GatherFacts with no live actors (the engine's ride component, not a rule).
+// rules.coax loads this file with `#load ... #test;`.
+
+RD_KINDS :: [2] int.[SR_RIDE_BOARD, SR_RIDE_SNIPER];
+rd_near :: (kind: int) -> SrRideFacts { return SrRideFacts.{kind = kind, distance = 1.0}; }
+rd_settle :: (s: SrRideState) -> SrRideState { o := s; for i: 0..<120 { o = sr_ride_tick(o, 1.0 / 60.0); } return o; }
+rd_vehicle_input :: (kind: int) -> int { return ifx kind == SR_RIDE_BOARD then SR_RIDE_INPUT_BOARD else SR_RIDE_INPUT_DRIVE; }
+rd_vehicle_camera :: (kind: int) -> int { return ifx kind == SR_RIDE_BOARD then SR_RIDE_CAMERA_FOLLOW_BOARD else SR_RIDE_CAMERA_DRIVE; }
+rd_ride :: (t: SrRideTuning, kind: int) -> SrRideState { return rd_settle(sr_ride_begin_enter(t, SrRideState.{}, kind)); }
+
+#test "Splice.Rules.Ride.InThenOutHandsBack" {
+  t: SrRideTuning;
+  for k: RD_KINDS {
+    s: SrRideState;
+    #assert sr_ride_input_for(s) == SR_RIDE_INPUT_ON_FOOT && sr_ride_camera_for(s) == SR_RIDE_CAMERA_FOLLOW;
+    #assert sr_ride_can_enter(t, s, rd_near(k)).yes;
+    inn := sr_ride_hand_back_on_enter(t, k);
+    #assert inn.possess_vehicle && inn.input == rd_vehicle_input(k) && inn.camera == rd_vehicle_camera(k);
+    #assert inn.flow_state == (ifx k == SR_RIDE_BOARD then SR_FLOW_PLAY_BOARD else SR_FLOW_PLAY_DRIVE);
+    s = sr_ride_begin_enter(t, s, k);
+    #assert s.phase == SR_RIDE_ENTERING || s.phase == SR_RIDE_RIDING;
+    #assert sr_ride_input_for(s) == rd_vehicle_input(k);
+    if k == SR_RIDE_BOARD { #assert s.phase == SR_RIDE_ENTERING && near_d(s.left, 0.15, 0.0001); }
+    s = rd_settle(s);
+    #assert s.phase == SR_RIDE_RIDING && s.kind == k && sr_ride_camera_for(s) == rd_vehicle_camera(k);
+    #assert sr_ride_can_exit(t, s, rd_near(k)).yes;
+    out := sr_ride_hand_back_on_exit(t, k);
+    #assert out.possess_her && out.input == SR_RIDE_INPUT_ON_FOOT && out.camera == SR_RIDE_CAMERA_FOLLOW && out.flow_state == SR_FLOW_PLAY_ON_FOOT;
+    s = sr_ride_begin_exit(t, s);
+    #assert sr_ride_input_for(s) == SR_RIDE_INPUT_ON_FOOT && sr_ride_camera_for(s) == SR_RIDE_CAMERA_FOLLOW;
+    s = rd_settle(s);
+    #assert s.phase == SR_RIDE_ON_FOOT && s.kind == SR_RIDE_NONE && sr_ride_can_enter(t, s, rd_near(k)).yes;
+  }
+  // Where she stands: beside the board; at the desk in Sniper, which stops.
+  board := sr_ride_hand_back_on_exit(t, SR_RIDE_BOARD);
+  #assert board.offset_from_vehicle && d2_len(d2(board.her_offset.x, board.her_offset.y)) > 0.5 && !board.stop_vehicle;
+  sniper := sr_ride_hand_back_on_exit(t, SR_RIDE_SNIPER);
+  #assert !sniper.offset_from_vehicle && sniper.stop_vehicle;
+}
+
+#test "Splice.Rules.Ride.SeatTakenRefused" {
+  t: SrRideTuning;
+  for k: RD_KINDS {
+    f := rd_near(k); f.seat_taken = true;
+    a := sr_ride_can_enter(t, SrRideState.{}, f);
+    #assert !a.yes && a.refusal == SR_REFUSE_NO_ROOM;
+    #assert sr_ride_begin_enter(t, SrRideState.{}, SR_RIDE_NONE).phase == SR_RIDE_ON_FOOT;
+    // Already riding (either one): right click is no way in.
+    riding := rd_ride(t, k);
+    for other: RD_KINDS {
+      #assert !sr_ride_can_enter(t, riding, rd_near(other)).yes;
+      #assert sr_ride_begin_enter(t, riding, other).kind == k;
+    }
+  }
+}
+
+#test "Splice.Rules.Ride.ExitAtSpeedAndInAir" {
+  t: SrRideTuning;
+  for k: RD_KINDS {
+    s := rd_ride(t, k);
+    // 4.2: Shift while driving stops Sniper where it stands, so speed never refuses; the board the same.
+    fast := rd_near(k); fast.vehicle_speed = ifx k == SR_RIDE_SNIPER then 23.9 else 22.0;
+    #assert sr_ride_can_exit(t, s, fast).yes;
+    // In the air: the board refuses until it lands (INFERRED); the flag does not refuse Sniper.
+    air := rd_near(k); air.vehicle_airborne = true;
+    a := sr_ride_can_exit(t, s, air);
+    if k == SR_RIDE_BOARD { #assert !a.yes && a.refusal == SR_REFUSE_NOT_ALLOWED_HERE; }
+    else { #assert a.yes; }
+    // No room to stand: refused for both.
+    blocked := rd_near(k); blocked.exit_has_room = false;
+    b := sr_ride_can_exit(t, s, blocked);
+    #assert !b.yes && b.refusal == SR_REFUSE_NO_ROOM;
+  }
+}
+
+#test "Splice.Rules.Ride.EnterNeedsReachGroundAndPlace" {
+  t: SrRideTuning;
+  for k: RD_KINDS {
+    s: SrRideState;
+    edge := rd_near(k); edge.distance = 4.5;
+    #assert sr_ride_can_enter(t, s, edge).yes;
+    far := rd_near(k); far.distance = 4.6;
+    fa := sr_ride_can_enter(t, s, far);
+    #assert !fa.yes && fa.refusal == SR_REFUSE_NONE;
+    jumping := rd_near(k); jumping.her_airborne = true;
+    ja := sr_ride_can_enter(t, s, jumping);
+    #assert !ja.yes && ja.refusal == SR_REFUSE_NOT_ALLOWED_HERE;
+    inside := rd_near(k); inside.allowed_here = false;
+    ia := sr_ride_can_enter(t, s, inside);
+    #assert !ia.yes && ia.refusal == SR_REFUSE_NO_ROOM;
+    // Getting out is only from riding, of the ride she is in.
+    #assert !sr_ride_can_exit(t, s, rd_near(k)).yes;
+    entering := sr_ride_begin_enter(t, s, k);
+    if entering.phase == SR_RIDE_ENTERING {
+      #assert !sr_ride_can_exit(t, entering, rd_near(k)).yes;
+      #assert sr_ride_begin_exit(t, entering).phase == SR_RIDE_ENTERING;
+    }
+    other := ifx k == SR_RIDE_BOARD then SR_RIDE_SNIPER else SR_RIDE_BOARD;
+    #assert !sr_ride_can_exit(t, rd_ride(t, k), rd_near(other)).yes;
+    // Forced back on foot: everything hands back.
+    reset := sr_ride_reset();
+    #assert reset.phase == SR_RIDE_ON_FOOT && sr_ride_input_for(reset) == SR_RIDE_INPUT_ON_FOOT;
+  }
+}
+
+#test "Splice.Rules.Ride.KindFromFlowState" {
+  #assert sr_ride_kind_for_flow_tag("Flow.Play.Board") == SR_RIDE_BOARD;
+  #assert sr_ride_kind_for_flow_tag("Flow.Play.Drive") == SR_RIDE_SNIPER;
+  #assert sr_ride_kind_for_flow_tag("Flow.Play.Interior") == SR_RIDE_NONE;
+  #assert sr_ride_kind_for_flow_tag("") == SR_RIDE_NONE;
+  #assert sr_ride_kind_for_flow(SR_FLOW_PLAY_BOARD) == SR_RIDE_BOARD && sr_ride_kind_for_flow(SR_FLOW_PLAY_DRIVE) == SR_RIDE_SNIPER;
+}
