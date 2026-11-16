@@ -35,7 +35,7 @@ Heavy qualification ran on the owned Linux pool. Counts overlap through imports.
 | Existing table executor | 164 checks; 421 mutants, 402 killed and 19 reviewed equivalents, zero unresolved survivors |
 | Native product fixture | Coax CLI baseline and debug/release, ordinary/ASan/UBSan all passed |
 | Complete evaluator baseline | 387/387 pass after explicit budgets for ten older expensive checks; expanded 399/399 also pass directly in the evaluator |
-| Chat Wasm | Eight-call/error-path build passed; 354,725 bytes, 13 seconds on `oa-build-1`; the later CRLF collector change awaits a new Wasm build |
+| Chat Wasm | Eight-call/error-path build passed; the CRLF collector build at `9282545962` also passes, 354,791 bytes in 14 seconds |
 | Repository checks | tools-check, wire-check and layer-check passed; 400 registry rows, no allowlist increase |
 | Browser host, clean read | No tool request before HTTP EOF; then both table routes and a second model request with the exact native call/result ID |
 | Browser host, schema refusal | Wrongly typed slug caused no tool request; a paired error result reached the second model request |
@@ -43,6 +43,9 @@ Heavy qualification ran on the owned Linux pool. Counts overlap through imports.
 | Browser host, Stop | Stop before EOF retained the chat and started no tool or continuation, including after late completion |
 | Browser host, nine-call response | Entire response refused; no tool request or continuation |
 | Browser host, eight calls | Zero route reads before EOF; all eight calls, 16 route reads and eight matching results in the next model request |
+| Browser host, CRLF | Zero route reads before EOF; then two reads and the exact native call/result pair in a second model request |
+| Browser host, malformed CR in JSON | No route read or continuation; the visible error retains the failed turn |
+| Browser host, exact SSE capacity | A complete 32,768-byte event without DONE reaches clean EOF, two reads and a paired continuation |
 | Request encoding exhaustion | Regression passes; preserves the draft, starts no stream and shows an explicit error |
 
 Argument-policy receipt: `gateway-conversation-policy2-receipt.log`. Final
@@ -126,8 +129,36 @@ The byte review also found a real collector error: removing every carriage
 return could repair an invalid JSON tool name. The collector now keeps those
 bytes and accepts CRLF at event boundaries through the existing SSE reader.
 Both the CRLF/malformed-name cases and a complete 32,768-byte event pass in the
-evaluator (`gateway-page-crlf-checks.log`). Browser/Wasm qualification of that
-collector change is still pending.
+evaluator (`gateway-page-crlf-checks.log`). The actual 354,791-byte Wasm then
+passes the corresponding three DOM/stream-host cases. Receipts are
+`gateway-page-browser-crlf.log`, `gateway-page-browser-badcr.log` and
+`gateway-page-browser-exact.log`; each records `ok: true`. Screenshot review
+confirms the completed CRLF answer and the visible malformed-stream refusal.
+
+The later 417-check source's eight mutation shards reached their 720-second
+limits. A smaller 32-way audit completed 31 shards; shard 11 reached its
+600-second limit. The completed shards found 91 unresolved sites. This is
+an audit, not a pass. Three SSH/session failures completed on retry. Records
+have the `gateway-page-final32-` prefix, and their unresolved-site inventory is
+`gateway-page-final32-survivors.txt` in the same artifact directory.
+
+The broader callback matrix exposed a real queued-message bug: a failed
+background import returned before the draft resumed. The completion path now
+uses the same background-read predicate as send admission and resumes a
+deferred draft on every exit. Five new matrix checks pass directly in the
+evaluator, covering all nine reads, unqueued drafts, whole-response bounds,
+exact-fit history, one-letter Project names, SSE separators and diagnostics
+(`gateway-page-audit-matrix2.log`). A further regression reproduces owned
+tool-result exhaustion starting another route; the executor now checks the
+failed history before advancing to another read. Its expanded qualification
+and the remaining page-root audit are still in progress.
+
+The current CLI's portable C was emitted on `oa-build-11` in 17 seconds and
+linked against Apple's SDK using the documented `--link-c` path. The shared
+`~/.openagents/bin/openagents` now selects the versioned `tasks-cli-9282545962`
+binary. Its existing staging profile still authenticates successfully; no
+account key or login profile was replaced. This is installation/authentication
+evidence, not a live native task receipt.
 
 Initial policy mutation runs found weak assertions around descriptions, owned
 history and complete batches. Independent boundary/outcome checks replaced

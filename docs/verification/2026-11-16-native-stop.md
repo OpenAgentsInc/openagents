@@ -32,5 +32,22 @@ Remote receipts in `/tmp/oa-chat-task-artifacts/`:
   impossible root-node member indices and later checks that independently
   reject an empty/oversized identity or empty status.
 
-This is the controlled qualification. A fresh live resident/phone Stop run
-is still required. Production was not deployed by this change.
+The isolated resident was rebuilt from these sources and linked against the
+Mac SDK. The fresh real phone run r11 passes in 55.8 seconds, including
+actual UIKit Deny/Stop presses and cold reopening the same task. Its native
+task `b6e6939e3d70bf920bb6537be56e230e` settles `canceled`, revision 16,
+with Stop retained, an empty error code and no held interaction. The account
+turn saves `cancelled`. Neither requested marker file exists.
+
+The complete native capture is 1,613 bytes with SHA-256
+`365c3ef336338fc72c667fd3ecde9e1cc423764ee221094e762c536e839fee3e`.
+Receipts: `/tmp/oa-native-task-staging-r11.xcresult`, exported attachments
+`staging-phone-r11-attachments/`, `staging-deny-stop-fixed-turn.json` and
+`staging-deny-stop-fixed-transcript.log`. The transcript itself remains in
+the private qualification workspace. The earlier r10 unknown result remains
+unchanged. Production was not deployed by this qualification.
+
+Main subsequently replaces the iOS carrier in #13645. The owner explicitly
+assigned wiring into that new screen to #13645 on 2026-11-16. These installed
+phone receipts qualify the previous carrier and the shared server/resident
+contract; they do not claim the replacement screen already runs task UI.

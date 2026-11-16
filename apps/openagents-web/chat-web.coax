@@ -1031,7 +1031,7 @@ cw_complete :: (s: [] ChatWeb, model: int) -> bool {
   // our own tools (chat-hosted.coax): offered on every ask but a message's last, which answers from what they said
   s[0].hmodel = model;
   if !s[0].hhistory[0].ready {
-    reserve:=(CH_STEPS-1)*(CH_CALLS+1);start:=ifx n>GW_TOOL_MESSAGES-reserve then n-(GW_TOOL_MESSAGES-reserve) else 0;
+    reserve:=(CH_STEPS-1)*(CH_CALLS+1);start:=ifx n>GW_TOOL_MESSAGES-reserve then n-(GW_TOOL_MESSAGES-reserve) else 0; // mutant: equivalent (>= at the exact retained-history bound selects n-bound == 0, the same slice start)
     if !gwt_conversation_begin(s[0].hhistory[..],s[0].hpool[..],CH_STEPS-1,messages[start..<n]) {return false;}
   }
   if s[0].hhistory[0].failed || s[0].hhistory[0].remaining!=0 {return false;}
@@ -1063,9 +1063,12 @@ cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
 }
 // Takes the message: it goes into the transcript, without the space around it, the field is cleared,
 // and the chosen model is asked. Nothing is taken while an answer is coming or another request is out.
+cw_background_read :: (kind:int)->bool {
+  return kind==CF_LIST || kind==CF_LOG || kind==CF_CLAUDE || kind==CF_IMPORT || kind==CF_ACCOUNT || kind==CF_AGENTS || kind==CF_WHO || kind==CF_WORLDS || kind==CF_PROJECTS;
+}
 cw_send :: (s: [] ChatWeb) {
   if s[0].live || !cw_has_words(s) { return; }
-  if s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT || s[0].flight == CF_ACCOUNT || s[0].flight == CF_AGENTS || s[0].flight == CF_WHO || s[0].flight == CF_WORLDS || s[0].flight == CF_PROJECTS { s[0].send_due = true; return; }   // a background read is out (the account's, as the page opens, is one): the message goes when it is back
+  if cw_background_read(s[0].flight) { s[0].send_due = true; return; }   // a background read is out (the account's, as the page opens, is one): the message goes when it is back
   if s[0].flight != CF_NONE { return; }
   s[0].send_due = false;
   lo := 0; hi := s[0].draft_n;
@@ -1254,6 +1257,7 @@ cw_hosted_calls :: (s: [] ChatWeb) {
 cw_hosted_next :: (s: [] ChatWeb) {
   path: [CH_PATH] u8;
   while s[0].hat < s[0].hn {
+    if s[0].hhistory[0].failed {cw_say(s,"The tool history reached its limit; no further tool was started.");cw_tools_above(s);s[0].live=false;return;}
     c := s[0].hcalls[s[0].hat..<s[0].hat + 1];
     p := ch_path(c, s[0].hpart, path[..]);
     if p.count > 0 {
@@ -1347,6 +1351,7 @@ cw_end :: (s: [] ChatWeb, status: int) {
   kind := s[0].flight;
   if kind == CF_NONE { return; }
   s[0].flight = CF_NONE;
+  defer {if s[0].send_due && cw_background_read(kind) {cw_send(s);}}
   body := cast(string) s[0].resp[0..<s[0].resp_n];
   if kind == CF_WHO {
     s[0].me_n = ifx status == 200 then ss_who_read(body, s[0].me[..]) else 0;
@@ -1459,7 +1464,7 @@ cw_end :: (s: [] ChatWeb, status: int) {
     s[0].watching = again; s[0].watch_at = s[0].time;
     if !again { s[0].model = CW_HOSTED; s[0].csize = 0; }   // a message here goes on in Claude Code
   }
-  if s[0].send_due && (kind == CF_LIST || kind == CF_LOG || kind == CF_CLAUDE || kind == CF_IMPORT || kind == CF_ACCOUNT || kind == CF_AGENTS || kind == CF_WHO || kind == CF_WORLDS || kind == CF_PROJECTS) { cw_send(s); } else if kind == CF_TURN {
+  if kind == CF_TURN {
     if status == 200 { cw_turn_read(s, body); }
     else if status != 0 { cw_fail(s, status); s[0].turn = 0; }   // with no answer at all, it is read again
   }
@@ -2729,6 +2734,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"bad\",\"function\":{\"name\":\"realm_world\",\"arguments\":\"{\\\"slug\\\":12}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
   body:=cw_test_body(s);#assert s[0].flight==CF_COMPLETE && cw_test_door(s)=="/api/chat/complete" && s[0].hhistory[0].remaining==0;
   #assert cw_test_has(body,"\"tool_call_id\":\"bad\",\"content\":\"arguments do not match the offered schema\"") && s[0].hhistory[0].messages[2].result.is_error;
+  failed:[1]CqCall;#assert cq_read(cast(string)s[0].tools[0..<s[0].tools_n],0,failed[..])>0 && failed[0].id=="bad" && failed[0].state==KW_FAILED && failed[0].ms==0;
   // A provider cannot reuse that ID to read a world in the next model step.
   cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"bad\",\"function\":{\"name\":\"realm_world\",\"arguments\":\"{\\\"slug\\\":\\\"garden\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
   #assert !s[0].live && s[0].flight!=CF_HCALL && s[0].hhistory[0].steps==1 && s[0].error_n>0;
@@ -2811,8 +2817,8 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
  }
 }
 #test "new chats retire prior local and hosted task ownership and a new send retains only its own request state" #steps 80000000 {
- h:[1]CwTest;s:=h[0].s[..];s[0].count=1;s[0].pool_n=10;s[0].total=17;s[0].live=true;s[0].lrun=true;s[0].echo=true;s[0].stop_due=true;s[0].turn=42;s[0].conv=43;s[0].hhistory[0].ready=true;s[0].goal_n=3;s[0].opens_n=2;s[0].hstep_state[0].failed=true;
- cw_clear(s);#assert s[0].count==0 && s[0].pool_n==0 && s[0].total==0 && !s[0].live && !s[0].lrun && !s[0].echo && !s[0].stop_due && s[0].turn==0 && s[0].conv==0 && s[0].goal_n==0 && s[0].opens_n==0 && !s[0].hhistory[0].ready && !s[0].hstep_state[0].failed;
+ h:[1]CwTest;s:=h[0].s[..];s[0].count=1;s[0].pool_n=10;s[0].total=17;s[0].live=true;s[0].lrun=true;s[0].echo=true;s[0].stop_due=true;s[0].turn=42;s[0].conv=43;s[0].hhistory[0].ready=true;s[0].goal_n=3;s[0].opens_n=2;s[0].hstep_state[0].failed=true;cw_say(s,"Old failure");
+ cw_clear(s);#assert s[0].count==0 && s[0].pool_n==0 && s[0].total==0 && !s[0].live && !s[0].lrun && !s[0].echo && !s[0].stop_due && s[0].turn==0 && s[0].conv==0 && s[0].goal_n==0 && s[0].opens_n==0 && !s[0].hhistory[0].ready && !s[0].hstep_state[0].failed && s[0].error_n==0;
  s[0].nopened=1;s[0].hstep=CH_STEPS-1;s[0].hn=3;s[0].tools_n=4;s[0].ntools=2;s[0].raw_n=3;s[0].working_n=4;s[0].menu=true;s[0].view=1;s[0].draft_n=cw_put(s[0].draft[..],0,"\n\r\t  hello \t\r\n");s[0].event_n=3;s[0].ps[0].finish=9;s[0].ps[0].np=1;s[0].turn=45;s[0].stopping=true;s[0].stop_sent=true;
  cw_send(s);#assert cw_text(s,0)=="hello" && s[0].live && s[0].nopened==0 && s[0].tools_n==0 && s[0].ntools==0 && s[0].raw_n==0 && s[0].working_n==0 && !s[0].menu && s[0].view==CW_CHAT && s[0].draft_n==0 && s[0].turn==0 && !s[0].stopping && !s[0].stop_sent && s[0].event_n==0 && s[0].ps[0].finish==0 && s[0].ps[0].np==0;
  #assert s[0].hn==0 && s[0].hstep==0 && cw_test_has(cw_test_body(s),"\"tools\":[");
@@ -2901,7 +2907,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
 }
 #test "full-length local error bodies use the bounded fallback and rejected sends restore the field" #steps 80000000 {
  for kind:[2]int.[CF_RUN,CF_LSEND] {
-  h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");s[0].flight=kind;s[0].lrun=true;s[0].echo=true;if kind==CF_LSEND {cw_add(s,"restore",CW_YOU,0);}
+  h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");s[0].flight=kind;s[0].resp_n=0;s[0].lrun=true;s[0].echo=true;if kind==CF_LSEND {cw_add(s,"restore",CW_YOU,0);}
   body:[CW_ERROR]u8;for i:0..<body.count {body[i]='r';}cw_test_answer(s,500,cast(string)body[..]);
   #assert !s[0].lrun && !s[0].echo && cast(string)s[0].error[0..<s[0].error_n]==(ifx kind==CF_RUN then "Coder couldn't start that. Is it running on this computer?" else "Coder couldn't take that message.");
   if kind==CF_LSEND {n:=coaxial_chatweb_frame(s,0.016,true);#assert s[0].draft_n==7 && dm_test_count(s[0].dom[..],n,DC_VALUE)==1;}
@@ -2997,6 +3003,61 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   cw_send(s);#assert s[0].send_due && s[0].draft_n==8 && s[0].count==0 && s[0].flight==kind;
   cw_end(s,500);#assert !s[0].send_due && s[0].live && s[0].flight==CF_COMPLETE && cw_text(s,0)=="continue";
  }
+}
+#test "hosted audit: every deferred read resumes after failure, while an unqueued draft stays put" #steps 300000000 #traversal 536870912 {
+ for kind:[9]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS] {
+  h:[1]CwTest;s:=h[0].s[..];s[0].draft_n=cw_put(s[0].draft[..],0,"queued");s[0].flight=kind;s[0].send_due=true;
+  cw_end(s,500);#assert !s[0].send_due && s[0].live && s[0].flight==CF_COMPLETE && cw_text(s,0)=="queued";
+  quiet:[1]CwTest;q:=quiet[0].s[..];q[0].draft_n=cw_put(q[0].draft[..],0,"unsent");q[0].flight=kind;
+  cw_end(q,500);#assert !q[0].live && q[0].flight==CF_NONE && q[0].count==0 && q[0].draft_n==6;
+ }
+}
+#test "hosted audit: complete request bounds preserve the oldest exact-fit message and one-letter Project names" #steps 200000000 #traversal 536870912 {
+ h:[1]CwTest;s:=h[0].s[..];text:[CW_ASK-1]u8;for i:0..<text.count {text[i]='a';}
+ cw_add(s,cast(string)text[..],CW_YOU,0);cw_add(s,"Z",CW_YOU,0);s[0].projects_n=2;
+ s[0].projects[0].name_n=cw_put(s[0].projects[0].name[..],0,"A");s[0].projects[1].name_n=cw_put(s[0].projects[1].name[..],0,"B");
+ #assert cw_complete(s,CW_HOSTED) && s[0].hhistory[0].n==2 && s[0].hhistory[0].messages[0].text.count==CW_ASK-1 && s[0].hhistory[0].messages[1].text=="Z";
+ #assert cw_test_has(cw_test_body(s),"A, B");
+ empty:[1]CwTest;e:=empty[0].s[..];e[0].live=true;#assert cw_complete(e,CW_HOSTED) && e[0].htext_at==0 && e[0].hhistory[0].n==0;
+}
+#test "hosted audit: local refusal boundaries use the actual whole response and restore exact input" #steps 300000000 #traversal 536870912 {
+ for kind:[2]int.[CF_RUN,CF_LSEND] {for size:[5]int.[0,1,CW_ERROR-1,CW_ERROR,CW_ERROR+1] {
+  h:[1]CwTest;s:=h[0].s[..];s[0].flight=kind;s[0].lrun=true;s[0].echo=true;cw_add(s,"restore",CW_YOU,0);
+  data:[CW_ERROR+1]u8;for i:0..<data.count {data[i]='r';}s[0].resp_n=cw_put(s[0].resp[..],0,cast(string)data[0..<size]);cw_end(s,500);
+  expected:=ifx size>0 && size<CW_ERROR then cast(string)data[0..<size] else ifx kind==CF_RUN then "Coder couldn't start that. Is it running on this computer?" else "Coder couldn't take that message.";
+  #assert !s[0].lrun && !s[0].echo && cast(string)s[0].error[0..<s[0].error_n]==expected;
+  if kind==CF_LSEND {#assert s[0].draft_n==7 && cast(string)s[0].draft[0..<s[0].draft_n]=="restore" && s[0].count==0;}
+ }}
+ for status:[2]int.[200,500] {
+  h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_LSEND;s[0].lrun=true;s[0].echo=true;cw_add(s,"restore",CW_YOU,0);s[0].resp_n=cw_put(s[0].resp[..],0,"{\"id\":\"x\"}");cw_end(s,status);
+  #assert s[0].lrun==(status==200) && s[0].echo==(status==200) && (ifx status==200 then cw_sel(s)=="x" else s[0].draft_n==7 && s[0].count==0);
+ }
+}
+#test "hosted audit: SSE separators retain whole lines and truncation retains its explicit error" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_COMPLETE;s[0].live=true;gwt_step_begin(s[0].hstep_state[..]);
+ cw_piece(s,200,"\n\r\n");#assert s[0].event_n==0 && !s[0].cut;
+ raw:="data: {}\nX\n";cw_piece(s,200,raw);#assert s[0].event_n==raw.count && !s[0].hstep_state[0].failed;
+ cw_end(s,200);#assert !s[0].live && s[0].event_n==0 && s[0].hstep_state[0].failed;
+ clipped:[1]CwTest;c:=clipped[0].s[..];c[0].flight=CF_COMPLETE;c[0].live=true;c[0].cut=true;cw_end(c,200);
+ #assert cast(string)c[0].error[0..<c[0].error_n]=="The answer was longer than this page keeps, so its end is missing.";
+}
+#test "hosted audit: refused key removal malformed task starts and plan failures retain exact diagnostics" {
+ h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_UNKEY;s[0].resp_n=cw_put(s[0].resp[..],0,"{\"error\":\"Held credential\"}");cw_end(s,403);
+ #assert cast(string)s[0].note[0..<s[0].note_n]=="The chat is for admins only for now.";
+ s[0].flight=CF_SEND;s[0].live=true;s[0].resp_n=0;cw_end(s,200);#assert !s[0].live && cast(string)s[0].error[0..<s[0].error_n]=="The page couldn't reach OpenAgents. Check your connection and try again.";
+ s[0].flight=CF_PLAN;s[0].live=true;s[0].resp_n=cw_put(s[0].resp[..],0,"{\"error\":\"Plan refused\"}");cw_end(s,500);#assert !s[0].live && cast(string)s[0].error[0..<s[0].error_n]=="Plan refused";
+}
+#test "hosted audit: exhausted owned results end before another route or continuation" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");cw_test_type(s,"composer","read");cw_test_enter(s,"composer");
+ cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"a\",\"function\":{\"name\":\"realm_doc\",\"arguments\":\"{\\\"slug\\\":\\\"garden\\\"}\"}},{\"index\":1,\"id\":\"b\",\"function\":{\"name\":\"realm_doc\",\"arguments\":\"{\\\"slug\\\":\\\"garden\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n");
+ #assert s[0].flight==CF_HCALL && s[0].hat==0;s[0].hhistory[0].pool=s[0].hpool[0..<s[0].hhistory[0].used];
+ cw_test_answer(s,200,"first result");#assert !s[0].live && s[0].flight==CF_NONE && s[0].hhistory[0].failed && s[0].error_n>0;
+}
+#test "hosted audit: a schema error whose owned result cannot fit ends without a route" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");cw_test_type(s,"composer","read");cw_test_enter(s,"composer");
+ end:=s[0].hhistory[0].used+1+"realm_world".count+"{\"slug\":7}".count;s[0].hhistory[0].pool=s[0].hpool[0..<end];
+ cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"a\",\"function\":{\"name\":\"realm_world\",\"arguments\":\"{\\\"slug\\\":7}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n");
+ #assert s[0].hhistory[0].used==end && s[0].hhistory[0].failed && !s[0].live && s[0].flight==CF_NONE && s[0].error_n>0;
 }
 #test "a message sent in the page's first moment, while the account is still being read, goes when that read is back" {
   h: [1] CwTest; s := h[0].s[..];

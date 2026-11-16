@@ -87,3 +87,14 @@ display assertion expected the wrong label. Run r7 verifies the corrected
 reopen expectation without creating another task. These receipts establish a
 real phone-started coding task and reconnect; they do not establish Deny,
 Stop, all provider-account choices or the full remaining issue scope.
+
+The second scratch patch task, `3b4f6aa0b1f6a4742a1cfcb41b6e3786`, passes
+the full r8 installed SDK case in 75 seconds. It uses actual UIKit Allow
+buttons for four permissions, observes the same one-line fix and passing
+check, saves the result and cold reopens the same task. The final Deny/Stop
+qualification and its discovered/fixed native reconciliation bug are recorded
+in [Native Codex Stop reconciliation](2026-11-16-native-stop.md).
+
+The owner assigned the replacement compiled iOS screen's wiring to #13645.
+The historical UIKit fixture belongs to this earlier carrier's qualification;
+it must not restore the removed carrier when rebasing this issue onto main.

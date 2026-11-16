@@ -1,0 +1,44 @@
+// Automatic Claude account choice reuses the enrolled computer's existing
+// provider-account observation. No token, login or selected profile changes.
+// coax/bin/coax test coax/lib/agent/router/native-account.coax --library
+#load "../accounts/wire.coax";
+#authority;
+
+cna_test_view :: ()->PaView #effects(all) {
+ v:=PaView.{};v.n=1;_=pa_copy(v.host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v.nm=pa_copy(v.method[..],"ListAccounts");a:=v.accounts[0..<1];a[0].ni=pa_copy(a[0].id[..],"system");a[0].ns=pa_copy(a[0].state[..],"connected");a[0].nw=1;a[0].windows[0].ni=pa_copy(a[0].windows[0].id[..],"seven_day");a[0].windows[0].used=2500;a[0].observed=1000;return v;
+}
+#test "automatic native account choice admits fresh capacity and preserves the chosen exact ID" {
+ v:=[1]PaView.[cna_test_view()];host:=cast(string)v[0].host[..];b:[32]u8;raw:[24576]u8;
+ #assert cna_pick(v[..],host,1000)==0 && cna_pick(v[..],host,301000)==0 && cna_pick(v[..],host,301001)== -1;
+ n:=pa_view_write(v[..],raw[..]);#assert ctn_account_pick(cast(string)raw[0..<n],host,1000,b[..])==6 && cast(string)b[0..<6]=="system";
+ #assert ctn_account_pick(cast(string)raw[0..<n],host,1000,b[0..<5])== -1 && ctn_account_pick("{}",host,1000,b[..])== -1;
+ v[0].n=2;v[0].accounts[1]=v[0].accounts[0];v[0].accounts[1].ni=pa_copy(v[0].accounts[1].id[..],"0123456789abcdef0123456789abcdef");v[0].accounts[1].windows[0].used=2499;#assert cna_pick(v[..],host,1000)==1;
+ v[0].accounts[0].selected=true;v[0].accounts[1].windows[0].used=2500;#assert cna_pick(v[..],host,1000)==0;
+ v[0].accounts[0].selected=false;v[0].accounts[1].selected=true;#assert cna_pick(v[..],host,1000)==1;
+ v[0].accounts[1].windows[0].used=10000;#assert cna_pick(v[..],host,1000)==0;
+}
+#test "native account admission refuses unknown quota scope faults stale and future facts" {
+ for bad:0..<12 {v:=[1]PaView.[cna_test_view()];host:=cast(string)v[0].host[..];a:=v[0].accounts[0..<1];
+  if bad==0 {v[0].n=0;}if bad==1 {v[0].ne=pa_copy(v[0].error[..],"forbidden");}if bad==2 {v[0].nm=pa_copy(v[0].method[..],"SelectAccount");}
+  if bad==3 {v[0].nc=1;}if bad==4 {a[0].ns=pa_copy(a[0].state[..],"checking");}if bad==5 {a[0].stale=true;}if bad==6 {a[0].ner=pa_copy(a[0].error[..],"usage_unavailable");}
+  if bad==7 {a[0].nw=0;}if bad==8 {a[0].windows[0].used=10000;}if bad==9 {a[0].observed=1001;}if bad==10 {a[0].observed=0;}if bad==11 {a[0].windows[0].used= -1;}
+  #assert cna_pick(v[..],host,1000)== -1;
+ }
+ v:=[1]PaView.[cna_test_view()];#assert cna_pick(v[..],"other",1000)== -1 && cna_pick(v[..],cast(string)v[0].host[..],0)== -1;
+ for used:[3]int.[0,9999,10000] {v[0].accounts[0].windows[0].used=used;#assert (cna_pick(v[..],cast(string)v[0].host[..],1000)==0)==(used<10000);}
+ v[0].accounts[0].windows[0].used=0;v[0].accounts[0].nw=2;v[0].accounts[0].windows[1].used=10000;#assert cna_pick(v[..],cast(string)v[0].host[..],1000)== -1;
+}
+
+cna_pick :: (v:[]PaView,host:string,now:int)->int #effects(all) {
+ if now<1 || cast(string)v[0].host[..]!=host || cast(string)v[0].method[0..<v[0].nm]!="ListAccounts" || v[0].ne!=0 || v[0].nc!=0 {return -1;}
+ chosen:= -1;best:=10000;
+ for i:0..<v[0].n {a:=v[0].accounts[i];if cast(string)a.state[0..<a.ns]!="connected" || a.stale || a.ner!=0 || a.nw==0 || a.observed<1 || a.observed>now || now-a.observed>300000 {continue;}
+  used:=0;valid:=true;for k:0..<a.nw {u:=a.windows[k].used;if u<0 || u>=10000 {valid=false;}if u>used {used=u;}}
+  if !valid {continue;}
+  if chosen<0 || used<best || (used==best && a.selected && !v[0].accounts[chosen].selected) {chosen=i;best=used;}
+ }
+ return chosen;
+}
+ctn_account_pick :: (raw:string,host:string,now:int,out:[]u8)->int #export_c #effects(all) {
+ v:[1]PaView;if !pa_view_read(raw,v[..]) {return -1;}i:=cna_pick(v[..],host,now);if i<0 {return -1;}a:=v[0].accounts[i];return pa_copy(out,cast(string)a.id[0..<a.ni]);
+}
