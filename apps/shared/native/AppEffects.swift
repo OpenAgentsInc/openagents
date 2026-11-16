@@ -8,9 +8,11 @@
 //   - a completion is never delivered inside a dispatch. Every one, even of a service that
 //     answers at once, arrives in a later turn of the main queue, in the order it was produced;
 //   - Coax is entered by one caller at a time, on the main thread;
-//   - a cancelled request never completes, and a completion carries the generation its request
-//     had, so Coax can drop one that outlived its owner;
-//   - a request the host does not know completes as failed. It is never dropped silently;
+//   - every request completes exactly once, except a cancel, which is an instruction and has no
+//     completion of its own. A cancelled request completes as cancelled, at once, and its real
+//     answer is dropped. A completion carries the generation its request had, so Coax
+//     can drop one that outlived its owner;
+//   - a request the host does not know completes as unsupported. It is never dropped silently;
 //   - no token, key or pending handle is in any request or completion.
 // The host adapts the app's own records to `AppRequest` and `AppCompletion` in one place
 // (apps/openagents-ios/AppBridge.swift), so this file names no Coax procedure.
@@ -20,7 +22,7 @@ import Foundation
 /// What the app asks the host to do.
 enum AppCall {
     case http(AppHTTP.Request)
-    /// End one earlier request, or every request of a generation. Neither completes.
+    /// End one earlier request, or every request of a generation. Each completes as cancelled.
     case cancel(op: UInt64)
     case cancelGeneration(UInt64)
     case authState
@@ -43,8 +45,9 @@ struct AppRequest { var op: UInt64; var generation: UInt64; var call: AppCall }
 
 struct AppCompletion: Equatable {
     /// done: the effect happened and `body` is its answer. failed: it did not happen.
-    /// unknown: it may have happened; Coax must not repeat it by itself. part: more follows.
-    enum State: Int32 { case done = 1, failed = 2, unknown = 3, part = 4 }
+    /// unknown: it may have happened; Coax must not repeat it by itself. cancelled: the host
+    /// stopped it when asked. unsupported: this host has no such service. part: more follows.
+    enum State: Int32 { case done = 1, failed = 2, unknown = 3, cancelled = 4, unsupported = 5, part = 6 }
     var op: UInt64
     var generation: UInt64
     var state: State
@@ -75,7 +78,7 @@ struct AppCompletion: Equatable {
     private weak var platform: AppPlatform?
     private var inside = false
     private var late: [AppCompletion] = []
-    /// Requests with a completion still owed (not HTTP's or the wakes', which have their own).
+    /// Requests with a completion still owed, and the generation each had.
     private var owed: [UInt64: UInt64] = [:]
     /// Called after a completion was dispatched: the screen may have changed.
     var changed: (() -> Void)?
@@ -95,61 +98,61 @@ struct AppCompletion: Equatable {
         for r in requests { perform(r) }
     }
 
-    /// Ends everything in flight; nothing completes afterwards (the app is closing or was reset).
+    /// Ends everything in flight with no completion; nothing completes afterwards (the app is closing or was reset).
     func retire() { epoch += 1; http.cancel(generation: 0); wake.cancel(generation: 0); owed = [:]; late = [] }
     private var epoch = 0
 
     private func perform(_ r: AppRequest) {
         let op = r.op, generation = r.generation
-        func done(_ body: [String: Any] = [:]) { finish(op, generation, .done, 0, (try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])) ?? Data("{}".utf8)) }
+        func done(_ body: [String: Any] = [:]) { finish(op, generation, .done, 200, (try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])) ?? Data("{}".utf8)) }
         func answered(_ a: AppAccount.Answer) {
             if case .said(let words) = a { finish(op, generation, .failed, 0, (try? JSONSerialization.data(withJSONObject: ["error": words])) ?? Data()) } else { done(["loggedIn": account.loggedIn]) }
         }
+        if case .cancel = r.call {} else if case .cancelGeneration = r.call {} else { owed[op] = generation }
         switch r.call {
         case .http(let request):
             http.start(op: op, generation: generation, request) { [weak self] outcome in
-                guard let self else { return }
+                guard let self, self.owed[op] == generation else { return }
                 switch outcome {
-                case .answer(let status, let body, let type): self.post(AppCompletion(op: op, generation: generation, state: .done, status: Int32(status), body: body, contentType: type))
+                case .answer(let status, let body, let type): self.finish(op, generation, .done, Int32(status), body, type)
                 case .part(let data): self.post(AppCompletion(op: op, generation: generation, state: .part, status: 200, body: data))
-                case .failed(let why): self.post(AppCompletion(op: op, generation: generation, state: .failed, status: why.rawValue))
-                case .unknown(let why): self.post(AppCompletion(op: op, generation: generation, state: .unknown, status: why.rawValue))
+                case .failed(let why): self.finish(op, generation, .failed, why.rawValue, Data())
+                case .unknown(let why): self.finish(op, generation, .unknown, why.rawValue, Data())
                 }
             }
-        case .cancel(let target):
-            http.cancel(op: target); wake.cancel(op: target); owed[target] = nil
-        case .cancelGeneration(let target):
-            http.cancel(generation: target); wake.cancel(generation: target)
-            owed = owed.filter { $0.value != target }
-        case .wake(let ms):
-            wake.after(op: op, generation: generation, milliseconds: ms) { [weak self] in self?.post(AppCompletion(op: op, generation: generation, state: .done)) }
-        case .authState: owed[op] = generation; done(["loggedIn": account.loggedIn])
-        case .authEmailStart(let email): owed[op] = generation; Task { answered(await account.emailStart(email)) }
-        case .authEmailVerify(let code): owed[op] = generation; Task { answered(await account.emailVerify(code)) }
-        case .authEmailCancel: owed[op] = generation; account.emailCancel(); done()
-        case .authLogout: owed[op] = generation; Task { await account.logout(); done(["loggedIn": false]) }
-        case .authRefresh: owed[op] = generation; Task { done(["loggedIn": await account.refresh()]) }
+        case .cancel(let target): stop(target)
+        case .cancelGeneration(let target): for (each, g) in owed where g == target { stop(each) }
+        case .wake(let ms): wake.after(op: op, generation: generation, milliseconds: ms) { [weak self] in self?.finish(op, generation, .done, 0, Data("{}".utf8)) }
+        case .authState: done(["loggedIn": account.loggedIn])
+        case .authEmailStart(let email): Task { answered(await account.emailStart(email)) }
+        case .authEmailVerify(let code): Task { answered(await account.emailVerify(code)) }
+        case .authEmailCancel: account.emailCancel(); done()
+        case .authLogout: Task { await account.logout(); done(["loggedIn": false]) }
+        case .authRefresh: Task { done(["loggedIn": await account.refresh()]) }
         case .identities:
-            owed[op] = generation
             guard let random = AppWake.randomHex(32) else { finish(op, generation, .failed, 0, Data()); return }
             done(["command_id": String(random.prefix(32)), "session_id": String(random.suffix(32)), "now_ms": AppWake.wallMs()])
         case .clipboard(let text):
-            owed[op] = generation
             if platform?.copy(text) == true { done() } else { finish(op, generation, .failed, 0, Data()) }
         case .link(let link):
-            owed[op] = generation
             guard let platform else { finish(op, generation, .failed, 0, Data()); return }
             platform.open(link) { [weak self] opened in self?.finish(op, generation, opened ? .done : .failed, 0, Data("{}".utf8)) }
-        case .unsupported:
-            owed[op] = generation; finish(op, generation, .failed, 0, Data())
+        case .unsupported: finish(op, generation, .unsupported, 0, Data())
         }
     }
 
-    /// A completion of a request this file tracks: dropped when the request was cancelled.
-    private func finish(_ op: UInt64, _ generation: UInt64, _ state: AppCompletion.State, _ status: Int32, _ body: Data) {
+    /// Stops a request and completes it as cancelled. Its own answer, if one comes, is dropped.
+    private func stop(_ op: UInt64) {
+        guard let generation = owed[op] else { return }
+        http.cancel(op: op); wake.cancel(op: op)
+        finish(op, generation, .cancelled, 0, Data())
+    }
+
+    /// The one final completion of a request: dropped when it already had one (it was cancelled).
+    private func finish(_ op: UInt64, _ generation: UInt64, _ state: AppCompletion.State, _ status: Int32, _ body: Data, _ type: String = "application/json") {
         guard owed[op] == generation else { return }
         owed[op] = nil
-        post(AppCompletion(op: op, generation: generation, state: state, status: status, body: body, contentType: "application/json"))
+        post(AppCompletion(op: op, generation: generation, state: state, status: status, body: body, contentType: type))
     }
 
     /// Queues a completion for a later turn of the main queue.

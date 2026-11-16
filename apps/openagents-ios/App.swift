@@ -4,7 +4,8 @@
 // Nothing runs in JavaScript. This file owns only what a GPU surface cannot:
 //   - the display link, which sleeps while nothing moves and stops in the background;
 //   - the platform editor: one UITextView over the composer's text while it holds the keyboard;
-//   - VoiceOver: an element per semantic row; the Metal view itself is hidden from accessibility.
+//   - VoiceOver: an element per semantic row; the Metal view itself is hidden from accessibility;
+//   - a tap outside the focused field ends editing (KitFocus), and the page hears focus end.
 import UIKit
 
 @main final class OpenAgentsApp:UIResponder,UIApplicationDelegate {
@@ -22,6 +23,9 @@ import UIKit
     private var stamp:Int32 = -1
     private var rowIDs:[String]=[]
     private var said=""
+    /// The composer field's row, for the tap that ends editing (KitTapOutside).
+    private var fieldBox=CGRect.null
+    private var tapOutside:KitTapOutside?
     private lazy var editor:ComposerEditor={var s=[Float](repeating:0,count:14);_ = oc_style(&s);return ComposerEditor(style:s)}()
 
     override func viewDidLoad() {
@@ -41,6 +45,8 @@ import UIKit
         let canvas=Unmanaged<UIView>.fromOpaque(raw).takeUnretainedValue();self.canvas=canvas
         canvas.frame=view.bounds;canvas.autoresizingMask=[.flexibleWidth,.flexibleHeight];view.addSubview(canvas)
         canvas.isAccessibilityElement=false;canvas.accessibilityElementsHidden=true
+        // A tap outside the focused field gives up the keyboard; the surface still gets the tap.
+        tapOutside=KitTapOutside(on:canvas,field:{ [weak self] in guard let self,self.editor.isFirstResponder else {return nil};return self.fieldBox },end:{ [weak self] in _ = self?.editor.resignFirstResponder() })
         editor.delegate=self;editor.host=view;editor.attach={ [weak self] in self?.attachEditor() };editor.activate={ [weak self] in self?.focus() ?? false }
         let center=NotificationCenter.default
         center.addObserver(self,selector:#selector(keyboardMoved(_:)),name:UIResponder.keyboardWillChangeFrameNotification,object:nil)
@@ -126,7 +132,7 @@ import UIKit
             names.append(name)
             if role==3 {
                 // The field is the platform editor: over the text while it has the keyboard, else standing for the field's row.
-                editor.box=rect;editor.accessibilityIdentifier=name;editor.accessibilityLabel=words;editor.placeholder=words
+                editor.box=rect;fieldBox=rect;editor.accessibilityIdentifier=name;editor.accessibilityLabel=words;editor.placeholder=words
                 elements.append(editor);continue
             }
             let element=ChatRow(accessibilityContainer:view!)

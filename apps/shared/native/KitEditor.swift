@@ -58,3 +58,78 @@ final class ComposerEditor:UITextView {
     }
     override func accessibilityActivate()->Bool {if superview==nil {return activate?() ?? false};return super.accessibilityActivate()}
 }
+
+/// What a single-line field takes, as its surface's Coax says it.
+enum KitFieldKind: Int32 {
+    case plain = 0, email = 1, code = 2, secret = 3
+}
+
+/// The one platform editor for a GPU single-line field (an email address, a one-time code, a
+/// secret) while it holds the keyboard. It is the only editing authority: the surface receives
+/// each whole value and paints no text or caret under it. A code field takes the system's
+/// one-time-code AutoFill; a secret field hides what is typed and is never offered to
+/// autocorrection or the keyboard's learning.
+final class FieldEditor:UITextField {
+    private let style:[Float]
+    private let face:UIFont
+    private(set) var kind:KitFieldKind = .plain
+    init(style:[Float]) {
+        self.style=style;face=NativeKitText.face(CGFloat(style[0]>0 ? style[0]:17))
+        super.init(frame:.zero)
+        borderStyle = .none;backgroundColor = .clear;font=face;textColor=NativeKitText.color(style,2);tintColor=NativeKitText.color(style,10)
+        autocapitalizationType = .none;autocorrectionType = .no;spellCheckingType = .no;smartDashesType = .no;smartQuotesType = .no
+        keyboardAppearance = .dark;enablesReturnKeyAutomatically=true;contentVerticalAlignment = .center
+        adjustsFontForContentSizeCategory=false
+    }
+    required init?(coder:NSCoder) {fatalError()}
+    /// Sets what the field takes and its placeholder. Changing the kind reloads the keyboard.
+    func configure(_ next:KitFieldKind,placeholder:String) {
+        attributedPlaceholder=NSAttributedString(string:placeholder,attributes:[.foregroundColor:NativeKitText.color(style,6),.font:face])
+        guard next != kind || keyboardType == .default && next != .plain else {return}
+        kind=next
+        switch next {
+        case .plain:keyboardType = .default;textContentType=nil;returnKeyType = .done;isSecureTextEntry=false
+        case .email:keyboardType = .emailAddress;textContentType = .emailAddress;returnKeyType = .send;isSecureTextEntry=false
+        case .code:keyboardType = .numberPad;textContentType = .oneTimeCode;returnKeyType = .go;isSecureTextEntry=false
+        case .secret:keyboardType = .asciiCapable;textContentType = .password;returnKeyType = .go;isSecureTextEntry=true
+        }
+        reloadInputViews()
+    }
+}
+
+/// A field that does not hold the keyboard, as VoiceOver sees it: a text field that is never in
+/// the view hierarchy and never edits. Activating it gives the field the keyboard, and the
+/// platform editor takes its place. A secret field's value is never read out.
+final class FieldProxy:UITextField {
+    weak var host:UIView?
+    var box=CGRect.zero
+    var activate:(()->Bool)?
+    override var isAccessibilityElement:Bool {get {true} set {}}
+    override var accessibilityFrame:CGRect {get {host.map {UIAccessibility.convertToScreenCoordinates(box,in:$0)} ?? .zero} set {}}
+    override var accessibilityValue:String? {get {isSecureTextEntry ? nil:text} set {}}
+    override func accessibilityActivate()->Bool {activate?() ?? false}
+    override var canBecomeFirstResponder:Bool {false}
+}
+
+/// Ends text entry on a tap outside the focused field (KitFocus), for every field of a surface.
+/// It never takes the tap from the surface: the surface's own touches still arrive, so a control
+/// under the tap acts as usual and the same tap gives up the keyboard. Install it once on the
+/// surface's view; `field` gives the focused field's frame in that view, nil when none holds the
+/// keyboard, and `end` resigns the platform editor.
+@MainActor final class KitTapOutside:NSObject,UIGestureRecognizerDelegate {
+    private let field:()->CGRect?
+    private let end:()->Void
+    private weak var view:UIView?
+    init(on view:UIView,field:@escaping ()->CGRect?,end:@escaping ()->Void) {
+        self.field=field;self.end=end;self.view=view
+        super.init()
+        let tap=UITapGestureRecognizer(target:self,action:#selector(tapped(_:)))
+        tap.cancelsTouchesInView=false;tap.delaysTouchesBegan=false;tap.delaysTouchesEnded=false;tap.delegate=self
+        view.addGestureRecognizer(tap)
+    }
+    @objc private func tapped(_ tap:UITapGestureRecognizer) {
+        guard tap.state == .ended,let view else {return}
+        if KitFocus.tapEndsEditing(at:tap.location(in:view),field:field()) {end()}
+    }
+    func gestureRecognizer(_ g:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith other:UIGestureRecognizer)->Bool {true}
+}

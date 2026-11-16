@@ -64,6 +64,30 @@ final class MemoryTokens: TokenStore, @unchecked Sendable {
         completing = true; got.append(completion); waiting += react(completion); completing = false
     }
 }
+/// A stand-in for the shared app core's host ABI: queued requests, the results it heard.
+@MainActor final class FakeCore: AppCoreABI {
+    struct Queued { var op: Int64; var fields: [Int64]; var path = ""; var text = ""; var body = "" }
+    struct Done: Equatable { var op: Int64; var generation: Int64; var outcome: Int32; var status: Int32; var flag: Bool; var text: String; var more: String; var value: Int64 }
+    var queued: [Queued] = [], cancels: [Int64] = [], taken: [(Int64, Bool)] = [], done: [Done] = [], lifecycles: [Int32] = []
+    var wakeAt: Int64 = -1, clocks = 0
+    func find(_ op: Int64) -> Queued? { queued.first { $0.op == op } }
+    func next() -> Int64 { queued.first?.op ?? 0 }
+    func request(_ op: Int64) -> [Int64]? { find(op)?.fields }
+    func path(_ op: Int64) -> Data? { find(op).map { Data($0.path.utf8) } }
+    func text(_ op: Int64) -> Data? { find(op).map { Data($0.text.utf8) } }
+    func body(_ op: Int64) -> Data? { find(op).map { Data($0.body.utf8) } }
+    func taken(_ op: Int64, accepted: Bool) { taken.append((op, accepted)); queued.removeAll { $0.op == op } }
+    func cancelNext() -> Int64 { cancels.isEmpty ? 0 : cancels.removeFirst() }
+    func done(op: Int64, generation: Int64, outcome: Int32, status: Int32, flag: Bool, text: Data, more: Data, value: Int64) {
+        done.append(.init(op: op, generation: generation, outcome: outcome, status: status, flag: flag, text: String(decoding: text, as: UTF8.self), more: String(decoding: more, as: UTF8.self), value: value))
+    }
+    func wake() -> Int64 { wakeAt }
+    func clock() { clocks += 1; wakeAt = -1 }
+    func lifecycle(_ code: Int32) { lifecycles.append(code) }
+    /// A request in APP_HOST_ field order: kind, generation, method, limit, timeout, owner.
+    static func fields(_ kind: Int64, _ generation: Int64, method: Int64 = 0, limit: Int64 = 0, timeout: Int64 = 0) -> [Int64] { [kind, generation, method, limit, timeout, 1] }
+}
+
 @MainActor final class Platform: AppPlatform {
     var copied: [String] = [], opened: [String] = []
     func copy(_ text: String) -> Bool { copied.append(text); return true }
@@ -79,8 +103,76 @@ final class MemoryTokens: TokenStore, @unchecked Sendable {
 @main enum AppServicesCheck {
     static let origin = "https://openagents.test"
     @MainActor static func main() async {
-        await http(); await account(); await wake(); await effects()
+        await http(); await account(); await wake(); await effects(); await bridge(); focus()
         print("app-services-check: ok")
+    }
+
+    /// The shared core's requests reach the services, and their results come back as its fields.
+    @MainActor static func bridge() async {
+        let store = MemoryTokens()
+        let auth = AppAuth(origin: origin, send: { r in
+            r.url!.path == "/api/auth/email/start" ? (Data("{\"pending\":\"pend_secret\"}".utf8), 200)
+                : (Data("{\"error\":\"That code has expired.\"}".utf8), 400)
+        }, store: store, device: nil)
+        let account = AppAccount(auth: auth)
+        let http = AppHTTP(policy: .init(origin: origin, admit: { _, path, _ in path.hasPrefix("/api/chat/") }), authorize: AppAccount.authorizer(auth), protocols: [Network.self])
+        let core = FakeCore(), bridge = AppCoreBridge(core: core), platform = Platform()
+        let e = AppEffects(outbox: bridge, http: http, account: account, wake: AppWake(), platform: platform)
+        bridge.effects = e
+        Network.seen = []; Network.answer = { _, body in .init(parts: [Data("{\"echo\":".utf8), body, Data("}".utf8)]) }
+        core.queued = [.init(op: 1, fields: FakeCore.fields(1, 3, method: 2, limit: 4096, timeout: 5000), path: "/api/chat/submit/v2alpha1", body: "{\"a\":1}"),
+                       .init(op: 2, fields: FakeCore.fields(2, 3)), .init(op: 3, fields: FakeCore.fields(6, 3)), .init(op: 4, fields: FakeCore.fields(7, 3), body: "copied"),
+                       .init(op: 5, fields: FakeCore.fields(99, 3)), .init(op: 6, fields: FakeCore.fields(1, 3, method: 7), path: "/api/chat/x"),
+                       .init(op: 7, fields: FakeCore.fields(3, 3), text: "a@b.test")]
+        bridge.heard()
+        expect(core.taken.map(\.0) == [1, 2, 3, 4, 5, 6, 7] && core.taken.map(\.1) == [true, true, true, true, true, false, true], "taken and refused: \(core.taken)")
+        expect(core.done.isEmpty, "a result arrived inside the call")
+        await settle("the bridge's results") { core.done.count == 6 }
+        let by = Dictionary(uniqueKeysWithValues: core.done.map { ($0.op, $0) })
+        expect(by[1] == .init(op: 1, generation: 3, outcome: 1, status: 200, flag: false, text: "{\"echo\":{\"a\":1}}", more: "", value: 0), "the HTTP result: \(String(describing: by[1]))")
+        expect(Network.seen.first?.0.httpMethod == "POST" && Network.seen.first?.0.timeoutInterval == 5, "the method and the request's own timeout")
+        expect(by[2]?.outcome == 1 && by[2]?.flag == false, "the account state")
+        expect(by[3]?.text.count == 32 && by[3]?.more.count == 32 && by[3]?.text != by[3]?.more && (by[3]?.value ?? 0) > 0, "the identities")
+        expect(by[4]?.outcome == 1 && platform.copied == ["copied"], "the clipboard")
+        expect(by[5]?.outcome == 5, "an unknown kind is unsupported")
+        expect(by[7]?.outcome == 1 && by[7]?.flag == true, "the email step")
+        expect(!core.done.contains { $0.text.contains("pend_secret") || $0.more.contains("pend_secret") }, "the email attempt crossed into the core")
+
+        // A wrong code: the server's words come back as the result's text.
+        core.done = []; core.queued = [.init(op: 8, fields: FakeCore.fields(4, 3), text: "000000")]
+        bridge.heard()
+        await settle("the code step") { core.done.count == 1 }
+        expect(core.done[0].outcome == 2 && !core.done[0].flag && !core.done[0].text.isEmpty, "a refused code: \(core.done[0])")
+
+        // A cancellation the core asks for stops the request, which completes as cancelled.
+        core.done = []; Network.answer = { _, _ in .init(hang: true) }
+        core.queued = [.init(op: 9, fields: FakeCore.fields(1, 4, method: 1), path: "/api/chat/state")]
+        bridge.heard()
+        core.cancels = [9]; bridge.heard()
+        await settle("the cancelled request") { core.done.count == 1 }
+        await quiet(60)
+        expect(core.done == [.init(op: 9, generation: 4, outcome: 4, status: 0, flag: false, text: "", more: "", value: 0)] && http.active == 0, "the cancellation: \(core.done)")
+
+        // The core's wake becomes a timer, and then the clock; lifecycle facts go in.
+        var now: Int64 = 1000; bridge.now = { now }
+        core.wakeAt = 1030; bridge.heard()
+        await settle("the wake") { core.clocks == 1 }
+        now = 2000; core.wakeAt = -1; bridge.lifecycle(foreground: false); bridge.lifecycle(foreground: true)
+        expect(core.lifecycles == [2, 1], "the lifecycle codes")
+        bridge.retire(); e.retire()
+        print("ok bridge")
+    }
+
+    /// A tap outside the focused field ends editing; one on it, or with no field focused, does not.
+    static func focus() {
+        let field = CGRect(x: 16, y: 700, width: 370, height: 44)
+        expect(KitFocus.tapEndsEditing(at: CGPoint(x: 200, y: 300), field: field), "a tap above the field")
+        expect(KitFocus.tapEndsEditing(at: CGPoint(x: 395, y: 720), field: field), "a tap on a control beside the field")
+        expect(!KitFocus.tapEndsEditing(at: CGPoint(x: 200, y: 720), field: field), "a tap in the field")
+        expect(!KitFocus.tapEndsEditing(at: CGPoint(x: 16, y: 744), field: field), "a tap on the field's edge")
+        expect(!KitFocus.tapEndsEditing(at: CGPoint(x: 200, y: 300), field: nil), "a tap with no field focused")
+        expect(!KitFocus.tapEndsEditing(at: CGPoint(x: 200, y: 300), field: .null), "a tap with an unplaced field")
+        print("ok focus")
     }
 
     @MainActor static func http() async {
@@ -290,7 +382,7 @@ final class MemoryTokens: TokenStore, @unchecked Sendable {
         expect(outbox.got.isEmpty, "a completion arrived inside pump")
         await settle("the first completions") { outbox.got.count == 6 }
         expect(outbox.got.map(\.op) == [1, 2, 3, 4, 5, 6] && changes == 6, "the order: \(outbox.got.map(\.op))")
-        expect(outbox.got.map(\.state) == [.done, .done, .done, .done, .failed, .failed], "the states: \(outbox.got.map(\.state))")
+        expect(outbox.got.map(\.state) == [.done, .done, .done, .done, .failed, .unsupported], "the states: \(outbox.got.map(\.state))")
         expect(text(outbox.got[0]) == "{\"loggedIn\":false}", "the state: " + text(outbox.got[0]))
         let ids = (try? JSONSerialization.jsonObject(with: outbox.got[1].body)) as? [String: Any] ?? [:]
         expect((ids["command_id"] as? String)?.count == 32 && (ids["session_id"] as? String)?.count == 32 && ids["command_id"] as? String != ids["session_id"] as? String && (ids["now_ms"] as? NSNumber)?.int64Value ?? 0 > 0, "the identities")
@@ -311,7 +403,7 @@ final class MemoryTokens: TokenStore, @unchecked Sendable {
         outbox.react = { c in c.op == 20 ? [.init(op: 21, generation: 3, call: .http(.init(path: "/api/chat/state")))] : [] }
         e.pump()
         await settle("the wake then the request") { outbox.got.count == 2 }
-        expect(outbox.got[1] == AppCompletion(op: 21, generation: 3, state: .done, status: 200, body: Data("{\"state\":\"running\"}".utf8), contentType: "application/json"), "the request's completion")
+        expect(outbox.got[1] == AppCompletion(op: 21, generation: 3, state: .done, status: 200, body: Data("{\"state\":\"running\"}".utf8), contentType: "application/json"), "the request's completion: \(outbox.got[1])")
         expect(Network.seen.last?.0.value(forHTTPHeaderField: "Authorization") == "Bearer oa_at_one", "the session on the request")
 
         // Failed and unknown carry the reason; a refused path never reaches the network.
@@ -322,16 +414,17 @@ final class MemoryTokens: TokenStore, @unchecked Sendable {
         await settle("failed and unknown") { outbox.got.count == 2 }
         expect(outbox.got[0].state == .failed && outbox.got[0].status == AppHTTP.Reason.refused.rawValue && outbox.got[1].state == .unknown && outbox.got[1].status == AppHTTP.Reason.lost.rawValue && Network.seen.count == 1, "failed and unknown: \(outbox.got)")
 
-        // Cancelled requests never complete: one op, and a whole generation.
+        // A cancelled request completes once as cancelled, and its own answer never arrives.
         outbox.got = []; Network.answer = { _, _ in .init(hang: true) }
         outbox.waiting = [.init(op: 40, generation: 4, call: .http(.init(path: "/api/chat/state"))), .init(op: 41, generation: 4, call: .wake(milliseconds: 30)),
                           .init(op: 42, generation: 5, call: .wake(milliseconds: 30)), .init(op: 43, generation: 6, call: .wake(milliseconds: 30))]
         e.pump()
-        outbox.waiting = [.init(op: 44, generation: 6, call: .cancelGeneration(4)), .init(op: 45, generation: 6, call: .cancel(op: 42))]
+        outbox.waiting = [.init(op: 44, generation: 6, call: .cancelGeneration(4)), .init(op: 45, generation: 6, call: .cancel(op: 42)), .init(op: 46, generation: 6, call: .cancel(op: 999))]
         e.pump()
-        await settle("the surviving wake") { outbox.got.count == 1 }
+        await settle("the surviving wake") { outbox.got.count == 4 }
         await quiet(100)
-        expect(outbox.got.map(\.op) == [43] && http.active == 0 && wake.waiting == 0, "cancelled requests completed: \(outbox.got.map(\.op))")
+        expect(Set(outbox.got.prefix(3).map(\.op)) == [40, 41, 42] && outbox.got.prefix(3).allSatisfy { $0.state == .cancelled } && outbox.got.prefix(3).map(\.generation).sorted() == [4, 4, 5], "the cancelled completions: \(outbox.got)")
+        expect(outbox.got.count == 4 && outbox.got[3].op == 43 && outbox.got[3].state == .done && http.active == 0 && wake.waiting == 0, "after the cancels: \(outbox.got.map(\.op))")
 
         // Log out through the outbox; retire drops what is in flight.
         outbox.got = []; outbox.waiting = [.init(op: 50, generation: 6, call: .authLogout)]

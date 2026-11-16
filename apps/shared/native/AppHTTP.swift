@@ -37,6 +37,10 @@ final class AppHTTP: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         var account = true
         /// Answer each part of the body as it arrives (`part`), then the end.
         var stream = false
+        /// This request's own response limit in bytes and timeout in milliseconds, each at most
+        /// the policy's; 0 takes the policy's.
+        var limit = 0
+        var timeoutMs = 0
     }
     /// Why a request did not answer.
     enum Reason: Int32 { case refused = 1, login = 2, offline = 3, tooLarge = 4, lost = 5 }
@@ -60,7 +64,7 @@ final class AppHTTP: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let policy: Policy
     private let authorize: Authorize
     private var session: URLSession!
-    private struct Entry { var generation: UInt64; var task: URLSessionTask?; var stream: Bool; var body = Data(); var received = 0; var status = 0; var type = ""; var over = false; var answer: (Outcome) -> Void }
+    private struct Entry { var generation: UInt64; var task: URLSessionTask?; var stream: Bool; var limit: Int; var body = Data(); var received = 0; var status = 0; var type = ""; var over = false; var answer: (Outcome) -> Void }
     /// Main thread only.
     private var entries: [UInt64: Entry] = [:]
     private var ops: [Int: UInt64] = [:]
@@ -97,7 +101,9 @@ final class AppHTTP: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         let later: (Outcome) -> Void = { o in DispatchQueue.main.async { answer(o) } }
         guard entries[op] == nil, ["GET", "POST"].contains(r.method), policy.admit(r.method, r.path, r.body.count),
               let url = AppHTTP.url(origin: policy.origin, path: r.path) else { later(.failed(.refused)); return }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: policy.timeout)
+        let timeout = r.timeoutMs > 0 ? min(policy.timeout, TimeInterval(r.timeoutMs) / 1000) : policy.timeout
+        let limit = r.limit > 0 ? min(policy.maxResponse, r.limit) : policy.maxResponse
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: timeout)
         request.httpMethod = r.method
         request.httpShouldHandleCookies = false
         request.setValue(r.stream ? "text/event-stream" : "application/json", forHTTPHeaderField: "Accept")
@@ -106,7 +112,7 @@ final class AppHTTP: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             request.setValue(r.contentType, forHTTPHeaderField: "Content-Type")
             request.setValue(policy.origin, forHTTPHeaderField: "Origin")
         }
-        entries[op] = Entry(generation: generation, task: nil, stream: r.stream, answer: answer)
+        entries[op] = Entry(generation: generation, task: nil, stream: r.stream, limit: limit, answer: answer)
         let plain = request, wants = r.account, authorize = self.authorize
         Task { @MainActor [weak self] in
             var ready = plain
@@ -151,7 +157,7 @@ final class AppHTTP: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         guard let op = ops[dataTask.taskIdentifier], var e = entries[op], !e.over else { return }
         e.received += data.count
-        if e.received > policy.maxResponse { e.over = true; e.body = Data(); entries[op] = e; dataTask.cancel(); return }
+        if e.received > e.limit { e.over = true; e.body = Data(); entries[op] = e; dataTask.cancel(); return }
         // A streamed 2xx body is given as it arrives; an error's body is kept for the answer.
         if e.stream, (200..<300).contains(e.status) { entries[op] = e; e.answer(.part(data)); return }
         e.body.append(data); entries[op] = e
