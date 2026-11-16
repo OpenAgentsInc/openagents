@@ -406,7 +406,12 @@ painted 200000
 # Stored as a compact bit stream (digger-mesh.coax: copied corners, predicted 12-bit places, 7-bit octahedral normals;
 # 212,719 characters, where the old 9-character records would take 497 KB): 978,571 bytes measured 2026-11-13 on a
 # Linux build host against 855,657 before (+122,914); 995,641 with the drill mech's section (4ead60a43a); about 3.5% room.
-splice-bots 1030000
+# 1,033,155 bytes measured 2026-11-16 on a Mac with the jam world loaded (jam/jam-world.coax: the catalog reader) and
+# the jam realm's draw guards and actor names (#13653): about 1% room.
+splice-bots 1045000
+# /worlds/splice-bots-jam (unlisted): the same game with the jam world drawn (splice-jam.coax, jam/jam-draw.coax):
+# 1,036,848 bytes measured 2026-11-16 on a Mac; about 1.3% room.
+splice-jam 1050000
 # /worlds on the frames set drawn by the browser (worlds-web.coax, beside the side): 91,057 bytes measured
 # 2026-11-13 on a Mac, about 9% room. It replaces realmlist (70,076 bytes and its 16,279-byte shader).
 worlds-web 100000

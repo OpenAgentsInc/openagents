@@ -446,7 +446,7 @@ bool emit_shader(const File *file, const std::string &vertex, const std::string 
 // `coax wgsl FILE --vertices A,B --fragments C,D --computes E,F --bindings F [--strip P]`: a whole
 // module (WG_module), each vertex, fragment and compute entry (stages 0, 1 and 3) with its
 // resources bound as F's lines (`NAME GROUP BINDING [uniform [COUNT] | rw | atomic]`; `uniform` alone a typed block) say; an
-// entry's WGSL name is its procedure's without the prefix P.
+// entry's WGSL name is its procedure's without the prefix P (P may be a list, A,B: the first that fits).
 #ifndef COAX_BOOTSTRAP_IMPORTER
 static std::vector<std::string> wgsl_list(const std::string &list) {
   std::vector<std::string> r;
@@ -538,7 +538,9 @@ bool emit_wgsl_module(const File *file, const std::string &vertices, const std::
     for (auto [stage, proc] : entries) root = root || proc == p;
     for (size_t i = 0; i < line.size(); i++) {
       std::string w = line[i];
-      if (i == 0 && root && !strip.empty() && w.compare(0, strip.size(), strip) == 0 && w.size() > strip.size()) w = w.substr(strip.size());
+      if (i == 0 && root)
+        for (const std::string &pre : wgsl_list(strip))
+          if (w.compare(0, pre.size(), pre) == 0 && w.size() > pre.size()) { w = w.substr(pre.size()); break; }
       names += (i ? " " : "") + w;
     }
     names += "\n";

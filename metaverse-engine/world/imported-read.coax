@@ -20,7 +20,9 @@ IW_WALLS :: 4096; IW_FLOORS :: 1024; IW_HULLS :: 1024; IW_BODIES :: 512;
 
 IwMat :: struct { rgba: [4] f32; layer: int; flags: int; }
 IwSection :: struct { first: int; count: int; }
-IwInst :: struct { map: int; section: int; mat: int; q: [4] f32; t: [3] f32; s: [3] f32; }
+// actor: its placement name's actor (iw_actor_name) as iw_hash, so a realm groups an actor's parts and
+// finds a game's actors by name; 0 for none.
+IwInst :: struct { map: int; section: int; mat: int; q: [4] f32; t: [3] f32; s: [3] f32; actor: u32; }
 IwLight :: struct { at: [3] f32; rgb: [3] f32; intensity: f32; range: f32; }
 IwSpot :: struct { map: int; kind: int; at: [3] f32; yaw: f32; name: [32] u8; name_n: int; }
 IW_SPOT_START :: 0; IW_SPOT_TAG :: 1; IW_SPOT_TARGET :: 2;
@@ -55,6 +57,20 @@ iw_field :: (line: string, k: int) -> string #effects(all) {
   return ifx i == k then line[from..<line.count] else "";
 }
 iw_fields :: (line: string) -> int #effects(all) { n := 1; for c: line { if c == ' ' { n += 1; } } return n; }
+// FNV-1a of a name; 0 only for none.
+iw_hash :: (s: string) -> u32 #effects(all) {
+  if s.count == 0 { return 0; }
+  h: u32 = 2166136261;
+  for c: s { h = mul_wrap(h ^ cast(u32) c, cast(u32) 16777619); }
+  return ifx h == 0 then 1 else h;
+}
+// A placement name's actor: the part before its first '/', without a sublevel's or level instance's
+// "NAME." in front ("L_SolarFarm_GreekQuarter.SpliceSniper_0/ModelCab" gives "SpliceSniper_0").
+iw_actor_name :: (name: string) -> string #effects(all) {
+  end := name.count; for c, k: name { if c == '/' { end = k; break; } }
+  from := 0; for k: 0..<end { if name[k] == '.' { from = k + 1; } }
+  return name[from..<end];
+}
 // A decimal as the importer writes it (sign, digits, an optional point and digits, an optional exponent).
 IwNum :: struct { ok: bool; v: f64; }
 iw_num :: (s: string) -> IwNum #effects(all) {
@@ -123,6 +139,7 @@ iw_admit :: (w: [] IwWorld, text: string) -> bool #effects(all) {
       if w[0].ni >= IW_INSTANCES || n != 17 { return iw_refuse(w, "more instances than a world holds, or one of the wrong form"); }
       p: IwInst; p.map = iw_i(l, 1, 0, IW_MAPS - 1); p.section = iw_i(l, 2, 0, IW_SECTIONS - 1); p.mat = iw_i(l, 3, 0, IW_MATS - 1);
       for c: 0..<4 { p.q[c] = iw_f(l, 6 + c); } for c: 0..<3 { p.t[c] = iw_f(l, 10 + c); p.s[c] = iw_f(l, 13 + c); }
+      p.actor = iw_hash(iw_actor_name(iw_field(l[0].line, 16)));
       w[0].inst[w[0].ni] = p; w[0].ni += 1;
     } else if what == "spawn" || what == "fall" || what == "key" || what == "light" {
       m := iw_i(l, 1, 0, IW_MAPS - 1);
@@ -197,22 +214,27 @@ iw_draws :: (w: [] IwWorld, map: int, draws: [] u32, objects: [] f32) -> int #ef
     if (n + 1) * 4 > draws.count || (n + 1) * IW_OBJECT > objects.count { break; }
     sc := w[0].sections[p.section];
     draws[n * 4] = cast(u32) sc.first; draws[n * 4 + 1] = cast(u32) sc.count; draws[n * 4 + 2] = cast(u32) n; draws[n * 4 + 3] = 1;
-    m := iw_rows(p.q); o := n * IW_OBJECT;
-    for r: 0..<3 {
-      for c: 0..<3 {
-        objects[o + r * 4 + c] = m.r[r * 3 + c] * p.s[c];
-        inv := ifx abs(p.s[c]) > 0.000001 then 1.0f32 / p.s[c] else 0.0f32;
-        objects[o + 12 + r * 4 + c] = m.r[r * 3 + c] * inv;
-      }
-      objects[o + r * 4 + 3] = p.t[r]; objects[o + 12 + r * 4 + 3] = 0;
-    }
-    mt := w[0].mats[p.mat];
-    for c: 0..<4 { objects[o + 24 + c] = mt.rgba[c]; }
-    if mt.flags & 4 != 0 { objects[o + 27] = -mt.rgba[3]; }   // unlit: the shader takes a negative alpha
-    objects[o + 28] = cast(f32) mt.layer; objects[o + 29] = 0; objects[o + 30] = 0; objects[o + 31] = 0;   // its colour layer, or -1
+    iw_object(w, k, objects, n * IW_OBJECT);
     n += 1;
   }
   return n;
+}
+// Instance k's IW_OBJECT floats of the object store at o (iw_draws says what they are; the last three are 0).
+iw_object :: (w: [] IwWorld, k: int, objects: [] f32, o: int) #effects(all) {
+  p := w[0].inst[k];
+  m := iw_rows(p.q);
+  for r: 0..<3 {
+    for c: 0..<3 {
+      objects[o + r * 4 + c] = m.r[r * 3 + c] * p.s[c];
+      inv := ifx abs(p.s[c]) > 0.000001 then 1.0f32 / p.s[c] else 0.0f32;
+      objects[o + 12 + r * 4 + c] = m.r[r * 3 + c] * inv;
+    }
+    objects[o + r * 4 + 3] = p.t[r]; objects[o + 12 + r * 4 + 3] = 0;
+  }
+  mt := w[0].mats[p.mat];
+  for c: 0..<4 { objects[o + 24 + c] = mt.rgba[c]; }
+  if mt.flags & 4 != 0 { objects[o + 27] = -mt.rgba[3]; }   // unlit: the shader takes a negative alpha
+  objects[o + 28] = cast(f32) mt.layer; objects[o + 29] = 0; objects[o + 30] = 0; objects[o + 31] = 0;   // its colour layer, or -1
 }
 
 // ---- walking

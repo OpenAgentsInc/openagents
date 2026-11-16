@@ -2303,6 +2303,8 @@ function bindScene() {
   // an asset or pack installed: the shadow tiles are drawn again (rate-limited in Coax: metaverse-engine/render/graph/cascades.coax)
   if (engine?.exports.coaxial_shadow_event_v1 && arena?.state) engine.exports.coaxial_shadow_event_v1(arena.state, 1, 0);
   const gpuAssets = assets.filter((a) => ["storage", "index", "layers"].includes(a.kind));
+  // an optional asset the group was bound without (a placeholder in its place) has come: bind it again with it
+  if (gpu?.sceneGroup && gpu.sceneHeld?.some((a) => a.done && !a.failed)) gpu.sceneGroup = null;
   if (!gpu || gpu.sceneGroup || !engine?.exports.coaxial_draws || gpuAssets.some((a) => (!a.done || a.failed) && !engine.exports.coaxial_asset_optional_v1?.(a.i))) return;
   const x = engine.exports, { device } = gpu, resources = [];
   for (const a of assets) if (a.kind === "storage") {
@@ -2313,12 +2315,15 @@ function bindScene() {
   for (const buffer of gpu.stores) resources.push({buffer});
   const layers = assets.find((a) => a.kind === "layers");
   if (layers) {
-    resources.push(layers.texture.createView({ dimension: "2d-array" }));
+    // a private pack that is not here (a golden, a page that may not load it) binds one texel, so a page whose
+    // assets are all optional (splice-jam-face.c) draws its own scene without it
+    resources.push((layers.texture || flatDataTexture(device)).createView({ dimension: "2d-array" }));
     resources.push(device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear", addressModeU: "repeat", addressModeV: "repeat", maxAnisotropy: 8 }));
     // a pack without data layers binds one flat-normal texel; the realm's table then names no maps
     if (wantsDataLayers()) resources.push((layers.dataTexture || flatDataTexture(device)).createView({ dimension: "2d-array" }));
   }
   gpu.index = assets.find((a) => a.kind === "index")?.buffer;
+  gpu.sceneHeld = gpuAssets.filter((a) => !a.done);
   gpu.sceneGroup = device.createBindGroup({ layout: sceneLayout(), entries: resources.map((resource, binding) => ({ binding, resource })) });
 }
 

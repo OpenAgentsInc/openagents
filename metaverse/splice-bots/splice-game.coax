@@ -1009,7 +1009,7 @@ dn_block :: (g: [] SpGame, buf: [] u32, p: [] Pen, x: f32, y0: f32, z: f32, hx: 
 g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   g[0].kit[0] = KsMarks.{};   // the kit slots' blockout, marked as it is drawn (kits.coax)
   mr_draw(g, buf, p);   // the metrics room (metrics.coax)
-  pl_draw(g, buf, p);   // the ground, the three landmark rocks, the mountain and the plain's edge (plain.coax)
+  if !g[0].jam { pl_draw(g, buf, p); }   // the jam world draws its own plain and garage (splice-jam.coax); the ground, the three landmark rocks, the mountain and the plain's edge (plain.coax)
   room := dv_room(g);
   for i: 0..<g[0].wall_n {
     o := i * 5; h := g[0].walls[o + 4];
@@ -1019,7 +1019,7 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     band := ifx deep then t3(0.50, 0.32, 0.50) else t3(0.72, 0.34, 0.26);
     kit_wall(buf, p, 6 + (i % 4) * 2, face, band, g[0].walls[o], g[0].walls[o + 1], g[0].walls[o + 2], g[0].walls[o + 3], h, cast(f32) i * 17);
   }
-  ga_draw(g, buf, p);   // the garage: the field, the ring of lettered bays, the rim, the hallway and the lab (garage.coax)
+  if !g[0].jam { ga_draw(g, buf, p); }   // the garage: the field, the ring of lettered bays, the rim, the hallway and the lab (garage.coax)
   // the checkpoint post and the stash crate (Sniper parked at the mine is drawn live: g_live)
   kit_pen(p, 25, MAT_SKIN, t3(0.93, 0.88, 0.76));
   tube(buf, p, frame_at(v3(g[0].at.post_x, 0, g[0].at.post_z), 0), 3.2, 0.14, 0.14, 0.1, 0.1, 8, true);
@@ -1144,7 +1144,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   rv := cm_rover(g);
   if rv.ok && (dv_away(g) || cm_faded(g)) { n0 := p[0].n; g_rover_at(g, buf, p, frame_at(v3(rv.x, rv.y, rv.z), rv.yaw), 180, 1); cm_dissolve(g, buf, n0, p[0].n); }
   if fr_front(g) { fr_live(g, buf, p); return; }
-  if g[0].zone == Z_MINE && !sp_in_room(g) && (g[0].mode == M_PLAY || g[0].mode == M_DRIVE || g[0].mode == M_BANNER) { pl_far(g, buf, p); }   // the mountain, where the camera is (plain.coax)
+  if g[0].zone == Z_MINE && !sp_in_room(g) && !g[0].jam && (g[0].mode == M_PLAY || g[0].mode == M_DRIVE || g[0].mode == M_BANNER) { pl_far(g, buf, p); }   // the mountain, where the camera is (plain.coax)
   if g[0].mode == M_MEMORY { sb_memory_live(g, buf, p); return; }   // the hologram (splice-battle.coax)
   if g[0].mode != M_DRIVE { _ := sd_cables(g, buf, p); }   // chargers plugged into the parked rover train (layer-draw.coax)
   if g[0].mode == M_BAY {

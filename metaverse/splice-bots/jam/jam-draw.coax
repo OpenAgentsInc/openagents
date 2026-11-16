@@ -1,0 +1,161 @@
+// The jam world, drawn (GitHub #13653): the Splice Bots jam build's levels from the private pack
+// (private:splice-bots-jam), in the game's cel and ink pass. The page module is splice-jam
+// (metaverse/splice-bots/splice-jam.coax); its shader draws these rows (gpu/splice-jam.coax).
+//
+// The pack's catalog is read with the engine's imported-world reader (metaverse-engine/world/imported-read.coax).
+// Its route maps (L_SolarFarm with its Greek quarter, L_Plain, L_Ring with its bays, L_Lab) are drawn
+// where they stand: the jam's maps share the prototype's frame, so nothing is moved. Its other maps
+// (L_Farm, L_Cabin, L_Look_01) are not drawn. A sky dome (scaled past SJD_SKY on every axis) is left
+// out: the anime sky stands for it. A piece two route maps both place (the same section, material and
+// transform) is drawn once.
+//
+// The rows: each drawn instance is a row of the object store (IW_OBJECT floats, iw_object's: its
+// position and normal rows and its material's colour and layer; then its actor's slot, its anime
+// material and its ink number). Rows are sorted by section, so a section is one indexed draw of all
+// its instances: about a hundred draws for every route map, written once. The farm (1,800 instances)
+// and the ring (2,300) are about 200,000 and 320,000 triangles: the whole route is drawn every frame,
+// with no cull.
+//
+// The world read whole and the route (the maps, the game actors) are the page's SjStore, which the game
+// reads too (jam-world.coax sj_load, sj_bind): this file reads no catalog of its own. An instance that is a
+// part of one of the route's game actors (jam-world.coax SjJam.actors) is drawn where the game says each
+// frame: hidden, or moved and turned with the actor (sj_actor_set; the actor store, sjd_actor_rows).
+//   coax/bin/coax test metaverse/splice-bots/splice-jam.coax --only jam
+
+SJD_BASE :: 65536;         // a jam row's instance index is SJD_BASE + its row (gpu/splice-jam.coax sj_scene_vs)
+SJD_ROWS :: IW_INSTANCES;
+SJD_DRAWS :: 512;          // draws, a section's rows each
+SJD_SKY :: 1000.0;         // an instance scaled past this on every axis is a sky dome
+SJD_HASH :: 16384;         // the table that finds a piece two route maps place
+SJD_ACTOR_FLOATS :: 12;    // an actor's row of the actor store: (x, y, z, shown), (its middle, 0), (cos yaw, sin yaw, 0, 0)
+// The anime materials a jam row takes (gpu/animelab.coax's): the world's cel, or flat (unlit, no ink).
+SJD_MAT_WORLD :: 0.0; SJD_MAT_FLAT :: 4.0;
+SJD_UNLIT :: 4;            // a material's unlit flag (metaverse-engine/import/unreal/convert.coax CV_UNLIT)
+
+SjDraw :: struct {
+  assets: [4] int;            // the pack's four parts' bytes as they came: catalog, vertices, indices, layers
+  built: bool;
+  rows: int;                  // rows in the object store
+  skies: int; twins: int;     // instances left out: sky domes, and pieces a second map placed again
+  parts: int;                 // rows that are a game actor's parts
+  draws: [SJD_DRAWS * 4] u32; draw_n: int;
+  store_gen: int;             // the object store's writes (the host copies it when this changes)
+  hash: [SJD_HASH] int;       // row + 1 at a piece's hash, while the rows are built
+}
+
+sjd_sky :: (p: IwInst) -> bool #effects(all) { return abs(p.s[0]) > SJD_SKY && abs(p.s[1]) > SJD_SKY && abs(p.s[2]) > SJD_SKY; }
+// A piece's identity for drawing it once: its section, material and transform, to a millimetre.
+sjd_piece_hash :: (p: IwInst) -> u32 #effects(all) {
+  h: u32 = 2166136261;
+  h = mul_wrap(h ^ cast(u32) p.section, cast(u32) 16777619); h = mul_wrap(h ^ cast(u32) p.mat, cast(u32) 16777619);
+  for c: 0..<3 {
+    h = mul_wrap(h ^ cast,trunc(u32) cast(s64) floor(p.t[c] * 1000 + 0.5), cast(u32) 16777619);
+    h = mul_wrap(h ^ cast,trunc(u32) cast(s64) floor(p.s[c] * 1000 + 0.5), cast(u32) 16777619);
+  }
+  for c: 0..<4 { h = mul_wrap(h ^ cast,trunc(u32) cast(s64) floor(p.q[c] * 10000 + 0.5), cast(u32) 16777619); }
+  return h;
+}
+sjd_same :: (a: IwInst, b: IwInst) -> bool #effects(all) {
+  if a.section != b.section || a.mat != b.mat { return false; }
+  for c: 0..<3 { if abs(a.t[c] - b.t[c]) > 0.001 || abs(a.s[c] - b.s[c]) > 0.001 { return false; } }
+  for c: 0..<4 { if abs(a.q[c] - b.q[c]) > 0.0001 { return false; } }
+  return true;
+}
+// The route actor an instance is a part of (its map one of the route's, its actor's name the same), or -1.
+sjd_actor_of :: (j: [] SjJam, names: [] u32, p: IwInst) -> int #effects(all) {
+  if p.actor == 0 { return -1; }
+  for i: 0..<j[0].n { if names[i] == p.actor && j[0].map[j[0].actors[i].route] == p.map { return i; } }
+  return -1;
+}
+
+// The route maps' rows from the page's store (read by jam-world.coax sj_load), into `objects` (the object
+// store, SJD_ROWS * IW_OBJECT floats), and their draws. Nothing when the store holds no route.
+sjd_build :: (d: [] SjDraw, s: [] SjStore, objects: [] f32) #effects(all) {
+  d[0].rows = 0; d[0].draw_n = 0; d[0].skies = 0; d[0].twins = 0; d[0].parts = 0; d[0].built = true; d[0].store_gen += 1;
+  j := s[0].jam[..]; w := s[0].world[..];
+  if !j[0].ok { return; }
+  drawn: [IW_MAPS] bool;
+  for r: 0..<SJ_MAPS { m := j[0].map[r]; if m >= 0 && m < IW_MAPS { drawn[m] = true; } }
+  names: [SJ_ACTORS] u32;
+  for i: 0..<j[0].n { names[i] = iw_hash(cast(string) j[0].actors[i].name[0..<j[0].actors[i].name_n]); }
+  // the drawn instances, each once, counted by section
+  counts: [IW_SECTIONS] int;
+  for k: 0..<SJD_HASH { d[0].hash[k] = 0; }
+  keep: [IW_INSTANCES] bool;
+  for k: 0..<w[0].ni {
+    p := w[0].inst[k]; keep[k] = false;
+    if !drawn[p.map] { continue; }
+    if sjd_sky(p) { d[0].skies += 1; continue; }
+    at := cast(int) (sjd_piece_hash(p) % cast(u32) SJD_HASH); twin := false;
+    while d[0].hash[at] != 0 {
+      if sjd_same(w[0].inst[d[0].hash[at] - 1], p) { twin = true; break; }
+      at = (at + 1) % SJD_HASH;
+    }
+    if twin { d[0].twins += 1; continue; }
+    d[0].hash[at] = k + 1; keep[k] = true; counts[p.section] += 1;
+  }
+  // rows by section: each section's run of rows is one draw of its instances
+  start: [IW_SECTIONS] int; n := 0;
+  for sc: 0..<w[0].ns {
+    start[sc] = n;
+    if counts[sc] > 0 && d[0].draw_n < SJD_DRAWS {
+      e := w[0].sections[sc]; i := d[0].draw_n * 4;
+      d[0].draws[i] = cast(u32) e.first; d[0].draws[i + 1] = cast(u32) e.count; d[0].draws[i + 2] = cast(u32) (SJD_BASE + n); d[0].draws[i + 3] = cast(u32) counts[sc];
+      d[0].draw_n += 1;
+    }
+    n += counts[sc];
+  }
+  rows := ifx n < objects.count / IW_OBJECT then n else objects.count / IW_OBJECT;
+  for k: 0..<w[0].ni {
+    if !keep[k] { continue; }
+    p := w[0].inst[k]; r := start[p.section]; start[p.section] += 1;
+    if r >= rows { continue; }
+    o := r * IW_OBJECT;
+    iw_object(w, k, objects, o);
+    a := sjd_actor_of(j, names[..], p);
+    if a >= 0 { d[0].parts += 1; }
+    objects[o + 29] = cast(f32) (a + 1);
+    objects[o + 30] = ifx w[0].mats[p.mat].flags & SJD_UNLIT != 0 then SJD_MAT_FLAT else SJD_MAT_WORLD;
+    objects[o + 31] = cast(f32) (1 + r % 250);   // its ink number: a line where two pieces meet
+  }
+  d[0].rows = rows;
+}
+// The actor store from the game's route (g[0].jr: its actors as the game left them this frame): how many
+// floats are written.
+sjd_actor_rows :: (j: [] SjJam, out: [] f32) -> int #effects(all) {
+  n := 0;
+  for i: 0..<j[0].n {
+    o := i * SJD_ACTOR_FLOATS;
+    if o + SJD_ACTOR_FLOATS > out.count { break; }
+    a := j[0].actors[i];
+    out[o] = ifx a.moved then a.mx else a.x; out[o + 1] = ifx a.moved then a.my else a.y; out[o + 2] = ifx a.moved then a.mz else a.z;
+    out[o + 3] = ifx a.hidden then 0.0f32 else 1.0f32;
+    out[o + 4] = a.x; out[o + 5] = a.y; out[o + 6] = a.z; out[o + 7] = 0;
+    yaw := ifx a.moved then a.myaw else 0.0f32;
+    out[o + 8] = cos(yaw); out[o + 9] = sin(yaw); out[o + 10] = 0; out[o + 11] = 0;
+    n = o + SJD_ACTOR_FLOATS;
+  }
+  return n;
+}
+
+// One of the pack's parts arrived (bytes 0: it failed or is not here).
+sjd_asset :: (d: [] SjDraw, index: int, bytes: int) #effects(all) {
+  if index < 0 || index > 3 { return; }
+  d[0].assets[index] = bytes;
+}
+// The pack is in: its route's rows written and its vertices and indices on the GPU.
+sjd_ready :: (d: [] SjDraw) -> bool #effects(all) { return d[0].rows > 0 && d[0].assets[1] > 0 && d[0].assets[2] > 0; }
+// The jam's draws after the game's, from draws[at]: how many there are now.
+sjd_draws :: (d: [] SjDraw, draws: [] u32, at: int) -> int #effects(all) {
+  if !sjd_ready(d) || !d[0].built { return at; }
+  n := at;
+  for k: 0..<d[0].draw_n {
+    if (n + 1) * 4 > draws.count { break; }
+    for c: 0..<4 { draws[n * 4 + c] = d[0].draws[k * 4 + c]; }
+    n += 1;
+  }
+  return n;
+}
+// The object store's bytes to copy.
+sjd_store_bytes :: (d: [] SjDraw) -> int #effects(all) { return d[0].rows * IW_OBJECT * 4; }
+

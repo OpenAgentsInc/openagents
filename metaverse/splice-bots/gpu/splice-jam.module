@@ -1,0 +1,3 @@
+--vertices sj_bg_vs,sj_shadow_vs,sj_scene_vs,sj_fx_vs
+--fragments sj_bg_fs,sj_shadow_fs,sj_scene_fs,sj_bloom_fs,post_fs,fx_fs
+--bindings metaverse/splice-bots/gpu/splice-jam.bindings --strip sj_

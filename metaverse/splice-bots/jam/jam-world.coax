@@ -28,6 +28,9 @@ SjActor :: struct {
   x: f32; y: f32; z: f32; yaw: f32; // its parts' middle, metres, and its first part's yaw (radians about +y from +z toward +x)
   parts: int;
   name: [SJ_NAME] u8; name_n: int;  // its Unreal actor name, without the sublevel
+  // how the jam realm draws it now (sj_actor_set; jam-draw.coax): hidden, or moved (its middle at
+  // (mx, my, mz), turned myaw radians about +y from how the catalog placed it)
+  hidden: bool; moved: bool; mx: f32; my: f32; mz: f32; myaw: f32;
 }
 SjSpawn :: struct { x: f32; y: f32; z: f32; yaw: f32; ok: bool; }
 SjJam :: struct {
@@ -219,3 +222,17 @@ sj_floor :: (g: [] SpGame, x: f32, z: f32, feet: f32, below: f32) -> f32 {
   }
   return y;
 }
+
+// ---- how the jam realm draws an actor (jam-draw.coax, the splice-jam page)
+// The game hides an actor or moves it each frame; every part of it in the jam's maps goes with it. An actor
+// is g[0].jr[0].actors[i] (its kind, route and middle as sj_read found them); the game calls these on g[0].jr[..].
+//   sj_actor_set(j, i, shown, x, y, z, yaw)   shown with its middle at (x, y, z) turned yaw radians (about +y,
+//                                            from +z toward +x) from how the catalog placed it, or hidden
+//   sj_actor_reset(j, i)                     shown where the catalog placed it
+sj_actor_set :: (j: [] SjJam, i: int, shown: bool, x: f32, y: f32, z: f32, yaw: f32) {
+  if i < 0 || i >= j[0].n { return; }
+  a := j[0].actors[i];
+  a.hidden = !shown; a.moved = x != a.x || y != a.y || z != a.z || yaw != 0; a.mx = x; a.my = y; a.mz = z; a.myaw = yaw;
+  j[0].actors[i] = a;
+}
+sj_actor_reset :: (j: [] SjJam, i: int) { if i >= 0 && i < j[0].n { j[0].actors[i].hidden = false; j[0].actors[i].moved = false; } }

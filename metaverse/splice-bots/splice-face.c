@@ -2,7 +2,11 @@
 // its frame); this file decides nothing. It keeps the two stores the scene draws from, and asks
 // animelab-style.coax (Anime Lab's style library) for the anime block each frame, which the page
 // copies into the uniforms. Every pointer is an offset into the host's WebAssembly.Memory.
+#ifndef SPLICE_FACE_JAM
 #include "splice-bots.h"
+#else
+#include "splice-jam.h"   /* splice-jam-face.c includes this file with SPLICE_FACE_JAM */
+#endif
 #include "Animelab-style.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -20,13 +24,16 @@ static uint32_t live[LIVE_WORDS];
 #define PLACE_WORDS ((65u + 540u) * 8u)   /* layer-draw.coax SD_PLACE_WORDS: a row a placed piece, the player's, then the solar farm's 540 banks (farm.coax FF_BANKS) */
 static uint32_t pieces[PIECE_WORDS];
 static uint32_t places[PLACE_WORDS];
+#ifndef SPLICE_FACE_JAM   /* the jam realm has no import pack */
 #define IMPORT_BYTES 1048576u         /* pieces.coax SP_IMPORT_PACK: the world's import pack, as it arrives and as it was last read whole */
 static uint8_t imports_in[IMPORT_BYTES];
 static uint8_t imports[IMPORT_BYTES];
+#endif
 static float style[128];            /* STYLE_FLOATS */
 static uint32_t frames;
 static bool golden;
 
+#ifndef SPLICE_FACE_JAM   /* the jam realm keeps a SpliceJam (splice-jam-face.c) */
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_Splice) * 1000003u + offsetof(coax_t_Splice, world_n) * 13u + 0x53504c43u);
 }
@@ -34,6 +41,7 @@ EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_
 // A new state's declared defaults (coax_default_T, from the compiler). The host calls this first,
 // and again on a code reload that changes the state's layout, before it carries the old fields over.
 EXPORT("coaxial_state_init") void coaxial_state_init(cx_face_addr state) { coax_default_t_Splice(splice_state(state)); }
+#endif
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_splice_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_splice_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_splice_uniform_floats(); }
@@ -87,6 +95,7 @@ static void store(cx_face_addr state) {
   }
 }
 
+#ifndef SPLICE_FACE_JAM   /* the jam realm frames the jam world and takes the private pack (splice-jam-face.c) */
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr uniforms, float width, float height, float dpr, float dt, uint32_t still) {
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_splice_max_vertices() * coaxial_splice_vertex_floats()};
@@ -113,6 +122,7 @@ EXPORT("coaxial_asset_optional_v1") uint32_t coaxial_asset_optional_v1(int32_t i
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof imports_in) splice_imports(at(state), (coax_string){(const char *)imports_in, (int64_t)bytes}, (coax_v_u8){imports, IMPORT_BYTES});
 }
+#endif
 
 // The scene: draws of vertices in order (no index). Store 0 is the Mars world, written once; store 1
 // what moves, written every frame; store 2 the meshes of the kinds of placed piece, written once;
@@ -122,6 +132,7 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32
 static uint8_t sounds[2048];
 EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(cx_face_addr state) { return (uint32_t)splice_sounds(at(state), (coax_v_u8){sounds, sizeof sounds}); }
 EXPORT("coaxial_sounds") cx_face_addr coaxial_sounds(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)sounds; }
+#ifndef SPLICE_FACE_JAM   /* the jam realm draws more and keeps six stores (splice-jam-face.c) */
 EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return (cx_face_addr)(uintptr_t)splice_state(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { return (uint32_t)splice_draw_count(at(state)); }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
@@ -142,6 +153,7 @@ EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr state, i
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr state, int32_t k) {
   return k == 0 ? (uint32_t)splice_world_version(at(state)) : k == 1 ? frames : k == 2 ? (uint32_t)splice_piece_version(at(state)) : (uint32_t)splice_place_version(at(state));
 }
+#endif
 
 // Keys and the pointer go to the game (WASD, E, F, the edit bay's keys and buttons).
 EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) { (void)mods; return splice_key(at(state), key, true) ? 1u : 0u; }

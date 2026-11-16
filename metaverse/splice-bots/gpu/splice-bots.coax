@@ -4,7 +4,7 @@
 // edit layer's two stores).
 // No WGSL is written by hand.
 //
-// Two things are Splice's own: the placed pieces' instances (shadow_vs, scene_vs, below) and the overlay (fx_fs). Anime Lab's overlay is light on dark (its blend
+// Two things are Splice's own: the placed pieces' instances (spg_shadow_vs, spg_scene_vs, below: their entries shadow_vs and scene_vs) and the overlay (fx_fs). Anime Lab's overlay is light on dark (its blend
 // keeps the brighter colour). Splice's interface is ink on cream paper, so its overlay writes
 // straight alpha and the page asks the host for source-over blending (coaxial_fx_alpha_v1):
 // a stroke is a solid shape with no glow, and text takes its ink's colour in one of two faces.
@@ -43,7 +43,7 @@ sp_place :: (id:u32,instance:u32,pieces:[]u32,places:[]u32)->V3 {
   t:V3=sp_turn(q,r,places);
   return v3(t.x+al_word(r,places),t.y+al_word(add_wrap(r,cast(u32)1),places),t.z+al_word(add_wrap(r,cast(u32)2),places));
 }
-shadow_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32)->AnimelabShade {
+spg_shadow_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32)->AnimelabShade {
   if (instance<cast(u32)2) {return animelab_shadow_vs(id,instance,u,world,live);}
   o:AnimelabShade;
   mat:u32=pieces[cast(int)add_wrap(mul_wrap(id,cast(u32)6),cast(u32)4)]>>24;
@@ -54,7 +54,7 @@ shadow_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,pl
   }
   return o;
 }
-scene_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32)->AnimelabS {
+spg_scene_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32)->AnimelabS {
   if (instance<cast(u32)2) {return animelab_scene_vs(id,instance,u,world,live);}
   o:AnimelabS;
   b:u32=mul_wrap(id,cast(u32)6);

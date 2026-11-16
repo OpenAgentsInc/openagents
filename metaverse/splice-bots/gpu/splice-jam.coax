@@ -1,0 +1,130 @@
+// The jam realm's shaders (/worlds/splice-bots-jam, metaverse/splice-bots/splice-jam.coax): Splice's
+// (splice-bots.coax, loaded whole and unchanged), and the jam world's rows drawn in the same cel and ink
+// pass. build.sh writes apps/openagents-web/splice-jam.wgsl from it with coax/web/wgsl-module.coax
+// (splice-jam.module and splice-jam.bindings). No WGSL is written by hand.
+//
+// An instance below SJD_BASE is Splice's (its world, live store and placed pieces: scene_vs and
+// shadow_vs, as /worlds/splice-bots draws them). From SJD_BASE an instance is a row of the jam's object
+// store (metaverse/splice-bots/jam/jam-draw.coax): a pack vertex (48 bytes: position, normal, UV,
+// linear RGBA) placed by the row's rows, and moved by its game actor's row of the actor store
+// (jam-draw.coax sjd_actor_rows: hidden, or its parts turned about its middle and set down where the game says).
+// Its colour is the vertex's times its material's, times its colour layer at its UV when it has one.
+// Each entry here is a thin wrapper, so the module's entries keep the names the host looks for.
+#load "splice-bots.coax";
+#load "../../../metaverse-engine/render/sampling.coax";
+
+SJ_GPU_BASE :: 65536;   // jam-draw.coax SJD_BASE
+
+// The jam row's surface, and Splice's in the same struct (its uv unused, its layer -1).
+SjS :: struct {pos:V4; world:V3; normal:V3; colour:V3; mat:f32 #flat; param:f32; obj:f32 #flat; uv:V2; layer:f32 #flat; }
+
+sj_vec3 :: (a:V4)->V3 {return v3(a.x,a.y,a.z);}
+// A point of the row's mesh in the world: the row's rows, then its actor's move.
+sj_place :: (rest:V4,o:int,rows:[]V4,actors:[]V4)->V3 {
+  return sj_move(v3(wg_dot4(rows[o],rest),wg_dot4(rows[o+1],rest),wg_dot4(rows[o+2],rest)),true,o,rows,actors);
+}
+// The row's actor's move of a point (turned about the actor's middle and set down where it is now), or
+// of a direction (turned).
+sj_move :: (p:V3,point:bool,o:int,rows:[]V4,actors:[]V4)->V3 {
+  slot:f32=rows[o+7].y;
+  if (slot<0.5f32) {return p;}
+  a:int=(cast(int)(slot+0.5f32)-1)*3;
+  now:V4=actors[a]; mid:V4=actors[a+1]; turn:V4=actors[a+2];
+  q:V3=ifx point then v3(p.x-mid.x,p.y-mid.y,p.z-mid.z) else p;
+  t:V3=v3((q.x*turn.x)+(q.z*turn.y),q.y,(q.z*turn.x)-(q.x*turn.y));
+  return ifx point then v3(t.x+now.x,t.y+now.y,t.z+now.z) else t;
+}
+// The row's actor is hidden: its triangles fold to a point off the screen.
+sj_hidden :: (o:int,rows:[]V4,actors:[]V4)->bool {
+  slot:f32=rows[o+7].y;
+  if (slot<0.5f32) {return false;}
+  return actors[((cast(int)(slot+0.5f32)-1)*3)].w<0.5f32;
+}
+sj_rest :: (id:u32,vertices:[]u32)->V4 {
+  at:int=cast(int)id*12;
+  return v4(f32_from_bits(vertices[at]),f32_from_bits(vertices[at+1]),f32_from_bits(vertices[at+2]),1.0f32);
+}
+
+sj_shadow_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32,vertices:[]u32,jam_rows:[]V4,jam_actors:[]V4)->AnimelabShade {
+  if (instance<cast(u32)SJ_GPU_BASE) {return spg_shadow_vs(id,instance,u,world,live,pieces,places);}
+  o:int=cast(int)(instance-cast(u32)SJ_GPU_BASE)*8;
+  s:AnimelabShade;
+  s.pos=al_rows(u,AL_SHADOW,sj_place(sj_rest(id,vertices),o,jam_rows,jam_actors));
+  // flat marks cast no shadow, and a hidden actor none at all
+  if ((jam_rows[o+7].z>3.5f32)||sj_hidden(o,jam_rows,jam_actors)) {s.pos=v4(0.0f32,0.0f32,-2.0f32,1.0f32);}
+  return s;
+}
+sj_scene_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32,vertices:[]u32,jam_rows:[]V4,jam_actors:[]V4)->SjS {
+  o:SjS;
+  if (instance<cast(u32)SJ_GPU_BASE) {
+    a:AnimelabS=spg_scene_vs(id,instance,u,world,live,pieces,places);
+    o.pos=a.pos; o.world=a.world; o.normal=a.normal; o.colour=a.colour; o.mat=a.mat; o.param=a.param; o.obj=a.obj;
+    o.uv=v2(0.0f32,0.0f32); o.layer=-1.0f32;
+    return o;
+  }
+  r:int=cast(int)(instance-cast(u32)SJ_GPU_BASE)*8;
+  at:int=cast(int)id*12;
+  rest:V4=sj_rest(id,vertices);
+  rn:V4=v4(f32_from_bits(vertices[at+3]),f32_from_bits(vertices[at+4]),f32_from_bits(vertices[at+5]),0.0f32);
+  word:u32=vertices[at+8];
+  vc:V3=v3(cast(f32)(word&cast(u32)255)/255.0f32,cast(f32)((word>>8)&cast(u32)255)/255.0f32,cast(f32)((word>>16)&cast(u32)255)/255.0f32);
+  m:V4=jam_rows[r+6]; tail:V4=jam_rows[r+7];
+  w:V3=sj_place(rest,r,jam_rows,jam_actors);
+  n:V3=v3(wg_dot3(sj_vec3(jam_rows[r+3]),sj_vec3(rn)),wg_dot3(sj_vec3(jam_rows[r+4]),sj_vec3(rn)),wg_dot3(sj_vec3(jam_rows[r+5]),sj_vec3(rn)));
+  o.world=w;
+  o.pos=al_rows(u,4,w);
+  if (sj_hidden(r,jam_rows,jam_actors)) {o.pos=v4(0.0f32,0.0f32,-2.0f32,1.0f32);}
+  o.normal=sj_move(n,false,r,jam_rows,jam_actors);
+  o.colour=v3(vc.x*m.x,vc.y*m.y,vc.z*m.z);
+  o.mat=tail.z;
+  o.param=0.0f32;
+  o.obj=tail.w;
+  o.uv=v2(f32_from_bits(vertices[at+6]),f32_from_bits(vertices[at+7]));
+  o.layer=tail.x;
+  return o;
+}
+// The row's colour layer at its UV (sampled for every fragment, so the sample is in uniform control
+// flow, and used where there is one), then Anime Lab's cel, rim and ink.
+sj_scene_fs :: (s:SjS,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,sheets:Tex2DArray,sheet:Sampler)->AnimelabLit {
+  tex:V4=render_sample_layer8(sheets,sheet,s.uv,cast(s32)(fmax(s.layer,0.0f32)+0.5f32));
+  c:V3=s.colour;
+  if (s.layer>-0.5f32) {c=v3(c.x*tex.x,c.y*tex.y,c.z*tex.z);}
+  a:AnimelabS;
+  a.pos=s.pos; a.world=s.world; a.normal=s.normal; a.colour=c; a.mat=s.mat; a.param=s.param; a.obj=s.obj;
+  return animelab_scene_fs(a,u,shadow_map,shadow_cmp);
+}
+
+// Anime Lab's other entries, under the names the host looks for (--strip sj_); post_fs and fx_fs are
+// Splice's own and keep theirs.
+sj_bg_vs :: (i:u32,_iid1:u32)->V4 {return animelab_bg_vs(i,_iid1);}
+sj_bg_fs :: (pos:V4,u:[]f32)->AnimelabLit {return animelab_bg_fs(pos,u);}
+sj_shadow_fs :: (s:AnimelabShade) {animelab_shadow_fs(s);}
+sj_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {return animelab_bloom_fs(pos,bloom_src,bloom_lin,bloom_step);}
+sj_fx_vs :: (_vid2:u32,_iid3:u32,in_:animelab_fx_vs_in,u:[]f32)->AnimelabV {return animelab_fx_vs(_vid2,_iid3,in_,u);}
+
+#test "a jam row places, turns and colours a pack vertex; its actor moves or hides it; Splice's instances are Splice's (spg_scene_vs)" {
+  u: [512] f32; v: [12] u32; rows: [8] V4; actors: [3] V4; world: [6] u32; live: [6] u32; pieces: [6] u32; places: [8] u32;
+  u[4] = 1; u[9] = 1; u[14] = 1; u[19] = 1;   // the view: identity rows
+  v[0] = f32_bits(0.5); v[1] = f32_bits(0); v[2] = f32_bits(0); v[4] = f32_bits(1); v[6] = f32_bits(0.25); v[7] = f32_bits(0.75); v[8] = 0xFF8040FF;
+  rows[0] = v4(2, 0, 0, 3); rows[1] = v4(0, 1, 0, 1); rows[2] = v4(0, 0, 1, -2);
+  rows[3] = v4(0.5, 0, 0, 0); rows[4] = v4(0, 1, 0, 0); rows[5] = v4(0, 0, 1, 0);
+  rows[6] = v4(0.5, 1, 1, 1); rows[7] = v4(-1, 0, 0, 7);
+  s := sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]);
+  #assert s.world.x == 4 && s.world.y == 1 && s.world.z == -2 && s.normal.y == 1 && s.obj == 7 && s.layer == -1 && s.uv.y == 0.75f32;
+  #assert abs(s.colour.x - 0.5) < 0.001 && abs(s.colour.y - 64.0 / 255.0) < 0.001 && s.pos.w == 1;
+  // its actor (slot 1): set down at (10, 0, 0) from its middle (4, 1, -2), a quarter turn
+  rows[7].y = 1; actors[0] = v4(10, 0, 0, 1); actors[1] = v4(4, 1, -2, 0); actors[2] = v4(0, 1, 0, 0);
+  t := sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]);
+  #assert abs(t.world.x - 10) < 0.0001 && abs(t.world.y) < 0.0001 && abs(t.world.z) < 0.0001;
+  #assert abs(t.normal.y - 1) < 0.0001;
+  v[3] = f32_bits(1); v[4] = f32_bits(0);   // a normal along +x (halved by the row) turns a quarter to -z
+  t = sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]);
+  #assert abs(t.normal.z + 0.5) < 0.0001 && abs(t.normal.x) < 0.0001;
+  actors[0].w = 0;   // hidden
+  #assert sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]).pos.z == -2;
+  #assert sj_shadow_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]).pos.z == -2;
+  // instance 0 reads Splice's world store, as /worlds/splice-bots does
+  world[0] = f32_bits(3); world[1] = f32_bits(4); world[2] = f32_bits(5); world[4] = 0x00FFFFFF;
+  w := sj_scene_vs(0, 0, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]);
+  #assert w.world.x == 3 && w.world.z == 5 && w.layer == -1;
+}

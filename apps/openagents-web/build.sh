@@ -366,6 +366,10 @@ animelab=$!
 # /worlds/splice-bots (unlisted): Mars at dusk on Anime Lab's shading (metaverse/splice-bots/splice-bots.coax, metaverse/splice-bots/splice-face.c, metaverse/splice-bots/gpu/splice-bots.coax).
 timed splice-bots "$here/../../coax/web/wasm.sh" "$here/../../metaverse/splice-bots/splice-bots.coax" "$here/../../metaverse/splice-bots/splice-face.c" "$here/build/splice-bots.wasm" "$here/animelab-style.coax" &
 splice=$!
+# /worlds/splice-bots-jam (unlisted): the same game in the jam build's levels, from the private pack (metaverse/splice-bots/splice-jam.coax,
+# metaverse/splice-bots/splice-jam-face.c, metaverse/splice-bots/gpu/splice-jam.coax).
+timed splice-jam "$here/../../coax/web/wasm.sh" "$here/../../metaverse/splice-bots/splice-jam.coax" "$here/../../metaverse/splice-bots/splice-jam-face.c" "$here/build/splice-jam.wasm" "$here/animelab-style.coax" &
+splicejam=$!
 # /worlds/crew (unlisted): character creation, six bodies and one fitted wardrobe on Anime Lab's shading (crew.coax, crew-face.c, gpu/crew.coax; #13462).
 timed crew "$here/../../coax/web/wasm.sh" "$here/crew.coax" "$here/crew-face.c" "$here/build/crew.wasm" "$here/animelab-style.coax" &
 crew=$!
@@ -640,6 +644,7 @@ wait "$fairy"
 wait "$villa"
 wait "$animelab"
 wait "$splice"
+wait "$splicejam"
 wait "$crew"
 wait "$crew_pane"; wait "$range_pane"
 wait "$play_bar"

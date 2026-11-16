@@ -1,0 +1,50 @@
+// jam-draw.coax's checks, on a synthetic catalog of boxes (no private content): four maps, three of
+// them on the route, a sky dome in two, a piece two maps both place, Sniper in two parts and the rock wall.
+// splice-jam.coax loads this file with `#load ... #test;`.
+SJDT_CATALOG :: "world 1 test\ntitle Jam draw test\nmap 0 /Game/SpliceBots/World/Maps/L_SolarFarm\nmap 1 /Game/World/Graybox/L_Farm\nmap 2 /Game/World/Graybox/L_Ring\nmap 3 /Game/World/Graybox/L_Lab\nmat 0 0.5 0.5 0.5 1 -1 0\nmat 1 1 0.8 0.2 1 3 4\nM s0 0 36 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nM s1 36 6 0 -0.5 0 -0.5 0.5 0 0.5\nM s2 42 12 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nspawn 0 -840 1 -136 0\nspawn 1 -840 1 -136 0\nspawn 2 0 1 -60 0\nspawn 3 0 1 -383 0\nP 0 0 0 -15 -3 0 0 0 1 -929.3 0.7 -189 21 1.4 1.2 StaticMeshActor_1/StaticMeshComponent0\nP 0 0 0 -15 -3 0 0 0 1 -900 1 -150 4 2 6 SpliceSniper_0/ModelCab\nP 0 1 1 -15 -3 0 0 0 1 -904 1 -150 4 1 6 SpliceSniper_0/ModelCar0\nP 0 1 0 -15 -3 0 0 0 1 -450 0 -150 4400 1 3200 StaticMeshActor_0/StaticMeshComponent0\nP 1 0 0 -15 -3 0 0 0 1 -929.3 0.7 -189 21 1.4 1.2 StaticMeshActor_9/StaticMeshComponent0\nP 2 0 0 0 0 0 0 0 1 0 0 0 20000 20000 20000 StaticMeshActor_2/StaticMeshComponent0\nP 2 0 0 0 -3 0 0 0 1 10 5 -40 2 2 2 LevelInstance_UAID_1.StaticMeshActor_1/StaticMeshComponent0\nP 2 2 0 0 -3 0 0 0 1 0 1 -120 1 1 1 SpliceRockWallActor_UAID_5/Chunk_00\nP 2 2 0 0 -3 0 0 0 1 2 1 -120 1 1 1 SpliceRockWallActor_UAID_5/Chunk_01\nP 3 0 0 0 0 0 0 0 1 0 0 0 20000 20000 20000 StaticMeshActor_3/StaticMeshComponent0\nP 3 0 0 0 -3 0 0 0 1 10 5 -40 2 2 2 StaticMeshActor_UAID_7/StaticMeshComponent0\n";
+
+#test "jam draw: the route maps' instances are rows by section, each piece once, with no sky dome and no map off the route" #steps 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; d: [1] SjDraw; objects: [64 * IW_OBJECT] f32;
+  #assert sj_load(s[..], SJDT_CATALOG);
+  sjd_build(d[..], s[..], objects[..]);
+  // the farm's 4, the ring's piece and its two chunks; not L_Farm's, not the two domes, not the lab's twin of the ring's piece
+  #assert d[0].rows == 7 && d[0].skies == 2 && d[0].twins == 1 && d[0].parts == 4;
+  // three sections (3, 2 and 2 rows), three draws, their rows one after another from SJD_BASE
+  #assert d[0].draw_n == 3;
+  #assert d[0].draws[0] == 0 && d[0].draws[1] == 36 && d[0].draws[2] == SJD_BASE && d[0].draws[3] == 3;
+  #assert d[0].draws[4] == 36 && d[0].draws[5] == 6 && d[0].draws[6] == SJD_BASE + 3 && d[0].draws[7] == 2;
+  #assert d[0].draws[8] == 42 && d[0].draws[9] == 12 && d[0].draws[10] == SJD_BASE + 5 && d[0].draws[11] == 2;
+  // row 0 is the bank, where it stands; row 3 Sniper's car, of the unlit material: drawn flat, with its layer
+  #assert objects[3] == -929.3f32 && objects[0] == 21 && objects[29] == 0 && objects[30] == SJD_MAT_WORLD && objects[31] == 1;
+  car := 3 * IW_OBJECT; sniper := sj_nth(s[0].jam[..], SJ_SNIPER, SJ_FARM, 0);
+  #assert objects[car + 3] == -904 && objects[car + 28] == 3 && objects[car + 30] == SJD_MAT_FLAT && objects[car + 27] < 0;
+  #assert sniper >= 0 && objects[car + 29] == cast(f32) (sniper + 1);
+}
+#test "jam draw: the jam draws after the game's only once its pack is in, and a store with no route draws nothing" #steps 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; d: [1] SjDraw; objects: [64 * IW_OBJECT] f32; draws: [64] u32;
+  #assert sj_load(s[..], SJDT_CATALOG); sjd_build(d[..], s[..], objects[..]);
+  #assert sjd_draws(d[..], draws[..], 2) == 2;   // no vertices or indices yet
+  sjd_asset(d[..], 1, 4800); sjd_asset(d[..], 2, 216); sjd_asset(d[..], 3, 0);   // no layers: still drawn
+  #assert sjd_ready(d[..]) && sjd_draws(d[..], draws[..], 2) == 5 && draws[8] == 0 && draws[10] == SJD_BASE;
+  #assert sjd_draws(d[..], draws[0..<16], 2) == 4;   // no room past the list: the rest are left out
+  #assert sjd_store_bytes(d[..]) == 7 * IW_OBJECT * 4;
+  t := [1] SjStore.[SjStore.{}];
+  #assert !sj_load(t[..], "world 1 x\nmap 0 /Game/Maps/Other\nspawn 0 0 0 0 0\n");
+  sjd_build(d[..], t[..], objects[..]);
+  #assert d[0].rows == 0 && !sjd_ready(d[..]) && sjd_draws(d[..], draws[..], 2) == 2;
+}
+#test "jam draw: a game actor is hidden or moved and turned by the game, and written as the actor store's rows" #steps 1000000000 {
+  s := [1] SjStore.[SjStore.{}];
+  #assert sj_load(s[..], SJDT_CATALOG);
+  j := s[0].jam[..]; sn := sj_nth(j, SJ_SNIPER, SJ_FARM, 0); rw := sj_nth(j, SJ_ROCK, SJ_RING, 0);
+  #assert sn >= 0 && rw >= 0 && j[0].actors[sn].x == -902 && j[0].actors[sn].z == -150;   // the middle of the cab and the car
+  rows: [SJ_ACTORS * SJD_ACTOR_FLOATS] f32;
+  o := sn * SJD_ACTOR_FLOATS; w := rw * SJD_ACTOR_FLOATS;
+  #assert sjd_actor_rows(j, rows[..]) == j[0].n * SJD_ACTOR_FLOATS && rows[o] == -902 && rows[o + 3] == 1 && rows[o + 4] == -902 && rows[o + 8] == 1 && rows[o + 9] == 0;
+  sj_actor_set(j, sn, true, -800, 2, -100, PI * 0.5); sj_actor_set(j, rw, false, 0, 0, 0, 0);
+  _ = sjd_actor_rows(j, rows[..]);
+  #assert rows[o] == -800 && rows[o + 2] == -100 && rows[o + 4] == -902 && abs(rows[o + 8]) < 0.0001 && abs(rows[o + 9] - 1) < 0.0001;
+  #assert rows[w + 3] == 0;   // the rock wall hidden
+  sj_actor_reset(j, sn); _ = sjd_actor_rows(j, rows[..]); #assert rows[o] == -902 && rows[o + 8] == 1;
+  sj_actor_set(j, 999, false, 0, 0, 0, 0);   // no such actor: nothing changes
+}

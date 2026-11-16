@@ -152,6 +152,7 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
 }
 #test "the Splice Bots jam build binds the imported-world renderer only (#13649)" {
   r:=render_adoption("splice-bots-jam","importworld");#assert r.tracked_legacy && !r.shared && r.profile== -1;
+  j:=render_adoption("splice-bots-jam","splice-jam");#assert j.tracked_legacy && !j.shared && j.profile== -1 && !render_adoption("splice-bots","splice-jam").tracked_legacy;
   #assert !render_adoption("splice-bots-jam","valleyworld").tracked_legacy && !render_adoption("valley-world","importworld").tracked_legacy;
 }
 render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effects(all) {
@@ -160,6 +161,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "valley-world" && app == "valleyworld" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-canyon" && app == "valleycanyon" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "splice-bots-jam" && app == "importworld" { return RenderAdoption.{tracked_legacy = true}; }   // an imported Unreal world (#13649)
+  if slug == "splice-bots-jam" && app == "splice-jam" { return RenderAdoption.{tracked_legacy = true}; }   // Splice Bots in the jam build's levels, on Splice's passes (#13653)
   if slug == "valley-lab" && app == "valleylab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "built" && app == "myrealm" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "bitcoin-lab" && app == "bitcoin-lab" { return RenderAdoption.{tracked_legacy = true}; }

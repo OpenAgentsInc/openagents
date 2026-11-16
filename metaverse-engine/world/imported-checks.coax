@@ -11,6 +11,12 @@ IWT_CATALOG :: "budget 100\nbytes 90\nL 0 test|private|-\nworld 1 test\ntitle A 
   #assert w[0].maps[0].spawn[0] == -8.4f32 && w[0].maps[1].yaw == 1.5707963f32 && w[0].spots[1].kind == IW_SPOT_TARGET;
   #assert w[0].mats[1].flags == 16 && w[0].sections[1].first == 36 && w[0].sections[1].count == 6;
 }
+#test "an instance keeps its actor from its placement name, as a hash" #steps 1000000000 {
+  w: [1] IwWorld; #assert iw_admit(w[..], IWT_CATALOG);
+  #assert w[0].inst[0].actor == iw_hash("bank_L01_B1") && w[0].inst[2].actor == iw_hash("crate") && iw_hash("") == 0 && iw_hash("a") != 0;
+  #assert iw_actor_name("L_SolarFarm_GreekQuarter.SpliceSniper_0/ModelCab") == "SpliceSniper_0" && iw_actor_name("SpliceRockWallActor_UAID_9/Chunk_00") == "SpliceRockWallActor_UAID_9";
+  #assert iw_actor_name("LevelInstance_UAID_1.StaticMeshActor_1/C") == "StaticMeshActor_1" && iw_actor_name("crate") == "crate";
+}
 #test "a catalog out of its form is refused whole, saying why" #steps 1000000000 {
   w: [1] IwWorld;
   #assert !iw_admit(w[..], "map 0 x\n") && w[0].why == "not an imported world (no world line)";
