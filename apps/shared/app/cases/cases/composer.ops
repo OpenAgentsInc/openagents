@@ -1,0 +1,19 @@
+# Today's chat page: the composer takes the keyboard and the draft; Send does nothing yet.
+# app: chat-page
+tree
+state keyboard.shown
+tap chat.composer
+state keyboard.shown
+tree
+type chat.composer Fix the failing build
+state chat.draft
+tree
+type chat.composer \nand run the checks
+state chat.draft
+tap chat.composer.send
+state chat.draft
+clock settle
+logs
+life relaunch
+state chat.draft
+state keyboard.shown

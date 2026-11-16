@@ -1,0 +1,67 @@
+> clock data record history: http GET /api/chat/conversation/v2alpha1?id=cnv_0123456789abcdef0123456789abcdef&after=0 => 200 {"schema":"openagents.chat.conversation.v2alpha1","id":"cnv_0123456789abcdef0123456789abcdef","revision":1,"project_id":null,"legacy_thread_id":null,"legacy_thread_revision":null,"messages":[],"active_turn_id":"trn_0123456789abcdef0123456789abcdef","created_at_ms":1767225600000,"updated_at_ms":1767225600000,"next_cursor":null}
+recorded history
+> clock data record auth.state: auth state => 200 {"loggedIn":true}
+recorded auth.state
+> clock data record submit: http POST /api/chat/submit/v2alpha1 => 202 {"schema":"openagents.chat.control.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","conversation_revision":1,"state":"queued","stop_requested":false,"event_cursor":0}
+recorded submit
+> clock data record turn: http GET /api/chat/turn/v2alpha1?id=trn_0123456789abcdef0123456789abcdef => 200 {"schema":"openagents.chat.turn.v2alpha1","id":"trn_0123456789abcdef0123456789abcdef","conversation_id":"cnv_0123456789abcdef0123456789abcdef","operation_id":"op-1","state":"queued","stop_requested":false,"stop_reason":null,"usage":{"input_tokens":null,"output_tokens":null,"cache_read_tokens":null,"cache_write_tokens":null,"reasoning_tokens":null},"selection":{"model_id":"gemini-decision-1","provider_id":"google","effort":"medium","route_decision_id":null,"reason":"Default model"},"content":[],"event_cursor":0,"conversation_revision":1,"context_snapshot_id":null,"error":null,"created_at_ms":1767225600000,"updated_at_ms":1767225600000}
+recorded turn
+> clock data record events.1: http GET /api/chat/events/v2alpha1?id=trn_0123456789abcdef0123456789abcdef&after=0 => 200 {"schema":"openagents.chat.events.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","after":0,"events":[{"schema":"openagents.chat.event.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","sequence":1,"type":"started","state":"running","stop_requested":false,"block_index":null,"delta":null,"usage":null,"stop_reason":null,"error":null},{"schema":"openagents.chat.event.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","sequence":2,"type":"text_delta","state":"running","stop_requested":false,"block_index":0,"delta":"I found the failing test.","usage":null,"stop_reason":null,"error":null}],"next_cursor":2,"has_more":false,"state":"running"}
+recorded events.1
+> clock data record events.2: http GET /api/chat/events/v2alpha1?id=trn_0123456789abcdef0123456789abcdef&after=2 => 200 {"schema":"openagents.chat.events.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","after":2,"events":[{"schema":"openagents.chat.event.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","sequence":3,"type":"completed","state":"completed","stop_requested":false,"block_index":null,"delta":null,"usage":null,"stop_reason":"end_turn","error":null}],"next_cursor":3,"has_more":false,"state":"completed"}
+recorded events.2
+> clock data release auth.state
+released auth.state: 200
+> tap chat.composer
+tapped chat.composer
+> type chat.composer Fix the failing build
+typed into chat.composer
+> tap chat.composer.send
+tapped chat.composer.send
+> clock +16
+clock: 17 ms
+> clock data release submit
+released submit: 202
+> clock +16
+clock: 33 ms
+> clock data release turn
+released turn: 200
+> clock data release history
+released history: 200
+> clock data
+held: events.1
+> state task.state
+queued
+> clock data release events.1
+released events.1: 200
+> clock +16
+clock: 50 ms
+> state task.state
+running
+> state send.state
+stop
+> tree
+chat.composer field "Message" = "" [focused]
+chat.composer.send button "Stop generating"
+chat.sent text "Fix the failing build"
+chat.reply text "I found the failing test."
+> clock +400
+clock: 450 ms
+> clock data
+held: events.2
+> clock data release events.2
+released events.2: 200
+> clock +16
+clock: 467 ms
+> state task.state
+completed
+> state send.state
+empty
+> tree
+chat.composer field "Message" = "" [focused]
+chat.composer.send button "Send message" [disabled]
+chat.sent text "Fix the failing build"
+chat.reply text "I found the failing test."
+> logs
+identities fired at 0 ms
+fake refused http GET /api/chat/turn-task/v1alpha1?id=trn_0123456789abcdef0123456789abcdef: no recording names it

@@ -1,0 +1,88 @@
+> clock data record history: http GET /api/chat/conversation/v2alpha1?id=cnv_0123456789abcdef0123456789abcdef&after=0 => 200 {"schema":"openagents.chat.conversation.v2alpha1","id":"cnv_0123456789abcdef0123456789abcdef","revision":1,"project_id":null,"legacy_thread_id":null,"legacy_thread_revision":null,"messages":[],"active_turn_id":"trn_0123456789abcdef0123456789abcdef","created_at_ms":1767225600000,"updated_at_ms":1767225600000,"next_cursor":null}
+recorded history
+> clock data record auth.state: auth state => 200 {"loggedIn":true}
+recorded auth.state
+> clock data record submit: http POST /api/chat/submit/v2alpha1 => 202 {"schema":"openagents.chat.control.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","conversation_revision":1,"state":"queued","stop_requested":false,"event_cursor":0}
+recorded submit
+> clock data record turn: http GET /api/chat/turn/v2alpha1?id=trn_0123456789abcdef0123456789abcdef => 200 {"schema":"openagents.chat.turn.v2alpha1","id":"trn_0123456789abcdef0123456789abcdef","conversation_id":"cnv_0123456789abcdef0123456789abcdef","operation_id":"op-1","state":"queued","stop_requested":false,"stop_reason":null,"usage":{"input_tokens":null,"output_tokens":null,"cache_read_tokens":null,"cache_write_tokens":null,"reasoning_tokens":null},"selection":{"model_id":"gemini-decision-1","provider_id":"google","effort":"medium","route_decision_id":null,"reason":"Default model"},"content":[],"event_cursor":0,"conversation_revision":1,"context_snapshot_id":null,"error":null,"created_at_ms":1767225600000,"updated_at_ms":1767225600000}
+recorded turn
+> clock data record events.1: http GET /api/chat/events/v2alpha1?id=trn_0123456789abcdef0123456789abcdef&after=0 => 200 {"schema":"openagents.chat.events.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","after":0,"events":[{"schema":"openagents.chat.event.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","sequence":1,"type":"started","state":"running","stop_requested":false,"block_index":null,"delta":null,"usage":null,"stop_reason":null,"error":null},{"schema":"openagents.chat.event.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","sequence":2,"type":"text_delta","state":"running","stop_requested":false,"block_index":0,"delta":"Working on it.","usage":null,"stop_reason":null,"error":null}],"next_cursor":2,"has_more":false,"state":"running"}
+recorded events.1
+> clock data release auth.state
+released auth.state: 200
+> tap chat.composer
+tapped chat.composer
+> type chat.composer Fix the failing build
+typed into chat.composer
+> tap chat.composer.send
+tapped chat.composer.send
+> clock +16
+clock: 17 ms
+> clock data release submit
+released submit: 202
+> clock +16
+clock: 33 ms
+> clock data release turn
+released turn: 200
+> clock data release history
+released history: 200
+> clock data release events.1
+released events.1: 200
+> clock +16
+clock: 50 ms
+> state task.state
+running
+> life relaunch
+relaunched: clock: 50 ms
+> clock +16
+clock: 67 ms
+> clock data
+held: auth.state
+> clock data record auth.state: auth state => 200 {"loggedIn":true}
+recorded auth.state
+> clock data record turn.again: http GET /api/chat/turn/v2alpha1?id=trn_0123456789abcdef0123456789abcdef => 200 {"schema":"openagents.chat.turn.v2alpha1","id":"trn_0123456789abcdef0123456789abcdef","conversation_id":"cnv_0123456789abcdef0123456789abcdef","operation_id":"op-1","state":"running","stop_requested":false,"stop_reason":null,"usage":{"input_tokens":null,"output_tokens":null,"cache_read_tokens":null,"cache_write_tokens":null,"reasoning_tokens":null},"selection":{"model_id":"gemini-decision-1","provider_id":"google","effort":"medium","route_decision_id":null,"reason":"Default model"},"content":[{"type":"text","text":"Working on it."}],"event_cursor":2,"conversation_revision":1,"context_snapshot_id":null,"error":null,"created_at_ms":1767225600000,"updated_at_ms":1767225600000}
+recorded turn.again
+> clock data record events.2: http GET /api/chat/events/v2alpha1?id=trn_0123456789abcdef0123456789abcdef&after=2 => 200 {"schema":"openagents.chat.events.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","after":2,"events":[{"schema":"openagents.chat.event.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","sequence":3,"type":"text_delta","state":"running","stop_requested":false,"block_index":0,"delta":" Fixed.","usage":null,"stop_reason":null,"error":null},{"schema":"openagents.chat.event.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","sequence":4,"type":"completed","state":"completed","stop_requested":false,"block_index":null,"delta":null,"usage":null,"stop_reason":"end_turn","error":null}],"next_cursor":4,"has_more":false,"state":"completed"}
+recorded events.2
+> clock data record history: http GET /api/chat/conversation/v2alpha1?id=cnv_0123456789abcdef0123456789abcdef&after=0 => 200 {"schema":"openagents.chat.conversation.v2alpha1","id":"cnv_0123456789abcdef0123456789abcdef","revision":1,"project_id":null,"legacy_thread_id":null,"legacy_thread_revision":null,"messages":[],"active_turn_id":"trn_0123456789abcdef0123456789abcdef","created_at_ms":1767225600000,"updated_at_ms":1767225600000,"next_cursor":null}
+recorded history
+> clock data release auth.state
+released auth.state: 200
+> clock +16
+clock: 83 ms
+> clock data
+held: history
+> clock data release history
+released history: 200
+> clock +16
+clock: 100 ms
+> clock data
+held: turn.again
+> clock data release turn.again
+released turn.again: 200
+> clock +16
+clock: 117 ms
+> clock data
+held: events.2
+> state task.state
+running
+> tree
+chat.composer field "Message" = ""
+chat.composer.send button "Stop generating"
+chat.reply text "Working on it."
+> clock +400
+clock: 517 ms
+> clock data
+held: events.2
+> clock data release events.2
+released events.2: 200
+> clock +16
+clock: 533 ms
+> state task.state
+completed
+> tree
+chat.composer field "Message" = ""
+chat.composer.send button "Send message" [disabled]
+chat.reply text "Working on it. Fixed."
+> logs
+identities fired at 0 ms

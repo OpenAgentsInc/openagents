@@ -1,0 +1,178 @@
+// The GPU app's case runner (The OpenAgents Book, PLAN.md "What the new approach keeps": a build-host case
+// runner; GitHub #13645). Each NAME.ops in apps/shared/app/cases/cases/ is played one operation a line
+// against the app through coax drive, and its trace (`> OP`, then the answer) is compared byte for byte
+// with the committed NAME.trace. The hosts:
+//   cpu             the app in this process under the agent clock, the build host playing the native
+//                   host's part: the shared app (core-page.coax), or, for a case whose first lines say
+//                   `# app: chat-page`, today's iOS chat page (chat-page.coax); --write writes the traces
+//   ios-simulator   the iPhone app in the simulator DEVICE, launched fresh for each case with
+//                   -OADrive SOCKET and played with coax/web/tool.sh drive native SOCKET --ops FILE
+//                   (the app's half is INTEGRATION.md "In the iOS app")
+// A case whose first line is `# needs: WHAT` is not played: it is listed as waiting on WHAT, and the run
+// says how many wait. Nothing is counted as passed that was not played.
+// Run it on the build host, from the repository's root:
+//   coax/remote/remote.sh run -- coax/web/tool.sh apps/shared/app/cases/run.coax cpu [--write] [CASE...]
+//   coax/web/tool.sh apps/shared/app/cases/run.coax ios-simulator DEVICE [CASE...]
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "../../../../coax/lib/sys/tool.coax";
+#load "../../../../coax/lib/sys/fs.coax";
+#load "../../../../coax/lib/sys/proc.coax";
+#load "chat-page.coax";
+#load "core-page.coax";
+
+CR_DIR :: "apps/shared/app/cases/cases/";
+CR_CASES :: [8] string.["composer", "refusals", "login", "send-request", "task-progress", "permission", "stop", "rejoin"];
+CR_BUNDLE :: "com.openagents.app";
+CR_PLAYED :: 0; CR_DIFFERS :: 1; CR_WAITS :: 2; CR_BROKEN :: 3;
+
+CrRun :: struct { ops: [16384] u8; want: [65536] u8; got: [131072] u8; got_n: int; err: [8192] u8; path: [512] u8; sock: [128] u8; why: [512] u8; why_n: int; }
+
+cr_path :: (r: [] CrRun, name: string, ext: string) -> string {
+  n := el_put(r[0].path[..], 0, CR_DIR); n = el_put(r[0].path[..], n, name); n = el_put(r[0].path[..], n, ext);
+  return cast(string) r[0].path[0..<n];
+}
+cr_count :: (ops: string) -> int {
+  count := 0;
+  for k: 0..<ops.count { if (k == 0 || ops[k - 1] == '\n') && ops[k] != '#' && ops[k] != '\n' { count += 1; } }
+  return count;
+}
+// What a case waits on: its first line `# needs: WHAT`, or "".
+cr_needs :: (ops: string) -> string {
+  head := "# needs: ";
+  if !fk_starts(ops, head) { return ""; }
+  e := head.count;
+  while e < ops.count && ops[e] != '\n' { e += 1; }
+  return ops[head.count..<e];
+}
+cr_after_head :: (out: string) -> string {
+  at := 0;
+  while at < out.count && out[at] != '\n' { at += 1; }
+  return ifx at < out.count then out[at + 1..<out.count] else "";
+}
+// "" when the two are the same; else the first line where they differ.
+cr_differ :: (got: string, want: string, out: [] u8) -> string {
+  a := 0; b := 0; line := 1;
+  while a < got.count || b < want.count {
+    ea := a; while ea < got.count && got[ea] != '\n' { ea += 1; }
+    eb := b; while eb < want.count && want[eb] != '\n' { eb += 1; }
+    if got[a..<ea] != want[b..<eb] || (ea >= got.count) != (eb >= want.count) {
+      n := el_put(out, 0, "line "); n = el_put_i(out, n, line); n = el_put(out, n, ": the host printed \"");
+      n = el_put(out, n, got[a..<ea]); n = el_put(out, n, "\", the trace has \""); n = el_put(out, n, want[b..<eb]); n = el_put(out, n, "\"");
+      return cast(string) out[0..<n];
+    }
+    a = ea + 1; b = eb + 1; line += 1;
+  }
+  return "";
+}
+cr_put :: (r: [] CrRun, s: string) { r[0].got_n = el_put(r[0].got[..], r[0].got_n, s); }
+// Whether a case is for today's iOS chat page: a line `# app: chat-page` among its notes.
+cr_chat_page :: (ops: string) -> bool { return fk_find(ops, "# app: chat-page\n") >= 0; }
+cr_each :: (ops: string, at: int) -> int { e := at; while e < ops.count && ops[e] != '\n' { e += 1; } return e; }
+// The case's operations against the shared app in this process.
+cr_play_core :: (r: [] CrRun, ops: string, a: CoApp, h: [] CoRun) {
+  co_open(h, a);
+  at := 0;
+  while at < ops.count {
+    e := cr_each(ops, at);
+    line := ops[at..<e];
+    at = e + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    cr_put(r, "> "); cr_put(r, line); cr_put(r, "\n");
+    if !co_drive(h, a, line) { cr_put(r, "the operation did not finish\n"); continue; }
+    cr_put(r, gd_answer(a.d)); cr_put(r, "\n");
+  }
+}
+// The case's operations against today's chat page in this process. The page, its vertices and the driver are the
+// caller's, so this procedure holds no large value of its own.
+cr_play_cpu :: (r: [] CrRun, ops: string, page: [] ChatPage, v: [] f32, d: [] GdDrive) {
+  h: [1] CpRun;
+  cp_open(h[..], page, v, d, "cpu", 0, true);
+  at := 0;
+  while at < ops.count {
+    e := at;
+    while e < ops.count && ops[e] != '\n' { e += 1; }
+    line := ops[at..<e];
+    at = e + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    cr_put(r, "> "); cr_put(r, line); cr_put(r, "\n");
+    if !cp_drive(h[..], page, v, d, line) { cr_put(r, "the operation did not finish\n"); continue; }
+    cr_put(r, gd_answer(d)); cr_put(r, "\n");
+  }
+}
+cr_play_simulator :: (r: [] CrRun, device: string, name: string) -> bool {
+  sn := el_put(r[0].sock[..], 0, "/tmp/oa-app-cases-"); sn = el_put_i(r[0].sock[..], sn, proc_now_ms() % 100000000); sn = el_put(r[0].sock[..], sn, ".sock");
+  sock := cast(string) r[0].sock[0..<sn];
+  launch := [8] string.["xcrun", "simctl", "launch", "--terminate-running-process", device, CR_BUNDLE, "-OADrive", sock];
+  p := proc_run(launch[..], 60000, r[0].got[..], r[0].err[..]);
+  if p.started != 0 || p.status != 0 { r[0].why_n = el_put(r[0].why[..], 0, "the app did not launch in the simulator"); return false; }
+  waited := 0;
+  while !fs_exists(sock) && waited < 20000 { proc_sleep(100); waited += 100; }
+  if !fs_exists(sock) { r[0].why_n = el_put(r[0].why[..], 0, "the app never listened for a driver (-OADrive)"); return false; }
+  drive := [6] string.["coax/web/tool.sh", "drive", "native", sock, "--ops", cr_path(r, name, ".ops")];
+  q := proc_run(drive[..], 120000, r[0].got[..], r[0].err[..]);
+  stop := [5] string.["xcrun", "simctl", "terminate", device, CR_BUNDLE];
+  e: [1024] u8; o: [1024] u8; _ := proc_run(stop[..], 30000, o[..], e[..]);
+  _ = fs_remove(sock);
+  if q.started != 0 || q.timed_out { r[0].why_n = el_put(r[0].why[..], 0, "coax drive did not run"); return false; }
+  n := q.out_n; if n < r[0].got.count { r[0].got[n] = '\n'; n += 1; }
+  // the host's first line names it; the trace starts after it
+  rest := cr_after_head(cast(string) r[0].got[0..<n]);
+  tmp: [131072] u8; k := el_put(tmp[..], 0, rest);
+  r[0].got_n = el_put(r[0].got[..], 0, cast(string) tmp[0..<k]);
+  return true;
+}
+
+cr_case :: (r: [] CrRun, host: string, device: string, name: string, write: bool, page: [] ChatPage, v: [] f32, k: [] CoTest, core: [] AppCore) -> int {
+  on := fs_read(cr_path(r, name, ".ops"), r[0].ops[..]);
+  if on < 0 { print("case %: no %.ops in %\n", name, name, CR_DIR); return CR_BROKEN; }
+  ops := cast(string) r[0].ops[0..<on];
+  needs := cr_needs(ops);
+  if needs.count > 0 { print("case %: waits on %\n", name, needs); return CR_WAITS; }
+  r[0].got_n = 0;
+  if host == "cpu" && cr_chat_page(ops) { cr_play_cpu(r, ops, page, v, k[0].d[..]); }
+  else if host == "cpu" { cr_play_core(r, ops, co_t_app(k, core), k[0].r[..]); }
+  else if !cr_play_simulator(r, device, name) { print("case % on %: %\n", name, host, cast(string) r[0].why[0..<r[0].why_n]); return CR_BROKEN; }
+  got := cast(string) r[0].got[0..<r[0].got_n];
+  if write {
+    if !fs_write(cr_path(r, name, ".trace"), got) { print("case %: could not write %.trace\n", name, name); return CR_BROKEN; }
+    print("case %: wrote %.trace (% operations)\n", name, name, cr_count(ops));
+    return CR_PLAYED;
+  }
+  wn := fs_read(cr_path(r, name, ".trace"), r[0].want[..]);
+  if wn < 0 { print("case %: no %.trace (cpu --write makes it)\n", name, name); return CR_BROKEN; }
+  why: [4096] u8;
+  differ := cr_differ(got, cast(string) r[0].want[0..<wn], why[..]);
+  if differ.count == 0 { print("case % on %: % operations, the same trace as %.trace\n", name, host, cr_count(ops), name); return CR_PLAYED; }
+  print("case % on %: the trace differs from %.trace at %\n", name, host, name, differ);
+  return CR_DIFFERS;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  usage := "usage: coax/web/tool.sh apps/shared/app/cases/run.coax cpu [--write] [CASE...] | ios-simulator DEVICE [CASE...]";
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln(usage); return 2; }
+  host := args_at(a[..], 0);
+  if host != "cpu" && host != "ios-simulator" { tool_errln(usage); return 2; }
+  if !fs_exists(CR_DIR) { tool_errln("cases: run from the repository's root (no apps/shared/app/cases/cases/ here)"); return 2; }
+  i := 1; device := ""; write := false;
+  if host == "ios-simulator" {
+    if args_count(a[..]) < 2 { tool_errln("cases: ios-simulator takes the simulator's name or UDID"); return 2; }
+    device = args_at(a[..], 1); i = 2;
+  }
+  names: [32] string; nn := 0;
+  while i < args_count(a[..]) {
+    x := args_at(a[..], i); i += 1;
+    if x == "--write" && host == "cpu" { write = true; continue; }
+    if nn < names.count { names[nn] = x; nn += 1; }
+  }
+  if nn == 0 { for c: CR_CASES { names[nn] = c; nn += 1; } }
+  played := 0; waiting := 0; failed := 0;
+  for k: 0..<nn {
+    r: [1] CrRun; page: [1] ChatPage; o: [1] ChOut; t: [1] CoTest; core: [1] AppCore;
+    c := cr_case(r[..], host, device, names[k], write, page[..], o[0].v[..], t[..], core[..]);
+    if c == CR_PLAYED { played += 1; } else if c == CR_WAITS { waiting += 1; } else { failed += 1; }
+  }
+  print("% cases on %: % played the same, % differ or broke, % wait\n", nn, host, played, failed, waiting);
+  return ifx failed > 0 then 1 else 0;
+}

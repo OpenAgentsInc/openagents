@@ -12,6 +12,8 @@
 //                   it fresh with -OADrive tcp:47613 and a new token, plays the case with coax/web/tool.sh drive
 //                   native tcp:HOST:47613 --token TOKEN --ops FILE, and ends the app. HOST is the phone's name on
 //                   the local network (devicectl's first local host name, as NAME.local), or --host HOST.
+// The GPU app's own cases (the app core, chat page and login card, with fake services under a controlled
+// clock) play from apps/shared/app/cases/run.coax; see apps/shared/app/cases/INTEGRATION.md.
 // A host's trace is compared after its first line (`drive: ... ready`), which names the host.
 //   coax/web/tool.sh apps/shared/cases.coax cpu [--write] [CASE...]
 //   coax/web/tool.sh apps/shared/cases.coax web [CASE...]

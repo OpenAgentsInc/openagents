@@ -1,0 +1,59 @@
+> clock data record auth.state: auth state => 200 {"loggedIn":false}
+recorded auth.state
+> clock data record auth.start: auth email_start => 200 {}
+recorded auth.start
+> clock data record auth.verify: auth email_verify => 200 {"loggedIn":true}
+recorded auth.verify
+> clock data release auth.state
+released auth.state: 200
+> state account.logged_in
+false
+> tap chat.composer
+tapped chat.composer
+> type chat.composer Fix the failing build
+typed into chat.composer
+> state send.state
+login
+> tap chat.composer.send
+tapped chat.composer.send
+> tree
+chat.composer field "Message" = "Fix the failing build"
+chat.composer.send button "Send message"
+chat.empty heading "OpenAgents"
+login region "Log in"
+login.title heading "Log in" in login
+login.email field "Email address" = "" [focused] in login
+login.send button "Send code" in login
+login.cancel button "Cancel" in login
+> state login.step
+out
+> tap login.email
+tapped login.email
+> type login.email ada@example.com
+typed into login.email
+> tap login.send
+tapped login.send
+> clock data
+held: auth.start
+> clock data release auth.start
+released auth.start: 200
+> state login.step
+code
+> tap login.code
+tapped login.code
+> type login.code 123456
+typed into login.code
+> tap login.verify
+tapped login.verify
+> clock data release auth.verify
+released auth.verify: 200
+> state login.step
+in
+> state account.logged_in
+true
+> state send.state
+ready
+> state chat.draft
+Fix the failing build
+> logs
+(no logs)

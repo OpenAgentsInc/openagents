@@ -1,0 +1,23 @@
+> tap chat.nope
+no row chat.nope in the committed tree (tree lists them)
+> type chat.title hello
+chat.title is a heading, not a field: nothing was typed
+> tap
+tap takes an id from the tree
+> clock +abc
+clock +MS: MS is a whole number of ms, at most 600000
+> clock until
+clock until NAME [OP VALUE] [within MS]: OP is ==, !=, <, >, <= or >=
+> state account.token
+account.token is never shown: state reads an allowlist, and no credential is on it
+> state nothing.here
+no state named nothing.here (state lists what can be read)
+> clock data release nothing
+nothing held named nothing (clock data lists what is held)
+> clock data record not a line
+not a recording line: NAME: KIND KEY => STATUS BODY (KIND http or auth)
+> host
+host cpu: agent clock, seed 13096, 2026-01-01T00:00:00.000Z, en-US, UTC
+operations: tree, layout [ID], tap ID, type ID TEXT, drag ID DX DY, scroll ID DX DY, state [NAME], logs, counts, host, clock, clock +MS, clock settle [within MS], clock until NAME [OP VALUE] [within MS], clock data [release|lose|fail NAME], clock data record LINE, life background|foreground|relaunch
+text enters through the shared edit buffer
+not on this host: screenshot

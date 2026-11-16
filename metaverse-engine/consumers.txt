@@ -32,7 +32,6 @@ adopt metaverse-engine/render/native- #13304  # native texture staging is the re
 adopt metaverse-engine/host/ #13304  # the host contract's carriers and conformance programs fold into one C reference host core
 adopt metaverse-engine/anim/ #13306  # importers, retargeting and pose documents feed the one animation runtime; rig data becomes an asset
 adopt metaverse-engine/core/frame-report.coax #13303  # the frame statistics and the 60 FPS rule read the frame graph's stages
-adopt metaverse-engine/agent/pin.coax #13296  # the protocol bots pin their sessions with the agent clock's seed and epoch
 
 # Built by name, or loaded by a pipeline tool
 built metaverse-engine/render/film.coax metaverse/gpu/realm.sh  # the film profile, compiled to C beside the native realm host

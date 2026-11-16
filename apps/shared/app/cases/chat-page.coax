@@ -1,0 +1,124 @@
+// coax drive on today's iOS chat page (apps/openagents-ios/chat.coax; GitHub #13645): the adapter that
+// runs the driver (drive.coax) against the page's own entries, so every operation enters where a person's
+// input enters. A frame is chat_frame, a press is chat_pointer at the row's middle in device pixels, and
+// text is chat_set_text with the whole draft, which is what the platform editor hands the page.
+//
+// The native host owns the keyboard. On the build host (cp_open with plays_host) this adapter plays its
+// part: when the page asks for the keyboard (CH_ACT_FOCUS) the editor takes it and a keyboard of
+// CP_KEYBOARD points rises, as App.swift does. In the app (plays_host false) the host does that itself in
+// its next main-queue turn, so a case taps the field, then types into it.
+//
+// The page has no outbox yet: it makes no request. Completions are logged and dropped, and a case that
+// needs services waits on the app core (INTEGRATION.md).
+//   coax/bin/coax test apps/shared/app/cases/chat-page.coax
+
+#load "../../../openagents-ios/chat.coax";
+#load "drive.coax";
+
+CP_KEYBOARD :: 336.0f32;    // points: an iPhone's keyboard in portrait
+CP_GUARD :: 1000000;        // steps one operation may take before the adapter gives up on it
+
+// What the adapter keeps of the host. The page (p), its vertices (v) and the driver (d) are the caller's:
+// a ChatPage and a ChOut, as chat.coax's own checks hold them, and a GdDrive.
+CpRun :: struct {
+  w: f32; h: f32; dpr: f32;               // the window in device pixels and its scale
+  safe_top: f32; safe_bottom: f32;        // points
+  plays_host: bool; keyboard: bool; reduced: bool;
+}
+
+cp_env :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive) {
+  chat_env(p, r[0].safe_top, r[0].safe_bottom, ifx r[0].keyboard then CP_KEYBOARD else 0.0f32, r[0].keyboard, 0, r[0].reduced);
+}
+// The session opens before the page's first frame. On the build host the window is the build host's
+// phone (drive.coax GD_PHONE_*) and the atlas is the test atlas: a tree reads the same as on a phone; a
+// layout does not.
+cp_open :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, host: string, caps: int, plays_host: bool) {
+  r[0].plays_host = plays_host;
+  r[0].dpr = cast(f32) GD_PHONE_SCALE; r[0].w = cast(f32) (GD_PHONE_W * GD_PHONE_SCALE); r[0].h = cast(f32) (GD_PHONE_H * GD_PHONE_SCALE);
+  r[0].safe_top = cast(f32) GD_PHONE_SAFE_TOP; r[0].safe_bottom = cast(f32) GD_PHONE_SAFE_BOTTOM;
+  if plays_host { ch_test_atlas(p[0].atlas[..]); cp_env(r, p, v, d); }
+  gd_open(d, host, caps, true);
+}
+// The window a host draws into, in device pixels, for a host that is not the build host.
+cp_window :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, width: f32, height: f32, dpr: f32) { r[0].w = width; r[0].h = height; r[0].dpr = dpr; }
+// The time a host's own frame gets while a driver holds the clock: none but what `clock` gives.
+cp_frame_dt :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, host_dt: f32) -> f32 { return gd_frame_dt(d, host_dt); }
+
+// What the page asked for, done the way the native host does it.
+cp_actions :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive) {
+  if !r[0].plays_host { return; }
+  act := chat_action(p);
+  if act == CH_ACT_FOCUS && !r[0].keyboard { r[0].keyboard = true; cp_env(r, p, v, d); gd_log(d, "keyboard: shown"); }
+}
+// The values `state` may read. None is a credential; the draft is what the person typed.
+cp_state :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive) {
+  gd_state(d, "chat.draft", ch_draft(p));
+  gd_state_b(d, "keyboard.shown", r[0].keyboard);
+  gd_state_b(d, "page.moving", chat_moving(p));
+  gd_state_i(d, "page.refused", chat_refused(p));
+}
+// Relaunch: the page starts again from what it stored, which today is nothing.
+cp_relaunch :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive) {
+  p[0].ready = false; eb_set(p[0].draft[..], ""); p[0].action = CH_ACT_NONE;
+  p[0].pressed_n = 0; p[0].touching = false; p[0].time = 0;
+  for k: 0..<CH_KEYED { p[0].keys[k] = Keyed.{}; }
+  r[0].keyboard = false;
+  if r[0].plays_host { cp_env(r, p, v, d); }
+}
+
+// One frame of the page, with the time the driver's clock gives it. Kept apart from cp_step: the
+// checker's retain analysis of chat_frame is large, and a procedure that also forwards the page to the
+// other entries passes its budget (E0381).
+cp_draw :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive) {
+  _ := chat_frame(p, v, r[0].w, r[0].h, r[0].dpr, gd_frame_dt(d, 0));
+  if chat_moving(p) { gd_owner(d, "chat.motion"); }
+}
+// What else the driver asked for, done through the page's own entries.
+cp_step :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, code: int) {
+  if code == GD_POINTER { u := p[0].d; gd_took(d, chat_pointer(p, gd_px(d) * u, gd_py(d) * u, gd_phase(d))); return; }
+  if code == GD_EDITOR { e := gd_edit(d, ch_draft(p)); gd_edited(d, e.ok && chat_set_text(p, e.text)); return; }
+  if code == GD_STATE { cp_state(r, p, v, d); return; }
+  if code == GD_COMPLETE { gd_log(d, "the page has no outbox: a completion was dropped"); return; }
+  if code == GD_LIFE && gd_life(d) == "relaunch" { cp_relaunch(r, p, v, d); }
+}
+// One operation; its answer is then gd_answer(d). (cp_drive returns no view of its own: a procedure
+// that draws the page and returns a string view passes the checker's budget, E0381.) False when the
+// operation did not finish.
+cp_drive :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, op: string) -> bool {
+  // the page's first frame comes before the first operation; the surface is read again at each step,
+  // so no view of the page outlives a call that writes it
+  code := ifx p[0].surface[0].generation == 0 then GD_FRAME else gd_drive(d, p[0].surface[..], p[0].keyed[..], op);
+  first := code == GD_FRAME;
+  guard := 0;
+  while code != GD_DONE && guard < CP_GUARD {
+    guard += 1;
+    if code == GD_FRAME { cp_draw(r, p, v, d); } else { cp_step(r, p, v, d, code); }
+    cp_actions(r, p, v, d);
+    if first { first = false; code = gd_drive(d, p[0].surface[..], p[0].keyed[..], op); continue; }
+    code = gd_resume(d, p[0].surface[..], p[0].keyed[..]);
+  }
+  return guard < CP_GUARD;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "chat page under the driver: the tree, a tap on the composer raises the keyboard, typing fills the draft, Send does nothing yet" #steps 2000000000 {
+  page: [1] ChatPage; o: [1] ChOut; d: [1] GdDrive; r: [1] CpRun; cp_open(r[..], page[..], o[0].v[..], d[..], "cpu", 0, true);
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "tree");
+  tree := gd_answer(d[..]);
+  #assert fk_find(tree, "chat.title heading \"OpenAgents\"") >= 0 && fk_find(tree, "chat.composer field \"Message\" = \"\"") >= 0 && fk_find(tree, "chat.composer.send button") >= 0;
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "state keyboard.shown") && gd_answer(d[..]) == "false";
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "tap chat.composer") && gd_answer(d[..]) == "tapped chat.composer";
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "state keyboard.shown") && gd_answer(d[..]) == "true";
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "tree") && fk_find(gd_answer(d[..]), "chat.composer field \"Message\" = \"\" [focused]") >= 0;
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "type chat.composer Fix the build") && gd_answer(d[..]) == "typed into chat.composer";
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "state chat.draft") && gd_answer(d[..]) == "Fix the build";
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "tap chat.composer.send") && gd_answer(d[..]) == "tapped chat.composer.send: the press landed and no action took it";
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "clock settle") && fk_starts(gd_answer(d[..]), "settled: clock: ");
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "state page.refused") && gd_answer(d[..]) == "0";
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "logs") && gd_answer(d[..]) == "keyboard: shown";
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "life relaunch") && fk_starts(gd_answer(d[..]), "relaunched: ");
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "state chat.draft") && gd_answer(d[..]) == "";
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "state keyboard.shown") && gd_answer(d[..]) == "false";
+  #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "tap chat.nope") && gd_answer(d[..]) == "no row chat.nope in the committed tree (tree lists them)";
+}

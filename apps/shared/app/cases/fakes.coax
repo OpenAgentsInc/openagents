@@ -1,0 +1,447 @@
+// Fake services with held answers (The OpenAgents Book, PLAN.md "What the new approach keeps", item 4;
+// coax/native.md "Time and lifecycle"; GitHub #13645): the services a case runs against, so a trace is
+// exact with no network. Every agent's checks and cases use this one module (docs/reuse.md).
+//
+// A fake takes the requests an app's effect outbox makes, holds each one under a name, and answers only
+// when the case says so:
+//   - a recording declares the answers, in order (fk_record). One line each:
+//       NAME: KIND KEY => STATUS BODY
+//     KIND is a service shape: `http` (KEY is `METHOD PATH`), `auth` (KEY is the operation: state,
+//     email_start, email_verify, email_cancel, logout, refresh) or `wake` (KEY is the timer's name; it
+//     has no recorded answer and needs no line). Two lines with one NAME are that request's first and
+//     second answers. STATUS `part` is one part of a streamed answer: the request stays held after it.
+//     When two recordings have one KEY, the later one answers the next request for it: a case records a
+//     new answer when what the service would say has changed.
+//   - `identities`, `clipboard` and `link` need no line: the fake answers them itself, as done, on the
+//     clock's next frame (never inside the dispatch that asked). identities gives fresh 32-digit hex
+//     command and session IDs from the session's seed and the controlled clock's date.
+//   - fk_take holds a request. It is accepted (held) or refused; taking is never success.
+//   - fk_release delivers a held request's next recorded answer (`clock data release NAME`).
+//     fk_lose ends it with no answer: the outcome is unknown and nothing retries it by itself.
+//     fk_fail ends it as failed: it was never sent.
+//   - fk_due ends each request whose deadline the controlled clock has passed. A timeout's outcome is
+//     unknown, never done, and its recorded answer can no longer be delivered. A wake is the one request
+//     the clock completes as done: that is what a timer is.
+// A completion (FkDone) carries the request's operation ID and owner generation back, so the app's
+// outbox matches it to the request and drops one whose owner has moved on.
+//
+// Fakes cannot reach production. An `http` request names a path, or a URL on FK_ORIGIN (a reserved
+// `.test` name that resolves nowhere); any other URL is refused and counted (`escaped`). The only
+// account a fake knows is FK_ACCOUNT, and FK_CREDENTIAL is the only credential a host-side fake may
+// hold: both are fixed words, valid nowhere, so a case never needs a real token and a fake has none to
+// leak. Tokens stay native and never enter these records.
+//   coax/bin/coax test apps/shared/app/cases/fakes.coax
+
+FK_NAME :: 48;          // bytes of a request's name
+FK_KEY :: 160;          // bytes of a request's key
+FK_BODY :: 2048;        // bytes of an answer's body
+FK_HELD :: 16;          // requests held at once
+FK_ROWS :: 96;          // recorded answers
+FK_TEXT :: 32768;       // bytes of a recording
+FK_HTTP :: 0; FK_AUTH :: 1; FK_WAKE :: 2; FK_IDENTITIES :: 3; FK_CLIPBOARD :: 4; FK_LINK :: 5;
+FK_KINDS :: 6;
+FK_KIND :: [6] string.["http", "auth", "wake", "identities", "clipboard", "link"];
+// A request's outcome: the outbox's states, numbered as the host's completions are
+// (apps/shared/native/AppEffects.swift AppCompletion.State).
+FK_PENDING :: 0; FK_DONE :: 1; FK_FAILED :: 2; FK_UNKNOWN :: 3; FK_PART :: 4;
+FK_OUTCOME :: [5] string.["pending", "done", "failed", "unknown", "part"];
+FK_TIMEOUT_MS :: 30000;                                   // a request's deadline when it names none
+FK_ORIGIN :: "https://fake.openagents.test";              // the only origin an http fake answers for
+FK_ACCOUNT :: "fake-account-1";                           // the only account
+FK_CREDENTIAL :: "fake-credential-valid-nowhere";         // the only credential a host-side fake holds
+
+// What fk_take says.
+FK_HELD_OK :: 0; FK_NO_RECORDING :: 1; FK_FULL :: 2; FK_ESCAPES :: 3; FK_BAD :: 4;
+
+FkRow :: struct { name_at: int; name_n: int; kind: int; key_at: int; key_n: int; status: int; part: bool; body_at: int; body_n: int; used: bool; }
+FkHeld :: struct {
+  name: [FK_NAME] u8; name_n: int;
+  kind: int; op_id: int; generation: int;
+  taken_ms: int; due_ms: int;
+}
+// A request ended: what the app's outbox receives as a later action.
+FkDone :: struct {
+  had: bool;
+  name: [FK_NAME] u8; name_n: int;
+  kind: int; op_id: int; generation: int;
+  outcome: int;                       // FK_DONE, FK_FAILED or FK_UNKNOWN
+  status: int;                        // the recorded status of a done one; 0 otherwise
+  body: [FK_BODY] u8; body_n: int;
+  why: [16] u8; why_n: int;           // "" answered, "timeout", "lost", "failed", "wake"
+}
+Fakes :: struct {
+  text: [FK_TEXT] u8; text_n: int;
+  rows: [FK_ROWS] FkRow; rows_n: int;
+  held: [FK_HELD] FkHeld; held_n: int;
+  bad_lines: int;       // recording lines that did not parse
+  refused: int;         // requests fk_take refused
+  escaped: int;         // of those, requests for an origin other than FK_ORIGIN
+  delivered: int;       // completions handed out
+  cancelled: int;       // held requests the app cancelled: they never complete
+  seed: int;            // the session's seed, for identities
+  epoch_ms: int;        // the date the controlled clock started at, for identities
+  minted: int;          // identities given
+}
+
+fk_put :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m >= out.count { break; } out[m] = c; m += 1; } return m; }
+fk_put_i :: (out: [] u8, n: int, v: int) -> int {
+  b: [24] u8; k := 0; x := v; neg := x < 0; if neg { x = -x; }
+  while true { b[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  m := n;
+  if neg && m < out.count { out[m] = '-'; m += 1; }
+  while k > 0 { k -= 1; if m < out.count { out[m] = b[k]; m += 1; } }
+  return m;
+}
+fk_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+fk_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && s[a] <= ' ' { a += 1; }
+  while b > a && s[b - 1] <= ' ' { b -= 1; }
+  return s[a..<b];
+}
+fk_find :: (s: string, part: string) -> int {
+  if part.count == 0 || part.count > s.count { return -1; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return i; } }
+  return -1;
+}
+fk_kind :: (word: string) -> int {
+  kinds := FK_KIND;
+  for k: 0..<FK_KINDS { if kinds[k] == word { return k; } }
+  return -1;
+}
+fk_row_name :: (f: [] Fakes, i: int) -> string { r := f[0].rows[i]; return cast(string) f[0].text[r.name_at..<r.name_at + r.name_n]; }
+fk_row_key :: (f: [] Fakes, i: int) -> string { r := f[0].rows[i]; return cast(string) f[0].text[r.key_at..<r.key_at + r.key_n]; }
+fk_row_body :: (f: [] Fakes, i: int) -> string { r := f[0].rows[i]; return cast(string) f[0].text[r.body_at..<r.body_at + r.body_n]; }
+fk_held_name :: (f: [] Fakes, k: int) -> string { return cast(string) f[0].held[k].name[0..<f[0].held[k].name_n]; }
+fk_done_name :: (d: [] FkDone) -> string { return cast(string) d[0].name[0..<d[0].name_n]; }
+fk_done_body :: (d: [] FkDone) -> string { return cast(string) d[0].body[0..<d[0].body_n]; }
+fk_done_why :: (d: [] FkDone) -> string { return cast(string) d[0].why[0..<d[0].why_n]; }
+
+// A recording's lines added to the ones declared before. Notes (`#`) and blank lines are skipped. Returns
+// the lines that did not parse (also counted in bad_lines): a case with any is refused by the runner.
+fk_record :: (f: [] Fakes, recording: string) -> int {
+  bad := 0;
+  base := f[0].text_n;
+  if base + recording.count > FK_TEXT { f[0].bad_lines += 1; return 1; }
+  for i: 0..<recording.count { f[0].text[base + i] = recording[i]; }
+  f[0].text_n = base + recording.count;
+  at := 0;
+  while at < recording.count {
+    e := at;
+    while e < recording.count && recording[e] != '\n' { e += 1; }
+    raw := recording[at..<e];
+    line := fk_trim(raw);
+    line_at := base + at + (raw.count - fk_trim_left(raw).count);
+    at = e + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    colon := fk_find(line, ": "); arrow := fk_find(line, " => ");
+    if colon <= 0 || colon >= FK_NAME || arrow < colon + 2 || f[0].rows_n >= FK_ROWS { bad += 1; continue; }
+    middle := line[colon + 2..<arrow];
+    sp := fk_find(middle, " ");
+    if sp <= 0 { bad += 1; continue; }
+    kind := fk_kind(middle[0..<sp]);
+    key := fk_trim(middle[sp + 1..<middle.count]);
+    key_at := line_at + colon + 2 + sp + 1 + (middle.count - sp - 1 - fk_trim_left(middle[sp + 1..<middle.count]).count);
+    tail := line[arrow + 4..<line.count];
+    // STATUS is three digits, or `part`; the body follows it after one space
+    part := fk_starts(tail, "part") && (tail.count == 4 || tail[4] == ' ');
+    head := ifx part then 4 else 3;
+    status := ifx part then 200 else 0; digits := 0;
+    while !part && digits < tail.count && tail[digits] >= '0' && tail[digits] <= '9' && digits < 3 { status = status * 10 + cast(int) (tail[digits] - '0'); digits += 1; }
+    if kind < 0 || kind == FK_WAKE || kind >= FK_IDENTITIES || key.count == 0 || key.count > FK_KEY || (!part && digits != 3) || (tail.count > head && tail[head] != ' ') { bad += 1; continue; }
+    body_at := ifx tail.count > head + 1 then line_at + arrow + 4 + head + 1 else line_at + line.count;
+    body_n := ifx tail.count > head + 1 then tail.count - head - 1 else 0;
+    if body_n > FK_BODY { bad += 1; continue; }
+    f[0].rows[f[0].rows_n] = FkRow.{name_at = line_at, name_n = colon, kind = kind, key_at = key_at, key_n = key.count, status = status, part = part, body_at = body_at, body_n = body_n};
+    f[0].rows_n += 1;
+  }
+  f[0].bad_lines += bad;
+  return bad;
+}
+fk_trim_left :: (s: string) -> string {
+  a := 0;
+  while a < s.count && s[a] <= ' ' { a += 1; }
+  return s[a..<s.count];
+}
+
+// Whether an http key (`METHOD URL`) stays on the fake origin: a path, or a URL on FK_ORIGIN.
+fk_stays :: (key: string) -> bool {
+  sp := fk_find(key, " ");
+  if sp <= 0 { return false; }
+  url := fk_trim(key[sp + 1..<key.count]);
+  if url.count > 0 && url[0] == '/' { return url.count < 2 || url[1] != '/'; }   // `//host` is another origin
+  origin := FK_ORIGIN;
+  if !fk_starts(url, origin) { return false; }
+  return url.count == origin.count || url[origin.count] == '/' || url[origin.count] == '?';
+}
+// Whether a recorded key and a request's key name the same call. An http URL on the fake origin is its path.
+fk_same :: (kind: int, recorded: string, asked: string) -> bool {
+  if kind != FK_HTTP { return recorded == asked; }
+  sa := fk_find(recorded, " "); sb := fk_find(asked, " ");
+  if sa <= 0 || sb <= 0 || recorded[0..<sa] != asked[0..<sb] { return false; }
+  a := fk_trim(recorded[sa + 1..<recorded.count]); b := fk_trim(asked[sb + 1..<asked.count]);
+  origin := FK_ORIGIN;
+  if fk_starts(a, origin) { a = a[origin.count..<a.count]; }
+  if fk_starts(b, origin) { b = b[origin.count..<b.count]; }
+  if a.count == 0 { a = "/"; }
+  if b.count == 0 { b = "/"; }
+  return a == b;
+}
+fk_held_find :: (f: [] Fakes, name: string) -> int {
+  for k: 0..<f[0].held_n { if fk_held_name(f, k) == name { return k; } }
+  return -1;
+}
+
+// A request from the app's outbox, held. kind and key name the service call (FK_HTTP `METHOD PATH`,
+// FK_AUTH the operation, FK_WAKE the timer's name); op_id and generation come back in its completion;
+// timeout_ms is its deadline from now (0: FK_TIMEOUT_MS), and for a wake the delay until it fires.
+// Returns FK_HELD_OK, or why it was refused. A second request under a name already held is held as
+// NAME#2, NAME#3.
+fk_take :: (f: [] Fakes, kind: int, key: string, op_id: int, generation: int, timeout_ms: int, now_ms: int) -> int {
+  if kind < 0 || kind >= FK_KINDS || key.count == 0 || key.count > FK_KEY { f[0].refused += 1; return FK_BAD; }
+  if kind == FK_HTTP && !fk_stays(key) { f[0].refused += 1; f[0].escaped += 1; return FK_ESCAPES; }
+  if f[0].held_n >= FK_HELD { f[0].refused += 1; return FK_FULL; }
+  h: FkHeld;
+  if kind == FK_WAKE {
+    h.name_n = fk_put(h.name[..], 0, "wake."); h.name_n = fk_put(h.name[..], h.name_n, key);
+  } else if kind >= FK_IDENTITIES {
+    kinds := FK_KIND; h.name_n = fk_put(h.name[..], 0, kinds[kind]);
+  } else {
+    // the latest recording for a key answers it, so a case records the next answer when the world changes
+    row := -1;
+    for i: 0..<f[0].rows_n { if f[0].rows[i].kind == kind && fk_same(kind, fk_row_key(f, i), key) { row = i; } }
+    if row < 0 { f[0].refused += 1; return FK_NO_RECORDING; }
+    h.name_n = fk_put(h.name[..], 0, fk_row_name(f, row));
+  }
+  base := h.name_n; again := 2;
+  while fk_held_find(f, cast(string) h.name[0..<h.name_n]) >= 0 && again < 100 {
+    h.name_n = fk_put(h.name[..], base, "#"); h.name_n = fk_put_i(h.name[..], h.name_n, again);
+    again += 1;
+  }
+  h.kind = kind; h.op_id = op_id; h.generation = generation; h.taken_ms = now_ms;
+  h.due_ms = now_ms + (ifx kind >= FK_IDENTITIES then 0 else ifx timeout_ms > 0 then timeout_ms else ifx kind == FK_WAKE then 0 else FK_TIMEOUT_MS);
+  f[0].held[f[0].held_n] = h; f[0].held_n += 1;
+  return FK_HELD_OK;
+}
+fk_take_why :: (code: int) -> string {
+  if code == FK_HELD_OK { return "held"; }
+  if code == FK_NO_RECORDING { return "no recording names it"; }
+  if code == FK_FULL { return "too many requests are held"; }
+  if code == FK_ESCAPES { return "fakes answer only for paths and https://fake.openagents.test"; }
+  return "not a request";
+}
+
+fk_drop :: (f: [] Fakes, k: int) {
+  for j: k..<f[0].held_n - 1 { f[0].held[j] = f[0].held[j + 1]; }
+  f[0].held_n -= 1;
+}
+fk_end :: (f: [] Fakes, k: int, outcome: int, why: string, d: [] FkDone) {
+  h := f[0].held[k];
+  d[0].had = true; d[0].name_n = fk_put(d[0].name[..], 0, fk_held_name(f, k));
+  d[0].kind = h.kind; d[0].op_id = h.op_id; d[0].generation = h.generation;
+  d[0].outcome = outcome; d[0].status = 0; d[0].body_n = 0; d[0].why_n = fk_put(d[0].why[..], 0, why);
+  fk_drop(f, k);
+  f[0].delivered += 1;
+}
+// The base name a held request was recorded under: NAME#2 is NAME.
+fk_base :: (name: string) -> string {
+  i := name.count;
+  while i > 0 && name[i - 1] >= '0' && name[i - 1] <= '9' { i -= 1; }
+  if i > 0 && i < name.count && name[i - 1] == '#' { return name[0..<i - 1]; }
+  return name;
+}
+// What release, lose and fail say. FK_IS_WAKE also covers what the fake answers itself.
+FK_GAVE :: 0; FK_NOT_HELD :: 1; FK_NO_ANSWER :: 2; FK_IS_WAKE :: 3;
+// The held request's next recorded answer, delivered into d: FK_GAVE. FK_NOT_HELD: nothing is held
+// under that name (never taken, already answered, or timed out). FK_NO_ANSWER: every recorded answer
+// for it is used; it stays held. FK_IS_WAKE: a timer fires by the clock, not by hand.
+fk_release :: (f: [] Fakes, name: string, d: [] FkDone) -> int {
+  d[0].had = false;
+  k := fk_held_find(f, name);
+  if k < 0 { return FK_NOT_HELD; }
+  if f[0].held[k].kind == FK_WAKE || f[0].held[k].kind >= FK_IDENTITIES { return FK_IS_WAKE; }
+  base := fk_base(name); row := -1;
+  for i: 0..<f[0].rows_n { if !f[0].rows[i].used && f[0].rows[i].kind == f[0].held[k].kind && fk_row_name(f, i) == base { row = i; break; } }
+  if row < 0 { return FK_NO_ANSWER; }
+  f[0].rows[row].used = true;
+  if f[0].rows[row].part {
+    // one part of a streamed answer: the request stays held for the rest
+    h := f[0].held[k];
+    d[0].had = true; d[0].name_n = fk_put(d[0].name[..], 0, name);
+    d[0].kind = h.kind; d[0].op_id = h.op_id; d[0].generation = h.generation;
+    d[0].outcome = FK_PART; d[0].status = 200; d[0].why_n = fk_put(d[0].why[..], 0, "part");
+    d[0].body_n = fk_put(d[0].body[..], 0, fk_row_body(f, row));
+    f[0].delivered += 1;
+    return FK_GAVE;
+  }
+  fk_end(f, k, FK_DONE, "", d);
+  d[0].status = f[0].rows[row].status;
+  d[0].body_n = fk_put(d[0].body[..], 0, fk_row_body(f, row));
+  return FK_GAVE;
+}
+// The held request ends with no answer: its outcome is unknown (lose) or failed (fail).
+fk_lose :: (f: [] Fakes, name: string, d: [] FkDone) -> int {
+  d[0].had = false;
+  k := fk_held_find(f, name);
+  if k < 0 { return FK_NOT_HELD; }
+  fk_end(f, k, FK_UNKNOWN, "lost", d);
+  return FK_GAVE;
+}
+fk_fail :: (f: [] Fakes, name: string, d: [] FkDone) -> int {
+  d[0].had = false;
+  k := fk_held_find(f, name);
+  if k < 0 { return FK_NOT_HELD; }
+  fk_end(f, k, FK_FAILED, "failed", d);
+  return FK_GAVE;
+}
+// The first held request whose deadline the clock has reached, ended into d: a wake is done; any other
+// has timed out and its outcome is unknown. False: none is due.
+fk_due :: (f: [] Fakes, now_ms: int, d: [] FkDone) -> bool {
+  d[0].had = false;
+  for k: 0..<f[0].held_n {
+    if f[0].held[k].due_ms <= now_ms {
+      kind := f[0].held[k].kind;
+      if kind == FK_WAKE { fk_end(f, k, FK_DONE, "wake", d); }
+      else if kind >= FK_IDENTITIES { fk_answer_self(f, k, d); }
+      else { fk_end(f, k, FK_UNKNOWN, "timeout", d); }
+      return true;
+    }
+  }
+  return false;
+}
+// identities, clipboard and link, answered by the fake itself as done. identities' body is
+// {"command_id":HEX32,"session_id":HEX32,"now_ms":DATE}, as the host's (AppEffects.swift).
+fk_answer_self :: (f: [] Fakes, k: int, d: [] FkDone) {
+  kind := f[0].held[k].kind; taken := f[0].held[k].taken_ms;
+  fk_end(f, k, FK_DONE, "", d);
+  d[0].status = 200;
+  if kind != FK_IDENTITIES { d[0].body_n = fk_put(d[0].body[..], 0, "{}"); return; }
+  n := fk_put(d[0].body[..], 0, "{\"command_id\":\""); n = fk_hex32(f, d[0].body[..], n);
+  n = fk_put(d[0].body[..], n, "\",\"session_id\":\""); n = fk_hex32(f, d[0].body[..], n);
+  n = fk_put(d[0].body[..], n, "\",\"now_ms\":"); n = fk_put_i(d[0].body[..], n, f[0].epoch_ms + taken);
+  d[0].body_n = fk_put(d[0].body[..], n, "}");
+}
+// 32 hexadecimal digits, the same for the same seed and order in every session.
+fk_hex32 :: (f: [] Fakes, out: [] u8, at: int) -> int {
+  f[0].minted += 1;
+  x := (f[0].seed * 2654435761 + f[0].minted * 40503) & 0x7fffffff;
+  digits := "0123456789abcdef"; n := at;
+  for i: 0..<32 {
+    x = (x * 1103515245 + 12345) & 0x7fffffff;
+    if n < out.count { out[n] = digits[(x >> 16) & 15]; n += 1; }
+  }
+  return n;
+}
+// The app cancelled a request (by its operation ID), or every request of a generation: each held one
+// ends with no completion, as a host's cancel does. Returns how many ended.
+fk_cancel :: (f: [] Fakes, op_id: int) -> int {
+  n := 0; k := 0;
+  while k < f[0].held_n { if f[0].held[k].op_id == op_id { fk_drop(f, k); n += 1; } else { k += 1; } }
+  f[0].cancelled += n; return n;
+}
+fk_cancel_generation :: (f: [] Fakes, generation: int) -> int {
+  n := 0; k := 0;
+  while k < f[0].held_n { if f[0].held[k].generation == generation { fk_drop(f, k); n += 1; } else { k += 1; } }
+  f[0].cancelled += n; return n;
+}
+// Work the clock still owes: timers to fire and answers the fake gives itself. `clock settle` waits for it.
+fk_wakes :: (f: [] Fakes) -> int {
+  n := 0;
+  for k: 0..<f[0].held_n { if f[0].held[k].kind == FK_WAKE || f[0].held[k].kind >= FK_IDENTITIES { n += 1; } }
+  return n;
+}
+// What is held, as `NAME, NAME`: "" when nothing is. wakes: only what the clock completes (true) or only
+// what a case releases (false).
+fk_list :: (f: [] Fakes, wakes: bool, out: [] u8) -> int {
+  n := 0; first := true;
+  for k: 0..<f[0].held_n {
+    if (f[0].held[k].kind == FK_WAKE || f[0].held[k].kind >= FK_IDENTITIES) != wakes { continue; }
+    if !first { n = fk_put(out, n, ", "); }
+    n = fk_put(out, n, fk_held_name(f, k)); first = false;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- checks
+
+FK_TEST_RECORDING :: "# the login service\nauth.email_start: auth email_start => 200 {\"sent\":true}\nauth.email_verify: auth email_verify => 400 {\"error\":\"code\"}\nauth.email_verify: auth email_verify => 200 {\"account\":\"fake-account-1\"}\n\ntask.create: http POST /api/tasks => 202 {\"id\":\"t1\"}\nempty: http GET /api/empty => 204\n";
+
+#test "fakes: a recording's answers are replayed in declared order, each only when released" {
+  f: [1] Fakes; d: [1] FkDone;
+  #assert fk_record(f[..], FK_TEST_RECORDING) == 0 && f[0].rows_n == 5 && f[0].bad_lines == 0;
+  #assert fk_row_name(f[..], 3) == "task.create" && fk_row_key(f[..], 3) == "POST /api/tasks" && f[0].rows[3].status == 202 && fk_row_body(f[..], 3) == "{\"id\":\"t1\"}";
+  #assert fk_row_body(f[..], 4) == "" && f[0].rows[4].status == 204;
+  // taking holds; nothing is answered until the case releases it
+  #assert fk_take(f[..], FK_AUTH, "email_verify", 7, 1, 0, 100) == FK_HELD_OK && f[0].held_n == 1 && fk_held_name(f[..], 0) == "auth.email_verify";
+  #assert !fk_due(f[..], 100 + FK_TIMEOUT_MS - 1, d[..]) && !d[0].had;
+  #assert fk_release(f[..], "auth.email_start", d[..]) == FK_NOT_HELD && !d[0].had;
+  // the first answer declared, then the second
+  #assert fk_release(f[..], "auth.email_verify", d[..]) == FK_GAVE && d[0].had && d[0].outcome == FK_DONE && d[0].status == 400 && d[0].op_id == 7 && d[0].generation == 1 && fk_done_body(d[..]) == "{\"error\":\"code\"}";
+  #assert f[0].held_n == 0 && fk_release(f[..], "auth.email_verify", d[..]) == FK_NOT_HELD;
+  #assert fk_take(f[..], FK_AUTH, "email_verify", 8, 1, 0, 200) == FK_HELD_OK;
+  #assert fk_release(f[..], "auth.email_verify", d[..]) == FK_GAVE && d[0].status == 200 && d[0].op_id == 8 && fk_done_body(d[..]) == "{\"account\":\"fake-account-1\"}";
+  // a third request has no answer left: it stays held, and says so
+  #assert fk_take(f[..], FK_AUTH, "email_verify", 9, 1, 0, 300) == FK_HELD_OK;
+  #assert fk_release(f[..], "auth.email_verify", d[..]) == FK_NO_ANSWER && !d[0].had && f[0].held_n == 1 && f[0].delivered == 2;
+  // two at once under one name: the second is NAME#2, and both draw on the same declared answers
+  g: [1] Fakes; _ := fk_record(g[..], FK_TEST_RECORDING);
+  #assert fk_take(g[..], FK_AUTH, "email_verify", 1, 1, 0, 0) == FK_HELD_OK && fk_take(g[..], FK_AUTH, "email_verify", 2, 1, 0, 0) == FK_HELD_OK;
+  out: [128] u8; n := fk_list(g[..], false, out[..]);
+  #assert cast(string) out[0..<n] == "auth.email_verify, auth.email_verify#2" && fk_base("auth.email_verify#2") == "auth.email_verify" && fk_base("a#b") == "a#b";
+  #assert fk_release(g[..], "auth.email_verify#2", d[..]) == FK_GAVE && d[0].op_id == 2 && d[0].status == 400;
+  #assert fk_release(g[..], "auth.email_verify", d[..]) == FK_GAVE && d[0].op_id == 1 && d[0].status == 200;
+}
+#test "fakes: a timeout is never success, a lost answer is unknown, and a late release finds nothing" {
+  f: [1] Fakes; d: [1] FkDone; _ := fk_record(f[..], FK_TEST_RECORDING);
+  #assert fk_take(f[..], FK_HTTP, "POST /api/tasks", 3, 2, 5000, 1000) == FK_HELD_OK;
+  #assert !fk_due(f[..], 5999, d[..]);
+  #assert fk_due(f[..], 6000, d[..]) && d[0].had && d[0].outcome == FK_UNKNOWN && d[0].status == 0 && fk_done_why(d[..]) == "timeout" && d[0].op_id == 3 && d[0].generation == 2 && fk_done_name(d[..]) == "task.create";
+  // its recorded 202 can no longer be delivered: nothing is held, and the answer is still unused
+  #assert fk_release(f[..], "task.create", d[..]) == FK_NOT_HELD && !f[0].rows[3].used && !fk_due(f[..], 99999, d[..]);
+  #assert fk_take(f[..], FK_HTTP, "POST https://fake.openagents.test/api/tasks", 4, 2, 0, 7000) == FK_HELD_OK;
+  #assert fk_lose(f[..], "task.create", d[..]) == FK_GAVE && d[0].outcome == FK_UNKNOWN && fk_done_why(d[..]) == "lost" && fk_lose(f[..], "task.create", d[..]) == FK_NOT_HELD;
+  #assert fk_take(f[..], FK_HTTP, "GET /api/empty", 5, 2, 0, 7000) == FK_HELD_OK && fk_fail(f[..], "empty", d[..]) == FK_GAVE && d[0].outcome == FK_FAILED && d[0].status == 0;
+  // a wake is the clock's own: it fires when due, as done, and a release by hand is refused
+  #assert fk_take(f[..], FK_WAKE, "retry", 6, 2, 250, 8000) == FK_HELD_OK && fk_wakes(f[..]) == 1 && fk_release(f[..], "wake.retry", d[..]) == FK_IS_WAKE;
+  #assert !fk_due(f[..], 8249, d[..]) && fk_due(f[..], 8250, d[..]) && d[0].outcome == FK_DONE && fk_done_why(d[..]) == "wake" && d[0].kind == FK_WAKE && fk_wakes(f[..]) == 0;
+}
+#test "fakes: a request for another origin, or one no recording names, is refused and counted" {
+  f: [1] Fakes; _ := fk_record(f[..], FK_TEST_RECORDING);
+  #assert fk_take(f[..], FK_HTTP, "POST https://openagents.com/api/tasks", 1, 1, 0, 0) == FK_ESCAPES && f[0].escaped == 1 && f[0].held_n == 0;
+  #assert fk_take(f[..], FK_HTTP, "POST https://fake.openagents.test.evil.example/api/tasks", 1, 1, 0, 0) == FK_ESCAPES;
+  #assert fk_take(f[..], FK_HTTP, "POST //openagents.com/api/tasks", 1, 1, 0, 0) == FK_ESCAPES && fk_take(f[..], FK_HTTP, "POST", 1, 1, 0, 0) == FK_ESCAPES && f[0].escaped == 4;
+  #assert fk_take(f[..], FK_HTTP, "GET /api/tasks", 1, 1, 0, 0) == FK_NO_RECORDING && fk_take(f[..], FK_AUTH, "passkey", 1, 1, 0, 0) == FK_NO_RECORDING;
+  #assert fk_take(f[..], 9, "x", 1, 1, 0, 0) == FK_BAD && fk_take(f[..], FK_AUTH, "", 1, 1, 0, 0) == FK_BAD && f[0].refused == 8 && f[0].held_n == 0;
+  for k: 0..<FK_HELD { #assert fk_take(f[..], FK_WAKE, "t", k, 1, 10, 0) == FK_HELD_OK; }
+  #assert fk_take(f[..], FK_WAKE, "t", 99, 1, 10, 0) == FK_FULL && fk_held_name(f[..], 1) == "wake.t#2";
+  #assert fk_stays("GET /x") && fk_stays("GET https://fake.openagents.test") && fk_stays("GET https://fake.openagents.test?x=1") && !fk_stays("GET http://fake.openagents.test/x");
+  // a recording line that does not parse is counted, never skipped silently
+  g: [1] Fakes;
+  #assert fk_record(g[..], "a: auth x => 200 ok\nno arrow here\nb: carrier x => 200\nc: http GET /c => 20\nd: wake t => 200\n") == 4 && g[0].rows_n == 1 && g[0].bad_lines == 4;
+  #assert FK_ACCOUNT == "fake-account-1" && FK_CREDENTIAL == "fake-credential-valid-nowhere";
+}
+#test "fakes: a streamed answer comes in parts and stays held; identities, clipboard and link answer themselves" {
+  f: [1] Fakes; d: [1] FkDone;
+  #assert fk_record(f[..], "events: http GET /api/chat/events/v2alpha1 => part {\"seq\":1}\nevents: http GET /api/chat/events/v2alpha1 => part\nevents: http GET /api/chat/events/v2alpha1 => 200 {\"end\":true}\nbad: http GET /x => parts\n") == 1;
+  #assert f[0].rows[0].part && fk_row_body(f[..], 0) == "{\"seq\":1}" && f[0].rows[1].part && fk_row_body(f[..], 1) == "" && !f[0].rows[2].part;
+  #assert fk_take(f[..], FK_HTTP, "GET /api/chat/events/v2alpha1", 5, 1, 0, 0) == FK_HELD_OK;
+  #assert fk_release(f[..], "events", d[..]) == FK_GAVE && d[0].outcome == FK_PART && fk_done_body(d[..]) == "{\"seq\":1}" && f[0].held_n == 1;
+  #assert fk_release(f[..], "events", d[..]) == FK_GAVE && d[0].outcome == FK_PART && d[0].body_n == 0 && f[0].held_n == 1;
+  #assert fk_release(f[..], "events", d[..]) == FK_GAVE && d[0].outcome == FK_DONE && d[0].status == 200 && f[0].held_n == 0;
+  // the fake's own answers: due on the clock's next turn, never at once, and settle waits for them
+  f[0].seed = 7; f[0].epoch_ms = 1000;
+  #assert fk_take(f[..], FK_IDENTITIES, "new", 6, 1, 0, 50) == FK_HELD_OK && fk_wakes(f[..]) == 1 && fk_release(f[..], "identities", d[..]) == FK_IS_WAKE;
+  #assert fk_due(f[..], 50, d[..]) && d[0].outcome == FK_DONE && d[0].op_id == 6 && d[0].body_n == 15 + 32 + 16 + 32 + 11 + 4 + 1;
+  body := fk_done_body(d[..]);
+  #assert fk_starts(body, "{\"command_id\":\"") && fk_find(body, "\"now_ms\":1050}") > 0;
+  g: [1] Fakes; g[0].seed = 7; g[0].epoch_ms = 1000; e: [1] FkDone;
+  _ := fk_take(g[..], FK_IDENTITIES, "new", 6, 1, 0, 50); _ = fk_due(g[..], 50, e[..]);
+  #assert fk_done_body(e[..]) == body;
+  #assert fk_take(f[..], FK_CLIPBOARD, "write", 7, 1, 0, 60) == FK_HELD_OK && fk_take(f[..], FK_LINK, "open", 8, 1, 0, 60) == FK_HELD_OK;
+  out: [64] u8; n := fk_list(f[..], true, out[..]); #assert cast(string) out[0..<n] == "clipboard, link";
+  #assert fk_due(f[..], 60, d[..]) && d[0].op_id == 7 && fk_done_body(d[..]) == "{}" && fk_due(f[..], 60, d[..]) && d[0].op_id == 8 && !fk_due(f[..], 60, d[..]);
+  // a cancelled request never completes
+  _ = fk_record(f[..], FK_TEST_RECORDING);
+  #assert fk_take(f[..], FK_AUTH, "email_start", 9, 3, 0, 0) == FK_HELD_OK && fk_take(f[..], FK_HTTP, "POST /api/tasks", 10, 3, 0, 0) == FK_HELD_OK && fk_take(f[..], FK_AUTH, "email_verify", 11, 4, 0, 0) == FK_HELD_OK;
+  #assert fk_cancel(f[..], 11) == 1 && fk_cancel_generation(f[..], 3) == 2 && f[0].held_n == 0 && f[0].cancelled == 3 && !fk_due(f[..], 999999, d[..]);
+}

@@ -1,0 +1,12 @@
+# What the driver refuses, and how it says so. Nothing here reaches the app.
+# app: chat-page
+tap chat.nope
+type chat.title hello
+tap
+clock +abc
+clock until
+state account.token
+state nothing.here
+clock data release nothing
+clock data record not a line
+host

@@ -1,0 +1,40 @@
+> tree
+chat.composer field "Message" = ""
+chat.composer.send button "Send message" [disabled]
+chat.title heading "OpenAgents"
+> state keyboard.shown
+false
+> tap chat.composer
+tapped chat.composer
+> state keyboard.shown
+true
+> tree
+chat.composer field "Message" = "" [focused]
+chat.composer.send button "Send message" [disabled]
+chat.title heading "OpenAgents"
+> type chat.composer Fix the failing build
+typed into chat.composer
+> state chat.draft
+Fix the failing build
+> tree
+chat.composer field "Message" = "Fix the failing build" [focused]
+chat.composer.send button "Send message"
+chat.title heading "OpenAgents"
+> type chat.composer \nand run the checks
+typed into chat.composer
+> state chat.draft
+Fix the failing build and run the checks
+> tap chat.composer.send
+tapped chat.composer.send: the press landed and no action took it
+> state chat.draft
+Fix the failing build and run the checks
+> clock settle
+settled: clock: 317 ms
+> logs
+keyboard: shown
+> life relaunch
+relaunched: clock: 317 ms
+> state chat.draft
+
+> state keyboard.shown
+false

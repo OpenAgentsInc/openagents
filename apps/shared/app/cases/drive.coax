@@ -1,0 +1,750 @@
+// coax drive on the GPU app (The OpenAgents Book, PLAN.md "What the new approach keeps", items 2 to 6;
+// coax/native.md "The agent interface and verification" and "Time and lifecycle"; GitHub #13645): the
+// common operations over a committed surface (components/paint/surface.coax), the same on every host.
+// How an app and a host use it, the format of a case and the case runner: INTEGRATION.md beside this file.
+//
+// The driver never writes app state. It reads the committed rows, and everything it does to the app
+// enters where a person's input enters:
+//   - `tap ID` finds the row by its id in the frame committed now, takes the middle of the part of it
+//     that is not clipped, and asks the same hit test a finger meets (surface_hit) what is there. Only
+//     when that is the row itself does a pointer go down and up at that point, through the app's own
+//     pointer entry. A covered, clipped or disabled control is refused and nothing is delivered.
+//   - `type ID TEXT` presses the field first unless it holds the keyboard, then the text enters through
+//     the editor: the platform's on a host that has one, the shared edit buffer (components/core/edit.coax)
+//     on the build host, which hands the app the whole draft the way the platform editor does.
+//   - `drag ID DX DY` and `scroll ID DX DY` are a pointer down on the row, moves and an up.
+// A target is always an id resolved in the committed frame; after each frame of a gesture the id is
+// resolved again, so no coordinate outlives the frame it was read from.
+//
+// Time is the driver's. In agent mode (gd_open before the app's first frame) a frame gets no time but
+// what `clock` grants it (gd_frame_dt), so between two operations nothing moves. The session's seed,
+// date, locale and time zone are the one pin every agent session uses (metaverse-engine/agent/pin.coax).
+//
+// The driver is a small machine an adapter runs, because the app's entries differ per app and Coax has
+// no procedure values. gd_drive starts an operation and gd_resume continues it; each returns what the
+// driver needs next:
+//   GD_DONE      the answer is ready (gd_answer)
+//   GD_FRAME     run one frame of the app with gd_frame_dt's time, name what is still scheduled with
+//                gd_owner, then resume
+//   GD_POINTER   deliver a pointer event (gd_px, gd_py in logical px; gd_phase 0 down, 1 moved, 2 up,
+//                3 cancelled) to the app's pointer entry, say whether an action took it (gd_took), resume
+//   GD_EDITOR    the field gd_target holds the keyboard: enter gd_text through the editor, say whether it
+//                was taken (gd_edited), resume. A host with no platform editor calls gd_edit for the
+//                whole new draft and hands it to the app's text entry
+//   GD_STATE     say each allowlisted value with gd_state, resume
+//   GD_COMPLETE  deliver the completion gd_done to the app's outbox as an action, resume
+//   GD_LIFE      deliver the lifecycle fact gd_life ("background", "foreground") to the app, or for
+//                "relaunch" end the app and start it again from what it stored, then resume
+// After anything it delivers, an adapter drains the app's outbox into gd_take (and a cancel into
+// gd_cancel). The adapter for today's chat page is chat-page.coax.
+//   coax/bin/coax test apps/shared/app/cases/drive.coax
+
+#load "../../../../components/kit/frame.coax";
+#load "../../../../components/core/edit.coax";
+#load "../../../../metaverse-engine/agent/pin.coax";
+#load "fakes.coax";
+
+GD_DONE :: 0; GD_FRAME :: 1; GD_POINTER :: 2; GD_EDITOR :: 3; GD_STATE :: 4; GD_COMPLETE :: 5; GD_LIFE :: 6;
+// What a host has beyond the common operations.
+GD_CAP_SCREENSHOT :: 1;       // it can write a picture of the frame
+GD_CAP_EDITOR :: 2;           // text enters through a platform editor (else the shared edit buffer)
+// The build host's phone: the window every cpu case runs in, in points, with its scale and safe area.
+GD_PHONE_W :: 402; GD_PHONE_H :: 874; GD_PHONE_SCALE :: 3; GD_PHONE_SAFE_TOP :: 59; GD_PHONE_SAFE_BOTTOM :: 34;
+GD_UNTIL_MS :: 30000;         // `clock until` gives up after this much of the clock (coax/web/drive.coax's --within)
+GD_STEP_MS_MAX :: 600000;     // the most one `clock +MS` steps: ten minutes of the clock
+GD_DRAG_STEPS :: 4;           // moves between a drag's down and up
+GD_OUT :: 32768; GD_TEXT :: 4096; GD_LOG :: 8192; GD_OWNERS :: 256;
+
+GD_OP_NONE :: 0; GD_OP_TAP :: 1; GD_OP_TYPE :: 2; GD_OP_DRAG :: 3; GD_OP_STEP :: 4; GD_OP_SETTLE :: 5; GD_OP_UNTIL :: 6; GD_OP_STATE :: 7; GD_OP_DATA :: 8; GD_OP_LIFE :: 9;
+
+GdDrive :: struct {
+  open: bool;
+  host: [24] u8; host_n: int; caps: int;
+  agent: bool;                         // only `clock` gives a frame time
+  frames: int;                         // frames of the clock stepped, a sixtieth of a second each
+  grant: f32;                          // the time the next frame gets, in seconds
+  // the operation under way
+  op: int; stage: int; left: int; look: int; spent: int; bound: int;
+  scroll: bool; delivered: bool;
+  target: [EL_ID] u8; target_n: int;
+  px: f32; py: f32; ox: f32; oy: f32; dx: f32; dy: f32; phase: int;
+  took: bool; edited: bool;
+  text: [GD_TEXT] u8; text_n: int;     // what `type` enters; the name `state` asks for; `until`'s predicate
+  verb: [12] u8; verb_n: int;          // `clock data`'s release, lose or fail
+  // the build host's editor
+  edit: [1] EditBuf; editing: [EL_ID] u8; editing_n: int;
+  out: [GD_OUT] u8; out_n: int;
+  st: [GD_OUT] u8; st_n: int;          // `name = value` lines an adapter said (gd_state)
+  owners: [GD_OWNERS] u8; owners_n: int;
+  log: [GD_LOG] u8; log_n: int; log_lost: int;
+  fakes: [1] Fakes; done: [1] FkDone;
+  refused: int;                        // presses, texts and drags the driver refused to deliver
+  redacted: int;                       // values and log lines it would not show
+}
+
+// ---------------------------------------------------------------- text
+
+gd_word :: (s: string, w: int) -> string {
+  at := 0; k := 0;
+  while at < s.count {
+    while at < s.count && s[at] == ' ' { at += 1; }
+    if at >= s.count { break; }
+    from := at;
+    while at < s.count && s[at] != ' ' { at += 1; }
+    if k == w { return s[from..<at]; }
+    k += 1;
+  }
+  return "";
+}
+gd_rest :: (s: string, w: int) -> string {
+  at := 0; k := 0;
+  while at < s.count {
+    while at < s.count && s[at] == ' ' { at += 1; }
+    if at >= s.count { break; }
+    if k == w { return s[at..<s.count]; }
+    while at < s.count && s[at] != ' ' { at += 1; }
+    k += 1;
+  }
+  return "";
+}
+GdInt :: struct { ok: bool; v: int; }
+gd_int :: (s: string) -> GdInt {
+  if s.count == 0 || s.count > 9 { return GdInt.{}; }
+  neg := s[0] == '-'; from := ifx neg || s[0] == '+' then 1 else 0;
+  if from >= s.count { return GdInt.{}; }
+  v := 0;
+  for i: from..<s.count { if s[i] < '0' || s[i] > '9' { return GdInt.{}; } v = v * 10 + cast(int) (s[i] - '0'); }
+  return GdInt.{ok = true, v = ifx neg then -v else v};
+}
+gd_say :: (d: [] GdDrive, s: string) { d[0].out_n = el_put(d[0].out[..], d[0].out_n, s); }
+gd_say_i :: (d: [] GdDrive, v: int) { d[0].out_n = el_put_i(d[0].out[..], d[0].out_n, v); }
+gd_answer :: (d: [] GdDrive) -> string { return cast(string) d[0].out[0..<d[0].out_n]; }
+gd_target :: (d: [] GdDrive) -> string { return cast(string) d[0].target[0..<d[0].target_n]; }
+gd_text :: (d: [] GdDrive) -> string { return cast(string) d[0].text[0..<d[0].text_n]; }
+gd_host :: (d: [] GdDrive) -> string { return cast(string) d[0].host[0..<d[0].host_n]; }
+gd_px :: (d: [] GdDrive) -> f32 { return d[0].px; }
+gd_py :: (d: [] GdDrive) -> f32 { return d[0].py; }
+gd_phase :: (d: [] GdDrive) -> int { return d[0].phase; }
+// Whether an action took the release: only the up counts (a down is taken by any row that can be pressed).
+gd_took :: (d: [] GdDrive, took: bool) { if took && d[0].phase == 2 { d[0].took = true; } }
+gd_edited :: (d: [] GdDrive, ok: bool) { d[0].edited = ok; }
+gd_done :: (d: [] GdDrive) -> [] FkDone { return d[0].done[..]; }
+
+// ---------------------------------------------------------------- what is never shown
+
+// A name `state` will not answer for and a log will not carry, whatever an adapter lists.
+gd_secret_name :: (name: string) -> bool {
+  words := [15] string.["token", "secret", "password", "passkey", "mnemonic", "seed", "private", "credential", "authorization", "cookie", "recovery", "nsec", "bearer", "signature", "otp"];
+  low: [96] u8; n := 0;
+  for c: name { if n < low.count { low[n] = ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c; n += 1; } }
+  l := cast(string) low[0..<n];
+  for w: words { if el_has(l, w) { return true; } }
+  // "key", but not the keyboard
+  i := 0;
+  while i + 3 <= l.count {
+    if l[i..<i + 3] == "key" && !(i + 8 <= l.count && l[i..<i + 8] == "keyboard") { return true; }
+    i += 1;
+  }
+  return false;
+}
+// A value that reads as a credential: a bearer header, a known key prefix, a signed token, or 32 or
+// more letters and digits in a row (a hex key, a token's segment). A typed object ID (cnv_, trn_, prj_,
+// run_ or ctx_ and exactly 32 lowercase hex) names a record the account can already list: it is not one.
+gd_secret_value :: (v: string) -> bool {
+  marks := [6] string.["Bearer ", "oa_agent_", "nsec1", "sk-", "eyJ", "-----BEGIN"];
+  for m: marks { if el_has(v, m) { return true; } }
+  at := 0;
+  while at < v.count {
+    e := at; digit := false; letter := false;
+    while e < v.count && gd_id_char(v[e]) { if v[e] >= '0' && v[e] <= '9' { digit = true; } else if v[e] != '_' { letter = true; } e += 1; }
+    if e - at >= 32 && digit && letter && !gd_object_id(v[at..<e]) { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+gd_id_char :: (c: u8) -> bool { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+gd_object_id :: (w: string) -> bool {
+  if w.count != 36 || w[3] != '_' { return false; }
+  kinds := [5] string.["cnv", "trn", "prj", "run", "ctx"];
+  known := false; for k: kinds { if w[0..<3] == k { known = true; } }
+  if !known { return false; }
+  for c: w[4..<36] { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// An address as a trace shows it: its first character, then its domain.
+gd_mask_email :: (email: string, out: [] u8) -> string {
+  at := -1;
+  for i: 0..<email.count { if email[i] == '@' { at = i; } }
+  if at <= 0 { return ""; }
+  n := el_put(out, 0, email[0..<1]); n = el_put(out, n, "..."); n = el_put(out, n, email[at..<email.count]);
+  return cast(string) out[0..<n];
+}
+
+// ---------------------------------------------------------------- the session
+
+// The session opens, before the app's first frame. host names it ("cpu", "ios-simulator", "ios-device");
+// caps are its GD_CAP_* bits; agent turns the agent clock on.
+gd_open :: (d: [] GdDrive, host: string, caps: int, agent: bool) {
+  d[0].open = true; d[0].host_n = el_put(d[0].host[..], 0, host); d[0].caps = caps; d[0].agent = agent;
+  d[0].frames = 0; d[0].grant = 0; d[0].op = GD_OP_NONE;
+  d[0].fakes[0].seed = AGENT_SEED; d[0].fakes[0].epoch_ms = AGENT_EPOCH_MS;
+}
+// The lifecycle fact a GD_LIFE asks the adapter to deliver.
+gd_life :: (d: [] GdDrive) -> string { return gd_text(d); }
+// The time a frame gets: under the agent clock what `clock` granted (once), else the host's own.
+gd_frame_dt :: (d: [] GdDrive, host_dt: f32) -> f32 {
+  if !d[0].agent { return host_dt; }
+  t := d[0].grant; d[0].grant = 0;
+  return t;
+}
+// The clock, in ms since the session opened, and the date it shows (the pin's epoch plus the clock).
+gd_ms :: (d: [] GdDrive) -> int { return (d[0].frames * 1000 + AGENT_HZ / 2) / AGENT_HZ; }
+gd_date_ms :: (d: [] GdDrive) -> int { return AGENT_EPOCH_MS + gd_ms(d); }
+gd_seed :: () -> int { return AGENT_SEED; }
+gd_put_2 :: (out: [] u8, n: int, v: int, width: int) -> int {
+  m := n; div := 1;
+  for i: 1..<width { div *= 10; }
+  x := v;
+  for i: 0..<width { if m < out.count { out[m] = cast(u8) ('0' + (x / div) % 10); m += 1; } div = ifx div > 1 then div / 10 else 1; if i == width - 2 { div = 1; } }
+  return m;
+}
+// A date in ms since 1970 as 2026-01-01T00:00:00.000Z.
+gd_put_date :: (out: [] u8, at: int, ms: int) -> int {
+  days := ms / 86400000; rem := ms % 86400000;
+  z := days + 719468; era := z / 146097; doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  y := yoe + era * 400; doy := doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp := (5 * doy + 2) / 153; day := doy - (153 * mp + 2) / 5 + 1;
+  month := ifx mp < 10 then mp + 3 else mp - 9;
+  if month <= 2 { y += 1; }
+  n := gd_put_n(out, at, y, 4); n = el_put(out, n, "-"); n = gd_put_n(out, n, month, 2); n = el_put(out, n, "-"); n = gd_put_n(out, n, day, 2);
+  n = el_put(out, n, "T"); n = gd_put_n(out, n, rem / 3600000, 2); n = el_put(out, n, ":"); n = gd_put_n(out, n, (rem / 60000) % 60, 2);
+  n = el_put(out, n, ":"); n = gd_put_n(out, n, (rem / 1000) % 60, 2); n = el_put(out, n, "."); n = gd_put_n(out, n, rem % 1000, 3);
+  return el_put(out, n, "Z");
+}
+// v in exactly `width` digits, zeros first.
+gd_put_n :: (out: [] u8, at: int, v: int, width: int) -> int {
+  b: [12] u8; x := ifx v < 0 then 0 else v;
+  for i: 0..<width { b[width - 1 - i] = cast(u8) ('0' + x % 10); x /= 10; }
+  return el_put(out, at, cast(string) b[0..<width]);
+}
+
+// A line for `logs`. A line that names or carries a credential is replaced and counted.
+gd_log :: (d: [] GdDrive, line: string) {
+  text := line;
+  if gd_secret_value(line) { text = "[a line was withheld: it reads as a credential]"; d[0].redacted += 1; }
+  if d[0].log_n + text.count + 1 > GD_LOG { d[0].log_lost += 1; return; }
+  d[0].log_n = el_put(d[0].log[..], d[0].log_n, text); d[0].log_n = el_put(d[0].log[..], d[0].log_n, "\n");
+}
+// Something still scheduled after the frame just run (motion, a stream): `clock settle` waits for it.
+gd_owner :: (d: [] GdDrive, name: string) {
+  if d[0].owners_n > 0 { d[0].owners_n = el_put(d[0].owners[..], d[0].owners_n, ", "); }
+  d[0].owners_n = el_put(d[0].owners[..], d[0].owners_n, name);
+}
+// One allowlisted value, said by the adapter on GD_STATE. A name or value that reads as a credential
+// is never shown, even when an adapter lists it.
+gd_state :: (d: [] GdDrive, name: string, value: string) {
+  d[0].st_n = el_put(d[0].st[..], d[0].st_n, name); d[0].st_n = el_put(d[0].st[..], d[0].st_n, " = ");
+  if gd_secret_name(name) || gd_secret_value(value) { d[0].st_n = el_put(d[0].st[..], d[0].st_n, "[withheld]"); d[0].redacted += 1; }
+  else {
+    for c: value { if d[0].st_n < GD_OUT { d[0].st[d[0].st_n] = ifx c == '\n' then ' ' else c; d[0].st_n += 1; } }
+  }
+  d[0].st_n = el_put(d[0].st[..], d[0].st_n, "\n");
+}
+gd_state_i :: (d: [] GdDrive, name: string, v: int) { b: [24] u8; n := el_put_i(b[..], 0, v); gd_state(d, name, cast(string) b[0..<n]); }
+gd_state_b :: (d: [] GdDrive, name: string, v: bool) { gd_state(d, name, ifx v then "true" else "false"); }
+// A said value by its name: found false when the adapter did not say it.
+GdValue :: struct { found: bool; v: string; }
+gd_state_of :: (d: [] GdDrive, name: string) -> GdValue {
+  at := 0;
+  while at < d[0].st_n {
+    e := at;
+    while e < d[0].st_n && d[0].st[e] != '\n' { e += 1; }
+    line := cast(string) d[0].st[at..<e];
+    at = e + 1;
+    if line.count >= name.count + 3 && line[0..<name.count] == name && line[name.count..<name.count + 3] == " = " { return GdValue.{found = true, v = line[name.count + 3..<line.count]}; }
+  }
+  return GdValue.{};
+}
+// A request from the app's outbox, handed to the fakes (fakes.coax fk_take). A refusal is logged; the
+// adapter then ends the request in the outbox as failed.
+gd_take :: (d: [] GdDrive, kind: int, key: string, op_id: int, generation: int, timeout_ms: int) -> int {
+  code := fk_take(d[0].fakes[..], kind, key, op_id, generation, timeout_ms, gd_ms(d));
+  if code == FK_HELD_OK && (kind == FK_CLIPBOARD || kind == FK_LINK) {
+    // what the app copied or opened is the case's to read; a credential is withheld (gd_log)
+    b: [320] u8; n := el_put(b[..], 0, ifx kind == FK_CLIPBOARD then "clipboard: " else "link: "); n = el_put(b[..], n, key);
+    gd_log(d, cast(string) b[0..<n]);
+  }
+  if code != FK_HELD_OK {
+    b: [320] u8; kinds := FK_KIND;
+    n := el_put(b[..], 0, "fake refused "); n = el_put(b[..], n, ifx kind >= 0 && kind < FK_KINDS then kinds[kind] else "request");
+    n = el_put(b[..], n, " "); n = el_put(b[..], n, key); n = el_put(b[..], n, ": "); n = el_put(b[..], n, fk_take_why(code));
+    gd_log(d, cast(string) b[0..<n]);
+  }
+  return code;
+}
+// The app cancelled a request by its operation ID, or a whole generation: it ends with no completion.
+gd_cancel :: (d: [] GdDrive, op_id: int) -> int { return fk_cancel(d[0].fakes[..], op_id); }
+gd_cancel_generation :: (d: [] GdDrive, generation: int) -> int { return fk_cancel_generation(d[0].fakes[..], generation); }
+// The build host's editor: the typed text enters the shared edit buffer at its caret, after what the
+// field holds now (`current`), and the whole draft comes back for the app's text entry, as a platform
+// editor hands it over. "" with ok false when it does not fit.
+GdDraft :: struct { ok: bool; text: string; }
+gd_edit :: (d: [] GdDrive, current: string) -> GdDraft {
+  e := d[0].edit[..];
+  same := d[0].editing_n == d[0].target_n && cast(string) d[0].editing[0..<d[0].editing_n] == gd_target(d);
+  if !same || eb_text(e) != current { eb_set(e, current); d[0].editing_n = el_copy(d[0].editing[..], gd_target(d)); }
+  if !eb_insert(e, gd_text(d)) { return GdDraft.{}; }
+  return GdDraft.{ok = true, text = eb_text(e)};
+}
+
+// ---------------------------------------------------------------- reading the committed frame
+
+// A row's line in `tree`: `ID ROLE "LABEL"`, then ` = "VALUE"` for one that holds a value, its states
+// as ` [disabled focused]`, and ` in PARENT`. No geometry: a tree reads the same on every host.
+gd_tree :: (s: [] UiSurface, out: [] u8) -> int {
+  t := [1] ElTable.[surface_rows(s)];
+  if t[0].n == 0 { return el_put(out, 0, "(nothing yet: no rows drawn)"); }
+  roles := EL_ROLE; states := EL_STATE; n := 0;
+  for i: 0..<t[0].n {
+    r := t[0].rows[i];
+    if i > 0 { n = el_put(out, n, "\n"); }
+    n = el_put(out, n, elt_id(t[..], i)); n = el_put(out, n, " "); n = el_put(out, n, roles[r.role]);
+    n = el_put(out, n, " \""); n = el_put(out, n, elt_label(t[..], i)); n = el_put(out, n, "\"");
+    if r.value_n > 0 || r.role == EL_FIELD { n = el_put(out, n, " = \""); n = gd_put_quoted(out, n, elt_value_of(t[..], i)); n = el_put(out, n, "\""); }
+    if r.state != 0 {
+      n = el_put(out, n, " ["); first := true;
+      for b: 0..<EL_STATES { if (r.state & (1 << b)) != 0 { if !first { n = el_put(out, n, " "); } n = el_put(out, n, states[b]); first = false; } }
+      n = el_put(out, n, "]");
+    }
+    if r.parent >= 0 && r.parent < t[0].n { n = el_put(out, n, " in "); n = el_put(out, n, elt_id(t[..], r.parent)); }
+  }
+  return n;
+}
+// A value inside the tree's quotes: a newline as \n, a quote as \", a backslash as \\.
+gd_put_quoted :: (out: [] u8, at: int, v: string) -> int {
+  n := at;
+  for c: v {
+    if c == '\n' { n = el_put(out, n, "\\n"); }
+    else if c == '"' { n = el_put(out, n, "\\\""); }
+    else if c == '\\' { n = el_put(out, n, "\\\\"); }
+    else if n < out.count { out[n] = c; n += 1; }
+  }
+  return n;
+}
+gd_put_box :: (out: [] u8, at: int, x: f32, y: f32, w: f32, h: f32) -> int {
+  n := el_put(out, at, "at "); n = el_put_i(out, n, el_round(x)); n = el_put(out, n, " "); n = el_put_i(out, n, el_round(y));
+  n = el_put(out, n, " size "); n = el_put_i(out, n, el_round(w)); n = el_put(out, n, "x"); return el_put_i(out, n, el_round(h));
+}
+// Whether row i is row `of` or inside it.
+gd_within :: (t: [] ElTable, i: int, of: int) -> bool {
+  at := i; hops := 0;
+  while at >= 0 && hops <= t[0].n { if at == of { return true; } at = elt_parent(t, at); hops += 1; }
+  return false;
+}
+// `layout`: every row's committed box in logical px, as this host measured it; `layout ID`: that row
+// and the rows inside it. A row cut by a clip also says what part can be pressed.
+gd_layout :: (s: [] UiSurface, id: string, out: [] u8) -> int {
+  t := [1] ElTable.[surface_rows(s)];
+  of := -1;
+  if id.count > 0 {
+    of = elt_find(t[..], id);
+    if of < 0 { n := el_put(out, 0, "no row "); n = el_put(out, n, id); return el_put(out, n, " in the committed tree (tree lists them)"); }
+  }
+  if t[0].n == 0 { return el_put(out, 0, "(nothing yet: no rows drawn)"); }
+  n := 0; first := true;
+  for i: 0..<t[0].n {
+    if of >= 0 && !gd_within(t[..], i, of) { continue; }
+    r := t[0].rows[i];
+    if !first { n = el_put(out, n, "\n"); }
+    first = false;
+    n = el_put(out, n, elt_id(t[..], i)); n = el_put(out, n, " "); n = gd_put_box(out, n, r.x, r.y, r.w, r.h);
+    if r.clipped {
+      b := el_box(r);
+      if !b.visible { n = el_put(out, n, " clipped away"); }
+      else if b.x != r.x || b.y != r.y || b.w != r.w || b.h != r.h { n = el_put(out, n, " visible "); n = gd_put_box(out, n, b.x, b.y, b.w, b.h); }
+    }
+  }
+  return n;
+}
+// `counts`: the surface's and the keyed store's lines (components/kit/frame.coax uiframe_counts), what
+// the last frame lost by kind, ids the table had to number, and what the driver refused or withheld.
+gd_counts :: (d: [] GdDrive, s: [] UiSurface, k: [] KeyedStore, out: [] u8) -> int {
+  n := uiframe_counts(s, k, out);
+  l := s[0].last;
+  n = el_put(out, n, "last frame lost sheet "); n = el_put_i(out, n, l.sheet); n = el_put(out, n, " under "); n = el_put_i(out, n, l.under);
+  n = el_put(out, n, " over "); n = el_put_i(out, n, l.over); n = el_put(out, n, " rows "); n = el_put_i(out, n, l.rows);
+  t := surface_rows(s);
+  n = el_put(out, n, "\nids numbered "); n = el_put_i(out, n, t.renamed);
+  n = el_put(out, n, "\ndriver refused "); n = el_put_i(out, n, d[0].refused); n = el_put(out, n, " withheld "); n = el_put_i(out, n, d[0].redacted);
+  n = el_put(out, n, " logs lost "); n = el_put_i(out, n, d[0].log_lost);
+  f := d[0].fakes[..];
+  n = el_put(out, n, "\nfakes held "); n = el_put_i(out, n, f[0].held_n); n = el_put(out, n, " delivered "); n = el_put_i(out, n, f[0].delivered);
+  n = el_put(out, n, " refused "); n = el_put_i(out, n, f[0].refused); n = el_put(out, n, " escaped "); n = el_put_i(out, n, f[0].escaped);
+  return n;
+}
+
+// Where a press on a row lands, resolved in the committed frame.
+GD_T_OK :: 0; GD_T_NONE :: 1; GD_T_DISABLED :: 2; GD_T_CLIPPED :: 3; GD_T_COVERED :: 4;
+GdPoint :: struct { why: int; row: int; x: f32; y: f32; by: int; }
+// The middle of the part of the row that is not clipped, when the hit test a finger meets gives the
+// row itself there (or, with `inside`, a row inside it: a scroll area's content). Else why not.
+gd_point :: (s: [] UiSurface, id: string, inside: bool) -> GdPoint {
+  t := [1] ElTable.[surface_rows(s)];
+  i := elt_find(t[..], id);
+  if i < 0 { return GdPoint.{why = GD_T_NONE, row = -1, by = -1}; }
+  if elt_has(t[..], i, EL_S_DISABLED) { return GdPoint.{why = GD_T_DISABLED, row = i, by = -1}; }
+  b := elt_visible(t[..], i);
+  if !b.visible { return GdPoint.{why = GD_T_CLIPPED, row = i, by = -1}; }
+  x := b.x + b.w / 2; y := b.y + b.h / 2;
+  hit := surface_hit(s, x, y);
+  if hit == i || (inside && gd_within(t[..], hit, i)) { return GdPoint.{why = GD_T_OK, row = i, x = x, y = y, by = hit}; }
+  return GdPoint.{why = GD_T_COVERED, row = i, x = x, y = y, by = hit};
+}
+gd_refuse :: (d: [] GdDrive, s: [] UiSurface, id: string, p: GdPoint) {
+  d[0].refused += 1;
+  if p.why == GD_T_NONE { gd_say(d, "no row "); gd_say(d, id); gd_say(d, " in the committed tree (tree lists them)"); return; }
+  gd_say(d, id);
+  if p.why == GD_T_DISABLED { gd_say(d, " is disabled: nothing was pressed"); return; }
+  if p.why == GD_T_CLIPPED { gd_say(d, " is clipped away: no part of it can be pressed"); return; }
+  gd_say(d, " is covered by ");
+  gd_say(d, ifx p.by >= 0 then surface_id(s, p.by) else "nothing that takes a press");
+  gd_say(d, ": a press at its middle lands there, so nothing was pressed");
+}
+
+// ---------------------------------------------------------------- the machine
+
+gd_frame_now :: (d: [] GdDrive, dt: f32) -> int {
+  d[0].grant = dt; d[0].owners_n = 0;
+  return GD_FRAME;
+}
+// One frame of the clock.
+gd_frame_step :: (d: [] GdDrive) -> int {
+  d[0].frames += 1; d[0].spent += 1;
+  return gd_frame_now(d, 1.0f32 / cast(f32) AGENT_HZ);
+}
+gd_spent_ms :: (d: [] GdDrive) -> int { return (d[0].spent * 1000 + AGENT_HZ / 2) / AGENT_HZ; }
+gd_poll_frames :: () -> int { return (AGENT_POLL_MS * AGENT_HZ + 500) / 1000; }
+gd_say_clock :: (d: [] GdDrive) { gd_say(d, "clock: "); gd_say_i(d, gd_ms(d)); gd_say(d, " ms"); }
+gd_end :: (d: [] GdDrive) -> int { d[0].op = GD_OP_NONE; return GD_DONE; }
+// What holds a settle: the app's owners, then timers still to fire.
+gd_say_owners :: (d: [] GdDrive) {
+  gd_say(d, cast(string) d[0].owners[0..<d[0].owners_n]);
+  b: [512] u8; n := fk_list(d[0].fakes[..], true, b[..]);
+  if n > 0 { if d[0].owners_n > 0 { gd_say(d, ", "); } gd_say(d, cast(string) b[0..<n]); }
+}
+gd_say_held :: (d: [] GdDrive) {
+  b: [512] u8; n := fk_list(d[0].fakes[..], false, b[..]);
+  if n > 0 { gd_say(d, "; held: "); gd_say(d, cast(string) b[0..<n]); }
+}
+// `PATH [OP VALUE]` against the values the adapter just said. known false: no such value.
+GdHolds :: struct { known: bool; holds: bool; now: string; }
+gd_holds :: (d: [] GdDrive) -> GdHolds {
+  pred := gd_text(d);
+  path := gd_word(pred, 0); cmp := gd_word(pred, 1); want := gd_rest(pred, 2);
+  got := gd_state_of(d, path);
+  if !got.found { return GdHolds.{}; }
+  v := got.v;
+  if cmp.count == 0 { return GdHolds.{known = true, holds = v != "" && v != "0" && v != "false", now = v}; }
+  a := gd_int(v); b := gd_int(want);
+  holds := false;
+  if cmp == "==" { holds = v == want; }
+  else if cmp == "!=" { holds = v != want; }
+  else if a.ok && b.ok {
+    if cmp == "<" { holds = a.v < b.v; } else if cmp == ">" { holds = a.v > b.v; }
+    else if cmp == "<=" { holds = a.v <= b.v; } else if cmp == ">=" { holds = a.v >= b.v; }
+  }
+  return GdHolds.{known = true, holds = holds, now = v};
+}
+// The clock operations' next step: completions the clock has made due first, then frames.
+gd_clock_next :: (d: [] GdDrive) -> int {
+  if fk_due(d[0].fakes[..], gd_ms(d), d[0].done[..]) {
+    b: [160] u8; n := el_put(b[..], 0, fk_done_name(d[0].done[..]));
+    n = el_put(b[..], n, ifx d[0].done[0].outcome == FK_DONE then " fired at " else " timed out at "); n = el_put_i(b[..], n, gd_ms(d)); n = el_put(b[..], n, " ms");
+    if d[0].done[0].outcome != FK_DONE { n = el_put(b[..], n, ": its outcome is unknown"); }
+    gd_log(d, cast(string) b[0..<n]);
+    d[0].delivered = true;
+    return GD_COMPLETE;
+  }
+  if d[0].op == GD_OP_STEP {
+    if d[0].left > 0 { d[0].left -= 1; return gd_frame_step(d); }
+    if d[0].delivered { d[0].delivered = false; return gd_frame_now(d, 0); }
+    gd_say_clock(d);
+    return gd_end(d);
+  }
+  if d[0].look > 0 { d[0].look -= 1; return gd_frame_step(d); }
+  if d[0].delivered { d[0].delivered = false; return gd_frame_now(d, 0); }
+  if d[0].op == GD_OP_UNTIL { d[0].stage = 1; d[0].st_n = 0; return GD_STATE; }
+  // settle
+  if d[0].owners_n == 0 && fk_wakes(d[0].fakes[..]) == 0 {
+    gd_say(d, "settled: "); gd_say_clock(d); gd_say_held(d);
+    return gd_end(d);
+  }
+  if gd_spent_ms(d) >= d[0].bound {
+    gd_say(d, "clock: still busy after "); gd_say_i(d, gd_spent_ms(d)); gd_say(d, " ms: "); gd_say_owners(d);
+    return gd_end(d);
+  }
+  d[0].look = gd_poll_frames() - 1;
+  return gd_frame_step(d);
+}
+// `within MS` at the end of a clock operation: the bound, or `otherwise`. -1: not a number.
+gd_within_ms :: (op: string, otherwise: int) -> int {
+  k := 0;
+  while gd_word(op, k).count > 0 { k += 1; }
+  if k >= 2 && gd_word(op, k - 2) == "within" { v := gd_int(gd_word(op, k - 1)); return ifx v.ok && v.v > 0 then v.v else -1; }
+  return otherwise;
+}
+gd_set_target :: (d: [] GdDrive, id: string, p: GdPoint) {
+  d[0].target_n = el_copy(d[0].target[..], id); d[0].px = p.x; d[0].py = p.y; d[0].ox = p.x; d[0].oy = p.y; d[0].took = false; d[0].edited = false;
+}
+gd_focused :: (s: [] UiSurface, id: string) -> bool {
+  t := [1] ElTable.[surface_rows(s)];
+  return elt_has(t[..], elt_find(t[..], id), EL_S_FOCUSED);
+}
+// `type`'s text: \n is a newline and \\ a backslash, so a case can enter more than one line.
+gd_set_text :: (d: [] GdDrive, raw: string) {
+  n := 0; i := 0;
+  while i < raw.count && n < GD_TEXT {
+    c := raw[i];
+    if c == '\\' && i + 1 < raw.count && (raw[i + 1] == 'n' || raw[i + 1] == '\\') { d[0].text[n] = ifx raw[i + 1] == 'n' then '\n' else '\\'; i += 2; }
+    else { d[0].text[n] = c; i += 1; }
+    n += 1;
+  }
+  d[0].text_n = n;
+}
+GD_OPERATIONS :: "tree, layout [ID], tap ID, type ID TEXT, drag ID DX DY, scroll ID DX DY, state [NAME], logs, counts, host, clock, clock +MS, clock settle [within MS], clock until NAME [OP VALUE] [within MS], clock data [release|lose|fail NAME], clock data record LINE, life background|foreground|relaunch";
+
+// One operation starts. Returns what the driver needs next (GD_*); GD_DONE: gd_answer has the answer.
+gd_drive :: (d: [] GdDrive, s: [] UiSurface, k: [] KeyedStore, op_in: string) -> int {
+  op := op_in;
+  while op.count > 0 && op[0] == ' ' { op = op[1..<op.count]; }
+  d[0].out_n = 0; d[0].op = GD_OP_NONE; d[0].stage = 0; d[0].delivered = false; d[0].spent = 0;
+  w0 := gd_word(op, 0);
+  if w0 == "tree" { d[0].out_n = gd_tree(s, d[0].out[..]); return GD_DONE; }
+  if w0 == "layout" { d[0].out_n = gd_layout(s, gd_word(op, 1), d[0].out[..]); return GD_DONE; }
+  if w0 == "counts" { d[0].out_n = gd_counts(d, s, k, d[0].out[..]); return GD_DONE; }
+  if w0 == "host" {
+    gd_say(d, "host "); gd_say(d, gd_host(d)); gd_say(d, ifx d[0].agent then ": agent clock" else ": real time");
+    gd_say(d, ", seed "); gd_say_i(d, AGENT_SEED); gd_say(d, ", "); d[0].out_n = gd_put_date(d[0].out[..], d[0].out_n, AGENT_EPOCH_MS);
+    gd_say(d, ", "); gd_say(d, AGENT_LOCALE); gd_say(d, ", "); gd_say(d, AGENT_TIME_ZONE);
+    gd_say(d, "\noperations: "); gd_say(d, GD_OPERATIONS);
+    if (d[0].caps & GD_CAP_SCREENSHOT) != 0 { gd_say(d, ", screenshot FILE"); }
+    gd_say(d, "\ntext enters through "); gd_say(d, ifx (d[0].caps & GD_CAP_EDITOR) != 0 then "the platform editor" else "the shared edit buffer");
+    if (d[0].caps & GD_CAP_SCREENSHOT) == 0 { gd_say(d, "\nnot on this host: screenshot"); }
+    return GD_DONE;
+  }
+  if w0 == "screenshot" {
+    // a host that takes pictures answers this itself, before the driver
+    gd_say(d, "screenshot: the "); gd_say(d, gd_host(d)); gd_say(d, " host takes no picture (host lists what it has)");
+    return GD_DONE;
+  }
+  if w0 == "logs" {
+    if d[0].log_n == 0 && d[0].log_lost == 0 { gd_say(d, "(no logs)"); return GD_DONE; }
+    if d[0].log_n > 0 { gd_say(d, cast(string) d[0].log[0..<d[0].log_n - 1]); }
+    if d[0].log_lost > 0 { if d[0].log_n > 0 { gd_say(d, "\n"); } gd_say(d, "(and "); gd_say_i(d, d[0].log_lost); gd_say(d, " more lines)"); }
+    d[0].log_n = 0; d[0].log_lost = 0;
+    return GD_DONE;
+  }
+  if w0 == "state" {
+    d[0].text_n = el_put(d[0].text[..], 0, gd_word(op, 1)); d[0].st_n = 0;
+    d[0].op = GD_OP_STATE;
+    return GD_STATE;
+  }
+  if w0 == "tap" || w0 == "type" || w0 == "drag" || w0 == "scroll" {
+    id := gd_word(op, 1);
+    if id.count == 0 { gd_say(d, w0); gd_say(d, " takes an id from the tree"); return GD_DONE; }
+    d[0].scroll = w0 == "scroll";
+    if w0 == "drag" || w0 == "scroll" {
+      dx := gd_int(gd_word(op, 2)); dy := gd_int(gd_word(op, 3));
+      if !dx.ok || !dy.ok { gd_say(d, w0); gd_say(d, " ID DX DY: the deltas are whole logical px"); return GD_DONE; }
+      d[0].dx = cast(f32) dx.v; d[0].dy = cast(f32) dy.v;
+    }
+    p := gd_point(s, id, d[0].scroll);
+    if p.why != GD_T_OK { gd_refuse(d, s, id, p); return GD_DONE; }
+    gd_set_target(d, id, p);
+    if w0 == "type" {
+      t := [1] ElTable.[surface_rows(s)];
+      if t[0].rows[p.row].role != EL_FIELD {
+        roles := EL_ROLE; d[0].refused += 1;
+        gd_say(d, id); gd_say(d, " is a "); gd_say(d, roles[t[0].rows[p.row].role]); gd_say(d, ", not a field: nothing was typed");
+        return GD_DONE;
+      }
+      gd_set_text(d, gd_rest(op, 2));
+      d[0].op = GD_OP_TYPE;
+      if gd_focused(s, id) { d[0].stage = 6; return GD_EDITOR; }
+    } else { d[0].op = ifx w0 == "tap" then GD_OP_TAP else GD_OP_DRAG; d[0].left = GD_DRAG_STEPS; }
+    d[0].phase = 0; d[0].stage = 1;
+    return GD_POINTER;
+  }
+  if w0 == "clock" {
+    w1 := gd_word(op, 1);
+    if w1.count == 0 {
+      gd_say_clock(d); gd_say(d, ", "); d[0].out_n = gd_put_date(d[0].out[..], d[0].out_n, gd_date_ms(d));
+      gd_say(d, ifx d[0].agent then ", agent clock" else ", real time");
+      return GD_DONE;
+    }
+    if !d[0].agent { gd_say(d, "clock: this session runs in real time; only an agent session steps the clock"); return GD_DONE; }
+    if w1[0] == '+' {
+      ms := gd_int(w1[1..<w1.count]);
+      if !ms.ok || ms.v < 0 || ms.v > GD_STEP_MS_MAX { gd_say(d, "clock +MS: MS is a whole number of ms, at most "); gd_say_i(d, GD_STEP_MS_MAX); return GD_DONE; }
+      frames := (ms.v * AGENT_HZ + 500) / 1000;
+      d[0].op = GD_OP_STEP; d[0].left = ifx frames < 1 then 1 else frames;
+      return gd_clock_next(d);
+    }
+    if w1 == "settle" {
+      bound := gd_within_ms(op, AGENT_SETTLE_MS);
+      if bound < 0 { gd_say(d, "clock settle [within MS]: MS is a whole number of ms"); return GD_DONE; }
+      d[0].op = GD_OP_SETTLE; d[0].bound = bound; d[0].look = gd_poll_frames();
+      return gd_clock_next(d);
+    }
+    if w1 == "until" {
+      bound := gd_within_ms(op, GD_UNTIL_MS);
+      rest := gd_rest(op, 2);
+      cut := fk_find(rest, " within ");
+      if cut >= 0 { rest = rest[0..<cut]; }
+      cmp := gd_word(rest, 1);
+      ok := cmp.count == 0 || cmp == "==" || cmp == "!=" || cmp == "<" || cmp == ">" || cmp == "<=" || cmp == ">=";
+      if bound < 0 || gd_word(rest, 0).count == 0 || !ok || (cmp.count > 0 && gd_word(rest, 2).count == 0) {
+        gd_say(d, "clock until NAME [OP VALUE] [within MS]: OP is ==, !=, <, >, <= or >="); return GD_DONE;
+      }
+      d[0].text_n = el_put(d[0].text[..], 0, rest);
+      d[0].op = GD_OP_UNTIL; d[0].bound = bound; d[0].stage = 1; d[0].st_n = 0;
+      return GD_STATE;
+    }
+    if w1 == "data" {
+      w2 := gd_word(op, 2); name := gd_word(op, 3);
+      f := d[0].fakes[..];
+      if w2.count == 0 {
+        b: [512] u8; n := fk_list(f, false, b[..]); m := fk_list(f, true, b[n..<b.count]);
+        gd_say(d, "held: "); gd_say(d, ifx n == 0 then "nothing" else cast(string) b[0..<n]);
+        if m > 0 { gd_say(d, "; timers: "); gd_say(d, cast(string) b[n..<n + m]); }
+        return GD_DONE;
+      }
+      if w2 == "record" {
+        line := gd_rest(op, 3);
+        if line.count == 0 { gd_say(d, "clock data record NAME: KIND KEY => STATUS BODY"); return GD_DONE; }
+        rows := f[0].rows_n;
+        if fk_record(f, line) > 0 || f[0].rows_n == rows { d[0].refused += 1; gd_say(d, "not a recording line: NAME: KIND KEY => STATUS BODY (KIND http or auth)"); return GD_DONE; }
+        gd_say(d, "recorded "); gd_say(d, fk_row_name(f, rows));
+        return GD_DONE;
+      }
+      if (w2 != "release" && w2 != "lose" && w2 != "fail") || name.count == 0 { gd_say(d, "clock data | clock data release NAME | clock data lose NAME | clock data fail NAME | clock data record LINE"); return GD_DONE; }
+      r := ifx w2 == "release" then fk_release(f, name, d[0].done[..]) else ifx w2 == "lose" then fk_lose(f, name, d[0].done[..]) else fk_fail(f, name, d[0].done[..]);
+      if r == FK_NOT_HELD { gd_say(d, "nothing held named "); gd_say(d, name); gd_say(d, " (clock data lists what is held)"); return GD_DONE; }
+      if r == FK_NO_ANSWER { gd_say(d, "no recorded answer is left for "); gd_say(d, name); gd_say(d, ": it stays held"); return GD_DONE; }
+      if r == FK_IS_WAKE { gd_say(d, name); gd_say(d, " is a timer: the clock fires it (clock +MS), not a release"); return GD_DONE; }
+      d[0].verb_n = el_put(d[0].verb[..], 0, w2);
+      d[0].op = GD_OP_DATA; d[0].stage = 1;
+      return GD_COMPLETE;
+    }
+    gd_say(d, "clock | clock +MS | clock settle [within MS] | clock until NAME [OP VALUE] [within MS] | clock data [release|lose|fail NAME]");
+    return GD_DONE;
+  }
+  if w0 == "life" {
+    w1 := gd_word(op, 1);
+    if w1 != "background" && w1 != "foreground" && w1 != "relaunch" { gd_say(d, "life background | life foreground | life relaunch"); return GD_DONE; }
+    d[0].text_n = el_put(d[0].text[..], 0, w1);
+    d[0].op = GD_OP_LIFE; d[0].stage = 1;
+    return GD_LIFE;
+  }
+  if w0.count == 0 { return GD_DONE; }
+  gd_say(d, "unknown operation '"); gd_say(d, w0); gd_say(d, "'; operations: "); gd_say(d, GD_OPERATIONS);
+  return GD_DONE;
+}
+
+// The operation continues, after the adapter did what the driver last asked.
+gd_resume :: (d: [] GdDrive, s: [] UiSurface, k: [] KeyedStore) -> int {
+  op := d[0].op; id := gd_target(d);
+  if op == GD_OP_STEP || op == GD_OP_SETTLE { return gd_clock_next(d); }
+  if op == GD_OP_UNTIL {
+    if d[0].stage != 1 { return gd_clock_next(d); }
+    h := gd_holds(d);
+    name := gd_word(gd_text(d), 0);
+    if !h.known { gd_say(d, "no state named "); gd_say(d, name); gd_say(d, " (state lists what can be read)"); return gd_end(d); }
+    if h.holds { gd_say(d, gd_text(d)); gd_say(d, " after "); gd_say_i(d, gd_spent_ms(d)); gd_say(d, " ms"); return gd_end(d); }
+    if gd_spent_ms(d) >= d[0].bound {
+      gd_say(d, "clock: still busy after "); gd_say_i(d, gd_spent_ms(d)); gd_say(d, " ms: "); gd_say(d, name); gd_say(d, " is "); gd_say(d, h.now);
+      return gd_end(d);
+    }
+    d[0].stage = 2; d[0].look = gd_poll_frames();
+    return gd_clock_next(d);
+  }
+  if op == GD_OP_STATE {
+    name := gd_text(d);
+    if name.count == 0 {
+      gd_say(d, cast(string) d[0].st[0..<d[0].st_n]); gd_say_clock(d);
+      return gd_end(d);
+    }
+    if name == "clock" { gd_say_i(d, gd_ms(d)); gd_say(d, " ms"); return gd_end(d); }
+    if gd_secret_name(name) { d[0].redacted += 1; gd_say(d, name); gd_say(d, " is never shown: state reads an allowlist, and no credential is on it"); return gd_end(d); }
+    v := gd_state_of(d, name);
+    if !v.found { gd_say(d, "no state named "); gd_say(d, name); gd_say(d, " (state lists what can be read)"); return gd_end(d); }
+    gd_say(d, v.v);
+    return gd_end(d);
+  }
+  if op == GD_OP_LIFE {
+    if d[0].stage == 1 { d[0].stage = 2; return gd_frame_now(d, 0); }
+    gd_say(d, ifx gd_text(d) == "relaunch" then "relaunched" else gd_text(d)); gd_say(d, ": "); gd_say_clock(d);
+    return gd_end(d);
+  }
+  if op == GD_OP_DATA {
+    if d[0].stage == 1 { d[0].stage = 2; return gd_frame_now(d, 0); }
+    verb := cast(string) d[0].verb[0..<d[0].verb_n];
+    gd_say(d, ifx verb == "release" then "released " else ifx verb == "lose" then "lost " else "failed "); gd_say(d, fk_done_name(d[0].done[..])); gd_say(d, ": ");
+    if d[0].done[0].outcome == FK_DONE { gd_say_i(d, d[0].done[0].status); } else { outcomes := FK_OUTCOME; gd_say(d, outcomes[d[0].done[0].outcome]); }
+    return gd_end(d);
+  }
+  if op == GD_OP_DRAG {
+    if d[0].stage == 1 { d[0].stage = 2; return gd_frame_now(d, 0); }
+    if d[0].stage == 2 {
+      if d[0].left > 0 {
+        step := GD_DRAG_STEPS - d[0].left + 1; d[0].left -= 1;
+        d[0].px = d[0].ox + d[0].dx * cast(f32) step / cast(f32) GD_DRAG_STEPS; d[0].py = d[0].oy + d[0].dy * cast(f32) step / cast(f32) GD_DRAG_STEPS;
+        d[0].phase = 1; d[0].stage = 1;
+        return GD_POINTER;
+      }
+      d[0].phase = 2; d[0].stage = 3;
+      return GD_POINTER;
+    }
+    if d[0].stage == 3 { d[0].stage = 4; return gd_frame_now(d, 0); }
+    gd_say(d, ifx d[0].scroll then "scrolled " else "dragged "); gd_say(d, id); gd_say(d, " by "); gd_say_i(d, el_round(d[0].dx)); gd_say(d, " "); gd_say_i(d, el_round(d[0].dy));
+    return gd_end(d);
+  }
+  if op == GD_OP_TAP || op == GD_OP_TYPE {
+    if d[0].stage == 1 { d[0].stage = 2; return gd_frame_now(d, 0); }           // the frame that shows the press
+    if d[0].stage == 2 {
+      // the id again, in the frame committed since: the up goes where the row is now, or the press is cancelled
+      p := gd_point(s, id, false);
+      if p.why != GD_T_OK { d[0].phase = 3; d[0].stage = 9; return GD_POINTER; }
+      d[0].px = p.x; d[0].py = p.y; d[0].phase = 2; d[0].stage = 3;
+      return GD_POINTER;
+    }
+    if d[0].stage == 3 { d[0].stage = 4; return gd_frame_now(d, 0); }           // the frame after the release
+    if d[0].stage == 4 {
+      if op == GD_OP_TAP {
+        gd_say(d, "tapped "); gd_say(d, id);
+        if !d[0].took { gd_say(d, ": the press landed and no action took it"); }
+        return gd_end(d);
+      }
+      if !gd_focused(s, id) { d[0].refused += 1; gd_say(d, id); gd_say(d, " did not take the keyboard when pressed: nothing was typed"); return gd_end(d); }
+      d[0].stage = 6;
+      return GD_EDITOR;
+    }
+    if d[0].stage == 6 {
+      if !d[0].edited { d[0].refused += 1; gd_say(d, id); gd_say(d, " did not take the text: nothing was typed"); return gd_end(d); }
+      d[0].stage = 7;
+      return gd_frame_now(d, 0);
+    }
+    if d[0].stage == 7 { gd_say(d, "typed into "); gd_say(d, id); return gd_end(d); }
+    if d[0].stage == 9 { d[0].stage = 10; return gd_frame_now(d, 0); }
+    d[0].refused += 1;
+    gd_say(d, id); gd_say(d, " could not be pressed once the press showed, so the press was cancelled: ");
+    gd_refuse(d, s, id, gd_point(s, id, false)); d[0].refused -= 1;
+    return gd_end(d);
+  }
+  return gd_end(d);
+}
+
+// ---------------------------------------------------------------- checks
+
+#load "drive-checks.coax" #test;

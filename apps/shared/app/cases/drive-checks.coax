@@ -1,0 +1,162 @@
+// Checks for the driver (drive.coax), against a small app of their own: a field, a button, a
+// button under a cover, a disabled one and one clipped away. The adapter loop here (dc_run) is the
+// shape every adapter has (chat-page.coax is the real one).
+//   coax/bin/coax test apps/shared/app/cases/drive.coax
+
+DC_FIELD :: 1; DC_BUTTON :: 2;
+DcApp :: struct {
+  rows: [2] [8] El; under: [2] [8] Prim; over: [2] [8] Prim; lines: [2] [2] SheetLine; hits: [2] [2] SheetHit; pool: [2] [8] u8;
+  surface: [1] UiSurface; keys: [4] Keyed; keyed: [1] KeyedStore;
+  focused: bool; draft: [256] u8; draft_n: int;
+  down: int; presses: int; frames: int; time: f32; busy_ms: f32;
+  op: int; generation: int; asked: bool;   // one request the button sends to the fakes
+  answered: [128] u8; answered_n: int;
+}
+dc_sheet :: (a: [] DcApp, g: int) -> Sheet { return Sheet.{under = a[0].under[g][..], over = a[0].over[g][..], lines = a[0].lines[g][..], hits = a[0].hits[g][..], pool = a[0].pool[g][..]}; }
+dc_init :: (a: [] DcApp) {
+  a[0].surface[0] = surface_over(dc_sheet(a, 0), a[0].rows[0][..], dc_sheet(a, 1), a[0].rows[1][..]);
+  a[0].keyed[0] = KeyedStore.{rows = a[0].keys[..]};
+  a[0].down = -1; a[0].generation = 1;
+}
+dc_frame :: (a: [] DcApp, dt: f32) {
+  a[0].frames += 1; a[0].time += dt;
+  if a[0].busy_ms > 0 { a[0].busy_ms -= dt * 1000; }
+  s := a[0].surface[..];
+  b := surface_begin(s);
+  t := s[0].rows[b..<b + 1];
+  f := elt_row(t, "dc.field", EL_FIELD, "Message", 0, 0, 100, 20);
+  elt_value(t, f, cast(string) a[0].draft[0..<a[0].draft_n]); elt_action(t, f, DC_FIELD);
+  if a[0].focused { elt_state(t, f, EL_S_FOCUSED); }
+  elt_action(t, elt_row(t, "dc.send", EL_BUTTON, "Send", 0, 30, 40, 20), DC_BUTTON);
+  elt_action(t, elt_row(t, "dc.under", EL_BUTTON, "Under", 50, 30, 40, 20), DC_BUTTON);
+  _ := elt_row(t, "dc.cover", EL_REGION, "Cover", 45, 25, 50, 30);
+  i := elt_row(t, "dc.off", EL_BUTTON, "Off", 0, 60, 40, 20); elt_state(t, i, EL_S_DISABLED); elt_action(t, i, DC_BUTTON);
+  elt_clip(t, 0, 0, 200, 100);
+  elt_action(t, elt_row(t, "dc.gone", EL_BUTTON, "Gone", 0, 120, 40, 20), DC_BUTTON);
+  elt_unclip(t);
+  _ = surface_commit(s);
+}
+dc_pointer :: (a: [] DcApp, x: f32, y: f32, phase: int) -> bool {
+  s := a[0].surface[..];
+  row := surface_hit(s, x, y);
+  if phase == 0 { a[0].down = ifx surface_action(s, row) != 0 then row else -1; return a[0].down >= 0; }
+  if phase != 2 { if phase == 3 { a[0].down = -1; } return false; }
+  took := a[0].down >= 0 && a[0].down == row;
+  a[0].down = -1;
+  if !took { return false; }
+  if surface_action(s, row) == DC_FIELD { a[0].focused = true; }
+  else { a[0].presses += 1; a[0].asked = true; a[0].focused = false; }
+  return true;
+}
+// One operation, served the way an adapter serves it.
+dc_run :: (a: [] DcApp, d: [] GdDrive, op: string) -> string {
+  s := a[0].surface[..]; k := a[0].keyed[..];
+  code := gd_drive(d, s, k, op);
+  guard := 0;
+  while code != GD_DONE && guard < 100000 {
+    guard += 1;
+    if code == GD_FRAME {
+      dc_frame(a, gd_frame_dt(d, 1.0f32 / 60));
+      if a[0].busy_ms > 0 { gd_owner(d, "dc.motion"); }
+    } else if code == GD_POINTER {
+      gd_took(d, dc_pointer(a, gd_px(d), gd_py(d), gd_phase(d)));
+    } else if code == GD_EDITOR {
+      e := gd_edit(d, cast(string) a[0].draft[0..<a[0].draft_n]);
+      if e.ok { a[0].draft_n = el_copy(a[0].draft[..], e.text); }
+      gd_edited(d, e.ok);
+    } else if code == GD_STATE {
+      gd_state_b(d, "dc.focused", a[0].focused); gd_state_i(d, "dc.presses", a[0].presses);
+      gd_state(d, "dc.draft", cast(string) a[0].draft[0..<a[0].draft_n]);
+      gd_state(d, "dc.token", "never"); gd_state(d, "dc.header", "Bearer abc");
+      gd_state(d, "dc.answered", cast(string) a[0].answered[0..<a[0].answered_n]);
+    } else if code == GD_COMPLETE {
+      c := gd_done(d);
+      if c[0].generation == a[0].generation && c[0].op_id == a[0].op {
+        outcomes := FK_OUTCOME;
+        a[0].answered_n = el_put(a[0].answered[..], 0, outcomes[c[0].outcome]);
+      }
+    } else if code == GD_LIFE {
+      if gd_life(d) == "relaunch" { a[0].focused = false; a[0].presses = 0; a[0].generation += 1; }
+    }
+    // the outbox, drained after anything delivered
+    if a[0].asked { a[0].asked = false; a[0].op += 1; _ := gd_take(d, FK_HTTP, "POST /api/chat/submit/v2alpha1", a[0].op, a[0].generation, 2000); }
+    code = gd_resume(d, s, k);
+  }
+  return gd_answer(d);
+}
+dc_open :: (a: [] DcApp, d: [] GdDrive) {
+  dc_init(a); gd_open(d, "cpu", 0, true);
+  dc_frame(a, gd_frame_dt(d, 1.0f32 / 60));
+}
+
+#test "drive: tree and layout read the committed rows; no geometry in the tree" #steps 2000000000 {
+  a: [1] DcApp; d: [1] GdDrive; dc_open(a[..], d[..]);
+  #assert dc_run(a[..], d[..], "tree") == "dc.field field \"Message\" = \"\"\ndc.send button \"Send\"\ndc.under button \"Under\"\ndc.cover region \"Cover\"\ndc.off button \"Off\" [disabled]\ndc.gone button \"Gone\"";
+  #assert dc_run(a[..], d[..], "layout dc.gone") == "dc.gone at 0 120 size 40x20 clipped away";
+  #assert dc_run(a[..], d[..], "layout dc.nope") == "no row dc.nope in the committed tree (tree lists them)";
+  #assert fk_starts(dc_run(a[..], d[..], "host"), "host cpu: agent clock, seed ");
+}
+#test "drive: a tap goes through the hit test a finger meets, and a covered, disabled or clipped row is refused" #steps 2000000000 {
+  a: [1] DcApp; d: [1] GdDrive; dc_open(a[..], d[..]);
+  #assert dc_run(a[..], d[..], "tap dc.send") == "tapped dc.send" && a[0].presses == 1;
+  #assert dc_run(a[..], d[..], "tap dc.under") == "dc.under is covered by dc.cover: a press at its middle lands there, so nothing was pressed";
+  #assert dc_run(a[..], d[..], "tap dc.off") == "dc.off is disabled: nothing was pressed";
+  #assert dc_run(a[..], d[..], "tap dc.gone") == "dc.gone is clipped away: no part of it can be pressed";
+  #assert dc_run(a[..], d[..], "tap dc.cover") == "tapped dc.cover: the press landed and no action took it";
+  #assert dc_run(a[..], d[..], "tap") == "tap takes an id from the tree" && a[0].presses == 1 && d[0].refused == 3;
+  // no time passed: only `clock` moves the clock
+  #assert gd_ms(d[..]) == 0 && dc_run(a[..], d[..], "clock") == "clock: 0 ms, 2026-01-01T00:00:00.000Z, agent clock";
+}
+#test "drive: type presses the field first, then the text enters through the edit buffer" #steps 2000000000 {
+  a: [1] DcApp; d: [1] GdDrive; dc_open(a[..], d[..]);
+  #assert dc_run(a[..], d[..], "type dc.send hello") == "dc.send is a button, not a field: nothing was typed";
+  #assert dc_run(a[..], d[..], "type dc.field Fix the\\nbuild") == "typed into dc.field" && a[0].focused;
+  #assert cast(string) a[0].draft[0..<a[0].draft_n] == "Fix the\nbuild";
+  #assert dc_run(a[..], d[..], "type dc.field !") == "typed into dc.field" && cast(string) a[0].draft[0..<a[0].draft_n] == "Fix the\nbuild!";
+  #assert dc_run(a[..], d[..], "state dc.draft") == "Fix the build!" && dc_run(a[..], d[..], "state dc.focused") == "true";
+  // a row's value holds no control characters (components/core/elements.coax elt_value): a newline reads as a space
+  #assert fk_starts(dc_run(a[..], d[..], "tree"), "dc.field field \"Message\" = \"Fix the build!\" [focused]");
+}
+#test "drive: state reads the allowlist and withholds credentials" #steps 2000000000 {
+  a: [1] DcApp; d: [1] GdDrive; dc_open(a[..], d[..]);
+  #assert dc_run(a[..], d[..], "state dc.token") == "dc.token is never shown: state reads an allowlist, and no credential is on it";
+  #assert dc_run(a[..], d[..], "state dc.header") == "[withheld]" && dc_run(a[..], d[..], "state dc.nope") == "no state named dc.nope (state lists what can be read)";
+  all := dc_run(a[..], d[..], "state");
+  #assert fk_find(all, "dc.presses = 0\n") >= 0 && fk_find(all, "dc.token = [withheld]\n") >= 0 && fk_find(all, "Bearer") < 0;
+}
+#test "drive: the clock steps frames, settles, waits until, and answers held requests only when released" #steps 2000000000 {
+  a: [1] DcApp; d: [1] GdDrive; dc_open(a[..], d[..]);
+  f0 := a[0].frames;
+  #assert dc_run(a[..], d[..], "clock +1000") == "clock: 1000 ms" && a[0].frames - f0 == 60;
+  a[0].busy_ms = 300;
+  #assert fk_starts(dc_run(a[..], d[..], "clock settle"), "settled: clock: ") && a[0].busy_ms <= 0;
+  a[0].busy_ms = 100000;
+  #assert fk_starts(dc_run(a[..], d[..], "clock settle within 500"), "clock: still busy after ") && fk_find(gd_answer(d[..]), "dc.motion") > 0;
+  a[0].busy_ms = 0;
+  // a request held until released; an unrecorded one is refused and logged
+  #assert dc_run(a[..], d[..], "tap dc.send") == "tapped dc.send" && fk_starts(dc_run(a[..], d[..], "logs"), "fake refused http POST /api/chat/submit/v2alpha1: no recording names it");
+  #assert dc_run(a[..], d[..], "clock data record submit: http POST /api/chat/submit/v2alpha1 => 202 {\"turn\":\"t1\"}") == "recorded submit";
+  #assert dc_run(a[..], d[..], "clock data record nonsense") == "not a recording line: NAME: KIND KEY => STATUS BODY (KIND http or auth)";
+  #assert dc_run(a[..], d[..], "tap dc.send") == "tapped dc.send" && dc_run(a[..], d[..], "clock data") == "held: submit";
+  #assert dc_run(a[..], d[..], "clock until dc.answered == done within 200") == "clock: still busy after 200 ms: dc.answered is ";
+  #assert dc_run(a[..], d[..], "clock data release submit") == "released submit: 202" && dc_run(a[..], d[..], "state dc.answered") == "done";
+  // a held request the clock outlives is unknown, never done
+  #assert dc_run(a[..], d[..], "clock data record submit: http POST /api/chat/submit/v2alpha1 => 202 {}") == "recorded submit";
+  #assert dc_run(a[..], d[..], "tap dc.send") == "tapped dc.send" && fk_starts(dc_run(a[..], d[..], "clock until dc.answered == unknown"), "dc.answered == unknown after ");
+  #assert fk_find(dc_run(a[..], d[..], "logs"), "submit timed out at ") >= 0;
+  #assert dc_run(a[..], d[..], "clock data release submit") == "nothing held named submit (clock data lists what is held)";
+  // relaunch: the app's generation moves on; a late answer for the old one is dropped by the app
+  #assert dc_run(a[..], d[..], "tap dc.send") == "tapped dc.send" && fk_starts(dc_run(a[..], d[..], "life relaunch"), "relaunched: clock: ");
+  a[0].answered_n = 0;
+  #assert dc_run(a[..], d[..], "clock data release submit") == "released submit: 202" && dc_run(a[..], d[..], "state dc.answered") == "";
+  #assert fk_starts(dc_run(a[..], d[..], "counts"), "generation ");
+}
+#test "drive: a credential never reaches a log, and an address is masked" {
+  d: [1] GdDrive; gd_open(d[..], "cpu", 0, true);
+  gd_log(d[..], "Authorization: Bearer abc"); gd_log(d[..], "ok line");
+  b: [64] u8;
+  #assert cast(string) d[0].log[0..<d[0].log_n] == "[a line was withheld: it reads as a credential]\nok line\n" && d[0].redacted == 1;
+  #assert gd_mask_email("person@example.com", b[..]) == "p...@example.com" && gd_secret_name("keyboard.shown") == false && gd_secret_name("api_key");
+  #assert gd_secret_value("0123456789abcdef0123456789abcdef") && !gd_secret_value("chat.composer.send");
+  out: [32] u8; #assert cast(string) out[0..<gd_put_date(out[..], 0, 1767225600000)] == "2026-01-01T00:00:00.000Z";
+}

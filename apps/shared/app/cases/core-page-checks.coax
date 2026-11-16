@@ -1,0 +1,19 @@
+// Checks for core-page.coax: the shared app under the driver, with fakes. Example data only.
+
+
+#test "shared app under the driver: launch asks the account through the fakes; the page and its composer are rows" #steps 4000000000 {
+  core: [1] AppCore; k: [1] CoTest; a := co_t_app(k[..], core[..]); r := k[0].r[..];
+  co_open(r, a);
+  #assert co_drive(r, a, "clock data record auth.state: auth state => 200 {\"loggedIn\":false}") && gd_answer(a.d) == "recorded auth.state";
+  #assert co_drive(r, a, "clock data") && gd_answer(a.d) == "held: auth.state";
+  #assert co_drive(r, a, "state account.known") && gd_answer(a.d) == "false";
+  #assert co_drive(r, a, "clock data release auth.state") && gd_answer(a.d) == "released auth.state: 200";
+  #assert co_drive(r, a, "state account.known") && gd_answer(a.d) == "true";
+  #assert co_drive(r, a, "state account.logged_in") && gd_answer(a.d) == "false";
+  #assert co_drive(r, a, "tree") && fk_find(gd_answer(a.d), "chat.composer field") >= 0;
+  #assert co_drive(r, a, "tap chat.composer") && gd_answer(a.d) == "tapped chat.composer";
+  #assert co_drive(r, a, "state keyboard.shown") && gd_answer(a.d) == "true";
+  #assert co_drive(r, a, "type chat.composer Hello") && gd_answer(a.d) == "typed into chat.composer";
+  #assert co_drive(r, a, "state chat.draft") && gd_answer(a.d) == "Hello";
+  #assert co_drive(r, a, "state send.state") && gd_answer(a.d) == "login";
+}

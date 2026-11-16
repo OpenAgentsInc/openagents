@@ -1,0 +1,284 @@
+// coax drive on the shared app (apps/shared/app/README.md; GitHub #13645): the app core, the chat page
+// (apps/shared/app/view/) and the login card (apps/shared/app/login/), composed the way their
+// INTEGRATION.md files say, in a frame measured in cells (components/app/checks-kit.coax), with every
+// service the core defines answered by the fakes (fakes.coax) under the driver's clock.
+//
+// It plays the native host's part exactly as core/host.coax describes it: after every call it drains the
+// outbox into the fakes (app_host_next, app_host_request, app_host_taken) and tells them what the core
+// cancelled; a completion goes back with app_host_done in a later step, never inside another call; it
+// calls app_host_clock when the clock reaches app_host_wake. The keyboard is the host's too: a press the
+// page answers with VIEW_P_FOCUS, or a login field's press, gives that field the keyboard.
+//
+// Every operation enters where a person's does: a tap is a press on the committed row under the
+// finger, routed to the login card (lf_press) or the page (view_press, view_dispatch); text is the whole
+// draft, as the platform editor hands it over (ACT_DRAFT, lf_set).
+//
+// What `state` reads: account.known, account.logged_in, login.step, chat.draft, keyboard.shown,
+// send.state, stop.state, permission.state, task.state, core.busy, core.refusals. No credential and no
+// account identifier is on the list.
+//   coax/bin/coax test apps/shared/app/cases/core-page.coax
+
+#load "../../../../components/app/checks-kit.coax";
+#load "../login/bridge.coax";
+#load "../view/page.coax";
+#load "drive.coax";
+
+CO_W :: 300.0f32; CO_H :: 600.0f32;     // the page in cells, as the view's checks measure it
+CO_GUARD :: 1000000;
+CO_OPS :: 64;                            // requests the adapter remembers while the fakes hold them
+CO_MONO :: 1000;                         // the host's monotonic clock when the session opens
+
+CoOp :: struct { op: int; generation: int; kind: int; cancelled: bool; }
+// What the adapter keeps of the host. The core, the page, the login flow, the frame and the driver are
+// the caller's: each is large, and procedures that hold views of them past a call pass the checker's budget.
+CoRun :: struct {
+  composer: bool;                        // the composer holds the keyboard
+  pressed: [EL_ID] u8; pressed_n: int;   // the row a finger is down on
+  ops: [CO_OPS] CoOp; ops_n: int;        // requests in flight, for their generations and kinds
+  owed: [CO_OPS] CoOp; owed_n: int;      // cancelled requests whose completion is still owed
+  keep: [64] u8; keep_n: int;            // what the host kept for the next launch's rejoin
+  launched: bool;                        // the app launches at the first operation that is not a recording line
+}
+// The caller's parts, as one record of views.
+CoApp :: struct { c: [] AppCore; v: [] ChatView; l: [] LoginFlow; b: [] LoginBridge; t: [] AppTest; d: [] GdDrive; }
+
+co_mono :: (a: CoApp) -> int { return CO_MONO + gd_ms(a.d); }
+co_wall :: (a: CoApp) -> int { return gd_date_ms(a.d); }
+co_focus :: (r: [] CoRun, a: CoApp, out: [] u8) -> int {
+  if a.l[0].open { return el_copy(out, lf_focus_id(a.l)); }
+  return ifx r[0].composer then el_copy(out, VIEW_COMPOSER_ID) else 0;
+}
+
+// ---------------------------------------------------------------- the host's part
+
+co_key :: (c: [] AppCore, op: int, kind: int, method: int, out: [] u8) -> int {
+  if kind == FX_HTTP {
+    n := el_put(out, 0, ifx method == UP_POST then "POST " else "GET ");
+    path: [1024] u8; k := app_host_path(c, op, path[..]);
+    if k < 0 { return 0; }
+    return el_put(out, n, cast(string) path[0..<k]);
+  }
+  if kind == FX_AUTH_STATE { return el_put(out, 0, "state"); }
+  if kind == FX_AUTH_EMAIL { return el_put(out, 0, "email_start"); }
+  if kind == FX_AUTH_VERIFY { return el_put(out, 0, "email_verify"); }
+  if kind == FX_AUTH_CANCEL { return el_put(out, 0, "email_cancel"); }
+  if kind == FX_AUTH_LOGOUT { return el_put(out, 0, "logout"); }
+  if kind == FX_IDS { return el_put(out, 0, "new"); }
+  if kind == FX_CLIPBOARD || kind == FX_LINK {
+    // what is copied or opened goes to the log (gd_take), cut to a line
+    body: [4096] u8; k := app_host_body(c, op, body[..]);
+    if k <= 0 { return el_put(out, 0, "(empty)"); }
+    e := 0; while e < k && e < 120 && body[e] != '\n' { e += 1; }
+    return el_put(out, 0, cast(string) body[0..<e]);
+  }
+  return 0;
+}
+co_fk_kind :: (kind: int) -> int {
+  if kind == FX_HTTP { return FK_HTTP; }
+  if kind == FX_IDS { return FK_IDENTITIES; }
+  if kind == FX_CLIPBOARD { return FK_CLIPBOARD; }
+  if kind == FX_LINK { return FK_LINK; }
+  if kind == FX_AUTH_STATE || kind == FX_AUTH_EMAIL || kind == FX_AUTH_VERIFY || kind == FX_AUTH_CANCEL || kind == FX_AUTH_LOGOUT { return FK_AUTH; }
+  return -1;
+}
+// The outbox into the fakes, and what the core cancelled. Then the login flow reads the core.
+co_drain :: (r: [] CoRun, a: CoApp) {
+  c := a.c; guard := 0;
+  while guard < CO_OPS {
+    guard += 1;
+    op := app_host_next(c);
+    if op == 0 { break; }
+    f: [APP_HOST_FIELDS] int;
+    if !app_host_request(c, op, f[..]) { break; }
+    key: [1200] u8; kn := co_key(c, op, f[APP_HOST_KIND], f[APP_HOST_METHOD], key[..]);
+    kind := co_fk_kind(f[APP_HOST_KIND]);
+    taken := kind >= 0 && kn > 0 && r[0].ops_n < CO_OPS && gd_take(a.d, kind, cast(string) key[0..<kn], op, f[APP_HOST_GENERATION], f[APP_HOST_TIMEOUT]) == FK_HELD_OK;
+    if taken { r[0].ops[r[0].ops_n] = CoOp.{op = op, generation = f[APP_HOST_GENERATION], kind = f[APP_HOST_KIND]}; r[0].ops_n += 1; }
+    _ := app_host_taken(c, co_mono(a), co_wall(a), op, taken);
+  }
+  guard = 0;
+  while guard < CO_OPS {
+    guard += 1;
+    op := app_host_cancel_next(c);
+    if op == 0 { break; }
+    _ := gd_cancel(a.d, op);
+    k := co_find(r, op);
+    if k >= 0 && r[0].owed_n < CO_OPS { r[0].owed[r[0].owed_n] = r[0].ops[k]; r[0].owed_n += 1; co_forget(r, k); }
+  }
+  lfc_step(a.b, a.l, c);
+}
+co_find :: (r: [] CoRun, op: int) -> int { for k: 0..<r[0].ops_n { if r[0].ops[k].op == op { return k; } } return -1; }
+co_forget :: (r: [] CoRun, k: int) { for j: k..<r[0].ops_n - 1 { r[0].ops[j] = r[0].ops[j + 1]; } r[0].ops_n -= 1; }
+
+// A JSON string or number field's raw text in a small answer body: "" when it is not there.
+co_field :: (body: string, name: string, out: [] u8) -> int {
+  key: [64] u8; kn := el_put(key[..], 0, "\""); kn = el_put(key[..], kn, name); kn = el_put(key[..], kn, "\":");
+  at := fk_find(body, cast(string) key[0..<kn]);
+  if at < 0 { return 0; }
+  i := at + kn;
+  if i < body.count && body[i] == '"' {
+    i += 1; e := i;
+    while e < body.count && body[e] != '"' { e += 1; }
+    return el_put(out, 0, body[i..<e]);
+  }
+  e := i;
+  while e < body.count && body[e] != ',' && body[e] != '}' { e += 1; }
+  return el_put(out, 0, body[i..<e]);
+}
+co_outcome :: (fk: int) -> int { return ifx fk == FK_DONE then FXO_DONE else ifx fk == FK_FAILED then FXO_FAILED else FXO_UNKNOWN; }
+// A fake's completion, as the host gives it to the core (core/host.coax's table).
+co_complete :: (r: [] CoRun, a: CoApp) {
+  done := gd_done(a.d);
+  k := co_find(r, done[0].op_id);
+  if k < 0 { return; }
+  o := r[0].ops[k]; co_forget(r, k);
+  body := fk_done_body(done);
+  outcome := co_outcome(done[0].outcome); status := done[0].status;
+  flag := false; text: [2048] u8; tn := 0; more: [64] u8; mn := 0; value := 0;
+  if o.kind == FX_HTTP { tn = el_put(text[..], 0, body); }
+  else if o.kind == FX_IDS {
+    tn = co_field(body, "command_id", text[..]); mn = co_field(body, "session_id", more[..]);
+    w: [24] u8; wn := co_field(body, "now_ms", w[..]);
+    for ch: w[0..<wn] { if ch >= '0' && ch <= '9' { value = value * 10 + cast(int) (ch - '0'); } }
+  } else if o.kind == FX_AUTH_STATE || o.kind == FX_AUTH_VERIFY {
+    flag = fk_find(body, "\"loggedIn\":true") >= 0;
+    if outcome == FXO_DONE && status >= 400 { outcome = FXO_FAILED; tn = co_field(body, "error", text[..]); }
+  } else if o.kind == FX_AUTH_EMAIL && outcome == FXO_DONE && status >= 400 { outcome = FXO_FAILED; tn = co_field(body, "error", text[..]); }
+  _ := app_host_done(a.c, co_mono(a), co_wall(a), o.op, o.generation, outcome, status, flag, cast(string) text[0..<tn], cast(string) more[0..<mn], value);
+}
+// Owed cancellations, then the core's wake if the clock reached it.
+co_turn :: (r: [] CoRun, a: CoApp) {
+  for k: 0..<r[0].owed_n { o := r[0].owed[k]; _ := app_host_done(a.c, co_mono(a), co_wall(a), o.op, o.generation, FXO_CANCELLED, 0, false, "", "", 0); }
+  r[0].owed_n = 0;
+  wake := app_host_wake(a.c);
+  if wake >= 0 && co_mono(a) >= wake { _ := app_host_clock(a.c, co_mono(a), co_wall(a)); }
+}
+
+// ---------------------------------------------------------------- the frame
+
+co_draw :: (r: [] CoRun, a: CoApp) {
+  focus: [EL_ID] u8; fn := co_focus(r, a, focus[..]);
+  t := a.t; f := t[0].f[..];
+  uiframe_begin(f, t[0].sf[..], t[0].ks[..], measure_cells(), arcade_phone_skin(), uiinput(0, 0, r[0].pressed_n > 0, r[0].pressed_n > 0, cast(string) r[0].pressed[0..<r[0].pressed_n], cast(string) focus[0..<fn]), cast(f32) gd_ms(a.d) / 1000, gd_frame_dt(a.d, 0), false, false);
+  _ := view_page(f, a.v, a.c, ViewLayout.{x = 0, top = 0, w = CO_W, bottom = CO_H, chips_h = 0, editing = false, unit = 1});
+  _ = lf_card(f, a.l, 0, 0, CO_W, false);
+  _ = uiframe_end(f, t[0].sf[..]);
+}
+co_pointer :: (r: [] CoRun, a: CoApp, x: f32, y: f32, phase: int) -> bool {
+  s := a.t[0].sf[..];
+  row := surface_hit(s, x, y);
+  if phase == 0 { r[0].pressed_n = ifx surface_action(s, row) != 0 then el_copy(r[0].pressed[..], surface_id(s, row)) else 0; return r[0].pressed_n > 0; }
+  if phase != 2 { if phase == 3 { r[0].pressed_n = 0; } return false; }
+  held := r[0].pressed_n > 0 && cast(string) r[0].pressed[0..<r[0].pressed_n] == surface_id(s, row);
+  r[0].pressed_n = 0;
+  if !held { return false; }
+  id: [EL_ID] u8; idn := el_copy(id[..], surface_id(s, row)); act := surface_action(s, row);
+  if fk_starts(cast(string) id[0..<idn], "login") {
+    took := lf_press(a.l, act);
+    if took { lfc_step(a.b, a.l, a.c); }
+    return took;
+  }
+  p := view_press(a.v, a.c, a.t[0].ks[..], cast(string) id[0..<idn], act);
+  if p.kind == VIEW_P_FOCUS { r[0].composer = true; return true; }
+  if p.kind == VIEW_P_DISPATCH { _ := view_dispatch(a.c, p.what, p.text, co_mono(a), co_wall(a)); lfc_step(a.b, a.l, a.c); return true; }
+  return p.kind == VIEW_P_LOCAL;
+}
+co_edit :: (r: [] CoRun, a: CoApp) {
+  target: [EL_ID] u8; tn := el_copy(target[..], gd_target(a.d)); id := cast(string) target[0..<tn];
+  current: [EB_TEXT] u8; cn := 0;
+  if id == VIEW_COMPOSER_ID { cn = el_put(current[..], 0, app_draft(a.c)); }
+  else if id == "login.email" { cn = el_put(current[..], 0, lf_email(a.l)); }
+  else if id == "login.code" { cn = el_put(current[..], 0, lf_code(a.l)); }
+  else { gd_edited(a.d, false); return; }
+  e := gd_edit(a.d, cast(string) current[0..<cn]);
+  if !e.ok { gd_edited(a.d, false); return; }
+  ok := false;
+  if id == VIEW_COMPOSER_ID { ok = app_host_action(a.c, co_mono(a), co_wall(a), ACT_DRAFT, false, e.text, "") >= 0; }
+  else { ok = lf_set(a.l, ifx id == "login.email" then LF_FIELD_EMAIL else LF_FIELD_CODE, e.text); lfc_step(a.b, a.l, a.c); }
+  gd_edited(a.d, ok);
+}
+
+// ---------------------------------------------------------------- state
+
+CO_STEP :: [8] string.["reading", "out", "email", "requesting", "code", "verifying", "checking", "in"];
+CO_SEND :: [5] string.["empty", "login", "wait", "stop", "ready"];
+CO_STOP :: [5] string.["none", "ready", "asked", "uncertain", "seen"];
+CO_PERMIT :: [5] string.["none", "reading", "ready", "sent", "uncertain"];
+CO_XT :: [7] string.["queued", "running", "waiting", "completed", "failed", "canceled", "unknown"];
+co_name :: (names: [] string, i: int) -> string { return ifx i >= 0 && i < names.count then names[i] else "?"; }
+co_state :: (r: [] CoRun, a: CoApp) {
+  d := a.d; c := a.c;
+  gd_state_b(d, "account.known", lf_known(a.l)); gd_state_b(d, "account.logged_in", lf_logged_in(a.l));
+  steps := CO_STEP; gd_state(d, "login.step", co_name(steps[..], lf_step(a.l)));
+  gd_state(d, "chat.draft", app_draft(c));
+  focus: [EL_ID] u8; gd_state_b(d, "keyboard.shown", co_focus(r, a, focus[..]) > 0);
+  send := CO_SEND; stop := CO_STOP; permit := CO_PERMIT;
+  gd_state(d, "send.state", co_name(send[..], app_send_state(c)));
+  gd_state(d, "stop.state", co_name(stop[..], app_stop_state(c)));
+  gd_state(d, "permission.state", co_name(permit[..], app_permission_state(c)));
+  n := app_task(c); xt := CO_XT;
+  // the task's state when the turn runs on a task host, else the turn's own
+  ch := app_chat(c);
+  gd_state(d, "task.state", ifx n[0].has_status then co_name(xt[..], n[0].status[0].state) else ifx ch[0].has_view then ct_state_name(ch[0].view[0].state) else "none");
+  gd_state_i(d, "core.busy", app_host_busy(c)); gd_state_i(d, "core.refusals", c[0].refusals);
+}
+
+// ---------------------------------------------------------------- the session
+
+// The app launches (at the session's first operation that is not a recording line): the core, then the login flow, before the first frame. rejoin is what the host kept.
+co_launch :: (r: [] CoRun, a: CoApp) {
+  _ := app_host_init(a.c); lf_begin(a.l);
+  r[0].composer = false; r[0].pressed_n = 0; r[0].ops_n = 0; r[0].owed_n = 0;
+  _ = app_host_launch(a.c, co_mono(a), co_wall(a), cast(string) r[0].keep[0..<r[0].keep_n]);
+  lfc_step(a.b, a.l, a.c);
+  co_drain(r, a);
+}
+co_open :: (r: [] CoRun, a: CoApp) {
+  app_test_init(a.t); view_init(a.v);
+  gd_open(a.d, "cpu", 0, true);
+  r[0].keep_n = 0; r[0].launched = false;
+}
+// Relaunch: the process ends, so nothing it had in flight completes; the host keeps the conversation
+// for the rejoin, and the app starts again from it.
+co_relaunch :: (r: [] CoRun, a: CoApp) {
+  r[0].keep_n = app_host_keep(a.c, r[0].keep[..]);
+  for k: 0..<r[0].ops_n { _ := gd_cancel(a.d, r[0].ops[k].op); }
+  a.v[0].made = false; view_init(a.v);
+  co_launch(r, a);
+}
+co_step :: (r: [] CoRun, a: CoApp, code: int) {
+  if code == GD_POINTER { gd_took(a.d, co_pointer(r, a, gd_px(a.d), gd_py(a.d), gd_phase(a.d))); return; }
+  if code == GD_EDITOR { co_edit(r, a); return; }
+  if code == GD_STATE { co_state(r, a); return; }
+  if code == GD_COMPLETE { co_complete(r, a); return; }
+  if code == GD_LIFE {
+    w := gd_life(a.d);
+    if w == "relaunch" { co_relaunch(r, a); return; }
+    _ := app_host_lifecycle(a.c, co_mono(a), co_wall(a), ifx w == "background" then LIFE_BACKGROUND else LIFE_FOREGROUND);
+  }
+}
+// One operation; its answer is then gd_answer(a.d). False when it did not finish.
+co_drive :: (r: [] CoRun, a: CoApp, op: string) -> bool {
+  t := a.t;
+  // a case declares its recordings first; the app launches at the first operation after them
+  if !r[0].launched && !fk_starts(op, "clock data record ") { r[0].launched = true; co_launch(r, a); }
+  first := t[0].sf[0].generation == 0;
+  code := ifx first then GD_FRAME else gd_drive(a.d, t[0].sf[..], t[0].ks[..], op);
+  guard := 0;
+  while code != GD_DONE && guard < CO_GUARD {
+    guard += 1;
+    if code == GD_FRAME { co_turn(r, a); co_drain(r, a); co_draw(r, a); if uiframe_moving(t[0].f[..]) { gd_owner(a.d, "page.motion"); } }
+    else { co_step(r, a, code); }
+    co_drain(r, a);
+    if first { first = false; code = gd_drive(a.d, t[0].sf[..], t[0].ks[..], op); continue; }
+    code = gd_resume(a.d, t[0].sf[..], t[0].ks[..]);
+  }
+  return guard < CO_GUARD;
+}
+
+// Everything but the core in one record, for a caller that allocates the parts together (the runner,
+// the checks). The core is apart: it is about 19 MiB.
+CoTest :: struct { r: [1] CoRun; v: [1] ChatView; l: [1] LoginFlow; b: [1] LoginBridge; t: [1] AppTest; d: [1] GdDrive; }
+co_t_app :: (k: [] CoTest, c: [] AppCore) -> CoApp { return CoApp.{c = c, v = k[0].v[..], l = k[0].l[..], b = k[0].b[..], t = k[0].t[..], d = k[0].d[..]}; }
+
+#load "core-page-checks.coax" #test;
