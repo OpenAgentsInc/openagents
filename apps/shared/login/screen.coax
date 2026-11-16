@@ -24,20 +24,25 @@
 //     same rows answer the driver (login_drive: tree, tap ID, type ID TEXT).
 //
 // The form is the form set (components/kit/form.coax) in the phone skin
-// (components/skin/arcade.coax). Layout is in the skin's units, drawn
+// (components/skin/arcade.coax), called through the frame context
+// (components/kit/frame.coax): each part records its semantic row and its hit
+// region under a stable id, the form's entry and its move with the keyboard
+// are keyed state, and the display list, hits and rows commit together on
+// one surface (components/paint/surface.coax). A press, VoiceOver and the
+// driver all read the committed rows. Layout is in the skin's units, drawn
 // LG_SCALE times larger so its 14-unit text is read at phone size; every
 // number the host sees is in points.
 //   coax/bin/coax test apps/shared/login/screen.coax
 
 #load "../../../components/kit/form.coax";
-#load "../../../components/core/elements.coax";
 #load "../../../components/core/edit.coax";
 #load "../../../components/skin/arcade.coax";
 #load "../../../components/backend/gpu.coax";
 
 LG_SCALE :: 1.2;             // points per layout unit: the atlas is made at the screen's scale times this
 LG_MAX_VERTICES :: 16384;
-LG_UNDER :: 256; LG_OVER :: 128; LG_HITS :: 16; LG_POOL :: 512; LG_ROWS :: 16;
+// The surface's declared capacity, a generation: primitives, runs of text, hits, pooled bytes, semantic rows; and keyed ids.
+LG_UNDER :: 256; LG_OVER :: 128; LG_HITS :: 16; LG_POOL :: 512; LG_ROWS :: 16; LG_KEYED :: 16;
 LG_EMAIL_MAX :: 254; LG_CODE_MAX :: 32; LG_NOTE_MAX :: 240;
 LG_PANEL_MAX :: 340.0;       // the form's widest, units
 LG_MARGIN :: 14.0;           // the form from the screen's sides, units
@@ -47,10 +52,13 @@ LG_RISE :: 14.0;             // units the form rises as it enters
 // Steps, fields, hits and actions.
 LG_STEP_EMAIL :: 0; LG_STEP_CODE :: 1;
 LG_FIELD_NONE :: 0; LG_FIELD_EMAIL :: 1; LG_FIELD_CODE :: 2;
+// What a row dispatches when pressed (its action in the semantic table).
 LG_HIT_EMAIL :: 1; LG_HIT_CODE :: 2; LG_HIT_SEND :: 3; LG_HIT_VERIFY :: 4; LG_HIT_RESEND :: 5; LG_HIT_CHANGE :: 6; LG_HIT_KEY :: 7;
+// What the host is asked to do.
 LG_ACT_NONE :: 0; LG_ACT_START :: 1; LG_ACT_VERIFY :: 2; LG_ACT_KEY :: 3;
-// A row's state for the accessibility bridge.
-LG_ROW_DISABLED :: 1; LG_ROW_FOCUSED :: 2; LG_ROW_LIVE :: 4; LG_ROW_HEADING :: 8;
+
+// One generation of the surface's arrays.
+LgGeneration :: struct { under: [LG_UNDER] Prim; over: [LG_OVER] Prim; hits: [LG_HITS] SheetHit; pool: [LG_POOL] u8; rows: [LG_ROWS] El; }
 
 LoginScreen :: struct {
   ready: bool; time: f32; d: f32; width: f32; height: f32;     // d: device px per unit; the size in units
@@ -61,22 +69,31 @@ LoginScreen :: struct {
   done: bool;                           // the code was accepted: the host is opening the app
   email: [1] EditBuf; code: [1] EditBuf;
   note: [LG_NOTE_MAX] u8; note_n: int; failure: bool;
-  focus: int; down: int;
+  focus: int;
+  // the pointer: where it is (units), whether a finger is down, and the id it went down on
+  px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
   action: int;
-  enter: [1] ArMotion; rise: [1] UiSpring; placed: bool;
-  under: [LG_UNDER] Prim; over: [LG_OVER] Prim; hits: [LG_HITS] SheetHit; pool: [LG_POOL] u8;
-  nu: int; no: int; nh: int;
-  el: [1] Elements; flags: [LG_ROWS] int; stamp: int;
-  panel: [5] f32;                       // the form's panel: x, y, w, h and its corner, units
-  fields: [8] f32;                      // each field's box (email, then code): x, y, w, h, units; w 0 when not shown
-  lost: int;                            // parts a full sheet could not hold this frame
+  // the surface: two generations committed together, and the state kept by id
+  gen: [2] LgGeneration; surface: [1] UiSurface;
+  keys: [LG_KEYED] Keyed; keyed: [1] KeyedStore;
+  stamp: int;
+  entered: f32;                         // the form's entry, 0 to 1
+  moving: bool;                         // keyed motion is still under way
+  refused: int;                         // frames the surface refused (it kept the one before)
 }
 
 lg_init :: (s: [] LoginScreen) {
   s[0].ready = true;
-  s[0].rise[0] = UiSpring.{clamp = false, damping = 26, stiffness = 260};
-  ar_motion_to(s[0].enter[..], true, ArcadeMotionSkin.{}.menu, AM_OUT_QUAD);
+  g := s[0].gen[..];
+  s[0].surface[0] = surface_over(
+    Sheet.{under = g[0].under[..], over = g[0].over[..], hits = g[0].hits[..], pool = g[0].pool[..]}, g[0].rows[..],
+    Sheet.{under = g[1].under[..], over = g[1].over[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
+  s[0].keyed[0] = KeyedStore.{rows = s[0].keys[..]};
 }
+// The committed rows, the row with an id (or -1), and a row's box in units.
+lg_rows :: (s: [] LoginScreen) -> ElTable { return surface_rows(s[0].surface[..]); }
+lg_find :: (s: [] LoginScreen, id: string) -> int { return surface_find(s[0].surface[..], id); }
+lg_focus_id :: (s: [] LoginScreen) -> string { return ifx s[0].focus == LG_FIELD_EMAIL then "login.email" else ifx s[0].focus == LG_FIELD_CODE then "login.code" else ""; }
 lg_out :: (out: [] u8, text: string) -> int {
   n := 0;
   for c: text { if n >= out.count { break; } out[n] = c; n += 1; }
@@ -101,24 +118,16 @@ lg_skin :: (p: f32) -> UiSkin {
   return s;
 }
 
-// A semantic row, in points, with its state.
-lg_row :: (s: [] LoginScreen, id: string, role: int, label: string, x: f32, y: f32, w: f32, h: f32, flags: int) {
-  e := s[0].el[..];
-  before := e[0].n;
-  el_add(e, id, role, label, x * LG_SCALE, y * LG_SCALE, w * LG_SCALE, h * LG_SCALE);
-  if e[0].n > before && before < LG_ROWS { s[0].flags[before] = flags; }
-}
-
-// Lays the form out for a screen w by h units, painting it and recording
-// its hits and rows. p: the entry's progress.
-lg_layout :: (s: [] LoginScreen, w: f32, h: f32, p: f32) {
-  a := s[0].atlas[..];
-  s[0].nu = 0; s[0].no = 0; s[0].nh = 0; s[0].lost = 0;
-  el_clear(s[0].el[..]);
-  for i: 0..<LG_ROWS { s[0].flags[i] = 0; }
-  for i: 0..<8 { s[0].fields[i] = 0; }
-  sh: [1] Sheet; sh[0] = Sheet.{under = s[0].under[..], over = s[0].over[..], hits = s[0].hits[..], pool = s[0].pool[..]};
-  k := lg_skin(p); m := measure_font(a);
+// Lays the form out for a screen w by h units through the frame context:
+// each part paints, records its row and leaves its hit. Returns the entry's
+// progress.
+lg_layout :: (s: [] LoginScreen, f: [] UiFrame, w: f32, h: f32) -> f32 {
+  m := f[0].m;
+  // the form's own keyed state: its entry, and where it sits (a spring toward its resting place)
+  key := uiframe_key(f, "login.form");
+  p := am_unit(keyed_entry(f[0].keyed, key, f[0].skin.motion.menu, AM_OUT_QUAD));
+  f[0].skin = lg_skin(p);
+  k := f[0].skin;
   code_step := s[0].step == LG_STEP_CODE; busy := s[0].busy != LG_ACT_NONE || s[0].done;
   pw := ifx w - 2 * LG_MARGIN < LG_PANEL_MAX then w - 2 * LG_MARGIN else LG_PANEL_MAX;
   px := (w - pw) / 2; cw := pw - 2 * k.pad;
@@ -138,77 +147,58 @@ lg_layout :: (s: [] LoginScreen, w: f32, h: f32, p: f32) {
   // where it rests: its middle at LG_REST, clear of the keyboard and the safe areas
   top := s[0].safe_top / LG_SCALE + k.space; bottom := h - s[0].safe_bottom / LG_SCALE - k.space;
   if s[0].keyboard > 0 { bottom = h - s[0].keyboard / LG_SCALE - k.space; }
-  py := h * LG_REST - ph / 2;
-  if py + ph > bottom { py = bottom - ph; }
-  if py < top { py = top; }
-  // the keyboard and a taller notice move it on a spring
-  if !s[0].placed || s[0].reduced { s[0].rise[0].value = py; s[0].rise[0].velocity = 0; s[0].placed = true; }
-  s[0].rise[0].target = py;
-  py = s[0].rise[0].value + (1 - p) * LG_RISE;
-  s[0].panel[0] = px; s[0].panel[1] = py; s[0].panel[2] = pw; s[0].panel[3] = ph; s[0].panel[4] = k.animated.frame_square_limit;
-  animated_frame(sh[..], k, px, py, pw, ph, p, 1);
+  rest := h * LG_REST - ph / 2;
+  if rest + ph > bottom { rest = bottom - ph; }
+  if rest < top { rest = top; }
+  // the keyboard and a taller notice move it on its spring; entering, it rises into place
+  py := uiframe_spring(f, key, rest) + (1 - p) * LG_RISE;
+  form := uiframe_semantic(f, "login.form", EL_REGION, "Log in", px, py, pw, ph, 0, 0);
+  animated_frame(f[0].sheet, k, px, py, pw, ph, p, 1);
+  uiframe_open(f, form);
   x := px + k.pad; y := py + k.pad;
-  // the heading
-  _ := form_heading(sh[..], m, k, x, y, cw, title, detail);
-  lg_row(s, "login.title", EL_ITEM, title, x, y, cw, k.title.line, LG_ROW_HEADING);
-  if detail.count > 0 { lg_row(s, "login.sent", EL_ITEM, detail, x, y + k.title.line, cw, k.body.line, 0); }
+  _ := ctx_heading(f, "login.title", "login.sent", x, y, cw, title, detail);
   y += heading_h + k.space;
-  // the field
-  field := ifx code_step then LG_FIELD_CODE else LG_FIELD_EMAIL;
-  focused := s[0].focus == field;
-  fh := form_field(sh[..], m, k, x, y, cw, ifx code_step then lg_code(s) else lg_email(s), ifx code_step then "000000" else "you@example.com",
-                   focused, focused, busy, ifx code_step then LG_HIT_CODE else LG_HIT_EMAIL, 0);
-  at := (field - 1) * 4;
-  s[0].fields[at] = x; s[0].fields[at + 1] = y; s[0].fields[at + 2] = cw; s[0].fields[at + 3] = fh;
-  lg_row(s, ifx code_step then "login.code" else "login.email", EL_FIELD, ifx code_step then "Email code" else "Email address", x, y, cw, fh,
-         (ifx busy then LG_ROW_DISABLED else 0) | (ifx focused then LG_ROW_FOCUSED else 0));
+  // the field: under the platform editor while it holds the keyboard
+  state := ifx busy then EL_S_DISABLED else 0;
+  fh: f32 = 0;
+  if code_step { fh = ctx_field(f, "login.code", x, y, cw, "Email code", lg_code(s), "000000", s[0].focus == LG_FIELD_CODE, state, LG_HIT_CODE); }
+  else { fh = ctx_field(f, "login.email", x, y, cw, "Email address", lg_email(s), "you@example.com", s[0].focus == LG_FIELD_EMAIL, state, LG_HIT_EMAIL); }
   y += fh + k.space;
   // the action
-  hit := ifx code_step then LG_HIT_VERIFY else LG_HIT_SEND;
   label := ifx code_step then (ifx busy then "Checking code…" else "Log in") else (ifx busy then "Sending code…" else "Send code");
   if code_step && s[0].busy == LG_ACT_START { label = "Sending code…"; }
-  state := ifx busy then FORM_BUSY else ifx s[0].down == hit then FORM_PRESSED else FORM_PRIMARY;
-  bh := form_button(sh[..], m, k, x, y, cw, label, state, s[0].time, s[0].reduced, hit, 0);
-  lg_row(s, ifx code_step then "login.verify" else "login.send", EL_BUTTON, label, x, y, cw, bh, ifx busy then LG_ROW_DISABLED else 0);
+  work := ifx busy then EL_S_BUSY else 0;
+  bh: f32 = 0;
+  if code_step { bh = ctx_action(f, "login.verify", x, y, cw, label, true, work, LG_HIT_VERIFY); }
+  else { bh = ctx_action(f, "login.send", x, y, cw, label, true, work, LG_HIT_SEND); }
   y += bh;
   // the quiet actions under it
   if code_step {
-    rw := form_link(sh[..], m, k, x - k.space, y, "Resend code", s[0].down == LG_HIT_RESEND, busy, LG_HIT_RESEND, 0);
-    lg_row(s, "login.resend", EL_BUTTON, "Resend email code", x - k.space, y, rw, k.control_h, ifx busy then LG_ROW_DISABLED else 0);
+    _ := ctx_link(f, "login.resend", x - k.space, y, "Resend code", "Resend email code", state, LG_HIT_RESEND);
     lw := form_link_width(m, k, "Change email");
-    _ := form_link(sh[..], m, k, x + cw + k.space - lw, y, "Change email", s[0].down == LG_HIT_CHANGE, busy, LG_HIT_CHANGE, 0);
-    lg_row(s, "login.change", EL_BUTTON, "Change email", x + cw + k.space - lw, y, lw, k.control_h, ifx busy then LG_ROW_DISABLED else 0);
+    _ := ctx_link(f, "login.change", x + cw + k.space - lw, y, "Change email", "Change email", state, LG_HIT_CHANGE);
   } else {
     lw := form_link_width(m, k, "Use a Nostr key");
-    _ := form_link(sh[..], m, k, x + (cw - lw) / 2, y, "Use a Nostr key", s[0].down == LG_HIT_KEY, busy, LG_HIT_KEY, 0);
-    lg_row(s, "login.key", EL_BUTTON, "Nostr key", x + (cw - lw) / 2, y, lw, k.control_h, ifx busy then LG_ROW_DISABLED else 0);
+    _ := ctx_link(f, "login.key", x + (cw - lw) / 2, y, "Use a Nostr key", "Nostr key", state, LG_HIT_KEY);
   }
   y += k.control_h;
-  if note.count > 0 {
-    y += k.space / 2;
-    _ := form_notice(sh[..], m, k, x, y, cw, note, s[0].failure);
-    lg_row(s, "login.note", EL_ITEM, note, x, y, cw, note_h, LG_ROW_LIVE);
-  }
-  s[0].nu = sh[0].nu; s[0].no = sh[0].no; s[0].nh = sh[0].nh;
-  if s[0].nu >= LG_UNDER || s[0].no >= LG_OVER || s[0].nh >= LG_HITS { s[0].lost += 1; }
-  s[0].lost += s[0].el[0].lost;
-  // what the accessibility bridge compares: the rows' names, state and whole-point boxes
+  if note.count > 0 { _ := ctx_notice(f, "login.note", x, y + k.space / 2, cw, note, s[0].failure); }
+  uiframe_close(f);
+  return p;
+}
+// What the accessibility bridge compares: the committed rows' names, state, values and whole-unit boxes.
+lg_stamp :: (s: [] LoginScreen) -> int {
+  t := [1] ElTable.[lg_rows(s)];
   st := 17;
-  for i: 0..<s[0].el[0].n {
-    r := s[0].el[0].rows[i];
-    for c: el_id(s[0].el[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
-    for c: el_label(s[0].el[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
-    st = (st * 31 + s[0].flags[i]) & 0x3fffffff;
+  for i: 0..<t[0].n {
+    r := t[0].rows[i];
+    for c: elt_id(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
+    for c: elt_label(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
+    for c: elt_value_of(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
+    st = (st * 31 + r.state) & 0x3fffffff;
     st = (st * 31 + el_round(r.x) + 7 * el_round(r.y) + 13 * el_round(r.w) + 17 * el_round(r.h)) & 0x3fffffff;
   }
-  if code_step { for c: lg_code(s) { st = (st * 31 + cast(int) c) & 0x3fffffff; } } else { for c: lg_email(s) { st = (st * 31 + cast(int) c) & 0x3fffffff; } }
-  s[0].stamp = st;
-}
-
-lg_hit_at :: (s: [] LoginScreen, x: f32, y: f32) -> int {
-  kind := 0;
-  for i: 0..<s[0].nh { h := s[0].hits[i]; if x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h { kind = h.kind; } }
-  return kind;
+  return st;
 }
 
 // What pressing a part does: a tap, VoiceOver's activation and the driver all come here.
@@ -231,27 +221,22 @@ lg_press :: (s: [] LoginScreen, kind: int) -> bool {
   if kind == LG_HIT_KEY && s[0].step == LG_STEP_EMAIL { s[0].focus = LG_FIELD_NONE; s[0].action = LG_ACT_KEY; return true; }
   return false;
 }
-lg_kind_of :: (id: string) -> int {
-  if id == "login.email" { return LG_HIT_EMAIL; }
-  if id == "login.code" { return LG_HIT_CODE; }
-  if id == "login.send" { return LG_HIT_SEND; }
-  if id == "login.verify" { return LG_HIT_VERIFY; }
-  if id == "login.resend" { return LG_HIT_RESEND; }
-  if id == "login.change" { return LG_HIT_CHANGE; }
-  if id == "login.key" { return LG_HIT_KEY; }
-  return 0;
+// Pressing a committed row dispatches its action.
+lg_press_row :: (s: [] LoginScreen, row: int) -> bool {
+  act := surface_action(s[0].surface[..], row);
+  return act != 0 && lg_press(s, act);
 }
 lg_set :: (s: [] LoginScreen, field: int, text: string) {
+  // typing answers a failure: its notice goes
+  if s[0].failure && text != (ifx field == LG_FIELD_CODE then lg_code(s) else lg_email(s)) { lg_note(s, "", false); }
   if field == LG_FIELD_EMAIL && text.count <= LG_EMAIL_MAX { eb_set(s[0].email[..], text); }
   if field == LG_FIELD_CODE && text.count <= LG_CODE_MAX { eb_set(s[0].code[..], text); }
 }
 lg_moving :: (s: [] LoginScreen) -> bool {
   if !s[0].ready { return true; }
   if s[0].reduced { return false; }
-  if s[0].enter[0].phase == AM_ENTERING || s[0].enter[0].phase == AM_EXITING { return true; }
   if s[0].busy != LG_ACT_NONE || s[0].done { return true; }       // the activity mark turns
-  rest := s[0].rise[0].value - s[0].rise[0].target;
-  return rest > 0.05 || rest < -0.05 || s[0].rise[0].velocity > 0.05 || s[0].rise[0].velocity < -0.05;
+  return s[0].moving;
 }
 
 // ---------------------------------------------------------------- the host's calls
@@ -262,7 +247,8 @@ login_env :: (s: [] LoginScreen, safe_top: f32, safe_bottom: f32, keyboard: f32,
   s[0].safe_top = ifx safe_top > 0 then safe_top else 0.0f32; s[0].safe_bottom = ifx safe_bottom > 0 then safe_bottom else 0.0f32;
   s[0].keyboard = ifx keyboard > 0 then keyboard else 0.0f32; s[0].reduced = reduced; s[0].scene = scene;
 }
-// One frame of width by height device pixels. Returns the vertex count.
+// One frame of width by height device pixels. Returns the vertex count. A frame the surface
+// refuses (something did not fit) is counted, and the frame committed before is drawn again.
 login_frame :: (s: [] LoginScreen, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
   if s.count < 1 || width < 1 || height < 1 { return 0; }
   if !s[0].ready { lg_init(s); }
@@ -272,35 +258,47 @@ login_frame :: (s: [] LoginScreen, out: [] f32, width: f32, height: f32, dpr: f3
   s[0].d = d; s[0].width = w; s[0].height = h;
   t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   if !s[0].reduced { s[0].time += t; }
-  ar_motion_tick(s[0].enter[..], t);
-  if s[0].reduced { s[0].enter[0].value = 1; s[0].enter[0].phase = AM_ENTERED; }
-  ui_spring_step(s[0].rise[..], t, s[0].reduced);
   a[0].frame += 1;
   k := arcade_phone_skin();
   v := 0;
   // with no scene behind, the plain canvas colour
   if !s[0].scene { v = paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas); }
   if !a[0].ready { return v; }
-  lg_layout(s, w, h, am_unit(s[0].enter[0].value));
-  v = gpu_draw(out, v, a, d, s[0].under[0..<s[0].nu], 0, 0, -8, h + 8);
-  v = gpu_draw(out, v, a, d, s[0].over[0..<s[0].no], 0, 0, -8, h + 8);
+  f: [1] UiFrame;
+  input := uiinput(s[0].px, s[0].py, s[0].touching, s[0].touching, cast(string) s[0].pressed[0..<s[0].pressed_n], lg_focus_id(s));
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
+  s[0].entered = lg_layout(s, f[..], w, h);
+  s[0].moving = uiframe_moving(f[..]);
+  if !uiframe_end(f[..], s[0].surface[..]) { s[0].refused += 1; }
+  s[0].stamp = lg_stamp(s);
+  sh := surface_sheet(s[0].surface[..]);
+  v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
+  v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
   gpu_monochrome(out, v);
   return v;
 }
-// A touch, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled. A part is pressed when the
-// finger lifts on the part it went down on; a tap on nothing lets the keyboard go.
+// A touch, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled. It is routed through the
+// committed rows: a part is pressed when the finger lifts on the row it went down on. A tap
+// outside the form lets the keyboard go.
 login_pointer :: (s: [] LoginScreen, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
   if s.count < 1 || !(s[0].d > 0) { return false; }
-  kind := lg_hit_at(s, x / s[0].d, y / s[0].d);
-  if phase == 0 { s[0].down = kind; return kind != 0; }
-  if phase == 1 { if kind != s[0].down { s[0].down = 0; } return s[0].down != 0; }
-  was := s[0].down; s[0].down = 0;
+  ux := x / s[0].d; uy := y / s[0].d;
+  s[0].px = ux; s[0].py = uy;
+  row := surface_hit(s[0].surface[..], ux, uy);
+  id := surface_id(s[0].surface[..], row);
+  acts := surface_action(s[0].surface[..], row) != 0;
+  was := cast(string) s[0].pressed[0..<s[0].pressed_n];
+  if phase == 0 {
+    s[0].touching = true; s[0].pressed_n = ifx acts then el_copy(s[0].pressed[..], id) else 0;
+    return acts;
+  }
+  if phase == 1 { if was != id { s[0].pressed_n = 0; } return s[0].pressed_n > 0; }
+  held := s[0].pressed_n > 0 && was == id;
+  s[0].touching = false; s[0].pressed_n = 0;
   if phase != 2 { return false; }
-  if was != 0 && was == kind { return lg_press(s, kind); }
+  if held { return lg_press_row(s, row); }
   // outside the form: the keyboard goes
-  ux := x / s[0].d; uy := y / s[0].d; f := s[0].panel;
-  outside := ux < f[0] || ux >= f[0] + f[2] || uy < f[1] || uy >= f[1] + f[3];
-  if was == 0 && outside && s[0].focus != LG_FIELD_NONE { s[0].focus = LG_FIELD_NONE; return true; }
+  if row < 0 && s[0].focus != LG_FIELD_NONE { s[0].focus = LG_FIELD_NONE; return true; }
   return false;
 }
 // The action the host is asked for (LG_ACT_*), once.
@@ -343,8 +341,12 @@ login_focus :: (s: [] LoginScreen) -> int #export_c #effects(all) { if s.count <
 login_blur :: (s: [] LoginScreen) #export_c #effects(all) { if s.count > 0 { s[0].focus = LG_FIELD_NONE; } }
 // A field's committed box, in points: x, y, w, h, then where its text starts inside it. False when it is not shown.
 login_field :: (s: [] LoginScreen, field: int, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 5 || field < 1 || field > 2 || !(s[0].fields[(field - 1) * 4 + 2] > 0) { return false; }
-  for i: 0..<4 { out[i] = s[0].fields[(field - 1) * 4 + i] * LG_SCALE; }
+  if s.count < 1 || out.count < 5 || field < 1 || field > 2 { return false; }
+  t := [1] ElTable.[lg_rows(s)];
+  i := elt_find(t[..], ifx field == LG_FIELD_CODE then "login.code" else "login.email");
+  if i < 0 { return false; }
+  r := t[0].rows[i];
+  out[0] = r.x * LG_SCALE; out[1] = r.y * LG_SCALE; out[2] = r.w * LG_SCALE; out[3] = r.h * LG_SCALE;
   out[4] = form_field_inset(arcade_phone_skin()) * LG_SCALE;
   return true;
 }
@@ -361,111 +363,125 @@ login_editor :: (out: [] f32) -> bool #export_c #effects(all) {
 }
 // The form's panel for the scene behind it, in points: x, y, w, h and its corner.
 login_form :: (s: [] LoginScreen, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 5 || !(s[0].panel[2] > 0) { return false; }
-  for i: 0..<5 { out[i] = s[0].panel[i] * LG_SCALE; }
+  if s.count < 1 || out.count < 5 { return false; }
+  t := [1] ElTable.[lg_rows(s)];
+  i := elt_find(t[..], "login.form");
+  if i < 0 { return false; }
+  r := t[0].rows[i];
+  out[0] = r.x * LG_SCALE; out[1] = r.y * LG_SCALE; out[2] = r.w * LG_SCALE; out[3] = r.h * LG_SCALE;
+  out[4] = arcade_phone_skin().animated.frame_square_limit * LG_SCALE;
   return true;
 }
 // Whether the next frame differs with no input: the entry, the keyboard's move, the activity mark.
 login_moving :: (s: [] LoginScreen) -> bool #export_c #effects(all) { return s.count > 0 && lg_moving(s); }
 login_done :: (s: [] LoginScreen) -> bool #export_c #effects(all) { return s.count > 0 && s[0].done; }
-login_lost :: (s: [] LoginScreen) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].lost; }
+// Frames the surface refused since the screen opened (0 on a surface sized for its screen).
+login_refused :: (s: [] LoginScreen) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
 login_scale :: () -> f32 #export_c #effects(all) { return LG_SCALE; }
 login_max_vertices :: () -> int #export_c #effects(all) { return LG_MAX_VERTICES; }
 
-// ---- the semantic rows, for the accessibility bridge and the driver
+// ---- the committed semantic rows, for the accessibility bridge and the driver
 
-login_rows :: (s: [] LoginScreen) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].el[0].n; }
+login_rows :: (s: [] LoginScreen) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return lg_rows(s).n; }
 login_rows_stamp :: (s: [] LoginScreen) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].stamp; }
-// Row i: its box in points (x, y, w, h), its role (components/core/elements.coax EL_*) and its state (LG_ROW_*).
+// Row i: its box in points (x, y, w, h), its role (components/core/elements.coax EL_*), its state
+// (EL_S_* bits) and its parent row (-1: none).
 login_row :: (s: [] LoginScreen, i: int, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 6 || i < 0 || i >= s[0].el[0].n { return false; }
-  r := s[0].el[0].rows[i];
-  out[0] = r.x; out[1] = r.y; out[2] = r.w; out[3] = r.h; out[4] = cast(f32) r.role; out[5] = cast(f32) (ifx i < LG_ROWS then s[0].flags[i] else 0);
+  if s.count < 1 || out.count < 7 { return false; }
+  t := [1] ElTable.[lg_rows(s)];
+  if !elt_ok(t[..], i) { return false; }
+  r := t[0].rows[i];
+  out[0] = r.x * LG_SCALE; out[1] = r.y * LG_SCALE; out[2] = r.w * LG_SCALE; out[3] = r.h * LG_SCALE;
+  out[4] = cast(f32) r.role; out[5] = cast(f32) r.state; out[6] = cast(f32) r.parent;
   return true;
 }
 login_row_id :: (s: [] LoginScreen, i: int, out: [] u8) -> int #export_c #effects(all) {
-  if s.count < 1 || i < 0 || i >= s[0].el[0].n { return 0; }
-  return lg_out(out, el_id(s[0].el[..], i));
+  if s.count < 1 { return 0; }
+  t := [1] ElTable.[lg_rows(s)]; return lg_out(out, elt_id(t[..], i));
 }
 login_row_label :: (s: [] LoginScreen, i: int, out: [] u8) -> int #export_c #effects(all) {
-  if s.count < 1 || i < 0 || i >= s[0].el[0].n { return 0; }
-  return lg_out(out, el_label(s[0].el[..], i));
+  if s.count < 1 { return 0; }
+  t := [1] ElTable.[lg_rows(s)]; return lg_out(out, elt_label(t[..], i));
+}
+login_row_value :: (s: [] LoginScreen, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := [1] ElTable.[lg_rows(s)]; return lg_out(out, elt_value_of(t[..], i));
 }
 // Activating a row by its id does what a tap on it does.
 login_activate :: (s: [] LoginScreen, id: string) -> bool #export_c #effects(all) {
-  if s.count < 1 || el_find(s[0].el[..], id) < 0 { return false; }
-  return lg_press(s, lg_kind_of(id));
+  if s.count < 1 { return false; }
+  return lg_press_row(s, lg_find(s, id));
 }
-// coax drive: `tree`, `tap ID` and `type ID TEXT` over the same rows. The answer's length, or -1 for an operation it doesn't know.
+// coax drive: `tree`, `tap ID` and `type ID TEXT` over the same rows, and `counts` (the surface's
+// and the keyed store's). The answer's length, or -1 for an operation it doesn't know.
 login_drive :: (s: [] LoginScreen, op: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
-  if op == "tree" { return el_tree(s[0].el[..], out); }
+  if op == "tree" { return surface_tree(s[0].surface[..], out); }
+  if op == "counts" { return uiframe_counts(s[0].surface[..], s[0].keyed[..], out); }
   if op.count > 4 && op[0..<4] == "tap " {
-    id := cast(string) op[4..<op.count];
-    if el_find(s[0].el[..], id) < 0 { return lg_out(out, "no such row\n"); }
-    return lg_out(out, ifx lg_press(s, lg_kind_of(id)) then "tapped\n" else "nothing to press\n");
+    row := lg_find(s, cast(string) op[4..<op.count]);
+    if row < 0 { return lg_out(out, "no such row\n"); }
+    return lg_out(out, ifx lg_press_row(s, row) then "tapped\n" else "nothing to press\n");
   }
   if op.count > 5 && op[0..<5] == "type " {
     rest := cast(string) op[5..<op.count];
     cut := 0; while cut < rest.count && rest[cut] != ' ' { cut += 1; }
     id := cast(string) rest[0..<cut]; text := ifx cut < rest.count then cast(string) rest[cut + 1..<rest.count] else "";
     field := ifx id == "login.email" then LG_FIELD_EMAIL else ifx id == "login.code" then LG_FIELD_CODE else LG_FIELD_NONE;
-    if field == LG_FIELD_NONE || el_find(s[0].el[..], id) < 0 { return lg_out(out, "no such field\n"); }
+    if field == LG_FIELD_NONE || lg_find(s, id) < 0 { return lg_out(out, "no such field\n"); }
     lg_set(s, field, text);
     return lg_out(out, "typed\n");
   }
   return -1;
 }
 
-// ---- the atlas's tables, for the host that builds it (the component gallery's fonts and icons)
-
-login_font_count :: () -> int #export_c #effects(all) { return GP_FONTS; }
-login_font_size :: (k: int) -> f32 #export_c #effects(all) { sizes := FONT_SIZES; return ifx k >= 0 && k < GP_FONTS then sizes[k] else 14.0f32; }
-login_font_weight :: (k: int) -> int #export_c #effects(all) { weights := FONT_WEIGHTS; return ifx k >= 0 && k < GP_FONTS then weights[k] else 0; }
-
 // ---------------------------------------------------------------- checks
 
 LgOut :: struct { v: [LG_MAX_VERTICES * GP_VERTEX_FLOATS] f32; }
 // A fixed atlas: every glyph 8 wide.
 lg_test_atlas :: (a: [] Atlas) { text_test_atlas(a); gp_set_atlas(a, 4096, 4096, 2); }
-// A screen on a 402 by 874 point phone at 3x, entered (reduced motion draws it at once).
+// A screen on a 402 by 874 point phone at 3x.
 lg_test_frame :: (s: [] LoginScreen, o: [] LgOut) -> int { return login_frame(s, o[0].v[..], 1206, 2622, 3, 0.016); }
 lg_test_text :: (s: [] LoginScreen, text: string) -> int {
-  n := 0;
-  for i: 0..<s[0].no { if s[0].over[i].kind == PRIM_TEXT && s[0].over[i].text == text { n += 1; } }
+  sh := surface_sheet(s[0].surface[..]); n := 0;
+  for i: 0..<sh.no { if sh.over[i].kind == PRIM_TEXT && sh.over[i].text == text { n += 1; } }
   return n;
 }
+// A finger down and up on the middle of a committed row (its box is in units; the pointer is in device px).
 lg_test_tap :: (s: [] LoginScreen, id: string) -> bool {
-  i := el_find(s[0].el[..], id); if i < 0 { return false; }
-  r := s[0].el[0].rows[i]; x := (r.x + r.w / 2) * 3; y := (r.y + r.h / 2) * 3;
+  i := lg_find(s, id); if i < 0 { return false; }
+  r := lg_rows(s).rows[i]; x := (r.x + r.w / 2) * s[0].d; y := (r.y + r.h / 2) * s[0].d;
   _ := login_pointer(s, x, y, 0);
   return login_pointer(s, x, y, 2);
 }
+lg_test_has :: (s: [] LoginScreen, id: string, state: int) -> bool { t := [1] ElTable.[lg_rows(s)]; return elt_has(t[..], lg_find(s, id), state); }
 
-#test "login: email, then the code, through the host's two actions; the page says Log in" #steps 600000000 {
+#test "login: email, then the code, through the host's two actions; the page says Log in" #steps 900000000 {
   s: [1] LoginScreen; o: [1] LgOut; lg_test_atlas(s[0].atlas[..]);
   login_env(s[..], 59, 34, 0, true, true);
   n := lg_test_frame(s[..], o[..]);
   #assert n > 0 && lg_test_text(s[..], "Log in") == 1 && lg_test_text(s[..], "Send code") == 1 && lg_test_text(s[..], "you@example.com") == 1;
-  #assert lg_test_text(s[..], "Sign in") == 0 && s[0].lost == 0;
+  #assert lg_test_text(s[..], "Sign in") == 0 && login_refused(s[..]) == 0;
   // an empty email asks for one, and starts nothing
   #assert lg_test_tap(s[..], "login.send") && login_action(s[..]) == LG_ACT_NONE && s[0].failure && login_focus(s[..]) == LG_FIELD_EMAIL;
   login_set_text(s[..], LG_FIELD_EMAIL, "ada@example.com");
+  #assert !s[0].failure && s[0].note_n == 0;
   _ := lg_test_frame(s[..], o[..]);
   #assert lg_test_tap(s[..], "login.send") && login_action(s[..]) == LG_ACT_START && login_action(s[..]) == LG_ACT_NONE;
   // busy: the action says so, and nothing can be pressed
   _ := lg_test_frame(s[..], o[..]);
   #assert lg_test_text(s[..], "Sending code…") == 1 && !lg_test_tap(s[..], "login.send") && !lg_test_tap(s[..], "login.email") && login_moving(s[..]) == false;
+  #assert lg_test_has(s[..], "login.send", EL_S_BUSY | EL_S_DISABLED) && lg_test_has(s[..], "login.email", EL_S_DISABLED);
   buf: [300] u8; #assert cast(string) buf[0..<login_text(s[..], LG_FIELD_EMAIL, buf[..])] == "ada@example.com";
   // a refusal keeps the step and shows the server's words
   login_reply(s[..], LG_ACT_START, false, "Too many emails. Try again in a minute.");
   _ := lg_test_frame(s[..], o[..]);
-  #assert s[0].step == LG_STEP_EMAIL && s[0].failure && el_find(s[0].el[..], "login.note") >= 0;
+  #assert s[0].step == LG_STEP_EMAIL && s[0].failure && lg_find(s[..], "login.note") >= 0 && lg_test_has(s[..], "login.note", EL_S_LIVE);
   #assert lg_test_tap(s[..], "login.send") && login_action(s[..]) == LG_ACT_START;
   login_reply(s[..], LG_ACT_START, true, "");
   _ := lg_test_frame(s[..], o[..]);
   #assert s[0].step == LG_STEP_CODE && login_focus(s[..]) == LG_FIELD_CODE && lg_test_text(s[..], "Email code") == 1 && lg_test_text(s[..], "ada@example.com") == 1;
-  #assert el_find(s[0].el[..], "login.code") >= 0 && el_find(s[0].el[..], "login.email") < 0 && el_find(s[0].el[..], "login.resend") >= 0 && el_find(s[0].el[..], "login.change") >= 0;
+  #assert lg_find(s[..], "login.code") >= 0 && lg_find(s[..], "login.email") < 0 && lg_find(s[..], "login.resend") >= 0 && lg_find(s[..], "login.change") >= 0 && lg_find(s[..], "login.sent") >= 0;
   // no code: nothing is verified
   #assert lg_test_tap(s[..], "login.verify") && login_action(s[..]) == LG_ACT_NONE;
   login_set_text(s[..], LG_FIELD_CODE, "123456");
@@ -484,7 +500,7 @@ lg_test_tap :: (s: [] LoginScreen, id: string) -> bool {
   #assert login_done(s[..]) && s[0].note_n == 0;
 }
 
-#test "login: resend clears the code, change email goes back, and the key login is asked of the host" #steps 600000000 {
+#test "login: resend clears the code, change email goes back, and the key login is asked of the host" #steps 900000000 {
   s: [1] LoginScreen; o: [1] LgOut; lg_test_atlas(s[0].atlas[..]);
   login_env(s[..], 59, 34, 0, true, false);
   _ := lg_test_frame(s[..], o[..]);
@@ -504,7 +520,7 @@ lg_test_tap :: (s: [] LoginScreen, id: string) -> bool {
   #assert lg_email(s[..]) == "ada@example.com";
 }
 
-#test "login: the focused field paints its frame only, and reports its box for the platform editor" #steps 600000000 {
+#test "login: the focused field paints its frame only, and reports its committed box for the platform editor" #steps 900000000 {
   s: [1] LoginScreen; o: [1] LgOut; lg_test_atlas(s[0].atlas[..]);
   login_env(s[..], 59, 34, 0, true, true);
   login_set_text(s[..], LG_FIELD_EMAIL, "ada@example.com");
@@ -512,44 +528,50 @@ lg_test_tap :: (s: [] LoginScreen, id: string) -> bool {
   #assert lg_test_text(s[..], "ada@example.com") == 1;
   #assert lg_test_tap(s[..], "login.email") && login_focus(s[..]) == LG_FIELD_EMAIL;
   _ := lg_test_frame(s[..], o[..]);
-  #assert lg_test_text(s[..], "ada@example.com") == 0 && lg_test_text(s[..], "you@example.com") == 0;
+  #assert lg_test_text(s[..], "ada@example.com") == 0 && lg_test_text(s[..], "you@example.com") == 0 && lg_test_has(s[..], "login.email", EL_S_FOCUSED);
   box: [5] f32; #assert login_field(s[..], LG_FIELD_EMAIL, box[..]) && !login_field(s[..], LG_FIELD_CODE, box[..]);
-  i := el_find(s[0].el[..], "login.email"); r := s[0].el[0].rows[i];
-  #assert box[0] == r.x && box[1] == r.y && box[2] == r.w && abs(box[3] - 44 * LG_SCALE) < 0.01 && box[4] > 0;
-  // a tap on nothing lets the keyboard go, and the text is painted again
+  row: [7] f32; #assert login_row(s[..], lg_find(s[..], "login.email"), row[..]);
+  #assert box[0] == row[0] && box[1] == row[1] && box[2] == row[2] && abs(box[3] - 44 * LG_SCALE) < 0.01 && box[4] > 0;
+  // a tap outside the form lets the keyboard go, and the text is painted again
   _ := login_pointer(s[..], 30, 300, 0); #assert login_pointer(s[..], 30, 300, 2) && login_focus(s[..]) == LG_FIELD_NONE;
   _ := lg_test_frame(s[..], o[..]);
   #assert lg_test_text(s[..], "ada@example.com") == 1;
+  // a tap on the form's own ground keeps it
+  #assert lg_test_tap(s[..], "login.email"); _ := lg_test_frame(s[..], o[..]);
+  form: [5] f32; #assert login_form(s[..], form[..]);
+  _ := login_pointer(s[..], (form[0] + 4) * 3, (form[1] + 4) * 3, 0); #assert !login_pointer(s[..], (form[0] + 4) * 3, (form[1] + 4) * 3, 2) && login_focus(s[..]) == LG_FIELD_EMAIL;
   style: [14] f32; #assert login_editor(style[..]) && abs(style[0] - 14 * LG_SCALE) < 0.01 && style[2] == style[3] && style[10] == 1;
 }
 
-#test "login: every control records a row with a stable id, a role, a label, its state and a 44 point target" #steps 600000000 {
+#test "login: every control records a committed row with a stable id, a role, a label, its state, its value and a 44 point target" #steps 900000000 {
   s: [1] LoginScreen; o: [1] LgOut; lg_test_atlas(s[0].atlas[..]);
   login_env(s[..], 59, 34, 0, true, true);
   _ := lg_test_frame(s[..], o[..]);
-  ids := [4] string.["login.title", "login.email", "login.send", "login.key"]; roles := [4] int.[EL_ITEM, EL_FIELD, EL_BUTTON, EL_BUTTON];
-  labels := [4] string.["Log in", "Email address", "Send code", "Nostr key"];
-  #assert login_rows(s[..]) == 4;
-  for i: 0..<4 {
-    row: [6] f32; b: [64] u8;
+  ids := [5] string.["login.form", "login.title", "login.email", "login.send", "login.key"]; roles := [5] int.[EL_REGION, EL_HEADING, EL_FIELD, EL_BUTTON, EL_BUTTON];
+  labels := [5] string.["Log in", "Log in", "Email address", "Send code", "Nostr key"];
+  #assert login_rows(s[..]) == 5;
+  for i: 0..<5 {
+    row: [7] f32; b: [64] u8;
     #assert login_row(s[..], i, row[..]) && cast(string) b[0..<login_row_id(s[..], i, b[..])] == ids[i] && cast(string) b[0..<login_row_label(s[..], i, b[..])] == labels[i];
     #assert cast(int) row[4] == roles[i] && row[0] >= 0 && row[0] + row[2] <= 402 && row[1] >= 59 && row[1] + row[3] <= 874 - 34;
-    if roles[i] != EL_ITEM { #assert row[3] >= 44 && row[2] >= 44; }
+    #assert cast(int) row[6] == (ifx i == 0 then -1 else 0);    // the form's region is the parent of its parts
+    if roles[i] == EL_FIELD || roles[i] == EL_BUTTON { #assert row[3] >= 44 && row[2] >= 44; }
   }
-  row: [6] f32; #assert login_row(s[..], 0, row[..]) && cast(int) row[5] == LG_ROW_HEADING && !login_row(s[..], 4, row[..]);
-  // the rows are the hits: a row's middle presses its part, and activation does the same as the tap
+  row: [7] f32; #assert !login_row(s[..], 5, row[..]);
+  // the rows are the hits: activation does the same as the tap, and only a row with an action can be pressed
   stamp := login_rows_stamp(s[..]);
-  #assert login_activate(s[..], "login.email") && login_focus(s[..]) == LG_FIELD_EMAIL && !login_activate(s[..], "login.code") && !login_activate(s[..], "nothing");
+  #assert login_activate(s[..], "login.email") && login_focus(s[..]) == LG_FIELD_EMAIL && !login_activate(s[..], "login.code") && !login_activate(s[..], "login.title") && !login_activate(s[..], "nothing");
   _ := lg_test_frame(s[..], o[..]);
-  #assert login_row(s[..], 1, row[..]) && (cast(int) row[5] & LG_ROW_FOCUSED) != 0 && login_rows_stamp(s[..]) != stamp;
-  out: [512] u8; n := login_drive(s[..], "tree", out[..]);
+  #assert lg_test_has(s[..], "login.email", EL_S_FOCUSED) && login_rows_stamp(s[..]) != stamp;
+  out: [600] u8; n := login_drive(s[..], "tree", out[..]);
   #assert el_has(cast(string) out[0..<n], "login.send button \"Send code\"") && el_has(cast(string) out[0..<n], "login.email field \"Email address\"");
   n = login_drive(s[..], "type login.email ada@example.com", out[..]); #assert cast(string) out[0..<n] == "typed\n" && lg_email(s[..]) == "ada@example.com";
-  n = login_drive(s[..], "tap login.send", out[..]); #assert cast(string) out[0..<n] == "tapped\n" && login_action(s[..]) == LG_ACT_START;
-  #assert login_drive(s[..], "dance", out[..]) == -1;
-  // busy rows say they are disabled
+  // the field's row carries its value
   _ := lg_test_frame(s[..], o[..]);
-  #assert login_row(s[..], 2, row[..]) && (cast(int) row[5] & LG_ROW_DISABLED) != 0;
+  v: [64] u8; #assert cast(string) v[0..<login_row_value(s[..], lg_find(s[..], "login.email"), v[..])] == "ada@example.com";
+  n = login_drive(s[..], "tap login.send", out[..]); #assert cast(string) out[0..<n] == "tapped\n" && login_action(s[..]) == LG_ACT_START;
+  n = login_drive(s[..], "counts", out[..]); #assert el_has(cast(string) out[0..<n], "refused 0") && el_has(cast(string) out[0..<n], "keyed 1/");
+  #assert login_drive(s[..], "dance", out[..]) == -1;
 }
 
 #test "login: the form rests low, rises clear of the keyboard, and stays inside small and large screens" #steps 900000000 {
@@ -565,8 +587,9 @@ lg_test_tap :: (s: [] LoginScreen, id: string) -> bool {
     _ := login_frame(s[..], o[0].v[..], sizes[q] * 3, heights[q] * 3, 3, 0.016);
     #assert login_form(s[..], form[..]);
     if heights[q] - 336 >= form[3] + 20 + 2 * 12 * LG_SCALE { #assert form[1] + form[3] <= heights[q] - 336 && form[1] >= 20; }
-    #assert form[1] <= rest;
-    for i: 0..<s[0].nh { hit := s[0].hits[i]; #assert hit.h >= 44 && hit.x >= 0 && (hit.x + hit.w) * LG_SCALE <= sizes[q] + 0.01; }
+    #assert form[1] <= rest && login_refused(s[..]) == 0;
+    sh := surface_sheet(s[0].surface[..]);
+    for i: 0..<sh.nh { hit := sh.hits[i]; #assert hit.h >= 44 && hit.x >= 0 && (hit.x + hit.w) * LG_SCALE <= sizes[q] + 0.01 && uiframe_hit_row(hit) >= 0; }
   }
 }
 
@@ -575,27 +598,34 @@ lg_test_tap :: (s: [] LoginScreen, id: string) -> bool {
   login_env(s[..], 59, 34, 0, false, true);
   #assert login_moving(s[..]);
   _ := lg_test_frame(s[..], o[..]);
-  early := s[0].enter[0].value; form: [5] f32; #assert login_form(s[..], form[..]); y0 := form[1];
+  early := s[0].entered; form: [5] f32; #assert login_form(s[..], form[..]); y0 := form[1];
   #assert early > 0 && early < 1 && login_moving(s[..]);
   for i: 0..<40 { _ := lg_test_frame(s[..], o[..]); }
-  #assert s[0].enter[0].value == 1 && login_form(s[..], form[..]) && form[1] < y0 && !login_moving(s[..]);
+  #assert s[0].entered == 1 && login_form(s[..], form[..]) && form[1] < y0 && !login_moving(s[..]);
   // a still screen draws the same vertices again: the host presents nothing
   a: [1] LgOut; n := lg_test_frame(s[..], a[..]); m := lg_test_frame(s[..], o[..]);
   #assert n == m; for i: 0..<n * GP_VERTEX_FLOATS { #assert a[0].v[i] == o[0].v[i]; }
   // every vertex is grey
   for i: 0..<n { at := i * GP_VERTEX_FLOATS; #assert o[0].v[at + 12] == o[0].v[at + 13] && o[0].v[at + 13] == o[0].v[at + 14]; }
-  // the keyboard moves it on a spring, then it rests again
+  // a press lights the action while the finger is down, from the frame's input
+  r0 := lg_rows(s[..]).rows[lg_find(s[..], "login.send")];
+  _ := login_pointer(s[..], (r0.x + 4) * s[0].d, (r0.y + 4) * s[0].d, 0); _ := lg_test_frame(s[..], o[..]);
+  #assert lg_test_has(s[..], "login.send", EL_S_PRESSED);
+  _ := login_pointer(s[..], 0, 0, 3); _ := lg_test_frame(s[..], o[..]);
+  #assert !lg_test_has(s[..], "login.send", EL_S_PRESSED);
+  // the keyboard moves it on its keyed spring, then it rests again
   login_env(s[..], 59, 34, 336, false, true);
   _ := lg_test_frame(s[..], o[..]); #assert login_moving(s[..]);
-  for i: 0..<200 { _ := lg_test_frame(s[..], o[..]); }
+  for i: 0..<300 { _ := lg_test_frame(s[..], o[..]); }
   #assert !login_moving(s[..]) && login_form(s[..], form[..]) && form[1] + form[3] <= 874 - 336;
   // reduced motion: entered in one frame, never moving, even while busy
   r: [1] LoginScreen; lg_test_atlas(r[0].atlas[..]); login_env(r[..], 59, 34, 0, true, true);
   _ := lg_test_frame(r[..], o[..]);
-  #assert r[0].enter[0].value == 1 && !login_moving(r[..]);
+  #assert r[0].entered == 1 && !login_moving(r[..]);
+  login_set_text(r[..], LG_FIELD_EMAIL, "a@b.c"); #assert login_submit(r[..]) && !login_moving(r[..]);
 }
 
-#test "login: with no scene the form is on the plain canvas colour; with one the canvas is left clear" #steps 600000000 {
+#test "login: with no scene the form is on the plain canvas colour; with one the canvas is left clear" #steps 900000000 {
   s: [1] LoginScreen; o: [1] LgOut; lg_test_atlas(s[0].atlas[..]);
   login_env(s[..], 59, 34, 0, true, false);
   plain := lg_test_frame(s[..], o[..]);

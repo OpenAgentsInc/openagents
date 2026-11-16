@@ -16,7 +16,9 @@
 
 #load "../../openagents-web/splash.coax";
 
-LOGIN_SCENE_UNIFORMS :: 24;   // the splash's 16, then the form: x, y, w, h (device px), its corner, how dark, the edge's softness, 0
+LOGIN_SCENE_UNIFORMS :: 24;   // the splash's 16 (its spare 15: the sky's gain), then the form: x, y, w, h (device px), its corner, how dark, the edge's softness, the strokes' gain
+LOGIN_SCENE_SKY :: 2.6;       // the nebula's gain: the splash's sky is lit for a wide page
+LOGIN_SCENE_GLOW :: 1.8;      // the strokes' gain: the graph and its payments lose light as grey
 LOGIN_SCENE_BAND :: 0.72;     // the share of the screen's height the graph is centred in, from the top
 LOGIN_SCENE_DIM :: 0.82;      // how much of the scene the form's panel takes away
 LOGIN_SCENE_EDGE :: 28.0;     // points the dimming fades over, outside the panel
@@ -42,6 +44,7 @@ login_scene_frame :: (s: [] LoginScene, out: [] f32, uniforms: [] f32, width: f3
   uniforms[20] = form_radius;
   uniforms[21] = ifx form_w > 0 && form_h > 0 then LOGIN_SCENE_DIM else 0.0f32;
   uniforms[22] = LOGIN_SCENE_EDGE * d;
+  uniforms[15] = LOGIN_SCENE_SKY; uniforms[23] = LOGIN_SCENE_GLOW;
   words := line_strokes(out, 0, 3, width, height, d, t, still);
   // the graph keeps clear of the wordmark and of the form
   cap := fitted_cap(3, width / d) * d;
@@ -64,7 +67,7 @@ LoginSceneOut :: struct { v: [MAX_VERTICES * VERTEX_FLOATS] f32; }
   s[0].time = 12;
   n := login_scene_frame(s[..], o[0].v[..], u[..], 1206, 2622, 3, 0.016, false, 60, 1300, 1086, 700, 60);
   #assert n > 0 && n % 6 == 0 && n <= MAX_VERTICES && login_scene_moving(s[..]);
-  #assert u[0] == 1206 && u[1] == 2622 && u[3] == 1 && u[13] == 0 && u[16] == 60 && u[19] == 700 && u[21] == LOGIN_SCENE_DIM;
+  #assert u[0] == 1206 && u[1] == 2622 && u[3] == 1 && u[13] == 0 && u[16] == 60 && u[19] == 700 && u[21] == LOGIN_SCENE_DIM && u[15] == LOGIN_SCENE_SKY && u[23] == LOGIN_SCENE_GLOW;
   // the graph stays in the upper band: nothing is centred under the form's middle
   below := 0;
   for q: 0..<n / 6 { y := (o[0].v[q * 6 * VERTEX_FLOATS + 1] + o[0].v[(q * 6 + 2) * VERTEX_FLOATS + 1]) * 0.5; if y > 2622 * 0.9 { below += 1; } }

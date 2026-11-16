@@ -10,7 +10,9 @@
 //   coax metal apps/shared/login/scene-shader.coax --vertex login_fx_vs --fragment login_fx_fs
 // Uniforms: the splash's 16 floats, then (scene.coax) the form's panel x, y,
 // w, h in device pixels at 16, its corner at 20, how dark at 21 and the
-// edge's softness at 22.
+// edge's softness at 22. The sky's gain is at 15 and the strokes' at 23: the
+// splash is lit for a wide page behind bright words, and a phone shows less
+// of it, in grey.
 //   coax/bin/coax test apps/shared/login/scene-shader.coax --library
 #load "../../openagents-web/gpu/splash.coax";
 
@@ -35,7 +37,7 @@ login_bg_vs :: (i:u32,_iid1:u32)->V4 {
 }
 login_bg_fs :: (pos:V4,u:[]f32)->V4 {
   c:V4=splash_bg_fs(pos,u);
-  g:f32=login_grey(v3(c.x,c.y,c.z))*login_veil(v2(pos.x,pos.y),u);
+  g:f32=fmin(login_grey(v3(c.x,c.y,c.z))*u[15],1.0f32)*login_veil(v2(pos.x,pos.y),u);
   return v4(g,g,g,1.0f32);
 }
 login_fx_vs :: (_vid2:u32,_iid3:u32,in_:splash_fx_vs_in,u:[]f32)->SplashV {
@@ -43,7 +45,7 @@ login_fx_vs :: (_vid2:u32,_iid3:u32,in_:splash_fx_vs_in,u:[]f32)->SplashV {
 }
 login_fx_fs :: (v:SplashV,u:[]f32)->V4 {
   c:V4=splash_fx_fs(v,u);
-  g:f32=login_grey(v3(c.x,c.y,c.z))*login_veil(v2(v.pos.x,v.pos.y),u);
+  g:f32=fmin(login_grey(v3(c.x,c.y,c.z))*u[23],1.0f32)*login_veil(v2(v.pos.x,v.pos.y),u);
   return v4(g,g,g,1.0f32);
 }
 
@@ -55,6 +57,6 @@ login_fx_fs :: (v:SplashV,u:[]f32)->V4 {
   #assert abs(inside-0.2f32)<0.0001f32 && far==1.0f32 && edge>inside && edge<far;
   // a white pixel stays white, a pure orange one is its light, and nothing gains a hue
   #assert abs(login_grey(v3(1.0f32,1.0f32,1.0f32))-1.0f32)<0.0001f32 && login_grey(v3(1.0f32,0.55f32,0.12f32))<0.7f32;
-  u[0]=1206;u[1]=2622;u[2]=20;u[3]=1;u[5]=1;
+  u[0]=1206;u[1]=2622;u[2]=20;u[3]=1;u[5]=1;u[15]=2;u[23]=2;
   c:=login_bg_fs(v4(300.0f32,350.0f32,0.0f32,1.0f32),u[..]);#assert c.x==c.y && c.y==c.z && c.w==1.0f32;
 }

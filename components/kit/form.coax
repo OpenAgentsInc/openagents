@@ -6,12 +6,18 @@
 // small controls (controls.coax); a part that can be pressed leaves a hit on
 // the sheet, and the caller keeps the state.
 //
+// Each has a form that takes the frame context (kit/frame.coax), at the end
+// of this file: ctx_field, ctx_action, ctx_link, ctx_notice and ctx_heading.
+// It records the part's semantic row and hit region under the caller's
+// stable id, then paints through the procedure above it.
+//
 // A field never edits text. The caller holds the value; while the platform's
 // editor is over the field (text entry, in gpu-components.md) the field paints
 // its frame only, so no glyph or caret is drawn twice.
 //   coax/bin/coax test components/kit/form.coax
 
 #load "animated.coax";
+#load "frame.coax";
 
 FORM_REST :: 0; FORM_PRIMARY :: 1; FORM_PRESSED :: 2; FORM_BUSY :: 3;
 
@@ -96,6 +102,49 @@ form_heading :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, w: f32
   return h;
 }
 
+// ---------------------------------------------------------------- with the frame context
+
+// `state` is the part's own EL_S_* bits (EL_S_DISABLED, EL_S_BUSY); the frame
+// adds focused and pressed. `action` is the app's number for what a press
+// dispatches. A hit left by one of these has kind UIFRAME_HIT.
+
+// A field: its row carries its label and its value; it is lit while its id
+// has the keyboard. editing: the platform editor is over it. Returns its height.
+ctx_field :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, label: string, text: string, placeholder: string, editing: bool, state: int, action: int) -> f32 {
+  s := f[0].skin;
+  row := uiframe_semantic(f, id, EL_FIELD, label, x, y, w, form_field_height(s), state, action);
+  elt_value(f[0].rows, row, text);
+  return form_field(f[0].sheet, f[0].m, s, x, y, w, text, placeholder, uiframe_focused(f, id), editing, (state & EL_S_DISABLED) != 0, UIFRAME_HIT, row);
+}
+// A form's action: the filled one when primary, held while its id is
+// pressed; EL_S_BUSY shows the activity mark on the frame's clock and
+// disables it. Returns its height.
+ctx_action :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, label: string, primary: bool, state: int, action: int) -> f32 {
+  s := f[0].skin; busy := (state & EL_S_BUSY) != 0;
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, s.control_h, state | (ifx busy then EL_S_DISABLED else 0), action);
+  look := ifx busy then FORM_BUSY else ifx !primary then FORM_REST else ifx uiframe_pressed(f, id) then FORM_PRESSED else FORM_PRIMARY;
+  return form_button(f[0].sheet, f[0].m, s, x, y, w, label, look, f[0].clock, f[0].reduced_motion, UIFRAME_HIT, row);
+}
+// A quiet text action: what it shows, and its row's label when that says more ("" for the same). Returns its width.
+ctx_link :: (f: [] UiFrame, id: string, x: f32, y: f32, text: string, label: string, state: int, action: int) -> f32 {
+  s := f[0].skin;
+  row := uiframe_semantic(f, id, EL_BUTTON, ifx label.count > 0 then label else text, x, y, form_link_width(f[0].m, s, text), s.control_h, state, action);
+  return form_link(f[0].sheet, f[0].m, s, x, y, text, uiframe_pressed(f, id), (state & EL_S_DISABLED) != 0, UIFRAME_HIT, row);
+}
+// A notice: a live row, so a change to it is announced. Returns its height (0 and no row for no text).
+ctx_notice :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string, failure: bool) -> f32 {
+  h := form_notice(f[0].sheet, f[0].m, f[0].skin, x, y, w, text, failure);
+  if h > 0 { _ := uiframe_semantic(f, id, EL_NOTICE, text, x, y, w, h, EL_S_LIVE, 0); }
+  return h;
+}
+// A heading, and its detail as text under its own id when it has one. Returns its height.
+ctx_heading :: (f: [] UiFrame, id: string, detail_id: string, x: f32, y: f32, w: f32, title: string, detail: string) -> f32 {
+  s := f[0].skin;
+  _ := uiframe_semantic(f, id, EL_HEADING, title, x, y, w, s.title.line, 0, 0);
+  if detail.count > 0 { _ := uiframe_semantic(f, detail_id, EL_TEXT, detail, x, y + s.title.line, w, s.body.line, 0, 0); }
+  return form_heading(f[0].sheet, f[0].m, s, x, y, w, title, detail);
+}
+
 // ---------------------------------------------------------------- checks
 
 FormStore :: struct { under: [64] Prim; over: [64] Prim; lines: [4] SheetLine; hits: [8] SheetHit; pool: [64] u8; }
@@ -145,4 +194,45 @@ form_texts :: (sh: [] Sheet, text: string) -> int {
   #assert h >= 2 && sh[0].nu == rules + 1;
   #assert form_notice(sh[..], m, s, 0, 0, 40, "one two", false) == 1 && sh[0].nu == rules + 1;
   #assert form_heading(sh[..], m, s, 0, 0, 40, "Log in", "") == 1 && form_heading(sh[..], m, s, 0, 0, 40, "Email code", "ada@example.com") == 2;
+}
+
+// Rows and keyed state for the context checks.
+FormSurface :: struct { rows_a: [8] El; rows_b: [8] El; keys: [8] Keyed; }
+
+#test "the context forms record a row for each part: id, role, label, value, state and action; a press and a focus come from the input" {
+  st: [1] FormSurface; a: [1] FormStore; b: [1] FormStore;
+  sf := [1] UiSurface.[surface_over(form_sheet(a[..]), st[0].rows_a[..], form_sheet(b[..]), st[0].rows_b[..])];
+  ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}];
+  s := UiSkin.{}; s.control_h = 44; s.chrome.field_h = 44; s.label.line = 1; s.body.line = 1; s.title.line = 1; s.space = 1; m := measure_cells();
+  f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, true, true, "form.send", "form.email"), 0, 0.016, true, false);
+  _ := ctx_heading(f[..], "form.title", "form.detail", 0, 0, 60, "Log in", "ada@example.com");
+  _ := ctx_field(f[..], "form.email", 0, 4, 60, "Email address", "ada@example.com", "you@example.com", true, 0, 1);
+  _ := ctx_action(f[..], "form.send", 0, 50, 60, "Send code", true, 0, 2);
+  _ := ctx_link(f[..], "form.resend", 0, 100, "Resend code", "Resend email code", EL_S_DISABLED, 3);
+  #assert ctx_notice(f[..], "form.note", 0, 150, 60, "", true) == 0;
+  _ := ctx_notice(f[..], "form.note", 0, 150, 60, "Try again.", true);
+  #assert uiframe_end(f[..], sf[..]);
+  t := [1] ElTable.[surface_rows(sf[..])];
+  #assert t[0].n == 6 && elt_id(t[..], 0) == "form.title" && t[0].rows[0].role == EL_HEADING && t[0].rows[1].role == EL_TEXT && elt_label(t[..], 1) == "ada@example.com";
+  i := elt_find(t[..], "form.email");
+  #assert t[0].rows[i].role == EL_FIELD && elt_label(t[..], i) == "Email address" && elt_value_of(t[..], i) == "ada@example.com" && elt_has(t[..], i, EL_S_FOCUSED) && t[0].rows[i].action == 1 && t[0].rows[i].h == 44;
+  i = elt_find(t[..], "form.send");
+  #assert t[0].rows[i].role == EL_BUTTON && elt_has(t[..], i, EL_S_PRESSED) && !elt_has(t[..], i, EL_S_DISABLED) && t[0].rows[i].action == 2 && t[0].rows[i].w == 60;
+  i = elt_find(t[..], "form.resend");
+  #assert elt_label(t[..], i) == "Resend email code" && elt_has(t[..], i, EL_S_DISABLED) && t[0].rows[i].h == 44;
+  i = elt_find(t[..], "form.note");
+  #assert t[0].rows[i].role == EL_NOTICE && elt_has(t[..], i, EL_S_LIVE) && elt_label(t[..], i) == "Try again.";
+  // the rows are the hit regions: the committed row under a point is the part
+  #assert surface_id(sf[..], surface_hit(sf[..], 30, 60)) == "form.send" && surface_id(sf[..], surface_hit(sf[..], 30, 10)) == "form.email";
+  // the editor is over the focused field: its text is not painted
+  sh := surface_sheet(sf[..]); shown := 0;
+  for q: 0..<sh.no { if sh.over[q].kind == PRIM_TEXT && sh.over[q].text == "ada@example.com" { shown += 1; } }
+  #assert shown == 1;   // the heading's detail only
+  // a busy action is disabled, says so, and leaves no hit of its own
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  _ := ctx_action(f[..], "form.send", 0, 50, 60, "Sending code…", true, EL_S_BUSY, 2);
+  #assert uiframe_end(f[..], sf[..]);
+  t[0] = surface_rows(sf[..]);
+  #assert elt_has(t[..], 0, EL_S_BUSY | EL_S_DISABLED) && surface_sheet(sf[..]).nh == 0;
 }
