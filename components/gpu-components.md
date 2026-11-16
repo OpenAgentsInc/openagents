@@ -2,7 +2,9 @@
 
 Written 2026-11-15. Status: specification, with stage G0 built (the frame
 context, the keyed state store, the semantic table and the surface commit;
-see [Stages](#stages)). Tracked in
+see [Stages](#stages)) and stage G1 built and checked in the iOS Simulator
+(the login screen; see [G1 as built](#g1-as-built)). G1's physical-phone
+exit checks are not done. Tracked in
 [#13645](https://github.com/OpenAgentsInc/openagents/issues/13645).
 
 This document decides how native Coax Native apps draw their components. It
@@ -414,6 +416,83 @@ like the home splash, in one Metal surface.
 Screens that have not moved keep their current presentation. A screen is
 either on the kit or on the old projection, never half of each.
 
+### G1 as built
+
+The login screen runs in the installed compiled runtime. Checked in the iOS
+Simulator only; see [what is not checked](#what-g1-has-not-checked).
+
+| Part | Where | What it does |
+| --- | --- | --- |
+| Screen | `apps/shared/login/screen.coax` | State, layout, paint and rows for email, then the code. No effects. One `UiSurface` and one `KeyedStore`; a frame the surface refuses is counted and the last one is drawn |
+| Form set | `kit/form.coax`, `skin/arcade.coax` (`arcade_phone_skin`) | Field, full-width action with busy state, quiet action, notice, heading; 44-point controls in the production grayscale |
+| Scene | `apps/shared/login/scene.coax`, `scene-shader.coax` | The openagents.com splash: its nebula, agent graph with payments, and stroke font writing OPENAGENTS. The shader wraps the splash's two passes in grayscale and dims the scene behind the form |
+| Scene layer | `apps/shared/host/apple/ui-scene.m` | Draws the two emitted Metal passes under the components through `ui_layer`. Shaders compile off the main thread |
+| Carrier | `apps/shared/login/host.c`, `scene-host.c` | Frames, touches and values across the C boundary. `host.c` shares the gallery carrier's atlas code |
+| Native side | `apps/shared/native/NativeLogin.swift` | Display link, the platform editor, VoiceOver elements, and the calls to `AppAuth` |
+
+**Scene choice.** The home splash runs as is. `coax metal` emits
+`splash_bg_fs` and `splash_fx_fs` unchanged, so the scene adds no shader
+math of its own beyond the grayscale and the dimming. The graph is drawn in
+the upper part of an upright screen and the form sits below it. The form is
+dimmed, not blurred: the backend has no blur yet (stage G3).
+
+**Text entry.** `NativeLogin` keeps one `UITextField`. When a field's row
+is focused, it places the editor over the row's committed box and makes it
+first responder. While focused, the screen paints the field's frame only;
+the editor draws the text, the placeholder and the caret in the kit's face
+and the skin's colours (`login_editor`). Each edit sends the whole value to
+`login_set_text`, which stores it with `eb_set`. The code field uses
+`.oneTimeCode` and the number pad.
+
+**Semantics.** Each part records one row: `login.form` (region),
+`login.title`, `login.sent`, `login.email`, `login.code`, `login.send`,
+`login.verify`, `login.resend`, `login.change`, `login.key` and
+`login.note` (live). A press is routed through `surface_hit` and the row's
+action; `login_activate` and `login_drive` (`tree`, `tap ID`,
+`type ID TEXT`, `counts`) use the same rows. The host builds one
+`UIAccessibilityElement` per row and hides the Metal view. A field that
+does not hold the keyboard is represented by a text field that is never in
+the view hierarchy; the focused one is the editor itself.
+
+**Sleeping.** The display link pauses when `lg_moving` is false: no scene
+motion, no keyed motion, no busy mark. With reduced motion the scene
+computes one frame and the screen presents none while nothing changes. With
+the scene animating, frames run at the display link's rate.
+
+**Fallback.** `ui_scene_open` returns nothing when a shader file is
+missing, and a shader that does not compile leaves the scene not ready. In
+both cases the screen paints the canvas colour and login works. The form
+does not wait for the scene.
+
+#### Sharing the session with the JavaScript runtime
+
+The two runtimes share one thing: the session. `AppAuth` owns it.
+
+1. `NativeHost` loads the existing programs as before. While `AppAuth` has
+   no session, it covers them with `NativeLogin` and hides their view.
+2. The login screen asks its host to start the email or verify the code.
+   `NativeLogin` calls `AppAuth.emailStart` and `AppAuth.emailVerify`.
+   `AppAuth` stores the tokens. The pending handle stays in Swift. No token
+   or handle enters either Coax runtime.
+3. `AppAuth` posts `didChangeSession`. `NativeHost` loads the programs
+   again; they ask `auth.state`, read `loggedIn`, and open the account.
+   The login screen fades out and frees its surface, atlas and scene.
+4. A logout in the existing runtime posts the same notification, and the
+   cover returns.
+
+The key login has not moved. "Use a Nostr key" hides the cover and presses
+the existing runtime's `login.key`; when that page closes without a login,
+the cover returns.
+
+#### What G1 has not checked
+
+- A physical phone: VoiceOver, one-time-code AutoFill from Messages or
+  Mail, an input method, and the frame-rate objective while typing.
+- Measurements. No frame time, input latency or idle wakeup number is
+  recorded.
+- Large text. The screen draws at a fixed scale (`LG_SCALE`); it does not
+  follow Dynamic Type yet.
+
 ### The JavaScript and Updates path
 
 The owner decided on 2026-11-15 to drop Coax Native Updates and the
@@ -489,7 +568,8 @@ supported phone and 120 Hz where the device offers it, as in
 - Whether the iOS scroll driver is an invisible platform scroll view or
   Coax physics tuned to match (G2; default: the platform's).
 - How a migrated screen and a not-yet-migrated screen share app state
-  while both runtimes are installed (G1).
+  beyond the session. G1 shares only the session, through `AppAuth` (see
+  [Sharing the session](#sharing-the-session-with-the-javascript-runtime)).
 - The Linux input-method and accessibility bridges' minimum supported
   desktop environments (G6).
 - Which platform shaping calls the atlas uses on Android and Linux (G6,

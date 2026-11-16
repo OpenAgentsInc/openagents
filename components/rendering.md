@@ -24,6 +24,29 @@ antialiased segments. General image/blur/composition and the full Arcade
 catalog are still requirements below, not features of this checkpoint.
 The gallery is compiled into the new native runtime and is not an OTA renderer.
 
+## Implementation checkpoint: the GPU login screen (stage G1)
+
+The iOS login screen is the first screen with no platform controls. The
+shared display-list kit draws it over a live scene in one Metal pass, as
+compiled Coax in the installed runtime. It does not use the JavaScript
+runtime or Updates. [gpu-components.md](gpu-components.md#g1-as-built) has
+the parts, the session handoff and what is not checked.
+
+What this checkpoint adds to the list above:
+
+- A scene under components: `apps/shared/host/apple/ui-scene.m` draws a
+  full-screen pass and a vertex pass, both emitted from Coax as Metal,
+  through the host's layer. The login's scene is the openagents.com splash.
+- Platform text entry over a GPU field: one `UITextField` over the focused
+  row's committed box, with nothing painted under it.
+- An accessibility bridge from the committed semantic rows, with the Metal
+  view hidden.
+- A static screen that submits no frames: the display link pauses when
+  neither the scene nor keyed motion is under way.
+
+Checked in the iOS Simulator only. Blur behind the form, Dynamic Type and
+every physical-phone check remain open. This is not a performance result.
+
 ## Implementation checkpoint: default iOS chrome (1087)
 
 The default mobile UI now projects its component decorations through

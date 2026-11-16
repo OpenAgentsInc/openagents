@@ -73,6 +73,47 @@ compatible presentation changes can use Updates. The
 [runtime contract](../../docs/protocol/environment-runtime-v1alpha1.md) records
 the implemented scope and current bounds.
 
+## GPU login screen (stage G1, not in a TestFlight build yet)
+
+The login screen is compiled Coax drawn by the shared GPU component kit over
+a live scene, in one Metal view. It replaces the UIKit login page for email
+login. It needs a new binary; it does not use Updates.
+
+- **Scene:** the openagents.com splash: its nebula, the agent graph with
+  payments in flight, and OPENAGENTS written in strokes, in grayscale.
+  Reduce Motion shows one still frame.
+- **Form:** email, then the code. One platform text field sits over the
+  focused field; the code field takes one-time-code AutoFill.
+- **VoiceOver:** each control is an accessibility element built from the
+  screen's semantic rows (`login.email`, `login.send`, `login.code`,
+  `login.verify`, `login.resend`, `login.change`, `login.key`).
+- **Session:** `AppAuth` stores the tokens, as before. After a login the
+  existing programs load again and start logged in. A logout brings the
+  screen back.
+- **Nostr key:** "Use a Nostr key" opens the existing key login page.
+- **Fallback:** if the scene cannot start, the form shows on black and
+  login works.
+
+Sources: `apps/shared/login/` (screen, scene, carriers),
+`apps/shared/native/NativeLogin.swift`, `apps/shared/host/apple/ui-scene.m`,
+`components/kit/form.coax`. The design and its limits are in
+[components/gpu-components.md](../../components/gpu-components.md#g1-as-built).
+
+`CoaxNativeLogin` runs the installed screen against the local account oracle:
+
+```sh
+python3 apps/openagents-ios/Tests/email_fixture.py /tmp --api-only --port 13571 &
+coax/remote/remote.sh run --local -- xcodebuild \
+  -project apps/openagents-ios/OpenAgents.xcodeproj -scheme CoaxNativeLogin \
+  -destination 'platform=iOS Simulator,name=Coax Native Starter' \
+  -derivedDataPath apps/openagents-ios/build CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+```
+
+Debug builds take `-OAReduceMotion YES` (a still scene), `-OALoginScene NO`
+(no scene) and `-OALoginStats PATH` (frame counts for checks). Checked in the
+Simulator only: VoiceOver, AutoFill from Messages or Mail, input methods and
+frame rate on a phone are not checked.
+
 ## Private Projects and routing, build 1091
 
 1091 is **VALID / IN_BETA_TESTING**, verified in the existing **Owner** group.
