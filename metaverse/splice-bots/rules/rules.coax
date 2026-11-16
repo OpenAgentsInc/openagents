@@ -41,6 +41,7 @@
 #load "hardpoints.coax";
 #load "walk.coax";
 #load "anim-state.coax";
+#load "boss.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
@@ -67,3 +68,4 @@
 #load "hardpoints-checks.coax" #test;
 #load "walk-checks.coax" #test;
 #load "anim-state-checks.coax" #test;
+#load "boss-checks.coax" #test;

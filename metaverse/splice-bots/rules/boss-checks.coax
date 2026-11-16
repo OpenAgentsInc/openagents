@@ -1,0 +1,282 @@
+// Parity checks for boss.coax: SpliceTests/Rules/SpliceBossTests.cpp (with the prototype's
+// attack-checks.coax:49, :73, :89, GDD 02 18.14). Every C++ test is ported. A C++ AddError inside a
+// loop is a failure flag here, asserted after the loop. rules.coax loads this file with `#load ... #test;`.
+
+BS_DT :: 0.02;
+bs_tick :: (her: D2, dt: f64) -> SrBossInputs { return SrBossInputs.{dt = dt, her = her}; }
+bs_add_robot :: (inp: SrBossInputs, at: D2) -> SrBossInputs { o := inp; o.robots[o.robots_n] = at; o.robots_n += 1; return o; }
+// Awake and fighting at home (0, 0), bites held off.
+bs_fighting :: (half: bool) -> SrBossState {
+  s := sr_make_boss(d2(0.0, 0.0), SrBossTuning.{});
+  s.phase = SR_BOSS_FIGHTING; s.bite_next = 1000000000.0;
+  if half { s.half = true; s.vitals.health = 50.0; }
+  return s;
+}
+bs_powered_down :: () -> SrBossState {
+  inp := bs_tick(d2(30.0, 0.0), BS_DT); inp.damage = 500.0;
+  ev: [1] SrBossEvents;
+  return sr_boss_step(bs_fighting(false), inp, ev[..], SrBossTuning.{});
+}
+bs_wakes_with :: (inp: SrBossInputs) -> bool {
+  ev: [1] SrBossEvents;
+  after := sr_boss_step(sr_make_boss(d2(0.0, 0.0), SrBossTuning.{}), inp, ev[..], SrBossTuning.{});
+  return ev[0].woke && after.phase == SR_BOSS_WAKING;
+}
+
+#test "Splice.Rules.Boss.StaysAsleepUntilWake" {
+  t: SrBossTuning;
+  #assert t.health_max == 120.0 && t.wake_her_radius == 14.0;
+  s := sr_make_boss(d2(0.0, 0.0), t);
+  #assert s.phase == SR_BOSS_ASLEEP && !sr_boss_is_awake(s);
+  // 60 s with her at 14.5 m and a robot at 14.2 m: still asleep, no telegraph, no hits.
+  ev: [1] SrBossEvents;
+  acted := false;
+  for i: 0..<3000 {
+    s = sr_boss_step(s, bs_add_robot(bs_tick(d2(14.5, 0.0), BS_DT), d2(0.0, -14.2)), ev[..], t);
+    if ev[0].woke || ev[0].telegraph != SR_BOSS_ATTACK_NONE || ev[0].her_hits > 0 || ev[0].robot_hits_n > 0 { acted = true; break; }
+  }
+  #assert !acted && s.phase == SR_BOSS_ASLEEP;
+  // Each wake condition on its own.
+  #assert bs_wakes_with(bs_tick(d2(13.9, 0.0), BS_DT));
+  #assert bs_wakes_with(bs_add_robot(bs_tick(d2(40.0, 0.0), BS_DT), d2(0.0, 13.9)));
+  hit := bs_tick(d2(40.0, 0.0), BS_DT); hit.damage = 1.0;
+  #assert bs_wakes_with(hit);
+  point := bs_tick(d2(40.0, 0.0), BS_DT); point.her_hit_or_pointed = true;
+  #assert bs_wakes_with(point);
+  // Waking: 1.5 s, no attack, then Fighting.
+  s = sr_boss_step(sr_make_boss(d2(0.0, 0.0), t), bs_tick(d2(3.0, 0.0), BS_DT), ev[..], t);
+  waking := 0.0; fight := false; attacked := false;
+  for i: 0..<200 {
+    if fight { break; }
+    s = sr_boss_step(s, bs_tick(d2(3.0, 0.0), BS_DT), ev[..], t);
+    waking += BS_DT;
+    if ev[0].telegraph != SR_BOSS_ATTACK_NONE || ev[0].her_hits != 0 { attacked = true; }
+    fight = ev[0].fight_began;
+  }
+  #assert !attacked && fight && s.phase == SR_BOSS_FIGHTING;
+  #assert near_d(waking, 1.5, 0.03);
+}
+
+#test "Splice.Rules.Boss.TelegraphBeforeEveryAttack" {
+  t: SrBossTuning;
+  #assert near_d(sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_SWEEP, t), 1.2, 0.000001);
+  #assert near_d(sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_CHARGE, t), 1.1, 0.000001);
+  #assert near_d(sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_BITE, t), 0.7, 0.000001);
+  s := sr_make_boss(d2(0.0, 0.0), t);
+  current := SR_BOSS_ATTACK_NONE; since := 0.0; released := false;
+  count: [4] int; hits := 0;
+  bad_overlap := false; bad_windup := false; bad_released := false; early := false; early_hit := false;
+  ev: [1] SrBossEvents;
+  for i: 0..<4000 {   // 80 s
+    inp := bs_add_robot(bs_tick(d2(3.0, 0.0), BS_DT), d2(-3.0, 2.0));
+    if i == 1500 { inp.damage = 70.0; inp.damage_from_robot = 0; }   // 30 s in: her robot takes it to half
+    s = sr_boss_step(s, inp, ev[..], t);
+    e := ev[0];
+    if e.telegraph != SR_BOSS_ATTACK_NONE {
+      if !(current == SR_BOSS_ATTACK_NONE || released) { bad_overlap = true; }
+      current = e.telegraph; since = 0.0; released = false;
+      if s.beat != SR_BOSS_BEAT_WIND_UP { bad_windup = true; }
+    } else if current != SR_BOSS_ATTACK_NONE {
+      since += BS_DT;
+    }
+    if e.released != SR_BOSS_ATTACK_NONE {
+      if e.released != current { bad_released = true; }
+      if since + 0.0001 < sr_boss_telegraph_lead_seconds(e.released, t) { early = true; }
+      released = true; count[e.released] += 1;
+    }
+    if e.her_hits > 0 || e.robot_hits_n > 0 {
+      hits += 1;
+      if !released || since + 0.0001 < sr_boss_telegraph_lead_seconds(current, t) { early_hit = true; }
+    }
+    if s.attack == SR_BOSS_ATTACK_NONE && released { current = SR_BOSS_ATTACK_NONE; released = false; }
+  }
+  #assert !bad_overlap && !bad_windup && !bad_released && !early && !early_hit;
+  #assert s.half;
+  #assert count[SR_BOSS_ATTACK_SWEEP] >= 1 && count[SR_BOSS_ATTACK_CHARGE] >= 1 && count[SR_BOSS_ATTACK_BITE] >= 1;
+  #assert hits > 0;
+}
+
+#test "Splice.Rules.Boss.PowersDownAtZeroAndStays" {
+  t: SrBossTuning;
+  // Mid-rush: a charge aimed at her 10 m away, killed in the rush before it reaches her.
+  s := bs_fighting(true); s.charge_t = t.charge_every;
+  ev: [1] SrBossEvents;
+  for i: 0..<200 {
+    if s.beat == SR_BOSS_BEAT_IMPACT { break; }
+    s = sr_boss_step(s, bs_tick(d2(10.0, 0.0), BS_DT), ev[..], t);
+  }
+  #assert s.attack == SR_BOSS_ATTACK_CHARGE && s.beat == SR_BOSS_BEAT_IMPACT;
+  where := s.position;
+  kill := bs_tick(d2(10.0, 0.0), BS_DT); kill.damage = 50.0;
+  s = sr_boss_step(s, kill, ev[..], t);
+  #assert ev[0].powered_down && s.phase == SR_BOSS_POWERED_DOWN && s.vitals.powered_down;
+  #assert s.vitals.health == 0.0 && s.attack == SR_BOSS_ATTACK_NONE && ev[0].her_hits == 0;
+  #assert d2_dist(s.position, where) <= 0.001;
+  // 60 s: her standing on it, hitting it, out of the lab for a while. It stays down.
+  acted := false;
+  for i: 0..<3000 {
+    inp := bs_add_robot(bs_tick(s.position, BS_DT), d2_add(s.position, d2(1.0, 0.0)));
+    inp.damage = 5.0; inp.damage_from_robot = 0; inp.her_hit_or_pointed = true; inp.her_in_lab = i < 1000;
+    s = sr_boss_step(s, inp, ev[..], t);
+    e := ev[0];
+    if s.phase != SR_BOSS_POWERED_DOWN || e.woke || e.reset || e.telegraph != SR_BOSS_ATTACK_NONE || e.her_hits > 0 || e.robot_hits_n > 0 || e.powered_down { acted = true; break; }
+  }
+  #assert !acted && d2_dist(s.position, where) <= 0.001;
+  // Asleep and brought to 0 in one blow: down, not waking.
+  blow := bs_tick(d2(40.0, 0.0), BS_DT); blow.damage = 200.0;
+  slept := sr_boss_step(sr_make_boss(d2(0.0, 0.0), t), blow, ev[..], t);
+  #assert slept.phase == SR_BOSS_POWERED_DOWN && ev[0].powered_down;
+}
+
+#test "Splice.Rules.Boss.TakenWithCoreDropsCoreOnce" {
+  t: SrBossTuning;
+  small := sr_stack(ITEM_SMALL_CORE, 1);
+  asleep := [1] SrBossState.[sr_make_boss(d2(0.0, 0.0), t)];
+  r := sr_boss_take_with_core(asleep[..], small, 1, false, t);
+  #assert !r.ok && r.refusal == SR_REFUSE_BRING_TO_ZERO_FIRST;
+  fighting := [1] SrBossState.[bs_fighting(false)];
+  r = sr_boss_take_with_core(fighting[..], small, 1, false, t);
+  #assert !r.ok && r.refusal == SR_REFUSE_BRING_TO_ZERO_FIRST;
+  #assert fighting[0].phase == SR_BOSS_FIGHTING && !fighting[0].core_out;
+
+  s := [1] SrBossState.[bs_powered_down()];
+  s[0].yaw = 0.0; s[0].position = d2(2.0, 3.0);
+  r = sr_boss_take_with_core(s[..], small, 3, false, t);
+  #assert !r.ok && r.refusal == SR_REFUSE_CREW_LIMIT;
+  #assert s[0].phase == SR_BOSS_POWERED_DOWN && !s[0].core_out;
+  r = sr_boss_take_with_core(s[..], small, 0, false, t);
+  #assert r.ok && s[0].phase == SR_BOSS_TAKEN;
+  #assert r.control.new_owner == SR_OWNER_HER && r.control.became_hers;
+  #assert s[0].vitals.health == 24.0 && !s[0].vitals.powered_down;
+  #assert r.experimental_core.item == ITEM_EXPERIMENTAL_CORE && r.experimental_core.count == 1;
+  #assert d2_dist(r.core_at, d2(3.6, 3.0)) <= 0.001 && s[0].core_out;
+
+  // A second core, another tick, a harvest: no second experimental core.
+  again := sr_boss_take_with_core(s[..], small, 0, false, t);
+  #assert !again.ok && sr_stack_empty(again.experimental_core);
+  ev: [1] SrBossEvents;
+  s[0] = sr_boss_step(s[0], bs_tick(d2(1.0, 0.0), BS_DT), ev[..], t);
+  #assert s[0].phase == SR_BOSS_TAKEN;
+  no_harvest := sr_boss_harvest(s[..], 2.0, 0, t);
+  #assert !sr_boss_harvest_ok(no_harvest) && no_harvest.n == 0;
+
+  // Harvest instead: the experimental core, 6 Imperial parts, 2 banned pieces; once.
+  h := [1] SrBossState.[bs_powered_down()];
+  hv := sr_boss_harvest(h[..], 0.5, 0, t);
+  #assert hv.refusal == SR_HARVEST_HOLD_INCOMPLETE;
+  hv = sr_boss_harvest(h[..], 1.0, 0, t);
+  #assert sr_boss_harvest_ok(hv) && h[0].phase == SR_BOSS_HARVESTED;
+  #assert hv.n == 3 && hv.drops[0].item == ITEM_EXPERIMENTAL_CORE;
+  #assert hv.drops[1].item == ITEM_IMPERIAL_PART && hv.drops[1].count == 6;
+  #assert hv.drops[2].item == ITEM_BANNED_PIECE && hv.drops[2].count == 2;
+  #assert sr_boss_harvest(h[..], 1.0, 0, t).refusal == SR_HARVEST_ALREADY_HARVESTED;
+  after := sr_boss_take_with_core(h[..], small, 0, false, t);
+  #assert !after.ok && sr_stack_empty(after.experimental_core);
+}
+
+#test "Splice.Rules.Boss.ProtoSweepLocksAndJumpClears" {
+  t: SrBossTuning;
+  lead := sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_SWEEP, t);
+  // Locked, off its platform and facing away from home: a robot moves 3 m and nothing turns or moves.
+  s := bs_fighting(false);
+  s.position = d2(2.0, 1.0); s.yaw = 1.0; s.attack = SR_BOSS_ATTACK_SWEEP; s.attack_t = t.sweep_wind + 0.05; s.beat = SR_BOSS_BEAT_LOCK;
+  ev: [1] SrBossEvents;
+  moved := false;
+  for i: 0..<20 {
+    inp := bs_add_robot(bs_tick(d2(20.0, 0.0), BS_DT), d2(-4.0 + 3.0 * cast(f64) i / 20.0, 0.0));
+    s = sr_boss_step(s, inp, ev[..], t);
+    if s.yaw != 1.0 || s.position.x != 2.0 || s.position.y != 1.0 { moved = true; }
+  }
+  #assert !moved;
+  // On the ground in the tail's path for the whole swing: one heart.
+  ticks := cast(int) (t.sweep_impact / BS_DT) + 2;
+  s = bs_fighting(false);
+  s.attack = SR_BOSS_ATTACK_SWEEP; s.attack_t = lead + 0.01; s.beat = SR_BOSS_BEAT_IMPACT;
+  hearts := 0;
+  for i: 0..<ticks {
+    arm := sr_boss_sweep_arm_angle(s, t);
+    s = sr_boss_step(s, bs_tick(d2_add(s.position, d2_scale(sr_boss_forward(arm), 4.0)), BS_DT), ev[..], t);
+    hearts += ev[0].her_hits;
+  }
+  #assert hearts == 1;
+  // In the air (feet 1.0 m up) over the tail for the whole swing, having been aimed at: no hit, DODGED.
+  s = bs_fighting(false);
+  s.attack = SR_BOSS_ATTACK_SWEEP; s.attack_t = lead + 0.01; s.beat = SR_BOSS_BEAT_IMPACT; s.aimed = true;
+  hearts = 0; dodged := false;
+  for i: 0..<ticks {
+    arm := sr_boss_sweep_arm_angle(s, t);
+    inp := bs_tick(d2_add(s.position, d2_scale(sr_boss_forward(arm), 4.0)), BS_DT); inp.her_feet_height = 1.0;
+    s = sr_boss_step(s, inp, ev[..], t);
+    hearts += ev[0].her_hits;
+    if ev[0].dodged { dodged = true; }
+  }
+  #assert hearts == 0 && dodged;
+  #assert s.attack == SR_BOSS_ATTACK_SWEEP && s.beat == SR_BOSS_BEAT_RECOVERY;
+}
+
+#test "Splice.Rules.Boss.ProtoChargeLaneFollowsThenLocks" {
+  t: SrBossTuning;
+  s := bs_fighting(true); s.charge_t = t.charge_every;
+  ev: [1] SrBossEvents;
+  s = sr_boss_step(s, bs_tick(d2(6.0, 0.0), BS_DT), ev[..], t);
+  #assert ev[0].telegraph == SR_BOSS_ATTACK_CHARGE;
+  s = sr_boss_step(s, bs_tick(d2(6.0, 0.0), BS_DT), ev[..], t);
+  #assert s.beat == SR_BOSS_BEAT_WIND_UP && s.charge_dir.x > 0.9;
+  s = sr_boss_step(s, bs_tick(d2(6.0, 2.0), BS_DT), ev[..], t);
+  #assert s.charge_dir.y > 0.1;   // the lane follows her
+  for i: 0..<200 {
+    if s.beat != SR_BOSS_BEAT_WIND_UP { break; }
+    s = sr_boss_step(s, bs_tick(d2(6.0, 2.0), BS_DT), ev[..], t);
+  }
+  #assert s.beat == SR_BOSS_BEAT_LOCK;
+  dir := s.charge_dir;
+  // She steps 5 m to the side of the lane after the lock.
+  aside := d2_add(s.position, d2_scale(d2(-dir.y, dir.x), 5.0));
+  hearts := 0; dazed := false; dodged := false; turned := false;
+  for i: 0..<300 {
+    if dazed { break; }
+    s = sr_boss_step(s, bs_tick(aside, BS_DT), ev[..], t);
+    hearts += ev[0].her_hits;
+    if ev[0].dazed { dazed = true; }
+    if ev[0].dodged { dodged = true; }
+    if d2_dist(s.charge_dir, dir) > 0.001 { turned = true; }
+  }
+  #assert !turned;
+  #assert dazed && s.beat == SR_BOSS_BEAT_RECOVERY;
+  #assert hearts == 0 && dodged;
+}
+
+#test "Splice.Rules.Boss.ProtoChargeStaysInLab" {
+  t: SrBossTuning;
+  s := bs_fighting(true); s.charge_t = t.charge_every;
+  her := d2(0.0, -25.0);   // just inside the hallway, south of the lab
+  ev: [1] SrBossEvents;
+  rushed := false; dazed := false; hearts := 0; left := false;
+  for i: 0..<300 {
+    if dazed { break; }
+    s = sr_boss_step(s, bs_tick(her, BS_DT), ev[..], t);
+    if s.beat == SR_BOSS_BEAT_IMPACT { rushed = true; }
+    if ev[0].dazed { dazed = true; }
+    hearts += ev[0].her_hits;
+    if d2_dist(s.position, s.home) > t.room_radius + 0.001 { left = true; break; }
+  }
+  #assert !left && rushed && dazed;
+  #assert d2_dist(s.position, s.home) > t.room_radius - 0.5;
+  #assert s.charge_dir.y < -0.5 && hearts == 0;
+}
+
+#test "Splice.Rules.Boss.ResetsAfterTwentySecondsAway" {
+  t: SrBossTuning;
+  s := bs_fighting(false); s.vitals.health = 90.0;
+  ev: [1] SrBossEvents;
+  away := bs_tick(d2(0.0, -30.0), 0.5); away.her_in_lab = false;
+  for i: 0..<38 { s = sr_boss_step(s, away, ev[..], t); }   // 19 s
+  #assert s.phase == SR_BOSS_FIGHTING && !ev[0].reset;
+  s = sr_boss_step(s, bs_tick(d2(0.0, -30.0), 0.5), ev[..], t);
+  #assert s.away_t == 0.0;
+  for i: 0..<40 {   // 20 s
+    if ev[0].reset { break; }
+    s = sr_boss_step(s, away, ev[..], t);
+  }
+  #assert ev[0].reset && s.phase == SR_BOSS_ASLEEP && s.vitals.health == 120.0;
+}

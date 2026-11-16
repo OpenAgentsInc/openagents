@@ -1,0 +1,448 @@
+// Splice Bots rules: the dinosaur boss as a pure state machine (SpliceBoss.h, package B-10; GDD 04 5.6
+// UE-AI-40, UE-AI-44 to -47; UE-AI-26: every attack aimed at her or her robots is a telegraph timeline,
+// wind-up, lock, impact, recovery; UE-AI-29: powered down stays where it fell; GDD 02 section 18).
+// Built on vitals.coax (health, latched power-down), core-socket.coax (taking control with a core) and
+// harvest.coax (harvest instead). Positions are metres on the ground plane (D2); yaw is radians with
+// forward = (cos yaw, sin yaw). The caller owns the state and feeds the inputs each tick.
+// States: Asleep -> Waking -> Fighting -> PoweredDown -> Taken (or Harvested). Fighting can fall back to
+// Asleep when she stays out of the lab (18.6 rule 5). PoweredDown, Taken and Harvested never wake.
+// The C++ TArrays are fixed caps: SR_BOSS_ROBOTS_MAX of her robots in the inputs, the hits and the
+// sweep's already-hit list sized the same.
+#load "../../../metaverse-engine/core/math-d.coax";
+#load "vitals.coax";
+#load "harvest.coax";
+#load "night-exit.coax";   // sr_atan2_deg
+
+ROBOT_DINOSAUR_BOSS :: "ROBOT_DINOSAUR_BOSS";   // robots.csv; ROBOT_DINOSAUR is hers after the take
+
+// ESpliceBossState.
+SR_BOSS_ASLEEP :: 0;        // on its platform; not hostile, senses nothing, not a target (18.6 rule 1)
+SR_BOSS_WAKING :: 1;        // wake_seconds: uncurls; does not attack; can be damaged (18.6 rule 3)
+SR_BOSS_FIGHTING :: 2;      // the fight step (18.7)
+SR_BOSS_POWERED_DOWN :: 3;  // 0 health: kneels where it stands; never wakes by itself (18.10)
+SR_BOSS_TAKEN :: 4;         // a core went in: hers (UE-AI-44)
+SR_BOSS_HARVESTED :: 5;     // harvested instead (18.10); the body is gone
+// ESpliceBossAttack: the sweep above half health, the charge at or under, the bite in both (INFERRED, 18.9b).
+SR_BOSS_ATTACK_NONE :: 0; SR_BOSS_ATTACK_SWEEP :: 1; SR_BOSS_ATTACK_CHARGE :: 2; SR_BOSS_ATTACK_BITE :: 3;
+// ESpliceBossBeat (UE-AI-26). For the charge, impact is the rush and recovery the daze.
+SR_BOSS_BEAT_NONE :: 0; SR_BOSS_BEAT_WIND_UP :: 1; SR_BOSS_BEAT_LOCK :: 2; SR_BOSS_BEAT_IMPACT :: 3; SR_BOSS_BEAT_RECOVERY :: 4;
+SR_BOSS_SMALL :: 0.0001;    // KINDA_SMALL_NUMBER
+SR_BOSS_ROBOTS_MAX :: 8;
+SR_BOSS_DROPS_MAX :: SR_HARVEST_DROPS_MAX + 2;
+
+// Every number, with its source (FSpliceBossTuning). GDD 02 18.13 unless noted. Metres, seconds, health.
+SrBossTuning :: struct {
+  health_max: f32 = 120.0;      // BOSS_HP (robots.csv). CONFLICT: the prototype SB_BOSS_HP was 70
+  half_share: f32 = 0.5;        // phase two at or under 50 %
+  // UE-AI-45: she or a robot of hers within 14 m. CONFLICT: GDD 02 18.6 says 8 m / 12 m (INFERRED); part 04 wins.
+  wake_her_radius: f64 = 14.0;
+  wake_robot_radius: f64 = 14.0;
+  wake_seconds: f64 = 1.5;      // BOSS_WAKE_TIME (INFERRED)
+  reset_away_seconds: f64 = 20.0;   // BOSS_RESET (INFERRED)
+  target_robot_memory: f64 = 3.0;   // 17.7: a robot that damaged it in the last 3.0 s
+  // Tail sweep, SB_SWEEP.
+  sweep_idle: f64 = 3.4; sweep_wind: f64 = 0.9; sweep_lock: f64 = 0.3; sweep_impact: f64 = 1.3; sweep_recovery: f64 = 1.1;
+  sweep_reach: f64 = 6.2;           // T_ARM
+  sweep_tail_half_width: f64 = 0.7; // SB_TAIL_W
+  jump_clear: f64 = 0.45;           // SB_JUMP_CLEAR
+  sweep_robot_wedge: f64 = 0.4;     // rad, half angle about the tail on a robot
+  sweep_aim_radius: f64 = 7.2;      // she is "aimed at" within this during the lock (DODGED cue)
+  sweep_hit: f64 = 3.0;             // SB_SWEEP_HIT
+  // Charge, SB_CHARGE: every 5.0 s free, wind 0.7, lock 0.4, rush 1.2, daze 2.6.
+  charge_every: f64 = 5.0; charge_wind: f64 = 0.7; charge_lock: f64 = 0.4; charge_rush: f64 = 1.2;
+  charge_speed: f64 = 14.0;         // SB_CHARGE_SPEED
+  charge_daze: f64 = 2.6;           // SB_DAZE
+  charge_half_width: f64 = 2.4;     // SB_CHARGE_W: lane half width and the hit radius on her
+  charge_aim_half_width: f64 = 3.6; // the lane widened for the aimed flag
+  charge_robot_radius: f64 = 3.2;
+  charge_hit: f64 = 6.0;            // SB_CHARGE_HIT
+  // Bite (INFERRED, 18.9b): beats 0.5 / 0.2 / 0.1 / 0.3.
+  bite_wind: f64 = 0.5; bite_lock: f64 = 0.2; bite_impact: f64 = 0.1; bite_recovery: f64 = 0.3;
+  bite_reach: f64 = 4.5; bite_every: f64 = 3.0; bite_ring: f64 = 2.2; bite_hit: f64 = 3.0;
+  // Movement.
+  approach_speed: f64 = 2.4; approach_stop: f64 = 4.5; return_speed: f64 = 1.4;
+  turn_rate: f64 = 1.2;             // rad/s
+  home_yaw: f64 = 0.0;
+  room_radius: f64 = 16.804;        // SB_LAB_ROOM: its middle stays this near home
+  core_ahead: f64 = 1.6;            // SB_CORE_AHEAD
+  // Harvest drops besides its core (INFERRED from its recipe).
+  harvest_imperial_parts: int = 6;
+  harvest_banned_pieces: int = 2;
+}
+
+// One hit it landed this tick on a robot of hers (an index into the inputs' robots).
+SrBossRobotHit :: struct { robot: int = -1; damage: f64; }
+// What the caller tells it each tick (FSpliceBossInputs).
+SrBossInputs :: struct {
+  dt: f64;
+  her: D2;
+  her_feet_height: f64;     // above the ground; a jump clears the tail
+  her_in_lab: bool = true;  // false south of the lab's mouth (18.6 rule 5)
+  robots_n: int;
+  robots: [SR_BOSS_ROBOTS_MAX] D2;
+  damage: f32;              // damage it took this tick (all sources)
+  damage_from_robot: int = -1;   // index into robots; -1 = her or unknown
+  her_hit_or_pointed: bool; // wakes it (18.6 rule 2)
+  lane_granted: bool = true;     // the attack director's shared lane (UE-AI-26)
+}
+// What happened this tick (FSpliceBossEvents).
+SrBossEvents :: struct {
+  woke: bool;          // World.Boss.Awake
+  fight_began: bool;
+  half: bool;          // phase two began
+  powered_down: bool;  // World.Boss.Down, Checkpoint.BeatBoss
+  reset: bool;         // back asleep at full health
+  telegraph: int;      // a wind-up began this tick
+  released: int;       // an impact began this tick
+  dazed: bool;
+  dodged: bool;        // an attack aimed at her ended without hitting her
+  her_hits: int;
+  robot_hits_n: int;
+  robot_hits: [SR_BOSS_ROBOTS_MAX] SrBossRobotHit;
+}
+// The boss, owned by the caller (FSpliceBossState; GDD 02 18.3).
+SrBossState :: struct {
+  phase: int = SR_BOSS_ASLEEP;
+  vitals: SrVitals;
+  home: D2;
+  position: D2;
+  yaw: f64;
+  now: f64;
+  wake_t: f64;
+  away_t: f64;
+  half: bool;
+  idle_t: f64;     // phase one: free time toward the sweep
+  charge_t: f64;   // phase two: free time toward the charge
+  attack: int;
+  attack_t: f64;
+  beat: int;
+  charge_dir: D2 = D2.{x = 1.0, y = 0.0};
+  bite_centre: D2;
+  bite_next: f64;
+  rush_hit: bool;
+  aimed: bool;
+  hit_her: bool;
+  swept: [SR_BOSS_ROBOTS_MAX] bool;   // robots already hit by this sweep
+  target_robot: int = -1;
+  since_robot_damage: f64;
+  core_out: bool;  // the experimental core has popped out or dropped (once)
+}
+SrBossTakeResult :: struct { ok: bool; refusal: int; control: SrTakeControlResult; experimental_core: SrStack; core_at: D2; }
+SrBossHarvestResult :: struct { refusal: int; n: int; drops: [SR_BOSS_DROPS_MAX] SrStack; }   // the experimental core first
+sr_boss_harvest_ok :: (r: SrBossHarvestResult) -> bool { return r.refusal == SR_HARVEST_OK; }
+
+SrBossBeats :: struct { wind: f64; lock: f64; impact: f64; recovery: f64; }
+sr_boss_impact_start :: (b: SrBossBeats) -> f64 { return b.wind + b.lock; }
+sr_boss_impact_end :: (b: SrBossBeats) -> f64 { return b.wind + b.lock + b.impact; }
+sr_boss_total :: (b: SrBossBeats) -> f64 { return b.wind + b.lock + b.impact + b.recovery; }
+sr_boss_beats :: (attack: int, t: SrBossTuning) -> SrBossBeats {
+  if attack == SR_BOSS_ATTACK_SWEEP { return SrBossBeats.{wind = t.sweep_wind, lock = t.sweep_lock, impact = t.sweep_impact, recovery = t.sweep_recovery}; }
+  if attack == SR_BOSS_ATTACK_CHARGE { return SrBossBeats.{wind = t.charge_wind, lock = t.charge_lock, impact = t.charge_rush, recovery = t.charge_daze}; }
+  if attack == SR_BOSS_ATTACK_BITE { return SrBossBeats.{wind = t.bite_wind, lock = t.bite_lock, impact = t.bite_impact, recovery = t.bite_recovery}; }
+  return SrBossBeats.{};
+}
+
+sr_boss_forward :: (yaw: f64) -> D2 { return d2(cos(yaw), sin(yaw)); }
+sr_boss_yaw_of :: (dir: D2) -> f64 { return sr_atan2_deg(dir.y, dir.x) * PI_D / 180.0; }
+// FMath::UnwindRadians.
+sr_boss_wrap :: (a: f64) -> f64 { r := a; while r > PI_D { r -= TAU_D; } while r < -PI_D { r += TAU_D; } return r; }
+sr_boss_turn_toward :: (yaw: f64, goal: f64, max_step: f64) -> f64 { return sr_boss_wrap(yaw + fclamp(sr_boss_wrap(goal - yaw), -max_step, max_step)); }
+// FVector2D::GetSafeNormal, then IsNearlyZero: false when there is no direction.
+sr_boss_dir :: (v: D2, out: [] D2) -> bool {
+  l2 := d2_len2(v);
+  if l2 <= 0.00000001 { return false; }
+  d := d2_scale(v, 1.0 / sqrt(l2));
+  if abs(d.x) <= SR_BOSS_SMALL && abs(d.y) <= SR_BOSS_SMALL { return false; }
+  out[0] = d; return true;
+}
+sr_boss_cross :: (a: D2, b: D2) -> f64 { return a.x * b.y - a.y * b.x; }
+// Keeps a point inside the room it may stand in (SB_LAB_ROOM).
+sr_boss_clamp_to_room :: (p: D2, home: D2, room: f64) -> D2 {
+  d := d2_sub(p, home); l := d2_len(d);
+  return ifx l <= room then p else d2_add(home, d2_scale(d, room / l));
+}
+// How far it can move from p along unit dir before its middle leaves the room. p is inside.
+sr_boss_room_along :: (p: D2, dir: D2, home: D2, room: f64) -> f64 {
+  d := d2_sub(p, home); b := d2_dot(d, dir); c := d2_len2(d) - room * room; disc := b * b - c;
+  return ifx disc <= 0.0 then 0.0 else fmax(0.0, -b + sqrt(disc));
+}
+
+// A sleeping boss at full health on its platform.
+sr_make_boss :: (home: D2, t: SrBossTuning) -> SrBossState {
+  s: SrBossState;
+  s.vitals = sr_make_vitals(t.health_max, 0.0); s.home = home; s.position = home; s.yaw = t.home_yaw;
+  return s;
+}
+// The telegraph lead: wind-up plus lock. Sweep 1.2 s, charge 1.1 s, bite 0.7 s.
+sr_boss_telegraph_lead_seconds :: (attack: int, t: SrBossTuning) -> f64 { return sr_boss_impact_start(sr_boss_beats(attack, t)); }
+// The beat of an attack's timeline at time `at` into it.
+sr_boss_beat_at :: (attack: int, at: f64, t: SrBossTuning) -> int {
+  if attack == SR_BOSS_ATTACK_NONE || at < 0.0 { return SR_BOSS_BEAT_NONE; }
+  b := sr_boss_beats(attack, t);
+  if at < b.wind { return SR_BOSS_BEAT_WIND_UP; }
+  if at < sr_boss_impact_start(b) { return SR_BOSS_BEAT_LOCK; }
+  if at < sr_boss_impact_end(b) { return SR_BOSS_BEAT_IMPACT; }
+  if at < sr_boss_total(b) { return SR_BOSS_BEAT_RECOVERY; }
+  return SR_BOSS_BEAT_NONE;
+}
+// Hostile, and her robots may target it.
+sr_boss_is_awake :: (s: SrBossState) -> bool { return s.phase == SR_BOSS_WAKING || s.phase == SR_BOSS_FIGHTING; }
+// The tail's angle during the sweep's impact (18.8 rule 3): from straight behind, through the side, to ahead.
+sr_boss_sweep_arm_angle :: (s: SrBossState, t: SrBossTuning) -> f64 {
+  share := fclamp((s.attack_t - (t.sweep_wind + t.sweep_lock)) / t.sweep_impact, 0.0, 1.0);
+  return sr_boss_wrap(s.yaw + PI_D - share * PI_D);
+}
+
+sr_boss_end_attack :: (s: [] SrBossState) {
+  s[0].attack = SR_BOSS_ATTACK_NONE; s[0].attack_t = 0.0; s[0].beat = SR_BOSS_BEAT_NONE;
+  s[0].aimed = false; s[0].hit_her = false; s[0].rush_hit = false;
+  for k: 0..<SR_BOSS_ROBOTS_MAX { s[0].swept[k] = false; }
+}
+// 18.10 rule 1: every attack is cancelled with no impact.
+sr_boss_power_down :: (s: [] SrBossState, ev: [] SrBossEvents) {
+  sr_boss_end_attack(s);
+  s[0].phase = SR_BOSS_POWERED_DOWN; s[0].vitals.powered_down = true; ev[0].powered_down = true;
+}
+sr_boss_add_robot_hit :: (ev: [] SrBossEvents, robot: int, damage: f64) {
+  if ev[0].robot_hits_n >= SR_BOSS_ROBOTS_MAX { return; }
+  ev[0].robot_hits[ev[0].robot_hits_n] = SrBossRobotHit.{robot = robot, damage = damage}; ev[0].robot_hits_n += 1;
+}
+sr_boss_start_attack :: (s: [] SrBossState, attack: int, target: D2, target_her: bool, ev: [] SrBossEvents, t: SrBossTuning) {
+  sr_boss_end_attack(s);
+  s[0].attack = attack; s[0].beat = SR_BOSS_BEAT_WIND_UP; ev[0].telegraph = attack;
+  if attack == SR_BOSS_ATTACK_CHARGE {
+    dir: [1] D2;
+    if sr_boss_dir(d2_sub(target, s[0].position), dir[..]) { s[0].charge_dir = dir[0]; s[0].yaw = sr_boss_yaw_of(dir[0]); }
+    s[0].charge_t = 0.0;
+  } else if attack == SR_BOSS_ATTACK_BITE {
+    s[0].bite_centre = target; s[0].bite_next = s[0].now + t.bite_every;
+    s[0].aimed = target_her;   // 18.9b rule 4: DODGED only if she was the target
+  }
+}
+sr_boss_sweep_hits :: (s: [] SrBossState, inp: SrBossInputs, ev: [] SrBossEvents, t: SrBossTuning) {
+  arm := sr_boss_sweep_arm_angle(s[0], t);
+  d := sr_boss_forward(arm);
+  // 18.8 rule 4: on the tail's line, within its half width, feet on the ground. One hit per sweep.
+  if !s[0].hit_her {
+    rel := d2_sub(inp.her, s[0].position);
+    along := d2_dot(rel, d); across := abs(sr_boss_cross(d, rel));
+    if along >= 0.0 && along <= t.sweep_reach && across <= t.sweep_tail_half_width && inp.her_feet_height < t.jump_clear {
+      s[0].hit_her = true; ev[0].her_hits += 1;
+    }
+  }
+  // 18.8 rule 5: each robot once per sweep, within reach and the wedge about the tail.
+  for i: 0..<inp.robots_n {
+    if s[0].swept[i] { continue; }
+    rel := d2_sub(inp.robots[i], s[0].position);
+    if d2_len(rel) <= t.sweep_reach && abs(sr_boss_wrap(sr_boss_yaw_of(rel) - arm)) <= t.sweep_robot_wedge {
+      s[0].swept[i] = true; sr_boss_add_robot_hit(ev, i, t.sweep_hit);
+    }
+  }
+}
+sr_boss_step_attack :: (s: [] SrBossState, inp: SrBossInputs, ev: [] SrBossEvents, t: SrBossTuning, dt: f64, target: D2) {
+  b := sr_boss_beats(s[0].attack, t);
+  t0 := s[0].attack_t; t1 := t0 + dt;
+  b1 := sr_boss_beat_at(s[0].attack, t1, t);
+  s[0].attack_t = t1; s[0].beat = b1;
+  released := t0 < sr_boss_impact_start(b) && t1 >= sr_boss_impact_start(b);
+  impact_over := t0 < sr_boss_impact_end(b) && t1 >= sr_boss_impact_end(b);
+  dir: [1] D2;
+  if s[0].attack == SR_BOSS_ATTACK_SWEEP {
+    // Phase-one stance: it moves and turns only while idle or winding up (18.7).
+    if b1 == SR_BOSS_BEAT_WIND_UP { s[0].yaw = sr_boss_turn_toward(s[0].yaw, t.home_yaw, t.turn_rate * dt); }
+    if b1 == SR_BOSS_BEAT_LOCK && d2_dist(inp.her, s[0].position) <= t.sweep_aim_radius { s[0].aimed = true; }
+    if released { ev[0].released = SR_BOSS_ATTACK_SWEEP; }
+    if b1 == SR_BOSS_BEAT_IMPACT || impact_over { sr_boss_sweep_hits(s, inp, ev, t); }
+    if impact_over && s[0].aimed && !s[0].hit_her { ev[0].dodged = true; }
+    if t1 >= sr_boss_total(b) { sr_boss_end_attack(s); s[0].idle_t = 0.0; }
+  } else if s[0].attack == SR_BOSS_ATTACK_CHARGE {
+    // 18.9 rule 2: it faces its target; the lane follows the target.
+    if b1 == SR_BOSS_BEAT_WIND_UP && sr_boss_dir(d2_sub(target, s[0].position), dir[..]) { s[0].charge_dir = dir[0]; s[0].yaw = sr_boss_yaw_of(dir[0]); }
+    if b1 == SR_BOSS_BEAT_LOCK {
+      // 18.9 rule 3: direction frozen; aimed if she stands in the widened lane.
+      rel := d2_sub(inp.her, s[0].position);
+      if d2_dot(rel, s[0].charge_dir) >= 0.0 && abs(sr_boss_cross(s[0].charge_dir, rel)) <= t.charge_aim_half_width { s[0].aimed = true; }
+    }
+    if released { ev[0].released = SR_BOSS_ATTACK_CHARGE; s[0].rush_hit = false; }
+    rush_over := impact_over;
+    rush_dt := fmin(t1, sr_boss_impact_end(b)) - fmax(t0, sr_boss_impact_start(b));
+    if rush_dt > 0.0 {
+      // 18.9 rule 4: rush along the frozen direction; the room's edge counts as the wall.
+      move := t.charge_speed * rush_dt;
+      room := sr_boss_room_along(s[0].position, s[0].charge_dir, s[0].home, t.room_radius);
+      if move >= room { move = room; rush_over = true; }
+      s[0].position = sr_boss_clamp_to_room(d2_add(s[0].position, d2_scale(s[0].charge_dir, move)), s[0].home, t.room_radius);
+      if !s[0].rush_hit {
+        if d2_dist(inp.her, s[0].position) <= t.charge_half_width {
+          s[0].rush_hit = true; s[0].hit_her = true; ev[0].her_hits += 1;
+        } else {
+          for i: 0..<inp.robots_n {
+            if d2_dist(inp.robots[i], s[0].position) <= t.charge_robot_radius {
+              s[0].rush_hit = true; sr_boss_add_robot_hit(ev, i, t.charge_hit);
+              break;   // the first thing hit takes it; nothing else does
+            }
+          }
+        }
+      }
+    }
+    if rush_over {
+      // Into the daze, now (a wall ends the rush early).
+      s[0].attack_t = fmax(s[0].attack_t, sr_boss_impact_end(b)); s[0].beat = SR_BOSS_BEAT_RECOVERY; ev[0].dazed = true;
+      if s[0].aimed && !s[0].hit_her { ev[0].dodged = true; }
+    }
+    if s[0].attack_t >= sr_boss_total(b) { sr_boss_end_attack(s); s[0].charge_t = 0.0; }
+  } else if s[0].attack == SR_BOSS_ATTACK_BITE {
+    if b1 == SR_BOSS_BEAT_WIND_UP {
+      // 18.9b rule 3: the ring follows its target until the lock.
+      s[0].bite_centre = target;
+      if sr_boss_dir(d2_sub(target, s[0].position), dir[..]) { s[0].yaw = sr_boss_yaw_of(dir[0]); }
+    }
+    if released {
+      ev[0].released = SR_BOSS_ATTACK_BITE;
+      // 18.9b rule 4: only if the frozen ring is still within reach of its middle.
+      if d2_dist(s[0].bite_centre, s[0].position) <= t.bite_reach {
+        if d2_dist(inp.her, s[0].bite_centre) <= t.bite_ring { s[0].hit_her = true; ev[0].her_hits += 1; }
+        for i: 0..<inp.robots_n { if d2_dist(inp.robots[i], s[0].bite_centre) <= t.bite_ring { sr_boss_add_robot_hit(ev, i, t.bite_hit); } }
+      }
+      if s[0].aimed && !s[0].hit_her { ev[0].dodged = true; }
+    }
+    if t1 >= sr_boss_total(b) { sr_boss_end_attack(s); }
+  } else {
+    sr_boss_end_attack(s);
+  }
+}
+sr_boss_can_bite :: (s: SrBossState, inp: SrBossInputs, target: D2, t: SrBossTuning) -> bool {
+  return inp.lane_granted && s.now >= s.bite_next && d2_dist(target, s.position) <= t.bite_reach;
+}
+sr_boss_step_free :: (s: [] SrBossState, inp: SrBossInputs, ev: [] SrBossEvents, t: SrBossTuning, dt: f64, target: D2, target_her: bool) {
+  if !s[0].half {
+    // Phase one: back to the platform, face home, run the sweep clock (18.7, 18.8).
+    to_home := d2_sub(s[0].home, s[0].position); dist := d2_len(to_home);
+    if dist > SR_BOSS_SMALL { s[0].position = d2_add(s[0].position, d2_scale(to_home, fmin(dist, t.return_speed * dt) / dist)); }
+    s[0].yaw = sr_boss_turn_toward(s[0].yaw, t.home_yaw, t.turn_rate * dt);
+    next := s[0].idle_t + dt;
+    if next >= t.sweep_idle {
+      if inp.lane_granted { s[0].idle_t = t.sweep_idle; sr_boss_start_attack(s, SR_BOSS_ATTACK_SWEEP, target, target_her, ev, t); }
+      else { s[0].idle_t = fmax(s[0].idle_t, t.sweep_idle - SR_BOSS_SMALL); }   // held just below; retry next tick
+      return;
+    }
+    s[0].idle_t = next;
+  } else {
+    // Phase two: walk at its target, stop 4.5 m short, stay in the room; charge every 5.0 s of free time.
+    to := d2_sub(target, s[0].position); dist := d2_len(to);
+    if dist > t.approach_stop {
+      s[0].position = sr_boss_clamp_to_room(d2_add(s[0].position, d2_scale(to, fmin(dist - t.approach_stop, t.approach_speed * dt) / dist)), s[0].home, t.room_radius);
+    }
+    if dist > SR_BOSS_SMALL { s[0].yaw = sr_boss_yaw_of(to); }
+    s[0].charge_t += dt;
+    if s[0].charge_t >= t.charge_every {
+      if inp.lane_granted { sr_boss_start_attack(s, SR_BOSS_ATTACK_CHARGE, target, target_her, ev, t); }
+      return;
+    }
+  }
+  if sr_boss_can_bite(s[0], inp, target, t) { sr_boss_start_attack(s, SR_BOSS_ATTACK_BITE, target, target_her, ev, t); }
+}
+sr_boss_step_fight :: (s: [] SrBossState, inp: SrBossInputs, ev: [] SrBossEvents, t: SrBossTuning, dt: f64) {
+  // 18.7 step 2: phase two the first time health is at or under half.
+  if !s[0].half && s[0].vitals.health <= t.half_share * s[0].vitals.health_max { s[0].half = true; s[0].charge_t = 0.0; ev[0].half = true; }
+  // 18.7 step 3 and UE-AI-40: her if she is within its sweep; else a robot that damaged it lately; else her.
+  target := inp.her; target_her := true;
+  her_in_sweep := d2_dist(inp.her, s[0].position) <= t.sweep_reach;
+  tr := s[0].target_robot;
+  if !her_in_sweep && tr >= 0 && tr < inp.robots_n && s[0].since_robot_damage <= t.target_robot_memory { target = inp.robots[tr]; target_her = false; }
+  if s[0].attack != SR_BOSS_ATTACK_NONE { sr_boss_step_attack(s, inp, ev, t, dt, target); }
+  else { sr_boss_step_free(s, inp, ev, t, dt, target, target_her); }
+}
+sr_boss_any_within :: (inp: SrBossInputs, centre: D2, radius: f64) -> bool {
+  for i: 0..<inp.robots_n { if d2_dist(inp.robots[i], centre) <= radius { return true; } }
+  return false;
+}
+
+// One tick: damage first (wakes it; at 0 it powers down, cancelling any attack), then waking, leaving,
+// and the fight step (18.7 to 18.9b). ev is cleared and filled.
+sr_boss_step :: (state: SrBossState, inp: SrBossInputs, ev: [] SrBossEvents, t: SrBossTuning) -> SrBossState {
+  ev[0] = SrBossEvents.{};
+  s := [1] SrBossState.[state];
+  dt := fmax(0.0, inp.dt);
+  s[0].now += dt;
+  // PoweredDown, Taken and Harvested: nothing here wakes or resets it (18.10 rule 5).
+  if s[0].phase == SR_BOSS_POWERED_DOWN || s[0].phase == SR_BOSS_TAKEN || s[0].phase == SR_BOSS_HARVESTED { return s[0]; }
+  s[0].since_robot_damage += dt;
+  if inp.damage > 0.0 {
+    s[0].vitals = sr_apply_damage(s[0].vitals, inp.damage);
+    if inp.damage_from_robot != -1 { s[0].target_robot = inp.damage_from_robot; s[0].since_robot_damage = 0.0; }
+    if s[0].vitals.powered_down { sr_boss_power_down(s[..], ev); return s[0]; }
+  }
+  if s[0].phase == SR_BOSS_ASLEEP {
+    // 18.6 rule 2 and UE-AI-45: a hit or a point, any damage, or nearness.
+    wake := inp.damage > 0.0 || inp.her_hit_or_pointed || d2_dist(inp.her, s[0].position) <= t.wake_her_radius || sr_boss_any_within(inp, s[0].position, t.wake_robot_radius);
+    if wake { s[0].phase = SR_BOSS_WAKING; s[0].wake_t = 0.0; s[0].away_t = 0.0; ev[0].woke = true; }
+    return s[0];
+  }
+  // 18.6 rule 5: she is out of the lab this long while it is awake: back asleep at full health.
+  if !inp.her_in_lab {
+    s[0].away_t += dt;
+    if s[0].away_t >= t.reset_away_seconds {
+      now := s[0].now;
+      s[0] = sr_make_boss(s[0].home, t); s[0].now = now; ev[0].reset = true;
+      return s[0];
+    }
+  } else {
+    s[0].away_t = 0.0;
+  }
+  if s[0].phase == SR_BOSS_WAKING {
+    // 18.6 rule 3: it does not attack while waking.
+    s[0].wake_t += dt;
+    if s[0].wake_t >= t.wake_seconds {
+      s[0].phase = SR_BOSS_FIGHTING; s[0].idle_t = 0.0; s[0].charge_t = 0.0; s[0].bite_next = s[0].now; ev[0].fight_began = true;
+    }
+    return s[0];
+  }
+  sr_boss_step_fight(s[..], inp, ev, t, dt);
+  return s[0];
+}
+
+// The boss as the socket sees it: its own core (the experimental core) until that has popped out.
+sr_boss_as_socket_robot :: (s: SrBossState) -> SrSocketRobot {
+  r: SrSocketRobot;
+  r.state.robot_id = ifx s.phase == SR_BOSS_TAKEN then ROBOT_DINOSAUR else ROBOT_DINOSAUR_BOSS;
+  r.state.name = "Dinosaur"; r.state.health = s.vitals.health; r.state.health_max = s.vitals.health_max;
+  if !s.core_out { r.state.has_core = true; r.state.core = sr_stack(ITEM_EXPERIMENTAL_CORE, 1); r.owner = SR_OWNER_OTHER; }
+  if s.phase == SR_BOSS_TAKEN { r.owner = SR_OWNER_HER; }
+  r.powered_down = s.vitals.powered_down;
+  return r;
+}
+// Right click with a core (UE-AI-44, 18.10): the socket's take control. Refused while awake
+// (BRING_TO_ZERO_FIRST), with the experimental core before its memory (CORE_NOT_READY), at the crew
+// limit (CREW_LIMIT). Once Taken or Harvested: NOT_ALLOWED_HERE. On success it is hers at TAKE_WAKE of
+// its health (24 of 120) and the experimental core pops out, once, core_ahead in front of its middle.
+sr_boss_take_with_core :: (s: [] SrBossState, core: SrStack, crew_count: int, experimental_ready: bool, t: SrBossTuning) -> SrBossTakeResult {
+  r: SrBossTakeResult;
+  if s[0].phase == SR_BOSS_TAKEN || s[0].phase == SR_BOSS_HARVESTED { r.refusal = SR_REFUSE_NOT_ALLOWED_HERE; return r; }
+  r.control = sr_take_control(sr_boss_as_socket_robot(s[0]), core, crew_count, experimental_ready, SR_DEFAULT_TAKE_WAKE_SHARE);
+  if !r.control.ok { r.refusal = r.control.refusal; return r; }
+  r.ok = true;
+  s[0].phase = SR_BOSS_TAKEN;
+  s[0].vitals.health = r.control.robot.state.health;   // TAKE_WAKE: 24 of 120
+  s[0].vitals.powered_down = false;
+  if !s[0].core_out && r.control.popped_core.item == ITEM_EXPERIMENTAL_CORE {
+    r.experimental_core = sr_stack(ITEM_EXPERIMENTAL_CORE, 1);
+    r.core_at = d2_add(s[0].position, d2_scale(sr_boss_forward(s[0].yaw), t.core_ahead));
+    s[0].core_out = true;
+  }
+  return r;
+}
+// Harvest instead (18.10): the socket robot's harvest, plus its recipe's drops. The experimental core is
+// among the drops only if it has not popped out already.
+sr_boss_harvest :: (s: [] SrBossState, held_seconds: f32, prior_harvests: int, t: SrBossTuning) -> SrBossHarvestResult {
+  r: SrBossHarvestResult;
+  if s[0].phase == SR_BOSS_HARVESTED { r.refusal = SR_HARVEST_ALREADY_HARVESTED; return r; }
+  if s[0].phase != SR_BOSS_POWERED_DOWN { r.refusal = SR_HARVEST_NOT_POWERED_DOWN; return r; }
+  h := sr_harvest(SrHarvestInput.{robot = sr_boss_as_socket_robot(s[0]), held_seconds = held_seconds, prior_harvests = prior_harvests});
+  if !sr_harvest_ok(h) { r.refusal = h.refusal; return r; }
+  for k: 0..<h.n { r.drops[r.n] = h.drops[k]; r.n += 1; }
+  if t.harvest_imperial_parts > 0 { r.drops[r.n] = sr_stack(ITEM_IMPERIAL_PART, t.harvest_imperial_parts); r.n += 1; }
+  if t.harvest_banned_pieces > 0 { r.drops[r.n] = sr_stack(ITEM_BANNED_PIECE, t.harvest_banned_pieces); r.n += 1; }
+  s[0].phase = SR_BOSS_HARVESTED; s[0].core_out = true;
+  return r;
+}
