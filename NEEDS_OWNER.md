@@ -1,5 +1,12 @@
 # Owner actions
 
+## Chat details, build 1370 (2026-11-15)
+
+- [ ] Install TestFlight **1370** (verified in **Owner**) and compare the
+      composer model indicator, stop state, code blocks and tool rows against
+      the Claude captures. Native composer, Markdown and transcript tests
+      passed; GPU surface appearance and touch need a phone check.
+
 ## Chat composer and transcript, build 1360 (2026-11-15)
 
 - [ ] Install TestFlight **1360** (verified in **Owner**) and compare the
