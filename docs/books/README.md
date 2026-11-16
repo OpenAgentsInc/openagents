@@ -13,7 +13,7 @@ needs, from scratch, in one language, with every claim checked.
 | [Coder: Coding Agents From Scratch](../../coder/book/README.md) | A coding agent and its harness | build or drive an agent |
 | [Bitcoin From Scratch](../../bitcoin/book/README.md) | Bitcoin and Lightning, from SHA-256 to channels | understand or check how money moves |
 | [Nostr From Scratch](../../nostr/book/README.md) | A Nostr client, a relay and the NIPs OpenAgents uses | understand identity, events and markets |
-| [The OpenAgents Book](../../openagents/book/README.md) | openagents.com and the iPhone app on Coax Native, then the general agent behind them (design drafts) | build the product apps or the agent |
+| [The OpenAgents Book](../../openagents/book/README.md) | The iPhone app on compiled Coax and the GPU component kit, built up from one text input on the chat page, then desktop, Android and the web, then the general agent behind them (design drafts) | build the product apps or the agent |
 
 ## The argument
 

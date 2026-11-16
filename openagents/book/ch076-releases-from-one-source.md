@@ -2,6 +2,11 @@
 
 > **Status: unimplemented — design draft.** This chapter is a plan for the
 > owner to edit. It ships no code yet, and paths marked planned do not exist.
+> Marked for a later rewrite: on 2026-11-15 the owner dropped over-the-air
+> Updates for the apps
+> ([#13645](https://github.com/OpenAgentsInc/openagents/issues/13645)). The
+> statements about over-the-air delivery are corrected below; the rest of the
+> chapter is unchanged.
 
 ## Premise
 
@@ -30,20 +35,17 @@ additional platforms ship on their own evidence (chapter 77) and never hold
 up the web or the phone.
 
 An installed app is older than the server. People update late, and some
-never do. The API answers every app version still in use (chapter 9), and a
+never do. The API answers every app version still in use (chapter 4), and a
 release that changes a record adds a version beside the old one.
 
-Some changes can reach an installed app without a store release.
-[Coax Native Updates](../../coax/native-updates.md) describes signed
-over-the-air delivery: content and compatible portable code that run inside
-the installed runtime, inside each store's rules. It can't replace native
-code, add a permission or change what the store reviewed. A change that
-needs those is a store release. Each release says which kind it is.
+No change reaches an installed app without a store release. The native
+apps run compiled Coax linked into the binary, with no JavaScript runtime
+and no over-the-air Updates, so every change to the iPhone app, code and
+content alike, ships in a TestFlight or store build.
 
 Every release has a way back. On the web, the previous build is one step
 away. On a phone, a store can't take back an installed app, so the way back
-is a fix released forward, or, for an over-the-air update, the signed
-previous package that the runtime keeps. A release can be stopped only by a
+is a fix released forward. A release can be stopped only by a
 regression it causes, so each check compares against what is live now.
 
 Release candidates stay part of the process. [Episodes
@@ -59,15 +61,13 @@ A plan for what this chapter ships once the draft is approved:
   target evidence of chapter 75.
 - Per-platform release steps that publish independently, and a download page
   generated from what each store actually lists.
-- The version rule between installed apps and the API, and the rule for
-  which changes may go over the air.
-- A way back for each platform: the previous web build, a fix forward for a
-  store app, and the previous signed package for an over-the-air update.
+- The version rule between installed apps and the API.
+- A way back for each platform: the previous web build, and a fix forward
+  for a store app.
 
 It builds on what exists today:
 
 - [`coax/remote`](../../coax/remote)
-- [`coax/native-updates.md`](../../coax/native-updates.md)
 - [`coax/web/release.sh`](../../coax/web/release.sh)
 - [`apps/openagents-ios/release.sh`](../../apps/openagents-ios/release.sh)
 - [`coax/web`](../../coax/web)
@@ -94,8 +94,8 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Release status | `openagents.deploy.v1` `DeployStatus`, `LaneHead` ([spec 28.3](../../docs/protocol/openagents-protocol-spec.md#283-openagentsdeployv1)) | Nostr kinds 3205 and 30205 | Spec sketch; no `.proto` file |
 | A signed build others can rebuild | `openagents.attest.v1` `Release`, `Rebuild` ([spec 27.2](../../docs/protocol/openagents-protocol-spec.md#272-openagentsattestv1)) | Nostr kinds 3202 and 3203 (NIP-ATT) | Spec sketch; no `.proto` file |
 
-Planned paths: none. Releases extend [`coax/remote/`](../../coax/remote), each
-app's own release script and [Coax Native Updates](../../coax/native-updates.md).
+Planned paths: none. Releases extend [`coax/remote/`](../../coax/remote) and
+each app's own release script.
 
 ## Sources
 
