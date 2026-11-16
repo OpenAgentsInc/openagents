@@ -3,7 +3,7 @@
 // (metaverse/splice-bots/splice-jam.coax); its shader draws these rows (gpu/splice-jam.coax).
 //
 // The pack's catalog is read with the engine's imported-world reader (metaverse-engine/world/imported-read.coax).
-// Its route maps (L_SolarFarm with its Greek quarter, L_Plain, L_Ring with its bays, L_Lab) are drawn
+// Its route maps (L_SolarFarm, its Greek quarter, L_Plain, L_Ring with its bays, L_Lab) are drawn
 // where they stand: the jam's maps share the prototype's frame, so nothing is moved. Its other maps
 // (L_Farm, L_Cabin, L_Look_01) are not drawn. A sky dome (scaled past SJD_SKY on every axis) is left
 // out: the anime sky stands for it. A piece two route maps both place (the same section, material and

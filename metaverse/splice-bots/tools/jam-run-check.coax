@@ -9,7 +9,9 @@
 //     jam's own colliders;
 //   - from the garage's door to the boss's fall with real keys (sp_keys_play), against them too;
 //   - the jam's farm rules with real keys and clicks (jrc_farm_rules, jam/jam-farm.coax): a battery from a
-//     charge point, the farm robot hit down and harvested with a held click.
+//     charge point, the farm robot hit down and harvested with a held click;
+//   - the jump course with real keys (jrc_course, jam/jam-fx.coax): up P1 to P3 for its battery and banned
+//     piece, and up the Greek quarter's village.
 //
 //   coax/web/tool.sh metaverse/splice-bots/tools/jam-run-check.coax PACK [CHARS] [--tables TABLES]
 //
@@ -78,6 +80,92 @@ jrc_farm_rules :: (g: [] SpGame, tables: string) -> int {
   _ := jrc_click(g, 1.2);
   if !(g[0].jx[0].bots[0].harvested && sjx_count(g, ITEM_SMALL_CORE) == 1 && sjx_count(g, ITEM_IMPERIAL_PART) == 3) { return 8; }
   print("  her hotbar: % scrap, % battery, % core, % Imperial parts; Heat %\n", sjx_count(g, ITEM_SCRAP_PART), sjx_count(g, ITEM_BATTERY), sjx_count(g, ITEM_SMALL_CORE), sjx_count(g, ITEM_IMPERIAL_PART), g[0].jx[0].heat);
+  return 0;
+}
+
+// ---- the jump course (jam/jam-fx.coax), with the keys: the farm's plateaus P1 to P3, each up onto from the one
+// before with Space and W, standing on its top, and P3's battery and banned piece taken there; then a climb of
+// the Greek quarter's village, block to block, to the highest roof a chain of jumps reaches. The course is read
+// off the pack: P3 is the box under the farm's highest pickups, P2 and P1 the boxes beside it 0.8 and 1.6 m
+// lower; the village's chain is a search of the quarter's boxes (rises of 0.3 to 1.2 m, gaps up to 1.5 m).
+// 0 is a pass, else the beat that failed.
+JRC_BOXES :: 4096;
+JrcBox :: struct { x0: f32; z0: f32; x1: f32; z1: f32; top: f32; }
+jrc_boxes :: (c: IwColliders, out: [] JrcBox, side: f32) -> int {
+  n := 0;
+  for i: 0..<c.nw {
+    o := i * 6; b := JrcBox.{x0 = c.walls[o], z0 = c.walls[o + 2], x1 = c.walls[o + 3], z1 = c.walls[o + 5], top = c.walls[o + 4]};
+    if b.x1 - b.x0 >= side && b.z1 - b.z0 >= side && b.top > 0.3 && n < out.count { out[n] = b; n += 1; }
+  }
+  return n;
+}
+jrc_gap :: (a: JrcBox, b: JrcBox) -> f32 { gx := hi(0, hi(a.x0 - b.x1, b.x0 - a.x1)); gz := hi(0, hi(a.z0 - b.z1, b.z0 - a.z1)); return sqrt(gx * gx + gz * gz); }
+jrc_mid_x :: (b: JrcBox) -> f32 { return (b.x0 + b.x1) * 0.5; }
+jrc_mid_z :: (b: JrcBox) -> f32 { return (b.z0 + b.z1) * 0.5; }
+// Hop from box to box with the keys: walk at each top's middle with Space held 0.3 s of every 0.6 s; after each,
+// her feet stand on that top. 0, or the leg (1, 2, ...) she did not stand on.
+jrc_climb :: (g: [] SpGame, chain: [] JrcBox, n: int) -> int {
+  for k: 0..<n {
+    b := chain[k];
+    _ := jrc_walk(g, jrc_mid_x(b), jrc_mid_z(b), 0.6, 25);
+    for i: 0..<30 { g_step(g, 0.02); }
+    f := sj_feet(g);
+    print("  up to % m: her feet at % m, at (%, %)\n", b.top, f, g[0].px, g[0].pz);
+    if abs(f - b.top) > 0.15 { return k + 1; }
+  }
+  return 0;
+}
+jrc_course :: (g: [] SpGame, s: [] SjStore) -> int {
+  g_reset(g);
+  if !(g_key(g, -2, true) && g_key(g, -2, true) && g[0].mode == M_PLAY && sjx_on(g)) { return 1; }
+  x := g[0].jx[0]; j := g[0].jr[..];
+  // P3's pickups: the farm's two highest
+  hi1 := -1; hi2 := -1;
+  for k: 0..<x.pick_n {
+    y := j[0].actors[x.pick_actor[k]].y;
+    if hi1 < 0 || y > j[0].actors[x.pick_actor[hi1]].y { hi2 = hi1; hi1 = k; } else if hi2 < 0 || y > j[0].actors[x.pick_actor[hi2]].y { hi2 = k; }
+  }
+  if hi2 < 0 { return 2; }
+  p3a := j[0].actors[x.pick_actor[hi1]];
+  boxes: [JRC_BOXES] JrcBox; n := jrc_boxes(s[0].cols[SJ_FARM], boxes[..], 3);
+  chain: [3] JrcBox; found := 0;
+  for b: boxes[0..<n] { if p3a.x > b.x0 && p3a.x < b.x1 && p3a.z > b.z0 && p3a.z < b.z1 && abs(b.top - (p3a.y - SJF_PICK_LIFT)) < 0.2 { chain[2] = b; found = 1; } }
+  if found == 0 { return 3; }
+  for step: 0..<2 {
+    want := chain[2 - step].top - 0.8; best := -1; bd := 1e9f32;
+    for i: 0..<n { b := boxes[i]; d := jrc_gap(b, chain[2 - step]); if abs(b.top - want) < 0.1 && d < bd && d < 3 { bd = d; best = i; } }
+    if best < 0 { return 4; }
+    chain[1 - step] = boxes[best];
+  }
+  // her start: 5 m out from P1, on the side away from P2
+  dx := jrc_mid_x(chain[0]) - jrc_mid_x(chain[1]); dz := jrc_mid_z(chain[0]) - jrc_mid_z(chain[1]); l := sqrt(dx * dx + dz * dz);
+  g[0].px = jrc_mid_x(chain[0]) + dx / l * 5; g[0].pz = jrc_mid_z(chain[0]) + dz / l * 5; g[0].yaw = atan2(-dx, -dz); g_bot_home(g);
+  for i: 0..<20 { g_step(g, 0.02); }
+  print("the jump course: P1, P2, P3 at % m, % m, % m\n", chain[0].top, chain[1].top, chain[2].top);
+  r := jrc_climb(g, chain[..], 3);
+  if r != 0 { return 4 + r; }
+  if !(g[0].jx[0].pick_taken[hi1] && g[0].jx[0].pick_taken[hi2]) { print("  P3's pickups not taken\n"); return 8; }
+  print("  on P3: % and % taken\n", g[0].jx[0].pick_item[hi1], g[0].jx[0].pick_item[hi2]);
+  // the Greek quarter: the chain of jumps to the highest top a search finds
+  q := jrc_boxes(s[0].cols[SJ_GREEK], boxes[..], 2.4);
+  if q == 0 { return 9; }
+  from: [JRC_BOXES] int; depth: [JRC_BOXES] int;
+  for i: 0..<q { from[i] = -2; depth[i] = 0; if boxes[i].top <= 1.2 { from[i] = -1; depth[i] = 1; } }
+  for pass: 0..<8 {
+    for a: 0..<q {
+      if from[a] == -2 || depth[a] != pass + 1 { continue; }
+      for b: 0..<q { if from[b] == -2 && boxes[b].top - boxes[a].top > 0.3 && boxes[b].top - boxes[a].top <= 1.2 && jrc_gap(boxes[a], boxes[b]) <= 1.5 { from[b] = a; depth[b] = pass + 2; } }
+    }
+  }
+  top := -1; for i: 0..<q { if from[i] != -2 && (top < 0 || boxes[i].top > boxes[top].top) { top = i; } }
+  path: [16] JrcBox; pn := 0; at := top;
+  while at >= 0 && pn < 16 { path[pn] = boxes[at]; pn += 1; at = from[at]; }
+  for k: 0..<pn / 2 { t := path[k]; path[k] = path[pn - 1 - k]; path[pn - 1 - k] = t; }
+  print("the Greek quarter: % blocks to climb, the last % m up\n", pn, path[pn - 1].top);
+  g[0].px = jrc_mid_x(path[0]) + 4; g[0].pz = jrc_mid_z(path[0]); g[0].yaw = -PI * 0.5;
+  for i: 0..<20 { g_step(g, 0.02); }
+  r = jrc_climb(g, path[..], pn);
+  if r != 0 { return 9 + r; }
   return 0;
 }
 
@@ -187,6 +275,8 @@ tool_main :: () -> int #export_c #effects(all) {
   failed = failed || r != 0;
   // the jam's farm rules with the keys and the mouse
   r = jrc_farm_rules(g[..], tables); jrc_line("the farm's rules: a charge point, the farm robot down and harvested", r); failed = failed || r != 0;
+  // the jump course and the Greek quarter with the keys (jam/jam-fx.coax)
+  r = jrc_course(g[..], s[..]); jrc_line("the jump course: P1 to P3 and its pickups, the Greek quarter's roofs", r); failed = failed || r != 0;
   // the route walk (jam/jam-walk.coax): every stop explained by a collider the realm draws
   failed = jrc_route_walk(g[..], s[..], cat) || failed;
   // the characters: her body and the raiders' (jam/jam-chars.coax)

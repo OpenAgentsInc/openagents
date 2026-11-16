@@ -4,7 +4,8 @@
 // bank at (-929.3, -189), the garage at (0, -195)), so nothing is moved: the game's landmarks are read off
 // the imported maps' game actors, and she collides with, and stands on, the imported maps' colliders.
 //
-// The route's maps: the solar farm (with its streamed Greek quarter), the plain, the garage ring and the lab.
+// The route's maps: the solar farm, the plain, the garage ring, the lab, and the Greek quarter, which the jam
+// streams with the farm as its own map (L_SolarFarm_GreekQuarter: a hillside village of blocks to climb).
 // A game actor is an instance whose Unreal actor name starts with its class (SpliceSniper_..., SpliceFarmPickup_...):
 // the catalog's P lines carry that name (metaverse-engine/import/unreal/convert.coax). An actor's parts (Sniper's
 // cab, car and tail) are one actor, standing at their middle.
@@ -15,9 +16,10 @@
 //   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only jam
 #load "../../../metaverse-engine/world/imported-read.coax";
 
-SJ_FARM :: 0; SJ_PLAIN :: 1; SJ_RING :: 2; SJ_LAB :: 3; SJ_MAPS :: 4;
-SJ_WALKED :: [SJ_MAPS] bool.[true, true, true, true];   // whose colliders she walks against (sj_bind)
-SJ_MAP_IDS :: [SJ_MAPS] string.["/Game/SpliceBots/World/Maps/L_SolarFarm", "/Game/World/Graybox/L_Plain", "/Game/World/Graybox/L_Ring", "/Game/World/Graybox/L_Lab"];
+SJ_FARM :: 0; SJ_PLAIN :: 1; SJ_RING :: 2; SJ_LAB :: 3; SJ_GREEK :: 4; SJ_MAPS :: 5;
+SJ_WALKED :: [SJ_MAPS] bool.[true, true, true, true, true];   // whose colliders she walks against (sj_bind)
+SJ_MAP_IDS :: [SJ_MAPS] string.["/Game/SpliceBots/World/Maps/L_SolarFarm", "/Game/World/Graybox/L_Plain", "/Game/World/Graybox/L_Ring", "/Game/World/Graybox/L_Lab",
+  "/Game/SpliceBots/World/Maps/L_SolarFarm_GreekQuarter"];
 // The game actors the game reads, by their Unreal class (the jam's SpliceGame module). SJ_OPENING is no
 // class: an actor SJ_OPEN_ACTOR names. SJ_FIGURE is the jam's Director placed in a map as a mesh, unposed
 // (a SkeletalMeshActor, her body's mesh: on her board by Digger in the ring); the page draws her body itself

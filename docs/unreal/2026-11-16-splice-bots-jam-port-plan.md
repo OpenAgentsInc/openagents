@@ -193,6 +193,11 @@ Each batch is pushed to `main` green, with its checks, and commented on #13653.
   ```
 
   To check the pack, run `jam-run-check.coax PACK CHARS`.
+- The jump course plays (`jam/jam-fx.coax`). The Greek quarter, `L_SolarFarm_GreekQuarter`, is a route map of the jam
+  world, so the realm draws it and she walks and stands on its blocks. The farm's plateaus P1 to P3 are the farm map's
+  colliders. A pickup is hers only from its own floor, and Digger fetches only from his, so P3's battery and banned
+  piece are the course's reward. `jam-run-check` climbs P1 to P3 with the keys and takes them, then climbs the
+  quarter's village to the highest roof a chain of jumps reaches.
 
 ## Acceptance
 

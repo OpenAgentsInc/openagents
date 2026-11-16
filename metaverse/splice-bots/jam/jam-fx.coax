@@ -1,0 +1,21 @@
+// The jam build's jump course on the game (GitHub #13653; the plan: docs/unreal/2026-11-16-splice-bots-jam-port-plan.md,
+// item 6). jam-rules.coax loads this file; nothing here acts outside the jam world (g[0].jam).
+//
+//   The jump course  The farm's three plateaus (P1 to P3: 1.0, 1.8 and 2.6 m) and the Greek quarter's hillside
+//                    village (L_SolarFarm_GreekQuarter, a route map of jam-world.coax) are the imported maps'
+//                    colliders: she jumps up them and stands on their tops. The course's reward is the battery
+//                    and the banned piece on P3: a pickup is hers only from its own floor (sjf_pick_near), and
+//                    Digger, who does not climb, fetches only from his.
+//
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "jam fx"
+
+SJF_PICK_LOW :: -0.5f32; SJF_PICK_TALL :: 1.9f32;   // m: she takes a pickup whose middle is between these over her feet (her body)
+SJF_DIG_RISE :: 1.5f32;       // m: Digger fetches a pickup on his floor (SpliceCompanionBrain: |dz| < 1.5 m)
+SJF_PICK_LIFT :: 0.55f32;     // m: a jam pickup's middle over its floor
+
+// ---- the jump course: whether a farm pickup is near enough to take (jam/jam-farm.coax sjx_step)
+sjf_pick_near :: (g: [] SpGame, a: SjActor) -> bool {
+  base := a.y - SJF_PICK_LIFT;
+  if dist2(g[0].px, g[0].pz, a.x, a.z) < SJX_PICK_REACH && a.y - sj_feet(g) > SJF_PICK_LOW && a.y - sj_feet(g) < SJF_PICK_TALL { return true; }
+  return g[0].bot && !d_down(g) && dist2(g[0].bot_x, g[0].bot_z, a.x, a.z) < d_range(g) && abs(sj_floor(g, g[0].bot_x, g[0].bot_z, 0, 0) - base) < SJF_DIG_RISE;
+}

@@ -1,0 +1,41 @@
+// The jam's jump course on the game (jam-fx.coax; #13653), on a small catalog written here: the farm with a
+// player start, a 1.0 m plateau and a 2.6 m one with a pickup on each, and the Greek quarter as its own map with
+// one block. No game content is in it; the real pack's course is metaverse/splice-bots/tools/jam-run-check.coax's.
+// splice-game.coax loads this file with `#load ... #test;`.
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "jam fx"
+SJF_CATALOG :: "world 1 jam-fx-test\ntitle Jam fx test\nmap 0 /Game/SpliceBots/World/Maps/L_SolarFarm\nmap 1 /Game/SpliceBots/World/Maps/L_SolarFarm_GreekQuarter\nmat 0 0.5 0.5 0.5 1 -1 0\nM s0 0 36 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nspawn 0 -800 0 -105 0\nspawn 1 -800 0 -105 0\nfall 0 -50\nfall 1 -50\nP 0 0 0 -13 -2 0 0 0 1 -790 1.55 -120 1 1 1 SpliceFarmPickup_1/Mesh\nP 0 0 0 -13 -2 0 0 0 1 -770 3.15 -120 1 1 1 SpliceFarmPickup_2/Mesh\ncol 0 box -791.5 0 -121.5 -788.5 1 -118.5 StaticMeshActor_1/C\ncol 0 box -773 0 -123 -767 2.6 -117 StaticMeshActor_2/C\ncol 1 box -812 0 -92 -808 1.2 -88 StaticMeshActor_3/C\n";
+
+sjf_start :: (g: [] SpGame, s: [] SjStore) {
+  #assert sj_load(s, SJF_CATALOG);
+  g_reset(g); if g[0].layer[0].st[0].n == 0 { _ := spw_shipped(g); }
+  sj_bind(g, s); g_reset(g);
+  #assert g_key(g, -2, true) && g_key(g, -2, true) && g[0].mode == M_PLAY && sjx_on(g);
+}
+sjf_hop :: (g: [] SpGame, tx: f32, tz: f32, secs: f32) {
+  k := [1] SpKeys.[SpKeys.{}];
+  for i: 0..<cast(int) (secs / 0.02) { _ := g_key(g, ' ', i % 30 < 15); if sp_keys_toward(g, k[..], tx, tz, 0.02) < 0.5 { break; } }
+  sp_keys_free(g); _ := g_key(g, ' ', false); for i: 0..<40 { g_step(g, 0.02); }
+}
+
+#test "jam fx: she jumps onto a plateau and takes its pickup there; one on a 2.6 m plateau is not hers from the ground, nor Digger's" #steps 3000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjf_start(g[..], s[..]);
+  #assert g[0].jr[0].map[SJ_GREEK] == 1 && g[0].jw_on[SJ_GREEK] && s[0].cols[SJ_GREEK].nw == 1;
+  x := g[0].jx[0]; #assert x.pick_n == 2;
+  // the high one: Digger beside it on the ground and she at its foot, a step after another: neither takes it
+  g[0].px = -774; g[0].pz = -120; g[0].bot_x = -774.5; g[0].bot_z = -121;
+  for i: 0..<20 { g[0].bot_x = -774.5; g[0].bot_z = -121; g_step(g[..], 0.02); }
+  #assert !g[0].jx[0].pick_taken[1] && sj_feet(g[..]) < 0.1;
+  // the low one: up onto its plateau with Space and W, standing on its top, and it is hers
+  g[0].px = -790; g[0].pz = -126; g[0].yaw = PI; g_bot_home(g[..]);
+  sjf_hop(g[..], -790, -120, 3);
+  #assert dist2(g[0].px, g[0].pz, -790, -120) < 1.6;
+  #assert sj_feet(g[..]) > 0.5;
+  #assert abs(sj_feet(g[..]) - 1.0) < 0.05;
+  #assert g[0].jx[0].pick_taken[0];
+  #assert sjx_count(g[..], g[0].jx[0].pick_item[0]) >= 1;
+  // the Greek quarter's block is a floor she stands on
+  g[0].px = -810; g[0].pz = -96; g[0].yaw = PI;
+  sjf_hop(g[..], -810, -90, 3);
+  #assert abs(sj_feet(g[..]) - 1.2) < 0.05;
+}

@@ -353,8 +353,7 @@ sjx_step :: (g: [] SpGame, dt: f32) {
     for i: 0..<x[0].pick_n {
       if x[0].pick_taken[i] { continue; }
       a := g[0].jr[0].actors[x[0].pick_actor[i]];
-      near := dist2(g[0].px, g[0].pz, a.x, a.z) < SJX_PICK_REACH || (g[0].bot && !d_down(g) && dist2(g[0].bot_x, g[0].bot_z, a.x, a.z) < d_range(g));
-      if !near { continue; }
+      if !sjf_pick_near(g, a) { continue; }   // from its own floor: P3's battery is hers only from P3's top (jam/jam-fx.coax)
       if sjx_give(g, sr_stack(x[0].pick_item[i], 1)) { x[0].pick_taken[i] = true; sj_actor_set(g[0].jr[..], x[0].pick_actor[i], false, a.x, a.y, a.z, 0); }
     }
   }

@@ -37,6 +37,7 @@
 #load "jam/jam-walk.coax";          // the jam world's route walk: every stop explained by what is drawn (#13653)
 #load "jam/jam-checks.coax" #test;
 #load "jam/jam-rules-checks.coax" #test;
+#load "jam/jam-fx-checks.coax" #test;
 #load "sound-checks.coax" #test;
 #load "layer-checks.coax" #test;   // the colliders' and the layer's checks
 #load "walk-checks.coax" #test;
