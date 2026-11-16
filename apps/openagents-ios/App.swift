@@ -101,6 +101,14 @@ import UIKit
         // Debug builds: `-OAPress nav.menu,drawer.scrim` presses those rows in turn after launch, as
         // VoiceOver would, so a screen can be reached and captured without a hand on the simulator.
         if let owner,!pressedAtLaunch {DispatchQueue.main.asyncAfter(deadline:.now()+0.8) { [weak self] in self?.chrome?.sample(owner)}}
+        // Debug builds: `-OAEdit "press:chat.composer|type:Hi|mark:ni|commit:に|paste:there|print"` plays edits through
+        // the platform editor that holds the keyboard, as a keyboard, an input method and Paste would,
+        // one step every 0.6 s, then prints what the editor and the page each hold (OA-EDIT lines).
+        if let script=UserDefaults.standard.string(forKey:"OAEdit"),!pressedAtLaunch {
+            for (i,step) in script.split(separator:"|").enumerated() {
+                DispatchQueue.main.asyncAfter(deadline:.now()+1.0+0.6*Double(i)) { [weak self] in self?.edit(String(step)) }
+            }
+        }
         if let ids=UserDefaults.standard.string(forKey:"OAPress"),!pressedAtLaunch {
             pressedAtLaunch=true
             for (i,id) in ids.split(separator:",").enumerated() {
@@ -113,6 +121,29 @@ import UIKit
         #endif
     }
     #if DEBUG
+    /// One step of -OAEdit on the editor that holds the keyboard.
+    private func edit(_ op:String) {
+        guard let owner else {return}
+        let parts=op.split(separator:":",maxSplits:1).map(String.init),verb=parts[0],arg=parts.count>1 ? parts[1]:""
+        let input:(UIResponder & UITextInput)?=editor.isFirstResponder ? editor:field.isFirstResponder ? field:nil
+        switch verb {
+        case "press":_ = oc_activate(owner,arg);step();step()
+        case "type":input?.insertText(arg)
+        case "mark":input?.setMarkedText(arg,selectedRange:NSRange(location:arg.utf16.count,length:0))
+        case "commit":input?.setMarkedText(arg,selectedRange:NSRange(location:arg.utf16.count,length:0));input?.unmarkText()
+        case "paste":UIPasteboard.general.string=arg;(input as? UIResponder)?.paste(nil)
+        case "select":if let input,let start=input.position(from:input.beginningOfDocument,offset:Int(arg) ?? 0) {input.selectedTextRange=input.textRange(from:start,to:start)}
+        default:break
+        }
+        // the platform's change events arrive on their own; the page reads the result on its next frame
+        if let t=input as? UITextView {textViewDidChange(t)} else if input===field {fieldChanged()}
+        step()
+        var page=[CChar](repeating:0,count:17000);_ = oc_text(owner,&page,Int32(page.count))
+        var fieldText=[CChar](repeating:0,count:512);_ = oc_field_text(owner,&fieldText,Int32(fieldText.count))
+        let held=input===field ? String(cString:fieldText):String(cString:page)
+        let text=(input as? UITextView)?.text ?? (input as? UITextField)?.text ?? ""
+        print("OA-EDIT \(op) focus \(focusID()) editor \"\(text)\" marked \(input?.markedTextRange != nil) page \"\(held)\" content \((input as? UITextField)?.textContentType?.rawValue ?? "-")")
+    }
     private var driveStarted=false
     private var pressedAtLaunch=false
     #endif
@@ -208,7 +239,8 @@ import UIKit
         AppServices.keepDraft(String(cString:bytes))
     }
     @objc private func fieldChanged() {
-        guard let owner else {return}
+        // an input method's provisional text stays the platform's until it is committed (one editing authority)
+        guard let owner,field.markedTextRange==nil else {return}
         if oc_set_field(owner,field.text ?? "")==0 {var bytes=[CChar](repeating:0,count:512);_ = oc_field_text(owner,&bytes,Int32(bytes.count));field.text=String(cString:bytes)}
         wake()
     }
@@ -217,7 +249,7 @@ import UIKit
     @discardableResult private func focus()->Bool {attachEditor();let took=editor.becomeFirstResponder();wake();return took}
     func textViewDidBeginEditing(_ textView:UITextView) {wake()}
     func textViewDidEndEditing(_ textView:UITextView) {editor.removeFromSuperview();if let owner,focusID()=="chat.composer" {oc_blur(owner)};wake()}
-    func textViewDidChange(_ textView:UITextView) {if let owner {_ = oc_set_text(owner,textView.text ?? "")};wake()}
+    func textViewDidChange(_ textView:UITextView) {if let owner,textView.markedTextRange==nil {_ = oc_set_text(owner,textView.text ?? "")};wake()}
     @objc private func keyboardMoved(_ note:Notification) {
         guard let end=(note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue,let window=view.window else {return}
         let inView=view.convert(end,from:window.screen.coordinateSpace)
