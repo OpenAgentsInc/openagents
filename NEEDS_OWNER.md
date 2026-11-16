@@ -1,5 +1,12 @@
 # Owner actions
 
+## Chat composer and transcript, build 1360 (2026-11-15)
+
+- [ ] Install TestFlight **1360** (verified in **Owner**) and compare the
+      composer, message bubbles and transcript against the Claude captures on
+      the phone. Shared layout, native composer and transcript tests passed;
+      complete visual parity and physical touch still need verification.
+
 ## Sidebar recents, build 1350 (2026-11-15)
 
 - [ ] Install TestFlight **1350** (verified in **Owner**) and compare the
