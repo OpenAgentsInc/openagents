@@ -1,0 +1,414 @@
+// Splice Bots rules: robot animation with no rig (SpliceRobotPose.h, package M-10): a pure rule from a
+// robot's state and its telegraph clock to a pose, an offset and a rotation for each named part. The game
+// eases toward the pose and moves the robot's part components. GDD 04 10.3 (the robots' clip lists), UE-AI-26
+// (every attack is a telegraph timeline: wind-up, lock, impact, recovery), UE-AI-29 (powered down: it slumps
+// and stays), UE-AI-45 (the dinosaur sleeps on its platform). The fewest poses that read: idle, move, attack
+// telegraph, the strike itself, powered down, asleep. Lead times are the rules' own: the boss's
+// sr_boss_telegraph_lead_seconds (sweep 1.2 s, charge 1.1 s, bite 0.7 s), SpliceChase's (0.80 s, then 0.65 s),
+// GDD 02 IMP_BLOW for the Imperial robot (wind 0.5 s plus lock 0.2 s), and an INFERRED wind-up for the drill.
+// Metres and degrees. Body frame: x ahead, y right, z up (Unreal's). Pitch + raises the front of a part; yaw +
+// turns x toward +y. f64 throughout (the C++ is f32 with double FVector offsets).
+#load "../../../metaverse-engine/core/math-d.coax";
+
+// ESpliceRobotBody: each has its own poses (GDD 04 10.3).
+SR_RP_IMPERIAL :: 0;     // the farm's 2.6 m biped (B-07)
+SR_RP_RAIDER_MECH :: 1;  // the desert mech (B-11): the two-claw combo with the hold between strikes
+SR_RP_DRILL_MECH :: 2;   // the garage mech (B-12): found dark, idle, walk, the drill
+SR_RP_DINOSAUR :: 3;     // the boss (B-10)
+SR_RP_BODY_COUNT :: 4;
+// ESpliceRobotPoseState. Which one wins when several apply is sr_rp_state_for's rule, not this order.
+SR_RP_IDLE :: 0; SR_RP_MOVE :: 1;
+SR_RP_TELEGRAPH :: 2;     // the wind-up and lock: from the telegraph event for its lead time
+SR_RP_STRIKE :: 3;        // the impact (and the drill mech's drilling)
+SR_RP_POWERED_DOWN :: 4;  // slumped, still
+SR_RP_ASLEEP :: 5;        // curled, still
+SR_RP_STATE_COUNT :: 6;
+// ESpliceRobotPart. A robot without a part simply has nothing bound to it.
+SR_RP_PART_BODY :: 0;   // the trunk; head, arms, tail and tool ride on it
+SR_RP_PART_HEAD :: 1; SR_RP_PART_ARM_L :: 2; SR_RP_PART_ARM_R :: 3;
+SR_RP_PART_LEG_L :: 4;  // a biped's left leg, a quadruped's front left
+SR_RP_PART_LEG_R :: 5;
+SR_RP_PART_LEG_BL :: 6; SR_RP_PART_LEG_BR :: 7;   // a quadruped's hind legs
+SR_RP_PART_TAIL :: 8;
+SR_RP_PART_TOOL :: 9;   // the drill mech's drill
+SR_RP_PART_COUNT :: 10;
+
+// GDD 02 IMP_BLOW: wind 0.5 s + lock 0.2 s before the release; impact 0.2 s.
+SR_RP_IMPERIAL_BLOW_LEAD_SECONDS :: 0.7;
+SR_RP_IMPERIAL_BLOW_IMPACT_SECONDS :: 0.2;
+// INFERRED: the drill mech braces and pulls its drill back for 0.6 s before it bites.
+SR_RP_DRILL_WIND_UP_SECONDS :: 0.6;
+// The least time a strike pose shows, so a 0.1 s impact still reads (INFERRED).
+SR_RP_MIN_STRIKE_SECONDS :: 0.25;
+
+// FSpliceRobotPartPose: offset in metres, body frame (for the body itself: the robot's frame); FRotator
+// degrees about the part's pivot.
+SrRobotPartPose :: struct { offset: D3; pitch: f64; yaw: f64; roll: f64; }
+SrRobotPose :: struct { state: int = SR_RP_IDLE; parts: [SR_RP_PART_COUNT] SrRobotPartPose; }
+// The telegraph clock: started by a telegraph event, advanced each tick.
+SrRobotTelegraph :: struct {
+  t: f64 = -1.0;       // s since the telegraph event; below 0: none running
+  lead: f64;           // s from the event to the impact (the rule's lead)
+  strike_seconds: f64; // s the strike pose holds after the impact
+  variant: int;        // which attack: the boss's SR_BOSS_ATTACK_*, the raider's strike index
+}
+// What the robot is doing now, as its own state says.
+SrRobotPoseInput :: struct {
+  asleep: bool;        // the dinosaur on its platform
+  powered_down: bool;  // 0 health (UE-AI-29), or the drill mech found dark with no core
+  speed: f64;          // m/s on the ground
+  phase: f64;          // rad, the stride (sr_rp_advance_phase)
+  time: f64;           // s, for the idle breath
+  hold_strike: bool;   // the drill mech while it drills: the strike pose holds past strike_seconds
+  telegraph: SrRobotTelegraph;
+}
+// Per robot: how fast it walks and how far a stride goes.
+SrRobotPoseTuning :: struct {
+  full_speed: f64 = 3.0;       // m/s at which the move pose is at full swing
+  stride: f64 = 1.4;           // m per whole stride (two steps)
+  move_threshold: f64 = 0.15;  // m/s: slower than this is idle
+  breath_rate: f64 = 1.6;      // rad/s of the idle breath
+}
+
+sr_rp_part_name :: (p: int) -> string {
+  return ifx p == SR_RP_PART_BODY then "Body" else ifx p == SR_RP_PART_HEAD then "Head" else ifx p == SR_RP_PART_ARM_L then "ArmL"
+    else ifx p == SR_RP_PART_ARM_R then "ArmR" else ifx p == SR_RP_PART_LEG_L then "LegL" else ifx p == SR_RP_PART_LEG_R then "LegR"
+    else ifx p == SR_RP_PART_LEG_BL then "LegBL" else ifx p == SR_RP_PART_LEG_BR then "LegBR" else ifx p == SR_RP_PART_TAIL then "Tail"
+    else ifx p == SR_RP_PART_TOOL then "Tool" else "None";
+}
+sr_rp_state_name :: (s: int) -> string {
+  return ifx s == SR_RP_IDLE then "Idle" else ifx s == SR_RP_MOVE then "Move" else ifx s == SR_RP_TELEGRAPH then "Telegraph"
+    else ifx s == SR_RP_STRIKE then "Strike" else ifx s == SR_RP_POWERED_DOWN then "PoweredDown" else ifx s == SR_RP_ASLEEP then "Asleep" else "None";
+}
+sr_rp_body_name :: (b: int) -> string {
+  return ifx b == SR_RP_IMPERIAL then "Imperial" else ifx b == SR_RP_RAIDER_MECH then "RaiderMech" else ifx b == SR_RP_DRILL_MECH then "DrillMech"
+    else ifx b == SR_RP_DINOSAUR then "Dinosaur" else "None";
+}
+
+// The tuning each robot is posed with (robots.csv and the rules: Imperial 3.0 m/s chase, the raider mech's
+// SB_RM_CHASE 16 m/s, the drill mech's 7 m/s, the boss's approach 2.4 m/s).
+sr_rp_tuning_for :: (body: int) -> SrRobotPoseTuning {
+  if body == SR_RP_RAIDER_MECH { return SrRobotPoseTuning.{full_speed = 16.0, stride = 6.0, breath_rate = 2.0}; }
+  if body == SR_RP_DRILL_MECH { return SrRobotPoseTuning.{full_speed = 7.0, stride = 3.2, breath_rate = 1.2}; }
+  if body == SR_RP_DINOSAUR { return SrRobotPoseTuning.{full_speed = 2.4, stride = 4.0, breath_rate = 0.9}; }
+  return SrRobotPoseTuning.{full_speed = 3.0, stride = 1.4, breath_rate = 1.6};
+}
+
+// A telegraph event: the clock starts at 0 now and runs lead, then the strike for strike_seconds (at least
+// SR_RP_MIN_STRIKE_SECONDS). A new event replaces a running one (the raider's second claw).
+sr_rp_start_telegraph :: (lead: f64, variant: int, strike_seconds: f64) -> SrRobotTelegraph {
+  return SrRobotTelegraph.{t = 0.0, lead = fmax(0.0, lead), strike_seconds = fmax(SR_RP_MIN_STRIKE_SECONDS, strike_seconds), variant = variant};
+}
+// Moves the clock on; it stops (t = -1) once the strike has run.
+sr_rp_advance_telegraph :: (clock: SrRobotTelegraph, dt: f64) -> SrRobotTelegraph {
+  c := clock;
+  if c.t < 0.0 { return c; }
+  c.t += fmax(0.0, dt);
+  if c.t >= c.lead + c.strike_seconds { c.t = -1.0; }
+  return c;
+}
+sr_rp_is_telegraphing :: (c: SrRobotTelegraph) -> bool { return c.t >= 0.0 && c.t < c.lead; }
+sr_rp_is_striking :: (c: SrRobotTelegraph) -> bool { return c.t >= c.lead && c.t < c.lead + c.strike_seconds; }
+
+// FMath::Fmod: the remainder with the sign of a.
+sr_rp_fmod :: (a: f64, b: f64) -> f64 { q := a / b; q = ifx q < 0.0 then -floor(-q) else floor(q); return a - b * q; }
+// The stride's phase moved on by the ground covered: 2 pi per stride.
+sr_rp_advance_phase :: (phase: f64, speed: f64, dt: f64, t: SrRobotPoseTuning) -> f64 {
+  return sr_rp_fmod(phase + TAU_D * fmax(0.0, speed) * fmax(0.0, dt) / fmax(0.05, t.stride), TAU_D);
+}
+// Which pose: asleep, then powered down, then the telegraph, then the strike (or a held strike), then moving
+// (speed at or above move_threshold), else idle.
+sr_rp_state_for :: (in: SrRobotPoseInput, t: SrRobotPoseTuning) -> int {
+  if in.asleep { return SR_RP_ASLEEP; }
+  if in.powered_down { return SR_RP_POWERED_DOWN; }
+  if sr_rp_is_telegraphing(in.telegraph) { return SR_RP_TELEGRAPH; }
+  if sr_rp_is_striking(in.telegraph) || in.hold_strike { return SR_RP_STRIKE; }
+  if in.speed >= t.move_threshold { return SR_RP_MOVE; }
+  return SR_RP_IDLE;
+}
+
+// Set(Pose, Part, Pitch, Yaw, Roll, Offset), with the C++'s defaults spelled out by three helpers.
+sr_rp_set :: (o: [] SrRobotPose, part: int, pitch: f64, yaw: f64, roll: f64, offset: D3) { o[0].parts[part] = SrRobotPartPose.{offset = offset, pitch = pitch, yaw = yaw, roll = roll}; }
+sr_rp_rot :: (o: [] SrRobotPose, part: int, pitch: f64, yaw: f64, roll: f64) { sr_rp_set(o, part, pitch, yaw, roll, D3_ZERO); }
+sr_rp_pitch :: (o: [] SrRobotPose, part: int, pitch: f64) { sr_rp_set(o, part, pitch, 0.0, 0.0, D3_ZERO); }
+sr_rp_smooth :: (x: f64) -> f64 { v := fclamp(x, 0.0, 1.0); return v * v * (3.0 - 2.0 * v); }
+// The wind-up's depth: 0.6 at the event (so the first frame already reads), full by half the lead (the lock).
+sr_rp_wind_amount :: (c: SrRobotTelegraph) -> f64 { half := fmax(0.05, 0.5 * c.lead); return 0.6 + 0.4 * sr_rp_smooth(fmax(0.0, c.t) / half); }
+sr_rp_move_amount :: (in: SrRobotPoseInput, t: SrRobotPoseTuning) -> f64 { return fclamp(in.speed / fmax(0.01, t.full_speed), 0.0, 1.0); }
+
+// ---- the Imperial robot (2.6 m biped). With the prototype's single model only the body moves, so the body
+// carries each pose on its own.
+sr_rp_imperial :: (o: [] SrRobotPose, state: int, in: SrRobotPoseInput, t: SrRobotPoseTuning) {
+  breath := sin(in.time * t.breath_rate);
+  if state == SR_RP_IDLE {
+    sr_rp_set(o, SR_RP_PART_BODY, 0.0, 0.0, 0.0, d3(0.0, 0.0, 0.015 * breath));
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 2.0 * breath, 0.0, -3.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_R, 2.0 * breath, 0.0, 3.0);
+  } else if state == SR_RP_MOVE {
+    a := fmax(0.35, sr_rp_move_amount(in, t)); sn := sin(in.phase);
+    sr_rp_set(o, SR_RP_PART_BODY, -8.0 * a, 4.0 * a * sn, 6.0 * a * sn, d3(0.0, 0.0, 0.08 * a * abs(sn)));
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 28.0 * a * sn);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, -28.0 * a * sn);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, -22.0 * a * sn, 0.0, -3.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_R, 22.0 * a * sn, 0.0, 3.0);
+    sr_rp_pitch(o, SR_RP_PART_HEAD, 3.0 * a);
+  } else if state == SR_RP_TELEGRAPH {
+    // IMP_BLOW's wind: the right arm up over its head, the body rocked back and twisted away, feet braced.
+    w := sr_rp_wind_amount(in.telegraph);
+    sr_rp_set(o, SR_RP_PART_BODY, 16.0 * w, -35.0 * w, -4.0 * w, d3(-0.1 * w, 0.0, 0.08 * w));
+    sr_rp_rot(o, SR_RP_PART_ARM_R, 160.0 * w, 0.0, 10.0 * w);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 35.0 * w, 0.0, -15.0 * w);
+    sr_rp_pitch(o, SR_RP_PART_HEAD, 12.0 * w);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 14.0 * w);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, -14.0 * w);
+  } else if state == SR_RP_STRIKE {
+    sr_rp_set(o, SR_RP_PART_BODY, -20.0, 25.0, 4.0, d3(0.3, 0.0, -0.05));
+    sr_rp_rot(o, SR_RP_PART_ARM_R, 70.0, 0.0, -5.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, -20.0, 0.0, -10.0);
+    sr_rp_pitch(o, SR_RP_PART_HEAD, -8.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 18.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, -18.0);
+  } else if state == SR_RP_POWERED_DOWN {
+    // Slumped where it fell: folded forward at the hips, head down, arms hanging slack, knees gone.
+    sr_rp_set(o, SR_RP_PART_BODY, -24.0, 0.0, 8.0, d3(0.0, 0.0, -0.35));
+    sr_rp_pitch(o, SR_RP_PART_HEAD, -30.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 12.0, 0.0, -10.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_R, 8.0, 0.0, 12.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 16.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, 10.0);
+  } else if state == SR_RP_ASLEEP {
+    // Curled: folded right down with its arms wrapped in.
+    sr_rp_set(o, SR_RP_PART_BODY, -35.0, 0.0, 0.0, d3(0.0, 0.0, -0.5));
+    sr_rp_pitch(o, SR_RP_PART_HEAD, -40.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 40.0, 0.0, 20.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_R, 40.0, 0.0, -20.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 40.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, 40.0);
+  }
+}
+
+// ---- the raider mech (claws, runs at 16 m/s). Strike 0 is the left claw, strike 1 the right (the combo alternates).
+sr_rp_raider :: (o: [] SrRobotPose, state: int, in: SrRobotPoseInput, t: SrRobotPoseTuning) {
+  breath := sin(in.time * t.breath_rate);
+  right := in.telegraph.variant % 2 == 1;
+  side := ifx right then 1.0 else -1.0;
+  lead := ifx right then SR_RP_PART_ARM_R else SR_RP_PART_ARM_L;
+  other := ifx right then SR_RP_PART_ARM_L else SR_RP_PART_ARM_R;
+  if state == SR_RP_IDLE {
+    sr_rp_set(o, SR_RP_PART_BODY, 0.0, 0.0, 0.0, d3(0.0, 0.0, 0.03 * breath));
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 8.0 + 2.0 * breath, 0.0, -6.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_R, 8.0 + 2.0 * breath, 0.0, 6.0);
+  } else if state == SR_RP_MOVE {
+    a := fmax(0.35, sr_rp_move_amount(in, t)); sn := sin(in.phase);
+    sr_rp_set(o, SR_RP_PART_BODY, -12.0 * a, 0.0, 4.0 * a * sn, d3(0.0, 0.0, 0.15 * a * abs(sn)));
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 38.0 * a * sn);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, -38.0 * a * sn);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 20.0 - 30.0 * a * sn, 0.0, -8.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_R, 20.0 + 30.0 * a * sn, 0.0, 8.0);
+    sr_rp_pitch(o, SR_RP_PART_HEAD, 8.0 * a);
+  } else if state == SR_RP_TELEGRAPH {
+    // The claw raised high and drawn back, the other up in guard, the body turned to the claw's side.
+    w := sr_rp_wind_amount(in.telegraph);
+    sr_rp_set(o, SR_RP_PART_BODY, 8.0 * w, -18.0 * w * side, -6.0 * w * side, d3(0.0, 0.0, 0.1 * w));
+    sr_rp_rot(o, lead, 150.0 * w, 0.0, 25.0 * w * side);
+    sr_rp_rot(o, other, 70.0 * w, 0.0, -10.0 * side);
+    sr_rp_pitch(o, SR_RP_PART_HEAD, 10.0 * w);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 15.0 * w);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, -15.0 * w);
+  } else if state == SR_RP_STRIKE {
+    // The claw swept down and across; the other stays up (the hold between strikes).
+    sr_rp_set(o, SR_RP_PART_BODY, -10.0, 22.0 * side, 4.0 * side, d3(0.2, 0.0, 0.0));
+    sr_rp_rot(o, lead, 55.0, 0.0, -35.0 * side);
+    sr_rp_rot(o, other, 90.0, 0.0, -10.0 * side);
+    sr_rp_pitch(o, SR_RP_PART_HEAD, -5.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 20.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, -20.0);
+  } else if state == SR_RP_POWERED_DOWN {
+    sr_rp_set(o, SR_RP_PART_BODY, -15.0, 0.0, -8.0, d3(0.0, 0.0, -0.8));
+    sr_rp_pitch(o, SR_RP_PART_HEAD, -25.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 30.0, 0.0, -20.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_R, 25.0, 0.0, 15.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 55.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, 45.0);
+  } else if state == SR_RP_ASLEEP {
+    sr_rp_set(o, SR_RP_PART_BODY, -30.0, 0.0, 0.0, d3(0.0, 0.0, -1.0));
+    sr_rp_pitch(o, SR_RP_PART_HEAD, -35.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 60.0, 0.0, 30.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_R, 60.0, 0.0, -30.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 70.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, 70.0);
+  }
+}
+
+// ---- the drill mech (4.6 m, a drill ahead)
+sr_rp_drill :: (o: [] SrRobotPose, state: int, in: SrRobotPoseInput, t: SrRobotPoseTuning) {
+  breath := sin(in.time * t.breath_rate);
+  if state == SR_RP_IDLE {
+    sr_rp_set(o, SR_RP_PART_BODY, 0.0, 0.0, 0.0, d3(0.0, 0.0, 0.02 * breath));
+    sr_rp_pitch(o, SR_RP_PART_TOOL, 2.0 * breath);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 4.0, 0.0, -4.0);
+  } else if state == SR_RP_MOVE {
+    a := fmax(0.35, sr_rp_move_amount(in, t)); sn := sin(in.phase);
+    sr_rp_set(o, SR_RP_PART_BODY, -4.0 * a, 0.0, 3.0 * a * sn, d3(0.0, 0.0, 0.1 * a * abs(sn)));
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 24.0 * a * sn);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, -24.0 * a * sn);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, -15.0 * a * sn, 0.0, -4.0);
+    sr_rp_pitch(o, SR_RP_PART_TOOL, 4.0 * a * sn);
+  } else if state == SR_RP_TELEGRAPH {
+    // Braced and leaning back, the drill raised and drawn back before it goes in.
+    w := sr_rp_wind_amount(in.telegraph);
+    sr_rp_set(o, SR_RP_PART_BODY, 8.0 * w, 0.0, 0.0, d3(-0.2 * w, 0.0, 0.1 * w));
+    sr_rp_set(o, SR_RP_PART_TOOL, 28.0 * w, 0.0, 0.0, d3(-0.6 * w, 0.0, 0.0));
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 60.0 * w, 0.0, -15.0 * w);
+    sr_rp_pitch(o, SR_RP_PART_HEAD, 6.0 * w);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 18.0 * w);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, -18.0 * w);
+  } else if state == SR_RP_STRIKE {
+    // Drilling: leaned in, the drill thrust ahead and spinning, the body shuddering.
+    shake := sin(in.time * 45.0);
+    sr_rp_set(o, SR_RP_PART_BODY, -10.0, 0.0, 1.5 * shake, d3(0.25, 0.0, 0.02 * shake));
+    sr_rp_set(o, SR_RP_PART_TOOL, -6.0, 0.0, sr_rp_fmod(in.time * 720.0, 360.0), d3(0.7, 0.0, 0.0));
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 30.0, 0.0, -10.0);
+    sr_rp_pitch(o, SR_RP_PART_HEAD, -6.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 15.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, -20.0);
+  } else if state == SR_RP_POWERED_DOWN {
+    // Found dark: slumped forward, the drill's nose on the floor.
+    sr_rp_set(o, SR_RP_PART_BODY, -18.0, 0.0, 5.0, d3(0.0, 0.0, -0.6));
+    sr_rp_pitch(o, SR_RP_PART_TOOL, -30.0);
+    sr_rp_pitch(o, SR_RP_PART_HEAD, -20.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 10.0, 0.0, -15.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 30.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, 22.0);
+  } else if state == SR_RP_ASLEEP {
+    sr_rp_set(o, SR_RP_PART_BODY, -30.0, 0.0, 0.0, d3(0.0, 0.0, -1.0));
+    sr_rp_pitch(o, SR_RP_PART_TOOL, -50.0);
+    sr_rp_pitch(o, SR_RP_PART_HEAD, -30.0);
+    sr_rp_rot(o, SR_RP_PART_ARM_L, 50.0, 0.0, 20.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 60.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, 60.0);
+  }
+}
+
+// ---- the dinosaur (13.5 m, lying on its platform). The stand-in is built lying down, so asleep is near its rest
+// and awake it rises. variant is SR_BOSS_ATTACK_*: 1 sweep, 2 charge, 3 bite (0: the sweep).
+sr_rp_dino :: (o: [] SrRobotPose, state: int, in: SrRobotPoseInput, t: SrRobotPoseTuning) {
+  breath := sin(in.time * t.breath_rate);
+  attack := in.telegraph.variant;
+  if state == SR_RP_IDLE {
+    sr_rp_set(o, SR_RP_PART_BODY, 0.0, 0.0, 0.0, d3(0.0, 0.0, 0.5 + 0.04 * breath));
+    sr_rp_pitch(o, SR_RP_PART_HEAD, 12.0 + 2.0 * breath);
+    sr_rp_rot(o, SR_RP_PART_TAIL, 2.0, 15.0 + 3.0 * breath, 0.0);
+  } else if state == SR_RP_MOVE {
+    a := fmax(0.35, sr_rp_move_amount(in, t)); sn := sin(in.phase);
+    sr_rp_set(o, SR_RP_PART_BODY, -2.0 * a, 0.0, 2.0 * a * sn, d3(0.0, 0.0, 0.5 + 0.12 * a * abs(sn)));
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 22.0 * a * sn);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, -22.0 * a * sn);
+    sr_rp_pitch(o, SR_RP_PART_LEG_BL, -22.0 * a * sn);
+    sr_rp_pitch(o, SR_RP_PART_LEG_BR, 22.0 * a * sn);
+    sr_rp_rot(o, SR_RP_PART_HEAD, 8.0 + 3.0 * sin(2.0 * in.phase), -4.0 * a * sn, 0.0);
+    sr_rp_rot(o, SR_RP_PART_TAIL, 2.0, 15.0 + 10.0 * a * sn, 0.0);
+  } else if state == SR_RP_TELEGRAPH {
+    w := sr_rp_wind_amount(in.telegraph);
+    if attack == 2 {
+      // Charge: head down, rocked back on its haunches, tail up.
+      sr_rp_set(o, SR_RP_PART_BODY, -8.0 * w, 0.0, 0.0, d3(-1.2 * w, 0.0, 0.5 - 0.3 * w));
+      sr_rp_pitch(o, SR_RP_PART_HEAD, -25.0 * w);
+      sr_rp_rot(o, SR_RP_PART_TAIL, -20.0 * w, 15.0, 0.0);
+      sr_rp_pitch(o, SR_RP_PART_LEG_L, -20.0 * w);
+      sr_rp_pitch(o, SR_RP_PART_LEG_R, -20.0 * w);
+    } else if attack == 3 {
+      // Bite: head pulled back and up, jaws ready.
+      sr_rp_set(o, SR_RP_PART_BODY, 5.0 * w, 0.0, 0.0, d3(-0.3 * w, 0.0, 0.5 + 0.1 * w));
+      sr_rp_set(o, SR_RP_PART_HEAD, 30.0 * w, 0.0, 0.0, d3(-0.5 * w, 0.0, 0.2 * w));
+      sr_rp_rot(o, SR_RP_PART_TAIL, 2.0, 15.0, 0.0);
+    } else {
+      // Tail sweep: crouched and twisted, the tail wound right round to the far side, raised high as it winds.
+      sr_rp_set(o, SR_RP_PART_BODY, 0.0, 12.0 * w, -4.0 * w, d3(0.0, 0.0, 0.5 - 0.15 * w));
+      sr_rp_rot(o, SR_RP_PART_TAIL, -22.0 * w, 15.0 + 55.0 * w, 0.0);
+      sr_rp_rot(o, SR_RP_PART_HEAD, 4.0, -20.0 * w, 0.0);
+      sr_rp_pitch(o, SR_RP_PART_LEG_BL, -12.0 * w);
+      sr_rp_pitch(o, SR_RP_PART_LEG_BR, 12.0 * w);
+    }
+  } else if state == SR_RP_STRIKE {
+    if attack == 2 {
+      sr_rp_set(o, SR_RP_PART_BODY, -8.0, 0.0, 0.0, d3(1.2, 0.0, 0.5));
+      sr_rp_pitch(o, SR_RP_PART_HEAD, -10.0);
+      sr_rp_rot(o, SR_RP_PART_TAIL, 10.0, 15.0, 0.0);
+      sr_rp_pitch(o, SR_RP_PART_LEG_L, 25.0);
+      sr_rp_pitch(o, SR_RP_PART_LEG_R, 25.0);
+    } else if attack == 3 {
+      sr_rp_set(o, SR_RP_PART_BODY, -6.0, 0.0, 0.0, d3(0.4, 0.0, 0.5));
+      sr_rp_set(o, SR_RP_PART_HEAD, -18.0, 0.0, 0.0, d3(0.8, 0.0, -0.1));
+      sr_rp_rot(o, SR_RP_PART_TAIL, 2.0, 15.0, 0.0);
+    } else {
+      sr_rp_set(o, SR_RP_PART_BODY, 0.0, -15.0, 4.0, d3(0.0, 0.0, 0.4));
+      sr_rp_rot(o, SR_RP_PART_TAIL, 4.0, -70.0, 0.0);
+      sr_rp_rot(o, SR_RP_PART_HEAD, 4.0, 15.0, 0.0);
+    }
+  } else if state == SR_RP_POWERED_DOWN {
+    // Kneels where it stands: rolled onto one side, head on the floor, tail limp.
+    sr_rp_set(o, SR_RP_PART_BODY, -5.0, 0.0, 10.0, d3(0.0, 0.0, -0.25));
+    sr_rp_rot(o, SR_RP_PART_HEAD, -20.0, -10.0, 0.0);
+    sr_rp_rot(o, SR_RP_PART_TAIL, -4.0, 10.0, 0.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_L, 30.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_R, 30.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_BL, -25.0);
+    sr_rp_pitch(o, SR_RP_PART_LEG_BR, -25.0);
+  } else if state == SR_RP_ASLEEP {
+    // Curled on the platform: head turned in toward the tail, tail wrapped further round, body down.
+    sr_rp_set(o, SR_RP_PART_BODY, 0.0, 0.0, 0.0, d3(0.0, 0.0, -0.05));
+    sr_rp_rot(o, SR_RP_PART_HEAD, -8.0, 25.0, 0.0);
+    sr_rp_rot(o, SR_RP_PART_TAIL, -2.0, -20.0, 0.0);
+  }
+}
+
+// The pose for a given state (the stills and the checks force one). Powered down and asleep hold still: nothing
+// that changes with time or the stride reaches them.
+sr_rp_pose_for_state :: (body: int, state: int, in: SrRobotPoseInput, t: SrRobotPoseTuning) -> SrRobotPose {
+  o := [1] SrRobotPose.[SrRobotPose.{state = state}];
+  use := in;
+  if state == SR_RP_POWERED_DOWN || state == SR_RP_ASLEEP { use = SrRobotPoseInput.{}; use.telegraph.variant = in.telegraph.variant; }
+  if body == SR_RP_IMPERIAL { sr_rp_imperial(o[..], state, use, t); }
+  else if body == SR_RP_RAIDER_MECH { sr_rp_raider(o[..], state, use, t); }
+  else if body == SR_RP_DRILL_MECH { sr_rp_drill(o[..], state, use, t); }
+  else if body == SR_RP_DINOSAUR { sr_rp_dino(o[..], state, use, t); }
+  return o[0];
+}
+sr_rp_pose_for :: (body: int, in: SrRobotPoseInput, t: SrRobotPoseTuning) -> SrRobotPose { return sr_rp_pose_for_state(body, sr_rp_state_for(in, t), in, t); }
+
+// FRotator::NormalizeAxis: into (-180, 180].
+sr_rp_norm_axis :: (a: f64) -> f64 { v := sr_rp_fmod(a, 360.0); if v < 0.0 { v += 360.0; } if v > 180.0 { v -= 360.0; } return v; }
+// from + (to - from) * alpha, part by part (rotations by the shortest path). The state is to's.
+sr_rp_blend :: (from: SrRobotPose, to: SrRobotPose, alpha: f64) -> SrRobotPose {
+  a := fclamp(alpha, 0.0, 1.0);
+  o := SrRobotPose.{state = to.state};
+  for i: 0..<SR_RP_PART_COUNT {
+    f := from.parts[i]; g := to.parts[i];
+    o.parts[i].offset = d3_add(f.offset, d3_scale(d3_sub(g.offset, f.offset), a));
+    o.parts[i].pitch = f.pitch + sr_rp_norm_axis(g.pitch - f.pitch) * a;
+    o.parts[i].yaw = f.yaw + sr_rp_norm_axis(g.yaw - f.yaw) * a;
+    o.parts[i].roll = f.roll + sr_rp_norm_axis(g.roll - f.roll) * a;
+  }
+  return o;
+}
+// How far toward the target pose to ease this frame: quick into a telegraph (so it reads at once), slow into a
+// slump. 1 - exp(-rate dt).
+sr_rp_ease_alpha :: (target: int, dt: f64) -> f64 {
+  rate := ifx target == SR_RP_TELEGRAPH then 20.0 else ifx target == SR_RP_STRIKE then 24.0 else ifx target == SR_RP_POWERED_DOWN then 4.0
+    else ifx target == SR_RP_ASLEEP then 2.0 else ifx target == SR_RP_MOVE then 12.0 else 8.0;
+  return 1.0 - exp(-rate * fmax(0.0, dt));
+}
+// The largest change between two poses on any part: metres of offset and degrees of rotation.
+SrRobotPoseDiff :: struct { metres: f64; degrees: f64; }
+sr_rp_part_degrees :: (a: SrRobotPartPose, b: SrRobotPartPose) -> f64 {
+  return fmax(abs(sr_rp_norm_axis(a.pitch - b.pitch)), fmax(abs(sr_rp_norm_axis(a.yaw - b.yaw)), abs(sr_rp_norm_axis(a.roll - b.roll))));
+}
+sr_rp_difference :: (a: SrRobotPose, b: SrRobotPose) -> SrRobotPoseDiff {
+  o: SrRobotPoseDiff;
+  for i: 0..<SR_RP_PART_COUNT {
+    o.metres = fmax(o.metres, d3_dist(a.parts[i].offset, b.parts[i].offset));
+    o.degrees = fmax(o.degrees, sr_rp_part_degrees(a.parts[i], b.parts[i]));
+  }
+  return o;
+}

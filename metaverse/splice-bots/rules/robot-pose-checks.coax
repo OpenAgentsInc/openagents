@@ -1,0 +1,128 @@
+// Parity checks for robot-pose.coax: SpliceTests/Rules/SpliceRobotPoseTests.cpp, every test ported. The
+// boss's leads and impacts come from boss.coax. SpliceChase is not ported yet: the raider's cases use its
+// values as literals (TelegraphLeadSeconds 0.80 s then 0.65 s, Impact 0.12 s; SpliceChase.h); a chase port
+// should swap them for its calls.
+// rules.coax loads this file with `#load ... #test;`.
+
+RP_CHASE_LEAD_FIRST :: 0.8;    // SpliceChase::TelegraphLeadSeconds(0)
+RP_CHASE_LEAD_SECOND :: 0.65;  // SpliceChase::TelegraphLeadSeconds(1)
+RP_CHASE_IMPACT :: 0.12;       // FSpliceChaseTuning::Impact
+
+// An input that puts the robot in state.
+rp_input_for :: (state: int, t: SrRobotPoseTuning) -> SrRobotPoseInput {
+  in := SrRobotPoseInput.{time = 1.3, phase = 0.5 * PI_D};
+  if state == SR_RP_MOVE { in.speed = t.full_speed; }
+  else if state == SR_RP_TELEGRAPH { in.telegraph = sr_rp_start_telegraph(1.0, 0, 0.3); in.telegraph.t = 0.5; }
+  else if state == SR_RP_STRIKE { in.telegraph = sr_rp_start_telegraph(1.0, 0, 0.3); in.telegraph.t = 1.1; }
+  else if state == SR_RP_POWERED_DOWN { in.powered_down = true; }
+  else if state == SR_RP_ASLEEP { in.asleep = true; }
+  return in;
+}
+
+#test "Splice.Rules.RobotPose.EachStateGivesItsPose" {
+  for body: 0..<SR_RP_BODY_COUNT {
+    t := sr_rp_tuning_for(body);
+    poses: [SR_RP_STATE_COUNT] SrRobotPose;
+    for s: 0..<SR_RP_STATE_COUNT {
+      in := rp_input_for(s, t);
+      #assert sr_rp_state_for(in, t) == s;
+      poses[s] = sr_rp_pose_for(body, in, t);
+      #assert poses[s].state == s;   // the pose carries its state
+    }
+    // Every two states differ visibly: 10 degrees on some part, or 10 cm.
+    for a: 0..<SR_RP_STATE_COUNT { for b: (a + 1)..<SR_RP_STATE_COUNT { d := sr_rp_difference(poses[a], poses[b]); #assert d.metres >= 0.1 || d.degrees >= 10.0; } }
+    // The telegraph is clearly not idle: its body alone (all the Imperial's single model can show) moves 10 deg.
+    idle := sr_rp_pose_for(body, rp_input_for(SR_RP_IDLE, t), t);
+    tg_in := rp_input_for(SR_RP_TELEGRAPH, t); tg_in.telegraph.t = 0.0;   // already on the event's own frame
+    tg := sr_rp_pose_for(body, tg_in, t);
+    body_deg := sr_rp_part_degrees(tg.parts[SR_RP_PART_BODY], idle.parts[SR_RP_PART_BODY]);
+    if body == SR_RP_IMPERIAL { #assert body_deg >= 10.0; }
+    d := sr_rp_difference(tg, idle);
+    #assert d.degrees >= 25.0 || d.metres >= 0.3;
+  }
+}
+
+RpCase :: struct { body: int; lead: f64; variant: int; strike: f64; }
+#test "Splice.Rules.RobotPose.TelegraphStartsAtEventAndLastsLead" {
+  bt: SrBossTuning;
+  cases := [7] RpCase.[
+    RpCase.{body = SR_RP_DINOSAUR, lead = sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_SWEEP, bt), variant = SR_BOSS_ATTACK_SWEEP, strike = bt.sweep_impact},
+    RpCase.{body = SR_RP_DINOSAUR, lead = sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_CHARGE, bt), variant = SR_BOSS_ATTACK_CHARGE, strike = bt.charge_rush},
+    RpCase.{body = SR_RP_DINOSAUR, lead = sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_BITE, bt), variant = SR_BOSS_ATTACK_BITE, strike = bt.bite_impact},
+    RpCase.{body = SR_RP_RAIDER_MECH, lead = RP_CHASE_LEAD_FIRST, variant = 0, strike = RP_CHASE_IMPACT},
+    RpCase.{body = SR_RP_RAIDER_MECH, lead = RP_CHASE_LEAD_SECOND, variant = 1, strike = RP_CHASE_IMPACT},
+    RpCase.{body = SR_RP_IMPERIAL, lead = SR_RP_IMPERIAL_BLOW_LEAD_SECONDS, variant = 0, strike = SR_RP_IMPERIAL_BLOW_IMPACT_SECONDS},
+    RpCase.{body = SR_RP_DRILL_MECH, lead = SR_RP_DRILL_WIND_UP_SECONDS, variant = 0, strike = 0.0}];
+  #assert abs(sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_SWEEP, bt) - 1.2) <= 0.0001;
+  #assert abs(RP_CHASE_LEAD_FIRST - 0.8) <= 0.0001;
+  #assert abs(SR_RP_IMPERIAL_BLOW_LEAD_SECONDS - 0.7) <= 0.0001;
+  dt := 1.0 / 120.0;
+  for c: cases {
+    t := sr_rp_tuning_for(c.body);
+    in: SrRobotPoseInput;
+    #assert sr_rp_state_for(in, t) == SR_RP_IDLE;   // before the event
+    in.telegraph = sr_rp_start_telegraph(c.lead, c.variant, c.strike);
+    #assert sr_rp_state_for(in, t) == SR_RP_TELEGRAPH;   // on the event's frame
+    tg_seconds := 0.0; strike_seconds := 0.0; first_not := -1.0; left := false; back := false;
+    clock := 0.0;
+    while clock < c.lead + 3.0 {
+      s := sr_rp_state_for(in, t);
+      if s == SR_RP_TELEGRAPH { tg_seconds += dt; if left { back = true; } }
+      else { if !left { first_not = clock; } left = true; if s == SR_RP_STRIKE { strike_seconds += dt; } }
+      in.telegraph = sr_rp_advance_telegraph(in.telegraph, dt);
+      clock += dt;
+    }
+    #assert abs(tg_seconds - c.lead) <= dt * 1.5;    // the telegraph lasts the lead
+    #assert abs(first_not - c.lead) <= dt * 1.5;     // it ends at the impact
+    #assert !back;                                   // one telegraph, not two
+    #assert abs(strike_seconds - fmax(SR_RP_MIN_STRIKE_SECONDS, c.strike)) <= dt * 1.5;   // then the strike
+    #assert sr_rp_state_for(in, t) == SR_RP_IDLE && in.telegraph.t < 0.0;               // then idle, the clock stopped
+  }
+  // A new event (the raider's second claw, during the first's strike) restarts the clock.
+  clk := sr_rp_start_telegraph(0.8, 0, 0.12);
+  clk = sr_rp_advance_telegraph(clk, 0.85);
+  #assert sr_rp_is_striking(clk);
+  clk = sr_rp_start_telegraph(0.65, 1, 0.12);
+  #assert sr_rp_is_telegraphing(clk) && clk.variant == 1;
+  // Powered down outranks a running telegraph (UE-AI-29: a hit to 0 cancels the attack).
+  dino := sr_rp_tuning_for(SR_RP_DINOSAUR);
+  pin: SrRobotPoseInput; pin.telegraph = sr_rp_start_telegraph(1.2, 1, 1.3); pin.powered_down = true;
+  #assert sr_rp_state_for(pin, dino) == SR_RP_POWERED_DOWN;
+  pin.asleep = true;
+  #assert sr_rp_state_for(pin, dino) == SR_RP_ASLEEP;
+  // The drill mech's drilling holds the strike past its time.
+  hin: SrRobotPoseInput; hin.hold_strike = true;
+  #assert sr_rp_state_for(hin, sr_rp_tuning_for(SR_RP_DRILL_MECH)) == SR_RP_STRIKE;
+}
+
+#test "Splice.Rules.RobotPose.PoweredDownAndAsleepHoldStill" {
+  stills := [2] int.[SR_RP_POWERED_DOWN, SR_RP_ASLEEP];
+  for body: 0..<SR_RP_BODY_COUNT {
+    t := sr_rp_tuning_for(body);
+    for st: stills {
+      a := rp_input_for(st, t);
+      first := sr_rp_pose_for(body, a, t);
+      worst_m := 0.0; worst_d := 0.0;
+      for i: 1..<51 {
+        b := a; b.time = 0.137 * cast(f64) i; b.phase = 0.71 * cast(f64) i; b.speed = 0.4 * cast(f64) i;   // dragged or pushed: still no stride
+        d := sr_rp_difference(first, sr_rp_pose_for(body, b, t));
+        worst_m = fmax(worst_m, d.metres); worst_d = fmax(worst_d, d.degrees);
+      }
+      #assert worst_m < 0.00001 && worst_d < 0.001;
+    }
+    // Idle and move do change with time: they are not frozen.
+    a := rp_input_for(SR_RP_MOVE, t); b := a; b.phase += 0.5 * PI_D;
+    #assert sr_rp_difference(sr_rp_pose_for(body, a, t), sr_rp_pose_for(body, b, t)).degrees >= 10.0;   // the stride moves the legs
+  }
+  // Easing: a slump eases in, a telegraph snaps (most of the way in 0.1 s).
+  #assert sr_rp_ease_alpha(SR_RP_TELEGRAPH, 0.1) > 0.8;
+  #assert sr_rp_ease_alpha(SR_RP_POWERED_DOWN, 0.1) < 0.4;
+  // Blend at 1 is the target; at 0 the start.
+  t := sr_rp_tuning_for(SR_RP_IMPERIAL);
+  from := sr_rp_pose_for(SR_RP_IMPERIAL, rp_input_for(SR_RP_IDLE, t), t);
+  to := sr_rp_pose_for(SR_RP_IMPERIAL, rp_input_for(SR_RP_POWERED_DOWN, t), t);
+  d1 := sr_rp_difference(sr_rp_blend(from, to, 1.0), to);
+  #assert d1.metres < 0.00001 && d1.degrees < 0.001;
+  d0 := sr_rp_difference(sr_rp_blend(from, to, 0.0), from);
+  #assert d0.metres < 0.00001 && d0.degrees < 0.001;
+}

@@ -46,6 +46,7 @@
 #load "trail.coax";
 #load "board.coax";
 #load "cab.coax";
+#load "robot-pose.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
@@ -77,3 +78,4 @@
 #load "trail-checks.coax" #test;
 #load "board-checks.coax" #test;
 #load "cab-checks.coax" #test;
+#load "robot-pose-checks.coax" #test;
