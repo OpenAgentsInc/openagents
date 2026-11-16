@@ -7,7 +7,10 @@
 //     field, each only while its field holds the keyboard. Which field holds it is the page's
 //     (kit/frame.coax's focus rule: a tap outside the focused field takes it away); this file
 //     shows the keyboard for that field and hides it when there is none;
-//   - VoiceOver: an element per semantic row; the Metal view itself is hidden from accessibility;
+//   - VoiceOver: the shared bridge (apps/shared/native/KitAccess.swift) reads the committed semantic
+//     rows; the Metal view itself is hidden from accessibility. The platform editor and the system
+//     controls stand for their own rows;
+//   - large text: the person's Dynamic Type size is the page's text zoom (oc_text_zoom);
 //   - the system controls over the page (GlassChrome.swift): the Liquid Glass menu button and the
 //     chips' picker as a popover, which the page keeps the rows of and does not paint;
 //   - the shared app core with its native services (AppCore.swift), attached to the page.
@@ -20,20 +23,21 @@ import UIKit
     }
 }
 
-@MainActor final class ChatScreen:UIViewController,UITextViewDelegate,UITextFieldDelegate {
+@MainActor final class ChatScreen:UIViewController,UITextViewDelegate,UITextFieldDelegate,KitAccessSource {
     private var owner:UnsafeMutableRawPointer?
     private var canvas:UIView?
     private var display:CADisplayLink?
     private var keyboard:CGFloat=0
-    private var stamp:Int32 = -1
-    private var rowIDs:[String]=[]
-    private var said=""
     private var draftRev:Int32 = -1
-    private lazy var field:FieldEditor={var s=[Float](repeating:0,count:14);_ = oc_style(&s);return FieldEditor(style:s)}()
+    private var access:KitAccess?
+    private var zoom:Float=1
+    /// The editors' style from the page's skin, at the text size the page draws.
+    private func style()->[Float] {var s=[Float](repeating:0,count:14);_ = oc_style(&s);s[0]*=zoom;s[1]*=zoom;return s}
+    private lazy var field:FieldEditor=FieldEditor(style:style())
     /// The shared app core and the native services it asks for.
     private var services:AppServices?
     private var chrome:GlassChrome?
-    private lazy var editor:ComposerEditor={var s=[Float](repeating:0,count:14);_ = oc_style(&s);return ComposerEditor(style:s)}()
+    private lazy var editor:ComposerEditor=ComposerEditor(style:style())
 
     override func viewDidLoad() {
         super.viewDidLoad();view.backgroundColor = .black;view.accessibilityIdentifier="chat.screen"
@@ -65,6 +69,8 @@ import UIKit
         oc_native(owner,1)
         let chrome=GlassChrome(on:self);self.chrome=chrome
         chrome.activate={ [weak self] id in guard let self,let owner=self.owner else {return false};let pressed=oc_activate(owner,id) != 0;self.wake();return pressed }
+        access=makeAccess()
+        textSize()
         field.delegate=self;field.addTarget(self,action:#selector(fieldChanged),for:.editingChanged)
         editor.delegate=self;editor.host=view;editor.attach={ [weak self] in self?.attachEditor() };editor.activate={ [weak self] in self?.focus() ?? false }
         let center=NotificationCenter.default
@@ -73,6 +79,7 @@ import UIKit
         center.addObserver(self,selector:#selector(background),name:UIApplication.willResignActiveNotification,object:nil)
         center.addObserver(self,selector:#selector(wake),name:UIApplication.didBecomeActiveNotification,object:nil)
         center.addObserver(self,selector:#selector(wake),name:UIAccessibility.reduceMotionStatusDidChangeNotification,object:nil)
+        center.addObserver(self,selector:#selector(textSize),name:UIContentSizeCategory.didChangeNotification,object:nil)
         DevGallery.install(on:self)
     }
     override func viewDidAppear(_ animated:Bool) {
@@ -137,7 +144,10 @@ import UIKit
         oc_frame(owner)
         services?.pump()
         if oc_action(owner)==1 {_ = focus()}
-        followFocus();placeEditor();refreshRows();keepDraft()
+        followFocus();placeEditor();access?.refresh();keepDraft()
+        #if DEBUG
+        dumpAccess()
+        #endif
         chrome?.sync(owner,rowsStamp:oc_rows_stamp(owner))
         // A static page sleeps: no frame runs until something wakes it.
         if oc_moving(owner)==0 {display?.isPaused=true}
@@ -215,42 +225,84 @@ import UIKit
     }
     @objc private func keyboardHid() {keyboard=0;wake()}
 
+    // MARK: large text
+
+    /// The person's text size (Dynamic Type) against the default, as the page's text zoom.
+    @objc private func textSize() {
+        guard let owner else {return}
+        let size=UITraitCollection(preferredContentSizeCategory:UIApplication.shared.preferredContentSizeCategory)
+        let want=Float(UIFontMetrics(forTextStyle:.body).scaledValue(for:17,compatibleWith:size)/17)
+        let now=oc_text_zoom(owner,want)
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey:"OAAccessDump") {print("OA-TEXT-SIZE \(UIApplication.shared.preferredContentSizeCategory.rawValue) wants \(want) draws \(now)")}
+        #endif
+        guard now != zoom else {return}
+        zoom=now
+        let s=style();field.restyle(s);editor.restyle(s);wake()
+    }
+
     // MARK: VoiceOver
 
-    /// Builds the accessibility elements from the committed semantic rows when any row changed.
-    private func refreshRows() {
-        guard let owner else {return}
-        let now=oc_rows_stamp(owner)
-        guard now != stamp else {return}
-        stamp=now
-        var elements:[Any]=[],names:[String]=[],notice=""
-        for i in 0..<oc_rows(owner) {
-            var row=[Float](repeating:0,count:7),id=[CChar](repeating:0,count:64),label=[CChar](repeating:0,count:256)
-            guard oc_row(owner,i,&row,&id,Int32(id.count),&label,Int32(label.count)) != 0 else {continue}
-            let name=String(cString:id),words=String(cString:label),state=Int(row[5]),role=Int(row[4])
-            let rect=CGRect(x:CGFloat(row[0]),y:CGFloat(row[1]),width:CGFloat(row[2]),height:CGFloat(row[3]))
-            names.append(name)
-            // the system controls stand for their own rows
-            if chrome != nil,GlassChrome.covers(name) {if name=="nav.menu",let chrome {elements.append(chrome.menu)};continue}
-            if role==3,name=="chat.composer" {
-                // The field is the platform editor: over the text while it has the keyboard, else standing for the field's row.
-                editor.box=rect;editor.accessibilityIdentifier=name;editor.accessibilityLabel=words;editor.placeholder=words
-                elements.append(editor);continue
-            }
-            let element=ChatRow(accessibilityContainer:view!)
-            element.accessibilityIdentifier=name;element.accessibilityLabel=words;element.accessibilityFrameInContainerSpace=rect
-            var traits:UIAccessibilityTraits=role==0||role==3 ? .button:.staticText
-            if role==9 {traits.insert(.header)}
-            if state & 1 != 0 {traits.insert(.notEnabled)}
-            if state & 1024 != 0 {notice=words}
-            element.accessibilityTraits=traits
-            if role==0||role==3 {element.activate={ [weak self] in guard let self,let owner=self.owner else {return false};let pressed=oc_activate(owner,name) != 0;self.wake();return pressed }}
-            elements.append(element)
-        }
-        view.accessibilityElements=elements
-        if names != rowIDs {rowIDs=names;UIAccessibility.post(notification:.layoutChanged,argument:nil)}
-        if notice != said {said=notice;if !notice.isEmpty {UIAccessibility.post(notification:.announcement,argument:notice)}}
+    var accessStamp:Int32 {owner.map {oc_rows_stamp($0)} ?? 0}
+    var accessLayer:Int {owner.map {Int(oc_layer($0))} ?? 0}
+    var accessCount:Int {owner.map {Int(oc_rows($0))} ?? 0}
+    func accessRow(_ i:Int)->KitRow? {
+        guard let owner else {return nil}
+        var row=[Float](repeating:0,count:8),id=[CChar](repeating:0,count:64),label=[CChar](repeating:0,count:4100),value=[CChar](repeating:0,count:256)
+        guard oc_row(owner,Int32(i),&row,&id,Int32(id.count),&label,Int32(label.count)) != 0 else {return nil}
+        _ = oc_row_value(owner,Int32(i),&value,Int32(value.count))
+        return KitRow(id:String(cString:id),label:String(cString:label),value:String(cString:value),role:Int(row[4]),state:Int(row[5]),parent:Int(row[6]),focus:Int(row[7]),
+            frame:CGRect(x:CGFloat(row[0]),y:CGFloat(row[1]),width:CGFloat(row[2]),height:CGFloat(row[3])))
     }
+    func accessActivate(_ id:String)->Bool {guard let owner else {return false};let pressed=oc_activate(owner,id) != 0;wake();return pressed}
+
+    /// The bridge over this page's rows. The platform editors and the system controls stand for their rows.
+    private func makeAccess()->KitAccess {
+        let access=KitAccess(container:view,source:self)
+        access.stand={ [weak self] row in
+            guard let self else {return .skip}
+            // the system controls stand for their own rows; the picker's popover is SwiftUI's own
+            if let chrome=self.chrome,GlassChrome.covers(row.id) {return row.id=="nav.menu" ? .view(chrome.menu):row.id=="login.back" ? .view(chrome.back):.skip}
+            if row.id=="chat.composer" {
+                // the composer is the platform editor: over the text while it has the keyboard, else standing for the field's row
+                self.editor.box=row.frame;self.editor.accessibilityIdentifier=row.id;self.editor.accessibilityLabel=row.label;self.editor.placeholder=row.label
+                return .view(self.editor)
+            }
+            // a login field that holds the keyboard is the platform field itself
+            if row.role==KitRole.field,self.field.isFirstResponder,self.focusID()==row.id {
+                self.field.accessibilityIdentifier=row.id;self.field.accessibilityLabel=row.label;return .view(self.field)
+            }
+            return .own
+        }
+        access.scroll={ [weak self] direction in
+            guard let self,let owner=self.owner else {return false}
+            let dir:Int32=direction == .up ? 1:direction == .down ? -1:0
+            guard dir != 0,oc_scroll_page(owner,dir) != 0 else {return false}
+            self.wake();UIAccessibility.post(notification:.pageScrolled,argument:nil);return true
+        }
+        // VoiceOver's escape: the open picker, the login card or the sidebar closes, as their own close does
+        access.escape={ [weak self] in
+            guard let self,let owner=self.owner,oc_layer(owner) != 0 else {return false}
+            for id in ["env.close","login.back","drawer.scrim"] where oc_activate(owner,id) != 0 {self.wake();return true}
+            return false
+        }
+        #if DEBUG
+        access.announced={print("OA-ANNOUNCE \($0)")}
+        #endif
+        return access
+    }
+    #if DEBUG
+    // Debug builds: `-OAAccessDump YES` prints the VoiceOver elements each time they change, between
+    // OA-ACCESS-BEGIN and OA-ACCESS-END lines (xcrun simctl launch --console-pty), so a check can read
+    // what VoiceOver reads.
+    private var dumped=""
+    private func dumpAccess() {
+        guard UserDefaults.standard.bool(forKey:"OAAccessDump"),let access else {return}
+        let now=access.dump()
+        guard now != dumped else {return}
+        dumped=now;print("OA-ACCESS-BEGIN layer \(accessLayer) zoom \(zoom)\n\(now)\nOA-ACCESS-END")
+    }
+    #endif
 }
 
 /// The display link's target, so the link does not keep the screen alive.
@@ -258,10 +310,4 @@ import UIKit
     weak var screen:ChatScreen?
     init(_ screen:ChatScreen) {self.screen=screen}
     @objc func tick() {screen?.step()}
-}
-
-/// A semantic row as VoiceOver sees it. Activation is the page's own press.
-private final class ChatRow:UIAccessibilityElement {
-    var activate:(()->Bool)?
-    override func accessibilityActivate()->Bool {activate?() ?? false}
 }

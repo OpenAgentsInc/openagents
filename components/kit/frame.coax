@@ -174,7 +174,54 @@ uiframe_semantic :: (f: [] UiFrame, id: string, role: int, label: string, x: f32
   elt_state(f[0].rows, i, bits);
   elt_action(f[0].rows, i, action);
   if uiframe_acts(role) { elt_focusable(f[0].rows, i); }
+  // a label longer than a row holds is kept whole for a screen reader
+  if label.count > f[0].rows[0].rows[i].label_n { uiframe_say_set(f, i, label); }
   return i;
+}
+
+// ---------------------------------------------------------------- what a screen reader speaks
+
+// A row's spoken text is its label until a component sets more: a message longer than a row's
+// label, an agent's message block by block. It is kept in the frame's sheet pool, so it lives
+// and commits with the paint of its generation (paint/surface.coax surface_say reads it). At
+// most UIFRAME_SAY bytes, cut at a character.
+UIFRAME_SAY :: 4096;
+uiframe_say_cut :: (text: string, room: int) -> int {
+  if room <= 0 { return 0; }
+  if text.count <= room { return text.count; }
+  n := room;
+  while n > 0 && (text[n] & 0xC0) == 0x80 { n -= 1; }
+  return n;
+}
+// Row i speaks `text` in place of its label. A row that was not kept (-1) is left alone.
+uiframe_say_set :: (f: [] UiFrame, i: int, text: string) {
+  t := f[0].rows;
+  if !elt_ok(t, i) || text.count == 0 || f[0].sheet.count == 0 { return; }
+  n := uiframe_say_cut(text, UIFRAME_SAY);
+  // a full pool is counted lost by the sheet, so the frame is refused and nothing is half kept
+  if sheet_pool(f[0].sheet, cast(string) text[0..<n]).count == 0 { return; }
+  t[0].rows[i].say_at = f[0].sheet[0].np - n; t[0].rows[i].say_n = n;
+}
+// Row i speaks `text` after what it speaks already, on a line of its own.
+uiframe_say :: (f: [] UiFrame, i: int, text: string) {
+  t := f[0].rows;
+  if !elt_ok(t, i) || text.count == 0 || f[0].sheet.count == 0 { return; }
+  sh := f[0].sheet; at := t[0].rows[i].say_at; had := t[0].rows[i].say_n;
+  if had == 0 { had = t[0].rows[i].label_n; }
+  if had == 0 { uiframe_say_set(f, i, text); return; }
+  n := uiframe_say_cut(text, UIFRAME_SAY - had - 1);
+  if n <= 0 { return; }
+  add := cast(string) text[0..<n];
+  // the spoken text ends the pool: it grows in place
+  if t[0].rows[i].say_n > 0 && at + had == sh[0].np {
+    if sheet_pool(sh, "\n").count == 0 || sheet_pool(sh, add).count == 0 { return; }
+    t[0].rows[i].say_n = had + 1 + n;
+    return;
+  }
+  start := sh[0].np;
+  first := ifx t[0].rows[i].say_n > 0 then sheet_pool(sh, cast(string) sh[0].pool[at..<at + had]) else sheet_pool(sh, cast(string) t[0].rows[i].label[0..<had]);
+  if first.count == 0 || sheet_pool(sh, "\n").count == 0 || sheet_pool(sh, add).count == 0 { return; }
+  t[0].rows[i].say_at = start; t[0].rows[i].say_n = had + 1 + n;
 }
 // A component's semantic row and its hit region, recorded together under
 // its id and box: uiframe_semantic, and for a role that acts a hit of kind

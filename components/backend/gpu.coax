@@ -356,7 +356,7 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
   display := gp_display(font);
   level := gp_level(a, color);
   v := at; pen := x; prev := -1; i := 0;
-  sub := cast(f32) GP_SUBPIXEL;
+  subs := ifx a[0].sub > 0 then a[0].sub else GP_SUBPIXEL; sub := cast(f32) subs;
   cols := a[0].fonts[font].cols; size := a[0].fonts[font].cell;
   while i < text.count {
     st := gp_step(a, font, text, i, prev);
@@ -369,7 +369,7 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
     if st.chip > 0 {
       v = paint_chip(out, v, a, d, font, st.chip - 1, pen, top, line_height, color);
     } else if st.glyph >= 0 && r.code != ' ' && r.code != 0xA0 {
-      cell := ifx display then st.glyph else (level * GP_SUBPIXEL + variant) * GP_GLYPHS + st.glyph;
+      cell := ifx display then st.glyph else (level * subs + variant) * GP_GLYPHS + st.glyph;
       tx := cast(f32) (cell % cols) * size;
       ty := a[0].fonts[font].y0 + cast(f32) (cell / cols) * size;
       v = paint_sprite(out, v, a, ox - a[0].fonts[font].pen_x, oy - a[0].fonts[font].pen_y, ox - a[0].fonts[font].pen_x + size, oy - a[0].fonts[font].pen_y + size, tx, ty, size, size, color);

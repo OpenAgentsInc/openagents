@@ -66,6 +66,7 @@ El :: struct {
   action: int;                         // the action a press dispatches (the app's numbers); 0: none
   focus: int;                          // its place in keyboard focus order, from 1; 0: the keyboard skips it
   clipped: bool; cl: f32; ct: f32; cr: f32; cb: f32;   // the clip it was recorded under: only that part can be pressed
+  say_at: int; say_n: int;             // the whole text a screen reader speaks, in its generation's sheet pool (kit/frame.coax uiframe_say); 0 bytes: the label
 }
 // What can be pressed or read of a row: its box cut by its clip.
 ElBox :: struct { x: f32; y: f32; w: f32; h: f32; visible: bool; }

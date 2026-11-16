@@ -333,16 +333,7 @@ ag_clamp :: (s: [] AppGallery) {
   if s[0].scroll > most { s[0].scroll = most; }
   if s[0].scroll < 0 { s[0].scroll = 0; }
 }
-ag_stamp :: (s: [] AppGallery) -> int {
-  t := [1] ElTable.[ag_rows(s)];
-  st := 17;
-  for i: 0..<t[0].n {
-    r := t[0].rows[i];
-    for c: elt_id(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
-    st = (st * 31 + r.state + 7 * el_round(r.y)) & 0x3fffffff;
-  }
-  return st;
-}
+ag_stamp :: (s: [] AppGallery) -> int { return surface_stamp(s[0].surface[..]); }
 // The block number in a code block's Copy id ("g.msg.agent.code.6.copy" is 6; another code block is 100).
 ag_code_block :: (id: string) -> int {
   head := "g.msg.agent.code.";
@@ -473,6 +464,20 @@ appgallery_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCAL
 appgallery_rows_stamp :: (s: [] AppGallery) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].stamp; }
 // Activating a row by id does what a tap does (VoiceOver, coax drive).
 appgallery_activate :: (s: [] AppGallery, id: string) -> bool #export_c #effects(all) { if s.count < 1 { return false; } return ag_press(s, surface_find(s[0].surface[..], id)); }
+// The committed rows for VoiceOver (apps/shared/native/KitAccess.swift): how many; row i in points
+// (paint/surface.coax surface_access_row: its visible box, role, state, parent and focus place);
+// its id, what a screen reader speaks and its value.
+appgallery_rows :: (s: [] AppGallery) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ag_rows(s).n; }
+appgallery_row :: (s: [] AppGallery, i: int, out: [] f32) -> bool #export_c #effects(all) { return s.count > 0 && surface_access_row(s[0].surface[..], i, ARCADE_PHONE_SCALE, out); }
+appgallery_row_id :: (s: [] AppGallery, i: int, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return el_put(out, 0, surface_id(s[0].surface[..], i)); }
+appgallery_row_say :: (s: [] AppGallery, i: int, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return el_put(out, 0, surface_say(s[0].surface[..], i)); }
+appgallery_row_value :: (s: [] AppGallery, i: int, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } t := [1] ElTable.[ag_rows(s)]; return el_put(out, 0, elt_value_of(t[..], i)); }
+// VoiceOver's scroll: the gallery a page down (dir 1) or up (-1). True when it moved.
+appgallery_scroll_page :: (s: [] AppGallery, dir: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !(s[0].view > 0) { return false; }
+  was := s[0].scroll; s[0].scroll += cast(f32) dir * s[0].view * 0.8; ag_clamp(s);
+  return s[0].scroll != was;
+}
 // coax drive: `tree` and `counts` over the committed rows. The answer's length, or -1.
 appgallery_drive :: (s: [] AppGallery, op: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }

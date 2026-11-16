@@ -46,6 +46,7 @@ CH_MOVE :: 8.0;     // layout units a touch travels before it scrolls instead of
 CH_ACT_NONE :: 0; CH_ACT_FOCUS :: 1;
 // The page's own actions start at 100: the login card's rows carry the flow's LF_ACT_ values (1 to 7).
 CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ENV :: 109; CH_HIT_REPO :: 110; CH_HIT_BACK :: 111;
+CH_ZOOM_MAX :: 1.6;  // the largest text size the page draws, against the default (the host's Dynamic Type)
 CH_SWIPE :: 30.0;   // layout units a swipe travels to close or open the drawer
 CH_EDGE :: 18.0;    // the left edge a swipe that opens the drawer starts in
 
@@ -81,6 +82,9 @@ ChatPage :: struct {
   // the host draws the menu button and the chips' picker as system controls (chat_native): the
   // page keeps their rows and hits for VoiceOver and the driver, and paints neither
   native: bool; page_w: f32; menu_x: f32; menu_y: f32; menu_side: f32;
+  // the text size the person chose (Dynamic Type), against the default: 1 to CH_ZOOM_MAX. The
+  // whole page draws larger, as Display Zoom does, so every component scales with its text.
+  zoom: f32;
 }
 
 ch_init :: (s: [] ChatPage) {
@@ -97,6 +101,8 @@ ch_init :: (s: [] ChatPage) {
   lf_begin(s[0].lf[..]);
   s[0].env[0] = es_new();
 }
+// Points a layout unit takes: the phone's scale, times the text size.
+ch_u :: (s: [] ChatPage) -> f32 { return ARCADE_PHONE_SCALE * (ifx s[0].zoom > 1 then s[0].zoom else 1.0f32); }
 ch_focus :: (s: [] ChatPage) -> string { return cast(string) s[0].focus[0..<s[0].focus_n]; }
 ch_login_field :: (id: string) -> int { return ifx id == "login.email" then LF_FIELD_EMAIL else ifx id == "login.code" then LF_FIELD_CODE else LF_FIELD_NONE; }
 // The flow over the core, after anything that may have moved either.
@@ -144,7 +150,7 @@ ch_rows :: (s: [] ChatPage) -> ElTable { return surface_rows(ch_live(s)); }
 
 ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   k := f[0].skin; a := k.app;
-  u: f32 = ARCADE_PHONE_SCALE;
+  u := ch_u(s);
   top := s[0].safe_top / u;
   // the composer docks over the keyboard (or the safe area); the transcript starts under the navigation button
   under := ifx s[0].keyboard > s[0].safe_bottom then s[0].keyboard else s[0].safe_bottom;
@@ -177,7 +183,7 @@ ch_menu_row :: (s: [] ChatPage, f: [] UiFrame, x: f32, y: f32) {
 }
 // The cover: the chips' picker or the login card over a dimmed page, and the sidebar.
 ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
-  k := f[0].skin; u: f32 = ARCADE_PHONE_SCALE; top := s[0].safe_top / u;
+  k := f[0].skin; u := ch_u(s); top := s[0].safe_top / u;
   if ch_picking(s) {
     // a press beside the picker closes it (es_press "env.scrim")
     if !s[0].native { sheet_fill(f[0].sheet, 0, 0, w, h, 0, opacity(Rgba.{r = 0, g = 0, b = 0, a = 1}, APP_SIDEBAR_DIM)); }
@@ -213,10 +219,16 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
 // The login page: the whole screen over the chat, its Back button where the menu button was, and the
 // login flow's form under it. It holds every press while it shows.
 ch_login_page :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
-  k := f[0].skin; u: f32 = ARCADE_PHONE_SCALE; top := s[0].safe_top / u; l := s[0].lf[..];
+  k := f[0].skin; u := ch_u(s); top := s[0].safe_top / u; l := s[0].lf[..];
   sheet_fill(f[0].sheet, 0, 0, w, h, 0, k.canvas);
   _ := uiframe_semantic(f, "login.page", EL_REGION, "Log in", 0, 0, w, h, 0, 0);
-  _ := app_icon_button(f, "login.back", s[0].menu_x, top + 4 / u, ICON_BACK, "Back", APP_BUTTON_DEFAULT, 0, CH_HIT_BACK);
+  // with chat_native the host draws Back as a Liquid Glass button where the menu button stands
+  // (GlassChrome.swift): the page keeps its row and hit and paints nothing
+  if s[0].native {
+    side := k.app.nav; by := top + 4 / u;
+    row := uiframe_semantic(f, "login.back", EL_BUTTON, "Back", s[0].menu_x, by, side, side, 0, CH_HIT_BACK);
+    sheet_hit(f[0].sheet, UIFRAME_HIT, row, 0, s[0].menu_x, by, side, side);
+  } else { _ := app_icon_button(f, "login.back", s[0].menu_x, top + 4 / u, ICON_BACK, "Back", APP_BUTTON_DEFAULT, 0, CH_HIT_BACK); }
   cw := ifx w - 32 / u > 480 then 480.0f32 else w - 32 / u;
   _ := lf_card(f, l, (w - cw) / 2, top + 4 / u + k.app.icon_button + 24 / u, cw, s[0].focused && ch_login_field(ch_focus(s)) != LF_FIELD_NONE);
 }
@@ -226,19 +238,7 @@ ch_login_close :: (s: [] ChatPage) -> bool {
   if ch_login_field(ch_focus(s)) != LF_FIELD_NONE { s[0].focus_n = 0; }
   return done || !l[0].open;
 }
-ch_stamp :: (s: [] ChatPage) -> int {
-  t := [1] ElTable.[ch_rows(s)];
-  st := 17;
-  for i: 0..<t[0].n {
-    r := t[0].rows[i];
-    for c: elt_id(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
-    for c: elt_label(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
-    for c: elt_value_of(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
-    st = (st * 31 + r.state) & 0x3fffffff;
-    st = (st * 31 + el_round(r.x) + 7 * el_round(r.y) + 13 * el_round(r.w) + 17 * el_round(r.h)) & 0x3fffffff;
-  }
-  return st;
-}
+ch_stamp :: (s: [] ChatPage) -> int { return surface_stamp(ch_live(s)); }
 // A press on a committed row. Send does nothing yet.
 ch_press :: (s: [] ChatPage, row: int) -> bool {
   sf := ch_live(s); act := surface_action(sf, row); l := s[0].lf[..];
@@ -293,7 +293,7 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
   if s.count < 1 || width < 1 || height < 1 { return 0; }
   if !s[0].ready { ch_init(s); }
   a := s[0].atlas[..];
-  d := (ifx dpr < 1 then 1.0f32 else dpr) * ARCADE_PHONE_SCALE;
+  d := (ifx dpr < 1 then 1.0f32 else dpr) * ch_u(s);
   w := width / d; h := height / d; s[0].page_w = w;
   s[0].d = d;
   t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
@@ -407,7 +407,7 @@ chat_field_box :: (s: [] ChatPage, out: [] f32) -> bool #export_c #effects(all) 
   if s.count < 1 || out.count < 4 || ch_login_field(ch_focus(s)) == LF_FIELD_NONE { return false; }
   t := [1] ElTable.[ch_rows(s)]; i := elt_find(t[..], ch_focus(s));
   if i < 0 { return false; }
-  r := t[0].rows[i]; u: f32 = ARCADE_PHONE_SCALE;
+  r := t[0].rows[i]; u := ch_u(s);
   out[0] = r.x * u; out[1] = r.y * u; out[2] = r.w * u; out[3] = r.h * u;
   return true;
 }
@@ -442,7 +442,7 @@ chat_editor :: (s: [] ChatPage, out: [] f32) -> bool #export_c #effects(all) {
   t := [1] ElTable.[surface_rows(ch_sf(s, 0))];
   i := elt_find(t[..], "chat.composer");
   if i < 0 { return false; }
-  b := s[0].box; u: f32 = ARCADE_PHONE_SCALE;
+  b := s[0].box; u := ch_u(s);
   out[0] = (t[0].rows[i].x + b.text_x) * u; out[1] = (t[0].rows[i].y + b.text_y) * u; out[2] = b.text_w * u; out[3] = b.text_h * u;
   out[4] = b.inset * u; out[5] = b.line * u;
   return true;
@@ -463,6 +463,13 @@ chat_moving :: (s: [] ChatPage) -> bool #export_c #effects(all) { return s.count
 chat_refused :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
 chat_max_vertices :: () -> int #export_c #effects(all) { return CH_MAX_VERTICES; }
 chat_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCALE; }
+// The text size the person chose against the default (the host's Dynamic Type), kept to 1 to
+// CH_ZOOM_MAX. Returns the size the page draws at; the host rasterizes the atlas at its scale.
+chat_text_zoom :: (s: [] ChatPage, zoom: f32) -> f32 #export_c #effects(all) {
+  if s.count < 1 { return 1; }
+  s[0].zoom = ifx !(zoom > 1) then 1.0f32 else ifx zoom > CH_ZOOM_MAX then CH_ZOOM_MAX else zoom;
+  return s[0].zoom;
+}
 
 // ---- the system controls the host draws over the page (chat_native)
 
@@ -473,7 +480,7 @@ chat_native :: (s: [] ChatPage, on: bool) #export_c #effects(all) { if s.count >
 // 1 when the sidebar is open and 1 when it hides (the login card covers the page).
 chat_menu :: (s: [] ChatPage, out: [] f32) -> bool #export_c #effects(all) {
   if s.count < 1 || out.count < 6 || !(s[0].menu_side > 0) { return false; }
-  u: f32 = ARCADE_PHONE_SCALE;
+  u := ch_u(s);
   out[0] = s[0].menu_x * u; out[1] = s[0].menu_y * u; out[2] = s[0].menu_side * u;
   out[3] = app_sidebar_shift(s[0].page_w, s[0].share) * u;
   out[4] = ifx s[0].drawer then 1.0f32 else 0.0f32; out[5] = ifx s[0].lf[0].open then 1.0f32 else 0.0f32;
@@ -484,7 +491,7 @@ chat_sheet :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 |
 // A committed row's box in points, on either layer (a chip the popover points at).
 chat_find :: (s: [] ChatPage, id: string, out: [] f32) -> bool #export_c #effects(all) {
   if s.count < 1 || out.count < 4 { return false; }
-  u: f32 = ARCADE_PHONE_SCALE;
+  u := ch_u(s);
   for layer: 0..<2 {
     t := [1] ElTable.[surface_rows(ch_sf(s, layer))]; i := elt_find(t[..], id);
     if i < 0 { continue; }
@@ -498,18 +505,23 @@ chat_find :: (s: [] ChatPage, id: string, out: [] f32) -> bool #export_c #effect
 
 chat_rows :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ch_rows(s).n; }
 chat_rows_stamp :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].stamp; }
-// Row i: its box in points, its role (components/core/elements.coax EL_*), its state (EL_S_* bits) and its parent.
+// Row i in points (paint/surface.coax surface_access_row): the part of its box its clips leave,
+// its role (components/core/elements.coax EL_*), its state (EL_S_* bits), its parent and its focus place.
 chat_row :: (s: [] ChatPage, i: int, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 7 { return false; }
-  t := [1] ElTable.[ch_rows(s)];
-  if !elt_ok(t[..], i) { return false; }
-  r := t[0].rows[i]; u: f32 = ARCADE_PHONE_SCALE;
-  out[0] = r.x * u; out[1] = r.y * u; out[2] = r.w * u; out[3] = r.h * u;
-  out[4] = cast(f32) r.role; out[5] = cast(f32) r.state; out[6] = cast(f32) r.parent;
-  return true;
+  if s.count < 1 { return false; }
+  return surface_access_row(ch_live(s), i, ch_u(s), out);
 }
 chat_row_id :: (s: [] ChatPage, i: int, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } t := [1] ElTable.[ch_rows(s)]; return ch_out(out, elt_id(t[..], i)); }
-chat_row_label :: (s: [] ChatPage, i: int, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } t := [1] ElTable.[ch_rows(s)]; return ch_out(out, elt_label(t[..], i)); }
+// What a screen reader speaks for row i: its whole text (kit/frame.coax uiframe_say), or its label.
+chat_row_label :: (s: [] ChatPage, i: int, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ch_out(out, surface_say(ch_live(s), i)); }
+// The layer the rows are of: 0 the page, 1 what covers it (the sidebar, the login card, the picker).
+chat_layer :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 || !s[0].ready { return 0; } return ch_layer(s); }
+// VoiceOver's scroll: the transcript a page up (dir 1, toward the latest) or down (-1). True when it moved.
+chat_scroll_page :: (s: [] ChatPage, dir: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready || ch_layer(s) != 0 || s[0].view[0].viewport <= 0 { return false; }
+  view_scroll(s[0].view[..], cast(f32) dir * s[0].view[0].viewport * 0.8);
+  return true;
+}
 // Row i's value: what a picker's row says under its name.
 chat_row_value :: (s: [] ChatPage, i: int, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } t := [1] ElTable.[ch_rows(s)]; return ch_out(out, elt_value_of(t[..], i)); }
 chat_activate :: (s: [] ChatPage, id: string) -> bool #export_c #effects(all) { if s.count < 1 { return false; } return ch_press(s, surface_find(ch_live(s), id)); }
@@ -642,6 +654,24 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   _ := chat_pointer(s[..], 600, 60, 0); _ := chat_pointer(s[..], 600, 60, 2);
   #assert !ch_picking(s[..]);
   saved: [256] u8; _ := chat_env_save(s[..], saved[..]);
+}
+
+#test "chat page, VoiceOver and large text: rows read in points; a larger text size draws the page larger, up to its limit" #steps 2000000000 {
+  s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
+  _ := ch_test_frame(s[..], o[..]);
+  i := surface_find(ch_live(s[..]), "nav.menu");
+  row: [8] f32; #assert i >= 0 && chat_row(s[..], i, row[..]) && cast(int) row[4] == EL_BUTTON && row[7] > 0 && chat_layer(s[..]) == 0;
+  #assert chat_text_zoom(s[..], 9) == CH_ZOOM_MAX && chat_text_zoom(s[..], 0.5) == 1 && chat_text_zoom(s[..], 1.35) == 1.35f32;
+  _ = ch_test_frame(s[..], o[..]);
+  i = surface_find(ch_live(s[..]), "nav.menu"); big: [8] f32;
+  #assert chat_row(s[..], i, big[..]) && big[2] > row[2] * 1.3 && abs(big[1] - row[1]) < 0.01 && chat_refused(s[..]) == 0;
+}
+#test "chat page, system controls: the login page keeps Back's row and paints no Back; it is the layer VoiceOver reads" #steps 2000000000 {
+  s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
+  chat_native(s[..], true); _ := ch_test_frame(s[..], o[..]); lf_t_out(s[0].lf[..]); lf_open(s[0].lf[..]); ch_step(s[..]); _ = ch_test_frame(s[..], o[..]);
+  #assert chat_layer(s[..]) == 1 && surface_find(ch_live(s[..]), "login.back") >= 0 && surface_find(ch_live(s[..]), "login.email") >= 0;
+  m: [6] f32; #assert chat_menu(s[..], m[..]) && m[5] == 1;
+  #assert chat_activate(s[..], "login.back") && !s[0].lf[0].open && chat_layer(s[..]) == 0;
 }
 
 #test "chat page, system controls: the menu button and the picker keep their rows and hits, and paint nothing; the host reads the picker's rows and the chip it points at" #steps 2000000000 {

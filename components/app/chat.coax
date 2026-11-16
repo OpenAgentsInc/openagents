@@ -139,7 +139,9 @@ app_code :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, lang: string, co
 app_message_agent :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, blocks: int, copied: int, copy_action: int) -> f32 {
   s := f[0].skin; sh := f[0].sheet; m := f[0].m;
   k := uiframe_key(f, id); from := app_sheet_mark(f);
-  row := uiframe_semantic(f, id, EL_TEXT, ifx blocks > 0 then md_block_text(doc, 0) else "", x, y, w, s.md.line, 0, 0);
+  // a screen reader hears the whole message, block by block, and a new reply is announced (EL_S_LIVE)
+  row := uiframe_semantic(f, id, EL_TEXT, ifx blocks > 0 then md_block_text(doc, 0) else "", x, y, w, s.md.line, EL_S_LIVE, 0);
+  for b: 1..<blocks { if doc[0].blocks[b].kind != MB_RULE { uiframe_say(f, row, md_block_text(doc, b)); } }
   uiframe_open(f, row);
   h: f32 = 0;
   for b: 0..<blocks {

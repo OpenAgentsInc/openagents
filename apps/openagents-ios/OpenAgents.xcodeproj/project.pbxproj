@@ -14,6 +14,7 @@
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
 		4BD534419A18D33EAA0A7955 /* AppWake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9389244D4DF6F9694B96642C /* AppWake.swift */; };
 		4F06476208B2F575C6678AAB /* GlassChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2DDF0D85022AFB3A1EE6365 /* GlassChrome.swift */; };
+		4F98D1706FADE33ADACD9EF8 /* KitAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6814741495C5632686563D9 /* KitAccess.swift */; };
 		5DDDFC88C8FA34C1DF663BB1 /* DevGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9738192D7078650DA6AC16FA /* DevGallery.swift */; };
 		6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0AAC9508FA4369A9715A69 /* AppAuth.swift */; };
 		7113DF6985BD789F6BF1BDE7 /* KitEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0368202C3F17310FAA5C61 /* KitEditor.swift */; };
@@ -45,6 +46,7 @@
 		97F8922AB2F3371989FB21C4 /* AppDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDevice.swift; sourceTree = "<group>"; };
 		9B5B40FB5A03D1054E56FC0E /* AppAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAccount.swift; sourceTree = "<group>"; };
 		9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
+		A6814741495C5632686563D9 /* KitAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitAccess.swift; sourceTree = "<group>"; };
 		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
 		C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ComponentsHost.m; sourceTree = "<group>"; };
 		D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "phone-drive.c"; sourceTree = "<group>"; };
@@ -91,6 +93,7 @@
 				62F39B1A4B1714CD2CBBCE87 /* AppEffects.swift */,
 				1C02A25433276C58798C0279 /* AppHTTP.swift */,
 				9389244D4DF6F9694B96642C /* AppWake.swift */,
+				A6814741495C5632686563D9 /* KitAccess.swift */,
 				FB0368202C3F17310FAA5C61 /* KitEditor.swift */,
 			);
 			name = native;
@@ -218,6 +221,7 @@
 				5DDDFC88C8FA34C1DF663BB1 /* DevGallery.swift in Sources */,
 				D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */,
 				4F06476208B2F575C6678AAB /* GlassChrome.swift in Sources */,
+				4F98D1706FADE33ADACD9EF8 /* KitAccess.swift in Sources */,
 				7113DF6985BD789F6BF1BDE7 /* KitEditor.swift in Sources */,
 				2DA485D5475D62C7827367D5 /* gallery.c in Sources */,
 				356C79ECD7093B4A053F18F7 /* main.c in Sources */,

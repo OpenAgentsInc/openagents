@@ -34,6 +34,7 @@ RaTile :: struct { x: int; y: int; size: int; }
 // Where everything is in the atlas, for one device scale.
 RaPlan :: struct {
   dpr: f32; width: int; height: int;
+  sub: int;                  // subpixel offsets of a body face's glyphs (0: GP_SUBPIXEL)
   slots: [GP_FONTS] RaSlot;
   tiles: [GP_ICONS] RaTile; icons: int;
   dyn_cell: int; dyn_pen_x: int; dyn_pen_y: int; dyn_y0: int; dyn_cols: int;
@@ -53,16 +54,22 @@ ra_round :: (v: f32) -> int { return cast(int) floor(v + 0.5); }
 // 4096-wide atlas is 10,869 rows, past the iOS simulator's 8,192, and at 8,192
 // wide it is about half that. Whether it fits; when nothing does, the plan is
 // the widest one, too tall, and the host must not make a texture of it.
+// When no width fits, the plan keeps one subpixel offset for the body faces (a quarter of their
+// cells), so a scale past 3.6 (large text on a 3x phone) still fits.
 ra_plan_max :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32, max_side: int) -> bool {
-  width := RA_WIDTH;
-  while true {
-    ra_plan_at(p, dpr, sizes, icon_sizes, width);
-    if p[0].height <= max_side && p[0].color_height <= max_side && width <= max_side { return true; }
-    if width * 2 > max_side { return false; }
-    width *= 2;
+  for sub: 0..<2 {
+    p[0].sub = ifx sub == 0 then GP_SUBPIXEL else 1;
+    width := RA_WIDTH;
+    while true {
+      ra_plan_at(p, dpr, sizes, icon_sizes, width);
+      if p[0].height <= max_side && p[0].color_height <= max_side && width <= max_side { return true; }
+      if width * 2 > max_side { break; }
+      width *= 2;
+    }
   }
   return false;
 }
+ra_sub :: (p: [] RaPlan) -> int { return ifx p[0].sub > 0 then p[0].sub else GP_SUBPIXEL; }
 ra_plan :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32) -> bool { return ra_plan_max(p, dpr, sizes, icon_sizes, RA_MAX_SIDE); }
 ra_plan_at :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32, width: int) {
   p[0].dpr = dpr; p[0].width = width;
@@ -73,7 +80,7 @@ ra_plan_at :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32, width:
     display := gp_display(k);
     cell := ra_ceil(size * dpr * (ifx display then RA_DISPLAY_EM else RA_CELL_EM));
     cols := width / cell;
-    cells := ifx display then GP_GLYPHS else GP_GLYPHS * GP_SUBPIXEL;
+    cells := ifx display then GP_GLYPHS else GP_GLYPHS * ra_sub(p);
     p[0].slots[k] = RaSlot.{cell = cell, pen_x = ra_round(cast(f32) cell * (ifx display then 0.05f32 else 0.25f32)), pen_y = ra_round(cast(f32) cell * (ifx display then 0.8f32 else 0.7f32)), y0 = y, cols = cols};
     y += ((cells + cols - 1) / cols) * cell;
     if !gp_display(k) && cell > largest { largest = cell; }
@@ -148,11 +155,11 @@ ra_font :: (a: [] Atlas, p: [] RaPlan, slot: int, f: TtfFont, size: f32, px: [] 
   }
   gp_set_font(a, slot, size, header[..], advance[..], kern[..]);
   scale := ra_scale(f, size, p[0].dpr);
-  for variant: 0..<(ifx gp_display(slot) then 1 else GP_SUBPIXEL) {
+  for variant: 0..<(ifx gp_display(slot) then 1 else ra_sub(p)) {
     for g: 0..<GP_GLYPHS {
       cell := variant * GP_GLYPHS + g;
       if !ra_cell_begin(w[0].raster[..], s.cell, s.pen_x, s.pen_y) { return false; }
-      ok := ttf_outline(f, glyph[g], scale, variant * 64 / GP_SUBPIXEL, 0, w[0].raster[..], 0);
+      ok := ttf_outline(f, glyph[g], scale, variant * 64 / ra_sub(p), 0, w[0].raster[..], 0);
       ra_cell_end(w[0].raster[..], px, p[0].width, (cell % s.cols) * s.cell, s.y0 + (cell / s.cols) * s.cell, s.cell);
     }
   }
@@ -169,6 +176,7 @@ ra_icon :: (a: [] Atlas, p: [] RaPlan, i: int, svg: string, px: [] u8, w: [] RaW
 // The atlas's size and the glyph cache's part of it, after the fonts and icons.
 ra_finish :: (a: [] Atlas, p: [] RaPlan) {
   gp_set_atlas(a, cast(f32) p[0].width, cast(f32) p[0].height, 1);
+  a[0].sub = p[0].sub;
   gp_set_dynamic(a, cast(f32) p[0].dyn_cell, cast(f32) p[0].dyn_pen_x, cast(f32) p[0].dyn_pen_y, cast(f32) p[0].dyn_y0, p[0].dyn_cols,
                  p[0].color_cols, cast(f32) p[0].width, cast(f32) p[0].color_height);
 }
@@ -312,6 +320,9 @@ coaxial_ra_clean :: (p: [] RaPlan) #export_c #effects(all) { if p.count > 0 { p[
   #assert p[0].width == 8192 && p[0].height <= 8192 && p[0].color_height <= 8192;
   #assert p[0].slots[0].cols == 8192 / p[0].slots[0].cell && p[0].dyn_cols == 8192 / p[0].dyn_cell;
   #assert ra_plan(p[..], 2, sizes[..], icons[..]) && p[0].width == 4096;   // 2x keeps its layout
-  #assert !ra_plan(p[..], 6, sizes[..], icons[..]) && p[0].width == 8192 && p[0].height > 8192;
+  #assert ra_sub(p[..]) == GP_SUBPIXEL;
+  // large text on a 3x phone (1.25 times the text): past what four offsets fit, one offset fits
+  #assert ra_plan(p[..], 4.5, sizes[..], icons[..]) && p[0].sub == 1 && p[0].height <= 8192;
+  #assert !ra_plan(p[..], 12, sizes[..], icons[..]) && p[0].width == 8192 && p[0].height > 8192;
   #assert ra_plan_max(p[..], 4, sizes[..], icons[..], 16384) && p[0].height <= 16384;
 }

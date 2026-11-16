@@ -1,6 +1,7 @@
 // Firm reason: 6 (system UI: Liquid Glass and popovers are the platform's own; components/gpu-components.md).
-// The two system controls over the GPU chat page (GitHub #13645): the menu button at the top left,
-// a round Liquid Glass button that rides with the page while the sidebar pushes it, and the chips'
+// The system controls over the GPU chat page (GitHub #13645): the menu button at the top left,
+// a round Liquid Glass button that rides with the page while the sidebar pushes it; Back in the same
+// place while the login page shows (the page keeps login.back's row and paints nothing); and the chips'
 // picker, a SwiftUI popover anchored to the chip that opened it. The page (chat.coax, chat_native)
 // paints neither and keeps their rows: what each row says, whether it is chosen and whether it can be
 // chosen are the committed rows of the environment area's picker (apps/shared/app/environment/
@@ -9,13 +10,16 @@
 import SwiftUI
 import UIKit
 
-/// The round menu button: native Liquid Glass on iOS 26 and later, a material blur before.
+/// A round button at the top left: native Liquid Glass on iOS 26 and later, a material blur before.
+/// The menu button names the sidebar's state; Back (`back: true`) says Back.
 @MainActor final class GlassMenuButton: UIControl {
     private let glyph = UIImageView()
     private var ground: UIVisualEffectView
+    private let back: Bool
     var open = false { didSet { if open != oldValue { label() } } }
 
-    init() {
+    init(back: Bool = false) {
+        self.back = back
         #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             let effect = UIGlassEffect(style: .regular); effect.isInteractive = true
@@ -27,14 +31,14 @@ import UIKit
         super.init(frame: .zero)
         ground.isUserInteractionEnabled = false; ground.clipsToBounds = true
         addSubview(ground)
-        glyph.image = UIImage(systemName: "sidebar.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .medium))
+        glyph.image = UIImage(systemName: back ? "chevron.left" : "sidebar.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .medium))
         glyph.tintColor = .white; glyph.contentMode = .center; glyph.isUserInteractionEnabled = false
         ground.contentView.addSubview(glyph)
-        isAccessibilityElement = true; accessibilityIdentifier = "nav.menu"; accessibilityTraits = .button
+        isAccessibilityElement = true; accessibilityIdentifier = back ? "login.back" : "nav.menu"; accessibilityTraits = .button
         label()
     }
     required init?(coder: NSCoder) { fatalError() }
-    private func label() { accessibilityLabel = open ? "Close sidebar" : "Open sidebar" }
+    private func label() { accessibilityLabel = back ? "Back" : open ? "Close sidebar" : "Open sidebar" }
     override func layoutSubviews() {
         super.layoutSubviews()
         ground.frame = bounds; ground.layer.cornerRadius = min(bounds.width, bounds.height) / 2
@@ -110,6 +114,7 @@ private struct GlassPickerList: View {
 /// Both controls, kept in step with the page once a frame (sync).
 @MainActor final class GlassChrome {
     let menu = GlassMenuButton()
+    let back = GlassMenuButton(back: true)
     private let model = GlassPickerModel()
     private let anchor: UIHostingController<GlassPickerAnchor>
     private weak var host: UIViewController?
@@ -126,6 +131,8 @@ private struct GlassPickerList: View {
         anchor.safeAreaRegions = []
         host.addChild(anchor); host.view.addSubview(anchor.view); anchor.didMove(toParent: host)
         host.view.addSubview(menu)
+        back.isHidden = true; host.view.addSubview(back)
+        back.addAction(UIAction { [weak self] _ in _ = self?.activate("login.back") }, for: .primaryActionTriggered)
         menu.addAction(UIAction { [weak self] _ in
             guard let self else { return }
             // closed, the page takes nav.menu; open, the press lands on the sidebar's scrim
@@ -141,7 +148,11 @@ private struct GlassPickerList: View {
             let frame = CGRect(x: CGFloat(m[0] + m[3]), y: CGFloat(m[1]), width: CGFloat(m[2]), height: CGFloat(m[2]))
             if menu.frame != frame { menu.frame = frame }
             menu.open = m[4] != 0; menu.isHidden = m[5] != 0
-        } else { menu.isHidden = true }
+            // the login page shows: Back stands where the menu button was
+            let at = CGRect(x: CGFloat(m[0]), y: CGFloat(m[1]), width: CGFloat(m[2]), height: CGFloat(m[2]))
+            if back.frame != at { back.frame = at }
+            back.isHidden = m[5] == 0
+        } else { menu.isHidden = true; back.isHidden = true }
         let now = oc_sheet(owner)
         if now != 0 {
             var b = [Float](repeating: 0, count: 4)
@@ -176,7 +187,7 @@ private struct GlassPickerList: View {
     private func read(_ owner: UnsafeMutableRawPointer) -> GlassPickerModel.Content {
         var c = GlassPickerModel.Content()
         for i in 0..<oc_rows(owner) {
-            var row = [Float](repeating: 0, count: 7), id = [CChar](repeating: 0, count: 64), label = [CChar](repeating: 0, count: 256), value = [CChar](repeating: 0, count: 256)
+            var row = [Float](repeating: 0, count: 8), id = [CChar](repeating: 0, count: 64), label = [CChar](repeating: 0, count: 256), value = [CChar](repeating: 0, count: 256)
             guard oc_row(owner, i, &row, &id, Int32(id.count), &label, Int32(label.count)) != 0 else { continue }
             let name = String(cString: id), words = String(cString: label), role = Int(row[4]), state = Int(row[5])
             guard name.hasPrefix("env.") else { continue }
@@ -193,5 +204,5 @@ private struct GlassPickerList: View {
     }
 
     /// The page's own rows that these controls stand for in VoiceOver.
-    static func covers(_ id: String) -> Bool { id == "nav.menu" || id.hasPrefix("env.") }
+    static func covers(_ id: String) -> Bool { id == "nav.menu" || id == "login.back" || id.hasPrefix("env.") }
 }

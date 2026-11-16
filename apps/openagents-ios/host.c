@@ -11,6 +11,7 @@ typedef struct {
   coax_t_ChatPage *s;
   float safe_top, safe_bottom, keyboard, editor_height;
   int focused, reduced;
+  float zoom;     // the text size the page draws at (oc_text_zoom), 1 the default
   int settle;     // frames still owed after a change (glyphs asked for in one frame are drawn in the next)
   coax_t_OaDrive *drive;   // coax drive's session (debug builds, -OADrive), or NULL
   void (*drove)(void *context); void *drove_context;   // the host's own turn after each operation
@@ -87,14 +88,41 @@ int oc_editor(void *chat, float box[6]) { Chat *c = chat; return c && chat_edito
 int oc_style(float style[14]) { return chat_style((coax_v_f32){style, 14}); }
 int oc_rows(void *chat) { Chat *c = chat; return c ? (int)chat_rows(oc_state(c)) : 0; }
 int oc_rows_stamp(void *chat) { Chat *c = chat; return c ? (int)chat_rows_stamp(oc_state(c)) : 0; }
-int oc_row(void *chat, int i, float row[7], char *id, int id_cap, char *label, int label_cap) {
+int oc_row(void *chat, int i, float row[8], char *id, int id_cap, char *label, int label_cap) {
   Chat *c = chat;
-  if (!c || id_cap < 1 || label_cap < 1 || !chat_row(oc_state(c), i, (coax_v_f32){row, 7})) return 0;
+  if (!c || id_cap < 1 || label_cap < 1 || !chat_row(oc_state(c), i, (coax_v_f32){row, 8})) return 0;
   id[chat_row_id(oc_state(c), i, (coax_v_u8){(uint8_t *)id, id_cap - 1})] = 0;
   label[chat_row_label(oc_state(c), i, (coax_v_u8){(uint8_t *)label, label_cap - 1})] = 0;
   return 1;
 }
 int oc_activate(void *chat, const char *id) { Chat *c = chat; if (!c) return 0; oc_changed(c); return chat_activate(oc_state(c), oc_string(id)); }
+int oc_layer(void *chat) { Chat *c = chat; return c ? (int)chat_layer(oc_state(c)) : 0; }
+int oc_scroll_page(void *chat, int dir) { Chat *c = chat; if (!c || !chat_scroll_page(oc_state(c), dir)) return 0; oc_changed(c); return 1; }
+// The atlas again at the page's new scale: the fonts and icons are read and rasterized afresh.
+static int oc_atlas_again(Chat *c, float zoom) {
+  App *a = &c->app;
+  for (int i = 0; i < 4; i++) { free(a->font_bytes[i]); a->font_bytes[i] = NULL; }
+  for (int i = 0; i < 64; i++) { free(a->svg[i]); a->svg[i] = NULL; a->svg_n[i] = 0; }
+  free(a->mono); free(a->color); free(a->work); a->mono = a->color = NULL; a->work = NULL;
+  memset(&a->plan, 0, sizeof a->plan); memset(&a->fonts, 0, sizeof a->fonts); memset(&c->s->atlas, 0, sizeof c->s->atlas);
+  a->dpr = ui_dpr(a->host); if (a->dpr < 1) a->dpr = 1;
+  a->dpr *= chat_scale() * zoom;
+  return atlas_setup(a);
+}
+float oc_text_zoom(void *chat, float zoom) {
+  Chat *c = chat;
+  if (!c) return 1;
+  float was = c->zoom > 0 ? c->zoom : 1, now = chat_text_zoom(oc_state(c), zoom);
+  if (now == was) return now;
+  // the glyph atlas holds every face at every size at the device's scale; past the largest scale it
+  // fits in, the page draws at the largest text size that fits
+  while (!oc_atlas_again(c, now)) {
+    if (now <= 1) { c->zoom = 1; oc_changed(c); return 1; }
+    now = chat_text_zoom(oc_state(c), now - 0.05f > 1 ? now - 0.05f : 1);
+  }
+  c->zoom = now; oc_changed(c);
+  return now;
+}
 int oc_refused(void *chat) { Chat *c = chat; return c ? (int)chat_refused(oc_state(c)) : 0; }
 unsigned long long oc_presented(void *chat) { return chat ? ui_presented(((Chat *)chat)->app.host) : 0; }
 void oc_close(void *chat) {

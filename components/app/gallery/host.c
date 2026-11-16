@@ -62,6 +62,20 @@ void og_env(void *gallery, float safe_top, float safe_bottom, int reduced) {
 }
 int og_action(void *gallery) { AppGalleryHost *g = gallery; return g ? (int)appgallery_action(og_state(g)) : 0; }
 int og_reveal(void *gallery, const char *id) { AppGalleryHost *g = gallery; return g && id && appgallery_reveal(og_state(g), (coax_string){id, (int64_t)strlen(id)}); }
+static int og_bytes(int64_t n, char *out, int cap) { if (cap < 1) return 0; if (n < 0) n = 0; if (n > cap - 1) n = cap - 1; out[n] = 0; return (int)n; }
+static void og_woke(AppGalleryHost *g) { if (g->changed) g->changed(g->context); }
+int og_rows(void *gallery) { AppGalleryHost *g = gallery; return g ? (int)appgallery_rows(og_state(g)) : 0; }
+int og_rows_stamp(void *gallery) { AppGalleryHost *g = gallery; return g ? (int)appgallery_rows_stamp(og_state(g)) : 0; }
+int og_row(void *gallery, int i, float row[8], char *id, int id_cap, char *label, int label_cap) {
+  AppGalleryHost *g = gallery;
+  if (!g || id_cap < 1 || label_cap < 1 || !appgallery_row(og_state(g), i, (coax_v_f32){row, 8})) return 0;
+  og_bytes(appgallery_row_id(og_state(g), i, (coax_v_u8){(uint8_t *)id, id_cap - 1}), id, id_cap);
+  og_bytes(appgallery_row_say(og_state(g), i, (coax_v_u8){(uint8_t *)label, label_cap - 1}), label, label_cap);
+  return 1;
+}
+int og_row_value(void *gallery, int i, char *out, int cap) { AppGalleryHost *g = gallery; return g && cap > 0 ? og_bytes(appgallery_row_value(og_state(g), i, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int og_activate(void *gallery, const char *id) { AppGalleryHost *g = gallery; if (!g || !id) return 0; int done = appgallery_activate(og_state(g), (coax_string){id, (int64_t)strlen(id)}); og_woke(g); return done; }
+int og_scroll_page(void *gallery, int dir) { AppGalleryHost *g = gallery; if (!g || !appgallery_scroll_page(og_state(g), dir)) return 0; og_woke(g); return 1; }
 int og_refused(void *gallery) { AppGalleryHost *g = gallery; return g ? (int)appgallery_refused(og_state(g)) : 0; }
 void og_close(void *gallery) {
   AppGalleryHost *g = gallery;

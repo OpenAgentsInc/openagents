@@ -125,6 +125,40 @@ surface_action :: (s: [] UiSurface, i: int) -> int {
   if s.count == 0 || s[0].generation == 0 || i < 0 || i >= s[0].rows[s[0].front].n { return 0; }
   return s[0].rows[s[0].front].rows[i].action;
 }
+// What a screen reader speaks for committed row i: its whole text (kit/frame.coax uiframe_say),
+// or its label. "" out of range.
+surface_say :: (s: [] UiSurface, i: int) -> string {
+  if s.count == 0 || s[0].generation == 0 || i < 0 || i >= s[0].rows[s[0].front].n { return ""; }
+  f := s[0].front; at := s[0].rows[f].rows[i].say_at; n := s[0].rows[f].rows[i].say_n;
+  if n > 0 && at >= 0 && at + n <= s[0].sheet[f].np { return cast(string) s[0].sheet[f].pool[at..<at + n]; }
+  return cast(string) s[0].rows[f].rows[i].label[0..<s[0].rows[f].rows[i].label_n];
+}
+// Committed row i for an accessibility bridge, in the host's units (`unit` host units a layout
+// unit), in out[0..8]: the part of its box its clips leave (x, y, w, h; w and h 0 when none of it
+// shows), its role (EL_*), its state (EL_S_*), its parent row (-1 none) and its focus place (0 none).
+surface_access_row :: (s: [] UiSurface, i: int, unit: f32, out: [] f32) -> bool {
+  if out.count < 8 || s.count == 0 || s[0].generation == 0 || i < 0 || i >= s[0].rows[s[0].front].n { return false; }
+  r := s[0].rows[s[0].front].rows[i]; b := el_box(r);
+  out[0] = b.x * unit; out[1] = b.y * unit;
+  out[2] = ifx b.visible then b.w * unit else 0.0f32; out[3] = ifx b.visible then b.h * unit else 0.0f32;
+  out[4] = cast(f32) r.role; out[5] = cast(f32) r.state; out[6] = cast(f32) r.parent; out[7] = cast(f32) r.focus;
+  return true;
+}
+// A number that changes when any committed row does: its id, spoken text, value, state or box.
+// A bridge rebuilds its elements only when it moves.
+surface_stamp :: (s: [] UiSurface) -> int {
+  t := [1] ElTable.[surface_rows(s)];
+  st := 17;
+  for i: 0..<t[0].n {
+    r := t[0].rows[i];
+    for c: elt_id(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
+    for c: surface_say(s, i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
+    for c: elt_value_of(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
+    st = (st * 31 + r.state) & 0x3fffffff;
+    st = (st * 31 + el_round(r.x) + 7 * el_round(r.y) + 13 * el_round(r.w) + 17 * el_round(r.h)) & 0x3fffffff;
+  }
+  return st;
+}
 // Keyboard focus over the committed rows (core/elements.coax elt_focus_step).
 surface_focus_step :: (s: [] UiSurface, from: int, back: bool) -> int {
   t := [1] ElTable.[surface_rows(s)];

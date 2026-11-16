@@ -104,6 +104,10 @@ Atlas :: struct {
   // How many dilation levels the host rasterized: 0 is all of GP_DILATIONS
   // (CoreText's, the Mac); a browser draws fewer (gp_level folds them).
   levels: int;
+  // Subpixel offsets a body face's glyphs were rasterized at: 0 is GP_SUBPIXEL. A plan too large
+  // for the texture at a large scale (large text on a phone) keeps one, and glyphs snap to whole
+  // device pixels, which at that many pixels a point does not show (raster/atlas.coax ra_plan_max).
+  sub: int;
 }
 
 // A code point's glyph in the atlas, or -1.

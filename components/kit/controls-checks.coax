@@ -311,3 +311,38 @@ ctx_focus_frame :: (f: [] UiFrame, sf: [] UiSurface, ks: [] KeyedStore, m: TextM
   sh = surface_sheet(sf[..]);
   #assert sh.nh == 1 && sh.under[0].kind == PRIM_CLIP && surface_rows(sf[..]).n == 2 && surface_id(sf[..], 0) == "half" && surface_find(sf[..], "b.0") == -1;
 }
+
+SayStore :: struct { a: [1] CtlStore; b: [1] CtlStore; pa: [512] u8; pb: [512] u8; rows_a: [8] El; rows_b: [8] El; }
+#test "a screen reader hears a long label whole and text added after it; a bridge reads the part a clip leaves" {
+  st: [1] SayStore; a: [1] Atlas; text_test_atlas(a[..]); s := zeron_skin(); m := measure_font(a[..]);
+  sa := ctl_sheet(st[0].a[..]); sa.pool = st[0].pa[..]; sb := ctl_sheet(st[0].b[..]); sb.pool = st[0].pb[..];
+  sf := [1] UiSurface.[surface_over(sa, st[0].rows_a[..], sb, st[0].rows_b[..])]; ks := [1] KeyedStore.[KeyedStore.{}]; f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, UiInput.{}, 0, 0.016, false, false);
+  long := "This reply is longer than the sixty-four bytes that a row label holds, so it is kept whole.";
+  i := uiframe_semantic(f[..], "reply", EL_TEXT, long, 0, 0, 100, 40, EL_S_LIVE, 0);
+  uiframe_say(f[..], i, "Second block.");
+  j := uiframe_semantic(f[..], "note", EL_TEXT, "Short", 0, 50, 100, 20, 0, 0);
+  _ := sheet_pool(f[0].sheet, "x");
+  // the reply no longer ends the pool: what it says moves to the end, whole
+  uiframe_say(f[..], j, "More.");
+  uiframe_say(f[..], i, "Third.");
+  uiframe_say(f[..], -1, "nothing");
+  uiframe_clip(f[..], 0, 0, 100, 60);
+  k := uiframe_semantic(f[..], "cut", EL_BUTTON, "Cut", 0, 40, 100, 40, 0, 1);
+  uiframe_unclip(f[..]);
+  #assert uiframe_end(f[..], sf[..]);
+  t := [1] ElTable.[surface_rows(sf[..])];
+  #assert elt_label(t[..], i).count == 64 && surface_say(sf[..], i) == "This reply is longer than the sixty-four bytes that a row label holds, so it is kept whole.\nSecond block.\nThird.";
+  #assert surface_say(sf[..], j) == "Short\nMore." && surface_say(sf[..], k) == "Cut" && surface_say(sf[..], 9) == "";
+  row: [8] f32;
+  #assert surface_access_row(sf[..], k, 2, row[..]) && row[1] == 80 && row[2] == 200 && row[3] == 40 && row[4] == cast(f32) EL_BUTTON && row[6] == -1 && row[7] == 1;
+  #assert surface_access_row(sf[..], i, 1, row[..]) && cast(int) row[5] == EL_S_LIVE && !surface_access_row(sf[..], 9, 1, row[..]);
+  // the stamp moves when only the spoken text does
+  before := surface_stamp(sf[..]);
+  uiframe_begin(f[..], sf[..], ks[..], m, s, UiInput.{}, 0, 0.016, false, false);
+  i = uiframe_semantic(f[..], "reply", EL_TEXT, long, 0, 0, 100, 40, EL_S_LIVE, 0);
+  uiframe_say(f[..], i, "Second block.");
+  j = uiframe_semantic(f[..], "note", EL_TEXT, "Short", 0, 50, 100, 20, 0, 0);
+  _ = uiframe_semantic(f[..], "cut", EL_BUTTON, "Cut", 0, 40, 100, 40, 0, 1);
+  #assert uiframe_end(f[..], sf[..]) && surface_stamp(sf[..]) != before;
+}

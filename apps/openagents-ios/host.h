@@ -25,14 +25,22 @@ int oc_text(void *chat, char *out, int cap);
 // placeholder's and the caret's as straight RGBA).
 int oc_editor(void *chat, float box[6]);
 int oc_style(float style[14]);
-// The committed semantic rows: how many, a number that changes when any row does, and row i: its
-// box, then its role (0 button, 3 field, 8 text, 9 heading, 13 notice), its state bits (1 disabled,
-// 64 focused, 1024 live) and its parent in row[7]; its id and its label. Activating a row by id
-// does what a tap does.
+// The committed semantic rows of the layer that takes presses, for VoiceOver (KitAccess.swift):
+// how many, a number that changes when any row does, and row i: the part of its box its clips
+// leave (w and h 0 when none shows), its role (components/core/elements.coax EL_*), its state
+// bits (EL_S_*), its parent row and its focus place; its id and what a screen reader speaks
+// (its whole text). Activating a row by id does what a tap does. The layer (0 the page, 1 what
+// covers it) and VoiceOver's scroll of the transcript a page (dir 1 toward the latest, -1 back).
 int oc_rows(void *chat);
 int oc_rows_stamp(void *chat);
-int oc_row(void *chat, int i, float row[7], char *id, int id_cap, char *label, int label_cap);
+int oc_row(void *chat, int i, float row[8], char *id, int id_cap, char *label, int label_cap);
 int oc_activate(void *chat, const char *id);
+int oc_layer(void *chat);
+int oc_scroll_page(void *chat, int dir);
+// The text size the person chose against the default (Dynamic Type: 1 the default). The page draws
+// larger, up to its own limit, and the glyph atlas is rasterized again at the new scale. Returns
+// the size it draws at; the platform editors take their style (oc_style) times it.
+float oc_text_zoom(void *chat, float zoom);
 // The shared app core (core-host.h oa_core_open) and the typed login email kept at the last save.
 // Call once before the core's launch; oc_step after every call into the core.
 void oc_attach(void *chat, void *core, const char *kept);

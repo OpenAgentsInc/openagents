@@ -38,6 +38,8 @@ targets:
         type: folder
         buildPhase: resources
       - ../shared/native/KitEditor.swift
+      # VoiceOver over the GPU surfaces: one bridge from the committed semantic rows.
+      - ../shared/native/KitAccess.swift
       # Native services for the compiled app: HTTP, the account, wakes, the device and the effect bridge.
       - ../shared/native/AppHTTP.swift
       - ../shared/native/AppAccount.swift

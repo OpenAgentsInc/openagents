@@ -22,19 +22,22 @@ enum NativeKitText {
 /// the view hierarchy and stands for the field's row in the accessibility tree: activating it
 /// gives the text the keyboard.
 final class ComposerEditor:UITextView {
-    private let style:[Float]
-    private let face:UIFont
-    private let attributes:[NSAttributedString.Key:Any]
+    private var style:[Float]
+    private var face:UIFont
+    private var attributes:[NSAttributedString.Key:Any]
     private var line:CGFloat {CGFloat(style[1]>0 ? style[1]:23)}
     weak var host:UIView?
     var box=CGRect.zero
     var attach:(()->Void)?,activate:(()->Bool)?
     private let hint=UILabel()
     var placeholder:String? {didSet {hint.text=placeholder}}
-    init(style:[Float]) {
-        self.style=style;face=NativeKitText.face(CGFloat(style[0]>0 ? style[0]:17))
+    private static func look(_ style:[Float])->(UIFont,[NSAttributedString.Key:Any]) {
+        let face=NativeKitText.face(CGFloat(style[0]>0 ? style[0]:17))
         let paragraph=NSMutableParagraphStyle();let height=CGFloat(style[1]>0 ? style[1]:23);paragraph.minimumLineHeight=height;paragraph.maximumLineHeight=height
-        attributes=[.font:face,.foregroundColor:NativeKitText.color(style,2),.paragraphStyle:paragraph]
+        return (face,[.font:face,.foregroundColor:NativeKitText.color(style,2),.paragraphStyle:paragraph])
+    }
+    init(style:[Float]) {
+        self.style=style;(face,attributes)=ComposerEditor.look(style)
         super.init(frame:.zero,textContainer:nil)
         backgroundColor = .clear;textColor=NativeKitText.color(style,2);tintColor=NativeKitText.color(style,10);keyboardAppearance = .dark
         font=face;typingAttributes=attributes
@@ -46,6 +49,14 @@ final class ComposerEditor:UITextView {
     }
     required init?(coder:NSCoder) {fatalError()}
     func set(_ value:String) {attributedText=NSAttributedString(string:value,attributes:attributes);typingAttributes=attributes;textChanged()}
+    /// The surface draws its text at another size (large text): the editor's face, line and placeholder follow.
+    /// Marked text is left to finish; the next edit takes the new style.
+    func restyle(_ next:[Float]) {
+        style=next;(face,attributes)=ComposerEditor.look(next)
+        font=face;hint.font=face;typingAttributes=attributes
+        if markedTextRange==nil {set(text ?? "")}
+        setNeedsLayout()
+    }
     @objc private func textChanged() {hint.isHidden = !(text ?? "").isEmpty}
     override func layoutSubviews() {super.layoutSubviews();hint.frame=CGRect(x:0,y:6,width:bounds.width,height:line)}
     /// The text's own height at a width, without the insets: what the composer grows by.
@@ -70,8 +81,8 @@ enum KitFieldKind: Int32 {
 /// one-time-code AutoFill; a secret field hides what is typed and is never offered to
 /// autocorrection or the keyboard's learning.
 final class FieldEditor:UITextField {
-    private let style:[Float]
-    private let face:UIFont
+    private var style:[Float]
+    private var face:UIFont
     private(set) var kind:KitFieldKind = .plain
     init(style:[Float]) {
         self.style=style;face=NativeKitText.face(CGFloat(style[0]>0 ? style[0]:17))
@@ -82,6 +93,11 @@ final class FieldEditor:UITextField {
         adjustsFontForContentSizeCategory=false
     }
     required init?(coder:NSCoder) {fatalError()}
+    /// The surface draws its text at another size (large text): the field's face follows.
+    func restyle(_ next:[Float]) {
+        style=next;face=NativeKitText.face(CGFloat(next[0]>0 ? next[0]:17));font=face
+        if let p=attributedPlaceholder?.string {attributedPlaceholder=NSAttributedString(string:p,attributes:[.foregroundColor:NativeKitText.color(style,6),.font:face])}
+    }
     /// Sets what the field takes and its placeholder. Changing the kind reloads the keyboard.
     func configure(_ next:KitFieldKind,placeholder:String) {
         attributedPlaceholder=NSAttributedString(string:placeholder,attributes:[.foregroundColor:NativeKitText.color(style,6),.font:face])
@@ -96,18 +112,3 @@ final class FieldEditor:UITextField {
         reloadInputViews()
     }
 }
-
-/// A field that does not hold the keyboard, as VoiceOver sees it: a text field that is never in
-/// the view hierarchy and never edits. Activating it gives the field the keyboard, and the
-/// platform editor takes its place. A secret field's value is never read out.
-final class FieldProxy:UITextField {
-    weak var host:UIView?
-    var box=CGRect.zero
-    var activate:(()->Bool)?
-    override var isAccessibilityElement:Bool {get {true} set {}}
-    override var accessibilityFrame:CGRect {get {host.map {UIAccessibility.convertToScreenCoordinates(box,in:$0)} ?? .zero} set {}}
-    override var accessibilityValue:String? {get {isSecureTextEntry ? nil:text} set {}}
-    override func accessibilityActivate()->Bool {activate?() ?? false}
-    override var canBecomeFirstResponder:Bool {false}
-}
-
