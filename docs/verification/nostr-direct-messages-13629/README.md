@@ -261,3 +261,7 @@ an owner action in `NEEDS_OWNER.md`.
 
 The physical-phone check remains recorded in `NEEDS_OWNER.md`; the release
 and automated native/browser/reference checks do not claim that hardware run.
+
+A final read-only device inventory found the paired iPhone on build 1320. Its
+app or account state was not changed. The Owner-group 1371 installation and
+physical-device exchange check remain the explicit owner follow-up.

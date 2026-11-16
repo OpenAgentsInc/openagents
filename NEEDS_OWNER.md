@@ -13,7 +13,8 @@
 - [ ] Install **1371** (verified in TestFlight’s **Owner** group) and open the drawer’s
       **Messages** entry. Send to a second client’s npub, reply there, then
       reopen both apps to check history recovery. Native, browser and independent
-      client automation passed; the physical-phone check remains pending.
+      client automation passed; the physical-phone check remains pending. The
+      paired phone reported build 1320 in the final read-only inventory.
 
 ## Chat details, build 1370 (2026-11-15)
 
