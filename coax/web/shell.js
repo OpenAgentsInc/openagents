@@ -37,7 +37,7 @@ export function shellTakes(script) {
   const root = document.createElement("div"); // app shell mount
   root.id = "coaxial-shell";
   document.body.prepend(root);
-  import(`/coaxial/dom-host.js?app=${SHELL}&root=${root.id}&top`).catch((error) => { console.error(error); document.documentElement.dataset.coaxialError = String(error); });
+  import(new URL(`./dom-host.js?app=${SHELL}&root=${root.id}&top`, import.meta.url).href).catch((error) => { console.error(error); document.documentElement.dataset.coaxialError = String(error); });
   return true;
 }
 

@@ -168,6 +168,10 @@ for f in pages:
         if not os.path.isfile(src): sys.exit(f"deploy: {f} names the script {m.group(2)}, which is not in the app")
         return m.group(1) + put(src, "build/" + m.group(2)[1:]) + m.group(3)
     text = re.sub(r'(<script type="module" src=")(/(?!coaxial/|build/)[^"]+\.js)(")', page_script, text)
+    # DOM pages use the same isolated browser SDK as GPU pages. Their host
+    # resolves its Wasm and nested shell relative to this script's location.
+    if asset_prefix:
+        text = text.replace('src="/coaxial/dom-host.js"', f'src="/{asset_prefix}/coaxial/dom-host.js"')
     open(os.path.join(site, f), "w", encoding="utf-8").write(text)
     # A directory's page also answers at the bare path (/projects/coax), which
     # the bucket can't map to index.html on its own; upload.py serves it as HTML.

@@ -363,7 +363,7 @@ function fileStep(urlAt, urlLen, headAt, headLen, step) {
 }
 
 async function start() {
-  const response = await fetch(`/build/${app}.wasm`, { cache: location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "no-store" : "default" });
+  const response = await fetch(new URL(`../build/${app}.wasm`, import.meta.url), { cache: location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "no-store" : "default" });
   const module = await WebAssembly.compile(await response.arrayBuffer());
   memory = new WebAssembly.Memory({ initial: 256, maximum: 1024 });
   const keptKey = `coaxial.dom.${app}.kept`;
