@@ -1,0 +1,62 @@
+// Characters on the UE Mannequin's bones onto our skeleton (GitHub #13651): the command line of
+// metaverse-engine/import/unreal/rig-io.coax, which says what each output holds.
+//   unreal-rig character NAME OUT_DIR BODY.fbx|.glb [ROLE=CLIP.fbx|.glb ...] [--ours]
+//       --ours: each base action (idle walk jog jump_start jump_loop jump_land) no clip gives is ours
+//   unreal-rig bundle BUNDLE.aimport SKELETAL_MESH_ID NAME OUT_DIR
+//   unreal-rig vrg OUT.vrg DIR...
+//   unreal-rig splice-bots SOURCE_ASSETS OUT_ROOT
+//       the jam entry: SOURCE_ASSETS is the project's Assets/Source; OUT_ROOT/director (her own
+//       clips), OUT_ROOT/raider-1 .. raider-6 (our clips; theirs in the jam were Epic's) and
+//       OUT_ROOT/characters.vrg. OUT_ROOT is ~/.openagents/unreal/splice-bots-jam/rig for the jam.
+// Run from the repository root: coax/web/tool.sh metaverse-engine/tools/unreal-rig.coax ...
+// tool.sh: release
+// tool.sh: stack-gib 6
+#import "Basic";
+#load "../import/unreal/rig-io.coax";
+ur_report :: (name: string, r: UrRigResult) -> bool {
+  if r.err != "" { print("% refused: %\n", name, r.err); return false; }
+  print("% clips=% ours=% joints=% vertices=% placed=% legs=% turned=% orphans=% two_leg_vertices=% bytes=%\n", name, r.clips, r.ours, r.joints, r.vertices, r.placed, r.leg, r.turned, r.orphans, r.two_legs, r.bytes);
+  return true;
+}
+DIRECTOR_CLIPS :: [10] string.["idle", "walk", "jog", "jump_start", "jump_loop", "jump_land", "sprint", "crouch_idle", "crouch_walk", "board_stance"];
+DIRECTOR_FILES :: [10] string.["Idle_Loop", "Walk_Loop", "Jog_Fwd_Loop", "Jump_Start", "Jump_Loop", "Jump_Land", "Sprint_Loop", "Crouch_Idle_Loop", "Crouch_Fwd_Loop", "Board_Stance"];
+RAIDERS :: [6] string.["SK_Raider_1_Brute", "SK_Raider_2_Mechanic", "SK_Raider_3_Lean", "SK_Raider_4_Chief", "SK_Raider_5_Woman", "SK_Raider_6_Blond"];
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 3 { print("usage: unreal-rig character|bundle|vrg|splice-bots ... (see the file)\n"); return 2; }
+  cwd: [4096] u8; repo := fs_cwd(cwd[..]); mode := args_at(a[..], 0);
+  if mode == "character" {
+    if args_count(a[..]) < 4 { return 2; }
+    roles: [32] string; files: [32] string; n := 0; ours := false;
+    for k: 4..<args_count(a[..]) { arg := args_at(a[..], k); if arg == "--ours" { ours = true; continue; } eq := -1; for c, i: arg { if c == '=' && eq < 0 { eq = i; } } if eq < 1 || n == 32 { return 2; } roles[n] = arg[0..<eq]; files[n] = arg[eq + 1..<arg.count]; n += 1; }
+    return ifx ur_report(args_at(a[..], 1), ur_rig_files(args_at(a[..], 3), roles[0..<n], files[0..<n], args_at(a[..], 1), args_at(a[..], 2), repo, ours)) then 0 else 1;
+  }
+  if mode == "bundle" {
+    if args_count(a[..]) != 5 { return 2; }
+    return ifx ur_report(args_at(a[..], 3), ur_rig_bundle(args_at(a[..], 1), args_at(a[..], 2), args_at(a[..], 3), args_at(a[..], 4), repo)) then 0 else 1;
+  }
+  if mode == "vrg" {
+    dirs: [8] string; n := args_count(a[..]) - 2; if n < 1 || n > 8 { return 2; } for k: 0..<n { dirs[k] = args_at(a[..], k + 2); }
+    e := ur_rig_vrg(args_at(a[..], 1), dirs[0..<n]); if e != "" { print("vrg refused: %\n", e); return 1; } print("vrg sets=% file=%\n", n, args_at(a[..], 1)); return 0;
+  }
+  if mode == "splice-bots" {
+    source := args_at(a[..], 1); root := args_at(a[..], 2); if fs_kind(root) != FS_DIR && !fs_mkdir(root) { print("no %\n", root); return 1; }
+    paths: [8] UrPath; dirs: [8] string;
+    // the Director: her mesh and her own clips
+    b: [4096] u8; o: [1] PnOut; o[0].buf = b[..]; pn_put(o[..], source); pn_put(o[..], "/Director/Director14k.fbx"); body := pn_text(o[..]);
+    files: [10] UrPath; fl: [10] string; roles := DIRECTOR_CLIPS; names := DIRECTOR_FILES;
+    for k: 0..<10 { p: [1] PnOut; p[0].buf = files[k].b[..]; pn_put(p[..], source); pn_put(p[..], "/Director/Director14k@"); pn_put(p[..], names[k]); pn_put(p[..], ".fbx"); fl[k] = pn_text(p[..]); }
+    dirs[0] = fs_join(root, "director", paths[0].b[..]);
+    if !ur_report("director", ur_rig_files(body, roles[..], fl[..], "director", dirs[0], repo, false)) { return 1; }
+    // the raiders: their meshes; their clips in the jam were Epic's, so all are ours
+    raiders := RAIDERS; none: [1] string;
+    for k: 0..<6 {
+      nb: [16] u8; no: [1] PnOut; no[0].buf = nb[..]; pn_put(no[..], "raider-"); pn_putint(no[..], k + 1); name := pn_text(no[..]);
+      rb: [4096] u8; ro: [1] PnOut; ro[0].buf = rb[..]; pn_put(ro[..], source); pn_put(ro[..], "/Raiders/"); pn_put(ro[..], raiders[k]); pn_put(ro[..], ".glb");
+      dirs[k + 1] = fs_join(root, name, paths[k + 1].b[..]);
+      if !ur_report(name, ur_rig_files(pn_text(ro[..]), none[0..<0], none[0..<0], name, dirs[k + 1], repo, true)) { return 1; }
+    }
+    vb: [4096] u8; e := ur_rig_vrg(fs_join(root, "characters.vrg", vb[..]), dirs[0..<7]); if e != "" { print("vrg refused: %\n", e); return 1; }
+    print("characters.vrg sets=7\n"); return 0;
+  }
+  return 2;
+}

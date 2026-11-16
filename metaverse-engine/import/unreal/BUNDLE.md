@@ -132,6 +132,11 @@ control revision, or `null` when unknown (a cooked build).
 
 A skeleton whose bones are the UE Mannequin's has `origin: engine`, and the
 consumer retargets its meshes and clips onto the engine's skeleton.
+That consumer is `ur_rig_bundle` in [rig-io.coax](rig-io.coax) (#13651; CLI
+`coax/web/tool.sh metaverse-engine/tools/unreal-rig.coax bundle BUNDLE MESH_ID NAME OUT_DIR`).
+It reads the mesh's `origin: project` clips as the character's own and never reads an
+`origin: engine` clip: the six base actions (idle, walk, jog, jump start, loop and land)
+come from the engine's own clips instead.
 
 ### 3.3 `materials[]`
 

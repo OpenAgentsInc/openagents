@@ -1,0 +1,122 @@
+// rig.coax's checks: coax/bin/coax test metaverse-engine/import/unreal/rig.coax
+
+// The people's skeleton as a source rig, its bind its rest; with extra (helper joints) appended.
+ur_test_people :: (extra: int) -> AnimRig {
+  r: AnimRig; r.ready = true; r.name = anim_named("test"); r.joints = UR_JOINTS + extra; rest: [65] SkinLocal; ur_people_rest(rest[..]); mp := MANNEQUIN_PARENT;
+  for j: 0..<UR_JOINTS { r.names[j] = anim_named(MANNEQUIN_NAME[j]); r.parents[j] = mp[j]; r.rest[j] = rest[j]; r.mapped[j] = j; }
+  if extra > 0 { r.names[65] = anim_named("spine_04"); r.parents[65] = MQ_SPINE_03; r.rest[65].t = v3(0, 0.1, 0); r.mapped[65] = MQ_SPINE_03; }
+  if extra > 1 { r.names[66] = anim_named("upperarm_twist_01_l"); r.parents[66] = MQ_UPPERARM_L; r.rest[66].t = v3(0, 0.1, 0); r.mapped[66] = MQ_UPPERARM_L; }
+  return ur_test_bind(r);
+}
+ur_test_bind :: (given: AnimRig) -> AnimRig { r := given; q: [512] Quat; t: [512] Point; rest := r.rest; parents := r.parents; ur_chain(rest[..], parents[..], r.joints, q[..], t[..]); for j: 0..<r.joints { ur_put_bind(q[j], t[j], r.bind[..], j); } return r; }
+ur_test_world :: (r: AnimRig, q: [] Quat, t: [] Point) { rest := r.rest; parents := r.parents; ur_chain(rest[..], parents[..], r.joints, q, t); }
+ur_test_close :: (a: Quat, b: Quat) -> bool { return abs(quat_dot(quat_unit(a), quat_unit(b))) > 0.99999; }
+
+#test "the people's own skeleton folds onto itself: no turn, no scale, its rest and its binds" #steps 400000000 {
+  src := ur_test_people(0); f: [1] UrFold; #assert ur_fold(src, f[..]) == "";
+  #assert abs(f[0].leg - 1) < 0.0001 && f[0].placed == 0 && f[0].turn.w == 1 && f[0].drift < 0.0001;
+  for j: 0..<UR_JOINTS {
+    #assert f[0].anchor[j] == j && f[0].fold[j] == j;
+    #assert same(f[0].rest[j].t, src.rest[j].t, 0.00001) && ur_test_close(f[0].rest[j].q, src.rest[j].q);
+    for k: 0..<12 { #assert abs(f[0].bind[j * 12 + k] - src.bind[j * 12 + k]) < 0.0002; }
+  }
+}
+
+#test "an arm made hanging stands in the people's T at our rest, with its own bind places" #steps 400000000 {
+  src := ur_test_people(0); turn := Quat.{z = sin(-0.6), w = cos(-0.6)};   // the left arm down by 1.2 rad about the world's z
+  wq: [512] Quat; wt: [512] Point; ur_test_world(src, wq[..], wt[..]);
+  // a world turn of the upper arm about the shoulder: local = parent^-1 x turn x world
+  src.rest[MQ_UPPERARM_L].q = quat_unit(quat_mul(ur_inverse(wq[MQ_CLAVICLE_L]), quat_mul(turn, wq[MQ_UPPERARM_L])));
+  src = ur_test_bind(src); hq: [512] Quat; ht: [512] Point; ur_test_world(src, hq[..], ht[..]);
+  #assert ht[MQ_HAND_L].y < wt[MQ_HAND_L].y - 0.2;   // the hand did go down
+  f: [1] UrFold; #assert ur_fold(src, f[..]) == "";
+  #assert same(f[0].pos[MQ_HAND_L], ht[MQ_HAND_L], 0.00001);   // our bind is where her hand is
+  // our rest puts the hand back in the people's T, the arm's length kept
+  rq: [65] Quat; rt: [65] Point; mp := MANNEQUIN_PARENT; ur_chain(f[0].rest[..], mp[..], UR_JOINTS, rq[..], rt[..]);
+  #assert same(rt[MQ_HAND_L], wt[MQ_HAND_L], 0.001) && ur_test_close(rq[MQ_UPPERARM_L], wq[MQ_UPPERARM_L]);
+  // and the skin carries her hand there: our rest's palette times her hand's bind place
+  pal: [780] f32; for j: 0..<UR_JOINTS { pose_palette(rq[j], rt[j], f[0].bind[..], j, pal[..]); }
+  h := ht[MQ_HAND_L]; o := MQ_LOWERARM_L * 12;
+  moved := v3(pal[o] * h.x + pal[o + 1] * h.y + pal[o + 2] * h.z + pal[o + 3], pal[o + 4] * h.x + pal[o + 5] * h.y + pal[o + 6] * h.z + pal[o + 7], pal[o + 8] * h.x + pal[o + 9] * h.y + pal[o + 10] * h.z + pal[o + 11]);
+  #assert same(moved, wt[MQ_HAND_L], 0.001);
+}
+
+#test "a model facing the other way is turned once; a missing leaf is placed from its parent" #steps 400000000 {
+  src := ur_test_people(0); src.rest[0].q = quat_unit(quat_mul(Quat.{y = 1, w = 0}, src.rest[0].q)); src.names[MQ_TOE_L] = anim_named("toe_tip_l"); src.mapped[MQ_TOE_L] = -1; src = ur_test_bind(src);
+  f: [1] UrFold; #assert ur_fold(src, f[..]) == "" && abs(f[0].turn.w) < 0.01 && f[0].placed == 1 && f[0].anchor[MQ_TOE_L] == -1 && f[0].fold[MQ_TOE_L] == MQ_BALL_L;
+  people := ur_test_people(0); wq: [512] Quat; wt: [512] Point; ur_test_world(people, wq[..], wt[..]);
+  for j: 0..<UR_JOINTS { #assert same(f[0].pos[j], wt[j], 0.0005); }
+}
+
+#test "a source's own clip is the same motion on our joints, and a repeated first frame is dropped" #steps 600000000 {
+  src := ur_test_people(0); wq: [512] Quat; wt: [512] Point; ur_test_world(src, wq[..], wt[..]);
+  src.rest[MQ_UPPERARM_L].q = quat_unit(quat_mul(ur_inverse(wq[MQ_CLAVICLE_L]), quat_mul(Quat.{z = sin(-0.6), w = cos(-0.6)}, wq[MQ_UPPERARM_L]))); src = ur_test_bind(src);
+  f: [1] UrFold; #assert ur_fold(src, f[..]) == "";
+  // three frames: rest, rest, then the forearm bent and the pelvis lifted
+  bytes: [3 * 65 * 28 + 65 * 28 * 3] u8; n := src.joints;
+  for frame: 0..<3 { for j: 0..<n { l := src.rest[j]; if frame == 2 && j == MQ_LOWERARM_L { l.q = quat_unit(quat_mul(l.q, Quat.{x = 0.38268343, w = 0.92387953})); } if frame == 2 && j == MQ_PELVIS { l.t = add(l.t, v3(0, 0, 0.05)); } ur_put_pose(bytes[..], (frame * n + j) * 28, l); } }
+  packs := [1] AnimPack.[AnimPack.{bytes = bytes[..]}]; c: AnimClip; c.ready = true; c.frames = 3; c.rate = 30; c.length = 2.0 / 30; c.joint_count = n; for j: 0..<n { c.joints[j] = j; } c.body = AnimPart.{pack = 0, offset = 0, count = 3 * n, stride = 28, width = 28};
+  u := ur_own_clip(src, c, packs[..], f[0], bytes[..], 3 * n * 28); #assert u.start == 1 && u.frames == 2 && u.bytes == 3 * n * 28 + 2 * 65 * 28;
+  // frame 1's world rotations change from our rest as hers change from her rest
+  s: [1] AnimSample; c.looping = false; anim_sample(src, c, packs[..], 2.0 / 30, s[..]);
+  q: [65] Quat; t: [65] Point; mp := MANNEQUIN_PARENT;
+  for frame: 0..<2 {
+    for j: 0..<UR_JOINTS { l := anim_local(bytes[..], 3 * n * 28 + (frame * 65 + j) * 28); pose_chain(q[..], t[..], mp[j], j, l); }
+    // frame 0 is her bind pose (the arm down), on our joints: our bind rotations and places
+    if frame == 0 { for j: 0..<UR_JOINTS { #assert ur_test_close(q[j], f[0].bind_q[j]) && same(t[j], f[0].pos[j], 0.00001); } }
+  }
+  hq: [512] Quat; ht: [512] Point; ur_test_world(src, hq[..], ht[..]);
+  for j: [4] int.[MQ_UPPERARM_L, MQ_LOWERARM_L, MQ_HAND_L, MQ_PELVIS] { #assert ur_test_close(quat_mul(q[j], ur_inverse(f[0].bind_q[j])), quat_mul(s[0].rotation[j], ur_inverse(hq[j]))); }
+  #assert same(t[MQ_PELVIS], s[0].position[MQ_PELVIS], 0.00001) && same(sub(t[MQ_HAND_L], t[MQ_LOWERARM_L]), sub(s[0].position[MQ_HAND_L], s[0].position[MQ_LOWERARM_L]), 0.0005);
+}
+
+#test "our clip plays on a character as the people play it, the pelvis by her legs" #steps 600000000 {
+  src := ur_test_people(0); for j: 1..<UR_JOINTS { src.rest[j].t = times(src.rest[j].t, 2); } src = ur_test_bind(src);
+  f: [1] UrFold; #assert ur_fold(src, f[..]) == "" && abs(f[0].leg - 2) < 0.001;
+  rest: [455] f32; bind: [780] f32; mannequin_rest_bind(rest[..], bind[..]); mp := MANNEQUIN_PARENT; tt: [130] int; tr: [130] int;
+  tt[UR_PELVIS * 2] = 0; tt[UR_PELVIS * 2 + 1] = 2; tr[MQ_LOWERARM_L * 2] = 0; tr[MQ_LOWERARM_L * 2 + 1] = 2;
+  pel := v3(rest[7], rest[8], rest[9]);
+  kt := [8] f32.[0, pel.x, pel.y, pel.z, 1, pel.x, pel.y + 0.1, pel.z];
+  kr := [10] f32.[0, 0, 0, 0, 1, 1, 0.38268343, 0, 0, 0.92387953];
+  d := [1] f32.[1]; dist := [1] f32.[0];
+  people := SkinRig.{joints = 65, clips = 1, parent = mp[..], rest = rest[..], bind = bind[..], duration = d[..], distance = dist[..], track_t = tt[..], track_r = tr[..], keys_t = kt[..], keys_r = kr[..]};
+  bytes: [32 * 65 * 28] u8; u := ur_people_clip(people, 0, f[0], 30, 0, bytes[..], 0); #assert u.frames == 31 && u.start == 0;
+  for frame: [3] int.[0, 15, 30] {
+    time := ifx frame == 30 then 1 - 0.00001 else cast(f32) frame / 30;
+    for j: 0..<UR_JOINTS {
+      l := anim_local(bytes[..], (frame * 65 + j) * 28); p := skin_sample(people, 0, j, time);
+      #assert ur_test_close(l.q, p.q);
+      if j == UR_PELVIS { #assert same(l.t, add(f[0].rest[j].t, times(sub(p.t, pel), 2)), 0.00001); } else { #assert same(l.t, f[0].rest[j].t, 0.000001); }
+    }
+  }
+}
+
+#test "her weights move to our joints: a helper to its bone, two into one" #steps 400000000 {
+  src := ur_test_people(2); f: [1] UrFold; #assert ur_fold(src, f[..]) == "" && f[0].fold[65] == MQ_SPINE_03 && f[0].fold[66] == MQ_UPPERARM_L;
+  bytes: [2 * 96 + 12] u8; aw_put(bytes[..], 4, f32_bits(1.2));
+  // vertex 0: spine_04 100, spine_03 155; vertex 1: the twist 255
+  bytes[36] = 65; bytes[38] = MQ_SPINE_03; bytes[52] = 100; bytes[53] = 155; bytes[96 + 36] = 66; bytes[96 + 52] = 255;
+  for k: 0..<3 { aw_put(bytes[..], 192 + k * 4, cast(u32) (k % 2)); }
+  src.sections = 1; src.material_count = 1; src.materials[0] = anim_named("m"); src.meshes[0] = AnimMesh.{vertices = AnimPart.{pack = 0, offset = 0, count = 2, stride = 96, width = 96}, indices = AnimPart.{pack = 0, offset = 192, count = 3, stride = 4, width = 4}};
+  packs := [1] AnimPack.[AnimPack.{bytes = bytes[..]}]; out: [65 * 76 + 2 * 96 + 12] u8; r: [1] AnimRig;
+  m := ur_rig(src, packs[..], f[0], "ours", out[..], r[..]); #assert m.parts.bytes == out.count && m.orphans == 0 && r[0].joints == 65 && r[0].sections == 1;
+  v := r[0].meshes[0].vertices.offset;
+  #assert out[v + 36] == MQ_SPINE_03 && out[v + 52] == 255 && out[v + 53] == 0 && anim_float(out[..], v + 4) == 1.2;
+  #assert out[v + 96 + 36] == MQ_UPPERARM_L && out[v + 96 + 52] == 255;
+  #assert anim_word(out[..], r[0].meshes[0].indices.offset + 4) == 1;
+}
+
+#test "a character's set reads back as a VRG1 file, its keys its frames" #steps 600000000 {
+  src := ur_test_people(0); f: [1] UrFold; #assert ur_fold(src, f[..]) == "";
+  bytes: [65 * 76 + 3 * 65 * 28] u8; m: [1] AnimRig; pk := [1] AnimPack.[AnimPack.{bytes = bytes[..]}]; parts := ur_rig(src, pk[..], f[0], "ours", bytes[..], m[..]);
+  #assert parts.parts.bytes == 65 * 76;
+  at := 65 * 76; for frame: 0..<3 { for j: 0..<65 { l := f[0].rest[j]; if j == MQ_PELVIS { l.t.y += cast(f32) frame * 0.01; } if j == MQ_CALF_L { l.q = quat_unit(quat_mul(l.q, Quat.{x = cast(f32) frame * 0.1, w = 1})); } ur_put_pose(bytes[..], at + (frame * 65 + j) * 28, l); } }
+  clip := ur_clip_record(UrClip.{frames = 3, rate = 30}, at, "walk", "ours", true, asset_id(""));
+  packs := [1] AnimPack.[AnimPack.{bytes = bytes[..]}]; clips := [1] AnimClip.[clip]; dist := [1] f32.[1.5];
+  out: [200000] u8; kt: [4000] f32; kr: [40000] f32; work: [1] UrKeys;
+  first := vrg_begin(out[..], 1, 1); s := ur_vrg_set(out[..], 0, "raider-1", m[0], clips[..], packs[..], dist[..], first, kt[..], kr[..], work[..]);
+  #assert s.joints == 65 && s.clips == 1; vrg_end(out[..], first + s.n);
+  file := out[0..<first + s.n]; #assert vrg_valid(file) == 1;
+  got := vrg_find(file, "raider-1"); #assert got.joints == 65 && got.keys_t == 3 && got.keys_r == 64 + 3;
+  d: [1] f32; #assert vrg_floats(file, got, VRG_DISTANCE, d[..]) && d[0] == 1.5;
+}

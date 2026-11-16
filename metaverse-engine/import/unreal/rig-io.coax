@@ -1,0 +1,290 @@
+// The character rig import's files and programs (GitHub #13651); rig.coax is its pure part and says
+// what the fold does. Every output stays under ~/.openagents/: characters are the owner's content
+// and never reach the repository.
+//
+// ENTRY POINTS (for the importer, #13648, and metaverse-engine/tools/unreal-rig.coax):
+//   ur_rig_bundle(BUNDLE.aimport, SKELETAL_MESH_ID, NAME, OUT_DIR, REPO) -> UrRigResult
+//       one skeletal mesh of an import bundle (BUNDLE.md 3.2) whose skeleton is the Mannequin's
+//       (origin "engine"). Its skeleton's animations with origin "project" are her own clips, named
+//       by their asset names; every clip of origin "engine" is Epic's and is not read: the six
+//       base actions (idle walk jog jump_start jump_loop jump_land) are always ours, so a
+//       character the game drives by those actions never plays an Epic clip.
+//   ur_rig_files(BODY, ROLES, FILES, NAME, OUT_DIR, REPO, OURS) -> UrRigResult
+//       the same from source files: BODY is an FBX or glTF on the Mannequin's bones, FILES[k] an FBX
+//       or glTF clip on it for the action ROLES[k]; OURS fills each base action no file gives with ours.
+//   ur_rig_vrg(OUT.vrg, DIRS) -> string
+//       the characters made by either into one VRG1 file (version 2), a set each, named as the
+//       character: a pack's rig entry (kind 7, PACK_RIG; everglade/model/tools/pack-entry.coax).
+// OUT_DIR must be new, under ~/.openagents/ (the jam's: ~/.openagents/unreal/splice-bots-jam/rig/NAME).
+// It holds an admitted animation library on our skeleton (rig.json, clip-N.json, the SHA-256 named
+// .bin, library.bundle: what the animation lab and labs anim retarget read; the mesh is her skin8
+// records, re-skinned to our joints) and character.json (unreal.rig.character.v1: her clips by
+// role, which are hers and which ours, each clip's frames, seconds, metres a loop and how it stands:
+// the lowest vertex's height through the clip and the most a bone below the pelvis stretches). source/ keeps the
+// glTF the data step wrote and its import on the Mannequin's bones, for comparison.
+// REPO is the repository root (rig-blender.py and everglade/model/rigs.vrg, the people's clips).
+// OPENAGENTS_BLENDER overrides /Applications/Blender.app/Contents/MacOS/Blender.
+#load "rig.coax";
+#load "../../tools/anim-import-io.coax";
+
+UrPath :: struct { b: [4096] u8; }
+UrShort :: struct { b: [64] u8; }
+UrDoc :: struct { bytes: [262144] u8; n: int; }
+UrWork :: struct {
+  source: [67108864] u8; clip_bytes: [67108864] u8; clip_text: [16777216] u8; clip_binary: [67108864] u8; output: [67108864] u8; bundle: [67108864] u8; people_file: [4194304] u8;
+  text: [262144] u8; docs: [65] UrDoc; character: [262144] u8;
+  src: [1] AnimRig; ours: [1] AnimRig; check: [1] AnimRig; clips: [64] AnimClip; own: [64] AnimClip; library: [1] AnimLibrary;
+  fold: [1] UrFold; stand: [64] UrStand; distance: [64] f32; origin: [64] bool;
+  people_rest: [455] f32; people_bind: [780] f32; parent: [65] int; duration: [256] f32; dist: [256] f32;
+  track_t: [33280] int; track_r: [33280] int; keys_t: [400000] f32; keys_r: [2000000] f32;
+}
+UrRigResult :: struct { err: string; clips: int; ours: int; joints: int; vertices: int; orphans: int; two_legs: int; placed: int; leg: f32; turned: bool; bytes: int; pack: AssetId; }
+
+ur_put_text :: (o: [] PnOut, a: string, b: string) -> string { pn_put(o, a); pn_put(o, b); return pn_text(o); }
+ur_file :: (dir: string, name: string, bytes: string) -> bool { p: [4096] u8; return fs_write(fs_join(dir, name, p[..]), bytes); }
+ur_private_root :: (out: [] u8) -> string { home: [4096] u8; root: [4096] u8; return fs_realpath(fs_join(proc_getenv("HOME", home[..]), ".openagents", root[..]), out); }
+
+// The admitted library in dir (rig.json, clip-N.json, HASH.bin): its rig and clips into w.
+ur_load :: (dir: string, w: [] UrWork, rig: [] AnimRig, clips: [] AnimClip) -> int {
+  p: [4096] u8; n := fs_read(fs_join(dir, "rig.json", p[..]), w[0].text[..]); if n < 1 { return -1; }
+  nodes: [32768] JvNode; d: [1] Jv; if anim_json(cast(string) w[0].text[0..<n], d[..], nodes[..]) != 0 { return -1; }
+  id: [1] AssetId; if !anim_hash(d[0], jv_get(d[0], jv_get(d[0], 0, "rest"), "pack"), id[..]) { return -1; }
+  hash: [64] u8; if !asset_hex(id[0], hash[..]) { return -1; }
+  name: [68] u8; for c, k: hash { name[k] = c; } for c, k: ".bin" { name[64 + k] = c; }
+  bn := fs_read(fs_join(dir, cast(string) name[..], p[..]), w[0].source[..]); if bn < 1 || !asset_same(asset_id(cast(string) w[0].source[0..<bn]), id[0]) { return -1; }
+  packs := [1] AnimPack.[AnimPack.{id = id[0], bytes = w[0].source[0..<bn]}];
+  if anim_rig_load(cast(string) w[0].text[0..<n], packs[..], rig) != 0 { return -1; }
+  count := 0;
+  while count < clips.count {
+    leaf: [32] u8; o: [1] PnOut; o[0].buf = leaf[..]; pn_put(o[..], "clip-"); pn_putint(o[..], count); pn_put(o[..], ".json");
+    cn := fs_read(fs_join(dir, pn_text(o[..]), p[..]), w[0].text[..]); if cn < 1 { break; }
+    if anim_clip_load(cast(string) w[0].text[0..<cn], packs[..], rig, clips[count..<count + 1]) != 0 { return -1; }
+    count += 1;
+  }
+  return count;
+}
+
+// A clip glTF the data step wrote (ROLE.gltf beside its .bin): its one animation as a clip on rig,
+// each node by name a joint of rig (the reader's own way for separately exported clips,
+// anim-import-io.coax ai_unreal_clips), its frames into w's clip bytes from at. "" or why not.
+ur_read_clip :: (file: string, rig: AnimRig, role: string, w: [] UrWork, at: int, out: [] AnimClip) -> string {
+  n := fs_read(file, w[0].clip_text[..]); if n < 1 { return "rig-clip-read"; }
+  nodes: [262144] JvNode; d: [1] Jv; if !jv_parse(d[..], cast(string) w[0].clip_text[0..<n], nodes[..]) { return "rig-clip-json"; }
+  g := [1] AgFile.[AgFile.{d = d[0]}]; if jv_len(d[0], ag_get(g[..], 0, "buffers")) != 1 || jv_len(d[0], ag_get(g[..], 0, "animations")) != 1 { return "rig-clip-shape"; }
+  buffer := ag_top(g[..], "buffers", 0); uri: [256] u8; un := jv_str(d[0], ag_get(g[..], buffer, "uri"), uri[..]); if un < 1 || !ai_buffer_name(cast(string) uri[0..<un]) { return "rig-clip-uri"; }
+  bp: [4096] u8; bn := fs_read(fs_join(fs_dir(file), cast(string) uri[0..<un], bp[..]), w[0].clip_binary[..]); if bn < 1 || bn != ag_required(g[..], buffer, "byteLength") { return "rig-clip-binary"; }
+  g[0].binary = w[0].clip_binary[0..<bn];
+  scene: [1] AgScene; scene[0].nodes = jv_len(d[0], ag_get(g[..], 0, "nodes")); if scene[0].nodes < 1 || scene[0].nodes > 512 { return "rig-clip-nodes"; }
+  seen: [512] bool;
+  for node: 0..<scene[0].nodes { label := ag_name(g[..], ag_top(g[..], "nodes", node), "name", "joint-", node); names := rig.names; joint := anim_find(names[0..<rig.joints], label); if joint < 0 || seen[joint] { return "rig-clip-joint"; } seen[joint] = true; scene[0].node_joint[node] = joint; }
+  build: [1] AiBuild; build[0].library[0].rig[0] = rig; build[0].at = at;
+  e := ag_animations(g[..], scene[..], 30, w[0].clip_bytes[..], build[..]); if e != "" { return e; }
+  if build[0].library[0].count != 1 { return "rig-clip-count"; }
+  out[0] = build[0].library[0].clips[0]; out[0].name = anim_named(role); out[0].role = out[0].name; return "";
+}
+
+// The people's rig from the rigs' file: "" or why not; r plays it.
+ur_people :: (repo: string, w: [] UrWork, r: [] SkinRig) -> string {
+  p: [4096] u8; n := fs_read(fs_join(repo, "everglade/model/rigs.vrg", p[..]), w[0].people_file[..]); if n < 1 { return "people-rigs-read"; }
+  b := w[0].people_file[0..<n]; if vrg_valid(b) < 1 { return "people-rigs-file"; }
+  s := vrg_find(b, "people"); if s.joints != UR_JOINTS || s.clips > 256 || s.keys_t * 4 > w[0].keys_t.count || s.keys_r * 5 > w[0].keys_r.count { return "people-rig"; }
+  nt := s.clips * s.joints * 2;
+  if !vrg_ints(b, s, VRG_PARENT, w[0].parent[..]) || !vrg_floats(b, s, VRG_REST_0, w[0].people_rest[..]) || !vrg_floats(b, s, VRG_BIND_0, w[0].people_bind[..])
+     || !vrg_floats(b, s, VRG_DURATION, w[0].duration[0..<s.clips]) || !vrg_floats(b, s, VRG_DISTANCE, w[0].dist[0..<s.clips])
+     || !vrg_ints(b, s, VRG_TRACK_T, w[0].track_t[0..<nt]) || !vrg_ints(b, s, VRG_TRACK_R, w[0].track_r[0..<nt])
+     || !vrg_floats(b, s, VRG_KEYS_T_0, w[0].keys_t[0..<s.keys_t * 4]) || !vrg_floats(b, s, VRG_KEYS_R, w[0].keys_r[0..<s.keys_r * 5]) { return "people-rig"; }
+  r[0] = SkinRig.{joints = s.joints, clips = s.clips, parent = w[0].parent[..], rest = w[0].people_rest[..], bind = w[0].people_bind[..], duration = w[0].duration[0..<s.clips], distance = w[0].dist[0..<s.clips],
+                  track_t = w[0].track_t[0..<nt], track_r = w[0].track_r[0..<nt], keys_t = w[0].keys_t[0..<s.keys_t * 4], keys_r = w[0].keys_r[0..<s.keys_r * 5]};
+  return "";
+}
+
+// The ALB1 bundle of a library: the pack, then the rig and clip documents.
+ur_bundle :: (out: [] u8, pack: [] u8, docs: [] UrDoc, count: int) -> int {
+  cursor := 12 + (count + 2) * 8; size := cursor + pack.count; for k: 0..<count + 1 { size += docs[k].n; } if size > out.count { return -1; }
+  anim_bundle_put(out, 0, 0x31424c41); anim_bundle_put(out, 4, cast(u32) size); anim_bundle_put(out, 8, cast(u32) count); anim_bundle_put(out, 12, cast(u32) cursor); anim_bundle_put(out, 16, cast(u32) pack.count);
+  for k: 0..<pack.count { out[cursor + k] = pack[k]; } cursor += pack.count;
+  for k: 0..<count + 1 { anim_bundle_put(out, 20 + k * 8, cast(u32) cursor); anim_bundle_put(out, 24 + k * 8, cast(u32) docs[k].n); for j: 0..<docs[k].n { out[cursor + j] = docs[k].bytes[j]; } cursor += docs[k].n; }
+  return size;
+}
+
+// Whether frames written from at end on the pose they start on (within a millimetre and a tenth of a degree).
+ur_closes :: (b: [] u8, at: int, frames: int) -> bool {
+  for j: 0..<UR_JOINTS { a := anim_local(b, at + j * 28); z := anim_local(b, at + ((frames - 1) * UR_JOINTS + j) * 28); if !same(a.t, z.t, 0.001) || abs(quat_dot(quat_unit(a.q), quat_unit(z.q))) < 0.9999996 { return false; } }
+  return true;
+}
+ur_role_base :: (role: string) -> int { for r, k: UR_ROLE { if r == role { return k; } } return -1; }
+
+ur_rig_files :: (body: string, roles: [] string, files: [] string, name: string, destination: string, repo: string, ours: bool) -> UrRigResult {
+  result: UrRigResult; w: [1] UrWork;
+  if !anim_name_ok(name) || name.count > 15 { result.err = "rig-name"; return result; }
+  for c: name { if !vrg_name_byte(c) { result.err = "rig-name"; return result; } }
+  if roles.count != files.count || roles.count > 32 { result.err = "rig-clips"; return result; }
+  for role, k: roles { if !anim_name_ok(role) { result.err = "rig-role"; return result; } for j: 0..<k { if roles[j] == role { result.err = "rig-role-twice"; return result; } } }
+  // the destination: new, under ~/.openagents, its parent there already
+  canonical_root: [4096] u8; private_root := ur_private_root(canonical_root[..]);
+  parent_buf: [4096] u8; parent := fs_realpath(fs_dir(destination), parent_buf[..]); leaf := fs_base(destination);
+  if !anim_export_path(parent, private_root, leaf) { result.err = "output-private-root"; return result; }
+  dest_buf: [4096] u8; dest := fs_join(parent, leaf, dest_buf[..]); if fs_kind(dest) != FS_NONE { result.err = "output-exists"; return result; }
+  stage_name: [128] u8; so: [1] PnOut; so[0].buf = stage_name[..]; pn_put(so[..], ".unreal-rig-"); pn_put(so[..], name); pn_put(so[..], "-"); pn_putint(so[..], proc_now_ns());
+  stage_buf: [4096] u8; stage := fs_join(parent, pn_text(so[..]), stage_buf[..]); if !fs_mkdir(stage) { result.err = "output-staging"; return result; }
+  published := false; defer { if !published { removed := fs_remove(stage); } }
+  src_buf: [4096] u8; source_dir := fs_join(stage, "source", src_buf[..]); if !fs_mkdir(source_dir) { result.err = "output-staging"; return result; }
+  // 1. the data step (Blender): one glTF of her mesh, her bones and her clips
+  gltf_buf: [4096] u8; gltf := fs_join(source_dir, "character.gltf", gltf_buf[..]);
+  script_buf: [4096] u8; script := fs_join(repo, "metaverse-engine/import/unreal/rig-blender.py", script_buf[..]);
+  program: [4096] u8; blender := proc_getenv("OPENAGENTS_BLENDER", program[..]); if blender == "" { blender = "/Applications/Blender.app/Contents/MacOS/Blender"; }
+  specs: [32] UrPath; argv: [40] string; argc := 0;
+  for a: [6] string.[blender, "--background", "--factory-startup", "--python", script, "--"] { argv[argc] = a; argc += 1; }
+  argv[argc] = source_dir; argc += 1; argv[argc] = body; argc += 1;
+  for role, k: roles { o: [1] PnOut; o[0].buf = specs[k].b[..]; pn_put(o[..], role); pn_put(o[..], "="); pn_put(o[..], files[k]); argv[argc] = pn_text(o[..]); argc += 1; }
+  stdout: [65536] u8; stderr: [65536] u8; run := proc_run(argv[0..<argc], 600000, stdout[..], stderr[..]);
+  if run.status != 0 || run.timed_out { result.err = "rig-data-step"; print("%\n%\n", cast(string) stdout[0..<lo_int(run.out_n, stdout.count)], cast(string) stderr[0..<lo_int(run.err_n, stderr.count)]); return result; }
+  // 2. her rig and clips on the Mannequin's bones, admitted by the engine's glTF reader
+  import_buf: [4096] u8; import_dir := fs_join(source_dir, "mannequin", import_buf[..]);
+  body_bytes: [67108864] u8; bn := fs_read(body, body_bytes[..]); if bn < 1 { result.err = "rig-body-read"; return result; }
+  imported := ai_import_data(gltf, name, import_dir, 30, body, asset_id(cast(string) body_bytes[0..<bn]), ifx ai_format(body) == 4 then "fbx" else "");
+  if imported.err != "" { result.err = imported.err; return result; }
+  if ur_load(import_dir, w[..], w[0].src[..], w[0].own[..]) < 0 { result.err = "rig-source-load"; return result; }
+  src_packs := [1] AnimPack.[AnimPack.{bytes = w[0].source[..]}];
+  // her clips, each its own file, on her joints
+  count := 0; clip_at := 0;
+  for role, k: roles {
+    leaf_buf: [128] u8; lo_: [1] PnOut; lo_[0].buf = leaf_buf[..]; pn_put(lo_[..], role); pn_put(lo_[..], ".gltf"); cp: [4096] u8;
+    e := ur_read_clip(fs_join(source_dir, pn_text(lo_[..]), cp[..]), w[0].src[0], role, w[..], clip_at, w[0].own[k..<k + 1]); if e != "" { result.err = e; return result; }
+    clip_at = w[0].own[k].body.offset + w[0].own[k].body.count * 28; count += 1;
+  }
+  clip_packs := [1] AnimPack.[AnimPack.{bytes = w[0].clip_bytes[..]}];
+  // 3. the fold, her mesh on our joints
+  why := ur_fold(w[0].src[0], w[0].fold[..]); if why != "" { result.err = why; return result; }
+  f := w[0].fold[0];
+  mesh := ur_rig(w[0].src[0], src_packs[..], f, name, w[0].output[..], w[0].ours[..]); if mesh.parts.bytes < 0 { result.err = "output-capacity"; return result; }
+  at := mesh.parts.bytes;
+  // 4. the clips: the base actions first (hers, else ours), then her others in the order given
+  people: [1] SkinRig; e := ur_people(repo, w[..], people[..]); if e != "" { result.err = e; return result; }
+  source_id := asset_id(cast(string) body_bytes[0..<bn]);
+  // her soles: our idle's first frame on her, lifted so its lowest vertex is on the floor
+  lift: f32 = 0;
+  probe := ur_people_clip(people[0], UR_ROLE_PEOPLE[0], f, 30, 0, w[0].output[..], at);
+  if probe.bytes > 0 { one := probe; one.frames = 1; c := ur_clip_record(one, at, "probe", name, false, source_id); pk := [1] AnimPack.[AnimPack.{bytes = w[0].output[0..<probe.bytes]}]; lift = -ur_stand(w[0].ours[0], c, pk[..], 1).low; }
+  n := 0;
+  for pass: 0..<2 {
+    for slot: 0..<(ifx pass == 0 then UR_ROLES else roles.count) {
+      role := ifx pass == 0 then UR_ROLE[slot] else roles[slot];
+      if pass == 1 && ur_role_base(role) >= 0 { continue; }
+      mine := -1; for k: 0..<count { cn := w[0].own[k].name; if cast(string) cn.bytes[0..<cn.n] == role { mine = k; } }
+      if mine < 0 && (pass == 1 || !ours) { if pass == 1 { result.err = "rig-clip-missing"; return result; } continue; }
+      u: UrClip; looping := pass == 0 && UR_ROLE_LOOP[slot];
+      if mine >= 0 { u = ur_own_clip(w[0].src[0], w[0].own[mine], clip_packs[..], f, w[0].output[..], at); w[0].origin[n] = true; }
+      else { u = ur_people_clip(people[0], UR_ROLE_PEOPLE[slot], f, 30, lift, w[0].output[..], at); w[0].origin[n] = false; result.ours += 1; }
+      if u.bytes < 0 { result.err = "rig-clip"; return result; }
+      if pass == 1 { looping = ur_closes(w[0].output[..], at, u.frames); }   // her other clips loop when they end where they start
+      w[0].clips[n] = ur_clip_record(u, at, role, name, looping, source_id); at = u.bytes; n += 1;
+    }
+  }
+  if n < 1 { result.err = "rig-no-clips"; return result; }
+  // 5. the documents, re-admitted before anything is published
+  pack := AnimPack.{id = asset_id(cast(string) w[0].output[0..<at]), bytes = w[0].output[0..<at]}; packs := [1] AnimPack.[pack];
+  hash: [64] u8; if !asset_hex(pack.id, hash[..]) { result.err = "output-hash"; return result; } h := cast(string) hash[..];
+  w[0].docs[0].n = aw_rig(w[0].docs[0].bytes[..], w[0].ours[0], mesh.parts, h); if w[0].docs[0].n < 1 { result.err = "rig-document"; return result; }
+  if anim_rig_load(cast(string) w[0].docs[0].bytes[0..<w[0].docs[0].n], packs[..], w[0].check[..]) != 0 { result.err = "rig-admission"; return result; }
+  for k: 0..<n {
+    w[0].docs[k + 1].n = aw_clip(w[0].docs[k + 1].bytes[..], w[0].clips[k], w[0].check[0], h); if w[0].docs[k + 1].n < 1 { result.err = "clip-document"; return result; }
+    if anim_clip_load(cast(string) w[0].docs[k + 1].bytes[0..<w[0].docs[k + 1].n], packs[..], w[0].check[..], w[0].clips[k..<k + 1]) != 0 { result.err = "clip-admission"; return result; }
+  }
+  size := ur_bundle(w[0].bundle[..], w[0].output[0..<at], w[0].docs[..], n); if size < 0 { result.err = "bundle-capacity"; return result; }
+  if anim_bundle_load(w[0].bundle[0..<size], w[0].library[..]) != 0 { result.err = "bundle-admission"; return result; }
+  // 6. how each clip stands, and a gait's metres
+  vertices := 0; for k: 0..<w[0].check[0].sections { vertices += w[0].check[0].meshes[k].vertices.count; }
+  step := ifx vertices > 20000 then 3 else 1;
+  for k: 0..<n {
+    w[0].stand[k] = ur_stand(w[0].check[0], w[0].clips[k], packs[..], step);
+    role := w[0].clips[k].name; base := ur_role_base(cast(string) role.bytes[0..<role.n]); w[0].distance[k] = 0;
+    if base == 1 || base == 2 {
+      people_metres := UR_PEOPLE_DISTANCE[UR_ROLE_PEOPLE[base]] * f.leg;
+      if w[0].origin[k] {
+        // hers: the people's metres scaled by how far her foot sweeps against the people's in the same action
+        ours_bytes := at; u := ur_people_clip(people[0], UR_ROLE_PEOPLE[base], f, 30, 0, w[0].output[..], ours_bytes);
+        if u.bytes > 0 { pc := ur_clip_record(u, ours_bytes, "probe", name, true, source_id); pk := [1] AnimPack.[AnimPack.{bytes = w[0].output[0..<u.bytes]}]; theirs := ur_sweep(w[0].check[0], pc, pk[..]); mine := ur_sweep(w[0].check[0], w[0].clips[k], packs[..]); if theirs > 0.01 { people_metres *= mine / theirs; } }
+      }
+      w[0].distance[k] = people_metres;
+    }
+  }
+  // 7. character.json and the files
+  o: [1] Jo; jo_start(o[..], w[0].character[..]); jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "unreal.rig.character.v1"); jo_key(o[..], "name"); jo_str(o[..], name);
+  jo_key(o[..], "skeleton"); jo_str(o[..], "people-65"); jo_key(o[..], "source"); jo_str(o[..], body);
+  src_hash: [64] u8; if !asset_hex(source_id, src_hash[..]) { result.err = "output-hash"; return result; } jo_key(o[..], "source_sha256"); jo_str(o[..], cast(string) src_hash[..]);
+  jo_key(o[..], "pack"); jo_str(o[..], h); jo_key(o[..], "joints"); jo_int(o[..], UR_JOINTS); jo_key(o[..], "vertices"); jo_int(o[..], vertices);
+  jo_key(o[..], "source_joints"); jo_int(o[..], w[0].src[0].joints); jo_key(o[..], "placed_joints"); jo_int(o[..], f.placed);
+  jo_key(o[..], "leg_ratio"); aw_number(o[..], f.leg); jo_key(o[..], "turned"); jo_bool(o[..], f.turn.w < 0.9999); jo_key(o[..], "bind_drift_m"); aw_number(o[..], f.drift);
+  jo_key(o[..], "orphan_vertices"); jo_int(o[..], mesh.orphans); jo_key(o[..], "two_leg_vertices"); jo_int(o[..], mesh.two_legs); jo_key(o[..], "our_clips_lift_m"); aw_number(o[..], lift);
+  jo_key(o[..], "clips"); jo_arr(o[..]);
+  for k: 0..<n {
+    c := w[0].clips[k]; s := w[0].stand[k]; jo_obj(o[..]); jo_key(o[..], "role"); aw_name(o[..], c.name); jo_key(o[..], "origin"); jo_str(o[..], ifx w[0].origin[k] then "hers" else "ours");
+    if !w[0].origin[k] { base := ur_role_base(cast(string) c.name.bytes[0..<c.name.n]); jo_key(o[..], "people_clip"); jo_str(o[..], [15] string.["idle", "walk", "talk", "nod", "fold", "lantern", "spell", "slash", "run", "die", "knock", "cower", "jump_start", "jump_loop", "jump_land"][UR_ROLE_PEOPLE[base]]); }
+    jo_key(o[..], "frames"); jo_int(o[..], c.frames); jo_key(o[..], "rate"); aw_number(o[..], c.rate); jo_key(o[..], "seconds"); aw_number(o[..], c.length); jo_key(o[..], "loop"); jo_bool(o[..], c.looping);
+    jo_key(o[..], "distance_m"); aw_number(o[..], w[0].distance[k]); jo_key(o[..], "lowest_vertex_m"); jo_arr(o[..]); aw_number(o[..], s.low); aw_number(o[..], s.high); jo_end(o[..]); jo_key(o[..], "stretch_m"); aw_number(o[..], s.stretch);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]); if o[0].bad { result.err = "character-capacity"; return result; }
+  file_name: [68] u8; for c, k: hash { file_name[k] = c; } for c, k: ".bin" { file_name[64 + k] = c; }
+  if !ur_file(stage, cast(string) file_name[..], cast(string) w[0].output[0..<at]) || !ur_file(stage, "library.bundle", cast(string) w[0].bundle[0..<size]) || !ur_file(stage, "character.json", jo_text(o[..])) { result.err = "output-write"; return result; }
+  for k: 0..<n + 1 { leaf_buf: [32] u8; lo_: [1] PnOut; lo_[0].buf = leaf_buf[..]; if k == 0 { pn_put(lo_[..], "rig.json"); } else { pn_put(lo_[..], "clip-"); pn_putint(lo_[..], k - 1); pn_put(lo_[..], ".json"); } if !ur_file(stage, pn_text(lo_[..]), cast(string) w[0].docs[k].bytes[0..<w[0].docs[k].n]) { result.err = "output-write"; return result; } }
+  if !fs_rename(stage, dest) { result.err = "output-publish"; return result; }
+  published = true;
+  result.clips = n; result.joints = UR_JOINTS; result.vertices = vertices; result.orphans = mesh.orphans; result.two_legs = mesh.two_legs; result.placed = f.placed; result.leg = f.leg; result.turned = f.turn.w < 0.9999; result.bytes = at; result.pack = pack.id;
+  return result;
+}
+lo_int :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+
+// One skeletal mesh of an import bundle (BUNDLE.md 3.2).
+ur_rig_bundle :: (bundle: string, mesh_id: string, name: string, destination: string, repo: string) -> UrRigResult {
+  result: UrRigResult; p: [4096] u8; text: [16777216] u8; n := fs_read(fs_join(bundle, "manifest.json", p[..]), text[..]);
+  if n < 1 { result.err = "bundle-manifest-read"; return result; }
+  nodes: [1048576] JvNode; d: [1] Jv; if !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { result.err = "bundle-manifest"; return result; }
+  value: [4096] u8; skeleton: [4096] u8; skeleton_n := -1; body: [4096] u8; body_n := -1;
+  meshes := jv_get(d[0], 0, "skeletal_meshes");
+  for k: 0..<jv_len(d[0], meshes) {
+    row := jv_at(d[0], meshes, k); vn := jv_str(d[0], jv_get(d[0], row, "id"), value[..]);
+    if vn >= 0 && cast(string) value[0..<vn] == mesh_id { skeleton_n = jv_str(d[0], jv_get(d[0], row, "skeleton"), skeleton[..]); fn := jv_str(d[0], jv_get(d[0], row, "file"), value[..]); if fn > 0 { body_n = fs_join(bundle, cast(string) value[0..<fn], body[..]).count; } }
+  }
+  if body_n < 1 || skeleton_n < 1 { result.err = "bundle-mesh"; return result; }
+  skeletons := jv_get(d[0], 0, "skeletons"); engine := false;
+  for k: 0..<jv_len(d[0], skeletons) { row := jv_at(d[0], skeletons, k); vn := jv_str(d[0], jv_get(d[0], row, "id"), value[..]); if vn >= 0 && cast(string) value[0..<vn] == cast(string) skeleton[0..<skeleton_n] { on := jv_str(d[0], jv_get(d[0], row, "origin"), value[..]); engine = on > 0 && cast(string) value[0..<on] == "engine"; } }
+  if !engine { result.err = "bundle-skeleton-not-mannequin"; return result; }
+  roles_buf: [32] UrShort; files_buf: [32] UrPath; roles: [32] string; files: [32] string; count := 0;
+  anims := jv_get(d[0], 0, "animations");
+  for k: 0..<jv_len(d[0], anims) {
+    row := jv_at(d[0], anims, k); sn := jv_str(d[0], jv_get(d[0], row, "skeleton"), value[..]);
+    if sn < 0 || cast(string) value[0..<sn] != cast(string) skeleton[0..<skeleton_n] { continue; }
+    on := jv_str(d[0], jv_get(d[0], row, "origin"), value[..]); if on < 0 || cast(string) value[0..<on] != "project" { continue; }   // Epic's clips are not read
+    if count == 32 { result.err = "bundle-clips"; return result; }
+    idn := jv_str(d[0], jv_get(d[0], row, "id"), value[..]); id := cast(string) value[0..<idn]; first := 0; for c, i: id { if c == '.' { first = i + 1; } }
+    m := 0; for c: id[first..<id.count] { if m < 40 { x := ifx c >= 'A' && c <= 'Z' then c + 32 else c; roles_buf[count].b[m] = ifx (x >= 'a' && x <= 'z') || (x >= '0' && x <= '9') || x == '-' then x else '_'; m += 1; } }
+    roles[count] = cast(string) roles_buf[count].b[0..<m];
+    fn := jv_str(d[0], jv_get(d[0], row, "file"), value[..]); if fn < 1 { result.err = "bundle-animation-file"; return result; }
+    files[count] = fs_join(bundle, cast(string) value[0..<fn], files_buf[count].b[..]); count += 1;
+  }
+  return ur_rig_files(cast(string) body[0..<body_n], roles[0..<count], files[0..<count], name, destination, repo, true);
+}
+
+// The characters in dirs as one VRG1 file (version 2), a set each named as its character.
+ur_rig_vrg :: (out_file: string, dirs: [] string) -> string {
+  if dirs.count < 1 || dirs.count > VRG_SETS { return "vrg-sets"; }
+  w: [1] UrWork; out: [16777216] u8; at := vrg_begin(out[..], dirs.count, 2); if at == 0 { return "vrg-begin"; }
+  kt: [400000] f32; kr: [2000000] f32; keys: [1] UrKeys;
+  for dir, k: dirs {
+    count := ur_load(dir, w[..], w[0].ours[..], w[0].clips[..]); if count < 1 { return "vrg-character-load"; }
+    p: [4096] u8; n := fs_read(fs_join(dir, "character.json", p[..]), w[0].character[..]); if n < 1 { return "vrg-character-json"; }
+    nodes: [32768] JvNode; d: [1] Jv; if !jv_parse(d[..], cast(string) w[0].character[0..<n], nodes[..]) { return "vrg-character-json"; }
+    rows := jv_get(d[0], 0, "clips"); if jv_len(d[0], rows) != count { return "vrg-character-clips"; }
+    for i: 0..<count { v := anim_number(d[0], jv_get(d[0], jv_at(d[0], rows, i), "distance_m"), 0, 1000); if !v.ok { return "vrg-character-distance"; } w[0].distance[i] = cast(f32) v.value; }
+    name := w[0].ours[0].name; packs := [1] AnimPack.[AnimPack.{bytes = w[0].source[..]}];
+    s := ur_vrg_set(out[..], k, cast(string) name.bytes[0..<name.n], w[0].ours[0], w[0].clips[0..<count], packs[..], w[0].distance[0..<count], at, kt[..], kr[..], keys[..]);
+    if s.joints == 0 { return "vrg-set"; }
+    at += s.n;
+  }
+  vrg_end(out[..], at); if vrg_valid(out[0..<at]) != dirs.count { return "vrg-valid"; }
+  if !fs_write(out_file, cast(string) out[0..<at]) { return "vrg-write"; }
+  return "";
+}

@@ -1,0 +1,344 @@
+// Characters onto our skeleton (GitHub #13651, umbrella #13646; the importer spec's sections 7.4,
+// 8 step 6 and 9.2). A skeletal mesh on the UE Mannequin's bones (a bundle's skeletal mesh whose
+// skeleton has origin "engine", or an FBX/glTF rigged to the Mannequin) comes out on our skeleton:
+// the people's 65 joints (metaverse-engine/anim/mannequin.coax; the Quaternius skeleton Everglade's
+// people and every engine clip play on). Its own clips are carried across; a clip that was Epic's
+// is replaced by our clip for the same action.
+//
+// THE ENTRY POINT for the importer (#13648, metaverse-engine/import/unreal/) is in rig-io.coax:
+//   ur_rig_bundle(BUNDLE.aimport, SKELETAL_MESH_ID, NAME, OUT_DIR, SDK_ROOT) -> UrRigResult
+// for one bundle skeletal mesh (BUNDLE.md 3.2), and ur_rig_vrg(OUT.vrg, DIRS) to put the characters
+// it made into one VRG1 rig entry (PACK_RIG, kind 7). The command line is
+// metaverse-engine/tools/unreal-rig.coax. This file is the pure part: the fold, the reframe of a
+// character's own clips, our clips on a character, and the VRG1 set.
+//
+// The fold. Our joint j takes the source joint of its name (case aside), its "anchor"; a joint the
+// source has not (the Mannequin's finger and toe leaves) is placed from its parent as the people's
+// is, scaled by the legs. Every source joint's weights go to mannequin_fold's joint, else to its
+// nearest ancestor's (spine_04 and spine_05 to spine_03, a twist bone to its limb, a metacarpal to
+// the hand). The character keeps her shape: our bind places are hers. Our joint frames are the
+// people's, turned by D(j), the least rotation that takes the people's bone (j to its main child) to
+// hers, so our bind rotation is D(j) x P(j) (P the people's rest, in the world). Our rest is the
+// people's rotations with her bone offsets: rest local rotation = the people's, rest local place =
+// her offset in her parent's bind frame. So at rest she stands as the people stand (arms out in
+// their T; a model made in an A is turned into it by its skin), and a people's clip's local
+// rotations play on her as they are: her world rotation is the people's, frame for frame. Her
+// pelvis moves by the people's pelvis movement times her legs / theirs, so her feet meet the ground.
+//
+// Her own clips are on her joints, whose frames are hers: each frame's world rotations change
+// frame by C(j) = (her bind rotation)^-1 x (our bind rotation), constant, so her clip is the same
+// motion on our joints. Her root and pelvis keep her clip's places; every other joint keeps its
+// rest offset (bones never stretch). A clip's first frame is dropped when it repeats the second
+// (the frame Blender's exporter adds in front).
+//
+// A model that faces another way than the people is turned about y once, before everything (turn).
+//   coax/bin/coax test metaverse-engine/import/unreal/rig.coax
+#load "../../anim/write.coax";
+#load "../../anim/sample.coax";
+#load "../../anim/skin.coax";
+#load "../../anim/rig-pack.coax";
+#load "rig-checks.coax" #test;
+
+UR_JOINTS :: 65;
+UR_PELVIS :: 1;
+UR_TRACK_FRAMES :: 2000;
+// Our clips by action: the role, the people clip (everglade/scene/people-clips.coax order), loops.
+UR_ROLES :: 6;
+UR_ROLE :: [6] string.["idle", "walk", "jog", "jump_start", "jump_loop", "jump_land"];
+UR_ROLE_PEOPLE :: [6] int.[0, 1, 8, 12, 13, 14];
+UR_ROLE_LOOP :: [6] bool.[true, true, true, false, true, false];
+UR_PEOPLE_DISTANCE :: [15] f32.[0, 1.3, 0, 0, 0, 0, 0, 0, 3.4, 0, 0, 0, 0, 0, 0];
+
+UrFold :: struct {
+  anchor: [65] int;          // the source joint each of ours is, -1 placed from its parent
+  fold: [512] int;           // our joint a source joint's weights go to, -1 none
+  turn: Quat;                // about y, applied to the source first
+  leg: f32 = 1;              // her legs / the people's
+  pos: [65] Point;           // our bind places (hers, turned)
+  bind_q: [65] Quat;         // our bind rotations, D(j) x P(j)
+  her_q: [65] Quat;          // her anchor's bind rotation, turned
+  rest: [65] SkinLocal;      // our rest
+  bind: [780] f32;           // our inverse binds, three rows of four
+  people: [65] SkinLocal;    // the people's rest (body 0)
+  placed: int;               // joints placed from a parent
+  drift: f32;                // most a source joint's rest chain is off its inverse bind, metres
+}
+UrClip :: struct { frames: int; rate: f32 = 30; start: int; bytes: int = -1; }
+
+ur_inverse :: (q: Quat) -> Quat { u := quat_unit(q); return Quat.{x = -u.x, y = -u.y, z = -u.z, w = u.w}; }
+// The least rotation that takes direction a to direction b (both nonzero).
+ur_between :: (a_: Point, b_: Point) -> Quat {
+  a := times(a_, 1 / length(a_)); b := times(b_, 1 / length(b_)); d := dot(a, b);
+  if d < -0.99999 {
+    axis := cross(a, v3(1, 0, 0)); if length(axis) < 0.001 { axis = cross(a, v3(0, 0, 1)); }
+    axis = times(axis, 1 / length(axis)); return Quat.{x = axis.x, y = axis.y, z = axis.z, w = 0};
+  }
+  c := cross(a, b); return quat_unit(Quat.{x = c.x, y = c.y, z = c.z, w = 1 + d});
+}
+// The joint whose direction is joint j's bone: its first child, the middle finger for a hand; -1 for a leaf.
+ur_main :: (j: int) -> int {
+  if j == MQ_HAND_L { return 15; }
+  if j == MQ_HAND_R { return 39; }
+  p := MANNEQUIN_PARENT;
+  for k: (j + 1)..<UR_JOINTS { if p[k] == j { return k; } }
+  return -1;
+}
+// The people's rest, body 0 (the male's; the clips' rotations are both bodies').
+ur_people_rest :: (out: [] SkinLocal) {
+  rest: [455] f32; bind: [780] f32; mannequin_rest_bind(rest[..], bind[..]);
+  for j: 0..<UR_JOINTS { o := j * 7; out[j] = SkinLocal.{t = v3(rest[o], rest[o + 1], rest[o + 2]), q = Quat.{x = rest[o + 3], y = rest[o + 4], z = rest[o + 5], w = rest[o + 6]}}; }
+}
+ur_chain :: (rest: [] SkinLocal, parents: [] int, n: int, q: [] Quat, t: [] Point) { for j: 0..<n { pose_chain(q, t, parents[j], j, rest[j]); } }
+ur_leg :: (t: [] Point) -> f32 {
+  total: f32 = 0;
+  for hip: [2] int.[MQ_THIGH_L, MQ_THIGH_R] { total += length(sub(t[hip], t[hip + 1])) + length(sub(t[hip + 1], t[hip + 2])); }
+  return total / 2;
+}
+// A joint's inverse bind (three rows of four) from its bind rotation and place.
+ur_put_bind :: (q: Quat, t: Point, out: [] f32, j: int) {
+  inv := ur_inverse(q); x := quat_rotate(inv, v3(1, 0, 0)); y := quat_rotate(inv, v3(0, 1, 0)); z := quat_rotate(inv, v3(0, 0, 1)); p := quat_rotate(inv, times(t, -1));
+  for value, k: [12] f32.[x.x, y.x, z.x, p.x, x.y, y.y, z.y, p.y, x.z, y.z, z.z, p.z] { out[j * 12 + k] = value; }
+}
+// Where a joint's inverse bind puts it.
+ur_bind_place :: (bind: [] f32, j: int) -> Point {
+  b := j * 12; p := v3(bind[b + 3], bind[b + 7], bind[b + 11]);
+  // place = -R^T p, R's rows the three rows' first three numbers
+  return v3(-(bind[b] * p.x + bind[b + 4] * p.y + bind[b + 8] * p.z), -(bind[b + 1] * p.x + bind[b + 5] * p.y + bind[b + 9] * p.z), -(bind[b + 2] * p.x + bind[b + 6] * p.y + bind[b + 10] * p.z));
+}
+
+// The fold of source rig src onto our skeleton: "" or why not.
+ur_fold :: (src: AnimRig, out: [] UrFold) -> string {
+  f: UrFold; ur_people_rest(f.people[..]);
+  if src.joints < 1 || src.joints > 512 { return "rig-joints"; }
+  for j: 0..<src.joints {
+    name := src.names[j]; slot := mannequin_fold(cast(string) name.bytes[0..<name.n]);
+    if slot < 0 && src.parents[j] >= 0 { slot = f.fold[src.parents[j]]; }
+    f.fold[j] = slot;
+  }
+  for s: 0..<UR_JOINTS {
+    f.anchor[s] = -1;
+    for j: 0..<src.joints { name := src.names[j]; if mq_same(cast(string) name.bytes[0..<name.n], MANNEQUIN_NAME[s]) { if f.anchor[s] >= 0 { return "rig-joint-twice"; } f.anchor[s] = j; } }
+  }
+  for s: [10] int.[MQ_PELVIS, MQ_SPINE_01, MQ_HEAD, MQ_UPPERARM_L, MQ_HAND_L, MQ_UPPERARM_R, MQ_HAND_R, MQ_THIGH_L, MQ_FOOT_L, MQ_FOOT_R] { if f.anchor[s] < 0 { return "rig-missing-body-joint"; } }
+  for s: [6] int.[MQ_CALF_L, MQ_CALF_R, MQ_THIGH_R, MQ_LOWERARM_L, MQ_LOWERARM_R, MQ_NECK] { if f.anchor[s] < 0 { return "rig-missing-body-joint"; } }
+  // her bind pose: the rest chain, held to her inverse binds
+  hq: [512] Quat; ht: [512] Point; rest := src.rest; parents := src.parents; ur_chain(rest[..], parents[..], src.joints, hq[..], ht[..]);
+  bind := src.bind;
+  for j: 0..<src.joints { if f.fold[j] >= 0 { f.drift = hi(f.drift, length(sub(ur_bind_place(bind[..], j), ht[j]))); } }
+  // the people, in the world
+  pq: [65] Quat; pt: [65] Point; mp := MANNEQUIN_PARENT; ur_chain(f.people[..], mp[..], UR_JOINTS, pq[..], pt[..]);
+  // her facing: toes from heels, about y
+  her_toe := v3(0, 0, 0);
+  if f.anchor[MQ_BALL_L] >= 0 && f.anchor[MQ_BALL_R] >= 0 { her_toe = sub(add(ht[f.anchor[MQ_BALL_L]], ht[f.anchor[MQ_BALL_R]]), add(ht[f.anchor[MQ_FOOT_L]], ht[f.anchor[MQ_FOOT_R]])); }
+  our_toe := sub(add(pt[MQ_BALL_L], pt[MQ_BALL_R]), add(pt[MQ_FOOT_L], pt[MQ_FOOT_R]));
+  f.turn = Quat.{};
+  if flat_length(her_toe) > 0.001 {
+    a := atan2(her_toe.x, her_toe.z); b := atan2(our_toe.x, our_toe.z); yaw := b - a;
+    if abs(wrap_angle(yaw)) > 0.26 { f.turn = Quat.{y = sin(yaw / 2), w = cos(yaw / 2)}; }   // more than 15 degrees off
+  }
+  for s: 0..<UR_JOINTS { a := f.anchor[s]; if a >= 0 { f.pos[s] = quat_rotate(f.turn, ht[a]); f.her_q[s] = quat_unit(quat_mul(f.turn, hq[a])); } }
+  her_legs := ur_leg(f.pos[..]); people_legs := ur_leg(pt[..]);
+  if !(her_legs > 0.05) || !(people_legs > 0.05) { return "rig-legs"; }
+  f.leg = her_legs / people_legs;
+  d: [65] Quat;
+  for s: 0..<UR_JOINTS {
+    p := mp[s];
+    if f.anchor[s] < 0 {
+      f.placed += 1;
+      if p < 0 { f.pos[s] = v3(0, 0, 0); }
+      else { f.pos[s] = add(f.pos[p], quat_rotate(d[p], times(sub(pt[s], pt[p]), f.leg))); }
+    }
+    c := ur_main(s);
+    if s == 0 { d[s] = Quat.{}; }
+    else if c >= 0 && f.anchor[c] >= 0 && length(sub(f.pos[c], f.pos[s])) > 0.0001 && length(sub(pt[c], pt[s])) > 0.0001 { d[s] = ur_between(sub(pt[c], pt[s]), sub(f.pos[c], f.pos[s])); }
+    else { d[s] = d[p]; }
+    if f.anchor[s] < 0 { f.her_q[s] = quat_unit(quat_mul(d[s], pq[s])); }
+    f.bind_q[s] = quat_unit(quat_mul(d[s], pq[s]));
+    ur_put_bind(f.bind_q[s], f.pos[s], f.bind[..], s);
+    f.rest[s].q = f.people[s].q;
+    f.rest[s].t = ifx p < 0 then f.pos[s] else quat_rotate(ur_inverse(f.bind_q[p]), sub(f.pos[s], f.pos[p]));
+  }
+  out[0] = f; return "";
+}
+
+// Our rig: names, parents, rest, bind and her mesh re-skinned onto our joints, into out (rest at 0,
+// bind after it, then each section's vertices and indices). The layout, bytes -1 when out is short.
+// The record is skin8.v1 (metaverse-engine/anim/gltf-scene.coax): place, normal, uv, material, eight
+// 16-bit joints at 36, eight weights at 52 (summing to 255), tangent at 60. Weights a source joint
+// gives to no joint of ours (orphans) go to the pelvis and are counted.
+UrMesh :: struct { parts: AwRigParts; orphans: int; two_legs: int; }
+ur_rig :: (src: AnimRig, packs: [] AnimPack, f: UrFold, name: string, out: [] u8, next: [] AnimRig) -> UrMesh {
+  m: UrMesh; r: AnimRig; r.ready = true; r.name = anim_named(name); r.joints = UR_JOINTS;
+  if r.name.n == 0 { return m; }
+  mp := MANNEQUIN_PARENT;
+  for j: 0..<UR_JOINTS { r.names[j] = anim_named(MANNEQUIN_NAME[j]); r.parents[j] = mp[j]; r.rest[j] = f.rest[j]; r.mapped[j] = j; for k: 0..<12 { r.bind[j * 12 + k] = f.bind[j * 12 + k]; } }
+  r.material_count = src.material_count; for k: 0..<src.material_count { r.materials[k] = src.materials[k]; }
+  at := UR_JOINTS * 76; if at > out.count { return m; }
+  for j: 0..<UR_JOINTS { p := r.rest[j]; for value, k: [7] f32.[p.t.x, p.t.y, p.t.z, p.q.x, p.q.y, p.q.z, p.q.w] { aw_put(out, j * 28 + k * 4, f32_bits(value)); } for k: 0..<12 { aw_put(out, UR_JOINTS * 28 + j * 48 + k * 4, f32_bits(r.bind[j * 12 + k])); } }
+  m.parts.rest = AnimPart.{pack = 0, offset = 0, count = UR_JOINTS, stride = 28, width = 28};
+  m.parts.bind = AnimPart.{pack = 0, offset = UR_JOINTS * 28, count = UR_JOINTS, stride = 48, width = 48};
+  for k: 0..<src.sections {
+    sm := src.meshes[k]; vb := packs[sm.vertices.pack].bytes; ib := packs[sm.indices.pack].bytes;
+    nv := sm.vertices.count; ni := sm.indices.count;
+    if nv * 96 + ni * 4 > out.count - at { return m; }
+    first := at;
+    for v: 0..<nv {
+      from := sm.vertices.offset + v * sm.vertices.stride; to := at + v * 96;
+      for b: 0..<96 { out[to + b] = vb[from + b]; }
+      for part: [3] int.[0, 12, 60] {
+        p := quat_rotate(f.turn, v3(anim_float(vb, from + part), anim_float(vb, from + part + 4), anim_float(vb, from + part + 8)));
+        aw_put(out, to + part, f32_bits(p.x)); aw_put(out, to + part + 4, f32_bits(p.y)); aw_put(out, to + part + 8, f32_bits(p.z));
+      }
+      w: [65] int; orphan := false;
+      for i: 0..<8 {
+        weight := cast(int) vb[from + 52 + i]; if weight == 0 { continue; }
+        joint := cast(int) vb[from + 36 + i * 2] | (cast(int) vb[from + 37 + i * 2] << 8);
+        slot := ifx joint < src.joints then f.fold[joint] else -1;
+        if slot < 0 { slot = UR_PELVIS; orphan = true; }
+        w[slot] += weight;
+      }
+      if orphan { m.orphans += 1; }
+      left := 0; right := 0; for s: 55..<60 { left += w[s]; right += w[s + 5]; }
+      if left > 25 && right > 25 { m.two_legs += 1; }
+      for i: 0..<8 { out[to + 36 + i * 2] = 0; out[to + 37 + i * 2] = 0; out[to + 52 + i] = 0; }
+      i := 0;
+      for s: 0..<UR_JOINTS { if w[s] > 0 && i < 8 { out[to + 36 + i * 2] = cast,trunc(u8) s; out[to + 52 + i] = cast(u8) w[s]; i += 1; } }
+    }
+    at += nv * 96;
+    for i: 0..<ni { aw_put(out, at + i * 4, anim_word(ib, sm.indices.offset + i * sm.indices.stride)); }
+    r.meshes[r.sections] = AnimMesh.{vertices = AnimPart.{pack = 0, offset = first, count = nv, stride = 96, width = 96}, indices = AnimPart.{pack = 0, offset = at, count = ni, stride = 4, width = 4}, material = sm.material};
+    r.sections += 1; at += ni * 4;
+  }
+  m.parts.bytes = at; next[0] = r; return m;
+}
+
+ur_put_pose :: (out: [] u8, at: int, p: SkinLocal) { for value, k: [7] f32.[p.t.x, p.t.y, p.t.z, p.q.x, p.q.y, p.q.z, p.q.w] { aw_put(out, at + k * 4, f32_bits(value)); } }
+ur_same_pose :: (a: AnimSample, b: AnimSample, n: int) -> bool {
+  for j: 0..<n { if !same(a.local[j].t, b.local[j].t, 0.000001) || abs(quat_dot(a.local[j].q, b.local[j].q)) < 0.9999999 { return false; } }
+  return true;
+}
+// Her own clip c (on src) as our joints' local poses, frame by frame, into out from at.
+ur_own_clip :: (src: AnimRig, c: AnimClip, packs: [] AnimPack, f: UrFold, out: [] u8, at: int) -> UrClip {
+  u: UrClip; u.rate = c.rate; if c.frames < 2 { return u; }
+  s: [2] AnimSample; plain := c; plain.looping = false;
+  anim_sample(src, plain, packs, 0, s[0..<1]); anim_sample(src, plain, packs, 1 / c.rate, s[1..<2]);
+  if c.frames > 2 && ur_same_pose(s[0], s[1], src.joints) { u.start = 1; }
+  u.frames = c.frames - u.start; if at + u.frames * UR_JOINTS * 28 > out.count { return u; }
+  conv: [65] Quat; for j: 0..<UR_JOINTS { conv[j] = quat_mul(ur_inverse(f.her_q[j]), f.bind_q[j]); }
+  mp := MANNEQUIN_PARENT; gq: [65] Quat; gt: [65] Point;
+  for frame: 0..<u.frames {
+    anim_sample(src, plain, packs, cast(f32) (frame + u.start) / c.rate, s[0..<1]);
+    for j: 0..<UR_JOINTS {
+      p := mp[j]; a := f.anchor[j]; l := f.rest[j];
+      world := ifx a >= 0 then quat_unit(quat_mul(quat_mul(f.turn, s[0].rotation[a]), conv[j])) else quat_unit(quat_mul(gq[p], l.q));
+      l.q = ifx p < 0 then world else quat_unit(quat_mul(ur_inverse(gq[p]), world));
+      if a >= 0 && j <= UR_PELVIS { place := quat_rotate(f.turn, s[0].position[a]); l.t = ifx p < 0 then place else quat_rotate(ur_inverse(gq[p]), sub(place, gt[p])); }
+      pose_chain(gq[..], gt[..], p, j, l);
+      ur_put_pose(out, at + (frame * UR_JOINTS + j) * 28, l);
+    }
+  }
+  u.bytes = at + u.frames * UR_JOINTS * 28; return u;
+}
+// Our clip `clip` of the people's rig r (body 0) on her, at rate a second, into out from at; her
+// pelvis lifted by lift metres (up the world's y), so her soles, not the people's, meet the floor.
+ur_people_clip :: (r: SkinRig, clip: int, f: UrFold, rate: f32, lift: f32, out: [] u8, at: int) -> UrClip {
+  u: UrClip; u.rate = rate; if clip < 0 || clip >= r.clips || r.joints != UR_JOINTS { return u; }
+  u.frames = cast(int) floor(r.duration[clip] * rate + 0.5) + 1; if u.frames < 2 || at + u.frames * UR_JOINTS * 28 > out.count { return u; }
+  for frame: 0..<u.frames {
+    t := ifx frame == u.frames - 1 then r.duration[clip] - 0.00001 else cast(f32) frame / rate;
+    root := Quat.{};
+    for j: 0..<UR_JOINTS {
+      p := skin_sample(r, clip, j, t); l := f.rest[j]; l.q = quat_unit(p.q); if j == 0 { root = l.q; }
+      if j <= UR_PELVIS { l.t = add(f.rest[j].t, times(sub(p.t, f.people[j].t), f.leg)); }
+      if j == UR_PELVIS { l.t = add(l.t, quat_rotate(ur_inverse(root), v3(0, lift, 0))); }
+      ur_put_pose(out, at + (frame * UR_JOINTS + j) * 28, l);
+    }
+  }
+  u.bytes = at + u.frames * UR_JOINTS * 28; return u;
+}
+// A clip document's record for frames written by ur_own_clip or ur_people_clip.
+ur_clip_record :: (u: UrClip, at: int, name: string, rig: string, looping: bool, source: AssetId) -> AnimClip {
+  c: AnimClip; c.ready = true; c.name = anim_named(name); c.rig = anim_named(rig); c.frames = u.frames; c.rate = u.rate;
+  c.length = cast(f32) (u.frames - 1) / u.rate; c.looping = looping; c.joint_count = UR_JOINTS; for j: 0..<UR_JOINTS { c.joints[j] = j; }
+  c.body = AnimPart.{pack = 0, offset = at, count = u.frames * UR_JOINTS, stride = 28, width = 28}; c.source = source; c.receipt = source; c.role = c.name;
+  return c;
+}
+
+// How a clip stands: the lowest skinned vertex's height at each frame (least and most over the
+// clip; the floor is 0, where her feet were) and the longest a bone grows from its rest, metres.
+UrStand :: struct { low: f32 = 1000000; high: f32 = -1000000; stretch: f32; }
+ur_stand :: (r: AnimRig, c: AnimClip, packs: [] AnimPack, step: int) -> UrStand {
+  s: UrStand; a: [1] AnimSample; rq: [65] Quat; rt: [65] Point; rest := r.rest; parents := r.parents; ur_chain(rest[..], parents[..], r.joints, rq[..], rt[..]);
+  frame := 0;
+  while frame < c.frames {
+    anim_sample(r, c, packs, cast(f32) frame / c.rate, a[..]);
+    for j: 2..<r.joints { p := r.parents[j]; s.stretch = hi(s.stretch, abs(length(sub(a[0].position[j], a[0].position[p])) - length(sub(rt[j], rt[p])))); }
+    low: f32 = 1000000;
+    for k: 0..<r.sections {
+      m := r.meshes[k]; b := packs[m.vertices.pack].bytes;
+      v := 0;
+      while v < m.vertices.count {
+        at := m.vertices.offset + v * m.vertices.stride; x := v3(anim_float(b, at), anim_float(b, at + 4), anim_float(b, at + 8)); y: f32 = 0;
+        for i: 0..<8 {
+          w := cast(f32) b[at + 52 + i] / 255; if w == 0 { continue; }
+          j := cast(int) b[at + 36 + i * 2] | (cast(int) b[at + 37 + i * 2] << 8); o := j * 12; pal := a[0].palette;
+          y += w * (pal[o + 4] * x.x + pal[o + 5] * x.y + pal[o + 6] * x.z + pal[o + 7]);
+        }
+        low = lo(low, y); v += step;
+      }
+    }
+    s.low = lo(s.low, low); s.high = hi(s.high, low); frame += 1;
+  }
+  return s;
+}
+
+// ---- the VRG1 set (metaverse-engine/anim/rig-pack.coax)
+// One character as set k of a VRG1 file: both bodies hers, clips' keys from their frames: a rotation
+// track a joint (one key when it never moves), a translation track for the root and the pelvis when
+// they move. distance: each clip's metres a loop (0 for one that stays). Keys go through keys_t and
+// keys_r (scratch, the most a set may have); the set as written, joints 0 when it does not fit.
+UrKeys :: struct { tracks_t: [65 * 64 * 2] int; tracks_r: [65 * 64 * 2] int; nt: int; nr: int; }
+ur_keys :: (r: AnimRig, clips: [] AnimClip, packs: [] AnimPack, keys_t: [] f32, keys_r: [] f32, k: [] UrKeys) -> bool {
+  k[0].nt = 0; k[0].nr = 0;
+  for c, ci: clips {
+    b := packs[c.body.pack].bytes;
+    for j: 0..<r.joints {
+      first := anim_local(b, c.body.offset + j * 28); moves_q := false; moves_t := false;
+      for frame: 1..<c.frames { l := anim_local(b, c.body.offset + (frame * r.joints + j) * 28); moves_q = moves_q || abs(quat_dot(l.q, first.q)) < 0.9999999; moves_t = moves_t || !same(l.t, first.t, 0.000001); }
+      n := ifx moves_q then c.frames else 1; tr := (ci * r.joints + j) * 2;
+      if (k[0].nr + n) * 5 > keys_r.count { return false; }
+      k[0].tracks_r[tr] = k[0].nr; k[0].tracks_r[tr + 1] = n;
+      for frame: 0..<n { l := anim_local(b, c.body.offset + (frame * r.joints + j) * 28); q := quat_unit(l.q); o := k[0].nr * 5; keys_r[o] = cast(f32) frame / c.rate; keys_r[o + 1] = q.x; keys_r[o + 2] = q.y; keys_r[o + 3] = q.z; keys_r[o + 4] = q.w; k[0].nr += 1; }
+      k[0].tracks_t[tr] = 0; k[0].tracks_t[tr + 1] = 0;
+      if j <= UR_PELVIS && moves_t {
+        if (k[0].nt + c.frames) * 4 > keys_t.count { return false; }
+        k[0].tracks_t[tr] = k[0].nt; k[0].tracks_t[tr + 1] = c.frames;
+        for frame: 0..<c.frames { l := anim_local(b, c.body.offset + (frame * r.joints + j) * 28); o := k[0].nt * 4; keys_t[o] = cast(f32) frame / c.rate; keys_t[o + 1] = l.t.x; keys_t[o + 2] = l.t.y; keys_t[o + 3] = l.t.z; k[0].nt += 1; }
+      }
+    }
+  }
+  return true;
+}
+ur_vrg_set :: (out: [] u8, k: int, name: string, r: AnimRig, clips: [] AnimClip, packs: [] AnimPack, distance: [] f32, at: int, keys_t: [] f32, keys_r: [] f32, work: [] UrKeys) -> VrgSet {
+  if clips.count < 1 || clips.count > 64 || r.joints != UR_JOINTS || !ur_keys(r, clips, packs, keys_t, keys_r, work) { return VrgSet.{}; }
+  s := vrg_set(out, k, name, r.joints, clips.count, work[0].nt, work[0].nr, at); if s.joints == 0 { return s; }
+  parent: [65] int; rest: [455] f32; bind: [780] f32; seconds: [64] f32;
+  for j: 0..<r.joints { parent[j] = r.parents[j]; p := r.rest[j]; for value, i: [7] f32.[p.t.x, p.t.y, p.t.z, p.q.x, p.q.y, p.q.z, p.q.w] { rest[j * 7 + i] = value; } for i: 0..<12 { bind[j * 12 + i] = r.bind[j * 12 + i]; } }
+  for c, i: clips { seconds[i] = c.length; }
+  n := clips.count * r.joints * 2; tt := work[0].tracks_t; tr := work[0].tracks_r;
+  ok := vrg_put_ints(out, s, VRG_PARENT, parent[..]) && vrg_put_floats(out, s, VRG_REST_0, rest[..]) && vrg_put_floats(out, s, VRG_REST_1, rest[..])
+     && vrg_put_floats(out, s, VRG_BIND_0, bind[..]) && vrg_put_floats(out, s, VRG_BIND_1, bind[..])
+     && vrg_put_floats(out, s, VRG_DURATION, seconds[0..<clips.count]) && vrg_put_floats(out, s, VRG_DISTANCE, distance[0..<clips.count])
+     && vrg_put_ints(out, s, VRG_TRACK_T, tt[0..<n]) && vrg_put_ints(out, s, VRG_TRACK_R, tr[0..<n])
+     && vrg_put_floats(out, s, VRG_KEYS_T_0, keys_t[0..<work[0].nt * 4]) && vrg_put_floats(out, s, VRG_KEYS_T_1, keys_t[0..<work[0].nt * 4])
+     && vrg_put_floats(out, s, VRG_KEYS_R, keys_r[0..<work[0].nr * 5]);
+  if !ok { return VrgSet.{}; }
+  return s;
+}
+// A gait's metres a loop: our clip's (the people's walk 1.3, run 3.4) times her legs, or, for a clip
+// of her own, the people's for the same action times how far her foot sweeps against theirs.
+ur_sweep :: (r: AnimRig, c: AnimClip, packs: [] AnimPack) -> f32 {
+  a: [1] AnimSample; low: f32 = 1000000; high: f32 = -1000000;
+  for frame: 0..<c.frames { anim_sample(r, c, packs, cast(f32) frame / c.rate, a[..]); z := a[0].position[MQ_FOOT_L].z - a[0].position[MQ_PELVIS].z; low = lo(low, z); high = hi(high, z); }
+  return high - low;
+}
