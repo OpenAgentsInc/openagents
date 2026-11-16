@@ -1,3 +1,4 @@
+// coax/bin/coax test coax/lib/agent/engine/codex.coax --library
 // The Codex engine: the user's own Codex (`codex app-server`, their
 // ChatGPT login), driven through the Coax Codex client
 // (coax/lib/agent/codex), and what its notifications become in Zeron's
@@ -37,6 +38,7 @@
 #load "claude.coax";
 #load "../codex/codex.coax";
 #load "../codex/fixture.coax";
+#load "codex-model-pages.coax";
 
 // The wall clock in seconds (zeron-face.c; agent-signer-none.c for a host without one): a limit's reset time is a Unix time.
 zr_unix_s :: () -> int #foreign #effects(all);
@@ -91,30 +93,59 @@ codex_discover :: (c: [] AgCatalog, ar: [] ClArena, result: string, pool: [] u8,
  #assert codex_discover_as(c[..],ar[..],"{\"data\":[{\"model\":\"native-first\"},{\"model\":\"native-default\",\"isDefault\":true}],\"nextCursor\":null}",pool[..],at[..],true) && c[0].n==2 && c[0].id[0]=="native-first" && c[0].id[1]=="native-default";
  #assert !codex_discover_as(c[..],ar[..],"{\"data\":[{\"model\":\"native-model\"}],\"nextCursor\":false}",pool[..],at[..],true);
 }
+#test "native catalog pages append observed models without publishing or losing an earlier page" {
+ c:=[1]AgCatalog.[codex_catalog()];c[0].n=0;arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];pool:[16384]u8;at:[1]int;
+ #assert codex_discover_append(c[..],ar[..],"{\"data\":[{\"model\":\"first\",\"displayName\":\"First\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"low\"}]}],\"nextCursor\":\"later\"}",pool[..],at[..],true);
+ #assert c[0].n==1 && c[0].id[0]=="first";
+ #assert codex_discover_append(c[..],ar[..],"{\"data\":[{\"model\":\"second\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"high\"}]}],\"nextCursor\":null}",pool[..],at[..],true);
+ #assert c[0].n==2 && c[0].id[0]=="first" && c[0].label[0]=="First" && c[0].id[1]=="second" && c[0].ladder[0]==(1<<1) && c[0].ladder[1]==(1<<CX_LV_HIGH);
+ #assert !codex_discover_append(c[..],ar[..],"{\"data\":[{\"model\":\"first\"}]}",pool[..],at[..],true);
+ #assert !codex_discover_append(c[..],ar[..],"{\"data\":[{\"model\":\"third\",\"supportedReasoningEfforts\":[\"future\"]}]}",pool[..],at[..],true);
+ #assert codex_discover_append(c[..],ar[..],"{\"data\":[],\"nextCursor\":\"next\"}",pool[..],at[..],true) && c[0].n==2;
+}
+#test "native catalog accumulation refuses visible overflow and incomplete retained strings" {
+ c:=[1]AgCatalog.[codex_catalog()];c[0].n=0;arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];pool:[16384]u8;at:[1]int;raw:[256]u8;o:[1]Jo;
+ for i:0..<AG_MODELS {jo_start(o[..],raw[..]);jo_put(o[..],"{\"data\":[{\"model\":\"");jo_int(o[..],i);jo_put(o[..],"\",\"supportedReasoningEfforts\":[\"high\"]}]}");
+  #assert codex_discover_append(c[..],ar[..],jo_text(o[..]),pool[..],at[..],true) && c[0].n==i+1;
+ }
+ #assert codex_discover_append(c[..],ar[..],"{\"data\":[{\"hidden\":true}]}",pool[..],at[..],true) && c[0].n==AG_MODELS;
+ #assert !codex_discover_append(c[..],ar[..],"{\"data\":[{\"model\":\"overflow\"}]}",pool[..],at[..],true) && c[0].n==AG_MODELS;
+ c[0].n=0;at[0]=0;#assert !codex_discover_append(c[..],ar[..],"{\"data\":[{\"model\":\"a\",\"description\":\"full description\"}]}",pool[0..<2],at[..],true);
+ c[0].n=0;at[0]=0;ar[0].buf=arena[0..<1];#assert !codex_discover_append(c[..],ar[..],"{\"data\":[{\"model\":\"a\",\"displayName\":\"\\u0061\\u0062\"}]}",pool[..],at[..],true);
+}
 codex_discover_as :: (c:[]AgCatalog,ar:[]ClArena,result:string,pool:[]u8,at:[]int,exact:bool)->bool {
   base := codex_catalog();
   c[0] = base; c[0].n = 0;
   at[0] = 0;
-  data := cl_at(result, "data");
-  if !data.ok || data.tok != JSON_ARRAY { c[0] = base; return false; }
   cursor:=cl_at(result,"nextCursor");
-  if exact && ((cursor.ok && cursor.tok!=JSON_NULL && cl_raw(result,"nextCursor")!="\"\"") || cl_count(cl_raw(result,"data"))>AG_MODELS) {return false;}
+  if exact && cursor.ok && cursor.tok!=JSON_NULL && cl_raw(result,"nextCursor")!="\"\"" {return false;}
+  if !codex_discover_append(c,ar,result,pool,at,exact) || c[0].n==0 {c[0]=base;return false;}
+  return true;
+}
+// The same model-field reader serves one-shot discovery and the unpublished
+// native accumulator. It never resets strings from an earlier accepted page.
+codex_discover_append :: (c:[]AgCatalog,ar:[]ClArena,result:string,pool:[]u8,at:[]int,exact:bool)->bool {
+  data := cl_at(result, "data");
+  if !data.ok || data.tok != JSON_ARRAY {return false;}
+  if exact && cl_count(cl_raw(result,"data"))>AG_MODELS*2 {return false;}
   first := -1;
   lids := CODEX_LEVEL_IDS;
   for i: 0..<AG_MODELS * 2 {
     v := cl_element(result, data, i);
     if !v.ok { break; }
-    if c[0].n >= AG_MODELS { break; }
     item := cl_json(result, v);
     if cl_bool(item, "hidden").value { continue; }
+    if c[0].n >= AG_MODELS {if exact {return false;}break;}
     id := cl_str(ar, item, "model");
     if id.count == 0 { id = cl_str(ar, item, "id"); }
     if id.count == 0 {if exact {return false;}continue;}
+    if exact {for j:0..<c[0].n {if c[0].id[j]==id {return false;}}}
     k := c[0].n;
     label := cl_str(ar, item, "displayName");
     c[0].id[k] = claude_keep(pool, at, id);
     c[0].label[k] = claude_keep(pool, at, ifx label.count > 0 then label else id);
-    c[0].desc[k] = claude_keep(pool, at, cl_str(ar, item, "description"));
+    desc:=cl_str(ar,item,"description");c[0].desc[k] = claude_keep(pool, at, desc);
+    if exact && (ar[0].full || c[0].desc[k].count!=desc.count) {return false;}
     if c[0].id[k].count == 0 || c[0].label[k].count==0 {if exact {return false;}break;} // the pool is full
     bits := 0;
     efforts := cl_raw(item, "supportedReasoningEfforts");
@@ -129,8 +160,7 @@ codex_discover_as :: (c:[]AgCatalog,ar:[]ClArena,result:string,pool:[]u8,at:[]in
     if first < 0 && cl_bool(item, "isDefault").value { first = k; }
     c[0].n += 1;
   }
-  if c[0].n == 0 { c[0] = base; return false; }
-  if !exact && first > 0 {
+  if !exact && first > 0 { // mutant: equivalent (including first == 0 only copies model zero back to itself; the rotation loop is empty)
     id := c[0].id[first]; label := c[0].label[first]; desc := c[0].desc[first]; ladder := c[0].ladder[first];
     for j: 0..<first { k := first - j; c[0].id[k] = c[0].id[k - 1]; c[0].label[k] = c[0].label[k - 1]; c[0].desc[k] = c[0].desc[k - 1]; c[0].ladder[k] = c[0].ladder[k - 1]; }
     c[0].id[0] = id; c[0].label[0] = label; c[0].desc[0] = desc; c[0].ladder[0] = ladder;
@@ -226,6 +256,7 @@ CxEngine :: struct {
   cat_pool: [] u8; cat_at: [1] int;
   cat_gen: int;                      // counts catalog changes (the screen copies it for the menus)
   strict_models:bool;catalog_refused:bool;
+  model_pages:[1]CxModelPages;pending_catalog:[1]AgCatalog;pending_strings:[16384]u8;pending_at:[1]int;
   listed: bool;                      // model/list was asked
   want_warm: bool; warmed: bool;     // start the server ahead of a message (the Codex tab is open), once
   prompt: [] u8; prompt_n: int;      // (the screen's buffer)
@@ -296,11 +327,12 @@ cxe_settings :: (x: [] CxEngine) -> CxSettings {
   if x[0].model >= 0 && x[0].model < cat[0].n { st.model = cat[0].id[x[0].model]; }
   lv := ag_level_for(cat, x[0].model, x[0].effort);
   efforts := CODEX_EFFORTS;
+  if x[0].strict_models {efforts=CODEX_LEVEL_IDS;}
   if lv >= 0 { st.effort = efforts[lv]; }
   if x[0].access == ACC_FULL { st.approval_policy = "never"; st.sandbox = "danger-full-access"; }
   else if x[0].access == ACC_EDITS { st.approval_policy = "untrusted"; st.sandbox = "workspace-write"; st.ask_person = true; }
   else { st.approval_policy = "untrusted"; st.sandbox = "read-only"; st.ask_person = true; }
-  if x[0].room_n > 0 { st.config = cx_str(x[0].room[..], x[0].room_n); }
+  if x[0].room_n > 0 { st.config = cx_str(x[0].room[..], x[0].room_n); } // mutant: equivalent (including room_n == 0 assigns the same empty string as the default config)
   return st;
 }
 
@@ -723,13 +755,14 @@ cxe_event :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
     if ev.of == CX_TURN_INTERRUPT {
       // The empty acknowledgement alone cannot distinguish interruption
       // from a completion racing Stop. Keep that uncertainty as an outcome.
-      if s[0].live && s[0].stopping { x[0].turn_n = 0; s_turn_known(s, S_END_UNKNOWN, ""); }
+      if s[0].live && s[0].stopping { x[0].turn_n = 0; s_turn_known(s, S_END_UNKNOWN, ""); } // mutant: equivalent (S_END_UNKNOWN + 1 is normalized back to S_END_UNKNOWN by s_turn_known)
       return false;
     }
     return false;
   }
   if ev.kind == CxEventKind.refused {
-    if ev.of == CX_MODEL_LIST || ev.of == CX_TURN_INTERRUPT { return false; }
+    if ev.of == CX_MODEL_LIST {if x[0].strict_models {cdmp_fail(x[0].model_pages[..]);x[0].catalog_refused=true;}return false;}
+    if ev.of == CX_TURN_INTERRUPT { return false; }
     if ev.of == CX_THREAD_RESUME {
       // the thread is gone (another Codex home, say): a new one
       x[0].thread_wait = false; x[0].tid_n = 0;
@@ -751,17 +784,37 @@ cxe_event :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
 }
 
 // The server's models become the catalog; the chosen model stays chosen by id.
+cxe_models_begin :: (x:[]CxEngine) {
+ cdmp_begin(x[0].model_pages[..]);x[0].pending_catalog[0]=codex_catalog();x[0].pending_catalog[0].n=0;x[0].pending_at[0]=0;x[0].cat_gen=0;x[0].catalog_refused=false;
+}
 cxe_take_models :: (x: [] CxEngine, result: string) {
   was := x[0].cat[0].id[x[0].model];
-  wid: [96] u8; wn := e_set(wid[..], 0, was);
+  wid: [128] u8; wn := e_set(wid[..], 0, was);
   c: [1] AgCatalog;
-  if !codex_discover_as(c[..], x[0].c[0].ar[..], result, x[0].cat_pool, x[0].cat_at[..],x[0].strict_models) {x[0].catalog_refused=x[0].strict_models;return;}
+  if x[0].strict_models {
+    if !x[0].model_pages[0].on {cxe_models_begin(x);}
+    next:=cdmp_take(x[0].model_pages[..],result);
+    if next<0 || !codex_discover_append(x[0].pending_catalog[..],x[0].c[0].ar[..],result,x[0].pending_strings[..],x[0].pending_at[..],true) {cdmp_fail(x[0].model_pages[..]);x[0].catalog_refused=true;return;}
+    if next==0 {
+      if x[0].c[0].npend>=CX_PENDING {cdmp_fail(x[0].model_pages[..]);x[0].catalog_refused=true;return;}
+      _=cx_model_list(x[0].c[..],cdmp_cursor(x[0].model_pages[..]));
+      if x[0].c[0].out[0].failed {cdmp_fail(x[0].model_pages[..]);x[0].catalog_refused=true;}
+      return;
+    }
+    if !cdmp_ready(x[0].model_pages[..],x[0].pending_catalog[0].n) || x[0].pending_at[0]>x[0].cat_pool.count {cdmp_fail(x[0].model_pages[..]);x[0].catalog_refused=true;return;}
+    c[0]=x[0].pending_catalog[0];x[0].cat_at[0]=0;
+    for i:0..<c[0].n {
+      c[0].id[i]=claude_keep(x[0].cat_pool,x[0].cat_at[..],x[0].pending_catalog[0].id[i]);
+      c[0].label[i]=claude_keep(x[0].cat_pool,x[0].cat_at[..],x[0].pending_catalog[0].label[i]);
+      c[0].desc[i]=claude_keep(x[0].cat_pool,x[0].cat_at[..],x[0].pending_catalog[0].desc[i]);
+    }
+  }else if !codex_discover(c[..],x[0].c[0].ar[..],result,x[0].cat_pool,x[0].cat_at[..]) {return;}
   x[0].catalog_refused=false;
   first := x[0].cat_gen == 0;
   x[0].cat[0] = c[0];
   k := claude_find(x[0].cat[..], e_str(wid[..], wn));
   // the first list puts the account's default first and chosen (until the user picks another)
-  x[0].model = ifx first || k < 0 then 0 else k;
+  x[0].model = ifx first || k < 0 then 0 else k; // mutant: equivalent (k <= 0 or k < 1 adds only k == 0, which still selects zero)
   x[0].cat_gen += 1;
 }
 
@@ -884,6 +937,126 @@ cxe_test_engine :: (x: [] CxEngine, b: [] CxeTest) {
   x[0].prompt = b[0].prompt[..];
   x[0].cwd_n = e_set(x[0].cwd, 0, "/tmp/demo/work");
   x[0].running = true;
+}
+
+#test "native Codex asks each next page and publishes only a complete owned catalog" {
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);x[0].strict_models=true;
+ cxe_take_models(x[..],"{\"data\":[{\"model\":\"first\",\"displayName\":\"First\",\"supportedReasoningEfforts\":[\"low\"]}],\"nextCursor\":\"next\\u002fpage\"}");
+ #assert x[0].cat_gen==0 && !x[0].catalog_refused && !x[0].model_pages[0].done && x[0].pending_catalog[0].n==1;
+ #assert s_has(cx_outbox(x[0].c[..]),"\"method\":\"model/list\"") && s_has(cx_outbox(x[0].c[..]),"\"cursor\":\"next/page\"");
+ cxe_take_models(x[..],"{\"data\":[{\"model\":\"second\",\"supportedReasoningEfforts\":[\"high\"]}],\"nextCursor\":null}");
+ #assert x[0].cat_gen==1 && !x[0].catalog_refused && x[0].cat[0].n==2 && x[0].cat[0].id[0]=="first" && x[0].cat[0].id[1]=="second";
+ for i:0..<x[0].pending_strings.count {x[0].pending_strings[i]=0;}
+ #assert x[0].cat[0].id[0]=="first" && x[0].cat[0].label[0]=="First" && x[0].cat[0].id[1]=="second";
+ cxe_models_begin(x[..]);#assert x[0].cat_gen==0 && !x[0].model_pages[0].done && x[0].cat[0].id[0]=="first";
+ cxe_take_models(x[..],"{\"data\":[{\"model\":\"bad\",\"supportedReasoningEfforts\":[\"future\"]}],\"nextCursor\":null}");
+ #assert x[0].catalog_refused && x[0].cat_gen==0 && x[0].cat[0].id[0]=="first" && x[0].model_pages[0].failed && !x[0].model_pages[0].done;
+}
+#test "native Codex refuses a cursor cycle a later RPC refusal and an empty final catalog" {
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);x[0].strict_models=true;
+ cxe_take_models(x[..],"{\"data\":[{\"model\":\"first\"}],\"nextCursor\":\"same\"}");
+ cxe_take_models(x[..],"{\"data\":[],\"nextCursor\":\"same\"}");#assert x[0].catalog_refused && x[0].cat_gen==0;
+ cxe_models_begin(x[..]);cxe_take_models(x[..],"{\"data\":[],\"nextCursor\":null}");#assert x[0].catalog_refused && x[0].cat_gen==0;
+ cxe_models_begin(x[..]);s:[1]Session;pool:[1024]u8;s_init(s[..],pool[..]);_=cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.refused,of=CX_MODEL_LIST,message="No catalog"});
+ #assert x[0].catalog_refused && x[0].model_pages[0].failed && x[0].cat_gen==0;
+}
+#test "native SDK settings preserve every offered effort" {
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);x[0].strict_models=true;
+ cxe_models_begin(x[..]);#assert x[0].pending_catalog[0].n==0 && x[0].pending_at[0]==0 && x[0].model_pages[0].on;
+ cxe_take_models(x[..],"{\"data\":[{\"model\":\"native\",\"supportedReasoningEfforts\":[\"minimal\",\"low\",\"medium\",\"high\",\"xhigh\",\"max\",\"ultra\"]}],\"nextCursor\":null}");
+ #assert x[0].cat_gen==1 && !x[0].catalog_refused;
+ for level,i:CODEX_LEVEL_IDS {x[0].effort=i;st:=cxe_settings(x[..]);#assert st.model=="native" && st.effort==level;}
+ x[0].strict_models=false;x[0].effort=0;#assert cxe_settings(x[..]).effort=="low";
+}
+#test "catalog parser validates envelopes raw row bounds pool resets and complete native strings" {
+ c:=[1]AgCatalog.[codex_catalog()];arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];pool:[16384]u8;at:=[1]int.[99];
+ #assert codex_discover_as(c[..],ar[..],"{\"data\":[{\"model\":\"a\",\"displayName\":\"B\",\"description\":\"C\"}],\"nextCursor\":\"\"}",pool[..],at[..],true) && at[0]==3 && c[0].label[0]=="B" && c[0].desc[0]=="C";
+ for raw:[5]string.["{}","{\"data\":{}}","{\"data\":null}","{\"data\":1}","{bad}"] {#assert !codex_discover_append(c[..],ar[..],raw,pool[..],at[..],true);}
+ for space:0..<2 {c[0].n=0;at[0]=0;#assert !codex_discover_append(c[..],ar[..],"{\"data\":[{\"model\":\"a\",\"displayName\":\"B\"}]}",pool[0..<space],at[..],true);}
+ c[0].n=0;at[0]=0;#assert !codex_discover_append(c[..],ar[..],"{\"data\":[{}]}",pool[..],at[..],true);
+ raw:[4096]u8;o:[1]Jo;
+ for count:[3]int.[63,64,65] {jo_start(o[..],raw[..]);jo_put(o[..],"{\"data\":[");for i:0..<count {if i>0 {jo_put(o[..],",");}jo_put(o[..],ifx i==count-1 then "{\"model\":\"last\"}" else "{\"hidden\":true}");}jo_put(o[..],"]}");
+  c[0].n=0;at[0]=0;#assert codex_discover_append(c[..],ar[..],jo_text(o[..]),pool[..],at[..],true)==(count<=64);
+  #assert codex_discover_as(c[..],ar[..],jo_text(o[..]),pool[..],at[..],false)==(count<=64);
+ }
+ #assert codex_discover_as(c[..],ar[..],"{\"data\":[{}, {\"model\":\"kept\"}],\"nextCursor\":\"legacy\"}",pool[..],at[..],false) && c[0].n==1 && c[0].id[0]=="kept";
+}
+#test "legacy default ordering preserves every field and chooses the first native default" {
+ c:[1]AgCatalog;arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];pool:[4096]u8;at:[1]int;
+ #assert codex_discover(c[..],ar[..],"{\"data\":[{\"model\":\"a\",\"displayName\":\"A\",\"description\":\"one\",\"supportedReasoningEfforts\":[\"low\"]},{\"model\":\"b\",\"displayName\":\"B\",\"description\":\"two\",\"supportedReasoningEfforts\":[\"medium\"]},{\"model\":\"c\",\"displayName\":\"C\",\"description\":\"three\",\"isDefault\":true,\"supportedReasoningEfforts\":[\"high\"]}]}",pool[..],at[..]);
+ for id,i:[3]string.["c","a","b"] {#assert c[0].id[i]==id;}
+ #assert c[0].label[0]=="C" && c[0].desc[0]=="three" && c[0].ladder[0]==8 && c[0].label[1]=="A" && c[0].desc[1]=="one" && c[0].ladder[1]==2 && c[0].label[2]=="B" && c[0].desc[2]=="two" && c[0].ladder[2]==4;
+ #assert codex_discover(c[..],ar[..],"{\"data\":[{\"model\":\"a\",\"isDefault\":true},{\"model\":\"b\",\"isDefault\":true}]}",pool[..],at[..]) && c[0].id[0]=="a" && c[0].id[1]=="b";
+}
+#test "SDK settings keep owned overrides boundaries permissions and room configuration" {
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);owned:=[1]CxSettings.[CxSettings.{model="owned",effort="minimal"}];x[0].set=owned[..];
+ #assert cxe_settings(x[..]).model!="owned";x[0].own=true;#assert cxe_settings(x[..]).model=="owned";
+ x[0].set=owned[0..<0];#assert cxe_settings(x[..]).model=="gpt-6-astra";x[0].own=false;
+ x[0].cat[0].id[x[0].cat[0].n]="stale";for selected:[2]int.[-1,x[0].cat[0].n] {x[0].model=selected;#assert cxe_settings(x[..]).model=="" && cxe_settings(x[..]).effort=="";}
+ x[0].model=0;x[0].access=ACC_SUPERVISED;x[0].room_n=e_set(x[0].room[..],0,"{\"room\":true}");st:=cxe_settings(x[..]);
+ #assert st.approval_policy=="untrusted" && st.sandbox=="read-only" && st.ask_person && st.config=="{\"room\":true}" && st.cwd=="/tmp/demo/work";
+ x[0].room_n=1;#assert cxe_settings(x[..]).config=="{";x[0].room_n=0;#assert cxe_settings(x[..]).config=="";
+}
+#test "native catalog publication retains full strings and refuses exhausted output or request slots" {
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);x[0].strict_models=true;x[0].catalog_refused=true;
+ s:[1]Session;session_pool:[1024]u8;s_init(s[..],session_pool[..]);#assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_MODEL_LIST,result="{\"data\":[{\"model\":\"a\",\"displayName\":\"B\",\"description\":\"C\"}],\"nextCursor\":null}"});
+ #assert x[0].cat_gen==1 && !x[0].catalog_refused && x[0].cat_at[0]==3 && x[0].cat[0].label[0]=="B" && x[0].cat[0].desc[0]=="C" && x[0].cat[0].provider=="Codex" && x[0].cat[0].levels==7 && x[0].cat[0].level_id[0]=="minimal";
+ cxe_models_begin(x[..]);#assert x[0].pending_at[0]==0 && x[0].pending_catalog[0].n==0 && x[0].cat_gen==0;
+ x[0].cat_pool=x[0].cat_pool[0..<2];cxe_take_models(x[..],"{\"data\":[{\"model\":\"a\",\"displayName\":\"B\",\"description\":\"C\"}],\"nextCursor\":null}");
+ #assert x[0].cat_gen==0 && x[0].catalog_refused && x[0].model_pages[0].failed && x[0].cat[0].id[0]=="a";
+ cxe_models_begin(x[..]);x[0].cat_pool=b[0].mem[0..<3];cxe_take_models(x[..],"{\"data\":[{\"model\":\"a\",\"displayName\":\"B\",\"description\":\"C\"}],\"nextCursor\":null}");#assert x[0].cat_gen==1 && x[0].cat_at[0]==3 && x[0].cat[0].id[0]=="a" && x[0].cat[0].label[0]=="B" && x[0].cat[0].desc[0]=="C";
+ cxe_models_begin(x[..]);x[0].c[0].npend=CX_PENDING;for i:0..<CX_PENDING {x[0].c[0].pend_id[i]=i+1;}
+ cxe_take_models(x[..],"{\"data\":[{\"model\":\"a\"}],\"nextCursor\":\"more\"}");#assert x[0].cat_gen==0 && x[0].catalog_refused && x[0].model_pages[0].failed;
+ cxe_models_begin(x[..]);x[0].c[0].npend=CX_PENDING-1;cx_outbox_clear(x[0].c[..]);cxe_take_models(x[..],"{\"data\":[{\"model\":\"a\"}],\"nextCursor\":\"more\"}");#assert !x[0].catalog_refused && x[0].c[0].npend==CX_PENDING;
+ cxe_models_begin(x[..]);x[0].c[0].npend=0;x[0].c[0].out[0].buf=b[0].out[0..<1];cx_outbox_clear(x[0].c[..]);cxe_take_models(x[..],"{\"data\":[{\"model\":\"a\"}],\"nextCursor\":\"more\"}");#assert x[0].catalog_refused && x[0].model_pages[0].failed;
+}
+#test "legacy catalog refresh keeps a chosen native ID and observes a missing selection" {
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);
+ x[0].catalog_refused=true;cxe_take_models(x[..],"{\"data\":[{\"model\":\"a\"},{\"model\":\"b\"}]}");#assert x[0].cat_gen==1 && x[0].model==0 && !x[0].catalog_refused;
+ cxe_take_models(x[..],"{\"data\":[{\"model\":\"b\"},{\"model\":\"a\"}]}");#assert x[0].cat_gen==2 && x[0].model==1;
+ cxe_take_models(x[..],"{\"data\":[{\"model\":\"c\"},{\"model\":\"d\"}]}");#assert x[0].cat_gen==3 && x[0].model==0;
+ cxe_take_models(x[..],"{bad}");#assert x[0].cat_gen==3 && x[0].cat[0].id[0]=="c";
+}
+#test "SDK initialized and thread replies respect the existing owner and pending turn" {
+ for facts:0..<8 {x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);
+  x[0].own=(facts&1)!=0;x[0].pend=ifx (facts&2)!=0 then 0 else -1;s[0].live=(facts&4)!=0;
+  #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.initialized}) && x[0].ready;
+  #assert x[0].thread_wait==(facts==6) && (cx_outbox(x[0].c[..]).count>0)==(facts==6);
+ }
+ for method:[2]int.[CX_THREAD_START,CX_THREAD_RESUME] {for facts:0..<4 {x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);
+  x[0].thread_wait=true;x[0].pend=ifx (facts&1)!=0 then 0 else -1;s[0].live=(facts&2)!=0;x[0].c[0].thread_n=e_set(x[0].c[0].thread[..],0,"thread");
+  #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=method}) && !x[0].thread_wait && cast(string)x[0].tid[0..<x[0].tid_n]=="thread";
+  #assert x[0].turn_wait==(facts==3) && (cx_outbox(x[0].c[..]).count>0)==(facts==3);
+ }}
+}
+#test "SDK turn replies retain known IDs pending Stop and distinct refusal behavior" {
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);
+ x[0].turn_wait=true;x[0].stop_due=true;x[0].c[0].thread_n=e_set(x[0].c[0].thread[..],0,"thread");x[0].c[0].turn_n=e_set(x[0].c[0].turn[..],0,"t");
+ #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_TURN_START}) && !x[0].turn_wait && !x[0].stop_due && cast(string)x[0].turn[0..<x[0].turn_n]=="t" && s_has(cx_outbox(x[0].c[..]),"turn/interrupt");
+ x[0].turn_n=e_set(x[0].turn[..],0,"kept");cx_outbox_clear(x[0].c[..]);#assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_TURN_START}) && cast(string)x[0].turn[0..<x[0].turn_n]=="kept" && cx_outbox(x[0].c[..]).count==0;
+ x[0].turn_n=0;x[0].c[0].turn_n=0;x[0].stop_due=true;#assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_TURN_START}) && x[0].stop_due;
+ #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_OTHER}) && !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.none});
+ for method:[2]int.[CX_MODEL_LIST,CX_TURN_INTERRUPT] {x[0].strict_models=false;x[0].thread_wait=true;x[0].turn_wait=true;#assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.refused,of=method}) && x[0].thread_wait && x[0].turn_wait && !x[0].catalog_refused;}
+ for facts:0..<4 {s_init(s[..],pool[..]);s[0].live=(facts&1)!=0;s[0].stopping=(facts&2)!=0;x[0].turn_n=4;
+  #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_TURN_INTERRUPT}) && x[0].turn_n==ifx facts==3 then 0 else 4;
+  #assert s[0].outcome==ifx facts==3 then S_END_UNKNOWN else S_END_NONE;
+ }
+ for live:0..<2 {s_init(s[..],pool[..]);s[0].live=live==1;s[0].stopping=false;x[0].thread_wait=true;x[0].turn_wait=true;x[0].pend=0;
+  #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.refused,of=CX_TURN_START,message="rejected"}) && !x[0].thread_wait && !x[0].turn_wait && x[0].pend== -1 && !s[0].live;
+  #assert (s[0].outcome==S_END_FAILED)==(live==1);
+ }
+ for facts:0..<4 {s_init(s[..],pool[..]);s[0].live=(facts&2)!=0;x[0].thread_wait=true;x[0].tid_n=e_set(x[0].tid[..],0,"old");x[0].c[0].thread_n=0;x[0].pend=ifx (facts&1)!=0 then 0 else -1;cx_outbox_clear(x[0].c[..]);
+  #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.refused,of=CX_THREAD_RESUME}) && x[0].tid_n==0 && x[0].thread_wait==(facts==3) && (cx_outbox(x[0].c[..]).count>0)==(facts==3);
+ }
+}
+#test "SDK approval ownership cannot auto accept an idle chat or lose the first held permission" {
+ for facts:0..<4 {x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s[0].live=(facts&2)!=0;x[0].own=(facts&1)!=0;x[0].access=ACC_SUPERVISED;
+  x[0].c[0].asking=CX_ASK_EXEC;x[0].c[0].ask_id_n=e_set(x[0].c[0].ask_id[..],0,"91");
+  held:=cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.approval,of=CX_ASK_EXEC,params="{\"command\":\"pwd\"}"});
+  #assert held==(facts==2) && (s[0].asking==0)==(facts==2);
+  if facts==0 {#assert s_has(cx_outbox(x[0].c[..]),"decline") && x[0].c[0].asking==0;}
+  if (facts&1)!=0 {#assert cx_outbox(x[0].c[..]).count==0 && x[0].c[0].asking==CX_ASK_EXEC;}
+ }
 }
 
 #test "Codex's model/list becomes the catalog: visible models, the default first, levels from its efforts" {

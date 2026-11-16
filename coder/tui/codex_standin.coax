@@ -252,6 +252,13 @@ xs_answer :: (s: [] Xs, d: Jv, line: string) {
   if method == "initialize" { xs_result(id, "{\"userAgent\":\"codex-standin/0.0.1\",\"codexHome\":\"/tmp/codex-standin\"}"); return; }
   if method == "model/list" {
     catalog_mode:[64]u8;if proc_getenv("CODEX_STANDIN_CATALOG_MODE",catalog_mode[..])=="partial" {xs_result(id,"{\"data\":[{\"id\":\"gpt-standin\",\"model\":\"gpt-standin\",\"displayName\":\"Native first page\",\"supportedReasoningEfforts\":[\"high\"]}],\"nextCursor\":\"remaining-models\"}");return;}
+    if proc_getenv("CODEX_STANDIN_CATALOG_MODE",catalog_mode[..])=="paged" {
+      cursor:[1024]u8;cn:=jv_str(d,jv_path(d,0,"params.cursor"),cursor[..]);
+      if cn<1 {xs_result(id,"{\"data\":[{\"model\":\"gpt-standin\",\"displayName\":\"GPT Stand-in\",\"supportedReasoningEfforts\":[\"low\",\"medium\",\"high\"]}],\"nextCursor\":\"remaining-models\"}");}
+      else if cast(string)cursor[0..<cn]=="remaining-models" {xs_result(id,"{\"data\":[{\"model\":\"gpt-standin-mini\",\"displayName\":\"GPT Stand-in Mini\",\"supportedReasoningEfforts\":[\"low\"]}],\"nextCursor\":null}");}
+      else {xs_result(id,"{\"data\":[],\"nextCursor\":\"remaining-models\"}");}
+      return;
+    }
     xs_result(id, "{\"data\":[{\"id\":\"gpt-standin\",\"model\":\"gpt-standin\",\"displayName\":\"GPT Stand-in\",\"description\":\"The stand-in's model.\",\"hidden\":false,\"isDefault\":true,\"defaultReasoningEffort\":\"high\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"low\"},{\"reasoningEffort\":\"medium\"},{\"reasoningEffort\":\"high\"}]},{\"id\":\"gpt-standin-mini\",\"model\":\"gpt-standin-mini\",\"displayName\":\"GPT Stand-in Mini\",\"description\":\"Small.\",\"hidden\":false,\"isDefault\":false,\"defaultReasoningEffort\":\"low\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"low\"}]}],\"nextCursor\":null}");
     return;
   }

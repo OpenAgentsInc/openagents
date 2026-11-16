@@ -61,7 +61,9 @@ for native work. It obtains current signed reports, uses the shared typed
 router, reads the selected engine's actual SDK offer, resolves an offered
 model/effort pair and saves the association before Prepare, input upload or
 Start. The first consumer uses the selected engine's `system` account;
-multi-account selection and SDK catalog pagination remain required work.
+multi-account selection remains required work. Native Codex catalog discovery
+follows all pages within the [offer profile's bounds](engine-offer-v1alpha1.md)
+before publishing a usable observation.
 Router preview fallbacks cannot authorize execution.
 
 The queue also claims associated running turns. Each claim uses a fresh worker
@@ -125,8 +127,8 @@ generated account program has a fixed 64 MiB memory allowance (including its
 cap. These limits are separate from native SDK allocations.
 
 Server capture assembly is currently bounded and restarts on a later worker
-claim; durable server paging, renewal of an expired Stop command, SDK catalog
-pagination/multiple accounts, shared gateway tool continuation, real provider
+claim; durable server paging, renewal of an expired Stop command, multiple
+accounts, shared gateway tool continuation, real provider
 execution and end-to-end qualification remain part of #13620. Native C and
 installed-interpreter fixtures do not establish production rollout or a real
 provider execution; that live qualification remains separate.

@@ -89,6 +89,7 @@ tool_main :: ()->int #export_c #effects(all) {
  path:[8192]u8;prior:[8192]u8;np:=sm_cat(path[..],sm_cat(path[..],0,bin),":");np=sm_cat(path[..],np,proc_getenv("PATH",prior[..]));sm_env(s,6,"PATH",cast(string)path[0..<np]);
  notes_path:[1200]u8;notes:=sm_in_tmp(s,"provider-notes.jsonl",notes_path[..]);sm_env(s,8,"CLAUDE_STANDIN_OUT",notes);sm_env(s,10,"CLAUDE_STANDIN_SECONDS","90");
  codex_notes_path:[1200]u8;sm_env(s,7,"CODEX_STANDIN_OUT",sm_in_tmp(s,"codex-provider.jsonl",codex_notes_path[..]));
+ sm_env(s,12,"CODEX_STANDIN_CATALOG_MODE","paged");
  relay_path:[1200]u8;relay_bin:=sm_in_tmp(s,"relay",relay_path[..]);build:=[2]string.["nostr/relay/build.sh",relay_bin];sm_exec(s,rp[..],build[..],600000);if rp[0].status!=0 {return 2;}
  pb:[24]u8;port:=sm_itoa(20000+proc_now_ms()%30000,pb[..]);s[0].nurl=sm_cat(s[0].url[..],sm_cat(s[0].url[..],0,"ws://localhost:"),port);url:=sm_str(s[0].url[..],s[0].nurl);sm_env(s,3,"OPENAGENTS_NIP_HOST_RELAY",url);
  relay_args:=[9]string.[relay_bin,"--listen","127.0.0.1","--port",port,"--url",url,"--rate","1024,1024,1024"];relay:=sm_spawn(s,relay_args[..],true);serve:= -1;defer {sm_stop(serve);sm_stop(relay);}
@@ -102,6 +103,8 @@ tool_main :: ()->int #export_c #effects(all) {
  sm_host(s,rp[..],enable[..]);sm_check(s,rp[0].status==0,"the isolated browser is explicitly enrolled for its workspace");if rp[0].status!=0 {return 2;}
  claude_model:[128]u8;codex_model:[128]u8;claude_n:=sm_task_offer(s,key,grant,epoch,"claude","88888888888888888888888888888888",claude_model[..]);codex_n:=sm_task_offer(s,key,grant,epoch,"codex","99999999999999999999999999999999",codex_model[..]);if claude_n<1 || codex_n<1 {return 1;}
  sm_check(s,cast(string)claude_model[0..<claude_n]=="claude-task-fixture" && cast(string)codex_model[0..<codex_n]=="gpt-standin","the selected IDs come from both actual SDK catalogs rather than the router's display defaults");
+ catalog_log:[65536]u8;catalog_n:=fs_read(sm_in_tmp(s,"codex-provider.jsonl",codex_notes_path[..]),catalog_log[..]);catalog_text:=cast(string)catalog_log[0..<ifx catalog_n>0 then catalog_n else 0];
+ sm_check(s,catalog_n>0 && sm_task_count(catalog_text,"\"method\":\"model/list\"")==2 && sm_has(catalog_text,"\"cursor\":\"remaining-models\"") && sm_task_count(catalog_text,"\"method\":\"turn/start\"")==0,"the real SDK child answers both catalog pages before any task starts");
  absent:=XoRequest.{probe="abababababababababababababababab",engine="claude",account="cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"};sm_offer_call(s,rp[..],key,grant,epoch,absent);missing:[1]XoOffer;missing_arena:[XO_ARENA]u8;sm_check(s,rp[0].status==0 && xo_read(sm_text(rp[..]),missing[..],missing_arena[..]) && missing[0].state==XO_FAILED && missing[0].error=="login_required" && missing[0].n==0,"an unavailable profile publishes no static or other-account model list");
  n:=0;ids:=[6]string.["22222222222222222222222222222222","33333333333333333333333333333333","44444444444444444444444444444444","55555555555555555555555555555555","66666666666666666666666666666666","77777777777777777777777777777777"];
  for id,scenario:ids {

@@ -1,0 +1,72 @@
+// One bounded native SDK catalog read. A continuation never authorizes a
+// prefix catalog; the existing model parser owns each page's model fields.
+// coax/bin/coax test coax/lib/agent/engine/codex-model-pages.coax --library
+#load "../claude/fields.coax";
+#load "../../json/shape.coax";
+#load "catalog.coax";
+#authority;
+CDMP_PAGES :: 32; CDMP_CURSOR :: 1024;
+CxModelPages :: struct {
+ on:bool;done:bool;failed:bool;pages:int;
+ cursor:[CDMP_CURSOR]u8;cursor_n:int;
+ seen:[CDMP_PAGES][CDMP_CURSOR]u8;sizes:[CDMP_PAGES]int;count:int;
+}
+
+#test "a native model catalog is unpublished until its final page and retains an opaque owned cursor" {
+ p:[1]CxModelPages;#assert !cdmp_ready(p[..],1) && cdmp_take(p[..],"{\"data\":[]}")<0;
+ cdmp_begin(p[..]);#assert p[0].on && !p[0].failed && p[0].pages==0 && cdmp_cursor(p[..])=="";
+ #assert cdmp_take(p[..],"{\"data\":[],\"nextCursor\":\"next\\u002fpage\"}")==0 && cdmp_cursor(p[..])=="next/page" && !cdmp_ready(p[..],1);
+ #assert cdmp_take(p[..],"{\"data\":[],\"nextCursor\":null}")==1 && p[0].pages==2 && cdmp_cursor(p[..])=="" && cdmp_ready(p[..],1) && cdmp_ready(p[..],AG_MODELS);
+ #assert !cdmp_ready(p[..],0) && !cdmp_ready(p[..],AG_MODELS+1) && cdmp_take(p[..],"{\"data\":[]}")<0;
+}
+#test "cyclic cursors malformed envelopes and bad metadata cannot publish a native prefix" {
+ for raw:[7]string.["{}","{bad}","{\"data\":null}","{\"data\":{}}","{\"data\":[],\"nextCursor\":false}","{\"data\":[],\"nextCursor\":1}","{\"data\":[],\"nextCursor\":[]}"] {
+  p:[1]CxModelPages;cdmp_begin(p[..]);#assert cdmp_take(p[..],raw)<0 && p[0].failed && !cdmp_ready(p[..],1) && cdmp_cursor(p[..])=="";
+ }
+ p:[1]CxModelPages;cdmp_begin(p[..]);#assert cdmp_take(p[..],"{\"data\":[],\"nextCursor\":\"a\"}")==0 && cdmp_take(p[..],"{\"data\":[],\"nextCursor\":\"b\"}")==0;
+ #assert cdmp_take(p[..],"{\"data\":[],\"nextCursor\":\"\\u0061\"}")<0 && p[0].failed && !cdmp_ready(p[..],1) && cdmp_take(p[..],"{\"data\":[]}")<0;
+ cdmp_begin(p[..]);#assert !p[0].failed && !p[0].done && p[0].count==0 && cdmp_take(p[..],"{\"data\":[]}")==1 && cdmp_ready(p[..],1);
+}
+#test "native catalog cursor bounds and the final page limit are exact" {
+ text:[CDMP_CURSOR+1]u8;for i:0..<text.count {text[i]='x';}raw:[CDMP_CURSOR+128]u8;o:[1]Jo;
+ for extra:0..<2 {p:[1]CxModelPages;cdmp_begin(p[..]);jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"data");jo_arr(o[..]);jo_end(o[..]);jo_key(o[..],"nextCursor");jo_str(o[..],cast(string)text[0..<CDMP_CURSOR+extra]);jo_end(o[..]);
+  #assert (cdmp_take(p[..],jo_text(o[..]))==0)==(extra==0);if extra==0 {#assert cdmp_cursor(p[..]).count==CDMP_CURSOR;}else {#assert p[0].failed;}
+ }
+ for terminal:0..<2 {p:[1]CxModelPages;cdmp_begin(p[..]);for i:0..<CDMP_PAGES {jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"data");jo_arr(o[..]);jo_end(o[..]);jo_key(o[..],"nextCursor");
+   id:[32]u8;v:[1]Jo;jo_start(v[..],id[..]);jo_int(v[..],i);if i==CDMP_PAGES-1 && terminal==1 {jo_null(o[..]);}else {jo_str(o[..],jo_text(v[..]));}jo_end(o[..]);
+   next:=cdmp_take(p[..],jo_text(o[..]));#assert next==ifx i==CDMP_PAGES-1 then ifx terminal==1 then 1 else -1 else 0;
+  }#assert cdmp_ready(p[..],1)==(terminal==1);if terminal==0 {#assert p[0].failed;}
+ }
+}
+#test "a later parser or transport refusal poisons only this discovery and a new read clears it" {
+ p:[1]CxModelPages;cdmp_begin(p[..]);#assert cdmp_take(p[..],"{\"data\":[],\"nextCursor\":\"pending\"}")==0;
+ cdmp_fail(p[..]);#assert p[0].failed && !p[0].done && cdmp_cursor(p[..])=="" && !cdmp_ready(p[..],1) && cdmp_take(p[..],"{\"data\":[]}")<0;
+ cdmp_begin(p[..]);#assert cdmp_take(p[..],"{\"data\":[],\"nextCursor\":\"\"}")==1 && cdmp_ready(p[..],1);
+ cdmp_fail(p[..]);#assert p[0].failed && !p[0].done && !cdmp_ready(p[..],1);
+ cdmp_begin(p[..]);p[0].pages=CDMP_PAGES;#assert cdmp_take(p[..],"{\"data\":[]}")<0 && p[0].failed;
+}
+#test "invalid UTF8 and exhausted escaped cursor decoding poison the entire native read" {
+ p:[1]CxModelPages;raw:[CDMP_CURSOR*6+128]u8;out:[1]Jo;bad:=[1]u8.[255];cdmp_begin(p[..]);jo_start(out[..],raw[..]);jo_obj(out[..]);jo_key(out[..],"data");jo_arr(out[..]);jo_end(out[..]);jo_key(out[..],"nextCursor");jo_str(out[..],cast(string)bad[..]);jo_end(out[..]);
+ #assert cdmp_take(p[..],jo_text(out[..]))<0 && p[0].failed && cdmp_cursor(p[..])=="";
+ cdmp_begin(p[..]);jo_start(out[..],raw[..]);jo_put(out[..],"{\"data\":[],\"nextCursor\":\"");for i:0..<CDMP_CURSOR+1 {jo_put(out[..],"\\u0061");}jo_put(out[..],"\"}");
+ #assert cdmp_take(p[..],jo_text(out[..]))<0 && p[0].failed && !cdmp_ready(p[..],1);
+}
+
+cdmp_begin :: (p:[]CxModelPages) #effects(all) {p[0]=CxModelPages.{on=true};}
+cdmp_fail :: (p:[]CxModelPages) #effects(all) {p[0].failed=true;p[0].done=false;p[0].cursor_n=0;}
+cdmp_cursor :: (p:[]CxModelPages)->string #effects(all) {return cast(string)p[0].cursor[0..<p[0].cursor_n];}
+cdmp_ready :: (p:[]CxModelPages,models:int)->bool #effects(all) {return p[0].on && p[0].done && !p[0].failed && models>0 && models<=AG_MODELS;}
+// -1: refuse this whole read; 0: request the owned next cursor; 1: final page.
+cdmp_take :: (p:[]CxModelPages,raw:string)->int #effects(all) {
+ if !p[0].on || p[0].failed || p[0].done {return -1;}
+ if !cl_valid(raw,"a:data ?s:nextCursor") || p[0].pages>=CDMP_PAGES {cdmp_fail(p);return -1;}
+ p[0].pages+=1;v:=cl_at(raw,"nextCursor");arena:[CDMP_CURSOR]u8;a:=[1]ClArena.[ClArena.{buf=arena[..]}];cursor:=cl_text(a[..],raw,v);
+ if a[0].full || cursor.count>CDMP_CURSOR {cdmp_fail(p);return -1;}
+ // cl_valid checks raw UTF-8; cl_text rejects lone surrogate escapes through
+ // the arena's full flag. Copy that already validated decoded string exactly.
+ p[0].cursor_n=js_copy(p[0].cursor[..],cursor);
+ if cursor.count==0 {p[0].done=true;return 1;}
+ if p[0].pages>=CDMP_PAGES {cdmp_fail(p);return -1;}
+ for i:0..<p[0].count {if cast(string)p[0].seen[i][0..<p[0].sizes[i]]==cursor {cdmp_fail(p);return -1;}}
+ p[0].sizes[p[0].count]=js_copy(p[0].seen[p[0].count][..],cursor);p[0].count+=1;return 0;
+}

@@ -72,12 +72,21 @@ It uses the normal account profile and NIP-98 transport; it holds no broker
 credential. `--operation-id PROBE` lets a script reuse an exact probe. Engine and
 provider flags are explicit script controls, not new mobile pickers.
 
-The current strict SDK profile refuses unretained strings, unknown native
-efforts, catalogs exceeding the bound and Codex lists with a continuation
-cursor. It never publishes those as a complete ready list. Completing shared
-SDK pagination remains required before claiming the larger catalog profile.
+The strict Codex SDK profile follows native `nextCursor` values through the
+shared client and model-field reader. It retains an unpublished candidate until
+the final page, preserving native order, exact labels and effort IDs. It allows
+at most 32 pages, 1,024 decoded UTF-8 bytes per opaque cursor and 16 KiB of owned
+model strings, within the existing 32-model offer bound. Hidden or empty pages
+may continue; a final catalog must contain a visible model. Repeated decoded
+cursors, malformed replies, duplicate models, unknown efforts, failed RPCs and
+exhausted bounds refuse the whole observation. No prefix becomes ready. The
+resident resets the complete SDK owner between probes and tasks; an earlier
+catalog cannot authorize a later owner.
+Native task settings send the exact offered effort, including `minimal`.
 Native Claude offers omit the engine's internal effort aliases and retain
 opaque model IDs, including long-context variants, without guessing a snapshot.
 
 Status: source implementation for #13620. This contract alone does not
 qualify account dispatch, mobile execution or a provider task on staging.
+The [catalog qualification](../verification/2026-11-15-native-codex-catalogs.md)
+records bounded policy, engine and signed resident/SDK fixture observations.
