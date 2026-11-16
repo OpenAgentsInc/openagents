@@ -163,6 +163,8 @@
 //                 packs (the jam's characters beside its world, metaverse/splice-bots/jam/jam-chars.coax)
 //                 keep their own names, load where the first may load (locally when ?pack is given), and
 //                 have no outfit or phone build.
+//   private:NAME@catalog  a later private pack of data only: its catalog is the page's one asset for it, and
+//                 nothing of it goes to the GPU (the jam's Data tables, metaverse/splice-bots/jam/jam-data.coax).
 //   message 608     a claimed realm's maker's display name (oa-api /api/playtest/makers/<realm>), to draw "Made by <name>" and TIP
 //   local:URL     data that only a local address loads: a lab's big licensed capture, kept in a cache
 //                 outside the repo (coax/web/serve.c's /private/, Splat Lab's skull). Anywhere else,
@@ -1659,23 +1661,27 @@ function parseAssets(text) {
     // A .vpk3 pack loads by ranges (coax/web/pack-host.js); in development ?ranges=N sets how many at once.
     else if (kind === "pack") { const pack = { url: rest, ranges: dev ? Number(new URLSearchParams(location.search).get("ranges")) || undefined : undefined }; for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
     else if (kind === "private") {
+      // private:NAME@catalog: a later pack of data only (the jam's tables, metaverse/splice-bots/jam/jam-data.coax):
+      // one asset, its catalog, and no vertices, indices or layers, so it binds nothing on the GPU; its sounds
+      // are added by name as any pack's.
+      const catalogOnly = rest.endsWith("@catalog"), base = catalogOnly ? rest.slice(0, -8) : rest;
       // ?pack&outfit=NAME: the pack's NAME outfit (pack_human.coax --outfit), its own pack, BASE-NAME.
       // On a local address only when asked (serve.c's /private/); on openagents.com always, through
       // the broker (privatePack), never in a golden.
       const q = new URLSearchParams(location.search), site = /(^|\.)openagents\.com$/.test(location.hostname);
       const later = list.some((a) => a.pack?.private);
-      const pick = golden ? null : later ? (dev ? (q.get("pack") !== null ? rest : null) : site ? rest : null)
-        : dev ? q.get("pack") : site ? q.get("pack") || rest : null;
-      const outfit = pick !== null && !later ? q.get("outfit") : null, name = (pick || rest) + (outfit ? `-${outfit}` : "");
+      const pick = golden ? null : later ? (dev ? (q.get("pack") !== null ? base : null) : site ? base : null)
+        : dev ? q.get("pack") : site ? q.get("pack") || base : null;
+      const outfit = pick !== null && !later ? q.get("outfit") : null, name = (pick || base) + (outfit ? `-${outfit}` : "");
       // a phone (a coarse pointer on a small screen, or ?phone; ?phone=0 never) asks first for the
       // pack's phone build, NAME-phone (pack_human.coax --phone: smaller layers and meshes), and the
       // full pack when there is none
       const asked = q.get("phone"), phone = !later && (asked !== null ? asked !== "0"
         : matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) <= 820);
       const urls = (phone ? [`${name}-phone`, name] : [name]).map((n) => dev ? `/private/${n}.pack` : `/api/verse/packs/${n}`);
-      const pack = { url: urls[0], urls, broker: !dev, quiet: true, private: true,
+      const pack = { url: urls[0], urls, broker: !dev, quiet: true, private: true, catalogOnly,
         away: pick === null || !/^[a-z0-9-]{1,58}$/.test(name) };
-      for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack });
+      for (const part of catalogOnly ? ["data"] : PACK_PARTS) list.push({ i: list.length, kind: part, pack });
     }
     else if (kind === "local") list.push({ i, kind: "data", url: rest, urls: [rest], quiet: true, away: !dev || golden });
     else list.push({ i, kind, url: rest, urls: rest.split("|") });
@@ -1853,7 +1859,7 @@ async function loadPack(pack) {
     const [catalog, vertices, indices, layers] = parts;
     deliverRig(of(PACK_RIG)[0]);
     catalog.bytes = of(PACK_CATALOG)[0].bytes; catalog.size = catalog.bytes.length;
-    for (const [a, e] of [[vertices, of(PACK_VERTICES)[0]], [indices, of(PACK_INDICES)[0]]]) {
+    for (const [a, e] of pack.catalogOnly ? [] : [[vertices, of(PACK_VERTICES)[0]], [indices, of(PACK_INDICES)[0]]]) {
       if (gpu.renderer) { a.bytes = e.bytes;a.size = e.bytes.length;gpu.renderer.acceptAsset(a);continue; }
       // Immutable aligned entry views already own the upload span. Only tail
       // padding needs staging; do not duplicate a full groom on device recovery.
@@ -1866,10 +1872,11 @@ async function loadPack(pack) {
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
     const images = !gpu.renderer || gpu.renderer.canonicalLayers ? of(PACK_LAYER).map(e=>e.bytes)
       : await Promise.all(of(PACK_LAYER).map((e) => createImageBitmap(new Blob([e.bytes])).then((b) => (loading.textures(1, 0), b))));
-    if (images.length) { layers.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length; }
+    if (pack.catalogOnly) {}
+    else if (images.length) { layers.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length; }
     else layers.failed = true;
     loadMark("pack-layers");if (wantsDataLayers()) loading.textures(0, 2 * of(PACK_DATA_LAYER).length);
-    layers.dataTexture = wantsDataLayers() && of(PACK_DATA_LAYER).length ? await layerTexture(of(PACK_DATA_LAYER).map((e) => e.bytes), "rgba8unorm") : null;
+    if (layers) layers.dataTexture = wantsDataLayers() && of(PACK_DATA_LAYER).length ? await layerTexture(of(PACK_DATA_LAYER).map((e) => e.bytes), "rgba8unorm") : null;
     if (!parts.every(currentAsset)) return;
     if (pack.cells) {
       // by cell: the sounds' pages were not fetched with the roots; they follow the first image
@@ -1937,11 +1944,11 @@ async function loadPackV1(pack){
       await rendererReady();
       deliverRig(of(PACK_RIG)[0]);
       catalog.bytes=of(PACK_CATALOG)[0].bytes;catalog.size=catalog.bytes.length;mesh=[of(PACK_VERTICES)[0]?.bytes,of(PACK_INDICES)[0]?.bytes];
-      for(const [row,entry]of [[vertices,of(PACK_VERTICES)[0]],[indices,of(PACK_INDICES)[0]]]){
+      for(const [row,entry]of pack.catalogOnly?[]:[[vertices,of(PACK_VERTICES)[0]],[indices,of(PACK_INDICES)[0]]]){
         if(gpu.renderer){row.bytes=entry.bytes;row.size=entry.bytes.length;gpu.renderer.acceptAsset(row);}
         else{const whole=new Uint8Array(align(Math.max(entry.bytes.length,4),4));whole.set(entry.bytes);row.buffer=gpu.device.createBuffer({size:whole.length,usage:(row.kind==="index"?GPUBufferUsage.INDEX|(wantsCull()?GPUBufferUsage.STORAGE:0):GPUBufferUsage.STORAGE)|GPUBufferUsage.COPY_DST});gpu.device.queue.writeBuffer(row.buffer,0,whole);row.size=entry.bytes.length;}
       }
-      layers.texture=texture;layers.dataTexture=dataTexture;layers.size=images.length;layers.failed=!texture;if(gpu.renderer&&texture)gpu.renderer.layerTexture=texture;
+      if(layers){layers.texture=texture;layers.dataTexture=dataTexture;layers.size=images.length;layers.failed=!texture;if(gpu.renderer&&texture)gpu.renderer.layerTexture=texture;}
       for(const entry of of(PACK_SOUND))if((!result.ready||result.ready(entry))&&!assets.some(row=>row.kind==="sound"&&row.name===entry.name)){
         const sound={i:assets.length,kind:"sound",name:entry.name,bytes:entry.bytes,done:true,sourcePack:pack};group.sounds.push(sound);assets.push(sound);
       }

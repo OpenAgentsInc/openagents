@@ -41,4 +41,5 @@ sjx_board_tune :: (super: bool) -> MountTune {
   return m;
 }
 
-#load "jam-farm.coax";   // what she carries and does with it: the inventory, clicks, charge points, the farm robot, her crew, Heat
+#load "jam-farm.coax";
+#load "jam-story.coax";   // the farm's story cards and objective lines, words from the data pack   // what she carries and does with it: the inventory, clicks, charge points, the farm robot, her crew, Heat

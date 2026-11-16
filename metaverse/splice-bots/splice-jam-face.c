@@ -3,7 +3,8 @@
 // field is the Splice every one of Splice's exports takes, so splice-face.c hands it on as it is.
 // The private pack's four parts are the page's assets 0 to 3 (catalog, vertices, indices, layers),
 // all optional: without them the game plays in its own world. The characters pack's four are assets 4
-// to 7 (jam/jam-chars.coax): without them the game draws its own bodies. Two stores follow Splice's
+// to 7 (jam/jam-chars.coax): without them the game draws its own bodies. The tables pack is asset 8, its
+// catalog only (jam/jam-data.coax): without it the rules use their built-in defaults. Two stores follow Splice's
 // four: the jam's rows (store 4, written once the catalog is read) and its game actors, then the
 // bodies' slots (store 5, every frame).
 #define SPLICE_FACE_JAM 1
@@ -21,6 +22,7 @@ static float jam_rows[JAM_ROWS];
 static float jam_actors[JAM_ACTORS];
 static uint8_t catalog[4194304];
 static uint8_t chars_catalog[65536];         /* the characters pack's catalog (jam/jam-chars.coax) */
+static uint8_t data_catalog[262144];          /* the tables pack's catalog: the jam's Data tables (jam/jam-data.coax), held by the game */
 static uint32_t actor_frames;
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
@@ -55,14 +57,16 @@ EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr state, int32_t i
   (void)state;
   if (i == 0) return bytes <= sizeof catalog ? (cx_face_addr)(uintptr_t)catalog : 0u;
   if (i == 4) return bytes <= sizeof chars_catalog ? (cx_face_addr)(uintptr_t)chars_catalog : 0u;
+  if (i == 8) return bytes <= sizeof data_catalog ? (cx_face_addr)(uintptr_t)data_catalog : 0u;
   return 0u;
 }
-EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr state, int32_t i) { (void)state; return i == 0 ? (uint32_t)sizeof catalog : i == 4 ? (uint32_t)sizeof chars_catalog : 0u; }
+EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr state, int32_t i) { (void)state; return i == 0 ? (uint32_t)sizeof catalog : i == 4 ? (uint32_t)sizeof chars_catalog : i == 8 ? (uint32_t)sizeof data_catalog : 0u; }
 EXPORT("coaxial_asset_optional_v1") uint32_t coaxial_asset_optional_v1(int32_t i) { (void)i; return 1; }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) splice_jam_catalog(jam_at(state), store_at(), (coax_string){(const char *)catalog, (int64_t)bytes}, (coax_v_f32){jam_rows, JAM_ROWS});
   if (i == 4 && bytes > 0 && bytes <= sizeof chars_catalog) splice_jam_chars_catalog(jam_at(state), (coax_string){(const char *)chars_catalog, (int64_t)bytes});
   if (i == 5) splice_jam_chars_asset(jam_at(state), (int64_t)bytes);
+  if (i == 8 && bytes > 0 && bytes <= sizeof data_catalog) splice_jam_data(jam_at(state), (coax_string){(const char *)data_catalog, (int64_t)bytes});
   if (i < 4) splice_jam_asset(jam_at(state), i, (int64_t)bytes);
 }
 

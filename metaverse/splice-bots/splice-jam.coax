@@ -38,9 +38,13 @@ splice_jam_catalog :: (s: [] SpliceJam, store: [] SjStore, text: string, rows: [
     sjc_cards(s[0].chars[..], j, text);   // where the audience stands (jam/jam-cast.coax)
   }
   sj_bind(s[0].page[0].game[..], store);
+  if sjd_table(text, "/Data/strings").count > 0 { sjx_data(s[0].page[0].game[..], text); }   // the jam's Data tables, when the pack carries them (jam/jam-data.coax)
   s[0].page[0].world_built = false;   // the world store again, without what the jam world draws (splice-game.coax g_world)
   sjd_build(s[0].jam[..], store, rows);
 }
+// The tables pack's catalog (private:splice-bots-jam-tables@catalog, asset 8): the jam's Data and Config tables,
+// which the game looks rows up in by id (jam/jam-data.coax). The face keeps the text in memory: the game holds it.
+splice_jam_data :: (s: [] SpliceJam, text: string) #export_c #effects(all) { sjx_data(s[0].page[0].game[..], text); }
 splice_jam_asset :: (s: [] SpliceJam, index: int, bytes: int) #export_c #effects(all) { sjd_asset(s[0].jam[..], index, bytes); }
 // The characters pack's catalog (page asset 4) and its vertices part (asset 5, its bytes).
 splice_jam_chars_catalog :: (s: [] SpliceJam, text: string) #export_c #effects(all) { sjc_catalog(s[0].chars[..], text); }

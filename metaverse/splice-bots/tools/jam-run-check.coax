@@ -11,11 +11,14 @@
 //   - the jam's farm rules with real keys and clicks (jrc_farm_rules, jam/jam-farm.coax): a battery from a
 //     charge point, the farm robot hit down and harvested with a held click.
 //
-//   coax/web/tool.sh metaverse/splice-bots/tools/jam-run-check.coax PACK [CHARS]
+//   coax/web/tool.sh metaverse/splice-bots/tools/jam-run-check.coax PACK [CHARS] [--tables TABLES]
 //
 // With CHARS, the characters pack (tools/jam-chars-pack.coax), it also checks the cast (jrc_chars):
 // the Director with her ten clips, the six raider bodies, the 16 raiders in the ring that wear them, and the
 // crowd's cards the audience stands at.
+// With --tables TABLES, the tables pack (tools/jam-tables-pack.coax), the farm's rules play with the jam's Data
+// tables (jam/jam-data.coax) and it checks them (jrc_tables): the farm's pickups take their items from the
+// pickups table, and the story's first cards show with words from the strings table.
 //
 // It prints the route it read and a line a run: 0 is a pass, else the number of the beat that failed
 // (the beats are numbered in g_run_to_garage, g_run_from_garage and sp_keys_play). It exits 1 when a run
@@ -51,8 +54,8 @@ jrc_click :: (g: [] SpGame, hold: f32) -> bool {
   _ := g_pointer(g, 640, 360, 2); g_step(g, 0.02);
   return r;
 }
-jrc_farm_rules :: (g: [] SpGame) -> int {
-  g_reset(g);
+jrc_farm_rules :: (g: [] SpGame, tables: string) -> int {
+  g_reset(g); if tables != "" { sjx_data(g, tables); }
   if !(g_key(g, -2, true) && g_key(g, -2, true) && g[0].mode == M_PLAY && sjx_on(g)) { return 1; }
   x := g[0].jx[0];
   if x.charge_n == 0 || x.bot_n == 0 { return 2; }
@@ -104,10 +107,47 @@ jrc_chars :: (path: string, j: [] SjJam) -> int {
   return ifx ring < 16 then 4 else ifx cards < 1 then 5 else 0;
 }
 
+// ---- the jam's Data tables (jam/jam-data.coax, jam/jam-story.coax): the farm's pickups take their items from
+// the pickups table (more than scrap: batteries, cards, banned pieces), and in play the story's first tutorial
+// card shows after 5 s and Sniper's after 6, with words from the strings table. 0 is a pass.
+jrc_tables :: (g: [] SpGame, tables: string) -> int {
+  g_reset(g); sjx_data(g, tables);
+  if !(g_key(g, -2, true) && g_key(g, -2, true) && g[0].mode == M_PLAY && sjx_on(g)) { return 1; }
+  x := g[0].jx[0]; kinds := 0; seen: [16] string;
+  for k: 0..<x.pick_n {
+    item := x.pick_item[k]; new := true;
+    for q: 0..<kinds { if seen[q] == item { new = false; } }
+    if new && kinds < 16 { seen[kinds] = item; kinds += 1; print("  a farm pickup: %\n", item); }
+  }
+  if kinds < 2 { return 2; }
+  for i: 0..<cast(int) (6.2 / 0.02) { g_step(g, 0.02); }
+  t := sjs_now(g, SR_LANE_TUTORIAL); sn := sjs_now(g, SR_LANE_SNIPER);
+  print("  cards: tutorial \"%\", Sniper \"%\"\n", t, sn);
+  if t.count == 0 { return 3; }
+  if sn.count == 0 { return 4; }
+  return 0;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 { print("usage: jam-run-check PACK [CHARS]\n"); return 2; }
-  pack_b: [268435456] u8; path := args_at(a[..], 0); pn := fs_size(path);
+  if !args_load(a[..]) { return 2; }
+  pos: [2] string; pn_ := 0; tables_path := "";
+  for i: 0..<args_count(a[..]) {
+    v := args_at(a[..], i);
+    if v == "--tables" && i + 1 < args_count(a[..]) { tables_path = args_at(a[..], i + 1); continue; }
+    if i > 0 && args_at(a[..], i - 1) == "--tables" { continue; }
+    if pn_ < 2 { pos[pn_] = v; } pn_ += 1;
+  }
+  if pn_ < 1 || pn_ > 2 { print("usage: jam-run-check PACK [CHARS] [--tables TABLES]\n"); return 2; }
+  tables_b: [1048576] u8; tables := "";
+  if tables_path != "" {
+    tn := fs_size(tables_path);
+    if tn < 0 || tn > tables_b.count || fs_read(tables_path, tables_b[0..<tn]) != tn { tool_errln("jam-run-check: could not read the tables pack"); return 1; }
+    trd: [1] PackRead;
+    if !pack_read(cast(string) tables_b[0..<tn], trd[..]) { tool_err("jam-run-check: the tables pack is refused: "); tool_errln(trd[0].why); return 1; }
+    tables = pack_bytes(cast(string) tables_b[0..<tn], trd[..], 0);
+  }
+  pack_b: [268435456] u8; path := pos[0]; pn := fs_size(path);
   if pn < 0 || pn > pack_b.count || fs_read(path, pack_b[0..<pn]) != pn { tool_errln("jam-run-check: could not read the pack"); return 1; }
   pack := cast(string) pack_b[0..<pn]; rd: [1] PackRead;
   if !pack_read(pack, rd[..]) { tool_err("jam-run-check: the pack is refused: "); tool_errln(rd[0].why); return 1; }
@@ -145,11 +185,12 @@ tool_main :: () -> int #export_c #effects(all) {
   if r != 0 { print("  she stopped at (%, %), zone %\n", g[0].px, g[0].pz, g[0].zone); }
   failed = failed || r != 0;
   // the jam's farm rules with the keys and the mouse
-  r = jrc_farm_rules(g[..]); jrc_line("the farm's rules: a charge point, the farm robot down and harvested", r); failed = failed || r != 0;
+  r = jrc_farm_rules(g[..], tables); jrc_line("the farm's rules: a charge point, the farm robot down and harvested", r); failed = failed || r != 0;
   // the route walk (jam/jam-walk.coax): every stop explained by a collider the realm draws
   failed = jrc_route_walk(g[..], s[..], cat) || failed;
   // the characters: her body and the raiders' (jam/jam-chars.coax)
-  if args_count(a[..]) == 2 { r = jrc_chars(args_at(a[..], 1), s[0].jam[..]); jrc_line("the characters: the Director, six raiders, 16 in the ring", r); failed = failed || r != 0; }
+  if tables != "" { r = jrc_tables(g[..], tables); jrc_line("the Data tables: the pickups' items and the story's cards", r); failed = failed || r != 0; }
+  if pn_ == 2 { r = jrc_chars(pos[1], s[0].jam[..]); jrc_line("the characters: the Director, six raiders, 16 in the ring", r); failed = failed || r != 0; }
   return ifx failed then 1 else 0;
 }
 // The route walk scene by scene, and a solar bank stood against and on: whether anything failed.

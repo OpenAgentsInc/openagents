@@ -119,3 +119,35 @@ sjr_click :: (g: [] SpGame) -> bool { r := g_pointer(g, 640, 360, 0); _ := g_poi
   // the prototype's world has none of it
   g2 := [1] SpGame.[SpGame.{}]; g_reset(g2[..]); #assert !sjx_on(g2[..]) && !sjx_pointer(g2[..], 0) && sjx_key(g2[..], 'g', true) == 0;
 }
+
+// A data catalog with the jam tables' shape and made-up words (jam/jam-data.coax): strings, card triggers,
+// pickups (one by each of the test farm's pickups) and an item's stack size.
+SJR_DATA :: "table 0 /Data/card_triggers csv 5 6\nX 0 id,trigger,card_kind,lane,text_key,source_section\nX 0 T01,spawn,tutorial,Tutorial,CARD_T01,x\nX 0 T02,later,sniper_says,Sniper,CARD_S01,x\nX 0 T03,scrap,item,Item,CARD_N01,x\nX 0 T06,jump,item,Item,CARD_N02,x\nX 0 T33,desk,sniper_says,Sniper,CARD_S07,x\ntable 1 /Data/items csv 1 2\nX 1 item_id,name,category,stack_size\nX 1 ITEM_SCRAP_PART,SCRAP,part,8\ntable 2 /Data/pickups csv 2 3\nX 2 pickup_id,item_id,level,x_cm,y_cm,z_cm\nX 2 PU_1,ITEM_SCRAP_PART,farm,-79000,-10500,0\nX 2 PU_2,ITEM_JUMP_CARD,farm,-79000,-11500,0\ntable 3 /Data/strings csv 4 5\nX 3 key,text,speaker\nX 3 TUT_WALK,\"Walk, test\",system\nX 3 SNIPER_0001,Sniper test,sniper\nX 3 CARD_NEW_ITEM_SCRAP_PART,New scrap test,system\nX 3 CARD_NEW_ITEM_JUMP_CARD,New jump test,system\n";
+#test "jam story: pickups' items and stack sizes come from the data tables, and the farm's cards show in their lanes for their time" #steps 2000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjr_start(g[..], s[..]);
+  #assert g[0].jx[0].pick_item[1] == ITEM_SCRAP_PART && sjs_now(g[..], SR_LANE_TUTORIAL) == "";   // no data pack: scrap, no cards
+  sjx_data(g[..], SJR_DATA);
+  #assert g[0].jx[0].pick_item[0] == ITEM_SCRAP_PART && g[0].jx[0].pick_item[1] == ITEM_JUMP_CARD;
+  d := g[0].jx[0].inv[0].defs; #assert d.rows[sr_defs_find(d, ITEM_SCRAP_PART)].stack_size == 8;
+  g[0].bot = false; sjr_at(g[..], -770, -160, 0);
+  sjr_steps(g[..], 5.1); #assert sjs_now(g[..], SR_LANE_TUTORIAL) == "Walk, test" && sjs_now(g[..], SR_LANE_SNIPER) == "";
+  sjr_steps(g[..], 1.1); #assert sjs_now(g[..], SR_LANE_SNIPER) == "Sniper test";
+  // she takes both pickups: an item card for each, one after the other in the item lane
+  sjr_at(g[..], -791, -105, 0); sjr_at(g[..], -791, -115, 0); sjr_steps(g[..], 0.1);
+  #assert sjx_count(g[..], ITEM_JUMP_CARD) == 1 && sjx_count(g[..], ITEM_SCRAP_PART) == 1 && sjs_now(g[..], SR_LANE_ITEM) == "New scrap test";
+  sjr_steps(g[..], 3.6); #assert sjs_now(g[..], SR_LANE_ITEM) == "New jump test";
+  // each leaves after its time, and never comes back
+  sjr_steps(g[..], 7); #assert sjs_now(g[..], SR_LANE_TUTORIAL) == "" && sjs_now(g[..], SR_LANE_ITEM) == "" && sjs_now(g[..], SR_LANE_SNIPER) == "";
+}
+#test "jam story: the desk's refusal before the DRILL card is Sniper's card, once a visit" #steps 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjr_start(g[..], s[..]); sjx_data(g[..], SJR_DATA);
+  g[0].px = -500; g[0].pz = 763; #assert sp_in_room(g[..]);   // at the desk in Sniper's cabin
+  g_say(g[..], MSG_NO_DRILL); g_step(g[..], 0.02);   // the desk's refusal (drive.coax dv_portal; its own check plays E there)
+  #assert sjs_now(g[..], SR_LANE_SNIPER) == "Not without a drill. Find the DRILL card first.";
+  sjr_steps(g[..], 13); #assert sjs_now(g[..], SR_LANE_SNIPER) == "";   // gone after its 5.5 s (and the start's Sniper card after it)
+  g_say(g[..], MSG_NO_DRILL); g_step(g[..], 0.02); #assert sjs_now(g[..], SR_LANE_SNIPER) == "";   // not again this visit
+  sjr_at(g[..], -770, -160, 0); g[0].px = -500; g[0].pz = 763; g_step(g[..], 0.02);   // out and back in: again
+  g_say(g[..], MSG_NO_DRILL); g_step(g[..], 0.02); #assert sjs_now(g[..], SR_LANE_SNIPER) != "";
+}

@@ -48,6 +48,7 @@ SjRules :: struct {
   dig_stay: bool;             // Digger stays (G)
   heat: int; level: int;      // the jam's Heat and its level
   said: int; said_item: string; said_t: f32;
+  story: [1] SjStory;         // the farm's story cards (jam/jam-story.coax)
   button: int;                // the pointer's button now: 0 left (Attack), 2 right (Use), as the jam binds them
 }
 
@@ -79,17 +80,52 @@ sjx_item_name :: (id: string, buf: [] u8) -> string {
 
 // A run's rules from the jam world's actors (at g_reset and sj_bind): the farm's pickups, charge points and
 // Imperial robot. Off outside the jam world.
+// A farm pickup's item: the pickups table's row placed nearest it (within 3 m; the table's x and y in cm are
+// the world's x and z), else scrap. jam-data.coax has the table.
+SJX_PICKUP_NEAR :: 3.0f32;
+sjx_pickup_item :: (cat: string, x: f32, z: f32) -> string {
+  best := ITEM_SCRAP_PART; bd := SJX_PICKUP_NEAR;
+  h := sjd_header(cat, "/Data/pickups"); ci := csv_column(h, "item_id"); cx := csv_column(h, "x_cm"); cy := csv_column(h, "y_cm"); cl := csv_column(h, "level");
+  if ci < 0 || cx < 0 || cy < 0 { return best; }
+  i := 0;
+  while true {
+    r := sjd_nth(cat, "/Data/pickups", i); i += 1;
+    if r.count == 0 { break; }
+    if cl >= 0 && csv_at(r, cl) != "farm" { continue; }
+    px := csv_number(csv_at(r, cx)); pz := csv_number(csv_at(r, cy));
+    if !px.ok || !pz.ok { continue; }
+    d := dist2(x, z, cast(f32) px.v / 100, cast(f32) pz.v / 100);
+    if d < bd { bd = d; best = csv_at(r, ci); }
+  }
+  return best;
+}
+// An item's stack size: the items table's stack_size by id, else the built-in one.
+sjx_defs_from :: (cat: string) -> SrItemDefs {
+  d := sjx_defs();
+  for k: 0..<d.n {
+    v := csv_number(sjd_cell(cat, "/Data/items", d.rows[k].item_id, "stack_size"));
+    if v.ok && v.v >= 1 { d.rows[k].stack_size = cast(int) v.v; }
+  }
+  return d;
+}
+// The Data tables came (jam/jam-data.coax): the pickups not yet taken take their items from them.
+sjx_data :: (g: [] SpGame, cat: string) {
+  g[0].jd = cat;
+  if !sjx_on(g) { return; }
+  x := g[0].jx[..]; x[0].inv[0].defs = sjx_defs_from(cat);
+  for k: 0..<x[0].pick_n { if !x[0].pick_taken[k] { a := g[0].jr[0].actors[x[0].pick_actor[k]]; x[0].pick_item[k] = sjx_pickup_item(cat, a.x, a.z); } }
+}
 sjx_reset :: (g: [] SpGame) {
   x := g[0].jx[..]; x[0] = SjRules.{};
   if !g[0].jam { return; }
   x[0].ok = true;
-  x[0].inv[0] = sr_make_inventory(); x[0].inv[0].defs = sjx_defs();
+  x[0].inv[0] = sr_make_inventory(); x[0].inv[0].defs = sjx_defs_from(g[0].jd);
   x[0].chest[0] = sr_make_container(SR_CHEST_SLOTS);
   j := g[0].jr[..];
   for i: 0..<j[0].n {
     a := j[0].actors[i];
     if a.route != SJ_FARM { continue; }
-    if a.kind == SJ_PICKUP && x[0].pick_n < SJX_PICKS { k := x[0].pick_n; x[0].pick_actor[k] = i; x[0].pick_item[k] = ITEM_SCRAP_PART; x[0].pick_n += 1; sj_actor_reset(j, i); }
+    if a.kind == SJ_PICKUP && x[0].pick_n < SJX_PICKS { k := x[0].pick_n; x[0].pick_actor[k] = i; x[0].pick_item[k] = sjx_pickup_item(g[0].jd, a.x, a.z); x[0].pick_n += 1; sj_actor_reset(j, i); }
     if a.kind == SJ_CHARGE && x[0].charge_n < SJX_CHARGES { k := x[0].charge_n; x[0].charge_actor[k] = i; x[0].charge[k] = SrChargePoint.{}; x[0].charge_n += 1; }
     if a.kind == SJ_IMPERIAL && x[0].bot_n < SJX_BOTS {
       b: SjxBot; b.actor = i; b.x = a.x; b.z = a.z; b.y = a.y; b.yaw = a.yaw;
@@ -298,6 +334,7 @@ sjx_pointer :: (g: [] SpGame, phase: int) -> bool {
 sjx_step :: (g: [] SpGame, dt: f32) {
   if g[0].jam && !g[0].jx[0].ok { sjx_reset(g); }   // a page that bound the jam world after the run began
   if !sjx_on(g) { return; }
+  sjs_step(g, dt);   // the story's cards (jam/jam-story.coax)
   x := g[0].jx[..];
   x[0].hit_t += dt;
   if x[0].said_t > 0 { x[0].said_t -= dt; if x[0].said_t <= 0 { x[0].said = SJX_NONE; } }
@@ -348,7 +385,8 @@ sjx_step :: (g: [] SpGame, dt: f32) {
 
 // For a page check (splice-bots.coax splice_world_fact): 16 the jam's hotbar is up, 17 the slot picked,
 // 18 batteries she carries, 19 robots harvested, 20 and 21 the first charge point's x and z (cm), 22 what the
-// rules last said (SJX_*), 23 what a left click would act on (SJX_T_*).
+// rules last said (SJX_*), 23 what a left click would act on (SJX_T_*), 24 the Data tables' bytes, 25 the
+// story's clock (s), 26 cards played plus 100 per tutorial card waiting.
 sjx_fact :: (g: [] SpGame, k: int) -> int {
   if !sjx_on(g) { return -1; }
   x := g[0].jx[0];
@@ -357,6 +395,7 @@ sjx_fact :: (g: [] SpGame, k: int) -> int {
   if k == 18 { return sjx_count(g, ITEM_BATTERY); }
   if k == 19 { return x.harvests; }
   if k == 22 { return x.said; } if k == 23 { return sjx_target(g, SJX_ATTACK_REACH, false).kind; }
+  if k == 24 { return g[0].jd.count; } if k == 25 { return cast(int) x.story[0].clock; } if k == 26 { return x.story[0].q[0].played_n + sr_card_num(x.story[0].q[0], 0) * 100; }
   if (k == 20 || k == 21) && x.charge_n > 0 { a := g[0].jr[0].actors[x.charge_actor[0]]; return we_cm(ifx k == 20 then a.x else a.z); }
   return -1;
 }
@@ -395,6 +434,7 @@ sjx_hud :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   n = hv_frame(out, n, ex, y0, ex + cw, y1, k, HV_LINE(), 1);
   n = hv_mid(out, n, F_TITLE, "STUN", ex + cw * 0.5, y0 + cw * 0.45, 6 * k, HV_CREAM(), 1);
   n = hv_mid(out, n, F_MONO, "F", ex + cw * 0.5, y1 - 6 * k, 5.5 * k, HV_DIM(), 1);
+  n = sjs_hud(g, out, n, q);   // the story's cards
   // Heat's level
   n = hv_text(out, n, F_TITLE, SJX_LEVELS[x.level], ro_safe(q.w, q.h).x0, ro_safe(q.w, q.h).y0 + 70 * k, 9 * k, ifx x.level == SR_HEAT_LOW then HV_DIM() else HV_ORANGE(), 1);
   // what the rules said, or the harvest's hold

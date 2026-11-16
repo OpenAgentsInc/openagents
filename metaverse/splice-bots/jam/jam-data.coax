@@ -1,0 +1,78 @@
+// The jam build's Data tables in play (GitHub #13653). unreal-level-import carries each of the jam's Data and
+// Config CSVs as a catalog table,
+//   table K NAME FORMAT ROWS LINES
+//   X K LINE                              one per line of the file, its header first
+// When the jam world's private pack carries them, the page hands its catalog to the game (splice-jam.coax
+// splice_jam_catalog, g[0].jd). The game looks rows up by their id, the first column, never by place: the
+// importer may reorder tables and rows. The text stays in the pack: nothing of it is in git. Without the
+// tables every lookup is "", and the rules use their built-in defaults.
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "jam data"
+
+// The record of table `name` whose first field is `id`, or "" when the catalog has no such row.
+sjd_row :: (cat: string, name: string, id: string) -> string {
+  k := sjd_table(cat, name);
+  if k.count == 0 { return ""; }
+  at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    l := cat[at..<e]; at = e + 1;
+    if l.count < 4 + k.count || l[0] != 'X' || l[1] != ' ' || l[2..<2 + k.count] != k || l[2 + k.count] != ' ' { continue; }
+    r := l[3 + k.count..<l.count];
+    if csv_at(r, 0) == id { return r; }
+  }
+  return "";
+}
+// The column `col` (by the header's name) of table `name`'s row `id`, or "".
+sjd_cell :: (cat: string, name: string, id: string, col: string) -> string {
+  r := sjd_row(cat, name, id); if r.count == 0 { return ""; }
+  c := csv_column(sjd_header(cat, name), col); if c < 0 { return ""; }
+  return csv_at(r, c);
+}
+// Table `name`'s number K in the catalog (its X lines' key), as text, or "".
+sjd_table :: (cat: string, name: string) -> string {
+  at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    l := cat[at..<e]; at = e + 1;
+    if l.count > 6 && l[0..<6] == "table " && ct_part(l, ' ', 2) == name { return ct_part(l, ' ', 1); }
+  }
+  return "";
+}
+// Table `name`'s header record (its first X line), or "".
+sjd_header :: (cat: string, name: string) -> string {
+  k := sjd_table(cat, name);
+  if k.count == 0 { return ""; }
+  at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    l := cat[at..<e]; at = e + 1;
+    if l.count >= 3 + k.count && l[0] == 'X' && l[1] == ' ' && l[2..<2 + k.count] == k && l[2 + k.count] == ' ' { return l[3 + k.count..<l.count]; }
+  }
+  return "";
+}
+// Each record of table `name` in order, past its header: call with i from 0 until it answers "".
+sjd_nth :: (cat: string, name: string, i: int) -> string {
+  k := sjd_table(cat, name);
+  if k.count == 0 { return ""; }
+  at := 0; n := -1;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    l := cat[at..<e]; at = e + 1;
+    if l.count < 3 + k.count || l[0] != 'X' || l[1] != ' ' || l[2..<2 + k.count] != k || l[2 + k.count] != ' ' { continue; }
+    if n == i { return l[3 + k.count..<l.count]; }
+    n += 1;
+  }
+  return "";
+}
+
+// A small catalog with the tables' shape, for the checks (no jam text: the rows are made up here).
+SJD_TEST_DATA :: "table 0 /Data/strings csv 2 3\nX 0 key,text,speaker\nX 0 TUT_WALK,\"Walk, test\",system\nX 0 SNIPER_0001,Sniper test line,sniper\ntable 1 /Data/pickups csv 2 3\nX 1 pickup_id,item_id,level,x_cm,y_cm,z_cm\nX 1 PU_A,ITEM_SCRAP_PART,farm,-79000,-10500,0\nX 1 PU_B,ITEM_JUMP_CARD,farm,-79000,-11500,0\n";
+#test "jam data: rows by id from the catalog's tables, cells by the header's names, and nothing without the pack" {
+  c := SJD_TEST_DATA;
+  #assert sjd_table(c, "/Data/pickups") == "1" && sjd_table(c, "/Data/nothing") == "";
+  #assert csv_at(sjd_row(c, "/Data/pickups", "PU_B"), 1) == "ITEM_JUMP_CARD";
+  #assert sjd_cell(c, "/Data/strings", "TUT_WALK", "text") == "Walk, test" && sjd_cell(c, "/Data/strings", "SNIPER_0001", "speaker") == "sniper";
+  #assert sjd_cell(c, "/Data/strings", "NOPE", "text") == "" && sjd_cell(c, "/Data/strings", "TUT_WALK", "nope") == "";
+  #assert csv_at(sjd_nth(c, "/Data/pickups", 0), 0) == "PU_A" && csv_at(sjd_nth(c, "/Data/pickups", 1), 0) == "PU_B" && sjd_nth(c, "/Data/pickups", 2) == "";
+  #assert sjd_row("", "/Data/pickups", "PU_A") == "" && sjd_nth("", "/Data/pickups", 0) == "";
+}

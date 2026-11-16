@@ -323,7 +323,7 @@ hv_card :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   n := at; k := q.k; sa := ro_safe(q.w, q.h); cw := 298 * k; ch := 64 * k; x1 := sa.x1; x0 := x1 - cw; y1 := sa.y1 - 21 * k; y0 := y1 - ch; buf: [48] u8;
   n = hv_rect(out, n, x0, y0, x1, y1, HV_PANEL(), 0.94);
   n = hv_text(out, n, F_MONO, hv_reel(g, buf[..]), x0 + 14 * k, y0 + 21 * k, 6.5 * k, HV_ORANGE(), 1);
-  o := objective(g); cap := 9.5 * k;
+  o := sjs_objective(g, objective(g)); cap := 9.5 * k;   // the jam's lines at the farm in the jam world (jam/jam-story.coax)
   while ui_w(F_TITLE, o, cap) > cw - 28 * k && cap > 6 * k { cap -= 0.5 * k; }   // a long one gets smaller, never cut
   n = hv_text(out, n, F_TITLE, o, x0 + 14 * k, y0 + 47 * k, cap, HV_CREAM(), 1);
   // the keys: TAB edit bay (in the rover), Q board (when the world gives one), R bots, H hide HUD

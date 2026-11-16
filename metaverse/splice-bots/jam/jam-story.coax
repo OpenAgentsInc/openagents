@@ -1,0 +1,113 @@
+// The jam's farm story in the jam world (GitHub #13653; the jam's SpliceFarmStory): story cards in three lanes
+// (rules/card-queue.coax), raised by the farm's triggers, and the objective lines the jam adds at the farm.
+// Which card a trigger raises comes from the data pack's card_triggers table, and its words from its strings
+// table (jam/jam-data.coax), by id; without the pack no card shows. The pairing of a card row with its
+// string (CARD_T01 is TUT_WALK) is the jam's code, as are the lines it writes itself (CARD_S05, CARD_S07).
+//
+// Only the cards whose words hold in this game are raised: the tutorial cards that name the jam's own
+// controls where this game differs (the board, Sniper's door, the edit bay) wait until those controls match.
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "jam story"
+
+SJS_START :: 5.0f32;                                   // s into play before the first card (StartAfter)
+SJS_STAY :: [3] f32.[6.0, 3.5, 5.5];                    // s a card stays: tutorial, item, Sniper
+SJS_IMPERIAL_NEAR :: 20.0f32;                           // m: a robot not hers this near raises T11 to T13
+SJS_PAIRS :: [24] string.[
+  "CARD_T01", "TUT_WALK", "CARD_T07", "TUT_ATTACK_ROBOT", "CARD_T08", "TUT_HARVEST", "CARD_T09", "TUT_TAKE_CORE",
+  "CARD_T10", "TUT_FEED_ROBOT", "CARD_T11", "TUT_HEAT",
+  "CARD_N01", "CARD_NEW_ITEM_SCRAP_PART", "CARD_N02", "CARD_NEW_ITEM_JUMP_CARD", "CARD_N03", "CARD_NEW_ITEM_SMALL_CORE",
+  "CARD_N04", "CARD_NEW_ITEM_BATTERY", "CARD_N10", "CARD_NEW_ITEM_IMPERIAL_PART", "CARD_N12", "CARD_NEW_ITEM_BANNED_PIECE"];
+SJS_SNIPER :: [8] string.["CARD_S01", "SNIPER_0001", "CARD_S02", "SNIPER_0002", "CARD_S03", "SNIPER_0003", "CARD_S04", "SNIPER_0004"];
+// The jam's own lines (SpliceFarmStory.cpp SetEntry), for the cards whose words it writes in code.
+SJS_OWN :: [4] string.["CARD_S05", "That's a Bot Mandate. The Empire's limit on robots. We're already over it.",
+                       "CARD_S07", "Not without a drill. Find the DRILL card first."];
+
+SjStory :: struct {
+  q: [1] SrCardQueue;
+  age: [3] f32;               // s the card at the head of each lane has shown
+  clock: f32;                 // s in play
+  start_heat: int = -1;
+  battery_ever: bool;
+}
+
+// A card row's words: the strings table's text by the pairing above, or the jam's own line; "" when none.
+sjs_text :: (cat: string, text_key: string) -> string {
+  for i: 0..<SJS_OWN.count / 2 { if SJS_OWN[i * 2] == text_key { return SJS_OWN[i * 2 + 1]; } }
+  for i: 0..<SJS_PAIRS.count / 2 { if SJS_PAIRS[i * 2] == text_key { return sjd_cell(cat, "/Data/strings", SJS_PAIRS[i * 2 + 1], "text"); } }
+  for i: 0..<SJS_SNIPER.count / 2 { if SJS_SNIPER[i * 2] == text_key { return sjd_cell(cat, "/Data/strings", SJS_SNIPER[i * 2 + 1], "text"); } }
+  return "";
+}
+// Raise trigger `id` (card_triggers' T01 to T33) once: its lane and words from the tables.
+sjs_show :: (g: [] SpGame, id: string) {
+  cat := g[0].jd; s := g[0].jx[0].story[..];
+  if sr_card_has_played(s[0].q[0], id) { return; }
+  key := sjd_cell(cat, "/Data/card_triggers", id, "text_key");
+  if key.count == 0 || sjs_text(cat, key).count == 0 { return; }
+  lane := sjd_cell(cat, "/Data/card_triggers", id, "lane");
+  li := ifx lane == "Item" then SR_LANE_ITEM else ifx lane == "Sniper" then SR_LANE_SNIPER else SR_LANE_TUTORIAL;
+  _ := sr_card_enqueue(s[0].q[..], SrCardRequest.{card_id = id, lane = li, text_key = key});
+}
+// The card each lane shows now.
+sjs_now :: (g: [] SpGame, lane: int) -> string {
+  t := sr_card_peek(g[0].jx[0].story[0].q[0], lane);
+  return ifx t.found then sjs_text(g[0].jd, t.card.text_key) else "";
+}
+
+// Each step in play: the lanes' cards age and leave, then the farm's triggers (the jam's order).
+sjs_step :: (g: [] SpGame, dt: f32) {
+  s := g[0].jx[0].story[..];
+  for l: 0..<SR_LANE_COUNT {
+    if sr_card_lane_empty(s[0].q[0], l) { s[0].age[l] = 0; continue; }
+    s[0].age[l] += dt;
+    if s[0].age[l] >= SJS_STAY[l] { _ := sr_card_dequeue(s[0].q[..], l); s[0].age[l] = 0; }
+  }
+  // the desk refuses the drive before the DRILL card (drive.coax MSG_NO_DRILL): Sniper's card, once a visit
+  if sp_in_room(g) && g[0].msg == MSG_NO_DRILL { sjs_show(g, "T33"); }
+  if !sp_in_room(g) && sr_card_has_played(s[0].q[0], "T33") { sr_card_forget_played(s[0].q[..], "T33"); }
+  if g[0].mode != M_PLAY { return; }
+  s[0].clock += dt;
+  if s[0].clock < SJS_START { return; }
+  since := s[0].clock - SJS_START;
+  sjs_show(g, "T01");
+  if since > 1 { sjs_show(g, "T02"); }
+  if sjx_count(g, ITEM_SCRAP_PART) > 0 { sjs_show(g, "T03"); }
+  if sjx_count(g, ITEM_JUMP_CARD) > 0 { sjs_show(g, "T06"); sjs_show(g, "T07"); }
+  if sjx_count(g, ITEM_BANNED_PIECE) > 0 { sjs_show(g, "T26"); }
+  if sjx_count(g, ITEM_IMPERIAL_PART) > 0 { sjs_show(g, "T24"); }
+  if sjx_count(g, ITEM_SMALL_CORE) > 0 { sjs_show(g, "T14"); }
+  if sjx_count(g, ITEM_BATTERY) > 0 { s[0].battery_ever = true; sjs_show(g, "T15"); sjs_show(g, "T16"); }
+  x := g[0].jx[0];
+  for i: 0..<x.bot_n {
+    b := x.bots[i];
+    if b.harvested || b.robot.owner == SR_OWNER_HER || dist2(b.x, b.z, g[0].px, g[0].pz) > SJS_IMPERIAL_NEAR { continue; }
+    if b.robot.powered_down { sjs_show(g, "T12"); if sr_card_has_played(s[0].q[0], "T12") { sjs_show(g, "T13"); } }
+    else { sjs_show(g, "T11"); }
+  }
+  if s[0].start_heat < 0 { s[0].start_heat = x.heat; } else if x.heat > s[0].start_heat { sjs_show(g, "T17"); }
+}
+
+// The jam's objective lines at the farm, where they hold in this game; else the game's own (objective()).
+sjs_objective :: (g: [] SpGame, own: string) -> string {
+  if !sjx_on(g) || g[0].mode != M_PLAY || g[0].zone != Z_MINE || dv_away(g) || g[0].phase != PH_DAY || !g_spliced(g) || sp_in_room(g) { return own; }
+  if sb_objective(g) != "" || (g_spliced(g) && d_sensor_here(g)) { return own; }   // a battle, or the drill's first dig, comes first
+  x := g[0].jx[0];
+  for i: 0..<x.bot_n { b := x.bots[i]; if !b.harvested && b.robot.owner != SR_OWNER_HER && !b.robot.powered_down { return "A white robot is charging. Bring it to 0, then harvest it or take it."; } }
+  if !x.story[0].battery_ever && x.charge_n > 0 { return "Left click a glowing charge point for a battery. Feed your robot."; }
+  return own;
+}
+
+// The cards on screen: one per lane with a card, stacked at the left, the lane's name over its words.
+SJS_LANES :: [3] string.["TUTORIAL", "ITEM", "SNIPER"];
+sjs_hud :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  n := at; k := q.k; sa := ro_safe(q.w, q.h); y := q.h * 0.3; x0 := sa.x0;
+  for l: 0..<SR_LANE_COUNT {
+    t := sjs_now(g, l);
+    if t.count == 0 { continue; }
+    cap := 8.5 * k; cw := lo(ui_w(F_TITLE, t, cap) + 28 * k, 420 * k);
+    while ui_w(F_TITLE, t, cap) > cw - 28 * k && cap > 5.5 * k { cap -= 0.5 * k; }
+    n = hv_rect(out, n, x0, y, x0 + cw, y + 46 * k, HV_PANEL(), 0.94);
+    n = hv_text(out, n, F_MONO, SJS_LANES[l], x0 + 14 * k, y + 17 * k, 6 * k, HV_ORANGE(), 1);
+    n = hv_text(out, n, F_TITLE, t, x0 + 14 * k, y + 36 * k, cap, HV_CREAM(), 1);
+    y += 54 * k;
+  }
+  return n;
+}

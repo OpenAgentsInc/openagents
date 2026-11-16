@@ -32,7 +32,8 @@
 #load "director.coax";             // the Director's keys, Digger's pickups, the inventory, Heat's sensing and health (#13505)
 #load "sound.coax";                // the sound table and the moments each sound plays (#13505)
 #load "jam/jam-world.coax";         // the jam build's world: the imported levels' landmarks and colliders (#13653)
-#load "jam/jam-rules.coax";         // the jam build's rules on the game, in the jam world (#13653)
+#load "jam/jam-rules.coax";
+#load "jam/jam-data.coax";         // the jam build's rules on the game, in the jam world (#13653)
 #load "jam/jam-walk.coax";          // the jam world's route walk: every stop explained by what is drawn (#13653)
 #load "jam/jam-checks.coax" #test;
 #load "jam/jam-rules-checks.coax" #test;
@@ -123,6 +124,7 @@ SpGame :: struct {
   jw: [SJ_MAPS] Colliders; jw_open: [SJ_MAPS] Colliders; jw_on: [SJ_MAPS] bool; jw_n: int;   // and its route maps' colliders, over the page's store (sj_bind); outlive a reset
   jr: [1] SjJam;              // and its route: the maps, their starts and the game actors (sj_read); outlives a reset
   jx: [1] SjRules;            // the jam's rules in the jam world: her inventory, the charge points, the farm robot, her crew, Heat (jam/jam-farm.coax)
+  jd: string;                 // the jam's Data tables: the jam pack's catalog, kept by the page (jam/jam-data.coax); "" without it
   mode: int; zone: int; phase: int; t: f32;
   px: f32; pz: f32; yaw: f32; pitch: f32; stride: f32;
   face_off: f32;               // her body's turn from the view's yaw: she turns to face the way she walks (g_face)
@@ -335,6 +337,7 @@ g_reset :: (g: [] SpGame) {
   layer := g[0].layer[0];   // the edit layer is the world's, not the run's
   imports := g[0].imp[0];   // and so are the meshes it imported
   view := g[0].view; shown := g[0].shown; unseen := g[0].unseen;   // and the editor's clock, its shown foe and Simulate
+  jd := g[0].jd;   // and the jam's Data tables (jam/jam-data.coax)
   front := g[0].fr[0];   // and the front door: your character and the run this browser keeps
   sound := g[0].snd[0];   // and what the page has been told to play (sound.coax)
   g[0] = SpGame.{};
@@ -342,6 +345,7 @@ g_reset :: (g: [] SpGame) {
   g[0].snd[0] = sound; g[0].snd[0].ready = false;
   g[0].view = view; g[0].shown = shown; g[0].unseen = unseen;
   g[0].imp[0] = imports;
+  g[0].jd = jd;
   g[0].gray = gray; g[0].zoom = zoom; g[0].calm = calm; g[0].jam = jam; g[0].jw = jw; g[0].jw_open = jw_open; g[0].jw_on = jw_on; g[0].jw_n = jw_n; g[0].jr[0] = jr;
   if tables.ok { g[0].c[0] = tables; } else { _ := sc_load(g[0].c[..], SC_SHIPPED); }
   _ := g_places(g);
