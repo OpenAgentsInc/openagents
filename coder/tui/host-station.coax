@@ -36,7 +36,7 @@ st_cached :: (refresh:bool,n:int,at:int,now:int)->bool {return !refresh && n>0 &
 
 st_handle :: (h:[]HsHost,r:[]HbRpcRequest,refresh:bool,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
   if r[0].request!=mailbox || r[0].host!=cast(string)h[0].xhex[..] || r[0].relay!=hs_relay_of(h) || r[0].method!="DescribeStation" {return 0;}
-  configured:=es_load_configuration(h[0].environment[..]);c:=h[0].environment[0].configuration[..];
+  configured:=es_load_for(h[0].environment[..],signer,r[0].grant);c:=h[0].environment[0].configuration[..];
   hs_load(st,statebuf);ga:[HS_GRANTS]HostGrantRecord;epochs:[HS_EPOCHS]HostEpoch;hs_records(st,ga[..],epochs[..]);
   req:=HostRequest.{request=r[0].request,event=event,signer=signer,grant=r[0].grant,epoch=r[0].epoch,issued_at=r[0].issued_at,expires_at=r[0].expires_at,right=HA_OBSERVE};
   none:[1]HostRetained;verdict:=host_admit(ga[0..<st[0].ng],epochs[0..<st[0].ne],none[0..<0],req,hs_now());

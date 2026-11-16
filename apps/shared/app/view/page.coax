@@ -254,7 +254,12 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
     h := view_row(f, v, d, facts, i, cx, y, cw, false);
     if h != vlist_height(l, i) { vlist_measured(l, i, h); out.again = true; }
   }
-  if vm[0].empty { _ := app_empty(f, "chat.empty", cx, top + (viewport - s.title.line) / 2, cw, -1, VIEW_EMPTY_TITLE, ""); }
+  // the empty conversation: the name alone (app_empty's circle would hold no mark)
+  if vm[0].empty {
+    ey := top + (viewport - s.title.line) / 2;
+    th := app_centred(f, s.title, s.ink, cx, ey, cw, VIEW_EMPTY_TITLE);
+    _ := uiframe_semantic(f, "chat.empty", EL_HEADING, VIEW_EMPTY_TITLE, cx, ey, cw, th, 0, 0);
+  }
   uiframe_unclip(f);
   vlist_settle(l, VIEW_SLACK);
   if vm[0].rejoining { _ := app_banner(f, "chat.banner", cx, top + a.gap, cw, APP_BANNER_RECONNECTING, 0); }

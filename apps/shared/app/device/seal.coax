@@ -1,0 +1,166 @@
+// The phone's end of NIP-HOST to the person's own computer (GitHub #13645, for
+// #13620): pairing, and the environment runtime's app.rpc methods
+// (docs/protocol/environment-runtime-v1alpha1.md), carried over the relay with
+// no OpenAgents account.
+//
+// The native device service (apps/shared/native/AppDeviceLink.swift) holds the
+// phone's device key in the Keychain and moves bytes over the relay's
+// WebSocket. Everything here is a stateless step it calls with the key for
+// that one call: seal a request, the relay filter for its reply, sign the
+// relay's AUTH challenge, open and check the reply. The key is never kept in
+// a Coax record or the app core's outbox; DvWork holds only the request's
+// identity (request id, event id, method) between seal and open, and the
+// shared HOST work buffers, which seal and open leave zero.
+//
+// The rules a reply must meet, all checked here, never in Swift:
+//   - signed by the computer that was asked (its key, 64 hex),
+//   - in the request's mailbox, naming the request's own event id,
+//   - answering the operation asked (pairing, or the same app.rpc method),
+//   - not expired.
+// A signed refusal is an answer: an rpc refusal becomes a view whose error is
+// the computer's code, as `coder host rpc` reports it.
+//   coax/bin/coax test apps/shared/app/device/seal.coax
+#load "../../../../coax/lib/agent/environment/host-wire.coax";
+
+DV_PAIR :: 1;     // browser.request: arg is the label the computer shows
+DV_STATUS :: 2;   // browser.status: arg is the pairing request's id
+DV_RPC :: 3;      // app.rpc: arg is the grant, params the method's request
+DV_RANDOM :: 96;  // random bytes a seal takes: request id, nonce, aux
+DV_EVENT_MAX :: 131072;
+
+DvWork :: struct {
+  w: [1] HbWork; body: [HB_BODY_MAX] u8; arena: [8192] u8; params: [1] EaRequest;
+  op: int; request: [64] u8; event: [64] u8; method: [32] u8; nm: int; browser: [64] u8; sealed: bool;
+}
+
+dv_hex :: (s: string) -> bool { return hb_hex64(s); }
+
+// The device key's public half, 64 lowercase hex, into out: 64, or -1 for a key secp256k1 refuses.
+dv_public :: (secret: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if secret.count != 32 || out.count < 64 { return -1; }
+  x: [32] u8;
+  if !hb_public(secret, x[..]) || !hb_hex(x[..], out[0..<64]) { return -1; }
+  return 64;
+}
+
+// Seals one request from the device key to the computer `host` (64 hex) on `relay`.
+// random: DV_RANDOM fresh bytes. The event JSON goes to out; returns its length, or -1.
+// The request's identity stays in x for dv_filter and dv_open.
+dv_seal :: (x: [] DvWork, op: int, secret: [] u8, host: string, relay: string, arg: string, epoch: int, params: string, now: int, random: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if x.count < 1 || secret.count != 32 || random.count < DV_RANDOM || !dv_hex(host) || now <= 0 { return -1; }
+  x[0].sealed = false; x[0].op = op; x[0].nm = 0;
+  hx: [32] u8; bx: [32] u8;
+  if !hb_unhex(host, hx[..]) || !hb_public(secret, bx[..]) || !hb_hex(bx[..], x[0].browser[..]) { return -1; }
+  if !hb_hex(random[0..<32], x[0].request[..]) { return -1; }
+  request := cast(string) x[0].request[..];
+  n := -1;
+  if op == DV_PAIR || op == DV_STATUS {
+    q: HbRequest; q.request = request; q.host = host; q.relay = relay; q.issued_at = now; q.expires_at = now + HB_WINDOW;
+    q.op = ifx op == DV_PAIR then HB_OP_BROWSER_REQUEST else HB_OP_BROWSER_STATUS;
+    q.key = cast(string) x[0].browser[..];
+    if op == DV_PAIR { q.label = arg; } else { q.pairing = arg; }
+    if hb_request_check(q) != HB_OK { return -1; }
+    n = hb_request_seal(q, secret, hx[..], random[32..<64], random[64..<96], now, x[0].w[..], out);
+  } else if op == DV_RPC {
+    if !dv_hex(arg) || epoch < 0 || !ea_read(params, x[0].params[..]) { return -1; }
+    p := x[0].params[0];
+    x[0].nm = ea_copy(x[0].method[..], cast(string) p.method[0..<p.nm]);
+    if x[0].nm < 1 { x[0].nm = 0; return -1; }
+    q := HbRpcRequest.{request = request, host = host, grant = arg, relay = relay, epoch = epoch, issued_at = now, expires_at = now + HB_WINDOW,
+      method = cast(string) x[0].method[0..<x[0].nm], params = params};
+    b := hb_rpc_write(q, x[0].body[..]);
+    if b < 1 { return -1; }
+    n = hb_seal(cast(string) x[0].body[0..<b], HB_REQUEST_SCHEMA, secret, hx[..], request, random[32..<64], random[64..<96], now, x[0].w[..], out);
+  }
+  if n < 1 { return -1; }
+  // the event's own id: the reply names it
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) out[0..<n], nodes[..]) { return -1; }
+  id := jv_raw(d[0], jv_get(d[0], 0, "id"));
+  if !dv_hex(id) { return -1; }
+  for c, i: id { x[0].event[i] = c; }
+  x[0].sealed = true;
+  return n;
+}
+
+// The relay filter for the sealed request's reply (a JSON object) into out: its length, or -1.
+dv_filter :: (x: [] DvWork, out: [] u8) -> int #export_c #effects(all) {
+  if x.count < 1 || !x[0].sealed { return -1; }
+  return hb_reply_filter(cast(string) x[0].browser[..], cast(string) x[0].request[..], out);
+}
+// The sealed request's event id (64 hex) into out: 64, or -1. The relay's OK names it.
+dv_event_id :: (x: [] DvWork, out: [] u8) -> int #export_c #effects(all) {
+  if x.count < 1 || !x[0].sealed || out.count < 64 { return -1; }
+  for i: 0..<64 { out[i] = x[0].event[i]; }
+  return 64;
+}
+
+// The relay's NIP-42 AUTH answer: a kind 22242 event for relay and challenge, signed now with
+// the device key. aux: 32 fresh random bytes. Returns its length in out, or -1.
+dv_auth :: (secret: [] u8, relay: string, challenge: string, now: int, aux: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if secret.count != 32 || aux.count < 32 || relay.count < 1 || relay.count > HB_RELAY_MAX || challenge.count < 1 || challenge.count > 512 || now <= 0 { return -1; }
+  tb: [1024] u8; o: [1] Jo; jo_start(o[..], tb[..]);
+  jo_arr(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "relay"); jo_str(o[..], relay); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "challenge"); jo_str(o[..], challenge); jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  work: [1] NostrSignWork; scratch: [8192] u8; r := EVENT_MORE; steps := 0;
+  while r == EVENT_MORE && steps < 4096 {
+    r = nostr_event_sign_step(secret, aux[0..<32], now, 22242, jo_text(o[..]), "", work[..], scratch[..], out, false);
+    steps += 1;
+  }
+  return ifx r > 0 then r else -1;
+}
+
+dv_pairing_state :: (state: int) -> string { return ifx state >= 0 && state < 4 then HB_PAIRING_STATES[state] else "unknown"; }
+
+// Opens an event the relay delivered for the sealed request. Returns the answer's length in out:
+//   DV_PAIR, DV_STATUS: {"state":"asked|allowed|denied|expired","pairing":ID[,"grant":G,"epoch":E,"expires":S]}
+//     or {"refused":CODE};
+//   DV_RPC: the method's value (an environment view), or for a signed refusal a view with that error.
+// 0: the event is not this request's answer (keep waiting). -1: x holds no sealed request or out is too small.
+dv_open :: (x: [] DvWork, secret: [] u8, host: string, event: string, now: int, out: [] u8) -> int #export_c #effects(all) {
+  if x.count < 1 || !x[0].sealed || secret.count != 32 || !dv_hex(host) { return -1; }
+  bx: [32] u8;
+  if !hb_public(secret, bx[..]) { return -1; }
+  request := cast(string) x[0].request[..]; eid := cast(string) x[0].event[..];
+  o: [1] Jo; jo_start(o[..], out);
+  if x[0].op == DV_PAIR || x[0].op == DV_STATUS {
+    rp: [1] HbReply; a := [1] HbText.[HbText.{buf = x[0].arena[..]}];
+    r := hb_reply_open(event, secret, bx[..], x[0].w[..], x[0].body[..], rp[..], a[..]);
+    op := ifx x[0].op == DV_PAIR then HB_OP_BROWSER_REQUEST else HB_OP_BROWSER_STATUS;
+    if r.error != HB_OK || cast(string) r.signer[..] != host || rp[0].request != request || rp[0].request_event != eid || !hb_reply_answers(op, rp[0]) || rp[0].expires_at < now { return 0; }
+    jo_obj(o[..]);
+    if !rp[0].ok { jo_key(o[..], "refused"); jo_str(o[..], rp[0].code); }
+    else {
+      jo_key(o[..], "state"); jo_str(o[..], dv_pairing_state(rp[0].state));
+      jo_key(o[..], "pairing"); jo_str(o[..], rp[0].pairing);
+      if rp[0].grant.count > 0 { jo_key(o[..], "grant"); jo_str(o[..], rp[0].grant); jo_key(o[..], "epoch"); jo_int(o[..], rp[0].epoch); jo_key(o[..], "expires"); jo_int(o[..], rp[0].grant_expires); }
+    }
+    jo_end(o[..]);
+    return ifx o[0].bad then -1 else o[0].n;
+  }
+  if x[0].op != DV_RPC { return -1; }
+  opened := hb_open(event, secret, bx[..], HB_REPLY_SCHEMA, x[0].w[..], x[0].body[..]);
+  if opened.error != HB_OK || cast(string) opened.signer[..] != host || cast(string) opened.mailbox[..] != request { return 0; }
+  body := cast(string) x[0].body[0..<opened.body_n];
+  method := cast(string) x[0].method[0..<x[0].nm];
+  value := hb_app_reply_read(body, host, request, eid, method, now);
+  if value.count > 0 {
+    if value.count > out.count { return -1; }
+    for c, i: value { out[i] = c; }
+    return value.count;
+  }
+  // a signed, correlated refusal is a result, not a lost reply
+  refusal: [1] HbReply; arena: [4096] u8; text := [1] HbText.[HbText.{buf = arena[..]}];
+  if hb_reply_read(body, refusal[..], text[..]) != HB_OK || refusal[0].ok || refusal[0].host != host || refusal[0].request != request || refusal[0].request_event != eid || refusal[0].expires_at < now { return 0; }
+  v: [1] EaView;
+  for c, i: host { v[0].host[i] = c; } v[0].nh = 64;
+  v[0].nm = ea_copy(v[0].method[..], method);
+  v[0].ne = ea_copy(v[0].error[..], ifx refusal[0].code.count <= 64 then refusal[0].code else "refused");
+  v[0].complete = false;
+  return ea_view_write(v[..], out);
+}
+
+#load "seal-checks.coax" #test;

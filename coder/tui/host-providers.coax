@@ -101,7 +101,10 @@ pa_rpc_call :: (args:[]Args)->int {
 
 // This binding is fixed before the command receipt permits starting a CLI.
 pa_bind :: (h:[]HsHost,slot:[]EsSlot,id:string,grant:string)->bool {
- m:=h[0].providers[..];if !pa_load(m) {path:[1400]u8;return !m[0].loaded && !fs_exists(pa_store_file(path[..]));}s:=m[0].native[0].store[..];if cast(string)s[0].grant[..]!=grant {return false;}
+ m:=h[0].providers[..];if !pa_load(m) {path:[1400]u8;return !m[0].loaded && !fs_exists(pa_store_file(path[..]));}s:=m[0].native[0].store[..];
+ // the computer's accounts are chosen for the grant that enabled them; another device's grant
+ // (a paired phone) runs on the computer's own login, as with no store
+ if cast(string)s[0].grant[..]!=grant {return true;}
  return pa_bind_profile(h,slot,id,grant,cast(string)s[0].selected[0..<s[0].ns]);
 }
 pa_binding_file :: (grant:string,id:string,out:[]u8)->string {

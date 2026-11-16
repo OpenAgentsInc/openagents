@@ -1,0 +1,79 @@
+// Checks for seal.coax: the phone's requests open on the computer with the
+// host's own readers, and only the computer's correlated answer opens here.
+// Example keys are the HOST library's fixtures (HBT_*).
+
+dvt_key :: (hex: string, out: [] u8) -> [] u8 { ok := hb_unhex(hex, out); return out; }
+dvt_random :: (seed: u8, out: [] u8) -> [] u8 { for i: 0..<out.count { out[i] = cast(u8) (seed + cast(u8) i); } return out; }
+
+// The host's side: a reply sealed by HBT_HOST_SECRET to the phone for request and event.
+dvt_reply :: (rp: HbReply, out: [] u8) -> int {
+  hs: [32] u8; bx: [32] u8; nonce: [32] u8; aux: [32] u8; w: [1] HbWork;
+  return hb_reply_seal(rp, dvt_key(HBT_HOST_SECRET, hs[..]), dvt_key(HBT_BROWSER_X, bx[..]), dvt_random(7, nonce[..]), dvt_random(9, aux[..]), HBT_T0, w[..], out);
+}
+
+#test "a pairing request opens on the computer, and its answer opens on the phone" {
+  x: [1] DvWork; sk: [32] u8; r: [DV_RANDOM] u8; ev: [DV_EVENT_MAX] u8;
+  secret := dvt_key(HBT_BROWSER_SECRET, sk[..]);
+  pub: [64] u8; #assert dv_public(secret, pub[..]) == 64 && cast(string) pub[..] == HBT_BROWSER_X;
+  n := dv_seal(x[..], DV_PAIR, secret, HBT_HOST_X, "wss://relay.openagents.com", "OpenAgents on iPhone · K7Q2", -1, "", HBT_T0, dvt_random(1, r[..]), ev[..]);
+  #assert n > 0;
+  // the computer reads it with its own opener
+  hs: [32] u8; hx: [32] u8; w: [1] HbWork; body: [HB_BODY_MAX] u8; q: [1] HbRequest; arena: [4096] u8; a := [1] HbText.[HbText.{buf = arena[..]}];
+  o := hb_request_open(cast(string) ev[0..<n], dvt_key(HBT_HOST_SECRET, hs[..]), dvt_key(HBT_HOST_X, hx[..]), w[..], body[..], q[..], a[..]);
+  #assert o.error == HB_OK && q[0].op == HB_OP_BROWSER_REQUEST && q[0].label == "OpenAgents on iPhone · K7Q2" && q[0].key == HBT_BROWSER_X;
+  eid: [64] u8; #assert dv_event_id(x[..], eid[..]) == 64 && cast(string) o.id[..] == cast(string) eid[..];
+  f: [512] u8; fn := dv_filter(x[..], f[..]); #assert fn > 0;
+  // its answer: allowed, with a grant
+  rp: HbReply; rp.request = q[0].request; rp.request_event = cast(string) eid[..]; rp.host = HBT_HOST_X; rp.issued_at = HBT_T0; rp.expires_at = HBT_T0 + 60; rp.ok = true;
+  rp.outcome = HB_OUT_PAIRING; rp.pairing = q[0].request; rp.state = HB_ALLOWED; rp.grant = HBT_GRANT; rp.epoch = 3; rp.grant_expires = HBT_T0 + 600;
+  re: [DV_EVENT_MAX] u8; rn := dvt_reply(rp, re[..]); #assert rn > 0;
+  out: [1024] u8; m := dv_open(x[..], secret, HBT_HOST_X, cast(string) re[0..<rn], HBT_T0 + 1, out[..]);
+  #assert m > 0;
+  nodes: [32] JvNode; d: [1] Jv; #assert jv_parse(d[..], cast(string) out[0..<m], nodes[..]);
+  #assert jv_raw(d[0], jv_get(d[0], 0, "state")) == "allowed" && jv_raw(d[0], jv_get(d[0], 0, "grant")) == HBT_GRANT && jv_int(d[0], jv_get(d[0], 0, "epoch"), -1) == 3;
+  // another computer's key, another request or an expired answer is not this answer
+  #assert dv_open(x[..], secret, HBT_BROWSER_X, cast(string) re[0..<rn], HBT_T0 + 1, out[..]) == 0;
+  #assert dv_open(x[..], secret, HBT_HOST_X, cast(string) re[0..<rn], HBT_T0 + 61, out[..]) == 0;
+  other := rp; other.request_event = HBT_EVENT; on := dvt_reply(other, re[..]);
+  #assert on > 0 && dv_open(x[..], secret, HBT_HOST_X, cast(string) re[0..<on], HBT_T0 + 1, out[..]) == 0;
+}
+
+#test "an environment call opens as typed app.rpc on the computer, and its view comes back" {
+  x: [1] DvWork; sk: [32] u8; r: [DV_RANDOM] u8; ev: [DV_EVENT_MAX] u8;
+  secret := dvt_key(HBT_BROWSER_SECRET, sk[..]);
+  pq: [1] EaRequest; pq[0].nm = ea_copy(pq[0].method[..], "ListSessions"); pq[0].nw = ea_copy(pq[0].workspace[..], "default");
+  pb: [4096] u8; pn := ea_write(pq[..], pb[..]); params := cast(string) pb[0..<pn];
+  #assert pn > 0 && ea_read(params, pq[..]);
+  n := dv_seal(x[..], DV_RPC, secret, HBT_HOST_X, "wss://relay.openagents.com", HBT_GRANT, 3, params, HBT_T0, dvt_random(2, r[..]), ev[..]);
+  #assert n > 0;
+  hs: [32] u8; hx: [32] u8; w: [1] HbWork; body: [HB_BODY_MAX] u8;
+  o := hb_open(cast(string) ev[0..<n], dvt_key(HBT_HOST_SECRET, hs[..]), dvt_key(HBT_HOST_X, hx[..]), HB_REQUEST_SCHEMA, w[..], body[..]);
+  #assert o.error == HB_OK;
+  arena: [8192] u8; a := [1] HbText.[HbText.{buf = arena[..]}]; q: [1] HbAppRequest;
+  #assert hb_app_read(cast(string) body[0..<o.body_n], q[..], a[..]) && q[0].grant == HBT_GRANT && q[0].epoch == 3 && q[0].params.nm == 12;
+  // the computer's view, sealed back
+  v: [1] EaView; for c, i: HBT_HOST_X { v[0].host[i] = c; } v[0].nh = 64; v[0].nm = ea_copy(v[0].method[..], "ListSessions"); v[0].ok = true; v[0].complete = true;
+  vb: [8192] u8; vn := ea_view_write(v[..], vb[..]); #assert vn > 0;
+  eid := cast(string) o.id[..];
+  rb: [HB_BODY_MAX] u8; rn := hb_app_reply_write(q[0].request, eid, HBT_HOST_X, HBT_T0, HBT_T0 + 60, "ListSessions", cast(string) vb[0..<vn], rb[..]);
+  bx: [32] u8; nonce: [32] u8; aux: [32] u8; re: [DV_EVENT_MAX] u8;
+  sn := hb_seal(cast(string) rb[0..<rn], HB_REPLY_SCHEMA, dvt_key(HBT_HOST_SECRET, hs[..]), dvt_key(HBT_BROWSER_X, bx[..]), q[0].request, dvt_random(3, nonce[..]), dvt_random(4, aux[..]), HBT_T0, w[..], re[..]);
+  #assert sn > 0;
+  out: [16384] u8; m := dv_open(x[..], secret, HBT_HOST_X, cast(string) re[0..<sn], HBT_T0 + 1, out[..]);
+  back: [1] EaView; #assert m > 0 && ea_view_read(cast(string) out[0..<m], back[..]) && cast(string) back[0].host[..] == HBT_HOST_X && back[0].ne == 0;
+  // a call the computer refuses comes back as a view with its code
+  rf: HbReply; rf.request = q[0].request; rf.request_event = eid; rf.host = HBT_HOST_X; rf.issued_at = HBT_T0; rf.expires_at = HBT_T0 + 60; rf.ok = false; rf.code = "forbidden";
+  fe: [DV_EVENT_MAX] u8; fn := dvt_reply(rf, fe[..]); #assert fn > 0;
+  m = dv_open(x[..], secret, HBT_HOST_X, cast(string) fe[0..<fn], HBT_T0 + 1, out[..]);
+  #assert m > 0 && ea_view_read(cast(string) out[0..<m], back[..]) && cast(string) back[0].error[0..<back[0].ne] == "forbidden";
+  // a request that is not a method's is refused before sealing
+  #assert dv_seal(x[..], DV_RPC, secret, HBT_HOST_X, "wss://relay.openagents.com", HBT_GRANT, 3, "{}", HBT_T0, r[..], ev[..]) == -1;
+}
+
+#test "the relay's AUTH answer is a signed 22242 for that relay and challenge" {
+  sk: [32] u8; aux: [32] u8; out: [4096] u8;
+  n := dv_auth(dvt_key(HBT_BROWSER_SECRET, sk[..]), "wss://relay.openagents.com", "abc123", HBT_T0, dvt_random(5, aux[..]), out[..]);
+  #assert n > 0;
+  nodes: [64] JvNode; d: [1] Jv; #assert jv_parse(d[..], cast(string) out[0..<n], nodes[..]);
+  #assert jv_int(d[0], jv_get(d[0], 0, "kind"), 0) == 22242 && jv_raw(d[0], jv_get(d[0], 0, "pubkey")) == HBT_BROWSER_X;
+}

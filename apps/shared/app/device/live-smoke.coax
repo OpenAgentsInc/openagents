@@ -1,0 +1,124 @@
+// A live check of the phone's own-device path from a terminal, with the same
+// steps the app's native device service takes (seal.coax) and the CLI's relay
+// client in place of the phone's WebSocket. It pairs with a computer running
+// `coder host serve` and calls its environment runtime. No account.
+//
+//   coax/web/tool.sh apps/shared/app/device/live-smoke.coax pair 'openagents://pair?host=...&relay=...&code=...' KEYFILE
+//     asks to pair with the code; prints the grant and epoch once `coder host pair` allows it
+//   coax/web/tool.sh apps/shared/app/device/live-smoke.coax call HOST RELAY GRANT EPOCH KEYFILE REQUEST_JSON
+//     one environment method; prints the computer's view
+//
+// tool.sh: run-steps 250000000
+// tool.sh: tls
+// KEYFILE holds the device key (64 hex); it is made, mode 600, when missing. Keep it out of the repo.
+#load "seal.coax";
+#load "../../../../coax/lib/sys/tool.coax";
+#load "../../../../coax/lib/sys/args.coax";
+#load "../../../../coax/lib/sys/fs.coax";
+#load "../../../../coax/lib/sys/proc.coax";
+#load "../../../openagents-cli/relay.coax";
+#load "../../../../coax/lib/sys/clock.coax";
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+// what relay.coax takes from the CLI
+cxcli_now_s :: () -> int { return cxproc_wall_us() / 1000000; }
+wipe :: (b: [] u8) { for i: 0..<b.count { b[i] = 0; } }
+sign_event_at :: (secret: [] u8, at: int, kind: int, tags: string, content: string, out: [] u8) -> int {
+  aux: [32] u8;
+  if cxrand_draw(aux[..], 32) != 0 { return -1; }
+  work: [1] NostrSignWork; scratch: [70000] u8;
+  r := EVENT_MORE; steps := 0;
+  while r == EVENT_MORE && steps < 4096 { r = nostr_event_sign_step(secret, aux[..], at, kind, tags, content, work[..], scratch[..], out, false); steps += 1; }
+  return ifx r > 0 then r else -1;
+}
+tool_outln :: (s: string) { ob: [65600] u8; n := 0; for c: s { if n < ob.count - 1 { ob[n] = c; n += 1; } } ob[n] = 10; n += 1; r := cxterm_write(ob[0..<n]); }
+
+ls_now :: () -> int { return cxproc_wall_us() / 1000000; }
+ls_key :: (file: string, sk: [] u8) -> bool {
+  b: [80] u8; n := fs_read(file, b[..]);
+  while n > 0 && (b[n - 1] == 10 || b[n - 1] == 13) { n -= 1; }
+  if n == 64 { return hb_unhex(cast(string) b[0..<64], sk); }
+  if cxrand_draw(sk, 32) != 0 { return false; }
+  hx: [65] u8; if !hb_hex(sk, hx[0..<64]) { return false; } hx[64] = 10;
+  return fs_write(file, cast(string) hx[..]);
+}
+// The value of name in a pairing link's query.
+ls_query :: (link: string, name: string, out: [] u8) -> string {
+  at := -1; key: [32] u8; kn := 0;
+  for c: name { key[kn] = c; kn += 1; } key[kn] = '='; kn += 1;
+  for i: 0..<link.count {
+    if (link[i] == '?' || link[i] == '&') && i + 1 + kn <= link.count && cast(string) link[i + 1..<i + 1 + kn] == cast(string) key[0..<kn] { at = i + 1 + kn; break; }
+  }
+  if at < 0 { return ""; }
+  n := 0; i := at;
+  while i < link.count && link[i] != '&' && n < out.count {
+    c := link[i];
+    if c == '%' && i + 2 < link.count { hi := ls_nib(link[i + 1]); lo := ls_nib(link[i + 2]); out[n] = cast(u8) (hi * 16 + lo); i += 3; }
+    else { out[n] = c; i += 1; }
+    n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+ls_nib :: (c: u8) -> int { return ifx c >= '0' && c <= '9' then cast(int) (c - '0') else ifx c >= 'A' && c <= 'F' then cast(int) (c - 'A') + 10 else ifx c >= 'a' && c <= 'f' then cast(int) (c - 'a') + 10 else 0; }
+
+// One sealed request and its answer, opened by dv_open, into out. Its length, or -1 on no answer.
+ls_exchange :: (x: [] DvWork, sk: [] u8, host: string, relay: string, op: int, arg: string, epoch: int, params: string, out: [] u8) -> int {
+  r: [DV_RANDOM] u8; ev: [DV_EVENT_MAX] u8;
+  for k: 0..<3 { if cxrand_draw(r[k * 32..<k * 32 + 32], 32) != 0 { tool_errln("no random bytes"); return -1; } }
+  n := dv_seal(x, op, sk, host, relay, arg, epoch, params, ls_now(), r[..], ev[..]);
+  if n < 1 { tool_errln("could not seal the request"); return -1; }
+  f: [512] u8; fn := dv_filter(x, f[..]);
+  sub: [1] CliRelay; pub: [1] CliRelay;
+  if !cr_open(sub[..], relay, sk) || !cr_req(sub[..], cast(string) f[0..<fn]) { tool_errln("the relay did not answer"); return -1; }
+  if !cr_open(pub[..], relay, sk) || !cr_publish(pub[..], cast(string) ev[0..<n], cxsock_now_ms() + 5000) { cr_close(sub[..]); tool_errln("the relay did not take the request"); return -1; }
+  cr_close(pub[..]);
+  deadline := cxsock_now_ms() + 20000;
+  while cxsock_now_ms() < deadline {
+    k := cr_next(sub[..], deadline);
+    if k == CR_FAIL || k == CR_CLOSED { break; }
+    if k != CR_EVENT { continue; }
+    m := dv_open(x, sk, host, cr_event(sub[..]), ls_now(), out);
+    if m > 0 { cr_close(sub[..]); return m; }
+  }
+  cr_close(sub[..]);
+  tool_errln("no reply within 20 seconds");
+  return -1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args_b: [1] Args; args := args_b[..];
+  if !args_load(args) || args_count(args) < 1 { tool_errln("usage: live-smoke pair LINK KEYFILE | call HOST RELAY GRANT EPOCH KEYFILE REQUEST_JSON"); return 2; }
+  verb := args_at(args, 0);
+  x: [1] DvWork; sk: [32] u8; out: [65536] u8;
+  if verb == "pair" && args_count(args) == 3 {
+    link := args_at(args, 1);
+    hb: [80] u8; rb: [512] u8; cb: [16] u8;
+    host := ls_query(link, "host", hb[..]); relay := ls_query(link, "relay", rb[..]); code := ls_query(link, "code", cb[..]);
+    if !hb_hex64(host) || relay.count == 0 || code.count == 0 || !ls_key(args_at(args, 2), sk[..]) { tool_errln("not a pairing link, or no key"); return 2; }
+    lb: [80] u8; ln := 0; for c: "OpenAgents live check " { lb[ln] = c; ln += 1; } for c: code { lb[ln] = c; ln += 1; }
+    n := ls_exchange(x[..], sk[..], host, relay, DV_PAIR, cast(string) lb[0..<ln], -1, "", out[..]);
+    if n < 1 { tool_errln("no answer to the pairing request"); wipe(sk[..]); return 3; }
+    tool_outln(cast(string) out[0..<n]);
+    nodes: [32] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], cast(string) out[0..<n], nodes[..]) { return 3; }
+    pid: [64] u8; pn := jv_str(d[0], jv_get(d[0], 0, "pairing"), pid[..]);
+    end := ls_now() + 600;
+    while ls_now() < end {
+      _ = cxproc_sleep_ms(2000);
+      m := ls_exchange(x[..], sk[..], host, relay, DV_STATUS, cast(string) pid[0..<pn], -1, "", out[..]);
+      if m < 1 { continue; }
+      if !jv_parse(d[..], cast(string) out[0..<m], nodes[..]) { continue; }
+      state := jv_raw(d[0], jv_get(d[0], 0, "state"));
+      if state != "asked" { tool_outln(cast(string) out[0..<m]); wipe(sk[..]); return ifx state == "allowed" then 0 else 3; }
+    }
+    wipe(sk[..]); return 3;
+  }
+  if verb == "call" && args_count(args) == 7 {
+    if !ls_key(args_at(args, 5), sk[..]) { return 2; }
+    n := ls_exchange(x[..], sk[..], args_at(args, 1), args_at(args, 2), DV_RPC, args_at(args, 3), cast(int) args_int(args_at(args, 4)), args_at(args, 6), out[..]);
+    wipe(sk[..]);
+    if n < 1 { tool_errln("no answer"); return 3; }
+    tool_outln(cast(string) out[0..<n]); return 0;
+  }
+  tool_errln("usage: live-smoke pair LINK KEYFILE | call HOST RELAY GRANT EPOCH KEYFILE REQUEST_JSON"); return 2;
+}
+args_int :: (s: string) -> int { v := 0; for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); } return v; }

@@ -73,13 +73,39 @@ es_configure :: (args:[]Args)->int #effects(all) {
   if !found {tool_errln("Allow this device through coder host pairing first.");return 3;}
   c:[1]EaConfiguration;c[0].enabled=true;n:=ea_copy(c[0].device[..],device);n=ea_copy(c[0].grant[..],grant);
   c[0].nh=ea_copy(c[0].history[..],history);c[0].nw=ea_copy(c[0].workspace[..],root);c[0].nl=ea_copy(c[0].label[..],label);
+  also:=args_has(args,"--also");
   prior:[1]EsHost;if es_load_configuration(prior[..]) {
     old:=prior[0].configuration[0];
-    if cast(string)old.grant[..]==grant && cast(string)old.workspace[0..<old.nw]!=root {tool_errln("A workspace binding is immutable. Revoke and pair a new grant to change it.");return 3;}
+    if cast(string)old.grant[..]==grant && (also || cast(string)old.workspace[0..<old.nw]!=root) {tool_errln("A workspace binding is immutable. Revoke and pair a new grant to change it.");return 3;}
+  }
+  if also {
+    second:[1]EsHost;if es_load_device(second[..],grant) && cast(string)second[0].configuration[0].workspace[0..<second[0].configuration[0].nw]!=root {tool_errln("A workspace binding is immutable. Revoke and pair a new grant to change it.");return 3;}
   }
   out:[8192]u8;n=ea_config_write(c[..],out[..]);p:[1400]u8;
-  if n<1 || !hs_dir() || !fs_replace_durable(es_path("environment.json",p[..]),cast(string)out[0..<n]) {return 1;}
+  file:=ifx also then es_device_file(grant,p[..]) else es_path("environment.json",p[..]);
+  if n<1 || !hs_dir() || !fs_replace_durable(file,cast(string)out[0..<n]) {return 1;}
   hs_outln("Environment enabled for this device and workspace. Existing terminal histories remain read-only.");return 0;
+}
+// A further device's enrollment (a paired phone, coder host pair), beside the first in
+// environment.json: its own file, named by its grant. Each binds one device, one grant and
+// one workspace, with the same immutability; revoking the grant ends it.
+es_device_file :: (grant:string,out:[]u8)->string #effects(all) {
+  b:[160]u8;n:=hs_cat(b[..],0,"environment-device-");n=hs_cat(b[..],n,grant);n=hs_cat(b[..],n,".json");return es_path(cast(string)b[0..<n],out);
+}
+es_load_device :: (e:[]EsHost,grant:string)->bool #effects(all) {
+  if !ea_id(grant,64) {return false;}
+  p:[1400]u8;b:[8192]u8;n:=fs_read(es_device_file(grant,p[..]),b[..]);c:[1]EaConfiguration;
+  if n<1 || !ea_config_read(cast(string)b[0..<n],c[..]) || !c[0].enabled || cast(string)c[0].grant[..]!=grant {return false;}
+  e[0].configuration[0]=c[0];e[0].configured=true;return true;
+}
+// The enrollment a request is admitted under: the first one when it is this device's and grant's,
+// else this grant's own, else the first (whose scope then refuses the request).
+es_load_for :: (e:[]EsHost,signer:string,grant:string)->bool #effects(all) {
+  first:=es_load_configuration(e);
+  if first && cast(string)e[0].configuration[0].device[..]==signer && cast(string)e[0].configuration[0].grant[..]==grant {return true;}
+  other:[1]EsHost;
+  if es_load_device(other[..],grant) && cast(string)other[0].configuration[0].device[..]==signer {e[0].configuration[0]=other[0].configuration[0];e[0].configured=true;return true;}
+  return first;
 }
 es_load_configuration :: (e:[]EsHost)->bool #effects(all) {
   p:[1400]u8;b:[8192]u8;n:=fs_read(es_path("environment.json",p[..]),b[..]);
@@ -129,7 +155,7 @@ es_tick :: (h:[]HsHost) #effects(all) {
 
 es_handle :: (h:[]HsHost,rq:HbAppRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
   if rq.request!=mailbox || rq.host!=cast(string)h[0].xhex[..] || rq.relay!=hs_relay_of(h) {return 0;}
-  configured:=es_load_configuration(h[0].environment[..]);c:=h[0].environment[0].configuration[..];
+  configured:=es_load_for(h[0].environment[..],signer,rq.grant);c:=h[0].environment[0].configuration[..];
   hs_load(st,statebuf);ga:[HS_GRANTS]HostGrantRecord;epochs:[HS_EPOCHS]HostEpoch;hs_records(st,ga[..],epochs[..]);
   scoped:=ea_scope(configured,c[0].enabled,cast(string)c[0].device[..]==signer,cast(string)c[0].grant[..]==rq.grant);
   // The local operator's explicit environment enable extends this one grant
@@ -390,4 +416,64 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   else if method=="RespondInteraction" {ag_answer(es_agent(slot),q[0].allow);}
   slot[0].summary.busy=slot[0].s[0].live;slot[0].summary.nr=0;es_tick(h);es_snapshot(h,q,grant,v);
   v[0].nq=ea_copy(v[0].command[..],cast(string)q[0].command[..]);v[0].nt=ea_copy(v[0].status[..],"accepted");
+}
+
+// coder host pair --workspace DIR [--label NAME] [--wait SECONDS]: pairs a phone with this
+// computer, with no account. It prints a link with this computer's key, its relay and a one-time
+// code; the phone that opens the link asks over the relay with the code in its pairing label
+// (encrypted to this computer). The first waiting request whose label ends with the code is
+// allowed, and its grant is enabled for DIR beside any other enrollment (environment-enable --also).
+// The code is the evidence that the phone saw this screen; it is good for one pairing, while
+// this command waits (ten minutes at most).
+ES_PAIR_ALPHABET :: "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+es_pair_code :: (out:[]u8)->string #effects(all) {
+  b:[8]u8;if out.count<8 || cxrand_draw(b[..],8)!=0 {return "";}
+  for i:0..<8 {out[i]=ES_PAIR_ALPHABET[cast(int)b[i]%ES_PAIR_ALPHABET.count];}return cast(string)out[0..<8];
+}
+// s into out from at, percent-escaping all but unreserved bytes (RFC 3986).
+es_pair_escape :: (out:[]u8,at:int,s:string)->int #effects(all) {
+  hex:="0123456789ABCDEF";n:=at;
+  for c:s {
+    plain:=(c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='-' || c=='.' || c=='_' || c=='~';
+    if plain {if n<out.count {out[n]=c;n+=1;}}
+    else if n+3<=out.count {out[n]='%';out[n+1]=hex[c>>4];out[n+2]=hex[c&15];n+=3;}
+  }
+  return n;
+}
+es_pair_ends :: (s:string,tail:string)->bool #effects(all) {return tail.count>0 && s.count>=tail.count && cast(string)s[s.count-tail.count..<s.count]==tail;}
+es_pair :: (args:[]Args)->int #effects(all) {
+  workspace:=args_value(args,"--workspace","");label:=args_value(args,"--label","This computer");
+  canonical:[1024]u8;root:=fs_realpath(workspace,canonical[..]);
+  if root.count==0 || fs_kind(root)!=FS_DIR || label.count==0 || label.count>80 {tool_errln("pair needs --workspace EXISTING_ROOT [--label NAME]");return 2;}
+  wait:=hs_atoi(args_value(args,"--wait","600"));if wait<=0 || wait>600 {wait=600;}
+  sk:[32]u8;x:[32]u8;xh:[64]u8;if !hs_key(sk[..],x[..],xh[..]) {tool_errln("coder host: could not read or make the host key");return 1;}wipe(sk[..]);
+  eb:[512]u8;env:=proc_getenv("OPENAGENTS_NIP_HOST_RELAY",eb[..]);relay:=args_value(args,"--relay",ifx env.count>0 then env else HS_RELAY);
+  cb:[8]u8;code:=es_pair_code(cb[..]);if code.count!=8 {return 1;}
+  link:[1024]u8;n:=hs_cat(link[..],0,"openagents://pair?host=");n=hs_cat(link[..],n,cast(string)xh[..]);
+  n=hs_cat(link[..],n,"&relay=");n=es_pair_escape(link[..],n,relay);n=hs_cat(link[..],n,"&code=");n=hs_cat(link[..],n,code);
+  n=hs_cat(link[..],n,"&name=");n=es_pair_escape(link[..],n,label);
+  hs_outln("Open this link on your phone (OpenAgents opens it and asks this computer to pair):");
+  hs_outln(cast(string)link[0..<n]);
+  cl:[64]u8;cn:=hs_cat(cl[..],0,"The phone shows the code ");cn=hs_cat(cl[..],cn,code);cn=hs_cat(cl[..],cn,". Waiting for it.");hs_outln(cast(string)cl[0..<cn]);
+  tail:[16]u8;tn:=hs_cat(tail[..],0," ");tn=hs_cat(tail[..],tn,code);
+  deadline:=hs_now()+wait;
+  while hs_now()<deadline {
+    st:[1]HsState;buf:[HS_STATE_MAX]u8;hs_load(st[..],buf[..]);now:=hs_now();
+    for i:0..<st[0].np {
+      p:=st[0].pairings[i];
+      if !hs_waiting(p,now) || !es_pair_ends(hs_label(st[0].pairings[..],i),cast(string)tail[0..<tn]) {continue;}
+      gb:[64]u8;g:=hs_allow(st[..],i,hs_random_hex(32,gb[..]),now);
+      if g<0 || !hs_save(st[..],buf[..]) {tool_errln("coder host pair: could not save the grant");return 1;}
+      device:=cast(string)st[0].grants[g].device[..];grant:=cast(string)st[0].grants[g].grant[..];
+      c:[1]EaConfiguration;c[0].enabled=true;k:=ea_copy(c[0].device[..],device);k=ea_copy(c[0].grant[..],grant);
+      c[0].nh=ea_copy(c[0].history[..],root);c[0].nw=ea_copy(c[0].workspace[..],root);c[0].nl=ea_copy(c[0].label[..],label);
+      out:[8192]u8;w:=ea_config_write(c[..],out[..]);path:[1400]u8;
+      if w<1 || !hs_dir() || !fs_replace_durable(es_device_file(grant,path[..]),cast(string)out[0..<w]) {tool_errln("coder host pair: could not save the enrollment");return 1;}
+      ok:[400]u8;on:=hs_cat(ok[..],0,"Paired ");on=hs_cat(ok[..],on,hs_label(st[0].pairings[..],i));on=hs_cat(ok[..],on," for 7 days in ");on=hs_cat(ok[..],on,root);
+      on=hs_cat(ok[..],on,". Revoke it with: coder host forget ");on=hs_cat(ok[..],on,cast(string)grant[0..<8]);hs_outln(cast(string)ok[0..<on]);
+      return 0;
+    }
+    _ = cxproc_sleep_ms(1000);
+  }
+  tool_errln("coder host pair: no phone asked with that code; run it again");return 3;
 }
