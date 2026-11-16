@@ -142,6 +142,12 @@ uiframe_end :: (f: [] UiFrame, surface: [] UiSurface) -> bool {
 
 uiframe_pressed :: (f: [] UiFrame, id: string) -> bool { return f[0].input.down && f[0].input.pressed_n > 0 && cast(string) f[0].input.pressed[0..<f[0].input.pressed_n] == id; }
 uiframe_focused :: (f: [] UiFrame, id: string) -> bool { return f[0].input.focused_n > 0 && cast(string) f[0].input.focused[0..<f[0].input.focused_n] == id; }
+// A field may move under a stationary finger when its keyboard appears.
+// Preserve that captured press by identity inside the gesture's slop; a
+// real drag or a different focused row releases it. Geometry is not capture.
+uiframe_field_capture :: (surface:[]UiSurface,id:string,focused:string,dx:f32,dy:f32,slop:f32)->bool {
+ return slop>=0 && abs(dx)<=slop && abs(dy)<=slop && id.count>0 && id==focused && uiframe_text_field(surface,id);
+}
 // The id that has the keyboard this frame ("": none, and the host hides the
 // keyboard), after the press focus rule in uiframe_begin. The app keeps it.
 uiframe_focus :: (f: [] UiFrame) -> string { return cast(string) f[0].input.focused[0..<f[0].input.focused_n]; }

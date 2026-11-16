@@ -1,0 +1,20 @@
+// Disposable visual fixture only. This root is never generated into the iOS
+// product. It draws the real compiled page with synthetic public messages.
+#run_steps 250000000;
+#load "../../../openagents-ios/app.coax";
+conversation_fixture :: (s:[]ChatPage,c:[]AppCore,mode:int) #export_c #effects(all) {
+ if mode!=1 {return;}
+ id:="cnv_0123456789abcdef0123456789abcdef";turn:="trn_0123456789abcdef0123456789abcdef";
+ c[0].auth=AUTH_IN;c[0].foreground=false;d:=c[0].chat[..];_=el_copy(d[0].id[..],id);d[0].id_n=id.count;d[0].loaded=true;
+ raw:="{\"schema\":\"openagents.chat.conversation.v2alpha1\",\"id\":\"cnv_0123456789abcdef0123456789abcdef\",\"revision\":2,\"project_id\":null,\"legacy_thread_id\":null,\"legacy_thread_revision\":null,\"messages\":[{\"id\":\"trn_0123456789abcdef0123456789abcdef.user\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Make the mobile chat feel at home.\"}],\"created_at_ms\":10}],\"active_turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"created_at_ms\":1,\"updated_at_ms\":10,\"next_cursor\":null}";
+ #assert ctr_history_read(raw,d[0].history[..]);#assert ct_view_begin(d[0].view[..],id,turn);
+ d[0].has_view=true;d[0].view[0].state=CT_RUNNING;reply:="## A calmer conversation\n\nThe chat stays in **Coax Native**, from the first message to the last tool call.\n\n- One GPU component kit\n- A composer above the keyboard\n- Tool details only when you open them\n\n```coax\nchat := conversation_skin();\n```\n\nYou can copy this reply or open the activity above.";
+ d[0].view[0].bytes=el_copy(d[0].view[0].content[..],reply);
+ n:=d[0].native[..];n[0].selected=true;n[0].bound=true;n[0].has_status=true;n[0].has_session=true;n[0].available=true;
+ _:=el_copy(n[0].turn[..],turn);_=el_copy(n[0].conversation[..],id);n[0].host_label_n=el_copy(n[0].host_label[..],"Studio Mac");n[0].status[0].state=XT_RUNNING;
+ ses:=n[0].shown[..];s_init(ses,c[0].task_pools[0][..]);ses[0].n=3;
+ ses[0].parts[0]=SPart.{kind=P_TOOL,tk=TK_READ,name="Read",arg="components/app/chat.coax",input="Read the shared chat component",output="Shared message and composer components",resolved=true};
+ ses[0].parts[1]=SPart.{kind=P_TOOL,tk=TK_EXEC,name="Bash",arg="coax test components/app/chat.coax",input="coax test components/app/chat.coax",output="All checks passed",resolved=true};
+ ses[0].parts[2]=SPart.{kind=P_TOOL,tk=TK_EDIT,name="Edit",arg="components/skin/conversation.coax",input="Use the shared conversation skin",output="Updated",resolved=true};
+ s[0].env[0].in=true;s[0].history[0].signed_in=true;s[0].history[0].loaded=true;hi:=s[0].history[0].page[..];hi[0].n=1;_=el_copy(hi[0].items[0].id[..],id);hi[0].items[0].title_n=el_copy(hi[0].items[0].title[..],"A calmer conversation");
+}

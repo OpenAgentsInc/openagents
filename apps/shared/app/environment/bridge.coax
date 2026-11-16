@@ -26,6 +26,7 @@ EsBridge :: struct {
   key: [ES_DRAFT_KEY] u8; nk: int;            // the draft last made current
   refused: int;                         // reads the core would not take
   seen: [64] u8; nseen: int;            // the core's computer at the last sync
+  poll_at:int;
 }
 
 es_b_outcome :: (fxo: int) -> int #effects(all) {
@@ -44,6 +45,11 @@ es_b_end :: (s: [] EnvSelect, r: EsSent, outcome: int, status: int, body: string
 // The login fact, the current draft, the core's slots and the waiting reads.
 es_bridge_sync :: (c: [] AppCore, b: [] EsBridge, s: [] EnvSelect) #effects(all) {
   es_login(s, c[0].auth == AUTH_IN);
+  // Only read-only picker discovery repeats. Hidden/background pickers sleep;
+  // no Send, permission answer or other command enters this loop.
+  visible:=s[0].sheet!=ES_SHEET_NONE && c[0].foreground && s[0].in;
+  if visible {if b[0].poll_at<=c[0].mono_ms {if !es_checking(s) {es_refresh(s,c[0].mono_ms);}b[0].poll_at=c[0].mono_ms+15000;}_:=app_guest_due(c,OWN_ENVIRONMENT,b[0].poll_at);}
+  else {b[0].poll_at=0;_=app_guest_due(c,OWN_ENVIRONMENT,-1);}
   // the current conversation's draft; a new chat that was saved keeps its choice
   key := app_conversation(c);
   if key.count <= ES_DRAFT_KEY {

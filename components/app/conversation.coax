@@ -1,0 +1,52 @@
+// Shared GPU conversation chrome and reply controls. Geometry and ink come
+// from the skin; the app supplies titles, facts and actions, never a service.
+#load "chat.coax";
+
+app_conversation_header :: (f:[]UiFrame,x:f32,y:f32,w:f32,title:string,subtitle:string,busy:bool,options:int,details:int) {
+ s:=f[0].skin;a:=s.app;c:=s.chat;side:=a.nav;pad:=c.header_pad;
+ // Equal reservations on both sides keep the identity on the screen centre.
+ room:=w-2*(side+pad+2*a.gap+a.notice_icon);if room<0 {room=0;}
+ text:=app_fit(f,s.title.face,title,room-2*pad);sub:=app_fit(f,s.small.face,subtitle,room-2*pad);
+ iw:=measure_width(f[0].m,s.title.face,text);sw:=measure_width(f[0].m,s.small.face,sub);if sw>iw {iw=sw;}iw+=2*pad;if iw>room {iw=room;}
+ if title.count>0 && iw>0 {
+  ix:=x+(w-iw)/2;
+  _:=sheet_box(f[0].sheet,ix,y,iw,side,c.identity_radius,s.border,s.surface,s.field_edge);
+  lines:=s.title.line+(ifx sub.count>0 then s.small.line else 0.0f32);ty:=y+(side-lines)/2;
+  _:=sheet_text(f[0].sheet,f[0].m,-1,x+(w-measure_width(f[0].m,s.title.face,text))/2,ty,s.title.line,s.title.face,s.ink,text);
+  if sub.count>0 {_:=sheet_text(f[0].sheet,f[0].m,-1,x+(w-sw)/2,ty+s.title.line,s.small.line,s.small.face,s.muted,sub);}
+  row:=uiframe_semantic(f,"chat.identity",EL_BUTTON,title,ix,y,iw,side,0,details);elt_value(f[0].rows,row,subtitle);
+  sheet_hit(f[0].sheet,UIFRAME_HIT,row,0,ix,y,iw,side);
+ }
+ ox:=x+w-pad-side;
+ _:=app_icon_button(f,"chat.options",ox,y,-1,"Conversation options",APP_BUTTON_DEFAULT,0,options);
+ dot:=s.app.dot/2;
+ for i:0..<3 {sheet_fill(f[0].sheet,ox+side/2+cast(f32)(i-1)*(dot+s.border*3)-dot/2,y+(side-dot)/2,dot,dot,dot/2,s.ink);}
+ // Status is passive, never a refresh button, and takes no title width.
+ if busy {mark:=a.notice_icon;px:=x+pad+side+a.gap_small;
+  activity(f[0].sheet,s,px,y+(side-mark)/2,mark,f[0].clock,f[0].reduced_motion);
+  _:=uiframe_semantic(f,"chat.activity",EL_PROGRESS,"Syncing conversation",px,y,mark,side,EL_S_BUSY|EL_S_LIVE,0);
+ }
+}
+
+app_message_actions :: (f:[]UiFrame,id:string,x:f32,y:f32,copied:bool,action:int)->f32 {
+ s:=f[0].skin;_=app_icon_button(f,id,x,y,ifx copied then s.icon_check else s.icon_copy,ifx copied then "Copied" else "Copy message",APP_BUTTON_QUIET,0,action);
+ return s.chat.action;
+}
+
+app_icon_menu_row :: (f:[]UiFrame,id:string,x:f32,y:f32,w:f32,icon:int,title:string,state:int,action:int)->f32 {
+ s:=f[0].skin;lead:=s.app.icon+s.app.gap;h:=app_menu_row(f,id,x+lead,y,w-lead,title,"",state,action);
+ sheet_icon(f[0].sheet,icon,x,y+(h-s.app.icon)/2,s.app.icon,ifx (state&EL_S_DISABLED)!=0 then s.faint else s.ink);
+ row:=elt_find(f[0].rows,id);if row>=0 {f[0].rows[0].rows[row].x=x;f[0].rows[0].rows[row].w=w;if (state&EL_S_DISABLED)==0 {sheet_hit(f[0].sheet,UIFRAME_HIT,row,0,x,y,w,h);}}
+ return h;
+}
+
+app_conversation_empty :: (f:[]UiFrame,x:f32,y:f32,w:f32,title:string)->f32 {
+ s:=f[0].skin;c:=s.chat;mark:=c.mark;
+ // The shared agent glyph is our mark, in place of the reference mascot.
+ sheet_icon(f[0].sheet,ICON_PSIONIC,x+(w-mark)/2,y,mark,s.ink);
+ ty:=y+mark+c.greeting_gap;h:=app_centred(f,s.display,s.ink,x,ty,w,title);
+ _:=uiframe_semantic(f,"chat.empty",EL_HEADING,title,x,ty,w,h,0,0);
+ return ty-y+h;
+}
+
+#load "conversation-checks.coax" #test;

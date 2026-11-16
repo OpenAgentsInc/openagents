@@ -1,0 +1,4 @@
+# Synthetic conversation-fixture root; real page presses and keyed state.
+tap tool.0123456789abcdef.0
+tap tool.0123456789abcdef.0.call.1
+clock settle

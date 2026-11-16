@@ -235,7 +235,10 @@ UiApp :: struct {
   off_ink: f32 = 0.45;                                 // a disabled part's ink strength
   icon_alert: int = -1; icon_nav: int = -1; icon_disclose: int = -1;   // slots in the target's icons: a failure's mark, the navigation button's, a row that opens (-1: the skin has none)
 }
+// Conversation presentation; optional so other skins retain their geometry.
+UiConversation :: struct {enabled:bool;inset:f32=14;action:f32=44;header_pad:f32=12;identity_radius:f32=22;greeting_gap:f32=16;mark:f32=30;menu_w:f32=240;}
 UiSkin :: struct {
+ chat:UiConversation;
  animated:UiAnimated;
  motion:UiMotion;
  app:UiApp;

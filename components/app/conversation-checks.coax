@@ -1,0 +1,47 @@
+// Capture-based layout checks; no private screenshot content is retained.
+#load "checks-kit.coax";
+#load "../skin/conversation.coax";
+
+#test "conversation menu titles stay one line and preserve their full accessible label" {
+ t:[1]AppTest;app_test_init(t[..]);app_test_begin(t[..],"","",true);f:=t[0].f[..];f[0].skin=conversation_skin();
+ h:=app_icon_menu_row(f,"copy",0,0,50,ICON_COPY,"Copy the entire conversation",0,7);
+ _:=app_icon_menu_row(f,"recent",0,h,50,ICON_CHATS,"Recent chats",0,8);
+ #assert app_test_end(t[..]) && h==f[0].skin.control_h && app_test_row(t[..],"recent").y==h;
+ #assert app_test_label(t[..],"copy")=="Copy the entire conversation" && app_test_pressable(t[..],"copy");
+ #assert app_test_texts(t[..],"Copy the entire conversation")==0;
+}
+
+#test "a keyboard-moving field keeps a stationary captured press and releases a real drag" {
+ t:[1]AppTest;app_test_init(t[..]);app_test_begin(t[..],"","",true);
+ _:=app_field(t[0].f[..],"find",0,400,200,"Search","","Search",false,false,"",0,1);#assert app_test_end(t[..]);
+ #assert uiframe_field_capture(t[0].sf[..],"find","find",0,0,6);
+ app_test_begin(t[..],"find","find",true);_=app_field(t[0].f[..],"find",0,100,200,"Search","","Search",false,false,"",0,1);#assert app_test_end(t[..]);
+ #assert uiframe_field_capture(t[0].sf[..],"find","find",0,0,6);
+ #assert !uiframe_field_capture(t[0].sf[..],"find","find",0,7,6) && !uiframe_field_capture(t[0].sf[..],"find","other",0,0,6);
+}
+
+#test "conversation chrome: a long title stays centred and cannot cover either action" {
+ t:[1]AppTest;app_test_init(t[..]);app_test_begin(t[..],"","",true);f:=t[0].f[..];f[0].skin=conversation_skin();
+ app_conversation_header(f,0,8,180,"A very long conversation title that must fit","Studio Mac",true,11,12);
+ #assert app_test_end(t[..]);r:=app_test_row(t[..],"chat.identity");
+ #assert abs(r.x+r.w/2-90)<0.01 && r.x>=f[0].skin.app.nav+f[0].skin.app.gap;
+ #assert r.x+r.w<=app_test_row(t[..],"chat.options").x && app_test_pressable(t[..],"chat.options");
+ #assert app_test_has(t[..],"chat.activity",EL_S_BUSY) && !app_test_pressable(t[..],"chat.activity");
+ #assert app_test_texts(t[..],"A very long conversation title that must fit")==0;
+}
+
+#test "conversation reply actions keep a real copy target and an accessible confirmation" {
+ t:[1]AppTest;app_test_init(t[..]);app_test_begin(t[..],"","",true);f:=t[0].f[..];f[0].skin=conversation_skin();
+ h:=app_message_actions(f,"message.copy",0,10,false,19);
+ #assert app_test_end(t[..]) && h==f[0].skin.chat.action;
+ #assert app_test_pressable(t[..],"message.copy") && app_test_label(t[..],"message.copy")=="Copy message";
+ app_test_begin(t[..],"","",true);f[0].skin=conversation_skin();_=app_message_actions(f,"message.copy",0,10,true,19);
+ #assert app_test_end(t[..]) && app_test_label(t[..],"message.copy")=="Copied";
+}
+
+#test "conversation skin keeps the reference reading hierarchy and OpenAgents monochrome" {
+ s:=conversation_skin();#assert s.chat.enabled && s.canvas.r>0 && s.canvas.r<s.surface.r;
+ #assert s.raised.r>s.surface.r && s.ink.r==s.ink.g && s.accent.r==s.accent.b;
+ #assert s.chat.inset*ARCADE_PHONE_SCALE==14 && s.app.nav*ARCADE_PHONE_SCALE>=44;
+ #assert s.app.tool_h*ARCADE_PHONE_SCALE>=44 && s.chat.action*ARCADE_PHONE_SCALE>=44;
+}

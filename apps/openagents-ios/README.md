@@ -54,6 +54,26 @@ apps/openagents-ios/check.sh
 
 ## Check
 
+The conversation presentation follows the captured Claude iOS chat layouts
+in `docs/research/claude-ios/`, using the shared GPU kit and OpenAgents'
+grayscale skin. Navigation, conversation menus and the computer/repository
+picker are GPU components; the removed `GlassChrome.swift` projection is no
+longer part of the product. UIKit supplies active text entry, accessibility,
+scroll physics and system credential ceremonies.
+
+Conversation options open Recents (with search over loaded account/device
+history), choose a computer, copy the loaded conversation or start a new
+chat. The centered session pill opens details and provider Usage. Adjacent
+tool calls collapse into activity summaries, with individually expandable
+inputs/results. Replies expose Copy alongside the existing fenced-code Copy.
+Observed native sessions have a fixed read-only notice instead of a composer.
+Model/effort, attachments and microphone controls remain hidden by owner choice.
+
+`apps/shared/app/preview/conversation-fixture.coax` is a synthetic visual
+qualification root, absent from the installed app. Its optional carrier macro
+is `OA_CONVERSATION_FIXTURE`; it exercises the real page with public fixture
+messages rather than the owner's account data.
+
 ```sh
 coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-ios/chat.coax
 coax/remote/remote.sh run -- coax/remote/check.sh only coax/native/gpu-editor-check.coax

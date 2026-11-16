@@ -18,6 +18,7 @@
 
 #load "select.coax";
 #load "../../../../components/kit/chip.coax";      // ctx_chip; loads controls.coax and frame.coax
+#load "../../../../components/app/base.coax";
 
 // What the two chips show now.
 EsChips :: struct {
@@ -41,16 +42,19 @@ ES_V_TITLE_ENV :: "Where it runs";
 ES_V_TITLE_REPO :: "Repository";
 
 es_v_row_h :: (k: UiSkin) -> f32 #effects(all) {
+  if k.chat.enabled {return k.body.line+k.small.line+2*k.app.gap_small;}
   h := k.body.line + k.small.line + 2 * k.control_pad;
   return ifx h < k.control_h then k.control_h else h;
 }
 // One choice: its semantic row under id, then the kit's choice row.
 es_v_choice :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, detail: string, selected: bool, on: bool, check: int) -> f32 #effects(all) {
   k := f[0].skin; h := es_v_row_h(k);
+  if k.chat.enabled {sheet_fill(f[0].sheet,x,y,w,h,k.app.card_radius,k.raised);}
   state := (ifx selected then EL_S_CURRENT | EL_S_CHECKS | EL_S_CHECKED else 0) | (ifx on then 0 else EL_S_DISABLED);
   row := uiframe_semantic(f, id, EL_ROW, title, x, y, w, h, state, 0);
   if detail.count > 0 { elt_value(f[0].rows, row, detail); }
-  return choice_row(f[0].sheet, f[0].m, k, x, y, w, title, detail, selected, check, UIFRAME_HIT, row, 0);
+  look:=k;if k.chat.enabled {look.control_pad=k.app.gap_small;}
+  return choice_row(f[0].sheet, f[0].m, look, x, y, w, title, detail, selected, check, UIFRAME_HIT, row, 0);
 }
 es_v_note :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string) -> f32 #effects(all) {
   k := f[0].skin; inset := (k.control_h - k.small.line) / 2;
@@ -70,11 +74,13 @@ es_picker :: (f: [] UiFrame, s: [] EnvSelect, x: f32, y: f32, w: f32, h: f32, ch
   if s[0].sheet == ES_SHEET_NONE { return size; }
   k := f[0].skin;
   env := s[0].sheet == ES_SHEET_ENV;
-  inside := ctx_panel(f, ifx env then "env.panel" else "env.repo.panel", x, y, w, h, ifx env then ES_V_TITLE_ENV else ES_V_TITLE_REPO);
+  inside:PanelInside;
+  if k.chat.enabled {inside=app_sheet(f,ifx env then "env.panel" else "env.repo.panel",x,y,w,h,ifx env then ES_V_TITLE_ENV else ES_V_TITLE_REPO);}
+  else {inside=ctx_panel(f, ifx env then "env.panel" else "env.repo.panel", x, y, w, h, ifx env then ES_V_TITLE_ENV else ES_V_TITLE_REPO);}
   // the two buttons along the top
-  bw := ctx_button(f, "env.close", inside.x, inside.y, "Done", false, 0, 0);
   busy := es_checking(s);
-  _ = ctx_button(f, "env.refresh", inside.x + bw + k.space, inside.y, "Refresh", false, ifx busy then EL_S_BUSY else 0, 0);
+  if k.chat.enabled {_:=app_icon_button(f,"env.close",inside.x,inside.y,ICON_BACK,"Done",APP_BUTTON_DEFAULT,0,0);title:=ifx env then ES_V_TITLE_ENV else ES_V_TITLE_REPO;tw:=measure_width(f[0].m,k.title.face,title);_=app_text(f,"env.title",x+(w-tw)/2,inside.y+(k.app.icon_button-k.title.line)/2,tw,APP_TEXT_TITLE,title);}
+  else {bw := ctx_button(f, "env.close", inside.x, inside.y, "Done", false, 0, 0);_ = ctx_button(f, "env.refresh", inside.x + bw + k.space, inside.y, "Refresh", false, ifx busy then EL_S_BUSY else 0, 0);}
   top := inside.y + k.control_h + k.space;
   bottom := y + h - k.pad;
   size.view = ifx bottom > top then bottom - top else 0.0f32;
@@ -98,7 +104,7 @@ es_picker :: (f: [] UiFrame, s: [] EnvSelect, x: f32, y: f32, w: f32, h: f32, ch
     if !s[0].in {}
     else if s[0].catalog_state == ES_PENDING && s[0].catalog[0].n == 0 { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "Checking…"); }
     else if s[0].catalog_state == ES_FAILED { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "We couldn't read your computers."); }
-    else if s[0].catalog_state == ES_UNKNOWN { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "We couldn't tell if your computers loaded. Refresh to try again."); }
+    else if s[0].catalog_state == ES_UNKNOWN { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, ifx k.chat.enabled then "Reconnecting…" else "We couldn't tell if your computers loaded. Refresh to try again."); }
     else if s[0].catalog[0].ok && s[0].catalog[0].n == 0 { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "No computers are connected to this account."); }
   } else {
     es_repo_list(s, s[0].shown[..]);

@@ -94,6 +94,8 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 | An icon | Apps SDK UI's 755, by name (`IC_COPY`), drawn from their SVG files; `k_icon` and `k_icon_button` in the frames set | `components/core/icons.coax`, `components/icons/apps-sdk/` |
 | ARWES frames, easings, the animator, text effects, backgrounds | The ARWES ports | `components/core/arwes/` |
 | A chat on the GPU (the desktop app): composer, transcript, Markdown, tool chips | The earlier chat set | `components/zeron/`, `components/core/markdown.coax` |
+| Native conversation chrome, greeting, reply actions and compact activity | Shared GPU conversation components and grayscale phone skin; use the existing virtualized chat page and canonical Markdown parser | `components/app/conversation.coax`, `components/skin/conversation.coax`, `apps/shared/app/view/` |
+| Literal case-insensitive filtering of a label | One ASCII-folded UTF-8 byte substring search; non-ASCII bytes match exactly | `components/core/text.coax` (`text_contains_ascii`); the model picker delegates to it |
 | A picture of the iOS app's screen while you edit it, or the shortest simulator rebuild | The preview loops: the app's own compiled Coax and display list drawn by Metal on the Mac; generate only when a Coax input changed | `apps/shared/app/preview/` (`shot.sh`, `watch.sh`, `loop.coax`, `carrier.c`), `apps/openagents-ios/dev.sh` |
 | Measuring and wrapping text, fonts | Layout | `components/layout/` |
 | A game HUD: bars, hotbar, windows, numbers | The HUD sets | `components/kit/hud.coax`, `everglade/hud/`, `metaverse/hud.coax` |

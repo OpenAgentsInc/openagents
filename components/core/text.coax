@@ -7,6 +7,20 @@
 #load "space.coax";
 #load "rune.coax";   // Rune
 
+// Shared literal search, ASCII case-insensitive and byte-exact for all other
+// UTF-8. Moved from the model picker for chat and repository/history filters.
+text_ascii_lower :: (c:u8)->u8 {return ifx c>='A' && c<='Z' then c+('a'-'A') else c;}
+#test "literal filtering shares ASCII case folding and keeps non-ASCII bytes exact" {
+ #assert text_contains_ascii("Studio MAC notes","mac") && text_contains_ascii("hello","");
+ #assert !text_contains_ascii("hi","longer") && !text_contains_ascii("mac","box");
+ #assert text_contains_ascii("café","fé") && !text_contains_ascii("café","FÉ");
+}
+text_contains_ascii :: (hay:string,needle:string)->bool {
+ if needle.count==0 {return true;}if needle.count>hay.count {return false;}
+ for i:0..<hay.count-needle.count+1 {ok:=true;for k:0..<needle.count {if text_ascii_lower(hay[i+k])!=text_ascii_lower(needle[k]) {ok=false;break;}}if ok {return true;}}
+ return false;
+}
+
 // The code point at byte i of UTF-8 text; a malformed byte reads as itself.
 rune_at :: (text: string, i: int) -> Rune {
   b := cast(u32) text[i];

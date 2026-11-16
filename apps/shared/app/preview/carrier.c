@@ -119,6 +119,11 @@ int main(int argc, char **argv) {
   a->dpr = ui_dpr(a->host) * PAGE_SCALE();
   if (!atlas_setup(a)) return 1;
   void *core=oa_core_open();if(!core)return 1;oc_attach(p,core,"");
+#ifdef OA_CONVERSATION_FIXTURE
+  // Qualification-only Coax root, absent from the product library.
+  extern void conversation_fixture(coax_v_t_ChatPage,coax_v_t_AppCore,int64_t);
+  conversation_fixture((coax_v_t_ChatPage){p->s,1},(coax_v_t_AppCore){core,1},1);
+#endif
   Pv v = {.p = p, .host = a->host, .w = (uint32_t)(pw * k + 0.5f), .h = (uint32_t)(ph * k + 0.5f), .dpr = k};
   // the window's facts are in points of the surface, which the zoom makes larger
   PAGE_ENV(p, top / zoom, bottom / zoom, kb / zoom, kb > 0, 0, pv_flag(argc, argv, "--reduced"));

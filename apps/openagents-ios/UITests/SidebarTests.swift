@@ -3,6 +3,27 @@ import XCTest
 
 final class SidebarTests:XCTestCase {
     override func setUpWithError() throws {continueAfterFailure=false}
+    @MainActor func testGPUConversationMenuRecentsAndKeyboard() {
+        let app=XCUIApplication();app.launchArguments=["-OAAPIOrigin","http://127.0.0.1:9","-OAReduceMotion","YES"]
+        app.launch();let menu=app.buttons["nav.menu"];XCTAssertTrue(menu.waitForExistence(timeout:20))
+        let options=app.buttons["chat.options"];XCTAssertTrue(options.waitForExistence(timeout:10));options.tap()
+        let recents=app.buttons["thread.recents"];XCTAssertTrue(recents.waitForExistence(timeout:10));recents.tap()
+        // An inactive GPU field is an accessible activation target. UIKit's
+        // editor exists only after it takes focus.
+        let searchTarget=app.buttons["history.search"];XCTAssertTrue(searchTarget.waitForExistence(timeout:10));searchTarget.tap()
+        let search=app.textFields["history.search"];XCTAssertTrue(search.waitForExistence(timeout:10));search.typeText("mobile")
+        XCTAssertEqual(search.value as? String,"mobile")
+        let picture=XCTAttachment(screenshot:app.screenshot());picture.name="GPU Recents and native search editor";picture.lifetime = .keepAlways;add(picture)
+        menu.tap();let chat=app.buttons["drawer.chat"];XCTAssertTrue(chat.waitForExistence(timeout:10));chat.tap()
+        XCTAssertTrue(options.waitForExistence(timeout:10));XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout:10))
+        let composer=app.textViews["chat.composer"];XCTAssertTrue(composer.waitForExistence(timeout:10));composer.tap();composer.typeText("A local draft")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout:10));options.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout:10));XCTAssertTrue(recents.waitForExistence(timeout:10))
+        XCTAssertFalse(app.buttons["chat.composer.model"].exists)
+        let menuPicture=XCTAttachment(screenshot:app.screenshot());menuPicture.name="GPU conversation menu with preserved draft";menuPicture.lifetime = .keepAlways;add(menuPicture)
+        app.buttons["thread.computer"].tap();XCTAssertTrue(app.buttons["env.close"].waitForExistence(timeout:10));app.buttons["env.close"].tap()
+        XCTAssertTrue(options.waitForExistence(timeout:10));XCTAssertEqual(composer.value as? String,"A local draft")
+    }
     @MainActor func testNativeTapOpensAndClosesSidebarAndSettingsLoginBack() {
         let app=XCUIApplication()
         // Foundation's launch-argument domain overrides only this fixture's

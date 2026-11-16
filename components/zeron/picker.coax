@@ -145,16 +145,9 @@ pk_is_open :: (p: [] Picker) -> bool { return p[0].kind != PK_NONE; }
 
 // ---------------------------------------------------------------- the model list's rows
 
-pk_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + ('a' - 'A') else c; }
+pk_lower :: (c: u8) -> u8 { return text_ascii_lower(c); }
 pk_contains :: (hay: string, needle: string) -> bool {
-  if needle.count == 0 { return true; }
-  if needle.count > hay.count { return false; }
-  for i: 0..<hay.count - needle.count + 1 {
-    ok := true;
-    for k: 0..<needle.count { if pk_lower(hay[i + k]) != pk_lower(needle[k]) { ok = false; break; } }
-    if ok { return true; }
-  }
-  return false;
+  return text_contains_ascii(hay,needle);
 }
 pk_query :: (p: [] Picker) -> string { return cast(string) p[0].query[0..<p[0].qn]; }
 // The rows the search leaves (every model with none): catalog indices into out; how many.

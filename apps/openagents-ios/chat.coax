@@ -28,6 +28,7 @@
 #load "../shared/app/view/page.coax";
 #load "../../components/app/nav.coax";
 #load "../../components/app/ioshost-sidebar.coax";
+#load "../../components/skin/conversation.coax";
 #load "../shared/app/login/card.coax";
 #load "../shared/app/login/bridge.coax";
 #load "../shared/app/environment/bridge.coax";
@@ -83,6 +84,9 @@ ChatPage :: struct {
   focus: [EL_ID] u8; focus_n: int;
   // the drawer: whether it is open, and how far it is out
   drawer: bool; share: f32;
+  thread_menu:bool;thread_details:bool;
+  menu_content:f32;menu_viewport:f32;
+  search:[128]u8;search_n:int;
   initials: [4] u8; initials_n: int;
   // the environment and repository chips over the composer, and their picker (apps/shared/app/environment/)
   env: [1] EnvSelect; eb: [1] EsBridge; picker: EsPickerSize;
@@ -134,8 +138,8 @@ ch_step :: (s: [] ChatPage) {
   lfc_step(s[0].lb[..], s[0].lf[..], s[0].core);
   es_bridge_sync(s[0].core, s[0].eb[..], s[0].env[..]);
   iks_sync(s[0].identity[..],s[0].core);
-  hi_sync(s[0].history[..],s[0].core,s[0].drawer);
-  dh_sync(s[0].devices[..],s[0].core,s[0].drawer);
+  hi_sync(s[0].history[..],s[0].core,s[0].drawer || s[0].section==2);
+  dh_sync(s[0].devices[..],s[0].core,s[0].drawer || s[0].section==2);
   us_sync(s[0].usage[..],s[0].core,s[0].usage[0].open && !s[0].drawer && !s[0].lf[0].open);
   ps_sync(s[0].projects[..],s[0].core,s[0].section==1 && !s[0].drawer && !s[0].lf[0].open && !s[0].identity[0].open);
 }
@@ -143,10 +147,12 @@ ch_step :: (s: [] ChatPage) {
 // line. Stable IDs follow the full host/session, not the host's current index.
 ch_history :: (s:[]ChatPage,f:[]UiFrame,x:f32,y:f32,w:f32,bottom:f32) {
  rows:[640]AppSideRow;ids:[640][64]u8;count:=0;h:=s[0].devices[..];n:=h[0].nav[..];b:=n[0].browser[..];c:=s[0].core;
+ query:=cast(string)s[0].search[0..<s[0].search_n];
  for host:0..<b[0].catalog[0].n {
   entry:=b[0].catalog[0].entries[host];key:=nav_session_id(cast(string)entry.host[..],"group",ids[count][..]);ids[count][4]='h';ids[count][5]='o';ids[count][6]='s';ids[count][7]='t';
   rows[count]=AppSideRow.{id=key,title=cast(string)b[0].catalog[0].entries[host].label[0..<entry.nl],heading=true,action=0};count+=1;shown:=0;
   for i:0..<n[0].n {r:=n[0].rows[i];if r.host!=host {continue;}sid:=cast(string)n[0].rows[i].session.id[0..<r.session.ni];
+   if !text_contains_ascii(cast(string)n[0].rows[i].session.title[0..<r.session.nt],query) {continue;}
    key=dh_row_id(h,i,ids[count][..]);rows[count]=AppSideRow.{id=key,title=ifx r.session.nt>0 then cast(string)n[0].rows[i].session.title[0..<r.session.nt] else "New chat",state=(ifx app_device_on(c) && app_environment(c)==cast(string)entry.host[..] && cast(string)app_device_env(c)[0].session[0..<app_device_env(c)[0].ns]==sid then EL_S_CURRENT else 0) | (ifx r.session.busy then EL_S_BUSY else 0),action=343};count+=1;shown+=1;
   }
   if shown==0 {key=nav_session_id(cast(string)entry.host[..],"empty",ids[count][..]);rows[count]=AppSideRow.{id=key,title=ifx n[0].groups[host].failed then "Unavailable" else ifx n[0].groups[host].loaded then "No chats yet" else "Loading…",state=EL_S_DISABLED,action=0};count+=1;}
@@ -156,7 +162,7 @@ ch_history :: (s:[]ChatPage,f:[]UiFrame,x:f32,y:f32,w:f32,bottom:f32) {
  if lf_logged_in(s[0].lf[..]) {
   rows[count]=AppSideRow.{id="history.title",title="Account chats",heading=true,action=0};count+=1;
   if hf[0].cursor_n>0 {rows[count]=AppSideRow.{id="history.first",title="Latest chats",state=ifx hf[0].op>0 then EL_S_DISABLED else 0,action=342};count+=1;}
-  for i:0..<hi[0].n {rows[count]=AppSideRow.{id=cast(string)hi[0].items[i].id[..],title=ifx hi[0].items[i].title_n>0 then cast(string)hi[0].items[i].title[0..<hi[0].items[i].title_n] else "New chat",state=ifx !app_device_on(c) && cast(string)hi[0].items[i].id[..]==app_conversation(c) then EL_S_CURRENT else 0,action=340};count+=1;}
+  for i:0..<hi[0].n {if !text_contains_ascii(cast(string)hi[0].items[i].title[0..<hi[0].items[i].title_n],query) {continue;}rows[count]=AppSideRow.{id=cast(string)hi[0].items[i].id[..],title=ifx hi[0].items[i].title_n>0 then cast(string)hi[0].items[i].title[0..<hi[0].items[i].title_n] else "New chat",state=ifx !app_device_on(c) && cast(string)hi[0].items[i].id[..]==app_conversation(c) then EL_S_CURRENT else 0,action=340};count+=1;}
   if hi[0].next_n>0 {rows[count]=AppSideRow.{id="history.more",title="More",state=ifx hf[0].op>0 then EL_S_DISABLED else 0,action=341};count+=1;}
   if hi[0].n==0 {rows[count]=AppSideRow.{id="history.empty",title=ifx hf[0].note then "Unavailable" else ifx !hf[0].loaded then "Loading…" else "No chats yet",state=EL_S_DISABLED,action=0};count+=1;}
  }
@@ -196,7 +202,18 @@ ch_dispatch :: (s: [] ChatPage, what: int, text: string) -> bool {
   return true;
 }
 // The layer that takes presses and is read out: the cover while the drawer or the card shows, else the page.
-ch_layer :: (s: [] ChatPage) -> int { return ifx s[0].share > 0 || s[0].drawer || s[0].lf[0].open || ch_picking(s) then 1 else 0; }
+ch_layer :: (s: [] ChatPage) -> int { return ifx s[0].share > 0 || s[0].drawer || s[0].thread_menu || s[0].thread_details || s[0].lf[0].open || ch_picking(s) then 1 else 0; }
+
+// Prefer the catalog's real title; a newly started conversation uses its
+// first user message until the next automatic catalog read supplies it.
+ch_conversation_title :: (s:[]ChatPage)->string {
+ c:=s[0].core;if c.count<1 {return "";}
+ if app_device_on(c) {e:=app_device_env(c);sid:=cast(string)e[0].session[0..<e[0].ns];h:=s[0].devices[0].nav[..];
+  for i:0..<h[0].n {r:=h[0].rows[i];if cast(string)r.session.id[0..<r.session.ni]==sid && r.session.nt>0 {return cast(string)h[0].rows[i].session.title[0..<r.session.nt];}}
+ }else {h:=s[0].history[0].page[..];for i:0..<h[0].n {r:=h[0].items[i];if cast(string)r.id[..]==app_conversation(c) && r.title_n>0 {return cast(string)h[0].items[i].title[0..<r.title_n];}}}
+ v:=s[0].view[..];for i:0..<v[0].model[0].n {r:=v[0].model[0].rows[i];if (r.kind==VK_MESSAGE || r.kind==VK_DEVICE_MESSAGE || r.kind==VK_SENT || r.kind==VK_DEVICE_SENT) && !r.assistant {return view_row_text(v,view_chat_of(c),r);}}
+ return ifx app_conversation(c).count>0 || app_device_on(c) then "New chat" else "";
+}
 ch_sf :: (s: [] ChatPage, layer: int) -> [] UiSurface { return s[0].surface[layer..<layer + 1]; }
 ch_live :: (s: [] ChatPage) -> [] UiSurface { return ch_sf(s, ch_layer(s)); }
 ch_rows :: (s: [] ChatPage) -> ElTable { return surface_rows(ch_live(s)); }
@@ -220,7 +237,7 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   }
   if s[0].usage[0].open {
     s[0].menu_side=0;nav:=k.app.icon_button;
-    _:=app_icon_button(f,"usage.back",16/u,nav_y,ICON_BACK,"Back to Settings",APP_BUTTON_QUIET,0,US_ACTION);
+    _:=app_icon_button(f,"usage.back",16/u,nav_y,ICON_BACK,ifx s[0].identity[0].open then "Back to Settings" else "Back to chat",APP_BUTTON_QUIET,0,US_ACTION);
     tw:=measure_width(f[0].m,k.title.face,"Usage");_=app_text(f,"usage.title",(w-tw)/2,nav_y+(nav-k.title.line)/2,tw,APP_TEXT_TITLE,"Usage");
     area_top:=nav_y+nav+k.app.gap;key:=uiframe_key(f,"section.viewport");offset:=keyed_scroll(f[0].keyed,key);s[0].section_viewport=bottom-area_top;
     uiframe_clip(f,0,area_top,w,bottom);s[0].section_content=us_view(s[0].usage[..],f,16/u,area_top-offset,w-32/u,area_top,bottom,ch_focus(s));
@@ -270,6 +287,13 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     if s[0].native {ch_menu_row(s,f,s[0].menu_x,nav_y);}else {_:=app_nav_button(f,"nav.menu",s[0].menu_x,nav_y,s[0].drawer,0,CH_HIT_MENU);}
     return;
   }
+  if s[0].section==2 {
+    title:="Recents";tw:=measure_width(f[0].m,k.title.face,title);_=app_text(f,"history.title",(w-tw)/2,nav_y+(a.nav-k.title.line)/2,tw,APP_TEXT_TITLE,title);
+    field_y:=bottom-k.control_h;_=app_field(f,"history.search",k.chat.inset,field_y,w-2*k.chat.inset,"Search chats",cast(string)s[0].search[0..<s[0].search_n],"Search chats",false,s[0].focused && ch_focus(s)=="history.search","",0,456);
+    by:=field_y-a.gap-k.control_h;_=app_sidebar_new(f,"history.new",w-k.chat.inset-app_button_width(f,ICON_COMPOSE,"New chat"),by,ICON_COMPOSE,"New chat",CH_HIT_NEW);
+    ch_history(s,f,k.chat.inset,nav_y+a.nav+a.gap,w-2*k.chat.inset,by-a.gap);
+    s[0].menu_x=12/u;s[0].menu_y=nav_y;s[0].menu_side=a.nav;_=app_nav_button(f,"nav.menu",s[0].menu_x,nav_y,s[0].drawer,0,CH_HIT_MENU);return;
+  }
   s[0].again = false;
   if s[0].core.count > 0 {
     // the chips show once logged in, or whenever this phone can run on its own computer (a paired
@@ -279,7 +303,7 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
       editing = s[0].focused && ch_focus(s) == VIEW_COMPOSER_ID, editor_h = s[0].editor_h / u, unit = u};
     out := view_page(f, s[0].view[..], s[0].core, lay);
     s[0].box = out.composer; s[0].again = out.again;
-    if chips {
+    if chips && !out.readonly {
       e := es_chips(s[0].env[..]);
       _ := app_composer_chips(f, "composer.environment", "composer.repo", out.chips_x, out.chips_y, out.chips_w, ICON_GLOBAL, e.environment, ICON_FOLDER, e.repository,
         0, CH_HIT_ENV, ifx e.repository_on then CH_HIT_REPO else 0);
@@ -287,6 +311,8 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   }
   // the navigation button at the top left opens the drawer
   s[0].menu_x = 12 / u; s[0].menu_y = nav_y; s[0].menu_side = k.app.nav;
+  if s[0].core.count>0 {c:=s[0].core;title:=sheet_pool(f[0].sheet,ch_conversation_title(s));subtitle:=sheet_pool(f[0].sheet,ifx app_device_on(c) then view_device_name(c) else ifx app_conversation(c).count>0 then "Account chat" else "");
+    app_conversation_header(f,0,nav_y,w,title,subtitle,s[0].view[0].model[0].rejoining,450,451);}
   if s[0].native { ch_menu_row(s, f, s[0].menu_x, nav_y); } else { _ := app_nav_button(f, "nav.menu", s[0].menu_x, nav_y, s[0].drawer, 0, CH_HIT_MENU); }
 }
 // The menu button's row and hit with no paint: the host's system button stands over it.
@@ -298,11 +324,40 @@ ch_menu_row :: (s: [] ChatPage, f: [] UiFrame, x: f32, y: f32) {
 // The cover: the chips' picker or the login card over a dimmed page, and the sidebar.
 ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   k := f[0].skin; u := ch_u(s); top := s[0].safe_top / u;
+  if s[0].thread_menu || s[0].thread_details {
+    sheet_fill(f[0].sheet,0,0,w,h,0,opacity(k.canvas,0.65));
+    r:=uiframe_semantic(f,"thread.scrim",EL_BUTTON,"Close conversation options",0,0,w,h,0,452);sheet_hit(f[0].sheet,UIFRAME_HIT,r,0,0,0,w,h);
+    if s[0].thread_details {sh:=k.app.icon_button+5*(k.control_h+k.app.gap);available:=h-top-s[0].safe_bottom/u-2*k.app.gap;if sh>available {sh=available;}y:=h-s[0].safe_bottom/u-sh;
+      in:=app_sheet(f,"thread.details",k.chat.inset,y,w-2*k.chat.inset,sh,"Session details");
+      _:=app_text(f,"thread.details.title",in.x,in.y,in.w,APP_TEXT_TITLE,"Session details");body_top:=in.y+k.title.line+k.app.gap;done_y:=y+sh-k.control_h-k.app.card_pad;
+      s[0].menu_viewport=ifx done_y-body_top-k.app.gap>0 then done_y-body_top-k.app.gap else 0.0f32;
+      key:=uiframe_key(f,"thread.viewport");offset:=keyed_scroll(f[0].keyed,key);yy:=body_top-offset;uiframe_clip(f,in.x,body_top,in.x+in.w,body_top+s[0].menu_viewport);
+      if s[0].core.count>0 {c:=s[0].core;e:=es_chips(s[0].env[..]);
+       yy+=app_text(f,"thread.computer",in.x,yy,in.w,APP_TEXT_BODY,e.environment)+k.app.gap;
+       if e.repository.count>0 {yy+=app_text(f,"thread.repository",in.x,yy,in.w,APP_TEXT_CAPTION,e.repository)+k.app.gap;}
+       if app_device_on(c) {yy+=app_text(f,"thread.control",in.x,yy,in.w,APP_TEXT_CAPTION,"Connected computer")+k.app.gap;}
+       yy+=app_button(f,"thread.usage",in.x,yy,in.w,ICON_CHECKLIST,"Usage",APP_BUTTON_DEFAULT,0,457);
+      }
+      uiframe_unclip(f);s[0].menu_content=yy-body_top+offset;ch_reveal(s,f,key,body_top,body_top+s[0].menu_viewport,s[0].menu_content,offset);
+      _:=app_button(f,"thread.done",in.x,done_y,in.w,-1,"Done",APP_BUTTON_DEFAULT,0,452);app_card_end(f);
+    }else {mw:=ifx k.chat.menu_w<w-2*k.chat.inset then k.chat.menu_w else w-2*k.chat.inset;mh:=4*k.control_h+2*k.app.card_pad;
+      available:=h-top-k.app.nav-s[0].safe_bottom/u-2*k.app.gap;if mh>available {mh=available;}
+      in:=app_card(f,"thread.menu",w-k.chat.inset-mw,top+k.app.nav+k.app.gap,mw,mh,"Conversation options");
+      s[0].menu_content=4*k.control_h;s[0].menu_viewport=ifx mh>2*k.app.card_pad then mh-2*k.app.card_pad else 0.0f32;
+      key:=uiframe_key(f,"thread.viewport");offset:=scroll_clamp(keyed_scroll(f[0].keyed,key),s[0].menu_content,s[0].menu_viewport);keyed_scroll_set(f[0].keyed,key,offset);
+      uiframe_clip(f,in.x,in.y,in.x+in.w,in.y+s[0].menu_viewport);yy:=in.y-offset;
+      _:=app_icon_menu_row(f,"thread.new",in.x,yy,in.w,ICON_COMPOSE,"New chat",0,CH_HIT_NEW);
+      _:=app_icon_menu_row(f,"thread.computer",in.x,yy+k.control_h,in.w,ICON_GLOBAL,"Choose computer",0,453);
+      _:=app_icon_menu_row(f,"thread.copy",in.x,yy+2*k.control_h,in.w,ICON_COPY,"Copy conversation",ifx s[0].view[0].model[0].empty then EL_S_DISABLED else 0,454);
+      _:=app_icon_menu_row(f,"thread.recents",in.x,yy+3*k.control_h,in.w,ICON_CHATS,"Recent chats",0,455);uiframe_unclip(f);app_card_end(f);
+    }
+    return;
+  }
   if ch_picking(s) {
     // a press beside the picker closes it (es_press "env.scrim")
     if !s[0].native { sheet_fill(f[0].sheet, 0, 0, w, h, 0, opacity(Rgba.{r = 0, g = 0, b = 0, a = 1}, APP_SIDEBAR_DIM)); }
-    _ := uiframe_semantic(f, "env.scrim", EL_BUTTON, "Close", 0, 0, w, h, 0, 0);
-    py := top + 56 / u; ph := h - s[0].safe_bottom / u - 12 / u - py;
+    scrim:=uiframe_semantic(f, "env.scrim", EL_BUTTON, "Close", 0, 0, w, h, 0, 0);sheet_hit(f[0].sheet,UIFRAME_HIT,scrim,0,0,0,w,h);
+    py := ifx k.chat.enabled then top+(h-top)*0.35f32 else top + 56 / u; ph := h - s[0].safe_bottom / u - 12 / u - py;
     sh := f[0].sheet; nu := sh[0].nu; no := sh[0].no; nl := sh[0].nl;
     s[0].picker = es_picker(f, s[0].env[..], 12 / u, py, w - 24 / u, ph, ICON_CHECK);
     // the host's popover shows these rows (chat_row, chat_row_value): the picker keeps them and paints nothing
@@ -315,7 +370,7 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   in := app_sidebar(f, "drawer", "drawer.scrim", 0, 0, w, h, top, s[0].share, "Menu", CH_HIT_SCRIM);
   if in.w > 0 {
     a := k.app;
-    _ := app_sidebar_head(f, "drawer.title", in.x, in.y + 4 / u, in.w, "OpenAgents", "drawer.search", ICON_MAGNIFER, 0);
+    _ := app_sidebar_head(f, "drawer.title", in.x, in.y + 4 / u, in.w, "OpenAgents", "drawer.search", ICON_MAGNIFER, 455);
     by := h - s[0].safe_bottom / u - a.gap * 2 - k.control_h;
     iy := in.y + 4 / u + a.icon_button + a.gap * 2;
     iy+=app_sidebar_item(f,"drawer.chat",in.x,iy,in.w,-1,"Chat",ifx s[0].section==0 then EL_S_CURRENT else 0,410);
@@ -334,7 +389,7 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   }
   // The floating control remains visible over the pushed page. Keep it in
   // the live cover's semantics too, so accessibility can reach and close it.
-  if s[0].drawer && s[0].menu_side>0 {ch_menu_row(s,f,s[0].menu_x+app_sidebar_shift(w,s[0].share),s[0].menu_y);}
+  if s[0].drawer && s[0].menu_side>0 {if s[0].native {ch_menu_row(s,f,s[0].menu_x+app_sidebar_shift(w,s[0].share),s[0].menu_y);}else {_:=app_nav_button(f,"nav.menu",s[0].menu_x+app_sidebar_shift(w,s[0].share),s[0].menu_y,true,0,CH_HIT_MENU);}}
 }
 // The login page: the whole screen over the chat, its Back button where the menu button was, and the
 // login flow's form under it. It holds every press while it shows.
@@ -364,10 +419,18 @@ ch_login_close :: (s: [] ChatPage) -> bool {
 }
 ch_stamp :: (s: [] ChatPage) -> int { return surface_stamp(ch_live(s)); }
 // A drawer destination leaves Settings, including its nested Usage page.
-ch_main :: (s:[]ChatPage) {s[0].renderer=false;s[0].usage[0].open=false;s[0].usage[0].code_ready=false;s[0].identity[0].open=false;s[0].identity[0].backup=false;s[0].identity[0].confirm=0;}
+ch_main :: (s:[]ChatPage) {s[0].thread_menu=false;s[0].thread_details=false;s[0].renderer=false;s[0].usage[0].open=false;s[0].usage[0].code_ready=false;s[0].identity[0].open=false;s[0].identity[0].backup=false;s[0].identity[0].confirm=0;}
 // A press on a committed row. Send does nothing yet.
 ch_press :: (s: [] ChatPage, row: int) -> bool {
   sf := ch_live(s); act := surface_action(sf, row); l := s[0].lf[..];
+  if act==450 || act==451 {s[0].thread_menu=act==450;s[0].thread_details=act==451;keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"),0);ch_set_focus(s,"");return true;}
+  if act==452 {s[0].thread_menu=false;s[0].thread_details=false;return true;}
+  if act==455 {ch_main(s);s[0].drawer=false;s[0].section=2;ch_set_focus(s,"");ch_step(s);return true;}
+  if act==456 {ch_set_focus(s,"history.search");return true;}
+  if act==457 {s[0].thread_details=false;s[0].thread_menu=false;s[0].usage[0].open=true;ch_set_focus(s,"");ch_step(s);return true;}
+  if act==453 {s[0].thread_menu=false;s[0].thread_details=false;_=es_press(s[0].env[..],"composer.environment",ch_now(s));ch_step(s);return true;}
+  if act==454 {v:=s[0].view[..];n:=0;for i:0..<v[0].model[0].n {r:=v[0].model[0].rows[i];if r.kind==VK_MESSAGE || r.kind==VK_REPLY || r.kind==VK_SENT || r.kind==VK_DEVICE_MESSAGE || r.kind==VK_DEVICE_SENT {text:=view_row_text(v,view_chat_of(s[0].core),r);if n+text.count+2>v[0].copy.count {return false;}if n>0 {n=el_put(v[0].copy[..],n,"\n\n");}n=el_put(v[0].copy[..],n,text);}}
+    if n<1 {return false;}_:=view_dispatch(s[0].core,VIEW_C_COPY,cast(string)v[0].copy[0..<n],ch_now(s),s[0].core[0].wall_ms);s[0].thread_menu=false;return true;}
   // a field pressed through VoiceOver or the driver gets the keyboard as a tap's would
   t := [1] ElTable.[ch_rows(s)];
   if !elt_ok(t[..],row) || (t[0].rows[row].state & EL_S_DISABLED)!=0 {return false;}
@@ -478,7 +541,7 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
   t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   if !s[0].reduced { s[0].time += t; }
   a[0].frame += 1;
-  k := arcade_phone_skin();
+  k := conversation_skin();
   // the sidebar's open share for this frame first: the ground, the push and the dim all draw from it
   s[0].share = app_sidebar_ease(s[0].share, s[0].drawer, t, s[0].reduced);
   // the page's ground lightens while the sidebar pushes it, so it reads apart from the black panel
@@ -540,14 +603,14 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
     return true;
   }
   if phase == 1 {
-    if was != id { s[0].pressed_n = 0; }
+    if was != id && !uiframe_field_capture(sf,was,ch_focus(s),ux-s[0].down_x,uy-s[0].down_y,CH_MOVE) { s[0].pressed_n = 0; }
     // a swipe left closes the open drawer; a swipe right from the left edge opens it
     if !s[0].swiped && s[0].drawer && ux - s[0].down_x < -CH_SWIPE { s[0].drawer = false; s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
     if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { s[0].drawer = true; s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
     // on the login page the same swipe goes back to the chat
     if !s[0].swiped && s[0].lf[0].open && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { _ := ch_login_close(s); s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
     // on the page, a touch that travels up or down scrolls the transcript (up: toward the latest message)
-    if !s[0].swiped && ch_layer(s) == 0 && (s[0].scrolling || abs(uy - s[0].down_y) > CH_MOVE) {
+    if !s[0].swiped && (ch_layer(s) == 0 || s[0].thread_menu || s[0].thread_details) && (s[0].scrolling || abs(uy - s[0].down_y) > CH_MOVE) {
       s[0].scrolling = true; s[0].pressed_n = 0;
       if !s[0].native_scroll {chat_scroll_to(s,ch_scroll_offset(s)+s[0].last_y-uy);}
     }
@@ -559,7 +622,9 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
     s[0].last_y = uy;
     return true;
   }
-  held := s[0].pressed_n > 0 && was == id;
+  captured:=uiframe_field_capture(sf,was,ch_focus(s),ux-s[0].down_x,uy-s[0].down_y,CH_MOVE);
+  held := s[0].pressed_n > 0 && (was == id || captured);
+  if captured {row=surface_find(sf,was);}
   s[0].touching = false; s[0].pressed_n = 0;
   return phase == 2 && held && ch_press(s, row);
 }
@@ -595,9 +660,9 @@ chat_draft :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) { if s
 // login.email or login.code. Its box in points (x, y, w, h) for a login field.
 chat_focus :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ch_out(out, ch_focus(s)); }
 chat_field_box :: (s: [] ChatPage, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 4 || (ch_login_field(ch_focus(s)) == LF_FIELD_NONE && ch_focus(s)!="identity.secret" && !ps_editing(ch_focus(s))) { return false; }
+  if s.count < 1 || out.count < 4 || app_field_kind(ch_focus(s))<0 { return false; }
   t := [1] ElTable.[ch_rows(s)]; i := elt_find(t[..], ch_focus(s));
-  if i < 0 { return false; }
+  if i < 0 || t[0].rows[i].role!=EL_FIELD { return false; }
   r := t[0].rows[i]; u := ch_u(s);
   out[0] = r.x * u; out[1] = r.y * u; out[2] = r.w * u; out[3] = r.h * u;
   return true;
@@ -605,7 +670,7 @@ chat_field_box :: (s: [] ChatPage, out: [] f32) -> bool #export_c #effects(all) 
 // The content rectangle in points, from the same skin and committed row as
 // the painter. SDK adapters add only their editor's own native text insets.
 chat_field_text_box :: (s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) {
- if !chat_field_box(s,out) {return false;}k:=arcade_phone_skin();u:=ch_u(s);pad:=k.chrome.field_pad*u;
+ if !chat_field_box(s,out) {return false;}k:=conversation_skin();u:=ch_u(s);pad:=k.chrome.field_pad*u;
  out[0]+=pad;out[2]-=2*pad;
  if chat_field_kind(s)==4 {out[1]+=pad;out[3]-=2*pad;}
  else {height:=k.body.line*u;out[1]+=(out[3]-height)/2;out[3]=height;}
@@ -614,17 +679,20 @@ chat_field_text_box :: (s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) {
 // A login field's value, and its whole value after an edit (false: not taken; show the flow's again).
 chat_field_text :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; } f := ch_login_field(ch_focus(s)); l := s[0].lf[..];
+  if ch_focus(s)=="history.search" {return ch_out(out,cast(string)s[0].search[0..<s[0].search_n]);}
   if s[0].usage[0].open && ch_focus(s)=="usage.label" {return ch_out(out,cast(string)s[0].usage[0].label[0..<s[0].usage[0].nl]);}
   return ch_out(out, ifx f == LF_FIELD_EMAIL then lf_email(l) else ifx f == LF_FIELD_CODE then lf_code(l) else ps_field(s[0].projects[..],ch_focus(s)));
 }
 chat_set_field :: (s: [] ChatPage, text: string) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; } f := ch_login_field(ch_focus(s));
+  if ch_focus(s)=="history.search" {if text.count>s[0].search.count {return false;}s[0].search_n=el_copy(s[0].search[..],text);keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"history.viewport"),0);return true;}
   if s[0].usage[0].open && ch_focus(s)=="usage.label" {n:=pa_copy(s[0].usage[0].label[..],text);if n<0 {return false;}s[0].usage[0].nl=n;return true;}
   if s[0].section==1 && ps_editing(ch_focus(s)) {return ps_edit(s[0].projects[..],ch_focus(s),text);}
   return f != LF_FIELD_NONE && lf_set(s[0].lf[..], f, text);
 }
 // Return in a login field: the card's step action.
 chat_submit :: (s: [] ChatPage) -> bool #export_c #effects(all) {
+  if s.count>0 && ch_focus(s)=="history.search" {ch_set_focus(s,"");return true;}
   if s.count>0 && (ps_editing(ch_focus(s)) || ch_focus(s)=="usage.label") {ch_set_focus(s,"");return true;}
   if s.count < 1 || ch_login_field(ch_focus(s)) == LF_FIELD_NONE { return false; }
   done := lf_submit(s[0].lf[..]); ch_step(s); return done;
@@ -645,34 +713,40 @@ chat_private_mode :: (s:[]ChatPage)->int #export_c #effects(all) {
  v:=s[0].identity[0];return ifx v.backup then 2 else ifx v.confirm==IKS_RESTORE then 1 else 0;
 }
 ch_scroll_offset :: (s:[]ChatPage)->f32 {
+ if s[0].thread_menu || s[0].thread_details {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"));}
  if s[0].drawer {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"));}
  if s[0].lf[0].open {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"));}
  if s[0].usage[0].open || s[0].renderer {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
  if s[0].identity[0].open {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"));}
+ if s[0].section==2 {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"history.viewport"));}
  if s[0].section>0 {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
  return s[0].view[0].list[0].top;
 }
 ch_scroll_max :: (s:[]ChatPage)->f32 {
+ if s[0].thread_menu || s[0].thread_details {return scroll_max(s[0].menu_content,s[0].menu_viewport);}
  if s[0].drawer {return scroll_max(s[0].history_content,s[0].history_viewport);}
  if s[0].lf[0].open {return scroll_max(s[0].login_content,s[0].login_viewport);}
  if s[0].usage[0].open || s[0].renderer {return scroll_max(s[0].section_content,s[0].section_viewport);}
  if s[0].identity[0].open {return scroll_max(s[0].settings_content,s[0].settings_viewport);}
+ if s[0].section==2 {return scroll_max(s[0].history_content,s[0].history_viewport);}
  if s[0].section>0 {return scroll_max(s[0].section_content,s[0].section_viewport);}
  l:=s[0].view[0].list[0];return scroll_max(l.content,l.viewport);
 }
 chat_scroll_to :: (s:[]ChatPage,offset:f32) #export_c #effects(all) {
- if s.count<1 || (ch_layer(s)!=0 && !s[0].lf[0].open && !s[0].drawer) {return;}
+ if s.count<1 || (ch_layer(s)!=0 && !s[0].lf[0].open && !s[0].drawer && !s[0].thread_menu && !s[0].thread_details) {return;}
  value:=ifx offset<0 then 0.0f32 else ifx offset>ch_scroll_max(s) then ch_scroll_max(s) else offset;
- if s[0].drawer {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),value);}
+ if s[0].thread_menu || s[0].thread_details {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"),value);}
+ else if s[0].drawer {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),value);}
  else if s[0].lf[0].open {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"),value);}
  else if s[0].usage[0].open || s[0].renderer {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
  else if s[0].identity[0].open {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"),value);}
+ else if s[0].section==2 {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"history.viewport"),value);}
  else if s[0].section>0 {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
  else {view_scroll(s[0].view[..],value-ch_scroll_offset(s));}
 }
 chat_scroll_info :: (s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) {
  if s.count<1 || out.count<3 {return false;}
- out[0]=ifx ch_layer(s)==0 || s[0].lf[0].open || s[0].drawer then 1.0f32 else 0.0f32;out[1]=ch_scroll_offset(s)*ch_u(s);out[2]=ch_scroll_max(s)*ch_u(s);return true;
+ out[0]=ifx ch_layer(s)==0 || s[0].lf[0].open || s[0].drawer || s[0].thread_menu || s[0].thread_details then 1.0f32 else 0.0f32;out[1]=ch_scroll_offset(s)*ch_u(s);out[2]=ch_scroll_max(s)*ch_u(s);return true;
 }
 chat_native_scroll :: (s:[]ChatPage,on:bool) #export_c #effects(all) {if s.count>0 {s[0].native_scroll=on;}}
 chat_action :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } act := s[0].action; s[0].action = CH_ACT_NONE; return act; }
@@ -699,7 +773,7 @@ chat_editor :: (s: [] ChatPage, out: [] f32) -> bool #export_c #effects(all) {
 // the placeholder's ink and the caret's, each straight RGBA.
 chat_style :: (out: [] f32) -> bool #export_c #effects(all) {
   if out.count < 14 { return false; }
-  k := arcade_phone_skin();
+  k := conversation_skin();
   out[0] = k.body.size * ARCADE_PHONE_SCALE; out[1] = 23;
   out[2] = k.ink.r; out[3] = k.ink.g; out[4] = k.ink.b; out[5] = k.ink.a;
   out[6] = k.faint.r; out[7] = k.faint.g; out[8] = k.faint.b; out[9] = k.faint.a;
@@ -777,6 +851,7 @@ chat_layer :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 |
 // VoiceOver's scroll: the transcript a page up (dir 1, toward the latest) or down (-1). True when it moved.
 chat_scroll_page :: (s: [] ChatPage, dir: int) -> bool #export_c #effects(all) {
   if s.count<1 || !s[0].ready {return false;}
+  if s[0].thread_menu || s[0].thread_details {before:=ch_scroll_offset(s);chat_scroll_to(s,before+cast(f32)dir*s[0].menu_viewport*0.8);return before!=ch_scroll_offset(s);}
   if s[0].identity[0].open || s[0].lf[0].open || s[0].drawer || s[0].section>0 {before:=ch_scroll_offset(s);height:=ifx s[0].drawer then s[0].history_viewport else ifx s[0].lf[0].open then s[0].login_viewport else ifx s[0].identity[0].open then s[0].settings_viewport else s[0].section_viewport;chat_scroll_to(s,before+cast(f32)dir*height*0.8);return before!=ch_scroll_offset(s);}
   if ch_layer(s)!=0 || s[0].view[0].viewport<=0 {return false;}
   view_scroll(s[0].view[..], cast(f32) dir * s[0].view[0].viewport * 0.8);
@@ -815,6 +890,24 @@ ch_test_tap :: (s: [] ChatPage, id: string) -> bool {
 
 ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(s, 0), id) >= 0 || surface_find(ch_sf(s, 1), id) >= 0; }
 
+#test "Recents search uses the declared native editor contract and returns to chat without losing its draft" #steps 2000000000 {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;app_init(c[..]);ch_test_atlas(s[0].atlas[..]);chat_attach(s[..],c[..],"");_=ch_test_frame(s[..],o[..]);
+ #assert chat_set_text(s[..],"Kept draft");#assert chat_activate(s[..],"chat.options");_=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"thread.recents");_=ch_test_frame(s[..],o[..]);
+ #assert ch_test_tap(s[..],"history.search");_=ch_test_frame(s[..],o[..]);box:[4]f32;
+ #assert chat_field_kind(s[..])==APP_FIELD_PLAIN && chat_field_text_box(s[..],box[..]) && box[2]>0;
+ #assert chat_set_field(s[..],"notes") && s[0].search_n==5;#assert chat_submit(s[..]);_=ch_test_frame(s[..],o[..]);
+ #assert chat_activate(s[..],"nav.menu");_=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"drawer.chat");_=ch_test_frame(s[..],o[..]);
+ #assert s[0].section==0 && ch_draft(s[..])=="Kept draft" && ch_test_has(s[..],VIEW_COMPOSER_ID);
+}
+
+#test "conversation options scroll on a small phone at maximum text size" #steps 2000000000 {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;app_init(c[..]);ch_test_atlas(s[0].atlas[..]);chat_attach(s[..],c[..],"");_=chat_text_zoom(s[..],CH_ZOOM_MAX);
+ chat_env(s[..],20,20,0,false,0,true);_=chat_frame(s[..],o[0].v[..],960,1704,3,0);#assert chat_activate(s[..],"chat.options");
+ _=chat_frame(s[..],o[0].v[..],960,1704,3,0);#assert ch_scroll_max(s[..])>0 && s[0].menu_viewport>0;
+ chat_scroll_to(s[..],ch_scroll_max(s[..]));_=chat_frame(s[..],o[0].v[..],960,1704,3,0);
+ #assert ch_test_tap(s[..],"thread.recents") && s[0].section==2 && chat_refused(s[..])==0;
+}
+
 #test "chat page: the menu button opens the drawer; the scrim and a swipe close it; logged out it holds Log in, which pushes the login page; Back and a swipe go back; a tap outside a field takes the keyboard" #steps 2000000000 {
   s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
   _ := ch_test_frame(s[..], o[..]);
@@ -823,7 +916,7 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   // before the host says who is logged in, neither Log in nor Log out shows
   #assert ch_test_has(s[..], "drawer") && ch_test_has(s[..], "drawer.scrim") && !ch_test_has(s[..], "drawer.login") && !ch_test_has(s[..], "drawer.logout") && chat_refused(s[..]) == 0;
   // only what works: New chat; no search button, no avatar while logged out
-  #assert ch_test_has(s[..], "drawer.new") && ch_test_has(s[..], "drawer.title") && !ch_test_has(s[..], "drawer.search") && !ch_test_has(s[..], "drawer.account");
+  #assert ch_test_has(s[..], "drawer.new") && ch_test_has(s[..], "drawer.title") && ch_test_has(s[..], "drawer.search") && !ch_test_has(s[..], "drawer.account");
   #assert ch_test_tap(s[..], "drawer.scrim") && !s[0].drawer; _ := ch_test_frame(s[..], o[..]);
   #assert !ch_test_has(s[..], "drawer");
   // a swipe right from the left edge opens it, a swipe left closes it
@@ -878,7 +971,7 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   core: [1] AppCore; app_init(core[..]);
   chat_attach(s[..], core[..], "");
   n := ch_test_frame(s[..], o[..]);
-  #assert n > 0 && ch_test_text(s[..], "OpenAgents") == 1 && ch_test_text(s[..], "Message") == 1 && chat_refused(s[..]) == 0;
+  #assert n > 0 && ch_test_text(s[..], "What can we build?") == 1 && ch_test_text(s[..], "Message") == 1 && chat_refused(s[..]) == 0;
   #assert ch_test_has(s[..], "chat.composer") && ch_test_has(s[..], "chat.composer.send") && ch_test_has(s[..], "chat.empty") && ch_test_has(s[..], "nav.menu");
   #assert ch_test_tap(s[..], "chat.composer") && chat_action(s[..]) == CH_ACT_FOCUS && chat_action(s[..]) == CH_ACT_NONE;
   id: [EL_ID] u8; k := chat_focus(s[..], id[..]); #assert cast(string) id[0..<k] == "chat.composer";

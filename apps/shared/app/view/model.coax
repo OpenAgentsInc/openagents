@@ -80,6 +80,7 @@ ViewFacts :: struct {
   device: bool;         // the conversation runs on a paired computer
   send_unsure: bool;    // device: a message was sent and no answer came
   reading: bool;        // device: a kept conversation is not read yet
+  readonly:bool;        // an observed native transcript, not an owned session
   sent: string;         // device: the message on its way ("": none)
   send_refused: bool;   // device: the computer refused the message; nothing was sent, Try again sends it
 }
@@ -92,6 +93,7 @@ VIEW_W_LOST :: "We lost track of this reply.";
 VIEW_W_STOPPED :: "Stopped.";
 
 ViewRow :: struct {
+  group_count:int;group_last:int;
   kind: int;
   id: [EL_ID] u8; id_n: int;
   index: int;           // VK_MESSAGE: the history page's message; VK_TOOL, VK_PERMISSION: the session part
@@ -99,6 +101,26 @@ ViewRow :: struct {
   stamp: int;           // changes whenever the row's height may change
   text: string;         // VK_NOTICE: what to say (a constant, or the core's note)
   act: int;             // VK_NOTICE: VIEW_DO_*
+}
+
+// Consecutive tools are one collapsible activity row. Keep the first call's
+// identity and bounded chunks, so a streaming append does not rekey a group.
+view_group_tools :: (vm:[]ViewModel) {
+ out:=0;i:=0;
+ while i<vm[0].n {r:=vm[0].rows[i];j:=i+1;
+  if r.kind==VK_TOOL || r.kind==VK_DEVICE_TOOL {
+   while j<vm[0].n && j-i<16 && vm[0].rows[j].kind==r.kind {j+=1;}
+   if j-i>1 {r.group_count=j-i;r.group_last=vm[0].rows[j-1].index;for k:i+1..<j {r.stamp+=vm[0].rows[k].stamp;}r.stamp+=r.group_count*37;}
+  }
+  vm[0].rows[out]=r;out+=1;i=j;
+ }
+ vm[0].n=out;
+}
+
+#test "conversation activity groups consecutive tools without crossing messages or losing the first identity" {
+ v:[1]ViewModel;_=view_add(v[..],VK_MESSAGE,"message",0,1);_=view_add(v[..],VK_TOOL,"tool.first",3,2);_=view_add(v[..],VK_TOOL,"tool.second",5,3);_=view_add(v[..],VK_REPLY,"reply",0,4);
+ view_group_tools(v[..]);#assert v[0].n==3 && view_row_id(v[..],1)=="tool.first" && v[0].rows[1].group_count==2 && v[0].rows[1].index==3 && v[0].rows[1].group_last==5;
+ #assert v[0].rows[2].kind==VK_REPLY && v[0].rows[1].stamp!=2;
 }
 
 // One saved message's identity, decoded once for each history page.

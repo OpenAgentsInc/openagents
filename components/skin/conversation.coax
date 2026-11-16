@@ -1,0 +1,19 @@
+// Claude iOS capture geometry, in the OpenAgents grayscale palette.
+// References: docs/research/claude-ios/. No Claude artwork or brand marks.
+#load "arcade.coax";
+conversation_skin :: ()->UiSkin {
+ s:=arcade_phone_skin();s.name="OpenAgents conversation";u:f32=ARCADE_PHONE_SCALE;
+ s.canvas=hex(0x141414,1);s.surface=hex(0x202020,1);s.raised=hex(0x2c2c2c,1);
+ s.sunk=hex(0x1b1b1b,1);s.hairline=hex(0x343434,1);s.field_edge=hex(0x393939,1);s.hover=hex(0x363636,1);
+ s.ink=hex(0xeeeeee,1);s.muted=hex(0xa2a2a2,1);s.faint=hex(0x828282,1);
+ s.accent=s.ink;s.on_accent=s.canvas;s.border=0.6/u;
+ s.chat=UiConversation.{enabled=true,inset=14/u,action=44/u,header_pad=12/u,identity_radius=22/u,greeting_gap=16/u,mark=32/u,menu_w=246/u};
+ s.app.nav=44/u;s.app.nav_icon=19/u;s.app.icon_button=44/u;s.app.icon_well=42/u;s.app.icon=18/u;
+ s.app.bubble_radius=24/u;s.app.bubble_pad_x=16/u;s.app.bubble_pad_y=12/u;s.app.bubble_share=0.86;
+ s.app.tool_h=44/u;s.app.tool_pad=2/u;s.app.tool_radius=8/u;s.app.tool_icon=17/u;
+ s.app.side_row=44/u;s.app.side_head=32/u;
+ s.cmp.send=34/u;s.cmp.stop=12/u;s.cmp.stop_radius=3/u;s.cmp.chip_h=36/u;s.cmp.chip_radius=18/u;
+ s.tool=s.body;s.tool.face=s.small.face;s.tool.line=s.body.line;
+ s.code_wash=s.raised;s.header_wash=s.surface;
+ return s;
+}

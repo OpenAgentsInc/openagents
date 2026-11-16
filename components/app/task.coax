@@ -64,6 +64,7 @@ app_task_header :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTas
 // Returns its height.
 app_task_state :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTask) -> f32 {
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; h := s.md.line; mark := a.icon;
+  if s.chat.enabled {mark=a.notice_icon;}
   words := app_task_words(t);
   turning := !app_task_ended(t.state) && (t.stopping || t.state == APP_TASK_QUEUED || t.state == APP_TASK_RUNNING);
   my := y + (h - mark) / 2; dot := a.state_dot;
@@ -74,7 +75,7 @@ app_task_state :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTask
   else if t.state == APP_TASK_CANCELED { sheet_fill(sh, x + (mark - dot) / 2, y + (h - dot) / 2, dot, dot, s.border, s.muted); }
   else { _ := sheet_box(sh, x + (mark - dot) / 2, y + (h - dot) / 2, dot, dot, dot / 2, s.border, s.clear, s.muted); }
   tx := x + mark + a.gap;
-  ww := sheet_text(sh, m, -1, tx, y, h, s.strong.face, s.ink, words);
+  ww := sheet_text(sh, m, -1, tx, y, h, ifx s.chat.enabled then s.tool.face else s.strong.face, ifx s.chat.enabled then s.muted else s.ink, words);
   if t.detail.count > 0 { _ := sheet_text(sh, m, -1, tx + ww + a.gap, y, h, s.body.face, s.muted, app_fit(f, s.body.face, t.detail, w - (tx - x) - ww - a.gap)); }
   row := uiframe_semantic(f, id, EL_TEXT, words, x, y, w, h, EL_S_LIVE | (ifx turning then EL_S_BUSY else 0), 0);
   elt_value(f[0].rows, row, t.detail);
@@ -192,7 +193,7 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
   is_open := app_tool_is_open(f, k, open);
   shown := uiframe_spring(f, k, ifx is_open then 1.0f32 else 0.0f32);
   p := uiframe_press(f, k, id);
-  ground := sheet_box(sh, x, y, w, head, a.tool_radius, s.border, s.surface, s.hover);
+  ground := sheet_box(sh, x, y, w, head, a.tool_radius, ifx s.chat.enabled then 0.0f32 else s.border, ifx s.chat.enabled then s.clear else s.surface, ifx s.chat.enabled then s.clear else s.hover);
   if p > 0 { sheet_fill(sh, x, y, w, head, a.tool_radius, opacity(s.hover, p)); }
   words := ifx t.state == APP_TOOL_FAILED then "Failed" else ifx t.state == APP_TOOL_PENDING then "Waiting" else "";
   row := uiframe_semantic(f, id, EL_BUTTON, t.title, x, y, w, head,
@@ -202,7 +203,8 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
   // the header: icon, title, argument, state, chevron
   pen := x + a.tool_pad; mid := y + head / 2;
   if t.icon >= 0 { sheet_icon(sh, t.icon, pen, mid - a.tool_icon / 2, a.tool_icon, s.muted); pen += a.tool_icon + a.gap; }
-  pen += sheet_text(sh, m, -1, pen, mid - s.tool.line / 2, s.tool.line, s.tool.face, s.ink, t.title) + a.gap;
+  title:=app_fit(f,s.tool.face,sheet_single_line(sh,t.title),w-a.tool_icon-2*a.tool_chevron-4*a.gap-2*a.tool_pad);
+  pen += sheet_text(sh, m, -1, pen, mid - s.tool.line / 2, s.tool.line, s.tool.face, ifx s.chat.enabled then s.muted else s.ink, title) + a.gap;
   right := x + w - a.tool_pad - a.tool_chevron;
   sheet_icon(sh, ifx is_open then s.icon_chevron else a.icon_disclose, right, mid - a.tool_chevron / 2, a.tool_chevron, s.faint);
   right -= a.gap;
@@ -212,7 +214,7 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
     _ := sheet_text(sh, m, -1, right, mid - s.small.line / 2, s.small.line, s.small.face, ifx t.state == APP_TOOL_FAILED then s.ink else s.faint, words);
     right -= a.gap;
   }
-  if right > pen { _ := sheet_text(sh, m, -1, pen, mid - s.mono_small.line / 2, s.mono_small.line, s.mono_small.face, s.muted, app_fit(f, s.mono_small.face, t.arg, right - pen)); }
+  if right > pen {face:=ifx s.chat.enabled then s.tool.face else s.mono_small.face;_ := sheet_text(sh, m, -1, pen, mid - s.tool.line / 2, s.tool.line, face, s.muted, app_fit(f, face, sheet_single_line(sh,t.arg), right - pen)); }
   if !(shown > 0) { return head; }
   // the body, revealed: its input, then its result
   bx := x + a.tool_pad; bw := w - 2 * a.tool_pad; top := y + head;
@@ -254,9 +256,15 @@ app_tool_group :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: str
   elt_value(f[0].rows, row, app_number(f, n, ifx n == 1 then " call" else " calls"));
   sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, head);
   mid := y + head / 2;
-  sheet_icon(sh, ifx is_open then s.icon_chevron else a.icon_disclose, x, mid - a.tool_chevron / 2, a.tool_chevron, s.muted);
-  tw := sheet_text(sh, m, -1, x + a.tool_chevron + a.gap, mid - s.tool.line / 2, s.tool.line, s.tool.face, s.ink, title);
-  _ := sheet_text(sh, m, -1, x + a.tool_chevron + 2 * a.gap + tw, mid - s.small.line / 2, s.small.line, s.small.face, s.faint, app_number(f, n, ifx n == 1 then " call" else " calls"));
+  if s.chat.enabled {
+    sheet_icon(sh,ICON_CHECKLIST,x,mid-a.tool_icon/2,a.tool_icon,s.muted);
+    _:=sheet_text(sh,m,-1,x+a.tool_icon+a.gap,mid-s.tool.line/2,s.tool.line,s.tool.face,s.muted,app_fit(f,s.tool.face,title,w-a.tool_icon-2*a.gap-a.tool_chevron-(ifx running then a.tool_icon+a.gap else 0.0f32)));
+    sheet_icon(sh,ifx is_open then s.icon_chevron else a.icon_disclose,x+w-a.tool_chevron-(ifx running then a.tool_icon+a.gap else 0.0f32),mid-a.tool_chevron/2,a.tool_chevron,s.muted);
+  }else {
+    sheet_icon(sh, ifx is_open then s.icon_chevron else a.icon_disclose, x, mid - a.tool_chevron / 2, a.tool_chevron, s.muted);
+    tw := sheet_text(sh, m, -1, x + a.tool_chevron + a.gap, mid - s.tool.line / 2, s.tool.line, s.tool.face, s.ink, title);
+    _ := sheet_text(sh, m, -1, x + a.tool_chevron + 2 * a.gap + tw, mid - s.small.line / 2, s.small.line, s.small.face, s.faint, app_number(f, n, ifx n == 1 then " call" else " calls"));
+  }
   if running { activity(sh, s, x + w - a.tool_icon, mid - a.tool_icon / 2, a.tool_icon, f[0].clock, f[0].reduced_motion); }
   if !is_open { return head; }
   h := head;

@@ -332,7 +332,13 @@ app_menu_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: strin
   row := uiframe_semantic(f, id, EL_ROW, title, x, y, w, s.control_h, state, ifx off then 0 else action);
   elt_value(f[0].rows, row, detail);
   hits := sh[0].nh;
-  h := choice_row(sh, f[0].m, ifx off then app_off_skin(s) else s, x, y, w, title, detail, current, s.icon_check, UIFRAME_HIT, row, 0);
+  h:=s.control_h;
+  if detail.count==0 {
+    pad:=ifx s.chat.enabled then a.gap_small else s.control_pad;reserve:=ifx current then a.icon+a.gap else 0.0f32;
+    _:=sheet_text(sh,f[0].m,-1,x+pad,y+(h-s.body.line)/2,s.body.line,s.body.face,ifx off then s.faint else s.ink,app_fit(f,s.body.face,sheet_single_line(sh,title),w-2*pad-reserve));
+    if current {sheet_icon(sh,s.icon_check,x+w-pad-a.icon,y+(h-a.icon)/2,a.icon,s.accent);}
+    sheet_hit(sh,UIFRAME_HIT,row,0,x,y,w,h);
+  }else {h=choice_row(sh, f[0].m, ifx off then app_off_skin(s) else s, x, y, w, title, detail, current, s.icon_check, UIFRAME_HIT, row, 0);}
   if off { sh[0].nh = hits; }
   if ground >= 0 { sh[0].under[ground].h = h; }
   if row >= 0 { f[0].rows[0].rows[row].h = h; }

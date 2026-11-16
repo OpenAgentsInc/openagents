@@ -11,8 +11,7 @@
 //     rows; the Metal view itself is hidden from accessibility. The platform editor and the system
 //     controls stand for their own rows;
 //   - large text: the person's Dynamic Type size is the page's text zoom (oc_text_zoom);
-//   - the system controls over the page (GlassChrome.swift): the Liquid Glass menu button and the
-//     chips' picker as a popover, which the page keeps the rows of and does not paint;
+//   - GPU navigation, menus and pickers share the page's semantic rows;
 //   - the shared app core with its native services (AppCore.swift), attached to the page.
 import UIKit
 
@@ -39,7 +38,6 @@ import UIKit
     private lazy var field:FieldEditor=FieldEditor(style:style())
     /// The shared app core and the native services it asks for.
     private var services:AppServices?
-    private var chrome:GlassChrome?
     private lazy var editor:ComposerEditor=ComposerEditor(style:style())
 
     override func viewDidLoad() {
@@ -80,10 +78,9 @@ import UIKit
         view.addSubview(scrollDriver);scrollDriver.addSubview(canvas);canvas.frame=scrollDriver.bounds
         canvas.autoresizingMask=[.flexibleWidth,.flexibleHeight];oc_native_scroll(owner,1)
         canvas.isAccessibilityElement=false;canvas.accessibilityElementsHidden=true
-        // the menu button and the chips' picker are system controls over the page
-        oc_native(owner,1)
-        let chrome=GlassChrome(on:self);self.chrome=chrome
-        chrome.activate={ [weak self] id in guard let self,let owner=self.owner else {return false};let pressed=oc_activate(owner,id) != 0;self.wake();return pressed }
+        // Coax draws navigation and pickers on the GPU. UIKit owns only
+        // active text entry, accessibility and system credential ceremonies.
+        oc_native(owner,0)
         access=makeAccess()
         textSize()
         field.delegate=self;field.addTarget(self,action:#selector(fieldChanged),for:.editingChanged)
@@ -118,7 +115,6 @@ import UIKit
         }
         // Debug builds: `-OAPress nav.menu,drawer.scrim` presses those rows in turn after launch, as
         // VoiceOver would, so a screen can be reached and captured without a hand on the simulator.
-        if let owner,!pressedAtLaunch {DispatchQueue.main.asyncAfter(deadline:.now()+0.8) { [weak self] in self?.chrome?.sample(owner)}}
         // Debug builds: `-OAEdit "press:chat.composer|type:Hi|mark:ni|commit:に|paste:there|print"` plays edits through
         // the platform editor that holds the keyboard, as a keyboard, an input method and Paste would,
         // one step every 0.6 s, then prints what the editor and the page each hold (OA-EDIT lines).
@@ -203,7 +199,6 @@ import UIKit
         #if DEBUG
         dumpAccess()
         #endif
-        chrome?.sync(owner,rowsStamp:oc_rows_stamp(owner))
         // A static page sleeps: no frame runs until something wakes it.
         if oc_moving(owner)==0 {display?.isPaused=true}
     }
@@ -370,8 +365,6 @@ import UIKit
         let access=KitAccess(container:view,source:self)
         access.stand={ [weak self] row in
             guard let self else {return .skip}
-            // the system controls stand for their own rows; the picker's popover is SwiftUI's own
-            if let chrome=self.chrome,GlassChrome.covers(row.id) {return row.id=="nav.menu" ? .view(chrome.menu):row.id=="login.back" ? .view(chrome.back):.skip}
             if row.id=="chat.composer" {
                 // the composer is the platform editor: over the text while it has the keyboard, else standing for the field's row
                 self.editor.box=row.frame;self.editor.accessibilityIdentifier=row.id;self.editor.accessibilityLabel=row.label;self.editor.placeholder=row.label
@@ -395,7 +388,7 @@ import UIKit
         // VoiceOver's escape: the open picker, the login card or the sidebar closes, as their own close does
         access.escape={ [weak self] in
             guard let self,let owner=self.owner else {return false}
-            for id in ["settings.back","env.close","login.back","drawer.scrim"] where oc_activate(owner,id) != 0 {self.wake();return true}
+            for id in ["thread.scrim","settings.back","env.close","login.back","drawer.scrim"] where oc_activate(owner,id) != 0 {self.wake();return true}
             return false
         }
         #if DEBUG

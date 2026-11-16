@@ -4,6 +4,14 @@
 
 #load "select-checks.coax";
 
+#test "visible picker discovery schedules reads and sleeps when hidden or backgrounded" {
+ c:[1]AppCore;app_init(c[..]);c[0].auth=AUTH_IN;c[0].foreground=true;c[0].mono_ms=100;
+ b:[1]EsBridge;s:=[1]EnvSelect.[es_new()];es_login(s[..],true);es_open_env(s[..],100);
+ es_bridge_sync(c[..],b[..],s[..]);#assert b[0].poll_at==15100;
+ es_close(s[..]);es_bridge_sync(c[..],b[..],s[..]);#assert b[0].poll_at==0;
+ es_open_env(s[..],200);c[0].foreground=false;es_bridge_sync(c[..],b[..],s[..]);#assert b[0].poll_at==0;
+}
+
 // The next request the core holds: its path, after the host took it.
 esb_take :: (c: [] AppCore, t: int, path: [] u8) -> int #effects(all) {
   op := app_host_next(c); if op < 1 { return -1; }
