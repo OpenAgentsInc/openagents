@@ -111,25 +111,3 @@ final class FieldProxy:UITextField {
     override var canBecomeFirstResponder:Bool {false}
 }
 
-/// Ends text entry on a tap outside the focused field (KitFocus), for every field of a surface.
-/// It never takes the tap from the surface: the surface's own touches still arrive, so a control
-/// under the tap acts as usual and the same tap gives up the keyboard. Install it once on the
-/// surface's view; `field` gives the focused field's frame in that view, nil when none holds the
-/// keyboard, and `end` resigns the platform editor.
-@MainActor final class KitTapOutside:NSObject,UIGestureRecognizerDelegate {
-    private let field:()->CGRect?
-    private let end:()->Void
-    private weak var view:UIView?
-    init(on view:UIView,field:@escaping ()->CGRect?,end:@escaping ()->Void) {
-        self.field=field;self.end=end;self.view=view
-        super.init()
-        let tap=UITapGestureRecognizer(target:self,action:#selector(tapped(_:)))
-        tap.cancelsTouchesInView=false;tap.delaysTouchesBegan=false;tap.delaysTouchesEnded=false;tap.delegate=self
-        view.addGestureRecognizer(tap)
-    }
-    @objc private func tapped(_ tap:UITapGestureRecognizer) {
-        guard tap.state == .ended,let view else {return}
-        if KitFocus.tapEndsEditing(at:tap.location(in:view),field:field()) {end()}
-    }
-    func gestureRecognizer(_ g:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith other:UIGestureRecognizer)->Bool {true}
-}

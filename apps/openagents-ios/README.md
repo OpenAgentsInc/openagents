@@ -1,7 +1,8 @@
 # OpenAgents for iOS
 
 The iOS app is one screen: the chat page. Today it is a title over the
-composer. You can type in the composer; Send does nothing yet. The page is compiled Coax drawn
+composer, with the navigation button at the top left: it opens the drawer, whose Log in opens the
+email login card. You can type in the composer; Send does nothing yet. The page is compiled Coax drawn
 by the shared GPU component kit in one Metal view. The app compiles nothing
 to JavaScript or WebAssembly, has no web view and no Updates path. The plan
 is in [components/gpu-components.md](../../components/gpu-components.md#the-ios-app-grown-screen-by-screen):
@@ -17,7 +18,8 @@ Bundle ID `com.openagents.app`, team `HQWSG26L43`, version 1.0.0.
 | `app.coax` | The root that `generate.sh` compiles to C: the chat page, the shared app core and the atlas tables |
 | `host.c`, `host.h` | The page's GPU carrier, included by `components/gallery/linux/main.c` |
 | `ComponentsHost.m` | Compiles the shared Apple GPU host into the app |
-| `App.swift` | App delegate and chat screen: display link, platform editor, VoiceOver, a tap outside a field ends editing |
+| `App.swift` | App delegate and chat screen: display link, platform editor, VoiceOver; the editor for the field the page focuses (a tap outside it hides the keyboard, kit/frame.coax) |
+| `DevGallery.swift` | The dev menu, debug builds only: the app set's gallery. Launch with `-OADevGallery YES` or double-tap with three fingers |
 | `AppCore.swift` | The shared app core (`apps/shared/app/`) with the native services: HTTP under the core's policy, the account, the clipboard, links, lifecycle and rejoin |
 | `core-host.c`, `core-host.h` | The core's `app_host_` entry points as plain C, included by `host.c` |
 | `Bridge.h` | The C functions Swift sees |
@@ -29,8 +31,7 @@ Bundle ID `com.openagents.app`, team `HQWSG26L43`, version 1.0.0.
 | `release.sh` | Archive and upload to App Store Connect; `tools/app_store.py` is its API client |
 | `OpenAgents/` | Icons, `Info.plist` and entitlements |
 
-Shared code the app builds: `apps/shared/native/` (the platform editors, the tap-outside rule
-`KitFocus.swift`, and the services `AppHTTP`, `AppAccount`, `AppWake`, `AppDevice`,
+Shared code the app builds: `apps/shared/native/` (the platform editors, and the services `AppHTTP`, `AppAccount`, `AppWake`, `AppDevice`,
 `AppEffects`, `AppCoreBridge`; checked by `apps/shared/native/app-services-check.sh`),
 `apps/shared/host/apple/AppAuth.swift`, `DeviceKey.swift`,
 `apps/shared/host/apple/ui-host.m` and `components/`.

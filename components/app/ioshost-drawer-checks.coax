@@ -1,0 +1,30 @@
+// Checks for the sliding drawer (ioshost-drawer.coax).
+#load "checks-kit.coax";
+
+#test "app drawer: closed draws nothing; open dims the rest, the scrim closes it, the panel takes its own presses; the share eases to its goal" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", false);
+  in := app_drawer(f, "drawer", "drawer.scrim", 100, 200, 10, 0, "Menu", 7);
+  app_drawer_end(f, in);
+  #assert app_test_end(t[..]) && in.w == 0 && app_test_find(t[..], "drawer") < 0 && app_test_find(t[..], "drawer.scrim") < 0;
+  app_test_begin(t[..], "", "", false);
+  in = app_drawer(f, "drawer", "drawer.scrim", 100, 200, 10, 1, "Menu", 7);
+  b := app_button(f, "drawer.login", in.x, in.y, in.w, -1, "Log in", APP_BUTTON_PRIMARY, 0, 8);
+  app_drawer_end(f, in);
+  #assert app_test_end(t[..]) && in.w > 0 && b > 0;
+  p := app_test_row(t[..], "drawer"); sc := app_test_row(t[..], "drawer.scrim");
+  #assert p.x == 0 && p.w == app_drawer_width(100) && sc.x == p.w && sc.x + sc.w == 100 && sc.action == 7 && app_test_label(t[..], "drawer.scrim") == "Close menu";
+  #assert app_test_pressable(t[..], "drawer.scrim") && app_test_pressable(t[..], "drawer.login");
+  // a press on the panel away from its button lands on the panel, which does nothing
+  #assert surface_id(t[0].sf[..], surface_hit(t[0].sf[..], 2, 190)) == "drawer";
+  // half open: the panel is half out of the screen
+  app_test_begin(t[..], "", "", false);
+  in = app_drawer(f, "drawer", "drawer.scrim", 100, 200, 10, 0.5, "Menu", 7);
+  app_drawer_end(f, in);
+  #assert app_test_end(t[..]) && app_test_row(t[..], "drawer").x < 0;
+  // easing
+  s: f32 = 0;
+  for i: 0..<120 { s = app_drawer_ease(s, true, 0.016, false); }
+  #assert s == 1 && app_drawer_ease(0.5, false, 0.016, false) < 0.5 && app_drawer_ease(0.5, false, 0.016, true) == 0 && app_drawer_ease(0, true, 0.016, true) == 1;
+  #assert app_drawer_width(1000) == APP_DRAWER_MOST && app_drawer_width(100) < 100;
+}

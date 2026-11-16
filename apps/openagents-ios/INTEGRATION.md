@@ -14,7 +14,7 @@ dispatch actions into it.
 | Core in Swift | `AppCore.swift` | `AppCoreC` (the ABI), `AppServices` (launch with rejoin, services, lifecycle) |
 | Bridge | `apps/shared/native/AppCoreBridge.swift` | Takes or refuses each queued request, tells cancellations, returns results with the service table's fields, one timer for `app_host_wake` |
 | Services | `apps/shared/native/AppHTTP.swift`, `AppAccount.swift`, `AppWake.swift`, `AppDevice.swift`, `AppEffects.swift` | HTTP (one origin, the core's `up_http` policy, no cookies or redirects, per-request limit and timeout), the account (tokens and the email attempt stay native), IDs and clocks, clipboard, links, lifecycle |
-| Editing | `apps/shared/native/KitEditor.swift`, `KitFocus.swift` | The platform editors over GPU fields; a tap outside the focused field ends editing for every field |
+| Editing | `apps/shared/native/KitEditor.swift` | The platform editors over GPU fields. Which field holds the keyboard is the page's (`uiframe_focus`, kit/frame.coax); the host shows that field's editor and hides the keyboard when there is none |
 
 ## What a screen gives the host
 

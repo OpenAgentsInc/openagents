@@ -103,7 +103,7 @@ final class MemoryTokens: TokenStore, @unchecked Sendable {
 @main enum AppServicesCheck {
     static let origin = "https://openagents.test"
     @MainActor static func main() async {
-        await http(); await account(); await wake(); await effects(); await bridge(); focus()
+        await http(); await account(); await wake(); await effects(); await bridge()
         print("app-services-check: ok")
     }
 
@@ -161,18 +161,6 @@ final class MemoryTokens: TokenStore, @unchecked Sendable {
         expect(core.lifecycles == [2, 1], "the lifecycle codes")
         bridge.retire(); e.retire()
         print("ok bridge")
-    }
-
-    /// A tap outside the focused field ends editing; one on it, or with no field focused, does not.
-    static func focus() {
-        let field = CGRect(x: 16, y: 700, width: 370, height: 44)
-        expect(KitFocus.tapEndsEditing(at: CGPoint(x: 200, y: 300), field: field), "a tap above the field")
-        expect(KitFocus.tapEndsEditing(at: CGPoint(x: 395, y: 720), field: field), "a tap on a control beside the field")
-        expect(!KitFocus.tapEndsEditing(at: CGPoint(x: 200, y: 720), field: field), "a tap in the field")
-        expect(!KitFocus.tapEndsEditing(at: CGPoint(x: 16, y: 744), field: field), "a tap on the field's edge")
-        expect(!KitFocus.tapEndsEditing(at: CGPoint(x: 200, y: 300), field: nil), "a tap with no field focused")
-        expect(!KitFocus.tapEndsEditing(at: CGPoint(x: 200, y: 300), field: .null), "a tap with an unplaced field")
-        print("ok focus")
     }
 
     @MainActor static func http() async {

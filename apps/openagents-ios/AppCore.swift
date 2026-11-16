@@ -8,6 +8,8 @@ import UIKit
 
 @MainActor final class AppCoreC: AppCoreABI {
     let raw: UnsafeMutableRawPointer
+    /// Runs after every call into the core: the page's login flow follows the core (chat_step).
+    var after: (() -> Void)?
     init?() { guard let raw = oa_core_open() else { return nil }; self.raw = raw }
     deinit { oa_core_close(raw) }
     private var mono: Int64 { AppWake.steadyMs() }
@@ -25,18 +27,18 @@ import UIKit
     func path(_ op: Int64) -> Data? { bytes { oa_core_path(raw, op, $0, $1) } }
     func text(_ op: Int64) -> Data? { bytes { oa_core_text(raw, op, $0, $1) } }
     func body(_ op: Int64) -> Data? { bytes { oa_core_body(raw, op, $0, $1) } }
-    func taken(_ op: Int64, accepted: Bool) { _ = oa_core_taken(raw, mono, wall, op, accepted ? 1 : 0) }
+    func taken(_ op: Int64, accepted: Bool) { _ = oa_core_taken(raw, mono, wall, op, accepted ? 1 : 0); after?() }
     func cancelNext() -> Int64 { oa_core_cancel_next(raw) }
     func done(op: Int64, generation: Int64, outcome: Int32, status: Int32, flag: Bool, text: Data, more: Data, value: Int64) {
         let t = [UInt8](text), m = [UInt8](more)
-        _ = oa_core_done(raw, mono, wall, op, generation, Int64(outcome), Int64(status), flag ? 1 : 0, t, Int64(t.count), m, Int64(m.count), value)
+        _ = oa_core_done(raw, mono, wall, op, generation, Int64(outcome), Int64(status), flag ? 1 : 0, t, Int64(t.count), m, Int64(m.count), value); after?()
     }
     func wake() -> Int64 { oa_core_wake(raw) }
-    func clock() { _ = oa_core_clock(raw, mono, wall) }
-    func lifecycle(_ code: Int32) { _ = oa_core_lifecycle(raw, mono, wall, Int64(code)) }
-    func launch(rejoin: String) { _ = oa_core_launch(raw, mono, wall, rejoin) }
+    func clock() { _ = oa_core_clock(raw, mono, wall); after?() }
+    func lifecycle(_ code: Int32) { _ = oa_core_lifecycle(raw, mono, wall, Int64(code)); after?() }
+    func launch(rejoin: String) { _ = oa_core_launch(raw, mono, wall, rejoin); after?() }
     /// A person's action the platform owns (the editor's text, a hardware Return).
-    func action(_ code: Int64, flag: Bool = false, text: String = "", more: String = "") { _ = oa_core_action(raw, mono, wall, code, flag ? 1 : 0, text, more) }
+    func action(_ code: Int64, flag: Bool = false, text: String = "", more: String = "") { _ = oa_core_action(raw, mono, wall, code, flag ? 1 : 0, text, more); after?() }
     func dirty(_ mask: Int64) -> Int64 { oa_core_dirty_take(raw, mask) }
     func keep() -> String { String(decoding: bytes { oa_core_keep(raw, $0, $1) } ?? Data(), as: UTF8.self) }
 }
@@ -68,10 +70,20 @@ import UIKit
             default: break
             }
         }
+    }
+
+    /// Launches the core, rejoining the conversation kept at the last background. Attach the page first.
+    func launch() {
         core.launch(rejoin: UserDefaults.standard.string(forKey: AppServices.rejoinKey) ?? "")
         bridge.heard()
     }
+    /// The page went into the core (a tap): perform what it asked, without waking the page again.
+    func pump() { bridge.pump() }
 
-    /// Something went into the core from outside the bridge: perform what it asked.
-    func heard() { bridge.heard() }
+    /// The login card's typed email, kept between launches (no secret: app preferences).
+    private static let draftKey = "openagents.login-draft"
+    static var keptDraft: String { UserDefaults.standard.string(forKey: draftKey) ?? "" }
+    static func keepDraft(_ bytes: String) {
+        if bytes.isEmpty { UserDefaults.standard.removeObject(forKey: draftKey) } else { UserDefaults.standard.set(bytes, forKey: draftKey) }
+    }
 }

@@ -118,6 +118,8 @@ enum AppCoreCode { static let get: Int64 = 1, post: Int64 = 2; static let foregr
         arm()
         changed?()
     }
+    /// The page dispatched into the core itself: perform what it asked, with no change call.
+    func pump() { effects?.pump(); arm() }
 
     /// The app came to the front or left it.
     func lifecycle(foreground: Bool) {

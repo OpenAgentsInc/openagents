@@ -98,4 +98,19 @@ void oc_close(void *chat) {
   gallery_free(&c->app);
   free(c->s); free(c);
 }
+static int oc_bytes(int64_t n, char *out, int cap) { if (cap < 1) return 0; if (n < 0) n = 0; if (n > cap - 1) n = cap - 1; out[n] = 0; return (int)n; }
+void oc_attach(void *chat, void *core, const char *kept) {
+  Chat *c = chat;
+  if (c && core) chat_attach(oc_state(c), (coax_v_t_AppCore){core, 1}, oc_string(kept));
+}
+void oc_step(void *chat) { Chat *c = chat; if (c) { chat_step(oc_state(c)); oc_changed(c); } }
+int oc_draft_rev(void *chat) { Chat *c = chat; return c ? (int)chat_draft_rev(oc_state(c)) : 0; }
+int oc_draft(void *chat, char *out, int cap) { Chat *c = chat; return c && cap > 0 ? oc_bytes(chat_draft(oc_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int oc_focus(void *chat, char *out, int cap) { Chat *c = chat; return c && cap > 0 ? oc_bytes(chat_focus(oc_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int oc_field_box(void *chat, float box[4]) { Chat *c = chat; return c && chat_field_box(oc_state(c), (coax_v_f32){box, 4}); }
+int oc_field_text(void *chat, char *out, int cap) { Chat *c = chat; return c && cap > 0 ? oc_bytes(chat_field_text(oc_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int oc_set_field(void *chat, const char *text) { Chat *c = chat; if (!c) return 0; oc_changed(c); return chat_set_field(oc_state(c), oc_string(text)); }
+int oc_submit(void *chat) { Chat *c = chat; if (!c) return 0; oc_changed(c); return chat_submit(oc_state(c)); }
+void oc_blur(void *chat) { Chat *c = chat; if (c) { chat_blur(oc_state(c)); oc_changed(c); } }
 #include "core-host.c"
+#include "../../components/app/gallery/host.c"

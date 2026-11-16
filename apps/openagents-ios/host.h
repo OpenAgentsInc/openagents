@@ -33,6 +33,22 @@ int oc_rows(void *chat);
 int oc_rows_stamp(void *chat);
 int oc_row(void *chat, int i, float row[7], char *id, int id_cap, char *label, int label_cap);
 int oc_activate(void *chat, const char *id);
+// The shared app core (core-host.h oa_core_open) and the typed login email kept at the last save.
+// Call once before the core's launch; oc_step after every call into the core.
+void oc_attach(void *chat, void *core, const char *kept);
+void oc_step(void *chat);
+// The login draft to keep: a number that changes when it does, and its bytes (0: forget it).
+int oc_draft_rev(void *chat);
+int oc_draft(void *chat, char *out, int cap);
+// The id of the field that holds the keyboard ("" none: hide the keyboard): chat.composer,
+// login.email or login.code. A login field's box (x, y, w, h), its value, its whole value after an
+// edit (0: not taken), Return in it, and the keyboard going away by itself.
+int oc_focus(void *chat, char *out, int cap);
+int oc_field_box(void *chat, float box[4]);
+int oc_field_text(void *chat, char *out, int cap);
+int oc_set_field(void *chat, const char *text);
+int oc_submit(void *chat);
+void oc_blur(void *chat);
 // Frames the surface refused to commit (its declared capacity was passed): 0 in a healthy page.
 int oc_refused(void *chat);
 // Frames presented to the screen (a static page adds none).

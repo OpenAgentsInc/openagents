@@ -22,6 +22,8 @@ targets:
       - App.swift
       # The shared app core's host loop: its C entry points are in host.c (core-host.c).
       - AppCore.swift
+      # The dev menu: the app set's gallery, debug builds only.
+      - DevGallery.swift
       # The shared component carrier with the app's pages: the chat page, no gallery page.
       - path: ../../components/gallery/linux/main.c
         compilerFlags: "-DCOMPONENTS_EMBEDDED=1 -DCOMPONENTS_NO_GALLERY=1 -DCOMPONENTS_CHAT=1 -IGenerated -I../shared/host/linux"
@@ -32,7 +34,6 @@ targets:
         type: folder
         buildPhase: resources
       - ../shared/native/KitEditor.swift
-      - ../shared/native/KitFocus.swift
       # Native services for the compiled app: HTTP, the account, wakes, the device and the effect bridge.
       - ../shared/native/AppHTTP.swift
       - ../shared/native/AppAccount.swift

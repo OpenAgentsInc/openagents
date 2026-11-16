@@ -3,9 +3,12 @@
 // The page is compiled Coax (chat.coax) drawn by the shared GPU component host in one Metal view.
 // Nothing runs in JavaScript. This file owns only what a GPU surface cannot:
 //   - the display link, which sleeps while nothing moves and stops in the background;
-//   - the platform editor: one UITextView over the composer's text while it holds the keyboard;
+//   - the platform editors: a UITextView over the composer's text, and a UITextField over a login
+//     field, each only while its field holds the keyboard. Which field holds it is the page's
+//     (kit/frame.coax's focus rule: a tap outside the focused field takes it away); this file
+//     shows the keyboard for that field and hides it when there is none;
 //   - VoiceOver: an element per semantic row; the Metal view itself is hidden from accessibility;
-//   - a tap outside the focused field ends editing (KitFocus), and the page hears focus end.
+//   - the shared app core with its native services (AppCore.swift), attached to the page.
 import UIKit
 
 @main final class OpenAgentsApp:UIResponder,UIApplicationDelegate {
@@ -15,7 +18,7 @@ import UIKit
     }
 }
 
-@MainActor final class ChatScreen:UIViewController,UITextViewDelegate {
+@MainActor final class ChatScreen:UIViewController,UITextViewDelegate,UITextFieldDelegate {
     private var owner:UnsafeMutableRawPointer?
     private var canvas:UIView?
     private var display:CADisplayLink?
@@ -23,9 +26,8 @@ import UIKit
     private var stamp:Int32 = -1
     private var rowIDs:[String]=[]
     private var said=""
-    /// The composer field's row, for the tap that ends editing (KitTapOutside).
-    private var fieldBox=CGRect.null
-    private var tapOutside:KitTapOutside?
+    private var draftRev:Int32 = -1
+    private lazy var field:FieldEditor={var s=[Float](repeating:0,count:14);_ = oc_style(&s);return FieldEditor(style:s)}()
     /// The shared app core and the native services it asks for.
     private var services:AppServices?
     private lazy var editor:ComposerEditor={var s=[Float](repeating:0,count:14);_ = oc_style(&s);return ComposerEditor(style:s)}()
@@ -38,7 +40,13 @@ import UIKit
             NSLayoutConstraint.activate([label.centerYAnchor.constraint(equalTo:view.centerYAnchor),label.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:24),label.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-24)]);return
         }
         self.owner=owner
-        services=AppServices();services?.bridge.changed={ [weak self] in self?.wake() }
+        services=AppServices()
+        if let services {
+            services.bridge.changed={ [weak self] in self?.wake() }
+            oc_attach(owner,services.core.raw,AppServices.keptDraft)
+            services.core.after={ oc_step(owner) }
+            services.launch()
+        }
         // A touch lands on the Metal view, not here: the surface says when one changed something.
         oc_on_change(owner,{ context in
             guard let context else {return}
@@ -48,8 +56,7 @@ import UIKit
         let canvas=Unmanaged<UIView>.fromOpaque(raw).takeUnretainedValue();self.canvas=canvas
         canvas.frame=view.bounds;canvas.autoresizingMask=[.flexibleWidth,.flexibleHeight];view.addSubview(canvas)
         canvas.isAccessibilityElement=false;canvas.accessibilityElementsHidden=true
-        // A tap outside the focused field gives up the keyboard; the surface still gets the tap.
-        tapOutside=KitTapOutside(on:canvas,field:{ [weak self] in guard let self,self.editor.isFirstResponder else {return nil};return self.fieldBox },end:{ [weak self] in _ = self?.editor.resignFirstResponder() })
+        field.delegate=self;field.addTarget(self,action:#selector(fieldChanged),for:.editingChanged)
         editor.delegate=self;editor.host=view;editor.attach={ [weak self] in self?.attachEditor() };editor.activate={ [weak self] in self?.focus() ?? false }
         let center=NotificationCenter.default
         center.addObserver(self,selector:#selector(keyboardMoved(_:)),name:UIResponder.keyboardWillChangeFrameNotification,object:nil)
@@ -57,8 +64,27 @@ import UIKit
         center.addObserver(self,selector:#selector(background),name:UIApplication.willResignActiveNotification,object:nil)
         center.addObserver(self,selector:#selector(wake),name:UIApplication.didBecomeActiveNotification,object:nil)
         center.addObserver(self,selector:#selector(wake),name:UIAccessibility.reduceMotionStatusDidChangeNotification,object:nil)
+        DevGallery.install(on:self)
     }
-    override func viewDidAppear(_ animated:Bool) {super.viewDidAppear(animated);wake()}
+    override func viewDidAppear(_ animated:Bool) {
+        super.viewDidAppear(animated);wake()
+        #if DEBUG
+        // Debug builds: `-OAPress nav.menu,drawer.login` presses those rows in turn after launch, as
+        // VoiceOver would, so a screen can be reached and captured without a hand on the simulator.
+        if let ids=UserDefaults.standard.string(forKey:"OAPress"),!pressedAtLaunch {
+            pressedAtLaunch=true
+            for (i,id) in ids.split(separator:",").enumerated() {
+                DispatchQueue.main.asyncAfter(deadline:.now()+0.8*Double(i+1)) { [weak self] in
+                    guard let self,let owner=self.owner else {return}
+                    _ = oc_activate(owner,String(id));self.wake()
+                }
+            }
+        }
+        #endif
+    }
+    #if DEBUG
+    private var pressedAtLaunch=false
+    #endif
     override func viewDidLayoutSubviews() {super.viewDidLayoutSubviews();wake()}
     override func viewSafeAreaInsetsDidChange() {super.viewSafeAreaInsetsDidChange();wake()}
     override var preferredStatusBarStyle:UIStatusBarStyle {.lightContent}
@@ -77,11 +103,13 @@ import UIKit
     @objc private func background() {display?.invalidate();display=nil}
     fileprivate func step() {
         guard let owner else {return}
-        let insets=view.safeAreaInsets,editing=editor.isFirstResponder
-        oc_env(owner,Float(insets.top),Float(insets.bottom),Float(keyboard),editing ? 1:0,editing ? Float(editor.textHeight(width:editor.bounds.width)):0,UIAccessibility.isReduceMotionEnabled ? 1:0)
+        // editing: a platform editor holds the keyboard over the focused field, and draws its text
+        let insets=view.safeAreaInsets,composing=editor.isFirstResponder,editing=composing||field.isFirstResponder
+        oc_env(owner,Float(insets.top),Float(insets.bottom),Float(keyboard),editing ? 1:0,composing ? Float(editor.textHeight(width:editor.bounds.width)):0,UIAccessibility.isReduceMotionEnabled ? 1:0)
         oc_frame(owner)
+        services?.pump()
         if oc_action(owner)==1 {_ = focus()}
-        placeEditor();refreshRows()
+        followFocus();placeEditor();refreshRows();keepDraft()
         // A static page sleeps: no frame runs until something wakes it.
         if oc_moving(owner)==0 {display?.isPaused=true}
     }
@@ -107,9 +135,49 @@ import UIKit
         if editor.frame != frame {editor.frame=frame}
         editor.isScrollEnabled=editor.textHeight(width:frame.width)+12>frame.height+1
     }
+    /// The field that holds the keyboard, as the page says: its editor takes the keyboard, and with
+    /// none the keyboard goes away.
+    private func focusID()->String {
+        guard let owner else {return ""}
+        var bytes=[CChar](repeating:0,count:64);_ = oc_focus(owner,&bytes,Int32(bytes.count));return String(cString:bytes)
+    }
+    private func followFocus() {
+        guard let owner else {return}
+        let id=focusID()
+        if id != "chat.composer",editor.isFirstResponder {_ = editor.resignFirstResponder()}
+        guard id.hasPrefix("login.") else {if field.isFirstResponder {_ = field.resignFirstResponder()};field.removeFromSuperview();return}
+        var b=[Float](repeating:0,count:4)
+        guard oc_field_box(owner,&b) != 0 else {return}
+        let row=CGRect(x:CGFloat(b[0]),y:CGFloat(b[1]),width:CGFloat(b[2]),height:CGFloat(b[3]))
+        // the editor sits over the field's text line, in the middle of the field's row
+        let frame=CGRect(x:row.minX+11,y:row.midY-min(22,row.height/2),width:max(40,row.width-22),height:min(44,row.height))
+        if field.superview==nil {view.addSubview(field)}
+        if field.frame != frame {field.frame=frame}
+        field.configure(id=="login.code" ? .code:.email,placeholder:id=="login.code" ? "000000":"you@example.com")
+        if field.markedTextRange==nil {
+            var bytes=[CChar](repeating:0,count:512);_ = oc_field_text(owner,&bytes,Int32(bytes.count));let held=String(cString:bytes)
+            if field.text != held {field.text=held}
+        }
+        if !field.isFirstResponder,!field.becomeFirstResponder() {oc_blur(owner)}
+    }
+    private func keepDraft() {
+        guard let owner else {return}
+        let rev=oc_draft_rev(owner)
+        guard rev != draftRev else {return}
+        draftRev=rev
+        var bytes=[CChar](repeating:0,count:600);_ = oc_draft(owner,&bytes,Int32(bytes.count))
+        AppServices.keepDraft(String(cString:bytes))
+    }
+    @objc private func fieldChanged() {
+        guard let owner else {return}
+        if oc_set_field(owner,field.text ?? "")==0 {var bytes=[CChar](repeating:0,count:512);_ = oc_field_text(owner,&bytes,Int32(bytes.count));field.text=String(cString:bytes)}
+        wake()
+    }
+    func textFieldShouldReturn(_ textField:UITextField)->Bool {if let owner {_ = oc_submit(owner)};wake();return false}
+    func textFieldDidEndEditing(_ textField:UITextField) {if let owner,focusID().hasPrefix("login.") {oc_blur(owner)};wake()}
     @discardableResult private func focus()->Bool {attachEditor();let took=editor.becomeFirstResponder();wake();return took}
     func textViewDidBeginEditing(_ textView:UITextView) {wake()}
-    func textViewDidEndEditing(_ textView:UITextView) {editor.removeFromSuperview();wake()}
+    func textViewDidEndEditing(_ textView:UITextView) {editor.removeFromSuperview();if let owner,focusID()=="chat.composer" {oc_blur(owner)};wake()}
     func textViewDidChange(_ textView:UITextView) {if let owner {_ = oc_set_text(owner,textView.text ?? "")};wake()}
     @objc private func keyboardMoved(_ note:Notification) {
         guard let end=(note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue,let window=view.window else {return}
@@ -133,19 +201,19 @@ import UIKit
             let name=String(cString:id),words=String(cString:label),state=Int(row[5]),role=Int(row[4])
             let rect=CGRect(x:CGFloat(row[0]),y:CGFloat(row[1]),width:CGFloat(row[2]),height:CGFloat(row[3]))
             names.append(name)
-            if role==3 {
+            if role==3,name=="chat.composer" {
                 // The field is the platform editor: over the text while it has the keyboard, else standing for the field's row.
-                editor.box=rect;fieldBox=rect;editor.accessibilityIdentifier=name;editor.accessibilityLabel=words;editor.placeholder=words
+                editor.box=rect;editor.accessibilityIdentifier=name;editor.accessibilityLabel=words;editor.placeholder=words
                 elements.append(editor);continue
             }
             let element=ChatRow(accessibilityContainer:view!)
             element.accessibilityIdentifier=name;element.accessibilityLabel=words;element.accessibilityFrameInContainerSpace=rect
-            var traits:UIAccessibilityTraits=role==0 ? .button:.staticText
+            var traits:UIAccessibilityTraits=role==0||role==3 ? .button:.staticText
             if role==9 {traits.insert(.header)}
             if state & 1 != 0 {traits.insert(.notEnabled)}
             if state & 1024 != 0 {notice=words}
             element.accessibilityTraits=traits
-            if role==0 {element.activate={ [weak self] in guard let self,let owner=self.owner else {return false};let pressed=oc_activate(owner,name) != 0;self.wake();return pressed }}
+            if role==0||role==3 {element.activate={ [weak self] in guard let self,let owner=self.owner else {return false};let pressed=oc_activate(owner,name) != 0;self.wake();return pressed }}
             elements.append(element)
         }
         view.accessibilityElements=elements
