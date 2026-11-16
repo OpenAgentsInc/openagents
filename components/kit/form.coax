@@ -1,0 +1,148 @@
+// The form set on the display list: a one-line field, a full-width action,
+// a quiet text action, a notice and a form's heading (components/
+// gpu-components.md, "Component families to port", Forms; GitHub #13645). The
+// first consumer is the native login (apps/shared/login/screen.coax). Each is
+// laid out through a measure and painted onto a sheet in a skin, like the
+// small controls (controls.coax); a part that can be pressed leaves a hit on
+// the sheet, and the caller keeps the state.
+//
+// A field never edits text. The caller holds the value; while the platform's
+// editor is over the field (text entry, in gpu-components.md) the field paints
+// its frame only, so no glyph or caret is drawn twice.
+//   coax/bin/coax test components/kit/form.coax
+
+#load "animated.coax";
+
+FORM_REST :: 0; FORM_PRIMARY :: 1; FORM_PRESSED :: 2; FORM_BUSY :: 3;
+
+// Where a field's text starts inside it, and how tall a field is: the
+// platform editor is placed with these.
+form_field_inset :: (s: UiSkin) -> f32 { return s.chrome.field_pad; }
+form_field_height :: (s: UiSkin) -> f32 { return s.chrome.field_h; }
+
+// A one-line field at (x, y), w wide: the skin's field surface, its edge lit
+// while it holds the keyboard, then its text, or its placeholder when it has
+// none. editing: the platform editor is over it and draws the text, the
+// placeholder and the caret. Returns its height.
+form_field :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, w: f32, text: string, placeholder: string,
+               focused: bool, editing: bool, disabled: bool, hit_kind: int, hit_a: int) -> f32 {
+  c := s.chrome; h := c.field_h;
+  edge := ifx focused then opacity(s.accent, c.field_focus) else s.field_edge;
+  _ := sheet_box(sh, x, y, w, h, c.field_radius, s.border, s.surface, edge);
+  if !editing {
+    ty := y + (h - s.body.line) / 2;
+    sheet_clip_right(sh, x + w - c.field_pad);
+    if text.count == 0 { _ := sheet_text(sh, m, -1, x + c.field_pad, ty, s.body.line, s.body.face, s.faint, placeholder); }
+    else { _ := sheet_text(sh, m, -1, x + c.field_pad, ty, s.body.line, s.body.face, ifx disabled then s.muted else s.ink, text); }
+    sheet_unclip(sh);
+  }
+  sheet_hit(sh, hit_kind, hit_a, 0, x, y, w, h);
+  return h;
+}
+
+// A form's action, w wide, its label centred. FORM_PRIMARY is the filled
+// action and FORM_PRESSED the same one held; FORM_REST a plain one; FORM_BUSY
+// shows the activity mark before the label and can't be pressed (it leaves
+// no hit). seconds: the caller's clock, for the mark. Returns its height.
+form_button :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, w: f32, label: string, state: int,
+                seconds: f32, reduced: bool, hit_kind: int, hit_a: int) -> f32 {
+  h := s.control_h; filled := state == FORM_PRIMARY || state == FORM_PRESSED;
+  if filled { sheet_fill(sh, x, y, w, h, s.radius_control, ifx state == FORM_PRESSED then s.accent else opacity(s.accent, s.chrome.primary_ink)); }
+  else { sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, x, y, w, h, UISKIN_REST); }
+  lw := measure_width(m, s.label.face, label);
+  mark := s.label.line; gap := ifx state == FORM_BUSY then mark + s.space else 0.0f32;
+  tx := x + (w - lw - gap) / 2;
+  if state == FORM_BUSY { activity(sh, s, tx, y + (h - mark) / 2, mark, seconds, reduced); }
+  _ := sheet_text(sh, m, -1, tx + gap, y + (h - s.label.line) / 2, s.label.line, s.label.face,
+                  ifx filled then s.on_accent else ifx state == FORM_BUSY then s.muted else s.ink, label);
+  if state != FORM_BUSY { sheet_hit(sh, hit_kind, hit_a, 0, x, y, w, h); }
+  return h;
+}
+
+// A quiet text action: its label in the muted ink (the ink while held or
+// disabled faint), with a target as tall as any control. Returns its width.
+form_link_width :: (m: TextMeasure, s: UiSkin, label: string) -> f32 { return ceil(measure_width(m, s.label.face, label)) + 2 * s.space; }
+form_link :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, label: string, held: bool, disabled: bool, hit_kind: int, hit_a: int) -> f32 {
+  w := form_link_width(m, s, label);
+  if held && !disabled { sheet_fill(sh, x, y, w, s.control_h, s.radius_control, s.hover); }
+  _ := sheet_text(sh, m, -1, x + s.space, y + (s.control_h - s.label.line) / 2, s.label.line, s.label.face,
+                  ifx disabled then s.faint else ifx held then s.ink else s.muted, label);
+  if !disabled { sheet_hit(sh, hit_kind, hit_a, 0, x, y, w, s.control_h); }
+  return w;
+}
+
+// A notice under a form: wrapped copy. A failure is the bright ink behind a
+// rail (the mono skins show state by brightness and line, never hue); anything
+// else is muted. Returns its height (0 for no text).
+form_notice :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, w: f32, text: string, failure: bool) -> f32 {
+  if text.count == 0 { return 0; }
+  inset := ifx failure then s.space else 0.0f32;
+  h := control_copy(sh, m, s.body, ifx failure then s.ink else s.muted, x + inset, y, w - inset, text);
+  if failure { sheet_rule(sh, x, y, 2 * s.border, h, s.accent); }
+  return h;
+}
+
+// A form's heading: its title, and a line of detail under it when it has one
+// (cut at the form's width). Returns its height.
+form_heading :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, w: f32, title: string, detail: string) -> f32 {
+  _ := sheet_text(sh, m, -1, x, y, s.title.line, s.title.face, s.ink, title);
+  h := s.title.line;
+  if detail.count > 0 {
+    sheet_clip_right(sh, x + w);
+    _ := sheet_text(sh, m, -1, x, y + h, s.body.line, s.body.face, s.muted, detail);
+    sheet_unclip(sh);
+    h += s.body.line;
+  }
+  return h;
+}
+
+// ---------------------------------------------------------------- checks
+
+FormStore :: struct { under: [64] Prim; over: [64] Prim; lines: [4] SheetLine; hits: [8] SheetHit; pool: [64] u8; }
+form_sheet :: (st: [] FormStore) -> Sheet {
+  return Sheet.{under = st[0].under[..], over = st[0].over[..], lines = st[0].lines[..], hits = st[0].hits[..], pool = st[0].pool[..]};
+}
+form_texts :: (sh: [] Sheet, text: string) -> int {
+  n := 0;
+  for i: 0..<sh[0].no { if sh[0].over[i].kind == PRIM_TEXT && sh[0].over[i].text == text { n += 1; } }
+  return n;
+}
+
+#test "a field shows its text or its placeholder, lights its edge with the keyboard, and paints neither under the platform editor" {
+  st: [1] FormStore; sh: [1] Sheet; sh[0] = form_sheet(st[..]); s := UiSkin.{}; s.chrome.field_h = 44; s.chrome.field_pad = 18; s.chrome.field_focus = 1;
+  s.accent = rgba(1, 1, 1, 1); s.field_edge = rgba(0.4, 0.4, 0.4, 1); s.body.line = 20; m := measure_cells();
+  h := form_field(sh[..], m, s, 10, 20, 300, "", "you@example.com", false, false, false, 7, 1);
+  #assert h == 44 && form_texts(sh[..], "you@example.com") == 1 && sh[0].nh == 1 && sh[0].hits[0].kind == 7 && sh[0].hits[0].a == 1 && sh[0].hits[0].h == 44;
+  #assert st[0].under[0].kind == PRIM_BOX && st[0].under[0].edge.r == 0.4f32 && form_field_inset(s) == 18 && form_field_height(s) == 44;
+  sh[0] = form_sheet(st[..]);
+  _ := form_field(sh[..], m, s, 10, 20, 300, "ada@example.com", "you@example.com", true, false, false, 7, 1);
+  #assert form_texts(sh[..], "ada@example.com") == 1 && form_texts(sh[..], "you@example.com") == 0 && st[0].under[0].edge.r == 1;
+  sh[0] = form_sheet(st[..]);
+  _ := form_field(sh[..], m, s, 10, 20, 300, "ada@example.com", "you@example.com", true, true, false, 7, 1);
+  #assert form_texts(sh[..], "ada@example.com") == 0 && form_texts(sh[..], "you@example.com") == 0 && sh[0].nh == 1;
+  for i: 0..<sh[0].no { #assert sh[0].over[i].kind != PRIM_TEXT; }
+}
+
+#test "an action centres its label, a busy one shows the activity mark and takes no press" {
+  st: [1] FormStore; sh: [1] Sheet; sh[0] = form_sheet(st[..]); s := UiSkin.{}; s.control_h = 44; s.label.line = 20; s.space = 12; m := measure_cells();
+  h := form_button(sh[..], m, s, 0, 0, 100, "Send", FORM_PRIMARY, 0, false, 3, 0);
+  #assert h == 44 && sh[0].nh == 1 && sh[0].hits[0].w == 100 && st[0].over[0].x == 48 && st[0].over[0].y == 12;
+  sh[0] = form_sheet(st[..]);
+  _ := form_button(sh[..], m, s, 0, 0, 100, "Send", FORM_BUSY, 0.25, false, 3, 0);
+  arcs := 0; for i: 0..<sh[0].nu { if st[0].under[i].kind == PRIM_ARC { arcs += 1; } }
+  #assert sh[0].nh == 0 && arcs == 2 && st[0].over[0].x == 48 + 16;
+}
+
+#test "a link keeps a control's height, a notice wraps and marks a failure with a rail, a heading stacks its detail" {
+  st: [1] FormStore; sh: [1] Sheet; sh[0] = form_sheet(st[..]); s := UiSkin.{}; s.control_h = 44; s.label.line = 1; s.body.line = 1; s.title.line = 1; s.space = 1; s.border = 1; m := measure_cells();
+  w := form_link(sh[..], m, s, 0, 0, "Resend", false, false, 5, 0);
+  #assert w == 8 && sh[0].nh == 1 && sh[0].hits[0].h == 44;
+  _ := form_link(sh[..], m, s, 0, 0, "Resend", false, true, 5, 0);
+  #assert sh[0].nh == 1;
+  #assert form_notice(sh[..], m, s, 0, 0, 10, "", true) == 0;
+  rules := sh[0].nu;
+  h := form_notice(sh[..], m, s, 0, 0, 10, "one two three four", true);
+  #assert h >= 2 && sh[0].nu == rules + 1;
+  #assert form_notice(sh[..], m, s, 0, 0, 40, "one two", false) == 1 && sh[0].nu == rules + 1;
+  #assert form_heading(sh[..], m, s, 0, 0, 40, "Log in", "") == 1 && form_heading(sh[..], m, s, 0, 0, 40, "Email code", "ada@example.com") == 2;
+}

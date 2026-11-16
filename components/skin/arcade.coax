@@ -16,3 +16,19 @@ arcade_skin :: ()->UiSkin {
  #assert s.surface.r==s.surface.g && s.surface.g==s.surface.b && s.ink.r==s.ink.g;
  #assert ArcadeMotionSkin.{}.enter==0.2 && ArcadeMotionSkin.{}.press==0.1;
 }
+// Arcade on a phone: the production grayscale with touch-sized controls, as
+// mono-native's reference button and field are (44 points tall, 18 and 12 of
+// padding). The first consumer is the native login (apps/shared/login/, #13645).
+arcade_phone_skin :: ()->UiSkin {
+ s:=arcade_skin();s.name="Arcade phone";
+ s.label=s.body;s.control_h=44;s.control_pad=18;s.radius_control=22;s.pad=20;s.space=12;
+ s.chrome.field_h=44;s.chrome.field_pad=18;s.chrome.field_radius=22;s.chrome.field_focus=1;
+ s.field_edge=arcade_color(MONO_LINE);s.raised=arcade_color(MONO_RAISED);
+ return s;
+}
+#test "the phone skin keeps Arcade's greys and gives every control a 44 point target" {
+ s:=arcade_phone_skin();a:=arcade_skin();
+ #assert s.control_h==44 && s.chrome.field_h==44 && s.radius_control==22 && s.chrome.field_radius==22;
+ #assert s.ink.r==a.ink.r && s.accent.r==1 && s.surface.r==s.surface.g && s.field_edge.r==s.field_edge.b;
+ #assert s.label.face==s.body.face && s.animated.frame_square_limit==12;
+}
