@@ -1,0 +1,561 @@
+// The phone app's fast loops (README.md; GitHub #13645): a picture of the app's screen on the Mac with
+// no Xcode and no simulator, a watcher that keeps that picture up to date, and the shortest
+// simulator loop for when the simulator is needed.
+//   coax/web/tool.sh apps/shared/app/preview/loop.coax shot [OPTIONS] OUT.png      (shot.sh)
+//   coax/web/tool.sh apps/shared/app/preview/loop.coax shot [OPTIONS] --all DIR
+//   coax/web/tool.sh apps/shared/app/preview/loop.coax watch [OPTIONS] [--out DIR] [--all] [--window]   (watch.sh)
+//   coax/web/tool.sh apps/shared/app/preview/loop.coax ios [--device NAME] [--shot OUT.png] [--settle MS]   (apps/openagents-ios/dev.sh)
+// OPTIONS: --size WxH|small|phone|large (points)  --dpr K  --safe TOP,BOTTOM  --keyboard H
+//          --text-scale K  --large-text  --reduced  --text TEXT  --case FILE  --tree OUT.txt
+// Every loop generates only when a Coax input changed: the stamp beside the generated library
+// (apps/openagents-ios/Generated/.inputs) holds the SHA-256 of every source `coax deps` names for the
+// app's root and the shader, the compiler's digest and generate.sh. Generating is
+// apps/openagents-ios/generate.sh, one remote job. The Mac compiles three small C files for the
+// preview (about a second) and draws with Metal into a texture.
+#import "Basic";
+#load "../../../../coax/lib/sys/tool.coax";
+#load "../../../../coax/lib/sys/fs.coax";
+#load "../../../../coax/lib/sys/proc.coax";
+#load "../../../../coax/lib/sys/args.coax";
+#load "../../../../coax/lib/crypto/sha256-memory.coax";
+
+// ---- the page (the one place that names today's app; INTEGRATION.md)
+LP_IOS :: "apps/openagents-ios";
+LP_GEN :: "apps/openagents-ios/Generated";
+LP_ROOT :: "apps/openagents-ios/app.coax";
+LP_SHADER :: "components/backend/gpu-shader.coax";
+LP_GENERATE :: "apps/openagents-ios/generate.sh";
+LP_PAGE :: "-DCOMPONENTS_CHAT=1";
+LP_BUNDLE :: "com.openagents.app";
+LP_SCHEME :: "OpenAgents";
+LP_PROJECT :: "OpenAgents.xcodeproj";
+LP_PRODUCT :: "Build/Products/Debug-iphonesimulator/OpenAgents.app";
+
+LP_HERE :: "apps/shared/app/preview";
+LP_BUILD :: "apps/shared/app/preview/build";
+LP_STAMP :: "apps/openagents-ios/Generated/.inputs";
+LP_DEVICE :: "Coax Native Starter";   // the simulator apps/openagents-ios/README.md names; made when missing
+LP_DEVICE_TYPE :: "iPhone 17 Pro";
+LP_LARGE_TEXT :: "1.35";      // the phone's largest ordinary text size against its default (23 points against 17)
+
+// ---- text
+
+LpText :: struct { b: [16384] u8; n: int; }
+lp_put :: (out: [] u8, at: int, s: string) -> int {
+  n := at;
+  for c: s { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+lp_add :: (t: [] LpText, s: string) { t[0].n = lp_put(t[0].b[..], t[0].n, s); }
+lp_str :: (t: [] LpText) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+lp_set :: (t: [] LpText, a: string, b: string, c: string) -> string { t[0].n = 0; lp_add(t, a); lp_add(t, b); lp_add(t, c); return lp_str(t); }
+lp_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+lp_ends :: (s: string, p: string) -> bool { return s.count >= p.count && s[s.count - p.count..<s.count] == p; }
+lp_find :: (s: string, part: string, from: int) -> int {
+  if part.count == 0 || part.count > s.count { return -1; }
+  for i: from..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return i; } }
+  return -1;
+}
+// Milliseconds as seconds with one decimal: 7640 is "7.6".
+lp_secs :: (ms: int, out: [] u8) -> string {
+  v := ifx ms < 0 then 0 else ms;
+  tenths := (v + 50) / 100;
+  d: [24] u8; k := 0; x := tenths / 10;
+  while true { d[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  n := 0;
+  while k > 0 { k -= 1; if n < out.count { out[n] = d[k]; n += 1; } }
+  if n + 2 <= out.count { out[n] = '.'; out[n + 1] = cast(u8) ('0' + tenths % 10); n += 2; }
+  return cast(string) out[0..<n];
+}
+#test "seconds read with one decimal, rounded" {
+  o: [16] u8;
+  #assert lp_secs(7640, o[..]) == "7.6" && lp_secs(0, o[..]) == "0.0" && lp_secs(49, o[..]) == "0.0" && lp_secs(50, o[..]) == "0.1";
+  #assert lp_secs(999, o[..]) == "1.0" && lp_secs(123456, o[..]) == "123.5" && lp_secs(-5, o[..]) == "0.0";
+}
+#test "text: starts, ends, find" {
+  #assert lp_starts("--size", "--") && !lp_starts("-", "--") && lp_ends("a.png", ".png") && !lp_ends("png", ".png");
+  #assert lp_find("abcabc", "bc", 0) == 1 && lp_find("abcabc", "bc", 2) == 4 && lp_find("abc", "x", 0) == -1 && lp_find("a", "abc", 0) == -1;
+}
+
+// The next source `coax deps` names: its JSON's "sources" array holds absolute paths, and none has
+// a quote or a backslash in it. at[0] starts at 0; "" when there are no more.
+lp_next_source :: (json: string, at: [] int) -> string {
+  if at[0] == 0 {
+    s := lp_find(json, "\"sources\":[", 0);
+    if s < 0 { at[0] = json.count; return ""; }
+    at[0] = s + 11;
+  }
+  i := at[0];
+  while i < json.count && json[i] != '"' && json[i] != ']' { i += 1; }
+  if i >= json.count || json[i] == ']' { at[0] = json.count; return ""; }
+  e := i + 1;
+  while e < json.count && json[e] != '"' { e += 1; }
+  if e >= json.count { at[0] = json.count; return ""; }
+  at[0] = e + 1;
+  return json[i + 1..<e];
+}
+#test "the sources coax deps names, in order, and nothing after the array" {
+  j := "{\"schema_version\":1,\"sources\":[\"/r/a.coax\",\"/r/b/c.coax\"],\"descriptors\":[\"/r/x.pb\"]}";
+  at: [1] int;
+  #assert lp_next_source(j, at[..]) == "/r/a.coax" && lp_next_source(j, at[..]) == "/r/b/c.coax" && lp_next_source(j, at[..]) == "" && lp_next_source(j, at[..]) == "";
+  e: [1] int; #assert lp_next_source("{\"sources\":[]}", e[..]) == "";
+  n: [1] int; #assert lp_next_source("{}", n[..]) == "";
+}
+
+// A phone by name, or WxH in points: its size, scale and safe areas (top, bottom).
+LpPhone :: struct { ok: bool; size: string; dpr: string; safe: string; }
+lp_phone :: (name: string) -> LpPhone {
+  if name == "phone" { return LpPhone.{ok = true, size = "393x852", dpr = "3", safe = "59,34"}; }    // iPhone 15, 16, 17 and their Pro
+  if name == "small" { return LpPhone.{ok = true, size = "375x667", dpr = "2", safe = "20,0"}; }      // iPhone SE
+  if name == "large" { return LpPhone.{ok = true, size = "440x956", dpr = "3", safe = "62,34"}; }     // iPhone 16 and 17 Pro Max
+  s := args_size(name);
+  if s.ok { return LpPhone.{ok = true, size = name, dpr = "3", safe = "59,34"}; }
+  return LpPhone.{};
+}
+#test "phones by name or by size" {
+  #assert lp_phone("phone").size == "393x852" && lp_phone("small").dpr == "2" && lp_phone("large").safe == "62,34";
+  #assert lp_phone("402x874").ok && lp_phone("402x874").size == "402x874" && !lp_phone("huge").ok && !lp_phone("").ok;
+}
+
+// ---- processes
+
+LpArgv :: struct { v: [96] string; n: int; }
+lp_a :: (c: [] LpArgv, s: string) { if c[0].n < 96 { c[0].v[c[0].n] = s; c[0].n += 1; } }
+LpOut :: struct { b: [1048576] u8; n: int; }
+// Runs the command to its end in dir, with env ("" none). Its lines (stderr with stdout) go to
+// stderr when show, and into out. The exit status, or -1 when it did not start.
+lp_run :: (c: [] LpArgv, dir: string, env: string, show: bool, out: [] LpOut) -> int {
+  out[0].n = 0;
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := c[0].n > 0;
+  for i: 0..<c[0].n { ok = ok && proc_arg(h, c[0].v[i]); }
+  if dir.count > 0 { ok = ok && proc_cwd(h, dir); }
+  if env.count > 0 { ok = ok && proc_env(h, env); }
+  ok = ok && proc_err_to_out(h);
+  if !ok || proc_start(h) != 0 { d := proc_release(h); return -1; }
+  line: [65536] u8;
+  while true {
+    k := proc_line(h, -1, line[..]);
+    if k == PROC_EOF || k == PROC_ERROR { break; }
+    if k < 0 { continue; }
+    if show { tool_errln(cast(string) line[0..<k]); }
+    out[0].n = lp_put(out[0].b[..], out[0].n, cast(string) line[0..<k]);
+    out[0].n = lp_put(out[0].b[..], out[0].n, "\n");
+  }
+  st := proc_wait(h, -1);
+  d := proc_release(h);
+  return st;
+}
+lp_text :: (out: [] LpOut) -> string { return cast(string) out[0].b[0..<out[0].n]; }
+
+// ---- steps and their times
+
+LpSteps :: struct { name: [24] string; ms: [24] int; note: [24] string; n: int; t0: int; }
+lp_step_begin :: (s: [] LpSteps) { s[0].t0 = proc_now_ms(); }
+lp_step :: (s: [] LpSteps, name: string, note: string) {
+  if s[0].n < 24 { s[0].name[s[0].n] = name; s[0].ms[s[0].n] = proc_now_ms() - s[0].t0; s[0].note[s[0].n] = note; s[0].n += 1; }
+  s[0].t0 = proc_now_ms();
+}
+lp_steps_print :: (s: [] LpSteps, title: string) {
+  total := 0; o: [16] u8;
+  for i: 0..<s[0].n {
+    total += s[0].ms[i];
+    tool_err("  "); tool_err(s[0].name[i]);
+    for k: s[0].name[i].count..<18 { tool_err(" "); }
+    secs := lp_secs(s[0].ms[i], o[..]);
+    for k: secs.count..<7 { tool_err(" "); }
+    tool_err(secs); tool_err(" s  "); tool_errln(s[0].note[i]);
+  }
+  tool_err(title); tool_err(": "); tool_err(lp_secs(total, o[..])); tool_errln(" s");
+}
+
+// ---- hashes of inputs
+
+LpHash :: struct { file: [1048576] u8; acc: [32768] u8; n: int; }
+// One more input: a file's bytes (a missing file counts as one, with no bytes).
+lp_hash_file :: (h: [] LpHash, path: string) {
+  n := fs_read(path, h[0].file[..]);
+  raw: [32] u8;
+  got := ifx n < 0 then 0 else n;
+  r := sha256_hash(h[0].file[0..<got], raw[..]);
+  if h[0].n + 33 <= 32768 { for i: 0..<32 { h[0].acc[h[0].n + i] = raw[i]; } h[0].acc[h[0].n + 32] = cast(u8) (ifx n < 0 then 0 else 1); h[0].n += 33; }
+}
+lp_hash_text :: (h: [] LpHash, s: string) {
+  raw: [32] u8; n := lp_put(h[0].file[..], 0, s);
+  r := sha256_hash(h[0].file[0..<n], raw[..]);
+  if h[0].n + 33 <= 32768 { for i: 0..<32 { h[0].acc[h[0].n + i] = raw[i]; } h[0].acc[h[0].n + 32] = 2; h[0].n += 33; }
+}
+// Every regular file in dir whose name ends with one of the endings ("" any), by name.
+lp_hash_dir :: (h: [] LpHash, dir: string, e1: string, e2: string, e3: string) {
+  l: [1] FsList; p: [FS_PATH_MAX] u8;
+  if fs_list(dir, l[..]) < 0 { return; }
+  for i: 0..<l[0].n {
+    name := fs_entry(l[..], i);
+    if !(lp_ends(name, e1) || (e2.count > 0 && lp_ends(name, e2)) || (e3.count > 0 && lp_ends(name, e3))) { continue; }
+    path := fs_join(dir, name, p[..]);
+    if fs_kind(path) != FS_FILE { continue; }
+    lp_hash_text(h, name); lp_hash_file(h, path);
+  }
+}
+lp_hash_hex :: (h: [] LpHash, out: [] u8) -> string {
+  raw: [32] u8;
+  r := sha256_hash(h[0].acc[0..<h[0].n], raw[..]);
+  digits := "0123456789abcdef";
+  for i: 0..<32 { out[i * 2] = digits[cast(int) (raw[i] >> 4)]; out[i * 2 + 1] = digits[cast(int) (raw[i] & 15)]; }
+  return cast(string) out[0..<64];
+}
+// Whether the stamp file holds this hash.
+lp_stamped :: (path: string, hex: string) -> bool {
+  b: [128] u8; n := fs_read(path, b[..]);
+  return n == hex.count && cast(string) b[0..<n] == hex;
+}
+
+// ---- the loop's state
+
+Lp :: struct {
+  repo: [FS_PATH_MAX] u8; repo_n: int;
+  cwd: [FS_PATH_MAX] u8; cwd_n: int;
+  out: [1] LpOut; hash: [1] LpHash; steps: [1] LpSteps;
+  // the sources the last generate check read, for the watcher
+  src: [262144] u8; src_n: int;
+  inputs: [64] u8;
+}
+lp_repo :: (l: [] Lp) -> string { return cast(string) l[0].repo[0..<l[0].repo_n]; }
+// A path the user gave, from where they stand.
+lp_abs :: (l: [] Lp, path: string, out: [] u8) -> string {
+  if path.count > 0 && path[0] == '/' { n := lp_put(out, 0, path); return cast(string) out[0..<n]; }
+  return fs_join(cast(string) l[0].cwd[0..<l[0].cwd_n], path, out);
+}
+// A path in the repository.
+lp_in :: (l: [] Lp, rel: string, out: [] u8) -> string { return fs_join(lp_repo(l), rel, out); }
+
+// The Coax inputs' hash into l.inputs, and their paths into l.src (one a line). False when coax deps fails.
+lp_inputs :: (l: [] Lp) -> bool {
+  h := l[0].hash[..]; h[0].n = 0; l[0].src_n = 0;
+  roots := [2] string.[LP_ROOT, LP_SHADER];
+  for root: roots {
+    c: [1] LpArgv; lp_a(c[..], "coax/bin/coax"); lp_a(c[..], "deps"); lp_a(c[..], root);
+    if lp_run(c[..], lp_repo(l), "", false, l[0].out[..]) != 0 { tool_err("loop: coax deps failed for "); tool_errln(root); tool_err(lp_text(l[0].out[..])); return false; }
+    at: [1] int; json := lp_text(l[0].out[..]);
+    while true {
+      s := lp_next_source(json, at[..]);
+      if s.count == 0 { break; }
+      lp_hash_file(h, s);
+      l[0].src_n = lp_put(l[0].src[..], l[0].src_n, s); l[0].src_n = lp_put(l[0].src[..], l[0].src_n, "\n");
+    }
+  }
+  p: [FS_PATH_MAX] u8;
+  lp_hash_file(h, lp_in(l, LP_GENERATE, p[..]));
+  lp_hash_file(h, lp_in(l, "coax/bin/source-digest", p[..]));
+  hex := lp_hash_hex(h, l[0].inputs[..]);
+  return true;
+}
+// Generates when a Coax input changed since the stamp. "ran", "up to date", or "" when it failed.
+lp_generate :: (l: [] Lp) -> string {
+  p: [FS_PATH_MAX] u8; q: [FS_PATH_MAX] u8;
+  if !lp_inputs(l) { return ""; }
+  hex := cast(string) l[0].inputs[..];
+  if lp_stamped(lp_in(l, LP_STAMP, p[..]), hex) && fs_exists(lp_in(l, "apps/openagents-ios/Generated/gallery.c", q[..])) { return "up to date"; }
+  c: [1] LpArgv; lp_a(c[..], LP_GENERATE);
+  st := lp_run(c[..], lp_repo(l), "", false, l[0].out[..]);
+  if st != 0 { tool_err(lp_text(l[0].out[..])); tool_errln("loop: generate failed (the lines above are the remote job's)"); return ""; }
+  if !fs_write(lp_in(l, LP_STAMP, p[..]), hex) { tool_errln("loop: could not write the inputs stamp"); return ""; }
+  return "ran";
+}
+
+// The preview program, compiled when its inputs changed. False when a compile fails.
+lp_carrier :: (l: [] Lp) -> bool {
+  repo := lp_repo(l);
+  p: [FS_PATH_MAX] u8; t: [1] LpText; hexb: [64] u8;
+  if !fs_mkdir(lp_in(l, LP_BUILD, p[..])) { tool_errln("loop: could not make the build folder"); return false; }
+  inc := [8] string.["-ffp-contract=off", "-fno-fast-math", "-w", "-Iapps/openagents-ios/Generated", "-Iapps/shared/host/linux", LP_PAGE, "-O1", "-c"];
+  linked := fs_exists(lp_in(l, "apps/shared/app/preview/build/Preview", p[..]));
+  // the generated library: once for each generate
+  gen := cast(string) l[0].inputs[..];
+  if !lp_stamped(lp_in(l, "apps/shared/app/preview/build/gallery.inputs", p[..]), gen) {
+    c: [1] LpArgv; lp_a(c[..], "/usr/bin/clang"); lp_a(c[..], "-std=gnu11");
+    for f: inc { lp_a(c[..], f); }
+    lp_a(c[..], "apps/openagents-ios/Generated/gallery.c"); lp_a(c[..], "-o"); lp_a(c[..], "apps/shared/app/preview/build/gallery.o");
+    if lp_run(c[..], repo, "", true, l[0].out[..]) != 0 { return false; }
+    w := fs_write(lp_in(l, "apps/shared/app/preview/build/gallery.inputs", p[..]), gen);
+    linked = false;
+  }
+  // the shared Apple host: when one of its files changed
+  h := l[0].hash[..]; h[0].n = 0;
+  lp_hash_dir(h, lp_in(l, "apps/shared/host/apple", p[..]), ".m", ".h", ".c");
+  lp_hash_dir(h, lp_in(l, "apps/shared/host", p[..]), ".c", ".h", "");
+  lp_hash_dir(h, lp_in(l, "apps/shared/host/linux", p[..]), ".h", "", "");
+  host := lp_hash_hex(h, hexb[..]);
+  if !lp_stamped(lp_in(l, "apps/shared/app/preview/build/ui-host.inputs", p[..]), host) {
+    c: [1] LpArgv; lp_a(c[..], "/usr/bin/clang"); lp_a(c[..], "-fobjc-arc");
+    for f: inc { lp_a(c[..], f); }
+    lp_a(c[..], "apps/shared/host/apple/ui-host.m"); lp_a(c[..], "-o"); lp_a(c[..], "apps/shared/app/preview/build/ui-host.o");
+    if lp_run(c[..], repo, "", true, l[0].out[..]) != 0 { return false; }
+    w := fs_write(lp_in(l, "apps/shared/app/preview/build/ui-host.inputs", p[..]), host);
+    linked = false;
+  }
+  // the carrier with the page's host file: when it, the page's host or the generated header changed
+  h[0].n = 0;
+  lp_hash_file(h, lp_in(l, "apps/shared/app/preview/carrier.c", p[..]));
+  lp_hash_file(h, lp_in(l, "components/gallery/linux/main.c", p[..]));
+  lp_hash_dir(h, lp_in(l, LP_IOS, p[..]), ".c", ".h", "");
+  lp_hash_dir(h, lp_in(l, "components/gallery/apple", p[..]), ".h", "", "");
+  lp_hash_text(h, gen); lp_hash_text(h, host);
+  car := lp_hash_hex(h, hexb[..]);
+  if !lp_stamped(lp_in(l, "apps/shared/app/preview/build/carrier.inputs", p[..]), car) {
+    c: [1] LpArgv; lp_a(c[..], "/usr/bin/clang"); lp_a(c[..], "-std=gnu11");
+    for f: inc { lp_a(c[..], f); }
+    lp_a(c[..], "apps/shared/app/preview/carrier.c"); lp_a(c[..], "-o"); lp_a(c[..], "apps/shared/app/preview/build/carrier.o");
+    if lp_run(c[..], repo, "", true, l[0].out[..]) != 0 { return false; }
+    w := fs_write(lp_in(l, "apps/shared/app/preview/build/carrier.inputs", p[..]), car);
+    linked = false;
+  }
+  if linked { return true; }
+  k: [1] LpArgv; lp_a(k[..], "/usr/bin/clang");
+  objs := [3] string.["apps/shared/app/preview/build/carrier.o", "apps/shared/app/preview/build/gallery.o", "apps/shared/app/preview/build/ui-host.o"];
+  for o: objs { lp_a(k[..], o); }
+  fw := [6] string.["AppKit", "Metal", "QuartzCore", "ImageIO", "UniformTypeIdentifiers", "CoreGraphics"];
+  for f: fw { lp_a(k[..], "-framework"); lp_a(k[..], f); }
+  lp_a(k[..], "-lm"); lp_a(k[..], "-o"); lp_a(k[..], "apps/shared/app/preview/build/Preview.new");
+  if lp_run(k[..], repo, "", true, l[0].out[..]) != 0 { return false; }
+  return fs_rename(lp_in(l, "apps/shared/app/preview/build/Preview.new", p[..]), lp_in(l, "apps/shared/app/preview/build/Preview", t[0].b[..]));
+}
+
+// What a picture is of: the phone and the state.
+LpLook :: struct { phone: LpPhone; keyboard: string; scale: string; reduced: bool; text: string; ops: string; }
+// The options every loop takes. False (said why) when one is wrong.
+lp_look :: (a: [] Args, look: [] LpLook) -> bool {
+  look[0].phone = lp_phone(args_value(a, "--size", "phone"));
+  if !look[0].phone.ok { tool_errln("loop: --size WxH (points), or small, phone, large"); return false; }
+  if args_has(a, "--dpr") { look[0].phone.dpr = args_value(a, "--dpr", "3"); }
+  if args_has(a, "--safe") { look[0].phone.safe = args_value(a, "--safe", "59,34"); }
+  look[0].keyboard = args_value(a, "--keyboard", "");
+  look[0].scale = ifx args_has(a, "--large-text") then LP_LARGE_TEXT else args_value(a, "--text-scale", "");
+  look[0].reduced = args_has(a, "--reduced");
+  look[0].text = args_value(a, "--text", "");
+  look[0].ops = args_value(a, "--case", "");
+  return true;
+}
+// The preview program's arguments for a look (not --shot or --window).
+lp_look_args :: (l: [] Lp, look: LpLook, c: [] LpArgv, ops_abs: [] u8) -> bool {
+  lp_a(c, "--size"); lp_a(c, look.phone.size); lp_a(c, "--dpr"); lp_a(c, look.phone.dpr); lp_a(c, "--safe"); lp_a(c, look.phone.safe);
+  if look.keyboard.count > 0 { lp_a(c, "--keyboard"); lp_a(c, look.keyboard); }
+  if look.scale.count > 0 { lp_a(c, "--text-scale"); lp_a(c, look.scale); }
+  if look.reduced { lp_a(c, "--reduced"); }
+  if look.text.count > 0 { lp_a(c, "--text"); lp_a(c, look.text); }
+  if look.ops.count > 0 {
+    path := lp_abs(l, look.ops, ops_abs);
+    if fs_kind(path) != FS_FILE { tool_err("loop: no case file "); tool_errln(path); return false; }
+    lp_a(c, "--case"); lp_a(c, path);
+  }
+  return true;
+}
+// One picture. out and tree ("" none) are absolute.
+lp_picture :: (l: [] Lp, look: LpLook, out: string, tree: string) -> bool {
+  c: [1] LpArgv; ops: [FS_PATH_MAX] u8; env: [1] LpText;
+  lp_a(c[..], "apps/shared/app/preview/build/Preview"); lp_a(c[..], "--shot"); lp_a(c[..], out);
+  if !lp_look_args(l, look, c[..], ops[..]) { return false; }
+  if tree.count > 0 { lp_a(c[..], "--tree"); lp_a(c[..], tree); }
+  st := lp_run(c[..], lp_repo(l), lp_set(env[..], "UI_RESOURCES=", lp_repo(l), "/apps/openagents-ios/Generated/Components"), true, l[0].out[..]);
+  if st != 0 { tool_err("loop: the preview did not write "); tool_errln(out); return false; }
+  return true;
+}
+// The four pictures of a set into dir: the phone, a small and a large one, and large text.
+lp_set_pictures :: (l: [] Lp, look: LpLook, dir: string) -> bool {
+  names := [4] string.["phone", "small", "large", "large-text"];
+  if !fs_mkdir(dir) { tool_err("loop: could not make "); tool_errln(dir); return false; }
+  for name: names {
+    one := look; t: [1] LpText;
+    if name == "large-text" { one.scale = LP_LARGE_TEXT; } else { one.phone = lp_phone(name); }
+    if !lp_picture(l, one, lp_set(t[..], dir, "/", lp_set_name(name)), "") { return false; }
+  }
+  return true;
+}
+lp_set_name :: (name: string) -> string {
+  if name == "phone" { return "phone.png"; }
+  if name == "small" { return "small.png"; }
+  if name == "large" { return "large.png"; }
+  return "large-text.png";
+}
+
+// Generate and compile, timed. False when either fails.
+lp_ready :: (l: [] Lp) -> bool {
+  s := l[0].steps[..];
+  lp_step_begin(s);
+  g := lp_generate(l);
+  if g.count == 0 { return false; }
+  lp_step(s, "generate", ifx g == "ran" then "Coax to C and Metal, one remote job" else "up to date");
+  if !lp_carrier(l) { return false; }
+  lp_step(s, "compile", "the preview's C on the Mac");
+  return true;
+}
+
+lp_shot :: (l: [] Lp, a: [] Args) -> int {
+  look: [1] LpLook; o: [FS_PATH_MAX] u8; tr: [FS_PATH_MAX] u8;
+  if !lp_look(a, look[..]) { return 2; }
+  all := args_value(a, "--all", "");
+  last := args_at(a, args_count(a) - 1);
+  if all.count == 0 && (args_count(a) < 2 || !lp_ends(last, ".png")) { tool_errln("usage: shot.sh [--size WxH|small|phone|large] [--dpr K] [--safe TOP,BOTTOM] [--keyboard H] [--text-scale K] [--large-text] [--reduced] [--text TEXT] [--case FILE] [--tree OUT.txt] OUT.png | --all DIR"); return 2; }
+  if !lp_ready(l) { return 1; }
+  s := l[0].steps[..];
+  if all.count > 0 {
+    if !lp_set_pictures(l, look[0], lp_abs(l, all, o[..])) { return 1; }
+    lp_step(s, "draw", "phone.png small.png large.png large-text.png");
+  } else {
+    tree := args_value(a, "--tree", "");
+    if !lp_picture(l, look[0], lp_abs(l, last, o[..]), ifx tree.count > 0 then lp_abs(l, tree, tr[..]) else "") { return 1; }
+    lp_step(s, "draw", last);
+  }
+  lp_steps_print(s, "shot");
+  return 0;
+}
+
+// What the watcher looks at: when each input was last written. A change in it starts a pass.
+lp_watch_stamp :: (l: [] Lp, ops: string) -> int {
+  st := 17; p: [FS_PATH_MAX] u8;
+  src := cast(string) l[0].src[0..<l[0].src_n];
+  i := 0;
+  while i < src.count {
+    e := i;
+    while e < src.count && src[e] != '\n' { e += 1; }
+    st = (st * 31 + fs_mtime_ns(src[i..<e])) & 0x3fffffffffff;
+    i = e + 1;
+  }
+  files := [5] string.["apps/shared/app/preview/carrier.c", "components/gallery/linux/main.c", "apps/openagents-ios/host.c", "apps/openagents-ios/host.h", "apps/shared/host/apple/ui-host.m"];
+  for f: files { st = (st * 31 + fs_mtime_ns(lp_in(l, f, p[..]))) & 0x3fffffffffff; }
+  if ops.count > 0 { st = (st * 31 + fs_mtime_ns(lp_abs(l, ops, p[..]))) & 0x3fffffffffff; }
+  return st;
+}
+lp_watch :: (l: [] Lp, a: [] Args) -> int {
+  look: [1] LpLook; o: [FS_PATH_MAX] u8; t: [1] LpText; sec: [16] u8;
+  if !lp_look(a, look[..]) { return 2; }
+  dir := lp_abs(l, args_value(a, "--out", "apps/shared/app/preview/build/watch"), o[..]);
+  if args_value(a, "--out", "").count == 0 { dir = lp_in(l, "apps/shared/app/preview/build/watch", o[..]); }
+  all := args_has(a, "--all"); window := args_has(a, "--window");
+  if !fs_mkdir(dir) { tool_err("watch: could not make "); tool_errln(dir); return 1; }
+  tool_err("watch: "); tool_err(dir); tool_errln(ifx all then "/{phone,small,large,large-text}.png; Ctrl-C stops" else "/phone.png; Ctrl-C stops");
+  seen := -1; win := -1;
+  while true {
+    now := ifx seen == -1 then 0 else lp_watch_stamp(l, look[0].ops);
+    if now == seen { proc_sleep(250); continue; }
+    t0 := proc_now_ms();
+    l[0].steps[0].n = 0;
+    ok := lp_ready(l);
+    if ok && all { ok = lp_set_pictures(l, look[0], dir); }
+    if ok && !all { ok = lp_picture(l, look[0], lp_set(t[..], dir, "/phone.png", ""), ""); }
+    if ok && window {
+      // the window we opened before closes; nothing else is touched
+      if win >= 0 { k := proc_kill(win, PROC_SIGTERM); w := proc_wait(win, 2000); r := proc_release(win); }
+      win = proc_new();
+      c: [1] LpArgv; ops: [FS_PATH_MAX] u8; env: [1] LpText;
+      lp_a(c[..], "apps/shared/app/preview/build/Preview"); lp_a(c[..], "--window");
+      good := lp_look_args(l, look[0], c[..], ops[..]);
+      for i: 0..<c[0].n { good = good && proc_arg(win, c[0].v[i]); }
+      good = good && proc_cwd(win, lp_repo(l)) && proc_env(win, lp_set(env[..], "UI_RESOURCES=", lp_repo(l), "/apps/openagents-ios/Generated/Components")) && proc_quiet(win) && proc_gentle(win);
+      if !good || proc_start(win) != 0 { r := proc_release(win); win = -1; tool_errln("watch: the window did not open"); }
+    }
+    // the inputs as they are now: an edit made during the pass starts the next one
+    seen = lp_watch_stamp(l, look[0].ops);
+    tool_err(ifx ok then "watch: up to date in " else "watch: failed after "); tool_err(lp_secs(proc_now_ms() - t0, sec[..])); tool_errln(" s");
+  }
+  return 0;
+}
+
+// ---- the simulator loop (apps/openagents-ios/dev.sh)
+
+lp_ios_fail :: (l: [] Lp, what: string) -> int { tool_err(lp_text(l[0].out[..])); tool_err("dev: "); tool_errln(what); return 1; }
+lp_ios :: (l: [] Lp, a: [] Args) -> int {
+  repo := lp_repo(l); s := l[0].steps[..];
+  p: [FS_PATH_MAX] u8; q: [FS_PATH_MAX] u8; home: [FS_PATH_MAX] u8; t: [1] LpText; hexb: [64] u8;
+  device := args_value(a, "--device", LP_DEVICE);
+  // never beside another xcodebuild, and never two of these at once
+  x: [1] LpArgv; lp_a(x[..], "/usr/bin/pgrep"); lp_a(x[..], "-x"); lp_a(x[..], "xcodebuild");
+  if lp_run(x[..], repo, "", false, l[0].out[..]) == 0 { tool_err("dev: another xcodebuild is running (pid "); tool_err(lp_text(l[0].out[..])); tool_errln("); run this again when it ends"); return 3; }
+  base: [1] LpText; lp_add(base[..], proc_getenv("HOME", home[..])); lp_add(base[..], "/.openagents/ios-dev");
+  derived: [1] LpText; lp_add(derived[..], lp_str(base[..])); lp_add(derived[..], "/derived");
+  if !fs_mkdir(lp_str(derived[..])) { tool_errln("dev: could not make ~/.openagents/ios-dev/derived"); return 1; }
+  if !fs_try_lock(lp_set(t[..], lp_str(base[..]), "/lock", "")) { tool_errln("dev: another dev.sh is running; run this again when it ends"); return 3; }
+  ios := lp_in(l, LP_IOS, q[..]);
+  work: [1] LpText; lp_add(work[..], ios); lp_add(work[..], "/build/dev");
+  if !fs_mkdir(lp_str(work[..])) { tool_errln("dev: could not make apps/openagents-ios/build/dev"); return 1; }
+
+  lp_step_begin(s);
+  g := lp_generate(l);
+  if g.count == 0 { return 1; }
+  lp_step(s, "generate", ifx g == "ran" then "Coax to C and Metal, one remote job" else "up to date");
+
+  // the project: when project.yml or the names of the files beside it changed
+  h := l[0].hash[..]; h[0].n = 0;
+  lp_hash_file(h, lp_in(l, "apps/openagents-ios/project.yml", p[..]));
+  dirs := [3] string.["apps/openagents-ios", "apps/openagents-ios/OpenAgents", "apps/shared/native"];
+  for d: dirs {
+    ls: [1] FsList;
+    if fs_list(lp_in(l, d, p[..]), ls[..]) >= 0 { for i: 0..<ls[0].n { lp_hash_text(h, fs_entry(ls[..], i)); } }
+  }
+  proj := lp_hash_hex(h, hexb[..]);
+  stamp: [1] LpText; lp_add(stamp[..], lp_str(work[..])); lp_add(stamp[..], "/xcodegen.inputs");
+  if lp_stamped(lp_str(stamp[..]), proj) && fs_exists(lp_in(l, "apps/openagents-ios/OpenAgents.xcodeproj/project.pbxproj", p[..])) {
+    lp_step(s, "xcodegen", "up to date");
+  } else {
+    c: [1] LpArgv; lp_a(c[..], "xcodegen"); lp_a(c[..], "generate"); lp_a(c[..], "--quiet");
+    if lp_run(c[..], ios, "", false, l[0].out[..]) != 0 { return lp_ios_fail(l, "xcodegen failed"); }
+    w := fs_write(lp_str(stamp[..]), proj);
+    lp_step(s, "xcodegen", "project.yml or the file list changed");
+  }
+
+  // the app target, incrementally, in the one derived-data folder outside the worktree
+  b: [1] LpArgv; dest: [1] LpText;
+  lp_a(b[..], lp_in(l, "coax/remote/remote.sh", p[..])); lp_a(b[..], "run"); lp_a(b[..], "--local"); lp_a(b[..], "--");
+  lp_a(b[..], "xcodebuild"); lp_a(b[..], "-project"); lp_a(b[..], LP_PROJECT); lp_a(b[..], "-scheme"); lp_a(b[..], LP_SCHEME);
+  lp_a(b[..], "-configuration"); lp_a(b[..], "Debug"); lp_a(b[..], "-destination"); lp_a(b[..], lp_set(dest[..], "platform=iOS Simulator,name=", device, ""));
+  lp_a(b[..], "-derivedDataPath"); lp_a(b[..], lp_str(derived[..]));
+  lp_a(b[..], "CODE_SIGNING_ALLOWED=YES"); lp_a(b[..], "CODE_SIGN_IDENTITY=-"); lp_a(b[..], "COMPILER_INDEX_STORE_ENABLE=NO"); lp_a(b[..], "ONLY_ACTIVE_ARCH=YES");
+  lp_a(b[..], "-quiet"); lp_a(b[..], "build");
+  // the simulator must exist before xcodebuild names it
+  sim: [1] LpArgv; lp_a(sim[..], "xcrun"); lp_a(sim[..], "simctl"); lp_a(sim[..], "bootstatus"); lp_a(sim[..], device); lp_a(sim[..], "-b");
+  if lp_run(sim[..], repo, "", false, l[0].out[..]) != 0 {
+    mk: [1] LpArgv; lp_a(mk[..], "xcrun"); lp_a(mk[..], "simctl"); lp_a(mk[..], "create"); lp_a(mk[..], device); lp_a(mk[..], LP_DEVICE_TYPE);
+    if lp_run(mk[..], repo, "", false, l[0].out[..]) != 0 || lp_run(sim[..], repo, "", false, l[0].out[..]) != 0 {
+      tool_err(lp_text(l[0].out[..])); tool_err("dev: no simulator named \""); tool_err(device); tool_err("\" and it could not be made. Make one: xcrun simctl create \""); tool_err(device); tool_errln("\" \"iPhone 17 Pro\"");
+      return 1;
+    }
+  }
+  lp_step(s, "simulator", device);
+  if lp_run(b[..], ios, "", false, l[0].out[..]) != 0 { return lp_ios_fail(l, "the build failed (the lines above are xcodebuild's)"); }
+  lp_step(s, "xcodebuild", "the app target, incremental");
+
+  app: [1] LpText; lp_add(app[..], lp_str(derived[..])); lp_add(app[..], "/"); lp_add(app[..], LP_PRODUCT);
+  i: [1] LpArgv; lp_a(i[..], "xcrun"); lp_a(i[..], "simctl"); lp_a(i[..], "install"); lp_a(i[..], device); lp_a(i[..], lp_str(app[..]));
+  if lp_run(i[..], repo, "", false, l[0].out[..]) != 0 { return lp_ios_fail(l, "install failed"); }
+  lp_step(s, "install", "");
+  r: [1] LpArgv; lp_a(r[..], "xcrun"); lp_a(r[..], "simctl"); lp_a(r[..], "launch"); lp_a(r[..], "--terminate-running-process"); lp_a(r[..], device); lp_a(r[..], LP_BUNDLE);
+  if lp_run(r[..], repo, "", false, l[0].out[..]) != 0 { return lp_ios_fail(l, "launch failed"); }
+  settle := args_whole(args_value(a, "--settle", "1500"));
+  proc_sleep(ifx settle < 0 then 1500 else settle);
+  lp_step(s, "launch", "and the wait for its first frames (--settle MS)");
+  shot: [FS_PATH_MAX] u8; def: [1] LpText;
+  out := ifx args_has(a, "--shot") then lp_abs(l, args_value(a, "--shot", ""), shot[..]) else lp_set(def[..], lp_str(work[..]), "/screen.png", "");
+  c: [1] LpArgv; lp_a(c[..], "xcrun"); lp_a(c[..], "simctl"); lp_a(c[..], "io"); lp_a(c[..], device); lp_a(c[..], "screenshot"); lp_a(c[..], out);
+  if lp_run(c[..], repo, "", false, l[0].out[..]) != 0 { return lp_ios_fail(l, "the screenshot failed"); }
+  lp_step(s, "screenshot", "the simulator's screen");
+  lp_steps_print(s, "dev");
+  tool_err("dev: wrote "); tool_errln(out);
+  u := fs_unlock();
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; l: [1] Lp;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: loop.coax shot|watch|ios ... (apps/shared/app/preview/README.md)"); return 2; }
+  repo := proc_getenv("COAX_TOOL_REPO", l[0].repo[..]); l[0].repo_n = repo.count;
+  cwd := fs_cwd(l[0].cwd[..]); l[0].cwd_n = cwd.count;
+  p: [FS_PATH_MAX] u8;
+  if repo.count == 0 || !fs_exists(lp_in(l[..], LP_ROOT, p[..])) { tool_errln("loop: run it through coax/web/tool.sh (shot.sh, watch.sh, dev.sh)"); return 2; }
+  what := args_at(a[..], 0);
+  if what == "shot" { return lp_shot(l[..], a[..]); }
+  if what == "watch" { return lp_watch(l[..], a[..]); }
+  if what == "ios" { return lp_ios(l[..], a[..]); }
+  tool_errln("usage: loop.coax shot|watch|ios ...");
+  return 2;
+}
