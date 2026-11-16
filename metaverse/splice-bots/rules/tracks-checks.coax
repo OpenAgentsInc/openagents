@@ -1,0 +1,245 @@
+// Parity checks for tracks.coax: SpliceTests/Rules/SpliceTracksTests.cpp. The C++ FTracksTrain drives
+// SpliceTracks::DriveSubStep on flat ground; here TkTrain drives sr_tracks_drive_sub_step on a flat SrCabGround
+// with an SrSweepWorld (no walls, or the test's wall as a half-plane x >= WallX). The C++ sweep lambda that counts
+// a turning piece's parts reads sr_tracks_sweep_parts' list instead. rules.coax loads this file with
+// `#load ... #test;`.
+
+TK_SUB :: 1.0 / 120.0;
+TK_HUGE :: 1000000000000.0;
+
+tk_drive :: (throttle: f64, steer: f64) -> SrCabInput { return SrCabInput.{throttle = throttle, steer = steer}; }
+// The lowest x of a piece's box at a pose (the greybox's 1.27 m half width).
+tk_min_corner_x :: (middle: D3, yaw_deg: f64, length: f64) -> f64 {
+  f := d3_scale(sr_trail_forward(yaw_deg), length * 0.5);
+  r := d3_scale(sr_trail_forward(yaw_deg + 90.0), 1.27);
+  cs := [4] D3.[d3_add(d3_add(middle, f), r), d3_sub(d3_add(middle, f), r), d3_add(d3_sub(middle, f), r), d3_sub(d3_sub(middle, f), r)];
+  m := TK_HUGE;
+  for c: cs { m = fmin(m, c.x); }
+  return m;
+}
+tk_to_polyline :: (p: D3, points: [] const D2, n: int) -> f64 {
+  q := sr_flat(p);
+  best := TK_HUGE;
+  for k: 1..<n { best = fmin(best, sr_trail_dist_to_segment(q, points[k - 1], points[k])); }
+  return best;
+}
+tk_max_hitch :: (pose: SrTrainPose) -> f64 { m := 0.0; for i: 0..<SR_TRAIL_FOLLOW_CARS { m = fmax(m, abs(sr_trail_hitch_angle_deg(pose, i))); } return m; }
+tk_joined :: (pose: SrTrainPose) -> bool {
+  ok := d3_dist(pose.cars[0].front_hitch, sr_trail_cab_rear_hitch(pose.cab)) < 0.001;
+  for c: 0..<SR_TRAIL_FOLLOW_CARS {
+    ok = ok && abs(d3_dist(pose.cars[c].front_hitch, pose.cars[c].rear_hitch) - SR_TRAIL_HITCH_SPACING) < 0.001;
+    if c > 0 { ok = ok && d3_dist(pose.cars[c].front_hitch, pose.cars[c - 1].rear_hitch) < 0.001; }
+  }
+  return ok;
+}
+tk_curve_length :: (points: [] const D3, n: int) -> f64 { l := 0.0; for i: 1..<n { l += d3_dist(points[i - 1], points[i]); } return l; }
+
+// A train driven by sr_tracks_drive_sub_step, as ASpliceRover drives it.
+TkTrain :: struct { t: SrCabTuning; cab: [1] SrCabState; trail: [1] SrTrail; pose: [1] SrTrainPose; }
+tk_make :: (out: [] TkTrain) {
+  sr_trail_reset(out[0].trail[..], sr_cab_pose(out[0].cab[0]));
+  out[0].pose[0] = sr_trail_place_cars(out[0].trail[..], sr_cab_pose(out[0].cab[0]));
+}
+tk_step_in :: (tr: [] TkTrain, input: SrCabInput, world: SrSweepWorld) -> bool {
+  return sr_tracks_drive_sub_step(tr[0].t, tr[0].cab[..], tr[0].trail[..], tr[0].pose[..], input, TK_SUB, sr_cab_flat_ground(0.0), world);
+}
+tk_open :: () -> SrSweepWorld { w: SrSweepWorld; return w; }
+tk_step :: (tr: [] TkTrain, input: SrCabInput) -> bool { return tk_step_in(tr, input, tk_open()); }
+
+#test "Splice.Rules.Tracks.TreadFollowsGroundSpeed" {
+  p := d3(3.0, -2.0, 0.0);
+  f := sr_trail_forward(30.0);
+  {
+    s := sr_tracks_tread_speeds(p, 30.0, d3_add(p, d3_scale(f, 0.1)), 30.0, 0.02, SR_TRACKS_HALF_TRACK);
+    #assert abs(s.ground - 5.0) <= 0.0001;
+    #assert abs(s.left - 5.0) <= 0.0001 && abs(s.right - 5.0) <= 0.0001;
+    b := sr_tracks_tread_speeds(p, 30.0, d3_sub(p, d3_scale(f, 0.06)), 30.0, 0.02, SR_TRACKS_HALF_TRACK);
+    #assert abs(b.left + 3.0) <= 0.0001 && abs(b.right + 3.0) <= 0.0001;
+    z := sr_tracks_tread_speeds(p, 30.0, p, 30.0, 0.02, SR_TRACKS_HALF_TRACK);
+    #assert z.left == 0.0 && z.right == 0.0 && z.ground == 0.0;
+  }
+  // The cab on a right-hand curve, and both cars behind it on the trail.
+  tr: [1] TkTrain;
+  tk_make(tr[..]);
+  worst_ground := 0.0; worst_mean := 0.0; worst_split := 0.0; car_worst := 0.0; car_mean := 0.0;
+  car_left: [SR_TRAIL_FOLLOW_CARS] f64; car_right: [SR_TRAIL_FOLLOW_CARS] f64;
+  right_inside := true;
+  before := tr[0].pose[0];
+  for i: 0..<6 * 120 {
+    _ = tk_step(tr[..], tk_drive(ifx tr[0].cab[0].speed < 6.0 then 1.0 else 0.0, 0.6));
+    now := tr[0].pose[0];
+    s := sr_tracks_tread_speeds(before.cab.location, before.cab.yaw_deg, now.cab.location, now.cab.yaw_deg, TK_SUB, SR_TRACKS_HALF_TRACK);
+    if i > 120 {
+      worst_ground = fmax(worst_ground, abs(s.ground - tr[0].cab[0].speed));
+      worst_mean = fmax(worst_mean, abs((s.left + s.right) * 0.5 - s.ground));
+      worst_split = fmax(worst_split, abs((s.left - s.right) - 2.0 * sr_deg_to_rad(s.yaw_rate_deg) * SR_TRACKS_HALF_TRACK));
+      right_inside = right_inside && s.right < s.left;
+      for c: 0..<SR_TRAIL_FOLLOW_CARS {
+        cs := sr_tracks_tread_speeds(before.cars[c].location, before.cars[c].yaw_deg, now.cars[c].location, now.cars[c].yaw_deg, TK_SUB, SR_TRACKS_HALF_TRACK);
+        moved := d3_dist(before.cars[c].location, now.cars[c].location) / TK_SUB;
+        // A car is a chord of the curve: its middle creeps sideways a little, which is not tread.
+        car_worst = fmax(car_worst, abs(cs.ground - moved));
+        car_mean = fmax(car_mean, abs((cs.left + cs.right) * 0.5 - cs.ground));
+        car_left[c] += cs.left * TK_SUB;
+        car_right[c] += cs.right * TK_SUB;
+      }
+    }
+    before = now;
+  }
+  #assert worst_ground < 0.01;
+  #assert worst_mean < 0.0001;
+  #assert worst_split < 0.001;
+  #assert car_worst < 0.1;
+  #assert car_mean < 0.0001;
+  #assert right_inside;
+  for c: 0..<SR_TRAIL_FOLLOW_CARS { #assert car_right[c] < car_left[c] - 0.5; }
+  // The scroll and wheels follow the distance: one repeat scrolls back to the start; backing undoes it.
+  side: SrTreadState;
+  side = sr_tracks_run_tread(side, 0.2);
+  #assert abs(side.scroll - 0.4) <= 0.0001;
+  #assert abs(side.wheel_deg - sr_rad_to_deg(0.2 / SR_TRACKS_WHEEL_RADIUS)) <= 0.001;
+  side = sr_tracks_run_tread(side, SR_TRACKS_TREAD_REPEAT);
+  #assert abs(side.scroll - 0.4) <= 0.0001;
+  side = sr_tracks_run_tread(side, -0.2 - SR_TRACKS_TREAD_REPEAT);
+  #assert abs(side.scroll) < 0.0001 || abs(side.scroll - 1.0) < 0.0001;
+  #assert abs(side.wheel_deg) < 0.01;
+}
+
+#test "Splice.Rules.Tracks.CableSagGrowsAsHitchesClose" {
+  l := SR_TRACKS_CABLE_LENGTH;
+  a := d3(0.0, 0.0, 1.6);
+  last := -1.0;
+  grows := true; length_ok := true; ends := true;
+  ds := [6] f64.[0.85, 0.7, 0.5, 0.3, 0.15, 0.05];
+  curve: [SR_TRACKS_CABLE_POINTS_MAX] D3;
+  for d: ds {
+    b := d3_add(a, d3(d, 0.0, 0.0));
+    sag := sr_tracks_cable_sag(a, b, l);
+    grows = grows && sag > last + 0.001;
+    last = sag;
+    n := sr_tracks_cable_curve(a, b, l, 64, curve[..]);
+    length_ok = length_ok && abs(tk_curve_length(curve[..], n) - l) < l * 0.01;
+    ends = ends && d3_dist(curve[0], a) < 0.0001 && d3_dist(curve[n - 1], b) < 0.0001;
+  }
+  #assert grows;
+  #assert last > l * 0.4 && last < l * 0.5;
+  #assert length_ok;
+  #assert ends;
+  #assert abs(sr_tracks_cable_sag(a, d3_add(a, d3(l + 0.1, 0.0, 0.0)), l)) <= 0.00001;
+  {
+    // One socket higher: still its length, still from socket to socket, and never above the higher one.
+    b := d3_add(a, d3(0.4, 0.2, 0.3));
+    n := sr_tracks_cable_curve(a, b, l, 64, curve[..]);
+    below := true;
+    for k: 0..<n { below = below && curve[k].z <= b.z + 0.0001; }
+    #assert abs(tk_curve_length(curve[..], n) - l) < l * 0.01;
+    #assert d3_dist(curve[0], a) < 0.0001 && d3_dist(curve[n - 1], b) < 0.0001;
+    #assert below;
+  }
+  // On the train: the sockets are on the right; turning right brings them together and the cable sags more.
+  tr: [1] TkTrain;
+  tk_make(tr[..]);
+  so: [2] D3;
+  sr_tracks_coupling_sockets(tr[0].pose[0], 0, so[..]);
+  straight_gap := d3_dist(so[0], so[1]);
+  straight_sag := sr_tracks_cable_sag(so[0], so[1], l);
+  #assert abs(straight_gap - SR_TRAIL_GAP) <= 0.0001;
+  for i: 0..<8 * 120 { _ = tk_step(tr[..], tk_drive(ifx tr[0].cab[0].speed < 3.0 then 1.0 else 0.0, 1.0)); }
+  #assert tk_max_hitch(tr[0].pose[0]) > 30.0;
+  for c: 0..<SR_TRAIL_FOLLOW_CARS {
+    sr_tracks_coupling_sockets(tr[0].pose[0], c, so[..]);
+    #assert d3_dist(so[0], so[1]) < straight_gap - 0.1;
+    #assert sr_tracks_cable_sag(so[0], so[1], l) > straight_sag + 0.02;
+  }
+}
+
+// Drive a full-lock circle as tight as the clamp allows, then hold S with the steering centred: the cab retraces
+// its trail, slowed to what its lock can follow, so both cars stay on the trail and never swing in to the clamp.
+#test "Splice.Rules.Tracks.ReverseOutOfTightCircle" {
+  cruises := [2] f64.[3.0, 6.0];
+  for cruise: cruises {
+    tr: [1] TkTrain;
+    tk_make(tr[..]);
+    tight := 0.0;
+    for i: 0..<15 * 120 {
+      _ = tk_step(tr[..], tk_drive(ifx tr[0].cab[0].speed < cruise then 1.0 else 0.0, 1.0));
+      tight = fmax(tight, tk_max_hitch(tr[0].pose[0]));
+    }
+    #assert tight > 30.0;
+    laid: [SR_TRAIL_POINTS_MAX] D2;
+    laid_n := 0;
+    worst_off := 0.0; worst_hitch := 0.0; travel := 0.0; fastest := 0.0;
+    clamped := false; joined := true; backing := false;
+    for i: 0..<12 * 120 {
+      was := tr[0].cab[0].location;
+      _ = tk_step(tr[..], tk_drive(-1.0, 0.0));
+      // The trail recorded going forward, braking included: as it stands once the cab starts back.
+      if !backing && tr[0].cab[0].speed < 0.0 { backing = true; laid_n = sr_trail_points(tr[0].trail[..], laid[..]); }
+      travel += d3_dist(was, tr[0].cab[0].location);
+      fastest = fmin(fastest, tr[0].cab[0].speed);
+      if !backing { continue; }
+      pose := tr[0].pose[0];
+      if pose.clamped { clamped = true; }
+      joined = joined && tk_joined(pose);
+      worst_hitch = fmax(worst_hitch, tk_max_hitch(pose));
+      for c: 0..<SR_TRAIL_FOLLOW_CARS {
+        worst_off = fmax(worst_off, tk_to_polyline(pose.cars[c].front_hitch, laid[..], laid_n));
+        worst_off = fmax(worst_off, tk_to_polyline(pose.cars[c].rear_hitch, laid[..], laid_n));
+      }
+    }
+    #assert travel > 10.0;
+    #assert worst_off <= 0.3;
+    #assert !clamped;
+    #assert worst_hitch <= SR_TRAIL_MAX_HITCH_DEG + 0.01;
+    #assert joined;
+    #assert -fastest < tr[0].t.reverse_speed;
+  }
+  // On a straight trail backing is not slowed.
+  {
+    tr: [1] TkTrain;
+    tk_make(tr[..]);
+    fastest := 0.0;
+    for i: 0..<3 * 120 { _ = tk_step(tr[..], tk_drive(-1.0, 0.0)); fastest = fmin(fastest, tr[0].cab[0].speed); }
+    #assert abs(-fastest - tr[0].t.reverse_speed) <= 0.001;
+  }
+}
+
+// UE-VEH-04: backing towards a wall that only the last car reaches stops the cab, before any car enters it.
+// The sweep is cut so a turning piece is checked every few degrees.
+#test "Splice.Rules.Tracks.CarSweepStopsCab" {
+  tr: [1] TkTrain;
+  tk_make(tr[..]);
+  tail := tk_min_corner_x(tr[0].pose[0].cars[1].location, tr[0].pose[0].cars[1].yaw_deg, SR_TRAIL_CAR_LENGTH);
+  wall_x := tail - 0.7;
+  wall := sr_sweep_world_add_wall(tk_open(), d2(1.0, 0.0), wall_x);
+  ever_blocked := false; never_in := true; taken_back := true; cab_clear := true;
+  for i: 0..<3 * 120 {
+    was := tr[0].cab[0].location;
+    blocked := tk_step_in(tr[..], tk_drive(-1.0, 0.0), wall);
+    if blocked {
+      ever_blocked = true;
+      taken_back = taken_back && tr[0].cab[0].speed == 0.0 && tr[0].cab[0].blocked && d3_dist(was, tr[0].cab[0].location) < 0.000000001;
+    }
+    never_in = never_in && tk_min_corner_x(tr[0].pose[0].cars[1].location, tr[0].pose[0].cars[1].yaw_deg, SR_TRAIL_CAR_LENGTH) >= wall_x;
+    cab_clear = cab_clear && tk_min_corner_x(tr[0].pose[0].cab.location, tr[0].pose[0].cab.yaw_deg, SR_TRAIL_CAB_LENGTH) > wall_x + 5.0;
+  }
+  left := tk_min_corner_x(tr[0].pose[0].cars[1].location, tr[0].pose[0].cars[1].yaw_deg, SR_TRAIL_CAR_LENGTH) - wall_x;
+  #assert ever_blocked;
+  #assert taken_back;
+  #assert never_in;
+  #assert cab_clear;
+  #assert left >= 0.0 && left < 0.02;
+  #assert abs(tr[0].cab[0].speed) < 0.1;
+  // Driving away is free.
+  away := false;
+  for i: 0..<60 { if !tk_step_in(tr[..], tk_drive(1.0, 0.0), wall) && tr[0].cab[0].speed > 0.0 { away = true; } }
+  #assert away;
+  // A piece turning 10 degrees in one step is swept in parts of at most 2 degrees.
+  from := tr[0].pose[0]; to := tr[0].pose[0];
+  to.cab.yaw_deg += 10.0;
+  parts: [SR_TRACKS_SWEEP_PARTS_MAX] SrSweepPart;
+  n := sr_tracks_sweep_parts(from, to, parts[..]);
+  cab_parts := 0; worst_turn := 0.0;
+  for k: 0..<n { if parts[k].piece == 0 { cab_parts += 1; worst_turn = fmax(worst_turn, abs(sr_unwind_deg(parts[k].to_yaw_deg - parts[k].from_yaw_deg))); } }
+  #assert cab_parts >= 5 && worst_turn <= SR_TRACKS_MAX_SWEEP_YAW_DEG + 0.001;
+}

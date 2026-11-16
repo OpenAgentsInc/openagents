@@ -1,0 +1,231 @@
+// Splice Bots rules: Sniper's tracks, the cable between its pieces, and the train's step against the world
+// (SpliceTracks.h, package V-02; GDD 04 4.1: UE-VEH-04, a swept box per car, a step that would enter a collider
+// is taken back and the rover stops; UE-VEH-05, the tread scrolls by each side's ground speed, road wheels spun
+// to match, left and right differ in a turn). The cable is a catenary between two sockets; UE-VEH-08's charging
+// cable can use the same curve. The prototype has neither (drive.coax draws wheels and one rigid train); every
+// size here is INFERRED from the greybox (SpliceRover.h).
+// The C++ sweep is a callback. Here the train's sweep is data: sr_tracks_sweep_parts lists every piece's straight
+// moves (cut so none turns a piece more than MaxSweepYawDeg) and the caller tests them against its world; the
+// drive sub-step is split the same way (sr_tracks_drive_begin, the cab's steps, the preview and the parts, then
+// sr_tracks_drive_finish). sr_tracks_drive_sub_step does it all against a data world (SrSweepWorld).
+// Units: metres, seconds, degrees. Yaw as Unreal: 0 faces +x, 90 faces +y; +y is the right side.
+#load "../../../metaverse-engine/core/math-d.coax";
+#load "trail.coax";
+#load "cab.coax";
+
+SR_TRACKS_HALF_TRACK :: 1.01;     // INFERRED: each track's middle off the centre line (1.27 half width less 0.14 and 0.12)
+SR_TRACKS_WHEEL_RADIUS :: 0.28;   // INFERRED
+SR_TRACKS_TREAD_REPEAT :: 0.5;    // INFERRED: one repeat of the tread texture (TreadScroll 0..1 over it)
+// INFERRED: the cable's sockets on each piece's end face, this far right of the centre line and this high above
+// the underside. Its length: the 0.5 m coupler gap and 0.4 m of slack.
+SR_TRACKS_CABLE_SIDE :: 0.5;
+SR_TRACKS_CABLE_HEIGHT :: 1.6;
+SR_TRACKS_CABLE_LENGTH :: 0.9;
+SR_TRACKS_MAX_SWEEP_YAW_DEG :: 2.0;   // no sweep part turns a piece more than this
+// INFERRED: backing up is slowed until the cab's lock turns it this much tighter than the trail needs.
+SR_TRACKS_RETRACE_MARGIN :: 1.05;
+SR_TRACKS_MIN_RETRACE_SPEED :: 1.0;
+SR_TRACKS_RETRACE_READ_AHEAD :: 6.0;  // m of trail read for that
+SR_TRACKS_PIECES :: 3;                // the cab and SR_TRAIL_FOLLOW_CARS cars
+// Sweep parts: a piece turns at most 180 degrees in a step, so 90 parts each.
+SR_TRACKS_SWEEP_PARTS_MAX :: 270;
+SR_TRACKS_CABLE_POINTS_MAX :: 129;
+
+// Each side's tread speed along the piece's heading, m/s (negative backs up), and the piece's own.
+SrTreadSpeeds :: struct { ground: f64; left: f64; right: f64; yaw_rate_deg: f64; }
+// Tread scroll (0..1, the material's offset) and road wheel angle (-180..180, positive rolls forward).
+SrTreadState :: struct { scroll: f64; wheel_deg: f64; }
+// One straight move of a piece's box at one heading. Piece 0 is the cab, 1.. the cars; locations are the middle
+// at the underside.
+SrSweepPart :: struct { piece: int; from: D3; from_yaw_deg: f64; to: D3; to_yaw_deg: f64; }
+
+sr_cosh :: (x: f64) -> f64 { return 0.5 * (exp(x) + exp(-x)); }
+sr_sinh :: (x: f64) -> f64 { return 0.5 * (exp(x) - exp(-x)); }
+sr_atanh :: (x: f64) -> f64 { return 0.5 * log((1.0 + x) / (1.0 - x)); }
+sr_frac :: (x: f64) -> f64 { return x - floor(x); }
+sr_tracks_piece_length :: (piece: int) -> f64 { return ifx piece == 0 then SR_TRAIL_CAB_LENGTH else SR_TRAIL_CAR_LENGTH; }
+
+// UE-VEH-05: a piece's speeds from two poses dt apart. Left is -half, right +half: turning right (yaw up), the
+// right track is on the inside and runs slower.
+sr_tracks_tread_speeds :: (from: D3, from_yaw_deg: f64, to: D3, to_yaw_deg: f64, dt: f64, half: f64) -> SrTreadSpeeds {
+  s: SrTreadSpeeds;
+  if dt <= 0.0 { return s; }
+  turn := sr_unwind_deg(to_yaw_deg - from_yaw_deg);
+  along := sr_flat(sr_trail_forward(from_yaw_deg + turn * 0.5));
+  s.ground = d2_dot(sr_flat(d3_sub(to, from)), along) / dt;
+  s.yaw_rate_deg = turn / dt;
+  // A point y to the right of the middle moves forward at ground - w * y.
+  w := sr_deg_to_rad(s.yaw_rate_deg);
+  s.left = s.ground + w * half;
+  s.right = s.ground - w * half;
+  return s;
+}
+// A side after it runs `distance` metres: the scroll wraps 0..1 over TreadRepeat, the wheel turns distance / radius.
+sr_tracks_run_tread :: (state: SrTreadState, distance: f64) -> SrTreadState {
+  return SrTreadState.{scroll = sr_frac(state.scroll + distance / SR_TRACKS_TREAD_REPEAT), wheel_deg = sr_unwind_deg(state.wheel_deg + sr_rad_to_deg(distance / SR_TRACKS_WHEEL_RADIUS))};
+}
+
+// The catenary through a and b with rope `length`, as a height at horizontal distance x from a. ok false when it
+// is taut or the span is vertical (the caller draws a straight or a dropped line instead).
+SrCatenary :: struct { ok: bool; a: f64 = 1.0; x0: f64; z0: f64; span: f64; }
+sr_catenary_height :: (c: SrCatenary, x: f64) -> f64 { return c.z0 + c.a * (sr_cosh((x - c.x0) / c.a) - sr_cosh(c.x0 / c.a)); }
+sr_solve_catenary :: (pa: D3, pb: D3, length: f64) -> SrCatenary {
+  c: SrCatenary;
+  d := d2_dist(sr_flat(pa), sr_flat(pb));
+  h := pb.z - pa.z;
+  chord := sqrt(d * d + h * h);
+  if length <= chord + 0.000001 || d < 0.0001 { return c; }
+  // L^2 - h^2 = (2a sinh(D / 2a))^2: with u = D / 2a, sinh(u) / u = sqrt(L^2 - h^2) / D, increasing in u.
+  r := sqrt(length * length - h * h) / d;
+  lo := 0.000001; hi := 30.0;
+  for i: 0..<80 { mid := 0.5 * (lo + hi); if sr_sinh(mid) / mid < r { lo = mid; } else { hi = mid; } }
+  u := 0.5 * (lo + hi);
+  c.a = d / (2.0 * u);
+  // h / L = tanh((D - 2 x0) / 2a).
+  c.x0 = 0.5 * d - c.a * sr_atanh(fclamp(h / length, -0.999999, 0.999999));
+  c.z0 = pa.z;
+  c.span = d;
+  c.ok = true;
+  return c;
+}
+// The cable from a to b with `length` of rope: a catenary, or straight when taut. u 0..1 across the span.
+sr_tracks_cable_point :: (a: D3, b: D3, length: f64, u: f64) -> D3 {
+  w := fclamp(u, 0.0, 1.0);
+  line := d3_add(a, d3_scale(d3_sub(b, a), w));
+  c := sr_solve_catenary(a, b, length);
+  if c.ok { return d3(line.x, line.y, sr_catenary_height(c, w * c.span)); }
+  chord := d3_dist(a, b);
+  if length <= chord + 0.000001 { return line; }
+  // Hanging straight down from two points one above the other: a drop of half the slack at the middle.
+  return d3_sub(line, d3(0.0, 0.0, 0.5 * (length - chord) * 4.0 * w * (1.0 - w)));
+}
+// segments + 1 points from a to b into out (SR_TRACKS_CABLE_POINTS_MAX at most). Returns how many.
+sr_tracks_cable_curve :: (a: D3, b: D3, length: f64, segments: int, out: [] D3) -> int {
+  n := sr_maxi(1, segments);
+  for i: 0..<n + 1 { out[i] = sr_tracks_cable_point(a, b, length, cast(f64) i / cast(f64) n); }
+  return n + 1;
+}
+// The most the cable hangs below the straight line from a to b. 0 when taut.
+sr_tracks_cable_sag :: (a: D3, b: D3, length: f64) -> f64 {
+  samples := 64;
+  worst := 0.0;
+  for i: 1..<samples {
+    u := cast(f64) i / cast(f64) samples;
+    line := d3_add(a, d3_scale(d3_sub(b, a), u));
+    worst = fmax(worst, line.z - sr_tracks_cable_point(a, b, length, u).z);
+  }
+  return worst;
+}
+// A cable socket on a piece's end: its middle (underside) and heading, its length, front or rear end.
+sr_tracks_cable_socket :: (middle: D3, yaw_deg: f64, piece_length: f64, front: bool) -> D3 {
+  f := sr_trail_forward(yaw_deg);
+  right := sr_trail_forward(yaw_deg + 90.0);
+  return d3_add(d3_add(d3_add(middle, d3_scale(f, piece_length * (ifx front then 0.5 else -0.5))), d3_scale(right, SR_TRACKS_CABLE_SIDE)), d3(0.0, 0.0, SR_TRACKS_CABLE_HEIGHT));
+}
+// Coupling `index`'s two sockets (0: the cab's rear and car 0's front; 1: car 0's rear and car 1's front), into
+// out[0] (ahead) and out[1] (behind).
+sr_tracks_coupling_sockets :: (pose: SrTrainPose, index: int, out: [] D3) {
+  if index == 0 { out[0] = sr_tracks_cable_socket(pose.cab.location, pose.cab.yaw_deg, SR_TRAIL_CAB_LENGTH, false); }
+  else { ahead := pose.cars[index - 1]; out[0] = sr_tracks_cable_socket(ahead.location, ahead.yaw_deg, SR_TRAIL_CAR_LENGTH, false); }
+  behind := pose.cars[index];
+  out[1] = sr_tracks_cable_socket(behind.location, behind.yaw_deg, SR_TRAIL_CAR_LENGTH, true);
+}
+
+sr_tracks_piece_location :: (pose: SrTrainPose, piece: int) -> D3 { return ifx piece == 0 then pose.cab.location else pose.cars[piece - 1].location; }
+sr_tracks_piece_yaw :: (pose: SrTrainPose, piece: int) -> f64 { return ifx piece == 0 then pose.cab.yaw_deg else pose.cars[piece - 1].yaw_deg; }
+// UE-VEH-04: every piece's move from `from` to `to`, cut into parts that turn it at most MaxSweepYawDeg, so a
+// car swinging round a hitch cannot pass through a post. The cab's parts first. Returns how many (out holds
+// SR_TRACKS_SWEEP_PARTS_MAX). The train is blocked when any part is.
+sr_tracks_sweep_parts :: (from: SrTrainPose, to: SrTrainPose, out: [] SrSweepPart) -> int {
+  n := 0;
+  for p: 0..<SR_TRACKS_PIECES {
+    a := sr_tracks_piece_location(from, p); b := sr_tracks_piece_location(to, p);
+    yaw_a := sr_tracks_piece_yaw(from, p);
+    turn := sr_unwind_deg(sr_tracks_piece_yaw(to, p) - yaw_a);
+    parts := sr_maxi(1, cast(int) -floor(-(abs(turn) / SR_TRACKS_MAX_SWEEP_YAW_DEG - 0.0001)));
+    for k: 0..<parts {
+      t0 := cast(f64) k / cast(f64) parts; t1 := cast(f64) (k + 1) / cast(f64) parts;
+      out[n] = SrSweepPart.{piece = p, from = d3_add(a, d3_scale(d3_sub(b, a), t0)), from_yaw_deg = yaw_a + turn * t0, to = d3_add(a, d3_scale(d3_sub(b, a), t1)), to_yaw_deg = yaw_a + turn * t1};
+      n += 1;
+    }
+  }
+  return n;
+}
+
+// V-02: how fast the cab may back up here: the fastest speed (up to ReverseSpeed) whose lock turns the cab
+// RetraceMargin tighter than the trail RetraceReadAhead behind its rear hitch needs.
+sr_tracks_max_retrace_speed :: (t: SrCabTuning, trail: [] const SrTrail) -> f64 {
+  kc := sr_trail_retrace_curvature(trail, SR_TRACKS_RETRACE_READ_AHEAD);
+  if kc < 0.0001 { return t.reverse_speed; }
+  v := t.reverse_speed;
+  while v > SR_TRACKS_MIN_RETRACE_SPEED {
+    if sr_deg_to_rad(sr_cab_max_yaw_rate_deg(t, v)) >= v * kc * SR_TRACKS_RETRACE_MARGIN { return v; }
+    v -= 0.25;
+  }
+  return fmin(SR_TRACKS_MIN_RETRACE_SPEED, t.reverse_speed);
+}
+
+// The drive sub-step, as ASpliceRover drives it, split:
+//   1. sr_tracks_drive_begin: backing up is held to MaxRetraceSpeed (the cab braked down to it); returns the
+//      tuning for the cab's step.
+//   2. the cab's sub-step with that tuning through the trail's limiter (cab.coax's steps). If it came back
+//      blocked (ground too steep), it stands: cab[0] = next, blocked.
+//   3. sr_trail_preview the cars at the cab's next pose, and test sr_tracks_sweep_parts(train, previewed).
+//   4. sr_tracks_drive_finish with that answer.
+sr_tracks_drive_begin :: (t: SrCabTuning, cab: [] SrCabState, trail: [] const SrTrail, input: SrCabInput, h: f64) -> SrCabTuning {
+  tuned := t;
+  if cab[0].speed < 0.0 || input.throttle < 0.0 {
+    // V-02: back up no faster than the cab can steer round the trail it retraces; brake down to that.
+    tuned.reverse_speed = fmin(t.reverse_speed, sr_tracks_max_retrace_speed(t, trail));
+    if cab[0].speed < -tuned.reverse_speed && cab[0].grounded {
+      cab[0].speed = fmin(-tuned.reverse_speed, cab[0].speed + t.brake_force / fmax(t.mass, 1.0) * h);
+    }
+  }
+  return tuned;
+}
+// A blocked sweep takes the step back with the speed zeroed (UE-VEH-04); else the trail and the train move on.
+// True when blocked.
+sr_tracks_drive_finish :: (cab: [] SrCabState, trail: [] SrTrail, train: [] SrTrainPose, next: SrCabState, swept_blocked: bool) -> bool {
+  if next.blocked { cab[0] = next; return true; }
+  if swept_blocked { cab[0].speed = 0.0; cab[0].yaw_rate_deg = 0.0; cab[0].blocked = true; return true; }
+  cab[0] = next;
+  sr_trail_update(trail, sr_cab_pose(next));
+  train[0] = sr_trail_place_cars(trail, sr_cab_pose(next));
+  return false;
+}
+
+// A data world for the convenience step: walls as half-planes. A piece's box (its length by 2 * half_width) is
+// blocked when a corner at either end of a part lies behind a wall: dot(corner, normal) < offset.
+SR_SWEEP_WALLS_MAX :: 4;
+SrSweepWall :: struct { normal: D2; offset: f64; }
+SrSweepWorld :: struct { half_width: f64 = 1.27; n: int; walls: [SR_SWEEP_WALLS_MAX] SrSweepWall; }   // 1.27: the greybox's (ASpliceRover::HalfWidth)
+sr_sweep_world_add_wall :: (w: SrSweepWorld, normal: D2, offset: f64) -> SrSweepWorld { r := w; r.walls[r.n] = SrSweepWall.{normal = normal, offset = offset}; r.n += 1; return r; }
+sr_sweep_box_behind :: (w: SrSweepWorld, wall: SrSweepWall, middle: D3, yaw_deg: f64, length: f64) -> bool {
+  f := d2_scale(sr_flat(sr_trail_forward(yaw_deg)), length * 0.5);
+  r := d2_scale(sr_flat(sr_trail_forward(yaw_deg + 90.0)), w.half_width);
+  m := sr_flat(middle);
+  corners := [4] D2.[d2_add(d2_add(m, f), r), d2_sub(d2_add(m, f), r), d2_add(d2_sub(m, f), r), d2_sub(d2_sub(m, f), r)];
+  for c: corners { if d2_dot(c, wall.normal) < wall.offset { return true; } }
+  return false;
+}
+sr_sweep_part_blocked :: (w: SrSweepWorld, p: SrSweepPart) -> bool {
+  l := sr_tracks_piece_length(p.piece);
+  for k: 0..<w.n { if sr_sweep_box_behind(w, w.walls[k], p.from, p.from_yaw_deg, l) || sr_sweep_box_behind(w, w.walls[k], p.to, p.to_yaw_deg, l) { return true; } }
+  return false;
+}
+sr_sweep_blocked :: (w: SrSweepWorld, parts: [] const SrSweepPart, n: int) -> bool {
+  for k: 0..<n { if sr_sweep_part_blocked(w, parts[k]) { return true; } }
+  return false;
+}
+
+// One sub-step of the whole train over a data ground and world (SpliceTracks::DriveSubStep). True when blocked.
+sr_tracks_drive_sub_step :: (t: SrCabTuning, cab: [] SrCabState, trail: [] SrTrail, train: [] SrTrainPose, input: SrCabInput, h: f64, ground: SrCabGround, world: SrSweepWorld) -> bool {
+  tuned := sr_tracks_drive_begin(t, cab, trail, input, h);
+  next := sr_cab_sub_step(tuned, cab[0], input, h, ground, trail);
+  if next.blocked { return sr_tracks_drive_finish(cab, trail, train, next, false); }
+  previewed: [1] SrTrainPose;
+  _ = sr_trail_preview(trail, sr_cab_pose(next), previewed[..]);
+  parts: [SR_TRACKS_SWEEP_PARTS_MAX] SrSweepPart;
+  n := sr_tracks_sweep_parts(train[0], previewed[0], parts[..]);
+  return sr_tracks_drive_finish(cab, trail, train, next, sr_sweep_blocked(world, parts[..], n));
+}
