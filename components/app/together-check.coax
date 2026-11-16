@@ -1,0 +1,19 @@
+// The app set loads beside the shared app core (GitHub #13645): a screen's
+// root loads both, so no top-level name in components/app/ may be one the
+// core declares. This file loads the core and every file of the set; a
+// clash fails to compile here (E0316) before it reaches a root.
+//   coax/bin/coax test components/app/together-check.coax
+
+#load "../../apps/shared/app/core/core.coax";
+#load "task.coax";
+#load "account.coax";
+#load "nav.coax";
+#load "gallery/gallery.coax";
+
+#test "app set: every file of the set loads with the shared app core, and the renamed parts are the set's" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  from := app_sheet_mark(f);
+  h := app_logged_out_card(f, "out", 0, 0, 300, "Log in to run tasks on your computers.", 1);
+  #assert app_test_end(t[..]) && h > 0 && from.nu == 0 && app_test_pressable(t[..], "out.login");
+}

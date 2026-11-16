@@ -35,6 +35,6 @@
 #test "app account: the logged-out notice says why and offers Log in" {
   t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
   app_test_begin(t[..], "", "", true);
-  h := app_logged_out(f, "out", 0, 0, 320, "You are logged out. Log in to send messages.", 5);
+  h := app_logged_out_card(f, "out", 0, 0, 320, "You are logged out. Log in to send messages.", 5);
   #assert app_test_end(t[..]) && h > 44 && app_test_row(t[..], "out").role == EL_NOTICE && app_test_pressable(t[..], "out.login") && app_test_label(t[..], "out.login") == "Log in" && app_test_row(t[..], "out.login").action == 5;
 }

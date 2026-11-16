@@ -236,7 +236,7 @@ ag_account :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32
   y += app_login(f, "g.login.error", x, y, w, AppLogin.{step = APP_LOGIN_CODE, email = "ada@example.com", code = "4829", error = "That code is not right. Check the email and try again."},
     AppLoginActions.{field = AG_FIELD, submit = AG_BUTTON, back = AG_BUTTON, resend = AG_BUTTON}) + a.gap;
   y += app_login(f, "g.login.busy", x, y, w, AppLogin.{step = APP_LOGIN_EMAIL, email = "ada@example.com", busy = true}, AppLoginActions.{field = AG_FIELD, submit = AG_BUTTON}) + a.gap;
-  y += app_logged_out(f, "g.logged.out", x, y, w, "Log in to run tasks on your computers.", AG_LOGIN) + a.gap;
+  y += app_logged_out_card(f, "g.logged.out", x, y, w, "Log in to run tasks on your computers.", AG_LOGIN) + a.gap;
   return y - top;
 }
 

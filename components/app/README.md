@@ -14,7 +14,7 @@ never changes app state: a press reaches the app as the row's action.
 | `base.coax` | text styles (`app_text`), buttons (`app_button`: default, primary, quiet, destructive; busy and disabled), `app_icon_button`, `app_chip`, `app_field` (plain, secure, error, disabled), `app_notice`, `app_divider`, `app_card`, `app_sheet`, `app_menu_row`, `app_switch`, `app_progress`, `app_ring`; helpers `app_fit`, `app_id`, scroll anchoring (`app_anchor_take`, `app_anchor_scroll`) |
 | `chat.coax` | `app_composer` (Send, Stop while a reply runs, locked), `app_composer_chips` (environment and repository), `app_message_user`, `app_message_agent` (Markdown through `kit/markdown.coax`), `app_code` (language and Copy), `app_typing`, `app_empty`, `app_retry`, `app_jump`, `app_meta` |
 | `task.coax` | `app_task_header`, `app_task_state`, `app_tool` (opens onto paged input and result), `app_tool_group`, `app_tool_press`, `app_permission` (Deny, Allow, sending, uncertain, answered, expired), `app_task_result`, `app_banner` (reconnecting, offline) |
-| `account.coax` | `app_login` (email step, code step, busy, error), `app_logged_out` |
+| `account.coax` | `app_login` (email step, code step, busy, error), `app_logged_out_card` |
 | `nav.coax` | `app_nav_button`, `app_side_head`, `app_side_row`, `app_side_list` |
 | `gallery/gallery.coax` | every component above on one scrolling page, with example data; the iOS dev menu opens it |
 
@@ -43,7 +43,7 @@ Another area that needs a component the set lacks adds it as a new file
 here with its area's prefix (`view-*.coax`, `login-*.coax`, `env-*.coax`).
 
 Checks: `coax/bin/coax test components/app/task.coax` (it loads chat and
-base), `account.coax`, `nav.coax`, `gallery/gallery.coax`; and
+base), `account.coax`, `nav.coax`, `gallery/gallery.coax`, `together-check.coax` (the set loads beside the shared app core, `apps/shared/app/core/core.coax`: no top-level name may clash with one there); and
 `coax/web/tool.sh components-check`. Run them on a build host
 (`coax/remote/remote.sh run -- ...`). How a host shows the gallery is in
 [INTEGRATION.md](INTEGRATION.md).

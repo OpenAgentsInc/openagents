@@ -70,7 +70,7 @@ app_login :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, l: AppLogin, ac
 // The notice a logged-out screen shows at (x, y), w wide: what the person
 // can't do until they log in, and Log in (id + ".login"), which dispatches
 // `action`. Returns its height.
-app_logged_out :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string, action: int) -> f32 {
+app_logged_out_card :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string, action: int) -> f32 {
   s := f[0].skin; lid: [EL_ID] u8;
   h := app_notice(f, id, x, y, w, text, APP_NOTICE_INFO) + s.app.gap;
   h += app_button(f, app_id(lid[..], id, ".login"), x, y + h, w, -1, "Log in", APP_BUTTON_PRIMARY, 0, action);

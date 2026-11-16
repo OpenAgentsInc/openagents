@@ -78,7 +78,7 @@ app_composer_chips :: (f: [] UiFrame, env_id: string, repo_id: string, x: f32, y
 // the skin's share of the column. Its rows of text are selectable. Returns its height.
 app_message_user :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string) -> f32 {
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; line := s.md.line;
-  k := uiframe_key(f, id); from := app_mark(f);
+  k := uiframe_key(f, id); from := app_sheet_mark(f);
   room := w * a.bubble_share - 2 * a.bubble_pad_x;
   rows: [APP_WRAP_LINES] TextLine;
   n := text_wrap_lines(m, uiskin_faces(s), text, ifx room > 1 then room else 1.0f32, rows[..]);
@@ -138,7 +138,7 @@ app_code :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, lang: string, co
 // Returns its height.
 app_message_agent :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, blocks: int, copied: int, copy_action: int) -> f32 {
   s := f[0].skin; sh := f[0].sheet; m := f[0].m;
-  k := uiframe_key(f, id); from := app_mark(f);
+  k := uiframe_key(f, id); from := app_sheet_mark(f);
   row := uiframe_semantic(f, id, EL_TEXT, ifx blocks > 0 then md_block_text(doc, 0) else "", x, y, w, s.md.line, 0, 0);
   uiframe_open(f, row);
   h: f32 = 0;
@@ -221,7 +221,7 @@ app_retry :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string, r
 app_jump :: (f: [] UiFrame, id: string, cx: f32, y: f32, label: string, state: int, action: int) -> f32 {
   s := f[0].skin; a := s.app; sh := f[0].sheet; side := a.icon_button; well := a.icon_well; x := cx - side / 2; inset := (side - well) / 2;
   mid: [EL_ID] u8;
-  k := uiframe_key(f, app_id(mid[..], id, ".in")); from := app_mark(f);
+  k := uiframe_key(f, app_id(mid[..], id, ".in")); from := app_sheet_mark(f);
   sheet_under(sh, uiskin_float(sh[0].under, sh[0].nu, s, x + inset, y + inset, well, well, well / 2));
   _ := app_icon_button(f, id, x, y, s.icon_chevron, label, APP_BUTTON_DEFAULT, state, action);
   app_enter(f, k, from);

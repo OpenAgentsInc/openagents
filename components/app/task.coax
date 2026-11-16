@@ -293,7 +293,7 @@ AppPermission :: struct {
 // region row is live. Returns its height.
 app_permission :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, p: AppPermission, allow_action: int, deny_action: int) -> f32 {
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; pad := a.card_pad;
-  k := uiframe_key(f, id); from := app_mark(f);
+  k := uiframe_key(f, id); from := app_sheet_mark(f);
   row := uiframe_semantic(f, id, EL_REGION, p.title, x, y, w, pad, EL_S_LIVE, 0);
   uiframe_open(f, row);
   ground := sheet_box(sh, x, y, w, 0, a.card_radius, s.border, s.surface, ifx p.state == APP_PERMISSION_HELD then s.field_edge else s.hover);
@@ -376,7 +376,7 @@ APP_BANNER_RECONNECTING :: 0; APP_BANNER_OFFLINE :: 1;
 app_banner :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, kind: int, action: int) -> f32 {
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; h := a.banner_h; offline := kind == APP_BANNER_OFFLINE;
   words := ifx offline then "You are offline." else "Reconnecting…";
-  k := uiframe_key(f, id); from := app_mark(f);
+  k := uiframe_key(f, id); from := app_sheet_mark(f);
   lw := ifx offline then form_link_width(m, s, "Try again") else 0.0f32;
   tw := measure_width(m, s.small.face, words);
   bw := a.side_pad + a.notice_icon + a.gap + tw + (ifx offline then lw else a.side_pad);

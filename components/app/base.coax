@@ -29,7 +29,7 @@
 
 // Where the sheet stands before a component paints, so its paint can be moved once it is laid out.
 AppMark :: struct { nu: int; no: int; }
-app_mark :: (f: [] UiFrame) -> AppMark { return AppMark.{nu = f[0].sheet[0].nu, no = f[0].sheet[0].no}; }
+app_sheet_mark :: (f: [] UiFrame) -> AppMark { return AppMark.{nu = f[0].sheet[0].nu, no = f[0].sheet[0].no}; }
 // Entry motion: what was painted since `from` rises into place over the skin's
 // enter time, from the frame keyed row k appeared. Rows and hits stay where
 // the component ends up. With reduced motion, or without a keyed row, nothing moves.
