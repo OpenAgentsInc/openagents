@@ -9,6 +9,10 @@ Two producers write it:
   on a source project.
 - **The cooked route**: the cooked-package reader, from packages that
   `UnrealPak IoStore -FindAndExtract` unpacked from a shipped build.
+- **The data route**: a game's own producer over the loose data a build
+  ships beside its packages (CSV and JSON tables, WAVs, icons). It carries
+  only what that data states, so it may have tables (section 3.7) and no
+  Unreal packages at all.
 
 One consumer reads it: the Coax importer (`metaverse-engine/import/unreal/`),
 which writes the pack. The consumer does not know or care which route made
@@ -28,7 +32,9 @@ a bundle, and a bundle from each route for the same build must agree
   can check the two against each other.
 - **Ids are Unreal object paths**, for example
   `/Game/SpliceBots/Things/SM_Garage.SM_Garage`. An id is unique within its
-  list and is how every list refers to every other.
+  list and is how every list refers to every other. A data-route id is the
+  file's path under the build's data folder, without its extension, for
+  example `/Data/audio/wav/ui-move`.
 - **Every file is listed** in `files` with its SHA-256 and size. A file on
   disk that is not listed, or listed and missing, fails the bundle.
 - **Sorted.** Every list is sorted by id (placements by map, then name), so
@@ -47,6 +53,7 @@ NAME.aimport/
   textures/     NNNN.png          8-bit PNG; 16-bit for height or HDR sources
   sounds/       NNNN.wav          PCM
   landscape/    MAP-NNNN.r16      heights, little-endian u16, plus .json beside
+  tables/       NNNN.csv|json     a data route's tables, byte for byte
   skipped.json
 ```
 
@@ -78,7 +85,8 @@ reaches the file system. The manifest maps ids to files.
 }
 ```
 
-`source.route` is `editor` or `cooked`. `revision` is the project's version
+`source.route` is `editor`, `cooked` or `data`. `tables` (section 3.7) is
+optional; a bundle without it has none. `revision` is the project's version
 control revision, or `null` when unknown (a cooked build).
 
 ### 3.1 `meshes[]`
@@ -248,6 +256,18 @@ picks colour or data layer from it and from how materials use the texture.
   in the same map's lists, already at world transforms; this list only
   names where it came from.
 
+### 3.7 `tables[]`
+
+```json
+{ "id": "/Data/input_bindings", "file": "tables/0018.csv", "format": "csv",
+  "rows": 157, "origin": "project" }
+```
+
+A table the game reads at run time, carried byte for byte. `format` is `csv`
+or `json`; `rows` is a CSV's records after its header (quoted fields may
+hold line breaks), or 1 for a JSON file. The consumer carries each one line
+for line in the pack's catalog.
+
 ## 4. `skipped.json`
 
 ```json
@@ -265,6 +285,7 @@ Reasons: `logic` (Blueprint or C++ behaviour), `niagara`, `sequencer`,
 |---|---|---|
 | Editor | `metaverse-engine/import/unreal/export_level.py`, driven by `metaverse-engine/tools/unreal-level-import.coax` | Headless `UnrealEditor-Cmd` on the source project, from a clean worktree at the plan's revision |
 | Cooked | `metaverse-engine/import/unreal/cooked/` | Over the folder `UnrealPak IoStore -FindAndExtract=BUILD.utoc -PackageFilter=* -OutPath=DIR` writes |
+| Data | a game's own, for example `metaverse/splice-bots/tools/jam-data-bundle.coax` | Over a build's loose data folder, with the plan; where the build's copy of a file differs from the revision's, the build's wins and the plan pins its SHA-256 |
 
 ## 6. Checks
 
