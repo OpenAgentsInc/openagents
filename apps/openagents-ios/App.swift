@@ -182,6 +182,7 @@ import UIKit
         display?.isPaused=false
     }
     @objc private func background() {
+        library?.background()
         display?.invalidate();display=nil
         if field.kind == .secret {field.isHidden=true;field.text="";services?.identity.hideBackup();if let owner {oc_secret_ready(owner,0)}}
         // the chips' choices, kept for the next launch
@@ -301,38 +302,14 @@ import UIKit
         }
         if !field.isFirstResponder,!field.becomeFirstResponder() {oc_blur(owner)}
     }
-    private var libraryPartition:String?
-    private var libraryNeedsRestore=true
-    @objc private func accountLibraryChanged() {libraryNeedsRestore=true;wake()}
-    private var libraryRevision:Int32 = -1
+    private var library:AppChatLibraryNative?
+    @objc private func accountLibraryChanged() {library?.accountChanged();wake()}
     private func restoreLibraryPartition() {
-        guard let owner,libraryNeedsRestore else {return}
-        libraryNeedsRestore=false
-        let partition=AppAuth.shared.tokens.map {$0.account.isEmpty ? "unidentified:"+AppAuth.shared.sessionOwner.uuidString : "account:"+$0.account} ?? "guest"
-        guard partition != libraryPartition else {return}
-        libraryPartition=partition
-        #if DEBUG
-        // XCTest launch arguments truncate multiline defaults. Install public test
-        // bytes through the SDK, then exercise the normal persisted Coax codec.
-        if partition=="guest",let encoded=ProcessInfo.processInfo.environment["OA_CHAT_LIBRARY_FIXTURE"],let data=Data(base64Encoded:encoded),let text=String(data:data,encoding:.utf8) {
-            UserDefaults.standard.set(text,forKey:"openagents.chat-library."+partition)
-        }
-        #endif
-        let raw=UserDefaults.standard.string(forKey:"openagents.chat-library."+partition) ?? ""
-        let accepted=oc_library_restore(owner,raw)
-        #if DEBUG
-        if UserDefaults.standard.bool(forKey:"OALibraryTrace") {NSLog("OA-LIB bytes=%d accepted=%d guest=%d",raw.utf8.count,accepted,partition=="guest" ? 1:0)}
-        #endif
-        libraryRevision=oc_library_revision(owner)
+        guard let owner else {return}
+        if library==nil {library=AppChatLibraryNative(auth:AppAuth.shared,owner:owner,wake:{[weak self] in self?.wake()})}
+        library?.restore()
     }
-    private func keepLibrary() {
-        guard let owner,let partition=libraryPartition else {return}
-        let revision=oc_library_revision(owner);guard revision != libraryRevision else {return}
-        var bytes=[CChar](repeating:0,count:49153)
-        guard oc_library_save(owner,&bytes,Int32(bytes.count))>=0 else {return}
-        UserDefaults.standard.set(String(cString:bytes),forKey:"openagents.chat-library."+partition)
-        libraryRevision=revision
-    }
+    private func keepLibrary() {library?.frame()}
 
     private func keepDraft() {
         guard let owner else {return}

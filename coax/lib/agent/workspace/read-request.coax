@@ -1,0 +1,5 @@
+// Produce a read-only request through the one profile codec; never print a key.
+#import "Basic";
+#load "wire.coax";
+#load "../../sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {a:[1]Args;if !args_load(a[..]) {return 2;}q:[1]WsRequest;q[0].nm=js_copy(q[0].method[..],"ReadWorkspace");q[0].nw=js_copy(q[0].workspace[..],args_value(a[..],"--workspace","default"));q[0].page=args_whole(args_value(a[..],"--page","0"));q[0].cursor=args_whole(args_value(a[..],"--cursor","0"));out:[24576]u8;n:=ws_write(q[..],out[..]);if n<1 {return 2;}print("%\n",cast(string)out[0..<n]);return 0;}

@@ -1,0 +1,67 @@
+#load "../json/fixture-checks.coax" #test;
+#forall "sync command identity checks every byte and length" byte:0..<256 {
+ b:[33]u8;for i:0..<33 {b[i]='0';}for index:[3]int.[0,15,31] {b[index]=cast(u8)byte;#assert cls_hex(cast(string)b[0..<32])==(byte>=48 && byte<=57 || byte>=97 && byte<=102);b[index]='0';}#assert !cls_hex(cast(string)b[0..<31]) && !cls_hex(cast(string)b[..]);
+}
+#test "sync codecs require every field and reject wrong types, command reuse and exact revision bounds" {
+ q:[1]ClWrite;_=js_copy(q[0].command[..],"0123456789abcdef0123456789abcdef");s:[1]ClSnapshot;b:[131073]u8;tmp:[524289]u8;out:[131073]u8;n:=cls_write(q[..],b[..]);#assert n>0;raw:=cast(string)b[0..<n];read:[1]ClWrite;
+ for key:[4]string.["schema","command","expected_revision","document"] {for bad:[4]string.["","null","[]","{}"] {#assert !cls_read(jf_replace(raw,key,bad,tmp[..]),read[..]);}}
+ for key:[3]string.["schema","revision","document"] {r:[131073]u8;rn:=cls_snapshot_write(s[..],r[..]);for bad:[4]string.["","null","[]","{}"] {#assert !cls_snapshot_read(jf_replace(cast(string)r[0..<rn],key,bad,tmp[..]),s[..]);}}
+ #assert !cls_read(jf_replace(raw,"schema","\"wrong\"",tmp[..]),read[..]);
+ for revision:[4]int.[0,9007199254740989,9007199254740990,9007199254740991] {q[0].revision=revision;s[0].revision=revision;n=cls_write(q[..],out[..]);rn:=cls_snapshot_write(s[..],b[..]);if revision>9007199254740990 {#assert n== -1 && rn== -1;}else {#assert n>0 && rn>0 && cls_read(cast(string)out[0..<n],read[..]) && read[0].revision==revision && cls_snapshot_read(cast(string)b[0..<rn],s[..]) && s[0].revision==revision;}}
+ q[0].revision= -1;s[0].revision= -1;#assert cls_write(q[..],out[..])== -1 && cls_snapshot_write(s[..],out[..])== -1;q[0].revision=0;s[0].revision=0;q[0].command[0]='x';#assert cls_write(q[..],out[..])== -1;q[0].command[0]='0';
+ n=cls_write(q[..],b[..]);#assert cls_write(q[..],out[0..<n-1])== -1;for i:n..<131073 {b[i]=' ';}#assert cls_read(cast(string)b[0..<131072],read[..]) && !cls_read(cast(string)b[..],read[..]);
+ n=cls_snapshot_write(s[..],b[..]);#assert cls_snapshot_write(s[..],out[0..<n-1])== -1;for i:n..<131073 {b[i]=' ';}#assert cls_snapshot_read(cast(string)b[0..<131072],s[..]) && !cls_snapshot_read(cast(string)b[..],s[..]);
+}
+#test "sync equality and merge distinguish every field, preserve no-ops and refuse capacity atomically" {
+ a:[1]ChatLibrary;b:[1]ChatLibrary;k:="account/cnv_0123456789abcdef0123456789abcdef";other:="account/cnv_1123456789abcdef0123456789abcdef";#assert cls_equal(a[..],b[..]);#assert chlib_change(a[..],k,"Alias",1) && !cls_equal(a[..],b[..]);#assert chlib_change(b[..],other,"Alias",1) && !cls_equal(a[..],b[..]);b[0]=a[0];#assert cls_equal(a[..],b[..]);#assert chlib_change(b[..],k,"Alias",2) && !cls_equal(a[..],b[..]);#assert chlib_change(b[..],k,"Different",1) && !cls_equal(a[..],b[..]);
+ base:[1]ChatLibrary;local:[1]ChatLibrary;remote:[1]ChatLibrary;#assert cls_merge(base[..],local[..],remote[..]) && remote[0].n==0;
+ #assert chlib_change(base[..],k,"Base",0);local[0]=base[0];#assert chlib_change(remote[..],k,"Remote",3) && cls_merge(base[..],local[..],remote[..]) && chlib_label(remote[..],k,"")=="Remote" && chlib_flags(remote[..],k)==3;
+ for flags:0..<4 {base[0]=ChatLibrary.{};local[0]=ChatLibrary.{};remote[0]=ChatLibrary.{};#assert chlib_change(base[..],k,"Base",3) && chlib_change(local[..],k,"Local",flags) && chlib_change(remote[..],k,"Remote",3) && cls_merge(base[..],local[..],remote[..]);#assert chlib_flags(remote[..],k)==flags && chlib_label(remote[..],k,"")=="Local";}
+ remote[0]=ChatLibrary.{};for i:0..<128 {id:[44]u8;_=js_copy(id[..],k);id[42]="0123456789abcdef"[i/16];id[43]="0123456789abcdef"[i%16];#assert chlib_change(remote[..],cast(string)id[..],"Remote",1);}base[0]=ChatLibrary.{};local[0]=ChatLibrary.{};#assert chlib_change(local[..],other,"Local",1) && !cls_merge(base[..],local[..],remote[..]) && remote[0].n==128 && chlib_find(remote[..],other)<0;
+}
+#test "sync client state persists exact pending intent and rejects every partial or malformed restore" {
+ state:[1]ClSync;l:[1]ChatLibrary;state[0].revision=0;k:="account/cnv_0123456789abcdef0123456789abcdef";#assert chlib_change(l[..],k,"Saved",3);b:[131072]u8;#assert cls_request(state[..],l[..],"bad",b[..])== -1;count:=cls_request(state[..],l[..],"0123456789abcdef0123456789abcdef",b[..]);#assert count>0 && state[0].np==count && cls_request(state[..],l[..],"",b[0..<1])== -1;
+ raw:[524289]u8;n:=cls_state_write(state[..],l[..],raw[..]);#assert n>0 && cls_state_write(state[..],l[..],raw[0..<n-1])== -1;copy:[1]ClSync;held:[1]ChatLibrary;#assert cls_state_read(copy[..],held[..],cast(string)raw[0..<n]) && copy[0].revision==0 && copy[0].np==count && cast(string)copy[0].pending[0..<count]==cast(string)b[0..<count] && cls_equal(l[..],held[..]);
+ temp:[524289]u8;for key:[5]string.["schema","revision","base","pending","local"] {for bad:[4]string.["","null","[]","{}"] {#assert !cls_state_read(copy[..],held[..],jf_replace(cast(string)raw[0..<n],key,bad,temp[..]));}}
+ for bad:[5]string.["-2","9007199254740991","\"x\"","1","-1"] {#assert !cls_state_read(copy[..],held[..],jf_replace(cast(string)raw[0..<n],"revision",bad,temp[..]));}
+ #assert !cls_state_read(copy[..],held[..],jf_replace(cast(string)raw[0..<n],"schema","\"wrong\"",temp[..]));#assert !cls_state_read(copy[..],held[..],jf_replace(cast(string)raw[0..<n],"pending","\"{}\"",temp[..]));#assert !cls_state_read(copy[..],held[..],jf_replace(cast(string)raw[0..<n],"local","\"broken\"",temp[..]));
+ copy[0].revision=7;#assert cls_state_read(copy[..],held[..],"") && copy[0].revision== -1 && copy[0].np==0;
+ // Initial state with no server revision is a valid persisted migration.
+ fresh:[1]ClSync;n=cls_state_write(fresh[..],l[..],raw[..]);#assert cls_state_read(copy[..],held[..],cast(string)raw[0..<n]) && copy[0].revision== -1;
+}
+#test "sync rejects stale or unrelated acknowledgements and changes local revision only for changed content" {
+ state:[1]ClSync;l:[1]ChatLibrary;v:[1]ClSnapshot;raw:[131072]u8;out:[131072]u8;state[0].revision=2;v[0].revision=1;n:=cls_snapshot_write(v[..],raw[..]);#assert !cls_answer(state[..],l[..],200,cast(string)raw[0..<n]);v[0].revision=2;n=cls_snapshot_write(v[..],raw[..]);#assert cls_answer(state[..],l[..],200,cast(string)raw[0..<n]) && l[0].revision==0;
+ k:="account/cnv_0123456789abcdef0123456789abcdef";#assert chlib_change(l[..],k,"Local",1);rev:=l[0].revision;#assert cls_request(state[..],l[..],"0123456789abcdef0123456789abcdef",out[..])>0;
+ v[0].revision=3;n=cls_snapshot_write(v[..],raw[..]);#assert !cls_answer(state[..],l[..],200,cast(string)raw[0..<n]) && state[0].np>0;
+ v[0].library[0]=l[0];v[0].revision=4;n=cls_snapshot_write(v[..],raw[..]);#assert !cls_answer(state[..],l[..],200,cast(string)raw[0..<n]);v[0].revision=3;n=cls_snapshot_write(v[..],raw[..]);#assert cls_answer(state[..],l[..],200,cast(string)raw[0..<n]) && l[0].revision==rev && cls_equal(state[0].base[..],l[..]) && state[0].np==0 && state[0].revision==3;
+ #assert cls_request(state[..],l[..],"0123456789abcdef0123456789abcdef",out[..])==0;
+ #assert chlib_change(v[0].library[..],k,"Remote",2);v[0].revision=4;n=cls_snapshot_write(v[..],raw[..]);#assert cls_answer(state[..],l[..],200,cast(string)raw[0..<n]) && l[0].revision==rev+1 && chlib_label(l[..],k,"")=="Remote";
+}
+#test "sync flag-only intent, empty document and maximum revision parsing are independent of writers" {
+ b:[131072]u8;temp:[524289]u8;q:[1]ClWrite;s:[1]ClSnapshot;_=js_copy(q[0].command[..],"0123456789abcdef0123456789abcdef");n:=cls_write(q[..],b[..]);r:[1]ClWrite;#assert cls_read(jf_replace(cast(string)b[0..<n],"document","\"\"",temp[..]),r[..]) && r[0].library[0].n==0;#assert !cls_read(jf_replace(cast(string)b[0..<n],"expected_revision","9007199254740991",temp[..]),r[..]);
+ n=cls_snapshot_write(s[..],b[..]);#assert !cls_snapshot_read(jf_replace(cast(string)b[0..<n],"revision","9007199254740991",temp[..]),s[..]);
+ base:[1]ChatLibrary;local:[1]ChatLibrary;remote:[1]ChatLibrary;k:="account/cnv_0123456789abcdef0123456789abcdef";#assert chlib_change(base[..],k,"Same",0);local[0]=base[0];remote[0]=base[0];#assert chlib_change(local[..],k,"Same",1) && cls_merge(base[..],local[..],remote[..]) && chlib_flags(remote[..],k)==1;
+}
+#test "sync acknowledgement preserves edits made after sending and advances all three identities" {
+ state:[1]ClSync;local:[1]ChatLibrary;v:[1]ClSnapshot;state[0].revision=0;k:="account/cnv_0123456789abcdef0123456789abcdef";other:="account/cnv_1123456789abcdef0123456789abcdef";
+ #assert chlib_change(local[..],k,"Sent",1);b:[131072]u8;n:=cls_request(state[..],local[..],"0123456789abcdef0123456789abcdef",b[..]);#assert n>0;q:[1]ClWrite;#assert cls_read(cast(string)b[0..<n],q[..]);
+ #assert chlib_change(local[..],k,"Typed later",3) && chlib_change(local[..],other,"New row",1);rev:=local[0].revision;v[0].library[0]=q[0].library[0];v[0].revision=1;n=cls_snapshot_write(v[..],b[..]);#assert cls_answer(state[..],local[..],200,cast(string)b[0..<n]) && local[0].revision==rev && local[0].n==2 && chlib_label(local[..],k,"")=="Typed later" && chlib_flags(local[..],k)==3 && cls_equal(state[0].base[..],q[0].library[..]) && state[0].revision==1 && state[0].np==0;
+ // Force a merge that changes the visible library while a write is acknowledged.
+ n=cls_request(state[..],local[..],"1123456789abcdef0123456789abcdef",b[..]);#assert n>0 && cls_read(cast(string)b[0..<n],q[..]);#assert chlib_change(local[..],k,"",0);rev=local[0].revision;v[0].library[0]=q[0].library[0];v[0].revision=2;n=cls_snapshot_write(v[..],b[..]);#assert cls_answer(state[..],local[..],200,cast(string)b[0..<n]) && local[0].revision==rev && chlib_find(local[..],k)<0;
+}
+#test "client-state transport limits, revision endpoints and one-byte pending corruption are enforced" {
+ state:[1]ClSync;local:[1]ChatLibrary;raw:[524289]u8;tmp:[524289]u8;copy:[1]ClSync;out:[1]ChatLibrary;
+ for revision:[3]int.[-1,0,9007199254740990] {state[0].revision=revision;n:=cls_state_write(state[..],local[..],raw[..]);#assert n>0 && cls_state_read(copy[..],out[..],cast(string)raw[0..<n]) && copy[0].revision==revision;}
+ state[0].revision=0;n:=cls_state_write(state[..],local[..],raw[..]);#assert !cls_state_read(copy[..],out[..],jf_replace(cast(string)raw[0..<n],"revision","9007199254740991",tmp[..]));
+ #assert !cls_state_read(copy[..],out[..],jf_replace(cast(string)raw[0..<n],"pending","\"{\"",tmp[..]));
+ for i:n..<raw.count {raw[i]=' ';}#assert cls_state_read(copy[..],out[..],cast(string)raw[0..<524288]) && !cls_state_read(copy[..],out[..],cast(string)raw[..]);
+}
+#test "a read conflict advances its base and capacity refusal leaves every local field intact" {
+ state:[1]ClSync;local:[1]ChatLibrary;v:[1]ClSnapshot;raw:[131072]u8;k:="account/cnv_0123456789abcdef0123456789abcdef";
+ #assert chlib_change(v[0].library[..],k,"Remote",2);v[0].revision=1;n:=cls_snapshot_write(v[..],raw[..]);#assert cls_answer(state[..],local[..],200,cast(string)raw[0..<n]) && cls_equal(state[0].base[..],v[0].library[..]);
+ // Distinct remote-only and local-only additions cannot silently evict each other.
+ state[0]=ClSync.{};state[0].revision=0;local[0]=ChatLibrary.{};v[0].library[0]=ChatLibrary.{};for i:0..<128 {id:[44]u8;_=js_copy(id[..],k);id[42]="0123456789abcdef"[i/16];id[43]="0123456789abcdef"[i%16];#assert chlib_change(v[0].library[..],cast(string)id[..],"Remote",1);}#assert chlib_change(local[..],"account/cnv_1123456789abcdef0123456789abcdef","Local",2);rev:=local[0].revision;v[0].revision=1;n=cls_snapshot_write(v[..],raw[..]);#assert !cls_answer(state[..],local[..],409,cast(string)raw[0..<n]) && state[0].revision==0 && local[0].n==1 && local[0].revision==rev;
+}
+#test "an empty pending slot cannot hide an invalid stored revision or malformed state" {
+ state:[1]ClSync;local:[1]ChatLibrary;raw:[524289]u8;tmp:[524289]u8;copy:[1]ClSync;other:[1]ChatLibrary;n:=cls_state_write(state[..],local[..],raw[..]);for bad:[7]string.["-2","\"x\"","1.5","null","{}","[]",""] {#assert !cls_state_read(copy[..],other[..],jf_replace(cast(string)raw[0..<n],"revision",bad,tmp[..]));}#assert !cls_state_read(copy[..],other[..],"{") && !cls_state_read(copy[..],other[..],"[]");
+}

@@ -1,0 +1,44 @@
+// Disposable accounts against the real API and PostgreSQL; no owner's metadata.
+#run_steps 250000000;
+#load "auth_harness.coax";
+#load "../../../lib/agent/chat-library-sync.coax";
+#load "../../../lib/agent/workspace/wire.coax";
+cl_checks :: (t:[]Ap,dir:string) {
+ c:[1]Sb;body:[1]Sb;code:[6]u8;link:[64]u8;pb:[128]u8;
+ ap_check(t,"chat metadata rejects anonymous access",ac_call(t,"GET","/api/chat/library/v1","","","","")==401,"");
+ st:=ac_start(t,"library@example.com","203.0.113.124",false,pb[..]);pending:=ac_cookie(t,"__Host-oa_pending",pb[..]);got:=ac_mail(dir,code[..],link[..]);sb(body[..],"{\"code\":\"");sb(body[..],cast(string)code[..]);sb(body[..],"\"}");st=ac_call(t,"POST","/api/auth/email/verify",sb_text(body[..]),ac_cookie_header("__Host-oa_pending",pending,c[..]),"","");ss:[160]u8;session:=ac_cookie(t,"__Host-oa_session",ss[..]);ap_check(t,"library fixture signs in",got && st==200 && session.count>0,ifx st==200 then "" else ap_body(t));if st!=200 {return;}
+ accountbuf:[64]u8;account:=ap_member(ap_body(t),"account",accountbuf[..]);
+ auth:=ac_cookie_header("__Host-oa_session",session,c[..]);v:[1]ClSnapshot;
+ st=ac_call(t,"GET","/api/chat/library/v1","",auth,"","");ap_check(t,"new library is empty revision zero and private",st==200 && cls_snapshot_read(ap_body(t),v[..]) && v[0].revision==0 && v[0].library[0].n==0 && ap_has(ac_head(t),"private, no-store"),ap_body(t));
+ q:[1]ClWrite;_=js_copy(q[0].command[..],"0123456789abcdef0123456789abcdef");#assert chlib_change(q[0].library[..],"account/cnv_0123456789abcdef0123456789abcdef","Renamed",3);b:[131072]u8;n:=cls_write(q[..],b[..]);st=ac_call(t,"POST","/api/chat/library/v1",cast(string)b[0..<n],auth,"","");ap_check(t,"pin rename archive save atomically",st==200 && cls_snapshot_read(ap_body(t),v[..]) && v[0].revision==1 && v[0].library[0].rows[0].pinned && v[0].library[0].rows[0].archived,ap_body(t));
+ st=ac_call(t,"POST","/api/chat/library/v1",cast(string)b[0..<n],auth,"","");ap_check(t,"lost response replays same revision",st==200 && cls_snapshot_read(ap_body(t),v[..]) && v[0].revision==1,ap_body(t));
+ q[0].command[0]='1';n=cls_write(q[..],b[..]);st=ac_call(t,"POST","/api/chat/library/v1",cast(string)b[0..<n],auth,"","");ap_check(t,"stale second device receives current snapshot without overwrite",st==409 && cls_snapshot_read(ap_body(t),v[..]) && v[0].revision==1 && v[0].library[0].rows[0].nt==7,ap_body(t));
+ q[0].revision=1;q[0].command[0]='0';n=cls_write(q[..],b[..]);st=ac_call(t,"POST","/api/chat/library/v1",cast(string)b[0..<n],auth,"","");ap_check(t,"command reuse with different bytes refuses",st==422,"");
+ q[0].command[0]='2';q[0].library[0]=ChatLibrary.{};n=cls_write(q[..],b[..]);st=ac_call(t,"POST","/api/chat/library/v1",cast(string)b[0..<n],auth,"","");ap_check(t,"clearing all flags and alias syncs tombstone semantics",st==200 && cls_snapshot_read(ap_body(t),v[..]) && v[0].revision==2 && v[0].library[0].n==0,ap_body(t));
+ st=ac_call(t,"POST","/api/chat/library/v1","{}",auth,"","");ap_check(t,"malformed metadata refuses",st==400,"");
+ st=ac_call(t,"GET","/api/chat/library/v1","",auth,"","");ap_check(t,"subsequent device reads saved revision",st==200 && cls_snapshot_read(ap_body(t),v[..]) && v[0].revision==2,ap_body(t));
+ // A typed native workspace read crosses the real authenticated API/process boundary.
+ sql:[1]Sb;sb(sql[..],"INSERT INTO chat.environment_connections_v1(account,host_pubkey,display_name,grant_id,epoch,relay) VALUES ('");sb(sql[..],account);sb(sql[..],"',repeat('dd',32),'Fixture computer',repeat('ee',32),0,'wss://relay.openagents.com')");ap_do(t,sb_text(sql[..]));
+ wq:[1]WsRequest;wq[0].nm=js_copy(wq[0].method[..],"ReadWorkspace");wq[0].nw=js_copy(wq[0].workspace[..],"default");n=ws_write(wq[..],b[..]);wv:[1]WsView;path:="/api/chat/environment/workspace/v1?host=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+ st=ac_call(t,"POST",path,cast(string)b[0..<n],auth,"","");ap_check(t,"native workspace read reaches owned computer through normal API workers",st==200 && ws_view_read(ap_body(t),wv[..]) && cast(string)wv[0].branch[0..<wv[0].nb]=="main",ap_body(t));
+ st=ac_call(t,"POST","/api/chat/environment/workspace/v1?host=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",cast(string)b[0..<n],auth,"","");ap_check(t,"workspace identity never grants access to another computer",st==404,ap_body(t));
+ st=ac_call(t,"POST",path,"{}",auth,"","");ap_check(t,"untyped commands never reach the workspace broker",st==400,ap_body(t));
+ // Two independent native client states share this account, including a lost
+ // acknowledgement and simultaneous pin/rename/archive edits.
+ left:[1]ClSync;right:[1]ClSync;ll:[1]ChatLibrary;rl:[1]ChatLibrary;left[0].revision=2;right[0].revision=2;key:="account/cnv_0123456789abcdef0123456789abcdef";lb:[131072]u8;rb:[131072]u8;
+ #assert chlib_change(ll[..],key,"",1) && chlib_change(rl[..],key,"Across devices",0);
+ ln:=cls_request(left[..],ll[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",lb[..]);rn:=cls_request(right[..],rl[..],"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",rb[..]);
+ st=ac_call(t,"POST","/api/chat/library/v1",cast(string)lb[0..<ln],auth,"","");ap_check(t,"device A pins with a retained pending write",st==200,ap_body(t));
+ st=ac_call(t,"POST","/api/chat/library/v1",cast(string)rb[0..<rn],auth,"","");ap_check(t,"device B merges its rename with device A's pin",st==409 && cls_answer(right[..],rl[..],st,ap_body(t)) && chlib_flags(rl[..],key)==1 && chlib_label(rl[..],key,"")=="Across devices",ap_body(t));
+ rn=cls_request(right[..],rl[..],"cccccccccccccccccccccccccccccccc",rb[..]);st=ac_call(t,"POST","/api/chat/library/v1",cast(string)rb[0..<rn],auth,"","");ap_check(t,"device B commits the merged metadata",st==200 && cls_answer(right[..],rl[..],st,ap_body(t)),ap_body(t));
+ #assert chlib_change(ll[..],key,"",3);st=ac_call(t,"POST","/api/chat/library/v1",cast(string)lb[0..<ln],auth,"","");ap_check(t,"a lost old acknowledgement cannot erase later local archive intent",st==200 && cls_answer(left[..],ll[..],st,ap_body(t)) && chlib_flags(ll[..],key)==3,ap_body(t));
+ st=ac_call(t,"GET","/api/chat/library/v1","",auth,"","");ap_check(t,"device A combines remote rename with its unsent archive",st==200 && cls_answer(left[..],ll[..],st,ap_body(t)) && chlib_label(ll[..],key,"")=="Across devices" && chlib_flags(ll[..],key)==3,ap_body(t));
+ ln=cls_request(left[..],ll[..],"dddddddddddddddddddddddddddddddd",lb[..]);st=ac_call(t,"POST","/api/chat/library/v1",cast(string)lb[0..<ln],auth,"","");ap_check(t,"device A commits all three fields",st==200 && cls_answer(left[..],ll[..],st,ap_body(t)),ap_body(t));
+ st=ac_call(t,"GET","/api/chat/library/v1","",auth,"","");ap_check(t,"both devices converge to the same pin rename and archive",st==200 && cls_answer(right[..],rl[..],st,ap_body(t)) && cls_equal(ll[..],rl[..]) && right[0].revision==left[0].revision && chlib_flags(rl[..],key)==3,ap_body(t));
+ // A second independently logged-in account has a separate empty library.
+ st=ac_start(t,"library-other@example.com","203.0.113.125",false,pb[..]);pending=ac_cookie(t,"__Host-oa_pending",pb[..]);got=ac_mail(dir,code[..],link[..]);sb_clear(body[..]);sb(body[..],"{\"code\":\"");sb(body[..],cast(string)code[..]);sb(body[..],"\"}");st=ac_call(t,"POST","/api/auth/email/verify",sb_text(body[..]),ac_cookie_header("__Host-oa_pending",pending,c[..]),"","");session=ac_cookie(t,"__Host-oa_session",ss[..]);ap_check(t,"second library account signs in",got && st==200 && session.count>0,"");auth=ac_cookie_header("__Host-oa_session",session,c[..]);
+ st=ac_call(t,"GET","/api/chat/library/v1","",auth,"","");ap_check(t,"metadata never crosses account ownership",st==200 && cls_snapshot_read(ap_body(t),v[..]) && v[0].revision==0 && v[0].library[0].n==0,ap_body(t));
+ st=ac_call(t,"POST",path,cast(string)b[0..<n],auth,"","");ap_check(t,"a different email login cannot control an unowned workspace host",st==404,ap_body(t));
+
+}
+tool_main :: ()->int #export_c #effects(all) {a:[1]Args;if !args_load(a[..]) {return 2;}if args_count(a[..])==3 && args_at(a[..],0)=="mail" {return am_main(ap_whole(args_at(a[..],1)),args_at(a[..],2));}t:[1]Ap;if !ap_open(t[..]) {return 2;}wb:[4096]u8;work:=fs_temp("library-mail",wb[..]);h:=ac_mail_start(t[..],"coax/web/api/tests/chat_library_checks.coax",work);if h>=0 {cl_checks(t[..],work);ac_mail_stop(h,work);}return ap_done(t[..],"chat library sync");}

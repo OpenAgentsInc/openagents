@@ -49,6 +49,7 @@ es_local_tick :: (h:[]HsHost,listener:int) #effects(all) {
   c:=h[0].environment[0].configuration[..];if !es_load_configuration(h[0].environment[..]) {return;}
   out:[HB_BODY_MAX]u8;made:= -1;
   if kind==1 {q:[1]EaRequest;if !ea_read(raw,q[..]) {return;}v:[1]EaView;es_dispatch(h,q[..],cast(string)c[0].device[..],cast(string)c[0].grant[..],v[..]);made=ea_view_write(v[..],out[..]);}
+  else if kind==3 {q:[1]WsRequest;if !ws_read(raw,q[..]) {return;}v:[1]WsView;if !ws_enabled(c) {return;}ws_execute(h,cast(string)c[0].workspace[0..<c[0].nw],cast(string)c[0].grant[..],q[..],v[..]);made=ws_view_write(v[..],out[..]);}
   else {
     q:[1]PaRequest;if !pa_request_read(raw,q[..]) {return;}defer {for i:0..<q[0].code.count {q[0].code[i]=0;}}
     enabled:=pa_load(h[0].providers[..]);s:=h[0].providers[0].native[0].store[..];v:[1]PaView;

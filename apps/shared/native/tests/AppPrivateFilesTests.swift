@@ -20,6 +20,16 @@ import Foundation
         XCTAssertEqual(store.load(), AppViewState())
         XCTAssertFalse(store.save(AppViewState(email: String(repeating: "x", count: 321))))
     }
+    func testWorkspacePendingCapacityIsExplicitAndExclusive() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("oa-workspace-pending-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = AppFileIdentityPending(folder: root, limit: 24576)
+        let exact = Data(repeating: 120, count: 24576)
+        XCTAssertTrue(store.save(exact, account: "fixture")); XCTAssertEqual(store.load("fixture"), exact)
+        XCTAssertFalse(store.save(Data(), account: "fixture")); store.remove("fixture")
+        XCTAssertFalse(store.save(Data(repeating: 120, count: 24577), account: "fixture"))
+        XCTAssertNil(store.load("fixture"))
+    }
     func testPrivateFileExclusiveWritesRefuseReplacementAndSymlinks() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("oa-private-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }

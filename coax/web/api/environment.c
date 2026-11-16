@@ -100,9 +100,11 @@ static bool environment_task_route(const request *q) {
 }
 bool environment_route(const request *q) {
   if(environment_task_route(q))return true;
+  bool workspace=!strcmp(q->path,"/api/chat/environment/workspace/v1");
   bool accounts=!strcmp(q->path,"/api/chat/environment/accounts/v1"),station=!strcmp(q->path,"/api/chat/environment/station/v1");
   bool list=!strcmp(q->path,"/api/chat/environments/v1"),call=!strcmp(q->path,"/api/chat/environment/v1");
-  call=call || accounts || station;
+  call=call || accounts || station || workspace;
+  if(workspace && strcmp(q->method,"POST")){api_error(q->fd,405,"POST this.");return true;}
   if (!list && !call) return false;
   const auth_principal *p=auth_principal_of(q);
   if (!p || !ea_account(p->kind,es(p->account),es(p->account))) {api_error(q->fd,401,"Log in first.");return true;}
@@ -142,7 +144,8 @@ bool environment_route(const request *q) {
     if (made<1) {PQclear(r);api_error(q->fd,400,"Unsupported read method.");return true;}payload=(const char *)read_body;payload_len=(size_t)made;
   }
   bool valid=false;
-  if (accounts) {
+  if(workspace){coax_t_WsRequest *body=calloc(1,sizeof *body);valid=body && ws_read((coax_string){payload,(int64_t)payload_len},(coax_v_t_WsRequest){body,1});free(body);}
+  else if (accounts) {
     coax_t_PaRequest *body=calloc(1,sizeof *body);
     valid=body && pa_request_read((coax_string){payload,(int64_t)payload_len},(coax_v_t_PaRequest){body,1});
     if (body) {volatile unsigned char *secret=(volatile unsigned char *)body;for (size_t i=0;i<sizeof *body;i++) secret[i]=0;free(body);}
@@ -155,7 +158,7 @@ bool environment_route(const request *q) {
   char path[]="/tmp/oa-environment-XXXXXX";int f=mkstemp(path);if (f>=0) close(f);
   bool saved=f>=0 && ea_payload_file(es(path),(coax_string){payload,(int64_t)payload_len});
   unsigned char *out=malloc(1048576);int64_t n= -1;
-  if (saved && out) n=(accounts ? environment_accounts_proxy:environment_proxy)(es(PQgetvalue(r,0,0)),es(PQgetvalue(r,0,2)),es(PQgetvalue(r,0,3)),es(PQgetvalue(r,0,4)),es(key),es(path),es(program && *program ? program:"/usr/local/bin/environment-host"),(coax_v_u8){out,1048576});
+  if (saved && out) n=(workspace ? environment_workspace_proxy:accounts ? environment_accounts_proxy:environment_proxy)(es(PQgetvalue(r,0,0)),es(PQgetvalue(r,0,2)),es(PQgetvalue(r,0,3)),es(PQgetvalue(r,0,4)),es(key),es(path),es(program && *program ? program:"/usr/local/bin/environment-host"),(coax_v_u8){out,1048576});
   unlink(path);PQclear(r);
   if (n<1) {api_log("environment broker unavailable: saved=%d result=%lld",saved,(long long)n);api_error(q->fd,503,"Computer unavailable. An uncertain command is never resent automatically.");}else env_reply(q->fd,out,(size_t)n);
   free(out);return true;

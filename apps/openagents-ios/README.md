@@ -64,12 +64,17 @@ scroll physics and system credential ceremonies.
 Conversation options provide Share excerpt, Copy messages, Pin, Rename,
 Archive/Restore and feedback. Recents has All/Pinned/Archived filters and
 paged title search across account and connected-computer history. Library
-preferences stay on this installation, partitioned by account; they do not
-change or delete the source transcript. Workspace actions on a connected
-computer prepare editable Claude requests for changes, branches, pull
-requests and worktrees. They require Send and retain the computer's existing
-permissions and GitHub authentication. They are agent-assisted actions,
-not direct branch selectors or hosted-runner provisioning.
+pin/rename/archive metadata syncs through the signed-in account, independently
+of source transcripts. Changes merge per field across native clients and exact
+pending writes survive relaunch and lost acknowledgements. Guest preferences
+stay local. Workspace opens a GPU page with changes, branches, worktrees and
+pull requests on the selected connected computer. Create/switch branches,
+create/remove worktrees, push and create/edit PRs execute typed Git/GitHub
+operations after review and confirmation; they never generate Claude prompts.
+The resident service must explicitly enable this new profile locally with
+`openagents-environment workspace-enable` (and `--grant ID` for another device).
+GitHub uses that computer's existing `gh` login. No hosted runner is provisioned.
+See [the protocol and safety contract](../../docs/protocol/native-workspaces-and-chat-library-v1.md).
 
 Empty-chat options open Recents or the computer picker; the drawer owns
 navigation and New chat. The centered session pill opens details and provider Usage. Adjacent

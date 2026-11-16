@@ -11,10 +11,12 @@ import Foundation
     private let devices: AppDeviceService
     private let account: AppAccount
     let provider: AppProviderNative
+    let workspace:AppWorkspaceNative
     let identity: AppIdentityService
     init?(auth: AppAuth, platform: AppPlatform, devices: AppDeviceService, identity: AppIdentityService) {
         guard let core = AppCoreC() else { return nil }
         provider = AppProviderNative(auth: auth, devices: devices)
+        workspace=AppWorkspaceNative(auth:auth,devices:devices)
         self.core = core; self.platform = platform; self.devices = devices; self.identity = identity
         account = AppAccount(auth: auth)
         let http = AppHTTP(policy: .init(origin: auth.origin, admit: { method, path, bytes in
@@ -22,7 +24,7 @@ import Foundation
         }), authorize: AppAccount.authorizer(auth))
         bridge = AppCoreBridge(core: core)
         effects = AppEffects(outbox: bridge, http: http, account: account, wake: AppWake(), platform: platform, devices: devices)
-        effects.identity = identity; effects.provider = provider; bridge.effects = effects
+        effects.identity = identity; effects.provider = provider; effects.workspace=workspace; bridge.effects = effects
     }
     func launch(rejoin: String) { core.launch(rejoin: rejoin); bridge.heard() }
     func pump() { bridge.pump() }

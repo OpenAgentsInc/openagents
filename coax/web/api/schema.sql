@@ -20631,6 +20631,34 @@ CREATE TABLE auth.wallet_spends (
 
 
 --
+-- Name: account_library_commands_v1; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.account_library_commands_v1 (
+    account text NOT NULL,
+    command text NOT NULL,
+    request text NOT NULL,
+    response text NOT NULL,
+    CONSTRAINT account_library_commands_v1_command_check CHECK ((command ~ '^[0-9a-f]{32}$'::text)),
+    CONSTRAINT account_library_commands_v1_request_check CHECK ((octet_length(request) <= 131072)),
+    CONSTRAINT account_library_commands_v1_response_check CHECK ((octet_length(response) <= 131072))
+);
+
+
+--
+-- Name: account_library_v1; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.account_library_v1 (
+    account text NOT NULL,
+    revision bigint NOT NULL,
+    document text NOT NULL,
+    CONSTRAINT account_library_v1_document_check CHECK ((octet_length(document) <= 131072)),
+    CONSTRAINT account_library_v1_revision_check CHECK (((revision >= 0) AND (revision <= '9007199254740990'::bigint)))
+);
+
+
+--
 -- Name: account_threads_v1; Type: TABLE; Schema: chat; Owner: -
 --
 
@@ -24459,6 +24487,22 @@ ALTER TABLE ONLY auth.wallet_spends
 
 
 --
+-- Name: account_library_commands_v1 account_library_commands_v1_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.account_library_commands_v1
+    ADD CONSTRAINT account_library_commands_v1_pkey PRIMARY KEY (account, command);
+
+
+--
+-- Name: account_library_v1 account_library_v1_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.account_library_v1
+    ADD CONSTRAINT account_library_v1_pkey PRIMARY KEY (account);
+
+
+--
 -- Name: account_threads_v1 account_threads_v1_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
 --
 
@@ -27386,6 +27430,22 @@ ALTER TABLE ONLY auth.wallet_limits
 
 ALTER TABLE ONLY auth.wallet_spends
     ADD CONSTRAINT wallet_spends_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: account_library_commands_v1 account_library_commands_v1_account_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.account_library_commands_v1
+    ADD CONSTRAINT account_library_commands_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: account_library_v1 account_library_v1_account_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.account_library_v1
+    ADD CONSTRAINT account_library_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
 
 
 --

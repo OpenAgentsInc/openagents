@@ -19,6 +19,7 @@ private final class ProviderTokens: TokenStore, @unchecked Sendable {
     var sent: [Data] = []
     var state: AppCompletion.State = .done
     var malformed = false
+    var workspace = false
     var error = ""
     var before: (() -> Void)?
     func list() -> String { host + "\tFixture\n" }
@@ -27,6 +28,10 @@ private final class ProviderTokens: TokenStore, @unchecked Sendable {
         before?(); sent.append(body)
         let q = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
         let v: [String: Any] = ["schema": "openagents.environment.accounts.view.v1", "host_pubkey": host, "method": q["method"] ?? "", "command_id": q["command_id"] ?? "", "accounts": [], "login": ["login_id": "", "account_id": "", "state": "", "authorization_url": "", "expires_at_ms": 0], "error": error, "retry_after_ms": 0]
+        if workspace {
+            let view: [String: Any] = ["schema":"openagents.environment.workspace.v1","host":host,"method":q["method"] ?? "","command":q["command"] ?? "","workspace":q["workspace"] ?? "","revision":"","path":"","repository":"","page":0,"cursor":0,"next":0,"diff_cut":false,"branch":"","status":"","diff":"","error":"","github_error":"","worktrees":[],"branches":[],"pull_requests":[]]
+            done(state, malformed ? Data("{}".utf8) : try! JSONSerialization.data(withJSONObject:view)); return
+        }
         done(state, malformed ? Data("{}".utf8) : (try! JSONSerialization.data(withJSONObject: v)))
     }
 }
@@ -80,5 +85,36 @@ private final class ProviderTokens: TokenStore, @unchecked Sendable {
         let bad = await run(sdk, peer, try! JSONSerialization.data(withJSONObject: record)); XCTAssertEqual(bad.0, .failed)
         let noAccount = await run(sdk, peer, request("ListAccounts"), mode: 1); XCTAssertEqual(noAccount.1, 401)
         XCTAssertTrue(peer.sent.isEmpty)
+    }
+}
+
+@MainActor final class AppWorkspaceTests: XCTestCase {
+    private func request() -> Data {
+        try! JSONSerialization.data(withJSONObject:["schema":"openagents.environment.workspace.v1","method":"CreatePullRequest","workspace":"default","branch":"","base":"main","title":"Native controls","body":String(repeating:"description\n",count:200),"number":0,"expected":String(repeating:"b",count:64),"command":String(repeating:"1",count:32),"issued_at":1,"expires_at":2,"page":0,"cursor":0])
+    }
+    private func run(_ sdk:AppWorkspaceNative,_ peer:ProviderPeer,_ raw:Data,mode:Int32=0) async -> (AppCompletion.State,Int32,Data) {
+        await withCheckedContinuation { c in sdk.perform(mode:mode,host:peer.host,metadata:raw) { c.resume(returning:($0,$1,$2)) } }
+    }
+    func testDurableWorkspaceWriteCanRecoverAndRetryExactBytes() async {
+        let peer=ProviderPeer(),store=ProviderMemory(),auth=AppAuth(origin:"https://fixture.invalid",send:{_ in (Data(),500)},store:ProviderTokens(),device:nil)
+        peer.workspace=true;peer.state = .unknown
+        let raw=request(),sdk=AppWorkspaceNative(auth:auth,devices:peer,store:store)
+        peer.before={XCTAssertEqual(store.values.values.first,raw)}
+        let first=await run(sdk,peer,raw);XCTAssertEqual(first.0,.unknown);XCTAssertEqual(store.values.count,1)
+        let reopened=AppWorkspaceNative(auth:auth,devices:peer,store:store)
+        let recovered=await run(reopened,peer,Data(),mode:2);XCTAssertEqual(recovered.2,raw)
+        peer.state = .done
+        let retry=await run(reopened,peer,recovered.2);XCTAssertEqual(retry.0,.done);XCTAssertTrue(store.values.isEmpty)
+        XCTAssertEqual(peer.sent,[raw,raw])
+    }
+    func testWorkspaceRefusesStorageFailureAndMalformedRepliesRetainIntent() async {
+        let peer=ProviderPeer(),store=ProviderMemory(),auth=AppAuth(origin:"https://fixture.invalid",send:{_ in (Data(),500)},store:ProviderTokens(),device:nil)
+        peer.workspace=true;store.accepts=false
+        let sdk=AppWorkspaceNative(auth:auth,devices:peer,store:store),raw=request()
+        let refused=await run(sdk,peer,raw);XCTAssertEqual(refused.1,507);XCTAssertTrue(peer.sent.isEmpty)
+        store.accepts=true;peer.malformed=true
+        let unknown=await run(sdk,peer,raw);XCTAssertEqual(unknown.0,.unknown);XCTAssertEqual(store.values.count,1)
+        var other=try! JSONSerialization.jsonObject(with:raw) as! [String:Any];other["command"]=String(repeating:"2",count:32)
+        let blocked=await run(sdk,peer,try! JSONSerialization.data(withJSONObject:other));XCTAssertEqual(blocked.1,409);XCTAssertEqual(peer.sent.count,1)
     }
 }

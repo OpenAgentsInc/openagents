@@ -47,6 +47,7 @@ enum AppCall {
     /// One environment request to a paired computer (its key, 64 hex).
     case deviceCall(host: String, body: Data)
     case identity(action: String, expected: String)
+    case workspace(mode:Int32,host:String,body:Data)
     case provider(mode: Int32, host: String, metadata: Data)
     case unsupported
 }
@@ -114,6 +115,7 @@ extension AppPlatform {
     private weak var devices: AppDeviceService?
     var identity: AppIdentityService?
     var provider: AppProviderService?
+    var workspace:AppProviderService?
     private var inside = false
     private var late: [AppCompletion] = []
     /// Requests with a completion still owed, and the generation each had.
@@ -194,6 +196,9 @@ extension AppPlatform {
             identity.perform(action: action, expected: expected) { [weak self] state, status, publicBody in
                 self?.finish(op, generation, state, status, publicBody)
             }
+        case .workspace(let mode,let host,let body):
+            guard let workspace else {finish(op,generation,.unsupported,0,Data());return}
+            workspace.perform(mode:mode,host:host,metadata:body) { [weak self] state,status,raw in self?.finish(op,generation,state,status,raw) }
         case .provider(let mode, let host, let metadata):
             guard let provider else { finish(op, generation, .unsupported, 0, Data()); return }
             provider.perform(mode: mode, host: host, metadata: metadata) { [weak self] state, status, bytes in self?.finish(op, generation, state, status, bytes) }

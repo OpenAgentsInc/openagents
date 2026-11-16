@@ -1,6 +1,7 @@
 // An independent process-boundary fixture. No relay, credentials or model call.
 #load "../../lib/agent/environment/wire.coax";
 #load "../../lib/agent/accounts/wire.coax";
+#load "../../lib/agent/workspace/wire.coax";
 #load "../../lib/agent/router/wire.coax";
 #load "../../lib/agent/environment/task-wire.coax";
 #load "../../lib/agent/environment/transcript-store.coax";
@@ -63,6 +64,7 @@ tool_main :: ()->int #export_c #effects(all) {
     st[0].agents[0]=RtrAgent.{reported=true,installed=true,logged_in=true};
     out:[RTR_REPORT_MAX]u8;made:=rtr_report_write(r[..],0,host,out[..]);if made<1 {return 2;}print("%\n",cast(string)out[0..<made]);return 0;
   }
+  if args_at(args[..],0)=="workspace-rpc" {p:[1]WsRequest;if n<1 || !ws_read(cast(string)input[0..<n],p[..]) {return 2;}v:[1]WsView;_=js_copy(v[0].host[..],args_value(args[..],"--host",""));v[0].method=p[0].method;v[0].nm=p[0].nm;v[0].command=p[0].command;v[0].nc=p[0].nc;v[0].workspace=p[0].workspace;v[0].nw=p[0].nw;v[0].page=p[0].page;v[0].cursor=p[0].cursor;v[0].npath=js_copy(v[0].path[..],"/fixture/repository");v[0].nr=js_copy(v[0].repository[..],"example/repo");v[0].nb=js_copy(v[0].branch[..],"main");out:[49152]u8;n=ws_view_write(v[..],out[..]);if n<1 {return 2;}print("%\n",cast(string)out[0..<n]);return 0;}
   if args_at(args[..],0)=="accounts-rpc" {p:[1]PaRequest;if n<1 || !pa_request_read(cast(string)input[0..<n],p[..]) {return 2;}v:[1]PaView;_:=pa_copy(v[0].host[..],args_value(args[..],"--host",""));v[0].method=p[0].method;v[0].nm=p[0].nm;v[0].command=p[0].command;v[0].nc=p[0].nc;v[0].n=1;a:=v[0].accounts[0..<1];a[0].ni=pa_copy(a[0].id[..],"system");a[0].ne=pa_copy(a[0].email[..],"fixture@example.com");a[0].ns=pa_copy(a[0].state[..],"connected");a[0].selected=true;_:=pa_usage("{\"seven_day\":{\"utilization\":35}}",a);out:[8192]u8;n=pa_view_write(v[..],out[..]);if n<1 {return 2;}print("%\n",cast(string)out[0..<n]);return 0;}
   if n<1 || !ea_read(cast(string)input[0..<n],q[..]) || ea_right(cast(string)q[0].method[0..<q[0].nm])!=0 {return 2;}
   host:=args_value(args[..],"--host","");if !ea_id(host,64) {return 2;}

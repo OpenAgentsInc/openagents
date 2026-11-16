@@ -5,6 +5,7 @@
 #ifndef OPENAGENTS_CHAT_HOST_H
 #define OPENAGENTS_CHAT_HOST_H
 #include <stddef.h>
+#include <stdint.h>
 #ifndef __APPLE__
 // Canvas-host text callbacks; callers supply complete valid UTF-8 transactions.
 int oc_input_key(void *chat,int key,int mods,int down);
@@ -124,3 +125,11 @@ int oc_row_visible(void *chat,int row);
 #endif
 
 int oi_cancel(const unsigned char *raw,int n,unsigned char *out,int cap);
+
+int oc_library_sync_restore(void *chat,const char *raw);
+int oc_library_sync_save(void *chat,char *out,int cap);
+int oc_library_sync_request(void *chat,const char *command,char *out,int cap);
+int oc_library_sync_answer(void *chat,int status,const char *raw);
+int oc_workspace_effect(int mode,const char *host,const uint8_t *raw,int n);
+int oc_workspace_mutation(const uint8_t *raw,int n);
+int oc_workspace_reply(const char *host,const uint8_t *q,int nq,const uint8_t *v,int nv);

@@ -1,0 +1,2 @@
+// One library sync codec shared with native apps.
+#load "../../lib/agent/chat-library-sync.coax";

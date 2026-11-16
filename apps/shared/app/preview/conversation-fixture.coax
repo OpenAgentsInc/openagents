@@ -3,6 +3,16 @@
 #run_steps 250000000;
 #load "../../../openagents-ios/app.coax";
 conversation_fixture :: (s:[]ChatPage,c:[]AppCore,mode:int) #export_c #effects(all) {
+ if mode>=2 {
+  c[0].auth=AUTH_IN;c[0].foreground=false;ws:=s[0].workspaces[..];_=wsc_open(ws,"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",true);ws[0].loaded=true;ws[0].recovered=true;ws[0].tab=ifx mode<=5 then mode-2 else 3;
+  ws[0].catalog[0].n=1;_=js_copy(ws[0].catalog[0].entries[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");ws[0].catalog[0].entries[0].nl=js_copy(ws[0].catalog[0].entries[0].label[..],"Studio Mac");v:=ws[0].view[..];_=js_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nw=js_copy(v[0].workspace[..],"default");v[0].npath=js_copy(v[0].path[..],"/work/openagents");v[0].nr=js_copy(v[0].repository[..],"example/openagents");v[0].nb=js_copy(v[0].branch[..],"feature/native-controls");v[0].nx=64;_=js_copy(v[0].revision[..],"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");v[0].page=ws[0].tab;
+  v[0].ns=js_copy(v[0].status[..]," M apps/chat.coax\n M components/conversation.coax");v[0].nd=js_copy(v[0].diff[..],"@@ Native workspace controls @@\n+ Workspace picker\n+ Branch controls\n+ Pull requests");v[0].nbra=4;for i:0..<4 {branch:=ifx i==0 then "main" else ifx i==1 then "feature/native-controls" else ifx i==2 then "fix/account-sync" else "feature/a-long-branch-name-that-stays-on-one-line";v[0].branches[i].n=js_copy(v[0].branches[i].name[..],branch);}
+  v[0].nt=2;for i:0..<2 {v[0].trees[i].np=js_copy(v[0].trees[i].path[..],ifx i==0 then "/work/openagents" else "/work/native-controls");v[0].trees[i].nb=js_copy(v[0].trees[i].branch[..],ifx i==0 then "main" else "feature/native-controls");}
+  v[0].np=2;for i:0..<2 {v[0].prs[i].number=42+i;v[0].prs[i].nt=js_copy(v[0].prs[i].title[..],ifx i==0 then "Native workspace and Git controls" else "Sync pinned chats across devices");v[0].prs[i].nd=js_copy(v[0].prs[i].body[..],"Direct controls on connected computers.\n\nChecked with disposable repositories.");}
+  if mode>=6 {ws[0].form=6;ws[0].na=js_copy(ws[0].base[..],"main");ws[0].nt=js_copy(ws[0].title[..],"Native workspace controls");ws[0].nd=js_copy(ws[0].body[..],"Manage workspaces, branches and pull requests without leaving the app.");}
+  if mode==7 {_=wsc_intent(ws);}
+  return;
+ }
  if mode!=1 {return;}
  id:="cnv_0123456789abcdef0123456789abcdef";turn:="trn_0123456789abcdef0123456789abcdef";
  c[0].auth=AUTH_IN;c[0].foreground=false;d:=c[0].chat[..];_=el_copy(d[0].id[..],id);d[0].id_n=id.count;d[0].loaded=true;

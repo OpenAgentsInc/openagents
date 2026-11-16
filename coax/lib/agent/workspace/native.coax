@@ -1,0 +1,49 @@
+// Shared native workspace service. Paths originate exclusively in the locally
+// adopted repository's worktree registry. Network inputs supply only opaque IDs.
+#load "wire.coax";
+#load "../../repo/worktree.coax";
+#load "../../crypto/sha256-kernel.coax";
+ws_digest :: (text:string,out:[]u8)->bool #effects(all) {return S_hex(S_hash(text),out);}
+ws_line_end :: (s:string,at:int)->int {end:=at;while end<s.count && s[end]!=10 {end+=1;}return end;}
+// A full registry scan, with only one page retained. The selected path is
+// resolved against every row, independently of which page is displayed.
+ws_tree_take :: (r:[]WsTree,v:[]WsView,root:string,target:string,offset:int,total:int)->bool {
+ if r[0].np<1 {return false;}if !ws_digest(cast(string)r[0].path[0..<r[0].np],r[0].id[..]) {return false;}
+ if target=="default" && cast(string)r[0].path[0..<r[0].np]==root || target==cast(string)r[0].id[..] {v[0].path=r[0].path;v[0].npath=r[0].np;v[0].selected_locked=r[0].locked;}
+ if total>=offset && total<offset+8 {v[0].trees[v[0].nt]=r[0];v[0].nt+=1;}if total>=offset+8 {v[0].next=offset+8;}return true;
+}
+ws_trees :: (raw:string,v:[]WsView,root:string,target:string,offset:int)->bool {
+ at:=0;total:=0;row:[1]WsTree;while at<raw.count {end:=ws_line_end(raw,at);line:=raw[at..<end];
+  if line.count>9 && line[0..<9]=="worktree " {if row[0].np>0 {if !ws_tree_take(row[..],v,root,target,offset,total) {return false;}total+=1;}row[0]=WsTree.{};row[0].np=js_copy(row[0].path[..],line[9..<line.count]);if row[0].np<1 || !ws_text(line[9..<line.count],false) {return false;}}
+  else if line.count>18 && line[0..<18]=="branch refs/heads/" {row[0].nb=js_copy(row[0].branch[..],line[18..<line.count]);if row[0].nb<1 {return false;}}
+  else if line=="locked" || line.count>7 && line[0..<7]=="locked " {row[0].locked=true;}at=end+1;
+ }if row[0].np>0 {if !ws_tree_take(row[..],v,root,target,offset,total) {return false;}total+=1;}return total>0;
+}
+
+ws_prs :: (raw:string,v:[]WsView)->bool {nodes:[1024]JvNode;d:[1]Jv;if !jv_parse(d[..],raw,nodes[..]) || jv_kind(d[0],0)!=JV_ARRAY || jv_len(d[0],0)>3 {return false;}v[0].np=jv_len(d[0],0);for i:0..<v[0].np {r:=v[0].prs[i..<i+1];node:=jv_at(d[0],0,i);r[0].number=js_number(d[0],jv_get(d[0],node,"number"));r[0].nt=js_string(d[0],jv_get(d[0],node,"title"),r[0].title[..]);r[0].nu=js_string(d[0],jv_get(d[0],node,"html_url"),r[0].url[..]);r[0].nh=js_string(d[0],jv_get(d[0],jv_get(d[0],node,"head"),"ref"),r[0].head[..]);r[0].nb=js_string(d[0],jv_get(d[0],jv_get(d[0],node,"base"),"ref"),r[0].base[..]);r[0].nd=ifx jv_kind(d[0],jv_get(d[0],node,"body"))==JV_NULL then 0 else js_string(d[0],jv_get(d[0],node,"body"),r[0].body[..]);r[0].ns=js_string(d[0],jv_get(d[0],node,"state"),r[0].state[..]);if r[0].number<1 || r[0].nt<0 || r[0].nu<0 || r[0].nh<0 || r[0].nb<0 || r[0].nd<0 || r[0].ns<0 {v[0].np=0;return false;}}return true;}
+ws_origin :: (raw:string)->bool {prefix:=ifx raw.count>19 && raw[0..<19]=="https://github.com/" then 19 else ifx raw.count>15 && raw[0..<15]=="git@github.com:" then 15 else 0;if prefix==0 {return false;}path:=raw[prefix..<raw.count];if path.count>200 || !rp_path_ok(path,false) {return false;}slashes:=0;for c:path {if c=='/' {slashes+=1;}else if !(c>='a' && c<='z' || c>='A' && c<='Z' || c>='0' && c<='9' || c=='.' || c=='_' || c=='-') {return false;}}return slashes==1 && path[0]!='/' && path[path.count-1]!='/';}
+ws_selected :: (root:string,id:string,v:[]WsView)->int {for i:0..<v[0].nt {r:=v[0].trees[i];if id=="default" && cast(string)r.path[0..<r.np]==root || id==cast(string)r.id[..] {return i;}}return -1;}
+ws_snapshot :: (root:string,q:[]WsRequest,v:[]WsView)->string {
+ v[0].nt=0;v[0].nbra=0;v[0].np=0;v[0].ng=0;v[0].nx=0;v[0].npath=0;v[0].selected_locked=false;v[0].nr=0;v[0].page=q[0].page;v[0].cursor=q[0].cursor;v[0].next=0;v[0].nd=0;v[0].diff_cut=false;buf:[131072]u8;r:=wt_git3(root,"worktree","list","--porcelain",buf[..]);if !wt_ok(r) || !ws_trees(cast(string)buf[0..<r.out_n],v,root,cast(string)q[0].workspace[0..<q[0].nw],ifx q[0].page==2 then q[0].cursor else 0) {return "workspace_unavailable";}
+ if v[0].npath<1 {return "workspace_refused";}path:=cast(string)v[0].path[0..<v[0].npath];if q[0].page!=2 {v[0].nt=0;v[0].next=0;}canonical:[1024]u8;if fs_realpath(path,canonical[..])!=path {return "workspace_refused";}
+ status:=wt_git3(path,"status","--porcelain=v1","--untracked-files=normal",v[0].status[0..<4096]);if !wt_ok(status) {return "output_limit";}v[0].ns=status.out_n;
+ head:[128]u8;h:=wt_git3(path,"rev-parse","--verify","HEAD",head[..]);if !wt_ok(h) {return "repository_unavailable";}
+ branch:=wt_git3(path,"symbolic-ref","--short","HEAD",v[0].branch[..]);v[0].nb=ifx wt_ok(branch) then branch.out_n else 0;
+ // A digest includes identity, HEAD, branch and the complete bounded status.
+ state:[262144]u8;o:[1]Jo;jo_start(o[..],state[..]);jo_arr(o[..]);jo_str(o[..],cast(string)buf[0..<r.out_n]);jo_str(o[..],path);jo_str(o[..],cast(string)head[0..<h.out_n]);jo_str(o[..],cast(string)v[0].branch[0..<v[0].nb]);jo_str(o[..],cast(string)v[0].status[0..<v[0].ns]);
+ if q[0].page==0 {diff:=wt_git5(path,"diff","--no-ext-diff","--no-textconv","HEAD","--",v[0].diff[0..<12288]);if diff.started!=0 || diff.status!=0 || diff.timed_out {return "diff_unavailable";}v[0].nd=diff.out_n;v[0].diff_cut=diff.cut;if !PB_utf8(v[0].diff[0..<v[0].nd]) {v[0].nd=0;v[0].diff_cut=true;}}
+ jo_int(o[..],q[0].page);jo_int(o[..],q[0].cursor);
+ r=wt_git3(path,"for-each-ref","--format=%(refname:short)","refs/heads/",buf[..]);if !wt_ok(r) {return "branches_unavailable";}raw:=cast(string)buf[0..<r.out_n];jo_str(o[..],raw);at:=0;total:=0;while at<raw.count {end:=ws_line_end(raw,at);if q[0].page==1 && total>=q[0].cursor && total<q[0].cursor+16 {b:=v[0].branches[v[0].nbra..<v[0].nbra+1];b[0].n=js_copy(b[0].name[..],raw[at..<end]);if b[0].n<1 {return "output_limit";}v[0].nbra+=1;}if q[0].page==1 && total>=q[0].cursor+16 {v[0].next=q[0].cursor+16;}total+=1;at=end+1;}
+ r=wt_git3(path,"config","--get","remote.origin.url",buf[..]);if !wt_ok(r) || !ws_origin(cast(string)buf[0..<r.out_n]) {v[0].ng=js_copy(v[0].github[..],"github_remote_required");jo_end(o[..]);if o[0].bad || !ws_digest(jo_text(o[..]),v[0].revision[..]) {return "output_limit";}v[0].nx=64;return "";}
+ origin:=cast(string)buf[0..<r.out_n];jo_str(o[..],origin);prefix:=ifx origin[0]=='h' then 19 else 15;repo:=origin[prefix..<origin.count];if repo.count>4 && repo[repo.count-4..<repo.count]==".git" {repo=repo[0..<repo.count-4];}v[0].nr=js_copy(v[0].repository[..],repo);if v[0].nr<1 {v[0].nr=0;return "github_remote_required";}
+ if q[0].page==3 {
+  route:[512]u8;num:[32]u8;size:=js_copy(route[..],"repos/");for c:repo {route[size]=c;size+=1;}for c:"/pulls?state=open&per_page=3&page=" {route[size]=c;size+=1;}number:[1]Jo;jo_start(number[..],num[..]);jo_int(number[..],q[0].cursor+1);digits:=jo_text(number[..]);for c:digits {route[size]=c;size+=1;}
+  args:=[2]string.["api",cast(string)route[0..<size]];r=wt_gh(path,args[..],buf[..]);if wt_ok(r) {jo_str(o[..],cast(string)buf[0..<r.out_n]);}if !wt_ok(r) || !ws_prs(cast(string)buf[0..<r.out_n],v) {v[0].ng=js_copy(v[0].github[..],"github_unavailable");v[0].np=0;}else if v[0].np==3 {v[0].next=q[0].cursor+1;}
+ }
+ jo_end(o[..]);if o[0].bad || !ws_digest(jo_text(o[..]),v[0].revision[..]) {return "output_limit";}v[0].nx=64;return "";
+}
+#test "workspace discovery binds canonical paths and never accepts injected GitHub destinations" {v:[1]WsView;#assert ws_trees("worktree /tmp/a\nHEAD a\nbranch refs/heads/main\n\nworktree /tmp/b\nHEAD b\nbranch refs/heads/feature/b\nlocked reason",v[..],"/tmp/a","default",0) && v[0].nt==2 && v[0].trees[1].locked;#assert ws_selected("/tmp/a","default",v[..])==0 && ws_selected("/tmp/a","/tmp/b",v[..])== -1;#assert ws_origin("https://github.com/openagentsinc/openagents.git") && ws_origin("git@github.com:openagentsinc/openagents.git");for s:[8]string.["https://github.com/../x","https://github.com/x/.","https://github.com/x/..","https://evil.test/x/y","https://github.com/a/b/c","https://github.com/a/b;rm","git@github.com:a/","https://github.com//b"] {#assert !ws_origin(s);}}
+
+#test "GitHub origin output is bounded before serialization" {b:[240]u8;n:=js_copy(b[..],"https://github.com/a/");for i:n..<b.count {b[i]='b';}#assert ws_origin(cast(string)b[0..<219]) && !ws_origin(cast(string)b[0..<220]);}
+
+#test "selected worktree locking survives a different visible registry page" {v:[1]WsView;id:[64]u8;#assert ws_digest("/tmp/b",id[..]);#assert ws_trees("worktree /tmp/a\nHEAD a\nbranch refs/heads/main\n\nworktree /tmp/b\nHEAD b\nbranch refs/heads/feature/b\nlocked reason",v[..],"/tmp/a",cast(string)id[..],8) && v[0].nt==0 && v[0].selected_locked;}

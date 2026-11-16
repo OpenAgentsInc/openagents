@@ -24,7 +24,8 @@ OWN_PAGE :: 2;         // copy and open-link, asked for by a tap
 OWN_ENVIRONMENT :: 3;  // guest: environment and repository reads
 OWN_SCREEN :: 8;       // the active Projects or Worlds page's serial effects
 OWN_USAGE :: 9;        // provider Usage; independent of Projects read cancellation
-OWN_GUEST_LAST :: 9;   // guests 3..6 and 8..9; owner 7 remains the independent device lane
+OWN_WORKSPACE :: 10;
+OWN_GUEST_LAST :: 10;   // guests 3..6 and 8..9; owner 7 remains the independent device lane
 OWN_DEVICE :: 7;       // the conversation on a paired computer, and the paired list (device/lane.coax); no account
 
 app_guest_owner :: (owner:int)->bool {return owner>=OWN_ENVIRONMENT && owner<=OWN_GUEST_LAST && owner!=OWN_DEVICE;}

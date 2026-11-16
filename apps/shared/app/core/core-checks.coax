@@ -132,7 +132,7 @@ ckt_login :: (c: [] AppCore) -> bool {
 }
 #test "guest owner boundaries, closed request fields and sleeping deadlines are exact" {
  a:[1]AppCore;c:=a[..];#assert ckt_login(c);
- yes:=[6]int.[3,4,5,6,8,9];no:=[7]int.[-1,0,1,2,7,10,11];
+ yes:=[7]int.[3,4,5,6,8,9,10];no:=[6]int.[-1,0,1,2,7,11];
  for owner:yes {#assert app_guest_owner(owner);}
  for owner:no {#assert !app_guest_owner(owner) && app_guest_http(c,owner,9,UP_GET,"/api/chat/x","")==0 && app_guest_identity(c,owner,9,"read","")==0 && app_guest_ids(c,owner,9)==0 && !app_guest_due(c,owner,1);}
  op:=app_guest_http(c,OWN_SCREEN,19,UP_GET,"/api/chat/x","");#assert op>0 && ckt_field(c,op,APP_HOST_TIMEOUT)==60000;

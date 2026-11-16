@@ -1,0 +1,324 @@
+// Private account presentation metadata. No transcript or capability is stored.
+#load "chat-library.coax";
+
+#load "../json/json.coax";
+
+#authority;
+
+CLS_SCHEMA :: "openagents.chat.library.sync.v1";
+
+ClSync :: struct {base:[1]ChatLibrary;
+ revision:int= -1;
+ pending:[131072]u8;
+ np:int;
+ }
+ClSnapshot :: struct {library:[1]ChatLibrary;
+ revision:int;
+ }
+ClWrite :: struct {library:[1]ChatLibrary;
+ revision:int;
+ command:[32]u8;
+ }
+#test "library sync preserves independent remote fields, removals and migration" {
+ base:[1]ChatLibrary;
+ local:[1]ChatLibrary;
+ remote:[1]ChatLibrary;
+ k:="account/cnv_0123456789abcdef0123456789abcdef";
+ other:="account/cnv_1123456789abcdef0123456789abcdef";
+
+ #assert chlib_change(base[..],k,"Old",1);
+ local[0]=base[0];
+ remote[0]=base[0];
+ #assert chlib_change(local[..],k,"New",1) && chlib_change(remote[..],k,"Old",3) && chlib_change(remote[..],other,"Else",0);
+
+ #assert cls_merge(base[..],local[..],remote[..]);
+ #assert chlib_label(remote[..],k,"")=="New" && chlib_flags(remote[..],k)==3 && remote[0].n==2;
+
+ remote[0]=base[0];
+ #assert chlib_change(local[..],k,"",0) && cls_merge(base[..],local[..],remote[..]) && remote[0].n==0;
+
+ base[0]=ChatLibrary.{};
+ #assert chlib_change(local[..],other,"Local",1) && cls_merge(base[..],local[..],remote[..]) && remote[0].n==1;
+
+}
+#test "library sync snapshot and write codecs are strict and bounded" {
+ s:[1]ClSnapshot;
+ s[0].revision=7;
+ b:[131072]u8;
+ n:=cls_snapshot_write(s[..],b[..]);
+ r:[1]ClSnapshot;
+ #assert n>0 && cls_snapshot_read(cast(string)b[0..<n],r[..]) && r[0].revision==7;
+
+ #assert !cls_snapshot_read("{}",r[..]) && !cls_snapshot_read("{\"schema\":\"openagents.chat.library.sync.v1\",\"revision\":-1,\"document\":\"\"}",r[..]);
+
+ q:[1]ClWrite;
+ q[0].revision=7;
+ _=js_copy(q[0].command[..],"0123456789abcdef0123456789abcdef");
+ n=cls_write(q[..],b[..]);
+ read:[1]ClWrite;
+ #assert n>0 && cls_read(cast(string)b[0..<n],read[..]) && read[0].revision==7 && cast(string)read[0].command[..]==cast(string)q[0].command[..];
+
+ #assert cls_write(q[..],b[0..<20])<0;
+ for i:0..<n {#assert !cls_read(cast(string)b[0..<i],read[..]);
+ }
+}
+cls_hex :: (s:string)->bool #effects(all) {if s.count!=32 {return false;
+ }for c:s {if !(c>='0' && c<='9' || c>='a' && c<='f') {return false;
+ }}return true;
+ }
+cls_merge :: (base:[]ChatLibrary,local:[]ChatLibrary,remote:[]ChatLibrary)->bool #effects(all) {
+ next:[1]ChatLibrary;
+ // Build the merged set once. Applying additions before removals would
+ // spuriously refuse an otherwise valid full-capacity reconciliation.
+ for pass:0..<2 { // mutant: equivalent — a third pass repeats the same local field intents, changing neither the merged set nor any persisted field; temporary construction revisions are not exported
+
+  source:=ifx pass==0 then remote else local;
+  for i:0..<source[0].n {
+   row:=source[0].rows[i];key:=cast(string)row.key[0..<row.nk];
+   if pass==1 && chlib_find(remote,key)>=0 {continue;} // mutant: equivalent — not skipping a duplicate applies the same merged fields a second time; the codec never stores temporary construction revision counts
+   bt:=chlib_label(base,key,"");lt:=chlib_label(local,key,"");
+   bf:=chlib_flags(base,key);lf:=chlib_flags(local,key);rf:=chlib_flags(remote,key);
+   title:=ifx lt!=bt then lt else chlib_label(remote,key,"");flags:=rf;
+   for bit:0..<2 { // mutant: equivalent — a third bit tests mask 4; canonical pin/archive flags are 0..3, so that bit cannot differ
+   mask:=1<<bit;if (bf&mask)!=(lf&mask) {flags=(flags&(3^mask))|(lf&mask);}}
+   if !chlib_change(next[..],key,title,flags) {return false;}
+  }
+ }
+ remote[0]=next[0];return true;
+}
+
+cls_document :: (d:Jv,root:int,key:string,out:[]ChatLibrary)->bool #effects(all) {node:=jv_get(d,root,key);
+ b:[CHLIB_BYTES]u8;
+ n:=js_string(d,node,b[..]);
+ return n>=0 && chlib_read(out,cast(string)b[0..<n]);
+ }
+cls_snapshot_read :: (raw:string,out:[]ClSnapshot)->bool #export_c #effects(all) {
+ nodes:[16]JvNode;
+ d:[1]Jv;
+ if raw.count>131072 || !jv_parse(d[..],raw,nodes[..]) {return false;
+ }f:=[3]string.["schema","revision","document"];
+ next:[1]ClSnapshot;
+ next[0].revision=js_number(d[0],jv_get(d[0],0,"revision"));
+
+ if !js_fields(d[0],0,f[..]) || jv_raw(d[0],jv_get(d[0],0,"schema"))!=CLS_SCHEMA || (next[0].revision<0 || next[0].revision>9007199254740990) || !cls_document(d[0],0,"document",next[0].library[..]) {return false;
+ }out[0]=next[0];
+ return true;
+
+}
+cls_snapshot_write :: (s:[]ClSnapshot,out:[]u8)->int #export_c #effects(all) {b:[CHLIB_BYTES]u8;
+ n:=chlib_write(s[0].library[..],b[..]);
+ if n<0 || s[0].revision<0 || s[0].revision>9007199254740990 {return -1; // mutant: equivalent — only the scratch-length zero/one variants survive; any validated local library writes at least its 33-byte header into this 49152-byte scratch
+
+ }o:[1]Jo;
+ jo_start(o[..],out);
+ jo_obj(o[..]);
+ jo_key(o[..],"schema");
+ jo_str(o[..],CLS_SCHEMA);
+ jo_key(o[..],"revision");
+ jo_int(o[..],s[0].revision);
+ jo_key(o[..],"document");
+ jo_str(o[..],cast(string)b[0..<n]);
+ jo_end(o[..]);
+ return ifx o[0].bad then -1 else o[0].n;
+ }
+cls_read :: (raw:string,out:[]ClWrite)->bool #export_c #effects(all) {
+ nodes:[16]JvNode;
+ d:[1]Jv;
+ if raw.count>131072 || !jv_parse(d[..],raw,nodes[..]) {return false;
+ }f:=[4]string.["schema","command","expected_revision","document"];
+ next:[1]ClWrite;
+ next[0].revision=js_number(d[0],jv_get(d[0],0,"expected_revision"));
+
+ if !js_fields(d[0],0,f[..]) || jv_raw(d[0],jv_get(d[0],0,"schema"))!=CLS_SCHEMA || (next[0].revision<0 || next[0].revision>9007199254740990) || !cls_hex(jv_raw(d[0],jv_get(d[0],0,"command"))) || !cls_document(d[0],0,"document",next[0].library[..]) {return false;
+ }_=js_copy(next[0].command[..],jv_raw(d[0],jv_get(d[0],0,"command")));
+ out[0]=next[0];
+ return true;
+
+}
+cls_write :: (q:[]ClWrite,out:[]u8)->int #effects(all) {if !cls_hex(cast(string)q[0].command[..]) || q[0].revision<0 || q[0].revision>9007199254740990 {return -1;
+ }b:[CHLIB_BYTES]u8;
+ n:=chlib_write(q[0].library[..],b[..]);
+ if n<0 {return -1; // mutant: equivalent — a validated local-v1 library is 33..46625 bytes and always fits this fixed 49152-byte scratch; only the outer caller output can refuse
+
+ }o:[1]Jo;
+ jo_start(o[..],out);
+ jo_obj(o[..]);
+ jo_key(o[..],"schema");
+ jo_str(o[..],CLS_SCHEMA);
+ jo_key(o[..],"command");
+ jo_str(o[..],cast(string)q[0].command[..]);
+ jo_key(o[..],"expected_revision");
+ jo_int(o[..],q[0].revision);
+ jo_key(o[..],"document");
+ jo_str(o[..],cast(string)b[0..<n]);
+ jo_end(o[..]);
+ return ifx o[0].bad then -1 else o[0].n;
+ }
+cls_equal :: (a:[]ChatLibrary,b:[]ChatLibrary)->bool #effects(all) {if a[0].n!=b[0].n {return false;
+ }for i:0..<a[0].n {r:=a[0].rows[i];
+ key:=cast(string)r.key[0..<r.nk];
+ if chlib_find(b,key)<0 || chlib_flags(a,key)!=chlib_flags(b,key) || chlib_label(a,key,"")!=chlib_label(b,key,"") {return false;
+ }}return true;
+ }
+// GET whenever there is no pending write. Preparing a write requires a fresh
+// snapshot first, including after first login/migration.
+cls_request :: (s:[]ClSync,l:[]ChatLibrary,command:string,out:[]u8)->int #effects(all) {
+ if s[0].np>0 { // mutant: equivalent — pending is empty or a complete validated write JSON, never a one-byte value
+ return js_copy(out,cast(string)s[0].pending[0..<s[0].np]);
+ }
+ if s[0].revision<0 || cls_equal(s[0].base[..],l) {return 0;
+ }
+ q:[1]ClWrite;
+ q[0].library[0]=l[0];
+ q[0].revision=s[0].revision;
+ if !cls_hex(command) {return -1;
+ }_=js_copy(q[0].command[..],command);
+ n:=cls_write(q[..],s[0].pending[..]);
+ if n<1 {return -1; // mutant: equivalent — this request was built from a valid library, safe revision and validated command into 131072 bytes, so its full JSON cannot refuse or be 0/1 byte
+
+ }s[0].np=n;
+ return js_copy(out,cast(string)s[0].pending[0..<n]);
+
+}
+cls_answer :: (s:[]ClSync,l:[]ChatLibrary,status:int,raw:string)->bool #effects(all) {
+ if status!=200 && status!=409 {return false;
+ }v:[1]ClSnapshot;
+ if !cls_snapshot_read(raw,v[..]) {return false;
+ }
+ if v[0].revision<s[0].revision {return false;
+ }
+ if s[0].np>0 && status==200 { // mutant: equivalent — the admitted pending write is empty or a complete JSON document, never one byte
+
+  q:[1]ClWrite;
+ if !cls_read(cast(string)s[0].pending[0..<s[0].np],q[..]) || v[0].revision!=q[0].revision+1 || !cls_equal(q[0].library[..],v[0].library[..]) {return false;
+ }
+  // This ack is byte-correlated with the pending snapshot above. It advances
+  // the base only; local edits made after sending are already the desired state.
+ s[0].base[0]=q[0].library[0];
+
+ } else {
+  next:=[1]ChatLibrary.[v[0].library[0]];
+ if !cls_merge(s[0].base[..],l,next[..]) {return false;
+ }old:=l[0].revision;
+ changed:= !cls_equal(l,next[..]);
+ l[0]=next[0];
+ l[0].revision=old+(ifx changed then 1 else 0);
+ s[0].base[0]=v[0].library[0];
+
+ }
+ s[0].revision=v[0].revision;
+ s[0].np=0;
+ return true;
+
+}
+cls_state_write :: (s:[]ClSync,local:[]ChatLibrary,out:[]u8)->int #effects(all) {raw:[CHLIB_BYTES]u8;
+ n:=chlib_write(s[0].base[..],raw[..]);
+ if n<0 {return -1; // mutant: equivalent — a validated local-v1 library is 33..46625 bytes and always fits this fixed 49152-byte scratch; only the outer caller output can refuse
+
+ }o:[1]Jo;
+ jo_start(o[..],out);
+ jo_obj(o[..]);
+ jo_key(o[..],"schema");
+ jo_str(o[..],"openagents.chat.library.client.v1");
+ jo_key(o[..],"revision");
+ jo_int(o[..],s[0].revision);
+ jo_key(o[..],"base");
+ jo_str(o[..],cast(string)raw[0..<n]);
+ jo_key(o[..],"local");
+ localraw:[CHLIB_BYTES]u8;
+ ln:=chlib_write(local,localraw[..]);
+ if ln<0 {return -1; // mutant: equivalent — the validated local library always fits this fixed scratch, as above
+
+ }jo_str(o[..],cast(string)localraw[0..<ln]);
+ jo_key(o[..],"pending");
+ jo_str(o[..],cast(string)s[0].pending[0..<s[0].np]);
+ jo_end(o[..]);
+ return ifx o[0].bad then -1 else o[0].n;
+ }
+cls_state_read :: (s:[]ClSync,local:[]ChatLibrary,raw:string)->bool #effects(all) {s[0]=ClSync.{};
+ if raw.count==0 {return true;
+ }nodes:[16]JvNode;
+ d:[1]Jv;
+ if raw.count>524288 || !jv_parse(d[..],raw,nodes[..]) {return false;
+ }f:=[5]string.["schema","revision","base","pending","local"];
+ if !js_fields(d[0],0,f[..]) || jv_raw(d[0],jv_get(d[0],0,"schema"))!="openagents.chat.library.client.v1" {return false;
+ }r:=jv_get(d[0],0,"revision");
+ revision:=ifx jv_raw(d[0],r)=="-1" then -1 else js_number(d[0],r);
+ if revision== -1 && jv_raw(d[0],r)!="-1" || revision< -1 || revision>9007199254740990 {return false;
+ }next:[1]ClSync;
+ next[0].revision=revision;
+ if !cls_document(d[0],0,"base",next[0].base[..]) {return false;
+ }next[0].np=js_string(d[0],jv_get(d[0],0,"pending"),next[0].pending[..]);
+ if next[0].np<0 {return false;
+ }if next[0].np>0 {q:[1]ClWrite;
+ if !cls_read(cast(string)next[0].pending[0..<next[0].np],q[..]) || q[0].revision!=revision {return false;
+ }}saved:[1]ChatLibrary;
+ if !cls_document(d[0],0,"local",saved[..]) {return false;
+ }s[0]=next[0];
+ local[0]=saved[0];
+ return true;
+ }
+#test "library sync retries exact pending bytes, merges conflicts and preserves in-flight edits" {
+ s:[1]ClSync;
+ l:[1]ChatLibrary;
+ v:[1]ClSnapshot;
+ k:="account/cnv_0123456789abcdef0123456789abcdef";
+ raw:[131072]u8;
+ b:[131072]u8;
+
+ #assert cls_request(s[..],l[..],"",b[..])==0;
+ #assert chlib_change(l[..],k,"Local",1);
+ n:=cls_snapshot_write(v[..],raw[..]);
+ #assert cls_answer(s[..],l[..],200,cast(string)raw[0..<n]) && l[0].n==1;
+
+ count:=cls_request(s[..],l[..],"0123456789abcdef0123456789abcdef",b[..]);
+ #assert count>0;
+ again:[131072]u8;
+ #assert cls_request(s[..],l[..],"bad",again[..])==count && cast(string)b[0..<count]==cast(string)again[0..<count];
+
+ #assert chlib_change(v[0].library[..],k,"Remote",2);
+ v[0].revision=1;
+ n=cls_snapshot_write(v[..],raw[..]);
+ #assert cls_answer(s[..],l[..],409,cast(string)raw[0..<n]) && chlib_flags(l[..],k)==3 && chlib_label(l[..],k,"")=="Local";
+
+ count=cls_request(s[..],l[..],"1123456789abcdef0123456789abcdef",b[..]);
+ q:[1]ClWrite;
+ #assert cls_read(cast(string)b[0..<count],q[..]);
+ v[0].library[0]=q[0].library[0];
+ v[0].revision=2;
+
+ #assert chlib_change(l[..],k,"Newer",1);
+ n=cls_snapshot_write(v[..],raw[..]);
+ #assert cls_answer(s[..],l[..],200,cast(string)raw[0..<n]) && chlib_label(l[..],k,"")=="Newer" && chlib_flags(l[..],k)==1;
+
+ state:[524288]u8;
+ size:=cls_state_write(s[..],l[..],state[..]);
+ restored:[1]ClSync;
+ #assert size>0 && cls_state_read(restored[..],l[..],cast(string)state[0..<size]) && restored[0].revision==2 && restored[0].np==0;
+
+ #assert !cls_answer(s[..],l[..],503,"{}") && !cls_answer(s[..],l[..],200,"{}");
+
+}
+#test "library sync admits only the current unrestricted account session" {#assert cls_admit(2,true,false,0);
+ for k:0..<6 {if k!=2 {#assert !cls_admit(k,true,false,0);
+ }}#assert !cls_admit(2,false,false,0) && !cls_admit(2,true,true,0) && !cls_admit(2,true,false,1) && !cls_admit(2,true,false,-1);
+ }
+cls_admit :: (kind:int,session:bool,limited:bool,frozen:int)->bool #export_c #effects(all) {return kind==2 && session && !limited && frozen==0;
+ }
+#load "chat-library-sync-checks.coax" #test;
+
+// SQL owns locking and storage; the shared policy owns expected revisions and
+// the exact next snapshot. The HTTP adapter never invents a revision.
+cls_compare :: (current:int,expected:int)->bool #export_c #effects(all) {return current>=0 && current<9007199254740990 && current==expected;}
+cls_commit :: (current:[]ClSnapshot,write:[]ClWrite,out:[]u8)->int #export_c #effects(all) {
+ if !cls_compare(current[0].revision,write[0].revision) {return -1;}
+ next:[1]ClSnapshot;next[0].revision=write[0].revision+1;next[0].library[0]=write[0].library[0];
+ n:=cls_snapshot_write(next[..],out);
+ if n<1 {return -1;} // mutant: equivalent — a successful snapshot contains its schema and 33-byte document header, so its encoded length cannot be one byte; a short destination returns -1
+ current[0]=next[0];return n;
+}
+
+#test "library compare-and-swap owns the next revision and refuses stale, exhausted or incomplete saves atomically" {
+ for current:[5]int.[-1,0,1,9007199254740989,9007199254740990] {for expected:[5]int.[-1,0,1,9007199254740989,9007199254740990] {#assert cls_compare(current,expected)==(current==expected && current>=0 && current<9007199254740990);}}
+ v:[1]ClSnapshot;q:[1]ClWrite;q[0].revision=1;b:[131072]u8;#assert cls_commit(v[..],q[..],b[..])== -1 && v[0].revision==0;q[0].revision=0;#assert chlib_change(q[0].library[..],"account/cnv_0123456789abcdef0123456789abcdef","Saved",3);#assert cls_commit(v[..],q[..],b[0..<1])== -1 && v[0].revision==0 && v[0].library[0].n==0;n:=cls_commit(v[..],q[..],b[..]);read:[1]ClSnapshot;#assert n>0 && cls_snapshot_read(cast(string)b[0..<n],read[..]) && v[0].revision==1 && read[0].revision==1 && cls_equal(v[0].library[..],q[0].library[..]);
+}

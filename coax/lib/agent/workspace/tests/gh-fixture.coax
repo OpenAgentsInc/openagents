@@ -1,0 +1,9 @@
+// Independent fake GitHub CLI for disposable workspace integration tests only.
+#import "Basic";
+#load "../../../sys/args.coax";
+#load "../../../sys/tool.coax";
+#load "../../../sys/fs.coax";
+#load "../../../sys/proc.coax";
+#load "../../../json/json.coax";
+tool_main :: ()->int #export_c #effects(all) {a:[1]Args;if !args_load(a[..]) {return 2;}path:[1024]u8;file:=proc_getenv("OA_WORKSPACE_GH_LOG",path[..]);b:[16384]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_arr(o[..]);for i:0..<args_count(a[..]) {jo_str(o[..],args_at(a[..],i));}jo_end(o[..]);if file.count>0 && (!fs_append(file,jo_text(o[..])) || !fs_append(file,"\n")) {return 2;}
+ if args_at(a[..],0)=="api" {print("[{\"number\":12,\"title\":\"Native controls\",\"html_url\":\"https://github.com/example/repo/pull/12\",\"state\":\"OPEN\",\"head\":{\"ref\":\"feature/native\"},\"base\":{\"ref\":\"main\"},\"body\":\"Existing body\"}]\n");return 0;}if args_at(a[..],0)=="pr" && (args_at(a[..],1)=="create" || args_at(a[..],1)=="edit") {print("https://github.com/example/repo/pull/12\n");return 0;}return 2;}

@@ -21,10 +21,9 @@
  #assert chat_library_restore(s[..],"") && s[0].library[0].n==0 && !s[0].rename && !s[0].thread_menu;
  s[0].rename=true;s[0].thread_menu=true;#assert !chat_library_restore(s[..],"broken") && s[0].library[0].n==0 && !s[0].rename && !s[0].thread_menu;
 }
-#test "workspace shortcuts cannot route hosted or observed chats and never send or overwrite a draft" #steps 2000000000 {
- s:[1]ChatPage;c:[1]AppCore;d:[1]DeviceLane;app_init(c[..]);#assert app_device_attach(c[..],d[..]);chat_attach(s[..],c[..],"");
- #assert !ch_workspace_ready(s[..]);d[0].on=true;_=el_copy(d[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
- #assert ch_workspace_ready(s[..]);before:=fx_held(c[0].out[..]);#assert chat_set_text(s[..],ews_prompt(0)) && fx_held(c[0].out[..])==before && !ch_workspace_ready(s[..]);
- #assert ch_draft(s[..])==ews_prompt(0);_=chat_set_text(s[..],"");d[0].e[0].ns=3;_=el_copy(d[0].e[0].session[..],"one");d[0].e[0].view[0].ns=1;d[0].e[0].view[0].sessions[0].ni=el_copy(d[0].e[0].view[0].sessions[0].id[..],"one");
- #assert !ch_workspace_ready(s[..]);
+#test "native workspace controls preserve a chat draft and never generate a Claude prompt" #steps 2000000000 {
+ s:[1]ChatPage;c:[1]AppCore;app_init(c[..]);chat_attach(s[..],c[..],"");_=chat_set_text(s[..],"Kept draft");h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ #assert wsc_open(s[0].workspaces[..],h,false) && ch_draft(s[..])=="Kept draft";
+ s[0].workspaces[0].form=1;#assert wsc_edit(s[0].workspaces[..],"workspace.branch","feature/native") && wsc_edit(s[0].workspaces[..],"workspace.base","main");
+ #assert ch_draft(s[..])=="Kept draft" && fx_held(c[0].out[..])==0;
 }

@@ -48,6 +48,7 @@
 // | FX_DEVICE_CALL  | text: a paired computer's key; body: an   | text: the computer's environment view;   |
 // |                 | environment request (EaRequest JSON)      | FXO_UNKNOWN when no answer came          |
 // | FX_IDENTITY     | action and expected public key only      | public metadata, never the private key  |
+// | FX_WORKSPACE    | host and typed WsRequest; mode 0/1 paired/account, 2/3 recovery | correlated WsView or exact pending request; SDK persists before writes |
 // | FX_PROVIDER     | text: host; body: PaRequest with private  | canonical public PaView or public       |
 // |                 | code marker; method 0/1 paired/account,  | pending PaRequest; private code stays   |
 // |                 | 2/3 recover that transport's intent       | exclusively in the platform SDK         |

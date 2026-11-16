@@ -43,6 +43,8 @@
 #load "../../coax/lib/agent/session/log.coax";   // the session log's reader
 #load "../../coax/lib/agent/cli/json-output.coax";   // what --json prints (cj_*)
 #load "host-environment.coax";
+#load "host-workspace.coax";
+#load "host-workspace-selftest.coax";
 #load "host-providers.coax";
 #load "host-station.coax";
 #load "host-execution.coax";
@@ -520,6 +522,7 @@ hs_handle :: (h: [] HsHost, text: string, w: [] HbWork, st: [] HsState, statebuf
       if rpc[0].method=="ReadTaskTranscript" {return xh_handle(h,rpc[..],sig,ev,mb,w,st,statebuf,out);}
       if rpc[0].method=="DescribeTaskOffer" {return xo_handle(h,rpc[..],sig,ev,mb,w,st,statebuf,out);}
       if xt_right(rpc[0].method)>=0 {return xt_handle(h,rpc[..],sig,ev,mb,w,st,statebuf,out);}
+      workspace:[1]WsRequest;if ws_read(rpc[0].params,workspace[..]) {return ws_handle(h,rpc[..],workspace[..],sig,ev,mb,w,st,statebuf,out);}
       if pa_request_read(rpc[0].params,provider[..]) {defer {for i:0..<provider[0].code.count {provider[0].code[i]=0;}}return pa_handle(h,rpc[..],provider[..],sig,ev,mb,w,st,statebuf,out);}
       refresh:=rtr_describe_read(rpc[0].params);if refresh>=0 {return st_handle(h,rpc[..],refresh==1,sig,ev,mb,w,st,statebuf,out);}
     }
@@ -931,6 +934,10 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "rpc" {return es_rpc_call(args);}
   if verb == "execution-rpc" {return xp_rpc_call(args);}
   if verb == "accounts-enable" {return pa_enable(args);}
+  if verb == "workspace-write-selftest" {return ws_selftest_more(args_value(args,"--root",""));}
+  if verb == "workspace-selftest" {return ws_selftest(args_value(args,"--root",""));}
+  if verb == "workspace-enable" {return ws_enable(args);}
+  if verb == "workspace-rpc" {return ws_rpc_call(args);}
   if verb == "accounts-rpc" {return pa_rpc_call(args);}
   if verb == "station-rpc" {return st_rpc_call(args);}
   if verb == "station" {return st_local(args);}

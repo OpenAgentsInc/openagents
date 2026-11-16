@@ -122,7 +122,8 @@ int main(int argc, char **argv) {
 #ifdef OA_CONVERSATION_FIXTURE
   // Qualification-only Coax root, absent from the product library.
   extern void conversation_fixture(coax_v_t_ChatPage,coax_v_t_AppCore,int64_t);
-  conversation_fixture((coax_v_t_ChatPage){p->s,1},(coax_v_t_AppCore){core,1},1);
+  const char *fixture_mode=getenv("OA_CONVERSATION_FIXTURE_MODE");
+  conversation_fixture((coax_v_t_ChatPage){p->s,1},(coax_v_t_AppCore){core,1},fixture_mode ? atoi(fixture_mode) : OA_CONVERSATION_FIXTURE);
 #endif
   Pv v = {.p = p, .host = a->host, .w = (uint32_t)(pw * k + 0.5f), .h = (uint32_t)(ph * k + 0.5f), .dpr = k};
   // the window's facts are in points of the surface, which the zoom makes larger

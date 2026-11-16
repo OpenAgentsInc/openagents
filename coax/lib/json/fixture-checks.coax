@@ -1,0 +1,6 @@
+// Test-only JSON field replacement. Original source slices preserve escaped
+// bytes independently of the product writer. An empty replacement omits a key.
+jf_replace :: (raw:string,key:string,replacement:string,out:[]u8)->string {
+ nodes:[2048]JvNode;d:[1]Jv;#assert jv_parse(d[..],raw,nodes[..]);o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);for i:0..<jv_len(d[0],0) {at:=jv_at(d[0],0,i);name:=jv_key(d[0],at);if name==key {if replacement.count>0 {jo_key(o[..],name);jo_raw(o[..],replacement);}continue;}jo_key(o[..],name);from:=nodes[at].from;to:=nodes[at].to;if jv_kind(d[0],at)==JV_STRING {from-=1;to+=1;}jo_raw(o[..],raw[from..<to]);}jo_end(o[..]);#assert !o[0].bad;return jo_text(o[..]);
+}
+jf_quote :: (text:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_str(o[..],text);#assert !o[0].bad;return jo_text(o[..]);}

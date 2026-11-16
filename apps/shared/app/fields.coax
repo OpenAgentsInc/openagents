@@ -7,6 +7,8 @@ app_field_kind :: (id:string)->int #effects(all) {
  if id=="login.email" {return APP_FIELD_EMAIL;}
  if id=="login.code" {return APP_FIELD_CODE;}
  if id=="identity.secret" || id=="usage.code" {return APP_FIELD_PRIVATE;}
+ if id=="workspace.body" {return APP_FIELD_MULTILINE;}
+ if id=="workspace.branch" || id=="workspace.base" || id=="workspace.title" {return APP_FIELD_PLAIN;}
  if id=="project.text" || id=="project.description" {return APP_FIELD_MULTILINE;}
  if id=="project.name" || id=="project.knowledge.title" || id=="usage.label" || id=="history.search" || id=="thread.rename" {return APP_FIELD_PLAIN;}
  return -1;
@@ -23,3 +25,5 @@ app_public_input :: (id:string)->bool #effects(all) {
  for id,i:ids {#assert app_field_kind(id)==kinds[i] && app_public_input(id)==(i!=2 && i!=8);}
  for id:[10]string.["","login","Login.email","identity.secret.extra","project.unknown","other.composer","chat.composer.extra","project.Name","project.text/","project.knowledge"] {#assert app_field_kind(id)== -1 && !app_public_input(id);}
 }
+
+#test "workspace fields use existing native editor roles" {#assert app_field_kind("workspace.body")==APP_FIELD_MULTILINE && app_field_kind("workspace.branch")==APP_FIELD_PLAIN && app_field_kind("workspace.base")==APP_FIELD_PLAIN && app_field_kind("workspace.title")==APP_FIELD_PLAIN && app_public_input("workspace.body");}

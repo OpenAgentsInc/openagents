@@ -1,23 +1,26 @@
-// The owner-only Unix transport carries two existing registered profiles.
+// The owner-only Unix transport carries the registered runtime, account and workspace profiles.
 // No new envelope, method or published Runtime shape is introduced.
 #load "wire.coax";
+#load "../workspace/wire.coax";
 #load "../accounts/wire.coax";
 #authority;
 ea_local_kind :: (raw:string)->int #effects(all) {
  e:[1]EaRequest;if ea_read(raw,e[..]) {return 1;}
+ w:[1]WsRequest;if ws_read(raw,w[..]) {return 3;}
  p:[1]PaRequest;defer {for i:0..<p[0].code.count {p[0].code[i]=0;}} // mutant: equivalent — erases opaque stack bytes, no record escapes
  ok:=pa_request_read(raw,p[..]);return ifx ok then 2 else 0;
 }
 ea_local_answer :: (request:string,raw:string)->bool #effects(all) {
  kind:=ea_local_kind(request);
  if kind==1 {v:[1]EaView;return ea_view_read(raw,v[..]);}
+ if kind==3 {q:[1]WsRequest;v:[1]WsView;return ws_read(request,q[..]) && ws_view_read(raw,v[..]) && cast(string)q[0].method[0..<q[0].nm]==cast(string)v[0].method[0..<v[0].nm] && cast(string)q[0].command[0..<q[0].nc]==cast(string)v[0].command[0..<v[0].nc] && (cast(string)q[0].workspace[0..<q[0].nw]==cast(string)v[0].workspace[0..<v[0].nw] || cast(string)q[0].method[0..<q[0].nm]=="RemoveWorktree" && cast(string)v[0].workspace[0..<v[0].nw]=="default");}
  if kind!=2 {return false;}
  q:[1]PaRequest;defer {for i:0..<q[0].code.count {q[0].code[i]=0;}} // mutant: equivalent — erases opaque stack bytes, no record escapes
  v:[1]PaView;if !pa_request_read(request,q[..]) {return false;} // mutant: equivalent — kind 2 was established by the same strict request decoder
  ok:=pa_view_read(raw,v[..]) && cast(string)v[0].method[0..<v[0].nm]==cast(string)q[0].method[0..<q[0].nm] && cast(string)v[0].command[0..<v[0].nc]==cast(string)q[0].command[0..<q[0].nc];
  return ok;
 }
-#test "the local transport admits only the two existing profiles and correlates provider replies" {
+#test "the local transport admits only the registered profiles and correlates provider replies" {
  q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ListAccounts");b:[8192]u8;n:=pa_request_write(q[..],b[..]);#assert n>0 && ea_local_kind(cast(string)b[0..<n])==2 && ea_local_kind("{}")==0;
  v:[1]PaView;_=pa_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=pa_copy(v[0].method[..],"ListAccounts");raw:[32768]u8;rn:=pa_view_write(v[..],raw[..]);#assert rn>0 && ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<rn]);
  v[0].nm=pa_copy(v[0].method[..],"ReadAccountLogin");rn=pa_view_write(v[..],raw[..]);#assert !ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<rn]);
@@ -28,4 +31,14 @@ ea_local_answer :: (request:string,raw:string)->bool #effects(all) {
  b:[24576]u8;out:[32768]u8;#assert !ea_local_answer("{}","{}");
  e:[1]EaRequest;e[0].nm=ea_copy(e[0].method[..],"ListSessions");e[0].nw=ea_copy(e[0].workspace[..],"default");n:=ea_write(e[..],b[..]);v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ListSessions");vn:=ea_view_write(v[..],out[..]);#assert n>0 && vn>0 && ea_local_answer(cast(string)b[0..<n],cast(string)out[0..<vn]) && !ea_local_answer(cast(string)b[0..<n],"{}");
  q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ListAccounts");n=pa_request_write(q[..],b[..]);p:[1]PaView;_=pa_copy(p[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");p[0].nm=pa_copy(p[0].method[..],"ListAccounts");p[0].nc=pa_copy(p[0].command[..],"11111111111111111111111111111111");vn=pa_view_write(p[..],out[..]);#assert !ea_local_answer(cast(string)b[0..<n],cast(string)out[0..<vn]) && !ea_local_answer(cast(string)b[0..<n],"{}");
+}
+#test "local workspace profile is additive and replies retain method and command" {q:[1]WsRequest;q[0].nm=js_copy(q[0].method[..],"ReadWorkspace");q[0].nw=js_copy(q[0].workspace[..],"default");b:[24576]u8;n:=ws_write(q[..],b[..]);#assert n>0 && ea_local_kind(cast(string)b[0..<n])==3;v:[1]WsView;_=js_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].method=q[0].method;v[0].nm=q[0].nm;v[0].workspace=q[0].workspace;v[0].nw=q[0].nw;raw:[1048576]u8;nr:=ws_view_write(v[..],raw[..]);#assert nr>0 && ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);v[0].nm=js_copy(v[0].method[..],"SwitchBranch");nr=ws_view_write(v[..],raw[..]);#assert !ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);}
+
+#test "local workspace replies bind command and full worktree identity, with only removal returning the root" {
+ q:[1]WsRequest;q[0].nm=js_copy(q[0].method[..],"RemoveWorktree");q[0].nw=js_copy(q[0].workspace[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");q[0].nx=js_copy(q[0].expected[..],"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");q[0].nc=js_copy(q[0].command[..],"0123456789abcdef0123456789abcdef");q[0].issued=1;q[0].expires=2;b:[24576]u8;n:=ws_write(q[..],b[..]);#assert n>0;
+ v:[1]WsView;_=js_copy(v[0].host[..],"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");v[0].method=q[0].method;v[0].nm=q[0].nm;v[0].command=q[0].command;v[0].nc=q[0].nc;v[0].nw=js_copy(v[0].workspace[..],"default");raw:[49152]u8;nr:=ws_view_write(v[..],raw[..]);#assert ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);
+ v[0].nw=js_copy(v[0].workspace[..],"cefault");nr=ws_view_write(v[..],raw[..]);#assert !ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);
+ v[0].workspace=q[0].workspace;v[0].nw=q[0].nw;nr=ws_view_write(v[..],raw[..]);#assert ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);v[0].workspace[0]='b';nr=ws_view_write(v[..],raw[..]);#assert !ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);
+ v[0].workspace=q[0].workspace;v[0].command[0]='1';nr=ws_view_write(v[..],raw[..]);#assert !ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);v[0].command=q[0].command;
+ q[0].nm=js_copy(q[0].method[..],"PushBranch");n=ws_write(q[..],b[..]);v[0].method=q[0].method;v[0].nm=q[0].nm;v[0].nw=js_copy(v[0].workspace[..],"default");nr=ws_view_write(v[..],raw[..]);#assert !ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);
 }

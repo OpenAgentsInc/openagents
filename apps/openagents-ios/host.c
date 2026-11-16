@@ -355,3 +355,11 @@ int oc_row_value(void *chat, int i, char *out, int cap) { Chat *c = chat; return
 #include "../../components/app/gallery/host.c"
 
 int oi_cancel(const unsigned char *raw,int n,unsigned char *out,int cap) {return (int)ids_cancel((coax_string){(const char *)raw,n},(coax_v_u8){out,cap});}
+
+int oc_library_sync_restore(void *chat,const char *raw) {Chat *c=chat;if(!c)return 0;int ok=chat_library_sync_restore(oc_state(c),oc_string(raw));oc_changed(c);return ok;}
+int oc_library_sync_save(void *chat,char *out,int cap) {Chat *c=chat;if(!c || cap<1)return -1;int64_t n=chat_library_sync_save(oc_state(c),(coax_v_u8){(uint8_t *)out,cap-1});return n<0?-1:oc_bytes(n,out,cap);}
+int oc_library_sync_request(void *chat,const char *command,char *out,int cap) {Chat *c=chat;if(!c || cap<1)return -1;int64_t n=chat_library_sync_request(oc_state(c),oc_string(command),(coax_v_u8){(uint8_t *)out,cap-1});return n<0?-1:oc_bytes(n,out,cap);}
+int oc_library_sync_answer(void *chat,int status,const char *raw) {Chat *c=chat;if(!c)return 0;int ok=chat_library_sync_answer(oc_state(c),status,oc_string(raw));oc_changed(c);return ok;}
+int oc_workspace_effect(int mode,const char *host,const uint8_t *raw,int n) {return ow_effect(mode,oc_string(host),(coax_string){(const char *)raw,n});}
+int oc_workspace_mutation(const uint8_t *raw,int n) {return (int)ow_mutation((coax_string){(const char *)raw,n});}
+int oc_workspace_reply(const char *host,const uint8_t *q,int nq,const uint8_t *v,int nv) {return ow_reply(oc_string(host),(coax_string){(const char *)q,nq},(coax_string){(const char *)v,nv});}

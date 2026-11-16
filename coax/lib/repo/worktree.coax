@@ -1,0 +1,31 @@
+// Working-tree effects alongside the shared mirror reader. No shell, no hooks,
+// no optional network lookup, no unbounded output or credential prompting.
+#load "repo.coax";
+#load "../sys/fs.coax";
+wt_git :: (root:string,args:[]string,out:[]u8)->ProcRun #effects(all) {
+ argv:[64]string;fixed:=[19]string.["git","--no-pager","--literal-pathspecs","-c","core.hooksPath=/dev/null","-c","core.fsmonitor=false","-c","core.quotePath=true","-c","credential.interactive=false","-c","protocol.ext.allow=never","-c","core.sshCommand=ssh -oBatchMode=yes","-C",root,"-c","diff.external="];
+ n:=0;for a:fixed {argv[n]=a;n+=1;}for a:args {if n>=64 {return ProcRun.{started= -1};}argv[n]=a;n+=1;}
+ h:=proc_new();if h<0 {return ProcRun.{started= -1};}defer {_=proc_release(h);}ok:=true;for a:argv[0..<n] {ok=ok && proc_arg(h,a);}for name:[9]string.["GIT_DIR","GIT_WORK_TREE","GIT_INDEX_FILE","GIT_OBJECT_DIRECTORY","GIT_ALTERNATE_OBJECT_DIRECTORIES","GIT_EXTERNAL_DIFF","GIT_CONFIG_COUNT","GH_REPO","GH_HOST"] {ok=ok && proc_unset(h,name);}ok=ok && proc_env(h,"GIT_TERMINAL_PROMPT=0") && proc_env(h,"GIT_NO_LAZY_FETCH=1") && proc_env(h,"GIT_OPTIONAL_LOCKS=0") && proc_env(h,"LC_ALL=C");
+ r:ProcRun;if !ok {r.started= -1;return r;}r.started=proc_start(h);if r.started!=0 {return r;}deadline:=proc_deadline(20000,proc_now_ms());line:[65536]u8;while true {got:=proc_line(h,proc_left(deadline,proc_now_ms()),line[..]);if got==PROC_EOF {break;}if got<0 {r.cut=true;r.timed_out=got==PROC_TIMEOUT;break;}if r.out_n>0 {if r.out_n<out.count {out[r.out_n]=10;r.out_n+=1;}else {r.cut=true;}}for c:line[0..<got] {if r.out_n<out.count {out[r.out_n]=c;r.out_n+=1;}else {r.cut=true;}}}r.status=proc_wait(h,proc_left(deadline,proc_now_ms()));if r.status==PROC_RUNNING {r.timed_out=true;}return r;
+}
+wt_ok :: (r:ProcRun)->bool {return r.started==0 && r.status==0 && !r.cut && !r.timed_out;}
+// GitHub credentials stay in gh's own OS-backed configuration on this host.
+wt_gh :: (root:string,args:[]string,out:[]u8)->ProcRun #effects(all) {
+ argv:[48]string;program:[1024]u8;override:=proc_getenv("OA_WORKSPACE_GH",program[..]);argv[0]=ifx override.count>0 then override else "gh";for a,i:args {if i>=47 {return ProcRun.{started= -1};}argv[i+1]=a;}h:=proc_new();if h<0 {return ProcRun.{started= -1};}defer {_=proc_release(h);}ok:=proc_cwd(h,root) && proc_env(h,"GH_PROMPT_DISABLED=1") && proc_env(h,"GH_PAGER=cat");for name:[2]string.["GH_REPO","GH_HOST"] {ok=ok && proc_unset(h,name);}for a:argv[0..<args.count+1] {ok=ok && proc_arg(h,a);}r:ProcRun;if !ok {r.started= -1;return r;}r.started=proc_start(h);if r.started!=0 {return r;}deadline:=proc_deadline(20000,proc_now_ms());line:[65536]u8;while true {got:=proc_line(h,proc_left(deadline,proc_now_ms()),line[..]);if got==PROC_EOF {break;}if got<0 {r.cut=true;r.timed_out=got==PROC_TIMEOUT;break;}if r.out_n>0 {if r.out_n<out.count {out[r.out_n]=10;r.out_n+=1;}else {r.cut=true;}}for c:line[0..<got] {if r.out_n<out.count {out[r.out_n]=c;r.out_n+=1;}else {r.cut=true;}}}r.status=proc_wait(h,proc_left(deadline,proc_now_ms()));if r.status==PROC_RUNNING {r.timed_out=true;}return r;
+}
+
+wt_git3 :: (root:string,a0:string,a1:string,a2:string,out:[]u8)->ProcRun #effects(all) {args:=[3]string.[a0,a1,a2];return wt_git(root,args[..],out);}
+
+wt_git4 :: (root:string,a0:string,a1:string,a2:string,a3:string,out:[]u8)->ProcRun #effects(all) {args:=[4]string.[a0,a1,a2,a3];return wt_git(root,args[..],out);}
+
+wt_git5 :: (root:string,a0:string,a1:string,a2:string,a3:string,a4:string,out:[]u8)->ProcRun #effects(all) {args:=[5]string.[a0,a1,a2,a3,a4];return wt_git(root,args[..],out);}
+
+wt_git6 :: (root:string,a0:string,a1:string,a2:string,a3:string,a4:string,a5:string,out:[]u8)->ProcRun #effects(all) {args:=[6]string.[a0,a1,a2,a3,a4,a5];return wt_git(root,args[..],out);}
+
+wt_gh7 :: (root:string,a0:string,a1:string,a2:string,a3:string,a4:string,a5:string,a6:string,out:[]u8)->ProcRun #effects(all) {args:=[7]string.[a0,a1,a2,a3,a4,a5,a6];return wt_gh(root,args[..],out);}
+
+wt_gh10 :: (root:string,a0:string,a1:string,a2:string,a3:string,a4:string,a5:string,a6:string,a7:string,a8:string,a9:string,out:[]u8)->ProcRun #effects(all) {args:=[10]string.[a0,a1,a2,a3,a4,a5,a6,a7,a8,a9];return wt_gh(root,args[..],out);}
+
+wt_gh9 :: (root:string,a0:string,a1:string,a2:string,a3:string,a4:string,a5:string,a6:string,a7:string,a8:string,out:[]u8)->ProcRun #effects(all) {args:=[9]string.[a0,a1,a2,a3,a4,a5,a6,a7,a8];return wt_gh(root,args[..],out);}
+
+wt_gh12 :: (root:string,a0:string,a1:string,a2:string,a3:string,a4:string,a5:string,a6:string,a7:string,a8:string,a9:string,a10:string,a11:string,out:[]u8)->ProcRun #effects(all) {args:=[12]string.[a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11];return wt_gh(root,args[..],out);}

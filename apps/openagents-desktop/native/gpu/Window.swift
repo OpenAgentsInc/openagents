@@ -3,6 +3,7 @@ import AppKit
 import QuartzCore
 
 @MainActor final class GPUWindow: NSObject, NSTextFieldDelegate {
+    private var library:AppChatLibraryNative?
     let owner: UnsafeMutableRawPointer
     let window: NSWindow
     let canvas: NSView
@@ -42,15 +43,17 @@ import QuartzCore
         oc_attach(owner, runtime.core.raw, held.email)
         oc_env_restore(owner, held.environment)
         oc_native_scroll(owner, 1)
+        library=AppChatLibraryNative(auth:auth,owner:owner,wake:{[weak self] in self?.wake()})
         runtime.core.after = { [weak self] in guard let self else { return }; oc_step(self.owner); self.keep(); self.wake() }
         runtime.bridge.changed = { [weak self] in self?.wake() }
         oc_on_change(owner, { raw in guard let raw else { return }; MainActor.assumeIsolated { Unmanaged<GPUWindow>.fromOpaque(raw).takeUnretainedValue().wake() } }, Unmanaged.passUnretained(self).toOpaque())
         if !hidden { display = canvas.displayLink(target: self, selector: #selector(tick)); display?.isPaused = true; display?.add(to: .main, forMode: .common) }
         let center = NotificationCenter.default
         func watch(_ name: Notification.Name, _ action: @escaping @MainActor () -> Void) { watches.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in MainActor.assumeIsolated { action() } }) }
-        watch(NSApplication.didBecomeActiveNotification) { [weak self] in self?.runtime.bridge.lifecycle(foreground: true); self?.wake() }
-        watch(NSApplication.didResignActiveNotification) { [weak self] in self?.keep(); self?.clearPrivate(); self?.runtime.bridge.lifecycle(foreground: false) }
+        watch(NSApplication.didBecomeActiveNotification) { [weak self] in self?.library?.accountChanged(); self?.runtime.bridge.lifecycle(foreground: true); self?.wake() }
+        watch(NSApplication.didResignActiveNotification) { [weak self] in self?.library?.background(); self?.keep(); self?.clearPrivate(); self?.runtime.bridge.lifecycle(foreground: false) }
         watches.append(center.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.retire() } })
+        watch(AppAuth.didChangeSession) { [weak self] in self?.library?.accountChanged() }
         runtime.launch(rejoin: held.rejoin)
         if !hidden { AppDeviceLink.shared.onLink = { [weak self] link in guard let self, !self.retired else { return }; self.runtime.core.action(19, text: link); self.runtime.bridge.heard() } }
         step()
@@ -61,7 +64,8 @@ import QuartzCore
         guard !retired, !stepping else { return }; stepping = true; defer { stepping = false }
         let focused = active != nil
         oc_env(owner, 0, 0, 0, focused ? 1 : 0, 0, NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0)
-        oc_frame(owner); runtime.pump(); _ = oc_action(owner)
+        library?.restore()
+        oc_frame(owner); library?.frame(); runtime.pump(); _ = oc_action(owner)
         followFocus()
         keep()
         if oc_moving(owner) == 0 { display?.isPaused = true }
@@ -125,7 +129,7 @@ import QuartzCore
         attempted = next
         if store.save(next) { saved = next }
     }
-    func retire() { guard !retired else { return }; keep(force: true); clearPrivate(); retired = true; display?.invalidate(); display = nil; runtime.retire(); oc_on_change(owner, nil, nil); oc_access_editor(owner, "", nil); for w in watches { NotificationCenter.default.removeObserver(w) }; watches = [] }
+    func retire() { guard !retired else { return }; library?.background();keep(force: true); clearPrivate(); retired = true; display?.invalidate(); display = nil; runtime.retire(); oc_on_change(owner, nil, nil); oc_access_editor(owner, "", nil); for w in watches { NotificationCenter.default.removeObserver(w) }; watches = [] }
     func drive(_ op: String) -> String {
         if op.hasPrefix("tap ") { _ = oc_activate(owner, String(op.dropFirst(4))); step(); return "" }
         var out = [CChar](repeating: 0, count: 65536); _ = oc_drive(owner, op, &out, Int32(out.count)); step(); return String(cString: out)

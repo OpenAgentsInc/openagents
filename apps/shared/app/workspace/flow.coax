@@ -1,0 +1,67 @@
+// Native workspace controls use their own effect owner and durable SDK mailbox.
+#load "../core/core.coax";
+#load "sdk.coax";
+WS_READ :: 1; WS_RECOVER :: 2; WS_IDS :: 3; WS_WRITE :: 4; WS_CATALOG :: 5;
+WorkspaceScreen :: struct {
+ open:bool;catalog:[1]EaCatalog;catalog_loaded:bool;host:[64]u8;via_account:bool;op:int;purpose:int;generation:int;due:int;recovered:bool;loaded:bool;tab:int;cursor:int;after_read:int;view:[1]WsView;
+ form:int;branch:[160]u8;nb:int;base:[160]u8;na:int;title:[256]u8;nt:int;body:[4096]u8;nd:int;number:int;
+ confirm:bool;pending:bool;ready:bool;unknown:bool;retry:bool;intent:[1]WsRequest;note:[160]u8;nn:int;
+}
+wsc_note :: (s:[]WorkspaceScreen,words:string) {s[0].nn=js_copy(s[0].note[..],words);}
+wsc_open :: (s:[]WorkspaceScreen,host:string,via_account:bool)->bool {if host.count!=0 && !ea_id(host,64) || s[0].pending && cast(string)s[0].host[..]!=host {return false;}if cast(string)s[0].host[..]!=host {saved:=s[0].catalog[0];loaded:=s[0].catalog_loaded;s[0]=WorkspaceScreen.{};s[0].catalog[0]=saved;s[0].catalog_loaded=loaded;_=js_copy(s[0].host[..],host);}s[0].open=true;s[0].via_account=via_account;s[0].due=0;return true;}
+wsc_method :: (form:int)->string {return ifx form==1 then "CreateBranch" else ifx form==2 then "SwitchBranch" else ifx form==3 then "CreateWorktree" else ifx form==4 then "RemoveWorktree" else ifx form==5 then "PushBranch" else ifx form==6 then "CreatePullRequest" else ifx form==7 then "EditPullRequest" else "";}
+wsc_intent :: (s:[]WorkspaceScreen)->bool {if s[0].pending || !s[0].loaded || s[0].view[0].nx!=64 {return false;}q:=s[0].intent[..];q[0]=WsRequest.{};q[0].nm=js_copy(q[0].method[..],wsc_method(s[0].form));q[0].workspace=s[0].view[0].workspace;q[0].nw=s[0].view[0].nw;q[0].page=s[0].view[0].page;q[0].cursor=s[0].view[0].cursor;q[0].expected=s[0].view[0].revision;q[0].nx=64;if s[0].form>=1 && s[0].form<=3 {q[0].branch=s[0].branch;q[0].nb=s[0].nb;}if s[0].form==1 || s[0].form==3 || s[0].form==6 {q[0].base=s[0].base;q[0].na=s[0].na;}if s[0].form==6 || s[0].form==7 {q[0].title=s[0].title;q[0].nt=s[0].nt;q[0].body=s[0].body;q[0].nd=s[0].nd;}if s[0].form==7 {q[0].number=s[0].number;}
+ q[0].nc=js_copy(q[0].command[..],"00000000000000000000000000000000");q[0].issued=1;q[0].expires=2;valid:=ws_valid(q);q[0].nc=0;q[0].issued=0;q[0].expires=0;if !valid {wsc_note(s,"Check the form");return false;}
+ s[0].confirm=true;return true;}
+wsc_effect :: (s:[]WorkspaceScreen,c:[]AppCore,purpose:int,body:string,recover:bool)->int {mode:=ifx recover then (ifx s[0].via_account then 3 else 2) else (ifx s[0].via_account then 1 else 0);return fx_request(c[0].out[..],OWN_WORKSPACE,FX_WORKSPACE,purpose,mode,"",cast(string)s[0].host[..],body,0,60000);}
+wsc_sync :: (s:[]WorkspaceScreen,c:[]AppCore,visible:bool) {
+ if s[0].op>0 && s[0].generation!=fx_generation(c[0].out[..],OWN_WORKSPACE) {s[0].op=0;if s[0].pending {s[0].unknown=true;}}
+ if !visible || !s[0].open || !c[0].foreground {_=app_guest_due(c,OWN_WORKSPACE,-1);return;}if s[0].op>0 {return;}
+ if s[0].host[0]==0 {
+  if !s[0].catalog_loaded {if c[0].auth==AUTH_IN {s[0].op=app_guest_http(c,OWN_WORKSPACE,WS_CATALOG,UP_GET,"/api/chat/environments/v1","");s[0].purpose=WS_CATALOG;}else {s[0].catalog_loaded=true;}}
+  for i:0..<app_device_count(c) {host:=app_device_host(c,i);found:=false;for j:0..<s[0].catalog[0].n {if cast(string)s[0].catalog[0].entries[j].host[..]==host {found=true;}}if !found && s[0].catalog[0].n<64 {row:=s[0].catalog[0].n;_=js_copy(s[0].catalog[0].entries[row].host[..],host);s[0].catalog[0].entries[row].nl=js_copy(s[0].catalog[0].entries[row].label[..],app_device_name(c,i));s[0].catalog[0].n+=1;}}
+ } else if !s[0].recovered && c[0].mono_ms>=s[0].due {s[0].op=wsc_effect(s,c,WS_RECOVER,"",true);s[0].purpose=WS_RECOVER;}
+ else if s[0].pending {
+  if !s[0].ready {s[0].op=fx_request(c[0].out[..],OWN_WORKSPACE,FX_IDS,WS_IDS,0,"","","",0,0);s[0].purpose=WS_IDS;}
+  else if !s[0].unknown || s[0].retry {raw:[24576]u8;n:=ws_write(s[0].intent[..],raw[..]);if n>0 {s[0].op=wsc_effect(s,c,WS_WRITE,cast(string)raw[0..<n],false);s[0].purpose=WS_WRITE;s[0].retry=false;}}
+ } else if !s[0].confirm && s[0].form==0 && c[0].mono_ms>=s[0].due {
+  q:[1]WsRequest;q[0].page=s[0].tab;q[0].cursor=s[0].cursor;q[0].nm=js_copy(q[0].method[..],"ReadWorkspace");q[0].nw=js_copy(q[0].workspace[..],ifx s[0].view[0].nw>0 then cast(string)s[0].view[0].workspace[0..<s[0].view[0].nw] else "default");raw:[24576]u8;n:=ws_write(q[..],raw[..]);if n>0 {s[0].op=wsc_effect(s,c,WS_READ,cast(string)raw[0..<n],false);s[0].purpose=WS_READ;}
+ }
+ if s[0].op>0 {s[0].generation=fx_generation(c[0].out[..],OWN_WORKSPACE);_=app_guest_due(c,OWN_WORKSPACE,-1);}else {_=app_guest_due(c,OWN_WORKSPACE,ifx s[0].pending || s[0].form!=0 || s[0].confirm then -1 else ifx s[0].due>c[0].mono_ms then s[0].due else c[0].mono_ms+1000);}
+}
+wsc_guest :: (s:[]WorkspaceScreen,c:[]AppCore,raw:string)->bool {
+ g:=c[0].guest;if !g.waiting || g.owner!=OWN_WORKSPACE {return false;}if g.op!=s[0].op {app_guest_done(c);return true;}what:=s[0].purpose;s[0].op=0;s[0].purpose=0;ok:=g.outcome==FXO_DONE && g.status==200;
+ if what==WS_CATALOG {catalog:[1]EaCatalog;if ok && ea_catalog_read(raw,catalog[..]) {s[0].catalog[0]=catalog[0];s[0].catalog_loaded=true;}else {s[0].catalog_loaded=true;wsc_note(s,"Some computers unavailable");}}
+ else if what==WS_IDS {if g.outcome==FXO_DONE && ea_id(raw,32) && c[0].wall_ms>0 {q:=s[0].intent[..];q[0].nc=js_copy(q[0].command[..],raw);q[0].issued=c[0].wall_ms;q[0].expires=q[0].issued+120000;s[0].ready=ws_valid(q);}if !s[0].ready {s[0].pending=false;wsc_note(s,"Check the form");}}
+ else if what==WS_RECOVER {s[0].recovered=ok;if ok && raw.count>0 {q:[1]WsRequest;if ws_read(raw,q[..]) && ws_right(cast(string)q[0].method[0..<q[0].nm])==1 {s[0].intent[0]=q[0];s[0].pending=true;s[0].ready=true;s[0].unknown=true;}else {s[0].recovered=false;}}if !ok {s[0].due=c[0].mono_ms+15000;wsc_note(s,"Computer unavailable");}}
+ else {
+  v:[1]WsView;ok=ok && ws_view_read(raw,v[..]) && cast(string)v[0].host[..]==cast(string)s[0].host[..];if what==WS_WRITE {ok=ok && cast(string)v[0].command[0..<v[0].nc]==cast(string)s[0].intent[0].command[0..<s[0].intent[0].nc] && cast(string)v[0].method[0..<v[0].nm]==cast(string)s[0].intent[0].method[0..<s[0].intent[0].nm];}
+  if ok {s[0].view[0]=v[0];s[0].loaded=true;s[0].nn=0;if what==WS_READ && s[0].after_read>0 {s[0].form=s[0].after_read;s[0].after_read=0;_=wsc_intent(s);}if v[0].ne>0 {wsc_note(s,wsc_error(cast(string)v[0].error[0..<v[0].ne]));}if what==WS_WRITE {s[0].pending=false;s[0].ready=false;s[0].unknown=false;s[0].form=0;s[0].confirm=false;}}
+  else {if what==WS_WRITE {s[0].unknown=true;wsc_note(s,"Result unconfirmed");}else {wsc_note(s,"Computer unavailable");}}s[0].due=c[0].mono_ms+15000;
+ }
+ app_guest_done(c);return true;
+}
+wsc_field :: (s:[]WorkspaceScreen,id:string)->string {return ifx id=="workspace.branch" then cast(string)s[0].branch[0..<s[0].nb] else ifx id=="workspace.base" then cast(string)s[0].base[0..<s[0].na] else ifx id=="workspace.title" then cast(string)s[0].title[0..<s[0].nt] else ifx id=="workspace.body" then cast(string)s[0].body[0..<s[0].nd] else "";}
+wsc_edit :: (s:[]WorkspaceScreen,id:string,text:string)->bool {if s[0].pending || s[0].confirm || !ws_text(text,id=="workspace.body") {return false;}if id=="workspace.branch" {if text.count>160 {return false;}s[0].nb=js_copy(s[0].branch[..],text);}else if id=="workspace.base" {if text.count>160 {return false;}s[0].na=js_copy(s[0].base[..],text);}else if id=="workspace.title" {if text.count>256 {return false;}s[0].nt=js_copy(s[0].title[..],text);}else if id=="workspace.body" {if text.count>4096 {return false;}s[0].nd=js_copy(s[0].body[..],text);}else {return false;}return true;}
+#test "workspace selection creates no Claude draft; writes require confirmation and retain an uncertain intent" #steps 2000000000 {
+ c:[1]AppCore;app_init(c[..]);c[0].foreground=true;c[0].wall_ms=1700000000000;s:[1]WorkspaceScreen;h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";#assert wsc_open(s[..],h,false);s[0].recovered=true;s[0].loaded=true;s[0].view[0].nx=64;_=js_copy(s[0].view[0].revision[..],h);s[0].view[0].nw=js_copy(s[0].view[0].workspace[..],"default");s[0].form=1;
+ #assert wsc_edit(s[..],"workspace.branch","feature/phone") && wsc_edit(s[..],"workspace.base","main") && wsc_intent(s[..]) && !s[0].pending && fx_held(c[0].out[..])==0;
+ s[0].pending=true;wsc_sync(s[..],c[..],true);op:=s[0].op;#assert s[0].purpose==WS_IDS && op>0 && fx_take(c[0].out[..],op);c[0].guest=AppGuest.{waiting=true,owner=OWN_WORKSPACE,op=op,outcome=FXO_DONE};#assert wsc_guest(s[..],c[..],"0123456789abcdef0123456789abcdef") && s[0].ready;
+ wsc_sync(s[..],c[..],true);op=s[0].op;at:=fx_find(c[0].out[..],op);#assert s[0].purpose==WS_WRITE && op>0 && c[0].out[0].slots[at].kind==FX_WORKSPACE;raw:[24576]u8;n:=js_copy(raw[..],fx_body(c[0].out[..],at));#assert fx_take(c[0].out[..],op);c[0].guest=AppGuest.{waiting=true,owner=OWN_WORKSPACE,op=op,outcome=FXO_UNKNOWN};#assert wsc_guest(s[..],c[..],"") && s[0].pending && s[0].unknown;
+ wsc_sync(s[..],c[..],true);#assert s[0].op==0;s[0].retry=true;wsc_sync(s[..],c[..],true);#assert fx_body(c[0].out[..],fx_find(c[0].out[..],s[0].op))==cast(string)raw[0..<n];
+}
+#test "workspace form bounds, inactive reads and host changes preserve ownership" #steps 2000000000 {
+ s:[1]WorkspaceScreen;c:[1]AppCore;app_init(c[..]);h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";#assert !wsc_open(s[..],"bad",true) && wsc_open(s[..],h,true);wsc_note(s[..],"Offline");#assert s[0].nn==7 && wsc_field(s[..],"missing")=="" && !wsc_edit(s[..],"missing","x");
+ #assert wsc_edit(s[..],"workspace.title","Title") && wsc_edit(s[..],"workspace.body","Body\nnext") && wsc_field(s[..],"workspace.title")=="Title" && wsc_field(s[..],"workspace.body")=="Body\nnext";
+ #assert !wsc_intent(s[..]);s[0].pending=true;#assert !wsc_open(s[..],"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",true) && !wsc_edit(s[..],"workspace.title","Changed");wsc_sync(s[..],c[..],false);#assert s[0].op==0 && c[0].guest_due[OWN_WORKSPACE]==0;
+ for i:0..<8 {#assert (wsc_method(i).count>0)==(i>0);}#assert wsc_method(8)=="";
+}
+
+wsc_error :: (code:string)->string {
+ if code=="dirty_worktree" {return "Commit or stash changes first";}if code=="workspace_busy" {return "Workspace is busy";}if code=="workspace_locked" {return "Worktree is locked";}if code=="workspace_refused" {return "Workspace unavailable";}if code=="stale_state" || code=="expired" {return "Workspace changed. Review again";}if code=="invalid_branch" {return "Invalid branch";}if code=="github_unavailable" {return "GitHub unavailable on this computer";}if code=="forbidden" {return "Enable workspace controls on this computer";}if code=="unknown" {return "Result unconfirmed";}if code=="idempotency_conflict" {return "Command conflict";}if code=="storage_unavailable" {return "Computer storage unavailable";}return "Git operation failed";
+}
+wsc_label :: (form:int)->string {return ifx form==1 then "New branch" else ifx form==2 then "Switch branch" else ifx form==3 then "New worktree" else ifx form==4 then "Remove worktree" else ifx form==5 then "Push branch" else ifx form==6 then "New pull request" else ifx form==7 then "Edit pull request" else "Workspace";}
+#test "workspace forms validate before confirmation and keep protocol spellings out of notices" #steps 2000000000 {
+ s:[1]WorkspaceScreen;s[0].loaded=true;s[0].form=1;s[0].view[0].nw=js_copy(s[0].view[0].workspace[..],"default");s[0].view[0].nx=64;_=js_copy(s[0].view[0].revision[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");#assert !wsc_intent(s[..]) && !s[0].confirm && s[0].nn>0;#assert wsc_edit(s[..],"workspace.branch","feature/native") && wsc_edit(s[..],"workspace.base","main") && wsc_intent(s[..]) && s[0].confirm && !s[0].pending && s[0].intent[0].nc==0;
+ #assert wsc_label(6)=="New pull request" && wsc_error("dirty_worktree")=="Commit or stash changes first" && wsc_error("new_error")=="Git operation failed";
+}

@@ -101,10 +101,11 @@ struct AppViewState: Equatable {
 /// filenames through Foundation's base64 encoder, never path components as given.
 @MainActor final class AppFileIdentityPending: AppIdentityPendingStore {
     private let folder: URL
-    init(folder: URL? = nil) { self.folder = folder ?? AppFileViewStore.folder.appendingPathComponent("pending-identity-v1", isDirectory: true) }
+    private let limit: Int
+    init(folder: URL? = nil, limit: Int = 1024) { self.folder = folder ?? AppFileViewStore.folder.appendingPathComponent("pending-identity-v1", isDirectory: true); self.limit = limit }
     private func file(_ account: String) -> AppPrivateFile {
         let name = Data(account.utf8).base64EncodedString().replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "+", with: "-")
-        return AppPrivateFile(url: folder.appendingPathComponent(name + ".json"), limit: 1024)
+        return AppPrivateFile(url: folder.appendingPathComponent(name + ".json"), limit: limit)
     }
     func load(_ account: String) -> Data? { file(account).load() }
     func save(_ bytes: Data, account: String) -> Bool { file(account).create(bytes) }

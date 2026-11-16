@@ -2,6 +2,7 @@
 // credentials are installed server files and never part of an app response.
 #load "../../lib/agent/environment/wire.coax";
 #load "../../lib/agent/accounts/wire.coax";
+#load "../../lib/agent/workspace/wire.coax";
 #load "../../lib/sys/proc.coax";
 #load "../../lib/sys/fs.coax";
 #load "task-access-policy.coax";
@@ -30,3 +31,5 @@ st_proxy :: (host:string,grant:string,epoch:string,relay:string,keyfile:string,r
   if r.started!=0 {return -1000-r.started;}if r.timed_out {return -3000;}if r.status!=0 {return -2000-r.status;}if r.out_n<1 {return -4000;}return r.out_n;
 }
 pa_list_body :: (refresh:bool,out:[]u8)->int #export_c #effects(all) {q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ListAccounts");q[0].refresh=refresh;return pa_request_write(q[..],out);}
+
+ws_proxy :: (host:string,grant:string,epoch:string,relay:string,keyfile:string,input:string,program:string,out:[]u8)->int #export_c #effects(all) {return ea_proxy_named(host,grant,epoch,relay,keyfile,input,program,"workspace-rpc",out);}

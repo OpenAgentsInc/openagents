@@ -33,7 +33,8 @@
 #load "../shared/app/login/bridge.coax";
 #load "../shared/app/environment/bridge.coax";
 #load "../shared/app/environment/view.coax";
-#load "../shared/app/environment/workspace-actions.coax";
+#load "../shared/app/workspace/view.coax";
+#load "../../coax/lib/agent/chat-library-sync.coax";
 #load "../shared/app/settings/identity.coax";
 #load "../shared/app/history/index.coax";
 #load "../shared/app/history/devices.coax";
@@ -87,7 +88,7 @@ ChatPage :: struct {
   // the drawer: whether it is open, and how far it is out
   drawer: bool; share: f32;
   thread_menu:bool;thread_details:bool;
-  library:[1]ChatLibrary;library_filter:int;rename:bool;workspace:bool;rename_text:[CHLIB_TITLE]u8;rename_n:int;target:[CHLIB_KEY]u8;target_n:int;library_note:bool;filter_menu:bool;
+  library:[1]ChatLibrary;library_sync:[1]ClSync;library_filter:int;rename:bool;workspace:bool;workspaces:[1]WorkspaceScreen;rename_text:[CHLIB_TITLE]u8;rename_n:int;target:[CHLIB_KEY]u8;target_n:int;library_note:bool;filter_menu:bool;
   menu_content:f32;menu_viewport:f32;
   search:[128]u8;search_n:int;
   initials: [4] u8; initials_n: int;
@@ -145,6 +146,7 @@ ch_step :: (s: [] ChatPage) {
   hi_query(s[0].history[..],s[0].core,query,s[0].library[..]);dh_query(s[0].devices[..],s[0].core,query,s[0].library[..]);
   hi_sync(s[0].history[..],s[0].core,s[0].drawer || s[0].section==2);
   dh_sync(s[0].devices[..],s[0].core,s[0].drawer || s[0].section==2);
+  wsc_sync(s[0].workspaces[..],s[0].core,s[0].workspaces[0].open && !s[0].drawer && !s[0].lf[0].open);
   us_sync(s[0].usage[..],s[0].core,s[0].usage[0].open && !s[0].drawer && !s[0].lf[0].open);
   ps_sync(s[0].projects[..],s[0].core,s[0].section==1 && !s[0].drawer && !s[0].lf[0].open && !s[0].identity[0].open);
 }
@@ -264,6 +266,14 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     uiframe_clip(f,0,area_top,w,bottom);s[0].section_content=app_renderer(f,20/u,area_top-offset,w-40/u,s[0].time,s[0].renderer_tapped);
     ch_reveal(s,f,key,area_top,bottom,s[0].section_content,offset);uiframe_unclip(f);return;
   }
+  if s[0].workspaces[0].open {
+    s[0].menu_side=0;nav:=k.app.icon_button;
+    _=app_icon_button(f,"workspace.back",16/u,nav_y,ICON_BACK,"Back",APP_BUTTON_QUIET,0,WSC_ACTION);
+    tw:=measure_width(f[0].m,k.title.face,"Workspace");_=app_text(f,"workspace.title.heading",(w-tw)/2,nav_y+(nav-k.title.line)/2,tw,APP_TEXT_TITLE,"Workspace");
+    area_top:=nav_y+nav+k.app.gap;key:=uiframe_key(f,"section.viewport");offset:=keyed_scroll(f[0].keyed,key);s[0].section_viewport=bottom-area_top;
+    uiframe_clip(f,0,area_top,w,bottom);s[0].section_content=wsc_view(s[0].workspaces[..],f,16/u,area_top-offset,w-32/u,area_top,bottom,ch_focus(s));
+    ch_reveal(s,f,key,area_top,bottom,s[0].section_content,offset);uiframe_unclip(f);return;
+  }
   if s[0].usage[0].open {
     s[0].menu_side=0;nav:=k.app.icon_button;
     _:=app_icon_button(f,"usage.back",16/u,nav_y,ICON_BACK,ifx s[0].identity[0].open then "Back to Settings" else "Back to chat",APP_BUTTON_QUIET,0,US_ACTION);
@@ -368,10 +378,7 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
       _:=app_text(f,"thread.details.title",in.x,in.y,in.w,APP_TEXT_TITLE,ifx s[0].workspace then "Workspace" else ifx s[0].rename then "Rename" else "Session details");body_top:=in.y+k.title.line+k.app.gap;done_y:=y+sh-k.control_h-k.app.card_pad;
       s[0].menu_viewport=ifx done_y-body_top-k.app.gap>0 then done_y-body_top-k.app.gap else 0.0f32;
       key:=uiframe_key(f,"thread.viewport");offset:=keyed_scroll(f[0].keyed,key);yy:=body_top-offset;uiframe_clip(f,in.x,body_top,in.x+in.w,body_top+s[0].menu_viewport);
-      if s[0].workspace {
-       can:=ch_workspace_ready(s);for i:0..<6 {id:[48]u8;nid:=el_put(id[..],0,"workspace.action.");id[nid]=cast(u8)('0'+i);yy+=app_icon_menu_row(f,cast(string)id[0..<nid+1],in.x,yy,in.w,ifx i==3 then ICON_GLOBAL else ICON_FOLDER,ews_label(i),ifx can then 0 else EL_S_DISABLED,470+i);}
-       yy+=k.app.gap;yy+=app_text(f,"workspace.hint",in.x,yy,in.w,APP_TEXT_CAPTION,ifx ch_draft(s).count>0 then "Finish your draft first" else ifx s[0].core.count>0 && view_facts(s[0].core).readonly then "Read-only session" else ifx !can then "Waiting for computer" else "Review the request, then Send");
-      }else if s[0].rename {
+      if s[0].rename {
        yy+=app_field(f,"thread.rename",in.x,yy,in.w,"Name",cast(string)s[0].rename_text[0..<s[0].rename_n],"Conversation name",false,s[0].focused && ch_focus(s)=="thread.rename","",0,461)+k.app.gap;
        yy+=app_text(f,"thread.local",in.x,yy,in.w,APP_TEXT_CAPTION,"Saved on this device");if s[0].library_note {yy+=k.app.gap;yy+=app_notice(f,"thread.save.error",in.x,yy,in.w,"Saved-chat preferences are full",APP_NOTICE_ERROR);}
       }else if s[0].core.count>0 {c:=s[0].core;e:=es_chips(s[0].env[..]);
@@ -383,7 +390,7 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
       uiframe_unclip(f);s[0].menu_content=yy-body_top+offset;ch_reveal(s,f,key,body_top,body_top+s[0].menu_viewport,s[0].menu_content,offset);
       _:=app_button(f,"thread.done",in.x,done_y,in.w,-1,ifx s[0].rename then "Save" else "Done",APP_BUTTON_DEFAULT,0,ifx s[0].rename then 462 else 452);app_card_end(f);
     }else {
-      keybuf:[CHLIB_KEY]u8;target_key:=ch_library_key(s,keybuf[..]);active:=chlib_key(target_key);paired:=s[0].core.count>0 && app_device_on(s[0].core);total:=ifx active then (ifx paired then 7 else 6) else 3;
+      keybuf:[CHLIB_KEY]u8;target_key:=ch_library_key(s,keybuf[..]);active:=chlib_key(target_key);paired:=s[0].core.count>0 && app_device_on(s[0].core);total:=ifx active then (ifx s[0].core.count>0 then 7 else 6) else 4;
       mw:=ifx k.chat.menu_w<w-2*k.chat.inset then k.chat.menu_w else w-2*k.chat.inset;mh:=cast(f32)total*k.control_h+2*k.app.card_pad;
       available:=h-top-k.app.nav-s[0].safe_bottom/u-2*k.app.gap;if mh>available {mh=available;}
       in:=app_card(f,"thread.menu",w-k.chat.inset-mw,top+k.app.nav+k.app.gap,mw,mh,"Conversation options");
@@ -396,10 +403,11 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
        _:=app_icon_menu_row(f,"thread.pin",in.x,yy+2*k.control_h,in.w,ICON_PIN,ifx (flags&1)!=0 then "Unpin" else "Pin",0,458);
        _:=app_icon_menu_row(f,"thread.rename.open",in.x,yy+3*k.control_h,in.w,ICON_PEN,"Rename",0,460);
        _:=app_icon_menu_row(f,"thread.archive",in.x,yy+4*k.control_h,in.w,ICON_ARCHIVE,ifx (flags&2)!=0 then "Unarchive" else "Archive",ifx app_navigation_blocked(s[0].core) then EL_S_DISABLED else 0,459);
-       if paired {_:=app_icon_menu_row(f,"thread.workspace",in.x,yy+5*k.control_h,in.w,ICON_FOLDER,"Workspace",0,467);}
+       if s[0].core.count>0 {_:=app_icon_menu_row(f,"thread.workspace",in.x,yy+5*k.control_h,in.w,ICON_FOLDER,"Workspace",0,467);}
       }else {
        _:=app_icon_menu_row(f,"thread.computer",in.x,yy,in.w,ICON_GLOBAL,"Choose computer",0,453);
        _:=app_icon_menu_row(f,"thread.recents",in.x,yy+k.control_h,in.w,ICON_CHATS,"Recent chats",0,455);
+       _=app_icon_menu_row(f,"thread.workspace",in.x,yy+2*k.control_h,in.w,ICON_FOLDER,"Workspace",0,467);
       }
       _:=app_icon_menu_row(f,"thread.feedback",in.x,yy+cast(f32)(total-1)*k.control_h,in.w,ICON_FLAG,"Send feedback",0,464);uiframe_unclip(f);app_card_end(f);
     }
@@ -471,10 +479,12 @@ ch_login_close :: (s: [] ChatPage) -> bool {
 }
 ch_stamp :: (s: [] ChatPage) -> int { return surface_stamp(ch_live(s)); }
 // A drawer destination leaves Settings, including its nested Usage page.
-ch_main :: (s:[]ChatPage) {s[0].thread_menu=false;s[0].thread_details=false;s[0].rename=false;s[0].workspace=false;s[0].filter_menu=false;s[0].renderer=false;s[0].usage[0].open=false;s[0].usage[0].code_ready=false;s[0].identity[0].open=false;s[0].identity[0].backup=false;s[0].identity[0].confirm=0;}
+ch_main :: (s:[]ChatPage) {s[0].workspaces[0].open=false;s[0].thread_menu=false;s[0].thread_details=false;s[0].rename=false;s[0].workspace=false;s[0].filter_menu=false;s[0].renderer=false;s[0].usage[0].open=false;s[0].usage[0].code_ready=false;s[0].identity[0].open=false;s[0].identity[0].backup=false;s[0].identity[0].confirm=0;}
 // A press on a committed row; platform effects go through the shared core.
 ch_press :: (s: [] ChatPage, row: int) -> bool {
   sf := ch_live(s); act := surface_action(sf, row); l := s[0].lf[..];
+  if act==WSC_ACTION {ok:=wsc_press(s[0].workspaces[..],s[0].core,surface_id(sf,row));ch_set_focus(s,"");ch_step(s);return ok;}
+  if act==WSC_FIELD {ch_set_focus(s,surface_id(sf,row));return true;}
   if act==450 || act==451 {s[0].rename=false;s[0].workspace=false;s[0].library_note=false;s[0].thread_menu=act==450;s[0].thread_details=act==451;keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"),0);ch_set_focus(s,"");return true;}
   if act==452 {s[0].filter_menu=false;s[0].thread_menu=false;s[0].thread_details=false;s[0].rename=false;s[0].workspace=false;ch_set_focus(s,"");return true;}
   if act==455 {ch_main(s);s[0].drawer=false;s[0].section=2;ch_set_focus(s,"");ch_step(s);return true;}
@@ -482,8 +492,8 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
   if act==457 {s[0].thread_details=false;s[0].thread_menu=false;s[0].usage[0].open=true;ch_set_focus(s,"");ch_step(s);return true;}
   if act==453 {s[0].thread_menu=false;s[0].thread_details=false;_=es_press(s[0].env[..],"composer.environment",ch_now(s));ch_step(s);return true;}
   if act==468 {keybuf:[CHLIB_KEY]u8;key:=ch_library_key(s,keybuf[..]);return chlib_change(s[0].library[..],key,chlib_label(s[0].library[..],key,""),chlib_flags(s[0].library[..],key)&1);}
-  if act==467 {if s[0].core.count<1 || !app_device_on(s[0].core) {return false;}s[0].workspace=true;ch_set_focus(s,"");keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"),0);return true;}
-  if act>=470 && act<476 {if !ch_workspace_ready(s) {return false;}if !chat_set_text(s,ews_prompt(act-470)) {return false;}s[0].workspace=false;s[0].thread_menu=false;s[0].thread_details=false;ch_set_focus(s,VIEW_COMPOSER_ID);return true;}
+  if act==467 {if s[0].core.count<1 {return false;}host:=app_environment(s[0].core);if !ea_id(host,64) {host="";}if !wsc_open(s[0].workspaces[..],host,!app_device_on(s[0].core)) {return false;}s[0].workspace=false;s[0].thread_menu=false;s[0].thread_details=false;ch_set_focus(s,"");ch_step(s);return true;}
+
   if act==458 || act==459 || act==460 {
     keybuf:[CHLIB_KEY]u8;key:=ch_library_key(s,keybuf[..]);if !chlib_key(key) {return false;}flags:=chlib_flags(s[0].library[..],key);
     if act==460 {s[0].target_n=el_copy(s[0].target[..],key);title:=chlib_label(s[0].library[..],key,ch_conversation_title(s));s[0].rename_n=text_single_line(cast(string)title[0..<text_byte_floor(title,ifx title.count<CHLIB_TITLE then title.count else CHLIB_TITLE)],s[0].rename_text[..]);s[0].rename=true;ch_set_focus(s,"thread.rename");return true;}
@@ -711,7 +721,7 @@ chat_step :: (s: [] ChatPage) #export_c #effects(all) { if s.count > 0 && s[0].r
 // the guest is let go. Then the flow and the chips follow.
 chat_guest :: (s: [] ChatPage, body: string) #export_c #effects(all) {
   if s.count < 1 || s[0].core.count < 1 { return; }
-  if !us_guest(s[0].usage[..],s[0].core,body) && !ps_guest(s[0].projects[..],s[0].core,body) && !iks_guest(s[0].identity[..],s[0].core,body) && !hi_guest(s[0].history[..],s[0].core,body) && !dh_guest(s[0].devices[..],s[0].core,body) && !es_bridge_guest(s[0].core, s[0].eb[..], s[0].env[..], body, ch_now(s)) { app_guest_done(s[0].core); }
+  if !wsc_guest(s[0].workspaces[..],s[0].core,body) && !us_guest(s[0].usage[..],s[0].core,body) && !ps_guest(s[0].projects[..],s[0].core,body) && !iks_guest(s[0].identity[..],s[0].core,body) && !hi_guest(s[0].history[..],s[0].core,body) && !dh_guest(s[0].devices[..],s[0].core,body) && !es_bridge_guest(s[0].core, s[0].eb[..], s[0].env[..], body, ch_now(s)) { app_guest_done(s[0].core); }
   if s[0].history[0].changed {s[0].history[0].changed=false;keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),0);}
   ch_step(s);
 }
@@ -725,7 +735,7 @@ chat_env_restore :: (s: [] ChatPage, text: string) #export_c #effects(all) {
 chat_library_restore :: (s:[]ChatPage,raw:string)->bool #export_c #effects(all) {
  if s.count<1 {return false;}if !s[0].ready {ch_init(s);}
  // Partition changes clear the previous account's overlays even if the new file is corrupt.
- s[0].library[0]=ChatLibrary.{};s[0].rename=false;s[0].workspace=false;s[0].target_n=0;s[0].rename_n=0;s[0].search_n=0;s[0].library_filter=0;s[0].thread_menu=false;s[0].thread_details=false;s[0].filter_menu=false;ch_set_focus(s,"");
+ s[0].library[0]=ChatLibrary.{};s[0].workspaces[0]=WorkspaceScreen.{};s[0].rename=false;s[0].workspace=false;s[0].target_n=0;s[0].rename_n=0;s[0].search_n=0;s[0].library_filter=0;s[0].thread_menu=false;s[0].thread_details=false;s[0].filter_menu=false;ch_set_focus(s,"");
  return chlib_read(s[0].library[..],raw);
 }
 chat_library_save :: (s:[]ChatPage,out:[]u8)->int #export_c #effects(all) {if s.count<1 {return -1;}return chlib_write(s[0].library[..],out);}
@@ -757,6 +767,7 @@ chat_field_text_box :: (s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) {
 // A login field's value, and its whole value after an edit (false: not taken; show the flow's again).
 chat_field_text :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; } f := ch_login_field(ch_focus(s)); l := s[0].lf[..];
+  if s[0].workspaces[0].open {return ch_out(out,wsc_field(s[0].workspaces[..],ch_focus(s)));}
   if ch_focus(s)=="thread.rename" {return ch_out(out,cast(string)s[0].rename_text[0..<s[0].rename_n]);}
   if ch_focus(s)=="history.search" {return ch_out(out,cast(string)s[0].search[0..<s[0].search_n]);}
   if s[0].usage[0].open && ch_focus(s)=="usage.label" {return ch_out(out,cast(string)s[0].usage[0].label[0..<s[0].usage[0].nl]);}
@@ -764,6 +775,7 @@ chat_field_text :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) {
 }
 chat_set_field :: (s: [] ChatPage, text: string) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; } f := ch_login_field(ch_focus(s));
+  if s[0].workspaces[0].open {return wsc_edit(s[0].workspaces[..],ch_focus(s),text);}
   if ch_focus(s)=="thread.rename" {if !chlib_title(text) {return false;}s[0].rename_n=el_copy(s[0].rename_text[..],text);s[0].library_note=false;return true;}
   if ch_focus(s)=="history.search" {if text.count>s[0].search.count {return false;}s[0].search_n=el_copy(s[0].search[..],text);ch_step(s);keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"history.viewport"),0);return true;}
   if s[0].usage[0].open && ch_focus(s)=="usage.label" {n:=pa_copy(s[0].usage[0].label[..],text);if n<0 {return false;}s[0].usage[0].nl=n;return true;}
@@ -774,7 +786,7 @@ chat_set_field :: (s: [] ChatPage, text: string) -> bool #export_c #effects(all)
 chat_submit :: (s: [] ChatPage) -> bool #export_c #effects(all) {
   if s.count>0 && ch_focus(s)=="thread.rename" {return ch_press_action_rename(s);}
   if s.count>0 && ch_focus(s)=="history.search" {ch_set_focus(s,"");return true;}
-  if s.count>0 && (ps_editing(ch_focus(s)) || ch_focus(s)=="usage.label") {ch_set_focus(s,"");return true;}
+  if s.count>0 && (s[0].workspaces[0].open || ps_editing(ch_focus(s)) || ch_focus(s)=="usage.label") {ch_set_focus(s,"");return true;}
   if s.count < 1 || ch_login_field(ch_focus(s)) == LF_FIELD_NONE { return false; }
   done := lf_submit(s[0].lf[..]); ch_step(s); return done;
 }
@@ -797,7 +809,7 @@ ch_scroll_offset :: (s:[]ChatPage)->f32 {
  if s[0].thread_menu || s[0].thread_details || s[0].filter_menu {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"));}
  if s[0].drawer {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"));}
  if s[0].lf[0].open {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"));}
- if s[0].usage[0].open || s[0].renderer {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
+ if s[0].workspaces[0].open || s[0].usage[0].open || s[0].renderer {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
  if s[0].identity[0].open {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"));}
  if s[0].section==2 {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"history.viewport"));}
  if s[0].section>0 {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
@@ -807,7 +819,7 @@ ch_scroll_max :: (s:[]ChatPage)->f32 {
  if s[0].thread_menu || s[0].thread_details || s[0].filter_menu {return scroll_max(s[0].menu_content,s[0].menu_viewport);}
  if s[0].drawer {return scroll_max(s[0].history_content,s[0].history_viewport);}
  if s[0].lf[0].open {return scroll_max(s[0].login_content,s[0].login_viewport);}
- if s[0].usage[0].open || s[0].renderer {return scroll_max(s[0].section_content,s[0].section_viewport);}
+ if s[0].workspaces[0].open || s[0].usage[0].open || s[0].renderer {return scroll_max(s[0].section_content,s[0].section_viewport);}
  if s[0].identity[0].open {return scroll_max(s[0].settings_content,s[0].settings_viewport);}
  if s[0].section==2 {return scroll_max(s[0].history_content,s[0].history_viewport);}
  if s[0].section>0 {return scroll_max(s[0].section_content,s[0].section_viewport);}
@@ -819,7 +831,7 @@ chat_scroll_to :: (s:[]ChatPage,offset:f32) #export_c #effects(all) {
  if s[0].thread_menu || s[0].thread_details || s[0].filter_menu {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"),value);}
  else if s[0].drawer {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),value);}
  else if s[0].lf[0].open {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"),value);}
- else if s[0].usage[0].open || s[0].renderer {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
+ else if s[0].workspaces[0].open || s[0].usage[0].open || s[0].renderer {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
  else if s[0].identity[0].open {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"),value);}
  else if s[0].section==2 {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"history.viewport"),value);}
  else if s[0].section>0 {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
@@ -1163,3 +1175,8 @@ chat_render_commit :: (s:[]ChatPage,accepted:bool) #export_c #effects(all) {
 chat_transparency :: (s:[]ChatPage,reduced:bool) #export_c #effects(all) {if s.count>0 {s[0].reduced_transparency=reduced;}}
 
 #load "chat-library-checks.coax" #test;
+
+chat_library_sync_restore :: (s:[]ChatPage,raw:string)->bool #export_c #effects(all) {return cls_state_read(s[0].library_sync[..],s[0].library[..],raw);}
+chat_library_sync_save :: (s:[]ChatPage,out:[]u8)->int #export_c #effects(all) {return cls_state_write(s[0].library_sync[..],s[0].library[..],out);}
+chat_library_sync_request :: (s:[]ChatPage,command:string,out:[]u8)->int #export_c #effects(all) {return cls_request(s[0].library_sync[..],s[0].library[..],command,out);}
+chat_library_sync_answer :: (s:[]ChatPage,status:int,raw:string)->bool #export_c #effects(all) {return cls_answer(s[0].library_sync[..],s[0].library[..],status,raw);}

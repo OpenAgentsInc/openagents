@@ -1,0 +1,24 @@
+#load "wire.coax";
+#authority;
+#test "workspace writes preserve dirty or busy trees and never remove the adopted root" {
+ #assert ws_write_allowed("SwitchBranch",false,false,false,false,false,true)=="";
+ #assert ws_write_allowed("SwitchBranch",true,false,false,false,false,true)=="dirty_worktree";
+ #assert ws_write_allowed("CreateBranch",false,true,false,false,false,true)=="workspace_busy";
+ #assert ws_write_allowed("CreateWorktree",true,true,false,false,false,true)=="";
+ #assert ws_write_allowed("RemoveWorktree",false,false,false,true,false,true)=="";
+ #assert ws_write_allowed("RemoveWorktree",false,false,false,true,true,true)=="workspace_refused";
+ #assert ws_write_allowed("RemoveWorktree",false,false,false,false,false,true)=="workspace_refused";
+ #assert ws_write_allowed("RemoveWorktree",false,false,true,true,false,true)=="workspace_locked";
+ #assert ws_write_allowed("PushBranch",false,false,false,false,false,false)=="github_unavailable";
+ #assert ws_write_allowed("CreatePullRequest",false,false,false,false,false,true)=="";
+ #assert ws_write_allowed("EditPullRequest",false,false,false,false,false,false)=="github_unavailable";
+ #assert ws_write_allowed("RunShell",false,false,false,true,false,true)=="malformed";
+}
+ws_write_allowed :: (method:string,dirty:bool,busy:bool,locked:bool,owned:bool,adopted:bool,github:bool)->string #effects(all) {
+ if ws_right(method)!=1 {return "malformed";}
+ if method=="SwitchBranch" || method=="CreateBranch" || method=="RemoveWorktree" {if busy {return "workspace_busy";}if dirty {return "dirty_worktree";}if locked {return "workspace_locked";}}
+ if method=="RemoveWorktree" && (!owned || adopted) {return "workspace_refused";}
+ if (method=="PushBranch" || method=="CreatePullRequest" || method=="EditPullRequest") && !github {return "github_unavailable";}return "";
+}
+#test "workspace controls require the local operator's exact profile opt-in and unchanged enrollment" {#assert ws_scope(true,true,true,true,true,true);for i:0..<6 {#assert !ws_scope(i!=0,i!=1,i!=2,i!=3,i!=4,i!=5);}}
+ws_scope :: (admitted:bool,configured:bool,enabled:bool,device:bool,grant:bool,root:bool)->bool #effects(all) {return admitted && configured && enabled && device && grant && root;}

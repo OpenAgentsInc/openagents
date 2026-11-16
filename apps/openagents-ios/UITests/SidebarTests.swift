@@ -3,6 +3,14 @@ import XCTest
 
 final class SidebarTests:XCTestCase {
     override func setUpWithError() throws {continueAfterFailure=false}
+    @MainActor func testWorkspaceOpensNativePageAndReturnsToChat() {
+        let app=XCUIApplication();app.launchArguments=["-OAAPIOrigin","http://127.0.0.1:9","-OAReduceMotion","YES"]
+        app.launch();XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout:20));app.buttons["chat.options"].tap()
+        let workspace=app.buttons["thread.workspace"];XCTAssertTrue(workspace.waitForExistence(timeout:10));workspace.tap()
+        let back=app.buttons["workspace.back"];XCTAssertTrue(back.waitForExistence(timeout:10))
+        XCTAssertTrue(app.staticTexts["workspace.no.computers"].waitForExistence(timeout:10));back.tap()
+        XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout:10))
+    }
     @MainActor func testGPUConversationMenuRecentsAndKeyboard() {
         let app=XCUIApplication();app.launchArguments=["-OAAPIOrigin","http://127.0.0.1:9","-OAReduceMotion","YES"]
         app.launch();let menu=app.buttons["nav.menu"];XCTAssertTrue(menu.waitForExistence(timeout:20))

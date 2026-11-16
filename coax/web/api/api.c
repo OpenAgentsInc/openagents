@@ -437,6 +437,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   ROUTE(account_chat_turn_route);
   ROUTE(account_chat_route);
   ROUTE(environment_route);
+  ROUTE(account_chat_library_route);
   ROUTE(chat_history_route);
   ROUTE(chat_route);   // before the rooms: /api/chat/state etc. are /chat's, any other /api/chat/<room> a room's
   ROUTE(room_route);

@@ -1,0 +1,53 @@
+// Real repository controls on the enrolled computer. The immutable enrollment
+// selects the root; this additive profile selects only its registered worktrees.
+#load "../../coax/lib/agent/workspace/native.coax";
+#load "../../coax/lib/agent/workspace/policy.coax";
+ws_receipt :: (grant:string,command:string,suffix:string,out:[]u8)->string {b:[256]u8;n:=hs_cat(b[..],0,"workspace-");n=hs_cat(b[..],n,grant);n=hs_cat(b[..],n,"-");n=hs_cat(b[..],n,command);n=hs_cat(b[..],n,suffix);return es_path(cast(string)b[0..<n],out);}
+ws_managed_root :: (out:[]u8)->string {b:[1024]u8;home:=hs_home(b[..]);n:=hs_cat(out,0,home);n=hs_cat(out,n,"/.openagents/worktrees");return cast(string)out[0..<n];}
+ws_owned :: (path:string)->bool {b:[1400]u8;root:=ws_managed_root(b[..]);if path.count!=root.count+33 || path[0..<root.count]!=root || path[root.count]!='/' {return false;}return ea_id(path[root.count+1..<path.count],32);}
+ws_busy :: (h:[]HsHost,path:string)->bool {for i:0..<ES_SLOTS {slot:=h[0].environment[0].slots[i..<i+1];if slot[0].occupied && (slot[0].s[0].live || slot[0].summary.busy || slot[0].probing || slot[0].execution[0].active) && cast(string)slot[0].engine[0].cwd[0..<slot[0].engine[0].cwd_n]==path {return true;}}return false;}
+ws_execute :: (h:[]HsHost,root:string,grant:string,q:[]WsRequest,v:[]WsView) {
+ v[0]=WsView.{};method:=cast(string)q[0].method[0..<q[0].nm];v[0].host=h[0].xhex;v[0].method=q[0].method;v[0].nm=q[0].nm;v[0].command=q[0].command;v[0].nc=q[0].nc;v[0].workspace=q[0].workspace;v[0].nw=q[0].nw;
+ command:=cast(string)q[0].command[0..<q[0].nc];request:[24576]u8;n:=ws_write(q,request[..]);if n<1 {ws_fail(v,"malformed");return;}
+ claimed:[1400]u8;finished:[1400]u8;claim:=ws_receipt(grant,command,".request",claimed[..]);finish:=ws_receipt(grant,command,".response",finished[..]);
+ if ws_right(method)==1 && fs_exists(claim) {
+  prior:[24576]u8;pn:=fs_read(claim,prior[..]);if pn!=n || cast(string)prior[0..<ifx pn>0 then pn else 0]!=cast(string)request[0..<n] {ws_fail(v,"idempotency_conflict");return;}
+  bytes:[1048576]u8;nr:=fs_read(finish,bytes[..]);old:[1]WsView;if nr>0 && ws_view_read(cast(string)bytes[0..<nr],old[..]) && cast(string)old[0].host[..]==cast(string)h[0].xhex[..] && cast(string)old[0].command[0..<old[0].nc]==command {v[0]=old[0];}else {ws_fail(v,"unknown");}return;
+ }
+ error:=ws_snapshot(root,q,v);if error.count>0 {ws_fail(v,error);return;}if ws_right(method)==0 {return;}
+ if !ea_fresh(q[0].issued,q[0].expires,cxproc_wall_us()/1000) {ws_fail(v,"expired");return;}
+ if cast(string)q[0].expected[0..<q[0].nx]!=cast(string)v[0].revision[0..<v[0].nx] {ws_fail(v,"stale_state");return;}
+ path:=cast(string)v[0].path[0..<v[0].npath];locked:=v[0].selected_locked;
+ error=ws_write_allowed(method,v[0].ns>0,ws_busy(h,path),locked,ws_owned(path),path==root,v[0].ng==0);if error.count>0 {ws_fail(v,error);return;}
+ branch:=cast(string)q[0].branch[0..<q[0].nb];base:=cast(string)q[0].base[0..<q[0].na];buf:[65536]u8;
+ if q[0].nb>0 {r:=wt_git3(path,"check-ref-format","--branch",branch,buf[..]);if !wt_ok(r) {ws_fail(v,"invalid_branch");return;}}
+ // Complete validation and durable claim precede all writes. A restart here is unknown.
+ if !fs_replace_durable(claim,cast(string)request[0..<n]) {ws_fail(v,"storage_unavailable");return;}
+ r:ProcRun;r.started= -1;
+ if method=="SwitchBranch" {r=wt_git3(path,"switch","--no-guess",branch,buf[..]);}
+ if method=="CreateBranch" {r=wt_git4(path,"switch","-c",branch,base,buf[..]);}
+ if method=="CreateWorktree" {parent:[1400]u8;target:[1536]u8;folder:=ws_managed_root(parent[..]);size:=hs_cat(target[..],0,folder);size=hs_cat(target[..],size,"/");size=hs_cat(target[..],size,command);if fs_mkdir_private(folder) {r=wt_git6(path,"worktree","add","-b",branch,cast(string)target[0..<size],base,buf[..]);}}
+ if method=="RemoveWorktree" {r=wt_git3(root,"worktree","remove",path,buf[..]);}
+ if method=="PushBranch" {if v[0].nb==0 {ws_fail(v,"detached_head");}else {r=wt_git5(path,"push","--porcelain","--set-upstream","origin",cast(string)v[0].branch[0..<v[0].nb],buf[..]);}}
+ if method=="CreatePullRequest" {r=wt_gh12(path,"pr","create","--head",cast(string)v[0].branch[0..<v[0].nb],"--base",base,"--title",cast(string)q[0].title[0..<q[0].nt],"--body",cast(string)q[0].body[0..<q[0].nd],"--repo",cast(string)v[0].repository[0..<v[0].nr],buf[..]);}
+ if method=="EditPullRequest" {number:[32]u8;r=wt_gh9(path,"pr","edit",hs_itoa(q[0].number,number[..]),"--title",cast(string)q[0].title[0..<q[0].nt],"--body",cast(string)q[0].body[0..<q[0].nd],"--repo",cast(string)v[0].repository[0..<v[0].nr],buf[..]);}
+ if !wt_ok(r) {ws_fail(v,ifx r.timed_out then "unknown" else "operation_failed");}
+ // Copy the chosen path before snapshot replaces its owning view.
+ selected:[1024]u8;_=js_copy(selected[..],path);if method=="RemoveWorktree" {q[0].nw=js_copy(q[0].workspace[..],"default");v[0].workspace=q[0].workspace;v[0].nw=q[0].nw;}
+ if v[0].ne==0 {why:=ws_snapshot(root,q,v);if why.count>0 {ws_fail(v,why);}}
+ response:[1048576]u8;rn:=ws_view_write(v,response[..]);if rn<1 || !fs_replace_durable(finish,cast(string)response[0..<rn]) {ws_fail(v,"unknown");}
+}
+ws_handle :: (h:[]HsHost,r:[]HbRpcRequest,q:[]WsRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int {
+ if r[0].request!=mailbox || r[0].host!=cast(string)h[0].xhex[..] || r[0].relay!=hs_relay_of(h) || r[0].method!=cast(string)q[0].method[0..<q[0].nm] {return 0;}
+ configured:=es_load_for(h[0].environment[..],signer,r[0].grant);c:=h[0].environment[0].configuration[..];scoped:=ea_scope(configured,c[0].enabled && ws_enabled(c),cast(string)c[0].device[..]==signer,cast(string)c[0].grant[..]==r[0].grant);
+ hs_load(st,statebuf);ga:[HS_GRANTS]HostGrantRecord;epochs:[HS_EPOCHS]HostEpoch;hs_records(st,ga[..],epochs[..]);if scoped {for i:0..<st[0].ng {if ga[i].grant==r[0].grant && ga[i].device==signer {ga[i].rights|=1<<HA_REVIEW;}}}
+ right:=ws_right(r[0].method);req:=HostRequest.{request=r[0].request,event=event,signer=signer,grant=r[0].grant,epoch=r[0].epoch,issued_at=r[0].issued_at,expires_at=r[0].expires_at,right=right};none:[1]HostRetained;verdict:=host_admit(ga[0..<st[0].ng],epochs[0..<st[0].ne],none[0..<0],req,hs_now());if verdict==HA_SILENT {return 0;}
+ if verdict!=HA_OK || !scoped {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"forbidden",""),signer,w,out);}
+ v:[1]WsView;ws_execute(h,cast(string)c[0].workspace[0..<c[0].nw],r[0].grant,q,v[..]);raw:[HB_BODY_MAX]u8;n:=ws_view_write(v[..],raw[..]);body:[HB_BODY_MAX]u8;made:=ifx n>0 then hb_app_reply_write(r[0].request,event,cast(string)h[0].xhex[..],hs_now(),r[0].expires_at,r[0].method,cast(string)raw[0..<n],body[..]) else -1;peer:[32]u8;nonce:[32]u8;aux:[32]u8;if made<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return 0;}return hb_seal(cast(string)body[0..<made],HB_REPLY_SCHEMA,h[0].secret[..],peer[..],r[0].request,nonce[..],aux[..],hs_now(),w,out);
+}
+ws_rpc_call :: (args:[]Args)->int {input:[24576]u8;n:=fs_read(args_value(args,"--request-file",""),input[..]);q:[1]WsRequest;if n<1 || !ws_read(cast(string)input[0..<n],q[..]) {return 2;}out:[HB_BODY_MAX]u8;r:=es_rpc_exchange(args,cast(string)q[0].method[0..<q[0].nm],cast(string)input[0..<n],out[..]);v:[1]WsView;if r.n<1 || !ws_view_read(cast(string)out[0..<r.n],v[..]) {return 3;}hs_outln(cast(string)out[0..<r.n]);return 0;}
+// Additive local opt-in uses the existing private environment configuration
+// codec unchanged, as a separately named exact-grant profile binding.
+ws_config_file :: (grant:string,out:[]u8)->string {name:[160]u8;n:=hs_cat(name[..],0,"workspace-controls-");n=hs_cat(name[..],n,grant);n=hs_cat(name[..],n,".json");return es_path(cast(string)name[0..<n],out);}
+ws_enabled :: (c:[]EaConfiguration)->bool {path:[1400]u8;b:[8192]u8;n:=fs_read(ws_config_file(cast(string)c[0].grant[..],path[..]),b[..]);other:[1]EaConfiguration;if n<1 || !ea_config_read(cast(string)b[0..<n],other[..]) {return false;}return ws_scope(true,true,other[0].enabled,cast(string)other[0].device[..]==cast(string)c[0].device[..],cast(string)other[0].grant[..]==cast(string)c[0].grant[..],cast(string)other[0].workspace[0..<other[0].nw]==cast(string)c[0].workspace[0..<c[0].nw]);}
+ws_enable :: (args:[]Args)->int {h:[1]EsHost;if !es_load_configuration(h[..]) {tool_errln("Enroll this environment first.");return 3;}requested:=args_value(args,"--grant","");if requested.count>0 && requested!=cast(string)h[0].configuration[0].grant[..] {if !ea_id(requested,64) || !es_load_device(h[..],requested) {return 3;}}c:=h[0].configuration[..];if !c[0].enabled {return 3;}b:[8192]u8;n:=ea_config_write(c,b[..]);path:[1400]u8;if n<1 || !fs_replace_durable(ws_config_file(cast(string)c[0].grant[..],path[..]),cast(string)b[0..<n]) {return 1;}hs_outln("Native workspace controls enabled for this exact environment enrollment.");return 0;}
