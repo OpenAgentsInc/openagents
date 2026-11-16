@@ -1,21 +1,62 @@
-# needs: task-host fixtures (a turn-task binding and a task status with an interaction, written by the shared task writers); see ../INTEGRATION.md
-# A permission prompt, answered: Allow posts once, and the task goes on.
+# A task on a computer asks for a permission: the page shows its tool call with its result and the
+# question; Allow posts one answer, a second tap sends nothing, and the task runs on. The task's
+# bodies are written by the shared task writers: coax/web/tool.sh apps/shared/app/cases/task-fixture.coax.
 clock data record auth.state: auth state => 200 {"loggedIn":true}
-clock data record submit: http POST /api/chat/submit/v2alpha1 => 202 {"turn":"turn-1","conversation":"conv-1"}
-clock data record events: http GET /api/chat/events/v2alpha1?id=turn-1&after=0 => part {"seq":1,"kind":"permission","interaction":"ask-1","tool":"shell","input":"git push"}
-clock data record allow: http POST /api/chat/permission/v2alpha1 => 200 {"interaction":"ask-1","answer":"allow"}
-clock data record events: http GET /api/chat/events/v2alpha1?id=turn-1&after=0 => 200 {"seq":2,"kind":"state","state":"completed"}
+clock data record history: http GET /api/chat/conversation/v2alpha1?id=cnv_0123456789abcdef0123456789abcdef&after=0 => 200 {"schema":"openagents.chat.conversation.v2alpha1","id":"cnv_0123456789abcdef0123456789abcdef","revision":1,"project_id":null,"legacy_thread_id":null,"legacy_thread_revision":null,"messages":[],"active_turn_id":"trn_0123456789abcdef0123456789abcdef","created_at_ms":1767225600000,"updated_at_ms":1767225600000,"next_cursor":null}
+clock data record submit: http POST /api/chat/submit/v2alpha1 => 202 {"schema":"openagents.chat.control.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","conversation_revision":1,"state":"queued","stop_requested":false,"event_cursor":0}
+clock data record turn: http GET /api/chat/turn/v2alpha1?id=trn_0123456789abcdef0123456789abcdef => 200 {"schema":"openagents.chat.turn.v2alpha1","id":"trn_0123456789abcdef0123456789abcdef","conversation_id":"cnv_0123456789abcdef0123456789abcdef","operation_id":"op-1","state":"queued","stop_requested":false,"stop_reason":null,"usage":{"input_tokens":null,"output_tokens":null,"cache_read_tokens":null,"cache_write_tokens":null,"reasoning_tokens":null},"selection":{"model_id":"gemini-decision-1","provider_id":"google","effort":"medium","route_decision_id":null,"reason":"Default model"},"content":[],"event_cursor":0,"conversation_revision":1,"context_snapshot_id":null,"error":null,"created_at_ms":1767225600000,"updated_at_ms":1767225600000}
+clock data record events: http GET /api/chat/events/v2alpha1?id=trn_0123456789abcdef0123456789abcdef&after=0 => 200 {"schema":"openagents.chat.events.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","after":0,"events":[{"schema":"openagents.chat.event.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","sequence":1,"type":"started","state":"running","stop_requested":false,"block_index":null,"delta":null,"usage":null,"stop_reason":null,"error":null}],"next_cursor":1,"has_more":false,"state":"running"}
+clock data record events: http GET /api/chat/events/v2alpha1?id=trn_0123456789abcdef0123456789abcdef&after=1 => 200 {"schema":"openagents.chat.events.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","after":1,"events":[],"next_cursor":1,"has_more":false,"state":"running"}
+clock data record events: http GET /api/chat/events/v2alpha1?id=trn_0123456789abcdef0123456789abcdef&after=1 => 200 {"schema":"openagents.chat.events.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","after":1,"events":[],"next_cursor":1,"has_more":false,"state":"running"}
+clock data record events: http GET /api/chat/events/v2alpha1?id=trn_0123456789abcdef0123456789abcdef&after=1 => 200 {"schema":"openagents.chat.events.v2alpha1","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","after":1,"events":[],"next_cursor":1,"has_more":false,"state":"running"}
+clock data record binding: http GET /api/chat/turn-task/v1alpha1?id=trn_0123456789abcdef0123456789abcdef => 200 {"schema":"openagents.chat.task.v1alpha1","binding":{"schema":"openagents.environment.execution.binding.v1alpha1","task_id":"0123456789abcdef0123456789abcdef","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","route_id":"0123456789abcdef0123456789abcdef","host_pubkey":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","workspace_id":"default","session_id":"0123456789abcdef0123456789abcdef","command_id":"0123456789abcdef0123456789abcdef","engine_id":"codex","account_id":"system","model_id":"gpt-6-astra","effort_id":"high","input_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","input_bytes":201,"report_sha256":"ebcb874d0ebdf39b939721f1f932c767ae413128e1f09308b8fb07121d52661e","report_observed_at_ms":999,"issued_at_ms":1000,"expires_at_ms":301000},"decision":{"schema":"openagents.router.decision.v1alpha1","ok":true,"station":"0123456789abcdef0123456789abcdef","engine":"codex","effort":"high","difficulty":3,"weight":0,"needs":"apple"},"report":{"schema":"openagents.router.station.v1alpha1","host_pubkey":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","station":{"station_id":"native-mac","display_name":"Actual Mac","reported_at_ms":999,"os":"macos","cpu_cores":8,"memory_total_mb":8192,"memory_free_mb":4096,"disk_free_mb":10000,"disk_floor_mb":1000,"apple_builds":true,"agents":[{"engine":"codex","installed":true,"logged_in":true}]}},"offer":{"schema":"openagents.environment.execution.offer.v1alpha1","host_pubkey":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","workspace_id":"default","probe_id":"0123456789abcdef0123456789abcdef","engine_id":"codex","account_id":"system","state":"ready","error_code":"","observed_at_ms":999,"expires_at_ms":30999,"models":[{"model_id":"gpt-6-astra","display_name":"Actual native model","effort_ids":["high"]}]},"enrollment_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","selection_reason":"Exact actual native offer","dispatch_decision":{"schema":"openagents.router.decision.v1alpha1","ok":true,"station":"native-mac","engine":"codex","model":"gpt-6-astra","effort":"high","difficulty":3,"weight":0,"needs":"apple"}}
+clock data record status: http GET /api/chat/task/v1alpha1?host=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef&task=0123456789abcdef0123456789abcdef => 200 {"schema":"openagents.environment.execution.task-status.v1alpha1","binding":{"schema":"openagents.environment.execution.binding.v1alpha1","task_id":"0123456789abcdef0123456789abcdef","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","route_id":"0123456789abcdef0123456789abcdef","host_pubkey":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","workspace_id":"default","session_id":"0123456789abcdef0123456789abcdef","command_id":"0123456789abcdef0123456789abcdef","engine_id":"codex","account_id":"system","model_id":"gpt-6-astra","effort_id":"high","input_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","input_bytes":201,"report_sha256":"ebcb874d0ebdf39b939721f1f932c767ae413128e1f09308b8fb07121d52661e","report_observed_at_ms":999,"issued_at_ms":1000,"expires_at_ms":301000},"state":"waiting","revision":2,"stop_requested":false,"native_session_id":"","interaction_id":"held","error_code":"","updated_at_ms":1767225600000,"command_id":"","replay":false}
+clock data record capture: http GET /api/chat/task/transcript/v1alpha1?host=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef&task=0123456789abcdef0123456789abcdef&reader=2bb7823946c18e204146d4ffd47dd2a5&read=0f05cf2805c3bb73aead68474de9a747&sha256=&after=0 => 200 {"schema":"openagents.environment.execution.transcript-page.v1alpha1","capture":{"schema":"openagents.environment.execution.transcript-capture.v1alpha1","reader_id":"2bb7823946c18e204146d4ffd47dd2a5","read_id":"0f05cf2805c3bb73aead68474de9a747","status":{"schema":"openagents.environment.execution.task-status.v1alpha1","binding":{"schema":"openagents.environment.execution.binding.v1alpha1","task_id":"0123456789abcdef0123456789abcdef","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","route_id":"0123456789abcdef0123456789abcdef","host_pubkey":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","workspace_id":"default","session_id":"0123456789abcdef0123456789abcdef","command_id":"0123456789abcdef0123456789abcdef","engine_id":"codex","account_id":"system","model_id":"gpt-6-astra","effort_id":"high","input_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","input_bytes":201,"report_sha256":"ebcb874d0ebdf39b939721f1f932c767ae413128e1f09308b8fb07121d52661e","report_observed_at_ms":999,"issued_at_ms":1000,"expires_at_ms":301000},"state":"waiting","revision":2,"stop_requested":false,"native_session_id":"","interaction_id":"held","error_code":"","updated_at_ms":1767225600000,"command_id":"","replay":false},"sha256":"96c2e47ca8d88752b1fb2f2057b31853323d51badc428306422d959578121077","bytes":302,"expires_at_ms":1767229200000},"offset":0,"next_offset":302,"complete":true,"text":"{\"kind\":\"user\",\"text\":\"Push the fix\"}\n{\"kind\":\"tool\",\"label\":\"Bash(shell)\",\"tool\":\"exec\",\"id\":\"call-1\",\"arg\":\"git status --short\",\"detail\":\"shell\",\"input\":\"{\\\"command\\\":\\\"git status --short\\\"}\"}\n{\"kind\":\"result\",\"text\":\" M sum.coax\",\"error\":false,\"id\":\"call-1\"}\n{\"kind\":\"ask\",\"text\":\"Allow git push?\"}\n"}
+clock data record allow: http POST /api/chat/task/v1alpha1?host=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef => 200 {"schema":"openagents.environment.execution.task-status.v1alpha1","binding":{"schema":"openagents.environment.execution.binding.v1alpha1","task_id":"0123456789abcdef0123456789abcdef","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","route_id":"0123456789abcdef0123456789abcdef","host_pubkey":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","workspace_id":"default","session_id":"0123456789abcdef0123456789abcdef","command_id":"0123456789abcdef0123456789abcdef","engine_id":"codex","account_id":"system","model_id":"gpt-6-astra","effort_id":"high","input_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","input_bytes":201,"report_sha256":"ebcb874d0ebdf39b939721f1f932c767ae413128e1f09308b8fb07121d52661e","report_observed_at_ms":999,"issued_at_ms":1000,"expires_at_ms":301000},"state":"running","revision":3,"stop_requested":false,"native_session_id":"","interaction_id":"","error_code":"","updated_at_ms":1767225600000,"command_id":"5769445a77ce51dce4ff40985a02fc03","replay":false}
+clock data record status: http GET /api/chat/task/v1alpha1?host=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef&task=0123456789abcdef0123456789abcdef => 200 {"schema":"openagents.environment.execution.task-status.v1alpha1","binding":{"schema":"openagents.environment.execution.binding.v1alpha1","task_id":"0123456789abcdef0123456789abcdef","conversation_id":"cnv_0123456789abcdef0123456789abcdef","turn_id":"trn_0123456789abcdef0123456789abcdef","route_id":"0123456789abcdef0123456789abcdef","host_pubkey":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","workspace_id":"default","session_id":"0123456789abcdef0123456789abcdef","command_id":"0123456789abcdef0123456789abcdef","engine_id":"codex","account_id":"system","model_id":"gpt-6-astra","effort_id":"high","input_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","input_bytes":201,"report_sha256":"ebcb874d0ebdf39b939721f1f932c767ae413128e1f09308b8fb07121d52661e","report_observed_at_ms":999,"issued_at_ms":1000,"expires_at_ms":301000},"state":"running","revision":3,"stop_requested":false,"native_session_id":"","interaction_id":"","error_code":"","updated_at_ms":1767225600000,"command_id":"","replay":false}
 clock data release auth.state
 tap chat.composer
 type chat.composer Push the fix
 tap chat.composer.send
 clock +16
 clock data release submit
+clock +16
+clock data release turn
+clock data release history
 clock data release events
+clock +16
+clock +400
+clock data release binding
+clock +16
+clock +2000
+clock data release events
+clock +16
+clock data release status
+clock +16
+clock +2000
+clock data release capture
+clock +16
+clock +2000
 tree
-tap task.permission.allow
-tap task.permission.allow
+state permission.state
+tap tool.0123456789abcdef.1
+tree
+tap task.0123456789abcdef.permission.allow
+clock +16
+clock +16
+state permission.state
+tap task.0123456789abcdef.permission.allow
+clock data release events
+clock +16
+clock +16
 clock data
 clock data release allow
-clock data release events
+clock +16
+clock +2000
+clock data
+clock data release status
+clock +16
+state permission.state
 state task.state
+tree
+logs

@@ -54,7 +54,8 @@ clock data record NAME: KIND KEY => STATUS BODY
 - `STATUS part` is one part of a streamed answer. The request stays held.
 - Identities, clipboard and link need no recording: the fake answers them on the next frame.
 
-A request is held until the case says `clock data release NAME`. `clock data` lists what is held.
+A request is held until the case says `clock data release NAME`. `clock data` lists what is held. One request of the conversation is in flight at a time, so a held
+events read holds back the task's reads and the permission's answer until the case releases it.
 `clock +MS`, `clock settle` and `clock until ID` move the clock; a frame gets no time the clock did not
 grant. `life background`, `life foreground` and `life relaunch` deliver lifecycle facts. A relaunch ends
 everything in flight, keeps what the host keeps for the rejoin, and launches again.
@@ -120,8 +121,18 @@ What still differs: the C driver (`apps/shared/host/drive.c`) answers `clock +MS
 itself, stepping frames through `oc_drive_step`, so those lines read as the C driver writes them, not
 as the trace does. `cpu` is the host that plays every case to its end today.
 
-## What waits
+## The task-host fixture
 
-`permission.ops` waits on task-host fixtures: a turn-task binding and a task status with an interaction,
-written by the shared task writers. Tool calls come from the same task status, so no case covers them
-yet.
+`permission.ops` plays a task on a computer: the turn's task binding, a status that waits for a permission,
+the whole transcript with a tool call, its result and the question, then Allow, the answer's reply and the
+task running on. `task-fixture.coax` writes those bodies with the shared task writers (the native binding
+fixture `ntp_test_record`, `xt_status_write`, `xh_page_write`), so the case carries real wire bytes:
+
+```sh
+coax/web/tool.sh apps/shared/app/cases/task-fixture.coax READER READ COMMAND
+```
+
+READER, READ and COMMAND are the case's fake identities in the order the app asks for them (`fk_hex32`
+with the agent seed): the submit takes the first two, the transcript reader the next two (READ is the
+command ID, READER the session ID), the Allow the fifth. The transcript's path and the reply's command
+name them, so a case that asks for identities in another order needs the fixture written again.

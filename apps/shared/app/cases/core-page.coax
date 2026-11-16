@@ -66,7 +66,7 @@ co_key :: (c: [] AppCore, op: int, kind: int, method: int, out: [] u8) -> int {
   if kind == FX_IDS { return el_put(out, 0, "new"); }
   if kind == FX_CLIPBOARD || kind == FX_LINK {
     // what is copied or opened goes to the log (gd_take), cut to a line
-    body: [4096] u8; k := app_host_body(c, op, body[..]);
+    body: [FK_BODY] u8; k := app_host_body(c, op, body[..]);
     if k <= 0 { return el_put(out, 0, "(empty)"); }
     e := 0; while e < k && e < 120 && body[e] != '\n' { e += 1; }
     return el_put(out, 0, cast(string) body[0..<e]);
@@ -134,7 +134,7 @@ co_complete :: (r: [] CoRun, a: CoApp) {
   o := r[0].ops[k]; co_forget(r, k);
   body := fk_done_body(done);
   outcome := co_outcome(done[0].outcome); status := done[0].status;
-  flag := false; text: [2048] u8; tn := 0; more: [64] u8; mn := 0; value := 0;
+  flag := false; text: [FK_BODY] u8; tn := 0; more: [64] u8; mn := 0; value := 0;
   if o.kind == FX_HTTP { tn = el_put(text[..], 0, body); }
   else if o.kind == FX_IDS {
     tn = co_field(body, "command_id", text[..]); mn = co_field(body, "session_id", more[..]);

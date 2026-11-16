@@ -1,0 +1,63 @@
+// The task-host fixture the app's cases play (GitHub #13645, #13620): the bodies a computer's task
+// answers with, written by the shared task writers so a case records real wire bytes, never hand-made
+// JSON. It writes, one a line:
+//   binding   GET /api/chat/turn-task/v1alpha1: the turn's task (ntp_test_record, the native fixture)
+//   status    GET /api/chat/task/v1alpha1: the task waits for a permission (interaction "held")
+//   page      GET /api/chat/task/transcript/v1alpha1: the whole transcript, with a tool call and its
+//             result and the permission's question, for the reader and read the case's identities gave
+//   allowed   the status after Allow: the task runs on, at the next revision, with no interaction
+//   answered  the control's reply: that status, carrying the answer's command ID
+// The reader and read are the case's fake identities (fakes.coax fk_hex32); the dates are the agent
+// clock's (AGENT_EPOCH_MS). Rewrite the recordings in cases/permission.ops with its output:
+//   coax/web/tool.sh apps/shared/app/cases/task-fixture.coax READER READ COMMAND
+#load "../../chat-task-protocol.coax";
+#load "../../../../coax/native/chat-task-fixtures-checks.coax";
+#load "../../../../coax/lib/sys/tool.coax";
+
+TF_EPOCH_MS :: 1767225600000;   // AGENT_EPOCH_MS: the date the agent clock starts at
+TF_INTERACTION :: "held";
+
+// The transcript a task shows while it asks: the request, one tool call with its result, and the question.
+tf_transcript :: (out: [] u8) -> int {
+  s: [1] Session; pool: [8192] u8; s_init(s[..], pool[..]);
+  s_user(s[..], "Push the fix");
+  sl_test_tool(s[..], "call-1", TK_EXEC, "git status --short", "shell", "", "", "{\"command\":\"git status --short\"}", " M sum.coax", false);
+  s_notice(s[..], N_ASK, "Allow git push?");
+  return sl_lines_checked(s[..], 0, s[0].n, false, out);
+}
+tf_status :: (b: ExBinding, state: int, revision: int, interaction: string) -> XtStatus {
+  return XtStatus.{binding = b, state = state, revision = revision, interaction = interaction, updated = TF_EPOCH_MS};
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 3 { tool_errln("task-fixture: READER READ COMMAND (32 lowercase hex each)"); return 2; }
+  reader := args_at(a[..], 0); read := args_at(a[..], 1); command := args_at(a[..], 2);
+  raw: [CTT_MAX] u8; n := ntp_test_record(raw[..], 0);
+  t: [1] CttTask; arena: [CTT_ARENA] u8;
+  if n < 1 || !ctt_read(cast(string) raw[0..<n], t[..], arena[..]) { tool_errln("task-fixture: the binding fixture does not read back"); return 1; }
+  b := t[0].binding;
+  // the bodies must read as the app's task client reads them
+  n_: [1] NativeTaskApp;
+  if !nta_select(n_[..], b.turn, b.conversation) || !nta_binding(n_[..], cast(string) raw[0..<n]) { tool_errln("task-fixture: the app does not adopt the binding"); return 1; }
+  print("%\n", cast(string) raw[0..<n]);
+  out: [8192] u8; k := xt_status_write(tf_status(b, XT_WAITING, 2, TF_INTERACTION), out[..]);
+  if k < 1 { tool_errln("task-fixture: no status"); return 1; }
+  print("%\n", cast(string) out[0..<k]);
+  lines: [8192] u8; bytes := tf_transcript(lines[..]);
+  if bytes < 1 { tool_errln("task-fixture: no transcript"); return 1; }
+  text := cast(string) lines[0..<bytes];
+  hash: [64] u8; _ := S_hex(S_hash(text), hash[..]);
+  page: [XH_PAGE_MAX] u8;
+  p := XhPage.{capture = XhCapture.{reader = reader, read = read, status = tf_status(b, XT_WAITING, 2, TF_INTERACTION), hash = cast(string) hash[..], bytes = text.count, expires = TF_EPOCH_MS + 3600000}, next = text.count, complete = true, text = text};
+  k = xh_page_write(p, page[..]);
+  if k < 1 { tool_errln("task-fixture: no page"); return 1; }
+  print("%\n", cast(string) page[0..<k]);
+  k = xt_status_write(tf_status(b, XT_RUNNING, 3, ""), out[..]);
+  if k < 1 { tool_errln("task-fixture: no status after Allow"); return 1; }
+  print("%\n", cast(string) out[0..<k]);
+  answered := tf_status(b, XT_RUNNING, 3, ""); answered.command = command;
+  k = xt_status_write(answered, out[..]);
+  if k < 1 { tool_errln("task-fixture: no answer"); return 1; }
+  print("%\n", cast(string) out[0..<k]);
+  return 0;
+}

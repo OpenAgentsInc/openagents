@@ -192,7 +192,7 @@ view_task_rows :: (vm: [] ViewModel, d: [] DurableChat, turn: string, f: ViewFac
   n := d[0].native[..]; st := n[0].status[0];
   id: [EL_ID] u8;
   _ := view_add(vm, VK_TASK_HEAD, cast(string) id[0..<view_task_id(id[..], turn, "head")], -1, 0);
-  asking := -1;
+  asking := -1; placed := false;
   if n[0].has_session {
     s := n[0].shown[..];
     if nta_permission(n) { asking = s[0].asking; }
@@ -200,11 +200,11 @@ view_task_rows :: (vm: [] ViewModel, d: [] DurableChat, turn: string, f: ViewFac
       p := s[0].parts[k];
       if p.kind != P_TOOL { continue; }
       _ := view_add(vm, VK_TOOL, cast(string) id[0..<view_tool_id(id[..], turn, k)], k, p.output.count * 8 + p.input.count * 2 + (ifx p.resolved then 1 else 0) + (ifx p.failed then 2 else 0) + (ifx k == asking then 4 else 0));
-      if k == asking && f.permit != VIEW_PERMIT_NONE { _ := view_add(vm, VK_PERMISSION, cast(string) id[0..<view_task_id(id[..], turn, "permission")], k, f.permit * 8 + p.arg.count); }
+      if k == asking && f.permit != VIEW_PERMIT_NONE { _ := view_add(vm, VK_PERMISSION, cast(string) id[0..<view_task_id(id[..], turn, "permission")], k, f.permit * 8 + p.arg.count); placed = true; }
     }
   }
-  // a prompt the session does not show yet still asks
-  if f.permit != VIEW_PERMIT_NONE && (asking < 0 || !n[0].has_session) { _ := view_add(vm, VK_PERMISSION, cast(string) id[0..<view_task_id(id[..], turn, "permission")], -1, f.permit * 8); }
+  // a prompt the session does not show yet, or asks in its own words after the calls (a notice), still asks
+  if f.permit != VIEW_PERMIT_NONE && !placed { _ := view_add(vm, VK_PERMISSION, cast(string) id[0..<view_task_id(id[..], turn, "permission")], asking, f.permit * 8); }
   _ := view_add(vm, VK_TASK_STATE, cast(string) id[0..<view_task_id(id[..], turn, "state")], -1, st.state * 8 + (ifx st.stop then 1 else 0) + st.error.count * 16);
   if xt_terminal(st.state) && n[0].has_session { _ := view_add(vm, VK_TASK_RESULT, cast(string) id[0..<view_task_id(id[..], turn, "result")], -1, 0); }
 }

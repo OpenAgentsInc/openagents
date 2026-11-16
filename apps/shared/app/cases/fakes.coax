@@ -33,8 +33,8 @@
 //   coax/bin/coax test apps/shared/app/cases/fakes.coax
 
 FK_NAME :: 48;          // bytes of a request's name
-FK_KEY :: 160;          // bytes of a request's key
-FK_BODY :: 2048;        // bytes of an answer's body
+FK_KEY :: 512;          // bytes of a request's key
+FK_BODY :: 8192;        // bytes of an answer's body
 FK_HELD :: 16;          // requests held at once
 FK_ROWS :: 96;          // recorded answers
 FK_TEXT :: 32768;       // bytes of a recording

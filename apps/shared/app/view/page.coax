@@ -152,8 +152,12 @@ view_app_permission :: (s: [] Session, k: int, f: ViewFacts, has: bool) -> AppPe
   p.title = "Allow this?"; p.detail = "";
   if has && k >= 0 && k < s[0].n {
     part := s[0].parts[k];
+    // the session asks in its own words (a notice after the calls): those words are the detail
+    if part.kind == P_NOTICE { p.detail = s_text_of(s, k); }
+    else {
     p.title = ifx part.tk == TK_EXEC then "Run this command?" else ifx part.tk == TK_EDIT || part.tk == TK_WRITE then "Change this file?" else ifx part.tk == TK_READ then "Read this file?" else "Allow this?";
     p.detail = ifx part.arg.count > 0 then part.arg else part.detail;
+    }
   }
   p.state = ifx f.permit == VIEW_PERMIT_SENT then APP_PERMISSION_SENDING else ifx f.permit == VIEW_PERMIT_UNCERTAIN then APP_PERMISSION_UNCERTAIN else APP_PERMISSION_HELD;
   p.allow = f.allowing; p.can_allow = f.permit == VIEW_PERMIT_READY;
