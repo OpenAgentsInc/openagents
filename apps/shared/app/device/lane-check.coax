@@ -179,6 +179,50 @@ lc_rejoin_lost :: (r: [] LcRun) {
   lc_ok(r, again && lc_has(lc_body(q[..]), "\"ReadSession\""), "the lost poll is sent again by itself");
   lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("ReadSession", "", false, "Hi there", false, vb[..]), "", 0) == APP_OK && app_send_state(c) == SEND_EMPTY, "the finished turn is shown and the composer is free");
 }
+// A refusal from the computer for one method: no session, the error code.
+lc_refusal :: (method: string, code: string, out: [] u8) -> string {
+  v: [1] EaView; for b, i: LC_HOST { v[0].host[i] = b; } v[0].nh = 64; v[0].ok = true;
+  v[0].nm = ea_copy(v[0].method[..], method); v[0].ne = ea_copy(v[0].error[..], code);
+  n := ea_view_write(v[..], out); return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+// Send right after a new chat starts, before the computer has been read: the tap is kept and the
+// message goes once the read lands, never a tap that does nothing.
+lc_early_send :: (r: [] LcRun) {
+  a: [1] AppCore; c := a[..]; dl: [1] DeviceLane; q: [1] LcReq; vb: [65536] u8;
+  ok := app_host_init(c) && app_host_device(c, dl[..]) && app_host_launch(c, 1, 1000, "") == APP_OK;
+  r[0].t = 1;
+  while ok && lc_next(c, q[..]) {
+    if q[0].kind == FX_AUTH_STATE { ok = lc_done(c, r, q[..], FXO_DONE, false, "", "", 0) >= 0; }
+    else if q[0].kind == FX_DEVICE_LIST { ok = lc_done(c, r, q[..], FXO_DONE, false, "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a\tStudio Mac\n", "", 0) >= 0; }
+    else { break; }
+  }
+  ok = ok && app_host_action(c, r[0].t + 1, 1100, ACT_ENVIRONMENT, false, LC_HOST, "Studio Mac") == APP_OK; r[0].t += 1;
+  lc_ok(r, ok && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"DescribeEnvironment\""), "a new chat reads the computer first");
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1150, ACT_DRAFT, false, "hello", "") == APP_OK, "a draft is typed while the read is out"); r[0].t += 1;
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1160, ACT_SEND, false, "", "") == APP_OK, "Send before the read lands is kept, not dropped"); r[0].t += 1;
+  lc_ok(r, app_device_sent(c) == "hello" && app_send_state(c) == SEND_WAIT, "the kept message shows as sending");
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("DescribeEnvironment", "", false, "", false, vb[..]), "", 0) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"ListSessions\""), "the read goes on to the list");
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("ListSessions", "", false, "", false, vb[..]), "", 0) == APP_OK, "the read lands");
+  lc_ok(r, lc_next(c, q[..]) && q[0].kind == FX_IDS, "then the kept message asks for its identities");
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, LC_CMD_A, LC_SESSION, 1794813765580) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"OpenSession\"") && lc_has(lc_body(q[..]), "\"hello\""), "and goes as OpenSession");
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("OpenSession", LC_CMD_A, true, "", false, vb[..]), "", 0) == APP_OK && app_send_state(c) == SEND_STOP && app_device_sent(c).count == 0, "the computer has it and the turn runs");
+}
+// The computer is full and refuses a new chat: the message is not shown as sent, its text stays in
+// the composer, the note says it was not sent, and Try again sends it as a new request.
+lc_refused :: (r: [] LcRun) {
+  a: [1] AppCore; c := a[..]; dl: [1] DeviceLane; q: [1] LcReq; vb: [65536] u8;
+  lc_ok(r, lc_ready(c, dl[..], r, ""), "a paired computer is read");
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1200, ACT_DRAFT, false, "hello", "") == APP_OK, "a draft"); r[0].t += 1;
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1210, ACT_SEND, false, "", "") == APP_OK, "Send"); r[0].t += 1;
+  lc_ok(r, lc_next(c, q[..]) && q[0].kind == FX_IDS && lc_done(c, r, q[..], FXO_DONE, false, LC_CMD_A, LC_SESSION, 1794813765580) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"OpenSession\""), "the send is OpenSession");
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_refusal("OpenSession", "capacity", vb[..]), "", 0) == APP_OK, "the computer refuses: it is full");
+  lc_ok(r, app_device_sent(c).count == 0, "the refused message is not shown as sent");
+  lc_ok(r, app_draft(c) == "hello" && app_send_state(c) == SEND_READY, "its text stays in the composer, ready to send");
+  lc_ok(r, app_device_refused(c) && lc_has(app_note(c), "did not send"), "the note says it was not sent");
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1300, ACT_RETRY, false, "", "") == APP_OK, "Try again is admitted"); r[0].t += 1;
+  lc_ok(r, app_device_sent(c) == "hello" && !app_device_refused(c) && app_note(c).count == 0, "Try again shows it as sending again");
+  lc_ok(r, lc_next(c, q[..]) && q[0].kind == FX_IDS && lc_done(c, r, q[..], FXO_DONE, false, LC_CMD_B, LC_SESSION, 1794813766580) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"OpenSession\"") && lc_has(lc_body(q[..]), LC_CMD_B) && lc_has(lc_body(q[..]), "\"hello\""), "Try again sends it as a new OpenSession");
+}
 lc_unpaired :: (r: [] LcRun) {
   // with no lane attached the core is as before: a logged-out send asks to log in
   a: [1] AppCore; c := a[..];
@@ -208,7 +252,7 @@ lc_bridge :: (r: [] LcRun) {
 
 tool_main :: () -> int #export_c #effects(all) {
   r: [1] LcRun;
-  lc_turn(r[..]); lc_rejoin(r[..]); lc_rejoin_lost(r[..]); lc_unpaired(r[..]); lc_bridge(r[..]);
+  lc_turn(r[..]); lc_rejoin(r[..]); lc_rejoin_lost(r[..]); lc_early_send(r[..]); lc_refused(r[..]); lc_unpaired(r[..]); lc_bridge(r[..]);
   b: [64] u8; n := 0;
   lc_say(ifx r[0].failed == 0 then "device lane: all checks passed" else "device lane: checks failed");
   return ifx r[0].failed == 0 then 0 else 1;

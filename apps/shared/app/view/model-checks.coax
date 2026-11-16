@@ -57,6 +57,12 @@ view_test_kinds :: (vm: [] ViewModel, kinds: [] int) -> bool {
   view_build(t[0].vm[..], t[0].d[..], ViewFacts.{note = "We could not read this chat. We will try again."});
   #assert !t[0].vm[0].rejoining && !t[0].vm[0].empty && view_find(t[0].vm[..], "chat.note") >= 0;
 }
+#test "a message the computer refused is not shown as sent and offers Try again, not Reconnect" #steps 2000000000 {
+  e: [1] EnvironmentApp; vm: [1] ViewModel;
+  view_build_device(vm[..], e[..], ViewFacts.{device = true, note = "We did not send your message. Try again.", send_refused = true});
+  k := view_find(vm[..], "chat.note");
+  #assert k >= 0 && vm[0].rows[k].act == VIEW_DO_RETRY && view_find(vm[..], "dev.sent") < 0;
+}
 #test "saved messages come in order under stable ids, and a streaming answer follows the turn's message" #steps 2000000000 {
   t: [1] ViewTestChat; view_test_open(t[..]); view_test_turn(t[..], CT_RUNNING, "Working on");
   vm := t[0].vm[..];

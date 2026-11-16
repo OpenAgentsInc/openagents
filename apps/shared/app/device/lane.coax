@@ -51,6 +51,12 @@ DeviceLane :: struct {
   wake_at: int;                  // EnvironmentApp asked to read again at this time (0: no)
   rejoin: [64 + 1 + 128] u8; rejoin_n: int;   // "host TAB session" waiting for the list
   sent_text: [APP_DRAFT_BYTES] u8; sent_n: int;  // the message being sent, shown until the computer has it
+  // Send before the computer was read (a new chat, a read in flight): the message waits in
+  // sent_text and goes once the read lands (dl_step), never dropped by a tap that does nothing.
+  queued: bool;
+  // The computer refused the last message: nothing ran, the text is back in the composer,
+  // and Try again sends it as a new request.
+  refused: bool;
 }
 
 dl_lane :: (c: [] AppCore) -> [] DeviceLane { return c[0].device; }
@@ -87,6 +93,8 @@ app_device_pairing :: (c: [] AppCore) -> int { return ifx dl_has(c) then c[0].de
 app_device_pair_words :: (c: [] AppCore) -> string { if !dl_has(c) { return ""; } d := dl_lane(c); return cast(string) d[0].pair_words[0..<d[0].pair_wn]; }
 // The message being sent while the computer does not have it yet ("" when none).
 app_device_sent :: (c: [] AppCore) -> string { if !app_device_on(c) { return ""; } d := dl_lane(c); return cast(string) d[0].sent_text[0..<d[0].sent_n]; }
+// Whether the computer refused the last message (it was not sent; Try again sends it).
+app_device_refused :: (c: [] AppCore) -> bool { return app_device_on(c) && c[0].device[0].refused; }
 
 dl_say_pair :: (c: [] AppCore, state: int, words: string) {
   d := dl_lane(c); d[0].pair = state; n := js_copy(d[0].pair_words[..], words); d[0].pair_wn = ifx n < 0 then 0 else n;
@@ -154,7 +162,7 @@ dl_leave :: (c: [] AppCore) {
   if !dl_has(c) { return; }
   d := dl_lane(c);
   if d[0].op != 0 { _ := fx_cancel(c[0].out[..], OWN_DEVICE); d[0].op = 0; d[0].purpose = 0; d[0].list_op = 0; d[0].pair_op = 0; }
-  d[0].on = false; d[0].e[0] = EnvironmentApp.{}; d[0].wake_at = 0; d[0].sent_n = 0;
+  d[0].on = false; d[0].e[0] = EnvironmentApp.{}; d[0].wake_at = 0; d[0].sent_n = 0; d[0].queued = false; d[0].refused = false;
   app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER | SURF_TASK);
 }
 // A new chat on the same computer.
@@ -227,10 +235,25 @@ dl_method :: (c: [] AppCore) -> string { return dl_e_method(c[0].device[0].e[..]
 
 dl_send_state :: (c: [] AppCore) -> int {
   if dl_busy(c) { return SEND_STOP; }
+  if c[0].device[0].queued { return SEND_WAIT; }
   if app_draft(c).count == 0 { return SEND_EMPTY; }
-  e := c[0].device[0].e[..];
-  if e[0].flight || e[0].random || e[0].uncertain || e[0].action != 0 || d_reading(c) { return SEND_WAIT; }
+  if !dl_free(c) { return SEND_WAIT; }
   return SEND_READY;
+}
+// Nothing is on its way to the computer or waits for it: a message can go now.
+dl_free :: (c: [] AppCore) -> bool {
+  e := c[0].device[0].e[..];
+  return !dl_busy(c) && !e[0].flight && !e[0].random && !e[0].uncertain && e[0].action == 0 && !d_reading(c);
+}
+// A Send that waits for a read (not for a write whose outcome is unknown) is kept until the read lands.
+dl_can_queue :: (c: [] AppCore) -> bool { d := dl_lane(c); return !d[0].queued && d[0].sent_n == 0 && !dl_writing(c) && !dl_unsure(c); }
+// The message goes to the computer: EnvironmentApp makes its identities, then OpenSession or SendMessage.
+dl_send_now :: (c: [] AppCore, text: string) -> bool {
+  d := dl_lane(c); e := d[0].e[..];
+  e[0].nd = ea_copy(e[0].draft[..], text);
+  eu_press(e, "env.composer.send");
+  if e[0].action != 11 { e[0].nd = 0; return false; }
+  return true;
 }
 // The runtime has not been read yet: nothing can be sent before the computer is known to answer.
 d_reading :: (c: [] AppCore) -> bool { e := c[0].device[0].e[..]; return cast(string) e[0].catalog[0].entries[0].host[..] != cast(string) e[0].view[0].host[..]; }
@@ -252,16 +275,19 @@ dl_permission_state :: (c: [] AppCore) -> int {
 // The person's actions on a conversation that runs on a computer.
 dl_action :: (c: [] AppCore, a: int) -> int {
   d := dl_lane(c); e := d[0].e[..];
-  if a == ACT_SEND {
+  if a == ACT_SEND || (a == ACT_RETRY && d[0].refused) {
     s := dl_send_state(c);
     if s == SEND_EMPTY { return APP_R_EMPTY; }
-    if s != SEND_READY { return APP_R_BLOCKED; }
     text := app_draft(c);
     if text.count > e[0].draft.count { return APP_R_INVALID; }
-    e[0].nd = ea_copy(e[0].draft[..], text);
-    eu_press(e, "env.composer.send");
-    if e[0].action != 11 { e[0].nd = 0; return APP_R_BLOCKED; }
-    d[0].sent_n = js_copy(d[0].sent_text[..], text);
+    if s == SEND_WAIT && dl_can_queue(c) {
+      // the computer is still being read: the message waits for it and shows as sending
+      d[0].queued = true; d[0].refused = false; d[0].sent_n = js_copy(d[0].sent_text[..], text);
+      app_say(c, ""); app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER); return APP_OK;
+    }
+    if s != SEND_READY { return APP_R_BLOCKED; }
+    if !dl_send_now(c, text) { return APP_R_BLOCKED; }
+    d[0].refused = false; d[0].sent_n = js_copy(d[0].sent_text[..], text);
     app_say(c, ""); app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER); return APP_OK;
   }
   if a == ACT_STOP {
@@ -297,6 +323,12 @@ dl_step :: (c: [] AppCore) {
   // on "Reconnecting…" for good. A write with an unknown outcome is never sent again here.
   if d[0].op == 0 { eu_wait(e); }
   if e[0].action == 12 { e[0].action = 0; d[0].wake_at = now + DL_POLL_MS; }
+  // a message sent before the read landed goes now
+  if d[0].queued && d[0].op == 0 && dl_free(c) {
+    d[0].queued = false;
+    if !dl_send_now(c, cast(string) d[0].sent_text[0..<d[0].sent_n]) { d[0].sent_n = 0; }
+    app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER);
+  }
   if d[0].wake_at > 0 && now >= d[0].wake_at && d[0].op == 0 && c[0].foreground {
     d[0].wake_at = 0; eu_reply(e, 12, 0, "", false);
     // a retry the reducer is still counting down waits one more round
@@ -356,12 +388,23 @@ dl_done :: (c: [] AppCore, op: int, purpose: int, ev: AppEvent) {
     method := dl_method(c);
     // the device service answers with the computer's view, or no answer (FXO_UNKNOWN)
     eu_reply(e, 14, ifx ok then 200 else 0, ev.text, !ok);
-    if e[0].nn > 0 { app_say(c, dl_words(cast(string) e[0].note[0..<e[0].nn])); } else { app_say(c, ""); }
+    // the computer refused the message: nothing ran, so it is not shown as sent and its text stays in the composer
+    refused := (method == "OpenSession" || method == "SendMessage") && ok && !e[0].uncertain && e[0].view[0].ne > 0;
+    if refused { d[0].refused = true; d[0].sent_n = 0; }
+    if e[0].nn > 0 { app_say(c, ifx refused then dl_refused_words(cast(string) e[0].view[0].error[0..<e[0].view[0].ne], cast(string) e[0].note[0..<e[0].nn]) else dl_words(cast(string) e[0].note[0..<e[0].nn])); } else { app_say(c, ""); }
     // the computer has the message: the composer starts over
     if (method == "OpenSession" || method == "SendMessage") && e[0].nd == 0 { _ := app_draft_keep(c, "", ""); d[0].sent_n = 0; }
     if !ok && ev.outcome == FXO_FAILED && !e[0].uncertain { d[0].sent_n = 0; }
   }
   app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER | SURF_TASK);
+}
+// Why the computer did not take a message, in our words.
+dl_refused_words :: (code: string, note: string) -> string {
+  if code == "capacity" { return "We did not send your message: your computer is busy with other chats. Try again when one of them finishes."; }
+  if code == "model_unavailable" { return "We did not send your message: your computer does not offer that model or effort. Choose another and try again."; }
+  if code == "conflict" || code == "expired" { return "We did not send your message: the chat changed on your computer. Try again."; }
+  if code == "storage_unavailable" { return "We did not send your message: your computer could not save it. Try again."; }
+  return "We did not send your message. Try again.";
 }
 // The reducer's notes in our words.
 dl_words :: (note: string) -> string {

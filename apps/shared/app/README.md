@@ -31,7 +31,8 @@ not yet replaced the desktop environment client or its protected local adapter.
 2. The phone's secp256k1 key is made once and kept in the Keychain (this device only, never synced); the 7-day grant sits beside it. Neither enters Coax, the outbox or a log.
 3. Every request and reply is sealed, opened and checked in `device/seal.coax`; Swift (`native/AppDeviceLink.swift`) only holds the key and moves bytes over the relay's WebSocket.
 4. The device lane (`device/lane.coax`) drives the environment runtime (`DescribeEnvironment` … `StopTurn`) with the same EnvironmentApp reducer, and keeps "host TAB session" for rejoin. After every event it lets the reducer schedule its next read, so a read that got no answer is sent again by itself; a write with an unknown outcome never is. The lane is part of the core: check it through `core/core.coax` or `device/lane-check.coax`, not on its own.
-5. Login gates only Default (where we choose); a paired computer works logged out, and nothing is shared with the server.
+5. A Send before the computer has been read (a new chat, a read in flight) waits in the lane and goes once the read lands; it shows as sending meanwhile. A message the computer refuses (it is full, or the chat changed) is not shown as sent: its text stays in the composer, the note says why, and Try again sends it as a new request.
+6. Login gates only Default (where we choose); a paired computer works logged out, and nothing is shared with the server.
 
 ## The core
 

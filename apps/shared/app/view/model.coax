@@ -81,6 +81,7 @@ ViewFacts :: struct {
   send_unsure: bool;    // device: a message was sent and no answer came
   reading: bool;        // device: a kept conversation is not read yet
   sent: string;         // device: the message on its way ("": none)
+  send_refused: bool;   // device: the computer refused the message; nothing was sent, Try again sends it
 }
 
 // The words of the notices the model makes up.
@@ -276,7 +277,7 @@ view_build_device :: (vm: [] ViewModel, e: [] EnvironmentApp, f: ViewFacts) {
   if busy { _ := view_add(vm, VK_DEVICE_STATE, "dev.state", -1, f.stop); }
   if f.send_unsure { view_notice(vm, "chat.unsure", VIEW_W_SEND_UNSURE, VIEW_DO_RETRY); }
   else if f.stop == VIEW_STOP_UNCERTAIN { view_notice(vm, "chat.unsure", VIEW_W_STOP_UNSURE, VIEW_DO_RETRY); }
-  if f.note.count > 0 { view_notice(vm, "chat.note", f.note, ifx f.send_unsure || f.stop == VIEW_STOP_UNCERTAIN then VIEW_DO_NONE else VIEW_DO_RECONNECT); }
+  if f.note.count > 0 { view_notice(vm, "chat.note", f.note, ifx f.send_unsure || f.stop == VIEW_STOP_UNCERTAIN then VIEW_DO_NONE else ifx f.send_refused then VIEW_DO_RETRY else VIEW_DO_RECONNECT); }
   vm[0].rejoining = f.reading && f.note.count == 0;
   vm[0].empty = vm[0].n == 0 && !vm[0].rejoining;
 }

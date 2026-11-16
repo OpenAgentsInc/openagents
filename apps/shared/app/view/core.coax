@@ -32,7 +32,7 @@ view_facts :: (c: [] AppCore) -> ViewFacts {
     f.device = true; f.allowing = app_device_env(c)[0].request[0].allow;
     f.send_unsure = dl_unsure(c) && (dl_method(c) == "OpenSession" || dl_method(c) == "SendMessage");
     e := app_device_env(c); f.reading = e[0].ns > 0 && eu_current(e) < 0;
-    f.sent = app_device_sent(c);
+    f.sent = app_device_sent(c); f.send_refused = app_device_refused(c);
   }
   return f;
 }
