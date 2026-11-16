@@ -74,6 +74,8 @@ struct UiHost {
   NSArray *ax_rows;           // the last table's elements, in its order
   NSString *ax_focus;         // the id Tab and VoiceOver last moved to
   int ax_ring;                // focus last moved by a key: the ring is drawn around it (focus-ring.h, #13182)
+  NSString *editor_id;
+  __weak NSView *editor_view;
   // a file chooser waiting for coax drive's answer (no panel where no one sees it, #13182)
   int choosing, choose_request, choose_folders, choose_many, choose_given;
   char choose_message[256];
@@ -109,6 +111,7 @@ static int ui_named(unsigned short code, unichar c) {
 static int ui_paste_from(UiHost *h, NSPasteboard *pb);
 // accessibility (below): the elements, the one under a point, Tab's move, and pressing what has focus
 static NSArray *ui_ax_children(UiHost *h);
+static NSArray *ui_ax_presented(UiHost *h);
 static id ui_ax_at(UiHost *h, NSPoint screen);
 static id ui_ax_focused(UiHost *h);
 static NSString *ui_ax_move(UiHost *h, int back);
@@ -121,6 +124,7 @@ static int ui_ax_box(UiHost *h, NSRect *box);
 @end
 
 @implementation UiView
+- (void)setFrameSize:(NSSize)size { [super setFrameSize:size]; UiHost *h=self.host; if(h && h->app.changed)h->app.changed(h->app.user); }
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)wantsUpdateLayer { return YES; }
 - (CALayer *)makeBackingLayer { return self.host->layer; }
@@ -222,7 +226,7 @@ static int ui_ax_box(UiHost *h, NSRect *box);
 - (BOOL)isAccessibilityElement { return YES; }
 - (NSAccessibilityRole)accessibilityRole { return NSAccessibilityGroupRole; }
 - (NSString *)accessibilityLabel { return self.window.title.length ? self.window.title : nil; }
-- (NSArray *)accessibilityChildren { return ui_ax_children(self.host); }
+- (NSArray *)accessibilityChildren { return ui_ax_presented(self.host); }
 - (id)accessibilityHitTest:(NSPoint)p { return ui_ax_at(self.host, p) ?: self; }
 - (id)accessibilityFocusedUIElement { return ui_ax_focused(self.host) ?: self; }
 - (void)keyUp:(NSEvent *)e {
@@ -498,10 +502,15 @@ static NSArray *ui_ax_children(UiHost *h) {
   return rows;
 }
 static id ui_ax_at(UiHost *h, NSPoint screen) {
-  for (UiAxElement *el in [ui_ax_children(h) reverseObjectEnumerator]) if (NSPointInRect(screen, el.accessibilityFrame)) return el;
+  for (id<NSAccessibility> el in [ui_ax_presented(h) reverseObjectEnumerator]) if (NSPointInRect(screen, el.accessibilityFrame)) return el;
   return nil;
 }
-static id ui_ax_focused(UiHost *h) { return h && h->ax_focus ? h->ax_by_id[h->ax_focus] : nil; }
+static NSArray *ui_ax_presented(UiHost *h) {
+  NSArray *rows=ui_ax_children(h);if(!h || !h->editor_view || !h->editor_id)return rows;
+  NSMutableArray *out=[NSMutableArray arrayWithCapacity:rows.count];
+  for(UiAxElement *row in rows)[out addObject:[row.ident isEqualToString:h->editor_id] ? h->editor_view:row];return out;
+}
+static id ui_ax_focused(UiHost *h) { if(h && h->editor_view && [h->ax_focus isEqualToString:h->editor_id])return h->editor_view;return h && h->ax_focus ? h->ax_by_id[h->ax_focus] : nil; }
 // Where the focused row is drawn now (logical px), from the app's table: the ring follows a row that moves.
 static int ui_ax_box(UiHost *h, NSRect *box) {
   if (!h || !h->ax_focus) return 0;
@@ -545,19 +554,21 @@ static NSString *ui_ax_move(UiHost *h, int back) {
   return el.ident;
 }
 static int ui_ax_press_focus(UiHost *h) {
-  UiAxElement *el = ui_ax_focused(h);
+  UiAxElement *el = h && h->ax_focus ? h->ax_by_id[h->ax_focus]:nil;
   return el && el.kind != UI_AX_FIELD ? [el accessibilityPerformPress] : 0;
 }
 // The elements as VoiceOver reaches them: from the window down through accessibilityChildren (offscreen,
 // the host's own list), each with what the Accessibility API says of it.
 static void ui_ax_walk(id node, NSMutableArray *found, int depth) {
   if (!node || depth > 12) return;
-  if ([node isKindOfClass:UiAxElement.class]) { [found addObject:node]; return; }
+  if ([node isKindOfClass:UiAxElement.class] || ([node isKindOfClass:NSView.class] && [node accessibilityIdentifier] && ![node isKindOfClass:UiView.class])) { [found addObject:node]; return; }
   NSArray *kids = [node respondsToSelector:@selector(accessibilityChildren)] ? [node accessibilityChildren] : nil;
   for (id k in kids) ui_ax_walk(k, found, depth + 1);
 }
 static NSArray *ui_ax_reached(UiHost *h) {
-  if (!h->window) return ui_ax_children(h);
+  // AppKit does not expose a hidden window through the application tree. SDK
+  // qualification reads the actual elements from its view without showing it.
+  if (!h->window || h->app.hidden) return ui_ax_presented(h);
   NSMutableArray *found = [NSMutableArray array];
   ui_ax_walk(h->window, found, 0);
   return found;
@@ -1004,6 +1015,13 @@ int ui_mods(UiHost *h) { (void)h; return 0; }
 int ui_focused(UiHost *h) { return h->offscreen ? 0 : h->view.window.isKeyWindow; }
 #endif
 void *ui_view(UiHost *h) { return (__bridge void *)h->view; }
+void ui_access_editor(UiHost *h,const char *id,void *view) {
+#if TARGET_OS_OSX
+ if(h) {h->editor_id=id && *id ? [NSString stringWithUTF8String:id]:nil;h->editor_view=(__bridge NSView *)view;}
+#else
+ (void)h;(void)id;(void)view;
+#endif
+}
 uint64_t ui_presented(UiHost *h) { return h->presented; }
 // Two pictures' pixels as RGBX, w by rows.
 static uint8_t *ui_pixels(const char *path, size_t *w, size_t *rows) {
@@ -1129,9 +1147,9 @@ int ui_frame(UiHost *h) {
 #if TARGET_OS_OSX
     // the seat's events, without waiting: a frame's time at most when nothing changed
     int every = h->layered && !h->layer_of.changed;   // a layer that changes every frame (a world)
-    NSDate *until = h->stale || every ? NSDate.distantPast : [NSDate dateWithTimeIntervalSinceNow:1 / 60.0];
+    NSDate *until = h->app.external_clock || h->stale || every ? NSDate.distantPast : [NSDate dateWithTimeIntervalSinceNow:1 / 60.0];
     NSEvent *e;
-    while ((e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:until inMode:NSDefaultRunLoopMode dequeue:YES])) {
+    while (!h->app.external_clock && (e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:until inMode:NSDefaultRunLoopMode dequeue:YES])) {
       [NSApp sendEvent:e];
       until = NSDate.distantPast;
     }
@@ -1213,6 +1231,8 @@ void ui_close(UiHost *h) {
 #if TARGET_OS_OSX
   for (id o in h->observers) [NSNotificationCenter.defaultCenter removeObserver:o];
   h->observers = nil;
+  h->view.host = NULL;
+  h->editor_view = nil; h->editor_id = nil;
   if (h->window) { h->window.delegate = nil; ((UiWindow *)h->window).host = NULL; [h->window close]; }
   h->window = nil; h->root = nil;
   for (UiAxElement *el in h->ax_by_id.allValues) el.host = NULL;   // VoiceOver may still hold them

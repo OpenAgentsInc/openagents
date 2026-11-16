@@ -1,7 +1,9 @@
 // Firm reason: 6 (checks the installed Swift SDK carrier and its real compiled Coax crypto).
 import XCTest
 import Foundation
+#if canImport(OpenAgents)
 @testable import OpenAgents
+#endif
 
 private final class IdentityNetwork:URLProtocol {
     nonisolated(unsafe) static var seen:[Data]=[]

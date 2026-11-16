@@ -6,6 +6,13 @@ connects the chat page to the #13620 task system: log in, send a request, see
 the task's state, messages and tool rows, answer a permission prompt, Stop,
 and rejoin after relaunch.
 
+Apple SDK service wiring now lives once in `apps/shared/native/AppRuntime.swift`
+and `AppCoreC.swift`. The iOS wrapper supplies lifecycle, screen-capture facts
+and its kept drafts. The hidden desktop SDK target in
+[`apps/openagents-desktop/native/gpu/`](../../openagents-desktop/native/gpu/README.md)
+qualifies the same compiled app with AppKit text input/accessibility; it has
+not yet replaced the desktop environment client or its protected local adapter.
+
 | Directory | Owner | What it is |
 | --- | --- | --- |
 | `core/` | `claude-app-core` | State, dispatch, the effect outbox, the task client adapter, the host ABI |

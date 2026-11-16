@@ -1,7 +1,8 @@
 // Firm reason: 6 (Keychain custody, system passkeys/biometrics, and the secure platform editor).
 // The private side of the compiled GPU Settings screen. Coax owns admission, codecs and crypto.
 // Only strict public identity-v1 metadata returns through the effect outbox.
-import UIKit
+import Foundation
+import AuthenticationServices
 import LocalAuthentication
 import Security
 
@@ -14,7 +15,8 @@ import Security
 @MainActor final class AppIdentityNative: AppIdentityService {
     private let auth: AppAuth
     private let http: AppHTTP
-    var anchor: () -> UIWindow? = { nil }
+    var anchor: () -> ASPresentationAnchor? = { nil }
+    var captured: () -> Bool = { false }
     var input: () -> String = { "" }
     var clearInput: () -> Void = {}
     private(set) var backup = ""
@@ -79,7 +81,7 @@ import Security
                     guard verified else {done(.cancelled,0,Data());return}
                     var (state, status, raw) = await exchange("POST", "/api/auth/identity/backup/v1", Data("{}".utf8))
                     defer { raw.resetBytes(in: 0..<raw.count) }
-                    guard auth.sessionOwner == owner, epoch == mine, !UIScreen.main.isCaptured else { done(.cancelled, 0, Data()); return }
+                    guard auth.sessionOwner == owner, epoch == mine, !captured() else { done(.cancelled, 0, Data()); return }
                     var text = [CChar](repeating: 0, count: 128)
                     defer { text.withUnsafeMutableBytes { $0.initializeMemory(as: UInt8.self, repeating: 0) } }
                     let count = raw.withUnsafeBytes { bytes in oi_backup(bytes.bindMemory(to: UInt8.self).baseAddress, Int32(raw.count), expected, &text, Int32(text.count)) }

@@ -97,6 +97,9 @@ typedef struct {
   int (*elements)(void *user);
   int (*element)(void *user, int row, UiElement *out);
   int (*activate)(void *user, const char *id);
+  // An Apple SDK display link owns scheduling: ui_frame never waits for an event.
+  int external_clock;
+  void (*changed)(void *user); // window geometry changed; request one frame
 } UiApp;
 
 // The input method's view of the text box (UTF-16 units). which: 0 selection start, 1 its end,

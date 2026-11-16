@@ -673,3 +673,27 @@ also drives Settings and reads its actual accessibility rows. This is a
 host foundation, not completion of G6: the desktop environment application
 still uses its old projection, Linux still needs AT-SPI, and physical screen
 reader acceptance remains open.
+
+The desktop SDK qualification target in `apps/openagents-desktop/native/gpu/`
+now links the same compiled page/core and `AppRuntime` as iOS. Its hidden
+AppKit window verifies Settings/login, actual text insertion, provisional
+composition, committed text, replacing the virtual field with the active
+platform editor, and detaching it on blur. It opens no normal window and
+uses an isolated account/preferences store. The target refuses ordinary
+launch; it is not yet the replacement desktop application. Its README lists
+the local-service, persistence and migration exits before that switch.
+
+Apple's shared native service wiring is in `apps/shared/native/AppRuntime.swift`
+and the core ABI in `AppCoreC.swift`. Passkeys use `ASPresentationAnchor` on
+both Apple targets; iOS supplies its screen-capture fact to the identity
+custody adapter. `KitEditorMac.swift` uses AppKit's own active text system,
+with no second application edit buffer. The Apple host can take an external
+display clock so it does not wait or drain events inside a display-link
+callback. This does not change the older recovery clients' polling contract.
+
+The same four identity SDK XCTest cases run on the standalone Mac runner
+(`apps/shared/native/identity-check.coax`), without Simulator, network or a
+real private store. The iOS device SDK build and package check pass; the
+simulator runner also needs a successful test-manager connection before its
+results can be claimed. Earlier successful iOS test results remain recorded
+with the Settings release.

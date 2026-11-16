@@ -1,5 +1,4 @@
 // Firm reason: 6 (shared AuthenticationServices ceremony adapter, moved from SignInScreens.swift).
-import UIKit
 import AuthenticationServices
 
 /// The system's passkey sheet (ASAuthorizationPlatformPublicKeyCredentialProvider) for one login:
@@ -7,9 +6,9 @@ import AuthenticationServices
 /// verification required. Its answer, or why there is none, in our words.
 @MainActor
 final class PasskeyAsk: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
-    private let anchor: UIWindow?
+    private let anchor: ASPresentationAnchor?
     private var waiting: CheckedContinuation<AppAuth.PasskeyAssertion, Error>?
-    init(anchor: UIWindow?) { self.anchor = anchor }
+    init(anchor: ASPresentationAnchor?) { self.anchor = anchor }
 
     /// The PRF output of the last answer, when its request asked for one and the passkey can
     /// make it (WebAuthn's prf extension, hmac-secret). It is made inside the authenticator and
@@ -23,7 +22,7 @@ final class PasskeyAsk: NSObject, ASAuthorizationControllerDelegate, ASAuthoriza
     func assert(_ c: AppAuth.PasskeyChallenge, prf: Data? = nil) async throws -> AppAuth.PasskeyAssertion {
         let request = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: c.rpID).createCredentialAssertionRequest(challenge: c.challenge)
         request.userVerificationPreference = .required
-        if let prf { request.prf = .inputValues(.init(saltInput1: prf)) }
+        if #available(iOS 18.0, macOS 15.0, *), let prf { request.prf = .inputValues(.init(saltInput1: prf)) }
         prfOutput = nil
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self; controller.presentationContextProvider = self
@@ -35,7 +34,7 @@ final class PasskeyAsk: NSObject, ASAuthorizationControllerDelegate, ASAuthoriza
         let request = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: c.rpID)
             .createCredentialRegistrationRequest(challenge: c.challenge, name: c.userName, userID: c.userID)
         request.userVerificationPreference = .required
-        request.prf = .checkForSupport
+        if #available(iOS 18.0, macOS 15.0, *) { request.prf = .checkForSupport }
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self; controller.presentationContextProvider = self
         return try await withCheckedThrowingContinuation { k in registering = k; controller.performRequests() }
@@ -49,9 +48,12 @@ final class PasskeyAsk: NSObject, ASAuthorizationControllerDelegate, ASAuthoriza
             AppAuth.PasskeyAssertion(credentialID: $0.credentialID, authenticatorData: $0.rawAuthenticatorData, clientData: $0.rawClientDataJSON,
                                      signature: $0.signature, userHandle: $0.userID)
         }
-        let prf = answered?.prf.map { $0.first.withUnsafeBytes { Data($0) } }
+        var prf: Data?
+        if #available(iOS 18.0, macOS 15.0, *) { prf = answered?.prf.map { $0.first.withUnsafeBytes { Data($0) } } }
         let made = (authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration).flatMap { r in
-            r.rawAttestationObject.map { Registration(attestation: $0, clientData: r.rawClientDataJSON, credentialID: r.credentialID, prfSupported: r.prf?.isSupported ?? false) }
+            var supported = false
+            if #available(iOS 18.0, macOS 15.0, *) { supported = r.prf?.isSupported ?? false }
+            return r.rawAttestationObject.map { Registration(attestation: $0, clientData: r.rawClientDataJSON, credentialID: r.credentialID, prfSupported: supported) }
         }
         MainActor.assumeIsolated {
             prfOutput = prf

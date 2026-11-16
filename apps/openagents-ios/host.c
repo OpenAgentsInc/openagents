@@ -74,7 +74,9 @@ static int oc_access_read(void *user,int row,UiElement *out) {
 }
 static int oc_access_press(void *user,const char *id) {Chat *c=user;int pressed=chat_activate(oc_state(c),oc_string(id));if(pressed)oc_woke(c);return pressed;}
 
-void *oc_open(const char *resources) {
+static void oc_window_changed(void *user) {oc_woke(user);}
+static void oc_wheel(void *user,float dy) {Chat *c=user;float f[3];if(oc_scroll_info(c,f) && f[0])oc_scroll_to(c,f[1]+dy/ui_dpr(c->app.host));}
+void *oc_open_window(const char *resources,int width,int height,int hidden) {
   Chat *c = calloc(1, sizeof *c);
   if (!c) return NULL;
   App *a = &c->app;
@@ -83,8 +85,8 @@ void *oc_open(const char *resources) {
   c->s = calloc(1, sizeof *c->s);
   if (!c->s) { free(c); return NULL; }
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)chat_max_vertices();
-  UiApp app = {.title = "OpenAgents", .width = 402, .height = 874, .max_vertices = a->max_vertices, .shader = shader, .user = c,
-               .frame = oc_on_frame, .pointer = oc_on_pointer, .drive = oc_on_drive,
+  UiApp app = {.title = "OpenAgents", .app_id="com.openagents.desktop", .width = width, .height = height, .hidden=hidden, .min_width=360,.min_height=480,.external_clock=1,.changed=oc_window_changed,.max_vertices = a->max_vertices, .shader = shader, .user = c,
+               .frame = oc_on_frame, .pointer = oc_on_pointer, .drive = oc_on_drive,.wheel=oc_wheel,
                .access_capacity=(uint32_t)chat_access_capacity(),.elements=oc_access_count,.element=oc_access_read,.activate=oc_access_press};
   a->host = ui_open(&app, 0);
   if (!a->host) { free(c->s); free(c); return NULL; }
@@ -94,6 +96,16 @@ void *oc_open(const char *resources) {
   oc_changed(c);
   return c;
 }
+void *oc_open(const char *resources) {return oc_open_window(resources,402,874,0);}
+void *oc_window(void *chat) {return chat ? ui_window(((Chat *)chat)->app.host):NULL;}
+int oc_drive(void *chat,const char *op,char *out,int cap) {
+#ifdef OPENAGENTS_PHONE_DRIVE
+ (void)chat;(void)op;(void)out;(void)cap;return -1;
+#else
+ return chat ? ui_drive(((Chat *)chat)->app.host,op,out,cap):-1;
+#endif
+}
+void oc_access_editor(void *chat,const char *id,void *view) {if(chat)ui_access_editor(((Chat *)chat)->app.host,id,view);}
 void *oc_view(void *chat) { return chat ? ui_view(((Chat *)chat)->app.host) : NULL; }
 void oc_frame(void *chat) { if (chat) ui_frame(((Chat *)chat)->app.host); }
 int oc_moving(void *chat) { Chat *c = chat; return c && (c->settle > 0 || chat_moving(oc_state(c))); }

@@ -24,8 +24,14 @@ struct AppPaired: Codable, Equatable {
 @MainActor final class AppDeviceLink: AppDeviceService {
     static let shared = AppDeviceLink()
 
+    #if os(iOS)
     private let keyStore = KeychainDeviceKeyStore(account: "own-computer-key-v1")
     private let pairStore = KeychainDeviceKeyStore(account: "own-computer-paired-v1")
+    #else
+    private static let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/desktop", isDirectory: true)
+    private let keyStore = FileDeviceKeyStore(url: AppDeviceLink.folder.appendingPathComponent("own-computer-key-v1"))
+    private let pairStore = FileDeviceKeyStore(url: AppDeviceLink.folder.appendingPathComponent("own-computer-paired-v1"))
+    #endif
     private var sockets: [String: AppRelaySocket] = [:]
     /// Pairing links opened before the core could take them.
     private var waiting: [String] = []
@@ -47,7 +53,11 @@ struct AppPaired: Codable, Equatable {
         }
         for _ in 0..<4 {
             guard let k = AppDeviceLink.random(32) else { return nil }
-            if oa_device_public(k, &pub) == 64 { keyStore.save(Data(k)); return k }
+            if oa_device_public(k, &pub) == 64 {
+                keyStore.save(Data(k))
+                guard keyStore.load() == Data(k) else { return nil }
+                return k
+            }
         }
         return nil
     }
@@ -93,6 +103,7 @@ struct AppPaired: Codable, Equatable {
             let expires = (answer["expires"] as? NSNumber)?.int64Value ?? AppDeviceLink.now + 7 * 86400
             list.append(AppPaired(host: host, relay: relay, grant: grant, epoch: epoch, expires: expires, name: name))
             paired = list
+            guard paired == list else { done(false, "Pairing could not be saved on this device."); return }
             done(true, name); return
         }
         if state == "denied" { done(false, "\(name) did not allow this phone."); return }

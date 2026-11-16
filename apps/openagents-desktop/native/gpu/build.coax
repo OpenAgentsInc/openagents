@@ -1,0 +1,31 @@
+// The macOS SDK compiler/linker for the shared compiled app. Never opens a visible window.
+#import "Basic";
+#load "../../../../coax/lib/sys/native-check.coax";
+#load "../../../../coax/lib/sys/args.coax";
+gb_add :: (a:[]Args,s:string) {#assert args_add(a,s);}
+tool_main :: ()->int #export_c #effects(all) {
+ out:[1048576]u8;
+ for folder:[6]string.["apps/openagents-desktop/build","apps/openagents-desktop/build/gpu","apps/openagents-desktop/build/GPU","apps/openagents-desktop/build/GPU/OpenAgents.app","apps/openagents-desktop/build/GPU/OpenAgents.app/Contents","apps/openagents-desktop/build/GPU/OpenAgents.app/Contents/MacOS"] {if !fs_mkdir(folder) {return 2;}}
+ if !fs_mkdir("apps/openagents-desktop/build/GPU/OpenAgents.app/Contents/Resources") {return 2;}
+ for unit:[3]string.["gallery","host","carrier"] {
+  a:[1]Args;for flag:[10]string.["xcrun","clang","-O1","-w","-ffp-contract=off","-fno-fast-math","-Iapps/openagents-ios/Generated","-Iapps/shared/host/linux","-DCOMPONENTS_CHAT=1","-c"] {gb_add(a[..],flag);}
+  if unit=="host" {gb_add(a[..],"-fobjc-arc");}
+  gb_add(a[..],ifx unit=="gallery" then "apps/openagents-ios/Generated/gallery.c" else ifx unit=="host" then "apps/shared/host/apple/ui-host.m" else "apps/openagents-desktop/native/gpu/carrier.c");gb_add(a[..],"-o");
+  name:[1024]u8; // an output path with no shell expansion
+  path:="apps/openagents-desktop/build/gpu/";n:=0;for c:path {name[n]=c;n+=1;}for c:unit {name[n]=c;n+=1;}name[n]='.';name[n+1]='o';n+=2;gb_add(a[..],cast(string)name[0..<n]);
+  if nc_run(a[0].v[0..<a[0].n],240,out[..])<0 {return 1;}
+ }
+ a:[1]Args;for f:[11]string.["xcrun","swiftc","-O","-swift-version","5","-parse-as-library","-target","arm64-apple-macos14.0","-import-objc-header","apps/openagents-desktop/native/gpu/Bridge.h","apps/openagents-desktop/native/gpu/App.swift"] {gb_add(a[..],f);}
+ gb_add(a[..],"apps/openagents-desktop/native/gpu/Window.swift");
+ for source:[11]string.["AppCoreC","AppRuntime","AppHTTP","AppAccount","AppIdentity","KitPasskey","AppWake","AppEffects","AppCoreBridge","AppDeviceLink","KitEditorMac"] {
+  path:[1024]u8;n:=0;for c:"apps/shared/native/" {path[n]=c;n+=1;}for c:source {path[n]=c;n+=1;}for c:".swift" {path[n]=c;n+=1;}gb_add(a[..],cast(string)path[0..<n]);
+ }
+ for source:[5]string.["apps/shared/host/apple/AppAuth.swift","apps/shared/host/apple/DeviceKey.swift","apps/openagents-desktop/build/gpu/gallery.o","apps/openagents-desktop/build/gpu/host.o","apps/openagents-desktop/build/gpu/carrier.o"] {gb_add(a[..],source);}
+ for f:[10]string.["AppKit","Metal","QuartzCore","ImageIO","UniformTypeIdentifiers","CoreGraphics","CryptoKit","Security","AuthenticationServices","LocalAuthentication"] {gb_add(a[..],"-framework");gb_add(a[..],f);}
+ gb_add(a[..],"-o");gb_add(a[..],"apps/openagents-desktop/build/GPU/OpenAgents.app/Contents/MacOS/OpenAgents");
+ if nc_run(a[0].v[0..<a[0].n],240,out[..])<0 {return 1;}
+ copy:=[3]string.["cp","apps/openagents-desktop/Info.plist","apps/openagents-desktop/build/GPU/OpenAgents.app/Contents/Info.plist"];if nc_run(copy[..],10,out[..])<0 {return 1;}
+ icons:=[3]string.["cp","apps/openagents-desktop/native/OpenAgents.icns","apps/openagents-desktop/build/GPU/OpenAgents.app/Contents/Resources/OpenAgents.icns"];if nc_run(icons[..],10,out[..])<0 {return 1;}
+ resources:=[4]string.["cp","-R","apps/openagents-ios/Generated/Components","apps/openagents-desktop/build/GPU/OpenAgents.app/Contents/Resources/"];if nc_run(resources[..],20,out[..])<0 {return 1;}
+ run:=[2]string.["apps/openagents-desktop/build/GPU/OpenAgents.app/Contents/MacOS/OpenAgents","--inspect-controls"];n:=nc_run(run[..],60,out[..]);if n<0 {return 1;}print("%",cast(string)out[0..<n]);return 0;
+}

@@ -24,6 +24,8 @@ targets:
       - GlassChrome.swift
       # The shared app core's host loop: its C entry points are in host.c (core-host.c).
       - AppCore.swift
+      - ../shared/native/AppCoreC.swift
+      - ../shared/native/AppRuntime.swift
       # The dev menu: the app set's gallery, debug builds only.
       - DevGallery.swift
       # The shared component carrier with the app's pages: the chat page, no gallery page.

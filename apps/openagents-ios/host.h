@@ -6,6 +6,11 @@
 #define OPENAGENTS_CHAT_HOST_H
 // resources: the folder holding the component shader, fonts and icons. NULL when it cannot open.
 void *oc_open(const char *resources);
+// Desktop SDK carrier; hidden qualification never shows a window or takes focus.
+void *oc_open_window(const char *resources,int width,int height,int hidden);
+void *oc_window(void *chat);
+int oc_drive(void *chat,const char *op,char *out,int cap);
+void oc_access_editor(void *chat,const char *id,void *view);
 void *oc_view(void *chat);
 // One frame. Call it while oc_moving says 1, and once after anything changes.
 void oc_frame(void *chat);

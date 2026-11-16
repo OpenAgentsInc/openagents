@@ -27,9 +27,25 @@ int main(int argc,char **argv) {
   assert(ui_drive(h,"ax-press fixture.1",out,sizeof out)>0 && strstr(out,"pressed fixture.1") && presses==1 && legacy_reads==0);
   assert(ui_drive(h,"ax-key tab",out,sizeof out)>0 && strstr(out,"focus fixture.1"));
   assert(ui_drive(h,"ax-key space",out,sizeof out)>0 && presses==2 && legacy_reads==0);
+  [NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
+  // The active-editor adapter publishes its role explicitly even in a hidden
+  // window. The ordinary committed-row oracle stays offscreen.
+  app.hidden=1;UiHost *with_editor=ui_open(&app,0);assert(with_editor);
+  NSTextField *editor=[[NSTextField alloc]initWithFrame:NSMakeRect(0,0,200,28)];
+  editor.accessibilityIdentifier=@"fixture.3";editor.accessibilityLabel=@"Active email";
+  editor.accessibilityElement=YES;editor.accessibilityRole=NSAccessibilityTextFieldRole;
+  [(__bridge NSView *)ui_view(with_editor) addSubview:editor];
+  ui_access_editor(with_editor,"fixture.3",(__bridge void *)editor);
+  int shown=ui_drive(with_editor,"ax",out,sizeof out);
+  assert(shown>0 && strstr(out,"fixture.3 AXTextField") && strstr(out,"\"Active email\""));
+  char *first=strstr(out,"fixture.3 ");assert(first && !strstr(first+1,"fixture.3 "));
+  ui_access_editor(with_editor,"",NULL);
+  assert(ui_drive(with_editor,"ax",out,sizeof out)>0 && strstr(out,"fixture.3 AXTextField \"Private key\""));
+  ui_close(with_editor);(void)editor.accessibilityFrame;
   count=15;assert(ui_drive(h,"ax",out,sizeof out)>0 && strstr(out,"fixture.9")); // overflow retains prior rows
   count=0;assert(ui_drive(h,"ax",out,sizeof out)>0 && strstr(out,"no elements"));
-  ui_close(h);puts("AppKit: all committed roles, private field metadata, disabled/real press, capacity refusal and retirement passed; no legacy tree read");
+  ui_close(h);(void)editor.accessibilityFrame;
+  puts("AppKit: all committed roles, private field metadata, disabled/real press, capacity refusal, active-editor replacement and retirement passed; no legacy tree read");
  }
  return 0;
 }

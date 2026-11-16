@@ -10,8 +10,10 @@
 		2DA485D5475D62C7827367D5 /* gallery.c in Sources */ = {isa = PBXBuildFile; fileRef = 550581B2872EB638FBFB4619 /* gallery.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"; }; };
 		356C79ECD7093B4A053F18F7 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 8D7450B781EC0703F345FA9F /* main.c */; settings = {COMPILER_FLAGS = "-DCOMPONENTS_EMBEDDED=1 -DCOMPONENTS_NO_GALLERY=1 -DCOMPONENTS_CHAT=1 -DOPENAGENTS_PHONE_DRIVE=1 -IGenerated -I../shared/host/linux"; }; };
 		3855A03C1A8AACCFA9A564D8 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = F76D38DB61717639D91263A1 /* App.swift */; };
+		3A08BDE9D3B083D4B6A93F08 /* AppCoreC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 622F619CBCEF6832010BC386 /* AppCoreC.swift */; };
 		43F4D16A20C18037A922D32F /* AppCoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77B22B57F0B9827AF4F47864 /* AppCoreBridge.swift */; };
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
+		49F3566FC81ECCAD96DE2801 /* AppRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 012A4331BDB6873356052670 /* AppRuntime.swift */; };
 		4BD534419A18D33EAA0A7955 /* AppWake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9389244D4DF6F9694B96642C /* AppWake.swift */; };
 		4F06476208B2F575C6678AAB /* GlassChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2DDF0D85022AFB3A1EE6365 /* GlassChrome.swift */; };
 		4F98D1706FADE33ADACD9EF8 /* KitAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6814741495C5632686563D9 /* KitAccess.swift */; };
@@ -44,6 +46,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		012A4331BDB6873356052670 /* AppRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRuntime.swift; sourceTree = "<group>"; };
 		1BC84CE3F51AA793BB6BBA56 /* OpenAgentsIdentityTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsIdentityTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1C02A25433276C58798C0279 /* AppHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppHTTP.swift; sourceTree = "<group>"; };
 		2375370987EB21F55CB7A476 /* AppCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCore.swift; sourceTree = "<group>"; };
@@ -51,6 +54,7 @@
 		346439B2CDF1C4DE6F844825 /* Components */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Components; path = Generated/Components; sourceTree = SOURCE_ROOT; };
 		550581B2872EB638FBFB4619 /* gallery.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = gallery.c; sourceTree = "<group>"; };
 		5917C68CA930E40796E53DAF /* AppDeviceLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDeviceLink.swift; sourceTree = "<group>"; };
+		622F619CBCEF6832010BC386 /* AppCoreC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoreC.swift; sourceTree = "<group>"; };
 		62F39B1A4B1714CD2CBBCE87 /* AppEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEffects.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		77B22B57F0B9827AF4F47864 /* AppCoreBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoreBridge.swift; sourceTree = "<group>"; };
@@ -114,11 +118,13 @@
 			children = (
 				9B5B40FB5A03D1054E56FC0E /* AppAccount.swift */,
 				77B22B57F0B9827AF4F47864 /* AppCoreBridge.swift */,
+				622F619CBCEF6832010BC386 /* AppCoreC.swift */,
 				97F8922AB2F3371989FB21C4 /* AppDevice.swift */,
 				5917C68CA930E40796E53DAF /* AppDeviceLink.swift */,
 				62F39B1A4B1714CD2CBBCE87 /* AppEffects.swift */,
 				1C02A25433276C58798C0279 /* AppHTTP.swift */,
 				28240AD82B5807F30D0B65E5 /* AppIdentity.swift */,
+				012A4331BDB6873356052670 /* AppRuntime.swift */,
 				9389244D4DF6F9694B96642C /* AppWake.swift */,
 				A6814741495C5632686563D9 /* KitAccess.swift */,
 				FB0368202C3F17310FAA5C61 /* KitEditor.swift */,
@@ -264,11 +270,13 @@
 				6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */,
 				A09F60FB92403B2A4A5AEC6D /* AppCore.swift in Sources */,
 				43F4D16A20C18037A922D32F /* AppCoreBridge.swift in Sources */,
+				3A08BDE9D3B083D4B6A93F08 /* AppCoreC.swift in Sources */,
 				773A6AF7C732E03BA2FCC8C4 /* AppDevice.swift in Sources */,
 				B0F7117A6675BF891B1CB0FB /* AppDeviceLink.swift in Sources */,
 				C5085655B93C50F2344D1AFA /* AppEffects.swift in Sources */,
 				FD7E4A9C679B91D89A1D3D7B /* AppHTTP.swift in Sources */,
 				D9DA45E18B2770C99DEB0365 /* AppIdentity.swift in Sources */,
+				49F3566FC81ECCAD96DE2801 /* AppRuntime.swift in Sources */,
 				4BD534419A18D33EAA0A7955 /* AppWake.swift in Sources */,
 				AD751202F9DD8187E36837E4 /* ComponentsHost.m in Sources */,
 				5DDDFC88C8FA34C1DF663BB1 /* DevGallery.swift in Sources */,

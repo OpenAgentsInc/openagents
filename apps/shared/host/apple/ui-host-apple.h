@@ -6,6 +6,9 @@
 // its display link (a UIView *); on the Mac it is the window's content view (an NSView *).
 // NULL offscreen.
 void *ui_view(UiHost *h);
+// The active platform editor stands for exactly one committed field row.
+// NULL removes it. The host never reads its text, including private fields.
+void ui_access_editor(UiHost *h,const char *id,void *view);
 
 // Rows of the atlas uploaded again after ui_atlas made it: mono and color are the whole images
 // (row 0 first) at ui_atlas's sizes, and [y0, y1) and [cy0, cy1) the rows that changed.
