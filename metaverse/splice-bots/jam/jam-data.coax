@@ -65,6 +65,22 @@ sjd_nth :: (cat: string, name: string, i: int) -> string {
   return "";
 }
 
+// Table `name` whole, its lines (the header first) joined by newlines into out: an ini's text. "" without it, or when out is short.
+sjd_text :: (cat: string, name: string, out: [] u8) -> string {
+  k := sjd_table(cat, name);
+  if k.count == 0 { return ""; }
+  at := 0; n := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    l := cat[at..<e]; at = e + 1;
+    if l.count < 3 + k.count || l[0] != 'X' || l[1] != ' ' || l[2..<2 + k.count] != k || l[2 + k.count] != ' ' { continue; }
+    r := l[3 + k.count..<l.count];
+    if n + r.count + 1 > out.count { return ""; }
+    for c, j: r { out[n + j] = c; } n += r.count; out[n] = '\n'; n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+
 // A small catalog with the tables' shape, for the checks (no jam text: the rows are made up here).
 SJD_TEST_DATA :: "table 0 /Data/strings csv 2 3\nX 0 key,text,speaker\nX 0 TUT_WALK,\"Walk, test\",system\nX 0 SNIPER_0001,Sniper test line,sniper\ntable 1 /Data/pickups csv 2 3\nX 1 pickup_id,item_id,level,x_cm,y_cm,z_cm\nX 1 PU_A,ITEM_SCRAP_PART,farm,-79000,-10500,0\nX 1 PU_B,ITEM_JUMP_CARD,farm,-79000,-11500,0\n";
 #test "jam data: rows by id from the catalog's tables, cells by the header's names, and nothing without the pack" {
@@ -75,4 +91,8 @@ SJD_TEST_DATA :: "table 0 /Data/strings csv 2 3\nX 0 key,text,speaker\nX 0 TUT_W
   #assert sjd_cell(c, "/Data/strings", "NOPE", "text") == "" && sjd_cell(c, "/Data/strings", "TUT_WALK", "nope") == "";
   #assert csv_at(sjd_nth(c, "/Data/pickups", 0), 0) == "PU_A" && csv_at(sjd_nth(c, "/Data/pickups", 1), 0) == "PU_B" && sjd_nth(c, "/Data/pickups", 2) == "";
   #assert sjd_row("", "/Data/pickups", "PU_A") == "" && sjd_nth("", "/Data/pickups", 0) == "";
+  ini := "table 0 /Config/DefaultSpliceTuning ini 3 3\nX 0 [/Script/SpliceRules.Tuning_exit]\nX 0 EXIT_FLOOR_ROBOTS=3\nX 0 EXIT_CALL_MAX=2\n";
+  b: [256] u8; t := sjd_text(ini, "/Config/DefaultSpliceTuning", b[..]);
+  #assert t == "[/Script/SpliceRules.Tuning_exit]\nEXIT_FLOOR_ROBOTS=3\nEXIT_CALL_MAX=2\n" && sjd_text(ini, "/Config/DefaultSpliceTuning", b[0..<10]) == "";
+  #assert sjn_tuning(ini).floor_robots == 3 && sjn_tuning(ini).reinforcement_cap == 2 && sjn_tuning("").floor_robots == SR_EXIT_FLOOR_ROBOTS;
 }

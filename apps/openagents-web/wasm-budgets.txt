@@ -421,6 +421,11 @@ splice-bots 1045000
 # absent. The largest part is data[0] (233,195 bytes), of which the Digger's mesh stream (digger-mesh.coax,
 # 39,886 words, 159,544 bytes) is also in splice-bots; moving it to a shared runtime asset frees that much in
 # both modules. Until then: room for the jam's boss, night exit, chest, Microduck, jetpack and sounds, about 1.6%.
+# With the boss's bite (jam/jam-boss.coax) 1,093,548 bytes, and with the night exit (jam/jam-exit.coax, the rules'
+# night-exit.coax now linked) and the jump course (jam/jam-fx.coax) 1,109,669 bytes, measured 2026-11-16 on a
+# Mac: 331 bytes of room. With the drill mech's and Digger's way round the jam's walls (ec9fe2461d), 1,115,148
+# bytes, and with the jetpack (ec38122bda) 1,125,065: 15,065 over. The chest, the Microduck and the jam's sounds
+# need the Digger's mesh moved out first.
 splice-jam 1110000
 # /worlds on the frames set drawn by the browser (worlds-web.coax, beside the side): 91,057 bytes measured
 # 2026-11-13 on a Mac, about 9% room. It replaces realmlist (70,076 bytes and its 16,279-byte shader).

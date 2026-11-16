@@ -1321,6 +1321,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       sb_sense_ring(g, buf, p, i);   // how far it senses her, before she commits (splice-battle.coax)
     }
   }
+  sjn_live(g, buf, p, t);   // the jam's night exit robots (jam/jam-exit.coax)
   // the editor's shown foe: its route as dots on the ground, its notice as a ring round it (?edit)
   if g[0].shown >= 0 && g[0].shown < FOES && g[0].fhp[g[0].shown] > 0 { g_plan_marks(g, buf, p, g[0].shown); }
   // the DJ at the booth, the dance floor's tiles changing colour on the beat, beams from the truss

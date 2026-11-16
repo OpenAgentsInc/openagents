@@ -7,7 +7,8 @@
 //     stood in for by placing her);
 //   - from the farm's player start to Sniper with real keys (the mouse turns, W walks), against the
 //     jam's own colliders;
-//   - from the garage's door to the boss's fall with real keys (sp_keys_play), against them too;
+//   - from the garage's door to the boss's fall with real keys (sp_keys_play), against them too, and on
+//     through the night exit (jrc_exit, jam/jam-exit.coax): the core taken, out through the rave past its robots;
 //   - the jam's farm rules with real keys and clicks (jrc_farm_rules, jam/jam-farm.coax): a battery from a
 //     charge point, the farm robot hit down and harvested with a held click;
 //   - the jump course with real keys (jrc_course, jam/jam-fx.coax): up P1 to P3 for its battery and banned
@@ -57,6 +58,24 @@ jrc_click :: (g: [] SpGame, hold: f32) -> bool {
   for i: 0..<cast(int) (hold / 0.02) { g_step(g, 0.02); }
   _ := g_pointer(g, 640, 360, 2); g_step(g, 0.02);
   return r;
+}
+// ---- the night exit (jam/jam-exit.coax) with the keys, after the boss's fall: the banned core taken (E), then
+// out of the lab, down the hallway, across the rave floor past its robots and through the exit opening.
+// 0 is a pass, else the beat that failed.
+jrc_exit :: (g: [] SpGame) -> int {
+  if !g[0].boss_down || !sjn_running(g) { return 1; }
+  c := sb_core_at(g);
+  if !jrc_walk(g, c.x, c.z, T_PICK_RANGE - 0.7, 30) { print("  the exit: she stopped at (%, %), the core at (%, %)\n", g[0].px, g[0].pz, c.x, c.z); return 2; }
+  _ := g_key(g, 'e', true); _ = g_key(g, 'e', false); g_step(g, 0.02);
+  if !g[0].core_taken { return 3; }
+  gx := g[0].at.gar_x; gz := g[0].at.gar_z; back := ga_back(g);
+  way := [5] Point.[v3(gx, 0, ga_lab_mouth(g) + 2), v3(gx, 0, gz - back + 2), v3(gx, 0, gz), v3(gx, 0, gz + back - 6), v3(gx, 0, gz + back + 4)];
+  for w, k: way {
+    if !jrc_walk(g, w.x, w.z, 1.5, 60) { print("  the exit: she stopped at (%, %) on her way to (%, %), % hearts\n", g[0].px, g[0].pz, w.x, w.z, g[0].hearts); return 4 + k; }
+    if sjn_fact(g, 31) == SR_EXIT_WON { break; }
+  }
+  for i: 0..<50 { if sjn_fact(g, 31) == SR_EXIT_WON { break; } g_step(g, 0.02); }
+  return ifx sjn_fact(g, 31) == SR_EXIT_WON then 0 else 9;
 }
 jrc_farm_rules :: (g: [] SpGame, tables: string) -> int {
   g_reset(g); if tables != "" { sjx_data(g, tables); }
@@ -296,13 +315,21 @@ tool_main :: () -> int #export_c #effects(all) {
   if r != 0 { print("  she stopped at (%, %); Sniper is at (%, %)\n", g[0].px, g[0].pz, tr.x, tr.z); }
   print("the farm's start to Sniper with the keys: % m from the door's mark\n", cast(int) d); jrc_line("the farm's start to Sniper", r); failed = failed || r != 0;
   // the garage's door to the boss with the keys
-  g_reset(g[..]);
+  g_reset(g[..]); if tables != "" { sjx_data(g[..], tables); }
   r = g_run_to_garage(g[..]);
   if r == 0 { r = sp_keys_play(g[..]); }
   jrc_line("the garage's door to the boss with the keys", r);
   print("  the boss: % health; it bit % times and hit her % (jam/jam-boss.coax)\n", g[0].bt[0].bots[SB_BOSS].vit.most, g[0].jx[0].bite[0].bites, g[0].jx[0].bite[0].hits);
   if r != 0 { print("  she stopped at (%, %), zone %\n", g[0].px, g[0].pz, g[0].zone); }
   failed = failed || r != 0;
+  // and on with the keys: the night exit
+  if r == 0 {
+    for i: FOES - 4..<FOES { if g_foe_in(g[..], i) { print("  a prototype Imperial robot at night: (%, %)\n", g[0].fx[i], g[0].fz[i]); } }
+    r = jrc_exit(g[..]);
+    jrc_line("the night exit: the core taken, out through the rave with the keys", r);
+    print("  the exit: % robots against her, % calls, % came in, % blows on her, % hearts left (jam/jam-exit.coax)\n", sjn_fact(g[..], 32), sjn_fact(g[..], 33), sjn_fact(g[..], 34), sjn_fact(g[..], 35), g[0].hearts);
+    failed = failed || r != 0;
+  }
   // the jam's farm rules with the keys and the mouse
   r = jrc_farm_rules(g[..], tables); jrc_line("the farm's rules: a charge point, the farm robot down and harvested", r); failed = failed || r != 0;
   // the jump course and the Greek quarter with the keys (jam/jam-fx.coax)

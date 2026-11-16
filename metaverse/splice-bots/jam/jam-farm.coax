@@ -27,8 +27,10 @@ SJX_FOLLOW :: 6.5f32;           // m/s her taken robots keep up at (straight-lin
 // What the rules last said (sjx_say): a pickup, a refusal, a verb done.
 SJX_NONE :: 0; SJX_ITEM :: 1; SJX_FULL :: 2; SJX_CREW :: 3; SJX_ZERO :: 4; SJX_BATTERY :: 5; SJX_HARVESTED :: 6;
 SJX_FED :: 7; SJX_TAKEN :: 8; SJX_STAY :: 9; SJX_FOLLOWS :: 10; SJX_DOWN :: 11; SJX_NOT_READY :: 12; SJX_HIT :: 13; SJX_BITE :: 14;
-SJX_SAYS :: [15] string.["", "", "FULL", "3 ROBOTS MAX", "BRING IT TO 0 FIRST", "+1 BATTERY", "HARVESTED", "FED +40%", "TAKEN: IT'S YOURS",
-  "CREW: STAY", "CREW: FOLLOW", "POWERED DOWN: HOLD TO HARVEST", "NOT CHARGED YET", "HIT", "IT WINDS UP A BITE: MOVE"];
+SJX_CALLED :: 15; SJX_OUT :: 16;
+SJX_SAYS :: [17] string.["", "", "FULL", "3 ROBOTS MAX", "BRING IT TO 0 FIRST", "+1 BATTERY", "HARVESTED", "FED +40%", "TAKEN: IT'S YOURS",
+  "CREW: STAY", "CREW: FOLLOW", "POWERED DOWN: HOLD TO HARVEST", "NOT CHARGED YET", "HIT", "IT WINDS UP A BITE: MOVE",
+  "HIGH HEAT: MORE ROBOTS ARE COMING", "OUT OF THE GARAGE"];
 SjxBot :: struct {
   actor: int;                 // the jam actor that draws it
   x: f32; z: f32; y: f32; yaw: f32;
@@ -43,13 +45,15 @@ SjRules :: struct {
   charge_actor: [SJX_CHARGES] int; charge: [SJX_CHARGES] SrChargePoint; charge_n: int;
   bots: [SJX_BOTS] SjxBot; bot_n: int;
   harvests: int;              // robots harvested so far (a banned piece every third)
-  down: bool; held: f32; hold_bot: int = -1;   // the left button: down, for how long, the robot a harvest is held on
+  down: bool; held: f32; hold_bot: int = -1; hold_kind: int;   // the left button: down, for how long, the robot a harvest is held on (SJX_T_BOT or SJX_T_EXIT)
+  fed: int;                   // batteries she has fed
+  exit: [1] SjExit;           // the night exit (jam/jam-exit.coax)
   hit_t: f32 = 1;             // s since her last hit
   dig_stay: bool;             // Digger stays (G)
   heat: int; level: int;      // the jam's Heat and its level
   said: int; said_item: string; said_t: f32;
-  story: [1] SjStory;
-  bite: [1] SjBite;           // the boss's bite (jam/jam-boss.coax)         // the farm's story cards (jam/jam-story.coax)
+  story: [1] SjStory;         // the farm's story cards (jam/jam-story.coax)
+  bite: [1] SjBite;           // the boss's bite (jam/jam-boss.coax)
   button: int;                // the pointer's button now: 0 left (Attack), 2 right (Use), as the jam binds them
 }
 
@@ -177,7 +181,7 @@ sjx_heat :: (g: [] SpGame) {
 }
 
 // ---- what she faces: the nearest target in reach, what she looks at first
-SJX_T_NONE :: 0; SJX_T_BOT :: 1; SJX_T_CHARGE :: 2; SJX_T_DIGGER :: 3;
+SJX_T_NONE :: 0; SJX_T_BOT :: 1; SJX_T_CHARGE :: 2; SJX_T_DIGGER :: 3; SJX_T_EXIT :: 4;   // EXIT: a night exit robot (jam/jam-exit.coax)
 SjxTarget :: struct { kind: int; i: int = -1; facts: SrTargetFacts; }
 sjx_score :: (g: [] SpGame, tx: f32, tz: f32, reach: f32) -> f32 {
   d := dist2(g[0].px, g[0].pz, tx, tz);
@@ -204,6 +208,8 @@ sjx_target :: (g: [] SpGame, reach: f32, use: bool) -> SjxTarget {
       s := sjx_score(g, a.x, a.z, reach);
       if s < bs { bs = s; best = SjxTarget.{kind = SJX_T_CHARGE, i = i, facts = SrTargetFacts.{has_target = true, harvestable_ready = sr_charge_ready(x[0].charge[i])}}; }
     }
+    b1 := [1] SjxTarget.[best]; s1 := [1] f32.[bs];
+    sjn_target(g, reach, b1[..], s1[..]); best = b1[0]; bs = s1[0];
   } else if g[0].bot {
     s := sjx_score(g, g[0].bot_x, g[0].bot_z, reach);
     hp := g[0].dr[0].hp;
@@ -233,7 +239,12 @@ sjx_attack :: (g: [] SpGame, held: f32) -> bool {
   in := sjx_input(g, t); a := sr_resolve_left_click(in);
   if !a.yes { return false; }
   safety := sr_click_safety(in, a);
-  if safety.hold_seconds > held { x[0].hold_bot = ifx t.kind == SJX_T_BOT then t.i else -1; return true; }   // held on: the step finishes it
+  if safety.hold_seconds > held { x[0].hold_bot = ifx t.kind == SJX_T_BOT || t.kind == SJX_T_EXIT then t.i else -1; x[0].hold_kind = t.kind; return true; }   // held on: the step finishes it
+  if a.verb == SR_VERB_HARVEST && t.kind == SJX_T_EXIT { return sjn_harvest(g, t.i, held); }
+  if a.verb == SR_VERB_ATTACK && t.kind == SJX_T_EXIT {
+    if x[0].hit_t < SJX_HIT_COOL { return true; }
+    x[0].hit_t = 0; sjn_hit(g, t.i); return true;
+  }
   if a.verb == SR_VERB_HARVEST && t.kind == SJX_T_CHARGE {
     p := x[0].charge[t.i..<t.i + 1];
     if !sr_charge_ready(p[0]) { sjx_say(g, SJX_NOT_READY, ITEM_BATTERY); return true; }
@@ -286,7 +297,7 @@ sjx_use :: (g: [] SpGame) -> bool {
       if sr_try_feed_battery(v[..], SR_DEFAULT_BATTERY_HEALTH_SHARE) != SR_FEED_FED { return false; }
       b[0].robot.state.health = v[0].health;
     }
-    sjx_spend_held(g); sjx_say(g, SJX_FED, ""); return true;
+    sjx_spend_held(g); x[0].fed += 1; sjx_say(g, SJX_FED, ""); return true;
   }
   if a.verb == SR_VERB_CORE_IN && t.kind == SJX_T_BOT {
     b := x[0].bots[t.i];
@@ -337,6 +348,7 @@ sjx_step :: (g: [] SpGame, dt: f32) {
   if !sjx_on(g) { return; }
   sjs_step(g, dt);   // the story's cards (jam/jam-story.coax)
   sjb_step(g, dt);   // the boss's bite (jam/jam-boss.coax)
+  sjn_step(g, dt);   // the night exit (jam/jam-exit.coax)
   x := g[0].jx[..];
   x[0].hit_t += dt;
   if x[0].said_t > 0 { x[0].said_t -= dt; if x[0].said_t <= 0 { x[0].said = SJX_NONE; } }
@@ -345,7 +357,7 @@ sjx_step :: (g: [] SpGame, dt: f32) {
   if x[0].down && x[0].hold_bot >= 0 {
     x[0].held += dt;
     t := sjx_target(g, SJX_ATTACK_REACH, false);
-    if t.kind != SJX_T_BOT || t.i != x[0].hold_bot { x[0].hold_bot = -1; x[0].held = 0; }
+    if t.kind != x[0].hold_kind || t.i != x[0].hold_bot { x[0].hold_bot = -1; x[0].held = 0; }
     else if x[0].held >= SR_CLICK_HOLD_HARVEST_ROBOT_SECONDS { _ := sjx_attack(g, x[0].held); }
   }
   // the pickups: hers when she or Digger comes near
@@ -388,9 +400,10 @@ sjx_step :: (g: [] SpGame, dt: f32) {
 // 18 batteries she carries, 19 robots harvested, 20 and 21 the first charge point's x and z (cm), 22 what the
 // rules last said (SJX_*), 23 what a left click would act on (SJX_T_*), 24 the Data tables' bytes, 25 the
 // story's clock (s), 26 cards played plus 100 per tutorial card waiting, 27 the boss's bites, 28 its health
-// at most, 29 and 30 its jaw's x and z (cm).
+// at most, 29 and 30 its jaw's x and z (cm); 31 to 35 the night exit's (jam/jam-exit.coax sjn_fact).
 sjx_fact :: (g: [] SpGame, k: int) -> int {
   if !sjx_on(g) { return -1; }
+  if k >= 31 { return sjn_fact(g, k); }
   x := g[0].jx[0];
   if k == 16 { return ifx g[0].mode == M_PLAY then 1 else 0; }
   if k == 17 { return x.inv[0].selected; }

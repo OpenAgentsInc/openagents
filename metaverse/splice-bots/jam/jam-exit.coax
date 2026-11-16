@@ -1,0 +1,124 @@
+// The jam's night exit in the jam world (GitHub #13653; rules/night-exit.coax, the jam's SpliceNightExit):
+// once the boss is down it is night, and she carries the banned core out of the garage through the rave.
+// The rules post Imperial robots on the rave floor and two at the exit opening (the tuning's EXIT_FLOOR_ROBOTS,
+// from the tables pack's DefaultSpliceTuning, else the addendum's 4); a robot that senses her chases her and
+// strikes (a heart a blow), and at High Heat each robot's own alert calls one more through a door of the ring,
+// up to EXIT_CALL_MAX. She hits them as the farm robot (left click) and, powered down, harvests them (held).
+// She is out past the opening, her following crew with her. The exit's robots are the garage's Imperial robots
+// that night: the game's own Imperial robots in the garage step out of play when it begins.
+//
+// The rules' coordinates are the GDD's metres on the ground plane, (x, y); the jam's levels were built in the
+// prototype's frame, where the GDD's y is the game's z (the field's middle, (0, -195), is the garage's), so a
+// rules point is the game's (x, z) as it is. The robots keep out of the jam's walls as the game's do (g_foe_walls).
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "jam exit"
+
+SjExit :: struct {
+  st: [1] SrNightExitState;
+  fed_seen: int;              // her feeds (SjRules.fed) the rules were last told of
+  hits: int;                  // blows that landed on her
+  arrived: int;               // called robots that came in
+}
+
+// The exit's two numbers: the tables pack's tuning ini (jam/jam-data.coax sjd_text), else the rules' defaults.
+sjn_tuning :: (cat: string) -> SrExitTuning {
+  buf: [16384] u8; t := sjd_text(cat, "/Config/DefaultSpliceTuning", buf[..]);
+  return ifx t.count > 0 then sr_exit_tuning_from_ini(t) else sr_exit_tuning_defaults();
+}
+sjn_running :: (g: [] SpGame) -> bool { return sjx_on(g) && g[0].jx[0].exit[0].st[0].outcome == SR_EXIT_RUNNING; }
+sjn_at :: (r: SrExitRobot) -> Point { return v3(cast(f32) r.pos.x, 0, cast(f32) r.pos.y); }
+
+// Each step: begun when the boss is down in the garage, then the rules' tick, their blows applied.
+sjn_step :: (g: [] SpGame, dt: f32) {
+  x := g[0].jx[..]; e := x[0].exit[..]; st := e[0].st[..];
+  if !g[0].boss_down || g[0].zone != Z_MINE { if st[0].outcome != SR_EXIT_INACTIVE { e[0] = SjExit.{fed_seen = x[0].fed}; } return; }
+  // the exit's posts are the garage's Imperial robots tonight: the game's own there stay out of play
+  for i: F_RAIDERS..<FOES { if g_foe_in(g, i) && ga_inside(g, g[0].fx[i], g[0].fz[i]) { g[0].fhp[i] = 0; } }
+  if st[0].outcome == SR_EXIT_INACTIVE { sr_night_exit_begin(-1, sjn_tuning(g[0].jd), st); e[0].fed_seen = x[0].fed; return; }
+  if st[0].outcome == SR_EXIT_LOST { if g[0].mode == M_PLAY && g[0].hearts > 0 { sr_exit_restore_at_checkpoint(st); } return; }
+  dead := g[0].hearts <= 0;
+  if st[0].outcome != SR_EXIT_RUNNING || (g[0].mode != M_PLAY && !dead) { return; }
+  in: SrNightExitInputs;
+  in.dt = cast(f64) dt; in.her_pos = d2(cast(f64) g[0].px, cast(f64) g[0].pz); in.her_height = cast(f64) g[0].air[0].y; in.her_dead = dead;
+  in.heat = x[0].level; in.sneaking = d_sneaking(g);
+  in.batteries_fed = x[0].fed - e[0].fed_seen; e[0].fed_seen = x[0].fed;
+  // her crew, for the way out: Digger, then the robots she took. They do not fight the exit's robots yet, so
+  // those never turn on them (the rules' CrewHitMemory): every blow is on her.
+  if g[0].bot { in.crew[0] = SrExitCrewMember.{pos = d2(cast(f64) g[0].bot_x, cast(f64) g[0].bot_z), following = !x[0].dig_stay, alive = !d_down(g)}; in.crew_n = 1; }
+  for i: 0..<x[0].bot_n {
+    b := x[0].bots[i];
+    if b.harvested || b.robot.owner != SR_OWNER_HER || in.crew_n >= SR_EXIT_CREW_MAX { continue; }
+    in.crew[in.crew_n] = SrExitCrewMember.{pos = d2(cast(f64) b.x, cast(f64) b.z), following = b.robot.mode == SR_MODE_FOLLOW, alive = sr_socket_awake(b.robot)};
+    in.crew_n += 1;
+  }
+  r := sr_night_exit_advance(st, in);
+  // the robots keep out of the walls, as the game's do
+  for i: 0..<st[0].n {
+    q := sjn_at(st[0].robots[i]);
+    p := ga_push(g, q.x, q.z, T_FOE_R); p = sj_body_push(g, p.x, p.z, T_FOE_R);
+    st[0].robots[i].pos = d2(cast(f64) p.x, cast(f64) p.z);
+  }
+  for k: 0..<r.blows_n { if r.blows[k].crew < 0 { e[0].hits += 1; g_hurt(g); } }
+  e[0].arrived += r.arrived_n;
+  if r.calls_raised > 0 { sjx_say(g, SJX_CALLED, ""); }
+  if r.won { sjx_say(g, SJX_OUT, ""); }
+}
+
+// What a left click finds among them: the nearest in reach, as sjx_target scores it.
+sjn_target :: (g: [] SpGame, reach: f32, best: [] SjxTarget, bs: [] f32) {
+  st := g[0].jx[0].exit[0].st[0];
+  if st.outcome == SR_EXIT_INACTIVE { return; }
+  for i: 0..<st.n {
+    r := st.robots[i];
+    if r.mode == SR_EXIT_MODE_GONE { continue; }
+    s := sjx_score(g, cast(f32) r.pos.x, cast(f32) r.pos.y, reach);
+    down := r.mode == SR_EXIT_MODE_POWERED_DOWN;
+    if s < bs[0] { bs[0] = s; best[0] = SjxTarget.{kind = SJX_T_EXIT, i = i, facts = SrTargetFacts.{has_target = true, is_robot = true, awake = !down, powered_down = down, has_core = true, energy_full = !down}}; }
+  }
+}
+// Her hit on one (1 a hit), or her harvest of one powered down: its core, Imperial parts, a banned piece every third.
+sjn_hit :: (g: [] SpGame, i: int) {
+  st := g[0].jx[0].exit[0].st[..];
+  sr_exit_damage_robot(st, i, cast(f64) SJX_HER_HIT, false);
+  sjx_say(g, ifx st[0].robots[i].mode == SR_EXIT_MODE_POWERED_DOWN then SJX_DOWN else SJX_HIT, "");
+}
+sjn_harvest :: (g: [] SpGame, i: int, held: f32) -> bool {
+  x := g[0].jx[..]; st := x[0].exit[0].st[..];
+  b: SrSocketRobot; b.state.robot_id = ROBOT_IMPERIAL; b.state.health_max = cast(f32) SR_EXIT_IMPERIAL_HEALTH; b.state.has_core = true;
+  b.state.core = sr_stack(ITEM_SMALL_CORE, 1); b.owner = SR_OWNER_OTHER; b.powered_down = true;
+  h := sr_harvest(SrHarvestInput.{robot = b, held_seconds = held, prior_harvests = x[0].harvests});
+  if !sr_harvest_ok(h) { return false; }
+  for k: 0..<h.n { _ := sjx_give(g, h.drops[k]); }
+  sr_exit_remove_robot(st, i); x[0].harvests += 1; x[0].hold_bot = -1; x[0].down = false;
+  sjx_say(g, SJX_HARVESTED, ""); sjx_heat(g);
+  return true;
+}
+
+// Drawn as the game's Imperial robots are in the garage: white plates, an orange band, a red eye on her;
+// one powered down lies where it fell.
+sjn_live :: (g: [] SpGame, buf: [] u32, p: [] Pen, t: f32) {
+  if !sjx_on(g) || g[0].zone != Z_MINE { return; }
+  st := g[0].jx[0].exit[0].st[0];
+  if st.outcome == SR_EXIT_INACTIVE { return; }
+  for i: 0..<st.n {
+    r := st.robots[i];
+    if r.mode == SR_EXIT_MODE_GONE { continue; }
+    at := sjn_at(r); y := ground_y(g, at.x, at.z);
+    on := r.mode == SR_EXIT_MODE_CHASE;
+    yaw := ifx dist2(at.x, at.z, cast(f32) r.goal.x, cast(f32) r.goal.y) > 0.05 then atan2(cast(f32) r.goal.x - at.x, cast(f32) r.goal.y - at.z) else cast(f32) (r.post.facing_yaw_deg * PI_D / 180.0);
+    f := ifx r.mode == SR_EXIT_MODE_POWERED_DOWN then g_lying(v3(at.x, y + 0.2, at.z), yaw) else frame_at(v3(at.x, y, at.z), yaw);
+    k := g_thing(g, p, TK_IMPERIAL, ifx on then 1 else 0, f, 0.8, t);
+    if k < 0 { continue; }
+    kit_robot(buf, p, f, 0.8, 200 + (i % 8) * 5, t3(0.92, 0.93, 0.96), HEAT(), ifx on then t3(1.0, 0.22, 0.12) else t3(0.95, 0.95, 1.0), t3(0.20, 0.20, 0.28), ifx on then 0.7 else 0.0f32);
+    g_thing_end(g, p, k);
+  }
+}
+
+// For a page check (sjx_fact): 31 the exit's outcome (SR_EXIT_*), 32 its robots still against her, 33 the calls
+// made, 34 called robots come in, 35 blows on her.
+sjn_fact :: (g: [] SpGame, k: int) -> int {
+  e := g[0].jx[0].exit[0]; st := e.st[0];
+  if k == 31 { return st.outcome; }
+  if k == 32 { n := 0; for i: 0..<st.n { if sr_exit_is_enemy(st.robots[i]) { n += 1; } } return n; }
+  if k == 33 { return st.calls_made; } if k == 34 { return e.arrived; } if k == 35 { return e.hits; }
+  return -1;
+}

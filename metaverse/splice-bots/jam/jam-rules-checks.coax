@@ -171,3 +171,38 @@ SJR_DATA :: "table 0 /Data/card_triggers csv 5 6\nX 0 id,trigger,card_kind,lane,
   }
   #assert stayed && dodged;
 }
+#test "jam exit: the boss down posts the rave's robots; one that senses her strikes, High Heat calls more through the doors, she powers one down and harvests it, and she is out past the opening" #steps 8000000000 #traversal 4000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjr_start(g[..], s[..]);
+  sb_stage_lab(g[..], 36); g_step(g[..], 0.02);
+  e := g[0].jx[0].exit[..];
+  #assert g[0].boss_down && g[0].phase == PH_NIGHT && e[0].st[0].outcome == SR_EXIT_RUNNING && e[0].st[0].n == SR_EXIT_FLOOR_ROBOTS + SR_EXIT_GUARD_ROBOTS;
+  // at Low Heat she walks up to I2's post: it senses her, comes at her and strikes
+  g[0].px = 0; g[0].pz = -128; g[0].yaw = PI;
+  for k: 0..<2000 { g[0].hit_cool = 0; g[0].hearts = T_HEARTS; g_step(g[..], 0.02); if e[0].hits > 0 { break; } }   // its patrol brings it near within a period
+  #assert e[0].hits > 0 && e[0].st[0].calls_made == 0 && e[0].st[0].robots[1].mode == SR_EXIT_MODE_CHASE;
+  // she carries 8 banned pieces: High Heat; the next robot's own alert calls one through a door, 6 s later it comes in
+  #assert sjx_give(g[..], sr_stack(ITEM_BANNED_PIECE, 8)); sjx_heat(g[..]); #assert g[0].jx[0].level == SR_HEAT_HIGH;
+  g[0].px = -14; g[0].pz = -84;
+  for k: 0..<500 { g[0].hit_cool = 0; g[0].hearts = T_HEARTS; g_step(g[..], 0.02); if e[0].arrived > 0 { break; } }
+  #assert e[0].st[0].calls_made >= 1 && e[0].st[0].calls_made <= e[0].st[0].reinforcement_cap && e[0].arrived >= 1;
+  // she hits the nearest until it is down (20 health, 1 a hit), then holds the button on it: harvested, gone
+  r := -1; best := 1e9f32;
+  for i: 0..<e[0].st[0].n { q := sjn_at(e[0].st[0].robots[i]); d := dist2(q.x, q.z, g[0].px, g[0].pz); if sr_exit_is_enemy(e[0].st[0].robots[i]) && d < best { best = d; r = i; } }
+  #assert r >= 0;
+  for k: 0..<40 {
+    if e[0].st[0].robots[r].mode == SR_EXIT_MODE_POWERED_DOWN { break; }
+    q := sjn_at(e[0].st[0].robots[r]); g[0].px = q.x; g[0].pz = q.z + 1.5; g[0].yaw = PI; g[0].hit_cool = 0; g[0].hearts = T_HEARTS;
+    g[0].jx[0].hit_t = 1; _ := sjr_click(g[..]);
+  }
+  #assert e[0].st[0].robots[r].mode == SR_EXIT_MODE_POWERED_DOWN;
+  parts := sjx_count(g[..], ITEM_IMPERIAL_PART);
+  _ := g_pointer(g[..], 640, 360, 0);
+  for k: 0..<60 { g[0].hit_cool = 0; g[0].hearts = T_HEARTS; q := sjn_at(e[0].st[0].robots[r]); g[0].px = q.x; g[0].pz = q.z + 1.5; g_step(g[..], 0.02); }
+  _ := g_pointer(g[..], 640, 360, 2);
+  #assert e[0].st[0].robots[r].mode == SR_EXIT_MODE_GONE && sjx_count(g[..], ITEM_IMPERIAL_PART) > parts;
+  // past the opening with Digger beside her: out
+  g[0].px = 0; g[0].pz = -30; g[0].bot_x = 2; g[0].bot_z = -30; g[0].hearts = T_HEARTS; g[0].hit_cool = 0;
+  g_step(g[..], 0.02);
+  #assert e[0].st[0].outcome == SR_EXIT_WON && g[0].jx[0].said == SJX_OUT;
+}
