@@ -1,4 +1,4 @@
-# Build 1361 artifact record
+# Superseded build 1361 artifact record
 
 - Bundle: `com.openagents.app`, version `1.0.0 (1361)`.
 - Installed runtime: `3e052efd7e6e470d27603cae781021d14719163e7a223aad46c7fa0a875d44e3`.
@@ -36,3 +36,7 @@ The envelope signature verifies with the installed public key. Both advertised
 HTTPS update endpoints serve that same envelope and all 21 exact objects,
 including empty tail files. No Apple upload acceptance is implied by this
 artifact record.
+
+Superseded before Apple upload by build 1371, which retains main’s newer native
+composer/transcript styling. This runtime namespace is immutable and no build
+using it was uploaded. It is retained as release-tooling evidence only.

@@ -1,9 +1,9 @@
-# NIP-17 inbox verification — in progress
+# NIP-17 inbox verification
 
-Issue [#13629](https://github.com/OpenAgentsInc/openagents/issues/13629)
-remains open. Client changes have **not** been pushed or deployed. The API
-companion is deployed as recorded below. The delivery
-contract is [Nostr direct messages](../../protocol/nostr-direct-messages-v1.md).
+Implementation of [#13629](https://github.com/OpenAgentsInc/openagents/issues/13629).
+The contract is [Nostr direct messages](../../protocol/nostr-direct-messages-v1.md).
+The final device artifact is [build 1371](build-1371.md); upload and web
+promotion receipts are recorded on the issue.
 
 The implementation uses one Coax messenger and conversation view in the
 native iOS app and `/messages`. Account-managed custody stays behind the
@@ -12,7 +12,8 @@ agent chats and environment sessions keep their existing owners.
 
 ## Completed checks
 
-These are component results, not a claim that the release gate is complete.
+The receipts retain the source scope and distinguish compiler results from
+reviewed constant equivalence.
 Logs below live in the isolated `oa-arcade-dm` worktree's ignored `build/`.
 
 | Check | Result | Evidence |
@@ -33,6 +34,9 @@ Logs below live in the isolated `oa-arcade-dm` worktree's ignored `build/`.
 | Journal replay | 513 mutants: 505 killed, 8 reviewed equivalents, no survivors; canonical shard records retained here | `dm-journal-merged-qualified.log`, `journal-1.rec`, `journal-2.rec` |
 | Delivery receipt wire | 388 mutants: 380 killed, 8 reviewed equivalents, no survivors; canonical records retained here | `dm-delivery-wire-canonical-merged.log`, `delivery-1.rec`, `delivery-2.rec` |
 | Compose intent | 96 mutants: 93 killed, 3 reviewed equivalents, no survivors | `dm-compose-final-qualified.log` |
+| Store/custody coordinator | 536 mutants: 524 killed, 12 reviewed equivalents, no survivors; formally merged | `dm-store-final-merged.log`, `store-1.rec` through `store-4.rec` |
+| Foreground/background scheduler | 604 mutants: 589 killed, 15 reviewed equivalents, no survivors; formally merged | `dm-scheduler-final-merged.log`, `schedule-1.rec` through `schedule-8.rec` |
+| Authenticated relay coordinator | 953 sites: 925 killed, 28 reviewed equivalents, no unreviewed survivors | `relays-1.rec` through `relays-8.rec`, `relays-grouped-7.rec`; annotation provenance below |
 | Messenger owner/flight coordinator | 513 sites: 504 killed, 8 compiler-marked equivalents, one separately reviewed folded constant (#13644) | `coordinator-1.rec` through `coordinator-4.rec`; scope notes below |
 | Actual native recipient picker/composer and accessible delivery glyph | Passed on the isolated signed simulator | `dm-native-final-ui-tests.log` |
 | Shared DOM adapter, including complete digest IDs, focus and field values | 19 checks passed | `dm-full-id-modules.log` |
@@ -141,9 +145,9 @@ verification.
 
 ## Signed program resource bounds
 
-Build 1361 has been archived and exported locally with two Xcode jobs. It has
-not been uploaded yet. The exact archive resources are retained separately from
-working build products under `~/.openagents/releases/arcade-dm-1361-final/`.
+Build 1371 has been archived and exported locally with two Xcode jobs. It
+retains the current 1370 native composer/transcript styling. The exact archive resources are retained separately from
+working build products under `~/.openagents/releases/arcade-dm-1371/`.
 All world modules link without missing dynamic bindings.
 
 The existing CNU1 per-resource ceiling remains 8 MiB. The installed loader now
@@ -166,7 +170,8 @@ frames/actions match. Evidence: `dm-program-parts-qualified.log`,
 ## Coordinator scope records
 
 The retained owner/flight records come from the same local source checkpoint
-`ba21d7c0bd`. Parts 1, 3 and 4 selected the entry unit with `--unit`; part 2
+`0ff3b891c1` (original local checkpoint `ba21d7c0bd`). The rebase retained
+these units byte for byte. Parts 1, 3 and 4 selected the entry unit with `--unit`; part 2
 selected the entry-source procedures with `--root-only`, retaining all dependency
 checks. These select the same 513 ordered entry-source sites, but the compiler
 includes the scope spelling in its fingerprint. Their original fingerprints and
@@ -185,15 +190,44 @@ annotation. This is tracked in [#13644](https://github.com/OpenAgentsInc/openage
 It is not recorded as a compiler-qualified kill or used to suppress any other
 undecided site. All live security/ownership guards remain checked.
 
-## Remaining release work
+## Final qualification provenance
 
-1. Finish the bounded coordinator, store, scheduler and relay mutation jobs.
-   Earlier survivor/timeout reports remain incomplete evidence. Journal,
-   receipt/cache/compose, read policy and parts-loader qualification are done.
-2. Retain canonical qualification records and run the final touched gates on
-   the rebased tree. The independent live exchange and native regressions above
-   have already passed; unchanged passing checks are not repeated.
-3. Publish the matching signed OTA resources and deploy the web page. The API
-   is already deployed as recorded above.
-4. Push main and upload the exported TestFlight build. Do not wait for Apple
-   processing before continuing other work.
+The store and scheduler canonical records formally merge at source
+`33369b6eac` (original local checkpoint `3a7157b96e`); the rebase retained their
+Nostr units and dependencies byte for byte. The original full relay records
+at that same source had one surviving inner `error==NE_OK && verified` node.
+Those flags co-vary in `ne_signed_fast`. The compiler changes the existing
+left-associated AST node; it does not reparse source operator precedence.
+The outer canonical-decode and public-key-equality AND nodes remain required
+and are independently exercised by the signed wrong-key AUTH fixture.
+
+The only subsequent relay edit adds precise equivalent explanations, with no
+AST or check change. The affected part 7 was run at `63d35e217d` (original
+`4d3952319b`): 116 killed, three reviewed equivalents, no survivors.
+`relays-grouped-7.rec` preserves its different fingerprint. The original
+and supplementary records are not presented as one formally merged receipt.
+Every other native surviving diagnostic was reviewed; the strengthened tests
+now kill previously hidden relay-count, slot-zero, list-ID, refused-ACK,
+reset, HTTP-admission, cursor and priority changes. No product guard was
+removed or rewritten for mutation scoring.
+
+## Native integration after final rebase
+
+On build 1371, `CoaxNativeTranscript` passed all 16 checks and
+`CoaxNativeMessaging` passed 57 checks with one opt-in live-network case skipped.
+This retains main's newer composer, message bubbles, tool disclosure and copy
+behavior. The earlier separate live exchange remains recorded above; no claim
+of a physical-device run is made. All five world modules link without missing
+symbols. API, registry, component, dependency and tool checks are recorded
+above. The production POST endpoint smoke and exact signed OTA resource
+verification use public transport without loading an owner's private data.
+
+## Release receipts
+
+The API deployment is recorded above. The exported, signed client artifact,
+runtime and resource hashes are in [build 1371](build-1371.md). The 1361
+archive was superseded before Apple upload and is retained only as
+[tooling evidence](build-1361.md). Deployment/upload acceptance is recorded on
+[#13629](https://github.com/OpenAgentsInc/openagents/issues/13629), separately
+from qualification and Apple processing. Physical-phone verification remains
+an owner action in `NEEDS_OWNER.md`.
