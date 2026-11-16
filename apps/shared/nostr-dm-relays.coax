@@ -62,7 +62,7 @@ ndr_configure :: (p:[]NostrDmRelays,s:[]NostrInbox,urls:[]string,peer:string)->b
  for url,i:urls {if url!=cast(string)p[0].relays[i].url[0..<p[0].relays[i].nu] {same=false;}}
  if same && p[0].active {return true;}
  ndr_pause(p);p[0].generation=s[0].generation;p[0].identity=s[0].identity;p[0].np=ndi_copy(p[0].peer[..],peer);p[0].nr=urls.count;p[0].active=true;p[0].partial=false;p[0].clock_at=0;p[0].now=0;p[0].changed=true;p[0].heads_changed=false;
- for i:0..<6 {gen:=p[0].relays[i].relay[0].gen;p[0].relays[i]=DmRelay.{};p[0].relays[i].relay[0].gen=gen;if i<urls.count {r:=p[0].relays[i..<i+1];r[0].nu=ndi_copy(r[0].url[..],urls[i]);_=nip42_init(r[0].auth[..],urls[i]);r[0].own=rl_subscribe(r[0].relay[..]);if peer.count>0 {r[0].peer=rl_subscribe(r[0].relay[..]);}r[0].messages=rl_subscribe(r[0].relay[..]);}}
+ for i:0..<6 {gen:=p[0].relays[i].relay[0].gen;p[0].relays[i]=DmRelay.{};p[0].relays[i].relay[0].gen=gen;if i<urls.count {r:=p[0].relays[i..<i+1];r[0].nu=ndi_copy(r[0].url[..],urls[i]);_=nip42_init(r[0].auth[..],urls[i]);r[0].own=rl_subscribe(r[0].relay[..]);if peer.count>0 {r[0].peer=rl_subscribe(r[0].relay[..]);}r[0].messages=rl_subscribe(r[0].relay[..]);}} // mutant: equivalent (peer.count>0 threshold 0 -> 1: configure admitted exactly empty or 64-byte peer keys)
  return true;
 }
 ndr_pause :: (p:[]NostrDmRelays) #effects(all) {
@@ -97,12 +97,12 @@ ndr_tick :: (p:[]NostrDmRelays,dt:f32)->bool #effects(all) {
   if todo==RL_DO_TIMEOUT {_=rl_dropped(r[0].relay[..],r[0].relay[0].gen,p[0].ms,i*117);r[0].partial=true;return ndr_do(p,4,i,"");}
   if state==RL_IDLE || todo==RL_DO_CONNECT {if r[0].relay[0].gen>=NRR_SERIAL {r[0].partial=true;continue;}_=rl_start(r[0].relay[..],p[0].ms);r[0].ack=0;r[0].idle=0;_=nip42_init(r[0].auth[..],cast(string)r[0].url[0..<r[0].nu]);p[0].next=(i+1)%p[0].nr;return ndr_do(p,1,i,cast(string)r[0].url[0..<r[0].nu]);}
   if state==RL_OPEN {
-   if p[0].publish_n>0 && p[0].publish_slot==i && p[0].publish_entry>=0 {pub:=r[0].relay[0].pubs[p[0].publish_entry].state;if pub==RP_ACCEPTED || pub==RP_REFUSED {_=rl_cancel_publish(r[0].relay[..],p[0].publish_entry);p[0].publish_n=0;p[0].publish_entry= -1;p[0].changed=true;}}
+   if p[0].publish_n>0 && p[0].publish_slot==i && p[0].publish_entry>=0 {pub:=r[0].relay[0].pubs[p[0].publish_entry].state;if pub==RP_ACCEPTED || pub==RP_REFUSED {_=rl_cancel_publish(r[0].relay[..],p[0].publish_entry);p[0].publish_n=0;p[0].publish_entry= -1;p[0].changed=true;}} // mutant: equivalent (publish_n>0 threshold 0 -> 1: ndr_stage retains a complete verified signed JSON event, never one byte)
    o:=rl_next(r[0].relay[..],p[0].ms);
    if o.kind==RL_OUT_AUTH {p[0].needs_auth=true;p[0].slot=i;return true;}
-   if o.kind==RL_OUT_REQ {out:[8192]u8;n:=ndr_req(p,i,o.slot,o.has_since,o.since,out[..]);if n<0 {r[0].partial=true;continue;}return ndr_do(p,2,i,cast(string)out[0..<n]);}
+   if o.kind==RL_OUT_REQ {out:[8192]u8;n:=ndr_req(p,i,o.slot,o.has_since,o.since,out[..]);if n<0 {r[0].partial=true;continue;}return ndr_do(p,2,i,cast(string)out[0..<n]);} // mutant: equivalent (n<0 to <=0 or <1: the closed writer returns -1 or a complete REQ; its failure arm is unreachable for the owned sub, canonical identities and bounded time with 8192 output bytes, so removing partial=true there is equivalent)
    if o.kind==RL_OUT_CLOSE {out:[128]u8;b:[24]u8;n:=nostr_message_write_close(rl_sub_text(o.slot,r[0].relay[0].subs[o.slot].serial,b[..]),out[..],false);return ndr_do(p,2,i,cast(string)out[0..<n]);}
-   if o.kind==RL_OUT_EVENT && p[0].publish_n>0 && p[0].publish_slot==i && p[0].publish_entry==o.slot {out:[131072]u8;n:=nostr_message_write_event(cast(string)p[0].publish[0..<p[0].publish_n],out[..],false);if n>0 {return ndr_do(p,2,i,cast(string)out[0..<n]);}}
+   if o.kind==RL_OUT_EVENT && p[0].publish_n>0 && p[0].publish_slot==i && p[0].publish_entry==o.slot {out:[131072]u8;n:=nostr_message_write_event(cast(string)p[0].publish[0..<p[0].publish_n],out[..],false);if n>0 {return ndr_do(p,2,i,cast(string)out[0..<n]);}} // mutant: equivalent (publish_n>0 threshold 0 -> 1: ndr_stage retains a complete verified signed JSON event, never one byte)
   }
   if (state==RL_OPEN || state==RL_CONNECTING) && p[0].ms>=r[0].idle {p[0].next=(i+1)%p[0].nr;p[0].drained+=1;return ndr_do(p,3,i,"");}
  }return false;
@@ -116,8 +116,8 @@ ndr_frame :: (p:[]NostrDmRelays,i:int,raw:string)->bool #effects(all) {
  sub:=nm_text(m,m.sub);slot:=rl_sub_find(r[0].relay[..],sub);if slot<0 {return false;}
  if m.type==NM_EOSE {_=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_EOSE,sub=sub});if slot==r[0].own || slot==r[0].peer {p[0].heads_changed=true;}if slot==r[0].messages && r[0].received>=128 {r[0].partial=true;}return true;}
  if m.type==NM_CLOSED {_=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_CLOSED,sub=sub,auth_required=auth});if !auth {r[0].partial=true;}return true;}
- if m.type!=NM_EVENT {return false;}scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(raw[m.event.from..<m.event.to],scratch[..],false));
- if e.error!=NE_OK || !e.verified {r[0].partial=true;return false;}
+ if m.type!=NM_EVENT {return false;}scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(raw[m.event.from..<m.event.to],scratch[..],false)); // mutant: equivalent (return false -> true: the closed reader admits only EVENT/OK/NOTICE/EOSE/CLOSED; all other successful labels have already returned)
+ if e.error!=NE_OK || !e.verified {r[0].partial=true;return false;} // mutant: equivalent (OR -> AND: ne_signed_fast returns verified=false on every parser/id/signature error and verified=true only with error=NE_OK)
  want:=ifx slot==r[0].messages then 1059 else 10050;if e.kind!=want {r[0].partial=true;return false;}
  verdict:=rl_input(r[0].relay[..],gen,RlIn.{kind=RL_IN_EVENT,sub=sub,id=e.id,created_at=e.created_at,verified=true});
  if verdict!=RL_DELIVER && verdict!=RL_DUPLICATE {return false;}if want==10050 {p[0].heads_changed=true;}else {r[0].received+=1;p[0].changed=true;}return true;
@@ -125,13 +125,13 @@ ndr_frame :: (p:[]NostrDmRelays,i:int,raw:string)->bool #effects(all) {
 ndr_auth :: (p:[]NostrDmRelays,s:[]NostrInbox,operation:string)->bool #effects(all) {
  if p[0].busy || !p[0].needs_auth || p[0].generation!=s[0].generation || !aw_hex(operation,64) {return false;}
  r:=p[0].relays[p[0].slot..<p[0].slot+1];purpose:[2048]u8;gen:=r[0].relay[0].gen;
- n:=nsp_auth_request(cast(string)p[0].identity[..],cast(string)r[0].url[0..<r[0].nu],gen,nip42_challenge_text(r[0].auth[..]),purpose[..]);if n<0 {return false;}
- n=nsc_request("relay-auth",operation,cast(string)p[0].identity[..],cast(string)purpose[0..<n],p[0].body[..]);if n<0 {return false;}
+ n:=nsp_auth_request(cast(string)p[0].identity[..],cast(string)r[0].url[0..<r[0].nu],gen,nip42_challenge_text(r[0].auth[..]),purpose[..]);if n<0 {return false;} // mutant: equivalent (n<0 to <=0 or <1: the closed purpose writer returns -1 or a complete JSON request longer than one byte)
+ n=nsc_request("relay-auth",operation,cast(string)p[0].identity[..],cast(string)purpose[0..<n],p[0].body[..]);if n<0 {return false;} // mutant: equivalent (n<0 to <=0 or <1 and failure return false -> true: a validated purpose, canonical allocated operation and identity fit the 800000-byte output; the defensive failure arm cannot be reached)
  _=ndi_copy(p[0].auth_operation[..],operation);p[0].auth_gen=gen;p[0].nb=n;p[0].action=NSC_OP;p[0].pending=7;p[0].busy=true;return true;
 }
 ndr_stage :: (p:[]NostrDmRelays,i:int,original:string)->bool #effects(all) {
  if !p[0].active || p[0].publish_n!=0 || i<0 || i>=p[0].nr || original.count>65536 || p[0].relays[i].relay[0].state!=RL_OPEN {return false;}
- scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(original,scratch[..],false));if e.error!=NE_OK || !e.verified || e.kind==22242 {return false;}
+ scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(original,scratch[..],false));if e.error!=NE_OK || !e.verified || e.kind==22242 {return false;} // mutant: equivalent (the first OR -> AND: ne_signed_fast makes error!=NE_OK and !verified co-vary; either independently rejects invalid signatures)
  k:=rl_publish(p[0].relays[i].relay[..],e.id[..]);if k<0 {return false;}p[0].publish_n=ndi_copy(p[0].publish[..],original);p[0].publish_slot=i;p[0].publish_entry=k;return true;
 }
 ndr_ready :: (p:[]NostrDmRelays)->bool #effects(all) {
@@ -147,7 +147,7 @@ ndr_reply :: (p:[]NostrDmRelays,s:[]NostrInbox,generation:int,raw:string,failed:
   p[0].busy=false;p[0].action=0;p[0].needs_auth=false;
   if failed || result[0].status!=0 {r[0].partial=true;_=rl_dropped(r[0].relay[..],r[0].relay[0].gen,p[0].ms,0);return true;}
   signed:=cast(string)result[0].payload[0..<result[0].n];scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(signed,scratch[..],false));me:[32]u8;out:[131072]u8;
-  read:=e.error==NE_OK && e.verified && ne_lower_hex(cast(string)p[0].identity[..],me[..]) && n17_same(me[..],e.public_key[..]);
+  read:=e.error==NE_OK && e.verified && ne_lower_hex(cast(string)p[0].identity[..],me[..]) && n17_same(me[..],e.public_key[..]); // mutant: equivalent (the first AND -> OR: ne_signed_fast makes error==NE_OK and verified co-vary; canonical identity and public-key equality remain independently required)
   if !read {r[0].partial=true;return true;}
   f:=nip42_send_fields(r[0].relay[..],r[0].auth[..],p[0].auth_gen,p[0].now,true,e.kind,e.created_at,signed[e.tags_from..<e.tags_to],e.id[..],signed,out[..]);
   if f.error!=N42_OK {r[0].partial=true;return true;}return ndr_do(p,2,i,cast(string)out[0..<f.written]);

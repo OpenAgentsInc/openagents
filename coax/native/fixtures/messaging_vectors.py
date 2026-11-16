@@ -70,4 +70,14 @@ exp_event = dict(id=exp_id.hex(), pubkey=public.hex(), created_at=created, kind=
                  tags=exp_tags, content=exp_content, sig=exp_sig.hex())
 text += 'NMS_EXPIRING_EVENT :: ' + json.dumps(dump(exp_event)) + ';\n'
 text += 'NMS_EXPIRING_ID :: ' + array(exp_id) + ';\n'
+# A correctly signed AUTH for a different public test key, with otherwise
+# identical relay/challenge/time. Later AUTH guards cannot mask an owner bug.
+other_pub = oracle.point_mul(1)[0].to_bytes(32, 'big')
+other_tags = [['relay', 'wss://relay.example'], ['challenge', 'fixture']]
+other_id = hashlib.sha256(dump([0, other_pub.hex(), created, 22242, other_tags, '']).encode()).digest()
+_, other_sig = oracle.sign(other_id, secret=1)
+other_event = dict(id=other_id.hex(), pubkey=other_pub.hex(), created_at=created,
+                   kind=22242, tags=other_tags, content='', sig=other_sig.hex())
+assert oracle.schnorr_verify(other_id, other_pub, other_sig)
+text += 'NMS_AUTH_OTHER_EVENT :: ' + json.dumps(dump(other_event)) + ';\n'
 Path(__file__).with_suffix('.coax').write_text(text)

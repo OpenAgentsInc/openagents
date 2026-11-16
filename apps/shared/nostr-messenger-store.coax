@@ -59,7 +59,7 @@ ndm_store_reply :: (m:[]NostrMessenger,task:int,status:int,raw:string,failed:boo
   next:[1]MsIndex;if !ms_index_read(payload,next[..]) || next[0].revision!=r[0].revision || next[0].n>1 {return false;}
   if m[0].head_for_peer && cast(string)m[0].head_pub[..]!=cast(string)m[0].peer[0..<m[0].np] {m[0].head_wanted=true;m[0].head_peer=false;return true;}
   m[0].head_index[0]=next[0];
-  if next[0].n==0 {if m[0].head_for_peer {m[0].peer_ready=false;}else {m[0].own_ready=false;secure_zero(m[0].own_id[..]);m[0].own[0]=N17Relays.{};}m[0].head_wanted= !m[0].head_for_peer && m[0].np>0;m[0].head_peer=true;}
+  if next[0].n==0 {if m[0].head_for_peer {m[0].peer_ready=false;}else {m[0].own_ready=false;secure_zero(m[0].own_id[..]);m[0].own[0]=N17Relays.{};}m[0].head_wanted= !m[0].head_for_peer && m[0].np>0;m[0].head_peer=true;} // mutant: equivalent (np>0 -> np>1: retained peer length is zero or a validated 64-byte public key)
   return true;
  }
  if task==7 {
@@ -74,7 +74,7 @@ ndm_store_reply :: (m:[]NostrMessenger,task:int,status:int,raw:string,failed:boo
   // The SDK has signed one exact list against the completed read barrier.
   // Queue that original on every saved discovery relay before any EVENT send.
   scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(payload,scratch[..],false));me:[32]u8;
-  if !ne_lower_hex(cast(string)m[0].inbox[0].identity[..],me[..]) || e.error!=NE_OK || !e.verified || e.kind!=10050 || !n17_same(e.public_key[..],me[..]) {return false;}
+  if !ne_lower_hex(cast(string)m[0].inbox[0].identity[..],me[..]) || e.error!=NE_OK || !e.verified || e.kind!=10050 || !n17_same(e.public_key[..],me[..]) {return false;} // mutant: equivalent (the first two OR-to-AND mutations: nsr_read already binds a canonical identity, and ne_signed_fast makes error!=NE_OK and !verified co-vary; the independent signature refusal remains)
   m[0].setup_n=ndi_copy(m[0].setup_original[..],payload);m[0].enable=true;return true;
  }
  if task==9 {m[0].enable=false;m[0].setup_n=0;m[0].pub_phase=0;m[0].pub_cursor=0;m[0].pub_revision=0;m[0].head_wanted=true;m[0].head_peer=false;m[0].head_index[0]=MsIndex.{};return true;}

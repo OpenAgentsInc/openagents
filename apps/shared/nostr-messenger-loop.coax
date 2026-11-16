@@ -37,11 +37,11 @@ ndm_outbox :: (m:[]NostrMessenger)->bool #effects(all) {
  return false;
 }
 ndm_tick :: (m:[]NostrMessenger,dt:f32)->bool #effects(all) {
- if dt>0 && dt<=1 {m[0].ms+=cast(int)(dt*1000);}
+ if dt>0 && dt<=1 {m[0].ms+=cast(int)(dt*1000);} // mutant: equivalent (dt>0 -> dt>=0: adding zero changes neither clock nor any other state)
  ndr_advance(m[0].relays[..],dt);
  if !m[0].started {return false;}
  if m[0].flight!=0 {
-  if m[0].ms>=m[0].deadline {_=ndm_reply(m,m[0].op,m[0].generation,0,"",true);return true;}return false;
+  if m[0].ms>=m[0].deadline {_=ndm_reply(m,m[0].op,m[0].generation,0,"",true);return true;}return false; // mutant: equivalent (timeout status argument 0 -> 1: failed=true makes every reply handler ignore the HTTP status)
  }
  if m[0].retry {if m[0].ms<m[0].retry_at {return false;}m[0].flight=m[0].retry_task;m[0].action=m[0].op;m[0].deadline=m[0].ms+45000;m[0].retry=false;return true;}
  if !m[0].active {if m[0].relays[0].active {ndr_pause(m[0].relays[..]);}_=ndr_tick(m[0].relays[..],0);return ndm_take_relay(m);}
@@ -57,30 +57,30 @@ ndm_tick :: (m:[]NostrMessenger,dt:f32)->bool #effects(all) {
   if ndm_pool(m,0,"") {m[0].settings_changed=false;m[0].discovery_at=m[0].ms+30000;m[0].head_wanted=true;m[0].head_peer=false;m[0].head_index[0]=MsIndex.{};}
  }
  none:[1]string;
- if m[0].enable && m[0].setup_n>0 {targets:[6]string;for i:0..<m[0].ns {targets[i]=cast(string)m[0].saved[i][0..<m[0].saved_n[i]];}return ndm_store(m,9,"queue",cast(string)m[0].setup_original[0..<m[0].setup_n],targets[0..<m[0].ns],0,0);}
+ if m[0].enable && m[0].setup_n>0 {targets:[6]string;for i:0..<m[0].ns {targets[i]=cast(string)m[0].saved[i][0..<m[0].saved_n[i]];}return ndm_store(m,9,"queue",cast(string)m[0].setup_original[0..<m[0].setup_n],targets[0..<m[0].ns],0,0);} // mutant: equivalent (setup_n>0 -> setup_n>1: the retained setup is empty or a fully verified signed event longer than one byte)
  if m[0].head_index[0].n==1 {return ndm_store(m,7,"event",cast(string)m[0].head_index[0].rows[0].id[..],none[0..<0],0,0);}
  if p[0].heads_changed && !m[0].head_wanted {p[0].heads_changed=false;m[0].head_wanted=true;m[0].head_peer=false;}
  if m[0].head_wanted && ndm_lists_ready(m) {
   filter:[1024]u8;m[0].head_for_peer=m[0].head_peer;
   _=ndi_copy(m[0].head_pub[..],ifx m[0].head_for_peer then cast(string)m[0].peer[..] else cast(string)m[0].inbox[0].identity[..]);n:=ndm_head_filter(cast(string)m[0].head_pub[..],filter[..]);
-  if n>0 {return ndm_store(m,6,"index",cast(string)filter[0..<n],none[0..<0],0,0);}
+  if n>0 {return ndm_store(m,6,"index",cast(string)filter[0..<n],none[0..<0],0,0);} // mutant: equivalent (positive-length threshold 0 -> 1: this closed writer yields failure/empty or a complete JSON object longer than one byte; for nonnegative-length mutations, the writer never returns zero)
  }
  if m[0].enable && !m[0].head_wanted && ndm_lists_ready(m) {
   if m[0].mode!=0 {if !p[0].busy {_=ndm_pool(m,0,"");}return true;}
   purpose:[4096]u8;base:=ifx aw_hex(cast(string)m[0].own_id[..],64) then cast(string)m[0].own_id[..] else "";
-  n:=nsp_list_request(cast(string)m[0].inbox[0].identity[..],10050,base,"relay",cast(string)m[0].saved[0][0..<m[0].saved_n[0]],true,purpose[..]);if n>0 {return ndm_custody(m,8,"publish-list",cast(string)purpose[0..<n]);}
+  n:=nsp_list_request(cast(string)m[0].inbox[0].identity[..],10050,base,"relay",cast(string)m[0].saved[0][0..<m[0].saved_n[0]],true,purpose[..]);if n>0 {return ndm_custody(m,8,"publish-list",cast(string)purpose[0..<n]);} // mutant: equivalent (positive-length threshold 0 -> 1: this closed writer yields failure/empty or a complete JSON object longer than one byte; for nonnegative-length mutations, the writer never returns zero)
  }
  if m[0].pub_phase!=5 {if ndm_outbox(m) && m[0].flight!=0 {return true;}}
  else if m[0].mode==2 && !p[0].busy {if ndm_pool(m,ifx m[0].own_ready then 1 else 0,"") {return true;}}
  if !m[0].head_wanted && m[0].own_ready && m[0].mode==0 && m[0].pub_phase==5 && !p[0].busy {if ndm_pool(m,1,"") {m[0].discovery_at=m[0].ms+30000;return true;}}
  if m[0].want_receipts && j[0].phase==0 && m[0].http_available {
-  wire:[512]u8;op:[64]u8;if !ndj_allocate(j,op[..]) {return false;}n:=ndd_request(m[0].delivery[..],cast(string)op[..],wire[..]);if n>0 {return ndm_launch(m,4,10,cast(string)wire[0..<n]);}
+  wire:[512]u8;op:[64]u8;if !ndj_allocate(j,op[..]) {return false;}n:=ndd_request(m[0].delivery[..],cast(string)op[..],wire[..]);if n>0 {return ndm_launch(m,4,10,cast(string)wire[0..<n]);} // mutant: equivalent (positive-length threshold 0 -> 1: this closed writer yields failure/empty or a complete JSON object longer than one byte; for nonnegative-length mutations, the writer never returns zero)
  }
  if !m[0].want_receipts && m[0].status_at<m[0].delivery[0].n {
-  filter:[4096]u8;n:=ndd_filter(m[0].delivery[..],m[0].status_at,filter[..]);if n>0 {return ndm_store(m,11,"index",cast(string)filter[0..<n],none[0..<0],0,0);}
+  filter:[4096]u8;n:=ndd_filter(m[0].delivery[..],m[0].status_at,filter[..]);if n>0 {return ndm_store(m,11,"index",cast(string)filter[0..<n],none[0..<0],0,0);} // mutant: equivalent (positive-length threshold 0 -> 1: this closed writer yields failure/empty or a complete JSON object longer than one byte; for nonnegative-length mutations, the writer never returns zero)
  }
  if m[0].http_available && nrp_work(m[0].read_positions[..]) {
-  wire:[1024]u8;reference:[64]u8;if ndj_allocate(j,reference[..]) {n:=nrp_request(m[0].read_positions[..],cast(string)reference[..],wire[..]);if n>0 {return ndm_launch(m,4,12,cast(string)wire[0..<n]);}}
+  wire:[1024]u8;reference:[64]u8;if ndj_allocate(j,reference[..]) {n:=nrp_request(m[0].read_positions[..],cast(string)reference[..],wire[..]);if n>0 {return ndm_launch(m,4,12,cast(string)wire[0..<n]);}} // mutant: equivalent (positive-length threshold 0 -> 1 or > -> >=: nrp_work guarantees a row to serialize; the closed writer then yields -1 or a complete JSON object longer than one byte)
  }
  if m[0].ms>=m[0].read_at {m[0].read_at=m[0].ms+60000;for i:0..<m[0].read_positions[0].n {m[0].read_positions[0].rows[i].known=false;}}
  if m[0].ms>=m[0].refresh_at || p[0].changed {

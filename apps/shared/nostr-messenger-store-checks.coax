@@ -6,7 +6,8 @@
  #assert ndm_pool(m[..],1,"") && m[0].mode==1 && m[0].relays[0].nr==6;
  for i:0..<6 {#assert cast(string)m[0].relays[0].relays[i].url[0..<m[0].relays[0].relays[i].nu]==urls[i];}
  m[0].saved_n[0]=ndi_copy(m[0].saved[0][..],urls[6]);#assert ndm_pool(m[..],1,"") && m[0].relays[0].nr==6;
- m[0].own[0].count=7;m[0].own_ready=false;#assert ndm_pool(m[..],0,"") && m[0].mode==0;
+ m[0].own[0].count=7;#assert ndm_pool(m[..],2,"wss://pending.example") && m[0].mode==2;
+ m[0].own_ready=false;#assert ndm_pool(m[..],0,"") && m[0].mode==0;
  m[0].own_ready=true;m[0].own[0].count=1;m[0].own[0].url_n[0]=ndi_copy(m[0].own[0].url[0..<N17_URL_MOST],"ws://bad.example");
  #assert !ndm_pool(m[..],1,"") && cast(string)m[0].note[0..<m[0].nn]=="Secure inbox unavailable";
 }
@@ -144,6 +145,6 @@ ndm_test_store_answer :: (m:[]NostrMessenger,task:int,action:string,status:strin
  // A genuinely signed list is admitted only for the exact discovered original.
  m[0].expected=6;m[0].head_for_peer=false;m[0].np=0;_=ndi_copy(m[0].head_pub[..],NMS_LIST_PUB);_=ndi_copy(m[0].head_index[0].rows[0].id[..],NMS_LIST_ID_HEX);m[0].head_index[0].n=1;
  #assert ndm_test_store_answer(m[..],7,"event","ok",NMS_LIST_EVENT,0,0) && m[0].own_ready && m[0].own[0].count==1 && n17_url(m[0].own[0],0,"wss://inbox.example") && cast(string)m[0].own_id[..]==NMS_LIST_ID_HEX && m[0].head_peer && !m[0].head_wanted && m[0].head_index[0].n==0;
- m[0].head_for_peer=true;m[0].np=ndi_copy(m[0].peer[..],NMS_LIST_PUB);m[0].head_index[0].n=1;_=ndi_copy(m[0].head_index[0].rows[0].id[..],NMS_LIST_ID_HEX);m[0].peer_ready=false;
+ m[0].head_for_peer=true;m[0].np=ndi_copy(m[0].peer[..],NMS_LIST_PUB);m[0].head_index[0].n=1;_=ndi_copy(m[0].head_index[0].rows[0].id[..],NMS_LIST_ID_HEX);m[0].peer_ready=false;m[0].head_wanted=true;
  #assert ndm_test_store_answer(m[..],7,"event","ok",NMS_LIST_EVENT,0,0) && m[0].peer_ready && !m[0].head_wanted && m[0].head_index[0].n==0;
 }

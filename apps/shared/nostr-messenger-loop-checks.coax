@@ -1,8 +1,26 @@
 // Fixtures describe already-owned phase boundaries; scheduling is the product's.
+#test "an unsubmitted or differently staged intent cannot acquire a signing flight" {
+ m:[1]NostrMessenger;ndm_test_quiet(m[..]);peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndo_begin(m[0].outgoing[..],m[0].inbox[..],NMS_LIST_PUB,peer,NMS_LIST_AT,"not submitted","");
+ #assert !ndm_tick(m[..],0) && m[0].flight==0 && m[0].action==0;
+ m[0].submit=true;m[0].outgoing[0].phase=0;#assert !ndm_tick(m[..],0) && m[0].flight==0 && m[0].action==0;
+}
+#test "a blocked target switch reports no progress and relay retirement redraws the actual lifecycle change" {
+ m:[1]NostrMessenger;ndm_test_quiet(m[..]);m[0].pub_phase=3;m[0].outbox[0].relays_n=1;m[0].outbox[0].nr[0]=ndi_copy(m[0].outbox[0].relays[0][..],"wss://target.example");
+ #assert !ndm_outbox(m[..]) && m[0].mode==1 && m[0].flight==0;
+ m[0].pub_phase=5;m[0].relays[0].busy=false;m[0].relays[0].reset=true;m[0].dirty=false;
+ #assert ndm_tick(m[..],0) && m[0].flight==2 && m[0].op==23 && m[0].dirty;
+}
+#test "an actual AUTH challenge schedules only its matching installed custody request" {
+ m:[1]NostrMessenger;q:[1]NscRequest;ndm_test_lists(m[..],false);r:=m[0].relays[0].relays[0..<1];
+ #assert ndr_frame(m[0].relays[..],0,"[\"AUTH\",\"fixture\"]");m[0].relays[0].needs_auth=true;m[0].relays[0].slot=0;
+ #assert ndm_tick(m[..],0) && m[0].flight==2 && m[0].op==21 && m[0].relays[0].pending==7 && nsc_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==2;
+ purpose:[1]NscPurpose;#assert nsp_read(2,NMS_LIST_PUB,cast(string)q[0].payload[0..<q[0].n],purpose[..]) && purpose[0].generation==7;
+}
 #test "receipt status polling uses the committed exact outer identifiers and relay changes trigger immediate reconciliation" {
  m:[1]NostrMessenger;b:[2048]u8;q:[1]MsRequest;ndm_test_quiet(m[..]);ids:=[2]string.[NMS_LIST_PUB,"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"];
  n:=nsm_sealed_write(ids[..],7,b[..]);m[0].delivery[0].n=1;#assert nsm_sealed_read(cast(string)b[0..<n],m[0].delivery[0].rows[0].state[0].receipt[..]);
- #assert ndm_tick(m[..],0) && m[0].flight==11 && m[0].op==22 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==5;
+ #assert ndm_tick(m[..],0) && m[0].flight==11 && m[0].op==22 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==5 && q[0].subscription==0 && q[0].revision==0 && q[0].cursor==0;
  expected:[4096]u8;length:=ndd_filter(m[0].delivery[..],0,expected[..]);#assert cast(string)q[0].payload[0..<q[0].n]==cast(string)expected[0..<length];
  m[0].flight=0;m[0].action=0;m[0].status_at=1;m[0].relays[0].changed=true;m[0].journal[0].busy=true;m[0].dirty=false;
  #assert !ndm_tick(m[..],0) && !m[0].relays[0].changed && m[0].refresh_at==5100 && m[0].pub_phase==0 && m[0].journal[0].phase==0 && m[0].dirty;
@@ -39,7 +57,7 @@ ndm_test_lists :: (m:[]NostrMessenger,peer:bool) {
 }
 #test "discovered own and peer heads use exact authors and no new list is signed before its read barrier" {
  m:[1]NostrMessenger;q:[1]MsRequest;ndm_test_lists(m[..],true);m[0].head_wanted=true;
- #assert ndm_tick(m[..],0) && m[0].flight==6 && !m[0].head_for_peer && cast(string)m[0].head_pub[..]==NMS_LIST_PUB && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==5;
+ #assert ndm_tick(m[..],0) && m[0].flight==6 && !m[0].head_for_peer && cast(string)m[0].head_pub[..]==NMS_LIST_PUB && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==5 && q[0].subscription==0 && q[0].revision==0 && q[0].cursor==0;
  expected:[1024]u8;n:=ndm_head_filter(NMS_LIST_PUB,expected[..]);#assert cast(string)q[0].payload[0..<q[0].n]==cast(string)expected[0..<n];
  m[0].flight=0;m[0].action=0;m[0].head_peer=true;
  #assert ndm_tick(m[..],0) && m[0].flight==6 && m[0].head_for_peer && cast(string)m[0].head_pub[..]==cast(string)m[0].peer[..];
@@ -95,12 +113,12 @@ ndm_test_quiet :: (m:[]NostrMessenger) {
  #assert ndm_outbox(m[..]) && m[0].flight==4 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==9 && q[0].revision==7 && q[0].cursor==3;
  m[0].flight=0;m[0].pub_phase=1;m[0].outbox[0].n=2;m[0].outbox[0].relays_n=2;m[0].outbox[0].rows[0].pending=2;
  _=ndi_copy(m[0].outbox[0].rows[0].id[..],NMS_LIST_ID_HEX);_=ndi_copy(m[0].outbox[0].rows[1].id[..],NMS_LIST_PUB);
- #assert ndm_outbox(m[..]) && m[0].flight==5 && m[0].pub_phase==2 && m[0].pub_at==0 && m[0].pub_target==1 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==6 && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_ID_HEX;
+ #assert ndm_outbox(m[..]) && m[0].flight==5 && m[0].pub_phase==2 && m[0].pub_at==0 && m[0].pub_target==1 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==6 && q[0].subscription==0 && q[0].revision==0 && q[0].cursor==0 && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_ID_HEX;
  m[0].flight=0;m[0].pub_phase=1;m[0].pub_at=0;m[0].pub_target=0;m[0].outbox[0].rows[0].pending=0;m[0].outbox[0].rows[1].pending=1;
  #assert ndm_outbox(m[..]) && m[0].pub_at==1 && m[0].pub_target==0 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_PUB;
  m[0].flight=0;m[0].pub_phase=1;m[0].pub_at=0;m[0].outbox[0].rows[1].pending=0;m[0].outbox[0].cursor=4;
  #assert ndm_outbox(m[..]) && m[0].pub_phase==0 && m[0].pub_cursor==4 && m[0].flight==0;
- m[0].pub_phase=1;m[0].pub_at=2;m[0].outbox[0].cursor=0;m[0].pub_revision=7;
+ m[0].pub_phase=1;m[0].pub_at=2;m[0].outbox[0].rows[2].pending=1;_=ndi_copy(m[0].outbox[0].rows[2].id[..],NMS_LIST_ID_HEX);m[0].outbox[0].cursor=0;m[0].pub_revision=7;
  #assert ndm_outbox(m[..]) && m[0].pub_phase==5 && m[0].pub_cursor==0 && m[0].pub_revision==0 && !ndm_outbox(m[..]);
 }
 #test "outbox publishing uses its immutable stored target and drains only an actually finished publish" {
@@ -129,14 +147,19 @@ ndm_test_quiet :: (m:[]NostrMessenger) {
  #assert ndm_tick(m[..],0) && !m[0].relays[0].active && m[0].flight==2 && m[0].op==23 && m[0].relays[0].pending==5;
 }
 #test "completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier" {
- m:[1]NostrMessenger;ndm_test_quiet(m[..]);m[0].journal[0].phase=2;m[0].journal[0].index[0].complete=true;
- _=ndm_tick(m[..],0);#assert m[0].journal[0].phase==0 && m[0].journal[0].ready && m[0].want_receipts && m[0].delivery[0].generation==1;
+ m:[1]NostrMessenger;ndm_test_quiet(m[..]);m[0].journal[0].phase=2;m[0].journal[0].index[0].complete=true;m[0].dirty=false;
+ _=ndm_tick(m[..],0);#assert m[0].dirty && m[0].journal[0].phase==0 && m[0].journal[0].ready && m[0].want_receipts && m[0].delivery[0].generation==1;
  m[0].want_receipts=false;m[0].settings_changed=true;m[0].relays[0].busy=false;m[0].head_index[0].n=1;m[0].head_peer=true;
  #assert ndm_tick(m[..],0) && !m[0].settings_changed && m[0].mode==0 && m[0].discovery_at==30100 && m[0].head_wanted && !m[0].head_peer && m[0].head_index[0].n==0 && m[0].flight==2;
 }
 #test "setup queue and head reads use their exact existing wire actions before any publication" {
  m:[1]NostrMessenger;q:[1]MsRequest;ndm_test_quiet(m[..]);m[0].enable=true;m[0].setup_n=ndi_copy(m[0].setup_original[..],NMS_LIST_EVENT);
- #assert ndm_tick(m[..],0) && m[0].flight==9 && m[0].op==22 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==3 && q[0].targets_n==1 && cast(string)q[0].targets[0][0..<q[0].nt[0]]=="wss://relay.example" && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_EVENT;
+ #assert ndm_tick(m[..],0) && m[0].flight==9 && m[0].op==22 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==3 && q[0].subscription==0 && q[0].revision==0 && q[0].cursor==0 && q[0].targets_n==1 && cast(string)q[0].targets[0][0..<q[0].nt[0]]=="wss://relay.example" && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_EVENT;
  m[0].flight=0;m[0].action=0;m[0].enable=false;m[0].setup_n=0;m[0].head_index[0].n=1;_=ndi_copy(m[0].head_index[0].rows[0].id[..],NMS_LIST_ID_HEX);
- #assert ndm_tick(m[..],0) && m[0].flight==7 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==6 && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_ID_HEX;
+ #assert ndm_tick(m[..],0) && m[0].flight==7 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==6 && q[0].subscription==0 && q[0].revision==0 && q[0].cursor==0 && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_ID_HEX;
+}
+
+#test "an empty setup buffer cannot allocate or enqueue a setup operation" {
+ m:[1]NostrMessenger;ndm_test_quiet(m[..]);m[0].enable=true;m[0].setup_n=0;m[0].head_wanted=true;
+ serial:=m[0].journal[0].serial;#assert !ndm_tick(m[..],0) && m[0].flight==0 && m[0].journal[0].serial==serial;
 }
