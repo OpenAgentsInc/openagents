@@ -1,0 +1,116 @@
+// Parity checks for flow.coax and music.coax: SpliceTests/Rules/SpliceFlowTests.cpp and
+// SpliceMusicTests.cpp. rules.coax loads this file with `#load ... #test;`.
+
+#test "Splice.Rules.Flow.TitleToEnd" {
+  f: [1] SrFlowStack;
+  #assert f[0].current == SR_FLOW_TITLE;
+  path := [9] int.[SR_FLOW_PLAY_ON_FOOT, SR_FLOW_PAUSE, SR_FLOW_PLAY_ON_FOOT, SR_FLOW_PLAY_INTERIOR, SR_FLOW_EDIT_BAY,
+    SR_FLOW_CINEMATIC_MEMORY, SR_FLOW_ENDING_RESTORED, SR_FLOW_ENDING_TEASER, SR_FLOW_TITLE];
+  for to: path { #assert sr_flow_allowed(sr_flow_request(f[..], to)) && f[0].current == to; }
+  #assert f[0].n == 0;
+}
+#test "Splice.Rules.Flow.PlayToTitleRefused" {
+  f: [1] SrFlowStack; _ = sr_flow_request(f[..], SR_FLOW_PLAY_ON_FOOT);
+  t := sr_flow_request(f[..], SR_FLOW_TITLE);
+  #assert !sr_flow_allowed(t) && t.refusal == SR_FLOW_NOT_IN_TABLE && f[0].current == SR_FLOW_PLAY_ON_FOOT;
+  #assert !sr_flow_allowed(sr_flow_request(f[..], SR_FLOW_ENDING_RESTORED));
+  #assert sr_flow_allowed(sr_flow_request(f[..], SR_FLOW_PAUSE)) && sr_flow_allowed(sr_flow_request(f[..], SR_FLOW_TITLE)) && f[0].n == 0;
+}
+#test "Splice.Rules.Flow.PauseRestoresBeneath" {
+  f: [1] SrFlowStack;
+  _ = sr_flow_request(f[..], SR_FLOW_PLAY_ON_FOOT); _ = sr_flow_request(f[..], SR_FLOW_PLAY_BOARD); _ = sr_flow_request(f[..], SR_FLOW_PAUSE);
+  #assert sr_flow_is_world_paused(f[0].current);
+  #assert sr_flow_request(f[..], SR_FLOW_PLAY_ON_FOOT).refusal == SR_FLOW_NOT_STATE_BENEATH;
+  #assert sr_flow_allowed(sr_flow_request(f[..], SR_FLOW_SETTINGS)) && sr_flow_allowed(sr_flow_request(f[..], SR_FLOW_PAUSE));
+  #assert sr_flow_allowed(sr_flow_request(f[..], SR_FLOW_PLAY_BOARD)) && f[0].n == 0;
+  #assert sr_flow_request(f[..], SR_FLOW_PLAY_BOARD).refusal == SR_FLOW_SAME_STATE;
+}
+#test "Splice.Rules.Flow.EventOncePerTransition" {
+  // The C++ OnChanged fires once per allowed transition with (from, to); the caller fires it here.
+  f: [1] SrFlowStack; fired_from: [8] int; fired_to: [8] int; n := 0;
+  for to: [5] int.[SR_FLOW_PLAY_ON_FOOT, SR_FLOW_TITLE, SR_FLOW_PLAY_ON_FOOT, SR_FLOW_PAUSE, SR_FLOW_PLAY_ON_FOOT] {
+    from := f[0].current;
+    if sr_flow_allowed(sr_flow_request(f[..], to)) { fired_from[n] = from; fired_to[n] = f[0].current; n += 1; }
+  }
+  #assert n == 3;
+  #assert fired_from[0] == SR_FLOW_TITLE && fired_to[0] == SR_FLOW_PLAY_ON_FOOT;
+  #assert fired_from[1] == SR_FLOW_PLAY_ON_FOOT && fired_to[1] == SR_FLOW_PAUSE;
+  #assert fired_from[2] == SR_FLOW_PAUSE && fired_to[2] == SR_FLOW_PLAY_ON_FOOT;
+}
+#test "Splice.Rules.Flow.MemoryFromPlay" {
+  for from: [3] int.[SR_FLOW_PLAY_ON_FOOT, SR_FLOW_PLAY_INTERIOR, SR_FLOW_EDIT_BAY] {
+    f: [1] SrFlowStack; _ = sr_flow_request(f[..], SR_FLOW_PLAY_ON_FOOT);
+    if from != SR_FLOW_PLAY_ON_FOOT { _ = sr_flow_request(f[..], SR_FLOW_PLAY_INTERIOR); }
+    if from == SR_FLOW_EDIT_BAY { _ = sr_flow_request(f[..], SR_FLOW_EDIT_BAY); }
+    #assert f[0].current == from;
+    #assert sr_flow_allowed(sr_flow_request(f[..], SR_FLOW_CINEMATIC_MEMORY)) && f[0].n == 0;
+    #assert sr_flow_allowed(sr_flow_request(f[..], SR_FLOW_ENDING_RESTORED)) && sr_flow_allowed(sr_flow_request(f[..], SR_FLOW_ENDING_TEASER));
+  }
+  b: [1] SrFlowStack; _ = sr_flow_request(b[..], SR_FLOW_PLAY_ON_FOOT); _ = sr_flow_request(b[..], SR_FLOW_PLAY_BOARD);
+  #assert !sr_flow_allowed(sr_flow_request(b[..], SR_FLOW_CINEMATIC_MEMORY));
+  t: [1] SrFlowStack;
+  #assert !sr_flow_allowed(sr_flow_request(t[..], SR_FLOW_CINEMATIC_MEMORY));
+}
+#test "Splice.Rules.Flow.TagsAndTable" {
+  for i: 0..<SR_FLOW_COUNT {
+    tag := sr_flow_tag(i);
+    #assert tag.count > 5 && tag[0] == 70 && tag[4] == 46;   // "Flow."
+    for j: 0..<i { #assert sr_flow_tag(j) != tag; }
+  }
+  #assert SR_FLOW_COUNT == 17;
+  for r: SR_FLOW_TABLE { #assert r.from >= 0 && r.from < SR_FLOW_COUNT && r.to >= 0 && r.to < SR_FLOW_COUNT && r.from != r.to; }
+}
+
+#test "Splice.Rules.Music.SceneToTrack" {
+  out: SrMusicPlace; gday := SrMusicPlace.{in_garage = true}; gnight := SrMusicPlace.{in_garage = true, night = true}; pnight := SrMusicPlace.{night = true};
+  #assert sr_music_track_for(SR_FLOW_TITLE, out, SR_TRACK_NONE) == SR_TRACK_TITLE && sr_music_track_for(SR_FLOW_CHARACTER, out, SR_TRACK_NONE) == SR_TRACK_TITLE;
+  #assert sr_music_track_for(SR_FLOW_PLAY_INTERIOR, out, SR_TRACK_NONE) == SR_TRACK_CABIN && sr_music_track_for(SR_FLOW_EDIT_BAY, out, SR_TRACK_NONE) == SR_TRACK_CABIN;
+  #assert sr_music_track_for(SR_FLOW_PLAY_DRIVE, out, SR_TRACK_NONE) == SR_TRACK_DESERT && sr_music_track_for(SR_FLOW_PLAY_DRIVE, gnight, SR_TRACK_NONE) == SR_TRACK_DESERT;
+  #assert sr_music_track_for(SR_FLOW_PLAY_ON_FOOT, out, SR_TRACK_NONE) == SR_TRACK_DESERT && sr_music_track_for(SR_FLOW_PLAY_BOARD, out, SR_TRACK_NONE) == SR_TRACK_DESERT;
+  #assert sr_music_track_for(SR_FLOW_PLAY_ON_FOOT, gday, SR_TRACK_NONE) == SR_TRACK_DESERT && sr_music_track_for(SR_FLOW_PLAY_ON_FOOT, pnight, SR_TRACK_NONE) == SR_TRACK_DESERT;
+  #assert sr_music_track_for(SR_FLOW_PLAY_ON_FOOT, gnight, SR_TRACK_NONE) == SR_TRACK_RAVE && sr_music_track_for(SR_FLOW_PLAY_BOARD, gnight, SR_TRACK_NONE) == SR_TRACK_RAVE;
+  #assert sr_music_scene_name(SR_TRACK_TITLE) == "Title" && sr_music_scene_name(SR_TRACK_CABIN) == "Cabin" && sr_music_scene_name(SR_TRACK_DESERT) == "Desert" && sr_music_scene_name(SR_TRACK_RAVE) == "Rave";
+}
+#test "Splice.Rules.Music.PauseKeepsTrack" {
+  p: SrMusicPlace;
+  keepers := [10] int.[SR_FLOW_PAUSE, SR_FLOW_SETTINGS, SR_FLOW_INVENTORY, SR_FLOW_MAP, SR_FLOW_BANNER, SR_FLOW_RESPAWN,
+    SR_FLOW_CINEMATIC_HERO, SR_FLOW_CINEMATIC_MEMORY, SR_FLOW_ENDING_RESTORED, SR_FLOW_ENDING_TEASER];
+  for s: keepers { for t: 1..<SR_TRACK_COUNT { #assert sr_music_track_for(s, p, t) == t; } }
+  f: [1] SrFlowStack; _ = sr_flow_request(f[..], SR_FLOW_PLAY_ON_FOOT);
+  playing := sr_music_track_for_stack(f[0], p, SR_TRACK_NONE);
+  #assert playing == SR_TRACK_DESERT;
+  _ = sr_flow_request(f[..], SR_FLOW_PAUSE); playing = sr_music_track_for_stack(f[0], p, playing);
+  #assert playing == SR_TRACK_DESERT;
+  _ = sr_flow_request(f[..], SR_FLOW_PLAY_ON_FOOT); playing = sr_music_track_for_stack(f[0], p, playing);
+  #assert playing == SR_TRACK_DESERT;
+}
+#test "Splice.Rules.Music.Crossfade" {
+  #assert SR_MUSIC_CROSSFADE_SECONDS == 2.0;
+  m := [1] SrMusicMixer.[sr_music_mixer(SR_MUSIC_CROSSFADE_SECONDS)];
+  #assert sr_music_gain(m[0], SR_TRACK_CABIN) == 0.0 && !sr_music_is_fading(m[0]);
+  sr_music_set_target(m[..], SR_TRACK_CABIN); sr_music_tick(m[..], 2.0);
+  #assert sr_music_gain(m[0], SR_TRACK_CABIN) == 1.0 && !sr_music_is_fading(m[0]);
+  sr_music_set_target(m[..], SR_TRACK_DESERT);
+  #assert sr_music_is_fading(m[0]);
+  sr_music_tick(m[..], 1.0);
+  #assert sr_music_gain(m[0], SR_TRACK_CABIN) == 0.5 && sr_music_gain(m[0], SR_TRACK_DESERT) == 0.5;
+  sr_music_tick(m[..], 1.0);
+  #assert sr_music_gain(m[0], SR_TRACK_CABIN) == 0.0 && sr_music_gain(m[0], SR_TRACK_DESERT) == 1.0 && !sr_music_is_fading(m[0]);
+  sr_music_set_target(m[..], SR_TRACK_RAVE); sr_music_tick(m[..], 0.5);
+  #assert sr_music_gain(m[0], SR_TRACK_RAVE) == 0.25 && sr_music_gain(m[0], SR_TRACK_DESERT) == 0.75;
+  sr_music_set_target(m[..], SR_TRACK_DESERT);
+  #assert sr_music_gain(m[0], SR_TRACK_DESERT) == 0.75;
+  sr_music_tick(m[..], 0.5);
+  #assert sr_music_gain(m[0], SR_TRACK_DESERT) == 1.0 && sr_music_gain(m[0], SR_TRACK_RAVE) == 0.0;
+  sr_music_set_target(m[..], SR_TRACK_DESERT); sr_music_tick(m[..], 1.0);
+  #assert sr_music_gain(m[0], SR_TRACK_DESERT) == 1.0;
+  sr_music_set_target(m[..], SR_TRACK_NONE); sr_music_tick(m[..], 2.0);
+  #assert sr_music_gain(m[0], SR_TRACK_DESERT) == 0.0;
+}
+#test "Splice.Rules.Music.SceneForLevel" {
+  ring := sr_scene_for_level("L_Ring");
+  #assert ring.known && ring.start_state == SR_FLOW_PLAY_ON_FOOT && ring.phase == SR_PHASE_DUSK && ring.place.in_garage && !ring.place.night;
+  lab := sr_scene_for_level("l_lab");
+  #assert lab.known && lab.phase == SR_PHASE_NIGHT && lab.place.night && !lab.place.in_garage;
+  #assert sr_scene_for_level("L_Cabin").start_state == SR_FLOW_PLAY_INTERIOR && sr_scene_for_level("L_SolarFarm").known && !sr_scene_for_level("L_LookDev").known;
+}

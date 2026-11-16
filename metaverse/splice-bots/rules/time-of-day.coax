@@ -1,0 +1,85 @@
+// Splice Bots rules: time of day, the beats that move it and the light blend (SpliceTimeOfDay.h,
+// package W-11; GDD 02 section 3, rules 1 to 3, 3.5; GDD 04 UE-SKY-04, UE-SKY-05). Time is an
+// event-driven phase, not a clock: each step, the first beat whose From is the phase and whose area
+// holds her sets the phase to its To. Beats never move time back. The light blends to the new phase over
+// blend_time; a change mid-blend starts from the mix on screen. Frame: the prototype's metres, X and Z
+// on the ground, Y up. The phases are run-save.coax's SR_PHASE_*.
+#load "run-save.coax";
+
+SR_PHASE_COUNT :: 4;
+// One row of the beats table joined to its area (FSpliceTimeBeat).
+SrTimeBeat :: struct { min_x: f32; max_x: f32; min_z: f32; max_z: f32; from: int = SR_PHASE_DAY; to: int = SR_PHASE_DUSK; }
+SR_TIME_BEATS_MAX :: 8;
+// GDD 02 3.2 beats 1 (area 7, the garage yard) and 2 (area 9, the dusk road band x -560 to -180), in
+// table order; first match wins.
+// Make one with sr_time_of_day_tuning() (the struct's zero value has no beats).
+SrTimeOfDayTuning :: struct { n: int; beats: [SR_TIME_BEATS_MAX] SrTimeBeat; blend_time: f32 = 4.0; }   // blend: UE-SKY-05, s (INFERRED)
+sr_time_of_day_tuning :: () -> SrTimeOfDayTuning {
+  t: SrTimeOfDayTuning; t.n = 2;
+  t.beats[0] = SrTimeBeat.{min_x = -15.0, max_x = 15.0, min_z = -5.0, max_z = 11.0};
+  t.beats[1] = SrTimeBeat.{min_x = -560.0, max_x = -180.0, min_z = -900.0, max_z = 700.0};
+  return t;
+}
+sr_time_beats_add :: (t: [] SrTimeOfDayTuning, b: SrTimeBeat) -> bool { if t[0].n >= SR_TIME_BEATS_MAX { return false; } t[0].beats[t[0].n] = b; t[0].n += 1; return true; }
+// What the light shows: a weight per phase (summing to 1) and the phase it heads for.
+// Make one with sr_time_settled(phase).
+SrTimeBlend :: struct { weights: [SR_PHASE_COUNT] f32; target: int = SR_PHASE_DAY; }
+
+// Rule 2: the first beat from phase whose area holds (x, z); a row pointing back is ignored.
+sr_step_beats :: (t: SrTimeOfDayTuning, phase: int, x: f32, z: f32) -> int {
+  for k: 0..<t.n {
+    b := t.beats[k];
+    if b.from != phase || b.to <= b.from { continue; }
+    if x >= b.min_x && x <= b.max_x && z >= b.min_z && z <= b.max_z { return b.to; }
+  }
+  return phase;
+}
+// Standing fully on phase (a level default, a checkpoint restore).
+sr_time_settled :: (phase: int) -> SrTimeBlend { b: SrTimeBlend; for i: 0..<SR_PHASE_COUNT { b.weights[i] = 0.0; } b.weights[phase] = 1.0; b.target = phase; return b; }
+sr_time_set_target :: (b: [] SrTimeBlend, phase: int) { b[0].target = phase; }
+// The target's weight rises by dt / blend_time (to 1); the others share the rest as they held it.
+sr_time_step :: (t: SrTimeOfDayTuning, b: [] SrTimeBlend, dt: f32) {
+  ti := b[0].target; old := b[0].weights[ti];
+  nw : f32 = ifx t.blend_time <= 0.0 then 1.0 else (ifx old + (ifx dt > 0.0 then dt else 0.0) / t.blend_time < 1.0 then old + (ifx dt > 0.0 then dt else 0.0) / t.blend_time else 1.0);
+  others_old := 1.0 - old; others_new := 1.0 - nw;
+  for i: 0..<SR_PHASE_COUNT {
+    if i == ti { b[0].weights[i] = nw; }
+    else { b[0].weights[i] = ifx others_old > 0.0001 then b[0].weights[i] * (others_new / others_old) else 0.0; }
+  }
+}
+sr_time_weight :: (b: SrTimeBlend, phase: int) -> f32 { return b.weights[phase]; }
+sr_time_is_settled :: (b: SrTimeBlend) -> bool { return b.weights[b.target] >= 1.0; }
+// GDD 02 3.4 key light, from the ground toward the light (Y up), normalised; the farm's day sun is lower.
+sr_key_direction :: (phase: int, at_farm: bool) -> D3 {
+  d := d3(0.4, 0.5, 0.77);
+  if phase == SR_PHASE_DAWN { d = d3(0.7, 0.28, 0.6); }
+  if phase == SR_PHASE_DAY { d = ifx at_farm then d3(0.55, 0.34, 0.8) else d3(-0.45, 0.66, 0.6); }
+  if phase == SR_PHASE_DUSK { d = d3(-0.6, 0.3, 0.74); }
+  return d3_scale(d, 1.0 / d3_len(d));
+}
+// The weighted sum of the phases' directions, normalised (the target's own when they cancel).
+sr_blended_key_direction :: (b: SrTimeBlend, at_farm: bool) -> D3 {
+  s := d3(0.0, 0.0, 0.0);
+  for i: 0..<SR_PHASE_COUNT { s = d3_add(s, d3_scale(sr_key_direction(i, at_farm), cast(f64) b.weights[i])); }
+  l := d3_len(s);
+  return ifx l > 0.00000001 then d3_scale(s, 1.0 / l) else sr_key_direction(b.target, at_farm);
+}
+// GDD 02 3.5, the sky clock as a share of a day.
+sr_time_clock :: (phase: int) -> f32 {
+  if phase == SR_PHASE_DAWN { return 0.29; }
+  if phase == SR_PHASE_DAY { return 0.5; }
+  if phase == SR_PHASE_DUSK { return 0.78; }
+  return 0.0;
+}
+// SYS-CLOCK-04: night falls when the drill mech opens the hallway (from any phase; never back).
+sr_after_hallway_opened :: (phase: int) -> int { return SR_PHASE_NIGHT; }
+// The hallway is also open when her level's hall_plug set was there at the start and is gone now ...
+sr_hallway_plugs_cleared :: (plugs_at_start: int, plugs_now: int) -> bool { return plugs_at_start > 0 && plugs_now <= 0; }
+sr_ascii_lower :: (c: u8) -> u8 { return ifx c >= 65 && c <= 90 then c + 32 else c; }
+sr_eq_nocase :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for k: 0..<a.count { if sr_ascii_lower(a[k]) != sr_ascii_lower(b[k]) { return false; } }
+  return true;
+}
+// ... and when she walks from the ring into the lab (level names, any case).
+sr_entered_lab_from_ring :: (level: string, from_level: string) -> bool { return sr_eq_nocase(level, "L_Lab") && sr_eq_nocase(from_level, "L_Ring"); }

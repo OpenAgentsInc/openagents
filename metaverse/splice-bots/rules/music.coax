@@ -1,0 +1,56 @@
+// Splice Bots rules: music per scene, which bed a flow state and place want, and the crossfade
+// (SpliceMusic.h, package A-05; GDD 04 8.2 UE-AUD-05, crossfaded over 2 s; GDD 02 SYS-SND-04,
+// SYS-CLOCK-10). Lo-fi in the cabin (and the edit bay, INFERRED), vaporwave on the desert and the drive,
+// the rave only on foot or board in the garage at night; states with no bed of their own keep what
+// plays. The level scenes (SceneForLevel) say what each level starts as. No engine calls: the music
+// player applies the result.
+#load "flow.coax";
+#load "time-of-day.coax";
+
+// ESpliceMusicTrack. None is silence. The asset is /Game/Audio/Music/MS_MUS_<scene name>.
+SR_TRACK_NONE :: 0; SR_TRACK_TITLE :: 1; SR_TRACK_CABIN :: 2; SR_TRACK_DESERT :: 3; SR_TRACK_RAVE :: 4;
+SR_TRACK_COUNT :: 5;
+SR_TRACK_SCENE_NAMES :: [SR_TRACK_COUNT] string.["", "Title", "Cabin", "Desert", "Rave"];
+SR_MUSIC_CROSSFADE_SECONDS :: 2.0;   // UE-AUD-05
+
+SrMusicPlace :: struct { night: bool; in_garage: bool; }
+sr_music_scene_name :: (track: int) -> string { return ifx track > 0 && track < SR_TRACK_COUNT then SR_TRACK_SCENE_NAMES[track] else ""; }
+sr_music_track_for :: (state: int, place: SrMusicPlace, current: int) -> int {
+  if state == SR_FLOW_TITLE || state == SR_FLOW_CHARACTER { return SR_TRACK_TITLE; }
+  if state == SR_FLOW_PLAY_INTERIOR || state == SR_FLOW_EDIT_BAY { return SR_TRACK_CABIN; }
+  if state == SR_FLOW_PLAY_DRIVE { return SR_TRACK_DESERT; }
+  if state == SR_FLOW_PLAY_ON_FOOT || state == SR_FLOW_PLAY_BOARD { return ifx place.night && place.in_garage then SR_TRACK_RAVE else SR_TRACK_DESERT; }
+  return current;   // Pause, Settings (ducked), Inventory, Map, Banner, Respawn, the cinematics, the endings
+}
+sr_music_track_for_stack :: (s: SrFlowStack, place: SrMusicPlace, current: int) -> int { return sr_music_track_for(s.current, place, current); }
+sr_music_place_for :: (phase: int, in_garage: bool) -> SrMusicPlace { return SrMusicPlace.{night = phase == SR_PHASE_NIGHT, in_garage = in_garage}; }
+
+// What a level starts as (FSpliceLevelScene); known false for a level the game does not play.
+SrLevelScene :: struct { known: bool; start_state: int = SR_FLOW_TITLE; place: SrMusicPlace; phase: int = SR_PHASE_DAY; }
+// By the level's short name (PIE prefix removed), any case.
+sr_scene_for_level :: (level: string) -> SrLevelScene {
+  s: SrLevelScene;
+  if sr_eq_nocase(level, "L_SolarFarm") || sr_eq_nocase(level, "L_Farm") || sr_eq_nocase(level, "L_Plain") { s.known = true; s.start_state = SR_FLOW_PLAY_ON_FOOT; }
+  else if sr_eq_nocase(level, "L_Cabin") { s.known = true; s.start_state = SR_FLOW_PLAY_INTERIOR; }
+  else if sr_eq_nocase(level, "L_Ring") { s.known = true; s.start_state = SR_FLOW_PLAY_ON_FOOT; s.phase = SR_PHASE_DUSK; s.place = sr_music_place_for(s.phase, true); }
+  else if sr_eq_nocase(level, "L_Lab") { s.known = true; s.start_state = SR_FLOW_PLAY_ON_FOOT; s.phase = SR_PHASE_NIGHT; s.place = sr_music_place_for(s.phase, false); }
+  return s;
+}
+
+// The mix of the beds (FSpliceMusicMixer): each tick moves every gain by dt / seconds, the target up and
+// the rest down, so a change mid-fade starts from the mix on screen. Make one with sr_music_mixer().
+SrMusicMixer :: struct { gains: [SR_TRACK_COUNT] f32; target: int; seconds: f32 = SR_MUSIC_CROSSFADE_SECONDS; }
+sr_music_mixer :: (seconds: f32) -> SrMusicMixer { return SrMusicMixer.{seconds = ifx seconds > 0.0001 then seconds else 0.0001}; }
+sr_music_set_target :: (m: [] SrMusicMixer, track: int) { m[0].target = track; }
+sr_music_tick :: (m: [] SrMusicMixer, dt: f32) {
+  step := (ifx dt > 0.0 then dt else 0.0) / m[0].seconds;
+  for i: 1..<SR_TRACK_COUNT {
+    g := m[0].gains[i] + (ifx m[0].target == i then step else -step);
+    m[0].gains[i] = ifx g < 0.0 then 0.0 else ifx g > 1.0 then 1.0 else g;
+  }
+}
+sr_music_gain :: (m: SrMusicMixer, track: int) -> f32 { return ifx track > 0 && track < SR_TRACK_COUNT then m.gains[track] else 0.0; }
+sr_music_is_fading :: (m: SrMusicMixer) -> bool {
+  for i: 1..<SR_TRACK_COUNT { goal : f32 = ifx m.target == i then 1.0 else 0.0; if abs(m.gains[i] - goal) > 0.00000001 { return true; } }
+  return false;
+}

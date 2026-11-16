@@ -1,0 +1,123 @@
+// Splice Bots rules: the game's flow state machine (SpliceFlow.h, package C-04; GDD 04 2.3, the 17
+// states after the 14 Nov cut; UE-FW-10 leaving a state restores the state beneath; UE-FW-12 focus lost
+// pauses; UE-FW-13 the boss and night exit are play, not states; UE-FW-15 cards never change the flow).
+// The transition table is the one array SR_FLOW_TABLE, as the C++'s one array in SpliceFlow.cpp
+// (rows marked INFERRED there are kept). No time, no engine: the owner applies the result.
+
+// ESpliceFlowState, one per row of the GDD 04 2.3 table.
+SR_FLOW_TITLE :: 0;
+SR_FLOW_CHARACTER :: 1;
+SR_FLOW_PLAY_ON_FOOT :: 2;
+SR_FLOW_PLAY_BOARD :: 3;
+SR_FLOW_PLAY_INTERIOR :: 4;
+SR_FLOW_PLAY_DRIVE :: 5;
+SR_FLOW_EDIT_BAY :: 6;
+SR_FLOW_INVENTORY :: 7;
+SR_FLOW_MAP :: 8;
+SR_FLOW_PAUSE :: 9;
+SR_FLOW_SETTINGS :: 10;
+SR_FLOW_BANNER :: 11;
+SR_FLOW_RESPAWN :: 12;
+SR_FLOW_CINEMATIC_HERO :: 13;
+SR_FLOW_CINEMATIC_MEMORY :: 14;
+SR_FLOW_ENDING_RESTORED :: 15;
+SR_FLOW_ENDING_TEASER :: 16;
+SR_FLOW_COUNT :: 17;
+SR_FLOW_TAGS :: [SR_FLOW_COUNT] string.["Flow.Title", "Flow.Character", "Flow.Play.OnFoot", "Flow.Play.Board", "Flow.Play.Interior", "Flow.Play.Drive", "Flow.EditBay", "Flow.Inventory", "Flow.Map", "Flow.Pause", "Flow.Settings", "Flow.Banner", "Flow.Respawn", "Flow.Cinematic.Hero", "Flow.Cinematic.Memory", "Flow.Ending.Restored", "Flow.Ending.Teaser"];
+
+// ESpliceFlowRefusal.
+SR_FLOW_OK :: 0; SR_FLOW_SAME_STATE :: 1; SR_FLOW_NOT_IN_TABLE :: 2; SR_FLOW_NOT_STATE_BENEATH :: 3;
+
+// One row: push opens the new state over the current one (kept beneath); else it replaces it.
+SrFlowRow :: struct { from: int; to: int; push: bool; }
+SR_FLOW_ROWS :: 50;
+SR_FLOW_TABLE :: [SR_FLOW_ROWS] SrFlowRow.[
+  SrFlowRow.{from = SR_FLOW_TITLE, to = SR_FLOW_CHARACTER},
+  SrFlowRow.{from = SR_FLOW_TITLE, to = SR_FLOW_PLAY_ON_FOOT},
+  SrFlowRow.{from = SR_FLOW_TITLE, to = SR_FLOW_SETTINGS, push = true},
+  SrFlowRow.{from = SR_FLOW_CHARACTER, to = SR_FLOW_PLAY_ON_FOOT},
+  SrFlowRow.{from = SR_FLOW_PLAY_ON_FOOT, to = SR_FLOW_PLAY_BOARD},
+  SrFlowRow.{from = SR_FLOW_PLAY_BOARD, to = SR_FLOW_PLAY_ON_FOOT},
+  SrFlowRow.{from = SR_FLOW_PLAY_ON_FOOT, to = SR_FLOW_PLAY_INTERIOR},
+  SrFlowRow.{from = SR_FLOW_PLAY_INTERIOR, to = SR_FLOW_PLAY_ON_FOOT},
+  SrFlowRow.{from = SR_FLOW_PLAY_INTERIOR, to = SR_FLOW_PLAY_DRIVE},
+  SrFlowRow.{from = SR_FLOW_PLAY_DRIVE, to = SR_FLOW_PLAY_ON_FOOT},
+  SrFlowRow.{from = SR_FLOW_PLAY_DRIVE, to = SR_FLOW_PLAY_INTERIOR},
+  SrFlowRow.{from = SR_FLOW_PLAY_INTERIOR, to = SR_FLOW_EDIT_BAY, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_ON_FOOT, to = SR_FLOW_INVENTORY, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_BOARD, to = SR_FLOW_INVENTORY, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_INTERIOR, to = SR_FLOW_INVENTORY, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_ON_FOOT, to = SR_FLOW_MAP, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_BOARD, to = SR_FLOW_MAP, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_INTERIOR, to = SR_FLOW_MAP, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_DRIVE, to = SR_FLOW_MAP, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_ON_FOOT, to = SR_FLOW_PAUSE, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_BOARD, to = SR_FLOW_PAUSE, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_INTERIOR, to = SR_FLOW_PAUSE, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_DRIVE, to = SR_FLOW_PAUSE, push = true},
+  SrFlowRow.{from = SR_FLOW_EDIT_BAY, to = SR_FLOW_PAUSE, push = true},
+  SrFlowRow.{from = SR_FLOW_INVENTORY, to = SR_FLOW_PAUSE, push = true},
+  SrFlowRow.{from = SR_FLOW_MAP, to = SR_FLOW_PAUSE, push = true},
+  SrFlowRow.{from = SR_FLOW_BANNER, to = SR_FLOW_PAUSE, push = true},
+  SrFlowRow.{from = SR_FLOW_PAUSE, to = SR_FLOW_SETTINGS, push = true},
+  SrFlowRow.{from = SR_FLOW_PAUSE, to = SR_FLOW_TITLE},
+  SrFlowRow.{from = SR_FLOW_PLAY_ON_FOOT, to = SR_FLOW_BANNER, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_BOARD, to = SR_FLOW_BANNER, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_INTERIOR, to = SR_FLOW_BANNER, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_DRIVE, to = SR_FLOW_BANNER, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_ON_FOOT, to = SR_FLOW_RESPAWN},
+  SrFlowRow.{from = SR_FLOW_PLAY_BOARD, to = SR_FLOW_RESPAWN},
+  SrFlowRow.{from = SR_FLOW_PLAY_INTERIOR, to = SR_FLOW_RESPAWN},
+  SrFlowRow.{from = SR_FLOW_INVENTORY, to = SR_FLOW_RESPAWN},
+  SrFlowRow.{from = SR_FLOW_MAP, to = SR_FLOW_RESPAWN},
+  SrFlowRow.{from = SR_FLOW_BANNER, to = SR_FLOW_RESPAWN},
+  SrFlowRow.{from = SR_FLOW_RESPAWN, to = SR_FLOW_PLAY_ON_FOOT},
+  SrFlowRow.{from = SR_FLOW_PLAY_ON_FOOT, to = SR_FLOW_CINEMATIC_HERO, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_BOARD, to = SR_FLOW_CINEMATIC_HERO, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_INTERIOR, to = SR_FLOW_CINEMATIC_HERO, push = true},
+  SrFlowRow.{from = SR_FLOW_PLAY_DRIVE, to = SR_FLOW_CINEMATIC_HERO, push = true},
+  SrFlowRow.{from = SR_FLOW_EDIT_BAY, to = SR_FLOW_CINEMATIC_MEMORY},
+  SrFlowRow.{from = SR_FLOW_PLAY_ON_FOOT, to = SR_FLOW_CINEMATIC_MEMORY},
+  SrFlowRow.{from = SR_FLOW_PLAY_INTERIOR, to = SR_FLOW_CINEMATIC_MEMORY},
+  SrFlowRow.{from = SR_FLOW_CINEMATIC_MEMORY, to = SR_FLOW_ENDING_RESTORED},
+  SrFlowRow.{from = SR_FLOW_ENDING_RESTORED, to = SR_FLOW_ENDING_TEASER},
+  SrFlowRow.{from = SR_FLOW_ENDING_TEASER, to = SR_FLOW_TITLE},
+];
+
+SR_FLOW_BENEATH_MAX :: 8;
+// The current state and the states beneath it (beneath[n - 1] is directly beneath).
+SrFlowStack :: struct { current: int = SR_FLOW_TITLE; n: int; beneath: [SR_FLOW_BENEATH_MAX] int; }
+SrFlowResult :: struct { refusal: int; next: SrFlowStack; }
+sr_flow_allowed :: (r: SrFlowResult) -> bool { return r.refusal == SR_FLOW_OK; }
+
+sr_flow_tag :: (state: int) -> string { return ifx state >= 0 && state < SR_FLOW_COUNT then SR_FLOW_TAGS[state] else ""; }
+sr_flow_is_play :: (s: int) -> bool { return s == SR_FLOW_PLAY_ON_FOOT || s == SR_FLOW_PLAY_BOARD || s == SR_FLOW_PLAY_INTERIOR || s == SR_FLOW_PLAY_DRIVE; }
+// The table's "World time" column: Pause, Settings, Respawn, the memory, the endings. The hero shot
+// pauses only the rules clock, so it is false here.
+sr_flow_is_world_paused :: (s: int) -> bool {
+  return s == SR_FLOW_PAUSE || s == SR_FLOW_SETTINGS || s == SR_FLOW_RESPAWN || s == SR_FLOW_CINEMATIC_MEMORY || s == SR_FLOW_ENDING_RESTORED || s == SR_FLOW_ENDING_TEASER;
+}
+// The row's index from -> to, or -1.
+sr_flow_find_row :: (from: int, to: int) -> int { for r, k: SR_FLOW_TABLE { if r.from == from && r.to == to { return k; } } return -1; }
+// Pure: closing back to the state directly beneath is always allowed; otherwise the table decides.
+sr_flow_transition :: (s: SrFlowStack, to: int) -> SrFlowResult {
+  r := SrFlowResult.{next = s};
+  if to == s.current { r.refusal = SR_FLOW_SAME_STATE; return r; }
+  if s.n > 0 && s.beneath[s.n - 1] == to { r.next.current = to; r.next.n -= 1; r.next.beneath[r.next.n] = 0; return r; }
+  k := sr_flow_find_row(s.current, to);
+  if k < 0 { r.refusal = ifx s.n > 0 && sr_flow_is_play(to) then SR_FLOW_NOT_STATE_BENEATH else SR_FLOW_NOT_IN_TABLE; return r; }
+  if SR_FLOW_TABLE[k].push {
+    if s.n >= SR_FLOW_BENEATH_MAX { r.refusal = SR_FLOW_NOT_IN_TABLE; return r; }
+    r.next.beneath[r.next.n] = s.current; r.next.n += 1;
+  } else { r.next = SrFlowStack.{}; }
+  r.next.current = to;
+  return r;
+}
+// FSpliceFlowMachine::Request: applies an allowed transition to stack[0]. The C++ broadcasts OnChanged
+// (from, to) once per allowed transition; here the caller does, from the result and the old current.
+sr_flow_request :: (stack: [] SrFlowStack, to: int) -> SrFlowResult {
+  r := sr_flow_transition(stack[0], to);
+  if sr_flow_allowed(r) { stack[0] = r.next; }
+  return r;
+}
+sr_flow_reset :: (stack: [] SrFlowStack) { stack[0] = SrFlowStack.{}; }
