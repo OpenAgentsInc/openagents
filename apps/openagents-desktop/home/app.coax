@@ -9,7 +9,7 @@
 #load "../../../coax/native/text-services-wire.coax";
 #load "../../../coax/native/text-link-policy.coax";
 #load "../../../coax/web/api/chat-history-wire.coax"; // shared account-history codec
-#load "../../shared/environment-app.coax";
+#load "../../shared/environment-render.coax";
 #load "../../shared/app-navigation.coax";
 #load "../../shared/site-places.coax";
 #load "../../../metaverse-engine/editor/world-list.coax";

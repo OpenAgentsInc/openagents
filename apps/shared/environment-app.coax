@@ -1,14 +1,10 @@
-// Shared environment application state/actions and component composition.
+// Shared environment application state and actions. Its drawing, on the tree kit, is
+// environment-render.coax: only the desktop loads it, so a phone never loads the tree kit.
 // Installed hosts provide authenticated HTTP, random command IDs and a timer.
-#test "mobile conversation has no refresh or model controls and follows an idle remote session" {
- e:[1]EnvironmentApp;e[0].active=true;e[0].workspace=true;e[0].page=2;e[0].selected=0;e[0].ns=1;e[0].catalog[0].n=1;
- eu_wait(e[..]);#assert e[0].timer && e[0].action==12;
- t:[1]Tree;u:[1]Ui;md:[1]MdDoc;tr_begin(t[..]);eu_render(e[..],t[..],u[..],md[..]);
- #assert tr_find(t[..],"env.refresh")<0 && tr_find(t[..],"env.model")<0 && tr_find(t[..],"env.effort")<0;
-}
 #load "../../coax/lib/agent/environment/wire.coax";
 #load "../../coax/lib/nostr/json.coax";
-#load "../../components/kit/frames.coax";
+#load "../../components/core/tree.coax";       // tr_hash, tr_join: row IDs (environment-render.coax draws)
+#load "../../components/core/elements.coax";   // el_put
 
 EnvironmentApp :: struct {
   active:bool;local:bool;page:int;catalog:[1]EaCatalog;view:[1]EaView;request:[1]EaRequest;
@@ -37,31 +33,9 @@ eu_read_retry :: (e:[]EnvironmentApp)->bool #effects(all) {m:=cast(string)e[0].r
  e[0].flight=false;e[0].action=0;e[0].uncertain=true;eu_request(e[..],"SendMessage");eu_wait(e[..]);#assert !e[0].timer && e[0].action==0 && e[0].uncertain;
 }
 eu_pause :: (e:[]EnvironmentApp,on:bool) #effects(all) {e[0].paused=on;if on && e[0].action==12 {e[0].action=0;e[0].timer=false;}if !on {eu_wait(e);}}
-#test "tool output is collapsed literal detail, with stable identity across polling" {
-  e:[1]EnvironmentApp;e[0].active=true;e[0].page=2;e[0].selected=0;e[0].catalog[0].n=1;e[0].ns=ea_copy(e[0].session[..],"chat");
-  v:=e[0].view[..];v[0].ni=1;m:=v[0].items[0];m.ni=ea_copy(m.id[..],"tool-1");m.nr=ea_copy(m.role[..],"tool");m.nk=ea_copy(m.tool[..],"Bash");m.complete=true;
-  raw:="## literal tool output\n$ echo **not markdown**";m.text_at=ea_text_put(v,raw);m.nt=raw.count;v[0].items[0]=m;
-  t:[1]Tree;u:[1]Ui;md:[1]MdDoc;id:[96]u8;pre:[96]u8;key:=eu_item_id(v,0,id[..]);
-  tr_begin(t[..]);eu_render(e[..],t[..],u[..],md[..]);#assert tr_find(t[..],key)>=0 && tr_find(t[..],tr_cat(pre[..],key,".out"))<0 && tr_find(t[..],"env.history.partial")<0;
-  eu_press(e[..],key);tr_begin(t[..]);eu_render(e[..],t[..],u[..],md[..]);#assert tr_text_of(t[..],tr_find(t[..],tr_cat(pre[..],key,".out")))==raw;
-  v[0].items[1]=m;v[0].items[0].ni=ea_copy(v[0].items[0].id[..],"new-row");v[0].ni=2;
-  #assert eu_tool_open(e[..],eu_item_key(v,1)) && !eu_tool_open(e[..],eu_item_key(v,0));
-}
-#test "refresh is a small header status and earlier history is above the transcript" {
-  e:[1]EnvironmentApp;e[0].page=2;e[0].selected=0;e[0].catalog[0].n=1;e[0].flight=true;e[0].ns=1;e[0].view[0].nc=ea_copy(e[0].view[0].cursor[..],"1000001");
-  t:[1]Tree;u:[1]Ui;md:[1]MdDoc;tr_begin(t[..]);eu_render(e[..],t[..],u[..],md[..]);
-  at:=tr_find(t[..],"env.refresh");#assert at>=0 && t[0].nodes[at].parent==tr_find(t[..],"env.header") && tr_attr_of(t[..],at,AT_STATE)=="loading" && tr_attr_of(t[..],at,AT_DISABLED)=="";
-  #assert tr_find(t[..],"env.earlier")<tr_find(t[..],"env.welcome");
-}
 eu_item_key :: (v:[]EaView,i:int)->int #effects(all) {m:=v[0].items[i];return tr_hash(cast(string)m.id[0..<m.ni]);}
 eu_item_id :: (v:[]EaView,i:int,out:[]u8)->string #effects(all) {return tr_join(out,"environment.message.",eu_item_key(v,i));}
 eu_tool_open :: (e:[]EnvironmentApp,key:int)->bool #effects(all) {for i:0..<e[0].expanded_n {if e[0].expanded[i]==key {return true;}}return false;}
-#test "background polling keeps the settled status quiet; an explicit refresh shows progress" {
-  e:[1]EnvironmentApp;e[0].page=2;e[0].selected=0;e[0].catalog[0].n=1;e[0].flight=true;e[0].view[0].ok=true;
-  e[0].view[0].nm=ea_copy(e[0].view[0].method[..],"ReadSession");e[0].request[0].nm=ea_copy(e[0].request[0].method[..],"ReadSession");
-  t:[1]Tree;u:[1]Ui;md:[1]MdDoc;tr_begin(t[..]);eu_render(e[..],t[..],u[..],md[..]);#assert tr_attr_of(t[..],tr_find(t[..],"env.refresh"),AT_STATE)=="ready";
-  e[0].sync_requested=true;tr_begin(t[..]);eu_render(e[..],t[..],u[..],md[..]);#assert tr_attr_of(t[..],tr_find(t[..],"env.refresh"),AT_STATE)=="loading";
-}
 #test "reading earlier history is not replaced by a polling timer" {
   e:[1]EnvironmentApp;e[0].active=true;e[0].page=2;e[0].ns=1;e[0].timer=true;e[0].history_before=1000001;
   eu_reply(e[..],12,0,"{}",false);#assert e[0].action==0 && !e[0].flight && !e[0].timer;
@@ -79,26 +53,6 @@ eu_tool_open :: (e:[]EnvironmentApp,key:int)->bool #effects(all) {for i:0..<e[0]
 #test "a detached environment ignores late timers and identity replies" {
   e:[1]EnvironmentApp;e[0].timer=true;e[0].random=true;
   eu_reply(e[..],12,0,"{}",false);eu_reply(e[..],11,0,"{}",false);#assert e[0].action==0 && !e[0].flight;
-}
-#test "a failed computer read never claims that discovery ran or the account has no computers" {
-  e:[1]EnvironmentApp;e[0].active=true;e[0].page=1;e[0].selected=0;e[0].catalog[0].n=1;e[0].flight=true;
-  eu_request(e[..],"ListSessions");eu_reply(e[..],4,503,"{}",false);
-  t:[1]Tree;u:[1]Ui;markdown:[1]MdDoc;tr_begin(t[..]);eu_render(e[..],t[..],u[..],markdown[..]);
-  #assert e[0].uncertain && tr_find(t[..],"env.reconnect")>=0 && tr_find(t[..],"env.partial")<0 && tr_find(t[..],"env.empty")<0;
-}
-#test "a turn names the offered model and effort, and an older computer's turn names neither" {
-  e:[1]EnvironmentApp;e[0].active=true;e[0].page=2;e[0].selected=0;e[0].catalog[0].n=1;e[0].nd=ea_copy(e[0].draft[..],"hello");
-  eu_press(e[..],"env.composer.send");#assert e[0].random && e[0].request[0].nmo==0 && e[0].request[0].nef==0;
-  o:=e[0].offer;o[0].nv=2;o[0].default_level=1;n:=ea_copy(o[0].levels[0].id[..],"low");o[0].levels[0].ni=3;n=ea_copy(o[0].levels[0].label[..],"Low");o[0].levels[0].nl=3;
-  n=ea_copy(o[0].levels[1].id[..],"high");o[0].levels[1].ni=4;n=ea_copy(o[0].levels[1].label[..],"High");o[0].levels[1].nl=4;
-  o[0].n=2;o[0].models[0].ni=ea_copy(o[0].models[0].id[..],"default");o[0].models[0].nl=ea_copy(o[0].models[0].label[..],"Default");o[0].models[0].ladder=3;
-  o[0].models[1].ni=ea_copy(o[0].models[1].id[..],"claude-haiku-4-5");o[0].models[1].nl=ea_copy(o[0].models[1].label[..],"Haiku 4.5");e[0].offer=o;
-  e[0].random=false;e[0].action=0;eu_press(e[..],"env.composer.send");#assert cast(string)e[0].request[0].model[0..<e[0].request[0].nmo]=="default" && cast(string)e[0].request[0].effort[0..<e[0].request[0].nef]=="high";
-  eu_press(e[..],"env.effort");#assert e[0].menu==2;eu_press(e[..],"env.effort.0");#assert e[0].menu==0;
-  e[0].random=false;e[0].action=0;eu_press(e[..],"env.composer.send");#assert cast(string)e[0].request[0].effort[0..<e[0].request[0].nef]=="low";
-  eu_press(e[..],"env.model.1");e[0].random=false;e[0].action=0;eu_press(e[..],"env.composer.send");#assert cast(string)e[0].request[0].model[0..<e[0].request[0].nmo]=="claude-haiku-4-5" && e[0].request[0].nef==0;
-  t:[1]Tree;u:[1]Ui;markdown:[1]MdDoc;e[0].random=false;tr_begin(t[..]);eu_render(e[..],t[..],u[..],markdown[..]);
-  #assert tr_find(t[..],"env.model")>=0 && tr_find(t[..],"env.effort")<0;
 }
 eu_error :: (code:string)->string #effects(all) {
   if code=="forbidden" {return "Connection revoked. Reconnect on desktop.";}
@@ -138,13 +92,13 @@ eu_http :: (e:[]EnvironmentApp,catalog:bool) #effects(all) {
   if e[0].flight || e[0].action!=0 {return;}
   if e[0].local {n:=ea_write(e[0].request[..],e[0].body[..]);if n>0 {e[0].nb=n;e[0].action=14;e[0].flight=true;}return;}
   path:[512]u8;n:=0;wire:[24576]u8;nw:=0;
-  if catalog {n=mc(path[..],0,"/api/chat/environments/v1");}
+  if catalog {n=el_put(path[..],0,"/api/chat/environments/v1");}
   else {
     if e[0].selected<0 || e[0].selected>=e[0].catalog[0].n {return;}
-    n=mc(path[..],0,"/api/chat/environment/v1?host=");n=mc(path[..],n,cast(string)e[0].catalog[0].entries[e[0].selected].host[..]);nw=ea_write(e[0].request[..],wire[..]);if nw<1 {return;}
+    n=el_put(path[..],0,"/api/chat/environment/v1?host=");n=el_put(path[..],n,cast(string)e[0].catalog[0].entries[e[0].selected].host[..]);nw=ea_write(e[0].request[..],wire[..]);if nw<1 {return;}
   }
   read:=!catalog && ea_right(cast(string)e[0].request[0].method[0..<e[0].request[0].nm])==0;
-  if read {n=mc(path[..],n,"&method=");n=mc(path[..],n,cast(string)e[0].request[0].method[0..<e[0].request[0].nm]);n=mc(path[..],n,"&session=");n=mc(path[..],n,cast(string)e[0].request[0].session[0..<e[0].request[0].ns]);n=mc(path[..],n,"&before=");n=json_write_int(path[..],n,e[0].request[0].before);}
+  if read {n=el_put(path[..],n,"&method=");n=el_put(path[..],n,cast(string)e[0].request[0].method[0..<e[0].request[0].nm]);n=el_put(path[..],n,"&session=");n=el_put(path[..],n,cast(string)e[0].request[0].session[0..<e[0].request[0].ns]);n=el_put(path[..],n,"&before=");n=json_write_int(path[..],n,e[0].request[0].before);}
   o:[1]Jo;jo_start(o[..],e[0].body[..]);jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],cast(string)path[0..<n]);jo_key(o[..],"method");jo_str(o[..],ifx catalog || read then "GET" else "POST");
   if !catalog && !read {jo_key(o[..],"body");jo_str(o[..],cast(string)wire[0..<nw]);}jo_end(o[..]);
   if o[0].bad {eu_note(e,"Request exceeds the installed limit.");return;}e[0].nb=o[0].n;e[0].action=4;e[0].flight=true;
@@ -237,66 +191,4 @@ eu_press :: (e:[]EnvironmentApp,id:string) #effects(all) {
     eu_mutate(e,ifx busy then "StopTurn" else ifx e[0].ns==0 then "OpenSession" else "SendMessage",false);return;
   }
   if id=="env.allow" || id=="env.deny" {eu_mutate(e,"RespondInteraction",id=="env.allow");}
-}
-eu_render :: (e:[]EnvironmentApp,t:[]Tree,u:[]Ui,markdown:[]MdDoc) #effects(all) {
-  background:=e[0].flight && cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="ReadSession" && !e[0].sync_requested;busy:=(e[0].flight && !background) || e[0].random;x:= -1;
-  if e[0].page==0 {
-    x=k_text(t,u,"env.title",TG_H1,"","Computers");x=k_icon_button(t,"env.close",IC_X,"Back to chats");
-    if e[0].catalog[0].ok && e[0].catalog[0].n==0 && !busy {x=k_text(t,u,"env.empty",TG_P,"","No computers connected");}
-    for i:0..<e[0].catalog[0].n {b:[96]u8;row:=e[0].catalog[0].entries[i];x=k_row(t,u,tr_join(b[..],"environment.",i),cast(string)row.label[0..<row.nl],"",false);if busy {tr_attr(t,x,AT_DISABLED,"");}}
-  } else if e[0].page==1 {
-    row:=e[0].catalog[0].entries[e[0].selected];x=k_text(t,u,"env.title",TG_H1,"",cast(string)row.label[0..<row.nl]);x=k_link(t,"env.close","All chats");
-    x=k_icon_button(t,"env.new",IC_PLUS,"New Claude chat");if busy || e[0].uncertain {tr_attr(t,x,AT_DISABLED,"");}if !e[0].workspace {x=k_icon_button(t,"env.refresh",IC_ARROW_ROTATE_CW,"Refresh chats");if busy {tr_attr(t,x,AT_DISABLED,"");}}
-    if e[0].view[0].ok && !e[0].view[0].complete && e[0].view[0].nc==0 && e[0].view[0].ne==0 && !busy {x=k_text(t,u,"env.partial",TG_P,"","Incomplete history");}
-    for i:0..<e[0].view[0].ns {b:[96]u8;s:=e[0].view[0].sessions[i];x=k_row(t,u,tr_join(b[..],"environment.session.",i),cast(string)s.title[0..<s.nt],"",false);if busy {tr_attr(t,x,AT_DISABLED,"");}}
-    if e[0].view[0].nc>0 {x=k_link(t,"env.more","Earlier");if busy {tr_attr(t,x,AT_DISABLED,"");}}
-  } else {
-    row:=e[0].catalog[0].entries[e[0].selected];x=tr_open(t,"env.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");if e[0].workspace {x=k_side_open(t,"nav.toggle","Show chats");}else {x=k_button(t,u,"env.sessions","Chats",BS_PLAIN);}caption:[384]u8;label:=cast(string)row.label[0..<row.nl];current:=eu_current(e);if e[0].workspace && current>=0 {label=tr_cat(caption[..],cast(string)e[0].view[0].sessions[current].title[0..<e[0].view[0].sessions[current].nt]," · ");n:=mc(caption[..],label.count,cast(string)row.label[0..<row.nl]);label=cast(string)caption[0..<n];}x=k_text(t,u,"env.executing",TG_SPAN,"",label);
-    if !e[0].workspace {
-    showing:=busy && (e[0].sync_requested || !e[0].view[0].ok || cast(string)e[0].view[0].method[0..<e[0].view[0].nm]!="ReadSession" || cast(string)e[0].request[0].method[0..<e[0].request[0].nm]!="ReadSession");
-    x=k_button(t,u,"env.refresh","↻",BS_PLAIN);tr_attr(t,x,AT_LABEL,ifx showing then "Refreshing conversation" else ifx e[0].uncertain then "Connection lost. Reconnect" else ifx e[0].history_before>0 then "Return to latest messages" else "Conversation up to date. Refresh");
-    tr_attr(t,x,AT_STATE,ifx showing then "loading" else ifx e[0].uncertain then "offline" else ifx e[0].view[0].ok then "ready" else "idle");
-    }
-    if e[0].workspace {x=k_icon_button(t,"nav.new",IC_PLUS,"New chat");}tr_close(t);
-    active:=false;asking:=false;reviewable:=true;writable:=e[0].ns==0;
-    for i:0..<e[0].view[0].ns {s:=e[0].view[0].sessions[i];if cast(string)s.id[0..<s.ni]==cast(string)e[0].session[0..<e[0].ns] {active=s.busy;asking=s.nr>0;writable=s.managed && cast(string)s.control[0..<s.nc]=="available";}}
-    x=tr_open(t,"env.messages",TG_SECTION,"transcript");tr_attr(t,x,AT_STATE,cast(string)e[0].session[0..<e[0].ns]);
-    if e[0].view[0].nc>0 {x=k_link(t,"env.earlier","Earlier");if busy {tr_attr(t,x,AT_DISABLED,"");}}
-    if e[0].history_before>0 {x=k_link(t,"env.latest","Latest");}
-    if e[0].view[0].ni==0 && e[0].ns>0 {x=k_text(t,u,"env.welcome",TG_P,"","Loading…");}
-    for i:0..<e[0].view[0].ni {b:[96]u8;m:=e[0].view[0].items[i];id:=eu_item_id(e[0].view[..],i,b[..]);
-      if m.nk>0 || cast(string)m.role[0..<m.nr]=="tool" {
-        if !m.complete {reviewable=false;}
-        x=k_tool_line(t,u,id,ifx m.nk>0 then cast(string)m.tool[0..<m.nk] else "Tool",ifx !m.complete then "Partial output" else "",TL_INFO,eu_tool_open(e,eu_item_key(e[0].view[..],i)),"",ea_item_text(e[0].view[..],i));
-      }else {x=k_message(t,u,id,cast(string)m.role[0..<m.nr]!="user",markdown,ea_item_text(e[0].view[..],i));}
-    }tr_close(t);
-    if asking {x=k_button(t,u,"env.allow","Allow once",ifx busy || !reviewable then BS_DISABLED else BS_PRIMARY);x=k_button(t,u,"env.deny","Deny",ifx busy then BS_DISABLED else BS_PLAIN);}
-    if asking && !reviewable {x=k_text(t,u,"env.approval.partial",TG_P,"","Too large to review. Deny or stop.");}
-    m:=eu_model(e);l:=eu_level(e,m);o:=e[0].offer[..];name:[96]u8;title:="Claude Code";
-    if writable && m>=0 && !e[0].workspace {
-      // The next turn's model and effort; a running turn keeps its own.
-      if e[0].workspace {x=tr_open(t,"env.options",TG_FOOTER,"composer-options");}
-      ml:=cast(string)o[0].models[m].label[0..<o[0].models[m].nl];a:[96]u8;open:=e[0].menu==1 && !busy && !e[0].workspace;
-      k_select_begin(t,u,"env.model",ml,"Claude model for the next message",open);
-      if open {for i:0..<o[0].n {b:[96]u8;x=k_row(t,u,tr_join(b[..],"env.model.",i),cast(string)o[0].models[i].label[0..<o[0].models[i].nl],"",i==m);}}
-      k_select_end(t,open);title=ml;
-      if l>=0 {
-        ll:=cast(string)o[0].levels[l].label[0..<o[0].levels[l].nl];c:[96]u8;open=e[0].menu==2 && !busy && !e[0].workspace;
-        k_select_begin(t,u,"env.effort",ll,"Reasoning effort for the next message",open);
-        if open {for i:0..<o[0].nv {if (o[0].models[m].ladder&(1<<i))!=0 {b:[96]u8;x=k_row(t,u,tr_join(b[..],"env.effort.",i),cast(string)o[0].levels[i].label[0..<o[0].levels[i].nl],"",i==l);}}}
-        k_select_end(t,open);title=tr_cat(name[..],tr_cat(c[..],ml," · "),ll);
-      }
-      if e[0].workspace {tr_close(t);}
-      if e[0].workspace && e[0].menu>0 {
-        x=tr_open(t,"env.choices",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,ifx e[0].menu==1 then "Model" else "Reasoning effort");
-        x=k_text(t,u,"env.choices.title",TG_H2,"",ifx e[0].menu==1 then "Model" else "Effort");x=k_icon_button(t,"env.choices.close",IC_X,"Close choices");
-        if e[0].menu==1 {for i:0..<o[0].n {b:[96]u8;x=k_row(t,u,tr_join(b[..],"env.model.",i),cast(string)o[0].models[i].label[0..<o[0].models[i].nl],"",i==m);}}
-        else {for i:0..<o[0].nv {if (o[0].models[m].ladder&(1<<i))!=0 {b:[96]u8;x=k_row(t,u,tr_join(b[..],"env.effort.",i),cast(string)o[0].levels[i].label[0..<o[0].levels[i].nl],"",i==l);}}}tr_close(t);
-      }
-    }
-    if writable {f:=k_composer_begin(t,u,"env.composer","Message Claude");if busy || active || e[0].uncertain {tr_attr(t,f,AT_DISABLED,"disabled");}k_composer_end(t,u,"env.composer",ifx active then "Stop" else "Send",!e[0].flight && !busy && !e[0].uncertain && (active || e[0].nd>0));frame:=tr_find(t,"env.composer.frame");if frame>=0 {tr_attr(t,frame,AT_TITLE,title);}}
-    else {x=k_text(t,u,"env.readonly",TG_P,"meta","Read only");}
-  }
-  if e[0].nn>0 {x=k_text(t,u,"env.note",TG_P,"",cast(string)e[0].note[0..<e[0].nn]);}
-  if e[0].uncertain {x=k_link(t,"env.reconnect","Reconnect");if busy {tr_attr(t,x,AT_DISABLED,"");}}
 }
